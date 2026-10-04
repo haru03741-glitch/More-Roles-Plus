@@ -207,6 +207,7 @@ internal static class FractureSites
     {
         fixed (byte* p = _pixels) _tex.LoadRawTextureData((IntPtr)p, _pixels.Length);
         _tex.Apply(false, false);
+        Bridge.Perf.Upload(_pixels.Length);
     }
 
     // マップが変わった時

@@ -40,6 +40,8 @@ internal static class TerrainFx
     }
 
     private static readonly List<Item> Items = new();
+    internal static int LiveCount => Items.Count;
+    internal static bool HideJunk; // テスト用: 船の瓦礫を見えなくする (乱数の消費は変えない = 塊の割れ方は同じ)
     private static Sprite _flash;
     private static bool _flashSearched;
     private static long _lastMs;
@@ -384,6 +386,7 @@ internal static class TerrainFx
         if (art == JunkArt.Plate) it.VFlip = (rnd.NextDouble() < 0.5 ? -1f : 1f) * (8f + (float)rnd.NextDouble() * 8f);
         if (art == JunkArt.Pipe) it.Roll = s * 0.15f;
         SetPile(it, pile);
+        if (HideJunk) it.Sr.color = Color.clear;
         return it;
     }
 

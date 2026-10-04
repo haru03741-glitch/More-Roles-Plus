@@ -480,12 +480,47 @@ internal static class DamageMap
         if (near > far) { near = far = Rooms.Count > 0 && Rooms[0] ? Rooms[0].transform.position.z : 8f; }
     }
 
+    // テスト用の見た目の切り分け: マスクの 1 チャンネル (1 = 焦げ G / 2 = 熾火 B) を退避して 0 にする / 戻す。
+    // 同じ場面のまま入れ替えて撮り比べるため。戻す時は退避した値と今の値の大きい方 (外している間の破壊も残す)
+    private static readonly byte[][] HiddenChannel = new byte[4][];
+
+    internal static string DebugChannel(int ch, bool on)
+    {
+        if (_pixels == null) return "no map";
+        if (!on)
+        {
+            if (HiddenChannel[ch] != null) return "already off";
+            var keep = new byte[_w * _h];
+            for (int k = 0; k < keep.Length; k++) { keep[k] = _pixels[k * 4 + ch]; _pixels[k * 4 + ch] = 0; }
+            HiddenChannel[ch] = keep;
+        }
+        else
+        {
+            var keep = HiddenChannel[ch];
+            if (keep == null) return "already on";
+            for (int k = 0; k < keep.Length; k++) _pixels[k * 4 + ch] = Math.Max(_pixels[k * 4 + ch], keep[k]);
+            HiddenChannel[ch] = null;
+        }
+        Upload();
+        return null;
+    }
+
+    // テスト用: 穴の向こうに敷いた床 (借りた廊下の床・手続きの床) を隠す / 戻す。ひびの板はそのまま
+    internal static int DebugUnderlay(bool on)
+    {
+        int n = 0;
+        foreach (var go in Underlays)
+            if (go && (go.name == "MrpPassageFloor" || (go.name == "MrpRubble" && go.layer == 9))) { go.SetActive(on); n++; }
+        return n;
+    }
+
     private static unsafe void Upload()
     {
         fixed (byte* p = _pixels) _tex.LoadRawTextureData((IntPtr)p, _pixels.Length);
         _tex.Apply(false, false);
         fixed (byte* p = _gens) _genTex.LoadRawTextureData((IntPtr)p, _gens.Length);
         _genTex.Apply(false, false);
+        Bridge.Perf.Upload(_pixels.Length + _gens.Length);
     }
 
     // 抜いた穴の向こうには床が無い (部屋と部屋の間は船体と宇宙) ので、部屋の絵より奥に瓦礫の床を敷く
@@ -654,6 +689,7 @@ internal static class DamageMap
         RubbleBlocks.Clear();
         Rooms.Clear();
         Swapped.Clear();
+        Array.Clear(HiddenChannel, 0, HiddenChannel.Length);
         _passageTile = null;
         _passageSearched = false;
         if (_tex) UnityEngine.Object.Destroy(_tex);

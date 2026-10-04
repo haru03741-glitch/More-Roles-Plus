@@ -41,15 +41,22 @@ public class Ticker : MonoBehaviour
 
     private void Update()
     {
+        Bridge.Perf.FrameStart();
+        long t = Bridge.Perf.Begin();
         Terrain.TerrainFx.Tick();
         Terrain.RubbleBake.Tick();
         Bridge.Burst.Tick();
+        Bridge.Perf.End(t);
     }
+
+    private void LateUpdate() => Bridge.Perf.FrameLate();
 
     private void FixedUpdate()
     {
+        long t = Bridge.Perf.Begin();
         Fx.MrpBundle.Tick();
         Terrain.TerrainSync.Tick();
         Bridge.TestBridge.Tick();
+        Bridge.Perf.EndFixed(t);
     }
 }

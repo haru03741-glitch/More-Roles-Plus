@@ -362,6 +362,21 @@ internal static class TerrainProbe
             reply($"OK fxpause {(TerrainFx.Paused ? 1 : 0)} pieces={BreakPieces.Count} pending={RubbleBake.PendingCount} baked={RubbleBake.BakedCount} sheets={RubbleBake.SheetCount} kb={RubbleBake.SheetBytes / 1024}");
         });
 
+        TestBridge.Register("layer", "<char|rim|underlay|junk> <0|1> 見た目の層を外す / 戻す (切り分け用)。char/rim/underlay は今ある損傷にすぐ効く・junk は次の破壊から", (args, reply) =>
+        {
+            string[] p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length < 2) { reply("ERR layer <char|rim|underlay|junk> <0|1>"); return; }
+            bool on = p[1] != "0";
+            switch (p[0])
+            {
+                case "char": reply($"OK layer char {(on ? 1 : 0)} {DamageMap.DebugChannel(1, on)}"); break;
+                case "rim": reply($"OK layer rim {(on ? 1 : 0)} {DamageMap.DebugChannel(2, on)}"); break;
+                case "underlay": reply($"OK layer underlay {(on ? 1 : 0)} n={DamageMap.DebugUnderlay(on)}"); break;
+                case "junk": TerrainFx.HideJunk = !on; reply($"OK layer junk {(on ? 1 : 0)}"); break;
+                default: reply("ERR layer <char|rim|underlay|junk> <0|1>"); break;
+            }
+        });
+
         TestBridge.Register("bake", "[0|1|now] 止まった瓦礫を床の板へ焼くか (0 = GameObject のまま残す・now = 溜まっている分を今焼く)。引数なしで状態", (args, reply) =>
         {
             string a = args.Trim();
