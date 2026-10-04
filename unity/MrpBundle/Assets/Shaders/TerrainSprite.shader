@@ -5,6 +5,7 @@
 //   マスクの G = 焦げの濃さ / B = 熾火 (割れ口の照り。爆発だけが書く)
 // マスクの置き場所は _MrpDamageRect (xy = 世界座標の左下、zw = 1 / 幅と高さ) で全マテリアル共通。
 // _MrpGenTex (同じ置き場所・点サンプリング) = その画素を最後に抜いた破壊の番号。割れた塊は自分の番号の所だけ描く。
+// _MrpPieceSites (行 = 破壊の番号・列 = 種点) = 割れ目の種点 (放射状)。割れた塊は自分の種点がいちばん近い所だけ描く。
 Shader "MRP/TerrainSprite"
 {
     Properties
@@ -22,7 +23,6 @@ Shader "MRP/TerrainSprite"
         _OutlineColor ("Break outline color", Color) = (0.086, 0.086, 0.094, 1)
         _UseDamage ("Use damage mask", Float) = 1
         _PieceMap ("Piece uv to world (xy scale, zw offset)", Vector) = (0,0,0,0)
-        _PieceScale ("Piece cell scale", Float) = 0.16
         _PieceLine ("Piece outline width", Float) = 0.022
         [HideInInspector] _AlphaTex ("External Alpha", 2D) = "white" {}
         [HideInInspector] _EnableExternalAlpha ("Enable External Alpha", Float) = 0
@@ -49,6 +49,7 @@ Shader "MRP/TerrainSprite"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma target 3.0
             #pragma multi_compile_local _ ETC1_EXTERNAL_ALPHA
             #include "UnityCG.cginc"
 
@@ -68,11 +69,11 @@ Shader "MRP/TerrainSprite"
             sampler2D _MrpGenTex;
             float4 _MrpDamageRect;
             float4 _PieceMap;
-            float _PieceScale;
+            sampler2D_float _MrpPieceSites;
             float _PieceLine;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
-            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; float2 world : TEXCOORD1; };
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; float2 world : TEXCOORD1; };
 
             v2f vert(appdata v)
             {
@@ -84,9 +85,30 @@ Shader "MRP/TerrainSprite"
                 return o;
             }
 
+            // 種点 idx (破壊の番号 row の行) の世界座標。2 バイトずつの 1/256 単位 (損傷マスクの原点から)
+            float2 SiteAt(float idx, float row)
+            {
+                float4 b = round(tex2Dlod(_MrpPieceSites, float4((idx + 0.5) / 64, (row + 0.5) / 256, 0, 0)) * 255);
+                return _MrpDamageRect.xy + float2(b.r * 256 + b.g, b.b * 256 + b.a) / 256;
+            }
+
+            // 塊の種点 k の細胞からのはみ出し: 他の種点との二等分線への符号付き距離の最大 (0 以下 = 中・0 に近いほど縁)
+            float CellExcess(float2 ow, float k, float row)
+            {
+                float2 sk = SiteAt(k, row);
+                float m = -1000;
+                [loop] for (int j = 0; j < 48; j++)
+                {
+                    if (abs(j - k) < 0.5) continue;
+                    float2 dv = SiteAt(j, row) - sk;
+                    m = max(m, (dot(ow - sk, dv) - dot(dv, dv) * 0.5) / max(length(dv), 1e-4));
+                }
+                return m;
+            }
+
             // 割れた塊の中か: 元の場所 (ow) が「部屋の絵が抜いた所」(部屋と同じ判定) で、その画素を抜いたのが
-            // この塊の破壊 (key.g) で、塊の細胞 (key.r) の中
-            bool InPiece(float2 ow, fixed4 key)
+            // この塊の破壊 (key.g) (細胞の中かは CellExcess)
+            bool InPiece(float2 ow, float4 key)
             {
                 float2 muv = (ow - _MrpDamageRect.xy) * _MrpDamageRect.zw;
                 float dr = tex2D(_MrpDamageTex, muv).r;
@@ -94,8 +116,7 @@ Shader "MRP/TerrainSprite"
                 float nn = tex2D(_Noise, ow * 3.1).r;
                 float hv = dr + (cl - 0.5) * _EdgeJag + (nn - 0.5) * 0.06;
                 float gen = tex2D(_MrpGenTex, muv).r;
-                float pc = tex2D(_Cells, ow * _PieceScale).r;
-                return hv >= 0.5 && abs(gen - key.g) < 0.5 / 255 && abs(pc - key.r) < 0.5 / 255;
+                return hv >= 0.5 && abs(gen - key.g) < 0.5 / 255;
             }
 
             fixed4 frag(v2f i) : SV_Target
@@ -105,16 +126,17 @@ Shader "MRP/TerrainSprite"
                 fixed4 a = tex2D(_AlphaTex, i.uv);
                 c.a = lerp(c.a, a.r, _EnableExternalAlpha);
             #endif
-                // 4 = 割れた塊: 部屋の絵を元の場所で引いた損傷マスクで切り抜く。頂点色は色でなく塊の番号 (r = 細胞・g = 破壊の番号)
+                // 4 = 割れた塊: 部屋の絵を元の場所で引いた損傷マスクで切り抜く。頂点色は色でなく塊の番号 (r = 種点・g = 破壊の番号)
                 if (_UseDamage > 3.5)
                 {
                     clip(c.a - 0.004);
                     if (_MrpDamageRect.z <= 0) discard;
                     float2 ow = i.uv * _PieceMap.xy + _PieceMap.zw;
-                    if (!InPiece(ow, i.color)) discard;
+                    float ex = CellExcess(ow, round(i.color.r * 255), round(i.color.g * 255));
+                    if (ex > 0 || !InPiece(ow, i.color)) discard;
                     // 塊の縁 (隣の塊・残った壁との境) に本編と同じ濃い輪郭線
                     float d = _PieceLine;
-                    bool rim = !InPiece(ow + float2(d, 0), i.color) || !InPiece(ow - float2(d, 0), i.color)
+                    bool rim = ex > -d || !InPiece(ow + float2(d, 0), i.color) || !InPiece(ow - float2(d, 0), i.color)
                             || !InPiece(ow + float2(0, d), i.color) || !InPiece(ow - float2(0, d), i.color);
                     // 焦げは部屋の絵と同じ 2 段のベタ塗り
                     float2 pm = (ow - _MrpDamageRect.xy) * _MrpDamageRect.zw;

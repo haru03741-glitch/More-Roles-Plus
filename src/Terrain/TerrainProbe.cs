@@ -353,10 +353,10 @@ internal static class TerrainProbe
             reply($"OK rubble n={RubbleBlocks.Count}");
         });
 
-        TestBridge.Register("pieces", "<0|1> 壊れた壁の絵を割った塊を作るか (見た目の比較用)", (args, reply) =>
+        TestBridge.Register("pieces", "[0|1] 壊れた壁の絵を割った塊を作るか (見た目の比較用)。引数なしで直前の破壊の割れ方 (種点・細胞・塊)", (args, reply) =>
         {
-            BreakPieces.Enabled = args.Trim() != "0";
-            reply($"OK pieces {(BreakPieces.Enabled ? 1 : 0)}");
+            if (args.Trim().Length > 0) BreakPieces.Enabled = args.Trim() != "0";
+            reply($"OK pieces {(BreakPieces.Enabled ? 1 : 0)} {BreakPieces.LastStats}");
         });
 
         TestBridge.Register("cameras", "全カメラ (写す層・描き先・順番・置き換えシェーダの有無)", (_, reply) =>

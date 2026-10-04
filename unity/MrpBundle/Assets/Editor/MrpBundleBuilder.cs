@@ -129,8 +129,7 @@ public static class MrpBundleBuilder
             sy[k] = (j + 0.15f + (float)rnd.NextDouble() * 0.7f) / sites;
             sv[k] = (float)rnd.NextDouble();
         }
-        // 値を順位に置き換える (並びは同じまま、種点ごとに違う 8 bit にする = 値が細胞の番号になる)。
-        // 実行時の CellLattice が同じ式で値を作る (壁の絵を割った塊は細胞 1 つ分)
+        // 値を順位に置き換える (並びは同じまま、種点ごとに違う 8 bit にする)
         int n = sites * sites;
         var order = new int[n];
         for (int k = 0; k < n; k++) order[k] = k;

@@ -13,6 +13,7 @@ internal static class TerrainDamage
     private const int WallMask = (1 << ShipLayer) | (1 << ShadowLayer);
     // 崩れた塊が飛ぶ範囲 (壊した形の外へこれだけ先の壁まで跳ね返りに使う)
     private const float FxReach = 3f;
+    private const float CrackLift = 0.4f; // 打撃の割れ目の中心を上げる高さ (壁の面の高さ ≈0.85 の半分ほど)
 
     // テスト用: 直前の破壊で切り取った壁の区間 (線分の両端)。見た目の穴と当たり判定の抜けが揃っているかを holecheck で調べる
     internal static readonly List<Vector2> LastRemoved = new();
@@ -148,7 +149,7 @@ internal static class TerrainDamage
         int caps = cut > 0 ? WallBody.Build(body.Caps(core)) : 0;
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         var pieces = new List<BreakPiece>();
-        string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces) : null;
+        string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces, crackAt: e.Position, crackSeed: e.Seed) : null;
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
@@ -196,7 +197,9 @@ internal static class TerrainDamage
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         // floorY は見た目だけ (その下の当たり判定は床の絵の上の見えない壁なので切ってよい)
         var pieces = new List<BreakPiece>();
-        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces) : null;
+        // 割れ目の中心は叩いた所。面を持つ壁を下から叩いた時は、絵が当たり判定の線より上に立っているので面の中ほどへ上げる
+        Vector2 crackAt = normal.y < -0.5f ? hit + new Vector2(0f, CrackLift) : hit;
+        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, crackAt, e.Seed) : null;
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
         // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
         if (cut == 0) TerrainFx.Chip(hit, dir, e.Seed);

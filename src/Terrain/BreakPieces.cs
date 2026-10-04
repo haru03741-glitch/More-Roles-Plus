@@ -14,17 +14,17 @@ internal sealed class BreakPiece
     public float Size;     // 塊の大きさ (世界単位)
 }
 
-// 抜いた所の壁の絵を、細胞模様 (CellLattice) の細胞ごとに切り出した塊にする。
+// 抜いた所の壁の絵を、放射状の割れ目 (FractureSites) の細胞ごとに切り出した塊にする。
 // 塊の絵は部屋の絵のテクスチャをそのまま使い、見える範囲はシェーダ (_UseDamage = 4) が元の場所の損傷マスクで決める
 // (部屋の絵が抜いた所のちょうど補集合・その画素を最後に抜いた破壊の番号が自分のものだけ)。
 // CPU は塊ごとの範囲 (どの細胞がどこまであるか) を決めるだけで、形の判定は部屋の絵と同じ 1 か所 (シェーダ) にある
 internal static class BreakPieces
 {
-    private const int MaxPieces = 24;   // 破壊 1 回の上限 (部屋が重なる所は部屋ごとに 1 つと数える)
+    private const int MaxPieces = 36;   // 破壊 1 回の上限 (部屋が重なる所は部屋ごとに 1 つと数える)
     private const int MinTexels = 3;    // これより小さい細胞 (マスクの画素数) は塊にしない
     private const byte VisibleFloor = 43; // マスクの R がこれ未満だと割れ口のずらし (最大 +0.33) を足しても抜けない
     private const float PieceZ = 0.004f;  // 部屋の絵より手前へ
-    private const float PieceLine = 0.022f; // 塊の輪郭線の幅 (世界単位)。隣の塊と合わせて部屋の割れ口の線 (≈0.045) と同じ太さ
+    private const float PieceLine = 0.011f; // 塊の輪郭線の幅 (世界単位)。隣の塊と合わせて ≈0.022 (塊が小さいので部屋の割れ口の線より細く)
 
     private sealed class Room
     {
@@ -50,14 +50,16 @@ internal static class BreakPieces
     // テスト用: false で塊を作らない (見た目の比較用)
     internal static bool Enabled = true;
 
-    // touched = この破壊が抜いた損傷マスクの画素の範囲
-    public static void Spawn(RectInt touched, List<BreakPiece> output)
+    // touched = この破壊が抜いた損傷マスクの画素の範囲。割れ目は crackAt から放射状 (種 = seed)
+    public static void Spawn(RectInt touched, List<BreakPiece> output, Vector2 crackAt, int seed)
     {
         if (touched.width <= 0 || !MrpBundle.Ready || !Enabled) return;
         byte gen = DamageMap.CurrentGen;
         // 番号が一周した時: 同じ番号の古い塊は消す (残すと新しい穴の同じ細胞に重なって描かれる)
         if (DamageMap.GenWrapped) Evict(gen);
         int w = DamageMap.MapW, h = DamageMap.MapH;
+        Vector2 tlo = DamageMap.TexelCenter(touched.xMin, touched.yMin), thi = DamageMap.TexelCenter(touched.xMax, touched.yMax);
+        FractureSites.Build(crackAt, seed, Rect.MinMaxRect(tlo.x, tlo.y, thi.x, thi.y), gen);
 
         var cells = new Dictionary<byte, Acc>();
         for (int py = touched.yMin; py < touched.yMax; py++)
@@ -65,7 +67,7 @@ internal static class BreakPieces
         {
             if (DamageMap.GenAt(px, py) != gen || !Visible(px, py, w, h)) continue;
             Vector2 c = DamageMap.TexelCenter(px, py);
-            byte key = CellLattice.KeyAt(c.x, c.y, CellLattice.PieceScale);
+            byte key = FractureSites.KeyAt(c.x, c.y);
             if (!cells.TryGetValue(key, out var a)) a = new Acc { X0 = px, Y0 = py, X1 = px, Y1 = py };
             if (px < a.X0) a.X0 = px;
             if (px > a.X1) a.X1 = px;
@@ -81,8 +83,9 @@ internal static class BreakPieces
         foreach (var kv in cells) if (kv.Value.Count >= MinTexels) keys.Add(kv.Key);
         keys.Sort((a, b) => cells[a].Count != cells[b].Count ? cells[b].Count.CompareTo(cells[a].Count) : a.CompareTo(b));
 
+        int made = output.Count;
+        LastStats = $"sites={FractureSites.Count} cells={cells.Count} big={keys.Count}";
         if (keys.Count == 0) return;
-        Vector2 tlo = DamageMap.TexelCenter(touched.xMin, touched.yMin), thi = DamageMap.TexelCenter(touched.xMax, touched.yMax);
         var arts = Candidates(Rect.MinMaxRect(tlo.x - 1f, tlo.y - 1f, thi.x + 1f, thi.y + 1f));
         // 1 画素ぶん (細胞の境の端数) と輪郭線ぶん外へ広げる
         float pad = DamageMap.TexelSize * 1.5f + 0.05f;
@@ -101,6 +104,7 @@ internal static class BreakPieces
             var piece = Make(room, rect, key, gen);
             if (piece != null) output.Add(piece);
         }
+        LastStats += $" made={output.Count - made}";
     }
 
     // 点を含む部屋の絵のうち一番手前 (z が小さい) のもの。含むものが無ければ範囲に掛かるうちで一番手前
@@ -185,7 +189,7 @@ internal static class BreakPieces
         sr.sharedMaterial = room.Mat;
         Alive.Enqueue((go, sprite, gen));
         while (Alive.Count > MaxAlive) Destroy(Alive.Dequeue());
-        // 頂点色は色でなく番号 (シェーダの _UseDamage = 4 がそう読む)
+        // 頂点色は色でなく番号 (r = 種点・g = 破壊の番号。シェーダの _UseDamage = 4 がそう読む)
         sr.color = new Color(key / 255f, gen / 255f, 0f, 1f);
         return new BreakPiece
         {
@@ -241,7 +245,6 @@ internal static class BreakPieces
             };
             room.Mat = new Material(DamageMap.PropMaterial) { name = "MrpPiece" };
             room.Mat.SetFloat("_UseDamage", 4f);
-            room.Mat.SetFloat("_PieceScale", CellLattice.PieceScale);
             room.Mat.SetFloat("_PieceLine", PieceLine);
             // uv (0..1) → 世界座標
             room.Mat.SetVector("_PieceMap", new Vector4(room.Dx * tex.width, room.Dy * tex.height, room.W0x, room.W0y));
@@ -264,7 +267,11 @@ internal static class BreakPieces
         foreach (var r in Rooms.Values) if (r.Mat) UnityEngine.Object.Destroy(r.Mat);
         Rooms.Clear();
         Unusable.Clear();
+        FractureSites.Clear();
     }
+
+    // テスト用: 直前の破壊の割れ方
+    internal static string LastStats = "";
 
     // テスト用: 今ある塊の数
     internal static int Count

@@ -54,9 +54,9 @@ internal static class DamageMap
     // floorY: この高さより下は見た目では抜かない (壁の当たり判定が見た目の根元より下 = 床まで伸びているマップがあるため)
     // keep: 家具の保護範囲 (FurnitureFor で求め、壁の当たり判定の切り取りにも同じものを渡す)
     // body: 穴から露出した壁の中 (蓋と同じ判定)。帯 (切った面の近く) の外でも、ここは抜く
-    // pieces: 渡すと、抜いた所の壁の絵を細胞ごとに割った塊を作って入れる (動かすのは TerrainFx)
+    // pieces: 渡すと、抜いた所の壁の絵を割った塊を作って入れる (動かすのは TerrainFx)。割れ目は crackAt から放射状 (種 = crackSeed)
     public static string Breach(CutShape shape, List<Vector2> removedSegments, bool scorch, float floorY = float.NegativeInfinity,
-        List<Rect> keep = null, WallBody body = null, List<BreakPiece> pieces = null)
+        List<Rect> keep = null, WallBody body = null, List<BreakPiece> pieces = null, Vector2 crackAt = default, int crackSeed = 0)
     {
         if (!MrpBundle.Ready) return "bundle not ready";
         if (!EnsureMap()) return "no ship";
@@ -71,7 +71,7 @@ internal static class DamageMap
         Stamp(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body, out RectInt touched);
         SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書くので Upload より前
         Upload();
-        if (pieces != null) BreakPieces.Spawn(touched, pieces);
+        if (pieces != null) BreakPieces.Spawn(touched, pieces, crackAt, crackSeed);
         return null;
     }
 
@@ -608,6 +608,7 @@ internal static class DamageMap
 
     // 割れた塊の生成用: 損傷マスクの画素 (px, py) の値と、抜いた破壊の番号
     internal static int MapW => _w;
+    internal static Vector2 Origin => _origin;
     internal static int MapH => _h;
     internal static byte HoleByte(int px, int py) => _pixels[(py * _w + px) * 4];
     internal static byte GenAt(int px, int py) => _gens[py * _w + px];
