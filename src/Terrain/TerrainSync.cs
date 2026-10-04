@@ -10,13 +10,13 @@ namespace MoreRolesPlus.Terrain;
 // 地形破壊の同期。ホストが依頼を結果 (ResolvedDamage) に決めて連番を振り、全員が連番の順に適用する。
 // 武器・役職からの入口は Request だけ。フリープレイなど一人の時はその場で決めて適用する。
 // 通信量は公式鯖の制約を予算として守る: 同じ種類の Reliable を秒十数本出すと切断される実測があるので、
-// 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 30 件 (最大 424B) まで。
+// 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 14 件 (最大 466B) まで。
 internal static class TerrainSync
 {
     public const byte RpcId = 213; // MRP の地形同期 (本編の RpcCalls と重ならない高い番号)
 
     private const int FlushTicks = 10;         // FixedUpdate (50Hz) で数えて 0.2 秒
-    private const int MaxEventsPerRpc = 30;
+    private const int MaxEventsPerRpc = 14;     // 瓦礫の止まる所を含めて 1 通 466B まで
     private const int RequestWindowTicks = 50; // ホストが 1 人から受ける依頼を 1 秒あたり何件まで認めるか
     private const int MaxRequestsPerWindow = 8;
 
@@ -43,7 +43,7 @@ internal static class TerrainSync
         {
             SyncShip();
             if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
-            return ApplyNow(TerrainWire.RoundTrip(r));
+            return ApplyNow(TerrainWire.RoundTrip(r), decide: true, out _);
         }
         if (AmongUsClient.Instance.AmHost) return HostAccept(e);
         Requests.Add(e);
@@ -57,14 +57,17 @@ internal static class TerrainSync
         if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
         r = TerrainWire.RoundTrip(r);
         _nextSeq++;
-        Outbox.Add(r);
-        return ApplyNow(r);
+        // 大きな瓦礫の止まる所は、ホストが自分で適用した結果から決めて同じ電文に載せる
+        string res = ApplyNow(r, decide: true, out var landings);
+        Outbox.Add(r.WithLandings(landings));
+        return res;
     }
 
-    private static string ApplyNow(in ResolvedDamage r)
+    // decide = 大きな瓦礫の止まる所を自分で決める (ホスト・一人の時)。客は届いた結果の物を使う
+    private static string ApplyNow(in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
         Applied++;
-        return TerrainDamage.Apply(r);
+        return TerrainDamage.Apply(r, decide, out landings);
     }
 
     // 毎 FixedUpdate。積んだ物が無い時は整数 1 つの加算と比較だけで帰る
@@ -166,6 +169,7 @@ internal static class TerrainSync
                 for (int i = 0; i < n && o < b.Length; i++)
                 {
                     o = TerrainWire.ReadResolved(b, o, out var r);
+                    if (o < 0) { Plugin.Logger.LogWarning($"[TerrainSync] truncated batch at #{(ushort)(first + i)}"); break; }
                     Deliver((ushort)(first + i), r);
                 }
                 break;
@@ -187,7 +191,7 @@ internal static class TerrainSync
         while (Pending.Remove(_nextSeq, out var next))
         {
             _nextSeq++;
-            string res = ApplyNow(next);
+            string res = ApplyNow(next, decide: false, out _);
             Plugin.Logger.LogDebug($"[TerrainSync] #{(ushort)(_nextSeq - 1)} {res}");
         }
         _stuckSince = _tick;
@@ -253,6 +257,7 @@ internal static class TerrainSync
         for (int p = 0; p < o;)
         {
             p = TerrainWire.ReadResolved(Buf, p, out var r);
+            if (p < 0) break;
             decoded.Add(r);
         }
 

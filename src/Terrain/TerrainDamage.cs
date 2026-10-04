@@ -60,20 +60,23 @@ internal static class TerrainDamage
 
     // 決まった結果を地形に適用する (ホストも含め全員が同じ順で呼ぶ)。
     // 穴の形は量子化済みの結果の値だけから作る (ホストと客が同じ入力に同じ計算を掛けるため)
-    public static string Apply(in ResolvedDamage r)
+    // decide = 大きな瓦礫の止まる所をここで決める (ホスト)。false なら r.Landings を使う (客)
+    public static string Apply(in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
         var profile = DamageProfile.Of(r.Kind);
+        var given = decide ? null : r.Landings ?? Array.Empty<RubbleLanding>();
+        landings = Array.Empty<RubbleLanding>();
         return r.Kind switch
         {
-            DamageKind.Explosion => Explode(r, profile),
-            DamageKind.Blunt => Strike(r, profile),
+            DamageKind.Explosion => Explode(r, profile, given, ref landings),
+            DamageKind.Blunt => Strike(r, profile, given, ref landings),
             _ => "unknown kind",
         };
     }
 
     // 爆発: 形の内側の壁はまとめて抜け、外側の輪の壁にはひびが入って耐久が減る。
     // 向きに偏った爆発 (力 > 0) は、向きの先へ伸びて後ろが縮んだ涙形に抜ける
-    private static string Explode(in ResolvedDamage e, DamageProfile p)
+    private static string Explode(in ResolvedDamage e, DamageProfile p, RubbleLanding[] given, ref RubbleLanding[] landings)
     {
         CutShape core = e.Force > 0.02f
             ? ConvexShape.Cone(e.Position, e.Size, e.Direction, p.ConeStretch * e.Force, p.ConeShrink * e.Force)
@@ -147,13 +150,14 @@ internal static class TerrainDamage
         var pieces = new List<BreakPiece>();
         string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces) : null;
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
-        if (visual == null) TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach));
-        return $"explosion cut={cut} cracked={cracked} caps={caps} pieces={pieces.Count} visual={visual ?? "ok"}";
+        if (visual == null)
+            landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
+        return $"explosion cut={cut} cracked={cracked} caps={caps} pieces={pieces.Count} blocks={landings.Length} visual={visual ?? "ok"}";
     }
 
     // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。
     // 斜めに振ると振った向きに傾いて抜け (上限 MaxSlantDeg)、強く振るほど広く抜ける
-    private static string Strike(in ResolvedDamage e, DamageProfile p)
+    private static string Strike(in ResolvedDamage e, DamageProfile p, RubbleLanding[] given, ref RubbleLanding[] landings)
     {
         Vector2 hit = e.Position, normal = e.Normal, dir = -normal;
         float depth = e.Size; // 抜く向きに沿った長さ
@@ -196,9 +200,10 @@ internal static class TerrainDamage
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
         // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
         if (cut == 0) TerrainFx.Chip(hit, dir, e.Seed);
-        else if (visual == null) TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed, pieces, removed,
-            WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f);
-        return $"blunt breach cut={cut} caps={caps} pieces={pieces.Count} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
+        else if (visual == null)
+            landings = TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed, pieces, removed,
+                WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f, given);
+        return $"blunt breach cut={cut} caps={caps} pieces={pieces.Count} blocks={landings.Length} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
     }
 
     // 抜く向き: 壁の奥 (inward) から振った向きへ、上限の角度まで傾ける。横から掠める振り (奥へ進まない) は真っ直ぐ抜く
@@ -238,7 +243,7 @@ internal static class TerrainDamage
 
     // 壊さない物: ゲームに関わる物 (当面の裁定)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形
     private static readonly System.Text.RegularExpressions.Regex ProtectedName = new(
-        @"table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
+        @"^MrpRubbleBlock$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     internal static bool IsProtected(Component c)

@@ -5,24 +5,29 @@ namespace MoreRolesPlus.Terrain;
 
 // 地形同期の電文。値は固定小数に丸めて送り、送り手 (ホスト) も丸めた値で適用する (全員が同じ数で計算するため)。
 // 位置 = int16 の 1/256 単位 (±128)・大きさ = byte の 1/32 単位 (〜8)・向き = ushort の角度・力 = byte の 1/255。
-// 依頼 11B / 爆発 11B / 打撃 14B
+// 依頼 11B / 爆発 11B + 瓦礫 / 打撃 14B + 瓦礫 (瓦礫 = 件数 1B + 1 件 6B [並び・位置・半径 1/64 単位] × 最大 3)
 internal static class TerrainWire
 {
     public const byte OpRequest = 1; // 客 → ホスト: [op][件数] + 依頼 × 件数
-    public const byte OpBatch = 2;   // ホスト → 全員: [op][最初の連番 u16][件数] + 結果 × 件数
+    // ホスト → 全員: [op][最初の連番 u16][件数] + 結果 × 件数。結果の末尾に瓦礫を足した時に 2 → 3 へ
+    // (古い版と混ざった時に、黙ってずれて読まず「知らない op」として捨てるため)
+    public const byte OpBatch = 3;
 
     public const int MaxRequestBytes = 11;
-    public const int MaxResolvedBytes = 14;
+    public const int MaxResolvedBytes = 14 + 1 + RubbleBlocks.MaxPerEvent * 6;
     public const int BatchHeader = 4;
 
     private const float PosScale = 256f;
     private const float SizeScale = 32f;
+    private const float RadiusScale = 64f;
     private const double AngleScale = 65536.0 / (2.0 * Math.PI);
 
     public static Vector2 Q(Vector2 v) => new(Dq(QPos(v.x)), Dq(QPos(v.y)));
     public static float QSize(float s) => QSizeByte(s) / SizeScale;
     public static Vector2 QNormal(Vector2 n) => FromAngle(QAngle(n));
     public static float QForce(float f) => QForceByte(f) / 255f;
+    public static float QRadius(float r) => QRadiusByte(r) / RadiusScale;
+    private static byte QRadiusByte(float r) => (byte)Math.Clamp(Math.Round(r * RadiusScale), 1, 255);
 
     private static short QPos(float x) => (short)Math.Clamp(Math.Round(x * PosScale), short.MinValue, short.MaxValue);
     private static float Dq(short q) => q / PosScale;
@@ -69,12 +74,27 @@ internal static class TerrainWire
             b[o++] = unchecked((byte)r.Hp);
         }
         b[o++] = QSizeByte(r.Size);
-        return WriteU16(b, o, r.Seed);
+        o = WriteU16(b, o, r.Seed);
+        var land = r.Landings;
+        int n = land == null ? 0 : Math.Min(land.Length, RubbleBlocks.MaxPerEvent);
+        b[o++] = (byte)n;
+        for (int i = 0; i < n; i++)
+        {
+            b[o++] = land[i].Rank;
+            o = WritePos(b, o, land[i].Position);
+            b[o++] = QRadiusByte(land[i].Radius);
+        }
+        return o;
     }
 
+    // 読めない (途中で切れている) 時は -1
     public static int ReadResolved(byte[] b, int o, out ResolvedDamage r)
     {
-        var kind = (DamageKind)b[o++];
+        r = default;
+        if (o + 11 > b.Length) return -1;
+        var kind = (DamageKind)b[o];
+        if (kind == DamageKind.Blunt && o + 14 > b.Length) return -1;
+        o++;
         Vector2 pos = ReadPos(b, ref o);
         Vector2 dir = FromAngle(ReadU16(b, ref o));
         float force = b[o++] / 255f;
@@ -87,7 +107,16 @@ internal static class TerrainWire
         }
         float size = b[o++] / SizeScale;
         ushort seed = ReadU16(b, ref o);
-        r = new ResolvedDamage(kind, pos, normal, dir, force, size, hp, seed);
+        int n = b[o++];
+        if (n > RubbleBlocks.MaxPerEvent || o + n * 6 > b.Length) return -1;
+        var land = n == 0 ? Array.Empty<RubbleLanding>() : new RubbleLanding[n];
+        for (int i = 0; i < n; i++)
+        {
+            byte rank = b[o++];
+            Vector2 at = ReadPos(b, ref o);
+            land[i] = new RubbleLanding(rank, at, b[o++] / RadiusScale);
+        }
+        r = new ResolvedDamage(kind, pos, normal, dir, force, size, hp, seed, land);
         return o;
     }
 
@@ -95,7 +124,8 @@ internal static class TerrainWire
     public static ResolvedDamage RoundTrip(in ResolvedDamage r)
     {
         var b = new byte[MaxResolvedBytes];
-        WriteResolved(b, 0, r);
+        int len = WriteResolved(b, 0, r);
+        Array.Resize(ref b, len);
         ReadResolved(b, 0, out var q);
         return q;
     }

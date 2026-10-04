@@ -646,6 +646,7 @@ internal static class DamageMap
         TerrainFx.Clear();
         BreakPieces.Clear();
         RubbleBake.Clear();
+        RubbleBlocks.Clear();
         Rooms.Clear();
         Swapped.Clear();
         _passageTile = null;

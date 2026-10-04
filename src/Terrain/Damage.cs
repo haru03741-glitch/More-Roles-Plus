@@ -42,8 +42,11 @@ internal readonly struct ResolvedDamage
     public readonly float Size;       // 爆発 = 半径 / 打撃 = 壁の厚み (叩いた面から奥の面まで + 余白・法線方向)
     public readonly sbyte Hp;         // 打撃: 叩いた後の耐久 (0 以下 = 抜ける)
     public readonly ushort Seed;
+    // 大きな瓦礫の止まる所 (ホストが自分で適用した時に決めて、同じ電文で配る。ホストが適用する時は使わない)
+    public readonly RubbleLanding[] Landings;
 
-    public ResolvedDamage(DamageKind kind, Vector2 position, Vector2 normal, Vector2 direction, float force, float size, sbyte hp, ushort seed)
+    public ResolvedDamage(DamageKind kind, Vector2 position, Vector2 normal, Vector2 direction, float force, float size, sbyte hp, ushort seed,
+        RubbleLanding[] landings = null)
     {
         Kind = kind;
         Position = position;
@@ -53,7 +56,11 @@ internal readonly struct ResolvedDamage
         Size = size;
         Hp = hp;
         Seed = seed;
+        Landings = landings;
     }
+
+    public ResolvedDamage WithLandings(RubbleLanding[] landings) =>
+        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, landings);
 }
 
 // 壊れ方の型。武器ごとの違いはここの値で表す

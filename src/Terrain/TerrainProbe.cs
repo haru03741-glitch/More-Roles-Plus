@@ -341,6 +341,18 @@ internal static class TerrainProbe
             reply($"OK bake {(RubbleBake.Enabled ? 1 : 0)} pieces={BreakPieces.Count} pending={RubbleBake.PendingCount} baked={RubbleBake.BakedCount} sheets={RubbleBake.SheetCount} kb={RubbleBake.SheetBytes / 1024}");
         });
 
+        TestBridge.Register("rubble", "大きな瓦礫の当たり判定の一覧 (位置・半径)", (_, reply) =>
+        {
+            foreach (var go in RubbleBlocks.All)
+            {
+                if (!go) continue;
+                var col = go.GetComponent<CircleCollider2D>();
+                Vector3 p = go.transform.position;
+                reply($"RUBBLE at=({p.x:0.000},{p.y:0.000}) r={(col ? col.radius * go.transform.lossyScale.x : 0f):0.000} layer={go.layer}");
+            }
+            reply($"OK rubble n={RubbleBlocks.Count}");
+        });
+
         TestBridge.Register("pieces", "<0|1> 壊れた壁の絵を割った塊を作るか (見た目の比較用)", (args, reply) =>
         {
             BreakPieces.Enabled = args.Trim() != "0";

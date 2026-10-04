@@ -29,6 +29,8 @@ internal static class TerrainFx
         public float Lie;         // 塊: 今の寝かせ具合 (変わった時だけ倍率を書く)
         public float[] Walls;     // 跳ね返る壁の線 (WallSegments)。null なら壁を見ない
         public bool Hidden;       // 動き出すまで隠している (表示の切り替えは変わった時だけ書く)
+        public bool Steer;        // 大きな瓦礫: ホストが決めた所 (Tx, Ty) へ放物線で飛んでそこで止まる (壁は見ない)
+        public float Tx, Ty;
     }
 
     private static readonly List<Item> Items = new();
@@ -49,17 +51,20 @@ internal static class TerrainFx
     // 打撃で壁が崩れる: 壁の区間に沿って塊が上から落ちて山になり、根元に土煙。
     // axis = 抜けた向き (振った向き)・force = 振りの強さ。強いほど山が向こう側へ押し出される。
     // pieces = 壁の絵を割った塊 (元の場所に重なっている)。叩いた所から順に、壁の根元へ落ちて向こうへ寄る
-    // from = 叩いた側の床 (塊の落ちる先は、ここから残った壁を越えずに届く所)
-    public static void Crumble(Vector2 center, Vector2 tangent, Vector2 normal, Vector2 axis, float force, float length, ushort seed,
-        List<BreakPiece> pieces, List<Vector2> segs, float[] walls, Vector2 from)
+    // from = 叩いた側の床 (塊の落ちる先は、ここから残った壁を越えずに届く所)。
+    // given = 大きな瓦礫の止まる所 (客: ホストから届いた物 / null = ここで決める)。返り値 = 置いた瓦礫
+    public static RubbleLanding[] Crumble(Vector2 center, Vector2 tangent, Vector2 normal, Vector2 axis, float force, float length, ushort seed,
+        List<BreakPiece> pieces, List<Vector2> segs, float[] walls, Vector2 from, RubbleLanding[] given)
     {
         var rnd = new System.Random(seed ^ Hash(center));
         Vector2 hit = center;
         center += axis * (force * 0.3f);
         int made = 0;
+        var byRank = new Item[pieces?.Count ?? 0];
         if (pieces != null)
-            foreach (var p in pieces)
+            for (int rank = 0; rank < pieces.Count; rank++)
             {
+                var p = pieces[rank];
                 Vector2 ground = Ground(p.Origin, segs, walls, from, out float h);
                 // 崩れて落ちた先: 根元から振った向きへ少し (強いほど遠く)・壁に沿ってわずかに散る
                 Vector2 rest = ground + axis * (0.1f + (float)rnd.NextDouble() * 0.5f + force * 0.3f)
@@ -74,6 +79,7 @@ internal static class TerrainFx
                 it.Vy = (rest.y - ground.y) * k;
                 it.VRot = ((float)rnd.NextDouble() - 0.5f) * 80f;
                 it.T = -(0.04f + (p.Origin - hit).magnitude * 0.12f + (float)rnd.NextDouble() * 0.08f);
+                byRank[rank] = it;
                 made++;
             }
         int chunks = made >= 6 ? 4 : 16; // 絵の塊が出ない壁 (横の壁は枠線だけ) は手続きの塊で崩す
@@ -98,6 +104,7 @@ internal static class TerrainFx
         }
         for (int k = 0; k < 7; k++)
             Dust(center + tangent * (((float)rnd.NextDouble() - 0.5f) * length), rnd, 0.55f, 1.3f);
+        return Settle(byRank, pieces, walls, given);
     }
 
     // 打撃が当たったが崩れない: 小さな土煙と、欠けた小石が少しこぼれる
@@ -115,14 +122,16 @@ internal static class TerrainFx
 
     // 爆発: 本編の爆発の絵が一瞬 → 塊が外へ飛んで散らばる → 火花と煙。
     // 向きに偏った爆発 (force > 0) は塊と火花も向きの先へ多く飛ぶ
-    public static void Explosion(Vector2 c, float radius, Vector2 dir, float force, ushort seed,
-        List<BreakPiece> pieces = null, List<Vector2> segs = null, float[] walls = null)
+    public static RubbleLanding[] Explosion(Vector2 c, float radius, Vector2 dir, float force, ushort seed,
+        List<BreakPiece> pieces, List<Vector2> segs, float[] walls, RubbleLanding[] given)
     {
         var rnd = new System.Random(seed ^ Hash(c));
         int made = 0;
+        var byRank = new Item[pieces?.Count ?? 0];
         if (pieces != null)
-            foreach (var p in pieces)
+            for (int rank = 0; rank < pieces.Count; rank++)
             {
+                var p = pieces[rank];
                 Vector2 ground = Ground(p.Origin, segs, walls, c, out float h);
                 var it = AddPiece(p, ground, h, walls);
                 if (it == null) continue;
@@ -135,6 +144,7 @@ internal static class TerrainFx
                 it.Vy = (away.y + dir.y * force) * sp;
                 it.VH = 1f + (float)rnd.NextDouble() * 1.5f;
                 it.VRot = ((float)rnd.NextDouble() - 0.5f) * 300f;
+                byRank[rank] = it;
                 made++;
             }
         var flash = FlashSprite();
@@ -171,6 +181,73 @@ internal static class TerrainFx
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
             Dust(c + new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * radius * 0.5f * (float)rnd.NextDouble(), rnd, radius * 0.6f, 1.3f);
         }
+        return Settle(byRank, pieces, walls, given);
+    }
+
+    // 大きな瓦礫: ホストは割れた塊の止まる所を先に計算して置ける物を選び (RubbleBlocks.Decide)、
+    // 全員がその塊をその所へ飛ばして当たり判定を置く。客の塊の並びがホストと違っても当たり判定はホストの所に置く
+    private const int PredictRanks = 8; // 止まる所を予測する塊の数 (大きい順)
+
+    private static RubbleLanding[] Settle(Item[] byRank, List<BreakPiece> pieces, float[] walls, RubbleLanding[] given)
+    {
+        var landings = given;
+        if (landings == null)
+        {
+            if (walls == null || byRank.Length == 0) return Array.Empty<RubbleLanding>();
+            int n = Math.Min(byRank.Length, PredictRanks);
+            var rest = new Vector2?[n];
+            var sizes = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                if (byRank[i] == null) continue;
+                rest[i] = PredictRest(byRank[i]);
+                sizes[i] = pieces[i].Size;
+            }
+            landings = RubbleBlocks.Decide(rest, sizes, walls);
+        }
+        foreach (var l in landings)
+            if (l.Rank < byRank.Length && byRank[l.Rank] != null) Steer(byRank[l.Rank], l.Position);
+        RubbleBlocks.Place(landings);
+        return landings;
+    }
+
+    // 塊の止まる所を、同じ動き (固定の 1/60 秒刻み) で先に計算する。絵には触らない
+    private static Vector2 PredictRest(Item src)
+    {
+        var it = new Item
+        {
+            Kind = Kind.Piece, Px = src.Px, Py = src.Py, Vx = src.Vx, Vy = src.Vy, Height = src.Height, VH = src.VH,
+            H0 = src.H0, Walls = src.Walls, Life = 1f,
+        };
+        const float dt = 1f / 60f;
+        for (int step = 0; step < 600; step++)
+        {
+            it.T += dt;
+            float ox = it.Px, oy = it.Py;
+            bool done = StepPiece(it, dt);
+            if (it.Walls != null && Collide(it, ox, oy)) done = false;
+            if (done) break;
+        }
+        return new Vector2(it.Px, it.Py);
+    }
+
+    // 止まる所が決まった塊: 今の高さと上向きの速さから床に着くまでの時間を出し、その時間でちょうど着く横の速さにする
+    private static void Steer(Item it, Vector2 target)
+    {
+        it.Steer = true;
+        it.Walls = null;
+        it.Tx = target.x; it.Ty = target.y;
+        float h = Math.Max(0f, it.Height), vh = it.VH;
+        if (h < 0.05f && vh < 1.2f) vh = 1.2f; // 低い所の塊も少し跳ねて飛ぶ
+        float tf = (vh + MathF.Sqrt(vh * vh + 2f * Gravity * h)) / Gravity;
+        if (tf < 0.3f)
+        {
+            tf = 0.3f;
+            vh = (0.5f * Gravity * tf * tf - h) / tf;
+        }
+        it.VH = vh;
+        it.Vx = (target.x - it.Px) / tf;
+        it.Vy = (target.y - it.Py) / tf;
     }
 
     // 塊の元の場所の真下の床 (3/4 視点)。壁の面 (手前の根元の線から上) は根元まで、壁の上面とその奥は
@@ -331,13 +408,20 @@ internal static class TerrainFx
         it.Height += it.VH * dt;
         float lie = it.H0 > 0.05f ? Math.Clamp(1f - it.Height / it.H0, 0f, 1f) : Math.Clamp(it.T / 0.25f, 0f, 1f);
         if (it.Height <= 0f) lie = 1f;
-        if (lie != it.Lie)
+        if (lie != it.Lie && it.Tr is not null) // 予測 (PredictRest) の時は絵が無い
         {
             it.Lie = lie;
             it.Tr.localScale = V3(it.Sx * (1f - (1f - LieFlatX) * lie), it.Sy * (1f - (1f - LieFlatY) * lie), it.Sz);
         }
         if (it.Height > 0f) return false;
         it.Height = 0f;
+        if (it.Steer)
+        {
+            // 決まった所にぴたりと止める (当たり判定の位置と見た目を揃える)
+            it.Px = it.Tx; it.Py = it.Ty;
+            it.Vx = 0f; it.Vy = 0f; it.VH = 0f; it.VRot = 0f;
+            return true;
+        }
         if (it.VH < -1.2f) { it.VH = -it.VH * 0.2f; it.Vx *= 0.5f; it.Vy *= 0.5f; it.VRot *= 0.4f; return false; }
         it.VH = 0f;
         float f = MathF.Max(0f, 1f - 6f * dt);
