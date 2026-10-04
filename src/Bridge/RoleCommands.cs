@@ -66,6 +66,12 @@ internal static class RoleCommands
             reply($"OK pressrow {SettingsMenu.PressRow(p, r, d)}");
         });
 
+        TestBridge.Register("clicktab", "<MRPタブ番号 0〜> MRP のタブのボタンを押す", (args, reply) =>
+        {
+            if (!int.TryParse(args.Trim(), out int p)) { reply("ERR clicktab number"); return; }
+            reply($"OK clicktab {SettingsMenu.ClickTabButton(p)}");
+        });
+
         TestBridge.Register("closesettings", "設定画面を閉じる", (_, reply) =>
         {
             if (!GameSettingMenu.Instance) { reply("ERR closesettings menu not open"); return; }

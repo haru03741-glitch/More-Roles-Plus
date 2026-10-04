@@ -48,6 +48,14 @@ internal static class SettingsMenu
         return Rows.TryGetValue(row.Pointer, out opt);
     }
 
+    // 試験用: MRP のタブのボタンを押す (OnClick をそのまま呼ぶ)
+    internal static string ClickTabButton(int page)
+    {
+        if (page < 0 || page >= Pages.Count || !Pages[page].Button) return "no button";
+        Pages[page].Button.OnClick.Invoke();
+        return Pages[page].Menu && Pages[page].Menu.gameObject.activeSelf ? "shown" : "not shown";
+    }
+
     // 試験用: 開いているタブの n 行目の ± / チェックを押したのと同じことをする
     internal static string PressRow(int page, int row, int delta)
     {
