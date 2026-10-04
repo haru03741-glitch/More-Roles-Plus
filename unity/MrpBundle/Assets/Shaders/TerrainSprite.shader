@@ -16,6 +16,7 @@ Shader "MRP/TerrainSprite"
         _EdgeJag ("Edge jaggedness", Float) = 0.35
         _ScorchColor ("Scorch color", Color) = (0.08, 0.06, 0.05, 1)
         _EmberColor ("Ember rim color", Color) = (1.0, 0.45, 0.12, 1)
+        _OutlineColor ("Break outline color", Color) = (0.086, 0.086, 0.094, 1)
         _UseDamage ("Use damage mask", Float) = 1
         [HideInInspector] _AlphaTex ("External Alpha", 2D) = "white" {}
         [HideInInspector] _EnableExternalAlpha ("Enable External Alpha", Float) = 0
@@ -54,6 +55,7 @@ Shader "MRP/TerrainSprite"
             fixed4 _ScorchColor;
             fixed4 _EmberColor;
             float _UseDamage;
+            fixed4 _OutlineColor;
 
             sampler2D _MrpDamageTex;
             float4 _MrpDamageRect;
@@ -84,7 +86,21 @@ Shader "MRP/TerrainSprite"
                 clip(c.a - 0.004);
 
                 float2 muv = (i.world - _MrpDamageRect.xy) * _MrpDamageRect.zw;
-                if (_UseDamage > 0.5 && _MrpDamageRect.z > 0 && all(muv > 0) && all(muv < 1))
+                bool inMap = _MrpDamageRect.z > 0 && all(muv > 0) && all(muv < 1);
+
+                // 2 = 穴の向こうの床: 抜けた所 (より少し広め) にだけ描き、割れ口の近くほど暗く落として深さを出す
+                if (_UseDamage > 1.5)
+                {
+                    if (!inMap) discard;
+                    float dr = tex2D(_MrpDamageTex, muv).r;
+                    float nn = tex2D(_Noise, i.world * 0.9).r * 0.65 + tex2D(_Noise, i.world * 3.1).r * 0.35;
+                    float hv = dr + (nn - 0.5) * _EdgeJag;
+                    clip(hv - 0.38);
+                    c.rgb *= lerp(0.45, 1.0, smoothstep(0.45, 0.8, hv));
+                    return c;
+                }
+
+                if (_UseDamage > 0.5 && inMap)
                 {
                     fixed2 dmg = tex2D(_MrpDamageTex, muv).rg;
                     float n = tex2D(_Noise, i.world * 0.9).r * 0.65 + tex2D(_Noise, i.world * 3.1).r * 0.35;
@@ -93,11 +109,16 @@ Shader "MRP/TerrainSprite"
                     float hole = dmg.r + (n - 0.5) * _EdgeJag;
                     clip(0.5 - hole);
 
-                    // 焦げ: 縁に近いほど黒く、ごく縁だけ熾火の色
-                    float scorch = saturate(dmg.g * (0.75 + n * 0.5));
-                    c.rgb = lerp(c.rgb, _ScorchColor.rgb, scorch * 0.85);
-                    float rim = saturate(1 - abs(hole - 0.42) * 14) * step(0.05, dmg.r);
-                    c.rgb += _EmberColor.rgb * rim * 0.6;
+                    // 焦げ: 縁に近いほど黒く (ムラはノイズ)
+                    float scorch = saturate(dmg.g * (0.6 + n * 0.6));
+                    c.rgb = lerp(c.rgb, _ScorchColor.rgb, scorch * 0.7);
+
+                    // 割れ口: 本編の絵と同じ濃い輪郭線 → そのすぐ外側にだけ熾火の照り
+                    float edge = step(0.05, dmg.r);
+                    float outline = smoothstep(0.30, 0.34, hole) * edge;
+                    float ember = saturate(1 - abs(hole - 0.24) * 9) * edge * (1 - outline);
+                    c.rgb += _EmberColor.rgb * ember * 0.45;
+                    c.rgb = lerp(c.rgb, _OutlineColor.rgb, outline);
                 }
 
                 return c;

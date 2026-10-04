@@ -68,16 +68,17 @@ internal static class TerrainProbe
             if (!TryParse3(args, out float x, out float y, out float r)) { reply("ERR hole needs <x> <y> <r>"); return; }
             var center = new Vector2(x, y);
             int ship = 0, shadow = 0;
+            var removed = new System.Collections.Generic.List<Vector2>();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             foreach (var c in Physics2D.OverlapCircleAll(center, r, WallMask))
             {
                 var e = c ? c.TryCast<EdgeCollider2D>() : null;
                 if (!e || e.isTrigger) continue;
-                if (!EdgeCutter.Cut(e, center, r)) continue;
+                if (!EdgeCutter.Cut(e, center, r, removed)) continue;
                 if (e.gameObject.layer == ShadowLayer) shadow++; else ship++;
             }
             double colMs = sw.Elapsed.TotalMilliseconds;
-            string visual = DamageMap.Hole(center, r);
+            string visual = DamageMap.Hole(center, r, removed);
             sw.Stop();
             reply($"OK hole ship={ship} shadow={shadow} colliderMs={colMs:0.00} totalMs={sw.Elapsed.TotalMilliseconds:0.00} visual={visual ?? "ok"}");
         });

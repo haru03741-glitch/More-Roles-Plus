@@ -8,8 +8,8 @@ namespace MoreRolesPlus.Terrain;
 // (CompositeCollider2D は Android の libunity に無いので使わない。Collider2D.sharedMaterial も無いので写さない)。
 internal static class EdgeCutter
 {
-    // 戻り値 = 切り取りが起きたか
-    public static bool Cut(EdgeCollider2D col, Vector2 center, float radius)
+    // 戻り値 = 切り取りが起きたか。removed には切り取った区間 (世界座標の線分の両端) を足す
+    public static bool Cut(EdgeCollider2D col, Vector2 center, float radius, List<Vector2> removed = null)
     {
         var t = col.transform;
         Vector2 offset = col.offset;
@@ -56,6 +56,7 @@ internal static class EdgeCutter
             }
 
             changed = true;
+            if (removed != null) { removed.Add(a + d * s0); removed.Add(a + d * s1); }
 
             // 円の手前の部分
             if (s0 > 0f)
