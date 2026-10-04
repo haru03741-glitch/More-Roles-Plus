@@ -19,6 +19,17 @@ internal static class BuiltinCommands
             reply($"OK state (phase={TestBridge.Phase()})");
         });
 
+        TestBridge.Register("patches", "この mod が当てた Harmony パッチの一覧 (無音で外れていないかの確認)", (_, reply) =>
+        {
+            int n = 0;
+            foreach (var m in Plugin.Harmony.GetPatchedMethods())
+            {
+                reply($"PATCH {m.DeclaringType?.Name}.{m.Name}");
+                n++;
+            }
+            reply($"OK patches n={n}");
+        });
+
         TestBridge.Register("mark", "<文字列> ログに目印を書く (wait marker の起点用)", (args, reply) =>
         {
             Plugin.Logger.LogInfo($"MARK {args}");
