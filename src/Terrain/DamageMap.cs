@@ -6,7 +6,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // マップ全体を覆う損傷マスク (1 単位 = PixelsPerUnit 画素の RGBA32)。
-//   R = 穴 (0..1・0.5 が縁) / G = 焦げ / B = 熾火 (割れ口が赤く照る強さ。爆発だけが書く)
+//   R = 穴 (0..1・0.5 が縁) / G = 焦げ / B = 熾火 (割れ口が赤く照る強さ。爆発だけが書く) / A = 家具 (ひびを載せない)
 // シェーダ MRP/TerrainSprite がこれを世界座標で引いて、部屋の絵を抜き・焦がす。
 // 何も壊れていない間は作らない (部屋の絵もバニラのマテリアルのまま)。最初の損傷で作り、
 // その時に部屋の絵のマテリアルを差し替える。
@@ -19,6 +19,7 @@ internal static class DamageMap
     // 抜くのは「円」と「切り取った壁の線の近く (帯)」の重なりだけ (部屋の床まで抜くと床に穴が空いたように見える)
     private const float BandHalf = 0.2f;      // 壁の線から横・下へ届く幅 (世界単位)
     private const float BandUpStretch = 2.2f; // 3/4 視点の壁は線より上に高さがあるので、上へはこの倍だけ届かせる
+    private const float BandDownSquash = 2f;  // 壁の線より下 (手前の床) へはこの分の 1 しか届かせない
 
     private static ShipStatus _ship;
     private static Texture2D _tex;
@@ -33,6 +34,8 @@ internal static class DamageMap
     private static int _holeCount;
     private static Material _underlayMat;
     private static Material _roomMat;
+    private static Material _roomMatMask, _roomMatDefault;
+    private static readonly HashSet<int> Swapped = new();
 
     private static readonly int DamageTexId = Shader.PropertyToID("_MrpDamageTex");
     private static readonly int DamageRectId = Shader.PropertyToID("_MrpDamageRect");
@@ -41,14 +44,16 @@ internal static class DamageMap
         => Breach(new CircleShape(center, radius), removedSegments, true);
 
     // 形の範囲で壁を抜いた見た目を付ける (抜く・焦がす・向こうの床・ひび)
-    public static string Breach(CutShape shape, List<Vector2> removedSegments, bool scorch)
+    // floorY: この高さより下は見た目では抜かない (壁の当たり判定が見た目の根元より下 = 床まで伸びているマップがあるため)
+    public static string Breach(CutShape shape, List<Vector2> removedSegments, bool scorch, float floorY = float.NegativeInfinity)
     {
         if (!MrpBundle.Ready) return "bundle not ready";
         if (!EnsureMap()) return "no ship";
 
-        Stamp(shape, removedSegments, scorch);
+        SwapNear(shape.Center, shape.BoundRadius * UnderlayArt.CrackReach + 1f);
+        Stamp(shape, removedSegments, scorch, floorY);
+        SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書くので Upload より前
         Upload();
-        SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments);
         return null;
     }
 
@@ -57,7 +62,9 @@ internal static class DamageMap
     {
         if (!MrpBundle.Ready) return "bundle not ready";
         if (!EnsureMap()) return "no ship";
+        SwapNear(at, reach + 0.5f);
         SpawnCracks(at, reach, angleDeg, true);
+        Upload();
         return null;
     }
 
@@ -76,8 +83,7 @@ internal static class DamageMap
         bool any = false;
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
         {
-            var m = sr.sharedMaterial;
-            if (!m || !m.shader || m.shader.name != "Unlit/MaskShader") continue;
+            if (!IsRoomArt(sr)) continue;
             rooms.Add(sr);
             Rooms.Add(sr);
             if (!any) { all = sr.bounds; any = true; } else all.Encapsulate(sr.bounds);
@@ -101,25 +107,40 @@ internal static class DamageMap
         Shader.SetGlobalTexture(DamageTexId, _tex);
         Shader.SetGlobalVector(DamageRectId, new Vector4(_origin.x, _origin.y, 1f / (_w / (float)PixelsPerUnit), 1f / (_h / (float)PixelsPerUnit)));
 
-        // 部屋の絵を、同じ描き方 + 損傷マスクのマテリアルへ (元のステンシル設定を引き継ぐ)
-        var src = rooms[0].sharedMaterial;
-        var mat = _roomMat = new Material(MrpBundle.TerrainMaterial) { name = "MrpTerrain" };
-        mat.SetFloat("_MaskLayer", src.GetFloat("_MaskLayer"));
-        mat.SetFloat("_MaskComp", src.GetFloat("_MaskComp"));
-        mat.renderQueue = src.renderQueue;
-        foreach (var sr in rooms) sr.sharedMaterial = mat;
+        // 部屋の絵用のマテリアル (差し替えは壊れた場所の近くだけ、その時に行う)。
+        // MaskShader の部屋は元のステンシル設定を引き継ぐ。Sprites/Default の部屋はステンシルを書かない
+        // (影の板は Skeld 型 = ステンシル 1 の所に影 / Polus・Fungle 型 = 1 以外の所に影。どちらでも元の見え方を変えない)
+        SpriteRenderer maskSrc = null;
+        foreach (var sr in rooms) if (sr.sharedMaterial.shader.name == "Unlit/MaskShader") { maskSrc = sr; break; }
+        if (maskSrc)
+        {
+            var src = maskSrc.sharedMaterial;
+            _roomMatMask = new Material(MrpBundle.TerrainMaterial) { name = "MrpTerrain" };
+            _roomMatMask.SetFloat("_MaskLayer", src.GetFloat("_MaskLayer"));
+            _roomMatMask.SetFloat("_MaskComp", src.GetFloat("_MaskComp"));
+            _roomMatMask.renderQueue = src.renderQueue;
+        }
+        _roomMatDefault = new Material(MrpBundle.TerrainMaterial) { name = "MrpTerrainDefault" };
+        _roomMatDefault.SetFloat("_MaskComp", 8f);   // Always
+        _roomMatDefault.SetFloat("_StencilPass", 0f); // Keep
+        _roomMatDefault.renderQueue = 3000;
+
+        // 瓦礫・ひび・穴の向こうの床: 影の板が「ステンシル 1 の所に影」(Skeld 型) なら部屋と同じく 1 を書く、そうでなければ書かない
+        var mat = _roomMat = ShadowNeedsStencil() && _roomMatMask ? _roomMatMask : _roomMatDefault;
 
         // 瓦礫の床も同じ描き方 (影が落ちるようにステンシルを書く) で、損傷マスクを逆向きに使う
         _underlayMat = new Material(mat) { name = "MrpRubble" };
         _underlayMat.SetFloat("_UseDamage", 2f); // 2 = 抜けた所にだけ描く
         _propMat = new Material(mat) { name = "MrpDebris" };
         _propMat.SetFloat("_UseDamage", 0f);
+        _decalMat = new Material(mat) { name = "MrpCrackDecal" };
+        _decalMat.SetFloat("_UseDamage", 3f); // 3 = ひび: 穴の中と家具の上には描かない
 
         Plugin.Logger.LogInfo($"damage map {_w}x{_h} ({_pixels.Length / 1024}KB) origin={_origin} rooms={rooms.Count}");
         return true;
     }
 
-    private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch)
+    private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch, float floorY)
     {
         Vector2 c = shape.Center;
         float r = shape.BoundRadius;
@@ -153,6 +174,7 @@ internal static class DamageMap
 
                 // 家具 (ベッド・机など) は抜かない。焦げは表面なので残す
                 if (hole > 0f && InsideAny(keep, wx, wy)) hole = 0f;
+                if (wy < floorY) hole = Math.Min(hole, Clamp01(0.5f - (floorY - wy) / HoleEdge * 0.5f));
 
                 int i = (py * _w + px) * 4;
                 byte hb = (byte)(hole * 255f), sb = (byte)(scorch * 255f);
@@ -178,6 +200,7 @@ internal static class DamageMap
             float t = l2 > 0 ? Math.Clamp(((x - a.x) * sx + (y - a.y) * sy) / l2, 0f, 1f) : 0f;
             float ex = x - (a.x + sx * t), ey = y - (a.y + sy * t);
             if (ey > 0) ey /= BandUpStretch;
+            else ey *= BandDownSquash;
             float d = ex * ex + ey * ey;
             if (d < best) best = d;
             if (n == 2) break;
@@ -219,6 +242,63 @@ internal static class DamageMap
 
     private static float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 
+    // 部屋の絵か: Ship 層の SpriteRenderer で、MaskShader (Skeld 型) か、大きな Sprites/Default (Polus・Fungle 型)。
+    // 背景・海・波・色かぶせ・影などは除く
+    private static readonly System.Text.RegularExpressions.Regex NotRoomArt = new(
+        "background|overlay|water|wave|tint|shadow|light|square|starfield|hull",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool IsRoomArt(SpriteRenderer sr)
+    {
+        if (!sr || sr.gameObject.layer != 9 || !sr.sprite) return false;
+        var m = sr.sharedMaterial;
+        if (!m || !m.shader) return false;
+        string sh = m.shader.name;
+        if (sh == "Unlit/MaskShader") return true;
+        if (sh != "Sprites/Default") return false;
+        var size = sr.bounds.size;
+        if (size.x * size.y < 4f || size.x > 40f || size.y > 40f) return false;
+        for (var t = sr.transform; t && !t.GetComponent<ShipStatus>(); t = t.parent)
+            if (NotRoomArt.IsMatch(t.name)) return false;
+        return true;
+    }
+
+    private static bool HasGroundBehind(Vector2 c)
+    {
+        foreach (var sr in Rooms)
+            if (sr && sr.sharedMaterial && sr.sharedMaterial.shader && sr.sharedMaterial.shader.name == "MRP/TerrainSprite" && sr.sharedMaterial == _roomMatDefault)
+            {
+                var b = sr.bounds;
+                if (c.x >= b.min.x && c.x <= b.max.x && c.y >= b.min.y && c.y <= b.max.y) return true;
+            }
+        return false;
+    }
+
+    // 範囲に掛かる部屋の絵を、損傷マスクを見るマテリアルへ差し替える (元のシェーダに合わせた方へ)
+    private static void SwapNear(Vector2 c, float reach)
+    {
+        foreach (var sr in Rooms)
+        {
+            if (!sr) continue;
+            var b = sr.bounds;
+            if (c.x + reach < b.min.x || c.x - reach > b.max.x || c.y + reach < b.min.y || c.y - reach > b.max.y) continue;
+            if (!Swapped.Add(sr.GetInstanceID())) continue;
+            bool mask = sr.sharedMaterial.shader.name == "Unlit/MaskShader";
+            var target = mask && _roomMatMask ? _roomMatMask : _roomMatDefault;
+            if (!mask) target.renderQueue = sr.sharedMaterial.renderQueue;
+            sr.sharedMaterial = target;
+        }
+    }
+
+    // 影の板が「ステンシル 1 の所にだけ影」(比較 = Equal) か
+    private static bool ShadowNeedsStencil()
+    {
+        var go = GameObject.Find("Main Camera/ShadowQuad");
+        var r = go ? go.GetComponent<Renderer>() : null;
+        var m = r ? r.sharedMaterial : null;
+        return m && m.HasProperty("_Mask") && Mathf.Approximately(m.GetFloat("_Mask"), 3f);
+    }
+
     // 家具の当たり判定 (ShortObjects 層) の範囲。絵は 3/4 視点で当たり判定より上に伸びるので上へ広げる
     private const int FurnitureLayer = 12;
     private const float FurnitureMargin = 0.08f;
@@ -235,6 +315,21 @@ internal static class DamageMap
                                      b.max.x + FurnitureMargin, b.max.y + FurnitureUp));
         }
         return list;
+    }
+
+    // 家具の範囲を損傷マスクの A に書く (ひびの板がそこを描かない)。呼んだ側で Upload する
+    private static void MarkFurniture(Vector2 c, float reach)
+    {
+        foreach (var rc in FurnitureNear(c, reach))
+        {
+            int x0 = Math.Max(0, (int)((rc.xMin - _origin.x) * PixelsPerUnit));
+            int x1 = Math.Min(_w - 1, (int)((rc.xMax - _origin.x) * PixelsPerUnit) + 1);
+            int y0 = Math.Max(0, (int)((rc.yMin - _origin.y) * PixelsPerUnit));
+            int y1 = Math.Min(_h - 1, (int)((rc.yMax - _origin.y) * PixelsPerUnit) + 1);
+            for (int py = y0; py <= y1; py++)
+            for (int px = x0; px <= x1; px++)
+                _pixels[(py * _w + px) * 4 + 3] = 255;
+        }
     }
 
     private static bool InsideAny(List<Rect> rects, float x, float y)
@@ -270,7 +365,8 @@ internal static class DamageMap
     private static void SpawnUnderlay(Vector2 c, float r, List<Vector2> segs)
     {
         RoomZRange(c, out float nearZ, out float farZ);
-        if (!SpawnPassageFloor(c, r, segs, farZ + UnderlayDepth))
+        // 部屋の後ろに地面が描かれているマップ (Polus・Fungle = 部屋の絵が Sprites/Default) は、抜けた所から地面がそのまま見える
+        if (!SpawnPassageFloor(c, r, segs, farZ + UnderlayDepth) && _roomMatMask && !HasGroundBehind(c))
         {
             // 廊下の床の絵が見つからないマップでは手続きの床で代用する
             _underlaySprite ??= UnderlayArt.MakeFloor();
@@ -293,6 +389,7 @@ internal static class DamageMap
     private static void SpawnCracks(Vector2 c, float reach, float angleDeg, bool impact)
     {
         RoomZRange(c, out float nearZ, out _);
+        MarkFurniture(c, reach);
         var sprite = impact ? (_impactSprite ??= UnderlayArt.MakeCracks(true)) : (_crackSprite ??= UnderlayArt.MakeCracks(false));
         var crack = new GameObject("MrpCracks") { layer = 9 };
         crack.transform.SetParent(_ship.transform, true);
@@ -301,7 +398,7 @@ internal static class DamageMap
         crack.transform.localScale = Vector3.one * (reach * 2f / sprite.bounds.size.x) / _ship.transform.lossyScale.x;
         var csr = crack.AddComponent<SpriteRenderer>();
         csr.sprite = sprite;
-        csr.sharedMaterial = _roomMat;
+        csr.sharedMaterial = _decalMat;
         Underlays.Add(crack);
     }
 
@@ -403,6 +500,7 @@ internal static class DamageMap
     }
 
     private static Material _propMat;
+    private static Material _decalMat;
 
     private static void Reset()
     {
@@ -410,6 +508,7 @@ internal static class DamageMap
         Underlays.Clear();
         TerrainFx.Clear();
         Rooms.Clear();
+        Swapped.Clear();
         _passageTile = null;
         _passageSearched = false;
         if (_tex) UnityEngine.Object.Destroy(_tex);

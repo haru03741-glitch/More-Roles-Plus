@@ -140,9 +140,10 @@ internal static class UnderlayArt
         {
             float d = Math.Min(1f, dark[i]), l = Math.Min(1f, lite[i]) * (1f - d);
             // 暗い線 #1a1a1a を α で、ハイライトは白を薄く
-            float a = Math.Max(d * 0.88f, l * 0.3f);
+            // 真っ黒にせず半透明の暗い線にして、下地の色になじませる
+            float a = Math.Max(d * 0.62f, l * 0.18f);
             if (a <= 0f) continue;
-            float c = (26f * d * 0.88f + 255f * l * 0.3f) / a;
+            float c = (38f * d * 0.62f + 235f * l * 0.18f) / a;
             px[i * 4] = ToByte(c); px[i * 4 + 1] = ToByte(c); px[i * 4 + 2] = ToByte(c);
             px[i * 4 + 3] = ToByte(a * 255f);
         }

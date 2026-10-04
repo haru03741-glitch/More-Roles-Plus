@@ -45,6 +45,8 @@ internal static class TerrainProbe
         RegisterShaderInfo();
         RegisterDamage();
         RegisterFindSprite();
+        RegisterMapSurvey();
+        RegisterNearWall();
     }
 
     private static void RegisterCutting()
@@ -227,6 +229,76 @@ internal static class TerrainProbe
                 reply($"SPRITE {sp.name} rect={sp.textureRect.width}x{sp.textureRect.height} tex={(sp.texture ? sp.texture.name : "?")} ppu={sp.pixelsPerUnit}");
             }
             reply($"OK findsprite n={n}");
+        });
+    }
+
+    internal static void RegisterMapSurvey()
+    {
+        TestBridge.Register("mapsurvey", "今のマップの壁・家具・部屋の絵の作りを数える", (_, reply) =>
+        {
+            var ship = ShipStatus.Instance;
+            if (!ship) { reply("ERR mapsurvey no ship"); return; }
+            reply($"MAP {ship.name} scale={TestBridge.F(ship.transform.lossyScale.x)}");
+
+            var colCount = new System.Collections.Generic.Dictionary<string, int>();
+            foreach (var c in ship.GetComponentsInChildren<Collider2D>(true))
+            {
+                int layer = c.gameObject.layer;
+                if (layer != 9 && layer != 10 && layer != 12) continue;
+                string k = $"L{layer} {c.GetIl2CppType().Name}{(c.isTrigger ? " trigger" : "")}";
+                colCount[k] = colCount.TryGetValue(k, out int v) ? v + 1 : 1;
+            }
+            foreach (var kv in colCount) reply($"COLS {kv.Key} = {kv.Value}");
+
+            // Ship 層の (トリガーでない) 当たり判定の持ち主の名前: 親/自分
+            var names = new System.Collections.Generic.Dictionary<string, int>();
+            foreach (var c in ship.GetComponentsInChildren<Collider2D>(true))
+            {
+                if (c.gameObject.layer != 9 || c.isTrigger) continue;
+                var t = c.transform;
+                string k = (t.parent ? t.parent.name + "/" : "") + t.name + ":" + c.GetIl2CppType().Name;
+                names[k] = names.TryGetValue(k, out int v) ? v + 1 : 1;
+            }
+            reply("SHIPNAMES " + string.Join(" | ", names.Keys));
+
+            var shaders = new System.Collections.Generic.Dictionary<string, int>();
+            var floors = new System.Collections.Generic.List<string>();
+            foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                var m = sr.sharedMaterial;
+                string k = m && m.shader ? m.shader.name : "?";
+                shaders[k] = shaders.TryGetValue(k, out int v) ? v + 1 : 1;
+                var sp = sr.sprite;
+                if (sp && k == "Unlit/MaskShader" && floors.Count < 60) floors.Add($"{sp.name}({(int)sp.textureRect.width}x{(int)sp.textureRect.height})");
+            }
+            foreach (var kv in shaders) reply($"SHADER {kv.Key} = {kv.Value}");
+            reply("ROOMSPRITES " + string.Join(" ", floors));
+            reply("OK mapsurvey");
+        });
+    }
+
+    internal static void RegisterNearWall()
+    {
+        TestBridge.Register("nearwall", "自分から 8 方向に壁を探し、いちばん近い壁の方向と距離を出す", (_, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp) { reply("ERR nearwall no local player"); return; }
+            Vector2 from = lp.GetTruePosition();
+            float best = float.MaxValue; Vector2 bestDir = default, bestPt = default; string bestName = "";
+            for (int k = 0; k < 8; k++)
+            {
+                float a = k * Mathf.PI / 4f;
+                var dir = new Vector2(Mathf.Cos(a), Mathf.Sin(a));
+                foreach (var h in Physics2D.CircleCastAll(from, 0.1f, dir, 4f, 1 << ShipLayer))
+                {
+                    if (!h.collider || h.collider.isTrigger || h.distance >= best) continue;
+                    if (TerrainDamage.IsProtected(h.collider)) continue;
+                    best = h.distance; bestDir = dir; bestPt = h.point;
+                    bestName = $"{Path(h.collider.transform)}({h.collider.GetIl2CppType().Name})";
+                }
+            }
+            if (best == float.MaxValue) { reply("ERR nearwall none within 4"); return; }
+            reply($"OK nearwall from={TestBridge.F(from.x)},{TestBridge.F(from.y)} dir={TestBridge.F(bestDir.x)},{TestBridge.F(bestDir.y)} d={TestBridge.F(best)} at={TestBridge.F(bestPt.x)},{TestBridge.F(bestPt.y)} col={bestName}");
         });
     }
 

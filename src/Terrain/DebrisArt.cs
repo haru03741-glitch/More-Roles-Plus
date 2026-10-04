@@ -11,8 +11,8 @@ internal static class DebrisArt
     private static Sprite _pebble, _puff, _spark;
 
     // 壁の色 (Skeld の壁面・枠の内側の灰)
-    private static readonly Color32 WallTop = new(214, 222, 228, 255);
-    private static readonly Color32 WallSide = new(150, 163, 173, 255);
+    private static readonly Color32 WallTop = new(188, 196, 202, 255);
+    private static readonly Color32 WallSide = new(124, 134, 142, 255);
     private static readonly Color32 Line = new(26, 27, 30, 255);
 
     public static Sprite Chunk(int i) { _chunks ??= MakeChunks(); return _chunks[(i & 0x7fffffff) % _chunks.Length]; }
@@ -84,7 +84,7 @@ internal static class DebrisArt
                 if (d < best) { best = d; bi = 0; }
             }
             if (best > 0.02f) continue;
-            byte g = best > -0.06f ? (byte)70 : v > -0.05f ? (byte)200 : (byte)165;
+            byte g = best > -0.06f ? (byte)78 : v > -0.05f ? (byte)184 : (byte)150;
             int i = (y * n + x) * 4;
             px[i] = g; px[i + 1] = g; px[i + 2] = (byte)Math.Min(255, g + 6); px[i + 3] = 255;
         }

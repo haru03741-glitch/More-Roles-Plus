@@ -33,6 +33,10 @@ internal static class TerrainDamage
 
         foreach (var col in WallsNear(e.Position, outer))
         {
+            if (!ClosestPointWithNormal(col, e.Position, out Vector2 q, out Vector2 n)) continue;
+            // 外壁は壊さない: 爆心から見て壁の向こう側に奥の面があるか
+            Vector2 away = Vector2.Dot(q - e.Position, n) >= 0 ? n : -n;
+            if (!HasFarSide(q, away)) continue;
             if (EdgeCutter.Cut(col, core, removed)) cut++;
         }
 
@@ -58,6 +62,11 @@ internal static class TerrainDamage
     {
         Vector2 dir = e.Direction.sqrMagnitude > 1e-6f ? e.Direction.normalized : Vector2.right;
         if (!FindWall(e.Position, dir, p.Reach, out Vector2 hit, out Vector2 normal)) return "blunt no wall in reach";
+        // 叩いた辺りの多角形・箱の壁を先に折れ線へ (奥の面を辿れるように)
+        WallsNear(hit, MaxDepth);
+        float far = FarSide(hit, -normal);
+        if (far <= 0f) return "blunt outer wall (protected)";
+        float depth = Math.Max(p.BreachDepth, far + 0.25f);
 
         int hp = WallDurability.Hit(hit, p.WallDamage);
         if (hp > 0)
@@ -70,31 +79,78 @@ internal static class TerrainDamage
 
         // 叩いた面から壁の奥 (部屋と部屋の隙間・向こうの部屋の枠) までの区間を抜く
         Vector2 tangent = new(-normal.y, normal.x);
-        Vector2 center = hit - normal * (p.BreachDepth * 0.5f - 0.1f);
-        var rect = new RectShape(center, tangent, p.BreachLength, p.BreachDepth);
+        Vector2 center = hit - normal * (depth * 0.5f - 0.1f);
+        var rect = new RectShape(center, tangent, p.BreachLength, depth);
         var removed = new List<Vector2>();
         int cut = 0;
         foreach (var col in WallsNear(center, rect.BoundRadius))
             if (EdgeCutter.Cut(col, rect, removed)) cut++;
 
-        string visual = cut > 0 ? DamageMap.Breach(rect, removed, p.Scorch) : null;
+        // 下から叩いた (壁の手前の床に立っている) 時は、叩いた点の少し上から下を見た目では抜かない
+        float floorY = normal.y < -0.5f ? hit.y + 0.12f : float.NegativeInfinity;
+        string visual = cut > 0 ? DamageMap.Breach(rect, removed, p.Scorch, floorY) : null;
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に)
-        if (visual == null) TerrainFx.Crumble(hit - normal * (p.BreachDepth * 0.3f), tangent, normal, p.BreachLength, e.Seed);
-        return $"blunt breach cut={cut} visual={visual ?? "ok"}";
+        if (visual == null) TerrainFx.Crumble(hit - normal * (depth * 0.3f), tangent, normal, p.BreachLength, e.Seed);
+        return $"blunt breach cut={cut} depth={depth:0.00} visual={visual ?? "ok"}";
     }
 
-    private static IEnumerable<EdgeCollider2D> WallsNear(Vector2 c, float r)
+    // 範囲に掛かる壁を折れ線で返す。箱・多角形・円の壁はここで初めて折れ線に置き換える
+    private static List<EdgeCollider2D> WallsNear(Vector2 c, float r)
     {
+        var list = new List<EdgeCollider2D>();
         foreach (var c2 in Physics2D.OverlapCircleAll(c, r, WallMask))
         {
-            var e = c2 ? c2.TryCast<EdgeCollider2D>() : null;
-            if (!e || e.isTrigger || !e.enabled || IsProtected(e)) continue;
-            yield return e;
+            if (!c2 || c2.isTrigger || !c2.enabled || IsProtected(c2)) continue;
+            var e = c2.TryCast<EdgeCollider2D>();
+            if (e) { list.Add(e); continue; }
+            list.AddRange(WallOutline.Convert(c2));
         }
+        return list;
     }
 
-    // ゲームに関わる物は壊さない (当面の裁定)
-    private static bool IsProtected(Component c) => c.GetComponentInParent<OpenableDoor>();
+    // 壊さない物: ゲームに関わる物 (当面の裁定)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形
+    private static readonly System.Text.RegularExpressions.Regex ProtectedName = new(
+        @"table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    internal static bool IsProtected(Component c)
+    {
+        if (c.GetComponentInParent<OpenableDoor>()) return true;
+        for (var t = c.transform; t && !t.GetComponent<ShipStatus>(); t = t.parent)
+            if (ProtectedName.IsMatch(t.name)) return true;
+        return false;
+    }
+
+    // 外壁 (向こう側が宇宙・マップの外) は壊さない (当面の裁定)。
+    // 内壁には「奥の面」がある (部屋と部屋の隙間の向こうの枠・厚みのある壁の裏側)。壁の面から奥へ MaxDepth 以内に
+    // 次の壁の面が無ければ、向こうは何も無い外側とみなす。部屋の範囲は屋外 (Polus など) を含まないので使わない
+    private static bool HasFarSide(Vector2 surface, Vector2 inward) => FarSide(surface, inward) > 0f;
+
+    // 叩いた面から奥へ、壁の向こう側の面までの厚さ (見つからなければ既定値)。
+    // 奥の面 = 叩いた面から MaxDepth 以内で次に当たる Ship 層の壁 (部屋と部屋の間の隙間と向こうの部屋の枠を含む)
+    private const float MaxDepth = 2.6f;
+
+    // 奥の面までの距離 (無ければ 0)。CircleCastAll は 1 つの部品につき最初の 1 か所しか返さないので、
+    // 当たった少し先から探し直して同じ折れ線の奥の面まで辿る。RaycastAll は Android の libunity に無いので細い円で代用。
+    // 多角形の壁は内側から投げると出口の面を返さないので、呼ぶ前に折れ線へ置き換えておくこと
+    private static float FarSide(Vector2 hit, Vector2 inward)
+    {
+        float far = 0f, travelled = 0.05f;
+        for (int step = 0; step < 8 && travelled < MaxDepth; step++)
+        {
+            float best = float.MaxValue;
+            foreach (var h in Physics2D.CircleCastAll(hit + inward * travelled, 0.01f, inward, MaxDepth - travelled, 1 << ShipLayer))
+            {
+                if (!h.collider || h.collider.isTrigger || IsProtected(h.collider)) continue;
+                if (h.distance > 0.001f && h.distance < best) best = h.distance;
+            }
+            if (best == float.MaxValue) break;
+            travelled += best;
+            far = travelled;
+            travelled += 0.05f;
+        }
+        return far;
+    }
 
     private static bool FindWall(Vector2 from, Vector2 dir, float reach, out Vector2 point, out Vector2 normal)
     {
@@ -108,6 +164,28 @@ internal static class TerrainDamage
             normal = h.normal;
         }
         return best < float.MaxValue;
+    }
+
+    private static bool ClosestPointWithNormal(EdgeCollider2D col, Vector2 p, out Vector2 q, out Vector2 n)
+    {
+        n = default;
+        if (!ClosestPoint(col, p, out q)) return false;
+        // いちばん近い区間の向きから法線を作る
+        var t = col.transform;
+        var pts = col.points;
+        float best = float.MaxValue;
+        Vector2 prev = t.TransformPoint(pts[0] + col.offset);
+        for (int i = 1; i < pts.Length; i++)
+        {
+            Vector2 cur = t.TransformPoint(pts[i] + col.offset);
+            Vector2 d = cur - prev;
+            float l2 = d.sqrMagnitude;
+            float s = l2 > 0 ? Math.Clamp(Vector2.Dot(p - prev, d) / l2, 0f, 1f) : 0f;
+            float dist = (prev + d * s - p).sqrMagnitude;
+            if (dist < best && l2 > 0) { best = dist; n = new Vector2(-d.y, d.x).normalized; }
+            prev = cur;
+        }
+        return n != default;
     }
 
     // Collider2D.ClosestPoint は Android の libunity に無いので、折れ線の頂点から自前で求める

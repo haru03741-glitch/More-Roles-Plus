@@ -12,6 +12,7 @@ Shader "MRP/TerrainSprite"
         _Color ("Tint", Color) = (1,1,1,1)
         _MaskLayer ("Stencil Ref", Float) = 1
         _MaskComp ("Stencil Comp", Float) = 8
+        _StencilPass ("Stencil Pass", Float) = 2
         _Noise ("Edge Noise", 2D) = "gray" {}
         _Cells ("Break Cells", 2D) = "gray" {}
         _EdgeJag ("Edge jaggedness", Float) = 0.35
@@ -31,7 +32,7 @@ Shader "MRP/TerrainSprite"
         {
             Ref [_MaskLayer]
             Comp [_MaskComp]
-            Pass Replace
+            Pass [_StencilPass]
         }
 
         Cull Off
@@ -100,6 +101,20 @@ Shader "MRP/TerrainSprite"
                     float hv = dr + (cl - 0.5) * _EdgeJag + (nn - 0.5) * 0.06;
                     clip(hv - 0.38);
                     c.rgb *= lerp(0.45, 1.0, smoothstep(0.45, 0.8, hv));
+                    return c;
+                }
+
+                // 3 = ひびの板: 穴の中 (割れ口と同じ判定) と家具の上には描かない
+                if (_UseDamage > 2.5)
+                {
+                    if (inMap)
+                    {
+                        fixed4 dk = tex2D(_MrpDamageTex, muv);
+                        float ck = tex2D(_Cells, i.world * 0.4).r;
+                        float nk = tex2D(_Noise, i.world * 3.1).r;
+                        clip(0.5 - (dk.r + (ck - 0.5) * _EdgeJag + (nk - 0.5) * 0.06));
+                        clip(0.5 - dk.a);
+                    }
                     return c;
                 }
 
