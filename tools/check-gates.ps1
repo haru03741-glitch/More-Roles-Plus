@@ -59,5 +59,12 @@ if (-not $SkipAndroid) {
     }
 }
 
+# 4. il2cpp 配列の長さは (long) 明示 (net10 では int が nint のポインタ受けコンストラクタに解決されて壊れ配列になる)
+Write-Output '== il2cpp array length cast'
+$bad = Get-ChildItem (Join-Path $repo 'src') -Recurse -Filter *.cs |
+    Select-String -Pattern 'new\s+Il2Cpp(Struct|Reference)Array<[^>]+>\s*\((?!\s*\(long\))[^)]|new\s+Il2CppStringArray\s*\((?!\s*\(long\))[^)]'
+if ($bad) { $bad | ForEach-Object { Write-Output "   $($_.Path):$($_.LineNumber): $($_.Line.Trim())" }; Write-Output '   [FAIL] 長さに (long) を付ける'; $fail++ }
+else { Write-Output '   [ OK ]' }
+
 if ($fail -gt 0) { Write-Output "RESULT: FAIL ($fail)"; exit 1 }
 Write-Output 'RESULT: OK'

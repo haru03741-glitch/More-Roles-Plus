@@ -1,4 +1,6 @@
+using AmongUs.Data;
 using HarmonyLib;
+using InnerNet;
 using UnityEngine;
 
 namespace MoreRolesPlus.Bridge;
@@ -44,6 +46,39 @@ internal static class LobbyCommands
             btn.StartCoroutine(btn.JoinLocalGame());
             reply($"OK joinlocal {btn.netAddress} requested");
         });
+
+        // 版の違う端末どうし (PC と Android でビルド番号が違う) は LAN の部屋一覧に出ないので、公式サーバーの部屋で試す
+        TestBridge.Register("hostonline", "メニューから公式サーバーの部屋作成画面を開く (数秒置いて confirmcreate)", (_, reply) =>
+        {
+            var mm = Object.FindObjectOfType<MainMenuManager>();
+            if (!mm || TestBridge.Phase() != "Menu") { reply($"ERR hostonline not at main menu (phase={TestBridge.Phase()})"); return; }
+            AmongUsClient.Instance.NetworkMode = NetworkModes.OnlineGame;
+            // クイックチャット限定のアカウント (テスト端末に多い) も入れるよう、部屋をクイックチャット用で立てる
+            DataManager.Settings.Multiplayer.ChatMode = QuickChatModes.QuickChatOnly;
+            mm.OpenCreateGame();
+            reply("OK hostonline create dialog requested (follow: confirmcreate)");
+        });
+
+        TestBridge.Register("confirmcreate", "開いた部屋作成画面で作成を押す (follow: wait phase=Lobby 90)", (_, reply) =>
+        {
+            var cgo = Object.FindObjectOfType<CreateGameOptions>();
+            if (!cgo || !cgo.isActiveAndEnabled) { reply("ERR confirmcreate dialog not open"); return; }
+            cgo.Confirm();
+            reply("OK confirmcreate requested");
+        });
+
+        TestBridge.Register("joincode", "<部屋コード> 公式サーバーの部屋にコードで入る (follow: wait phase=Lobby 60)", (args, reply) =>
+        {
+            if (TestBridge.Phase() != "Menu") { reply($"ERR joincode not at menu (phase={TestBridge.Phase()})"); return; }
+            int id = GameCode.GameNameToInt(args.Trim().ToUpperInvariant());
+            if (id == -1) { reply($"ERR joincode bad code '{args}'"); return; }
+            AmongUsClient.Instance.NetworkMode = NetworkModes.OnlineGame;
+            AmongUsClient.Instance.StartCoroutine(AmongUsClient.Instance.CoFindGameInfoFromCodeAndJoin(id));
+            reply($"OK joincode {args.Trim().ToUpperInvariant()} requested");
+        });
+
+        TestBridge.Register("lobbycode", "今いる部屋のコード", (_, reply) =>
+            reply($"OK lobbycode {GameCode.IntToGameName(AmongUsClient.Instance.GameId)}"));
 
         TestBridge.Register("startgame", "[マップ番号] ホストが部屋の試合を始める (人数の下限を外す。follow: wait phase=InGame 60)", (args, reply) =>
         {

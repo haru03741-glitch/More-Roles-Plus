@@ -116,7 +116,8 @@ internal static class TerrainSync
     private static void Send(int length, int target)
     {
         var client = AmongUsClient.Instance;
-        var payload = new Il2CppStructArray<byte>(length);
+        // (long) 必須: net10 (Android) では int が nint のポインタ受けコンストラクタに解決され、壊れた配列で落ちる
+        var payload = new Il2CppStructArray<byte>((long)length);
         for (int i = 0; i < length; i++) payload[i] = Buf[i];
         var w = client.StartRpcImmediately(PlayerControl.LocalPlayer.NetId, RpcId, SendOption.Reliable, target);
         w.WriteBytesAndSize(payload);
