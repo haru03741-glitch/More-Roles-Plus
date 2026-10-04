@@ -45,13 +45,16 @@ internal static class DamageMap
 
     // 形の範囲で壁を抜いた見た目を付ける (抜く・焦がす・向こうの床・ひび)
     // floorY: この高さより下は見た目では抜かない (壁の当たり判定が見た目の根元より下 = 床まで伸びているマップがあるため)
-    public static string Breach(CutShape shape, List<Vector2> removedSegments, bool scorch, float floorY = float.NegativeInfinity)
+    // keep: 家具の保護範囲 (FurnitureFor で求め、壁の当たり判定の切り取りにも同じものを渡す)
+    // body: 穴から露出した壁の中 (蓋と同じ判定)。帯 (切った面の近く) の外でも、ここは抜く
+    public static string Breach(CutShape shape, List<Vector2> removedSegments, bool scorch, float floorY = float.NegativeInfinity,
+        List<Rect> keep = null, WallBody body = null)
     {
         if (!MrpBundle.Ready) return "bundle not ready";
         if (!EnsureMap()) return "no ship";
 
         SwapNear(shape.Center, shape.BoundRadius * UnderlayArt.CrackReach + 1f);
-        Stamp(shape, removedSegments, scorch, floorY);
+        Stamp(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body);
         SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書くので Upload より前
         Upload();
         return null;
@@ -140,14 +143,13 @@ internal static class DamageMap
         return true;
     }
 
-    private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch, float floorY)
+    private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body)
     {
         Vector2 c = shape.Center;
         float r = shape.BoundRadius;
         bool banded = segs != null && segs.Count >= 2;
         var hull = banded ? ConvexHull(segs) : null;
         float reach = r * (1f + ScorchWidth) + HoleEdge;
-        var keep = FurnitureNear(c, reach);
         int x0 = Math.Max(0, (int)((c.x - reach - _origin.x) * PixelsPerUnit));
         int x1 = Math.Min(_w - 1, (int)((c.x + reach - _origin.x) * PixelsPerUnit) + 1);
         int y0 = Math.Max(0, (int)((c.y - reach - _origin.y) * PixelsPerUnit));
@@ -168,7 +170,10 @@ internal static class DamageMap
                 if (banded)
                 {
                     float bd = BandDistance(hull, wx, wy);
-                    hole = Math.Min(hole, Clamp01(0.5f + (BandHalf - bd) / HoleEdge * 0.5f));
+                    float band = Clamp01(0.5f + (BandHalf - bd) / HoleEdge * 0.5f);
+                    // 帯の外でも、穴から露出した壁の中 (蓋の内側) は抜く。抜かないと絵が残るのに歩ける袋になる
+                    if (band < 1f && hole > 0f && body != null && body.Exposed(wx, wy)) band = 1f;
+                    hole = Math.Min(hole, band);
                     scorch = Math.Min(scorch, Clamp01(1f - (bd - BandHalf) / (r * ScorchWidth)));
                 }
 
@@ -303,6 +308,19 @@ internal static class DamageMap
     private const int FurnitureLayer = 12;
     private const float FurnitureMargin = 0.08f;
     private const float FurnitureUp = 0.55f;
+
+    // テスト用: その点の壁の絵がどれだけ抜けているか (0..1)。地図が無ければ -1
+    internal static float HoleAt(Vector2 p)
+    {
+        if (_pixels == null) return -1f;
+        int px = (int)((p.x - _origin.x) * PixelsPerUnit), py = (int)((p.y - _origin.y) * PixelsPerUnit);
+        if (px < 0 || py < 0 || px >= _w || py >= _h) return -1f;
+        return _pixels[(py * _w + px) * 4] / 255f;
+    }
+
+    // 形で壊す時に守る家具の範囲 (壁の絵を抜かない矩形)。壁の当たり判定もここは切らない
+    internal static List<Rect> FurnitureFor(CutShape shape)
+        => FurnitureNear(shape.Center, shape.BoundRadius * (1f + ScorchWidth) + HoleEdge);
 
     private static List<Rect> FurnitureNear(Vector2 c, float r)
     {

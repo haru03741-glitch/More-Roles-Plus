@@ -76,6 +76,18 @@ internal static class BuiltinCommands
             reply($"OK tp {TestBridge.F(x)} {TestBridge.F(y)}");
         });
 
+        TestBridge.Register("walk", "<x> <y> [秒=4] 自分を物理で歩かせる (壁に当たれば止まる)。時間切れか到着で最後の位置を出す", (args, reply) =>
+        {
+            string[] p = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length < 2 || !float.TryParse(p[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x)
+                              || !float.TryParse(p[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
+            { reply("ERR walk needs <x> <y> [sec]"); return; }
+            float sec = p.Length > 2 && float.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float s) ? s : 4f;
+            if (!PlayerControl.LocalPlayer) { reply("ERR walk no local player"); return; }
+            WalkPatch.Start(new Vector2(x, y), sec);
+            reply($"OK walk start -> {TestBridge.F(x)} {TestBridge.F(y)}");
+        });
+
         TestBridge.Register("freeplay", "[マップ番号 0=Skeld 1=Mira 2=Polus 4=Airship 5=Fungle] メニューからフリープレイを始める", (args, reply) =>
         {
             byte map = byte.TryParse(args, out byte m) ? m : (byte)0;
@@ -100,5 +112,40 @@ internal static class BuiltinCommands
             AmongUsClient.Instance.ExitGame(DisconnectReasons.ExitGame);
             reply("OK quitgame requested (follow with: wait phase=Menu 30)");
         });
+    }
+}
+
+// テスト用の歩行: 自分の物理更新の後で歩く向きを上書きする (本編の歩行と同じく当たり判定に止められる)
+[HarmonyLib.HarmonyPatch(typeof(PlayerPhysics), nameof(PlayerPhysics.FixedUpdate))]
+internal static class WalkPatch
+{
+    private static bool _active;
+    private static Vector2 _target;
+    private static float _left;
+
+    public static void Start(Vector2 target, float sec)
+    {
+        _target = target;
+        _left = sec;
+        _active = true;
+    }
+
+    public static void Postfix(PlayerPhysics __instance)
+    {
+        if (!_active) return;
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || __instance.myPlayer != lp) return;
+        Vector2 pos = lp.GetTruePosition();
+        Vector2 d = _target - pos;
+        _left -= Time.fixedDeltaTime;
+        bool arrived = d.sqrMagnitude < 0.02f;
+        if (arrived || _left <= 0f)
+        {
+            _active = false;
+            __instance.SetNormalizedVelocity(Vector2.zero);
+            TestBridge.Out($"OK walk {(arrived ? "arrived" : "timeout")} at {TestBridge.F(pos.x)} {TestBridge.F(pos.y)}");
+            return;
+        }
+        __instance.SetNormalizedVelocity(d.normalized);
     }
 }

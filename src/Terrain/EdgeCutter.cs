@@ -14,7 +14,10 @@ internal static class EdgeCutter
     public static bool Cut(EdgeCollider2D col, Vector2 center, float radius, List<Vector2> removed = null)
         => Cut(col, new CircleShape(center, radius), removed);
 
-    public static bool Cut(EdgeCollider2D col, CutShape shape, List<Vector2> removed = null, Func<Vector2, Vector2, bool> allow = null)
+    // keep = 切り取らない矩形 (家具の保護範囲。壁の絵を抜かない所は当たり判定も残す)
+    // dryRun = 切り取る区間を allow に見せるだけで壁は変えない (全部の可否を切る前の地形で決めてから切るため)
+    public static bool Cut(EdgeCollider2D col, CutShape shape, List<Vector2> removed = null, Func<Vector2, Vector2, bool> allow = null,
+        List<Rect> keep = null, bool dryRun = false)
     {
         var t = col.transform;
         Vector2 offset = col.offset;
@@ -28,17 +31,31 @@ internal static class EdgeCutter
         var chains = new List<List<Vector2>>();
         List<Vector2> cur = null;
         bool changed = false;
+        var cuts = new List<(float s0, float s1)>();
 
         for (int i = 0; i < n - 1; i++)
         {
             Vector2 a = world[i], b = world[i + 1];
             Vector2 d = b - a;
 
-            // 形の内側にある区間 [s0, s1]
-            if (!shape.Interval(a, b, out float s0, out float s1)) { s0 = 1f; s1 = 0f; }
-            if (s0 < s1 && allow != null && !allow(a + d * s0, a + d * s1)) { s0 = 1f; s1 = 0f; }
+            // 形の内側にある区間 [s0, s1] から、残す矩形に掛かる所を引いた区間の列
+            cuts.Clear();
+            if (shape.Interval(a, b, out float s0, out float s1) && s0 < s1)
+            {
+                cuts.Add((s0, s1));
+                if (keep != null)
+                {
+                    foreach (var r in keep) Subtract(cuts, a, d, r);
+                    // 家具の範囲を引いて残った細い切れ目は切らない (人は通れず、縁のぼかしで絵も抜けないので見た目と食い違うだけ)
+                    bool trimmed = cuts.Count != 1 || cuts[0].s0 != s0 || cuts[0].s1 != s1;
+                    float len = d.magnitude;
+                    if (trimmed) cuts.RemoveAll(c => (c.s1 - c.s0) * len < MinSliver);
+                }
+                if (allow != null) cuts.RemoveAll(c => !allow(a + d * c.s0, a + d * c.s1));
+            }
+            if (dryRun) continue;
 
-            if (s0 >= s1)
+            if (cuts.Count == 0)
             {
                 // 線分は形に掛からない
                 if (cur == null) { cur = new List<Vector2> { a }; chains.Add(cur); }
@@ -47,25 +64,28 @@ internal static class EdgeCutter
             }
 
             changed = true;
-            if (removed != null) { removed.Add(a + d * s0); removed.Add(a + d * s1); }
-
-            // 形の手前の部分
-            if (s0 > 0f)
+            float from = 0f; // 残す部分の始まり
+            foreach (var (c0, c1) in cuts)
             {
-                if (cur == null) { cur = new List<Vector2> { a }; chains.Add(cur); }
-                cur.Add(a + d * s0);
+                if (removed != null) { removed.Add(a + d * c0); removed.Add(a + d * c1); }
+                // 切り取る区間の手前の部分
+                if (c0 > from)
+                {
+                    if (cur == null) { cur = new List<Vector2> { a + d * from }; chains.Add(cur); }
+                    cur.Add(a + d * c0);
+                }
+                cur = null;
+                from = c1;
             }
-            cur = null;
-
-            // 形の先の部分
-            if (s1 < 1f)
+            // 最後の区間の先の部分 (次の線分へ続く)
+            if (from < 1f)
             {
-                cur = new List<Vector2> { a + d * s1, b };
+                cur = new List<Vector2> { a + d * from, b };
                 chains.Add(cur);
             }
         }
 
-        if (!changed) return false;
+        if (!changed || dryRun) return false;
 
         chains.RemoveAll(ch => ch.Count < 2 || (ch.Count == 2 && (ch[0] - ch[1]).sqrMagnitude < 1e-6f));
 
@@ -84,6 +104,33 @@ internal static class EdgeCutter
             Apply(extra, chains[k], t, offset);
         }
         return true;
+    }
+
+    private const float MinSliver = 0.1f;
+
+    // 区間の列 (昇順・重なり無し) から、線分 a + d*s が矩形 r の内側にある範囲を引く
+    private static void Subtract(List<(float s0, float s1)> cuts, Vector2 a, Vector2 d, Rect r)
+    {
+        float k0 = 0f, k1 = 1f;
+        if (!Slab(a.x, d.x, r.xMin, r.xMax, ref k0, ref k1) || !Slab(a.y, d.y, r.yMin, r.yMax, ref k0, ref k1)) return;
+        for (int i = cuts.Count - 1; i >= 0; i--)
+        {
+            var (c0, c1) = cuts[i];
+            if (k1 <= c0 || k0 >= c1) continue;
+            cuts.RemoveAt(i);
+            if (k1 < c1) cuts.Insert(i, (k1, c1));
+            if (k0 > c0) cuts.Insert(i, (c0, k0));
+        }
+    }
+
+    private static bool Slab(float p, float dp, float lo, float hi, ref float k0, ref float k1)
+    {
+        if (MathF.Abs(dp) < 1e-9f) return p >= lo && p <= hi;
+        float t0 = (lo - p) / dp, t1 = (hi - p) / dp;
+        if (t0 > t1) (t0, t1) = (t1, t0);
+        k0 = Math.Max(k0, t0);
+        k1 = Math.Min(k1, t1);
+        return k0 < k1;
     }
 
     private static void Apply(EdgeCollider2D col, List<Vector2> worldChain, Transform t, Vector2 colliderOffset)

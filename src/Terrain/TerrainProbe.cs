@@ -300,6 +300,26 @@ internal static class TerrainProbe
 
     internal static void RegisterNearWall()
     {
+        TestBridge.Register("holecheck", "直前の破壊で切り取った壁の線の上で、壁の絵が抜けていない所 (当たり判定だけ抜けた所) を出す", (args, reply) =>
+        {
+            var segs = TerrainDamage.LastRemoved;
+            int total = 0, bad = 0;
+            for (int i = 0; i + 1 < segs.Count; i += 2)
+            {
+                Vector2 a = segs[i], b = segs[i + 1];
+                int n = Mathf.Max(1, Mathf.CeilToInt((b - a).magnitude / 0.05f));
+                for (int k = 0; k <= n; k++)
+                {
+                    Vector2 q = Vector2.Lerp(a, b, k / (float)n);
+                    float h = DamageMap.HoleAt(q);
+                    total++;
+                    if (h >= 0.5f) continue;
+                    if (bad++ < 12) reply($"KEPT {V(q)} hole={TestBridge.F(h)} seg={V(a)}-{V(b)}");
+                }
+            }
+            reply($"OK holecheck segs={segs.Count / 2} samples={total} kept={bad}");
+        });
+
         TestBridge.Register("roomline", "<x1> <y1> <x2> <y2> 線に沿って 0.1 刻みで、その点を含む部屋の範囲 (roomArea) を出す", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || v.Length != 4) { reply("ERR roomline needs <x1> <y1> <x2> <y2>"); return; }

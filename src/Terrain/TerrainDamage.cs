@@ -12,6 +12,9 @@ internal static class TerrainDamage
     private const int ShadowLayer = 10;
     private const int WallMask = (1 << ShipLayer) | (1 << ShadowLayer);
 
+    // テスト用: 直前の破壊で切り取った壁の区間 (線分の両端)。見た目の穴と当たり判定の抜けが揃っているかを holecheck で調べる
+    internal static readonly List<Vector2> LastRemoved = new();
+
     // 依頼を結果に決める (ホストだけが呼ぶ)。地形は変えない。何も起きない時 (届く所に壁が無い・外壁) は false
     public static bool TryResolve(in DamageEvent e, out ResolvedDamage r, out string why)
     {
@@ -97,11 +100,25 @@ internal static class TerrainDamage
             float first = FirstFace(m, -away, Math.Min(toBlast, MaxDepth));
             return first > 0f;
         }
-        foreach (var col in WallsNear(c, outer))
+        var keep = DamageMap.FurnitureFor(core); // 家具の保護範囲は壁も残す (絵を抜かない所を通れないように)
+        var walls = WallsNear(c, outer);
+        // 壁の中の判定は切る前の壁の線で。爆心は歩ける場所にある前提 (武器は弾が止まった位置で依頼する)
+        var body = new WallBody(ShipOnly(walls), e.Position);
+        // 区間ごとの可否は、全部を切る前の地形で先に決める (順に切りながら決めると、先に切った壁が奥の面や
+        // 間の壁として見えなくなり、処理の順番で結果が変わる)
+        var allowed = new HashSet<(float, float, float, float)>();
+        foreach (var col in walls)
         {
             shipFace = col.gameObject.layer == ShipLayer;
-            if (EdgeCutter.Cut(col, core, removed, Inner)) cut++;
+            EdgeCutter.Cut(col, core, null, (a, b) =>
+            {
+                if (Inner(a, b)) allowed.Add((a.x, a.y, b.x, b.y));
+                return false;
+            }, keep, dryRun: true);
         }
+        foreach (var col in walls)
+            if (EdgeCutter.Cut(col, core, removed, (a, b) => allowed.Contains((a.x, a.y, b.x, b.y)), keep)) cut++;
+        body.SetOpening(removed);
 
         // 外側の輪: 残った壁の、爆心にいちばん近い点にひび (壁 1 本につき 1 か所)
         foreach (var col in WallsNear(c, outer))
@@ -115,9 +132,12 @@ internal static class TerrainDamage
             cracked++;
         }
 
-        string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch) : null;
+        // 穴の側面 (露出した壁の中との境) に蓋。ひびを付け終えてから作る (蓋にひびが付かないように)
+        int caps = cut > 0 ? WallBody.Build(body.Caps(core)) : 0;
+        LastRemoved.Clear(); LastRemoved.AddRange(removed);
+        string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body) : null;
         if (visual == null) TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed);
-        return $"explosion cut={cut} cracked={cracked} visual={visual ?? "ok"}";
+        return $"explosion cut={cut} cracked={cracked} caps={caps} visual={visual ?? "ok"}";
     }
 
     // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。
@@ -146,15 +166,26 @@ internal static class TerrainDamage
         Vector2 center = shape.Center;
         var removed = new List<Vector2>();
         int cut = 0;
-        foreach (var col in WallsNear(center, shape.BoundRadius))
-            if (EdgeCutter.Cut(col, shape, removed)) cut++;
+        var keep = DamageMap.FurnitureFor(shape); // 家具の保護範囲は壁も残す (絵を抜かない所を通れないように)
+        var walls = WallsNear(center, shape.BoundRadius);
+        var body = new WallBody(ShipOnly(walls), hit + normal * 0.1f); // 叩いた側 (歩ける床) を基準に壁の中を判定
+        foreach (var col in walls)
+            if (EdgeCutter.Cut(col, shape, removed, keep: keep)) cut++;
+        body.SetOpening(removed);
+        int caps = cut > 0 ? WallBody.Build(body.Caps(shape)) : 0;
 
         // 下から叩いた (壁の手前の床に立っている) 時は、叩いた点の少し上から下を見た目では抜かない
-        float floorY = normal.y < -0.5f ? hit.y + 0.12f : float.NegativeInfinity;
-        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY) : null;
+        // Polus だけ (壁の当たり判定が見た目の根元より下まで伸びている実測)。他のマップで掛けると壁の根元の線が残る
+        bool skirt = ShipStatus.Instance && ShipStatus.Instance.TryCast<PolusShipStatus>() != null;
+        float floorY = skirt && normal.y < -0.5f ? hit.y + 0.12f : float.NegativeInfinity;
+        LastRemoved.Clear(); LastRemoved.AddRange(removed);
+        // floorY は見た目だけ (その下の当たり判定は床の絵の上の見えない壁なので切ってよい)
+        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body) : null;
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
-        if (visual == null) TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed);
-        return $"blunt breach cut={cut} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
+        // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
+        if (cut == 0) TerrainFx.Chip(hit, dir, e.Seed);
+        else if (visual == null) TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed);
+        return $"blunt breach cut={cut} caps={caps} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
     }
 
     // 抜く向き: 壁の奥 (inward) から振った向きへ、上限の角度まで傾ける。横から掠める振り (奥へ進まない) は真っ直ぐ抜く
@@ -185,6 +216,11 @@ internal static class TerrainDamage
             list.AddRange(WallOutline.Convert(c2));
         }
         return list;
+    }
+
+    private static IEnumerable<EdgeCollider2D> ShipOnly(List<EdgeCollider2D> walls)
+    {
+        foreach (var w in walls) if (w.gameObject.layer == ShipLayer) yield return w;
     }
 
     // 壊さない物: ゲームに関わる物 (当面の裁定)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形

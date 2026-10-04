@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
@@ -15,6 +16,16 @@ internal abstract class CutShape
     // 形を囲む円 (処理範囲の絞り込み用)
     public abstract Vector2 Center { get; }
     public abstract float BoundRadius { get; }
+
+    // 縁を反時計回りに step 間隔で並べた閉じた点列 (最初の点は繰り返さない)
+    public abstract List<Vector2> Outline(float step);
+
+    protected static void AddEdge(List<Vector2> pts, Vector2 a, Vector2 b, float step)
+    {
+        float dx = b.x - a.x, dy = b.y - a.y;
+        int k = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(dx * dx + dy * dy) / step));
+        for (int i = 0; i < k; i++) pts.Add(new Vector2(a.x + dx * i / k, a.y + dy * i / k));
+    }
 }
 
 internal sealed class CircleShape : CutShape
@@ -48,6 +59,18 @@ internal sealed class CircleShape : CutShape
     {
         float dx = x - _c.x, dy = y - _c.y;
         return MathF.Sqrt(dx * dx + dy * dy) - _r;
+    }
+
+    public override List<Vector2> Outline(float step)
+    {
+        int k = Math.Max(8, (int)MathF.Ceiling(2f * MathF.PI * _r / step));
+        var pts = new List<Vector2>(k);
+        for (int i = 0; i < k; i++)
+        {
+            float a = 2f * MathF.PI * i / k;
+            pts.Add(new Vector2(_c.x + MathF.Cos(a) * _r, _c.y + MathF.Sin(a) * _r));
+        }
+        return pts;
     }
 }
 
@@ -96,6 +119,15 @@ internal sealed class RectShape : CutShape
         float qv = MathF.Abs(Vector2.Dot(p, _n)) - _hd;
         float ou = Math.Max(qu, 0f), ov = Math.Max(qv, 0f);
         return MathF.Sqrt(ou * ou + ov * ov) + Math.Min(Math.Max(qu, qv), 0f);
+    }
+
+    public override List<Vector2> Outline(float step)
+    {
+        Vector2 u = _t * _hl, v = _n * _hd;
+        var c = new[] { _c - u - v, _c + u - v, _c + u + v, _c - u + v };
+        var pts = new List<Vector2>();
+        for (int i = 0; i < 4; i++) AddEdge(pts, c[i], c[(i + 1) % 4], step);
+        return pts;
     }
 }
 
@@ -180,6 +212,13 @@ internal sealed class ConvexShape : CutShape
             best = Math.Min(best, dx * dx + dy * dy);
         }
         return MathF.Sqrt(best);
+    }
+
+    public override List<Vector2> Outline(float step)
+    {
+        var pts = new List<Vector2>();
+        for (int i = 0; i < _v.Length; i++) AddEdge(pts, _v[i], _v[(i + 1) % _v.Length], step);
+        return pts;
     }
 
     // 向きのある爆発: 爆心の円 (後ろは縮む) と、向きの先へ伸びた先端を包む凸の涙形。
