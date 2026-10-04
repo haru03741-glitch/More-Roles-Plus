@@ -89,6 +89,8 @@ internal static class DamageMap
     // 部屋の絵と損傷マスクの準備ができているか (無ければ作る)
     internal static bool Ready() => MrpBundle.Ready && EnsureMap();
 
+    internal static string EnsureBreakdown = "";
+
     private static bool EnsureMap()
     {
         var ship = ShipStatus.Instance;
@@ -97,6 +99,7 @@ internal static class DamageMap
 
         Reset();
         _ship = ship;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // 部屋の絵 (バニラの Unlit/MaskShader) の範囲を合わせて、マスクの置き場所を決める
         var rooms = new List<SpriteRenderer>();
@@ -111,6 +114,7 @@ internal static class DamageMap
         }
         if (!any) return false;
 
+        double tScan = sw.Elapsed.TotalMilliseconds;
         all.Expand(4f);
         _origin = all.min;
         _w = Mathf.CeilToInt(all.size.x * PixelsPerUnit);
@@ -131,7 +135,9 @@ internal static class DamageMap
             filterMode = FilterMode.Point,
             hideFlags = HideFlags.DontUnloadUnusedAsset,
         };
+        double tAlloc = sw.Elapsed.TotalMilliseconds;
         Upload();
+        double tUpload = sw.Elapsed.TotalMilliseconds;
 
         Shader.SetGlobalTexture(DamageTexId, _tex);
         Shader.SetGlobalTexture(GenTexId, _genTex);
@@ -166,7 +172,9 @@ internal static class DamageMap
         _decalMat = new Material(mat) { name = "MrpCrackDecal" };
         _decalMat.SetFloat("_UseDamage", 3f); // 3 = ひび: 穴の中と家具の上には描かない
 
-        Plugin.Logger.LogInfo($"damage map {_w}x{_h} ({_pixels.Length / 1024}KB) origin={_origin} rooms={rooms.Count}");
+        double tAll = sw.Elapsed.TotalMilliseconds;
+        EnsureBreakdown = $"scan={tScan:F1} alloc={tAlloc - tScan:F1} upload={tUpload - tAlloc:F1} mats={tAll - tUpload:F1}";
+        Plugin.Logger.LogInfo($"damage map {_w}x{_h} ({_pixels.Length / 1024}KB) origin={_origin} rooms={rooms.Count} {EnsureBreakdown}");
         return true;
     }
 
@@ -320,7 +328,7 @@ internal static class DamageMap
     // 背景・海・波・色かぶせ・影などは除く
     private static readonly System.Text.RegularExpressions.Regex NotRoomArt = new(
         "background|overlay|water|wave|tint|shadow|light|square|starfield|hull",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (コードを生成する初期化に 170ms・試合ごとに 1 回の走査なので解釈実行で足りる)
 
     private static bool IsRoomArt(SpriteRenderer sr)
     {
@@ -427,6 +435,8 @@ internal static class DamageMap
     internal static List<Rect> FurnitureFor(CutShape shape)
         => FurnitureNear(shape.Center, shape.BoundRadius * (1f + ScorchWidth) + HoleEdge);
 
+    internal static List<Rect> FurnitureAt(Vector2 c, float r) => FurnitureNear(c, r);
+
     private static List<Rect> FurnitureNear(Vector2 c, float r)
     {
         var list = new List<Rect>();
@@ -441,7 +451,78 @@ internal static class DamageMap
             list.Add(Rect.MinMaxRect(b.min.x - FurnitureMargin, b.min.y - FurnitureMargin,
                                      b.max.x + FurnitureMargin, b.max.y + FurnitureUp));
         }
+        foreach (var col in Physics2D.OverlapCircleAll(c, r + FurnitureUp, 1 << WallLayer))
+        {
+            var edge = col ? col.TryCast<EdgeCollider2D>() : null;
+            if (edge && !col.isTrigger) AddWallBumps(edge, list);
+        }
         return list;
+    }
+
+    private const int WallLayer = 9;
+    private const float BumpMinDepth = 0.3f, BumpMaxDepth = 1.6f; // 出っ張りの奥行き (壁の線から部屋の中へ)
+    private const float BumpMaxWidth = 1.8f;                         // 出っ張りの付け根の幅
+    private const float BumpStraight = 0.9f;                         // 付け根の前後の壁が付け根と同じ向きか (cos)
+    private const int BumpMaxVerts = 8;
+
+    // 壁の線の出っ張り = 壁に付けて置いた家具 (Skeld の監視室の机は、部屋の外周の当たり判定が机を回り込んで描かれている)。
+    // 真っ直ぐな壁の線が途中で部屋の側へ回り込み、同じ線の続きへ戻る所を探す。部屋の外周が閉じた輪なら、出っ張りの中が
+    // 輪の外 (歩けない) の時だけ家具とみなす (輪の中なら壁のくぼみ = 歩ける)。閉じていない線は守る側に倒す
+    private static void AddWallBumps(EdgeCollider2D edge, List<Rect> list)
+    {
+        var src = edge.points;
+        int n = src.Length;
+        if (n < 4) return;
+        var t = edge.transform;
+        Vector2 off = edge.offset;
+        var p = new Vector2[n];
+        for (int k = 0; k < n; k++) p[k] = t.TransformPoint(src[k] + off);
+        bool loop = n >= 8 && (p[0] - p[n - 1]).magnitude < 2f;
+
+        for (int i = 1; i < n - 2; i++)
+        for (int j = i + 2; j <= Math.Min(n - 2, i + BumpMaxVerts); j++)
+        {
+            Vector2 chord = p[j] - p[i];
+            float w = chord.magnitude;
+            if (w < 0.3f || w > BumpMaxWidth) continue;
+            Vector2 cd = chord / w;
+            if (Vector2.Dot((p[i] - p[i - 1]).normalized, cd) < BumpStraight || Vector2.Dot((p[j + 1] - p[j]).normalized, cd) < BumpStraight) continue;
+            float path = 0f, maxD = 0f, side = 0f;
+            bool ok = true;
+            Vector2 sum = Vector2.zero;
+            float x0 = Math.Min(p[i].x, p[j].x), x1 = Math.Max(p[i].x, p[j].x), y0 = Math.Min(p[i].y, p[j].y), y1 = Math.Max(p[i].y, p[j].y);
+            for (int k = i + 1; k <= j; k++) path += (p[k] - p[k - 1]).magnitude;
+            for (int k = i + 1; k < j && ok; k++)
+            {
+                Vector2 v = p[k] - p[i];
+                float along = Vector2.Dot(v, cd), d = cd.x * v.y - cd.y * v.x;
+                if (along < -0.1f * w || along > 1.1f * w) ok = false;
+                if (side == 0f) side = Math.Sign(d);
+                else if (Math.Sign(d) != side && Math.Abs(d) > 0.05f) ok = false;
+                maxD = Math.Max(maxD, Math.Abs(d));
+                sum += p[k];
+                x0 = Math.Min(x0, p[k].x); x1 = Math.Max(x1, p[k].x); y0 = Math.Min(y0, p[k].y); y1 = Math.Max(y1, p[k].y);
+            }
+            if (!ok || maxD < BumpMinDepth || maxD > BumpMaxDepth || path < w + 0.6f) continue;
+            if (loop)
+            {
+                // 出っ張りの中の点 (付け根の中点から出っ張りの頂点の重心へ半分) が輪の中なら、歩けるくぼみ
+                Vector2 inside = (p[i] + p[j]) * 0.25f + sum / (j - i - 1) * 0.5f;
+                if (InsidePolyline(p, inside)) continue;
+            }
+            list.Add(Rect.MinMaxRect(x0 - FurnitureMargin, y0 - FurnitureMargin, x1 + FurnitureMargin, y1 + FurnitureUp));
+            i = j - 1; // 同じ出っ張りを重ねて数えない
+            break;
+        }
+    }
+
+    private static bool InsidePolyline(Vector2[] p, Vector2 q)
+    {
+        bool inside = false;
+        for (int a = 0, b = p.Length - 1; a < p.Length; b = a++)
+            if ((p[a].y > q.y) != (p[b].y > q.y) && q.x < (p[b].x - p[a].x) * (q.y - p[a].y) / (p[b].y - p[a].y) + p[a].x)
+                inside = !inside;
+        return inside;
     }
 
     // 家具の範囲を損傷マスクの A に書く (ひびの板がそこを描かない)。呼んだ側で Upload する

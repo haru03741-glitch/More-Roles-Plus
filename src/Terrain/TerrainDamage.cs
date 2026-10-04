@@ -276,7 +276,7 @@ internal static class TerrainDamage
     // 壊さない物: ゲームに関わる物 (当面の裁定)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形
     private static readonly System.Text.RegularExpressions.Regex ProtectedName = new(
         @"^MrpRubbleBlock$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (初回の破壊で 1 回だけ生成のために止まる・名前は短く数も少ない)
 
     internal static bool IsProtected(Component c)
     {

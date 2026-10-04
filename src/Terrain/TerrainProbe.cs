@@ -377,6 +377,16 @@ internal static class TerrainProbe
             }
         });
 
+        TestBridge.Register("furniture", "<x> <y> <r> 守る家具の範囲 (家具の当たり判定・壁の線の出っ張り)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length < 3) { reply("ERR furniture <x> <y> <r>"); return; }
+            var c = new Vector2(float.Parse(a[0], CultureInfo.InvariantCulture), float.Parse(a[1], CultureInfo.InvariantCulture));
+            var list = DamageMap.FurnitureAt(c, float.Parse(a[2], CultureInfo.InvariantCulture));
+            foreach (var rc in list) TestBridge.Out($"FURNITURE x={rc.xMin:F2}..{rc.xMax:F2} y={rc.yMin:F2}..{rc.yMax:F2}");
+            reply($"OK furniture n={list.Count}");
+        });
+
         TestBridge.Register("warm", "試合の始めの先回りの準備 (損傷マスク・絵・種点・焼くカメラ・コンパイル) にかかった時間", (_, reply) => reply($"OK warm {TerrainWarm.Report}"));
 
         TestBridge.Register("shadowmask", "視界の影を作る層 (Constants.ShadowMask) と船の層 (ShipOnlyMask・ShipAndObjectsMask) のビット", (_, reply) =>
