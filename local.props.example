@@ -1,0 +1,6 @@
+<!-- local.props にコピーして、自分の Among Us のインストール先に書き換える (local.props はコミットしない) -->
+<Project>
+    <PropertyGroup>
+        <AmongUsPath>C:\Program Files\Epic Games\AmongUs</AmongUsPath>
+    </PropertyGroup>
+</Project>

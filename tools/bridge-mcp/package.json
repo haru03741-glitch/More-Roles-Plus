@@ -1,0 +1,12 @@
+{
+  "name": "mrp-bridge-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "TestBridge (file-protocol remote test bridge) wrapped as a stdio MCP server",
+  "main": "server.js",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  }
+}

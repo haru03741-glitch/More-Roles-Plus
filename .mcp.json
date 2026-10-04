@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mrp-bridge": {
+      "command": "node",
+      "args": ["tools/bridge-mcp/server.js"]
+    }
+  }
+}

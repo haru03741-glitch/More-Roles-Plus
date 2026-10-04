@@ -1,0 +1,13 @@
+bin/
+obj/
+build/
+*.user
+.vs/
+.idea/
+local.props
+node_modules/
+
+# ローカル運用ノート
+CLAUDE.md
+docs/
+.claude/

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- AmongUsPath (ゲームのインストール先) は local.props で上書きする。local.props.example を参照。 -->
+    <PropertyGroup>
+        <AmongUsPath>C:\Program Files\Epic Games\AmongUs</AmongUsPath>
+    </PropertyGroup>
+    <Import Project="local.props" Condition="Exists('local.props')" />
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <LangVersion>preview</LangVersion>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Optimize>true</Optimize>
+        <Nullable>disable</Nullable>
+        <AssemblyName>MoreRolesPlus</AssemblyName>
+        <RootNamespace>MoreRolesPlus</RootNamespace>
+        <Description>More Roles Plus</Description>
+        <Platforms>AnyCPU</Platforms>
+        <!-- BepInEx はゲーム直下の別ツリー (BepInEx-MRP) に置き、他の mod と plugins を共有しない -->
+        <MrpBepInExDir>$(AmongUsPath)\BepInEx-MRP</MrpBepInExDir>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="AmongUs.GameLibs.Steam" Version="2026.9.29" PrivateAssets="all" />
+        <PackageReference Include="BepInEx.IL2CPP.MSBuild" Version="2.1.0-rc.1" PrivateAssets="all" />
+        <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
+    </ItemGroup>
+    <ItemGroup>
+        <Compile Remove="tools\**" />
+    </ItemGroup>
+    <Target Name="CopyToGame" AfterTargets="Build" Condition="Exists('$(MrpBepInExDir)\core')">
+        <MakeDir Directories="$(MrpBepInExDir)\plugins" />
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\plugins\" ContinueOnError="WarnAndContinue" />
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(MrpBepInExDir)\plugins\" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" ContinueOnError="WarnAndContinue" />
+    </Target>
+</Project>
