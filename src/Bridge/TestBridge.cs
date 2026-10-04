@@ -54,7 +54,10 @@ public static class TestBridge
             string basePath = OperatingSystem.IsAndroid()
                 ? Environment.GetEnvironmentVariable("FUSION_APP_DATA_DIR") is { Length: > 0 } appDir ? appDir : Application.persistentDataPath
                 : Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            _dir = Path.Combine(basePath, "MRP_Logs", "bridge");
+            // 同じ PC で 2 つ起動する時 (同期テスト) は環境変数で置き場を分ける
+            _dir = Environment.GetEnvironmentVariable("MRP_BRIDGE_DIR") is { Length: > 0 } custom
+                ? custom
+                : Path.Combine(basePath, "MRP_Logs", "bridge");
             _screensDir = Path.Combine(_dir, "Screens");
             Directory.CreateDirectory(_screensDir);
 
@@ -64,6 +67,7 @@ public static class TestBridge
 
             BridgeLog.Install();
             BuiltinCommands.RegisterAll();
+            LobbyCommands.Register();
             Terrain.TerrainProbe.Register();
             WriteOut($"BRIDGE up {Plugin.Version}");
         }
