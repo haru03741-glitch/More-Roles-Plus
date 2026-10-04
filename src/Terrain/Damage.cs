@@ -67,6 +67,8 @@ internal readonly struct ResolvedDamage
 internal sealed class DamageProfile
 {
     public int WallDamage;          // 当たった壁の耐久をいくつ削るか
+    public int StrongDamage;        // 打撃: 力が StrongForce 以上の振りで削る耐久
+    public float StrongForce;
     public float OuterRingScale;    // 爆発: この倍率の輪までは「抜けないがひびが入る」
     public bool Scorch;             // 焦げを付けるか
     public float BreachLength;      // 打撃: 抜ける壁の区間の長さ (世界単位)
@@ -76,6 +78,8 @@ internal sealed class DamageProfile
     public float ForceLength;       // 打撃: 力 1 で抜ける区間が何倍まで伸びるか (力 0.5 で BreachLength ちょうど・力 0 で 0.7 倍)
     public float ConeStretch;       // 爆発: 力 1 で向きの先へ半径の何倍まで伸びるか
     public float ConeShrink;        // 爆発: 力 1 で後ろ側の半径を何割縮めるか (偏った分だけ全体は小さく)
+    public float CrackStretch;      // 爆発: 力 1 で割れ目が向きに沿って何倍まで伸びるか (から 1 を引いた値)
+    public float CrackBias;         // 爆発: 力 1 で向きの先ほど大きく割れる割合
 
     public static readonly DamageProfile Explosion = new()
     {
@@ -84,11 +88,15 @@ internal sealed class DamageProfile
         Scorch = true,
         ConeStretch = 1.2f,
         ConeShrink = 0.3f,
+        CrackStretch = 0.7f,
+        CrackBias = 0.45f,
     };
 
     public static readonly DamageProfile Blunt = new()
     {
         WallDamage = 1,
+        StrongDamage = 2,
+        StrongForce = 0.8f,
         Scorch = false,
         BreachLength = 1.1f,
         BreachDepth = 1.1f,

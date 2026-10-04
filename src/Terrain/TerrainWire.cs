@@ -33,6 +33,8 @@ internal static class TerrainWire
     private static float Dq(short q) => q / PosScale;
     private static byte QSizeByte(float s) => (byte)Math.Clamp(Math.Round(s * SizeScale), 0, 255);
     private static byte QForceByte(float f) => (byte)Math.Clamp(Math.Round(f * 255.0), 0, 255);
+    // 電文の角度。QNormal 済みの向きからは送った値そのものが戻る (割れ目の向きを全員で同じ整数から作るため)
+    public static ushort AngleIndex(Vector2 n) => QAngle(n);
     private static ushort QAngle(Vector2 n) => (ushort)((long)Math.Round(Math.Atan2(n.y, n.x) * AngleScale) & 0xffff);
     private static Vector2 FromAngle(ushort a)
     {

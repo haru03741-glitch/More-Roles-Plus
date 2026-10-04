@@ -50,8 +50,9 @@ internal static class BreakPieces
     // テスト用: false で塊を作らない (見た目の比較用)
     internal static bool Enabled = true;
 
-    // touched = この破壊が抜いた損傷マスクの画素の範囲。割れ目は crackAt から放射状 (種 = seed)
-    public static void Spawn(RectInt touched, List<BreakPiece> output, Vector2 crackAt, int seed)
+    // touched = この破壊が抜いた損傷マスクの画素の範囲。割れ目は cracks (古い順・前の剥げかけのひび + この破壊)。
+    // 最後の割れ目の範囲はここで抜いた範囲に置き換える
+    public static void Spawn(RectInt touched, List<BreakPiece> output, List<CrackPattern> cracks)
     {
         if (touched.width <= 0 || !MrpBundle.Ready || !Enabled) return;
         byte gen = DamageMap.CurrentGen;
@@ -59,7 +60,9 @@ internal static class BreakPieces
         if (DamageMap.GenWrapped) Evict(gen);
         int w = DamageMap.MapW, h = DamageMap.MapH;
         Vector2 tlo = DamageMap.TexelCenter(touched.xMin, touched.yMin), thi = DamageMap.TexelCenter(touched.xMax, touched.yMax);
-        FractureSites.Build(crackAt, seed, Rect.MinMaxRect(tlo.x, tlo.y, thi.x, thi.y), gen);
+        int last = cracks.Count - 1;
+        cracks[last] = cracks[last].WithArea(Rect.MinMaxRect(tlo.x, tlo.y, thi.x, thi.y), FractureSites.Margin, FractureSites.Max);
+        FractureSites.Build(cracks, gen);
 
         var cells = new Dictionary<byte, Acc>();
         for (int py = touched.yMin; py < touched.yMax; py++)

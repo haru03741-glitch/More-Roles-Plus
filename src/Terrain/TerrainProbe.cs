@@ -387,6 +387,14 @@ internal static class TerrainProbe
             reply($"OK look {v[0]} {v[1]}");
         });
 
+        TestBridge.Register("hud", "<0|1> HUD (タスク一覧・ボタン) を隠す / 戻す (撮影用)", (args, reply) =>
+        {
+            var hud = HudManager.Instance;
+            if (!hud) { reply("ERR no hud"); return; }
+            hud.gameObject.SetActive(args.Trim() != "0");
+            reply($"OK hud {(hud.gameObject.activeSelf ? 1 : 0)}");
+        });
+
         TestBridge.Register("maskat", "<x> <y> その点の損傷マスク (R=穴 G=焦げ B=熾火 A=家具)", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR maskat needs <x> <y>"); return; }

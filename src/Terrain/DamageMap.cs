@@ -54,9 +54,9 @@ internal static class DamageMap
     // floorY: この高さより下は見た目では抜かない (壁の当たり判定が見た目の根元より下 = 床まで伸びているマップがあるため)
     // keep: 家具の保護範囲 (FurnitureFor で求め、壁の当たり判定の切り取りにも同じものを渡す)
     // body: 穴から露出した壁の中 (蓋と同じ判定)。帯 (切った面の近く) の外でも、ここは抜く
-    // pieces: 渡すと、抜いた所の壁の絵を割った塊を作って入れる (動かすのは TerrainFx)。割れ目は crackAt から放射状 (種 = crackSeed)
+    // pieces: 渡すと、抜いた所の壁の絵を割った塊を作って入れる (動かすのは TerrainFx)。割れ目は cracks (古い順・最後がこの破壊)
     public static string Breach(CutShape shape, List<Vector2> removedSegments, bool scorch, float floorY = float.NegativeInfinity,
-        List<Rect> keep = null, WallBody body = null, List<BreakPiece> pieces = null, Vector2 crackAt = default, int crackSeed = 0)
+        List<Rect> keep = null, WallBody body = null, List<BreakPiece> pieces = null, List<CrackPattern> cracks = null)
     {
         if (!MrpBundle.Ready) return "bundle not ready";
         if (!EnsureMap()) return "no ship";
@@ -71,7 +71,7 @@ internal static class DamageMap
         Stamp(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body, out RectInt touched);
         SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書くので Upload より前
         Upload();
-        if (pieces != null) BreakPieces.Spawn(touched, pieces, crackAt, crackSeed);
+        if (pieces != null && cracks is { Count: > 0 }) BreakPieces.Spawn(touched, pieces, cracks);
         return null;
     }
 

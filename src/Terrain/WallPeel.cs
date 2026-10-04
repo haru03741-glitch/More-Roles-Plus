@@ -14,25 +14,40 @@ internal static class WallPeel
     private const float FaceHeight = 0.85f; // 壁の面の高さ (これより上は壁の上面)
     private const float Sample = 1f / 48f;  // 細胞の範囲を測る刻み
 
+    private const float PeelMargin = 0.15f; // 剥げかけの割れ目の種点は描く範囲からこれだけ先まで
+    private const int PeelCap = 16;          // 重ねた剥げかけの割れ目 1 つ分の種点の上限 (崩れる時も同じ数でなぞる)
+    private const int MaxHits = 2;           // 覚えておく打撃の数 (古い物から忘れる)。耐久 3 なら崩れる前は 2 回まで。16 × 2 で崩れる打撃の割れ目に 16 点以上残す
+
+    // 叩いた 1 回分: 割れ目 (向き・掠め具合で形が変わる) と、その時に浮かせた / 欠けさせた数
+    private sealed class HitMark
+    {
+        public CrackPattern Crack;
+        public float Reach, G;
+        public ushort Along;
+        public int Lifted, Missing, Hp;
+    }
+
     private sealed class State
     {
-        public Vector2 Center;
         public float BaseY;
-        public int Seed, Slot;
+        public int Slot;
+        public readonly List<HitMark> Hits = new();
         public readonly List<(GameObject Go, Sprite Sp)> Parts = new();
     }
 
     private static readonly Dictionary<long, State> States = new();
     private static int _nextSlot;
 
-    // 崩れなかった打撃。hp = 残りの耐久。false = 剥げかけを出せない壁 (呼んだ側が従来のひびを貼る)
-    public static bool Hit(Vector2 hit, Vector2 normal, int hp, ushort seed)
+    // 崩れなかった打撃。swing = 振った向き・hp = 残りの耐久。false = 剥げかけを出せない壁 (呼んだ側が従来のひびを貼る)。
+    // 叩くたびに前のひびは残したまま、この打撃の割れ目を重ねる。正面からは丸く深く、掠めるほど壁に沿って
+    // 振った向きへ細長く浅く割れ、浮いた表面は振った向きへめくれる
+    public static bool Hit(Vector2 hit, Vector2 normal, Vector2 swing, int hp, ushort seed)
     {
         if (normal.y >= -0.5f || !DamageMap.Ready()) return false;
         long key = WallDurability.CellKey(hit);
         if (!States.TryGetValue(key, out var st))
         {
-            st = new State { Center = new Vector2(hit.x, hit.y + Lift), BaseY = hit.y, Seed = seed * 31 + 7, Slot = _nextSlot };
+            st = new State { BaseY = hit.y, Slot = _nextSlot };
             _nextSlot = (_nextSlot + 1) & 255;
             States[key] = st;
         }
@@ -41,67 +56,97 @@ internal static class WallPeel
         // 耐久が減るほどひびが広がり、浮く・欠ける細胞が増える
         bool last = hp <= 1;
         float reach = last ? 0.55f : 0.32f;
-        int lifted = last ? 4 : 2, missing = last ? 2 : 0;
-        Vector2 c = st.Center;
+        var crack = TerrainDamage.StrikeCrack(new Vector2(hit.x, hit.y + Lift), normal, swing, seed * 31 + 7, default, PeelMargin, PeelCap, 0.8f);
+        float g = FractureSites.Glance(normal, swing, out ushort along);
+        Vector2 c = crack.Center;
+        // 掠めるほど横に長く・縦に浅く
         float y0 = st.BaseY + 0.03f, y1 = st.BaseY + FaceHeight;
-        var area = Rect.MinMaxRect(c.x - reach, Math.Max(y0, c.y - reach), c.x + reach, Math.Min(y1, c.y + reach));
-        FractureSites.Build(c, st.Seed, area, FractureSites.PeelRow0 + st.Slot);
+        float hw = reach * (1f + 0.6f * g), hh = reach * (1f - 0.3f * g);
+        var area = Rect.MinMaxRect(c.x - hw, Math.Max(y0, c.y - hh), c.x + hw, Math.Min(y1, c.y + hh));
+        st.Hits.Add(new HitMark
+        {
+            Crack = crack.WithArea(area, PeelMargin, PeelCap), Reach = reach, G = g, Along = along, Hp = hp,
+            Lifted = last ? 4 : 2, Missing = last ? (g > 0.6f ? 1 : 2) : 0,
+        });
+        if (st.Hits.Count > MaxHits) st.Hits.RemoveAt(0);
+
+        var cracks = new List<CrackPattern>(st.Hits.Count);
+        foreach (var h in st.Hits) cracks.Add(h.Crack);
+        FractureSites.Build(cracks, FractureSites.PeelRow0 + st.Slot);
         float slot = st.Slot / 255f;
+        for (int j = 0; j < st.Hits.Count; j++) Draw(st, j, slot, normal, j == st.Hits.Count - 1);
+        return true;
+    }
 
-        // ひびの線 (細胞の境)
-        Keep(st, BreakPieces.MakePeel(c, area, new Color(1f, slot, reach, 1f), false, out var sp), sp);
+    // 打撃 j の割れ目のひびと、浮いた / 欠けた表面。fresh = 今の打撃 (欠けた表面を落とす。前の打撃の分は跡だけ)
+    private static void Draw(State st, int j, float slot, Vector2 normal, bool fresh)
+    {
+        var h = st.Hits[j];
+        var area = h.Crack.Area;
+        Vector2 c = h.Crack.Center;
+        float y0 = st.BaseY + 0.03f;
+        int from = FractureSites.Start(j), to = FractureSites.Start(j + 1);
 
-        // 中心に近い細胞から、浮かせる / 欠けさせる物を選ぶ (中心の細胞は砕けやすいので欠ける側から)
+        // ひびの線 (細胞の境)。b = 縦の半径・a = 中心の種点 + 64 × 横の伸びの段 (1 + 0.4 × 段 倍。シェーダの _UseDamage = 5)
+        int ci = FractureSites.KeyAt(c.x, c.y);
+        int sl = Math.Clamp((int)MathF.Round((h.Crack.Stretch - 1f) / 0.4f), 0, 3);
+        Keep(st, BreakPieces.MakePeel(c, area, new Color(1f, slot, h.Reach * (1f - 0.3f * h.G), (ci + 64 * sl) / 255f), false, out var sp), sp);
+
+        // 中心に近い細胞から、浮かせる / 欠けさせる物を選ぶ (中心の細胞は砕けやすいので欠ける側から)。
+        // 掠めた打撃は振った向きの先の細胞ほど選ばれやすい
+        Vector2 at = FractureSites.Dir(h.Along);
+        float limit = h.Reach * (0.75f + 0.45f * h.G);
         var near = new List<(int Index, float D)>();
-        for (int i = 0; i < FractureSites.Count; i++)
+        for (int i = from; i < to; i++)
         {
             float dx = FractureSites.SiteX(i) - c.x, dy = FractureSites.SiteY(i) - c.y;
             float d = MathF.Sqrt(dx * dx + dy * dy);
-            if (d <= reach * 0.75f && FractureSites.SiteY(i) > y0 + 0.05f) near.Add((i, d));
+            if (d <= limit && FractureSites.SiteY(i) > y0 + 0.05f) near.Add((i, d - (dx * at.x + dy * at.y) * 0.5f * h.G));
         }
         near.Sort((a, b) => a.D != b.D ? a.D.CompareTo(b.D) : a.Index.CompareTo(b.Index));
         var bounds = CellBounds(area, near);
-        var rnd = new System.Random(st.Seed ^ (hp * 977));
+        var rnd = new System.Random(h.Crack.Seed ^ (h.Hp * 977));
+        bool last = h.Hp <= 1;
         int used = 0;
         foreach (var (i, d) in near)
         {
-            if (used >= lifted + missing) break;
+            if (used >= h.Lifted + h.Missing) break;
             if (!bounds.TryGetValue(i, out var b)) continue;
             // 外の細胞ほど選ばれにくい (ひびの中ほどがよく浮く)
-            if (rnd.NextDouble() > 0.85 - d / reach * 0.4) continue;
-            bool drop = used < missing;
+            if (rnd.NextDouble() > 0.85 - Math.Max(0f, d) / limit * 0.4) continue;
+            bool drop = used < h.Missing;
             used++;
             float sx = FractureSites.SiteX(i), sy = FractureSites.SiteY(i);
             if (drop)
             {
-                // 断面だけ残し、表面の絵は根元へ落とす
+                // 断面だけ残し、表面の絵は根元へ落とす (前の打撃で欠けた所は跡だけ)
                 Keep(st, BreakPieces.MakePeel(new Vector2(sx, sy), b, new Color(i / 255f, slot, 0f, 1f), false, out sp), sp);
+                if (!fresh) continue;
                 var fall = BreakPieces.MakePeel(new Vector2(sx, sy), b, new Color(i / 255f, slot, 0.5f, 0.5f), true, out _);
-                if (fall != null) TerrainFx.DropPeel(fall, st.BaseY, -normal, st.Seed + i * 131 + hp);
+                if (fall != null) TerrainFx.DropPeel(fall, st.BaseY, -normal, h.Crack.Seed + i * 131 + h.Hp);
                 continue;
             }
-            // 浮いた表面: 中心から外へ押し出され、少し下がる (0.2 単位の幅を 0..1 で頂点色へ)
+            // 浮いた表面: 中心から外へ押し出され、掠めた打撃は振った向きへめくれる (先の側ほど大きく)。少し下がる。
+            // 0.2 単位の幅を 0..1 で頂点色へ
             float ux = sx - c.x, uy = sy - c.y, ul = MathF.Max(1e-4f, MathF.Sqrt(ux * ux + uy * uy));
+            ux /= ul; uy /= ul;
+            float vx = ux * (1f - 0.7f * h.G) + at.x * 1.3f * h.G, vy = uy * (1f - 0.7f * h.G) + at.y * 1.3f * h.G;
+            float vl = MathF.Max(1e-4f, MathF.Sqrt(vx * vx + vy * vy));
             float push = (last ? 0.04f : 0.024f) + (float)rnd.NextDouble() * (last ? 0.035f : 0.02f);
-            float ox = ux / ul * push, oy = uy / ul * push - (last ? 0.025f : 0.015f); // 重さで少し垂れる
+            push *= 1f + 0.6f * h.G * (ux * at.x + uy * at.y);
+            float ox = Math.Clamp(vx / vl * push, -0.095f, 0.095f), oy = Math.Clamp(vy / vl * push - (last ? 0.025f : 0.015f), -0.095f, 0.095f); // 重さで少し垂れる
             var wide = Rect.MinMaxRect(b.xMin + Math.Min(0f, ox), b.yMin + Math.Min(0f, oy), b.xMax + Math.Max(0f, ox), b.yMax + Math.Max(0f, oy));
             Keep(st, BreakPieces.MakePeel(new Vector2(sx, sy), wide, new Color(i / 255f, slot, 0.5f + ox / 0.2f, 0.5f + oy / 0.2f), false, out sp), sp);
         }
-        return true;
     }
 
-    // 崩れる打撃の割れ目: 剥げかけがあればその中心と種 (ひびをなぞって崩れる)
-    public static bool TryGet(Vector2 hit, out Vector2 center, out int seed)
+    // 崩れる打撃の割れ目の下地: 剥げかけていればそのひび (古い順)。崩れる打撃の割れ目を呼んだ側が最後に足す
+    public static List<CrackPattern> Cracks(Vector2 hit)
     {
+        var list = new List<CrackPattern>();
         if (States.TryGetValue(WallDurability.CellKey(hit), out var st))
-        {
-            center = st.Center;
-            seed = st.Seed;
-            return true;
-        }
-        center = default;
-        seed = 0;
-        return false;
+            foreach (var h in st.Hits) list.Add(h.Crack);
+        return list;
     }
 
     // 崩れた後: 剥げかけの部品を片付ける (崩れた塊が代わりに描く)

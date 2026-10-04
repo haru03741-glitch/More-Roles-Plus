@@ -54,7 +54,9 @@ internal static class TerrainDamage
 
         // 耐久の格子は送る値 (量子化した点) で数える。受け手も同じ点で同じ格子に書く
         hit = TerrainWire.Q(hit);
-        int hp = Math.Max(WallDurability.Remaining(hit) - p.WallDamage, sbyte.MinValue);
+        // 強い振りは 2 削る (力は送る値で比べる)
+        int damage = TerrainWire.QForce(e.Force) >= p.StrongForce ? p.StrongDamage : p.WallDamage;
+        int hp = Math.Max(WallDurability.Remaining(hit) - damage, sbyte.MinValue);
         r = new ResolvedDamage(e.Kind, hit, qn, qd, TerrainWire.QForce(e.Force), TerrainWire.QSize(depth), (sbyte)hp, e.Seed);
         return true;
     }
@@ -149,7 +151,11 @@ internal static class TerrainDamage
         int caps = cut > 0 ? WallBody.Build(body.Caps(core)) : 0;
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         var pieces = new List<BreakPiece>();
-        string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces, crackAt: e.Position, crackSeed: e.Seed) : null;
+        // 割れ目は爆心から放射状。向きに偏った爆発は向きの先へ伸び、先ほど大きな塊になる
+        bool aimed = e.Force > 0.02f;
+        var crack = new CrackPattern(e.Position, e.Seed, default, axis: aimed ? TerrainWire.AngleIndex(e.Direction) : (ushort)0,
+            stretch: aimed ? 1f + p.CrackStretch * e.Force : 1f, bias: aimed ? p.CrackBias * e.Force : 0f);
+        string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces, cracks: new List<CrackPattern> { crack }) : null;
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
@@ -170,7 +176,8 @@ internal static class TerrainDamage
             // 耐久が減るほどひびが育つ
             // 面を持つ壁は表面が剥げかける (崩れる時と同じ割れ目のひび)。他の壁はひびの板
             float reach = hp >= WallDurability.MaxHp - 1 ? 0.3f : 0.6f;
-            if (WallPeel.Hit(hit, normal, hp, e.Seed) || DamageMap.Cracks(hit, reach, AngleOf(dir)) == null) TerrainFx.Chip(hit, dir, e.Seed);
+            if (WallPeel.Hit(hit, normal, e.Direction, hp, e.Seed) ||
+                DamageMap.Cracks(hit, reach, AngleOf(SlantAxis(dir, e.Direction, p.MaxSlantDeg, out _))) == null) TerrainFx.Chip(hit, dir, e.Seed);
             return $"blunt hit hp={hp} at=({hit.x:0.00},{hit.y:0.00})";
         }
 
@@ -199,11 +206,11 @@ internal static class TerrainDamage
         // floorY は見た目だけ (その下の当たり判定は床の絵の上の見えない壁なので切ってよい)
         var pieces = new List<BreakPiece>();
         // 割れ目の中心は叩いた所。面を持つ壁を下から叩いた時は、絵が当たり判定の線より上に立っているので面の中ほどへ上げる。
-        // 剥げかけていた壁は、そのひびと同じ中心・同じ種で割れる
+        // 剥げかけていた壁は、そのひびの上にこの打撃の割れ目が重なる (前のひびをなぞって崩れる)
         Vector2 crackAt = normal.y < -0.5f ? hit + new Vector2(0f, CrackLift) : hit;
-        int crackSeed = e.Seed;
-        if (WallPeel.TryGet(hit, out var peelAt, out int peelSeed)) { crackAt = peelAt; crackSeed = peelSeed; }
-        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, crackAt, crackSeed) : null;
+        var cracks = WallPeel.Cracks(hit);
+        cracks.Add(StrikeCrack(crackAt, normal, e.Direction, e.Seed, default));
+        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, cracks) : null;
         if (cut > 0) WallPeel.Release(hit);
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
         // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
@@ -226,6 +233,20 @@ internal static class TerrainDamage
         cos = maxCos;
         return new Vector2(inward.x * maxCos - inward.y * sin, inward.x * sin + inward.y * maxCos);
     }
+
+    // 打撃の割れ目: 正面から叩くと丸く中心が細かく砕け、掠めるほど壁に沿って振った向きへ細長く伸び、先ほど大きく割れる。
+    // 中心も振った向きの先へ少しずれる
+    internal static CrackPattern StrikeCrack(Vector2 at, Vector2 normal, Vector2 swing, int seed, Rect area,
+        float margin = FractureSites.Margin, int cap = FractureSites.Max, float shiftScale = 1f)
+    {
+        float g = FractureSites.Glance(normal, swing, out ushort along);
+        Vector2 c = at + FractureSites.Dir(along) * (GlanceShift * shiftScale * g);
+        return new CrackPattern(c, seed, area, margin, cap, along, 1f + GlanceStretch * g, GlanceBias * g, 0.75f + 0.25f * g);
+    }
+
+    private const float GlanceShift = 0.12f;   // 掠め打ちで割れ目の中心が振った向きへずれる距離
+    private const float GlanceStretch = 1.6f;  // 掠め打ちで割れ目が伸びる倍率 (g = 1 で 2.6 倍)
+    private const float GlanceBias = 0.35f;    // 掠め打ちで向きの先ほど大きく割れる割合
 
     // 力 0 → 0.7 倍・0.5 → 1 倍・1 → full 倍
     private static float ForceScale(float f, float full) => f < 0.5f ? 0.7f + 0.6f * f : 1f + (full - 1f) * (2f * f - 1f);

@@ -152,9 +152,12 @@ Shader "MRP/TerrainSprite"
                     float kb = round(i.color.r * 255);
                     if (kb > 254.5)
                     {
-                        // ひび: 中心 (種点 0) から半径の中だけ、細胞の境に細い線。端はノイズでばらつかせる
+                        // ひび: 中心の種点から楕円の中だけ、細胞の境に細い線。端はノイズでばらつかせる。
+                        // a = 中心の種点の番号 + 64 × 横の伸びの段 (横の半径 = 縦の半径 b × (1 + 0.4 × 段))
                         clip(c.a - 0.5);
-                        float2 dc = ow - SiteAt(0, row);
+                        float av = round(i.color.a * 255);
+                        float2 dc = ow - SiteAt(fmod(av, 64), row);
+                        dc.x /= 1 + 0.4 * floor(av / 64);
                         float nr = tex2D(_Noise, ow * 2.3).r;
                         if (dot(dc, dc) > i.color.b * i.color.b * (0.55 + nr * 0.6)) discard;
                         float ek = CellExcess(ow, NearestSite(ow, row), row);
