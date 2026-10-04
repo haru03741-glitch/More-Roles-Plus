@@ -14,6 +14,9 @@ internal static class TerrainDamage
     // 崩れた塊が飛ぶ範囲 (壊した形の外へこれだけ先の壁まで跳ね返りに使う)
     private const float FxReach = 3f;
     private const float CrackLift = 0.4f; // 打撃の割れ目の中心を上げる高さ (壁の面の高さ ≈0.85 の半分ほど)
+    // 爆発の外側の輪: 形の縁からこれ以内の点は穴の口 (切った壁の端点そのもの) としてひびを入れない。
+    // 端点は縁ちょうどにあり、d = ±0 の符号が端末の CPU で分かれる (PC は +0 でひび・Android は −0 で無し)
+    private const float RingLip = 0.02f;
 
     // テスト用: 直前の破壊で切り取った壁の区間 (線分の両端)。見た目の穴と当たり判定の抜けが揃っているかを holecheck で調べる
     internal static readonly List<Vector2> LastRemoved = new();
@@ -141,7 +144,7 @@ internal static class TerrainDamage
             if (col.gameObject.layer != ShipLayer) continue;
             if (!ClosestPoint(col, e.Position, out Vector2 q)) continue;
             float d = core.SignedDistance(q.x, q.y);
-            if (d <= 0f || d > ring) continue;
+            if (d <= RingLip || d > ring) continue;
             WallDurability.Hit(q, 1);
             DamageMap.Cracks(q, 0.35f, AngleOf(q - e.Position));
             cracked++;

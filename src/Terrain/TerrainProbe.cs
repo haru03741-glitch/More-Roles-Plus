@@ -192,15 +192,27 @@ internal static class TerrainProbe
         });
     }
 
+    // テスト用の種 (null = 時刻から)。固定すると端末をまたいで同じ割れ方になる (PC と Android の数値の突き合わせ)。
+    // 固定した時はコマンド 1 回ごとに 1 進む (同じ順に送れば同じ列)
+    private static int? _fixedSeed;
+    private static ushort NextSeed(int k = 0) => (ushort)((_fixedSeed.HasValue ? _fixedSeed++ : System.Environment.TickCount) + k);
+
     internal static void RegisterDamage()
     {
+        TestBridge.Register("seed", "<n|off> blast / hammer / netloop の種を固定する (off = 時刻から)", (args, reply) =>
+        {
+            string a = args.Trim();
+            _fixedSeed = int.TryParse(a, out int n) ? n : null;
+            reply($"OK seed {(_fixedSeed?.ToString() ?? "off")}");
+        });
+
         TestBridge.Register("blast", "<x> <y> <r> [dx dy force] 爆発 (ロケットランチャー相当)。向きと力 (0..1) を付けると向きの先へ伸びた涙形に抜ける", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || (v.Length != 3 && v.Length != 6)) { reply("ERR blast needs <x> <y> <r> [dx dy force]"); return; }
             var dir = v.Length == 6 ? new Vector2(v[3], v[4]) : Vector2.zero;
             float force = v.Length == 6 ? v[5] : 0f;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, new Vector2(v[0], v[1]), dir.normalized, v[2], force, (ushort)System.Environment.TickCount));
+            string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, new Vector2(v[0], v[1]), dir.normalized, v[2], force, NextSeed()));
             reply($"OK blast {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
         });
 
@@ -217,7 +229,7 @@ internal static class TerrainProbe
                 int n = blunt ? 5 : 3;
                 if (i + n > p.Count || !TryParseFloats(string.Join(' ', p.GetRange(i, n)), out var v)) { reply("ERR netloop needs [rev] <x y r | h x y dx dy force>..."); return; }
                 i += n;
-                ushort seed = (ushort)(System.Environment.TickCount + events.Count);
+                ushort seed = NextSeed(events.Count);
                 events.Add(blunt
                     ? new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]).normalized, 0f, v[4], seed)
                     : new DamageEvent(DamageKind.Explosion, new Vector2(v[0], v[1]), Vector2.zero, v[2], 0f, seed));
@@ -231,7 +243,7 @@ internal static class TerrainProbe
             if (!TryParseFloats(args, out var v) || (v.Length != 4 && v.Length != 5)) { reply("ERR hammer needs <x> <y> <dx> <dy> [force]"); return; }
             float force = v.Length == 5 ? v[4] : 0.5f;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            string res = TerrainSync.Request(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, force, (ushort)System.Environment.TickCount));
+            string res = TerrainSync.Request(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, force, NextSeed()));
             reply($"OK hammer {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
         });
     }
