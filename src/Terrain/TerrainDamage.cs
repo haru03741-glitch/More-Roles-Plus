@@ -20,7 +20,8 @@ internal static class TerrainDamage
         var p = DamageProfile.Of(e.Kind);
         if (e.Kind == DamageKind.Explosion)
         {
-            r = new ResolvedDamage(e.Kind, TerrainWire.Q(e.Position), Vector2.zero, TerrainWire.QSize(e.Size), 0, e.Seed);
+            r = new ResolvedDamage(e.Kind, TerrainWire.Q(e.Position), Vector2.zero, TerrainWire.QNormal(e.Direction),
+                TerrainWire.QForce(e.Force), TerrainWire.QSize(e.Size), 0, e.Seed);
             return true;
         }
         if (e.Kind != DamageKind.Blunt) { why = "unknown kind"; return false; }
@@ -36,11 +37,13 @@ internal static class TerrainDamage
         // 耐久の格子は送る値 (量子化した点) で数える。受け手も同じ点で同じ格子に書く
         hit = TerrainWire.Q(hit);
         int hp = Math.Max(WallDurability.Remaining(hit) - p.WallDamage, sbyte.MinValue);
-        r = new ResolvedDamage(e.Kind, hit, TerrainWire.QNormal(normal), TerrainWire.QSize(depth), (sbyte)hp, e.Seed);
+        r = new ResolvedDamage(e.Kind, hit, TerrainWire.QNormal(normal), TerrainWire.QNormal(dir),
+            TerrainWire.QForce(e.Force), TerrainWire.QSize(depth), (sbyte)hp, e.Seed);
         return true;
     }
 
-    // 決まった結果を地形に適用する (ホストも含め全員が同じ順で呼ぶ)
+    // 決まった結果を地形に適用する (ホストも含め全員が同じ順で呼ぶ)。
+    // 穴の形は量子化済みの結果の値だけから作る (ホストと客が同じ入力に同じ計算を掛けるため)
     public static string Apply(in ResolvedDamage r)
     {
         var profile = DamageProfile.Of(r.Kind);
@@ -52,41 +55,51 @@ internal static class TerrainDamage
         };
     }
 
-    // 爆発: 半径の内側の壁はまとめて抜け、外側の輪の壁にはひびが入って耐久が減る
+    // 爆発: 形の内側の壁はまとめて抜け、外側の輪の壁にはひびが入って耐久が減る。
+    // 向きに偏った爆発 (力 > 0) は、向きの先へ伸びて後ろが縮んだ涙形に抜ける
     private static string Explode(in ResolvedDamage e, DamageProfile p)
     {
-        var core = new CircleShape(e.Position, e.Size);
-        float outer = e.Size * p.OuterRingScale;
+        CutShape core = e.Force > 0.02f
+            ? ConvexShape.Cone(e.Position, e.Size, e.Direction, p.ConeStretch * e.Force, p.ConeShrink * e.Force)
+            : new CircleShape(e.Position, e.Size);
+        float ring = e.Size * (p.OuterRingScale - 1f);
+        float outer = core.BoundRadius + ring;
+        Vector2 c = core.Center;
         var removed = new List<Vector2>();
         int cut = 0, cracked = 0;
 
-        foreach (var col in WallsNear(e.Position, outer))
+        // 外壁は壊さない: 切り取る区間ごとに、爆心から見て壁の向こう側に奥の面があるか
+        Vector2 blast = e.Position;
+        bool Inner(Vector2 a, Vector2 b)
         {
-            if (!ClosestPointWithNormal(col, e.Position, out Vector2 q, out Vector2 n)) continue;
-            // 外壁は壊さない: 爆心から見て壁の向こう側に奥の面があるか
-            Vector2 away = Vector2.Dot(q - e.Position, n) >= 0 ? n : -n;
-            if (!HasFarSide(q, away)) continue;
-            if (EdgeCutter.Cut(col, core, removed)) cut++;
+            Vector2 m = (a + b) * 0.5f, d = b - a;
+            if (d.x * d.x + d.y * d.y < 1e-10f) return true;
+            var n = new Vector2(-d.y, d.x);
+            Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
+            return HasFarSide(m, away.normalized);
         }
+        foreach (var col in WallsNear(c, outer))
+            if (EdgeCutter.Cut(col, core, removed, Inner)) cut++;
 
         // 外側の輪: 残った壁の、爆心にいちばん近い点にひび (壁 1 本につき 1 か所)
-        foreach (var col in WallsNear(e.Position, outer))
+        foreach (var col in WallsNear(c, outer))
         {
             if (col.gameObject.layer != ShipLayer) continue;
             if (!ClosestPoint(col, e.Position, out Vector2 q)) continue;
-            float d = (q - e.Position).magnitude;
-            if (d <= e.Size || d > outer) continue;
+            float d = core.SignedDistance(q.x, q.y);
+            if (d <= 0f || d > ring) continue;
             WallDurability.Hit(q, 1);
             DamageMap.Cracks(q, 0.35f, AngleOf(q - e.Position));
             cracked++;
         }
 
         string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch) : null;
-        if (visual == null) TerrainFx.Explosion(e.Position, e.Size, e.Seed);
+        if (visual == null) TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed);
         return $"explosion cut={cut} cracked={cracked} visual={visual ?? "ok"}";
     }
 
-    // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間だけ四角く抜ける
+    // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。
+    // 斜めに振ると振った向きに傾いて抜け (上限 MaxSlantDeg)、強く振るほど広く抜ける
     private static string Strike(in ResolvedDamage e, DamageProfile p)
     {
         Vector2 hit = e.Position, normal = e.Normal, dir = -normal;
@@ -102,22 +115,41 @@ internal static class TerrainDamage
             return $"blunt hit hp={hp} at=({hit.x:0.00},{hit.y:0.00})";
         }
 
-        // 叩いた面から壁の奥 (部屋と部屋の隙間・向こうの部屋の枠) までの区間を抜く
+        // 叩いた面から壁の奥 (部屋と部屋の隙間・向こうの部屋の枠) までの区間を、振った向きに沿って抜く
         Vector2 tangent = new(-normal.y, normal.x);
-        Vector2 center = hit - normal * (depth * 0.5f - 0.1f);
-        var rect = new RectShape(center, tangent, p.BreachLength, depth);
+        Vector2 axis = SlantAxis(dir, e.Direction, p.MaxSlantDeg, out float cos);
+        float length = p.BreachLength * ForceScale(e.Force, p.ForceLength);
+        float run = depth / cos; // 法線方向の厚み depth を斜めに貫く長さ
+        var shape = ConvexShape.Slanted(hit + normal * 0.1f, tangent, axis, length, run);
+        Vector2 center = shape.Center;
         var removed = new List<Vector2>();
         int cut = 0;
-        foreach (var col in WallsNear(center, rect.BoundRadius))
-            if (EdgeCutter.Cut(col, rect, removed)) cut++;
+        foreach (var col in WallsNear(center, shape.BoundRadius))
+            if (EdgeCutter.Cut(col, shape, removed)) cut++;
 
         // 下から叩いた (壁の手前の床に立っている) 時は、叩いた点の少し上から下を見た目では抜かない
         float floorY = normal.y < -0.5f ? hit.y + 0.12f : float.NegativeInfinity;
-        string visual = cut > 0 ? DamageMap.Breach(rect, removed, p.Scorch, floorY) : null;
-        // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に)
-        if (visual == null) TerrainFx.Crumble(hit - normal * (depth * 0.3f), tangent, normal, p.BreachLength, e.Seed);
-        return $"blunt breach cut={cut} depth={depth:0.00} visual={visual ?? "ok"}";
+        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY) : null;
+        // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
+        if (visual == null) TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed);
+        return $"blunt breach cut={cut} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
     }
+
+    // 抜く向き: 壁の奥 (inward) から振った向きへ、上限の角度まで傾ける。横から掠める振り (奥へ進まない) は真っ直ぐ抜く
+    private static Vector2 SlantAxis(Vector2 inward, Vector2 swing, float maxDeg, out float cos)
+    {
+        float c = inward.x * swing.x + inward.y * swing.y;
+        if (c <= 0.05f) { cos = 1f; return inward; }
+        float maxCos = MathF.Cos(maxDeg * (MathF.PI / 180f));
+        if (c >= maxCos) { cos = c; return swing; }
+        float side = inward.x * swing.y - inward.y * swing.x >= 0f ? 1f : -1f;
+        float sin = MathF.Sqrt(1f - maxCos * maxCos) * side;
+        cos = maxCos;
+        return new Vector2(inward.x * maxCos - inward.y * sin, inward.x * sin + inward.y * maxCos);
+    }
+
+    // 力 0 → 0.7 倍・0.5 → 1 倍・1 → full 倍
+    private static float ForceScale(float f, float full) => f < 0.5f ? 0.7f + 0.6f * f : 1f + (full - 1f) * (2f * f - 1f);
 
     // 範囲に掛かる壁を折れ線で返す。箱・多角形・円の壁はここで初めて折れ線に置き換える
     private static List<EdgeCollider2D> WallsNear(Vector2 c, float r)
@@ -189,28 +221,6 @@ internal static class TerrainDamage
             normal = h.normal;
         }
         return best < float.MaxValue;
-    }
-
-    private static bool ClosestPointWithNormal(EdgeCollider2D col, Vector2 p, out Vector2 q, out Vector2 n)
-    {
-        n = default;
-        if (!ClosestPoint(col, p, out q)) return false;
-        // いちばん近い区間の向きから法線を作る
-        var t = col.transform;
-        var pts = col.points;
-        float best = float.MaxValue;
-        Vector2 prev = t.TransformPoint(pts[0] + col.offset);
-        for (int i = 1; i < pts.Length; i++)
-        {
-            Vector2 cur = t.TransformPoint(pts[i] + col.offset);
-            Vector2 d = cur - prev;
-            float l2 = d.sqrMagnitude;
-            float s = l2 > 0 ? Math.Clamp(Vector2.Dot(p - prev, d) / l2, 0f, 1f) : 0f;
-            float dist = (prev + d * s - p).sqrMagnitude;
-            if (dist < best && l2 > 0) { best = dist; n = new Vector2(-d.y, d.x).normalized; }
-            prev = cur;
-        }
-        return n != default;
     }
 
     // Collider2D.ClosestPoint は Android の libunity に無いので、折れ線の頂点から自前で求める

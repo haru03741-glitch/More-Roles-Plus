@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -8,11 +9,12 @@ namespace MoreRolesPlus.Terrain;
 // (CompositeCollider2D は Android の libunity に無いので使わない。Collider2D.sharedMaterial も無いので写さない)。
 internal static class EdgeCutter
 {
-    // 戻り値 = 切り取りが起きたか。removed には切り取った区間 (世界座標の線分の両端) を足す
+    // 戻り値 = 切り取りが起きたか。removed には切り取った区間 (世界座標の線分の両端) を足す。
+    // allow = 切り取る区間ごとの許可 (外壁の区間は残す等)。1 本の折れ線が部屋の外周を丸ごと持つ壁があるので、部品単位でなく区間単位で決める
     public static bool Cut(EdgeCollider2D col, Vector2 center, float radius, List<Vector2> removed = null)
         => Cut(col, new CircleShape(center, radius), removed);
 
-    public static bool Cut(EdgeCollider2D col, CutShape shape, List<Vector2> removed = null)
+    public static bool Cut(EdgeCollider2D col, CutShape shape, List<Vector2> removed = null, Func<Vector2, Vector2, bool> allow = null)
     {
         var t = col.transform;
         Vector2 offset = col.offset;
@@ -34,6 +36,7 @@ internal static class EdgeCutter
 
             // 形の内側にある区間 [s0, s1]
             if (!shape.Interval(a, b, out float s0, out float s1)) { s0 = 1f; s1 = 0f; }
+            if (s0 < s1 && allow != null && !allow(a + d * s0, a + d * s1)) { s0 = 1f; s1 = 0f; }
 
             if (s0 >= s1)
             {

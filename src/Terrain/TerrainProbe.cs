@@ -194,38 +194,44 @@ internal static class TerrainProbe
 
     internal static void RegisterDamage()
     {
-        TestBridge.Register("blast", "<x> <y> <r> 爆発 (ロケットランチャー相当)", (args, reply) =>
+        TestBridge.Register("blast", "<x> <y> <r> [dx dy force] 爆発 (ロケットランチャー相当)。向きと力 (0..1) を付けると向きの先へ伸びた涙形に抜ける", (args, reply) =>
         {
-            if (!TryParse3(args, out float x, out float y, out float r)) { reply("ERR blast needs <x> <y> <r>"); return; }
+            if (!TryParseFloats(args, out var v) || (v.Length != 3 && v.Length != 6)) { reply("ERR blast needs <x> <y> <r> [dx dy force]"); return; }
+            var dir = v.Length == 6 ? new Vector2(v[3], v[4]) : Vector2.zero;
+            float force = v.Length == 6 ? v[5] : 0f;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, new Vector2(x, y), Vector2.zero, r, (ushort)System.Environment.TickCount));
+            string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, new Vector2(v[0], v[1]), dir.normalized, v[2], force, (ushort)System.Environment.TickCount));
             reply($"OK blast {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
         });
 
-        TestBridge.Register("netloop", "[rev] <x y r>... 爆発を電文に書いて読み直し、受け手の順番待ちを通して適用 (rev = 後ろの連番から届ける)", (args, reply) =>
+        TestBridge.Register("netloop", "[rev] <x y r | h x y dx dy force>... 爆発 / 打撃 (h) を電文に書いて読み直し、受け手の順番待ちを通して適用 (rev = 後ろの連番から届ける)", (args, reply) =>
         {
             var p = new System.Collections.Generic.List<string>(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries));
             bool rev = p.Count > 0 && p[0] == "rev";
             if (rev) p.RemoveAt(0);
-            if (p.Count == 0 || p.Count % 3 != 0) { reply("ERR netloop needs [rev] <x y r>..."); return; }
-            var events = new DamageEvent[p.Count / 3];
-            for (int i = 0; i < events.Length; i++)
+            var events = new System.Collections.Generic.List<DamageEvent>();
+            for (int i = 0; i < p.Count;)
             {
-                if (!TryParse3(string.Join(' ', p.GetRange(i * 3, 3)), out float x, out float y, out float r)) { reply("ERR netloop bad number"); return; }
-                events[i] = new DamageEvent(DamageKind.Explosion, new Vector2(x, y), Vector2.zero, r, (ushort)(System.Environment.TickCount + i));
+                bool blunt = p[i] == "h";
+                if (blunt) i++;
+                int n = blunt ? 5 : 3;
+                if (i + n > p.Count || !TryParseFloats(string.Join(' ', p.GetRange(i, n)), out var v)) { reply("ERR netloop needs [rev] <x y r | h x y dx dy force>..."); return; }
+                i += n;
+                ushort seed = (ushort)(System.Environment.TickCount + events.Count);
+                events.Add(blunt
+                    ? new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]).normalized, 0f, v[4], seed)
+                    : new DamageEvent(DamageKind.Explosion, new Vector2(v[0], v[1]), Vector2.zero, v[2], 0f, seed));
             }
-            reply($"OK netloop {TerrainSync.Loopback(events, rev)}");
+            if (events.Count == 0) { reply("ERR netloop needs [rev] <x y r | h x y dx dy force>..."); return; }
+            reply($"OK netloop {TerrainSync.Loopback(events.ToArray(), rev)}");
         });
 
-        TestBridge.Register("hammer", "<x> <y> <dx> <dy> 打撃 (位置から向きの先の壁を叩く)", (args, reply) =>
+        TestBridge.Register("hammer", "<x> <y> <dx> <dy> [force] 打撃 (位置から向きの先の壁を叩く。斜めに振ると斜めに抜ける。力 0..1・既定 0.5)", (args, reply) =>
         {
-            string[] p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
-            var v = new float[4];
-            if (p.Length < 4) { reply("ERR hammer needs <x> <y> <dx> <dy>"); return; }
-            for (int i = 0; i < 4; i++)
-                if (!float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out v[i])) { reply("ERR hammer bad number"); return; }
+            if (!TryParseFloats(args, out var v) || (v.Length != 4 && v.Length != 5)) { reply("ERR hammer needs <x> <y> <dx> <dy> [force]"); return; }
+            float force = v.Length == 5 ? v[4] : 0.5f;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            string res = TerrainSync.Request(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, (ushort)System.Environment.TickCount));
+            string res = TerrainSync.Request(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, force, (ushort)System.Environment.TickCount));
             reply($"OK hammer {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
         });
     }
@@ -329,6 +335,15 @@ internal static class TerrainProbe
             && float.TryParse(p[0], NumberStyles.Float, CultureInfo.InvariantCulture, out a)
             && float.TryParse(p[1], NumberStyles.Float, CultureInfo.InvariantCulture, out b)
             && float.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out c);
+    }
+
+    internal static bool TryParseFloats(string args, out float[] v)
+    {
+        string[] p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+        v = new float[p.Length];
+        for (int i = 0; i < p.Length; i++)
+            if (!float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out v[i])) return false;
+        return p.Length > 0;
     }
 
     internal static string V(Vector2 v) => $"({TestBridge.F(v.x)},{TestBridge.F(v.y)})";

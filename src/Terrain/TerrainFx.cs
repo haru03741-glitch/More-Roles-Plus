@@ -32,10 +32,12 @@ internal static class TerrainFx
 
     // ── 発生 ───────────────────────────────────────────────────────────
 
-    // 打撃で壁が崩れる: 壁の区間に沿って塊が上から落ちて山になり、根元に土煙
-    public static void Crumble(Vector2 center, Vector2 tangent, Vector2 normal, float length, ushort seed)
+    // 打撃で壁が崩れる: 壁の区間に沿って塊が上から落ちて山になり、根元に土煙。
+    // axis = 抜けた向き (振った向き)・force = 振りの強さ。強いほど山が向こう側へ押し出される
+    public static void Crumble(Vector2 center, Vector2 tangent, Vector2 normal, Vector2 axis, float force, float length, ushort seed)
     {
         var rnd = new System.Random(seed ^ Hash(center));
+        center += axis * (force * 0.3f);
         int chunks = 16;
         for (int k = 0; k < chunks; k++)
         {
@@ -73,8 +75,9 @@ internal static class TerrainFx
         Dust(at - dir * 0.1f, rnd, 0.35f, 0.8f);
     }
 
-    // 爆発: 本編の爆発の絵が一瞬 → 塊が外へ飛んで散らばる → 火花と煙
-    public static void Explosion(Vector2 c, float radius, ushort seed)
+    // 爆発: 本編の爆発の絵が一瞬 → 塊が外へ飛んで散らばる → 火花と煙。
+    // 向きに偏った爆発 (force > 0) は塊と火花も向きの先へ多く飛ぶ
+    public static void Explosion(Vector2 c, float radius, Vector2 dir, float force, ushort seed)
     {
         var rnd = new System.Random(seed ^ Hash(c));
         var flash = FlashSprite();
@@ -89,7 +92,7 @@ internal static class TerrainFx
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
             float sp = radius * (2.5f + (float)rnd.NextDouble() * 3f);
             var it = Spawn(Kind.Fly, DebrisArt.Chunk(rnd.Next()), c, 0.12f + (float)rnd.NextDouble() * 0.14f, keep: true);
-            it.Vel = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * sp;
+            it.Vel = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * sp + dir * (sp * force);
             it.VH = 1.5f + (float)rnd.NextDouble() * 2f;
             it.VRot = ((float)rnd.NextDouble() - 0.5f) * 720f;
         }
@@ -98,7 +101,7 @@ internal static class TerrainFx
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
             float sp = 3f + (float)rnd.NextDouble() * 4f;
             var it = Spawn(Kind.Spark, DebrisArt.Spark, c, 0.08f + (float)rnd.NextDouble() * 0.06f, keep: false);
-            it.Vel = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * sp;
+            it.Vel = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * sp + dir * (sp * force);
             it.VH = 1f + (float)rnd.NextDouble() * 2f;
             it.Life = 0.35f + (float)rnd.NextDouble() * 0.5f;
         }

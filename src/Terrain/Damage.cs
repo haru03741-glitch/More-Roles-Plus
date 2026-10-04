@@ -13,16 +13,18 @@ internal readonly struct DamageEvent
 {
     public readonly DamageKind Kind;
     public readonly Vector2 Position;
-    public readonly Vector2 Direction; // 打撃の向き (爆発では未使用)
+    public readonly Vector2 Direction; // 打撃 = 振った向き / 爆発 = 吹き出す向き (力 0 なら使わない)
     public readonly float Size;        // 爆発の半径
+    public readonly float Force;       // 0..1。打撃 = 振りの強さ / 爆発 = 向きへの偏り (0 = 全方位の円)
     public readonly ushort Seed;
 
-    public DamageEvent(DamageKind kind, Vector2 position, Vector2 direction, float size, ushort seed)
+    public DamageEvent(DamageKind kind, Vector2 position, Vector2 direction, float size, float force, ushort seed)
     {
         Kind = kind;
         Position = position;
         Direction = direction;
         Size = size;
+        Force = force;
         Seed = seed;
     }
 }
@@ -35,15 +37,19 @@ internal readonly struct ResolvedDamage
     public readonly DamageKind Kind;
     public readonly Vector2 Position; // 爆発 = 爆心 / 打撃 = 壁に当たった点
     public readonly Vector2 Normal;   // 打撃: 叩いた面の法線 (爆発では未使用)
-    public readonly float Size;       // 爆発 = 半径 / 打撃 = 抜く深さ
+    public readonly Vector2 Direction; // 振った向き / 吹き出す向き (法線とは別。斜めに叩くと斜めに抜ける)
+    public readonly float Force;      // 0..1
+    public readonly float Size;       // 爆発 = 半径 / 打撃 = 壁の厚み (叩いた面から奥の面まで + 余白・法線方向)
     public readonly sbyte Hp;         // 打撃: 叩いた後の耐久 (0 以下 = 抜ける)
     public readonly ushort Seed;
 
-    public ResolvedDamage(DamageKind kind, Vector2 position, Vector2 normal, float size, sbyte hp, ushort seed)
+    public ResolvedDamage(DamageKind kind, Vector2 position, Vector2 normal, Vector2 direction, float force, float size, sbyte hp, ushort seed)
     {
         Kind = kind;
         Position = position;
         Normal = normal;
+        Direction = direction;
+        Force = force;
         Size = size;
         Hp = hp;
         Seed = seed;
@@ -59,12 +65,18 @@ internal sealed class DamageProfile
     public float BreachLength;      // 打撃: 抜ける壁の区間の長さ (世界単位)
     public float BreachDepth;       // 打撃: 壁の厚み方向にどこまで抜くか (部屋と部屋の隙間を含む)
     public float Reach;             // 打撃: 叩いた位置から壁を探す距離
+    public float MaxSlantDeg;       // 打撃: 斜めに抜ける角度の上限 (面の法線から)。これより寝た振りは上限で止める
+    public float ForceLength;       // 打撃: 力 1 で抜ける区間が何倍まで伸びるか (力 0.5 で BreachLength ちょうど・力 0 で 0.7 倍)
+    public float ConeStretch;       // 爆発: 力 1 で向きの先へ半径の何倍まで伸びるか
+    public float ConeShrink;        // 爆発: 力 1 で後ろ側の半径を何割縮めるか (偏った分だけ全体は小さく)
 
     public static readonly DamageProfile Explosion = new()
     {
         WallDamage = 99,
         OuterRingScale = 1.6f,
         Scorch = true,
+        ConeStretch = 1.2f,
+        ConeShrink = 0.3f,
     };
 
     public static readonly DamageProfile Blunt = new()
@@ -74,6 +86,8 @@ internal sealed class DamageProfile
         BreachLength = 1.1f,
         BreachDepth = 1.1f,
         Reach = 1.2f,
+        MaxSlantDeg = 50f,
+        ForceLength = 1.6f,
     };
 
     public static DamageProfile Of(DamageKind kind) => kind == DamageKind.Explosion ? Explosion : Blunt;

@@ -98,3 +98,123 @@ internal sealed class RectShape : CutShape
         return MathF.Sqrt(ou * ou + ov * ov) + Math.Min(Math.Max(qu, qv), 0f);
     }
 }
+
+// 凸多角形 (反時計回り)。向きのある爆発の円錐・斜めに叩いた壁の平行四辺形に使う
+internal sealed class ConvexShape : CutShape
+{
+    private readonly Vector2[] _v;
+    private readonly Vector2[] _n; // 辺 i (v[i]→v[i+1]) の外向き法線
+    private readonly Vector2 _c;
+    private readonly float _r;
+
+    public ConvexShape(Vector2[] ccw)
+    {
+        _v = ccw;
+        int k = ccw.Length;
+        _n = new Vector2[k];
+        for (int i = 0; i < k; i++)
+        {
+            Vector2 e = ccw[(i + 1) % k] - ccw[i];
+            float l = MathF.Sqrt(e.x * e.x + e.y * e.y);
+            _n[i] = l > 1e-9f ? new Vector2(e.y / l, -e.x / l) : Vector2.zero;
+        }
+        float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+        foreach (var p in ccw)
+        {
+            minX = Math.Min(minX, p.x); maxX = Math.Max(maxX, p.x);
+            minY = Math.Min(minY, p.y); maxY = Math.Max(maxY, p.y);
+        }
+        _c = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+        foreach (var p in ccw)
+        {
+            float dx = p.x - _c.x, dy = p.y - _c.y;
+            _r = Math.Max(_r, MathF.Sqrt(dx * dx + dy * dy));
+        }
+    }
+
+    public override Vector2 Center => _c;
+    public override float BoundRadius => _r;
+
+    // 辺ごとの半平面で区間を絞る
+    public override bool Interval(Vector2 a, Vector2 b, out float s0, out float s1)
+    {
+        s0 = 0f; s1 = 1f;
+        Vector2 d = b - a;
+        for (int i = 0; i < _v.Length; i++)
+        {
+            Vector2 n = _n[i];
+            float num = (a.x - _v[i].x) * n.x + (a.y - _v[i].y) * n.y; // 正 = 外側
+            float den = d.x * n.x + d.y * n.y;
+            if (MathF.Abs(den) < 1e-9f)
+            {
+                if (num > 0f) return false;
+                continue;
+            }
+            float t = -num / den;
+            if (den < 0f) s0 = Math.Max(s0, t); else s1 = Math.Min(s1, t);
+            if (s0 >= s1) return false;
+        }
+        return s0 < s1;
+    }
+
+    // 内側 = 辺の直線までの符号付き距離の最大 (凸なので正確) / 外側 = 辺 (線分) までの最短距離
+    public override float SignedDistance(float x, float y)
+    {
+        float inside = float.MinValue;
+        bool outside = false;
+        for (int i = 0; i < _v.Length; i++)
+        {
+            float s = (x - _v[i].x) * _n[i].x + (y - _v[i].y) * _n[i].y;
+            if (s > 0f) outside = true;
+            if (s > inside) inside = s;
+        }
+        if (!outside) return inside;
+        float best = float.MaxValue;
+        int k = _v.Length;
+        for (int i = 0; i < k; i++)
+        {
+            Vector2 a = _v[i], b = _v[(i + 1) % k];
+            float sx = b.x - a.x, sy = b.y - a.y, l2 = sx * sx + sy * sy;
+            float t = l2 > 0 ? Math.Clamp(((x - a.x) * sx + (y - a.y) * sy) / l2, 0f, 1f) : 0f;
+            float dx = a.x + sx * t - x, dy = a.y + sy * t - y;
+            best = Math.Min(best, dx * dx + dy * dy);
+        }
+        return MathF.Sqrt(best);
+    }
+
+    // 向きのある爆発: 爆心の円 (後ろは縮む) と、向きの先へ伸びた先端を包む凸の涙形。
+    // 円は Segments 点で近似 (16px/単位のマスクなら半径 3 でも誤差 1px 未満)
+    private const int Segments = 12;
+
+    public static ConvexShape Cone(Vector2 center, float radius, Vector2 dir, float stretch, float shrink)
+    {
+        float back = radius * (1f - shrink);
+        Vector2 tip = center + dir * (radius * (1f + stretch));
+        float a0 = MathF.Atan2(dir.y, dir.x);
+        // 先端から円への接点より後ろの円弧だけ残すと凸になる (接点の角度 = acos(back / 先端までの距離))
+        float dist = radius * (1f + stretch);
+        float half = MathF.Acos(Math.Clamp(back / dist, -1f, 1f));
+        var pts = new Vector2[Segments + 2];
+        pts[0] = tip;
+        for (int i = 0; i <= Segments; i++)
+        {
+            float a = a0 + half + (MathF.PI * 2f - 2f * half) * i / Segments;
+            pts[i + 1] = center + new Vector2(MathF.Cos(a), MathF.Sin(a)) * back;
+        }
+        return new ConvexShape(pts);
+    }
+
+    // 斜めに抜く平行四辺形: 壁に沿って length、axis (振った向き) に沿って壁を貫く。
+    // start = 叩いた面の上の中心、axis は壁の奥へ向かう単位ベクトル、run = axis に沿った長さ
+    public static ConvexShape Slanted(Vector2 start, Vector2 tangent, Vector2 axis, float length, float run)
+    {
+        Vector2 h = tangent * (length * 0.5f);
+        Vector2 e = axis * run;
+        var pts = new[] { start - h, start + h, start + h + e, start - h + e };
+        // 反時計回りに揃える (符号付き面積が負なら逆順)
+        float area = 0f;
+        for (int i = 0; i < 4; i++) { var p = pts[i]; var q = pts[(i + 1) % 4]; area += p.x * q.y - q.x * p.y; }
+        if (area < 0f) Array.Reverse(pts);
+        return new ConvexShape(pts);
+    }
+}

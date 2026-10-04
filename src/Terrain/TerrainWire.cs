@@ -4,15 +4,15 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // 地形同期の電文。値は固定小数に丸めて送り、送り手 (ホスト) も丸めた値で適用する (全員が同じ数で計算するため)。
-// 位置 = int16 の 1/256 単位 (±128)・大きさ = byte の 1/32 単位 (〜8)・向き = ushort の角度。
-// 依頼 10B / 爆発 8B / 打撃 11B
+// 位置 = int16 の 1/256 単位 (±128)・大きさ = byte の 1/32 単位 (〜8)・向き = ushort の角度・力 = byte の 1/255。
+// 依頼 11B / 爆発 11B / 打撃 14B
 internal static class TerrainWire
 {
     public const byte OpRequest = 1; // 客 → ホスト: [op][件数] + 依頼 × 件数
     public const byte OpBatch = 2;   // ホスト → 全員: [op][最初の連番 u16][件数] + 結果 × 件数
 
-    public const int MaxRequestBytes = 10;
-    public const int MaxResolvedBytes = 11;
+    public const int MaxRequestBytes = 11;
+    public const int MaxResolvedBytes = 14;
     public const int BatchHeader = 4;
 
     private const float PosScale = 256f;
@@ -22,10 +22,12 @@ internal static class TerrainWire
     public static Vector2 Q(Vector2 v) => new(Dq(QPos(v.x)), Dq(QPos(v.y)));
     public static float QSize(float s) => QSizeByte(s) / SizeScale;
     public static Vector2 QNormal(Vector2 n) => FromAngle(QAngle(n));
+    public static float QForce(float f) => QForceByte(f) / 255f;
 
     private static short QPos(float x) => (short)Math.Clamp(Math.Round(x * PosScale), short.MinValue, short.MaxValue);
     private static float Dq(short q) => q / PosScale;
     private static byte QSizeByte(float s) => (byte)Math.Clamp(Math.Round(s * SizeScale), 0, 255);
+    private static byte QForceByte(float f) => (byte)Math.Clamp(Math.Round(f * 255.0), 0, 255);
     private static ushort QAngle(Vector2 n) => (ushort)((long)Math.Round(Math.Atan2(n.y, n.x) * AngleScale) & 0xffff);
     private static Vector2 FromAngle(ushort a)
     {
@@ -39,6 +41,7 @@ internal static class TerrainWire
         o = WritePos(b, o, e.Position);
         o = WriteU16(b, o, QAngle(e.Direction));
         b[o++] = QSizeByte(e.Size);
+        b[o++] = QForceByte(e.Force);
         return WriteU16(b, o, e.Seed);
     }
 
@@ -48,8 +51,9 @@ internal static class TerrainWire
         Vector2 pos = ReadPos(b, ref o);
         Vector2 dir = FromAngle(ReadU16(b, ref o));
         float size = b[o++] / SizeScale;
+        float force = b[o++] / 255f;
         ushort seed = ReadU16(b, ref o);
-        e = new DamageEvent(kind, pos, dir, size, seed);
+        e = new DamageEvent(kind, pos, dir, size, force, seed);
         return o;
     }
 
@@ -57,6 +61,8 @@ internal static class TerrainWire
     {
         b[o++] = (byte)r.Kind;
         o = WritePos(b, o, r.Position);
+        o = WriteU16(b, o, QAngle(r.Direction));
+        b[o++] = QForceByte(r.Force);
         if (r.Kind == DamageKind.Blunt)
         {
             o = WriteU16(b, o, QAngle(r.Normal));
@@ -70,6 +76,8 @@ internal static class TerrainWire
     {
         var kind = (DamageKind)b[o++];
         Vector2 pos = ReadPos(b, ref o);
+        Vector2 dir = FromAngle(ReadU16(b, ref o));
+        float force = b[o++] / 255f;
         Vector2 normal = Vector2.zero;
         sbyte hp = 0;
         if (kind == DamageKind.Blunt)
@@ -79,7 +87,7 @@ internal static class TerrainWire
         }
         float size = b[o++] / SizeScale;
         ushort seed = ReadU16(b, ref o);
-        r = new ResolvedDamage(kind, pos, normal, size, hp, seed);
+        r = new ResolvedDamage(kind, pos, normal, dir, force, size, hp, seed);
         return o;
     }
 

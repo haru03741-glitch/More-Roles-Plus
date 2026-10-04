@@ -10,7 +10,7 @@ namespace MoreRolesPlus.Terrain;
 // 地形破壊の同期。ホストが依頼を結果 (ResolvedDamage) に決めて連番を振り、全員が連番の順に適用する。
 // 武器・役職からの入口は Request だけ。フリープレイなど一人の時はその場で決めて適用する。
 // 通信量は公式鯖の制約を予算として守る: 同じ種類の Reliable を秒十数本出すと切断される実測があるので、
-// 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 30 件 (約 340B) まで。
+// 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 30 件 (最大 424B) まで。
 internal static class TerrainSync
 {
     public const byte RpcId = 213; // MRP の地形同期 (本編の RpcCalls と重ならない高い番号)
