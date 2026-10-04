@@ -67,6 +67,7 @@ public static class TestBridge
 
             BridgeLog.Install();
             BuiltinCommands.RegisterAll();
+            Burst.Register();
             LobbyCommands.Register();
             Terrain.TerrainProbe.Register();
             WriteOut($"BRIDGE up {Plugin.Version}");
@@ -289,6 +290,9 @@ public static class TestBridge
     public static string ScreensDir { get { EnsureInit(); return _screensDir; } }
 
     private static long _bytesSinceRotateCheck = MaxOutFileBytes;
+
+    // コマンドの返事以外の知らせ (連写の終わり等) を bridge-out.log へ
+    internal static void Log(string line) => WriteOut(line);
 
     private static void WriteOut(string line)
     {

@@ -43,6 +43,7 @@ public class Ticker : MonoBehaviour
     {
         Terrain.TerrainFx.Tick();
         Terrain.RubbleBake.Tick();
+        Bridge.Burst.Tick();
     }
 
     private void FixedUpdate()

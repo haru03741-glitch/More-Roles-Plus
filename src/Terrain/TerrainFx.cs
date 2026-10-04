@@ -36,6 +36,7 @@ internal static class TerrainFx
         public float Flip, VFlip; // 金属板: 空中で裏返る (横幅を cos で縮める)
         public float Roll;        // パイプ: 床を転がる (半径。0 = 転がらない)
         public int Bounces;
+        public float HomeX, HomeY; // 爆心 / 叩いた側の床。壁の線の上から動き出す時は、この点と同じ側へだけ線を越えてよい
     }
 
     private static readonly List<Item> Items = new();
@@ -74,7 +75,7 @@ internal static class TerrainFx
                 // 崩れて落ちた先: 根元から振った向きへ少し (強いほど遠く)・壁に沿ってわずかに散る
                 Vector2 rest = ground + axis * (0.1f + (float)rnd.NextDouble() * 0.5f + force * 0.3f)
                                       + tangent * (((float)rnd.NextDouble() - 0.5f) * 0.6f);
-                var it = AddPiece(p, ground, h, walls);
+                var it = AddPiece(p, ground, h, walls, from);
                 if (it == null) continue;
                 // 高い所からは落ちるのに掛かる時間で、低い所 (横の壁) は小さく跳ねて、落ちた先へ滑る
                 it.VH = h > 0.05f ? 0f : 0.9f;
@@ -150,7 +151,7 @@ internal static class TerrainFx
     {
         var rnd = new System.Random(seed);
         float h = Math.Max(0f, p.Origin.y - baseY);
-        var it = AddPiece(p, new Vector2(p.Origin.x, p.Origin.y - h), h, null);
+        var it = AddPiece(p, new Vector2(p.Origin.x, p.Origin.y - h), h, null, p.Origin);
         if (it == null) return;
         float flight = MathF.Sqrt(2f * h / Gravity) + 0.15f;
         it.Vx = ((float)rnd.NextDouble() - 0.5f) * 0.3f / flight;
@@ -172,7 +173,7 @@ internal static class TerrainFx
             {
                 var p = pieces[rank];
                 Vector2 ground = Ground(p.Origin, segs, walls, c, out float h);
-                var it = AddPiece(p, ground, h, walls);
+                var it = AddPiece(p, ground, h, walls, c);
                 if (it == null) continue;
                 Vector2 away = p.Origin - c;
                 float m = away.magnitude;
@@ -270,7 +271,7 @@ internal static class TerrainFx
         var it = new Item
         {
             Kind = Kind.Piece, Px = src.Px, Py = src.Py, Vx = src.Vx, Vy = src.Vy, Height = src.Height, VH = src.VH,
-            H0 = src.H0, Walls = src.Walls, Life = 1f,
+            H0 = src.H0, Walls = src.Walls, Life = 1f, HomeX = src.HomeX, HomeY = src.HomeY,
         };
         const float dt = 1f / 60f;
         for (int step = 0; step < 600; step++)
@@ -338,7 +339,7 @@ internal static class TerrainFx
     }
 
     // 元の場所に重なっている塊を動かし始める (遅れて動き出す間も消さない: 消すとその間だけ穴が見える)
-    private static Item AddPiece(BreakPiece p, Vector2 ground, float height, float[] walls)
+    private static Item AddPiece(BreakPiece p, Vector2 ground, float height, float[] walls, Vector2 home)
     {
         if (!p.Tr) return null;
         Vector3 sc = p.Tr.localScale;
@@ -347,6 +348,7 @@ internal static class TerrainFx
             Kind = Kind.Piece, Tr = p.Tr, Sr = p.Sr, Px = ground.x, Py = ground.y, Height = height, H0 = height,
             Z = p.Tr.position.z, Life = 1f, Sx = sc.x, Sy = sc.y, Sz = sc.z, Walls = walls,
         };
+        it.HomeX = home.x; it.HomeY = home.y;
         Items.Add(it);
         return it;
     }
@@ -432,6 +434,7 @@ internal static class TerrainFx
         tr.localScale = new Vector3(s, s, 1f);
         if (keep) DamageMap.Track(go);
         var it = new Item { Kind = kind, Tr = tr, Sr = sr, Px = pos.x, Py = pos.y, S0 = s, S1 = s, Z = z, Life = 1f, SpriteW = sw };
+        it.HomeX = it.Px; it.HomeY = it.Py;
         Items.Add(it);
         return it;
     }
@@ -452,6 +455,9 @@ internal static class TerrainFx
 
     // テスト用: 動きを止める (止めている間の時間は飛ばす)
     public static bool Paused;
+    // テスト用: 止まった瓦礫の数と、そのうち StrayProbe が真の所 (床でない所) に止まった数
+    internal static Func<float, float, bool> StrayProbe;
+    internal static int Settled, Stray;
 
     public static void Tick()
     {
@@ -497,6 +503,7 @@ internal static class TerrainFx
                     // 山の上に乗った物ほど手前 (上に積もって見える)
                     if (it.Rest > 0f) { it.Z -= it.Rest * 0.02f; it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z); }
                     RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
+                    if (StrayProbe != null) { Settled++; if (StrayProbe(it.Px, it.Py)) Stray++; }
                 }
             }
         }
@@ -644,7 +651,7 @@ internal static class TerrainFx
     {
         float dx = it.Px - ox, dy = it.Py - oy;
         if (dx * dx + dy * dy < 1e-10f) return false;
-        float bestT = FirstCross(ox, oy, dx, dy, it.Walls, out float bex, out float bey);
+        float bestT = FirstCross(ox, oy, dx, dy, it.Walls, out float bex, out float bey, it.HomeX, it.HomeY);
         if (bestT > 1f) return false;
         float len = MathF.Sqrt(bex * bex + bey * bey);
         float nx = -bey / len, ny = bex / len;
@@ -663,8 +670,11 @@ internal static class TerrainFx
     }
 
     // (ox, oy) から (ox + dx, oy + dy) までの間で最初に横切る壁の線の割合 (無ければ 2) と、その線の向き。
-    // 始めの点が線の上にある線は横切ったとみなさない
-    private static float FirstCross(float ox, float oy, float dx, float dy, float[] w, out float bex, out float bey)
+    // 始めの点が線の上にある線 (壁の根元から落ちた塊) は横切ったとみなさない。ただし home を渡した時は、
+    // 行き先が home (爆心 / 叩いた側) と同じ側の時だけ。いつでも許すと、根元の塊が壁の向こう (船体の隙間) へ抜け、
+    // ゆっくり転がって壁に 0.005 未満まで寄った瓦礫も次のフレームで壁を抜ける
+    private static float FirstCross(float ox, float oy, float dx, float dy, float[] w, out float bex, out float bey,
+        float homeX = float.NaN, float homeY = float.NaN)
     {
         float bestT = 2f;
         bex = 0f; bey = 0f;
@@ -677,7 +687,13 @@ internal static class TerrainFx
             float t = (wx * ey - wy * ex) / den, s = (wx * dy - wy * dx) / den;
             if (t < 0f || t > 1f || s < 0f || s > 1f || t >= bestT) continue;
             float cr = wx * ey - wy * ex; // 始めの点から線までの距離 × 線の長さ
-            if (cr * cr < 0.005f * 0.005f * (ex * ex + ey * ey)) continue;
+            if (cr * cr < 0.005f * 0.005f * (ex * ex + ey * ey))
+            {
+                if (float.IsNaN(homeX)) continue;
+                // 線のどちら側か (線の向きとの外積の符号)。行き先が home と同じ側なら線から離れるだけ
+                float sEnd = (ox + dx - ax) * ey - (oy + dy - ay) * ex, sHome = (homeX - ax) * ey - (homeY - ay) * ex;
+                if (sEnd * sHome >= 0f) continue;
+            }
             bestT = t; bex = ex; bey = ey;
         }
         return bestT;

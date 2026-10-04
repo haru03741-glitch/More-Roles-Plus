@@ -354,6 +354,51 @@ internal static class TerrainDamage
     }
 
     // Collider2D.ClosestPoint は Android の libunity に無いので、折れ線の頂点から自前で求める
+    // 下から叩いた壁の面が左右どこまで続くか (叩いた点を通る、ほぼ水平で高さの揃った折れ線の連なり)。
+    // 剥げかけのひびを壁の端の外 (扉の枠・隣の通路) へはみ出させないため。値は 1/64 に丸める (全員で同じ範囲)
+    internal static bool FaceSpan(Vector2 hit, out float x0, out float x1)
+    {
+        x0 = x1 = hit.x;
+        EdgeCollider2D best = null;
+        int bestI = -1;
+        float bestD = 0.0025f; // 叩いた点から 0.05 以内の線
+        var pts = new List<Vector2>();
+        foreach (var col in WallsNear(hit, 0.1f))
+        {
+            if (col.gameObject.layer != ShipLayer) continue;
+            var t = col.transform;
+            var raw = col.points;
+            for (int i = 0; i + 1 < raw.Length; i++)
+            {
+                Vector2 a = t.TransformPoint(raw[i] + col.offset), b = t.TransformPoint(raw[i + 1] + col.offset), d = b - a;
+                float l2 = d.x * d.x + d.y * d.y;
+                float s = l2 > 0 ? Math.Clamp(((hit.x - a.x) * d.x + (hit.y - a.y) * d.y) / l2, 0f, 1f) : 0f;
+                float ex = a.x + d.x * s - hit.x, ey = a.y + d.y * s - hit.y;
+                if (ex * ex + ey * ey < bestD) { bestD = ex * ex + ey * ey; best = col; bestI = i; }
+            }
+        }
+        if (!best) return false;
+        {
+            var t = best.transform;
+            foreach (var p in best.points) pts.Add(t.TransformPoint(p + best.offset));
+        }
+        // 面の続き = ほぼ水平 (傾き 0.2 以下) で、両端が叩いた高さから 0.1 以内の区間
+        bool Face(int i)
+        {
+            if (i < 0 || i + 1 >= pts.Count) return false;
+            Vector2 a = pts[i], b = pts[i + 1];
+            float dx = Math.Abs(b.x - a.x), dy = Math.Abs(b.y - a.y);
+            return dx > 1e-4f && dy <= dx * 0.2f && Math.Abs(a.y - hit.y) <= 0.1f && Math.Abs(b.y - hit.y) <= 0.1f;
+        }
+        if (!Face(bestI)) return false;
+        float lo = Math.Min(pts[bestI].x, pts[bestI + 1].x), hi = Math.Max(pts[bestI].x, pts[bestI + 1].x);
+        for (int i = bestI - 1; Face(i); i--) { lo = Math.Min(lo, Math.Min(pts[i].x, pts[i + 1].x)); hi = Math.Max(hi, Math.Max(pts[i].x, pts[i + 1].x)); }
+        for (int i = bestI + 1; Face(i); i++) { lo = Math.Min(lo, Math.Min(pts[i].x, pts[i + 1].x)); hi = Math.Max(hi, Math.Max(pts[i].x, pts[i + 1].x)); }
+        x0 = MathF.Round(lo * 64f) / 64f;
+        x1 = MathF.Round(hi * 64f) / 64f;
+        return x1 > x0;
+    }
+
     private static bool ClosestPoint(EdgeCollider2D col, Vector2 p, out Vector2 q)
     {
         q = default;

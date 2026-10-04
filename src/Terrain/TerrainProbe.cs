@@ -199,6 +199,23 @@ internal static class TerrainProbe
 
     internal static void RegisterDamage()
     {
+        TestBridge.Register("stray", "[0|1] 止まった瓦礫のうち、部屋の範囲の外で穴の外 (船体の隙間) に止まった数を数える (Polus/Fungle は屋外も外に数える)", (args, reply) =>
+        {
+            string a = args.Trim();
+            if (a == "1") TerrainFx.StrayProbe = (x, y) =>
+            {
+                var p = new Vector2(x, y);
+                var ship = ShipStatus.Instance;
+                if (!ship) return false;
+                foreach (var r in ship.AllRooms)
+                    if (r && r.roomArea && r.roomArea.OverlapPoint(p)) return false;
+                return DamageMap.HoleAt(p) < 0.3f;
+            };
+            else if (a == "0") TerrainFx.StrayProbe = null;
+            if (a.Length > 0) TerrainFx.Settled = TerrainFx.Stray = 0;
+            reply($"OK stray {(TerrainFx.StrayProbe != null ? 1 : 0)} settled={TerrainFx.Settled} stray={TerrainFx.Stray}");
+        });
+
         TestBridge.Register("seed", "<n|off> blast / hammer / netloop の種を固定する (off = 時刻から)", (args, reply) =>
         {
             string a = args.Trim();

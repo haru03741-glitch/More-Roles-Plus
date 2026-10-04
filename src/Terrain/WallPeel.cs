@@ -30,6 +30,7 @@ internal static class WallPeel
     private sealed class State
     {
         public float BaseY;
+        public float X0 = float.NegativeInfinity, X1 = float.PositiveInfinity; // 壁の面の左右の端 (ひびと浮いた表面はこの外へ出さない)
         public int Slot;
         public readonly List<HitMark> Hits = new();
         public readonly List<(GameObject Go, Sprite Sp)> Parts = new();
@@ -48,6 +49,7 @@ internal static class WallPeel
         if (!States.TryGetValue(key, out var st))
         {
             st = new State { BaseY = hit.y, Slot = _nextSlot };
+            if (TerrainDamage.FaceSpan(hit, out float fx0, out float fx1)) { st.X0 = fx0; st.X1 = fx1; }
             _nextSlot = (_nextSlot + 1) & 255;
             States[key] = st;
         }
@@ -62,7 +64,7 @@ internal static class WallPeel
         // 掠めるほど横に長く・縦に浅く
         float y0 = st.BaseY + 0.03f, y1 = st.BaseY + FaceHeight;
         float hw = reach * (1f + 0.6f * g), hh = reach * (1f - 0.3f * g);
-        var area = Rect.MinMaxRect(c.x - hw, Math.Max(y0, c.y - hh), c.x + hw, Math.Min(y1, c.y + hh));
+        var area = Rect.MinMaxRect(Math.Max(st.X0, c.x - hw), Math.Max(y0, c.y - hh), Math.Min(st.X1, c.x + hw), Math.Min(y1, c.y + hh));
         st.Hits.Add(new HitMark
         {
             Crack = crack.WithArea(area, PeelMargin, PeelCap), Reach = reach, G = g, Along = along, Hp = hp,
@@ -134,7 +136,8 @@ internal static class WallPeel
             float vl = MathF.Max(1e-4f, MathF.Sqrt(vx * vx + vy * vy));
             float push = (last ? 0.04f : 0.024f) + (float)rnd.NextDouble() * (last ? 0.035f : 0.02f);
             push *= 1f + 0.6f * h.G * (ux * at.x + uy * at.y);
-            float ox = Math.Clamp(vx / vl * push, -0.095f, 0.095f), oy = Math.Clamp(vy / vl * push - (last ? 0.025f : 0.015f), -0.095f, 0.095f); // 重さで少し垂れる
+            // 横は壁の面の端を越えない (端の近くでめくれた表面が枠の外へはみ出す)
+            float ox = Math.Clamp(Math.Clamp(vx / vl * push, -0.095f, 0.095f), Math.Min(0f, st.X0 - b.xMin), Math.Max(0f, st.X1 - b.xMax)), oy = Math.Clamp(vy / vl * push - (last ? 0.025f : 0.015f), -0.095f, 0.095f); // 重さで少し垂れる
             var wide = Rect.MinMaxRect(b.xMin + Math.Min(0f, ox), b.yMin + Math.Min(0f, oy), b.xMax + Math.Max(0f, ox), b.yMax + Math.Max(0f, oy));
             Keep(st, BreakPieces.MakePeel(new Vector2(sx, sy), wide, new Color(i / 255f, slot, 0.5f + ox / 0.2f, 0.5f + oy / 0.2f), false, out sp), sp);
         }
