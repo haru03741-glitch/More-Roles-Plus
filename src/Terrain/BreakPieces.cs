@@ -28,7 +28,7 @@ internal static class BreakPieces
 
     private sealed class Room
     {
-        public Material Mat;
+        public Material Mat, PeelMat; // 割れた塊 (_UseDamage = 4) / 剥げかけ (5)
         public Texture2D Tex;
         public Rect TexRect;          // テクスチャ上のこの絵の範囲 (はみ出すとアトラスの隣の絵が乗る)
         public float Ppu;
@@ -101,7 +101,7 @@ internal static class BreakPieces
             Vector2 mid = DamageMap.TexelCenter((int)(a.SumX / a.Count), (int)(a.SumY / a.Count));
             var room = FrontRoom(arts, mid, rect);
             if (room == null) continue;
-            var piece = Make(room, rect, key, gen);
+            var piece = Make(room, rect, room.Mat, new Color(key / 255f, gen / 255f, 0f, 1f), gen);
             if (piece != null) output.Add(piece);
         }
         LastStats += $" made={output.Count - made}";
@@ -131,14 +131,14 @@ internal static class BreakPieces
     }
 
     // 範囲に掛かる、損傷マスクを見ている部屋の絵 (範囲と z は破壊 1 回につき 1 度だけ引く)
-    private static List<Candidate> Candidates(Rect area)
+    private static List<Candidate> Candidates(Rect area, bool swappedOnly = true)
     {
         var list = new List<Candidate>();
         var arts = DamageMap.RoomArts;
         for (int r = 0; r < arts.Count; r++)
         {
             var sr = arts[r];
-            if (!sr || !DamageMap.IsSwapped(sr)) continue;
+            if (!sr || swappedOnly && !DamageMap.IsSwapped(sr)) continue;
             var b = sr.bounds;
             if (area.xMax < b.min.x || area.xMin > b.max.x || area.yMax < b.min.y || area.yMin > b.max.y) continue;
             list.Add(new Candidate { Sr = sr, Bounds = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y), Z = sr.transform.position.z });
@@ -159,7 +159,26 @@ internal static class BreakPieces
         return false;
     }
 
-    private static BreakPiece Make(Room room, Rect world, byte key, byte gen)
+    // 剥げかけの部品: 点 at でいちばん手前の部屋の絵から world の範囲を切り出し、剥げかけの描き方 (_UseDamage = 5) で置く。
+    // 頂点色の意味はシェーダの _UseDamage = 5。alive = 割れた塊と同じく古い順に片付ける (落ちて瓦礫になる物)。
+    // 返した塊の GameObject と Sprite は、alive でなければ呼んだ側が片付ける
+    internal static BreakPiece MakePeel(Vector2 at, Rect world, Color color, bool alive, out Sprite sprite)
+    {
+        sprite = null;
+        if (!MrpBundle.Ready) return null;
+        var room = FrontRoom(Candidates(world, swappedOnly: false), at, world);
+        if (room == null) return null;
+        if (!room.PeelMat)
+        {
+            room.PeelMat = new Material(room.Mat) { name = "MrpPeel" };
+            room.PeelMat.SetFloat("_UseDamage", 5f);
+        }
+        var p = Make(room, world, room.PeelMat, color, 0, alive);
+        if (p != null) sprite = p.Sr.sprite;
+        return p;
+    }
+
+    private static BreakPiece Make(Room room, Rect world, Material mat, Color color, byte gen, bool alive = true)
     {
         // 世界の範囲 → テクスチャの画素の範囲 (この絵の範囲に収める)
         float tx0 = (world.xMin - room.W0x) / room.Dx, tx1 = (world.xMax - room.W0x) / room.Dx;
@@ -186,11 +205,14 @@ internal static class BreakPieces
         tr.localScale = new Vector3(room.Dx * room.Ppu / ps, room.Dy * room.Ppu / ps, 1f);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
-        sr.sharedMaterial = room.Mat;
-        Alive.Enqueue((go, sprite, gen));
-        while (Alive.Count > MaxAlive) Destroy(Alive.Dequeue());
-        // 頂点色は色でなく番号 (r = 種点・g = 破壊の番号。シェーダの _UseDamage = 4 がそう読む)
-        sr.color = new Color(key / 255f, gen / 255f, 0f, 1f);
+        sr.sharedMaterial = mat;
+        if (alive)
+        {
+            Alive.Enqueue((go, sprite, gen));
+            while (Alive.Count > MaxAlive) Destroy(Alive.Dequeue());
+        }
+        // 頂点色は色でなく番号 (割れた塊は r = 種点・g = 破壊の番号。シェーダの _UseDamage = 4・5 がそう読む)
+        sr.color = color;
         return new BreakPiece
         {
             Tr = tr,
@@ -264,7 +286,11 @@ internal static class BreakPieces
     {
         foreach (var a in Alive) if (a.Sp) UnityEngine.Object.Destroy(a.Sp);
         Alive.Clear();
-        foreach (var r in Rooms.Values) if (r.Mat) UnityEngine.Object.Destroy(r.Mat);
+        foreach (var r in Rooms.Values)
+        {
+            if (r.Mat) UnityEngine.Object.Destroy(r.Mat);
+            if (r.PeelMat) UnityEngine.Object.Destroy(r.PeelMat);
+        }
         Rooms.Clear();
         Unusable.Clear();
         FractureSites.Clear();

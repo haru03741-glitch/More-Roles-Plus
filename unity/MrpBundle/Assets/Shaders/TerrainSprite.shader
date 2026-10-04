@@ -5,7 +5,7 @@
 //   マスクの G = 焦げの濃さ / B = 熾火 (割れ口の照り。爆発だけが書く)
 // マスクの置き場所は _MrpDamageRect (xy = 世界座標の左下、zw = 1 / 幅と高さ) で全マテリアル共通。
 // _MrpGenTex (同じ置き場所・点サンプリング) = その画素を最後に抜いた破壊の番号。割れた塊は自分の番号の所だけ描く。
-// _MrpPieceSites (行 = 破壊の番号・列 = 種点) = 割れ目の種点 (放射状)。割れた塊は自分の種点がいちばん近い所だけ描く。
+// _MrpPieceSites (行 0..255 = 破壊の番号・256..511 = 剥げかけの枠・列 = 種点) = 割れ目の種点 (放射状)。割れた塊は自分の種点がいちばん近い所だけ描く。
 Shader "MRP/TerrainSprite"
 {
     Properties
@@ -24,6 +24,8 @@ Shader "MRP/TerrainSprite"
         _UseDamage ("Use damage mask", Float) = 1
         _PieceMap ("Piece uv to world (xy scale, zw offset)", Vector) = (0,0,0,0)
         _PieceLine ("Piece outline width", Float) = 0.022
+        _CrackLine ("Crack line half width", Float) = 0.0045
+        _RecessColor ("Exposed wall inside color", Color) = (0.36, 0.35, 0.39, 1)
         [HideInInspector] _AlphaTex ("External Alpha", 2D) = "white" {}
         [HideInInspector] _EnableExternalAlpha ("Enable External Alpha", Float) = 0
     }
@@ -71,6 +73,8 @@ Shader "MRP/TerrainSprite"
             float4 _PieceMap;
             sampler2D_float _MrpPieceSites;
             float _PieceLine;
+            float _CrackLine;
+            fixed4 _RecessColor;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; float2 world : TEXCOORD1; };
@@ -88,7 +92,7 @@ Shader "MRP/TerrainSprite"
             // 種点 idx (破壊の番号 row の行) の世界座標。2 バイトずつの 1/256 単位 (損傷マスクの原点から)
             float2 SiteAt(float idx, float row)
             {
-                float4 b = round(tex2Dlod(_MrpPieceSites, float4((idx + 0.5) / 64, (row + 0.5) / 256, 0, 0)) * 255);
+                float4 b = round(tex2Dlod(_MrpPieceSites, float4((idx + 0.5) / 64, (row + 0.5) / 512, 0, 0)) * 255);
                 return _MrpDamageRect.xy + float2(b.r * 256 + b.g, b.b * 256 + b.a) / 256;
             }
 
@@ -104,6 +108,19 @@ Shader "MRP/TerrainSprite"
                     m = max(m, (dot(ow - sk, dv) - dot(dv, dv) * 0.5) / max(length(dv), 1e-4));
                 }
                 return m;
+            }
+
+            // いちばん近い種点の番号
+            float NearestSite(float2 ow, float row)
+            {
+                float best = 1e8, k = 0;
+                [loop] for (int j = 0; j < 48; j++)
+                {
+                    float2 dv = ow - SiteAt(j, row);
+                    float d = dot(dv, dv);
+                    if (d < best) { best = d; k = j; }
+                }
+                return k;
             }
 
             // 割れた塊の中か: 元の場所 (ow) が「部屋の絵が抜いた所」(部屋と同じ判定) で、その画素を抜いたのが
@@ -126,6 +143,46 @@ Shader "MRP/TerrainSprite"
                 fixed4 a = tex2D(_AlphaTex, i.uv);
                 c.a = lerp(c.a, a.r, _EnableExternalAlpha);
             #endif
+                // 5 = 剥げかけ (崩れる前の打撃)。頂点色 r = 細胞 (255 = ひびの線だけ)・g = 剥げかけの枠・
+                // b, a = 浮いた表面のずれ (0.5 = ずれなし・b = 0 は欠けて断面だけ)。ひびの線は b = 半径
+                if (_UseDamage > 4.5)
+                {
+                    float row = 256 + round(i.color.g * 255);
+                    float2 ow = i.uv * _PieceMap.xy + _PieceMap.zw;
+                    float kb = round(i.color.r * 255);
+                    if (kb > 254.5)
+                    {
+                        // ひび: 中心 (種点 0) から半径の中だけ、細胞の境に細い線。端はノイズでばらつかせる
+                        clip(c.a - 0.5);
+                        float2 dc = ow - SiteAt(0, row);
+                        float nr = tex2D(_Noise, ow * 2.3).r;
+                        if (dot(dc, dc) > i.color.b * i.color.b * (0.55 + nr * 0.6)) discard;
+                        float ek = CellExcess(ow, NearestSite(ow, row), row);
+                        if (ek < -_CrackLine) discard;
+                        return fixed4(_OutlineColor.rgb, 1);
+                    }
+                    float bx = round(i.color.b * 255);
+                    bool missing = bx < 0.5;
+                    float2 off = missing ? float2(0, 0) : (float2(bx, round(i.color.a * 255)) / 255 - 0.5) * 0.2;
+                    // 浮いた表面: 細胞の絵をずれた所に描く (縁に輪郭線)
+                    float el = missing ? 1 : CellExcess(ow - off, kb, row);
+                    if (el <= 0)
+                    {
+                        fixed4 lc = tex2D(_MainTex, i.uv - off / _PieceMap.xy);
+                        if (lc.a < 0.5) discard;
+                        if (el > -_PieceLine) lc = fixed4(_OutlineColor.rgb, 1);
+                        return lc;
+                    }
+                    // 表面がずれた/欠けた跡: 壁の中の断面。ベタ塗り + 一段の影 (浮いた表面の際・欠けた奥)
+                    float eo = CellExcess(ow, kb, row);
+                    if (eo > 0 || c.a < 0.5) discard;
+                    fixed3 rc = _RecessColor.rgb;
+                    bool shade = missing ? eo < -_PieceLine * 3.5 : CellExcess(ow - off * 0.5, kb, row) <= 0;
+                    if (shade) rc *= 0.72;
+                    if (eo > -_PieceLine) rc = _OutlineColor.rgb;
+                    return fixed4(rc, 1);
+                }
+
                 // 4 = 割れた塊: 部屋の絵を元の場所で引いた損傷マスクで切り抜く。頂点色は色でなく塊の番号 (r = 種点・g = 破壊の番号)
                 if (_UseDamage > 3.5)
                 {

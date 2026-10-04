@@ -86,6 +86,9 @@ internal static class DamageMap
         return null;
     }
 
+    // 部屋の絵と損傷マスクの準備ができているか (無ければ作る)
+    internal static bool Ready() => MrpBundle.Ready && EnsureMap();
+
     private static bool EnsureMap()
     {
         var ship = ShipStatus.Instance;
@@ -646,6 +649,7 @@ internal static class DamageMap
         Underlays.Clear();
         TerrainFx.Clear();
         BreakPieces.Clear();
+        WallPeel.Clear();
         RubbleBake.Clear();
         RubbleBlocks.Clear();
         Rooms.Clear();

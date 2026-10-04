@@ -10,7 +10,7 @@ namespace MoreRolesPlus.Terrain;
 // 割れた塊と飛ぶ破片は残った壁の線 (WallSegments) に当たって跳ね返る (床の上の 2D + 高さの自前の動き)
 internal static class TerrainFx
 {
-    private enum Kind { Fall, Fly, Puff, Spark, Flash, Piece }
+    private enum Kind { Fall, Fly, Puff, Spark, Flash, Piece, Junk }
 
     private sealed class Item
     {
@@ -31,6 +31,11 @@ internal static class TerrainFx
         public bool Hidden;       // 動き出すまで隠している (表示の切り替えは変わった時だけ書く)
         public bool Steer;        // 大きな瓦礫: ホストが決めた所 (Tx, Ty) へ放物線で飛んでそこで止まる (壁は見ない)
         public float Tx, Ty;
+        public float Rest;        // 止まる高さ (瓦礫の山の上に乗る。0 = 床)
+        public float PileX, PileY, PileRx, PileRy, PileH; // 落ちた所の山 (PileH = 0 なら山なし)
+        public float Flip, VFlip; // 金属板: 空中で裏返る (横幅を cos で縮める)
+        public float Roll;        // パイプ: 床を転がる (半径。0 = 転がらない)
+        public int Bounces;
     }
 
     private static readonly List<Item> Items = new();
@@ -104,6 +109,26 @@ internal static class TerrainFx
         }
         for (int k = 0; k < 7; k++)
             Dust(center + tangent * (((float)rnd.NextDouble() - 0.5f) * length), rnd, 0.55f, 1.3f);
+        // 船の中の瓦礫: 壁の根元に山 (真ん中ほど高く積もる) を作り、金属板・パイプ・配線・ナット・壁の中身を落とす
+        var pile = new Pile { X = center.x + axis.x * 0.15f, Y = center.y + axis.y * 0.15f, Rx = length * 0.65f, Ry = 0.4f, H = 0.1f + force * 0.05f };
+        Stain(new Vector2(pile.X, pile.Y), length * 1.5f, 0.35f);
+        foreach (var it in byRank) if (it != null) SetPile(it, pile);
+        foreach (var (art, count, size) in CrumbleJunk)
+            for (int k = 0; k < count; k++)
+            {
+                Vector2 src = hit + tangent * (((float)rnd.NextDouble() - 0.5f) * length);
+                // 3 つに 2 つは振った向きへ (穴の中と向こう)、残りは叩いた側へこぼれる
+                Vector2 to = rnd.NextDouble() < 0.66
+                    ? axis * (0.15f + (float)rnd.NextDouble() * 0.6f + force * 0.4f)
+                    : -axis * (0.1f + (float)rnd.NextDouble() * 0.35f);
+                to += tangent * (((float)rnd.NextDouble() - 0.5f) * 0.5f);
+                var it = Junk(art, rnd, src, size, walls, pile);
+                it.Height = 0.15f + (float)rnd.NextDouble() * 0.6f;
+                float flight = MathF.Sqrt(2f * it.Height / Gravity) + 0.25f;
+                it.Vx = to.x / flight; it.Vy = to.y / flight;
+                it.VH = 0.4f + (float)rnd.NextDouble() * 1.2f;
+                it.T = -(0.03f + (float)rnd.NextDouble() * 0.35f);
+            }
         return Settle(byRank, pieces, walls, given);
     }
 
@@ -118,6 +143,20 @@ internal static class TerrainFx
             it.Height = 0.15f + (float)rnd.NextDouble() * 0.3f;
         }
         Dust(at - dir * 0.1f, rnd, 0.35f, 0.8f);
+    }
+
+    // 剥げかけの表面が欠け落ちる: 細胞の絵 (元の場所に重なっている) が根元 (baseY) へ落ちて手前へ転がる
+    public static void DropPeel(BreakPiece p, float baseY, Vector2 dir, int seed)
+    {
+        var rnd = new System.Random(seed);
+        float h = Math.Max(0f, p.Origin.y - baseY);
+        var it = AddPiece(p, new Vector2(p.Origin.x, p.Origin.y - h), h, null);
+        if (it == null) return;
+        float flight = MathF.Sqrt(2f * h / Gravity) + 0.15f;
+        it.Vx = ((float)rnd.NextDouble() - 0.5f) * 0.3f / flight;
+        it.Vy = -dir.y * (0.15f + (float)rnd.NextDouble() * 0.2f) / flight; // 叩いた側へ
+        it.VRot = ((float)rnd.NextDouble() - 0.5f) * 120f;
+        it.T = -(0.02f + (float)rnd.NextDouble() * 0.06f);
     }
 
     // 爆発: 本編の爆発の絵が一瞬 → 塊が外へ飛んで散らばる → 火花と煙。
@@ -166,6 +205,20 @@ internal static class TerrainFx
             it.VH = 1.5f + (float)rnd.NextDouble() * 2f;
             it.VRot = ((float)rnd.NextDouble() - 0.5f) * 720f;
         }
+        // 船の中の瓦礫が外へ飛び散る (爆発は山にしない)
+        foreach (var (art, count, size) in BlastJunk)
+            for (int k = 0; k < count; k++)
+            {
+                float ang = (float)(rnd.NextDouble() * Math.PI * 2);
+                float sp = radius * (1.8f + (float)rnd.NextDouble() * 3.2f);
+                var it = Junk(art, rnd, c, size, walls, default);
+                it.Vx = (MathF.Cos(ang) + dir.x * force) * sp;
+                it.Vy = (MathF.Sin(ang) + dir.y * force) * sp;
+                it.Height = 0.1f;
+                it.VH = 1.5f + (float)rnd.NextDouble() * 2.5f;
+                it.T = -(float)rnd.NextDouble() * 0.06f;
+            }
+        Stain(c, radius * 1.6f, 0.2f);
         for (int k = 0; k < 18; k++)
         {
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
@@ -298,6 +351,62 @@ internal static class TerrainFx
         return it;
     }
 
+    // 瓦礫の山: (X, Y) を中心に、横 Rx・縦 Ry の楕円の中ほど高く (最高 H) 積もる
+    private struct Pile { public float X, Y, Rx, Ry, H; }
+
+    private enum JunkArt { Plate, Pipe, Wire, Nut, Core, Grit }
+
+    // (絵, 数, 大きさ) 打撃で崩れた時 / 爆発
+    private static readonly (JunkArt Art, int Count, float Size)[] CrumbleJunk =
+        { (JunkArt.Plate, 3, 0.26f), (JunkArt.Pipe, 2, 0.26f), (JunkArt.Wire, 3, 0.2f), (JunkArt.Nut, 4, 0.06f), (JunkArt.Core, 4, 0.16f), (JunkArt.Grit, 14, 0.07f) };
+    private static readonly (JunkArt Art, int Count, float Size)[] BlastJunk =
+        { (JunkArt.Plate, 4, 0.26f), (JunkArt.Pipe, 2, 0.26f), (JunkArt.Wire, 5, 0.2f), (JunkArt.Nut, 6, 0.06f), (JunkArt.Core, 5, 0.16f), (JunkArt.Grit, 18, 0.07f) };
+
+    private static Item Junk(JunkArt art, System.Random rnd, Vector2 at, float size, float[] walls, Pile pile)
+    {
+        float s = size * (0.7f + (float)rnd.NextDouble() * 0.6f);
+        Sprite sp = art switch
+        {
+            JunkArt.Plate => DebrisArt.Plate(rnd.Next()),
+            JunkArt.Pipe => DebrisArt.Pipe(rnd.Next()),
+            JunkArt.Wire => DebrisArt.Wire(rnd.Next()),
+            JunkArt.Nut => DebrisArt.Nut,
+            JunkArt.Core => DebrisArt.Core(rnd.Next()),
+            _ => rnd.NextDouble() < 0.5 ? DebrisArt.Pebble : DebrisArt.Core(rnd.Next()),
+        };
+        var it = Spawn(Kind.Junk, sp, at, s, keep: true);
+        it.Walls = walls;
+        it.Rot = (float)rnd.NextDouble() * 360f;
+        it.Tr.rotation = RotZ(it.Rot);
+        it.VRot = ((float)rnd.NextDouble() - 0.5f) * (art == JunkArt.Plate ? 500f : 900f);
+        if (art == JunkArt.Plate) it.VFlip = (rnd.NextDouble() < 0.5 ? -1f : 1f) * (8f + (float)rnd.NextDouble() * 8f);
+        if (art == JunkArt.Pipe) it.Roll = s * 0.15f;
+        SetPile(it, pile);
+        return it;
+    }
+
+    private static void SetPile(Item it, Pile p)
+    {
+        it.PileX = p.X; it.PileY = p.Y; it.PileRx = p.Rx; it.PileRy = p.Ry; it.PileH = p.H;
+    }
+
+    // 落ちた所の山の高さ (山の上に乗って止まる)
+    private static float PileHeight(Item it)
+    {
+        if (it.PileH <= 0f) return 0f;
+        float dx = (it.Px - it.PileX) / it.PileRx, dy = (it.Py - it.PileY) / it.PileRy;
+        float k = 1f - dx * dx - dy * dy;
+        return k > 0f ? it.PileH * k : 0f;
+    }
+
+    // 床の土埃の染み (瓦礫の下・床のすぐ上)
+    private static void Stain(Vector2 at, float width, float delay)
+    {
+        var it = Spawn(Kind.Fall, DebrisArt.Stain, at, width, keep: true);
+        it.Z += 0.003f;
+        it.T = -delay;
+    }
+
     private static void Dust(Vector2 at, System.Random rnd, float size, float life)
     {
         var it = Spawn(Kind.Puff, DebrisArt.Puff, at, size, keep: false);
@@ -371,6 +480,7 @@ internal static class TerrainFx
                 Kind.Puff => StepPuff(it, dt),
                 Kind.Spark => StepSpark(it, dt),
                 Kind.Piece => StepPiece(it, dt),
+                Kind.Junk => StepJunk(it, dt),
                 _ => StepFlash(it),
             };
             if (it.Walls != null && Collide(it, ox, oy)) done = false;
@@ -382,7 +492,12 @@ internal static class TerrainFx
             {
                 Items.RemoveAt(i);
                 if (it.Kind is Kind.Puff or Kind.Spark or Kind.Flash) UnityEngine.Object.Destroy(it.Tr.gameObject);
-                else RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
+                else
+                {
+                    // 山の上に乗った物ほど手前 (上に積もって見える)
+                    if (it.Rest > 0f) { it.Z -= it.Rest * 0.02f; it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z); }
+                    RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
+                }
             }
         }
     }
@@ -407,14 +522,15 @@ internal static class TerrainFx
         it.VH -= Gravity * dt;
         it.Height += it.VH * dt;
         float lie = it.H0 > 0.05f ? Math.Clamp(1f - it.Height / it.H0, 0f, 1f) : Math.Clamp(it.T / 0.25f, 0f, 1f);
-        if (it.Height <= 0f) lie = 1f;
+        if (it.Height <= it.Rest) lie = 1f;
         if (lie != it.Lie && it.Tr is not null) // 予測 (PredictRest) の時は絵が無い
         {
             it.Lie = lie;
             it.Tr.localScale = V3(it.Sx * (1f - (1f - LieFlatX) * lie), it.Sy * (1f - (1f - LieFlatY) * lie), it.Sz);
         }
-        if (it.Height > 0f) return false;
-        it.Height = 0f;
+        if (!it.Steer) it.Rest = PileHeight(it);
+        if (it.Height > it.Rest) return false;
+        it.Height = it.Rest;
         if (it.Steer)
         {
             // 決まった所にぴたりと止める (当たり判定の位置と見た目を揃える)
@@ -442,6 +558,50 @@ internal static class TerrainFx
         it.Rot += it.VRot * dt;
         it.VRot *= MathF.Max(0f, 1f - 3f * dt);
         if (it.Vx * it.Vx + it.Vy * it.Vy > 0.01f || it.Height > 0f) return false;
+        it.VRot = 0f;
+        return true;
+    }
+
+    // 船の中の瓦礫: 何度か跳ねて (跳ね返り 0.38)、床をこすって止まる。金属板は空中で裏返り、パイプは床を転がる。
+    // 落ちた所に山があれば、その高さで止まる
+    private static bool StepJunk(Item it, float dt)
+    {
+        it.Px += it.Vx * dt; it.Py += it.Vy * dt;
+        it.VH -= Gravity * dt;
+        it.Height += it.VH * dt;
+        it.Rot += it.VRot * dt;
+        it.Rest = PileHeight(it);
+        if (it.VFlip != 0f)
+        {
+            it.Flip += it.VFlip * dt;
+            float cx = MathF.Cos(it.Flip);
+            if (cx > -0.15f && cx < 0.15f) cx = cx < 0f ? -0.15f : 0.15f; // 真横でも線 1 本は残す
+            it.Tr.localScale = V3(it.S0 * cx, it.S0, 1f);
+        }
+        if (it.Height > it.Rest) return false;
+        it.Height = it.Rest;
+        if (it.VH < -0.8f && it.Bounces < 4)
+        {
+            it.Bounces++;
+            it.VH = -it.VH * 0.38f;
+            it.Vx *= 0.6f; it.Vy *= 0.6f;
+            it.VRot *= -0.5f;
+            it.VFlip *= 0.5f;
+            return false;
+        }
+        it.VH = 0f;
+        if (it.VFlip != 0f)
+        {
+            // 表か裏で寝る
+            it.VFlip = 0f;
+            it.Flip = MathF.Round(it.Flip / MathF.PI) * MathF.PI;
+            it.Tr.localScale = V3(it.S0 * MathF.Cos(it.Flip), it.S0, 1f);
+        }
+        float f = MathF.Max(0f, 1f - (it.Roll > 0f ? 1.6f : 5f) * dt);
+        it.Vx *= f; it.Vy *= f;
+        // 転がる物は進んだ分だけ回る。他は床でこすれて回りが止まる
+        it.VRot = it.Roll > 0f ? -it.Vx / it.Roll * 57.29578f : it.VRot * f;
+        if (it.Vx * it.Vx + it.Vy * it.Vy > 0.0009f) return false;
         it.VRot = 0f;
         return true;
     }

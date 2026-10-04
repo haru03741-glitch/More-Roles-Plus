@@ -168,8 +168,9 @@ internal static class TerrainDamage
         if (hp > 0)
         {
             // 耐久が減るほどひびが育つ
+            // 面を持つ壁は表面が剥げかける (崩れる時と同じ割れ目のひび)。他の壁はひびの板
             float reach = hp >= WallDurability.MaxHp - 1 ? 0.3f : 0.6f;
-            if (DamageMap.Cracks(hit, reach, AngleOf(dir)) == null) TerrainFx.Chip(hit, dir, e.Seed);
+            if (WallPeel.Hit(hit, normal, hp, e.Seed) || DamageMap.Cracks(hit, reach, AngleOf(dir)) == null) TerrainFx.Chip(hit, dir, e.Seed);
             return $"blunt hit hp={hp} at=({hit.x:0.00},{hit.y:0.00})";
         }
 
@@ -197,9 +198,13 @@ internal static class TerrainDamage
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         // floorY は見た目だけ (その下の当たり判定は床の絵の上の見えない壁なので切ってよい)
         var pieces = new List<BreakPiece>();
-        // 割れ目の中心は叩いた所。面を持つ壁を下から叩いた時は、絵が当たり判定の線より上に立っているので面の中ほどへ上げる
+        // 割れ目の中心は叩いた所。面を持つ壁を下から叩いた時は、絵が当たり判定の線より上に立っているので面の中ほどへ上げる。
+        // 剥げかけていた壁は、そのひびと同じ中心・同じ種で割れる
         Vector2 crackAt = normal.y < -0.5f ? hit + new Vector2(0f, CrackLift) : hit;
-        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, crackAt, e.Seed) : null;
+        int crackSeed = e.Seed;
+        if (WallPeel.TryGet(hit, out var peelAt, out int peelSeed)) { crackAt = peelAt; crackSeed = peelSeed; }
+        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, crackAt, crackSeed) : null;
+        if (cut > 0) WallPeel.Release(hit);
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
         // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
         if (cut == 0) TerrainFx.Chip(hit, dir, e.Seed);

@@ -374,6 +374,19 @@ internal static class TerrainProbe
             reply($"OK zoom {cam.orthographicSize}");
         });
 
+        TestBridge.Register("look", "<x> <y> | off カメラをその点に止める (自分を追わない・見た目の確認用)", (args, reply) =>
+        {
+            var cam = Camera.main;
+            var fc = cam ? cam.GetComponent<FollowerCamera>() : null;
+            if (!fc) { reply("ERR no follower camera"); return; }
+            if (args.Trim() == "off") { fc.Locked = false; reply("OK look off"); return; }
+            if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR look needs <x> <y> | off"); return; }
+            fc.Locked = true;
+            var t = cam.transform;
+            t.position = new Vector3(v[0], v[1], t.position.z);
+            reply($"OK look {v[0]} {v[1]}");
+        });
+
         TestBridge.Register("maskat", "<x> <y> その点の損傷マスク (R=穴 G=焦げ B=熾火 A=家具)", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR maskat needs <x> <y>"); return; }

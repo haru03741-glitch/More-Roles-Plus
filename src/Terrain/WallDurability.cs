@@ -37,6 +37,9 @@ internal static class WallDurability
         return Hp.TryGetValue(Key(p), out int v) ? v : MaxHp;
     }
 
+    // 耐久の格子の番号 (同じ格子を叩いた打撃は同じ壁の所)
+    internal static long CellKey(Vector2 p) => Key(p);
+
     private static long Key(Vector2 p)
     {
         long x = Mathf.FloorToInt(p.x / CellSize), y = Mathf.FloorToInt(p.y / CellSize);
