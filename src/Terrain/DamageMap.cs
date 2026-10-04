@@ -112,6 +112,8 @@ internal static class DamageMap
         // 瓦礫の床も同じ描き方 (影が落ちるようにステンシルを書く) で、損傷マスクを逆向きに使う
         _underlayMat = new Material(mat) { name = "MrpRubble" };
         _underlayMat.SetFloat("_UseDamage", 2f); // 2 = 抜けた所にだけ描く
+        _propMat = new Material(mat) { name = "MrpDebris" };
+        _propMat.SetFloat("_UseDamage", 0f);
 
         Plugin.Logger.LogInfo($"damage map {_w}x{_h} ({_pixels.Length / 1024}KB) origin={_origin} rooms={rooms.Count}");
         return true;
@@ -124,6 +126,7 @@ internal static class DamageMap
         bool banded = segs != null && segs.Count >= 2;
         var hull = banded ? ConvexHull(segs) : null;
         float reach = r * (1f + ScorchWidth) + HoleEdge;
+        var keep = FurnitureNear(c, reach);
         int x0 = Math.Max(0, (int)((c.x - reach - _origin.x) * PixelsPerUnit));
         int x1 = Math.Min(_w - 1, (int)((c.x + reach - _origin.x) * PixelsPerUnit) + 1);
         int y0 = Math.Max(0, (int)((c.y - reach - _origin.y) * PixelsPerUnit));
@@ -147,6 +150,9 @@ internal static class DamageMap
                     hole = Math.Min(hole, Clamp01(0.5f + (BandHalf - bd) / HoleEdge * 0.5f));
                     scorch = Math.Min(scorch, Clamp01(1f - (bd - BandHalf) / (r * ScorchWidth)));
                 }
+
+                // 家具 (ベッド・机など) は抜かない。焦げは表面なので残す
+                if (hole > 0f && InsideAny(keep, wx, wy)) hole = 0f;
 
                 int i = (py * _w + px) * 4;
                 byte hb = (byte)(hole * 255f), sb = (byte)(scorch * 255f);
@@ -212,6 +218,31 @@ internal static class DamageMap
     }
 
     private static float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+    // 家具の当たり判定 (ShortObjects 層) の範囲。絵は 3/4 視点で当たり判定より上に伸びるので上へ広げる
+    private const int FurnitureLayer = 12;
+    private const float FurnitureMargin = 0.08f;
+    private const float FurnitureUp = 0.55f;
+
+    private static List<Rect> FurnitureNear(Vector2 c, float r)
+    {
+        var list = new List<Rect>();
+        foreach (var col in Physics2D.OverlapCircleAll(c, r + FurnitureUp, 1 << FurnitureLayer))
+        {
+            if (!col || col.isTrigger) continue;
+            var b = col.bounds;
+            list.Add(Rect.MinMaxRect(b.min.x - FurnitureMargin, b.min.y - FurnitureMargin,
+                                     b.max.x + FurnitureMargin, b.max.y + FurnitureUp));
+        }
+        return list;
+    }
+
+    private static bool InsideAny(List<Rect> rects, float x, float y)
+    {
+        foreach (var rc in rects)
+            if (x >= rc.xMin && x <= rc.xMax && y >= rc.yMin && y <= rc.yMax) return true;
+        return false;
+    }
 
     // その点に重なる部屋の絵の z の範囲 (部屋ごとに z が違うので、手前・奥はその場で決める)
     private static void RoomZRange(Vector2 c, out float near, out float far)
@@ -354,10 +385,30 @@ internal static class DamageMap
 
     private static float _passageScale = 1f;
 
+    // 瓦礫・土煙などの部品用: 部屋と同じ描き方 (影が落ちる) で、損傷マスクは見ない
+    public static Material PropMaterial => _propMat;
+
+    // その場所の部屋の絵より手前の z
+    public static float FrontZ(Vector2 c)
+    {
+        RoomZRange(c, out float near, out _);
+        return near;
+    }
+
+    // マップが変わった時に一緒に片付ける
+    public static void Track(GameObject go)
+    {
+        if (_ship) go.transform.SetParent(_ship.transform, true);
+        Underlays.Add(go);
+    }
+
+    private static Material _propMat;
+
     private static void Reset()
     {
         foreach (var go in Underlays) if (go) UnityEngine.Object.Destroy(go);
         Underlays.Clear();
+        TerrainFx.Clear();
         Rooms.Clear();
         _passageTile = null;
         _passageSearched = false;

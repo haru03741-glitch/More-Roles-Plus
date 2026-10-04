@@ -5,6 +5,7 @@ using UnityEngine;
 // AssetBundle mrp_fx のビルド入口 (tools/build-bundle.ps1 から Unity バッチモードで呼ばれる)。
 // 毎回 Assets/Generated に素材を作り直してから焼く:
 //   noise.png    … 継ぎ目なく敷き詰められる雲状のノイズ (128px・繰り返し)
+//   cells.png    … 細胞模様 (ボロノイ・繰り返し)。割れ口を角張らせる
 //   terrain.mat  … MRP/TerrainSprite (損傷マスクで穴と焦げを描く部屋の絵用)
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -31,10 +32,13 @@ public static class MrpBundleBuilder
         }
 
         Texture2D noise = MakeNoise();
+        Texture2D cells = MakeCells();
 
         string matPath = Folder + "/terrain.mat";
         var mat = new Material(terrain) { name = "terrain" };
         mat.SetTexture("_Noise", noise);
+        mat.SetTexture("_Cells", cells);
+        mat.SetFloat("_EdgeJag", 0.6f);
         AssetDatabase.DeleteAsset(matPath);
         AssetDatabase.CreateAsset(mat, matPath);
         Tag(matPath);
@@ -105,6 +109,59 @@ public static class MrpBundleBuilder
         importer.assetBundleName = BundleName;
         importer.SaveAndReimport();
 
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
+    // 細胞模様 (繰り返し可能なボロノイ): 画素 = いちばん近い種点の乱数値。割れ口を細胞の境目に沿った角張った形にする
+    private static Texture2D MakeCells()
+    {
+        const int size = 512, sites = 14;
+        string path = Folder + "/cells.png";
+        var rnd = new System.Random(7);
+        var sx = new float[sites * sites];
+        var sy = new float[sites * sites];
+        var sv = new float[sites * sites];
+        for (int j = 0; j < sites; j++)
+        for (int i = 0; i < sites; i++)
+        {
+            int k = j * sites + i;
+            sx[k] = (i + 0.15f + (float)rnd.NextDouble() * 0.7f) / sites;
+            sy[k] = (j + 0.15f + (float)rnd.NextDouble() * 0.7f) / sites;
+            sv[k] = (float)rnd.NextDouble();
+        }
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            float u = (x + 0.5f) / size, v = (y + 0.5f) / size;
+            int ci = (int)(u * sites), cj = (int)(v * sites);
+            float best = float.MaxValue, val = 0;
+            for (int dj = -1; dj <= 1; dj++)
+            for (int di = -1; di <= 1; di++)
+            {
+                int ii = (ci + di + sites) % sites, jj = (cj + dj + sites) % sites;
+                int k = jj * sites + ii;
+                float px = sx[k] + (ci + di - ii) / (float)sites;
+                float py = sy[k] + (cj + dj - jj) / (float)sites;
+                float d = (u - px) * (u - px) + (v - py) * (v - py);
+                if (d < best) { best = d; val = sv[k]; }
+            }
+            tex.SetPixel(x, y, new Color(val, val, val, 1f));
+        }
+        File.WriteAllBytes(path, tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+        var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+        importer.textureType = TextureImporterType.Default;
+        importer.sRGBTexture = false;
+        importer.mipmapEnabled = false;
+        importer.wrapMode = TextureWrapMode.Repeat;
+        importer.filterMode = FilterMode.Point; // 細胞の境目をくっきり
+        importer.npotScale = TextureImporterNPOTScale.None;
+        importer.textureCompression = TextureImporterCompression.Uncompressed;
+        importer.isReadable = false;
+        importer.assetBundleName = BundleName;
+        importer.SaveAndReimport();
         return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
     }
 

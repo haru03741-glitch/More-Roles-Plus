@@ -44,6 +44,7 @@ internal static class TerrainProbe
         RegisterSprites();
         RegisterShaderInfo();
         RegisterDamage();
+        RegisterFindSprite();
     }
 
     private static void RegisterCutting()
@@ -195,7 +196,7 @@ internal static class TerrainProbe
         {
             if (!TryParse3(args, out float x, out float y, out float r)) { reply("ERR blast needs <x> <y> <r>"); return; }
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            string res = TerrainDamage.Apply(new DamageEvent(DamageKind.Explosion, new Vector2(x, y), Vector2.zero, r, 0));
+            string res = TerrainDamage.Apply(new DamageEvent(DamageKind.Explosion, new Vector2(x, y), Vector2.zero, r, (ushort)System.Environment.TickCount));
             reply($"OK blast {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
         });
 
@@ -207,8 +208,25 @@ internal static class TerrainProbe
             for (int i = 0; i < 4; i++)
                 if (!float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out v[i])) { reply("ERR hammer bad number"); return; }
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            string res = TerrainDamage.Apply(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, 0));
+            string res = TerrainDamage.Apply(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, (ushort)System.Environment.TickCount));
             reply($"OK hammer {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
+        });
+    }
+
+    internal static void RegisterFindSprite()
+    {
+        TestBridge.Register("findsprite", "<正規表現> 読み込み済みの Sprite を名前で探す", (args, reply) =>
+        {
+            var re = new System.Text.RegularExpressions.Regex(args.Trim(), System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            int n = 0;
+            foreach (var o in Resources.FindObjectsOfTypeAll(Il2CppInterop.Runtime.Il2CppType.Of<Sprite>()))
+            {
+                var sp = o.TryCast<Sprite>();
+                if (!sp || !re.IsMatch(sp.name)) continue;
+                if (++n > 40) break;
+                reply($"SPRITE {sp.name} rect={sp.textureRect.width}x{sp.textureRect.height} tex={(sp.texture ? sp.texture.name : "?")} ppu={sp.pixelsPerUnit}");
+            }
+            reply($"OK findsprite n={n}");
         });
     }
 

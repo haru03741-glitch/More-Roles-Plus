@@ -49,6 +49,7 @@ internal static class TerrainDamage
         }
 
         string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch) : null;
+        if (visual == null) TerrainFx.Explosion(e.Position, e.Size, e.Seed);
         return $"explosion cut={cut} cracked={cracked} visual={visual ?? "ok"}";
     }
 
@@ -63,7 +64,7 @@ internal static class TerrainDamage
         {
             // 耐久が減るほどひびが育つ
             float reach = hp >= WallDurability.MaxHp - 1 ? 0.3f : 0.6f;
-            DamageMap.Cracks(hit, reach, AngleOf(dir));
+            if (DamageMap.Cracks(hit, reach, AngleOf(dir)) == null) TerrainFx.Chip(hit, dir, e.Seed);
             return $"blunt hit hp={hp} at=({hit.x:0.00},{hit.y:0.00})";
         }
 
@@ -77,6 +78,8 @@ internal static class TerrainDamage
             if (EdgeCutter.Cut(col, rect, removed)) cut++;
 
         string visual = cut > 0 ? DamageMap.Breach(rect, removed, p.Scorch) : null;
+        // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に)
+        if (visual == null) TerrainFx.Crumble(hit - normal * (p.BreachDepth * 0.3f), tangent, normal, p.BreachLength, e.Seed);
         return $"blunt breach cut={cut} visual={visual ?? "ok"}";
     }
 

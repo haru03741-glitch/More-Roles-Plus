@@ -13,6 +13,7 @@ Shader "MRP/TerrainSprite"
         _MaskLayer ("Stencil Ref", Float) = 1
         _MaskComp ("Stencil Comp", Float) = 8
         _Noise ("Edge Noise", 2D) = "gray" {}
+        _Cells ("Break Cells", 2D) = "gray" {}
         _EdgeJag ("Edge jaggedness", Float) = 0.35
         _ScorchColor ("Scorch color", Color) = (0.08, 0.06, 0.05, 1)
         _EmberColor ("Ember rim color", Color) = (1.0, 0.45, 0.12, 1)
@@ -51,6 +52,7 @@ Shader "MRP/TerrainSprite"
             float _EnableExternalAlpha;
             fixed4 _Color;
             sampler2D _Noise;
+            sampler2D _Cells;
             float _EdgeJag;
             fixed4 _ScorchColor;
             fixed4 _EmberColor;
@@ -93,8 +95,9 @@ Shader "MRP/TerrainSprite"
                 {
                     if (!inMap) discard;
                     float dr = tex2D(_MrpDamageTex, muv).r;
-                    float nn = tex2D(_Noise, i.world * 0.9).r * 0.65 + tex2D(_Noise, i.world * 3.1).r * 0.35;
-                    float hv = dr + (nn - 0.5) * _EdgeJag;
+                    float cl = tex2D(_Cells, i.world * 0.4).r;
+                    float nn = tex2D(_Noise, i.world * 3.1).r;
+                    float hv = dr + (cl - 0.5) * _EdgeJag + (nn - 0.5) * 0.06;
                     clip(hv - 0.38);
                     c.rgb *= lerp(0.45, 1.0, smoothstep(0.45, 0.8, hv));
                     return c;
@@ -103,21 +106,24 @@ Shader "MRP/TerrainSprite"
                 if (_UseDamage > 0.5 && inMap)
                 {
                     fixed3 dmg = tex2D(_MrpDamageTex, muv).rgb;
-                    float n = tex2D(_Noise, i.world * 0.9).r * 0.65 + tex2D(_Noise, i.world * 3.1).r * 0.35;
+                    // 細胞ごとに一定のずれ (角張った欠け) + ごく弱いノイズ (縁のガタつき)
+                    float cell = tex2D(_Cells, i.world * 0.4).r;
+                    float n = tex2D(_Noise, i.world * 3.1).r;
 
-                    // 穴: なだらかな値をノイズでずらした閾値で切る → 割れたような縁
-                    float hole = dmg.r + (n - 0.5) * _EdgeJag;
+                    // 穴: なだらかな値を細胞でずらした閾値で切る → 割れた破片の形の縁
+                    float hole = dmg.r + (cell - 0.5) * _EdgeJag + (n - 0.5) * 0.06;
                     clip(0.5 - hole);
 
-                    // 焦げ: 縁に近いほど黒く (ムラはノイズ)
-                    float scorch = saturate(dmg.g * (0.6 + n * 0.6));
-                    c.rgb = lerp(c.rgb, _ScorchColor.rgb, scorch * 0.7);
+                    // 焦げ: 本編の描き方に合わせて 2 段のベタ塗り (ぼかさない)
+                    float scorch = dmg.g * (0.55 + cell * 0.7);
+                    float level = scorch > 0.75 ? 0.75 : scorch > 0.4 ? 0.4 : 0.0;
+                    c.rgb = lerp(c.rgb, _ScorchColor.rgb, level);
 
                     // 割れ口: 本編の絵と同じ濃い輪郭線 → そのすぐ外側にだけ熾火の照り
                     float edge = step(0.05, dmg.r);
-                    float outline = smoothstep(0.30, 0.34, hole) * edge;
-                    float ember = saturate(1 - abs(hole - 0.24) * 9) * edge * (1 - outline) * dmg.b;
-                    c.rgb += _EmberColor.rgb * ember * 0.45;
+                    float outline = step(0.41, hole) * edge;
+                    float ember = step(0.33, hole) * edge * (1 - outline) * step(0.3, dmg.b);
+                    c.rgb = lerp(c.rgb, _EmberColor.rgb, ember * 0.85);
                     c.rgb = lerp(c.rgb, _OutlineColor.rgb, outline);
                 }
 

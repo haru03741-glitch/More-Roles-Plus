@@ -39,6 +39,11 @@ public class Ticker : MonoBehaviour
 {
     public Ticker(System.IntPtr ptr) : base(ptr) { }
 
+    private void Update()
+    {
+        Terrain.TerrainFx.Tick();
+    }
+
     private void FixedUpdate()
     {
         Fx.MrpBundle.Tick();
