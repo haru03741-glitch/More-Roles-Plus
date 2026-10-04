@@ -43,7 +43,7 @@ internal static class DamageMap
 
         Stamp(center, radius, removedSegments);
         Upload();
-        SpawnUnderlay(center, radius);
+        SpawnUnderlay(center, radius, removedSegments);
         return null;
     }
 
@@ -218,19 +218,23 @@ internal static class DamageMap
     }
 
     // 抜いた穴の向こうには床が無い (部屋と部屋の間は船体と宇宙) ので、部屋の絵より奥に瓦礫の床を敷く
-    private static void SpawnUnderlay(Vector2 c, float r)
+    private static void SpawnUnderlay(Vector2 c, float r, List<Vector2> segs)
     {
         RoomZRange(c, out float nearZ, out float farZ);
-        _underlaySprite ??= UnderlayArt.MakeFloor();
-        var go = new GameObject("MrpRubble") { layer = 9 };
-        go.transform.SetParent(_ship.transform, true);
-        go.transform.position = new Vector3(c.x, c.y, farZ + UnderlayDepth);
-        float size = r * 2f * 1.5f; // 縁のぎざぎざ (ノイズで最大 ~1.35 倍に広がる) を覆う
-        go.transform.localScale = Vector3.one * (size / _underlaySprite.bounds.size.x) / _ship.transform.lossyScale.x;
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = _underlaySprite;
-        sr.sharedMaterial = _underlayMat;
-        Underlays.Add(go);
+        if (!SpawnPassageFloor(c, r, segs, farZ + UnderlayDepth))
+        {
+            // 廊下の床の絵が見つからないマップでは手続きの床で代用する
+            _underlaySprite ??= UnderlayArt.MakeFloor();
+            var go = new GameObject("MrpRubble") { layer = 9 };
+            go.transform.SetParent(_ship.transform, true);
+            go.transform.position = new Vector3(c.x, c.y, farZ + UnderlayDepth);
+            float size = r * 2f * 1.5f;
+            go.transform.localScale = Vector3.one * (size / _underlaySprite.bounds.size.x) / _ship.transform.lossyScale.x;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = _underlaySprite;
+            sr.sharedMaterial = _underlayMat;
+            Underlays.Add(go);
+        }
 
         // ひびは部屋の絵のすぐ手前に、部屋と同じマテリアルで貼る (穴の中は損傷マスクで自動的に抜ける・影も効く)
         _crackSprite ??= UnderlayArt.MakeCracks();
@@ -246,11 +250,93 @@ internal static class DamageMap
         Underlays.Add(crack);
     }
 
+    // 穴の中 (部屋と部屋の隙間) には、本編が部屋どうしをつなぐのに使っている廊下の床を敷く。
+    // 床の絵は実行時に本編の廊下の絵から名前で切り出す (繰り返しの 1 周期分)。
+    private static readonly (string sprite, int x, int y, int w, int h)[] PassageFloorSources =
+    {
+        ("room_hallwaycros", 150, 168, 72, 55), // Skeld: 交差廊下の床板 (リベットの線が 55px 周期)
+    };
+
+    private static Sprite _passageTile;
+    private static bool _passageSearched;
+
+    private static bool SpawnPassageFloor(Vector2 c, float r, List<Vector2> segs, float z)
+    {
+        if (!_passageSearched)
+        {
+            _passageSearched = true;
+            foreach (var sr in _ship.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                var sp = sr.sprite;
+                if (!sp) continue;
+                foreach (var src in PassageFloorSources)
+                {
+                    if (sp.name != src.sprite) continue;
+                    var tr = sp.textureRect;
+                    var rect = new Rect(tr.x + src.x, tr.y + src.y, src.w, src.h);
+                    _passageTile = Sprite.Create(sp.texture, rect, new Vector2(0.5f, 0.5f), sp.pixelsPerUnit, 0, SpriteMeshType.FullRect);
+                    _passageTile.name = "MrpPassageFloor";
+                    _passageTile.hideFlags = HideFlags.DontUnloadUnusedAsset;
+                    _passageScale = sr.transform.lossyScale.x;
+                    break;
+                }
+                if (_passageTile) break;
+            }
+        }
+        if (!_passageTile) return false;
+
+        // 通路の向き = 切り取った壁に垂直。床板の継ぎ目が歩く向きに直交するよう回す (廊下と同じ)
+        Vector2 wallDir = Vector2.right;
+        if (segs != null && segs.Count >= 2)
+        {
+            Vector2 sum = Vector2.zero;
+            for (int k = 0; k + 1 < segs.Count; k += 2)
+            {
+                Vector2 d = segs[k + 1] - segs[k];
+                if (d.y < 0 || (d.y == 0 && d.x < 0)) d = -d; // 向きを揃えて足す
+                sum += d;
+            }
+            if (sum.sqrMagnitude > 1e-6f) wallDir = sum.normalized;
+        }
+        // 床板の継ぎ目 (絵の横方向) を壁と平行に
+        float angle = Mathf.Atan2(wallDir.y, wallDir.x) * Mathf.Rad2Deg;
+        var rot = Quaternion.Euler(0f, 0f, angle);
+        Vector2 ax = wallDir, ay = new Vector2(-wallDir.y, wallDir.x);
+
+        float tw = _passageTile.bounds.size.x * _passageScale, th = _passageTile.bounds.size.y * _passageScale;
+        float reach = r * 1.4f;
+        // 継ぎ目が隣の穴とも揃うよう、壁に沿った座標系の格子に置く
+        float u0 = Vector2.Dot(c, ax), v0 = Vector2.Dot(c, ay);
+        int iu0 = Mathf.FloorToInt((u0 - reach) / tw), iu1 = Mathf.CeilToInt((u0 + reach) / tw);
+        int iv0 = Mathf.FloorToInt((v0 - reach) / th), iv1 = Mathf.CeilToInt((v0 + reach) / th);
+        var parentScale = _ship.transform.lossyScale.x;
+        for (int iu = iu0; iu <= iu1; iu++)
+        for (int iv = iv0; iv <= iv1; iv++)
+        {
+            Vector2 p = ax * ((iu + 0.5f) * tw) + ay * ((iv + 0.5f) * th);
+            if ((p - c).sqrMagnitude > (reach + tw) * (reach + tw)) continue;
+            var go = new GameObject("MrpPassageFloor") { layer = 9 };
+            go.transform.SetParent(_ship.transform, true);
+            go.transform.position = new Vector3(p.x, p.y, z);
+            go.transform.rotation = rot;
+            go.transform.localScale = Vector3.one * (_passageScale / parentScale);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = _passageTile;
+            sr.sharedMaterial = _underlayMat;
+            Underlays.Add(go);
+        }
+        return true;
+    }
+
+    private static float _passageScale = 1f;
+
     private static void Reset()
     {
         foreach (var go in Underlays) if (go) UnityEngine.Object.Destroy(go);
         Underlays.Clear();
         Rooms.Clear();
+        _passageTile = null;
+        _passageSearched = false;
         if (_tex) UnityEngine.Object.Destroy(_tex);
         _tex = null;
         _pixels = null;
