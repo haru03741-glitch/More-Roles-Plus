@@ -526,7 +526,7 @@ internal static class DamageMap
             // (柱は影の線が 1 辺 (奥の面) にだけ沿うことがある → 1 辺でも沿えば壁)
             bool shadowed = false;
             for (int k = i; k < j && !shadowed; k++)
-                shadowed = Physics2D.OverlapCircle((p[k] + p[k + 1]) * 0.5f, BumpShadowNear, Constants.ShadowMask);
+                shadowed = Physics2D.OverlapCircleAll((p[k] + p[k + 1]) * 0.5f, BumpShadowNear, Constants.ShadowMask).Length > 0; // OverlapCircle (1 個版) は Android の libunity に無い
             if (shadowed) continue;
             if (loop)
             {
