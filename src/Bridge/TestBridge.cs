@@ -61,6 +61,7 @@ public static class TestBridge
 
             BridgeLog.Install();
             BuiltinCommands.RegisterAll();
+            Terrain.TerrainProbe.Register();
             WriteOut($"BRIDGE up {Plugin.Version}");
         }
         catch { _dir = null; }
