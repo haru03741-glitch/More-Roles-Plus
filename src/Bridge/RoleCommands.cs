@@ -72,6 +72,14 @@ internal static class RoleCommands
             reply($"OK clicktab {SettingsMenu.ClickTabButton(p)}");
         });
 
+        TestBridge.Register("viewsettings", "[タブ 0=概要 1=役職 2=MRP] [件数] ロビーの設定を見る画面を開いてタブのボタンを押し、並んだ文字を返す (客でも可)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            int tab = a.Length > 0 && int.TryParse(a[0], out int t) ? t : 2;
+            int max = a.Length > 1 && int.TryParse(a[1], out int m) ? m : 12;
+            reply($"OK viewsettings {LobbyView.Open(tab, max)}");
+        });
+
         TestBridge.Register("closesettings", "設定画面を閉じる", (_, reply) =>
         {
             if (!GameSettingMenu.Instance) { reply("ERR closesettings menu not open"); return; }

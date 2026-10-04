@@ -33,6 +33,7 @@ internal static class OptionSync
         int n = r.ReadPackedInt32();
         for (int i = 0; i < n && i < Registry.All.Count; i++) Registry.All[i].SetIndex(r.ReadPackedInt32());
         HoldsHostValues = true;
+        LobbyView.OnOptionsReceived();
     }
 
     // 自分がホストとして設定を触る前に、受け取った値を捨てて保存値へ戻す
