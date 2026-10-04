@@ -24,6 +24,13 @@ internal static class WallDurability
         return hp;
     }
 
+    // ホストが決めた耐久をそのまま書く (同期の受け手は自分で数えない)
+    public static void Set(Vector2 p, int hp)
+    {
+        Sync();
+        Hp[Key(p)] = hp;
+    }
+
     public static int Remaining(Vector2 p)
     {
         Sync();

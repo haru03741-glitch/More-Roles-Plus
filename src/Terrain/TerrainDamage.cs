@@ -12,19 +12,48 @@ internal static class TerrainDamage
     private const int ShadowLayer = 10;
     private const int WallMask = (1 << ShipLayer) | (1 << ShadowLayer);
 
-    public static string Apply(in DamageEvent e)
+    // 依頼を結果に決める (ホストだけが呼ぶ)。地形は変えない。何も起きない時 (届く所に壁が無い・外壁) は false
+    public static bool TryResolve(in DamageEvent e, out ResolvedDamage r, out string why)
     {
-        var profile = DamageProfile.Of(e.Kind);
-        return e.Kind switch
+        r = default;
+        why = null;
+        var p = DamageProfile.Of(e.Kind);
+        if (e.Kind == DamageKind.Explosion)
         {
-            DamageKind.Explosion => Explode(e, profile),
-            DamageKind.Blunt => Strike(e, profile),
+            r = new ResolvedDamage(e.Kind, TerrainWire.Q(e.Position), Vector2.zero, TerrainWire.QSize(e.Size), 0, e.Seed);
+            return true;
+        }
+        if (e.Kind != DamageKind.Blunt) { why = "unknown kind"; return false; }
+
+        Vector2 dir = e.Direction.sqrMagnitude > 1e-6f ? e.Direction.normalized : Vector2.right;
+        if (!FindWall(e.Position, dir, p.Reach, out Vector2 hit, out Vector2 normal)) { why = "blunt no wall in reach"; return false; }
+        // 叩いた辺りの多角形・箱の壁を先に折れ線へ (奥の面を辿れるように)
+        WallsNear(hit, MaxDepth);
+        float far = FarSide(hit, -normal);
+        if (far <= 0f) { why = "blunt outer wall (protected)"; return false; }
+        float depth = Math.Max(p.BreachDepth, far + 0.25f);
+
+        // 耐久の格子は送る値 (量子化した点) で数える。受け手も同じ点で同じ格子に書く
+        hit = TerrainWire.Q(hit);
+        int hp = Math.Max(WallDurability.Remaining(hit) - p.WallDamage, sbyte.MinValue);
+        r = new ResolvedDamage(e.Kind, hit, TerrainWire.QNormal(normal), TerrainWire.QSize(depth), (sbyte)hp, e.Seed);
+        return true;
+    }
+
+    // 決まった結果を地形に適用する (ホストも含め全員が同じ順で呼ぶ)
+    public static string Apply(in ResolvedDamage r)
+    {
+        var profile = DamageProfile.Of(r.Kind);
+        return r.Kind switch
+        {
+            DamageKind.Explosion => Explode(r, profile),
+            DamageKind.Blunt => Strike(r, profile),
             _ => "unknown kind",
         };
     }
 
     // 爆発: 半径の内側の壁はまとめて抜け、外側の輪の壁にはひびが入って耐久が減る
-    private static string Explode(in DamageEvent e, DamageProfile p)
+    private static string Explode(in ResolvedDamage e, DamageProfile p)
     {
         var core = new CircleShape(e.Position, e.Size);
         float outer = e.Size * p.OuterRingScale;
@@ -57,18 +86,14 @@ internal static class TerrainDamage
         return $"explosion cut={cut} cracked={cracked} visual={visual ?? "ok"}";
     }
 
-    // 打撃: 向きの先で最初に当たる壁の耐久を削る。0 になったらその壁の区間だけ四角く抜ける
-    private static string Strike(in DamageEvent e, DamageProfile p)
+    // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間だけ四角く抜ける
+    private static string Strike(in ResolvedDamage e, DamageProfile p)
     {
-        Vector2 dir = e.Direction.sqrMagnitude > 1e-6f ? e.Direction.normalized : Vector2.right;
-        if (!FindWall(e.Position, dir, p.Reach, out Vector2 hit, out Vector2 normal)) return "blunt no wall in reach";
-        // 叩いた辺りの多角形・箱の壁を先に折れ線へ (奥の面を辿れるように)
-        WallsNear(hit, MaxDepth);
-        float far = FarSide(hit, -normal);
-        if (far <= 0f) return "blunt outer wall (protected)";
-        float depth = Math.Max(p.BreachDepth, far + 0.25f);
+        Vector2 hit = e.Position, normal = e.Normal, dir = -normal;
+        float depth = e.Size;
 
-        int hp = WallDurability.Hit(hit, p.WallDamage);
+        int hp = e.Hp;
+        WallDurability.Set(hit, hp);
         if (hp > 0)
         {
             // 耐久が減るほどひびが育つ

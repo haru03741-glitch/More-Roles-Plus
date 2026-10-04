@@ -198,8 +198,23 @@ internal static class TerrainProbe
         {
             if (!TryParse3(args, out float x, out float y, out float r)) { reply("ERR blast needs <x> <y> <r>"); return; }
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            string res = TerrainDamage.Apply(new DamageEvent(DamageKind.Explosion, new Vector2(x, y), Vector2.zero, r, (ushort)System.Environment.TickCount));
+            string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, new Vector2(x, y), Vector2.zero, r, (ushort)System.Environment.TickCount));
             reply($"OK blast {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
+        });
+
+        TestBridge.Register("netloop", "[rev] <x y r>... 爆発を電文に書いて読み直し、受け手の順番待ちを通して適用 (rev = 後ろの連番から届ける)", (args, reply) =>
+        {
+            var p = new System.Collections.Generic.List<string>(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries));
+            bool rev = p.Count > 0 && p[0] == "rev";
+            if (rev) p.RemoveAt(0);
+            if (p.Count == 0 || p.Count % 3 != 0) { reply("ERR netloop needs [rev] <x y r>..."); return; }
+            var events = new DamageEvent[p.Count / 3];
+            for (int i = 0; i < events.Length; i++)
+            {
+                if (!TryParse3(string.Join(' ', p.GetRange(i * 3, 3)), out float x, out float y, out float r)) { reply("ERR netloop bad number"); return; }
+                events[i] = new DamageEvent(DamageKind.Explosion, new Vector2(x, y), Vector2.zero, r, (ushort)(System.Environment.TickCount + i));
+            }
+            reply($"OK netloop {TerrainSync.Loopback(events, rev)}");
         });
 
         TestBridge.Register("hammer", "<x> <y> <dx> <dy> 打撃 (位置から向きの先の壁を叩く)", (args, reply) =>
@@ -210,7 +225,7 @@ internal static class TerrainProbe
             for (int i = 0; i < 4; i++)
                 if (!float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out v[i])) { reply("ERR hammer bad number"); return; }
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            string res = TerrainDamage.Apply(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, (ushort)System.Environment.TickCount));
+            string res = TerrainSync.Request(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, (ushort)System.Environment.TickCount));
             reply($"OK hammer {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
         });
     }

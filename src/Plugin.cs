@@ -47,6 +47,7 @@ public class Ticker : MonoBehaviour
     private void FixedUpdate()
     {
         Fx.MrpBundle.Tick();
+        Terrain.TerrainSync.Tick();
         Bridge.TestBridge.Tick();
     }
 }
