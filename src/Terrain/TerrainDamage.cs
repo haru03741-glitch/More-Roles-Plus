@@ -82,9 +82,8 @@ internal static class TerrainDamage
         var removed = new List<Vector2>();
         int cut = 0, cracked = 0;
 
-        // 外壁は壊さない: 切り取る区間ごとに、爆心から見て壁の向こう側に奥の面があるか
+        // 外壁は壊さない: 切り取る区間ごとに、爆心から見て壁の向こう側に奥の面があるか (動きの層の面)
         Vector2 blast = e.Position;
-        bool shipFace = false;
         bool Inner(Vector2 a, Vector2 b)
         {
             Vector2 m = (a + b) * 0.5f, d = b - a;
@@ -92,10 +91,8 @@ internal static class TerrainDamage
             var n = new Vector2(-d.y, d.x);
             Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
             away = away.normalized;
-            // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) なら抜く。
-            // 後者は動きの層 (Ship) の面だけ。視界の層の面は外壁でも Ship の面の裏にあるので、当てはめると外壁越しに視界が漏れる
+            // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) なら抜く
             if (HasFarSide(m, away)) return true;
-            if (!shipFace) return false;
             float toBlast = (m - blast).magnitude;
             float first = FirstFace(m, -away, Math.Min(toBlast, MaxDepth));
             return first > 0f;
@@ -106,18 +103,28 @@ internal static class TerrainDamage
         var body = new WallBody(ShipOnly(walls), e.Position);
         // 区間ごとの可否は、全部を切る前の地形で先に決める (順に切りながら決めると、先に切った壁が奥の面や
         // 間の壁として見えなくなり、処理の順番で結果が変わる)
+        // 蓋 (前の穴の側面) は穴の中に作った壁なので常に切る
         var allowed = new HashSet<(float, float, float, float)>();
         foreach (var col in walls)
         {
-            shipFace = col.gameObject.layer == ShipLayer;
+            if (col.gameObject.layer != ShipLayer) continue;
+            bool cap = col.gameObject.name == WallBody.CapName;
             EdgeCutter.Cut(col, core, null, (a, b) =>
             {
-                if (Inner(a, b)) allowed.Add((a.x, a.y, b.x, b.y));
+                if (cap || Inner(a, b)) allowed.Add((a.x, a.y, b.x, b.y));
                 return false;
             }, keep, dryRun: true);
         }
         foreach (var col in walls)
-            if (EdgeCutter.Cut(col, core, removed, (a, b) => allowed.Contains((a.x, a.y, b.x, b.y)), keep)) cut++;
+            if (col.gameObject.layer == ShipLayer && EdgeCutter.Cut(col, core, removed, (a, b) => allowed.Contains((a.x, a.y, b.x, b.y)), keep)) cut++;
+
+        // 視界の層は動きの層を切った後で決める: 爆心から、残った動きの壁を横切らずに届く (穴から見通せる) 面だけ抜く。
+        // 動きの壁が残った所 (外壁・家具の裏) の視界の面は残す。逆に穴が開いたのに視界の面が残ると、
+        // 影の中に壊れていない壁が見え、穴の中から影が伸びる
+        var after = new WallBody(ShipOnly(WallsNear(c, outer)), blast);
+        foreach (var col in walls)
+            if (col.gameObject.layer == ShadowLayer &&
+                EdgeCutter.Cut(col, core, removed, (a, b) => after.Clear(blast, (a + b) * 0.5f), keep)) cut++;
         body.SetOpening(removed);
 
         // 外側の輪: 残った壁の、爆心にいちばん近い点にひび (壁 1 本につき 1 か所)

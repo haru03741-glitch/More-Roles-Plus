@@ -18,6 +18,8 @@ internal static class DamageMap
     private const float UnderlayDepth = 0.3f; // 部屋の絵より奥に置く瓦礫の床の z のずらし
     // 抜くのは「円」と「切り取った壁の線の近く (帯)」の重なりだけ (部屋の床まで抜くと床に穴が空いたように見える)
     private const float BandHalf = 0.2f;      // 壁の線から横・下へ届く幅 (世界単位)
+    private const float LineBandEdge = 0.08f; // その帯の縁のなだらかさ
+    private const float LineBandHalf = 0.05f; // 壁の中の判定がある時の帯: 歩ける側へはほぼ出さない (壁の中身は Exposed で抜く。割れ口のギザギザで少しは食い込む)
     private const float BandUpStretch = 2.2f; // 3/4 視点の壁は線より上に高さがあるので、上へはこの倍だけ届かせる
     private const float BandDownSquash = 2f;  // 壁の線より下 (手前の床) へはこの分の 1 しか届かせない
 
@@ -169,16 +171,27 @@ internal static class DamageMap
 
                 if (banded)
                 {
-                    float bd = BandDistance(hull, wx, wy);
-                    float band = Clamp01(0.5f + (BandHalf - bd) / HoleEdge * 0.5f);
+                    // 壁の中の判定がある時は、帯を切った区間それぞれの近くに限る (凸包だと、離れた 2 枚の壁を切った時に
+                    // 間の歩ける床まで抜けてしまう)。壁の中身はその下の Exposed で抜く
+                    float bd = body != null ? SegmentBandDistance(segs, wx, wy) : BandDistance(hull, wx, wy);
+                    // 壁の中の判定がある時は、歩ける側へ値がなだらかに残らないよう縁を急にする (割れ口のギザギザ ±0.175 で床へ食い込むため)
+                    float band = body != null
+                        ? Clamp01(0.5f + (LineBandHalf - bd) / LineBandEdge * 0.5f)
+                        : Clamp01(0.5f + (BandHalf - bd) / HoleEdge * 0.5f);
                     // 帯の外でも、穴から露出した壁の中 (蓋の内側) は抜く。抜かないと絵が残るのに歩ける袋になる
                     if (band < 1f && hole > 0f && body != null && body.Exposed(wx, wy)) band = 1f;
                     hole = Math.Min(hole, band);
                     scorch = Math.Min(scorch, Clamp01(1f - (bd - BandHalf) / (r * ScorchWidth)));
                 }
 
-                // 家具 (ベッド・机など) は抜かない。焦げは表面なので残す
-                if (hole > 0f && InsideAny(keep, wx, wy)) hole = 0f;
+                // 家具 (ベッド・机など) は抜かない
+                // 家具の上には焦げも熾火も描かない (穴の内側の値のままだと家具の上だけ真っ黒な影のように見える)
+                if ((hole > 0f || ember > 0f || scorch > FurnitureScorch) && InsideAny(keep, wx, wy))
+                {
+                    hole = 0f;
+                    ember = 0f;
+                    scorch = Math.Min(scorch, FurnitureScorch);
+                }
                 if (wy < floorY) hole = Math.Min(hole, Clamp01(0.5f - (floorY - wy) / HoleEdge * 0.5f));
 
                 int i = (py * _w + px) * 4;
@@ -209,6 +222,23 @@ internal static class DamageMap
             float d = ex * ex + ey * ey;
             if (d < best) best = d;
             if (n == 2) break;
+        }
+        return MathF.Sqrt(best);
+    }
+
+    // 切った区間 (線分の両端を 2 つずつ) のどれかまでの距離。上下は同じ扱い: 壁の絵がどちら側にあるかは面ごとに違う
+    // (部屋の南の壁は部屋側の面が絵の上端) ので、線の上の輪郭線だけを消し、壁の中身は Exposed (壁の中の判定) で抜く
+    private static float SegmentBandDistance(List<Vector2> segs, float x, float y)
+    {
+        float best = float.MaxValue;
+        for (int k = 0; k + 1 < segs.Count; k += 2)
+        {
+            Vector2 a = segs[k], b = segs[k + 1];
+            float sx = b.x - a.x, sy = b.y - a.y, l2 = sx * sx + sy * sy;
+            float t = l2 > 0 ? Math.Clamp(((x - a.x) * sx + (y - a.y) * sy) / l2, 0f, 1f) : 0f;
+            float ex = x - (a.x + sx * t), ey = y - (a.y + sy * t);
+            float d = ex * ex + ey * ey;
+            if (d < best) best = d;
         }
         return MathF.Sqrt(best);
     }
@@ -308,6 +338,9 @@ internal static class DamageMap
     private const int FurnitureLayer = 12;
     private const float FurnitureMargin = 0.08f;
     private const float FurnitureUp = 0.55f;
+    // 家具の上の焦げの上限。シェーダは焦げ × セルのばらつき (最大 1.25 倍) が 0.4 を超えた所を段で塗るので、
+    // 0.32 未満なら家具には焦げが出ない (出すと家具の上だけ角張った暗い面になり影に見える)
+    private const float FurnitureScorch = 0.3f;
 
     // テスト用: その点の壁の絵がどれだけ抜けているか (0..1)。地図が無ければ -1
     internal static float HoleAt(Vector2 p)
@@ -316,6 +349,39 @@ internal static class DamageMap
         int px = (int)((p.x - _origin.x) * PixelsPerUnit), py = (int)((p.y - _origin.y) * PixelsPerUnit);
         if (px < 0 || py < 0 || px >= _w || py >= _h) return -1f;
         return _pixels[(py * _w + px) * 4] / 255f;
+    }
+
+    // テスト用: その点の損傷マスクの RGBA (0..255)
+    internal static string MaskAt(Vector2 p)
+    {
+        if (_pixels == null) return "no map";
+        int px = (int)((p.x - _origin.x) * PixelsPerUnit), py = (int)((p.y - _origin.y) * PixelsPerUnit);
+        if (px < 0 || py < 0 || px >= _w || py >= _h) return "out";
+        int i = (py * _w + px) * 4;
+        return $"R={_pixels[i]} G={_pixels[i + 1]} B={_pixels[i + 2]} A={_pixels[i + 3]}";
+    }
+
+    // テスト用: 中心 c・半辺 r の範囲の損傷マスクを PPM (R=穴 G=焦げ B=熾火・上が北) に書く
+    internal static string DumpMask(Vector2 c, float r, string path)
+    {
+        if (_pixels == null) return "no map";
+        int x0 = Math.Max(0, (int)((c.x - r - _origin.x) * PixelsPerUnit)), x1 = Math.Min(_w - 1, (int)((c.x + r - _origin.x) * PixelsPerUnit));
+        int y0 = Math.Max(0, (int)((c.y - r - _origin.y) * PixelsPerUnit)), y1 = Math.Min(_h - 1, (int)((c.y + r - _origin.y) * PixelsPerUnit));
+        int w = x1 - x0 + 1, h = y1 - y0 + 1;
+        using var f = System.IO.File.Create(path);
+        var head = System.Text.Encoding.ASCII.GetBytes($"P6\n{w} {h}\n255\n");
+        f.Write(head, 0, head.Length);
+        var row = new byte[w * 3];
+        for (int y = y1; y >= y0; y--)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int i = (y * _w + x0 + x) * 4;
+                row[x * 3] = _pixels[i]; row[x * 3 + 1] = _pixels[i + 1]; row[x * 3 + 2] = _pixels[i + 2];
+            }
+            f.Write(row, 0, row.Length);
+        }
+        return $"{w}x{h}";
     }
 
     // 形で壊す時に守る家具の範囲 (壁の絵を抜かない矩形)。壁の当たり判定もここは切らない
@@ -328,6 +394,10 @@ internal static class DamageMap
         foreach (var col in Physics2D.OverlapCircleAll(c, r + FurnitureUp, 1 << FurnitureLayer))
         {
             if (!col || col.isTrigger) continue;
+            // 自分の絵を持つ家具 (Polus の机など) は部屋の絵とは別に手前に描かれるので、部屋の絵を抜いても残る → 守らない。
+            // 守るのは部屋の絵に描き込まれた家具 (Skeld のベッドなど) だけ。絵の高さが分からないので当たり判定から上へ広げる
+            var own = col.GetComponent<SpriteRenderer>();
+            if (own && own.enabled && own.sprite) continue;
             var b = col.bounds;
             list.Add(Rect.MinMaxRect(b.min.x - FurnitureMargin, b.min.y - FurnitureMargin,
                                      b.max.x + FurnitureMargin, b.max.y + FurnitureUp));

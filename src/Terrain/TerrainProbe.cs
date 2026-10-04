@@ -320,6 +320,19 @@ internal static class TerrainProbe
             reply($"OK holecheck segs={segs.Count / 2} samples={total} kept={bad}");
         });
 
+        TestBridge.Register("maskdump", "<x> <y> <r> 損傷マスクの範囲を Screens/mask.ppm に書く (R=穴 G=焦げ B=熾火)", (args, reply) =>
+        {
+            if (!TryParse3(args, out float x, out float y, out float r)) { reply("ERR maskdump needs <x> <y> <r>"); return; }
+            string path = System.IO.Path.Combine(TestBridge.ScreensDir, "mask.ppm");
+            reply($"OK maskdump {DamageMap.DumpMask(new Vector2(x, y), r, path)} {path}");
+        });
+
+        TestBridge.Register("maskat", "<x> <y> その点の損傷マスク (R=穴 G=焦げ B=熾火 A=家具)", (args, reply) =>
+        {
+            if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR maskat needs <x> <y>"); return; }
+            reply($"OK maskat {DamageMap.MaskAt(new Vector2(v[0], v[1]))}");
+        });
+
         TestBridge.Register("roomline", "<x1> <y1> <x2> <y2> 線に沿って 0.1 刻みで、その点を含む部屋の範囲 (roomArea) を出す", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || v.Length != 4) { reply("ERR roomline needs <x1> <y1> <x2> <y2>"); return; }

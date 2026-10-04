@@ -11,6 +11,8 @@ namespace MoreRolesPlus.Terrain;
 // 見た目の穴 (DamageMap.Stamp) と蓋は同じ判定から出す。どちらかだけだと絵と当たり判定が食い違う
 internal sealed class WallBody
 {
+    public const string CapName = "MrpBreachCap";
+
     private readonly List<Vector2> _seg = new();     // 壊す前の壁の線分 (両端を 2 つずつ)
     private readonly List<Vector2> _opening = new(); // 切り取った区間 (両端を 2 つずつ)
     private readonly Vector2 _ref;
@@ -54,6 +56,9 @@ internal sealed class WallBody
         var toward = new Vector2(q.x + dx / l * 0.01f, q.y + dy / l * 0.01f);
         return Crossings(p, toward) == 0;
     }
+
+    // a から b まで壁の線を横切らずに届くか
+    public bool Clear(Vector2 a, Vector2 b) => Crossings(a, b) == 0;
 
     // 形の縁のうち露出した壁の中にある部分を折れ線で返す (蓋)
     public List<List<Vector2>> Caps(CutShape shape)
@@ -143,11 +148,13 @@ internal sealed class WallBody
         int made = 0;
         foreach (int layer in new[] { 9, 10 })
         {
-            var go = new GameObject("MrpBreachCap") { layer = layer };
+            var go = new GameObject(CapName) { layer = layer };
             go.transform.SetParent(ship.transform, true);
             var t = go.transform;
-            foreach (var cap in caps)
+            foreach (var raw in caps)
             {
+                // 頂点を間引く (縁は 0.05 刻みで調べたので直線の上にも点が並ぶ。本編の視界は頂点ごとに光線を飛ばすので、多すぎると重く欠けも出る)
+                var cap = Simplify(raw, 0.015f);
                 if (cap.Count < 2) continue;
                 var col = go.AddComponent<EdgeCollider2D>();
                 var pts = new Vector2[cap.Count];
@@ -157,5 +164,37 @@ internal sealed class WallBody
             }
         }
         return made;
+    }
+
+    // 折れ線の簡略化 (Douglas-Peucker)。tol より近い点は落とす
+    private static List<Vector2> Simplify(List<Vector2> pts, float tol)
+    {
+        if (pts.Count < 3) return pts;
+        var keep = new bool[pts.Count];
+        keep[0] = keep[pts.Count - 1] = true;
+        var stack = new Stack<(int, int)>();
+        stack.Push((0, pts.Count - 1));
+        while (stack.Count > 0)
+        {
+            var (i0, i1) = stack.Pop();
+            Vector2 a = pts[i0], b = pts[i1];
+            float dx = b.x - a.x, dy = b.y - a.y, len = MathF.Sqrt(dx * dx + dy * dy);
+            int best = -1;
+            float worst = tol;
+            for (int i = i0 + 1; i < i1; i++)
+            {
+                float d = len > 1e-6f
+                    ? MathF.Abs((pts[i].x - a.x) * dy - (pts[i].y - a.y) * dx) / len
+                    : MathF.Sqrt((pts[i].x - a.x) * (pts[i].x - a.x) + (pts[i].y - a.y) * (pts[i].y - a.y));
+                if (d > worst) { worst = d; best = i; }
+            }
+            if (best < 0) continue;
+            keep[best] = true;
+            stack.Push((i0, best));
+            stack.Push((best, i1));
+        }
+        var outp = new List<Vector2>();
+        for (int i = 0; i < pts.Count; i++) if (keep[i]) outp.Add(pts[i]);
+        return outp;
     }
 }
