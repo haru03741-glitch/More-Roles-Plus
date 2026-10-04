@@ -2,7 +2,7 @@
 // (通常の半透明合成・深度書き込みあり・ステンシルへ _MaskLayer を書く → 影の板 Unlit/ShadowShader はその上にだけ影を落とす)。
 // 加えて世界全体に敷いた「損傷マスク」(_MrpDamageTex) を世界座標で引き、壊れた所を描かずに抜き、焦げを乗せる。
 //   マスクの R = 穴 (0..1 のなだらかな値。ノイズを足した閾値で切るので縁がぎざぎざになる)
-//   マスクの G = 焦げの濃さ
+//   マスクの G = 焦げの濃さ / B = 熾火 (割れ口の照り。爆発だけが書く)
 // マスクの置き場所は _MrpDamageRect (xy = 世界座標の左下、zw = 1 / 幅と高さ) で全マテリアル共通。
 Shader "MRP/TerrainSprite"
 {
@@ -102,7 +102,7 @@ Shader "MRP/TerrainSprite"
 
                 if (_UseDamage > 0.5 && inMap)
                 {
-                    fixed2 dmg = tex2D(_MrpDamageTex, muv).rg;
+                    fixed3 dmg = tex2D(_MrpDamageTex, muv).rgb;
                     float n = tex2D(_Noise, i.world * 0.9).r * 0.65 + tex2D(_Noise, i.world * 3.1).r * 0.35;
 
                     // 穴: なだらかな値をノイズでずらした閾値で切る → 割れたような縁
@@ -116,7 +116,7 @@ Shader "MRP/TerrainSprite"
                     // 割れ口: 本編の絵と同じ濃い輪郭線 → そのすぐ外側にだけ熾火の照り
                     float edge = step(0.05, dmg.r);
                     float outline = smoothstep(0.30, 0.34, hole) * edge;
-                    float ember = saturate(1 - abs(hole - 0.24) * 9) * edge * (1 - outline);
+                    float ember = saturate(1 - abs(hole - 0.24) * 9) * edge * (1 - outline) * dmg.b;
                     c.rgb += _EmberColor.rgb * ember * 0.45;
                     c.rgb = lerp(c.rgb, _OutlineColor.rgb, outline);
                 }

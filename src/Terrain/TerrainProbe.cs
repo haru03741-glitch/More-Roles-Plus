@@ -43,6 +43,7 @@ internal static class TerrainProbe
         RegisterSweep();
         RegisterSprites();
         RegisterShaderInfo();
+        RegisterDamage();
     }
 
     private static void RegisterCutting()
@@ -185,6 +186,29 @@ internal static class TerrainProbe
             int users = 0;
             foreach (var other in Object.FindObjectsOfType<Renderer>()) if (other && other.sharedMaterial == m) users++;
             reply($"OK matinfo users={users}");
+        });
+    }
+
+    internal static void RegisterDamage()
+    {
+        TestBridge.Register("blast", "<x> <y> <r> 爆発 (ロケットランチャー相当)", (args, reply) =>
+        {
+            if (!TryParse3(args, out float x, out float y, out float r)) { reply("ERR blast needs <x> <y> <r>"); return; }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string res = TerrainDamage.Apply(new DamageEvent(DamageKind.Explosion, new Vector2(x, y), Vector2.zero, r, 0));
+            reply($"OK blast {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
+        });
+
+        TestBridge.Register("hammer", "<x> <y> <dx> <dy> 打撃 (位置から向きの先の壁を叩く)", (args, reply) =>
+        {
+            string[] p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var v = new float[4];
+            if (p.Length < 4) { reply("ERR hammer needs <x> <y> <dx> <dy>"); return; }
+            for (int i = 0; i < 4; i++)
+                if (!float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out v[i])) { reply("ERR hammer bad number"); return; }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string res = TerrainDamage.Apply(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, 0));
+            reply($"OK hammer {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
         });
     }
 

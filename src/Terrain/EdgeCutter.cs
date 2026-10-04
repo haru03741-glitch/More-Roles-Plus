@@ -3,13 +3,16 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
 
-// EdgeCollider2D の折れ線から円の内側を切り取る。
+// EdgeCollider2D の折れ線から形 (円・長方形) の内側を切り取る。
 // 切った結果が複数の鎖に分かれたら、同じ GameObject に EdgeCollider2D を足して受け持たせる
 // (CompositeCollider2D は Android の libunity に無いので使わない。Collider2D.sharedMaterial も無いので写さない)。
 internal static class EdgeCutter
 {
     // 戻り値 = 切り取りが起きたか。removed には切り取った区間 (世界座標の線分の両端) を足す
     public static bool Cut(EdgeCollider2D col, Vector2 center, float radius, List<Vector2> removed = null)
+        => Cut(col, new CircleShape(center, radius), removed);
+
+    public static bool Cut(EdgeCollider2D col, CutShape shape, List<Vector2> removed = null)
     {
         var t = col.transform;
         Vector2 offset = col.offset;
@@ -20,7 +23,6 @@ internal static class EdgeCutter
         var world = new Vector2[n];
         for (int i = 0; i < n; i++) world[i] = t.TransformPoint(local[i] + offset);
 
-        float r2 = radius * radius;
         var chains = new List<List<Vector2>>();
         List<Vector2> cur = null;
         bool changed = false;
@@ -29,27 +31,13 @@ internal static class EdgeCutter
         {
             Vector2 a = world[i], b = world[i + 1];
             Vector2 d = b - a;
-            float len2 = d.sqrMagnitude;
 
-            // 線分 a + s*d と円の交点の s (0..1)
-            float s0 = 1f, s1 = 0f; // 内側区間 [s0, s1]。空なら s0 > s1
-            if (len2 > 1e-12f)
-            {
-                Vector2 f = a - center;
-                float bq = Vector2.Dot(f, d);
-                float c = f.sqrMagnitude - r2;
-                float disc = bq * bq - len2 * c;
-                if (disc > 0f)
-                {
-                    float sq = Mathf.Sqrt(disc);
-                    s0 = Mathf.Max((-bq - sq) / len2, 0f);
-                    s1 = Mathf.Min((-bq + sq) / len2, 1f);
-                }
-            }
+            // 形の内側にある区間 [s0, s1]
+            if (!shape.Interval(a, b, out float s0, out float s1)) { s0 = 1f; s1 = 0f; }
 
             if (s0 >= s1)
             {
-                // 線分は円に掛からない
+                // 線分は形に掛からない
                 if (cur == null) { cur = new List<Vector2> { a }; chains.Add(cur); }
                 cur.Add(b);
                 continue;
@@ -58,7 +46,7 @@ internal static class EdgeCutter
             changed = true;
             if (removed != null) { removed.Add(a + d * s0); removed.Add(a + d * s1); }
 
-            // 円の手前の部分
+            // 形の手前の部分
             if (s0 > 0f)
             {
                 if (cur == null) { cur = new List<Vector2> { a }; chains.Add(cur); }
@@ -66,7 +54,7 @@ internal static class EdgeCutter
             }
             cur = null;
 
-            // 円の先の部分
+            // 形の先の部分
             if (s1 < 1f)
             {
                 cur = new List<Vector2> { a + d * s1, b };

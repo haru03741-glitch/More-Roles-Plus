@@ -6,7 +6,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // マップ全体を覆う損傷マスク (1 単位 = PixelsPerUnit 画素の RGBA32)。
-//   R = 穴 (0..1・0.5 が縁) / G = 焦げ
+//   R = 穴 (0..1・0.5 が縁) / G = 焦げ / B = 熾火 (割れ口が赤く照る強さ。爆発だけが書く)
 // シェーダ MRP/TerrainSprite がこれを世界座標で引いて、部屋の絵を抜き・焦がす。
 // 何も壊れていない間は作らない (部屋の絵もバニラのマテリアルのまま)。最初の損傷で作り、
 // その時に部屋の絵のマテリアルを差し替える。
@@ -29,6 +29,7 @@ internal static class DamageMap
     private static readonly List<GameObject> Underlays = new();
     private static Sprite _underlaySprite;
     private static Sprite _crackSprite;
+    private static Sprite _impactSprite;
     private static int _holeCount;
     private static Material _underlayMat;
     private static Material _roomMat;
@@ -37,13 +38,26 @@ internal static class DamageMap
     private static readonly int DamageRectId = Shader.PropertyToID("_MrpDamageRect");
 
     public static string Hole(Vector2 center, float radius, List<Vector2> removedSegments)
+        => Breach(new CircleShape(center, radius), removedSegments, true);
+
+    // 形の範囲で壁を抜いた見た目を付ける (抜く・焦がす・向こうの床・ひび)
+    public static string Breach(CutShape shape, List<Vector2> removedSegments, bool scorch)
     {
         if (!MrpBundle.Ready) return "bundle not ready";
         if (!EnsureMap()) return "no ship";
 
-        Stamp(center, radius, removedSegments);
+        Stamp(shape, removedSegments, scorch);
         Upload();
-        SpawnUnderlay(center, radius, removedSegments);
+        SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments);
+        return null;
+    }
+
+    // 抜けない損傷 (耐久が残った打撃・爆発の外側の輪): ひびだけを貼る
+    public static string Cracks(Vector2 at, float reach, float angleDeg)
+    {
+        if (!MrpBundle.Ready) return "bundle not ready";
+        if (!EnsureMap()) return "no ship";
+        SpawnCracks(at, reach, angleDeg, true);
         return null;
     }
 
@@ -103,8 +117,10 @@ internal static class DamageMap
         return true;
     }
 
-    private static void Stamp(Vector2 c, float r, List<Vector2> segs)
+    private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch)
     {
+        Vector2 c = shape.Center;
+        float r = shape.BoundRadius;
         bool banded = segs != null && segs.Count >= 2;
         var hull = banded ? ConvexHull(segs) : null;
         float reach = r * (1f + ScorchWidth) + HoleEdge;
@@ -119,11 +135,11 @@ internal static class DamageMap
             for (int px = x0; px <= x1; px++)
             {
                 float wx = _origin.x + (px + 0.5f) / PixelsPerUnit;
-                float dx = wx - c.x, dy = wy - c.y;
-                float d = MathF.Sqrt(dx * dx + dy * dy);
+                float sd = shape.SignedDistance(wx, wy);
 
-                float hole = Clamp01(0.5f + (r - d) / HoleEdge * 0.5f);
-                float scorch = Clamp01(1f - (d - r) / (r * ScorchWidth));
+                float hole = Clamp01(0.5f - sd / HoleEdge * 0.5f);
+                float scorch = withScorch ? Clamp01(1f - sd / (r * ScorchWidth)) : 0f;
+                float ember = withScorch ? Clamp01(1f - sd / (HoleEdge * 2f)) : 0f;
 
                 if (banded)
                 {
@@ -136,6 +152,8 @@ internal static class DamageMap
                 byte hb = (byte)(hole * 255f), sb = (byte)(scorch * 255f);
                 if (hb > _pixels[i]) _pixels[i] = hb;
                 if (sb > _pixels[i + 1]) _pixels[i + 1] = sb;
+                byte eb = (byte)(ember * 255f);
+                if (eb > _pixels[i + 2]) _pixels[i + 2] = eb;
             }
         }
     }
@@ -236,16 +254,22 @@ internal static class DamageMap
             Underlays.Add(go);
         }
 
-        // ひびは部屋の絵のすぐ手前に、部屋と同じマテリアルで貼る (穴の中は損傷マスクで自動的に抜ける・影も効く)
-        _crackSprite ??= UnderlayArt.MakeCracks();
+        SpawnCracks(c, r * UnderlayArt.CrackReach, (_holeCount++ * 137.5f) % 360f, false);
+    }
+
+    // ひびは部屋の絵のすぐ手前に、部屋と同じマテリアルで貼る (穴の中は損傷マスクで自動的に抜ける・影も効く)。
+    // reach = ひびの絵の半径 (世界単位)
+    private static void SpawnCracks(Vector2 c, float reach, float angleDeg, bool impact)
+    {
+        RoomZRange(c, out float nearZ, out _);
+        var sprite = impact ? (_impactSprite ??= UnderlayArt.MakeCracks(true)) : (_crackSprite ??= UnderlayArt.MakeCracks(false));
         var crack = new GameObject("MrpCracks") { layer = 9 };
         crack.transform.SetParent(_ship.transform, true);
         crack.transform.position = new Vector3(c.x, c.y, nearZ - 0.002f);
-        crack.transform.rotation = Quaternion.Euler(0f, 0f, (_holeCount++ * 137.5f) % 360f);
-        float crackSize = r * 2f * UnderlayArt.CrackReach;
-        crack.transform.localScale = Vector3.one * (crackSize / _crackSprite.bounds.size.x) / _ship.transform.lossyScale.x;
+        crack.transform.rotation = Quaternion.Euler(0f, 0f, angleDeg);
+        crack.transform.localScale = Vector3.one * (reach * 2f / sprite.bounds.size.x) / _ship.transform.lossyScale.x;
         var csr = crack.AddComponent<SpriteRenderer>();
-        csr.sprite = _crackSprite;
+        csr.sprite = sprite;
         csr.sharedMaterial = _roomMat;
         Underlays.Add(crack);
     }

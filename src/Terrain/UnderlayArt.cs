@@ -100,23 +100,39 @@ internal static class UnderlayArt
     }
 
     // ── ひび ─────────────────────────────────────────────────────────────
-    public static unsafe Sprite MakeCracks()
+    // impact = false: 穴の縁から外へ走るひび (中央は穴なので空ける)
+    // impact = true : 叩いた点から放射状に走るひび (抜けない打撃・爆発の外側)
+    public static unsafe Sprite MakeCracks(bool impact)
     {
         const int n = CrackSize;
         var dark = new float[n * n];
         var lite = new float[n * n];
-        var rnd = new System.Random(23);
+        var rnd = new System.Random(impact ? 41 : 23);
 
-        float holeNorm = 1f / CrackReach;      // 穴の縁 (絵の半径 1 に対する位置)
-        float unit = holeNorm;                 // 長さは穴の半径を単位に決める
-        const int branches = 7;
-
-        for (int b = 0; b < branches; b++)
+        if (impact)
         {
-            float ang = b * MathF.PI * 2 / branches + (float)(rnd.NextDouble() - 0.5) * 0.6f;
-            float len = (0.5f + (float)rnd.NextDouble() * 0.6f) * unit;
-            var start = new Vec(MathF.Cos(ang) * holeNorm * 0.92f, MathF.Sin(ang) * holeNorm * 0.92f * 0.85f);
-            Crack(dark, lite, n, rnd, start, ang, len, 0.05f / 3.52f * 2f, 0, unit);
+            // 絵の半径 1 = ひびの届く距離。中心から 5 本、根元を太く
+            const int branches = 5;
+            for (int b = 0; b < branches; b++)
+            {
+                float ang = b * MathF.PI * 2 / branches + (float)(rnd.NextDouble() - 0.5) * 0.9f;
+                float len = 0.55f + (float)rnd.NextDouble() * 0.4f;
+                Crack(dark, lite, n, rnd, new Vec(0f, 0f), ang, len, 0.07f, 0, 0.9f);
+            }
+        }
+        else
+        {
+            float holeNorm = 1f / CrackReach;      // 穴の縁 (絵の半径 1 に対する位置)
+            float unit = holeNorm;                 // 長さは穴の半径を単位に決める
+            const int branches = 7;
+
+            for (int b = 0; b < branches; b++)
+            {
+                float ang = b * MathF.PI * 2 / branches + (float)(rnd.NextDouble() - 0.5) * 0.6f;
+                float len = (0.5f + (float)rnd.NextDouble() * 0.6f) * unit;
+                var start = new Vec(MathF.Cos(ang) * holeNorm * 0.92f, MathF.Sin(ang) * holeNorm * 0.92f * 0.85f);
+                Crack(dark, lite, n, rnd, start, ang, len, 0.05f / 3.52f * 2f, 0, unit);
+            }
         }
 
         var px = new byte[n * n * 4];
@@ -131,7 +147,7 @@ internal static class UnderlayArt
             px[i * 4 + 3] = ToByte(a * 255f);
         }
 
-        return ToSprite(px, n, "MrpCracks");
+        return ToSprite(px, n, impact ? "MrpImpactCracks" : "MrpCracks");
     }
 
     // 折れ線のひびを 1 本描く。途中で 1 回まで枝分かれする
