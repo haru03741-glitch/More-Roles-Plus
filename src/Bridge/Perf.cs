@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace MoreRolesPlus.Bridge;
@@ -10,6 +11,7 @@ namespace MoreRolesPlus.Bridge;
 //   mod  = この mod の Update + FixedUpdate の中 (演出・焼き・同期・ブリッジ)
 //   rest = LateUpdate → 次の Update (描画・GPU 待ち・Present・本編の残り) から、その間に回ったこの mod の FixedUpdate を引いたもの。GPU が重いとここが伸びる
 // 加えて損傷マスクの送り直し (回数・KB)・動いている演出の数・GC の回数と確保量を同じ窓で数え、
+// il2cpp 側 (Boehm) のヒープの使用量も毎フレーム読み、減ったフレーム = ゲーム側の GC が走ったフレームとして数える (EK の GcPrepass と同じ口)。
 // CSV (bridge/perf_<時刻>.csv) と 1 行の要約を出す。標本は固定長配列で、記録中も確保と interop 呼び出しは増やさない。
 // 測り方は EK の FrameTrace / FrameStats (1% low) と同じ。
 internal static class Perf
@@ -19,6 +21,25 @@ internal static class Perf
     private static readonly float[] Total = new float[Capacity], Mod = new float[Capacity], Rest = new float[Capacity];
     private static readonly short[] Live = new short[Capacity];
     private static readonly byte[] Up = new byte[Capacity];
+    private static readonly int[] BoehmKb = new int[Capacity];
+    private static readonly bool[] BoehmGc = new bool[Capacity];
+    private static long _lastBoehm;
+    private static bool _boehmMissing;
+
+#if ANDROID
+    private const string Il2CppLib = "il2cpp";
+#else
+    private const string Il2CppLib = "GameAssembly";
+#endif
+    [DllImport(Il2CppLib, CallingConvention = CallingConvention.Cdecl)]
+    private static extern long il2cpp_gc_get_used_size();
+
+    private static long BoehmUsed()
+    {
+        if (_boehmMissing) return -1;
+        try { return il2cpp_gc_get_used_size(); }
+        catch { _boehmMissing = true; return -1; }
+    }
 
     private static int _left, _n;
     private static long _lastUpd, _lastLate, _modTicks, _fixedTicks;
@@ -49,6 +70,7 @@ internal static class Perf
             _uploadBytes = 0;
             _gc0 = GC.CollectionCount(0);
             _alloc = GC.GetTotalAllocatedBytes(false);
+            _lastBoehm = BoehmUsed();
             _left = n;
             reply($"OK perf {n} frames");
         });
@@ -78,6 +100,10 @@ internal static class Perf
             Rest[_n] = _lastLate != 0 ? (float)((now - _lastLate - _fixedTicks) * MsPerTick) : -1f;
             Mod[_n] = (float)(_modTicks * MsPerTick);
             Live[_n] = (short)Math.Min(short.MaxValue, Terrain.TerrainFx.LiveCount);
+            long b = BoehmUsed();
+            BoehmKb[_n] = (int)(b / 1024);
+            BoehmGc[_n] = b >= 0 && b < _lastBoehm;
+            _lastBoehm = b;
             _n++;
             if (--_left == 0) { Finish(); return; }
         }
@@ -101,10 +127,11 @@ internal static class Perf
         try
         {
             var sb = new StringBuilder(n * 40);
-            sb.AppendLine("i,total_ms,mod_ms,rest_ms,live,uploads");
+            sb.AppendLine("i,total_ms,mod_ms,rest_ms,live,uploads,boehm_kb,boehm_gc");
             for (int i = 0; i < n; i++)
                 sb.Append(i).Append(',').Append(Total[i].ToString("F2")).Append(',').Append(Mod[i].ToString("F2")).Append(',')
-                    .Append(Rest[i].ToString("F2")).Append(',').Append(Live[i]).Append(',').Append(Up[i]).AppendLine();
+                    .Append(Rest[i].ToString("F2")).Append(',').Append(Live[i]).Append(',').Append(Up[i]).Append(',')
+                    .Append(BoehmKb[i]).Append(',').Append(BoehmGc[i] ? 1 : 0).AppendLine();
             path = Path.Combine(TestBridge.Dir, $"perf_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
             File.WriteAllText(path, sb.ToString());
         }
@@ -119,9 +146,16 @@ internal static class Perf
         int maxLive = 0;
         for (int i = 0; i < n; i++) maxLive = Math.Max(maxLive, Live[i]);
         int slowest = Array.IndexOf(Total, t[n - 1], 0, n);
+        // ゲーム側の GC が走ったフレームの数と、そのうち 20ms を超えたフレームの数
+        int bgc = 0, bgcSlow = 0;
+        for (int i = 0; i < n; i++)
+            if (BoehmGc[i]) { bgc++; if (Total[i] > 20f) bgcSlow++; }
+        int slow = 0;
+        for (int i = 0; i < n; i++) if (Total[i] > 20f) slow++;
 
         TestBridge.Log($"perf done n={n} total avg={Avg(t):F2} p50={t[n / 2]:F2} p95={t[n * 95 / 100]:F2} max={t[n - 1]:F2}@{slowest} low1%fps={1000.0 / (sumWorst / worst):F0}"
             + $" | mod avg={Avg(m):F2} p95={m[n * 95 / 100]:F2} max={m[n - 1]:F2} | rest avg={Avg(r):F2} p95={r[n * 95 / 100]:F2} max={r[n - 1]:F2}"
+            + $" | slow(>20ms)={slow} boehmGc={bgc} (slow {bgcSlow}) boehm={BoehmKb[n - 1] / 1024}MB"
             + $" | live max={maxLive} uploads={_uploads} {_uploadBytes / 1024}KB gc0={gc0} alloc={allocKb}KB -> {path}");
     }
 

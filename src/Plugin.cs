@@ -55,6 +55,7 @@ public class Ticker : MonoBehaviour
     {
         long t = Bridge.Perf.Begin();
         Fx.MrpBundle.Tick();
+        Terrain.TerrainWarm.Tick();
         Terrain.TerrainSync.Tick();
         Bridge.TestBridge.Tick();
         Bridge.Perf.EndFixed(t);

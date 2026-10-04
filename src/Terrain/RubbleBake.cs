@@ -160,6 +160,8 @@ internal static class RubbleBake
         }
     }
 
+    internal static void Warm() => EnsureCamera();
+
     private static bool EnsureCamera()
     {
         if (_cam) return true;

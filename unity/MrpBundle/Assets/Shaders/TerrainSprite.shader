@@ -2,7 +2,7 @@
 // (通常の半透明合成・深度書き込みあり・ステンシルへ _MaskLayer を書く → 影の板 Unlit/ShadowShader はその上にだけ影を落とす)。
 // 加えて世界全体に敷いた「損傷マスク」(_MrpDamageTex) を世界座標で引き、壊れた所を描かずに抜き、焦げを乗せる。
 //   マスクの R = 穴 (0..1 のなだらかな値。ノイズを足した閾値で切るので縁がぎざぎざになる)
-//   マスクの G = 焦げの濃さ / B = 熾火 (割れ口の照り。爆発だけが書く)
+//   マスクの G = 焦げの濃さ (下の色に掛ける) / B = 切り口の印 (残った壁の端の断面。0.55 以上は爆発の熱い切り口)
 // マスクの置き場所は _MrpDamageRect (xy = 世界座標の左下、zw = 1 / 幅と高さ) で全マテリアル共通。
 // _MrpGenTex (同じ置き場所・点サンプリング) = その画素を最後に抜いた破壊の番号。割れた塊は自分の番号の所だけ描く。
 // _MrpPieceSites (行 0..255 = 破壊の番号・256..511 = 剥げかけの枠・列 = 種点) = 割れ目の種点 (放射状)。割れた塊は自分の種点がいちばん近い所だけ描く。
@@ -136,6 +136,14 @@ Shader "MRP/TerrainSprite"
                 return hv >= 0.5 && abs(gen - key.g) < 0.5 / 255;
             }
 
+            // 焦げ: 下の色に掛けて暗くするだけ (暗い部屋では焦げも暗い・床の模様が透ける)。
+            // 縁は大小 2 つのノイズで不規則に (細胞で段を付けると多角形の黒い穴の連なりに見えた)・段は 2 つ
+            fixed ScorchMul(float g, float2 w)
+            {
+                float s = g + (tex2D(_Noise, w * 0.9).r - 0.5) * 0.35 + (tex2D(_Noise, w * 3.1).r - 0.5) * 0.1;
+                return s > 0.75 ? 0.68 : s > 0.45 ? 0.86 : 1.0;
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 fixed4 c = tex2D(_MainTex, i.uv);
@@ -198,10 +206,9 @@ Shader "MRP/TerrainSprite"
                     float d = _PieceLine;
                     bool rim = ex > -d || !InPiece(ow + float2(d, 0), i.color) || !InPiece(ow - float2(d, 0), i.color)
                             || !InPiece(ow + float2(0, d), i.color) || !InPiece(ow - float2(0, d), i.color);
-                    // 焦げは部屋の絵と同じ 2 段のベタ塗り
+                    // 焦げは部屋の絵と同じ掛け算
                     float2 pm = (ow - _MrpDamageRect.xy) * _MrpDamageRect.zw;
-                    float sc = tex2D(_MrpDamageTex, pm).g * (0.55 + tex2D(_Cells, ow * 0.4).r * 0.7);
-                    c.rgb = lerp(c.rgb, _ScorchColor.rgb, sc > 0.75 ? 0.75 : sc > 0.4 ? 0.4 : 0.0);
+                    c.rgb *= ScorchMul(tex2D(_MrpDamageTex, pm).g, ow);
                     if (rim) c = fixed4(_OutlineColor.rgb, 1);
                     return c;
                 }
@@ -223,7 +230,8 @@ Shader "MRP/TerrainSprite"
                     float nn = tex2D(_Noise, i.world * 3.1).r;
                     float hv = dr + (cl - 0.5) * _EdgeJag + (nn - 0.5) * 0.06;
                     clip(hv - 0.38);
-                    c.rgb *= lerp(0.45, 1.0, smoothstep(0.45, 0.8, hv));
+                    // 切り口のすぐ内側は奥まった暗がり (一段)。細胞のずれを入れると暗がりが多角形の斑になるので、マスクの値と弱いノイズだけ
+                    c.rgb *= dr + (nn - 0.5) * 0.08 < 0.8 ? 0.62 : 1.0;
                     return c;
                 }
 
@@ -252,17 +260,16 @@ Shader "MRP/TerrainSprite"
                     float hole = dmg.r + (cell - 0.5) * _EdgeJag + (n - 0.5) * 0.06;
                     clip(0.5 - hole);
 
-                    // 焦げ: 本編の描き方に合わせて 2 段のベタ塗り (ぼかさない)
-                    float scorch = dmg.g * (0.55 + cell * 0.7);
-                    float level = scorch > 0.75 ? 0.75 : scorch > 0.4 ? 0.4 : 0.0;
-                    c.rgb = lerp(c.rgb, _ScorchColor.rgb, level);
+                    c.rgb *= ScorchMul(dmg.g, i.world);
 
-                    // 割れ口: 本編の絵と同じ濃い輪郭線 → そのすぐ外側にだけ熾火の照り
+                    // 割れ口: 本編の絵と同じ濃い輪郭線。残った壁の端 (B = 切り口の印) にはその外側に断面 (壁の一段暗い面) と、
+                    // 断面の外の縁にもう 1 本の輪郭線 → 壁に厚みがあるように見せる。爆発の切り口 (B ≥ 0.55) は断面の口側に橙を少し
                     float edge = step(0.05, dmg.r);
                     float outline = step(0.41, hole) * edge;
-                    float ember = step(0.33, hole) * edge * (1 - outline) * step(0.3, dmg.b);
-                    c.rgb = lerp(c.rgb, _EmberColor.rgb, ember * 0.85);
-                    c.rgb = lerp(c.rgb, _OutlineColor.rgb, outline);
+                    float face = step(0.22, hole) * edge * (1 - outline) * step(0.08, dmg.b);
+                    c.rgb *= 1 - 0.42 * face;
+                    c.rgb = lerp(c.rgb, _EmberColor.rgb, step(0.36, hole) * face * step(0.55, dmg.b) * 0.55);
+                    c.rgb = lerp(c.rgb, _OutlineColor.rgb, max(outline, face * (1 - step(0.25, hole))));
                 }
 
                 return c;

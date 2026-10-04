@@ -188,6 +188,8 @@ internal static class FractureSites
         return (byte)best;
     }
 
+    internal static void Warm() => Ensure();
+
     private static void Ensure()
     {
         if (_tex) return;

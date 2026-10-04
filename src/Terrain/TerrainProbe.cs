@@ -377,6 +377,11 @@ internal static class TerrainProbe
             }
         });
 
+        TestBridge.Register("warm", "試合の始めの先回りの準備 (損傷マスク・絵・種点・焼くカメラ・コンパイル) にかかった時間", (_, reply) => reply($"OK warm {TerrainWarm.Report}"));
+
+        TestBridge.Register("shadowmask", "視界の影を作る層 (Constants.ShadowMask) と船の層 (ShipOnlyMask・ShipAndObjectsMask) のビット", (_, reply) =>
+            reply($"OK shadowmask shadow={(int)Constants.ShadowMask:X} shipOnly={(int)Constants.ShipOnlyMask:X} shipAndObjects={(int)Constants.ShipAndObjectsMask:X}"));
+
         TestBridge.Register("bake", "[0|1|now] 止まった瓦礫を床の板へ焼くか (0 = GameObject のまま残す・now = 溜まっている分を今焼く)。引数なしで状態", (args, reply) =>
         {
             string a = args.Trim();

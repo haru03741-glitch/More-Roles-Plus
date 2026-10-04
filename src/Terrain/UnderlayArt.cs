@@ -3,100 +3,68 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
 
-// 穴の向こうに敷く「瓦礫の床」と、穴の縁から走る「ひび」の絵を手続きで作る (素材ファイルを持ち込まない)。
+// 穴の向こうに敷く「船体の中」と、穴の縁から走る「ひび」の絵を手続きで作る (素材ファイルを持ち込まない)。
 // 本編の絵柄に合わせて、平たい塗り + 濃い輪郭線 + 一段だけの明暗で描く。
 internal static class UnderlayArt
 {
-    private const int FloorSize = 256;
+    private const int HullSize = 128;
     private const int CrackSize = 512;
-
-    // 床の絵の半径 1 に対する穴の縁の位置 (DamageMap が床を穴の半径の 1.5 倍で敷くため)。縁の暗がりはシェーダが付ける
-    private const float HoleEdgeNorm = 1f / 1.5f;
 
     // ひびの絵の半径 1 = 穴の半径の CrackReach 倍
     public const float CrackReach = 2.2f;
 
     private static readonly byte[] Outline = { 22, 22, 24 };
 
-    // ── 瓦礫の床 ─────────────────────────────────────────────────────────
-    public static unsafe Sprite MakeFloor()
+    // ── 船体の中 (壁を抜いた隙間の奥) ─────────────────────────────────
+    // 1 枚 = 1 世界単位の継ぎ目なく並ぶ升。x = 壁に沿う向き。暗い奥 + 縦の柱 + 横の梁 (上面と手前の面の一段) + 配管 2 本。
+    // 本編の絵柄: 平たい塗り + 濃い輪郭線 + 一段の明暗。奥にあるので全体を船体の地 (≈62,72,74) より暗く
+    public static Sprite MakeHullTile()
     {
-        const int n = FloorSize;
+        const int n = HullSize;
         var px = new byte[n * n * 4];
-        var rnd = new System.Random(11);
-
-        // 瓦礫 (輪郭付きの多角形)。穴の内側に散らす
-        const int shards = 9;
-        var shardPts = new float[shards][];
-        var shardTone = new float[shards];
-        for (int k = 0; k < shards; k++)
-        {
-            float a = (float)(rnd.NextDouble() * Math.PI * 2);
-            float d = (float)Math.Sqrt(rnd.NextDouble()) * HoleEdgeNorm * 0.8f;
-            float cx = MathF.Cos(a) * d, cy = MathF.Sin(a) * d;
-            float size = 0.07f + (float)rnd.NextDouble() * 0.08f;
-            int verts = 4 + rnd.Next(3);
-            float rot = (float)(rnd.NextDouble() * Math.PI * 2);
-            var pts = new float[verts * 2];
-            for (int v = 0; v < verts; v++)
-            {
-                float ang = rot + v * MathF.PI * 2 / verts + (float)(rnd.NextDouble() - 0.5) * 0.9f;
-                float rr = size * (0.6f + (float)rnd.NextDouble() * 0.5f);
-                pts[v * 2] = cx + MathF.Cos(ang) * rr;
-                pts[v * 2 + 1] = cy + MathF.Sin(ang) * rr * 0.75f; // 斜め上から見た潰れ
-            }
-            shardPts[k] = pts;
-            shardTone[k] = 0.42f + (float)rnd.NextDouble() * 0.1f; // 壁の灰 (本編の壁面より一段暗い)
-        }
-
-        float outlineW = 0.018f; // 床の絵の半径 1 に対する輪郭の太さ
-
+        const float line = 1.6f / n; // 輪郭の太さ (升に対する比)
         for (int y = 0; y < n; y++)
         for (int x = 0; x < n; x++)
         {
-            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
-            float r = MathF.Sqrt(u * u + v * v);
+            float u = (x + 0.5f) / n, v = (y + 0.5f) / n;
+            float cr = 36, cg = 41, cb = 48; // 奥の暗がり
 
-            // 床: 鋼の板 + 継ぎ目 (板ごとに少し明暗)
-            float gx = (u + 1f) * 3f, gy = (v + 1f) * 3f;
-            int plate = (int)gx * 7 + (int)gy * 13;
-            float br = 1f + (plate % 3 - 1) * 0.04f;
-            float cr = 80 * br, cg = 86 * br, cb = 94 * br;
-            float fx = gx - MathF.Floor(gx), fy = gy - MathF.Floor(gy);
-            if (fx < 0.03f || fy < 0.03f) { cr = 52; cg = 56; cb = 62; }
-            else if (fx < 0.06f || fy < 0.06f) { cr += 14; cg += 14; cb += 14; } // 継ぎ目の照り返し
-
-            // 瓦礫
-            for (int k = 0; k < shards; k++)
+            // 縦の柱 (梁の奥)。左を一段明るく
+            if (u > 0.40f && u < 0.52f)
             {
-                float dEdge = PolyEdgeDistance(shardPts[k], u, v, out bool inside);
-                if (inside && dEdge > outlineW)
-                {
-                    float t = shardTone[k] * 255f;
-                    // 上半分を一段明るく (本編の一段影)
-                    float lift = v > Centroid(shardPts[k], 1) ? 26f : 0f;
-                    cr = t * 0.80f + lift; cg = t * 0.86f + lift; cb = t * 0.92f + lift;
-                    break;
-                }
-                if (dEdge <= outlineW && (inside || dEdge <= outlineW * 0.5f))
-                {
-                    cr = Outline[0]; cg = Outline[1]; cb = Outline[2];
-                    break;
-                }
-                // 瓦礫の落ち影 (右下へ)
-                float sd = PolyEdgeDistance(shardPts[k], u - 0.015f, v + 0.02f, out bool inShadow);
-                if (inShadow && sd > 0) { cr *= 0.7f; cg *= 0.7f; cb *= 0.7f; }
+                bool lit = u < 0.45f;
+                cr = lit ? 54 : 44; cg = lit ? 58 : 48; cb = lit ? 66 : 56;
+                if (u - 0.40f < line || 0.52f - u < line) { cr = 18; cg = 18; cb = 20; }
             }
 
-            // 切り口の内側を暗く落として深さを出す
+            // 梁の落ち影 (梁のすぐ下を一段暗く)
+            if (v > 0.36f && v <= 0.42f) { cr *= 0.72f; cg *= 0.72f; cb *= 0.72f; }
 
-            float alpha = 1f; // 形は損傷マスクで切るので、絵は四角いまま全面を塗る
+            // 配管 (上の太い 1 本・下の細い 1 本)。上端に照り返しの線
+            Pipe(v, 0.14f, 0.22f, 60, 68, 74, line, ref cr, ref cg, ref cb);
+            Pipe(v, 0.79f, 0.84f, 52, 58, 64, line, ref cr, ref cg, ref cb);
+
+            // 横の梁: 手前の面 (下) + 上面 (上・一段明るい)・面の境と上下に輪郭・手前の面にリベット
+            if (v > 0.42f && v < 0.60f)
+            {
+                if (v < 0.51f) { cr = 50; cg = 55; cb = 63; } else { cr = 70; cg = 76; cb = 86; }
+                float ru = u * 4f - MathF.Floor(u * 4f) - 0.5f, rv = (v - 0.465f) * 4f;
+                if (v < 0.51f && ru * ru + rv * rv < 0.0045f) { cr = 76; cg = 82; cb = 92; }
+                if (v - 0.42f < line || 0.60f - v < line || MathF.Abs(v - 0.51f) < line * 0.5f) { cr = 18; cg = 18; cb = 20; }
+            }
+
             int i = (y * n + x) * 4;
-            px[i] = ToByte(cr); px[i + 1] = ToByte(cg); px[i + 2] = ToByte(cb);
-            px[i + 3] = ToByte(alpha * 255f);
+            px[i] = ToByte(cr); px[i + 1] = ToByte(cg); px[i + 2] = ToByte(cb); px[i + 3] = 255;
         }
+        return ToSprite(px, n, "MrpHullInterior", n);
+    }
 
-        return ToSprite(px, n, "MrpRubble");
+    private static void Pipe(float v, float v0, float v1, float r, float g, float b, float line, ref float cr, ref float cg, ref float cb)
+    {
+        if (v <= v0 || v >= v1) return;
+        cr = r; cg = g; cb = b;
+        if (v1 - v < (v1 - v0) * 0.3f) { cr += 26; cg += 26; cb += 26; } // 上の照り
+        if (v - v0 < line || v1 - v < line) { cr = 18; cg = 18; cb = 20; }
     }
 
     // ── ひび ─────────────────────────────────────────────────────────────
@@ -197,7 +165,7 @@ internal static class UnderlayArt
 
     // ── 共通 ─────────────────────────────────────────────────────────────
 
-    private static unsafe Sprite ToSprite(byte[] px, int n, string name)
+    private static unsafe Sprite ToSprite(byte[] px, int n, string name, float ppu = 100f)
     {
         var tex = new Texture2D(n, n, TextureFormat.RGBA32, false)
         {
@@ -209,7 +177,7 @@ internal static class UnderlayArt
         fixed (byte* p = px) tex.LoadRawTextureData((IntPtr)p, px.Length);
         tex.Apply(false, true);
 
-        var sprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
+        var sprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
         sprite.hideFlags = HideFlags.DontUnloadUnusedAsset;
         return sprite;
     }
@@ -218,39 +186,6 @@ internal static class UnderlayArt
     {
         public readonly float X, Y;
         public Vec(float x, float y) { X = x; Y = y; }
-    }
-
-    // 多角形の辺までの距離と内外判定
-    private static float PolyEdgeDistance(float[] pts, float x, float y, out bool inside)
-    {
-        int count = pts.Length / 2;
-        inside = false;
-        float best = float.MaxValue;
-        for (int i = 0, j = count - 1; i < count; j = i++)
-        {
-            float xi = pts[i * 2], yi = pts[i * 2 + 1], xj = pts[j * 2], yj = pts[j * 2 + 1];
-            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
-            float dx = xj - xi, dy = yj - yi, l2 = dx * dx + dy * dy;
-            float t = l2 > 0 ? Math.Clamp(((x - xi) * dx + (y - yi) * dy) / l2, 0f, 1f) : 0f;
-            float ex = x - xi - dx * t, ey = y - yi - dy * t;
-            float d = ex * ex + ey * ey;
-            if (d < best) best = d;
-        }
-        return MathF.Sqrt(best);
-    }
-
-    private static float Centroid(float[] pts, int axis)
-    {
-        float s = 0;
-        int count = pts.Length / 2;
-        for (int i = 0; i < count; i++) s += pts[i * 2 + axis];
-        return s / count;
-    }
-
-    private static float Smooth(float e0, float e1, float x)
-    {
-        float t = Math.Clamp((x - e0) / (e1 - e0), 0f, 1f);
-        return t * t * (3f - 2f * t);
     }
 
     private static byte ToByte(float v) => (byte)Math.Clamp((int)v, 0, 255);
