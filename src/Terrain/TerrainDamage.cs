@@ -142,9 +142,10 @@ internal static class TerrainDamage
         // 穴の側面 (露出した壁の中との境) に蓋。ひびを付け終えてから作る (蓋にひびが付かないように)
         int caps = cut > 0 ? WallBody.Build(body.Caps(core)) : 0;
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
-        string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body) : null;
-        if (visual == null) TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed);
-        return $"explosion cut={cut} cracked={cracked} caps={caps} visual={visual ?? "ok"}";
+        var pieces = new List<BreakPiece>();
+        string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces) : null;
+        if (visual == null) TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed);
+        return $"explosion cut={cut} cracked={cracked} caps={caps} pieces={pieces.Count} visual={visual ?? "ok"}";
     }
 
     // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。
@@ -187,12 +188,13 @@ internal static class TerrainDamage
         float floorY = skirt && normal.y < -0.5f ? hit.y + 0.12f : float.NegativeInfinity;
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         // floorY は見た目だけ (その下の当たり判定は床の絵の上の見えない壁なので切ってよい)
-        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body) : null;
+        var pieces = new List<BreakPiece>();
+        string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces) : null;
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
         // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
         if (cut == 0) TerrainFx.Chip(hit, dir, e.Seed);
-        else if (visual == null) TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed);
-        return $"blunt breach cut={cut} caps={caps} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
+        else if (visual == null) TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed, pieces, removed);
+        return $"blunt breach cut={cut} caps={caps} pieces={pieces.Count} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
     }
 
     // 抜く向き: 壁の奥 (inward) から振った向きへ、上限の角度まで傾ける。横から掠める振り (奥へ進まない) は真っ直ぐ抜く

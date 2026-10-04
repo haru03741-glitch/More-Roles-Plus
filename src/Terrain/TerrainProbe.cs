@@ -327,6 +327,33 @@ internal static class TerrainProbe
             reply($"OK maskdump {DamageMap.DumpMask(new Vector2(x, y), r, path)} {path}");
         });
 
+        TestBridge.Register("fxpause", "<0|1> 壊れる演出 (塊・破片・土煙) の動きを止める / 再開する (見た目の確認用)", (args, reply) =>
+        {
+            TerrainFx.Paused = args.Trim() == "1";
+            reply($"OK fxpause {(TerrainFx.Paused ? 1 : 0)} pieces={BreakPieces.Count}");
+        });
+
+        TestBridge.Register("pieces", "<0|1> 壊れた壁の絵を割った塊を作るか (見た目の比較用)", (args, reply) =>
+        {
+            BreakPieces.Enabled = args.Trim() != "0";
+            reply($"OK pieces {(BreakPieces.Enabled ? 1 : 0)}");
+        });
+
+        TestBridge.Register("cameras", "全カメラ (写す層・描き先・順番・置き換えシェーダの有無)", (_, reply) =>
+        {
+            foreach (var cam in Camera.allCameras)
+                reply($"CAM {cam.name} enabled={cam.enabled} depth={cam.depth} mask=0x{cam.cullingMask:x} target={(cam.targetTexture ? cam.targetTexture.name : "-")} ortho={cam.orthographicSize} path={cam.transform.parent?.name}/{cam.name}");
+            reply($"OK cameras n={Camera.allCamerasCount}");
+        });
+
+        TestBridge.Register("zoom", "[大きさ=3] カメラの写す範囲 (縦の半分・世界単位)。小さいほど寄る", (args, reply) =>
+        {
+            var cam = Camera.main;
+            if (!cam) { reply("ERR no camera"); return; }
+            cam.orthographicSize = float.TryParse(args.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float z) && z > 0.3f ? z : 3f;
+            reply($"OK zoom {cam.orthographicSize}");
+        });
+
         TestBridge.Register("maskat", "<x> <y> その点の損傷マスク (R=穴 G=焦げ B=熾火 A=家具)", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR maskat needs <x> <y>"); return; }

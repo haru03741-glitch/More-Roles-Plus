@@ -26,6 +26,10 @@ internal static class DamageMap
     private static ShipStatus _ship;
     private static Texture2D _tex;
     private static byte[] _pixels;
+    // 画素ごとに「最後にそこを抜いた破壊の番号」(1..255・0 = 抜けていない)。割れた塊が自分の分だけ描くのに使う
+    private static Texture2D _genTex;
+    private static byte[] _gens;
+    private static byte _gen;
     private static int _w, _h;
     private static Vector2 _origin;
     private static readonly List<SpriteRenderer> Rooms = new();
@@ -41,6 +45,7 @@ internal static class DamageMap
 
     private static readonly int DamageTexId = Shader.PropertyToID("_MrpDamageTex");
     private static readonly int DamageRectId = Shader.PropertyToID("_MrpDamageRect");
+    private static readonly int GenTexId = Shader.PropertyToID("_MrpGenTex");
 
     public static string Hole(Vector2 center, float radius, List<Vector2> removedSegments)
         => Breach(new CircleShape(center, radius), removedSegments, true);
@@ -49,16 +54,24 @@ internal static class DamageMap
     // floorY: この高さより下は見た目では抜かない (壁の当たり判定が見た目の根元より下 = 床まで伸びているマップがあるため)
     // keep: 家具の保護範囲 (FurnitureFor で求め、壁の当たり判定の切り取りにも同じものを渡す)
     // body: 穴から露出した壁の中 (蓋と同じ判定)。帯 (切った面の近く) の外でも、ここは抜く
+    // pieces: 渡すと、抜いた所の壁の絵を細胞ごとに割った塊を作って入れる (動かすのは TerrainFx)
     public static string Breach(CutShape shape, List<Vector2> removedSegments, bool scorch, float floorY = float.NegativeInfinity,
-        List<Rect> keep = null, WallBody body = null)
+        List<Rect> keep = null, WallBody body = null, List<BreakPiece> pieces = null)
     {
         if (!MrpBundle.Ready) return "bundle not ready";
         if (!EnsureMap()) return "no ship";
 
         SwapNear(shape.Center, shape.BoundRadius * UnderlayArt.CrackReach + 1f);
-        Stamp(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body);
+        if (_gen == 255) GenWrapped = true;
+        _gen = (byte)(_gen == 255 ? 1 : _gen + 1);
+        // 番号が一周した後は、前の周で同じ番号を書いた画素を空ける (古い穴が新しい塊に入らないように)
+        if (GenWrapped)
+            for (int k = 0; k < _gens.Length; k++)
+                if (_gens[k] == _gen) _gens[k] = 0;
+        Stamp(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body, out RectInt touched);
         SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書くので Upload より前
         Upload();
+        if (pieces != null) BreakPieces.Spawn(touched, pieces);
         return null;
     }
 
@@ -107,9 +120,18 @@ internal static class DamageMap
             filterMode = FilterMode.Bilinear,
             hideFlags = HideFlags.DontUnloadUnusedAsset,
         };
+        _gens = new byte[_w * _h];
+        _genTex = new Texture2D(_w, _h, TextureFormat.R8, false, true)
+        {
+            name = "MrpDamageGen",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Point,
+            hideFlags = HideFlags.DontUnloadUnusedAsset,
+        };
         Upload();
 
         Shader.SetGlobalTexture(DamageTexId, _tex);
+        Shader.SetGlobalTexture(GenTexId, _genTex);
         Shader.SetGlobalVector(DamageRectId, new Vector4(_origin.x, _origin.y, 1f / (_w / (float)PixelsPerUnit), 1f / (_h / (float)PixelsPerUnit)));
 
         // 部屋の絵用のマテリアル (差し替えは壊れた場所の近くだけ、その時に行う)。
@@ -145,8 +167,10 @@ internal static class DamageMap
         return true;
     }
 
-    private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body)
+    // touched = この破壊が抜いた画素 (番号を書いた所) の範囲
+    private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
     {
+        int tx0 = int.MaxValue, ty0 = int.MaxValue, tx1 = -1, ty1 = -1;
         Vector2 c = shape.Center;
         float r = shape.BoundRadius;
         bool banded = segs != null && segs.Count >= 2;
@@ -196,12 +220,22 @@ internal static class DamageMap
 
                 int i = (py * _w + px) * 4;
                 byte hb = (byte)(hole * 255f), sb = (byte)(scorch * 255f);
-                if (hb > _pixels[i]) _pixels[i] = hb;
+                if (hb > _pixels[i])
+                {
+                    _pixels[i] = hb;
+                    // 抜け方が深くなった画素はこの破壊のもの (前の破壊の塊からは消え、今回の塊に移る)
+                    _gens[py * _w + px] = _gen;
+                    if (px < tx0) tx0 = px;
+                    if (px > tx1) tx1 = px;
+                    if (py < ty0) ty0 = py;
+                    if (py > ty1) ty1 = py;
+                }
                 if (sb > _pixels[i + 1]) _pixels[i + 1] = sb;
                 byte eb = (byte)(ember * 255f);
                 if (eb > _pixels[i + 2]) _pixels[i + 2] = eb;
             }
         }
+        touched = tx1 < 0 ? default : new RectInt(tx0, ty0, tx1 - tx0 + 1, ty1 - ty0 + 1);
     }
 
     // 切り取った壁の端点を囲む凸多角形までの距離 (内側は 0)。2 枚の壁の間の隙間も通路として含める。
@@ -447,6 +481,8 @@ internal static class DamageMap
     {
         fixed (byte* p = _pixels) _tex.LoadRawTextureData((IntPtr)p, _pixels.Length);
         _tex.Apply(false, false);
+        fixed (byte* p = _gens) _genTex.LoadRawTextureData((IntPtr)p, _gens.Length);
+        _genTex.Apply(false, false);
     }
 
     // 抜いた穴の向こうには床が無い (部屋と部屋の間は船体と宇宙) ので、部屋の絵より奥に瓦礫の床を敷く
@@ -570,6 +606,19 @@ internal static class DamageMap
 
     private static float _passageScale = 1f;
 
+    // 割れた塊の生成用: 損傷マスクの画素 (px, py) の値と、抜いた破壊の番号
+    internal static int MapW => _w;
+    internal static int MapH => _h;
+    internal static byte HoleByte(int px, int py) => _pixels[(py * _w + px) * 4];
+    internal static byte GenAt(int px, int py) => _gens[py * _w + px];
+    internal static byte CurrentGen => _gen;
+    internal static bool GenWrapped { get; private set; }
+    internal static Vector2 TexelCenter(int px, int py) => new(_origin.x + (px + 0.5f) / PixelsPerUnit, _origin.y + (py + 0.5f) / PixelsPerUnit);
+    internal const float TexelSize = 1f / PixelsPerUnit;
+    internal static IReadOnlyList<SpriteRenderer> RoomArts => Rooms;
+    internal static bool IsSwapped(SpriteRenderer sr) => Swapped.Contains(sr.GetInstanceID());
+    internal static Transform ShipTransform => _ship ? _ship.transform : null;
+
     // 瓦礫・土煙などの部品用: 部屋と同じ描き方 (影が落ちる) で、損傷マスクは見ない
     public static Material PropMaterial => _propMat;
 
@@ -595,6 +644,7 @@ internal static class DamageMap
         foreach (var go in Underlays) if (go) UnityEngine.Object.Destroy(go);
         Underlays.Clear();
         TerrainFx.Clear();
+        BreakPieces.Clear();
         Rooms.Clear();
         Swapped.Clear();
         _passageTile = null;
@@ -602,6 +652,11 @@ internal static class DamageMap
         if (_tex) UnityEngine.Object.Destroy(_tex);
         _tex = null;
         _pixels = null;
+        if (_genTex) UnityEngine.Object.Destroy(_genTex);
+        _genTex = null;
+        _gens = null;
+        _gen = 0;
+        GenWrapped = false;
         _ship = null;
     }
 

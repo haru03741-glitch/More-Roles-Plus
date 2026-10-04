@@ -4,6 +4,7 @@
 //   マスクの R = 穴 (0..1 のなだらかな値。ノイズを足した閾値で切るので縁がぎざぎざになる)
 //   マスクの G = 焦げの濃さ / B = 熾火 (割れ口の照り。爆発だけが書く)
 // マスクの置き場所は _MrpDamageRect (xy = 世界座標の左下、zw = 1 / 幅と高さ) で全マテリアル共通。
+// _MrpGenTex (同じ置き場所・点サンプリング) = その画素を最後に抜いた破壊の番号。割れた塊は自分の番号の所だけ描く。
 Shader "MRP/TerrainSprite"
 {
     Properties
@@ -20,6 +21,9 @@ Shader "MRP/TerrainSprite"
         _EmberColor ("Ember rim color", Color) = (1.0, 0.45, 0.12, 1)
         _OutlineColor ("Break outline color", Color) = (0.086, 0.086, 0.094, 1)
         _UseDamage ("Use damage mask", Float) = 1
+        _PieceMap ("Piece uv to world (xy scale, zw offset)", Vector) = (0,0,0,0)
+        _PieceScale ("Piece cell scale", Float) = 0.16
+        _PieceLine ("Piece outline width", Float) = 0.022
         [HideInInspector] _AlphaTex ("External Alpha", 2D) = "white" {}
         [HideInInspector] _EnableExternalAlpha ("Enable External Alpha", Float) = 0
     }
@@ -61,7 +65,11 @@ Shader "MRP/TerrainSprite"
             fixed4 _OutlineColor;
 
             sampler2D _MrpDamageTex;
+            sampler2D _MrpGenTex;
             float4 _MrpDamageRect;
+            float4 _PieceMap;
+            float _PieceScale;
+            float _PieceLine;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; float2 world : TEXCOORD1; };
@@ -76,6 +84,20 @@ Shader "MRP/TerrainSprite"
                 return o;
             }
 
+            // 割れた塊の中か: 元の場所 (ow) が「部屋の絵が抜いた所」(部屋と同じ判定) で、その画素を抜いたのが
+            // この塊の破壊 (key.g) で、塊の細胞 (key.r) の中
+            bool InPiece(float2 ow, fixed4 key)
+            {
+                float2 muv = (ow - _MrpDamageRect.xy) * _MrpDamageRect.zw;
+                float dr = tex2D(_MrpDamageTex, muv).r;
+                float cl = tex2D(_Cells, ow * 0.4).r;
+                float nn = tex2D(_Noise, ow * 3.1).r;
+                float hv = dr + (cl - 0.5) * _EdgeJag + (nn - 0.5) * 0.06;
+                float gen = tex2D(_MrpGenTex, muv).r;
+                float pc = tex2D(_Cells, ow * _PieceScale).r;
+                return hv >= 0.5 && abs(gen - key.g) < 0.5 / 255 && abs(pc - key.r) < 0.5 / 255;
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 fixed4 c = tex2D(_MainTex, i.uv);
@@ -83,6 +105,25 @@ Shader "MRP/TerrainSprite"
                 fixed4 a = tex2D(_AlphaTex, i.uv);
                 c.a = lerp(c.a, a.r, _EnableExternalAlpha);
             #endif
+                // 4 = 割れた塊: 部屋の絵を元の場所で引いた損傷マスクで切り抜く。頂点色は色でなく塊の番号 (r = 細胞・g = 破壊の番号)
+                if (_UseDamage > 3.5)
+                {
+                    clip(c.a - 0.004);
+                    if (_MrpDamageRect.z <= 0) discard;
+                    float2 ow = i.uv * _PieceMap.xy + _PieceMap.zw;
+                    if (!InPiece(ow, i.color)) discard;
+                    // 塊の縁 (隣の塊・残った壁との境) に本編と同じ濃い輪郭線
+                    float d = _PieceLine;
+                    bool rim = !InPiece(ow + float2(d, 0), i.color) || !InPiece(ow - float2(d, 0), i.color)
+                            || !InPiece(ow + float2(0, d), i.color) || !InPiece(ow - float2(0, d), i.color);
+                    // 焦げは部屋の絵と同じ 2 段のベタ塗り
+                    float2 pm = (ow - _MrpDamageRect.xy) * _MrpDamageRect.zw;
+                    float sc = tex2D(_MrpDamageTex, pm).g * (0.55 + tex2D(_Cells, ow * 0.4).r * 0.7);
+                    c.rgb = lerp(c.rgb, _ScorchColor.rgb, sc > 0.75 ? 0.75 : sc > 0.4 ? 0.4 : 0.0);
+                    if (rim) c = fixed4(_OutlineColor.rgb, 1);
+                    return c;
+                }
+
                 c *= i.color;
 
                 // 透明な画素はステンシルも書かない (書くと部屋の外の船体にまで影の板が掛かって明るく浮く)

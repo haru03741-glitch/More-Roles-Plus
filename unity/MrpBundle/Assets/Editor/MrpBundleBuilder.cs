@@ -129,6 +129,13 @@ public static class MrpBundleBuilder
             sy[k] = (j + 0.15f + (float)rnd.NextDouble() * 0.7f) / sites;
             sv[k] = (float)rnd.NextDouble();
         }
+        // 値を順位に置き換える (並びは同じまま、種点ごとに違う 8 bit にする = 値が細胞の番号になる)。
+        // 実行時の CellLattice が同じ式で値を作る (壁の絵を割った塊は細胞 1 つ分)
+        int n = sites * sites;
+        var order = new int[n];
+        for (int k = 0; k < n; k++) order[k] = k;
+        System.Array.Sort(order, (a, b) => sv[a] != sv[b] ? sv[a].CompareTo(sv[b]) : a.CompareTo(b));
+        for (int r = 0; r < n; r++) sv[order[r]] = (r + 0.5f) / n;
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
         for (int y = 0; y < size; y++)
         for (int x = 0; x < size; x++)
