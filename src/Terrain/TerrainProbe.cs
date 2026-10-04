@@ -330,7 +330,15 @@ internal static class TerrainProbe
         TestBridge.Register("fxpause", "<0|1> 壊れる演出 (塊・破片・土煙) の動きを止める / 再開する (見た目の確認用)", (args, reply) =>
         {
             TerrainFx.Paused = args.Trim() == "1";
-            reply($"OK fxpause {(TerrainFx.Paused ? 1 : 0)} pieces={BreakPieces.Count}");
+            reply($"OK fxpause {(TerrainFx.Paused ? 1 : 0)} pieces={BreakPieces.Count} pending={RubbleBake.PendingCount} baked={RubbleBake.BakedCount} sheets={RubbleBake.SheetCount} kb={RubbleBake.SheetBytes / 1024}");
+        });
+
+        TestBridge.Register("bake", "[0|1|now] 止まった瓦礫を床の板へ焼くか (0 = GameObject のまま残す・now = 溜まっている分を今焼く)。引数なしで状態", (args, reply) =>
+        {
+            string a = args.Trim();
+            if (a == "now") { reply($"OK bake {RubbleBake.Flush()}"); return; }
+            if (a.Length > 0) RubbleBake.Enabled = a != "0";
+            reply($"OK bake {(RubbleBake.Enabled ? 1 : 0)} pieces={BreakPieces.Count} pending={RubbleBake.PendingCount} baked={RubbleBake.BakedCount} sheets={RubbleBake.SheetCount} kb={RubbleBake.SheetBytes / 1024}");
         });
 
         TestBridge.Register("pieces", "<0|1> 壊れた壁の絵を割った塊を作るか (見た目の比較用)", (args, reply) =>

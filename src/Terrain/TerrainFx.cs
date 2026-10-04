@@ -7,6 +7,7 @@ namespace MoreRolesPlus.Terrain;
 // 壊れる瞬間の動き (崩れ落ちる塊・飛ぶ破片・土煙・火花・爆発の閃光)。
 // 塊と破片は止まったらそのまま瓦礫として残し、土煙・火花・閃光は消える。
 // 乱数は損傷イベントの種から作るので、全員が同じ散らばり方になる。
+// 割れた塊と飛ぶ破片は残った壁の線 (WallSegments) に当たって跳ね返る (床の上の 2D + 高さの自前の動き)
 internal static class TerrainFx
 {
     private enum Kind { Fall, Fly, Puff, Spark, Flash, Piece }
@@ -17,13 +18,17 @@ internal static class TerrainFx
         public Transform Tr;
         public SpriteRenderer Sr;
         public float T, Life;
-        public Vector2 Pos, Vel;   // 床の上の位置と速さ
+        // 毎フレームの計算は managed の float だけで (Unity の Vector の演算子・コンストラクタは interop を通ってゴミを出す)
+        public float Px, Py, Vx, Vy; // 床の上の位置と速さ
         public float Height, VH;   // 床からの高さ (3/4 視点なので画面では上にずれて見える)
         public float Rot, VRot;
         public float S0, S1, Z;
+        public float SpriteW;     // 絵の幅 (土煙の倍率を毎フレーム出すため)
         public float H0;          // 塊: 落ち始めの高さ
-        public Vector3 Scale;     // 塊: 元の倍率 (床に寝るにつれて縦を縮める)
+        public float Sx, Sy, Sz;  // 塊: 元の倍率 (床に寝るにつれて縦を縮める)
         public float Lie;         // 塊: 今の寝かせ具合 (変わった時だけ倍率を書く)
+        public float[] Walls;     // 跳ね返る壁の線 (WallSegments)。null なら壁を見ない
+        public bool Hidden;       // 動き出すまで隠している (表示の切り替えは変わった時だけ書く)
     }
 
     private static readonly List<Item> Items = new();
@@ -36,14 +41,17 @@ internal static class TerrainFx
     private const float WallHeight = 0.85f;
     // 床に落ちた塊は寝る: 縦をこの割合に、横をこの割合に縮める (重なって 1 枚の面に見えないよう、隙間が空く程度に小さく)
     private const float LieFlatY = 0.45f, LieFlatX = 0.75f;
+    // 壁に当たった時: 壁に垂直な速さはこの割合で跳ね返り、沿う速さはこの割合に減る
+    private const float WallBounce = 0.35f, WallSlide = 0.7f;
 
     // ── 発生 ───────────────────────────────────────────────────────────
 
     // 打撃で壁が崩れる: 壁の区間に沿って塊が上から落ちて山になり、根元に土煙。
     // axis = 抜けた向き (振った向き)・force = 振りの強さ。強いほど山が向こう側へ押し出される。
     // pieces = 壁の絵を割った塊 (元の場所に重なっている)。叩いた所から順に、壁の根元へ落ちて向こうへ寄る
+    // from = 叩いた側の床 (塊の落ちる先は、ここから残った壁を越えずに届く所)
     public static void Crumble(Vector2 center, Vector2 tangent, Vector2 normal, Vector2 axis, float force, float length, ushort seed,
-        List<BreakPiece> pieces = null, List<Vector2> segs = null)
+        List<BreakPiece> pieces, List<Vector2> segs, float[] walls, Vector2 from)
     {
         var rnd = new System.Random(seed ^ Hash(center));
         Vector2 hit = center;
@@ -52,16 +60,18 @@ internal static class TerrainFx
         if (pieces != null)
             foreach (var p in pieces)
             {
-                Vector2 ground = Ground(p.Origin, segs, out float h);
+                Vector2 ground = Ground(p.Origin, segs, walls, from, out float h);
                 // 崩れて落ちた先: 根元から振った向きへ少し (強いほど遠く)・壁に沿ってわずかに散る
                 Vector2 rest = ground + axis * (0.1f + (float)rnd.NextDouble() * 0.5f + force * 0.3f)
                                       + tangent * (((float)rnd.NextDouble() - 0.5f) * 0.6f);
-                var it = AddPiece(p, ground, h);
+                var it = AddPiece(p, ground, h, walls);
                 if (it == null) continue;
                 // 高い所からは落ちるのに掛かる時間で、低い所 (横の壁) は小さく跳ねて、落ちた先へ滑る
                 it.VH = h > 0.05f ? 0f : 0.9f;
                 float flight = h > 0.05f ? MathF.Sqrt(2f * h / Gravity) : 2f * it.VH / Gravity;
-                it.Vel = (rest - ground) / (flight + 0.15f);
+                float k = 1f / (flight + 0.15f);
+                it.Vx = (rest.x - ground.x) * k;
+                it.Vy = (rest.y - ground.y) * k;
                 it.VRot = ((float)rnd.NextDouble() - 0.5f) * 80f;
                 it.T = -(0.04f + (p.Origin - hit).magnitude * 0.12f + (float)rnd.NextDouble() * 0.08f);
                 made++;
@@ -106,22 +116,23 @@ internal static class TerrainFx
     // 爆発: 本編の爆発の絵が一瞬 → 塊が外へ飛んで散らばる → 火花と煙。
     // 向きに偏った爆発 (force > 0) は塊と火花も向きの先へ多く飛ぶ
     public static void Explosion(Vector2 c, float radius, Vector2 dir, float force, ushort seed,
-        List<BreakPiece> pieces = null, List<Vector2> segs = null)
+        List<BreakPiece> pieces = null, List<Vector2> segs = null, float[] walls = null)
     {
         var rnd = new System.Random(seed ^ Hash(c));
         int made = 0;
         if (pieces != null)
             foreach (var p in pieces)
             {
-                Vector2 ground = Ground(p.Origin, segs, out float h);
-                var it = AddPiece(p, ground, h);
+                Vector2 ground = Ground(p.Origin, segs, walls, c, out float h);
+                var it = AddPiece(p, ground, h, walls);
                 if (it == null) continue;
                 Vector2 away = p.Origin - c;
                 float m = away.magnitude;
                 away = m > 1e-3f ? away / m : new Vector2(MathF.Cos(seed), MathF.Sin(seed));
                 // 爆心に近い塊ほど速く飛ぶ
                 float sp = radius * (1.5f + (float)rnd.NextDouble() * 2f) * Math.Clamp(1.4f - m / (radius * 2f), 0.4f, 1.4f);
-                it.Vel = away * sp + dir * (sp * force);
+                it.Vx = (away.x + dir.x * force) * sp;
+                it.Vy = (away.y + dir.y * force) * sp;
                 it.VH = 1f + (float)rnd.NextDouble() * 1.5f;
                 it.VRot = ((float)rnd.NextDouble() - 0.5f) * 300f;
                 made++;
@@ -139,7 +150,9 @@ internal static class TerrainFx
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
             float sp = radius * (2.5f + (float)rnd.NextDouble() * 3f);
             var it = Spawn(Kind.Fly, DebrisArt.Chunk(rnd.Next()), c, 0.12f + (float)rnd.NextDouble() * 0.14f, keep: true);
-            it.Vel = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * sp + dir * (sp * force);
+            it.Vx = (MathF.Cos(ang) + dir.x * force) * sp;
+            it.Vy = (MathF.Sin(ang) + dir.y * force) * sp;
+            it.Walls = walls;
             it.VH = 1.5f + (float)rnd.NextDouble() * 2f;
             it.VRot = ((float)rnd.NextDouble() - 0.5f) * 720f;
         }
@@ -148,7 +161,8 @@ internal static class TerrainFx
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
             float sp = 3f + (float)rnd.NextDouble() * 4f;
             var it = Spawn(Kind.Spark, DebrisArt.Spark, c, 0.08f + (float)rnd.NextDouble() * 0.06f, keep: false);
-            it.Vel = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * sp + dir * (sp * force);
+            it.Vx = (MathF.Cos(ang) + dir.x * force) * sp;
+            it.Vy = (MathF.Sin(ang) + dir.y * force) * sp;
             it.VH = 1f + (float)rnd.NextDouble() * 2f;
             it.Life = 0.35f + (float)rnd.NextDouble() * 0.5f;
         }
@@ -161,8 +175,10 @@ internal static class TerrainFx
 
     // 塊の元の場所の真下の床 (3/4 視点)。壁の面 (手前の根元の線から上) は根元まで、壁の上面とその奥は
     // 壁の高さ (WallHeight) だけ下へ落ちる。根元の線 = 切った区間のうち、真下を横切る一番下の線。
-    // 真下に線が無い (縦の壁) 時は壁の高さの半分
-    private static Vector2 Ground(Vector2 o, List<Vector2> segs, out float height)
+    // 真下に線が無い (縦の壁) 時は壁の高さの半分。
+    // そうして決めた床が、from (爆心・叩いた側) から残った壁を越えた先 (壊れていない壁の上面や向こう) になる時は、
+    // その壁の手前に落とす (壊れていない壁の面の絵から切った塊が壁の中に落ち、そこから向こうへ飛んでいくのを防ぐ)
+    private static Vector2 Ground(Vector2 o, List<Vector2> segs, float[] walls, Vector2 from, out float height)
     {
         float baseY = float.MaxValue;
         if (segs != null)
@@ -175,17 +191,31 @@ internal static class TerrainFx
                 if (y <= o.y + 0.05f && y < baseY) baseY = y;
             }
         height = baseY == float.MaxValue ? WallHeight * 0.5f : Math.Clamp(o.y - baseY, 0f, WallHeight);
-        return new Vector2(o.x, o.y - height);
+        float gx = o.x, gy = o.y - height;
+        if (walls != null)
+        {
+            float dx = gx - from.x, dy = gy - from.y;
+            float t = FirstCross(from.x, from.y, dx, dy, walls, out _, out _);
+            if (t <= 1f)
+            {
+                float len = MathF.Sqrt(dx * dx + dy * dy);
+                t = Math.Max(0f, t - 0.03f / Math.Max(len, 1e-4f));
+                gx = from.x + dx * t; gy = from.y + dy * t;
+                height = Math.Max(0f, o.y - gy);
+            }
+        }
+        return new Vector2(gx, gy);
     }
 
     // 元の場所に重なっている塊を動かし始める (遅れて動き出す間も消さない: 消すとその間だけ穴が見える)
-    private static Item AddPiece(BreakPiece p, Vector2 ground, float height)
+    private static Item AddPiece(BreakPiece p, Vector2 ground, float height, float[] walls)
     {
         if (!p.Tr) return null;
+        Vector3 sc = p.Tr.localScale;
         var it = new Item
         {
-            Kind = Kind.Piece, Tr = p.Tr, Sr = p.Sr, Pos = ground, Height = height, H0 = height,
-            Z = p.Tr.position.z, Life = 1f, Scale = p.Tr.localScale,
+            Kind = Kind.Piece, Tr = p.Tr, Sr = p.Sr, Px = ground.x, Py = ground.y, Height = height, H0 = height,
+            Z = p.Tr.position.z, Life = 1f, Sx = sc.x, Sy = sc.y, Sz = sc.z, Walls = walls,
         };
         Items.Add(it);
         return it;
@@ -198,7 +228,7 @@ internal static class TerrainFx
         it.S1 = size * (1f + (float)rnd.NextDouble() * 0.4f);
         it.Life = life * (0.8f + (float)rnd.NextDouble() * 0.4f);
         it.VH = 0.4f + (float)rnd.NextDouble() * 0.4f;
-        it.Vel = new Vector2(((float)rnd.NextDouble() - 0.5f) * 0.6f, 0f);
+        it.Vx = ((float)rnd.NextDouble() - 0.5f) * 0.6f;
         it.Z -= 0.005f; // 塊より手前
     }
 
@@ -211,10 +241,11 @@ internal static class TerrainFx
         if (DamageMap.PropMaterial) sr.sharedMaterial = DamageMap.PropMaterial;
         float z = DamageMap.FrontZ(pos) - 0.004f;
         tr.position = new Vector3(pos.x, pos.y, z);
-        float s = worldSize / Math.Max(0.0001f, sprite.bounds.size.x);
+        float sw = Math.Max(0.0001f, sprite.bounds.size.x);
+        float s = worldSize / sw;
         tr.localScale = new Vector3(s, s, 1f);
         if (keep) DamageMap.Track(go);
-        var it = new Item { Kind = kind, Tr = tr, Sr = sr, Pos = pos, S0 = s, S1 = s, Z = z, Life = 1f };
+        var it = new Item { Kind = kind, Tr = tr, Sr = sr, Px = pos.x, Py = pos.y, S0 = s, S1 = s, Z = z, Life = 1f, SpriteW = sw };
         Items.Add(it);
         return it;
     }
@@ -250,11 +281,12 @@ internal static class TerrainFx
             it.T += dt;
             if (it.T < 0f)
             {
-                if (it.Kind != Kind.Piece) it.Sr.enabled = false;
+                if (it.Kind != Kind.Piece && !it.Hidden) { it.Sr.enabled = false; it.Hidden = true; }
                 continue;
             }
-            if (it.Kind != Kind.Piece) it.Sr.enabled = true;
+            if (it.Hidden) { it.Sr.enabled = true; it.Hidden = false; }
 
+            float ox = it.Px, oy = it.Py;
             bool done = it.Kind switch
             {
                 Kind.Fall => StepFall(it, dt),
@@ -264,14 +296,16 @@ internal static class TerrainFx
                 Kind.Piece => StepPiece(it, dt),
                 _ => StepFlash(it),
             };
+            if (it.Walls != null && Collide(it, ox, oy)) done = false;
 
-            it.Tr.position = new Vector3(it.Pos.x, it.Pos.y + it.Height, it.Z);
-            if (it.VRot != 0f) it.Tr.rotation = Quaternion.Euler(0f, 0f, it.Rot);
+            it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z);
+            if (it.VRot != 0f) it.Tr.rotation = RotZ(it.Rot);
 
             if (done)
             {
                 Items.RemoveAt(i);
                 if (it.Kind is Kind.Puff or Kind.Spark or Kind.Flash) UnityEngine.Object.Destroy(it.Tr.gameObject);
+                else RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
             }
         }
     }
@@ -291,7 +325,7 @@ internal static class TerrainFx
     // 割れた塊: 横へ動きながら落ち、床で小さく跳ねてから滑って止まる。落ちるにつれて床に寝る (縦が縮む)
     private static bool StepPiece(Item it, float dt)
     {
-        it.Pos += it.Vel * dt;
+        it.Px += it.Vx * dt; it.Py += it.Vy * dt;
         it.Rot += it.VRot * dt;
         it.VH -= Gravity * dt;
         it.Height += it.VH * dt;
@@ -300,28 +334,30 @@ internal static class TerrainFx
         if (lie != it.Lie)
         {
             it.Lie = lie;
-            it.Tr.localScale = new Vector3(it.Scale.x * (1f - (1f - LieFlatX) * lie), it.Scale.y * (1f - (1f - LieFlatY) * lie), it.Scale.z);
+            it.Tr.localScale = V3(it.Sx * (1f - (1f - LieFlatX) * lie), it.Sy * (1f - (1f - LieFlatY) * lie), it.Sz);
         }
         if (it.Height > 0f) return false;
         it.Height = 0f;
-        if (it.VH < -1.2f) { it.VH = -it.VH * 0.2f; it.Vel *= 0.5f; it.VRot *= 0.4f; return false; }
+        if (it.VH < -1.2f) { it.VH = -it.VH * 0.2f; it.Vx *= 0.5f; it.Vy *= 0.5f; it.VRot *= 0.4f; return false; }
         it.VH = 0f;
-        it.Vel *= MathF.Max(0f, 1f - 6f * dt);
-        it.VRot *= MathF.Max(0f, 1f - 6f * dt);
-        if (it.Vel.sqrMagnitude > 0.0004f) return false;
+        float f = MathF.Max(0f, 1f - 6f * dt);
+        it.Vx *= f; it.Vy *= f;
+        it.VRot *= f;
+        if (it.Vx * it.Vx + it.Vy * it.Vy > 0.0004f) return false;
         it.VRot = 0f;
         return true;
     }
 
     private static bool StepFly(Item it, float dt)
     {
-        it.Pos += it.Vel * dt;
-        it.Vel *= MathF.Max(0f, 1f - 3.5f * dt); // 床をこすって減速
+        it.Px += it.Vx * dt; it.Py += it.Vy * dt;
+        float f = MathF.Max(0f, 1f - 3.5f * dt); // 床をこすって減速
+        it.Vx *= f; it.Vy *= f;
         it.VH -= Gravity * dt;
         it.Height = MathF.Max(0f, it.Height + it.VH * dt);
         it.Rot += it.VRot * dt;
         it.VRot *= MathF.Max(0f, 1f - 3f * dt);
-        if (it.Vel.sqrMagnitude > 0.01f || it.Height > 0f) return false;
+        if (it.Vx * it.Vx + it.Vy * it.Vy > 0.01f || it.Height > 0f) return false;
         it.VRot = 0f;
         return true;
     }
@@ -330,17 +366,18 @@ internal static class TerrainFx
     {
         float k = it.T / it.Life;
         float s = it.S0 + (it.S1 - it.S0) * (1f - (1f - k) * (1f - k));
-        it.Tr.localScale = new Vector3(s / Math.Max(0.0001f, it.Sr.sprite.bounds.size.x), s / Math.Max(0.0001f, it.Sr.sprite.bounds.size.x), 1f);
+        it.Tr.localScale = V3(s / it.SpriteW, s / it.SpriteW, 1f);
         it.Height += it.VH * dt;
-        it.Pos += it.Vel * dt;
+        it.Px += it.Vx * dt; it.Py += it.Vy * dt;
         var c = it.Sr.color; c.a = k < 0.6f ? 1f : 1f - (k - 0.6f) / 0.4f; it.Sr.color = c;
         return k >= 1f;
     }
 
     private static bool StepSpark(Item it, float dt)
     {
-        it.Pos += it.Vel * dt;
-        it.Vel *= MathF.Max(0f, 1f - 2f * dt);
+        it.Px += it.Vx * dt; it.Py += it.Vy * dt;
+        float f = MathF.Max(0f, 1f - 2f * dt);
+        it.Vx *= f; it.Vy *= f;
         it.VH -= Gravity * dt;
         it.Height = MathF.Max(0f, it.Height + it.VH * dt);
         var c = it.Sr.color; c.a = 1f - it.T / it.Life; it.Sr.color = c;
@@ -351,9 +388,70 @@ internal static class TerrainFx
     {
         float k = it.T / it.Life;
         float grow = k < 0.25f ? 0.6f + k / 0.25f * 0.5f : 1.1f + (k - 0.25f) * 0.2f;
-        it.Tr.localScale = new Vector3(it.S0 * grow, it.S0 * grow, 1f);
+        it.Tr.localScale = V3(it.S0 * grow, it.S0 * grow, 1f);
         var c = it.Sr.color; c.a = k < 0.5f ? 1f : 1f - (k - 0.5f) / 0.5f; it.Sr.color = c;
         return k >= 1f;
+    }
+
+    // 床の上を (ox, oy) から今の位置まで動いた間に壁の線を横切ったら、当たった所で止めて跳ね返す。
+    // 壁は高さに関係なく塞ぐ (3/4 視点で壁の上を飛び越えて見えるのは不自然)。
+    // 動き出した時に線の上にいる (壁の根元から落ちた塊) は、その線を横切ったとみなさない
+    private static bool Collide(Item it, float ox, float oy)
+    {
+        float dx = it.Px - ox, dy = it.Py - oy;
+        if (dx * dx + dy * dy < 1e-10f) return false;
+        float bestT = FirstCross(ox, oy, dx, dy, it.Walls, out float bex, out float bey);
+        if (bestT > 1f) return false;
+        float len = MathF.Sqrt(bex * bex + bey * bey);
+        float nx = -bey / len, ny = bex / len;
+        if (nx * dx + ny * dy > 0f) { nx = -nx; ny = -ny; } // 来た側へ向ける
+        it.Px = ox + dx * bestT + nx * 0.02f;
+        it.Py = oy + dy * bestT + ny * 0.02f;
+        float vn = it.Vx * nx + it.Vy * ny;
+        if (vn < 0f)
+        {
+            float tx = it.Vx - vn * nx, ty = it.Vy - vn * ny;
+            it.Vx = tx * WallSlide - vn * WallBounce * nx;
+            it.Vy = ty * WallSlide - vn * WallBounce * ny;
+            it.VRot *= -0.6f;
+        }
+        return true;
+    }
+
+    // (ox, oy) から (ox + dx, oy + dy) までの間で最初に横切る壁の線の割合 (無ければ 2) と、その線の向き。
+    // 始めの点が線の上にある線は横切ったとみなさない
+    private static float FirstCross(float ox, float oy, float dx, float dy, float[] w, out float bex, out float bey)
+    {
+        float bestT = 2f;
+        bex = 0f; bey = 0f;
+        for (int k = 0; k + 3 < w.Length; k += 4)
+        {
+            float ax = w[k], ay = w[k + 1], ex = w[k + 2] - ax, ey = w[k + 3] - ay;
+            float den = dx * ey - dy * ex;
+            if (den > -1e-9f && den < 1e-9f) continue;
+            float wx = ax - ox, wy = ay - oy;
+            float t = (wx * ey - wy * ex) / den, s = (wx * dy - wy * dx) / den;
+            if (t < 0f || t > 1f || s < 0f || s > 1f || t >= bestT) continue;
+            float cr = wx * ey - wy * ex; // 始めの点から線までの距離 × 線の長さ
+            if (cr * cr < 0.005f * 0.005f * (ex * ex + ey * ey)) continue;
+            bestT = t; bex = ex; bey = ey;
+        }
+        return bestT;
+    }
+
+    private static Vector3 V3(float x, float y, float z)
+    {
+        Vector3 v = default;
+        v.x = x; v.y = y; v.z = z;
+        return v;
+    }
+
+    private static Quaternion RotZ(float deg)
+    {
+        float h = deg * (MathF.PI / 360f);
+        Quaternion q = default;
+        q.z = MathF.Sin(h); q.w = MathF.Cos(h);
+        return q;
     }
 
     private static int Hash(Vector2 p) => (int)(p.x * 73856.093f) ^ (int)(p.y * 19349.663f);

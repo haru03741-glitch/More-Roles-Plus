@@ -42,6 +42,7 @@ public class Ticker : MonoBehaviour
     private void Update()
     {
         Terrain.TerrainFx.Tick();
+        Terrain.RubbleBake.Tick();
     }
 
     private void FixedUpdate()

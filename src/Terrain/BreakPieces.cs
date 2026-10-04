@@ -267,7 +267,15 @@ internal static class BreakPieces
     }
 
     // テスト用: 今ある塊の数
-    internal static int Count => Alive.Count;
+    internal static int Count
+    {
+        get
+        {
+            int n = 0;
+            foreach (var a in Alive) if (a.Go) n++; // 床の板へ焼いて消えた塊は数えない
+            return n;
+        }
+    }
 
     private static void Destroy((GameObject Go, Sprite Sp, byte Gen) a)
     {
