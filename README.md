@@ -1,1 +1,28 @@
-# More-Roles-Plus
+# More Roles Plus
+
+Among Us に役職を足し、壁を壊せるようにするクライアント mod です (BepInEx 6 IL2CPP)。部屋の全員が同じ版を入れて遊びます。
+
+- 役職: ゲーム設定の画面に「MRP 全般」「クルー」「インポスター」のタブが増え、出現率と人数を決めると試合開始時に割り当てられます。
+- 地形: 爆発やハンマーで壁が壊れ、通れる・見通せるようになります。
+- 起動: ロゴ演出を待たずにメニューへ進み、2 回目以降の起動は読み込みの一部を省きます。
+
+役職や設定の足し方は [CONTRIBUTING.md](CONTRIBUTING.md) にあります。
+
+## ビルド
+
+`local.props.example` を `local.props` にコピーし、`AmongUsPath` を自分のゲームの場所に合わせます。
+
+```
+dotnet build MoreRolesPlus.csproj -c Release                       # → <AmongUs>/BepInEx-MRP/plugins
+dotnet build patcher/MoreRolesPlus.BootAccel.csproj -c Release     # → <AmongUs>/BepInEx-MRP/patchers (起動の高速化)
+```
+
+## クレジット
+
+- [Nebula on the Ship](https://github.com/Dolly1016/Nebula-Public) (Dolly1016、GPL-3.0) — incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方
+- [End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful、GPL-3.0) — 起動の高速化 (`patcher/`)、GC まわりの処理、設定画面にタブを足す方法
+- [Endless Host Roles](https://github.com/Gurge44/EndlessHostRoles) (Gurge44、GPL-3.0) / [TownOfHost-K](https://github.com/KYMario/TownOfHost-K) (KYMario、GPL-3.0) / [Town Of Host](https://github.com/tukasa0001/TownOfHost) (tukasa0001、GPL-3.0) — ロゴ演出の短縮、設定画面にタブを足す方法
+
+## ライセンス
+
+GNU General Public License v3.0 です。詳しくは [LICENSE](LICENSE) を見てください。
