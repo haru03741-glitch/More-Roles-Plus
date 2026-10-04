@@ -41,6 +41,7 @@ public class Ticker : MonoBehaviour
 
     private void FixedUpdate()
     {
+        Fx.MrpBundle.Tick();
         Bridge.TestBridge.Tick();
     }
 }

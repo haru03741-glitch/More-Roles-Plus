@@ -11,3 +11,12 @@ node_modules/
 CLAUDE.md
 docs/
 .claude/
+
+# Unity が生成するもの
+unity/*/Library/
+unity/*/Logs/
+unity/*/Temp/
+unity/*/Build/
+unity/*/UserSettings/
+unity/*/Assets/Generated/
+unity/*/Assets/Generated.meta

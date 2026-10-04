@@ -39,20 +39,38 @@ try {
     $patched = [regex]::Replace($original, '(?m)^target_assembly=.*$', "target_assembly=$mrpTarget")
     [IO.File]::WriteAllText($ini, $patched)
 
+    # ランチャーが寝ていると 1 回目の URI は食われるので、プロセスが現れないまま十分待った時だけ 2 回目を叩く。
+    # 早く叩きすぎると 2 つ目の起動が 1 つ目を落とし、設定を戻した後の AU (= 別ツリー) だけが残る
     Start-Process $EpicUrl
-    Start-Sleep -Seconds 3
-    if (-not (Get-Process -Name "Among Us" -ErrorAction SilentlyContinue)) { Start-Process $EpicUrl }
-
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $retryAt = (Get-Date).AddSeconds(25)
+    $retried = $false
     $started = $false
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 500
         if ((Test-Path $log) -and (Get-Item $log).LastWriteTimeUtc -gt $before) { $started = $true; break }
+        if (-not $retried -and (Get-Date) -gt $retryAt -and -not (Get-Process -Name "Among Us" -ErrorAction SilentlyContinue)) {
+            Start-Process $EpicUrl
+            $retried = $true
+        }
     }
 }
 finally {
     [IO.File]::WriteAllText($ini, $original)
     Remove-Item $backup -ErrorAction SilentlyContinue
+}
+
+# 起動したのが本当にこのツリーの AU か確かめる (別の起動が割り込むと他のツリーのログが進む)
+$otherLog = Join-Path $AmongUsPath "BepInEx\LogOutput.log"
+$otherBefore = if (Test-Path $otherLog) { (Get-Item $otherLog).LastWriteTimeUtc } else { [datetime]::MinValue }
+if ($started) {
+    Start-Sleep -Seconds 8
+    $procs = @(Get-Process -Name "Among Us" -ErrorAction SilentlyContinue)
+    $otherMoved = (Test-Path $otherLog) -and (Get-Item $otherLog).LastWriteTimeUtc -gt $otherBefore
+    if ($procs.Count -ne 1 -or $otherMoved) {
+        Write-Output "ERR 起動が競合した (AU プロセス数=$($procs.Count), 他ツリーのログ更新=$otherMoved)。AU を閉じてやり直す"
+        exit 1
+    }
 }
 
 if ($started) { Write-Output "OK launched with BepInEx-MRP (doorstop restored to $originalTarget)" }

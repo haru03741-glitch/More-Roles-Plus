@@ -23,7 +23,10 @@
         <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
     </ItemGroup>
     <ItemGroup>
-        <Compile Remove="tools\**" />
+        <EmbeddedResource Include="Resources\Bundles\mrp_fx.bundle" LogicalName="MoreRolesPlus.Resources.Bundles.mrp_fx.bundle" />
+    </ItemGroup>
+    <ItemGroup>
+        <Compile Remove="tools\**;unity\**" />
     </ItemGroup>
     <Target Name="CopyToGame" AfterTargets="Build" Condition="Exists('$(MrpBepInExDir)\core')">
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />

@@ -41,6 +41,8 @@ internal static class TerrainProbe
 
         RegisterCutting();
         RegisterSweep();
+        RegisterSprites();
+        RegisterShaderInfo();
     }
 
     private static void RegisterCutting()
@@ -74,8 +76,10 @@ internal static class TerrainProbe
                 if (!EdgeCutter.Cut(e, center, r)) continue;
                 if (e.gameObject.layer == ShadowLayer) shadow++; else ship++;
             }
+            double colMs = sw.Elapsed.TotalMilliseconds;
+            string visual = DamageMap.Hole(center, r);
             sw.Stop();
-            reply($"OK hole ship={ship} shadow={shadow} ms={sw.Elapsed.TotalMilliseconds:0.00}");
+            reply($"OK hole ship={ship} shadow={shadow} colliderMs={colMs:0.00} totalMs={sw.Elapsed.TotalMilliseconds:0.00} visual={visual ?? "ok"}");
         });
     }
 
@@ -106,6 +110,80 @@ internal static class TerrainProbe
                 reply($"SWEEP layer={layer} {what}");
             }
             reply("OK sweep");
+        });
+    }
+
+    // 見た目の下調べ: 指定点に重なる描画物 (Renderer の bounds が点を含むもの) を列挙
+    internal static void RegisterSprites()
+    {
+        TestBridge.Register("sprites", "<x> <y> 点に重なる描画物を列挙", (args, reply) =>
+        {
+            string[] p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length < 2 || !float.TryParse(p[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x)
+                              || !float.TryParse(p[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
+            { reply("ERR sprites needs <x> <y>"); return; }
+
+            int n = 0;
+            foreach (var r in Object.FindObjectsOfType<Renderer>())
+            {
+                if (!r || !r.enabled || !r.gameObject.activeInHierarchy) continue;
+                var b = r.bounds;
+                if (x < b.min.x || x > b.max.x || y < b.min.y || y > b.max.y) continue;
+                n++;
+                var sb = new StringBuilder("SPR ").Append(Path(r.transform))
+                    .Append(" type=").Append(r.GetIl2CppType().Name)
+                    .Append(" z=").Append(TestBridge.F(r.transform.position.z))
+                    .Append(" layer=").Append(r.gameObject.layer)
+                    .Append(" sort=").Append(r.sortingLayerID).Append('/').Append(r.sortingOrder)
+                    .Append(" bounds=").Append(V((Vector2)b.min)).Append('-').Append(V((Vector2)b.max));
+                var mat = r.sharedMaterial;
+                if (mat) sb.Append(" mat=").Append(mat.name).Append(" shader=").Append(mat.shader ? mat.shader.name : "?");
+                var sr = r.TryCast<SpriteRenderer>();
+                if (sr && sr.sprite)
+                {
+                    var s = sr.sprite;
+                    var tex = s.texture;
+                    sb.Append(" sprite=").Append(s.name).Append(" rect=").Append(s.textureRect.width).Append('x').Append(s.textureRect.height)
+                      .Append(" ppu=").Append(s.pixelsPerUnit)
+                      .Append(" color=").Append(sr.color.ToString());
+                    if (tex) sb.Append(" tex=").Append(tex.name).Append(' ').Append(tex.width).Append('x').Append(tex.height)
+                                .Append(' ').Append(tex.format).Append(" readable=").Append(tex.isReadable);
+                }
+                reply(sb.ToString());
+            }
+            reply($"OK sprites n={n}");
+        });
+    }
+
+    internal static void RegisterShaderInfo()
+    {
+        TestBridge.Register("matinfo", "<GameObject のパス> 描画物のマテリアルとシェーダの中身", (args, reply) =>
+        {
+            var go = GameObject.Find(args.Trim());
+            if (!go) { reply($"ERR matinfo not found: {args}"); return; }
+            var r = go.GetComponent<Renderer>();
+            if (!r || !r.sharedMaterial) { reply("ERR matinfo no renderer/material"); return; }
+            var m = r.sharedMaterial;
+            var sh = m.shader;
+            reply($"MAT {m.name} queue={m.renderQueue} passes={m.passCount} keywords=[{string.Join(",", m.shaderKeywords)}] shader={sh.name} shaderQueue={sh.renderQueue}");
+            int pc = sh.GetPropertyCount();
+            for (int i = 0; i < pc; i++)
+            {
+                string name = sh.GetPropertyName(i);
+                var type = sh.GetPropertyType(i);
+                string val = type switch
+                {
+                    UnityEngine.Rendering.ShaderPropertyType.Color => m.GetColor(name).ToString(),
+                    UnityEngine.Rendering.ShaderPropertyType.Vector => m.GetVector(name).ToString(),
+                    UnityEngine.Rendering.ShaderPropertyType.Float or UnityEngine.Rendering.ShaderPropertyType.Range => TestBridge.F(m.GetFloat(name)),
+                    UnityEngine.Rendering.ShaderPropertyType.Texture => m.GetTexture(name) ? m.GetTexture(name).name : "null",
+                    _ => "?",
+                };
+                reply($"PROP {name} {type} = {val}");
+            }
+            int users = 0;
+            foreach (var other in Object.FindObjectsOfType<Renderer>()) if (other && other.sharedMaterial == m) users++;
+            reply($"OK matinfo users={users}");
         });
     }
 
