@@ -437,6 +437,22 @@ internal static class DamageMap
 
     internal static List<Rect> FurnitureAt(Vector2 c, float r) => FurnitureNear(c, r);
 
+    // テスト用: 壁の線の出っ張りだけ (どの当たり判定から見つけたか付き)
+    internal static List<(Rect, string)> WallBumpsAt(Vector2 c, float r)
+    {
+        var res = new List<(Rect, string)>();
+        var tmp = new List<Rect>();
+        foreach (var col in Physics2D.OverlapCircleAll(c, r, 1 << WallLayer))
+        {
+            var edge = col ? col.TryCast<EdgeCollider2D>() : null;
+            if (!edge || col.isTrigger) continue;
+            tmp.Clear();
+            AddWallBumps(edge, tmp);
+            foreach (var rc in tmp) res.Add((rc, col.transform.parent ? col.transform.parent.name + "/" + col.name : col.name));
+        }
+        return res;
+    }
+
     private static List<Rect> FurnitureNear(Vector2 c, float r)
     {
         var list = new List<Rect>();
@@ -464,8 +480,10 @@ internal static class DamageMap
     private const float BumpMaxWidth = 1.8f;                         // 出っ張りの付け根の幅
     private const float BumpStraight = 0.9f;                         // 付け根の前後の壁が付け根と同じ向きか (cos)
     private const int BumpMaxVerts = 8;
+    private const float BumpShadowNear = 0.1f;                       // 出っ張りの辺の中点からこの距離に影の線があれば壁
 
     // 壁の線の出っ張り = 壁に付けて置いた家具 (Skeld の監視室の机は、部屋の外周の当たり判定が机を回り込んで描かれている)。
+    // 視界の影の線が沿っている出っ張りは壁の柱なので除く。
     // 真っ直ぐな壁の線が途中で部屋の側へ回り込み、同じ線の続きへ戻る所を探す。部屋の外周が閉じた輪なら、出っ張りの中が
     // 輪の外 (歩けない) の時だけ家具とみなす (輪の中なら壁のくぼみ = 歩ける)。閉じていない線は守る側に倒す
     private static void AddWallBumps(EdgeCollider2D edge, List<Rect> list)
@@ -504,6 +522,12 @@ internal static class DamageMap
                 x0 = Math.Min(x0, p[k].x); x1 = Math.Max(x1, p[k].x); y0 = Math.Min(y0, p[k].y); y1 = Math.Max(y1, p[k].y);
             }
             if (!ok || maxD < BumpMinDepth || maxD > BumpMaxDepth || path < w + 0.6f) continue;
+            // 出っ張りに視界の影の線が沿っていれば、壁の柱 (Mira の食堂と倉庫の間の扉の脇など)。家具は視界を遮らない
+            // (柱は影の線が 1 辺 (奥の面) にだけ沿うことがある → 1 辺でも沿えば壁)
+            bool shadowed = false;
+            for (int k = i; k < j && !shadowed; k++)
+                shadowed = Physics2D.OverlapCircle((p[k] + p[k + 1]) * 0.5f, BumpShadowNear, Constants.ShadowMask);
+            if (shadowed) continue;
             if (loop)
             {
                 // 出っ張りの中の点 (付け根の中点から出っ張りの頂点の重心へ半分) が輪の中なら、歩けるくぼみ

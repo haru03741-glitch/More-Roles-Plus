@@ -387,6 +387,17 @@ internal static class TerrainProbe
             reply($"OK furniture n={list.Count}");
         });
 
+        TestBridge.Register("bumps", "[x y r] 壁の線の出っ張り (家具として守る所) の一覧。引数なしでマップ全体", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var c = a.Length >= 2 ? new Vector2(float.Parse(a[0], CultureInfo.InvariantCulture), float.Parse(a[1], CultureInfo.InvariantCulture)) : Vector2.zero;
+            float r = a.Length >= 3 ? float.Parse(a[2], CultureInfo.InvariantCulture) : 200f;
+            var list = DamageMap.WallBumpsAt(c, r);
+            foreach (var (rc, name) in list)
+                TestBridge.Out($"BUMP {name} center=({rc.center.x:F2},{rc.center.y:F2}) x={rc.xMin:F2}..{rc.xMax:F2} y={rc.yMin:F2}..{rc.yMax:F2}");
+            reply($"OK bumps n={list.Count}");
+        });
+
         TestBridge.Register("warm", "試合の始めの先回りの準備 (損傷マスク・絵・種点・焼くカメラ・コンパイル) にかかった時間", (_, reply) => reply($"OK warm {TerrainWarm.Report}"));
 
         TestBridge.Register("shadowmask", "視界の影を作る層 (Constants.ShadowMask) と船の層 (ShipOnlyMask・ShipAndObjectsMask) のビット", (_, reply) =>
