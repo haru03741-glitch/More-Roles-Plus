@@ -32,13 +32,24 @@ internal static class TerrainDamage
         WallsNear(hit, MaxDepth);
         float far = FarSide(hit, -normal);
         if (far <= 0f) { why = "blunt outer wall (protected)"; return false; }
-        float depth = Math.Max(p.BreachDepth, far + 0.25f);
+
+        // 抜く向きと、その向きに沿った壁の厚み (奥の面まで + 余白)。受け手は送った向きと長さをそのまま使う。
+        // 斜めの先に奥の面が無い (斜めに進むと壁の外へ出る) 時は真っ直ぐ抜く
+        Vector2 qn = TerrainWire.QNormal(normal), qd = TerrainWire.QNormal(dir);
+        Vector2 axis = SlantAxis(-qn, qd, p.MaxSlantDeg, out _);
+        float run = far;
+        if (axis != -qn)
+        {
+            float slanted = FarSide(hit, axis);
+            if (slanted > 0f) run = slanted;
+            else { axis = -qn; qd = -qn; }
+        }
+        float depth = Math.Max(p.BreachDepth, run + 0.25f);
 
         // 耐久の格子は送る値 (量子化した点) で数える。受け手も同じ点で同じ格子に書く
         hit = TerrainWire.Q(hit);
         int hp = Math.Max(WallDurability.Remaining(hit) - p.WallDamage, sbyte.MinValue);
-        r = new ResolvedDamage(e.Kind, hit, TerrainWire.QNormal(normal), TerrainWire.QNormal(dir),
-            TerrainWire.QForce(e.Force), TerrainWire.QSize(depth), (sbyte)hp, e.Seed);
+        r = new ResolvedDamage(e.Kind, hit, qn, qd, TerrainWire.QForce(e.Force), TerrainWire.QSize(depth), (sbyte)hp, e.Seed);
         return true;
     }
 
@@ -70,16 +81,27 @@ internal static class TerrainDamage
 
         // 外壁は壊さない: 切り取る区間ごとに、爆心から見て壁の向こう側に奥の面があるか
         Vector2 blast = e.Position;
+        bool shipFace = false;
         bool Inner(Vector2 a, Vector2 b)
         {
             Vector2 m = (a + b) * 0.5f, d = b - a;
             if (d.x * d.x + d.y * d.y < 1e-10f) return true;
             var n = new Vector2(-d.y, d.x);
             Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
-            return HasFarSide(m, away.normalized);
+            away = away.normalized;
+            // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) なら抜く。
+            // 後者は動きの層 (Ship) の面だけ。視界の層の面は外壁でも Ship の面の裏にあるので、当てはめると外壁越しに視界が漏れる
+            if (HasFarSide(m, away)) return true;
+            if (!shipFace) return false;
+            float toBlast = (m - blast).magnitude;
+            float first = FirstFace(m, -away, Math.Min(toBlast, MaxDepth));
+            return first > 0f;
         }
         foreach (var col in WallsNear(c, outer))
+        {
+            shipFace = col.gameObject.layer == ShipLayer;
             if (EdgeCutter.Cut(col, core, removed, Inner)) cut++;
+        }
 
         // 外側の輪: 残った壁の、爆心にいちばん近い点にひび (壁 1 本につき 1 か所)
         foreach (var col in WallsNear(c, outer))
@@ -103,7 +125,7 @@ internal static class TerrainDamage
     private static string Strike(in ResolvedDamage e, DamageProfile p)
     {
         Vector2 hit = e.Position, normal = e.Normal, dir = -normal;
-        float depth = e.Size;
+        float depth = e.Size; // 抜く向きに沿った長さ
 
         int hp = e.Hp;
         WallDurability.Set(hit, hp);
@@ -119,7 +141,7 @@ internal static class TerrainDamage
         Vector2 tangent = new(-normal.y, normal.x);
         Vector2 axis = SlantAxis(dir, e.Direction, p.MaxSlantDeg, out float cos);
         float length = p.BreachLength * ForceScale(e.Force, p.ForceLength);
-        float run = depth / cos; // 法線方向の厚み depth を斜めに貫く長さ
+        float run = depth;
         var shape = ConvexShape.Slanted(hit + normal * 0.1f, tangent, axis, length, run);
         Vector2 center = shape.Center;
         var removed = new List<Vector2>();
@@ -189,24 +211,46 @@ internal static class TerrainDamage
 
     // 奥の面までの距離 (無ければ 0)。CircleCastAll は 1 つの部品につき最初の 1 か所しか返さないので、
     // 当たった少し先から探し直して同じ折れ線の奥の面まで辿る。RaycastAll は Android の libunity に無いので細い円で代用。
+    // 面を越えた先が叩いた側と別の部屋の範囲なら、そこが奥の面 (向こうの部屋に入った) として止まる。
+    // 止めないと狭い通路を横切って向こう側の壁 (外壁のこともある) まで抜いてしまう。
     // 多角形の壁は内側から投げると出口の面を返さないので、呼ぶ前に折れ線へ置き換えておくこと
     private static float FarSide(Vector2 hit, Vector2 inward)
     {
+        var start = RoomAt(hit - inward * 0.1f);
         float far = 0f, travelled = 0.05f;
         for (int step = 0; step < 8 && travelled < MaxDepth; step++)
         {
-            float best = float.MaxValue;
-            foreach (var h in Physics2D.CircleCastAll(hit + inward * travelled, 0.01f, inward, MaxDepth - travelled, 1 << ShipLayer))
-            {
-                if (!h.collider || h.collider.isTrigger || IsProtected(h.collider)) continue;
-                if (h.distance > 0.001f && h.distance < best) best = h.distance;
-            }
-            if (best == float.MaxValue) break;
+            float best = FirstFace(hit + inward * travelled, inward, MaxDepth - travelled);
+            if (best <= 0f) break;
             travelled += best;
             far = travelled;
+            var beyond = RoomAt(hit + inward * (travelled + 0.05f));
+            if (beyond != null && beyond != start) break;
             travelled += 0.05f;
         }
         return far;
+    }
+
+    // from から dir へ、最初に当たる Ship 層の壁の面までの距離 (無ければ 0)
+    private static float FirstFace(Vector2 from, Vector2 dir, float max)
+    {
+        float best = float.MaxValue;
+        foreach (var h in Physics2D.CircleCastAll(from, 0.01f, dir, max, 1 << ShipLayer))
+        {
+            if (!h.collider || h.collider.isTrigger || IsProtected(h.collider)) continue;
+            if (h.distance > 0.001f && h.distance < best) best = h.distance;
+        }
+        return best == float.MaxValue ? 0f : best;
+    }
+
+    // 点を含む部屋 (本編の部屋の範囲)。無ければ null (壁の中・屋外・宇宙)
+    private static PlainShipRoom RoomAt(Vector2 p)
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship) return null;
+        foreach (var r in ship.AllRooms)
+            if (r && r.roomArea && r.roomArea.OverlapPoint(p)) return r;
+        return null;
     }
 
     private static bool FindWall(Vector2 from, Vector2 dir, float reach, out Vector2 point, out Vector2 normal)

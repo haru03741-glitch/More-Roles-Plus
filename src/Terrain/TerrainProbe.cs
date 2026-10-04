@@ -300,6 +300,27 @@ internal static class TerrainProbe
 
     internal static void RegisterNearWall()
     {
+        TestBridge.Register("roomline", "<x1> <y1> <x2> <y2> 線に沿って 0.1 刻みで、その点を含む部屋の範囲 (roomArea) を出す", (args, reply) =>
+        {
+            if (!TryParseFloats(args, out var v) || v.Length != 4) { reply("ERR roomline needs <x1> <y1> <x2> <y2>"); return; }
+            var ship = ShipStatus.Instance;
+            if (!ship) { reply("ERR no ship"); return; }
+            Vector2 a = new(v[0], v[1]), b = new(v[2], v[3]);
+            int n = Mathf.CeilToInt((b - a).magnitude / 0.1f);
+            string prev = null;
+            for (int i = 0; i <= n; i++)
+            {
+                Vector2 q = Vector2.Lerp(a, b, i / (float)n);
+                var sb = new StringBuilder();
+                foreach (var r in ship.AllRooms)
+                    if (r && r.roomArea && r.roomArea.OverlapPoint(q)) sb.Append(r.RoomId).Append(' ');
+                string cur = sb.Length == 0 ? "-" : sb.ToString().Trim();
+                if (cur != prev) reply($"ROOM {V(q)} {cur}");
+                prev = cur;
+            }
+            reply("OK roomline");
+        });
+
         TestBridge.Register("nearwall", "自分から 8 方向に壁を探し、いちばん近い壁の方向と距離を出す", (_, reply) =>
         {
             var lp = PlayerControl.LocalPlayer;
