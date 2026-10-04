@@ -21,7 +21,7 @@ internal static class TerrainProbe
                 var sb = new StringBuilder();
                 sb.Append("COL ").Append(Path(c.transform))
                   .Append(" type=").Append(c.GetIl2CppType().Name)
-                  .Append(" layer=").Append(c.gameObject.layer).Append('(').Append(LayerMask.LayerToName(c.gameObject.layer)).Append(')')
+                  .Append(" layer=").Append(c.gameObject.layer)
                   .Append(" trigger=").Append(c.isTrigger)
                   .Append(" offset=").Append(V(c.offset));
 

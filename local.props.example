@@ -1,6 +1,8 @@
-<!-- local.props にコピーして、自分の Among Us のインストール先に書き換える (local.props はコミットしない) -->
+<!-- local.props にコピーして、自分の環境に合わせて書き換える (local.props はコミットしない) -->
 <Project>
     <PropertyGroup>
         <AmongUsPath>C:\Program Files\Epic Games\AmongUs</AmongUsPath>
+        <!-- Android 版をビルドする時: 端末のローダーが生成した BepInEx の core / interop を置いた場所 -->
+        <AndroidBepInExPath>D:\path\to\android-bepinex</AndroidBepInExPath>
     </PropertyGroup>
 </Project>

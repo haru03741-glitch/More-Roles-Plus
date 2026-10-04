@@ -32,6 +32,8 @@ public static class TestBridge
     private static long _lastPollMs, _lastStateMs;
 
     private static WaitState _wait;
+    private static bool _phaseErrorLogged;
+    private static long _menuSeenMs;
 
     public static string Dir { get { EnsureInit(); return _dir; } }
 
@@ -48,8 +50,9 @@ public static class TestBridge
 
         try
         {
+            // Android はランチャーが渡すアプリ専用の書き込み先 (無ければ persistentDataPath)
             string basePath = OperatingSystem.IsAndroid()
-                ? Application.persistentDataPath
+                ? Environment.GetEnvironmentVariable("FUSION_APP_DATA_DIR") is { Length: > 0 } appDir ? appDir : Application.persistentDataPath
                 : Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
             _dir = Path.Combine(basePath, "MRP_Logs", "bridge");
             _screensDir = Path.Combine(_dir, "Screens");
@@ -214,14 +217,21 @@ public static class TestBridge
             if (AmongUsClient.Instance && AmongUsClient.Instance.GameState != InnerNet.InnerNetClient.GameStates.NotJoined) return "Joining";
             return MenuReady() ? "Menu" : "Boot";
         }
-        catch { return "Unknown"; }
+        catch (Exception e)
+        {
+            if (!_phaseErrorLogged) { _phaseErrorLogged = true; BridgeLog.RecordError("bridge", "Phase: " + e); }
+            return "Unknown";
+        }
     }
 
     // メニュー表示直後はログインやメニューの初期化が終わっておらず、ボタンを押すと例外で無視される
     public static bool MenuReady()
     {
-        if (!UnityEngine.Object.FindObjectOfType<MainMenuManager>()) return false;
-        if (Time.timeSinceLevelLoad < 3f) return false;
+        // Time.timeSinceLevelLoad は Android の libunity に無いので、メニューを最初に見た時刻から自前で数える
+        if (!UnityEngine.Object.FindObjectOfType<MainMenuManager>()) { _menuSeenMs = 0; return false; }
+        long now = Environment.TickCount64;
+        if (_menuSeenMs == 0) _menuSeenMs = now;
+        if (now - _menuSeenMs < 3000) return false;
         var eos = EOSManager.Instance;
         return !eos || eos.loginFlowFinished;
     }

@@ -5,7 +5,9 @@
     </PropertyGroup>
     <Import Project="local.props" Condition="Exists('local.props')" />
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFramework Condition="'$(Configuration)' == 'Android'">net10.0</TargetFramework>
+        <TargetFramework Condition="'$(Configuration)' != 'Android'">net6.0</TargetFramework>
+        <Configurations>Debug;Release;Android</Configurations>
         <LangVersion>preview</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Optimize>true</Optimize>
@@ -17,18 +19,32 @@
         <!-- BepInEx はゲーム直下の別ツリー (BepInEx-MRP) に置き、他の mod と plugins を共有しない -->
         <MrpBepInExDir>$(AmongUsPath)\BepInEx-MRP</MrpBepInExDir>
     </PropertyGroup>
-    <ItemGroup>
+    <!-- Android 版は端末上のローダーが生成した core / interop を参照する (NuGet の GameLibs はローダーと版がずれる)。
+         置き場は local.props の AndroidBepInExPath で上書きできる。 -->
+    <PropertyGroup Condition="'$(Configuration)' == 'Android'">
+        <DefineConstants>$(DefineConstants);ANDROID</DefineConstants>
+        <AndroidBepInExPath Condition="'$(AndroidBepInExPath)' == ''">..\android-bepinex</AndroidBepInExPath>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(Configuration)' != 'Android'">
         <PackageReference Include="AmongUs.GameLibs.Steam" Version="2026.9.29" PrivateAssets="all" />
         <PackageReference Include="BepInEx.IL2CPP.MSBuild" Version="2.1.0-rc.1" PrivateAssets="all" />
         <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
     </ItemGroup>
-    <ItemGroup>
+    <ItemGroup Condition="'$(Configuration)' == 'Android'">
+        <Reference Include="$(AndroidBepInExPath)\core\*.dll" Exclude="$(AndroidBepInExPath)\core\Microsoft.*.dll;$(AndroidBepInExPath)\core\System.*.dll" Private="false" />
+        <Reference Include="$(AndroidBepInExPath)\interop\*.dll" Private="false" />
+    </ItemGroup>
+    <!-- シェーダはプラットフォームごとに焼き分けたバンドルを同じ名前で埋め込む -->
+    <ItemGroup Condition="'$(Configuration)' != 'Android'">
         <EmbeddedResource Include="Resources\Bundles\mrp_fx.bundle" LogicalName="MoreRolesPlus.Resources.Bundles.mrp_fx.bundle" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(Configuration)' == 'Android'">
+        <EmbeddedResource Include="Resources\Bundles\mrp_fx.android.bundle" LogicalName="MoreRolesPlus.Resources.Bundles.mrp_fx.bundle" />
     </ItemGroup>
     <ItemGroup>
         <Compile Remove="tools\**;unity\**" />
     </ItemGroup>
-    <Target Name="CopyToGame" AfterTargets="Build" Condition="Exists('$(MrpBepInExDir)\core')">
+    <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And Exists('$(MrpBepInExDir)\core')">
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\plugins\" ContinueOnError="WarnAndContinue" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(MrpBepInExDir)\plugins\" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" ContinueOnError="WarnAndContinue" />

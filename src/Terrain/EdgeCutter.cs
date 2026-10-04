@@ -5,7 +5,7 @@ namespace MoreRolesPlus.Terrain;
 
 // EdgeCollider2D の折れ線から円の内側を切り取る。
 // 切った結果が複数の鎖に分かれたら、同じ GameObject に EdgeCollider2D を足して受け持たせる
-// (CompositeCollider2D は Android の libunity に無いので使わない)。
+// (CompositeCollider2D は Android の libunity に無いので使わない。Collider2D.sharedMaterial も無いので写さない)。
 internal static class EdgeCutter
 {
     // 戻り値 = 切り取りが起きたか
@@ -89,7 +89,6 @@ internal static class EdgeCutter
             var extra = col.gameObject.AddComponent<EdgeCollider2D>();
             extra.edgeRadius = col.edgeRadius;
             extra.isTrigger = col.isTrigger;
-            extra.sharedMaterial = col.sharedMaterial;
             Apply(extra, chains[k], t, offset);
         }
         return true;
