@@ -42,7 +42,7 @@
         <EmbeddedResource Include="Resources\Bundles\mrp_fx.android.bundle" LogicalName="MoreRolesPlus.Resources.Bundles.mrp_fx.bundle" />
     </ItemGroup>
     <ItemGroup>
-        <Compile Remove="tools\**;unity\**" />
+        <Compile Remove="tools\**;unity\**;patcher\**" />
     </ItemGroup>
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And Exists('$(MrpBepInExDir)\core')">
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />

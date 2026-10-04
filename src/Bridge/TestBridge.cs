@@ -70,6 +70,7 @@ public static class TestBridge
             Burst.Register();
             Perf.Register();
             LobbyCommands.Register();
+            RoleCommands.Register();
             Terrain.TerrainProbe.Register();
             WriteOut($"BRIDGE up {Plugin.Version}");
         }

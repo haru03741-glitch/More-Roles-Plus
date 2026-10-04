@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Terrain;
 // 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 14 件 (最大 466B) まで。
 internal static class TerrainSync
 {
-    public const byte RpcId = 213; // MRP の地形同期 (本編の RpcCalls と重ならない高い番号)
+    public const byte RpcId = Net.Rpc.Terrain; // 受け口は Net.Rpc
 
     private const int FlushTicks = 10;         // FixedUpdate (50Hz) で数えて 0.2 秒
     private const int MaxEventsPerRpc = 14;     // 瓦礫の止まる所を含めて 1 通 466B まで
@@ -271,17 +271,5 @@ internal static class TerrainSync
             log.Append($" deliver#{i}->applied={Applied - before}");
         }
         return log.ToString();
-    }
-}
-
-[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.HandleRpc))]
-internal static class TerrainRpcPatch
-{
-    public static bool Prefix(PlayerControl __instance, [HarmonyArgument(0)] byte callId, [HarmonyArgument(1)] MessageReader reader)
-    {
-        if (callId != TerrainSync.RpcId) return true;
-        try { TerrainSync.Receive(__instance, reader); }
-        catch (Exception ex) { Plugin.Logger.LogError($"[TerrainSync] receive: {ex}"); }
-        return false;
     }
 }

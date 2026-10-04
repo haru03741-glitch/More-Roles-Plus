@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- 起動を速くする BepInEx の patcher (BepInEx-MRP/patchers に置く単体 DLL)。
+         AmongUsPath は ../local.props で上書きする。 -->
+    <PropertyGroup>
+        <AmongUsPath>C:\Program Files\Epic Games\AmongUs</AmongUsPath>
+    </PropertyGroup>
+    <Import Project="..\local.props" Condition="Exists('..\local.props')" />
+
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>disable</Nullable>
+        <AssemblyName>MoreRolesPlus.BootAccel</AssemblyName>
+        <RootNamespace>MoreRolesPlus.BootAccel</RootNamespace>
+        <Description>More Roles Plus Boot Accelerator</Description>
+        <Platforms>AnyCPU</Platforms>
+        <Configurations>Debug;Release</Configurations>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <!-- 参照するアセンブリは全部ローダー側にあるので、出力へは自分の DLL だけを出す -->
+        <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+        <GenerateDependencyFile>false</GenerateDependencyFile>
+        <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <DebugType>portable</DebugType>
+        <Deterministic>true</Deterministic>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>1.0.0.0</FileVersion>
+        <MrpBepInExDir>$(AmongUsPath)\BepInEx-MRP</MrpBepInExDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BepInEx.Core" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
+        <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
+        <PackageReference Include="HarmonyX" Version="2.10.2" Private="false" ExcludeAssets="runtime;native" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- BepInEx.Preloader.Core は NuGet に無いので、ゲームに置いた BepInEx の core から参照する -->
+        <Reference Include="BepInEx.Preloader.Core">
+            <HintPath>$(MrpBepInExDir)\core\BepInEx.Preloader.Core.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+    </ItemGroup>
+
+    <Target Name="ValidateLoader" BeforeTargets="BeforeBuild;ResolveAssemblyReferences">
+        <Error Condition="!Exists('$(MrpBepInExDir)\core\BepInEx.Preloader.Core.dll')"
+               Text="'$(MrpBepInExDir)\core\BepInEx.Preloader.Core.dll' が見つかりません。local.props の AmongUsPath を BepInEx-MRP を置いた Among Us のフォルダに合わせてください。" />
+    </Target>
+
+    <Target Name="CopyToGame" AfterTargets="Build" Condition="Exists('$(MrpBepInExDir)\core')">
+        <MakeDir Directories="$(MrpBepInExDir)\patchers" />
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\patchers\" ContinueOnError="WarnAndContinue" />
+    </Target>
+</Project>

@@ -18,11 +18,18 @@ public class Plugin : BasePlugin
     internal static ManualLogSource Logger;
     internal static Harmony Harmony;
     internal static ConfigEntry<bool> EnableTestBridge;
+    internal static ConfigEntry<bool> DisableIncrementalGc;
+    internal static ConfigEntry<bool> PreemptiveGc;
 
     public override void Load()
     {
         Logger = Log;
         EnableTestBridge = Config.Bind("Debug", "EnableTestBridge", false, "外部ツールからの遠隔テスト口を有効にする");
+        DisableIncrementalGc = Config.Bind("Performance", "DisableIncrementalGc", true, "incremental GC を切る (GC 中の interop の書き込みで落ちるのを防ぐ・Windows のみ)");
+        PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
+
+        Boot.IncrementalGcInvalidator.ApplyIfConfigured();
+        Options.Registry.Init();
 
         Harmony = new Harmony(Guid);
         Harmony.PatchAll();
@@ -57,6 +64,7 @@ public class Ticker : MonoBehaviour
         Fx.MrpBundle.Tick();
         Terrain.TerrainWarm.Tick();
         Terrain.TerrainSync.Tick();
+        Net.VersionCheck.Tick();
         Bridge.TestBridge.Tick();
         Bridge.Perf.EndFixed(t);
     }
