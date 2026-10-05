@@ -19,9 +19,10 @@ dotnet build patcher/MoreRolesPlus.BootAccel.csproj -c Release     # → <AmongU
 
 ## クレジット
 
-- [Nebula on the Ship](https://github.com/Dolly1016/Nebula-Public) (Dolly1016、GPL-3.0) — incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方、mod の通信を 1 つの番号にまとめて名前で振り分ける仕組み
-- [End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful、GPL-3.0) — 起動の高速化 (`patcher/`)、GC まわりの処理、設定画面にタブを足す方法
-- [Endless Host Roles](https://github.com/Gurge44/EndlessHostRoles) (Gurge44、GPL-3.0) / [TownOfHost-K](https://github.com/KYMario/TownOfHost-K) (KYMario、GPL-3.0) / [Town Of Host](https://github.com/tukasa0001/TownOfHost) (tukasa0001、GPL-3.0) — ロゴ演出の短縮、設定画面にタブを足す方法
+- [Nebula on the Ship](https://github.com/Dolly1016/Nebula-Public) (Dolly1016、GPL-3.0) — incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方、mod の通信を 1 つの番号にまとめて名前で振り分ける仕組み、試合の出来事を寿命付きで受け取る仕組み
+- [Super New Roles](https://github.com/ykundesu/SuperNewRoles) (ykundesu、GPL-3.0) — 試合の出来事を配る仕組み (配っている最中の受け手の追加・削除の扱い)
+- [End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful、GPL-3.0) — 起動の高速化 (`patcher/`)、GC まわりの処理、設定画面にタブを足す方法、公式サーバーに mod の部屋として名乗る方法
+- [Endless Host Roles](https://github.com/Gurge44/EndlessHostRoles) (Gurge44、GPL-3.0) / [TownOfHost-K](https://github.com/KYMario/TownOfHost-K) (KYMario、GPL-3.0) / [Town Of Host](https://github.com/tukasa0001/TownOfHost) (tukasa0001、GPL-3.0) — ロゴ演出の短縮、設定画面にタブを足す方法、公式サーバーに mod の部屋として名乗る方法
 
 ## ライセンス
 

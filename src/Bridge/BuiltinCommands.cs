@@ -36,6 +36,12 @@ internal static class BuiltinCommands
             reply($"OK remote n={Net.Remote.All.Count} fp={Options.Registry.Fingerprint:X8}");
         });
 
+        TestBridge.Register("events", "試合のイベントごとの受け手の数 (寿命が生きている物) と起きた回数", (_, reply) =>
+        {
+            foreach (var s in Roles.EventStats.All) reply($"EVENT {s.Name} live={s.Live} fired={s.Fired}");
+            reply($"OK events n={Roles.EventStats.All.Count} roles={Roles.RoleState.All.Count}");
+        });
+
         TestBridge.Register("mark","<文字列> ログに目印を書く (wait marker の起点用)", (args, reply) =>
         {
             Plugin.Logger.LogInfo($"MARK {args}");

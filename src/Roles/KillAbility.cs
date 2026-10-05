@@ -214,12 +214,6 @@ internal static class KillAbility
     }
 }
 
-[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.MurderPlayer))]
-internal static class KillTimerResetPatch
-{
-    public static void Postfix(PlayerControl __instance) => KillAbility.OnMurder(__instance);
-}
-
 [HarmonyPatch(typeof(RoleBehaviour), nameof(RoleBehaviour.FindClosestTarget))]
 internal static class KillTargetPatch
 {

@@ -9,5 +9,6 @@ public sealed class Jester : RoleBase
     public override Text Blurb => new("みんなをだまして追放されよう", "Get yourself voted out");
 
     // 追放は全員の端末で起きるが、勝ちを決めるのはホストだけ (GameEnd.Win はホストでだけ効く)
-    public override void OnExiled() => GameEnd.Win(this);
+    [OnlyMine]
+    private void OnExiled(PlayerExiledEvent e) => GameEnd.Win(this);
 }

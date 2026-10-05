@@ -23,6 +23,10 @@ public static class RoleState
 
     public static IReadOnlyList<RoleBase> All => Active;
 
+    // 今の試合の寿命 (役職の寿命の親)。役職の外で試合中だけ何かを購読する時に使う
+    public static Lifespan Match => _match ??= new Lifespan();
+    private static Lifespan _match;
+
     // 第三陣営の役職が誰かに付いている試合か (付いていない試合の勝敗は本編のまま)
     public static bool AnyNeutral { get; private set; }
 
@@ -37,6 +41,8 @@ public static class RoleState
         Active.Add(role);
         if (p.AmOwner) Local = role;
         if (role.Team == Team.Neutral) AnyNeutral = true;
+        role.Lifespan = Match.Child();
+        EventBinder.Bind(role);
         KillAbility.OnAssigned(role);
         try { role.OnAssigned(); }
         catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.OnAssigned: {e}"); }
@@ -45,16 +51,12 @@ public static class RoleState
 
     internal static void Clear(bool gameEnded)
     {
-        foreach (var r in Active)
-        {
-            if (gameEnded)
-            {
-                try { r.OnGameEnd(); }
-                catch (Exception e) { Plugin.Logger.LogError($"{r.Id}.OnGameEnd: {e}"); }
-            }
-            ByPlayer[r.PlayerId] = null;
-        }
+        if (gameEnded && Active.Count > 0) Events<GameEndEvent>.Run(new GameEndEvent { Result = GameEnd.Last });
+        foreach (var r in Active) ByPlayer[r.PlayerId] = null;
         Active.Clear();
+        // 役職の寿命 (購読・作った物) は試合の寿命ごと切る
+        _match?.Release();
+        _match = null;
         Local = null;
         KillAbility.Clear();
         AnyNeutral = false;

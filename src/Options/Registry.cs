@@ -73,6 +73,7 @@ internal static class Registry
             }
             Roles.Add(role);
             SectionList(role.Tab).Add(sec);
+            MoreRolesPlus.Roles.EventBinder.Prepare(t); // 試合中の最初の割り当てで反射しないように先に
         }
         Roles.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
 

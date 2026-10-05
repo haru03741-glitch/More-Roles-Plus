@@ -47,16 +47,40 @@ public sealed class Lighter : RoleBase
 | `MaxCount` | 設定画面の「人数」の上限 (既定 15) |
 | `Id` | 保存と同期に使う名前 (既定はクラス名。変えると保存済みの設定値が引き継がれない) |
 
-試合中の処理は、次のメソッドを上書きして書きます。
+値を返す問い合わせは、次のメソッドを上書きして書きます。
 
 | メソッド | 呼ばれる時 |
 |---|---|
 | `OnAssigned()` | 役職が割り当てられた直後 (全員の端末) |
-| `OnGameEnd()` | 試合が終わった時 (全員の端末) |
-| `OnExiled()` | 会議で追放された時 (全員の端末) |
 | `AlsoWins(GameResult result)` | 誰かの勝ちで試合が終わる時に、自分も一緒に勝つなら `true` を返す (ホストの端末) |
 | `ModifyVision(ref float radius)` | 視界の広さを計算する時 |
 | `ModifyKillCooldown(ref float seconds)` | キルの待ち時間を決める時 (自分の端末と、キルの依頼を確かめるホストの端末。設定値だけから決める) |
+
+### 試合で起きた事に反応する
+
+引数がイベント 1 つのメソッドを書くだけで、その役職が付いている間呼ばれます (名前は自由・`private` でよい)。どれも全員の端末で起きます。
+
+```csharp
+// 自分が追放されたら一人勝ち (道化)
+[OnlyMine]
+private void OnExiled(PlayerExiledEvent e) => GameEnd.Win(this);
+```
+
+| イベント | 起きる時 |
+|---|---|
+| `PlayerMurderedEvent` | 誰かが倒された (`Killer` / `Target`) |
+| `PlayerExiledEvent` | 会議で追放された (`Player`) |
+| `MeetingStartEvent` | 会議が始まった |
+| `MeetingEndEvent` | 会議が終わって歩けるようになった (`Exiled` = 追放された人、いなければ `null`) |
+| `GameEndEvent` | 試合が終わった (`Result`) |
+
+- `[OnlyMine]` — 自分についての出来事の時だけ (倒されたのが自分・追放されたのが自分)
+- `[LocalOnly]` — 役職の持ち主の端末でだけ (画面の表示など)
+- `[HostOnly]` — ホストの端末でだけ (判定など)
+- `[Priority(n)]` — 同じイベントの中で先に呼ぶ (大きいほど先)
+
+役職が外れる時 (試合の終わり・配り直し) に、購読は自動で外れます。役職の中で作った GameObject は `Lifespan.Bind(obj)` に渡しておくと一緒に消え、後片付けの処理は `Lifespan.OnRelease(() => ...)` に書けます。
+役職の外から試合中だけ受けたい時は `Events<MeetingStartEvent>.Subscribe(e => ..., RoleState.Match)` と書けます。
 
 インスタンスは試合ごと・プレイヤーごとに作られます。`Player` / `PlayerId` / `IsLocal` で持ち主が分かり、残り回数のような状態は普通のフィールドに置けます。
 ほかの役職の情報は `RoleState.Of(player)` (その人の役職、無ければ `null`) と `RoleState.Local` (自分の役職) で引けます。
@@ -65,14 +89,14 @@ public sealed class Lighter : RoleBase
 
 第三陣営 (`Team.Neutral`) の役職が誰かに付いている試合では、勝ち負けを More Roles Plus が決めます (いない試合は本編のまま)。
 
-- **一人勝ち**: 条件を満たした時に `GameEnd.Win(this)` を呼ぶと、その人だけの勝ちで試合が終わります。呼んで効くのはホストの端末だけなので、全員の端末で呼ばれるメソッド (`OnExiled` など) からそのまま呼んで構いません。
+- **一人勝ち**: 条件を満たした時に `GameEnd.Win(this)` を呼ぶと、その人だけの勝ちで試合が終わります。呼んで効くのはホストの端末だけなので、全員の端末で起きるイベントからそのまま呼んで構いません。
 - **相乗り**: `AlsoWins` で `true` を返すと、誰が勝った時でも一緒に勝ちます (`result.Team` に勝った陣営、`result.Role` に勝った役職)。
 - **キル役** (`IsKiller => true`): 生きている間は、インポスターの人数勝ちもクルーの全滅勝ちも起きません。インポスターが全滅し、キル役が 1 種類だけ残り、ほかの生存者がその人数以下になった時 (1 人なら最後の 1 対 1) に、その役職の全員の勝ちになります。
 - 第三陣営のタスクは偽のタスクで、クルーのタスク勝利には数えません。
 
 インポスター以外のキル (`CanKill => true`) は本編のキルボタンをそのまま使います。押すとホストに依頼が届き、ホストが生存・距離・待ち時間を確かめてから全員の画面で倒します。
 
-足りない入口 (「会議が始まった時」など) が要る時は、`RoleBase` に仮想メソッドを足し、本編側から呼ぶパッチを `src/Roles/RoleHooks.cs` に書きます。
+足りないイベントが要る時は `src/Roles/Events/RoleEvents.cs` にイベントの型と、本編側から `Events<型>.Run(...)` を呼ぶパッチを足します。値を返す問い合わせなら `RoleBase` に仮想メソッドを足し、パッチを `src/Roles/RoleHooks.cs` に書きます。
 
 ## 設定項目の種類
 

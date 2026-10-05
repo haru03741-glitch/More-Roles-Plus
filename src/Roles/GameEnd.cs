@@ -404,14 +404,3 @@ internal static class NeutralTaskPatch
     }
 }
 
-[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.Exiled))]
-internal static class ExiledPatch
-{
-    public static void Postfix(PlayerControl __instance)
-    {
-        var role = RoleState.Of(__instance);
-        if (role == null) return;
-        try { role.OnExiled(); }
-        catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.OnExiled: {e}"); }
-    }
-}

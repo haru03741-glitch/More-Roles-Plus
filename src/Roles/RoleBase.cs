@@ -17,7 +17,8 @@ public enum Team
 // - 設定項目は `static readonly` のフィールドに置く (全員で共通の値なので static)。
 // - プレイヤーごとの状態 (残り回数など) は普通のフィールドに置く。試合ごと・プレイヤーごとに
 //   新しいインスタンスが作られる。
-// - 試合中の処理は下の On〜 / Modify〜 を上書きする。
+// - 試合で起きた事 (倒された・追放・会議・試合の終わり) は、引数がそのイベント 1 つのメソッドを書くだけで呼ばれる
+//   (GameEvents.cs)。値を返す問い合わせ (視界・キルの待ち時間・相乗り) は下の Modify〜 / AlsoWins を上書きする。
 public abstract class RoleBase
 {
     // 保存と同期に使う名前。既定はクラス名 (変えると保存済みの設定値が引き継がれない)
@@ -54,14 +55,12 @@ public abstract class RoleBase
     public byte PlayerId { get; internal set; }
     public bool IsLocal => Player && Player.AmOwner;
 
-    // 割り当てられた直後 (全員の端末で呼ばれる)
+    // この役職が付いている間の寿命。役職が外れる (試合が終わる・配り直す) と切れる。
+    // 役職の中で作った GameObject は Lifespan.Bind、自分で購読したイベントもこの寿命で
+    public Lifespan Lifespan { get; internal set; }
+
+    // 割り当てられた直後 (全員の端末で呼ばれる)。下の起きた事のメソッドはもう購読済み
     public virtual void OnAssigned() { }
-
-    // 試合が終わった時 (全員の端末で呼ばれる)
-    public virtual void OnGameEnd() { }
-
-    // 会議で追放された時 (全員の端末で呼ばれる)
-    public virtual void OnExiled() { }
 
     // 誰かの勝ちで試合が終わる時に、自分も一緒に勝つか (第三陣営の相乗り)。ホストの端末でだけ呼ばれる。
     // 自分だけで勝って試合を終わらせる時は GameEnd.Win(this) を呼ぶ
