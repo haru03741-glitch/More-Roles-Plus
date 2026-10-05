@@ -21,6 +21,7 @@ public class Plugin : BasePlugin
     internal static ConfigEntry<bool> DisableIncrementalGc;
     internal static ConfigEntry<bool> PreemptiveGc;
     internal static ConfigEntry<bool> ReuseDelegateTypes;
+    internal static ConfigEntry<bool> SleepAccountManager;
 
     public override void Load()
     {
@@ -29,6 +30,7 @@ public class Plugin : BasePlugin
         EnableTestBridge = Config.Bind("Debug", "EnableTestBridge", false, "外部ツールからの遠隔テスト口を有効にする");
         DisableIncrementalGc = Config.Bind("Performance", "DisableIncrementalGc", true, "incremental GC を切る (GC 中の interop の書き込みで落ちるのを防ぐ・Windows のみ)");
         ReuseDelegateTypes = Config.Bind("Performance", "ReuseDelegateTypes", true, "パッチを当てる時の型を形ごとに使い回して起動を速くする (パッチが当たらない時は切る)");
+        SleepAccountManager = Config.Bind("Performance", "SleepAccountManager", true, "メニューのアカウント表示を止めておき、ログイン待ちの間もメニューを使えるようにする");
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
 
         Boot.IncrementalGcInvalidator.ApplyIfConfigured();
@@ -61,6 +63,8 @@ public class Ticker : MonoBehaviour
     private void Update()
     {
         if (!_ran) { _ran = true; Boot.BootClock.Mark("frame1"); }
+        Boot.BootClock.Tick();
+        Menu.AccountSleep.Tick();
         Bridge.Perf.FrameStart();
         long t = Bridge.Perf.Begin();
         Terrain.TerrainFx.Tick();

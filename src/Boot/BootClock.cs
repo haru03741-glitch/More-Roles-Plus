@@ -12,6 +12,18 @@ internal static class BootClock
     private static long _baseMs = -1;
     private static readonly Stopwatch _sw = Stopwatch.StartNew();
     private static bool _done;
+    private static MainMenuManager _menu;
+    private static bool _tickDone;
+
+    // メニューが出てから本編の起動処理 (ログイン・持ち物・ショップの準備) が終わるまでを見る。終われば以後は何もしない
+    internal static void Tick()
+    {
+        if (_tickDone || !_done) return;
+        if (!_menu) { _tickDone = true; return; }
+        if (!_menu.finishStartup) return;
+        _tickDone = true;
+        Plugin.Logger.LogInfo($"BOOT startup={_baseMs + _sw.ElapsedMilliseconds}");
+    }
 
     internal static void Mark(string name)
     {
@@ -36,6 +48,10 @@ internal static class BootClock
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Awake))]
     private static class MenuAwake
     {
-        public static void Prefix() => Finish("menu");
+        public static void Prefix(MainMenuManager __instance)
+        {
+            _menu ??= __instance;
+            Finish("menu");
+        }
     }
 }
