@@ -23,6 +23,9 @@ public static class RoleState
 
     public static IReadOnlyList<RoleBase> All => Active;
 
+    // 第三陣営の役職が誰かに付いている試合か (付いていない試合の勝敗は本編のまま)
+    public static bool AnyNeutral { get; private set; }
+
     internal static void Assign(PlayerControl p, RoleBase proto)
     {
         var role = (RoleBase)Activator.CreateInstance(proto.GetType());
@@ -33,6 +36,7 @@ public static class RoleState
         ByPlayer[p.PlayerId] = role;
         Active.Add(role);
         if (p.AmOwner) Local = role;
+        if (role.Team == Team.Neutral) AnyNeutral = true;
         try { role.OnAssigned(); }
         catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.OnAssigned: {e}"); }
         RoleDisplay.OnAssigned(role);
@@ -51,6 +55,7 @@ public static class RoleState
         }
         Active.Clear();
         Local = null;
+        AnyNeutral = false;
         RoleDisplay.Clear();
     }
 }
@@ -59,6 +64,8 @@ public static class RoleState
 public static class RoleSettings
 {
     public static readonly BoolOpt Enabled = new("More Roles Plus の役職を使う", "Use More Roles Plus roles", true);
+    public static readonly BoolOpt GhostsSeeRoles = new("死んだら全員の役職が見える (会議)", "Ghosts see all roles in meetings", true);
+    public static readonly BoolOpt ImpostorsSeeRoles = new("インポスター同士は役職が見える (会議)", "Impostors see each other's roles in meetings", true);
 }
 
 // ホストが役職を決めて全員に配る。本編が陣営 (クルー / インポスター) を決めた直後に、
@@ -74,6 +81,11 @@ internal static class RoleAssigner
         if (RoleSettings.Enabled) plan = Decide();
 
         OptionSync.SendAll(); // 役職の処理が設定値を読むので、配る前に揃える
+        Send(plan);
+    }
+
+    private static void Send(List<(PlayerControl player, int roleIndex)> plan)
+    {
         var w = Rpc.Start(Rpc.Roles);
         w.Write(Registry.Fingerprint);
         w.Write((byte)plan.Count);
@@ -129,12 +141,17 @@ internal static class RoleAssigner
         return plan;
     }
 
-    // 試験用: 自分 (ホスト) だけに役職を付け直す。土台の役職も合わせる
-    internal static void GiveLocal(RoleBase proto)
+    // 試験用 (ホスト): target に役職を付け直して全員に配る。他の人の役職はそのまま。土台の役職も合わせる
+    internal static void Give(PlayerControl target, RoleBase proto)
     {
-        var lp = PlayerControl.LocalPlayer;
-        if (lp.Data.Role.Role != proto.BaseRole) lp.RpcSetRole(proto.BaseRole, true);
-        Apply(new List<(PlayerControl, int)> { (lp, Registry.Roles.IndexOf(proto)) });
+        if (target.Data.Role.Role != proto.BaseRole) target.RpcSetRole(proto.BaseRole, true);
+        var plan = new List<(PlayerControl, int)>();
+        foreach (var r in RoleState.All)
+        {
+            if (r.PlayerId != target.PlayerId && r.Player) plan.Add((r.Player, Registry.Roles.FindIndex(x => x.Id == r.Id)));
+        }
+        plan.Add((target, Registry.Roles.IndexOf(proto)));
+        Send(plan);
     }
 
     public static void Receive(PlayerControl sender, MessageReader r)
@@ -157,6 +174,7 @@ internal static class RoleAssigner
     private static void Apply(List<(PlayerControl player, int roleIndex)> plan)
     {
         RoleState.Clear(false);
+        GameEnd.Reset();
         foreach (var (p, idx) in plan) RoleState.Assign(p, Registry.Roles[idx]);
         Plugin.Logger.LogInfo($"roles: {string.Join(", ", plan.Select(x => $"{x.player.PlayerId}={Registry.Roles[x.roleIndex].Id}"))}");
     }
@@ -191,5 +209,9 @@ internal static class GameEndPatch
 [HarmonyPatch(typeof(LobbyBehaviour), nameof(LobbyBehaviour.Start))]
 internal static class LobbyClearPatch
 {
-    public static void Postfix() => RoleState.Clear(false);
+    public static void Postfix()
+    {
+        RoleState.Clear(false);
+        GameEnd.Reset();
+    }
 }

@@ -1,3 +1,4 @@
+using AmongUs.GameOptions;
 using System.Linq;
 using MoreRolesPlus.Options;
 using MoreRolesPlus.Roles;
@@ -20,14 +21,128 @@ internal static class RoleCommands
             reply($"OK roles reg=[{reg}] assigned=[{now}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
         });
 
-        TestBridge.Register("giverole", "<役職Id> 自分にその役職を付ける (ホスト / フリープレイ。土台の役職も合わせる)", (args, reply) =>
+        TestBridge.Register("giverole", "<役職Id> [番号] その人 (省略で自分) に役職を付けて全員に配る (ホストのみ。土台の役職も合わせる)", (args, reply) =>
         {
-            var proto = Registry.Roles.FirstOrDefault(r => string.Equals(r.Id, args.Trim(), System.StringComparison.OrdinalIgnoreCase));
-            var lp = PlayerControl.LocalPlayer;
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var proto = a.Length > 0 ? Registry.Roles.FirstOrDefault(r => string.Equals(r.Id, a[0], System.StringComparison.OrdinalIgnoreCase)) : null;
             if (proto == null) { reply($"ERR giverole unknown {args}"); return; }
-            if (!lp || !AmongUsClient.Instance.AmHost) { reply("ERR giverole needs host in game"); return; }
-            RoleAssigner.GiveLocal(proto);
-            reply($"OK giverole {proto.Id} base={lp.Data.Role.Role}");
+            if (!PlayerControl.LocalPlayer || !AmongUsClient.Instance.AmHost) { reply("ERR giverole needs host in game"); return; }
+            var target = a.Length > 1 && byte.TryParse(a[1], out byte pid) ? GameData.Instance.GetPlayerById(pid)?.Object : PlayerControl.LocalPlayer;
+            if (!target) { reply($"ERR giverole no player {a[1]}"); return; }
+            RoleAssigner.Give(target, proto);
+            reply($"OK giverole {proto.Id} to={target.PlayerId} base={target.Data.Role.Role} neutral={RoleState.AnyNeutral}");
+        });
+
+        TestBridge.Register("endcheck", "[番号...] 生き残りの数で勝者が決まるかを見るだけ (終わらせない)。番号の人をキル役として数える", (args, reply) =>
+        {
+            if (!GameData.Instance) { reply("ERR endcheck not in game"); return; }
+            GameEnd.TestKillers.Clear();
+            foreach (var t in args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))
+                if (byte.TryParse(t, out byte pid)) GameEnd.TestKillers.Add(pid);
+            var r = GameEnd.Decide(out var reason, out string info, true);
+            GameEnd.TestKillers.Clear();
+            string res = r == null ? "none" : $"team={r.Team?.ToString() ?? "-"} role={r.Role?.Id ?? (r.Winners.Count > 0 && r.Team == null ? "test" : "-")} winners=[{string.Join(",", r.Winners)}] reason={reason}";
+            reply($"OK endcheck {info} -> {res}");
+        });
+
+        TestBridge.Register("forcewin", "<crew|imp|役職Id> その勝ちで試合を終わらせる (ホストのみ)", (args, reply) =>
+        {
+            if (!AmongUsClient.Instance.AmHost || !GameData.Instance) { reply("ERR forcewin needs host in game"); return; }
+            string a = args.Trim();
+            if (a == "crew") GameEnd.End(GameEnd.TeamResult(Team.Crew), GameOverReason.CrewmatesByVote);
+            else if (a == "imp") GameEnd.End(GameEnd.TeamResult(Team.Impostor), GameOverReason.ImpostorsByKill);
+            else
+            {
+                var role = RoleState.All.FirstOrDefault(r => string.Equals(r.Id, a, System.StringComparison.OrdinalIgnoreCase));
+                if (role == null) { reply($"ERR forcewin nobody has {a}"); return; }
+                GameEnd.Win(role);
+            }
+            reply($"OK forcewin {a}");
+        });
+
+        TestBridge.Register("winner", "最後に配られた試合の結果", (_, reply) =>
+        {
+            var r = GameEnd.Last;
+            reply(r == null ? "OK winner none" : $"OK winner team={r.Team?.ToString() ?? "-"} role={r.Role?.Id ?? "-"} winners=[{string.Join(",", r.Winners)}] localWon={GameEnd.LocalWon} cached={EndGameResult.CachedWinners?.Count ?? -1}");
+        });
+
+        TestBridge.Register("gameflags", "試合の終わりに関わる本編の状態と、止めた終わりの数", (_, reply) =>
+        {
+            var gm = GameManager.Instance;
+            reply($"OK gameflags check={(gm ? gm.ShouldCheckForGameEnd : false)} started={(gm ? gm.GameHasStarted : false)} state={AmongUsClient.Instance.GameState} blocked={GameEnd.Blocked} total={GameData.Instance?.TotalTasks} done={GameData.Instance?.CompletedTasks}");
+        });
+
+        TestBridge.Register("meeting", "自分が緊急会議を開く", (_, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp || !ShipStatus.Instance) { reply("ERR meeting not in game"); return; }
+            lp.CmdReportDeadBody(null);
+            reply("OK meeting");
+        });
+
+        TestBridge.Register("meetingtags", "会議の名札ごとの役職名の有無と位置", (_, reply) =>
+        {
+            var hud = MeetingHud.Instance;
+            if (!hud) { reply("ERR meetingtags no meeting"); return; }
+            var sb = new System.Text.StringBuilder();
+            foreach (var pva in hud.playerStates)
+            {
+                var tag = pva.NameText.transform.parent.Find("MrpMeetingRole");
+                var n = pva.NameText.transform;
+                sb.Append($" [{pva.name} name={n.localPosition.x:0.##},{n.localPosition.y:0.##} s={n.localScale.x:0.##} tag={(tag ? $"{tag.localPosition.x:0.##},{tag.localPosition.y:0.##} act={tag.gameObject.activeInHierarchy}" : "-")}]");
+            }
+            reply($"OK meetingtags{sb}");
+        });
+
+        TestBridge.Register("vote", "<番号|skip> 会議で投票する", (args, reply) =>
+        {
+            var hud = MeetingHud.Instance;
+            if (!hud) { reply("ERR vote no meeting"); return; }
+            byte target = args.Trim() == "skip" ? (byte)253 : byte.Parse(args.Trim());
+            hud.CmdCastVote(PlayerControl.LocalPlayer.PlayerId, target);
+            reply($"OK vote {target}");
+        });
+
+        TestBridge.Register("proceed", "会議の投票結果の画面で「進む」を押す", (_, reply) =>
+        {
+            var hud = MeetingHud.Instance;
+            if (!hud) { reply("ERR proceed no meeting"); return; }
+            if (!hud.ProceedButton || !hud.ProceedButton.gameObject.activeInHierarchy) { reply("ERR proceed button not shown"); return; }
+            hud.ProceedButton.OnClick.Invoke();
+            reply("OK proceed");
+        });
+
+        TestBridge.Register("exile", "<番号> その人に本編の追放の処理 (Exiled) を走らせる。自分の端末だけ", (args, reply) =>
+        {
+            var p = byte.TryParse(args.Trim(), out byte pid) && GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
+            if (!p) { reply($"ERR exile no player {args}"); return; }
+            p.Exiled();
+            reply($"OK exile {pid}");
+        });
+
+        TestBridge.Register("kill", "<番号> その人を倒す (ホストのみ)", (args, reply) =>
+        {
+            if (!AmongUsClient.Instance.AmHost || !byte.TryParse(args.Trim(), out byte pid)) { reply("ERR kill needs host and number"); return; }
+            var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
+            if (!p) { reply($"ERR kill no player {pid}"); return; }
+            p.RpcMurderPlayer(p, true);
+            reply($"OK kill {pid}");
+        });
+
+        TestBridge.Register("tasks", "自分のタスク欄の中身", (_, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp || lp.myTasks == null) { reply("ERR tasks"); return; }
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < lp.myTasks.Count && i < 4; i++)
+            {
+                var t = lp.myTasks[i];
+                sb.Append('[').Append(t ? t.name : "null");
+                var it = t ? t.TryCast<ImportantTextTask>() : null;
+                if (it != null) sb.Append(':').Append(it.Text.Replace('\n', '/'));
+                sb.Append(']');
+            }
+            reply($"OK tasks n={lp.myTasks.Count} total={GameData.Instance?.TotalTasks} done={GameData.Instance?.CompletedTasks} {sb}");
         });
 
         TestBridge.Register("opt", "<key> [番号] 設定項目を見る / 番号で変える (例 opt Lighter.Chance 10)", (args, reply) =>

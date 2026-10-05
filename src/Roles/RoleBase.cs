@@ -33,6 +33,13 @@ public abstract class RoleBase
     // イントロに出る一行の説明
     public abstract Text Blurb { get; }
 
+    // タスク欄の先頭に出す説明 (既定はイントロの一行)
+    public virtual Text Description => Blurb;
+
+    // 第三陣営でキルする役職なら true。生き残りの人数で勝敗を決める時、この役職だけで 1 つの陣営として数える
+    // (インポスターが全滅し、他の生存者がこの役職の人数以下になったら勝ち)
+    public virtual bool IsKiller => false;
+
     // 本編のどの役職の上に乗るか (ベントを使うなら Engineer など)。既定はクルー / インポスター
     public virtual RoleTypes BaseRole => Team == Team.Impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
 
@@ -49,6 +56,13 @@ public abstract class RoleBase
 
     // 試合が終わった時 (全員の端末で呼ばれる)
     public virtual void OnGameEnd() { }
+
+    // 会議で追放された時 (全員の端末で呼ばれる)
+    public virtual void OnExiled() { }
+
+    // 誰かの勝ちで試合が終わる時に、自分も一緒に勝つか (第三陣営の相乗り)。ホストの端末でだけ呼ばれる。
+    // 自分だけで勝って試合を終わらせる時は GameEnd.Win(this) を呼ぶ
+    public virtual bool AlsoWins(GameResult result) => false;
 
     // 視界の広さ (radius は本編が計算した値)。自分の画面の計算でだけ呼ばれる
     public virtual void ModifyVision(ref float radius) { }

@@ -2,13 +2,14 @@
 
 ## 役職を 1 つ足す
 
-`src/Roles/` の下 (クルーなら `Crew/`、インポスターなら `Impostor/`) に、`RoleBase` を継承したクラスのファイルを 1 つ置くだけです。
+`src/Roles/` の下 (クルーなら `Crew/`、インポスターなら `Impostor/`、第三陣営なら `Neutral/`) に、`RoleBase` を継承したクラスのファイルを 1 つ置くだけです。
 登録の作業はありません。置いたクラスは起動時に自動で見つかり、次のものが自動で付きます。
 
 - ゲーム設定の画面の「クルー」「インポスター」「第三陣営」タブに、その役職の見出しと「出現率」「人数」の行
 - 下に書いた `static readonly` の設定項目の行
 - 試合開始時の割り当て (ホストが同じ陣営の人から選んで全員に配る)
-- イントロの役職名と説明、自分の名前の上の役職名
+- イントロの役職名と説明、自分の名前の上の役職名、タスク欄の先頭の説明
+- 会議の名札の役職名 (自分の分。設定で、死んだ後は全員分・インポスター同士の分も)
 
 ```csharp
 using MoreRolesPlus.Options;
@@ -30,7 +31,7 @@ public sealed class Lighter : RoleBase
 }
 ```
 
-見本は `src/Roles/Crew/Lighter.cs` と `src/Roles/Impostor/Quickdraw.cs` です。
+見本は `src/Roles/Crew/Lighter.cs` と `src/Roles/Impostor/Quickdraw.cs`、第三陣営は `src/Roles/Neutral/Jester.cs` (追放されたら一人勝ち) と `src/Roles/Neutral/Survivor.cs` (生きていれば一緒に勝つ) です。
 
 ### 役職クラスで書けるもの
 
@@ -39,6 +40,8 @@ public sealed class Lighter : RoleBase
 | `Team` | 陣営。割り当てる相手と、設定画面のタブが決まる |
 | `Color` | 役職の色 (`"#RRGGBB"`) |
 | `Name` / `Blurb` | 役職名とイントロの一行説明。`new("日本語", "English")` |
+| `Description` | タスク欄の先頭に出す説明 (既定は `Blurb`) |
+| `IsKiller` | 第三陣営でキルする役職なら `true` (下の「第三陣営の勝ち方」) |
 | `BaseRole` | 本編のどの役職の上に乗るか (既定はクルー / インポスター。ベントを使うなら `RoleTypes.Engineer` など) |
 | `MaxCount` | 設定画面の「人数」の上限 (既定 15) |
 | `Id` | 保存と同期に使う名前 (既定はクラス名。変えると保存済みの設定値が引き継がれない) |
@@ -49,11 +52,22 @@ public sealed class Lighter : RoleBase
 |---|---|
 | `OnAssigned()` | 役職が割り当てられた直後 (全員の端末) |
 | `OnGameEnd()` | 試合が終わった時 (全員の端末) |
+| `OnExiled()` | 会議で追放された時 (全員の端末) |
+| `AlsoWins(GameResult result)` | 誰かの勝ちで試合が終わる時に、自分も一緒に勝つなら `true` を返す (ホストの端末) |
 | `ModifyVision(ref float radius)` | 視界の広さを計算する時 |
 | `ModifyKillCooldown(ref float seconds)` | キルの待ち時間を決める時 (自分の端末) |
 
 インスタンスは試合ごと・プレイヤーごとに作られます。`Player` / `PlayerId` / `IsLocal` で持ち主が分かり、残り回数のような状態は普通のフィールドに置けます。
 ほかの役職の情報は `RoleState.Of(player)` (その人の役職、無ければ `null`) と `RoleState.Local` (自分の役職) で引けます。
+
+### 第三陣営の勝ち方
+
+第三陣営 (`Team.Neutral`) の役職が誰かに付いている試合では、勝ち負けを More Roles Plus が決めます (いない試合は本編のまま)。
+
+- **一人勝ち**: 条件を満たした時に `GameEnd.Win(this)` を呼ぶと、その人だけの勝ちで試合が終わります。呼んで効くのはホストの端末だけなので、全員の端末で呼ばれるメソッド (`OnExiled` など) からそのまま呼んで構いません。
+- **相乗り**: `AlsoWins` で `true` を返すと、誰が勝った時でも一緒に勝ちます (`result.Team` に勝った陣営、`result.Role` に勝った役職)。
+- **キル役** (`IsKiller => true`): 生きている間は、インポスターの人数勝ちもクルーの全滅勝ちも起きません。インポスターが全滅し、キル役が 1 種類だけ残り、ほかの生存者がその人数以下になった時 (1 人なら最後の 1 対 1) に、その役職の全員の勝ちになります。
+- 第三陣営のタスクは偽のタスクで、クルーのタスク勝利には数えません。
 
 足りない入口 (「会議が始まった時」など) が要る時は、`RoleBase` に仮想メソッドを足し、本編側から呼ぶパッチを `src/Roles/RoleHooks.cs` に書きます。
 
@@ -91,7 +105,9 @@ public static class RoleSettings
 
 テスト用の遠隔操作 (config の `EnableTestBridge = true`) を有効にすると、次のコマンドが使えます。
 
-- `giverole <役職Id>` — フリープレイで自分にその役職を付ける (例: `giverole Quickdraw`)
+- `giverole <役職Id> [番号]` — その人 (省略で自分) にその役職を付けて全員に配る。ホストかフリープレイで (例: `giverole Quickdraw`)
+- `forcewin <crew|imp|役職Id>` / `winner` — その勝ちで試合を終わらせる / 最後の結果を見る
+- `endcheck [番号...]` — 今の生き残りで勝者が決まるかを見るだけ (番号の人をキル役として数える)
 - `roles` — 登録された役職・今の割り当て・自分の視界とキルの待ち時間
 - `opt [Id.項目 [番号]]` — 設定項目を見る / 変える
 

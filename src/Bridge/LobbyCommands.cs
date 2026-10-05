@@ -1,5 +1,4 @@
 using AmongUs.Data;
-using HarmonyLib;
 using InnerNet;
 using UnityEngine;
 
@@ -9,7 +8,7 @@ namespace MoreRolesPlus.Bridge;
 internal static class LobbyCommands
 {
     // テスト中は試合の終了判定を止める (2 人だとインポスター 1 対クルー 1 で始まった瞬間に終わるため)
-    internal static bool NoGameEnd;
+    internal static bool NoGameEnd; // 試合の終了判定を止める (Roles/GameEnd.cs の CheckEndCriteriaPatch が見る)
 
     public static void Register()
     {
@@ -91,7 +90,7 @@ internal static class LobbyCommands
             reply($"OK startgame map={(args.Length > 0 ? args : "current")} players={GameData.Instance.PlayerCount}");
         });
 
-        TestBridge.Register("noend", "<on|off> 試合の終了判定を止める (テスト用)", (args, reply) =>
+        TestBridge.Register("noend", "<on|off> 本編の試合の終わりを全部止める (MRP の勝ちと forcewin は通る。テスト用)", (args, reply) =>
         {
             NoGameEnd = args.Trim() != "off";
             reply($"OK noend {(NoGameEnd ? "on" : "off")}");
@@ -109,10 +108,4 @@ internal static class LobbyCommands
         for (; t; t = t.parent)
             if (!t.gameObject.activeSelf) t.gameObject.SetActive(true);
     }
-}
-
-[HarmonyPatch(typeof(LogicGameFlowNormal), nameof(LogicGameFlowNormal.CheckEndCriteria))]
-internal static class NoGameEndPatch
-{
-    public static bool Prefix() => !LobbyCommands.NoGameEnd;
 }
