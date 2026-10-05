@@ -161,25 +161,19 @@ internal static class KillAbility
         var lp = PlayerControl.LocalPlayer;
         var target = button.currentTarget;
         if (!button.isActiveAndEnabled || !target || button.isCoolingDown || lp.Data.IsDead || !lp.CanMove) return false;
-        if (AmongUsClient.Instance.AmHost) TryKill(lp, target);
-        else
-        {
-            var w = Rpc.Start(Rpc.Kill, AmongUsClient.Instance.HostId);
-            w.Write(target.PlayerId);
-            Rpc.Finish(w);
-        }
+        Request.Send(target.PlayerId); // ホストなら手元で判定する
         button.SetTarget(null);
         return false;
     }
 
     // ---- ホスト ----
 
-    public static void Receive(PlayerControl killer, MessageReader r)
-    {
-        byte targetId = r.ReadByte();
-        if (!AmongUsClient.Instance.AmHost || !GameData.Instance) return;
-        TryKill(killer, GameData.Instance.GetPlayerById(targetId)?.Object);
-    }
+    private static readonly RemoteCall<byte> Request = new("Kill.Request", Route.ToHost,
+        (w, targetId) => w.Write(targetId), r => r.ReadByte(),
+        (killer, targetId) =>
+        {
+            if (GameData.Instance) TryKill(killer, GameData.Instance.GetPlayerById(targetId)?.Object);
+        });
 
     private static void TryKill(PlayerControl killer, PlayerControl target)
     {

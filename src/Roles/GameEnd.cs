@@ -226,15 +226,31 @@ public static class GameEnd
             catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.AlsoWins: {e}"); }
         }
 
-        var w = Rpc.Start(Rpc.Win);
-        w.Write(Registry.Fingerprint);
-        w.Write((byte)(r.Team == Team.Crew ? 1 : r.Team == Team.Impostor ? 2 : 0));
-        w.WritePacked(r.Role == null ? -1 : Registry.Roles.FindIndex(x => x.Id == r.Role.Id));
-        w.Write((byte)r.Winners.Count);
-        foreach (byte pid in r.Winners) w.Write(pid);
-        Rpc.Finish(w);
+        Result.Send(r);
         Accept(r);
     }
+
+    private static readonly RemoteCall<GameResult> Result = new("GameEnd.Result", Route.HostToAll,
+        (w, r) =>
+        {
+            w.Write((byte)(r.Team == Team.Crew ? 1 : r.Team == Team.Impostor ? 2 : 0));
+            w.WritePacked(r.Role == null ? -1 : Registry.Roles.FindIndex(x => x.Id == r.Role.Id));
+            w.Write((byte)r.Winners.Count);
+            foreach (byte pid in r.Winners) w.Write(pid);
+        },
+        reader =>
+        {
+            var r = new GameResult();
+            int team = reader.ReadByte();
+            if (team == 1) r.Team = Team.Crew;
+            else if (team == 2) r.Team = Team.Impostor;
+            int idx = reader.ReadPackedInt32();
+            if (idx >= 0 && idx < Registry.Roles.Count) r.Role = Registry.Roles[idx];
+            int n = reader.ReadByte();
+            for (int i = 0; i < n; i++) r.Winners.Add(reader.ReadByte());
+            return r;
+        },
+        (_, r) => Accept(r));
 
     private static GameResult FromReason(GameOverReason reason) => reason switch
     {
@@ -242,21 +258,6 @@ public static class GameEnd
             or GameOverReason.HideAndSeek_CrewmatesByTimer => TeamResult(Team.Crew),
         _ => TeamResult(Team.Impostor),
     };
-
-    public static void Receive(PlayerControl sender, MessageReader reader)
-    {
-        if (!Rpc.FromHost(sender) || AmongUsClient.Instance.AmHost) return;
-        if (reader.ReadUInt32() != Registry.Fingerprint) return;
-        var r = new GameResult();
-        int team = reader.ReadByte();
-        if (team == 1) r.Team = Team.Crew;
-        else if (team == 2) r.Team = Team.Impostor;
-        int idx = reader.ReadPackedInt32();
-        if (idx >= 0 && idx < Registry.Roles.Count) r.Role = Registry.Roles[idx];
-        int n = reader.ReadByte();
-        for (int i = 0; i < n; i++) r.Winners.Add(reader.ReadByte());
-        Accept(r);
-    }
 
     private static void Accept(GameResult r)
     {

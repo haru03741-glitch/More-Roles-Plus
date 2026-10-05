@@ -28,7 +28,7 @@ internal static class Registry
     private static readonly Dictionary<Tab, List<Section>> Sections = new();
     private static readonly Dictionary<string, Opt> ByKey = new(StringComparer.Ordinal);
 
-    // 版と設定の並びから作る指紋。違う版どうしでは設定・役職の番号がずれるので、同期の前に照合する
+    // 版と設定・役職・電文の並びから作る指紋。違う版どうしでは番号がずれるので、同期の前に照合する
     public static uint Fingerprint { get; private set; }
 
     private static string SavePath => Path.Combine(Paths.ConfigPath, "MoreRolesPlus.options.txt");
@@ -147,6 +147,7 @@ internal static class Registry
         Mix(Plugin.Version);
         foreach (var o in All) Mix(o.Key + ":" + o.Count);
         foreach (var r in Roles) Mix(r.Id);
+        foreach (var c in Net.Remote.All) Mix(c.Name);
         return h;
     }
 

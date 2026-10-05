@@ -4,17 +4,13 @@ using Hazel;
 
 namespace MoreRolesPlus.Net;
 
-// MRP の電文の番号表と受け口。番号は本編の RpcCalls と重ならない高い所を使う。
-// 新しい電文を足す時は、ここに番号を足して LastId を合わせ、下の switch に受け先を書く。
+// 本編の RPC 番号のうち MRP が使う 2 つ。本編の RpcCalls と重ならない高い所を使う。
+// MRP の電文は全部 Bus の中に入れて送る (足し方は RemoteCall)。
+// Hello だけは版が違う相手とも読み合える必要があるので、Bus に入れず番号を固定する。
 internal static class Rpc
 {
-    public const byte Hello = 210;     // 全員 → ホスト: 版と指紋
-    public const byte Options = 211;   // ホスト → 客: 設定値
-    public const byte Roles = 212;     // ホスト → 全員: 役職の割り当て
-    public const byte Terrain = 213;   // 地形の破壊
-    public const byte Win = 214;       // ホスト → 客: 試合の勝者 (第三陣営がいる試合だけ)
-    public const byte Kill = 215;      // キルする人 → ホスト: インポスター以外のキルの依頼
-    public const byte LastId = Kill;   // 受け口で拾う番号の上限 (番号を足したらここも)
+    public const byte Hello = 210; // 全員 → ホスト: 版と指紋
+    public const byte Bus = 211;   // MRP の電文の束 ([指紋][電文]...)
 
     public static MessageWriter Start(byte id, int target = -1) =>
         AmongUsClient.Instance.StartRpcImmediately(PlayerControl.LocalPlayer.NetId, id, SendOption.Reliable, target);
@@ -29,18 +25,11 @@ internal static class RpcPatch
 {
     public static bool Prefix(PlayerControl __instance, [HarmonyArgument(0)] byte callId, [HarmonyArgument(1)] MessageReader reader)
     {
-        if (callId < Rpc.Hello || callId > Rpc.LastId) return true;
+        if (callId != Rpc.Hello && callId != Rpc.Bus) return true;
         try
         {
-            switch (callId)
-            {
-                case Rpc.Hello: VersionCheck.Receive(__instance, reader); break;
-                case Rpc.Options: OptionSync.Receive(__instance, reader); break;
-                case Rpc.Roles: MoreRolesPlus.Roles.RoleAssigner.Receive(__instance, reader); break;
-                case Rpc.Terrain: Terrain.TerrainSync.Receive(__instance, reader); break;
-                case Rpc.Win: MoreRolesPlus.Roles.GameEnd.Receive(__instance, reader); break;
-                case Rpc.Kill: MoreRolesPlus.Roles.KillAbility.Receive(__instance, reader); break;
-            }
+            if (callId == Rpc.Hello) VersionCheck.Receive(__instance, reader);
+            else Remote.Receive(__instance, reader);
         }
         catch (Exception ex) { Plugin.Logger.LogError($"rpc {callId}: {ex}"); }
         return false;

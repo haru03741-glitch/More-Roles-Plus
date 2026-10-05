@@ -29,6 +29,7 @@ public class Plugin : BasePlugin
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
 
         Boot.IncrementalGcInvalidator.ApplyIfConfigured();
+        Net.Remote.Init(); // 電文の名前は設定の指紋に入るので先に
         Options.Registry.Init();
 
         Harmony = new Harmony(Guid);

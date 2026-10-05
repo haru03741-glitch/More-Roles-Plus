@@ -30,7 +30,13 @@ internal static class BuiltinCommands
             reply($"OK patches n={n}");
         });
 
-        TestBridge.Register("mark", "<文字列> ログに目印を書く (wait marker の起点用)", (args, reply) =>
+        TestBridge.Register("remote", "MRP の電文の一覧 (番号・名前・送った/受けた/捨てた数) と指紋", (_, reply) =>
+        {
+            foreach (var c in Net.Remote.All) reply($"CALL {c.Id} {c.Name} {c.Route} sent={c.Sent} recv={c.Received} drop={c.Dropped}");
+            reply($"OK remote n={Net.Remote.All.Count} fp={Options.Registry.Fingerprint:X8}");
+        });
+
+        TestBridge.Register("mark","<文字列> ログに目印を書く (wait marker の起点用)", (args, reply) =>
         {
             Plugin.Logger.LogInfo($"MARK {args}");
             reply($"OK mark {args}");

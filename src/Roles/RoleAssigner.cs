@@ -82,21 +82,42 @@ internal static class RoleAssigner
         var plan = new List<(PlayerControl player, int roleIndex)>();
         if (RoleSettings.Enabled) plan = Decide();
 
-        OptionSync.SendAll(); // 役職の処理が設定値を読むので、配る前に揃える
-        Send(plan);
+        // 役職の処理が設定値を読むので、配る前に揃える (1 通にまとめて順番どおり届ける)
+        using (Remote.Batch())
+        {
+            OptionSync.SendAll();
+            Send(plan);
+        }
     }
+
+    private static readonly RemoteCall<List<(PlayerControl player, int roleIndex)>> Assign = new("Roles.Assign", Route.HostToAll,
+        (w, plan) =>
+        {
+            w.Write((byte)plan.Count);
+            foreach (var (p, idx) in plan)
+            {
+                w.Write(p.PlayerId);
+                w.WritePacked(idx);
+            }
+        },
+        r =>
+        {
+            int n = r.ReadByte();
+            var plan = new List<(PlayerControl, int)>(n);
+            for (int i = 0; i < n; i++)
+            {
+                byte pid = r.ReadByte();
+                int idx = r.ReadPackedInt32();
+                var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
+                if (p && idx >= 0 && idx < Registry.Roles.Count) plan.Add((p, idx));
+            }
+            return plan;
+        },
+        (_, plan) => Apply(plan));
 
     private static void Send(List<(PlayerControl player, int roleIndex)> plan)
     {
-        var w = Rpc.Start(Rpc.Roles);
-        w.Write(Registry.Fingerprint);
-        w.Write((byte)plan.Count);
-        foreach (var (p, idx) in plan)
-        {
-            w.Write(p.PlayerId);
-            w.WritePacked(idx);
-        }
-        Rpc.Finish(w);
+        Assign.Send(plan);
         Apply(plan);
     }
 
@@ -154,23 +175,6 @@ internal static class RoleAssigner
         }
         plan.Add((target, Registry.Roles.IndexOf(proto)));
         Send(plan);
-    }
-
-    public static void Receive(PlayerControl sender, MessageReader r)
-    {
-        if (!Rpc.FromHost(sender) || AmongUsClient.Instance.AmHost) return;
-        uint fp = r.ReadUInt32();
-        if (fp != Registry.Fingerprint) return;
-        int n = r.ReadByte();
-        var plan = new List<(PlayerControl, int)>(n);
-        for (int i = 0; i < n; i++)
-        {
-            byte pid = r.ReadByte();
-            int idx = r.ReadPackedInt32();
-            var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
-            if (p && idx >= 0 && idx < Registry.Roles.Count) plan.Add((p, idx));
-        }
-        Apply(plan);
     }
 
     private static void Apply(List<(PlayerControl player, int roleIndex)> plan)

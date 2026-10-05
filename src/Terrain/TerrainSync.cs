@@ -13,8 +13,6 @@ namespace MoreRolesPlus.Terrain;
 // 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 14 件 (最大 466B) まで。
 internal static class TerrainSync
 {
-    public const byte RpcId = Net.Rpc.Terrain; // 受け口は Net.Rpc
-
     private const int FlushTicks = 10;         // FixedUpdate (50Hz) で数えて 0.2 秒
     private const int MaxEventsPerRpc = 14;     // 瓦礫の止まる所を含めて 1 通 466B まで
     private const int RequestWindowTicks = 50; // ホストが 1 人から受ける依頼を 1 秒あたり何件まで認めるか
@@ -116,23 +114,25 @@ internal static class TerrainSync
         }
     }
 
-    private static void Send(int length, int target)
-    {
-        var client = AmongUsClient.Instance;
-        // (long) 必須: net10 (Android) では int が nint のポインタ受けコンストラクタに解決され、壊れた配列で落ちる
-        var payload = new Il2CppStructArray<byte>((long)length);
-        for (int i = 0; i < length; i++) payload[i] = Buf[i];
-        var w = client.StartRpcImmediately(PlayerControl.LocalPlayer.NetId, RpcId, SendOption.Reliable, target);
-        w.WriteBytesAndSize(payload);
-        client.FinishRpcImmediately(w);
-    }
+    private static void Send(int length, int target) => Wire.Send(new ArraySegment<byte>(Buf, 0, length), target);
 
-    // 受信 (PlayerControl.HandleRpc から)。sender = 送ってきたプレイヤー
-    internal static void Receive(PlayerControl sender, MessageReader reader)
+    // 依頼 (客 → ホスト) と結果 (ホスト → 全員) の両方がこの 1 種類で、先頭の 1 バイトで分ける
+    private static readonly Net.RemoteCall<ArraySegment<byte>> Wire = new("Terrain.Wire", Net.Route.Anyone,
+        (w, data) =>
+        {
+            // (long) 必須: net10 (Android) では int が nint のポインタ受けコンストラクタに解決され、壊れた配列で落ちる
+            var payload = new Il2CppStructArray<byte>((long)data.Count);
+            for (int i = 0; i < data.Count; i++) payload[i] = data.Array[data.Offset + i];
+            w.WriteBytesAndSize(payload);
+        },
+        r => new ArraySegment<byte>(r.ReadBytesAndSize()),
+        (sender, data) => Receive(sender, data.Array));
+
+    // 受信。sender = 送ってきたプレイヤー
+    private static void Receive(PlayerControl sender, byte[] b)
     {
         var client = AmongUsClient.Instance;
         if (!client || !sender) return;
-        byte[] b = reader.ReadBytesAndSize();
         if (b == null || b.Length < 2) return;
         int o = 1;
         switch (b[0])

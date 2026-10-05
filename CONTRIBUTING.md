@@ -104,6 +104,24 @@ public static class RoleSettings
 - 部屋に入ってきた人には、版の確認が済んだ時点でホストが値を送ります。
 - 全員が同じ版の More Roles Plus を入れていないと、ホストは試合を始められません (入っていない人・版が違う人の名前がチャットに出ます)。
 
+## 端末どうしで情報を送る
+
+役職や機能のクラスに `RemoteCall<T>` を `static readonly` で置くだけで使えます。起動時に集めて名前順に番号を振るので、番号表を書き換える必要はありません。
+
+```csharp
+private static readonly RemoteCall<byte> Mark = new("MyRole.Mark", Route.HostToAll,
+    (w, playerId) => w.Write(playerId),   // 書き方
+    r => r.ReadByte(),                     // 読み方
+    (sender, playerId) => { /* 受け取った端末でする事 */ });
+
+Mark.Send(target.PlayerId);   // 送る (自分の端末では実行されないので、手元に効かせる処理は送る側で呼ぶ)
+```
+
+- 名前は `役職Id.何をするか` のように、ほかと重ならないものにしてください。
+- `Route` は誰から誰へ送るものか: `HostToAll` (ホストから客へ・ほかから来た物は捨てる) / `ToHost` (ホストへの依頼・ホスト自身が送るとその場で実行) / `Anyone`。
+- 続けて送る物は `using (Remote.Batch()) { A.Send(..); B.Send(..); }` で 1 通にまとまり、順番どおりに届きます。
+- 1 通は数百バイトまでに収めてください (公式サーバーでも遊べるように)。
+
 ## 試す
 
 テスト用の遠隔操作 (config の `EnableTestBridge = true`) を有効にすると、次のコマンドが使えます。
