@@ -63,17 +63,45 @@ internal static class MeetingStartEventPatch
     public static void Postfix()
     {
         if (RoleState.All.Count == 0) return;
+        MeetingEndWatch.Begin();
         Events<MeetingStartEvent>.Run(new MeetingStartEvent());
     }
 }
 
-// 追放の演出の後に操作を戻す所。Airship の別の演出からも同じ関数が呼ばれる
-[HarmonyPatch(typeof(ExileController), nameof(ExileController.ReEnableGameplay))]
-internal static class MeetingEndEventPatch
+// 会議の終わり = 会議の画面と追放の演出が両方なくなった時。会議の始まりから終わりまでの間だけ毎 FixedUpdate 見る。
+// 追放の演出の後に操作を戻す本編の関数 (ExileController.ReEnableGameplay) には当てない: this を使わない小さな関数で、
+// Android のビルドでは this に正しい値が来ず、パッチの中継が型を調べる所で落ちる
+internal static class MeetingEndWatch
 {
-    public static void Postfix(ExileController __instance)
+    private const int QuietTicks = 10; // 両方なくなってから 0.2 秒待つ (会議の画面と追放の演出の入れ替わりの隙間を拾わない)
+
+    private static bool _active;
+    private static int _quiet;
+    private static NetworkedPlayerInfo _exiled;
+
+    public static void Begin()
     {
-        if (RoleState.All.Count == 0) return;
-        Events<MeetingEndEvent>.Run(new MeetingEndEvent { Exiled = __instance.initData?.networkedPlayer });
+        _active = true;
+        _quiet = 0;
+        _exiled = null;
+    }
+
+    public static void Reset() => _active = false;
+
+    public static void Tick()
+    {
+        if (!_active) return;
+        if (RoleState.All.Count == 0) { _active = false; return; }
+        var exile = ExileController.Instance;
+        if (MeetingHud.Instance || exile)
+        {
+            _quiet = 0;
+            if (exile && _exiled == null) _exiled = exile.initData?.networkedPlayer;
+            return;
+        }
+        if (++_quiet < QuietTicks) return;
+        _active = false;
+        Events<MeetingEndEvent>.Run(new MeetingEndEvent { Exiled = _exiled });
+        _exiled = null;
     }
 }

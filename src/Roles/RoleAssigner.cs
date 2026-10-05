@@ -54,6 +54,7 @@ public static class RoleState
         if (gameEnded && Active.Count > 0) Events<GameEndEvent>.Run(new GameEndEvent { Result = GameEnd.Last });
         foreach (var r in Active) ByPlayer[r.PlayerId] = null;
         Active.Clear();
+        MeetingEndWatch.Reset();
         // 役職の寿命 (購読・作った物) は試合の寿命ごと切る
         _match?.Release();
         _match = null;
