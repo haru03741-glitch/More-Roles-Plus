@@ -156,6 +156,33 @@ internal static class DevCommands
             reply($"OK console open={DevConsole.IsOpen}");
         });
 
+        TestBridge.Register("chat", "[0|1] 試合中もチャット欄を出す / 隠す (自分の画面だけ。/ を付けたコマンドもここから打てる)", (args, reply) =>
+        {
+            var hud = HudManager.Instance;
+            if (!hud || !hud.Chat) { reply("ERR chat no hud"); return; }
+            string a = args.Trim();
+            bool on = a == "1" || (a != "0" && !hud.Chat.gameObject.activeSelf);
+            DevChat.SetShown(on);
+            reply($"OK chat {(on ? 1 : 0)}");
+        });
+
+        TestBridge.Register("chatsend", "<文> チャット欄に文を入れて送信を押したのと同じにする (チャットからのコマンドの確認用)", (args, reply) =>
+        {
+            var hud = HudManager.Instance;
+            if (!hud || !hud.Chat) { reply("ERR chatsend no hud"); return; }
+            hud.Chat.freeChatField.textArea.SetText(args, "");
+            hud.Chat.SendChat();
+            reply($"OK chatsend left=[{hud.Chat.freeChatField.Text}]");
+        });
+
+        TestBridge.Register("chattoggle", "チャット欄の窓を開く / 閉じる (チャットのボタンを押したのと同じ)", (_, reply) =>
+        {
+            var hud = HudManager.Instance;
+            if (!hud || !hud.Chat) { reply("ERR chattoggle no hud"); return; }
+            hud.Chat.Toggle();
+            reply("OK chattoggle");
+        });
+
         TestBridge.Register("players", "全員の番号・名前・生死・役職", (_, reply) =>
         {
             if (!GameData.Instance) { reply("ERR players no game"); return; }

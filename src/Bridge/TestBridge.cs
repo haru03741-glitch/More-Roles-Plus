@@ -39,6 +39,8 @@ public static class TestBridge
 
     public static void Register(string name, string help, Handler handler) => Commands[name] = (handler, help);
 
+    public static bool Has(string name) => Commands.ContainsKey(name);
+
     public static void Out(string line) => WriteOut(line);
 
     private static bool Enabled => Plugin.EnableTestBridge is { Value: true };

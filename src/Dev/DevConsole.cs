@@ -61,8 +61,23 @@ internal static class DevConsole
 
     private static void TickPc()
     {
-        bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
-        if (ctrl && Input.GetKeyDown(KeyCode.Return)) { SetOpen(!IsOpen); return; }
+        if (!IsOpen && Input.GetKeyDown(KeyCode.Return))
+        {
+            bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            if (ctrl) { SetOpen(true); return; }
+            // Shift+Enter+C = チャット欄を出す / 隠す (EndKnot と同じ押し方)
+            if ((Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && Input.GetKey(KeyCode.C))
+            {
+                var chat = HudManager.Instance.Chat;
+                if (chat) DevChat.SetShown(!chat.gameObject.activeSelf);
+                return;
+            }
+        }
+        else if (IsOpen && Input.GetKeyDown(KeyCode.Return) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+        {
+            SetOpen(false);
+            return;
+        }
         if (!IsOpen) return;
 
         if (Input.GetKeyDown(KeyCode.UpArrow) && History.Count > 0)
