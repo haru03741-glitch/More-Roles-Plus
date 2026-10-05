@@ -13,7 +13,8 @@ internal static class Rpc
     public const byte Roles = 212;     // ホスト → 全員: 役職の割り当て
     public const byte Terrain = 213;   // 地形の破壊
     public const byte Win = 214;       // ホスト → 客: 試合の勝者 (第三陣営がいる試合だけ)
-    public const byte LastId = Win;    // 受け口で拾う番号の上限 (番号を足したらここも)
+    public const byte Kill = 215;      // キルする人 → ホスト: インポスター以外のキルの依頼
+    public const byte LastId = Kill;   // 受け口で拾う番号の上限 (番号を足したらここも)
 
     public static MessageWriter Start(byte id, int target = -1) =>
         AmongUsClient.Instance.StartRpcImmediately(PlayerControl.LocalPlayer.NetId, id, SendOption.Reliable, target);
@@ -38,6 +39,7 @@ internal static class RpcPatch
                 case Rpc.Roles: MoreRolesPlus.Roles.RoleAssigner.Receive(__instance, reader); break;
                 case Rpc.Terrain: Terrain.TerrainSync.Receive(__instance, reader); break;
                 case Rpc.Win: MoreRolesPlus.Roles.GameEnd.Receive(__instance, reader); break;
+                case Rpc.Kill: MoreRolesPlus.Roles.KillAbility.Receive(__instance, reader); break;
             }
         }
         catch (Exception ex) { Plugin.Logger.LogError($"rpc {callId}: {ex}"); }

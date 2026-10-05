@@ -37,6 +37,7 @@ public static class RoleState
         Active.Add(role);
         if (p.AmOwner) Local = role;
         if (role.Team == Team.Neutral) AnyNeutral = true;
+        KillAbility.OnAssigned(role);
         try { role.OnAssigned(); }
         catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.OnAssigned: {e}"); }
         RoleDisplay.OnAssigned(role);
@@ -55,6 +56,7 @@ public static class RoleState
         }
         Active.Clear();
         Local = null;
+        KillAbility.Clear();
         AnyNeutral = false;
         RoleDisplay.Clear();
     }

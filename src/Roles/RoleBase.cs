@@ -40,6 +40,9 @@ public abstract class RoleBase
     // (インポスターが全滅し、他の生存者がこの役職の人数以下になったら勝ち)
     public virtual bool IsKiller => false;
 
+    // 本編のキルボタンを使えるか (インポスター以外の役職でキルさせる時に true)。既定はキル役なら使える
+    public virtual bool CanKill => IsKiller;
+
     // 本編のどの役職の上に乗るか (ベントを使うなら Engineer など)。既定はクルー / インポスター
     public virtual RoleTypes BaseRole => Team == Team.Impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
 
@@ -67,7 +70,8 @@ public abstract class RoleBase
     // 視界の広さ (radius は本編が計算した値)。自分の画面の計算でだけ呼ばれる
     public virtual void ModifyVision(ref float radius) { }
 
-    // キルの待ち時間 (seconds は本編が設定しようとしている秒数)。自分の端末でだけ呼ばれる
+    // キルの待ち時間 (seconds は部屋の設定の秒数)。自分の端末のほか、ホストがキルの依頼を確かめる時にも呼ぶので、
+    // 設定値だけから決める (その端末の状態を見ない)
     public virtual void ModifyKillCooldown(ref float seconds) { }
 
     // 出現率と人数。設定画面の役職の欄の先頭に自動で付く

@@ -65,6 +65,7 @@ public class Ticker : MonoBehaviour
         Terrain.TerrainWarm.Tick();
         Terrain.TerrainSync.Tick();
         Net.VersionCheck.Tick();
+        Roles.KillAbility.Tick();
         Bridge.TestBridge.Tick();
         Bridge.Perf.EndFixed(t);
     }

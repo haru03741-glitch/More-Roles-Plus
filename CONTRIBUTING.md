@@ -31,7 +31,7 @@ public sealed class Lighter : RoleBase
 }
 ```
 
-見本は `src/Roles/Crew/Lighter.cs` と `src/Roles/Impostor/Quickdraw.cs`、第三陣営は `src/Roles/Neutral/Jester.cs` (追放されたら一人勝ち) と `src/Roles/Neutral/Survivor.cs` (生きていれば一緒に勝つ) です。
+見本は `src/Roles/Crew/Lighter.cs` と `src/Roles/Impostor/Quickdraw.cs`、第三陣営は `src/Roles/Neutral/Jester.cs` (追放されたら一人勝ち)・`src/Roles/Neutral/Survivor.cs` (生きていれば一緒に勝つ)・`src/Roles/Neutral/Outlaw.cs` (キルして最後に残れば勝ち) です。
 
 ### 役職クラスで書けるもの
 
@@ -42,6 +42,7 @@ public sealed class Lighter : RoleBase
 | `Name` / `Blurb` | 役職名とイントロの一行説明。`new("日本語", "English")` |
 | `Description` | タスク欄の先頭に出す説明 (既定は `Blurb`) |
 | `IsKiller` | 第三陣営でキルする役職なら `true` (下の「第三陣営の勝ち方」) |
+| `CanKill` | インポスター以外でキルボタンを使えるか (既定は `IsKiller` と同じ。クルーの役職でキルさせる時も `true`) |
 | `BaseRole` | 本編のどの役職の上に乗るか (既定はクルー / インポスター。ベントを使うなら `RoleTypes.Engineer` など) |
 | `MaxCount` | 設定画面の「人数」の上限 (既定 15) |
 | `Id` | 保存と同期に使う名前 (既定はクラス名。変えると保存済みの設定値が引き継がれない) |
@@ -55,7 +56,7 @@ public sealed class Lighter : RoleBase
 | `OnExiled()` | 会議で追放された時 (全員の端末) |
 | `AlsoWins(GameResult result)` | 誰かの勝ちで試合が終わる時に、自分も一緒に勝つなら `true` を返す (ホストの端末) |
 | `ModifyVision(ref float radius)` | 視界の広さを計算する時 |
-| `ModifyKillCooldown(ref float seconds)` | キルの待ち時間を決める時 (自分の端末) |
+| `ModifyKillCooldown(ref float seconds)` | キルの待ち時間を決める時 (自分の端末と、キルの依頼を確かめるホストの端末。設定値だけから決める) |
 
 インスタンスは試合ごと・プレイヤーごとに作られます。`Player` / `PlayerId` / `IsLocal` で持ち主が分かり、残り回数のような状態は普通のフィールドに置けます。
 ほかの役職の情報は `RoleState.Of(player)` (その人の役職、無ければ `null`) と `RoleState.Local` (自分の役職) で引けます。
@@ -68,6 +69,8 @@ public sealed class Lighter : RoleBase
 - **相乗り**: `AlsoWins` で `true` を返すと、誰が勝った時でも一緒に勝ちます (`result.Team` に勝った陣営、`result.Role` に勝った役職)。
 - **キル役** (`IsKiller => true`): 生きている間は、インポスターの人数勝ちもクルーの全滅勝ちも起きません。インポスターが全滅し、キル役が 1 種類だけ残り、ほかの生存者がその人数以下になった時 (1 人なら最後の 1 対 1) に、その役職の全員の勝ちになります。
 - 第三陣営のタスクは偽のタスクで、クルーのタスク勝利には数えません。
+
+インポスター以外のキル (`CanKill => true`) は本編のキルボタンをそのまま使います。押すとホストに依頼が届き、ホストが生存・距離・待ち時間を確かめてから全員の画面で倒します。
 
 足りない入口 (「会議が始まった時」など) が要る時は、`RoleBase` に仮想メソッドを足し、本編側から呼ぶパッチを `src/Roles/RoleHooks.cs` に書きます。
 

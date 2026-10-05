@@ -112,6 +112,22 @@ internal static class RoleCommands
             reply("OK proceed");
         });
 
+        TestBridge.Register("killbtn", "[0|1] キルボタンの状態 (表示・狙い・待ち時間)。1 で押す", (args, reply) =>
+        {
+            var hud = HudManager.Instance;
+            var lp = PlayerControl.LocalPlayer;
+            if (!hud || !hud.KillButton || !lp) { reply("ERR killbtn no hud"); return; }
+            var b = hud.KillButton;
+            string state() => $"shown={b.isActiveAndEnabled} target={(b.currentTarget ? b.currentTarget.PlayerId : -1)} cooling={b.isCoolingDown} timer={lp.killTimer:0.#} canUse={lp.Data?.Role?.CanUseKillButton}";
+            if (args.Trim() == "1")
+            {
+                string before = state();
+                b.DoClick();
+                reply($"OK killbtn pressed before=[{before}]");
+            }
+            else reply($"OK killbtn {state()}");
+        });
+
         TestBridge.Register("exile", "<番号> その人に本編の追放の処理 (Exiled) を走らせる。自分の端末だけ", (args, reply) =>
         {
             var p = byte.TryParse(args.Trim(), out byte pid) && GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
