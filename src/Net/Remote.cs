@@ -113,7 +113,8 @@ internal static class Remote
 
     // ---- まとめ送り ----
     // using (Remote.Batch()) { A.Send(..); B.Send(..); } で、中の電文を抜ける時に 1 通 (大きければ数通) で送る。
-    // 順番はそのまま届く。本編の RPC (キル等) はまとめに入らずその場で出るので、それより後に届く。
+    // 中の電文どうしの順番はそのまま届く。まとめは using を抜ける時に出るので、
+    // 中で出した本編の RPC (キル等) の方が先に届く。
     private static int _batchDepth;
     private static MessageWriter _batch;
     private static int _batchTarget;

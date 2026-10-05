@@ -10,11 +10,11 @@ namespace MoreRolesPlus.Terrain;
 // 地形破壊の同期。ホストが依頼を結果 (ResolvedDamage) に決めて連番を振り、全員が連番の順に適用する。
 // 武器・役職からの入口は Request だけ。フリープレイなど一人の時はその場で決めて適用する。
 // 通信量は公式鯖の制約を予算として守る: 同じ種類の Reliable を秒十数本出すと切断される実測があるので、
-// 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 14 件 (最大 466B) まで。
+// 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 14 件 (中身 466B・封筒込みで 473B) まで。
 internal static class TerrainSync
 {
     private const int FlushTicks = 10;         // FixedUpdate (50Hz) で数えて 0.2 秒
-    private const int MaxEventsPerRpc = 14;     // 瓦礫の止まる所を含めて 1 通 466B まで
+    private const int MaxEventsPerRpc = 14;     // 瓦礫の止まる所を含めて中身 466B まで
     private const int RequestWindowTicks = 50; // ホストが 1 人から受ける依頼を 1 秒あたり何件まで認めるか
     private const int MaxRequestsPerWindow = 8;
 
