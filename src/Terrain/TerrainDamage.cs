@@ -273,7 +273,7 @@ internal static class TerrainDamage
         foreach (var w in walls) if (w.gameObject.layer == ShipLayer) yield return w;
     }
 
-    // 壊さない物: ゲームに関わる物 (当面の裁定)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形
+    // 壊さない物: ゲームに関わる物 (当面)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形
     private static readonly System.Text.RegularExpressions.Regex ProtectedName = new(
         @"^MrpRubbleBlock$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (初回の破壊で 1 回だけ生成のために止まる・名前は短く数も少ない)
@@ -286,7 +286,7 @@ internal static class TerrainDamage
         return false;
     }
 
-    // 外壁 (向こう側が宇宙・マップの外) は壊さない (当面の裁定)。
+    // 外壁 (向こう側が宇宙・マップの外) は壊さない (当面)。
     // 内壁には「奥の面」がある (部屋と部屋の隙間の向こうの枠・厚みのある壁の裏側)。壁の面から奥へ MaxDepth 以内に
     // 次の壁の面が無ければ、向こうは何も無い外側とみなす。部屋の範囲は屋外 (Polus など) を含まないので使わない
     private static bool HasFarSide(Vector2 surface, Vector2 inward) => FarSide(surface, inward) > 0f;
