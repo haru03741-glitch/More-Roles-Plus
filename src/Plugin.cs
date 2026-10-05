@@ -31,6 +31,7 @@ public class Plugin : BasePlugin
         Boot.IncrementalGcInvalidator.ApplyIfConfigured();
         Net.Remote.Init(); // 電文の名前は設定の指紋に入るので先に
         Options.Registry.Init();
+        Dev.DevCommands.Register();
 
         Harmony = new Harmony(Guid);
         Harmony.PatchAll();
@@ -54,6 +55,7 @@ public class Ticker : MonoBehaviour
         Terrain.TerrainFx.Tick();
         Terrain.RubbleBake.Tick();
         Bridge.Burst.Tick();
+        Dev.DevConsole.Tick();
         Bridge.Perf.End(t);
     }
 

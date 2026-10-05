@@ -20,3 +20,6 @@ unity/*/Build/
 unity/*/UserSettings/
 unity/*/Assets/Generated/
 unity/*/Assets/Generated.meta
+
+# 開発者の名簿 (配る DLL には入るが、リポジトリには入れない)
+src/Dev/DevUsers.Local.cs

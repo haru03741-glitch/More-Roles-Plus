@@ -47,6 +47,7 @@ public static class RoleState
         try { role.OnAssigned(); }
         catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.OnAssigned: {e}"); }
         RoleDisplay.OnAssigned(role);
+        if (Dev.DevGod.On) Dev.DevGod.Refresh();
     }
 
     internal static void Clear(bool gameEnded)
@@ -62,6 +63,7 @@ public static class RoleState
         KillAbility.Clear();
         AnyNeutral = false;
         RoleDisplay.Clear();
+        Dev.DevGod.Clear();
     }
 }
 

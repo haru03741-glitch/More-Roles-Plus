@@ -147,20 +147,33 @@ public static class TestBridge
 
         if (name.Equals("wait", StringComparison.OrdinalIgnoreCase)) { StartWait(args); return; }
 
+        Run(directive, WriteOut);
+        if (name.Equals("help", StringComparison.OrdinalIgnoreCase))
+            WriteOut("HELP wait phase=<Boot|Menu|Lobby|InGame|Meeting> [秒] | wait marker <正規表現> [秒] | wait cancel");
+    }
+
+    // 1 行のコマンドを実行する (ブリッジと開発者コンソールで共用。wait はブリッジだけ)
+    public static void Run(string line, Action<string> reply)
+    {
+        line = line.Trim();
+        int sp = line.IndexOf(' ');
+        string name = sp < 0 ? line : line[..sp];
+        string args = sp < 0 ? string.Empty : line[(sp + 1)..].Trim();
+
         if (name.Equals("help", StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var kv in Commands) WriteOut($"HELP {kv.Key} {kv.Value.help}");
-            WriteOut("HELP wait phase=<Boot|Menu|Lobby|InGame|Meeting> [秒] | wait marker <正規表現> [秒] | wait cancel");
-            WriteOut("OK help");
+            foreach (var kv in Commands)
+                if (args.Length == 0 || kv.Key.Contains(args, StringComparison.OrdinalIgnoreCase)) reply($"HELP {kv.Key} {kv.Value.help}");
+            reply("OK help");
             return;
         }
 
-        if (!Commands.TryGetValue(name, out var cmd)) { WriteOut($"ERR unknown command '{name}' (help で一覧)"); return; }
+        if (!Commands.TryGetValue(name, out var cmd)) { reply($"ERR unknown command '{name}' (help で一覧)"); return; }
 
-        try { cmd.handler(args, WriteOut); }
+        try { cmd.handler(args, reply); }
         catch (Exception e)
         {
-            WriteOut($"ERR {name} {e.GetType().Name}: {e.Message}");
+            reply($"ERR {name} {e.GetType().Name}: {e.Message}");
             BridgeLog.RecordError("bridge", e.ToString());
         }
     }

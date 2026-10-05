@@ -21,18 +21,6 @@ internal static class RoleCommands
             reply($"OK roles reg=[{reg}] assigned=[{now}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
         });
 
-        TestBridge.Register("giverole", "<役職Id> [番号] その人 (省略で自分) に役職を付けて全員に配る (ホストのみ。土台の役職も合わせる)", (args, reply) =>
-        {
-            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
-            var proto = a.Length > 0 ? Registry.Roles.FirstOrDefault(r => string.Equals(r.Id, a[0], System.StringComparison.OrdinalIgnoreCase)) : null;
-            if (proto == null) { reply($"ERR giverole unknown {args}"); return; }
-            if (!PlayerControl.LocalPlayer || !AmongUsClient.Instance.AmHost) { reply("ERR giverole needs host in game"); return; }
-            var target = a.Length > 1 && byte.TryParse(a[1], out byte pid) ? GameData.Instance.GetPlayerById(pid)?.Object : PlayerControl.LocalPlayer;
-            if (!target) { reply($"ERR giverole no player {a[1]}"); return; }
-            RoleAssigner.Give(target, proto);
-            reply($"OK giverole {proto.Id} to={target.PlayerId} base={target.Data.Role.Role} neutral={RoleState.AnyNeutral}");
-        });
-
         TestBridge.Register("endcheck", "[番号...] 生き残りの数で勝者が決まるかを見るだけ (終わらせない)。番号の人をキル役として数える", (args, reply) =>
         {
             if (!GameData.Instance) { reply("ERR endcheck not in game"); return; }
@@ -43,21 +31,6 @@ internal static class RoleCommands
             GameEnd.TestKillers.Clear();
             string res = r == null ? "none" : $"team={r.Team?.ToString() ?? "-"} role={r.Role?.Id ?? (r.Winners.Count > 0 && r.Team == null ? "test" : "-")} winners=[{string.Join(",", r.Winners)}] reason={reason}";
             reply($"OK endcheck {info} -> {res}");
-        });
-
-        TestBridge.Register("forcewin", "<crew|imp|役職Id> その勝ちで試合を終わらせる (ホストのみ)", (args, reply) =>
-        {
-            if (!AmongUsClient.Instance.AmHost || !GameData.Instance) { reply("ERR forcewin needs host in game"); return; }
-            string a = args.Trim();
-            if (a == "crew") GameEnd.End(GameEnd.TeamResult(Team.Crew), GameOverReason.CrewmatesByVote);
-            else if (a == "imp") GameEnd.End(GameEnd.TeamResult(Team.Impostor), GameOverReason.ImpostorsByKill);
-            else
-            {
-                var role = RoleState.All.FirstOrDefault(r => string.Equals(r.Id, a, System.StringComparison.OrdinalIgnoreCase));
-                if (role == null) { reply($"ERR forcewin nobody has {a}"); return; }
-                GameEnd.Win(role);
-            }
-            reply($"OK forcewin {a}");
         });
 
         TestBridge.Register("winner", "最後に配られた試合の結果", (_, reply) =>
@@ -134,15 +107,6 @@ internal static class RoleCommands
             if (!p) { reply($"ERR exile no player {args}"); return; }
             p.Exiled();
             reply($"OK exile {pid}");
-        });
-
-        TestBridge.Register("kill", "<番号> その人を倒す (ホストのみ)", (args, reply) =>
-        {
-            if (!AmongUsClient.Instance.AmHost || !byte.TryParse(args.Trim(), out byte pid)) { reply("ERR kill needs host and number"); return; }
-            var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
-            if (!p) { reply($"ERR kill no player {pid}"); return; }
-            p.RpcMurderPlayer(p, true);
-            reply($"OK kill {pid}");
         });
 
         TestBridge.Register("tasks", "自分のタスク欄の中身", (_, reply) =>

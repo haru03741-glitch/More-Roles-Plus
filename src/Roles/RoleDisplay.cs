@@ -71,11 +71,18 @@ internal static class RoleDisplay
         byte pid = pva.PlayerId.Value;
         var role = RoleState.Of(pid);
         var lp = PlayerControl.LocalPlayer;
-        if (role == null || !lp || lp.Data == null) return;
-        bool show = pid == lp.PlayerId
-                    || (lp.Data.IsDead && RoleSettings.GhostsSeeRoles)
-                    || (role.Team == Team.Impostor && RoleSettings.ImpostorsSeeRoles && lp.Data.Role && lp.Data.Role.IsImpostor);
-        if (!show) return;
+        if (!lp || lp.Data == null) return;
+        string label;
+        if (Dev.DevGod.On) label = Dev.DevGod.Label(pid);
+        else
+        {
+            if (role == null) return;
+            bool show = pid == lp.PlayerId
+                        || (lp.Data.IsDead && RoleSettings.GhostsSeeRoles)
+                        || (role.Team == Team.Impostor && RoleSettings.ImpostorsSeeRoles && lp.Data.Role && lp.Data.Role.IsImpostor);
+            label = show ? role.ColoredName : null;
+        }
+        if (label == null) return;
 
         var name = pva.NameText;
         var go = UnityEngine.Object.Instantiate(name.gameObject, name.transform.parent);
@@ -83,7 +90,7 @@ internal static class RoleDisplay
         // 名前の下には本編の色の名前があるので、名前の上に小さく出す
         go.transform.localPosition = name.transform.localPosition + new Vector3(0f, 0.17f, 0f);
         go.transform.localScale = name.transform.localScale * 0.6f;
-        go.GetComponent<TextMeshPro>().text = role.ColoredName;
+        go.GetComponent<TextMeshPro>().text = label;
     }
 
     // 名前の文字を複製して、名前の少し上に役職名を出す (本編は複製した方を書き換えないので一度置けば残る)

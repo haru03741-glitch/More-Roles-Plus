@@ -42,6 +42,13 @@ internal static class BuiltinCommands
             reply($"OK events n={Roles.EventStats.All.Count} roles={Roles.RoleState.All.Count}");
         });
 
+        TestBridge.Register("whoami", "自分のフレンドコード・ゲーム内のフレンドコード・接続の種類・開発者か", (_, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            string inGame = lp && lp.Data != null ? lp.Data.FriendCode : "-";
+            reply($"OK whoami eos=[{Dev.DevUsers.LocalFriendCode}] data=[{inGame}] mode={(AmongUsClient.Instance ? AmongUsClient.Instance.NetworkMode.ToString() : "-")} dev={Dev.DevUsers.AmDev}");
+        });
+
         TestBridge.Register("mark","<文字列> ログに目印を書く (wait marker の起点用)", (args, reply) =>
         {
             Plugin.Logger.LogInfo($"MARK {args}");
@@ -71,21 +78,6 @@ internal static class BuiltinCommands
             var hits = BridgeLog.Grep(new Regex(parts[0]), n);
             foreach (string h in hits) reply($"HIT {h}");
             reply($"OK grep hits={hits.Count}");
-        });
-
-        TestBridge.Register("tp", "<x> <y> 自分を指定座標へ移動", (args, reply) =>
-        {
-            string[] p = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (p.Length < 2 || !float.TryParse(p[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x)
-                              || !float.TryParse(p[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
-            { reply("ERR tp needs <x> <y>"); return; }
-
-            var lp = PlayerControl.LocalPlayer;
-            if (!lp) { reply("ERR tp no local player"); return; }
-            // 手元だけ動かす (通信しない)。同じ sequence id だと古い位置として捨てられるので進めておく
-            var nt = lp.NetTransform;
-            nt.SnapTo(new Vector2(x, y), (ushort)(nt.lastSequenceId + 328));
-            reply($"OK tp {TestBridge.F(x)} {TestBridge.F(y)}");
         });
 
         TestBridge.Register("walk", "<x> <y> [秒=4] 自分を物理で歩かせる (壁に当たれば止まる)。時間切れか到着で最後の位置を出す", (args, reply) =>
