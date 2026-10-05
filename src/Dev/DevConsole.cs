@@ -143,6 +143,7 @@ internal static class DevConsole
         if (!_root) { _open = false; return; }
         _root.SetActive(open);
         _open = open;
+        Plugin.Logger.LogInfo($"dev console {(open ? "open" : "close")}");
         _historyIndex = History.Count;
         _dirty = true;
     }
@@ -271,9 +272,15 @@ internal static class DevConsole
     }
 }
 
-// コンソールに打っている間は、本編のキー操作 (移動・使う・キル・地図など) を止める
+// コンソールに打っている間は、本編のキー操作 (移動・使う・キル・地図など) を止める。
+// 止めるだけだと開く直前の移動の向きが残って歩き続けるので、向きも 0 にする
 [HarmonyPatch(typeof(KeyboardJoystick), nameof(KeyboardJoystick.Update))]
 internal static class DevConsoleKeyBlock
 {
-    public static bool Prefix() => !DevConsole.IsOpen;
+    public static bool Prefix(KeyboardJoystick __instance)
+    {
+        if (!DevConsole.IsOpen) return true;
+        __instance.del = Vector2.zero;
+        return false;
+    }
 }
