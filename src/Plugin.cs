@@ -20,24 +20,32 @@ public class Plugin : BasePlugin
     internal static ConfigEntry<bool> EnableTestBridge;
     internal static ConfigEntry<bool> DisableIncrementalGc;
     internal static ConfigEntry<bool> PreemptiveGc;
+    internal static ConfigEntry<bool> ReuseDelegateTypes;
 
     public override void Load()
     {
         Logger = Log;
+        Boot.BootClock.Mark("load");
         EnableTestBridge = Config.Bind("Debug", "EnableTestBridge", false, "外部ツールからの遠隔テスト口を有効にする");
         DisableIncrementalGc = Config.Bind("Performance", "DisableIncrementalGc", true, "incremental GC を切る (GC 中の interop の書き込みで落ちるのを防ぐ・Windows のみ)");
+        ReuseDelegateTypes = Config.Bind("Performance", "ReuseDelegateTypes", true, "パッチを当てる時の型を形ごとに使い回して起動を速くする (パッチが当たらない時は切る)");
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
 
         Boot.IncrementalGcInvalidator.ApplyIfConfigured();
         Net.Remote.Init(); // 電文の名前は設定の指紋に入るので先に
         Options.Registry.Init();
         Dev.DevCommands.Register();
+        Boot.BootClock.Mark("init");
 
         Harmony = new Harmony(Guid);
+        if (ReuseDelegateTypes.Value) Boot.DelegateTypeCache.Install(Harmony);
         Harmony.PatchAll();
+        Boot.BootClock.Mark("patch");
+        Log.LogInfo(Boot.DelegateTypeCache.Summary());
 
         ClassInjector.RegisterTypeInIl2Cpp<Ticker>();
         AddComponent<Ticker>();
+        Boot.BootClock.Mark("loaded");
 
         Log.LogInfo($"More Roles Plus {Version} loaded");
     }
@@ -48,8 +56,11 @@ public class Ticker : MonoBehaviour
 {
     public Ticker(System.IntPtr ptr) : base(ptr) { }
 
+    private static bool _ran;
+
     private void Update()
     {
+        if (!_ran) { _ran = true; Boot.BootClock.Mark("frame1"); }
         Bridge.Perf.FrameStart();
         long t = Bridge.Perf.Begin();
         Terrain.TerrainFx.Tick();
