@@ -81,6 +81,12 @@ internal static class KillAbility
             ResetTimer(lp, _started ? Cooldown() : FirstCooldown);
             _started = true;
         }
+        if (_target is not null && (!_target || _target.Data == null || _target.Data.IsDead || _target.Data.Disconnected)) _target = null;
+        if (++_scan >= ScanEvery)
+        {
+            _scan = 0;
+            _target = ClosestTarget(lp);
+        }
         float t = lp.killTimer;
         if (t > 0f && lp.CanMove)
         {
@@ -93,19 +99,13 @@ internal static class KillAbility
         btn.SetCoolDown(t, _max);
     }
 
-    // 本編はキルボタンを使える人の狙いを毎 FixedUpdate RoleBehaviour.FindClosestTarget で決め直すが、
-    // クルーの役職では誰も返さない。キル役の時だけ自前で探した相手に差し替える (探すのは 0.1 秒ごと)
-    internal static void OverrideTarget(RoleBehaviour rb, ref PlayerControl result)
+    // 本編はキルボタンを使える人の狙いを毎 FixedUpdate KillButton.SetTarget で決め直すが、クルーの役職では
+    // 誰も渡さない。キル役の時だけ Tick で探した相手に差し替える (壊れた・死んだ相手は渡さない)
+    internal static void OverrideTarget(ref PlayerControl target)
     {
-        var role = _local;
-        if (role == null || rb.Player is not { } lp || lp.Pointer != role.Player.Pointer) return;
-        if (_target is not null && (!_target || _target.Data == null || _target.Data.IsDead || _target.Data.Disconnected)) _target = null;
-        if (++_scan >= ScanEvery)
-        {
-            _scan = 0;
-            _target = ClosestTarget(lp);
-        }
-        result = _target;
+        if (_local == null) return;
+        var t = _target;
+        target = t is not null && t && t.Data != null && !t.Data.IsDead ? t : null;
     }
 
     // キル距離以内で一番近い、生きていてベントや昇降機の中にいない、間に壁の無い人
@@ -214,10 +214,19 @@ internal static class KillAbility
     }
 }
 
-[HarmonyPatch(typeof(RoleBehaviour), nameof(RoleBehaviour.FindClosestTarget))]
+// RoleBehaviour.FindClosestTarget には当てない: 本体が小さく、ゲームの中で同じ機械語の別の関数とまとめられていて、
+// 当てると関係ない呼び出し (引数がオブジェクトでない) まで来て落ちる
+[HarmonyPatch(typeof(KillButton), nameof(KillButton.SetTarget))]
 internal static class KillTargetPatch
 {
-    public static void Postfix(RoleBehaviour __instance, ref PlayerControl __result) => KillAbility.OverrideTarget(__instance, ref __result);
+    // 本編は起動中 (キルボタンがまだ無い時) にも this が null のまま呼ぶ。そのまま通すとパッチの中継が null を
+    // 本編へ渡す所で例外になるので、本編を呼ばずに返す
+    public static bool Prefix(KillButton __instance, [HarmonyArgument(0)] ref PlayerControl target)
+    {
+        if (__instance is null) return false;
+        KillAbility.OverrideTarget(ref target);
+        return true;
+    }
 }
 
 [HarmonyPatch(typeof(KillButton), nameof(KillButton.DoClick))]
