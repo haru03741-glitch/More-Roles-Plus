@@ -47,6 +47,15 @@ internal static class LobbyCommands
         });
 
         // 版の違う端末どうし (PC と Android でビルド番号が違う) は LAN の部屋一覧に出ないので、公式サーバーの部屋で試す
+        TestBridge.Register("region", "[番号] 接続先の地域を一覧 / 切り替える", (args, reply) =>
+        {
+            var sm = ServerManager.Instance;
+            var regions = sm.AvailableRegions;
+            if (int.TryParse(args.Trim(), out int idx) && idx >= 0 && idx < regions.Length) sm.SetRegion(regions[idx]);
+            for (int i = 0; i < regions.Length; i++) reply($"REGION {i} {regions[i].Name}{(regions[i].Name == sm.CurrentRegion.Name ? " *" : "")}");
+            reply($"OK region now={sm.CurrentRegion.Name}");
+        });
+
         TestBridge.Register("hostonline", "メニューから公式サーバーの部屋作成画面を開く (数秒置いて confirmcreate)", (_, reply) =>
         {
             var mm = Object.FindObjectOfType<MainMenuManager>();
@@ -56,6 +65,16 @@ internal static class LobbyCommands
             DataManager.Settings.Multiplayer.ChatMode = QuickChatModes.QuickChatOnly;
             mm.OpenCreateGame();
             reply("OK hostonline create dialog requested (follow: confirmcreate)");
+        });
+
+        TestBridge.Register("findgame", "メニューから公式サーバーの部屋検索を開く", (_, reply) =>
+        {
+            var mm = Object.FindObjectOfType<MainMenuManager>();
+            if (!mm || TestBridge.Phase() != "Menu") { reply($"ERR findgame not at main menu (phase={TestBridge.Phase()})"); return; }
+            AmongUsClient.Instance.NetworkMode = NetworkModes.OnlineGame;
+            DataManager.Settings.Multiplayer.ChatMode = QuickChatModes.QuickChatOnly;
+            SceneChanger.ChangeScene("FindAGame");
+            reply("OK findgame requested (follow: state で scene=FindAGame)");
         });
 
         TestBridge.Register("confirmcreate", "開いた部屋作成画面で作成を押す (follow: wait phase=Lobby 90)", (_, reply) =>

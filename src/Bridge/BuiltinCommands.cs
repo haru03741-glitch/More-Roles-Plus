@@ -42,11 +42,24 @@ internal static class BuiltinCommands
             reply($"OK events n={Roles.EventStats.All.Count} roles={Roles.RoleState.All.Count}");
         });
 
-        TestBridge.Register("whoami", "自分のフレンドコード・ゲーム内のフレンドコード・接続の種類・開発者か", (_, reply) =>
+        TestBridge.Register("whoami", "自分のフレンドコード・ゲーム内のフレンドコード・接続の種類・開発者か・公式への mod 登録", (_, reply) =>
         {
             var lp = PlayerControl.LocalPlayer;
             string inGame = lp && lp.Data != null ? lp.Data.FriendCode : "-";
-            reply($"OK whoami eos=[{Dev.DevUsers.LocalFriendCode}] data=[{inGame}] mode={(AmongUsClient.Instance ? AmongUsClient.Instance.NetworkMode.ToString() : "-")} dev={Dev.DevUsers.AmDev}");
+            reply($"OK whoami eos=[{Dev.DevUsers.LocalFriendCode}] data=[{inGame}] mode={(AmongUsClient.Instance ? AmongUsClient.Instance.NetworkMode.ToString() : "-")} dev={Dev.DevUsers.AmDev} guid=[{CurrentModRegistration.ModRegistrationGuidString}] lastdc={(AmongUsClient.Instance ? AmongUsClient.Instance.LastDisconnectReason.ToString() + "/" + AmongUsClient.Instance.LastCustomDisconnect : "-")} broadcast={Constants.GetBroadcastVersion()}");
+        });
+
+        TestBridge.Register("modreg", "<0|1> 公式への mod 登録 (GUID) を付けるか (比べる用・既定 1)", (args, reply) =>
+        {
+            Net.ModRegistration.Off = args.Trim() == "0";
+            Net.ModRegistration.Apply();
+            reply($"OK modreg on={!Net.ModRegistration.Off} guid=[{CurrentModRegistration.ModRegistrationGuidString}]");
+        });
+
+        TestBridge.Register("modver", "<0|1> 公式サーバーへの版番号に mod の印 (+25) を付けるか (比べる用・既定 1)", (args, reply) =>
+        {
+            Net.BroadcastVersionPatch.Off = args.Trim() == "0";
+            reply($"OK modver on={!Net.BroadcastVersionPatch.Off} broadcast={Constants.GetBroadcastVersion()}");
         });
 
         TestBridge.Register("mark","<文字列> ログに目印を書く (wait marker の起点用)", (args, reply) =>

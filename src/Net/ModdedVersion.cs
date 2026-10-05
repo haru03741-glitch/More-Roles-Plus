@@ -11,10 +11,13 @@ namespace MoreRolesPlus.Net;
 [HarmonyPatch(typeof(Constants), nameof(Constants.GetBroadcastVersion))]
 internal static class BroadcastVersionPatch
 {
+    // テスト用 (ブリッジの modver 0)。印を付けない時の動きと比べる
+    public static bool Off;
+
     public static void Postfix(ref int __result)
     {
         var client = AmongUsClient.Instance;
-        if (!client || client.NetworkMode != NetworkModes.OnlineGame) return;
+        if (Off || !client || client.NetworkMode != NetworkModes.OnlineGame) return;
         if (__result % 50 < 25) __result += 25;
     }
 }

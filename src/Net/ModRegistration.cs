@@ -13,11 +13,14 @@ internal static class ModRegistration
     // 一度決めたら変えない (変えると前の版と同じ部屋に入れなくなる)
     public const string Guid = "169375b5-e08c-4ca8-bf96-0c8cde15ddf7";
 
+    // テスト用 (ブリッジの modreg 0)。付けない時の動きと比べる
+    public static bool Off;
+
     public static void Apply()
     {
         var client = AmongUsClient.Instance;
         CurrentModRegistration.ModRegistrationGuidString =
-            client && client.NetworkMode == NetworkModes.OnlineGame ? Guid : string.Empty;
+            !Off && client && client.NetworkMode == NetworkModes.OnlineGame ? Guid : string.Empty;
     }
 
     [HarmonyPatch(typeof(InnerNetClient), nameof(InnerNetClient.HostGame))]
@@ -29,8 +32,16 @@ internal static class ModRegistration
     [HarmonyPatch(typeof(InnerNetClient), nameof(InnerNetClient.RequestGameList))]
     private static class RequestGameListPatch { public static void Prefix() => Apply(); }
 
+    // 「ゲームを探す」画面は開いた時に GUID を読んで検索条件を作る (上の RequestGameList は通らない)
+    [HarmonyPatch(typeof(FindAGameManager), nameof(FindAGameManager.Start))]
+    private static class FindAGameStartPatch { public static void Prefix() => Apply(); }
+
+#if !ANDROID
+    // Android では this を渡さずに呼ばれる関数で、パッチの入口が例外を出して本編の接続の挨拶が壊れる
+    // (公式サーバーに「版が古い」と切られる)。上の 3 つで GUID は付くので Android では当てない。
     [HarmonyPatch(typeof(InnerNetClient), nameof(InnerNetClient.GetConnectionData))]
     private static class GetConnectionDataPatch { public static void Prefix() => Apply(); }
+#endif
 
     [HarmonyPatch(typeof(InnerNetServer), nameof(InnerNetServer.StartAsLocalServer))]
     private static class StartAsLocalServerPatch { public static void Prefix() => CurrentModRegistration.ModRegistrationGuidString = string.Empty; }
