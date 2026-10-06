@@ -18,7 +18,6 @@ internal static class DevChat
 
     public static bool Prefix(ChatController __instance)
     {
-        if (!DevUsers.AmDev) return true;
         var field = __instance.freeChatField;
         string text;
         try { text = field.Text?.Trim() ?? ""; }
@@ -28,6 +27,14 @@ internal static class DevChat
         string line = text[1..];
         int sp = line.IndexOf(' ');
         string name = sp < 0 ? line : line[..sp];
+        // 練習とフリープレイでは誰でも地形の破壊を試せる (/hammer /blast)
+        if (Terrain.SandboxCommands.TryHandle(name, sp < 0 ? "" : line[(sp + 1)..], out string sandbox))
+        {
+            field.Clear();
+            __instance.AddChatWarning(sandbox);
+            return false;
+        }
+        if (!DevUsers.AmDev) return true;
         // MRP のコマンドでない / (本編の /cmd など) はそのまま本編へ
         if (!Bridge.TestBridge.Has(name) && name != "help") return true;
 
