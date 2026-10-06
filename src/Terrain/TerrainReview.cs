@@ -24,6 +24,7 @@ internal static class TerrainReview
     private static readonly byte[] Guarded = { 200, 60, 255 };    // 名前で守る物・扉
     private static readonly byte[] Furniture = { 255, 230, 0 };   // 家具の保護範囲 (壁も切らない)
     private static readonly byte[] Lone = { 140, 140, 140 };      // 両側とも床が無い
+    private static readonly byte[] Void = { 230, 20, 20 };        // 奈落 (塗った注釈)
 
     // 画像に名前を書き込むための一覧 (はしごの両端・部屋の範囲)
     internal static readonly List<string> Notes = new();
@@ -47,6 +48,7 @@ internal static class TerrainReview
             int id = SolidMap.IslandCell(k);
             if (id != 0) { sizes.TryGetValue(id, out int s); sizes[id] = s + 1; Tint(rgb, k, IslandColor(id), 35); }
             else if (SolidMap.LeakedCell(k)) Tint(rgb, k, Outer, 35);
+            if (MapNotes.InVoid(new Vector2(o.x + (k % w + 0.5f) / ppu, o.y + (k / w + 0.5f) / ppu))) Tint(rgb, k, Void, 40);
         }
 
         // 3. 壁の線の判定

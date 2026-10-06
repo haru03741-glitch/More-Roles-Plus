@@ -8,6 +8,7 @@ namespace MoreRolesPlus.Terrain;
 //   Keep = 壊れてほしくない物 (家具など)。家具の保護範囲に足す (見た目も当たり判定も残る)
 //   Free = 壊れてよい所。名前や形で自動に守っている物 (小物・家具) でも壊す (扉・外壁は除く)
 //   Low / High / Higher = 周りより低い / 高い / さらに高い床。壁の両側で違えば高さの違う床の境として扱う (差の大きさは見ない)
+//   Void = 奈落 (床の無い所)。今は範囲を持つだけ (向こうに床が無い壁は外壁として壊れない)
 // 範囲は 1/8 単位の長方形の一覧 (MapNotesData.cs・画像から生成)
 internal static partial class MapNotes
 {
@@ -17,26 +18,28 @@ internal static partial class MapNotes
     private static Rect[] _high = Array.Empty<Rect>();
     private static Rect[] _higher = Array.Empty<Rect>();
     private static Rect[] _free = Array.Empty<Rect>();
+    private static Rect[] _void = Array.Empty<Rect>();
 
-    public static string Stats => $"notes keep={_keep.Length} free={_free.Length} low={_low.Length} high={_high.Length} higher={_higher.Length}";
+    public static string Stats => $"notes keep={_keep.Length} free={_free.Length} low={_low.Length} high={_high.Length} higher={_higher.Length} void={_void.Length}";
 
     private static void Ensure()
     {
         var ship = ShipStatus.Instance;
         if (_ship == ship) return;
         _ship = ship;
-        _keep = _free = _low = _high = _higher = Array.Empty<Rect>();
+        _keep = _free = _low = _high = _higher = _void = Array.Empty<Rect>();
         if (!ship) return;
         // 派生の型から先に調べる (どのマップも ShipStatus を継ぐ)
-        if (ship.TryCast<AirshipStatus>() != null) Load(AirshipKeep, AirshipFree, AirshipLow, AirshipHigh, AirshipHigher);
-        else if (ship.TryCast<FungleShipStatus>() != null) Load(FungleKeep, FungleFree, FungleLow, FungleHigh, FungleHigher);
-        else if (ship.TryCast<PolusShipStatus>() != null) Load(PolusKeep, PolusFree, PolusLow, PolusHigh, PolusHigher);
-        else if (ship.TryCast<MiraShipStatus>() != null) Load(MiraKeep, MiraFree, MiraLow, MiraHigh, MiraHigher);
-        else if (ship.Type == ShipStatus.MapType.Ship && ship.transform.lossyScale.x > 0f) Load(SkeldKeep, SkeldFree, SkeldLow, SkeldHigh, SkeldHigher); // 左右反転のスケルドは座標が合わないので使わない
+        if (ship.TryCast<AirshipStatus>() != null) Load(AirshipKeep, AirshipFree, AirshipLow, AirshipHigh, AirshipHigher, AirshipVoid);
+        else if (ship.TryCast<FungleShipStatus>() != null) Load(FungleKeep, FungleFree, FungleLow, FungleHigh, FungleHigher, FungleVoid);
+        else if (ship.TryCast<PolusShipStatus>() != null) Load(PolusKeep, PolusFree, PolusLow, PolusHigh, PolusHigher, PolusVoid);
+        else if (ship.TryCast<MiraShipStatus>() != null) Load(MiraKeep, MiraFree, MiraLow, MiraHigh, MiraHigher, MiraVoid);
+        else if (ship.Type == ShipStatus.MapType.Ship && ship.transform.lossyScale.x > 0f) Load(SkeldKeep, SkeldFree, SkeldLow, SkeldHigh, SkeldHigher, SkeldVoid); // 左右反転のスケルドは座標が合わないので使わない
     }
 
-    private static void Load(float[] keep, float[] free, float[] low, float[] high, float[] higher)
+    private static void Load(float[] keep, float[] free, float[] low, float[] high, float[] higher, float[] voids)
     {
+        _void = ToRects(voids);
         _keep = ToRects(keep);
         _free = ToRects(free);
         _low = ToRects(low);
@@ -67,6 +70,13 @@ internal static partial class MapNotes
     {
         Ensure();
         foreach (var k in _keep) if (k.Contains(p)) return true;
+        return false;
+    }
+
+    public static bool InVoid(Vector2 p)
+    {
+        Ensure();
+        foreach (var k in _void) if (k.Contains(p)) return true;
         return false;
     }
 
