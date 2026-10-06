@@ -10,6 +10,7 @@ namespace MoreRolesPlus.Terrain;
 // 高さが違う = 次のどちらか:
 //   1. 試合の始めの歩ける所で、歩いて行き来できない (はしご・ジップライン・動く足場でしかつながらない) = 島が違う
 //   2. 両側の部屋の組が段差の組 (はしごの上と下の部屋・マップごとの一覧)。階段でつながる段差は島では分からないので一覧で持つ
+//   3. 両側の高さの区域が違う (マップごとの範囲。同じ部屋の中で階段を挟んで高さが変わる所)
 internal static class HeightLevels
 {
     public const string LedgeName = "MrpLedge";
@@ -20,7 +21,14 @@ internal static class HeightLevels
     // マップごとの、はしごを使わずにつながる段差の部屋の組 (どちら向きでもよい)。はしごの上と下の部屋は自動で足す
     private static readonly (SystemTypes, SystemTypes)[] AirshipPairs = Array.Empty<(SystemTypes, SystemTypes)>();
 
+    // マップごとの高さの区域 (範囲・高さ)。どの区域にも入らない所は高さ 0
+    private static readonly (Rect Area, int Level)[] AirshipZones =
+    {
+        (Rect.MinMaxRect(-2.2f, -3.6f, 2.4f, -1.86f), -1), // エンジン室の南の一段低い床 (真ん中の階段で通路とつながる)
+    };
+
     private static ShipStatus _ship;
+    private static (Rect Area, int Level)[] _zones = Array.Empty<(Rect, int)>();
     private static readonly HashSet<(SystemTypes, SystemTypes)> Pairs = new();
 
     private static void Ensure()
@@ -29,9 +37,13 @@ internal static class HeightLevels
         if (_ship == ship) return;
         _ship = ship;
         Pairs.Clear();
+        _zones = Array.Empty<(Rect, int)>();
         if (!ship) return;
         if (ship.TryCast<AirshipStatus>() != null)
+        {
             foreach (var (a, b) in AirshipPairs) AddPair(a, b);
+            _zones = AirshipZones;
+        }
         // はしごの上と下の部屋 (同じ部屋の中のはしごは組にならない)
         foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
         {
@@ -53,7 +65,7 @@ internal static class HeightLevels
         Ensure();
         var list = new List<string>();
         foreach (var (a, b) in Pairs) if (string.CompareOrdinal(a.ToString(), b.ToString()) < 0) list.Add($"{a}|{b}");
-        return $"ledgePairs={string.Join(",", list)}";
+        return $"ledgePairs={string.Join(",", list)} zones={_zones.Length}";
     }
 
     // 壁の線の上の点 m の両側 (法線 n の向きと逆向き) の床の高さが違うか。片側に床が無い (外壁・船体の塊) 時は false
@@ -62,6 +74,7 @@ internal static class HeightLevels
         Ensure();
         if (!FloorAlong(m, n, out int ia, out Vector2 pa) || !FloorAlong(m, -n, out int ib, out Vector2 pb)) return false;
         if (ia != ib) return true;
+        if (ZoneLevel(pa) != ZoneLevel(pb)) return true;
         if (Pairs.Count == 0) return false;
         var ra = RoomAt(pa);
         var rb = RoomAt(pb);
@@ -144,6 +157,13 @@ internal static class HeightLevels
         island = 0;
         at = default;
         return false;
+    }
+
+    private static int ZoneLevel(Vector2 p)
+    {
+        foreach (var (area, level) in _zones)
+            if (area.Contains(p)) return level;
+        return 0;
     }
 
     private static PlainShipRoom RoomAt(Vector2 p)
