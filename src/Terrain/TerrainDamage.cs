@@ -291,7 +291,7 @@ internal static class TerrainDamage
         var list = new List<EdgeCollider2D>();
         foreach (var c2 in Physics2D.OverlapCircleAll(c, r, WallMask))
         {
-            if (!c2 || c2.isTrigger || !c2.enabled || IsProtected(c2)) continue;
+            if (!c2 || c2.isTrigger || !c2.enabled || IsProtected(c2, c)) continue;
             var e = c2.TryCast<EdgeCollider2D>();
             if (e) { list.Add(e); continue; }
             list.AddRange(WallOutline.Convert(c2));
@@ -308,6 +308,15 @@ internal static class TerrainDamage
     private static readonly System.Text.RegularExpressions.Regex ProtectedName = new(
         @"^MrpRubbleBlock$|^MrpHullEdge$|^MrpLedge$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (初回の破壊で 1 回だけ生成のために止まる・名前は短く数も少ない)
+
+    // at の辺りで守るか。名前で守る物でも、マップの絵に「壊れてよい」と塗った所なら壊す。
+    // 扉とこの mod が置いた壁 (縁・船体の外周・瓦礫) は塗っても守る
+    internal static bool IsProtected(Component c, Vector2 at)
+    {
+        if (!IsProtected(c)) return false;
+        if (c.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || c.GetComponentInParent<OpenableDoor>()) return true;
+        return !MapNotes.InFree(at);
+    }
 
     internal static bool IsProtected(Component c)
     {
@@ -367,7 +376,7 @@ internal static class TerrainDamage
         float best = float.MaxValue;
         foreach (var h in Physics2D.CircleCastAll(from, 0.01f, dir, max, 1 << ShipLayer))
         {
-            if (!h.collider || h.collider.isTrigger || IsProtected(h.collider)) continue;
+            if (!h.collider || h.collider.isTrigger || IsProtected(h.collider, from)) continue;
             if (h.distance > 0.001f && h.distance < best) best = h.distance;
         }
         return best == float.MaxValue ? 0f : best;
@@ -392,7 +401,7 @@ internal static class TerrainDamage
         {
             if (!h.collider || h.collider.isTrigger) continue;
             if (h.collider.gameObject.name == HeightLevels.LedgeName) { ledge = Math.Min(ledge, h.distance); continue; }
-            if (IsProtected(h.collider) || h.distance >= best) continue;
+            if (IsProtected(h.collider, h.point) || h.distance >= best) continue;
             best = h.distance;
             point = h.point;
             normal = h.normal;

@@ -465,6 +465,7 @@ internal static class DamageMap
             var own = col.GetComponent<SpriteRenderer>();
             if (own && own.enabled && own.sprite) continue;
             var b = col.bounds;
+            if (MapNotes.InFree(b.center)) continue; // マップの絵に「壊れてよい」と塗った家具
             list.Add(Rect.MinMaxRect(b.min.x - FurnitureMargin, b.min.y - FurnitureMargin,
                                      b.max.x + FurnitureMargin, b.max.y + FurnitureUp));
         }
@@ -473,6 +474,7 @@ internal static class DamageMap
             var edge = col ? col.TryCast<EdgeCollider2D>() : null;
             if (edge && !col.isTrigger) AddWallBumps(edge, list);
         }
+        for (int i = list.Count - 1; i >= 0; i--) if (MapNotes.InFree(list[i].center)) list.RemoveAt(i);
         MapNotes.AddKeep(c, r + FurnitureUp, list); // 人の目で付けた「壊れてほしくない物」
         return list;
     }

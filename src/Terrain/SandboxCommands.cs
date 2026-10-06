@@ -112,7 +112,7 @@ internal static class SandboxCommands
             foreach (var h in Physics2D.CircleCastAll(from, 0.1f, dir, range, 1 << ShipLayer))
             {
                 if (!h.collider || h.collider.isTrigger || h.distance >= best) continue;
-                if (TerrainDamage.IsProtected(h.collider)) continue;
+                if (TerrainDamage.IsProtected(h.collider, h.point)) continue;
                 best = h.distance;
                 bestDir = dir;
             }

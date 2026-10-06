@@ -59,7 +59,6 @@ internal static class TerrainReview
             if (!col || !col.enabled || col.isTrigger || col.gameObject.layer != 9) continue;
             segs.Clear();
             SolidMap.Segments(col, segs);
-            bool guarded = TerrainDamage.IsProtected(col);
             for (int i = 0; i + 1 < segs.Count; i += 2)
             {
                 Vector2 a = segs[i], b = segs[i + 1], d = b - a;
@@ -72,7 +71,7 @@ internal static class TerrainReview
                     Vector2 p0 = a + dir * (len * p / parts), p1 = a + dir * (len * (p + 1) / parts), m = (p0 + p1) * 0.5f;
                     string kind;
                     byte[] color;
-                    if (guarded) { kind = "guarded"; color = Guarded; }
+                    if (TerrainDamage.IsProtected(col, m)) { kind = "guarded"; color = Guarded; }
                     else if (InFurniture(m)) { kind = "furniture"; color = Furniture; }
                     else
                     {
