@@ -91,6 +91,7 @@ internal static class EdgeCutter
 
         if (chains.Count == 0)
         {
+            TerrainDigest.Removed(world[0], world[n - 1]);
             col.enabled = false;
             return true;
         }
@@ -135,6 +136,7 @@ internal static class EdgeCutter
 
     private static void Apply(EdgeCollider2D col, List<Vector2> worldChain, Transform t, Vector2 colliderOffset)
     {
+        TerrainDigest.Chain(worldChain);
         var pts = new Vector2[worldChain.Count];
         for (int i = 0; i < pts.Length; i++) pts[i] = (Vector2)t.InverseTransformPoint(worldChain[i]) - colliderOffset;
         col.offset = colliderOffset;

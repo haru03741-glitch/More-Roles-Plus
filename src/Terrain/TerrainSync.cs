@@ -30,9 +30,18 @@ internal static class TerrainSync
     private static int _tick, _lastFlush = -FlushTicks, _stuckSince;
     private const int GapTimeoutTicks = 150; // 欠番を待つのは 3 秒まで
     private const int NoHost = int.MinValue;
+    private const int ReportTicks = 50;          // 客が指紋を返すのは 1 秒に 1 通まで
+    private const float LagMargin = 1.5f;        // 打撃: ホストに見えている位置の遅れの分
+    private const float MaxBlastDistance = 20f;  // 爆発: 投げた・撃った物が届く所まで
+    private const float MaxBlastRadius = 3f;
+    private static int _lastReport = -ReportTicks;
+    private static ushort _reportedSeq = ushort.MaxValue;
     private static int _batchHost = NoHost; // 客: 最後に束を受けたホスト
 
     public static int Applied { get; private set; } // テスト用: この試合で適用した件数
+    public static int Refused { get; private set; }    // ホスト: 受けなかった依頼の数
+    public static int Mismatches { get; private set; } // ホスト: 客の地形が自分と違った回数
+    internal static readonly Dictionary<byte, (ushort seq, bool same)> Checks = new(); // ホスト: 客ごとの最後の照合
 
     // 破壊を依頼する唯一の入口。返り値はログ・テスト用の説明
     public static string Request(in DamageEvent e)
@@ -41,7 +50,7 @@ internal static class TerrainSync
         {
             SyncShip();
             if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
-            return ApplyNow(TerrainWire.RoundTrip(r), decide: true, out _);
+            return ApplyNow(_nextSeq++, TerrainWire.RoundTrip(r), decide: true, out _);
         }
         if (AmongUsClient.Instance.AmHost) return HostAccept(e);
         Requests.Add(e);
@@ -54,18 +63,19 @@ internal static class TerrainSync
         SyncShip();
         if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
         r = TerrainWire.RoundTrip(r);
-        _nextSeq++;
         // 大きな瓦礫の止まる所は、ホストが自分で適用した結果から決めて同じ電文に載せる
-        string res = ApplyNow(r, decide: true, out var landings);
+        string res = ApplyNow(_nextSeq++, r, decide: true, out var landings);
         Outbox.Add(r.WithLandings(landings));
         return res;
     }
 
     // decide = 大きな瓦礫の止まる所を自分で決める (ホスト・一人の時)。客は届いた結果の物を使う
-    private static string ApplyNow(in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
+    private static string ApplyNow(ushort seq, in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
         Applied++;
-        return TerrainDamage.Apply(r, decide, out landings);
+        TerrainDigest.Begin();
+        try { return TerrainDamage.Apply(r, decide, out landings); }
+        finally { TerrainDigest.End(seq); }
     }
 
     // 毎 FixedUpdate。積んだ物が無い時は整数 1 つの加算と比較だけで帰る
@@ -73,6 +83,7 @@ internal static class TerrainSync
     {
         _tick++;
         if (Pending.Count != 0 && _tick - _stuckSince > GapTimeoutTicks) SkipGap();
+        if (TerrainDigest.Any && TerrainDigest.LastSeq != _reportedSeq && _tick - _lastReport >= ReportTicks) Report();
         if (Outbox.Count == 0 && Requests.Count == 0) return;
         if (_tick - _lastFlush < FlushTicks) return;
         _lastFlush = _tick;
@@ -114,6 +125,20 @@ internal static class TerrainSync
         }
     }
 
+    // 客: 適用し終えた所の指紋をホストへ返す ([op][連番 u16][指紋 u32] = 7B・1 秒に 1 通まで・新しく適用した時だけ)
+    private static void Report()
+    {
+        _lastReport = _tick;
+        if (!Online() || AmongUsClient.Instance.AmHost) return;
+        ushort seq = TerrainDigest.LastSeq;
+        _reportedSeq = seq;
+        int o = 0;
+        Buf[o++] = TerrainWire.OpDigest;
+        o = TerrainWire.WriteU16(Buf, o, seq);
+        o = TerrainWire.WriteU32(Buf, o, TerrainDigest.Running);
+        Send(o, AmongUsClient.Instance.HostId);
+    }
+
     private static void Send(int length, int target) => Wire.Send(new ArraySegment<byte>(Buf, 0, length), target);
 
     // 依頼 (客 → ホスト) と結果 (ホスト → 全員) の両方がこの 1 種類で、先頭の 1 バイトで分ける
@@ -145,6 +170,8 @@ internal static class TerrainSync
                 {
                     o = TerrainWire.ReadRequest(b, o, out var e);
                     if (!AllowRequest(sender.PlayerId)) continue;
+                    string bad = Refuse(sender, e);
+                    if (bad != null) { Refused++; Plugin.Logger.LogDebug($"[TerrainSync] refused {sender.PlayerId}: {bad}"); continue; }
                     HostAccept(e);
                 }
                 break;
@@ -174,7 +201,36 @@ internal static class TerrainSync
                 }
                 break;
             }
+            case TerrainWire.OpDigest:
+            {
+                if (!client.AmHost || b.Length < 7) return;
+                ushort seq = TerrainWire.ReadU16(b, ref o);
+                uint hash = TerrainWire.ReadU32(b, ref o);
+                // 自分の指紋が無い番号 (古すぎる・ホスト交代の前) は比べない
+                if (!TerrainDigest.TryGet(seq, out uint mine)) return;
+                bool same = mine == hash;
+                Checks[sender.PlayerId] = (seq, same);
+                if (!same)
+                {
+                    Mismatches++;
+                    Plugin.Logger.LogWarning($"[TerrainSync] terrain differs on player {sender.PlayerId} at #{seq} ({hash:x8} vs host {mine:x8})");
+                }
+                break;
+            }
         }
+    }
+
+    // ホスト: 依頼を受けない理由 (受けるなら null)。依頼は武器を使った本人の位置の近くでしか起きない
+    private static string Refuse(PlayerControl sender, in DamageEvent e)
+    {
+        var data = sender.Data;
+        if (data == null || data.IsDead || data.Disconnected) return "not alive";
+        Vector2 at = sender.GetTruePosition();
+        float dx = e.Position.x - at.x, dy = e.Position.y - at.y;
+        float max = e.Kind == DamageKind.Blunt ? DamageProfile.Of(e.Kind).Reach + LagMargin : MaxBlastDistance;
+        if (dx * dx + dy * dy > max * max) return $"too far {MathF.Sqrt(dx * dx + dy * dy):0.0}";
+        if (e.Kind == DamageKind.Explosion && e.Size > MaxBlastRadius) return $"too large {e.Size:0.0}";
+        return null;
     }
 
     // 連番の順に適用する。先に着いた後ろの番号は前が揃うまで待たせる。既に適用した番号は捨てる
@@ -190,8 +246,7 @@ internal static class TerrainSync
     {
         while (Pending.Remove(_nextSeq, out var next))
         {
-            _nextSeq++;
-            string res = ApplyNow(next, decide: false, out _);
+            string res = ApplyNow(_nextSeq++, next, decide: false, out _);
             Plugin.Logger.LogDebug($"[TerrainSync] #{(ushort)(_nextSeq - 1)} {res}");
         }
         _stuckSince = _tick;
@@ -235,6 +290,11 @@ internal static class TerrainSync
         _nextSeq = 0;
         _batchHost = NoHost;
         Applied = 0;
+        Refused = 0;
+        Mismatches = 0;
+        Checks.Clear();
+        _reportedSeq = ushort.MaxValue;
+        TerrainDigest.Reset();
         Pending.Clear();
         Outbox.Clear();
         Requests.Clear();

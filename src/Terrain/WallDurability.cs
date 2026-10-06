@@ -21,6 +21,7 @@ internal static class WallDurability
         int hp = Hp.TryGetValue(key, out int v) ? v : MaxHp;
         hp -= damage;
         Hp[key] = hp;
+        TerrainDigest.Hp(key, hp);
         return hp;
     }
 
@@ -28,7 +29,9 @@ internal static class WallDurability
     public static void Set(Vector2 p, int hp)
     {
         Sync();
-        Hp[Key(p)] = hp;
+        long key = Key(p);
+        Hp[key] = hp;
+        TerrainDigest.Hp(key, hp);
     }
 
     public static int Remaining(Vector2 p)

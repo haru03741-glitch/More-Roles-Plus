@@ -156,6 +156,7 @@ internal sealed class WallBody
                 // 頂点を間引く (縁は 0.05 刻みで調べたので直線の上にも点が並ぶ。本編の視界は頂点ごとに光線を飛ばすので、多すぎると重く欠けも出る)
                 var cap = Simplify(raw, 0.015f);
                 if (cap.Count < 2) continue;
+                TerrainDigest.Chain(cap);
                 var col = go.AddComponent<EdgeCollider2D>();
                 var pts = new Vector2[cap.Count];
                 for (int i = 0; i < pts.Length; i++) pts[i] = t.InverseTransformPoint(cap[i]);

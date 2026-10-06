@@ -255,7 +255,16 @@ internal static class TerrainProbe
             reply($"OK netloop {TerrainSync.Loopback(events.ToArray(), rev)}");
         });
 
-        TestBridge.Register("hammer", "<x> <y> <dx> <dy> [force] 打撃 (位置から向きの先の壁を叩く。斜めに振ると斜めに抜ける。力 0..1・既定 0.5)", (args, reply) =>
+        TestBridge.Register("terrainsync", "地形の同期の状態 (適用数・受けなかった依頼・指紋・客ごとの照合)", (args, reply) =>
+        {
+            var sb = new System.Text.StringBuilder("OK terrainsync");
+            sb.Append($" applied={TerrainSync.Applied} refused={TerrainSync.Refused} mismatches={TerrainSync.Mismatches}");
+            sb.Append($" seq={TerrainDigest.LastSeq} digest={TerrainDigest.Running:x8}");
+            foreach (var kv in TerrainSync.Checks) sb.Append($" p{kv.Key}=#{kv.Value.seq}:{(kv.Value.same ? "same" : "DIFF")}");
+            reply(sb.ToString());
+        });
+
+        TestBridge.Register("hammer","<x> <y> <dx> <dy> [force] 打撃 (位置から向きの先の壁を叩く。斜めに振ると斜めに抜ける。力 0..1・既定 0.5)", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || (v.Length != 4 && v.Length != 5)) { reply("ERR hammer needs <x> <y> <dx> <dy> [force]"); return; }
             float force = v.Length == 5 ? v[4] : 0.5f;

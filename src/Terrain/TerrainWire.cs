@@ -12,6 +12,7 @@ internal static class TerrainWire
     // ホスト → 全員: [op][最初の連番 u16][件数] + 結果 × 件数。結果の末尾に瓦礫を足した時に 2 → 3 へ
     // (古い版と混ざった時に、黙ってずれて読まず「知らない op」として捨てるため)
     public const byte OpBatch = 3;
+    public const byte OpDigest = 4; // 客 → ホスト: [op][適用し終えた連番 u16][地形の指紋 u32]
 
     public const int MaxRequestBytes = 11;
     public const int MaxResolvedBytes = 14 + 1 + RubbleBlocks.MaxPerEvent * 6;
@@ -158,4 +159,12 @@ internal static class TerrainWire
         o += 2;
         return v;
     }
+
+    public static int WriteU32(byte[] b, int o, uint v)
+    {
+        o = WriteU16(b, o, (ushort)v);
+        return WriteU16(b, o, (ushort)(v >> 16));
+    }
+
+    public static uint ReadU32(byte[] b, ref int o) => ReadU16(b, ref o) | ((uint)ReadU16(b, ref o) << 16);
 }
