@@ -8,7 +8,8 @@
   Android の参照先 (端末ローダーが生成した core / interop) は local.props の AndroidBepInExPath。
   libunity.so は -LibUnity で渡すか、AndroidBepInExPath の隣の apk-extract\lib\arm64-v8a\libunity.so。
 .PARAMETER SkipAndroid
-  Android のビルドと照合を飛ばす (Android の参照先が無い環境用)。
+  Android のビルドと照合を飛ばす (Android の参照先が無い環境用)。このときだけ結果に (ANDROID SKIPPED) が付く。
+  付けずに Android の参照先が無い場合は不合格になる (確認していないものを合格と出さない)。
 #>
 param(
     [string]$LibUnity,
@@ -38,7 +39,10 @@ if (-not $SkipAndroid) {
         if ($m.Success) { $bep = $m.Groups[1].Value.Trim() }
     }
     if (-not $bep -or -not (Test-Path (Join-Path $bep 'interop'))) {
-        Write-Output '== Android: local.props の AndroidBepInExPath が無い/不正 → 飛ばす ([WARN])'
+        # Android を確認していないのに合格と出すと、スマホ版で落ちる変更がそのまま通る。飛ばすのは -SkipAndroid を明示した時だけ
+        Write-Output '== Android: local.props の AndroidBepInExPath が無い/不正 (-SkipAndroid なしでは不合格)'
+        Write-Output '   [FAIL] Android の参照先を直すか、Android を確認できない環境なら -SkipAndroid を付ける'
+        $fail++
     }
     else {
         if (-not $LibUnity) { $LibUnity = Join-Path (Split-Path -Parent $bep) 'apk-extract\lib\arm64-v8a\libunity.so' }
@@ -48,7 +52,9 @@ if (-not $SkipAndroid) {
 
         # 3. 照合
         if (-not (Test-Path $LibUnity)) {
-            Write-Output "== Android ICall audit: libunity.so が無い ($LibUnity) → 飛ばす ([WARN])"
+            Write-Output "== Android ICall audit: libunity.so が無い ($LibUnity)"
+            Write-Output '   [FAIL] -LibUnity で渡すか、Android を確認できない環境なら -SkipAndroid を付ける'
+            $fail++
         }
         else {
             $baseline = Join-Path $env:TEMP 'mrp-icall-empty-baseline.txt'
@@ -67,4 +73,4 @@ if ($bad) { $bad | ForEach-Object { Write-Output "   $($_.Path):$($_.LineNumber)
 else { Write-Output '   [ OK ]' }
 
 if ($fail -gt 0) { Write-Output "RESULT: FAIL ($fail)"; exit 1 }
-Write-Output 'RESULT: OK'
+if ($SkipAndroid) { Write-Output 'RESULT: OK (ANDROID SKIPPED)' } else { Write-Output 'RESULT: OK' }
