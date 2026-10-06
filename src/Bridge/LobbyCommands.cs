@@ -103,6 +103,14 @@ internal static class LobbyCommands
             reply($"OK joincode {args.Trim().ToUpperInvariant()} requested");
         });
 
+        TestBridge.Register("playagain", "終了画面の「もう一度プレイ」を押す (follow: wait phase=Lobby 60)", (_, reply) =>
+        {
+            var nav = Object.FindObjectOfType<EndGameNavigation>();
+            if (!nav) { reply("ERR playagain not on the end screen"); return; }
+            nav.NextGame();
+            reply("OK playagain requested");
+        });
+
         TestBridge.Register("lobbycode", "今いる部屋のコード", (_, reply) =>
             reply($"OK lobbycode {GameCode.IntToGameName(AmongUsClient.Instance.GameId)}"));
 

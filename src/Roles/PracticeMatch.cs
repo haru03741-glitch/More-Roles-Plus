@@ -34,7 +34,11 @@ internal static class MinPlayersPatch
 [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin))]
 internal static class PracticeIntroPatch
 {
-    public static void Prefix() => PracticeMatch.OnIntro();
+    public static void Prefix()
+    {
+        PracticeMatch.OnIntro();
+        MatchLog.Reset(); // 「もう一度プレイ」でロビーを通らずに次の試合へ入っても前の死因を残さない
+    }
 }
 
 // 練習とフリープレイでは試合中もチャット欄と破壊のボタンを出す。

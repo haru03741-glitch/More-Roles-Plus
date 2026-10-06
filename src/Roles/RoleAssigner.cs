@@ -224,5 +224,6 @@ internal static class LobbyClearPatch
     {
         RoleState.Clear(false);
         GameEnd.Reset();
+        MatchLog.Reset();
     }
 }

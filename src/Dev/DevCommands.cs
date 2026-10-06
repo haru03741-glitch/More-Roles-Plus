@@ -242,7 +242,7 @@ internal static class DevCommands
     private static IntPtr _roleWhenAliveField;
     private static int _hasValueAt = -1, _valueAt = -1;
 
-    private static unsafe RoleTypes? RoleWhenAlive(NetworkedPlayerInfo data)
+    internal static unsafe RoleTypes? RoleWhenAlive(NetworkedPlayerInfo data)
     {
         if (_valueAt < 0)
         {

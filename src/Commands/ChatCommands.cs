@@ -34,6 +34,12 @@ internal static class ChatCommands
     {
         Add(new[] { "help", "h" }, Who.Everyone, "", new Text("使えるコマンドの一覧", "List the commands you can use"), _ => HelpText());
         Add(new[] { "id" }, Who.Everyone, "", new Text("全員の番号と名前", "Everyone's number and name"), _ => HostActions.PlayerList());
+        Add(new[] { "m", "myrole" }, Who.Everyone, "", new Text("自分の役職と説明 (試合中)", "Your role and what it does (in game)"), InfoCommands.MyRole);
+        Add(new[] { "r", "roles" }, Who.Everyone, "[役職]", new Text("役職の一覧 / その役職の説明", "List roles / describe one"), InfoCommands.Roles);
+        Add(new[] { "n", "now" }, Who.Everyone, "", new Text("今の MRP の設定", "Current More Roles Plus settings"), InfoCommands.Now);
+        Add(new[] { "death" }, Who.Everyone, "[番号]", new Text("自分 (番号でその人) の死因 (死んでから)", "How you (or someone) died (after you die)"), InfoCommands.Death);
+        Add(new[] { "l", "last" }, Who.Everyone, "", new Text("前の試合の結果 (全員の役職と死因)", "Last game's result (roles and causes of death)"), InfoCommands.LastResult);
+        Add(new[] { "win", "winner" }, Who.Everyone, "", new Text("前の試合の勝者", "Last game's winners"), InfoCommands.Winners);
 
         Add(new[] { "start" }, Who.Host, "", new Text("試合を始める (数え中なら数えを飛ばす)", "Start the game (skips the countdown if counting)"), _ => HostActions.Start());
         Add(new[] { "end", "廃村" }, Who.Host, "", new Text("廃村: 勝者なしで試合を打ち切る (Shift+L+Enter)", "Abort the game with no winner (Shift+L+Enter)"), _ => HostActions.Abort());

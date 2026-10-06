@@ -136,7 +136,7 @@ internal static class HostActions
         => GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
 
     // 役職を Id か表示名 (日本語・英語) で探す
-    private static RoleBase FindRole(string s)
+    internal static RoleBase FindRole(string s)
     {
         foreach (var r in Registry.Roles)
         {

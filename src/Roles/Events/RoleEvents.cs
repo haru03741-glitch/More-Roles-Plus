@@ -42,7 +42,9 @@ internal static class MurderEventPatch
     public static void Postfix(PlayerControl __instance, [HarmonyArgument(0)] PlayerControl target, [HarmonyArgument(1)] MurderResultFlags resultFlags)
     {
         KillAbility.OnMurder(__instance);
-        if (RoleState.All.Count == 0 || !target || (resultFlags & MurderResultFlags.Succeeded) == 0) return;
+        if (!target || (resultFlags & MurderResultFlags.Succeeded) == 0) return;
+        MatchLog.OnMurder(__instance, target);
+        if (RoleState.All.Count == 0) return;
         Events<PlayerMurderedEvent>.Run(new PlayerMurderedEvent { Killer = __instance, Target = target });
     }
 }
@@ -52,6 +54,7 @@ internal static class ExiledEventPatch
 {
     public static void Postfix(PlayerControl __instance)
     {
+        MatchLog.OnExiled(__instance);
         if (RoleState.All.Count == 0) return;
         Events<PlayerExiledEvent>.Run(new PlayerExiledEvent { Player = __instance });
     }
