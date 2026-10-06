@@ -11,6 +11,7 @@ namespace MoreRolesPlus.Menu;
 internal static class AccountSleep
 {
     private static bool _asleep;
+    private static bool _sleptBeforeLogin; // 本編の幕を外した = ログインの途中でメニューを離れられる
     private static MainMenuManager _menu;
 
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Start))]
@@ -27,6 +28,7 @@ internal static class AccountSleep
             am.gameObject.SetActive(false);
             _menu = __instance;
             _asleep = true;
+            _sleptBeforeLogin = true;
             Plugin.Logger.LogInfo("account: asleep until login finishes");
         }
     }
@@ -52,6 +54,33 @@ internal static class AccountSleep
             Plugin.Logger.LogInfo($"account: woken ({why})");
         }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"account: wake failed: {e.Message}"); }
+    }
+
+    // ログインの途中でメニューから別の画面へ移ると、本編のログインの最終段がメニューと一緒に消えた物
+    // (排出ボタン・ショップ) を触って例外で止まり、フレンドコードもログイン完了も来ないままになる。
+    // 最終段の入口では、メニューが無ければ排出ボタンの演出を飛ばして続き (保存待ち→フレンドコード→ショップ→完了) だけ始める
+    [HarmonyPatch(typeof(EOSManager), nameof(EOSManager.BeginFinalPartsOfLoginFlow))]
+    private static class MenuGoneLoginFinish
+    {
+        public static bool Prefix(EOSManager __instance)
+        {
+            if (!_sleptBeforeLogin || Object.FindObjectOfType<MainMenuManager>()) return true;
+            Plugin.Logger.LogInfo("account: menu gone before login finished, continuing without it");
+            __instance.StartCoroutine(__instance.WaitForStorageToSave());
+            return false;
+        }
+    }
+
+    // 続きの中のショップの初期化も、消えたメニューのショップなら飛ばす
+    [HarmonyPatch(typeof(StoreMenu), nameof(StoreMenu.Initialize))]
+    private static class StoreGoneGuard
+    {
+        public static bool Prefix(StoreMenu __instance)
+        {
+            if (!_sleptBeforeLogin || __instance) return true;
+            Plugin.Logger.LogInfo("account: store gone before login finished, skipped its setup");
+            return false;
+        }
     }
 
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.OpenAccountMenu))]
