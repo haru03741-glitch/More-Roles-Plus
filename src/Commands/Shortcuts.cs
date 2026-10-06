@@ -55,4 +55,5 @@ internal static class Shortcuts
 public static class HostSettings
 {
     public static readonly BoolOpt EnterToStart = new("ロビーで Enter を押すと試合を始める (PC)", "Press Enter in the lobby to start (PC)", false);
+    public static readonly BoolOpt PlayersCanRename = new("参加者が /rename /color で名前と色を変えられる", "Players can change name and color with /rename /color", true);
 }

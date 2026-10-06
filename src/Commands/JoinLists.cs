@@ -16,6 +16,8 @@ public static class JoinSettings
 {
     public static readonly BoolOpt UseBanList = new("BAN した人を入れない", "Keep banned players out", true);
     public static readonly BoolOpt Whitelist = new("ホワイトリストの人だけ入れる", "Only let whitelisted players in", false);
+    public static readonly BoolOpt Consecutive = new("前の試合にいた人を続けて入れない", "Keep out players from the previous game", false);
+    public static readonly IntOpt ConsecutiveGames = new("何試合前までを見るか", "How many past games to check", 1, 1, 5);
 }
 
 // ホストの手元にある BAN 一覧とホワイトリスト (BepInEx/config/MoreRolesPlus/ の BanList.txt・WhiteList.txt)。
@@ -132,7 +134,90 @@ internal static class JoinLists
         {
             AmongUsClient.Instance.KickPlayer(c.Id, false);
             Notify(new Text($"{name} はホワイトリストにいないので入れませんでした", $"{name} is not on the whitelist and was kept out"));
+            return;
         }
+        // ホワイトリストの人は続けて入ってもよい
+        if (JoinSettings.Consecutive && puid.Length > 0 && White.Find(fc, puid) == null && PlayedRecently(puid))
+        {
+            AmongUsClient.Instance.KickPlayer(c.Id, false);
+            Notify(new Text($"{name} は前の試合にいたので入れませんでした", $"{name} played the previous game and was kept out"));
+        }
+    }
+
+    // ---- 前の試合にいた人 (試合ごとの PUID の要約。ホストを再起動しても覚えておくようにファイルへ書く) ----
+
+    private const int MaxHistory = 5;
+    private static string HistoryPath => Path.Combine(Dir, "RecentGames.txt");
+    private static List<HashSet<string>> _history; // 古い順
+    private static HashSet<string> _current;
+
+    private static List<HashSet<string>> History()
+    {
+        if (_history != null) return _history;
+        _history = new List<HashSet<string>>();
+        try
+        {
+            if (File.Exists(HistoryPath))
+                foreach (string line in File.ReadAllLines(HistoryPath))
+                    if (line.Trim().Length > 0) _history.Add(new HashSet<string>(line.Trim().Split(',', StringSplitOptions.RemoveEmptyEntries)));
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"recent games read: {e}"); }
+        return _history;
+    }
+
+    private static bool PlayedRecently(string puid)
+    {
+        var h = History();
+        for (int i = Math.Max(0, h.Count - JoinSettings.ConsecutiveGames.Value); i < h.Count; i++)
+            if (h[i].Contains(puid)) return true;
+        return false;
+    }
+
+    // 試合の始まり: その時いる人を控える (ホストのオンラインの部屋だけ)
+    public static void OnMatchStart()
+    {
+        _current = null;
+        if (!AmHost || !OnlineRoom) return;
+        _current = new HashSet<string>();
+        var clients = AmongUsClient.Instance.allClients;
+        for (int i = 0; i < clients.Count; i++)
+        {
+            var c = clients[i];
+            if (c == null || c.Id == AmongUsClient.Instance.ClientId) continue;
+            string k = PuidKey(c);
+            if (k.Length > 0) _current.Add(k);
+        }
+    }
+
+    // 試合の終わり: 廃村でなければ控えを履歴に積む
+    public static void OnMatchEnd(bool aborted)
+    {
+        var cur = _current;
+        _current = null;
+        if (cur == null || aborted) return;
+        var h = History();
+        h.Add(cur);
+        while (h.Count > MaxHistory) h.RemoveAt(0);
+        SaveHistory();
+    }
+
+    private static void SaveHistory()
+    {
+        try
+        {
+            Directory.CreateDirectory(Dir);
+            var sb = new StringBuilder();
+            foreach (var g in History()) sb.Append(string.Join(",", g)).Append('\n');
+            File.WriteAllText(HistoryPath, sb.ToString());
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"recent games write: {e}"); }
+    }
+
+    public static string ClearRecent(string _)
+    {
+        History().Clear();
+        SaveHistory();
+        return new Text("前の試合にいた人の記録を消しました", "Forgot who played the previous games");
     }
 
     // 本編の BAN (人の一覧の BAN ボタン) も含め、BAN した人は一覧に書く

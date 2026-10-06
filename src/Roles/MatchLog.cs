@@ -138,6 +138,8 @@ internal static class MatchLogEndPatch
     {
         try { MatchLog.CaptureResult(); }
         catch (System.Exception e) { Plugin.Logger.LogError($"match log: {e}"); }
+        try { Commands.JoinLists.OnMatchEnd(GameEnd.Last != null && GameEnd.Last.Draw); }
+        catch (System.Exception e) { Plugin.Logger.LogError($"recent games: {e}"); }
     }
 }
 

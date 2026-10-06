@@ -53,7 +53,7 @@ internal static class DevChat
         if (Commands.ChatCommands.TryRun(name, sp < 0 ? "" : line[(sp + 1)..], out string reply))
         {
             field.Clear();
-            Notice(__instance, reply);
+            if (!string.IsNullOrEmpty(reply)) Notice(__instance, reply);
             return false;
         }
         if (!DevUsers.AmDev) return true;

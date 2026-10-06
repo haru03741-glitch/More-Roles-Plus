@@ -38,6 +38,7 @@ internal static class PracticeIntroPatch
     {
         PracticeMatch.OnIntro();
         MatchLog.Reset(); // 「もう一度プレイ」でロビーを通らずに次の試合へ入っても前の死因を残さない
+        Commands.JoinLists.OnMatchStart();
     }
 }
 

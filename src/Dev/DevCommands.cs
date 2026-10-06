@@ -174,6 +174,14 @@ internal static class DevCommands
             reply($"OK chatsend left=[{hud.Chat.freeChatField.Text}]");
         });
 
+        TestBridge.Register("chatraw", "<文> 自分の発言として全員へ普通のチャットを送る (コマンドとして拾わない・荒らし対策の確認用)", (args, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp) { reply("ERR chatraw no player"); return; }
+            lp.RpcSendChat(args);
+            reply("OK chatraw");
+        });
+
         TestBridge.Register("chattoggle", "チャット欄の窓を開く / 閉じる (チャットのボタンを押したのと同じ)", (_, reply) =>
         {
             var hud = HudManager.Instance;

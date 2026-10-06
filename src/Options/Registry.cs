@@ -154,29 +154,36 @@ internal static class Registry
 
     // ---- 保存 (自分がホストの時の設定値。ホストから受け取った値は保存しない) ----
 
-    public static void Load()
+    public static void Load() => LoadFrom(SavePath);
+
+    // path の値を読む (無い項目は既定値)。読めたら true
+    public static bool LoadFrom(string path)
     {
         foreach (var o in All) o.Index = o.DefaultIndex;
         try
         {
-            if (!File.Exists(SavePath)) return;
-            foreach (string line in File.ReadAllLines(SavePath))
+            if (!File.Exists(path)) return false;
+            foreach (string line in File.ReadAllLines(path))
             {
                 int eq = line.IndexOf('=');
                 if (eq <= 0 || line.StartsWith('#')) continue;
                 if (ByKey.TryGetValue(line[..eq].Trim(), out var opt)) opt.Load(line[(eq + 1)..].Trim());
             }
         }
-        catch (Exception e) { Plugin.Logger.LogWarning($"options load failed: {e.Message}"); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"options load failed: {e.Message}"); return false; }
+        return true;
     }
 
-    public static void Save()
+    public static void Save() => SaveTo(SavePath);
+
+    public static void SaveTo(string path)
     {
         try
         {
             var sb = new StringBuilder("# More Roles Plus の設定値 (ゲーム内の設定画面で変えると上書きされる)\n");
             foreach (var o in All) sb.Append(o.Key).Append('=').Append(o.Save()).Append('\n');
-            File.WriteAllText(SavePath, sb.ToString());
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, sb.ToString());
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"options save failed: {e.Message}"); }
     }

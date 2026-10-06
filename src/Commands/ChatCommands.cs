@@ -37,6 +37,8 @@ internal static class ChatCommands
         Add(new[] { "m", "myrole" }, Who.Everyone, "", new Text("自分の役職と説明 (試合中)", "Your role and what it does (in game)"), InfoCommands.MyRole);
         Add(new[] { "r", "roles" }, Who.Everyone, "[役職]", new Text("役職の一覧 / その役職の説明", "List roles / describe one"), InfoCommands.Roles);
         Add(new[] { "n", "now" }, Who.Everyone, "", new Text("今の MRP の設定", "Current More Roles Plus settings"), InfoCommands.Now);
+        Add(new[] { "rename" }, Who.Everyone, "<名前>", new Text("自分の名前を変える (ロビー)", "Change your name (lobby)"), LobbyTools.Rename);
+        Add(new[] { "color", "colour" }, Who.Everyone, "<番号|色の名前>", new Text("自分の色を変える (ロビー)", "Change your color (lobby)"), LobbyTools.Color);
         Add(new[] { "death" }, Who.Everyone, "[番号]", new Text("自分 (番号でその人) の死因 (死んでから)", "How you (or someone) died (after you die)"), InfoCommands.Death);
         Add(new[] { "l", "last" }, Who.Everyone, "", new Text("前の試合の結果 (全員の役職と死因)", "Last game's result (roles and causes of death)"), InfoCommands.LastResult);
         Add(new[] { "win", "winner" }, Who.Everyone, "", new Text("前の試合の勝者", "Last game's winners"), InfoCommands.Winners);
@@ -51,6 +53,9 @@ internal static class ChatCommands
         Add(new[] { "ban" }, Who.Host, "<番号>", new Text("その人を BAN して一覧に書く (次から入れない)", "Ban someone and add them to the ban list"), JoinLists.Ban);
         Add(new[] { "banlist" }, Who.Host, "", new Text("BAN 一覧", "Show the ban list"), JoinLists.BanList);
         Add(new[] { "unban" }, Who.Host, "<一覧の番号|フレンドコード>", new Text("BAN を解く", "Remove someone from the ban list"), JoinLists.Unban);
+        Add(new[] { "cjclear" }, Who.Host, "", new Text("前の試合にいた人の記録を消す (続けて入れない設定用)", "Forget who played the previous games"), JoinLists.ClearRecent);
+        Add(new[] { "say" }, Who.Host, "<文>", new Text("全員の画面にお知らせを出す", "Show a message to everyone"), LobbyTools.Say);
+        Add(new[] { "preset" }, Who.Host, "[save|load|del <名前>]", new Text("設定を名前を付けて保存 / 読み込み", "Save / load settings by name"), LobbyTools.Preset);
         Add(new[] { "wl", "whitelist" }, Who.Host, "[add <番号> | del <一覧の番号>]", new Text("ホワイトリストの一覧 / 追加 / 削除 (使うかは設定で)", "Whitelist: list / add / remove (turn it on in settings)"), JoinLists.WhiteCmd);
 
         Add(new[] { "devhelp" }, Who.Dev, "[語]", new Text("開発者コマンドの一覧", "List the developer commands"), args =>
