@@ -1,5 +1,6 @@
 // Based on https://github.com/waffle-ful/Aeterna-End-K-not Modules/FxShaderBundle.cs (GPL-3.0)
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using UnityEngine;
@@ -18,6 +19,30 @@ internal static class MrpBundle
     private static AssetBundleRequest _terrainReq;
     private static bool _failed;
 
+    // 壁を壊した音 (BreakNoise が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
+    private static readonly string[] ClipNames = MakeClipNames();
+    private static readonly AssetBundleRequest[] ClipReqs = new AssetBundleRequest[ClipNames.Length];
+    private static readonly bool[] ClipDone = new bool[ClipNames.Length];
+    private static readonly Dictionary<string, AudioClip> Clips = new();
+    private static int _clipsLeft = ClipNames.Length;
+
+    private static string[] MakeClipNames()
+    {
+        var names = new List<string> { "noise_boom" };
+        foreach (string mat in new[] { "metal", "stone", "wood" })
+        {
+            names.Add("noise_hit_" + mat);
+            names.Add("noise_crumble_" + mat);
+            names.Add("noise_rubble_" + mat);
+        }
+        int n = names.Count;
+        for (int i = 0; i < n; i++) names.Add(names[i] + "_m");
+        return names.ToArray();
+    }
+
+    public static AudioClip Clip(string name) => Clips.TryGetValue(name, out var c) && c ? c : null;
+    public static int ClipCount => Clips.Count;
+
     public static Material TerrainMaterial { get; private set; }
 
     public static bool Ready => TerrainMaterial;
@@ -25,7 +50,8 @@ internal static class MrpBundle
     // 毎 tick 呼ぶ。読み込みは最初の 1 回だけ始め、終わるまで完了を見張る
     public static void Tick()
     {
-        if (_failed || TerrainMaterial) return;
+        if (_failed) return;
+        if (TerrainMaterial) { if (_clipsLeft > 0) TickClips(); return; }
 
         try
         {
@@ -48,6 +74,27 @@ internal static class MrpBundle
             Plugin.Logger.LogInfo($"bundle ready: shader={mat.shader.name} supported={mat.shader.isSupported}");
         }
         catch (Exception e) { Fail(e.ToString()); }
+    }
+
+    private static void TickClips()
+    {
+        try
+        {
+            for (int i = 0; i < ClipNames.Length; i++)
+            {
+                if (ClipDone[i]) continue;
+                ClipReqs[i] ??= _bundle.LoadAssetAsync($"assets/generated/{ClipNames[i]}.wav", Il2CppInterop.Runtime.Il2CppType.Of<AudioClip>());
+                if (!ClipReqs[i].isDone) continue;
+                var clip = ClipReqs[i].asset ? ClipReqs[i].asset.TryCast<AudioClip>() : null;
+                ClipReqs[i] = null;
+                ClipDone[i] = true;
+                _clipsLeft--;
+                if (!clip) { Plugin.Logger.LogError($"bundle clip not found: {ClipNames[i]}"); continue; }
+                clip.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+                Clips[ClipNames[i]] = clip;
+            }
+        }
+        catch (Exception e) { _clipsLeft = 0; Plugin.Logger.LogError($"bundle clip load failed: {e}"); }
     }
 
     private static void Fail(string why)

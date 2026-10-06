@@ -76,8 +76,13 @@ internal static class TerrainDamage
     // 決まった結果を地形に適用する (ホストも含め全員が同じ順で呼ぶ)。
     // 穴の形は量子化済みの結果の値だけから作る (ホストと客が同じ入力に同じ計算を掛けるため)
     // decide = 大きな瓦礫の止まる所をここで決める (ホスト)。false なら r.Landings を使う (客)
+    // 直前の適用で切った壁の数・割れた塊・大きな瓦礫の数 (壊れた音の大きさと高さに使う)。
+    // 全員が同じ結果の値から同じ計算で作る物なので、ホストと客で同じになる
+    internal static int LastCut, LastPieces, LastBlocks;
+
     public static string Apply(in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
+        LastCut = LastPieces = LastBlocks = 0;
         var profile = DamageProfile.Of(r.Kind);
         var given = decide ? null : r.Landings ?? Array.Empty<RubbleLanding>();
         landings = Array.Empty<RubbleLanding>();
@@ -183,6 +188,7 @@ internal static class TerrainDamage
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
+        LastCut = cut; LastPieces = pieces.Count; LastBlocks = landings.Length;
         return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} visual={visual ?? "ok"}";
     }
 
@@ -252,6 +258,7 @@ internal static class TerrainDamage
         else if (visual == null)
             landings = TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed, pieces, removed,
                 WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f, given);
+        LastCut = cut; LastPieces = pieces.Count; LastBlocks = landings.Length;
         return $"blunt breach cut={cut} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
     }
 

@@ -75,7 +75,11 @@ internal static class TerrainSync
         Applied++;
         TerrainDigest.Begin();
         try { return TerrainDamage.Apply(r, decide, out landings); }
-        finally { TerrainDigest.End(seq); }
+        finally
+        {
+            TerrainDigest.End(seq);
+            BreakNoise.Emit(r);
+        }
     }
 
     // 毎 FixedUpdate。積んだ物が無い時は整数 1 つの加算と比較だけで帰る

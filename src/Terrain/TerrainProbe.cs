@@ -45,6 +45,7 @@ internal static class TerrainProbe
         RegisterShaderInfo();
         RegisterDamage();
         RegisterFindSprite();
+        BreakNoise.Register();
         RegisterMapSurvey();
         RegisterNearWall();
     }
@@ -291,6 +292,19 @@ internal static class TerrainProbe
                 reply($"SPRITE {sp.name} rect={sp.textureRect.width}x{sp.textureRect.height} tex={(sp.texture ? sp.texture.name : "?")} ppu={sp.pixelsPerUnit}");
             }
             reply($"OK findsprite n={n}");
+        });
+        TestBridge.Register("findclip", "<正規表現> 読み込み済みの AudioClip を名前で探す", (args, reply) =>
+        {
+            var re = new System.Text.RegularExpressions.Regex(args.Trim(), System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            int n = 0;
+            foreach (var o in Resources.FindObjectsOfTypeAll(Il2CppInterop.Runtime.Il2CppType.Of<AudioClip>()))
+            {
+                var c = o.TryCast<AudioClip>();
+                if (!c || !re.IsMatch(c.name)) continue;
+                if (++n > 80) break;
+                reply($"CLIP {c.name} len={c.length:0.00}");
+            }
+            reply($"OK findclip n={n}");
         });
     }
 

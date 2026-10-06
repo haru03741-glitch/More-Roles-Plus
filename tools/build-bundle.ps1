@@ -4,7 +4,7 @@
   unity/MrpBundle を Unity 2022.3.44f1 (Among Us と同じ版) のバッチモードで開き、シェーダと素材を
   AssetBundle mrp_fx に焼いて Resources/Bundles/ に置く (csproj が DLL に埋め込む)。
 .DESCRIPTION
-  シェーダや素材を変えた時だけ手で実行する (dotnet build には組み込まない)。
+  シェーダや素材 (壁を壊した音を含む) を変えた時だけ手で実行する (dotnet build には組み込まない)。
   -Android: BuildTarget=Android で焼き mrp_fx.android.bundle として置く (Editor に Android Build Support が要る)。
 #>
 param(
@@ -21,6 +21,10 @@ $out = Join-Path $proj "$buildDir\mrp_fx"
 $log = Join-Path $proj 'Logs\build-bundle.log'
 
 if (-not (Test-Path $UnityExe)) { throw "Unity editor not found: $UnityExe" }
+
+# 壁を壊した音は Python (numpy・scipy) で合成してから Unity に取り込ませる
+& python (Join-Path $PSScriptRoot 'make-break-sounds.py') | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "make-break-sounds.py failed" }
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 
 $argList = @('-batchmode', '-nographics', '-quit', '-projectPath', ('"' + $proj + '"'), '-executeMethod', $method, '-logFile', ('"' + $log + '"'))
