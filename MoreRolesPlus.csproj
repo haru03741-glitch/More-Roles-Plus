@@ -44,6 +44,10 @@
     <ItemGroup>
         <Compile Remove="tools\**;unity\**;patcher\**" />
     </ItemGroup>
+    <!-- 能力ボタンの絵 (tools/make-button-icons.py で描く) -->
+    <ItemGroup>
+        <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
+    </ItemGroup>
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And Exists('$(MrpBepInExDir)\core')">
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\plugins\" ContinueOnError="WarnAndContinue" />

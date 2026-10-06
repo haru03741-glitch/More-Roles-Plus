@@ -37,7 +37,7 @@ internal static class PracticeIntroPatch
     public static void Prefix() => PracticeMatch.OnIntro();
 }
 
-// 練習とフリープレイでは試合中もチャット欄を出す (/hammer などをそこから打てるように)。
+// 練習とフリープレイでは試合中もチャット欄と破壊のボタンを出す。
 // 本編は HUD を出し直す時 (会議の後・死んだ時・フリープレイの始め) と、オンラインの試合ではイントロの後にチャット欄を隠すので、その両方の後に出す
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.OnGameStart))]
 internal static class SandboxChatOnStartPatch
@@ -55,32 +55,33 @@ internal static class SandboxChatPatch
 
     public static void Show(HudManager hud)
     {
-        if (!hud.Chat || !PracticeMatch.Sandbox) return;
+        if (!PracticeMatch.Sandbox) { Unshift(); return; }
+        if (!hud.Chat) return;
         hud.Chat.SetVisible(true);
-        LayOut(hud);
+        Shift();
         Terrain.SandboxCommands.ShowHint(hud.Chat);
+        Terrain.SandboxCommands.EnsureButtons();
     }
 
-    // 試合中の右上は「地図・設定・試合の情報」の並びで、チャットのボタンは試合の情報のボタンに半分重なる位置にある。
-    // チャットを試合の情報の 1 つ左へ置く (試合の情報のボタンは本編が置き直すので動かさない。
-    // 間隔は地図と設定のボタンの間から測るので何度呼んでも同じ)
-    private static void LayOut(HudManager hud)
+    // 試合の情報 (?) のボタンは毎フレーム「普段の位置」か「チャットをよけた位置」(会議中) のどちらかに自分を置く。
+    // チャットの後ろの板は右隣のボタンへつながる形なので、チャットを動かさず、練習とフリープレイの間だけ
+    // 普段の位置をよけた位置にする (静的な値を 1 回書くだけで、毎フレームの処理は足さない)
+    private static bool _shifted;
+    private static UnityEngine.Vector3 _default;
+
+    private static void Shift()
     {
-        var map = Aspect(hud.transform, "Buttons/TopRight/MapButton");
-        var menu = Aspect(hud.transform, "Buttons/TopRight/MenuButton");
-        var chat = Aspect(hud.Chat.transform, "ChatButton");
-        if (!map || !menu || !chat) return;
-        float x = menu.DistanceFromEdge.x;
-        float slot = x - map.DistanceFromEdge.x;
-        // 縦は本編のまま (チャットのボタンは絵の基準が他と違い、本編の値で同じ高さに見える)
-        var c = chat.DistanceFromEdge;
-        chat.DistanceFromEdge = new UnityEngine.Vector3(x + slot * 2f, c.y, c.z);
-        chat.AdjustPosition();
+        if (_shifted) return;
+        _default = MatchInfoHudButton.defaultDistanceFromEdge;
+        MatchInfoHudButton.defaultDistanceFromEdge = MatchInfoHudButton.adjustedDistanceFromEdge;
+        _shifted = true;
     }
 
-    private static AspectPosition Aspect(UnityEngine.Transform root, string path)
+    private static void Unshift()
     {
-        var t = root.Find(path);
-        return t ? t.GetComponent<AspectPosition>() : null;
+        if (!_shifted) return;
+        MatchInfoHudButton.defaultDistanceFromEdge = _default;
+        _shifted = false;
     }
 }
+

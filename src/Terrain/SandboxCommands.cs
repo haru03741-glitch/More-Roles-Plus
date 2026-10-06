@@ -13,11 +13,13 @@ internal static class SandboxCommands
     private const float DefaultForce = 0.5f;
     private const float DefaultRadius = 1.2f;
     private const float MaxRadius = 3f;
+    private const float HammerCooldown = 0.5f;
+    private const float BlastCooldown = 3f;
     private static ShipStatus _hinted;
 
     public static readonly Text Hint = new(
-        "練習: チャット欄に /hammer で近くの壁を叩く (3 回で崩れる)・/blast で自分の所を爆破",
-        "Practice: type /hammer to hit the nearest wall (breaks on the 3rd hit) or /blast to explode where you stand");
+        "練習: 右下のボタンかチャット欄の /hammer で近くの壁を叩く (3 回で崩れる)・爆破ボタンか /blast で自分の所を爆破",
+        "Practice: use the buttons or type /hammer to hit the nearest wall (breaks on the 3rd hit), /blast to explode where you stand");
 
     // 試合ごとに 1 回だけ、チャット欄に使い方を出す
     public static void ShowHint(ChatController chat)
@@ -40,25 +42,62 @@ internal static class SandboxCommands
             System.Globalization.CultureInfo.InvariantCulture, out float v) ? v : null;
         if (parts.Length == 1 && num == null) return false;
 
-        var lp = PlayerControl.LocalPlayer;
-        if (!lp || lp.Data == null || lp.Data.IsDead) { reply = new Text("生きている時だけ使えます", "Only while alive"); return true; }
-        Vector2 at = lp.GetTruePosition();
-        ushort seed = (ushort)Environment.TickCount;
-
-        if (name == "blast")
-        {
-            float r = Math.Clamp(num ?? DefaultRadius, 0.3f, MaxRadius);
-            TerrainSync.Request(new DamageEvent(DamageKind.Explosion, at, Vector2.zero, r, 0f, seed));
-            reply = new Text($"爆発 (半径 {r:0.0})", $"Blast (radius {r:0.0})");
-            return true;
-        }
-
-        float reach = DamageProfile.Of(DamageKind.Blunt).Reach;
-        if (!NearestWall(at, reach + 0.3f, out Vector2 dir)) { reply = new Text("近くに壊せる壁がありません", "No breakable wall nearby"); return true; }
-        float force = Math.Clamp(num ?? DefaultForce, 0f, 1f);
-        TerrainSync.Request(new DamageEvent(DamageKind.Blunt, at, dir, 0f, force, seed));
-        reply = new Text("ハンマーで叩いた", "Hammer hit");
+        reply = name == "blast" ? Blast(num ?? DefaultRadius, out _) : Hammer(num ?? DefaultForce, out _);
         return true;
+    }
+
+    // 自分の所で爆発させる。返り値は結果の説明
+    public static string Blast(float radius, out bool ok)
+    {
+        ok = false;
+        if (!Alive(out Vector2 at)) return new Text("生きている時だけ使えます", "Only while alive");
+        ok = true;
+        float r = Math.Clamp(radius, 0.3f, MaxRadius);
+        TerrainSync.Request(new DamageEvent(DamageKind.Explosion, at, Vector2.zero, r, 0f, (ushort)Environment.TickCount));
+        return new Text($"爆発 (半径 {r:0.0})", $"Blast (radius {r:0.0})");
+    }
+
+    // いちばん近い壁を叩く
+    public static string Hammer(float force, out bool ok)
+    {
+        ok = false;
+        if (!Alive(out Vector2 at)) return new Text("生きている時だけ使えます", "Only while alive");
+        float reach = DamageProfile.Of(DamageKind.Blunt).Reach;
+        if (!NearestWall(at, reach + 0.3f, out Vector2 dir)) return new Text("近くに壊せる壁がありません", "No breakable wall nearby");
+        ok = true;
+        TerrainSync.Request(new DamageEvent(DamageKind.Blunt, at, dir, 0f, Math.Clamp(force, 0f, 1f), (ushort)Environment.TickCount));
+        return new Text("ハンマーで叩いた", "Hammer hit");
+    }
+
+    private static bool Alive(out Vector2 at)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        at = default;
+        if (!lp || lp.Data == null || lp.Data.IsDead) return false;
+        at = lp.GetTruePosition();
+        return true;
+    }
+
+    // 練習とフリープレイの試合ごとに、ハンマーと爆破のボタンを出す (もう出ていれば何もしない)
+    private static Lifespan _buttons;
+
+    public static void EnsureButtons()
+    {
+        if (_buttons is { IsDead: false } || !Roles.PracticeMatch.Sandbox) return;
+        _buttons = Roles.RoleState.Match.Child();
+        var hammer = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("hammer"), new Text("ハンマー", "Hammer"), HammerCooldown,
+            () => Report(Hammer(DefaultForce, out bool ok), ok));
+        var bomb = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("bomb"), new Text("爆破", "Blast"), BlastCooldown,
+            () => Report(Blast(DefaultRadius, out bool ok), ok));
+        // HUD がまだ無くて作れなかった時は、次に HUD が出た時に作り直す
+        if (hammer == null || bomb == null) { _buttons.Release(); _buttons = null; }
+    }
+
+    // ボタンで使えなかった時だけ理由をチャット欄に出す (使えた時は画面の破壊で分かる)
+    private static bool Report(string result, bool ok)
+    {
+        if (!ok && HudManager.InstanceExists && HudManager.Instance.Chat) HudManager.Instance.Chat.AddChatWarning(result);
+        return ok;
     }
 
     // 8 方向でいちばん近い壊せる壁の向き

@@ -255,6 +255,9 @@ internal static class TerrainProbe
             reply($"OK netloop {TerrainSync.Loopback(events.ToArray(), rev)}");
         });
 
+        TestBridge.Register("modbutton", "[番号] MRP の能力ボタンの一覧 (名前・待ち時間・表示) / 番号のボタンを押す (人が押したのと同じ道)", (args, reply) =>
+            reply("OK modbutton " + Roles.ModButton.Probe(int.TryParse(args.Trim(), out int k) ? k : -1)));
+
         TestBridge.Register("terrainsync", "地形の同期の状態 (適用数・受けなかった依頼・指紋・客ごとの照合)", (args, reply) =>
         {
             var sb = new System.Text.StringBuilder("OK terrainsync");
