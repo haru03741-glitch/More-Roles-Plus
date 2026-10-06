@@ -109,6 +109,14 @@ internal static class LobbyCommands
             reply($"OK startgame map={(args.Length > 0 ? args : "current")} players={GameData.Instance.PlayerCount}");
         });
 
+        TestBridge.Register("pressstart", "ロビーの開始ボタンを押す (人数の下限は外さない・人が押したのと同じ。follow: wait phase=InGame 60)", (_, reply) =>
+        {
+            var gsm = GameStartManager.Instance;
+            if (!gsm || !AmongUsClient.Instance.AmHost) { reply("ERR pressstart not host in lobby"); return; }
+            gsm.StartButton.OnClick.Invoke();
+            reply($"OK pressstart min={gsm.MinPlayers} players={GameData.Instance.PlayerCount}");
+        });
+
         TestBridge.Register("noend", "<on|off> 本編の試合の終わりを全部止める (MRP の勝ちと forcewin は通る。テスト用)", (args, reply) =>
         {
             NoGameEnd = args.Trim() != "off";

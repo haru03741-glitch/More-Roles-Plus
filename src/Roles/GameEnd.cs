@@ -195,11 +195,14 @@ public static class GameEnd
 
     // ---- ホスト: 終わる直前に結果を配る (本編の判定で終わる時もここを通る) ----
 
+    // 自動の終わりを止めている (テスト用の noend か、人数が足りない練習の試合)
+    internal static bool Held => Bridge.LobbyCommands.NoGameEnd || PracticeMatch.Active;
+
     // 本編が出した終わりを通すか (MRP が決めた終わりは常に通す)
     internal static bool Allows(GameOverReason reason)
     {
         if (_pending != null) return true;
-        if (Bridge.LobbyCommands.NoGameEnd) return false;
+        if (GameEnd.Held) return false;
         if (!RoleState.AnyNeutral) return true;
         return reason switch
         {
@@ -321,7 +324,7 @@ internal static class CheckEndCriteriaPatch
 {
     public static bool Prefix()
     {
-        if (Bridge.LobbyCommands.NoGameEnd) return false;
+        if (GameEnd.Held) return false;
         if (!RoleState.AnyNeutral) return true;
         GameEnd.Check();
         return false;
@@ -335,8 +338,8 @@ internal static class GameOverDueToDeathPatch
 {
     public static bool Prefix(ref bool __result)
     {
-        if (!RoleState.AnyNeutral && !Bridge.LobbyCommands.NoGameEnd) return true;
-        __result = !Bridge.LobbyCommands.NoGameEnd && GameData.Instance && GameEnd.Decide(out _, out _) != null;
+        if (!RoleState.AnyNeutral && !GameEnd.Held) return true;
+        __result = !GameEnd.Held && GameData.Instance && GameEnd.Decide(out _, out _) != null;
         return false;
     }
 }
