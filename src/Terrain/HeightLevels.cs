@@ -17,6 +17,7 @@ internal static class HeightLevels
     private const int ShipLayer = 9;
     private const float Probe = 2.6f;   // 壁の面から床を探す深さ (奥の面の深さと同じ)
     private const float Piece = 0.25f;  // 縁を決める区間の長さ
+    private const float ZoneInset = 0.4f; // 高さの区域を床の縁からどれだけ内側で見るか
 
     // マップごとの、はしごを使わずにつながる段差の部屋の組 (どちら向きでもよい)。はしごの上と下の部屋は自動で足す
     private static readonly (SystemTypes, SystemTypes)[] AirshipPairs = Array.Empty<(SystemTypes, SystemTypes)>();
@@ -74,7 +75,8 @@ internal static class HeightLevels
         Ensure();
         if (!FloorAlong(m, n, out int ia, out Vector2 pa) || !FloorAlong(m, -n, out int ib, out Vector2 pb)) return false;
         if (ia != ib) return true;
-        if (ZoneLevel(pa) != ZoneLevel(pb)) return true;
+        // 区域は床の縁から少し内側で見る (塗った範囲が壁の線を少しはみ出しても、届かなくても同じ結果になるように)
+        if (ZoneLevel(pa + n * ZoneInset) != ZoneLevel(pb - n * ZoneInset)) return true;
         if (Pairs.Count == 0) return false;
         var ra = RoomAt(pa);
         var rb = RoomAt(pb);
