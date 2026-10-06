@@ -31,6 +31,9 @@ public abstract class RoleBase
 
     public abstract Text Name { get; }
 
+    // 名前の読み (ひらがな)。設定画面の検索で、漢字の名前をかなで打っても見つかるようにする
+    public virtual string Reading => null;
+
     // イントロに出る一行の説明
     public abstract Text Blurb { get; }
 

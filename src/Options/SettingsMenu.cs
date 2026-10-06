@@ -12,7 +12,7 @@ using Object = UnityEngine.Object;
 namespace MoreRolesPlus.Options;
 
 // Based on https://github.com/waffle-ful/Aeterna-End-K-not Patches/GameOptionsMenuPatch.cs (GPL-3.0)
-// 本編の「ゲーム設定」画面に MRP のタブ (全般・クルー・インポスター・第三陣営) を足す。
+// 本編の「ゲーム設定」画面に MRP のタブ (全般・役職) を足す。役職のタブの中身は RoleMenu。
 // - タブは本編のタブを複製して作り、行も本編の行の部品 (チェックボックス / 数値) を複製して並べる。
 // - 行の操作 (± / チェック) は本編の処理の前で横取りして MRP の設定項目を書き換える。
 //   本編の行の OnValueChanged には何も入れない (管理側のデリゲートを il2cpp の欄に入れると、
@@ -26,11 +26,10 @@ internal static class SettingsMenu
     private const float GameButtonX = 370f, GameButtonY = 760f;
     private const float LeftColumnX = 240f, RightColumnX = 474f, FirstRowY = 640f, RowStepY = 95f;
     private const float CompactX = 0.48f, CompactY = 0.8f;
-    private static readonly Tab[] TabOrder = { Tab.General, Tab.Crew, Tab.Impostor, Tab.Neutral };
 
     private sealed class Page
     {
-        public Tab Tab;
+        public bool Roles;  // false = 全般のタブ
         public PassiveButton Button;
         public GameOptionsMenu Menu;
     }
@@ -70,23 +69,19 @@ internal static class SettingsMenu
         return "unknown row";
     }
 
+    // 試験用: 開いている MRP のタブ
+    internal static Transform OpenPage()
+    {
+        foreach (var p in Pages)
+            if (p.Menu && p.Menu.gameObject.activeSelf) return p.Menu.transform;
+        return null;
+    }
+
     public static bool IsOurMenu(GameOptionsMenu m, out int page) => MenuToPage.TryGetValue(m.Pointer, out page);
 
-    private static Text TabName(Tab t) => t switch
-    {
-        Tab.General => new Text("MRP 全般", "MRP"),
-        Tab.Crew => new Text("クルー", "Crew"),
-        Tab.Impostor => new Text("インポスター", "Impostor"),
-        _ => new Text("第三陣営", "Neutral"),
-    };
+    private static Text TabName(bool roles) => roles ? RoleMenu.TabName : new Text("MRP 全般", "MRP");
 
-    private static Color TabColor(Tab t) => t switch
-    {
-        Tab.Crew => new Color(0.55f, 0.85f, 1f),
-        Tab.Impostor => new Color(1f, 0.35f, 0.35f),
-        Tab.Neutral => new Color(1f, 0.7f, 0.25f),
-        _ => new Color(0.75f, 0.6f, 1f),
-    };
+    private static Color TabColor(bool roles) => roles ? new Color(1f, 0.8f, 0.35f) : new Color(0.75f, 0.6f, 1f);
 
     // 本編がゲーム設定タブを組み立てる前の、空のタブを型として取っておく
     public static void OnMenuEnable(GameSettingMenu menu)
@@ -104,6 +99,7 @@ internal static class SettingsMenu
         Pages.Clear();
         MenuToPage.Clear();
         Rows.Clear();
+        RoleMenu.Forget();
         if (!_template) return;
 
         // 左の列を 2 列に詰める: 左 = 本編の 3 つ、右 = MRP のタブ。
@@ -115,10 +111,11 @@ internal static class SettingsMenu
         Vector3 At(float px, float py) => origin + new Vector3((px - GameButtonX) * unit, (GameButtonY - py) * unit, 0f);
         PassiveButton[] vanilla = { menu.GamePresetsButton, gameBtn, menu.RoleSettingsButton };
 
-        foreach (var tab in TabOrder)
+        foreach (bool roles in new[] { false, true })
         {
-            if (Registry.SectionsOf(tab).Count == 0) continue;
+            if (roles ? !RoleMenu.HasContent() : Registry.SectionsOf(Tab.General).Count == 0) continue;
             int index = Pages.Count;
+            string tab = roles ? "Roles" : "General";
 
             var btn = Object.Instantiate(gameBtn, gameBtn.transform.parent);
             btn.name = "MrpTabButton_" + tab;
@@ -126,8 +123,8 @@ internal static class SettingsMenu
             var label = btn.GetComponentInChildren<TextMeshPro>();
             var tr = label.GetComponent<TextTranslatorTMP>();
             if (tr) Object.Destroy(tr);
-            label.text = TabName(tab);
-            Color c = TabColor(tab);
+            label.text = TabName(roles);
+            Color c = TabColor(roles);
             btn.inactiveSprites.GetComponent<SpriteRenderer>().color = new Color(c.r * 0.6f, c.g * 0.6f, c.b * 0.6f, 1f);
             btn.activeSprites.GetComponent<SpriteRenderer>().color = c;
             btn.selectedSprites.GetComponent<SpriteRenderer>().color = c;
@@ -141,7 +138,7 @@ internal static class SettingsMenu
             page.name = "MrpTab_" + tab;
             page.gameObject.SetActive(false);
             MenuToPage[page.Pointer] = index;
-            Pages.Add(new Page { Tab = tab, Button = btn, Menu = page });
+            Pages.Add(new Page { Roles = roles, Button = btn, Menu = page });
         }
         // MRP のボタンは本編のボタンを複製して作るので、本編の方を縮めるのは複製の後
         for (int i = 0; i < vanilla.Length; i++) Compact(vanilla[i], At(LeftColumnX, FirstRowY + i * RowStepY), scale);
@@ -204,7 +201,9 @@ internal static class SettingsMenu
             var desc = menu.MenuDescriptionText;
             var tr = desc.GetComponent<TextTranslatorTMP>();
             if (tr) Object.Destroy(tr);
-            desc.text = new Text("More Roles Plus の設定。閉じた時に全員へ送られます。", "More Roles Plus settings. Sent to everyone when you close this menu.");
+            desc.text = Pages[index].Roles
+                ? RoleMenu.DefaultDescription
+                : new Text("More Roles Plus の設定。閉じた時に全員へ送られます。", "More Roles Plus settings. Sent to everyone when you close this menu.");
         }
         if (previewOnly)
         {
@@ -237,7 +236,11 @@ internal static class SettingsMenu
         {
             m.MapPicker.gameObject.SetActive(false);
             m.Children = new Il2CppSystem.Collections.Generic.List<OptionBehaviour>();
-            try { Build(m, Pages[index].Tab); }
+            try
+            {
+                if (Pages[index].Roles) RoleMenu.Build(m, GameSettingMenu.Instance);
+                else Build(m, Tab.General);
+            }
             catch (Exception e) { Plugin.Logger.LogError($"settings tab build: {e}"); }
             m.cachedData = GameOptionsManager.Instance.CurrentGameOptions;
             m.InitializeControllerNavigation();
@@ -267,19 +270,27 @@ internal static class SettingsMenu
 
             foreach (var opt in sec.Opts)
             {
-                OptionBehaviour row = opt is BoolOpt
-                    ? Object.Instantiate(m.checkboxOrigin, m.settingsContainer)
-                    : Object.Instantiate(m.numberOptionOrigin, m.settingsContainer);
+                var row = MakeRow(m, opt);
                 row.transform.localPosition = new Vector3(rowX, y, z);
-                row.SetClickMask(m.ButtonClickMask);
-                row.SetUpFromData(opt is BoolOpt ? _checkData : _numberData, 20);
-                Rows[row.Pointer] = opt;
-                Refresh(row, opt);
                 m.Children.Add(row);
                 y -= 0.45f;
             }
         }
         m.scrollBar.SetYBoundsMax(-y - 1.65f);
+    }
+
+    // 設定項目 1 つ分の行 (本編の数値 / チェックの行の複製)。操作は下のパッチが MRP の項目へ回す
+    internal static OptionBehaviour MakeRow(GameOptionsMenu m, Opt opt)
+    {
+        EnsureData();
+        OptionBehaviour row = opt is BoolOpt
+            ? Object.Instantiate(m.checkboxOrigin, m.settingsContainer)
+            : Object.Instantiate(m.numberOptionOrigin, m.settingsContainer);
+        row.SetClickMask(m.ButtonClickMask);
+        row.SetUpFromData(opt is BoolOpt ? _checkData : _numberData, 20);
+        Rows[row.Pointer] = opt;
+        Refresh(row, opt);
+        return row;
     }
 
     private static void EnsureData()
@@ -311,6 +322,9 @@ internal static class SettingsMenu
         {
             num.TitleText.text = opt.Label;
             num.ValueText.text = opt.Display();
+            // 数値は端で止まるので、それ以上動かない側のボタンを灰色にする
+            num.MinusBtn?.SetInteractable(opt.Index > 0);
+            num.PlusBtn?.SetInteractable(opt.Index < opt.Count - 1);
             return;
         }
         var tog = row.TryCast<ToggleOption>();
@@ -329,6 +343,7 @@ internal static class SettingsMenu
         }
         // 閉じた画面の行は破棄され、そのアドレスは別の物に使い回されうるので、ここで全部忘れる
         Rows.Clear();
+        RoleMenu.Forget();
         MenuToPage.Clear();
         Pages.Clear();
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
@@ -388,7 +403,7 @@ internal static class NumberOptionPatch
     {
         if (!SettingsMenu.TryRow(row, out var opt)) return true;
         opt.Step(delta);
-        row.ValueText.text = opt.Display();
+        SettingsMenu.Refresh(row, opt);
         return false;
     }
 }

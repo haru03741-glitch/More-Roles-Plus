@@ -34,12 +34,14 @@ public abstract class Opt
     // 設定画面の値の欄に出す文字
     internal abstract string Display();
 
-    // 左右のボタン。端まで行ったら反対の端へ回る
+    // 左右のボタン。数値は端で止まる (押しすぎて反対の端へ飛ばないように)。ON/OFF と文字の選択肢は回る
     internal void Step(int delta)
     {
         int n = Count;
-        Index = ((Index + delta) % n + n) % n;
+        Index = Wraps ? ((Index + delta) % n + n) % n : Math.Clamp(Index + delta, 0, n - 1);
     }
+
+    protected virtual bool Wraps => false;
 
     internal void SetIndex(int index)
     {
@@ -60,6 +62,7 @@ public sealed class BoolOpt : Opt
 
     public bool Value => Index != 0;
     internal override int Count => 2;
+    protected override bool Wraps => true;
     internal override string Display() => Value ? "ON" : "OFF";
 
     public static implicit operator bool(BoolOpt o) => o.Value;
@@ -134,6 +137,7 @@ public sealed class ChoiceOpt : Opt
 
     public int Value => Index;
     internal override int Count => _choices.Length;
+    protected override bool Wraps => true;
     internal override string Display() => _choices[Index];
 
     public static implicit operator int(ChoiceOpt o) => o.Value;

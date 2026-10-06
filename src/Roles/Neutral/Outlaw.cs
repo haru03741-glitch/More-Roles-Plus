@@ -8,6 +8,7 @@ public sealed class Outlaw : RoleBase
     public override Team Team => Team.Neutral;
     public override string Color => "#8C6239";
     public override Text Name => new("無法者", "Outlaw");
+    public override string Reading => "むほうもの";
     public override Text Blurb => new("全員を倒して最後に残れ", "Be the last one standing");
     public override bool IsKiller => true;
 

@@ -41,6 +41,10 @@
     <ItemGroup Condition="'$(Configuration)' == 'Android'">
         <EmbeddedResource Include="Resources\Bundles\mrp_fx.android.bundle" LogicalName="MoreRolesPlus.Resources.Bundles.mrp_fx.bundle" />
     </ItemGroup>
+    <!-- 設定画面の見出し用のフォント (SIL OFL 1.1・JIS 第一水準までに削ったもの) -->
+    <ItemGroup>
+        <EmbeddedResource Include="Resources\Fonts\MochiyPopOne-Regular.ttf" LogicalName="MoreRolesPlus.Resources.Fonts.MochiyPopOne-Regular.ttf" />
+    </ItemGroup>
     <ItemGroup>
         <Compile Remove="tools\**;unity\**;patcher\**" />
     </ItemGroup>

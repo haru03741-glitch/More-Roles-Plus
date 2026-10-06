@@ -6,6 +6,7 @@ public sealed class Jester : RoleBase
     public override Team Team => Team.Neutral;
     public override string Color => "#EC62A5";
     public override Text Name => new("道化", "Jester");
+    public override string Reading => "どうけ";
     public override Text Blurb => new("みんなをだまして追放されよう", "Get yourself voted out");
 
     // 追放は全員の端末で起きるが、勝ちを決めるのはホストだけ (GameEnd.Win はホストでだけ効く)

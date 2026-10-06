@@ -175,6 +175,46 @@ internal static class RoleCommands
             reply($"OK viewsettings {LobbyView.Open(tab, max)}");
         });
 
+        TestBridge.Register("rolemenu", "[q <語> | team <-1|0|1|2> | only | scroll <0〜1> | open <役職Id> | press <役職Id> <count|chance> <+1|-1>] 設定画面の役職タブを操作して、見えている行を返す", (args, reply) =>
+            reply("OK rolemenu " + RoleMenu.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
+
+        TestBridge.Register("uitree", "<chat|menu|page|GameObject のパス> [深さ=3] 画面の部品の階層 (位置・大きさ・部品の種類・有効か)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 0) { reply("ERR uitree target"); return; }
+            int depth = a.Length > 1 && int.TryParse(a[1], out int d) ? d : 3;
+            UnityEngine.Transform root = a[0] switch
+            {
+                "chat" => HudManager.InstanceExists && HudManager.Instance.Chat ? HudManager.Instance.Chat.freeChatField?.transform : null,
+                "menu" => GameSettingMenu.Instance ? GameSettingMenu.Instance.transform : null,
+                "page" => SettingsMenu.OpenPage(),
+                _ => UnityEngine.GameObject.Find(a[0])?.transform,
+            };
+            if (!root) { reply($"ERR uitree not found: {a[0]}"); return; }
+            var sb = new System.Text.StringBuilder();
+            void Walk(UnityEngine.Transform t, int level)
+            {
+                var p = t.localPosition; var s = t.localScale;
+                sb.Append('\n').Append(' ', level * 2).Append(t.gameObject.activeSelf ? "" : "(off) ").Append(t.name)
+                  .Append($" pos=({p.x:0.###},{p.y:0.###},{p.z:0.###}) scale=({s.x:0.###},{s.y:0.###})");
+                foreach (var c in t.GetComponents<UnityEngine.Component>())
+                {
+                    if (c == null || c.TryCast<UnityEngine.Transform>() != null) continue;
+                    sb.Append(' ').Append(c.GetIl2CppType().Name);
+                    var sr = c.TryCast<UnityEngine.SpriteRenderer>();
+                    if (sr != null) sb.Append($"[size={sr.size.x:0.##}x{sr.size.y:0.##} sprite={(sr.sprite ? sr.sprite.name : "-")} order={sr.sortingOrder}]");
+                    var tmp = c.TryCast<TMPro.TextMeshPro>();
+                    if (tmp != null) sb.Append($"[\"{tmp.text}\" fs={tmp.fontSize:0.##}]");
+                    var bc = c.TryCast<UnityEngine.BoxCollider2D>();
+                    if (bc != null) sb.Append($"[box={bc.size.x:0.##}x{bc.size.y:0.##}]");
+                }
+                if (level >= depth) return;
+                for (int i = 0; i < t.childCount; i++) Walk(t.GetChild(i), level + 1);
+            }
+            Walk(root, 0);
+            reply("OK uitree" + sb);
+        });
+
         TestBridge.Register("closesettings", "設定画面を閉じる", (_, reply) =>
         {
             if (!GameSettingMenu.Instance) { reply("ERR closesettings menu not open"); return; }
