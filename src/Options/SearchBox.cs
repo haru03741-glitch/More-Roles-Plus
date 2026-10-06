@@ -1,3 +1,4 @@
+// Based on https://github.com/Gurge44/EndlessHostRoles Patches/GameOptionsMenuPatch.cs (GPL-3.0)
 using System;
 using HarmonyLib;
 using TMPro;

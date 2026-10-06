@@ -1,4 +1,5 @@
-﻿<#
+﻿# Based on https://github.com/waffle-ful/Aeterna-End-K-not tools/build-fx-bundle.ps1 (GPL-3.0)
+<#
 .SYNOPSIS
   unity/MrpBundle を Unity 2022.3.44f1 (Among Us と同じ版) のバッチモードで開き、シェーダと素材を
   AssetBundle mrp_fx に焼いて Resources/Bundles/ に置く (csproj が DLL に埋め込む)。

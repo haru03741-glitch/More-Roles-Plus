@@ -1,3 +1,4 @@
+// Based on https://github.com/waffle-ful/Aeterna-End-K-not Modules/FxShaderBundle.cs (GPL-3.0)
 using System;
 using System.IO;
 using System.Reflection;

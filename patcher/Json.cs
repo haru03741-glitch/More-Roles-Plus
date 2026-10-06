@@ -1,3 +1,4 @@
+// Based on https://github.com/waffle-ful/Aeterna-End-K-not (EndKnot.BootAccel, GPL-3.0)
 using System;
 using System.Collections.Generic;
 using System.Globalization;

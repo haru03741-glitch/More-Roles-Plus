@@ -1,3 +1,4 @@
+// Based on https://github.com/waffle-ful/Aeterna-End-K-not unity/FxBundle/Assets/Editor/FxBundleBuilder.cs (GPL-3.0)
 using System.IO;
 using UnityEditor;
 using UnityEngine;

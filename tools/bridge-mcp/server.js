@@ -1,3 +1,4 @@
+// Based on https://github.com/waffle-ful/Aeterna-End-K-not tools/bridge-mcp/server.js (GPL-3.0)
 // mrp-bridge-mcp — ゲーム内 TestBridge (src/Bridge/TestBridge.cs) のファイルプロトコルを
 // 型付きツールとして提供する stdio MCP サーバー。
 // 入出力先は <Desktop>/MRP_Logs/bridge (MRP_BRIDGE_DIR で上書き可)。

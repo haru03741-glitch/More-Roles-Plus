@@ -1,3 +1,4 @@
+// Based on https://github.com/waffle-ful/Aeterna-End-K-not Patches/ControlPatch.cs and https://github.com/Gurge44/EndlessHostRoles Patches/ControlPatch.cs (GPL-3.0)
 using System;
 using MoreRolesPlus.Options;
 using UnityEngine;

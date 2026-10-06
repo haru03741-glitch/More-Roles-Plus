@@ -1,3 +1,4 @@
+// Based on https://github.com/waffle-ful/Aeterna-End-K-not Patches/LobbyViewSettingsPanePatch.cs and https://github.com/Gurge44/EndlessHostRoles (GPL-3.0)
 using System;
 using AmongUs.GameOptions;
 using HarmonyLib;

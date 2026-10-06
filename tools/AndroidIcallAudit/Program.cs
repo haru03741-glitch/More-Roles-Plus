@@ -1,3 +1,4 @@
+// Based on https://github.com/waffle-ful/Aeterna-End-K-not tools/AndroidIcallAudit/Program.cs (GPL-3.0)
 // Lists the Unity engine internal calls (ICalls) that the mod can reach on Android and that the
 // game's own libunity.so does not register.
 //
