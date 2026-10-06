@@ -14,6 +14,7 @@ public sealed class GameResult
 {
     public Team? Team { get; internal set; }
     public RoleBase Role { get; internal set; }
+    public bool Draw { get; internal set; } // 廃村 (ホストが打ち切った・勝者なし)
     public readonly HashSet<byte> Winners = new();
 }
 
@@ -62,6 +63,17 @@ public static class GameEnd
         _lifeSupp = null;
         _critical = null;
     }
+
+    // 廃村: 勝者なしで試合を打ち切る (ホストのみ)
+    internal static bool Abort()
+    {
+        if (!AmongUsClient.Instance.AmHost || !GameData.Instance || !ShipStatus.Instance || _pending != null) return false;
+        End(new GameResult { Draw = true }, GameOverReason.ImpostorsByKill);
+        return true;
+    }
+
+    // 結果がもう決まっている (MRP が決めた終わりの途中)
+    internal static bool Decided => _pending != null;
 
     internal static void End(GameResult r, GameOverReason reason)
     {
@@ -221,7 +233,7 @@ public static class GameEnd
         Plugin.Logger.LogInfo($"end reason={reason}");
         foreach (var role in RoleState.All)
         {
-            if (r.Winners.Contains(role.PlayerId)) continue;
+            if (r.Draw || r.Winners.Contains(role.PlayerId)) continue;
             try
             {
                 if (role.AlsoWins(r)) r.Winners.Add(role.PlayerId);
@@ -236,7 +248,7 @@ public static class GameEnd
     private static readonly RemoteCall<GameResult> Result = new("GameEnd.Result", Route.HostToAll,
         (w, r) =>
         {
-            w.Write((byte)(r.Team == Team.Crew ? 1 : r.Team == Team.Impostor ? 2 : 0));
+            w.Write((byte)(r.Draw ? 3 : r.Team == Team.Crew ? 1 : r.Team == Team.Impostor ? 2 : 0));
             w.WritePacked(r.Role == null ? -1 : Registry.Roles.FindIndex(x => x.Id == r.Role.Id));
             w.Write((byte)r.Winners.Count);
             foreach (byte pid in r.Winners) w.Write(pid);
@@ -247,6 +259,7 @@ public static class GameEnd
             int team = reader.ReadByte();
             if (team == 1) r.Team = Team.Crew;
             else if (team == 2) r.Team = Team.Impostor;
+            else if (team == 3) r.Draw = true;
             int idx = reader.ReadPackedInt32();
             if (idx >= 0 && idx < Registry.Roles.Count) r.Role = Registry.Roles[idx];
             int n = reader.ReadByte();
@@ -269,7 +282,7 @@ public static class GameEnd
         LocalWon = lp && r.Winners.Contains(lp.PlayerId);
         LocalNeutral = RoleState.Local?.Team == Team.Neutral;
         _localColor = RoleState.Local?.Color;
-        Plugin.Logger.LogInfo($"win: team={r.Team?.ToString() ?? "-"} role={r.Role?.Id ?? "-"} winners=[{string.Join(",", r.Winners)}] localWon={LocalWon}");
+        Plugin.Logger.LogInfo($"win: draw={r.Draw} team={r.Team?.ToString() ?? "-"} role={r.Role?.Id ?? "-"} winners=[{string.Join(",", r.Winners)}] localWon={LocalWon}");
     }
 
     // ---- 全員: 終了画面の勝者を差し替える ----
@@ -300,6 +313,14 @@ public static class GameEnd
     internal static void ApplyText(EndGameManager egm)
     {
         if (Last == null || !egm) return;
+        if (Last.Draw)
+        {
+            egm.WinText.text = new Text("廃村", "Game Aborted");
+            egm.WinText.color = Color.white;
+            egm.BackgroundBar.material.color = Color.gray;
+            AddSubText(egm, new Text("ホストが試合を打ち切りました", "The host ended the game"), Color.gray);
+            return;
+        }
         if (Last.Role == null && !LocalNeutral) return; // 陣営の勝ちでクルー / インポスターから見る時は本編の表示が合っている
 
         var color = Last.Role != null ? RoleDisplay.ParseColor(Last.Role.Color)
@@ -309,12 +330,18 @@ public static class GameEnd
         if (Last.Role == null) return;
 
         egm.BackgroundBar.material.color = color;
+        AddSubText(egm, Lang.IsJapanese ? $"{Last.Role.Name}の勝利" : $"{Last.Role.Name} Wins", color);
+    }
+
+    // 勝ち負けの文字の下に小さく 1 行足す
+    private static void AddSubText(EndGameManager egm, string text, Color color)
+    {
         var sub = UnityEngine.Object.Instantiate(egm.WinText.gameObject, egm.WinText.transform.parent);
         sub.name = "MrpWinner";
         sub.transform.localPosition = egm.WinText.transform.localPosition + new Vector3(0f, -0.9f, 0f);
         sub.transform.localScale = egm.WinText.transform.localScale * 0.45f;
         var tmp = sub.GetComponent<TMPro.TextMeshPro>();
-        tmp.text = Lang.IsJapanese ? $"{Last.Role.Name}の勝利" : $"{Last.Role.Name} Wins";
+        tmp.text = text;
         tmp.color = color;
     }
 }
@@ -357,7 +384,8 @@ internal static class RpcEndGamePatch
             if (GameEnd.Blocked++ == 0) Plugin.Logger.LogInfo($"end blocked: {endReason}");
             return false;
         }
-        if (!RoleState.AnyNeutral) return true;
+        // 第三陣営がいない試合は本編の判定のまま。廃村など MRP が決めた終わりは常に配る
+        if (!RoleState.AnyNeutral && !GameEnd.Decided) return true;
         try { GameEnd.Announce(endReason); }
         catch (Exception e) { Plugin.Logger.LogError($"win announce: {e}"); }
         return true;

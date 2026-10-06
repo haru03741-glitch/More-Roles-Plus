@@ -65,8 +65,7 @@ internal static class DevCommands
             var p = Player(pid);
             if (!p || p.Data == null) { reply($"ERR revive no player {pid}"); return; }
             if (!p.Data.IsDead) { reply($"ERR revive {pid} is alive"); return; }
-            ReviveLocal(pid);
-            ReviveCall.Send(pid);
+            Revive(pid);
             reply($"OK revive {pid}");
         });
 
@@ -230,6 +229,40 @@ internal static class DevCommands
     private static PlayerControl Player(byte pid)
         => GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
 
+    // ホスト: その人を生き返らせて全員に知らせる
+    internal static void Revive(byte pid)
+    {
+        ReviveLocal(pid);
+        ReviveCall.Send(pid);
+    }
+
+    // 生きていた時の役職 (NetworkedPlayerInfo.RoleWhenAlive)。interop の Nullable の読み出しは中身を取り違えるので、
+    // 欄の中身 { bool hasValue; RoleTypes value; } を直接読む
+    // 位置は初めて使う時に引く (本編の更新で名前が変わって引けなくても、役職を戻さないだけにする)
+    private static IntPtr _roleWhenAliveField;
+    private static int _hasValueAt = -1, _valueAt = -1;
+
+    private static unsafe RoleTypes? RoleWhenAlive(NetworkedPlayerInfo data)
+    {
+        if (_valueAt < 0)
+        {
+            _roleWhenAliveField = Il2CppInterop.Runtime.IL2CPP.GetIl2CppField(
+                Il2CppInterop.Runtime.Il2CppClassPointerStore<NetworkedPlayerInfo>.NativeClassPtr, "RoleWhenAlive");
+            if (_roleWhenAliveField == IntPtr.Zero) return null;
+            var klass = Il2CppInterop.Runtime.Il2CppClassPointerStore<Il2CppSystem.Nullable<RoleTypes>>.NativeClassPtr;
+            var hv = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(klass, "hasValue");
+            var v = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(klass, "value");
+            if (hv == IntPtr.Zero || v == IntPtr.Zero) return null;
+            // 値型の欄の位置は箱の頭 (ポインタ 2 つ分) を含むので引く
+            int header = IntPtr.Size * 2;
+            _hasValueAt = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(hv) - header;
+            _valueAt = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(v) - header;
+        }
+        byte* field = (byte*)Il2CppInterop.Runtime.IL2CPP.Il2CppObjectBaseToPtrNotNull(data)
+                      + Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(_roleWhenAliveField);
+        return field[_hasValueAt] != 0 ? (RoleTypes)(*(ushort*)(field + _valueAt)) : null;
+    }
+
     // 本編の Revive は手元の状態だけ戻すので、全員がそれぞれ呼ぶ
     private static void ReviveLocal(byte pid)
     {
@@ -237,8 +270,12 @@ internal static class DevCommands
         if (!p || p.Data == null || !p.Data.IsDead) return;
         p.Revive();
         // 死ぬと本編が幽霊の役職に替えるので、生きていた時の役職に戻す
-        var alive = p.Data.RoleWhenAlive;
-        if (alive.HasValue) RoleManager.Instance.SetRole(p, alive.Value);
+        var alive = RoleWhenAlive(p.Data);
+        // 読めない時や幽霊側の役職が入っている時 (フリープレイなど) は、陣営の基本の役職に戻す
+        if (!alive.HasValue || RoleManager.IsGhostRole(alive.Value))
+            alive = p.Data.Role && p.Data.Role.TeamType == RoleTeamTypes.Impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
+        RoleManager.Instance.SetRole(p, alive.Value);
+        Plugin.Logger.LogInfo($"revive {pid}: alive role={alive?.ToString() ?? "-"} now={p.Data.Role?.Role}");
         if (p.AmOwner) RemoveGhostHint(p);
         // 倒れた体が残ると通報できてしまうので片付ける
         foreach (var body in UnityEngine.Object.FindObjectsOfType<DeadBody>())
