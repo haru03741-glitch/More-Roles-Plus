@@ -41,6 +41,11 @@ internal static class ChatCommands
         Add(new[] { "setrole" }, Who.Host, "<役職> [番号]", new Text("その人 (省略で自分) の役職を変える (試合中)", "Change someone's role (yourself if omitted, in game)"), HostActions.SetRole);
         Add(new[] { "kill" }, Who.Host, "[番号]", new Text("その人 (省略で自分) を倒す (自分は Shift+E+Enter)", "Kill someone (yourself if omitted, Shift+E+Enter)"), HostActions.Kill);
         Add(new[] { "revive" }, Who.Host, "[番号]", new Text("その人 (省略で自分) を生き返らせる", "Revive someone (yourself if omitted)"), HostActions.Revive);
+        Add(new[] { "kick" }, Who.Host, "<番号>", new Text("その人を部屋から出す", "Kick someone out of the room"), JoinLists.Kick);
+        Add(new[] { "ban" }, Who.Host, "<番号>", new Text("その人を BAN して一覧に書く (次から入れない)", "Ban someone and add them to the ban list"), JoinLists.Ban);
+        Add(new[] { "banlist" }, Who.Host, "", new Text("BAN 一覧", "Show the ban list"), JoinLists.BanList);
+        Add(new[] { "unban" }, Who.Host, "<一覧の番号|フレンドコード>", new Text("BAN を解く", "Remove someone from the ban list"), JoinLists.Unban);
+        Add(new[] { "wl", "whitelist" }, Who.Host, "[add <番号> | del <一覧の番号>]", new Text("ホワイトリストの一覧 / 追加 / 削除 (使うかは設定で)", "Whitelist: list / add / remove (turn it on in settings)"), JoinLists.WhiteCmd);
 
         Add(new[] { "devhelp" }, Who.Dev, "[語]", new Text("開発者コマンドの一覧", "List the developer commands"), args =>
         {
