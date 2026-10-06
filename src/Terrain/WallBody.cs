@@ -5,7 +5,8 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // 壊す前の壁の線から「壁の中 (厚みの内側)」を判定し、穴の側面に蓋 (壁の断面の当たり判定) を作る。
-// 壁の中 = 歩ける基準点 (叩いた側・爆心) からその点まで線を引き、壁の線を奇数回横切る所。
+// 壁の中 = 歩ける所の地図 (SolidMap) で歩けない所。地図が作れなかった時だけ、歩ける基準点 (叩いた側・爆心) から
+// その点まで線を引き、壁の線を奇数回横切る所とする (基準点が前の穴の中にあると反転するので、地図がある時は使わない)。
 // そのうち切り取った面から壁を横切らずに見通せる所だけを「穴から露出した壁の中」とする
 // (切っていない外壁の向こうの宇宙などに蓋や穴の絵を作らないため)。
 // 見た目の穴 (DamageMap.Stamp) と蓋は同じ判定から出す。どちらかだけだと絵と当たり判定が食い違う
@@ -16,6 +17,7 @@ internal sealed class WallBody
     private readonly List<Vector2> _seg = new();     // 壊す前の壁の線分 (両端を 2 つずつ)
     private readonly List<Vector2> _opening = new(); // 切り取った区間 (両端を 2 つずつ)
     private readonly Vector2 _ref;
+    private bool _solidMap;
 
     public WallBody(IEnumerable<EdgeCollider2D> walls, Vector2 walkableRef)
     {
@@ -37,6 +39,15 @@ internal sealed class WallBody
         }
     }
 
+    // 壁の中の判定を歩ける所の地図で行う (切る前に呼ぶ)。見通しの判定には、範囲の動きの層の壁を全部 (守る物・蓋・船体の外周も) 使う
+    public void UseSolidMap(Vector2 c, float r)
+    {
+        if (!SolidMap.Valid) return;
+        _seg.Clear();
+        _seg.AddRange(SolidMap.WallSegmentsNear(c, r));
+        _solidMap = true;
+    }
+
     // 切り取りの結果 (EdgeCutter の removed) を渡す
     public void SetOpening(List<Vector2> removed)
     {
@@ -48,13 +59,35 @@ internal sealed class WallBody
     public bool Exposed(float x, float y)
     {
         var p = new Vector2(x, y);
-        if ((Crossings(_ref, p) & 1) == 0) return false;
+        if (_solidMap)
+        {
+            if (!SolidMap.Solid(p)) return false;
+            // 残った壁の線の上 (地図では線の升も歩けない所) は壁の中として扱わない (守った壁や外壁に沿って細く抜けないように)
+            if (Near(_seg, p, LineBand) && !Near(_opening, p, LineBand)) return false;
+        }
+        else if ((Crossings(_ref, p) & 1) == 0) return false;
         // いちばん近い切り取り区間の点まで、壁を横切らずに届くか (切った面そのものは数えないよう少し手前で止める)
         if (!NearestOpening(p, out Vector2 q)) return false;
         float dx = p.x - q.x, dy = p.y - q.y, l = MathF.Sqrt(dx * dx + dy * dy);
         if (l < 0.02f) return true;
         var toward = new Vector2(q.x + dx / l * 0.01f, q.y + dy / l * 0.01f);
         return Crossings(p, toward) == 0;
+    }
+
+    private const float LineBand = 0.08f; // 地図の升 (1/16) の誤差より少し広く
+
+    private static bool Near(List<Vector2> segs, Vector2 p, float d)
+    {
+        float d2 = d * d;
+        for (int i = 0; i + 1 < segs.Count; i += 2)
+        {
+            Vector2 a = segs[i], b = segs[i + 1];
+            float ax = b.x - a.x, ay = b.y - a.y, l2 = ax * ax + ay * ay;
+            float s = l2 > 0 ? Math.Clamp(((p.x - a.x) * ax + (p.y - a.y) * ay) / l2, 0f, 1f) : 0f;
+            float cx = a.x + ax * s - p.x, cy = a.y + ay * s - p.y;
+            if (cx * cx + cy * cy < d2) return true;
+        }
+        return false;
     }
 
     // a から b まで壁の線を横切らずに届くか
@@ -91,7 +124,90 @@ internal sealed class WallBody
                 cur = null;
             }
         }
+        if (_solidMap)
+        {
+            // 地図の升の誤差で蓋の端が残った壁の手前で止まる (隙間) か、壁の線に沿って少し伸びる (出っ張り) ので、
+            // 端の残った壁に近い所を落とし、いちばん近い残った壁の点へつなぐ (切った後の壁で。この破壊の蓋はまだ無い)
+            var post = SolidMap.WallSegmentsNear(shape.Center, shape.BoundRadius + 0.3f);
+            foreach (var cap in caps) { Attach(cap, post, false); Attach(cap, post, true); }
+            // 残った壁の線に沿っているだけの蓋・つないだ結果ごく短くなった蓋は作らない (行って戻るだけの細い棘になる)
+            caps.RemoveAll(cap => Length(cap) < MinCap || AllNear(cap, post) || Spike(cap));
+        }
         return caps;
+    }
+
+    private const float AttachTrim = 0.2f;  // 端から落としてよい長さの上限
+    private const float AttachSnap = 0.15f; // この距離までの残った壁へつなぐ
+    private const float MinCap = 0.15f;     // これより短い蓋は作らない (人も光も通らない幅)
+
+    private static float Length(List<Vector2> cap)
+    {
+        float len = 0f;
+        for (int i = 1; i < cap.Count; i++) len += (cap[i] - cap[i - 1]).magnitude;
+        return len;
+    }
+
+    // 同じ壁の点から出て同じ点へ戻る小さな蓋 (両端を同じ残った壁の角へつないだ結果)
+    private static bool Spike(List<Vector2> cap)
+    {
+        Vector2 a = cap[0], b = cap[cap.Count - 1];
+        if ((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) > 1e-4f) return false;
+        foreach (var p in cap)
+            if ((p.x - a.x) * (p.x - a.x) + (p.y - a.y) * (p.y - a.y) > SpikeReach * SpikeReach) return false;
+        return true;
+    }
+
+    private const float SpikeReach = 0.3f;
+
+    // 蓋の線の上のどの点も残った壁から LineBand 以内か (端は残った壁へつないであるので、途中を 0.05 おきに見る)
+    private static bool AllNear(List<Vector2> cap, List<Vector2> post)
+    {
+        for (int i = 1; i < cap.Count; i++)
+        {
+            Vector2 a = cap[i - 1], b = cap[i];
+            float dx = b.x - a.x, dy = b.y - a.y;
+            int k = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(dx * dx + dy * dy) / 0.05f));
+            for (int j = 0; j <= k; j++)
+            {
+                float t = j / (float)k;
+                if (!Closest(post, new Vector2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t), out _, out float d) || d >= LineBand) return false;
+            }
+        }
+        return true;
+    }
+
+    private static void Attach(List<Vector2> cap, List<Vector2> post, bool atStart)
+    {
+        float trimmed = 0f;
+        while (cap.Count > 2)
+        {
+            int e = atStart ? 0 : cap.Count - 1, inner = atStart ? 1 : cap.Count - 2;
+            if (!Closest(post, cap[e], out _, out float d) || d >= LineBand) break;
+            float seg = (cap[e] - cap[inner]).magnitude;
+            if (trimmed + seg > AttachTrim) break;
+            trimmed += seg;
+            cap.RemoveAt(e);
+        }
+        int end = atStart ? 0 : cap.Count - 1;
+        if (!Closest(post, cap[end], out Vector2 q, out float dist) || dist >= AttachSnap || dist < 1e-4f) return;
+        if (atStart) cap.Insert(0, q); else cap.Add(q);
+    }
+
+    private static bool Closest(List<Vector2> segs, Vector2 p, out Vector2 q, out float dist)
+    {
+        q = default;
+        float best = float.MaxValue;
+        for (int i = 0; i + 1 < segs.Count; i += 2)
+        {
+            Vector2 a = segs[i], b = segs[i + 1];
+            float ax = b.x - a.x, ay = b.y - a.y, l2 = ax * ax + ay * ay;
+            float s = l2 > 0 ? Math.Clamp(((p.x - a.x) * ax + (p.y - a.y) * ay) / l2, 0f, 1f) : 0f;
+            float cx = a.x + ax * s, cy = a.y + ay * s;
+            float d2 = (cx - p.x) * (cx - p.x) + (cy - p.y) * (cy - p.y);
+            if (d2 < best) { best = d2; q = new Vector2(cx, cy); }
+        }
+        dist = MathF.Sqrt(best);
+        return best < float.MaxValue;
     }
 
     // 外の点と中の点の間で、切り替わる点を二分で詰める (そこが切り取った面と縁の交点)

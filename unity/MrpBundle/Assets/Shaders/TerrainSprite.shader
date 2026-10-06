@@ -5,6 +5,7 @@
 //   マスクの G = 焦げの濃さ (下の色に掛ける) / B = 切り口の印 (残った壁の端の断面。0.55 以上は爆発の熱い切り口)
 // マスクの置き場所は _MrpDamageRect (xy = 世界座標の左下、zw = 1 / 幅と高さ) で全マテリアル共通。
 // _MrpGenTex (同じ置き場所・点サンプリング) = その画素を最後に抜いた破壊の番号。割れた塊は自分の番号の所だけ描く。
+// 合成の係数はマテリアルで変えられる (既定 = 通常の半透明合成。影の写しの型抜きだけが別の係数を使う)。
 // _MrpPieceSites (行 0..255 = 破壊の番号・256..511 = 剥げかけの枠・列 = 種点) = 割れ目の種点 (放射状)。割れた塊は自分の種点がいちばん近い所だけ描く。
 Shader "MRP/TerrainSprite"
 {
@@ -26,6 +27,10 @@ Shader "MRP/TerrainSprite"
         _PieceLine ("Piece outline width", Float) = 0.022
         _CrackLine ("Crack line half width", Float) = 0.0045
         _RecessColor ("Exposed wall inside color", Color) = (0.36, 0.35, 0.39, 1)
+        [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Src blend", Float) = 5
+        [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Dst blend", Float) = 10
+        [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlendA ("Src blend alpha", Float) = 5
+        [Enum(UnityEngine.Rendering.BlendMode)] _DstBlendA ("Dst blend alpha", Float) = 10
         [HideInInspector] _AlphaTex ("External Alpha", 2D) = "white" {}
         [HideInInspector] _EnableExternalAlpha ("Enable External Alpha", Float) = 0
     }
@@ -44,7 +49,7 @@ Shader "MRP/TerrainSprite"
         Cull Off
         Lighting Off
         ZWrite On
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend [_SrcBlend] [_DstBlend], [_SrcBlendA] [_DstBlendA]
 
         Pass
         {
@@ -146,6 +151,16 @@ Shader "MRP/TerrainSprite"
 
             fixed4 frag(v2f i) : SV_Target
             {
+                // 6 = 損傷の範囲の型抜き (影の写しを焼く時): 損傷マスクに何か書かれた所はアルファ 1・それ以外は 0。
+                // マテリアル側の合成 (色はそのまま・アルファは掛け算) で、焼いた絵を損傷の範囲だけ残す
+                if (_UseDamage > 5.5)
+                {
+                    float2 mw = (i.world - _MrpDamageRect.xy) * _MrpDamageRect.zw;
+                    if (_MrpDamageRect.z <= 0 || any(mw <= 0) || any(mw >= 1)) return fixed4(0, 0, 0, 0);
+                    fixed4 dm = tex2D(_MrpDamageTex, mw);
+                    return fixed4(0, 0, 0, max(dm.r, dm.g) > 0.01 ? 1 : 0);
+                }
+
                 fixed4 c = tex2D(_MainTex, i.uv);
             #if ETC1_EXTERNAL_ALPHA
                 fixed4 a = tex2D(_AlphaTex, i.uv);

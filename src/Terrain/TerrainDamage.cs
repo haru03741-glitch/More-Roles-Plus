@@ -26,6 +26,7 @@ internal static class TerrainDamage
     {
         r = default;
         why = null;
+        SolidMap.Ensure(); // 壁を切る前に歩ける所の地図を作っておく
         var p = DamageProfile.Of(e.Kind);
         if (e.Kind == DamageKind.Explosion)
         {
@@ -40,7 +41,14 @@ internal static class TerrainDamage
         // 叩いた辺りの多角形・箱の壁を先に折れ線へ (奥の面を辿れるように)
         WallsNear(hit, MaxDepth);
         float far = FarSide(hit, -normal);
-        if (far <= 0f) { why = "blunt outer wall (protected)"; return false; }
+        // 奥の面が近くに無くても、裏が船体の塊 (エアシップの部屋と部屋の間) なら外壁ではない。1 打ごとに ThickStep ずつ掘り進む
+        bool thick = false;
+        if (far <= 0f)
+        {
+            if (!ThickBehind(hit, -normal)) { why = "blunt outer wall (protected)"; return false; }
+            far = ThickStep;
+            thick = true;
+        }
 
         // 抜く向きと、その向きに沿った壁の厚み (奥の面まで + 余白)。受け手は送った向きと長さをそのまま使う。
         // 斜めの先に奥の面が無い (斜めに進むと壁の外へ出る) 時は真っ直ぐ抜く
@@ -50,6 +58,7 @@ internal static class TerrainDamage
         if (axis != -qn)
         {
             float slanted = FarSide(hit, axis);
+            if (slanted <= 0f && thick && ThickBehind(hit, axis)) slanted = ThickStep;
             if (slanted > 0f) run = slanted;
             else { axis = -qn; qd = -qn; }
         }
@@ -84,6 +93,7 @@ internal static class TerrainDamage
     // 向きに偏った爆発 (力 > 0) は、向きの先へ伸びて後ろが縮んだ涙形に抜ける
     private static string Explode(in ResolvedDamage e, DamageProfile p, RubbleLanding[] given, ref RubbleLanding[] landings)
     {
+        SolidMap.Ensure();
         CutShape core = e.Force > 0.02f
             ? ConvexShape.Cone(e.Position, e.Size, e.Direction, p.ConeStretch * e.Force, p.ConeShrink * e.Force)
             : new CircleShape(e.Position, e.Size);
@@ -102,16 +112,18 @@ internal static class TerrainDamage
             var n = new Vector2(-d.y, d.x);
             Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
             away = away.normalized;
-            // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) なら抜く
+            // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) か、
+            // 裏が船体の塊 (エアシップ) なら抜く
             if (HasFarSide(m, away)) return true;
             float toBlast = (m - blast).magnitude;
             float first = FirstFace(m, -away, Math.Min(toBlast, MaxDepth));
-            return first > 0f;
+            return first > 0f || ThickBehind(m, away);
         }
         var keep = DamageMap.FurnitureFor(core); // 家具の保護範囲は壁も残す (絵を抜かない所を通れないように)
         var walls = WallsNear(c, outer);
         // 壁の中の判定は切る前の壁の線で。爆心は歩ける場所にある前提 (武器は弾が止まった位置で依頼する)
         var body = new WallBody(ShipOnly(walls), e.Position);
+        body.UseSolidMap(c, outer + 0.2f);
         // 区間ごとの可否は、全部を切る前の地形で先に決める (順に切りながら決めると、先に切った壁が奥の面や
         // 間の壁として見えなくなり、処理の順番で結果が変わる)
         // 蓋 (前の穴の側面) は穴の中に作った壁なので常に切る
@@ -159,6 +171,7 @@ internal static class TerrainDamage
         var crack = new CrackPattern(e.Position, e.Seed, default, axis: aimed ? TerrainWire.AngleIndex(e.Direction) : (ushort)0,
             stretch: aimed ? 1f + p.CrackStretch * e.Force : 1f, bias: aimed ? p.CrackBias * e.Force : 0f);
         string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces, cracks: new List<CrackPattern> { crack }) : null;
+        if (cut > 0) SolidMap.Carve(core, keep, blast); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
@@ -169,6 +182,7 @@ internal static class TerrainDamage
     // 斜めに振ると振った向きに傾いて抜け (上限 MaxSlantDeg)、強く振るほど広く抜ける
     private static string Strike(in ResolvedDamage e, DamageProfile p, RubbleLanding[] given, ref RubbleLanding[] landings)
     {
+        SolidMap.Ensure();
         Vector2 hit = e.Position, normal = e.Normal, dir = -normal;
         float depth = e.Size; // 抜く向きに沿った長さ
 
@@ -195,7 +209,8 @@ internal static class TerrainDamage
         int cut = 0;
         var keep = DamageMap.FurnitureFor(shape); // 家具の保護範囲は壁も残す (絵を抜かない所を通れないように)
         var walls = WallsNear(center, shape.BoundRadius);
-        var body = new WallBody(ShipOnly(walls), hit + normal * 0.1f); // 叩いた側 (歩ける床) を基準に壁の中を判定
+        var body = new WallBody(ShipOnly(walls), hit + normal * 0.1f); // 地図が無い時は叩いた側 (歩ける床) を基準に壁の中を判定
+        body.UseSolidMap(center, shape.BoundRadius + 0.2f);
         foreach (var col in walls)
             if (EdgeCutter.Cut(col, shape, removed, keep: keep)) cut++;
         body.SetOpening(removed);
@@ -214,6 +229,7 @@ internal static class TerrainDamage
         var cracks = WallPeel.Cracks(hit);
         cracks.Add(StrikeCrack(crackAt, normal, e.Direction, e.Seed, default));
         string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, cracks) : null;
+        if (cut > 0) SolidMap.Carve(shape, keep, hit + normal * 0.1f); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
         if (cut > 0) WallPeel.Release(hit);
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
         // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
@@ -275,7 +291,7 @@ internal static class TerrainDamage
 
     // 壊さない物: ゲームに関わる物 (当面)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形
     private static readonly System.Text.RegularExpressions.Regex ProtectedName = new(
-        @"^MrpRubbleBlock$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
+        @"^MrpRubbleBlock$|^MrpHullEdge$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (初回の破壊で 1 回だけ生成のために止まる・名前は短く数も少ない)
 
     internal static bool IsProtected(Component c)
@@ -290,6 +306,19 @@ internal static class TerrainDamage
     // 内壁には「奥の面」がある (部屋と部屋の隙間の向こうの枠・厚みのある壁の裏側)。壁の面から奥へ MaxDepth 以内に
     // 次の壁の面が無ければ、向こうは何も無い外側とみなす。部屋の範囲は屋外 (Polus など) を含まないので使わない
     private static bool HasFarSide(Vector2 surface, Vector2 inward) => FarSide(surface, inward) > 0f;
+
+    // 厚い壁 (船体の塊) を 1 打で掘り進む深さ
+    private const float ThickStep = 1.0f;
+
+    // 面の裏 (inward の先 ThickStep) が船体の塊 (エアシップの赤い板の中・歩けない所) か。塊の外 (空) へは掘らない
+    private static bool ThickBehind(Vector2 surface, Vector2 inward)
+    {
+        if (!SolidMap.HasHull) return false;
+        if (!SolidMap.Solid(surface + inward * 0.15f)) return false;
+        for (float d = 0.15f; d <= ThickStep + 0.3f; d += 0.15f)
+            if (!SolidMap.InHull(surface + inward * d)) return false;
+        return true;
+    }
 
     // 叩いた面から奥へ、壁の向こう側の面までの厚さ (見つからなければ既定値)。
     // 奥の面 = 叩いた面から MaxDepth 以内で次に当たる Ship 層の壁 (部屋と部屋の間の隙間と向こうの部屋の枠を含む)

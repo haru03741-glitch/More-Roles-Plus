@@ -17,19 +17,19 @@ internal static class TerrainWarm
     private static List<RuntimeMethodHandle> _list;
     private static int _at;
     private static readonly Stopwatch Clock = new();
-    private static readonly double[] StageMs = new double[5];
+    private static readonly double[] StageMs = new double[6];
     private static int _methods;
     private static double _maxTick;
 
     public static string Report =>
-        $"stage={_stage} jit={StageMs[0]:F1}ms ({_methods} methods, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1}";
+        $"stage={_stage} jit={StageMs[0]:F1}ms ({_methods} methods, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1}";
 
     public static void Tick()
     {
         var ship = ShipStatus.Instance;
         if (!ship) return;
         if (_ship != ship) { _ship = ship; _stage = 0; _at = 0; _methods = 0; _maxTick = 0; Array.Clear(StageMs, 0, StageMs.Length); }
-        if (_stage >= 5 || !Fx.MrpBundle.Ready) return;
+        if (_stage >= 6 || !Fx.MrpBundle.Ready) return;
 
         Clock.Restart();
         try
@@ -46,14 +46,15 @@ internal static class TerrainWarm
                     DamageMap.WarmArt();
                     break;
                 case 3: FractureSites.Warm(); break;
-                case 4: RubbleBake.Warm(); break;
+                case 4: RubbleBake.Warm(); ShadowPatch.Warm(); break;
+                case 5: SolidMap.Ensure(); break;
             }
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"[TerrainWarm] stage {_stage}: {e.Message}"); }
         StageMs[_stage] += Clock.Elapsed.TotalMilliseconds;
         _maxTick = Math.Max(_maxTick, Clock.Elapsed.TotalMilliseconds);
         _stage++;
-        if (_stage == 5) Plugin.Logger.LogInfo($"[TerrainWarm] {Report}");
+        if (_stage == 6) Plugin.Logger.LogInfo($"[TerrainWarm] {Report}");
     }
 
     // 地形のメソッドを先にコンパイルする (1 回に TickBudgetMs まで・メソッド単位)。全部終わったら true

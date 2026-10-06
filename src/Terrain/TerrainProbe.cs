@@ -448,6 +448,84 @@ internal static class TerrainProbe
             reply($"OK cameras n={Camera.allCamerasCount}");
         });
 
+        TestBridge.Register("shadowcam", "[repl 0|1] [dump] 影のカメラ (置き換えシェーダ・描き先)。repl 0 = 置き換えを外す / 1 = 本編の設定に戻す。dump = 描き先を Screens/shadow.ppm へ", (args, reply) =>
+        {
+            var collab = Object.FindObjectOfType<ShadowCollab>();
+            var cam = collab ? collab.ShadowCamera : null;
+            if (!cam) { reply("ERR no shadow camera"); return; }
+            var sc = cam.GetComponent<ShadowCamera>();
+            var parts = args.Trim().Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i] == "repl" && i + 1 < parts.Length)
+                {
+                    if (parts[++i] == "0") cam.ResetReplacementShader();
+                    else if (sc) { sc.enabled = false; sc.enabled = true; } // OnEnable が本編の置き換えを掛け直す
+                }
+                else if (parts[i] == "dump")
+                {
+                    var rt = cam.targetTexture;
+                    if (!rt) { reply("ERR no target"); return; }
+                    var prev = RenderTexture.active;
+                    var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+                    RenderTexture.active = rt;
+                    tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
+                    RenderTexture.active = prev;
+                    var px = tex.GetPixels32();
+                    Object.Destroy(tex);
+                    // RGB と A を横に並べて書く (左 = 色・右 = アルファ)
+                    int w = rt.width, h = rt.height;
+                    var body = new byte[w * 2 * h * 3];
+                    for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        var c = px[(h - 1 - y) * w + x];
+                        int o = (y * w * 2 + x) * 3, oa = (y * w * 2 + w + x) * 3;
+                        body[o] = c.r; body[o + 1] = c.g; body[o + 2] = c.b;
+                        body[oa] = body[oa + 1] = body[oa + 2] = c.a;
+                    }
+                    string path = System.IO.Path.Combine(TestBridge.ScreensDir, "shadow.ppm");
+                    using (var fs = System.IO.File.Create(path))
+                    {
+                        var head = Encoding.ASCII.GetBytes($"P6\n{w * 2} {h}\n255\n");
+                        fs.Write(head, 0, head.Length);
+                        fs.Write(body, 0, body.Length);
+                    }
+                    reply($"DUMP {path} {w}x{h}");
+                }
+            }
+            reply($"OK shadowcam shadozer={(sc && sc.Shadozer ? sc.Shadozer.name : "-")} clear={cam.clearFlags} bg={cam.backgroundColor} target={(cam.targetTexture ? cam.targetTexture.name : "-")}");
+        });
+
+        TestBridge.Register("shadowpatch", "[0|1|now] 影の中の壊れた所の焼いた絵を作るか (0 = 作らない・直す前の見え方)・now = 溜まった分を今焼く。引数なしで状態", (args, reply) =>
+        {
+            string a = args.Trim();
+            if (a == "now") { reply($"OK shadowpatch flushed={ShadowPatch.FlushAll()} tiles={ShadowPatch.TileCount}"); return; }
+            if (a.Length > 0) ShadowPatch.Enabled = a != "0";
+            reply($"OK shadowpatch {(ShadowPatch.Enabled ? 1 : 0)} tiles={ShadowPatch.TileCount} baked={ShadowPatch.BakedTotal}");
+        });
+
+        TestBridge.Register("solidmap", "[x y r] 歩ける所の地図の状態。範囲を渡すと Screens/solid.ppm に書く (白 = 歩ける・灰 = 船体の塊・黒 = それ以外)", (args, reply) =>
+        {
+            SolidMap.Ensure();
+            foreach (var sp in SolidMap.ExtraSeeds) reply($"EXTRA seed {V(sp)}");
+            foreach (var sp in SolidMap.LeakedSeeds) reply($"LEAKED seed {V(sp)}");
+            if (TryParse3(args, out float x, out float y, out float r))
+            {
+                string path = System.IO.Path.Combine(TestBridge.ScreensDir, "solid.ppm");
+                reply($"DUMP {path} {SolidMap.Dump(new Vector2(x, y), r, path)}");
+            }
+            reply($"OK solidmap {SolidMap.Stats}");
+        });
+
+        TestBridge.Register("solidat", "<x> <y> その点が歩けない所か (地図)・船体の塊の中か", (args, reply) =>
+        {
+            if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR solidat needs <x> <y>"); return; }
+            SolidMap.Ensure();
+            var pt = new Vector2(v[0], v[1]);
+            reply($"OK solidat solid={SolidMap.Solid(pt)} hull={SolidMap.InHull(pt)}");
+        });
+
         TestBridge.Register("zoom", "[大きさ=3] カメラの写す範囲 (縦の半分・世界単位)。小さいほど寄る", (args, reply) =>
         {
             var cam = Camera.main;

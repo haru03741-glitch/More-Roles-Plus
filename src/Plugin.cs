@@ -69,6 +69,7 @@ public class Ticker : MonoBehaviour
         long t = Bridge.Perf.Begin();
         Terrain.TerrainFx.Tick();
         Terrain.RubbleBake.Tick();
+        Terrain.ShadowPatch.Tick();
         Bridge.Burst.Tick();
         Dev.DevConsole.Tick();
         Commands.Shortcuts.Tick();

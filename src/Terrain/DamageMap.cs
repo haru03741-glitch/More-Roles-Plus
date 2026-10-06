@@ -72,6 +72,7 @@ internal static class DamageMap
         SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書くので Upload より前
         Upload();
         if (pieces != null && cracks is { Count: > 0 }) BreakPieces.Spawn(touched, pieces, cracks);
+        ShadowPatch.MarkDirty(shape.Center, shape.BoundRadius + 0.3f); // 影の中の見た目を焼き直す
         return null;
     }
 
@@ -760,6 +761,7 @@ internal static class DamageMap
         BreakPieces.Clear();
         WallPeel.Clear();
         RubbleBake.Clear();
+        ShadowPatch.Clear();
         RubbleBlocks.Clear();
         Rooms.Clear();
         Swapped.Clear();
