@@ -1,0 +1,41 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Release build + checks (PC only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # SDK は global.json (10.0) に固定。net6.0 の参照アセンブリも要る
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore MoreRolesPlus.csproj
+
+      # tools/check-gates.ps1 = Release ビルド (ゲームへは配置しない) + il2cpp 配列の長さの検査。
+      # Android のビルドと照合は端末のローダーが生成した参照先が要るので CI では回らない (-SkipAndroid)。
+      - name: Gates (Release build + array length check)
+        shell: pwsh
+        run: pwsh tools/check-gates.ps1 -SkipAndroid
+
+      - name: Upload MoreRolesPlus.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: MoreRolesPlus-${{ github.sha }}
+          path: bin/Release/net6.0/MoreRolesPlus.dll
+          retention-days: 30
+          if-no-files-found: error
