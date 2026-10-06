@@ -67,10 +67,18 @@ internal static class LobbyCommands
             reply("OK hostonline create dialog requested (follow: confirmcreate)");
         });
 
-        TestBridge.Register("findgame", "メニューから公式サーバーの部屋検索を開く", (_, reply) =>
+        TestBridge.Register("findgame", "[early [ミリ秒]] メニューから公式サーバーの部屋検索を開く (early = ログインの終わりを待たず、メニューが出てからその時間が経っていれば押す)", (args, reply) =>
         {
             var mm = Object.FindObjectOfType<MainMenuManager>();
-            if (!mm || TestBridge.Phase() != "Menu") { reply($"ERR findgame not at main menu (phase={TestBridge.Phase()})"); return; }
+            var parts = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            bool early = parts.Length > 0 && parts[0] == "early";
+            string phase = TestBridge.Phase(); // メニューを最初に見た時刻もここで記録される
+            if (!mm || (!early && phase != "Menu")) { reply($"ERR findgame not at main menu (phase={phase})"); return; }
+            if (early && parts.Length > 1 && long.TryParse(parts[1], out long delayMs))
+            {
+                long seen = System.Environment.TickCount64 - TestBridge._menuSeenMs;
+                if (TestBridge._menuSeenMs == 0 || seen < delayMs) { reply($"ERR findgame menu seen {seen}ms ago (< {delayMs})"); return; }
+            }
             AmongUsClient.Instance.NetworkMode = NetworkModes.OnlineGame;
             DataManager.Settings.Multiplayer.ChatMode = QuickChatModes.QuickChatOnly;
             SceneChanger.ChangeScene("FindAGame");

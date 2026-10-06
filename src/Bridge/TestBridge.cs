@@ -33,7 +33,7 @@ public static class TestBridge
 
     private static WaitState _wait;
     private static bool _phaseErrorLogged;
-    private static long _menuSeenMs;
+    internal static long _menuSeenMs;
 
     public static string Dir { get { EnsureInit(); return _dir; } }
 

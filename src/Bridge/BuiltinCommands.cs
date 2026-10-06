@@ -46,7 +46,7 @@ internal static class BuiltinCommands
         {
             var lp = PlayerControl.LocalPlayer;
             string inGame = lp && lp.Data != null ? lp.Data.FriendCode : "-";
-            reply($"OK whoami eos=[{Dev.DevUsers.LocalFriendCode}] data=[{inGame}] mode={(AmongUsClient.Instance ? AmongUsClient.Instance.NetworkMode.ToString() : "-")} dev={Dev.DevUsers.AmDev} guid=[{CurrentModRegistration.ModRegistrationGuidString}] lastdc={(AmongUsClient.Instance ? AmongUsClient.Instance.LastDisconnectReason.ToString() + "/" + AmongUsClient.Instance.LastCustomDisconnect : "-")} broadcast={Constants.GetBroadcastVersion()}");
+            reply($"OK whoami eos=[{Dev.DevUsers.LocalFriendCode}] data=[{inGame}] mode={(AmongUsClient.Instance ? AmongUsClient.Instance.NetworkMode.ToString() : "-")} dev={Dev.DevUsers.AmDev} guid=[{CurrentModRegistration.ModRegistrationGuidString}] lastdc={(AmongUsClient.Instance ? AmongUsClient.Instance.LastDisconnectReason.ToString() + "/" + AmongUsClient.Instance.LastCustomDisconnect : "-")} broadcast={Constants.GetBroadcastVersion()} login={(EOSManager.Instance ? EOSManager.Instance.loginFlowFinished.ToString() : "-")} store={(StoreMenu.InstanceExists ? StoreMenu.Instance.Initialized.ToString() : "-")}");
         });
 
         TestBridge.Register("modreg", "<0|1> 公式への mod 登録 (GUID) を付けるか (比べる用・既定 1)", (args, reply) =>
@@ -123,9 +123,15 @@ internal static class BuiltinCommands
             reply($"OK freeplay map={map} requested (follow with: wait phase=InGame 60)");
         });
 
-        TestBridge.Register("quitgame", "フリープレイ/試合を抜けてメニューへ", (_, reply) =>
+        TestBridge.Register("quitgame", "フリープレイ/試合を抜けてメニューへ (部屋検索などメニューの外の画面からも戻る)", (_, reply) =>
         {
-            if (TestBridge.Phase() is "Menu" or "Boot") { reply("ERR quitgame already at Menu"); return; }
+            if (TestBridge.Phase() is "Menu" or "Boot")
+            {
+                if (UnityEngine.Object.FindObjectOfType<MainMenuManager>()) { reply("ERR quitgame already at Menu"); return; }
+                SceneChanger.ChangeScene("MainMenu");
+                reply("OK quitgame back to main menu (follow with: wait phase=Menu 30)");
+                return;
+            }
             AmongUsClient.Instance.ExitGame(DisconnectReasons.ExitGame);
             reply("OK quitgame requested (follow with: wait phase=Menu 30)");
         });
