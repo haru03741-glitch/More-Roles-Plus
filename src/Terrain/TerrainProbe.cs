@@ -337,6 +337,21 @@ internal static class TerrainProbe
             reply("ROOMSPRITES " + string.Join(" ", floors));
             reply("OK mapsurvey");
         });
+
+        TestBridge.Register("roomz", "損傷マスクを見る部屋の絵の一覧と z (|z| < 0.1 = クルーと同じ奥行き・z < -0.1 = クルーより手前。床側の絵が掛かる所では瓦礫・ひびの z に使わない)", (args, reply) =>
+        {
+            var rooms = DamageMap.RoomArts;
+            int band = 0, fg = 0;
+            foreach (var sr in rooms)
+            {
+                if (!sr) continue;
+                float z = sr.transform.position.z;
+                if (z < -0.1f) fg++; else if (z < 0.1f) band++;
+                var b = sr.bounds;
+                reply($"ROOMZ {sr.transform.parent?.name}/{sr.name} sprite={(sr.sprite ? sr.sprite.name : "-")} z={TestBridge.F(z)} bounds=({TestBridge.F(b.min.x)},{TestBridge.F(b.min.y)})-({TestBridge.F(b.max.x)},{TestBridge.F(b.max.y)})");
+            }
+            reply($"OK roomz n={rooms.Count} band={band} foreground={fg}");
+        });
     }
 
     internal static void RegisterNearWall()

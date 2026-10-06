@@ -23,6 +23,7 @@ internal static class TerrainFx
         public float Height, VH;   // 床からの高さ (3/4 視点なので画面では上にずれて見える)
         public float Rot, VRot;
         public float S0, S1, Z;
+        public float ZS = 1f;     // z をずらす幅の倍率 (DamageMap.ZScale)
         public float SpriteW;     // 絵の幅 (土煙の倍率を毎フレーム出すため)
         public float H0;          // 塊: 落ち始めの高さ
         public float Sx, Sy, Sz;  // 塊: 元の倍率 (床に寝るにつれて縦を縮める)
@@ -194,7 +195,7 @@ internal static class TerrainFx
         {
             var f = Spawn(Kind.Flash, flash, c, radius * 1.6f, keep: false);
             f.Life = 0.45f;
-            f.Z -= 0.01f;
+            f.Z -= 0.01f * f.ZS;
         }
         int chunks = made >= 6 ? 4 : 12;
         for (int k = 0; k < chunks; k++)
@@ -348,7 +349,7 @@ internal static class TerrainFx
         var it = new Item
         {
             Kind = Kind.Piece, Tr = p.Tr, Sr = p.Sr, Px = ground.x, Py = ground.y, Height = height, H0 = height,
-            Z = p.Tr.position.z, Life = 1f, Sx = sc.x, Sy = sc.y, Sz = sc.z, Walls = walls,
+            Z = p.Tr.position.z, ZS = DamageMap.ZScale(p.Tr.position.z), Life = 1f, Sx = sc.x, Sy = sc.y, Sz = sc.z, Walls = walls,
         };
         it.HomeX = home.x; it.HomeY = home.y;
         Items.Add(it);
@@ -408,7 +409,7 @@ internal static class TerrainFx
     private static void Stain(Vector2 at, float width, float delay)
     {
         var it = Spawn(Kind.Fall, DebrisArt.Stain, at, width, keep: true);
-        it.Z += 0.003f;
+        it.Z += 0.003f * it.ZS;
         it.T = -delay;
     }
 
@@ -420,7 +421,7 @@ internal static class TerrainFx
         it.Life = life * (0.8f + (float)rnd.NextDouble() * 0.4f);
         it.VH = 0.4f + (float)rnd.NextDouble() * 0.4f;
         it.Vx = ((float)rnd.NextDouble() - 0.5f) * 0.6f;
-        it.Z -= 0.005f; // 塊より手前
+        it.Z -= 0.005f * it.ZS; // 塊より手前
     }
 
     private static Item Spawn(Kind kind, Sprite sprite, Vector2 pos, float worldSize, bool keep)
@@ -430,13 +431,14 @@ internal static class TerrainFx
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
         if (DamageMap.PropMaterial) sr.sharedMaterial = DamageMap.PropMaterial;
-        float z = DamageMap.FrontZ(pos) - 0.004f;
+        float front = DamageMap.FrontZ(pos), zs = DamageMap.ZScale(front);
+        float z = front - 0.004f * zs;
         tr.position = new Vector3(pos.x, pos.y, z);
         float sw = Math.Max(0.0001f, sprite.bounds.size.x);
         float s = worldSize / sw;
         tr.localScale = new Vector3(s, s, 1f);
         if (keep) DamageMap.Track(go);
-        var it = new Item { Kind = kind, Tr = tr, Sr = sr, Px = pos.x, Py = pos.y, S0 = s, S1 = s, Z = z, Life = 1f, SpriteW = sw };
+        var it = new Item { Kind = kind, Tr = tr, Sr = sr, Px = pos.x, Py = pos.y, S0 = s, S1 = s, Z = z, ZS = zs, Life = 1f, SpriteW = sw };
         it.HomeX = it.Px; it.HomeY = it.Py;
         Items.Add(it);
         return it;
@@ -504,8 +506,9 @@ internal static class TerrainFx
                 else
                 {
                     // 山の上に乗った物ほど手前 (上に積もって見える)
-                    if (it.Rest > 0f) { it.Z -= it.Rest * 0.02f; it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z); }
+                    if (it.Rest > 0f) { it.Z -= it.Rest * 0.02f * it.ZS; it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z); }
                     RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
+                    ShadowPatch.MarkSettled(it.Px, it.Py + it.Rest); // 影の中の焼いた絵にも止まった瓦礫を描き込む
                     if (StrayProbe != null) { Settled++; if (StrayProbe(it.Px, it.Py)) Stray++; }
                 }
             }

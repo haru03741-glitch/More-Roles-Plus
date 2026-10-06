@@ -202,7 +202,8 @@ internal static class BreakPieces
         var go = new GameObject("MrpPiece");
         DamageMap.Track(go);
         var tr = go.transform;
-        tr.position = new Vector3(center.x, center.y, DamageMap.FrontZ(center) - PieceZ);
+        float front = DamageMap.FrontZ(center);
+        tr.position = new Vector3(center.x, center.y, front - PieceZ * DamageMap.ZScale(front));
         // 塊の 1 画素 = 部屋の絵の 1 画素 (反転は負の倍率で持つ)
         float ps = DamageMap.ShipTransform ? DamageMap.ShipTransform.lossyScale.x : 1f;
         tr.localScale = new Vector3(room.Dx * room.Ppu / ps, room.Dy * room.Ppu / ps, 1f);

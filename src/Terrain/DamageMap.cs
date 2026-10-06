@@ -17,6 +17,7 @@ internal static class DamageMap
     private const float ScorchWidth = 0.45f;
     private const float EmberCold = 0.45f;  // 打撃の切り口の B の上限 (シェーダは 0.55 以上を熱い切り口として橙を乗せる) // 穴の外側へ焦げが伸びる幅 (半径に対する比)
     private const float UnderlayDepth = 0.3f; // 部屋の絵より奥に置く瓦礫の床の z のずらし
+    private const float PlayerBandZ = 0.1f;   // |z| がこれ未満の部屋の絵はクルーと同じ奥行き (クルーの z ≈ y/1000)
     // 抜くのは「円」と「切り取った壁の線の近く (帯)」の重なりだけ (部屋の床まで抜くと床に穴が空いたように見える)
     private const float BandHalf = 0.2f;      // 壁の線から横・下へ届く幅 (世界単位)
     private const float LineBandEdge = 0.08f; // その帯の縁のなだらかさ
@@ -41,6 +42,7 @@ internal static class DamageMap
     private static Material _underlayMat;
     private static Material _roomMat;
     private static Material _roomMatMask, _roomMatDefault;
+    private static bool _mapHasGround;
     private static readonly HashSet<int> Swapped = new();
 
     private static readonly int DamageTexId = Shader.PropertyToID("_MrpDamageTex");
@@ -100,6 +102,9 @@ internal static class DamageMap
 
         Reset();
         _ship = ship;
+        // 屋外の地面が船の絵の後ろに敷かれているマップ (Polus・Fungle)。Polus の電気室のように部屋の絵が Unlit/MaskShader の部屋でも、穴の向こうは地面
+        string shipName = ship.name;
+        _mapHasGround = shipName.Contains("Polus") || shipName.Contains("Fungle");
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // 部屋の絵 (バニラの Unlit/MaskShader) の範囲を合わせて、マスクの置き場所を決める
@@ -348,6 +353,7 @@ internal static class DamageMap
 
     private static bool HasGroundBehind(Vector2 c)
     {
+        if (_mapHasGround) return true;
         foreach (var sr in Rooms)
             if (sr && sr.sharedMaterial && sr.sharedMaterial.shader && sr.sharedMaterial.shader.name == "MRP/TerrainSprite" && sr.sharedMaterial == _roomMatDefault)
             {
@@ -575,20 +581,39 @@ internal static class DamageMap
         return false;
     }
 
-    // その点に重なる部屋の絵の z の範囲 (部屋ごとに z が違うので、手前・奥はその場で決める)
-    private static void RoomZRange(Vector2 c, out float near, out float far)
+    // その点に重なる部屋の絵の z の範囲 (部屋ごとに z が違うので、手前・奥はその場で決める)。
+    // 部屋の絵には床より手前に描かれる物も混ざっている: 壁の上面 (Skeld の weap_walltop・z=-3.64 等) はクルーより手前、
+    // 棚や机 (Mira) はクルーと同じ奥行き (z ≈ y/1000)。それに合わせると瓦礫・ひび・穴の向こうの床がクルーの上に出るので、
+    // 既定では 床側の絵 → クルーと同じ奥行きの絵 (Polus のウェポン・通信は部屋の絵そのものがここ) → 一番近い床側の絵
+    // → 手前の絵 の順に、最初に見つかった段の絵だけで決める。includeForeground = 段を分けず全部 (影の中の焼いた絵用)
+    private static void RoomZRange(Vector2 c, out float near, out float far, bool includeForeground = false)
     {
-        near = float.MaxValue; far = float.MinValue;
+        Span<float> n = stackalloc float[3], f = stackalloc float[3];
+        for (int t = 0; t < 3; t++) { n[t] = float.MaxValue; f[t] = float.MinValue; }
+        float bestD = float.MaxValue, bestZ = 0f;
         foreach (var sr in Rooms)
         {
             if (!sr) continue;
-            var b = sr.bounds;
-            if (c.x < b.min.x || c.x > b.max.x || c.y < b.min.y || c.y > b.max.y) continue;
             float z = sr.transform.position.z;
-            if (z < near) near = z;
-            if (z > far) far = z;
+            int tier = includeForeground ? 0 : z >= PlayerBandZ ? 0 : z >= -PlayerBandZ ? 1 : 2;
+            var b = sr.bounds;
+            if (c.x < b.min.x || c.x > b.max.x || c.y < b.min.y || c.y > b.max.y)
+            {
+                if (tier != 0) continue;
+                float dx = Math.Max(0f, Math.Max(b.min.x - c.x, c.x - b.max.x));
+                float dy = Math.Max(0f, Math.Max(b.min.y - c.y, c.y - b.max.y));
+                float d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; bestZ = z; }
+                continue;
+            }
+            if (z < n[tier]) n[tier] = z;
+            if (z > f[tier]) f[tier] = z;
         }
-        if (near > far) { near = far = Rooms.Count > 0 && Rooms[0] ? Rooms[0].transform.position.z : 8f; }
+        if (n[0] <= f[0]) { near = n[0]; far = f[0]; }
+        else if (n[1] <= f[1]) { near = n[1]; far = f[1]; }
+        else if (!includeForeground && bestD < float.MaxValue) near = far = bestZ;
+        else if (n[2] <= f[2]) { near = n[2]; far = f[2]; }
+        else near = far = Rooms.Count > 0 && Rooms[0] ? Rooms[0].transform.position.z : 8f;
     }
 
     // テスト用の見た目の切り分け: マスクの 1 チャンネル (1 = 焦げ G / 2 = 熾火 B) を退避して 0 にする / 戻す。
@@ -653,7 +678,7 @@ internal static class DamageMap
         var sprite = impact ? (_impactSprite ??= UnderlayArt.MakeCracks(true)) : (_crackSprite ??= UnderlayArt.MakeCracks(false));
         var crack = new GameObject("MrpCracks") { layer = 9 };
         crack.transform.SetParent(_ship.transform, true);
-        crack.transform.position = new Vector3(c.x, c.y, nearZ - 0.002f);
+        crack.transform.position = new Vector3(c.x, c.y, nearZ - 0.002f * ZScale(nearZ));
         crack.transform.rotation = Quaternion.Euler(0f, 0f, angleDeg);
         crack.transform.localScale = Vector3.one * (reach * 2f / sprite.bounds.size.x) / _ship.transform.lossyScale.x;
         var csr = crack.AddComponent<SpriteRenderer>();
@@ -739,11 +764,30 @@ internal static class DamageMap
     // 瓦礫・土煙などの部品用: 部屋と同じ描き方 (影が落ちる) で、損傷マスクは見ない
     public static Material PropMaterial => _propMat;
 
-    // その場所の部屋の絵より手前の z
-    public static float FrontZ(Vector2 c)
+    // 部屋の絵の z (baseZ) から手前/奥へずらす幅の倍率。部屋の絵そのものがクルーと同じ奥行きにある所
+    // (Polus のウェポン・通信) では、0.002〜0.02 ずらすとクルー (z ≈ y/1000) を追い越して瓦礫がクルーの上に出るので 1/100 に縮める
+    public static float ZScale(float baseZ) => baseZ < PlayerBandZ && baseZ >= -PlayerBandZ ? 0.01f : 1f;
+
+    // その場所の部屋の絵より手前の z (includeForeground = クルーより手前の壁の上面の絵も含める)
+    public static float FrontZ(Vector2 c, bool includeForeground = false)
     {
-        RoomZRange(c, out float near, out _);
+        RoomZRange(c, out float near, out _, includeForeground);
         return near;
+    }
+
+    // この mod が船の層 (9〜12) に描いている物: 損傷マスクを見る部屋の絵・ひびの板・穴の向こうの床
+    internal static void CollectOwnShipRenderers(List<SpriteRenderer> into)
+    {
+        foreach (var sr in Rooms)
+            if (sr && Swapped.Contains(sr.GetInstanceID())) into.Add(sr);
+        foreach (var go in Underlays)
+        {
+            if (!go) continue;
+            int layer = go.layer;
+            if (layer < 9 || layer > 12) continue;
+            var sr = go.GetComponent<SpriteRenderer>();
+            if (sr) into.Add(sr);
+        }
     }
 
     // マップが変わった時に一緒に片付ける

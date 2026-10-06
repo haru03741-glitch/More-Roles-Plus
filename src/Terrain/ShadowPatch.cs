@@ -11,11 +11,19 @@ namespace MoreRolesPlus.Terrain;
 // そこで壊れた所の周りを、メインカメラと同じ描き方 (置き換え無し) で升ごとに焼き、損傷のある画素だけを残した絵を
 // 層 10 (影のカメラだけが描き、メインカメラは描かない層) に部屋の絵のすぐ手前に置く。影のカメラはこれを普通の絵として描くので、
 // 影の中の壊れた所が視界の中と同じに見える。視界の中では影の板が透けているので、この絵は見えない。
+// 焼く見た目は影のカメラにそろえる: 本編の絵は影のカメラと同じ置き換えシェーダで描き (Polus の地面は影の中では暗く描かれるので、
+// 普通に描くと壊れた所だけ明るく浮く)、何も無い所は影のカメラと同じ不透明の黒にする (透明にすると壊れる前の壁が透ける)。
+// 止まった瓦礫 (層 0) は影のカメラに写らないので、型抜きの後に上から描き込む (止まるたびに少し待ってその升を焼き直す)。
 // 焼いた絵は Texture2D へ読み戻して持つ (RenderTexture のままだと Android でアプリが裏へ回った時に消える)。
 internal static class ShadowPatch
 {
     private const int PatchLayer = 10;      // 影のカメラだけが描く層
     private const int MaskLayer = 30;       // 型抜きの板 (本編もこの mod の他の所も使っていない層)
+    private const int DebrisLayer = 29;     // 焼く間だけ止まった瓦礫を移す層 (同上)
+    private const int OwnLayer = 28;        // 焼く間だけこの mod の船の絵を移す層 (同上)
+    private const int FrontLayer = 27;      // 焼く間だけその手前の本編の絵を移す層 (同上)
+    private const string ReplacementTag = "RenderType"; // 影のカメラの置き換えと同じ (RenderType ごとに置き換える)
+    private const long SettleWaitMs = 400;  // 瓦礫が止まってから升を焼き直すまで (続けて止まる分をまとめる)
     private const float Tile = 2f;          // 升の大きさ (世界単位)
     private const int Px = 128;             // 升の画素数 (影のカメラの描き先は 512 画素で画面の縦 6 単位ほど = 約 85 画素/単位なので、それより細かい)
     private const int MaxTiles = 96;        // 持つ升の上限 (1 枚 64KB)。超えたら古く焼いた順に捨てる
@@ -38,6 +46,17 @@ internal static class ShadowPatch
     private static readonly Dictionary<(int, int), Patch> Tiles = new();
     private static readonly List<(int, int)> Dirty = new();
     private static readonly HashSet<(int, int)> DirtySet = new();
+    private static readonly List<(int, int)> Late = new();
+    private static readonly HashSet<(int, int)> LateSet = new();
+    private static long _lastLateMs;
+    private static readonly List<(Renderer R, float Z, int Id)> Candidates = new(); // 船の層の描画物 (この mod の絵より手前の本編の絵を探す)
+    private static readonly List<SpriteRenderer> Own = new();
+    private static readonly HashSet<int> OwnIds = new();
+    private static readonly List<(GameObject Go, int Layer)> Moved = new();
+    private static Shader _shadozer;
+    private static Transform _candidatesShip;
+    private static readonly List<GameObject> Debris = new();
+    private static readonly List<int> DebrisLayers = new();
     private static Camera _cam;
     private static GameObject _mask;
     private static Material _maskMat;
@@ -54,8 +73,23 @@ internal static class ShadowPatch
             if (DirtySet.Add((ix, iy))) Dirty.Add((ix, iy));
     }
 
+    // 瓦礫が止まった所の升を、少し待ってから焼き直す予定に入れる
+    public static void MarkSettled(float x, float y)
+    {
+        if (!Enabled) return;
+        var key = ((int)MathF.Floor(x / Tile), (int)MathF.Floor(y / Tile));
+        if (LateSet.Add(key)) Late.Add(key);
+        _lastLateMs = Environment.TickCount64;
+    }
+
     public static void Tick()
     {
+        if (Late.Count > 0 && Environment.TickCount64 - _lastLateMs >= SettleWaitMs)
+        {
+            foreach (var key in Late) if (DirtySet.Add(key)) Dirty.Add(key);
+            Late.Clear();
+            LateSet.Clear();
+        }
         if (Dirty.Count == 0) return;
         if (!Enabled || !DamageMap.ShipTransform || !EnsureCamera()) { Dirty.Clear(); DirtySet.Clear(); return; }
         int n = Math.Min(TilesPerFrame, Dirty.Count);
@@ -72,7 +106,8 @@ internal static class ShadowPatch
     internal static int FlushAll()
     {
         int n = 0;
-        while (Dirty.Count > 0) { n += Math.Min(TilesPerFrame, Dirty.Count); Tick(); }
+        _lastLateMs = 0;
+        while (Dirty.Count > 0 || Late.Count > 0) { n += Math.Min(TilesPerFrame, Dirty.Count + Late.Count); Tick(); }
         return n;
     }
 
@@ -80,12 +115,13 @@ internal static class ShadowPatch
     {
         float x0 = key.x * Tile, y0 = key.y * Tile;
         var center = new Vector2(x0 + Tile * 0.5f, y0 + Tile * 0.5f);
-        // 部屋の絵とひびの板 (部屋の絵の 0.002 手前) より手前、手前の家具や扉より奥。升の四隅と真ん中でいちばん手前の部屋に合わせる
-        float near = DamageMap.FrontZ(center);
-        near = Math.Min(near, DamageMap.FrontZ(new Vector2(x0, y0)));
-        near = Math.Min(near, DamageMap.FrontZ(new Vector2(x0 + Tile, y0)));
-        near = Math.Min(near, DamageMap.FrontZ(new Vector2(x0, y0 + Tile)));
-        near = Math.Min(near, DamageMap.FrontZ(new Vector2(x0 + Tile, y0 + Tile)));
+        // 部屋の絵とひびの板 (部屋の絵の 0.002 手前) より手前、手前の家具や扉より奥。升の四隅と真ん中でいちばん手前の部屋に合わせる。
+        // 壁の上面の絵 (クルーより手前) も含める: 影のカメラはそれを壊れる前の形で描くので、その手前に置かないと影の中で壁が元に戻って見える
+        float near = DamageMap.FrontZ(center, true);
+        near = Math.Min(near, DamageMap.FrontZ(new Vector2(x0, y0), true));
+        near = Math.Min(near, DamageMap.FrontZ(new Vector2(x0 + Tile, y0), true));
+        near = Math.Min(near, DamageMap.FrontZ(new Vector2(x0, y0 + Tile), true));
+        near = Math.Min(near, DamageMap.FrontZ(new Vector2(x0 + Tile, y0 + Tile), true));
 
         var rt = RenderTexture.GetTemporary(Px, Px, 0, RenderTextureFormat.ARGB32);
         var prev = RenderTexture.active;
@@ -94,20 +130,21 @@ internal static class ShadowPatch
         try
         {
             RenderTexture.active = rt;
-            GL.Clear(false, true, new Color(0f, 0f, 0f, 0f));
+            GL.Clear(false, true, new Color(0f, 0f, 0f, 1f)); // 影のカメラの背景と同じ不透明の黒
             _cam.targetTexture = rt;
             _cam.transform.position = new Vector3(center.x, center.y, -100f);
             _cam.orthographicSize = Tile * 0.5f;
             _cam.aspect = 1f;
-            // 1 回目: 船の絵をメインカメラと同じ描き方で (部屋の絵の穴・穴の向こうの床・ひびの切り抜きが効く)
-            _cam.cullingMask = ShipLayers;
-            _cam.Render();
+            // 1 回目: 船の絵を影のカメラと同じ見た目で。この mod の絵 (部屋の絵の穴・穴の向こうの床・ひび) だけメインカメラと同じ描き方
+            RenderShip(new Rect(x0, y0, Tile, Tile));
             // 2 回目: 型抜きの板で、損傷の無い画素のアルファを 0 にする (色はそのまま)
             _mask.SetActive(true);
             _mask.transform.position = new Vector3(center.x, center.y, -50f);
             _cam.cullingMask = 1 << MaskLayer;
             _cam.Render();
             _mask.SetActive(false);
+            // 3 回目: 止まった瓦礫を上から (型抜きの外にも描く)
+            RenderDebris(new Rect(x0, y0, Tile, Tile));
 
             RenderTexture.active = rt;
             tex = new Texture2D(Px, Px, TextureFormat.RGBA32, false) { name = "MrpShadowPatch", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
@@ -139,6 +176,112 @@ internal static class ShadowPatch
             _cam.targetTexture = null;
             RenderTexture.active = prev;
             RenderTexture.ReleaseTemporary(rt);
+        }
+    }
+
+    // 本編の絵は影のカメラの置き換えシェーダで描く (普通に描くと Polus の地面などが影の中より明るく出て、壊れた所だけ浮く)。
+    // この mod の絵は置き換えると損傷マスクが効かないので普通に描き、その手前にある本編の絵 (家具・扉・壁の上面) はもう一度置き換えて描く
+    private static void RenderShip(Rect tile)
+    {
+        var ship = DamageMap.ShipTransform;
+        if (_candidatesShip != ship)
+        {
+            // マップごとに 1 度: 船の層の描画物と z
+            _candidatesShip = ship;
+            Candidates.Clear();
+            foreach (var r in ship.GetComponentsInChildren<Renderer>(true))
+                if ((ShipLayers & (1 << r.gameObject.layer)) != 0) Candidates.Add((r, r.transform.position.z, r.GetInstanceID()));
+            var collab = UnityEngine.Object.FindObjectOfType<ShadowCollab>();
+            var sc = collab && collab.ShadowCamera ? collab.ShadowCamera.GetComponent<ShadowCamera>() : null;
+            _shadozer = sc ? sc.Shadozer : null;
+            if (!_shadozer) Plugin.Logger.LogWarning("shadow patch: shadow camera replacement shader not found");
+        }
+
+        Own.Clear();
+        OwnIds.Clear();
+        DamageMap.CollectOwnShipRenderers(Own);
+        float ownNear = float.MaxValue;
+        Moved.Clear();
+        foreach (var sr in Own)
+        {
+            OwnIds.Add(sr.GetInstanceID());
+            var b = sr.bounds;
+            if (b.max.x < tile.xMin || b.min.x > tile.xMax || b.max.y < tile.yMin || b.min.y > tile.yMax) continue;
+            var go = sr.gameObject;
+            Moved.Add((go, go.layer));
+            go.layer = OwnLayer;
+            float z = sr.transform.position.z;
+            if (z < ownNear) ownNear = z;
+        }
+        int ownCount = Moved.Count;
+        try
+        {
+            // 本編の絵 (この mod の絵は層を移してあるので写らない)
+            _cam.cullingMask = ShipLayers;
+            Render(true);
+            // この mod の絵
+            if (ownCount > 0)
+            {
+                _cam.cullingMask = 1 << OwnLayer;
+                Render(false);
+                // その手前の本編の絵
+                foreach (var (r, z, id) in Candidates)
+                {
+                    if (z >= ownNear || OwnIds.Contains(id) || !r) continue;
+                    var b = r.bounds;
+                    if (b.max.x < tile.xMin || b.min.x > tile.xMax || b.max.y < tile.yMin || b.min.y > tile.yMax) continue;
+                    var go = r.gameObject;
+                    Moved.Add((go, go.layer));
+                    go.layer = FrontLayer;
+                }
+                if (Moved.Count > ownCount)
+                {
+                    _cam.cullingMask = 1 << FrontLayer;
+                    Render(true);
+                }
+            }
+        }
+        finally
+        {
+            for (int i = Moved.Count - 1; i >= 0; i--)
+                if (Moved[i].Go) Moved[i].Go.layer = Moved[i].Layer;
+            Moved.Clear();
+        }
+    }
+
+    private static void Render(bool asShadowCamera)
+    {
+        if (asShadowCamera && _shadozer) _cam.RenderWithShader(_shadozer, ReplacementTag);
+        else _cam.Render();
+    }
+
+    private static void RenderDebris(Rect tile)
+    {
+        Debris.Clear();
+        RubbleBake.CollectSettled(Debris);
+        DebrisLayers.Clear();
+        int moved = 0;
+        foreach (var go in Debris)
+        {
+            var sr = go.GetComponent<SpriteRenderer>();
+            if (!sr) { DebrisLayers.Add(-1); continue; }
+            var b = sr.bounds;
+            if (b.max.x < tile.xMin || b.min.x > tile.xMax || b.max.y < tile.yMin || b.min.y > tile.yMax) { DebrisLayers.Add(-1); continue; }
+            DebrisLayers.Add(go.layer);
+            go.layer = DebrisLayer;
+            moved++;
+        }
+        if (moved == 0) return;
+        try
+        {
+            _cam.cullingMask = 1 << DebrisLayer;
+            _cam.Render();
+        }
+        finally
+        {
+            for (int i = 0; i < Debris.Count; i++)
+                if (DebrisLayers[i] >= 0 && Debris[i]) Debris[i].layer = DebrisLayers[i];
+            Debris.Clear();
         }
     }
 
@@ -214,6 +357,11 @@ internal static class ShadowPatch
         Tiles.Clear();
         Dirty.Clear();
         DirtySet.Clear();
+        Late.Clear();
+        LateSet.Clear();
+        Candidates.Clear();
+        _candidatesShip = null;
+        _shadozer = null;
         BakedTotal = 0;
     }
 }

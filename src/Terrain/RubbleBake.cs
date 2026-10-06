@@ -38,6 +38,7 @@ internal static class RubbleBake
 
     private static readonly List<(Texture2D Tex, Sprite Sp)> Sheets = new();
     private static readonly List<Pending> Queue = new();
+    private static readonly List<GameObject> Plates = new(); // 焼いた床の板 (影の中の焼いた絵にも描き込むため)
     private static long _lastAddMs;
     private static Camera _cam;
 
@@ -142,6 +143,7 @@ internal static class RubbleBake
             if (DamageMap.PropMaterial) sr.sharedMaterial = DamageMap.PropMaterial;
             sr.sprite = sp;
             Sheets.Add((tex, sp));
+            Plates.Add(go);
             SheetBytes += (long)w * h * 4;
             return true;
         }
@@ -179,6 +181,13 @@ internal static class RubbleBake
         return _cam;
     }
 
+    // 止まっている瓦礫 (焼く前の物と焼いた床の板) を into に足す
+    internal static void CollectSettled(List<GameObject> into)
+    {
+        foreach (var p in Queue) if (p.Go) into.Add(p.Go);
+        foreach (var go in Plates) if (go) into.Add(go);
+    }
+
     private static int ZKey(float z) => (int)MathF.Round(z * 1000f);
 
     // マップが変わった時 (焼いた絵の GameObject は DamageMap が片付ける)
@@ -190,6 +199,7 @@ internal static class RubbleBake
             if (tex) UnityEngine.Object.Destroy(tex);
         }
         Sheets.Clear();
+        Plates.Clear();
         Queue.Clear();
         BakedCount = 0;
         SheetBytes = 0;
