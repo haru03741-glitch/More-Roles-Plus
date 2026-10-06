@@ -87,6 +87,14 @@ internal static class EdgeCutter
 
         if (!changed || dryRun) return false;
 
+        // 頂点ちょうどで切ると、切った点と頂点が重なる (重なるかどうかは計算の末尾の差で端末ごとに分かれる) ので 1 つにまとめる
+        foreach (var ch in chains)
+            for (int k = ch.Count - 1; k > 0; k--)
+            {
+                Vector2 p = ch[k], q = ch[k - 1];
+                if ((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) < SamePoint * SamePoint) ch.RemoveAt(k == ch.Count - 1 ? k - 1 : k);
+            }
+
         chains.RemoveAll(ch => ch.Count < 2 || (ch.Count == 2 && (ch[0] - ch[1]).sqrMagnitude < 1e-6f));
 
         if (chains.Count == 0)
@@ -108,6 +116,7 @@ internal static class EdgeCutter
     }
 
     private const float MinSliver = 0.1f;
+    private const float SamePoint = 0.002f; // これより近い隣り合う点は同じ点とみなす
 
     // 区間の列 (昇順・重なり無し) から、線分 a + d*s が矩形 r の内側にある範囲を引く
     private static void Subtract(List<(float s0, float s1)> cuts, Vector2 a, Vector2 d, Rect r)

@@ -138,6 +138,7 @@ internal sealed class WallBody
 
     private const float AttachTrim = 0.2f;  // 端から落としてよい長さの上限
     private const float AttachSnap = 0.15f; // この距離までの残った壁へつなぐ
+    private const float MergeDist = 0.02f;  // これより近い点は 1 つにまとめる
     private const float MinCap = 0.15f;     // これより短い蓋は作らない (人も光も通らない幅)
 
     private static float Length(List<Vector2> cap)
@@ -189,8 +190,11 @@ internal sealed class WallBody
             cap.RemoveAt(e);
         }
         int end = atStart ? 0 : cap.Count - 1;
-        if (!Closest(post, cap[end], out Vector2 q, out float dist) || dist >= AttachSnap || dist < 1e-4f) return;
-        if (atStart) cap.Insert(0, q); else cap.Add(q);
+        if (!Closest(post, cap[end], out Vector2 q, out float dist) || dist >= AttachSnap) return;
+        // ごく近い時は端点を置き換える (足すと、点が重なるかどうかが計算の末尾の差で端末ごとに分かれる)
+        if (dist < MergeDist) cap[end] = q;
+        else if (atStart) cap.Insert(0, q);
+        else cap.Add(q);
     }
 
     private static bool Closest(List<Vector2> segs, Vector2 p, out Vector2 q, out float dist)
@@ -270,7 +274,7 @@ internal sealed class WallBody
             foreach (var raw in caps)
             {
                 // 頂点を間引く (縁は 0.05 刻みで調べたので直線の上にも点が並ぶ。本編の視界は頂点ごとに光線を飛ばすので、多すぎると重く欠けも出る)
-                var cap = Simplify(raw, 0.015f);
+                var cap = Simplify(Dedupe(Snap(raw)), 0.015f);
                 if (cap.Count < 2) continue;
                 TerrainDigest.Chain(cap);
                 var col = go.AddComponent<EdgeCollider2D>();
@@ -281,6 +285,35 @@ internal sealed class WallBody
             }
         }
         return made;
+    }
+
+    // 点を 1/512 の格子にそろえる。ほぼ一直線の点のどれを残すかが計算の末尾の差で決まらないよう、間引く前に入力を同じにする
+    private static List<Vector2> Snap(List<Vector2> pts)
+    {
+        var o = new List<Vector2>(pts.Count);
+        foreach (var p in pts) o.Add(new Vector2(MathF.Round(p.x * SnapGrid) / SnapGrid, MathF.Round(p.y * SnapGrid) / SnapGrid));
+        return o;
+    }
+
+    private const float SnapGrid = 512f;
+
+    // 前の点から MergeDist 以内の点を落とす。両端 (残った壁へつないだ点) は残し、最後の点に近い手前の点の方を落とす
+    private static List<Vector2> Dedupe(List<Vector2> pts)
+    {
+        var o = new List<Vector2>(pts.Count);
+        for (int i = 0; i < pts.Count; i++)
+        {
+            Vector2 p = pts[i];
+            if (o.Count > 0)
+            {
+                Vector2 q = o[o.Count - 1];
+                bool near = (p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) < MergeDist * MergeDist;
+                if (near && i < pts.Count - 1) continue;
+                if (near && o.Count > 1) { o[o.Count - 1] = p; continue; }
+            }
+            o.Add(p);
+        }
+        return o;
     }
 
     // 折れ線の簡略化 (Douglas-Peucker)。tol より近い点は落とす
