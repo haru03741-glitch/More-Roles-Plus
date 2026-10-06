@@ -10,7 +10,7 @@ namespace MoreRolesPlus.Terrain;
 // 高さが違う = 次のどちらか:
 //   1. 試合の始めの歩ける所で、歩いて行き来できない (はしご・ジップライン・動く足場でしかつながらない) = 島が違う
 //   2. 両側の部屋の組が段差の組 (はしごの上と下の部屋・マップごとの一覧)。階段でつながる段差は島では分からないので一覧で持つ
-//   3. 両側の高さの区域が違う (マップごとの範囲。同じ部屋の中で階段を挟んで高さが変わる所)
+//   3. 両側の高さの区域が違う (マップの絵に塗った注釈とマップごとの範囲。同じ部屋の中で階段を挟んで高さが変わる所)
 internal static class HeightLevels
 {
     public const string LedgeName = "MrpLedge";
@@ -161,6 +161,8 @@ internal static class HeightLevels
 
     private static int ZoneLevel(Vector2 p)
     {
+        int painted = MapNotes.Level(p); // マップの絵に塗った注釈を先に
+        if (painted != 0) return painted;
         foreach (var (area, level) in _zones)
             if (area.Contains(p)) return level;
         return 0;

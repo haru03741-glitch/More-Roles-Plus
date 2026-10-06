@@ -37,48 +37,8 @@ internal static class TerrainReview
         int w = SolidMap.W, h = SolidMap.H;
         float ppu = SolidMap.Ppu;
         Vector2 o = SolidMap.Origin;
-        var rgb = new byte[w * h * 3]; // 下から上の行の順 (書く時に反転)
-
-        // 1. 背景: 船の絵を升ごとに撮る
-        var go = new GameObject("MrpReviewCamera");
-        var cam = go.AddComponent<Camera>();
-        try
-        {
-            cam.enabled = false;
-            cam.orthographic = true;
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Color.black;
-            cam.cullingMask = ShipLayers;
-            cam.nearClipPlane = 0.01f;
-            cam.farClipPlane = 300f;
-            cam.orthographicSize = Tile / ppu * 0.5f;
-            cam.aspect = 1f;
-            var rt = RenderTexture.GetTemporary(Tile, Tile, 16, RenderTextureFormat.ARGB32);
-            var tex = new Texture2D(Tile, Tile, TextureFormat.RGBA32, false);
-            var prev = RenderTexture.active;
-            cam.targetTexture = rt;
-            for (int ty = 0; ty < h; ty += Tile)
-            for (int tx = 0; tx < w; tx += Tile)
-            {
-                cam.transform.position = new Vector3(o.x + (tx + Tile * 0.5f) / ppu, o.y + (ty + Tile * 0.5f) / ppu, -150f);
-                cam.Render();
-                RenderTexture.active = rt;
-                tex.ReadPixels(new Rect(0, 0, Tile, Tile), 0, 0, false);
-                var px = tex.GetPixels32();
-                for (int y = 0; y < Tile && ty + y < h; y++)
-                for (int x = 0; x < Tile && tx + x < w; x++)
-                {
-                    var c = px[y * Tile + x];
-                    int k = ((ty + y) * w + tx + x) * 3;
-                    rgb[k] = (byte)(c.r * 45 / 100); rgb[k + 1] = (byte)(c.g * 45 / 100); rgb[k + 2] = (byte)(c.b * 45 / 100);
-                }
-            }
-            RenderTexture.active = prev;
-            cam.targetTexture = null;
-            RenderTexture.ReleaseTemporary(rt);
-            Object.Destroy(tex);
-        }
-        finally { Object.Destroy(go); }
+        // 1. 背景: 船の絵 (暗くする)
+        var rgb = Background(w, h, ppu, o, 45); // 下から上の行の順 (書く時に反転)
 
         // 2. 床: 島ごとの色を薄く重ねる (漏れて捨てた塗りは青)
         var sizes = new Dictionary<int, int>();
@@ -178,7 +138,7 @@ internal static class TerrainReview
         foreach (var kv in counts) parts2.Add($"{kv.Key}={kv.Value:0.0}");
         var isl = new List<string>();
         foreach (var kv in sizes) isl.Add($"#{kv.Key}:{kv.Value / (ppu * ppu):0}");
-        legend = $"walls(len) {string.Join(" ", parts2)} | islands(area) {string.Join(" ", isl)} | ladders={ladders} {HeightLevels.Describe()} | origin=({o.x:0.##},{o.y:0.##}) ppu={ppu}";
+        legend = $"walls(len) {string.Join(" ", parts2)} | islands(area) {string.Join(" ", isl)} | ladders={ladders} {HeightLevels.Describe()} {MapNotes.Stats} | origin=({o.x:0.##},{o.y:0.##}) ppu={ppu}";
         return $"{w}x{h}";
     }
 
@@ -208,6 +168,75 @@ internal static class TerrainReview
             return "-";
         }
         return "-";
+    }
+
+    // 注釈を塗ってもらう用の画像: 船の絵だけを明るいまま scale 倍の細かさで (判定の色は乗せない)。
+    // 塗った画像との差分を、同じ原点と細かさで世界座標へ戻す
+    public static string PaintBase(string path, int scale, out string info)
+    {
+        info = "";
+        if (!SolidMap.Ensure()) return "solid map invalid";
+        float ppu = SolidMap.Ppu * scale;
+        int w = SolidMap.W * scale, h = SolidMap.H * scale;
+        Vector2 o = SolidMap.Origin;
+        var rgb = Background(w, h, ppu, o, 100);
+        WritePpm(path, rgb, w, h);
+        info = $"origin=({o.x:0.##},{o.y:0.##}) ppu={ppu}";
+        return $"{w}x{h}";
+    }
+
+    // 船の絵を Tile 画素の升ごとに撮る (下から上の行の順・明るさ pct %)
+    private static byte[] Background(int w, int h, float ppu, Vector2 o, int pct)
+    {
+        var rgb = new byte[w * h * 3];
+        var go = new GameObject("MrpReviewCamera");
+        var cam = go.AddComponent<Camera>();
+        try
+        {
+            cam.enabled = false;
+            cam.orthographic = true;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+            cam.cullingMask = ShipLayers;
+            cam.nearClipPlane = 0.01f;
+            cam.farClipPlane = 300f;
+            cam.orthographicSize = Tile / ppu * 0.5f;
+            cam.aspect = 1f;
+            var rt = RenderTexture.GetTemporary(Tile, Tile, 16, RenderTextureFormat.ARGB32);
+            var tex = new Texture2D(Tile, Tile, TextureFormat.RGBA32, false);
+            var prev = RenderTexture.active;
+            cam.targetTexture = rt;
+            for (int ty = 0; ty < h; ty += Tile)
+            for (int tx = 0; tx < w; tx += Tile)
+            {
+                cam.transform.position = new Vector3(o.x + (tx + Tile * 0.5f) / ppu, o.y + (ty + Tile * 0.5f) / ppu, -150f);
+                cam.Render();
+                RenderTexture.active = rt;
+                tex.ReadPixels(new Rect(0, 0, Tile, Tile), 0, 0, false);
+                var px = tex.GetPixels32();
+                for (int y = 0; y < Tile && ty + y < h; y++)
+                for (int x = 0; x < Tile && tx + x < w; x++)
+                {
+                    var c = px[y * Tile + x];
+                    int k = ((ty + y) * w + tx + x) * 3;
+                    rgb[k] = (byte)(c.r * pct / 100); rgb[k + 1] = (byte)(c.g * pct / 100); rgb[k + 2] = (byte)(c.b * pct / 100);
+                }
+            }
+            RenderTexture.active = prev;
+            cam.targetTexture = null;
+            RenderTexture.ReleaseTemporary(rt);
+            Object.Destroy(tex);
+        }
+        finally { Object.Destroy(go); }
+        return rgb;
+    }
+
+    private static void WritePpm(string path, byte[] rgb, int w, int h)
+    {
+        using var fs = System.IO.File.Create(path);
+        var head = System.Text.Encoding.ASCII.GetBytes($"P6\n{w} {h}\n255\n");
+        fs.Write(head, 0, head.Length);
+        for (int y = h - 1; y >= 0; y--) fs.Write(rgb, y * w * 3, w * 3);
     }
 
     private static bool InFurniture(Vector2 m)

@@ -528,6 +528,21 @@ internal static class TerrainProbe
             reply($"OK terrainmap {legend} | {SolidMap.Stats}");
         });
 
+        TestBridge.Register("paintbase", "[倍率=2] 注釈を塗ってもらう用のマップ全体の絵 (明るいまま・判定の色なし) を Screens/paintbase.ppm に書く", (args, reply) =>
+        {
+            int scale = int.TryParse(args.Trim(), out int sc) && sc >= 1 && sc <= 4 ? sc : 2;
+            string path = System.IO.Path.Combine(TestBridge.ScreensDir, "paintbase.ppm");
+            string size = TerrainReview.PaintBase(path, scale, out string info);
+            reply($"DUMP {path} {size}");
+            foreach (var r in ShipStatus.Instance.AllRooms)
+            {
+                if (!r || !r.roomArea) continue;
+                var b = r.roomArea.bounds;
+                reply($"ROOM {r.RoomId} {b.min.x:0.00} {b.min.y:0.00} {b.max.x:0.00} {b.max.y:0.00}");
+            }
+            reply($"OK paintbase {info}");
+        });
+
         TestBridge.Register("solidat", "<x> <y> その点が歩けない所か (地図)・船体の塊の中か", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR solidat needs <x> <y>"); return; }

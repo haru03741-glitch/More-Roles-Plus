@@ -473,6 +473,7 @@ internal static class DamageMap
             var edge = col ? col.TryCast<EdgeCollider2D>() : null;
             if (edge && !col.isTrigger) AddWallBumps(edge, list);
         }
+        MapNotes.AddKeep(c, r + FurnitureUp, list); // 人の目で付けた「壊れてほしくない物」
         return list;
     }
 
