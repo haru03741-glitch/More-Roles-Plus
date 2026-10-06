@@ -2,8 +2,8 @@
 
 ## 役職を 1 つ足す
 
-`src/Roles/` の下 (クルーなら `Crew/`、インポスターなら `Impostor/`、第三陣営なら `Neutral/`) に、`RoleBase` を継承したクラスのファイルを 1 つ置くだけです。
-登録の作業はありません。置いたクラスは起動時に自動で見つかり、次のものが自動で付きます。
+`src/Roles/` の下 (クルーなら `Crew/`、インポスターなら `Impostor/`、第三陣営なら `Neutral/`) に、`RoleBase` を継承したクラスのファイルを 1 つ置きます。
+登録の作業は要りません。起動時にクラスが見つかり、次のものが付きます。
 
 - ゲーム設定の画面の「役職」タブに、その役職の行 (「人数」「出現率」) と、名前を押すと開く細かい設定
 - 下に書いた `static readonly` の設定項目の行
@@ -59,7 +59,7 @@ public sealed class Lighter : RoleBase
 
 ### 試合で起きた事に反応する
 
-引数がイベント 1 つのメソッドを書くだけで、その役職が付いている間呼ばれます (名前は自由・`private` でよい)。どれも全員の端末で起きます。
+引数がイベント 1 つのメソッドを書くと、その役職が付いている間呼ばれます (名前は自由・`private` でよい)。どれも全員の端末で起きます。
 
 ```csharp
 // 自分が追放されたら一人勝ち (道化)
@@ -75,10 +75,10 @@ private void OnExiled(PlayerExiledEvent e) => GameEnd.Win(this);
 | `MeetingEndEvent` | 会議が終わって歩けるようになった (`Exiled` = 追放された人、いなければ `null`) |
 | `GameEndEvent` | 試合が終わった (`Result`) |
 
-- `[OnlyMine]` — 自分についての出来事の時だけ (倒されたのが自分・追放されたのが自分)
-- `[LocalOnly]` — 役職の持ち主の端末でだけ (画面の表示など)
-- `[HostOnly]` — ホストの端末でだけ (判定など)
-- `[Priority(n)]` — 同じイベントの中で先に呼ぶ (大きいほど先)
+- `[OnlyMine]`: 自分についての出来事の時だけ (倒されたのが自分・追放されたのが自分)
+- `[LocalOnly]`: 役職の持ち主の端末でだけ (画面の表示など)
+- `[HostOnly]`: ホストの端末でだけ (判定など)
+- `[Priority(n)]`: 同じイベントの中で先に呼ぶ (大きいほど先)
 
 役職が外れる時 (試合の終わり・配り直し) に、購読は自動で外れます。役職の中で作った GameObject は `Lifespan.Bind(obj)` に渡しておくと一緒に消え、後片付けの処理は `Lifespan.OnRelease(() => ...)` に書けます。
 役職の外から試合中だけ受けたい時は `Events<MeetingStartEvent>.Subscribe(e => ..., RoleState.Match)` と書けます。
@@ -109,7 +109,7 @@ private void OnExiled(PlayerExiledEvent e) => GameEnd.Win(this);
 | `ChoiceOpt` | `new("名前", "Name", 既定の番号, new("選択肢A", "A"), new("選択肢B", "B"))` | 選ばれた番号 |
 
 どれもそのまま値として使えます (`if (CanVent)` / `radius *= VisionMultiplier`)。
-番号を振る必要はありません。名前は「役職の Id.フィールド名」で自動的に付きます。
+番号を振る必要はありません。名前は「役職の Id.フィールド名」で付きます。
 
 ## 役職以外の設定を足す
 
@@ -131,7 +131,7 @@ public static class RoleSettings
 
 ## 端末どうしで情報を送る
 
-役職や機能のクラスに `RemoteCall<T>` を `static readonly` で置くだけで使えます。起動時に集めて名前順に番号を振るので、番号表を書き換える必要はありません。
+役職や機能のクラスに `RemoteCall<T>` を `static readonly` で置けば使えます。起動時に集めて名前順に番号を振るので、番号表を書き換える必要はありません。
 
 ```csharp
 private static readonly RemoteCall<byte> Mark = new("MyRole.Mark", Route.HostToAll,
@@ -151,12 +151,12 @@ Mark.Send(target.PlayerId);   // 送る (自分の端末では実行されない
 
 テスト用の遠隔操作 (config の `EnableTestBridge = true`) を有効にすると、次のコマンドが使えます。
 
-- `giverole <役職Id> [番号]` — その人 (省略で自分) にその役職を付けて全員に配る。ホストかフリープレイで (例: `giverole Quickdraw`)
-- `forcewin <crew|imp|役職Id>` / `winner` — その勝ちで試合を終わらせる / 最後の結果を見る
-- `endcheck [番号...]` — 今の生き残りで勝者が決まるかを見るだけ (番号の人をキル役として数える)
-- `roles` — 登録された役職・今の割り当て・自分の視界とキルの待ち時間
-- `opt [Id.項目 [番号]]` — 設定項目を見る / 変える
+- `giverole <役職Id> [番号]`: その人 (省略で自分) にその役職を付けて全員に配る。ホストかフリープレイで (例: `giverole Quickdraw`)
+- `forcewin <crew|imp|役職Id>` / `winner`: その勝ちで試合を終わらせる / 最後の結果を見る
+- `endcheck [番号...]`: 今の生き残りで勝者が決まるかを見るだけ (番号の人をキル役として数える)
+- `roles`: 登録された役職・今の割り当て・自分の視界とキルの待ち時間
+- `opt [Id.項目 [番号]]`: 設定項目を見る / 変える
 
 ## 他の mod から移植する時
 
-ライセンスが GPL-3.0 と合うか確かめ、移植したファイルの先頭に `// Ported from <リポジトリの URL> <ファイル> (<ライセンス>)` を書き、README のクレジットに相手の名前と取ったものを足してください。画像・音の素材は他の mod の物を使いません。
+ライセンスが GPL-3.0 と合うか確かめ、移植したファイルの先頭に `// Ported from <リポジトリの URL> <ファイル> (<ライセンス>)` を書き、README のクレジットに相手の名前と取ったものを足してください。画像・音の素材は他の mod の物を使わないようにしたいですね。
