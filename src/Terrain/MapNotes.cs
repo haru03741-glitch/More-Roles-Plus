@@ -8,7 +8,8 @@ namespace MoreRolesPlus.Terrain;
 //   Keep = 壊れてほしくない物 (家具など)。家具の保護範囲に足す (見た目も当たり判定も残る)
 //   Free = 壊れてよい所。名前や形で自動に守っている物 (小物・家具) でも壊す (扉・外壁は除く)
 //   Low / High / Higher = 周りより低い / 高い / さらに高い床。壁の両側で違えば高さの違う床の境として扱う (差の大きさは見ない)
-//   Void = 奈落・落ちる所。床の高さとしては一番低い (向こうに床が無い壁は今までどおり外壁として壊れない)
+//   Void = 壊せないエリア (奈落など)。範囲の中は壁も船体の塊も削らない (どの向きから掘っても範囲の手前で止まる)。
+//          床の高さとしては一番低い
 //   Low / High / Higher / Void を壁の上に線で引いた所は、壊しても越えられない壁 (Marked)
 // 範囲は 1/8 単位の長方形の一覧 (MapNotesData.cs・画像から生成)
 internal static partial class MapNotes
@@ -55,15 +56,21 @@ internal static partial class MapNotes
         return r;
     }
 
-    // 円 (中心 c・半径 r) に掛かる「壊れてほしくない物」の範囲を足す
+    // 円 (中心 c・半径 r) に掛かる「壊れてほしくない物」と「壊せないエリア」の範囲を足す
     public static void AddKeep(Vector2 c, float r, List<Rect> list)
     {
         Ensure();
-        foreach (var k in _keep)
+        Add(_keep);
+        Add(_void);
+
+        void Add(Rect[] rects)
         {
-            float dx = Math.Max(Math.Max(k.xMin - c.x, 0f), c.x - k.xMax);
-            float dy = Math.Max(Math.Max(k.yMin - c.y, 0f), c.y - k.yMax);
-            if (dx * dx + dy * dy <= r * r) list.Add(k);
+            foreach (var k in rects)
+            {
+                float dx = Math.Max(Math.Max(k.xMin - c.x, 0f), c.x - k.xMax);
+                float dy = Math.Max(Math.Max(k.yMin - c.y, 0f), c.y - k.yMax);
+                if (dx * dx + dy * dy <= r * r) list.Add(k);
+            }
         }
     }
 
