@@ -23,7 +23,7 @@ public static class JoinSettings
 // ホストの手元にある BAN 一覧とホワイトリスト (BepInEx/config/MoreRolesPlus/ の BanList.txt・WhiteList.txt)。
 // 1 行 = 「フレンドコード,PUID の要約,名前」。照合はフレンドコードと PUID の要約のどちらかが一致すれば当たり。
 // Based on Gurge44/EndlessHostRoles (BanManager・WhitelistManager)、EnhancedNetwork/TownofHost-Enhanced (PUID の要約)、
-// Lotus-AU/LotusContinued (WhitelistManager)
+// Lotus-AU/LotusContinued (WhitelistManager)、satokazoku/TownOfHost-Pko (前の試合にいた人を続けて入れない仕組み)
 internal static class JoinLists
 {
     private sealed class Entry
