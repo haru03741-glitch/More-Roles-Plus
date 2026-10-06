@@ -167,19 +167,25 @@ internal sealed class ConvexShape : CutShape
     public override Vector2 Center => _c;
     public override float BoundRadius => _r;
 
+    private const float ParallelSlope = 1e-3f; // 辺に対する傾きがこれ以下の線分は平行とみなす
+    private const float ParallelInset = 0.005f;
+
     // 辺ごとの半平面で区間を絞る
     public override bool Interval(Vector2 a, Vector2 b, out float s0, out float s1)
     {
         s0 = 0f; s1 = 1f;
         Vector2 d = b - a;
+        float len = MathF.Sqrt(d.x * d.x + d.y * d.y);
         for (int i = 0; i < _v.Length; i++)
         {
             Vector2 n = _n[i];
             float num = (a.x - _v[i].x) * n.x + (a.y - _v[i].y) * n.y; // 正 = 外側
             float den = d.x * n.x + d.y * n.y;
-            if (MathF.Abs(den) < 1e-9f)
+            // 辺とほぼ平行な線分 (前の穴の蓋が次の形の縁に重なる時など) は、辺から ParallelInset より内側でなければ外とする。
+            // 縁ちょうどの線を切るかどうかが浮動小数の末尾で決まると、端末ごとに壁の形が割れる
+            if (MathF.Abs(den) <= len * ParallelSlope)
             {
-                if (num > 0f) return false;
+                if (num > -ParallelInset) return false;
                 continue;
             }
             float t = -num / den;
