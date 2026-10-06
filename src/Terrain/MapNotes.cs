@@ -8,7 +8,8 @@ namespace MoreRolesPlus.Terrain;
 //   Keep = 壊れてほしくない物 (家具など)。家具の保護範囲に足す (見た目も当たり判定も残る)
 //   Free = 壊れてよい所。名前や形で自動に守っている物 (小物・家具) でも壊す (扉・外壁は除く)
 //   Low / High / Higher = 周りより低い / 高い / さらに高い床。壁の両側で違えば高さの違う床の境として扱う (差の大きさは見ない)
-//   Void = 奈落 (床の無い所)。今は範囲を持つだけ (向こうに床が無い壁は外壁として壊れない)
+//   Void = 奈落・落ちる所。床の高さとしては一番低い (向こうに床が無い壁は今までどおり外壁として壊れない)
+//   Low / High / Higher / Void を壁の上に線で引いた所は、壊しても越えられない壁 (Marked)
 // 範囲は 1/8 単位の長方形の一覧 (MapNotesData.cs・画像から生成)
 internal static partial class MapNotes
 {
@@ -87,10 +88,11 @@ internal static partial class MapNotes
         return false;
     }
 
-    // その点の床の高さ (-1 = 低い・1 = 高い・2 = さらに高い・0 = 塗っていない)
+    // その点の床の高さ (-2 = 奈落・-1 = 低い・1 = 高い・2 = さらに高い・0 = 塗っていない)
     public static int Level(Vector2 p)
     {
         Ensure();
+        foreach (var k in _void) if (k.Contains(p)) return -2;
         foreach (var k in _low) if (k.Contains(p)) return -1;
         foreach (var k in _higher) if (k.Contains(p)) return 2;
         foreach (var k in _high) if (k.Contains(p)) return 1;

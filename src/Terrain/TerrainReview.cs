@@ -79,13 +79,13 @@ internal static class TerrainReview
                     {
                         int ia = SolidMap.IslandAlong(m, n, Depth), ib = SolidMap.IslandAlong(m, -n, Depth);
                         if (ia == 0 && ib == 0) { kind = "lone"; color = Lone; }
+                        else if (HeightLevels.Differs(m, n)) { kind = "ledge"; color = Ledge; }
                         else if (ia == 0 || ib == 0)
                         {
                             Vector2 back = ia == 0 ? n : -n;
                             bool thick = SolidMap.HasHull && SolidMap.InHull(m + back * 0.3f);
                             kind = thick ? "thick" : "outer"; color = thick ? Thick : Outer;
                         }
-                        else if (HeightLevels.Differs(m, n)) { kind = "ledge"; color = Ledge; }
                         else { kind = "breakable"; color = Breakable; }
                         if (ia != 0 && ib != 0)
                         {

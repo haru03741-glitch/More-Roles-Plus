@@ -11,6 +11,7 @@ namespace MoreRolesPlus.Terrain;
 //   1. 試合の始めの歩ける所で、歩いて行き来できない (はしご・ジップライン・動く足場でしかつながらない) = 島が違う
 //   2. 両側の部屋の組が段差の組 (はしごの上と下の部屋・マップごとの一覧)。階段でつながる段差は島では分からないので一覧で持つ
 //   3. 両側の高さの区域が違う (マップの絵に塗った注釈とマップごとの範囲。同じ部屋の中で階段を挟んで高さが変わる所)
+//   4. 壁の上に高さの色の線が引いてある (塗った注釈)
 internal static class HeightLevels
 {
     public const string LedgeName = "MrpLedge";
@@ -18,6 +19,7 @@ internal static class HeightLevels
     private const float Probe = 2.6f;   // 壁の面から床を探す深さ (奥の面の深さと同じ)
     private const float Piece = 0.25f;  // 縁を決める区間の長さ
     private const float ZoneInset = 0.4f; // 高さの区域を床の縁からどれだけ内側で見るか
+    private const float MarkReach = 0.2f; // 壁の上に引いた線を、壁の線からどれだけ離れていても拾うか
 
     // マップごとの、はしごを使わずにつながる段差の部屋の組 (どちら向きでもよい)。はしごの上と下の部屋は自動で足す
     private static readonly (SystemTypes, SystemTypes)[] AirshipPairs = Array.Empty<(SystemTypes, SystemTypes)>();
@@ -69,14 +71,19 @@ internal static class HeightLevels
         return $"ledgePairs={string.Join(",", list)} zones={_zones.Length}";
     }
 
-    // 壁の線の上の点 m の両側 (法線 n の向きと逆向き) の床の高さが違うか。片側に床が無い (外壁・船体の塊) 時は false
+    // 壁の線の上の点 m の両側 (法線 n の向きと逆向き) の床の高さが違うか。片側に床が無い (外壁・船体の塊) 時は、線が引いてある時だけ true
     internal static bool Differs(Vector2 m, Vector2 n)
     {
         Ensure();
-        if (!FloorAlong(m, n, out int ia, out Vector2 pa) || !FloorAlong(m, -n, out int ib, out Vector2 pb)) return false;
-        if (ia != ib) return true;
+        bool fa = FloorAlong(m, n, out int ia, out Vector2 pa), fb = FloorAlong(m, -n, out int ib, out Vector2 pb);
         // 区域は床の縁から少し内側で見る (塗った範囲が壁の線を少しはみ出しても、届かなくても同じ結果になるように)
-        if (ZoneLevel(pa + n * ZoneInset) != ZoneLevel(pb - n * ZoneInset)) return true;
+        int za = fa ? ZoneLevel(pa + n * ZoneInset) : 0, zb = fb ? ZoneLevel(pb - n * ZoneInset) : 0;
+        // 壁の上に高さの色の線が引いてある = 越えられない壁。片側が船体の塊 (厚い壁) でも掘り進めないように、床の有無より先に見る。
+        // 両側の床が同じ色で塗ってある所 (塗りつぶした範囲の中の壁) は線とみなさない
+        bool inside = za != 0 && za == zb;
+        if (!inside && (MapNotes.Level(m) != 0 || MapNotes.Level(m + n * MarkReach) != 0 || MapNotes.Level(m - n * MarkReach) != 0)) return true;
+        if (!fa || !fb) return false;
+        if (ia != ib || za != zb) return true;
         if (Pairs.Count == 0) return false;
         var ra = RoomAt(pa);
         var rb = RoomAt(pb);
