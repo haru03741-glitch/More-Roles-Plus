@@ -518,6 +518,16 @@ internal static class TerrainProbe
             reply($"OK solidmap {SolidMap.Stats}");
         });
 
+        TestBridge.Register("terrainmap", "マップ全体の絵に壊れ方の判定を重ねて Screens/terrainmap.ppm に書く (はしご・部屋・部屋の組は terrainmap.txt へ。床 = 島ごとの色・壁 緑 = 壊せる / 橙 = 段差 / 青 = 外壁 / 水色 = 厚い壁 / 紫 = 守る物 / 黄 = 家具 / 灰 = 両側に床なし・桃 = はしご)", (_, reply) =>
+        {
+            string path = System.IO.Path.Combine(TestBridge.ScreensDir, "terrainmap.ppm");
+            string size = TerrainReview.Dump(path, out string legend);
+            reply($"DUMP {path} {size}");
+            System.IO.File.WriteAllLines(System.IO.Path.ChangeExtension(path, ".txt"), TerrainReview.Notes);
+            foreach (var note in TerrainReview.Notes) if (!note.StartsWith("PIECE")) reply(note);
+            reply($"OK terrainmap {legend} | {SolidMap.Stats}");
+        });
+
         TestBridge.Register("solidat", "<x> <y> その点が歩けない所か (地図)・船体の塊の中か", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR solidat needs <x> <y>"); return; }

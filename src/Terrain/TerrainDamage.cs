@@ -138,8 +138,15 @@ internal static class TerrainDamage
                 return false;
             }, keep, dryRun: true);
         }
+        var shipRemoved = new List<Vector2>(); // 動きの層で切った区間 (高さの違う所に縁を張る用)
         foreach (var col in walls)
-            if (col.gameObject.layer == ShipLayer && EdgeCutter.Cut(col, core, removed, (a, b) => allowed.Contains((a.x, a.y, b.x, b.y)), keep)) cut++;
+        {
+            if (col.gameObject.layer != ShipLayer) continue;
+            int from = removed.Count;
+            if (EdgeCutter.Cut(col, core, removed, (a, b) => allowed.Contains((a.x, a.y, b.x, b.y)), keep)) cut++;
+            if (col.gameObject.name != WallBody.CapName) // 前の穴の蓋 (穴の中の壁) には縁を張らない
+                for (int i = from; i < removed.Count; i++) shipRemoved.Add(removed[i]);
+        }
 
         // 視界の層は動きの層を切った後で決める: 爆心から、残った動きの壁を横切らずに届く (穴から見通せる) 面だけ抜く。
         // 動きの壁が残った所 (外壁・家具の裏) の視界の面は残す。逆に穴が開いたのに視界の面が残ると、
@@ -164,6 +171,7 @@ internal static class TerrainDamage
 
         // 穴の側面 (露出した壁の中との境) に蓋。ひびを付け終えてから作る (蓋にひびが付かないように)
         int caps = cut > 0 ? WallBody.Build(body.Caps(core)) : 0;
+        int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         var pieces = new List<BreakPiece>();
         // 割れ目は爆心から放射状。向きに偏った爆発は向きの先へ伸び、先ほど大きな塊になる
@@ -175,7 +183,7 @@ internal static class TerrainDamage
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
-        return $"explosion cut={cut} cracked={cracked} caps={caps} pieces={pieces.Count} blocks={landings.Length} visual={visual ?? "ok"}";
+        return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} visual={visual ?? "ok"}";
     }
 
     // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。
@@ -211,10 +219,17 @@ internal static class TerrainDamage
         var walls = WallsNear(center, shape.BoundRadius);
         var body = new WallBody(ShipOnly(walls), hit + normal * 0.1f); // 地図が無い時は叩いた側 (歩ける床) を基準に壁の中を判定
         body.UseSolidMap(center, shape.BoundRadius + 0.2f);
+        var shipRemoved = new List<Vector2>(); // 動きの層で切った区間 (高さの違う所に縁を張る用)
         foreach (var col in walls)
+        {
+            int from = removed.Count;
             if (EdgeCutter.Cut(col, shape, removed, keep: keep)) cut++;
+            if (col.gameObject.layer == ShipLayer && col.gameObject.name != WallBody.CapName) // 前の穴の蓋 (穴の中の壁) には縁を張らない
+                for (int i = from; i < removed.Count; i++) shipRemoved.Add(removed[i]);
+        }
         body.SetOpening(removed);
         int caps = cut > 0 ? WallBody.Build(body.Caps(shape)) : 0;
+        int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
 
         // 下から叩いた (壁の手前の床に立っている) 時は、叩いた点の少し上から下を見た目では抜かない
         // Polus だけ (壁の当たり判定が見た目の根元より下まで伸びている実測)。他のマップで掛けると壁の根元の線が残る
@@ -237,7 +252,7 @@ internal static class TerrainDamage
         else if (visual == null)
             landings = TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed, pieces, removed,
                 WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f, given);
-        return $"blunt breach cut={cut} caps={caps} pieces={pieces.Count} blocks={landings.Length} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
+        return $"blunt breach cut={cut} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
     }
 
     // 抜く向き: 壁の奥 (inward) から振った向きへ、上限の角度まで傾ける。横から掠める振り (奥へ進まない) は真っ直ぐ抜く
@@ -291,7 +306,7 @@ internal static class TerrainDamage
 
     // 壊さない物: ゲームに関わる物 (当面)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形
     private static readonly System.Text.RegularExpressions.Regex ProtectedName = new(
-        @"^MrpRubbleBlock$|^MrpHullEdge$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
+        @"^MrpRubbleBlock$|^MrpHullEdge$|^MrpLedge$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (初回の破壊で 1 回だけ生成のために止まる・名前は短く数も少ない)
 
     internal static bool IsProtected(Component c)
@@ -372,14 +387,17 @@ internal static class TerrainDamage
     {
         point = default; normal = default;
         float best = float.MaxValue;
+        float ledge = float.MaxValue; // 高さの違う床の縁 (壊れない)。縁の向こうの壁は叩けない
         foreach (var h in Physics2D.CircleCastAll(from, 0.1f, dir, reach, 1 << ShipLayer))
         {
-            if (!h.collider || h.collider.isTrigger || IsProtected(h.collider) || h.distance >= best) continue;
+            if (!h.collider || h.collider.isTrigger) continue;
+            if (h.collider.gameObject.name == HeightLevels.LedgeName) { ledge = Math.Min(ledge, h.distance); continue; }
+            if (IsProtected(h.collider) || h.distance >= best) continue;
             best = h.distance;
             point = h.point;
             normal = h.normal;
         }
-        return best < float.MaxValue;
+        return best < float.MaxValue && best < ledge;
     }
 
     // Collider2D.ClosestPoint は Android の libunity に無いので、折れ線の頂点から自前で求める

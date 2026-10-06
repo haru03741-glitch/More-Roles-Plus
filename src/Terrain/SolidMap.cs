@@ -24,14 +24,26 @@ internal static class SolidMap
     private static ShipStatus _ship;
     private static byte[] _open;
     private static byte[] _leaked; // テスト用: 地図の端まで漏れて捨てた塗り
+    // 試合の始めの歩ける所を、歩いて行き来できるまとまり (島) ごとに番号で塗り分けたもの (0 = 歩けない・255 = 数えきれない)。
+    // はしご・ジップライン・動く足場はつながりに入れない (壁の線しか見ない) ので、番号が違う = 高さが違う床。
+    // 元の番号は壊しても書き換えない (穴でつながった後も元の高さで比べる)。掘って開けた升だけ、掘り始めた側の番号を足す
+    private static byte[] _island;
     private static int _w, _h;
     private static Vector2 _origin;
+    internal static Vector2 Origin => _origin;
+    internal static int W => _w;
+    internal static int H => _h;
+    internal static float Ppu => _ppu;
+    internal static bool OpenCell(int k) => _open[k] != 0;
+    internal static int IslandCell(int k) => _island == null ? 0 : _island[k];
+    internal static bool LeakedCell(int k) => _leaked != null && _leaked[k] != 0;
     private static float _ppu;
     private static readonly List<Rect> HullRects = new();
     internal static readonly List<Vector2> ExtraSeeds = new(); // テスト用: 扉・出現の中心だけが新しく塗った塊の種
     internal static readonly List<Vector2> LeakedSeeds = new(); // テスト用: 塗りが地図の端に届いて捨てた種
 
     public static bool Valid { get; private set; }
+    public static int IslandCount { get; private set; }
     public static bool HasHull => Valid && HullRects.Count > 0;
     public static string Stats { get; private set; } = "not built";
 
@@ -45,6 +57,8 @@ internal static class SolidMap
         Valid = false;
         _open = null;
         _leaked = null;
+        _island = null;
+        IslandCount = 0;
         HullRects.Clear();
         ExtraSeeds.Clear();
         LeakedSeeds.Clear();
@@ -65,6 +79,28 @@ internal static class SolidMap
         int x = (int)MathF.Floor((p.x - _origin.x) * _ppu), y = (int)MathF.Floor((p.y - _origin.y) * _ppu);
         if (x < 0 || y < 0 || x >= _w || y >= _h) return true;
         return _open[y * _w + x] == 0;
+    }
+
+    // 試合の始めにその点がいた島の番号 (0 = 歩けない所)
+    public static int IslandAt(Vector2 p)
+    {
+        if (_island == null) return 0;
+        int x = (int)MathF.Floor((p.x - _origin.x) * _ppu), y = (int)MathF.Floor((p.y - _origin.y) * _ppu);
+        if (x < 0 || y < 0 || x >= _w || y >= _h) return 0;
+        return _island[y * _w + x];
+    }
+
+    // from から dir へ max まで進んで最初に出会う島の番号 (無ければ 0)。壁の線の上から、その面の片側の床の高さを知る用
+    public static int IslandAlong(Vector2 from, Vector2 dir, float max)
+    {
+        if (_island == null) return 0;
+        float step = 0.5f / _ppu;
+        for (float d = step; d <= max; d += step)
+        {
+            int k = IslandAt(from + dir * d);
+            if (k != 0) return k;
+        }
+        return 0;
     }
 
     // エアシップの船体の塊 (赤い板) の中か
@@ -180,18 +216,53 @@ internal static class SolidMap
         int openCells = 0;
         for (int k = 0; k < n; k++) if (_open[k] != 0) openCells++;
         Valid = accepted > 0 && openCells > n / 50;
+        if (Valid) LabelIslands(queue);
 
         // 5. エアシップの船体の塊と、その外周の壊れない壁
         int edges = 0;
         if (Valid) edges = BuildHull(ship);
 
-        Stats = $"valid={Valid} {_w}x{_h} walls={cols} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
+        Stats = $"valid={Valid} {_w}x{_h} walls={cols} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
         Plugin.Logger.LogInfo($"solid map: {Stats}");
+    }
+
+    // 歩ける所を 4 近傍のつながりで塗り分ける。番号は升の並び順で最初に出会った順 (どの端末でも同じ)
+    private static void LabelIslands(int[] queue)
+    {
+        int n = _w * _h;
+        _island = new byte[n];
+        int count = 0;
+        for (int s = 0; s < n; s++)
+        {
+            if (_open[s] == 0 || _island[s] != 0) continue;
+            byte id = count < 254 ? (byte)(count + 1) : (byte)255;
+            count++;
+            int head = 0, tail = 0;
+            _island[s] = id;
+            queue[tail++] = s;
+            while (head < tail)
+            {
+                int k = queue[head++];
+                int x = k % _w;
+                if (x > 0) Visit(k - 1);
+                if (x < _w - 1) Visit(k + 1);
+                if (k >= _w) Visit(k - _w);
+                if (k + _w < n) Visit(k + _w);
+            }
+
+            void Visit(int k2)
+            {
+                if (_open[k2] == 0 || _island[k2] != 0) return;
+                _island[k2] = id;
+                queue[tail++] = k2;
+            }
+        }
+        IslandCount = count;
     }
 
     private static bool IsWall(Collider2D c) =>
         c && c.enabled && !c.isTrigger && c.gameObject.layer == ShipLayer &&
-        c.gameObject.name != WallBody.CapName && c.gameObject.name != HullEdgeName && c.gameObject.name != "MrpRubbleBlock";
+        c.gameObject.name != WallBody.CapName && c.gameObject.name != HullEdgeName && c.gameObject.name != HeightLevels.LedgeName && c.gameObject.name != "MrpRubbleBlock";
 
     // 床の上の点。確か = 通気口とダミーの出現位置 (床に置かれる物)。扉は扉の板の両脇 (通り道の両側) の点を後から足し、
     // それだけが新しく塗った塊の数を数えておく (壁の中に落ちていないかを地図の書き出しで確かめる用)。
@@ -202,6 +273,9 @@ internal static class SolidMap
         foreach (var v in ship.AllVents) if (v) list.Add((v.transform.position, true));
         if (ship.DummyLocations != null)
             foreach (var t in ship.DummyLocations) if (t) list.Add((t.position, true));
+        // はしごの両端 (上の床と下の床)。通気口の無い高い所 (ファングルの見張り台など) もこれで塗る
+        foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
+            if (l) list.Add((l.transform.position, false));
         foreach (var d in ship.AllDoors)
         {
             if (!d) continue;
@@ -257,7 +331,7 @@ internal static class SolidMap
     }
 
     // 線分が通る升を全部塗る (升の縁を通る所も両側を塗る)。grid の原点は (gx0, gy0) 升
-    private static void Raster(byte[] grid, int w, int h, int gx0, int gy0, Vector2 a, Vector2 b)
+    internal static void Raster(byte[] grid, int w, int h, int gx0, int gy0, Vector2 a, Vector2 b)
     {
         float ax = (a.x - _origin.x) * _ppu - gx0, ay = (a.y - _origin.y) * _ppu - gy0;
         float bx = (b.x - _origin.x) * _ppu - gx0, by = (b.y - _origin.y) * _ppu - gy0;
@@ -392,6 +466,7 @@ internal static class SolidMap
         // もう歩ける升と基準点から塗る
         var queue = new int[bn];
         var seen = new byte[bn];
+        var lab = new byte[bn]; // 塗り広げた元の島の番号 (掘って開けた升に引き継ぐ)
         int tail = 0;
         for (int k = 0; k < bn; k++)
         {
@@ -399,13 +474,14 @@ internal static class SolidMap
             int gx = x0 + k % bw, gy = y0 + k / bw;
             if (_open[gy * _w + gx] == 0) continue;
             seen[k] = 1; queue[tail++] = k;
+            lab[k] = _island != null ? _island[gy * _w + gx] : (byte)0;
         }
         {
             int rx = (int)MathF.Floor((walkableRef.x - _origin.x) * _ppu) - x0, ry = (int)MathF.Floor((walkableRef.y - _origin.y) * _ppu) - y0;
             if (rx >= 0 && ry >= 0 && rx < bw && ry < bh)
             {
                 int k = ry * bw + rx;
-                if (seen[k] == 0 && blocked[k] == 0) { seen[k] = 1; queue[tail++] = k; }
+                if (seen[k] == 0 && blocked[k] == 0) { seen[k] = 1; queue[tail++] = k; lab[k] = (byte)IslandAt(walkableRef); }
             }
         }
         int head = 0;
@@ -413,10 +489,10 @@ internal static class SolidMap
         {
             int k = queue[head++];
             int x = k % bw, y = k / bw;
-            if (x > 0) Visit(k - 1);
-            if (x < bw - 1) Visit(k + 1);
-            if (y > 0) Visit(k - bw);
-            if (y < bh - 1) Visit(k + bw);
+            if (x > 0) Visit(k - 1, k);
+            if (x < bw - 1) Visit(k + 1, k);
+            if (y > 0) Visit(k - bw, k);
+            if (y < bh - 1) Visit(k + bw, k);
         }
         // 太らせた分を戻す (形の中の、壁の線そのものでない升)。角の升は斜めにしか届かないので 2 段
         int grown = tail;
@@ -427,21 +503,28 @@ internal static class SolidMap
             {
                 if (seen[k] != 0 || inside[k] == 0 || barrier[k] != 0 || blocked[k] == 0) continue;
                 int x = k % bw, y = k / bw;
-                if ((x > 0 && seen[k - 1] == 1) || (x < bw - 1 && seen[k + 1] == 1) || (y > 0 && seen[k - bw] == 1) || (y < bh - 1 && seen[k + bw] == 1))
-                    queue[grown++] = k;
+                int from2 = x > 0 && seen[k - 1] == 1 ? k - 1 : x < bw - 1 && seen[k + 1] == 1 ? k + 1 :
+                            y > 0 && seen[k - bw] == 1 ? k - bw : y < bh - 1 && seen[k + bw] == 1 ? k + bw : -1;
+                if (from2 < 0) continue;
+                lab[k] = lab[from2];
+                queue[grown++] = k;
             }
             for (int i = from; i < grown; i++) seen[queue[i]] = 1;
         }
         for (int i = 0; i < grown; i++)
         {
             int k = queue[i];
-            _open[(y0 + k / bw) * _w + x0 + k % bw] = 1;
+            int g = (y0 + k / bw) * _w + x0 + k % bw;
+            _open[g] = 1;
+            // 掘って開けた升は、つながった側の島の番号を持つ (穴の奥から掘り進んでも元の床の高さで比べられるように)
+            if (_island != null && _island[g] == 0) _island[g] = lab[k];
         }
 
-        void Visit(int k2)
+        void Visit(int k2, int parent)
         {
             if (seen[k2] != 0 || inside[k2] == 0 || blocked[k2] != 0) return;
             seen[k2] = 1;
+            lab[k2] = lab[parent];
             queue[tail++] = k2;
         }
     }
