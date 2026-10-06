@@ -268,6 +268,24 @@ internal static class TerrainProbe
             reply(sb.ToString());
         });
 
+        TestBridge.Register("swing", "[force] [dx dy] ハンマーを振る (ボタンと同じ。向き省略 = 歩いている向き・向いている左右)", (args, reply) =>
+        {
+            float[] v = System.Array.Empty<float>();
+            if (args.Trim().Length > 0 && (!TryParseFloats(args, out v) || (v.Length != 1 && v.Length != 3))) { reply("ERR swing [force] [dx dy]"); return; }
+            float force = v.Length >= 1 ? v[0] : 0.5f;
+            Vector2? aim = v.Length == 3 ? new Vector2(v[1], v[2]) : null;
+            string res = HammerSwing.Swing(force, out bool ok, aim);
+            reply($"OK swing ok={ok} {res} {HammerSwing.Describe()}");
+        });
+
+        TestBridge.Register("bomb", "[半径] 足元に爆弾を置く (ボタンと同じ。導火線の後に爆発)", (args, reply) =>
+        {
+            float[] v = System.Array.Empty<float>();
+            if (args.Trim().Length > 0 && (!TryParseFloats(args, out v) || v.Length != 1)) { reply("ERR bomb [radius]"); return; }
+            string res = BombFuse.Place(v.Length == 1 ? v[0] : 1.2f, out bool ok);
+            reply($"OK bomb ok={ok} {res} {BombFuse.Describe()}");
+        });
+
         TestBridge.Register("hammer","<x> <y> <dx> <dy> [force] 打撃 (位置から向きの先の壁を叩く。斜めに振ると斜めに抜ける。力 0..1・既定 0.5)", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || (v.Length != 4 && v.Length != 5)) { reply("ERR hammer needs <x> <y> <dx> <dy> [force]"); return; }

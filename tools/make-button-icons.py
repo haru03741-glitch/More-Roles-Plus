@@ -73,10 +73,10 @@ class Icon:
         for band, band_color in bands:
             self.img.paste(band_color, (0, 0), ImageChops.multiply(band, mask))
 
-    def save(self, name):
-        edge = grow(self.union, WHITE_EDGE)
+    def save(self, name, white_edge=True):
         out = Image.new("RGBA", (N, N), (0, 0, 0, 0))
-        out.paste((255, 255, 255, 255), (0, 0), edge)
+        if white_edge:
+            out.paste((255, 255, 255, 255), (0, 0), grow(self.union, WHITE_EDGE))
         out.alpha_composite(self.img)
         out = out.resize((SIZE, SIZE), Image.LANCZOS)
         os.makedirs(OUT, exist_ok=True)
@@ -119,6 +119,22 @@ def hammer():
     ic.save("hammer")
 
 
+def hammer_held():
+    # 手に持たせるハンマー (ゲーム内で振る絵)。柄が +x へ伸び、頭は右端で縦。白い縁は付けない (世界に置く絵)。
+    # 握る所 = (55, 110)・頭の真ん中 = (170, 110)。src/Fx/HammerSwing.cs の GripPx / HeadPx と合わせる
+    ic = Icon()
+    ic.part(poly([(28, 101), (152, 103), (152, 117), (28, 119)]), (122, 82, 48, 255), [
+        (poly([(20, 110), (160, 110), (160, 130), (20, 130)]), (84, 56, 32, 255)),
+    ])
+    for x in (40, 60):
+        ic.part(poly([(x, 98), (x + 11, 98), (x + 11, 122), (x, 122)]), (196, 32, 22, 255))
+    ic.part(poly([(150, 66), (184, 62), (190, 70), (190, 150), (184, 158), (150, 154)]), (196, 203, 211, 255), [
+        (poly([(140, 50), (160, 50), (160, 170), (140, 170)]), (240, 244, 247, 255)),
+        (poly([(176, 50), (200, 50), (200, 170), (176, 170)]), (132, 142, 153, 255)),
+    ])
+    ic.save("hammer_held", white_edge=False)
+
+
 def bomb():
     ic = Icon()
     # 背景: 導火線の火花の先の衝撃
@@ -143,6 +159,34 @@ def bomb():
     # 火花
     ic.part(star(160, 56, 22, 9, 6, 0.1), (255, 212, 59, 255), [(star(160, 56, 10, 5, 6, 0.6), (255, 138, 28, 255))])
     ic.save("bomb")
+
+
+def bomb_placed():
+    # 床に置いた爆弾 (ゲーム内の絵)。火花は別の絵 (bomb_spark) にして点滅させる。白い縁は付けない。
+    # 原点 = 本体の底 (110, 194)。src/Terrain/BombFuse.cs の BottomPy と合わせる
+    ic = Icon()
+    body = ellipse(36, 70, 160, 194)
+    ic.part(body, (62, 67, 76, 255), [
+        (ellipse(50, 76, 140, 150), (98, 106, 118, 255)),
+        (ellipse(56, 96, 196, 220), (40, 44, 52, 255)),
+    ])
+    ic.part(ellipse(62, 92, 88, 112), (236, 240, 244, 255))
+    cap = poly([(112, 62), (138, 82), (126, 98), (98, 78)])
+    ic.part(cap, (160, 168, 178, 255), [(poly([(112, 62), (138, 82), (132, 90), (104, 70)]), (214, 220, 226, 255))])
+    fuse = blank()
+    d = ImageDraw.Draw(fuse)
+    pts = [(124, 72), (134, 58), (146, 54), (156, 58)]
+    d.line([(x * SS, y * SS) for x, y in pts], fill=255, width=8 * SS, joint="curve")
+    ic.part(fuse, (150, 104, 60, 255))
+    ic.save("bomb_placed", white_edge=False)
+
+
+def bomb_spark():
+    # 導火線の先の火花 (bomb_placed と同じ枠・同じ原点で重ねる)
+    ic = Icon()
+    ic.part(star(158, 56, 24, 9, 7, 0.1, (1.0, 0.8, 1.1, 0.9, 1.0, 0.85, 1.05)), (255, 212, 59, 255),
+            [(star(158, 56, 11, 5, 7, 0.6), (255, 138, 28, 255))])
+    ic.save("bomb_spark", white_edge=False)
 
 
 # 破壊音のマーク: 種類ごとの絵 (本編のノイズメーカーの矢印の真ん中に置く。向きは矢印が示すので絵は回さない)
@@ -179,7 +223,10 @@ def noise_break():
 
 if __name__ == "__main__":
     hammer()
+    hammer_held()
     bomb()
+    bomb_placed()
+    bomb_spark()
     noise_blast()
     noise_hit()
     noise_break()

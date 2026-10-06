@@ -44,9 +44,11 @@ internal readonly struct ResolvedDamage
     public readonly ushort Seed;
     // 大きな瓦礫の止まる所 (ホストが自分で適用した時に決めて、同じ電文で配る。ホストが適用する時は使わない)
     public readonly RubbleLanding[] Landings;
+    public readonly byte Actor;       // 壊した人の PlayerId (NoActor = 分からない・コマンド等)。手の色と自分の振りの見分けに使う
+    public const byte NoActor = 255;
 
     public ResolvedDamage(DamageKind kind, Vector2 position, Vector2 normal, Vector2 direction, float force, float size, sbyte hp, ushort seed,
-        RubbleLanding[] landings = null)
+        RubbleLanding[] landings = null, byte actor = NoActor)
     {
         Kind = kind;
         Position = position;
@@ -57,10 +59,14 @@ internal readonly struct ResolvedDamage
         Hp = hp;
         Seed = seed;
         Landings = landings;
+        Actor = actor;
     }
 
     public ResolvedDamage WithLandings(RubbleLanding[] landings) =>
-        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, landings);
+        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, landings, Actor);
+
+    public ResolvedDamage WithActor(byte actor) =>
+        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, Landings, actor);
 }
 
 // 壊れ方の型。武器ごとの違いはここの値で表す

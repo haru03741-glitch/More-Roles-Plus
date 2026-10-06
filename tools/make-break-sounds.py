@@ -3,6 +3,7 @@
 #   noise_boom              … 爆発
 #   noise_hit_<素材>        … 叩いた (まだ壊れない)。素材 = metal (船体) / stone (岩・コンクリート) / wood (木)
 #   noise_crumble_<素材>    … 叩いて崩れた
+#   noise_fuse              … 置いた爆弾の導火線 (爆発まで)
 #   noise_rubble_<素材>     … 爆発で壁が崩れ落ちる音 (爆発の音に少し遅れて重ねる。壁に当たらない爆発では鳴らさない)
 #   それぞれ <名前>_m       … 遠い・壁越しのこもった音 (16kHz)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
@@ -494,9 +495,30 @@ def rubble_wood():
     return room(out, 0.55, 2000, 0.3)
 
 
+def fuse():
+    # 導火線 (1.7s): 火の付く擦れ → シューという燃える音に火花のはぜる粒 → 終わりへ向けて速く強く
+    n, t = T(1.7)
+    out = np.zeros(n)
+    m, tm = T(0.08)
+    place(out, bp(noise(m), 1500, 7000) * np.exp(-tm / 0.02), 0.0, 0.8)  # 火を付ける擦れ
+    flicker = 0.7 + 0.3 * np.sin(2 * np.pi * 23 * t + 3 * np.sin(2 * np.pi * 3.1 * t))
+    hiss = bp(noise(n), 2500, 9000) * flicker * (0.5 + 0.5 * t / 1.7) * np.minimum(1, t / 0.06)
+    out += 0.35 * hiss
+    out += 0.9 * grains(n, 60, 2500, 9000, 0.006, 0.0015, 0.05, 1.7, lambda u: 0.4 + 0.6 * u)
+    # 急かす刻み (チッ): 間が 0.32 秒から 0.08 秒へ縮む
+    at, gap = 0.12, 0.32
+    while at < 1.62:
+        k, tk = T(0.02)
+        place(out, bp(noise(k), 3500, 8000) * np.exp(-tk / 0.004), at, 1.2)
+        at += gap
+        gap = max(0.08, gap * 0.8)
+    return out
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     emit('noise_boom', boom, drive=2.4)
+    emit('noise_fuse', fuse, peak=0.8, drive=1.6, ratio=0.3)
     hits = {'metal': hit_metal, 'stone': hit_stone, 'wood': hit_wood}
     crumbles = {'metal': crumble_metal, 'stone': crumble_stone, 'wood': crumble_wood}
     rubbles = {'metal': rubble_metal, 'stone': rubble_stone, 'wood': rubble_wood}

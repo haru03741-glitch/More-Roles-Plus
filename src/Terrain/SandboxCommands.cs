@@ -4,22 +4,20 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // 練習の試合とフリープレイで、誰でもチャット欄から地形の破壊を試せるコマンド。
-//   /hammer [強さ 0〜1]  いちばん近い壁を叩く (3 回で崩れる)
-//   /blast [半径]        自分の所で爆発させる
+//   /hammer [強さ 0〜1]  向いている方向の壁をハンマーで叩く (3 回で崩れる)
+//   /blast [半径]        足元に爆弾を置く (導火線の後に爆発)
 // 依頼は武器と同じ TerrainSync.Request を通るので、同期とホストの検査もそのまま確かめられる
 internal static class SandboxCommands
 {
-    private const int ShipLayer = 9;
     private const float DefaultForce = 0.5f;
     private const float DefaultRadius = 1.2f;
-    private const float MaxRadius = 3f;
     private const float HammerCooldown = 0.5f;
     private const float BlastCooldown = 3f;
     private static ShipStatus _hinted;
 
     public static readonly Text Hint = new(
-        "練習: 右下のボタンかチャット欄の /hammer で近くの壁を叩く (3 回で崩れる)・爆破ボタンか /blast で自分の所を爆破",
-        "Practice: use the buttons or type /hammer to hit the nearest wall (breaks on the 3rd hit), /blast to explode where you stand");
+        "練習: 右下のボタンかチャット欄の /hammer で向いている方向の壁を叩く (3 回で崩れる)・爆破ボタンか /blast で足元に爆弾を置く",
+        "Practice: use the buttons or type /hammer to hit the wall you are facing (breaks on the 3rd hit), /blast to drop a bomb at your feet");
 
     // 試合ごとに 1 回だけ、チャット欄に使い方を出す
     public static void ShowHint(ChatController chat)
@@ -46,37 +44,11 @@ internal static class SandboxCommands
         return true;
     }
 
-    // 自分の所で爆発させる。返り値は結果の説明
-    public static string Blast(float radius, out bool ok)
-    {
-        ok = false;
-        if (!Alive(out Vector2 at)) return new Text("生きている時だけ使えます", "Only while alive");
-        ok = true;
-        float r = Math.Clamp(radius, 0.3f, MaxRadius);
-        TerrainSync.Request(new DamageEvent(DamageKind.Explosion, at, Vector2.zero, r, 0f, (ushort)Environment.TickCount));
-        return new Text($"爆発 (半径 {r:0.0})", $"Blast (radius {r:0.0})");
-    }
+    // 足元に爆弾を置く (導火線の後に爆発)。返り値は結果の説明
+    public static string Blast(float radius, out bool ok) => BombFuse.Place(radius, out ok);
 
-    // いちばん近い壁を叩く
-    public static string Hammer(float force, out bool ok)
-    {
-        ok = false;
-        if (!Alive(out Vector2 at)) return new Text("生きている時だけ使えます", "Only while alive");
-        float reach = DamageProfile.Of(DamageKind.Blunt).Reach;
-        if (!NearestWall(at, reach + 0.3f, out Vector2 dir)) return new Text("近くに壊せる壁がありません", "No breakable wall nearby");
-        ok = true;
-        TerrainSync.Request(new DamageEvent(DamageKind.Blunt, at, dir, 0f, Math.Clamp(force, 0f, 1f), (ushort)Environment.TickCount));
-        return new Text("ハンマーで叩いた", "Hammer hit");
-    }
-
-    private static bool Alive(out Vector2 at)
-    {
-        var lp = PlayerControl.LocalPlayer;
-        at = default;
-        if (!lp || lp.Data == null || lp.Data.IsDead) return false;
-        at = lp.GetTruePosition();
-        return true;
-    }
+    // 向いている方向の壁をハンマーで叩く (振る動きの後に当たる)
+    public static string Hammer(float force, out bool ok) => HammerSwing.Swing(force, out ok);
 
     // 練習とフリープレイの試合ごとに、ハンマーと爆破のボタンを出す (もう出ていれば何もしない)
     private static Lifespan _buttons;
@@ -98,25 +70,5 @@ internal static class SandboxCommands
     {
         if (!ok && HudManager.InstanceExists && HudManager.Instance.Chat) HudManager.Instance.Chat.AddChatWarning(result);
         return ok;
-    }
-
-    // 8 方向でいちばん近い壊せる壁の向き
-    private static bool NearestWall(Vector2 from, float range, out Vector2 bestDir)
-    {
-        float best = float.MaxValue;
-        bestDir = default;
-        for (int k = 0; k < 8; k++)
-        {
-            float a = k * MathF.PI / 4f;
-            var dir = new Vector2(MathF.Cos(a), MathF.Sin(a));
-            foreach (var h in Physics2D.CircleCastAll(from, 0.1f, dir, range, 1 << ShipLayer))
-            {
-                if (!h.collider || h.collider.isTrigger || h.distance >= best) continue;
-                if (TerrainDamage.IsProtected(h.collider, h.point)) continue;
-                best = h.distance;
-                bestDir = dir;
-            }
-        }
-        return best < float.MaxValue;
     }
 }

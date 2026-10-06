@@ -399,7 +399,7 @@ internal static class TerrainDamage
         return null;
     }
 
-    private static bool FindWall(Vector2 from, Vector2 dir, float reach, out Vector2 point, out Vector2 normal)
+    internal static bool FindWall(Vector2 from, Vector2 dir, float reach, out Vector2 point, out Vector2 normal)
     {
         point = default; normal = default;
         float best = float.MaxValue;

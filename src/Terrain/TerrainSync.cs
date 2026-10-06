@@ -10,11 +10,11 @@ namespace MoreRolesPlus.Terrain;
 // 地形破壊の同期。ホストが依頼を結果 (ResolvedDamage) に決めて連番を振り、全員が連番の順に適用する。
 // 武器・役職からの入口は Request だけ。フリープレイなど一人の時はその場で決めて適用する。
 // 通信量は公式鯖の制約を予算として守る: 同じ種類の Reliable を秒十数本出すと切断される実測があるので、
-// 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 14 件 (中身 466B・封筒込みで 473B) まで。
+// 0.2 秒に 1 通まで (= 秒 5 本) にまとめ、1 通は 14 件 (中身 480B・封筒込みで 487B) まで。
 internal static class TerrainSync
 {
     private const int FlushTicks = 10;         // FixedUpdate (50Hz) で数えて 0.2 秒
-    private const int MaxEventsPerRpc = 14;     // 瓦礫の止まる所を含めて中身 466B まで
+    private const int MaxEventsPerRpc = 14;     // 瓦礫の止まる所を含めて中身 480B まで
     private const int RequestWindowTicks = 50; // ホストが 1 人から受ける依頼を 1 秒あたり何件まで認めるか
     private const int MaxRequestsPerWindow = 8;
 
@@ -23,6 +23,7 @@ internal static class TerrainSync
     private static readonly Dictionary<ushort, ResolvedDamage> Pending = new(); // 客: 順番待ち (前の連番が未着)
     private static readonly Dictionary<byte, (int window, int count)> RequestRate = new();
     private static readonly byte[] Buf = new byte[TerrainWire.BatchHeader + MaxEventsPerRpc * TerrainWire.MaxResolvedBytes];
+    private static readonly byte[] BombBuf = new byte[2 + TerrainWire.BombBytes];
 
     // ホストは次に振る連番、客は次に適用する連番。ホストが替わったら新ホストはここから振り続ける
     private static ushort _nextSeq;
@@ -37,6 +38,9 @@ internal static class TerrainSync
     private static int _lastReport = -ReportTicks;
     private static ushort _reportedSeq = ushort.MaxValue;
     private static int _batchHost = NoHost; // 客: 最後に束を受けたホスト
+    // 客: 自分の振りが壁に当たる時刻 (Time.time)。それより早く届いた自分の打撃は、そこまで適用を待たせる (後ろの番号も順番待ち)
+    // (試合の最初の束で SyncShip が走るので、そこでは消さない。待つのは長くて HitAt 秒)
+    private static float _ownHitAt;
 
     public static int Applied { get; private set; } // テスト用: この試合で適用した件数
     public static int Refused { get; private set; }    // ホスト: 受けなかった依頼の数
@@ -50,19 +54,19 @@ internal static class TerrainSync
         {
             SyncShip();
             if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
-            return ApplyNow(_nextSeq++, TerrainWire.RoundTrip(r), decide: true, out _);
+            return ApplyNow(_nextSeq++, TerrainWire.RoundTrip(r.WithActor(LocalId())), decide: true, out _);
         }
-        if (AmongUsClient.Instance.AmHost) return HostAccept(e);
+        if (AmongUsClient.Instance.AmHost) return HostAccept(e, LocalId());
         Requests.Add(e);
         return "requested";
     }
 
     // ホスト: 依頼を決めて自分に適用し、配る列に積む
-    private static string HostAccept(in DamageEvent e)
+    private static string HostAccept(in DamageEvent e, byte actor)
     {
         SyncShip();
         if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
-        r = TerrainWire.RoundTrip(r);
+        r = TerrainWire.RoundTrip(r.WithActor(actor));
         // 大きな瓦礫の止まる所は、ホストが自分で適用した結果から決めて同じ電文に載せる
         string res = ApplyNow(_nextSeq++, r, decide: true, out var landings);
         Outbox.Add(r.WithLandings(landings));
@@ -79,6 +83,8 @@ internal static class TerrainSync
         {
             TerrainDigest.End(seq);
             BreakNoise.Emit(r);
+            HammerSwing.OnApplied(r);
+            BombFuse.OnApplied(r);
         }
     }
 
@@ -86,6 +92,11 @@ internal static class TerrainSync
     public static void Tick()
     {
         _tick++;
+        if (_ownHitAt > 0f && Time.time >= _ownHitAt)
+        {
+            _ownHitAt = 0f;
+            if (Pending.Count != 0) Drain();
+        }
         if (Pending.Count != 0 && _tick - _stuckSince > GapTimeoutTicks) SkipGap();
         if (TerrainDigest.Any && TerrainDigest.LastSeq != _reportedSeq && _tick - _lastReport >= ReportTicks) Report();
         if (Outbox.Count == 0 && Requests.Count == 0) return;
@@ -102,7 +113,7 @@ internal static class TerrainSync
         if (client.AmHost)
         {
             // 客の間にホストになった: 自分の依頼は自分で決める
-            foreach (var e in Requests) HostAccept(e);
+            foreach (var e in Requests) HostAccept(e, LocalId());
             Requests.Clear();
             if (Outbox.Count == 0) return;
 
@@ -176,7 +187,7 @@ internal static class TerrainSync
                     if (!AllowRequest(sender.PlayerId)) continue;
                     string bad = Refuse(sender, e);
                     if (bad != null) { Refused++; Plugin.Logger.LogDebug($"[TerrainSync] refused {sender.PlayerId}: {bad}"); continue; }
-                    HostAccept(e);
+                    HostAccept(e, sender.PlayerId);
                 }
                 break;
             }
@@ -203,6 +214,24 @@ internal static class TerrainSync
                     if (o < 0) { Plugin.Logger.LogWarning($"[TerrainSync] truncated batch at #{(ushort)(first + i)}"); break; }
                     Deliver((ushort)(first + i), r);
                 }
+                break;
+            }
+            case TerrainWire.OpPlace:
+            {
+                if (!client.AmHost || b.Length < 1 + TerrainWire.BombBytes) return;
+                TerrainWire.ReadBomb(b, o, out Vector2 pos, out float radius);
+                if (!AllowRequest(sender.PlayerId)) return;
+                string bad = BombFuse.HostRefuse(sender, pos, radius);
+                if (bad != null) { Refused++; Plugin.Logger.LogDebug($"[TerrainSync] bomb refused {sender.PlayerId}: {bad}"); return; }
+                BombFuse.Accept(sender.PlayerId, pos, radius);
+                break;
+            }
+            case TerrainWire.OpBomb:
+            {
+                if (client.AmHost || sender.OwnerId != client.HostId || b.Length < 2 + TerrainWire.BombBytes) return;
+                byte actor = b[o++];
+                TerrainWire.ReadBomb(b, o, out Vector2 pos, out float radius);
+                BombFuse.Show(actor, pos, radius);
                 break;
             }
             case TerrainWire.OpDigest:
@@ -248,8 +277,10 @@ internal static class TerrainSync
 
     private static void Drain()
     {
-        while (Pending.Remove(_nextSeq, out var next))
+        while (Pending.TryGetValue(_nextSeq, out var next))
         {
+            if (_ownHitAt > 0f && next.Kind == DamageKind.Blunt && next.Actor == LocalId() && Time.time < _ownHitAt) break;
+            Pending.Remove(_nextSeq);
             string res = ApplyNow(_nextSeq++, next, decide: false, out _);
             Plugin.Logger.LogDebug($"[TerrainSync] #{(ushort)(_nextSeq - 1)} {res}");
         }
@@ -268,6 +299,38 @@ internal static class TerrainSync
         _nextSeq = lowest;
         Drain();
     }
+
+    // 爆弾: 客 → ホストへ置く依頼 / ホスト → 全員へ置かれた知らせ (どちらもすぐ送る・数は少ない)
+    internal static void SendPlace(Vector2 pos, float radius)
+    {
+        if (!IsGuest()) return;
+        BombBuf[0] = TerrainWire.OpPlace;
+        int o = TerrainWire.WriteBomb(BombBuf, 1, pos, radius);
+        Wire.Send(new ArraySegment<byte>(BombBuf, 0, o), AmongUsClient.Instance.HostId);
+    }
+
+    internal static void BroadcastBomb(byte actor, Vector2 pos, float radius)
+    {
+        if (!Online() || !AmongUsClient.Instance.AmHost) return;
+        BombBuf[0] = TerrainWire.OpBomb;
+        BombBuf[1] = actor;
+        int o = TerrainWire.WriteBomb(BombBuf, 2, pos, radius);
+        Wire.Send(new ArraySegment<byte>(BombBuf, 0, o), -1);
+    }
+
+    // ホストと一人の時: その人の破壊として決めて配る (爆弾の導火線が尽きた時など、依頼を受けた後でホストが起こす破壊)
+    internal static string RequestAs(in DamageEvent e, byte actor)
+    {
+        if (Online() && AmongUsClient.Instance.AmHost) return HostAccept(e, actor);
+        return Request(e);
+    }
+
+    // 客: 自分の振りが壁に当たる時刻を知らせる (それまで自分の打撃の結果を適用しない)。ホストと一人の時は当たる時に依頼する
+    internal static void HoldOwnHitUntil(float time) => _ownHitAt = time;
+
+    internal static bool IsGuest() => Online() && !AmongUsClient.Instance.AmHost;
+
+    private static byte LocalId() => PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.PlayerId : ResolvedDamage.NoActor;
 
     private static bool AllowRequest(byte playerId)
     {

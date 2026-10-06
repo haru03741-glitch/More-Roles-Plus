@@ -13,9 +13,13 @@ internal static class ButtonIcons
     private const float PixelsPerUnit = 172f; // 220 px の絵が 1.28 単位 (本編の能力ボタンの絵の枠と同じ大きさ)
     private static readonly Dictionary<string, Sprite> Cache = new();
 
-    public static Sprite Get(string name)
+    public static Sprite Get(string name) => Load(name, PixelsPerUnit, new Vector2(0.5f, 0.5f));
+
+    // 同じ置き場の絵を、大きさ (1 単位あたりの px) と原点を指定して読む (演出の絵用。同じ絵を別の大きさ・原点でも持てる)
+    public static Sprite Load(string name, float pixelsPerUnit, Vector2 pivot)
     {
-        if (Cache.TryGetValue(name, out var cached) && cached) return cached;
+        string key = pixelsPerUnit == PixelsPerUnit && pivot.x == 0.5f && pivot.y == 0.5f ? name : $"{name}|{pixelsPerUnit}|{pivot.x}|{pivot.y}";
+        if (Cache.TryGetValue(key, out var cached) && cached) return cached;
         string res = $"MoreRolesPlus.Resources.Icons.{name}.png";
         using Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream(res);
         if (s == null) { Plugin.Logger.LogError($"icon missing: {res}"); return null; }
@@ -30,10 +34,10 @@ internal static class ButtonIcons
         if (!tex.LoadImage(data, true)) { Plugin.Logger.LogError($"icon decode failed: {name}"); return null; }
         tex.hideFlags = HideFlags.HideAndDontSave;
         // 読み出し不可のテクスチャは Tight の形を作れないので FullRect
-        var sp = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), PixelsPerUnit, 0, SpriteMeshType.FullRect);
+        var sp = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), pivot, pixelsPerUnit, 0, SpriteMeshType.FullRect);
         sp.name = name;
         sp.hideFlags = HideFlags.HideAndDontSave;
-        Cache[name] = sp;
+        Cache[key] = sp;
         return sp;
     }
 }
