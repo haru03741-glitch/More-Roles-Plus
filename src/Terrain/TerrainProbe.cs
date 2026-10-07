@@ -375,6 +375,31 @@ internal static class TerrainProbe
             reply("OK mapsurvey");
         });
 
+        TestBridge.Register("shipcols", "船の層 (9) と家具の層 (12) の当たり判定 (トリガーでない物) を Screens/shipcols_<船>.txt へ: 持ち主・種類・範囲・頂点数・自分の絵の有無", (_, reply) =>
+        {
+            var ship = ShipStatus.Instance;
+            if (!ship) { reply("ERR shipcols no ship"); return; }
+            var sb = new StringBuilder();
+            sb.Append("# ").Append(ship.name).Append('\n');
+            int n = 0;
+            foreach (var c in ship.GetComponentsInChildren<Collider2D>(true))
+            {
+                int layer = c.gameObject.layer;
+                if ((layer != 9 && layer != 12) || c.isTrigger) continue;
+                var b = c.bounds;
+                var segs = new System.Collections.Generic.List<Vector2>();
+                SolidMap.Segments(c, segs);
+                n++;
+                sb.Append(Path(c.transform)).Append(" | L").Append(layer).Append(' ').Append(c.GetIl2CppType().Name)
+                  .Append(" | min=").Append(V((Vector2)b.min)).Append(" size=").Append(V((Vector2)b.size))
+                  .Append(" | segs=").Append(segs.Count / 2)
+                  .Append(" | sprite=").Append(c.GetComponent<SpriteRenderer>() ? "own" : "-").Append('\n');
+            }
+            string path = System.IO.Path.Combine(TestBridge.ScreensDir, $"shipcols_{ship.name}.txt");
+            System.IO.File.WriteAllText(path, sb.ToString());
+            reply($"OK shipcols n={n} -> {path}");
+        });
+
         TestBridge.Register("propsurvey", "[最大の大きさ=3] 部屋の絵でない小さな絵 (家具・小物) を Screens/props.txt へ: 位置・大きさ・自分の当たり判定・付いている部品", (args, reply) =>
         {
             var ship = ShipStatus.Instance;

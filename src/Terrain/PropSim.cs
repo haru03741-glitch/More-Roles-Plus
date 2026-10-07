@@ -90,6 +90,8 @@ internal static class PropSim
         public Vector2 F0, Pivot0;  // 元の足元・回す軸 (ワールド)
         public bool Tall, Solid;
         public FurnitureLift.Lift Lift; // 重い物 (部屋の絵から持ち上げる家具)
+        public Rect Bounds0;            // 重い物の元の当たり判定の範囲
+        public Collider2D Col;          // 重い物の当たり判定 (上に載っている物を拾う)
         public int Hx, Hy, Rad;          // 重い物の壁の当たりの箱の半分・押される距離に足す半径 (1/1024)
         public List<Rider> Riders;       // 重い物の上に載っていて一緒に動く絵
         public float Z;
@@ -158,13 +160,10 @@ internal static class PropSim
         {
             try
             {
-                if (p.Lift != null)
-                {
-                    FurnitureLift.Restore(p.Lift);
-                    if (p.Riders != null)
-                        foreach (var q in p.Riders)
-                            if (q.Tr) { q.Tr.position = q.T0; q.Tr.rotation = FxMath.RotZ(q.Rot0); }
-                }
+                if (p.Riders != null)
+                    foreach (var q in p.Riders)
+                        if (q.Tr) { q.Tr.position = q.T0; q.Tr.rotation = FxMath.RotZ(q.Rot0); }
+                if (p.Lift != null) FurnitureLift.Restore(p.Lift);
                 else if (p.D.Moved || p.D.WobStart != int.MinValue) { p.Tr.position = p.T0; p.Tr.rotation = FxMath.RotZ(p.Rot0); }
             }
             catch { }
@@ -226,9 +225,16 @@ internal static class PropSim
         foreach (var c in ship.AllConsoles) if (c) Stamp(c.transform.position);
         Props.Clear();
         var decor = new List<SpriteRenderer>();
+        var own = OwnFurniture(ship);
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
         {
             if (!sr.gameObject.activeInHierarchy || !sr.sprite) continue;
+            if (own.TryGetValue(sr.gameObject.GetInstanceID(), out var ok))
+            {
+                var made = MakeOwn(sr, ok.Col, ok.Kind);
+                if (made != null) Props.Add(made);
+                continue;
+            }
             if (!Movable.Contains(sr.sprite.name)) { decor.Add(sr); continue; }
             var prop = Make(sr);
             if (prop != null) Props.Add(prop);
@@ -244,19 +250,18 @@ internal static class PropSim
                 var b = sr.bounds;
                 if (b.size.x <= 1.2f && b.size.y <= 1.2f) decorAt.Add((sr, (Vector2)b.center));
             }
-        foreach (var l in lifts)
+        foreach (var l in lifts) Props.Add(MakeHeavy(l));
+        // 家具 (重い物) の上に載っている絵 (動く物と飾り) は家具と一緒に動かす
+        foreach (var h in Props)
         {
-            var h = MakeHeavy(l);
-            // 家具の上に載っている絵 (動く物と飾り) は家具と一緒に動かす
-            for (int i = 0; i < plain; i++)
+            if (h.Kind != Kind.Heavy || !h.Col) continue;
+            foreach (var q in Props)
             {
-                var q = Props[i];
-                if (q.Tr == null || !l.Col.OverlapPoint(q.T0)) continue;
+                if (q == h || q.Kind == Kind.Heavy || q.Tr == null || !h.Col.OverlapPoint(q.T0)) continue;
                 (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = q.Tr, T0 = q.T0, Rot0 = q.Rot0, Prop = q });
             }
             foreach (var (sr, c) in decorAt)
-                if (l.Col.OverlapPoint(c) && IsDecor(sr)) (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = sr.transform, T0 = sr.transform.position, Rot0 = sr.transform.eulerAngles.z });
-            Props.Add(h);
+                if (h.Col.OverlapPoint(c) && IsDecor(sr)) (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = sr.transform, T0 = sr.transform.position, Rot0 = sr.transform.eulerAngles.z });
         }
         _ready = true;
         return true;
@@ -344,19 +349,75 @@ internal static class PropSim
     private static Prop MakeHeavy(FurnitureLift.Lift l)
     {
         Vector2 c = l.Bounds.center;
-        var p = new Prop { Kind = Kind.Heavy, Name = l.Name, Lift = l, F0 = c, Pivot0 = c, T0 = FxMath.V3(c.x, c.y, 0f) };
+        var p = new Prop { Kind = Kind.Heavy, Name = l.Name, Lift = l, Col = l.Col, F0 = c, Pivot0 = c, T0 = FxMath.V3(c.x, c.y, 0f) };
+        InitHeavy(p, l.Bounds);
+        return p;
+    }
+
+    private static void InitHeavy(Prop p, Rect b)
+    {
+        Vector2 c = b.center;
+        p.Bounds0 = b;
         var a = p.A;
         a.Px = ToU(c.x - _org.x);
         a.Py = ToU(c.y - _org.y);
-        p.Rad = ToU(Math.Min(l.Bounds.width, l.Bounds.height) * 0.4f);
+        p.Rad = ToU(Math.Min(b.width, b.height) * 0.4f);
         for (float k = HeavyBox; k > 0.2f; k -= 0.15f)
         {
-            p.Hx = ToU(l.Bounds.width * 0.5f * k);
-            p.Hy = ToU(l.Bounds.height * 0.5f * k);
+            p.Hx = ToU(b.width * 0.5f * k);
+            p.Hy = ToU(b.height * 0.5f * k);
             if (!Blocked(p, a.Px, a.Py)) break;
         }
         p.D.CopyFrom(a);
         p.Ox = a.Px; p.Oy = a.Py;
+    }
+
+    // 自分の絵と当たり判定 (層 12) を持つ家具のうち、動かし方の表 (FurnitureKinds) に載っている物 (絵の GameObject → 種類と当たり判定)
+    private static Dictionary<int, (FurnitureKind Kind, Collider2D Col)> OwnFurniture(ShipStatus ship)
+    {
+        var map = new Dictionary<int, (FurnitureKind, Collider2D)>();
+        string shipName = ship.name.Replace("(Clone)", "");
+        var consoles = new List<Vector2>();
+        foreach (var c in ship.AllConsoles) if (c) consoles.Add(c.transform.position);
+        foreach (var c in ship.GetComponentsInChildren<SystemConsole>(true)) if (c) consoles.Add(c.transform.position);
+        foreach (var col in ship.GetComponentsInChildren<Collider2D>(true))
+        {
+            if (!col || !col.enabled || col.isTrigger || col.gameObject.layer != 12) continue;
+            var tr = col.transform;
+            string name = tr.name;
+            int paren = name.LastIndexOf(" (", StringComparison.Ordinal);
+            if (paren > 0 && name.EndsWith(")")) name = name.Substring(0, paren);
+            string key = shipName + "/" + (tr.parent ? tr.parent.name : "") + "/" + name;
+            if (!FurnitureKinds.Table.TryGetValue(key, out var kind)) continue;
+            bool hasConsole = false; // 端末 (本編の物) が載っている家具は動かさない
+            foreach (var cp in consoles) if (col.OverlapPoint(cp)) { hasConsole = true; break; }
+            if (!hasConsole) map[col.gameObject.GetInstanceID()] = (kind, col);
+        }
+        return map;
+    }
+
+    // 表に載っている家具: 押してずらす物は重い物 (当たり判定の範囲の真ん中が足元)・倒れる物は縦長の物として倒す。
+    // 当たり判定は絵と同じ GameObject にあるので、絵を動かすと一緒に動く (揺れは当たり判定ごと回るので無し)
+    private static Prop MakeOwn(SpriteRenderer sr, Collider2D col, FurnitureKind kind)
+    {
+        var p = Make(sr);
+        if (p == null) return null;
+        p.Solid = true;
+        var b = col.bounds;
+        var rect = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
+        if (kind == FurnitureKind.Shove)
+        {
+            p.Kind = Kind.Heavy;
+            p.Col = col;
+            p.F0 = p.Pivot0 = rect.center;
+            InitHeavy(p, rect);
+        }
+        else
+        {
+            p.Kind = Kind.Medium;
+            p.Tall = true;
+            p.Pivot0 = p.F0;
+        }
         return p;
     }
 
@@ -434,9 +495,9 @@ internal static class PropSim
                 p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; Draw(p, 1f);
                 if (p.Kind == Kind.Heavy)
                 {
-                    // 水の型抜きと、影の中の焼いた絵 (元の場所と止まった所) を作り直す。
+                    // 水の型抜きと、影の中の焼いた絵 (元の場所と止まった所) を作り直す (自分の絵を持つ家具は水の型抜きに入らないが同じ扱い)。
                     // 型抜きは当たり判定を引くので、動かした Transform が物理に写ってから (FurnitureSettleMs 後)
-                    var b0 = p.Lift.Bounds;
+                    var b0 = p.Bounds0;
                     var now = FxMath.V2(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
                     float r = Math.Max(b0.width, b0.height) * 0.5f + FurnitureLift.Pad;
                     Settled.Add((b0.center, now, r, Environment.TickCount64 + FurnitureSettleMs));
@@ -606,7 +667,7 @@ internal static class PropSim
     // t = 1 刻み前 (0) から今 (1) の間
     private static void Draw(Prop p, float t)
     {
-        if (p.Lift != null) { DrawHeavy(p, t); return; }
+        if (p.Kind == Kind.Heavy) { DrawHeavy(p, t); return; }
         if (!p.Tr) return;
         var st = p.D;
         float x = p.Ox + (st.Px - p.Ox) * t, y = p.Oy + (st.Py - p.Oy) * t;
@@ -627,11 +688,19 @@ internal static class PropSim
     private static void DrawHeavy(Prop p, float t)
     {
         var st = p.D;
-        if (!st.Moved || !FurnitureLift.Ensure(p.Lift)) return;
+        if (!st.Moved) return;
+        if (p.Lift != null && !FurnitureLift.Ensure(p.Lift)) return;
         float x = p.Ox + (st.Px - p.Ox) * t, y = p.Oy + (st.Py - p.Oy) * t;
         float ang = (p.OAng + (st.Ang - p.OAng) * t) / 16f;
         float cx = _org.x + x / Unit, cy = _org.y + y / Unit;
-        FurnitureLift.Place(p.Lift, p.Pivot0, cx, cy, ang);
+        if (p.Lift != null) FurnitureLift.Place(p.Lift, p.Pivot0, cx, cy, ang);
+        else if (p.Tr)
+        {
+            // 自分の絵を持つ家具: 当たり判定の範囲の真ん中を軸に絵を回して動かす (当たり判定も一緒に動く)
+            var o = FxMath.RotateZ(ang, p.T0.x - p.Pivot0.x, p.T0.y - p.Pivot0.y);
+            p.Tr.position = FxMath.V3(cx + o.x, cy + o.y, p.Z);
+            p.Tr.rotation = FxMath.RotZ(p.Rot0 + ang);
+        }
         if (p.Riders == null) return;
         foreach (var q in p.Riders)
         {
