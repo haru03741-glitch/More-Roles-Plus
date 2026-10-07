@@ -120,11 +120,14 @@ internal static class SolidMap
 
         // 1. 元の壁の線 (扉は開け閉めするので入れない = 部屋どうしがつながる)。
         // 地図の範囲は損傷マスク (部屋の絵) と壁の線の両方を囲む範囲 (ファングルは歩ける浜が部屋の絵の外まで続く)
+        // 押されて動く家具 (FurnitureKinds) は入れない (当たり判定は家具と一緒に動くが、この地図は作り直さない)
         var all = new List<Vector2>();
-        int cols = 0;
+        int cols = 0, movable = 0;
+        string shipName = FurnitureKinds.ShipName(ship);
         foreach (var c in ship.GetComponentsInChildren<Collider2D>(false))
         {
             if (!IsWall(c) || c.GetComponentInParent<OpenableDoor>()) continue;
+            if (FurnitureKinds.TryGet(c.transform, shipName, out _)) { movable++; continue; }
             Segments(c, all);
             cols++;
         }
@@ -222,7 +225,7 @@ internal static class SolidMap
         int edges = 0;
         if (Valid) edges = BuildHull(ship);
 
-        Stats = $"valid={Valid} {_w}x{_h} walls={cols} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
+        Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
         Plugin.Logger.LogInfo($"solid map: {Stats}");
     }
 

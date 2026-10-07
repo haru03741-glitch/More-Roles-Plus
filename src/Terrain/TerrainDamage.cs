@@ -317,17 +317,25 @@ internal static class TerrainDamage
         System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (初回の破壊で 1 回だけ生成のために止まる・名前は短く数も少ない)
 
     // at の辺りで守るか。名前で守る物でも、マップの絵に「壊れてよい」と塗った所なら壊す。
-    // 扉とこの mod が置いた壁 (縁・船体の外周・瓦礫) は塗っても守る
+    // 扉・この mod が置いた壁 (縁・船体の外周・瓦礫)・押されて動く家具は塗っても守る
     internal static bool IsProtected(Component c, Vector2 at)
     {
         if (!IsProtected(c)) return false;
-        if (c.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || c.GetComponentInParent<OpenableDoor>()) return true;
+        if (c.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || c.GetComponentInParent<OpenableDoor>() || IsMovingFurniture(c)) return true;
         return !MapNotes.InFree(at);
+    }
+
+    // 押されて動く家具 (当たり判定が家具と一緒に動くので、切ると動いた後の形と食い違う)
+    private static bool IsMovingFurniture(Component c)
+    {
+        var ship = ShipStatus.Instance;
+        return ship && FurnitureKinds.TryGet(c.transform, FurnitureKinds.ShipName(ship), out _);
     }
 
     internal static bool IsProtected(Component c)
     {
         if (c.GetComponentInParent<OpenableDoor>()) return true;
+        if (IsMovingFurniture(c)) return true;
         for (var t = c.transform; t && !t.GetComponent<ShipStatus>(); t = t.parent)
             if (ProtectedName.IsMatch(t.name)) return true;
         return false;

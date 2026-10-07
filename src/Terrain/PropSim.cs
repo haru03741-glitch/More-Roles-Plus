@@ -221,11 +221,12 @@ internal static class PropSim
         _w = SolidMap.W; _h = SolidMap.H; _org = SolidMap.Origin;
         _cellU = (int)MathF.Round(Unit / SolidMap.Ppu);
         _block = new byte[_w * _h];
+        var own = OwnFurniture(ship);
         foreach (var v in ship.AllVents) if (v) Stamp(v.transform.position);
-        foreach (var c in ship.AllConsoles) if (c) Stamp(c.transform.position);
+        // 家具に載った端末は家具と一緒に動くので、周りを塞がない (塞ぐと家具が自分の端末に引っ掛かる)
+        foreach (var c in ship.AllConsoles) if (c && !OnOwnFurniture(c.transform, own)) Stamp(c.transform.position);
         Props.Clear();
         var decor = new List<SpriteRenderer>();
-        var own = OwnFurniture(ship);
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
         {
             if (!sr.gameObject.activeInHierarchy || !sr.sprite) continue;
@@ -235,6 +236,7 @@ internal static class PropSim
                 if (made != null) Props.Add(made);
                 continue;
             }
+            if (OnOwnFurniture(sr.transform, own)) continue; // 家具の子 (端末など) は親と一緒に動く
             if (!Movable.Contains(sr.sprite.name)) { decor.Add(sr); continue; }
             var prop = Make(sr);
             if (prop != null) Props.Add(prop);
@@ -279,12 +281,12 @@ internal static class PropSim
             }
     }
 
-    // 動かしてよい物か: 絵と当たり判定のほかに部品が無い・子に当たり判定や部品が無い
-    private static Prop Make(SpriteRenderer sr)
+    // 動かしてよい物か: 絵と当たり判定のほかに部品が無い・子に当たり判定や部品が無い (listed = 表に載った家具は端末などの子ごと動かす)
+    private static Prop Make(SpriteRenderer sr, bool listed = false)
     {
         var go = sr.gameObject;
         bool solid = false;
-        foreach (var c in go.GetComponentsInChildren<Component>(true))
+        if (!listed) foreach (var c in go.GetComponentsInChildren<Component>(true))
         {
             string tn = c.GetIl2CppType().Name;
             if (tn == "Transform" || tn == "SpriteRenderer") continue;
@@ -372,35 +374,36 @@ internal static class PropSim
         p.Ox = a.Px; p.Oy = a.Py;
     }
 
-    // 自分の絵と当たり判定 (層 12) を持つ家具のうち、動かし方の表 (FurnitureKinds) に載っている物 (絵の GameObject → 種類と当たり判定)
+    // 自分の絵と当たり判定 (層 12 か船の層 9) を持つ家具のうち、動かし方の表 (FurnitureKinds) に載っている物 (絵の GameObject → 種類と当たり判定)。
+    // 載っている端末 (子) は家具と一緒に動く
     private static Dictionary<int, (FurnitureKind Kind, Collider2D Col)> OwnFurniture(ShipStatus ship)
     {
         var map = new Dictionary<int, (FurnitureKind, Collider2D)>();
-        string shipName = ship.name.Replace("(Clone)", "");
-        var consoles = new List<Vector2>();
-        foreach (var c in ship.AllConsoles) if (c) consoles.Add(c.transform.position);
-        foreach (var c in ship.GetComponentsInChildren<SystemConsole>(true)) if (c) consoles.Add(c.transform.position);
+        string shipName = FurnitureKinds.ShipName(ship);
         foreach (var col in ship.GetComponentsInChildren<Collider2D>(true))
         {
-            if (!col || !col.enabled || col.isTrigger || col.gameObject.layer != 12) continue;
-            var tr = col.transform;
-            string name = tr.name;
-            int paren = name.LastIndexOf(" (", StringComparison.Ordinal);
-            if (paren > 0 && name.EndsWith(")")) name = name.Substring(0, paren);
-            string key = shipName + "/" + (tr.parent ? tr.parent.name : "") + "/" + name;
-            if (!FurnitureKinds.Table.TryGetValue(key, out var kind)) continue;
-            bool hasConsole = false; // 端末 (本編の物) が載っている家具は動かさない
-            foreach (var cp in consoles) if (col.OverlapPoint(cp)) { hasConsole = true; break; }
-            if (!hasConsole) map[col.gameObject.GetInstanceID()] = (kind, col);
+            if (!col || !col.enabled || col.isTrigger) continue;
+            int layer = col.gameObject.layer;
+            if (layer != 12 && layer != 9) continue;
+            if (FurnitureKinds.TryGet(col.transform, shipName, out var kind)) map[col.gameObject.GetInstanceID()] = (kind, col);
         }
         return map;
     }
 
-    // 表に載っている家具: 押してずらす物は重い物 (当たり判定の範囲の真ん中が足元)・倒れる物は縦長の物として倒す。
+    // tr が表の家具の子孫か (家具そのものは含めない)
+    private static bool OnOwnFurniture(Transform tr, Dictionary<int, (FurnitureKind Kind, Collider2D Col)> own)
+    {
+        if (own.Count == 0) return false;
+        for (var t = tr.parent; t; t = t.parent)
+            if (own.ContainsKey(t.gameObject.GetInstanceID())) return true;
+        return false;
+    }
+
+    // 表に載っている家具: 押してずらす物は重い物 (当たり判定の範囲の真ん中が足元)・倒れる物は縦長なら倒す。
     // 当たり判定は絵と同じ GameObject にあるので、絵を動かすと一緒に動く (揺れは当たり判定ごと回るので無し)
     private static Prop MakeOwn(SpriteRenderer sr, Collider2D col, FurnitureKind kind)
     {
-        var p = Make(sr);
+        var p = Make(sr, true);
         if (p == null) return null;
         p.Solid = true;
         var b = col.bounds;
@@ -414,8 +417,10 @@ internal static class PropSim
         }
         else
         {
+            // 倒れる物: 横に長い絵 (壁際の大きな棚など) は 90° 倒すと通路をふさぐので、ほかの横長の物と同じく滑ってねじれる
+            Vector2 size = sr.bounds.size;
             p.Kind = Kind.Medium;
-            p.Tall = true;
+            p.Tall = size.x <= size.y * 1.5f;
             p.Pivot0 = p.F0;
         }
         return p;
