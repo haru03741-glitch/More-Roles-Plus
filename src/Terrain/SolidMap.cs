@@ -28,7 +28,7 @@ internal static class SolidMap
     // はしご・ジップライン・動く足場はつながりに入れない (壁の線しか見ない) ので、番号が違う = 高さが違う床。
     // 元の番号は壊しても書き換えない (穴でつながった後も元の高さで比べる)。掘って開けた升だけ、掘り始めた側の番号を足す
     private static byte[] _island;
-    // 船の外 (宇宙・空・ミラとエアシップだけ)。部屋の絵 (DamageMap の部屋の絵のスプライトの三角形) と船体の塊のどれにも掛からず、歩ける所でも壁でもない所。
+    // 船の外 (宇宙・空・ミラとエアシップだけ) = 1。部屋の絵 (DamageMap の部屋の絵のスプライトの三角形) と船体の塊のどれにも掛からず、歩ける所でも壁でもない所。
     // ミラは部屋と部屋の間に空が入り込み、厚い壁の帯 (両側の線の間) と細い空の隙間は線の形・幅・つながりでは区別できない
     // (帯にも隙間にも端が空に開いた所・閉じた所がある)。絵のあるなしで分ける。三角形は画像の圧縮によらないので端末で同じ
     private static byte[] _outside;
@@ -121,7 +121,7 @@ internal static class SolidMap
             if (x < 0 || y < 0 || x >= _w || y >= _h) return -1;
             int k = y * _w + x;
             if (_island[k] != 0) return 1;
-            if (_outside != null && _outside[k] != 0) return -1;
+            if (_outside != null && _outside[k] == 1) return -1;
         }
         return 0;
     }
@@ -137,6 +137,22 @@ internal static class SolidMap
     }
 
     private const int OutsideReach = Dilate + 1;
+
+    // 点が絵の無い空・宇宙の上か (船の外と、その際の太らせた分の絵の無い縁)。
+    // 穴を空に書かない用 (穴の所には船体の中の板が描かれるので、空の上に黒い塊が出る)
+    public static bool BareSky(float px, float py)
+    {
+        if (_outside == null) return false;
+        return BareSkyCell((int)MathF.Floor((px - _origin.x) * _ppu), (int)MathF.Floor((py - _origin.y) * _ppu));
+    }
+
+    private static bool BareSkyCell(int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= _w || y >= _h) return true;
+        byte v = _outside[y * _w + x];
+        return v == 1 || (v == 2 && (OutsideCell(x - OutsideReach, y) || OutsideCell(x + OutsideReach, y) ||
+                                     OutsideCell(x, y - OutsideReach) || OutsideCell(x, y + OutsideReach)));
+    }
 
     // 壁の線の上の点 m の両側 (法線 n の向きと逆向き) のどちらかが船の外か。面から離れながら見て、
     // 歩ける床に先に着いた側は外でない (ポーラスの壁の外の細い通路の先にある船の外を拾わないように)。
@@ -160,7 +176,7 @@ internal static class SolidMap
     private const float FaceProbeStep = 0.15f;
     private const int FaceProbes = 4;
 
-    private static bool OutsideCell(int x, int y) => x < 0 || y < 0 || x >= _w || y >= _h || _outside[y * _w + x] != 0;
+    private static bool OutsideCell(int x, int y) => x < 0 || y < 0 || x >= _w || y >= _h || _outside[y * _w + x] == 1;
 
     // エアシップの船体の塊 (赤い板) の中か
     public static bool InHull(Vector2 p)
@@ -320,10 +336,11 @@ internal static class SolidMap
             for (int y = hy0; y <= hy1; y++)
             for (int x = hx0; x <= hx1; x++) art[y * _w + x] = 1;
         }
-        art = DilateGrid(art, _w, _h, Dilate);
+        var grown = DilateGrid(art, _w, _h, Dilate);
         var outside = new byte[n];
         for (int k = 0; k < n; k++)
-            if (art[k] == 0 && blocked[k] == 0 && _open[k] == 0) outside[k] = 1;
+            if (grown[k] == 0 && blocked[k] == 0 && _open[k] == 0) outside[k] = 1;
+            else if (art[k] == 0) outside[k] = 2; // 絵は無いが外にも数えない升 (太らせた分の縁・壁の線の上など)
         return outside;
     }
 
@@ -589,7 +606,7 @@ internal static class SolidMap
             float wx = _origin.x + (x0 + x + 0.5f) / _ppu, wy = _origin.y + (y0 + y + 0.5f) / _ppu;
             if (shape.SignedDistance(wx, wy) >= 0f) continue;
             if (keep != null && InsideAny(keep, wx, wy)) continue;
-            if (_outside != null && _outside[(y0 + y) * _w + x0 + x] != 0) continue; // 船の外 (空・宇宙) は歩ける所にしない
+            if (_outside != null && BareSkyCell(x0 + x, y0 + y)) continue; // 船の外 (空・宇宙) と際の絵の無い縁は歩ける所にしない (空の上に水が広がる)
             inside[y * bw + x] = 1;
         }
 
@@ -740,7 +757,7 @@ internal static class SolidMap
             int o = (y * w + x) * 3;
             body[o] = body[o + 1] = body[o + 2] = v;
             if (_leaked != null && _leaked[gy * _w + gx] != 0) { body[o] = 0; body[o + 1] = 60; body[o + 2] = 200; }
-            else if (_outside != null && _outside[gy * _w + gx] != 0) { body[o] = 40; body[o + 1] = 40; body[o + 2] = 90; }
+            else if (_outside != null && _outside[gy * _w + gx] == 1) { body[o] = 40; body[o + 1] = 40; body[o + 2] = 90; }
         }
         // 壁の線 (動きの層) を赤で重ねる
         var segs = WallSegmentsNear(c, r * 1.42f);

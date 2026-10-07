@@ -247,6 +247,8 @@ internal static class DamageMap
                 if (wy < floorY) hole = Math.Min(hole, Clamp01(0.5f - (floorY - wy) / HoleEdge * 0.5f));
                 // 船の外 (空・宇宙) には焦げも熾火も書かない (壊れない壁の向こうへ焦げが伸びると、影の中で空の上に黒く出る)
                 if ((scorch > 0f || ember > 0f) && SolidMap.NearOutside(wx, wy)) { scorch = 0f; ember = 0f; }
+                // 絵の無い空の上には穴も書かない (穴の所に敷く船体の中の板が空の上に黒く出る)
+                if (hole > 0f && SolidMap.BareSky(wx, wy)) hole = 0f;
 
                 int i = (py * _w + px) * 4;
                 byte hb = (byte)(hole * 255f), sb = (byte)(scorch * 255f);

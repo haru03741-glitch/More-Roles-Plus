@@ -151,7 +151,8 @@ internal static class WaterArt
             float d = Sample(px, py);
             float wx = org.x + (x0 + (px + 0.5f) / Px) * cell, wy = org.y + (y0 + (py + 0.5f) / Px) * cell;
             int sx = (int)((wx - sorg.x) * sppu), sy = (int)((wy - sorg.y) * sppu);
-            bool vis = NearOpen(sx, sy, sw) && (t.Furn == null || !t.Furn[py * n + px]);
+            // 壁の際の溝を埋めるために広げた分も、絵の無い空の上には描かない
+            bool vis = NearOpen(sx, sy, sw) && (t.Furn == null || !t.Furn[py * n + px]) && !SolidMap.BareSky(wx, wy);
             t.Px[i] = (byte)Math.Min(255f, d * (255f / DeepScale));
             t.Px[i + 1] = vis ? (byte)255 : (byte)0;
             t.Px[i + 2] = 0;
