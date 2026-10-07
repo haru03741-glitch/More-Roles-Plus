@@ -22,17 +22,23 @@ internal static class FurnitureLift
     private const float FillZ = 0.0002f;     // 部屋の絵より手前・水より奥
 
     // 床の測り方: きれいな床の左下 (部屋の絵の画素・左下原点)・繰り返しの幅 (画素・0 = その向きは同じ列/行をそのまま引く)・
-    // 形を当たり判定から広げる幅 (世界単位。隣に柄の違う床や壁がある家具は狭い)
+    // 形を当たり判定から広げる幅 (世界単位・左右下上。隣に柄の違う床や壁・ほかの家具の影がある側は狭い)
     internal readonly struct Floor
     {
-        public readonly float X, Y, Tx, Ty, Pad;
-        public Floor(float x, float y, float tx, float ty, float pad) { X = x; Y = y; Tx = tx; Ty = ty; Pad = pad; }
+        public readonly float X, Y, Tx, Ty, PadL, PadR, PadB, PadT;
+        public Floor(float x, float y, float tx, float ty, float pad) : this(x, y, tx, ty, pad, pad, pad, pad) { }
+        public Floor(float x, float y, float tx, float ty, float padL, float padR, float padB, float padT)
+        {
+            X = x; Y = y; Tx = tx; Ty = ty; PadL = padL; PadR = padR; PadB = padB; PadT = padT;
+        }
     }
 
-    // 家具 (部屋の絵の名前/当たり判定の名前)・無ければ部屋の絵の名前で引く
+    // 家具 (部屋の絵の名前/当たり判定の名前)・無ければ部屋の絵の名前で引く。手で測った表 (Manual) を先に見る
     private static Floor? FloorFor(string room, string name)
     {
-        if (FurnitureFloors.Table.TryGetValue(room + "/" + name, out var f)) return f;
+        string key = room + "/" + name;
+        if (FurnitureFloors.Manual.TryGetValue(key, out var f)) return f;
+        if (FurnitureFloors.Table.TryGetValue(key, out f)) return f;
         if (FurnitureFloors.Table.TryGetValue(room, out f)) return f;
         return null;
     }
@@ -59,6 +65,7 @@ internal static class FurnitureLift
     {
         public string Name, Room;
         public Floor Floor;
+        public Vector2 CutOffset;   // 切り抜きの絵の中心 - 当たり判定の範囲の中心 (広げる幅が左右で違う時)
         public Collider2D Col;
         public Transform ColTr;
         public Vector3 ColT0;
@@ -105,10 +112,9 @@ internal static class FurnitureLift
         {
             var shape = MakeShape(l);
             Owned.Add(shape);
-            var b = l.Bounds;
-            float pad = l.Floor.Pad;
-            var world = Rect.MinMaxRect(b.xMin - pad, b.yMin - pad, b.xMax + pad, b.yMax + pad);
+            var world = PaddedRect(l);
             Vector2 at = world.center;
+            l.CutOffset = FxMath.V2(world.center.x - l.Bounds.center.x, world.center.y - l.Bounds.center.y);
             Func<Material, BreakPieces.Room, bool> configure = (mat, room) =>
             {
                 if (room.Name != l.Room) return false;
@@ -155,19 +161,27 @@ internal static class FurnitureLift
         tr.position = FxMath.V3(p.x, p.y, front - dz * DamageMap.ZScale(front));
     }
 
-    // 当たり判定の形を広げる幅 (Floor.Pad) だけ太らせて ShapePx 四方の白黒にする (切り抜きと跡の床の両方が使う)。
-    // 当たり判定は画素ごとに 1 回だけ引き、太らせは画素の上で (半径 pad の楕円の中に中の画素があれば中)
+    // 当たり判定の範囲を左右下上の広げる幅だけ広げた四角
+    private static Rect PaddedRect(Lift l)
+    {
+        var b = l.Bounds;
+        var f = l.Floor;
+        return Rect.MinMaxRect(b.xMin - f.PadL, b.yMin - f.PadB, b.xMax + f.PadR, b.yMax + f.PadT);
+    }
+
+    // 当たり判定の形を左右下上の広げる幅だけ太らせて ShapePx 四方の白黒にする (切り抜きと跡の床の両方が使う)。
+    // 当たり判定は画素ごとに 1 回だけ引き、太らせは画素の上で (向きごとの半径の楕円の中に中の画素があれば中)
     private static unsafe Texture2D MakeShape(Lift l)
     {
-        var w = l.Bounds;
-        float pad = Math.Max(0.001f, l.Floor.Pad);
-        float x0 = w.xMin - pad, y0 = w.yMin - pad;
-        float sx = (w.width + pad * 2f) / ShapePx, sy = (w.height + pad * 2f) / ShapePx;
+        var w = PaddedRect(l);
+        var f = l.Floor;
+        float x0 = w.xMin, y0 = w.yMin;
+        float sx = w.width / ShapePx, sy = w.height / ShapePx;
         var inside = new bool[ShapePx * ShapePx];
         for (int y = 0; y < ShapePx; y++)
             for (int x = 0; x < ShapePx; x++)
                 inside[y * ShapePx + x] = l.Col.OverlapPoint(FxMath.V2(x0 + (x + 0.5f) * sx, y0 + (y + 0.5f) * sy));
-        int rx = (int)MathF.Ceiling(pad / sx), ry = (int)MathF.Ceiling(pad / sy);
+        int rx = (int)MathF.Ceiling(Math.Max(f.PadL, f.PadR) / sx), ry = (int)MathF.Ceiling(Math.Max(f.PadB, f.PadT) / sy);
         var px = new byte[ShapePx * ShapePx * 4];
         for (int y = 0; y < ShapePx; y++)
             for (int x = 0; x < ShapePx; x++)
@@ -181,8 +195,10 @@ internal static class FurnitureLift
                     {
                         int xx = x + dx;
                         if (xx < 0 || xx >= ShapePx || !inside[yy * ShapePx + xx]) continue;
-                        float ex = dx * sx, ey = dy * sy;
-                        if (ex * ex + ey * ey <= pad * pad) { hit = true; break; }
+                        // 中の画素から見たこの画素の向きの広げる幅 (dx > 0 = 右へ広げた所)
+                        float px0 = dx > 0 ? f.PadR : f.PadL, py0 = dy > 0 ? f.PadT : f.PadB;
+                        float ex = dx == 0 ? 0f : dx * sx / Math.Max(px0, 1e-4f), ey = dy == 0 ? 0f : dy * sy / Math.Max(py0, 1e-4f);
+                        if (ex * ex + ey * ey <= 1f) { hit = true; break; }
                     }
                 }
                 if (!hit) continue;
@@ -201,7 +217,7 @@ internal static class FurnitureLift
         if (l.Cut)
         {
             var c0 = l.Bounds.center;
-            var o = FxMath.RotateZ(ang, c0.x - pivot0.x, c0.y - pivot0.y);
+            var o = FxMath.RotateZ(ang, c0.x + l.CutOffset.x - pivot0.x, c0.y + l.CutOffset.y - pivot0.y);
             float z = l.Cut.position.z;
             // 切り抜きの絵は作った時に範囲の中心へ置いてある
             l.Cut.position = FxMath.V3(cx + o.x, cy + o.y, z);

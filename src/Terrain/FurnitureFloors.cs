@@ -3,8 +3,9 @@ using System.Collections.Generic;
 namespace MoreRolesPlus.Terrain;
 
 // 部屋の絵に描き込まれた家具の跡を埋める床の測り方 (FurnitureLift.Floor)。tools/measure-room-floors.py が作る。
-// キー = 部屋の絵の名前/当たり判定の名前 (家具ごと) か 部屋の絵の名前 (部屋の全部の家具)
-internal static class FurnitureFloors
+// キー = 部屋の絵の名前/当たり判定の名前 (家具ごと) か 部屋の絵の名前 (部屋の全部の家具)。
+// 道具が測れなかった家具は FurnitureFloorsManual.cs (手で測った表) にある
+internal static partial class FurnitureFloors
 {
     internal static readonly Dictionary<string, FurnitureLift.Floor> Table = new()
     {
