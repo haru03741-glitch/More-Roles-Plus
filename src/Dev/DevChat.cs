@@ -12,7 +12,7 @@ internal static class DevChat
 {
     public static void SetShown(bool on)
     {
-        var hud = HudManager.Instance;
+        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
         if (!hud || !hud.Chat) return;
         hud.Chat.SetVisible(on);
     }

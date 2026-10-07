@@ -87,7 +87,7 @@ internal static class RoleCommands
 
         TestBridge.Register("killbtn", "[0|1] キルボタンの状態 (表示・狙い・待ち時間)。1 で押す", (args, reply) =>
         {
-            var hud = HudManager.Instance;
+            var hud = HudManager.InstanceExists ? HudManager.Instance : null;
             var lp = PlayerControl.LocalPlayer;
             if (!hud || !hud.KillButton || !lp) { reply("ERR killbtn no hud"); return; }
             var b = hud.KillButton;

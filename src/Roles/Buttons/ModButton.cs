@@ -37,7 +37,7 @@ internal sealed class ModButton
     // onClick の返り値 = 使えたか (false なら待ち時間を始めない)
     public static ModButton Create(Lifespan life, Sprite icon, string label, float cooldown, Func<bool> onClick)
     {
-        var hud = HudManager.Instance;
+        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
         if (!hud || !hud.AbilityButton || life.IsDead) return null;
         var src = hud.AbilityButton;
         var b = UnityEngine.Object.Instantiate(src, src.transform.parent);
@@ -121,7 +121,7 @@ internal sealed class ModButton
 
     private static void Arrange()
     {
-        var hud = HudManager.Instance;
+        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
         if (!hud || !hud.AbilityButton) return;
         var grid = hud.AbilityButton.transform.parent.GetComponent<GridArrange>();
         if (grid) grid.ArrangeChilds();

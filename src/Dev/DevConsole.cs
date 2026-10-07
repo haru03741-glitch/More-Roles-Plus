@@ -215,7 +215,8 @@ internal static class DevConsole
 
     private static void Build()
     {
-        var hud = HudManager.Instance;
+        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+        if (!hud) return;
         var src = hud.TaskPanel ? hud.TaskPanel.taskText : null;
         if (!src) return;
 
@@ -255,7 +256,8 @@ internal static class DevConsole
     private static void EnsureDevButton()
     {
         if (_devButton) return;
-        var hud = HudManager.Instance;
+        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+        if (!hud) return;
         var src = hud.TaskPanel ? hud.TaskPanel.taskText : null;
         var cam = hud.UICamera;
         if (!src || !cam) return;

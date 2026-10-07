@@ -116,7 +116,7 @@ internal static class LobbyCommands
 
         TestBridge.Register("startgame", "[マップ番号] ホストが部屋の試合を始める (人数の下限を外す。follow: wait phase=InGame 60)", (args, reply) =>
         {
-            var gsm = GameStartManager.Instance;
+            var gsm = GameStartManager.InstanceExists ? GameStartManager.Instance : null;
             if (!gsm || !AmongUsClient.Instance.AmHost) { reply("ERR startgame not host in lobby"); return; }
             if (byte.TryParse(args, out byte map))
                 GameOptionsManager.Instance.CurrentGameOptions.SetByte(AmongUs.GameOptions.ByteOptionNames.MapId, map);
@@ -127,7 +127,7 @@ internal static class LobbyCommands
 
         TestBridge.Register("pressstart", "ロビーの開始ボタンを押す (人数の下限は外さない・人が押したのと同じ。follow: wait phase=InGame 60)", (_, reply) =>
         {
-            var gsm = GameStartManager.Instance;
+            var gsm = GameStartManager.InstanceExists ? GameStartManager.Instance : null;
             if (!gsm || !AmongUsClient.Instance.AmHost) { reply("ERR pressstart not host in lobby"); return; }
             gsm.StartButton.OnClick.Invoke();
             reply($"OK pressstart min={gsm.MinPlayers} players={GameData.Instance.PlayerCount}");
