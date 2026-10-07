@@ -26,8 +26,9 @@ internal static class BreakPieces
     private const float PieceZ = 0.004f;  // 部屋の絵より手前へ
     private const float PieceLine = 0.011f; // 塊の輪郭線の幅 (世界単位)。隣の塊と合わせて ≈0.022 (塊が小さいので部屋の割れ口の線より細く)
 
-    private sealed class Room
+    internal sealed class Room
     {
+        public string Name;           // 部屋の絵の名前
         public Material Mat, PeelMat; // 割れた塊 (_UseDamage = 4) / 剥げかけ (5)
         public Texture2D Tex;
         public Rect TexRect;          // テクスチャ上のこの絵の範囲 (はみ出すとアトラスの隣の絵が乗る)
@@ -181,6 +182,23 @@ internal static class BreakPieces
         return p;
     }
 
+    // 持ち上げる家具の絵: 点 at でいちばん手前の部屋の絵から world の範囲を切り出し、mode (7 = 家具・8 = 跡の床) の描き方で置く。
+    // マテリアルは家具ごとの複製 (configure で形と床を入れる)。割れた塊の上限には数えない (片付けは呼んだ側)
+    // 点 at でいちばん手前の部屋の絵の名前 (無ければ null)
+    internal static string RoomNameAt(Vector2 at, Rect world)
+        => MrpBundle.Ready ? FrontRoom(Candidates(world, swappedOnly: false), at, world)?.Name : null;
+
+    internal static BreakPiece MakeLift(Vector2 at, Rect world, float mode, Func<Material, Room, bool> configure)
+    {
+        if (!MrpBundle.Ready) return null;
+        var room = FrontRoom(Candidates(world, swappedOnly: false), at, world);
+        if (room == null) return null;
+        var mat = new Material(room.Mat) { name = "MrpLift" };
+        mat.SetFloat("_UseDamage", mode);
+        if (!configure(mat, room)) { UnityEngine.Object.Destroy(mat); return null; }
+        return Make(room, world, mat, Color.white, 0, alive: false);
+    }
+
     private static BreakPiece Make(Room room, Rect world, Material mat, Color color, byte gen, bool alive = true)
     {
         // 世界の範囲 → テクスチャの画素の範囲 (この絵の範囲に収める)
@@ -263,6 +281,7 @@ internal static class BreakPieces
             }
             room = new Room
             {
+                Name = sp.name,
                 Tex = tex,
                 TexRect = tr,
                 Ppu = ppu,

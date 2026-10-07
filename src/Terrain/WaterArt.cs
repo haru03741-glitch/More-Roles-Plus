@@ -30,6 +30,7 @@ internal static class WaterArt
         public Sprite Sp;
         public byte[] Px;
         public bool[] Furn;
+        public int FurnVersion;
         public float LastDraw = -10f;
         public bool Waiting;
         public bool Empty = true;
@@ -40,6 +41,7 @@ internal static class WaterArt
     private static int[] _raw;     // 描く間の高さ (タイル + 縁 3 升)
     private static int[] _depth;   // それを 3×3 でならした物 (タイル + 縁 2 升)
     private static float _clock;
+    private static int _furnVersion;
     private static long _lastMs;
     internal static double LastDrawMs { get; private set; }
     internal static int Drawn { get; private set; }
@@ -133,6 +135,11 @@ internal static class WaterArt
 
         int n = tc * Px;
         float cell = WaterSim.Cell;
+        if (t.FurnVersion != _furnVersion)
+        {
+            t.FurnVersion = _furnVersion;
+            t.Furn = FurnitureMask(WaterSim.Origin.x + t.Tx * tc * cell, WaterSim.Origin.y + t.Ty * tc * cell, tc * cell);
+        }
         int sw = SolidMap.W;
         float sppu = SolidMap.Ppu;
         var sorg = SolidMap.Origin;
@@ -212,6 +219,27 @@ internal static class WaterArt
         // 床の上・足跡 (−0.001) と波紋より奥
         t.Go.transform.position = FxMath.V3(wx, wy, front - 0.0004f * zs);
         t.Furn = FurnitureMask(wx, wy, tc * cell);
+        t.FurnVersion = _furnVersion;
+    }
+
+    // 家具 (部屋の絵から持ち上げた物) が a から b へ動いて止まった: 型抜きを作り直す (どのタイルも次に描く時に)。
+    // すぐ描き直すのは、元の場所か止まった所から r 以内に掛かるタイルだけ
+    internal static void FurnitureMoved(Vector2 a, Vector2 b, float r)
+    {
+        _furnVersion++;
+        float size = WaterSim.TileCells * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        foreach (var kv in Tiles)
+        {
+            var t = kv.Value;
+            if (t.Empty || t.Waiting) continue;
+            float x0 = org.x + t.Tx * size, y0 = org.y + t.Ty * size;
+            if (!Near(a) && !Near(b)) continue;
+            t.Waiting = true;
+            Waiting.Add(kv.Key);
+
+            bool Near(Vector2 c) => c.x + r > x0 && c.x - r < x0 + size && c.y + r > y0 && c.y - r < y0 + size;
+        }
     }
 
     // 部屋の絵に描き込まれた家具 (机・ベッド) の範囲。絵は当たり判定より上へ伸びているので上へずらした所も見る

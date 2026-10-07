@@ -7,6 +7,8 @@
 // _MrpGenTex (同じ置き場所・点サンプリング) = その画素を最後に抜いた破壊の番号。割れた塊は自分の番号の所だけ描く。
 // 合成の係数はマテリアルで変えられる (既定 = 通常の半透明合成。影の写しの型抜きだけが別の係数を使う)。
 // _MrpPieceSites (行 0..255 = 破壊の番号・256..511 = 剥げかけの枠・列 = 種点) = 割れ目の種点 (放射状)。割れた塊は自分の種点がいちばん近い所だけ描く。
+// 7 = 持ち上げた家具 / 8 = その跡の床: 部屋の絵に描き込まれた家具を、形 (_ShapeTex) と、その場所に本来ある床の模様
+//   (_FloorPatch のきれいな床を繰り返した色) との違いで切り分ける。
 Shader "MRP/TerrainSprite"
 {
     Properties
@@ -27,6 +29,10 @@ Shader "MRP/TerrainSprite"
         _PieceLine ("Piece outline width", Float) = 0.022
         _CrackLine ("Crack line half width", Float) = 0.0045
         _RecessColor ("Exposed wall inside color", Color) = (0.36, 0.35, 0.39, 1)
+        _ShapeTex ("Lifted furniture shape", 2D) = "black" {}
+        _ShapeRect ("Shape rect (xy min world, zw 1/size)", Vector) = (0,0,0,0)
+        _FloorPatch ("Clean floor (xy min world, z period)", Vector) = (0,0,1,0)
+        _FloorTol ("Floor difference tolerance", Float) = 0.05
         [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Src blend", Float) = 5
         [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Dst blend", Float) = 10
         [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlendA ("Src blend alpha", Float) = 5
@@ -61,6 +67,7 @@ Shader "MRP/TerrainSprite"
             #include "UnityCG.cginc"
 
             sampler2D _MainTex;
+            float4 _MainTex_TexelSize;
             sampler2D _AlphaTex;
             float _EnableExternalAlpha;
             fixed4 _Color;
@@ -80,6 +87,10 @@ Shader "MRP/TerrainSprite"
             float _PieceLine;
             float _CrackLine;
             fixed4 _RecessColor;
+            sampler2D _ShapeTex;
+            float4 _ShapeRect;
+            float4 _FloorPatch;
+            float _FloorTol;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; float2 world : TEXCOORD1; };
@@ -149,11 +160,34 @@ Shader "MRP/TerrainSprite"
                 return s > 0.75 ? 0.68 : s > 0.45 ? 0.86 : 1.0;
             }
 
+            // その場所に本来ある床 (きれいな床を模様の繰り返しの幅ごとに写した色)
+            fixed3 FloorAt(float2 ow)
+            {
+                float2 fw = _FloorPatch.xy + frac((ow - _FloorPatch.xy) / _FloorPatch.z) * _FloorPatch.z;
+                return tex2D(_MainTex, (fw - _PieceMap.zw) / _PieceMap.xy).rgb;
+            }
+
+            // 部屋の絵の uv の画素が、その場所の床のままか (家具・家具の落とす薄い影は床でない)
+            bool IsFloorAt(float2 uv)
+            {
+                fixed4 c = tex2D(_MainTex, uv);
+                if (c.a < 0.5) return true;
+                float3 d = abs(c.rgb - FloorAt(uv * _PieceMap.xy + _PieceMap.zw));
+                return max(d.r, max(d.g, d.b)) < _FloorTol;
+            }
+
+            // 持ち上げた家具の形の中か (元の場所の世界座標で)
+            bool InShape(float2 ow)
+            {
+                float2 s = (ow - _ShapeRect.xy) * _ShapeRect.zw;
+                return all(s > 0) && all(s < 1) && tex2D(_ShapeTex, s).r > 0.5;
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 // 6 = 損傷の範囲の型抜き (影の写しを焼く時): 損傷マスクに何か書かれた所はアルファ 1・それ以外は 0。
                 // マテリアル側の合成 (色はそのまま・アルファは掛け算) で、焼いた絵を損傷の範囲だけ残す
-                if (_UseDamage > 5.5)
+                if (_UseDamage > 5.5 && _UseDamage < 6.5)
                 {
                     float2 mw = (i.world - _MrpDamageRect.xy) * _MrpDamageRect.zw;
                     if (_MrpDamageRect.z <= 0 || any(mw <= 0) || any(mw >= 1)) return fixed4(0, 0, 0, 0);
@@ -166,6 +200,30 @@ Shader "MRP/TerrainSprite"
                 fixed4 a = tex2D(_AlphaTex, i.uv);
                 c.a = lerp(c.a, a.r, _EnableExternalAlpha);
             #endif
+                // 8 = 持ち上げた家具の跡の床: 元の場所で、家具 (床の色でない画素) の所にだけ、
+                // 同じ部屋の絵のきれいな床を模様の繰り返しの幅ごとに写して描く
+                // 家具の縁の中間色が輪に残らないように、1 画素隣が家具でも塗る
+                if (_UseDamage > 7.5)
+                {
+                    float2 ow = i.uv * _PieceMap.xy + _PieceMap.zw;
+                    if (c.a < 0.5 || !InShape(ow)) discard;
+                    float2 t = _MainTex_TexelSize.xy;
+                    if (IsFloorAt(i.uv) && IsFloorAt(i.uv + float2(t.x, 0)) && IsFloorAt(i.uv - float2(t.x, 0))
+                        && IsFloorAt(i.uv + float2(0, t.y)) && IsFloorAt(i.uv - float2(0, t.y))) discard;
+                    return fixed4(FloorAt(ow), 1);
+                }
+                // 7 = 持ち上げた家具: 部屋の絵を元の場所で引き、形の中で床の模様と違う画素だけ描く (落とす影ごと動く)
+                if (_UseDamage > 6.5)
+                {
+                    float2 ow = i.uv * _PieceMap.xy + _PieceMap.zw;
+                    if (c.a < 0.5 || !InShape(ow) || IsFloorAt(i.uv)) discard;
+                    // 床の模様の手描きのずれ (ひし形の境の細い線) は家具でない: 上下左右の 3 つ以上も床でない画素だけ
+                    float2 t = _MainTex_TexelSize.xy;
+                    int n = (IsFloorAt(i.uv + float2(t.x, 0)) ? 0 : 1) + (IsFloorAt(i.uv - float2(t.x, 0)) ? 0 : 1)
+                          + (IsFloorAt(i.uv + float2(0, t.y)) ? 0 : 1) + (IsFloorAt(i.uv - float2(0, t.y)) ? 0 : 1);
+                    if (n < 3) discard;
+                    return c;
+                }
                 // 5 = 剥げかけ (崩れる前の打撃)。頂点色 r = 細胞 (255 = ひびの線だけ)・g = 剥げかけの枠・
                 // b, a = 浮いた表面のずれ (0.5 = ずれなし・b = 0 は欠けて断面だけ)。ひびの線は b = 半径
                 if (_UseDamage > 4.5)

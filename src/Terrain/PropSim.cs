@@ -40,6 +40,10 @@ internal static class PropSim
     private const float ObstacleR = 0.3f;     // 通気口・端末の周りの通さない半径
     private const int WobbleSteps = 24;       // 揺れが収まるまで (0.8 秒)
     private const int WobbleMax = 160;        // 揺れの最大 (1/16 度・10 度)
+    private const int HeavySlide = 141;       // 部屋の絵から持ち上げた家具が滑る速さの割合 (/256・0.55 倍)
+    private const int HeavyFriction = 4;      // 同じく 1 刻みの速さの減り (重いので一度動くと滑る)
+    private const int HeavyTwist = 160;       // 同じくねじれる角度の最大 (1/16 度・10 度)
+    private const float HeavyBox = 0.85f;     // 重い物の壁の当たり: 範囲の半分のこの割合の箱の 8 点
 
     // 動かす物の絵の名前 (部屋の絵と別の絵を持つ小物と家具)
     private static readonly HashSet<string> Movable = new()
@@ -58,7 +62,7 @@ internal static class PropSim
         "snowman", "crate", "croppedBoxes", "croppedBARRELS", "croppedWatercooler", "croppedCoffeetable", "storagebox", "candle",
     };
 
-    private enum Kind : byte { Small, Medium, Fixed }
+    private enum Kind : byte { Small, Medium, Fixed, Heavy }
 
     // 動きの状態 (確定 A と見せる用 D で同じ形)
     private sealed class St
@@ -85,9 +89,22 @@ internal static class PropSim
         public float Rot0;          // 元の z の回転
         public Vector2 F0, Pivot0;  // 元の足元・回す軸 (ワールド)
         public bool Tall, Solid;
+        public FurnitureLift.Lift Lift; // 重い物 (部屋の絵から持ち上げる家具)
+        public int Hx, Hy, Rad;          // 重い物の壁の当たりの箱の半分・押される距離に足す半径 (1/1024)
+        public List<Rider> Riders;       // 重い物の上に載っていて一緒に動く絵
         public float Z;
         public readonly St A = new(), D = new();
         public int Ox, Oy, OAng;    // D の 1 刻み前 (補間)
+    }
+
+    // 重い物 (家具) の上に載っている絵。Prop = 動く物として数えている物 (自分が押されて動いたら家具から離れる)・
+    // null = 飾りなど名前の一覧に無い絵 (家具と一緒に動くだけ)
+    private sealed class Rider
+    {
+        public Transform Tr;
+        public Vector3 T0;
+        public float Rot0;
+        public Prop Prop;
     }
 
     // 刻みを進める側 (確定 / 見せる用)。同じ手順を別の状態に掛ける
@@ -112,6 +129,9 @@ internal static class PropSim
     private static readonly List<Prop> Props = new();
     private static readonly World Auth = new(), Disp = new() { Display = true };
     private static readonly List<Prop> Shown = new();
+    // 止まった家具の水の型抜きの作り直し待ち (元の場所・止まった所・半径・時刻)
+    private static readonly List<(Vector2 A, Vector2 B, float R, long Due)> Settled = new();
+    private const long FurnitureSettleMs = 100;
     private static readonly List<Pending> Queue = new();
     private static byte[] _block;    // 通気口・端末の周り (SolidMap と同じ升)
     private static int _w, _h, _cellU;
@@ -136,7 +156,17 @@ internal static class PropSim
         // 動かした物を元の所へ戻してこの船では止める (拾い直すと動いた後の位置を元の位置と取り違える)
         foreach (var p in Props)
         {
-            try { if (p.D.Moved || p.D.WobStart != int.MinValue) { p.Tr.position = p.T0; p.Tr.rotation = FxMath.RotZ(p.Rot0); } }
+            try
+            {
+                if (p.Lift != null)
+                {
+                    FurnitureLift.Restore(p.Lift);
+                    if (p.Riders != null)
+                        foreach (var q in p.Riders)
+                            if (q.Tr) { q.Tr.position = q.T0; q.Tr.rotation = FxMath.RotZ(q.Rot0); }
+                }
+                else if (p.D.Moved || p.D.WobStart != int.MinValue) { p.Tr.position = p.T0; p.Tr.rotation = FxMath.RotZ(p.Rot0); }
+            }
             catch { }
         }
         Reset();
@@ -169,6 +199,13 @@ internal static class PropSim
     }
 
     // 刻みの順。同じ刻みは着いた順 (人ごとに違う) でなく種と位置で並べる
+    // 試合の始めの準備 (TerrainWarm): 動く物と家具を先に集める (最初の破壊で払うと 1 フレームが長く止まる)
+    internal static void Warm()
+    {
+        try { Ensure(); }
+        catch (Exception e) { Fail("warm", e); }
+    }
+
     private static bool Later(in Pending a, in Pending b) =>
         a.Tick != b.Tick ? a.Tick > b.Tick : a.Seed != b.Seed ? a.Seed > b.Seed : a.Cx != b.Cx ? a.Cx > b.Cx : a.Cy > b.Cy;
 
@@ -188,12 +225,38 @@ internal static class PropSim
         foreach (var v in ship.AllVents) if (v) Stamp(v.transform.position);
         foreach (var c in ship.AllConsoles) if (c) Stamp(c.transform.position);
         Props.Clear();
+        var decor = new List<SpriteRenderer>();
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
         {
             if (!sr.gameObject.activeInHierarchy || !sr.sprite) continue;
-            if (!Movable.Contains(sr.sprite.name)) continue;
+            if (!Movable.Contains(sr.sprite.name)) { decor.Add(sr); continue; }
             var prop = Make(sr);
             if (prop != null) Props.Add(prop);
+        }
+        var lifts = new List<FurnitureLift.Lift>();
+        FurnitureLift.Collect(ship, lifts);
+        int plain = Props.Count;
+        // 飾りの候補 (小さな絵) の真ん中を先に 1 回だけ引く
+        var decorAt = new List<(SpriteRenderer, Vector2)>();
+        if (lifts.Count > 0)
+            foreach (var sr in decor)
+            {
+                var b = sr.bounds;
+                if (b.size.x <= 1.2f && b.size.y <= 1.2f) decorAt.Add((sr, (Vector2)b.center));
+            }
+        foreach (var l in lifts)
+        {
+            var h = MakeHeavy(l);
+            // 家具の上に載っている絵 (動く物と飾り) は家具と一緒に動かす
+            for (int i = 0; i < plain; i++)
+            {
+                var q = Props[i];
+                if (q.Tr == null || !l.Col.OverlapPoint(q.T0)) continue;
+                (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = q.Tr, T0 = q.T0, Rot0 = q.Rot0, Prop = q });
+            }
+            foreach (var (sr, c) in decorAt)
+                if (l.Col.OverlapPoint(c) && IsDecor(sr)) (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = sr.transform, T0 = sr.transform.position, Rot0 = sr.transform.eulerAngles.z });
+            Props.Add(h);
         }
         _ready = true;
         return true;
@@ -277,6 +340,51 @@ internal static class PropSim
         return false;
     }
 
+    // 部屋の絵に描き込まれた家具: 範囲の真ん中を足元とし、壁の当たりは範囲を縮めた箱の 8 点で見る (始めから壁に掛かる時はさらに縮める)
+    private static Prop MakeHeavy(FurnitureLift.Lift l)
+    {
+        Vector2 c = l.Bounds.center;
+        var p = new Prop { Kind = Kind.Heavy, Name = l.Name, Lift = l, F0 = c, Pivot0 = c, T0 = FxMath.V3(c.x, c.y, 0f) };
+        var a = p.A;
+        a.Px = ToU(c.x - _org.x);
+        a.Py = ToU(c.y - _org.y);
+        p.Rad = ToU(Math.Min(l.Bounds.width, l.Bounds.height) * 0.4f);
+        for (float k = HeavyBox; k > 0.2f; k -= 0.15f)
+        {
+            p.Hx = ToU(l.Bounds.width * 0.5f * k);
+            p.Hy = ToU(l.Bounds.height * 0.5f * k);
+            if (!Blocked(p, a.Px, a.Py)) break;
+        }
+        p.D.CopyFrom(a);
+        p.Ox = a.Px; p.Oy = a.Py;
+        return p;
+    }
+
+    // 家具の上の飾り (真ん中が家具の当たり判定の中の小さな絵) のうち、絵だけの物 (部屋の絵・本編の部品付きの物は除く)
+    private static bool IsDecor(SpriteRenderer sr)
+    {
+        var m = sr.sharedMaterial;
+        if (m && m.shader && m.shader.name == "Unlit/MaskShader") return false;
+        foreach (var c in sr.GetComponents<Component>())
+        {
+            string tn = c.GetIl2CppType().Name;
+            if (tn != "Transform" && tn != "SpriteRenderer") return false;
+        }
+        return sr.transform.childCount == 0;
+    }
+
+    private static bool Blocked(Prop p, int x, int y)
+    {
+        if (p.Kind != Kind.Heavy) return Blocked(x, y);
+        for (int i = 0; i < 8; i++)
+        {
+            int ox = i < 3 ? -p.Hx : i < 5 ? 0 : p.Hx;
+            int oy = i == 0 || i == 3 || i == 5 ? -p.Hy : i == 1 || i == 6 ? 0 : p.Hy;
+            if (Blocked(x + ox, y + oy)) return true;
+        }
+        return false;
+    }
+
     private static bool Blocked(int x, int y)
     {
         for (int i = 0; i < 4; i++)
@@ -317,11 +425,25 @@ internal static class PropSim
             Move(p, st);
             bool done = st.Vx == 0 && st.Vy == 0 && st.Spin == 0 && st.Ang == st.Tip;
             // 前後の z は部屋の絵を全部見るので 4 刻みに 1 回と止まった時だけ (見た目だけ)
-            if (w.Display && (done || (w.Step & 3) == 0)) p.Z = SortZ(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
+            if (w.Display && p.Kind != Kind.Heavy && (done || (w.Step & 3) == 0)) p.Z = SortZ(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
             if (!done) continue;
             st.Active = false;
             w.Act.RemoveAt(i);
-            if (w.Display) { p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; Draw(p, 1f); }
+            if (w.Display)
+            {
+                p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; Draw(p, 1f);
+                if (p.Kind == Kind.Heavy)
+                {
+                    // 水の型抜きと、影の中の焼いた絵 (元の場所と止まった所) を作り直す。
+                    // 型抜きは当たり判定を引くので、動かした Transform が物理に写ってから (FurnitureSettleMs 後)
+                    var b0 = p.Lift.Bounds;
+                    var now = FxMath.V2(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
+                    float r = Math.Max(b0.width, b0.height) * 0.5f + FurnitureLift.Pad;
+                    Settled.Add((b0.center, now, r, Environment.TickCount64 + FurnitureSettleMs));
+                    ShadowPatch.MarkDirty(b0.center, r);
+                    ShadowPatch.MarkDirty(now, r);
+                }
+            }
         }
     }
 
@@ -363,16 +485,16 @@ internal static class PropSim
 
     private static void Kick(World w, in Pending e)
     {
-        long reach2 = (long)e.Reach * e.Reach;
         for (int i = 0; i < Props.Count; i++)
         {
             var p = Props[i];
             var st = w.S(p);
             long dx = st.Px - e.Cx, dy = st.Py - e.Cy;
             long d2 = dx * dx + dy * dy;
-            if (d2 >= reach2) continue;
+            long lim = (long)e.Reach + p.Rad;
+            if (d2 >= lim * lim) continue;
             int d = (int)Math.Sqrt(d2);
-            int f = 256 - d * 256 / Math.Max(1, e.Reach);             // 強さ 0〜256 (近いほど強い)
+            int f = 256 - Math.Max(0, d - p.Rad) * 256 / Math.Max(1, e.Reach); // 強さ 0〜256 (近いほど強い・大きな家具は縁までの距離)
             st.Rng = 0x9E3779B9u ^ (uint)e.Seed * 2654435761u ^ (uint)i * 40503u;
             Next(st);
             // 向き (長さ 256): 爆発 = 爆心から外へ・打撃 = 振った向きと当たった点から外へを半々
@@ -389,7 +511,14 @@ internal static class PropSim
                 Wobble(w, p, st, f, ux);
                 continue;
             }
-            if (p.Kind == Kind.Medium && p.Tall)
+            if (p.Kind == Kind.Heavy)
+            {
+                // 部屋の絵から持ち上げた家具は重い: 少しだけずれて少しねじれる (倒れない)
+                sp = sp * HeavySlide / 256;
+                int tw = (int)(Next(st) % (uint)(HeavyTwist + 1)) * f / 256;
+                st.Tip += (Next(st) & 1) != 0 ? tw : -tw;
+            }
+            else if (p.Kind == Kind.Medium && p.Tall)
             {
                 // 縦長の物 (椅子・ろうそく・樽) は押された向きへ足元を軸に倒れる
                 sp = sp * SlideMedium / 256;
@@ -442,18 +571,19 @@ internal static class PropSim
             for (int s = 0; s < n; s++)
             {
                 int nx = st.Px + sx, ny = st.Py + sy;
-                if (!Blocked(nx, ny)) { st.Px = nx; st.Py = ny; continue; }
-                if (sx != 0 && !Blocked(nx, st.Py)) { st.Px = nx; st.Vy = -st.Vy * Bounce / 5; sy = -sy * Bounce / 5; st.Spin = -st.Spin; continue; }
-                if (sy != 0 && !Blocked(st.Px, ny)) { st.Py = ny; st.Vx = -st.Vx * Bounce / 5; sx = -sx * Bounce / 5; st.Spin = -st.Spin; continue; }
+                if (!Blocked(p, nx, ny)) { st.Px = nx; st.Py = ny; continue; }
+                if (sx != 0 && !Blocked(p, nx, st.Py)) { st.Px = nx; st.Vy = -st.Vy * Bounce / 5; sy = -sy * Bounce / 5; st.Spin = -st.Spin; continue; }
+                if (sy != 0 && !Blocked(p, st.Px, ny)) { st.Py = ny; st.Vx = -st.Vx * Bounce / 5; sx = -sx * Bounce / 5; st.Spin = -st.Spin; continue; }
                 st.Vx = -st.Vx * Bounce / 5; st.Vy = -st.Vy * Bounce / 5; st.Spin = -st.Spin;
                 break;
             }
             long v2 = (long)st.Vx * st.Vx + (long)st.Vy * st.Vy;
             int sp = (int)Math.Sqrt(v2);
-            if (sp <= Friction) { st.Vx = 0; st.Vy = 0; st.Spin = 0; }
+            int fr = p.Kind == Kind.Heavy ? HeavyFriction : Friction;
+            if (sp <= fr) { st.Vx = 0; st.Vy = 0; st.Spin = 0; }
             else
             {
-                int ns = sp - Friction;
+                int ns = sp - fr;
                 st.Vx = st.Vx * ns / sp; st.Vy = st.Vy * ns / sp;
                 st.Spin = st.Spin * ns / sp;
             }
@@ -476,6 +606,7 @@ internal static class PropSim
     // t = 1 刻み前 (0) から今 (1) の間
     private static void Draw(Prop p, float t)
     {
+        if (p.Lift != null) { DrawHeavy(p, t); return; }
         if (!p.Tr) return;
         var st = p.D;
         float x = p.Ox + (st.Px - p.Ox) * t, y = p.Oy + (st.Py - p.Oy) * t;
@@ -490,6 +621,25 @@ internal static class PropSim
         var o = FxMath.RotateZ(ang, p.T0.x - p.Pivot0.x, p.T0.y - p.Pivot0.y);
         p.Tr.position = FxMath.V3(qx + o.x, qy + o.y, p.Z);
         p.Tr.rotation = FxMath.RotZ(p.Rot0 + ang);
+    }
+
+    // 部屋の絵から持ち上げた家具: 初めて動く時に切り抜き、絵と当たり判定を一緒に動かす
+    private static void DrawHeavy(Prop p, float t)
+    {
+        var st = p.D;
+        if (!st.Moved || !FurnitureLift.Ensure(p.Lift)) return;
+        float x = p.Ox + (st.Px - p.Ox) * t, y = p.Oy + (st.Py - p.Oy) * t;
+        float ang = (p.OAng + (st.Ang - p.OAng) * t) / 16f;
+        float cx = _org.x + x / Unit, cy = _org.y + y / Unit;
+        FurnitureLift.Place(p.Lift, p.Pivot0, cx, cy, ang);
+        if (p.Riders == null) return;
+        foreach (var q in p.Riders)
+        {
+            if (!q.Tr || (q.Prop != null && (q.Prop.D.Moved || q.Prop.D.WobStart != int.MinValue))) continue;
+            var o = FxMath.RotateZ(ang, q.T0.x - p.Pivot0.x, q.T0.y - p.Pivot0.y);
+            q.Tr.position = FxMath.V3(cx + o.x, cy + o.y, q.T0.z);
+            q.Tr.rotation = FxMath.RotZ(q.Rot0 + ang);
+        }
     }
 
     // 動いた物はクルーと同じく足元の高さで前後を決める (部屋の絵がクルーと同じ奥行きの所はその手前)
@@ -512,6 +662,16 @@ internal static class PropSim
     {
         if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Reset(); _failed = false; }
         if (!_running) return;
+        if (Settled.Count > 0)
+        {
+            long ms = Environment.TickCount64;
+            for (int i = Settled.Count - 1; i >= 0; i--)
+            {
+                if (ms < Settled[i].Due) continue;
+                WaterArt.FurnitureMoved(Settled[i].A, Settled[i].B, Settled[i].R);
+                Settled.RemoveAt(i);
+            }
+        }
         int now = GameClock.Now;
         int target = now - Delay;
         int n = 0;
@@ -548,6 +708,8 @@ internal static class PropSim
         _ready = false;
         _running = false;
         Props.Clear();
+        FurnitureLift.Clear();
+        Settled.Clear();
         Auth.Act.Clear(); Auth.Wob.Clear(); Auth.Step = 0;
         Disp.Act.Clear(); Disp.Wob.Clear(); Disp.Step = 0;
         Shown.Clear();
