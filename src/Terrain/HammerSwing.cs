@@ -31,7 +31,7 @@ internal static class HammerSwing
 
     private static DamageEvent _pending;
     private static float _pendingAt;       // ホスト・一人: この時刻に依頼する (0 = 無し)
-    private static IntPtr _ship;           // 試合の切り替わりを見る (Unity の == は毎フレーム呼ばない)
+    private static int _shipGen;           // 試合の切り替わり (GameClock.ShipGen)
     private static string _last = "-";     // 確認用: 最後に見せた振り
 
     // 自分のハンマーを振る。返り値は結果の説明、ok = 振れた (空振りを含まない)
@@ -91,18 +91,16 @@ internal static class HammerSwing
     // 毎フレーム。待っている依頼が無ければ比較 2 つで帰る
     public static void Tick()
     {
-        var ship = ShipStatus.Instance;
-        IntPtr sp = ReferenceEquals(ship, null) ? IntPtr.Zero : ship.Pointer;
-        if (sp != _ship)
+        if (GameClock.ShipGen != _shipGen)
         {
-            _ship = sp;
+            _shipGen = GameClock.ShipGen;
             _pendingAt = 0f;
             FxHands.ClearAll();
         }
         if (_pendingAt <= 0f || Time.time < _pendingAt) return;
         _pendingAt = 0f;
         var lp = PlayerControl.LocalPlayer;
-        if (!ship || !lp || lp.Data == null || lp.Data.IsDead || MeetingHud.Instance) return;
+        if (!GameClock.ShipAlive || !lp || lp.Data == null || lp.Data.IsDead || MeetingHud.Instance) return;
         TerrainSync.Request(_pending);
     }
 

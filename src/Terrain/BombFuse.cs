@@ -45,7 +45,7 @@ internal static class BombFuse
     private static readonly List<Bomb> Bombs = new();
     private static readonly List<Timer> Timers = new();          // ホスト・一人: 爆発させる時刻
     private static readonly Dictionary<byte, float> LastPlaced = new(); // ホスト: 人ごとの最後に置いた時刻
-    private static IntPtr _ship;
+    private static int _shipGen;
     private static float _ownPlacedAt = -10f;                   // 客: 自分の拳を先に動かした時刻
 
     // 自分の足元に爆弾を置く。返り値は結果の説明
@@ -134,11 +134,9 @@ internal static class BombFuse
     // 毎フレーム。爆弾もタイマーも無ければ試合の切り替わりを見るだけ
     public static void Tick()
     {
-        var ship = ShipStatus.Instance;
-        IntPtr sp = ReferenceEquals(ship, null) ? IntPtr.Zero : ship.Pointer;
-        if (sp != _ship)
+        if (GameClock.ShipGen != _shipGen)
         {
-            _ship = sp;
+            _shipGen = GameClock.ShipGen;
             Clear();
         }
         if (Bombs.Count == 0 && Timers.Count == 0) return;
