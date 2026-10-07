@@ -144,7 +144,7 @@ internal static class WaterArt
             float d = Sample(px, py);
             float wx = org.x + (x0 + (px + 0.5f) / Px) * cell, wy = org.y + (y0 + (py + 0.5f) / Px) * cell;
             int sx = (int)((wx - sorg.x) * sppu), sy = (int)((wy - sorg.y) * sppu);
-            bool vis = SolidMap.OpenCell(sy * sw + sx) && (t.Furn == null || !t.Furn[py * n + px]);
+            bool vis = NearOpen(sx, sy, sw) && (t.Furn == null || !t.Furn[py * n + px]);
             t.Px[i] = (byte)Math.Min(255f, d * (255f / DeepScale));
             t.Px[i + 1] = vis ? (byte)255 : (byte)0;
             t.Px[i + 2] = 0;
@@ -155,6 +155,22 @@ internal static class WaterArt
         if (t.Empty) { t.Sr.enabled = true; t.Empty = false; }
         Drawn++;
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    // 水を見せてよい画素か: 歩ける所か、左右 Undilate 升以内に歩ける所がある所。
+    // SolidMap は継ぎ目を塞ぐために壁の線を両側へ太らせてあり、そのままだと縦の壁の手前に乾いた帯が残る。
+    // 太らせた幅までしか戻さないので、元の壁の線は越えない (向こう側の部屋へは描かない)。
+    // 上下には戻さない: 横の壁は当たり判定が絵の壁の際にあり、戻すと下の壁の上面や上の壁の面に水が掛かる
+    private const int Undilate = 2;
+
+    private static bool NearOpen(int sx, int sy, int sw)
+    {
+        int k = sy * sw + sx;
+        if (SolidMap.OpenCell(k)) return true;
+        if (sx < Undilate || sx >= sw - Undilate) return false;
+        for (int d = 1; d <= Undilate; d++)
+            if (SolidMap.OpenCell(k + d) || SolidMap.OpenCell(k - d)) return true;
+        return false;
     }
 
     // タイルの画素 (px, py) での高さ (升の真ん中の値を双線形で)
