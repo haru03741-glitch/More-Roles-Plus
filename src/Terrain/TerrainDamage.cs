@@ -41,6 +41,7 @@ internal static class TerrainDamage
         // 叩いた辺りの多角形・箱の壁を先に折れ線へ (奥の面を辿れるように)
         WallsNear(hit, MaxDepth);
         float far = FarSide(hit, -normal);
+        if (!FloorBeyond(hit, -normal)) far = 0f; // 厚い外壁は自分の裏の面が奥の面に見える。向こうに床が無ければ外壁
         // 奥の面が近くに無くても、裏が船体の塊 (エアシップの部屋と部屋の間) なら外壁ではない。1 打ごとに ThickStep ずつ掘り進む
         bool thick = false;
         if (far <= 0f)
@@ -57,7 +58,7 @@ internal static class TerrainDamage
         float run = far;
         if (axis != -qn)
         {
-            float slanted = FarSide(hit, axis);
+            float slanted = FloorBeyond(hit, axis) ? FarSide(hit, axis) : 0f;
             if (slanted <= 0f && thick && ThickBehind(hit, axis)) slanted = ThickStep;
             if (slanted > 0f) run = slanted;
             else { axis = -qn; qd = -qn; }
@@ -118,7 +119,9 @@ internal static class TerrainDamage
             Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
             away = away.normalized;
             // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) か、
-            // 裏が船体の塊 (エアシップ) なら抜く
+            // 裏が船体の塊 (エアシップ) なら抜く。向こうに床が無い面 (厚い外壁の手前と裏) は外壁
+            if (SolidMap.FacesOutside(m, away)) return false; // どちら側でも空・宇宙に面した面は外壁 (爆心の反対を向いた面も)
+            if (!FloorBeyond(m, away)) return ThickBehind(m, away);
             if (HasFarSide(m, away)) return true;
             float toBlast = (m - blast).magnitude;
             float first = FirstFace(m, -away, Math.Min(toBlast, MaxDepth));
@@ -345,6 +348,14 @@ internal static class TerrainDamage
     // 内壁には「奥の面」がある (部屋と部屋の隙間の向こうの枠・厚みのある壁の裏側)。壁の面から奥へ MaxDepth 以内に
     // 次の壁の面が無ければ、向こうは何も無い外側とみなす。部屋の範囲は屋外 (Polus など) を含まないので使わない
     private static bool HasFarSide(Vector2 surface, Vector2 inward) => FarSide(surface, inward) > 0f;
+
+    // 面の向こう (inward の先、奥の面を探す深さ + 少し) に、船の外を通らずに試合の始めに歩けた床があるか。
+    // 厚い外壁 (箱や二重線の壁) は手前の面から自分の裏の面が奥の面として見つかり、ミラでは空の隙間の向こうに
+    // 別の部屋の床があるので、奥の面や床の有無だけでは外壁と分からない。地図が無い時は奥の面だけで決める (従来どおり)
+    private static bool FloorBeyond(Vector2 surface, Vector2 inward)
+        => !SolidMap.Valid || SolidMap.AlongFloorOrOutside(surface, inward, MaxDepth + FloorBeyondSlack) > 0;
+
+    private const float FloorBeyondSlack = 0.4f; // 奥の面の先の床まで (面の継ぎ目と地図の升の誤差)
 
     // 厚い壁 (船体の塊) を 1 打で掘り進む深さ
     private const float ThickStep = 1.0f;

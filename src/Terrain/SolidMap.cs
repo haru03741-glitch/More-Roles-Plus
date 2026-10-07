@@ -28,6 +28,10 @@ internal static class SolidMap
     // はしご・ジップライン・動く足場はつながりに入れない (壁の線しか見ない) ので、番号が違う = 高さが違う床。
     // 元の番号は壊しても書き換えない (穴でつながった後も元の高さで比べる)。掘って開けた升だけ、掘り始めた側の番号を足す
     private static byte[] _island;
+    // 船の外 (宇宙・空・ミラとエアシップだけ)。部屋の絵 (DamageMap の部屋の絵のスプライトの三角形) と船体の塊のどれにも掛からず、歩ける所でも壁でもない所。
+    // ミラは部屋と部屋の間に空が入り込み、厚い壁の帯 (両側の線の間) と細い空の隙間は線の形・幅・つながりでは区別できない
+    // (帯にも隙間にも端が空に開いた所・閉じた所がある)。絵のあるなしで分ける。三角形は画像の圧縮によらないので端末で同じ
+    private static byte[] _outside;
     private static int _w, _h;
     private static Vector2 _origin;
     internal static Vector2 Origin => _origin;
@@ -58,6 +62,7 @@ internal static class SolidMap
         _open = null;
         _leaked = null;
         _island = null;
+        _outside = null;
         IslandCount = 0;
         HullRects.Clear();
         ExtraSeeds.Clear();
@@ -102,6 +107,60 @@ internal static class SolidMap
         }
         return 0;
     }
+
+    // from から dir へ max まで進んで、歩ける床 (島) より先に船の外を通るなら -1、床に着けば 1、どちらも無ければ 0。
+    // 壁の面の向こうが宇宙・空か (部屋と部屋の間の隙間が空に開いている所も含む) を知る用
+    public static int AlongFloorOrOutside(Vector2 from, Vector2 dir, float max)
+    {
+        if (_island == null) return 0;
+        float step = 0.5f / _ppu;
+        for (float d = step; d <= max; d += step)
+        {
+            Vector2 p = from + dir * d;
+            int x = (int)MathF.Floor((p.x - _origin.x) * _ppu), y = (int)MathF.Floor((p.y - _origin.y) * _ppu);
+            if (x < 0 || y < 0 || x >= _w || y >= _h) return -1;
+            int k = y * _w + x;
+            if (_island[k] != 0) return 1;
+            if (_outside != null && _outside[k] != 0) return -1;
+        }
+        return 0;
+    }
+
+    // 点の近く (縦横 OutsideReach 升以内) が船の外か。壁の線のすぐ外 (太らせた分) は外に数えないので少し広く見る。
+    // 焦げを空に書かない用 (影の中では焦げの所が黒い板になって空の上に出る)
+    public static bool NearOutside(float px, float py)
+    {
+        if (_outside == null) return false;
+        int x = (int)MathF.Floor((px - _origin.x) * _ppu), y = (int)MathF.Floor((py - _origin.y) * _ppu);
+        return OutsideCell(x, y) || OutsideCell(x - OutsideReach, y) || OutsideCell(x + OutsideReach, y) ||
+               OutsideCell(x, y - OutsideReach) || OutsideCell(x, y + OutsideReach);
+    }
+
+    private const int OutsideReach = Dilate + 1;
+
+    // 壁の線の上の点 m の両側 (法線 n の向きと逆向き) のどちらかが船の外か。面から離れながら見て、
+    // 歩ける床に先に着いた側は外でない (ポーラスの壁の外の細い通路の先にある船の外を拾わないように)。
+    // 船の外の際には太らせた分の外でない縁が残るので、点ごとに縦横も少し広げて見る
+    public static bool FacesOutside(Vector2 m, Vector2 n) => SideOutside(m, n) || SideOutside(m, -n);
+
+    private static bool SideOutside(Vector2 m, Vector2 dir)
+    {
+        if (_outside == null) return false;
+        for (int i = 1; i <= FaceProbes; i++)
+        {
+            Vector2 p = m + dir * (FaceProbeStep * i);
+            int x = (int)MathF.Floor((p.x - _origin.x) * _ppu), y = (int)MathF.Floor((p.y - _origin.y) * _ppu);
+            if (x >= 0 && y >= 0 && x < _w && y < _h && _open[y * _w + x] != 0) return false;
+            if (NearOutside(p.x, p.y)) return true;
+        }
+        return false;
+    }
+
+    // 面から 0.15 ずつ 0.6 まで (部屋の範囲が壁の線より外へ張り出している所がある)
+    private const float FaceProbeStep = 0.15f;
+    private const int FaceProbes = 4;
+
+    private static bool OutsideCell(int x, int y) => x < 0 || y < 0 || x >= _w || y >= _h || _outside[y * _w + x] != 0;
 
     // エアシップの船体の塊 (赤い板) の中か
     public static bool InHull(Vector2 p)
@@ -225,8 +284,75 @@ internal static class SolidMap
         int edges = 0;
         if (Valid) edges = BuildHull(ship);
 
+        // 6. 船の外。部屋と部屋の間に空が見えるマップ (ミラ・エアシップ) だけ。スケルドの部屋の間は船体の絵 (部屋の絵の外) が、
+        // ポーラス・ファングルの屋外は地面の絵が描いていて、部屋の絵だけでは外と分からないので作らない (奥の面と床で決める)
+        _outside = ship.TryCast<MiraShipStatus>() != null || ship.TryCast<AirshipStatus>() != null ? Outside(blocked) : null;
+
         Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
         Plugin.Logger.LogInfo($"solid map: {Stats}");
+    }
+
+    // 船の外 (_outside の説明)。絵と船体の塊は Dilate 升太らせて、際の 1 画素ずれで外が食い込まないようにする
+    private static byte[] Outside(byte[] blocked)
+    {
+        int n = _w * _h;
+        var art = new byte[n];
+        var tri = new List<Vector2>(6);
+        foreach (var sr in DamageMap.RoomArts)
+        {
+            if (!sr || !sr.sprite) continue;
+            var t = sr.transform;
+            var vs = sr.sprite.vertices;
+            var ts = sr.sprite.triangles;
+            for (int i = 0; i + 2 < ts.Length; i += 3)
+            {
+                Vector2 a = t.TransformPoint(vs[ts[i]]), b = t.TransformPoint(vs[ts[i + 1]]), c = t.TransformPoint(vs[ts[i + 2]]);
+                tri.Clear();
+                tri.Add(a); tri.Add(b); tri.Add(b); tri.Add(c); tri.Add(c); tri.Add(a);
+                FillPolygon(art, tri);
+            }
+        }
+        // エアシップの船体の塊 (部屋と部屋の間の赤い板) も船の中
+        foreach (var hr in HullRects)
+        {
+            int hx0 = Math.Max(0, (int)MathF.Floor((hr.xMin - _origin.x) * _ppu)), hx1 = Math.Min(_w - 1, (int)MathF.Floor((hr.xMax - _origin.x) * _ppu));
+            int hy0 = Math.Max(0, (int)MathF.Floor((hr.yMin - _origin.y) * _ppu)), hy1 = Math.Min(_h - 1, (int)MathF.Floor((hr.yMax - _origin.y) * _ppu));
+            for (int y = hy0; y <= hy1; y++)
+            for (int x = hx0; x <= hx1; x++) art[y * _w + x] = 1;
+        }
+        art = DilateGrid(art, _w, _h, Dilate);
+        var outside = new byte[n];
+        for (int k = 0; k < n; k++)
+            if (art[k] == 0 && blocked[k] == 0 && _open[k] == 0) outside[k] = 1;
+        return outside;
+    }
+
+    // 閉じた輪郭 (線分の組) の中の升を塗る (升の中心で偶奇)
+    private static void FillPolygon(byte[] grid, List<Vector2> segs)
+    {
+        if (segs.Count < 6) return;
+        float minY = float.MaxValue, maxY = float.MinValue;
+        foreach (var p in segs) { if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
+        int y0 = Math.Max(0, (int)MathF.Floor((minY - _origin.y) * _ppu)), y1 = Math.Min(_h - 1, (int)MathF.Floor((maxY - _origin.y) * _ppu));
+        var xs = new List<float>();
+        for (int y = y0; y <= y1; y++)
+        {
+            float wy = _origin.y + (y + 0.5f) / _ppu;
+            xs.Clear();
+            for (int i = 0; i + 1 < segs.Count; i += 2)
+            {
+                Vector2 a = segs[i], b = segs[i + 1];
+                if ((a.y > wy) == (b.y > wy)) continue;
+                xs.Add(a.x + (wy - a.y) / (b.y - a.y) * (b.x - a.x));
+            }
+            xs.Sort();
+            for (int k = 0; k + 1 < xs.Count; k += 2)
+            {
+                int x0 = Math.Max(0, (int)MathF.Ceiling((xs[k] - _origin.x) * _ppu - 0.5f));
+                int x1 = Math.Min(_w - 1, (int)MathF.Floor((xs[k + 1] - _origin.x) * _ppu - 0.5f));
+                for (int x = x0; x <= x1; x++) grid[y * _w + x] = 1;
+            }
+        }
     }
 
     // 歩ける所を 4 近傍のつながりで塗り分ける。番号は升の並び順で最初に出会った順 (どの端末でも同じ)
@@ -463,6 +589,7 @@ internal static class SolidMap
             float wx = _origin.x + (x0 + x + 0.5f) / _ppu, wy = _origin.y + (y0 + y + 0.5f) / _ppu;
             if (shape.SignedDistance(wx, wy) >= 0f) continue;
             if (keep != null && InsideAny(keep, wx, wy)) continue;
+            if (_outside != null && _outside[(y0 + y) * _w + x0 + x] != 0) continue; // 船の外 (空・宇宙) は歩ける所にしない
             inside[y * bw + x] = 1;
         }
 
@@ -613,6 +740,7 @@ internal static class SolidMap
             int o = (y * w + x) * 3;
             body[o] = body[o + 1] = body[o + 2] = v;
             if (_leaked != null && _leaked[gy * _w + gx] != 0) { body[o] = 0; body[o + 1] = 60; body[o + 2] = 200; }
+            else if (_outside != null && _outside[gy * _w + gx] != 0) { body[o] = 40; body[o + 1] = 40; body[o + 2] = 90; }
         }
         // 壁の線 (動きの層) を赤で重ねる
         var segs = WallSegmentsNear(c, r * 1.42f);

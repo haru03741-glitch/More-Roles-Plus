@@ -620,7 +620,7 @@ internal static class TerrainProbe
             reply($"OK shadowpatch {(ShadowPatch.Enabled ? 1 : 0)} tiles={ShadowPatch.TileCount} baked={ShadowPatch.BakedTotal}");
         });
 
-        TestBridge.Register("solidmap", "[x y r] 歩ける所の地図の状態。範囲を渡すと Screens/solid.ppm に書く (白 = 歩ける・灰 = 船体の塊・黒 = それ以外)", (args, reply) =>
+        TestBridge.Register("solidmap", "[x y r] 歩ける所の地図の状態。範囲を渡すと Screens/solid.ppm に書く (白 = 歩ける・灰 = 船体の塊・紺 = 船の外・黒 = それ以外)", (args, reply) =>
         {
             SolidMap.Ensure();
             foreach (var sp in SolidMap.ExtraSeeds) reply($"EXTRA seed {V(sp)}");
@@ -663,7 +663,7 @@ internal static class TerrainProbe
             if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR solidat needs <x> <y>"); return; }
             SolidMap.Ensure();
             var pt = new Vector2(v[0], v[1]);
-            reply($"OK solidat solid={SolidMap.Solid(pt)} hull={SolidMap.InHull(pt)}");
+            reply($"OK solidat solid={SolidMap.Solid(pt)} hull={SolidMap.InHull(pt)} outside={SolidMap.NearOutside(pt.x, pt.y)}");
         });
 
         TestBridge.Register("zoom", "[大きさ=3] カメラの写す範囲 (縦の半分・世界単位)。小さいほど寄る", (args, reply) =>

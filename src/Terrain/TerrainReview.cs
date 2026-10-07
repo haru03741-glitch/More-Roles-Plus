@@ -16,6 +16,10 @@ internal static class TerrainReview
     private const float Piece = 0.25f;
     private const float Depth = 2.6f;
 
+    // 面の片側の床の島 (船の外を通らずに届く床だけ。外を通るなら外壁と同じ 0)
+    private static int Beyond(Vector2 m, Vector2 dir)
+        => SolidMap.AlongFloorOrOutside(m, dir, Depth) > 0 ? SolidMap.IslandAlong(m, dir, Depth) : 0;
+
     // 壁の判定の色
     private static readonly byte[] Breakable = { 60, 220, 60 };   // 同じ島どうし = 壊して通れる
     private static readonly byte[] Ledge = { 255, 140, 0 };       // 違う島 = 高さが違う (段差)
@@ -77,10 +81,10 @@ internal static class TerrainReview
                     else if (InFurniture(m)) { kind = "furniture"; color = Furniture; }
                     else
                     {
-                        int ia = SolidMap.IslandAlong(m, n, Depth), ib = SolidMap.IslandAlong(m, -n, Depth);
+                        int ia = Beyond(m, n), ib = Beyond(m, -n);
                         if (ia == 0 && ib == 0) { kind = "lone"; color = Lone; }
                         else if (HeightLevels.Differs(m, n)) { kind = "ledge"; color = Ledge; }
-                        else if (ia == 0 || ib == 0)
+                        else if (ia == 0 || ib == 0 || SolidMap.FacesOutside(m, n))
                         {
                             Vector2 back = ia == 0 ? n : -n;
                             bool thick = SolidMap.HasHull && SolidMap.InHull(m + back * 0.3f);
