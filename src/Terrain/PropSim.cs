@@ -254,17 +254,21 @@ internal static class PropSim
                 if (b.size.x <= 1.2f && b.size.y <= 1.2f) decorAt.Add((sr, (Vector2)b.center));
             }
         foreach (var l in lifts) Props.Add(MakeHeavy(l));
-        // 家具 (重い物) の上に載っている絵 (動く物と飾り) は家具と一緒に動かす
+        // 家具 (重い物) の上に載っている絵 (動く物と飾り) は家具と一緒に動かす。
+        // 当たり判定が重なった家具 (分けた箱の山の手前の箱と奥の台) では、先に並んだ家具 (手前) だけが載せる
+        var claimed = new HashSet<int>();
         foreach (var h in Props)
         {
             if (h.Kind != Kind.Heavy || !h.Col) continue;
             foreach (var q in Props)
             {
                 if (q == h || q.Kind == Kind.Heavy || q.Tr == null || !h.Col.OverlapPoint(q.T0)) continue;
+                if (!claimed.Add(q.Tr.GetInstanceID())) continue;
                 (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = q.Tr, T0 = q.T0, Rot0 = q.Rot0, Prop = q });
             }
             foreach (var (sr, c) in decorAt)
-                if (h.Col.OverlapPoint(c) && IsDecor(sr)) (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = sr.transform, T0 = sr.transform.position, Rot0 = sr.transform.eulerAngles.z });
+                if (h.Col.OverlapPoint(c) && IsDecor(sr) && claimed.Add(sr.transform.GetInstanceID()))
+                    (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = sr.transform, T0 = sr.transform.position, Rot0 = sr.transform.eulerAngles.z });
         }
         _ready = true;
         return true;
@@ -359,20 +363,58 @@ internal static class PropSim
 
     private static void InitHeavy(Prop p, Rect b)
     {
-        Vector2 c = b.center;
         p.Bounds0 = b;
-        var a = p.A;
-        a.Px = ToU(c.x - _org.x);
-        a.Py = ToU(c.y - _org.y);
         p.Rad = ToU(Math.Min(b.width, b.height) * 0.4f);
+        // 自分の絵を持つ家具が壁の線に半分埋まって置かれている時 (Polus の崖際の箱の山) は、真ん中が壁の向こうで全方向が塞がる。
+        // 範囲のうち歩ける升の重心を足元に (囲む四角の真ん中は斜めの壁の線の上に来やすい)、絵を回す軸も同じ所へ移す
+        // (絵は軸からのずれで置くので動く前の見た目は変わらない)
+        if (!FitHeavy(p, b.center, b.size) && p.Lift == null && OpenPart(b, out int cx, out int cy, out var size))
+        {
+            // 足元は整数の升のまま使う (float へ戻して丸め直すと端末で 1 升ずれうる)
+            if (FitHeavy(p, cx, cy, size)) p.F0 = p.Pivot0 = FxMath.V2(_org.x + cx / (float)Unit, _org.y + cy / (float)Unit);
+            else FitHeavy(p, b.center, b.size); // 歩ける所でも塞がる時は元の範囲の一番小さい箱に戻す
+        }
+        p.D.CopyFrom(p.A);
+        p.Ox = p.A.Px; p.Oy = p.A.Py;
+    }
+
+    // c を足元に、壁の当たりの箱 (size の半分の割合) を縮めながら塞がらない大きさを探す (見つからなければ一番小さい箱のまま false)
+    private static bool FitHeavy(Prop p, Vector2 c, Vector2 size) => FitHeavy(p, ToU(c.x - _org.x), ToU(c.y - _org.y), size);
+
+    private static bool FitHeavy(Prop p, int px, int py, Vector2 size)
+    {
+        var a = p.A;
+        a.Px = px;
+        a.Py = py;
         for (float k = HeavyBox; k > 0.2f; k -= 0.15f)
         {
-            p.Hx = ToU(b.width * 0.5f * k);
-            p.Hy = ToU(b.height * 0.5f * k);
-            if (!Blocked(p, a.Px, a.Py)) break;
+            p.Hx = ToU(size.x * 0.5f * k);
+            p.Hy = ToU(size.y * 0.5f * k);
+            if (!Blocked(p, a.Px, a.Py)) return true;
         }
-        p.D.CopyFrom(a);
-        p.Ox = a.Px; p.Oy = a.Py;
+        return false;
+    }
+
+    // 範囲 b のうち歩ける升 (足の 4 点が塞がっていない所) の重心と、それを囲む四角の大きさ
+    private static bool OpenPart(Rect b, out int cx, out int cy, out Vector2 size)
+    {
+        int x0 = ToU(b.xMin - _org.x), x1 = ToU(b.xMax - _org.x), y0 = ToU(b.yMin - _org.y), y1 = ToU(b.yMax - _org.y);
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue, n = 0;
+        long sx = 0, sy = 0;
+        for (int y = y0; y <= y1; y += _cellU)
+            for (int x = x0; x <= x1; x += _cellU)
+            {
+                if (Blocked(x, y)) continue;
+                minX = Math.Min(minX, x); maxX = Math.Max(maxX, x);
+                minY = Math.Min(minY, y); maxY = Math.Max(maxY, y);
+                sx += x; sy += y; n++;
+            }
+        cx = 0; cy = 0; size = default;
+        if (n == 0) return false;
+        cx = (int)(sx / n);
+        cy = (int)(sy / n);
+        size = FxMath.V2((maxX - minX) / (float)Unit, (maxY - minY) / (float)Unit);
+        return true;
     }
 
     // 自分の絵と当たり判定 (層 12 か船の層 9) を持つ家具のうち、動かし方の表 (FurnitureKinds) に載っている物 (絵の GameObject → 種類と当たり判定)。

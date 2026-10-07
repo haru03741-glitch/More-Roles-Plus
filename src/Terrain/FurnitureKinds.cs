@@ -42,6 +42,11 @@ internal static class FurnitureKinds
         ["MiraShip/Cafe/cafVendingMachRight"] = FurnitureKind.Tip, // 自販機 (右)
         ["MiraShip/Cafe/cafShelf"] = FurnitureKind.Tip, // 食堂の棚
         ["MiraShip/Cafe/cafVendMachbottom"] = FurnitureKind.Tip, // 自販機 (下)
+        ["SkeldShip/Ground/storage_Boxes"] = FurnitureKind.Shove, // 倉庫の箱の山 (床の箱・燃料缶・奥の塊に分けて動かす = FurnitureSplit)
+        ["SkeldShip/Ground/storage_Boxes-left"] = FurnitureKind.Shove, // 倉庫の左の箱
+        ["SkeldShip/Ground/storage_Boxes-front"] = FurnitureKind.Shove, // 倉庫の手前の箱
+        ["SkeldShip/Ground/storage_Boxes-can"] = FurnitureKind.Shove, // 倉庫の燃料缶
+        ["SkeldShip/Ground/storage_Boxes-stack"] = FurnitureKind.Shove, // 倉庫の台と積まれた箱 (燃料の端末・転がる箱ごと)
         ["SkeldShip/Ground/nav_chairfront"] = FurnitureKind.Tip, // 操縦室の椅子 (前)
         ["SkeldShip/Ground/nav_chairmid"] = FurnitureKind.Tip, // 操縦室の椅子 (真ん中)
         ["SkeldShip/Ground/nav_chairback"] = FurnitureKind.Tip, // 操縦室の椅子 (後ろ)
@@ -51,13 +56,20 @@ internal static class FurnitureKinds
         ["PolusShip/Science/sciencetable"] = FurnitureKind.Shove, // 研究所の机
         ["PolusShip/Electrical/barrier"] = FurnitureKind.Tip, // 柵
         ["PolusShip/Electrical/transformer0001"] = FurnitureKind.Shove, // 変圧器
+        ["PolusShip/RocksNBoxes/boxcluster"] = FurnitureKind.Shove, // 屋外の箱の山 1 (当たり判定と影は子)
+        ["PolusShip/RocksNBoxes/boxclust2"] = FurnitureKind.Shove, // 屋外の箱の山 2 (同上)
         ["Airship/Vault/vault_dummie"] = FurnitureKind.Tip, // マネキン
+        ["Airship/Storage/storage_cargo1"] = FurnitureKind.Shove, // 貨物室の荷車 (当たり判定と影は子)
         ["FungleShip/HighlandsObstacles/Obstacle1"] = FurnitureKind.Shove, // 高台の障害物 1
         ["FungleShip/HighlandsObstacles/Obstacle2"] = FurnitureKind.Shove, // 高台の障害物 2
         ["FungleShip/HighlandsObstacles/MetalPlate"] = FurnitureKind.Shove, // 高台の金属の板
         ["FungleShip/BeachObstacles/Debris"] = FurnitureKind.Shove, // 浜のがれき
         ["FungleShip/BeachObstacles/MetalPlate_BelowBonfire"] = FurnitureKind.Shove, // たき火の下の金属の板
         ["FungleShip/BeachObstacles/MetalPlate_AboveMeetingRoom"] = FurnitureKind.Shove, // 会議室の上の金属の板
+        ["FungleShip/Bonfire/Chairs"] = FurnitureKind.Tip, // たき火の椅子の元の当たり判定 (椅子ごとに分けて動かす = FurnitureSplit)
+        ["FungleShip/OutsideBeach/Bonfire-chair1"] = FurnitureKind.Tip, // たき火の椅子 1
+        ["FungleShip/OutsideBeach/Bonfire-chair2"] = FurnitureKind.Tip, // たき火の椅子 2
+        ["FungleShip/OutsideBeach/Bonfire-chair3"] = FurnitureKind.Tip, // たき火の椅子 3
     };
 
     // 船の名前 ("(Clone)" を除く)

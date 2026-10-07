@@ -57,12 +57,24 @@ internal static class TerrainProbe
 
     private static void RegisterCutting()
     {
-        TestBridge.Register("edges", "<x> <y> <r> 円に掛かる壁 (Ship/Shadow 層の EdgeCollider2D) の頂点をワールド座標で出す", (args, reply) =>
+        TestBridge.Register("edges", "<x> <y> <r> 円に掛かる壁 (Ship/Shadow 層の EdgeCollider2D) の頂点をワールド座標で出す。同じ層と家具の層 (12) の PolygonCollider2D は POLY で", (args, reply) =>
         {
             if (!TryParse3(args, out float x, out float y, out float r)) { reply("ERR edges needs <x> <y> <r>"); return; }
             int n = 0;
-            foreach (var c in Physics2D.OverlapCircleAll(new Vector2(x, y), r, WallMask))
+            foreach (var c in Physics2D.OverlapCircleAll(new Vector2(x, y), r, WallMask | (1 << 12)))
             {
+                var pc = c ? c.TryCast<PolygonCollider2D>() : null;
+                if (pc)
+                {
+                    n++;
+                    for (int k = 0; k < pc.pathCount; k++)
+                    {
+                        var pb = new StringBuilder("POLY ").Append(Path(pc.transform)).Append(" layer=").Append(pc.gameObject.layer).Append(" path=").Append(k).Append(' ');
+                        foreach (var p in pc.GetPath(k)) pb.Append(V((Vector2)pc.transform.TransformPoint(p + pc.offset)));
+                        reply(pb.ToString());
+                    }
+                    continue;
+                }
                 var e = c ? c.TryCast<EdgeCollider2D>() : null;
                 if (!e) continue;
                 n++;
