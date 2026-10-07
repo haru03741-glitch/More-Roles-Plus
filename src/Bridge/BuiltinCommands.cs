@@ -136,6 +136,24 @@ internal static class BuiltinCommands
             reply("OK health");
         });
 
+        TestBridge.Register("permit", "[sandbox auto|on|off | world <x> <y> <r>] 自分が地形をどう壊せるか (役職の許可)。sandbox = 練習の「何でも使える」を確かめ用に切り替える・world = プレイヤーでない爆発 (ホストか一人の時)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length >= 4 && a[0] == "world")
+            {
+                var inv = System.Globalization.CultureInfo.InvariantCulture;
+                var res = Terrain.TerrainApi.WorldBlast(new UnityEngine.Vector2(float.Parse(a[1], inv), float.Parse(a[2], inv)), float.Parse(a[3], inv));
+                reply($"OK permit world ok={res.Ok} {res.Why}");
+                return;
+            }
+            if (a.Length >= 2 && a[0] == "sandbox")
+                Terrain.TerrainPermits.SandboxOverride = a[1] switch { "on" => true, "off" => false, _ => null };
+            var lp = PlayerControl.LocalPlayer;
+            var last = Terrain.TerrainSync.LastBroken;
+            string broken = last == null ? "-" : $"{last.Kind} by={last.PlayerId} at={last.Position.x:0.00},{last.Position.y:0.00} r={last.Radius:0.0} cut={last.WallsCut}";
+            reply($"OK permit {(lp ? Terrain.TerrainPermits.Describe(lp.PlayerId) : "no player")} lastBroken=[{broken}]");
+        });
+
         TestBridge.Register("quitgame", "フリープレイ/試合を抜けてメニューへ (部屋検索などメニューの外の画面からも戻る)", (_, reply) =>
         {
             if (TestBridge.Phase() is "Menu" or "Boot")

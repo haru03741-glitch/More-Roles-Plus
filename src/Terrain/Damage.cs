@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
 
-internal enum DamageKind : byte
+public enum DamageKind : byte
 {
     Explosion = 1, // 爆発 (ロケットランチャーなど): 円の範囲の壁をまとめて抜き、外側の輪にはひびを入れる
     Blunt = 2,     // 打撃 (ハンマーなど): 叩いた壁 1 枚に耐久ダメージ。0 になった所だけ四角く抜ける

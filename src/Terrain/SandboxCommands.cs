@@ -6,7 +6,7 @@ namespace MoreRolesPlus.Terrain;
 // 練習の試合とフリープレイで、誰でもチャット欄から地形の破壊を試せるコマンド。
 //   /hammer [強さ 0〜1]  向いている方向の壁をハンマーで叩く (3 回で崩れる)
 //   /blast [半径]        足元に爆弾を置く (導火線の後に爆発)
-// 依頼は武器と同じ TerrainSync.Request を通るので、同期とホストの検査もそのまま確かめられる
+// 役職の能力と同じ TerrainApi を通るので、同期とホストの検査もそのまま確かめられる
 internal static class SandboxCommands
 {
     private const float DefaultForce = 0.5f;
@@ -40,15 +40,9 @@ internal static class SandboxCommands
             System.Globalization.CultureInfo.InvariantCulture, out float v) ? v : null;
         if (parts.Length == 1 && num == null) return false;
 
-        reply = name == "blast" ? Blast(num ?? DefaultRadius, out _) : Hammer(num ?? DefaultForce, out _);
+        reply = (name == "blast" ? TerrainApi.Bomb(num ?? DefaultRadius) : TerrainApi.Hammer(num ?? DefaultForce)).Why;
         return true;
     }
-
-    // 足元に爆弾を置く (導火線の後に爆発)。返り値は結果の説明
-    public static string Blast(float radius, out bool ok) => BombFuse.Place(radius, out ok);
-
-    // 向いている方向の壁をハンマーで叩く (振る動きの後に当たる)
-    public static string Hammer(float force, out bool ok) => HammerSwing.Swing(force, out ok);
 
     // 練習とフリープレイの試合ごとに、ハンマーと爆破のボタンを出す (もう出ていれば何もしない)
     private static Lifespan _buttons;
@@ -58,17 +52,17 @@ internal static class SandboxCommands
         if (_buttons is { IsDead: false } || !Roles.PracticeMatch.Sandbox) return;
         _buttons = Roles.RoleState.Match.Child();
         var hammer = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("hammer"), new Text("ハンマー", "Hammer"), HammerCooldown,
-            () => Report(Hammer(DefaultForce, out bool ok), ok));
+            () => Report(TerrainApi.Hammer(DefaultForce)));
         var bomb = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("bomb"), new Text("爆破", "Blast"), BlastCooldown,
-            () => Report(Blast(DefaultRadius, out bool ok), ok));
+            () => Report(TerrainApi.Bomb(DefaultRadius)));
         // HUD がまだ無くて作れなかった時は、次に HUD が出た時に作り直す
         if (hammer == null || bomb == null) { _buttons.Release(); _buttons = null; }
     }
 
     // ボタンで使えなかった時だけ理由をチャット欄に出す (使えた時は画面の破壊で分かる)
-    private static bool Report(string result, bool ok)
+    private static bool Report(TerrainResult result)
     {
-        if (!ok && Vanilla.Chat is { } chat) chat.AddChatWarning(result);
-        return ok;
+        if (!result.Ok && Vanilla.Chat is { } chat) chat.AddChatWarning(result.Why);
+        return result.Ok;
     }
 }

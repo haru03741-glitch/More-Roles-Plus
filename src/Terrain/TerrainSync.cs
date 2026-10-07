@@ -33,7 +33,7 @@ internal static class TerrainSync
     private const int NoHost = int.MinValue;
     private const int ReportTicks = 50;          // 客が指紋を返すのは 1 秒に 1 通まで
     private const float LagMargin = 1.5f;        // 打撃: ホストに見えている位置の遅れの分
-    private const float MaxBlastDistance = 20f;  // 爆発: 投げた・撃った物が届く所まで
+    internal const float MaxBlastDistance = 20f;  // 爆発: 投げた・撃った物が届く所まで
     private const float MaxBlastRadius = 3f;
     private static int _lastReport = -ReportTicks;
     private static ushort _reportedSeq = ushort.MaxValue;
@@ -43,33 +43,37 @@ internal static class TerrainSync
     private static float _ownHitAt;
 
     public static int Applied { get; private set; } // テスト用: この試合で適用した件数
+    internal static Roles.TerrainBrokenEvent LastBroken; // 確かめ用: 最後に出した壊れた知らせ
     public static int Refused { get; private set; }    // ホスト: 受けなかった依頼の数
     public static int Mismatches { get; private set; } // ホスト: 客の地形が自分と違った回数
     internal static readonly Dictionary<byte, (ushort seq, bool same)> Checks = new(); // ホスト: 客ごとの最後の照合
 
     // 破壊を依頼する唯一の入口。返り値はログ・テスト用の説明
-    public static string Request(in DamageEvent e)
+    public static string Request(in DamageEvent e) => Request(e, out _);
+
+    // ok = 壊れる所があった (客は依頼を送れた時点で true。決めるのはホスト)
+    internal static string Request(in DamageEvent e, out bool ok)
     {
-        if (!Online())
-        {
-            SyncShip();
-            if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
-            return ApplyNow(_nextSeq++, TerrainWire.RoundTrip(r.WithActor(LocalId()).WithTick(GameClock.Stamp)), decide: true, out _);
-        }
-        if (AmongUsClient.Instance.AmHost) return HostAccept(e, LocalId());
+        if (!Online()) return ApplyAlone(e, LocalId(), out ok);
+        if (AmongUsClient.Instance.AmHost) return HostAccept(e, LocalId(), out ok);
         Requests.Add(e);
+        ok = true;
         return "requested";
     }
 
     // ホスト: 依頼を決めて自分に適用し、配る列に積む
-    private static string HostAccept(in DamageEvent e, byte actor)
+    private static string HostAccept(in DamageEvent e, byte actor) => HostAccept(e, actor, out _);
+
+    private static string HostAccept(in DamageEvent e, byte actor, out bool ok)
     {
         SyncShip();
-        if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
+        ok = TerrainDamage.TryResolve(e, out var r, out string why);
+        if (!ok) return why;
         r = TerrainWire.RoundTrip(r.WithActor(actor).WithTick(GameClock.Stamp));
         // 大きな瓦礫の止まる所は、ホストが自分で適用した結果から決めて同じ電文に載せる
         string res = ApplyNow(_nextSeq++, r, decide: true, out var landings);
         Outbox.Add(r.WithLandings(landings));
+        FireBroken();
         return res;
     }
 
@@ -78,7 +82,8 @@ internal static class TerrainSync
     {
         Applied++;
         TerrainDigest.Begin();
-        try { return TerrainDamage.Apply(r, decide, out landings); }
+        string res;
+        try { res = TerrainDamage.Apply(r, decide, out landings); }
         finally
         {
             TerrainDigest.End(seq);
@@ -89,6 +94,35 @@ internal static class TerrainSync
             WaterLeak.OnApplied(r);
             WaterSim.OnApplied(r);
             PropSim.OnApplied(r);
+        }
+        // 役職への知らせは呼び出し元が連番と配る列を書き終えてから (FireBroken)。受け手がさらに壊しても順番がずれない
+        Broken.Add(new Roles.TerrainBrokenEvent
+        {
+            PlayerId = r.Actor,
+            Kind = r.Kind,
+            Position = r.Position,
+            Radius = r.Kind == DamageKind.Explosion ? r.Size : 0f,
+            WallsCut = TerrainDamage.LastCut,
+        });
+        return res;
+    }
+
+    private static readonly List<Roles.TerrainBrokenEvent> Broken = new();
+    private static bool _firing;
+
+    // 溜まった「壊れた」知らせを役職へ出す。受け手が壊した分も同じループで後ろに続けて出す
+    private static void FireBroken()
+    {
+        if (_firing) return;
+        _firing = true;
+        try
+        {
+            for (int i = 0; i < Broken.Count; i++) LastBroken = Roles.Events<Roles.TerrainBrokenEvent>.Run(Broken[i]);
+        }
+        finally
+        {
+            Broken.Clear();
+            _firing = false;
         }
     }
 
@@ -189,7 +223,7 @@ internal static class TerrainSync
                 {
                     o = TerrainWire.ReadRequest(b, o, out var e);
                     if (!AllowRequest(sender.PlayerId)) continue;
-                    string bad = Refuse(sender, e);
+                    string bad = Refuse(sender, e) ?? TerrainPermits.TryUse(sender.PlayerId, TerrainPermits.UseOf(e), e.Size, host: true);
                     if (bad != null) { Refused++; Plugin.Logger.LogDebug($"[TerrainSync] refused {sender.PlayerId}: {bad}"); continue; }
                     HostAccept(e, sender.PlayerId);
                 }
@@ -226,7 +260,7 @@ internal static class TerrainSync
                 if (!client.AmHost || b.Length < 1 + TerrainWire.BombBytes) return;
                 TerrainWire.ReadBomb(b, o, out Vector2 pos, out float radius);
                 if (!AllowRequest(sender.PlayerId)) return;
-                string bad = BombFuse.HostRefuse(sender, pos, radius);
+                string bad = BombFuse.HostRefuse(sender, pos, radius) ?? TerrainPermits.TryUse(sender.PlayerId, TerrainUse.Bomb, radius, host: true);
                 if (bad != null) { Refused++; Plugin.Logger.LogDebug($"[TerrainSync] bomb refused {sender.PlayerId}: {bad}"); return; }
                 BombFuse.Accept(sender.PlayerId, pos, radius);
                 break;
@@ -290,6 +324,7 @@ internal static class TerrainSync
             Plugin.Logger.LogDebug($"[TerrainSync] #{(ushort)(_nextSeq - 1)} {res}");
         }
         _stuckSince = _tick;
+        FireBroken();
     }
 
     // 欠番が来ないまま待ち続けない: 一定時間詰まったら、待っている中で一番前の番号まで飛ばす
@@ -324,10 +359,24 @@ internal static class TerrainSync
     }
 
     // ホストと一人の時: その人の破壊として決めて配る (爆弾の導火線が尽きた時など、依頼を受けた後でホストが起こす破壊)
-    internal static string RequestAs(in DamageEvent e, byte actor)
+    internal static string RequestAs(in DamageEvent e, byte actor) => RequestAs(e, actor, out _);
+
+    internal static string RequestAs(in DamageEvent e, byte actor, out bool ok)
     {
-        if (Online() && AmongUsClient.Instance.AmHost) return HostAccept(e, actor);
-        return Request(e);
+        if (!Online()) return ApplyAlone(e, actor, out ok);
+        if (AmongUsClient.Instance.AmHost) return HostAccept(e, actor, out ok);
+        return Request(e, out ok);
+    }
+
+    // 一人の時 (フリープレイ・オフライン): その場で決めて適用する
+    private static string ApplyAlone(in DamageEvent e, byte actor, out bool ok)
+    {
+        SyncShip();
+        ok = TerrainDamage.TryResolve(e, out var r, out string why);
+        if (!ok) return why;
+        string res = ApplyNow(_nextSeq++, TerrainWire.RoundTrip(r.WithActor(actor).WithTick(GameClock.Stamp)), decide: true, out _);
+        FireBroken();
+        return res;
     }
 
     // 客: 自分の振りが壁に当たる時刻を知らせる (それまで自分の打撃の結果を適用しない)。ホストと一人の時は当たる時に依頼する

@@ -76,6 +76,11 @@ public abstract class RoleBase
     // 設定値だけから決める (その端末の状態を見ない)
     public virtual void ModifyKillCooldown(ref float seconds) { }
 
+    // 地形をどう壊してよいか (既定は壊せない)。壊す時は Terrain.TerrainApi から呼ぶ。
+    // ホストが客の依頼を確かめる時にも呼ぶので、設定値だけから決める
+    //   public override Terrain.TerrainPermit TerrainPermit => Terrain.TerrainPermit.None.WithBomb(radius: 1.5f, cooldown: 20f);
+    public virtual Terrain.TerrainPermit TerrainPermit => Terrain.TerrainPermit.None;
+
     // 出現率と人数。設定画面の役職の欄の先頭に自動で付く
     internal IntOpt Chance;
     internal IntOpt Count;

@@ -34,6 +34,17 @@ public sealed class GameEndEvent : GameEvent
     public GameResult Result { get; internal set; }
 }
 
+// 地形が壊れた (結果を適用した直後)。PlayerId = 壊した人 (マップの出来事などは Terrain.TerrainApi.World = 255)。
+// Kind = 爆発 / 打撃。Position = 爆心 / 叩いた点。Radius = 爆発の半径 (打撃は 0)。WallsCut = 切り取った壁の線の数 (0 = 何も抜けなかった)
+public sealed class TerrainBrokenEvent : GameEvent, IPlayerEvent
+{
+    public byte PlayerId { get; internal set; }
+    public Terrain.DamageKind Kind { get; internal set; }
+    public UnityEngine.Vector2 Position { get; internal set; }
+    public float Radius { get; internal set; }
+    public int WallsCut { get; internal set; }
+}
+
 // ---- 本編の入口 ----
 
 [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.MurderPlayer))]
