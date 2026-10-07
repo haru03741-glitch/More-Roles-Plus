@@ -38,7 +38,9 @@ internal static class TerrainDamage
         if (e.Kind != DamageKind.Blunt) { why = "unknown kind"; return false; }
 
         Vector2 dir = e.Direction.sqrMagnitude > 1e-6f ? e.Direction.normalized : Vector2.right;
-        if (!FindWall(e.Position, dir, p.Reach, out Vector2 hit, out Vector2 normal)) { why = "blunt no wall in reach"; return false; }
+        bool wall = FindWall(e.Position, dir, p.Reach, out Vector2 hit, out Vector2 normal);
+        if (BreakableProps.TryResolve(e, dir, p.Reach, wall, hit, out r)) return true; // 壁より手前の物ごと壊れる家具
+        if (!wall) { why = "blunt no wall in reach"; return false; }
         // 叩いた辺りの多角形・箱の壁を先に折れ線へ (奥の面を辿れるように)
         WallsNear(hit, MaxDepth);
         float far = FarSide(hit, -normal);
@@ -87,10 +89,15 @@ internal static class TerrainDamage
     // 直前の適用で切った壁の数・割れた塊・大きな瓦礫の数 (壊れた音の大きさと高さに使う)。
     // 全員が同じ結果の値から同じ計算で作る物なので、ホストと客で同じになる
     internal static int LastCut, LastPieces, LastBlocks;
+    // 直前の適用で壊した物の素材 (壊れた音を選ぶ。null = マップの壁の素材) と音の高さの倍率
+    internal static string LastMaterial;
+    internal static float LastPitch = 1f;
 
     public static string Apply(in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
         LastCut = LastPieces = LastBlocks = 0;
+        LastMaterial = null;
+        LastPitch = 1f;
         var profile = DamageProfile.Of(r.Kind);
         var given = decide ? null : r.Landings ?? Array.Empty<RubbleLanding>();
         landings = Array.Empty<RubbleLanding>();
@@ -208,7 +215,8 @@ internal static class TerrainDamage
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
         LastCut = cut; LastPieces = pieces.Count; LastBlocks = landings.Length;
-        return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} visual={visual ?? "ok"}";
+        int props = BreakableProps.Blast(core, e.Position, e.Seed); // 形に掛かる物ごと壊れる家具 (欠片の数は LastPieces に足す)
+        return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} props={props} visual={visual ?? "ok"}";
     }
 
     // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。
@@ -216,6 +224,7 @@ internal static class TerrainDamage
     private static string Strike(in ResolvedDamage e, DamageProfile p, RubbleLanding[] given, ref RubbleLanding[] landings)
     {
         SolidMap.Ensure();
+        if (e.Size <= 0f) return BreakableProps.Strike(e); // 厚み 0 = 物ごと壊れる家具への打撃
         Vector2 hit = e.Position, normal = e.Normal, dir = -normal;
         float depth = e.Size; // 抜く向きに沿った長さ
 
@@ -332,7 +341,7 @@ internal static class TerrainDamage
 
     // 壊さない物: ゲームに関わる物 (当面)・家具や小物 (Ship 層に入っているマップがある)・マップの外周と地形
     private static readonly System.Text.RegularExpressions.Regex ProtectedName = new(
-        @"^MrpRubbleBlock$|^MrpHullEdge$|^MrpLedge$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-",
+        @"^MrpRubbleBlock$|^MrpHullEdge$|^MrpLedge$|table|chair|desk|box|rock|ball|stand|panel|candle|parasite_|railing|mushroom|boundary|cliff|lava|^hole$|bridge|background|computer|office-|storage-|stump",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (初回の破壊で 1 回だけ生成のために止まる・名前は短く数も少ない)
 
     // at の辺りで守るか。名前で守る物でも、マップの絵に「壊れてよい」と塗った所なら壊す。
@@ -340,7 +349,8 @@ internal static class TerrainDamage
     internal static bool IsProtected(Component c, Vector2 at)
     {
         if (!IsProtected(c)) return false;
-        if (c.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || c.GetComponentInParent<OpenableDoor>() || IsMovingFurniture(c)) return true;
+        if (c.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || c.GetComponentInParent<OpenableDoor>() || IsMovingFurniture(c) ||
+            BreakableProps.Owns(c)) return true;
         return !MapNotes.InFree(at);
     }
 
@@ -354,7 +364,7 @@ internal static class TerrainDamage
     internal static bool IsProtected(Component c)
     {
         if (c.GetComponentInParent<OpenableDoor>()) return true;
-        if (IsMovingFurniture(c)) return true;
+        if (IsMovingFurniture(c) || BreakableProps.Owns(c)) return true; // 物ごと壊れる家具は壁として削らない
         for (var t = c.transform; t && !t.GetComponent<ShipStatus>(); t = t.parent)
             if (ProtectedName.IsMatch(t.name)) return true;
         return false;

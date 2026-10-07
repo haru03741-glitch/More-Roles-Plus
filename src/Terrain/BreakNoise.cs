@@ -139,6 +139,7 @@ internal static class BreakNoise
             pitch = 1.03f - 0.08f * worn + jitter;
             vol *= 0.9f + 0.2f * worn;
         }
+        pitch *= TerrainDamage.LastPitch;
         Play(clip, vol, pan, pitch, 0f);
         Emitted++;
         Last = $"{clip} d={d:0.0} vol={vol:0.00} pan={pan:0.00} pitch={pitch:0.00} amount={amount:0.00}{extra}";
@@ -187,6 +188,8 @@ internal static class BreakNoise
             _crumbleClip = "noise_crumble_" + mat;
             _rubbleClip = "noise_rubble_" + mat;
         }
+        if (kind != Sound.Boom && TerrainDamage.LastMaterial is { } own) // 物ごと壊れる家具はその素材の音
+            return (kind == Sound.Hit ? "noise_hit_" : "noise_crumble_") + own;
         return kind == Sound.Boom ? "noise_boom" : kind == Sound.Hit ? _hitClip : _crumbleClip;
     }
 

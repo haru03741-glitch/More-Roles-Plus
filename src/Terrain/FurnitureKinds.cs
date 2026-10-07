@@ -99,7 +99,7 @@ internal static class FurnitureKinds
         return false;
     }
 
-    private static string Key(Transform tr, string shipName)
+    internal static string Key(Transform tr, string shipName)
     {
         string name = tr.name;
         int paren = name.LastIndexOf(" (", StringComparison.Ordinal);

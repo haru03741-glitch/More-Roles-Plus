@@ -149,6 +149,86 @@ internal static class TerrainFx
         Dust(at - dir * 0.1f, rnd, 0.35f, 0.8f);
     }
 
+    // 物ごと壊れる家具を叩いた (まだ壊れない): 叩いた所から素材の細かい物が少し飛ぶ (金属 = 火花 / 木 = 木くず)
+    public static void PropChip(Vector2 at, Vector2 dir, bool wood, ushort seed)
+    {
+        var rnd = new System.Random(seed ^ Hash(at));
+        for (int k = 0; k < (wood ? 4 : 5); k++)
+        {
+            float ang = ((float)rnd.NextDouble() - 0.5f) * 2.2f;
+            float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
+            float vx = -dir.x * ca + dir.y * sa, vy = -dir.x * sa - dir.y * ca; // 叩いた側へ跳ね返る
+            float sp = 1.2f + (float)rnd.NextDouble() * 1.4f;
+            var it = wood
+                ? Spawn(Kind.Junk, DebrisArt.Splinter(rnd.Next()), at, 0.07f + (float)rnd.NextDouble() * 0.05f, keep: true)
+                : Spawn(Kind.Spark, DebrisArt.Spark, at, 0.06f + (float)rnd.NextDouble() * 0.04f, keep: false);
+            it.Vx = vx * sp; it.Vy = vy * sp;
+            it.Height = 0.25f;
+            it.VH = 0.8f + (float)rnd.NextDouble() * 1.2f;
+            if (wood) { it.Rot = (float)rnd.NextDouble() * 360f; it.VRot = ((float)rnd.NextDouble() - 0.5f) * 720f; }
+            else it.Life = 0.15f + (float)rnd.NextDouble() * 0.15f;
+        }
+        if (wood) Dust(at - dir * 0.1f, rnd, 0.3f, 0.6f);
+    }
+
+    // 物ごと壊れる家具が壊れた: 家具の絵を割った欠片 (元の場所に重なって出る) が向き dir へ飛んで床に散らばる。
+    // parts = 欠片の絵・元の真ん中 (ワールド)・床の高さ (その下の床の y)。sx, sy = 元の家具の倍率 (向きの反転を含む)。
+    // 金属は欠片が空中で裏返り、火花が散る。木は木くずと、中の粉の煙 (dustTint) が出る。
+    // 欠片は止まった所に残る (当たり判定なし)。home = 叩いた側の床 (壁の線の上から動き出す欠片が越えてよい側)
+    public static void Shatter(List<(Sprite Sp, Vector2 At, float FloorY)> parts, float sx, float sy, Vector2 center, Vector2 dir,
+        bool wood, int sparks, Color dustTint, ushort seed, float[] walls, Vector2 home)
+    {
+        var rnd = new System.Random(seed ^ Hash(center));
+        foreach (var (sp, at, floorY) in parts)
+        {
+            float h = Math.Max(0f, at.y - floorY);
+            var it = SpawnScaled(Kind.Junk, sp, new Vector2(at.x, floorY), sx, sy);
+            it.Height = h;
+            it.Walls = walls;
+            it.HomeX = home.x; it.HomeY = home.y;
+            // 向きから ±35° に散る。真ん中から外れた欠片ほど外へ開く
+            float ang = ((float)rnd.NextDouble() - 0.5f) * 1.22f;
+            float ox = at.x - center.x, oy = floorY - center.y;
+            float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
+            float vx = dir.x * ca - dir.y * sa + ox * 0.5f, vy = dir.x * sa + dir.y * ca + oy * 0.5f;
+            float spd = 1f + (float)rnd.NextDouble();
+            it.Vx = vx * spd; it.Vy = vy * spd;
+            it.VH = 1f + (float)rnd.NextDouble() * 0.8f;
+            it.VRot = ((float)rnd.NextDouble() - 0.5f) * 360f;
+            if (!wood) it.VFlip = (rnd.NextDouble() < 0.5 ? -1f : 1f) * (5f + (float)rnd.NextDouble() * 5f);
+        }
+        if (wood)
+        {
+            for (int k = 0; k < 20; k++)
+            {
+                float ang = (float)(rnd.NextDouble() * Math.PI * 2);
+                float sp = 0.5f + (float)rnd.NextDouble() * 1.3f;
+                var it = Spawn(Kind.Junk, DebrisArt.Splinter(rnd.Next()), center, 0.07f + (float)rnd.NextDouble() * 0.09f, keep: true);
+                it.Vx = (MathF.Cos(ang) + dir.x) * sp; it.Vy = (MathF.Sin(ang) + dir.y) * sp;
+                it.Walls = walls;
+                it.HomeX = home.x; it.HomeY = home.y;
+                it.Height = 0.15f + (float)rnd.NextDouble() * 0.3f;
+                it.VH = 1f + (float)rnd.NextDouble() * 1.6f;
+                it.Rot = (float)rnd.NextDouble() * 360f;
+                it.VRot = ((float)rnd.NextDouble() - 0.5f) * 900f;
+                it.T = -(float)rnd.NextDouble() * 0.05f;
+            }
+            var puff = Dust(center, rnd, 0.55f, 0.9f);
+            puff.Sr.color = dustTint;
+        }
+        for (int k = 0; k < sparks; k++)
+        {
+            float ang = ((float)rnd.NextDouble() - 0.5f) * 2.6f;
+            float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
+            float sp = 2f + (float)rnd.NextDouble() * 3f;
+            var it = Spawn(Kind.Spark, DebrisArt.Spark, center, 0.07f + (float)rnd.NextDouble() * 0.05f, keep: false);
+            it.Vx = (dir.x * ca - dir.y * sa) * sp; it.Vy = (dir.x * sa + dir.y * ca) * sp;
+            it.Height = 0.3f;
+            it.VH = 1f + (float)rnd.NextDouble() * 1.5f;
+            it.Life = 0.25f;
+        }
+    }
+
     // 剥げかけの表面が欠け落ちる: 細胞の絵 (元の場所に重なっている) が根元 (baseY) へ落ちて手前へ転がる
     public static void DropPeel(BreakPiece p, float baseY, Vector2 dir, int seed)
     {
@@ -413,7 +493,7 @@ internal static class TerrainFx
         it.T = -delay;
     }
 
-    private static void Dust(Vector2 at, System.Random rnd, float size, float life)
+    private static Item Dust(Vector2 at, System.Random rnd, float size, float life)
     {
         var it = Spawn(Kind.Puff, DebrisArt.Puff, at, size, keep: false);
         it.S0 = size * 0.4f;
@@ -422,9 +502,16 @@ internal static class TerrainFx
         it.VH = 0.4f + (float)rnd.NextDouble() * 0.4f;
         it.Vx = ((float)rnd.NextDouble() - 0.5f) * 0.6f;
         it.Z -= 0.005f * it.ZS; // 塊より手前
+        return it;
     }
 
     private static Item Spawn(Kind kind, Sprite sprite, Vector2 pos, float worldSize, bool keep)
+    {
+        float s = worldSize / Math.Max(0.0001f, sprite.bounds.size.x);
+        return SpawnScaled(kind, sprite, pos, s, s, keep);
+    }
+
+    private static Item SpawnScaled(Kind kind, Sprite sprite, Vector2 pos, float sx, float sy, bool keep = true)
     {
         var go = new GameObject("MrpDebris");
         var tr = go.transform;
@@ -435,10 +522,9 @@ internal static class TerrainFx
         float z = front - 0.004f * zs;
         tr.position = new Vector3(pos.x, pos.y, z);
         float sw = Math.Max(0.0001f, sprite.bounds.size.x);
-        float s = worldSize / sw;
-        tr.localScale = new Vector3(s, s, 1f);
+        tr.localScale = new Vector3(sx, sy, 1f);
         if (keep) DamageMap.Track(go);
-        var it = new Item { Kind = kind, Tr = tr, Sr = sr, Px = pos.x, Py = pos.y, S0 = s, S1 = s, Z = z, ZS = zs, Life = 1f, SpriteW = sw };
+        var it = new Item { Kind = kind, Tr = tr, Sr = sr, Px = pos.x, Py = pos.y, S0 = sx, S1 = sx, Sy = sy, Z = z, ZS = zs, Life = 1f, SpriteW = sw };
         it.HomeX = it.Px; it.HomeY = it.Py;
         Items.Add(it);
         return it;
@@ -589,7 +675,7 @@ internal static class TerrainFx
             it.Flip += it.VFlip * dt;
             float cx = MathF.Cos(it.Flip);
             if (cx > -0.15f && cx < 0.15f) cx = cx < 0f ? -0.15f : 0.15f; // 真横でも線 1 本は残す
-            it.Tr.localScale = V3(it.S0 * cx, it.S0, 1f);
+            it.Tr.localScale = V3(it.S0 * cx, it.Sy, 1f);
         }
         if (it.Height > it.Rest) return false;
         it.Height = it.Rest;
@@ -608,7 +694,7 @@ internal static class TerrainFx
             // 表か裏で寝る
             it.VFlip = 0f;
             it.Flip = MathF.Round(it.Flip / MathF.PI) * MathF.PI;
-            it.Tr.localScale = V3(it.S0 * MathF.Cos(it.Flip), it.S0, 1f);
+            it.Tr.localScale = V3(it.S0 * MathF.Cos(it.Flip), it.Sy, 1f);
         }
         float f = MathF.Max(0f, 1f - (it.Roll > 0f ? 1.6f : 5f) * dt);
         it.Vx *= f; it.Vy *= f;

@@ -131,12 +131,20 @@ internal static class FurnitureSplit
                     new[] { 30, 0, 141, 0, 141, 54, 30, 54 }),
             },
         },
-        // bonfireArea (516x417): 右上の椅子 3 脚だけを分ける (石の輪・丸太・火は元のまま)。
-        // 椅子は斜めに並ぶので、椅子の下を通る斜めの線より上を 3 つに区切る
+        // bonfireArea (516x417): 右上の椅子 3 脚と左の丸太 2 本・切り株を分ける (石の輪と火は元のまま)。
+        // 椅子は斜めに並ぶので、椅子の下を通る斜めの線より上を 3 つに区切る。
+        // 丸太と切り株は残りの範囲の中にあるので、左の縁から幅 0 の切れ込みで回り込んで抜く (丸太は壊れる = BreakableProps)。
+        // 丸太と切り株の当たり判定は元は 1 つの子 (Tubes) にまとまっている
         ["FungleShip/OutsideBeach/Bonfire"] = new Entry
         {
-            Keep = new[] { 0, 0, 238, 0, 516, 197, 516, 417, 0, 417 },
-            Drop = new[] { "Chairs" },
+            Keep = new[]
+            {
+                0, 0, 238, 0, 516, 197, 516, 417, 0, 417,
+                0, 330, 54, 330, 54, 346, 80, 352, 110, 346, 110, 305, 100, 290, 72, 286, 64, 290, 54, 302, 54, 330, 0, 330,
+                0, 245, 8, 272, 16, 298, 38, 301, 66, 288, 70, 276, 57, 258, 53, 228, 43, 203, 23, 197, 4, 204, 0, 224,
+                0, 120, 28, 120, 28, 122, 42, 130, 62, 124, 74, 112, 112, 91, 153, 64, 150, 48, 137, 38, 116, 42, 82, 66, 52, 83, 36, 96, 28, 112, 28, 120, 0, 120,
+            },
+            Drop = new[] { "Chairs", "Tubes" },
             Pieces = new[]
             {
                 new Piece("chair1",
@@ -148,6 +156,16 @@ internal static class FurnitureSplit
                 new Piece("chair3",
                     new[] { 511, 0, 516, 0, 516, 197, 433, 138 },
                     new[] { 450, 100, 505, 90, 506, 130, 475, 139, 447, 125 }),
+                // 丸太の裏地は丸太の間の何も無い砂を写す (壊れて丸太が消えた跡を埋める。たき火の絵の下の砂は色が違う)
+                new Piece("tube1", // 上の斜めの丸太
+                    new[] { 28, 112, 36, 96, 52, 83, 82, 66, 116, 42, 137, 38, 150, 48, 153, 64, 112, 91, 74, 112, 62, 124, 42, 130, 28, 122 },
+                    new[] { 126, 24, 12, 107, 63, 130, 113, 99, 150, 61 }, 0f, new[] { 20, 140, 130, 50, 26, 34, 20, 140, 130, 50, 26, 84 }),
+                new Piece("tube2", // 下の縦の丸太
+                    new[] { 0, 224, 4, 204, 23, 197, 43, 203, 53, 228, 57, 258, 70, 276, 66, 288, 38, 301, 16, 298, 8, 272, 0, 245 },
+                    new[] { 40, 202, -6, 212, 12, 294, 61, 294 }, 0f, new[] { 70, 150, 72, 104, 0, 198 }),
+                new Piece("stump", // かぼちゃの載った切り株 (壊れない)
+                    new[] { 64, 290, 72, 286, 100, 290, 110, 305, 110, 346, 80, 352, 54, 346, 54, 302 },
+                    new[] { 43, 295, 49, 344, 116, 349, 114, 308, 90, 296, 61, 294 }),
             },
         },
     };
@@ -155,16 +173,24 @@ internal static class FurnitureSplit
     private static readonly List<UnityEngine.Object> Owned = new();
     private static readonly List<GameObject> Made = new(); // 今分けている物で作った GameObject
 
-    // 船ごとに 1 回 (PropSim が家具を集める前)。前の船で作った Sprite はここで消す
+    private static IntPtr _ship; // Sprite を作った船
+
+    // 船ごとに 1 回 (PropSim と壊れる家具が集める前・どちらが先に呼んでもよい)。前の船で作った Sprite はここで消す。
+    // 同じ船で 2 回目に呼ばれた時は、もう分けた物 (分けた家具の兄弟がある) を飛ばす
     internal static void Apply(ShipStatus ship)
     {
-        Clear();
+        if (ship.Pointer != _ship)
+        {
+            Clear();
+            _ship = ship.Pointer;
+        }
         string shipName = FurnitureKinds.ShipName(ship);
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
         {
             var tr = sr.transform;
             if (!sr.enabled || !tr.parent) continue;
             if (!Table.TryGetValue(shipName + "/" + tr.parent.name + "/" + tr.name, out var entry)) continue;
+            if (tr.parent.Find(tr.name + "-" + entry.Pieces[0].Name)) continue;
             Made.Clear();
             try { Split(sr, entry); }
             catch (Exception e)
@@ -357,6 +383,20 @@ internal static class FurnitureSplit
         sr.enabled = false;
         foreach (var c in sr.GetComponents<Collider2D>()) if (!c.isTrigger) c.enabled = false;
         Plugin.Logger.LogInfo($"furniture split {tr.name}: {pieces.Length} pieces");
+    }
+
+    // 絵 sp の範囲 poly (絵の画素・左上が原点) を切り出す。center = 切り出した範囲の真ん中 (絵の画素・左下が原点)。
+    // 作った Sprite は呼び出し側が持つ (消すのも呼び出し側)
+    internal static Sprite Cut(Sprite sp, int[] poly, string name, out Vector2 center)
+    {
+        center = default;
+        if (!sp || !sp.texture || (sp.packed && (sp.packingMode == SpritePackingMode.Tight || sp.packingRotation != SpritePackingRotation.None))) return null;
+        MeshOf(sp, out var meshV, out var meshT);
+        int before = Owned.Count;
+        var s = Shape(sp.texture, sp.textureRect.position - sp.textureRectOffset, sp.rect.width, sp.rect.height, sp.pixelsPerUnit, poly,
+            meshV, meshT, true, sp.pivot, out center, name);
+        if (Owned.Count > before) Owned.RemoveAt(Owned.Count - 1);
+        return s;
     }
 
     // 範囲 (絵の画素・左上が原点) と元の網目の重なりの Sprite。
@@ -577,6 +617,7 @@ internal static class FurnitureSplit
                 foreach (int k in idx)
                 {
                     if (k == ia || k == ib || k == ic) continue;
+                    if (v[k] == a || v[k] == b || v[k] == c) continue; // 幅 0 の切れ込みの両岸の同じ点は角の点そのもの
                     if (InTri(v[k], a, b, c, sign)) { inside = true; break; }
                 }
                 if (inside) continue;

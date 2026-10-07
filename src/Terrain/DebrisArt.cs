@@ -21,6 +21,9 @@ internal static class DebrisArt
     private static Sprite[] _plates, _pipes, _wires, _cores;
     private static Sprite _nut, _stain;
     public static Sprite Plate(int i) => Pick(_plates ??= Make(3, k => MakePlate(new System.Random(300 + k), "MrpPlate" + k)), i);
+    // 木の裂けた欠片 (ファングルのたき火の丸太の紫)
+    private static Sprite[] _splinters;
+    public static Sprite Splinter(int i) => Pick(_splinters ??= Make(3, k => MakeSplinter(new System.Random(700 + k), "MrpSplinter" + k)), i);
     public static Sprite Pipe(int i) => Pick(_pipes ??= Make(2, k => MakePipe(new System.Random(400 + k), "MrpPipe" + k)), i);
     public static Sprite Wire(int i) => Pick(_wires ??= Make(4, k => MakeWire(new System.Random(500 + k), WireColors[k], "MrpWire" + k)), i);
     public static Sprite Core(int i) => Pick(_cores ??= Make(3, k => MakePolygonSprite(64, new System.Random(600 + k), 5 + k, 0.78f, CoreTop, CoreSide, 0.09f, "MrpCore" + k)), i);
@@ -126,6 +129,50 @@ internal static class DebrisArt
                 float rx = -0.62f, ry = -0.3f + r * 0.3f;
                 float rd = (u - rx) * (u - rx) + (v - ry) * (v - ry);
                 if (rd < 0.075f * 0.075f) c = rd < 0.04f * 0.04f ? MetalHi : Line;
+            }
+            Put(px, n, x, y, c);
+        }
+        return ToSprite(px, n, name);
+    }
+
+    // 木の欠片: 細長く両端がぎざぎざに裂けた板・上の面が明るく下が暗い・木目の線 2 本・裂けた口は中の明るい色
+    private static readonly Color32 WoodTop = new(176, 92, 172, 255), WoodSide = new(122, 56, 124, 255), WoodCore = new(214, 150, 206, 255);
+    private static Sprite MakeSplinter(System.Random rnd, string name)
+    {
+        const int n = 64;
+        float hw = 0.92f, hh = 0.26f + (float)rnd.NextDouble() * 0.08f;
+        var pts = new System.Collections.Generic.List<float>();
+        pts.Add(-hw * 0.7f); pts.Add(-hh);
+        pts.Add(hw * 0.75f); pts.Add(-hh);
+        for (int k = 0; k < 3; k++) // 右の裂け目
+        {
+            float t = (k + 1) / 4f;
+            pts.Add(hw * (k % 2 == 0 ? 1f : 0.7f + (float)rnd.NextDouble() * 0.15f)); pts.Add(-hh + t * hh * 2f);
+        }
+        pts.Add(hw * 0.6f); pts.Add(hh);
+        pts.Add(-hw * 0.65f); pts.Add(hh);
+        for (int k = 0; k < 2; k++) // 左の裂け目
+        {
+            float t = (k + 1) / 3f;
+            pts.Add(-hw * (k % 2 == 0 ? 1f : 0.78f)); pts.Add(hh - t * hh * 2f);
+        }
+        var poly = pts.ToArray();
+        float g0 = -hh * 0.25f + ((float)rnd.NextDouble() - 0.5f) * 0.06f, g1 = hh * 0.45f;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float d = PolyDistance(poly, u, v, out bool inside);
+            if (!inside && d > 0.03f) continue;
+            Color32 c;
+            if (d <= 0.07f) c = Line;
+            else if (MathF.Abs(u) > hw * 0.62f) c = WoodCore; // 裂けた口
+            else
+            {
+                c = v > 0f ? WoodTop : WoodSide;
+                if (MathF.Abs(v - g0) < 0.025f && u > -hw * 0.5f && u < hw * 0.35f) c = Line; // 木目
+                if (MathF.Abs(v - g1) < 0.02f && u > -hw * 0.2f && u < hw * 0.55f) c = WoodSide;
             }
             Put(px, n, x, y, c);
         }
