@@ -221,6 +221,7 @@ internal static class PropSim
         _w = SolidMap.W; _h = SolidMap.H; _org = SolidMap.Origin;
         _cellU = (int)MathF.Round(Unit / SolidMap.Ppu);
         _block = new byte[_w * _h];
+        FurnitureSplit.Apply(ship); // 1 枚の絵にまとめて描かれた家具を家具ごとに分けてから集める
         var own = OwnFurniture(ship);
         foreach (var v in ship.AllVents) if (v) Stamp(v.transform.position);
         // 家具に載った端末は家具と一緒に動くので、周りを塞がない (塞ぐと家具が自分の端末に引っ掛かる)
@@ -385,7 +386,10 @@ internal static class PropSim
             if (!col || !col.enabled || col.isTrigger) continue;
             int layer = col.gameObject.layer;
             if (layer != 12 && layer != 9) continue;
-            if (FurnitureKinds.TryGet(col.transform, shipName, out var kind)) map[col.gameObject.GetInstanceID()] = (kind, col);
+            if (!FurnitureKinds.TryGet(col.transform, shipName, out var kind, out var owner)) continue;
+            // 当たり判定が絵の子にある家具は絵の GameObject で引く (絵と同じ GameObject の当たり判定があればそちら)
+            int id = owner.gameObject.GetInstanceID();
+            if (owner == col.transform || !map.ContainsKey(id)) map[id] = (kind, col);
         }
         return map;
     }

@@ -14,7 +14,11 @@ internal static class FurnitureKinds
     internal static readonly Dictionary<string, FurnitureKind> Table = new()
     {
         ["MiraShip/Admin/admin-tablelower"] = FurnitureKind.Shove, // 下の机
-        ["MiraShip/Storage/storage-top"] = FurnitureKind.Tip, // 倉庫の上の棚
+        ["MiraShip/Storage/storage-top"] = FurnitureKind.Tip, // 倉庫の奥の棚 (箱の山・棚・緑の箱に分けて動かす = FurnitureSplit)
+        ["MiraShip/Storage/storage-top-boxes"] = FurnitureKind.Shove, // 倉庫の奥の左の箱の山
+        ["MiraShip/Storage/storage-top-shelf"] = FurnitureKind.Shove, // 倉庫の奥の棚 (壁際なので倒さずにずらす)
+        ["MiraShip/Storage/storage-top-crates"] = FurnitureKind.Shove, // 倉庫の奥の右の緑の箱
+        ["MiraShip/Storage/storageMid"] = FurnitureKind.Tip, // 倉庫の真ん中の棚 (当たり判定は子)
         ["MiraShip/Storage/storage-mop"] = FurnitureKind.Tip, // モップ
         ["MiraShip/Storage/storage-box2"] = FurnitureKind.Shove, // 倉庫の木箱
         ["MiraShip/Storage/storage-boxes1"] = FurnitureKind.Shove, // 倉庫の箱の山
@@ -59,11 +63,27 @@ internal static class FurnitureKinds
     // 船の名前 ("(Clone)" を除く)
     internal static string ShipName(ShipStatus ship) => ship.name.Replace("(Clone)", "");
 
-    internal static bool TryGet(Transform tr, string shipName, out FurnitureKind kind)
+    internal static bool TryGet(Transform tr, string shipName, out FurnitureKind kind) => TryGet(tr, shipName, out kind, out _);
+
+    // owner = 絵を持つ家具。当たり判定が絵の子 (Mira の倉庫の真ん中の棚の "Collider") にある物は、親の名前で引く
+    internal static bool TryGet(Transform tr, string shipName, out FurnitureKind kind, out Transform owner)
+    {
+        owner = tr;
+        if (Table.TryGetValue(Key(tr, shipName), out kind)) return true;
+        var parent = tr.parent;
+        if (parent && Table.TryGetValue(Key(parent, shipName), out kind))
+        {
+            owner = parent;
+            return true;
+        }
+        return false;
+    }
+
+    private static string Key(Transform tr, string shipName)
     {
         string name = tr.name;
         int paren = name.LastIndexOf(" (", StringComparison.Ordinal);
         if (paren > 0 && name.EndsWith(")")) name = name.Substring(0, paren);
-        return Table.TryGetValue(shipName + "/" + (tr.parent ? tr.parent.name : "") + "/" + name, out kind);
+        return shipName + "/" + (tr.parent ? tr.parent.name : "") + "/" + name;
     }
 }
