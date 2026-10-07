@@ -129,6 +129,7 @@ internal static class PropSim
     }
 
     private static readonly List<Prop> Props = new();
+    private static readonly List<Prop> Heavies = new(); // Props のうち重い物 (重い物どうしの当たり)
     private static readonly World Auth = new(), Disp = new() { Display = true };
     private static readonly List<Prop> Shown = new();
     // 止まった家具の水の型抜きの作り直し待ち (元の場所・止まった所・半径・時刻)
@@ -227,6 +228,7 @@ internal static class PropSim
         // 家具に載った端末は家具と一緒に動くので、周りを塞がない (塞ぐと家具が自分の端末に引っ掛かる)
         foreach (var c in ship.AllConsoles) if (c && !OnOwnFurniture(c.transform, own)) Stamp(c.transform.position);
         Props.Clear();
+        Heavies.Clear();
         var decor = new List<SpriteRenderer>();
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
         {
@@ -270,6 +272,8 @@ internal static class PropSim
                 if (h.Col.OverlapPoint(c) && IsDecor(sr) && claimed.Add(sr.transform.GetInstanceID()))
                     (h.Riders ??= new List<Rider>()).Add(new Rider { Tr = sr.transform, T0 = sr.transform.position, Rot0 = sr.transform.eulerAngles.z });
         }
+        Heavies.Clear();
+        foreach (var h in Props) if (h.Kind == Kind.Heavy) Heavies.Add(h);
         _ready = true;
         return true;
     }
@@ -485,6 +489,29 @@ internal static class PropSim
         return sr.transform.childCount == 0;
     }
 
+    // 動かす時の当たり: 壁と、重い物どうし (当たりの箱のめり込みが今より深くなる動きだけ止める。
+    // 1 枚の絵から分けた家具は始めから箱が重なっているので、重なり自体は許す)
+    private static bool Blocked(Prop p, St st, World w, int x, int y)
+    {
+        if (Blocked(p, x, y)) return true;
+        if (p.Kind != Kind.Heavy) return false;
+        foreach (var q in Heavies)
+        {
+            if (q == p) continue;
+            var qs = w.S(q);
+            int pen = Pen(p, q, x - qs.Px, y - qs.Py);
+            if (pen > 0 && pen > Pen(p, q, st.Px - qs.Px, st.Py - qs.Py)) return true;
+        }
+        return false;
+    }
+
+    // 2 つの重い物の当たりの箱のめり込みの深さ (重ならなければ 0)
+    private static int Pen(Prop p, Prop q, int dx, int dy)
+    {
+        int ox = p.Hx + q.Hx - Math.Abs(dx), oy = p.Hy + q.Hy - Math.Abs(dy);
+        return ox > 0 && oy > 0 ? Math.Min(ox, oy) : 0;
+    }
+
     private static bool Blocked(Prop p, int x, int y)
     {
         if (p.Kind != Kind.Heavy) return Blocked(x, y);
@@ -534,7 +561,7 @@ internal static class PropSim
             var p = w.Act[i];
             var st = w.S(p);
             if (w.Display) { p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; }
-            Move(p, st);
+            Move(p, st, w);
             bool done = st.Vx == 0 && st.Vy == 0 && st.Spin == 0 && st.Ang == st.Tip;
             // 前後の z は部屋の絵を全部見るので 4 刻みに 1 回と止まった時だけ (見た目だけ)
             if (w.Display && p.Kind != Kind.Heavy && (done || (w.Step & 3) == 0)) p.Z = SortZ(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
@@ -674,7 +701,7 @@ internal static class PropSim
         if (w.Display && !w.Wob.Contains(p)) w.Wob.Add(p);
     }
 
-    private static void Move(Prop p, St st)
+    private static void Move(Prop p, St st, World w)
     {
         if (st.Vx != 0 || st.Vy != 0)
         {
@@ -683,9 +710,9 @@ internal static class PropSim
             for (int s = 0; s < n; s++)
             {
                 int nx = st.Px + sx, ny = st.Py + sy;
-                if (!Blocked(p, nx, ny)) { st.Px = nx; st.Py = ny; continue; }
-                if (sx != 0 && !Blocked(p, nx, st.Py)) { st.Px = nx; st.Vy = -st.Vy * Bounce / 5; sy = -sy * Bounce / 5; st.Spin = -st.Spin; continue; }
-                if (sy != 0 && !Blocked(p, st.Px, ny)) { st.Py = ny; st.Vx = -st.Vx * Bounce / 5; sx = -sx * Bounce / 5; st.Spin = -st.Spin; continue; }
+                if (!Blocked(p, st, w, nx, ny)) { st.Px = nx; st.Py = ny; continue; }
+                if (sx != 0 && !Blocked(p, st, w, nx, st.Py)) { st.Px = nx; st.Vy = -st.Vy * Bounce / 5; sy = -sy * Bounce / 5; st.Spin = -st.Spin; continue; }
+                if (sy != 0 && !Blocked(p, st, w, st.Px, ny)) { st.Py = ny; st.Vx = -st.Vx * Bounce / 5; sx = -sx * Bounce / 5; st.Spin = -st.Spin; continue; }
                 st.Vx = -st.Vx * Bounce / 5; st.Vy = -st.Vy * Bounce / 5; st.Spin = -st.Spin;
                 break;
             }
@@ -828,6 +855,7 @@ internal static class PropSim
         _ready = false;
         _running = false;
         Props.Clear();
+        Heavies.Clear();
         FurnitureLift.Clear();
         Settled.Clear();
         Auth.Act.Clear(); Auth.Wob.Clear(); Auth.Step = 0;

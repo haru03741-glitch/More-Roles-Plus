@@ -56,8 +56,16 @@ internal static class FurnitureKinds
         ["PolusShip/Science/sciencetable"] = FurnitureKind.Shove, // 研究所の机
         ["PolusShip/Electrical/barrier"] = FurnitureKind.Tip, // 柵
         ["PolusShip/Electrical/transformer0001"] = FurnitureKind.Shove, // 変圧器
-        ["PolusShip/RocksNBoxes/boxcluster"] = FurnitureKind.Shove, // 屋外の箱の山 1 (当たり判定と影は子)
-        ["PolusShip/RocksNBoxes/boxclust2"] = FurnitureKind.Shove, // 屋外の箱の山 2 (同上)
+        ["PolusShip/RocksNBoxes/boxcluster"] = FurnitureKind.Shove, // 屋外の箱の山 1 (箱 3 つと缶 2 つに分けて動かす = FurnitureSplit)
+        ["PolusShip/RocksNBoxes/boxcluster-box1"] = FurnitureKind.Shove,
+        ["PolusShip/RocksNBoxes/boxcluster-canR"] = FurnitureKind.Shove,
+        ["PolusShip/RocksNBoxes/boxcluster-box2"] = FurnitureKind.Shove,
+        ["PolusShip/RocksNBoxes/boxcluster-canL"] = FurnitureKind.Shove,
+        ["PolusShip/RocksNBoxes/boxcluster-box3"] = FurnitureKind.Shove,
+        ["PolusShip/RocksNBoxes/boxclust2"] = FurnitureKind.Shove, // 屋外の箱の山 2 (箱 3 つに分けて動かす)
+        ["PolusShip/RocksNBoxes/boxclust2-front"] = FurnitureKind.Shove,
+        ["PolusShip/RocksNBoxes/boxclust2-right"] = FurnitureKind.Shove,
+        ["PolusShip/RocksNBoxes/boxclust2-back"] = FurnitureKind.Shove,
         ["Airship/Vault/vault_dummie"] = FurnitureKind.Tip, // マネキン
         ["Airship/Storage/storage_cargo1"] = FurnitureKind.Shove, // 貨物室の荷車 (当たり判定と影は子)
         ["FungleShip/HighlandsObstacles/Obstacle1"] = FurnitureKind.Shove, // 高台の障害物 1
