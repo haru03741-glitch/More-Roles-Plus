@@ -85,6 +85,7 @@ internal static class TerrainSync
             BreakNoise.Emit(r);
             HammerSwing.OnApplied(r);
             BombFuse.OnApplied(r);
+            DustCloud.OnApplied(r);
         }
     }
 

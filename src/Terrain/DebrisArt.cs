@@ -8,7 +8,7 @@ namespace MoreRolesPlus.Terrain;
 internal static class DebrisArt
 {
     private static Sprite[] _chunks;
-    private static Sprite _pebble, _puff, _spark;
+    private static Sprite _pebble, _puff, _spark, _dust, _footprint;
 
     // 壁の色 (Skeld の壁面・枠の内側の灰)
     private static readonly Color32 WallTop = new(188, 196, 202, 255);
@@ -43,6 +43,8 @@ internal static class DebrisArt
     public static Sprite Pebble => _pebble ??= MakePolygonSprite(32, new System.Random(5), 6, 0.62f, WallTop, WallSide, 0.12f, "MrpPebble");
     public static Sprite Puff => _puff ??= MakePuff();
     public static Sprite Spark => _spark ??= MakeSpark();
+    public static Sprite DustBlob => _dust ??= MakeDustBlob();
+    public static Sprite Footprint => _footprint ??= MakeFootprint();
 
     private static Sprite[] MakeChunks()
     {
@@ -243,6 +245,71 @@ internal static class DebrisArt
             px[i] = g; px[i + 1] = g; px[i + 2] = (byte)Math.Min(255, g + 6); px[i + 3] = 255;
         }
         return ToSprite(px, n, "MrpPuff");
+    }
+
+    // 粉塵の煙: もこもこした塊 (大きな玉 4 つの周りに小さな玉 14 個・縁ほど薄く・上が明るく下が暗い・ところどころむら)。
+    // 色は置く側で掛ける
+    private static Sprite MakeDustBlob()
+    {
+        const int n = 64;
+        var px = new byte[n * n * 4];
+        var rnd = new System.Random(11);
+        var lumps = new System.Collections.Generic.List<(float x, float y, float r)>
+        {
+            (-0.22f, -0.1f, 0.5f), (0.22f, -0.05f, 0.5f), (0f, 0.22f, 0.48f), (0.05f, -0.28f, 0.42f),
+        };
+        for (int k = 0; k < 14; k++)
+        {
+            float ang = (float)(rnd.NextDouble() * Math.PI * 2), dist = 0.45f + 0.2f * (float)rnd.NextDouble();
+            lumps.Add((MathF.Cos(ang) * dist, MathF.Sin(ang) * dist, 0.16f + 0.12f * (float)rnd.NextDouble()));
+        }
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float a = 0f, lit = 0f;
+            foreach (var (bx, by, br) in lumps)
+            {
+                float d2 = ((u - bx) * (u - bx) + (v - by) * (v - by)) / (br * br);
+                if (d2 >= 1f) continue;
+                float w = (1f - d2) * (1f - d2);
+                if (w > a) { a = w; lit = (v - by) / br; } // 玉ごとに上側が明るい
+            }
+            if (a <= 0f) continue;
+            float edge = MathF.Sqrt(u * u + v * v);
+            a *= edge > 0.85f ? MathF.Max(0f, (1f - edge) / 0.15f) : 1f;
+            a *= 0.75f + 0.25f * (float)rnd.NextDouble();
+            float g = 0.78f + 0.16f * lit + 0.06f * (float)rnd.NextDouble();
+            byte c = (byte)(255f * Math.Clamp(g, 0f, 1f));
+            int i = (y * n + x) * 4;
+            px[i] = c; px[i + 1] = c; px[i + 2] = c; px[i + 3] = (byte)(255f * MathF.Min(1f, a));
+        }
+        return ToSprite(px, n, "MrpDustBlob");
+    }
+
+    // 粉の足跡: つま先 (+x) からかかとまでつながった靴底 (土踏まずで細い)。粉らしく粒の抜けがある。色は置く側で付ける
+    private static Sprite MakeFootprint()
+    {
+        const int n = 32;
+        var px = new byte[n * n * 4];
+        var rnd = new System.Random(7);
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            // 幅は前が広く・真ん中で細く・かかとで少し戻る
+            float half;
+            if (u > 0.1f) half = 0.42f * MathF.Sqrt(MathF.Max(0f, 1f - ((u - 0.1f) / 0.85f) * ((u - 0.1f) / 0.85f)));
+            else if (u > -0.35f) half = 0.3f + 0.12f * (u + 0.35f) / 0.45f;
+            else half = 0.32f * MathF.Sqrt(MathF.Max(0f, 1f - ((u + 0.35f) / 0.6f) * ((u + 0.35f) / 0.6f)));
+            float d = MathF.Abs(v) / MathF.Max(0.001f, half);
+            if (d > 1f || u < -0.95f || u > 0.95f) continue;
+            float a = d > 0.75f ? (1f - d) / 0.25f : 1f;
+            a *= rnd.NextDouble() < 0.15 ? 0.35f : 0.8f + 0.2f * (float)rnd.NextDouble();
+            int i = (y * n + x) * 4;
+            px[i] = 255; px[i + 1] = 255; px[i + 2] = 255; px[i + 3] = (byte)(255f * a);
+        }
+        return ToSprite(px, n, "MrpFootprint");
     }
 
     // 火花: 輪郭付きの小さなひし形 (黄色の芯)

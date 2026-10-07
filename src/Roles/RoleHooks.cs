@@ -9,13 +9,21 @@ namespace MoreRolesPlus.Roles;
 internal static class VisionPatch
 {
     // player は Unity の == (生存確認の呼び出し) を避けて is null で見る。
-    // Airship は CalculateLightRadius を上書きしているので別に当てる。中で元の処理を呼んでいても二重に掛けない
+    // Airship は CalculateLightRadius を上書きしているので別に当てる。中で元の処理を呼んでいても二重に掛けない。
+    // 粉塵の視界は役職と関係なく掛かるので、役職が誰にも付いていない時の早抜けより先に見る
     internal static int AirshipDepth;
 
     public static void Postfix([HarmonyArgument(0)] NetworkedPlayerInfo player, ref float __result)
     {
-        if (AirshipDepth > 0 || RoleState.All.Count == 0 || player is null) return;
-        RoleState.Of(player.PlayerId)?.ModifyVision(ref __result);
+        if (AirshipDepth > 0 || player is null) return;
+        Apply(player, ref __result);
+    }
+
+    internal static void Apply(NetworkedPlayerInfo player, ref float result)
+    {
+        if (Terrain.DustCloud.VisionMul < 1f && player.PlayerId == Terrain.DustCloud.LocalId) result *= Terrain.DustCloud.VisionMul;
+        if (RoleState.All.Count == 0) return;
+        RoleState.Of(player.PlayerId)?.ModifyVision(ref result);
     }
 }
 
@@ -26,8 +34,8 @@ internal static class AirshipVisionPatch
 
     public static void Postfix([HarmonyArgument(0)] NetworkedPlayerInfo player, ref float __result)
     {
-        if (RoleState.All.Count == 0 || player is null) return;
-        RoleState.Of(player.PlayerId)?.ModifyVision(ref __result);
+        if (player is null) return;
+        VisionPatch.Apply(player, ref __result);
     }
 
     public static System.Exception Finalizer(System.Exception __exception)

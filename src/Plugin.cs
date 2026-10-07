@@ -71,6 +71,7 @@ public class Ticker : MonoBehaviour
         Terrain.BreakNoise.Tick();
         Terrain.HammerSwing.Tick();
         Terrain.BombFuse.Tick();
+        Terrain.DustCloud.Tick();
         Fx.FxHands.Tick();
         Terrain.RubbleBake.Tick();
         Terrain.ShadowPatch.Tick();
