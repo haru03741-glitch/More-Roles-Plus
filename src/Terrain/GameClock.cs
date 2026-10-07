@@ -45,6 +45,9 @@ internal static class GameClock
     // 今の試合の刻み (見積もり)
     public static int Now => Local + _offset;
 
+    // 今の刻みの中の進み (0〜1)。刻みで動く物の絵を 1 刻み前と今の間で補間する
+    public static float Frac => (int)((Environment.TickCount64 - _startMs) * Hz % 1000) / 1000f;
+
     // ホスト・一人: 結果に押す刻み
     public static ushort Stamp => unchecked((ushort)Now);
 

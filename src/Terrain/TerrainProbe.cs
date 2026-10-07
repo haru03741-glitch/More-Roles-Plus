@@ -49,6 +49,7 @@ internal static class TerrainProbe
         DustCloud.Register();
         WaterLeak.Register();
         WaterSim.Register();
+        PropSim.Register();
         RegisterMapSurvey();
         RegisterNearWall();
     }
@@ -371,6 +372,44 @@ internal static class TerrainProbe
             foreach (var kv in shaders) reply($"SHADER {kv.Key} = {kv.Value}");
             reply("ROOMSPRITES " + string.Join(" ", floors));
             reply("OK mapsurvey");
+        });
+
+        TestBridge.Register("propsurvey", "[最大の大きさ=3] 部屋の絵でない小さな絵 (家具・小物) を Screens/props.txt へ: 位置・大きさ・自分の当たり判定・付いている部品", (args, reply) =>
+        {
+            var ship = ShipStatus.Instance;
+            if (!ship) { reply("ERR propsurvey no ship"); return; }
+            float maxSize = float.TryParse(args.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float ms) ? ms : 3f;
+            var sb = new StringBuilder();
+            sb.Append("# ").Append(ship.name).Append('\n');
+            int n = 0, withCol = 0;
+            foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                if (!sr.gameObject.activeInHierarchy || !sr.sprite) continue;
+                var m = sr.sharedMaterial;
+                if (m && m.shader && m.shader.name == "Unlit/MaskShader") continue;
+                var b = sr.bounds;
+                if (b.size.x > maxSize || b.size.y > maxSize) continue;
+                var go = sr.gameObject;
+                var cols = new StringBuilder();
+                foreach (var c in go.GetComponents<Collider2D>())
+                    cols.Append(c.GetIl2CppType().Name).Append(c.isTrigger ? "(T)" : "").Append("@L").Append(go.layer).Append(' ');
+                var comps = new StringBuilder();
+                foreach (var c in go.GetComponents<Component>())
+                {
+                    string tn = c.GetIl2CppType().Name;
+                    if (tn == "Transform" || tn == "SpriteRenderer" || tn.EndsWith("Collider2D")) continue;
+                    comps.Append(tn).Append(' ');
+                }
+                if (cols.Length > 0) withCol++;
+                n++;
+                sb.Append(Path(sr.transform)).Append(" | ").Append(sr.sprite.name)
+                  .Append(" | c=").Append(V((Vector2)b.center)).Append(" s=").Append(V((Vector2)b.size))
+                  .Append(" z=").Append(TestBridge.F(sr.transform.position.z))
+                  .Append(" | col=").Append(cols).Append("| ").Append(comps).Append('\n');
+            }
+            string path = System.IO.Path.Combine(TestBridge.ScreensDir, $"props_{ship.name}.txt");
+            System.IO.File.WriteAllText(path, sb.ToString());
+            reply($"OK propsurvey n={n} withCollider={withCol} -> {path}");
         });
 
         TestBridge.Register("roomz", "損傷マスクを見る部屋の絵の一覧と z (|z| < 0.1 = クルーと同じ奥行き・z < -0.1 = クルーより手前。床側の絵が掛かる所では瓦礫・ひびの z に使わない)", (args, reply) =>

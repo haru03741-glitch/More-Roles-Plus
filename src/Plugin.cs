@@ -74,6 +74,7 @@ public class Ticker : MonoBehaviour
         Terrain.BombFuse.Tick();
         Terrain.DustCloud.Tick();
         Terrain.WaterSim.Tick();
+        Terrain.PropSim.Tick();
         Terrain.WaterLeak.Tick();
         Terrain.WaterArt.Tick();
         Terrain.WaterSpray.Tick();

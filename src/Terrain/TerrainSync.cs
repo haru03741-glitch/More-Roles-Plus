@@ -88,6 +88,7 @@ internal static class TerrainSync
             DustCloud.OnApplied(r);
             WaterLeak.OnApplied(r);
             WaterSim.OnApplied(r);
+            PropSim.OnApplied(r);
         }
     }
 
