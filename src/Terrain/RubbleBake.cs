@@ -140,7 +140,7 @@ internal static class RubbleBake
             DamageMap.Track(go);
             go.transform.position = new Vector3(cx, cy, g.Z);
             var sr = go.AddComponent<SpriteRenderer>();
-            if (DamageMap.PropMaterial) sr.sharedMaterial = DamageMap.PropMaterial;
+            if (DamageMap.PlateMaterial) sr.sharedMaterial = DamageMap.PlateMaterial;
             sr.sprite = sp;
             Sheets.Add((tex, sp));
             Plates.Add(go);

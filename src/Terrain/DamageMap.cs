@@ -168,13 +168,22 @@ internal static class DamageMap
         _roomMatDefault.renderQueue = 3000;
 
         // 瓦礫・ひび・穴の向こうの床: 影の板が「ステンシル 1 の所に影」(Skeld 型) なら部屋と同じく 1 を書く、そうでなければ書かない
-        var mat = _roomMat = ShadowNeedsStencil() && _roomMatMask ? _roomMatMask : _roomMatDefault;
+        bool stencil = ShadowNeedsStencil() && _roomMatMask;
+        var mat = _roomMat = stencil ? _roomMatMask : _roomMatDefault;
 
         // 瓦礫の床も同じ描き方 (影が落ちるようにステンシルを書く) で、損傷マスクを逆向きに使う
         _underlayMat = new Material(mat) { name = "MrpRubble" };
         _underlayMat.SetFloat("_UseDamage", 2f); // 2 = 抜けた所にだけ描く
         _propMat = new Material(mat) { name = "MrpDebris" };
         _propMat.SetFloat("_UseDamage", 0f);
+        // 止まった瓦礫を焼いた床の板: 部屋の絵がステンシルを書くマップでは、部屋の絵のある所 (1) にだけ描く。
+        // 壊れない壁の向こうへ飛んだ粉や焦げが、部屋の絵の無い空・宇宙の上に黒く出ないように
+        _plateMat = new Material(_propMat) { name = "MrpRubblePlate" };
+        if (stencil)
+        {
+            _plateMat.SetFloat("_MaskComp", 3f);    // Equal
+            _plateMat.SetFloat("_StencilPass", 0f); // Keep
+        }
         _decalMat = new Material(mat) { name = "MrpCrackDecal" };
         _decalMat.SetFloat("_UseDamage", 3f); // 3 = ひび: 穴の中と家具の上には描かない
 
@@ -236,6 +245,8 @@ internal static class DamageMap
                     scorch = Math.Min(scorch, FurnitureScorch);
                 }
                 if (wy < floorY) hole = Math.Min(hole, Clamp01(0.5f - (floorY - wy) / HoleEdge * 0.5f));
+                // 船の外 (空・宇宙) には焦げも熾火も書かない (壊れない壁の向こうへ焦げが伸びると、影の中で空の上に黒く出る)
+                if ((scorch > 0f || ember > 0f) && SolidMap.NearOutside(wx, wy)) { scorch = 0f; ember = 0f; }
 
                 int i = (py * _w + px) * 4;
                 byte hb = (byte)(hole * 255f), sb = (byte)(scorch * 255f);
@@ -781,6 +792,9 @@ internal static class DamageMap
     // 瓦礫・土煙などの部品用: 部屋と同じ描き方 (影が落ちる) で、損傷マスクは見ない
     public static Material PropMaterial => _propMat;
 
+    // 止まった瓦礫を焼いた床の板用 (PropMaterial と同じ描き方で、部屋の絵の無い所には描かない)
+    public static Material PlateMaterial => _plateMat;
+
     // 部屋の絵の z (baseZ) から手前/奥へずらす幅の倍率。部屋の絵そのものがクルーと同じ奥行きにある所
     // (Polus のウェポン・通信) では、0.002〜0.02 ずらすとクルー (z ≈ y/1000) を追い越して瓦礫がクルーの上に出るので 1/100 に縮める
     public static float ZScale(float baseZ) => baseZ < PlayerBandZ && baseZ >= -PlayerBandZ ? 0.01f : 1f;
@@ -816,6 +830,7 @@ internal static class DamageMap
 
     private static Material _propMat;
     private static Material _decalMat;
+    private static Material _plateMat;
 
     private static void Reset()
     {
