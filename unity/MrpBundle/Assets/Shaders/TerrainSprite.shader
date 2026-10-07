@@ -31,7 +31,7 @@ Shader "MRP/TerrainSprite"
         _RecessColor ("Exposed wall inside color", Color) = (0.36, 0.35, 0.39, 1)
         _ShapeTex ("Lifted furniture shape", 2D) = "black" {}
         _ShapeRect ("Shape rect (xy min world, zw 1/size)", Vector) = (0,0,0,0)
-        _FloorPatch ("Clean floor (xy min world, z period)", Vector) = (0,0,1,0)
+        _FloorPatch ("Clean floor (xy min world, zw period x/y; 0 = same column/row)", Vector) = (0,0,1,1)
         _FloorTol ("Floor difference tolerance", Float) = 0.05
         [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Src blend", Float) = 5
         [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Dst blend", Float) = 10
@@ -161,9 +161,12 @@ Shader "MRP/TerrainSprite"
             }
 
             // その場所に本来ある床 (きれいな床を模様の繰り返しの幅ごとに写した色)
+            // (_FloorPatch.zw = 横と縦の繰り返しの幅。0 の向きは同じ列/行をそのまま引く = その向きには模様が変わらない床)
             fixed3 FloorAt(float2 ow)
             {
-                float2 fw = _FloorPatch.xy + frac((ow - _FloorPatch.xy) / _FloorPatch.z) * _FloorPatch.z;
+                float2 t = max(_FloorPatch.zw, 1e-5);
+                float2 rep = _FloorPatch.xy + frac((ow - _FloorPatch.xy) / t) * t;
+                float2 fw = float2(_FloorPatch.z > 0 ? rep.x : ow.x, _FloorPatch.w > 0 ? rep.y : ow.y);
                 return tex2D(_MainTex, (fw - _PieceMap.zw) / _PieceMap.xy).rgb;
             }
 

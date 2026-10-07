@@ -184,9 +184,11 @@ internal static class BreakPieces
 
     // 持ち上げる家具の絵: 点 at でいちばん手前の部屋の絵から world の範囲を切り出し、mode (7 = 家具・8 = 跡の床) の描き方で置く。
     // マテリアルは家具ごとの複製 (configure で形と床を入れる)。割れた塊の上限には数えない (片付けは呼んだ側)
-    // 点 at でいちばん手前の部屋の絵の名前 (無ければ null)
-    internal static string RoomNameAt(Vector2 at, Rect world)
-        => MrpBundle.Ready ? FrontRoom(Candidates(world, swappedOnly: false), at, world)?.Name : null;
+    // 点 at でいちばん手前の部屋の絵 (無ければ null)
+    internal static Room RoomAt(Vector2 at, Rect world)
+        => MrpBundle.Ready ? FrontRoom(Candidates(world, swappedOnly: false), at, world) : null;
+
+    internal static string RoomNameAt(Vector2 at, Rect world) => RoomAt(at, world)?.Name;
 
     internal static BreakPiece MakeLift(Vector2 at, Rect world, float mode, Func<Material, Room, bool> configure)
     {

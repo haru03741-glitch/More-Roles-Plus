@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
+using MoreRolesPlus.Bridge;
 using MoreRolesPlus.Fx;
 using UnityEngine;
 
@@ -9,29 +11,31 @@ namespace MoreRolesPlus.Terrain;
 // 初めて押された時に部屋の絵から切り抜いて動かせるようにする。動かすのは PropSim (重い物)。
 // - 跡の床 (_UseDamage = 8): 元の場所で家具の画素の上に、同じ部屋の絵のきれいな床を模様の繰り返しの幅ごとに写して描く。
 // - 家具 (_UseDamage = 7): 部屋の絵の同じ範囲を切り出し、当たり判定の形の中で、その場所に本来ある床の模様と違う画素だけ描く (落とす影ごと動く)。
-// 床の模様は部屋の絵ごとに測った値 (Floors)。載っていない部屋の家具は持ち上げない。
+// 床の模様は家具ごと (無ければ部屋の絵ごと) に測った値 (FurnitureFloors)。載っていない家具は持ち上げない。
 // 本編の物 (緊急ボタンなどの端末) が載った家具は持ち上げない
 internal static class FurnitureLift
 {
     private const int FurnitureLayer = 12;
     private const int ShapePx = 64;          // 形のテクスチャの 1 辺
-    internal const float Pad = 0.3f;
-    private const float ShapePad = Pad;     // 形を当たり判定から広げる幅 (当たり判定は絵より小さい所がある。広げた所の床は色で外す)
+    internal const float Pad = 0.3f;         // 形を当たり判定から広げる幅の上限 (当たり判定は絵より小さい所がある。広げた所の床は模様で外す)
     private const float CutZ = 0.0006f;      // 部屋の絵より手前・水 (0.0004) より手前
     private const float FillZ = 0.0002f;     // 部屋の絵より手前・水より奥
 
-    // 部屋の絵ごとの床 (絵の画素・左下原点): きれいな床の左下・模様の繰り返しの幅
-    private readonly struct Floor
+    // 床の測り方: きれいな床の左下 (部屋の絵の画素・左下原点)・繰り返しの幅 (画素・0 = その向きは同じ列/行をそのまま引く)・
+    // 形を当たり判定から広げる幅 (世界単位。隣に柄の違う床や壁がある家具は狭い)
+    internal readonly struct Floor
     {
-        public readonly float X, Y, Period;
-        public Floor(float x, float y, float period) { X = x; Y = y; Period = period; }
+        public readonly float X, Y, Tx, Ty, Pad;
+        public Floor(float x, float y, float tx, float ty, float pad) { X = x; Y = y; Tx = tx; Ty = ty; Pad = pad; }
     }
 
-    private static readonly Dictionary<string, Floor> Floors = new()
+    // 家具 (部屋の絵の名前/当たり判定の名前)・無ければ部屋の絵の名前で引く
+    private static Floor? FloorFor(string room, string name)
     {
-        ["room_cafeteria"] = new Floor(410f, 665f, 124.3f),
-    };
-
+        if (FurnitureFloors.Table.TryGetValue(room + "/" + name, out var f)) return f;
+        if (FurnitureFloors.Table.TryGetValue(room, out f)) return f;
+        return null;
+    }
 
     // 切り抜いた家具と跡の床 (影の中の焼き込みが上から描き込む)・作った絵と形 (船が替わる時に片付ける)
     private static readonly List<GameObject> Lifted = new();
@@ -53,7 +57,8 @@ internal static class FurnitureLift
 
     internal sealed class Lift
     {
-        public string Name;
+        public string Name, Room;
+        public Floor Floor;
         public Collider2D Col;
         public Transform ColTr;
         public Vector3 ColT0;
@@ -64,7 +69,8 @@ internal static class FurnitureLift
     }
 
     // 船の中の持ち上げられそうな家具 (並びは当たり判定の階層順 = 全員同じ)
-    internal static void Collect(ShipStatus ship, List<Lift> into)
+    // all = 床を測っていない部屋の家具も (床を測る道具へ書き出す用)
+    internal static void Collect(ShipStatus ship, List<Lift> into, bool all = false)
     {
         var consoles = new List<Vector2>();
         foreach (var c in ship.AllConsoles) if (c) consoles.Add(c.transform.position);
@@ -79,11 +85,12 @@ internal static class FurnitureLift
             var b = col.bounds;
             var r = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
             string room = BreakPieces.RoomNameAt(r.center, r);
-            if (room == null || !Floors.ContainsKey(room)) continue; // 床を測っていない部屋の家具は動かさない
+            var floor = room == null ? null : FloorFor(room, col.name);
+            if (room == null || (!all && floor == null)) continue; // 床を測っていない家具は動かさない
             var tr = col.transform;
             into.Add(new Lift
             {
-                Name = col.name, Col = col, ColTr = tr, ColT0 = tr.position, ColRot0 = tr.eulerAngles.z,
+                Name = col.name, Room = room, Floor = floor ?? default, Col = col, ColTr = tr, ColT0 = tr.position, ColRot0 = tr.eulerAngles.z,
                 Bounds = r,
             });
         }
@@ -99,15 +106,17 @@ internal static class FurnitureLift
             var shape = MakeShape(l);
             Owned.Add(shape);
             var b = l.Bounds;
-            var world = Rect.MinMaxRect(b.xMin - ShapePad, b.yMin - ShapePad, b.xMax + ShapePad, b.yMax + ShapePad);
+            float pad = l.Floor.Pad;
+            var world = Rect.MinMaxRect(b.xMin - pad, b.yMin - pad, b.xMax + pad, b.yMax + pad);
             Vector2 at = world.center;
             Func<Material, BreakPieces.Room, bool> configure = (mat, room) =>
             {
-                if (!Floors.TryGetValue(room.Name, out var f)) return false;
+                if (room.Name != l.Room) return false;
+                var f = l.Floor;
                 mat.SetTexture("_ShapeTex", shape);
                 mat.SetVector("_ShapeRect", new Vector4(world.xMin, world.yMin, 1f / world.width, 1f / world.height));
                 float px = room.W0x + (room.TexRect.xMin + f.X) * room.Dx, py = room.W0y + (room.TexRect.yMin + f.Y) * room.Dy;
-                mat.SetVector("_FloorPatch", new Vector4(px, py, f.Period * Math.Abs(room.Dx), 0f));
+                mat.SetVector("_FloorPatch", new Vector4(px, py, f.Tx * Math.Abs(room.Dx), f.Ty * Math.Abs(room.Dy)));
                 return true;
             };
             var fill = BreakPieces.MakeLift(at, world, 8f, configure);
@@ -146,18 +155,19 @@ internal static class FurnitureLift
         tr.position = FxMath.V3(p.x, p.y, front - dz * DamageMap.ZScale(front));
     }
 
-    // 当たり判定の形を ShapePad だけ太らせて ShapePx 四方の白黒にする (切り抜きと跡の床の両方が使う)。
-    // 当たり判定は画素ごとに 1 回だけ引き、太らせは画素の上で (半径 ShapePad の楕円の中に中の画素があれば中)
+    // 当たり判定の形を広げる幅 (Floor.Pad) だけ太らせて ShapePx 四方の白黒にする (切り抜きと跡の床の両方が使う)。
+    // 当たり判定は画素ごとに 1 回だけ引き、太らせは画素の上で (半径 pad の楕円の中に中の画素があれば中)
     private static unsafe Texture2D MakeShape(Lift l)
     {
         var w = l.Bounds;
-        float x0 = w.xMin - ShapePad, y0 = w.yMin - ShapePad;
-        float sx = (w.width + ShapePad * 2f) / ShapePx, sy = (w.height + ShapePad * 2f) / ShapePx;
+        float pad = Math.Max(0.001f, l.Floor.Pad);
+        float x0 = w.xMin - pad, y0 = w.yMin - pad;
+        float sx = (w.width + pad * 2f) / ShapePx, sy = (w.height + pad * 2f) / ShapePx;
         var inside = new bool[ShapePx * ShapePx];
         for (int y = 0; y < ShapePx; y++)
             for (int x = 0; x < ShapePx; x++)
                 inside[y * ShapePx + x] = l.Col.OverlapPoint(FxMath.V2(x0 + (x + 0.5f) * sx, y0 + (y + 0.5f) * sy));
-        int rx = (int)MathF.Ceiling(ShapePad / sx), ry = (int)MathF.Ceiling(ShapePad / sy);
+        int rx = (int)MathF.Ceiling(pad / sx), ry = (int)MathF.Ceiling(pad / sy);
         var px = new byte[ShapePx * ShapePx * 4];
         for (int y = 0; y < ShapePx; y++)
             for (int x = 0; x < ShapePx; x++)
@@ -172,7 +182,7 @@ internal static class FurnitureLift
                         int xx = x + dx;
                         if (xx < 0 || xx >= ShapePx || !inside[yy * ShapePx + xx]) continue;
                         float ex = dx * sx, ey = dy * sy;
-                        if (ex * ex + ey * ey <= ShapePad * ShapePad) { hit = true; break; }
+                        if (ex * ex + ey * ey <= pad * pad) { hit = true; break; }
                     }
                 }
                 if (!hit) continue;
@@ -204,6 +214,53 @@ internal static class FurnitureLift
             l.ColTr.rotation = FxMath.RotZ(l.ColRot0 + ang);
         }
     }
+
+    // 床を測る道具 (tools/measure-room-floors.py) へ: 持ち上げられそうな家具ごとに、部屋の絵の名前・絵の画素と世界座標の対応・
+    // 当たり判定の輪郭 (世界座標の線分) を Screens/lifts_<船>.json へ
+    internal static void Register()
+    {
+        TestBridge.Register("lifts", "部屋の絵に描き込まれた家具 (持ち上げられそうな物) を Screens/lifts_<船>.json へ書き出す (床を測る道具用)", (_, reply) =>
+        {
+            var ship = ShipStatus.Instance;
+            if (!ship) { reply("ERR lifts no ship"); return; }
+            var list = new List<Lift>();
+            Collect(ship, list, all: true);
+            var sb = new StringBuilder("[\n");
+            var segs = new List<Vector2>();
+            for (int i = 0; i < list.Count; i++)
+            {
+                var l = list[i];
+                var room = BreakPieces.RoomAt(l.Bounds.center, l.Bounds);
+                if (room == null) continue;
+                segs.Clear();
+                SolidMap.Segments(l.Col, segs);
+                sb.Append("  {\"name\": \"").Append(l.Name).Append("\", \"room\": \"").Append(room.Name)
+                  .Append("\", \"measured\": ").Append(FloorFor(room.Name, l.Name) != null ? "true" : "false")
+                  .Append(", \"texRect\": [").Append(F(room.TexRect.xMin)).Append(", ").Append(F(room.TexRect.yMin)).Append(", ")
+                  .Append(F(room.TexRect.width)).Append(", ").Append(F(room.TexRect.height))
+                  .Append("], \"w0\": [").Append(F(room.W0x)).Append(", ").Append(F(room.W0y))
+                  .Append("], \"d\": [").Append(F(room.Dx)).Append(", ").Append(F(room.Dy)).Append("], \"segs\": [");
+                for (int k = 0; k < segs.Count; k++)
+                    sb.Append(k == 0 ? "" : ", ").Append('[').Append(F(segs[k].x)).Append(", ").Append(F(segs[k].y)).Append(']');
+                sb.Append("]}").Append(i < list.Count - 1 ? ",\n" : "\n");
+            }
+            sb.Append("]\n");
+            string path = System.IO.Path.Combine(TestBridge.ScreensDir, $"lifts_{ship.name}.json");
+            System.IO.File.WriteAllText(path, sb.ToString());
+            int l12 = 0, rooms = 0;
+            foreach (var col in ship.GetComponentsInChildren<Collider2D>(true))
+            {
+                if (!col || col.gameObject.layer != FurnitureLayer) continue;
+                l12++;
+                var bb = col.bounds;
+                var rr = Rect.MinMaxRect(bb.min.x, bb.min.y, bb.max.x, bb.max.y);
+                if (BreakPieces.RoomNameAt(rr.center, rr) != null) rooms++;
+            }
+            reply($"OK lifts n={list.Count} layer12={l12} withRoom={rooms} -> {path}");
+        });
+    }
+
+    private static string F(float v) => v.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture);
 
     // 失敗した時: 当たり判定を元に戻す
     internal static void Restore(Lift l)
