@@ -8,7 +8,7 @@ namespace MoreRolesPlus.Terrain;
 internal static class DebrisArt
 {
     private static Sprite[] _chunks;
-    private static Sprite _pebble, _puff, _spark, _dust, _footprint;
+    private static Sprite _pebble, _puff, _spark, _dust, _footprint, _drop, _ripple, _pipe, _foam;
 
     // 壁の色 (Skeld の壁面・枠の内側の灰)
     private static readonly Color32 WallTop = new(188, 196, 202, 255);
@@ -45,6 +45,10 @@ internal static class DebrisArt
     public static Sprite Spark => _spark ??= MakeSpark();
     public static Sprite DustBlob => _dust ??= MakeDustBlob();
     public static Sprite Footprint => _footprint ??= MakeFootprint();
+    public static Sprite WaterDrop => _drop ??= MakeWaterDrop();
+    public static Sprite Ripple => _ripple ??= MakeRipple();
+    public static Sprite SplitPipe => _pipe ??= MakeSplitPipe();
+    public static Sprite Foam => _foam ??= MakeFoam();
 
     private static Sprite[] MakeChunks()
     {
@@ -310,6 +314,136 @@ internal static class DebrisArt
             px[i] = 255; px[i + 1] = 255; px[i + 2] = 255; px[i + 3] = (byte)(255f * a);
         }
         return ToSprite(px, n, "MrpFootprint");
+    }
+
+    // 水の粒: 濃い青の輪郭 + 水色 + 左上の白い光 (色は焼き込み・頂点色は白で使う)
+    private static Sprite MakeWaterDrop()
+    {
+        const int n = 24;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float d = MathF.Sqrt(u * u + v * v);
+            if (d > 0.95f) continue;
+            float hx = u + 0.3f, hy = v - 0.32f; // 光は左上
+            float r, g, b;
+            if (d > 0.72f) { r = 0.13f; g = 0.29f; b = 0.52f; }
+            else if (hx * hx + hy * hy < 0.07f) { r = 0.96f; g = 0.99f; b = 1f; }
+            else { float k = 0.85f + 0.15f * (-v); r = 0.52f * k; g = 0.78f * k; b = 0.97f * k; }
+            float a = d > 0.85f ? (0.95f - d) / 0.1f : 1f;
+            int i = (y * n + x) * 4;
+            px[i] = (byte)(255f * Math.Clamp(r, 0f, 1f)); px[i + 1] = (byte)(255f * Math.Clamp(g, 0f, 1f));
+            px[i + 2] = (byte)(255f * Math.Clamp(b, 0f, 1f)); px[i + 3] = (byte)(255f * a);
+        }
+        return ToSprite(px, n, "MrpWaterDrop");
+    }
+
+    // 波紋: 細い輪 (外側が濃い青・内側に白い筋)。色は焼き込み
+    private static Sprite MakeRipple()
+    {
+        const int n = 48;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float d = MathF.Sqrt(u * u + v * v);
+            if (d < 0.74f || d > 0.97f) continue;
+            bool outer = d > 0.86f;
+            float a = MathF.Min(1f, MathF.Min(d - 0.74f, 0.97f - d) / 0.03f);
+            int i = (y * n + x) * 4;
+            px[i] = outer ? (byte)40 : (byte)235; px[i + 1] = outer ? (byte)84 : (byte)248; px[i + 2] = outer ? (byte)140 : (byte)255;
+            px[i + 3] = (byte)(255f * a * (outer ? 0.9f : 0.8f));
+        }
+        return ToSprite(px, n, "MrpRipple");
+    }
+
+    // 壁の中を通る配管を横から見た絵: 左右に長い管・継ぎ目の帯・真ん中に裂け目 (暗い口と明るいめくれ)。原点は真ん中
+    private static Sprite MakeSplitPipe()
+    {
+        const int w = 96, h = 24;
+        var px = new byte[w * h * 4];
+        var rnd = new System.Random(3);
+        var lip = new float[w];
+        for (int x = 0; x < w; x++) lip[x] = 0.05f * (float)rnd.NextDouble();
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            float u = (x + 0.5f) / w * 2f - 1f, v = (y + 0.5f) / h * 2f - 1f;
+            float av = MathF.Abs(v);
+            if (av > 0.92f) continue;
+            float r, g, b;
+            // 裂け目: 真ん中の横長の目の形。上下のふちはめくれて明るい
+            float sx = u / 0.26f, slit = 1f - sx * sx;
+            float open = slit > 0f ? 0.42f * MathF.Sqrt(slit) + lip[x] : -1f;
+            if (open > 0f && av < open) { r = 0.07f; g = 0.09f; b = 0.12f; }
+            else if (open > 0f && av < open + 0.16f) { r = 0.82f; g = 0.85f; b = 0.88f; }
+            else if (av > 0.76f || MathF.Abs(u) > 0.97f) { r = 0.14f; g = 0.15f; b = 0.18f; }
+            else
+            {
+                float k = 0.62f + 0.24f * v; // 上が明るい
+                float band = MathF.Abs(MathF.Abs(u) - 0.68f);
+                if (band < 0.05f) k *= 0.72f;          // 継ぎ目の帯
+                if (v > 0.25f && v < 0.45f) k = 0.92f; // 光の筋
+                r = 0.55f * k + 0.05f; g = 0.58f * k + 0.05f; b = 0.63f * k + 0.06f;
+            }
+            float a = av > 0.84f ? (0.92f - av) / 0.08f : 1f;
+            int i = (y * w + x) * 4;
+            px[i] = (byte)(255f * Math.Clamp(r, 0f, 1f)); px[i + 1] = (byte)(255f * Math.Clamp(g, 0f, 1f));
+            px[i + 2] = (byte)(255f * Math.Clamp(b, 0f, 1f)); px[i + 3] = (byte)(255f * a);
+        }
+        return ToSpriteWH(px, w, h, "MrpSplitPipe", new Vector2(0.5f, 0.5f));
+    }
+
+    // 泡としぶきの霧: 白い玉の塊 (下側がうっすら水色)
+    private static Sprite MakeFoam()
+    {
+        const int n = 48;
+        var px = new byte[n * n * 4];
+        var rnd = new System.Random(23);
+        var balls = new System.Collections.Generic.List<(float x, float y, float r)>();
+        for (int k = 0; k < 16; k++)
+        {
+            float ang = (float)(rnd.NextDouble() * Math.PI * 2), dist = 0.55f * (float)Math.Sqrt(rnd.NextDouble());
+            balls.Add((MathF.Cos(ang) * dist, MathF.Sin(ang) * dist, 0.14f + 0.16f * (float)rnd.NextDouble()));
+        }
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float a = 0f, lit = 0f;
+            foreach (var (bx, by, br) in balls)
+            {
+                float d2 = ((u - bx) * (u - bx) + (v - by) * (v - by)) / (br * br);
+                if (d2 >= 1f) continue;
+                float wgt = 1f - d2;
+                if (wgt > a) { a = wgt; lit = (v - by) / br; }
+            }
+            if (a <= 0f) continue;
+            a = MathF.Min(1f, a * 2.5f);
+            float k = 0.9f + 0.1f * lit;
+            int i = (y * n + x) * 4;
+            px[i] = (byte)(255f * Math.Clamp(0.86f + 0.14f * k, 0f, 1f));
+            px[i + 1] = (byte)(255f * Math.Clamp(0.93f + 0.07f * k, 0f, 1f));
+            px[i + 2] = 255;
+            px[i + 3] = (byte)(255f * a);
+        }
+        return ToSprite(px, n, "MrpFoam");
+    }
+
+    private static unsafe Sprite ToSpriteWH(byte[] px, int w, int h, string name, Vector2 pivot)
+    {
+        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false)
+        {
+            name = name, wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, hideFlags = HideFlags.DontUnloadUnusedAsset,
+        };
+        fixed (byte* p = px) tex.LoadRawTextureData((IntPtr)p, px.Length);
+        tex.Apply(false, true);
+        var sp = Sprite.Create(tex, new Rect(0, 0, w, h), pivot, 100f);
+        sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return sp;
     }
 
     // 火花: 輪郭付きの小さなひし形 (黄色の芯)

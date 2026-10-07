@@ -14,12 +14,13 @@ internal static class MrpBundle
 {
     private const string ResourceName = "MoreRolesPlus.Resources.Bundles.mrp_fx.bundle";
     private const string TerrainMatPath = "assets/generated/terrain.mat";
+    private const string WaterMatPath = "assets/generated/water.mat";
 
     private static AssetBundle _bundle;
-    private static AssetBundleRequest _terrainReq;
-    private static bool _failed;
+    private static AssetBundleRequest _terrainReq, _waterReq;
+    private static bool _failed, _waterFailed;
 
-    // 壁を壊した音 (BreakNoise が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
+    // 壁を壊した音・導火線・水漏れ (BreakNoise が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
     private static readonly string[] ClipNames = MakeClipNames();
     private static readonly AssetBundleRequest[] ClipReqs = new AssetBundleRequest[ClipNames.Length];
     private static readonly bool[] ClipDone = new bool[ClipNames.Length];
@@ -28,7 +29,7 @@ internal static class MrpBundle
 
     private static string[] MakeClipNames()
     {
-        var names = new List<string> { "noise_boom" };
+        var names = new List<string> { "noise_boom", "noise_fuse", "noise_leak", "noise_splash_1", "noise_splash_2", "noise_splash_3" };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {
             names.Add("noise_hit_" + mat);
@@ -44,6 +45,7 @@ internal static class MrpBundle
     public static int ClipCount => Clips.Count;
 
     public static Material TerrainMaterial { get; private set; }
+    public static Material WaterMaterial { get; private set; }
 
     public static bool Ready => TerrainMaterial;
 
@@ -51,7 +53,12 @@ internal static class MrpBundle
     public static void Tick()
     {
         if (_failed) return;
-        if (TerrainMaterial) { if (_clipsLeft > 0) TickClips(); return; }
+        if (TerrainMaterial)
+        {
+            if (!WaterMaterial && !_waterFailed) TickWater();
+            if (_clipsLeft > 0) TickClips();
+            return;
+        }
 
         try
         {
@@ -74,6 +81,21 @@ internal static class MrpBundle
             Plugin.Logger.LogInfo($"bundle ready: shader={mat.shader.name} supported={mat.shader.isSupported}");
         }
         catch (Exception e) { Fail(e.ToString()); }
+    }
+
+    private static void TickWater()
+    {
+        try
+        {
+            _waterReq ??= _bundle.LoadAssetAsync(WaterMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_waterReq.isDone) return;
+            var mat = _waterReq.asset ? _waterReq.asset.TryCast<Material>() : null;
+            if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {WaterMatPath}"); _waterFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            WaterMaterial = mat;
+            Plugin.Logger.LogInfo($"bundle water: shader={mat.shader.name} supported={mat.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle water: {e}"); _waterFailed = true; }
     }
 
     private static void TickClips()

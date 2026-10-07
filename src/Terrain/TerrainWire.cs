@@ -5,13 +5,13 @@ namespace MoreRolesPlus.Terrain;
 
 // 地形同期の電文。値は固定小数に丸めて送り、送り手 (ホスト) も丸めた値で適用する (全員が同じ数で計算するため)。
 // 位置 = int16 の 1/256 単位 (±128)・大きさ = byte の 1/32 単位 (〜8)・向き = ushort の角度・力 = byte の 1/255。
-// 依頼 11B / 爆発 12B + 瓦礫 / 打撃 15B + 瓦礫 (瓦礫 = 件数 1B + 1 件 6B [並び・位置・半径 1/64 単位] × 最大 3)
+// 依頼 11B / 爆発 14B + 瓦礫 / 打撃 17B + 瓦礫 (瓦礫 = 件数 1B + 1 件 6B [並び・位置・半径 1/64 単位] × 最大 3)
 internal static class TerrainWire
 {
     public const byte OpRequest = 1; // 客 → ホスト: [op][件数] + 依頼 × 件数
-    // ホスト → 全員: [op][最初の連番 u16][件数] + 結果 × 件数。結果の末尾に瓦礫を足した時に 2 → 3、壊した人を足した時に 3 → 5 へ
-    // (古い版と混ざった時に、黙ってずれて読まず「知らない op」として捨てるため)
-    public const byte OpBatch = 5;
+    // ホスト → 全員: [op][最初の連番 u16][件数] + 結果 × 件数。結果の末尾に瓦礫を足した時に 2 → 3、壊した人を足した時に 3 → 5、
+    // 試合の刻みを足した時に 5 → 8 へ (古い版と混ざった時に、黙ってずれて読まず「知らない op」として捨てるため)
+    public const byte OpBatch = 8;
     public const byte OpDigest = 4; // 客 → ホスト: [op][適用し終えた連番 u16][地形の指紋 u32]
     public const byte OpPlace = 6;  // 客 → ホスト: [op][位置 4B][半径 1B] 爆弾を置く依頼
     // ホスト → 全員: [op][置いた人][位置 4B][半径 1B] 爆弾が置かれた。爆発は導火線の後にホストが普通の結果として配る
@@ -19,7 +19,7 @@ internal static class TerrainWire
     public const int BombBytes = 5;
 
     public const int MaxRequestBytes = 11;
-    public const int MaxResolvedBytes = 15 + 1 + RubbleBlocks.MaxPerEvent * 6;
+    public const int MaxResolvedBytes = 17 + 1 + RubbleBlocks.MaxPerEvent * 6;
     public const int BatchHeader = 4;
 
     private const float PosScale = 256f;
@@ -73,6 +73,7 @@ internal static class TerrainWire
     {
         b[o++] = (byte)r.Kind;
         b[o++] = r.Actor;
+        o = WriteU16(b, o, r.Tick);
         o = WritePos(b, o, r.Position);
         o = WriteU16(b, o, QAngle(r.Direction));
         b[o++] = QForceByte(r.Force);
@@ -99,11 +100,12 @@ internal static class TerrainWire
     public static int ReadResolved(byte[] b, int o, out ResolvedDamage r)
     {
         r = default;
-        if (o + 12 > b.Length) return -1;
+        if (o + 14 > b.Length) return -1;
         var kind = (DamageKind)b[o];
-        if (kind == DamageKind.Blunt && o + 15 > b.Length) return -1;
+        if (kind == DamageKind.Blunt && o + 17 > b.Length) return -1;
         o++;
         byte actor = b[o++];
+        ushort tick = ReadU16(b, ref o);
         Vector2 pos = ReadPos(b, ref o);
         Vector2 dir = FromAngle(ReadU16(b, ref o));
         float force = b[o++] / 255f;
@@ -125,7 +127,7 @@ internal static class TerrainWire
             Vector2 at = ReadPos(b, ref o);
             land[i] = new RubbleLanding(rank, at, b[o++] / RadiusScale);
         }
-        r = new ResolvedDamage(kind, pos, normal, dir, force, size, hp, seed, land, actor);
+        r = new ResolvedDamage(kind, pos, normal, dir, force, size, hp, seed, land, actor, tick);
         return o;
     }
 

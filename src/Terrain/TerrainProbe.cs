@@ -47,6 +47,8 @@ internal static class TerrainProbe
         RegisterFindSprite();
         BreakNoise.Register();
         DustCloud.Register();
+        WaterLeak.Register();
+        WaterSim.Register();
         RegisterMapSurvey();
         RegisterNearWall();
     }

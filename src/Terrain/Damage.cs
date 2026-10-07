@@ -46,9 +46,10 @@ internal readonly struct ResolvedDamage
     public readonly RubbleLanding[] Landings;
     public readonly byte Actor;       // 壊した人の PlayerId (NoActor = 分からない・コマンド等)。手の色と自分の振りの見分けに使う
     public const byte NoActor = 255;
+    public readonly ushort Tick;      // ホストが決めた時の試合の刻み (GameClock の下位 16 ビット)。水の計算を全員同じ刻みで始めるため
 
     public ResolvedDamage(DamageKind kind, Vector2 position, Vector2 normal, Vector2 direction, float force, float size, sbyte hp, ushort seed,
-        RubbleLanding[] landings = null, byte actor = NoActor)
+        RubbleLanding[] landings = null, byte actor = NoActor, ushort tick = 0)
     {
         Kind = kind;
         Position = position;
@@ -60,13 +61,17 @@ internal readonly struct ResolvedDamage
         Seed = seed;
         Landings = landings;
         Actor = actor;
+        Tick = tick;
     }
 
     public ResolvedDamage WithLandings(RubbleLanding[] landings) =>
-        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, landings, Actor);
+        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, landings, Actor, Tick);
 
     public ResolvedDamage WithActor(byte actor) =>
-        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, Landings, actor);
+        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, Landings, actor, Tick);
+
+    public ResolvedDamage WithTick(ushort tick) =>
+        new(Kind, Position, Normal, Direction, Force, Size, Hp, Seed, Landings, Actor, tick);
 }
 
 // 壊れ方の型。武器ごとの違いはここの値で表す

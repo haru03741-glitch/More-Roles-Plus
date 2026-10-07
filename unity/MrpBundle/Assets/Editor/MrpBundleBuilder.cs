@@ -8,6 +8,7 @@ using UnityEngine;
 //   noise.png    … 継ぎ目なく敷き詰められる雲状のノイズ (128px・繰り返し)
 //   cells.png    … 細胞模様 (ボロノイ・繰り返し)。割れ口を角張らせる
 //   terrain.mat  … MRP/TerrainSprite (損傷マスクで穴と焦げを描く部屋の絵用)
+//   water.mat    … MRP/Water (床の水たまり・噴き出し。CPU が書いた水の量の絵から見た目を決める)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -44,6 +45,20 @@ public static class MrpBundleBuilder
         AssetDatabase.DeleteAsset(matPath);
         AssetDatabase.CreateAsset(mat, matPath);
         Tag(matPath);
+
+        Shader waterShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/Water.shader");
+        if (waterShader == null)
+        {
+            Debug.LogError("MrpBundleBuilder: Water shader not found");
+            EditorApplication.Exit(2);
+            return;
+        }
+        string waterPath = Folder + "/water.mat";
+        var water = new Material(waterShader) { name = "water" };
+        water.SetTexture("_Noise", noise);
+        AssetDatabase.DeleteAsset(waterPath);
+        AssetDatabase.CreateAsset(water, waterPath);
+        Tag(waterPath);
 
         BreakSounds.ImportAll(Folder, BundleName);
 

@@ -391,7 +391,7 @@ internal static class DamageMap
     // 家具の当たり判定 (ShortObjects 層) の範囲。絵は 3/4 視点で当たり判定より上に伸びるので上へ広げる
     private const int FurnitureLayer = 12;
     private const float FurnitureMargin = 0.08f;
-    private const float FurnitureUp = 0.55f;
+    internal const float FurnitureUp = 0.55f;
     // 家具の上の焦げの上限。シェーダは焦げ × セルのばらつき (最大 1.25 倍) が 0.4 を超えた所を段で塗るので、
     // 0.32 未満なら家具には焦げが出ない (出すと家具の上だけ角張った暗い面になり影に見える)
     private const float FurnitureScorch = 0.3f;
@@ -443,6 +443,23 @@ internal static class DamageMap
         => FurnitureNear(shape.Center, shape.BoundRadius * (1f + ScorchWidth) + HoleEdge);
 
     internal static List<Rect> FurnitureAt(Vector2 c, float r) => FurnitureNear(c, r);
+
+    // 水を見せない範囲を当たり判定から上へ広げる量。絵が当たり判定より上へ伸びる家具 (ベッドの頭の板など) だけ広げる。
+    // テーブル (Skeld のカフェテリア) は当たり判定の多角形が絵全体を覆っているので広げない (広げると上側の床まで乾いて見えた)
+    internal static float ArtAbove(Collider2D col) => col.name.StartsWith("Table") ? 0f : FurnitureUp;
+
+    // 部屋の絵に描き込まれた家具の当たり判定 (FurnitureNear と同じ選び方・形のまま使う所向け)
+    internal static void FurnitureColliders(Vector2 c, float r, List<Collider2D> into)
+    {
+        foreach (var col in Physics2D.OverlapCircleAll(c, r + FurnitureUp, 1 << FurnitureLayer))
+        {
+            if (!col || col.isTrigger) continue;
+            var own = col.GetComponent<SpriteRenderer>();
+            if (own && own.enabled && own.sprite) continue;
+            if (MapNotes.InFree(col.bounds.center)) continue;
+            into.Add(col);
+        }
+    }
 
     // テスト用: 壁の線の出っ張りだけ (どの当たり判定から見つけたか付き)
     internal static List<(Rect, string)> WallBumpsAt(Vector2 c, float r)

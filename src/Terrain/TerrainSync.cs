@@ -54,7 +54,7 @@ internal static class TerrainSync
         {
             SyncShip();
             if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
-            return ApplyNow(_nextSeq++, TerrainWire.RoundTrip(r.WithActor(LocalId())), decide: true, out _);
+            return ApplyNow(_nextSeq++, TerrainWire.RoundTrip(r.WithActor(LocalId()).WithTick(GameClock.Stamp)), decide: true, out _);
         }
         if (AmongUsClient.Instance.AmHost) return HostAccept(e, LocalId());
         Requests.Add(e);
@@ -66,7 +66,7 @@ internal static class TerrainSync
     {
         SyncShip();
         if (!TerrainDamage.TryResolve(e, out var r, out string why)) return why;
-        r = TerrainWire.RoundTrip(r.WithActor(actor));
+        r = TerrainWire.RoundTrip(r.WithActor(actor).WithTick(GameClock.Stamp));
         // 大きな瓦礫の止まる所は、ホストが自分で適用した結果から決めて同じ電文に載せる
         string res = ApplyNow(_nextSeq++, r, decide: true, out var landings);
         Outbox.Add(r.WithLandings(landings));
@@ -86,6 +86,8 @@ internal static class TerrainSync
             HammerSwing.OnApplied(r);
             BombFuse.OnApplied(r);
             DustCloud.OnApplied(r);
+            WaterLeak.OnApplied(r);
+            WaterSim.OnApplied(r);
         }
     }
 
@@ -213,6 +215,7 @@ internal static class TerrainSync
                 {
                     o = TerrainWire.ReadResolved(b, o, out var r);
                     if (o < 0) { Plugin.Logger.LogWarning($"[TerrainSync] truncated batch at #{(ushort)(first + i)}"); break; }
+                    GameClock.Observe(r.Tick);
                     Deliver((ushort)(first + i), r);
                 }
                 break;

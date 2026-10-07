@@ -259,6 +259,7 @@ internal static class ShadowPatch
     {
         Debris.Clear();
         RubbleBake.CollectSettled(Debris);
+        WaterLeak.CollectPuddles(Debris);
         DebrisLayers.Clear();
         int moved = 0;
         foreach (var go in Debris)

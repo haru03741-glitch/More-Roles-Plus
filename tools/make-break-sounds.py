@@ -5,6 +5,8 @@
 #   noise_crumble_<素材>    … 叩いて崩れた
 #   noise_fuse              … 置いた爆弾の導火線 (爆発まで)
 #   noise_rubble_<素材>     … 爆発で壁が崩れ落ちる音 (爆発の音に少し遅れて重ねる。壁に当たらない爆発では鳴らさない)
+#   noise_leak              … 壊れた配管から水が噴き出す音 (約 1 秒ごとに重ねて鳴らす。頭と尻は長めに薄れる)
+#   noise_splash_1..3       … 水たまりを踏んだ音
 #   それぞれ <名前>_m       … 遠い・壁越しのこもった音 (16kHz)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
 #   python tools/make-break-sounds.py   (numpy と scipy が要る)
@@ -515,10 +517,47 @@ def fuse():
     return out
 
 
+def leak():
+    # 圧のかかった噴き出し (高い擦れ) + 床を打つ水の粒 + 低いごぼごぼ。重ねて鳴らすので頭と尻を長く薄れさせる
+    dur = 1.4
+    n, t = T(dur)
+    flutter = 0.8 + 0.2 * np.sin(2 * np.pi * 7.3 * t + 2 * np.sin(2 * np.pi * 1.7 * t))
+    out = 0.5 * bp(noise(n), 1400, 8000) * flutter
+    out += 0.9 * grains(n, 110, 700, 3500, 0.01, 0.0025)
+    lfo = lp(np.abs(noise(n)), 6, order=1)
+    out += 0.6 * bp(noise(n), 160, 520) * lfo / (np.max(lfo) + 1e-9)
+    env = np.minimum(1, np.minimum(t / 0.25, (dur - t) / 0.35))
+    return out * np.clip(env, 0, 1)
+
+
+def drop(f0, f1, dur=0.05):
+    # 水の粒が落ちる「ぽちゃ」: 上がっていく正弦が速く消える
+    m, tm = T(dur)
+    return np.sin(sweep(tm, f0, f1, 0.012)) * np.exp(-tm / (dur * 0.3))
+
+
+def splash():
+    # 足が水を打つ音 → 跳ねた粒と泡
+    n, t = T(0.4)
+    out = np.zeros(n)
+    m, tm = T(0.09)
+    slap = rng.uniform(0.022, 0.035)
+    place(out, bp(noise(m), 450, 3200) * np.exp(-tm / slap), 0.0, 1.0)
+    place(out, lp(noise(m), 300) * np.exp(-tm / 0.02), 0.0, 0.6)
+    for _ in range(rng.integers(3, 6)):
+        f = rng.uniform(500, 1100)
+        place(out, drop(f, f * rng.uniform(1.6, 2.4)), rng.uniform(0.03, 0.22), rng.uniform(0.25, 0.6))
+    out += 0.6 * grains(n, 70, 2000, 7000, 0.008, 0.002, 0.02, 0.3, lambda u: (1 - u) ** 2)
+    return out
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     emit('noise_boom', boom, drive=2.4)
     emit('noise_fuse', fuse, peak=0.8, drive=1.6, ratio=0.3)
+    emit('noise_leak', leak, peak=0.75, drive=1.4, ratio=0.15)
+    for i in range(1, 4):
+        emit(f'noise_splash_{i}', splash, peak=0.8, drive=1.6, ratio=0.3)
     hits = {'metal': hit_metal, 'stone': hit_stone, 'wood': hit_wood}
     crumbles = {'metal': crumble_metal, 'stone': crumble_stone, 'wood': crumble_wood}
     rubbles = {'metal': rubble_metal, 'stone': rubble_stone, 'wood': rubble_wood}

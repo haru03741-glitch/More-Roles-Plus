@@ -390,7 +390,7 @@ internal static class TerrainDamage
     }
 
     // 点を含む部屋 (本編の部屋の範囲)。無ければ null (壁の中・屋外・宇宙)
-    private static PlainShipRoom RoomAt(Vector2 p)
+    internal static PlainShipRoom RoomAt(Vector2 p)
     {
         var ship = ShipStatus.Instance;
         if (!ship) return null;

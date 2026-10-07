@@ -67,11 +67,16 @@ public class Ticker : MonoBehaviour
         Menu.AccountSleep.Tick();
         Bridge.Perf.FrameStart();
         long t = Bridge.Perf.Begin();
+        Terrain.GameClock.Tick();
         Terrain.TerrainFx.Tick();
         Terrain.BreakNoise.Tick();
         Terrain.HammerSwing.Tick();
         Terrain.BombFuse.Tick();
         Terrain.DustCloud.Tick();
+        Terrain.WaterSim.Tick();
+        Terrain.WaterLeak.Tick();
+        Terrain.WaterArt.Tick();
+        Terrain.WaterSpray.Tick();
         Fx.FxHands.Tick();
         Terrain.RubbleBake.Tick();
         Terrain.ShadowPatch.Tick();

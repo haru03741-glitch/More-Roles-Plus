@@ -40,7 +40,6 @@ internal static class DustCloud
     private const float ReachCap = 2.5f;      // 狭い所で流れてよい距離 (半径の倍率)
     private const float SeedBack = 0.3f;      // 穴の開かない打撃の種を面から叩いた側へ戻す距離
     private const float SeedSearch = 0.5f;    // 種の点が歩けない時に近くの歩ける升を探す範囲
-    private const int CostStraight = 5, CostDiagonal = 7; // 升 1 つの距離 = 5
 
     private const float PuffZ = -1f;          // クルー (z ≈ y/1000) より手前・影の板 (-5) より奥 = 影の中では見えない
     private const float VisionCenter = 0.5f;  // 煙の中心での視界の倍率 (縁で 0.85 前後)
@@ -64,16 +63,11 @@ internal static class DustCloud
         public float X, Y, D, Size, Vx, Vy, Z, Alpha = -1f;
     }
 
-    private sealed class Cloud
+    private sealed class Cloud : FloorFlood.Area
     {
         public Kind Kind;
         public Spec Spec;
-        public int X0, Y0, W, H;
-        public ushort[] Dist;    // 種からの距離 (升 1 つ = 5)。ushort.MaxValue = 届いていない
-        public float Reach;      // 届いた一番遠い所 (単位)
-        public int Cells;
         public float T;
-        public float Cx, Cy;
         public readonly List<Puff> Puffs = new();
     }
 
@@ -82,6 +76,7 @@ internal static class DustCloud
         public Transform Tr;
         public SpriteRenderer Sr;
         public float Age = PrintLife, Alpha0;
+        public float R, G, B;
     }
 
     private static readonly List<Cloud> Clouds = new();
@@ -94,7 +89,8 @@ internal static class DustCloud
     private static readonly bool[] Tracked = new bool[256];
     private static readonly bool[] LeftFoot = new bool[256];
     private static bool _anyDusty;
-    private static IntPtr _ship, _matShip;
+    private static IntPtr _matShip;
+    private static int _shipGen;
     private static Color _tint;
     private static long _lastMs;
     private static float _clock, _scanAcc, _drawAcc, _visionTarget = 1f;
@@ -137,7 +133,7 @@ internal static class DustCloud
         float spread = SeedSearch;
         if (kind == Kind.Boom) spread = Math.Max(SeedSearch, r.Size * 0.5f);
         else if (kind == Kind.Crumble) spread = Math.Max(SeedSearch, r.Size * 0.6f);
-        var c = Fill(seed, radius, spread, kind == Kind.Hit);
+        var c = FloorFlood.Fill<Cloud>(seed, radius, ReachCap, spread, kind == Kind.Hit);
         if (c == null) { Last = $"{kind} @{seed.x:0.0},{seed.y:0.0} no floor"; return; }
         c.Kind = kind;
         c.Spec = spec;
@@ -152,99 +148,6 @@ internal static class DustCloud
 
     // ── 塗り広げ ───────────────────────────────────────────────────────
 
-    private static Cloud Fill(Vector2 seed, float radius, float spread, bool nearestOnly)
-    {
-        bool walls = SolidMap.Valid;
-        float ppu = walls ? SolidMap.Ppu : 1f / DamageMap.TexelSize;
-        Vector2 org = walls ? SolidMap.Origin : Vector2.zero;
-        int cap = (int)(radius * ReachCap * ppu) + 2;
-        int sx = (int)MathF.Floor((seed.x - org.x) * ppu), sy = (int)MathF.Floor((seed.y - org.y) * ppu);
-        int x0 = sx - cap, y0 = sy - cap, x1 = sx + cap, y1 = sy + cap;
-        if (walls)
-        {
-            x0 = Math.Max(x0, 1); y0 = Math.Max(y0, 1);
-            x1 = Math.Min(x1, SolidMap.W - 2); y1 = Math.Min(y1, SolidMap.H - 2);
-            if (x1 < x0 || y1 < y0) return null;
-        }
-        int w = x1 - x0 + 1, h = y1 - y0 + 1;
-
-        // 通れる升 = 歩ける升で、周り 8 升も歩ける (壁の線の継ぎ目の細い隙間から漏れないように 1 升削る)。
-        // 塗りが触る升は範囲の一部なので、触った時に調べて覚える (0 = まだ・1 = 通れる・2 = 通れない)
-        var pass = new byte[w * h];
-        bool Pass(int k)
-        {
-            if (pass[k] == 0) pass[k] = !walls || Eroded(x0 + k % w, y0 + k / w) ? (byte)1 : (byte)2;
-            return pass[k] == 1;
-        }
-
-        // 種: 範囲の中の通れる升を、種の点からの直線距離で始める (打撃は一番近い 1 升だけ = 叩いた側)
-        var dist = new ushort[w * h];
-        Array.Fill(dist, ushort.MaxValue);
-        var queue = new PriorityQueue<int, int>();
-        int search = (int)(spread * ppu);
-        int lx = sx - x0, ly = sy - y0;
-        int best = int.MaxValue, nearest = -1;
-        for (int dy = -search; dy <= search; dy++)
-        for (int dx = -search; dx <= search; dx++)
-        {
-            int x = lx + dx, y = ly + dy;
-            int d2 = dx * dx + dy * dy;
-            if (d2 > search * search || x < 0 || y < 0 || x >= w || y >= h || !Pass(y * w + x)) continue;
-            if (d2 < best) { best = d2; nearest = y * w + x; }
-            if (nearestOnly) continue;
-            int k = y * w + x;
-            dist[k] = (ushort)(MathF.Sqrt(d2) * CostStraight);
-            queue.Enqueue(k, dist[k]);
-        }
-        if (nearest < 0) return null;
-        if (nearestOnly) { dist[nearest] = 0; queue.Enqueue(nearest, 0); }
-
-        int target = (int)(MathF.PI * radius * radius * ppu * ppu);
-        int maxCost = Math.Min(ushort.MaxValue - 1, (int)(radius * ReachCap * ppu * CostStraight));
-        int popped = 0, far = 0;
-        while (queue.TryDequeue(out int k, out int d))
-        {
-            if (d != dist[k]) continue;
-            popped++;
-            far = d;
-            if (popped >= target) break;
-            int x = k % w, y = k / w;
-            for (int n = 0; n < 8; n++)
-            {
-                int nx = x + Dx[n], ny = y + Dy[n];
-                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-                int nk = ny * w + nx;
-                if (!Pass(nk)) continue;
-                int nd = d + (n < 4 ? CostStraight : CostDiagonal);
-                if (nd > maxCost || nd >= dist[nk]) continue;
-                dist[nk] = (ushort)nd;
-                queue.Enqueue(nk, nd);
-            }
-        }
-        // 打ち切った後も表に残った (まだ確定していない) 升は、届いた一番遠い所より先なら消す
-        for (int i = 0; i < dist.Length; i++)
-            if (dist[i] != ushort.MaxValue && dist[i] > far) dist[i] = ushort.MaxValue;
-
-        float reach = MathF.Max(far / (float)CostStraight / ppu, 0.3f);
-        return new Cloud
-        {
-            X0 = x0, Y0 = y0, W = w, H = h, Dist = dist, Reach = reach, Cells = popped,
-            Cx = org.x + (sx + 0.5f) / ppu, Cy = org.y + (sy + 0.5f) / ppu,
-        };
-    }
-
-    private static readonly int[] Dx = { 1, -1, 0, 0, 1, 1, -1, -1 };
-    private static readonly int[] Dy = { 0, 0, 1, -1, 1, -1, 1, -1 };
-
-    private static bool Eroded(int x, int y)
-    {
-        int w = SolidMap.W;
-        for (int dy = -1; dy <= 1; dy++)
-        for (int dx = -1; dx <= 1; dx++)
-            if (!SolidMap.OpenCell((y + dy) * w + x + dx)) return false;
-        return true;
-    }
-
     // その点の濃さ 0..1 (中心 1・届いた端で 0.25・広がる前と薄れた後は 0)
     private static float Density(Cloud c, float px, float py)
     {
@@ -254,7 +157,7 @@ internal static class DustCloud
         if (x < 0 || y < 0 || x >= c.W || y >= c.H) return 0f;
         ushort raw = c.Dist[y * c.W + x];
         if (raw == ushort.MaxValue) return 0f;
-        float d = raw / (float)CostStraight / ppu;
+        float d = raw / (float)FloorFlood.CostStraight / ppu;
         float front = Front(c);
         if (d > front) return 0f;
         float edge = Math.Min(1f, (front - d) / 0.3f);
@@ -303,7 +206,7 @@ internal static class DustCloud
             {
                 X = ox + (c.X0 + k % c.W + 0.5f) / ppu,
                 Y = oy + (c.Y0 + k / c.W + 0.5f) / ppu,
-                D = c.Dist[k] / (float)CostStraight / ppu,
+                D = c.Dist[k] / (float)FloorFlood.CostStraight / ppu,
                 Size = size * (0.8f + 0.4f * (float)rnd.NextDouble()) / sw,
                 Vx = ((float)rnd.NextDouble() - 0.5f) * 0.12f,
                 Vy = ((float)rnd.NextDouble() - 0.5f) * 0.12f + 0.03f,
@@ -366,15 +269,13 @@ internal static class DustCloud
 
     public static void Tick()
     {
-        var ship = ShipStatus.Instance;
-        IntPtr sp = ReferenceEquals(ship, null) ? IntPtr.Zero : ship.Pointer;
-        if (sp != _ship) { _ship = sp; Clear(); }
+        if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Clear(); }
         if (Clouds.Count == 0 && !_anyDusty && _livePrints == 0 && VisionMul == 1f) { _lastMs = 0; return; }
 
         long now = Environment.TickCount64;
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.05f, (now - _lastMs) / 1000f);
         _lastMs = now;
-        if (sp == IntPtr.Zero || MeetingHud.Instance) { Clear(); return; }
+        if (!GameClock.ShipAlive || MeetingHud.Instance) { Clear(); return; }
         _clock += dt;
 
         for (int i = Clouds.Count - 1; i >= 0; i--)
@@ -444,7 +345,8 @@ internal static class DustCloud
             Walked[id] = 0f;
             LeftFoot[id] = !LeftFoot[id];
             float fresh = (DustyUntil[id] - _clock) / PrintsFor;
-            PlacePrint(pos.x, pos.y, mx / step, my / step, LeftFoot[id], PrintAlphaOld + (PrintAlphaFresh - PrintAlphaOld) * fresh);
+            PlacePrint(pos.x, pos.y, mx / step, my / step, LeftFoot[id], PrintAlphaOld + (PrintAlphaFresh - PrintAlphaOld) * fresh,
+                PrintTint(_tint.r), PrintTint(_tint.g), PrintTint(_tint.b));
         }
 
         AgePrints(dt);
@@ -452,7 +354,8 @@ internal static class DustCloud
 
     // ── 足跡 ───────────────────────────────────────────────────────────
 
-    private static void PlacePrint(float x, float y, float fx, float fy, bool left, float alpha)
+    // 足跡を 1 つ置く (粉と水で同じ使い回しの列)。fx, fy = 歩いた向き (長さ 1)
+    internal static void PlacePrint(float x, float y, float fx, float fy, bool left, float alpha, float r, float g, float b)
     {
         var pr = Prints[_nextPrint];
         if (pr == null || !pr.Tr)
@@ -475,8 +378,9 @@ internal static class DustCloud
         pr.Tr.localRotation = FxMath.RotZ(MathF.Atan2(fy, fx) * (180f / MathF.PI));
         pr.Age = 0f;
         pr.Alpha0 = alpha;
+        pr.R = r; pr.G = g; pr.B = b;
         pr.Sr.enabled = true;
-        pr.Sr.color = FxMath.Rgba(PrintTint(_tint.r), PrintTint(_tint.g), PrintTint(_tint.b), alpha);
+        pr.Sr.color = FxMath.Rgba(r, g, b, alpha);
     }
 
     // 足跡は粉の色を暗くした汚れ (明るい床でも暗い床でも形が読める濃さ)
@@ -495,7 +399,7 @@ internal static class DustCloud
             // 最後の 4 割で薄れる。それまでは色を書かない
             float k = (PrintLife - pr.Age) / (PrintLife * 0.4f);
             if (k >= 1f) continue;
-            pr.Sr.color = FxMath.Rgba(PrintTint(_tint.r), PrintTint(_tint.g), PrintTint(_tint.b), pr.Alpha0 * k);
+            pr.Sr.color = FxMath.Rgba(pr.R, pr.G, pr.B, pr.Alpha0 * k);
         }
         _livePrints = live;
     }
