@@ -72,7 +72,7 @@ internal static class ChatGuard
         var client = AmongUsClient.Instance;
         if (!client || !client.AmHost || !sender || sender.OwnerId == client.HostId || sender.AmOwner || string.IsNullOrEmpty(text)) return;
         string why = null;
-        if (ChatGuardSettings.StartSpam && !ShipStatus.Instance && GameStartManager.InstanceExists && StartWords.Contains(Normalize(text)))
+        if (ChatGuardSettings.StartSpam && !ShipStatus.Instance && Vanilla.StartManager && StartWords.Contains(Normalize(text)))
             why = new Text("開始の催促", "asking to start");
         else if (ChatGuardSettings.BanWords)
         {
@@ -93,7 +93,7 @@ internal static class ChatGuard
         }
         else msg = new Text($"{name}: {why} {n} 回目 ({limit} 回目で部屋から出します)", $"{name}: {why} ({n}/{limit}, kicked at {limit})");
         Plugin.Logger.LogInfo($"chat guard: {msg}");
-        if (HudManager.InstanceExists) DevChat.Notice(HudManager.Instance.Chat, msg);
+        DevChat.Notice(Vanilla.Chat, msg);
     }
 }
 

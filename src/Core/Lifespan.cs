@@ -4,8 +4,10 @@ using System.Collections.Generic;
 namespace MoreRolesPlus;
 
 // 寿命。Release されると、それに付けたイベントの購読・GameObject・後片付けの処理がまとめて終わる。
-// 役職 1 人分に 1 つ (RoleBase.Lifespan)・試合 1 つに 1 つ (RoleState.Match) あり、試合が終わる・部屋を抜ける・
-// 役職を配り直す時に試合の寿命ごと切れる。役職の中で作った物は役職の寿命に付けておけば消し忘れない。
+// 役職 1 人分に 1 つ (RoleBase.Lifespan)・試合 1 つに 1 つ (RoleState.Match)・試合の船に 1 つ (GameClock.Ship) あり、
+// 試合が終わる・部屋を抜ける・役職を配り直す時に試合の寿命ごと切れる。役職の中で作った物は役職の寿命に付けておけば消し忘れない。
+// 切れた時の処理は、場面の物 (HUD・船・ロビー) がもう消えている前提で書く (切れるのは場面が替わった後のことがある)。
+// 本編の物は Vanilla から読み、無ければ何もしない。
 public sealed class Lifespan
 {
     public bool IsDead { get; private set; }

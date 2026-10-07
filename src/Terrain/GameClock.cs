@@ -33,6 +33,25 @@ internal static class GameClock
     internal static int ShipGen { get; private set; }
     internal static bool ShipAlive => _ship != IntPtr.Zero;
 
+    // 今の試合の船の寿命。船が消えた・替わった時 (ShipGen が進む時) に切れる。船が無い時は切れた寿命を返す (付けた物はすぐ片付く)。
+    // 船の上に作った物・船の物に付けた購読はここへ付ければ、各所で ShipGen を見張らなくてよい
+    internal static Lifespan Ship
+    {
+        get
+        {
+            Ensure();
+            return _shipLife ??= NewShipLife();
+        }
+    }
+    private static Lifespan _shipLife;
+
+    private static Lifespan NewShipLife()
+    {
+        var life = new Lifespan();
+        if (_ship == IntPtr.Zero) life.Release();
+        return life;
+    }
+
     private static int Local
     {
         get
@@ -96,6 +115,10 @@ internal static class GameClock
         _known = false;
         Observed = 0;
         LastRaise = 0;
+        // 切れた時の処理が時計や Ship を読んでも新しい船の値になるよう、全部書き換えてから切る
+        var old = _shipLife;
+        _shipLife = null;
+        old?.Release();
     }
 
     internal static string Describe() => $"tick={Now} offset={_offset} known={_known} observed={Observed} raise={LastRaise} shipGen={ShipGen} alive={ShipAlive} stale={StaleShips}";

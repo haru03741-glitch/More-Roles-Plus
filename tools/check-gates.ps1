@@ -72,5 +72,13 @@ $bad = Get-ChildItem (Join-Path $repo 'src') -Recurse -Filter *.cs |
 if ($bad) { $bad | ForEach-Object { Write-Output "   $($_.Path):$($_.LineNumber): $($_.Line.Trim())" }; Write-Output '   [FAIL] 長さに (long) を付ける'; $fail++ }
 else { Write-Output '   [ OK ]' }
 
+# 5. 場面に付いた本編の物は Vanilla から読む (X.Instance は無い時に空の X を作り、その更新が毎フレーム例外を出す)
+Write-Output '== scene singleton access'
+$bad = Get-ChildItem (Join-Path $repo 'src') -Recurse -Filter *.cs |
+    Where-Object { $_.Name -ne 'Vanilla.cs' } |
+    Select-String -Pattern '\b(HudManager|GameStartManager|LobbyInfoPane|StoreMenu)\.Instance\b'
+if ($bad) { $bad | ForEach-Object { Write-Output "   $($_.Path):$($_.LineNumber): $($_.Line.Trim())" }; Write-Output '   [FAIL] Vanilla.Hud / StartManager / LobbyInfo / Store を使う'; $fail++ }
+else { Write-Output '   [ OK ]' }
+
 if ($fail -gt 0) { Write-Output "RESULT: FAIL ($fail)"; exit 1 }
 if ($SkipAndroid) { Write-Output 'RESULT: OK (ANDROID SKIPPED)' } else { Write-Output 'RESULT: OK' }

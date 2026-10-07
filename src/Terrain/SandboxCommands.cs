@@ -68,7 +68,7 @@ internal static class SandboxCommands
     // ボタンで使えなかった時だけ理由をチャット欄に出す (使えた時は画面の破壊で分かる)
     private static bool Report(string result, bool ok)
     {
-        if (!ok && HudManager.InstanceExists && HudManager.Instance.Chat) HudManager.Instance.Chat.AddChatWarning(result);
+        if (!ok && Vanilla.Chat is { } chat) chat.AddChatWarning(result);
         return ok;
     }
 }

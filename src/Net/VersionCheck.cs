@@ -109,7 +109,7 @@ internal static class BlockStartPatch
         if (blockers.Count == 0) return true;
         string msg = new Text("全員が同じ版の More Roles Plus を入れるまで始められません:\n", "Everyone needs the same More Roles Plus version:\n")
                      + string.Join("\n", blockers);
-        if (HudManager.InstanceExists) HudManager.Instance.Chat.AddChat(PlayerControl.LocalPlayer, msg, false);
+        if (Vanilla.Chat is { } chat) chat.AddChat(PlayerControl.LocalPlayer, msg, false);
         return false;
     }
 }

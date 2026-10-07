@@ -25,22 +25,8 @@ internal static class Perf
     private static readonly int[] BoehmKb = new int[Capacity];
     private static readonly bool[] BoehmGc = new bool[Capacity];
     private static long _lastBoehm;
-    private static bool _boehmMissing;
 
-#if ANDROID
-    private const string Il2CppLib = "il2cpp";
-#else
-    private const string Il2CppLib = "GameAssembly";
-#endif
-    [DllImport(Il2CppLib, CallingConvention = CallingConvention.Cdecl)]
-    private static extern long il2cpp_gc_get_used_size();
-
-    private static long BoehmUsed()
-    {
-        if (_boehmMissing) return -1;
-        try { return il2cpp_gc_get_used_size(); }
-        catch { _boehmMissing = true; return -1; }
-    }
+    private static long BoehmUsed() => Health.BoehmUsed();
 
     private static int _left, _n;
     private static long _lastUpd, _lastLate, _modTicks, _fixedTicks;
@@ -77,15 +63,21 @@ internal static class Perf
         });
     }
 
-    // Ticker の各入口の中身を囲む (記録していない間は 1 回の比較だけ)
-    public static long Begin() => _left > 0 ? Stopwatch.GetTimestamp() : 0;
-    public static void End(long start) { if (start != 0) _modTicks += Stopwatch.GetTimestamp() - start; }
+    // Ticker の各入口の中身を囲む (常駐の健康診断にも渡す)
+    public static long Begin() => Stopwatch.GetTimestamp();
+    public static void End(long start)
+    {
+        long d = Stopwatch.GetTimestamp() - start;
+        Health.AddMod(d);
+        if (_left > 0) _modTicks += d;
+    }
 
     // FixedUpdate は LateUpdate と次の Update の間に回るので、rest から引けるよう別にも数える
     public static void EndFixed(long start)
     {
-        if (start == 0) return;
         long d = Stopwatch.GetTimestamp() - start;
+        Health.AddMod(d);
+        if (_left <= 0) return;
         _modTicks += d;
         _fixedTicks += d;
     }

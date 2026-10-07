@@ -16,7 +16,7 @@ internal static class LobbyTools
     private const int MaxName = 15;
 
     private static bool AmHost => AmongUsClient.Instance && AmongUsClient.Instance.AmHost;
-    private static bool InLobby => GameStartManager.InstanceExists && !ShipStatus.Instance && PlayerControl.LocalPlayer;
+    private static bool InLobby => Vanilla.StartManager && !ShipStatus.Instance && PlayerControl.LocalPlayer;
 
     private static readonly Text OnlyLobby = new("ロビーでだけ使えます", "Only in the lobby");
 
@@ -27,7 +27,7 @@ internal static class LobbyTools
 
     private static void ShowSay(string text)
     {
-        if (HudManager.InstanceExists) DevChat.Notice(HudManager.Instance.Chat, new Text($"<color=#FF5050>ホストから</color>: {text}", $"<color=#FF5050>From the host</color>: {text}"));
+        DevChat.Notice(Vanilla.Chat, new Text($"<color=#FF5050>ホストから</color>: {text}", $"<color=#FF5050>From the host</color>: {text}"));
     }
 
     public static string Say(string args)

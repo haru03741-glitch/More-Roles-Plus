@@ -110,7 +110,7 @@ internal static class JoinLists
 
     private static void Notify(string text)
     {
-        if (HudManager.InstanceExists) DevChat.Notice(HudManager.Instance.Chat, text);
+        DevChat.Notice(Vanilla.Chat, text);
         Plugin.Logger.LogInfo($"join lists: {text}");
     }
 

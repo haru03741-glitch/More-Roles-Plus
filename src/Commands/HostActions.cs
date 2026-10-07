@@ -33,7 +33,7 @@ internal static class HostActions
 
     public static string Start()
     {
-        var gsm = GameStartManager.InstanceExists ? GameStartManager.Instance : null;
+        var gsm = Vanilla.StartManager;
         if (!gsm || ShipStatus.Instance) return new Text("ロビーでだけ使えます", "Only in the lobby");
         if (SkipCountdown()) return new Text("数えを飛ばしました", "Countdown skipped");
         // 数えが終わって読み込み中にもう一度始めると、ロビーの部品が壊れて毎フレーム例外が出る
@@ -47,7 +47,7 @@ internal static class HostActions
     // 開始の数えの途中なら 0 にする
     public static bool SkipCountdown()
     {
-        var gsm = GameStartManager.InstanceExists ? GameStartManager.Instance : null;
+        var gsm = Vanilla.StartManager;
         if (!AmHost || !gsm || gsm.startState != GameStartManager.StartingStates.Countdown) return false;
         gsm.countDownTimer = 0f;
         return true;
@@ -76,7 +76,8 @@ internal static class HostActions
             return new Text("始まりの場面が終わってから使えます", "Wait until the game has begun");
         var lp = PlayerControl.LocalPlayer;
         MeetingRoomManager.Instance.AssignSelf(lp, null);
-        HudManager.Instance.OpenMeetingRoom(lp);
+        var hud = Vanilla.Hud;
+        if (hud) hud.OpenMeetingRoom(lp);
         lp.RpcStartMeeting(null);
         return new Text("会議を開きました", "Meeting called");
     }

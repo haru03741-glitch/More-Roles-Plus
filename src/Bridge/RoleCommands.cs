@@ -87,7 +87,7 @@ internal static class RoleCommands
 
         TestBridge.Register("killbtn", "[0|1] キルボタンの状態 (表示・狙い・待ち時間)。1 で押す", (args, reply) =>
         {
-            var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+            var hud = Vanilla.Hud;
             var lp = PlayerControl.LocalPlayer;
             if (!hud || !hud.KillButton || !lp) { reply("ERR killbtn no hud"); return; }
             var b = hud.KillButton;
@@ -140,8 +140,9 @@ internal static class RoleCommands
 
         TestBridge.Register("editsettings", "ロビーでゲーム設定の画面を開く (ホストのみ)", (_, reply) =>
         {
-            if (!GameStartManager.InstanceExists) { reply("ERR editsettings no lobby"); return; }
-            GameStartManager.Instance.ClickEdit();
+            var gsm = Vanilla.StartManager;
+            if (!gsm) { reply("ERR editsettings no lobby"); return; }
+            gsm.ClickEdit();
             reply("OK editsettings");
         });
 
@@ -185,7 +186,7 @@ internal static class RoleCommands
             int depth = a.Length > 1 && int.TryParse(a[1], out int d) ? d : 3;
             UnityEngine.Transform root = a[0] switch
             {
-                "chat" => HudManager.InstanceExists && HudManager.Instance.Chat ? HudManager.Instance.Chat.freeChatField?.transform : null,
+                "chat" => Vanilla.Chat is { } chat ? chat.freeChatField?.transform : null,
                 "menu" => GameSettingMenu.Instance ? GameSettingMenu.Instance.transform : null,
                 "page" => SettingsMenu.OpenPage(),
                 _ => UnityEngine.GameObject.Find(a[0])?.transform,

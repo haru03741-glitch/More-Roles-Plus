@@ -68,7 +68,7 @@ internal static class DevConsole
             // Shift+Enter+C = チャット欄を出す / 隠す (EndKnot と同じ押し方)
             if ((Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && Input.GetKey(KeyCode.C))
             {
-                var chat = HudManager.Instance.Chat;
+                var chat = Vanilla.Chat;
                 if (chat) DevChat.SetShown(!chat.gameObject.activeSelf);
                 return;
             }
@@ -143,7 +143,8 @@ internal static class DevConsole
         }
         if (!Input.GetMouseButtonDown(0) || !_devButton) return;
         // 押した所が「DEV」の上か (HUD のカメラの座標で比べる)
-        var cam = HudManager.Instance.UICamera;
+        var hud = Vanilla.Hud;
+        var cam = hud ? hud.UICamera : null;
         if (!cam) return;
         Vector3 p = cam.ScreenToWorldPoint(Input.mousePosition);
         Vector3 b = _devButton.transform.position;
@@ -215,7 +216,7 @@ internal static class DevConsole
 
     private static void Build()
     {
-        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+        var hud = Vanilla.Hud;
         if (!hud) return;
         var src = hud.TaskPanel ? hud.TaskPanel.taskText : null;
         if (!src) return;
@@ -256,7 +257,7 @@ internal static class DevConsole
     private static void EnsureDevButton()
     {
         if (_devButton) return;
-        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+        var hud = Vanilla.Hud;
         if (!hud) return;
         var src = hud.TaskPanel ? hud.TaskPanel.taskText : null;
         var cam = hud.UICamera;

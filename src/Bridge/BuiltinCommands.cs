@@ -46,7 +46,7 @@ internal static class BuiltinCommands
         {
             var lp = PlayerControl.LocalPlayer;
             string inGame = lp && lp.Data != null ? lp.Data.FriendCode : "-";
-            reply($"OK whoami eos=[{Dev.DevUsers.LocalFriendCode}] data=[{inGame}] mode={(AmongUsClient.Instance ? AmongUsClient.Instance.NetworkMode.ToString() : "-")} dev={Dev.DevUsers.AmDev} guid=[{CurrentModRegistration.ModRegistrationGuidString}] lastdc={(AmongUsClient.Instance ? AmongUsClient.Instance.LastDisconnectReason.ToString() + "/" + AmongUsClient.Instance.LastCustomDisconnect : "-")} broadcast={Constants.GetBroadcastVersion()} login={(EOSManager.Instance ? EOSManager.Instance.loginFlowFinished.ToString() : "-")} store={(StoreMenu.InstanceExists ? StoreMenu.Instance.Initialized.ToString() : "-")}");
+            reply($"OK whoami eos=[{Dev.DevUsers.LocalFriendCode}] data=[{inGame}] mode={(AmongUsClient.Instance ? AmongUsClient.Instance.NetworkMode.ToString() : "-")} dev={Dev.DevUsers.AmDev} guid=[{CurrentModRegistration.ModRegistrationGuidString}] lastdc={(AmongUsClient.Instance ? AmongUsClient.Instance.LastDisconnectReason.ToString() + "/" + AmongUsClient.Instance.LastCustomDisconnect : "-")} broadcast={Constants.GetBroadcastVersion()} login={(EOSManager.Instance ? EOSManager.Instance.loginFlowFinished.ToString() : "-")} store={(Vanilla.Store is { } store ? store.Initialized.ToString() : "-")}");
         });
 
         TestBridge.Register("modreg", "<0|1> 公式への mod 登録 (GUID) を付けるか (比べる用・既定 1)", (args, reply) =>
@@ -121,6 +121,19 @@ internal static class BuiltinCommands
             btn.NetworkMode = NetworkModes.FreePlay;
             btn.OnClick();
             reply($"OK freeplay map={map} requested (follow with: wait phase=InGame 60)");
+        });
+
+        TestBridge.Register("health", "[storm <フレーム数>] 常駐の健康診断: 試合中の引っかかり・エラーの出どころごとの件数 (storm = 毎フレーム試しのエラーを書く)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length >= 1 && a[0] == "storm")
+            {
+                Health.TestErrorFrames = a.Length >= 2 && int.TryParse(a[1], out int f) ? f : 180;
+                reply($"OK health storm {Health.TestErrorFrames}");
+                return;
+            }
+            foreach (var line in Health.Describe().Split('\n')) reply("HEALTH " + line);
+            reply("OK health");
         });
 
         TestBridge.Register("quitgame", "フリープレイ/試合を抜けてメニューへ (部屋検索などメニューの外の画面からも戻る)", (_, reply) =>

@@ -44,9 +44,9 @@ internal static class KillAbility
         _dt = Time.fixedDeltaTime;
         _shown = _started = false;
         // 試合の途中で付いた時は本編がボタンの表示を決め直すのを待たない (使うボタンが出ている = 歩ける画面の時だけ)
-        if (HudManager.InstanceExists)
+        var hud = Vanilla.Hud;
+        if (hud)
         {
-            var hud = HudManager.Instance;
             if (hud.UseButton && hud.UseButton.isActiveAndEnabled) hud.KillButton.ToggleVisible(true);
         }
     }
@@ -66,7 +66,7 @@ internal static class KillAbility
         if (role == null) return;
         var lp = role.Player;
         if (!lp || lp.Data == null || lp.Data.IsDead || !HudManager.InstanceExists) return;
-        var btn = HudManager.Instance.KillButton;
+        var btn = Vanilla.Hud.KillButton;
         if (!btn.isActiveAndEnabled)
         {
             _shown = false;

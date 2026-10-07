@@ -273,7 +273,7 @@ internal static class BreakNoise
 
     private static Mark Create(Sound kind)
     {
-        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+        var hud = Vanilla.Hud;
         var prefab = Prefab();
         if (!hud || !prefab) return null;
         var go = UnityEngine.Object.Instantiate(prefab, hud.transform);

@@ -157,7 +157,7 @@ internal static class DevCommands
 
         TestBridge.Register("chat", "[0|1] 試合中もチャット欄を出す / 隠す (自分の画面だけ。/ を付けたコマンドもここから打てる)", (args, reply) =>
         {
-            var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+            var hud = Vanilla.Hud;
             if (!hud || !hud.Chat) { reply("ERR chat no hud"); return; }
             string a = args.Trim();
             bool on = a == "1" || (a != "0" && !hud.Chat.gameObject.activeSelf);
@@ -167,7 +167,7 @@ internal static class DevCommands
 
         TestBridge.Register("chatsend", "<文> チャット欄に文を入れて送信を押したのと同じにする (チャットからのコマンドの確認用)", (args, reply) =>
         {
-            var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+            var hud = Vanilla.Hud;
             if (!hud || !hud.Chat) { reply("ERR chatsend no hud"); return; }
             hud.Chat.freeChatField.textArea.SetText(args, "");
             hud.Chat.SendChat();
@@ -184,7 +184,7 @@ internal static class DevCommands
 
         TestBridge.Register("chattoggle", "チャット欄の窓を開く / 閉じる (チャットのボタンを押したのと同じ)", (_, reply) =>
         {
-            var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+            var hud = Vanilla.Hud;
             if (!hud || !hud.Chat) { reply("ERR chattoggle no hud"); return; }
             hud.Chat.Toggle();
             reply("OK chattoggle");

@@ -47,6 +47,7 @@ public class Plugin : BasePlugin
 
         ClassInjector.RegisterTypeInIl2Cpp<Ticker>();
         AddComponent<Ticker>();
+        Health.Install();
         Boot.BootClock.Mark("loaded");
 
         Log.LogInfo($"More Roles Plus {Version} loaded");
@@ -63,6 +64,7 @@ public class Ticker : MonoBehaviour
     private void Update()
     {
         if (!_ran) { _ran = true; Boot.BootClock.Mark("frame1"); }
+        Health.Frame();
         Boot.BootClock.Tick();
         Menu.AccountSleep.Tick();
         Bridge.Perf.FrameStart();

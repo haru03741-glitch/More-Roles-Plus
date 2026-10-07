@@ -36,8 +36,9 @@ internal sealed class SearchBox
     // 幅 width・高さ height (親の座標の単位) の欄を parent の pos に作る。作れなければ null
     public static SearchBox Create(Transform parent, Vector3 pos, float width, float height, Text hint, Action<string> changed)
     {
-        if (!HudManager.InstanceExists || !HudManager.Instance.Chat) return null;
-        var source = HudManager.Instance.Chat.freeChatField;
+        var chat = Vanilla.Chat;
+        if (!chat) return null;
+        var source = chat.freeChatField;
         if (!source) return null;
 
         // 元が非表示のことがある (チャットの窓が閉じている)。複製も非表示のまま作り、部品を外してから表示する

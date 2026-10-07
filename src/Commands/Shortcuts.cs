@@ -21,7 +21,7 @@ internal static class Shortcuts
         if (!enter && !shiftDown) return;
         var client = AmongUsClient.Instance;
         if (!client || !client.AmHost || Dev.DevConsole.IsOpen) return;
-        var hud = HudManager.InstanceExists ? HudManager.Instance : null;
+        var hud = Vanilla.Hud;
         if (hud && hud.Chat && hud.Chat.IsOpenOrOpening) return;
 
         if (!enter)
@@ -31,8 +31,8 @@ internal static class Shortcuts
         }
         if (!Input.GetKey(KeyCode.LeftShift) && !Input.GetKey(KeyCode.RightShift))
         {
-            if (HostSettings.EnterToStart && !ShipStatus.Instance && GameStartManager.InstanceExists
-                && GameStartManager.Instance.startState == GameStartManager.StartingStates.NotStarting
+            if (HostSettings.EnterToStart && !ShipStatus.Instance && Vanilla.StartManager is { } gsm
+                && gsm.startState == GameStartManager.StartingStates.NotStarting
                 && !GameSettingMenu.Instance)
                 Report(hud, HostActions.Start());
             return;

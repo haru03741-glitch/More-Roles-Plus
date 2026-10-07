@@ -55,7 +55,7 @@ internal static class LobbyView
     }
 
     internal static LobbyViewSettingsPane Pane() =>
-        LobbyInfoPane.InstanceExists ? LobbyInfoPane.Instance.LobbyViewSettingsPane : null;
+        Vanilla.LobbyInfo is { } info ? info.LobbyViewSettingsPane : null;
 
     // 本編がタブを描き直した後に呼ばれる。ChangeTab と RefreshTab の両方から来うるので、描いてあれば何もしない
     public static void AfterRefresh(LobbyViewSettingsPane pane)
@@ -147,12 +147,13 @@ internal static class LobbyView
     // 試験用: 閲覧画面を開いてタブのボタンを押し (0 = 概要・1 = 役職・2 = MRP)、並んだ行の文字を返す
     internal static string Open(int tab, int max)
     {
-        if (!LobbyInfoPane.InstanceExists || !GameStartManager.InstanceExists) return "no lobby";
-        var pane = LobbyInfoPane.Instance.LobbyViewSettingsPane;
+        var info = Vanilla.LobbyInfo;
+        var gsm = Vanilla.StartManager;
+        if (!info || !gsm) return "no lobby";
+        var pane = info.LobbyViewSettingsPane;
         if (!pane.isActiveAndEnabled)
         {
             // 本編の「見る」ボタンと同じ経路で開く (開くまでは画面の中身が作られていない)
-            var gsm = GameStartManager.Instance;
             var view = AmongUsClient.Instance.AmHost ? gsm.HostViewButton : gsm.ClientViewButton;
             view.OnClick.Invoke();
             return "opening (send again)";
