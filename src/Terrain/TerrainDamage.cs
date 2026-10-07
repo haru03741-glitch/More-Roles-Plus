@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MoreRolesPlus.Fx;
 using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
@@ -42,6 +43,12 @@ internal static class TerrainDamage
         WallsNear(hit, MaxDepth);
         float far = FarSide(hit, -normal);
         if (!FloorBeyond(hit, -normal)) far = 0f; // 厚い外壁は自分の裏の面が奥の面に見える。向こうに床が無ければ外壁
+        // 裏の壁の中が線を越えずに空へつながる面 (外壁に付いた出っ張り) は、奥の面があっても外壁
+        if (SolidMap.FacesSky(SolidMap.SkyNear(hit, StrikeSkyReach + 0.5f, new CircleShape(hit, StrikeSkyReach)), hit, normal))
+        {
+            why = "blunt outer wall (protected)";
+            return false;
+        }
         // 奥の面が近くに無くても、裏が船体の塊 (エアシップの部屋と部屋の間) なら外壁ではない。1 打ごとに ThickStep ずつ掘り進む
         bool thick = false;
         if (far <= 0f)
@@ -111,6 +118,7 @@ internal static class TerrainDamage
 
         // 外壁は壊さない: 切り取る区間ごとに、爆心から見て壁の向こう側に奥の面があるか (動きの層の面)
         Vector2 blast = e.Position;
+        var sky = SolidMap.SkyNear(c, core.BoundRadius + 0.5f, core);
         bool Inner(Vector2 a, Vector2 b)
         {
             Vector2 m = (a + b) * 0.5f, d = b - a;
@@ -121,11 +129,19 @@ internal static class TerrainDamage
             // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) か、
             // 裏が船体の塊 (エアシップ) なら抜く。向こうに床が無い面 (厚い外壁の手前と裏) は外壁
             if (SolidMap.FacesOutside(m, away)) return false; // どちら側でも空・宇宙に面した面は外壁 (爆心の反対を向いた面も)
+            if (SolidMap.FacesSky(sky, m, away)) return false; // 裏の壁の中が線を越えずに空へつながる (外壁に付いた出っ張り)
             if (!FloorBeyond(m, away)) return ThickBehind(m, away);
             if (HasFarSide(m, away)) return true;
             float toBlast = (m - blast).magnitude;
             float first = FirstFace(m, -away, Math.Min(toBlast, MaxDepth));
             return first > 0f || ThickBehind(m, away);
+        }
+        // 蓋も、裏の壁の中が空へつながる物は残す
+        bool CapFacesSky(Vector2 a, Vector2 b)
+        {
+            float dx = b.x - a.x, dy = b.y - a.y, len = MathF.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-5f) return false;
+            return SolidMap.FacesSky(sky, FxMath.V2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f), FxMath.V2(-dy / len, dx / len));
         }
         var keep = DamageMap.FurnitureFor(core); // 家具の保護範囲は壁も残す (絵を抜かない所を通れないように)
         var walls = WallsNear(c, outer);
@@ -134,7 +150,7 @@ internal static class TerrainDamage
         body.UseSolidMap(c, outer + 0.2f);
         // 区間ごとの可否は、全部を切る前の地形で先に決める (順に切りながら決めると、先に切った壁が奥の面や
         // 間の壁として見えなくなり、処理の順番で結果が変わる)
-        // 蓋 (前の穴の側面) は穴の中に作った壁なので常に切る
+        // 蓋 (前の穴の側面) は穴の中に作った壁なので切る (裏が空へつながる物だけ残す)
         var allowed = new HashSet<(float, float, float, float)>();
         foreach (var col in walls)
         {
@@ -142,7 +158,7 @@ internal static class TerrainDamage
             bool cap = col.gameObject.name == WallBody.CapName;
             EdgeCutter.Cut(col, core, null, (a, b) =>
             {
-                if (cap || Inner(a, b)) allowed.Add((a.x, a.y, b.x, b.y));
+                if (cap ? !CapFacesSky(a, b) : Inner(a, b)) allowed.Add((a.x, a.y, b.x, b.y));
                 return false;
             }, keep, dryRun: true);
         }
@@ -356,6 +372,7 @@ internal static class TerrainDamage
         => !SolidMap.Valid || SolidMap.AlongFloorOrOutside(surface, inward, MaxDepth + FloorBeyondSlack) > 0;
 
     private const float FloorBeyondSlack = 0.4f; // 奥の面の先の床まで (面の継ぎ目と地図の升の誤差)
+    private const float StrikeSkyReach = 1f; // 打撃で抜ける範囲の見積もり (叩いた点からこの距離の中で空とつながる壁の中は外壁)
 
     // 厚い壁 (船体の塊) を 1 打で掘り進む深さ
     private const float ThickStep = 1.0f;

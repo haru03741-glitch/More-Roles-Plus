@@ -176,6 +176,9 @@ internal static class DamageMap
         _underlayMat.SetFloat("_UseDamage", 2f); // 2 = 抜けた所にだけ描く
         _propMat = new Material(mat) { name = "MrpDebris" };
         _propMat.SetFloat("_UseDamage", 0f);
+        // 部屋の絵がステンシルを書くマップでは、部品はステンシルを書かない (下の部屋の絵・穴の向こうの床が書いた値に従う)。
+        // 書くと、絵の無い空・宇宙の上に飛んだ閃光・土煙・瓦礫の形に影の板が掛かり、視界の外の空に黒い形が出る
+        if (stencil) _propMat.SetFloat("_StencilPass", 0f); // Keep
         // 止まった瓦礫を焼いた床の板: 部屋の絵がステンシルを書くマップでは、部屋の絵のある所 (1) にだけ描く。
         // 壊れない壁の向こうへ飛んだ粉や焦げが、部屋の絵の無い空・宇宙の上に黒く出ないように
         _plateMat = new Material(_propMat) { name = "MrpRubblePlate" };
@@ -186,6 +189,7 @@ internal static class DamageMap
         }
         _decalMat = new Material(mat) { name = "MrpCrackDecal" };
         _decalMat.SetFloat("_UseDamage", 3f); // 3 = ひび: 穴の中と家具の上には描かない
+        if (stencil) _decalMat.SetFloat("_StencilPass", 0f); // Keep (外壁のひびが空へはみ出した所に影の板を掛けない)
 
         double tAll = sw.Elapsed.TotalMilliseconds;
         EnsureBreakdown = $"scan={tScan:F1} alloc={tAlloc - tScan:F1} upload={tUpload - tAlloc:F1} mats={tAll - tUpload:F1}";

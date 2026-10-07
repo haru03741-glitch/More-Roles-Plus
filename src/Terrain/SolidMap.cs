@@ -676,6 +676,88 @@ internal static class SolidMap
         }
     }
 
+    // 範囲の中で、今の壁の線を越えずに船の外 (空・宇宙) へつながっている歩けない所 (壁の中)。
+    // 外壁から内側へ出っ張った塊 (Mira の倉庫の左下の箱) は空との間に壁の線が無く、塊の面はどれも外に面して見えないが、
+    // 抜くと穴が空へつながって蓋が空の上に張られる (空へ歩き出せ、蓋が視界を遮って空が黒くなる)。
+    // 船の外を持たないマップ (Skeld・Polus・Fungle) は null
+    internal sealed class SkyReach
+    {
+        internal int X0, Y0, W, H;
+        internal byte[] Sky;
+
+        public bool At(Vector2 p)
+        {
+            int x = (int)MathF.Floor((p.x - _origin.x) * _ppu) - X0, y = (int)MathF.Floor((p.y - _origin.y) * _ppu) - Y0;
+            return x >= 0 && y >= 0 && x < W && y < H && Sky[y * W + x] != 0;
+        }
+    }
+
+    // within = 抜く形。形の中 (面の両側を見る分だけ広げる) だけを塗る: 穴が開くのは形の中だけなので、形の中で空とつながる所だけが
+    // 空へ抜ける (端が空に開いた厚い壁の帯でも、空の端から離れた所は内壁として抜ける)。null = 範囲全体 (判定図用)
+    public static SkyReach SkyNear(Vector2 c, float r, CutShape within = null)
+    {
+        if (!Valid || _outside == null) return null;
+        int x0 = Math.Max(0, (int)MathF.Floor((c.x - r - _origin.x) * _ppu)), x1 = Math.Min(_w - 1, (int)MathF.Floor((c.x + r - _origin.x) * _ppu));
+        int y0 = Math.Max(0, (int)MathF.Floor((c.y - r - _origin.y) * _ppu)), y1 = Math.Min(_h - 1, (int)MathF.Floor((c.y + r - _origin.y) * _ppu));
+        if (x1 < x0 || y1 < y0) return null;
+        int bw = x1 - x0 + 1, bh = y1 - y0 + 1, bn = bw * bh;
+
+        // 今の壁の線を描き、継ぎ目が塞がるだけ太らせる
+        var barrier = new byte[bn];
+        var segs = WallSegmentsNear(c, r + 0.2f);
+        for (int i = 0; i + 1 < segs.Count; i += 2) Raster(barrier, bw, bh, x0, y0, segs[i], segs[i + 1]);
+        var blocked = DilateGrid(barrier, bw, bh, Dilate);
+
+        // 形の中
+        byte[] inside = null;
+        if (within != null)
+        {
+            inside = new byte[bn];
+            for (int k = 0; k < bn; k++)
+            {
+                float wx = _origin.x + (x0 + k % bw + 0.5f) / _ppu, wy = _origin.y + (y0 + k / bw + 0.5f) / _ppu;
+                if (within.SignedDistance(wx, wy) < SkyProbe + 0.05f) inside[k] = 1;
+            }
+        }
+
+        // 船の外から、線を越えずに歩けない升だけを塗る
+        var sky = new byte[bn];
+        var queue = new int[bn];
+        int tail = 0;
+        for (int k = 0; k < bn; k++)
+        {
+            if (blocked[k] != 0 || (inside != null && inside[k] == 0)) continue;
+            int g = (y0 + k / bw) * _w + x0 + k % bw;
+            if (_outside[g] != 1) continue;
+            sky[k] = 1; queue[tail++] = k;
+        }
+        int head = 0;
+        while (head < tail)
+        {
+            int k = queue[head++];
+            int x = k % bw, y = k / bw;
+            if (x > 0) Visit(k - 1);
+            if (x < bw - 1) Visit(k + 1);
+            if (y > 0) Visit(k - bw);
+            if (y < bh - 1) Visit(k + bw);
+        }
+        return new SkyReach { X0 = x0, Y0 = y0, W = bw, H = bh, Sky = sky };
+
+        void Visit(int k2)
+        {
+            if (sky[k2] != 0 || blocked[k2] != 0 || (inside != null && inside[k2] == 0)) return;
+            if (_open[(y0 + k2 / bw) * _w + x0 + k2 % bw] != 0) return;
+            sky[k2] = 1;
+            queue[tail++] = k2;
+        }
+    }
+
+    // 面 (中点 m・法線 n) のどちらかの側が、壁の線を越えずに船の外へつながる壁の中か (線の太らせた分より奥を見る)
+    public static bool FacesSky(SkyReach sky, Vector2 m, Vector2 n) =>
+        sky != null && (sky.At(m + n * SkyProbe) || sky.At(m - n * SkyProbe));
+
+    private const float SkyProbe = 0.2f;
+
     private static bool InsideAny(List<Rect> rects, float x, float y)
     {
         foreach (var rc in rects)

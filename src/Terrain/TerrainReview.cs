@@ -30,6 +30,11 @@ internal static class TerrainReview
     private static readonly byte[] Lone = { 140, 140, 140 };      // 両側とも床が無い
     private static readonly byte[] Void = { 230, 20, 20 };        // 奈落 (塗った注釈)
 
+    // 面の近くで爆発 (半径 SkyBlast) した時に、抜ける形の中で裏の壁の中が空へつながるか (外壁に付いた出っ張り。爆発と同じ判定)
+    private const float SkyBlast = 1.2f;
+    private static bool SkyBump(Vector2 m, Vector2 n) =>
+        SolidMap.FacesSky(SolidMap.SkyNear(m, SkyBlast + 0.5f, new CircleShape(m, SkyBlast)), m, n);
+
     // 画像に名前を書き込むための一覧 (はしごの両端・部屋の範囲)
     internal static readonly List<string> Notes = new();
 
@@ -84,11 +89,12 @@ internal static class TerrainReview
                         int ia = Beyond(m, n), ib = Beyond(m, -n);
                         if (ia == 0 && ib == 0) { kind = "lone"; color = Lone; }
                         else if (HeightLevels.Differs(m, n)) { kind = "ledge"; color = Ledge; }
-                        else if (ia == 0 || ib == 0 || SolidMap.FacesOutside(m, n))
+                        else if (ia == 0 || ib == 0 || SolidMap.FacesOutside(m, n) || SkyBump(m, n))
                         {
                             Vector2 back = ia == 0 ? n : -n;
                             bool thick = SolidMap.HasHull && SolidMap.InHull(m + back * 0.3f);
                             kind = thick ? "thick" : "outer"; color = thick ? Thick : Outer;
+                            if (ia != 0 && ib != 0 && !SolidMap.FacesOutside(m, n)) Notes.Add($"SKYBUMP {m.x:0.00} {m.y:0.00}");
                         }
                         else { kind = "breakable"; color = Breakable; }
                         if (ia != 0 && ib != 0)
