@@ -164,19 +164,29 @@ internal static class WaterArt
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
-    // 水を見せてよい画素か: 歩ける所か、左右 Undilate 升以内に歩ける所がある所。
-    // SolidMap は継ぎ目を塞ぐために壁の線を両側へ太らせてあり、そのままだと縦の壁の手前に乾いた帯が残る。
+    // 水を見せてよい画素か: 歩ける所か、左右 Undilate 升・下 UndilateDown 升・上 UndilateUp 升以内に歩ける所がある所。
+    // SolidMap は継ぎ目を塞ぐために壁の線を両側へ太らせてあり、そのままだと壁の手前に乾いた帯 (溝) が残る。
     // 太らせた幅までしか戻さないので、元の壁の線は越えない (向こう側の部屋へは描かない)。
-    // 上下には戻さない: 横の壁は当たり判定が絵の壁の際にあり、戻すと下の壁の上面や上の壁の面に水が掛かる
+    // 上の壁は当たり判定の線が床の絵の際より手前の所 (ミラの廊下) と、ロッカーのように絵が線より手前へ出ている所があり、
+    // 上へ 2 升戻すとロッカーの下に水が掛かるので 1 升だけ戻す
     private const int Undilate = 2;
+    private const int UndilateDown = 2;
+    private const int UndilateUp = 1;
 
     private static bool NearOpen(int sx, int sy, int sw)
     {
         int k = sy * sw + sx;
         if (SolidMap.OpenCell(k)) return true;
-        if (sx < Undilate || sx >= sw - Undilate) return false;
-        for (int d = 1; d <= Undilate; d++)
-            if (SolidMap.OpenCell(k + d) || SolidMap.OpenCell(k - d)) return true;
+        if (sx >= Undilate && sx < sw - Undilate)
+            for (int d = 1; d <= Undilate; d++)
+                if (SolidMap.OpenCell(k + d) || SolidMap.OpenCell(k - d)) return true;
+        // 下に歩ける所がある = 上の壁の手前の帯 / 上に歩ける所がある = 下の壁の手前の帯
+        if (sy >= UndilateUp)
+            for (int d = 1; d <= UndilateUp; d++)
+                if (SolidMap.OpenCell(k - d * sw)) return true;
+        if (sy < SolidMap.H - UndilateDown)
+            for (int d = 1; d <= UndilateDown; d++)
+                if (SolidMap.OpenCell(k + d * sw)) return true;
         return false;
     }
 
