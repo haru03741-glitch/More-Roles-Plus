@@ -81,6 +81,17 @@ public abstract class RoleBase
     //   public override Terrain.TerrainPermit TerrainPermit => Terrain.TerrainPermit.None.WithBomb(radius: 1.5f, cooldown: 20f);
     public virtual Terrain.TerrainPermit TerrainPermit => Terrain.TerrainPermit.None;
 
+    // 能力ボタン。OnAssigned の中で AddAbility する (全員の端末で作る。ボタンを出すのは自分の端末だけで、
+    // 他の端末ではホストが客の依頼を確かめるのに使う)。作り方は Ability を参照
+    internal readonly System.Collections.Generic.List<Ability> Abilities = new();
+
+    protected internal Ability AddAbility(Ability ability)
+    {
+        ability.Bind(this, Abilities.Count);
+        Abilities.Add(ability);
+        return ability;
+    }
+
     // 出現率と人数。設定画面の役職の欄の先頭に自動で付く
     internal IntOpt Chance;
     internal IntOpt Count;

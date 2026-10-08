@@ -99,6 +99,7 @@ public class Ticker : MonoBehaviour
         Terrain.TerrainSync.Tick();
         Net.VersionCheck.Tick();
         Roles.KillAbility.Tick();
+        Roles.Abilities.Tick();
         Roles.ModButton.TickAll();
         Roles.MeetingEndWatch.Tick();
         Bridge.TestBridge.Tick();

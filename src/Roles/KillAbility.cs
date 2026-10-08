@@ -85,7 +85,7 @@ internal static class KillAbility
         if (++_scan >= ScanEvery)
         {
             _scan = 0;
-            _target = ClosestTarget(lp);
+            _target = lp.CanMove ? Targeting.ClosestPlayer(lp, GameManager.Instance.LogicOptions.GetKillDistance()) : null;
         }
         float t = lp.killTimer;
         if (t > 0f && lp.CanMove)
@@ -106,33 +106,6 @@ internal static class KillAbility
         if (_local == null) return;
         var t = _target;
         target = t is not null && t && t.Data != null && !t.Data.IsDead ? t : null;
-    }
-
-    // キル距離以内で一番近い、生きていてベントや昇降機の中にいない、間に壁の無い人
-    private static PlayerControl ClosestTarget(PlayerControl lp)
-    {
-        if (!lp.CanMove) return null;
-        float reach = GameManager.Instance.LogicOptions.GetKillDistance();
-        float best = reach * reach;
-        Vector2 me = lp.GetTruePosition();
-        float mx = me.x, my = me.y;
-        PlayerControl pick = null;
-        var all = GameData.Instance.AllPlayers;
-        for (int i = 0; i < all.Count; i++)
-        {
-            var p = all[i];
-            if (p == null || p.Disconnected || p.IsDead || p.PlayerId == lp.PlayerId) continue;
-            var pc = p.Object;
-            if (!pc || pc.inVent || pc.inMovingPlat || !pc.Visible) continue;
-            Vector2 at = pc.GetTruePosition();
-            float dx = at.x - mx, dy = at.y - my;
-            float sq = dx * dx + dy * dy;
-            if (sq >= best) continue;
-            if (PhysicsHelpers.AnythingBetween(me, at, Constants.ShipAndObjectsMask, false)) continue;
-            best = sq;
-            pick = pc;
-        }
-        return pick;
     }
 
     private static float Cooldown() => GameManager.Instance.LogicOptions.GetKillCooldown();
@@ -197,11 +170,8 @@ internal static class KillAbility
         if (!Uses(role)) return "role";
         if (!target || target == killer || target.Data == null || target.Data.IsDead || target.Data.Disconnected) return "target";
         if (target.inVent || target.inMovingPlat) return "target busy";
-        float reach = GameManager.Instance.LogicOptions.GetKillDistance() + DistanceSlack;
-        Vector2 from = killer.GetTruePosition(), to = target.GetTruePosition();
-        float dx = to.x - from.x, dy = to.y - from.y;
-        if (dx * dx + dy * dy > reach * reach) return "far";
-        if (PhysicsHelpers.AnythingBetween(from, to, Constants.ShipAndObjectsMask, false)) return "wall";
+        string far = Targeting.Unreachable(killer, target, GameManager.Instance.LogicOptions.GetKillDistance() + DistanceSlack);
+        if (far != null) return far;
         // 前のキル (無ければ割り当て) からの経過。最初は試合の始めの待ち時間
         float cd = FirstCooldown;
         if (_killed[killer.PlayerId])

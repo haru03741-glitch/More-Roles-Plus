@@ -276,6 +276,23 @@ internal static class TerrainProbe
 
         TestBridge.Register("modbutton", "[番号] MRP の能力ボタンの一覧 (名前・待ち時間・表示) / 番号のボタンを押す (人が押したのと同じ道)", (args, reply) =>
             reply("OK modbutton " + Roles.ModButton.Probe(int.TryParse(args.Trim(), out int k) ? k : -1)));
+        TestBridge.Register("ability", "[番号 | test] 自分の役職の能力の一覧 (回数・待ち時間・狙い・ホストが最後に断った理由) / 番号の能力のボタンを押す / test = 近くの人を狙う確かめ用の能力を自分の役職に足す (ホストの端末で)", (args, reply) =>
+        {
+            if (args.Trim() == "test")
+            {
+                var role = Roles.RoleState.Local;
+                if (role == null) { reply("ERR ability no role (setrole first)"); return; }
+                role.AddAbility(new Roles.Ability(new Text("確かめ", "Test"), "bomb")
+                {
+                    Target = Roles.AbilityTarget.Player,
+                    Cooldown = () => 5f,
+                    MaxUses = () => 3,
+                    OnUsed = (u, t) => Plugin.Logger.LogInfo($"ability test used {u.PlayerId}->{t.PlayerId}"),
+                });
+                Roles.Abilities.OnAssigned(role);
+            }
+            reply("OK ability " + Roles.Abilities.Probe(int.TryParse(args.Trim(), out int k) ? k : -1));
+        });
 
         TestBridge.Register("terrainsync", "地形の同期の状態 (適用数・受けなかった依頼・指紋・客ごとの照合)", (args, reply) =>
         {
