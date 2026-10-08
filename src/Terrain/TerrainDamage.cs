@@ -118,6 +118,7 @@ internal static class TerrainDamage
             ? ConvexShape.Cone(e.Position, e.Size, e.Direction, p.ConeStretch * e.Force, p.ConeShrink * e.Force)
             : new CircleShape(e.Position, e.Size);
         LastBreach = 0f;
+        LastMouths.Clear();
         SkyCut.Clear();
         _skyAway = default;
         float ring = e.Size * (p.OuterRingScale - 1f);
@@ -230,9 +231,9 @@ internal static class TerrainDamage
         return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} props={props} breach={LastBreach:0.00} visual={visual ?? "ok"}";
     }
 
-    // 直前の爆発で外壁が宇宙まで抜けた時の穴の口の幅 (抜けなければ 0)
+    // 直前の爆発で外壁が宇宙まで抜けた時の穴の口の幅 (抜けなければ 0) と口の線 (曲がった壁では曲がり目で折った数本)
     internal static float LastBreach;
-    internal static Vector2 LastBreachA, LastBreachB;
+    internal static readonly List<(Vector2 A, Vector2 B)> LastMouths = new();
 
     // 外に面した壁か (面の中点から爆心と反対の向きへ、床を通らずに宇宙・空へ出る)。前の穴の蓋もこれなら切る
     private static bool HullFace(Vector2 a, Vector2 b, Vector2 blast)
@@ -266,18 +267,49 @@ internal static class TerrainDamage
             if (d > best) { best = d; a = SkyCut[i]; b = SkyCut[j]; }
         }
         if (best < SkyMouthMin * SkyMouthMin) return;
-        // 角をまたいで切った時は 2 点を結ぶ線が床を横切る。床の上には口を張らない (切った所を地図に足す前に呼ぶ)
-        // 壁の線の上の升は床に数えられることがあるので、外向きに少しずらした点で見る
+        // 角や曲がった外壁 (スケルドの食堂の上など) をまたいで切った時は 2 点を結ぶ線が床を横切る。
+        // 床の上には口を張らない (切った所を地図に足す前に呼ぶ) ので、線から一番離れた切った点で折って壁に沿わせる
         Vector2 aw = _skyAway.sqrMagnitude > 1e-6f ? _skyAway.normalized : default;
-        if (!SolidMap.Solid((a + b) * 0.5f + aw * 0.25f))
+        if (!MouthAlongWall(a, b, aw, 0))
         {
             Plugin.Logger.LogInfo($"[SkyMouth] line over floor {a.x:0.00},{a.y:0.00}-{b.x:0.00},{b.y:0.00}");
+            LastMouths.Clear();
             return;
         }
-        WallBody.BuildMouth(a, b);
+        if (LastMouths.Count > 1) Plugin.Logger.LogInfo($"[SkyMouth] bent mouth lines={LastMouths.Count}");
         LastBreach = MathF.Sqrt(best);
-        LastBreachA = a; LastBreachB = b;
-        if (SolidMap.BreachableHull) HullThroat.Open(a, b, aw); // スケルド: 口の奥の船体の絵を宇宙まで抜く
+        foreach (var (p, q) in LastMouths)
+        {
+            WallBody.BuildMouth(p, q);
+            if (SolidMap.BreachableHull) HullThroat.Open(p, q, aw); // スケルド: 口の奥の船体の絵を宇宙まで抜く
+        }
+    }
+
+    private const int MouthBends = 3;      // 口を折る深さ (最大 8 本)
+    private const float MouthBendMin = 0.05f;
+
+    // a-b が壁の上 (中点を外向きに少しずらした点が歩けない所) なら口に足す。床の上なら、線の間に落ちる切った点のうち
+    // 線から一番離れた点で 2 本に折る。壁の線の上の升は床に数えられることがあるので、外向きにずらして見る
+    private static bool MouthAlongWall(Vector2 a, Vector2 b, Vector2 aw, int depth)
+    {
+        if (SolidMap.Solid((a + b) * 0.5f + aw * 0.25f)) { LastMouths.Add((a, b)); return true; }
+        if (depth >= MouthBends) return false;
+        Vector2 d = b - a;
+        float len2 = d.sqrMagnitude;
+        if (len2 < 1e-8f) return false;
+        float bestD = MouthBendMin;
+        int bi = -1;
+        for (int i = 0; i < SkyCut.Count; i++)
+        {
+            Vector2 v = SkyCut[i] - a;
+            float t = (v.x * d.x + v.y * d.y) / len2;
+            if (t <= 0.02f || t >= 0.98f) continue;
+            float off = MathF.Round(MathF.Abs(v.x * d.y - v.y * d.x) / MathF.Sqrt(len2) * 256f) / 256f; // 端末ごとの計算の末尾の差で折る点が変わらないよう丸める
+            if (off > bestD) { bestD = off; bi = i; }
+        }
+        if (bi < 0) return false;
+        Vector2 c = SkyCut[bi];
+        return MouthAlongWall(a, c, aw, depth + 1) && MouthAlongWall(c, b, aw, depth + 1);
     }
 
     // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。

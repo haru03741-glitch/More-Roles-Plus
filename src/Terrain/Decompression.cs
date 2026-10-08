@@ -60,7 +60,7 @@ internal static class Decompression
     {
         public int Tick;
         public bool Rebuild;      // 爆発で歩ける所が変わった (升を作り直す)
-        public Vector2 A, B;      // 開通した口 (Rebuild でない時)
+        public List<(Vector2 A, Vector2 B)> Lines; // 開通した口 (Rebuild でない時・曲がった壁では数本)
     }
 
     private static int _shipGen;
@@ -124,12 +124,12 @@ internal static class Decompression
             float w = TerrainDamage.LastBreach;
             if (_running) Enqueue(new Pending { Tick = tick, Rebuild = true });
             if (w <= 0f) return;
-            Open(tick, TerrainDamage.LastBreachA, TerrainDamage.LastBreachB);
+            Open(tick, new List<(Vector2, Vector2)>(TerrainDamage.LastMouths));
         }
         catch (Exception e) { Fail("apply", e); }
     }
 
-    private static void Open(int tick, Vector2 a, Vector2 b)
+    private static void Open(int tick, List<(Vector2, Vector2)> lines)
     {
         if (!_running)
         {
@@ -138,7 +138,7 @@ internal static class Decompression
             _step = Math.Min(tick, GameClock.Now - Delay);
             Build();
         }
-        Enqueue(new Pending { Tick = tick, A = a, B = b });
+        Enqueue(new Pending { Tick = tick, Lines = lines });
     }
 
     private static void Enqueue(Pending p)
@@ -522,7 +522,7 @@ internal static class Decompression
         {
             var p = Queue[0];
             Queue.RemoveAt(0);
-            if (!p.Rebuild) AddMouth(p.A, p.B);
+            if (!p.Rebuild) AddMouth(p.Lines);
             rebuild = true;
         }
         ulong bits = BitsAt(_step);
@@ -564,28 +564,41 @@ internal static class Decompression
     }
 
     // 開いている口の近くなら同じ穴を広げた物 (幅 = 口の端どうしのいちばん遠い 2 点)。それ以外は新しい穴
-    private static void AddMouth(Vector2 a, Vector2 b)
+    private static void AddMouth(List<(Vector2 A, Vector2 B)> lines)
     {
+        if (lines == null || lines.Count == 0) return;
         foreach (var br in Breaches)
         {
             if (br.Sealed) continue;
             bool near = false;
-            foreach (var (c, d) in br.Lines) if (SegSeg(a, b, c, d) <= MergeReach) { near = true; break; }
+            foreach (var (a, b) in lines)
+            {
+                foreach (var (c, d) in br.Lines) if (SegSeg(a, b, c, d) <= MergeReach) { near = true; break; }
+                if (near) break;
+            }
             if (!near) continue;
-            br.Lines.Add((a, b));
-            float best = 0f;
-            var pts = new List<Vector2>();
-            foreach (var (c, d) in br.Lines) { pts.Add(c); pts.Add(d); }
-            for (int i = 0; i < pts.Count; i++)
-            for (int j = i + 1; j < pts.Count; j++) best = MathF.Max(best, (pts[i] - pts[j]).sqrMagnitude);
-            br.W256 = Math.Min(MaxWidth256, (int)(MathF.Sqrt(best) * 256f));
+            br.Lines.AddRange(lines);
+            br.W256 = Math.Min(MaxWidth256, (int)(Span(br.Lines) * 256f));
             return;
         }
-        int w = (int)((b - a).magnitude * 256f);
+        int w = (int)(Span(lines) * 256f);
         if (w < MinWidth256) return;
         var nb = new Breach { Start = _step, W256 = Math.Min(MaxWidth256, w) };
-        nb.Lines.Add((a, b));
+        nb.Lines.AddRange(lines);
         Breaches.Add(nb);
+    }
+
+    // 口の線の端どうしのいちばん遠い 2 点の距離
+    private static float Span(List<(Vector2 A, Vector2 B)> lines)
+    {
+        float best = 0f;
+        for (int i = 0; i < lines.Count * 2; i++)
+        for (int j = i + 1; j < lines.Count * 2; j++)
+        {
+            Vector2 p = (i & 1) == 0 ? lines[i >> 1].A : lines[i >> 1].B, q = (j & 1) == 0 ? lines[j >> 1].A : lines[j >> 1].B;
+            best = MathF.Max(best, (p - q).sqrMagnitude);
+        }
+        return MathF.Sqrt(best);
     }
 
     internal static uint Digest()
@@ -861,7 +874,7 @@ internal static class Decompression
                 if (a.Length < 5) { reply("ERR decomp breach x1 y1 x2 y2"); return; }
                 var p1 = new Vector2(Num(a[1]), Num(a[2]));
                 var p2 = new Vector2(Num(a[3]), Num(a[4]));
-                Open(GameClock.Now, p1, p2);
+                Open(GameClock.Now, new List<(Vector2, Vector2)> { (p1, p2) });
                 reply(_running ? $"OK decomp breach queued at {GameClock.Now} width={(p2 - p1).magnitude:0.00}" : "ERR decomp no solid map");
                 return;
             }
