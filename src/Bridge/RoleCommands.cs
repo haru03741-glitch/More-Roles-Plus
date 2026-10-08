@@ -178,7 +178,7 @@ internal static class RoleCommands
             reply($"OK viewsettings {LobbyView.Open(tab, max)}");
         });
 
-        TestBridge.Register("rolemenu", "[q <語> | team <-1|0|1|2> | only | scroll <0〜1> | open <役職Id> | press <役職Id> <count|chance> <+1|-1>] 設定画面の役職タブを操作して、見えている行を返す", (args, reply) =>
+        TestBridge.Register("rolemenu", "[q <語> | team <-1|0|1|2> | only | scroll <0〜1> | open <役職Id> | step <役職Id> <n> <+1|-1> | press <役職Id> <count|chance> <+1|-1>] 設定画面の役職タブを操作して、見えている行を返す", (args, reply) =>
             reply("OK rolemenu " + RoleMenu.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
         TestBridge.Register("uitree", "<chat|menu|page|GameObject のパス> [深さ=3] 画面の部品の階層 (位置・大きさ・部品の種類・有効か)", (args, reply) =>

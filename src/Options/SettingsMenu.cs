@@ -142,6 +142,8 @@ internal static class SettingsMenu
         }
         // MRP のボタンは本編のボタンを複製して作るので、本編の方を縮めるのは複製の後
         for (int i = 0; i < vanilla.Length; i++) Compact(vanilla[i], At(LeftColumnX, FirstRowY + i * RowStepY), scale);
+        // 本編の役職は MRP の役職タブに並ぶので、本編の役職のタブは出さない
+        if (Pages.Exists(p => p.Roles)) menu.RoleSettingsButton.gameObject.SetActive(false);
     }
 
     // ボタンを小さくする。文字は横だけ潰れないよう縦横の縮みを揃え、はみ出す分は自動で小さくする
@@ -283,11 +285,11 @@ internal static class SettingsMenu
     internal static OptionBehaviour MakeRow(GameOptionsMenu m, Opt opt)
     {
         EnsureData();
-        OptionBehaviour row = opt is BoolOpt
+        OptionBehaviour row = opt.IsToggle
             ? Object.Instantiate(m.checkboxOrigin, m.settingsContainer)
             : Object.Instantiate(m.numberOptionOrigin, m.settingsContainer);
         row.SetClickMask(m.ButtonClickMask);
-        row.SetUpFromData(opt is BoolOpt ? _checkData : _numberData, 20);
+        row.SetUpFromData(opt.IsToggle ? _checkData : _numberData, 20);
         Rows[row.Pointer] = opt;
         Refresh(row, opt);
         return row;
@@ -317,6 +319,7 @@ internal static class SettingsMenu
 
     public static void Refresh(OptionBehaviour row, Opt opt)
     {
+        opt.Sync();
         var num = row.TryCast<NumberOption>();
         if (num != null)
         {
@@ -349,6 +352,7 @@ internal static class SettingsMenu
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
         Registry.Save();
         OptionSync.SendAll();
+        Roles.Builtin.VanillaRoles.OnMenuClosed();
     }
 }
 

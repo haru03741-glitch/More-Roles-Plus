@@ -35,7 +35,9 @@ internal static class LobbyView
         var roles = pane.rolesTabButton;
         var btn = Object.Instantiate(roles, roles.transform.parent);
         btn.name = ButtonName;
-        btn.transform.localPosition = roles.transform.localPosition + (roles.transform.localPosition - task.transform.localPosition);
+        // 本編の役職は MRP の一覧に並ぶので、本編の役職のタブの場所に MRP のタブを置く
+        btn.transform.localPosition = roles.transform.localPosition;
+        roles.gameObject.SetActive(false);
         var label = btn.buttonText;
         var tr = label.GetComponent<TextTranslatorTMP>();
         if (tr) Object.Destroy(tr);
@@ -82,6 +84,7 @@ internal static class LobbyView
             return;
         }
 
+        Roles.Builtin.VanillaRoles.EnsureSettings();
         foreach (var tab in TabOrder)
         {
             foreach (var sec in Registry.SectionsOf(tab))
@@ -125,7 +128,8 @@ internal static class LobbyView
         var p = Object.Instantiate(pane.infoPanelOrigin, pane.settingsContainer);
         p.transform.localScale = Vector3.one;
         p.transform.localPosition = new Vector3(x, y, -2f);
-        if (opt is BoolOpt b) p.SetInfoCheckbox(StringNames.Accept, MaskLayer, b.Value);
+        opt.Sync();
+        if (opt.IsToggle) p.SetInfoCheckbox(StringNames.Accept, MaskLayer, opt.Index != 0);
         else p.SetInfo(StringNames.Accept, opt.Display(), MaskLayer);
         p.titleText.text = opt.Label;
         pane.settingsInfo.Add(p.gameObject);

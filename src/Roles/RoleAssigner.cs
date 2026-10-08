@@ -56,7 +56,8 @@ public static class RoleState
         Abilities.OnAssigned(role);
         // アドオンは役職の後 (役職の OnAssigned で作った物を前提にできるように)
         AttachAddons(p, addonProtos, role.Lifespan);
-        RoleDisplay.OnAssigned(role);
+        if (role.IsVanilla) RoleDisplay.OnAddonsOnly(p);
+        else RoleDisplay.OnAssigned(role);
         if (Dev.DevGod.On) Dev.DevGod.Refresh();
     }
 
@@ -171,7 +172,7 @@ public static class AssignPlan
         {
             var r = Registry.Roles[i];
             int chance = r.Chance;
-            if (chance <= 0) continue;
+            if (chance <= 0 || !Usable(r)) continue;
             for (int k = 0; k < r.Count.Value; k++)
             {
                 if (chance >= 100) sure.Add(i);
@@ -272,7 +273,7 @@ public static class AssignPlan
             for (int i = 0; i < Registry.Roles.Count; i++)
             {
                 var r = Registry.Roles[i];
-                if (r.Chance <= 0 || taken[i] >= r.Count.Value) continue;
+                if (r.Chance <= 0 || taken[i] >= r.Count.Value || !Usable(r)) continue;
                 if (fill == 1 && r.Team == Team.Neutral) continue;
                 pool.Add(i);
             }
@@ -294,9 +295,12 @@ public static class AssignPlan
             }
         }
 
-        AssignAddons(roster, plan, rng);
+        if (RoleSettings.Enabled) AssignAddons(roster, plan, rng);
         return plan;
     }
+
+    // 配り方で配ってよい役職。幽霊になってから付く役職は本編が配る。MRP の役職を切った時は本編の役職だけ
+    private static bool Usable(RoleBase r) => !r.AssignedOnDeath && (r.IsVanilla || RoleSettings.Enabled);
 
     // 同時に出ない組 (どちらの側に書いてあっても)
     private static bool Conflicts(RoleBase role, List<RoleBase> chosen)
@@ -423,13 +427,10 @@ internal static class RoleAssigner
     public static void AssignAndSend()
     {
         OptionSync.RestoreOwn();
-        var plan = new List<Pick>();
-        if (RoleSettings.Enabled)
-        {
-            int seed = Rng.Next();
-            plan = AssignPlan.Decide(Roster(), new Random(seed), Reserved);
-            Plugin.Logger.LogInfo($"roles: seed {seed}");
-        }
+        // 本編の役職も MRP が配る (MRP の役職を切っていても本編の役職は配る)
+        int seed = Rng.Next();
+        var plan = AssignPlan.Decide(Roster(), new Random(seed), Reserved);
+        Plugin.Logger.LogInfo($"roles: seed {seed}");
         Reserved.Clear();
 
         // 役職の処理が設定値を読むので、配る前に揃える (1 通にまとめて順番どおり届ける)
@@ -546,11 +547,31 @@ internal static class RoleAssigner
 [HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SelectRoles))]
 internal static class SelectRolesPatch
 {
+    // 本編には陣営 (クルー / インポスター) だけを決めさせる
+    public static void Prefix()
+    {
+        if (!AmongUsClient.Instance.AmHost) return;
+        try { Builtin.VanillaRoles.PrepareVanillaSelection(); }
+        catch (Exception e) { Plugin.Logger.LogError($"vanilla role rates: {e}"); }
+    }
+
     public static void Postfix()
     {
         if (!AmongUsClient.Instance.AmHost) return;
         try { RoleAssigner.AssignAndSend(); }
         catch (Exception e) { Plugin.Logger.LogError($"role assignment failed: {e}"); }
+    }
+}
+
+// Based on https://github.com/AU-Avengers/TOU-Mira TownOfUs/Patches/RoleManagerPatches.cs SetRolePatch (GPL-3.0)
+// 本編の役職の付け直し (RpcSetRole の「上書き可」) を効かせる。本編は一度役職が決まった人には
+// 上書き可でも付け直さないので、上書き可の時だけ決まった印を外す。全員の端末で受け取った時にも通る
+[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CoSetRole))]
+internal static class OverrideRolePatch
+{
+    public static void Prefix(PlayerControl __instance, [HarmonyArgument(1)] bool canOverride)
+    {
+        if (canOverride) __instance.roleAssigned = false;
     }
 }
 

@@ -17,7 +17,9 @@ internal static class Registry
     // 設定画面の見出し 1 つ分
     internal sealed class Section
     {
-        public Text Title;
+        private Text _title;
+        // 役職・アドオンの見出しは役職の名前 (本編の役職は言語の設定で変わるので毎回引く)
+        public Text Title { get => Role != null ? Role.Name : _title; set => _title = value; }
         public string Color;   // 見出しの色 (null なら既定)
         public Assignable Role;  // 役職・アドオンの見出しなら、その物
         public readonly List<Opt> Opts = new();

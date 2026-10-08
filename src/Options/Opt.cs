@@ -38,11 +38,22 @@ public abstract class Opt
     // 左右のボタン。数値は端で止まる (押しすぎて反対の端へ飛ばないように)。ON/OFF と文字の選択肢は回る
     internal void Step(int delta)
     {
+        Sync();
         int n = Count;
         Index = Wraps ? ((Index + delta) % n + n) % n : Math.Clamp(Index + delta, 0, n - 1);
+        OnStepped();
     }
 
     protected virtual bool Wraps => false;
+
+    // 値を外 (本編の設定) に持つ項目が Index を読み直す。Index を画面に出す前に呼ぶ
+    internal virtual void Sync() { }
+
+    // 設定画面で押されて値が変わった後 (本編の設定へ書き写す項目が使う)
+    protected virtual void OnStepped() { }
+
+    // ON/OFF の行 (チェックの行) で出すか
+    internal virtual bool IsToggle => false;
 
     internal void SetIndex(int index)
     {
@@ -64,6 +75,7 @@ public sealed class BoolOpt : Opt
     public bool Value => Index != 0;
     internal override int Count => 2;
     protected override bool Wraps => true;
+    internal override bool IsToggle => true;
     internal override string Display() => Value ? "ON" : "OFF";
 
     public static implicit operator bool(BoolOpt o) => o.Value;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes;
 using MoreRolesPlus.Roles;
+using MoreRolesPlus.Roles.Builtin;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
@@ -147,6 +148,7 @@ internal static class RoleMenu
     {
         Forget();
         _page = m;
+        VanillaRoles.EnsureSettings();
         BuildBand(m, menu);
 
         var origin = menu.RoleSettingsTab ? menu.RoleSettingsTab.roleOptionSettingOrigin : null;
@@ -718,6 +720,15 @@ internal static class RoleMenu
             case "open":
                 if (a.Length > 1) OnNameClick(a[1]);
                 break;
+            case "step":
+                // step <Id> <細かい設定の番号> <+1|-1> (開いた役職の行の ± を押すのと同じ)
+                if (a.Length < 4 || !ById.TryGetValue(a[1], out var sr) || !int.TryParse(a[2], out int si) || si < 0 || si >= sr.Opts.Count || !int.TryParse(a[3], out int sd))
+                    return "step <Id> <n> <+1|-1>";
+                var srow = sr.Opts[si].Row;
+                var snum = srow.TryCast<NumberOption>();
+                if (snum != null) { if (sd > 0) snum.Increase(); else snum.Decrease(); }
+                else srow.TryCast<ToggleOption>()?.Toggle();
+                break;
             case "press":
                 // press <Id> <count|chance> <+1|-1>
                 if (a.Length < 4 || !ById.TryGetValue(a[1], out var pr) || !int.TryParse(a[3], out int d)) return "press <Id> <count|chance> <+1|-1>";
@@ -735,7 +746,7 @@ internal static class RoleMenu
             {
                 if (!r.Row || !r.Row.gameObject.activeSelf) continue;
                 sb.Append($" {r.Role.Id}({r.Row.countText.text},{r.Row.chanceText.text}{(IsOpen(r) ? ",open" : "")})");
-                foreach (var o in r.Opts) if (o.Row && o.Row.gameObject.activeSelf) sb.Append($" >{o.Opt.Key.Substring(o.Opt.Key.IndexOf('.') + 1)}");
+                foreach (var o in r.Opts) if (o.Row && o.Row.gameObject.activeSelf) sb.Append($" >{o.Opt.Key.Substring(o.Opt.Key.IndexOf('.') + 1)}={o.Opt.Display()}");
             }
         }
         if (_empty && _empty.gameObject.activeSelf) sb.Append(" (empty)");

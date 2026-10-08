@@ -39,6 +39,12 @@ public abstract class RoleBase : Assignable
     // 本編のどの役職の上に乗るか (ベントを使うなら Engineer など)。既定はクルー / インポスター
     public virtual RoleTypes BaseRole => Team == Team.Impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
 
+    // 本編の役職そのもの (Roles/Builtin)。表示は本編に任せる
+    internal virtual bool IsVanilla => false;
+
+    // 幽霊になってから本編が配る役職 (MRP の配り方では配らない)
+    internal virtual bool AssignedOnDeath => false;
+
     // 付いているアドオン (割り当て後・付いた順)
     public System.Collections.Generic.IReadOnlyList<AddonBase> Addons => RoleState.AddonsOf(PlayerId);
 

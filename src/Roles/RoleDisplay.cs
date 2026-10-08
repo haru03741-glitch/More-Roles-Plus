@@ -37,6 +37,9 @@ internal static class RoleDisplay
         catch (Exception e) { Plugin.Logger.LogWarning($"task header: {e.Message}"); }
     }
 
+    // 自分の役職のうち MRP が表示する物 (本編の役職は本編の表示のまま)
+    private static RoleBase Shown => RoleState.Local is { IsVanilla: false } r ? r : null;
+
     // 自分に表示する役職かアドオンがあるか
     internal static bool HasLocal()
     {
@@ -102,7 +105,7 @@ internal static class RoleDisplay
     // 本編はタスクを配り直すたびに一覧を作り直すので、配り終わった後にも呼ぶ (SetTasksPatch)
     public static void EnsureTaskHeader(PlayerControl p)
     {
-        var role = RoleState.Local;
+        var role = Shown;
         if (!p || !p.AmOwner || p.myTasks == null) return;
         if (role == null && RoleState.AddonsOf(p.PlayerId).Count == 0) return;
         if (!_header)
@@ -183,7 +186,7 @@ internal static class RoleDisplay
 
     public static void ApplyIntro(IntroCutscene intro)
     {
-        var role = RoleState.Local;
+        var role = Shown;
         if (!intro) return;
         if (role == null)
         {
