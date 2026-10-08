@@ -1,46 +1,51 @@
 using System;
 using System.Collections.Generic;
 using MoreRolesPlus.Bridge;
-using MoreRolesPlus.Fx;
 using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
 
-// 外壁の穴の補修フォームの見た目。口の線の両端から泡の粒が膨らみ、FoamTime (2.5 秒) で中央まで埋まる。
-// 膨らむ間は濡れた明るいクリーム色で艶があり、ふさがる頃に乾いたくすんだ色へ変わって、ふさがった後も跡として残る。
+// 外壁の穴の補修フォームの見た目。口の線の両端から吹き付けが中央へ進み、届いた所から泡が膨らんで 1 つの塊になる。
+// 粒を並べるのでなく、泡の玉の場 (メタボール) から 1 枚の絵を描く: 高さから法線を出して左上から光を当て、
+// 濡れている間はクリーム色に鋭い艶、固まると黄土色にくすんで艶が消え、表面の気泡の穴が見える。縁は本編の絵柄に合わせて濃い輪郭線。
 // ふさがる時刻は Decompression の刻み (全員同じ) で決まり、見た目はそこから手元の時計で滑らかに進める。物がふさいだ口には出さない。
-// 重ね方 (奥から): 暗い下地 → 泡の粒 (陰影を焼いた絵) → 白い艶
+// 絵を描き直すのは膨らんで固まるまでの数秒だけ (その後は止める)
 internal static class FoamArt
 {
-    private const float Spacing = 0.15f;        // 線に沿った粒の間隔
-    private const int MaxBlobs = 220;
-    private const float GrowShare = 0.38f;      // 1 粒が膨らみ切るまで (FoamTime に対する割合)
-    private const float SpreadShare = 0.5f;     // 端から中央の粒が膨らみ始めるまで
-    private const float CureFrom = 0.7f;        // ここから乾いた色へ
+    private const int Ppu = 64;                // 絵の細かさ (1 単位あたりの画素)
+    private const float Pad = 0.15f;           // 口の両端からはみ出して壁の切り株にかぶさる
+    private const float Spacing = 0.13f;       // 玉の間隔
+    private const float SprayShare = 0.55f;    // 端から中央に吹き付けが届くまで (FoamTime に対する割合)
+    private const float GrowShare = 0.3f;      // 1 つの玉が膨らみ切るまで
+    private const float CureFrom = 0.75f, CureTo = 1.6f; // 乾き始めと固まり終わり
+    private const int MaxLen = 8;              // 絵の長さの上限 (単位)
 
-    private sealed class Blob
+    private sealed class Ball
     {
-        public Transform Tf, ShadowTf, ShineTf;
-        public SpriteRenderer Sr, Shine;
-        public float X, Y, Z, Size, Start, Phase, Tint;
-        public bool Done;
+        public float U, V, R, Start;
+    }
+
+    private sealed class Plug
+    {
+        public readonly List<Ball> Balls = new();
+        public Texture2D Tex;
+        public byte[] Px;
+        public float[] F;
+        public byte[] Pores;
+        public int W, H;
+        public float U0, V0;
     }
 
     private sealed class Foam
     {
-        public readonly List<Blob> Blobs = new();
-        public float T0;                        // 手元の時計での膨らみ始め
+        public readonly List<Plug> Plugs = new();
+        public float T0;                       // 手元の時計での吹き付け始め
         public bool Done;
     }
 
     private static readonly Dictionary<Decompression.Breach, Foam> Foams = new();
     private static GameObject _root;
     private static int _shipGen = -1, _failedGen = -2;
-    private static Sprite[] _blobSprites;
-    private static Sprite _shineSprite;
-
-    private static readonly Color WetColor = new(1f, 0.96f, 0.8f, 1f);
-    private static readonly Color DryColor = new(0.86f, 0.8f, 0.63f, 1f);
 
     public static void Tick()
     {
@@ -83,7 +88,12 @@ internal static class FoamArt
             }
             if (f.Done) continue;
             if (now < 0f) now = Time.time;
-            Animate(f, (now - f.T0) / (Decompression.FoamTime / (float)GameClock.Hz));
+            float p = (now - f.T0) / (Decompression.FoamTime / (float)GameClock.Hz);
+            bool last = p >= CureTo;
+            // ふさがった後の乾いていく間は変化が小さいので 4 フレームに 1 回
+            if (p >= 1f && !last && (Time.frameCount & 3) != 0) continue;
+            foreach (var plug in f.Plugs) Draw(plug, p, last);
+            if (last) f.Done = true;
         }
     }
 
@@ -95,115 +105,207 @@ internal static class FoamArt
         foreach (var (a, b) in br.Lines)
         {
             float dx = b.x - a.x, dy = b.y - a.y, len = MathF.Sqrt(dx * dx + dy * dy);
-            if (len < 0.05f) continue;
+            if (len < 0.05f || len > MaxLen) continue;
             float ux = dx / len, uy = dy / len;
-            // 船の中を向く法線 (線の中点から少し離れた点が宇宙でなく歩ける側)
+            // 宇宙・空の側を向く法線 (口の中点から床を通らずに外へ出る側)
             float nx = -uy, ny = ux;
-            float mx = (a.x + b.x) * 0.5f, my = (a.y + b.y) * 0.5f;
-            float px = mx + nx * 0.35f, py = my + ny * 0.35f, qx = mx - nx * 0.35f, qy = my - ny * 0.35f;
-            bool inP = !SolidMap.BareSky(px, py) && Decompression.InsideAt(FxMath.V2(px, py));
-            bool inQ = !SolidMap.BareSky(qx, qy) && Decompression.InsideAt(FxMath.V2(qx, qy));
-            if (!inP && inQ) { nx = -nx; ny = -ny; }
-            int n = Math.Max(3, (int)MathF.Ceiling(len / Spacing) + 1);
-            // 列: 線の上 (宇宙側へ少しはみ出す)・船の中へ 1 段・まばらな垂れ
-            AddRow(f, rnd, a, ux, uy, nx, ny, len, n, -0.03f, 0.28f, 1f);
-            AddRow(f, rnd, a, ux, uy, nx, ny, len, n, 0.14f, 0.26f, 1f);
-            AddRow(f, rnd, a, ux, uy, nx, ny, len, n, 0.3f, 0.2f, 0.8f);
-            AddRow(f, rnd, a, ux, uy, nx, ny, len, Math.Max(2, n / 2), 0.43f, 0.13f, 0.5f);
+            var mid = new Vector2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+            bool outP = SolidMap.SkyAhead(mid, new Vector2(nx, ny), TerrainDamage.BreachReach);
+            bool outQ = SolidMap.SkyAhead(mid, new Vector2(-nx, -ny), TerrainDamage.BreachReach);
+            bool flip = !outP && outQ;
+            f.Plugs.Add(MakePlug(rnd, a, ux, uy, flip, len));
         }
-        Plugin.Logger.LogInfo($"[FoamArt] foam start={br.Start} blobs={f.Blobs.Count} lines={br.Lines.Count}");
+        Plugin.Logger.LogInfo($"[FoamArt] foam start={br.Start} plugs={f.Plugs.Count} lines={br.Lines.Count}");
         return f;
     }
 
-    private static void AddRow(Foam f, System.Random rnd, Vector2 a, float ux, float uy, float nx, float ny, float len, int n, float off, float size, float chance)
+    private static Plug MakePlug(System.Random rnd, Vector2 a, float ux, float uy, bool flip, float len)
     {
-        for (int i = 0; i < n && f.Blobs.Count < MaxBlobs; i++)
-        {
-            if (chance < 1f && rnd.NextDouble() > chance) continue;
-            float t = n == 1 ? 0.5f : i / (float)(n - 1);
-            float along = t * len + ((float)rnd.NextDouble() - 0.5f) * Spacing * 0.5f;
-            float side = off + ((float)rnd.NextDouble() - 0.5f) * 0.05f;
-            float x = a.x + ux * along + nx * side, y = a.y + uy * along + ny * side;
-            float edge = MathF.Min(t, 1f - t) * 2f;   // 0 = 端・1 = 中央
-            var bl = new Blob
-            {
-                X = x,
-                Y = y,
-                Z = y / 1000f - 0.0004f,
-                Size = size * (0.8f + 0.4f * (float)rnd.NextDouble()),
-                Start = edge * SpreadShare + (float)rnd.NextDouble() * 0.05f + MathF.Max(0f, off) * 0.3f,
-                Phase = (float)rnd.NextDouble() * 6.28f,
-                Tint = 0.93f + 0.07f * (float)rnd.NextDouble(),
-            };
-            Make(bl, rnd.Next(_blobSprites.Length));
-            f.Blobs.Add(bl);
-        }
-    }
+        var pl = new Plug();
+        // 玉: 口の線の上と船の中の側に 3 列 + 船の中の縁から盛り上がる小さな玉
+        AddRow(pl, rnd, len, 0.2f, 0.09f, 0.7f);
+        AddRow(pl, rnd, len, 0.12f, 0.15f, 1f);
+        AddRow(pl, rnd, len, 0.0f, 0.17f, 1f);
+        AddRow(pl, rnd, len, -0.13f, 0.15f, 1f);
+        AddRow(pl, rnd, len, -0.24f, 0.08f, 0.55f);
 
-    private static void Make(Blob bl, int variant)
-    {
+        // 絵の範囲 = 玉が膨らみ切った大きさ (1.1 倍) が収まる所 + 落ち影の分
+        float u0 = 0f, u1 = len, v0 = 0f, v1 = 0f;
+        foreach (var bl in pl.Balls)
+        {
+            float r = bl.R * 1.15f;
+            u0 = MathF.Min(u0, bl.U - r); u1 = MathF.Max(u1, bl.U + r);
+            v0 = MathF.Min(v0, bl.V - r); v1 = MathF.Max(v1, bl.V + r);
+        }
+        pl.U0 = u0 - 0.08f; pl.V0 = v0 - 0.08f;
+        pl.W = (int)MathF.Ceiling((u1 - u0 + 0.16f) * Ppu);
+        pl.H = (int)MathF.Ceiling((v1 - v0 + 0.16f) * Ppu);
+        pl.Px = new byte[pl.W * pl.H * 4];
+        pl.F = new float[pl.W * pl.H];
+        // 表面の気泡の穴 (固まると見える): 半径 0.6〜1.4 画素の柔らかい丸をまばらに
+        pl.Pores = new byte[pl.W * pl.H];
+        int pores = pl.W * pl.H / 70;
+        for (int i = 0; i < pores; i++)
+        {
+            float cx = (float)rnd.NextDouble() * pl.W, cy = (float)rnd.NextDouble() * pl.H;
+            float r = 0.6f + 0.8f * (float)rnd.NextDouble(), dark = 0.5f + 0.5f * (float)rnd.NextDouble();
+            for (int y = Math.Max(0, (int)(cy - r - 1)); y < Math.Min(pl.H, (int)(cy + r + 2)); y++)
+            for (int x = Math.Max(0, (int)(cx - r - 1)); x < Math.Min(pl.W, (int)(cx + r + 2)); x++)
+            {
+                float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+                float pa = Math.Clamp(r + 0.5f - MathF.Sqrt(dx * dx + dy * dy), 0f, 1f) * dark;
+                int k = y * pl.W + x;
+                pl.Pores[k] = (byte)Math.Max(pl.Pores[k], (int)(pa * 255f));
+            }
+        }
+
+        pl.Tex = GameClock.Ship.Bind(new Texture2D(pl.W, pl.H, TextureFormat.RGBA32, false) { name = "MrpFoam" });
+        pl.Tex.filterMode = FilterMode.Bilinear;
+        pl.Tex.wrapMode = TextureWrapMode.Clamp;
+        Upload(pl);
+        var sp = GameClock.Ship.Bind(Sprite.Create(pl.Tex, new Rect(0, 0, pl.W, pl.H),
+            new Vector2(-pl.U0 * Ppu / pl.W, -pl.V0 * Ppu / pl.H), Ppu));
         var go = new GameObject("MrpFoam") { layer = 0 };
         go.transform.SetParent(_root.transform, false);
-        bl.Tf = go.transform;
-        bl.Sr = go.AddComponent<SpriteRenderer>();
-        bl.Sr.sprite = _blobSprites[variant];
-        bl.Sr.color = WetColor;
-        bl.Tf.position = FxMath.V3(bl.X, bl.Y, bl.Z);
-        bl.Tf.localRotation = FxMath.RotZ(bl.Phase * 57f);
-        bl.Tf.localScale = FxMath.V3(0f, 0f, 1f);
-
-        var sh = new GameObject("MrpFoamShade") { layer = 0 };
-        sh.transform.SetParent(_root.transform, false);
-        bl.ShadowTf = sh.transform;
-        var ssr = sh.AddComponent<SpriteRenderer>();
-        ssr.sprite = _blobSprites[variant];
-        ssr.color = FxMath.Rgba(0.1f, 0.08f, 0.05f, 0.4f);
-        bl.ShadowTf.position = FxMath.V3(bl.X + 0.015f, bl.Y - 0.03f, bl.Z + 0.0002f);
-        bl.ShadowTf.localScale = FxMath.V3(0f, 0f, 1f);
-
-        var sn = new GameObject("MrpFoamShine") { layer = 0 };
-        sn.transform.SetParent(_root.transform, false);
-        bl.ShineTf = sn.transform;
-        bl.Shine = sn.AddComponent<SpriteRenderer>();
-        bl.Shine.sprite = _shineSprite;
-        bl.Shine.color = FxMath.Rgba(1f, 1f, 1f, 0.85f);
-        bl.ShineTf.localScale = FxMath.V3(0f, 0f, 1f);
+        // 奥行きは口の線より少し奥 (口の手前まで吸い寄せられた人が泡の前に来る)
+        go.transform.position = new Vector3(a.x, a.y, (a.y + uy * len * 0.5f + 0.1f) / 1000f);
+        go.transform.localRotation = Quaternion.Euler(0f, 0f, MathF.Atan2(uy, ux) * 57.29578f);
+        go.transform.localScale = new Vector3(1f, flip ? -1f : 1f, 1f);
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = sp;
+        // 壁と同じ影の掛かり方にする (Sprites/Default だと、下に部屋の絵がある所だけ影の板が掛かり、喉の上だけ明るく浮く)
+        var mat = DamageMap.WallLikeMaterial;
+        if (mat) sr.sharedMaterial = mat;
+        return pl;
     }
 
-    // p = 膨らみ始めからの経過 / FoamTime
-    private static void Animate(Foam f, float p)
+    private static void AddRow(Plug pl, System.Random rnd, float len, float v, float r, float chance)
     {
-        bool all = true;
-        float cure = FxMath.Clamp01((p - CureFrom) / (1f - CureFrom));
-        float r = WetColor.r + (DryColor.r - WetColor.r) * cure;
-        float g = WetColor.g + (DryColor.g - WetColor.g) * cure;
-        float b = WetColor.b + (DryColor.b - WetColor.b) * cure;
-        float shineA = 0.85f - 0.65f * cure;
-        foreach (var bl in f.Blobs)
+        int n = Math.Max(2, (int)MathF.Ceiling((len + 2f * Pad) / Spacing) + 1);
+        for (int i = 0; i < n; i++)
         {
-            if (bl.Done) continue;
+            if (chance < 1f && rnd.NextDouble() > chance) continue;
+            float u = -Pad + (len + 2f * Pad) * i / (n - 1) + ((float)rnd.NextDouble() - 0.5f) * Spacing * 0.6f;
+            float edge = Math.Clamp(MathF.Min(u, len - u) / (len * 0.5f), 0f, 1f); // 0 = 端・1 = 中央
+            pl.Balls.Add(new Ball
+            {
+                U = u,
+                V = v + ((float)rnd.NextDouble() - 0.5f) * 0.1f,
+                R = r * (0.7f + 0.6f * (float)rnd.NextDouble()),
+                Start = edge * SprayShare + (float)rnd.NextDouble() * 0.06f + MathF.Abs(v) * 0.15f,
+            });
+        }
+    }
+
+    // p = 吹き付け始めからの経過 / FoamTime
+    private static void Draw(Plug pl, float p, bool last)
+    {
+        int w = pl.W, h = pl.H;
+        var F = pl.F;
+        Array.Clear(F, 0, F.Length);
+        const float inv = 1f / Ppu;
+        // 場 = Σ (1 - d²/(2r)²)³ (玉の影響は半径の 2 倍で 0)。Thresh 以上が泡の中 (玉 1 つなら半径 r の丸)
+        foreach (var bl in pl.Balls)
+        {
             float k = (p - bl.Start) / GrowShare;
-            if (k <= 0f) { all = false; continue; }
+            if (k <= 0f) continue;
             float s;
-            if (k >= 1f && p >= 1f) { s = 1f; bl.Done = true; }
+            if (k >= 1f) s = 1f + 0.1f * Math.Clamp((p - bl.Start - GrowShare) / 0.6f, 0f, 1f); // 届いた後もゆっくりふくらむ
             else
             {
-                all = false;
-                float kk = FxMath.Clamp01(k);
-                // 少し行き過ぎて戻る膨らみ + 泡立ちの小さな脈
-                float c1 = 1.70158f, c3 = c1 + 1f, q = kk - 1f;
+                // 少し行き過ぎて戻る膨らみ
+                float c1 = 1.2f, c3 = c1 + 1f, q = k - 1f;
                 s = 1f + c3 * q * q * q + c1 * q * q;
-                s *= 1f + 0.05f * FxMath.Sin(p * 26f + bl.Phase) * (1f - cure);
             }
-            float sz = bl.Size * s, sy = sz * (1f + 0.07f * FxMath.Sin(bl.Phase * 3f));
-            bl.Tf.localScale = FxMath.V3(sz, sy, 1f);
-            bl.ShadowTf.localScale = FxMath.V3(sz * 1.12f, sy * 1.12f, 1f);
-            bl.ShineTf.position = FxMath.V3(bl.X - sz * 0.16f, bl.Y + sz * 0.18f, bl.Z - 0.0002f);
-            bl.ShineTf.localScale = FxMath.V3(sz * 0.42f, sz * 0.3f, 1f);
-            bl.Sr.color = FxMath.Rgba(r * bl.Tint, g * bl.Tint, b * bl.Tint, 1f);
-            bl.Shine.color = FxMath.Rgba(1f, 1f, 1f, shineA);
+            float r = bl.R * s;
+            if (r <= 0.005f) continue;
+            float reach = r * 2f, inv4 = 1f / (reach * reach);
+            int x0 = Math.Max(0, (int)((bl.U - reach - pl.U0) * Ppu)), x1 = Math.Min(w - 1, (int)((bl.U + reach - pl.U0) * Ppu) + 1);
+            int y0 = Math.Max(0, (int)((bl.V - reach - pl.V0) * Ppu)), y1 = Math.Min(h - 1, (int)((bl.V + reach - pl.V0) * Ppu) + 1);
+            for (int y = y0; y <= y1; y++)
+            {
+                float dv = pl.V0 + (y + 0.5f) * inv - bl.V;
+                int row = y * w;
+                for (int x = x0; x <= x1; x++)
+                {
+                    float du = pl.U0 + (x + 0.5f) * inv - bl.U;
+                    float d2 = du * du + dv * dv;
+                    float q = 1f - d2 * inv4;
+                    if (q > 0f) F[row + x] += q * q * q;
+                }
+            }
         }
-        if (all && p >= 1f) f.Done = true;
+
+        float cure = Math.Clamp((p - CureFrom) / (CureTo - CureFrom), 0f, 1f);
+        float wet = 1f - cure;
+        // 濡れたクリーム色 → 乾いた黄土色
+        float br = 238f + (205f - 238f) * cure, bg = 222f + (178f - 222f) * cure, bb = 168f + (118f - 168f) * cure;
+        // 光 (左上・手前) と半分ベクトル (見る向きは真上)
+        const float lx = -0.45f, ly = 0.55f, lz = 0.70f;
+        float hl = MathF.Sqrt(lx * lx + ly * ly + (lz + 1f) * (lz + 1f));
+        float hx = lx / hl, hy = ly / hl, hz = (lz + 1f) / hl;
+        var px = pl.Px;
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            int i = y * w + x, o = i * 4;
+            float f = F[i];
+            if (f < Thresh * 0.9f)
+            {
+                // 落ち影: 左上から光が来るので右下に
+                int sx = x - 2, sy = y + 3;
+                float fs = sx >= 0 && sy < h ? F[sy * w + sx] : 0f;
+                px[o] = 20; px[o + 1] = 16; px[o + 2] = 10;
+                px[o + 3] = fs >= Thresh ? (byte)90 : (byte)0;
+                continue;
+            }
+            float alpha = Math.Clamp((f - Thresh * 0.9f) / (Thresh * 0.1f), 0f, 1f);
+            // 隣の画素との高さの差から法線
+            float hc = Height(f);
+            float hxp = x + 1 < w ? Height(F[i + 1]) : hc, hxm = x > 0 ? Height(F[i - 1]) : hc;
+            float hyp = y + 1 < h ? Height(F[i + w]) : hc, hym = y > 0 ? Height(F[i - w]) : hc;
+            float gx = (hxm - hxp) * 9f, gy = (hym - hyp) * 9f, gl = MathF.Sqrt(gx * gx + gy * gy + 1f);
+            float nx = gx / gl, ny = gy / gl, nz = 1f / gl;
+            float diff = Math.Clamp(nx * lx + ny * ly + nz * lz, 0f, 1f);
+            // 玉と玉の谷・縁ほど暗く (盛り上がりの陰)
+            float shade = (0.5f + 0.6f * diff) * (0.72f + 0.28f * hc);
+            // 気泡の穴: 固まるほど暗く見える (濡れている間は艶に埋もれる)
+            byte pore = pl.Pores[i];
+            if (pore != 0 && hc > 0.1f) shade *= 1f - (0.1f + 0.35f * cure) * (pore / 255f);
+            float r = br * shade, g = bg * shade, b = bb * shade;
+            // 濡れた艶 (鋭い白い照り)
+            float sp = Math.Clamp(nx * hx + ny * hy + nz * hz, 0f, 1f);
+            sp *= sp; sp *= sp; sp *= sp; sp *= sp; // 16 乗
+            sp *= sp;                                // 32 乗
+            float sheen = sp; // 32 乗 = 鋭い照り
+            float broad = Math.Clamp(nx * hx + ny * hy + nz * hz, 0f, 1f);
+            broad *= broad; broad *= broad; broad *= broad; // 8 乗 = 濡れた面の広い照り
+            float gloss = (0.9f * wet + 0.08f) * sheen + 0.3f * wet * broad;
+            r += (255f - r) * gloss; g += (255f - g) * gloss; b += (255f - b) * gloss;
+            // 縁の輪郭線 (本編の絵柄)
+            if (hc < 0.07f) { r = 70f; g = 54f; b = 32f; }
+            px[o] = (byte)Math.Clamp((int)r, 0, 255);
+            px[o + 1] = (byte)Math.Clamp((int)g, 0, 255);
+            px[o + 2] = (byte)Math.Clamp((int)b, 0, 255);
+            px[o + 3] = (byte)(alpha * 255f);
+        }
+        Upload(pl, last);
+        if (last) { pl.Px = null; pl.F = null; pl.Pores = null; } // 跡はもう描き直さない
+    }
+
+    private const float Thresh = 0.42f; // (1 - 1/4)³: 玉 1 つの縁が半径 r に来る値
+
+    // 縁 0 → 奥ほど 1 へ丸く盛り上がる高さ
+    private static float Height(float f)
+    {
+        float t = Math.Clamp((f - Thresh) / (Thresh * 1.6f), 0f, 1f);
+        return MathF.Sqrt(t * (2f - t));
+    }
+
+    private static unsafe void Upload(Plug pl, bool last = false)
+    {
+        fixed (byte* p = pl.Px) pl.Tex.LoadRawTextureData((IntPtr)p, pl.Px.Length);
+        pl.Tex.Apply(false, last); // 最後は CPU 側の写しを手放す
     }
 
     private static bool EnsureRoot()
@@ -213,81 +315,15 @@ internal static class FoamArt
         _root = new GameObject("MrpFoamRoot") { layer = 0 };
         _root.transform.SetParent(ShipStatus.Instance.transform, false);
         GameClock.Ship.Bind(_root);
-        if (_blobSprites == null)
-        {
-            _blobSprites = new Sprite[4];
-            for (int i = 0; i < _blobSprites.Length; i++) _blobSprites[i] = BakeBlob(new System.Random(900 + i), "MrpFoamBlob" + i);
-            _shineSprite = BakeShine();
-        }
         return true;
-    }
-
-    // 泡の粒 (1 単位・64 px): 縁の少しでこぼこした丸に、左上から光が当たった陰影と暗い縁を焼く。色は SpriteRenderer で掛ける
-    private static unsafe Sprite BakeBlob(System.Random rnd, string name)
-    {
-        const int n = 64;
-        float p1 = (float)rnd.NextDouble() * 6.28f, p2 = (float)rnd.NextDouble() * 6.28f;
-        float a1 = 0.035f + 0.02f * (float)rnd.NextDouble(), a2 = 0.02f + 0.015f * (float)rnd.NextDouble();
-        var px = new byte[n * n * 4];
-        for (int y = 0; y < n; y++)
-        for (int x = 0; x < n; x++)
-        {
-            float fx = (x + 0.5f) / n - 0.5f, fy = (y + 0.5f) / n - 0.5f;
-            float d = MathF.Sqrt(fx * fx + fy * fy), th = MathF.Atan2(fy, fx);
-            float rr = 0.42f + a1 * MathF.Sin(3f * th + p1) + a2 * MathF.Sin(5f * th + p2);
-            float u = d / rr;
-            float alpha = Math.Clamp((1f - u) * rr * n, 0f, 1f);
-            float nz = MathF.Sqrt(MathF.Max(0f, 1f - u * u));
-            float lx = fx / rr, ly = fy / rr;
-            float light = Math.Clamp(-0.55f * lx + 0.6f * ly + 0.58f * nz, 0f, 1f);
-            float shade = 0.7f + 0.3f * light;
-            if (u > 0.84f) shade *= 0.72f + 0.28f * (1f - (u - 0.84f) / 0.16f);
-            byte c = (byte)(Math.Clamp(shade, 0f, 1f) * 255f);
-            int i = (y * n + x) * 4;
-            px[i] = px[i + 1] = px[i + 2] = c;
-            px[i + 3] = (byte)(alpha * 255f);
-        }
-        return Make(px, n, name);
-    }
-
-    // 艶: 白い柔らかい楕円 (1 単位)
-    private static unsafe Sprite BakeShine()
-    {
-        const int n = 32;
-        var px = new byte[n * n * 4];
-        for (int y = 0; y < n; y++)
-        for (int x = 0; x < n; x++)
-        {
-            float fx = (x + 0.5f) / n - 0.5f, fy = (y + 0.5f) / n - 0.5f;
-            float d = MathF.Sqrt(fx * fx + fy * fy) * 2f;
-            float a = Math.Clamp(1f - d, 0f, 1f);
-            a *= a;
-            int i = (y * n + x) * 4;
-            px[i] = px[i + 1] = px[i + 2] = 255;
-            px[i + 3] = (byte)(a * 255f);
-        }
-        return Make(px, n, "MrpFoamShine");
-    }
-
-    private static unsafe Sprite Make(byte[] px, int n, string name)
-    {
-        var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { name = name };
-        tex.filterMode = FilterMode.Bilinear;
-        tex.wrapMode = TextureWrapMode.Clamp;
-        fixed (byte* p = px) tex.LoadRawTextureData((IntPtr)p, px.Length);
-        tex.Apply(false, true);
-        tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
-        var sp = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), n);
-        sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
-        return sp;
     }
 
     internal static void Register()
     {
-        TestBridge.Register("foam", "補修フォームの見た目: 口ごとの粒の数・膨らみ終わったか", (_, reply) =>
+        TestBridge.Register("foam", "補修フォームの見た目: 口ごとの塊の数・固まり終わったか", (_, reply) =>
         {
             var sb = new System.Text.StringBuilder();
-            foreach (var kv in Foams) sb.Append($" [start={kv.Key.Start} blobs={kv.Value.Blobs.Count} done={kv.Value.Done} t={Time.time - kv.Value.T0:0.00}]");
+            foreach (var kv in Foams) sb.Append($" [start={kv.Key.Start} plugs={kv.Value.Plugs.Count} done={kv.Value.Done} t={Time.time - kv.Value.T0:0.00}]");
             reply($"OK foam n={Foams.Count}{sb}");
         });
     }
