@@ -59,6 +59,14 @@ internal static class CrewGrip
     private static TextMeshPro _prompt;
     private static SpriteRenderer _tapBtn;
     private static int _promptKind = -1;
+    // 押すキーの札 (HUD の上に置く。カメラは自分を追うので HUD の中心の少し上が頭の上になる)
+    private static Transform _keyTf;
+    private static SpriteRenderer _keyRim, _keyFill;
+    private static TextMeshPro _keyText, _tapText;
+    private static int _keyLook = -1;
+    private static float _popAt = -1f;      // 最後に押した時刻 (_anim)
+    private static float _keyScale = -1f;   // 最後に書いた札の大きさ (同じなら書かない)
+    private static Transform _tapTf;
     private static bool _shown, _ringOn, _dotOn, _grabOn;
     private static Pose _bend;
     private static float _anim;
@@ -163,6 +171,10 @@ internal static class CrewGrip
             _root = null;
             _prompt = null;
             _tapBtn = null;
+            _keyTf = _tapTf = null;
+            _keyRim = _keyFill = null;
+            _keyText = _tapText = null;
+            _popAt = -1f;
             _state = State.Free;
             _shown = false;
         }
@@ -173,7 +185,7 @@ internal static class CrewGrip
             if (_shown) Hide();
             return;
         }
-        if (Pressed()) _presses++;
+        if (Pressed()) { _presses++; _popAt = _anim; }
         Draw();
     }
 
@@ -520,7 +532,39 @@ internal static class CrewGrip
 
         int kind = grab ? 2 : ring ? 1 : 0;
         if (kind != _promptKind) SetPrompt(kind);
+        if (kind != 0) DrawKey(grab);
     }
+
+    // 札の色 = 輪と同じ (灰 = まだ押せない・水色 = 待つ・黄 = 今・白 = ぴったり)。今の間は脈打ち、連打は押すたびに跳ねる
+    private static void DrawKey(bool grab)
+    {
+        if (_keyTf is null) return; // 船が替わると null に戻す (毎フレームの Unity の生存確認を避ける)
+        int look = grab ? 4 : _t < _lockEnd ? 0 : _de <= Perfect ? 3 : _de <= Window ? 2 : 1;
+        if (look != _keyLook)
+        {
+            _keyLook = look;
+            var col = look switch
+            {
+                0 => FxMath.Rgba(0.55f, 0.55f, 0.6f, 0.8f),
+                1 => FxMath.Rgba(0.45f, 0.85f, 1f, 1f),
+                3 => FxMath.Rgba(1f, 1f, 1f, 1f),
+                _ => FxMath.Rgba(1f, 0.85f, 0.3f, 1f),
+            };
+            _keyRim.color = col;
+            _keyText.color = col;
+            if (_tapBtn) _tapBtn.color = FxMath.Rgba(col.r, col.g, col.b, look >= 2 ? 0.75f : 0.45f);
+        }
+        float sc = 1f;
+        float since = _anim - _popAt;
+        if (grab) { if (_popAt >= 0f && since < KeyPop) sc = 1f + 0.25f * (1f - since / KeyPop); }
+        else if (look >= 2) sc = 1.12f + 0.06f * FxMath.Sin(_anim * 20f);
+        if (sc == _keyScale) return;
+        _keyScale = sc;
+        _keyTf.localScale = FxMath.V3(sc, sc, 1f);
+        if (_tapTf != null) _tapTf.localScale = FxMath.V3(sc, sc, 1f);
+    }
+
+    private const float KeyPop = 0.15f;
 
     // つかんだ角を軸に穴の方へ 1.15 倍伸ばし ±4° で震わせる (体の絵だけ・位置の同期は触らない)
     private static void BendBody(PlayerControl lp)
@@ -551,10 +595,27 @@ internal static class CrewGrip
     private static void SetPrompt(int kind)
     {
         _promptKind = kind;
+        _keyLook = -1;
+        _keyScale = -1f;
         if (_prompt) _prompt.gameObject.SetActive(kind != 0);
         if (_tapBtn) _tapBtn.gameObject.SetActive(kind != 0);
+        if (_keyTf) _keyTf.gameObject.SetActive(kind != 0);
         if (kind == 0 || !_prompt) return;
         bool ja = Lang.IsJapanese;
+        if (_keyTf)
+        {
+            // つかむ時は名前の上・連打の間はゲージ (頭の上 1.35) のさらに上
+            _keyTf.localPosition = FxMath.V3(0f, kind == 1 ? 1.5f : 1.8f, -800f);
+            string key = Touch
+                ? (kind == 1 ? (ja ? "右上をタップ" : "TAP upper right") : (ja ? "右上を連打" : "MASH upper right"))
+                : (kind == 1 ? "SPACE" : (ja ? "SPACE 連打" : "MASH SPACE"));
+            float w = Touch ? 3.0f : kind == 1 ? 1.7f : 2.6f;
+            _keyText.text = key;
+            _keyText.rectTransform.sizeDelta = FxMath.V2(w, 0.6f);
+            _keyFill.size = FxMath.V2(w, 0.6f);
+            _keyRim.size = FxMath.V2(w + 0.12f, 0.72f);
+        }
+        if (_tapText) _tapText.text = kind == 1 ? (ja ? "つかむ" : "GRAB") : (ja ? "連打" : "MASH");
         _prompt.text = kind == 1
             ? (Touch ? (ja ? "輪が角に重なったら画面の右上をタップ!" : "Tap the upper right when the ring meets the corner!") : (ja ? "輪が角に重なったら スペース/クリック!" : "Space/Click when the ring meets the corner!"))
             : (Touch ? (ja ? "画面の右上を連打して戻れ!" : "Mash the upper right to climb back!") : (ja ? "スペース/クリック連打で戻れ!" : "Mash Space/Click to climb back!"));
@@ -588,24 +649,19 @@ internal static class CrewGrip
         var src = hud && hud.TaskPanel ? hud.TaskPanel.taskText : null;
         if (src && !_prompt)
         {
-            var go = UnityEngine.Object.Instantiate(src.gameObject, hud.transform);
-            go.name = "MrpGripPrompt";
-            for (int i = go.transform.childCount - 1; i >= 0; i--) UnityEngine.Object.Destroy(go.transform.GetChild(i).gameObject);
-            foreach (var c in go.GetComponents<Component>())
-                if (!c.TryCast<Transform>() && !c.TryCast<TextMeshPro>() && !c.TryCast<Renderer>() && !c.TryCast<MeshFilter>()) UnityEngine.Object.Destroy(c);
-            go.transform.localPosition = FxMath.V3(0f, -1.55f, -800f);
-            go.transform.localScale = Vector3.one;
-            _prompt = go.GetComponent<TextMeshPro>();
-            _prompt.rectTransform.sizeDelta = FxMath.V2(7f, 0.6f);
-            _prompt.alignment = TextAlignmentOptions.Center;
-            _prompt.enableAutoSizing = false;
-            _prompt.fontSize = 2.6f;
-            _prompt.enableWordWrapping = false;
+            _prompt = MakeText(src, hud.transform, "MrpGripPrompt", FxMath.V3(0f, -1.55f, -800f), 7f, 2.6f);
             _prompt.color = FxMath.Rgba(1f, 0.95f, 0.8f, 1f);
-            _prompt.outlineWidth = 0.2f;
-            _prompt.outlineColor = new Color32(0, 0, 0, 255);
-            GameClock.Ship.Bind(go);
-            go.SetActive(false);
+            GameClock.Ship.Bind(_prompt.gameObject);
+            _prompt.gameObject.SetActive(false);
+
+            var key = new GameObject("MrpGripKey") { layer = hud.gameObject.layer };
+            _keyTf = key.transform;
+            _keyTf.SetParent(hud.transform, false);
+            _keyRim = KeyPlate(_keyTf, "Rim", 0.18f, 0.002f, FxMath.Rgba(0.45f, 0.85f, 1f, 1f));
+            _keyFill = KeyPlate(_keyTf, "Fill", 0.12f, 0.001f, FxMath.Rgba(0.06f, 0.06f, 0.09f, 0.9f));
+            _keyText = MakeText(src, _keyTf, "Label", FxMath.V3(0f, 0f, 0f), 1.7f, 2.2f);
+            GameClock.Ship.Bind(key);
+            key.SetActive(false);
             if (Touch && hud.UICamera)
             {
                 var cam = hud.UICamera;
@@ -616,7 +672,9 @@ internal static class CrewGrip
                 _tapBtn.sprite = Options.MenuArt.Round(0.6f);
                 _tapBtn.drawMode = SpriteDrawMode.Sliced;
                 _tapBtn.size = FxMath.V2(1.6f, 1.6f);
-                _tapBtn.color = FxMath.Rgba(1f, 0.85f, 0.3f, 0.35f);
+                _tapBtn.color = FxMath.Rgba(1f, 0.85f, 0.3f, 0.45f);
+                _tapTf = b.transform;
+                _tapText = MakeText(src, b.transform, "Label", FxMath.V3(0f, 0f, -0.001f), 1.6f, 2.4f);
                 GameClock.Ship.Bind(b);
                 b.SetActive(false);
             }
@@ -624,6 +682,40 @@ internal static class CrewGrip
         }
         _root.SetActive(false);
         return true;
+    }
+
+    // HUD のタスク欄の文字を複製して文字だけの部品にする (言語表の書き戻しや当たり判定の部品を外す)
+    private static TextMeshPro MakeText(TextMeshPro src, Transform parent, string name, Vector3 pos, float width, float size)
+    {
+        var go = UnityEngine.Object.Instantiate(src.gameObject, parent);
+        go.name = name;
+        for (int i = go.transform.childCount - 1; i >= 0; i--) UnityEngine.Object.Destroy(go.transform.GetChild(i).gameObject);
+        foreach (var c in go.GetComponents<Component>())
+            if (!c.TryCast<Transform>() && !c.TryCast<TextMeshPro>() && !c.TryCast<Renderer>() && !c.TryCast<MeshFilter>()) UnityEngine.Object.Destroy(c);
+        go.transform.localPosition = pos;
+        go.transform.localScale = Vector3.one;
+        var t = go.GetComponent<TextMeshPro>();
+        t.rectTransform.sizeDelta = FxMath.V2(width, 0.6f);
+        t.alignment = TextAlignmentOptions.Center;
+        t.enableAutoSizing = false;
+        t.fontSize = size;
+        t.enableWordWrapping = false;
+        t.outlineWidth = 0.2f;
+        t.outlineColor = new Color32(0, 0, 0, 255);
+        return t;
+    }
+
+    private static SpriteRenderer KeyPlate(Transform parent, string name, float radius, float z, Color col)
+    {
+        var go = new GameObject(name) { layer = parent.gameObject.layer };
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = FxMath.V3(0f, 0f, z);
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = Options.MenuArt.Round(radius);
+        sr.drawMode = SpriteDrawMode.Sliced;
+        sr.size = FxMath.V2(1.7f, 0.6f);
+        sr.color = col;
+        return sr;
     }
 
     private static SpriteRenderer Part(string name, Sprite sp, out Transform tf)
