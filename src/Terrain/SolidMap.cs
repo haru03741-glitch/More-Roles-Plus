@@ -28,7 +28,7 @@ internal static class SolidMap
     // はしご・ジップライン・動く足場はつながりに入れない (壁の線しか見ない) ので、番号が違う = 高さが違う床。
     // 元の番号は壊しても書き換えない (穴でつながった後も元の高さで比べる)。掘って開けた升だけ、掘り始めた側の番号を足す
     private static byte[] _island;
-    // 船の外 (宇宙・空・ミラとエアシップだけ) = 1。部屋の絵 (DamageMap の部屋の絵のスプライトの三角形) と船体の塊のどれにも掛からず、歩ける所でも壁でもない所。
+    // 船の外 (宇宙・空・スケルドとミラとエアシップだけ) = 1。部屋の絵 (DamageMap の部屋の絵のスプライトの三角形) と船体の塊・船体のメッシュのどれにも掛からず、歩ける所でも壁でもない所。
     // ミラは部屋と部屋の間に空が入り込み、厚い壁の帯 (両側の線の間) と細い空の隙間は線の形・幅・つながりでは区別できない
     // (帯にも隙間にも端が空に開いた所・閉じた所がある)。絵のあるなしで分ける。三角形は画像の圧縮によらないので端末で同じ
     private static byte[] _outside;
@@ -300,20 +300,37 @@ internal static class SolidMap
         int edges = 0;
         if (Valid) edges = BuildHull(ship);
 
-        // 6. 船の外。部屋と部屋の間に空が見えるマップ (ミラ・エアシップ) だけ。スケルドの部屋の間は船体の絵 (部屋の絵の外) が、
-        // ポーラス・ファングルの屋外は地面の絵が描いていて、部屋の絵だけでは外と分からないので作らない (奥の面と床で決める)
-        _outside = ship.TryCast<MiraShipStatus>() != null || ship.TryCast<AirshipStatus>() != null ? Outside(blocked) : null;
+        // 6. 船の外。ミラ・エアシップは部屋と部屋の間に空が見える。スケルドの部屋の間は船体のメッシュ (Hull*) が描いていて、
+        // その外が星空。ポーラス・ファングルの屋外は地面の絵が描いていて外と分からないので作らない (奥の面と床で決める)
+        bool sky = ship.TryCast<MiraShipStatus>() != null || ship.TryCast<AirshipStatus>() != null;
+        var hullMeshes = !sky && ship.Type == ShipStatus.MapType.Ship ? HullMeshes(ship) : null;
+        _outside = sky || hullMeshes is { Count: > 0 } ? Outside(blocked, hullMeshes) : null;
 
         Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
         Plugin.Logger.LogInfo($"solid map: {Stats}");
     }
 
     // 船の外 (_outside の説明)。絵と船体の塊は Dilate 升太らせて、際の 1 画素ずれで外が食い込まないようにする
-    private static byte[] Outside(byte[] blocked)
+    private static byte[] Outside(byte[] blocked, List<MeshFilter> hullMeshes)
     {
         int n = _w * _h;
         var art = new byte[n];
         var tri = new List<Vector2>(6);
+        if (hullMeshes != null)
+            foreach (var mf in hullMeshes)
+            {
+                var t = mf.transform;
+                var mesh = mf.sharedMesh;
+                var vs = mesh.vertices;
+                var ts = mesh.triangles;
+                for (int i = 0; i + 2 < ts.Length; i += 3)
+                {
+                    Vector2 a = t.TransformPoint(vs[ts[i]]), b = t.TransformPoint(vs[ts[i + 1]]), c = t.TransformPoint(vs[ts[i + 2]]);
+                    tri.Clear();
+                    tri.Add(a); tri.Add(b); tri.Add(b); tri.Add(c); tri.Add(c); tri.Add(a);
+                    FillPolygon(art, tri);
+                }
+            }
         foreach (var sr in DamageMap.RoomArts)
         {
             if (!sr || !sr.sprite) continue;
@@ -679,7 +696,7 @@ internal static class SolidMap
     // 範囲の中で、今の壁の線を越えずに船の外 (空・宇宙) へつながっている歩けない所 (壁の中)。
     // 外壁から内側へ出っ張った塊 (Mira の倉庫の左下の箱) は空との間に壁の線が無く、塊の面はどれも外に面して見えないが、
     // 抜くと穴が空へつながって蓋が空の上に張られる (空へ歩き出せ、蓋が視界を遮って空が黒くなる)。
-    // 船の外を持たないマップ (Skeld・Polus・Fungle) は null
+    // 船の外を持たないマップ (Polus・Fungle) は null
     internal sealed class SkyReach
     {
         internal int X0, Y0, W, H;
@@ -763,6 +780,22 @@ internal static class SolidMap
         foreach (var rc in rects)
             if (x >= rc.xMin && x <= rc.xMax && y >= rc.yMin && y <= rc.yMax) return true;
         return false;
+    }
+
+    // スケルドの船体のメッシュ。形を読めない (読み取り不可の) メッシュは外を作らない (外の判定が全部外れるより無い方がよい)
+    private static List<MeshFilter> HullMeshes(ShipStatus ship)
+    {
+        var list = new List<MeshFilter>();
+        foreach (var mf in ship.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (!mf || !mf.gameObject.name.StartsWith("Hull", StringComparison.Ordinal)) continue;
+            var mesh = mf.sharedMesh;
+            if (!mesh) continue;
+            if (!mesh.isReadable) { Plugin.Logger.LogWarning($"solid map: hull mesh {mf.gameObject.name} not readable"); return new List<MeshFilter>(); }
+            list.Add(mf);
+        }
+        Plugin.Logger.LogInfo($"solid map: hull meshes={list.Count}");
+        return list;
     }
 
     // ---- エアシップの船体の塊 ----
