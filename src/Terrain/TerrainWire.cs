@@ -17,6 +17,9 @@ internal static class TerrainWire
     // ホスト → 全員: [op][置いた人][位置 4B][半径 1B] 爆弾が置かれた。爆発は導火線の後にホストが普通の結果として配る
     public const byte OpBomb = 7;
     public const int BombBytes = 5;
+    // ホスト → 全員: [op][刻み u16][扉の開き u64 (AllDoors の順・1 = 開)] スケルドで扉が変わった時 (外壁の穴の気圧と物の流れを全員で揃える)
+    public const byte OpDoors = 9;
+    public const int DoorsBytes = 11;
 
     public const int MaxRequestBytes = 11;
     public const int MaxResolvedBytes = 17 + 1 + RubbleBlocks.MaxPerEvent * 6;

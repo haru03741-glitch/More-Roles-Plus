@@ -14,8 +14,9 @@ namespace MoreRolesPlus.Terrain;
 //   引く強さ (満タン時・歩く速さの倍) = 口の際 1.6 / 3 単位 0.6 / 6 単位 0.15 / 10 単位より先 0。気圧に比例。
 // - 補修フォーム: 開通から FoamDelay 後に縁から膨らみ FoamTime でふさがる (引く強さ 0・気圧が戻り始める)。
 // 全員の手元で同じにするため WaterSim と同じく試合の刻みの Delay 遅れで整数だけで進める。開通は地形の件の刻みで入る (新しい電文なし)。
-// 扉の開け閉めは本編の同期で端末ごとに届く時刻がずれるので、FoamDelay とは別に DoorPoll 刻みごとに読んで反映する
-// (ずれは気圧と流れだけ。クルーは各自の端末で自分の体だけを引くので困らない)。
+// 扉の開け閉めは本編の同期で端末ごとに届く時刻がずれるので、ホスト (一人の時は自分) だけが DoorPoll ごとに読み、
+// 変わった刻みと開きを地形の電文で配る (TerrainSync.BroadcastDoors)。全員その記録 (DoorLog) の刻みで反映する。
+// 物 (PropSim) は確定の刻みをこちらと 1 刻みずつ揃えて進め (StepThrough)、整数の流れ (FlowAt) を読む。
 // クルーは PlayerPhysics.FixedUpdate の後で自分の体の速さに流れを足す (位置は普通の移動の同期で他人へ届く)
 internal static class Decompression
 {
@@ -31,7 +32,7 @@ internal static class Decompression
     private const long KNum = 796, KDen = 7680;
     private const int Recover = Full / 300;   // 口が全部ふさがった範囲は 10 秒で戻る
     public const int FoamDelay = 180, FoamTime = 75; // 開通 6 秒後に膨らみ始め 2.5 秒でふさがる
-    private const int DoorPoll = 15;          // 扉を読む間隔 (0.5 秒)
+    private const int DoorPoll = 15;          // ホストが扉を読む間隔 (0.5 秒)
     // 道のり (縦横 2・斜め 3 = 1 升 0.25 単位が 2) の上限。10 単位より先は引かない
     private const int PerUnit = 8;
     private const int Cap = 10 * PerUnit + 4;
@@ -46,6 +47,7 @@ internal static class Decompression
         public readonly List<(Vector2 A, Vector2 B)> Lines = new();
         public int W256;
         public bool Sealed;
+        public bool ByProp;       // 物がふさいだ
         public int Comp = -1;     // 口の升がいる範囲 (作り直すたびに書く)
     }
 
@@ -71,9 +73,15 @@ internal static class Decompression
     private static int[] _press;              // 範囲ごとの気圧
     private static ushort[] _dist;            // 口からの道のり (Far = 届かない)
     private static int[] _par;                // 口へ向かう次の升 (−1 = 口の際)
+    private static int[] _seed;               // 口の際の升の口の番号 + 1 (0 = 口の際でない)
     private static readonly List<(int X0, int Y0, int X1, int Y1)> DoorCells = new();
     private static readonly List<Plain> Doors = new();
     private static ulong _doorBits;
+    // 扉の記録 (刻み順)。最初の記録より前は全部開き。ホストは読んで足して配り、客は届いた物を足す
+    private static readonly List<(int Tick, ulong Bits)> DoorLog = new();
+    private static bool _doorsListed;
+    private static int _nextPoll;
+    private static bool _sealDirty;           // 物が口をふさいだ (次の刻みで道のりを作り直す)
     private static readonly List<Breach> Breaches = new();
     private static readonly List<Pending> Queue = new();
 
@@ -85,6 +93,9 @@ internal static class Decompression
 
     // 確認用
     internal static int Late { get; private set; }
+    internal static int LateDoors { get; private set; }
+    internal static bool Running => _running;
+    internal static int Step => _step;
     internal static double LastStepMs { get; private set; }
     internal static double LastFieldMs { get; private set; }
     internal static double LastFurnMs { get; private set; }
@@ -153,21 +164,9 @@ internal static class Decompression
         _par = new int[n];
         _compCells = Array.Empty<int>();
         _press = Array.Empty<int>();
-        Doors.Clear();
-        DoorCells.Clear();
-        var ship = ShipStatus.Instance;
-        if (ship && ship.AllDoors != null)
-            foreach (var d in ship.AllDoors)
-            {
-                if (!d) continue;
-                var col = d.GetComponent<Collider2D>();
-                if (!col) continue;
-                var bb = col.bounds;
-                Doors.Add(new Plain(d));
-                DoorCells.Add((CellX(bb.min.x), CellY(bb.min.y), CellX(bb.max.x), CellY(bb.max.y)));
-                if (Doors.Count == 64) break;
-            }
-        _doorBits = ReadDoors();
+        _seed = new int[n];
+        ListDoors();
+        _doorBits = BitsAt(_step);
         Grid();
         Furniture();
         Regions(null, null);
@@ -175,6 +174,77 @@ internal static class Decompression
 
     private static int CellX(float x) => (int)MathF.Floor((x - _org.x) / _cell);
     private static int CellY(float y) => (int)MathF.Floor((y - _org.y) / _cell);
+
+    // 扉の一覧 (AllDoors の順・64 まで)。升は SolidMap と同じ原点の 0.25 単位
+    private static void ListDoors()
+    {
+        if (_doorsListed) return;
+        var ship = ShipStatus.Instance;
+        if (!ship || ship.AllDoors == null || !SolidMap.Valid) return;
+        _doorsListed = true;
+        Doors.Clear();
+        DoorCells.Clear();
+        var org = SolidMap.Origin;
+        float cell = Sub / SolidMap.Ppu;
+        foreach (var d in ship.AllDoors)
+        {
+            if (!d) continue;
+            var col = d.GetComponent<Collider2D>();
+            if (!col) continue;
+            var bb = col.bounds;
+            Doors.Add(new Plain(d));
+            DoorCells.Add(((int)MathF.Floor((bb.min.x - org.x) / cell), (int)MathF.Floor((bb.min.y - org.y) / cell),
+                (int)MathF.Floor((bb.max.x - org.x) / cell), (int)MathF.Floor((bb.max.y - org.y) / cell)));
+            if (Doors.Count == 64) break;
+        }
+    }
+
+    private static ulong AllOpen => Doors.Count >= 64 ? ulong.MaxValue : (1UL << Doors.Count) - 1;
+
+    // 刻み s の扉 (記録の s 以前で最後の物)
+    private static ulong BitsAt(int s)
+    {
+        for (int i = DoorLog.Count - 1; i >= 0; i--)
+            if (DoorLog[i].Tick <= s) return DoorLog[i].Bits;
+        return AllOpen;
+    }
+
+    // 客: ホストから扉の記録が届いた
+    internal static void OnDoors(int tick, ulong bits)
+    {
+        try
+        {
+            if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; ResetShip(); }
+            if (_running && tick < _step) LateDoors++;
+            AddDoorLog(tick, bits);
+        }
+        catch (Exception e) { Fail("doors", e); }
+    }
+
+    private static void AddDoorLog(int tick, ulong bits)
+    {
+        int i = DoorLog.Count;
+        while (i > 0 && DoorLog[i - 1].Tick > tick) i--;
+        DoorLog.Insert(i, (tick, bits));
+    }
+
+    // ホストと一人の時: 外壁を掘り抜ける船 (スケルド) で扉を読み、変わったら刻みを押して記録し配る
+    private static void PollDoors()
+    {
+        if (!SolidMap.BreachableHull) return;
+        int now = GameClock.Now;
+        if (now < _nextPoll) return;
+        if (TerrainSync.IsGuest()) { _nextPoll = now + DoorPoll; return; }
+        _nextPoll = now + DoorPoll;
+        ListDoors();
+        if (Doors.Count == 0) return;
+        ulong bits = ReadDoors();
+        ulong last = DoorLog.Count > 0 ? DoorLog[DoorLog.Count - 1].Bits : AllOpen;
+        if (bits == last) return;
+        ushort stamp = GameClock.Stamp;
+        AddDoorLog(GameClock.Expand(stamp), bits);
+        TerrainSync.BroadcastDoors(stamp, bits);
+    }
 
     private static ulong ReadDoors()
     {
@@ -323,11 +393,13 @@ internal static class Decompression
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         Array.Fill(_dist, Far);
         Array.Fill(_par, -1);
+        Array.Clear(_seed);
         var buckets = new List<int>[Cap + 4];
         for (int i = 0; i < buckets.Length; i++) buckets[i] = new List<int>();
         bool any = false;
-        foreach (var br in Breaches)
+        for (int bi = 0; bi < Breaches.Count; bi++)
         {
+            var br = Breaches[bi];
             br.Comp = -1;
             if (br.Sealed) continue;
             foreach (var (a, b) in br.Lines)
@@ -342,6 +414,7 @@ internal static class Decompression
                     var c = new Vector2(_org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell);
                     if (SegDist(c, a, b) > SeedReach) continue;
                     _dist[k] = 0;
+                    _seed[k] = bi + 1;
                     buckets[0].Add(k);
                     if (br.Comp < 0) br.Comp = _comp[k];
                     any = true;
@@ -355,14 +428,16 @@ internal static class Decompression
                 for (int i = 0; i < list.Count; i++)
                 {
                     int k = list[i];
-                    if (_dist[k] != v || (_furn[k] != 0 && v > 0)) continue;
+                    if (_dist[k] != v) continue;
+                    // 家具の上: 空気は通るので家具の升へは伸ばす (載っている物を引く) が、家具を抜けて床へは伸ばさない (クルーは回り込む)
+                    bool onFurn = _furn[k] != 0 && v > 0;
                     for (int d = 0; d < 8; d++)
                     {
                         int dx = Nx[d], dy = Ny[d];
                         bool diag = d >= 4;
                         if (diag ? !PassDiag(k, dx, dy) : !Pass(k, d)) continue;
                         int j = k + dx + dy * _w, nv = v + (diag ? 3 : 2);
-                        if (nv > Cap || nv >= _dist[j]) continue;
+                        if (nv > Cap || nv >= _dist[j] || (onFurn && _furn[j] == 0)) continue;
                         _dist[j] = (ushort)nv;
                         _par[j] = k;
                         buckets[nv].Add(j);
@@ -388,19 +463,17 @@ internal static class Decompression
 
     private static void StepOnce()
     {
-        bool rebuild = false, field = false, furn = false;
+        bool rebuild = false, field = _sealDirty;
+        _sealDirty = false;
         while (Queue.Count > 0 && Queue[0].Tick <= _step)
         {
             var p = Queue[0];
             Queue.RemoveAt(0);
             if (!p.Rebuild) AddMouth(p.A, p.B);
-            rebuild = furn = true;
+            rebuild = true;
         }
-        if (_step % DoorPoll == 0)
-        {
-            ulong bits = ReadDoors();
-            if (bits != _doorBits) { _doorBits = bits; rebuild = true; }
-        }
+        ulong bits = BitsAt(_step);
+        if (bits != _doorBits) { _doorBits = bits; rebuild = true; }
         foreach (var br in Breaches)
             if (!br.Sealed && _step - br.Start >= FoamDelay + FoamTime) { br.Sealed = true; field = true; }
         if (rebuild)
@@ -408,7 +481,6 @@ internal static class Decompression
             var oc = (int[])_comp.Clone();
             var op = _press;
             Grid();
-            if (furn) Furniture();
             Regions(oc, op);
         }
         else if (field) Field();
@@ -461,7 +533,7 @@ internal static class Decompression
 
     internal static uint Digest()
     {
-        uint acc = (uint)_step * 2654435761u + (uint)Breaches.Count * 40503u;
+        uint acc = (uint)_step * 2654435761u + (uint)Breaches.Count * 40503u ^ (uint)_doorBits ^ (uint)(_doorBits >> 32) * 0x27D4EB2Fu;
         for (int c = 0; c < _press.Length; c++)
         {
             if (_press[c] == Full) continue;
@@ -549,8 +621,10 @@ internal static class Decompression
 
     private static void TickCore()
     {
-        if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Reset(); }
-        if (!_running) return;
+        if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; ResetShip(); }
+        PollDoors();
+        // 物が動いている間は物の確定の刻みと 1 刻みずつ揃えて進める (物が口をふさいだ刻みを全員で同じにする)
+        if (!_running || PropSim.Drives) return;
         int target = GameClock.Now - Delay;
         if (_step >= target) return;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -564,15 +638,104 @@ internal static class Decompression
         LastStepMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency / n;
     }
 
+    // 物の確定の刻み s の前に呼ぶ: s まで進めて、s の後の気圧と流れにする
+    internal static void StepThrough(int s)
+    {
+        try
+        {
+            while (_running && _step <= s)
+            {
+                StepOnce();
+                _step++;
+            }
+        }
+        catch (Exception e) { Fail("step", e); }
+    }
+
+    // ── 物から読む (整数だけ・全員で同じ) ───────────────────────────────
+
+    internal const int UnitDist = PerUnit;
+
+    // SolidMap の升 (sx, sy) の流れ: 道のり・気圧・口へ向かう向き (升の数)。引かない所は false
+    internal static bool FlowAt(int sx, int sy, out int dist, out int press, out int dx, out int dy)
+    {
+        dist = Far; press = 0; dx = 0; dy = 0;
+        if (!_running || !Pulling) return false;
+        int x = sx / Sub, y = sy / Sub;
+        if (sx < 0 || sy < 0 || x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return false;
+        int k = y * _w + x;
+        if (_dist[k] == Far || _comp[k] < 0) return false;
+        dist = _dist[k];
+        press = _press[_comp[k]];
+        int t = k;
+        for (int i = 0; i < 3 && _par[t] >= 0; i++) t = _par[t];
+        dx = t % _w - x;
+        dy = t / _w - y;
+        return true;
+    }
+
+    // 道のり → 満タン時の引く強さ (/1024)。Strength と同じ折れ線
+    internal static int Strength1024(int d)
+    {
+        if (d <= 3 * PerUnit) return 1638 - d * 1024 / (3 * PerUnit);
+        if (d <= 6 * PerUnit) return 614 - (d - 3 * PerUnit) * 461 / (3 * PerUnit);
+        if (d <= 10 * PerUnit) return 154 - (d - 6 * PerUnit) * 154 / (4 * PerUnit);
+        return 0;
+    }
+
+    // 升から口の際まで道を辿り、その口の番号と幅 (×256)。開いた口が無ければ −1
+    internal static int MouthOf(int sx, int sy, out int w256)
+    {
+        w256 = 0;
+        if (!_running) return -1;
+        int x = sx / Sub, y = sy / Sub;
+        if (sx < 0 || sy < 0 || x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return -1;
+        int k = y * _w + x;
+        if (_dist[k] == Far) return -1;
+        for (int i = 0; i < Cap && _par[k] >= 0; i++) k = _par[k];
+        int b = _seed[k] - 1;
+        if (b < 0 || Breaches[b].Sealed) return -1;
+        w256 = Breaches[b].W256;
+        return b;
+    }
+
+    // 口より大きい物が口に着いた (確定側だけ)。次の刻みから引かない
+    internal static void SealByProp(int b)
+    {
+        if (b < 0 || b >= Breaches.Count || Breaches[b].Sealed) return;
+        Breaches[b].Sealed = true;
+        Breaches[b].ByProp = true;
+        _sealDirty = true;
+    }
+
+    // 閉じた扉の升か (SolidMap の升)。物は扉を抜けない
+    internal static bool DoorAt(int sx, int sy)
+    {
+        if (!_running) return false;
+        int x = sx / Sub, y = sy / Sub;
+        return x < _w && y < _h && _blocked[y * _w + x] != 0;
+    }
+
+    // 船が替わった: 扉の記録も捨てる
+    private static void ResetShip()
+    {
+        Reset();
+        DoorLog.Clear();
+        _nextPoll = 0;
+        LateDoors = 0;
+    }
+
     internal static void Reset()
     {
         _running = false;
         Pulling = false;
-        _sub = null; _edge = null; _blocked = null; _furn = null; _comp = null; _dist = null; _par = null;
+        _sub = null; _edge = null; _blocked = null; _furn = null; _comp = null; _dist = null; _par = null; _seed = null;
         _compCells = Array.Empty<int>();
         _press = Array.Empty<int>();
         Doors.Clear();
         DoorCells.Clear();
+        _doorsListed = false;
+        _sealDirty = false;
         Breaches.Clear();
         Queue.Clear();
         _step = 0;
@@ -619,14 +782,14 @@ internal static class Decompression
                 reply($"OK decomp probe at {TestBridge.F(p.x)} {TestBridge.F(p.y)} region={c} furn={(c >= 0 && _furn[k] != 0)} press={(c >= 0 ? _press[c] * 100f / Full : 0f):0.0}% dist={(dist == Far ? "far" : (dist / (float)PerUnit).ToString("0.00"))} pull={on} mul={mul:0.000} dir={dir.x:0.00},{dir.y:0.00} speed={CrewPull.Speed:0.00}");
                 return;
             }
-            if (!_running) { reply($"OK decomp off breachable={SolidMap.BreachableHull} {GameClock.Describe()}"); return; }
+            if (!_running) { reply($"OK decomp off doorLog={DoorLog.Count} breachable={SolidMap.BreachableHull} {GameClock.Describe()}"); return; }
             var sb = new System.Text.StringBuilder();
             foreach (var br in Breaches)
             {
                 var (l0, l1) = br.Lines[0];
-                sb.Append($" [start={br.Start} age={_step - br.Start} w={br.W256 / 256f:0.00} lines={br.Lines.Count} first={l0.x:0.00},{l0.y:0.00}-{l1.x:0.00},{l1.y:0.00} region={br.Comp} sealed={br.Sealed}]");
+                sb.Append($" [start={br.Start} age={_step - br.Start} w={br.W256 / 256f:0.00} lines={br.Lines.Count} first={l0.x:0.00},{l0.y:0.00}-{l1.x:0.00},{l1.y:0.00} region={br.Comp} sealed={br.Sealed}{(br.ByProp ? "(prop)" : "")}]");
             }
-            reply($"OK decomp step={_step} target={GameClock.Now - Delay} late={Late} queue={Queue.Count} pulling={Pulling} doors={Doors.Count} open={System.Numerics.BitOperations.PopCount(_doorBits)} regions={_press.Length} fields={Fields} fieldMs={LastFieldMs:0.00} furnMs={LastFurnMs:0.00} stepMs={LastStepMs:0.000} digest={Digest():x8} {PressureText()} breaches={Breaches.Count}{sb}");
+            reply($"OK decomp step={_step} target={GameClock.Now - Delay} late={Late} lateDoors={LateDoors} doorLog={DoorLog.Count} queue={Queue.Count} pulling={Pulling} doors={Doors.Count} open={System.Numerics.BitOperations.PopCount(_doorBits)} regions={_press.Length} fields={Fields} fieldMs={LastFieldMs:0.00} furnMs={LastFurnMs:0.00} stepMs={LastStepMs:0.000} digest={Digest():x8} {PressureText()} breaches={Breaches.Count}{sb}");
         });
     }
 
@@ -639,6 +802,7 @@ internal static class Decompression
         if (!_running)
         {
             if (!SolidMap.Ensure() || !SolidMap.Valid) return "ERR decomp no solid map";
+            _step = GameClock.Now;
             Build();
             string s = AreaText(p);
             Reset();

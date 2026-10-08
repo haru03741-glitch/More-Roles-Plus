@@ -16,7 +16,9 @@ namespace MoreRolesPlus.Terrain;
 // 見せるのは A の写し (D) を今の刻みまで先に進めた物: 爆発と同時に吹き飛ぶ。結果が届くたびに A から今まで計算し直すので、
 // 遅れて届いた客の手元でも A が追いついた時に D と同じになる。
 // 位置は SolidMap の原点からの 1/1024 単位。壁は SolidMap の升 (壊した穴も通る)・通気口と端末の周りも通さない。
-// 絵は 1 刻み前と今の間を GameClock.Frac で補間して、動いている物・揺れている物だけ毎フレーム書く
+// 絵は 1 刻み前と今の間を GameClock.Frac で補間して、動いている物・揺れている物だけ毎フレーム書く。
+// 外壁の穴 (Decompression) が開いている間は流れに引かれる: 小物と中くらいの物は気圧 30% 以上の間・重い物は口から 2 単位以内だけ。
+// 口に着いたら、口より小さい物は宇宙へ消え、大きい物は口をふさぐ (確定側の刻みで Decompression へ知らせる)
 internal static class PropSim
 {
     private const int Delay = WaterSim.Delay;
@@ -45,6 +47,14 @@ internal static class PropSim
     private const int HeavyFriction = 4;      // 同じく 1 刻みの速さの減り (重いので一度動くと滑る)
     private const int HeavyTwist = 160;       // 同じくねじれる角度の最大 (1/16 度・10 度)
     private const float HeavyBox = 0.85f;     // 重い物の壁の当たり: 範囲の半分のこの割合の箱の 8 点
+    // 流れ (外壁の穴): 速さ = Flow × 引く強さ × 気圧 × 種類の割合 (/256) へ 1 刻みに 1/PullEase ずつ寄る。引かれている間は床の摩擦なし
+    private const int Flow = 100;             // 1 刻みの速さ (1/1024 単位・約 2.9 単位/秒) = 満タンの口の際で約 4.7 単位/秒
+    private const int PullSmall = 256, PullMedium = 180, PullHeavy = 90;
+    private const int PullEase = 4;
+    private const int PullStart = 12;         // 止まっている物はこの速さ (0.35 単位/秒) 以上で動き出す
+    private const int PullMinPress = Decompression.Full * 3 / 10; // 小物と中くらいの物は気圧 30% 以上で引かれる
+    private const int HeavyReach = 2;         // 重い物は口からこの道のり (単位) 以内だけ
+    private const int ResyncPull = 15;        // 引いている間に見せる用を確定から計算し直す間隔 (0.5 秒)
 
     // 動かす物の絵の名前 (部屋の絵と別の絵を持つ小物と家具)
     private static readonly HashSet<string> Movable = new()
@@ -72,12 +82,15 @@ internal static class PropSim
         public int Ang, Tip;        // 回り (1/16 度)。Tip = 倒れる先 (0 = 倒れない)
         public int WobStart = int.MinValue, WobAmp;
         public bool Active, Moved;
+        public bool Pulled;         // この刻みで流れに引かれている (摩擦なし)
+        public bool Gone, Stuck;    // 口から宇宙へ消えた / 口に着いて止まった (大きい物はふさいでいる)
         public uint Rng;
 
         public void CopyFrom(St o)
         {
             Px = o.Px; Py = o.Py; Vx = o.Vx; Vy = o.Vy; Spin = o.Spin; Ang = o.Ang; Tip = o.Tip;
             WobStart = o.WobStart; WobAmp = o.WobAmp; Active = o.Active; Moved = o.Moved; Rng = o.Rng;
+            Pulled = o.Pulled; Gone = o.Gone; Stuck = o.Stuck;
         }
     }
 
@@ -97,6 +110,8 @@ internal static class PropSim
         public int Hx, Hy, Rad;          // 重い物の壁の当たりの箱の半分・押される距離に足す半径 (1/1024)
         public List<Rider> Riders;       // 重い物の上に載っていて一緒に動く絵
         public float Z;
+        public int SizeU;               // 長い辺 (1/1024)。口の幅より大きいと口をふさぐ
+        public bool Hidden;             // 消えた絵を隠している
         public readonly St A = new(), D = new();
         public int Ox, Oy, OAng;    // D の 1 刻み前 (補間)
     }
@@ -146,6 +161,10 @@ internal static class PropSim
     private static bool _resync;
     internal static int Late { get; private set; }
     internal static int Kicks { get; private set; }
+    internal static int Lost { get; private set; }     // 宇宙へ消えた数 (確定)
+    internal static int Plugs { get; private set; }    // 口をふさいだ数 (確定)
+    // 確定の刻みを進めている (Decompression はこちらに揃えて進む)
+    internal static bool Drives => _running && !_failed;
 
     // ── 入口 ───────────────────────────────────────────────────────────
 
@@ -166,6 +185,7 @@ internal static class PropSim
                 if (p.Riders != null)
                     foreach (var q in p.Riders)
                         if (q.Tr) { q.Tr.position = q.T0; q.Tr.rotation = FxMath.RotZ(q.Rot0); }
+                if (p.Hidden && p.Tr) p.Tr.gameObject.SetActive(true);
                 if (p.Lift != null) FurnitureLift.Restore(p.Lift);
                 else if (p.D.Moved || p.D.WobStart != int.MinValue) { p.Tr.position = p.T0; p.Tr.rotation = FxMath.RotZ(p.Rot0); }
             }
@@ -321,6 +341,7 @@ internal static class PropSim
             F0 = FxMath.V2(b.center.x, b.min.y + Math.Min(0.15f, size.y * 0.2f)),
         };
         p.Solid = solid;
+        p.SizeU = ToU(big);
         p.Kind = solid || big > MediumMax ? Kind.Fixed : Tippable.Contains(p.Name) || big > SmallMax ? Kind.Medium : Kind.Small;
         var a = p.A;
         a.Px = ToU(p.F0.x - _org.x);
@@ -370,6 +391,7 @@ internal static class PropSim
     private static void InitHeavy(Prop p, Rect b)
     {
         p.Bounds0 = b;
+        p.SizeU = ToU(Math.Max(b.width, b.height));
         p.Rad = ToU(Math.Min(b.width, b.height) * 0.4f);
         // 自分の絵を持つ家具が壁の線に半分埋まって置かれている時 (Polus の崖際の箱の山) は、真ん中が壁の向こうで全方向が塞がる。
         // 範囲のうち歩ける升の重心を足元に (囲む四角の真ん中は斜めの壁の線の上に来やすい)、絵を回す軸も同じ所へ移す
@@ -544,7 +566,7 @@ internal static class PropSim
             int cx = sx / _cellU, cy = sy / _cellU;
             if (cx >= _w || cy >= _h) return true;
             int k = cy * _w + cx;
-            if (!SolidMap.OpenCell(k) || _block[k] != 0) return true;
+            if (!SolidMap.OpenCell(k) || _block[k] != 0 || Decompression.DoorAt(cx, cy)) return true;
         }
         return false;
     }
@@ -567,6 +589,7 @@ internal static class PropSim
                 Queue.RemoveAt(0);
             }
         }
+        if (Decompression.Pulling) Pull(w);
         for (int i = w.Act.Count - 1; i >= 0; i--)
         {
             var p = w.Act[i];
@@ -639,6 +662,7 @@ internal static class PropSim
         {
             var p = Props[i];
             var st = w.S(p);
+            if (st.Gone) continue;
             long dx = st.Px - e.Cx, dy = st.Py - e.Cy;
             long d2 = dx * dx + dy * dy;
             long lim = (long)e.Reach + p.Rad;
@@ -703,6 +727,69 @@ internal static class PropSim
     private static readonly int[] DirX = { 256, 181, 0, -181, -256, -181, 0, 181 };
     private static readonly int[] DirY = { 0, 181, 256, 181, 0, -181, -256, -181 };
 
+    // 流れに引く (Decompression の確定の刻みと揃っている時だけ全員で同じ)
+    private static void Pull(World w)
+    {
+        for (int i = 0; i < Props.Count; i++)
+        {
+            var p = Props[i];
+            if (p.Kind == Kind.Fixed) continue;
+            var st = w.S(p);
+            st.Pulled = false;
+            if (st.Gone || st.Stuck) continue;
+            int sx = st.Px / _cellU, sy = st.Py / _cellU;
+            if (!Decompression.FlowAt(sx, sy, out int dist, out int press, out int fx, out int fy)) continue;
+            bool heavy = p.Kind == Kind.Heavy;
+            if (heavy ? dist > HeavyReach * Decompression.UnitDist : press < PullMinPress) continue;
+            // 口に着いた: 重い物は真ん中から縁までの分だけ手前で着く
+            int reach = heavy ? (Math.Min(p.Hx, p.Hy) * Decompression.UnitDist + Unit / 2) / Unit : 0;
+            if (dist <= reach) { Arrive(w, p, st, sx, sy); continue; }
+            int sp = (int)((long)Flow * Decompression.Strength1024(dist) / 1024 * press / Decompression.Full);
+            sp = sp * (heavy ? PullHeavy : p.Kind == Kind.Medium ? PullMedium : PullSmall) / 256;
+            if (sp <= 0 || (!st.Active && sp < PullStart)) continue;
+            int fl = (int)Math.Sqrt((long)fx * fx + (long)fy * fy);
+            if (fl == 0) continue;
+            if (!st.Active)
+            {
+                if (w.Act.Count >= MaxActive) continue;
+                st.Active = true;
+                w.Act.Add(p);
+            }
+            if (st.Rng == 0) st.Rng = 0x9E3779B9u ^ (uint)i * 40503u;
+            st.Vx += (fx * sp / fl - st.Vx) / PullEase;
+            st.Vy += (fy * sp / fl - st.Vy) / PullEase;
+            if (p.Kind == Kind.Small && st.Spin == 0)
+            {
+                int spin = SpinMin / 2 + (int)(Next(st) % (uint)(SpinMin / 2 + 1));
+                st.Spin = (Next(st) & 1) != 0 ? spin : -spin;
+                st.Tip = int.MinValue;
+            }
+            st.Pulled = true;
+            st.Moved = true;
+        }
+    }
+
+    // 口に着いた物: 口より小さい物は宇宙へ消え、大きい物は止まって口をふさぐ (重い物で口より小さい物は止まるだけ)
+    private static void Arrive(World w, Prop p, St st, int sx, int sy)
+    {
+        int b = Decompression.MouthOf(sx, sy, out int w256);
+        if (b < 0) return;
+        st.Vx = 0; st.Vy = 0; st.Spin = 0;
+        if (p.Kind == Kind.Small) st.Tip = st.Ang;
+        if ((long)p.SizeU * 256 > (long)w256 * Unit)
+        {
+            st.Stuck = true;
+            if (!w.Display) { Plugs++; Decompression.SealByProp(b); }
+        }
+        else if (p.Kind == Kind.Heavy) st.Stuck = true;
+        else
+        {
+            st.Gone = true;
+            if (!w.Display) Lost++;
+        }
+        st.Moved = true;
+    }
+
     private static void Wobble(World w, Prop p, St st, int f, int ux)
     {
         if (p.Solid && !p.Sway) return; // 当たり判定ごと回ると歩ける所が揺れる
@@ -729,8 +816,9 @@ internal static class PropSim
             }
             long v2 = (long)st.Vx * st.Vx + (long)st.Vy * st.Vy;
             int sp = (int)Math.Sqrt(v2);
-            int fr = p.Kind == Kind.Heavy ? HeavyFriction : Friction;
-            if (sp <= fr) { st.Vx = 0; st.Vy = 0; st.Spin = 0; }
+            int fr = st.Pulled ? 0 : p.Kind == Kind.Heavy ? HeavyFriction : Friction;
+            if (fr == 0) { }
+            else if (sp <= fr) { st.Vx = 0; st.Vy = 0; st.Spin = 0; }
             else
             {
                 int ns = sp - fr;
@@ -749,6 +837,7 @@ internal static class PropSim
             int d = st.Tip - st.Ang;
             st.Ang += Math.Abs(d) <= TipSpeed ? d : Math.Sign(d) * TipSpeed;
         }
+        st.Pulled = false; // 次の刻みも引かれるなら Pull がまた立てる (流れが止まったら摩擦が戻る)
     }
 
     // ── 絵 ─────────────────────────────────────────────────────────────
@@ -759,6 +848,12 @@ internal static class PropSim
         if (p.Kind == Kind.Heavy) { DrawHeavy(p, t); return; }
         if (!p.Tr) return;
         var st = p.D;
+        if (st.Gone != p.Hidden)
+        {
+            p.Hidden = st.Gone;
+            p.Tr.gameObject.SetActive(!st.Gone);
+        }
+        if (st.Gone) return;
         float x = p.Ox + (st.Px - p.Ox) * t, y = p.Oy + (st.Py - p.Oy) * t;
         float ang = (p.OAng + (st.Ang - p.OAng) * t) / 16f;
         if (st.WobStart != int.MinValue)
@@ -835,9 +930,12 @@ internal static class PropSim
         int n = 0;
         while (Auth.Step < target && n < MaxStepsPerFrame)
         {
+            Decompression.StepThrough(Auth.Step);
             StepOnce(Auth);
             Auth.Step++;
             n++;
+            // 見せる用は今の流れで先回りしているので、引いている間は確定から時々計算し直す
+            if (Decompression.Pulling && Auth.Step % ResyncPull == 0) _resync = true;
         }
         if (_resync) { _resync = false; Resync(now); }
         else
@@ -877,6 +975,8 @@ internal static class PropSim
         _block = null;
         Late = 0;
         Kicks = 0;
+        Lost = 0;
+        Plugs = 0;
     }
 
     internal static uint Digest()
@@ -886,7 +986,8 @@ internal static class PropSim
         {
             var a = Props[i].A;
             if (!a.Moved) continue;
-            uint v = (uint)i * 0x9E3779B1u ^ (uint)a.Px * 0x85EBCA77u ^ (uint)a.Py * 0xC2B2AE3Du ^ (uint)a.Ang * 0x27D4EB2Fu;
+            uint v = (uint)i * 0x9E3779B1u ^ (uint)a.Px * 0x85EBCA77u ^ (uint)a.Py * 0xC2B2AE3Du ^ (uint)a.Ang * 0x27D4EB2Fu
+                ^ (a.Gone ? 0x165667B1u : 0u) ^ (a.Stuck ? 0xD3A2646Cu : 0u);
             v ^= v >> 15; v *= 0xC2B2AE3Du; v ^= v >> 13;
             acc += v;
         }
@@ -907,8 +1008,8 @@ internal static class PropSim
             }
             if (args.Trim() == "list")
                 foreach (var p in Props)
-                    reply($"PROP {p.Name} {p.Kind} foot={TestBridge.F(_org.x + p.A.Px / (float)Unit)},{TestBridge.F(_org.y + p.A.Py / (float)Unit)} ang={p.A.Ang / 16} moved={p.A.Moved}");
-            reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} digest={Digest():x8}");
+                    reply($"PROP {p.Name} {p.Kind} foot={TestBridge.F(_org.x + p.A.Px / (float)Unit)},{TestBridge.F(_org.y + p.A.Py / (float)Unit)} ang={p.A.Ang / 16} moved={p.A.Moved} size={p.SizeU / (float)Unit:0.00}{(p.A.Gone ? " gone" : "")}{(p.A.Stuck ? " stuck" : "")}");
+            reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} lost={Lost} plugs={Plugs} digest={Digest():x8}");
         });
     }
 }
