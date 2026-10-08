@@ -10,6 +10,7 @@ public enum Tab
     Crew,
     Impostor,
     Neutral,
+    Addon,
 }
 
 // 設定項目の共通部分。値は「選択肢の何番目か」(Index) で持ち、保存・同期もこの番号で行う。

@@ -24,6 +24,8 @@ internal static class VisionPatch
         if (Terrain.DustCloud.VisionMul < 1f && player.PlayerId == Terrain.DustCloud.LocalId) result *= Terrain.DustCloud.VisionMul;
         if (RoleState.All.Count == 0) return;
         RoleState.Of(player.PlayerId)?.ModifyVision(ref result);
+        var addons = RoleState.AddonsOf(player.PlayerId);
+        for (int i = 0; i < addons.Count; i++) addons[i].ModifyVision(ref result);
     }
 }
 
@@ -51,6 +53,10 @@ internal static class KillCooldownPatch
 {
     public static void Postfix(ref float __result)
     {
-        RoleState.Local?.ModifyKillCooldown(ref __result);
+        var role = RoleState.Local;
+        if (role == null) return;
+        role.ModifyKillCooldown(ref __result);
+        var addons = RoleState.AddonsOf(role.PlayerId);
+        for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref __result);
     }
 }

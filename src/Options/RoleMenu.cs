@@ -49,7 +49,7 @@ internal static class RoleMenu
 
     private sealed class RoleRow
     {
-        public RoleBase Role;
+        public Assignable Role;
         public RoleOptionSetting Row;
         public string Hay, AllHay;
         public readonly List<OptRow> Opts = new();
@@ -75,9 +75,9 @@ internal static class RoleMenu
     private static SearchBox _search;
     private static string[] _tokens = Array.Empty<string>();
     private static float _topY;
-    private static RoleBase _described;  // 左の説明の欄に出している役職
+    private static Assignable _described;  // 左の説明の欄に出している役職
 
-    public static bool TryRow(Il2CppObjectBase row, out RoleBase role)
+    public static bool TryRow(Il2CppObjectBase row, out Assignable role)
     {
         if (ByRow.Count > 0 && ByRow.TryGetValue(row.Pointer, out var r)) { role = r.Role; return true; }
         role = null;
@@ -526,7 +526,7 @@ internal static class RoleMenu
         if (r.Fill) r.Fill.color = CardColor(r);
     }
 
-    private static void Describe(RoleBase role)
+    private static void Describe(Assignable role)
     {
         _described = role;
         var menu = GameSettingMenu.Instance;

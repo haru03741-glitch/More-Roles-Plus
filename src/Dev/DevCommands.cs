@@ -48,6 +48,16 @@ internal static class DevCommands
 
         TestBridge.Register("setrole", "<役職Id> [番号] その人 (省略で自分) に役職を付けて全員に配る (ホストのみ。土台の役職も合わせる)", GiveRole);
         TestBridge.Register("giverole", "setrole と同じ", GiveRole);
+        TestBridge.Register("assignsim", "<人数> [回数=1000] [種=1] [インポスター数=2] 今の設定で配り方を何度も回し、役職・アドオンごとの付いた回数を出す (本編の物は読まない)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length < 1 || !int.TryParse(a[0], out int players)) { reply("ERR assignsim <players> [runs] [seed] [impostors]"); return; }
+            int runs = a.Length > 1 && int.TryParse(a[1], out int r) ? Math.Clamp(r, 1, 100000) : 1000;
+            int seed = a.Length > 2 && int.TryParse(a[2], out int sd) ? sd : 1;
+            int imps = a.Length > 3 && int.TryParse(a[3], out int im) ? im : Math.Min(2, players);
+            foreach (var line in AssignPlan.Simulate(Math.Clamp(players, 1, 15), Math.Clamp(imps, 0, players), runs, seed).Split('\n')) reply("SIM " + line);
+            reply("OK assignsim");
+        });
 
         TestBridge.Register("kill", "<番号> その人を倒す (ホストのみ)", (args, reply) =>
         {

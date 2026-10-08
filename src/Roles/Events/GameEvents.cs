@@ -131,13 +131,13 @@ internal static class EventBinder
     private sealed class Binding
     {
         public MethodInfo Method;
-        public Action<RoleBase, MethodInfo, Binding> Add;
+        public Action<Assignable, MethodInfo, Binding> Add;
         public bool Mine, Local, Host;
         public int Priority;
     }
 
     private static readonly Dictionary<Type, Binding[]> ByRole = new();
-    private static readonly Dictionary<Type, Action<RoleBase, MethodInfo, Binding>> Adders = new();
+    private static readonly Dictionary<Type, Action<Assignable, MethodInfo, Binding>> Adders = new();
     private static readonly MethodInfo AddGeneric = typeof(EventBinder).GetMethod(nameof(Add), BindingFlags.Static | BindingFlags.NonPublic);
 
     public static void Prepare(Type roleType)
@@ -166,7 +166,7 @@ internal static class EventBinder
                     continue;
                 }
                 if (!Adders.TryGetValue(ev, out var add))
-                    Adders[ev] = add = AddGeneric.MakeGenericMethod(ev).CreateDelegate<Action<RoleBase, MethodInfo, Binding>>();
+                    Adders[ev] = add = AddGeneric.MakeGenericMethod(ev).CreateDelegate<Action<Assignable, MethodInfo, Binding>>();
                 b.Add = add;
                 list.Add(b);
             }
@@ -175,7 +175,7 @@ internal static class EventBinder
     }
 
     // 割り当てた直後に呼ぶ (role.Lifespan が付いていること)
-    public static void Bind(RoleBase role)
+    public static void Bind(Assignable role)
     {
         var t = role.GetType();
         Prepare(t);
@@ -186,7 +186,7 @@ internal static class EventBinder
         }
     }
 
-    private static void Add<E>(RoleBase role, MethodInfo m, Binding b) where E : GameEvent
+    private static void Add<E>(Assignable role, MethodInfo m, Binding b) where E : GameEvent
     {
         var fn = m.CreateDelegate<Action<E>>(role);
         if (b.Mine)

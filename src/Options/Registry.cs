@@ -19,12 +19,13 @@ internal static class Registry
     {
         public Text Title;
         public string Color;   // 見出しの色 (null なら既定)
-        public RoleBase Role;  // 役職の見出しなら、その役職
+        public Assignable Role;  // 役職・アドオンの見出しなら、その物
         public readonly List<Opt> Opts = new();
     }
 
     public static readonly List<Opt> All = new();          // 同期・保存の順
     public static readonly List<RoleBase> Roles = new();   // 役職の雛形 (Id の文字順 = 同期の番号)
+    public static readonly List<AddonBase> Addons = new(); // アドオンの雛形 (同上)
     private static readonly Dictionary<Tab, List<Section>> Sections = new();
     private static readonly Dictionary<string, Opt> ByKey = new(StringComparer.Ordinal);
 
@@ -77,6 +78,48 @@ internal static class Registry
         }
         Roles.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
 
+        foreach (var t in types.Where(t => t.IsSubclassOf(typeof(AddonBase)) && !t.IsAbstract).OrderBy(t => t.Name, StringComparer.Ordinal))
+        {
+            AddonBase addon;
+            try { addon = (AddonBase)Activator.CreateInstance(t); }
+            catch (Exception e)
+            {
+                Plugin.Logger.LogError($"addon {t.Name}: cannot create ({e.InnerException?.Message ?? e.Message}) — skipped");
+                continue;
+            }
+            if (Addons.Any(a => a.Id == addon.Id) || Roles.Any(r => r.Id == addon.Id))
+            {
+                Plugin.Logger.LogError($"addon {t.Name}: Id '{addon.Id}' is already used — skipped");
+                continue;
+            }
+            Section sec;
+            try
+            {
+                sec = new Section { Title = addon.Name, Color = addon.Color, Role = addon };
+                var opts = CollectFields(t);
+                addon.Chance = new IntOpt("出現率", "Chance", 0, 0, 100, 10, "%");
+                addon.Count = new IntOpt("人数", "Count", 1, 1, Math.Max(addon.MaxCount, 1));
+                addon.OnCrew = new BoolOpt("クルーに付く", "Crewmates can have it", true);
+                addon.OnImpostor = new BoolOpt("インポスターに付く", "Impostors can have it", true);
+                addon.OnNeutral = new BoolOpt("第三陣営に付く", "Neutrals can have it", true);
+                Add(sec, addon.Chance, addon.Id + ".Chance");
+                Add(sec, addon.Count, addon.Id + ".Count");
+                Add(sec, addon.OnCrew, addon.Id + ".OnCrew");
+                Add(sec, addon.OnImpostor, addon.Id + ".OnImpostor");
+                Add(sec, addon.OnNeutral, addon.Id + ".OnNeutral");
+                foreach (var (name, opt) in opts) Add(sec, opt, addon.Id + "." + name);
+            }
+            catch (Exception e)
+            {
+                Plugin.Logger.LogError($"addon {t.Name}: {e.InnerException?.Message ?? e.Message} — skipped");
+                continue;
+            }
+            Addons.Add(addon);
+            SectionList(Tab.Addon).Add(sec);
+            MoreRolesPlus.Roles.EventBinder.Prepare(t);
+        }
+        Addons.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+
         foreach (var (t, attr) in types
                      .Select(t => (t, attr: t.GetCustomAttribute<SettingsAttribute>()))
                      .Where(x => x.attr != null)
@@ -99,7 +142,7 @@ internal static class Registry
         All.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
         Fingerprint = MakeFingerprint();
         Load();
-        Plugin.Logger.LogInfo($"registry: {Roles.Count} roles, {All.Count} options, fingerprint {Fingerprint:X8}");
+        Plugin.Logger.LogInfo($"registry: {Roles.Count} roles, {Addons.Count} addons, {All.Count} options, fingerprint {Fingerprint:X8}");
     }
 
     public static bool TryGet(string key, out Opt opt) => ByKey.TryGetValue(key, out opt);
@@ -148,6 +191,7 @@ internal static class Registry
         Mix(Plugin.Version);
         foreach (var o in All) Mix(o.Key + ":" + o.Count);
         foreach (var r in Roles) Mix(r.Id);
+        foreach (var a in Addons) Mix("+" + a.Id);
         foreach (var c in Net.Remote.All) Mix(c.Name);
         return h;
     }

@@ -23,7 +23,7 @@ internal static class LobbyView
     // 本編の閲覧画面の並び (本編の定数と同じ)
     private const float StartY = 1.44f, LeftX = -8.95f, RightX = -3f, RowStepY = 0.85f, HeaderX = -9.77f, HeaderStepY = 1.05f;
 
-    private static readonly Tab[] TabOrder = { Tab.General, Tab.Crew, Tab.Impostor, Tab.Neutral };
+    private static readonly Tab[] TabOrder = { Tab.General, Tab.Crew, Tab.Impostor, Tab.Neutral, Tab.Addon };
 
     // ボタンに渡す処理は 1 つだけ作って使い回す (il2cpp 側へ渡すたびに解放されない参照が増えるため)。何も捕まえない
     private static UnityAction _click;
