@@ -1,4 +1,5 @@
-// Based on https://github.com/waffle-ful/Aeterna-End-K-not Modules/Utils.cs IsOfficialServer (GPL-3.0)
+// Based on https://github.com/NuclearPowered/Reactor Reactor/Patches/Miscellaneous/CustomServersPatch.cs (LGPL-3.0),
+// by way of https://github.com/waffle-ful/Aeterna-End-K-not Modules/Utils.cs IsOfficialServer (GPL-3.0)
 using System;
 using InnerNet;
 
