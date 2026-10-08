@@ -204,7 +204,8 @@ internal static class TerrainSync
             w.WriteBytesAndSize(payload);
         },
         r => new ArraySegment<byte>(r.ReadBytesAndSize()),
-        (sender, data) => Receive(sender, data.Array));
+        (sender, data) => Receive(sender, data.Array),
+        Net.Delivery.Queued); // Tick の中で送るので同じ tick の終わりに出る (遅れ無し)。本編の RPC との前後関係は要らない
 
     // 受信。sender = 送ってきたプレイヤー
     private static void Receive(PlayerControl sender, byte[] b)
