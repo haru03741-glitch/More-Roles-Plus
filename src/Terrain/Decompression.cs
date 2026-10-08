@@ -41,7 +41,7 @@ internal static class Decompression
     private static readonly int[] Nx = { 1, -1, 0, 0, 1, -1, 1, -1 };
     private static readonly int[] Ny = { 0, 0, 1, -1, 1, 1, -1, -1 };
 
-    private sealed class Breach
+    internal sealed class Breach
     {
         public int Start;
         public readonly List<(Vector2 A, Vector2 B)> Lines = new();
@@ -652,6 +652,16 @@ internal static class Decompression
     }
 
     internal static List<Vector2> GripPoints => Grips;
+    internal static List<Breach> OpenedBreaches => Breaches;
+
+    // 船の中の歩ける升か (口の線のどちら側が船の中かを見る用)
+    internal static bool InsideAt(Vector2 p)
+    {
+        if (!_running) return false;
+        int x = CellX(p.x), y = CellY(p.y);
+        if (x < 0 || y < 0 || x >= _w || y >= _h) return false;
+        return _sub[y * _w + x] != 0;
+    }
 
     private static Vector2 NearestMouth(Vector2 p)
     {
