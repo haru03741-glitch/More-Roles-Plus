@@ -94,6 +94,7 @@ internal static class TerrainSync
             WaterLeak.OnApplied(r);
             WaterSim.OnApplied(r);
             PropSim.OnApplied(r);
+            Decompression.OnApplied(r);
         }
         // 役職への知らせは呼び出し元が連番と配る列を書き終えてから (FireBroken)。受け手がさらに壊しても順番がずれない
         Broken.Add(new Roles.TerrainBrokenEvent

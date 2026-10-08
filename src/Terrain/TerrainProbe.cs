@@ -50,6 +50,7 @@ internal static class TerrainProbe
         WaterLeak.Register();
         WaterSim.Register();
         PropSim.Register();
+        Decompression.Register();
         BreakableProps.Register();
         FurnitureLift.Register();
         RegisterMapSurvey();

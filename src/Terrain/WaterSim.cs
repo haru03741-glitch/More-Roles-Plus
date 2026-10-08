@@ -260,7 +260,7 @@ internal static class WaterSim
     }
 
     // 2 つの升の境で向かい合う歩ける升の組の数。column = true なら a の列 ia と b の列 ib、false なら行
-    private static int Facing(int a, int b, int ia, int ib, bool column)
+    internal static int Facing(int a, int b, int ia, int ib, bool column)
     {
         int n = 0;
         for (int i = 0; i < Sub; i++)
@@ -272,7 +272,7 @@ internal static class WaterSim
         return n;
     }
 
-    private static int PopCount(int v)
+    internal static int PopCount(int v)
     {
         int c = 0;
         while (v != 0) { v &= v - 1; c++; }
@@ -280,7 +280,7 @@ internal static class WaterSim
     }
 
     // 4×4 の歩ける升が上下左右で 1 つにつながっているか
-    private static bool Connected(int bits)
+    internal static bool Connected(int bits)
     {
         int first = bits & -bits;
         int seen = first, frontier = first;
