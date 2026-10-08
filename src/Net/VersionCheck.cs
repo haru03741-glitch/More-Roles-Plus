@@ -77,7 +77,7 @@ internal static class VersionCheck
         int host = AmongUsClient.Instance.HostId;
         foreach (var p in PlayerControl.AllPlayerControls)
         {
-            if (!p || p.OwnerId == host || p.notRealPlayer) continue;
+            if (!p || p.OwnerId == host || p.notRealPlayer || p.isDummy) continue; // ダミーはホストの端末で動く
             if (IsSame(p.OwnerId)) continue;
             string name = p.Data != null ? p.Data.PlayerName : $"#{p.PlayerId}";
             list.Add(SeenVersion.TryGetValue(p.OwnerId, out string v)

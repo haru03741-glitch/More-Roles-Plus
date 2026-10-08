@@ -133,6 +133,23 @@ internal static class LobbyCommands
             reply($"OK pressstart min={gsm.MinPlayers} players={GameData.Instance.PlayerCount}");
         });
 
+        TestBridge.Register("vrow", "<impostors> [+N|-N] 本編のゲーム設定の行 (いまはインポスター数) を ± で押して、値と幅を返す (設定画面のゲーム設定タブを開いておく)", (args, reply) =>
+        {
+            var menu = GameSettingMenu.Instance;
+            if (!menu || !menu.GameSettingsTab || menu.GameSettingsTab.Children == null) { reply("ERR vrow open the game settings tab first"); return; }
+            var parts = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            int times = parts.Length > 1 && int.TryParse(parts[1], out int t) ? t : 0;
+            foreach (var b in menu.GameSettingsTab.Children)
+            {
+                var num = b.TryCast<NumberOption>();
+                if (num == null || num.Title != StringNames.GameNumImpostors) continue;
+                for (int i = 0; i < System.Math.Abs(times); i++) { if (times > 0) num.Increase(); else num.Decrease(); }
+                reply($"OK vrow value={num.Value} range={num.ValidRange.min}..{num.ValidRange.max} opt={GameOptionsManager.Instance.CurrentGameOptions.NumImpostors}");
+                return;
+            }
+            reply("ERR vrow row not found");
+        });
+
         TestBridge.Register("noend", "<on|off> 本編の試合の終わりを全部止める (MRP の勝ちと forcewin は通る。テスト用)", (args, reply) =>
         {
             NoGameEnd = args.Trim() != "off";
