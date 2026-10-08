@@ -96,6 +96,13 @@ internal static class TerrainReview
                             bool thick = SolidMap.HasHull && SolidMap.InHull(m + back * 0.3f);
                             kind = thick ? "thick" : "outer"; color = thick ? Thick : Outer;
                             if (!thick && SolidMap.BreachableHull && SolidMap.HullDepth(m, back, TerrainDamage.BreachDepth) > 0f) { kind = "hull"; color = Hull; }
+                            if (SolidMap.BreachableHull)
+                            {
+                                // 外 (宇宙・空) までの厚みの内訳 (掘り抜ける範囲を決める用)
+                                float dd = SolidMap.HullDepth(m, back, 4f);
+                                string bucket = (thick ? "thick-" : "") + (dd <= 0f ? "depthFar" : dd <= 1f ? "depth1.0" : dd <= 1.5f ? "depth1.5" : dd <= 2.5f ? "depth2.5" : dd <= 3.5f ? "depth3.5" : "depth4.0");
+                                counts.TryGetValue(bucket, out float bs); counts[bucket] = bs + len / parts;
+                            }
                             if (ia != 0 && ib != 0 && !SolidMap.FacesOutside(m, n)) Notes.Add($"SKYBUMP {m.x:0.00} {m.y:0.00}");
                         }
                         else { kind = "breakable"; color = Breakable; }
