@@ -13,6 +13,10 @@ namespace MoreRolesPlus.Terrain;
 internal sealed class WallBody
 {
     public const string CapName = "MrpBreachCap";
+    public const string MouthName = "MrpBreachMouth"; // 外壁を宇宙まで掘り抜いた穴の口 (歩いては出られない線)
+
+    // 外壁を宇宙まで掘り抜けるマップ: 船の外は壁の中として扱わない (蓋は船体の外の縁で止まり、間が穴の口になる)
+    public bool OpenToSpace;
 
     private readonly List<Vector2> _seg = new();     // 壊す前の壁の線分 (両端を 2 つずつ)
     private readonly List<Vector2> _opening = new(); // 切り取った区間 (両端を 2 つずつ)
@@ -59,6 +63,7 @@ internal sealed class WallBody
     public bool Exposed(float x, float y)
     {
         var p = new Vector2(x, y);
+        if (OpenToSpace && SolidMap.BareSky(x, y)) return false;
         if (_solidMap)
         {
             if (!SolidMap.Solid(p)) return false;
@@ -285,6 +290,21 @@ internal sealed class WallBody
             }
         }
         return made;
+    }
+
+    // 穴の口: 動きの層だけに 1 本の線 (視界は通して星空が見えるように)。蓋と同じくマップの子
+    public static void BuildMouth(Vector2 a, Vector2 b)
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship) return;
+        var go = new GameObject(MouthName) { layer = 9 };
+        go.transform.SetParent(ship.transform, true);
+        var t = go.transform;
+        var line = Snap(new List<Vector2> { a, b });
+        if (line[0] == line[1]) return;
+        TerrainDigest.Chain(line);
+        var col = go.AddComponent<EdgeCollider2D>();
+        col.points = new Vector2[] { t.InverseTransformPoint(line[0]), t.InverseTransformPoint(line[1]) };
     }
 
     // 点を 1/512 の格子にそろえる。ほぼ一直線の点のどれを残すかが計算の末尾の差で決まらないよう、間引く前に入力を同じにする

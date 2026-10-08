@@ -49,6 +49,8 @@ internal static class SolidMap
     public static bool Valid { get; private set; }
     public static int IslandCount { get; private set; }
     public static bool HasHull => Valid && HullRects.Count > 0;
+    // 爆発で外壁を宇宙まで掘り抜けるマップか (スケルド)
+    public static bool BreachableHull { get; private set; }
     public static string Stats { get; private set; } = "not built";
 
     // 試合の始め (TerrainWarm) と、最初の破壊の前に呼ぶ。壁を切る前に作ること
@@ -63,6 +65,7 @@ internal static class SolidMap
         _leaked = null;
         _island = null;
         _outside = null;
+        BreachableHull = false;
         IslandCount = 0;
         HullRects.Clear();
         ExtraSeeds.Clear();
@@ -170,6 +173,21 @@ internal static class SolidMap
             if (NearOutside(p.x, p.y)) return true;
         }
         return false;
+    }
+
+    // 面 m から dir へ、船体の中 (歩けない所) だけを通って船の外に着くまでの距離。途中で歩ける所に着く・max を越える・
+    // 外を持たないマップは -1。外の際の太らせた分 (絵の無い縁) は宇宙に数える (穴の口を空の上に作らないのと同じ線)
+    public static float HullDepth(Vector2 m, Vector2 dir, float max)
+    {
+        if (_outside == null) return -1f;
+        for (float d = FaceProbeStep; d <= max + 1e-4f; d += FaceProbeStep)
+        {
+            Vector2 p = m + dir * d;
+            int x = (int)MathF.Floor((p.x - _origin.x) * _ppu), y = (int)MathF.Floor((p.y - _origin.y) * _ppu);
+            if (BareSkyCell(x, y)) return d;
+            if (_open[y * _w + x] != 0) return -1f;
+        }
+        return -1f;
     }
 
     // 面から 0.15 ずつ 0.6 まで (部屋の範囲が壁の線より外へ張り出している所がある)
@@ -305,6 +323,7 @@ internal static class SolidMap
         bool sky = ship.TryCast<MiraShipStatus>() != null || ship.TryCast<AirshipStatus>() != null;
         var hullMeshes = !sky && ship.Type == ShipStatus.MapType.Ship ? HullMeshes(ship) : null;
         _outside = sky || hullMeshes is { Count: > 0 } ? Outside(blocked, hullMeshes) : null;
+        BreachableHull = Valid && hullMeshes is { Count: > 0 };
 
         Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
         Plugin.Logger.LogInfo($"solid map: {Stats}");
@@ -425,7 +444,7 @@ internal static class SolidMap
 
     private static bool IsWall(Collider2D c) =>
         c && c.enabled && !c.isTrigger && c.gameObject.layer == ShipLayer &&
-        c.gameObject.name != WallBody.CapName && c.gameObject.name != HullEdgeName && c.gameObject.name != HeightLevels.LedgeName && c.gameObject.name != "MrpRubbleBlock";
+        c.gameObject.name != WallBody.CapName && c.gameObject.name != WallBody.MouthName && c.gameObject.name != HullEdgeName && c.gameObject.name != HeightLevels.LedgeName && c.gameObject.name != "MrpRubbleBlock";
 
     // 床の上の点。確か = 通気口とダミーの出現位置 (床に置かれる物)。扉は扉の板の両脇 (通り道の両側) の点を後から足し、
     // それだけが新しく塗った塊の数を数えておく (壁の中に落ちていないかを地図の書き出しで確かめる用)。
