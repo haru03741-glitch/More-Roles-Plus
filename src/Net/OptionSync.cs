@@ -22,7 +22,7 @@ internal static class OptionSync
             for (int i = 0; i < values.Length; i++) values[i] = r.ReadPackedInt32();
             return values;
         },
-        (_, values) => Receive(values));
+        (_, values) => Receive(values), Delivery.Queued);
 
     public static void SendAll(int target = -1)
     {

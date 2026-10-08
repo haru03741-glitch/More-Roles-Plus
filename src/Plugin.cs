@@ -103,6 +103,7 @@ public class Ticker : MonoBehaviour
         Roles.ModButton.TickAll();
         Roles.MeetingEndWatch.Tick();
         Bridge.TestBridge.Tick();
+        Net.Remote.Tick(); // 上の Tick が積んだ電文を同じ tick で出す
         Bridge.Perf.EndFixed(t);
     }
 }

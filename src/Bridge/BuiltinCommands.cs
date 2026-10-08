@@ -136,6 +136,20 @@ internal static class BuiltinCommands
             reply("OK health");
         });
 
+        TestBridge.Register("net", "[flood <個数>] 通信の計器: 出した通数/バイト・直近 1 秒の本数/予算・待ち行列・持ち越し・大きすぎて止めた数・ping/未応答、電文ごとの数 (flood = 確かめ用の電文を積んで予算の頭打ちを見る)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length >= 1 && a[0] == "flood")
+            {
+                int n = a.Length >= 2 && int.TryParse(a[1], out int f) ? Math.Clamp(f, 1, 10000) : 60;
+                Net.Remote.Flood(n);
+                reply($"OK net flood {n}");
+                return;
+            }
+            foreach (var line in Net.Remote.Describe().Split('\n')) reply("NET " + line);
+            reply("OK net");
+        });
+
         TestBridge.Register("permit", "[sandbox auto|on|off | world <x> <y> <r>] 自分が地形をどう壊せるか (役職の許可)。sandbox = 練習の「何でも使える」を確かめ用に切り替える・world = プレイヤーでない爆発 (ホストか一人の時)", (args, reply) =>
         {
             var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
