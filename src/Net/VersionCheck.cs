@@ -122,6 +122,7 @@ internal static class ResetOnJoinPatch
         VersionCheck.OnJoined();
         Roles.PracticeMatch.OnJoined();
         Commands.ChatGuard.Reset();
+        Bridge.LobbyCommands.RestoreChatMode();
     }
 }
 
