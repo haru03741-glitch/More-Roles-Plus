@@ -51,6 +51,9 @@ internal static class SolidMap
     public static bool HasHull => Valid && HullRects.Count > 0;
     // 爆発で外壁を宇宙まで掘り抜けるマップか (スケルド)
     public static bool BreachableHull { get; private set; }
+    // エアシップ: 外に面した厚い壁の裏は船体の塊。塊へ抉れたら厚みに関係なく空へ開通したと見なす
+    public static bool SkyHull { get; private set; }
+    public static bool Breachable => BreachableHull || SkyHull;
     public static string Stats { get; private set; } = "not built";
 
     // 試合の始め (TerrainWarm) と、最初の破壊の前に呼ぶ。壁を切る前に作ること
@@ -66,6 +69,7 @@ internal static class SolidMap
         _island = null;
         _outside = null;
         BreachableHull = false;
+        SkyHull = false;
         IslandCount = 0;
         HullRects.Clear();
         ExtraSeeds.Clear();
@@ -188,6 +192,23 @@ internal static class SolidMap
             if (_open[y * _w + x] != 0) return -1f;
         }
         return -1f;
+    }
+
+    private const float SkyFaceSlack = 0.3f;
+
+    // p から dir へ max まで、歩ける所に当たらずに船の外 (空) か地図の外へ出るか (外に面した厚い壁か)
+    public static bool SkyAhead(Vector2 p, Vector2 dir, float max)
+    {
+        if (!Valid || _outside == null) return false;
+        for (float d = FaceProbeStep; d <= max + 1e-4f; d += FaceProbeStep)
+        {
+            Vector2 q = p + dir * d;
+            int x = (int)MathF.Floor((q.x - _origin.x) * _ppu), y = (int)MathF.Floor((q.y - _origin.y) * _ppu);
+            if (x < 0 || y < 0 || x >= _w || y >= _h) return true;
+            if (BareSkyCell(x, y)) return true;
+            if (_open[y * _w + x] != 0 && d > SkyFaceSlack) return false; // 面の際の升は床側に掛かることがある
+        }
+        return false;
     }
 
     // 面から 0.15 ずつ 0.6 まで (部屋の範囲が壁の線より外へ張り出している所がある)
@@ -324,6 +345,7 @@ internal static class SolidMap
         var hullMeshes = !sky && ship.Type == ShipStatus.MapType.Ship ? HullMeshes(ship) : null;
         _outside = sky || hullMeshes is { Count: > 0 } ? Outside(blocked, hullMeshes) : null;
         BreachableHull = Valid && hullMeshes is { Count: > 0 };
+        SkyHull = Valid && HullRects.Count > 0 && ship.TryCast<AirshipStatus>() != null;
 
         Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
         Plugin.Logger.LogInfo($"solid map: {Stats}");

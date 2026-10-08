@@ -35,7 +35,7 @@ internal static class FoamArt
 
     private static readonly Dictionary<Decompression.Breach, Foam> Foams = new();
     private static GameObject _root;
-    private static int _shipGen = -1;
+    private static int _shipGen = -1, _failedGen = -2;
     private static Sprite[] _blobSprites;
     private static Sprite _shineSprite;
 
@@ -55,11 +55,13 @@ internal static class FoamArt
             if (Foams.Count > 0 && !GameClock.ShipAlive) Foams.Clear();
             return;
         }
+        if (_failedGen == _shipGen) return;
         try { TickCore(); }
         catch (Exception e)
         {
+            // 同じ船では作り直しても同じ所で落ちるので、この試合の泡は止める
             Plugin.Logger.LogError($"[FoamArt] tick: {e}");
-            Foams.Clear();
+            _failedGen = _shipGen;
         }
     }
 
@@ -180,7 +182,6 @@ internal static class FoamArt
         foreach (var bl in f.Blobs)
         {
             if (bl.Done) continue;
-            if (!bl.Tf) { bl.Done = true; continue; }
             float k = (p - bl.Start) / GrowShare;
             if (k <= 0f) { all = false; continue; }
             float s;

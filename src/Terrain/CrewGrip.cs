@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Terrain;
 //   (Perfect 以内ならゲージ 80% から・それ以外は 60%)。早押しは Lockout の間押せない。
 // - 連打: ゲージはその場の引く強さに比例して減る (口の際の満タンで 25%/秒)・1 押し +10%。100% で中へ 1.8 戻り Immune の間は流されない。
 //   0% で手が離れて流される (次の角でもう一度つかめる)。口がふさがる・気圧が抜ければ引く力が消えて助かる。
-// - 口に触れたら (つかまっていない時) 吸い出し: 本人の端末が決めてホストへ 1 通 → ホストが確かめて全員へ配り、全員が同じ飛び方を見せてから
+// - 口に触れたら (つかまっていない時) 吸い出し (エアシップは空へ落ちる): 本人の端末が決めてホストへ 1 通 → ホストが確かめて全員へ配り、全員が同じ飛び方を見せてから
 //   本編の追放と同じ死に方 (体を残さない) にする。追放の出来事 (道化の勝ち等) は起こさない。
 // 押すのは PC = スペース/クリック・スマホ = 画面の右側のタップ (左の移動の指は数えない)。入力は毎フレーム、体の速さは物理の刻みで
 internal static class CrewGrip
@@ -257,18 +257,19 @@ internal static class CrewGrip
         }
 
         // Free
+        // 口に触れたら外へ。エアシップの風は弱い (歩く速さの 0.4 倍) ので、風があれば落ちる
+        if (on && mul >= (Decompression.Wind ? 0.01f : DangerMul) && dist <= OutDist && Decompression.MouthDist(pos, out _) <= OutReach)
+        {
+            Out(pc);
+            body.velocity = FxMath.V2(0f, 0f);
+            return true;
+        }
         if (!on || mul < DangerMul)
         {
             _hasTarget = false;
             return false;
         }
         _dir = dir;
-        if (dist <= OutDist && Decompression.MouthDist(pos, out _) <= OutReach)
-        {
-            Out(pc);
-            body.velocity = FxMath.V2(0f, 0f);
-            return true;
-        }
         PickTarget(pos, dir);
         if (_auto >= 0f && _hasTarget && _de <= _auto) presses++;
         if (presses > 0 && _t >= _lockEnd)
@@ -432,11 +433,12 @@ internal static class CrewGrip
             else
             {
                 float a = (u - 0.22f) / 0.78f;
-                float far = 3f * (1f - (1f - a) * (1f - a));
+                float far = (Decompression.Wind ? 1.2f : 3f) * (1f - (1f - a) * (1f - a));
                 ox = f.Mx + f.Dx * far; oy = f.My + f.Dy * far;
             }
-            float spin = 720f * u * u;
-            float sc = 1f - 0.65f * u;
+            // エアシップは空へ落ちる (回りは少なく、遠ざかるほど小さく)
+            float spin = (Decompression.Wind ? 200f : 720f) * u * u;
+            float sc = Decompression.Wind ? 1f - 0.9f * u * u : 1f - 0.65f * u;
             f.Pose.Set(ox, oy, spin, sc, sc);
         }
     }

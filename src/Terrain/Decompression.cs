@@ -13,6 +13,7 @@ namespace MoreRolesPlus.Terrain;
 // - 流れ: 口からの道のり (升の最短路・縦横 2・斜め 3) を、穴・扉・ふさがりが変わった時だけ作り直す。
 //   引く強さ (満タン時・歩く速さの倍) = 口の際 1.6 / 3 単位 0.6 / 6 単位 0.15 / 10 単位より先 0。気圧に比例。
 // - 補修フォーム: 開通から FoamDelay 後に縁から膨らみ FoamTime でふさがる (引く強さ 0・気圧が戻り始める)。
+// エアシップ (Wind): 空へ開いても気圧は減らず、口から 3 単位まで歩く速さの 0.4 倍・4 単位で 0 の風が吹き続ける。
 // 全員の手元で同じにするため WaterSim と同じく試合の刻みの Delay 遅れで整数だけで進める。開通は地形の件の刻みで入る (新しい電文なし)。
 // 扉の開け閉めは本編の同期で端末ごとに届く時刻がずれるので、ホスト (一人の時は自分) だけが DoorPoll ごとに読み、
 // 変わった刻みと開きを地形の電文で配る (TerrainSync.BroadcastDoors)。全員その記録 (DoorLog) の刻みで反映する。
@@ -31,6 +32,10 @@ internal static class Decompression
     // 抜ける速さ: 1 刻みに P·幅256·KNum / (KDen·升の数)。389 単位² (= 6224 升)・幅 1.0 で 540 刻み (18 秒) で 1 割まで
     private const long KNum = 796, KDen = 7680;
     private const int Recover = Full / 300;   // 口が全部ふさがった範囲は 10 秒で戻る
+    // エアシップの風: 口から 3 単位まで歩く速さの 0.4 倍・4 単位で 0
+    private const float WindMul = 0.4f;
+    private const int Wind1024 = 410;
+    internal static bool Wind => SolidMap.SkyHull;
     public const int FoamDelay = 180, FoamTime = 75; // 開通 6 秒後に膨らみ始め 2.5 秒でふさがる
     private const int DoorPoll = 15;          // ホストが扉を読む間隔 (0.5 秒)
     // 道のり (縦横 2・斜め 3 = 1 升 0.25 単位が 2) の上限。10 単位より先は引かない
@@ -114,7 +119,7 @@ internal static class Decompression
     {
         try
         {
-            if (r.Kind != DamageKind.Explosion || !SolidMap.BreachableHull) return;
+            if (r.Kind != DamageKind.Explosion || !SolidMap.Breachable) return;
             int tick = GameClock.Expand(r.Tick);
             float w = TerrainDamage.LastBreach;
             if (_running) Enqueue(new Pending { Tick = tick, Rebuild = true });
@@ -235,7 +240,7 @@ internal static class Decompression
     // ホストと一人の時: 外壁を掘り抜ける船 (スケルド) で扉を読み、変わったら刻みを押して記録し配る
     private static void PollDoors()
     {
-        if (!SolidMap.BreachableHull) return;
+        if (!SolidMap.Breachable) return;
         int now = GameClock.Now;
         if (now < _nextPoll) return;
         if (TerrainSync.IsGuest()) { _nextPoll = now + DoorPoll; return; }
@@ -541,7 +546,11 @@ internal static class Decompression
         for (int c = 0; c < _press.Length; c++)
         {
             int p = _press[c];
-            if (width[c] > 0)
+            if (width[c] > 0 && Wind)
+            {
+                pulling = true; // エアシップは空へ開いても気圧は減らず、口のまわりに風が吹き続ける
+            }
+            else if (width[c] > 0)
             {
                 long dp = (long)p * width[c] * KNum / (KDen * _compCells[c]);
                 if (dp < 1 && p > 0) dp = 1;
@@ -610,6 +619,7 @@ internal static class Decompression
     private static float Strength(int d)
     {
         float u = d / (float)PerUnit;
+        if (Wind) return u <= 3f ? WindMul : u <= 4f ? WindMul * (4f - u) : 0f;
         if (u <= 3f) return 1.6f - u * (1.0f / 3f);
         if (u <= 6f) return 0.6f - (u - 3f) * (0.45f / 3f);
         if (u <= 10f) return 0.15f - (u - 6f) * (0.15f / 4f);
@@ -748,6 +758,7 @@ internal static class Decompression
     // 道のり → 満タン時の引く強さ (/1024)。Strength と同じ折れ線
     internal static int Strength1024(int d)
     {
+        if (Wind) return d <= 3 * PerUnit ? Wind1024 : d <= 4 * PerUnit ? Wind1024 * (4 * PerUnit - d) / PerUnit : 0;
         if (d <= 3 * PerUnit) return 1638 - d * 1024 / (3 * PerUnit);
         if (d <= 6 * PerUnit) return 614 - (d - 3 * PerUnit) * 461 / (3 * PerUnit);
         if (d <= 10 * PerUnit) return 154 - (d - 6 * PerUnit) * 154 / (4 * PerUnit);

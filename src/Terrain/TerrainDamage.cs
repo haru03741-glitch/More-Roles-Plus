@@ -119,6 +119,8 @@ internal static class TerrainDamage
             : new CircleShape(e.Position, e.Size);
         // 宇宙まで掘り抜ける外壁 (スケルド) は 1 発で ThickStep ずつ奥へ。残りが ThickStep 以内なら宇宙まで抜ける
         LastBreach = 0f;
+        SkyCut.Clear();
+        _skyAway = default;
         if (SolidMap.BreachableHull) core = DigHull(core, e.Position);
         float ring = e.Size * (p.OuterRingScale - 1f);
         float outer = core.BoundRadius + ring;
@@ -137,6 +139,12 @@ internal static class TerrainDamage
             Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
             away = away.normalized;
             if (SolidMap.BreachableHull && SolidMap.HullDepth(m, away, BreachDepth) > 0f) return true; // 掘り抜ける外壁
+            if (SolidMap.SkyHull && SolidMap.SkyAhead(m, away, SkyReach)) // エアシップ: 床を通らずに空へ出る外壁は爆発で抜ける
+            {
+                SkyCut.Add(a); SkyCut.Add(b);
+                _skyAway += away;
+                return true;
+            }
             // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) か、
             // 裏が船体の塊 (エアシップ) なら抜く。向こうに床が無い面 (厚い外壁の手前と裏) は外壁
             if (SolidMap.FacesOutside(m, away)) return false; // どちら側でも空・宇宙に面した面は外壁 (爆心の反対を向いた面も)
@@ -208,6 +216,7 @@ internal static class TerrainDamage
         var capLines = cut > 0 ? body.Caps(core) : null;
         int caps = capLines != null ? WallBody.Build(capLines) : 0;
         if (SolidMap.BreachableHull && capLines != null) Mouth(capLines); // 抜けた穴を横へ広げた時も、宇宙に接した所に口を足す
+        else if (SolidMap.SkyHull && cut > 0) SkyMouth();
         int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         var pieces = new List<BreakPiece>();
@@ -322,6 +331,38 @@ internal static class TerrainDamage
         }
         Vector2 mid = (a + b) * 0.5f;
         if (!SolidMap.Solid(mid)) return;
+        WallBody.BuildMouth(a, b);
+        LastBreach = MathF.Sqrt(best);
+        LastBreachA = a; LastBreachB = b;
+    }
+
+    // エアシップ: 外に面した厚い壁が抜けた所は空へ開いた口。空へ抜けると決めて切った壁の区間の端のうち、
+    // いちばん離れた 2 点を結ぶ (口は元の壁の線の上)。壁の向こうに床がある所は区間に入らない (Inner で SkyAhead を見ている)
+    private const float SkyReach = 20f; // エアシップの外周の船体は部屋の縁から空まで 9〜13 単位ある
+    private const float SkyMouthMin = 0.3f;
+    private static readonly List<Vector2> SkyCut = new();
+    private static Vector2 _skyAway; // 切った区間の外向きの和
+
+    private static void SkyMouth()
+    {
+        if (SkyCut.Count < 2) return;
+        float best = -1f;
+        Vector2 a = default, b = default;
+        for (int i = 0; i < SkyCut.Count; i++)
+        for (int j = i + 1; j < SkyCut.Count; j++)
+        {
+            float d = (SkyCut[i] - SkyCut[j]).sqrMagnitude;
+            if (d > best) { best = d; a = SkyCut[i]; b = SkyCut[j]; }
+        }
+        if (best < SkyMouthMin * SkyMouthMin) return;
+        // 角をまたいで切った時は 2 点を結ぶ線が床を横切る。床の上には口を張らない (切った所を地図に足す前に呼ぶ)
+        // 壁の線の上の升は床に数えられることがあるので、外向きに少しずらした点で見る
+        Vector2 aw = _skyAway.sqrMagnitude > 1e-6f ? _skyAway.normalized : default;
+        if (!SolidMap.Solid((a + b) * 0.5f + aw * 0.25f))
+        {
+            Plugin.Logger.LogInfo($"[SkyMouth] line over floor {a.x:0.00},{a.y:0.00}-{b.x:0.00},{b.y:0.00}");
+            return;
+        }
         WallBody.BuildMouth(a, b);
         LastBreach = MathF.Sqrt(best);
         LastBreachA = a; LastBreachB = b;
