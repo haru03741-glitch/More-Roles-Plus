@@ -6,8 +6,9 @@ namespace MoreRolesPlus.Terrain;
 
 // 自分の絵と当たり判定を持つ家具 (層 12 と、船の層 9 に入っている物) を、押された時にどう動かすか。
 // キー = 船の名前/親の名前/家具の名前 (末尾の " (番号)" を除く)。載っていない家具は動かさない (揺れもしない)。
+// Wobble = 動かさずにその場で揺れるだけ (当たり判定ごと回る)。
 // 載っている層 9 の家具は歩ける所の地図 (SolidMap) に入れず、壁としても壊さない (動いた後の場所と食い違うため)
-internal enum FurnitureKind : byte { Shove, Tip }
+internal enum FurnitureKind : byte { Shove, Tip, Wobble }
 
 internal static class FurnitureKinds
 {
@@ -42,6 +43,11 @@ internal static class FurnitureKinds
         ["MiraShip/Cafe/cafVendingMachRight"] = FurnitureKind.Tip, // 自販機 (右)
         ["MiraShip/Cafe/cafShelf"] = FurnitureKind.Tip, // 食堂の棚
         ["MiraShip/Cafe/cafVendMachbottom"] = FurnitureKind.Tip, // 自販機 (下)
+        ["MiraShip/Garden/PlanterFern"] = FurnitureKind.Wobble, // 温室のプランター (シダ)
+        ["MiraShip/Garden/PlanterFernTop"] = FurnitureKind.Wobble, // 温室のプランター (シダ・上)
+        ["MiraShip/Garden/PlanterBushMid"] = FurnitureKind.Wobble, // 温室のプランター (茂み・真ん中)
+        ["MiraShip/Garden/PlanterBushTop"] = FurnitureKind.Wobble, // 温室のプランター (茂み・上)
+        ["MiraShip/Garden/BushesBottom"] = FurnitureKind.Wobble, // 温室の茂み (下)
         ["SkeldShip/Ground/storage_Boxes"] = FurnitureKind.Shove, // 倉庫の箱の山 (床の箱・燃料缶・奥の塊に分けて動かす = FurnitureSplit)
         ["SkeldShip/Ground/storage_Boxes-left"] = FurnitureKind.Shove, // 倉庫の左の箱
         ["SkeldShip/Ground/storage_Boxes-front"] = FurnitureKind.Shove, // 倉庫の手前の箱

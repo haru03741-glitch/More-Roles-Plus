@@ -11,6 +11,7 @@ namespace MoreRolesPlus.Terrain;
 // - 椅子・台・箱と中くらいの物 (MediumMax 以下) = 強く押されると、縦長の物は足元を軸に横倒しになって少し滑り、
 //   横長の物は押されてずれながら少しねじれる。弱いと揺れる。
 // - 物の上に載っている物 = その場で揺れるだけ。当たり判定のある家具は動かさない (歩ける所を変えない)。
+//   表で揺れると決めた家具 (温室のプランター) だけは当たり判定ごと揺れる (動かないので歩ける所は戻る)。
 // 全員の手元で同じ所に止まるように、水 (WaterSim) と同じく試合の刻みの Delay 遅れで整数だけで動かす (確定の状態 A)。
 // 見せるのは A の写し (D) を今の刻みまで先に進めた物: 爆発と同時に吹き飛ぶ。結果が届くたびに A から今まで計算し直すので、
 // 遅れて届いた客の手元でも A が追いついた時に D と同じになる。
@@ -89,6 +90,7 @@ internal static class PropSim
         public float Rot0;          // 元の z の回転
         public Vector2 F0, Pivot0;  // 元の足元・回す軸 (ワールド)
         public bool Tall, Solid;
+        public bool Sway;           // 当たり判定があっても揺らす (表の Wobble)
         public FurnitureLift.Lift Lift; // 重い物 (部屋の絵から持ち上げる家具)
         public Rect Bounds0;            // 重い物の元の当たり判定の範囲
         public Collider2D Col;          // 重い物の当たり判定 (上に載っている物を拾う)
@@ -458,7 +460,16 @@ internal static class PropSim
         p.Solid = true;
         var b = col.bounds;
         var rect = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
-        if (kind == FurnitureKind.Shove)
+        if (kind == FurnitureKind.Wobble)
+        {
+            // 動かさずに絵の下の縁の真ん中を軸に揺れるだけ
+            var sb = sr.bounds;
+            p.Kind = Kind.Fixed;
+            p.Sway = true;
+            p.Pivot0 = FxMath.V2(sb.center.x, sb.min.y);
+            p.Rad = ToU(Math.Max(b.size.x, b.size.y) * 0.5f); // 横に長いので爆発は縁から届く
+        }
+        else if (kind == FurnitureKind.Shove)
         {
             p.Kind = Kind.Heavy;
             p.Col = col;
@@ -694,7 +705,7 @@ internal static class PropSim
 
     private static void Wobble(World w, Prop p, St st, int f, int ux)
     {
-        if (p.Solid) return; // 当たり判定ごと回ると歩ける所が揺れる
+        if (p.Solid && !p.Sway) return; // 当たり判定ごと回ると歩ける所が揺れる
         st.WobStart = w.Step;
         int amp = WobbleMax * f / 256;
         st.WobAmp = ux >= 0 ? -amp : amp;
