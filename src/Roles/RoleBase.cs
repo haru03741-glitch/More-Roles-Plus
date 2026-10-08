@@ -42,6 +42,9 @@ public abstract class RoleBase : Assignable
     // 付いているアドオン (割り当て後・付いた順)
     public System.Collections.Generic.IReadOnlyList<AddonBase> Addons => RoleState.AddonsOf(PlayerId);
 
+    // この役職が出た試合には出ない役職 (どちらの側に書いてあっても効く)
+    public virtual System.Type[] NotWith => null;
+
     // 誰かの勝ちで試合が終わる時に、自分も一緒に勝つか (第三陣営の相乗り)。ホストの端末でだけ呼ばれる。
     // 自分だけで勝って試合を終わらせる時は GameEnd.Win(this) を呼ぶ
     public virtual bool AlsoWins(GameResult result) => false;

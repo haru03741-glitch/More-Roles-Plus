@@ -55,28 +55,38 @@ public static class RoleState
         catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.OnAssigned: {e}"); }
         Abilities.OnAssigned(role);
         // アドオンは役職の後 (役職の OnAssigned で作った物を前提にできるように)
-        if (addonProtos != null)
-        {
-            foreach (var ap in addonProtos)
-            {
-                var addon = (AddonBase)Activator.CreateInstance(ap.GetType());
-                addon.Player = p;
-                addon.PlayerId = p.PlayerId;
-                addon.Chance = ap.Chance;
-                addon.Count = ap.Count;
-                addon.OnCrew = ap.OnCrew;
-                addon.OnImpostor = ap.OnImpostor;
-                addon.OnNeutral = ap.OnNeutral;
-                (AddonsByPlayer[p.PlayerId] ??= new List<AddonBase>()).Add(addon);
-                ActiveAddons.Add(addon);
-                addon.Lifespan = role.Lifespan.Child();
-                EventBinder.Bind(addon);
-                try { addon.OnAssigned(); }
-                catch (Exception e) { Plugin.Logger.LogError($"{addon.Id}.OnAssigned: {e}"); }
-            }
-        }
+        AttachAddons(p, addonProtos, role.Lifespan);
         RoleDisplay.OnAssigned(role);
         if (Dev.DevGod.On) Dev.DevGod.Refresh();
+    }
+
+    // 役職が無い人 (本編の役職のまま) にアドオンだけ付ける。寿命は試合の寿命の子
+    internal static void AssignAddonsOnly(PlayerControl p, IReadOnlyList<AddonBase> addonProtos)
+    {
+        AttachAddons(p, addonProtos, Match);
+        RoleDisplay.OnAddonsOnly(p);
+    }
+
+    private static void AttachAddons(PlayerControl p, IReadOnlyList<AddonBase> addonProtos, Lifespan parent)
+    {
+        if (addonProtos == null) return;
+        foreach (var ap in addonProtos)
+        {
+            var addon = (AddonBase)Activator.CreateInstance(ap.GetType());
+            addon.Player = p;
+            addon.PlayerId = p.PlayerId;
+            addon.Chance = ap.Chance;
+            addon.Count = ap.Count;
+            addon.OnCrew = ap.OnCrew;
+            addon.OnImpostor = ap.OnImpostor;
+            addon.OnNeutral = ap.OnNeutral;
+            (AddonsByPlayer[p.PlayerId] ??= new List<AddonBase>()).Add(addon);
+            ActiveAddons.Add(addon);
+            addon.Lifespan = parent.Child();
+            EventBinder.Bind(addon);
+            try { addon.OnAssigned(); }
+            catch (Exception e) { Plugin.Logger.LogError($"{addon.Id}.OnAssigned: {e}"); }
+        }
     }
 
     internal static void Clear(bool gameEnded)
@@ -107,6 +117,18 @@ public static class RoleSettings
     public static readonly BoolOpt ImpostorsSeeRoles = new("インポスター同士は役職が見える (会議)", "Impostors see each other's roles in meetings", true);
 }
 
+// 配り方の上限。「なし」は制限なし
+[Settings(Tab.General, "配り方", "Assignment", order: -99)]
+public static class AssignSettings
+{
+    private static readonly Text[] Counts = Enumerable.Range(0, 16).Select(i => i == 0 ? new Text("なし", "None") : new Text(i.ToString(), i.ToString())).ToArray();
+
+    public static readonly ChoiceOpt MaxNeutral = new("第三陣営の役職の最大人数", "Max neutral roles", 0, Counts);
+    public static readonly ChoiceOpt MaxNeutralKillers = new("キルする第三陣営の最大人数", "Max killing neutral roles", 0, Counts);
+    public static readonly ChoiceOpt MaxRoled = new("役職が付く人の最大人数", "Max players with a role", 0, Counts);
+    public static readonly IntOpt MaxAddonsPerPlayer = new("1 人に付くアドオンの最大数", "Max addons per player", 1, 0, 3);
+}
+
 // 配る前の名簿の 1 人 (本編が決めた陣営と土台の役職)
 public struct Slot
 {
@@ -126,7 +148,14 @@ public sealed class Pick
 // 配り方そのもの。名簿と設定と乱数だけから配布案を決める (本編の物を読まないので、人数や回数を変えて何度でも回せる = ブリッジ assignsim)
 public static class AssignPlan
 {
-    public static List<Pick> Decide(IReadOnlyList<Slot> roster, Random rng)
+    // 配り方の内訳 (確かめ用)
+    public sealed class PlanStats
+    {
+        public int LimitSkips, ConflictSkips, Reserved;
+    }
+
+    // reserved = 固定指定 (PlayerId → 役職の番号)。枠の数・上限より先に付ける
+    public static List<Pick> Decide(IReadOnlyList<Slot> roster, Random rng, IReadOnlyDictionary<byte, int> reserved = null, PlanStats stats = null)
     {
         // 出現率 100% の枠を先に、残りは抽選で通った枠を混ぜてから並べる
         var sure = new List<int>();
@@ -149,18 +178,134 @@ public static class AssignPlan
         Shuffle(free, rng);
 
         var plan = new List<Pick>();
+        var chosen = new List<RoleBase>();
+        int neutrals = 0, killers = 0;
+        int maxNeutral = AssignSettings.MaxNeutral.Value;
+        int maxKillers = AssignSettings.MaxNeutralKillers.Value;
+        int maxRoled = AssignSettings.MaxRoled.Value;
+
+        void Take(int slotIndex, int roleIndex)
+        {
+            var role = Registry.Roles[roleIndex];
+            plan.Add(new Pick { PlayerId = free[slotIndex].PlayerId, RoleIndex = roleIndex });
+            free.RemoveAt(slotIndex);
+            chosen.Add(role);
+            if (role.Team == Team.Neutral)
+            {
+                neutrals++;
+                if (role.IsKiller) killers++;
+            }
+        }
+
+        // 固定指定。本編で決まった陣営と合わない指定は飛ばす
+        if (reserved != null)
+        {
+            foreach (var kv in reserved)
+            {
+                if (kv.Value < 0 || kv.Value >= Registry.Roles.Count) continue;
+                var role = Registry.Roles[kv.Value];
+                int at = free.FindIndex(s => s.PlayerId == kv.Key);
+                if (at < 0) continue;
+                if (free[at].Impostor != (role.Team == Team.Impostor))
+                {
+                    Plugin.Logger.LogWarning($"roles: reservation {kv.Key}={role.Id} skipped (team differs from the vanilla side)");
+                    continue;
+                }
+                Take(at, kv.Value);
+                if (stats != null) stats.Reserved++;
+            }
+        }
+
         foreach (int idx in sure.Concat(lucky))
         {
             var role = Registry.Roles[idx];
+            bool neutral = role.Team == Team.Neutral;
+            if ((maxRoled > 0 && plan.Count >= maxRoled)
+                || (neutral && maxNeutral > 0 && neutrals >= maxNeutral)
+                || (neutral && role.IsKiller && maxKillers > 0 && killers >= maxKillers))
+            {
+                if (stats != null) stats.LimitSkips++;
+                continue;
+            }
+            if (Conflicts(role, chosen))
+            {
+                if (stats != null) stats.ConflictSkips++;
+                continue;
+            }
             bool wantImpostor = role.Team == Team.Impostor;
             // 本編の役職がちょうど土台の役職と同じ人を優先し、いなければ同じ陣営の誰か
             int pick = free.FindIndex(s => s.BaseRole == role.BaseRole);
             if (pick < 0) pick = free.FindIndex(s => s.Impostor == wantImpostor);
             if (pick < 0) continue;
-            plan.Add(new Pick { PlayerId = free[pick].PlayerId, RoleIndex = idx });
-            free.RemoveAt(pick);
+            Take(pick, idx);
         }
+
+        AssignAddons(roster, plan, rng);
         return plan;
+    }
+
+    // 同時に出ない組 (どちらの側に書いてあっても)
+    private static bool Conflicts(RoleBase role, List<RoleBase> chosen)
+    {
+        var mine = role.NotWith;
+        var type = role.GetType();
+        foreach (var c in chosen)
+        {
+            if (mine != null && Array.IndexOf(mine, c.GetType()) >= 0) return true;
+            var theirs = c.NotWith;
+            if (theirs != null && Array.IndexOf(theirs, type) >= 0) return true;
+        }
+        return false;
+    }
+
+    // アドオン。役職と同じく出現率と人数で枠を作り、付けられる人の中から無作為に 1 人へ
+    private static void AssignAddons(IReadOnlyList<Slot> roster, List<Pick> plan, Random rng)
+    {
+        int maxPer = AssignSettings.MaxAddonsPerPlayer.Value;
+        if (maxPer <= 0 || Registry.Addons.Count == 0) return;
+        var sure = new List<int>();
+        var lucky = new List<int>();
+        for (int i = 0; i < Registry.Addons.Count; i++)
+        {
+            var a = Registry.Addons[i];
+            int chance = a.Chance;
+            if (chance <= 0) continue;
+            for (int k = 0; k < a.Count.Value; k++)
+            {
+                if (chance >= 100) sure.Add(i);
+                else if (rng.Next(100) < chance) lucky.Add(i);
+            }
+        }
+        Shuffle(sure, rng);
+        Shuffle(lucky, rng);
+
+        var picks = new Dictionary<byte, Pick>();
+        foreach (var p in plan) picks[p.PlayerId] = p;
+        var candidates = new List<int>();
+        foreach (int ai in sure.Concat(lucky))
+        {
+            var addon = Registry.Addons[ai];
+            candidates.Clear();
+            for (int i = 0; i < roster.Count; i++)
+            {
+                var slot = roster[i];
+                picks.TryGetValue(slot.PlayerId, out var pick);
+                if (pick != null && (pick.Addons.Count >= maxPer || pick.Addons.Contains(ai))) continue;
+                RoleBase role = pick != null && pick.RoleIndex >= 0 ? Registry.Roles[pick.RoleIndex] : null;
+                var team = role != null ? role.Team : slot.Impostor ? Team.Impostor : Team.Crew;
+                if (addon.CanAttach(team, role)) candidates.Add(i);
+            }
+            if (candidates.Count == 0) continue;
+            var target = roster[candidates[rng.Next(candidates.Count)]];
+            if (!picks.TryGetValue(target.PlayerId, out var tp))
+            {
+                // 役職の無い人 (本編のまま) にはアドオンだけの Pick を作る
+                tp = new Pick { PlayerId = target.PlayerId, RoleIndex = -1 };
+                picks[target.PlayerId] = tp;
+                plan.Add(tp);
+            }
+            tp.Addons.Add(ai);
+        }
     }
 
     private static void Shuffle<T>(List<T> l, Random rng)
@@ -173,7 +318,7 @@ public static class AssignPlan
     }
 
     // 確かめ用: 名簿を作って何度も配り、役職ごとに付いた回数を数える
-    public static string Simulate(int players, int impostors, int runs, int seed)
+    public static string Simulate(int players, int impostors, int runs, int seed, IReadOnlyDictionary<byte, int> reserved = null)
     {
         var roster = new List<Slot>();
         for (int i = 0; i < players; i++)
@@ -181,20 +326,29 @@ public static class AssignPlan
         var rng = new Random(seed);
         var roleHits = new int[Registry.Roles.Count];
         var addonHits = new int[Registry.Addons.Count];
-        int withRole = 0, withAddon = 0;
+        int withRole = 0, withAddon = 0, doubled = 0, neutralMax = 0;
+        var stats = new PlanStats();
         for (int n = 0; n < runs; n++)
         {
-            var plan = Decide(roster, rng);
-            withRole += plan.Count;
+            var plan = Decide(roster, rng, reserved, stats);
+            int neutrals = 0;
             foreach (var p in plan)
             {
-                roleHits[p.RoleIndex]++;
+                if (p.RoleIndex >= 0)
+                {
+                    withRole++;
+                    roleHits[p.RoleIndex]++;
+                    if (Registry.Roles[p.RoleIndex].Team == Team.Neutral) neutrals++;
+                }
                 withAddon += p.Addons.Count;
+                if (p.Addons.Count != p.Addons.Distinct().Count()) doubled++;
                 foreach (int a in p.Addons) addonHits[a]++;
             }
+            neutralMax = Math.Max(neutralMax, neutrals);
         }
         var sb = new System.Text.StringBuilder();
         sb.Append($"players={players} impostors={impostors} runs={runs} seed={seed} roles/run={(double)withRole / runs:0.00} addons/run={(double)withAddon / runs:0.00}");
+        sb.Append($"\nlimitSkips/run={(double)stats.LimitSkips / runs:0.00} conflictSkips/run={(double)stats.ConflictSkips / runs:0.00} reserved/run={(double)stats.Reserved / runs:0.00} maxNeutral={neutralMax} duplicateAddonRuns={doubled}");
         for (int i = 0; i < roleHits.Length; i++)
             if (roleHits[i] > 0) sb.Append($"\n{Registry.Roles[i].Id} {roleHits[i]} ({100.0 * roleHits[i] / runs:0.#}%/run)");
         for (int i = 0; i < addonHits.Length; i++)
@@ -209,6 +363,9 @@ internal static class RoleAssigner
 {
     private static readonly System.Random Rng = new();
 
+    // ロビーでホストが決めた固定指定 (PlayerId → 役職の番号)。次の試合の配布で使い切り、ロビーに戻ったら消す
+    internal static readonly Dictionary<byte, int> Reserved = new();
+
     public static void AssignAndSend()
     {
         OptionSync.RestoreOwn();
@@ -216,9 +373,10 @@ internal static class RoleAssigner
         if (RoleSettings.Enabled)
         {
             int seed = Rng.Next();
-            plan = AssignPlan.Decide(Roster(), new Random(seed));
+            plan = AssignPlan.Decide(Roster(), new Random(seed), Reserved);
             Plugin.Logger.LogInfo($"roles: seed {seed}");
         }
+        Reserved.Clear();
 
         // 役職の処理が設定値を読むので、配る前に揃える (1 通にまとめて順番どおり届ける)
         using (Remote.Batch())
@@ -246,7 +404,7 @@ internal static class RoleAssigner
             foreach (var p in plan)
             {
                 w.Write(p.PlayerId);
-                w.WritePacked(p.RoleIndex);
+                w.WritePacked(p.RoleIndex + 1);
                 w.Write((byte)p.Addons.Count);
                 foreach (int a in p.Addons) w.WritePacked(a);
             }
@@ -257,14 +415,14 @@ internal static class RoleAssigner
             var plan = new List<Pick>(n);
             for (int i = 0; i < n; i++)
             {
-                var p = new Pick { PlayerId = r.ReadByte(), RoleIndex = r.ReadPackedInt32() };
+                var p = new Pick { PlayerId = r.ReadByte(), RoleIndex = r.ReadPackedInt32() - 1 };
                 int na = r.ReadByte();
                 for (int k = 0; k < na; k++)
                 {
                     int a = r.ReadPackedInt32();
                     if (a >= 0 && a < Registry.Addons.Count) p.Addons.Add(a);
                 }
-                if (p.RoleIndex >= 0 && p.RoleIndex < Registry.Roles.Count) plan.Add(p);
+                if (p.RoleIndex >= -1 && p.RoleIndex < Registry.Roles.Count) plan.Add(p);
             }
             return plan;
         },
@@ -276,6 +434,7 @@ internal static class RoleAssigner
         foreach (var p in plan)
         {
             var player = Player(p.PlayerId);
+            if (p.RoleIndex < 0) continue;
             var role = Registry.Roles[p.RoleIndex];
             if (player && player.Data.Role.Role != role.BaseRole) player.RpcSetRole(role.BaseRole, true);
         }
@@ -294,6 +453,14 @@ internal static class RoleAssigner
             var keep = new Pick { PlayerId = r.PlayerId, RoleIndex = Registry.Roles.FindIndex(x => x.Id == r.Id) };
             foreach (var a in RoleState.AddonsOf(r.PlayerId)) keep.Addons.Add(Registry.Addons.FindIndex(x => x.Id == a.Id));
             plan.Add(keep);
+        }
+        // 役職の無い人のアドオンも残す
+        foreach (var a in RoleState.AllAddons)
+        {
+            if (a.PlayerId == target.PlayerId || RoleState.Of(a.PlayerId) != null || !a.Player) continue;
+            var keep = plan.Find(x => x.PlayerId == a.PlayerId);
+            if (keep == null) plan.Add(keep = new Pick { PlayerId = a.PlayerId, RoleIndex = -1 });
+            keep.Addons.Add(Registry.Addons.FindIndex(x => x.Id == a.Id));
         }
         var mine = new Pick { PlayerId = target.PlayerId, RoleIndex = Registry.Roles.IndexOf(proto) };
         if (addons != null) foreach (var a in addons) mine.Addons.Add(Registry.Addons.IndexOf(a));
@@ -315,9 +482,10 @@ internal static class RoleAssigner
             if (!player) continue;
             addons.Clear();
             foreach (int a in p.Addons) addons.Add(Registry.Addons[a]);
-            RoleState.Assign(player, Registry.Roles[p.RoleIndex], addons);
+            if (p.RoleIndex < 0) RoleState.AssignAddonsOnly(player, addons);
+            else RoleState.Assign(player, Registry.Roles[p.RoleIndex], addons);
         }
-        Plugin.Logger.LogInfo($"roles: {string.Join(", ", plan.Select(x => $"{x.PlayerId}={Registry.Roles[x.RoleIndex].Id}{string.Concat(x.Addons.Select(a => "+" + Registry.Addons[a].Id))}"))}");
+        Plugin.Logger.LogInfo($"roles: {string.Join(", ", plan.Select(x => $"{x.PlayerId}={(x.RoleIndex < 0 ? "-" : Registry.Roles[x.RoleIndex].Id)}{string.Concat(x.Addons.Select(a => "+" + Registry.Addons[a].Id))}"))}");
     }
 }
 
@@ -344,6 +512,7 @@ internal static class LobbyClearPatch
     public static void Postfix()
     {
         RoleState.Clear(false);
+        RoleAssigner.Reserved.Clear();
         GameEnd.Reset();
         MatchLog.Reset();
     }

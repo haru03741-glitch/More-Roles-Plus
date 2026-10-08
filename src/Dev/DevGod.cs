@@ -40,15 +40,15 @@ internal static class DevGod
         Tags.Clear();
     }
 
-    // MRP の役職があればその名前、無ければ本編の役職名
+    // MRP の役職があればその名前、無ければ本編の役職名 (どちらもアドオンが付いていれば後ろに続ける)
     public static string Label(byte pid)
     {
         var role = RoleState.Of(pid);
-        if (role != null) return role.ColoredName;
+        if (role != null) return RoleDisplay.LabelOf(role);
         var d = GameData.Instance ? GameData.Instance.GetPlayerById(pid) : null;
         var vanilla = d?.Role;
         if (!vanilla) return null;
-        return $"<color=#{ColorUtility.ToHtmlStringRGB(vanilla.TeamColor)}>{vanilla.NiceName}</color>";
+        return $"<color=#{ColorUtility.ToHtmlStringRGB(vanilla.TeamColor)}>{vanilla.NiceName}</color>{RoleDisplay.AddonSuffix(pid)}";
     }
 
     private static void AddTag(PlayerControl p, string label)

@@ -48,14 +48,25 @@ internal static class DevCommands
 
         TestBridge.Register("setrole", "<役職Id> [番号] その人 (省略で自分) に役職を付けて全員に配る (ホストのみ。土台の役職も合わせる)", GiveRole);
         TestBridge.Register("giverole", "setrole と同じ", GiveRole);
-        TestBridge.Register("assignsim", "<人数> [回数=1000] [種=1] [インポスター数=2] 今の設定で配り方を何度も回し、役職・アドオンごとの付いた回数を出す (本編の物は読まない)", (args, reply) =>
+        TestBridge.Register("setaddon", "<アドオンId> [番号] その人 (省略で自分) にアドオンを足して全員に配る (ホストのみ。役職が無い人にはアドオンだけ付く)", GiveAddon);
+        TestBridge.Register("clearaddons", "[番号] その人 (省略で自分) のアドオンを全部外す (ホストのみ。役職はそのまま)", ClearAddons);
+        TestBridge.Register("assignsim", "<人数> [回数=1000] [種=1] [インポスター数=2] [番号:役職Id=固定指定] 今の設定で配り方を何度も回し、役職・アドオンごとの付いた回数を出す (本編の物は読まない)", (args, reply) =>
         {
             var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (a.Length < 1 || !int.TryParse(a[0], out int players)) { reply("ERR assignsim <players> [runs] [seed] [impostors]"); return; }
             int runs = a.Length > 1 && int.TryParse(a[1], out int r) ? Math.Clamp(r, 1, 100000) : 1000;
             int seed = a.Length > 2 && int.TryParse(a[2], out int sd) ? sd : 1;
             int imps = a.Length > 3 && int.TryParse(a[3], out int im) ? im : Math.Min(2, players);
-            foreach (var line in AssignPlan.Simulate(Math.Clamp(players, 1, 15), Math.Clamp(imps, 0, players), runs, seed).Split('\n')) reply("SIM " + line);
+            // 5 つ目 = 固定指定 "<番号>:<役職Id>" (例 3:Jester)
+            System.Collections.Generic.Dictionary<byte, int> reserved = null;
+            if (a.Length > 4)
+            {
+                var kv = a[4].Split(':');
+                int ri = kv.Length == 2 ? Registry.Roles.FindIndex(x => string.Equals(x.Id, kv[1], StringComparison.OrdinalIgnoreCase)) : -1;
+                if (ri < 0 || !byte.TryParse(kv[0], out byte rp)) { reply("ERR assignsim reserve needs <番号>:<役職Id>"); return; }
+                reserved = new System.Collections.Generic.Dictionary<byte, int> { [rp] = ri };
+            }
+            foreach (var line in AssignPlan.Simulate(Math.Clamp(players, 1, 15), Math.Clamp(imps, 0, players), runs, seed, reserved).Split('\n')) reply("SIM " + line);
             reply("OK assignsim");
         });
 
@@ -223,6 +234,33 @@ internal static class DevCommands
         if (!target) { reply($"ERR setrole no player {a[1]}"); return; }
         RoleAssigner.Give(target, proto);
         reply($"OK setrole {proto.Id} to={target.PlayerId} base={target.Data.Role.Role} neutral={RoleState.AnyNeutral}");
+    }
+
+    private static void GiveAddon(string args, Action<string> reply)
+    {
+        var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var proto = a.Length > 0 ? Registry.Addons.FirstOrDefault(x => string.Equals(x.Id, a[0], StringComparison.OrdinalIgnoreCase)) : null;
+        if (proto == null) { reply($"ERR setaddon unknown {args} (roles で一覧)"); return; }
+        if (!PlayerControl.LocalPlayer || !AmongUsClient.Instance.AmHost || !GameData.Instance) { reply("ERR setaddon needs host in game"); return; }
+        var target = a.Length > 1 && byte.TryParse(a[1], out byte pid) ? Player(pid) : PlayerControl.LocalPlayer;
+        if (!target) { reply($"ERR setaddon no player {(a.Length > 1 ? a[1] : "")}"); return; }
+        var list = RoleState.AddonsOf(target.PlayerId).Select(x => Registry.Addons.First(p => p.Id == x.Id)).ToList();
+        if (!list.Contains(proto)) list.Add(proto);
+        var role = RoleState.Of(target.PlayerId);
+        var roleProto = role == null ? null : Registry.Roles.First(r => r.Id == role.Id);
+        RoleAssigner.Give(target, roleProto, list);
+        reply($"OK setaddon {string.Join("+", list.Select(x => x.Id))} to={target.PlayerId} role={role?.Id ?? "-"} fits={proto.CanAttach(role?.Team ?? (target.Data.Role && target.Data.Role.IsImpostor ? Team.Impostor : Team.Crew), role)}");
+    }
+
+    private static void ClearAddons(string args, Action<string> reply)
+    {
+        if (!PlayerControl.LocalPlayer || !AmongUsClient.Instance.AmHost || !GameData.Instance) { reply("ERR clearaddons needs host in game"); return; }
+        var target = byte.TryParse(args.Trim(), out byte pid) ? Player(pid) : PlayerControl.LocalPlayer;
+        if (!target) { reply($"ERR clearaddons no player {args}"); return; }
+        var role = RoleState.Of(target.PlayerId);
+        var roleProto = role == null ? null : Registry.Roles.First(r => r.Id == role.Id);
+        RoleAssigner.Give(target, roleProto, new System.Collections.Generic.List<AddonBase>());
+        reply($"OK clearaddons to={target.PlayerId} role={role?.Id ?? "-"}");
     }
 
     // 死んだ時に本編がタスク欄の先頭に足す「死亡した。…」の行を外す

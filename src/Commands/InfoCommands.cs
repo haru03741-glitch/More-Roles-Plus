@@ -34,7 +34,7 @@ internal static class InfoCommands
     {
         if (!InGame) return new Text("試合中だけ使えます", "Only during a game");
         var role = RoleState.Local;
-        if (role != null) return $"{role.ColoredName}\n{role.Description}";
+        if (role != null) return $"{RoleDisplay.LabelOf(role)}\n{role.Description}{RoleDisplay.AddonLines(role.PlayerId)}";
         return Dev.DevGod.Label(PlayerControl.LocalPlayer.PlayerId) ?? new Text("役職がありません", "No role");
     }
 
@@ -44,7 +44,12 @@ internal static class InfoCommands
         if (args.Length > 0)
         {
             var r = HostActions.FindRole(args);
-            if (r == null) return new Text($"{args} という役職はありません", $"No role called {args}");
+            if (r == null)
+            {
+                var a = FindAddon(args);
+                if (a != null) return $"{a.ColoredName} ({new Text("アドオン", "Addon")})\n{a.Description}";
+                return new Text($"{args} という役職はありません", $"No role called {args}");
+            }
             return $"{r.ColoredName} ({TeamName(r.Team)})\n{r.Description}";
         }
         var sb = new StringBuilder();
@@ -61,8 +66,30 @@ internal static class InfoCommands
             if (sb.Length > 0) sb.Append('\n');
             sb.Append(TeamName(team)).Append(": ").Append(line);
         }
-        sb.Append('\n').Append(new Text("(/r <役職名> で説明)", "(/r <role> for details)").ToString());
+        if (Registry.Addons.Count > 0)
+        {
+            var line = new StringBuilder();
+            foreach (var a in Registry.Addons)
+            {
+                if (line.Length > 0) line.Append(", ");
+                line.Append(a.ColoredName);
+            }
+            sb.Append('\n').Append(new Text("アドオン", "Addons").ToString()).Append(": ").Append(line);
+        }
+        sb.Append('\n').Append(new Text("(/r <役職名・アドオン名> で説明)", "(/r <role or addon> for details)").ToString());
         return sb.ToString();
+    }
+
+    private static AddonBase FindAddon(string s)
+    {
+        foreach (var a in Registry.Addons)
+        {
+            if (string.Equals(a.Id, s, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(a.Name.Ja, s, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(a.Name.En, s, StringComparison.OrdinalIgnoreCase))
+                return a;
+        }
+        return null;
     }
 
     private static string TeamName(Team t) => t switch

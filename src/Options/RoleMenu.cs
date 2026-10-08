@@ -34,6 +34,8 @@ internal static class RoleMenu
     private static readonly Color CardBase = new(0.125f, 0.137f, 0.176f, 1f); // 板の地
     private static readonly Color CardOff = new(0.098f, 0.106f, 0.13f, 1f);   // 出ない役職の板
     private static readonly Team[] Teams = { Team.Crew, Team.Impostor, Team.Neutral };
+    private const int AddonKind = 3;  // Group.Kind と絞り込みの番号: 0〜2 = Team、3 = アドオン
+    private static readonly Color AddonColor = new(0.72f, 0.5f, 0.95f);
 
     // 開き直しても残す状態 (検索語だけは開くたびに空から)
     private static int _team = -1;  // -1 = 全部
@@ -60,7 +62,7 @@ internal static class RoleMenu
 
     private sealed class Group
     {
-        public Team Team;
+        public int Kind;
         public CategoryHeaderMasked Header;
         public readonly List<OptRow> Plain = new();   // 役職でない設定のまとまり ([Settings] でこの陣営に置いたもの)
         public readonly List<RoleRow> Roles = new();
@@ -99,7 +101,7 @@ internal static class RoleMenu
 
     public static bool HasContent()
     {
-        if (Registry.Roles.Count > 0) return true;
+        if (Registry.Roles.Count > 0 || Registry.Addons.Count > 0) return true;
         foreach (var t in Teams)
             if (Registry.SectionsOf(TabOf(t)).Count > 0) return true;
         return false;
@@ -120,6 +122,10 @@ internal static class RoleMenu
         Team.Neutral => new Color(1f, 0.7f, 0.25f),
         _ => new Color(0.55f, 0.85f, 1f),
     };
+
+    private static Tab KindTab(int k) => k == AddonKind ? Tab.Addon : TabOf((Team)k);
+    private static Text KindName(int k) => k == AddonKind ? new Text("アドオン", "Addons") : TeamName((Team)k);
+    private static Color KindColor(int k) => k == AddonKind ? AddonColor : TeamColor((Team)k);
 
     public static void Forget()
     {
@@ -147,15 +153,15 @@ internal static class RoleMenu
         var roleOptions = GameOptionsManager.Instance.CurrentGameOptions.RoleOptions;
         var anyRole = RoleManager.Instance.AllRoles[0];
 
-        foreach (var team in Teams)
+        for (int kind = 0; kind <= AddonKind; kind++)
         {
-            var g = new Group { Team = team, Header = MakeHeader(m, TeamColor(team)) };
-            foreach (var sec in Registry.SectionsOf(TabOf(team)))
+            var g = new Group { Kind = kind, Header = MakeHeader(m, KindColor(kind)) };
+            foreach (var sec in Registry.SectionsOf(KindTab(kind)))
             {
                 if (sec.Role != null) continue;
-                foreach (var opt in sec.Opts) g.Plain.Add(MakeOpt(m, opt, TeamColor(team)));
+                foreach (var opt in sec.Opts) g.Plain.Add(MakeOpt(m, opt, KindColor(kind)));
             }
-            foreach (var sec in Registry.SectionsOf(TabOf(team)))
+            foreach (var sec in Registry.SectionsOf(KindTab(kind)))
             {
                 if (sec.Role == null || !origin) continue;
                 var r = new RoleRow { Role = sec.Role, Hay = RoleSearch.Haystack(sec.Role.Name) + "\n" + RoleSearch.Normalize(sec.Role.Reading) };
@@ -192,7 +198,7 @@ internal static class RoleMenu
         var chars = new System.Text.StringBuilder("0123456789/ ›");
         foreach (var g in Groups)
         {
-            chars.Append(TeamName(g.Team).ToString());
+            chars.Append(KindName(g.Kind).ToString());
             foreach (var r in g.Roles) { chars.Append(r.Role.Name); foreach (var o in r.Opts) chars.Append(o.Opt.Label.ToString()); }
             foreach (var o in g.Plain) chars.Append(o.Opt.Label.ToString());
         }
@@ -381,6 +387,7 @@ internal static class RoleMenu
             (new Text("全部", "All"), new Color(0.75f, 0.6f, 1f), -1, false),
         };
         foreach (var t in Teams) chipDefs.Add((TeamName(t), TeamColor(t), (int)t, false));
+        if (Registry.Addons.Count > 0) chipDefs.Add((KindName(AddonKind), AddonColor, AddonKind, false));
         chipDefs.Add((new Text("出る役職だけ", "Enabled only"), new Color(0.6f, 0.9f, 0.55f), 0, true));
         float cw = (width - Gap * (chipDefs.Count - 1)) / chipDefs.Count;
         float cy = top - 0.06f - SearchHeight - 0.08f - ChipHeight / 2f;
@@ -608,7 +615,7 @@ internal static class RoleMenu
             if (!g.Header) continue;
             int on = 0;
             foreach (var r in g.Roles) if (r.Role.Chance.Value > 0) on++;
-            string name = $"<color=#{ColorUtility.ToHtmlStringRGB(TeamColor(g.Team))}>{TeamName(g.Team)}</color>";
+            string name = $"<color=#{ColorUtility.ToHtmlStringRGB(KindColor(g.Kind))}>{KindName(g.Kind)}</color>";
             g.Header.Title.text = g.Roles.Count > 0 ? $"{name}  <size=70%>{on} / {g.Roles.Count}</size>" : name;
         }
     }
@@ -623,7 +630,7 @@ internal static class RoleMenu
 
         foreach (var g in Groups)
         {
-            bool teamShown = searching || _team < 0 || _team == (int)g.Team;
+            bool teamShown = searching || _team < 0 || _team == g.Kind;
             int shown = 0;
             foreach (var o in g.Plain) if (teamShown && (!searching || Matches(o.Hay))) shown++;
             foreach (var r in g.Roles) if (teamShown && RoleShown(r, searching)) shown++;
@@ -722,7 +729,7 @@ internal static class RoleMenu
         sb.Append($"search={(_search != null ? "'" + _search.Query + "'" : "none")} team={_team} only={_enabledOnly} rows:");
         foreach (var g in Groups)
         {
-            if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{g.Team}]");
+            if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{(g.Kind == AddonKind ? "Addon" : ((Team)g.Kind).ToString())}]");
             foreach (var o in g.Plain) if (o.Row && o.Row.gameObject.activeSelf) sb.Append($" {o.Opt.Key}");
             foreach (var r in g.Roles)
             {

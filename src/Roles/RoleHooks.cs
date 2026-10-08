@@ -22,7 +22,7 @@ internal static class VisionPatch
     internal static void Apply(NetworkedPlayerInfo player, ref float result)
     {
         if (Terrain.DustCloud.VisionMul < 1f && player.PlayerId == Terrain.DustCloud.LocalId) result *= Terrain.DustCloud.VisionMul;
-        if (RoleState.All.Count == 0) return;
+        if (RoleState.All.Count == 0 && RoleState.AllAddons.Count == 0) return;
         RoleState.Of(player.PlayerId)?.ModifyVision(ref result);
         var addons = RoleState.AddonsOf(player.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyVision(ref result);
@@ -53,10 +53,11 @@ internal static class KillCooldownPatch
 {
     public static void Postfix(ref float __result)
     {
-        var role = RoleState.Local;
-        if (role == null) return;
-        role.ModifyKillCooldown(ref __result);
-        var addons = RoleState.AddonsOf(role.PlayerId);
+        // 役職の無い人 (本編のまま) にもアドオンは付くので、役職の有無に関わらず自分のアドオンまで見る
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp) return;
+        RoleState.Local?.ModifyKillCooldown(ref __result);
+        var addons = RoleState.AddonsOf(lp.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref __result);
     }
 }

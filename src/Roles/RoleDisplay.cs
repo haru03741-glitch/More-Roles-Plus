@@ -2,29 +2,87 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 役職を画面に出す: イントロの役職名と説明・自分の名前の上の役職名・タスク欄の説明・会議の名札
+// 役職とアドオンを画面に出す: イントロの役職名と説明・自分の名前の上の役職名・タスク欄の説明・会議の名札
 internal static class RoleDisplay
 {
     private static readonly List<GameObject> Tags = new();
     private static ImportantTextTask _header;
 
+    // 役職名の後ろに付けるアドオン名 (人ごとに最初に要る時に 1 回だけ作る。役職を配り直すと消える)
+    private static readonly string[] Suffixes = new string[256];
+
     public static void OnAssigned(RoleBase role)
     {
         if (!role.IsLocal) return;
-        try { AddNameTag(role); }
+        try { AddNameTag(role.Player, LabelOf(role)); }
         catch (Exception e) { Plugin.Logger.LogWarning($"name tag: {e.Message}"); }
         try { EnsureTaskHeader(role.Player); }
         catch (Exception e) { Plugin.Logger.LogWarning($"task header: {e.Message}"); }
     }
 
+    // 役職が無く (本編の役職のまま) アドオンだけが付いた人の表示。自分の端末の分だけ作る
+    public static void OnAddonsOnly(PlayerControl p)
+    {
+        if (!p || !p.AmOwner || RoleState.AddonsOf(p.PlayerId).Count == 0) return;
+        try { AddNameTag(p, AddonSuffix(p.PlayerId).TrimStart()); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"name tag: {e.Message}"); }
+        try { EnsureTaskHeader(p); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"task header: {e.Message}"); }
+    }
+
+    // 自分に表示する役職かアドオンがあるか
+    internal static bool HasLocal()
+    {
+        if (RoleState.Local != null) return true;
+        var lp = PlayerControl.LocalPlayer;
+        return lp && RoleState.AddonsOf(lp.PlayerId).Count > 0;
+    }
+
+    // 役職名の後ろに小さく並べるアドオン名 (" +鷹の目 +早撃ち")。付いていなければ空
+    public static string AddonSuffix(byte pid)
+    {
+        var s = Suffixes[pid];
+        if (s != null) return s;
+        var list = RoleState.AddonsOf(pid);
+        if (list.Count == 0) return ""; // まだ付いていないだけかもしれないので覚えない
+        var sb = new StringBuilder(" <size=70%>");
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (i > 0) sb.Append(' ');
+            sb.Append('+').Append(list[i].ColoredName);
+        }
+        return Suffixes[pid] = sb.Append("</size>").ToString();
+    }
+
+    // アドオンごとの一行の説明 (行頭に改行つき)。付いていなければ空。size = 文字の大きさ (% で)
+    public static string AddonLines(byte pid, int size = 100)
+    {
+        var list = RoleState.AddonsOf(pid);
+        if (list.Count == 0) return "";
+        var sb = new StringBuilder();
+        foreach (var a in list)
+        {
+            sb.Append('\n');
+            if (size != 100) sb.Append("<size=").Append(size).Append("%>");
+            sb.Append("<color=").Append(a.Color).Append(">+").Append(a.Name).Append(": ").Append(a.Blurb).Append("</color>");
+            if (size != 100) sb.Append("</size>");
+        }
+        return sb.ToString();
+    }
+
+    // 役職名 + アドオン名 (色付き)
+    public static string LabelOf(RoleBase role) => role.ColoredName + AddonSuffix(role.PlayerId);
+
     public static void Clear()
     {
+        System.Array.Clear(Suffixes, 0, Suffixes.Length);
         foreach (var go in Tags)
         {
             if (go) UnityEngine.Object.Destroy(go);
@@ -45,7 +103,8 @@ internal static class RoleDisplay
     public static void EnsureTaskHeader(PlayerControl p)
     {
         var role = RoleState.Local;
-        if (role == null || !p || !p.AmOwner || p.myTasks == null) return;
+        if (!p || !p.AmOwner || p.myTasks == null) return;
+        if (role == null && RoleState.AddonsOf(p.PlayerId).Count == 0) return;
         if (!_header)
         {
             var go = new GameObject("MrpRoleTask");
@@ -54,9 +113,14 @@ internal static class RoleDisplay
         }
         var task = _header.Cast<PlayerTask>();
         if (!p.myTasks.Contains(task)) p.myTasks.Insert(0, task);
-        string text = $"<color={role.Color}>{role.Name}: {role.Description}";
-        if (role.Team == Team.Neutral) text += "\n" + new Text("タスクは勝敗に関係ありません", "Your tasks do not count");
-        _header.Text = text + "</color>";
+        string text = "";
+        if (role != null)
+        {
+            text = $"<color={role.Color}>{role.Name}: {role.Description}";
+            if (role.Team == Team.Neutral) text += "\n" + new Text("タスクは勝敗に関係ありません", "Your tasks do not count");
+            text += "</color>";
+        }
+        _header.Text = (text + AddonLines(p.PlayerId)).TrimStart('\n');
     }
 
     public static void DetachTaskHeader(PlayerControl p)
@@ -76,11 +140,12 @@ internal static class RoleDisplay
         if (Dev.DevGod.On) label = Dev.DevGod.Label(pid);
         else
         {
-            if (role == null) return;
+            var addons = RoleState.AddonsOf(pid);
+            if (role == null && addons.Count == 0) return;
             bool show = pid == lp.PlayerId
                         || (lp.Data.IsDead && RoleSettings.GhostsSeeRoles)
-                        || (role.Team == Team.Impostor && RoleSettings.ImpostorsSeeRoles && lp.Data.Role && lp.Data.Role.IsImpostor);
-            label = show ? role.ColoredName : null;
+                        || (role != null && role.Team == Team.Impostor && RoleSettings.ImpostorsSeeRoles && lp.Data.Role && lp.Data.Role.IsImpostor);
+            label = !show ? null : role != null ? LabelOf(role) : AddonSuffix(pid).TrimStart();
         }
         if (label == null) return;
 
@@ -94,9 +159,9 @@ internal static class RoleDisplay
     }
 
     // 名前の文字を複製して、名前の少し上に役職名を出す (本編は複製した方を書き換えないので一度置けば残る)
-    private static void AddNameTag(RoleBase role)
+    private static void AddNameTag(PlayerControl player, string label)
     {
-        var name = role.Player.cosmetics.nameText;
+        var name = player.cosmetics.nameText;
         var go = UnityEngine.Object.Instantiate(name.gameObject, name.transform);
         go.name = "MrpRoleTag";
         // 前の役職名 (Destroy はフレームの終わりまで残る) まで複製されているので外す
@@ -112,19 +177,31 @@ internal static class RoleDisplay
         go.transform.localPosition = new Vector3(0f, 0.22f, 0f);
         go.transform.localScale = new Vector3(0.75f, 0.75f, 1f);
         var tmp = go.GetComponent<TextMeshPro>();
-        tmp.text = role.ColoredName;
+        tmp.text = label;
         Tags.Add(go);
     }
 
     public static void ApplyIntro(IntroCutscene intro)
     {
         var role = RoleState.Local;
-        if (role == null || !intro) return;
+        if (!intro) return;
+        if (role == null)
+        {
+            // 役職が無い人は本編の役職の表示のまま、説明の下にアドオンを足す
+            var lp = PlayerControl.LocalPlayer;
+            if (lp && RoleState.AddonsOf(lp.PlayerId).Count > 0)
+            {
+                // 本編のコルーチンは何度も進むので、足し終えていたら足さない
+                string add = AddonLines(lp.PlayerId, 80), cur = intro.RoleBlurbText.text;
+                if (!cur.EndsWith(add, StringComparison.Ordinal)) intro.RoleBlurbText.text = cur + add;
+            }
+            return;
+        }
         var color = ParseColor(role.Color);
         intro.YouAreText.color = color;
         intro.RoleText.text = role.Name;
         intro.RoleText.color = color;
-        intro.RoleBlurbText.text = role.Blurb;
+        intro.RoleBlurbText.text = role.Blurb.ToString() + AddonLines(role.PlayerId, 80);
         intro.RoleBlurbText.color = color;
     }
 
@@ -154,7 +231,7 @@ internal static class IntroShowRolePatch
 
     public static void Postfix(object __instance)
     {
-        if (RoleState.Local == null || _owner == null) return;
+        if (!RoleDisplay.HasLocal() || _owner == null) return;
         RoleDisplay.ApplyIntro(_owner.GetValue(__instance) as IntroCutscene);
     }
 }
@@ -177,14 +254,14 @@ internal static class SetTasksPatch
     // (破棄は予約でフレームの終わりまで生きているため、入れたままだと同じ物を入れ直して後で消える)
     public static void Prefix(object __instance)
     {
-        if (RoleState.Local == null || _owner == null) return;
+        if (!RoleDisplay.HasLocal() || _owner == null) return;
         var p = _owner.GetValue(__instance) as PlayerControl;
         if (p && p.AmOwner) RoleDisplay.DetachTaskHeader(p);
     }
 
     public static void Postfix(object __instance, bool __result)
     {
-        if (__result || RoleState.Local == null || _owner == null) return;
+        if (__result || !RoleDisplay.HasLocal() || _owner == null) return;
         var p = _owner.GetValue(__instance) as PlayerControl;
         if (!p || !p.AmOwner) return;
         try { RoleDisplay.EnsureTaskHeader(p); }

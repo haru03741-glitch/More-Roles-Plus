@@ -84,7 +84,9 @@ internal static class HostActions
 
     public static string SetRole(string args)
     {
-        if (!InGame) return NotInGame;
+        // ロビーでは予約にする (次の試合の配布で最優先で付く)
+        bool lobby = !InGame && LobbyBehaviour.Instance && AmongUsClient.Instance && AmongUsClient.Instance.AmHost && PlayerControl.LocalPlayer;
+        if (!InGame && !lobby) return NotInGame;
         RoleBase proto = null;
         PlayerControl target = PlayerControl.LocalPlayer;
         foreach (var a in args.Split(' ', StringSplitOptions.RemoveEmptyEntries))
@@ -97,6 +99,11 @@ internal static class HostActions
             else proto ??= FindRole(a);
         }
         if (proto == null) return new Text($"役職が見つかりません。使える役職: {RoleNames()}", $"Unknown role. Roles: {RoleNames()}");
+        if (lobby)
+        {
+            RoleAssigner.Reserved[target.PlayerId] = Registry.Roles.IndexOf(proto);
+            return new Text($"次の試合で {target.Data.PlayerName} を {proto.Name.Ja} にします", $"{target.Data.PlayerName} will be {proto.Name.En} in the next game");
+        }
         RoleAssigner.Give(target, proto);
         return new Text($"{target.Data.PlayerName} を {proto.Name.Ja} にしました", $"{target.Data.PlayerName} is now {proto.Name.En}");
     }

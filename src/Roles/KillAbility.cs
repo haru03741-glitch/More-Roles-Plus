@@ -178,6 +178,8 @@ internal static class KillAbility
         {
             cd = GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown);
             role.ModifyKillCooldown(ref cd);
+            var addons = RoleState.AddonsOf(killer.PlayerId);
+            for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref cd);
         }
         if ((Environment.TickCount64 - LastKillMs[killer.PlayerId]) / 1000f < cd - CooldownSlack) return "cooldown";
         return null;

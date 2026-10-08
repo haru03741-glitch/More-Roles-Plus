@@ -14,11 +14,13 @@ internal static class RoleCommands
         {
             string reg = string.Join(" ", Registry.Roles.Select(r => $"{r.Id}({r.Team},{r.Chance.Value}%x{r.Count.Value})"));
             string now = string.Join(" ", RoleState.All.Select(r => $"{r.PlayerId}={r.Id}"));
+            string addons = string.Join(" ", Registry.Addons.Select(a => $"{a.Id}({a.Chance.Value}%x{a.Count.Value})"));
+            string addonNow = string.Join(" ", RoleState.AllAddons.Select(a => $"{a.PlayerId}=+{a.Id}"));
             string extra = "";
             var lp = PlayerControl.LocalPlayer;
             if (lp && ShipStatus.Instance && lp.Data != null)
                 extra = $" vision={ShipStatus.Instance.CalculateLightRadius(lp.Data):0.###} killcd={GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown):0.#}/{GameManager.Instance.LogicOptions.GetKillCooldown():0.#}";
-            reply($"OK roles reg=[{reg}] assigned=[{now}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
+            reply($"OK roles reg=[{reg}] assigned=[{now}] addons=[{addons}] addonsNow=[{addonNow}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
         });
 
         TestBridge.Register("endcheck", "[番号...] 生き残りの数で勝者が決まるかを見るだけ (終わらせない)。番号の人をキル役として数える", (args, reply) =>

@@ -68,7 +68,9 @@ internal static class MatchLog
     };
 
     // 役職の名前 (色付き)。死んだ人の本編の役職は幽霊の役職に替わっているので、生きていた時の役職を出す
-    private static string RoleLabel(NetworkedPlayerInfo p)
+    private static string RoleLabel(NetworkedPlayerInfo p) => RoleLabelBase(p) + (RoleState.Of(p.PlayerId) == null && p.IsDead ? RoleDisplay.AddonSuffix(p.PlayerId) : "");
+
+    private static string RoleLabelBase(NetworkedPlayerInfo p)
     {
         if (RoleState.Of(p.PlayerId) != null || !p.IsDead) return Dev.DevGod.Label(p.PlayerId) ?? "?";
         var alive = Dev.DevCommands.RoleWhenAlive(p);

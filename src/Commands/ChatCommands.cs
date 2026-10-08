@@ -46,7 +46,7 @@ internal static class ChatCommands
         Add(new[] { "start" }, Who.Host, "", new Text("試合を始める (数え中なら数えを飛ばす)", "Start the game (skips the countdown if counting)"), _ => HostActions.Start());
         Add(new[] { "end", "廃村" }, Who.Host, "", new Text("廃村: 勝者なしで試合を打ち切る (Shift+L+Enter)", "Abort the game with no winner (Shift+L+Enter)"), _ => HostActions.Abort());
         Add(new[] { "mt", "meet" }, Who.Host, "", new Text("会議を開く / 開いている会議を閉じる (Shift+M+Enter)", "Call a meeting / close the current one (Shift+M+Enter)"), _ => HostActions.ToggleMeeting());
-        Add(new[] { "setrole" }, Who.Host, "<役職> [番号]", new Text("その人 (省略で自分) の役職を変える (試合中)", "Change someone's role (yourself if omitted, in game)"), HostActions.SetRole);
+        Add(new[] { "setrole" }, Who.Host, "<役職> [番号]", new Text("その人 (省略で自分) の役職を変える。ロビーで打つと次の試合の役職を予約する", "Change someone's role (yourself if omitted). In the lobby, reserves the role for the next game"), HostActions.SetRole);
         Add(new[] { "kill" }, Who.Host, "[番号]", new Text("その人 (省略で自分) を倒す (自分は Shift+E+Enter)", "Kill someone (yourself if omitted, Shift+E+Enter)"), HostActions.Kill);
         Add(new[] { "revive" }, Who.Host, "[番号]", new Text("その人 (省略で自分) を生き返らせる", "Revive someone (yourself if omitted)"), HostActions.Revive);
         Add(new[] { "kick" }, Who.Host, "<番号>", new Text("その人を部屋から出す", "Kick someone out of the room"), JoinLists.Kick);
