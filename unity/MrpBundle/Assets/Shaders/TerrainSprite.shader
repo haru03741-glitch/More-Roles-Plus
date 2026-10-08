@@ -301,7 +301,10 @@ Shader "MRP/TerrainSprite"
                 if (_UseDamage > 1.5)
                 {
                     if (!inMap) discard;
-                    float dr = tex2D(_MrpDamageTex, muv).r;
+                    fixed4 dd = tex2D(_MrpDamageTex, muv);
+                    // 宇宙へ抜けた喉 (R と A が両方立った所) は船体の中を描かず、後ろの星空を見せる
+                    if (dd.a > 0.5 && dd.r > 0.5) discard;
+                    float dr = dd.r;
                     float cl = tex2D(_Cells, i.world * 0.4).r;
                     float nn = tex2D(_Noise, i.world * 3.1).r;
                     float hv = dr + (cl - 0.5) * _EdgeJag + (nn - 0.5) * 0.06;

@@ -25,7 +25,7 @@ internal static class TerrainReview
     private static readonly byte[] Ledge = { 255, 140, 0 };       // 違う島 = 高さが違う (段差)
     private static readonly byte[] Outer = { 70, 120, 255 };      // 片側に床が無い = 外壁
     private static readonly byte[] Thick = { 0, 220, 220 };       // 片側が船体の塊 = 掘り進める厚い壁
-    private static readonly byte[] Hull = { 255, 255, 255 };      // 爆発で宇宙まで掘り抜ける外壁
+    private static readonly byte[] Hull = { 255, 255, 255 };      // 爆発で宇宙へ抜ける外壁
     private static readonly byte[] Guarded = { 200, 60, 255 };    // 名前で守る物・扉
     private static readonly byte[] Furniture = { 255, 230, 0 };   // 家具の保護範囲 (壁も切らない)
     private static readonly byte[] Lone = { 140, 140, 140 };      // 両側とも床が無い
@@ -95,12 +95,12 @@ internal static class TerrainReview
                             Vector2 back = ia == 0 ? n : -n;
                             bool thick = SolidMap.HasHull && SolidMap.InHull(m + back * 0.3f);
                             kind = thick ? "thick" : "outer"; color = thick ? Thick : Outer;
-                            if (!thick && SolidMap.BreachableHull && SolidMap.HullDepth(m, back, TerrainDamage.BreachDepth) > 0f) { kind = "hull"; color = Hull; }
+                            if (!thick && SolidMap.BreachableHull && SolidMap.SkyAhead(m, back, TerrainDamage.HullReach)) { kind = "hull"; color = Hull; }
                             if (SolidMap.BreachableHull)
                             {
-                                // 外 (宇宙・空) までの厚みの内訳 (掘り抜ける範囲を決める用)
-                                float dd = SolidMap.HullDepth(m, back, 4f);
-                                string bucket = (thick ? "thick-" : "") + (dd <= 0f ? "depthFar" : dd <= 1f ? "depth1.0" : dd <= 1.5f ? "depth1.5" : dd <= 2.5f ? "depth2.5" : dd <= 3.5f ? "depth3.5" : "depth4.0");
+                                // 外 (宇宙・空) までの厚みの内訳 (抜ける範囲を決める用)
+                                float dd = SolidMap.HullDepth(m, back, 12f);
+                                string bucket = (thick ? "thick-" : "") + (dd <= 0f ? "depthFar" : dd <= 2.5f ? "depth2.5" : dd <= 4f ? "depth4" : dd <= 6f ? "depth6" : dd <= 8f ? "depth8" : "depth12");
                                 counts.TryGetValue(bucket, out float bs); counts[bucket] = bs + len / parts;
                             }
                             if (ia != 0 && ib != 0 && !SolidMap.FacesOutside(m, n)) Notes.Add($"SKYBUMP {m.x:0.00} {m.y:0.00}");

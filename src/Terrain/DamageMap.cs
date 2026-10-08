@@ -190,6 +190,8 @@ internal static class DamageMap
         _decalMat = new Material(mat) { name = "MrpCrackDecal" };
         _decalMat.SetFloat("_UseDamage", 3f); // 3 = ひび: 穴の中と家具の上には描かない
         if (stencil) _decalMat.SetFloat("_StencilPass", 0f); // Keep (外壁のひびが空へはみ出した所に影の板を掛けない)
+        if (_wallLikeMat) UnityEngine.Object.Destroy(_wallLikeMat);
+        _wallLikeMat = null; // 部屋の絵の材質が替わったので作り直す
 
         double tAll = sw.Elapsed.TotalMilliseconds;
         EnsureBreakdown = $"scan={tScan:F1} alloc={tAlloc - tScan:F1} upload={tUpload - tAlloc:F1} mats={tAll - tUpload:F1}";
@@ -608,6 +610,30 @@ internal static class DamageMap
         }
     }
 
+    // 宇宙へ抜けた喉 (口から宇宙まで) を損傷マスクに書く: R = 穴 (部屋の絵の壁の帯を抜く)・A = 喉の印 (穴の向こうの船体の中を描かない)
+    internal static void MarkThroat(List<Vector2[]> polys)
+    {
+        if (!EnsureMap()) return;
+        foreach (var poly in polys)
+        {
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+            foreach (var v in poly) { minX = MathF.Min(minX, v.x); minY = MathF.Min(minY, v.y); maxX = MathF.Max(maxX, v.x); maxY = MathF.Max(maxY, v.y); }
+            int x0 = Math.Max(0, (int)((minX - _origin.x) * PixelsPerUnit));
+            int x1 = Math.Min(_w - 1, (int)((maxX - _origin.x) * PixelsPerUnit) + 1);
+            int y0 = Math.Max(0, (int)((minY - _origin.y) * PixelsPerUnit));
+            int y1 = Math.Min(_h - 1, (int)((maxY - _origin.y) * PixelsPerUnit) + 1);
+            for (int py = y0; py <= y1; py++)
+            for (int px = x0; px <= x1; px++)
+            {
+                if (!InsidePolyline(poly, TexelCenter(px, py))) continue;
+                int i = (py * _w + px) * 4;
+                _pixels[i] = 255;
+                _pixels[i + 3] = 255;
+            }
+        }
+        Upload();
+    }
+
     private static bool InsideAny(List<Rect> rects, float x, float y)
     {
         foreach (var rc in rects)
@@ -800,6 +826,20 @@ internal static class DamageMap
 
     // 止まった瓦礫を焼いた床の板用 (PropMaterial と同じ描き方で、部屋の絵の無い所には描かない)
     public static Material PlateMaterial => _plateMat;
+
+    // 壁と同じに影が掛かる絵 (部屋の絵と同じステンシルを書く・損傷マスクは使わない)。外壁の穴をふさぐ補修フォーム用
+    private static Material _wallLikeMat;
+    public static Material WallLikeMaterial
+    {
+        get
+        {
+            if (_wallLikeMat || !_roomMat) return _wallLikeMat;
+            _wallLikeMat = new Material(_roomMat) { name = "MrpWallLike" };
+            _wallLikeMat.SetFloat("_UseDamage", 0f);
+            GameClock.Ship.Bind(_wallLikeMat);
+            return _wallLikeMat;
+        }
+    }
 
     // 部屋の絵の z (baseZ) から手前/奥へずらす幅の倍率。部屋の絵そのものがクルーと同じ奥行きにある所
     // (Polus のウェポン・通信) では、0.002〜0.02 ずらすとクルー (z ≈ y/1000) を追い越して瓦礫がクルーの上に出るので 1/100 に縮める

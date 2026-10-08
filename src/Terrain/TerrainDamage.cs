@@ -117,11 +117,9 @@ internal static class TerrainDamage
         CutShape core = e.Force > 0.02f
             ? ConvexShape.Cone(e.Position, e.Size, e.Direction, p.ConeStretch * e.Force, p.ConeShrink * e.Force)
             : new CircleShape(e.Position, e.Size);
-        // 宇宙まで掘り抜ける外壁 (スケルド) は 1 発で ThickStep ずつ奥へ。残りが ThickStep 以内なら宇宙まで抜ける
         LastBreach = 0f;
         SkyCut.Clear();
         _skyAway = default;
-        if (SolidMap.BreachableHull) core = DigHull(core, e.Position);
         float ring = e.Size * (p.OuterRingScale - 1f);
         float outer = core.BoundRadius + ring;
         Vector2 c = core.Center;
@@ -138,8 +136,7 @@ internal static class TerrainDamage
             var n = new Vector2(-d.y, d.x);
             Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
             away = away.normalized;
-            if (SolidMap.BreachableHull && SolidMap.HullDepth(m, away, BreachDepth) > 0f) return true; // 掘り抜ける外壁
-            if (SolidMap.SkyHull && SolidMap.SkyAhead(m, away, SkyReach)) // エアシップ: 床を通らずに空へ出る外壁は爆発で抜ける
+            if (SolidMap.Breachable && SolidMap.SkyAhead(m, away, BreachReach)) // 床を通らずに宇宙・空へ出る外壁は爆発 1 発で抜ける
             {
                 SkyCut.Add(a); SkyCut.Add(b);
                 _skyAway += away;
@@ -215,8 +212,7 @@ internal static class TerrainDamage
         // 穴の側面 (露出した壁の中との境) に蓋。ひびを付け終えてから作る (蓋にひびが付かないように)
         var capLines = cut > 0 ? body.Caps(core) : null;
         int caps = capLines != null ? WallBody.Build(capLines) : 0;
-        if (SolidMap.BreachableHull && capLines != null) Mouth(capLines); // 抜けた穴を横へ広げた時も、宇宙に接した所に口を足す
-        else if (SolidMap.SkyHull && cut > 0) SkyMouth();
+        if (SolidMap.Breachable && cut > 0) SkyMouth(); // 抜けた穴を横へ広げた時も、新しく切った外壁の区間に口を足す
         int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         var pieces = new List<BreakPiece>();
@@ -238,107 +234,22 @@ internal static class TerrainDamage
     internal static float LastBreach;
     internal static Vector2 LastBreachA, LastBreachB;
 
-    internal const float BreachDepth = 2.5f;  // 宇宙までこの距離以内の外壁だけ掘り抜ける
-    private const float BreachSlack = 0.15f; // 残りの厚みの測り方の刻み (HullDepth は 0.15 刻み)
-    private const float ClipStep = 0.25f;    // 形を半平面で切る時の縁の点の間隔
-
-    // 掘り抜ける外壁の面か (面の中点から爆心と反対の向きへ、船体の中だけを通って BreachDepth 以内に宇宙)
+    // 外に面した壁か (面の中点から爆心と反対の向きへ、床を通らずに宇宙・空へ出る)。前の穴の蓋もこれなら切る
     private static bool HullFace(Vector2 a, Vector2 b, Vector2 blast)
     {
-        if (!SolidMap.BreachableHull) return false;
+        if (!SolidMap.Breachable) return false;
         Vector2 m = (a + b) * 0.5f, d = b - a;
         if (d.x * d.x + d.y * d.y < 1e-10f) return false;
         var n = new Vector2(-d.y, d.x).normalized;
         if ((m.x - blast.x) * n.x + (m.y - blast.y) * n.y < 0f) n = -n;
-        return SolidMap.HullDepth(m, n, BreachDepth) > 0f;
+        return SolidMap.SkyAhead(m, n, BreachReach);
     }
 
-    // 形に掛かる掘り抜ける外壁の面のうち、爆心にいちばん近い点の面から ThickStep より奥を切り落とす。
-    // 残りの厚みが ThickStep 以内なら切らずに宇宙まで抜く。角で 2 面に掛かる時は近い方の面で決める
-    private static CutShape DigHull(CutShape core, Vector2 blast)
-    {
-        bool found = false;
-        float best = float.MaxValue, depth = 0f;
-        Vector2 q = default, n = default;
-        foreach (var col in WallsNear(core.Center, core.BoundRadius))
-        {
-            if (col.gameObject.layer != ShipLayer || col.gameObject.name == WallBody.MouthName) continue;
-            EdgeCutter.Cut(col, core, null, (a, b) =>
-            {
-                Vector2 d = b - a;
-                float l2 = d.x * d.x + d.y * d.y;
-                if (l2 < 1e-10f) return false;
-                var nn = new Vector2(-d.y, d.x) / MathF.Sqrt(l2);
-                float s = Math.Clamp(((blast.x - a.x) * d.x + (blast.y - a.y) * d.y) / l2, 0f, 1f);
-                Vector2 cp = a + d * s;
-                if ((cp.x - blast.x) * nn.x + (cp.y - blast.y) * nn.y < 0f) nn = -nn;
-                float dist = (cp - blast).sqrMagnitude;
-                // 同じ距離の面が 2 つ (角) なら点の座標で決める (壁の部品の並び順は端末で同じとは限らない)
-                if (dist > best || (dist == best && (cp.x > q.x || (cp.x == q.x && cp.y >= q.y)))) return false;
-                float h = SolidMap.HullDepth(cp, nn, BreachDepth);
-                if (h <= 0f) return false;
-                best = dist; q = cp; n = nn; depth = h; found = true;
-                return false;
-            }, null, dryRun: true);
-        }
-        if (!found) return core;
-        if (depth <= ThickStep + BreachSlack) return core;
-        return ClipHalfPlane(core, q, n, ThickStep);
-    }
-
-    // 形を半平面 (q から n の向きに depth より手前) で切る。凸の形は凸のまま
-    private static CutShape ClipHalfPlane(CutShape s, Vector2 q, Vector2 n, float depth)
-    {
-        var pts = s.Outline(ClipStep);
-        var o = new List<Vector2>(pts.Count + 2);
-        int k = pts.Count;
-        for (int i = 0; i < k; i++)
-        {
-            Vector2 cur = pts[i], nxt = pts[(i + 1) % k];
-            float dc = (cur.x - q.x) * n.x + (cur.y - q.y) * n.y - depth;
-            float dn = (nxt.x - q.x) * n.x + (nxt.y - q.y) * n.y - depth;
-            if (dc <= 0f) Add(cur);
-            if ((dc < 0f && dn > 0f) || (dc > 0f && dn < 0f)) Add(cur + (nxt - cur) * (dc / (dc - dn)));
-        }
-        if (o.Count > 1 && (o[0] - o[^1]).sqrMagnitude < 1e-8f) o.RemoveAt(o.Count - 1);
-        return o.Count >= 3 ? new ConvexShape(o.ToArray()) : s;
-
-        void Add(Vector2 v)
-        {
-            if (o.Count == 0 || (v - o[^1]).sqrMagnitude >= 1e-8f) o.Add(v);
-        }
-    }
-
-    // 宇宙まで抜けた穴の口: 蓋の端のうち船の外に接する点のうち、いちばん離れた 2 点を 1 本の線で結ぶ
-    private static void Mouth(List<List<Vector2>> caps)
-    {
-        var ends = new List<Vector2>();
-        foreach (var cap in caps)
-        {
-            if (cap.Count < 2) continue;
-            if (SolidMap.NearOutside(cap[0].x, cap[0].y)) ends.Add(cap[0]);
-            if (SolidMap.NearOutside(cap[^1].x, cap[^1].y)) ends.Add(cap[^1]);
-        }
-        if (ends.Count < 2) return;
-        float best = -1f;
-        // 口は穴の中か宇宙の上を通る (歩ける床を横切る線は作らない。切った所を地図に足す前に呼ぶ)
-        Vector2 a = default, b = default;
-        for (int i = 0; i < ends.Count; i++)
-        for (int j = i + 1; j < ends.Count; j++)
-        {
-            float d = (ends[i] - ends[j]).sqrMagnitude;
-            if (d > best) { best = d; a = ends[i]; b = ends[j]; }
-        }
-        Vector2 mid = (a + b) * 0.5f;
-        if (!SolidMap.Solid(mid)) return;
-        WallBody.BuildMouth(a, b);
-        LastBreach = MathF.Sqrt(best);
-        LastBreachA = a; LastBreachB = b;
-    }
-
-    // エアシップ: 外に面した厚い壁が抜けた所は空へ開いた口。空へ抜けると決めて切った壁の区間の端のうち、
-    // いちばん離れた 2 点を結ぶ (口は元の壁の線の上)。壁の向こうに床がある所は区間に入らない (Inner で SkyAhead を見ている)
-    private const float SkyReach = 20f; // エアシップの外周の船体は部屋の縁から空まで 9〜13 単位ある
+    // 外に面した壁が抜けた所は宇宙・空へ開いた口。抜けると決めて切った壁の区間の端のうち、
+    // いちばん離れた 2 点を結ぶ (口は元の壁の線の上・壁の厚みは問わない)。壁の向こうに床がある所は区間に入らない (Inner で SkyAhead を見ている)
+    private const float SkyReach = 20f;  // エアシップの外周の船体は部屋の縁から空まで 9〜13 単位ある
+    internal const float HullReach = 8f; // スケルドの外周の船体の厚み (部屋の縁から宇宙まで)
+    internal static float BreachReach => SolidMap.SkyHull ? SkyReach : HullReach;
     private const float SkyMouthMin = 0.3f;
     private static readonly List<Vector2> SkyCut = new();
     private static Vector2 _skyAway; // 切った区間の外向きの和
@@ -366,6 +277,7 @@ internal static class TerrainDamage
         WallBody.BuildMouth(a, b);
         LastBreach = MathF.Sqrt(best);
         LastBreachA = a; LastBreachB = b;
+        if (SolidMap.BreachableHull) HullThroat.Open(a, b, aw); // スケルド: 口の奥の船体の絵を宇宙まで抜く
     }
 
     // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。

@@ -211,6 +211,20 @@ internal static class SolidMap
         return false;
     }
 
+    // p から dir へ船の外 (宇宙・空) に着くまでの距離。先に歩ける所に当たったら (面の際の SkyFaceSlack を除く) その距離を負で、
+    // max まで着かなければ 0 を返す (穴の奥の船体の絵を宇宙まで抜く深さを測る用)
+    public static float SkyDistance(float px, float py, float dx, float dy, float max)
+    {
+        if (!Valid || _outside == null) return 0f;
+        for (float d = FaceProbeStep; d <= max + 1e-4f; d += FaceProbeStep * 0.5f)
+        {
+            int x = (int)MathF.Floor((px + dx * d - _origin.x) * _ppu), y = (int)MathF.Floor((py + dy * d - _origin.y) * _ppu);
+            if (x < 0 || y < 0 || x >= _w || y >= _h || BareSkyCell(x, y)) return d;
+            if (_open[y * _w + x] != 0 && d > SkyFaceSlack) return -d;
+        }
+        return 0f;
+    }
+
     // 面から 0.15 ずつ 0.6 まで (部屋の範囲が壁の線より外へ張り出している所がある)
     private const float FaceProbeStep = 0.15f;
     private const int FaceProbes = 4;

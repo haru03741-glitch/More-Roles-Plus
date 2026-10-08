@@ -666,7 +666,7 @@ internal static class TerrainProbe
             reply($"OK solidmap {SolidMap.Stats}");
         });
 
-        TestBridge.Register("terrainmap", "マップ全体の絵に壊れ方の判定を重ねて Screens/terrainmap.ppm に書く (はしご・部屋・部屋の組は terrainmap.txt へ。床 = 島ごとの色・壁 緑 = 壊せる / 橙 = 段差 / 青 = 外壁 / 白 = 宇宙まで掘り抜ける外壁 / 水色 = 厚い壁 / 紫 = 守る物 / 黄 = 家具 / 灰 = 両側に床なし・桃 = はしご)", (_, reply) =>
+        TestBridge.Register("terrainmap", "マップ全体の絵に壊れ方の判定を重ねて Screens/terrainmap.ppm に書く (はしご・部屋・部屋の組は terrainmap.txt へ。床 = 島ごとの色・壁 緑 = 壊せる / 橙 = 段差 / 青 = 外壁 / 白 = 爆発で宇宙へ抜ける外壁 / 水色 = 厚い壁 / 紫 = 守る物 / 黄 = 家具 / 灰 = 両側に床なし・桃 = はしご)", (_, reply) =>
         {
             string path = System.IO.Path.Combine(TestBridge.ScreensDir, "terrainmap.ppm");
             string size = TerrainReview.Dump(path, out string legend);
