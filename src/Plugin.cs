@@ -77,6 +77,7 @@ public class Ticker : MonoBehaviour
         Terrain.DustCloud.Tick();
         Terrain.WaterSim.Tick();
         Terrain.Decompression.Tick();
+        Terrain.CrewGrip.Tick();
         Terrain.PropSim.Tick();
         Terrain.WaterLeak.Tick();
         Terrain.WaterArt.Tick();

@@ -81,9 +81,13 @@ internal static class Decompression
     private static readonly List<(int Tick, ulong Bits)> DoorLog = new();
     private static bool _doorsListed;
     private static int _nextPoll;
+    private static bool _hold;                // 確認用: 自分の手元だけ口をふさがず気圧を満タンのままにする
     private static bool _sealDirty;           // 物が口をふさいだ (次の刻みで道のりを作り直す)
     private static readonly List<Breach> Breaches = new();
     private static readonly List<Pending> Queue = new();
+    // つかめる所 (流れの中の壁・扉の枠・家具の出っ張った角)。道のりを作り直す時だけ作る (自分の端末だけで使う)
+    private static readonly List<Vector2> Grips = new();
+    private const float GripSpacing = 0.6f;
 
     private readonly struct Plain
     {
@@ -444,8 +448,52 @@ internal static class Decompression
                     }
                 }
             }
+        Grips.Clear();
+        if (any) FindGrips();
         Fields++;
         LastFieldMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    private static bool Solid(int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= _w || y >= _h) return true;
+        int k = y * _w + x;
+        return _sub[k] == 0 || _furn[k] != 0;
+    }
+
+    // 出っ張った角: 流れの届く升に面した塞がった升のうち、周り 7×7 升の塞がりが少ない物 (まっすぐな壁は約 57%・直角の角は約 33%)。
+    // 爆発で縁がギザギザ・斜めでも拾えるように面の形でなく塞がりの割合で見る。尖った物から順に GripSpacing 以上離して取る
+    private const int GripR = 3, GripMaxSolid = 20;
+
+    private static void FindGrips()
+    {
+        var cand = new List<(int N, int K)>();
+        for (int y = GripR; y < _h - GripR; y++)
+        for (int x = GripR; x < _w - GripR; x++)
+        {
+            if (!Solid(x, y)) continue;
+            bool face = false;
+            for (int d = 0; d < 4 && !face; d++)
+            {
+                int j = (y + Ny[d]) * _w + x + Nx[d];
+                face = !Solid(x + Nx[d], y + Ny[d]) && _dist[j] != Far;
+            }
+            if (!face) continue;
+            int n = 0;
+            for (int dy = -GripR; dy <= GripR; dy++)
+            for (int dx = -GripR; dx <= GripR; dx++)
+                if (Solid(x + dx, y + dy)) n++;
+            if (n >= 4 && n <= GripMaxSolid) cand.Add((n, y * _w + x)); // 4 升未満は爆発の後の塵
+        }
+        cand.Sort((a, b) => a.N != b.N ? a.N.CompareTo(b.N) : a.K.CompareTo(b.K));
+        foreach (var (_, k) in cand)
+        {
+            float px = _org.x + (k % _w + 0.5f) * _cell, py = _org.y + (k / _w + 0.5f) * _cell;
+            bool near = false;
+            foreach (var g in Grips)
+                if ((g.x - px) * (g.x - px) + (g.y - py) * (g.y - py) < GripSpacing * GripSpacing) { near = true; break; }
+            if (!near) Grips.Add(new Vector2(px, py));
+        }
     }
 
     private static float SegDist(Vector2 p, Vector2 a, Vector2 b)
@@ -475,7 +523,7 @@ internal static class Decompression
         ulong bits = BitsAt(_step);
         if (bits != _doorBits) { _doorBits = bits; rebuild = true; }
         foreach (var br in Breaches)
-            if (!br.Sealed && _step - br.Start >= FoamDelay + FoamTime) { br.Sealed = true; field = true; }
+            if (!br.Sealed && !_hold && _step - br.Start >= FoamDelay + FoamTime) { br.Sealed = true; field = true; }
         if (rebuild)
         {
             var oc = (int[])_comp.Clone();
@@ -497,7 +545,7 @@ internal static class Decompression
             {
                 long dp = (long)p * width[c] * KNum / (KDen * _compCells[c]);
                 if (dp < 1 && p > 0) dp = 1;
-                _press[c] = (int)(p - dp);
+                _press[c] = _hold ? Full : (int)(p - dp);
                 pulling = true;
             }
             else if (p < Full) _press[c] = Math.Min(Full, p + Recover);
@@ -591,6 +639,19 @@ internal static class Decompression
         dir = FxMath.V2(dx / len, dy / len);
         return true;
     }
+
+    // 開いている口の線までのいちばん近い距離と点 (口が無ければ float.MaxValue)
+    internal static float MouthDist(Vector2 p, out Vector2 at)
+    {
+        at = NearestMouth(p);
+        bool any = false;
+        foreach (var br in Breaches) if (!br.Sealed) { any = true; break; }
+        if (!_running || !any) return float.MaxValue;
+        float dx = at.x - p.x, dy = at.y - p.y;
+        return MathF.Sqrt(dx * dx + dy * dy);
+    }
+
+    internal static List<Vector2> GripPoints => Grips;
 
     private static Vector2 NearestMouth(Vector2 p)
     {
@@ -723,6 +784,7 @@ internal static class Decompression
         DoorLog.Clear();
         _nextPoll = 0;
         LateDoors = 0;
+        _hold = false;
     }
 
     internal static void Reset()
@@ -738,6 +800,7 @@ internal static class Decompression
         _sealDirty = false;
         Breaches.Clear();
         Queue.Clear();
+        Grips.Clear();
         _step = 0;
         Late = 0;
         Fields = 0;
@@ -746,11 +809,23 @@ internal static class Decompression
 
     internal static void Register()
     {
-        TestBridge.Register("decomp", "[probe [x y] | area [x y] | breach x1 y1 x2 y2 | doors open|close | reset] 船外への吸い出しの気圧と流れ: 刻み・範囲ごとの気圧・口 (probe = その点 (省略で自分) の道のり・引く強さ・向き / area = その点の範囲の広さ・扉は今の開け閉め / breach = 爆発なしに口を自分の手元だけに置く / doors = 全部の扉を自分の手元だけで開け閉め)", (args, reply) =>
+        TestBridge.Register("decomp", "[probe [x y] | area [x y] | breach x1 y1 x2 y2 | doors open|close | fill | hold [off] | reset] 船外への吸い出しの気圧と流れ: 刻み・範囲ごとの気圧・口 (probe = その点 (省略で自分) の道のり・引く強さ・向き / area = その点の範囲の広さ・扉は今の開け閉め / breach = 爆発なしに口を自分の手元だけに置く / doors = 全部の扉を自分の手元だけで開け閉め / fill = 気圧を自分の手元だけで満タンに戻す / hold = 自分の手元だけ口をふさがず気圧を満タンのまま)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             string cmd = a.Length > 0 ? a[0] : "";
             if (cmd == "reset") { Reset(); reply("OK decomp reset"); return; }
+            if (cmd == "hold")
+            {
+                _hold = a.Length < 2 || a[1] != "off";
+                reply($"OK decomp hold={_hold} (this device only)");
+                return;
+            }
+            if (cmd == "fill")
+            {
+                for (int c = 0; c < _press.Length; c++) _press[c] = Full;
+                reply($"OK decomp fill regions={_press.Length} (this device only)");
+                return;
+            }
             if (cmd == "doors")
             {
                 var ship = ShipStatus.Instance;
@@ -830,13 +905,19 @@ internal static class CrewPull
 
     public static void Postfix(PlayerPhysics __instance)
     {
-        if (!Decompression.Pulling) return;
+        if (!Decompression.Pulling && !CrewGrip.Active) return;
         if (!__instance.AmOwner) return;
         var pc = __instance.myPlayer;
-        if (!pc || !pc.CanMove || pc.inVent || pc.Data == null || pc.Data.IsDead) return;
-        if (!Decompression.PullAt(pc.GetTruePosition(), out var dir, out float mul, out _)) return;
+        if (!pc || !pc.CanMove || pc.inVent || pc.Data == null || pc.Data.IsDead)
+        {
+            CrewGrip.Cancel();
+            return;
+        }
+        var pos = pc.GetTruePosition();
+        bool on = Decompression.PullAt(pos, out var dir, out float mul, out int dist);
         if (Speed <= 0f) Speed = __instance.TrueSpeed;
         var body = __instance.body;
+        if (CrewGrip.Physics(pc, body, pos, on, dir, mul, dist) || !on) return;
         var v = body.velocity;
         float s = mul * Speed;
         body.velocity = FxMath.V2(v.x + dir.x * s, v.y + dir.y * s);

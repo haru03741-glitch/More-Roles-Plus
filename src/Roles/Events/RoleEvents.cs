@@ -65,6 +65,12 @@ internal static class ExiledEventPatch
 {
     public static void Postfix(PlayerControl __instance)
     {
+        // 船外へ吸い出された人は本編の追放と同じ死に方を借りるだけ (追放の出来事は起こさない)
+        if (__instance && __instance.PlayerId == Terrain.CrewGrip.Spacing)
+        {
+            MatchLog.OnSpaced(__instance);
+            return;
+        }
         MatchLog.OnExiled(__instance);
         if (RoleState.All.Count == 0) return;
         Events<PlayerExiledEvent>.Run(new PlayerExiledEvent { Player = __instance });
