@@ -127,6 +127,13 @@ public static class AssignSettings
     public static readonly ChoiceOpt MaxNeutralKillers = new("キルする第三陣営の最大人数", "Max killing neutral roles", 0, Counts);
     public static readonly ChoiceOpt MaxRoled = new("役職が付く人の最大人数", "Max players with a role", 0, Counts);
     public static readonly IntOpt MaxAddonsPerPlayer = new("1 人に付くアドオンの最大数", "Max addons per player", 1, 0, 3);
+
+    // 出現率の抽選で役職が付かなかった人の扱い。「埋める」は出現率を重みにして、人数の残っている役職から配る
+    // (出現率を低くしても、役職を入れた分だけ誰かに付く)。第三陣営を埋めに使うとクルーが減りすぎるので既定は同じ陣営だけ
+    public static readonly ChoiceOpt Fill = new("役職が付かなかった人", "Players left without a role", 1,
+        new Text("本編のまま", "Keep vanilla"),
+        new Text("同じ陣営の役職で埋める", "Fill from same-team roles"),
+        new Text("第三陣営も含めて埋める", "Fill, neutrals included"));
 }
 
 // 配る前の名簿の 1 人 (本編が決めた陣営と土台の役職)
@@ -151,7 +158,7 @@ public static class AssignPlan
     // 配り方の内訳 (確かめ用)
     public sealed class PlanStats
     {
-        public int LimitSkips, ConflictSkips, Reserved;
+        public int LimitSkips, ConflictSkips, NoSlotSkips, Reserved, FillPicks;
     }
 
     // reserved = 固定指定 (PlayerId → 役職の番号)。枠の数・上限より先に付ける
@@ -179,6 +186,7 @@ public static class AssignPlan
 
         var plan = new List<Pick>();
         var chosen = new List<RoleBase>();
+        var taken = new int[Registry.Roles.Count];
         int neutrals = 0, killers = 0;
         int maxNeutral = AssignSettings.MaxNeutral.Value;
         int maxKillers = AssignSettings.MaxNeutralKillers.Value;
@@ -190,11 +198,28 @@ public static class AssignPlan
             plan.Add(new Pick { PlayerId = free[slotIndex].PlayerId, RoleIndex = roleIndex });
             free.RemoveAt(slotIndex);
             chosen.Add(role);
+            taken[roleIndex]++;
             if (role.Team == Team.Neutral)
             {
                 neutrals++;
                 if (role.IsKiller) killers++;
             }
+        }
+
+        bool OverLimit(RoleBase role)
+        {
+            bool neutral = role.Team == Team.Neutral;
+            return (maxRoled > 0 && plan.Count >= maxRoled)
+                || (neutral && maxNeutral > 0 && neutrals >= maxNeutral)
+                || (neutral && role.IsKiller && maxKillers > 0 && killers >= maxKillers);
+        }
+
+        // 本編の役職がちょうど土台の役職と同じ人を優先し、いなければ同じ陣営の誰か
+        int SlotFor(RoleBase role)
+        {
+            int pick = free.FindIndex(s => s.BaseRole == role.BaseRole);
+            if (pick < 0) pick = free.FindIndex(s => s.Impostor == (role.Team == Team.Impostor));
+            return pick;
         }
 
         // 固定指定。本編で決まった陣営と合わない指定は飛ばす
@@ -219,10 +244,7 @@ public static class AssignPlan
         foreach (int idx in sure.Concat(lucky))
         {
             var role = Registry.Roles[idx];
-            bool neutral = role.Team == Team.Neutral;
-            if ((maxRoled > 0 && plan.Count >= maxRoled)
-                || (neutral && maxNeutral > 0 && neutrals >= maxNeutral)
-                || (neutral && role.IsKiller && maxKillers > 0 && killers >= maxKillers))
+            if (OverLimit(role))
             {
                 if (stats != null) stats.LimitSkips++;
                 continue;
@@ -232,12 +254,44 @@ public static class AssignPlan
                 if (stats != null) stats.ConflictSkips++;
                 continue;
             }
-            bool wantImpostor = role.Team == Team.Impostor;
-            // 本編の役職がちょうど土台の役職と同じ人を優先し、いなければ同じ陣営の誰か
-            int pick = free.FindIndex(s => s.BaseRole == role.BaseRole);
-            if (pick < 0) pick = free.FindIndex(s => s.Impostor == wantImpostor);
-            if (pick < 0) continue;
+            int pick = SlotFor(role);
+            if (pick < 0)
+            {
+                if (stats != null) stats.NoSlotSkips++;
+                continue;
+            }
             Take(pick, idx);
+        }
+
+        // 余った人を埋める。出現率を重みに、人数の残っている役職から 1 つずつ引く。
+        // 付けられなかった役職は候補から外す (残りが全部付けられない物なら終わる)
+        int fill = AssignSettings.Fill.Value;
+        if (fill > 0 && free.Count > 0)
+        {
+            var pool = new List<int>();
+            for (int i = 0; i < Registry.Roles.Count; i++)
+            {
+                var r = Registry.Roles[i];
+                if (r.Chance <= 0 || taken[i] >= r.Count.Value) continue;
+                if (fill == 1 && r.Team == Team.Neutral) continue;
+                pool.Add(i);
+            }
+            while (free.Count > 0 && pool.Count > 0)
+            {
+                int total = 0;
+                foreach (int i in pool) total += Registry.Roles[i].Chance.Value;
+                int roll = rng.Next(total);
+                int at = 0;
+                while (at < pool.Count - 1 && (roll -= Registry.Roles[pool[at]].Chance.Value) >= 0) at++;
+                int idx = pool[at];
+                var role = Registry.Roles[idx];
+                int pick = OverLimit(role) || Conflicts(role, chosen) ? -1 : SlotFor(role);
+                if (pick < 0) { pool.RemoveAt(at); continue; }
+                Take(pick, idx);
+                if (stats != null) stats.FillPicks++;
+                if (taken[idx] >= role.Count.Value) pool.RemoveAt(at);
+                if (maxRoled > 0 && plan.Count >= maxRoled) break;
+            }
         }
 
         AssignAddons(roster, plan, rng);
@@ -348,7 +402,7 @@ public static class AssignPlan
         }
         var sb = new System.Text.StringBuilder();
         sb.Append($"players={players} impostors={impostors} runs={runs} seed={seed} roles/run={(double)withRole / runs:0.00} addons/run={(double)withAddon / runs:0.00}");
-        sb.Append($"\nlimitSkips/run={(double)stats.LimitSkips / runs:0.00} conflictSkips/run={(double)stats.ConflictSkips / runs:0.00} reserved/run={(double)stats.Reserved / runs:0.00} maxNeutral={neutralMax} duplicateAddonRuns={doubled}");
+        sb.Append($"\nlimitSkips/run={(double)stats.LimitSkips / runs:0.00} conflictSkips/run={(double)stats.ConflictSkips / runs:0.00} noSlotSkips/run={(double)stats.NoSlotSkips / runs:0.00} reserved/run={(double)stats.Reserved / runs:0.00} fill/run={(double)stats.FillPicks / runs:0.00} maxNeutral={neutralMax} duplicateAddonRuns={doubled}");
         for (int i = 0; i < roleHits.Length; i++)
             if (roleHits[i] > 0) sb.Append($"\n{Registry.Roles[i].Id} {roleHits[i]} ({100.0 * roleHits[i] / runs:0.#}%/run)");
         for (int i = 0; i < addonHits.Length; i++)
