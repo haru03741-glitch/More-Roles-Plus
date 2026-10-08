@@ -185,11 +185,26 @@ server.registerTool("bridge_wait", {
     return textResult(`${r.ok ? "OK" : "NG"}: ${r.line}`, !r.ok);
 });
 
+// スクショは長辺 1092px に縮めて返す (原寸が要る時は full=true)。PNG/JPG とも同じ形式で保存する。
+function shrinkPng(p, maxEdge = 1092) {
+    const m = p.match(/\.(png|jpe?g)$/i);
+    if (!m) return p;
+    const jpg = m[1].toLowerCase() !== "png";
+    const out = p.replace(/\.(png|jpe?g)$/i, `.s${maxEdge}.${jpg ? "jpg" : "png"}`);
+    try {
+        if (!fs.existsSync(out)) {
+            const ps = `Add-Type -AssemblyName System.Drawing; $i=[System.Drawing.Image]::FromFile('${p.replace(/'/g, "''")}'); $m=[Math]::Max($i.Width,$i.Height); if($m -le ${maxEdge}){ $i.Dispose(); exit 3 }; $s=${maxEdge}/$m; $w=[int]($i.Width*$s); $h=[int]($i.Height*$s); $b=New-Object System.Drawing.Bitmap $w,$h; $g=[System.Drawing.Graphics]::FromImage($b); $g.InterpolationMode='HighQualityBicubic'; $g.DrawImage($i,0,0,$w,$h); $b.Save('${out.replace(/'/g, "''")}',[System.Drawing.Imaging.ImageFormat]::${jpg ? "Jpeg" : "Png"}); $g.Dispose(); $b.Dispose(); $i.Dispose()`;
+            execFileSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], { stdio: "ignore", timeout: 20000 });
+        }
+        return fs.existsSync(out) ? out : p;
+    } catch { return p; }
+}
+
 server.registerTool("bridge_screenshot", {
     title: "スクリーンショット",
-    description: "ゲーム画面を撮って画像で返す。",
-    inputSchema: { name: z.string().regex(/^[A-Za-z0-9_-]{0,40}$/).optional() },
-}, async ({ name }) => {
+    description: "ゲーム画面を撮って画像で返す (長辺 1092px に縮小。原寸は full=true)。機械判定は bridge_state を優先し、見た目の確認だけに使う。",
+    inputSchema: { name: z.string().regex(/^[A-Za-z0-9_-]{0,40}$/).optional(), full: z.boolean().optional() },
+}, async ({ name, full }) => {
     const r = await sendAndWait([`shot ${name ?? "shot"}`], /\] OK shot /, /\] ERR shot/, 20);
     if (!r.ok) return textResult(r.line, true);
     const p = r.line.replace(/^.*\] OK shot /, "").trim();
@@ -199,8 +214,9 @@ server.registerTool("bridge_screenshot", {
             const st = fs.statSync(p);
             if (st.size > 0) {
                 await sleep(200);
-                const data = fs.readFileSync(p).toString("base64");
-                return { content: [{ type: "text", text: p }, { type: "image", data, mimeType: "image/png" }] };
+                const src = full ? p : shrinkPng(p);
+                const data = fs.readFileSync(src).toString("base64");
+                return { content: [{ type: "text", text: p }, { type: "image", data, mimeType: /\.jpe?g$/i.test(src) ? "image/jpeg" : "image/png" }] };
             }
         } catch { }
     }
