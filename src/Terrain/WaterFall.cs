@@ -12,16 +12,25 @@ namespace MoreRolesPlus.Terrain;
 // 計算には戻らない (全員の結果に関わらない)。会議中は隠す
 internal static class WaterFall
 {
+#if ANDROID
+    // スマホは粒の線と画素の変換・転送が重いので、粗く・粒を少なく・描き直しを半分に
+    private const float Ppu = 16f;
+    private const float ParcelMass = 9f;
+    private const float Redraw = 1f / 15f;
+#else
     private const float Ppu = 24f;
+    private const float ParcelMass = 6f;       // 粒 1 つの水の量 (WaterSim の量の単位)
+    private const float Redraw = 1f / 30f;
+#endif
+    // 速い粒の線は長さに依らず同じ量を置くので、1 画素の濃さは画素の面積に反比例し、粒の量に比例する。PC と同じ濃さに揃える
+    private const float LineScale = Ppu * Ppu / (24f * 24f) * (ParcelMass / 6f);
     private const float CanvasW = 5f;          // 1 枚の絵の幅 (単位)
     private const float MaxCanvasH = 9f;
     private const float Above = 0.4f, Below = 0.7f, Margin = 0.25f;
     private const int MaxCanvases = 4;
-    private const float ParcelMass = 6f;       // 粒 1 つの水の量 (WaterSim の量の単位)
     private const int MaxParcels = 2000;
     private const int MaxSpawnPerFrame = 240;
     private const float FlowTau = 0.25f;       // 流量のならし (秒)。刻みの無いフレームでも点滅しない
-    private const float Redraw = 1f / 30f;
     private const float LipSpread = 0.17f;     // 縁に沿って散らす幅の半分 (升の半分 + 隣と重なる分)
     private const float ThrowMax = 0.2f, ThrowFlow = 900f; // 外へ投げ出す距離と、それが最大になる流量 (量/秒)
     private const float ImpactR0 = 0.12f, ImpactR1 = 0.12f, ImpactFlow = 600f;
@@ -44,7 +53,9 @@ internal static class WaterFall
         public float X0, Y0;
         public int W, H;
         public float Idle;
-        public bool Hidden, Gone, Inked;  // Inked = 前に描いた時に何か描いた           // Gone = 片づけ済み (Unity の物の null 判定を毎回しない)
+        public bool Hidden, Gone;   // Gone = 片づけ済み (Unity の物の null 判定を毎回しない)
+        // 描いた範囲 (画素)。前回の範囲だけ消し、前回と今回を合わせた範囲だけ変換する
+        public int X0p, Y0p, X1p = -1, Y1p = -1, Bx0, By0, Bx1, By1;
         public GameObject Go;
         public SpriteRenderer Sr;
         public Texture2D Tex;
@@ -67,6 +78,7 @@ internal static class WaterFall
     private static readonly Parcel[] Parcels = new Parcel[MaxParcels];
     private static int _parcels;
     private static float _redrawAcc, _meetAcc;
+    private static int _half;
     private static bool _meeting;
     private static long _lastMs;
     private static int _shipGen = -1;
@@ -154,11 +166,13 @@ internal static class WaterFall
             if (c.Idle > IdleLife) { Destroy(c); Canvases.RemoveAt(i); continue; }
             if (c.Hidden != meeting) { c.Hidden = meeting; c.Sr.enabled = !meeting; }
         }
+        // 絵を半分ずつ交互に描き直す (1 枚ごとの間隔は Redraw のまま・1 フレームの山が半分になる)
         _redrawAcc += dt;
-        if (meeting || _redrawAcc < Redraw) return;
+        if (meeting || _redrawAcc < Redraw * 0.5f) return;
         _redrawAcc = 0f;
+        _half ^= 1;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        foreach (var c in Canvases) Draw(c);
+        for (int i = _half; i < Canvases.Count; i += 2) Draw(Canvases[i]);
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
@@ -204,9 +218,10 @@ internal static class WaterFall
         float cx = (lx + hx) * 0.5f;
         float x0 = Math.Min(cx - CanvasW * 0.5f, lx - Margin), x1 = Math.Max(cx + CanvasW * 0.5f, hx + Margin);
         float y0 = ly - Below, y1 = hy + Above;
-        if (y1 - y0 > MaxCanvasH) y0 = y1 - MaxCanvasH; // 毎回全画素を回すので高さに上限 (それより下は描かない)
+        if (y1 - y0 > MaxCanvasH) y0 = y1 - MaxCanvasH; // 絵が大きいほど消す・変換・転送が重いので高さに上限 (それより下は描かない)
         var n = new Canvas { X0 = x0, Y0 = y0, W = (int)MathF.Ceiling((x1 - x0) * Ppu), H = (int)MathF.Ceiling((y1 - y0) * Ppu) };
         n.Px = new byte[n.W * n.H * 4];
+        for (int i = 3; i < n.Px.Length; i += 4) n.Px[i] = 255; // 描いていない所も不透明の濃さ 0 にしておく
         n.Dens = new float[n.W * n.H];
         n.Foam = new float[n.W * n.H];
         n.Tex = new Texture2D(n.W, n.H, TextureFormat.RGBA32, false) { name = "MrpFall", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
@@ -229,9 +244,15 @@ internal static class WaterFall
 
     private static unsafe void Draw(Canvas c)
     {
-        Array.Clear(c.Dens);
-        Array.Clear(c.Foam);
-        bool any = false;
+        int w = c.W;
+        // 前回描いた範囲だけを消す (それ以外は 0 のまま)
+        for (int y = c.Y0p; y <= c.Y1p; y++)
+        {
+            int o = y * w + c.X0p, len = c.X1p - c.X0p + 1;
+            Array.Clear(c.Dens, o, len);
+            Array.Clear(c.Foam, o, len);
+        }
+        c.Bx0 = w; c.By0 = c.H; c.Bx1 = -1; c.By1 = -1;
         for (int i = 0; i < _parcels; i++)
         {
             ref var p = ref Parcels[i];
@@ -243,7 +264,6 @@ internal static class WaterFall
             float a = p.Void && tau > 0.7f ? (1f - tau) / 0.3f : 1f;
             Line(c, p.Lx, p.Ly, sx, sy, a, foam);
             p.Lx = sx; p.Ly = sy;
-            any = true;
         }
         // 着地の泡 (下の水たまりへつなぐ)
         foreach (var e in Edges.Values)
@@ -251,23 +271,29 @@ internal static class WaterFall
             if (e.C != c || e.Void || e.Q < 1f) continue;
             float r = ImpactR0 + ImpactR1 * Math.Min(1f, e.Q / ImpactFlow);
             Disc(c, e.X1 + e.Nx * 0.05f, e.Y1 + e.Ny * 0.05f, r, Math.Min(1f, e.Q / ImpactFlow * 2f));
-            any = true;
         }
-        int n = c.W * c.H;
+        bool now = c.Bx1 >= 0, before = c.X1p >= 0;
         // 流れが止まったら 1 回だけ空の絵を書いて、それ以降は描かない
-        if (!any && !c.Inked) return;
-        c.Inked = any;
-        for (int i = 0; i < n; i++)
+        if (!now && !before) return;
+        int ux0 = Math.Min(now ? c.Bx0 : w, before ? c.X0p : w), uy0 = Math.Min(now ? c.By0 : c.H, before ? c.Y0p : c.H);
+        int ux1 = Math.Max(c.Bx1, c.X1p), uy1 = Math.Max(c.By1, c.Y1p);
+        fixed (byte* b = c.Px)
         {
-            float d = c.Dens[i];
-            int o = i * 4;
-            c.Px[o] = (byte)Math.Min(255f, d * 255f);
-            c.Px[o + 1] = d > 0f ? (byte)Math.Min(255f, c.Foam[i] / d * 255f) : (byte)0;
-            c.Px[o + 2] = 0;
-            c.Px[o + 3] = 255;
+            uint* px = (uint*)b;
+            for (int y = uy0; y <= uy1; y++)
+            for (int i = y * w + ux0, end = y * w + ux1; i <= end; i++)
+            {
+                float d = c.Dens[i];
+                if (d <= 0f) { px[i] = 0xFF000000u; continue; }
+                uint r = d >= 1f ? 255u : (uint)(d * 255f);
+                float f = c.Foam[i] / d;
+                uint g = f >= 1f ? 255u : (uint)(f * 255f);
+                px[i] = 0xFF000000u | (g << 8) | r; // RGBA32 を little endian で (R = 濃さ・G = 泡)
+            }
+            c.Tex.LoadRawTextureData((IntPtr)b, c.Px.Length);
         }
-        fixed (byte* b = c.Px) c.Tex.LoadRawTextureData((IntPtr)b, c.Px.Length);
         c.Tex.Apply(false, false);
+        c.X0p = c.Bx0; c.Y0p = c.By0; c.X1p = c.Bx1; c.Y1p = c.By1;
     }
 
     private static void Line(Canvas c, float wx0, float wy0, float wx1, float wy1, float a, float foam)
@@ -276,7 +302,7 @@ internal static class WaterFall
         float dx = bx - ax, dy = by - ay;
         int steps = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(dx * dx + dy * dy)));
         if (steps > 400) return;
-        float w = a / steps * Math.Min(steps, 3); // 速い所は細い筋
+        float w = a * LineScale / steps * Math.Min(steps, 3); // 速い所は細い筋
         for (int k = 0; k <= steps; k++)
         {
             float f = (float)k / steps;
@@ -288,10 +314,19 @@ internal static class WaterFall
     {
         int n = c.W;
         if (x < 1 || y < 1 || x >= n - 1 || y >= c.H - 1) return;
+        Grow(c, x - 1, y - 1, x + 1, y + 1);
         int i = y * n + x;
         Add(c, i, Hit * w, foam);
         Add(c, i - 1, Side * w, foam); Add(c, i + 1, Side * w, foam); Add(c, i - n, Side * w, foam); Add(c, i + n, Side * w, foam);
         Add(c, i - n - 1, Corner * w, foam); Add(c, i - n + 1, Corner * w, foam); Add(c, i + n - 1, Corner * w, foam); Add(c, i + n + 1, Corner * w, foam);
+    }
+
+    private static void Grow(Canvas c, int x0, int y0, int x1, int y1)
+    {
+        if (x0 < c.Bx0) c.Bx0 = x0;
+        if (y0 < c.By0) c.By0 = y0;
+        if (x1 > c.Bx1) c.Bx1 = x1;
+        if (y1 > c.By1) c.By1 = y1;
     }
 
     private static void Add(Canvas c, int i, float v, float foam)
@@ -304,6 +339,9 @@ internal static class WaterFall
     private static void Disc(Canvas c, float wx, float wy, float r, float s)
     {
         int cx = (int)((wx - c.X0) * Ppu), cy = (int)((wy - c.Y0) * Ppu), rx = (int)(r * Ppu), ry = Math.Max(1, (int)(r * 0.6f * Ppu));
+        int gx0 = Math.Max(0, cx - rx), gy0 = Math.Max(0, cy - ry), gx1 = Math.Min(c.W - 1, cx + rx), gy1 = Math.Min(c.H - 1, cy + ry);
+        if (gx0 > gx1 || gy0 > gy1) return;
+        Grow(c, gx0, gy0, gx1, gy1);
         for (int y = -ry; y <= ry; y++)
         for (int x = -rx; x <= rx; x++)
         {
