@@ -45,6 +45,15 @@ internal static class WaterArt
     private static long _lastMs;
     internal static double LastDrawMs { get; private set; }
     internal static int Drawn { get; private set; }
+    // 切り分け用: 水たまりの絵を全部隠す (計算と描き直しは続ける)。bridge `layer water 0`
+    internal static bool Hidden;
+    internal static int DebugHide(bool hide)
+    {
+        Hidden = hide;
+        int n = 0;
+        foreach (var t in Tiles.Values) if (t.Sr) { t.Sr.enabled = !hide && !t.Empty; n++; }
+        return n;
+    }
 
     public static void Tick()
     {
@@ -160,7 +169,7 @@ internal static class WaterArt
         }
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
-        if (t.Empty) { t.Sr.enabled = true; t.Empty = false; }
+        if (t.Empty) { t.Sr.enabled = !Hidden; t.Empty = false; }
         Drawn++;
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }

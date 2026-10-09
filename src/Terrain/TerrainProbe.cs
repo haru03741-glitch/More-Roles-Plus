@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using MoreRolesPlus.Bridge;
@@ -523,7 +524,7 @@ internal static class TerrainProbe
             reply($"OK fxpause {(TerrainFx.Paused ? 1 : 0)} pieces={BreakPieces.Count} pending={RubbleBake.PendingCount} baked={RubbleBake.BakedCount} sheets={RubbleBake.SheetCount} kb={RubbleBake.SheetBytes / 1024}");
         });
 
-        TestBridge.Register("layer", "<char|rim|underlay|junk> <0|1> 見た目の層を外す / 戻す (切り分け用)。char/rim/underlay は今ある損傷にすぐ効く・junk は次の破壊から", (args, reply) =>
+        TestBridge.Register("layer", "<char|rim|underlay|junk|water> <0|1> 見た目の層を外す / 戻す (切り分け用)。char/rim/underlay/water は今ある物にすぐ効く・junk は次の破壊から", (args, reply) =>
         {
             string[] p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (p.Length < 2) { reply("ERR layer <char|rim|underlay|junk> <0|1>"); return; }
@@ -534,7 +535,8 @@ internal static class TerrainProbe
                 case "rim": reply($"OK layer rim {(on ? 1 : 0)} {DamageMap.DebugChannel(2, on)}"); break;
                 case "underlay": reply($"OK layer underlay {(on ? 1 : 0)} n={DamageMap.DebugUnderlay(on)}"); break;
                 case "junk": TerrainFx.HideJunk = !on; reply($"OK layer junk {(on ? 1 : 0)}"); break;
-                default: reply("ERR layer <char|rim|underlay|junk> <0|1>"); break;
+                case "water": reply($"OK layer water {(on ? 1 : 0)} tiles={WaterArt.DebugHide(!on)}"); break;
+                default: reply("ERR layer <char|rim|underlay|junk|water> <0|1>"); break;
             }
         });
 
@@ -557,6 +559,97 @@ internal static class TerrainProbe
             foreach (var (rc, name) in list)
                 TestBridge.Out($"BUMP {name} center=({rc.center.x:F2},{rc.center.y:F2}) x={rc.xMin:F2}..{rc.xMax:F2} y={rc.yMin:F2}..{rc.yMax:F2}");
             reply($"OK bumps n={list.Count}");
+        });
+
+        TestBridge.Register("walllist", "層 9 (壁) と層 12 (家具) の当たり判定を全部 Screens/walllist.txt へ (型・大きさ・守り・絵・影の線までの距離・外側が床か)", (_, reply) =>
+        {
+            var ship = ShipStatus.Instance;
+            if (!ship || !SolidMap.Ensure()) { reply("ERR no ship"); return; }
+            var lines = new List<string>();
+            var segs = new List<Vector2>();
+            foreach (var col in ship.GetComponentsInChildren<Collider2D>(true))
+            {
+                if (!col || (col.gameObject.layer != 9 && col.gameObject.layer != 12)) continue;
+                segs.Clear();
+                SolidMap.Segments(col, segs);
+                float len = 0f; int sh1 = 0, sh3 = 0, sh6 = 0, pieces = 0, floorL = 0, floorR = 0;
+                for (int i = 0; i + 1 < segs.Count; i += 2)
+                {
+                    Vector2 a = segs[i], d = segs[i + 1] - a;
+                    float l = d.magnitude;
+                    if (l < 1e-4f) continue;
+                    len += l;
+                    Vector2 dir = d / l, n = new(-dir.y, dir.x);
+                    int parts = System.Math.Max(1, (int)System.MathF.Ceiling(l / 0.25f));
+                    for (int k = 0; k < parts; k++)
+                    {
+                        Vector2 m = a + dir * (l * (k + 0.5f) / parts);
+                        pieces++;
+                        if (Physics2D.OverlapCircleAll(m, 0.1f, Constants.ShadowMask).Length > 0) sh1++;
+                        if (Physics2D.OverlapCircleAll(m, 0.3f, Constants.ShadowMask).Length > 0) sh3++;
+                        if (Physics2D.OverlapCircleAll(m, 0.6f, Constants.ShadowMask).Length > 0) sh6++;
+                        if (SolidMap.IslandAt(m + n * 0.15f) != 0) floorL++;
+                        if (SolidMap.IslandAt(m - n * 0.15f) != 0) floorR++;
+                    }
+                }
+                var b = col.bounds;
+                var sr = col.GetComponent<SpriteRenderer>();
+                var psr = col.transform.parent ? col.transform.parent.GetComponent<SpriteRenderer>() : null;
+                string art = sr && sr.sprite ? "self:" + sr.sprite.name : psr && psr.sprite ? "parent:" + psr.sprite.name : "-";
+                string type = col.TryCast<EdgeCollider2D>() ? "edge" : col.TryCast<PolygonCollider2D>() ? "poly" : col.TryCast<BoxCollider2D>() ? "box" : col.TryCast<CircleCollider2D>() ? "circle" : "other";
+                string path = col.name;
+                for (var t = col.transform.parent; t && !t.GetComponent<ShipStatus>(); t = t.parent) path = t.name + "/" + path;
+                bool prot = TerrainDamage.IsProtected(col);
+                int furn = 0;
+                foreach (var rc in DamageMap.FurnitureAt(b.center, 0.05f)) if (rc.Contains(b.center)) furn = 1;
+                lines.Add($"L{col.gameObject.layer} {type} {(col.enabled && col.gameObject.activeInHierarchy ? "on" : "off")}{(col.isTrigger ? " trig" : "")} " +
+                          $"c=({b.center.x:F2},{b.center.y:F2}) wh=({b.size.x:F2},{b.size.y:F2}) len={len:F1} pieces={pieces} " +
+                          $"sh.1={sh1} sh.3={sh3} sh.6={sh6} floorL={floorL} floorR={floorR} prot={(prot ? 1 : 0)} furnC={furn} art={art} path={path}");
+            }
+            string file = System.IO.Path.Combine(TestBridge.ScreensDir, "walllist.txt");
+            System.IO.File.WriteAllLines(file, lines);
+            reply($"OK walllist n={lines.Count} {file}");
+        });
+
+        TestBridge.Register("blastall", "[間隔=1.0] [半径=1.2] [倍率=2] 漏れ探し: 爆破前の絵を撮り、壁の線に沿って床の側から全部爆破して、壁の絵が抜けた所を赤く重ねた絵を Screens/blastall_diff.ppm へ (爆破後の絵は blastall_after.ppm)。試合が壊れるので最後に使う", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            float spacing = a.Length > 0 ? float.Parse(a[0], CultureInfo.InvariantCulture) : 1.0f;
+            float radius = a.Length > 1 ? float.Parse(a[1], CultureInfo.InvariantCulture) : 1.2f;
+            int scale = a.Length > 2 ? int.Parse(a[2], CultureInfo.InvariantCulture) : 2;
+            if (!SolidMap.Ensure()) { reply("ERR no solid map"); return; }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var pts = TerrainReview.BlastPoints(spacing, 0.45f);
+            var before = TerrainReview.RenderShip(scale, out int w, out int h, out float ppu, out Vector2 o);
+            string dir = TestBridge.ScreensDir;
+            TerrainReview.WriteRgb(System.IO.Path.Combine(dir, "blastall_before.ppm"), before, w, h);
+            int ok = 0;
+            foreach (var p in pts)
+            {
+                string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, p, Vector2.zero, radius, 0f, NextSeed()), out bool done);
+                if (done) ok++;
+            }
+            double blastMs = sw.Elapsed.TotalMilliseconds;
+            TerrainReview.WriteBlastDiff(System.IO.Path.Combine(dir, "blastall_diff.ppm"), before, w, h, ppu, o, out int holePx);
+            var after = TerrainReview.RenderShip(scale, out _, out _, out _, out _);
+            TerrainReview.WriteRgb(System.IO.Path.Combine(dir, "blastall_after.ppm"), after, w, h);
+            reply($"OK blastall points={pts.Count} applied={ok} holePx={holePx} size={w}x{h} origin=({o.x:0.##},{o.y:0.##}) ppu={ppu} blastMs={blastMs:0} totalMs={sw.Elapsed.TotalMilliseconds:0}");
+        });
+
+        TestBridge.Register("lowfurn", "船の層に独立して置かれた低い物 (家具として守る輪と線) の判定を全部 Screens/lowfurn.txt へ (KEEP/SKIP・外側が床の割合・影の線が沿う割合)", (_, reply) =>
+        {
+            LowFurniture.Ensure();
+            var lines = new List<string>();
+            int kept = 0;
+            foreach (var f in LowFurniture.Survey)
+            {
+                if (f.Kept) kept++;
+                var a = f.Area;
+                lines.Add($"{(f.Kept ? "KEEP" : "SKIP")} x={a.xMin:F2}..{a.xMax:F2} y={a.yMin:F2}..{a.yMax:F2} floor={f.Floor:F2} shadow={f.Shadow:F2} {f.Name}");
+            }
+            string file = System.IO.Path.Combine(TestBridge.ScreensDir, "lowfurn.txt");
+            System.IO.File.WriteAllLines(file, lines);
+            reply($"OK lowfurn kept={kept} surveyed={LowFurniture.Survey.Count} {file}");
         });
 
         TestBridge.Register("warm", "試合の始めの先回りの準備 (損傷マスク・絵・種点・焼くカメラ・コンパイル) にかかった時間", (_, reply) => reply($"OK warm {TerrainWarm.Report}"));
@@ -667,13 +760,14 @@ internal static class TerrainProbe
             reply($"OK solidmap {SolidMap.Stats}");
         });
 
-        TestBridge.Register("terrainmap", "マップ全体の絵に壊れ方の判定を重ねて Screens/terrainmap.ppm に書く (はしご・部屋・部屋の組は terrainmap.txt へ。床 = 島ごとの色・壁 緑 = 壊せる / 橙 = 段差 / 青 = 外壁 / 白 = 爆発で宇宙へ抜ける外壁 / 水色 = 厚い壁 / 紫 = 守る物 / 黄 = 家具 / 灰 = 両側に床なし・桃 = はしご)", (_, reply) =>
+        TestBridge.Register("terrainmap", "マップ全体の絵に壊れ方の判定を重ねて Screens/terrainmap.ppm に書く (はしご・部屋・部屋の組は terrainmap.txt へ。床 = 島ごとの色・壁 緑 = 壊せる / 橙 = 段差 / 青 = 外壁 / 白 = 爆発で宇宙へ抜ける外壁 / 水色 = 厚い壁 / 紫 = 守る物 / 黄 = 家具 / 灰 = 両側に床なし・桃 = はしご。引数 shadow で、視界の影の線が沿っていない壁を赤紫に)", (args, reply) =>
         {
+            TerrainReview.ShadowAudit = args.Trim() == "shadow";
             string path = System.IO.Path.Combine(TestBridge.ScreensDir, "terrainmap.ppm");
             string size = TerrainReview.Dump(path, out string legend);
             reply($"DUMP {path} {size}");
             System.IO.File.WriteAllLines(System.IO.Path.ChangeExtension(path, ".txt"), TerrainReview.Notes);
-            foreach (var note in TerrainReview.Notes) if (!note.StartsWith("PIECE")) reply(note);
+            foreach (var note in TerrainReview.Notes) if (!note.StartsWith("PIECE") && !note.StartsWith("NOSHADOW")) reply(note);
             reply($"OK terrainmap {legend} | {SolidMap.Stats}");
         });
 

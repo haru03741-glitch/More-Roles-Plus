@@ -68,32 +68,32 @@ public class Ticker : MonoBehaviour
         Boot.BootClock.Tick();
         Menu.AccountSleep.Tick();
         Bridge.Perf.FrameStart();
-        long t = Bridge.Perf.Begin();
-        Terrain.GameClock.Tick();
-        Terrain.TerrainFx.Tick();
-        Terrain.BreakNoise.Tick();
-        Terrain.HammerSwing.Tick();
-        Terrain.BombFuse.Tick();
-        Terrain.DustCloud.Tick();
-        Terrain.WaterSim.Tick();
-        Terrain.Decompression.Tick();
-        Terrain.CrewGrip.Tick();
-        Terrain.FoamArt.Tick();
-        Terrain.DecompFx.Tick();
-        Terrain.DecompSound.Tick();
-        Terrain.PropSim.Tick();
-        Terrain.WaterLeak.Tick();
-        Terrain.WaterArt.Tick();
-        Terrain.WaterSpray.Tick();
-        Fx.FxHands.Tick();
-        Terrain.RubbleBake.Tick();
-        Terrain.ShadowPatch.Tick();
-        Bridge.Burst.Tick();
-        Dev.DevConsole.Tick();
-        Commands.Shortcuts.Tick();
-        Zoom.Tick();
-        Commands.ChatInput.Tick();
-        Bridge.Perf.End(t);
+        long t0 = Bridge.Perf.Begin(), t = t0;
+        Terrain.GameClock.Tick(); t = Bridge.Perf.Lane(0, t);
+        Terrain.TerrainFx.Tick(); t = Bridge.Perf.Lane(1, t);
+        Terrain.BreakNoise.Tick(); t = Bridge.Perf.Lane(2, t);
+        Terrain.HammerSwing.Tick(); t = Bridge.Perf.Lane(3, t);
+        Terrain.BombFuse.Tick(); t = Bridge.Perf.Lane(4, t);
+        Terrain.DustCloud.Tick(); t = Bridge.Perf.Lane(5, t);
+        Terrain.WaterSim.Tick(); t = Bridge.Perf.Lane(6, t);
+        Terrain.Decompression.Tick(); t = Bridge.Perf.Lane(7, t);
+        Terrain.CrewGrip.Tick(); t = Bridge.Perf.Lane(8, t);
+        Terrain.FoamArt.Tick(); t = Bridge.Perf.Lane(9, t);
+        Terrain.DecompFx.Tick(); t = Bridge.Perf.Lane(10, t);
+        Terrain.DecompSound.Tick(); t = Bridge.Perf.Lane(11, t);
+        Terrain.PropSim.Tick(); t = Bridge.Perf.Lane(12, t);
+        Terrain.WaterLeak.Tick(); t = Bridge.Perf.Lane(13, t);
+        Terrain.WaterArt.Tick(); t = Bridge.Perf.Lane(14, t);
+        Terrain.WaterSpray.Tick(); t = Bridge.Perf.Lane(15, t);
+        Fx.FxHands.Tick(); t = Bridge.Perf.Lane(16, t);
+        Terrain.RubbleBake.Tick(); t = Bridge.Perf.Lane(17, t);
+        Terrain.ShadowPatch.Tick(); t = Bridge.Perf.Lane(18, t);
+        Bridge.Burst.Tick(); t = Bridge.Perf.Lane(19, t);
+        Dev.DevConsole.Tick(); t = Bridge.Perf.Lane(20, t);
+        Commands.Shortcuts.Tick(); t = Bridge.Perf.Lane(21, t);
+        Zoom.Tick(); t = Bridge.Perf.Lane(22, t);
+        Commands.ChatInput.Tick(); t = Bridge.Perf.Lane(23, t);
+        Bridge.Perf.End(t0);
     }
 
     private void LateUpdate()
@@ -104,17 +104,17 @@ public class Ticker : MonoBehaviour
 
     private void FixedUpdate()
     {
-        long t = Bridge.Perf.Begin();
-        Fx.MrpBundle.Tick();
-        Terrain.TerrainWarm.Tick();
-        Terrain.TerrainSync.Tick();
-        Net.VersionCheck.Tick();
-        Roles.KillAbility.Tick();
-        Roles.Abilities.Tick();
-        Roles.ModButton.TickAll();
-        Roles.MeetingEndWatch.Tick();
-        Bridge.TestBridge.Tick();
-        Net.Remote.Tick(); // 上の Tick が積んだ電文を同じ tick で出す
-        Bridge.Perf.EndFixed(t);
+        long t0 = Bridge.Perf.Begin(), t = t0;
+        Fx.MrpBundle.Tick(); t = Bridge.Perf.Lane(24, t);
+        Terrain.TerrainWarm.Tick(); t = Bridge.Perf.Lane(25, t);
+        Terrain.TerrainSync.Tick(); t = Bridge.Perf.Lane(26, t);
+        Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
+        Roles.KillAbility.Tick(); t = Bridge.Perf.Lane(28, t);
+        Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);
+        Roles.ModButton.TickAll(); t = Bridge.Perf.Lane(30, t);
+        Roles.MeetingEndWatch.Tick(); t = Bridge.Perf.Lane(31, t);
+        Bridge.TestBridge.Tick(); t = Bridge.Perf.Lane(32, t);
+        Net.Remote.Tick(); t = Bridge.Perf.Lane(33, t); // 上の Tick が積んだ電文を同じ tick で出す
+        Bridge.Perf.EndFixed(t0);
     }
 }
