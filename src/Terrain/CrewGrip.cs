@@ -15,6 +15,8 @@ namespace MoreRolesPlus.Terrain;
 //   0% で手が離れて流される (次の角でもう一度つかめる)。口がふさがる・気圧が抜ければ引く力が消えて助かる。
 // - 口に触れたら (つかまっていない時) 吸い出し (エアシップは空へ落ちる): 本人の端末が決めてホストへ 1 通 → ホストが確かめて全員へ配り、全員が同じ飛び方を見せてから
 //   本編の追放と同じ死に方 (体を残さない) にする。追放の出来事 (道化の勝ち等) は起こさない。
+// - 口の際: 口に触れた時、口の端に残った壁が近ければ最後にもう一度だけ輪を出す (つかめなければ吸い出し)。
+//   風が強いので窓は短く、つかんでもゲージは低い所から速く減り 1 押しの伸びも小さい。手が離れたらそのまま吸い出し。
 // 押すのは PC = スペース/クリック・スマホ = 画面の右側のタップ (左の移動の指は数えない)。入力は毎フレーム、体の速さは物理の刻みで
 internal static class CrewGrip
 {
@@ -36,13 +38,17 @@ internal static class CrewGrip
     private const float HostReach = 2.0f;   // ホストが確かめる距離 (位置の同期の遅れの分の余裕)
     private const float LostTimeout = 3f;   // ホストが断った時に動けるように戻すまで
     private const float FlyTime = 1.1f;
+    // 口の際の最後のつかみ: 体から RimReach 以内の口の端。輪は RimStart から RimSpeed で縮み、角を Window 過ぎたら吸い出し
+    private const float RimReach = 1.8f, RimStart = 1.2f, RimSpeed = 3.2f, RimCreep = 0.6f;
+    private const float RimGauge = 0.45f, RimPerfectGauge = 0.6f, RimDrain = 0.45f, RimMash = 0.08f;
 
-    private enum State : byte { Free, Grabbed, Pushing, Lost }
+    private enum State : byte { Free, Grabbed, Pushing, Lost, Rim }
 
     private static State _state;
     private static float _t;                // 物理の刻みで進む自分の時計
     private static float _dt;
-    private static float _lockEnd, _pushEnd, _immuneEnd, _lostAt;
+    private static float _lockEnd, _pushEnd, _immuneEnd, _lostAt, _rimEnd;
+    private static bool _rim;               // 口の際でつかんでいる (厳しい方の数値)
     private static int _presses;            // 毎フレーム数えて物理の刻みで使う
     private static bool _hasTarget;
     private static Vector2 _target, _hold, _dir, _pushDir;
@@ -232,7 +238,7 @@ internal static class CrewGrip
                 }
                 _dir = dir;
                 if (_auto >= 0f && _t >= _autoNext) { presses++; _autoNext = _t + 1f / AutoRate; }
-                _gauge += presses * Mash - Drain * (mul / EdgeMul) * _dt;
+                _gauge += _rim ? presses * RimMash - RimDrain * _dt : presses * Mash - Drain * (mul / EdgeMul) * _dt;
                 if (_gauge >= 1f)
                 {
                     Plugin.Logger.LogInfo("[CrewGrip] climbed back");
@@ -247,8 +253,15 @@ internal static class CrewGrip
                 }
                 if (_gauge <= 0f)
                 {
-                    Plugin.Logger.LogInfo("[CrewGrip] lost grip");
+                    Plugin.Logger.LogInfo($"[CrewGrip] lost grip{(_rim ? " at rim" : "")}");
+                    bool rim = _rim;
                     Let();
+                    if (rim)
+                    {
+                        Out(pc);
+                        body.velocity = FxMath.V2(0f, 0f);
+                        return true;
+                    }
                     _lockEnd = _t + Lockout;
                     return false;
                 }
@@ -266,12 +279,56 @@ internal static class CrewGrip
                 if (_t < _immuneEnd) return true; // 歩きは本編のまま・流れだけ足さない
                 _state = State.Free;
                 break;
+
+            case State.Rim:
+            {
+                // 輪の残り (正 = まだ角の手前・負 = 過ぎた)。体は口へ少しずつ寄る
+                float left = (_rimEnd - _t) * RimSpeed;
+                _de = MathF.Abs(left);
+                if (_auto >= 0f && _de <= _auto) presses++;
+                if (presses > 0)
+                {
+                    if (_t >= _lockEnd && _de <= Window)
+                    {
+                        Grab(pos, true);
+                        body.velocity = FxMath.V2(0f, 0f);
+                        return true;
+                    }
+                    if (_t >= _lockEnd) { _lockEnd = _t + Lockout; Plugin.Logger.LogInfo($"[CrewGrip] early press at rim de={_de:0.00}"); }
+                }
+                if (!on || left < -Window)
+                {
+                    _state = State.Free;
+                    _hasTarget = false;
+                    if (!on) return false;
+                    Plugin.Logger.LogInfo("[CrewGrip] rim missed");
+                    Out(pc);
+                    body.velocity = FxMath.V2(0f, 0f);
+                    return true;
+                }
+                body.velocity = FxMath.V2(dir.x * RimCreep, dir.y * RimCreep);
+                return true;
+            }
         }
 
         // Free
         // 口に触れたら外へ。エアシップの風は弱い (歩く速さの 0.4 倍) ので、風があれば落ちる
         if (on && mul >= (Decompression.Wind ? 0.01f : DangerMul) && dist <= OutDist && Decompression.MouthDist(pos, out _) <= OutReach)
         {
+            // エアシップの縁は風が弱いので最後の輪は出さない
+            if (!Decompression.Wind && RimStub(pos, out var stub))
+            {
+                _state = State.Rim;
+                _rimEnd = _t + RimStart / RimSpeed;
+                _lockEnd = _t; // 手前の空振りの分は持ち越さない
+                _target = stub;
+                _hasTarget = true;
+                _de = RimStart;
+                _dir = dir;
+                Plugin.Logger.LogInfo($"[CrewGrip] rim at {stub.x:0.00},{stub.y:0.00} from {pos.x:0.00},{pos.y:0.00}");
+                body.velocity = FxMath.V2(0f, 0f);
+                return true;
+            }
             Out(pc);
             body.velocity = FxMath.V2(0f, 0f);
             return true;
@@ -286,8 +343,12 @@ internal static class CrewGrip
         if (_auto >= 0f && _hasTarget && _de <= _auto) presses++;
         if (presses > 0 && _t >= _lockEnd)
         {
-            if (_hasTarget && _de <= Window) Grab(pos);
-            else _lockEnd = _t + Lockout;
+            if (_hasTarget && _de <= Window) Grab(pos, false);
+            else
+            {
+                _lockEnd = _t + Lockout;
+                if (_hasTarget) Plugin.Logger.LogInfo($"[CrewGrip] early press de={_de:0.00}");
+            }
         }
         return false;
     }
@@ -314,20 +375,73 @@ internal static class CrewGrip
         _de = MathF.Abs(best);
     }
 
-    private static void Grab(Vector2 pos)
+    // 口の端に残った壁 (口の線の端のうち、ほかの開いた口の線と繋がっていない物) のうち体にいちばん近い物。
+    // 曲がった口の折れ目や隣り合う口の継ぎ目は壁が残っていないので数えない。点は線の外へ少し (壁の中へ) ずらす
+    private static bool RimStub(Vector2 p, out Vector2 stub)
+    {
+        stub = default;
+        float best = RimReach * RimReach;
+        var list = Decompression.OpenedBreaches;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var br = list[i];
+            if (br.Sealed) continue;
+            for (int l = 0; l < br.Lines.Count; l++)
+            {
+                var (a, b) = br.Lines[l];
+                for (int e = 0; e < 2; e++)
+                {
+                    Vector2 q = e == 0 ? a : b, o = e == 0 ? b : a;
+                    float d = (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y);
+                    if (d >= best || Joined(q, br, l)) continue;
+                    float ux = q.x - o.x, uy = q.y - o.y, len = MathF.Sqrt(ux * ux + uy * uy);
+                    if (len < 0.05f) continue;
+                    best = d;
+                    stub = FxMath.V2(q.x + ux / len * 0.12f, q.y + uy / len * 0.12f);
+                }
+            }
+        }
+        return best < RimReach * RimReach;
+    }
+
+    private static bool Joined(Vector2 q, Decompression.Breach self, int line)
+    {
+        var list = Decompression.OpenedBreaches;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var br = list[i];
+            if (br.Sealed) continue;
+            for (int l = 0; l < br.Lines.Count; l++)
+            {
+                if (br == self && l == line) continue;
+                var (a, b) = br.Lines[l];
+                float abx = b.x - a.x, aby = b.y - a.y, len = abx * abx + aby * aby;
+                float t = len > 1e-6f ? Math.Clamp(((q.x - a.x) * abx + (q.y - a.y) * aby) / len, 0f, 1f) : 0f;
+                float cx = a.x + abx * t - q.x, cy = a.y + aby * t - q.y;
+                if (cx * cx + cy * cy < 0.3f * 0.3f) return true;
+            }
+        }
+        return false;
+    }
+
+    private static void Grab(Vector2 pos, bool rim)
     {
         _state = State.Grabbed;
+        _rim = rim;
         // 体を角の手前 (来た側) HoldGap へ寄せる。来た側は歩けた所なので壁の中には入らない
-        float dx = pos.x - _target.x, dy = pos.y - _target.y, len = MathF.Sqrt(dx * dx + dy * dy);
-        _hold = len > HoldGap ? FxMath.V2(_target.x + dx / len * HoldGap, _target.y + dy / len * HoldGap) : pos;
-        _gauge = _de <= Perfect ? PerfectGauge : StartGauge;
-        Plugin.Logger.LogInfo($"[CrewGrip] grab at {_target.x:0.00},{_target.y:0.00} de={_de:0.00} gauge={_gauge:0.0}");
+        // 口の端は体の真横にあるので、流れの逆向き (船の中) へ寄せる
+        float dx = rim ? -_dir.x : pos.x - _target.x, dy = rim ? -_dir.y : pos.y - _target.y, len = MathF.Sqrt(dx * dx + dy * dy);
+        if (rim && len > 1e-4f) { _hold = FxMath.V2(_target.x + dx / len * HoldGap, _target.y + dy / len * HoldGap); }
+        else _hold = len > HoldGap ? FxMath.V2(_target.x + dx / len * HoldGap, _target.y + dy / len * HoldGap) : pos;
+        _gauge = rim ? (_de <= Perfect ? RimPerfectGauge : RimGauge) : _de <= Perfect ? PerfectGauge : StartGauge;
+        Plugin.Logger.LogInfo($"[CrewGrip] grab{(rim ? " rim" : "")} at {_target.x:0.00},{_target.y:0.00} de={_de:0.00} gauge={_gauge:0.00}");
     }
 
     private static void Let()
     {
         _state = State.Free;
         _hasTarget = false;
+        _rim = false;
         RestoreBody();
     }
 
@@ -336,6 +450,7 @@ internal static class CrewGrip
         if (_state == State.Free && !_shown) return;
         _state = State.Free;
         _hasTarget = false;
+        _rim = false;
         _presses = 0;
         RestoreBody();
         if (_shown) Hide();
@@ -476,7 +591,7 @@ internal static class CrewGrip
         _anim += dt;
         if (!_shown) { _root.SetActive(true); _shown = true; }
         var pos = lp.GetTruePosition();
-        bool ring = _state == State.Free && _hasTarget;
+        bool ring = (_state == State.Free && _hasTarget) || _state == State.Rim;
         bool grab = _state == State.Grabbed;
 
         // 縮む輪: 角を中心に半径 = 体の縁から角までの距離。角の点に重なった時が押し時
@@ -530,7 +645,8 @@ internal static class CrewGrip
         }
         else RestoreBody();
 
-        int kind = grab ? 2 : ring ? 1 : 0;
+        bool rim = _state == State.Rim || (grab && _rim);
+        int kind = grab ? (rim ? 4 : 2) : ring ? (rim ? 3 : 1) : 0;
         if (kind != _promptKind) SetPrompt(kind);
         if (kind != 0) DrawKey(grab);
     }
@@ -566,14 +682,15 @@ internal static class CrewGrip
 
     private const float KeyPop = 0.15f;
 
-    // つかんだ角を軸に穴の方へ 1.15 倍伸ばし ±4° で震わせる (体の絵だけ・位置の同期は触らない)
+    // つかんだ角を軸に穴の方へ 1.15 倍伸ばし ±4° で震わせる (口の際は 1.25 倍・±7°)。体の絵だけ・位置の同期は触らない
     private static void BendBody(PlayerControl lp)
     {
         _bend ??= new Pose(lp);
-        float shake = 4f * FxMath.Sin(_anim * 88f) * (0.6f + 0.4f * FxMath.Sin(_anim * 13f));
+        float amp = _rim ? 7f : 4f, st = _rim ? 1.25f : 1.15f, sq = _rim ? 0.9f : 0.94f;
+        float shake = amp * FxMath.Sin(_anim * 88f) * (0.6f + 0.4f * FxMath.Sin(_anim * 13f));
         float lean = -_dir.x * 30f;
         bool vert = FxMath.Abs(_dir.y) > FxMath.Abs(_dir.x);
-        float sx = vert ? 0.94f : 1.15f, sy = vert ? 1.15f : 0.94f;
+        float sx = vert ? sq : st, sy = vert ? st : sq;
         _bend.Set(_dir.x * 0.12f, _dir.y * 0.12f, lean + shake, sx, sy);
     }
 
@@ -602,6 +719,9 @@ internal static class CrewGrip
         if (_keyTf) _keyTf.gameObject.SetActive(kind != 0);
         if (kind == 0 || !_prompt) return;
         bool ja = Lang.IsJapanese;
+        // 3 = 口の際の輪・4 = 口の際の連打 (札は 1/2 と同じ・案内文だけ変える)
+        bool rim = kind >= 3;
+        if (rim) kind -= 2;
         if (_keyTf)
         {
             // つかむ時は名前の上・連打の間はゲージ (頭の上 1.35) のさらに上
@@ -616,6 +736,13 @@ internal static class CrewGrip
             _keyRim.size = FxMath.V2(w + 0.12f, 0.72f);
         }
         if (_tapText) _tapText.text = kind == 1 ? (ja ? "つかむ" : "GRAB") : (ja ? "連打" : "MASH");
+        if (rim)
+        {
+            _prompt.text = kind == 1
+                ? (Touch ? (ja ? "最後の壁! 輪が重なったら右上をタップ!" : "Last wall! Tap the upper right when the ring meets it!") : (ja ? "最後の壁! 輪が重なったら スペース/クリック!" : "Last wall! Space/Click when the ring meets it!"))
+                : (Touch ? (ja ? "風が強い! 右上を全力で連打!" : "The wind is fierce! Mash the upper right hard!") : (ja ? "風が強い! スペース/クリックを全力で連打!" : "The wind is fierce! Mash Space/Click hard!"));
+            return;
+        }
         _prompt.text = kind == 1
             ? (Touch ? (ja ? "輪が角に重なったら画面の右上をタップ!" : "Tap the upper right when the ring meets the corner!") : (ja ? "輪が角に重なったら スペース/クリック!" : "Space/Click when the ring meets the corner!"))
             : (Touch ? (ja ? "画面の右上を連打して戻れ!" : "Mash the upper right to climb back!") : (ja ? "スペース/クリック連打で戻れ!" : "Mash Space/Click to climb back!"));
