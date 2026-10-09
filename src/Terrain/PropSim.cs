@@ -114,6 +114,8 @@ internal static class PropSim
         public bool Hidden;             // 消えた絵を隠している
         public readonly St A = new(), D = new();
         public int Ox, Oy, OAng;    // D の 1 刻み前 (補間)
+        public bool Path;           // 影の中の焼いた絵に写ったかもしれない範囲 (見せる用の足元が通った四角) を持っている
+        public int Lx0, Ly0, Lx1, Ly1;
     }
 
     // 重い物 (家具) の上に載っている絵。Prop = 動く物として数えている物 (自分が押されて動いたら家具から離れる)・
@@ -594,8 +596,9 @@ internal static class PropSim
         {
             var p = w.Act[i];
             var st = w.S(p);
-            if (w.Display) { p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; }
+            if (w.Display) { p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; Trace(p, st); }
             Move(p, st, w);
+            if (w.Display) Trace(p, st);
             bool done = st.Vx == 0 && st.Vy == 0 && st.Spin == 0 && st.Ang == st.Tip;
             // 前後の z は部屋の絵を全部見るので 4 刻みに 1 回と止まった時だけ (見た目だけ)
             if (w.Display && p.Kind != Kind.Heavy && (done || (w.Step & 3) == 0)) p.Z = SortZ(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
@@ -616,6 +619,7 @@ internal static class PropSim
                     ShadowPatch.MarkDirty(b0.center, r);
                     ShadowPatch.MarkDirty(now, r);
                 }
+                else Rebake(p);
             }
         }
     }
@@ -645,7 +649,7 @@ internal static class PropSim
         }
         // 先回りで動かしていたが計算し直したら動いていない物は、今の状態の所へ置き直す
         foreach (var p in Shown)
-            if (!Disp.Act.Contains(p) && !Disp.Wob.Contains(p)) Draw(p, 1f);
+            if (!Disp.Act.Contains(p) && !Disp.Wob.Contains(p)) { Draw(p, 1f); if (p.Kind != Kind.Heavy) Rebake(p); }
     }
 
     private static uint Next(St s)
@@ -840,6 +844,26 @@ internal static class PropSim
         st.Pulled = false; // 次の刻みも引かれるなら Pull がまた立てる (流れが止まったら摩擦が戻る)
     }
 
+    // 見せる用の足元が通った所を覚える (影の中の焼いた絵は、焼いた時の姿のまま物を写している)
+    private static void Trace(Prop p, St st)
+    {
+        if (p.Kind == Kind.Heavy) return;
+        if (!p.Path) { p.Path = true; p.Lx0 = p.Lx1 = st.Px; p.Ly0 = p.Ly1 = st.Py; return; }
+        if (st.Px < p.Lx0) p.Lx0 = st.Px; else if (st.Px > p.Lx1) p.Lx1 = st.Px;
+        if (st.Py < p.Ly0) p.Ly0 = st.Py; else if (st.Py > p.Ly1) p.Ly1 = st.Py;
+    }
+
+    // 止まった小物の、動き始めから今までに通った所の焼いた絵を作り直す (元の位置や途中の姿が影の中に残らないように)。
+    // 足元から絵の端までは長い辺より短いので、それだけ広げる
+    private static void Rebake(Prop p)
+    {
+        Trace(p, p.D);
+        float r = p.SizeU / (float)Unit + 0.1f;
+        ShadowPatch.MarkBaked(_org.x + p.Lx0 / (float)Unit - r, _org.y + p.Ly0 / (float)Unit - r,
+            _org.x + p.Lx1 / (float)Unit + r, _org.y + p.Ly1 / (float)Unit + r);
+        p.Path = false;
+    }
+
     // ── 絵 ─────────────────────────────────────────────────────────────
 
     // t = 1 刻み前 (0) から今 (1) の間
@@ -954,7 +978,14 @@ internal static class PropSim
         for (int i = Disp.Wob.Count - 1; i >= 0; i--)
         {
             var p = Disp.Wob[i];
-            if (Disp.Step - p.D.WobStart > WobbleSteps + 1) { p.D.WobStart = int.MinValue; Disp.Wob.RemoveAt(i); Draw(p, 1f); continue; }
+            if (Disp.Step - p.D.WobStart > WobbleSteps + 1)
+            {
+                p.D.WobStart = int.MinValue;
+                Disp.Wob.RemoveAt(i);
+                Draw(p, 1f);
+                if (!p.D.Active && p.Kind != Kind.Heavy) Rebake(p);
+                continue;
+            }
             if (!p.D.Active) Draw(p, t);
         }
     }

@@ -73,6 +73,18 @@ internal static class ShadowPatch
             if (DirtySet.Add((ix, iy))) Dirty.Add((ix, iy));
     }
 
+    // 四角に掛かる升のうち、もう焼いてある升だけを焼き直す予定に入れる (動いた小物の写り込みを直す)。
+    // 焼いていない升は影のカメラが今の姿を描くので要らない (新しく焼くと上限で壊れた所の升を押し出す)
+    public static void MarkBaked(float xMin, float yMin, float xMax, float yMax)
+    {
+        if (!Enabled || Tiles.Count == 0) return;
+        int x0 = (int)MathF.Floor(xMin / Tile), x1 = (int)MathF.Floor(xMax / Tile);
+        int y0 = (int)MathF.Floor(yMin / Tile), y1 = (int)MathF.Floor(yMax / Tile);
+        for (int ix = x0; ix <= x1; ix++)
+        for (int iy = y0; iy <= y1; iy++)
+            if (Tiles.ContainsKey((ix, iy)) && DirtySet.Add((ix, iy))) Dirty.Add((ix, iy));
+    }
+
     // 瓦礫が止まった所の升を、少し待ってから焼き直す予定に入れる
     public static void MarkSettled(float x, float y)
     {
