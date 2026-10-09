@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MoreRolesPlus.Bridge;
+using MoreRolesPlus.Fx;
 using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
@@ -41,6 +42,7 @@ internal static class FoamArt
     {
         public readonly List<Ball> Balls = new();
         public Texture2D Tex;
+        public GameObject Go;
         public byte[] Px;
         public float[] F;
         public byte[] Pores;
@@ -106,7 +108,18 @@ internal static class FoamArt
             // ふさがった後の乾いていく間は変化が小さいので 4 フレームに 1 回
             if (p >= 1f && !last && (Time.frameCount & 3) != 0) continue;
             foreach (var plug in f.Plugs) Draw(plug, p, last);
-            if (last) f.Done = true;
+            if (last)
+            {
+                f.Done = true;
+                // 固まった泡を影の中の焼いた絵にも描き込む
+                foreach (var plug in f.Plugs)
+                {
+                    if (!plug.Go) continue;
+                    var b = plug.Go.GetComponent<SpriteRenderer>().bounds;
+                    var e = b.extents;
+                    ShadowPatch.MarkDirty(FxMath.V2(b.center.x, b.center.y), MathF.Max(e.x, e.y) + 0.2f);
+                }
+            }
         }
     }
 
@@ -188,6 +201,7 @@ internal static class FoamArt
         var sp = GameClock.Ship.Bind(Sprite.Create(pl.Tex, new Rect(0, 0, pl.W, pl.H),
             new Vector2(-pl.U0 * Ppu / pl.W, -pl.V0 * Ppu / pl.H), Ppu));
         var go = new GameObject("MrpFoam") { layer = 0 };
+        pl.Go = go;
         go.transform.SetParent(_root.transform, false);
         // 喉を切った船ではその船体の絵のすぐ奥 (星空より手前)。それ以外は口の線より少し奥 (口の手前まで吸い寄せられた人が泡の前に来る)
         float back = HullThroat.BackZ();
@@ -358,6 +372,17 @@ internal static class FoamArt
         _root.transform.SetParent(ShipStatus.Instance.transform, false);
         GameClock.Ship.Bind(_root);
         return true;
+    }
+
+    // ShadowPatch から: 影の中の焼いた絵に描き込む物 (固まり終わった泡)
+    internal static void CollectCured(List<GameObject> into)
+    {
+        if (GameClock.ShipGen != _shipGen) return;
+        foreach (var f in Foams.Values)
+        {
+            if (!f.Done) continue;
+            foreach (var plug in f.Plugs) if (plug.Go) into.Add(plug.Go);
+        }
     }
 
     internal static void Register()

@@ -36,6 +36,11 @@ internal static class DamageMap
     private static Vector2 _origin;
     private static readonly List<SpriteRenderer> Rooms = new();
     private static readonly List<GameObject> Underlays = new();
+    // ひびの板と穴の向こうの船体の中。影のカメラ (層 9〜12) に映らない層に置く: 影のカメラは置き換えシェーダで
+    // 切り抜きなしの四角に描くので、影の中で穴の外まで暗い四角が出る。影の中では ShadowPatch が穴の形で焼いた絵だけを見せる
+    private static readonly List<GameObject> OwnArt = new();
+    private const int OwnArtLayer = 0;
+    private static readonly List<GameObject> CrackArt = new();
     private static Sprite _crackSprite;
     private static Sprite _impactSprite;
     private static int _holeCount;
@@ -86,6 +91,7 @@ internal static class DamageMap
         SwapNear(at, reach + 0.5f);
         SpawnCracks(at, reach, angleDeg, true);
         Upload();
+        ShadowPatch.MarkDirty(at, reach + 0.3f); // 影の中の見た目を焼き直す
         return null;
     }
 
@@ -736,7 +742,7 @@ internal static class DamageMap
         RoomZRange(c, out float nearZ, out _);
         MarkFurniture(c, reach);
         var sprite = impact ? (_impactSprite ??= UnderlayArt.MakeCracks(true)) : (_crackSprite ??= UnderlayArt.MakeCracks(false));
-        var crack = new GameObject("MrpCracks") { layer = 9 };
+        var crack = new GameObject("MrpCracks") { layer = OwnArtLayer };
         crack.transform.SetParent(_ship.transform, true);
         crack.transform.position = new Vector3(c.x, c.y, nearZ - 0.002f * ZScale(nearZ));
         crack.transform.rotation = Quaternion.Euler(0f, 0f, angleDeg);
@@ -745,6 +751,7 @@ internal static class DamageMap
         csr.sprite = sprite;
         csr.sharedMaterial = _decalMat;
         Underlays.Add(crack);
+        CrackArt.Add(crack);
     }
 
     // 穴の中 (部屋と部屋の隙間) は床でなく船体の中: 暗い奥に梁と配管が見える (手続きの絵を世界に固定した格子で敷き詰める)。
@@ -785,7 +792,7 @@ internal static class DamageMap
             if ((p - c).sqrMagnitude > (reach + tw) * (reach + tw)) continue;
             // 同じ格子の升は 1 枚だけ (重ねて敷くと板の数だけ描く)
             if (!HullCells.Add((iu, iv, (int)angle))) continue;
-            var go = new GameObject("MrpHullInterior") { layer = 9 };
+            var go = new GameObject("MrpHullInterior") { layer = OwnArtLayer };
             go.transform.SetParent(_ship.transform, true);
             go.transform.position = new Vector3(p.x, p.y, z);
             go.transform.rotation = rot;
@@ -794,6 +801,7 @@ internal static class DamageMap
             sr.sprite = _hullTile;
             sr.sharedMaterial = _underlayMat;
             Underlays.Add(go);
+            OwnArt.Add(go);
         }
     }
 
@@ -852,19 +860,23 @@ internal static class DamageMap
         return near;
     }
 
-    // この mod が船の層 (9〜12) に描いている物: 損傷マスクを見る部屋の絵・ひびの板・穴の向こうの床
+    // この mod が船の絵として描いている物: 損傷マスクを見る部屋の絵・ひびの板・穴の向こうの床
     internal static void CollectOwnShipRenderers(List<SpriteRenderer> into)
     {
         foreach (var sr in Rooms)
             if (sr && Swapped.Contains(sr.GetInstanceID())) into.Add(sr);
-        foreach (var go in Underlays)
+        foreach (var go in OwnArt)
         {
-            if (!go) continue;
-            int layer = go.layer;
-            if (layer < 9 || layer > 12) continue;
+            if (!go || !go.activeSelf) continue;
             var sr = go.GetComponent<SpriteRenderer>();
             if (sr) into.Add(sr);
         }
+    }
+
+    // ShadowPatch から: ひびは型抜きの後に描き込む (型抜きは穴の画素しか残さないので、穴の外の壁に掛かる分が消える)
+    internal static void CollectCracks(List<GameObject> into)
+    {
+        foreach (var go in CrackArt) if (go) into.Add(go);
     }
 
     // マップが変わった時に一緒に片付ける
@@ -882,6 +894,8 @@ internal static class DamageMap
     {
         foreach (var go in Underlays) if (go) UnityEngine.Object.Destroy(go);
         Underlays.Clear();
+        OwnArt.Clear();
+        CrackArt.Clear();
         TerrainFx.Clear();
         BreakPieces.Clear();
         WallPeel.Clear();

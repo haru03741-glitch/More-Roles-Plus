@@ -258,9 +258,11 @@ internal static class ShadowPatch
     private static void RenderDebris(Rect tile)
     {
         Debris.Clear();
+        DamageMap.CollectCracks(Debris);
         RubbleBake.CollectSettled(Debris);
         WaterLeak.CollectPuddles(Debris);
         FurnitureLift.CollectLifted(Debris);
+        FoamArt.CollectCured(Debris);
         DebrisLayers.Clear();
         int moved = 0;
         foreach (var go in Debris)

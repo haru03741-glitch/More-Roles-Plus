@@ -13,6 +13,7 @@ namespace MoreRolesPlus.Terrain;
 internal sealed class WallBody
 {
     public const string CapName = "MrpBreachCap";
+    public const string SealName = "MrpBreachSeal"; // 泡でふさいだ口の視界の線
     public const string MouthName = "MrpBreachMouth"; // 外壁を宇宙まで掘り抜いた穴の口 (歩いては出られない線)
 
     // 外壁を宇宙まで掘り抜けるマップ: 船の外は壁の中として扱わない (蓋は船体の外の縁で止まり、間が穴の口になる)
@@ -305,6 +306,23 @@ internal sealed class WallBody
         TerrainDigest.Chain(line);
         var col = go.AddComponent<EdgeCollider2D>();
         col.points = new Vector2[] { t.InverseTransformPoint(line[0]), t.InverseTransformPoint(line[1]) };
+    }
+
+    // 泡でふさいだ口: 視界の層だけに、口から宇宙の側の泡の奥までを囲む線 (口の両端 → 奥 → 口の両端)。
+    // 泡の向こう (喉・宇宙) は元の壁と同じく影になり、泡そのものは見える
+    public static void BuildSeal(Vector2 a, Vector2 b, Vector2 outward, float depth)
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship || depth <= 0f) return;
+        var line = Snap(new List<Vector2> { a, a + outward * depth, b + outward * depth, b });
+        if (line[0] == line[3]) return;
+        var go = new GameObject(SealName) { layer = 10 };
+        go.transform.SetParent(ship.transform, true);
+        var t = go.transform;
+        var col = go.AddComponent<EdgeCollider2D>();
+        var pts = new Vector2[line.Count];
+        for (int i = 0; i < pts.Length; i++) pts[i] = t.InverseTransformPoint(line[i]);
+        col.points = pts;
     }
 
     // 点を 1/512 の格子にそろえる。ほぼ一直線の点のどれを残すかが計算の末尾の差で決まらないよう、間引く前に入力を同じにする

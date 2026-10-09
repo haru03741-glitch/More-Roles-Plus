@@ -35,6 +35,7 @@ internal static class Decompression
     private const int OpenFloor = Full * 2 / 5; // 口が開いている間はここより下がらない (泡でふさがるまで吹き飛ばし続ける)
     // エアシップの風: 口から 3 単位まで歩く速さの 0.4 倍・4 単位で 0
     private const float WindMul = 0.4f;
+    private const float SealDepth = 0.55f;    // 泡でふさいだ口の視界の線の奥行き (宇宙までの距離が測れない時)
     private const int Wind1024 = 410;
     internal static bool Wind => SolidMap.SkyHull;
     public const int FoamDelay = 180, FoamTime = 75; // 開通 6 秒後に膨らみ始め 2.5 秒でふさがる
@@ -531,7 +532,7 @@ internal static class Decompression
         ulong bits = BitsAt(_step);
         if (bits != _doorBits) { _doorBits = bits; rebuild = true; }
         foreach (var br in Breaches)
-            if (!br.Sealed && !_hold && _step - br.Start >= FoamDelay + FoamTime) { br.Sealed = true; field = true; }
+            if (!br.Sealed && !_hold && _step - br.Start >= FoamDelay + FoamTime) { br.Sealed = true; field = true; SealSight(br); }
         if (rebuild)
         {
             var oc = (int[])_comp.Clone();
@@ -807,6 +808,22 @@ internal static class Decompression
         if (b < 0 || Breaches[b].Sealed) return -1;
         w256 = Breaches[b].W256;
         return b;
+    }
+
+    // 泡でふさがった口で視界を止める (泡の奥まで。泡の絵と同じく、宇宙まで・床が先なら床の手前まで)
+    private static void SealSight(Breach br)
+    {
+        foreach (var (a, b) in br.Lines)
+        {
+            float dx = b.x - a.x, dy = b.y - a.y, len = MathF.Sqrt(dx * dx + dy * dy);
+            if (len < 0.05f) continue;
+            var n = new Vector2(-dy / len, dx / len);
+            var mid = new Vector2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+            if (!SolidMap.SkyAhead(mid, n, TerrainDamage.BreachReach) && SolidMap.SkyAhead(mid, -n, TerrainDamage.BreachReach)) n = -n;
+            float depth = SolidMap.SkyDistance(mid.x, mid.y, n.x, n.y, TerrainDamage.HullReach + 1f);
+            float reach = depth < 0f ? -depth - 0.2f : depth > 0f ? depth : SealDepth;
+            WallBody.BuildSeal(a, b, n, Math.Max(0.1f, reach));
+        }
     }
 
     // 口より大きい物が口に着いた (確定側だけ)。次の刻みから引かない
