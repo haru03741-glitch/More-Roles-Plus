@@ -56,6 +56,11 @@ internal static class PropSim
     private const float RattleMove = 0.025f, RattleTurn = 1.2f; // 引かれている家具の震え (単位・度)
     private const int HeavyReach = 5;         // 重い物は口からこの道のり (単位) 以内だけ
     private const int ResyncPull = 15;        // 引いている間に見せる用を確定から計算し直す間隔 (0.5 秒)
+    // ぶつかる音: 壁 (家具どうし) へ向かう速さがこれ以上の時だけ。同じ物は BumpGap 刻み空ける・1 フレーム BumpPerFrame まで
+    private const int BumpMin = 40;           // 1.2 単位/秒
+    private const int BumpFull = 200;
+    private const int BumpGap = 12;
+    private const int BumpPerFrame = 3;
 
     // 動かす物の絵の名前 (部屋の絵と別の絵を持つ小物と家具)
     private static readonly HashSet<string> Movable = new()
@@ -118,6 +123,8 @@ internal static class PropSim
         public int Ox, Oy, OAng;    // D の 1 刻み前 (補間)
         public bool Path;           // 影の中の焼いた絵に写ったかもしれない範囲 (見せる用の足元が通った四角) を持っている
         public int Lx0, Ly0, Lx1, Ly1;
+        public int Index;
+        public int BumpStep = -BumpGap; // 見せる用で最後にぶつかる音を鳴らした刻み
     }
 
     // 重い物 (家具) の上に載っている絵。Prop = 動く物として数えている物 (自分が押されて動いたら家具から離れる)・
@@ -163,6 +170,12 @@ internal static class PropSim
     private static bool _ready, _running, _failed;
     private static int _shipGen;
     private static bool _resync;
+    private static bool _hitHeavy;   // 直前の Blocked が別の重い物に当たった
+    private static int _heardThrough = int.MinValue; // 見せる用のこの刻みまではぶつかる音を鳴らし済み (計算し直しで同じ所を鳴らさない)
+    private static int _bumpsThisFrame;
+    internal static int Bumps { get; private set; }
+    private static (string Clip, Prop P, int Speed, float Vol, float Pitch, float X, float Y) _lastBump;
+    private static string LastBump => _lastBump.Clip == null ? "-" : $"{_lastBump.Clip} {_lastBump.P.Name} speed={_lastBump.Speed} vol={_lastBump.Vol:0.00} pitch={_lastBump.Pitch:0.00} at {_lastBump.X:0.00},{_lastBump.Y:0.00}";
     internal static int Late { get; private set; }
     internal static int Kicks { get; private set; }
     internal static int Lost { get; private set; }     // 宇宙へ消えた数 (確定)
@@ -282,6 +295,7 @@ internal static class PropSim
                 if (b.size.x <= 1.2f && b.size.y <= 1.2f) decorAt.Add((sr, (Vector2)b.center));
             }
         foreach (var l in lifts) Props.Add(MakeHeavy(l));
+        for (int i = 0; i < Props.Count; i++) Props[i].Index = i;
         // 家具 (重い物) の上に載っている絵 (動く物と飾り) は家具と一緒に動かす。
         // 当たり判定が重なった家具 (分けた箱の山の手前の箱と奥の台) では、先に並んだ家具 (手前) だけが載せる
         var claimed = new HashSet<int>();
@@ -537,7 +551,7 @@ internal static class PropSim
             if (q == p) continue;
             var qs = w.S(q);
             int pen = Pen(p, q, x - qs.Px, y - qs.Py);
-            if (pen > 0 && pen > Pen(p, q, st.Px - qs.Px, st.Py - qs.Py)) return true;
+            if (pen > 0 && pen > Pen(p, q, st.Px - qs.Px, st.Py - qs.Py)) { _hitHeavy = true; return true; }
         }
         return false;
     }
@@ -826,9 +840,12 @@ internal static class PropSim
             for (int s = 0; s < n; s++)
             {
                 int nx = st.Px + sx, ny = st.Py + sy;
+                _hitHeavy = false;
                 if (!Blocked(p, st, w, nx, ny)) { st.Px = nx; st.Py = ny; continue; }
-                if (sx != 0 && !Blocked(p, st, w, nx, st.Py)) { st.Px = nx; st.Vy = -st.Vy * Bounce / 5; sy = -sy * Bounce / 5; st.Spin = -st.Spin; continue; }
-                if (sy != 0 && !Blocked(p, st, w, st.Px, ny)) { st.Py = ny; st.Vx = -st.Vx * Bounce / 5; sx = -sx * Bounce / 5; st.Spin = -st.Spin; continue; }
+                bool clash = _hitHeavy;
+                if (sx != 0 && !Blocked(p, st, w, nx, st.Py)) { if (w.Display) Bump(p, st, w, Math.Abs(st.Vy), clash); st.Px = nx; st.Vy = -st.Vy * Bounce / 5; sy = -sy * Bounce / 5; st.Spin = -st.Spin; continue; }
+                if (sy != 0 && !Blocked(p, st, w, st.Px, ny)) { if (w.Display) Bump(p, st, w, Math.Abs(st.Vx), clash); st.Py = ny; st.Vx = -st.Vx * Bounce / 5; sx = -sx * Bounce / 5; st.Spin = -st.Spin; continue; }
+                if (w.Display) Bump(p, st, w, Math.Max(Math.Abs(st.Vx), Math.Abs(st.Vy)), clash);
                 st.Vx = -st.Vx * Bounce / 5; st.Vy = -st.Vy * Bounce / 5; st.Spin = -st.Spin;
                 break;
             }
@@ -857,6 +874,30 @@ internal static class PropSim
         }
         st.Pulled = false; // 次の刻みも引かれるなら Pull がまた立てる (流れが止まったら摩擦が戻る)
     }
+
+    // 見せる用で壁・別の家具に当たった音 (speed = 当たった面へ向かう速さ)。clip の番号と高さは刻みと物の番号で決め、St の乱数は使わない (確定とずれる)
+    private static void Bump(Prop p, St st, World w, int speed, bool clash)
+    {
+        if (speed < BumpMin || w.Step <= _heardThrough || w.Step - p.BumpStep < BumpGap || _bumpsThisFrame >= BumpPerFrame) return;
+        p.BumpStep = w.Step;
+        _bumpsThisFrame++;
+        int pick = (p.Index + w.Step) & 0xffff;
+        float k = 0.35f + 0.65f * Math.Min(1f, (speed - BumpMin) / (float)(BumpFull - BumpMin));
+        string clip;
+        float vol, pitch = 0.94f + (pick % 5) * 0.03f;
+        if (p.Kind == Kind.Small) { clip = SmallBumps[pick % SmallBumps.Length]; vol = 0.5f; }
+        else if (p.Kind == Kind.Medium) { clip = HeavyBumps[pick % HeavyBumps.Length]; vol = 0.5f; pitch += 0.18f; }
+        else if (clash) { clip = ClashBumps[pick % ClashBumps.Length]; vol = 0.9f; }
+        else { clip = HeavyBumps[pick % HeavyBumps.Length]; vol = 0.85f; }
+        float x = _org.x + st.Px / (float)Unit, y = _org.y + st.Py / (float)Unit;
+        BreakNoise.PlayAt(clip, x, y, 18f, 8f, vol * k, pitch);
+        Bumps++;
+        _lastBump = (clip, p, speed, vol * k, pitch, x, y);
+    }
+
+    private static readonly string[] SmallBumps = { "noise_bump_small_1", "noise_bump_small_2", "noise_bump_small_3" };
+    private static readonly string[] HeavyBumps = { "noise_bump_heavy_1", "noise_bump_heavy_2" };
+    private static readonly string[] ClashBumps = { "noise_bump_clash_1", "noise_bump_clash_2" };
 
     // 見せる用の足元が通った所を覚える (影の中の焼いた絵は、焼いた時の姿のまま物を写している)
     private static void Trace(Prop p, St st)
@@ -974,6 +1015,8 @@ internal static class PropSim
         int now = GameClock.Now;
         int target = now - Delay;
         int n = 0;
+        _bumpsThisFrame = 0;
+        if (_heardThrough == int.MinValue) _heardThrough = now - 1; // 始めの追いつきの刻みでは鳴らさない
         while (Auth.Step < target && n < MaxStepsPerFrame)
         {
             Decompression.StepThrough(Auth.Step);
@@ -994,6 +1037,7 @@ internal static class PropSim
                 n++;
             }
         }
+        _heardThrough = Disp.Step - 1;
         if (Disp.Act.Count == 0 && Disp.Wob.Count == 0) return;
         float t = Disp.Step < now ? 1f : GameClock.Frac;
         for (int i = 0; i < Disp.Act.Count; i++) Draw(Disp.Act[i], t);
@@ -1021,6 +1065,8 @@ internal static class PropSim
         FurnitureLift.Clear();
         Settled.Clear();
         Auth.Act.Clear(); Auth.Wob.Clear(); Auth.Step = 0;
+        _heardThrough = int.MinValue;
+        _lastBump = default;
         Disp.Act.Clear(); Disp.Wob.Clear(); Disp.Step = 0;
         Shown.Clear();
         _resync = false;
@@ -1062,7 +1108,7 @@ internal static class PropSim
             if (args.Trim() == "list")
                 foreach (var p in Props)
                     reply($"PROP {p.Name} {p.Kind} foot={TestBridge.F(_org.x + p.A.Px / (float)Unit)},{TestBridge.F(_org.y + p.A.Py / (float)Unit)} ang={p.A.Ang / 16} moved={p.A.Moved} size={p.SizeU / (float)Unit:0.00}{(p.A.Gone ? " gone" : "")}{(p.A.Stuck ? " stuck" : "")}");
-            reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} lost={Lost} plugs={Plugs} digest={Digest():x8}");
+            reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} lost={Lost} plugs={Plugs} digest={Digest():x8} bumps={Bumps} lastBump={LastBump}");
         });
     }
 }

@@ -75,6 +75,7 @@ internal static class DecompFx
         public float PuffDebt, RayDebt, StreakDebt, ScrapDebt;
         public Bit Core;
         public float Gust = 1f, DustDebt;
+        public bool SeenOpen, Whistled, Popped; // 開いているのを見た・泡で狭まる笛が鳴った・ふさがった音を鳴らした
     }
 
     private static readonly List<Bit> All = new();
@@ -195,6 +196,7 @@ internal static class DecompFx
             if (FindJet(Pre, mx, my) == null && !NearOpenJet(mx, my))
                 Pre.Add(new Jet { T0 = _clock, Until = _clock + PreTime, Mx = mx, My = my, Nx = nx, Ny = ny, Width = w, I = k });
             Shake(mx, my, k);
+            BreakNoise.PlayAt("noise_decomp_breach", FxMath.V2(mx, my), 40f, 14f, 1f);
             Bursts++;
             Last = $"burst at {mx:0.00},{my:0.00} n={nx:0.00},{ny:0.00} w={w:0.00}";
         }
@@ -371,19 +373,28 @@ internal static class DecompFx
                     Frame(br.Lines, out j.Mx, out j.My, out j.Nx, out j.Ny, out j.Width);
                 }
                 j.I = Decompression.MouthPull(br) * k;
-                EmitJet(j, dt, true);
+                float open = Decompression.Open(br);
+                if (!br.Sealed) { j.SeenOpen = true; if (open < 1f) j.Whistled = true; }
+                // ふさがった: 泡が閉じ切った・物がふさいだ (物の時は笛が無くても空気が急に止まる)。途中参加で最初から閉じていた口は鳴らさない
+                else if (j.SeenOpen && !j.Popped && (j.Whistled || br.ByProp))
+                {
+                    j.Popped = true;
+                    DecompSound.Pops++;
+                    BreakNoise.PlayAt("noise_decomp_seal", FxMath.V2(j.Mx, j.My), 24f, 10f, 0.9f);
+                }
+                EmitJet(j, dt, true, open);
             }
         }
         for (int i = Pre.Count - 1; i >= 0; i--)
         {
             var j = Pre[i];
             if (_clock >= j.Until) j.I = 0f;
-            EmitJet(j, dt, false);
+            EmitJet(j, dt, false, 1f);
             if (j.I <= 0f) Pre.RemoveAt(i);
         }
     }
 
-    private static void EmitJet(Jet j, float dt, bool inside)
+    private static void EmitJet(Jet j, float dt, bool inside, float open)
     {
         UpdateCore(j);
         if (j.I <= 0.01f) return;
@@ -391,14 +402,15 @@ internal static class DecompFx
         // 強さ 0.4 (泡の前の下げ止め) でも勢いが残るように見た目の強さは平方根で
         float vis = FxMath.Sqrt(j.I);
         float d = FxMath.Sqrt(dx * dx + dy * dy);
-        if (_haveMe && d < RumbleReach)
-            _rumble = FxMath.Max(_rumble, vis * j.Gust * (RumbleFar + (RumbleNear - RumbleFar) * FxMath.Max(0f, 1f - d / RumbleClose)));
-        if (_haveMe && d > FarAway) return;
-        float boost = _clock - j.T0 < BoostTime ? BoostMax - (BoostMax - 1f) * (_clock - j.T0) / BoostTime : 1f;
         // 突風: 噴き出しの強さを不規則に脈打たせる
         float gust = 0.8f + 0.2f * FxMath.Sin(_clock * 5.3f + j.Mx) + 0.15f * FxMath.Sin(_clock * 13.7f + j.My);
-        boost *= gust;
         j.Gust = gust;
+        if (_haveMe && d < RumbleReach)
+            _rumble = FxMath.Max(_rumble, vis * j.Gust * (RumbleFar + (RumbleNear - RumbleFar) * FxMath.Max(0f, 1f - d / RumbleClose)));
+        if (_haveMe) DecompSound.Feed(vis, gust, j.Mx - _meX, j.My - _meY, open, inside);
+        if (_haveMe && d > FarAway) return;
+        float boost = _clock - j.T0 < BoostTime ? BoostMax - (BoostMax - 1f) * (_clock - j.T0) / BoostTime : 1f;
+        boost *= gust;
         j.PuffDebt += dt * Puffs / PuffLife * vis * boost;
         while (j.PuffDebt >= 1f && FreePuff.Count > 0) { j.PuffDebt -= 1f; SpawnPuff(j, vis, boost); }
         if (j.PuffDebt > 2f) j.PuffDebt = 2f;

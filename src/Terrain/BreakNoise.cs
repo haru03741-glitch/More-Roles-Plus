@@ -148,16 +148,18 @@ internal static class BreakNoise
     }
 
     // 地形の破壊以外の音 (置いた爆弾の導火線など) を、その場所からの距離で鳴らす。muffle より遠いとこもった音
-    internal static void PlayAt(string clip, Vector2 at, float range, float muffle, float volume)
+    internal static void PlayAt(string clip, Vector2 at, float range, float muffle, float volume) => PlayAt(clip, at.x, at.y, range, muffle, volume, 1f);
+
+    internal static void PlayAt(string clip, float x, float y, float range, float muffle, float volume, float pitch)
     {
         var lp = PlayerControl.LocalPlayer;
         if (!lp || MeetingHud.Instance) return;
         Vector2 me = lp.GetTruePosition();
-        float dx = at.x - me.x, dy = at.y - me.y;
+        float dx = x - me.x, dy = y - me.y;
         float d = MathF.Sqrt(dx * dx + dy * dy);
         if (d >= range) return;
         float near = d <= FullVolumeDist ? 1f : 1f - (d - FullVolumeDist) / (range - FullVolumeDist);
-        Play(d > muffle ? clip + "_m" : clip, volume * MathF.Pow(near, 1.5f), Math.Clamp(dx / PanDist, -PanMax, PanMax), 1f, 0f);
+        Play(d > muffle ? clip + "_m" : clip, volume * MathF.Pow(near, 1.5f), Math.Clamp(dx / PanDist, -PanMax, PanMax), pitch, 0f);
     }
 
     // 幽霊は壁を抜けるのでこもらない。すぐそばは短い区間の壁判定が当てにならないので直接聞こえる扱い
@@ -394,7 +396,7 @@ internal static class BreakNoise
             if (args.Trim() == "clear") { Emitted = Dropped = 0; Last = "-"; Clear(); }
             var sb = new System.Text.StringBuilder();
             foreach (var m in Marks) sb.Append($" {m.Kind}@{m.Sx:0.0},{m.Sy:0.0} t={m.T:0.00} s={m.Size:0.00}");
-            reply($"OK noise emitted={Emitted} dropped={Dropped} clips={Fx.MrpBundle.ClipCount} last={Last} marks={Marks.Count}{sb}");
+            reply($"OK noise emitted={Emitted} dropped={Dropped} clips={Fx.MrpBundle.ClipCount} last={Last} marks={Marks.Count}{sb} decomp: {DecompSound.State}");
         });
     }
 }

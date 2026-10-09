@@ -7,6 +7,13 @@
 #   noise_rubble_<素材>     … 爆発で壁が崩れ落ちる音 (爆発の音に少し遅れて重ねる。壁に当たらない爆発では鳴らさない)
 #   noise_leak              … 壊れた配管から水が噴き出す音 (約 1 秒ごとに重ねて鳴らす。頭と尻は長めに薄れる)
 #   noise_splash_1..3       … 水たまりを踏んだ音
+#   noise_decomp_breach     … 外壁に穴が開いた瞬間 (金属が裂けて圧が抜ける)
+#   noise_decomp_loop       … 穴から吸い出される持続音 (継ぎ目なしのループ)
+#   noise_decomp_whistle    … 泡で口が狭まる時の笛 (継ぎ目なしのループ・高さは鳴らす側で変える)
+#   noise_decomp_seal       … 口がふさがった最後の「ぷしゅっ」
+#   noise_bump_small_1..3   … 小物が壁や床に当たる
+#   noise_bump_heavy_1..2   … 重い家具が壁に当たる
+#   noise_bump_clash_1..2   … 家具どうしがぶつかる
 #   それぞれ <名前>_m       … 遠い・壁越しのこもった音 (16kHz)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
 #   python tools/make-break-sounds.py   (numpy と scipy が要る)
@@ -551,6 +558,134 @@ def splash():
     return out
 
 
+# ── 外壁の穴 (吸い出し) ─────────────────────────────────────
+
+def pnoise(n, shape):
+    # 周期的な雑音: 周波数ごとの大きさ shape(f) に乱数の位相を付けて逆 FFT。頭と尻がつながるのでループの継ぎ目が出ない
+    f = np.fft.rfftfreq(n, 1 / SR)
+    mag = shape(f)
+    ph = rng.uniform(0, 2 * np.pi, len(f))
+    x = np.fft.irfft(mag * np.exp(1j * ph), n)
+    return x / (np.std(x) + 1e-9)
+
+
+def band(f, lo, hi, edge=0.5):
+    # lo〜hi を通す滑らかな窓 (端は edge オクターブで落ちる)
+    lf = np.log2(np.maximum(f, 1.0))
+    a = np.clip((lf - np.log2(lo)) / edge + 1, 0, 1)
+    b = np.clip((np.log2(hi) - lf) / edge + 1, 0, 1)
+    return a * b
+
+
+def plfo(t, dur, cycles, phase=0.0):
+    # ループの長さにちょうど cycles 回収まる揺れ
+    return np.sin(2 * np.pi * cycles * t / dur + phase)
+
+
+def decomp_breach():
+    # 開通 (1.8s): 金属が裂ける鋭い破裂 → 圧が一気に抜けるバシュッ → 船体の鳴り → 破片
+    dur = 1.8
+    n, t = T(dur)
+    out = np.zeros(n)
+    m, tm = T(0.05)
+    place(out, hp(noise(m), 3000) * np.exp(-tm / 0.006), 0.0, 1.6)        # はじける
+    place(out, tear(0.32, 2200, 7500, 70), 0.0, 1.3)                       # 金切り
+    place(out, impact(0.7, 0.7), 0.0, 1.1)                                 # バン (爆発より軽い)
+    hiss = bp(noise(n), 1400, 10000) * np.exp(-t / 0.32) + 0.7 * bp(noise(n), 350, 1800) * np.exp(-t / 0.55)
+    out += 1.5 * hiss * np.minimum(1, t / 0.004)                           # シュッ
+    place(out, clank(rng.uniform(210, 250), 1.2, 0.45), 0.01, 0.7)         # 船体の板の唸り
+    place(out, clank(rng.uniform(880, 1020), 0.5, 0.12), 0.0, 0.4)
+    out += 0.35 * debris(n, 0.05, 1.0, 900, 6000, 60)
+    return room(out, 0.6, 2500, 0.25)
+
+
+def decomp_loop():
+    # 吸い出し (4.0s ループ): 低いゴォォ + 中域の風切り + 細い高い擦れ。揺れはループに整数回だけ入れる
+    dur = 4.0
+    n, t = T(dur)
+    roar = pnoise(n, lambda f: band(f, 30, 220, 0.8) / (1 + f / 90))
+    rush = pnoise(n, lambda f: band(f, 300, 2200, 0.7))
+    hiss = pnoise(n, lambda f: band(f, 3000, 8000, 0.6))
+    roar *= 1 + 0.25 * plfo(t, dur, 3) + 0.1 * plfo(t, dur, 7, 1.0)
+    rush *= 1 + 0.35 * plfo(t, dur, 5, 2.0) + 0.15 * plfo(t, dur, 11, 0.5)
+    hiss *= 1 + 0.3 * plfo(t, dur, 9, 1.5)
+    return 1.0 * roar + 0.55 * rush + 0.16 * hiss
+
+
+def decomp_whistle():
+    # 笛 (2.0s ループ): 1100Hz に細く絞った雑音 (隙間を抜ける空気) + 倍音 + 薄い擦れ
+    dur = 2.0
+    n, t = T(dur)
+    def peak(f, c, w):
+        return np.exp(-0.5 * ((f - c) / w) ** 2)
+    x = pnoise(n, lambda f: peak(f, 1100, 18) + 0.35 * peak(f, 2200, 30) + 0.12 * peak(f, 3300, 45) + 0.03 * band(f, 1500, 6000))
+    return x * (1 + 0.12 * plfo(t, dur, 6))
+
+
+def decomp_seal():
+    # ふさがる (0.55s): 最後の空気がぷしゅっと抜ける + 泡が口をとじるぽふっ
+    n, t = T(0.55)
+    out = np.zeros(n)
+    env = np.minimum(1, t / 0.004) * np.exp(-t / 0.09)
+    out += bp(noise(n), 2200, 9000) * env * 1.2
+    out += 0.5 * bp(noise(n), 700, 2200) * np.minimum(1, t / 0.004) * np.exp(-t / 0.05)
+    m, tm = T(0.12)
+    place(out, np.sin(sweep(tm, 1500, 600, 0.03)) * np.exp(-tm / 0.03), 0.0, 0.25)  # 笛の名残が落ちる
+    place(out, lp(noise(m), 260) * np.exp(-tm / 0.03), 0.07, 1.4)                   # ぽふっ
+    return out
+
+
+def emit_loop(name, make, peak=0.8):
+    # ループは頭と尻をつなぐので、時間で効く圧縮・フェード・IIR を通さない (どれも継ぎ目を作る)
+    reseed(name)
+    x = make()
+    x = x / (np.max(np.abs(x)) + 1e-9)
+    x = np.tanh(1.4 * x) / np.tanh(1.4)
+    save(name, x, SR, peak)
+    spec = np.fft.rfft(x)
+    f = np.fft.rfftfreq(len(x), 1 / SR)
+    spec *= 1 / (1 + (f / 500) ** 6)  # muffled() と同じ所から落とす (周期のまま)
+    m = np.fft.irfft(spec[: len(x) // 4 + 1], len(x) // 2)
+    save(name + '_m', m, SR // 2, peak * 0.75)
+
+
+# ── 家具がぶつかる ─────────────────────────────────────────
+
+def bump_small():
+    # 小物 (0.35s): 硬く軽い物が壁に当たってカツン → 1〜2 回小さく跳ねる
+    n, t = T(0.35)
+    out = np.zeros(n)
+    f = rng.uniform(1300, 2200)
+    hit = lambda: modal([(f, 0.03, 1.0), (f * 1.73, 0.018, 0.6), (f * 2.61, 0.01, 0.4)], 0.08, 0.002)
+    place(out, hit(), 0.0, 1.0)
+    place(out, bp(noise(int(0.02 * SR)), 300, 1500) * np.exp(-np.arange(int(0.02 * SR)) / SR / 0.004), 0.0, 0.5)
+    bounce(out, rng.uniform(0.06, 0.09), 0.05, 0.6, 0.45, hit, 3)
+    return out
+
+
+def bump_heavy():
+    # 重い家具が壁に当たる (0.7s): 鈍いドン + 箱の胴鳴り + 壁の板の唸り + 少し擦れる
+    n, t = T(0.7)
+    out = np.zeros(n)
+    place(out, thud(1.2), 0.0, 1.2)
+    b = rng.uniform(170, 230)
+    place(out, modal([(b, 0.12, 1.0), (b * 1.6, 0.08, 0.6), (b * 2.3, 0.05, 0.4), (b * 3.4, 0.03, 0.25)], 0.5, 0.006), 0.0, 0.9)
+    place(out, clank(rng.uniform(120, 150), 0.6, 0.25), 0.005, 0.35)
+    place(out, grind(0.18, 150, 1200), 0.02, 0.3)
+    return room(out, 0.4, 2000, 0.2)
+
+
+def bump_clash():
+    # 家具どうし (0.8s): 2 つの物の金属の鳴りが少しずれて重なる + ドン + がたつき
+    n, t = T(0.8)
+    out = np.zeros(n)
+    place(out, thud(1.0), 0.0, 0.9)
+    place(out, clank(rng.uniform(300, 420), 0.6, 0.18), 0.0, 0.8)
+    place(out, clank(rng.uniform(650, 900), 0.5, 0.12), rng.uniform(0.004, 0.015), 0.6)
+    out += 0.35 * grains(n, 90, 600, 4000, dur=0.02, tau=0.005, t0=0.02, t1=0.25, shape=lambda u: 1 - u)
+    return room(out, 0.45, 2200, 0.2)
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     emit('noise_boom', boom, drive=2.4)
@@ -566,3 +701,12 @@ if __name__ == '__main__':
         # 崩れる音は細かい音 (跳ねる破片・砂利) が聞こえるよう圧縮を弱める
         emit('noise_crumble_' + mat, crumbles[mat], drive=1.6, ratio=0.3)
         emit('noise_rubble_' + mat, rubbles[mat], drive=1.6, ratio=0.3)
+    emit('noise_decomp_breach', decomp_breach, drive=2.0)
+    emit_loop('noise_decomp_loop', decomp_loop)
+    emit_loop('noise_decomp_whistle', decomp_whistle, peak=0.7)
+    emit('noise_decomp_seal', decomp_seal, peak=0.8, drive=1.6, ratio=0.3)
+    for i in range(1, 4):
+        emit(f'noise_bump_small_{i}', bump_small, peak=0.8, drive=1.6, ratio=0.3)
+    for i in range(1, 3):
+        emit(f'noise_bump_heavy_{i}', bump_heavy, peak=0.9, drive=1.8, ratio=0.35)
+        emit(f'noise_bump_clash_{i}', bump_clash, peak=0.9, drive=1.8, ratio=0.35)

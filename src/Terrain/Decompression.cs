@@ -661,6 +661,14 @@ internal static class Decompression
     internal static float MouthPull(Breach br) =>
         br.Sealed || br.Comp < 0 || _press == null || br.Comp >= _press.Length ? 0f : (float)EffPress(br.Comp) / Full;
 
+    // 口の開き具合 (1 = 全開・泡が吹き付け始めてからふさがるまでに 0 へ・演出用)
+    internal static float Open(Breach br)
+    {
+        if (br.Sealed) return 0f;
+        int foam = _step - br.Start - FoamDelay;
+        return _hold || foam <= 0 ? 1f : Math.Max(0f, 1f - foam / (float)FoamTime);
+    }
+
     // 点での流れ (向き × 強さ・歩く速さの倍)。引かない所は false
     internal static bool PullAt(Vector2 p, out Vector2 dir, out float mul, out int dist)
     {

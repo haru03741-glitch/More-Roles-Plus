@@ -20,7 +20,7 @@ internal static class MrpBundle
     private static AssetBundleRequest _terrainReq, _waterReq;
     private static bool _failed, _waterFailed;
 
-    // 壁を壊した音・導火線・水漏れ (BreakNoise が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
+    // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音 (BreakNoise と DecompSound が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
     private static readonly string[] ClipNames = MakeClipNames();
     private static readonly AssetBundleRequest[] ClipReqs = new AssetBundleRequest[ClipNames.Length];
     private static readonly bool[] ClipDone = new bool[ClipNames.Length];
@@ -29,7 +29,13 @@ internal static class MrpBundle
 
     private static string[] MakeClipNames()
     {
-        var names = new List<string> { "noise_boom", "noise_fuse", "noise_leak", "noise_splash_1", "noise_splash_2", "noise_splash_3" };
+        var names = new List<string>
+        {
+            "noise_boom", "noise_fuse", "noise_leak", "noise_splash_1", "noise_splash_2", "noise_splash_3",
+            "noise_decomp_breach", "noise_decomp_loop", "noise_decomp_whistle", "noise_decomp_seal",
+            "noise_bump_small_1", "noise_bump_small_2", "noise_bump_small_3",
+            "noise_bump_heavy_1", "noise_bump_heavy_2", "noise_bump_clash_1", "noise_bump_clash_2",
+        };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {
             names.Add("noise_hit_" + mat);
