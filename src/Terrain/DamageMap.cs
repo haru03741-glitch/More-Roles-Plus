@@ -591,6 +591,7 @@ internal static class DamageMap
             var edge = col ? col.TryCast<EdgeCollider2D>() : null;
             if (edge && !col.isTrigger) AddWallBumps(edge, list);
         }
+        LowFurniture.AddNear(c, r + FurnitureUp, list); // 船の層に独立して置かれた低い物 (机・台)
         for (int i = list.Count - 1; i >= 0; i--) if (MapNotes.InFree(list[i].center)) list.RemoveAt(i);
         MapNotes.AddKeep(c, r + FurnitureUp, list); // 人の目で付けた「壊れてほしくない物」
         return list;

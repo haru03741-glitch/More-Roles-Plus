@@ -30,6 +30,8 @@ internal static class TerrainReview
     private static readonly byte[] Furniture = { 255, 230, 0 };   // 家具の保護範囲 (壁も切らない)
     private static readonly byte[] Lone = { 140, 140, 140 };      // 両側とも床が無い
     private static readonly byte[] Void = { 230, 20, 20 };        // 奈落 (塗った注釈)
+    private static readonly byte[] NoShadow = { 255, 40, 160 };   // 調べる用: 家具でも守る物でもないのに視界の影の線が沿っていない
+    internal static bool ShadowAudit;
 
     // 面の近くで爆発 (半径 SkyBlast) した時に、抜ける形の中で裏の壁の中が空へつながるか (外壁に付いた出っ張り。爆発と同じ判定)
     private const float SkyBlast = 1.2f;
@@ -116,6 +118,12 @@ internal static class TerrainReview
                                 Notes.Add($"PIECE {key} {m.x:0.00} {m.y:0.00}");
                             }
                         }
+                    }
+                    if (ShadowAudit && kind != "guarded" && kind != "furniture" &&
+                        Physics2D.OverlapCircleAll(m, 0.15f, Constants.ShadowMask).Length == 0)
+                    {
+                        kind = "noshadow"; color = NoShadow;
+                        Notes.Add($"NOSHADOW {m.x:0.00} {m.y:0.00} {col.name}");
                     }
                     counts.TryGetValue(kind, out float sum); counts[kind] = sum + len / parts;
                     Array.Clear(line, 0, line.Length);
@@ -204,6 +212,72 @@ internal static class TerrainReview
         info = $"origin=({o.x:0.##},{o.y:0.##}) ppu={ppu}";
         return $"{w}x{h}";
     }
+
+    // 全部爆破して見比べる用: 壁の線に沿って床の側から一定の間隔で爆発させる点 (試合の始めの形で決める)
+    public static List<Vector2> BlastPoints(float spacing, float offset)
+    {
+        var pts = new List<Vector2>();
+        if (!SolidMap.Ensure()) return pts;
+        var seen = new HashSet<long>();
+        var segs = new List<Vector2>();
+        foreach (var col in ShipStatus.Instance.GetComponentsInChildren<Collider2D>(false))
+        {
+            if (!col || !col.enabled || col.isTrigger || col.gameObject.layer != 9) continue;
+            if (col.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || col.GetComponentInParent<OpenableDoor>()) continue;
+            segs.Clear();
+            SolidMap.Segments(col, segs);
+            for (int i = 0; i + 1 < segs.Count; i += 2)
+            {
+                Vector2 a = segs[i], d = segs[i + 1] - a;
+                float len = d.magnitude;
+                if (len < 1e-4f) continue;
+                Vector2 dir = d / len, n = new(-dir.y, dir.x);
+                int parts = Math.Max(1, (int)MathF.Ceiling(len / spacing));
+                for (int k = 0; k < parts; k++)
+                {
+                    Vector2 m = a + dir * (len * (k + 0.5f) / parts);
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        Vector2 q = m + n * (side * offset);
+                        if (SolidMap.IslandAt(q) == 0) continue;
+                        long key = ((long)MathF.Floor(q.x / (spacing * 0.7f)) << 32) ^ (uint)(int)MathF.Floor(q.y / (spacing * 0.7f));
+                        if (seen.Add(key)) pts.Add(q);
+                    }
+                }
+            }
+        }
+        return pts;
+    }
+
+    // 爆破の前の絵 (scale 倍の細かさ・下の行から) と、地図の範囲
+    public static byte[] RenderShip(int scale, out int w, out int h, out float ppu, out Vector2 o)
+    {
+        ppu = SolidMap.Ppu * scale; w = SolidMap.W * scale; h = SolidMap.H * scale; o = SolidMap.Origin;
+        return Background(w, h, ppu, o, 100);
+    }
+
+    // 前の絵の上に、壁の絵が抜けた所 (損傷マスクの穴) を赤く重ねる
+    public static void WriteBlastDiff(string path, byte[] before, int w, int h, float ppu, Vector2 o, out int holePx)
+    {
+        holePx = 0;
+        var rgb = (byte[])before.Clone();
+        Vector2 mo = DamageMap.Origin;
+        int mw = DamageMap.MapW, mh = DamageMap.MapH;
+        float mppu = 1f / DamageMap.TexelSize;
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            float wx = o.x + (x + 0.5f) / ppu, wy = o.y + (y + 0.5f) / ppu;
+            int px = (int)((wx - mo.x) * mppu), py = (int)((wy - mo.y) * mppu);
+            if (px < 0 || py < 0 || px >= mw || py >= mh || DamageMap.HoleByte(px, py) < 128) continue;
+            holePx++;
+            int k = (y * w + x) * 3;
+            rgb[k] = (byte)Math.Min(255, rgb[k] / 2 + 140); rgb[k + 1] = (byte)(rgb[k + 1] / 3); rgb[k + 2] = (byte)(rgb[k + 2] / 3);
+        }
+        WritePpm(path, rgb, w, h);
+    }
+
+    public static void WriteRgb(string path, byte[] rgb, int w, int h) => WritePpm(path, rgb, w, h);
 
     // 船の絵を Tile 画素の升ごとに撮る (下から上の行の順・明るさ pct %)
     private static byte[] Background(int w, int h, float ppu, Vector2 o, int pct)
