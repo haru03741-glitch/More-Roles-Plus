@@ -91,6 +91,7 @@ public class Ticker : MonoBehaviour
         Bridge.Burst.Tick();
         Dev.DevConsole.Tick();
         Commands.Shortcuts.Tick();
+        Zoom.Tick();
         Bridge.Perf.End(t);
     }
 
