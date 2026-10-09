@@ -8,7 +8,8 @@ namespace MoreRolesPlus.Terrain;
 internal static class DebrisArt
 {
     private static Sprite[] _chunks;
-    private static Sprite _pebble, _puff, _spark, _dust, _footprint, _drop, _ripple, _pipe, _foam;
+    private static Sprite _pebble, _puff, _spark, _dust, _footprint, _drop, _ripple, _foam;
+    private static readonly Sprite[] Pipes = new Sprite[PipeKinds * PipePaints];
 
     // 壁の色 (Skeld の壁面・枠の内側の灰)
     private static readonly Color32 WallTop = new(188, 196, 202, 255);
@@ -50,7 +51,16 @@ internal static class DebrisArt
     public static Sprite Footprint => _footprint ??= MakeFootprint();
     public static Sprite WaterDrop => _drop ??= MakeWaterDrop();
     public static Sprite Ripple => _ripple ??= MakeRipple();
-    public static Sprite SplitPipe => _pipe ??= MakeSplitPipe();
+    // 壁の中の配管の絵: 裂け方 (PipeKinds・最後の 1 つは裂けていない管) × 色 (PipePaints)。原点は裂け目
+    public const int PipeKinds = 5, PipePaints = 4, IntactPipe = PipeKinds - 1;
+    public static Sprite Pipe(int kind, int paint)
+    {
+        int i = kind * PipePaints + paint;
+        return Pipes[i] ??= MakePipe(kind, paint);
+    }
+    // 裂け目の位置 (管の長さを -1〜1 とした時)。原点をここに置くので、管は裂け目から左右に不揃いに伸びる
+    private static readonly float[] PipeSlitAt = { 0f, -0.32f, 0.24f, -0.12f, 0f };
+    private static readonly float[,] PipePaint = { { 0.55f, 0.58f, 0.63f }, { 0.74f, 0.46f, 0.28f }, { 0.40f, 0.40f, 0.43f }, { 0.50f, 0.62f, 0.54f } };
     public static Sprite Foam => _foam ??= MakeFoam();
 
     private static Sprite[] MakeChunks()
@@ -407,41 +417,69 @@ internal static class DebrisArt
         return ToSprite(px, n, "MrpRipple");
     }
 
-    // 壁の中を通る配管を横から見た絵: 左右に長い管・継ぎ目の帯・真ん中に裂け目 (暗い口と明るいめくれ)。原点は真ん中
-    private static Sprite MakeSplitPipe()
+    // 壁の中を通る配管を横から見た絵: 横に長い管・継ぎ目の帯・裂け目。
+    // 裂け方 0 = 目の形の裂け目 / 1 = ぎざぎざに破れて縁が外へめくれる / 2 = 折れて途切れ、間から壁の中が見える / 3 = 小さな穴 / 4 = 裂けていない管
+    private static Sprite MakePipe(int kind, int paint)
     {
         const int w = 96, h = 24;
         var px = new byte[w * h * 4];
-        var rnd = new System.Random(3);
+        var rnd = new System.Random(3 + kind * 17 + paint * 5);
         var lip = new float[w];
-        for (int x = 0; x < w; x++) lip[x] = 0.05f * (float)rnd.NextDouble();
+        for (int x = 0; x < w; x++) lip[x] = (kind == 1 ? 0.22f : 0.05f) * (float)rnd.NextDouble();
+        float sc = PipeSlitAt[kind];
+        float pr = PipePaint[paint, 0], pg = PipePaint[paint, 1], pb = PipePaint[paint, 2];
+        float joint = 0.45f + 0.3f * (float)rnd.NextDouble(); // 継ぎ目の帯の位置 (裂け目からの距離)
         for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
         {
             float u = (x + 0.5f) / w * 2f - 1f, v = (y + 0.5f) / h * 2f - 1f;
-            float av = MathF.Abs(v);
-            if (av > 0.92f) continue;
+            float av = MathF.Abs(v), du = u - sc, adu = MathF.Abs(du);
+            float edge = 0.92f;
+            if (kind == 1 && adu < 0.3f) edge += 0.3f * lip[x] * (1f - adu / 0.3f); // めくれた縁は管の外へはみ出す
+            if (av > edge) continue;
+            // 2: 折れた所は管が無い (端はぎざぎざ)。間は暗い壁の中
+            if (kind == 2 && adu < 0.1f + lip[x] * 1.6f)
+            {
+                if (av > 0.7f) continue;
+                Put(px, (y * w + x) * 4, 0.06f, 0.07f, 0.09f, 1f);
+                continue;
+            }
             float r, g, b;
-            // 裂け目: 真ん中の横長の目の形。上下のふちはめくれて明るい
-            float sx = u / 0.26f, slit = 1f - sx * sx;
-            float open = slit > 0f ? 0.42f * MathF.Sqrt(slit) + lip[x] : -1f;
+            float open = -1f;
+            if (kind == 0 || kind == 1)
+            {
+                float sx = du / (kind == 1 ? 0.3f : 0.26f), slit = 1f - sx * sx;
+                if (slit > 0f) open = (kind == 1 ? 0.5f : 0.42f) * MathF.Sqrt(slit) + lip[x];
+            }
+            else if (kind == 3)
+            {
+                float hx = du / 0.1f, hy = v / 0.5f, hr = hx * hx + hy * hy;
+                if (hr < 1f) open = 2f; else if (hr < 1.8f) open = 0f; // 穴と、そのまわりのめくれ
+                if (open > 1f) { Put(px, (y * w + x) * 4, 0.07f, 0.09f, 0.12f, 1f); continue; }
+                if (open == 0f) { Put(px, (y * w + x) * 4, 0.82f, 0.85f, 0.88f, 1f); continue; }
+                open = -1f;
+            }
             if (open > 0f && av < open) { r = 0.07f; g = 0.09f; b = 0.12f; }
             else if (open > 0f && av < open + 0.16f) { r = 0.82f; g = 0.85f; b = 0.88f; }
-            else if (av > 0.76f || MathF.Abs(u) > 0.97f) { r = 0.14f; g = 0.15f; b = 0.18f; }
+            else if (av > 0.76f || MathF.Abs(u) > 0.97f || (kind == 2 && adu < 0.17f + lip[x] * 1.6f)) { r = 0.14f; g = 0.15f; b = 0.18f; }
             else
             {
                 float k = 0.62f + 0.24f * v; // 上が明るい
-                float band = MathF.Abs(MathF.Abs(u) - 0.68f);
+                float band = MathF.Abs(adu - joint);
                 if (band < 0.05f) k *= 0.72f;          // 継ぎ目の帯
                 if (v > 0.25f && v < 0.45f) k = 0.92f; // 光の筋
-                r = 0.55f * k + 0.05f; g = 0.58f * k + 0.05f; b = 0.63f * k + 0.06f;
+                r = pr * k + 0.05f; g = pg * k + 0.05f; b = pb * k + 0.06f;
             }
-            float a = av > 0.84f ? (0.92f - av) / 0.08f : 1f;
-            int i = (y * w + x) * 4;
-            px[i] = (byte)(255f * Math.Clamp(r, 0f, 1f)); px[i + 1] = (byte)(255f * Math.Clamp(g, 0f, 1f));
-            px[i + 2] = (byte)(255f * Math.Clamp(b, 0f, 1f)); px[i + 3] = (byte)(255f * a);
+            float a = av > edge - 0.08f ? (edge - av) / 0.08f : 1f;
+            Put(px, (y * w + x) * 4, r, g, b, a);
         }
-        return ToSpriteWH(px, w, h, "MrpSplitPipe", new Vector2(0.5f, 0.5f));
+        return ToSpriteWH(px, w, h, "MrpSplitPipe", new Vector2((sc + 1f) * 0.5f, 0.5f));
+    }
+
+    private static void Put(byte[] px, int i, float r, float g, float b, float a)
+    {
+        px[i] = (byte)(255f * Math.Clamp(r, 0f, 1f)); px[i + 1] = (byte)(255f * Math.Clamp(g, 0f, 1f));
+        px[i + 2] = (byte)(255f * Math.Clamp(b, 0f, 1f)); px[i + 3] = (byte)(255f * Math.Clamp(a, 0f, 1f));
     }
 
     // 泡としぶきの霧: 白い玉の塊 (下側がうっすら水色)

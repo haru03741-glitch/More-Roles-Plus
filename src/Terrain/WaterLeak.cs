@@ -28,8 +28,8 @@ internal static class WaterLeak
     // 先でちぎれて粒になって落ちる。落ちた線に沿って泡と波紋。裂け目に霧。
     // 破裂の直後 (BurstTime 秒) は広く遠く、普段は FanSteady、弱まると狭く手前に落ちる
     private const float JetFull = 10f, JetFade = 5f;
-    private const float PipeHeight = 0.25f;   // 配管の高さ (壁の中・床から)
-    private const float PipeThick = 0.15f;
+    private const float PipeHeightMin = 0.14f, PipeHeightMax = 0.42f; // 配管の高さ (壁の中・床から)。漏れごとに種から
+    private const float PipeThickMin = 0.11f, PipeThickMax = 0.19f;
     private const float MouthOut = 0.04f;     // 裂け目を壁の線から部屋側へ出す距離
     private const float SlitWidth = 0.12f;    // 裂け目の幅
     private const float BurstTime = 0.5f;
@@ -41,7 +41,7 @@ internal static class WaterLeak
     private const float DropSize = 0.08f;
     private const int MaxDrops = 64;
     private const int MaxJets = 3;
-    private const int MaxPipes = 6;
+    private const int MaxPipes = 8;
     private const float LeakSoundEvery = 1.0f, LeakSoundRange = 14f, LeakSoundMuffle = 6f, LeakSoundVolume = 0.55f;
 
     // 波紋
@@ -61,6 +61,7 @@ internal static class WaterLeak
     private sealed class Jet
     {
         public float X, Y, T, SoundAcc, MistAcc;
+        public float H;                // 裂けた配管の高さ (霧の出る所)
         public float DropZ, RingZ;     // その場所の床の z から決めた粒と波紋の z (粒ごとに部屋を引かない)
         public Vector2 Dir;
         public bool Both;
@@ -174,7 +175,7 @@ internal static class WaterLeak
         bool neg = !SolidMap.Valid || !SolidMap.Solid(at - n * 0.4f);
         if (!pos && !neg) pos = true;
         float floor = DamageMap.FrontZ(at), zs = DamageMap.ZScale(floor);
-        AddPipe(at.x, at.y, floor - 0.003f * zs + 0.0005f, n, Math.Clamp(segLen * 0.9f, 0.35f, 1f));
+        AddPipes(at.x, at.y, floor - 0.003f * zs + 0.0005f, n, segLen, seed);
         var dir = pos ? n : -n;
         WaterSim.AddLeak(tick, at, dir, pos && neg, seed);
         Made++;
@@ -187,7 +188,7 @@ internal static class WaterLeak
         try
         {
             if (MeetingHud.Instance || !ShipStatus.Instance) return;
-            var jet = new Jet { X = at.x, Y = at.y, Rnd = new System.Random(seed), SoundAcc = LeakSoundEvery };
+            var jet = new Jet { X = at.x, Y = at.y, Rnd = new System.Random(seed), SoundAcc = LeakSoundEvery, H = PipeLook(seed).H };
             float floor = DamageMap.FrontZ(at), zs = DamageMap.ZScale(floor);
             jet.DropZ = floor - 0.003f * zs;
             jet.RingZ = floor - 0.0008f * zs;
@@ -225,20 +226,63 @@ internal static class WaterLeak
 
     // ── 噴き出しと波紋 ─────────────────────────────────────────────────
 
-    // 壁の中を壁に沿って通る配管 (真ん中が裂けている)。水たまりと同じく試合の終わりまで残る
-    private static void AddPipe(float x, float y, float z, Vector2 n, float len)
+    // 漏れごとの配管の見た目 (種から決めるので全員同じ): 裂け方・色・高さ・傾き・太さ・長さ・左右の向き・横を通る 2 本目
+    private struct Look
+    {
+        public int Kind, Paint;
+        public float H, Tilt, Thick, Len, Flip, H2, Len2, Thick2;
+        public int Paint2;
+        public bool Second;
+    }
+
+    private static Look PipeLook(ushort seed)
+    {
+        var r = new System.Random(seed ^ 0x5a17);
+        float F() => (float)r.NextDouble();
+        var l = new Look
+        {
+            Kind = r.Next(DebrisArt.IntactPipe),
+            Paint = r.Next(DebrisArt.PipePaints),
+            H = PipeHeightMin + (PipeHeightMax - PipeHeightMin) * F(),
+            Tilt = (F() * 2f - 1f) * 8f,
+            Thick = PipeThickMin + (PipeThickMax - PipeThickMin) * F(),
+            Len = 0.7f + 0.45f * F(),
+            Flip = r.Next(2) == 0 ? 1f : -1f,
+            Second = F() < 0.4f,
+        };
+        // 2 本目は裂けていない細い管。上か下へずらす (床に埋まらない高さ)
+        float off = (0.12f + 0.08f * F()) * (l.H > 0.26f && r.Next(3) > 0 ? -1f : 1f);
+        l.H2 = Math.Clamp(l.H + off, 0.08f, 0.6f);
+        l.Len2 = 0.8f + 0.5f * F();
+        l.Thick2 = 0.07f + 0.04f * F();
+        l.Paint2 = r.Next(DebrisArt.PipePaints);
+        return l;
+    }
+
+    // 壁の中を壁に沿って通る配管 (裂け目が漏れの所)。水たまりと同じく試合の終わりまで残る
+    private static void AddPipes(float x, float y, float z, Vector2 n, float segLen, ushort seed)
+    {
+        var l = PipeLook(seed);
+        float wall = MathF.Atan2(-n.x, n.y) * (180f / MathF.PI);
+        AddPipe(x, y + l.H, z, wall + l.Tilt, Math.Clamp(segLen * l.Len, 0.4f, 1.4f), l.Thick, l.Flip, DebrisArt.Pipe(l.Kind, l.Paint));
+        if (l.Second) // 少し奥 (壁の中) を通る、裂けていない管
+            AddPipe(x, y + l.H2, z + 0.0002f, wall + l.Tilt * 0.3f, Math.Clamp(segLen * l.Len2, 0.4f, 1.6f), l.Thick2, l.Flip, DebrisArt.Pipe(DebrisArt.IntactPipe, l.Paint2));
+    }
+
+    private static void AddPipe(float x, float y, float z, float deg, float len, float thick, float flip, Sprite sprite)
     {
         // 外壁が宇宙まで抜けた所には壁の中の配管も残っていない
-        if (HullThroat.Contains(FxMath.V2(x, y + PipeHeight))) return;
+        if (HullThroat.Contains(FxMath.V2(x, y))) return;
         var pipe = new GameObject("MrpSplitPipe") { layer = 0 };
         var sr = pipe.AddComponent<SpriteRenderer>();
-        sr.sprite = DebrisArt.SplitPipe;
-        var b = sr.sprite.bounds.size;
-        pipe.transform.position = FxMath.V3(x, y + PipeHeight, z);
-        pipe.transform.localRotation = FxMath.RotZ(MathF.Atan2(-n.x, n.y) * (180f / MathF.PI));
-        pipe.transform.localScale = FxMath.V3(len / Math.Max(0.0001f, b.x), PipeThick / Math.Max(0.0001f, b.y), 1f);
+        sr.sprite = sprite;
+        var b = sprite.bounds.size;
+        pipe.transform.position = FxMath.V3(x, y, z);
+        pipe.transform.localRotation = FxMath.RotZ(deg);
+        pipe.transform.localScale = FxMath.V3(flip * len / Math.Max(0.0001f, b.x), thick / Math.Max(0.0001f, b.y), 1f);
         while (Pipes.Count >= MaxPipes) { if (Pipes[0]) UnityEngine.Object.Destroy(Pipes[0]); Pipes.RemoveAt(0); }
         Pipes.Add(pipe);
+        ShadowPatch.MarkDirty(FxMath.V2(x, y), len * 0.5f + 0.2f); // 影の中の焼いた絵にも描き込む
     }
 
     private static void TickJets(float dt)
@@ -266,7 +310,7 @@ internal static class WaterLeak
                 float u = (float)rnd.NextDouble() * 2f - 1f;
                 float vs = 0.35f + 0.6f * burst;
                 float mx = jet.X + d.x * MouthOut - d.y * u * SlitWidth * 0.5f, my = jet.Y + d.y * MouthOut + d.x * u * SlitWidth * 0.5f;
-                AddMist(mx, my + PipeHeight, d.x * vs - d.y * u * vs * 0.4f, d.y * vs + d.x * u * vs * 0.4f + 0.12f, jet.DropZ - 0.002f, MistFrom, MistTo);
+                AddMist(mx, my + jet.H, d.x * vs - d.y * u * vs * 0.4f, d.y * vs + d.x * u * vs * 0.4f + 0.12f, jet.DropZ - 0.002f, MistFrom, MistTo);
             }
         }
     }
