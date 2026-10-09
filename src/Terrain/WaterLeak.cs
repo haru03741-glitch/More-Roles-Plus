@@ -282,7 +282,7 @@ internal static class WaterLeak
         pipe.transform.localScale = FxMath.V3(flip * len / Math.Max(0.0001f, b.x), thick / Math.Max(0.0001f, b.y), 1f);
         while (Pipes.Count >= MaxPipes) { if (Pipes[0]) UnityEngine.Object.Destroy(Pipes[0]); Pipes.RemoveAt(0); }
         Pipes.Add(pipe);
-        ShadowPatch.MarkDirty(FxMath.V2(x, y), len * 0.5f + 0.2f); // 影の中の焼いた絵にも描き込む
+        ShadowPatch.MarkDirtyLater(FxMath.V2(x, y), len * 0.5f + 0.2f); // 影の中の焼いた絵にも描き込む
     }
 
     private static void TickJets(float dt)

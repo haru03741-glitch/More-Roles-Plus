@@ -33,6 +33,7 @@ internal static class Perf
         "DecompFx", "DecompSound", "PropSim", "WaterLeak", "WaterArt", "WaterSpray", "FxHands", "RubbleBake", "ShadowPatch", "Burst",
         "DevConsole", "Shortcuts", "Zoom", "ChatInput",
         "MrpBundle", "TerrainWarm", "TerrainSync", "VersionCheck", "KillAbility", "Abilities", "ModButton", "MeetingEndWatch", "TestBridge", "Remote",
+        "DamageMapFlush",
     };
     private static readonly long[] LaneSum = new long[LaneNames.Length], LaneMax = new long[LaneNames.Length];
     private static readonly int[] LaneSlow = new int[LaneNames.Length]; // 1ms を超えた回数

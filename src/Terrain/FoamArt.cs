@@ -117,7 +117,7 @@ internal static class FoamArt
                     if (!plug.Go) continue;
                     var b = plug.Go.GetComponent<SpriteRenderer>().bounds;
                     var e = b.extents;
-                    ShadowPatch.MarkDirty(FxMath.V2(b.center.x, b.center.y), MathF.Max(e.x, e.y) + 0.2f);
+                    ShadowPatch.MarkDirtyLater(FxMath.V2(b.center.x, b.center.y), MathF.Max(e.x, e.y) + 0.2f);
                 }
             }
         }

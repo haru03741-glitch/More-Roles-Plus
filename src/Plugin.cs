@@ -98,6 +98,9 @@ public class Ticker : MonoBehaviour
 
     private void LateUpdate()
     {
+        long t = Bridge.Perf.Begin();
+        Terrain.DamageMap.Flush(); // 溜めた損傷マスクの変更を描画の前に送る
+        Bridge.Perf.Lane(34, t);
         Terrain.DecompFx.LateTick();
         Bridge.Perf.FrameLate();
     }

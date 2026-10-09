@@ -26,7 +26,20 @@ internal static class DamageMap
     private const float BandDownSquash = 2f;  // 壁の線より下 (手前の床) へはこの分の 1 しか届かせない
 
     private static ShipStatus _ship;
-    private static Texture2D _tex;
+    private static Texture2D _tex;             // 変わった範囲だけ送れない環境 (CopyTexture 無し) での全面送信用
+    // 損傷マスクは GPU 側の RenderTexture に置き、変わった画素の範囲だけを小さな中継の絵 (StagePx 角) 経由で写す。
+    // Texture2D.Apply は毎回マスク全面 (Skeld で約 1.3MB) を GPU へ送り、爆発 1 回に 4〜6 回で描画側に 30ms 級の引っかかりが出た。
+    // 送るのは 1 フレームに 1 回 (Flush)。壊した処理の中では範囲を記録するだけ
+    private const int StagePx = 128;
+    private static RenderTexture _rt, _genRt;
+    private static Texture2D _stage, _genStage;
+    private static byte[] _stageBuf, _genStageBuf;
+    private static bool _useRt;
+    private static bool _dirty, _dirtyAll;
+    private static int _dx0, _dy0, _dx1, _dy1;
+    private static int _flushPolls;
+    internal static int Flushes { get; private set; }
+    internal static long FlushBytes { get; private set; }
     private static byte[] _pixels;
     // 画素ごとに「最後にそこを抜いた破壊の番号」(1..255・0 = 抜けていない)。割れた塊が自分の分だけ描くのに使う
     private static Texture2D _genTex;
@@ -73,11 +86,13 @@ internal static class DamageMap
         _gen = (byte)(_gen == 255 ? 1 : _gen + 1);
         // 番号が一周した後は、前の周で同じ番号を書いた画素を空ける (古い穴が新しい塊に入らないように)
         if (GenWrapped)
+        {
             for (int k = 0; k < _gens.Length; k++)
                 if (_gens[k] == _gen) _gens[k] = 0;
+            MarkDirtyAll();
+        }
         Stamp(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body, out RectInt touched);
-        SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書くので Upload より前
-        Upload();
+        SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書く (送るのは Flush)
         if (pieces != null && cracks is { Count: > 0 }) BreakPieces.Spawn(touched, pieces, cracks);
         ShadowPatch.MarkDirty(shape.Center, shape.BoundRadius + 0.3f); // 影の中の見た目を焼き直す
         return null;
@@ -90,7 +105,6 @@ internal static class DamageMap
         if (!EnsureMap()) return "no ship";
         SwapNear(at, reach + 0.5f);
         SpawnCracks(at, reach, angleDeg, true);
-        Upload();
         ShadowPatch.MarkDirty(at, reach + 0.3f); // 影の中の見た目を焼き直す
         return null;
     }
@@ -104,7 +118,7 @@ internal static class DamageMap
     {
         var ship = ShipStatus.Instance;
         if (!ship) return false;
-        if (_ship == ship && _tex) return true;
+        if (_ship == ship && (_useRt ? (bool)_rt : (bool)_tex)) return true;
 
         Reset();
         _ship = ship;
@@ -132,27 +146,70 @@ internal static class DamageMap
         _w = Mathf.CeilToInt(all.size.x * PixelsPerUnit);
         _h = Mathf.CeilToInt(all.size.y * PixelsPerUnit);
         _pixels = new byte[_w * _h * 4];
-        _tex = new Texture2D(_w, _h, TextureFormat.RGBA32, false, true)
-        {
-            name = "MrpDamage",
-            wrapMode = TextureWrapMode.Clamp,
-            filterMode = FilterMode.Bilinear,
-            hideFlags = HideFlags.DontUnloadUnusedAsset,
-        };
         _gens = new byte[_w * _h];
-        _genTex = new Texture2D(_w, _h, TextureFormat.R8, false, true)
+#if ANDROID
+        // 端末のゲーム付属の libunity には CopyTexture の範囲複写が無い → 全面送信 (1 フレーム 1 回にまとめる所までは同じ)
+        _useRt = false;
+#else
+        _useRt = (SystemInfo.copyTextureSupport & UnityEngine.Rendering.CopyTextureSupport.Basic) != 0;
+#endif
+        if (_useRt)
         {
-            name = "MrpDamageGen",
-            wrapMode = TextureWrapMode.Clamp,
-            filterMode = FilterMode.Point,
-            hideFlags = HideFlags.DontUnloadUnusedAsset,
-        };
+#if !ANDROID
+            _rt = new RenderTexture(_w, _h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear)
+            {
+                name = "MrpDamage",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                useMipMap = false,
+                autoGenerateMips = false,
+                hideFlags = HideFlags.DontUnloadUnusedAsset,
+            };
+            _rt.Create();
+            _stage = new Texture2D(StagePx, StagePx, TextureFormat.RGBA32, false, true) { name = "MrpDamageStage", hideFlags = HideFlags.DontUnloadUnusedAsset };
+            _stageBuf = new byte[StagePx * StagePx * 4];
+            if (SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.R8))
+            {
+                _genRt = new RenderTexture(_w, _h, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear)
+                {
+                    name = "MrpDamageGen",
+                    wrapMode = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Point,
+                    useMipMap = false,
+                    autoGenerateMips = false,
+                    hideFlags = HideFlags.DontUnloadUnusedAsset,
+                };
+                _genRt.Create();
+                _genStage = new Texture2D(StagePx, StagePx, TextureFormat.R8, false, true) { name = "MrpDamageGenStage", hideFlags = HideFlags.DontUnloadUnusedAsset };
+                _genStageBuf = new byte[StagePx * StagePx];
+            }
+#endif
+        }
+        else
+        {
+            _tex = new Texture2D(_w, _h, TextureFormat.RGBA32, false, true)
+            {
+                name = "MrpDamage",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                hideFlags = HideFlags.DontUnloadUnusedAsset,
+            };
+        }
+        if (_genRt == null)
+            _genTex = new Texture2D(_w, _h, TextureFormat.R8, false, true)
+            {
+                name = "MrpDamageGen",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Point,
+                hideFlags = HideFlags.DontUnloadUnusedAsset,
+            };
         double tAlloc = sw.Elapsed.TotalMilliseconds;
-        Upload();
+        MarkDirtyAll();
+        Flush();
         double tUpload = sw.Elapsed.TotalMilliseconds;
 
-        Shader.SetGlobalTexture(DamageTexId, _tex);
-        Shader.SetGlobalTexture(GenTexId, _genTex);
+        Shader.SetGlobalTexture(DamageTexId, _useRt ? (Texture)_rt : _tex);
+        Shader.SetGlobalTexture(GenTexId, _genRt != null ? (Texture)_genRt : _genTex);
         Shader.SetGlobalVector(DamageRectId, new Vector4(_origin.x, _origin.y, 1f / (_w / (float)PixelsPerUnit), 1f / (_h / (float)PixelsPerUnit)));
 
         // 部屋の絵用のマテリアル (差し替えは壊れた場所の近くだけ、その時に行う)。
@@ -218,6 +275,7 @@ internal static class DamageMap
         int x1 = Math.Min(_w - 1, (int)((c.x + reach - _origin.x) * PixelsPerUnit) + 1);
         int y0 = Math.Max(0, (int)((c.y - reach - _origin.y) * PixelsPerUnit));
         int y1 = Math.Min(_h - 1, (int)((c.y + reach - _origin.y) * PixelsPerUnit) + 1);
+        MarkDirtyPx(x0, y0, x1, y1);
 
         for (int py = y0; py <= y1; py++)
         {
@@ -606,6 +664,7 @@ internal static class DamageMap
             int x1 = Math.Min(_w - 1, (int)((rc.xMax - _origin.x) * PixelsPerUnit) + 1);
             int y0 = Math.Max(0, (int)((rc.yMin - _origin.y) * PixelsPerUnit));
             int y1 = Math.Min(_h - 1, (int)((rc.yMax - _origin.y) * PixelsPerUnit) + 1);
+            MarkDirtyPx(x0, y0, x1, y1);
             for (int py = y0; py <= y1; py++)
             for (int px = x0; px <= x1; px++)
                 _pixels[(py * _w + px) * 4 + 3] = 255;
@@ -624,6 +683,7 @@ internal static class DamageMap
             int x1 = Math.Min(_w - 1, (int)((maxX - _origin.x) * PixelsPerUnit) + 1);
             int y0 = Math.Max(0, (int)((minY - _origin.y) * PixelsPerUnit));
             int y1 = Math.Min(_h - 1, (int)((maxY - _origin.y) * PixelsPerUnit) + 1);
+            MarkDirtyPx(x0, y0, x1, y1);
             for (int py = y0; py <= y1; py++)
             for (int px = x0; px <= x1; px++)
             {
@@ -633,7 +693,6 @@ internal static class DamageMap
                 _pixels[i + 3] = 255;
             }
         }
-        Upload();
     }
 
     private static bool InsideAny(List<Rect> rects, float x, float y)
@@ -699,7 +758,7 @@ internal static class DamageMap
             for (int k = 0; k < keep.Length; k++) _pixels[k * 4 + ch] = Math.Max(_pixels[k * 4 + ch], keep[k]);
             HiddenChannel[ch] = null;
         }
-        Upload();
+        MarkDirtyAll();
         return null;
     }
 
@@ -712,13 +771,80 @@ internal static class DamageMap
         return n;
     }
 
-    private static unsafe void Upload()
+    // 変わった画素の範囲 (全面の時は _dirtyAll)。書いた側が呼ぶ
+    private static void MarkDirtyPx(int x0, int y0, int x1, int y1)
+    {
+        x0 = Math.Max(0, x0); y0 = Math.Max(0, y0); x1 = Math.Min(_w - 1, x1); y1 = Math.Min(_h - 1, y1);
+        if (x1 < x0 || y1 < y0) return;
+        if (!_dirty) { _dx0 = x0; _dy0 = y0; _dx1 = x1; _dy1 = y1; _dirty = true; return; }
+        _dx0 = Math.Min(_dx0, x0); _dy0 = Math.Min(_dy0, y0); _dx1 = Math.Max(_dx1, x1); _dy1 = Math.Max(_dy1, y1);
+    }
+
+    private static void MarkDirtyAll() { _dirtyAll = true; _dirty = true; }
+
+    // 溜めた範囲を GPU へ送る。描画の前 (LateUpdate) と、影の焼き (カメラで描く) の前に呼ぶ
+    internal static void Flush()
+    {
+        if (_pixels == null) return;
+        // 端末で画面が消えて戻ると RenderTexture の中身が失われる → 時々確かめて全面を送り直す
+#if !ANDROID
+        if (_useRt && (++_flushPolls & 63) == 0 && !_rt.IsCreated()) MarkDirtyAll();
+#endif
+        if (!_dirty) return;
+        _dirty = false;
+        Flushes++;
+        if (!_useRt) { UploadFull(); return; }
+#if !ANDROID
+        if (!_rt.IsCreated()) _rt.Create();
+        if (_genRt != null && !_genRt.IsCreated()) _genRt.Create();
+        int x0 = _dirtyAll ? 0 : _dx0, y0 = _dirtyAll ? 0 : _dy0, x1 = _dirtyAll ? _w - 1 : _dx1, y1 = _dirtyAll ? _h - 1 : _dy1;
+        _dirtyAll = false;
+        for (int y = y0; y <= y1; y += StagePx)
+        for (int x = x0; x <= x1; x += StagePx)
+            CopyChunk(x, y, Math.Min(StagePx, x1 - x + 1), Math.Min(StagePx, y1 - y + 1));
+        if (_genRt == null) UploadGenFull();
+#endif
+    }
+
+#if !ANDROID
+    // 中継の絵の左下 w×h に写して、GPU 側で RenderTexture の同じ場所へ複写する
+    private static unsafe void CopyChunk(int x, int y, int w, int h)
+    {
+        for (int row = 0; row < h; row++)
+            Buffer.BlockCopy(_pixels, ((y + row) * _w + x) * 4, _stageBuf, row * StagePx * 4, w * 4);
+        fixed (byte* p = _stageBuf) _stage.LoadRawTextureData((IntPtr)p, _stageBuf.Length);
+        _stage.Apply(false, false);
+        Graphics.CopyTexture(_stage, 0, 0, 0, 0, w, h, _rt, 0, 0, x, y);
+        long bytes = (long)w * h * 4;
+        if (_genRt != null)
+        {
+            for (int row = 0; row < h; row++)
+                Buffer.BlockCopy(_gens, (y + row) * _w + x, _genStageBuf, row * StagePx, w);
+            fixed (byte* p = _genStageBuf) _genStage.LoadRawTextureData((IntPtr)p, _genStageBuf.Length);
+            _genStage.Apply(false, false);
+            Graphics.CopyTexture(_genStage, 0, 0, 0, 0, w, h, _genRt, 0, 0, x, y);
+            bytes += (long)w * h;
+        }
+        FlushBytes += bytes;
+        Bridge.Perf.Upload(bytes);
+    }
+#endif
+
+    private static unsafe void UploadFull()
     {
         fixed (byte* p = _pixels) _tex.LoadRawTextureData((IntPtr)p, _pixels.Length);
         _tex.Apply(false, false);
+        FlushBytes += _pixels.Length;
+        Bridge.Perf.Upload(_pixels.Length);
+        UploadGenFull();
+    }
+
+    private static unsafe void UploadGenFull()
+    {
         fixed (byte* p = _gens) _genTex.LoadRawTextureData((IntPtr)p, _gens.Length);
         _genTex.Apply(false, false);
-        Bridge.Perf.Upload(_pixels.Length + _gens.Length);
+        FlushBytes += _gens.Length;
+        Bridge.Perf.Upload(_gens.Length);
     }
 
     // 抜いた穴の向こうには床が無い (部屋と部屋の間は船体と宇宙) ので、部屋の絵より奥に瓦礫の床を敷く
@@ -908,6 +1034,12 @@ internal static class DamageMap
         if (_genTex) UnityEngine.Object.Destroy(_genTex);
         _genTex = null;
         _gens = null;
+        if (_rt) { _rt.Release(); UnityEngine.Object.Destroy(_rt); }
+        if (_genRt) { _genRt.Release(); UnityEngine.Object.Destroy(_genRt); }
+        if (_stage) UnityEngine.Object.Destroy(_stage);
+        if (_genStage) UnityEngine.Object.Destroy(_genStage);
+        _rt = null; _genRt = null; _stage = null; _genStage = null; _stageBuf = null; _genStageBuf = null;
+        _dirty = false; _dirtyAll = false; _useRt = false;
         _gen = 0;
         GenWrapped = false;
         _ship = null;

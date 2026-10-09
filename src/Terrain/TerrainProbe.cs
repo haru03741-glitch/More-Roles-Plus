@@ -739,12 +739,13 @@ internal static class TerrainProbe
             reply($"OK shadowcam shadozer={(sc && sc.Shadozer ? sc.Shadozer.name : "-")} clear={cam.clearFlags} bg={cam.backgroundColor} target={(cam.targetTexture ? cam.targetTexture.name : "-")}");
         });
 
-        TestBridge.Register("shadowpatch", "[0|1|now] 影の中の壊れた所の焼いた絵を作るか (0 = 作らない・直す前の見え方)・now = 溜まった分を今焼く。引数なしで状態", (args, reply) =>
+        TestBridge.Register("shadowpatch", "[0|1|now|reset] 影の中の壊れた所の焼いた絵を作るか (0 = 作らない・直す前の見え方)・now = 溜まった分を今焼く。引数なしで状態と焼き 1 升の内訳 (reset = 内訳を消す)", (args, reply) =>
         {
             string a = args.Trim();
             if (a == "now") { reply($"OK shadowpatch flushed={ShadowPatch.FlushAll()} tiles={ShadowPatch.TileCount}"); return; }
-            if (a.Length > 0) ShadowPatch.Enabled = a != "0";
-            reply($"OK shadowpatch {(ShadowPatch.Enabled ? 1 : 0)} tiles={ShadowPatch.TileCount} baked={ShadowPatch.BakedTotal}");
+            if (a == "reset") { ShadowPatch.ResetBreakdown(); reply("OK shadowpatch reset"); return; }
+            if (a.Length > 0) { ShadowPatch.Enabled = a != "0"; if (!ShadowPatch.Enabled) ShadowPatch.Clear(); } // 0 は焼いてある升も消す (直す前の見え方と比べる)
+            reply($"OK shadowpatch {(ShadowPatch.Enabled ? 1 : 0)} tiles={ShadowPatch.TileCount} baked={ShadowPatch.BakedTotal} {ShadowPatch.Breakdown()}");
         });
 
         TestBridge.Register("solidmap", "[x y r] 歩ける所の地図の状態。範囲を渡すと Screens/solid.ppm に書く (白 = 歩ける・灰 = 船体の塊・紺 = 船の外・黒 = それ以外)", (args, reply) =>

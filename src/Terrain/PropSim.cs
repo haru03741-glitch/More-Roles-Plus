@@ -633,8 +633,9 @@ internal static class PropSim
                     var now = FxMath.V2(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
                     float r = Math.Max(b0.width, b0.height) * 0.5f + FurnitureLift.Pad;
                     Settled.Add((b0.center, now, r, Environment.TickCount64 + FurnitureSettleMs));
-                    ShadowPatch.MarkDirty(b0.center, r);
-                    ShadowPatch.MarkDirty(now, r);
+                    ShadowPatch.NoteMoved(p.Tr);
+                    ShadowPatch.MarkDirtyLater(b0.center, r);
+                    ShadowPatch.MarkDirtyLater(now, r);
                 }
                 else Rebake(p);
             }
