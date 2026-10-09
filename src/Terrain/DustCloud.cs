@@ -112,7 +112,7 @@ internal static class DustCloud
 
     private static void Add(in ResolvedDamage r)
     {
-        if (r.Kind == DamageKind.Push || !ShipStatus.Instance || MeetingHud.Instance) return;
+        if (!r.Kind.Shapes() || !ShipStatus.Instance || MeetingHud.Instance) return;
         long now = Environment.TickCount64;
         while (Recent.Count > 0 && now - Recent.Peek() > BurstWindowMs) Recent.Dequeue();
         if (Recent.Count >= MaxClouds) { Last = "dropped (burst)"; return; }

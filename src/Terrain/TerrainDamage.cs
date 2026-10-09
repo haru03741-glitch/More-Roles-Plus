@@ -29,7 +29,7 @@ internal static class TerrainDamage
         why = null;
         SolidMap.Ensure(); // 壁を切る前に歩ける所の地図を作っておく
         var p = DamageProfile.Of(e.Kind);
-        if (e.Kind == DamageKind.Explosion || e.Kind == DamageKind.Push)
+        if (e.Kind == DamageKind.Explosion || e.Kind == DamageKind.Push || e.Kind.IsFire())
         {
             r = new ResolvedDamage(e.Kind, TerrainWire.Q(e.Position), Vector2.zero, TerrainWire.QNormal(e.Direction),
                 TerrainWire.QForce(e.Force), TerrainWire.QSize(e.Size), 0, e.Seed);
@@ -133,6 +133,8 @@ internal static class TerrainDamage
             DamageKind.Explosion => Explode(r, profile, given, ref landings),
             DamageKind.Blunt => Strike(r, profile, given, ref landings),
             DamageKind.Push => "push", // 地形は変えない (水と小物は TerrainSync の受け手が押す)
+            DamageKind.Ignite => "ignite", // 地形は変えない (火は TerrainSync の受け手が入れる)
+            DamageKind.Spill => "spill",
             _ => "unknown kind",
         };
     }

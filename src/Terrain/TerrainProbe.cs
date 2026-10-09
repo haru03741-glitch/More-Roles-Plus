@@ -50,6 +50,7 @@ internal static class TerrainProbe
         DustCloud.Register();
         WaterLeak.Register();
         WaterSim.Register();
+        FireFx.Register();
         PropSim.Register();
         Decompression.Register();
         CrewGrip.Register();

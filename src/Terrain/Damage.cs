@@ -7,6 +7,15 @@ public enum DamageKind : byte
     Explosion = 1, // 爆発 (ロケットランチャーなど): 円の範囲の壁をまとめて抜き、外側の輪にはひびを入れる
     Blunt = 2,     // 打撃 (ハンマーなど): 叩いた壁 1 枚に耐久ダメージ。0 になった所だけ四角く抜ける
     Push = 3,      // 押し (反動・衝撃波など): 壁は壊さない。起点から向きの先の扇形の中の水と小物を押す
+    Ignite = 4,    // 点火: 壁は壊さない。円の中の床に熱を足す (燃える物があれば燃え始める)
+    Spill = 5,     // 油をまく: 壁は壊さない。円の中の床を油にする
+}
+
+internal static class DamageKinds
+{
+    // 地形 (壁) を変える種類か。押し・点火・油は水と火と小物だけに効く
+    public static bool Shapes(this DamageKind k) => k == DamageKind.Explosion || k == DamageKind.Blunt;
+    public static bool IsFire(this DamageKind k) => k == DamageKind.Ignite || k == DamageKind.Spill;
 }
 
 // 1 回の破壊の依頼 (武器・役職から TerrainSync.Request へ渡す)。ホストが ResolvedDamage に決めて全員へ配る

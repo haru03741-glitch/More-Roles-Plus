@@ -194,7 +194,7 @@ internal static class WaterSim
 
     private static void Enqueue(in ResolvedDamage r)
     {
-        if (!_running) return;
+        if (!_running || r.Kind.IsFire()) return;
         int tick = GameClock.Expand(r.Tick);
         float rad = r.Kind == DamageKind.Explosion ? r.Size + 0.6f : 2f;
         int cx = (int)MathF.Floor((r.Position.x - _org.x) / _cell), cy = (int)MathF.Floor((r.Position.y - _org.y) / _cell);
@@ -226,6 +226,25 @@ internal static class WaterSim
             if (reach > p.R) p.R = reach;
         }
         Enqueue(p);
+    }
+
+    // 火 (FireSim) から: 升を用意して刻みを回し始める (水が無くても火は水の升と刻みで動く)
+    internal static bool Begin(int tick)
+    {
+        if (!EnsureGrid()) return false;
+        if (!_running) { _running = true; _step = StartStep(tick); }
+        return true;
+    }
+
+    // 火の熱で升の水を減らす (湯気)。減らした量
+    internal static int Evaporate(int k, int amount)
+    {
+        int h = _hgt[k];
+        if (amount > h) amount = h;
+        if (amount <= 0) return 0;
+        _hgt[k] = h - amount;
+        Mark(k);
+        return amount;
     }
 
     // 漏れ (WaterLeak から)。at = 壊れた壁の線の上・n = 噴く側の法線・both = 両側へ

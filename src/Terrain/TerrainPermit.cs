@@ -18,8 +18,10 @@ public readonly struct TerrainPermit
     public readonly float BlastCooldown;
     public readonly float BombRadius;  // 0 = 置けない (導火線の後に爆発する爆弾)
     public readonly float BombCooldown;
+    public readonly float FireRadius;  // 0 = 火を付けられない・油をまけない
+    public readonly float FireCooldown;
 
-    private TerrainPermit(bool hammer, float hammerCd, float blast, float blastCd, float bomb, float bombCd)
+    private TerrainPermit(bool hammer, float hammerCd, float blast, float blastCd, float bomb, float bombCd, float fire = 0f, float fireCd = 0f)
     {
         Hammer = hammer;
         HammerCooldown = hammerCd;
@@ -27,18 +29,23 @@ public readonly struct TerrainPermit
         BlastCooldown = blastCd;
         BombRadius = Math.Clamp(bomb, 0f, MaxRadius);
         BombCooldown = bombCd;
+        FireRadius = Math.Clamp(fire, 0f, MaxFireRadius);
+        FireCooldown = fireCd;
     }
+
+    public const float MaxFireRadius = 2f;
 
     public static readonly TerrainPermit None = default;
 
     // 練習・フリープレイ: 何でも使える (待ち時間はボタンと各武器の決まりに任せる)
-    public static readonly TerrainPermit All = new(true, 0f, MaxRadius, 0f, MaxRadius, 0f);
+    public static readonly TerrainPermit All = new(true, 0f, MaxRadius, 0f, MaxRadius, 0f, MaxFireRadius, 0f);
 
-    public TerrainPermit WithHammer(float cooldown = 0f) => new(true, cooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown);
-    public TerrainPermit WithBlast(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, radius, cooldown, BombRadius, BombCooldown);
-    public TerrainPermit WithBomb(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, radius, cooldown);
+    public TerrainPermit WithHammer(float cooldown = 0f) => new(true, cooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, FireRadius, FireCooldown);
+    public TerrainPermit WithBlast(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, radius, cooldown, BombRadius, BombCooldown, FireRadius, FireCooldown);
+    public TerrainPermit WithBomb(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, radius, cooldown, FireRadius, FireCooldown);
+    public TerrainPermit WithFire(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, radius, cooldown);
 
-    public bool Any => Hammer || BlastRadius > 0f || BombRadius > 0f;
+    public bool Any => Hammer || BlastRadius > 0f || BombRadius > 0f || FireRadius > 0f;
 }
 
 // 壊し方の種類 (待ち時間を別々に数える単位)
@@ -48,6 +55,7 @@ public enum TerrainUse : byte
     Blast,
     Bomb,
     Push,   // 押し: 地形は変えないので役職を問わない (依頼の数の上限だけ)
+    Fire,   // 点火・油をまく
 }
 
 // その人が今壊してよいか。自分の端末 (使う前) とホスト (客の依頼を受ける時) の両方で同じ判定をする。
@@ -93,6 +101,11 @@ internal static class TerrainPermits
                 break;
             case TerrainUse.Push:
                 return null;
+            case TerrainUse.Fire:
+                if (p.FireRadius <= 0f) return "no fire";
+                if (radius > TerrainWire.QSize(p.FireRadius) + 0.01f) return $"fire too large {radius:0.0}>{p.FireRadius:0.0}";
+                cooldown = p.FireCooldown;
+                break;
             case TerrainUse.Blast:
                 if (p.BlastRadius <= 0f) return "no blast";
                 if (radius > TerrainWire.QSize(p.BlastRadius) + 0.01f) return $"blast too large {radius:0.0}>{p.BlastRadius:0.0}";
@@ -118,7 +131,7 @@ internal static class TerrainPermits
         LastUse[Key(playerId, use)] = Time.time;
     }
 
-    private static int Key(byte playerId, TerrainUse use) => playerId * 4 + (int)use;
+    private static int Key(byte playerId, TerrainUse use) => playerId * 8 + (int)use;
 
     // 試合の船が替わったら待ち時間を忘れる
     private static void Reset()
@@ -137,6 +150,7 @@ internal static class TerrainPermits
     {
         DamageKind.Blunt => TerrainUse.Hammer,
         DamageKind.Push => TerrainUse.Push,
+        DamageKind.Ignite or DamageKind.Spill => TerrainUse.Fire,
         _ => TerrainUse.Blast,
     };
 }

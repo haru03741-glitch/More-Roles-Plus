@@ -2,7 +2,7 @@ using System;
 
 namespace MoreRolesPlus.Terrain;
 
-// 刻みで動く計算 (減圧・物・水) を 1 刻みずつ揃えて進める。刻み s では 減圧 → 物の確定 → 水 の順に進め、
+// 刻みで動く計算 (減圧・物・水・火) を 1 刻みずつ揃えて進める。刻み s では 減圧 → 物の確定 → 水 → 火 の順に進め、
 // 物と水は同じ刻み s の後の気圧と流れを読む。別々に追いつかせると、1 フレームに進める刻みの数が端末ごとに違う時に
 // 先の刻みの流れを読んでしまい、全員の結果がずれる
 internal static class TerrainStep
@@ -17,8 +17,13 @@ internal static class TerrainStep
             Decompression.CheckShip();
             PropSim.CheckShip();
             WaterSim.Tick();
+            FireSim.Tick();
             WaterSim.Spilled.Clear();
             WaterSim.Falls.Clear();
+            FireSim.Steam.Clear();
+            FireSim.FlareFx.Clear();
+            FireSim.Arcs.Clear();
+            FireSim.BurntOut.Clear();
             if (_failedGen == GameClock.ShipGen) return;
             int target = GameClock.Now - WaterSim.Delay;
             // 物と水の刻みが違う間は 1 回に片方しか進まないので、回数は 2 倍まで (どれも 1 フレーム 20 刻みまで)
@@ -31,7 +36,7 @@ internal static class TerrainStep
                 if (s >= target) break;
                 Decompression.StepThrough(s);
                 if (prop && PropSim.AuthStep == s) PropSim.AdvanceAuth();
-                if (water && WaterSim.Step == s) WaterSim.AdvanceOne();
+                if (water && WaterSim.Step == s) { WaterSim.AdvanceOne(); FireSim.AdvanceOne(s); }
             }
         }
         catch (Exception e)

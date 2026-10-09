@@ -117,6 +117,37 @@ public static class TerrainApi
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
 
+    // 火を付ける (火炎瓶・火炎放射など): pos の半径 radius の床に熱を足す。heat 0..1 = 強さ (1 = 金属の床の塗装まで一瞬燃える)。
+    // 燃え広がるかは床の材質次第 (木・草・油・配線はよく燃え、金属の床は燃えない)
+    public static TerrainResult Ignite(Vector2 pos, float radius, float heat = 1f) => Fire(DamageKind.Ignite, pos, radius, heat);
+
+    // 油をまく: pos の半径 radius の床を油にする (amount 0..1)。火が付くとよく燃え、水を掛けると噴き上がる
+    public static TerrainResult Spill(Vector2 pos, float radius, float amount = 1f) => Fire(DamageKind.Spill, pos, radius, amount);
+
+    private static TerrainResult Fire(DamageKind kind, Vector2 pos, float radius, float force)
+    {
+        radius = Math.Clamp(radius, 0.1f, TerrainSync.MaxFireRadius);
+        if (!Local(TerrainUse.Fire, radius, out var lp, out string why)) return TerrainResult.Fail(why);
+        Vector2 me = lp.GetTruePosition();
+        float dx = pos.x - me.x, dy = pos.y - me.y;
+        if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
+            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+        string res = TerrainSync.Request(new DamageEvent(kind, pos, Vector2.zero, radius, Math.Clamp(force, 0f, 1f), Seed()), out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
+    // プレイヤーでない火と油 (ホストと一人の時だけ・燃える仕掛けなど)
+    public static TerrainResult WorldIgnite(Vector2 pos, float radius, float heat = 1f) => WorldFire(DamageKind.Ignite, pos, radius, heat);
+    public static TerrainResult WorldSpill(Vector2 pos, float radius, float amount = 1f) => WorldFire(DamageKind.Spill, pos, radius, amount);
+
+    private static TerrainResult WorldFire(DamageKind kind, Vector2 pos, float radius, float force)
+    {
+        if (TerrainSync.IsGuest()) return TerrainResult.Fail("host only");
+        radius = Math.Clamp(radius, 0.1f, TerrainSync.MaxFireRadius);
+        string res = TerrainSync.RequestAs(new DamageEvent(kind, pos, Vector2.zero, radius, Math.Clamp(force, 0f, 1f), Seed()), World, out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
     private static bool Local(TerrainUse use, float radius, out PlayerControl lp, out string why)
     {
         lp = PlayerControl.LocalPlayer;

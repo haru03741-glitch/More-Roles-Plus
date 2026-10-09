@@ -14,6 +14,11 @@
 #   noise_bump_small_1..3   … 小物が壁や床に当たる
 #   noise_bump_heavy_1..2   … 重い家具が壁に当たる
 #   noise_bump_clash_1..2   … 家具どうしがぶつかる
+#   noise_fire_loop         … 燃えている火 (継ぎ目なしのループ・ごうごうと鳴る炎とぱちぱちはぜる音)
+#   noise_fire_ignite       … 火が付いた瞬間 (ぼっ)
+#   noise_steam             … 火に水が掛かって湯気になる (じゅうっ)
+#   noise_flare             … 油の火に水が掛かって噴き上がる
+#   noise_arc               … 濡れた配線の火花 (ばちばち)
 #   それぞれ <名前>_m       … 遠い・壁越しのこもった音 (16kHz)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
 #   python tools/make-break-sounds.py   (numpy と scipy が要る)
@@ -686,6 +691,59 @@ def bump_clash():
     return room(out, 0.45, 2200, 0.2)
 
 
+def fire_loop():
+    # 燃える火 (4.0s ループ): 低くうねる炎 + 中域の揺らぎ + ぱちぱち (継ぎ目の手前ではぜさせない)
+    dur = 4.0
+    n, t = T(dur)
+    roar = pnoise(n, lambda f: band(f, 50, 700, 0.8) / (1 + f / 160))
+    flutter = pnoise(n, lambda f: band(f, 700, 3000, 0.7))
+    roar *= 1 + 0.3 * plfo(t, dur, 3) + 0.15 * plfo(t, dur, 8, 1.3)
+    flutter *= 0.6 + 0.4 * (0.5 + 0.5 * plfo(t, dur, 13, 0.4)) * (0.5 + 0.5 * plfo(t, dur, 5, 2.1))
+    pops = grains(n, 9, 1500, 6500, dur=0.012, tau=0.003, t0=0.03, t1=dur - 0.05)
+    crackle = grains(n, 40, 2500, 9000, dur=0.006, tau=0.0015, t0=0.02, t1=dur - 0.03)
+    return 1.0 * roar + 0.3 * flutter + 1.2 * pops + 0.5 * crackle
+
+
+def fire_ignite():
+    # 火が付く (0.9s): 空気を吸い込むぼっ + 炎の立ち上がり
+    n, t = T(0.9)
+    whump = lp(noise(n), 260) * np.minimum(1, t / 0.03) * np.exp(-t / 0.18)
+    sub = np.sin(sweep(t, 90, 45, 0.15)) * np.exp(-t / 0.12)
+    rise = bp(noise(n), 300, 3500) * np.minimum(1, t / 0.08) * np.exp(-t / 0.35)
+    pops = grains(n, 25, 1500, 6000, dur=0.01, tau=0.0025, t0=0.05, t1=0.8, shape=lambda u: 1 - u)
+    return 1.2 * whump + 0.7 * sub + 0.5 * rise + 0.6 * pops
+
+
+def steam():
+    # 湯気 (1.0s): 熱い所に水が触れたじゅうっ + 細かい泡のはぜ
+    n, t = T(1.0)
+    hiss = bp(noise(n), 2200, 9500) * np.minimum(1, t / 0.015) * np.exp(-t / 0.35)
+    hiss *= 0.8 + 0.2 * lp(noise(n), 30) * 8
+    sizzle = grains(n, 160, 3000, 9000, dur=0.004, tau=0.001, t0=0.0, t1=0.8, shape=lambda u: (1 - u) ** 1.5)
+    return hiss + 0.5 * sizzle
+
+
+def flare():
+    # 噴き上がり (1.4s): 水が一気に沸くばしゅっ → 炎の柱のごおっ
+    n, t = T(1.4)
+    burst = bp(noise(n), 1200, 9000) * np.minimum(1, t / 0.006) * np.exp(-t / 0.08)
+    whoosh = lp(noise(n), 900) * np.minimum(1, t / 0.06) * np.exp(-t / 0.4)
+    sub = np.sin(sweep(t, 80, 38, 0.25)) * np.exp(-t / 0.22)
+    roar = jet(bp(noise(n), 150, 2500), rate=1.3) * np.minimum(1, t / 0.1) * np.exp(-t / 0.5)
+    pops = grains(n, 45, 1500, 7000, dur=0.01, tau=0.0025, t0=0.05, t1=1.2, shape=lambda u: 1 - u)
+    return 0.9 * burst + 1.0 * whoosh + 0.8 * sub + 0.7 * roar + 0.5 * pops
+
+
+def arc():
+    # 火花 (0.45s): 120Hz のうなり (途切れ途切れ) + 鋭いばちばち
+    n, t = T(0.45)
+    buzz = sawtooth(2 * np.pi * 120 * t) * 0.6 + sawtooth(2 * np.pi * 240 * t + 0.3) * 0.3
+    gate = (lp(noise(n), 40) > 0).astype(float)
+    buzz = bp(buzz, 100, 3000) * lp(gate, 200, order=1) * np.exp(-t / 0.25)
+    snaps = grains(n, 60, 3000, 12000, dur=0.003, tau=0.0007, t0=0.0, t1=0.4, shape=lambda u: 1 - u)
+    return 0.6 * buzz + 1.0 * snaps
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     emit('noise_boom', boom, drive=2.4)
@@ -710,3 +768,8 @@ if __name__ == '__main__':
     for i in range(1, 3):
         emit(f'noise_bump_heavy_{i}', bump_heavy, peak=0.9, drive=1.8, ratio=0.35)
         emit(f'noise_bump_clash_{i}', bump_clash, peak=0.9, drive=1.8, ratio=0.35)
+    emit_loop('noise_fire_loop', fire_loop, peak=0.75)
+    emit('noise_fire_ignite', fire_ignite, peak=0.85, drive=1.8, ratio=0.35)
+    emit('noise_steam', steam, peak=0.75, drive=1.6, ratio=0.3)
+    emit('noise_flare', flare, peak=0.95, drive=2.0)
+    emit('noise_arc', arc, peak=0.7, drive=1.6, ratio=0.3)

@@ -87,7 +87,7 @@ internal static class BreakNoise
     private static void EmitCore(in ResolvedDamage r)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (r.Kind == DamageKind.Push || !lp || !ShipStatus.Instance || MeetingHud.Instance) return;
+        if (!r.Kind.Shapes() || !lp || !ShipStatus.Instance || MeetingHud.Instance) return;
         long now = Environment.TickCount64;
         while (Recent.Count > 0 && now - Recent.Peek() > BurstWindowMs) Recent.Dequeue();
         if (Recent.Count >= BurstLimit) { Dropped++; return; }

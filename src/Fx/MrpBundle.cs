@@ -15,10 +15,12 @@ internal static class MrpBundle
     private const string ResourceName = "MoreRolesPlus.Resources.Bundles.mrp_fx.bundle";
     private const string TerrainMatPath = "assets/generated/terrain.mat";
     private const string WaterMatPath = "assets/generated/water.mat";
+    private const string FireFloorMatPath = "assets/generated/firefloor.mat";
+    private const string FlameMatPath = "assets/generated/flame.mat";
 
     private static AssetBundle _bundle;
-    private static AssetBundleRequest _terrainReq, _waterReq;
-    private static bool _failed, _waterFailed;
+    private static AssetBundleRequest _terrainReq, _waterReq, _fireFloorReq, _flameReq;
+    private static bool _failed, _waterFailed, _fireFailed;
 
     // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音 (BreakNoise と DecompSound が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
     private static readonly string[] ClipNames = MakeClipNames();
@@ -35,6 +37,7 @@ internal static class MrpBundle
             "noise_decomp_breach", "noise_decomp_loop", "noise_decomp_whistle", "noise_decomp_seal",
             "noise_bump_small_1", "noise_bump_small_2", "noise_bump_small_3",
             "noise_bump_heavy_1", "noise_bump_heavy_2", "noise_bump_clash_1", "noise_bump_clash_2",
+            "noise_fire_loop", "noise_fire_ignite", "noise_steam", "noise_flare", "noise_arc",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {
@@ -52,6 +55,8 @@ internal static class MrpBundle
 
     public static Material TerrainMaterial { get; private set; }
     public static Material WaterMaterial { get; private set; }
+    public static Material FireFloorMaterial { get; private set; }
+    public static Material FlameMaterial { get; private set; }
 
     public static bool Ready => TerrainMaterial;
 
@@ -62,6 +67,7 @@ internal static class MrpBundle
         if (TerrainMaterial)
         {
             if (!WaterMaterial && !_waterFailed) TickWater();
+            else if (!FlameMaterial && !_fireFailed) TickFire();
             if (_clipsLeft > 0) TickClips();
             return;
         }
@@ -102,6 +108,25 @@ internal static class MrpBundle
             Plugin.Logger.LogInfo($"bundle water: shader={mat.shader.name} supported={mat.shader.isSupported}");
         }
         catch (Exception e) { Plugin.Logger.LogError($"bundle water: {e}"); _waterFailed = true; }
+    }
+
+    private static void TickFire()
+    {
+        try
+        {
+            _fireFloorReq ??= _bundle.LoadAssetAsync(FireFloorMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            _flameReq ??= _bundle.LoadAssetAsync(FlameMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_fireFloorReq.isDone || !_flameReq.isDone) return;
+            var floor = _fireFloorReq.asset ? _fireFloorReq.asset.TryCast<Material>() : null;
+            var flame = _flameReq.asset ? _flameReq.asset.TryCast<Material>() : null;
+            if (!floor || !flame) { Plugin.Logger.LogError("bundle asset not found: fire materials"); _fireFailed = true; return; }
+            floor.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            flame.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            FireFloorMaterial = floor;
+            FlameMaterial = flame;
+            Plugin.Logger.LogInfo($"bundle fire: shader={flame.shader.name} supported={flame.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle fire: {e}"); _fireFailed = true; }
     }
 
     private static void TickClips()
