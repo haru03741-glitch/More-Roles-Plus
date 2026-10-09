@@ -407,7 +407,7 @@ internal static class TerrainDamage
         {
             var (p, q) = LastMouths[i];
             WallBody.BuildMouth(p, q);
-            if (SolidMap.BreachableHull) HullThroat.Open(p, q, LastMouthAway[i]); // スケルド: 口の奥の船体の絵を宇宙まで抜く
+            HullThroat.Open(p, q, LastMouthAway[i]); // 口の奥の船体の絵を宇宙 (エアシップは空) まで抜く
         }
     }
 

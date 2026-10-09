@@ -503,6 +503,15 @@ internal static class DamageMap
         return _pixels[(py * _w + px) * 4] / 255f;
     }
 
+    // その点の穴の値 (0..255)。地図の外・地図が無ければ 0
+    internal static byte HoleByteAt(float x, float y)
+    {
+        if (_pixels == null) return 0;
+        int px = (int)((x - _origin.x) * PixelsPerUnit), py = (int)((y - _origin.y) * PixelsPerUnit);
+        if (px < 0 || py < 0 || px >= _w || py >= _h) return 0;
+        return _pixels[(py * _w + px) * 4];
+    }
+
     // テスト用: その点の損傷マスクの RGBA (0..255)
     internal static string MaskAt(Vector2 p)
     {

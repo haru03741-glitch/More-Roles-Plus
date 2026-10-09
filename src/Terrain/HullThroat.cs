@@ -4,8 +4,9 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
 
-// スケルドの外壁が宇宙へ抜けた穴の「喉」: 口 (元の壁の線) から宇宙まで、船体の絵 (Hull* のメッシュ) を切り抜いて後ろの星空を見せる。
-// 船体のメッシュは複製して名前が Hull で始まらない子に載せ、元の描画だけ止める (歩ける所の地図は元のメッシュから作るので変えない)。
+// 外壁が宇宙/空へ抜けた穴の「喉」: 口 (元の壁の線) から宇宙まで、船体の絵を切り抜いて後ろの星空 (エアシップは空と雲) を見せる。
+// スケルドの船体は Hull* のメッシュ、エアシップの船体は部屋の絵と同じ扱いの HullBlock の板 (損傷マスクで抜けるので切るのはマスクだけ)。
+// スケルドの船体のメッシュは複製して名前が Hull で始まらない子に載せ、元の描画だけ止める (歩ける所の地図は元のメッシュから作るので変えない)。
 // 切り口には本編の絵柄と同じ濃い輪郭線を同じメッシュに頂点色で足す。部屋の絵の壁の帯は損傷マスク (R と A) で抜く。
 // 穴が開いた時に 1 回だけ動く (毎フレームの処理は無い)。見た目だけで同期はしない (全員が同じ口から同じ形を作る)
 internal static class HullThroat
@@ -14,6 +15,11 @@ internal static class HullThroat
     private const float FloorStop = 0.2f;   // 喉の先に別の部屋の床がある時に手前で止める余白
     private const float Outline = 0.055f;   // 切り口の輪郭線の太さ
     private const float SampleStep = 0.1f;  // 口に沿って深さを測る間隔
+    // エアシップ: 船体は空まで 9〜13 単位あるので空までは抜かない。口の外の船体に浅く広い穴を開けて真下の空と雲を見せる (開通も厚みを見ずに決めている)
+    private const float CraterDepth = 2.4f; // 口から外向きの深さ (種で ±0.4)
+    private const float CraterFlare = 0.45f; // 奥の端を口の両端より左右へ広げる幅
+    internal const float CraterReach = CraterDepth + 0.4f + 0.4f; // 穴のいちばん奥 (深さのばらつき + 奥の縁の欠け)。泡はここまで詰める
+    internal const float CraterSide = CraterFlare + 0.45f;         // 口の両端より外へ穴が広がる最大 (広げた分 + 脇の欠け)
     private static readonly Color32 OutlineColor = new(22, 22, 24, 255);
 
     private struct P
@@ -39,8 +45,9 @@ internal static class HullThroat
     private static readonly List<P[]> Opened = new(); // 開けた喉の塊 (世界座標・反時計回り)
     private static int _shipGen = -1;
     private static bool _failed;
+    private static float _craterZ = float.NaN; // エアシップ: 穴を開けた船体の板の奥行き
 
-    // 口 a-b (外向き away) の奥を宇宙まで抜く。TerrainDamage が口を張った直後に呼ぶ (スケルドだけ)
+    // 口 a-b (外向き away) の奥を宇宙まで抜く。TerrainDamage が口を張った直後に呼ぶ (スケルドとエアシップ)
     internal static void Open(Vector2 a, Vector2 b, Vector2 away)
     {
         try { OpenCore(a, b, away); }
@@ -65,6 +72,7 @@ internal static class HullThroat
             Cuts.Clear();
             Opened.Clear();
             _failed = false;
+            _craterZ = float.NaN;
         }
         if (_failed || !ShipStatus.Instance) return;
         float nx = away.x, ny = away.y, nl = MathF.Sqrt(nx * nx + ny * ny);
@@ -82,7 +90,7 @@ internal static class HullThroat
         for (int i = 0; i < n; i++)
         {
             float t = i / (float)(n - 1);
-            float d = SolidMap.SkyDistance(ax + (bx - ax) * t, ay + (by - ay) * t, nx, ny, TerrainDamage.HullReach + 1f);
+            float d = SolidMap.SkyDistance(ax + (bx - ax) * t, ay + (by - ay) * t, nx, ny, TerrainDamage.BreachReach + 1f);
             if (d < 0f) d = MathF.Max(0f, -d - FloorStop);
             else if (d > 0f) d += Margin;
             depth = MathF.Max(depth, d);
@@ -92,6 +100,12 @@ internal static class HullThroat
         // 喉 = 口から外向きに少しすぼまる台形 + 両脇のちぎれた欠け。種は口の座標から (全員で同じ形)
         var rnd = new System.Random((int)(ax * 977f) ^ (int)(ay * 613f) * 31 ^ (int)(bx * 389f) * 17 ^ (int)(by * 211f));
         float pinch = MathF.Min(len * 0.18f, 0.3f); // 宇宙側の端は左右これだけ内側
+        bool crater = !SolidMap.BreachableHull; // エアシップ: 奥の端も船体の中なので、広がる形にして奥の縁もちぎる
+        if (crater)
+        {
+            depth = MathF.Min(depth, CraterDepth + ((float)rnd.NextDouble() - 0.5f) * 0.8f);
+            pinch = -MathF.Min(CraterFlare, 0.25f + len * 0.2f);
+        }
         var holes = new List<P[]>
         {
             new[]
@@ -123,18 +137,43 @@ internal static class HullThroat
                 along += w * (0.55f + (float)rnd.NextDouble() * 0.5f);
             }
         }
+        if (crater)
+        {
+            // 奥の縁 (船体の中) にも外向きの三角の欠け
+            float fx0 = ax + nx * depth + ux * pinch, fy0 = ay + ny * depth + uy * pinch;
+            float span = len - 2f * pinch;
+            float along = 0.05f + (float)rnd.NextDouble() * 0.1f;
+            while (along < span)
+            {
+                float ex = fx0 + ux * along, ey = fy0 + uy * along;
+                float w = 0.15f + (float)rnd.NextDouble() * 0.35f;
+                float h = 0.08f + (float)rnd.NextDouble() * 0.3f;
+                float tip = ((float)rnd.NextDouble() - 0.5f) * w * 0.8f;
+                holes.Add(new[]
+                {
+                    new P(ex - ux * w * 0.5f - nx * 0.03f, ey - uy * w * 0.5f - ny * 0.03f),
+                    new P(ex + ux * tip + nx * h, ey + uy * tip + ny * h),
+                    new P(ex + ux * w * 0.5f - nx * 0.03f, ey + uy * w * 0.5f - ny * 0.03f),
+                });
+                along += w * (0.55f + (float)rnd.NextDouble() * 0.5f);
+            }
+        }
         for (int i = 0; i < holes.Count; i++) holes[i] = Ccw(holes[i]);
 
-        if (Cuts.Count == 0 && !Prepare()) { _failed = true; return; }
         int before = 0, after = 0;
-        foreach (var c in Cuts)
+        if (SolidMap.BreachableHull)
         {
-            before += c.T.Count / 3;
-            Apply(c, holes);
-            after += c.T.Count / 3;
+            if (Cuts.Count == 0 && !Prepare()) { _failed = true; return; }
+            foreach (var c in Cuts)
+            {
+                before += c.T.Count / 3;
+                Apply(c, holes);
+                after += c.T.Count / 3;
+            }
+            // 切り抜いた複製ができてから元の描画を止める
+            foreach (var c in Cuts) if (c.Src.enabled) c.Src.enabled = false;
         }
-        // 切り抜いた複製ができてから元の描画を止める
-        foreach (var c in Cuts) if (c.Src.enabled) c.Src.enabled = false;
+        if (crater && float.IsNaN(_craterZ)) _craterZ = HullBlockZ();
         DamageMap.MarkThroat(Throat(holes));
         Opened.AddRange(holes);
         // 影の中の焼いた絵も喉の範囲で焼き直す (喉は穴の絵の範囲より奥まで伸びる)
@@ -170,7 +209,23 @@ internal static class HullThroat
     {
         if (GameClock.ShipGen != _shipGen) return float.NaN;
         foreach (var c in Cuts) if (c.Go) return c.Go.transform.position.z;
-        return float.NaN;
+        return _craterZ;
+    }
+
+    // 穴を開けたのが船体の板 (エアシップ) か
+    internal static bool IsCrater => GameClock.ShipGen == _shipGen && !float.IsNaN(_craterZ);
+
+    // エアシップの船体の板 (HullBlock) のいちばん奥の z。泡はこれより奥に置き、穴の縁が泡にかぶさるようにする
+    private static float HullBlockZ()
+    {
+        float z = float.NaN;
+        foreach (var sr in DamageMap.RoomArts)
+            if (sr && sr.gameObject.name.StartsWith("HullBlock", StringComparison.Ordinal))
+            {
+                float rz = sr.transform.position.z;
+                if (float.IsNaN(z) || rz > z) z = rz;
+            }
+        return z;
     }
 
     // 損傷マスクに書く形 (世界座標)
