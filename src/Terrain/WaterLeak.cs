@@ -439,7 +439,7 @@ internal static class WaterLeak
         }
     }
 
-    // 縁を越えた水: 量に比例して筋を出す。着く時間は計算の落ちる刻みと同じ (着いた頃に下の水が増える)
+    // 縁を越えた水の着地: 量に比例して跳ね返る粒・波紋・霧と音 (落ちる水の膜と筋は WaterFall)
     private static float _fallAcc, _fallSoundAcc, _fallZx = float.NaN, _fallZy, _fallZ, _fallRingZ;
     private static int _fallStart, _fallN;
     private static void TickFalls(float dt)
@@ -481,18 +481,11 @@ internal static class WaterLeak
             _fallRingZ = floor - 0.0008f * zs;
         }
         int i = ++_fallN;
+        if (toVoid) return;
         float u = ((i * 37) % 17) / 16f - 0.5f, v = ((i * 53) % 13) / 12f;
-        float dx = x1 - x0, dy = y1 - y0, dl = MathF.Max(0.001f, MathF.Sqrt(dx * dx + dy * dy));
-        // 縁に沿って升の幅に散らす
-        float sx = x0 - dy / dl * u * WaterSim.Cell, sy = y0 + dx / dl * u * WaterSim.Cell;
-        float t = MathF.Max(0.1f, delay / (float)GameClock.Hz) * (0.9f + 0.2f * v);
-        float h0 = MathF.Max(FallMinDrop, sy - y1);
-        float ys = sy - h0;                              // 地面の上の出発点 (高さ h0 の分だけ下)
-        float vh = (0.5f * Gravity * t * t - h0) / t;    // t 秒後に高さ 0
-        bool streak = (i & 3) != 0;
-        SpawnDrop(sx, ys, h0, (x1 + u * 0.1f - sx) / t, (y1 - ys) / t, vh, !toVoid && i % 3 == 0, _fallZ - 0.00002f * (i & 15), _fallRingZ,
-            streak ? DropSize * (0.8f + 0.4f * v) : DropSize * 0.9f, streak ? DropStreak : DropPlain, 0);
-        if (!toVoid && i % 5 == 0) AddMist(x1 + u * 0.15f, y1 + 0.02f, u * 0.3f, 0.12f, _fallRingZ - 0.0002f, FoamFrom * 0.7f, FoamTo * 0.8f);
+        // 着地点から跳ね返る粒 (落ちる水の膜は WaterFall が描く)
+        SpawnDrop(x1 + u * 0.2f, y1, 0.02f, u * 0.8f, 0.15f * (v - 0.5f), 1.2f + 1.4f * v, i % 3 == 0, _fallZ - 0.00002f * (i & 15), _fallRingZ, DropSize * (0.6f + 0.3f * v), DropPlain, 0);
+        if (i % 4 == 0) AddMist(x1 + u * 0.15f, y1 + 0.02f, u * 0.3f, 0.12f, _fallRingZ - 0.0002f, FoamFrom * 0.7f, FoamTo * 0.8f);
     }
 
     private static void SpawnDrop(Jet jet, float x, float y, float h, float vx, float vy, float vh, bool ripple) =>
@@ -856,6 +849,7 @@ internal static class WaterLeak
     {
         Jets.Clear();
         WaterSpray.Clear();
+        WaterFall.Clear();
         foreach (var go in Pipes) if (go) UnityEngine.Object.Destroy(go);
         Pipes.Clear();
         for (int i = 0; i < MaxMist; i++)
@@ -915,7 +909,7 @@ internal static class WaterLeak
             var wet = new System.Text.StringBuilder();
             for (int i = 0; i < 256; i++)
                 if (WetUntil[i] > _clock) wet.Append($" {i}({WetUntil[i] - _clock:0.0}s)");
-            reply($"OK leak made={Made} last={Last} jets={Jets.Count} pipes={Pipes.Count} drops={_liveDrops} mist={_liveMist} ripples={_liveRings} depthHere={(lp ? WaterSim.DepthAt(lp.GetTruePosition()) : 0)} {WaterArt.Describe()} {WaterSpray.Describe()} wet=[{wet}]");
+            reply($"OK leak made={Made} last={Last} jets={Jets.Count} pipes={Pipes.Count} drops={_liveDrops} mist={_liveMist} ripples={_liveRings} depthHere={(lp ? WaterSim.DepthAt(lp.GetTruePosition()) : 0)} {WaterArt.Describe()} {WaterSpray.Describe()} {WaterFall.Describe()} wet=[{wet}]");
         });
     }
 }

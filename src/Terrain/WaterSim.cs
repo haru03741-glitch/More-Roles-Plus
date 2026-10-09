@@ -87,7 +87,7 @@ internal static class WaterSim
     internal static readonly List<(float X, float Y, int Amount)> Spilled = new();
     internal static long SpilledTotal { get; private set; }
     // 今のフレームに縁を越えた水 (縁の位置・着く位置・量・落ちる刻み)。TerrainStep が毎フレームの始めに空にし、絵 (WaterLeak) が同じフレームで読む
-    internal static readonly List<(float X0, float Y0, float X1, float Y1, int Amount, int Delay, bool Void)> Falls = new();
+    internal static readonly List<(float X0, float Y0, float X1, float Y1, int Amount, int Delay, bool Void, int Dir)> Falls = new();
     internal static long FellTotal { get; private set; }  // 縁を越えた水の総量
     internal static long VoidTotal { get; private set; }  // 奈落へ落ちて消えた水
     internal static int FallLinks => FallTo.Count;
@@ -775,10 +775,10 @@ internal static class WaterSim
         {
             var f = Falls[i];
             if (f.X0 != x0 || f.Y0 != y0) continue;
-            Falls[i] = (x0, y0, x1, y1, f.Amount + amt, delay, to < 0);
+            Falls[i] = (x0, y0, x1, y1, f.Amount + amt, delay, to < 0, d);
             return;
         }
-        Falls.Add((x0, y0, x1, y1, amt, delay, to < 0));
+        Falls.Add((x0, y0, x1, y1, amt, delay, to < 0, d));
     }
 
     // 口の際 (道のり DrainDist 以内) の升の水を引く強さに比例して宇宙へ出す (量を消す)
