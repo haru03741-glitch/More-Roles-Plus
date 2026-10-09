@@ -130,6 +130,8 @@ internal static class TerrainDamage
         // 外壁は壊さない: 切り取る区間ごとに、爆心から見て壁の向こう側に奥の面があるか (動きの層の面)
         Vector2 blast = e.Position;
         var sky = SolidMap.SkyNear(c, core.BoundRadius + 0.5f, core);
+        var hullCells = new Dictionary<long, Vector2>(); // 形に掛かった外壁の耐久の格子 (格子ごとに 1 回だけ削る)
+        var hullSegs = new List<(Vector2 A, Vector2 B, Vector2 Away)>();
         bool Inner(Vector2 a, Vector2 b)
         {
             Vector2 m = (a + b) * 0.5f, d = b - a;
@@ -137,11 +139,11 @@ internal static class TerrainDamage
             var n = new Vector2(-d.y, d.x);
             Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
             away = away.normalized;
-            if (SolidMap.Breachable && SolidMap.SkyAhead(m, away, BreachReach)) // 床を通らずに宇宙・空へ出る外壁は爆発 1 発で抜ける
+            if (SolidMap.Breachable && SolidMap.SkyAhead(m, away, BreachReach)) // 床を通らずに宇宙・空へ出る外壁は耐久が尽きたら抜ける (HullDamage で決める)
             {
-                SkyCut.Add(a); SkyCut.Add(b);
-                _skyAway += away;
-                return true;
+                hullCells.TryAdd(WallDurability.CellKey(m), m);
+                hullSegs.Add((a, b, away));
+                return false;
             }
             // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) か、
             // 裏が船体の塊 (エアシップ) なら抜く。向こうに床が無い面 (厚い外壁の手前と裏) は外壁
@@ -179,6 +181,7 @@ internal static class TerrainDamage
                 return false;
             }, keep, dryRun: true);
         }
+        int hullHp = HullDamage(hullCells, hullSegs, allowed);
         var shipRemoved = new List<Vector2>(); // 動きの層で切った区間 (高さの違う所に縁を張る用)
         foreach (var col in walls)
         {
@@ -222,13 +225,44 @@ internal static class TerrainDamage
         var crack = new CrackPattern(e.Position, e.Seed, default, axis: aimed ? TerrainWire.AngleIndex(e.Direction) : (ushort)0,
             stretch: aimed ? 1f + p.CrackStretch * e.Force : 1f, bias: aimed ? p.CrackBias * e.Force : 0f);
         string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces, cracks: new List<CrackPattern> { crack }) : null;
+        if (visual == null && cut > 0) HideWallDecor(core);
         if (cut > 0) SolidMap.Carve(core, keep, blast); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
         LastCut = cut; LastPieces = pieces.Count; LastBlocks = landings.Length;
         int props = BreakableProps.Blast(core, e.Position, e.Seed); // 形に掛かる物ごと壊れる家具 (欠片の数は LastPieces に足す)
-        return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} props={props} breach={LastBreach:0.00} visual={visual ?? "ok"}";
+        return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} props={props} breach={LastBreach:0.00} hull={(hullCells.Count > 0 ? hullHp.ToString() : "-")} visual={visual ?? "ok"}";
+    }
+
+    // 外壁は爆発 1 発では抜けない: 形に掛かった外壁の格子の耐久を 1 ずつ削り、どれかが尽きたら、その爆発で掛かった外壁を
+    // まとめて抜く (抜け方は 1 発で抜けていた時と同じ形)。尽きるまでは見た目を変えない。
+    // 全員が同じ順で適用するので耐久も全員で同じになる。返すのは残りのいちばん小さい耐久
+    private static int HullDamage(Dictionary<long, Vector2> cells, List<(Vector2 A, Vector2 B, Vector2 Away)> segs,
+        HashSet<(float, float, float, float)> allowed)
+    {
+        int min = WallDurability.MaxHp;
+        foreach (var kv in cells)
+        {
+            int hp = WallDurability.Hit(kv.Value, 1);
+            if (hp < min) min = hp;
+        }
+        if (min > 0) return min;
+        foreach (var (a, b, away) in segs)
+        {
+            allowed.Add((a.x, a.y, b.x, b.y));
+            SkyCut.Add(a); SkyCut.Add(b);
+            _skyAway += away;
+        }
+        return min;
+    }
+
+    // 壁の絵が抜けた所に貼られていた飾りを隠す。穴の絵 (損傷マスク) を書いた後・歩ける所の地図を掘る前に呼ぶ
+    // (壁の中 = 掘る前に歩けない所。床の上の飾りは穴の絵が掛かっても残す)
+    private static void HideWallDecor(CutShape shape)
+    {
+        int n = WallDecor.Hide(shape.Center, shape.BoundRadius, q => DamageMap.HoleAt(q) > 0.5f && (!SolidMap.Valid || SolidMap.Solid(q)));
+        if (n > 0) Plugin.Logger.LogInfo($"[TerrainDamage] hid wall decor n={n}");
     }
 
     // 直前の爆発で外壁が宇宙まで抜けた時の穴の口の幅 (抜けなければ 0) と口の線 (曲がった壁では曲がり目で折った数本)
@@ -371,6 +405,7 @@ internal static class TerrainDamage
         var cracks = WallPeel.Cracks(hit);
         cracks.Add(StrikeCrack(crackAt, normal, e.Direction, e.Seed, default));
         string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, cracks) : null;
+        if (visual == null && cut > 0) HideWallDecor(shape);
         if (cut > 0) SolidMap.Carve(shape, keep, hit + normal * 0.1f); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
         if (cut > 0) WallPeel.Release(hit);
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)

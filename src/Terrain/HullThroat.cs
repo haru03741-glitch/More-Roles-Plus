@@ -37,8 +37,6 @@ internal static class HullThroat
 
     private static readonly List<Cut> Cuts = new();
     private static readonly List<P[]> Opened = new(); // 開けた喉の塊 (世界座標・反時計回り)
-    private static readonly List<(SpriteRenderer R, Vector2 Min, Vector2 Size)> Decor = new();
-    private static int _decorGen = -1;
     private static int _shipGen = -1;
     private static bool _failed;
 
@@ -139,7 +137,14 @@ internal static class HullThroat
         foreach (var c in Cuts) if (c.Src.enabled) c.Src.enabled = false;
         DamageMap.MarkThroat(Throat(holes));
         Opened.AddRange(holes);
-        int hidden = HideDecorInside();
+        // 影の中の焼いた絵も喉の範囲で焼き直す (喉は穴の絵の範囲より奥まで伸びる)
+        foreach (var h in holes)
+        {
+            float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
+            foreach (var q in h) { x0 = MathF.Min(x0, q.X); y0 = MathF.Min(y0, q.Y); x1 = MathF.Max(x1, q.X); y1 = MathF.Max(y1, q.Y); }
+            ShadowPatch.MarkDirty(new Vector2((x0 + x1) * 0.5f, (y0 + y1) * 0.5f), MathF.Max(x1 - x0, y1 - y0) * 0.5f + 0.2f);
+        }
+        int hidden = WallDecor.Hide(Vector2.zero, 1e5f, p => Contains(p)); // 壁に付いていた飾りのうち喉の中の物 (範囲は喉の形で決める)
         hidden += WaterLeak.HidePipesInThroat();
         Plugin.Logger.LogInfo($"[HullThroat] mouth {ax:0.00},{ay:0.00}-{bx:0.00},{by:0.00} depth={depth:0.00} pieces={holes.Count} tris {before}->{after} hidden={hidden}");
     }
@@ -158,45 +163,6 @@ internal static class HullThroat
         for (int i = 0; i < poly.Length; i++)
             if (Side(poly[i], poly[(i + 1) % poly.Length], q) < 0f) return false;
         return true;
-    }
-
-    // 壁に貼られていた絵だけの飾り (季節の飾りなど) のうち、半分ほどが開けた喉の中にある物を隠す。穴が開いた時に 1 回だけ
-    // 候補 (船の小さな絵とその範囲) は船ごとに 1 回だけ集める (穴を開けるたびに船じゅうを読まない)
-    private static int HideDecorInside()
-    {
-        if (_decorGen != _shipGen)
-        {
-            _decorGen = _shipGen;
-            Decor.Clear();
-            foreach (var r in ShipStatus.Instance.GetComponentsInChildren<SpriteRenderer>(false))
-            {
-                if (!r.enabled || !r.sprite) continue;
-                var b = r.bounds;
-                var bs = b.size;
-                if (bs.x * bs.y > 2f || r.name.StartsWith("Mrp", StringComparison.Ordinal)) continue;
-                var bm = b.min;
-                Decor.Add((r, new Vector2(bm.x, bm.y), new Vector2(bs.x, bs.y)));
-            }
-        }
-        int n = 0;
-        for (int d = Decor.Count - 1; d >= 0; d--)
-        {
-            var (r, mn, sz) = Decor[d];
-            // 絵の範囲の 3×3 の点のうち 4 つ以上がどれかの喉の中 (2 つの穴にまたがる物も拾う)
-            int inside = 0;
-            for (int i = 0; i < 9; i++)
-            {
-                var q = new P(mn.x + sz.x * (0.17f + 0.33f * (i % 3)), mn.y + sz.y * (0.17f + 0.33f * (i / 3)));
-                foreach (var h in Opened) if (Inside(h, q)) { inside++; break; }
-            }
-            if (inside < 4) continue;
-            Decor.RemoveAt(d);
-            // 部品を見るのは喉の中の物だけ (船じゅうの絵で部品を引くと重い)
-            if (!r || !r.enabled || !PropSim.IsDecor(r)) continue;
-            r.enabled = false;
-            n++;
-        }
-        return n;
     }
 
     // 切り抜いた船体の絵の奥行き (まだ切っていなければ NaN)。これより奥に置いた物は切り口から覗く
