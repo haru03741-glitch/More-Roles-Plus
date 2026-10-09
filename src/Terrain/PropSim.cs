@@ -17,7 +17,7 @@ namespace MoreRolesPlus.Terrain;
 // 遅れて届いた客の手元でも A が追いついた時に D と同じになる。
 // 位置は SolidMap の原点からの 1/1024 単位。壁は SolidMap の升 (壊した穴も通る)・通気口と端末の周りも通さない。
 // 絵は 1 刻み前と今の間を GameClock.Frac で補間して、動いている物・揺れている物だけ毎フレーム書く。
-// 外壁の穴 (Decompression) が開いている間は流れに引かれる: 小物と中くらいの物は気圧 30% 以上の間・重い物は口から 2 単位以内だけ。
+// 外壁の穴 (Decompression) が開いている間は流れに引かれる: 小物と中くらいの物は気圧 30% 以上の間・重い物は口から 5 単位以内だけ (引かれている間は見た目だけ震える)。
 // 口に着いたら、口より小さい物は宇宙へ消え、大きい物は口をふさぐ (確定側の刻みで Decompression へ知らせる)
 internal static class PropSim
 {
@@ -49,11 +49,12 @@ internal static class PropSim
     private const float HeavyBox = 0.85f;     // 重い物の壁の当たり: 範囲の半分のこの割合の箱の 8 点
     // 流れ (外壁の穴): 速さ = Flow × 引く強さ × 気圧 × 種類の割合 (/256) へ 1 刻みに 1/PullEase ずつ寄る。引かれている間は床の摩擦なし
     private const int Flow = 100;             // 1 刻みの速さ (1/1024 単位・約 2.9 単位/秒) = 満タンの口の際で約 4.7 単位/秒
-    private const int PullSmall = 256, PullMedium = 180, PullHeavy = 90;
+    private const int PullSmall = 256, PullMedium = 180, PullHeavy = 154;
     private const int PullEase = 4;
     private const int PullStart = 12;         // 止まっている物はこの速さ (0.35 単位/秒) 以上で動き出す
     private const int PullMinPress = Decompression.Full * 3 / 10; // 小物と中くらいの物は気圧 30% 以上で引かれる
-    private const int HeavyReach = 2;         // 重い物は口からこの道のり (単位) 以内だけ
+    private const float RattleMove = 0.025f, RattleTurn = 1.2f; // 引かれている家具の震え (単位・度)
+    private const int HeavyReach = 5;         // 重い物は口からこの道のり (単位) 以内だけ
     private const int ResyncPull = 15;        // 引いている間に見せる用を確定から計算し直す間隔 (0.5 秒)
 
     // 動かす物の絵の名前 (部屋の絵と別の絵を持つ小物と家具)
@@ -83,6 +84,7 @@ internal static class PropSim
         public int WobStart = int.MinValue, WobAmp;
         public bool Active, Moved;
         public bool Pulled;         // この刻みで流れに引かれている (摩擦なし)
+        public bool Rattle;         // 流れに引かれて動いている (重い物を震わせる・見た目だけで刻みの計算には使わない)
         public bool Gone, Stuck;    // 口から宇宙へ消えた / 口に着いて止まった (大きい物はふさいでいる)
         public uint Rng;
 
@@ -90,7 +92,7 @@ internal static class PropSim
         {
             Px = o.Px; Py = o.Py; Vx = o.Vx; Vy = o.Vy; Spin = o.Spin; Ang = o.Ang; Tip = o.Tip;
             WobStart = o.WobStart; WobAmp = o.WobAmp; Active = o.Active; Moved = o.Moved; Rng = o.Rng;
-            Pulled = o.Pulled; Gone = o.Gone; Stuck = o.Stuck;
+            Pulled = o.Pulled; Rattle = o.Rattle; Gone = o.Gone; Stuck = o.Stuck;
         }
     }
 
@@ -604,6 +606,7 @@ internal static class PropSim
             if (w.Display && p.Kind != Kind.Heavy && (done || (w.Step & 3) == 0)) p.Z = SortZ(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
             if (!done) continue;
             st.Active = false;
+            st.Rattle = false;
             w.Act.RemoveAt(i);
             if (w.Display)
             {
@@ -740,6 +743,7 @@ internal static class PropSim
             if (p.Kind == Kind.Fixed) continue;
             var st = w.S(p);
             st.Pulled = false;
+            st.Rattle = false;
             if (st.Gone || st.Stuck) continue;
             int sx = st.Px / _cellU, sy = st.Py / _cellU;
             if (!Decompression.FlowAt(sx, sy, out int dist, out int press, out int fx, out int fy)) continue;
@@ -769,6 +773,7 @@ internal static class PropSim
                 st.Tip = int.MinValue;
             }
             st.Pulled = true;
+            st.Rattle = true;
             st.Moved = true;
         }
     }
@@ -901,6 +906,14 @@ internal static class PropSim
         float x = p.Ox + (st.Px - p.Ox) * t, y = p.Oy + (st.Py - p.Oy) * t;
         float ang = (p.OAng + (st.Ang - p.OAng) * t) / 16f;
         float cx = _org.x + x / Unit, cy = _org.y + y / Unit;
+        if (st.Rattle)
+        {
+            // 流れに引かれている家具はガタガタ震える (見た目だけ・確定の位置は変えない)
+            float tt = (Environment.TickCount64 & 0xFFFFF) / 1000f + p.Pivot0.x;
+            cx += FxMath.Sin(tt * 61f) * RattleMove;
+            cy += FxMath.Sin(tt * 53f + 1.3f) * RattleMove;
+            ang += FxMath.Sin(tt * 47f + 0.7f) * RattleTurn;
+        }
         if (p.Lift != null) FurnitureLift.Place(p.Lift, p.Pivot0, cx, cy, ang);
         else if (p.Tr)
         {

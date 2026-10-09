@@ -53,6 +53,7 @@ internal static class TerrainProbe
         Decompression.Register();
         CrewGrip.Register();
         FoamArt.Register();
+        DecompFx.Register();
         BreakableProps.Register();
         FurnitureLift.Register();
         RegisterMapSurvey();

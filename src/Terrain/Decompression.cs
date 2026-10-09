@@ -127,7 +127,9 @@ internal static class Decompression
             float w = TerrainDamage.LastBreach;
             if (_running) Enqueue(new Pending { Tick = tick, Rebuild = true });
             if (w <= 0f) return;
-            Open(tick, new List<(Vector2, Vector2)>(TerrainDamage.LastMouths));
+            var lines = new List<(Vector2, Vector2)>(TerrainDamage.LastMouths);
+            Open(tick, lines);
+            if (w * 256f >= MinWidth256) DecompFx.OnBreach(tick, lines, w);
         }
         catch (Exception e) { Fail("apply", e); }
     }
@@ -654,6 +656,10 @@ internal static class Decompression
 
     // 引く強さに効く気圧 = 気圧 × 口の開き具合 (泡が狭めた分だけ弱まる)
     private static int EffPress(int c) => c < _open1024.Length ? (int)((long)_press[c] * _open1024[c] >> 10) : _press[c];
+
+    // 口から吹き出す強さ (0..1・演出用)。ふさがった口は 0
+    internal static float MouthPull(Breach br) =>
+        br.Sealed || br.Comp < 0 || _press == null || br.Comp >= _press.Length ? 0f : (float)EffPress(br.Comp) / Full;
 
     // 点での流れ (向き × 強さ・歩く速さの倍)。引かない所は false
     internal static bool PullAt(Vector2 p, out Vector2 dir, out float mul, out int dist)
