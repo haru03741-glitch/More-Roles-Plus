@@ -36,6 +36,13 @@ internal static class WaterArt
         public bool Empty = true;
     }
 
+    // 爆発のくぼみ (絵だけ)。水の計算は全員の結果を揃えるため Delay 刻み遅れて爆心をえぐるので、
+    // それまでの間は描く高さから差し引いて同じ形を先に見せ、計算の水が追いついたら消す
+    private const float CraterIn = 0.08f, CraterOut = 0.25f;
+    private const float CraterDepth = 1.15f, RimBulge = 0.5f;
+    private struct Crater { public float X, Y, R, T0; }
+    private static readonly List<Crater> Craters = new();
+
     private static readonly Dictionary<int, Tile> Tiles = new();
     private static readonly List<int> Waiting = new();
     private static int[] _raw;     // 描く間の高さ (タイル + 縁 3 升)
@@ -70,6 +77,7 @@ internal static class WaterArt
         _lastMs = now;
         _clock += dt;
 
+        if (Craters.Count > 0) TickCraters();
         var dirty = WaterSim.DirtyTiles;
         if (dirty.Count > 0)
         {
@@ -96,6 +104,61 @@ internal static class WaterArt
         }
     }
 
+    // 爆発の瞬間に呼ぶ (WaterLeak から・自分の手元だけ)。r = 水の計算の衝撃と同じ半径
+    internal static void AddCrater(Vector2 c, float r)
+    {
+        if (!WaterSim.Ready || r <= 0f) return;
+        Craters.Add(new Crater { X = c.x, Y = c.y, R = r, T0 = _clock });
+    }
+
+    private static float CraterHold => (float)WaterSim.Delay / GameClock.Hz;
+
+    // くぼみの掛かるタイルを毎フレーム描き直しに回す (描き直しの間隔は Redraw のまま)。消えた後にもう 1 回
+    private static void TickCraters()
+    {
+        float end = CraterHold + CraterOut;
+        float cell = WaterSim.Cell, ts = cell * WaterSim.TileCells;
+        Vector2 org = WaterSim.Origin;
+        for (int i = Craters.Count - 1; i >= 0; i--)
+        {
+            var c = Craters[i];
+            bool done = _clock - c.T0 > end, fresh = _clock - c.T0 < CraterIn * 2f;
+            float rr = c.R * (1f + RimBulge);
+            int tx0 = (int)FxMath.Floor((c.X - rr - org.x) / ts), tx1 = (int)FxMath.Floor((c.X + rr - org.x) / ts);
+            int ty0 = (int)FxMath.Floor((c.Y - rr - org.y) / ts), ty1 = (int)FxMath.Floor((c.Y + rr - org.y) / ts);
+            for (int ty = ty0; ty <= ty1; ty++)
+            for (int tx = tx0; tx <= tx1; tx++)
+            {
+                if (tx < 0 || ty < 0 || tx >= WaterSim.TilesW) continue;
+                int t = ty * WaterSim.TilesW + tx;
+                if (!Tiles.TryGetValue(t, out var tile)) continue;
+                if (fresh) tile.LastDraw = -10f;   // 出始めは間隔を待たずに描く (爆発と同じ頃に見せる)
+                if (!tile.Waiting) { tile.Waiting = true; Waiting.Add(t); }
+            }
+            if (done) Craters.RemoveAt(i);
+        }
+    }
+
+    // 升の真ん中 (wx, wy) の描く高さに掛ける倍率 (くぼみ = 0 に近い・縁 = 1 を超える)
+    private static float CraterScale(float wx, float wy)
+    {
+        float k = 1f, hold = CraterHold;
+        foreach (var c in Craters)
+        {
+            float age = _clock - c.T0;
+            float amt = age < CraterIn ? age / CraterIn : age < hold ? 1f : 1f - (age - hold) / CraterOut;
+            if (amt <= 0f) continue;
+            float dx = wx - c.X, dy = wy - c.Y, d2 = (dx * dx + dy * dy) / (c.R * c.R);
+            if (d2 < 1f) k *= 1f - amt * FxMath.Min(1f, CraterDepth * (1f - d2));   // 真ん中 (半径の半分弱) は乾いた床まで (計算の水のくぼみと同じ広さ)
+            else
+            {
+                float d = FxMath.Sqrt(d2), rim = 1f - FxMath.Abs(d - 1.15f) / 0.3f;
+                if (rim > 0f) k *= 1f + RimBulge * amt * rim;
+            }
+        }
+        return k;
+    }
+
     private static unsafe void Draw(Tile t)
     {
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -106,6 +169,8 @@ internal static class WaterArt
         _raw ??= new int[rw * rw];
         _depth ??= new int[dw * dw];
         bool any = false;
+        bool crater = Craters.Count > 0;
+        float cs = WaterSim.Cell, ox = WaterSim.Origin.x, oy = WaterSim.Origin.y;
         for (int y = 0; y < rw; y++)
         for (int x = 0; x < rw; x++)
         {
@@ -122,6 +187,7 @@ internal static class WaterArt
                 if (WaterSim.Open(k - w)) { open++; from = k - w; }
                 if (open == 1) v = WaterSim.Height(from);
             }
+            if (v > 0 && crater) v = (int)(v * CraterScale(ox + (cx + 0.5f) * cs, oy + (cy + 0.5f) * cs));
             _raw[y * rw + x] = v;
             if (v > 0 && x >= 2 && y >= 2 && x < rw - 2 && y < rw - 2) any = true;
         }
@@ -308,6 +374,7 @@ internal static class WaterArt
         }
         Tiles.Clear();
         Waiting.Clear();
+        Craters.Clear();
         _clock = 0f;
     }
 

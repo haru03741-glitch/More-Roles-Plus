@@ -51,6 +51,12 @@ internal static class DebrisArt
     public static Sprite Footprint => _footprint ??= MakeFootprint();
     public static Sprite WaterDrop => _drop ??= MakeWaterDrop();
     public static Sprite Ripple => _ripple ??= MakeRipple();
+    public static Sprite WaterBlob(int i) => Pick(_blobs ??= Make(3, k => MakeWaterBlob(new System.Random(900 + k), "MrpWaterBlob" + k)), i);
+    public static Sprite WaterStreak => _streak ??= MakeWaterStreak();
+    public static Sprite SoftShadow => _shadow ??= MakeSoftShadow();
+    public static Sprite WaveRing => _wave ??= MakeWaveRing();
+    private static Sprite[] _blobs;
+    private static Sprite _streak, _shadow, _wave;
     // 壁の中の配管の絵: 裂け方 (PipeKinds・最後の 1 つは裂けていない管) × 色 (PipePaints)。原点は裂け目
     public const int PipeKinds = 5, PipePaints = 4, IntactPipe = PipeKinds - 1;
     public static Sprite Pipe(int kind, int paint)
@@ -395,6 +401,110 @@ internal static class DebrisArt
             px[i + 2] = (byte)(255f * Math.Clamp(b, 0f, 1f)); px[i + 3] = (byte)(255f * a);
         }
         return ToSprite(px, n, "MrpWaterDrop");
+    }
+
+    // 飛ぶ水のかたまり: 頭が +x の雫形 (ふちは低い周波数で揺らぐ)。透ける水色の本体・濃い青のふち・
+    // 左上の白い光と小さな光・右下に光が抜けた明るい帯 (光の重ね)
+    private static Sprite MakeWaterBlob(System.Random rnd, string name)
+    {
+        const int n = 64;
+        var px = new byte[n * n * 4];
+        float a2 = (float)(rnd.NextDouble() * 6.3), a3 = (float)(rnd.NextDouble() * 6.3);
+        float k2 = 0.06f + 0.06f * (float)rnd.NextDouble(), k3 = 0.04f + 0.05f * (float)rnd.NextDouble();
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float cu = u - 0.12f;
+            float ry = 0.6f * (cu < 0f ? MathF.Max(0.25f, 1f + cu * 0.75f) : 1f);   // 後ろへ細る
+            float th = MathF.Atan2(v, cu);
+            float wob = 1f + k2 * MathF.Sin(2f * th + a2) + k3 * MathF.Sin(3f * th + a3);
+            float d = MathF.Sqrt(cu * cu / (0.78f * 0.78f) + v * v / (ry * ry)) / wob;
+            if (d > 1f) continue;
+            float r, g, b, a;
+            if (d > 0.88f) { r = 0.18f; g = 0.40f; b = 0.66f; a = 0.7f; }
+            else
+            {
+                float f = d / 0.88f;                                  // 中ほど透けて、ふちへ濃く
+                r = 0.46f + 0.06f * v; g = 0.73f + 0.06f * v; b = 0.96f; a = 0.38f + 0.4f * f * f * f;
+                float lx = cu - 0.22f, ly = v + 0.2f;                 // 右下に光が抜けた明るい帯
+                float lb = MathF.Max(0f, 1f - MathF.Abs(MathF.Sqrt(lx * lx + ly * ly) - 0.32f) / 0.12f) * (ly < 0.1f ? 1f : 0.3f);
+                r += 0.35f * lb; g += 0.25f * lb; b += 0.05f * lb; a += 0.15f * lb;
+            }
+            float hx = (cu + 0.05f) / 0.2f, hy = (v - 0.3f) / 0.11f;
+            if (hx * hx + hy * hy < 1f) { r = g = b = 1f; a = 0.95f; }
+            float sx = (cu + 0.4f) / 0.07f, sy = (v - 0.12f) / 0.06f;
+            if (sx * sx + sy * sy < 1f) { r = 0.9f; g = 0.97f; b = 1f; a = 0.85f; }
+            a *= MathF.Min(1f, (1f - d) / 0.08f);
+            int i = (y * n + x) * 4;
+            px[i] = (byte)(255f * Math.Clamp(r, 0f, 1f)); px[i + 1] = (byte)(255f * Math.Clamp(g, 0f, 1f));
+            px[i + 2] = (byte)(255f * Math.Clamp(b, 0f, 1f)); px[i + 3] = (byte)(255f * Math.Clamp(a, 0f, 1f));
+        }
+        return ToSprite(px, n, name);
+    }
+
+    // 細かいしぶき: 頭が +x の光の筋 (頭は丸く白い・後ろへ細く透ける)
+    private static Sprite MakeWaterStreak()
+    {
+        const int n = 32;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float t = (0.75f - u) / 1.6f;                             // 頭 0 → 尾 1
+            if (t < -0.15f || t > 1f) continue;
+            float w = t < 0f ? 0.2f * MathF.Sqrt(MathF.Max(0f, 1f - t * t / 0.0225f)) : 0.2f * (1f - t);
+            if (MathF.Abs(v) > w) continue;
+            float edge = 1f - MathF.Abs(v) / MathF.Max(0.001f, w);
+            float a = MathF.Min(1f, edge * 2f) * (1f - MathF.Max(0f, t)) * 0.95f;
+            int i = (y * n + x) * 4;
+            px[i] = (byte)(255f * (0.75f + 0.25f * edge)); px[i + 1] = (byte)(255f * (0.9f + 0.1f * edge)); px[i + 2] = 255;
+            px[i + 3] = (byte)(255f * a);
+        }
+        return ToSprite(px, n, "MrpWaterStreak");
+    }
+
+    // 広がる波: 外側に白い波頭の細い線・内側へ薄い水色がにじんで消える (大きく引き伸ばしても角が出ないよう細かく作る)
+    private static Sprite MakeWaveRing()
+    {
+        const int n = 160;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float d = MathF.Sqrt(u * u + v * v);
+            if (d > 0.99f || d < 0.55f) continue;
+            float crest = MathF.Max(0f, 1f - MathF.Abs(d - 0.93f) / 0.035f);       // 波頭
+            float trough = MathF.Max(0f, 1f - MathF.Abs(d - 0.86f) / 0.05f);       // 波頭の内側の濃い帯
+            float inner = MathF.Max(0f, (d - 0.55f) / 0.33f);                       // 内へ消えるにじみ
+            inner = inner * inner * 0.25f;
+            float a = MathF.Max(crest * 0.95f, MathF.Max(trough * 0.4f, inner));
+            float w = crest;                                                         // 白さ
+            int i = (y * n + x) * 4;
+            px[i] = (byte)(255f * (0.25f + 0.75f * w)); px[i + 1] = (byte)(255f * (0.5f + 0.5f * w)); px[i + 2] = (byte)(255f * (0.78f + 0.22f * w));
+            px[i + 3] = (byte)(255f * Math.Clamp(a, 0f, 1f));
+        }
+        return ToSprite(px, n, "MrpWaveRing");
+    }
+
+    // 飛ぶ物の床の影: やわらかい黒い円 (楕円にするのは置く側)
+    private static Sprite MakeSoftShadow()
+    {
+        const int n = 32;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float d = MathF.Sqrt(u * u + v * v);
+            if (d >= 1f) continue;
+            int i = (y * n + x) * 4;
+            px[i] = 8; px[i + 1] = 16; px[i + 2] = 30;
+            px[i + 3] = (byte)(255f * (1f - d) * (1f - d));
+        }
+        return ToSprite(px, n, "MrpSoftShadow");
     }
 
     // 波紋: 細い輪 (外側が濃い青・内側に白い筋)。色は焼き込み

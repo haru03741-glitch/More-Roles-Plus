@@ -36,17 +36,25 @@ internal static class WaterLeak
     private const float MistRate = 5f, MistLife = 0.4f, MistFrom = 0.1f, MistTo = 0.28f;
     private const float FoamFrom = 0.18f, FoamTo = 0.5f; // 落ちた所の泡の大きさ
     private const int LandEvery = 3;          // 床に落ちた粒の何個に 1 つ、波紋と跳ねる粒を出すか
-    private const int MaxMist = 32;
+    private const int MaxMist = 64;
     private const float Gravity = 7f;         // 跳ねる粒 (絵だけ) の重力
     private const float DropSize = 0.08f;
-    private const int MaxDrops = 64;
+    private const int MaxDrops = 128;
     private const int MaxJets = 3;
     private const int MaxPipes = 8;
     private const float LeakSoundEvery = 1.0f, LeakSoundRange = 14f, LeakSoundMuffle = 6f, LeakSoundVolume = 0.55f;
 
     // 波紋
     private const float RippleLife = 0.5f, RippleFrom = 0.18f, RippleTo = 0.6f;
-    private const int MaxRipples = 24;
+    private const int MaxRipples = 48;
+
+    // 爆発の水しぶき (絵だけ・爆発と同じフレーム)。水の計算は 0.6 秒遅れて爆心をえぐるので、
+    // かたまりの飛ぶ時間をそれに合わせ、落ちる頃に計算の水が縁に積もる
+    private const float BlastReach = 1.6f, BlastExtra = 0.5f;   // 半径 = 爆発の半径 × これ + これ (WaterSim の衝撃と同じ)
+    private const float BlastProbe = 0.2f;                       // 水のある所を探す間隔
+    private const int BlobMin = 8, BlobMax = 40, SprayDrops = 20, CrownFoam = 8;
+    private const float BlobSizeMin = 0.12f, BlobSizeMax = 0.24f;
+    private const float AirZ = -1.02f;                           // 飛んでいる間は土煙 (-1) より手前
 
     // 人
     private const float ScanInterval = 0.1f;
@@ -72,21 +80,35 @@ internal static class WaterLeak
     {
         public Transform Tr;
         public SpriteRenderer Sr;
-        public float X, Y, Z, Vx, Vy, S0, S1, Age = MistLife;
+        public float X, Y, Z, Vx, Vy, S0, S1, Age = MistLife, Life = MistLife, A = 0.35f;
     }
 
     private sealed class Drop
     {
         public Transform Tr;
-        public float X, Y, H, Vx, Vy, Vh, Z, RingZ;
-        public bool Live, Ripple;
+        public SpriteRenderer Sr;
+        public Transform ShTr;           // 床の影 (かたまりだけ)
+        public SpriteRenderer ShSr;
+        public float X, Y, H, Vx, Vy, Vh, Z, RingZ, Size, TrailAcc, Age, Phase, Bw = 1f; // Bw = 絵の幅 (毎フレーム聞かない)
+        public bool Live, Ripple, Split;
+        public int Kind = -1;            // 今の絵 (DropKind)
+        public int Look;                 // 絵を作った時の Kind と種類 (変わった時だけ差し替える)
     }
+
+    // しずくの種類: 普通の粒 (漏れ)・飛ぶ水のかたまり・細かいしぶきの筋
+    private static float _shadowW;
+    private const int DropPlain = 0, DropBlob = 1, DropStreak = 2;
+    private const float BlobSplitSize = 0.16f;     // これより大きいかたまりは弧の頂点で 2 つに分かれる
+    private const float BlobStretch = 0.07f, BlobStretchMax = 1.7f;     // 速さ 1 単位/秒あたりの伸び
+    private const float StreakStretch = 0.25f, StreakStretchMax = 3.2f;
+    private const float WobbleAmp = 0.1f, WobbleRate = 22f;
 
     private sealed class Ring
     {
         public Transform Tr;
         public SpriteRenderer Sr;
-        public float Age = RippleLife, A0;
+        public float Age = RippleLife, A0, Life = RippleLife, From = RippleFrom, To = RippleTo, Sw = 1f;
+        public bool Wave;
     }
 
     private static readonly List<Jet> Jets = new();
@@ -118,10 +140,84 @@ internal static class WaterLeak
 
     private static void Add(in ResolvedDamage r)
     {
+        if (r.Kind == DamageKind.Explosion) Splash(r);
         if (!ShipStatus.Instance || TerrainDamage.LastCut <= 0) return;
         if (r.Kind != DamageKind.Explosion && r.Hp > 0) return;
         if (!FindLeak(r.Position, out Vector2 at, out Vector2 n, out float segLen, out string room)) return;
         Start(at, n, r.Seed, room, segLen, r.Tick);
+    }
+
+    // 爆発の水しぶき: 爆心の周りの水のある所から、水のかたまりを外へ弧を描いて飛ばし、細かいしぶき・広がる波の輪・泡を出す
+    private static readonly List<Vector2> WetPts = new();
+    private static void Splash(in ResolvedDamage r)
+    {
+        if (!WaterSim.Ready || !GameClock.ShipAlive || MeetingHud.Instance) return;
+        Vector2 c = r.Position;
+        float rad = r.Size * BlastReach + BlastExtra;
+        WetPts.Clear();
+        long deep = 0;
+        for (float y = -rad; y <= rad; y += BlastProbe)
+        for (float x = -rad; x <= rad; x += BlastProbe)
+        {
+            if (x * x + y * y > rad * rad) continue;
+            var p = new Vector2(c.x + x, c.y + y);
+            int d = WaterSim.DepthAt(p);
+            if (d < WetDepth) continue;
+            WetPts.Add(p);
+            deep += d;
+        }
+        if (WetPts.Count == 0) return;
+        WaterArt.AddCrater(c, rad);
+        float depth = Math.Min(1f, deep / (float)WetPts.Count / WaterSim.Full * 2f);   // 0.5 単位で最大
+        float floor = DamageMap.FrontZ(c), zs = DamageMap.ZScale(floor);
+        float ringZ = floor - 0.0008f * zs;
+        var rnd = new System.Random(r.Seed * 7919 + 17);
+        float bx = r.Direction.x * r.Force, by = r.Direction.y * r.Force;
+
+        int blobs = Math.Clamp(BlobMin + WetPts.Count / 3, BlobMin, BlobMax);
+        for (int i = 0; i < blobs; i++)
+        {
+            var p = WetPts[rnd.Next(WetPts.Count)];
+            float dx = p.x - c.x, dy = p.y - c.y, dl = MathF.Sqrt(dx * dx + dy * dy);
+            float ang = dl < 0.05f ? (float)rnd.NextDouble() * MathF.PI * 2f : MathF.Atan2(dy, dx) + ((float)rnd.NextDouble() - 0.5f) * 0.7f;
+            float ux = MathF.Cos(ang) + bx, uy = MathF.Sin(ang) + by, ul = MathF.Max(0.001f, MathF.Sqrt(ux * ux + uy * uy));
+            float vh = 2.2f + 1.2f * (float)rnd.NextDouble();
+            float t = 2f * vh / Gravity;
+            float land = Reach(p, ux / ul, uy / ul, rad * (1f + 0.7f * (float)rnd.NextDouble()) - dl);
+            float hs = land / t;
+            float size = BlobSizeMin + (BlobSizeMax - BlobSizeMin) * (0.4f * depth + 0.6f * (float)rnd.NextDouble());
+            SpawnDrop(p.x, p.y, 0.02f, ux / ul * hs, uy / ul * hs, vh, false, AirZ - 0.0001f * i, ringZ, size, DropBlob, rnd.Next(3));
+        }
+        for (int i = 0; i < SprayDrops; i++)
+        {
+            var p = WetPts[rnd.Next(WetPts.Count)];
+            float ang = (float)rnd.NextDouble() * MathF.PI * 2f;
+            float vx = MathF.Cos(ang) + bx * 0.5f, vy = MathF.Sin(ang) * 0.7f + by * 0.5f, vl = MathF.Max(0.001f, MathF.Sqrt(vx * vx + vy * vy));
+            float vh = 3f + 1.5f * (float)rnd.NextDouble(), t = 2f * vh / Gravity;
+            float hs = Reach(p, vx / vl, vy / vl, (3f + 3f * (float)rnd.NextDouble()) * t) / t;
+            SpawnDrop(p.x, p.y, 0.02f, vx / vl * hs, vy / vl * hs, vh, true, AirZ, ringZ, DropSize, DropStreak, 0);
+        }
+        AddRipple(c.x, c.y, 0.9f, ringZ, 0.7f, rad * 0.4f, rad * 2.2f, true);
+        AddRipple(c.x, c.y, 0.6f, ringZ, 0.9f, rad * 0.2f, rad * 1.4f, true);
+        for (int i = 0; i < CrownFoam; i++)
+        {
+            float ang = (i + (float)rnd.NextDouble() * 0.6f) * MathF.PI * 2f / CrownFoam;
+            float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
+            AddMist(c.x + ca * rad * 0.3f, c.y + sa * rad * 0.3f, ca * 1.4f, sa * 1.0f, AirZ + 0.001f, 0.3f, 0.8f, 0.55f, 0.65f);
+        }
+    }
+
+    // p から向き (ux, uy) へ want 進む間に歩けない所 (壁・船の外) があれば、その手前までの距離
+    private static float Reach(Vector2 p, float ux, float uy, float want)
+    {
+        const float step = 0.1f;
+        float d = 0f;
+        while (d + step <= want)
+        {
+            if (SolidMap.Solid(new Vector2(p.x + ux * (d + step), p.y + uy * (d + step)))) return MathF.Max(0.05f, d - step);
+            d += step;
+        }
+        return MathF.Max(0.05f, want);
     }
 
     // 壊した点に近い壊れた区間から、両側のどちらかが水回りの部屋のものを探す
@@ -336,32 +432,70 @@ internal static class WaterLeak
         }
     }
 
-    private static void SpawnDrop(Jet jet, float x, float y, float h, float vx, float vy, float vh, bool ripple)
+    private static void SpawnDrop(Jet jet, float x, float y, float h, float vx, float vy, float vh, bool ripple) =>
+        SpawnDrop(x, y, h, vx, vy, vh, ripple, jet.DropZ, jet.RingZ, DropSize, DropPlain, 0);
+
+    // kind = DropBlob: 爆発で飛ぶ水のかたまり (しぶきの尾・床の影・頂点でちぎれる・落ちた所に波紋と泡と跳ね返り)。
+    // DropStreak: 細かいしぶき (向きへ伸びる光の筋)。look = かたまりの絵の種類
+    private static Drop SpawnDrop(float x, float y, float h, float vx, float vy, float vh, bool ripple, float z, float ringZ, float size, int kind, int look)
     {
         var d = Drops[_nextDrop];
         if (d == null || !d.Tr)
         {
             var go = new GameObject("MrpWaterDrop") { layer = 0 };
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = DebrisArt.WaterDrop;
-            float s = DropSize / Math.Max(0.0001f, sr.sprite.bounds.size.x);
-            go.transform.localScale = FxMath.V3(s, s, 1f);
-            d = Drops[_nextDrop] = new Drop { Tr = go.transform };
+            d = Drops[_nextDrop] = new Drop { Tr = go.transform, Sr = go.AddComponent<SpriteRenderer>() };
         }
+        int want = kind * 16 + look;
+        if (d.Look != want || d.Kind < 0)
+        {
+            d.Look = want;
+            d.Sr.sprite = kind == DropBlob ? DebrisArt.WaterBlob(look) : kind == DropStreak ? DebrisArt.WaterStreak : DebrisArt.WaterDrop;
+            d.Bw = Math.Max(0.0001f, d.Sr.sprite.bounds.size.x);
+            if (kind == DropPlain) d.Tr.rotation = FxMath.RotZ(0f);
+            d.Size = -1f;
+        }
+        d.Kind = kind;
+        if (kind == DropPlain && d.Size != size)
+        {
+            float s = size / d.Bw;
+            d.Tr.localScale = FxMath.V3(s, s, 1f);
+        }
+        d.Size = size;
+        if (kind == DropBlob)
+        {
+            if (!d.ShTr)
+            {
+                var sg = new GameObject("MrpWaterDropShadow") { layer = 0 };
+                d.ShTr = sg.transform;
+                d.ShSr = sg.AddComponent<SpriteRenderer>();
+                d.ShSr.sprite = DebrisArt.SoftShadow;
+                if (_shadowW <= 0f) _shadowW = Math.Max(0.0001f, DebrisArt.SoftShadow.bounds.size.x);
+            }
+            d.ShTr.gameObject.SetActive(true);
+        }
+        else if (d.ShTr) d.ShTr.gameObject.SetActive(false);
         _nextDrop = (_nextDrop + 1) % MaxDrops;
         if (!d.Live) _liveDrops++;
         d.X = x; d.Y = y; d.H = h;
         d.Vx = vx; d.Vy = vy; d.Vh = vh;
-        d.Z = jet.DropZ;
-        d.RingZ = jet.RingZ;
+        d.Z = z;
+        d.RingZ = ringZ;
         d.Ripple = ripple;
+        d.TrailAcc = 0f;
+        d.Age = 0f;
+        d.Phase = (x * 13.7f + y * 7.3f) % 6.28f;
+        d.Split = false;
         d.Live = true;
         d.Tr.gameObject.SetActive(true);
         d.Tr.position = FxMath.V3(d.X, d.Y + d.H, d.Z);
+        return d;
     }
 
     // 霧と泡 (同じ使い回しの列)。s0 → s1 = 出てから消えるまでの大きさ
-    private static void AddMist(float x, float y, float vx, float vy, float z, float s0, float s1)
+    private static void AddMist(float x, float y, float vx, float vy, float z, float s0, float s1) =>
+        AddMist(x, y, vx, vy, z, s0, s1, MistLife, 0.35f);
+
+    private static void AddMist(float x, float y, float vx, float vy, float z, float s0, float s1, float life, float alpha)
     {
         var m = Mists[_nextMist];
         if (m == null || !m.Tr)
@@ -371,8 +505,10 @@ internal static class WaterLeak
             m.Sr.sprite = DebrisArt.Foam;
         }
         _nextMist = (_nextMist + 1) % MaxMist;
-        if (m.Age >= MistLife) _liveMist++;
+        if (m.Age >= m.Life) _liveMist++;
         m.Age = 0f;
+        m.Life = life;
+        m.A = alpha;
         m.X = x; m.Y = y; m.Z = z; m.Vx = vx; m.Vy = vy; m.S0 = s0; m.S1 = s1;
         m.Sr.enabled = true;
         m.Tr.position = FxMath.V3(x, y, z);
@@ -386,17 +522,17 @@ internal static class WaterLeak
         float sw = Math.Max(0.0001f, DebrisArt.Foam.bounds.size.x);
         foreach (var m in Mists)
         {
-            if (m == null || m.Age >= MistLife) continue;
+            if (m == null || m.Age >= m.Life) continue;
             m.Age += dt;
-            if (m.Age >= MistLife) { m.Sr.enabled = false; continue; }
+            if (m.Age >= m.Life) { m.Sr.enabled = false; continue; }
             live++;
-            float u = m.Age / MistLife;
+            float u = m.Age / m.Life;
             m.X += m.Vx * dt;
             m.Y += m.Vy * dt;
             m.Tr.position = FxMath.V3(m.X, m.Y, m.Z);
             float size = (m.S0 + (m.S1 - m.S0) * u) / sw;
             m.Tr.localScale = FxMath.V3(size, size, 1f);
-            m.Sr.color = FxMath.Rgba(1f, 1f, 1f, 0.35f * (1f - u) * (1f - u));
+            m.Sr.color = FxMath.Rgba(1f, 1f, 1f, m.A * (1f - u) * (1f - u));
         }
         _liveMist = live;
     }
@@ -410,23 +546,98 @@ internal static class WaterLeak
             if (d == null || !d.Live) continue;
             d.X += d.Vx * dt;
             d.Y += d.Vy * dt;
+            float vh0 = d.Vh;
             d.Vh -= Gravity * dt;
             d.H += d.Vh * dt;
+            d.Age += dt;
+            bool blob = d.Kind == DropBlob;
             if (d.H <= 0f)
             {
                 d.Live = false;
                 d.Tr.gameObject.SetActive(false);
-                if (d.Ripple) AddRipple(d.X, d.Y, 0.6f, d.RingZ);
+                if (blob)
+                {
+                    d.ShTr.gameObject.SetActive(false);
+                    Land(d);
+                }
+                else if (d.Ripple) AddRipple(d.X, d.Y, 0.6f, d.RingZ);
                 continue;
             }
             live++;
+            if (blob)
+            {
+                if (vh0 > 0f && d.Vh <= 0f && !d.Split && d.Size > BlobSplitSize) Split(d);
+                if ((d.TrailAcc += dt) >= 0.05f)
+                {
+                    d.TrailAcc = 0f;
+                    AddMist(d.X, d.Y + d.H, d.Vx * 0.1f, d.Vy * 0.1f, d.Z + 0.0005f, d.Size * 0.4f, d.Size * 0.8f, 0.25f, 0.3f);
+                }
+                // 床の影: 高いほど小さく薄い
+                float hk = FxMath.Clamp01(d.H / 1.2f);
+                float ss = d.Size * (1.1f - 0.4f * hk) / _shadowW;
+                d.ShTr.position = FxMath.V3(d.X, d.Y - d.Size * 0.15f, d.RingZ - 0.0001f);
+                d.ShTr.localScale = FxMath.V3(ss, ss * 0.5f, 1f);
+                d.ShSr.color = FxMath.Rgba(1f, 1f, 1f, 0.35f * (1f - 0.7f * hk));
+            }
+            if (d.Kind != DropPlain) Orient(d);
             d.Tr.position = FxMath.V3(d.X, d.Y + d.H, d.Z);
         }
         _liveDrops = live;
     }
 
+    // 画面の上の動き (横 + 高さ) の向きへ回し、速いほど進む向きへ伸ばす。かたまりは揺れながら飛ぶ
+    private static void Orient(Drop d)
+    {
+        float vx = d.Vx, vy = d.Vy + d.Vh;
+        float sp = FxMath.Sqrt(vx * vx + vy * vy);
+        bool blob = d.Kind == DropBlob;
+        float st = blob ? FxMath.Min(BlobStretchMax, 1f + sp * BlobStretch) : FxMath.Min(StreakStretchMax, 1f + sp * StreakStretch);
+        float w = blob ? 1f + WobbleAmp * FxMath.Sin(d.Age * WobbleRate + d.Phase) : 1f;
+        float s = d.Size / d.Bw;
+        d.Tr.rotation = FxMath.RotZ(FxMath.Atan2(vy, vx) * (180f / MathF.PI));
+        d.Tr.localScale = FxMath.V3(s * st * w, s / FxMath.Sqrt(st) / w, 1f);
+    }
+
+    // かたまりが弧の頂点でちぎれる: 自分は少し小さくなり、横へ分かれる小さなかたまりを 2 つ出す
+    private static void Split(Drop d)
+    {
+        d.Split = true;
+        float sz = d.Size;
+        d.Size = sz * 0.78f;
+        float sp = FxMath.Sqrt(d.Vx * d.Vx + d.Vy * d.Vy), nx = sp > 0.01f ? -d.Vy / sp : 1f, ny = sp > 0.01f ? d.Vx / sp : 0f;
+        for (int k = 0; k < 2; k++)
+        {
+            float side = k == 0 ? 1f : -1f, kick = 0.4f + 0.5f * (((int)(d.Phase * 100f) >> k & 7) / 7f);
+            var c = SpawnDrop(d.X, d.Y, d.H, d.Vx * 0.9f + nx * side * kick, d.Vy * 0.9f + ny * side * kick, 0.3f + 0.2f * k,
+                false, d.Z - 0.00005f, d.RingZ, sz * (0.38f + 0.12f * k), DropBlob, k + 1);
+            c.Split = true;
+            c.Phase = d.Phase + 1.7f * (k + 1);
+        }
+    }
+
+    // かたまりが床に落ちた: 波紋・泡と、王冠のように跳ね上がる小さなしぶき
+    private static void Land(Drop d)
+    {
+        AddRipple(d.X, d.Y, 0.8f, d.RingZ, 0.6f, d.Size * 1.5f, d.Size * 5f);
+        AddMist(d.X, d.Y + 0.02f, 0f, 0.08f, d.RingZ - 0.0002f, d.Size * 1.2f, d.Size * 2.6f, 0.45f, 0.6f);
+        float a0 = d.Phase;
+        for (int k = 0; k < 3; k++)
+        {
+            float ang = a0 + k * 2.1f, hs = 0.5f + 0.25f * k;
+            SpawnDrop(d.X, d.Y, 0.02f, FxMath.Cos(ang) * hs + d.Vx * 0.15f, FxMath.Sin(ang) * hs * 0.6f + d.Vy * 0.15f, 1.3f + 0.3f * k,
+                false, d.Z, d.RingZ, DropSize * 0.8f, DropStreak, 0);
+        }
+    }
+
     // strength = 最初の濃さ。z = 床の z から決めた波紋の z
-    private static void AddRipple(float x, float y, float strength, float z)
+    private static void AddRipple(float x, float y, float strength, float z) =>
+        AddRipple(x, y, strength, z, RippleLife, RippleFrom, RippleTo);
+
+    private static void AddRipple(float x, float y, float strength, float z, float life, float from, float to) =>
+        AddRipple(x, y, strength, z, life, from, to, false);
+
+    // wave = 大きく広がる波 (細かい絵を使う)
+    private static void AddRipple(float x, float y, float strength, float z, float life, float from, float to, bool wave)
     {
         var r = Rings[_nextRing];
         if (r == null || !r.Tr)
@@ -436,8 +647,15 @@ internal static class WaterLeak
             r.Sr.sprite = DebrisArt.Ripple;
         }
         _nextRing = (_nextRing + 1) % MaxRipples;
-        if (r.Age >= RippleLife) _liveRings++;
+        if (r.Age >= r.Life) _liveRings++;
         r.Age = 0f;
+        r.Life = life; r.From = from; r.To = to;
+        if (r.Wave != wave || r.Sw == 1f)
+        {
+            r.Wave = wave;
+            r.Sr.sprite = wave ? DebrisArt.WaveRing : DebrisArt.Ripple;
+            r.Sw = Math.Max(0.0001f, r.Sr.sprite.bounds.size.x);
+        }
         r.A0 = strength;
         r.Tr.position = FxMath.V3(x, y, z);
         r.Tr.localScale = FxMath.V3(0f, 0f, 1f);
@@ -449,16 +667,15 @@ internal static class WaterLeak
     {
         if (_liveRings == 0) return;
         int live = 0;
-        float sw = Math.Max(0.0001f, DebrisArt.Ripple.bounds.size.x);
         foreach (var r in Rings)
         {
-            if (r == null || r.Age >= RippleLife) continue;
+            if (r == null || r.Age >= r.Life) continue;
             r.Age += dt;
-            if (r.Age >= RippleLife) { r.Sr.enabled = false; continue; }
+            if (r.Age >= r.Life) { r.Sr.enabled = false; continue; }
             live++;
-            float u = r.Age / RippleLife;
+            float u = r.Age / r.Life;
             float e = 1f - (1f - u) * (1f - u);
-            float size = (RippleFrom + (RippleTo - RippleFrom) * e) / sw;
+            float size = (r.From + (r.To - r.From) * e) / r.Sw;
             // 横長の楕円 (床を斜めに見ている)
             r.Tr.localScale = FxMath.V3(size, size * 0.6f, 1f);
             r.Sr.color = FxMath.Rgba(1f, 1f, 1f, r.A0 * (1f - u));
@@ -556,13 +773,18 @@ internal static class WaterLeak
     private static void HideDrops()
     {
         foreach (var d in Drops)
-            if (d != null && d.Live) { d.Live = false; if (d.Tr) d.Tr.gameObject.SetActive(false); }
+            if (d != null && d.Live)
+            {
+                d.Live = false;
+                if (d.Tr) d.Tr.gameObject.SetActive(false);
+                if (d.ShTr) d.ShTr.gameObject.SetActive(false);
+            }
         _liveDrops = 0;
         foreach (var r in Rings)
-            if (r != null && r.Age < RippleLife) { r.Age = RippleLife; if (r.Sr) r.Sr.enabled = false; }
+            if (r != null && r.Age < r.Life) { r.Age = r.Life; if (r.Sr) r.Sr.enabled = false; }
         _liveRings = 0;
         foreach (var m in Mists)
-            if (m != null && m.Age < MistLife) { m.Age = MistLife; if (m.Sr) m.Sr.enabled = false; }
+            if (m != null && m.Age < m.Life) { m.Age = m.Life; if (m.Sr) m.Sr.enabled = false; }
         _liveMist = 0;
     }
 
@@ -581,6 +803,7 @@ internal static class WaterLeak
         for (int i = 0; i < MaxDrops; i++)
         {
             if (Drops[i]?.Tr) UnityEngine.Object.Destroy(Drops[i].Tr.gameObject);
+            if (Drops[i]?.ShTr) UnityEngine.Object.Destroy(Drops[i].ShTr.gameObject);
             Drops[i] = null;
         }
         for (int i = 0; i < MaxRipples; i++)

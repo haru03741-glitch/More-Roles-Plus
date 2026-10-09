@@ -33,6 +33,16 @@ internal static class WaterSim
     private const int BlowMax = 12;
     private const int DrainDist = Decompression.UnitDist / 2;
     private const int DrainGain = 64;         // 引く強さ 1024 あたり 1 刻みに消える割合 (/256)
+    // 衝撃 (爆発など): 半径の中の水に、中心から外へ向かう流れを 1 回だけ足す (勢いは Damp で減っていく)
+    private const int ShockGain = 192;        // 中心の升に足す流れ = 水の量 × 強さ/256 × これ/256
+    private const float ShockReach = 1.6f;    // 爆発の半径の何倍まで水を押すか
+    private const float ShockExtra = 0.5f;
+    // 跳ね: 衝撃の半径の内側の水を粒にして外へ飛ばす (中心の升は水の量 × これ/256 を失う)。粒は壁で止まり、落ちた升に水を足す
+    private const int SplashFrac = 200;
+    private const int SplashMin = 8;          // これより少ない量は飛ばさない
+    private const int SplashHigh = 128;       // 飛び出す高さ (1/8 単位)
+    private const int SplashStep = 224;       // 1 刻みに進む距離の上限 (升 ×256)
+    private const int SplashFlightMax = 30;
 
     // 漏れ: 開始から FullSteps は全開・その後 FadeSteps で止まる。最初の BurstSteps は多く遠い
     public const int FullSteps = 300, FadeSteps = 150, BurstSteps = 15;
@@ -57,6 +67,7 @@ internal static class WaterSim
     internal static readonly int[] Ox = new int[MaxParticles], Oy = new int[MaxParticles], Oh = new int[MaxParticles];
     private static readonly int[] Vx = new int[MaxParticles], Vy = new int[MaxParticles], Vh = new int[MaxParticles];
     internal static readonly bool[] Stuck = new bool[MaxParticles];
+    private static readonly int[] Pm = new int[MaxParticles];       // 粒の水の量
     internal static int Particles { get; private set; }
     // 今の刻みに床へ落ちた粒の位置 (升 ×256)。絵が波紋を出す
     internal static readonly List<(int X, int Y)> Landed = new();
@@ -87,6 +98,10 @@ internal static class WaterSim
         public bool Leak;
         public Source Src;
         public int Cx, Cy, R;       // 升を作り直す範囲 (升)
+        public bool Shock;          // 作り直しの後に衝撃を足す
+        public int Sx, Sy, Sr;      // 衝撃の中心 (升 ×256) と半径 (升 ×256)
+        public int Sp, Bx, By;      // 強さ (0..256) と偏り (長さ ≈256 × 力)
+        public ushort Seed;
     }
 
     private static int _shipGen;
@@ -109,6 +124,8 @@ internal static class WaterSim
     // 確認用
     internal static int Late { get; private set; }
     internal static int Steps { get; private set; }
+    internal static int Shocks { get; private set; }
+    internal static int Splashes { get; private set; }
     internal static uint LastDigest { get; private set; }
     internal static double LastStepMs { get; private set; }
 
@@ -145,7 +162,21 @@ internal static class WaterSim
         int tick = GameClock.Expand(r.Tick);
         float rad = r.Kind == DamageKind.Explosion ? r.Size + 0.6f : 2f;
         int cx = (int)MathF.Floor((r.Position.x - _org.x) / _cell), cy = (int)MathF.Floor((r.Position.y - _org.y) / _cell);
-        Enqueue(new Pending { Tick = tick, Cx = cx, Cy = cy, R = (int)(rad / _cell) + 2 });
+        var p = new Pending { Tick = tick, Cx = cx, Cy = cy, R = (int)(rad / _cell) + 2 };
+        if (r.Kind == DamageKind.Explosion)
+        {
+            p.Shock = true;
+            p.Sx = (int)MathF.Floor((r.Position.x - _org.x) / _cell * 256f);
+            p.Sy = (int)MathF.Floor((r.Position.y - _org.y) / _cell * 256f);
+            p.Sr = (int)((r.Size * ShockReach + ShockExtra) / _cell * 256f);
+            p.Sp = 256;
+            p.Bx = (int)MathF.Round(r.Direction.x * r.Force * 256f);
+            p.By = (int)MathF.Round(r.Direction.y * r.Force * 256f);
+            p.Seed = r.Seed;
+            int reach = p.Sr / 256 + 2;
+            if (reach > p.R) p.R = reach;
+        }
+        Enqueue(p);
     }
 
     // 漏れ (WaterLeak から)。at = 壊れた壁の線の上・n = 噴く側の法線・both = 両側へ
@@ -368,6 +399,7 @@ internal static class WaterSim
             Queue.RemoveAt(0);
             if (p.Leak) { Sources.Add(p.Src); continue; }
             Rebuild(p.Cx - p.R, p.Cy - p.R, p.Cx + p.R, p.Cy + p.R);
+            if (p.Shock) Shock(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed);
         }
 
         // 噴き出し: 粒を出して動かし、床に落ちた粒の水を升に足す
@@ -489,6 +521,99 @@ internal static class WaterSim
         if (dY == 2) b2 = by; else b3 = by;
     }
 
+    // 衝撃: 中心 (sx, sy)・半径 sr (どれも升 ×256) の中の水に、外へ向かう流れを足す (強さ sp = 0..256・中心ほど強い)。
+    // 向き (bx, by) は放射の向きに足す偏り。足すのは水のある升だけ (水の無い升の管に残ると後で来た水が勝手に流れる)
+    internal static void Shock(int sx, int sy, int sr, int sp, int bx, int by, ushort seed)
+    {
+        if (sr <= 0 || sp <= 0) return;
+        Shocks++;
+        uint rng = 0x9E3779B9u ^ seed * 2654435761u ^ (uint)_step * 40503u;
+        if (rng == 0) rng = 1;
+        int x0 = Math.Max(1, (sx - sr) >> 8), x1 = Math.Min(_w - 2, (sx + sr) >> 8);
+        int y0 = Math.Max(1, (sy - sr) >> 8), y1 = Math.Min(_h - 2, (sy + sr) >> 8);
+        long rr = (long)sr * sr;
+        for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+        {
+            int k = y * _w + x;
+            int h = _hgt[k];
+            if (h <= 0 || _open[k] == 0) continue;
+            int dx = x * 256 + 128 - sx, dy = y * 256 + 128 - sy;
+            long d2 = (long)dx * dx + (long)dy * dy;
+            if (d2 >= rr) continue;
+            int fall = (int)((rr - d2) * 256 / rr);                       // 中心 256 → 縁 0
+            int dist = ISqrt(d2);
+            h = Splash(k, x, y, dx, dy, dist, sr, fall * sp / 256, bx, by, ref rng);
+            if (h <= 0) continue;
+            int all = (int)((long)h * sp / 256 * fall / 256 * ShockGain / 256);
+            if (all <= 0) continue;
+            // 放射の向き (長さ ≈256 に揃える) + 偏り
+            int ad = Math.Abs(dx) + Math.Abs(dy);
+            int fx = (ad == 0 ? 0 : dx * 256 / ad) + bx, fy = (ad == 0 ? 0 : dy * 256 / ad) + by;
+            int ax = Math.Abs(fx), ay = Math.Abs(fy);
+            if (ax + ay == 0) continue;
+            int dX = fx > 0 ? 0 : 1, dY = fy > 0 ? 2 : 3;
+            bool okX = ax > 0 && _open[k + Nx[dX]] != 0 && Passable(k, dX);
+            bool okY = ay > 0 && _open[k + Ny[dY] * _w] != 0 && Passable(k, dY);
+            if (!okX && !okY) continue;
+            int px = okX && okY ? all * ax / (ax + ay) : okX ? all : 0;
+            _flux[k * 4 + dX] += px;
+            _flux[k * 4 + dY] += all - px;
+            Wake(k);
+        }
+    }
+
+    // 升 k の水の一部を粒にして外へ飛ばし、残りの水の量を返す。dx, dy, dist = 中心からの向きと距離 (升 ×256)。
+    // 飛ぶ距離 = 半径の外までの残り × 0.8〜1.3 倍 + 少し。向きは放射 + 偏り ± 約 20°
+    private static int Splash(int k, int x, int y, int dx, int dy, int dist, int sr, int fall, int bx, int by, ref uint rng)
+    {
+        int h = _hgt[k];
+        int take = (int)((long)h * fall / 256 * SplashFrac / 256);
+        if (take < SplashMin || Particles >= MaxParticles) return h;
+        int ux = dist > 0 ? dx * 256 / dist : 0, uy = dist > 0 ? dy * 256 / dist : 0;
+        ux += bx; uy += by;
+        int ul = ISqrt((long)ux * ux + (long)uy * uy);
+        rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+        if (ul == 0)
+        {
+            // 真ん中で偏りも無い: 縦横のどれかへ
+            int q = (int)(rng >> 20 & 3u);
+            ux = q == 0 ? 256 : q == 1 ? -256 : 0; uy = q == 2 ? 256 : q == 3 ? -256 : 0; ul = 256;
+        }
+        ux = ux * 256 / ul; uy = uy * 256 / ul;
+        int a = 4 + (int)(rng % 7u);                     // ±15°
+        int c = FanCos[a], sn = FanSin[a];
+        int rx = (ux * c - uy * sn) / 256, ry = (ux * sn + uy * c) / 256;
+        rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+        int reach = (sr - dist) * (205 + (int)(rng % 128u)) / 256 + 64 + (int)(rng >> 8 & 127u);
+        rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+        int flight = FlightMin + (int)(rng % (uint)(FlightMax - FlightMin + 1));
+        // 1 刻みに 1 升を超えて進むと壁の判定 (CanCross) が隣の升しか見ないので、遠くへ飛ぶ粒は長く飛ばす
+        if (reach / flight > SplashStep) flight = Math.Min(SplashFlightMax, reach / SplashStep + 1);
+        int spd = Math.Min(SplashStep, reach / flight);
+        int p = Particles++;
+        Px[p] = Ox[p] = x * 256 + 128; Py[p] = Oy[p] = y * 256 + 128;
+        Ph[p] = Oh[p] = SplashHigh;
+        Vx[p] = rx * spd / 256;
+        Vy[p] = ry * spd / 256;
+        Vh[p] = (Gravity * flight * flight / 2 - SplashHigh) / flight;
+        Stuck[p] = false;
+        Pm[p] = take;
+        _hgt[k] = h - take;
+        Mark(k);
+        Splashes++;
+        return h - take;
+    }
+
+    private static int ISqrt(long v)
+    {
+        if (v <= 0) return 0;
+        long r = (long)Math.Sqrt(v);    // 近い値から整数で合わせる (端末で浮動小数の丸めが違っても同じ値になる)
+        while (r * r > v) r--;
+        while ((r + 1) * (r + 1) <= v) r++;
+        return (int)r;
+    }
+
     // 演出用の記録 (計算には戻らない)。同じ升は直近の記録へまとめる
     private static void Spill(int x, int y, int amount)
     {
@@ -536,6 +661,7 @@ internal static class WaterSim
             Vy[p] = ry * sp / 256;
             Vh[p] = (Gravity * flight * flight / 2 - MouthH) / flight;
             Stuck[p] = false;
+            Pm[p] = Mass;
         }
     }
 
@@ -572,7 +698,7 @@ internal static class WaterSim
             Ph[p] += Vh[p];
             if (Ph[p] > 0) continue;
             int k = (ny >> 8) * _w + (nx >> 8);
-            if (_open[k] != 0) { _hgt[k] += Mass; Wake(k); Mark(k); }
+            if (_open[k] != 0) { _hgt[k] += Pm[p]; Wake(k); Mark(k); }
             Landed.Add((nx, ny));
             int last = --Particles;
             if (p != last)
@@ -581,6 +707,7 @@ internal static class WaterSim
                 Ox[p] = Ox[last]; Oy[p] = Oy[last]; Oh[p] = Oh[last];
                 Vx[p] = Vx[last]; Vy[p] = Vy[last]; Vh[p] = Vh[last];
                 Stuck[p] = Stuck[last];
+                Pm[p] = Pm[last];
                 p--; // 詰めた粒 (まだこの刻みで動かしていない) を同じ番号でもう一度回す
             }
         }
@@ -679,6 +806,8 @@ internal static class WaterSim
         _step = 0;
         Late = 0;
         Steps = 0;
+        Shocks = 0;
+        Splashes = 0;
         LastDigest = 0;
         Spilled.Clear();
         SpilledTotal = 0;
@@ -700,9 +829,22 @@ internal static class WaterSim
             }
             if (a.StartsWith("show")) { reply(WaterDebug.Show(a.Length > 4 ? a.Substring(4).Trim() : "")); return; }
             if (a == "hide") { WaterDebug.Hide(); reply("OK water hide"); return; }
+            if (a.StartsWith("line"))
+            {
+                // 確認用: その点を通る横一列 (左右 n 升) の深さ
+                var q = a.Substring(4).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (!_ready || q.Length < 2 || !float.TryParse(q[0], out float lx) || !float.TryParse(q[1], out float ly)) { reply("ERR water line x y [n]"); return; }
+                int n = q.Length > 2 && int.TryParse(q[2], out int nn) ? nn : 12;
+                int cx = (int)MathF.Floor((lx - _org.x) / _cell), cy = (int)MathF.Floor((ly - _org.y) / _cell);
+                var sb = new System.Text.StringBuilder();
+                for (int x = cx - n; x <= cx + n; x++)
+                    sb.Append(x < 0 || x >= _w || cy < 0 || cy >= _h ? "-" : _hgt[cy * _w + x].ToString()).Append(x == cx ? "|" : " ");
+                reply($"OK water line step={_step} {sb}");
+                return;
+            }
             if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return; }
             if (!_ready) { reply($"OK water off {GameClock.Describe()}"); return; }
-            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} queue={Queue.Count} sources={Sources.Count} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
+            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
         });
     }
 }
