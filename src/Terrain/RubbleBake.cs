@@ -129,10 +129,16 @@ internal static class RubbleBake
             _cam.targetTexture = rt;
             _cam.Render();
 
-            RenderTexture.active = rt;
             tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { name = "MrpRubble", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+#if ANDROID
+            RenderTexture.active = rt;
             tex.ReadPixels(new Rect(0f, 0f, w, h), 0, 0, false);
             tex.Apply(false, true); // CPU 側の写しは捨てる
+#else
+            // 読み戻し (GPU を待って 1 枚 3〜4ms) をせず、GPU の中で描き先から写す。先に空の絵を送って CPU 側の写しを捨てておく (後で Apply すると写した絵が空で上書きされる)
+            tex.Apply(false, true);
+            Graphics.CopyTexture(rt, 0, 0, tex, 0, 0);
+#endif
             sp = Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), Ppu, 0, SpriteMeshType.FullRect);
             sp.name = "MrpRubble";
 
