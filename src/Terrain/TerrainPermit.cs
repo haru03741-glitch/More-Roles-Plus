@@ -47,6 +47,7 @@ public enum TerrainUse : byte
     Hammer,
     Blast,
     Bomb,
+    Push,   // 押し: 地形は変えないので役職を問わない (依頼の数の上限だけ)
 }
 
 // その人が今壊してよいか。自分の端末 (使う前) とホスト (客の依頼を受ける時) の両方で同じ判定をする。
@@ -90,6 +91,8 @@ internal static class TerrainPermits
                 if (!p.Hammer) return "no hammer";
                 cooldown = p.HammerCooldown;
                 break;
+            case TerrainUse.Push:
+                return null;
             case TerrainUse.Blast:
                 if (p.BlastRadius <= 0f) return "no blast";
                 if (radius > TerrainWire.QSize(p.BlastRadius) + 0.01f) return $"blast too large {radius:0.0}>{p.BlastRadius:0.0}";
@@ -130,5 +133,10 @@ internal static class TerrainPermits
         return $"sandbox={(SandboxOverride?.ToString() ?? "auto")}/{Roles.PracticeMatch.Sandbox} hammer={p.Hammer}/{p.HammerCooldown:0.#}s blast={p.BlastRadius:0.#}/{p.BlastCooldown:0.#}s bomb={p.BombRadius:0.#}/{p.BombCooldown:0.#}s";
     }
 
-    public static TerrainUse UseOf(in DamageEvent e) => e.Kind == DamageKind.Blunt ? TerrainUse.Hammer : TerrainUse.Blast;
+    public static TerrainUse UseOf(in DamageEvent e) => e.Kind switch
+    {
+        DamageKind.Blunt => TerrainUse.Hammer,
+        DamageKind.Push => TerrainUse.Push,
+        _ => TerrainUse.Blast,
+    };
 }

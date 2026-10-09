@@ -53,6 +53,9 @@ internal static class WaterLeak
     private const float BlastReach = 1.6f, BlastExtra = 0.5f;   // 半径 = 爆発の半径 × これ + これ (WaterSim の衝撃と同じ)
     private const float BlastProbe = 0.2f;                       // 水のある所を探す間隔
     private const int BlobMin = 8, BlobMax = 40, SprayDrops = 20, CrownFoam = 8;
+    // 押しのしぶき: 扇形は WaterSim.Push と同じ (根元の半幅 0.4・広がり 148/256)。飛ぶ向きの散らばり PushFan (ラジアン・全幅)
+    private const float PushBase = 0.4f, PushSpread = 148f / 256f, PushFan = 0.42f;
+    private const int PushBlobMin = 6, PushBlobMax = 32, PushSprayDrops = 16, PushRipples = 4, PushFoam = 6;
     private const float BlobSizeMin = 0.12f, BlobSizeMax = 0.24f;
     private const float AirZ = -1.02f;                           // 飛んでいる間は土煙 (-1) より手前
 
@@ -148,6 +151,7 @@ internal static class WaterLeak
     private static void Add(in ResolvedDamage r)
     {
         if (r.Kind == DamageKind.Explosion) Splash(r);
+        if (r.Kind == DamageKind.Push) { PushSplash(r); return; }
         if (!ShipStatus.Instance || TerrainDamage.LastCut <= 0) return;
         if (r.Kind != DamageKind.Explosion && r.Hp > 0) return;
         if (!FindLeak(r.Position, out Vector2 at, out Vector2 n, out float segLen, out string room)) return;
@@ -211,6 +215,78 @@ internal static class WaterLeak
             float ang = (i + (float)rnd.NextDouble() * 0.6f) * MathF.PI * 2f / CrownFoam;
             float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
             AddMist(c.x + ca * rad * 0.3f, c.y + sa * rad * 0.3f, ca * 1.4f, sa * 1.0f, AirZ + 0.001f, 0.3f, 0.8f, 0.55f, 0.65f);
+        }
+    }
+
+    // 押しの水しぶき: 起点から向きの先の扇形 (WaterSim.Push と同じ形) の水のある所から、かたまりと筋を向きの先へ低い弧で飛ばす。
+    // 起点の水はえぐれ、通り道に沿って波紋が並ぶ
+    private static void PushSplash(in ResolvedDamage r)
+    {
+        if (!WaterSim.Ready || !GameClock.ShipAlive || MeetingHud.Instance || r.Size <= 0f) return;
+        Vector2 c = r.Position;
+        float ux = r.Direction.x, uy = r.Direction.y, len = r.Size, force = r.Force;
+        WetPts.Clear();
+        long deep = 0;
+        float wide = PushBase + len * PushSpread;
+        for (float a = 0f; a < len; a += BlastProbe)
+        {
+            float half = PushBase + a * PushSpread;
+            for (float s = -half; s <= half; s += BlastProbe)
+            {
+                var p = new Vector2(c.x + ux * a - uy * s, c.y + uy * a + ux * s);
+                int d = WaterSim.DepthAt(p);
+                if (d < WetDepth) continue;
+                WetPts.Add(p);
+                deep += d;
+            }
+        }
+        if (WetPts.Count == 0) return;
+        WaterArt.AddCrater(c, Math.Min(wide, 0.8f));
+        float depth = Math.Min(1f, deep / (float)WetPts.Count / WaterSim.Full * 2f);
+        float floor = DamageMap.FrontZ(c), zs = DamageMap.ZScale(floor);
+        float ringZ = floor - 0.0008f * zs;
+        var rnd = new System.Random(r.Seed * 7919 + 29);
+
+        int blobs = (int)(Math.Clamp(PushBlobMin + WetPts.Count / 3, PushBlobMin, PushBlobMax) * (0.4f + 0.6f * force));
+        for (int i = 0; i < blobs; i++)
+        {
+            var p = WetPts[rnd.Next(WetPts.Count)];
+            float along = (p.x - c.x) * ux + (p.y - c.y) * uy;
+            float ang = ((float)rnd.NextDouble() - 0.5f) * PushFan;
+            float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
+            float vx = ux * ca - uy * sa, vy = ux * sa + uy * ca;
+            float vh = 1.3f + 0.9f * (float)rnd.NextDouble();
+            float t = 2f * vh / Gravity;
+            float land = Reach(p, vx, vy, (len - along) * (0.6f + 0.5f * (float)rnd.NextDouble()) * (0.5f + 0.5f * force) + 0.3f);
+            float hs = land / t;
+            float size = BlobSizeMin + (BlobSizeMax - BlobSizeMin) * (0.4f * depth + 0.6f * (float)rnd.NextDouble());
+            SpawnDrop(p.x, p.y, 0.02f, vx * hs, vy * hs, vh, false, AirZ - 0.0001f * i, ringZ, size, DropBlob, rnd.Next(3));
+        }
+        int sprays = (int)(PushSprayDrops * (0.4f + 0.6f * force));
+        for (int i = 0; i < sprays; i++)
+        {
+            var p = WetPts[rnd.Next(WetPts.Count)];
+            float ang = ((float)rnd.NextDouble() - 0.5f) * PushFan * 1.4f;
+            float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
+            float vx = ux * ca - uy * sa, vy = ux * sa + uy * ca;
+            float vh = 2f + 1.2f * (float)rnd.NextDouble(), t = 2f * vh / Gravity;
+            float hs = Reach(p, vx, vy, (4f + 3f * (float)rnd.NextDouble()) * t * force + 0.2f) / t;
+            SpawnDrop(p.x, p.y, 0.02f, vx * hs, vy * hs, vh, true, AirZ, ringZ, DropSize, DropStreak, 0);
+        }
+        // 通り道に沿った波紋 (起点ほど強い) と、向きの先へ流れる泡
+        for (int i = 0; i < PushRipples; i++)
+        {
+            float a = len * i / PushRipples;
+            float k = 1f - (float)i / PushRipples;
+            var p = new Vector2(c.x + ux * a, c.y + uy * a);
+            if (WaterSim.DepthAt(p) < WetDepth) continue;
+            AddRipple(p.x, p.y, 0.5f + 0.4f * k, ringZ, 0.6f + 0.3f * k, 0.1f, (PushBase + a * PushSpread) * 2.2f + 0.3f, true);
+        }
+        for (int i = 0; i < PushFoam; i++)
+        {
+            var p = WetPts[rnd.Next(WetPts.Count)];
+            float sp = (1f + (float)rnd.NextDouble()) * force;
+            AddMist(p.x, p.y, ux * sp, uy * sp * 0.7f, AirZ + 0.001f, 0.25f, 0.7f, 0.5f, 0.6f);
         }
     }
 

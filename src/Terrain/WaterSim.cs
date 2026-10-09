@@ -55,6 +55,11 @@ internal static class WaterSim
     private const int SplashHigh = 128;       // 飛び出す高さ (1/8 単位)
     private const int SplashStep = 224;       // 1 刻みに進む距離の上限 (升 ×256)
     private const int SplashFlightMax = 30;
+    // 押し: 起点から向きの先の扇形 (根元の半幅 PushBase 升 ×256・広がり PushSpread/256 = 約 30°)。
+    // 流れは向き 3/4 + 起点から外へ 1/4 (扇の端は少し外へ逸れる)
+    private const int PushBase = 256;
+    private const int PushSpread = 148;
+    private const int PushGain = 256;         // 足す流れ = 水の量 × 強さ/256 × 近さ/256 × これ/256
 
     // 漏れ: 開始から FullSteps は全開・その後 FadeSteps で止まる。最初の BurstSteps は多く遠い
     public const int FullSteps = 300, FadeSteps = 150, BurstSteps = 15;
@@ -121,6 +126,7 @@ internal static class WaterSim
         public bool Shock;          // 作り直しの後に衝撃を足す
         public int Sx, Sy, Sr;      // 衝撃の中心 (升 ×256) と半径 (升 ×256)
         public int Sp, Bx, By;      // 強さ (0..256) と偏り (長さ ≈256 × 力)
+        public bool Push;           // 押し: 地形は変わらないので作り直さない。(Bx, By) = 向き (長さ 256)・Sr = 届く長さ
         public ushort Seed;
     }
 
@@ -193,6 +199,19 @@ internal static class WaterSim
         float rad = r.Kind == DamageKind.Explosion ? r.Size + 0.6f : 2f;
         int cx = (int)MathF.Floor((r.Position.x - _org.x) / _cell), cy = (int)MathF.Floor((r.Position.y - _org.y) / _cell);
         var p = new Pending { Tick = tick, Cx = cx, Cy = cy, R = (int)(rad / _cell) + 2 };
+        if (r.Kind == DamageKind.Push)
+        {
+            p.Push = true;
+            p.Sx = (int)MathF.Floor((r.Position.x - _org.x) / _cell * 256f);
+            p.Sy = (int)MathF.Floor((r.Position.y - _org.y) / _cell * 256f);
+            p.Sr = (int)(r.Size / _cell * 256f);
+            p.Sp = (int)MathF.Round(r.Force * 256f);
+            p.Bx = (int)MathF.Round(r.Direction.x * 256f);
+            p.By = (int)MathF.Round(r.Direction.y * 256f);
+            p.Seed = r.Seed;
+            Enqueue(p);
+            return;
+        }
         if (r.Kind == DamageKind.Explosion)
         {
             p.Shock = true;
@@ -611,6 +630,7 @@ internal static class WaterSim
             var p = Queue[0];
             Queue.RemoveAt(0);
             if (p.Leak) { Sources.Add(p.Src); continue; }
+            if (p.Push) { Push(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed); continue; }
             Rebuild(p.Cx - p.R, p.Cy - p.R, p.Cx + p.R, p.Cy + p.R);
             int reach = p.R + FallScan[3] + 1;
             Links(p.Cx - reach, p.Cy - reach, p.Cx + reach, p.Cy + reach);
@@ -849,6 +869,50 @@ internal static class WaterSim
             // 放射の向き (長さ ≈256 に揃える) + 偏り
             int ad = Math.Abs(dx) + Math.Abs(dy);
             int fx = (ad == 0 ? 0 : dx * 256 / ad) + bx, fy = (ad == 0 ? 0 : dy * 256 / ad) + by;
+            int ax = Math.Abs(fx), ay = Math.Abs(fy);
+            if (ax + ay == 0) continue;
+            int dX = fx > 0 ? 0 : 1, dY = fy > 0 ? 2 : 3;
+            bool okX = ax > 0 && _open[k + Nx[dX]] != 0 && Passable(k, dX);
+            bool okY = ay > 0 && _open[k + Ny[dY] * _w] != 0 && Passable(k, dY);
+            if (!okX && !okY) continue;
+            int px = okX && okY ? all * ax / (ax + ay) : okX ? all : 0;
+            _flux[k * 4 + dX] += px;
+            _flux[k * 4 + dY] += all - px;
+            Wake(k);
+        }
+    }
+
+    // 押し: 起点 (sx, sy) から向き (ux, uy) (長さ 256) の先 len まで (どれも升 ×256) の扇形の水を向きへ押す。
+    // 起点に近いほど強く (強さ sp = 0..256)、水の一部は粒になって向きの先へ飛ぶ
+    internal static void Push(int sx, int sy, int len, int sp, int ux, int uy, ushort seed)
+    {
+        if (len <= 0 || sp <= 0 || (ux | uy) == 0) return;
+        Shocks++;
+        uint rng = 0x85EBCA6Bu ^ seed * 2654435761u ^ (uint)_step * 40503u;
+        if (rng == 0) rng = 1;
+        int wide = PushBase + len * PushSpread / 256;
+        int ex = sx + ux * len / 256, ey = sy + uy * len / 256;
+        int x0 = Math.Max(1, (Math.Min(sx, ex) - wide) >> 8), x1 = Math.Min(_w - 2, (Math.Max(sx, ex) + wide) >> 8);
+        int y0 = Math.Max(1, (Math.Min(sy, ey) - wide) >> 8), y1 = Math.Min(_h - 2, (Math.Max(sy, ey) + wide) >> 8);
+        for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+        {
+            int k = y * _w + x;
+            int h = _hgt[k];
+            if (h <= 0 || _open[k] == 0) continue;
+            int dx = x * 256 + 128 - sx, dy = y * 256 + 128 - sy;
+            int along = (int)(((long)dx * ux + (long)dy * uy) / 256);
+            if (along < 0 || along >= len) continue;
+            int across = (int)(Math.Abs((long)dx * uy - (long)dy * ux) / 256);
+            if (across > PushBase + along * PushSpread / 256) continue;
+            int fall = (int)((long)(len - along) * 256 / len);                 // 起点 256 → 先 0
+            h = Splash(k, x, y, 0, 0, along, len, fall * sp / 256, ux, uy, ref rng);
+            if (h <= 0) continue;
+            int all = (int)((long)h * sp / 256 * fall / 256 * PushGain / 256);
+            if (all <= 0) continue;
+            int ad = Math.Abs(dx) + Math.Abs(dy);
+            int fx = ux * 3, fy = uy * 3;
+            if (ad > 0) { fx += dx * 256 / ad; fy += dy * 256 / ad; }
             int ax = Math.Abs(fx), ay = Math.Abs(fy);
             if (ax + ay == 0) continue;
             int dX = fx > 0 ? 0 : 1, dY = fy > 0 ? 2 : 3;

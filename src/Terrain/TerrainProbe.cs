@@ -257,6 +257,13 @@ internal static class TerrainProbe
             reply($"OK blast {res} ms={sw.Elapsed.TotalMilliseconds:0.00} {TerrainDamage.Breakdown()} | {TerrainDamage.MarksText()}");
         });
 
+        TestBridge.Register("push", "<x> <y> <dx> <dy> <len> [force] 押し (反動・衝撃波)。壁は壊さず、向きの先 len までの扇形の水と小物を押す (TerrainApi.Push と同じ依頼)", (args, reply) =>
+        {
+            if (!TryParseFloats(args, out var v) || (v.Length != 5 && v.Length != 6)) { reply("ERR push needs <x> <y> <dx> <dy> <len> [force]"); return; }
+            var res = TerrainApi.Push(new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), v[4], v.Length == 6 ? v[5] : 1f);
+            reply($"{(res.Ok ? "OK" : "ERR")} push {res.Why} water shocks={WaterSim.Shocks} splashes={WaterSim.Splashes} props kicks={PropSim.Kicks}");
+        });
+
         TestBridge.Register("netloop", "[rev] <x y r | h x y dx dy force>... 爆発 / 打撃 (h) を電文に書いて読み直し、受け手の順番待ちを通して適用 (rev = 後ろの連番から届ける)", (args, reply) =>
         {
             var p = new System.Collections.Generic.List<string>(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries));

@@ -36,6 +36,7 @@ internal static class TerrainSync
     private const float LagMargin = 1.5f;        // 打撃: ホストに見えている位置の遅れの分
     internal const float MaxBlastDistance = 20f;  // 爆発: 投げた・撃った物が届く所まで
     private const float MaxBlastRadius = 3f;
+    internal const float MaxPushReach = 6f;
     private static int _lastReport = -ReportTicks;
     private static ushort _reportedSeq = ushort.MaxValue;
     private static int _batchHost = NoHost; // 客: 最後に束を受けたホスト
@@ -107,6 +108,7 @@ internal static class TerrainSync
             TerrainDamage.Mark("decomp");
         }
         // 役職への知らせは呼び出し元が連番と配る列を書き終えてから (FireBroken)。受け手がさらに壊しても順番がずれない
+        if (r.Kind == DamageKind.Push) return res;
         Broken.Add(new Roles.TerrainBrokenEvent
         {
             PlayerId = r.Actor,
@@ -323,6 +325,7 @@ internal static class TerrainSync
         float max = e.Kind == DamageKind.Blunt ? DamageProfile.Of(e.Kind).Reach + LagMargin : MaxBlastDistance;
         if (dx * dx + dy * dy > max * max) return $"too far {MathF.Sqrt(dx * dx + dy * dy):0.0}";
         if (e.Kind == DamageKind.Explosion && e.Size > MaxBlastRadius) return $"too large {e.Size:0.0}";
+        if (e.Kind == DamageKind.Push && e.Size > MaxPushReach) return $"too long {e.Size:0.0}";
         return null;
     }
 

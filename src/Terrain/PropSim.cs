@@ -31,6 +31,9 @@ internal static class PropSim
     private const int StrikeSpeed = 100;      // 打撃の初速 (3 単位/秒)
     private const float BlastReach = 1.5f;    // 爆発の半径の何倍まで届くか
     private const float StrikeReach = 0.8f;   // 打撃の当たった点からの距離
+    // 押し: 起点から向きの先の扇形 (根元の半幅 PushBase・広がり PushSpread/256 = 約 30°)
+    private const int PushBase = 410;         // 0.4 単位 (1/1024)
+    private const int PushSpread = 148;
     private const int Friction = 9;           // 1 刻みの速さの減り (8 単位/秒²)
     private const int Bounce = 2;             // 壁で跳ね返る速さ = Bounce / 5
     private const int SpinMin = 96, SpinMax = 192; // 回る速さ (1/16 度/刻み・180〜360 度/秒)
@@ -150,6 +153,8 @@ internal static class PropSim
     {
         public int Tick;
         public bool Blast;
+        public bool Push;
+        public int Force;           // 押しの強さ (0..256)
         public int Cx, Cy, Reach;   // 1/1024
         public int Dx, Dy;          // 打撃の向き (長さ 256)
         public float ReachF;
@@ -242,6 +247,14 @@ internal static class PropSim
         {
             p.Blast = true;
             p.ReachF = r.Size * BlastReach;
+        }
+        else if (r.Kind == DamageKind.Push)
+        {
+            p.Push = true;
+            p.ReachF = r.Size;
+            p.Force = (int)MathF.Round(r.Force * 256f);
+            p.Dx = (int)MathF.Round(r.Direction.x * 256f);
+            p.Dy = (int)MathF.Round(r.Direction.y * 256f);
         }
         else
         {
@@ -698,6 +711,27 @@ internal static class PropSim
         return x;
     }
 
+    // 押し: 扇形の中の物を向きへ押す (起点に近いほど強い)。倒れ方・回り方は Kick と同じ規則
+    private static void PushOne(World w, Prop p, St st, int i, long dx, long dy, in Pending e)
+    {
+        long along = (dx * e.Dx + dy * e.Dy) / 256, across = Math.Abs(dx * e.Dy - dy * e.Dx) / 256;
+        if (along < -p.Rad || along >= e.Reach + p.Rad) return;
+        if (across > PushBase + Math.Max(0, along) * PushSpread / 256 + p.Rad) return;
+        int f = 256 - (int)(Math.Max(0, along - p.Rad) * 256 / Math.Max(1, e.Reach));
+        f = f * e.Force / 256;
+        if (f <= 0) return;
+        // 向き = 押す向き 3/4 + 起点から外へ 1/4 (扇の端の物は少し外へ逸れる)
+        long d = (long)Math.Sqrt(dx * dx + dy * dy);
+        int ux = e.Dx * 3, uy = e.Dy * 3;
+        if (d >= 16) { ux += (int)(dx * 256 / d); uy += (int)(dy * 256 / d); }
+        ux /= 4; uy /= 4;
+        int ul = (int)Math.Sqrt((long)ux * ux + (long)uy * uy);
+        if (ul == 0) { ux = e.Dx; uy = e.Dy; ul = 256; }
+        st.Rng = 0x9E3779B9u ^ (uint)e.Seed * 2654435761u ^ (uint)i * 40503u;
+        Next(st);
+        Shove(w, p, st, f, ux, uy, ul, Speed0 * f / 256);
+    }
+
     private static void Kick(World w, in Pending e)
     {
         for (int i = 0; i < Props.Count; i++)
@@ -706,6 +740,7 @@ internal static class PropSim
             var st = w.S(p);
             if (st.Gone) continue;
             long dx = st.Px - e.Cx, dy = st.Py - e.Cy;
+            if (e.Push) { PushOne(w, p, st, i, dx, dy, e); continue; }
             long d2 = dx * dx + dy * dy;
             long lim = (long)e.Reach + p.Rad;
             if (d2 >= lim * lim) continue;
@@ -721,49 +756,55 @@ internal static class PropSim
             int ul = (int)Math.Sqrt((long)ux * ux + (long)uy * uy);
             if (ul == 0) { ux = 256; uy = 0; ul = 256; }
             int sp = (e.Blast ? Speed0 : StrikeSpeed) * f / 256;
-            if (!w.Display) Kicks++;
-            if (p.Kind == Kind.Fixed || (p.Kind == Kind.Medium && f < TipAt))
-            {
-                Wobble(w, p, st, f, ux);
-                continue;
-            }
-            if (p.Kind == Kind.Heavy)
-            {
-                // 部屋の絵から持ち上げた家具は重い: 少しだけずれて少しねじれる (倒れない)
-                sp = sp * HeavySlide / 256;
-                int tw = (int)(Next(st) % (uint)(HeavyTwist + 1)) * f / 256;
-                st.Tip += (Next(st) & 1) != 0 ? tw : -tw;
-            }
-            else if (p.Kind == Kind.Medium && p.Tall)
-            {
-                // 縦長の物 (椅子・ろうそく・樽) は押された向きへ足元を軸に倒れる
-                sp = sp * SlideMedium / 256;
-                if (st.Tip == 0) st.Tip = ux > 32 ? -1440 : ux < -32 ? 1440 : (Next(st) & 1) != 0 ? 1440 : -1440;
-            }
-            else if (p.Kind == Kind.Medium)
-            {
-                // 横長の物 (長椅子・台・箱) は倒さずに押してずらし、少しねじれる
-                sp = sp * SlideWide / 256;
-                int tw = (TwistMin + (int)(Next(st) % (uint)(TwistMax - TwistMin + 1))) * f / 256;
-                st.Tip += (Next(st) & 1) != 0 ? tw : -tw;
-            }
-            else
-            {
-                int spin = SpinMin + (int)(Next(st) % (uint)(SpinMax - SpinMin + 1));
-                spin = spin * f / 256;
-                st.Spin = (Next(st) & 1) != 0 ? spin : -spin;
-                st.Tip = int.MinValue; // 小物は回ったまま止まる
-            }
-            st.Vx += ux * sp / ul;
-            st.Vy += uy * sp / ul;
-            if (!st.Active)
-            {
-                if (w.Act.Count >= MaxActive) { Wobble(w, p, st, f, ux); continue; }
-                st.Active = true;
-                w.Act.Add(p);
-            }
-            st.Moved = true;
+            Shove(w, p, st, f, ux, uy, ul, sp);
         }
+    }
+
+    // 強さ f (0..256)・向き (ux, uy) (長さ ul)・初速 sp で物を押す。物の種類ごとに揺れる/倒れる/ずれる/回る
+    private static void Shove(World w, Prop p, St st, int f, int ux, int uy, int ul, int sp)
+    {
+        if (!w.Display) Kicks++;
+        if (p.Kind == Kind.Fixed || (p.Kind == Kind.Medium && f < TipAt))
+        {
+            Wobble(w, p, st, f, ux);
+            return;
+        }
+        if (p.Kind == Kind.Heavy)
+        {
+            // 部屋の絵から持ち上げた家具は重い: 少しだけずれて少しねじれる (倒れない)
+            sp = sp * HeavySlide / 256;
+            int tw = (int)(Next(st) % (uint)(HeavyTwist + 1)) * f / 256;
+            st.Tip += (Next(st) & 1) != 0 ? tw : -tw;
+        }
+        else if (p.Kind == Kind.Medium && p.Tall)
+        {
+            // 縦長の物 (椅子・ろうそく・樽) は押された向きへ足元を軸に倒れる
+            sp = sp * SlideMedium / 256;
+            if (st.Tip == 0) st.Tip = ux > 32 ? -1440 : ux < -32 ? 1440 : (Next(st) & 1) != 0 ? 1440 : -1440;
+        }
+        else if (p.Kind == Kind.Medium)
+        {
+            // 横長の物 (長椅子・台・箱) は倒さずに押してずらし、少しねじれる
+            sp = sp * SlideWide / 256;
+            int tw = (TwistMin + (int)(Next(st) % (uint)(TwistMax - TwistMin + 1))) * f / 256;
+            st.Tip += (Next(st) & 1) != 0 ? tw : -tw;
+        }
+        else
+        {
+            int spin = SpinMin + (int)(Next(st) % (uint)(SpinMax - SpinMin + 1));
+            spin = spin * f / 256;
+            st.Spin = (Next(st) & 1) != 0 ? spin : -spin;
+            st.Tip = int.MinValue; // 小物は回ったまま止まる
+        }
+        st.Vx += ux * sp / ul;
+        st.Vy += uy * sp / ul;
+        if (!st.Active)
+        {
+            if (w.Act.Count >= MaxActive) { Wobble(w, p, st, f, ux); return; }
+            st.Active = true;
+            w.Act.Add(p);
+        }
+        st.Moved = true;
     }
 
     private static readonly int[] DirX = { 256, 181, 0, -181, -256, -181, 0, 181 };

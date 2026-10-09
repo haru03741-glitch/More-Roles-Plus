@@ -90,6 +90,33 @@ public static class TerrainApi
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
 
+    // 押し (ロケットの反動・衝撃波など): 壁は壊さず、pos から dir の向きへ length までの扇形の水と小物を押す。
+    // force 0..1 = 強さ。pos は自分から MaxBlastDistance 以内
+    public static TerrainResult Push(Vector2 pos, Vector2 dir, float length, float force = 1f)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || lp.Data == null || lp.Data.IsDead) return TerrainResult.Fail(new Text("生きている時だけ使えます", "Only while alive"));
+        if (!GameClock.ShipAlive) return TerrainResult.Fail(new Text("試合の中だけ使えます", "Only during a game"));
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        Vector2 me = lp.GetTruePosition();
+        float dx = pos.x - me.x, dy = pos.y - me.y;
+        if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
+            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+        length = Math.Clamp(length, 0.1f, TerrainSync.MaxPushReach);
+        string res = TerrainSync.Request(new DamageEvent(DamageKind.Push, pos, dir.normalized, length, Math.Clamp(force, 0f, 1f), Seed()), out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
+    // プレイヤーでない押し (ホストと一人の時だけ)
+    public static TerrainResult WorldPush(Vector2 pos, Vector2 dir, float length, float force = 1f)
+    {
+        if (TerrainSync.IsGuest()) return TerrainResult.Fail("host only");
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        length = Math.Clamp(length, 0.1f, TerrainSync.MaxPushReach);
+        string res = TerrainSync.RequestAs(new DamageEvent(DamageKind.Push, pos, dir.normalized, length, Math.Clamp(force, 0f, 1f), Seed()), World, out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
     private static bool Local(TerrainUse use, float radius, out PlayerControl lp, out string why)
     {
         lp = PlayerControl.LocalPlayer;

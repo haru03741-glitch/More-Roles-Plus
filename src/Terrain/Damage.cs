@@ -6,6 +6,7 @@ public enum DamageKind : byte
 {
     Explosion = 1, // 爆発 (ロケットランチャーなど): 円の範囲の壁をまとめて抜き、外側の輪にはひびを入れる
     Blunt = 2,     // 打撃 (ハンマーなど): 叩いた壁 1 枚に耐久ダメージ。0 になった所だけ四角く抜ける
+    Push = 3,      // 押し (反動・衝撃波など): 壁は壊さない。起点から向きの先の扇形の中の水と小物を押す
 }
 
 // 1 回の破壊の依頼 (武器・役職から TerrainSync.Request へ渡す)。ホストが ResolvedDamage に決めて全員へ配る
@@ -14,8 +15,8 @@ internal readonly struct DamageEvent
     public readonly DamageKind Kind;
     public readonly Vector2 Position;
     public readonly Vector2 Direction; // 打撃 = 振った向き / 爆発 = 吹き出す向き (力 0 なら使わない)
-    public readonly float Size;        // 爆発の半径
-    public readonly float Force;       // 0..1。打撃 = 振りの強さ / 爆発 = 向きへの偏り (0 = 全方位の円)
+    public readonly float Size;        // 爆発の半径 / 押しの届く長さ
+    public readonly float Force;       // 0..1。打撃 = 振りの強さ / 爆発 = 向きへの偏り (0 = 全方位の円) / 押しの強さ
     public readonly ushort Seed;
 
     public DamageEvent(DamageKind kind, Vector2 position, Vector2 direction, float size, float force, ushort seed)
