@@ -1,4 +1,4 @@
-# 能力ボタンの絵 (ハンマー・爆弾) と破壊音のマーク (noise_*) を描いて Resources/Icons/*.png に書き出す。
+# 能力ボタンの絵 (ハンマー・爆弾・点火) と破壊音のマーク (noise_*) を描いて Resources/Icons/*.png に書き出す。
 # 本編のボタンの絵に合わせた描き方: 外側に白い縁 → 黒い太線 → ベタ塗り + 明るい帯と一段の影。
 # 220 px 四方 (ゲーム内では 172 px = 1 単位で、本編の能力ボタンの絵の枠と同じ 1.28 単位になる)。4 倍で描いて縮める。
 #   python tools/make-button-icons.py
@@ -221,6 +221,30 @@ def noise_break():
     ic.save("noise_break")
 
 
+def flame_shape(cx, by, w, h, lean=0.0):
+    # 炎の舌 1 本: 下が丸い涙形で、上へ細りながら lean だけ横へ反る。by = 下の端・w = 幅の半分・h = 背丈
+    right, left = [], []
+    for i in range(41):
+        u = i / 40
+        hw = w * (1 - u) ** 1.15 * math.sqrt(min(u, 0.3) / 0.3) ** 0.8 * (1 + 0.25 * math.sin(u * math.pi))
+        x = cx + lean * u * u
+        y = by - h * u
+        right.append((x + hw, y))
+        left.append((x - hw, y))
+    return poly(right + left[::-1])
+
+
+def fire():
+    ic = Icon()
+    # 左右の低い舌 → 外 (赤橙) → 中 (橙) → 芯 (黄)。重ねた舌の先が不揃いに見えるよう反りを変える
+    ic.part(flame_shape(70, 194, 34, 112, -26), (210, 50, 22, 255))
+    ic.part(flame_shape(150, 194, 34, 128, 24), (210, 50, 22, 255))
+    ic.part(flame_shape(110, 200, 62, 186, 14), (232, 72, 26, 255), [(flame_shape(124, 206, 56, 160, 14), (198, 44, 20, 255))])
+    ic.part(flame_shape(108, 198, 42, 128, -10), (250, 146, 32, 255))
+    ic.part(flame_shape(106, 196, 24, 78, 6), (255, 220, 72, 255))
+    ic.save("fire")
+
+
 if __name__ == "__main__":
     hammer()
     hammer_held()
@@ -230,4 +254,5 @@ if __name__ == "__main__":
     noise_blast()
     noise_hit()
     noise_break()
+    fire()
     print("wrote", os.path.abspath(OUT))

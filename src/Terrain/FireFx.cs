@@ -124,7 +124,7 @@ internal static class FireFx
             // 油は真っ黒・草は白っぽい・木と配線は灰
             float dark = m == FireSim.Mat.Fuel ? 0.12f : m == FireSim.Mat.Electric ? 0.25f : m == FireSim.Mat.Grass ? 0.5f : 0.32f;
             float l = FxMath.Range(2.2f, 3.2f);
-            Spawn(Kind.Smoke, x + FxMath.Range(-0.15f, 0.15f), y + 0.6f, FxMath.Range(-0.08f, 0.08f), FxMath.Range(0.45f, 0.7f),
+            Spawn(Kind.Smoke, x + FxMath.Range(-0.15f, 0.15f), y + 0.85f, FxMath.Range(-0.08f, 0.08f), FxMath.Range(0.45f, 0.7f),
                 l, FxMath.Range(0.3f, 0.4f), FxMath.Range(1.0f, 1.4f), dark, dark * 0.97f, dark * 0.95f, 0.65f);
         }
         while (_emberAcc >= 1f)
@@ -256,7 +256,7 @@ internal static class FireFx
             p.X += p.Vx * dt;
             p.Y += p.Vy * dt;
             float s = p.S0 + (p.S1 - p.S0) * (1f - (1f - u) * (1f - u));
-            float a = p.K == Kind.Flame ? p.A * (1f - u * u) : p.K == Kind.Ember || p.K == Kind.Spark ? p.A * (1f - u) : p.A * FxMath.Min(1f, u * 6f) * (1f - u);
+            float a = p.K == Kind.Flame ? p.A * (1f - u * u) : p.K == Kind.Ember || p.K == Kind.Spark ? p.A * (1f - u) : p.A * FxMath.Min(1f, u * 4f) * (1f - u);
             // 炎の塊は黄 → 橙 → 暗い赤へ冷えていく
             float r = p.R, g = p.G, b = p.B;
             if (p.K == Kind.Flame) { g *= 1f - 0.7f * u; b *= 1f - u; r *= 1f - 0.4f * u * u; }
@@ -372,7 +372,7 @@ internal static class FireFx
         return true;
     }
 
-    // 煙の塊 (平塗り・下側に一段の影・縁を 1 画素ぼかす) と、火の粉の丸。どちらも白で作り色は頂点色で付ける
+    // 煙の塊 (縁へ向けて柔らかく薄れるぼけた塊・下側が少し暗い) と、火の粉の丸。どちらも白で作り色は頂点色で付ける
     private static unsafe Sprite MakeSprite(int n, bool puff)
     {
         var px = new byte[n * n * 4];
@@ -389,8 +389,16 @@ internal static class FireFx
                 float d3 = FxMath.Sqrt((dx - n * 0.15f) * (dx - n * 0.15f) + (dy + n * 0.1f) * (dy + n * 0.1f)) * 1.3f;
                 d = FxMath.Min(d, FxMath.Min(d2, d3));
             }
-            float a = FxMath.Clamp01(r - d + 0.5f);
-            float shade = puff && dy < -n * 0.12f && d > r * 0.35f ? 0.82f : 1f;
+            float a;
+            float shade = 1f;
+            if (puff)
+            {
+                // 縁をくっきり切らず、真ん中から外へなめらかに薄れる (煙は輪郭の無い物)
+                float q = FxMath.Clamp01(1f - d / r);
+                a = q * q * (3f - 2f * q);
+                shade = 1f - 0.2f * FxMath.Clamp01(-dy / (n * 0.5f));
+            }
+            else a = FxMath.Clamp01(r - d + 0.5f);
             int i = (y * n + x) * 4;
             px[i] = px[i + 1] = px[i + 2] = (byte)(255f * shade);
             px[i + 3] = (byte)(255f * a);
