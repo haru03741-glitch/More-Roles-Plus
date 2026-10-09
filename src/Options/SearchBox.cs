@@ -195,5 +195,7 @@ internal static class TextBoxSetTextPatch
     {
         try { SearchBox.OnSetText(__instance, input, inputCompo); }
         catch (Exception e) { Plugin.Logger.LogError($"search box text: {e.Message}"); }
+        try { Commands.ChatInput.OnSetText(__instance, inputCompo); }
+        catch (Exception e) { Plugin.Logger.LogError($"chat text: {e.Message}"); }
     }
 }

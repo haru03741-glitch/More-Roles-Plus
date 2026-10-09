@@ -102,6 +102,25 @@ internal static class ChatCommands
         return true;
     }
 
+    // 打ちかけの名前 (/ の後ろ) に合う、自分が使えるコマンド。同じ名前があればそれ、無ければ表の順で前方が一致する最初の名前
+    public static bool Suggest(string typed, out string name, out string usage)
+    {
+        name = null; usage = "";
+        if (typed.Length == 0) return false;
+        if (ByName.TryGetValue(typed, out var exact) && Allowed(exact.Who))
+        {
+            name = typed; usage = exact.Usage;
+            return true;
+        }
+        foreach (var c in List)
+        {
+            if (!Allowed(c.Who)) continue;
+            foreach (var n in c.Names)
+                if (n.StartsWith(typed, StringComparison.OrdinalIgnoreCase)) { name = n; usage = c.Usage; return true; }
+        }
+        return false;
+    }
+
     private static string HelpText()
     {
         var sb = new StringBuilder();
