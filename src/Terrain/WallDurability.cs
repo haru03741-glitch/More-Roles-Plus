@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -9,6 +10,7 @@ internal static class WallDurability
 {
     public const int MaxHp = 3;
     private const float CellSize = 0.5f;
+    private const float BoundaryShift = 1f / 512f; // 格子の点は p/0.5 = m/256。ずらすと (2m+1)/512 で整数に来ない
 
     private static readonly Dictionary<long, int> Hp = new();
     private static ShipStatus _ship;
@@ -45,7 +47,9 @@ internal static class WallDurability
 
     private static long Key(Vector2 p)
     {
-        long x = Mathf.FloorToInt(p.x / CellSize), y = Mathf.FloorToInt(p.y / CellSize);
+        // 境目は 1/512 の格子 (蓋・壁の線を揃える格子) の点と点の間へずらす。格子に乗った線の上の点が境目に来ると、
+        // PC と Android の浮動小数の末尾の差で別の格子に数えられ、耐久が端末ごとに割れる
+        long x = (long)MathF.Floor(p.x / CellSize + BoundaryShift), y = (long)MathF.Floor(p.y / CellSize + BoundaryShift);
         return (x << 32) ^ (y & 0xffffffffL);
     }
 
