@@ -119,6 +119,7 @@ internal static class TerrainDamage
             : new CircleShape(e.Position, e.Size);
         LastBreach = 0f;
         LastMouths.Clear();
+        LastAway = default;
         SkyCut.Clear();
         _skyAway = default;
         float ring = e.Size * (p.OuterRingScale - 1f);
@@ -301,6 +302,7 @@ internal static class TerrainDamage
     // 直前の爆発で外壁が宇宙まで抜けた時の穴の口の幅 (抜けなければ 0) と口の線 (曲がった壁では曲がり目で折った数本)
     internal static float LastBreach;
     internal static readonly List<(Vector2 A, Vector2 B)> LastMouths = new();
+    internal static Vector2 LastAway; // 口から宇宙への向き (喉を掘った向き・噴き出しの向き)
 
     // 外に面した壁か (面の中点から爆心と反対の向きへ、床を通らずに宇宙・空へ出る)。前の穴の蓋もこれなら切る
     private static bool HullFace(Vector2 a, Vector2 b, Vector2 blast, out Vector2 away)
@@ -347,6 +349,7 @@ internal static class TerrainDamage
         }
         if (LastMouths.Count > 1) Plugin.Logger.LogInfo($"[SkyMouth] bent mouth lines={LastMouths.Count}");
         LastBreach = MathF.Sqrt(best);
+        LastAway = aw;
         foreach (var (p, q) in LastMouths)
         {
             WallBody.BuildMouth(p, q);

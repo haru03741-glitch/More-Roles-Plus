@@ -54,6 +54,7 @@ internal static class Decompression
         public int Start;
         public readonly List<(Vector2 A, Vector2 B)> Lines = new();
         public int W256;
+        public Vector2 Away;      // 宇宙への向き (喉を掘った向き・演出用)
         public bool Sealed;
         public bool ByProp;       // 物がふさいだ
         public int Comp = -1;     // 口の升がいる範囲 (作り直すたびに書く)
@@ -64,6 +65,7 @@ internal static class Decompression
         public int Tick;
         public bool Rebuild;      // 爆発で歩ける所が変わった (升を作り直す)
         public List<(Vector2 A, Vector2 B)> Lines; // 開通した口 (Rebuild でない時・曲がった壁では数本)
+        public Vector2 Away;
     }
 
     private static int _shipGen;
@@ -128,13 +130,14 @@ internal static class Decompression
             if (_running) Enqueue(new Pending { Tick = tick, Rebuild = true });
             if (w <= 0f) return;
             var lines = new List<(Vector2, Vector2)>(TerrainDamage.LastMouths);
-            Open(tick, lines);
-            if (w * 256f >= MinWidth256) DecompFx.OnBreach(tick, lines, w);
+            var away = TerrainDamage.LastAway;
+            Open(tick, lines, away);
+            if (w * 256f >= MinWidth256) DecompFx.OnBreach(tick, lines, w, away);
         }
         catch (Exception e) { Fail("apply", e); }
     }
 
-    private static void Open(int tick, List<(Vector2, Vector2)> lines)
+    private static void Open(int tick, List<(Vector2, Vector2)> lines, Vector2 away)
     {
         if (!_running)
         {
@@ -143,7 +146,7 @@ internal static class Decompression
             _step = Math.Min(tick, GameClock.Now - Delay);
             Build();
         }
-        Enqueue(new Pending { Tick = tick, Lines = lines });
+        Enqueue(new Pending { Tick = tick, Lines = lines, Away = away });
     }
 
     private static void Enqueue(Pending p)
@@ -528,7 +531,7 @@ internal static class Decompression
         {
             var p = Queue[0];
             Queue.RemoveAt(0);
-            if (!p.Rebuild) AddMouth(p.Lines);
+            if (!p.Rebuild) AddMouth(p.Lines, p.Away);
             rebuild = true;
         }
         ulong bits = BitsAt(_step);
@@ -579,7 +582,7 @@ internal static class Decompression
     }
 
     // 開いている口の近くなら同じ穴を広げた物 (幅 = 口の端どうしのいちばん遠い 2 点)。それ以外は新しい穴
-    private static void AddMouth(List<(Vector2 A, Vector2 B)> lines)
+    private static void AddMouth(List<(Vector2 A, Vector2 B)> lines, Vector2 away)
     {
         if (lines == null || lines.Count == 0) return;
         foreach (var br in Breaches)
@@ -598,7 +601,7 @@ internal static class Decompression
         }
         int w = (int)(Span(lines) * 256f);
         if (w < MinWidth256) return;
-        var nb = new Breach { Start = _step, W256 = Math.Min(MaxWidth256, w) };
+        var nb = new Breach { Start = _step, W256 = Math.Min(MaxWidth256, w), Away = away };
         nb.Lines.AddRange(lines);
         Breaches.Add(nb);
     }
@@ -945,7 +948,7 @@ internal static class Decompression
                 if (a.Length < 5) { reply("ERR decomp breach x1 y1 x2 y2"); return; }
                 var p1 = new Vector2(Num(a[1]), Num(a[2]));
                 var p2 = new Vector2(Num(a[3]), Num(a[4]));
-                Open(GameClock.Now, new List<(Vector2, Vector2)> { (p1, p2) });
+                Open(GameClock.Now, new List<(Vector2, Vector2)> { (p1, p2) }, default);
                 reply(_running ? $"OK decomp breach queued at {GameClock.Now} width={(p2 - p1).magnitude:0.00}" : "ERR decomp no solid map");
                 return;
             }

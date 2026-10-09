@@ -84,6 +84,7 @@ internal static class DecompFx
     private static readonly List<Jet> Pre = new();
     private static readonly Queue<long> Recent = new();
     private static GameObject _root;
+    private static float _ox, _oy, _isx = 1f, _isy = 1f; // 船の位置と拡大の逆数 (粒の位置を船の中の座標へ)
     private static Sprite _glow, _streak, _cone;
     private static Sprite[] _fog;
     private static int _shipGen = -1, _failedGen = -2;
@@ -142,6 +143,13 @@ internal static class DecompFx
 
         _root = new GameObject("MrpDecompFx") { layer = 0 };
         _root.transform.SetParent(ShipStatus.Instance.transform, false);
+        // 船は拡大されている (スケルドは 1.2 倍) ので、粒の位置だけ船の中の座標へ割り戻す (大きさと奥行きは船に合わせたまま)
+        var st = ShipStatus.Instance.transform;
+        var sp = st.position;
+        var ss = st.lossyScale;
+        _ox = sp.x; _oy = sp.y;
+        _isx = MathF.Abs(ss.x) > 1e-4f ? 1f / ss.x : 1f;
+        _isy = MathF.Abs(ss.y) > 1e-4f ? 1f / ss.y : 1f;
         GameClock.Ship.Bind(_root);
         GameClock.Ship.OnRelease(Forget);
 
@@ -179,7 +187,7 @@ internal static class DecompFx
 
     // ── ① 開通の瞬間 (Decompression.OnApplied から・全員の手元) ──────────────
 
-    internal static void OnBreach(int tick, List<(Vector2 A, Vector2 B)> lines, float width)
+    internal static void OnBreach(int tick, List<(Vector2 A, Vector2 B)> lines, float width, Vector2 away)
     {
         try
         {
@@ -190,7 +198,7 @@ internal static class DecompFx
             if (Recent.Count >= MaxBursts) { Last = "skip (burst)"; return; }
             if (!EnsurePool()) return;
             Recent.Enqueue(now);
-            Frame(lines, out float mx, out float my, out float nx, out float ny, out float w);
+            Frame(lines, away, out float mx, out float my, out float nx, out float ny, out float w);
             float k = Decompression.Wind ? WindVis : 1f;
             Burst(mx, my, nx, ny, w, k);
             if (FindJet(Pre, mx, my) == null && !NearOpenJet(mx, my))
@@ -360,7 +368,7 @@ internal static class DecompFx
                 var br = list[i];
                 if (!Jets.TryGetValue(br, out var j))
                 {
-                    Frame(br.Lines, out float mx, out float my, out _, out _, out _);
+                    Frame(br.Lines, br.Away, out float mx, out float my, out _, out _, out _);
                     // 開通の瞬間から噴いていた先行の噴流を引き継ぐ (勢いと芯をそのまま)
                     j = FindJet(Pre, mx, my) ?? new Jet { T0 = _clock };
                     Pre.Remove(j);
@@ -370,7 +378,7 @@ internal static class DecompFx
                 if (j.Lines != br.Lines.Count)
                 {
                     j.Lines = br.Lines.Count;
-                    Frame(br.Lines, out j.Mx, out j.My, out j.Nx, out j.Ny, out j.Width);
+                    Frame(br.Lines, br.Away, out j.Mx, out j.My, out j.Nx, out j.Ny, out j.Width);
                 }
                 j.I = Decompression.MouthPull(br) * k;
                 float open = Decompression.Open(br);
@@ -636,7 +644,7 @@ internal static class DecompFx
                 }
                 break;
         }
-        b.Tr.localPosition = FxMath.V3(b.X, b.Y, b.Z);
+        b.Tr.localPosition = FxMath.V3((b.X - _ox) * _isx, (b.Y - _oy) * _isy, b.Z);
         b.Tr.localRotation = FxMath.RotZ(b.Rot);
         b.Tr.localScale = FxMath.V3(sx * b.Unit, sy * b.Unit, 1f);
         int q = (int)(FxMath.Clamp01(a) * 64f);
@@ -752,7 +760,8 @@ internal static class DecompFx
     }
 
     // 口の線の端どうしのいちばん遠い 2 点を口の両端とし、歩ける側の反対を外向きにする
-    private static void Frame(List<(Vector2 A, Vector2 B)> lines, out float mx, out float my, out float nx, out float ny, out float w)
+    // away = 喉を掘った向き (斜めに張った口では線の法線と違う。噴き出しは喉に沿わせる)。無ければ線の法線
+    private static void Frame(List<(Vector2 A, Vector2 B)> lines, Vector2 away, out float mx, out float my, out float nx, out float ny, out float w)
     {
         Vector2 a = lines[0].A, b = lines[0].B;
         float best = -1f;
@@ -768,6 +777,8 @@ internal static class DecompFx
         float tx = b.x - a.x, ty = b.y - a.y, tl = FxMath.Sqrt(tx * tx + ty * ty);
         if (tl < 1e-4f) { tx = 1f; ty = 0f; tl = 1f; }
         nx = -ty / tl; ny = tx / tl;
+        float al = FxMath.Sqrt(away.x * away.x + away.y * away.y);
+        if (al > 1e-4f) { nx = away.x / al; ny = away.y / al; return; }
         // 向きの符号は最初の線の中点で: 外へずらした所が歩けず、内へずらした所が歩ける向き
         var l0 = lines[0];
         float cx = (l0.A.x + l0.B.x) * 0.5f, cy = (l0.A.y + l0.B.y) * 0.5f;
@@ -835,7 +846,7 @@ internal static class DecompFx
 
     internal static void Register()
     {
-        TestBridge.Register("decompfx", "[shake amp | burst] 外壁が抜けた時の演出: 粒の数・口ごとの強さ (shake = 開通の揺れだけをその大きさで / burst = いちばん近い口で開通の瞬間をもう一度)", (args, reply) =>
+        TestBridge.Register("decompfx", "[shake amp | burst | bits] 外壁が抜けた時の演出: 粒の数・口ごとの強さ (shake = 開通の揺れだけをその大きさで / burst = いちばん近い口で開通の瞬間をもう一度 / bits = 種類ごとの粒の位置と速さ)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (a.Length >= 2 && a[0] == "shake")
@@ -851,8 +862,25 @@ internal static class DecompFx
                 var list = Decompression.OpenedBreaches;
                 if (list.Count == 0) { reply("ERR decompfx no breach"); return; }
                 Recent.Clear();
-                OnBreach(GameClock.Now, list[list.Count - 1].Lines, 1f);
+                OnBreach(GameClock.Now, list[list.Count - 1].Lines, 1f, list[list.Count - 1].Away);
                 reply($"OK decompfx {Last}");
+                return;
+            }
+            if (a.Length >= 1 && a[0] == "bits")
+            {
+                // 種類ごとに、生きている粒の数と位置・速さ (はじめの 4 つ)
+                foreach (Kind k in Enum.GetValues(typeof(Kind)))
+                {
+                    var kb = new System.Text.StringBuilder();
+                    int n = 0;
+                    foreach (var b in All)
+                    {
+                        if (!b.Alive || b.Kind != k) continue;
+                        if (n++ < 4) kb.Append($" ({b.X:0.0},{b.Y:0.0} v={b.Vx:0.0},{b.Vy:0.0})");
+                    }
+                    reply($"BITS {k} n={n}{kb}");
+                }
+                reply("OK decompfx bits");
                 return;
             }
             var sb = new System.Text.StringBuilder();
