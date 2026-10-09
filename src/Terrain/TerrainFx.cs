@@ -270,6 +270,7 @@ internal static class TerrainFx
                 byRank[rank] = it;
                 made++;
             }
+        TerrainDamage.Mark("fxpieces");
         var flash = FlashSprite();
         if (flash)
         {
@@ -277,6 +278,7 @@ internal static class TerrainFx
             f.Life = 0.45f;
             f.Z -= 0.01f * f.ZS;
         }
+        TerrainDamage.Mark("flash");
         int chunks = made >= 6 ? 4 : 12;
         for (int k = 0; k < chunks; k++)
         {
@@ -302,7 +304,9 @@ internal static class TerrainFx
                 it.VH = 1.5f + (float)rnd.NextDouble() * 2.5f;
                 it.T = -(float)rnd.NextDouble() * 0.06f;
             }
+        TerrainDamage.Mark("chunks");
         Stain(c, radius * 1.6f, 0.2f);
+        TerrainDamage.Mark("stain");
         for (int k = 0; k < 18; k++)
         {
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
@@ -318,7 +322,10 @@ internal static class TerrainFx
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
             Dust(c + new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * radius * 0.5f * (float)rnd.NextDouble(), rnd, radius * 0.6f, 1.3f);
         }
-        return Settle(byRank, pieces, walls, given);
+        TerrainDamage.Mark("sparks");
+        var res = Settle(byRank, pieces, walls, given);
+        TerrainDamage.Mark("settle");
+        return res;
     }
 
     // 大きな瓦礫: ホストは割れた塊の止まる所を先に計算して置ける物を選び (RubbleBlocks.Decide)、
@@ -530,6 +537,7 @@ internal static class TerrainFx
         return it;
     }
 
+    internal static void WarmFlash() => FlashSprite(); // 絵の検索は 10ms 級なので準備の段で
     private static Sprite FlashSprite()
     {
         if (_flashSearched) return _flash;

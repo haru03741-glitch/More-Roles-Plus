@@ -44,11 +44,12 @@ internal static class TerrainWarm
                     DebrisArt.Chunk(0); DebrisArt.Plate(0); DebrisArt.Pipe(0); DebrisArt.Wire(0); DebrisArt.Core(0);
                     _ = DebrisArt.Nut; _ = DebrisArt.Stain; _ = DebrisArt.Pebble; _ = DebrisArt.Puff; _ = DebrisArt.Spark;
                     DamageMap.WarmArt();
+                    TerrainFx.WarmFlash();
                     break;
                 case 3: FractureSites.Warm(); break;
                 case 4: RubbleBake.Warm(); ShadowPatch.Warm(); break;
                 case 5: SolidMap.Ensure(); break;
-                case 6: PropSim.Warm(); break;
+                case 6: PropSim.Warm(); break; // 歩ける所の地図の次のフレーム (同じフレームに積むと 1 回の止まりが長い)
                 case 7: BreakableProps.Warm(); break;
                 case 8: DecompFx.Warm(); break;
             }

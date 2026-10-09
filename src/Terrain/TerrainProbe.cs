@@ -254,7 +254,7 @@ internal static class TerrainProbe
             float force = v.Length == 6 ? v[5] : 0f;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, new Vector2(v[0], v[1]), dir.normalized, v[2], force, NextSeed()));
-            reply($"OK blast {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
+            reply($"OK blast {res} ms={sw.Elapsed.TotalMilliseconds:0.00} {TerrainDamage.Breakdown()} | {TerrainDamage.MarksText()}");
         });
 
         TestBridge.Register("netloop", "[rev] <x y r | h x y dx dy force>... 爆発 / 打撃 (h) を電文に書いて読み直し、受け手の順番待ちを通して適用 (rev = 後ろの連番から届ける)", (args, reply) =>

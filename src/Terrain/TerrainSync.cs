@@ -68,7 +68,9 @@ internal static class TerrainSync
     private static string HostAccept(in DamageEvent e, byte actor, out bool ok)
     {
         SyncShip();
+        long rt = System.Diagnostics.Stopwatch.GetTimestamp();
         ok = TerrainDamage.TryResolve(e, out var r, out string why);
+        TerrainDamage.LastResolveMs = (System.Diagnostics.Stopwatch.GetTimestamp() - rt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         if (!ok) return why;
         r = TerrainWire.RoundTrip(r.WithActor(actor).WithTick(GameClock.Stamp));
         // 大きな瓦礫の止まる所は、ホストが自分で適用した結果から決めて同じ電文に載せる
@@ -88,14 +90,21 @@ internal static class TerrainSync
         finally
         {
             TerrainDigest.End(seq);
+            TerrainDamage.Mark("digest");
             BreakNoise.Emit(r);
+            TerrainDamage.Mark("noise");
             HammerSwing.OnApplied(r);
             BombFuse.OnApplied(r);
             DustCloud.OnApplied(r);
+            TerrainDamage.Mark("dust");
             WaterLeak.OnApplied(r);
+            TerrainDamage.Mark("leak");
             WaterSim.OnApplied(r);
+            TerrainDamage.Mark("water");
             PropSim.OnApplied(r);
+            TerrainDamage.Mark("props");
             Decompression.OnApplied(r);
+            TerrainDamage.Mark("decomp");
         }
         // 役職への知らせは呼び出し元が連番と配る列を書き終えてから (FireBroken)。受け手がさらに壊しても順番がずれない
         Broken.Add(new Roles.TerrainBrokenEvent

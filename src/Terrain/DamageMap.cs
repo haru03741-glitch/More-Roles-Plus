@@ -48,6 +48,9 @@ internal static class DamageMap
     private static int _w, _h;
     private static Vector2 _origin;
     private static readonly List<SpriteRenderer> Rooms = new();
+    // 部屋の絵の z と範囲の写し (部屋の絵は動かない)。FrontZ は瓦礫 1 つごとに呼ばれるので、毎回 Unity に聞くと爆発 1 回で数千回の呼び出しになる
+    private static bool[] RoomMask = Array.Empty<bool>(); // 部屋の絵が Unlit/MaskShader か (差し替え先を選ぶ。シェーダ名の読みは 1 回だけ)
+    private static float[] RoomZ = Array.Empty<float>(), RoomX0 = Array.Empty<float>(), RoomY0 = Array.Empty<float>(), RoomX1 = Array.Empty<float>(), RoomY1 = Array.Empty<float>();
     private static readonly List<GameObject> Underlays = new();
     // ひびの板と穴の向こうの船体の中。影のカメラ (層 9〜12) に映らない層に置く: 影のカメラは置き換えシェーダで
     // 切り抜きなしの四角に描くので、影の中で穴の外まで暗い四角が出る。影の中では ShadowPatch が穴の形で焼いた絵だけを見せる
@@ -82,6 +85,7 @@ internal static class DamageMap
         if (!EnsureMap()) return "no ship";
 
         SwapNear(shape.Center, shape.BoundRadius * UnderlayArt.CrackReach + 1f);
+        TerrainDamage.Mark("swap");
         if (_gen == 255) GenWrapped = true;
         _gen = (byte)(_gen == 255 ? 1 : _gen + 1);
         // 番号が一周した後は、前の周で同じ番号を書いた画素を空ける (古い穴が新しい塊に入らないように)
@@ -92,8 +96,11 @@ internal static class DamageMap
             MarkDirtyAll();
         }
         Stamp(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body, out RectInt touched);
-        SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments); // ひびの家具よけを A に書く (送るのは Flush)
+        TerrainDamage.Mark("stamp");
+        SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments);
+        TerrainDamage.Mark("underlay"); // ひびの家具よけを A に書く (送るのは Flush)
         if (pieces != null && cracks is { Count: > 0 }) BreakPieces.Spawn(touched, pieces, cracks);
+        TerrainDamage.Mark("pieces");
         ShadowPatch.MarkDirty(shape.Center, shape.BoundRadius + 0.3f); // 影の中の見た目を焼き直す
         return null;
     }
@@ -139,6 +146,15 @@ internal static class DamageMap
             if (!any) { all = sr.bounds; any = true; } else all.Encapsulate(sr.bounds);
         }
         if (!any) return false;
+        RoomMask = new bool[Rooms.Count];
+        RoomZ = new float[Rooms.Count]; RoomX0 = new float[Rooms.Count]; RoomY0 = new float[Rooms.Count]; RoomX1 = new float[Rooms.Count]; RoomY1 = new float[Rooms.Count];
+        for (int i = 0; i < Rooms.Count; i++)
+        {
+            var b = Rooms[i].bounds;
+            RoomZ[i] = Rooms[i].transform.position.z;
+            RoomMask[i] = Rooms[i].sharedMaterial && Rooms[i].sharedMaterial.shader.name == "Unlit/MaskShader";
+            RoomX0[i] = b.min.x; RoomY0[i] = b.min.y; RoomX1[i] = b.max.x; RoomY1[i] = b.max.y;
+        }
 
         double tScan = sw.Elapsed.TotalMilliseconds;
         all.Expand(4f);
@@ -449,13 +465,12 @@ internal static class DamageMap
     // 範囲に掛かる部屋の絵を、損傷マスクを見るマテリアルへ差し替える (元のシェーダに合わせた方へ)
     private static void SwapNear(Vector2 c, float reach)
     {
-        foreach (var sr in Rooms)
+        for (int i = 0; i < Rooms.Count; i++)
         {
-            if (!sr) continue;
-            var b = sr.bounds;
-            if (c.x + reach < b.min.x || c.x - reach > b.max.x || c.y + reach < b.min.y || c.y - reach > b.max.y) continue;
-            if (!Swapped.Add(sr.GetInstanceID())) continue;
-            bool mask = sr.sharedMaterial.shader.name == "Unlit/MaskShader";
+            if (c.x + reach < RoomX0[i] || c.x - reach > RoomX1[i] || c.y + reach < RoomY0[i] || c.y - reach > RoomY1[i]) continue;
+            var sr = Rooms[i];
+            if (!sr || !Swapped.Add(sr.GetInstanceID())) continue;
+            bool mask = RoomMask[i];
             var target = mask && _roomMatMask ? _roomMatMask : _roomMatDefault;
             if (!mask) target.renderQueue = sr.sharedMaterial.renderQueue;
             sr.sharedMaterial = target;
@@ -712,17 +727,16 @@ internal static class DamageMap
         Span<float> n = stackalloc float[3], f = stackalloc float[3];
         for (int t = 0; t < 3; t++) { n[t] = float.MaxValue; f[t] = float.MinValue; }
         float bestD = float.MaxValue, bestZ = 0f;
-        foreach (var sr in Rooms)
+        for (int i = 0; i < RoomZ.Length; i++)
         {
-            if (!sr) continue;
-            float z = sr.transform.position.z;
+            float z = RoomZ[i];
             int tier = includeForeground ? 0 : z >= PlayerBandZ ? 0 : z >= -PlayerBandZ ? 1 : 2;
-            var b = sr.bounds;
-            if (c.x < b.min.x || c.x > b.max.x || c.y < b.min.y || c.y > b.max.y)
+            float bx0 = RoomX0[i], by0 = RoomY0[i], bx1 = RoomX1[i], by1 = RoomY1[i];
+            if (c.x < bx0 || c.x > bx1 || c.y < by0 || c.y > by1)
             {
                 if (tier != 0) continue;
-                float dx = Math.Max(0f, Math.Max(b.min.x - c.x, c.x - b.max.x));
-                float dy = Math.Max(0f, Math.Max(b.min.y - c.y, c.y - b.max.y));
+                float dx = Math.Max(0f, Math.Max(bx0 - c.x, c.x - bx1));
+                float dy = Math.Max(0f, Math.Max(by0 - c.y, c.y - by1));
                 float d = dx * dx + dy * dy;
                 if (d < bestD) { bestD = d; bestZ = z; }
                 continue;
@@ -734,7 +748,7 @@ internal static class DamageMap
         else if (n[1] <= f[1]) { near = n[1]; far = f[1]; }
         else if (!includeForeground && bestD < float.MaxValue) near = far = bestZ;
         else if (n[2] <= f[2]) { near = n[2]; far = f[2]; }
-        else near = far = Rooms.Count > 0 && Rooms[0] ? Rooms[0].transform.position.z : 8f;
+        else near = far = RoomZ.Length > 0 ? RoomZ[0] : 8f;
     }
 
     // テスト用の見た目の切り分け: マスクの 1 チャンネル (1 = 焦げ G / 2 = 熾火 B) を退避して 0 にする / 戻す。
@@ -1025,6 +1039,8 @@ internal static class DamageMap
         ShadowPatch.Clear();
         RubbleBlocks.Clear();
         Rooms.Clear();
+        RoomZ = RoomX0 = RoomY0 = RoomX1 = RoomY1 = Array.Empty<float>();
+        RoomMask = Array.Empty<bool>();
         Swapped.Clear();
         Array.Clear(HiddenChannel, 0, HiddenChannel.Length);
         HullCells.Clear();

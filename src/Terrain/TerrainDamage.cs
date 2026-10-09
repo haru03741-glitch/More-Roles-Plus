@@ -93,8 +93,35 @@ internal static class TerrainDamage
     internal static string LastMaterial;
     internal static float LastPitch = 1f;
 
+    // 爆発 1 回の内訳 (外壁の判定 / 壁の切断 / 絵と塊 / 歩ける所の地図 / 瓦礫の演出 / 壊れる家具) の ticks。bridge `blast` が末尾に出す
+    private static readonly long[] StageTicks = new long[6];
+    private static long Stage(int i, long t) { long now = System.Diagnostics.Stopwatch.GetTimestamp(); StageTicks[i] += now - t; return now; }
+    // 細かい刻み (名前と前の刻みからの ms)。bridge `blast` が末尾に出す
+    internal static readonly List<(string N, double Ms)> Marks = new();
+    private static long _markT;
+    internal static double LastResolveMs;
+    internal static void Mark(string n)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        Marks.Add((n, (now - _markT) * 1000.0 / System.Diagnostics.Stopwatch.Frequency));
+        _markT = now;
+    }
+    internal static string MarksText()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"resolve={LastResolveMs:0.0}");
+        foreach (var (n, ms) in Marks) sb.Append(' ').Append(n).Append('=').Append(ms.ToString("0.0"));
+        return sb.ToString();
+    }
+    internal static string Breakdown()
+    {
+        double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        return $"hull={StageTicks[0] * k:0.0} cut={StageTicks[1] * k:0.0} breach={StageTicks[2] * k:0.0} carve={StageTicks[3] * k:0.0} fx={StageTicks[4] * k:0.0} props={StageTicks[5] * k:0.0}ms";
+    }
+
     public static string Apply(in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
+        if (decide) { Array.Clear(StageTicks, 0, StageTicks.Length); Marks.Clear(); _markT = System.Diagnostics.Stopwatch.GetTimestamp(); }
         LastCut = LastPieces = LastBlocks = 0;
         LastMaterial = null;
         LastPitch = 1f;
@@ -113,6 +140,7 @@ internal static class TerrainDamage
     // 向きに偏った爆発 (力 > 0) は、向きの先へ伸びて後ろが縮んだ涙形に抜ける
     private static string Explode(in ResolvedDamage e, DamageProfile p, RubbleLanding[] given, ref RubbleLanding[] landings)
     {
+        long st = System.Diagnostics.Stopwatch.GetTimestamp();
         SolidMap.Ensure();
         CutShape core = e.Force > 0.02f
             ? ConvexShape.Cone(e.Position, e.Size, e.Direction, p.ConeStretch * e.Force, p.ConeShrink * e.Force)
@@ -190,11 +218,15 @@ internal static class TerrainDamage
             if (len < 1e-5f) return false;
             return SolidMap.FacesSky(sky, FxMath.V2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f), FxMath.V2(-dy / len, dx / len));
         }
+        st = Stage(0, st);
         var keep = DamageMap.FurnitureFor(core); // 家具の保護範囲は壁も残す (絵を抜かない所を通れないように)
+        Mark("hull");
         var walls = WallsNear(c, outer);
+        Mark("wallsnear");
         // 壁の中の判定は切る前の壁の線で。爆心は歩ける場所にある前提 (武器は弾が止まった位置で依頼する)
         var body = new WallBody(ShipOnly(walls), e.Position) { OpenToSpace = SolidMap.BreachableHull };
         body.UseSolidMap(c, outer + 0.2f);
+        Mark("body");
         // 区間ごとの可否は、全部を切る前の地形で先に決める (順に切りながら決めると、先に切った壁が奥の面や
         // 間の壁として見えなくなり、処理の順番で結果が変わる)
         // 蓋 (前の穴の側面) は穴の中に作った壁なので切る (裏が空へつながる物だけ残す)
@@ -227,6 +259,7 @@ internal static class TerrainDamage
         foreach (var col in walls)
             if (col.gameObject.layer == ShadowLayer &&
                 EdgeCutter.Cut(col, core, removed, (a, b) => after.Clear(blast, (a + b) * 0.5f), keep)) cut++;
+        Mark("cut");
         body.SetOpening(removed);
 
         // 外側の輪: 残った壁の、爆心にいちばん近い点にひび (壁 1 本につき 1 か所)
@@ -248,13 +281,16 @@ internal static class TerrainDamage
         if (SolidMap.Breachable && cut > 0) SkyMouth(); // 抜けた穴を横へ広げた時も、新しく切った外壁の区間に口を足す
         int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
+        st = Stage(1, st);
         var pieces = new List<BreakPiece>();
         // 割れ目は爆心から放射状。向きに偏った爆発は向きの先へ伸び、先ほど大きな塊になる
         bool aimed = e.Force > 0.02f;
         var crack = new CrackPattern(e.Position, e.Seed, default, axis: aimed ? TerrainWire.AngleIndex(e.Direction) : (ushort)0,
             stretch: aimed ? 1f + p.CrackStretch * e.Force : 1f, bias: aimed ? p.CrackBias * e.Force : 0f);
         string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces, cracks: new List<CrackPattern> { crack }) : null;
+        Mark("breach");
         if (visual == null && cut > 0) HideWallDecor(core);
+        st = Stage(2, st);
         if (cut > 0) SolidMap.Carve(core, keep, blast); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
         if (cut > 0 && LastMouths.Count > 0)
         {
@@ -262,10 +298,14 @@ internal static class TerrainDamage
             Plugin.Logger.LogInfo($"[TerrainDamage] behind mouth -> outside cells={behind}");
         }
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
+        st = Stage(3, st);
+        Mark("carve");
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
+        st = Stage(4, st);
         LastCut = cut; LastPieces = pieces.Count; LastBlocks = landings.Length;
-        int props = BreakableProps.Blast(core, e.Position, e.Seed); // 形に掛かる物ごと壊れる家具 (欠片の数は LastPieces に足す)
+        int props = BreakableProps.Blast(core, e.Position, e.Seed);
+        Stage(5, st); // 形に掛かる物ごと壊れる家具 (欠片の数は LastPieces に足す)
         return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} props={props} breach={LastBreach:0.00} hull={(hullCells.Count > 0 ? hullHp.ToString() : "-")} visual={visual ?? "ok"}";
     }
 
