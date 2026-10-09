@@ -34,6 +34,8 @@ internal static class HeightLevels
     private static (Rect Area, int Level)[] _zones = Array.Empty<(Rect, int)>();
     private static readonly HashSet<(SystemTypes, SystemTypes)> Pairs = new();
 
+    internal static void Warm() => Ensure();
+
     private static void Ensure()
     {
         var ship = ShipStatus.Instance;
@@ -166,6 +168,50 @@ internal static class HeightLevels
         island = 0;
         at = default;
         return false;
+    }
+
+    // 高さの区域 (マップごとの範囲) を升に塗る。注釈 (MapNotes.RasterLevels) はこの後に上から塗る
+    internal static void RasterZones(sbyte[] lvl, int w, int h, Vector2 org, float cell)
+    {
+        Ensure();
+        foreach (var (r, level) in _zones)
+        {
+            int x0 = Math.Max(0, (int)MathF.Ceiling((r.xMin - org.x) / cell - 0.5f)), x1 = Math.Min(w - 1, (int)MathF.Floor((r.xMax - org.x) / cell - 0.5f));
+            int y0 = Math.Max(0, (int)MathF.Ceiling((r.yMin - org.y) / cell - 0.5f)), y1 = Math.Min(h - 1, (int)MathF.Floor((r.yMax - org.y) / cell - 0.5f));
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++) lvl[y * w + x] = (sbyte)level;
+        }
+    }
+
+    // 島 (SolidMap の番号) ごとの高さの順位。はしごの上の島は下の島より 1 段高い。いちばん広い島を 0 として、
+    // はしごでつながる島だけ順位が決まる (決まらない島は int.MinValue)。はしごは 2 本で上下の組になる
+    internal static int[] IslandRanks(Func<int, int> areaOf)
+    {
+        int n = SolidMap.IslandCount;
+        var rank = new int[n + 1];
+        Array.Fill(rank, int.MinValue);
+        var ship = ShipStatus.Instance;
+        if (!ship || n == 0) return rank;
+        var pairs = new List<(int Top, int Bottom)>();
+        foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
+        {
+            if (!l || !l.IsTop || !l.Destination) continue;
+            int a = SolidMap.IslandAt(l.transform.position), b = SolidMap.IslandAt(l.Destination.transform.position);
+            if (a > 0 && b > 0 && a != b) pairs.Add((a, b));
+        }
+        int big = 1;
+        for (int i = 2; i <= n; i++) if (areaOf(i) > areaOf(big)) big = i;
+        rank[big] = 0;
+        for (bool changed = true; changed;)
+        {
+            changed = false;
+            foreach (var (t, b) in pairs)
+            {
+                if (rank[b] != int.MinValue && rank[t] == int.MinValue) { rank[t] = rank[b] + 1; changed = true; }
+                else if (rank[t] != int.MinValue && rank[b] == int.MinValue) { rank[b] = rank[t] - 1; changed = true; }
+            }
+        }
+        return rank;
     }
 
     private static int ZoneLevel(Vector2 p)

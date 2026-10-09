@@ -51,7 +51,7 @@ internal static class TerrainWarm
                 case 5: SolidMap.Ensure(); break;
                 case 6: PropSim.Warm(); LowFurniture.Ensure(); break; // 歩ける所の地図の次のフレーム (同じフレームに積むと 1 回の止まりが長い)
                 case 7: BreakableProps.Warm(); break;
-                case 8: DecompFx.Warm(); break;
+                case 8: DecompFx.Warm(); WaterSim.Warm(); break;
             }
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"[TerrainWarm] stage {_stage}: {e.Message}"); }

@@ -95,6 +95,35 @@ internal static partial class MapNotes
         return false;
     }
 
+    // 高さの注釈が塗ってあるマップか
+    public static bool HasLevels
+    {
+        get { Ensure(); return _void.Length + _low.Length + _high.Length + _higher.Length > 0; }
+    }
+
+    // 升 (原点 org・1 辺 cell・w×h) の真ん中の高さを lvl に塗る (Level と同じ優先: 奈落 > 低い > さらに高い > 高い)。
+    // 塗っていない升はそのまま (先に塗った区域の高さを残す)。升ごとに範囲を全部見ると重いので、範囲ごとに升を塗る
+    public static void RasterLevels(sbyte[] lvl, int w, int h, Vector2 org, float cell)
+    {
+        Ensure();
+        Fill(_high, 1);
+        Fill(_higher, 2);
+        Fill(_low, -1);
+        Fill(_void, -2);
+
+        void Fill(Rect[] rects, int level)
+        {
+            foreach (var r in rects)
+            {
+                // 真ん中 (x + 0.5) * cell が範囲に入る升
+                int x0 = Math.Max(0, (int)MathF.Ceiling((r.xMin - org.x) / cell - 0.5f)), x1 = Math.Min(w - 1, (int)MathF.Floor((r.xMax - org.x) / cell - 0.5f));
+                int y0 = Math.Max(0, (int)MathF.Ceiling((r.yMin - org.y) / cell - 0.5f)), y1 = Math.Min(h - 1, (int)MathF.Floor((r.yMax - org.y) / cell - 0.5f));
+                for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++) lvl[y * w + x] = (sbyte)level;
+            }
+        }
+    }
+
     // その点の床の高さ (-2 = 奈落・-1 = 低い・1 = 高い・2 = さらに高い・0 = 塗っていない)
     public static int Level(Vector2 p)
     {

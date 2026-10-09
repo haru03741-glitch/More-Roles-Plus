@@ -40,7 +40,7 @@ internal static class Decompression
     internal static bool Wind => SolidMap.SkyHull;
     public const int FoamDelay = 180, FoamTime = 75; // 開通 6 秒後に膨らみ始め 2.5 秒でふさがる
     private static int[] _open1024 = Array.Empty<int>(); // 範囲ごとの口の開き具合 (泡が狭めていく・/1024)
-    private const int DoorPoll = 15;          // ホストが扉を読む間隔 (0.5 秒)
+    private const int DoorPoll = 6;           // ホストが扉を読む間隔 (0.2 秒・開いた扉の先へ水がすぐ進むように)
     // 道のり (縦横 2・斜め 3 = 1 升 0.25 単位が 2) の上限。10 単位より先は引かない
     private const int PerUnit = 8;
     private const int Cap = 10 * PerUnit + 4;
@@ -205,7 +205,13 @@ internal static class Decompression
     private static int CellX(float x) => (int)MathF.Floor((x - _org.x) / _cell);
     private static int CellY(float y) => (int)MathF.Floor((y - _org.y) / _cell);
 
-    // 扉の一覧 (AllDoors の順・64 まで)。升は SolidMap と同じ原点の 0.25 単位
+    // 扉の一覧 (AllDoors の順・64 まで)。升は SolidMap と同じ原点の 0.25 単位。水 (WaterSim) も同じ一覧と記録を使う
+    internal static int DoorCount { get { ListDoors(); return Doors.Count; } }
+    internal static (int X0, int Y0, int X1, int Y1) DoorRect(int i) => DoorCells[i];
+    internal static OpenableDoor DoorAtIndex(int i) => Doors[i].Door;
+    internal static ulong DoorBitsAt(int s) => BitsAt(s);
+    internal static ulong AllDoorsOpen => AllOpen;
+
     private static void ListDoors()
     {
         if (_doorsListed) return;
@@ -258,10 +264,10 @@ internal static class Decompression
         DoorLog.Insert(i, (tick, bits));
     }
 
-    // ホストと一人の時: 外壁を掘り抜ける船 (スケルド) で扉を読み、変わったら刻みを押して記録し配る
+    // ホストと一人の時: 扉を読み、変わったら刻みを押して記録し配る (気圧・物・水が全員同じ刻みで扉を見る)
     private static void PollDoors()
     {
-        if (!SolidMap.Breachable) return;
+        if (!SolidMap.Valid) return;
         int now = GameClock.Now;
         if (now < _nextPoll) return;
         if (TerrainSync.IsGuest()) { _nextPoll = now + DoorPoll; return; }

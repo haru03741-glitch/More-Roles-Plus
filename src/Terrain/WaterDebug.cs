@@ -6,7 +6,8 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // 確認用: 水の判定を自分の周りに色で重ねる (bridge `water show [r]`)。
-// 赤 = 水の升が閉じている (水が流れない)・橙 = SolidMap で歩けない (水を見せない)・黄 = 家具で水を見せない
+// 赤 = 水の升が閉じている (水が流れない)・橙 = SolidMap で歩けない (水を見せない)・黄 = 家具で水を見せない・
+// 水色 = 縁を越えて落ちる升・緑の濃さ = 床の高さ (高いほど濃い)
 internal static class WaterDebug
 {
     private const float Ppu = 16f;
@@ -27,7 +28,7 @@ internal static class WaterDebug
         DamageMap.FurnitureColliders(c, r, cols);
         var worg = WaterSim.Origin;
         float cell = WaterSim.Cell;
-        int closed = 0, solid = 0, furn = 0;
+        int closed = 0, solid = 0, furn = 0, edges = 0;
         for (int y = 0; y < n; y++)
         for (int x = 0; x < n; x++)
         {
@@ -46,6 +47,17 @@ internal static class WaterDebug
             if (fu) { px[i] = 255; px[i + 1] = 230; px[i + 2] = 0; px[i + 3] = 110; furn++; }
             else if (so) { px[i] = 255; px[i + 1] = 120; px[i + 2] = 0; px[i + 3] = 100; solid++; }
             if (shut) { px[i] = 255; px[i + 1] = 0; px[i + 2] = 0; px[i + 3] = (byte)Math.Max((int)px[i + 3], 80); closed++; }
+            else
+            {
+                int k = cy * WaterSim.W + cx;
+                if (WaterSim.FallEdge(k)) { px[i] = 0; px[i + 1] = 220; px[i + 2] = 255; px[i + 3] = 150; edges++; }
+                else
+                {
+                    int lv = WaterSim.LevelOf(k);
+                    if (lv > 0 && lv < 100) { px[i] = 0; px[i + 1] = 255; px[i + 2] = 60; px[i + 3] = (byte)Math.Min(160, 50 * lv); }
+                    else if (lv < 0 && lv > -100) { px[i] = 120; px[i + 1] = 0; px[i + 2] = 255; px[i + 3] = (byte)Math.Min(160, -50 * lv); }
+                }
+            }
         }
         _tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { name = "MrpWaterDebug", filterMode = FilterMode.Point };
         fixed (byte* b = px) _tex.LoadRawTextureData((IntPtr)b, px.Length);
@@ -54,7 +66,7 @@ internal static class WaterDebug
         _go = new GameObject("MrpWaterDebug") { layer = 0 };
         _go.AddComponent<SpriteRenderer>().sprite = _sp;
         _go.transform.position = FxMath.V3(c.x - r, c.y - r, -20f);
-        return $"OK water show r={r} closed={closed} solid={solid} furniture={furn} colliders={cols.Count}";
+        return $"OK water show r={r} closed={closed} fallEdges={edges} solid={solid} furniture={furn} colliders={cols.Count}";
     }
 
     // 家具の当たり判定 (水を見せない所の元) を名前・形・大きさで並べる
@@ -74,6 +86,24 @@ internal static class WaterDebug
             reply($"FURN {path} {kind} min=({b.min.x:0.00},{b.min.y:0.00}) size=({b.size.x:0.00},{b.size.y:0.00})");
         }
         reply($"OK water furn n={cols.Count} r={r}");
+    }
+
+    // 扉の一覧 (水を止めるか・今の開き)
+    internal static void ListDoors(Action<string> reply)
+    {
+        int n = Decompression.DoorCount;
+        for (int i = 0; i < n; i++)
+        {
+            var d = Decompression.DoorAtIndex(i);
+            if (!d) continue;
+            var t = d.transform;
+            var col = d.GetComponent<Collider2D>();
+            var b = col ? col.bounds : default;
+            string kind = d.TryCast<PlainDoor>() != null ? "plain" : d.TryCast<MushroomWallDoor>() != null ? "mushroom" : "other";
+            kind += d.TryCast<AutoOpenDoor>() != null ? "+autoopen" : "";
+            reply($"DOOR {i} {(t.parent ? t.parent.name + "/" : "")}{t.name} {kind} room={d.Room} open={d.IsOpen} under={WaterSim.DoorGapBelow(i)} min=({b.min.x:0.00},{b.min.y:0.00}) size=({b.size.x:0.00},{b.size.y:0.00})");
+        }
+        reply($"OK water doors n={n}");
     }
 
     internal static void Hide()

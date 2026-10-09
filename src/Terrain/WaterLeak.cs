@@ -56,6 +56,13 @@ internal static class WaterLeak
     private const float BlobSizeMin = 0.12f, BlobSizeMax = 0.24f;
     private const float AirZ = -1.02f;                           // 飛んでいる間は土煙 (-1) より手前
 
+    // 縁を越えて落ちる水 (絵だけ・WaterSim.Falls から)。縁から落ちる先へ、落ちる刻みの間に重力で落ちる筋。
+    // 縁が南向き (崖の面が見える) なら面に沿って真下へ、横や北向きは縁から小さく弧を描いて越える
+    private const float FallMass = 36f;       // 水の量 (WaterSim.Full = 1 単位) → 筋 1 本
+    private const int FallPerFrame = 10;      // 1 フレームに出す筋の上限 (使い回しの列を食い尽くさない)
+    private const float FallMinDrop = 0.3f;   // 画面の上で落ちる最小の高さ
+    private const float FallSoundEvery = 0.7f, FallSoundVolume = 0.4f;
+
     // 人
     private const float ScanInterval = 0.1f;
     private const float WetFor = 6f;
@@ -432,6 +439,62 @@ internal static class WaterLeak
         }
     }
 
+    // 縁を越えた水: 量に比例して筋を出す。着く時間は計算の落ちる刻みと同じ (着いた頃に下の水が増える)
+    private static float _fallAcc, _fallSoundAcc, _fallZx = float.NaN, _fallZy, _fallZ, _fallRingZ;
+    private static int _fallStart, _fallN;
+    private static void TickFalls(float dt)
+    {
+        var falls = WaterSim.Falls;
+        _fallSoundAcc += dt;
+        if (falls.Count == 0) return;
+        int budget = FallPerFrame, n = falls.Count, loud = 0;
+        _fallStart = (_fallStart + 1) % n;
+        for (int c = 0; c < n && budget > 0; c++)
+        {
+            var f = falls[(_fallStart + c) % n];
+            if (f.Amount > falls[loud].Amount) loud = (_fallStart + c) % n;
+            _fallAcc += f.Amount / FallMass;
+            while (_fallAcc >= 1f && budget > 0)
+            {
+                _fallAcc -= 1f;
+                budget--;
+                SpawnFall(f.X0, f.Y0, f.X1, f.Y1, f.Delay, f.Void);
+            }
+        }
+        if (_fallAcc > 4f) _fallAcc = 4f;
+        if (_fallSoundAcc >= FallSoundEvery)
+        {
+            _fallSoundAcc = 0f;
+            var f = falls[loud];
+            BreakNoise.PlayAt("noise_leak", new Vector2(f.X1, f.Y1), LeakSoundRange, LeakSoundMuffle, FallSoundVolume * Math.Min(1f, 0.3f + f.Amount / 300f));
+        }
+    }
+
+    private static void SpawnFall(float x0, float y0, float x1, float y1, int delay, bool toVoid)
+    {
+        // 床の z は縁ごとに 1 回だけ引く (同じ縁が続く)
+        if (x0 != _fallZx || y0 != _fallZy)
+        {
+            float floor = Math.Min(DamageMap.FrontZ(FxMath.V2(x0, y0)), DamageMap.FrontZ(FxMath.V2(x1, y1))), zs = DamageMap.ZScale(floor);
+            _fallZx = x0; _fallZy = y0;
+            _fallZ = floor - 0.003f * zs;
+            _fallRingZ = floor - 0.0008f * zs;
+        }
+        int i = ++_fallN;
+        float u = ((i * 37) % 17) / 16f - 0.5f, v = ((i * 53) % 13) / 12f;
+        float dx = x1 - x0, dy = y1 - y0, dl = MathF.Max(0.001f, MathF.Sqrt(dx * dx + dy * dy));
+        // 縁に沿って升の幅に散らす
+        float sx = x0 - dy / dl * u * WaterSim.Cell, sy = y0 + dx / dl * u * WaterSim.Cell;
+        float t = MathF.Max(0.1f, delay / (float)GameClock.Hz) * (0.9f + 0.2f * v);
+        float h0 = MathF.Max(FallMinDrop, sy - y1);
+        float ys = sy - h0;                              // 地面の上の出発点 (高さ h0 の分だけ下)
+        float vh = (0.5f * Gravity * t * t - h0) / t;    // t 秒後に高さ 0
+        bool streak = (i & 3) != 0;
+        SpawnDrop(sx, ys, h0, (x1 + u * 0.1f - sx) / t, (y1 - ys) / t, vh, !toVoid && i % 3 == 0, _fallZ - 0.00002f * (i & 15), _fallRingZ,
+            streak ? DropSize * (0.8f + 0.4f * v) : DropSize * 0.9f, streak ? DropStreak : DropPlain, 0);
+        if (!toVoid && i % 5 == 0) AddMist(x1 + u * 0.15f, y1 + 0.02f, u * 0.3f, 0.12f, _fallRingZ - 0.0002f, FoamFrom * 0.7f, FoamTo * 0.8f);
+    }
+
     private static void SpawnDrop(Jet jet, float x, float y, float h, float vx, float vy, float vh, bool ripple) =>
         SpawnDrop(x, y, h, vx, vy, vh, ripple, jet.DropZ, jet.RingZ, DropSize, DropPlain, 0);
 
@@ -757,6 +820,7 @@ internal static class WaterLeak
         {
             TickJets(dt);
             TickLanding();
+            TickFalls(dt);
             TickDrops(dt);
             TickMist(dt);
             TickRipples(dt);
@@ -816,6 +880,8 @@ internal static class WaterLeak
         Array.Clear(Tracked);
         _anyWet = false;
         _clock = _scanAcc = 0f;
+        _fallAcc = 0f;
+        _fallZx = float.NaN;
         _lastMs = 0;
     }
 

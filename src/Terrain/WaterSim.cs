@@ -10,6 +10,9 @@ namespace MoreRolesPlus.Terrain;
 // 升ごとに水の高さを持ち、隣との高さの差で管に流れが溜まって次の刻みで水が移る (勢いが残るので押し寄せて跳ね返る)。
 // 壁 (歩けない升) へは流れない。壊した穴は SolidMap が開くので、その刻みで升を作り直すと水が通る。
 // 机などの家具は床の上に立っているので水は下を通る (絵だけ型抜きする)。
+// 閉じた扉の升は閉じる (下に隙間のある扉は除く)。扉の開け閉めはホストが刻みを押して配った記録 (Decompression の扉の記録) の刻みで入る。
+// 床の高さ (塗った注釈 / はしごの上下で決めた島の順位) が違う所では水は高い方から低い方へだけ流れる。
+// 高い床の縁の先 (壁・崖の向こう) に視界の影を挟まずに低い床があれば、縁を越えた水は落ちて、落ちる時間の後に下の升へ入る
 //
 // 全員の手元でぴったり同じ結果にするため:
 // - 整数だけで計算する (三角関数・端末で丸めの違う小数は使わない)。向きは整数の回転の表、乱数は使わない。
@@ -33,6 +36,15 @@ internal static class WaterSim
     private const int BlowMax = 12;
     private const int DrainDist = Decompression.UnitDist / 2;
     private const int DrainGain = 64;         // 引く強さ 1024 あたり 1 刻みに消える割合 (/256)
+    // 落ちる: 縁の升の水のうちこれより上の分が、1 刻みに FallGain/256 ずつ縁を越える
+    private const int FallLip = 24;
+    private const int FallGain = 72;
+    private const sbyte NoLevel = sbyte.MinValue;   // 高さが決まらない升 (落ちも登りもしない)
+    private const sbyte VoidLevel = -2;              // 奈落 (落ちた水は消える)
+    // 縁の先の低い床を探す距離 (升)。真上から斜めに見ているので、南 (−y) の崖は面が長く見える
+    private static readonly int[] FallScan = { 8, 8, 4, 24 };
+    private const int ShadowMask = (1 << 10) | (1 << 11) | (1 << 13); // 視界を遮る層 (本編の Constants.ShadowMask と同じ)
+
     // 衝撃 (爆発など): 半径の中の水に、中心から外へ向かう流れを 1 回だけ足す (勢いは Damp で減っていく)
     private const int ShockGain = 192;        // 中心の升に足す流れ = 水の量 × 強さ/256 × これ/256
     private const float ShockReach = 1.6f;    // 爆発の半径の何倍まで水を押すか
@@ -74,6 +86,14 @@ internal static class WaterSim
     // 宇宙へ出た水 (位置と量)。TerrainStep が毎フレームの始めに空にし、演出 (DecompFx) が同じフレームで読む
     internal static readonly List<(float X, float Y, int Amount)> Spilled = new();
     internal static long SpilledTotal { get; private set; }
+    // 今のフレームに縁を越えた水 (縁の位置・着く位置・量・落ちる刻み)。TerrainStep が毎フレームの始めに空にし、絵 (WaterLeak) が同じフレームで読む
+    internal static readonly List<(float X0, float Y0, float X1, float Y1, int Amount, int Delay, bool Void)> Falls = new();
+    internal static long FellTotal { get; private set; }  // 縁を越えた水の総量
+    internal static long VoidTotal { get; private set; }  // 奈落へ落ちて消えた水
+    internal static int FallLinks => FallTo.Count;
+    internal static bool FallEdge(int k) => _fallMask != null && _fallMask[k] != 0;
+    internal static int LevelOf(int k) => _lvl == null ? 0 : _lvl[k];
+    internal static bool DoorGapBelow(int i) => _doorUnder != null && i < _doorUnder.Length && _doorUnder[i];
 
     private static readonly int[] Nx = { 1, -1, 0, 0 };
     private static readonly int[] Ny = { 0, 0, 1, -1 };
@@ -114,6 +134,16 @@ internal static class WaterSim
     private static byte[] _edge;     // 隣へ流れてよい向き (ビット 0..3 = Nx/Ny の並び)
     private static int[] _hgt;
     private static int[] _flux;      // 升 × 4 向きの流れ出し
+    private static sbyte[] _lvl;     // 升の床の高さ (NoLevel = 決まらない)
+    private static byte[] _shut;     // 閉じた扉が掛かっている数
+    private static byte[] _doorCell; // 扉の升 (落ちる先を探す時に越えない)
+    private static bool[] _doorUnder; // 下に隙間があって水が通る扉
+    private static ulong _doorBits;  // 升に入れた扉の開き
+    private static byte[] _fallMask; // 縁を越えて落ちる向き (ビット = Nx/Ny の並び)
+    private static byte[] _shadowCut; // 作った時に影の線を挟んでいた縁の向き
+    private static readonly Dictionary<int, (int To, int Delay)> FallTo = new(); // 升 × 4 + 向き → 落ちる先の升 (−1 = 奈落) と刻み
+    private static readonly List<(int K, int D, int Amount)> FallOut = new();
+    private static readonly List<(int Due, int To, int Amount)> Flying = new(); // 落ちている水 (着く刻みの順)
     private static byte[] _inList;
     private static readonly List<int> Active = new();
     private static readonly List<Pending> Queue = new();
@@ -232,6 +262,7 @@ internal static class WaterSim
     {
         if (_ready) return true;
         if (!SolidMap.Ensure() || !SolidMap.Valid) return false;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _w = SolidMap.W / Sub;
         _h = SolidMap.H / Sub;
         _org = SolidMap.Origin;
@@ -243,10 +274,24 @@ internal static class WaterSim
         _hgt = new int[n];
         _flux = new int[n * 4];
         _inList = new byte[n];
+        _shut = new byte[n];
+        _doorCell = new byte[n];
+        _fallMask = new byte[n];
+        _shadowCut = new byte[n];
+        FallTo.Clear();
+        ListDoorCells();
         _tw = (_w + TileCells - 1) / TileCells;
         _th = (_h + TileCells - 1) / TileCells;
         _tileDirty = new bool[_tw * _th];
+        long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
         Rebuild(0, 0, _w - 1, _h - 1);
+        long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+        Levels();
+        long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
+        Links(0, 0, _w - 1, _h - 1, true);
+        long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
+        double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count}");
         DirtyTiles.Clear();
         Array.Clear(_tileDirty);
         _ready = true;
@@ -270,8 +315,8 @@ internal static class WaterSim
             for (int sy = 0; sy < Sub; sy++)
             for (int sx = 0; sx < Sub; sx++)
                 if (SolidMap.OpenCell((y * Sub + sy) * sw + x * Sub + sx)) bits |= 1 << (sy * Sub + sx);
-            if (PopCount(bits) < 4 || !Connected(bits)) bits = 0;
             int k = y * _w + x;
+            if (PopCount(bits) < 4 || !Connected(bits) || _shut[k] != 0) bits = 0;
             _sub[k] = (ushort)bits;
             byte open = bits != 0 ? (byte)1 : (byte)0;
             if (open == _open[k]) continue;
@@ -305,6 +350,174 @@ internal static class WaterSim
             }
             _edge[k] = (byte)e;
         }
+    }
+
+    // ── 扉 ─────────────────────────────────────────────────────────────
+
+    // 扉の升 (Decompression と同じ一覧・同じ升)。下に隙間のある扉は水を止めない
+    private static void ListDoorCells()
+    {
+        int n = Decompression.DoorCount;
+        _doorUnder = new bool[n];
+        _doorBits = Decompression.AllDoorsOpen;
+        for (int i = 0; i < n; i++)
+        {
+            _doorUnder[i] = GapBelow(Decompression.DoorAtIndex(i));
+            var (x0, y0, x1, y1) = Decompression.DoorRect(i);
+            for (int y = Math.Max(0, y0); y <= Math.Min(_h - 1, y1); y++)
+            for (int x = Math.Max(0, x0); x <= Math.Min(_w - 1, x1); x++) _doorCell[y * _w + x] = 1;
+        }
+    }
+
+    // 下に隙間があって水が通る扉 (エアシップのラウンジのトイレの個室の扉)
+    private static bool GapBelow(OpenableDoor d) => d && d.name.Contains("bathroomdoor", StringComparison.OrdinalIgnoreCase);
+
+    // 刻みの扉の開きを升へ入れる (変わった扉の升だけ作り直す)
+    private static void ApplyDoors(ulong bits)
+    {
+        // 船の準備前に作った時は扉が 0 枚のままなので、扉が見えたら升を取り直す
+        if (_doorUnder.Length == 0 && Decompression.DoorCount > 0) ListDoorCells();
+        ulong changed = bits ^ _doorBits;
+        _doorBits = bits;
+        int n = Math.Min(_doorUnder.Length, Decompression.DoorCount);
+        for (int i = 0; i < n; i++)
+        {
+            if ((changed >> i & 1) == 0 || _doorUnder[i]) continue;
+            bool open = (bits >> i & 1) != 0;
+            var (x0, y0, x1, y1) = Decompression.DoorRect(i);
+            for (int y = Math.Max(0, y0); y <= Math.Min(_h - 1, y1); y++)
+            for (int x = Math.Max(0, x0); x <= Math.Min(_w - 1, x1); x++)
+            {
+                int k = y * _w + x;
+                if (open) { if (_shut[k] > 0) _shut[k]--; }
+                else if (_shut[k] < 255) _shut[k]++;
+            }
+            Rebuild(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+        }
+    }
+
+    // ── 床の高さと落ちる縁 ───────────────────────────────────────────────
+
+    // 升の高さ: 注釈を塗ったマップは区域と注釈 (塗っていない所は 0)、それ以外ははしごの上下で決めた島の順位
+    private static void Levels()
+    {
+        int n = _w * _h;
+        _lvl = new sbyte[n];
+        if (MapNotes.HasLevels)
+        {
+            HeightLevels.RasterZones(_lvl, _w, _h, _org, _cell);
+            MapNotes.RasterLevels(_lvl, _w, _h, _org, _cell);
+            // 奈落の注釈は壊せない所の印も兼ねていて歩ける床にも掛かる。奈落は歩けない所だけ (縁の先の落ちる先)
+            for (int k = 0; k < n; k++) if (_lvl[k] == VoidLevel && _sub[k] != 0) _lvl[k] = 0;
+            return;
+        }
+        // 升の島 = 升の中の最初の歩ける升の島
+        var isl = new byte[n];
+        var area = new int[SolidMap.IslandCount + 1];
+        int sw = SolidMap.W;
+        for (int k = 0; k < n; k++)
+        {
+            int bits = _sub[k];
+            if (bits == 0) continue;
+            int b = System.Numerics.BitOperations.TrailingZeroCount(bits);
+            int x = k % _w, y = k / _w;
+            int id = SolidMap.IslandCell((y * Sub + b / Sub) * sw + x * Sub + b % Sub);
+            if (id <= 0 || id >= area.Length) continue;
+            isl[k] = (byte)id;
+            area[id]++;
+        }
+        var rank = HeightLevels.IslandRanks(i => area[i]);
+        for (int k = 0; k < n; k++)
+        {
+            int id = isl[k];
+            _lvl[k] = id == 0 ? (sbyte)0 : rank[id] == int.MinValue ? NoLevel : (sbyte)Math.Clamp(rank[id], -100, 100);
+        }
+    }
+
+    // 範囲の升の、縁を越えて落ちる向きと落ちる先を作り直す。縁 (隣へ流れられない向き) の先を FallScan 升まで進み、
+    // 最初の開いた升が低ければ落ちる先 (奈落を先に通れば奈落)。扉の升を越える所と、視界の影の線を挟む所 (壁の向こうの部屋) は落ちない。
+    // 奈落は谷のある部屋 (ChasmRooms) の範囲の中だけ。奈落の注釈は壊せない所の印も兼ねて外壁の外にも塗ってあり、
+    // 外壁には影の線が無い所があるので、それだけでは谷の縁と外壁を見分けられない
+    // 影の線は壊れた壁と一緒に切られ、壊れの届き方は人によって先後があるので、線を読むのは作った時 (full) だけ。
+    // 引き直しはその時の結果 (_shadowCut) を引く
+    private static void Links(int x0, int y0, int x1, int y1, bool full = false)
+    {
+        Rooms.Clear();
+        var ship = ShipStatus.Instance;
+        if (ship)
+            foreach (var r in ship.AllRooms)
+                if (r && r.roomArea && Array.IndexOf(ChasmRooms, r.RoomId) >= 0) Rooms.Add(r.roomArea);
+        x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
+        x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
+        for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+        {
+            int k = y * _w + x;
+            if (_fallMask[k] != 0)
+            {
+                for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
+                _fallMask[k] = 0;
+            }
+            int lk = _lvl[k];
+            if (_open[k] == 0 || lk == NoLevel || lk == VoidLevel) continue;
+            for (int d = 0; d < 4; d++)
+            {
+                int j = k + Nx[d] + Ny[d] * _w;
+                if (_open[j] != 0 && Passable(k, d)) continue;
+                int to = int.MinValue, dist = 0;
+                for (int i = 1; i <= FallScan[d]; i++)
+                {
+                    int cx = x + Nx[d] * i, cy = y + Ny[d] * i;
+                    if (cx < 1 || cy < 1 || cx >= _w - 1 || cy >= _h - 1) break;
+                    int c = cy * _w + cx;
+                    if (_doorCell[c] != 0) break;
+                    int lc = _lvl[c];
+                    if (_open[c] == 0)
+                    {
+                        if (lc == VoidLevel) { to = -1; dist = i; break; }
+                        continue;
+                    }
+                    if (lc != NoLevel && lc < lk) { to = c; dist = i; }
+                    break;
+                }
+                if (to == int.MinValue) continue;
+                // 部屋の判定を先に (影の線を読むのは重く、谷の外の奈落の縁はそれだけで落ちないと決まる)
+                if (to < 0 && !InRoom(_org.x + (x + Nx[d] * dist + 0.5f) * _cell, _org.y + (y + Ny[d] * dist + 0.5f) * _cell)) continue;
+                if (full && ShadowBetween(x, y, d, dist)) _shadowCut[k] |= (byte)(1 << d);
+                if ((_shadowCut[k] >> d & 1) != 0) continue;
+                _fallMask[k] |= (byte)(1 << d);
+                FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
+            }
+        }
+    }
+
+    // 最初に水が出た時の升作りで払っていた準備 (段の注釈の読み込み・部屋の範囲・影の線の判定の初回) を先に済ませる
+    internal static void Warm()
+    {
+        _ = MapNotes.HasLevels;
+        HeightLevels.Warm();
+        var ship = ShipStatus.Instance;
+        if (!ship) return;
+        foreach (var r in ship.AllRooms)
+            if (r && r.roomArea) { _ = r.roomArea.OverlapPoint(Vector2.zero); break; }
+        _ = Physics2D.CircleCastAll(Vector2.zero, 0.01f, Vector2.right, 0.1f, ShadowMask).Length;
+    }
+
+    private static readonly SystemTypes[] ChasmRooms = { SystemTypes.GapRoom };
+    private static readonly List<Collider2D> Rooms = new();
+    private static bool InRoom(float x, float y)
+    {
+        var p = new Vector2(x, y);
+        foreach (var c in Rooms) if (c && c.OverlapPoint(p)) return true;
+        return false;
+    }
+
+    // 縁の升の真ん中から落ちる先の手前までに視界の影の線があるか (あれば壁の向こうの部屋)
+    private static bool ShadowBetween(int x, int y, int d, int dist)
+    {
+        float ax = _org.x + (x + 0.5f) * _cell, ay = _org.y + (y + 0.5f) * _cell;
+        // Linecast は Android 版に無いので、細い CircleCastAll で代える
+        return Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(Nx[d], Ny[d]), (dist - 0.5f) * _cell, ShadowMask).Length > 0;
     }
 
     // 2 つの升の境で向かい合う歩ける升の組の数。column = true なら a の列 ia と b の列 ib、false なら行
@@ -399,8 +612,26 @@ internal static class WaterSim
             Queue.RemoveAt(0);
             if (p.Leak) { Sources.Add(p.Src); continue; }
             Rebuild(p.Cx - p.R, p.Cy - p.R, p.Cx + p.R, p.Cy + p.R);
+            int reach = p.R + FallScan[3] + 1;
+            Links(p.Cx - reach, p.Cy - reach, p.Cx + reach, p.Cy + reach);
             if (p.Shock) Shock(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed);
         }
+
+        // 扉: この刻みの開き (ホストの記録)
+        ulong doors = Decompression.DoorBitsAt(_step);
+        if (doors != _doorBits) ApplyDoors(doors);
+
+        // 落ちていた水が下の床に着く (着いた升が閉じていたら開いている隣へ)
+        int fl = 0;
+        while (fl < Flying.Count && Flying[fl].Due <= _step)
+        {
+            var (_, to, amt) = Flying[fl++];
+            if (_open[to] == 0)
+                for (int d = 0; d < 4; d++) { int j = to + Nx[d] + Ny[d] * _w; if (_open[j] != 0) { to = j; break; } }
+            if (_open[to] != 0) { _hgt[to] += amt; Wake(to); Mark(to); }
+            else VoidTotal += amt;
+        }
+        if (fl > 0) Flying.RemoveRange(0, fl);
 
         // 噴き出し: 粒を出して動かし、床に落ちた粒の水を升に足す
         Landed.Clear();
@@ -421,7 +652,19 @@ internal static class WaterSim
         if (blow)
             for (int a = 0; a < Active.Count; a++) if (_hgt[Active[a]] > 0) Drain(Active[a]);
 
-        // 流れ: 各升が自分の 4 本の管の流れ出しを決める (読むのは前の刻みの高さだけ・順番に依らない)
+        // 奈落の升の水は消える (落ちていく)
+        for (int a = 0; a < Active.Count; a++)
+        {
+            int k = Active[a];
+            if (_lvl[k] != VoidLevel || _hgt[k] <= 0) continue;
+            VoidTotal += _hgt[k];
+            _hgt[k] = 0;
+            Mark(k);
+        }
+
+        // 流れ: 各升が自分の 4 本の管の流れ出しを決める (読むのは前の刻みの高さだけ・順番に依らない)。
+        // 低い床の隣へは向こうの水に押し返されずに流れ、高い床の隣へは流れない。縁を越えて落ちる分は FallOut へ
+        FallOut.Clear();
         for (int a = 0; a < Active.Count; a++)
         {
             int k = Active[a];
@@ -429,24 +672,41 @@ internal static class WaterSim
             int sum = 0;
             int b0 = 0, b1 = 0, b2 = 0, b3 = 0;
             if (blow && h > 0) Blow(k, h, out b0, out b1, out b2, out b3);
+            int lk = _lvl[k];
+            int falls = FallOut.Count;
             for (int d = 0; d < 4; d++)
             {
                 int j = k + Nx[d] + Ny[d] * _w;
                 int f = 0;
                 if (h > 0 && _open[j] != 0 && Passable(k, d))
                 {
-                    int hj = _hgt[j];
-                    int diff = h - hj - (hj == 0 ? DryHold : WetHold);
-                    f = _flux[k * 4 + d] * Damp / 256 + (diff > 0 ? diff * Gain / 256 : 0);
-                    if (f < 0) f = 0;
-                    f += d == 0 ? b0 : d == 1 ? b1 : d == 2 ? b2 : b3;
+                    int lj = _lvl[j];
+                    bool known = lk != NoLevel && lj != NoLevel;
+                    if (!known || lj <= lk)
+                    {
+                        int hj = known && lj < lk ? 0 : _hgt[j];
+                        int diff = h - hj - (hj == 0 ? DryHold : WetHold);
+                        f = _flux[k * 4 + d] * Damp / 256 + (diff > 0 ? diff * Gain / 256 : 0);
+                        if (f < 0) f = 0;
+                        f += d == 0 ? b0 : d == 1 ? b1 : d == 2 ? b2 : b3;
+                    }
+                }
+                else if (h > FallLip && (_fallMask[k] >> d & 1) != 0)
+                {
+                    int g = (h - FallLip) * FallGain / 256;
+                    if (g <= 0) g = 1;
+                    FallOut.Add((k, d, g));
+                    sum += g;
                 }
                 _flux[k * 4 + d] = f;
                 sum += f;
                 if (f > 0) Wake(j);
             }
             if (sum > h)
+            {
                 for (int d = 0; d < 4; d++) _flux[k * 4 + d] = (int)((long)_flux[k * 4 + d] * h / sum);
+                for (int i = falls; i < FallOut.Count; i++) { var fo = FallOut[i]; FallOut[i] = (fo.K, fo.D, (int)((long)fo.Amount * h / sum)); }
+            }
         }
 
         // 高さ: 入ってくる流れ − 出ていく流れ
@@ -465,6 +725,19 @@ internal static class WaterSim
             if (_hgt[k] > 0 && _hgt[k] < MinDepth && (_step & 3) == 0) { _hgt[k]--; Mark(k); }
         }
 
+        // 縁を越えた水: 縁の升から引き、落ちる時間の後に下の升へ (奈落なら消える)
+        foreach (var (k, d, amt) in FallOut)
+        {
+            if (amt <= 0) continue;
+            _hgt[k] -= amt;
+            Mark(k);
+            FellTotal += amt;
+            var (to, delay) = FallTo[k * 4 + d];
+            if (to < 0) VoidTotal += amt;
+            else AddFlying(_step + delay, to, amt);
+            FallFx(k, d, to, amt, delay);
+        }
+
         // 水も流れも無い升を外す
         int o = 0;
         for (int a = 0; a < Active.Count; a++)
@@ -480,6 +753,32 @@ internal static class WaterSim
 
         Steps++;
         if (_step % 300 == 0) { LastDigest = Digest(); Plugin.Logger.LogInfo($"[WaterSim] step={_step} digest={LastDigest:x8} active={Active.Count} volume={Volume()}"); }
+    }
+
+    // 落ちている水を着く刻みの順に入れる (同じ刻みは入れた順)
+    private static void AddFlying(int due, int to, int amt)
+    {
+        int i = Flying.Count;
+        while (i > 0 && Flying[i - 1].Due > due) i--;
+        Flying.Insert(i, (due, to, amt));
+    }
+
+    // 演出用の記録 (計算には戻らない)。縁の位置は升の縁の真ん中、着く位置は落ちる先の升の真ん中 (奈落は縁の先の下)
+    private static void FallFx(int k, int d, int to, int amt, int delay)
+    {
+        int x = k % _w, y = k / _w;
+        float x0 = _org.x + (x + 0.5f + Nx[d] * 0.5f) * _cell, y0 = _org.y + (y + 0.5f + Ny[d] * 0.5f) * _cell;
+        float x1, y1;
+        if (to >= 0) { x1 = _org.x + (to % _w + 0.5f) * _cell; y1 = _org.y + (to / _w + 0.5f) * _cell; }
+        else { x1 = x0 + Nx[d] * _cell; y1 = y0 + Ny[d] * _cell - 1.5f; }
+        for (int i = Falls.Count - 1; i >= 0 && i >= Falls.Count - 8; i--)
+        {
+            var f = Falls[i];
+            if (f.X0 != x0 || f.Y0 != y0) continue;
+            Falls[i] = (x0, y0, x1, y1, f.Amount + amt, delay, to < 0);
+            return;
+        }
+        Falls.Add((x0, y0, x1, y1, amt, delay, to < 0));
     }
 
     // 口の際 (道のり DrainDist 以内) の升の水を引く強さに比例して宇宙へ出す (量を消す)
@@ -716,7 +1015,8 @@ internal static class WaterSim
     // 升の順番に依らない指紋 (刻みの番号も混ぜる)
     internal static uint Digest()
     {
-        uint acc = (uint)_step * 2654435761u + (uint)Particles * 40503u;
+        uint acc = (uint)_step * 2654435761u + (uint)Particles * 40503u + (uint)Flying.Count * 0x27D4EB2Fu;
+        foreach (var (due, to, amt) in Flying) acc += (uint)due * 0x9E3779B1u ^ (uint)to * 0x85EBCA77u ^ (uint)amt;
         foreach (int k in Active)
         {
             uint v = (uint)k * 0x9E3779B1u ^ (uint)_hgt[k] * 0x85EBCA77u;
@@ -730,6 +1030,7 @@ internal static class WaterSim
     {
         long v = 0;
         foreach (int k in Active) v += _hgt[k];
+        foreach (var f in Flying) v += f.Amount;
         return v;
     }
 
@@ -797,6 +1098,13 @@ internal static class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
+        _lvl = null; _shut = null; _doorCell = null; _doorUnder = null; _fallMask = null; _shadowCut = null;
+        FallTo.Clear();
+        FallOut.Clear();
+        Flying.Clear();
+        Falls.Clear();
+        FellTotal = 0;
+        VoidTotal = 0;
         DirtyTiles.Clear();
         Active.Clear();
         Queue.Clear();
@@ -842,9 +1150,27 @@ internal static class WaterSim
                 reply($"OK water line step={_step} {sb}");
                 return;
             }
+            if (a == "doors") { WaterDebug.ListDoors(reply); return; }
+            if (a == "links")
+            {
+                // 確認用: 落ちる縁 (縁の升の真ん中・向き・落ちる先 / void)
+                if (!_ready) { reply("ERR water links: no grid"); return; }
+                var sb = new System.Text.StringBuilder();
+                int c = 0;
+                foreach (var kv in FallTo)
+                {
+                    int k = kv.Key / 4, d = kv.Key % 4, to = kv.Value.To;
+                    sb.Append($"({_org.x + (k % _w + 0.5f) * _cell:0.0},{_org.y + (k / _w + 0.5f) * _cell:0.0}){"+x-x+y-y".Substring(d * 2, 2)}");
+                    sb.Append(to < 0 ? ">void " : $">({_org.x + (to % _w + 0.5f) * _cell:0.0},{_org.y + (to / _w + 0.5f) * _cell:0.0}) ");
+                    if (++c % 8 == 0) { reply("LINKS " + sb); sb.Clear(); }
+                }
+                if (sb.Length > 0) reply("LINKS " + sb);
+                reply($"OK water links n={FallTo.Count}");
+                return;
+            }
             if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return; }
             if (!_ready) { reply($"OK water off {GameClock.Describe()}"); return; }
-            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
+            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} fell={FellTotal} void={VoidTotal} flying={Flying.Count} links={FallTo.Count} doors={System.Numerics.BitOperations.PopCount(_doorBits)}/{_doorUnder?.Length ?? 0} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
         });
     }
 }

@@ -379,7 +379,7 @@ internal static class TerrainSync
         Wire.Send(new ArraySegment<byte>(BombBuf, 0, o), -1);
     }
 
-    // ホスト → 全員: 扉が変わった刻みと開き (スケルドだけ・試合に数回)
+    // ホスト → 全員: 扉が変わった刻みと開き (変わった時だけ)
     internal static void BroadcastDoors(ushort tick, ulong bits)
     {
         if (!Online() || !AmongUsClient.Instance.AmHost) return;
