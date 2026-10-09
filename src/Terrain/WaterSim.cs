@@ -22,12 +22,17 @@ internal static class WaterSim
     public const int Delay = 18;              // 0.6 秒 (GameClock.Hz = 30)
     public const int Sub = 4;                 // 水の升 1 辺 = SolidMap の升 Sub 個
     public const int Full = 1024;             // 深さ 1 単位分の水の量
-    private const int MaxStepsPerFrame = 20;
     private const int Gain = 56;              // 高さの差 → 流れ (/256)
     private const int Damp = 236;             // 前の刻みの流れを残す割合 (/256)
     private const int DryHold = 48;           // 乾いた升へは、これより高い時だけ流れ出す (水たまりの縁が止まる)
     private const int WetHold = 3;            // 濡れた升の間で流れない小さな差
     private const int MinDepth = 6;           // これより浅い升は少しずつ乾く
+    // 吸い出し: 減圧の流れ (引く強さ /1024 × 気圧) に比例して口へ向かう管に流れを足す (勢いが残るので足すのは少しずつ)。
+    // 口の際 (道のり DrainDist 以内) の升の水は宇宙へ出て消える
+    private const int BlowGain = 6;           // 引く強さ 1024 あたり 1 刻みに足す流れ (/256)
+    private const int BlowMax = 12;
+    private const int DrainDist = Decompression.UnitDist / 2;
+    private const int DrainGain = 64;         // 引く強さ 1024 あたり 1 刻みに消える割合 (/256)
 
     // 漏れ: 開始から FullSteps は全開・その後 FadeSteps で止まる。最初の BurstSteps は多く遠い
     public const int FullSteps = 300, FadeSteps = 150, BurstSteps = 15;
@@ -55,6 +60,9 @@ internal static class WaterSim
     internal static int Particles { get; private set; }
     // 今の刻みに床へ落ちた粒の位置 (升 ×256)。絵が波紋を出す
     internal static readonly List<(int X, int Y)> Landed = new();
+    // 宇宙へ出た水 (位置と量)。TerrainStep が毎フレームの始めに空にし、演出 (DecompFx) が同じフレームで読む
+    internal static readonly List<(float X, float Y, int Amount)> Spilled = new();
+    internal static long SpilledTotal { get; private set; }
 
     private static readonly int[] Nx = { 1, -1, 0, 0 };
     private static readonly int[] Ny = { 0, 0, 1, -1 };
@@ -113,6 +121,7 @@ internal static class WaterSim
     internal static bool Open(int k) => _open[k] != 0;
     internal static bool Ready => _ready;
     internal static int Step => _step;
+    internal static bool Running => _running;
     // 絵のタイル (TileCells 升四方) の描き直しの印
     public const int TileCells = 16;
     private static int _tw, _th;
@@ -160,13 +169,21 @@ internal static class WaterSim
         if (!_running)
         {
             _running = true;
-            _step = Math.Min(tick, GameClock.Now - Delay);
+            _step = StartStep(tick);
         }
         int dx = (int)MathF.Round(n.x * 256f), dy = (int)MathF.Round(n.y * 256f);
         int mx = (int)MathF.Floor((at.x - _org.x) / _cell * 256f) + dx * MouthQ / 4;
         int my = (int)MathF.Floor((at.y - _org.y) / _cell * 256f) + dy * MouthQ / 4;
         var src = new Source { Start = tick, Mx = mx, My = my, Dx = dx, Dy = dy, Both = both, At = at, N = n, Seed = seed, Rng = 0x9E3779B9u ^ seed * 2654435761u };
         Enqueue(new Pending { Tick = tick, Leak = true, Src = src });
+    }
+
+    // 始める刻み。減圧が先へ進んでいたらそこから (古い刻みの気圧と流れは残っていないので、先の場を読まないように)。
+    // それより前の出来事は遅れとして始めの刻みに入る
+    private static int StartStep(int tick)
+    {
+        int s = Math.Min(tick, GameClock.Now - Delay);
+        return Decompression.Running && Decompression.Step > s ? Decompression.Step : s;
     }
 
     private static void Enqueue(Pending p)
@@ -366,12 +383,20 @@ internal static class WaterSim
         }
         MoveParticles();
 
+        // 吸い出し: 減圧の場はこの刻みの物 (TerrainStep が先に減圧をこの刻みまで進めている)
+        bool blow = Decompression.Running && Decompression.Pulling;
+        // 口の際の升の水は宇宙へ出る (流れを決める前に自分の升だけを減らすので順番に依らない)
+        if (blow)
+            for (int a = 0; a < Active.Count; a++) if (_hgt[Active[a]] > 0) Drain(Active[a]);
+
         // 流れ: 各升が自分の 4 本の管の流れ出しを決める (読むのは前の刻みの高さだけ・順番に依らない)
         for (int a = 0; a < Active.Count; a++)
         {
             int k = Active[a];
             int h = _hgt[k];
             int sum = 0;
+            int b0 = 0, b1 = 0, b2 = 0, b3 = 0;
+            if (blow && h > 0) Blow(k, h, out b0, out b1, out b2, out b3);
             for (int d = 0; d < 4; d++)
             {
                 int j = k + Nx[d] + Ny[d] * _w;
@@ -382,6 +407,7 @@ internal static class WaterSim
                     int diff = h - hj - (hj == 0 ? DryHold : WetHold);
                     f = _flux[k * 4 + d] * Damp / 256 + (diff > 0 ? diff * Gain / 256 : 0);
                     if (f < 0) f = 0;
+                    f += d == 0 ? b0 : d == 1 ? b1 : d == 2 ? b2 : b3;
                 }
                 _flux[k * 4 + d] = f;
                 sum += f;
@@ -422,6 +448,54 @@ internal static class WaterSim
 
         Steps++;
         if (_step % 300 == 0) { LastDigest = Digest(); Plugin.Logger.LogInfo($"[WaterSim] step={_step} digest={LastDigest:x8} active={Active.Count} volume={Volume()}"); }
+    }
+
+    // 口の際 (道のり DrainDist 以内) の升の水を引く強さに比例して宇宙へ出す (量を消す)
+    private static void Drain(int k)
+    {
+        int x = k % _w, y = k / _w;
+        if (!Decompression.FlowAt(x * Sub, y * Sub, out int dist, out int press, out _, out _) || dist > DrainDist) return;
+        int s = (int)((long)Decompression.Strength1024(dist) * press / Decompression.Full);
+        if (s <= 0) return;
+        int h = _hgt[k];
+        int gone = (int)((long)h * Math.Min(256, s * DrainGain / 1024) / 256);
+        if (gone < 1) gone = h;
+        _hgt[k] = h - gone;
+        Mark(k);
+        SpilledTotal += gone;
+        Spill(x, y, gone);
+    }
+
+    // 升 k (水 h) を口へ向かって押す流れ (向き 0..3 = Nx/Ny の並び)。
+    // 減圧の「口へ向かう向き」(升の数) を縦横に分け、通れない向きの分はもう一方へ回す
+    private static void Blow(int k, int h, out int b0, out int b1, out int b2, out int b3)
+    {
+        b0 = b1 = b2 = b3 = 0;
+        int x = k % _w, y = k / _w;
+        if (!Decompression.FlowAt(x * Sub, y * Sub, out int dist, out int press, out int fx, out int fy)) return;
+        int s = (int)((long)Decompression.Strength1024(dist) * press / Decompression.Full);
+        if (s <= 0) return;
+        int ax = Math.Abs(fx), ay = Math.Abs(fy);
+        if (ax + ay == 0) return;
+        int dX = fx > 0 ? 0 : 1, dY = fy > 0 ? 2 : 3;
+        bool okX = ax > 0 && _open[k + Nx[dX]] != 0 && Passable(k, dX);
+        bool okY = ay > 0 && _open[k + Ny[dY] * _w] != 0 && Passable(k, dY);
+        if (!okX && !okY) return;
+        int all = (int)((long)h * Math.Min(BlowMax, s * BlowGain / 1024) / 256);
+        if (all <= 0) return;
+        int bx = okX && okY ? all * ax / (ax + ay) : okX ? all : 0;
+        int by = all - bx;
+        if (dX == 0) b0 = bx; else b1 = bx;
+        if (dY == 2) b2 = by; else b3 = by;
+    }
+
+    // 演出用の記録 (計算には戻らない)。同じ升は直近の記録へまとめる
+    private static void Spill(int x, int y, int amount)
+    {
+        float px = _org.x + (x + 0.5f) * _cell, py = _org.y + (y + 0.5f) * _cell;
+        for (int i = Spilled.Count - 1; i >= 0 && i >= Spilled.Count - 8; i--)
+            if (Spilled[i].X == px && Spilled[i].Y == py) { Spilled[i] = (px, py, Spilled[i].Amount + amount); return; }
+        if (Spilled.Count < 256) Spilled.Add((px, py, amount));
     }
 
     private static uint Next(Source s)
@@ -549,21 +623,46 @@ internal static class WaterSim
         catch (Exception e) { Fail("tick", e); }
     }
 
+    // 船が替わったら片付ける。刻みは TerrainStep が減圧・物と揃えて進める (AdvanceOne)
     private static void TickCore()
     {
         if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Reset(); }
-        if (!_running) return;
-        int target = GameClock.Now - Delay;
-        if (_step >= target) return;
-        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        int n = 0;
-        while (_step < target && n < MaxStepsPerFrame)
+    }
+
+    // 1 刻み進める (TerrainStep から・_step の刻み)
+    internal static void AdvanceOne()
+    {
+        try
         {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             StepOnce();
             _step++;
+            LastStepMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (LastStepMs > MaxStepMs) MaxStepMs = LastStepMs;
+        }
+        catch (Exception e) { Fail("step", e); }
+    }
+
+    internal static double MaxStepMs { get; private set; }
+
+    // 確認用: 開いている升を全部深さ depth の水で満たす (自分の手元だけ・同期しない)
+    private static int Flood(int depth)
+    {
+        if (!EnsureGrid()) return -1;
+        if (!_running) { _running = true; _step = StartStep(GameClock.Now - Delay); }
+        int n = 0;
+        for (int y = 1; y < _h - 1; y++)
+        for (int x = 1; x < _w - 1; x++)
+        {
+            int k = y * _w + x;
+            if (_open[k] == 0) continue;
+            _hgt[k] = depth;
+            Wake(k);
+            Mark(k);
             n++;
         }
-        LastStepMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency / n;
+        MaxStepMs = 0;
+        return n;
     }
 
     internal static void Reset()
@@ -581,6 +680,9 @@ internal static class WaterSim
         Late = 0;
         Steps = 0;
         LastDigest = 0;
+        Spilled.Clear();
+        SpilledTotal = 0;
+        MaxStepMs = 0;
     }
 
     internal static void Register()
@@ -589,11 +691,18 @@ internal static class WaterSim
         {
             string a = args.Trim();
             if (a == "reset") Reset();
+            if (a.StartsWith("flood"))
+            {
+                int depth = a.Length > 5 && int.TryParse(a.Substring(5).Trim(), out int dd) ? dd : Full / 4;
+                int n = Flood(depth);
+                reply(n < 0 ? "ERR water flood: no map" : $"OK water flood cells={n} depth={depth}");
+                return;
+            }
             if (a.StartsWith("show")) { reply(WaterDebug.Show(a.Length > 4 ? a.Substring(4).Trim() : "")); return; }
             if (a == "hide") { WaterDebug.Hide(); reply("OK water hide"); return; }
             if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return; }
             if (!_ready) { reply($"OK water off {GameClock.Describe()}"); return; }
-            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} queue={Queue.Count} sources={Sources.Count} particles={Particles} active={Active.Count} volume={Volume()} digest={Digest():x8} stepMs={LastStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
+            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} queue={Queue.Count} sources={Sources.Count} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
         });
     }
 }

@@ -47,6 +47,10 @@ internal static class DecompFx
     private const float JetZ = -6f;           // 影の板 (-5) より手前
     private const float WindVis = 0.4f;
     private const float FarAway = 20f;        // 自分が口からこれより遠ければ船の外の霧も出さない
+    // 口から宇宙へ出た水 (WaterSim.Spilled): 水色の霧と飛沫。濡れ具合 = 出た水の量 (深さ 1 単位の升 = 1) が毎秒 WetFade の割合で引く
+    private const float WetReach = 2.5f;      // 出た水をこの距離以内の口の噴き出しに足す
+    private const float WetFade = 2.5f, WetFull = 0.5f;
+    private const int WetPuffs = 90, WetRays = 60;
 
     private const float PollEvery = 0.25f;    // 会議・自分の位置・揺れを読む間隔
 
@@ -75,6 +79,7 @@ internal static class DecompFx
         public float PuffDebt, RayDebt, StreakDebt, ScrapDebt;
         public Bit Core;
         public float Gust = 1f, DustDebt;
+        public float Wet, WetPuffDebt, WetRayDebt;
         public bool SeenOpen, Whistled, Popped; // 開いているのを見た・泡で狭まる笛が鳴った・ふさがった音を鳴らした
     }
 
@@ -392,6 +397,7 @@ internal static class DecompFx
                 }
                 EmitJet(j, dt, true, open);
             }
+            TakeSpills(dt);
         }
         for (int i = Pre.Count - 1; i >= 0; i--)
         {
@@ -435,6 +441,38 @@ internal static class DecompFx
         j.DustDebt += dt * Dusts / StreakLife * vis;
         while (j.DustDebt >= 1f && FreeDust.Count > 0) { j.DustDebt -= 1f; SpawnInside(j, Kind.Dust, vis); }
         if (j.DustDebt > 2f) j.DustDebt = 2f;
+    }
+
+    // 宇宙へ出た水を近い口の噴き出しに足し、濡れている口から水色の霧と飛沫を噴く
+    private static void TakeSpills(float dt)
+    {
+        var sp = WaterSim.Spilled;
+        for (int i = 0; i < sp.Count; i++)
+        {
+            Jet best = null;
+            float bd = WetReach * WetReach;
+            foreach (var j in Jets.Values)
+            {
+                float dx = j.Mx - sp[i].X, dy = j.My - sp[i].Y, d = dx * dx + dy * dy;
+                if (d < bd) { bd = d; best = j; }
+            }
+            if (best != null) best.Wet += sp[i].Amount / (float)WaterSim.Full;
+        }
+        foreach (var j in Jets.Values)
+        {
+            if (j.Wet <= 0.002f) { j.Wet = 0f; continue; }
+            float k = FxMath.Min(1f, j.Wet / WetFull);
+            j.Wet -= j.Wet * FxMath.Min(1f, dt * WetFade);
+            float dx = _meX - j.Mx, dy = _meY - j.My;
+            if (_haveMe && dx * dx + dy * dy > FarAway * FarAway) continue;
+            float boost = FxMath.Max(1f, j.Gust);
+            j.WetPuffDebt += dt * WetPuffs / PuffLife * k;
+            while (j.WetPuffDebt >= 1f && FreePuff.Count > 0) { j.WetPuffDebt -= 1f; SpawnPuff(j, 1f, boost, true); }
+            if (j.WetPuffDebt > 2f) j.WetPuffDebt = 2f;
+            j.WetRayDebt += dt * WetRays / RayLife * k;
+            while (j.WetRayDebt >= 1f && FreeRay.Count > 0) { j.WetRayDebt -= 1f; SpawnRay(j, 1f, boost, true); }
+            if (j.WetRayDebt > 2f) j.WetRayDebt = 2f;
+        }
     }
 
     private static void DropJets()
@@ -489,7 +527,7 @@ internal static class DecompFx
         c.A0 = (0.5f + 0.4f * j.I) * j.Gust * (Decompression.Wind ? 0.5f : 1f);
     }
 
-    private static void SpawnPuff(Jet j, float vis, float boost)
+    private static void SpawnPuff(Jet j, float vis, float boost, bool wet = false)
     {
         var b = Take(FreePuff);
         float t = FxMath.Value - 0.5f;
@@ -504,13 +542,14 @@ internal static class DecompFx
         b.Size1 = PuffSize1 * FxMath.Range(0.8f, 1.2f) * (0.6f + 0.4f * MathF.Min(1f, j.Width));
         b.Rot = ang * (180f / MathF.PI);
         b.Spin = FxMath.Range(-40f, 40f);
-        if (Decompression.Wind) { b.R = 0.78f; b.G = 0.8f; b.B = 0.84f; }
+        if (wet) { b.R = 0.42f; b.G = 0.66f; b.B = 0.95f; b.Size1 *= 0.7f; }
+        else if (Decompression.Wind) { b.R = 0.78f; b.G = 0.8f; b.B = 0.84f; }
         else { b.R = 0.86f; b.G = 0.93f; b.B = 1f; }
-        b.A0 = PuffAlpha * MathF.Min(1f, 0.35f + 0.65f * vis);
+        b.A0 = wet ? 0.8f : PuffAlpha * MathF.Min(1f, 0.35f + 0.65f * vis);
         Spawn(b);
     }
 
-    private static void SpawnRay(Jet j, float vis, float boost)
+    private static void SpawnRay(Jet j, float vis, float boost, bool wet = false)
     {
         var b = Take(FreeRay);
         float t = FxMath.Value - 0.5f;
@@ -523,7 +562,8 @@ internal static class DecompFx
         b.Rot = ang * (180f / MathF.PI);
         b.Life = RayLife * FxMath.Range(0.7f, 1.2f);
         b.Size = FxMath.Range(1.8f, 3.4f);
-        b.R = 0.9f; b.G = 0.96f; b.B = 1f;
+        if (wet) { b.Size *= 0.5f; b.R = 0.55f; b.G = 0.78f; b.B = 1f; }
+        else { b.R = 0.9f; b.G = 0.96f; b.B = 1f; }
         b.A0 = 0.85f * MathF.Min(1f, 0.4f + 0.6f * vis);
         Spawn(b);
     }

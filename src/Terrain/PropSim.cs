@@ -182,6 +182,26 @@ internal static class PropSim
     internal static int Plugs { get; private set; }    // 口をふさいだ数 (確定)
     // 確定の刻みを進めている (Decompression はこちらに揃えて進む)
     internal static bool Drives => _running && !_failed;
+    internal static int AuthStep => Auth.Step;
+
+    // 確定を 1 刻み進める (TerrainStep から・減圧はこの刻みまで進んでいる)
+    internal static void AdvanceAuth()
+    {
+        try
+        {
+            StepOnce(Auth);
+            Auth.Step++;
+            // 見せる用は今の流れで先回りしているので、引いている間は確定から時々計算し直す
+            if (Decompression.Pulling && Auth.Step % ResyncPull == 0) _resync = true;
+        }
+        catch (Exception e) { Fail("step", e); }
+    }
+
+    // 船が替わったら片付ける (TerrainStep が刻みを進める前に呼ぶ)
+    internal static void CheckShip()
+    {
+        if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Reset(); _failed = false; }
+    }
 
     // ── 入口 ───────────────────────────────────────────────────────────
 
@@ -1014,19 +1034,10 @@ internal static class PropSim
             }
         }
         int now = GameClock.Now;
-        int target = now - Delay;
         int n = 0;
         _bumpsThisFrame = 0;
         if (_heardThrough == int.MinValue) _heardThrough = now - 1; // 始めの追いつきの刻みでは鳴らさない
-        while (Auth.Step < target && n < MaxStepsPerFrame)
-        {
-            Decompression.StepThrough(Auth.Step);
-            StepOnce(Auth);
-            Auth.Step++;
-            n++;
-            // 見せる用は今の流れで先回りしているので、引いている間は確定から時々計算し直す
-            if (Decompression.Pulling && Auth.Step % ResyncPull == 0) _resync = true;
-        }
+        // 確定の刻みは TerrainStep が減圧・水と揃えて進める (AdvanceAuth)
         if (_resync) { _resync = false; Resync(now); }
         else
         {

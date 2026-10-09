@@ -755,12 +755,18 @@ internal static class Decompression
         catch (Exception e) { Fail("tick", e); }
     }
 
-    private static void TickCore()
+    // 船が替わったら片付ける (TerrainStep が刻みを進める前にも呼ぶ)
+    internal static void CheckShip()
     {
         if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; ResetShip(); }
+    }
+
+    private static void TickCore()
+    {
+        CheckShip();
         PollDoors();
-        // 物が動いている間は物の確定の刻みと 1 刻みずつ揃えて進める (物が口をふさいだ刻みを全員で同じにする)
-        if (!_running || PropSim.Drives) return;
+        // 物や水が動いている間は TerrainStep がそれらと 1 刻みずつ揃えて進める (物が口をふさいだ刻み・水が読む場を全員で同じにする)
+        if (!_running || PropSim.Drives || WaterSim.Running) return;
         int target = GameClock.Now - Delay;
         if (_step >= target) return;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();

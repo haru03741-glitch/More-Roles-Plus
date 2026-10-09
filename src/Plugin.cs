@@ -75,7 +75,7 @@ public class Ticker : MonoBehaviour
         Terrain.HammerSwing.Tick(); t = Bridge.Perf.Lane(3, t);
         Terrain.BombFuse.Tick(); t = Bridge.Perf.Lane(4, t);
         Terrain.DustCloud.Tick(); t = Bridge.Perf.Lane(5, t);
-        Terrain.WaterSim.Tick(); t = Bridge.Perf.Lane(6, t);
+        Terrain.TerrainStep.Tick(); t = Bridge.Perf.Lane(6, t);
         Terrain.Decompression.Tick(); t = Bridge.Perf.Lane(7, t);
         Terrain.CrewGrip.Tick(); t = Bridge.Perf.Lane(8, t);
         Terrain.FoamArt.Tick(); t = Bridge.Perf.Lane(9, t);

@@ -29,7 +29,7 @@ internal static class Perf
     // Tick ごとの内訳 (Ticker の Update / FixedUpdate の順番。Plugin.cs の Lane 番号と対応)
     internal static readonly string[] LaneNames =
     {
-        "GameClock", "TerrainFx", "BreakNoise", "HammerSwing", "BombFuse", "DustCloud", "WaterSim", "Decompression", "CrewGrip", "FoamArt",
+        "GameClock", "TerrainFx", "BreakNoise", "HammerSwing", "BombFuse", "DustCloud", "TerrainStep", "Decompression", "CrewGrip", "FoamArt",
         "DecompFx", "DecompSound", "PropSim", "WaterLeak", "WaterArt", "WaterSpray", "FxHands", "RubbleBake", "ShadowPatch", "Burst",
         "DevConsole", "Shortcuts", "Zoom", "ChatInput",
         "MrpBundle", "TerrainWarm", "TerrainSync", "VersionCheck", "KillAbility", "Abilities", "ModButton", "MeetingEndWatch", "TestBridge", "Remote",
