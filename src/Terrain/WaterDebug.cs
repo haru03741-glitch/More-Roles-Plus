@@ -39,9 +39,8 @@ internal static class WaterDebug
             foreach (var col in cols)
             {
                 var b = col.bounds;
-                float up = DamageMap.ArtAbove(col);
-                if (wx < b.min.x || wx > b.max.x || wy < b.min.y || wy > b.max.y + up) continue;
-                if (WaterArt.Inside(col, wx, wy) || (up > 0f && (WaterArt.Inside(col, wx, wy - up * 0.5f) || WaterArt.Inside(col, wx, wy - up)))) { fu = true; break; }
+                if (wx < b.min.x || wx > b.max.x || wy < b.min.y || wy > b.max.y) continue;
+                if (WaterArt.Inside(col, wx, wy)) { fu = true; break; }
             }
             int i = (y * n + x) * 4;
             if (fu) { px[i] = 255; px[i + 1] = 230; px[i + 2] = 0; px[i + 3] = 110; furn++; }

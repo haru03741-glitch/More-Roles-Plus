@@ -469,10 +469,6 @@ internal static class DamageMap
 
     internal static List<Rect> FurnitureAt(Vector2 c, float r) => FurnitureNear(c, r);
 
-    // 水を見せない範囲を当たり判定から上へ広げる量。絵が当たり判定より上へ伸びる家具 (ベッドの頭の板など) だけ広げる。
-    // テーブル (Skeld のカフェテリア) は当たり判定の多角形が絵全体を覆っているので広げない (広げると上側の床まで乾いて見えた)
-    internal static float ArtAbove(Collider2D col) => col.name.StartsWith("Table") ? 0f : FurnitureUp;
-
     // 部屋の絵に描き込まれた家具の当たり判定 (FurnitureNear と同じ選び方・形のまま使う所向け)
     internal static void FurnitureColliders(Vector2 c, float r, List<Collider2D> into)
     {

@@ -253,7 +253,7 @@ internal static class WaterArt
         }
     }
 
-    // 部屋の絵に描き込まれた家具 (机・ベッド) の範囲。絵は当たり判定より上へ伸びているので上へずらした所も見る
+    // 部屋の絵に描き込まれた家具 (机・ベッド) の範囲。どちらも絵は当たり判定の中に収まっているので、当たり判定の内側だけ隠す
     private static bool[] FurnitureMask(float wx, float wy, float size)
     {
         var cols = new List<Collider2D>();
@@ -264,9 +264,8 @@ internal static class WaterArt
         float step = size / m;
         foreach (var col in cols)
         {
-            float up = DamageMap.ArtAbove(col);
             var b = col.bounds;
-            float bx0 = b.min.x, bx1 = b.max.x, by0 = b.min.y, by1 = b.max.y + up;
+            float bx0 = b.min.x, bx1 = b.max.x, by0 = b.min.y, by1 = b.max.y;
             for (int y = 0; y < m; y++)
             {
                 float qy = wy + (y + 0.5f) * step;
@@ -275,7 +274,7 @@ internal static class WaterArt
                 {
                     float qx = wx + (x + 0.5f) * step;
                     if (qx < bx0 || qx > bx1 || mask[y * m + x]) continue;
-                    if (Inside(col, qx, qy) || (up > 0f && (Inside(col, qx, qy - up * 0.5f) || Inside(col, qx, qy - up))))
+                    if (Inside(col, qx, qy))
                         mask[y * m + x] = true;
                 }
             }
