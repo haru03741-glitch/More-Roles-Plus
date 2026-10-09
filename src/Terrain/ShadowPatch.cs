@@ -120,8 +120,11 @@ internal static class ShadowPatch
 
     private static void AddLate((int, int) key)
     {
-        if (LateSet.Add(key)) Late.Add(key);
-        if (Late.Count == 1) _firstLateMs = Environment.TickCount64;
+        if (LateSet.Add(key))
+        {
+            Late.Add(key);
+            if (Late.Count == 1) _firstLateMs = Environment.TickCount64; // 待ちの起点は最初の印だけ (同じ升を印し直しても延びない)
+        }
         _lastLateMs = Environment.TickCount64;
     }
 
