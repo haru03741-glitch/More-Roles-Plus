@@ -25,8 +25,15 @@ internal static class DevChat
         else Plugin.Logger.LogInfo($"chat notice (hidden): {text}");
     }
 
+    // 本編は送ってから 3 秒経つまで次を送らせない。送る前と後で「3 秒経った」にしておくと、
+    // 待ちの表示も出ずにすぐ次を送れる (毎フレームは触らない)
+    private const float SendWait = 3f;
+
+    public static void Postfix(ChatController __instance) => __instance.timeSinceLastMessage = SendWait;
+
     public static bool Prefix(ChatController __instance)
     {
+        __instance.timeSinceLastMessage = SendWait;
         // 隠れているチャット欄と、開始の数えが終わって試合を読み込んでいる間は何もしない (本編に任せる)。
         // その間に入力欄を消すと、試合が始まった後もロビーの部品が残って毎フレーム例外を出し、
         // 蘇生などチャット欄を閉じる処理も止まる
