@@ -21,9 +21,9 @@ internal static class DecompFx
     private const float FlashCore = 1.8f, FlashGlow = 5f, FlashUnder = 7f; // 直径 (単位)
     private const int Debris = 30;
     private const float DebrisLife = 1.5f, DebrisSpeedMin = 6f, DebrisSpeedMax = 10f, DebrisSpread = 35f;
-    private const float ShakeReach = 14f, ShakeTime = 1.2f, ShakeHit = 0.45f;
+    private const float ShakeReach = 14f, ShakeTime = 1.2f, ShakeHit = 0.9f;
     // 口が開いている間ずっと続く揺れ (強さ 1): どこにいても RumbleFar・口の際へ寄るほど RumbleNear まで
-    private const float RumbleFar = 0.04f, RumbleNear = 0.12f, RumbleClose = 6f, RumbleReach = 30f;
+    private const float RumbleFar = 0.08f, RumbleNear = 0.25f, RumbleClose = 6f, RumbleReach = 30f;
     private const int CatchUpTicks = 45;     // これより古い開通 (途中参加・追いつき) には瞬間の演出を出さない
     private const long BurstWindowMs = 300;  // 窓あたり MaxBursts 回まで
     private const int MaxBursts = 2;
@@ -91,7 +91,7 @@ internal static class DecompFx
     private static float _clock, _pollAcc;
     private static bool _meeting, _shaking;
     private static float _hitT = -1f, _hitAmp, _rumble;
-    private static Vector2 _baseOffset;
+    private static float _wantX, _wantY, _appliedX, _appliedY; // 揺れでカメラに足したい量 / 前のフレームで足した量
     private static float _meX, _meY;
     private static bool _haveMe;
 
@@ -262,17 +262,33 @@ internal static class DecompFx
             if (_shaking) StopShake();
             return;
         }
-        var cam = PlayerCam();
-        if (!cam) return;
-        if (!_shaking)
-        {
-            _baseOffset = cam.Offset;
-            _shaking = true;
-        }
+        _shaking = true;
         float t = _clock;
-        float ox = (FxMath.Sin(t * 71f) + 0.6f * FxMath.Sin(t * 113f + 1.7f)) * 0.62f * amp;
-        float oy = (FxMath.Sin(t * 83f + 0.4f) + 0.6f * FxMath.Sin(t * 97f + 2.9f)) * 0.62f * amp;
-        cam.Offset = FxMath.V2(_baseOffset.x + ox, _baseOffset.y + oy);
+        _wantX = (FxMath.Sin(t * 71f) + 0.6f * FxMath.Sin(t * 113f + 1.7f)) * 0.62f * amp;
+        _wantY = (FxMath.Sin(t * 83f + 0.4f) + 0.6f * FxMath.Sin(t * 97f + 2.9f)) * 0.62f * amp;
+    }
+
+    // カメラの追従が終わった後 (LateUpdate) に、前のフレームで足した揺れを引いて今の揺れを足す。
+    // 追従の目標 (Offset) を揺らすと追従のなめらかさで揺れが鈍るので、カメラの位置そのものを動かす
+    internal static void LateTick()
+    {
+        if (!_shaking && _appliedX == 0f && _appliedY == 0f) return;
+        try
+        {
+            var cam = PlayerCam();
+            if (!cam) { _appliedX = _appliedY = 0f; return; }
+            float nx = _shaking ? _wantX : 0f, ny = _shaking ? _wantY : 0f;
+            var tr = cam.transform;
+            var pos = tr.position;
+            tr.position = FxMath.V3(pos.x + nx - _appliedX, pos.y + ny - _appliedY, pos.z);
+            _appliedX = nx; _appliedY = ny;
+        }
+        catch (Exception e)
+        {
+            _appliedX = _appliedY = 0f;
+            _shaking = false;
+            Plugin.Logger.LogError($"[DecompFx] shake: {e}");
+        }
     }
 
     private static void StopShake()
@@ -280,8 +296,7 @@ internal static class DecompFx
         _shaking = false;
         _hitT = -1f;
         _rumble = 0f;
-        var cam = PlayerCam();
-        if (cam) cam.Offset = _baseOffset;
+        _wantX = _wantY = 0f; // 足していた分は次の LateTick で引く
     }
 
     private static FollowerCamera PlayerCam() { var hud = Vanilla.Hud; return hud ? hud.PlayerCam : null; }

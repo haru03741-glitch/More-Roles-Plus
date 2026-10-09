@@ -93,7 +93,11 @@ public class Ticker : MonoBehaviour
         Bridge.Perf.End(t);
     }
 
-    private void LateUpdate() => Bridge.Perf.FrameLate();
+    private void LateUpdate()
+    {
+        Terrain.DecompFx.LateTick();
+        Bridge.Perf.FrameLate();
+    }
 
     private void FixedUpdate()
     {

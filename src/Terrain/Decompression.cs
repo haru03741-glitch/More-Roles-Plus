@@ -816,6 +816,30 @@ internal static class Decompression
         return b;
     }
 
+    private const float CoverTouch = 0.25f;   // 物の箱が口の線からこの距離以内なら触れている
+    private const float CoverShare = 0.85f;   // 口の幅のこの割合以上を覆えば口をふさぐ
+
+    // 中心 (cx, cy)・半分の大きさ (hx, hy) の箱が口 b の線に触れて、幅の大半を覆っているか
+    internal static bool Covers(int b, float cx, float cy, float hx, float hy)
+    {
+        if (b < 0 || b >= Breaches.Count) return false;
+        float total = 0f, covered = 0f;
+        foreach (var (a, e) in Breaches[b].Lines)
+        {
+            float dx = e.x - a.x, dy = e.y - a.y, len = MathF.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-4f) continue;
+            float ux = dx / len, uy = dy / len;
+            float along = hx * MathF.Abs(ux) + hy * MathF.Abs(uy);
+            float across = hx * MathF.Abs(uy) + hy * MathF.Abs(ux);
+            float rx = cx - a.x, ry = cy - a.y;
+            total += len;
+            if (MathF.Abs(rx * -uy + ry * ux) - across > CoverTouch) continue;
+            float t = rx * ux + ry * uy;
+            covered += MathF.Max(0f, MathF.Min(len, t + along) - MathF.Max(0f, t - along));
+        }
+        return total > 0f && covered >= total * CoverShare;
+    }
+
     // 泡でふさがった口で視界を止める (泡の奥まで。泡の絵と同じく、宇宙まで・床が先なら床の手前まで)
     private static void SealSight(Breach br)
     {

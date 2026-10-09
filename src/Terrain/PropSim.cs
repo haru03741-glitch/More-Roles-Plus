@@ -751,7 +751,7 @@ internal static class PropSim
             if (heavy ? dist > HeavyReach * Decompression.UnitDist : press < PullMinPress) continue;
             // 口に着いた: 重い物は真ん中から縁までの分だけ手前で着く
             int reach = heavy ? (Math.Min(p.Hx, p.Hy) * Decompression.UnitDist + Unit / 2) / Unit : 0;
-            if (dist <= reach) { Arrive(w, p, st, sx, sy); continue; }
+            if (dist <= reach && !ShortOfMouth(p, st, sx, sy)) { Arrive(w, p, st, sx, sy); continue; }
             int sp = (int)((long)Flow * Decompression.Strength1024(dist) / 1024 * press / Decompression.Full);
             sp = sp * (heavy ? PullHeavy : p.Kind == Kind.Medium ? PullMedium : PullSmall) / 256;
             if (sp <= 0 || (!st.Active && sp < PullStart)) continue;
@@ -776,6 +776,15 @@ internal static class PropSim
             st.Rattle = true;
             st.Moved = true;
         }
+    }
+
+    // 口より大きい物が、まだ口を覆えていない (口の線に触れて幅の大半を覆うまでは着いたことにせず、引かれ続けて壁に沿って口へ寄る)
+    private static bool ShortOfMouth(Prop p, St st, int sx, int sy)
+    {
+        int b = Decompression.MouthOf(sx, sy, out int w256);
+        if (b < 0 || (long)p.SizeU * 256 <= (long)w256 * Unit) return false;
+        int hx = p.Kind == Kind.Heavy ? p.Hx : p.SizeU / 2, hy = p.Kind == Kind.Heavy ? p.Hy : p.SizeU / 2;
+        return !Decompression.Covers(b, _org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit, hx / (float)Unit, hy / (float)Unit);
     }
 
     // 口に着いた物: 口より小さい物は宇宙へ消え、大きい物は止まって口をふさぐ (重い物で口より小さい物は止まるだけ)
