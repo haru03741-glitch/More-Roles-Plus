@@ -206,11 +206,30 @@ internal static class WaterLeak
         foreach (var go in Pipes) if (go) into.Add(go);
     }
 
+    // 外壁が宇宙まで抜けた喉の中に描いていた配管を消す (HullThroat が穴を開けた時)
+    internal static int HidePipesInThroat()
+    {
+        int n = 0;
+        for (int i = Pipes.Count - 1; i >= 0; i--)
+        {
+            var go = Pipes[i];
+            if (!go) { Pipes.RemoveAt(i); continue; }
+            var p = go.transform.position;
+            if (!HullThroat.Contains(FxMath.V2(p.x, p.y))) continue;
+            UnityEngine.Object.Destroy(go);
+            Pipes.RemoveAt(i);
+            n++;
+        }
+        return n;
+    }
+
     // ── 噴き出しと波紋 ─────────────────────────────────────────────────
 
     // 壁の中を壁に沿って通る配管 (真ん中が裂けている)。水たまりと同じく試合の終わりまで残る
     private static void AddPipe(float x, float y, float z, Vector2 n, float len)
     {
+        // 外壁が宇宙まで抜けた所には壁の中の配管も残っていない
+        if (HullThroat.Contains(FxMath.V2(x, y + PipeHeight))) return;
         var pipe = new GameObject("MrpSplitPipe") { layer = 0 };
         var sr = pipe.AddComponent<SpriteRenderer>();
         sr.sprite = DebrisArt.SplitPipe;

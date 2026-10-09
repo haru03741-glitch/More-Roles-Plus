@@ -6,6 +6,9 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // 外壁の穴の補修フォームの見た目。口の線の両端から吹き付けが中央へ進み、届いた所から泡が膨らんで 1 つの塊になる。
+// 喉を切った船 (スケルド) では泡を部屋の絵と船体の絵の奥に置き、口の線から宇宙まで喉をまるごと埋める。残っている絵が床と壁を隠すので、
+// 泡は切れた所 (壁の正面の切れ目と船体の上面の穴) からだけ見え、切り口の線が泡の縁にかぶさる。宇宙の側は丸く盛り上がる。
+// それ以外の船では口の線より外の栓 (北向きは壁の正面 FaceHeight の上から) を一番手前に描く。
 // 粒を並べるのでなく、泡の玉の場 (メタボール) から 1 枚の絵を描く: 高さから法線を出して左上から光を当て、
 // 濡れている間はクリーム色に鋭い艶、固まると黄土色にくすんで艶が消え、表面の気泡の穴が見える。縁は本編の絵柄に合わせて濃い輪郭線。
 // ふさがる時刻は Decompression の刻み (全員同じ) で決まり、見た目はそこから手元の時計で滑らかに進める。物がふさいだ口には出さない。
@@ -13,7 +16,16 @@ namespace MoreRolesPlus.Terrain;
 internal static class FoamArt
 {
     private const int Ppu = 64;                // 絵の細かさ (1 単位あたりの画素)
-    private const float Pad = 0.15f;           // 口の両端からはみ出して壁の切り株にかぶさる
+    private const float Pad = 0.15f;           // 玉は口の両端の外にも置く (角まで埋めてから切る)
+    private const float SideBleed = 0.03f;     // 両脇は喉の切り口の輪郭線に少しかぶせる
+    private const float SideBleedBehind = 0.1f; // 船体の絵の裏に置く時は切り口のギザギザに少し入る (縁は船体の絵が隠す・それより先は宇宙に出る)
+    private const float BehindHull = 0.5f;     // 船体の絵より奥に置き、切り口の縁が泡にかぶさるようにする
+    private const float PlugDepth = 0.55f;     // 栓の厚み (口の線から外へ)
+    private const float PlugMin = 0.2f;        // 船体の上面が薄くてもこの厚みは詰める
+    private const float Bulge = 0.15f;         // 宇宙の側へ盛り上がってよい分
+    private const float FloorTuck = 0.1f;      // 船体の裏に置く時は口の線より床の側へこれだけ (部屋の絵の裏に隠れて隙間を作らない)
+    private const float RowStep = 0.14f;       // 玉の列の間隔
+    private const float FaceHeight = 0.72f;    // 北向きの壁の正面の高さ (スケルド食堂の上で実測)
     private const float Spacing = 0.13f;       // 玉の間隔
     private const float SprayShare = 0.55f;    // 端から中央に吹き付けが届くまで (FoamTime に対する割合)
     private const float GrowShare = 0.3f;      // 1 つの玉が膨らみ切るまで
@@ -34,6 +46,7 @@ internal static class FoamArt
         public byte[] Pores;
         public int W, H;
         public float U0, V0;
+        public float Len, VMin, VMax, Thick, Bleed;          // 切る範囲: VMin ≤ v ≤ VMax・−Bleed ≤ u ≤ Len + Bleed
     }
 
     private sealed class Foam
@@ -113,23 +126,30 @@ internal static class FoamArt
             bool outP = SolidMap.SkyAhead(mid, new Vector2(nx, ny), TerrainDamage.BreachReach);
             bool outQ = SolidMap.SkyAhead(mid, new Vector2(-nx, -ny), TerrainDamage.BreachReach);
             bool flip = !outP && outQ;
-            f.Plugs.Add(MakePlug(rnd, a, ux, uy, flip, len));
+            // 北向きほど壁の正面が画面の上へ立つので、その上 (船体の上面) から詰める。厚みは宇宙まで (床が先なら床の手前まで)
+            float ox = flip ? -nx : nx, oy = flip ? -ny : ny;
+            float depth = SolidMap.SkyDistance(mid.x, mid.y, ox, oy, TerrainDamage.HullReach + 1f);
+            bool behind = !float.IsNaN(HullThroat.BackZ());
+            float vmin = behind ? -FloorTuck : FaceHeight * MathF.Max(0f, oy);
+            float reach = depth < 0f ? -depth - 0.2f : depth > 0f ? depth : vmin + PlugDepth;
+            float thick = behind ? MathF.Max(PlugMin, reach - vmin) : Math.Clamp(reach - vmin, PlugMin, PlugDepth);
+            float vmax = vmin + thick + (depth < 0f ? 0f : Bulge);
+            f.Plugs.Add(MakePlug(rnd, a, ux, uy, flip, len, vmin, thick, vmax, behind));
         }
         Plugin.Logger.LogInfo($"[FoamArt] foam start={br.Start} plugs={f.Plugs.Count} lines={br.Lines.Count}");
         return f;
     }
 
-    private static Plug MakePlug(System.Random rnd, Vector2 a, float ux, float uy, bool flip, float len)
+    private static Plug MakePlug(System.Random rnd, Vector2 a, float ux, float uy, bool flip, float len, float vmin, float thick, float vmax, bool behind)
     {
-        var pl = new Plug();
-        // 玉: 口の線の上と船の中の側に 3 列 + 船の中の縁から盛り上がる小さな玉
-        AddRow(pl, rnd, len, 0.2f, 0.09f, 0.7f);
-        AddRow(pl, rnd, len, 0.12f, 0.15f, 1f);
-        AddRow(pl, rnd, len, 0.0f, 0.17f, 1f);
-        AddRow(pl, rnd, len, -0.13f, 0.15f, 1f);
-        AddRow(pl, rnd, len, -0.24f, 0.08f, 0.55f);
+        var pl = new Plug { Len = len, VMin = vmin, VMax = vmax, Thick = thick, Bleed = behind ? SideBleedBehind : SideBleed };
+        // 玉: 栓の内側の面から外へ RowStep ごとの列 + 宇宙の側の面を盛り上げる小さな玉 (栓の厚みに合わせて詰める)
+        float body = thick - 0.1f;
+        int rows = Math.Max(3, (int)MathF.Ceiling(body / RowStep) + 1);
+        for (int i = 0; i < rows; i++) AddRow(pl, rnd, len, vmin + 0.04f + body * i / (rows - 1) * 0.8f, i == 0 ? 0.17f : 0.16f, 1f);
+        AddRow(pl, rnd, len, vmin + 0.04f + body * 0.82f, 0.09f, 0.6f);
 
-        // 絵の範囲 = 玉が膨らみ切った大きさ (1.1 倍) が収まる所 + 落ち影の分
+        // 絵の範囲 = 玉が膨らみ切った大きさ (1.1 倍) が収まる所を切る範囲で詰めた所 + 落ち影の分
         float u0 = 0f, u1 = len, v0 = 0f, v1 = 0f;
         foreach (var bl in pl.Balls)
         {
@@ -137,6 +157,8 @@ internal static class FoamArt
             u0 = MathF.Min(u0, bl.U - r); u1 = MathF.Max(u1, bl.U + r);
             v0 = MathF.Min(v0, bl.V - r); v1 = MathF.Max(v1, bl.V + r);
         }
+        u0 = MathF.Max(u0, -pl.Bleed); u1 = MathF.Min(u1, len + pl.Bleed);
+        v0 = MathF.Max(v0, vmin); v1 = MathF.Min(v1, vmax);
         pl.U0 = u0 - 0.08f; pl.V0 = v0 - 0.08f;
         pl.W = (int)MathF.Ceiling((u1 - u0 + 0.16f) * Ppu);
         pl.H = (int)MathF.Ceiling((v1 - v0 + 0.16f) * Ppu);
@@ -167,8 +189,10 @@ internal static class FoamArt
             new Vector2(-pl.U0 * Ppu / pl.W, -pl.V0 * Ppu / pl.H), Ppu));
         var go = new GameObject("MrpFoam") { layer = 0 };
         go.transform.SetParent(_root.transform, false);
-        // 奥行きは口の線より少し奥 (口の手前まで吸い寄せられた人が泡の前に来る)
-        go.transform.position = new Vector3(a.x, a.y, (a.y + uy * len * 0.5f + 0.1f) / 1000f);
+        // 喉を切った船ではその船体の絵のすぐ奥 (星空より手前)。それ以外は口の線より少し奥 (口の手前まで吸い寄せられた人が泡の前に来る)
+        float back = HullThroat.BackZ();
+        float z = float.IsNaN(back) ? (a.y + uy * len * 0.5f + 0.1f) / 1000f : back + BehindHull;
+        go.transform.position = new Vector3(a.x, a.y, z);
         go.transform.localRotation = Quaternion.Euler(0f, 0f, MathF.Atan2(uy, ux) * 57.29578f);
         go.transform.localScale = new Vector3(1f, flip ? -1f : 1f, 1f);
         var sr = go.AddComponent<SpriteRenderer>();
@@ -192,7 +216,7 @@ internal static class FoamArt
                 U = u,
                 V = v + ((float)rnd.NextDouble() - 0.5f) * 0.1f,
                 R = r * (0.7f + 0.6f * (float)rnd.NextDouble()),
-                Start = edge * SprayShare + (float)rnd.NextDouble() * 0.06f + MathF.Abs(v) * 0.15f,
+                Start = edge * SprayShare + (float)rnd.NextDouble() * 0.06f + (v - pl.VMin) / pl.Thick * 0.07f,
             });
         }
     }
@@ -233,6 +257,24 @@ internal static class FoamArt
                     float q = 1f - d2 * inv4;
                     if (q > 0f) F[row + x] += q * q * q;
                 }
+            }
+        }
+
+        // 喉の形で切る: 切り口に近いほど場を Thresh の手前まで下げ、縁の丸みと輪郭線を切り口にも付ける
+        const float Rim = 1.5f / Ppu;
+        float vmin = pl.VMin, vmax = pl.VMax, bleed = pl.Bleed, umax = pl.Len + bleed;
+        for (int y = 0; y < h; y++)
+        {
+            float v = pl.V0 + (y + 0.5f) * inv;
+            float ev = MathF.Min(v - vmin, vmax - v);
+            int row = y * w;
+            for (int x = 0; x < w; x++)
+            {
+                float u = pl.U0 + (x + 0.5f) * inv;
+                float e = MathF.Min(ev, MathF.Min(u + bleed, umax - u));
+                // 切り口から 1.5 画素は輪郭線 (Thresh のすぐ上)・その奥 0.1 単位で丸く盛り上がる
+                float cap = e <= 0f ? 0f : e < Rim ? Thresh + 0.001f : Thresh + (e - Rim) * 6f;
+                if (F[row + x] > cap) F[row + x] = cap;
             }
         }
 

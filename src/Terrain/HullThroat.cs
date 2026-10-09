@@ -36,6 +36,9 @@ internal static class HullThroat
     }
 
     private static readonly List<Cut> Cuts = new();
+    private static readonly List<P[]> Opened = new(); // 開けた喉の塊 (世界座標・反時計回り)
+    private static readonly List<(SpriteRenderer R, Vector2 Min, Vector2 Size)> Decor = new();
+    private static int _decorGen = -1;
     private static int _shipGen = -1;
     private static bool _failed;
 
@@ -62,6 +65,7 @@ internal static class HullThroat
         {
             _shipGen = GameClock.ShipGen;
             Cuts.Clear();
+            Opened.Clear();
             _failed = false;
         }
         if (_failed || !ShipStatus.Instance) return;
@@ -134,7 +138,73 @@ internal static class HullThroat
         // 切り抜いた複製ができてから元の描画を止める
         foreach (var c in Cuts) if (c.Src.enabled) c.Src.enabled = false;
         DamageMap.MarkThroat(Throat(holes));
-        Plugin.Logger.LogInfo($"[HullThroat] mouth {ax:0.00},{ay:0.00}-{bx:0.00},{by:0.00} depth={depth:0.00} pieces={holes.Count} tris {before}->{after}");
+        Opened.AddRange(holes);
+        int hidden = HideDecorInside();
+        hidden += WaterLeak.HidePipesInThroat();
+        Plugin.Logger.LogInfo($"[HullThroat] mouth {ax:0.00},{ay:0.00}-{bx:0.00},{by:0.00} depth={depth:0.00} pieces={holes.Count} tris {before}->{after} hidden={hidden}");
+    }
+
+    // 点が開けた喉の中か (壁に付いていた物を穴の中に残さない用)
+    internal static bool Contains(Vector2 p)
+    {
+        if (GameClock.ShipGen != _shipGen) return false;
+        var q = new P(p.x, p.y);
+        foreach (var h in Opened) if (Inside(h, q)) return true;
+        return false;
+    }
+
+    private static bool Inside(P[] poly, P q)
+    {
+        for (int i = 0; i < poly.Length; i++)
+            if (Side(poly[i], poly[(i + 1) % poly.Length], q) < 0f) return false;
+        return true;
+    }
+
+    // 壁に貼られていた絵だけの飾り (季節の飾りなど) のうち、半分ほどが開けた喉の中にある物を隠す。穴が開いた時に 1 回だけ
+    // 候補 (船の小さな絵とその範囲) は船ごとに 1 回だけ集める (穴を開けるたびに船じゅうを読まない)
+    private static int HideDecorInside()
+    {
+        if (_decorGen != _shipGen)
+        {
+            _decorGen = _shipGen;
+            Decor.Clear();
+            foreach (var r in ShipStatus.Instance.GetComponentsInChildren<SpriteRenderer>(false))
+            {
+                if (!r.enabled || !r.sprite) continue;
+                var b = r.bounds;
+                var bs = b.size;
+                if (bs.x * bs.y > 2f || r.name.StartsWith("Mrp", StringComparison.Ordinal)) continue;
+                var bm = b.min;
+                Decor.Add((r, new Vector2(bm.x, bm.y), new Vector2(bs.x, bs.y)));
+            }
+        }
+        int n = 0;
+        for (int d = Decor.Count - 1; d >= 0; d--)
+        {
+            var (r, mn, sz) = Decor[d];
+            // 絵の範囲の 3×3 の点のうち 4 つ以上がどれかの喉の中 (2 つの穴にまたがる物も拾う)
+            int inside = 0;
+            for (int i = 0; i < 9; i++)
+            {
+                var q = new P(mn.x + sz.x * (0.17f + 0.33f * (i % 3)), mn.y + sz.y * (0.17f + 0.33f * (i / 3)));
+                foreach (var h in Opened) if (Inside(h, q)) { inside++; break; }
+            }
+            if (inside < 4) continue;
+            Decor.RemoveAt(d);
+            // 部品を見るのは喉の中の物だけ (船じゅうの絵で部品を引くと重い)
+            if (!r || !r.enabled || !PropSim.IsDecor(r)) continue;
+            r.enabled = false;
+            n++;
+        }
+        return n;
+    }
+
+    // 切り抜いた船体の絵の奥行き (まだ切っていなければ NaN)。これより奥に置いた物は切り口から覗く
+    internal static float BackZ()
+    {
+        if (GameClock.ShipGen != _shipGen) return float.NaN;
+        foreach (var c in Cuts) if (c.Go) return c.Go.transform.position.z;
+        return float.NaN;
     }
 
     // 損傷マスクに書く形 (世界座標)

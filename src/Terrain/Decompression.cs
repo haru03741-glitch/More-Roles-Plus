@@ -32,11 +32,13 @@ internal static class Decompression
     // 抜ける速さ: 1 刻みに P·幅256·KNum / (KDen·升の数)。389 単位² (= 6224 升)・幅 1.0 で 540 刻み (18 秒) で 1 割まで
     private const long KNum = 796, KDen = 7680;
     private const int Recover = Full / 300;   // 口が全部ふさがった範囲は 10 秒で戻る
+    private const int OpenFloor = Full * 2 / 5; // 口が開いている間はここより下がらない (泡でふさがるまで吹き飛ばし続ける)
     // エアシップの風: 口から 3 単位まで歩く速さの 0.4 倍・4 単位で 0
     private const float WindMul = 0.4f;
     private const int Wind1024 = 410;
     internal static bool Wind => SolidMap.SkyHull;
     public const int FoamDelay = 180, FoamTime = 75; // 開通 6 秒後に膨らみ始め 2.5 秒でふさがる
+    private static int[] _open1024 = Array.Empty<int>(); // 範囲ごとの口の開き具合 (泡が狭めていく・/1024)
     private const int DoorPoll = 15;          // ホストが扉を読む間隔 (0.5 秒)
     // 道のり (縦横 2・斜め 3 = 1 升 0.25 単位が 2) の上限。10 単位より先は引かない
     private const int PerUnit = 8;
@@ -173,6 +175,7 @@ internal static class Decompression
         _par = new int[n];
         _compCells = Array.Empty<int>();
         _press = Array.Empty<int>();
+        _open1024 = Array.Empty<int>();
         _seed = new int[n];
         ListDoors();
         _doorBits = BitsAt(_step);
@@ -540,8 +543,17 @@ internal static class Decompression
 
         // 気圧: 開いている口のある範囲は抜け、口が無い範囲は戻る
         Span<int> width = _press.Length <= 256 ? stackalloc int[_press.Length] : new int[_press.Length];
+        if (_open1024.Length != _press.Length) _open1024 = new int[_press.Length];
+        Array.Clear(_open1024);
         foreach (var br in Breaches)
-            if (!br.Sealed && br.Comp >= 0) width[br.Comp] = Math.Min(MaxWidth256, width[br.Comp] + br.W256);
+        {
+            if (br.Sealed || br.Comp < 0) continue;
+            width[br.Comp] = Math.Min(MaxWidth256, width[br.Comp] + br.W256);
+            // 泡が吹き付け始めてからふさがるまで、引く強さを開きの残りに比例して 0 へ
+            int foam = _step - br.Start - FoamDelay;
+            int open = _hold || foam <= 0 ? 1024 : Math.Max(0, 1024 - foam * 1024 / FoamTime);
+            _open1024[br.Comp] = Math.Max(_open1024[br.Comp], open);
+        }
         bool pulling = false;
         for (int c = 0; c < _press.Length; c++)
         {
@@ -554,7 +566,7 @@ internal static class Decompression
             {
                 long dp = (long)p * width[c] * KNum / (KDen * _compCells[c]);
                 if (dp < 1 && p > 0) dp = 1;
-                _press[c] = _hold ? Full : (int)(p - dp);
+                _press[c] = _hold ? Full : p > OpenFloor ? (int)Math.Max(OpenFloor, p - dp) : p;
                 pulling = true;
             }
             else if (p < Full) _press[c] = Math.Min(Full, p + Recover);
@@ -639,6 +651,9 @@ internal static class Decompression
         return 0f;
     }
 
+    // 引く強さに効く気圧 = 気圧 × 口の開き具合 (泡が狭めた分だけ弱まる)
+    private static int EffPress(int c) => c < _open1024.Length ? (int)((long)_press[c] * _open1024[c] >> 10) : _press[c];
+
     // 点での流れ (向き × 強さ・歩く速さの倍)。引かない所は false
     internal static bool PullAt(Vector2 p, out Vector2 dir, out float mul, out int dist)
     {
@@ -649,7 +664,7 @@ internal static class Decompression
         int k = y * _w + x;
         dist = _dist[k];
         if (dist == Far || _comp[k] < 0) return false;
-        mul = Strength(dist) * _press[_comp[k]] / Full;
+        mul = Strength(dist) * EffPress(_comp[k]) / Full;
         if (mul <= 0f) return false;
         // 向き: 口へ向かう道を 3 升先まで辿った点へ。口の際なら口の線のいちばん近い点へ
         int t = k;
@@ -760,7 +775,7 @@ internal static class Decompression
         int k = y * _w + x;
         if (_dist[k] == Far || _comp[k] < 0) return false;
         dist = _dist[k];
-        press = _press[_comp[k]];
+        press = EffPress(_comp[k]);
         int t = k;
         for (int i = 0; i < 3 && _par[t] >= 0; i++) t = _par[t];
         dx = t % _w - x;
@@ -828,6 +843,7 @@ internal static class Decompression
         _sub = null; _edge = null; _blocked = null; _furn = null; _comp = null; _dist = null; _par = null; _seed = null;
         _compCells = Array.Empty<int>();
         _press = Array.Empty<int>();
+        _open1024 = Array.Empty<int>();
         Doors.Clear();
         DoorCells.Clear();
         _doorsListed = false;

@@ -510,7 +510,7 @@ internal static class PropSim
     }
 
     // 家具の上の飾り (真ん中が家具の当たり判定の中の小さな絵) のうち、絵だけの物 (部屋の絵・本編の部品付きの物は除く)
-    private static bool IsDecor(SpriteRenderer sr)
+    internal static bool IsDecor(SpriteRenderer sr)
     {
         var m = sr.sharedMaterial;
         if (m && m.shader && m.shader.name == "Unlit/MaskShader") return false;
