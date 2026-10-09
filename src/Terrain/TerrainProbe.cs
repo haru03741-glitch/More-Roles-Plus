@@ -700,6 +700,16 @@ internal static class TerrainProbe
             reply($"OK solidat solid={SolidMap.Solid(pt)} hull={SolidMap.InHull(pt)} outside={SolidMap.NearOutside(pt.x, pt.y)}");
         });
 
+        TestBridge.Register("leakcheck", "[x y] 壁・蓋・口を越えずに、床の 1 点 (省略で自分の足元) から船の外 (宇宙) へ届く所があるか (この船で最初の結果からの増え・最初の 1 つ)", (args, reply) =>
+        {
+            SolidMap.Ensure();
+            Vector2 from;
+            if (TryParseFloats(args, out var v) && v.Length == 2) from = new Vector2(v[0], v[1]);
+            else if (PlayerControl.LocalPlayer) from = PlayerControl.LocalPlayer.GetTruePosition();
+            else { reply("ERR leakcheck needs x y"); return; }
+            reply($"OK leakcheck {SolidMap.LeakCheck(from)}");
+        });
+
         TestBridge.Register("zoom", "[大きさ=3] カメラの写す範囲 (縦の半分・世界単位)。小さいほど寄る", (args, reply) =>
         {
             var cam = Camera.main;

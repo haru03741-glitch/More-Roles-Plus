@@ -131,6 +131,15 @@ internal static class Decompression
             if (w <= 0f) return;
             var lines = new List<(Vector2, Vector2)>(TerrainDamage.LastMouths);
             var away = TerrainDamage.LastAway;
+            // 口がどれも壁の中 (内側も歩けない所) なら、部屋は外へつながっていない (前の穴の奥の蓋を抜いただけ)
+            bool room = false;
+            for (int i = 0; i < lines.Count && !room; i++)
+            {
+                var (a, b) = lines[i];
+                var aw = TerrainDamage.LastMouthAway[i];
+                room = !SolidMap.Solid((a + b) * 0.5f - aw.normalized * 0.3f);
+            }
+            if (!room) return;
             Open(tick, lines, away);
             if (w * 256f >= MinWidth256) DecompFx.OnBreach(tick, lines, w, away);
         }

@@ -119,8 +119,10 @@ internal static class TerrainDamage
             : new CircleShape(e.Position, e.Size);
         LastBreach = 0f;
         LastMouths.Clear();
+        LastMouthAway.Clear();
         LastAway = default;
         SkyCut.Clear();
+        SkyAways.Clear();
         _skyAway = default;
         float ring = e.Size * (p.OuterRingScale - 1f);
         float outer = core.BoundRadius + ring;
@@ -132,8 +134,7 @@ internal static class TerrainDamage
         Vector2 blast = e.Position;
         var sky = SolidMap.SkyNear(c, core.BoundRadius + 0.5f, core);
         var hullCells = new Dictionary<long, Vector2>(); // 形に掛かった外壁の耐久の格子 (格子ごとに 1 回だけ削る)
-        var hullSegs = new List<(Vector2 A, Vector2 B, Vector2 Away, bool Cap)>();
-        List<(Vector2 A, Vector2 B)> mouths = null; // 形に掛かる穴の口 (下の walls を読んでから)
+        var hullSegs = new List<(Vector2 A, Vector2 B, Vector2 Away)>();
         bool Inner(Vector2 a, Vector2 b)
         {
             Vector2 m = (a + b) * 0.5f, d = b - a;
@@ -141,11 +142,18 @@ internal static class TerrainDamage
             var n = new Vector2(-d.y, d.x);
             Vector2 away = (m.x - blast.x) * n.x + (m.y - blast.y) * n.y >= 0f ? n : -n;
             away = away.normalized;
-            if (SolidMap.Breachable && SolidMap.SkyAhead(m, away, BreachReach)) // 床を通らずに宇宙・空へ出る外壁は耐久が尽きたら抜ける (HullDamage で決める)
+            // 床を通らずに宇宙・空へ出る外壁は耐久が尽きたら抜ける (HullDamage で決める)。爆心の側も見る:
+            // 爆発が厚い壁の向こうの面まで届き、その手前が前の穴の口の向こう (船の外にした壁の中) のこともある。
+            // 両側とも外に触れていても数える (触れているだけで、向こう側が別の部屋へつながっていることがある)
+            if (SolidMap.Breachable)
             {
-                hullCells.TryAdd(WallDurability.CellKey(m), m);
-                hullSegs.Add((a, b, away, false));
-                return false;
+                bool far = SolidMap.SkyAhead(m, away, BreachReach), near = SolidMap.SkyAhead(m, -away, BreachReach);
+                if (far || near)
+                {
+                    hullCells.TryAdd(WallDurability.CellKey(m), m);
+                    hullSegs.Add((a, b, near ? -away : away));
+                    return false;
+                }
             }
             // 向こうに奥の面がある (内壁の手前の面) か、爆心との間に別の壁がある (厚い壁の奥の面) か、
             // 裏が船体の塊 (エアシップ) なら抜く。向こうに床が無い面 (厚い外壁の手前と裏) は外壁
@@ -159,15 +167,18 @@ internal static class TerrainDamage
         }
         // 蓋 (前の穴の側面): 宇宙・空を向いた物は外壁と同じく耐久が尽きたら抜けて口ができる (HullDamage で決める)。
         // 壁の中を掘り進めて口の無いまま宇宙へ出られないように
-        // 口より奥 (爆心から見て口の向こう) の蓋は前の穴の喉の側面なので、これまでどおり外壁の数に入れずに切る (口は部屋の面に張る)
         bool CapCut(Vector2 a, Vector2 b)
         {
             Vector2 m = (a + b) * 0.5f;
-            if (BehindMouth(mouths, blast, m)) return HullFace(a, b, blast, out _) || !CapFacesSky(a, b);
-            if (HullFace(a, b, blast, out Vector2 away))
+            // 蓋は両側を見る: 爆心の側が口の向こう (船の外にした喉) で、裏が別の部屋へつながる壁の中という蓋もある。
+            // 両側とも外に触れていても数える (触れているだけで、向こう側が別の部屋へつながっていることがある)
+            bool far = HullFace(a, b, blast, out Vector2 away);
+            bool near = SkyAhead(a, b, -away, out Vector2 back);
+            if (near) away = back;
+            if (far || near)
             {
                 hullCells.TryAdd(WallDurability.CellKey(m), m);
-                hullSegs.Add((a, b, away, true));
+                hullSegs.Add((a, b, away));
                 return false;
             }
             return !CapFacesSky(a, b);
@@ -181,7 +192,6 @@ internal static class TerrainDamage
         }
         var keep = DamageMap.FurnitureFor(core); // 家具の保護範囲は壁も残す (絵を抜かない所を通れないように)
         var walls = WallsNear(c, outer);
-        mouths = MouthLines(walls);
         // 壁の中の判定は切る前の壁の線で。爆心は歩ける場所にある前提 (武器は弾が止まった位置で依頼する)
         var body = new WallBody(ShipOnly(walls), e.Position) { OpenToSpace = SolidMap.BreachableHull };
         body.UseSolidMap(c, outer + 0.2f);
@@ -234,6 +244,7 @@ internal static class TerrainDamage
         // 穴の側面 (露出した壁の中との境) に蓋。ひびを付け終えてから作る (蓋にひびが付かないように)
         var capLines = cut > 0 ? body.Caps(core) : null;
         int caps = capLines != null ? WallBody.Build(capLines) : 0;
+        if (cut == 0) { LastMouths.Clear(); LastMouthAway.Clear(); LastBreach = 0f; LastAway = default; }
         if (SolidMap.Breachable && cut > 0) SkyMouth(); // 抜けた穴を横へ広げた時も、新しく切った外壁の区間に口を足す
         int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
@@ -245,6 +256,11 @@ internal static class TerrainDamage
         string visual = cut > 0 ? DamageMap.Breach(core, removed, p.Scorch, keep: keep, body: body, pieces: pieces, cracks: new List<CrackPattern> { crack }) : null;
         if (visual == null && cut > 0) HideWallDecor(core);
         if (cut > 0) SolidMap.Carve(core, keep, blast); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
+        if (cut > 0 && LastMouths.Count > 0)
+        {
+            int behind = SolidMap.SealBehind(LastMouths, LastMouthAway, core, blast);
+            Plugin.Logger.LogInfo($"[TerrainDamage] behind mouth -> outside cells={behind}");
+        }
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
@@ -256,7 +272,7 @@ internal static class TerrainDamage
     // 外壁は爆発 1 発では抜けない: 形に掛かった外壁の格子の耐久を 1 ずつ削り、どれかが尽きたら、その爆発で掛かった外壁を
     // まとめて抜く (抜け方は 1 発で抜けていた時と同じ形)。尽きるまでは見た目を変えない。
     // 全員が同じ順で適用するので耐久も全員で同じになる。返すのは残りのいちばん小さい耐久
-    private static int HullDamage(Dictionary<long, Vector2> cells, List<(Vector2 A, Vector2 B, Vector2 Away, bool Cap)> segs,
+    private static int HullDamage(Dictionary<long, Vector2> cells, List<(Vector2 A, Vector2 B, Vector2 Away)> segs,
         HashSet<(float, float, float, float)> allowed)
     {
         int min = WallDurability.MaxHp;
@@ -266,28 +282,37 @@ internal static class TerrainDamage
             if (hp < min) min = hp;
         }
         if (min > 0) return min;
-        // 口は部屋に面した外壁の線に張る。部屋の面が掛かっていない (壁の中を掘り進めた穴の底だけ) 時は蓋の線に張る。
-        // 蓋も数えると、前の穴の喉の横の蓋まで口が回り込み、口と部屋の面の間が前の喉へつながる
-        bool face = false;
-        foreach (var s in segs) if (!s.Cap) { face = true; break; }
+        // 口は外壁として切る区間 (部屋の面と、宇宙を向いた蓋) の線そのものに張る。
         // 口を張れないほど短い (SkyMouthMin 未満) なら切らない。切ると口の無い隙間から壁の中へ入れる
         float span = 0f;
-        foreach (var (a, b, _, ca) in segs)
-        foreach (var (c, d, _, cc) in segs)
-            if (ca == !face && cc == !face)
-                span = MathF.Max(span, MathF.Max((a - c).sqrMagnitude, MathF.Max((a - d).sqrMagnitude, MathF.Max((b - c).sqrMagnitude, (b - d).sqrMagnitude))));
+        foreach (var (a, b, _) in segs)
+        foreach (var (c, d, _) in segs)
+            span = MathF.Max(span, MathF.Max((a - c).sqrMagnitude, MathF.Max((a - d).sqrMagnitude, MathF.Max((b - c).sqrMagnitude, (b - d).sqrMagnitude))));
         if (span < SkyMouthMin * SkyMouthMin)
         {
             Plugin.Logger.LogInfo($"[TerrainDamage] hull span {MathF.Sqrt(span):0.00} too short for a mouth, kept");
             return min;
         }
-        foreach (var (a, b, away, cap) in segs)
+        // 端末ごとに当たり判定の並びが違っても同じ口になるよう、区間を向きと位置でそろえて並べてからつなぐ
+        var ordered = new List<(Vector2 A, Vector2 B, Vector2 Away)>(segs.Count);
+        foreach (var (a, b, away) in segs) ordered.Add(a.x < b.x || (a.x == b.x && a.y <= b.y) ? (a, b, away) : (b, a, away));
+        ordered.Sort((l, r) => l.A.x != r.A.x ? l.A.x.CompareTo(r.A.x) : l.A.y != r.A.y ? l.A.y.CompareTo(r.A.y)
+            : l.B.x != r.B.x ? l.B.x.CompareTo(r.B.x) : l.B.y.CompareTo(r.B.y));
+        foreach (var (a, b, away) in ordered)
         {
-            allowed.Add((a.x, a.y, b.x, b.y));
-            if (cap == face) continue;
             SkyCut.Add(a); SkyCut.Add(b);
+            SkyAways.Add(away);
             _skyAway += away;
         }
+        // 口を張れる時だけ抜く。張れないのに抜くと、口の無い穴から宇宙へ歩いて出られる
+        if (!PlanMouth())
+        {
+            SkyCut.Clear();
+            SkyAways.Clear();
+            _skyAway = default;
+            return min;
+        }
+        foreach (var (a, b, _) in segs) allowed.Add((a.x, a.y, b.x, b.y));
         return min;
     }
 
@@ -302,7 +327,16 @@ internal static class TerrainDamage
     // 直前の爆発で外壁が宇宙まで抜けた時の穴の口の幅 (抜けなければ 0) と口の線 (曲がった壁では曲がり目で折った数本)
     internal static float LastBreach;
     internal static readonly List<(Vector2 A, Vector2 B)> LastMouths = new();
+    internal static readonly List<Vector2> LastMouthAway = new(); // 口の線ごとの宇宙への向き (その線になった外壁の面の外向きの和)
     internal static Vector2 LastAway; // 口から宇宙への向き (喉を掘った向き・噴き出しの向き)
+
+    // 面の中点から dir の向きへ、床を通らずに宇宙・空へ出るか
+    private static bool SkyAhead(Vector2 a, Vector2 b, Vector2 dir, out Vector2 away)
+    {
+        away = dir;
+        if (!SolidMap.Breachable || dir.sqrMagnitude < 1e-8f) return false;
+        return SolidMap.SkyAhead((a + b) * 0.5f, dir, BreachReach);
+    }
 
     // 外に面した壁か (面の中点から爆心と反対の向きへ、床を通らずに宇宙・空へ出る)。前の穴の蓋もこれなら切る
     private static bool HullFace(Vector2 a, Vector2 b, Vector2 blast, out Vector2 away)
@@ -324,64 +358,104 @@ internal static class TerrainDamage
     internal static float BreachReach => SolidMap.SkyHull ? SkyReach : HullReach;
     private const float SkyMouthMin = 0.3f;
     private static readonly List<Vector2> SkyCut = new();
+    private static readonly List<Vector2> SkyAways = new(); // SkyCut の区間ごとの外向き
     private static Vector2 _skyAway; // 切った区間の外向きの和
 
     private static void SkyMouth()
     {
-        if (SkyCut.Count < 2) return;
-        float best = -1f;
-        Vector2 a = default, b = default;
-        for (int i = 0; i < SkyCut.Count; i++)
-        for (int j = i + 1; j < SkyCut.Count; j++)
+        for (int i = 0; i < LastMouths.Count; i++)
         {
-            float d = (SkyCut[i] - SkyCut[j]).sqrMagnitude;
-            if (d > best) { best = d; a = SkyCut[i]; b = SkyCut[j]; }
-        }
-        if (best < SkyMouthMin * SkyMouthMin) return;
-        // 角や曲がった外壁 (スケルドの食堂の上など) をまたいで切った時は 2 点を結ぶ線が床を横切る。
-        // 床の上には口を張らない (切った所を地図に足す前に呼ぶ) ので、線から一番離れた切った点で折って壁に沿わせる
-        Vector2 aw = _skyAway.sqrMagnitude > 1e-6f ? _skyAway.normalized : default;
-        if (!MouthAlongWall(a, b, aw, 0))
-        {
-            Plugin.Logger.LogInfo($"[SkyMouth] line over floor {a.x:0.00},{a.y:0.00}-{b.x:0.00},{b.y:0.00}");
-            LastMouths.Clear();
-            return;
-        }
-        if (LastMouths.Count > 1) Plugin.Logger.LogInfo($"[SkyMouth] bent mouth lines={LastMouths.Count}");
-        LastBreach = MathF.Sqrt(best);
-        LastAway = aw;
-        foreach (var (p, q) in LastMouths)
-        {
+            var (p, q) = LastMouths[i];
             WallBody.BuildMouth(p, q);
-            if (SolidMap.BreachableHull) HullThroat.Open(p, q, aw); // スケルド: 口の奥の船体の絵を宇宙まで抜く
+            if (SolidMap.BreachableHull) HullThroat.Open(p, q, LastMouthAway[i]); // スケルド: 口の奥の船体の絵を宇宙まで抜く
         }
     }
 
-    private const int MouthBends = 3;      // 口を折る深さ (最大 8 本)
-    private const float MouthBendMin = 0.05f;
-
-    // a-b が壁の上 (中点を外向きに少しずらした点が歩けない所) なら口に足す。床の上なら、線の間に落ちる切った点のうち
-    // 線から一番離れた点で 2 本に折る。壁の線の上の升は床に数えられることがあるので、外向きにずらして見る
-    private static bool MouthAlongWall(Vector2 a, Vector2 b, Vector2 aw, int depth)
+    // 切った外壁の区間の端から口の線を決める (LastMouths・LastBreach・LastAway)。切る前に呼ぶ (地図は切っても変わらない)
+    private static bool PlanMouth()
     {
-        if (SolidMap.Solid((a + b) * 0.5f + aw * 0.25f)) { LastMouths.Add((a, b)); return true; }
-        if (depth >= MouthBends) return false;
-        Vector2 d = b - a;
-        float len2 = d.sqrMagnitude;
-        if (len2 < 1e-8f) return false;
-        float bestD = MouthBendMin;
-        int bi = -1;
+        LastMouths.Clear();
+        LastMouthAway.Clear();
+        if (SkyCut.Count < 2) return false;
+        float best = -1f;
         for (int i = 0; i < SkyCut.Count; i++)
+        for (int j = i + 1; j < SkyCut.Count; j++)
+            best = MathF.Max(best, (SkyCut[i] - SkyCut[j]).sqrMagnitude);
+        if (best < SkyMouthMin * SkyMouthMin) return false;
+        // 口は切った外壁の線そのもの (いつも壁の上)。端の 2 点を結ぶと、離れた面をまたいだ時に部屋の床を横切る。
+        // 切った区間 (SkyCut の 2 点ずつ) を端でつないで折れ線にし、ほぼ一直線の所を間引く
+        var chains = new List<(List<Vector2> Pts, Vector2 Away)>();
+        var used = new bool[SkyCut.Count / 2];
+        for (int s = 0; s < used.Length; s++)
         {
-            Vector2 v = SkyCut[i] - a;
-            float t = (v.x * d.x + v.y * d.y) / len2;
-            if (t <= 0.02f || t >= 0.98f) continue;
-            float off = MathF.Round(MathF.Abs(v.x * d.y - v.y * d.x) / MathF.Sqrt(len2) * 256f) / 256f; // 端末ごとの計算の末尾の差で折る点が変わらないよう丸める
-            if (off > bestD) { bestD = off; bi = i; }
+            if (used[s]) continue;
+            used[s] = true;
+            var chain = new List<Vector2> { SkyCut[2 * s], SkyCut[2 * s + 1] };
+            Vector2 sum = SkyAways[s];
+            for (bool grew = true; grew;)
+            {
+                grew = false;
+                for (int t = 0; t < used.Length; t++)
+                {
+                    if (used[t]) continue;
+                    Vector2 p = SkyCut[2 * t], q = SkyCut[2 * t + 1];
+                    if (Near(chain[^1], p)) chain.Add(q);
+                    else if (Near(chain[^1], q)) chain.Add(p);
+                    else if (Near(chain[0], q)) chain.Insert(0, p);
+                    else if (Near(chain[0], p)) chain.Insert(0, q);
+                    else continue;
+                    used[t] = true;
+                    sum += SkyAways[t];
+                    grew = true;
+                }
+            }
+            chains.Add((chain, sum.sqrMagnitude > 1e-6f ? sum.normalized : default));
         }
-        if (bi < 0) return false;
-        Vector2 c = SkyCut[bi];
-        return MouthAlongWall(a, c, aw, depth + 1) && MouthAlongWall(c, b, aw, depth + 1);
+        var lines = new List<(Vector2 A, Vector2 B, Vector2 Away)>();
+        foreach (var (chain, away) in chains)
+        {
+            var keep = new List<Vector2>();
+            Simplify(chain, 0, chain.Count - 1, keep);
+            keep.Add(chain[^1]);
+            for (int k = 1; k < keep.Count; k++)
+            {
+                Vector2 p = keep[k - 1], q = keep[k];
+                if ((q - p).sqrMagnitude < MouthPieceMin * MouthPieceMin) continue;
+                lines.Add(p.x < q.x || (p.x == q.x && p.y <= q.y) ? (p, q, away) : (q, p, away)); // 向きもそろえる
+            }
+        }
+        if (lines.Count == 0) return false;
+        // 端末ごとに当たり判定の並びが違っても同じ順になるように並べる
+        lines.Sort((l, r) => l.A.x != r.A.x ? l.A.x.CompareTo(r.A.x) : l.A.y != r.A.y ? l.A.y.CompareTo(r.A.y)
+            : l.B.x != r.B.x ? l.B.x.CompareTo(r.B.x) : l.B.y.CompareTo(r.B.y));
+        foreach (var (a, b, away) in lines) { LastMouths.Add((a, b)); LastMouthAway.Add(away); }
+        if (LastMouths.Count > 1) Plugin.Logger.LogInfo($"[SkyMouth] mouth lines={LastMouths.Count}");
+        LastBreach = MathF.Sqrt(best);
+        LastAway = _skyAway.sqrMagnitude > 1e-6f ? _skyAway.normalized : default;
+        return true;
+    }
+
+    private const float MouthJoin = 0.02f;     // 切った区間の端がこれより近ければつながっている
+    private const float MouthStraight = 0.3f;  // 折れ線をこれ以内のずれで一直線にまとめる (蓋の円弧は弦にする。弦と弧の間は口の外側)
+    private const float MouthPieceMin = 0.05f;
+
+    private static bool Near(Vector2 a, Vector2 b) => (a - b).sqrMagnitude <= MouthJoin * MouthJoin;
+
+    // 折れ線の i から j を、いちばん離れた点で分けながら間引く (keep に i 側の端から足す・j は足さない)
+    private static void Simplify(List<Vector2> pts, int i, int j, List<Vector2> keep)
+    {
+        Vector2 a = pts[i], d = pts[j] - a;
+        float len = d.magnitude, far = MouthStraight;
+        int at = -1;
+        for (int k = i + 1; k < j; k++)
+        {
+            Vector2 v = pts[k] - a;
+            float off = len > 1e-5f ? MathF.Abs(v.x * d.y - v.y * d.x) / len : v.magnitude;
+            if (off > far) { far = off; at = k; }
+        }
+        if (at < 0) { keep.Add(a); return; }
+        Simplify(pts, i, at, keep);
+        Simplify(pts, at, j, keep);
     }
 
     // 打撃: ホストが決めた壁の点の耐久を書く。0 になったらその壁の区間が抜ける。
@@ -673,32 +747,6 @@ internal static class TerrainDamage
         x1 = MathF.Round(hi * 64f) / 64f;
         return x1 > x0;
     }
-
-    private static List<(Vector2 A, Vector2 B)> MouthLines(List<EdgeCollider2D> walls)
-    {
-        var list = new List<(Vector2, Vector2)>();
-        foreach (var col in walls)
-        {
-            if (col.gameObject.name != WallBody.MouthName) continue;
-            var t = col.transform;
-            var pts = col.points;
-            for (int i = 1; i < pts.Length; i++) list.Add((t.TransformPoint(pts[i - 1] + col.offset), t.TransformPoint(pts[i] + col.offset)));
-        }
-        return list;
-    }
-
-    // p から q への線が口の線のどれかを横切る
-    private static bool BehindMouth(List<(Vector2 A, Vector2 B)> mouths, Vector2 p, Vector2 q)
-    {
-        foreach (var (a, b) in mouths)
-        {
-            float d1 = Cross(b - a, p - a), d2 = Cross(b - a, q - a), d3 = Cross(q - p, a - p), d4 = Cross(q - p, b - p);
-            if ((d1 > 0f) != (d2 > 0f) && (d3 > 0f) != (d4 > 0f)) return true;
-        }
-        return false;
-    }
-
-    private static float Cross(Vector2 u, Vector2 v) => u.x * v.y - u.y * v.x;
 
     private static bool ClosestPoint(EdgeCollider2D col, Vector2 p, out Vector2 q)
     {

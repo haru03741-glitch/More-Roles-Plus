@@ -32,6 +32,8 @@ internal static class SolidMap
     // ミラは部屋と部屋の間に空が入り込み、厚い壁の帯 (両側の線の間) と細い空の隙間は線の形・幅・つながりでは区別できない
     // (帯にも隙間にも端が空に開いた所・閉じた所がある)。絵のあるなしで分ける。三角形は画像の圧縮によらないので端末で同じ
     private static byte[] _outside;
+    private static byte[] _orig; // 試合の始めの歩ける所 (部屋の床)。口の向こうとして船の外にしない
+    private static byte[] _sealed; // 口の向こうとして船の外にした升 (SealBehind)。喉の深さを測る時は船体として通り抜ける
     private static int _w, _h;
     private static Vector2 _origin;
     internal static Vector2 Origin => _origin;
@@ -68,6 +70,8 @@ internal static class SolidMap
         _leaked = null;
         _island = null;
         _outside = null;
+        _orig = null;
+        _sealed = null;
         BreachableHull = false;
         SkyHull = false;
         IslandCount = 0;
@@ -212,18 +216,31 @@ internal static class SolidMap
     }
 
     // p から dir へ船の外 (宇宙・空) に着くまでの距離。先に歩ける所に当たったら (面の際の SkyFaceSlack を除く) その距離を負で、
-    // max まで着かなければ 0 を返す (穴の奥の船体の絵を宇宙まで抜く深さを測る用)
+    // max まで着かなければ 0 を返す (穴の奥の船体の絵を宇宙まで抜く深さ・泡の厚みを測る用)。
+    // 口の向こうとして船の外にした喉は船体として通り抜ける (喉の入り口で止まると泡が口の線の所だけの薄い帯になる)
     public static float SkyDistance(float px, float py, float dx, float dy, float max)
     {
         if (!Valid || _outside == null) return 0f;
         for (float d = FaceProbeStep; d <= max + 1e-4f; d += FaceProbeStep * 0.5f)
         {
             int x = (int)MathF.Floor((px + dx * d - _origin.x) * _ppu), y = (int)MathF.Floor((py + dy * d - _origin.y) * _ppu);
-            if (x < 0 || y < 0 || x >= _w || y >= _h || BareSkyCell(x, y)) return d;
+            if (x < 0 || y < 0 || x >= _w || y >= _h) return d;
+            if (_sealed != null && _sealed[y * _w + x] != 0) continue;
+            if (_sealed == null ? BareSkyCell(x, y) : UnsealedSkyCell(x, y)) return d;
             if (_open[y * _w + x] != 0 && d > SkyFaceSlack) return -d;
         }
         return 0f;
     }
+
+    // BareSkyCell から口の向こうとして塗った升を除いたもの
+    private static bool UnsealedSkyCell(int x, int y)
+    {
+        byte v = _outside[y * _w + x];
+        return v == 1 || (v == 2 && (Unsealed(x - OutsideReach, y) || Unsealed(x + OutsideReach, y) ||
+                                     Unsealed(x, y - OutsideReach) || Unsealed(x, y + OutsideReach)));
+    }
+
+    private static bool Unsealed(int x, int y) => OutsideCell(x, y) && (x < 0 || y < 0 || x >= _w || y >= _h || _sealed[y * _w + x] == 0);
 
     // 面から 0.15 ずつ 0.6 まで (部屋の範囲が壁の線より外へ張り出している所がある)
     private const float FaceProbeStep = 0.15f;
@@ -359,6 +376,7 @@ internal static class SolidMap
         var hullMeshes = !sky && ship.Type == ShipStatus.MapType.Ship ? HullMeshes(ship) : null;
         _outside = sky || hullMeshes is { Count: > 0 } ? Outside(blocked, hullMeshes) : null;
         BreachableHull = Valid && hullMeshes is { Count: > 0 };
+        _orig = (byte[])_open.Clone();
         SkyHull = Valid && HullRects.Count > 0 && ship.TryCast<AirshipStatus>() != null;
 
         Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
@@ -635,6 +653,159 @@ internal static class SolidMap
         {
             outPairs.Add(t.TransformPoint(local[i]));
             outPairs.Add(t.TransformPoint(local[(i + 1) % local.Length]));
+        }
+    }
+
+    // 外壁が宇宙まで抜けた時に呼ぶ: 口の向こう (喉と、そこへつながる掘った壁の中) を船の外にする。
+    // 口の外側から、壁の線と口を越えずに届く升のうち、抜いた形の中か歩ける所にした升だけ。
+    // 後から横の壁を抜いても、その面が外に面した壁として数えられ (耐久と口)、口の向こうへ歩いて入れないように
+    public static int SealBehind(List<(Vector2 A, Vector2 B)> mouths, List<Vector2> aways, CutShape shape, Vector2 inside)
+    {
+        if (!Valid || _outside == null || mouths == null || mouths.Count == 0) return 0;
+        Vector2 c = shape.Center;
+        float r = shape.BoundRadius + 0.6f;
+        int x0 = Math.Max(0, (int)MathF.Floor((c.x - r - _origin.x) * _ppu)), x1 = Math.Min(_w - 1, (int)MathF.Floor((c.x + r - _origin.x) * _ppu));
+        int y0 = Math.Max(0, (int)MathF.Floor((c.y - r - _origin.y) * _ppu)), y1 = Math.Min(_h - 1, (int)MathF.Floor((c.y + r - _origin.y) * _ppu));
+        if (x1 < x0 || y1 < y0) return 0;
+        int bw = x1 - x0 + 1, bh = y1 - y0 + 1, bn = bw * bh;
+        var barrier = new byte[bn];
+        var segs = WallSegmentsNear(c, r + 0.2f);
+        for (int i = 0; i + 1 < segs.Count; i += 2) Raster(barrier, bw, bh, x0, y0, segs[i], segs[i + 1]);
+        foreach (var (a, b) in mouths) Raster(barrier, bw, bh, x0, y0, a, b); // 作ったばかりの口が物理の問い合わせに出ない時の分
+        // 線は太らせない (Raster は升の角も塗るので縦横の塗りは抜けない)。太らせると壁と蓋の間の細い隙間が塗れず、
+        // そこに面した蓋が外に面していないように見える。部屋の床は _orig で止まる
+        var blocked = barrier;
+        var queue = new int[bn];
+        var seen = new byte[bn];
+        int tail = 0;
+        // 爆心の側 (歩ける側) を、人の通れない細い隙間をふさいだ線で先に塗っておき、外の塗りを入れない。
+        // 口の端と壁の端の継ぎ目の小さな隙間から、掘った穴の中まで外にしないように
+        var thick = DilateGrid(barrier, bw, bh, 1);
+        var near = new byte[bn];
+        {
+            int ix = (int)MathF.Floor((inside.x - _origin.x) * _ppu) - x0, iy = (int)MathF.Floor((inside.y - _origin.y) * _ppu) - y0;
+            if (ix >= 0 && iy >= 0 && ix < bw && iy < bh && thick[iy * bw + ix] == 0)
+            {
+                near[iy * bw + ix] = 1;
+                queue[tail++] = iy * bw + ix;
+                for (int h = 0; h < tail; h++)
+                {
+                    int k = queue[h], x = k % bw, y = k / bw;
+                    if (x > 0) Near(k - 1);
+                    if (x < bw - 1) Near(k + 1);
+                    if (y > 0) Near(k - bw);
+                    if (y < bh - 1) Near(k + bw);
+                }
+            }
+            tail = 0;
+        }
+        for (int i = 0; i < mouths.Count; i++)
+        {
+            var (a, b) = mouths[i];
+            Vector2 away = aways[i];
+            float al = MathF.Sqrt(away.x * away.x + away.y * away.y);
+            if (al < 1e-4f) continue;
+            Vector2 m = (a + b) * 0.5f + away * (0.35f / al);
+            int sx = (int)MathF.Floor((m.x - _origin.x) * _ppu) - x0, sy = (int)MathF.Floor((m.y - _origin.y) * _ppu) - y0;
+            if (sx < 0 || sy < 0 || sx >= bw || sy >= bh) continue;
+            int k = sy * bw + sx;
+            if (seen[k] == 0 && blocked[k] == 0 && near[k] == 0) { seen[k] = 1; queue[tail++] = k; }
+        }
+        int head = 0, n = 0;
+        while (head < tail)
+        {
+            int k = queue[head++];
+            int x = k % bw, y = k / bw;
+            int g = (y0 + y) * _w + x0 + x;
+            if (_outside[g] != 1)
+            {
+                _outside[g] = 1;
+                (_sealed ??= new byte[_outside.Length])[g] = 1;
+                n++;
+            }
+            _open[g] = 0;
+            if (x > 0) Visit(k - 1);
+            if (x < bw - 1) Visit(k + 1);
+            if (y > 0) Visit(k - bw);
+            if (y < bh - 1) Visit(k + bw);
+        }
+        return n;
+
+        void Near(int k2)
+        {
+            if (near[k2] != 0 || thick[k2] != 0) return;
+            int gx = x0 + k2 % bw, gy = y0 + k2 / bw;
+            float wx = _origin.x + (gx + 0.5f) / _ppu, wy = _origin.y + (gy + 0.5f) / _ppu;
+            if (_open[gy * _w + gx] == 0 && shape.SignedDistance(wx, wy) >= 0f) return;
+            near[k2] = 1;
+            queue[tail++] = k2;
+        }
+
+        void Visit(int k2)
+        {
+            if (seen[k2] != 0 || blocked[k2] != 0 || near[k2] != 0) return;
+            seen[k2] = 1;
+            int gx = x0 + k2 % bw, gy = y0 + k2 / bw;
+            if (_outside[gy * _w + gx] == 1) return; // もう船の外 (宇宙) は塗り広げない
+            if (_orig != null && _orig[gy * _w + gx] != 0) return; // 部屋の床には塗り込まない (壁が切れて部屋がつながっていても)
+            float wx = _origin.x + (gx + 0.5f) / _ppu, wy = _origin.y + (gy + 0.5f) / _ppu;
+            if (_open[gy * _w + gx] == 0 && shape.SignedDistance(wx, wy) >= 0f) return;
+            queue[tail++] = k2;
+        }
+    }
+
+    // 確認用: 動きの層の当たり判定 (壁・蓋・口) を越えずに、床の 1 点から船の外へ届くか。
+    // 壊す前から届く所 (マップの作り) があるので、この船で最初に呼んだ時の結果を基準にして、増えた所だけ数える
+    private static byte[] _leakBase;
+    private static object _leakShip;
+    internal static string LeakCheck(Vector2 from)
+    {
+        if (!Valid || _outside == null || _orig == null) return "no map";
+        if (!ReferenceEquals(_leakShip, _orig)) { _leakShip = _orig; _leakBase = null; }
+        int n = _w * _h;
+        var barrier = new byte[n];
+        Vector2 c = _origin + new Vector2(_w, _h) * (0.5f / _ppu);
+        float r = MathF.Sqrt(_w * _w + _h * _h) * (0.5f / _ppu) + 1f;
+        var segs = WallSegmentsNear(c, r);
+        for (int i = 0; i + 1 < segs.Count; i += 2) Raster(barrier, _w, _h, 0, 0, segs[i], segs[i + 1]);
+        barrier = DilateGrid(barrier, _w, _h, (int)MathF.Ceiling(0.18f * _ppu)); // 人の体の半径より細い隙間は通れない
+        var seen = new byte[n];
+        var queue = new int[n];
+        int tail = 0;
+        // 部屋の床の端は壁の線から少しはみ出していて、口の向こうに掛かる升もある。床の 1 点から壁を越えずに届く所だけを見る
+        {
+            int sx = (int)MathF.Floor((from.x - _origin.x) * _ppu), sy = (int)MathF.Floor((from.y - _origin.y) * _ppu);
+            if (sx < 0 || sy < 0 || sx >= _w || sy >= _h || barrier[sy * _w + sx] != 0) return "bad start";
+            seen[sy * _w + sx] = 1; queue[tail++] = sy * _w + sx;
+        }
+        int head = 0, hits = 0, first = -1;
+        bool baseRun = _leakBase == null;
+        if (baseRun) _leakBase = new byte[n];
+        while (head < tail)
+        {
+            int k = queue[head++];
+            if (_outside[k] == 1)
+            {
+                if (baseRun) _leakBase[k] = 1;
+                else if (_leakBase[k] == 0) { hits++; if (first < 0) first = k; }
+                continue;
+            }
+            int x = k % _w, y = k / _w;
+            if (x > 0) Go(k - 1);
+            if (x < _w - 1) Go(k + 1);
+            if (y > 0) Go(k - _w);
+            if (y < _h - 1) Go(k + _w);
+        }
+        if (baseRun) return "base saved (call again after breaking walls)";
+        if (first < 0) return "none";
+        float fx = _origin.x + (first % _w + 0.5f) / _ppu, fy = _origin.y + (first / _w + 0.5f) / _ppu;
+        return $"reached={hits} first={fx:0.00},{fy:0.00}";
+
+        void Go(int k2)
+        {
+            if (seen[k2] != 0 || barrier[k2] != 0) return;
+            seen[k2] = 1;
+            queue[tail++] = k2;
         }
     }
 
