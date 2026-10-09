@@ -22,6 +22,7 @@ dotnet build patcher/MoreRolesPlus.BootAccel.csproj -c Release     # → <AmongU
 - [Endless Host Roles](https://github.com/Gurge44/EndlessHostRoles) (Gurge44、GPL-3.0) / [TownOfHost-K](https://github.com/KYMario/TownOfHost-K) (KYMario、GPL-3.0) / [Town Of Host](https://github.com/tukasa0001/TownOfHost) (tukasa0001、GPL-3.0): ロゴ演出の短縮、設定画面にタブを足す方法、公式サーバーに mod の部屋として名乗る方法、BAN 一覧とホワイトリスト (入室時の照合・BAN した人の記録)、チャットの荒らし対策 (禁止語・開始の催促)、設定画面の検索欄 (チャットの入力欄を複製する方法)、設定を見る画面の並び、ホストのキー操作 (廃村・会議・開始の数えを飛ばす・ロビーで Enter で開始)、チャットコマンドの種類と名前、マウスのホイールで視野を広げる機能、チャットのコマンドの補完と貼り付け
 - [TownOfNext](https://github.com/KARPED1EM/TownOfNext) (KARPED1EM、GPL-3.0): チャットの文字数の上限を広げる方法
 - [TownOfPlus](https://github.com/tugaru1975/TownOfPlus) (tugaru1975、GPL-3.0) / [TownOfHost_Y](https://github.com/Yumenopai/TownOfHost_Y) (Yumenopai、GPL-3.0): マウスのホイールで視野を広げる機能
+- [MoreGamemodes](https://github.com/Rabek009/MoreGamemodes) (Rabek009、GPL-3.0): 試合の途中で抜けた後の参加の待ち時間を消す方法
 - [TownOfHost-Pko](https://github.com/satokazoku/TownOfHost-Pko) (satokazoku ほか、GPL-3.0): 前の試合にいた人を続けて入れない仕組み
 - [Town of Host: Enhanced](https://github.com/EnhancedNetwork/TownofHost-Enhanced) (The Enhanced Network、GPL-3.0): BAN 一覧・ホワイトリストで使うプレイヤー ID の要約の取り方
 - [LotusContinued](https://github.com/Lotus-AU/LotusContinued) (Lotus-AU、GPL-3.0): 入室ホワイトリスト、フォントをファイルから作る方法
