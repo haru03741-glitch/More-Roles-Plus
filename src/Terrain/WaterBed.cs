@@ -117,7 +117,7 @@ internal static partial class WaterSim
         }
         foreach (int k in SeaCells)
         {
-            int gap = SeaLevel - _bed[k] - _hgt[k];
+            int gap = SeaLevel - _bed[k] - _furn[k] - _hgt[k];
             if (gap <= WetHold) continue;
             int add = Math.Min(SeaInMax, gap * Gain / 256) * PopCount(_seaMask[k]);
             if (add <= 0) continue;

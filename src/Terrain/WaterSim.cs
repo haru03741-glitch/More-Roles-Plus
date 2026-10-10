@@ -376,6 +376,8 @@ internal static partial class WaterSim
         _ledge = new byte[n];
         _skyCut = new byte[n];
         _lipMask = new byte[n];
+        _furn = new short[n];
+        PropSim.ForgetTops(); // 新しい格子へ家具の床を刻み直す
         FallTo.Clear();
         StepTo.Clear();
         ListDoorCells();
@@ -1266,6 +1268,32 @@ internal static partial class WaterSim
     internal static void Clean(int t) => _tileDirty[t] = false;
 
     // 地図の端の升 (外周 1 升) は計算に入れない (隣を読む時に配列の外へ出る)
+    // 中の詰まった家具の足元の床 (水の深さの物差し・床の高さ _bed に足す)。PropSim が刻みの始めに付け替える
+    private static short[] _furn;
+    internal static int FurnAt(int k) => _furn == null ? 0 : _furn[k];
+
+    internal static void SetTops(int x0, int y0, int x1, int y1, int top) => Tops(x0, y0, x1, y1, top, false);
+    internal static void RaiseTops(int x0, int y0, int x1, int y1, int top) => Tops(x0, y0, x1, y1, top, true);
+
+    // 床が変わった升と隣を起こす (上がった升の水は天板の上に押し上げられ、下がった升へは隣から流れ込む)
+    private static void Tops(int x0, int y0, int x1, int y1, int top, bool raise)
+    {
+        if (_furn == null) return;
+        x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
+        x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
+        for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+        {
+            int k = y * _w + x;
+            int v = raise ? Math.Max(_furn[k], top) : top;
+            if (v == _furn[k]) continue;
+            _furn[k] = (short)v;
+            Wake(k);
+            for (int d = 0; d < 4; d++) Wake(k + Nx[d] + Ny[d] * _w);
+            Mark(k);
+        }
+    }
+
     private static void Wake(int k)
     {
         if (_inList[k] != 0) return;
@@ -1296,6 +1324,8 @@ internal static partial class WaterSim
             Links(p.Cx - reach, p.Cy - reach, p.Cx + reach, p.Cy + reach);
             if (p.Shock) Shock(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed);
         }
+        // 中の詰まった家具の足元の床 (この刻みの確定した家具の姿)
+        PropSim.StampTops();
         if (fx0 <= fx1)
             WaterArt.FloorChanged(Rect.MinMaxRect(_org.x + fx0 * _cell, _org.y + fy0 * _cell, _org.x + fx1 * _cell, _org.y + fy1 * _cell));
 
@@ -1380,7 +1410,7 @@ internal static partial class WaterSim
                     {
                         // 同じ段は水面 (床の高さ + 深さ) の差で流れる。低い段へは向こうの水に押し返されない
                         int hj = _hgt[j];
-                        int diff = known && lj < lk ? h - DryHold : h + _bed[k] - hj - _bed[j] - (hj == 0 ? DryHold : WetHold);
+                        int diff = known && lj < lk ? h - DryHold : h + _bed[k] + _furn[k] - hj - _bed[j] - _furn[j] - (hj == 0 ? DryHold : WetHold);
                         f = _flux[k * 4 + d] * Damp / 256 + (diff > 0 ? diff * Gain / 256 : 0);
                         if (f < 0) f = 0;
                         f += d == 0 ? b0 : d == 1 ? b1 : d == 2 ? b2 : b3;
@@ -1413,7 +1443,7 @@ internal static partial class WaterSim
                 else if (h > 0 && (_seaMask[k] >> d & 1) != 0)
                 {
                     // 海へ: 水面が海面より高い分だけ出ていく
-                    int diff = h + _bed[k] - SeaLevel - WetHold;
+                    int diff = h + _bed[k] + _furn[k] - SeaLevel - WetHold;
                     if (diff > 0)
                     {
                         int g = diff * Gain / 256;
@@ -1982,7 +2012,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null; _skyCut = null; _lipMask = null;
+        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null; _skyCut = null; _lipMask = null; _furn = null;
         FallTo.Clear();
         StepTo.Clear();
         FallOut.Clear();
@@ -2042,7 +2072,7 @@ internal static partial class WaterSim
                 {
                     if (xx < 1 || yy < 1 || xx >= _w - 1 || yy >= _h - 1) continue;
                     int k = yy * _w + xx;
-                    sb.Append($" | {_org.x + (xx + 0.5f) * _cell:0.##}:o{_open[k]}{(SkyIn(xx, yy) ? "s" : "")} l{_lvl[k]} b{_bed[k]} h{_hgt[k]} e");
+                    sb.Append($" | {_org.x + (xx + 0.5f) * _cell:0.##}:o{_open[k]}{(SkyIn(xx, yy) ? "s" : "")} l{_lvl[k]} b{_bed[k]}{(_furn[k] != 0 ? $" f{_furn[k]}" : "")} h{_hgt[k]} e");
                     for (int d = 0; d < 4; d++) sb.Append(Passable(k, d) ? '1' : '0');
                     if (_open[k] != 0)
                         for (int d = 0; d < 4; d++)

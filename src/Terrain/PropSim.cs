@@ -142,6 +142,10 @@ internal static class PropSim
         public int Lx0, Ly0, Lx1, Ly1;
         public int Index;
         public int BumpStep = -BumpGap; // 見せる用で最後にぶつかる音を鳴らした刻み
+        // 中の詰まった家具: 足元 (当たり判定の範囲) の水の升の床を天板 (Top・水の深さの物差し) まで上げる。
+        // 足元の箱は足元 (A) からのずれと半幅 (1/1024)。Sx0..Sy1/STop = 今の刻印 (水の升・Sx1 < Sx0 = 無し)
+        public int Top, FootOx, FootOy, FootHx, FootHy;
+        public int Sx0, Sy0, Sx1 = -1, Sy1 = -1, STop;
     }
 
     // 重い物 (家具) の上に載っている絵。Prop = 動く物として数えている物 (自分が押されて動いたら家具から離れる)・
@@ -377,7 +381,16 @@ internal static class PropSim
                 break;
             }
         }
-        Plugin.Logger.LogInfo($"[PropSim] perched={perched}");
+        // 中の詰まった家具 (高さの表)
+        Solids.Clear();
+        string shipName = FurnitureKinds.ShipName(ship);
+        foreach (var q in Props)
+        {
+            if (q.FootHx <= 0 || q.FootHy <= 0 || !FurnitureHeights.TryGet(shipName, q.Name, out var fe) || fe.Fill != FurnitureFill.Solid) continue;
+            q.Top = (int)(fe.Top * WaterSim.Full);
+            Solids.Add(q);
+        }
+        Plugin.Logger.LogInfo($"[PropSim] perched={perched} solids={Solids.Count}");
         _ready = true;
         return true;
     }
@@ -467,6 +480,7 @@ internal static class PropSim
         Vector2 c = l.Bounds.center;
         var p = new Prop { Kind = Kind.Heavy, Name = l.Name, Lift = l, Col = l.Col, F0 = c, Pivot0 = c, T0 = FxMath.V3(c.x, c.y, 0f) };
         InitHeavy(p, l.Bounds);
+        SetFoot(p, l.Bounds);
         return p;
     }
 
@@ -588,7 +602,16 @@ internal static class PropSim
             p.Tall = size.x <= size.y * 1.5f;
             p.Pivot0 = p.F0;
         }
+        SetFoot(p, rect);
         return p;
+    }
+
+    private static void SetFoot(Prop p, Rect r)
+    {
+        p.FootHx = ToU(r.width * 0.5f);
+        p.FootHy = ToU(r.height * 0.5f);
+        p.FootOx = ToU(r.center.x - _org.x) - p.A.Px;
+        p.FootOy = ToU(r.center.y - _org.y) - p.A.Py;
     }
 
     // 家具の上の飾り (真ん中が家具の当たり判定の中の小さな絵) のうち、絵だけの物 (部屋の絵・本編の部品付きの物は除く)
@@ -841,6 +864,61 @@ internal static class PropSim
 
     private static readonly int[] DirX = { 256, 181, 0, -181, -256, -181, 0, 181 };
     private static readonly int[] DirY = { 0, 181, 256, 181, 0, -181, -256, -181 };
+
+    // 中の詰まった家具の足元の水の升の床を天板まで上げる (WaterSim の刻みの始めに、同じ刻みの確定した姿で)。
+    // 動いた家具だけ前の刻印と今の刻印の範囲を 0 に戻し、その範囲に掛かる家具を全部塗り直す (重なった箱の山は高い方)
+    private static readonly List<Prop> Solids = new();
+    private static readonly List<(int X0, int Y0, int X1, int Y1)> TopDirty = new();
+    internal static void StampTops()
+    {
+        if (!_ready || Solids.Count == 0) return;
+        int cw = _cellU * WaterSim.Sub;
+        TopDirty.Clear();
+        foreach (var p in Solids)
+        {
+            Foot(p, cw, out int x0, out int y0, out int x1, out int y1, out int top);
+            if (x0 == p.Sx0 && y0 == p.Sy0 && x1 == p.Sx1 && y1 == p.Sy1 && top == p.STop) continue;
+            if (p.Sx1 >= p.Sx0 && p.Sy1 >= p.Sy0) TopDirty.Add((p.Sx0, p.Sy0, p.Sx1, p.Sy1));
+            p.Sx0 = x0; p.Sy0 = y0; p.Sx1 = x1; p.Sy1 = y1; p.STop = top;
+            if (x1 >= x0 && y1 >= y0) TopDirty.Add((x0, y0, x1, y1));
+        }
+        if (TopDirty.Count == 0) return;
+        foreach (var r in TopDirty) WaterSim.SetTops(r.X0, r.Y0, r.X1, r.Y1, 0);
+        foreach (var r in TopDirty)
+            foreach (var q in Solids)
+            {
+                if (q.STop <= 0 || q.Sx1 < r.X0 || q.Sx0 > r.X1 || q.Sy1 < r.Y0 || q.Sy0 > r.Y1) continue;
+                WaterSim.RaiseTops(Math.Max(q.Sx0, r.X0), Math.Max(q.Sy0, r.Y0), Math.Min(q.Sx1, r.X1), Math.Min(q.Sy1, r.Y1), q.STop);
+            }
+    }
+
+    internal static void ForgetTops()
+    {
+        foreach (var p in Solids) { p.Sx0 = p.Sy0 = 0; p.Sx1 = p.Sy1 = -1; p.STop = 0; }
+    }
+
+    // 今の足元の箱に真ん中が入る水の升と天板。倒れた物は 90° 単位に丸めて箱を回し、天板は横倒しの厚み (短い辺) まで下げる
+    private static void Foot(Prop p, int cw, out int x0, out int y0, out int x1, out int y1, out int top)
+    {
+        var a = p.A;
+        x0 = y0 = 0; x1 = y1 = -1; top = 0;
+        if (a.Gone) return;
+        int ox = p.FootOx, oy = p.FootOy, hx = p.FootHx, hy = p.FootHy;
+        top = p.Top;
+        int q = (FloorDiv(a.Ang + 45 * 16, 90 * 16) % 4 + 4) % 4;
+        for (int i = 0; i < q; i++) { int t = ox; ox = -oy; oy = t; }
+        if ((q & 1) != 0)
+        {
+            (hx, hy) = (hy, hx);
+            top = Math.Min(top, 2 * Math.Min(hx, hy) * WaterSim.Full / Unit);
+        }
+        int cx = a.Px + ox, cy = a.Py + oy, half = cw / 2;
+        x0 = CeilDiv(cx - hx - half, cw); x1 = FloorDiv(cx + hx - half, cw);
+        y0 = CeilDiv(cy - hy - half, cw); y1 = FloorDiv(cy + hy - half, cw);
+    }
+
+    private static int FloorDiv(int a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);
+    private static int CeilDiv(int a, int b) => -FloorDiv(-a, b);
 
     // 水が動き始めた時 (WaterSim から): 物の確定も同じ刻みから回す。水の最初の出来事の刻み以前から回っていれば、
     // 全員が同じ刻みの水を読んで同じ所へ流れる
