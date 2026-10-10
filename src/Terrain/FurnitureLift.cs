@@ -73,6 +73,8 @@ internal static class FurnitureLift
         public Rect Bounds;
         public Transform Cut;
         public bool Tried, Failed;
+        // 今の置き方 (元の足元 Pivot を軸に PoseAng 度回して Pose へ)。床マスクが家具の今いる所を抜くのに使う
+        public float PivotX, PivotY, PoseX, PoseY, PoseAng;
     }
 
     // 船の中の持ち上げられそうな家具 (並びは当たり判定の階層順 = 全員同じ)
@@ -110,7 +112,7 @@ internal static class FurnitureLift
         l.Tried = true;
         try
         {
-            var shape = MakeShape(l);
+            var shape = MakeShape(l, out var shapeIn);
             Owned.Add(shape);
             var world = PaddedRect(l);
             Vector2 at = world.center;
@@ -144,6 +146,12 @@ internal static class FurnitureLift
             Lifted.Add(fill.Tr.gameObject);
             Lifted.Add(cut.Tr.gameObject);
             l.Cut = cut.Tr;
+            // 跡は床になった (跡の床を描くのは形の中だけ) ので、水もそこまで広がって見せる
+            var padded = PaddedRect(l);
+            l.PivotX = l.PoseX = l.Bounds.center.x;
+            l.PivotY = l.PoseY = l.Bounds.center.y;
+            FloorMask.AddFloor(padded, shapeIn, ShapePx, l);
+            WaterArt.FloorChanged(padded);
             return true;
         }
         catch (Exception e)
@@ -171,7 +179,7 @@ internal static class FurnitureLift
 
     // 当たり判定の形を左右下上の広げる幅だけ太らせて ShapePx 四方の白黒にする (切り抜きと跡の床の両方が使う)。
     // 当たり判定は画素ごとに 1 回だけ引き、太らせは画素の上で (向きごとの半径の楕円の中に中の画素があれば中)
-    private static unsafe Texture2D MakeShape(Lift l)
+    private static unsafe Texture2D MakeShape(Lift l, out bool[] shapeIn)
     {
         var w = PaddedRect(l);
         var f = l.Floor;
@@ -183,6 +191,7 @@ internal static class FurnitureLift
                 inside[y * ShapePx + x] = l.Col.OverlapPoint(FxMath.V2(x0 + (x + 0.5f) * sx, y0 + (y + 0.5f) * sy));
         int rx = (int)MathF.Ceiling(Math.Max(f.PadL, f.PadR) / sx), ry = (int)MathF.Ceiling(Math.Max(f.PadB, f.PadT) / sy);
         var px = new byte[ShapePx * ShapePx * 4];
+        shapeIn = new bool[ShapePx * ShapePx];
         for (int y = 0; y < ShapePx; y++)
             for (int x = 0; x < ShapePx; x++)
             {
@@ -202,6 +211,7 @@ internal static class FurnitureLift
                     }
                 }
                 if (!hit) continue;
+                shapeIn[y * ShapePx + x] = true;
                 int i = (y * ShapePx + x) * 4;
                 px[i] = 255; px[i + 1] = 255; px[i + 2] = 255; px[i + 3] = 255;
             }
@@ -214,6 +224,7 @@ internal static class FurnitureLift
     // 家具の絵と当たり判定を、元の足元 (pivot) を軸に ang 度回して中心を (cx, cy) へ
     internal static void Place(Lift l, Vector2 pivot0, float cx, float cy, float ang)
     {
+        l.PivotX = pivot0.x; l.PivotY = pivot0.y; l.PoseX = cx; l.PoseY = cy; l.PoseAng = ang;
         if (l.Cut)
         {
             var c0 = l.Bounds.center;

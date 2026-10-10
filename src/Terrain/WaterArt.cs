@@ -338,17 +338,39 @@ internal static class WaterArt
         if (FloorMask.Active)
         {
             // 床マスクがあれば水の縁は部屋の絵の床の画素で切る (家具の型抜きも要らない)
-            int m = (int)MathF.Round(size * FloorMask.Ppu);
-            var buf = new byte[m * m];
-            FloorMask.Fill(wx, wy, size, m, buf);
-            t.Floor = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFloor", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-            fixed (byte* b = buf) t.Floor.LoadRawTextureData((IntPtr)b, buf.Length);
-            t.Floor.Apply(false, true);
-            SetFloor(t, !FloorMask.Off);
+            MakeFloor(t, wx, wy, size);
             return;
         }
         t.Furn = FurnitureMask(wx, wy, tc * cell);
         t.FurnVersion = _furnVersion;
+    }
+
+    private static unsafe void MakeFloor(Tile t, float wx, float wy, float size)
+    {
+        int m = (int)MathF.Round(size * FloorMask.Ppu);
+        var buf = new byte[m * m];
+        FloorMask.Fill(wx, wy, size, m, buf);
+        t.Floor = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFloor", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        fixed (byte* b = buf) t.Floor.LoadRawTextureData((IntPtr)b, buf.Length);
+        t.Floor.Apply(false, true);
+        SetFloor(t, !FloorMask.Off);
+    }
+
+    // 床マスクの r の範囲が変わった (持ち上げた家具の跡が床になった): 掛かるタイルのマスクを作り直す。
+    // マスクは CPU 側の写しを捨てて作ってあるので、書き換えずに作り直す
+    internal static void FloorChanged(Rect r)
+    {
+        if (!FloorMask.Active) return;
+        float size = WaterSim.TileCells * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        foreach (var t in Tiles.Values)
+        {
+            if (!t.Floor || !t.Sr) continue;
+            float x0 = org.x + t.Tx * size, y0 = org.y + t.Ty * size;
+            if (r.xMax <= x0 || r.xMin >= x0 + size || r.yMax <= y0 || r.yMin >= y0 + size) continue;
+            UnityEngine.Object.Destroy(t.Floor);
+            MakeFloor(t, x0, y0, size);
+        }
     }
 
     // テスト用: 床マスクの使う / 使わないを切り替えた。今あるタイルを全部その方式で描き直す
@@ -370,6 +392,9 @@ internal static class WaterArt
     internal static void FurnitureMoved(Vector2 a, Vector2 b, float r)
     {
         _furnVersion++;
+        // 床マスクで切っているタイルは、マスクに家具の今いる所を抜き直す
+        FloorChanged(Rect.MinMaxRect(a.x - r, a.y - r, a.x + r, a.y + r));
+        FloorChanged(Rect.MinMaxRect(b.x - r, b.y - r, b.x + r, b.y + r));
         float size = WaterSim.TileCells * WaterSim.Cell;
         var org = WaterSim.Origin;
         foreach (var kv in Tiles)

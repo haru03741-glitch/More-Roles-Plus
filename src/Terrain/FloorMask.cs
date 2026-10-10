@@ -25,6 +25,18 @@ internal static class FloorMask
     internal static string Stats { get; private set; } = "none";
     internal static bool Off; // テスト用: マスクがあっても使わない (前の見え方と見比べる)
 
+    // 試合中に床になった所 (持ち上げた家具の跡)。マスクを読み直した時にも重ねる。
+    // Dry = 跡にする前のマスクで床でなかった画素 (= 家具そのもの)。家具と一緒に動かして、今いる所を床でなくする
+    // (影の中では家具の絵が水より手前に来ないので、マスクで抜かないと水が家具の上に乗る)
+    private sealed class Patch
+    {
+        public Rect World; public bool[] Shape; public int N;
+        public FurnitureLift.Lift Lift;
+        public byte[] Dry; public int DX0, DY0, DW, DH; // マスクの画素の範囲 (左下 DX0, DY0 から DW×DH)
+    }
+    private static readonly List<Patch> Patches = new();
+    private static int _patchGen = -1;
+
     // 今の船のマスクがあるか (無い・合わない時は今までどおり当たり判定で切る)
     internal static bool Active
     {
@@ -81,6 +93,7 @@ internal static class FloorMask
             }
             _bits = bits;
             _w = w; _h = h; _ox = ox; _oy = oy; _ppu = ppu;
+            if (_patchGen == gen) foreach (var p in Patches) Apply(p);
             Stats = $"{name}: {w}x{h} ppu={ppu:0.##}";
         }
         catch (Exception e)
@@ -111,9 +124,80 @@ internal static class FloorMask
                 into[row + px] = mx >= 0 && mx < _w && (_bits[(baseK + mx) >> 3] & (1 << ((baseK + mx) & 7))) != 0 ? (byte)255 : (byte)0;
             }
         }
+        if (_patchGen != GameClock.ShipGen) return;
+        foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, size, n, into);
+    }
+
+    // 持ち上げた家具の今いる所 (元の所から回して動かした所) を床でなくする
+    private static void CutMoved(Patch p, float x, float y, float size, int n, byte[] into)
+    {
+        var l = p.Lift;
+        float px0 = l.PivotX, py0 = l.PivotY, cx = l.PoseX, cy = l.PoseY;
+        float rad = -l.PoseAng * (MathF.PI / 180f), cs = MathF.Cos(rad), sn = MathF.Sin(rad);
+        // 動いた先の範囲 (回しても収まるよう元の範囲の対角線の半分で広げる)
+        var r = p.World;
+        float hx = r.width * 0.5f, hy = r.height * 0.5f, half = MathF.Sqrt(hx * hx + hy * hy);
+        float rcx = r.xMin + hx - px0, rcy = r.yMin + hy - py0;
+        float mcx = cx + rcx * MathF.Cos(-rad) - rcy * MathF.Sin(-rad), mcy = cy + rcx * MathF.Sin(-rad) + rcy * MathF.Cos(-rad);
+        if (mcx + half <= x || mcx - half >= x + size || mcy + half <= y || mcy - half >= y + size) return;
+        float step = size / n;
+        for (int py = 0; py < n; py++)
+        {
+            float wy = y + (py + 0.5f) * step - cy;
+            if (wy < mcy - cy - half || wy > mcy - cy + half) continue;
+            for (int px = 0; px < n; px++)
+            {
+                int i = py * n + px;
+                if (into[i] == 0) continue;
+                float wx = x + (px + 0.5f) * step - cx;
+                // 今の所から元の所へ戻す
+                float ox = px0 + wx * cs - wy * sn, oy = py0 + wx * sn + wy * cs;
+                int dx = (int)MathF.Floor((ox - _ox) * _ppu) - p.DX0, dy = (int)MathF.Floor((oy - _oy) * _ppu) - p.DY0;
+                if (dx < 0 || dy < 0 || dx >= p.DW || dy >= p.DH) continue;
+                int d = dy * p.DW + dx;
+                if ((p.Dry[d >> 3] & (1 << (d & 7))) != 0) into[i] = 0;
+            }
+        }
     }
 
     internal static float Ppu => _ppu;
+
+    // 世界の四角 world を N×N に割った形 shape (左下原点・true = 床にする) の所を床にする (家具を持ち上げて跡が床になった)
+    internal static void AddFloor(Rect world, bool[] shape, int n, FurnitureLift.Lift lift)
+    {
+        int gen = GameClock.ShipGen;
+        if (_patchGen != gen) { Patches.Clear(); _patchGen = gen; }
+        var p = new Patch { World = world, Shape = shape, N = n, Lift = lift };
+        Patches.Add(p);
+        if (_bits != null && _gen == gen) Apply(p);
+    }
+
+    private static void Apply(Patch p)
+    {
+        var r = p.World;
+        int x0 = Math.Max(0, (int)MathF.Floor((r.xMin - _ox) * _ppu)), x1 = Math.Min(_w - 1, (int)MathF.Ceiling((r.xMax - _ox) * _ppu));
+        int y0 = Math.Max(0, (int)MathF.Floor((r.yMin - _oy) * _ppu)), y1 = Math.Min(_h - 1, (int)MathF.Ceiling((r.yMax - _oy) * _ppu));
+        float sx = p.N / r.width, sy = p.N / r.height;
+        p.DX0 = x0; p.DY0 = y0; p.DW = Math.Max(0, x1 - x0 + 1); p.DH = Math.Max(0, y1 - y0 + 1);
+        p.Dry = new byte[(p.DW * p.DH + 7) / 8];
+        for (int my = y0; my <= y1; my++)
+        {
+            int sy0 = (int)MathF.Floor(((my + 0.5f) / _ppu + _oy - r.yMin) * sy);
+            if (sy0 < 0 || sy0 >= p.N) continue;
+            for (int mx = x0; mx <= x1; mx++)
+            {
+                int sx0 = (int)MathF.Floor(((mx + 0.5f) / _ppu + _ox - r.xMin) * sx);
+                if (sx0 < 0 || sx0 >= p.N || !p.Shape[sy0 * p.N + sx0]) continue;
+                int k = my * _w + mx;
+                if ((_bits[k >> 3] & (1 << (k & 7))) == 0)
+                {
+                    int d = (my - y0) * p.DW + (mx - x0);
+                    p.Dry[d >> 3] |= (byte)(1 << (d & 7));
+                }
+                _bits[k >> 3] |= (byte)(1 << (k & 7));
+            }
+        }
+    }
 
     // 部屋の絵 (名前・テクスチャの範囲) の指紋。マスクを作った時と今のゲームの絵が同じかを見る。
     // 床の層 (z が BackZ 以上) だけを見る: 手前にはコマ送りで絵が替わる物 (機関室のエンジンなど) がある
