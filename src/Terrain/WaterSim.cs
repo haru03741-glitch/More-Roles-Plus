@@ -20,7 +20,7 @@ namespace MoreRolesPlus.Terrain;
 //   通信の遅れが Delay 以内なら全員同じ刻みで入る。遅れて着いた物は着いた刻みで入れて数える (Late)。
 // - 刻みの番号でだけ進める (1 フレームに MaxStepsPerFrame 刻みまで追いつく)。会議・画面の更新・Time を読まない。
 // 水のある升だけを計算し、無くなった升は外す。指紋 (Digest) は升の順番に依らない足し算のハッシュ
-internal static class WaterSim
+internal static partial class WaterSim
 {
     public const int Delay = 18;              // 0.6 秒 (GameClock.Hz = 30)
     public const int Sub = 4;                 // 水の升 1 辺 = SolidMap の升 Sub 個
@@ -1776,7 +1776,7 @@ internal static class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | sweep start|check | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             if (a == "reset") Reset();
@@ -1844,6 +1844,7 @@ internal static class WaterSim
                 reply($"OK water links n={FallTo.Count}");
                 return;
             }
+            if (a.StartsWith("sweep")) { Sweep(a.Substring(5).Trim(), reply); return; }
             if (a.StartsWith("why"))
             {
                 // 確認用: 範囲の縁の升が落ちない理由を向きごとに数える (4 つ目に "-y:scan" などを渡すとその升の位置を並べる。scan = 先に開いた升が無い・same = 先が低くない・door・room = 谷の外で外壁の向こうの奈落・shadow = 影の線。prop = すぐ隣が床に置かれた物・落ちる側は fall/side/void/sky = 手すりの外の空/cliff = 何も無い崖の下)
