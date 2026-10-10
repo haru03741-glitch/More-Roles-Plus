@@ -7,8 +7,10 @@ namespace MoreRolesPlus.Terrain;
 
 // 水の計算 (WaterSim) の高さを絵にする。WaterSim.TileCells 升四方のタイルごとに 1 枚の絵を持ち、
 // 水が変わったタイルだけを Redraw 秒ごと・1 フレーム TilesPerFrame 枚まで描き直す。
-// 絵に書くのは水の量だけ (R = 深さ / DeepScale・G = 見せてよいか)。色・縁・水面の揺れときらめきはシェーダ MRP/Water が決める。
-// 高さは 3×3 (1-2-1) でならしてから升の真ん中の値として双線形で引く (シェーダの側でも双線形で引くので縁はなめらか)。
+// 絵に書くのは水の量だけ (R = 深さ / DeepScale・G = 見せてよいか・B = 濡れているか)。色・縁・水面の揺れときらめきはシェーダ MRP/Water が決める。
+// 高さは 3×3 (1-2-1) でならしてから升の真ん中の値として 3 次の B スプラインで引く。
+// 縁は深さの低い線でなく「濡れた升か」(0/1) をならした値の中ほどの線で引く: 深さの低い線はならしの裾野を通るので
+// 升ごとのこぶが並んだ階段になる。中ほどの線は濡れた升と乾いた升の間を通るので、斜めの前線もまっすぐな線になる。
 // 床マスク (FloorMask・部屋の絵の画素ごとの床) があるマップでは、水の縁はシェーダがそのマスクで画素ごとに切る
 // (壁の面・家具の天板の上は見せない。水は家具の下を通っている)。
 // マスクが無い時は、壁の中 (SolidMap で歩けない所) と家具の当たり判定の中を見せない (1 画素 = SolidMap の 1 升 = 1/16 単位)。
@@ -17,7 +19,10 @@ namespace MoreRolesPlus.Terrain;
 internal static class WaterArt
 {
     private const int Px = 4;                 // 升 1 つの画素
-    private const float DeepScale = 600f;     // R = 1 の深さ (シェーダの _Edge = 30 / 600 が水の縁)
+    private const float DeepScale = 600f;     // R = 1 の深さ
+    // 濡れ具合 = 深さ WetMin で 0・WetMin + WetRamp で 1 (B = それを B スプラインでならした値。シェーダはその 0.35 の線 ≒ 深さ 30 を水の縁にする)。
+    // 0/1 で切ると、薄く広がった水 (深さ 30 前後) で升ごとに濡れた・乾いたが入れ替わり、縁がでこぼこになる
+    private const int WetMin = 15, WetRamp = 45;
     private const float Redraw = 0.1f;
     private const int TilesPerFrame = 3;
     private const int FurnSub = Px;           // 家具の型抜きの細かさ (= 画素)
@@ -57,6 +62,8 @@ internal static class WaterArt
     private static readonly List<int> Waiting = new();
     private static int[] _raw;     // 描く間の高さ (タイル + 縁 3 升)
     private static int[] _depth;   // それを 3×3 でならした物 (タイル + 縁 2 升)
+    private static bool[] _closed; // 描く間の升が閉じているか (タイル + 縁 3 升)
+    private static int[] _wet;     // 濡れ具合 (0..WetRamp)。縁を引くための物 (タイル + 縁 2 升)
     private static float _clock;
     private static int _furnVersion;
     private static long _lastMs;
@@ -179,6 +186,8 @@ internal static class WaterArt
         int dw = tc + 4, rw = tc + 6;
         _raw ??= new int[rw * rw];
         _depth ??= new int[dw * dw];
+        _wet ??= new int[dw * dw];
+        _closed ??= new bool[rw * rw];
         bool any = false;
         bool crater = Craters.Count > 0;
         float cs = WaterSim.Cell, ox = WaterSim.Origin.x, oy = WaterSim.Origin.y;
@@ -186,7 +195,9 @@ internal static class WaterArt
         for (int x = 0; x < rw; x++)
         {
             int cx = x0 + x - 3, cy = y0 + y - 3;
-            int v = cx < 1 || cy < 1 || cx >= w - 1 || cy >= h - 1 ? 0 : WaterSim.Height(cy * w + cx);
+            bool inGrid = cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1;
+            int v = inGrid ? WaterSim.Height(cy * w + cx) : 0;
+            _closed[y * rw + x] = inGrid && !WaterSim.Open(cy * w + cx);
             // 閉じた升 (壁の際) には、開いた隣が 1 つだけの時にその水を描き込む。壁の中は画素ごとの SolidMap で切るので、
             // 水が壁の際まで届いて見える。開いた隣が 2 つ以上 (升の中を細い壁が通っている) だと、乾いた側まで水を描いてしまうので描かない
             if (v == 0 && cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1 && !WaterSim.Open(cy * w + cx))
@@ -209,6 +220,9 @@ internal static class WaterArt
             int sum = _raw[c] * 4 + (_raw[c - 1] + _raw[c + 1] + _raw[c - rw] + _raw[c + rw]) * 2
                 + _raw[c - rw - 1] + _raw[c - rw + 1] + _raw[c + rw - 1] + _raw[c + rw + 1];
             _depth[y * dw + x] = sum / 16;
+            int wet = Wet(_raw[c]);
+            if (_closed[c]) wet = Math.Max(wet, WallWet(c, rw));
+            _wet[y * dw + x] = wet;
         }
         t.LastDraw = _clock;
         if (!any)
@@ -235,18 +249,23 @@ internal static class WaterArt
         float sppu = SolidMap.Ppu;
         var sorg = SolidMap.Origin;
         var org = WaterSim.Origin;
+        float edge = (float)tc / (n - 1);
         for (int py = 0; py < n; py++)
         for (int px = 0; px < n; px++)
         {
             int i = (py * n + px) * 4;
-            float d = Sample(px, py);
-            float wx = org.x + (x0 + (px + 0.5f) / Px) * cell, wy = org.y + (y0 + (py + 0.5f) / Px) * cell;
+            // 画素 0 と n - 1 はタイルの境目ちょうど (隣のタイルの端の画素と同じ所)。シェーダは端の画素の真ん中から引く
+            float u = px * edge, v = py * edge;
+            float d = Sample(_depth, u, v);
+            float wet = Sample(_wet, u, v) * (1f / WetRamp);
+            float wx = org.x + (x0 + u) * cell, wy = org.y + (y0 + v) * cell;
             int sx = (int)((wx - sorg.x) * sppu), sy = (int)((wy - sorg.y) * sppu);
-            // 壁の際の溝を埋めるために広げた分も、絵の無い空の上には描かない
-            bool vis = NearOpen(sx, sy, sw) && (t.Furn == null || !t.Furn[py * n + px]) && !SolidMap.BareSky(wx, wy);
+            // 壁の際の溝を埋めるために広げた分も、絵の無い空の上には描かない。
+            // 床マスクで切る時は壁と家具をマスクが絵の形で切るので、歩ける所の升 (1/16) では切らない (縁に升の段が出る)
+            bool vis = (t.FloorOn || NearOpen(sx, sy, sw) && (t.Furn == null || !t.Furn[py * n + px])) && !SolidMap.BareSky(wx, wy);
             t.Px[i] = (byte)Math.Min(255f, d * (255f / DeepScale));
             t.Px[i + 1] = vis ? (byte)255 : (byte)0;
-            t.Px[i + 2] = 0;
+            t.Px[i + 2] = (byte)Math.Min(255f, wet * 255f + 0.5f);
             t.Px[i + 3] = 255;
         }
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
@@ -282,16 +301,45 @@ internal static class WaterArt
         return false;
     }
 
-    // タイルの画素 (px, py) での高さ (升の真ん中の値を双線形で)
-    private static float Sample(int px, int py)
+    // 閉じた升 (壁の中) の濡れ具合を隣の開いた升から借りる (いちばん濡れた隣)。壁の中は見せない画素なので、
+    // 縁の線を壁の奥へ追いやって、見える床の上に壁に沿った縁 (濃い輪郭) を出さない。
+    // 細い壁で向こうが乾いた部屋でも、ならした縁が届くのは壁の升の真ん中から 0.6 升までで、絵の壁の黒い帯 (床マスクの外) に収まる
+    private static int WallWet(int c, int rw)
+    {
+        int a = Math.Max(Math.Max(WetOpen(c - 1), WetOpen(c + 1)), Math.Max(WetOpen(c - rw), WetOpen(c + rw)));
+        int b = Math.Max(Math.Max(WetOpen(c - rw - 1), WetOpen(c - rw + 1)), Math.Max(WetOpen(c + rw - 1), WetOpen(c + rw + 1)));
+        return Math.Max(a, b);
+    }
+
+    private static int Wet(int h) => h <= WetMin ? 0 : Math.Min(h - WetMin, WetRamp);
+    private static int WetOpen(int i) => _closed[i] ? 0 : Wet(_raw[i]);
+
+    // タイルの中の位置 (cu, cv: 升の単位・タイルの左下 = 0) での高さ (升の真ん中の値を 3 次の B スプラインで)。
+    // 双線形だと升の境目で傾きが折れ、水の縁の線が升の形の階段になる。B スプラインは境目でも曲がり方まで続くので縁が丸い線になる
+    private static float Sample(int[] src, float cu, float cv)
     {
         int dw = WaterSim.TileCells + 4;
-        float u = (px + 0.5f) / Px - 0.5f + 2f, v = (py + 0.5f) / Px - 0.5f + 2f;
+        float u = cu - 0.5f + 2f, v = cv - 0.5f + 2f;
         int u0 = (int)MathF.Floor(u), v0 = (int)MathF.Floor(v);
-        if (u0 < 0 || v0 < 0 || u0 + 1 >= dw || v0 + 1 >= dw) return 0f;
+        if (u0 < 1 || v0 < 1 || u0 + 2 >= dw || v0 + 2 >= dw) return 0f;
         float fu = u - u0, fv = v - v0;
-        float a = _depth[v0 * dw + u0], b = _depth[v0 * dw + u0 + 1], c = _depth[(v0 + 1) * dw + u0], d = _depth[(v0 + 1) * dw + u0 + 1];
-        return (a + (b - a) * fu) * (1f - fv) + (c + (d - c) * fu) * fv;
+        Weights(fu, out float a0, out float a1, out float a2, out float a3);
+        Weights(fv, out float b0, out float b1, out float b2, out float b3);
+        int r = (v0 - 1) * dw + u0 - 1;
+        return b0 * Row(src, r, a0, a1, a2, a3) + b1 * Row(src, r + dw, a0, a1, a2, a3)
+             + b2 * Row(src, r + dw * 2, a0, a1, a2, a3) + b3 * Row(src, r + dw * 3, a0, a1, a2, a3);
+    }
+
+    private static float Row(int[] src, int i, float a0, float a1, float a2, float a3)
+        => a0 * src[i] + a1 * src[i + 1] + a2 * src[i + 2] + a3 * src[i + 3];
+
+    private static void Weights(float t, out float w0, out float w1, out float w2, out float w3)
+    {
+        float t2 = t * t, t3 = t2 * t, s = 1f - t;
+        w0 = s * s * s * (1f / 6f);
+        w1 = (3f * t3 - 6f * t2 + 4f) * (1f / 6f);
+        w2 = (-3f * t3 + 3f * t2 + 3f * t + 1f) * (1f / 6f);
+        w3 = t3 * (1f / 6f);
     }
 
     private static void SetFloor(Tile t, bool on)
@@ -418,18 +466,18 @@ internal static class WaterArt
         if (cols.Count == 0) return null;
         int m = WaterSim.TileCells * FurnSub;
         var mask = new bool[m * m];
-        float step = size / m;
+        float step = size / (m - 1); // 端の画素はタイルの境目ちょうど (水の絵と同じ並び)
         foreach (var col in cols)
         {
             var b = col.bounds;
             float bx0 = b.min.x, bx1 = b.max.x, by0 = b.min.y, by1 = b.max.y;
             for (int y = 0; y < m; y++)
             {
-                float qy = wy + (y + 0.5f) * step;
+                float qy = wy + y * step;
                 if (qy < by0 || qy > by1) continue;
                 for (int x = 0; x < m; x++)
                 {
-                    float qx = wx + (x + 0.5f) * step;
+                    float qx = wx + x * step;
                     if (qx < bx0 || qx > bx1 || mask[y * m + x]) continue;
                     if (Inside(col, qx, qy))
                         mask[y * m + x] = true;

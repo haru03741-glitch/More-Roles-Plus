@@ -1176,6 +1176,28 @@ internal static class WaterSim
         return n;
     }
 
+    // 確認用: 円の中の升だけに水を置く (自分の手元だけ・水の縁の見た目を見る)
+    private static int Pour(float px, float py, float r, int depth)
+    {
+        if (!EnsureGrid()) return -1;
+        if (!_running) { _running = true; _step = StartStep(GameClock.Now - Delay); }
+        int cx = (int)MathF.Floor((px - _org.x) / _cell), cy = (int)MathF.Floor((py - _org.y) / _cell), cr = (int)MathF.Ceiling(r / _cell);
+        float rr = r * r;
+        int n = 0;
+        for (int y = Math.Max(1, cy - cr); y <= Math.Min(_h - 2, cy + cr); y++)
+        for (int x = Math.Max(1, cx - cr); x <= Math.Min(_w - 2, cx + cr); x++)
+        {
+            int k = y * _w + x;
+            float dx = (x + 0.5f) * _cell + _org.x - px, dy = (y + 0.5f) * _cell + _org.y - py;
+            if (_open[k] == 0 || dx * dx + dy * dy > rr) continue;
+            _hgt[k] += depth;
+            Wake(k);
+            Mark(k);
+            n++;
+        }
+        return n;
+    }
+
     internal static void Reset()
     {
         _ready = false;
@@ -1207,7 +1229,7 @@ internal static class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | flood [depth] | pour x y r [depth] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             if (a == "reset") Reset();
@@ -1216,6 +1238,17 @@ internal static class WaterSim
                 int depth = a.Length > 5 && int.TryParse(a.Substring(5).Trim(), out int dd) ? dd : Full / 4;
                 int n = Flood(depth);
                 reply(n < 0 ? "ERR water flood: no map" : $"OK water flood cells={n} depth={depth}");
+                return;
+            }
+            if (a.StartsWith("pour"))
+            {
+                var q = a.Substring(4).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                if (q.Length < 3 || !float.TryParse(q[0], System.Globalization.NumberStyles.Float, ic, out float px) || !float.TryParse(q[1], System.Globalization.NumberStyles.Float, ic, out float py)
+                    || !float.TryParse(q[2], System.Globalization.NumberStyles.Float, ic, out float pr)) { reply("ERR water pour x y r [depth]"); return; }
+                int pd = q.Length > 3 && int.TryParse(q[3], out int dd2) ? dd2 : Full / 4;
+                int pn = Pour(px, py, pr, pd);
+                reply(pn < 0 ? "ERR water pour: no map" : $"OK water pour cells={pn} depth={pd}");
                 return;
             }
             if (a.StartsWith("show")) { reply(WaterDebug.Show(a.Length > 4 ? a.Substring(4).Trim() : "")); return; }

@@ -104,6 +104,7 @@ internal static class FloorMask
     }
 
     // 世界の四角 (x, y から size 四方) を n×n 画素で into へ (左下原点・床 = 255・マスクの外は床でない)。
+    // 画素 0 と n - 1 は四角の端ちょうど (隣のタイルの端の画素と同じ所。シェーダは端の画素の真ん中から引く)。
     // 縁は 1, 4, 6, 4, 1 でならす: 1 画素 1 ビットの段がそのまま水の縁に出ないよう、シェーダが 128 の線を
     // 画素より細かく引ける値にする。ならしは周りの Blur 画素も読んでからなので、隣のタイルと縁がつながる
     private const int Blur = 2;
@@ -115,8 +116,8 @@ internal static class FloorMask
         int m = n + Blur * 2;
         if (_raw.Length < m * m) _raw = new byte[m * m];
         if (_row.Length < m * n) _row = new ushort[m * n];
-        float pad = size / n * Blur;
-        FillRaw(x - pad, y - pad, size + pad * 2f, m, _raw);
+        float step = size / (n - 1);
+        FillRaw(x - step * Blur, y - step * Blur, step, m, _raw);
         // 横にならす (m 行 × n 列)
         for (int py = 0; py < m; py++)
         {
@@ -140,10 +141,11 @@ internal static class FloorMask
         }
     }
 
-    private static void FillRaw(float x, float y, float size, int n, byte[] into)
+    // 画素 k の真ん中 = (x + k × step, y + …)
+    private static void FillRaw(float x, float y, float wstep, int n, byte[] into)
     {
-        float step = size / n * _ppu;
-        float bx = (x - _ox) * _ppu + step * 0.5f, by = (y - _oy) * _ppu + step * 0.5f;
+        float step = wstep * _ppu;
+        float bx = (x - _ox) * _ppu, by = (y - _oy) * _ppu;
         for (int py = 0; py < n; py++)
         {
             int my = (int)(by + py * step);
@@ -161,11 +163,11 @@ internal static class FloorMask
             }
         }
         if (_patchGen != GameClock.ShipGen) return;
-        foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, size, n, into);
+        foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, wstep, n, into);
     }
 
-    // 持ち上げた家具の今いる所 (元の所から回して動かした所) を床でなくする
-    private static void CutMoved(Patch p, float x, float y, float size, int n, byte[] into)
+    // 持ち上げた家具の今いる所 (元の所から回して動かした所) を床でなくする。画素 k の真ん中 = x + k × step
+    private static void CutMoved(Patch p, float x, float y, float step, int n, byte[] into)
     {
         var l = p.Lift;
         float px0 = l.PivotX, py0 = l.PivotY, cx = l.PoseX, cy = l.PoseY;
@@ -175,17 +177,17 @@ internal static class FloorMask
         float hx = r.width * 0.5f, hy = r.height * 0.5f, half = MathF.Sqrt(hx * hx + hy * hy);
         float rcx = r.xMin + hx - px0, rcy = r.yMin + hy - py0;
         float mcx = cx + rcx * MathF.Cos(-rad) - rcy * MathF.Sin(-rad), mcy = cy + rcx * MathF.Sin(-rad) + rcy * MathF.Cos(-rad);
+        float size = step * (n - 1);
         if (mcx + half <= x || mcx - half >= x + size || mcy + half <= y || mcy - half >= y + size) return;
-        float step = size / n;
         for (int py = 0; py < n; py++)
         {
-            float wy = y + (py + 0.5f) * step - cy;
+            float wy = y + py * step - cy;
             if (wy < mcy - cy - half || wy > mcy - cy + half) continue;
             for (int px = 0; px < n; px++)
             {
                 int i = py * n + px;
                 if (into[i] == 0) continue;
-                float wx = x + (px + 0.5f) * step - cx;
+                float wx = x + px * step - cx;
                 // 今の所から元の所へ戻す
                 float ox = px0 + wx * cs - wy * sn, oy = py0 + wx * sn + wy * cs;
                 int dx = (int)MathF.Floor((ox - _ox) * _ppu) - p.DX0, dy = (int)MathF.Floor((oy - _oy) * _ppu) - p.DY0;

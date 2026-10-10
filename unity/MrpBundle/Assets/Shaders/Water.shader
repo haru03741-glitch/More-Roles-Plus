@@ -1,7 +1,7 @@
 // 水 (床の水たまり・噴き出し) を描くシェーダ。CPU はスプライトの絵に「水の量」だけを書き、見た目はここで決める。
 // 絵は双線形で引くので、粗い升の値でも縁はなめらかな線で切れる (fwidth で 1 画素ぶんぼかす)。
 //
-// _Mode = 0 (水たまり): R = 深さ (1 = _DeepAt)・G = 見せてよいか (壁の中・家具の上 = 0)。_FloorMask = 床の画素 (0.5 の線が床の縁)。
+// _Mode = 0 (水たまり): R = 深さ (1 = _DeepAt)・G = 見せてよいか (壁の中・家具の上 = 0)・B = 濡れた升をならした値 (_WetLevel の線が水の縁)。_FloorMask = 床の画素 (0.5 の線が床の縁)。
 //   深いほど濃く不透明・浅いほど床が透ける。縁の内側に細い濃い輪郭とその内に明るい縁 (表面張力の盛り上がり)。
 //   水面の揺れ = ノイズ 2 枚を逆向きに流して、その傾きで光の照り返し (きらめき) と浅い所の明暗 (光の網) を出す。
 // _Mode = 1 (噴き出し): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)。
@@ -16,6 +16,7 @@ Shader "MRP/Water"
         _ShadowGain ("Opacity in the shadow", Float) = 1
         _Mode ("Mode (0 puddle / 1 spray)", Float) = 0
         _Edge ("Edge level", Float) = 0.05
+        _WetLevel ("Puddle edge on the wet coverage (B)", Float) = 0.35
         [PerRendererData] _FloorMask ("Floor mask", 2D) = "white" {}
         [PerRendererData] _FloorOn ("Floor mask on", Float) = 0
         _Shallow ("Shallow color", Color) = (0.45, 0.72, 0.95, 0.38)
@@ -48,11 +49,12 @@ Shader "MRP/Water"
             sampler2D _MainTex;
             sampler2D _Noise;
             sampler2D _FloorMask; // 部屋の絵の床の画素 (タイルと同じ範囲・1 = 床)
+            float4 _MainTex_TexelSize, _FloorMask_TexelSize;
             float _FloorOn;
             sampler2D _MrpShadowTex; // 影のカメラの描き先 (視界の所はアルファ 0)
             float _ShadowOnly, _ShadowGain;
             float _MrpShadowOn; // 影の板が出ている間だけ 1
-            float _Mode, _Edge, _DeepRange, _OutlinePx, _RimPx, _SprayEdge;
+            float _Mode, _Edge, _WetLevel, _DeepRange, _OutlinePx, _RimPx, _SprayEdge;
             fixed4 _Shallow, _Deep, _Outline, _Rim;
             float4 _Flow;
 
@@ -70,6 +72,13 @@ Shader "MRP/Water"
                 return o;
             }
 
+            // 水たまりのタイルの絵は端の画素がタイルの境目ちょうどの値 (隣のタイルの端と同じ値)。
+            // 端の画素の真ん中から真ん中までを引くので、境目で隣と値がつながり縁に段が出ない
+            float2 EdgeUv(float2 uv, float4 texel)
+            {
+                return uv * (1.0 - texel.xy) + texel.xy * 0.5;
+            }
+
             // 水面の高さ (ノイズ 2 枚を逆向きに流す)
             float Surface(float2 w)
             {
@@ -82,15 +91,15 @@ Shader "MRP/Water"
             fixed4 Puddle(v2f i, float4 data)
             {
                 float d = data.r;
-                float fw = max(fwidth(d), 1e-5);
-                float inside = (d - _Edge) / fw;                 // 縁から内側へ何画素か
+                float wv = data.b - _WetLevel;                    // 濡れた升をならした値 (深さの低い線は升の形の階段になる)
+                float inside = wv / max(fwidth(wv), 1e-5);       // 縁から内側へ何画素か
                 float vis = smoothstep(0.35, 0.65, data.g);
                 // 床マスクの縁 (家具・壁の絵の輪郭) から内側へ何画素か。マスクはならしてあるので、
                 // 半分の値の線を画面の画素の幅で切ると拡大しても升目の段が出ない
                 float wet = inside;
                 if (_FloorOn > 0.5)
                 {
-                    float m = tex2D(_FloorMask, i.uv).r - 0.5;
+                    float m = tex2D(_FloorMask, EdgeUv(i.uv, _FloorMask_TexelSize)).r - 0.5;
                     wet = min(inside, m / max(fwidth(m), 1e-4));
                 }
                 float body = saturate(wet + 0.5);                 // 縁を 1 画素でぼかす
@@ -155,7 +164,7 @@ Shader "MRP/Water"
 
             fixed4 frag(v2f i) : SV_Target
             {
-                float4 data = tex2D(_MainTex, i.uv);
+                float4 data = tex2D(_MainTex, _Mode < 0.5 ? EdgeUv(i.uv, _MainTex_TexelSize) : i.uv);
                 fixed4 c = _Mode < 0.5 ? Puddle(i, data) : Spray(i, data);
                 // 影の手前の写し: 影の所だけに出す
                 if (_ShadowOnly > 0.5) c.a *= tex2Dlod(_MrpShadowTex, float4(i.screen.xy / i.screen.w, 0, 0)).a * _ShadowGain * _MrpShadowOn;
