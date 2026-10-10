@@ -43,6 +43,7 @@ internal static class SolidMap
     internal static bool OpenCell(int k) => _open[k] != 0;
     internal static byte[] OpenCells => _open; // 0 = 歩けない (読むだけ)
     internal static int IslandCell(int k) => _island == null ? 0 : _island[k];
+    internal static bool OutsideAt(int k) => _outside != null && _outside[k] == 1;
     internal static bool LeakedCell(int k) => _leaked != null && _leaked[k] != 0;
     private static float _ppu;
     private static readonly List<Rect> HullRects = new();

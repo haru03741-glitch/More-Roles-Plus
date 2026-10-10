@@ -47,6 +47,8 @@ REACH = 0.2           # 歩ける所からこの距離 (世界単位) より離�
 # つながっていれば床にする。当たり判定は家具や壁の絵より大きく取ってあり、REACH で切ると家具の手前に乾いた地面の帯が残る。
 # 広げるのは手前の絵の形の手前まで (影の中では水の写しが手前の絵より前に出る)。歩ける所の近くの床は手前の絵があっても削らない (乗れる床板の絵がある)
 GROUND_REACH_SHIP = {"FungleShip": 1.0}
+# 床の絵が南の壁の前面と同じ色で続く広い床 (Mira の発射台): 前面の除外と隙間の幅の下限を外す範囲 (世界座標の矩形 x0, y0, x1, y1)
+PHYS_RELAX_SHIP = {"MiraShip": [(-11.7, -0.3, 0.2, 8.8)]}
 FURN_DEEP = 0.08      # 家具の当たり判定の縁からこれより内側は床にしない (当たり判定が絵より大きい所の縁の帯は床のまま)
 SPECK = 60            # これより小さい床の島・床の中の穴 (画素数) は消す
 EDGE_SIGMA = 1.6      # 縁をならすぼかしの幅 (画素)
@@ -59,6 +61,12 @@ DARK_SHADE = 0.7      # 学んだ色の明るさの下限 (色に比べて)。�
 DARK_FLOOR = 0.07     # これより暗い画素は学んだ色でも床にしない (黒い縁取り)
 MAGIC = b"MRPF"
 VERSION = 4
+PHYS_REACH = 6.0      # 当たり判定で閉じた所を水に開けるのは、歩ける所からこの距離 (世界単位) まで
+PHYS_GATE = 0.3       # 歩ける所から床の続きへ水が通れる隙間の幅の下限 (世界単位)
+WET_BRIDGE = 2        # 水の届く升と歩ける升の間でこれまでの隙間は埋める (SolidMap の升)
+PHYS_MIN_W = 0.1      # これより細い筋は水の通り道にしない (世界単位)
+BARRIER_PX = 3        # 影の線を画素に引く太さ (線の継ぎ目から漏れないように)
+FRONT_MAX = 1.0       # 床の縁から真下へこれまでの床でない絵は南の壁の前面 (水の通り道にしない)
 FACE_MAX = 4.0        # 床の縁から真上へこれ (世界単位) までの絵を壁の面とする (水が這い上がる所)
 
 DEFAULT_BUNDLES = [
@@ -275,8 +283,11 @@ def classify(j, canvas, ppu, cover):
     # 学び直し: 壁と家具の当たり判定から離れた歩ける所の取りこぼし。足した色は壁の面にも使われていることがある
     # (ナビの暗い床板と斜めの壁) ので、歩ける所の近くだけに切ってから、歩ける所が大半のまとまりだけを足す
     inner = (ndimage.distance_transform_edt(walk) > LEARN_INSET * ppu) & (ndimage.distance_transform_edt(~furn) > LEARN_INSET * ppu)
+    learned = np.zeros(shape, bool)
     for _ in range(LEARN_PASSES):
-        more = learn(j, canvas, ppu, floor, inner & drawn, rgb, lsum, ch, key) & near & drawn & ~floor
+        raw = learn(j, canvas, ppu, floor, inner & drawn, rgb, lsum, ch, key)
+        learned |= raw
+        more = raw & near & drawn & ~floor
         lab, n = ndimage.label(more)
         if n == 0:
             break
@@ -289,6 +300,8 @@ def classify(j, canvas, ppu, cover):
         # 床の色に入っていても、同じ色の壁とつながって落ちたまとまりがある。歩ける所の近くで切ったまとまりのまま足す
         floor |= keep_walkable(ok[lab], good, drawn)
     deep = ndimage.distance_transform_edt(furn) > FURN_DEEP * ppu
+    # 床の色の画素のうち歩ける所から遠い物も、同じまとまりなら床の続き (当たり判定だけで閉じた所)。水が物理的に届く所の候補
+    cand = drawn & ((lum >= OUTLINE) & colored | learned & (lsum >= DARK_FLOOR * 3)) & ~cover
     floor &= near
     reach = GROUND_REACH_SHIP.get(j["ship"].replace("(Clone)", ""))
     if reach:
@@ -299,7 +312,116 @@ def classify(j, canvas, ppu, cover):
         touch[np.unique(lab[walk & ground])] = True
         touch[0] = False
         floor |= touch[lab]
-    return smooth(floor & ~deep), walk, furn
+    wet, show = beyond(j, ppu, floor, cand & ~wall_face(canvas, floor, ppu), front_face(canvas, floor, ppu), walk, cover, drawn, canvas)
+    return smooth((floor & ~deep) | show), walk, furn, wet
+
+
+def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas):
+    """水が物理的に届く所: 歩ける所から、床の色の画素 (壁の面は除く・地面の船は海でない地面も) だけを通り、影の線 (壁の根元) と
+    手前の絵 (家具・木・岩) を越えずに PHYS_REACH まで塗った範囲。当たり判定だけで閉じた所 (見えない柵の向こうの床・家具の当たり判定の
+    張り出し) にも水は流れる。戻り値 = (水の範囲, 水を見せる画素)"""
+    s = j["solid"]
+    ox, oy = s["origin"]
+    shape = floor.shape
+    im = Image.new("L", (shape[1], shape[0]), 0)
+    dr = ImageDraw.Draw(im)
+    for x0, y0, x1, y1 in j.get("shadows", []):
+        dr.line([((x0 - ox) * ppu, (y0 - oy) * ppu), ((x1 - ox) * ppu, (y1 - oy) * ppu)], fill=1, width=BARRIER_PX)
+    barrier = np.asarray(im).astype(bool)
+    im = Image.new("L", (shape[1], shape[0]), 0)
+    dr = ImageDraw.Draw(im)
+    for x0, y0, x1, y1 in PHYS_RELAX_SHIP.get(j["ship"].replace("(Clone)", ""), []):
+        dr.rectangle([(x0 - ox) * ppu, (y0 - oy) * ppu, (x1 - ox) * ppu, (y1 - oy) * ppu], fill=1)
+    relax = np.asarray(im).astype(bool)
+    sea = sea_mask(j, ppu, shape)
+    land = cand & (~front | relax)
+    if sea is not None:
+        land &= ~sea
+    reach = ndimage.distance_transform_edt(~walk) <= PHYS_REACH * ppu
+    st = ndimage.generate_binary_structure(2, 1)
+    room = (land & ~cover & ~barrier & reach) | walk
+    # つながりは PHYS_GATE より狭い隙間 (縁取りの切れ目・機械と壁の間の細い床の色) を通さずに決める
+    g = max(1, int(round(PHYS_GATE * ppu / 2)))
+    lab, n = ndimage.label(ndimage.binary_opening(room & ~relax, st, iterations=g) | (room & relax) | walk)
+    touch = np.zeros(n + 1, bool)
+    touch[np.unique(lab[walk])] = True
+    touch[0] = False
+    core = touch[lab]
+    # 通したまとまりの縁 (開いて削れた分) は元の形まで戻す
+    region = core | (ndimage.binary_dilation(core, st, iterations=g + 1) & room)
+    # 細い筋 (絵の枠・縁取りの脇の 1〜3 画素) は水の通り道にしない
+    k = max(1, int(round(PHYS_MIN_W * ppu / 2)))
+    region = ndimage.binary_opening(region, st, iterations=k) & ~walk
+    # 絵の無い地面 (Fungle の屋外) は高さの違う台地の間もつながって見えるので、水の通り道には足さず見せるだけ (GROUND_REACH)
+    return region, region
+
+
+def sea_mask(j, ppu, shape):
+    """Resources/Heights の海の升を画素へ"""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Resources", "Heights", j["ship"].replace("(Clone)", "") + ".bin")
+    if not os.path.exists(path):
+        return None
+    d = open(path, "rb").read()
+    ver, ox16, oy16, c16, bw, bh = struct.unpack("<BhhBHH", d[4:14])
+    v = np.frombuffer(d[14:14 + bw * bh], np.int8).reshape(bh, bw)
+    s = j["solid"]
+    ox, oy = s["origin"]
+    ch, cw = shape
+    wx = ox + (np.arange(cw) + 0.5) / ppu
+    wy = oy + (np.arange(ch) + 0.5) / ppu
+    bx = np.floor((wx - ox16 / 16) / (c16 / 16)).astype(int)
+    by = np.floor((wy - oy16 / 16) / (c16 / 16)).astype(int)
+    okx = (bx >= 0) & (bx < bw)
+    oky = (by >= 0) & (by < bh)
+    m = np.zeros(shape, bool)
+    sub = v[np.clip(by, 0, bh - 1)][:, np.clip(bx, 0, bw - 1)] == -128
+    m[:] = sub & oky[:, None] & okx[None, :]
+    return m
+
+
+def wet_cells(j, ppu, phys):
+    """歩ける所の地図の升 (1/16 単位) ごとに、半分以上が phys なら 1"""
+    s = j["solid"]
+    ch, cw = phys.shape
+    gx = np.minimum(((np.arange(cw) + 0.5) / ppu * s["ppu"]).astype(int), s["w"] - 1)
+    gy = np.minimum(((np.arange(ch) + 0.5) / ppu * s["ppu"]).astype(int), s["h"] - 1)
+    idx = (gy[:, None] * s["w"] + gx[None, :]).ravel()
+    tot = np.bincount(idx, minlength=s["w"] * s["h"])
+    hit = np.bincount(idx, weights=phys.ravel().astype(np.float32), minlength=s["w"] * s["h"])
+    return ((hit * 2 >= tot) & (tot > 0)).reshape(s["h"], s["w"])
+
+
+def bridge_wet(j, wet):
+    """水の届く升と歩ける升の間の WET_BRIDGE 升までの隙間 (画素の床を升へ丸めた時の継ぎ目・柵の当たり判定の線) を埋める。
+    影の線 (壁の根元) の升は埋めない (壁の向こうの部屋とつながない)"""
+    s = j["solid"]
+    w, h = s["w"], s["h"]
+    raw = np.frombuffer(__import__("base64").b64decode(s["open"]), np.uint8)
+    walk = np.unpackbits(raw, bitorder="little")[: w * h].reshape(h, w).astype(bool)
+    ox, oy = s["origin"]
+    c = s["ppu"]
+    im = Image.new("L", (w, h), 0)
+    dr = ImageDraw.Draw(im)
+    for x0, y0, x1, y1 in j.get("shadows", []):
+        dr.line([((x0 - ox) * c, (y0 - oy) * c), ((x1 - ox) * c, (y1 - oy) * c)], fill=1, width=1)
+    bar = ndimage.binary_dilation(np.asarray(im).astype(bool))
+    st = ndimage.generate_binary_structure(2, 1)
+    near_wet = ndimage.binary_dilation(wet, st, iterations=WET_BRIDGE)
+    near_walk = ndimage.binary_dilation(walk, st, iterations=WET_BRIDGE)
+    gap = near_wet & near_walk & ~walk & ~wet & ~bar
+    # 1 升の穴と欠け (画素を升へ丸めた時のまだら) も埋める。升の中の歩ける升が分かれると水の升ごと閉じる
+    full = ndimage.binary_closing(wet | gap | walk, np.ones((3, 3), bool), border_value=1) & ~walk & ~bar & near_wet
+    print(f"{j['ship']}: bridged {int((full & ~wet).sum())} cells")
+    return wet | full
+
+
+def write_wet(path, j, cells):
+    s = j["solid"]
+    packed = zlib.compress(np.packbits(cells.ravel(), bitorder="little").tobytes(), 9)
+    ox, oy = s["origin"]
+    with open(path, "wb") as fo:
+        fo.write(b"MRPW" + struct.pack("<BhhHHBI", 1, int(round(ox * 16)), int(round(oy * 16)), s["w"], s["h"], s["ppu"], len(packed)) + packed)
+    return os.path.getsize(path)
 
 
 def keep_walkable(body, good, drawn):
@@ -352,6 +474,19 @@ def wall_face(canvas, floor, ppu):
     return drawn & ~floor & (last >= 0) & (last > gap) & (rows - last <= FACE_MAX * ppu)
 
 
+def front_face(canvas, floor, ppu):
+    """列ごとに、床の画素の真下へ途切れずに続く床でない絵の画素 (FRONT_MAX まで)。南の壁の前面 (床より下に描かれる)"""
+    drawn = canvas[..., 3] > DRAWN
+    rows = np.arange(floor.shape[0])[:, None]
+    h = floor.shape[0]
+    # 上下を返して wall_face と同じ数え方 (配列の行 0 = 世界の下)
+    f, d = floor[::-1], drawn[::-1]
+    last = np.maximum.accumulate(np.where(f, rows, -1), axis=0)
+    gap = np.maximum.accumulate(np.where(~d & ~f, rows, -1), axis=0)
+    out = d & ~f & (last >= 0) & (last > gap) & (rows - last <= FRONT_MAX * ppu)
+    return out[::-1]
+
+
 def write_mask(path, sig, origin, ppu, floor, face):
     h, w = floor.shape
     packed = np.packbits(floor.ravel(), bitorder="little").tobytes()
@@ -369,6 +504,7 @@ def main():
     ap.add_argument("json", nargs="+")
     ap.add_argument("--bundles", default=None)
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "Resources", "FloorMasks"))
+    ap.add_argument("--wet", default=os.path.join(os.path.dirname(__file__), "..", "Resources", "WaterOpen"))
     ap.add_argument("--preview", default=None)
     ap.add_argument("--report", action="store_true", help="取りこぼし (歩ける所なのに床でない塊) を一覧し、プレビューに赤で出す")
     a = ap.parse_args()
@@ -376,17 +512,20 @@ def main():
     if not folder:
         sys.exit("ゲームの StandaloneWindows フォルダが見つからない (--bundles で指定)")
     os.makedirs(a.out, exist_ok=True)
+    os.makedirs(a.wet, exist_ok=True)
     for path in a.json:
         j = json.load(open(path, encoding="utf-8"))
         j["backZ"] = BACK_Z_SHIP.get(j["ship"].replace("(Clone)", ""), BACK_Z)
         ds = sorted(abs(r["d"][0]) for r in j["rooms"])
         ppu = round(1.0 / ds[len(ds) // 2], 4)  # 部屋の絵でいちばん多い細かさ
         ship = j["ship"].replace("(Clone)", "")
-        reach = ship in GROUND_REACH_SHIP
-        tex = load_textures(folder, j["rooms"] + (j.get("covers", []) if reach else []))
+        tex = load_textures(folder, j["rooms"] + j.get("covers", []))
         canvas = compose(j, tex, ppu)
-        cover = cover_mask(j, tex, ppu, canvas.shape[:2]) if reach else np.zeros(canvas.shape[:2], bool)
-        floor, walk, furn = classify(j, canvas, ppu, cover)
+        cover = cover_mask(j, tex, ppu, canvas.shape[:2])
+        floor, walk, furn, phys = classify(j, canvas, ppu, cover)
+        wet = bridge_wet(j, wet_cells(j, ppu, phys))
+        wsize = write_wet(os.path.join(a.wet, ship + ".bin"), j, wet)
+        print(f"{ship}: wet cells={int(wet.sum())} -> {wsize} B")
         ship = j["ship"].replace("(Clone)", "")
         face = wall_face(canvas, floor, ppu)
         size = write_mask(os.path.join(a.out, ship + ".bin"), j["sig"], j["solid"]["origin"], ppu, floor, face)
@@ -401,6 +540,7 @@ def main():
             if miss is not None:
                 rgb[miss] = np.array([1.0, 0.1, 0.1])
             rgb[cover & ~floor] = rgb[cover & ~floor] * 0.5 + np.array([0.6, 0.0, 0.8]) * 0.5
+            rgb[phys] = rgb[phys] * 0.3 + np.array([0.1, 1.0, 0.2]) * 0.7
             Image.fromarray((np.clip(rgb, 0, 1)[::-1] * 255).astype(np.uint8)).save(os.path.join(a.preview, ship + "_floor.png"))
 
 

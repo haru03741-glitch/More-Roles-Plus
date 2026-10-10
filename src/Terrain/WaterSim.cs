@@ -376,6 +376,7 @@ internal static partial class WaterSim
         _tw = (_w + TileCells - 1) / TileCells;
         _th = (_h + TileCells - 1) / TileCells;
         _tileDirty = new bool[_tw * _th];
+        LoadWet();
         long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
         Rebuild(0, 0, _w - 1, _h - 1);
         long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -384,7 +385,7 @@ internal static partial class WaterSim
         Links(0, 0, _w - 1, _h - 1, true);
         long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
         double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count} props={props} hash={GridHash():x8}");
+        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count} props={props} wet={WetStats} hash={GridHash():x8}");
         DirtyTiles.Clear();
         Array.Clear(_tileDirty);
         _ready = true;
@@ -402,13 +403,14 @@ internal static partial class WaterSim
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
         int sw = SolidMap.W;
         var solid = SolidMap.OpenCells;
+        var wet = _wet;
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
         {
             int bits = 0;
             for (int sy = 0, row = y * Sub * sw + x * Sub; sy < Sub; sy++, row += sw)
             for (int sx = 0; sx < Sub; sx++)
-                if (solid[row + sx] != 0) bits |= 1 << (sy * Sub + sx);
+                if (solid[row + sx] != 0 || wet != null && wet[row + sx] != 0) bits |= 1 << (sy * Sub + sx);
             int k = y * _w + x;
             if (PopCount(bits) < 4 || !Connected(bits) || _shut[k] != 0) bits = 0;
             _sub[k] = (ushort)bits;
@@ -660,7 +662,7 @@ internal static partial class WaterSim
         Array.Copy(lv, _lvl, n);
     }
 
-    // 升ごとの島の順位 (升の中の最初の歩ける升の島・はしごでつながらない島は NoLevel・歩けない升は 0)
+    // 升ごとの島の順位 (升の中の最初の歩ける升の島・水だけが届く升は隣の島・はしごでつながらない島は NoLevel・閉じた升は 0)
     private static sbyte[] IslandLevels()
     {
         int n = _w * _h;
@@ -668,17 +670,28 @@ internal static partial class WaterSim
         var isl = new byte[n];
         var area = new int[SolidMap.IslandCount + 1];
         int sw = SolidMap.W;
+        var solid = SolidMap.OpenCells;
+        var wetOnly = new byte[n];
         for (int k = 0; k < n; k++)
         {
             int bits = _sub[k];
             if (bits == 0) continue;
-            int b = System.Numerics.BitOperations.TrailingZeroCount(bits);
-            int x = k % _w, y = k / _w;
-            int id = SolidMap.IslandCell((y * Sub + b / Sub) * sw + x * Sub + b % Sub);
+            int x = k % _w, y = k / _w, s = -1;
+            // 最初の歩ける升 (水だけが届く升は島を持たない)
+            while (bits != 0)
+            {
+                int b = System.Numerics.BitOperations.TrailingZeroCount(bits);
+                bits &= bits - 1;
+                int c = (y * Sub + b / Sub) * sw + x * Sub + b % Sub;
+                if (solid[c] != 0) { s = c; break; }
+            }
+            if (s < 0) { wetOnly[k] = 1; continue; }
+            int id = SolidMap.IslandCell(s);
             if (id <= 0 || id >= area.Length) continue;
             isl[k] = (byte)id;
             area[id]++;
         }
+        SpreadWetIslands(isl, wetOnly);
         var rank = HeightLevels.IslandRanks(i => area[i]);
         DoorRanks(isl, rank);
         for (int k = 0; k < n; k++)

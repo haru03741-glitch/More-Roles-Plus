@@ -54,6 +54,7 @@
         <!-- 床マスクはゲームの絵から tools/make-floor-mask.py で作る (リポジトリには入れない・無ければ当たり判定で切る) -->
         <EmbeddedResource Include="Resources\FloorMasks\*.bin" LogicalName="MoreRolesPlus.Resources.FloorMasks.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Heights\*.bin" LogicalName="MoreRolesPlus.Resources.Heights.%(Filename)%(Extension)" />
+        <EmbeddedResource Include="Resources\WaterOpen\*.bin" LogicalName="MoreRolesPlus.Resources.WaterOpen.%(Filename)%(Extension)" />
     </ItemGroup>
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And Exists('$(MrpBepInExDir)\core')">
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />

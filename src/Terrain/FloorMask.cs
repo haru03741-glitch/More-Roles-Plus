@@ -323,6 +323,7 @@ internal static class FloorMask
     // 床の層 (z が BackZ 以上・空の絵より手前) だけを見る: 手前にはコマ送りで絵が替わる物 (機関室のエンジンなど) があり、
     // 床の層にもコマ送りの絵 (ファングルの原子炉) があるので、コマ送りの絵は外し、残りもテクスチャ単位で数える
     private const float SkyZ = 20f;
+    private const int ShadowLayers = (1 << 10) | (1 << 11) | (1 << 13); // 視界を遮る層 (本編の Constants.ShadowMask と同じ)
 
     // 床の絵が z 1〜4 にある船 (tools/make-floor-mask.py の BACK_Z_SHIP と同じ表)。他は季節の飾り (z 1.07) を除くため 4
     private static float BackZ(string ship) => ship is "PolusShip" or "FungleShip" ? 0.5f : 4f;
@@ -423,10 +424,26 @@ internal static class FloorMask
                     sb.Append(k == 0 ? "" : ", ").Append('[').Append(F(segs[k].x)).Append(", ").Append(F(segs[k].y)).Append(']');
                 sb.Append("]}");
             }
+            // 視界を遮る影の線 (壁の根元)。水が物理的に届く所は、歩ける所からこの線を越えずに塗る。段の縁 (Ledge) は水が落ちる所なので入れない
+            sb.Append("\n  ],\n  \"shadows\": [\n");
+            int shadows = 0;
+            foreach (var c in ship.GetComponentsInChildren<Collider2D>(true))
+            {
+                if (!c || c.isTrigger || ((1 << c.gameObject.layer) & ShadowLayers) == 0) continue;
+                if (c.name.Contains("Ledge", StringComparison.OrdinalIgnoreCase)) continue;
+                segs.Clear();
+                SolidMap.Segments(c, segs);
+                for (int k = 0; k + 1 < segs.Count; k += 2)
+                {
+                    sb.Append(shadows == 0 ? "    " : ", ").Append('[').Append(F(segs[k].x)).Append(", ").Append(F(segs[k].y)).Append(", ")
+                      .Append(F(segs[k + 1].x)).Append(", ").Append(F(segs[k + 1].y)).Append(']');
+                    shadows++;
+                }
+            }
             sb.Append("\n  ]\n}\n");
             string path = System.IO.Path.Combine(TestBridge.ScreensDir, $"floor_{ship.name}.json");
             System.IO.File.WriteAllText(path, sb.ToString());
-            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} -> {path}");
+            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} shadows={shadows} -> {path}");
         });
     }
 
