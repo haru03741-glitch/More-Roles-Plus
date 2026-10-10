@@ -331,26 +331,47 @@ internal static class WaterArt
         for (int px = 0; px < n; px += 2)
         {
             byte z = t.Face[py * n + px];
-            if (z == 255) continue;
+            if (z > FloorMask.FaceTop) continue;
             float wx = org.x + (x0 + px * edge) * cell, wy = org.y + (y0 + py * edge) * cell, h = z * (1f / FloorMask.FaceUnit);
             if (BaseDepth(wx, wy - h) > h) return true;
         }
         return false;
     }
 
-    // A に壁の面の上の水の厚さを書く
+    // A に壁の面の上の水の厚さを書く。
+    // 水が面の上端より高い列 (低い家具・低い壁を越えた) では、面の上の画素にも同じ A を続け、床でなければ G (見せてよいか) を 0 にする。
+    // A を 0 にすると面の終わりで A が 128 を横切り、シェーダが乾いた縁を水面の線 (明るい縁と泡) と取り違える
+    private const int OvertopPx = 3;
+
     private static void WriteFace(Tile t, int x0, int y0, int n)
     {
         float cell = WaterSim.Cell, edge = (float)WaterSim.TileCells / (n - 1);
         var org = WaterSim.Origin;
-        for (int py = 0; py < n; py++)
         for (int px = 0; px < n; px++)
         {
-            int j = py * n + px, i = j * 4;
-            byte z = t.Face[j];
-            if (z == 255) continue;
-            float wx = org.x + (x0 + px * edge) * cell, wy = org.y + (y0 + py * edge) * cell, h = z * (1f / FloorMask.FaceUnit);
-            t.Px[i + 3] = (byte)FxMath.Clamp(128f + (BaseDepth(wx, wy - h) - h) * FaceScale, 0f, 255f);
+            byte topA = 0;
+            int carry = 0;
+            for (int py = 0; py < n; py++)
+            {
+                int j = py * n + px, i = j * 4;
+                byte z = t.Face[j];
+                if (z <= FloorMask.FaceTop)
+                {
+                    float wx = org.x + (x0 + px * edge) * cell, wy = org.y + (y0 + py * edge) * cell, h = z * (1f / FloorMask.FaceUnit);
+                    byte a = (byte)FxMath.Clamp(128f + (BaseDepth(wx, wy - h) - h) * FaceScale, 0f, 255f);
+                    t.Px[i + 3] = a;
+                    topA = a;
+                    carry = a > 128 ? OvertopPx : 0;
+                }
+                else if (carry > 0)
+                {
+                    // 面のすぐ上が床 (ベッドの奥の床) なら床の水はそのまま見せる (A は床では使わない)
+                    if (z == 255) t.Px[i + 1] = 0;
+                    t.Px[i + 3] = topA;
+                    carry--;
+                }
+                else carry = 0;
+            }
         }
     }
 

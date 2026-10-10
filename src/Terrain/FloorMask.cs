@@ -110,10 +110,11 @@ internal static class FloorMask
         return read == into.Length;
     }
 
-    // 壁の面の画素の床からの高さ (FaceUnit 分の 1 単位・壁の面でない = 255)。並びと画素の位置は Fill と同じ。
+    // 壁の面の画素の床からの高さ (FaceUnit 分の 1 単位・0..FaceTop)。床 = FaceFloor・どちらでもない = 255。並びと画素の位置は Fill と同じ。
     // 斜め上から見た絵では、床から高さ z の壁の画素は床の縁より画面で z だけ上にある。真下の床の画素までの距離がその高さ
     internal const float FaceUnit = 64f;
-    private const float FaceMax = 254f / FaceUnit;
+    internal const byte FaceTop = 253, FaceFloor = 254;
+    private const float FaceMax = FaceTop / FaceUnit;
 
     internal static bool FaceHeights(float x, float y, float size, int n, byte[] into)
     {
@@ -143,9 +144,10 @@ internal static class FloorMask
                 while (py < n && my == next)
                 {
                     int z = my - last;
-                    into[py * n + px] = (_face[k >> 3] & (1 << (k & 7))) != 0 && last != int.MinValue && z < scan
-                        ? (byte)Math.Min(254f, z / _ppu * FaceUnit) : (byte)255;
-                    any |= into[py * n + px] != 255;
+                    byte v = last == my ? FaceFloor
+                        : (_face[k >> 3] & (1 << (k & 7))) != 0 && last != int.MinValue && z < scan ? (byte)Math.Min(FaceTop, z / _ppu * FaceUnit) : (byte)255;
+                    into[py * n + px] = v;
+                    any |= v <= FaceTop;
                     py++;
                     next = (int)((y + py * step - _oy) * _ppu);
                 }

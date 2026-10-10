@@ -9,6 +9,7 @@ using UnityEngine;
 //   cells.png    … 細胞模様 (ボロノイ・繰り返し)。割れ口を角張らせる
 //   terrain.mat  … MRP/TerrainSprite (損傷マスクで穴と焦げを描く部屋の絵用)
 //   water.mat    … MRP/Water (床の水たまり・噴き出し。CPU が書いた水の量の絵から見た目を決める)
+//   water_wade.mat … MRP/Water の _Mode 2 (水に浸かったクルー・小物の手前に置く水面)
 //   firefloor.mat / flame.mat … MRP/Fire (床の照りと油の膜 / 立ち上がる炎。CPU が書いた升ごとの火の値から見た目を決める)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
@@ -60,6 +61,13 @@ public static class MrpBundleBuilder
         AssetDatabase.DeleteAsset(waterPath);
         AssetDatabase.CreateAsset(water, waterPath);
         Tag(waterPath);
+        string wadePath = Folder + "/water_wade.mat";
+        var wade = new Material(waterShader) { name = "water_wade" };
+        wade.SetTexture("_Noise", noise);
+        wade.SetFloat("_Mode", 2f);
+        AssetDatabase.DeleteAsset(wadePath);
+        AssetDatabase.CreateAsset(wade, wadePath);
+        Tag(wadePath);
 
         Shader fireShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/Fire.shader");
         if (fireShader == null)

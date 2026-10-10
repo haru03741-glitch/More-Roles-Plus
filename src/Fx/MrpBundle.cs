@@ -15,11 +15,12 @@ internal static class MrpBundle
     private const string ResourceName = "MoreRolesPlus.Resources.Bundles.mrp_fx.bundle";
     private const string TerrainMatPath = "assets/generated/terrain.mat";
     private const string WaterMatPath = "assets/generated/water.mat";
+    private const string WadeMatPath = "assets/generated/water_wade.mat";
     private const string FireFloorMatPath = "assets/generated/firefloor.mat";
     private const string FlameMatPath = "assets/generated/flame.mat";
 
     private static AssetBundle _bundle;
-    private static AssetBundleRequest _terrainReq, _waterReq, _fireFloorReq, _flameReq;
+    private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq;
     private static bool _failed, _waterFailed, _fireFailed;
 
     // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音 (BreakNoise と DecompSound が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
@@ -55,6 +56,7 @@ internal static class MrpBundle
 
     public static Material TerrainMaterial { get; private set; }
     public static Material WaterMaterial { get; private set; }
+    public static Material WadeMaterial { get; private set; }
     public static Material FireFloorMaterial { get; private set; }
     public static Material FlameMaterial { get; private set; }
 
@@ -100,10 +102,15 @@ internal static class MrpBundle
         try
         {
             _waterReq ??= _bundle.LoadAssetAsync(WaterMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
-            if (!_waterReq.isDone) return;
+            _wadeReq ??= _bundle.LoadAssetAsync(WadeMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_waterReq.isDone || !_wadeReq.isDone) return;
             var mat = _waterReq.asset ? _waterReq.asset.TryCast<Material>() : null;
             if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {WaterMatPath}"); _waterFailed = true; return; }
             mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            // 体の水面は無くても水たまりは出す
+            var wade = _wadeReq.asset ? _wadeReq.asset.TryCast<Material>() : null;
+            if (wade) { wade.hideFlags |= HideFlags.DontUnloadUnusedAsset; WadeMaterial = wade; }
+            else Plugin.Logger.LogError($"bundle asset not found: {WadeMatPath}");
             WaterMaterial = mat;
             Plugin.Logger.LogInfo($"bundle water: shader={mat.shader.name} supported={mat.shader.isSupported}");
         }
