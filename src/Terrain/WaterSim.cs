@@ -150,6 +150,7 @@ internal static class WaterSim
     private static ulong _doorBits;  // 升に入れた扉の開き
     private static byte[] _fallMask; // 縁を越えて落ちる向き (ビット = Nx/Ny の並び)
     private static byte[] _shadowCut; // 作った時に影の線を挟んでいた縁の向き
+    private static byte[] _ledge;     // 作った時に縁の際に段の影の線があったか (LedgeNear)
     private static readonly Dictionary<int, (int To, int Delay)> FallTo = new(); // 升 × 4 + 向き → 落ちる先の升 (−1 = 奈落) と刻み
     private static readonly List<(int K, int D, int Amount)> FallOut = new();
     private static readonly List<(int Due, int To, int Amount)> Flying = new(); // 落ちている水 (着く刻みの順)
@@ -320,6 +321,7 @@ internal static class WaterSim
         _propCell = new byte[n];
         _fallMask = new byte[n];
         _shadowCut = new byte[n];
+        _ledge = new byte[n];
         FallTo.Clear();
         ListDoorCells();
         int props = ListPropCells();
@@ -417,7 +419,7 @@ internal static class WaterSim
     private static uint GridHash()
     {
         uint h = 2166136261;
-        for (int i = 0; i < _propCell.Length; i++) h = (h ^ (uint)(_propCell[i] | _shadowCut[i] << 1)) * 16777619;
+        for (int i = 0; i < _propCell.Length; i++) h = (h ^ (uint)(_propCell[i] | _shadowCut[i] << 1 | _ledge[i] << 9)) * 16777619;
         uint sum = 0;
         foreach (var kv in FallTo) sum += (uint)(kv.Key * 73856093) ^ (uint)(kv.Value.To * 19349663) ^ (uint)(kv.Value.Delay * 83492791);
         return h ^ sum;
@@ -507,7 +509,7 @@ internal static class WaterSim
 
     // ── 床の高さと落ちる縁 ───────────────────────────────────────────────
 
-    // 升の高さ: 注釈を塗ったマップは区域と注釈 (塗っていない所は 0)、それ以外ははしごの上下で決めた島の順位
+    // 升の高さ: 注釈を塗ったマップは区域と注釈。塗っていない所と注釈の無いマップは、はしごの上下で決めた島の順位
     private static void Levels()
     {
         int n = _w * _h;
@@ -517,13 +519,23 @@ internal static class WaterSim
             HeightLevels.RasterZones(_lvl, _w, _h, _org, _cell);
             var zone = (sbyte[])_lvl.Clone();
             MapNotes.RasterLevels(_lvl, _w, _h, _org, _cell);
+            var rank = IslandLevels();
             // 注釈は壁の上に引いた線 (越えられない縁・奈落は壊せない所の印も兼ねる) で、升に写すと隣の歩ける床へ 1〜3 升はみ出す。
-            // はみ出した床が高い床になると周りの水が上れず、壁際に乾いた筋が残る。始めから歩ける升は区域の高さだけを使い、
+            // はみ出した床が高い床になると周りの水が上れず、壁際に乾いた筋が残る。始めから歩ける升は区域 (無ければ島) の高さだけを使い、
             // 注釈の高さは壁の中の升 (壊して開いた時の縁) にだけ残す
-            for (int k = 0; k < n; k++) if (_sub[k] != 0) _lvl[k] = zone[k];
+            for (int k = 0; k < n; k++)
+                if (_sub[k] != 0) _lvl[k] = zone[k] != 0 || rank[k] == NoLevel ? zone[k] : (sbyte)Math.Max((int)rank[k], VoidLevel + 1);
             return;
         }
-        // 升の島 = 升の中の最初の歩ける升の島
+        var lv = IslandLevels();
+        Array.Copy(lv, _lvl, n);
+    }
+
+    // 升ごとの島の順位 (升の中の最初の歩ける升の島・はしごでつながらない島は NoLevel・歩けない升は 0)
+    private static sbyte[] IslandLevels()
+    {
+        int n = _w * _h;
+        var lvl = new sbyte[n];
         var isl = new byte[n];
         var area = new int[SolidMap.IslandCount + 1];
         int sw = SolidMap.W;
@@ -542,8 +554,9 @@ internal static class WaterSim
         for (int k = 0; k < n; k++)
         {
             int id = isl[k];
-            _lvl[k] = id == 0 ? (sbyte)0 : rank[id] == int.MinValue ? NoLevel : (sbyte)Math.Clamp(rank[id], -100, 100);
+            lvl[k] = id == 0 ? (sbyte)0 : rank[id] == int.MinValue ? NoLevel : (sbyte)Math.Clamp(rank[id], -100, 100);
         }
+        return lvl;
     }
 
     // 範囲の升の、縁を越えて落ちる向きと落ちる先を作り直す。縁 (隣へ流れられない向き) の先を FallScan 升まで進み、
@@ -558,12 +571,16 @@ internal static class WaterSim
         if (ship)
             foreach (var r in ship.AllRooms)
                 if (r && r.roomArea && Array.IndexOf(ChasmRooms, r.RoomId) >= 0) Rooms.Add(r.roomArea);
-        _decks = ship && ship.TryCast<AirshipStatus>() != null ? AirshipDecks : NoDecks;
+        bool airship = ship && ship.TryCast<AirshipStatus>() != null;
+        _decks = airship ? AirshipDecks : NoDecks;
+        _skyEdges = airship ? AirshipSkyEdges : NoDecks;
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
         // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので屋外の影の線を見ない
         // (崖の上の縁に視界の影の線が引いてあり、それで切ると崖の大半から落ちなくなる)。部屋の影の線 (展望台の箱と柵の縁) は見る
         bool cliffs = !MapNotes.HasLevels;
+        if (full) ListLadders(ship);
+        _ledgeScan = full;
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
         {
@@ -579,14 +596,17 @@ internal static class WaterSim
             {
                 int j = k + Nx[d] + Ny[d] * _w;
                 if (_open[j] != 0 && Passable(k, d)) continue;
+                if (Nx[d] != 0 && OnLadder(x, y)) continue;
                 Target(x, y, d, lk, cliffs, out int to, out int dist, out int tx, out int ty);
-                if (to == int.MinValue) continue;
-                if (full && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
+                if (to == int.MinValue || to == -1 && OnLadder(x, y)) continue;
+                // 空へ落とす縁は壁の影の線の外側へ落ちるので、影の線では切らない
+                if (full && !(to == -1 && OnSkyEdge(x, y)) && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
                 if ((_shadowCut[k] >> d & 1) != 0) continue;
                 _fallMask[k] |= (byte)(1 << d);
                 FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
             }
         }
+        _ledgeScan = false;
     }
 
     // 最初に水が出た時の升作りで払っていた準備 (段の注釈の読み込み・部屋の範囲・影の線の判定の初回) を先に済ませる
@@ -601,12 +621,40 @@ internal static class WaterSim
         _ = Physics2D.CircleCastAll(Vector2.zero, 0.01f, Vector2.right, 0.1f, ShadowMask).Length;
     }
 
-    private static readonly SystemTypes[] ChasmRooms = { SystemTypes.GapRoom };
-    private static readonly List<Collider2D> Rooms = new();
-    private static bool InRoom(float x, float y)
+    // はしごの通り道 (x0, y0, x1, y1)。はしごの上の床の切れ目の脇の升は横向きの縁になるが、そこから横へ落とすと
+    // はしごを挟んで斜めの滝が 2 本出る。はしごの切れ目からは真下 (はしご沿い) の床にだけ落とす (奈落へは落とさない)
+    private const float LadderHalf = 0.6f, LadderOver = 0.5f;
+    private static readonly List<float> Ladders = new();
+    private static void ListLadders(ShipStatus ship)
     {
-        var p = new Vector2(x, y);
-        foreach (var c in Rooms) if (c && c.OverlapPoint(p)) return true;
+        Ladders.Clear();
+        if (!ship) return;
+        foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
+        {
+            if (!l || !l.IsTop || !l.Destination) continue;
+            Vector3 a = l.transform.position, b = l.Destination.transform.position;
+            Ladders.Add(MathF.Min(a.x, b.x) - LadderHalf);
+            Ladders.Add(MathF.Min(a.y, b.y));
+            Ladders.Add(MathF.Max(a.x, b.x) + LadderHalf);
+            Ladders.Add(MathF.Max(a.y, b.y) + LadderOver);
+        }
+    }
+
+    private static bool OnLadder(int x, int y)
+    {
+        float px = _org.x + (x + 0.5f) * _cell, py = _org.y + (y + 0.5f) * _cell;
+        for (int i = 0; i + 3 < Ladders.Count; i += 4)
+            if (px >= Ladders[i] && px <= Ladders[i + 2] && py >= Ladders[i + 1] && py <= Ladders[i + 3]) return true;
+        return false;
+    }
+
+    private static readonly SystemTypes[] ChasmRooms = { SystemTypes.GapRoom, SystemTypes.Ventilation };
+    private static readonly List<Collider2D> Rooms = new();
+    private static bool InRoom(float ax, float ay, float bx, float by)
+    {
+        var a = new Vector2(ax, ay);
+        var b = new Vector2(bx, by);
+        foreach (var c in Rooms) if (c && c.OverlapPoint(a) && c.OverlapPoint(b)) return true;
         return false;
     }
 
@@ -616,16 +664,23 @@ internal static class WaterSim
     private static readonly float[] NoDecks = { };
     private static float[] _decks = NoDecks;
     private static bool OnDeck(int x, int y) => OnDeck(_org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell);
-    internal static bool OnDeck(float px, float py)
+    internal static bool OnDeck(float px, float py) => InRects(_decks, px, py);
+    private static bool InRects(float[] r, float px, float py)
     {
-        for (int i = 0; i + 3 < _decks.Length; i += 4)
-            if (px >= _decks[i] && px <= _decks[i + 2] && py >= _decks[i + 1] && py <= _decks[i + 3]) return true;
+        for (int i = 0; i + 3 < r.Length; i += 4)
+            if (px >= r[i] && px <= r[i + 2] && py >= r[i + 1] && py <= r[i + 3]) return true;
         return false;
     }
 
+    // 縁の下が船の外の空なのに、奈落の注釈も段の影の線も無い床 (x0, y0, x1, y1)。ここの縁 (上向き以外) は先に床が無ければ空へ落とす。
+    // エアシップの展望デッキ (扉の前の通路は両脇が壁なので入れない)
+    private static readonly float[] AirshipSkyEdges = { -14.897f, -17.497f, -12.403f, -14.3f };
+    private static float[] _skyEdges = NoDecks;
+    private static bool OnSkyEdge(int x, int y) => InRects(_skyEdges, _org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell);
+
     // 縁の升 (x, y) の向き d の落ちる先。to = 落ちる先の升・-1 = 奈落 (落ちた水は消える)・int.MinValue = 落ちない。返り値は理由 (確認用)。
     // 奈落の注釈は壊せない所の印も兼ねて外壁の外にも塗ってあるので、奈落へ落ちるのは谷のある部屋 (ChasmRooms) の中か、
-    // 屋外のデッキの床 (_decks) の縁から真っすぐ届く所 (手すりの外の空) だけ。外壁には影の線も船体の塊も無い所
+    // 屋外のデッキの床 (_decks) の縁から真っすぐ届く所 (手すりの外の空) か、縁の際に段の影の線がある所 (足場の手すりの外) だけ。外壁には影の線も船体の塊も無い所
     // (コックピットのガラス窓・扉の脇の柱) があり、それでは手すりと見分けられない。
     // 高さをはしごの島で決めたマップでは、一番下の島より高い島の縁の先に何も無ければ崖として奈落へ落とす
     // (一番下の島の縁は浜や森との境なので落とさない・上向きの縁は落ちる絵が床に被るので落とさない)
@@ -659,12 +714,19 @@ internal static class WaterSim
         }
         if (to == int.MinValue)
         {
+            // 段の縁の先に床が無い (足場の手すりの外) = 虚空へ落ちる
+            if (Ny[d] <= 0 && !seen && why != "door" && LedgeNear(x, y, d)) { to = -1; return "ledge"; }
+            if (Ny[d] <= 0 && !seen && why == "scan" && OnSkyEdge(x, y)) { to = -1; return "sky"; }
             if (!cliffs || lk <= 0 || Ny[d] > 0 || seen || why == "door") return why;
             to = -1;
             return "cliff";
         }
-        if (InRoom(_org.x + (tx + 0.5f) * _cell, _org.y + (ty + 0.5f) * _cell)) return why;
-        if (why == "void" && OnDeck(x, y)) return "sky";
+        // 奈落へは上向き (画面の上) には落とさない (落ちる絵が縁の向こうの壁に被る)
+        if (to == -1 && Ny[d] > 0) { to = int.MinValue; return "up"; }
+        // 谷の奈落は縁と同じ部屋の中だけ (隣の部屋の谷へ壁越しに落とさない)
+        if (InRoom(_org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell, _org.x + (tx + 0.5f) * _cell, _org.y + (ty + 0.5f) * _cell)) return why;
+        if (why == "void" && (OnDeck(x, y) || OnSkyEdge(x, y))) return "sky";
+        if (Ny[d] <= 0 && LedgeNear(x, y, d)) return "ledge";
         to = int.MinValue;
         return "room";
     }
@@ -712,13 +774,17 @@ internal static class WaterSim
         float ux = dx / len, uy = dy / len;
         // Linecast は Android 版に無いので、細い CircleCastAll で代える
         if (!roomOnly)
-            return Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(ux, uy), (len - 0.5f) * _cell, ShadowMask).Length > 0;
+        {
+            foreach (var h in Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(ux, uy), (len - 0.5f) * _cell, ShadowMask))
+                if (h.collider && !IsLedge(h.collider)) return true;
+            return false;
+        }
         var hits = Physics2D.CircleCastAll(new Vector2(ax - ux * 0.5f * _cell, ay - uy * 0.5f * _cell), 0.01f, new Vector2(ux, uy),
                                            MathF.Min(len, RoomShadowReach) * _cell, ShadowMask);
         foreach (var h in hits)
         {
             var c = h.collider;
-            if (!c) continue;
+            if (!c || IsLedge(c)) continue;
             int id = c.GetInstanceID();
             if (!OutsideShadow.TryGetValue(id, out bool outside))
             {
@@ -728,6 +794,52 @@ internal static class WaterSim
             }
             if (!outside) return true;
         }
+        return false;
+    }
+
+    private static string ShadowName(int x, int y, int tx, int ty)
+    {
+        float ax = _org.x + (x + 0.5f) * _cell, ay = _org.y + (y + 0.5f) * _cell;
+        float dx = tx - x, dy = ty - y, len = MathF.Sqrt(dx * dx + dy * dy);
+        var hits = Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(dx / len, dy / len), (len - 0.5f) * _cell, ShadowMask);
+        foreach (var h in hits)
+            if (h.collider) return $"{(h.collider.transform.parent ? h.collider.transform.parent.name + "/" : "")}{h.collider.name}@{h.distance:0.00}";
+        return "-";
+    }
+
+    // 段の影の線: 本編は足場や段の縁の視界の影の線を LedgeShadow と名付けている (壁の影の線とは別)。
+    // 縁の升の真ん中の升半分手前から LedgeReach 升先までにあれば、その縁は段の縁
+    private const float LedgeReach = 2f;
+    private static readonly Dictionary<int, bool> LedgeShadow = new();
+    private static bool IsLedge(Collider2D c)
+    {
+        int id = c.GetInstanceID();
+        if (!LedgeShadow.TryGetValue(id, out bool ledge))
+        {
+            ledge = c.name.Contains("Ledge", StringComparison.OrdinalIgnoreCase);
+            LedgeShadow[id] = ledge;
+        }
+        return ledge;
+    }
+
+    // 影の線は壊れた壁と一緒に切られ人によって先後があるので、読むのは作った時 (_ledgeScan) だけ。結果は _ledge に残し
+    // (ビット d = 調べた・ビット 4 + d = 段の縁)、引き直しでは残した結果だけを引く
+    private static bool _ledgeScan;
+    private static bool LedgeNear(int x, int y, int d)
+    {
+        int k = y * _w + x;
+        if ((_ledge[k] >> d & 1) != 0) return (_ledge[k] >> (4 + d) & 1) != 0;
+        if (!_ledgeScan) return false;
+        bool hit = LedgeCast(x, y, d);
+        _ledge[k] |= (byte)(1 << d | (hit ? 1 << (4 + d) : 0));
+        return hit;
+    }
+
+    private static bool LedgeCast(int x, int y, int d)
+    {
+        float ax = _org.x + (x + 0.5f - Nx[d] * 0.5f) * _cell, ay = _org.y + (y + 0.5f - Ny[d] * 0.5f) * _cell;
+        foreach (var h in Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(Nx[d], Ny[d]), (LedgeReach + 0.5f) * _cell, ShadowMask))
+            if (h.collider && IsLedge(h.collider)) return true;
         return false;
     }
 
@@ -749,8 +861,12 @@ internal static class WaterSim
             {
                 int j = k + Nx[d] + Ny[d] * _w;
                 if (_open[j] != 0 && Passable(k, d)) continue;
-                string why = Target(x, y, d, lk, !MapNotes.HasLevels, out int to, out _, out _, out _);
+                int to = int.MinValue;
+                int tx = x, ty = y;
+                string why = Nx[d] != 0 && OnLadder(x, y) ? "ladder" : Target(x, y, d, lk, !MapNotes.HasLevels, out to, out _, out tx, out ty);
+                if (to == -1 && OnLadder(x, y)) { to = int.MinValue; why = "ladder"; }
                 if (to != int.MinValue && (_shadowCut[k] >> d & 1) != 0) why = "shadow";
+                if (why == "shadow" && !sample.ContainsKey("+x-x+y-y".Substring(d * 2, 2) + ":" + why)) why += "[" + ShadowName(x, y, tx, ty) + "]";
                 int lto = to >= 0 ? _lvl[to] : 0;
                 string key = "+x-x+y-y".Substring(d * 2, 2) + ":" + why;
                 count[key] = count.TryGetValue(key, out int n) ? n + 1 : 1;
@@ -1415,7 +1531,7 @@ internal static class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); _doorUnder = null; _fallMask = null; _shadowCut = null;
+        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _shadowCut = null; _ledge = null;
         FallTo.Clear();
         FallOut.Clear();
         Flying.Clear();
