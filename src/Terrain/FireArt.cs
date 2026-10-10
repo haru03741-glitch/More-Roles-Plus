@@ -27,9 +27,9 @@ internal static class FireArt
     {
         public int Tx, Ty;
         public GameObject Floor;
-        public SpriteRenderer FloorSr;
+        public SpriteRenderer FloorSr, FloorShadow; // Shadow = 影の中に見せる写し (ShadowView)
         public GameObject[] Flame;
-        public SpriteRenderer[] FlameSr;
+        public SpriteRenderer[] FlameSr, FlameShadow;
         public Sprite[] FlameSp;
         public Texture2D Tex;
         public Sprite Sp;
@@ -88,6 +88,7 @@ internal static class FireArt
             dirty.Clear();
         }
         if (_clock - _sweepAt >= SweepEvery) Sweep();
+        if (Tiles.Count > 0) ShadowView.Check(now);
         int drawn = 0;
         for (int i = 0; i < Waiting.Count && drawn < TilesPerFrame; i++)
         {
@@ -190,6 +191,7 @@ internal static class FireArt
         t.FloorSr.sprite = t.Sp;
         t.FloorSr.sharedMaterial = MrpBundle.FireFloorMaterial;
         t.Floor.transform.position = FxMath.V3(wx, wy, front - 0.0005f * zs);
+        t.FloorShadow = ShadowView.Copy(t.Floor, t.Sp, ShadowView.FireFloor, FxMath.Rgba(1f, 1f, 1f, 1f), 0f);
         if (t.Flaming) MakeFlames(t, wx, wy);
     }
 
@@ -203,6 +205,7 @@ internal static class FireArt
         t.Flame = new GameObject[n];
         t.FlameSr = new SpriteRenderer[n];
         t.FlameSp = new Sprite[n];
+        t.FlameShadow = new SpriteRenderer[n];
         for (int s = 0; s < n; s++)
         {
             var sp = Sprite.Create(t.Tex, new Rect(0, s * StripRows, tw, StripRows + 2 + Up), Vector2.zero, 1f / cell, 0, SpriteMeshType.FullRect);
@@ -216,18 +219,29 @@ internal static class FireArt
             float by = wy + (s * StripRows + 1) * cell;
             go.transform.position = FxMath.V3(wx, wy + s * StripRows * cell, by / 1000f - 0.0005f);
             t.Flame[s] = go; t.FlameSr[s] = sr; t.FlameSp[s] = sp;
+            // 写しは床の写しより手前。上の帯ほど奥 (視界の中の炎と同じ前後)
+            t.FlameShadow[s] = ShadowView.Copy(go, sp, ShadowView.Flame, sr.color, 0.002f + (1000f - by) * 1e-4f); // 影の板は z=-5 付近なので 1e-4 刻みなら float で潰れない
         }
     }
 
     private static void Show(Tile t, bool on)
     {
-        if (t.FloorShown != on) { t.FloorShown = on; t.FloorSr.enabled = on; }
+        if (t.FloorShown != on)
+        {
+            t.FloorShown = on; t.FloorSr.enabled = on;
+            if (t.FloorShadow) t.FloorShadow.enabled = on;
+        }
         if (t.FlameSr == null) return;
         t.RowShown ??= new bool[t.FlameSr.Length];
         for (int s = 0; s < t.FlameSr.Length; s++)
         {
             bool v = on && t.RowOn[s];
-            if (t.RowShown[s] != v) { t.RowShown[s] = v; t.FlameSr[s].enabled = v; }
+            if (t.RowShown[s] != v)
+            {
+                t.RowShown[s] = v; t.FlameSr[s].enabled = v;
+                var sh = t.FlameShadow[s];
+                if (sh) sh.enabled = v;
+            }
         }
     }
 
@@ -261,7 +275,7 @@ internal static class FireArt
     {
         if (t.Flame != null) foreach (var go in t.Flame) if (go) UnityEngine.Object.Destroy(go);
         if (t.FlameSp != null) foreach (var sp in t.FlameSp) if (sp) UnityEngine.Object.Destroy(sp);
-        t.Flame = null; t.FlameSr = null; t.FlameSp = null; t.RowShown = null;
+        t.Flame = null; t.FlameSr = null; t.FlameSp = null; t.FlameShadow = null; t.RowShown = null;
     }
 
     private static void Destroy(Tile t)

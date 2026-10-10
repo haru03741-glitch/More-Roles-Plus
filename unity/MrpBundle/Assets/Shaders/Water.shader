@@ -12,6 +12,8 @@ Shader "MRP/Water"
     {
         [PerRendererData] _MainTex ("Water data", 2D) = "black" {}
         _Noise ("Noise", 2D) = "gray" {}
+        _ShadowOnly ("Only where the view shadow is (copy in front of the shadow)", Float) = 0
+        _ShadowGain ("Opacity in the shadow", Float) = 1
         _Mode ("Mode (0 puddle / 1 spray)", Float) = 0
         _Edge ("Edge level", Float) = 0.05
         _Shallow ("Shallow color", Color) = (0.45, 0.72, 0.95, 0.38)
@@ -43,12 +45,15 @@ Shader "MRP/Water"
 
             sampler2D _MainTex;
             sampler2D _Noise;
+            sampler2D _MrpShadowTex; // 影のカメラの描き先 (視界の所はアルファ 0)
+            float _ShadowOnly, _ShadowGain;
+            float _MrpShadowOn; // 影の板が出ている間だけ 1
             float _Mode, _Edge, _DeepRange, _OutlinePx, _RimPx, _SprayEdge;
             fixed4 _Shallow, _Deep, _Outline, _Rim;
             float4 _Flow;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
-            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float2 world : TEXCOORD1; fixed4 color : COLOR; };
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float2 world : TEXCOORD1; fixed4 color : COLOR; float4 screen : TEXCOORD2; };
 
             v2f vert(appdata v)
             {
@@ -57,6 +62,7 @@ Shader "MRP/Water"
                 o.uv = v.uv;
                 o.world = mul(unity_ObjectToWorld, v.vertex).xy;
                 o.color = v.color;
+                o.screen = ComputeScreenPos(o.pos);
                 return o;
             }
 
@@ -136,7 +142,10 @@ Shader "MRP/Water"
             fixed4 frag(v2f i) : SV_Target
             {
                 float4 data = tex2D(_MainTex, i.uv);
-                return _Mode < 0.5 ? Puddle(i, data) : Spray(i, data);
+                fixed4 c = _Mode < 0.5 ? Puddle(i, data) : Spray(i, data);
+                // 影の手前の写し: 影の所だけに出す
+                if (_ShadowOnly > 0.5) c.a *= tex2Dlod(_MrpShadowTex, float4(i.screen.xy / i.screen.w, 0, 0)).a * _ShadowGain * _MrpShadowOn;
+                return c;
             }
             ENDCG
         }

@@ -105,11 +105,13 @@ internal static class Zoom
         _shadow = q;
         _shadowWasOn = q.gameObject.activeSelf;
         q.gameObject.SetActive(false);
+        Terrain.ShadowView.SetShadowShown(false);
     }
 
     private static void RestoreShadow()
     {
         if (_shadow && _shadowWasOn) _shadow.gameObject.SetActive(true);
+        if (_shadow) Terrain.ShadowView.SetShadowShown(true);
         _shadow = null;
     }
 

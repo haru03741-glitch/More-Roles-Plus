@@ -13,6 +13,8 @@ Shader "MRP/Fire"
     {
         [PerRendererData] _MainTex ("Fire data", 2D) = "black" {}
         _Noise ("Noise", 2D) = "gray" {}
+        _ShadowOnly ("Only where the view shadow is (copy in front of the shadow)", Float) = 0
+        _ShadowGain ("Brightness in the shadow", Float) = 1
         _Mode ("Mode (0 floor / 1 flame)", Float) = 0
         _Own ("Own cells (uv min xy, max xy)", Vector) = (0, 0, 1, 1)
         _Rise ("Flame height (uv)", Float) = 0.2
@@ -39,12 +41,15 @@ Shader "MRP/Fire"
 
             sampler2D _MainTex;
             sampler2D _Noise;
+            sampler2D _MrpShadowTex; // 影のカメラの描き先 (視界の所はアルファ 0)
+            float _ShadowOnly, _ShadowGain;
+            float _MrpShadowOn; // 影の板が出ている間だけ 1
             float _Mode, _Rise, _Strip;
             float4 _Own, _CellUV;
             fixed4 _Glow;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
-            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float2 world : TEXCOORD1; fixed4 color : COLOR; };
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float2 world : TEXCOORD1; fixed4 color : COLOR; float4 screen : TEXCOORD2; };
 
             v2f vert(appdata v)
             {
@@ -53,6 +58,7 @@ Shader "MRP/Fire"
                 o.uv = v.uv;
                 o.world = mul(unity_ObjectToWorld, v.vertex).xy;
                 o.color = v.color;
+                o.screen = ComputeScreenPos(o.pos);
                 return o;
             }
 
@@ -214,7 +220,10 @@ Shader "MRP/Fire"
 
             fixed4 frag(v2f i) : SV_Target
             {
-                return _Mode < 0.5 ? Floor(i) : Flame(i);
+                fixed4 c = _Mode < 0.5 ? Floor(i) : Flame(i);
+                // 影の手前の写し: 影の所だけに出す (乗算済みなので全体に掛ける)
+                if (_ShadowOnly > 0.5) c *= tex2Dlod(_MrpShadowTex, float4(i.screen.xy / i.screen.w, 0, 0)).a * _ShadowGain * _MrpShadowOn;
+                return c;
             }
             ENDCG
         }

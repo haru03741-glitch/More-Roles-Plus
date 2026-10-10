@@ -21,11 +21,17 @@ internal static class WaterArt
     private const int TilesPerFrame = 3;
     private const int FurnSub = Px;           // 家具の型抜きの細かさ (= 画素)
 
+    private static void Enable(Tile t, bool on)
+    {
+        t.Sr.enabled = on;
+        if (t.Shadow) t.Shadow.enabled = on;
+    }
+
     private sealed class Tile
     {
         public int Tx, Ty;
         public GameObject Go;
-        public SpriteRenderer Sr;
+        public SpriteRenderer Sr, Shadow; // Shadow = 影の中に見せる写し (ShadowView)
         public Texture2D Tex;
         public Sprite Sp;
         public byte[] Px;
@@ -58,7 +64,7 @@ internal static class WaterArt
     {
         Hidden = hide;
         int n = 0;
-        foreach (var t in Tiles.Values) if (t.Sr) { t.Sr.enabled = !hide && !t.Empty; n++; }
+        foreach (var t in Tiles.Values) if (t.Sr) { Enable(t, !hide && !t.Empty); n++; }
         return n;
     }
 
@@ -78,6 +84,7 @@ internal static class WaterArt
         _clock += dt;
 
         if (Craters.Count > 0) TickCraters();
+        if (Tiles.Count > 0) ShadowView.Check(now);
         var dirty = WaterSim.DirtyTiles;
         if (dirty.Count > 0)
         {
@@ -202,7 +209,7 @@ internal static class WaterArt
         t.LastDraw = _clock;
         if (!any)
         {
-            if (!t.Empty && t.Sr) t.Sr.enabled = false;
+            if (!t.Empty && t.Sr) Enable(t, false);
             t.Empty = true;
             return;
         }
@@ -235,7 +242,7 @@ internal static class WaterArt
         }
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
-        if (t.Empty) { t.Sr.enabled = !Hidden; t.Empty = false; }
+        if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
         Drawn++;
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
@@ -304,6 +311,7 @@ internal static class WaterArt
         float zs = DamageMap.ZScale(front);
         // 床の上・足跡 (−0.001) と波紋より奥
         t.Go.transform.position = FxMath.V3(wx, wy, front - 0.0004f * zs);
+        t.Shadow = ShadowView.Copy(t.Go, t.Sp, ShadowView.Water, FxMath.Rgba(1f, 1f, 1f, 1f), -0.002f); // 火の写しより奥
         t.Furn = FurnitureMask(wx, wy, tc * cell);
         t.FurnVersion = _furnVersion;
     }
