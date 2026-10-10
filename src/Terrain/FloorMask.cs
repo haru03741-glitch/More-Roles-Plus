@@ -157,6 +157,20 @@ internal static class FloorMask
         return any;
     }
 
+    // 世界の四角 (x, y から size 四方) の画素が全部床か (マスクの外は床でない)
+    internal static bool AllFloor(float x, float y, float size)
+    {
+        Ensure();
+        if (_bits == null) return false;
+        int x0 = (int)MathF.Floor((x - _ox) * _ppu), y0 = (int)MathF.Floor((y - _oy) * _ppu);
+        int x1 = (int)MathF.Ceiling((x + size - _ox) * _ppu), y1 = (int)MathF.Ceiling((y + size - _oy) * _ppu);
+        if (x0 < 0 || y0 < 0 || x1 > _w || y1 > _h) return false;
+        for (int my = y0; my < y1; my++)
+        for (int mx = x0, k = my * _w + x0; mx < x1; mx++, k++)
+            if ((_bits[k >> 3] & (1 << (k & 7))) == 0) return false;
+        return true;
+    }
+
     // 世界の四角 (x, y から size 四方) を n×n 画素で into へ (左下原点・床 = 255・マスクの外は床でない)。
     // 画素 0 と n - 1 は四角の端ちょうど (隣のタイルの端の画素と同じ所。シェーダは端の画素の真ん中から引く)。
     // 縁は 1, 4, 6, 4, 1 でならす: 1 画素 1 ビットの段がそのまま水の縁に出ないよう、シェーダが 128 の線を
@@ -361,49 +375,32 @@ internal static class FloorMask
             var sb = new StringBuilder("{\n  \"ship\": \"").Append(ship.name).Append("\",\n  \"sig\": ").Append(Signature(ship.name.Replace("(Clone)", ""))).Append(",\n  \"rooms\": [\n");
             int n = 0, skipped = 0;
             var arts = DamageMap.RoomArts;
+            var roomIds = new HashSet<int>();
             for (int i = 0; i < arts.Count; i++)
             {
                 var sr = arts[i];
                 if (!sr) continue;
-                var sp = sr.sprite;
-                var tex = sp ? sp.texture : null;
-                if (!tex || (sp.packed && (sp.packingMode == SpritePackingMode.Tight || sp.packingRotation != SpritePackingRotation.None)))
-                {
-                    skipped++;
-                    continue;
-                }
-                Rect tr = sp.textureRect;
-                Vector2 off = sp.textureRectOffset, pv = sp.pivot;
-                float ppu = sp.pixelsPerUnit;
-                bool fx = sr.flipX, fy = sr.flipY;
-                var t = sr.transform;
-                Vector3 World(float tx, float ty)
-                {
-                    float lx = (tx - tr.x + off.x - pv.x) / ppu, ly = (ty - tr.y + off.y - pv.y) / ppu;
-                    if (fx) lx = -lx;
-                    if (fy) ly = -ly;
-                    return t.TransformPoint(new Vector3(lx, ly, 0f));
-                }
-                const float span = 1000f;
-                Vector3 w0 = World(0f, 0f), wx = World(span, 0f), wy = World(0f, span);
-                if (MathF.Abs(wx.y - w0.y) > 0.01f || MathF.Abs(wy.x - w0.x) > 0.01f) { skipped++; continue; }
-                sb.Append(n == 0 ? "" : ",\n").Append("    {\"sprite\": \"").Append(sp.name).Append("\", \"texture\": \"").Append(tex.name)
-                  .Append("\", \"texSize\": [").Append(tex.width).Append(", ").Append(tex.height)
-                  .Append("], \"texRect\": [").Append(F(tr.xMin)).Append(", ").Append(F(tr.yMin)).Append(", ").Append(F(tr.width)).Append(", ").Append(F(tr.height))
-                  .Append("], \"w0\": [").Append(F(w0.x)).Append(", ").Append(F(w0.y))
-                  .Append("], \"d\": [").Append(F((wx.x - w0.x) / span)).Append(", ").Append(F((wy.y - w0.y) / span))
-                  .Append("], \"z\": ").Append(F(w0.z)).Append(", \"order\": ").Append(sr.sortingOrder).Append(", \"tris\": [");
-                // 絵が実際に描かれる三角形 (世界座標)。テクスチャの四角の中でも三角形の外はアトラスの隣の絵なので描かない
-                var vs = sp.vertices;
-                var ts = sp.triangles;
-                for (int k = 0; k < ts.Length; k++)
-                {
-                    var v = vs[ts[k]];
-                    var p = t.TransformPoint(new Vector3(fx ? -v.x : v.x, fy ? -v.y : v.y, 0f));
-                    sb.Append(k == 0 ? "" : ", ").Append(F(p.x)).Append(", ").Append(F(p.y));
-                }
-                sb.Append("]}");
-                n++;
+                roomIds.Add(sr.GetInstanceID());
+                if (WriteArt(sb, sr, n == 0, true)) n++;
+                else skipped++;
+            }
+            // 床の上に置かれた絵 (家具・木・岩・屋外の茂みの塊・床より手前の部屋の絵)。水はこの絵の形の際まで見せ、絵の下には見せない
+            // (影の中では写しの水がこの絵より手前に出る)。屋外の茂みの塊は部屋の絵の一覧に無く、床と同じ奥行きにある。
+            // 動く物 (流される小物・押される家具・扉) と通気口 (水の下へ沈める) は入れない
+            sb.Append("\n  ],\n  \"covers\": [\n");
+            string shipName = ship.name.Replace("(Clone)", "");
+            float back = BackZ(shipName);
+            int covers = 0;
+            foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
+            {
+                if (!sr || !sr.enabled || !sr.sprite || sr.color.a < 0.25f) continue;
+                float z = sr.transform.position.z;
+                if ((z >= back && roomIds.Contains(sr.GetInstanceID())) || z >= SkyZ || sr.name.StartsWith("Mrp", StringComparison.Ordinal)) continue;
+                var bs = sr.bounds.size;
+                if (bs.x > 20f || bs.y > 20f) continue;
+                if (PropSim.MovableSprite(sr.sprite.name) || FurnitureKinds.TryGet(sr.transform, shipName, out FurnitureKind _)) continue;
+                if (sr.GetComponentInParent<OpenableDoor>() || sr.GetComponentInParent<Vent>()) continue;
+                if (WriteArt(sb, sr, covers == 0, false)) covers++;
             }
             sb.Append("\n  ],\n  \"solid\": {\"w\": ").Append(SolidMap.W).Append(", \"h\": ").Append(SolidMap.H)
               .Append(", \"origin\": [").Append(F(SolidMap.Origin.x)).Append(", ").Append(F(SolidMap.Origin.y))
@@ -429,8 +426,56 @@ internal static class FloorMask
             sb.Append("\n  ]\n}\n");
             string path = System.IO.Path.Combine(TestBridge.ScreensDir, $"floor_{ship.name}.json");
             System.IO.File.WriteAllText(path, sb.ToString());
-            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} -> {path}");
+            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} -> {path}");
         });
+    }
+
+    // 絵 1 枚の配置 (テクスチャの四角・世界への写し方・絵が描かれる三角形)。部屋の絵は、詰め方が密・回転の物は画素を引けないので書かない。
+    // 手前の絵は三角形だけでも形になるので、画素を引けない物はテクスチャ無しで書く
+    private static bool WriteArt(StringBuilder sb, SpriteRenderer sr, bool first, bool needTex)
+    {
+        var sp = sr.sprite;
+        var tex = sp ? sp.texture : null;
+        bool texOk = tex && !(sp.packed && (sp.packingMode == SpritePackingMode.Tight || sp.packingRotation != SpritePackingRotation.None));
+        if (!sp || (needTex && !texOk)) return false;
+        bool fx = sr.flipX, fy = sr.flipY;
+        var t = sr.transform;
+        string place = null;
+        if (texOk)
+        {
+            Rect tr = sp.textureRect;
+            Vector2 off = sp.textureRectOffset, pv = sp.pivot;
+            float ppu = sp.pixelsPerUnit;
+            Vector3 World(float tx, float ty)
+            {
+                float lx = (tx - tr.x + off.x - pv.x) / ppu, ly = (ty - tr.y + off.y - pv.y) / ppu;
+                if (fx) lx = -lx;
+                if (fy) ly = -ly;
+                return t.TransformPoint(new Vector3(lx, ly, 0f));
+            }
+            const float span = 1000f;
+            Vector3 w0 = World(0f, 0f), wx = World(span, 0f), wy = World(0f, span);
+            if (MathF.Abs(wx.y - w0.y) <= 0.01f && MathF.Abs(wy.x - w0.x) <= 0.01f)
+                place = new StringBuilder(", \"texture\": \"").Append(tex.name)
+                  .Append("\", \"texSize\": [").Append(tex.width).Append(", ").Append(tex.height)
+                  .Append("], \"texRect\": [").Append(F(tr.xMin)).Append(", ").Append(F(tr.yMin)).Append(", ").Append(F(tr.width)).Append(", ").Append(F(tr.height))
+                  .Append("], \"w0\": [").Append(F(w0.x)).Append(", ").Append(F(w0.y))
+                  .Append("], \"d\": [").Append(F((wx.x - w0.x) / span)).Append(", ").Append(F((wy.y - w0.y) / span)).Append(']').ToString();
+        }
+        if (needTex && place == null) return false;
+        sb.Append(first ? "" : ",\n").Append("    {\"sprite\": \"").Append(sp.name).Append('"').Append(place)
+          .Append(", \"z\": ").Append(F(t.position.z)).Append(", \"order\": ").Append(sr.sortingOrder).Append(", \"tris\": [");
+        // 絵が実際に描かれる三角形 (世界座標)。テクスチャの四角の中でも三角形の外はアトラスの隣の絵なので描かない
+        var vs = sp.vertices;
+        var ts = sp.triangles;
+        for (int k = 0; k < ts.Length; k++)
+        {
+            var v = vs[ts[k]];
+            var p = t.TransformPoint(new Vector3(fx ? -v.x : v.x, fy ? -v.y : v.y, 0f));
+            sb.Append(k == 0 ? "" : ", ").Append(F(p.x)).Append(", ").Append(F(p.y));
+        }
+        sb.Append("]}");
+        return true;
     }
 
     private static string F(float v) => v.ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture);

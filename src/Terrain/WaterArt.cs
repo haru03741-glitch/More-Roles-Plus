@@ -111,6 +111,7 @@ internal static class WaterArt
                 Queue(t);
                 // 水が上の壁を這い上がるので、上のタイルも描き直す
                 if (t + WaterSim.TilesW < WaterSim.TilesW * WaterSim.TilesH) Queue(t + WaterSim.TilesW);
+                QueueFillTargets(t);
             }
             dirty.Clear();
         }
@@ -225,6 +226,7 @@ internal static class WaterArt
         _closed ??= new bool[rw * rw];
         bool any = false;
         bool crater = Craters.Count > 0;
+        var fill = EnsureFill();
         float cs = WaterSim.Cell, ox = WaterSim.Origin.x, oy = WaterSim.Origin.y;
         float org0x = ox, org0y = oy;
         for (int y = 0; y < rw; y++)
@@ -236,7 +238,13 @@ internal static class WaterArt
             _closed[y * rw + x] = inGrid && !WaterSim.Open(cy * w + cx);
             // 閉じた升 (壁の際) には、開いた隣が 1 つだけの時にその水を描き込む。壁の中は画素ごとの SolidMap で切るので、
             // 水が壁の際まで届いて見える。開いた隣が 2 つ以上 (升の中を細い壁が通っている) だと、乾いた側まで水を描いてしまうので描かない
-            if (v == 0 && cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1 && !WaterSim.Open(cy * w + cx))
+            if (inGrid && fill != null && fill[cy * w + cx] >= 0 && !WaterSim.Open(cy * w + cx))
+            {
+                // 当たり判定の中でも絵の上では床の所: 近くの水をそのまま描き、縁は床マスク (絵の形) で切る
+                v = WaterSim.Height(fill[cy * w + cx]);
+                _closed[y * rw + x] = false;
+            }
+            else if (v == 0 && cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1 && !WaterSim.Open(cy * w + cx))
             {
                 int k = cy * w + cx, open = 0, from = 0;
                 if (WaterSim.Open(k + 1)) { open++; from = k + 1; }
@@ -322,6 +330,151 @@ internal static class WaterArt
         if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
         Drawn++;
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    // 当たり判定は家具や壁の絵より大きく取ってある (家具の手前・壁の根元に、絵では床なのに水の升が閉じた帯ができる)。
+    // 閉じた水の升のうち、床マスクで床の所に、近くの開いた水の升の水を描く。写し元は歩ける所から床の画素だけを通って
+    // FillReach まで地図の升 (1/16 単位) で塗り広げて決める: 壁と家具の絵は床でないので、その向こうの乾いた所へは写らない。
+    // 絵だけの話で、水の計算 (量・流れ・指紋) は変えない
+    private const float FillReach = 2f; // 縦横の升の数で数える (斜めは短くなる)
+    private static int[] _fillFrom;          // 水の升ごとの写し元の水の升 (-1 = 写さない)
+    private static byte[] _fillTargets;      // タイルごとに、そこを写し元にしている隣のタイルの向き (8 方向のビット)
+    private static int _fillGen = -1;
+    private static bool _fillDirty = true;
+    internal static double FillMs { get; private set; }
+    internal static int FillCells { get; private set; }
+
+    private static readonly int[] TileDx = { -1, 0, 1, -1, 1, -1, 0, 1 }, TileDy = { -1, -1, -1, 0, 0, 1, 1, 1 };
+
+    // 床マスクか歩ける所が変わった範囲 (家具が動いた・壁が壊れた)。次に描く時にその周りだけ写し元を決め直す
+    private static readonly List<Rect> FillPending = new();
+    private static int[] _fillSrc = Array.Empty<int>(), _fillQueue = Array.Empty<int>();
+    private static byte[] _fillDist = Array.Empty<byte>();
+
+    private static int[] EnsureFill()
+    {
+        if (!_fillDirty && _fillGen == GameClock.ShipGen)
+        {
+            if (FillPending.Count == 0 || _fillFrom == null) return _fillFrom;
+            long p0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            float size = WaterSim.Cell;
+            var o = WaterSim.Origin;
+            foreach (var r in FillPending)
+                Fill((int)MathF.Floor((r.xMin - o.x) / size), (int)MathF.Floor((r.yMin - o.y) / size),
+                    (int)MathF.Ceiling((r.xMax - o.x) / size), (int)MathF.Ceiling((r.yMax - o.y) / size));
+            FillPending.Clear();
+            FillMs = (System.Diagnostics.Stopwatch.GetTimestamp() - p0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            return _fillFrom;
+        }
+        _fillDirty = false;
+        _fillGen = GameClock.ShipGen;
+        _fillFrom = null;
+        _fillTargets = null;
+        FillPending.Clear();
+        FillCells = 0;
+        if (!FloorMask.Active || FloorMask.Off || !SolidMap.Valid) return null;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        int w = WaterSim.W, h = WaterSim.H;
+        _fillFrom = new int[w * h];
+        Array.Fill(_fillFrom, -1);
+        _fillTargets = new byte[WaterSim.TilesW * WaterSim.TilesH];
+        Fill(0, 0, w, h);
+        // 地図全体の作業場所は大きいので持ち続けない (後の決め直しは家具 1 つ・穴 1 つの周りだけ)
+        _fillSrc = Array.Empty<int>(); _fillQueue = Array.Empty<int>(); _fillDist = Array.Empty<byte>();
+        FillMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        Plugin.Logger.LogInfo($"water art fill: cells={FillCells} ms={FillMs:0.0}");
+        return _fillFrom;
+    }
+
+    // 水の升 [x0, x1) × [y0, y1) の写し元を決め直す。塗り広げは FillReach ぶん外側の升から始める
+    private static void Fill(int x0, int y0, int x1, int y1)
+    {
+        int w = WaterSim.W, h = WaterSim.H, sub = WaterSim.Sub, sw = SolidMap.W, sh = SolidMap.H;
+        int max = (int)(FillReach * SolidMap.Ppu);
+        int margin = max / sub + 1;
+        x0 = Math.Max(0, x0); y0 = Math.Max(0, y0); x1 = Math.Min(w, x1); y1 = Math.Min(h, y1);
+        if (x0 >= x1 || y0 >= y1) return;
+        // 地図の升で数えた塗る範囲 (左下 rx0, ry0 から rw × rh)
+        int rx0 = Math.Max(0, (x0 - margin) * sub), ry0 = Math.Max(0, (y0 - margin) * sub);
+        int rx1 = Math.Min(sw, (x1 + margin) * sub), ry1 = Math.Min(sh, (y1 + margin) * sub);
+        int rw = rx1 - rx0, rh = ry1 - ry0, n = rw * rh;
+        if (_fillSrc.Length < n) { _fillSrc = new int[n]; _fillDist = new byte[n]; _fillQueue = new int[n]; }
+        var src = _fillSrc;
+        var dist = _fillDist;
+        var queue = _fillQueue;
+        Array.Fill(src, -1, 0, n);
+        Array.Clear(dist, 0, n);
+        int head = 0, tail = 0;
+        for (int y = 0; y < rh; y++)
+        for (int x = 0; x < rw; x++)
+        {
+            int k = (ry0 + y) * sw + rx0 + x;
+            if (!SolidMap.OpenCell(k)) continue;
+            int wx = (rx0 + x) / sub, wy = (ry0 + y) / sub;
+            if (wx >= w || wy >= h || !WaterSim.Open(wy * w + wx)) continue;
+            src[y * rw + x] = wy * w + wx;
+            queue[tail++] = y * rw + x;
+        }
+        float cell = 1f / SolidMap.Ppu;
+        var org = SolidMap.Origin;
+        while (head < tail)
+        {
+            int k = queue[head++];
+            int d = dist[k] + 1;
+            if (d > max) continue;
+            int x = k % rw, y = k / rw;
+            if (x > 0) Step(k - 1, k, d);
+            if (x < rw - 1) Step(k + 1, k, d);
+            if (y > 0) Step(k - rw, k, d);
+            if (y < rh - 1) Step(k + rw, k, d);
+        }
+
+        int tw = WaterSim.TilesW, tc = WaterSim.TileCells;
+        for (int wy = y0; wy < y1; wy++)
+        for (int wx = x0; wx < x1; wx++)
+        {
+            int wk = wy * w + wx;
+            if (_fillFrom[wk] >= 0) FillCells--;
+            _fillFrom[wk] = -1;
+            if (WaterSim.Open(wk)) continue;
+            int best = -1, bestD = int.MaxValue;
+            for (int sy = wy * sub - ry0; sy < wy * sub + sub - ry0 && sy < rh; sy++)
+            for (int sx = wx * sub - rx0; sx < wx * sub + sub - rx0 && sx < rw; sx++)
+            {
+                if (sx < 0 || sy < 0) continue;
+                int k = sy * rw + sx;
+                if (src[k] >= 0 && dist[k] < bestD) { bestD = dist[k]; best = src[k]; }
+            }
+            if (best < 0) continue;
+            _fillFrom[wk] = best;
+            FillCells++;
+            int ftx = best % w / tc, fty = best / w / tc, ttx = wx / tc, tty = wy / tc;
+            if (ftx == ttx && fty == tty) continue;
+            for (int i = 0; i < 8; i++)
+                if (ttx - ftx == TileDx[i] && tty - fty == TileDy[i]) _fillTargets[fty * tw + ftx] |= (byte)(1 << i);
+        }
+
+        void Step(int j, int from, int d)
+        {
+            if (src[j] != -1) return;
+            if (!FloorMask.AllFloor(org.x + (rx0 + j % rw) * cell, org.y + (ry0 + j / rw) * cell, cell)) { src[j] = -2; return; }
+            src[j] = src[from];
+            dist[j] = (byte)d;
+            queue[tail++] = j;
+        }
+    }
+
+    // 写し元のタイルの水が変わった: そこから写している隣のタイルも描き直す
+    private static void QueueFillTargets(int t)
+    {
+        if (_fillTargets == null || t >= _fillTargets.Length || _fillTargets[t] == 0) return;
+        int tw = WaterSim.TilesW, th = WaterSim.TilesH, tx = t % tw, ty = t / tw;
+        for (int i = 0; i < 8; i++)
+        {
+            if ((_fillTargets[t] & (1 << i)) == 0) continue;
+            int x = tx + TileDx[i], y = ty + TileDy[i];
+            if (x >= 0 && y >= 0 && x < tw && y < th) Queue(y * tw + x);
+        }
     }
 
     // 壁の面の画素 (wx, 床からの高さ z の所) の真下の床の水の深さ (単位)。横は升の真ん中の間を線形に引く (升ごとの段を水面の線に出さない)
@@ -616,10 +769,16 @@ internal static class WaterArt
         if (!FloorMask.Active) return;
         float size = WaterSim.TileCells * WaterSim.Cell;
         var org = WaterSim.Origin;
-        foreach (var t in Tiles.Values)
+        // 写し元は FillReach まで離れた所から来るので、その外側の升も写し直して水を描き直す
+        var wide = Rect.MinMaxRect(r.xMin - FillReach, r.yMin - FillReach, r.xMax + FillReach, r.yMax + FillReach);
+        if (_fillFrom != null) FillPending.Add(wide);
+        foreach (var kv in Tiles)
         {
-            if (!t.Floor || !t.Sr) continue;
+            var t = kv.Value;
             float x0 = org.x + t.Tx * size, y0 = org.y + t.Ty * size;
+            if (wide.xMax <= x0 || wide.xMin >= x0 + size || wide.yMax <= y0 || wide.yMin >= y0 + size) continue;
+            if (_fillFrom != null && !t.Empty && !t.Waiting) { t.Waiting = true; Waiting.Add(kv.Key); }
+            if (!t.Floor || !t.Sr) continue;
             if (r.xMax <= x0 || r.xMin >= x0 + size || r.yMax <= y0 || r.yMin >= y0 + size) continue;
             UnityEngine.Object.Destroy(t.Floor);
             MakeFloor(t, x0, y0, size);
@@ -629,6 +788,7 @@ internal static class WaterArt
     // テスト用: 床マスクの使う / 使わないを切り替えた。今あるタイルを全部その方式で描き直す
     internal static void FloorMaskToggled()
     {
+        _fillDirty = true;
         foreach (var kv in Tiles)
         {
             var t = kv.Value;
@@ -714,5 +874,5 @@ internal static class WaterArt
         _clock = 0f;
     }
 
-    internal static string Describe() => $"tiles={Tiles.Count} waiting={Waiting.Count} drawn={Drawn} drawMs={LastDrawMs:0.00}";
+    internal static string Describe() => $"tiles={Tiles.Count} waiting={Waiting.Count} drawn={Drawn} drawMs={LastDrawMs:0.00} fill={FillCells}/{FillMs:0.0}ms";
 }

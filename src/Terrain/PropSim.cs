@@ -75,6 +75,8 @@ internal static class PropSim
     private const int BumpGap = 12;
     private const int BumpPerFrame = 3;
 
+    internal static bool MovableSprite(string name) => Movable.Contains(name);
+
     // 動かす物の絵の名前 (部屋の絵と別の絵を持つ小物と家具)
     private static readonly HashSet<string> Movable = new()
     {

@@ -43,6 +43,10 @@ SHADE_MIN = 0.45      # 床の色に比べた明るさの範囲 (影の落ちた
 SHADE_MAX = 1.15
 LINE_CLOSE = 3        # 両側が床の細い線を埋める半径 (画素)
 REACH = 0.2           # 歩ける所からこの距離 (世界単位) より離れた画素は床にしない
+# 床が部屋の絵でなく地面の絵の船: 部屋の絵 (壁・家具) も手前の絵 (家具・木・岩) も無い地面は、歩ける所からこの距離まで
+# つながっていれば床にする。当たり判定は家具や壁の絵より大きく取ってあり、REACH で切ると家具の手前に乾いた地面の帯が残る。
+# 広げるのは手前の絵の形の手前まで (影の中では水の写しが手前の絵より前に出る)。歩ける所の近くの床は手前の絵があっても削らない (乗れる床板の絵がある)
+GROUND_REACH_SHIP = {"FungleShip": 1.0}
 FURN_DEEP = 0.08      # 家具の当たり判定の縁からこれより内側は床にしない (当たり判定が絵より大きい所の縁の帯は床のまま)
 SPECK = 60            # これより小さい床の島・床の中の穴 (画素数) は消す
 EDGE_SIGMA = 1.6      # 縁をならすぼかしの幅 (画素)
@@ -64,7 +68,7 @@ DEFAULT_BUNDLES = [
 
 
 def load_textures(folder, rooms):
-    need = {(r["texture"], r["texSize"][0], r["texSize"][1]) for r in rooms}
+    need = {(r["texture"], r["texSize"][0], r["texSize"][1]) for r in rooms if "texture" in r}
     out = {}
     for b in sorted(glob.glob(os.path.join(folder, "*.bundle"))):
         env = UnityPy.load(b)
@@ -113,6 +117,39 @@ def compose(j, tex, ppu):
         out[:, 3] = np.maximum(dst[:, 3], src[:, 3])
         canvas[ys, xs] = out
     return canvas
+
+
+def cover_mask(j, tex, ppu, shape):
+    """手前の絵 (家具・木・岩) が描かれている画素。画素を引ける絵は不透明な所だけ、引けない絵は三角形の形"""
+    ox, oy = j["solid"]["origin"]
+    ch, cw = shape
+    out = np.zeros(shape, bool)
+    for r in j.get("covers", []):
+        if r["sprite"] in ALWAYS_FLOOR:
+            continue
+        tri = np.array(r["tris"], np.float64).reshape(-1, 3, 2)
+        if len(tri) == 0:
+            continue
+        im = Image.new("L", (cw, ch), 0)
+        dr = ImageDraw.Draw(im)
+        for p in tri:
+            dr.polygon([((x - ox) * ppu, (y - oy) * ppu) for x, y in p], fill=1)
+        m = np.asarray(im).astype(bool)
+        key = (r.get("texture"), *r.get("texSize", (0, 0)))
+        if key not in tex:
+            out |= m
+            continue
+        ys, xs = np.nonzero(m)
+        wx = ox + (xs + 0.5) / ppu
+        wy = oy + (ys + 0.5) / ppu
+        tx = np.floor((wx - r["w0"][0]) / r["d"][0]).astype(int)
+        ty = np.floor((wy - r["w0"][1]) / r["d"][1]).astype(int)
+        x0, y0, w, h = r["texRect"]
+        ok = (tx >= int(round(x0))) & (tx < int(round(x0 + w))) & (ty >= int(round(y0))) & (ty < int(round(y0 + h)))
+        xs, ys, tx, ty = xs[ok], ys[ok], tx[ok], ty[ok]
+        hit = tex[key][ty, tx, 3] > DRAWN
+        out[ys[hit], xs[hit]] = True
+    return out
 
 
 def grid_at(j, ppu, shape, bits):
@@ -218,7 +255,7 @@ def learn(j, canvas, ppu, floor, inner, rgb, lum, ch, key):
     return out
 
 
-def classify(j, canvas, ppu):
+def classify(j, canvas, ppu, cover):
     s = j["solid"]
     raw = np.frombuffer(__import__("base64").b64decode(s["open"]), np.uint8)
     bits = np.unpackbits(raw, bitorder="little")[: s["w"] * s["h"]].reshape(s["h"], s["w"]).astype(bool)
@@ -252,7 +289,17 @@ def classify(j, canvas, ppu):
         # 床の色に入っていても、同じ色の壁とつながって落ちたまとまりがある。歩ける所の近くで切ったまとまりのまま足す
         floor |= keep_walkable(ok[lab], good, drawn)
     deep = ndimage.distance_transform_edt(furn) > FURN_DEEP * ppu
-    return smooth(floor & near & ~deep), walk, furn
+    floor &= near
+    reach = GROUND_REACH_SHIP.get(j["ship"].replace("(Clone)", ""))
+    if reach:
+        # 歩ける所につながった絵の無い地面 (家具と壁の絵の縁まで)
+        ground = ~drawn & ~cover & (ndimage.distance_transform_edt(~walk) <= reach * ppu)
+        lab, n = ndimage.label(ground)
+        touch = np.zeros(n + 1, bool)
+        touch[np.unique(lab[walk & ground])] = True
+        touch[0] = False
+        floor |= touch[lab]
+    return smooth(floor & ~deep), walk, furn
 
 
 def keep_walkable(body, good, drawn):
@@ -334,9 +381,12 @@ def main():
         j["backZ"] = BACK_Z_SHIP.get(j["ship"].replace("(Clone)", ""), BACK_Z)
         ds = sorted(abs(r["d"][0]) for r in j["rooms"])
         ppu = round(1.0 / ds[len(ds) // 2], 4)  # 部屋の絵でいちばん多い細かさ
-        tex = load_textures(folder, j["rooms"])
+        ship = j["ship"].replace("(Clone)", "")
+        reach = ship in GROUND_REACH_SHIP
+        tex = load_textures(folder, j["rooms"] + (j.get("covers", []) if reach else []))
         canvas = compose(j, tex, ppu)
-        floor, walk, furn = classify(j, canvas, ppu)
+        cover = cover_mask(j, tex, ppu, canvas.shape[:2]) if reach else np.zeros(canvas.shape[:2], bool)
+        floor, walk, furn = classify(j, canvas, ppu, cover)
         ship = j["ship"].replace("(Clone)", "")
         face = wall_face(canvas, floor, ppu)
         size = write_mask(os.path.join(a.out, ship + ".bin"), j["sig"], j["solid"]["origin"], ppu, floor, face)
@@ -350,6 +400,7 @@ def main():
             rgb[face] = rgb[face] * 0.4 + np.array([1.0, 0.7, 0.0]) * 0.6
             if miss is not None:
                 rgb[miss] = np.array([1.0, 0.1, 0.1])
+            rgb[cover & ~floor] = rgb[cover & ~floor] * 0.5 + np.array([0.6, 0.0, 0.8]) * 0.5
             Image.fromarray((np.clip(rgb, 0, 1)[::-1] * 255).astype(np.uint8)).save(os.path.join(a.preview, ship + "_floor.png"))
 
 
