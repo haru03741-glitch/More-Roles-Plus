@@ -532,6 +532,7 @@ internal static class WaterArt
     private static unsafe void Ensure(Tile t)
     {
         if (t.Go) return;
+        SinkVents();
         int tc = WaterSim.TileCells, n = tc * Px;
         float cell = WaterSim.Cell;
         var org = WaterSim.Origin;
@@ -568,6 +569,33 @@ internal static class WaterArt
         }
         t.Furn = FurnitureMask(wx, wy, tc * cell);
         t.FurnVersion = _furnVersion;
+    }
+
+    private static int _ventGen = -1;
+
+    // ベントは床の穴なので水の下に見せる。本編のベントの絵は床より手前 (Skeld で床 8・ベント 6.8) にあり、そのままだと水の上に出る。
+    // 絵を床と水の板の間 (板は床の 0.0004 手前) へ下げる。子 (矢印のボタンなど) は元の奥行きのまま残す。
+    // 本編はベントの位置を 2 次元でしか使わない (入る時の位置合わせも x, y だけ)
+    private static void SinkVents()
+    {
+        if (_ventGen == GameClock.ShipGen) return;
+        _ventGen = GameClock.ShipGen;
+        var ship = ShipStatus.Instance;
+        if (!ship) return;
+        foreach (var v in ship.AllVents)
+        {
+            if (!v) continue;
+            var tr = v.transform;
+            var p = tr.position;
+            float front = DamageMap.FrontZ(new Vector2(p.x, p.y));
+            float z = front - 0.0002f * DamageMap.ZScale(front);
+            if (p.z >= z) continue;
+            int n = tr.childCount;
+            var keep = new Vector3[n];
+            for (int i = 0; i < n; i++) keep[i] = tr.GetChild(i).position;
+            tr.position = FxMath.V3(p.x, p.y, z);
+            for (int i = 0; i < n; i++) tr.GetChild(i).position = keep[i];
+        }
     }
 
     private static unsafe void MakeFloor(Tile t, float wx, float wy, float size)
