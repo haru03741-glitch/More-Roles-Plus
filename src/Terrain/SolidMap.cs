@@ -41,6 +41,7 @@ internal static class SolidMap
     internal static int H => _h;
     internal static float Ppu => _ppu;
     internal static bool OpenCell(int k) => _open[k] != 0;
+    internal static byte[] OpenCells => _open; // 0 = 歩けない (読むだけ)
     internal static int IslandCell(int k) => _island == null ? 0 : _island[k];
     internal static bool LeakedCell(int k) => _leaked != null && _leaked[k] != 0;
     private static float _ppu;
@@ -81,6 +82,9 @@ internal static class SolidMap
         IslandCount = 0;
         HullRects.Clear();
         ExtraSeeds.Clear();
+        SmallShapes.Clear();
+        SmallSegs.Clear();
+        LateShapes.Clear();
         LeakedSeeds.Clear();
         if (!DamageMap.Ready()) { _ship = null; return false; }
         try { Build(ship); }
@@ -275,10 +279,12 @@ internal static class SolidMap
         string shipName = FurnitureKinds.ShipName(ship);
         foreach (var c in ship.GetComponentsInChildren<Collider2D>(false))
         {
-            if (!IsWall(c) || c.GetComponentInParent<OpenableDoor>()) continue;
-            if (FurnitureKinds.TryGet(c.transform, shipName, out _)) { movable++; continue; }
-            Segments(c, all);
-            cols++;
+            if (!IsWallShape(c) || c.GetComponentInParent<OpenableDoor>()) continue;
+            bool on = c.enabled;
+            if (FurnitureKinds.TryGet(c.transform, shipName, out _)) { if (on) movable++; continue; }
+            int from = all.Count;
+            if (on) { Segments(c, all); cols++; }
+            AddSmallShape(c, all, from, on);
         }
         float minX = DamageMap.Origin.x, minY = DamageMap.Origin.y;
         float maxX = minX + DamageMap.MapW * DamageMap.TexelSize, maxY = minY + DamageMap.MapH * DamageMap.TexelSize;
@@ -500,8 +506,59 @@ internal static class SolidMap
         IslandCount = count;
     }
 
-    internal static bool IsWall(Collider2D c) =>
-        c && c.enabled && !c.isTrigger && c.gameObject.layer == ShipLayer &&
+    // 床に置かれた小さな閉じた当たり判定 (岩・結晶・机・切ってある物も)。水が縁の先の物を飛び越えないための升作り (WaterSim) が使う。
+    // 船の全部の当たり判定を回すのはここだけにして、水が最初に出た時に同じ船を回し直さない
+    internal const float SmallShapeMax = 4f;
+    internal static readonly List<(Collider2D Col, float X0, float Y0, float X1, float Y1, int Start, int End)> SmallShapes = new();
+    internal static readonly List<Vector2> SmallSegs = new();
+    internal static readonly List<Collider2D> LateShapes = new();
+
+    private static void AddSmallShape(Collider2D c, List<Vector2> all, int from, bool on)
+    {
+        if (c.TryCast<EdgeCollider2D>()) return;
+        int start = SmallSegs.Count;
+        float x0, y0, x1, y1;
+        if (on)
+        {
+            var b = c.bounds;
+            x0 = b.min.x; y0 = b.min.y; x1 = b.max.x; y1 = b.max.y;
+        }
+        else
+        {
+            // 切ってある当たり判定の bounds は空なので、範囲は線分から測る
+            Segments(c, SmallSegs);
+            x0 = y0 = float.MaxValue; x1 = y1 = float.MinValue;
+            for (int i = start; i < SmallSegs.Count; i++)
+            {
+                var p = SmallSegs[i];
+                x0 = MathF.Min(x0, p.x); y0 = MathF.Min(y0, p.y); x1 = MathF.Max(x1, p.x); y1 = MathF.Max(y1, p.y);
+            }
+        }
+        if (SmallSegs.Count == start && !on) return;
+        if (x1 - x0 > SmallShapeMax || y1 - y0 > SmallShapeMax || x1 - x0 + y1 - y0 < 0.05f)
+        {
+            SmallSegs.RemoveRange(start, SmallSegs.Count - start);
+            return;
+        }
+        if (on) for (int i = from; i < all.Count; i++) SmallSegs.Add(all[i]);
+        SmallShapes.Add((c, x0, y0, x1, y1, start, SmallSegs.Count));
+    }
+
+    // 地図を作った後に足された当たり判定 (1 枚の絵から分けた家具)。作った直後は範囲が物理へ届いていないので、形は使う時に読む。
+    // 地図を作る前に足された物は作る時に拾う
+    internal static void NoteShape(Collider2D c)
+    {
+        var ship = ShipStatus.Instance;
+        if (!Valid || !ship || !IsWallShape(c) || c.GetComponentInParent<OpenableDoor>()) return;
+        if (FurnitureKinds.TryGet(c.transform, FurnitureKinds.ShipName(ship), out _)) return;
+        LateShapes.Add(c);
+    }
+
+    internal static bool IsWall(Collider2D c) => c && c.enabled && IsWallShape(c);
+
+    // 壁の当たり判定の形か (今切ってあるかは見ない)
+    private static bool IsWallShape(Collider2D c) =>
+        c && !c.isTrigger && c.gameObject.layer == ShipLayer &&
         c.gameObject.name != WallBody.CapName && c.gameObject.name != WallBody.MouthName && c.gameObject.name != HullEdgeName && c.gameObject.name != HeightLevels.LedgeName && c.gameObject.name != "MrpRubbleBlock";
 
     // 床の上の点。確か = 通気口とダミーの出現位置 (床に置かれる物)。扉は扉の板の両脇 (通り道の両側) の点を後から足し、

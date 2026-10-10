@@ -266,6 +266,7 @@ internal static class FurnitureSplit
                 var pts = new Vector2[colPath.Count];
                 for (int i = 0; i < pts.Length; i++) pts[i] = ptr.InverseTransformPoint(colPath[i]);
                 pc.points = pts;
+                SolidMap.NoteShape(pc);
             }
             var psr = go.AddComponent<SpriteRenderer>();
             psr.sprite = psp;

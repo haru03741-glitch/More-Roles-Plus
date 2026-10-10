@@ -334,7 +334,7 @@ internal static class WaterSim
         Links(0, 0, _w - 1, _h - 1, true);
         long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
         double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count} props={props}");
+        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count} props={props} hash={GridHash():x8}");
         DirtyTiles.Clear();
         Array.Clear(_tileDirty);
         _ready = true;
@@ -351,13 +351,14 @@ internal static class WaterSim
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
         int sw = SolidMap.W;
+        var solid = SolidMap.OpenCells;
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
         {
             int bits = 0;
-            for (int sy = 0; sy < Sub; sy++)
+            for (int sy = 0, row = y * Sub * sw + x * Sub; sy < Sub; sy++, row += sw)
             for (int sx = 0; sx < Sub; sx++)
-                if (SolidMap.OpenCell((y * Sub + sy) * sw + x * Sub + sx)) bits |= 1 << (sy * Sub + sx);
+                if (solid[row + sx] != 0) bits |= 1 << (sy * Sub + sx);
             int k = y * _w + x;
             if (PopCount(bits) < 4 || !Connected(bits) || _shut[k] != 0) bits = 0;
             _sub[k] = (ushort)bits;
@@ -375,7 +376,7 @@ internal static class WaterSim
             for (int d = 0; d < 4; d++) _flux[k * 4 + d] = 0;
             if (open != 0) Wake(k);
             for (int d = 0; d < 4; d++) Wake(k + Nx[d] + Ny[d] * _w);
-            Mark(k);
+            if (_ready) Mark(k); // 升を作る時の印は作り終えた所で捨てる
         }
         // 境の通れる向き (作り直した範囲と、その外周 1 升)
         for (int y = Math.Max(1, y0 - 1); y <= Math.Min(_h - 2, y1 + 1); y++)
@@ -412,47 +413,64 @@ internal static class WaterSim
         }
     }
 
+    // 升作りの結果 (物の升・影の線で切った向き・落ちる先) の指紋。作り方を変えても同じになることの確認用
+    private static uint GridHash()
+    {
+        uint h = 2166136261;
+        for (int i = 0; i < _propCell.Length; i++) h = (h ^ (uint)(_propCell[i] | _shadowCut[i] << 1)) * 16777619;
+        uint sum = 0;
+        foreach (var kv in FallTo) sum += (uint)(kv.Key * 73856093) ^ (uint)(kv.Value.To * 19349663) ^ (uint)(kv.Value.Delay * 83492791);
+        return h ^ sum;
+    }
     // 床に置かれた物: 壁の線と別に置かれた小さな閉じた当たり判定 (岩・結晶・机)。縁のすぐ隣がその中なら落ちない
     // (先を探すと物の中を素通りして、物の向こうの崖へ落ちる)。どの升も中の 5 点のどれかが当たり判定の中なら物の升。
     // 点は端末ごとの丸めで割れないよう 1/512 格子の間に置く
-    private const float PropMax = 4f;
+    // 形は歩ける所の地図 (SolidMap) を作った時に集めてある。そこから今切ってある物 (壊れた家具) を除く
     private static int ListPropCells()
     {
-        var ship = ShipStatus.Instance;
-        if (!ship) return -1;
+        if (!ShipStatus.Instance) return -1;
         int cols = 0;
-        string shipName = FurnitureKinds.ShipName(ship);
-        var seg = new List<Vector2>();
-        const float nudge = 1f / 1024f;
-        foreach (var c in ship.GetComponentsInChildren<Collider2D>(false))
+        foreach (var (c, bx0, by0, bx1, by1, start, end) in SolidMap.SmallShapes)
         {
-            if (!SolidMap.IsWall(c) || c.TryCast<EdgeCollider2D>() || c.GetComponentInParent<OpenableDoor>()) continue;
-            if (FurnitureKinds.TryGet(c.transform, shipName, out _)) continue;
+            if (!c || !c.enabled || !c.gameObject.activeInHierarchy) continue;
+            cols++;
+            MarkProp(SolidMap.SmallSegs, start, end, bx0, by0, bx1, by1);
+        }
+        var seg = new List<Vector2>();
+        foreach (var c in SolidMap.LateShapes)
+        {
+            if (!c || !c.enabled || !c.gameObject.activeInHierarchy) continue;
             var b = c.bounds;
             float bx0 = b.min.x, by0 = b.min.y, bx1 = b.max.x, by1 = b.max.y;
-            if (bx1 - bx0 > PropMax || by1 - by0 > PropMax || bx1 - bx0 + by1 - by0 < 0.05f) continue;
+            if (bx1 - bx0 > SolidMap.SmallShapeMax || by1 - by0 > SolidMap.SmallShapeMax || bx1 - bx0 + by1 - by0 < 0.05f) continue;
             cols++;
             seg.Clear();
             SolidMap.Segments(c, seg);
-            int x0 = Math.Max(0, (int)MathF.Floor((bx0 - _org.x) / _cell) - 1), x1 = Math.Min(_w - 1, (int)MathF.Floor((bx1 - _org.x) / _cell) + 1);
-            int y0 = Math.Max(0, (int)MathF.Floor((by0 - _org.y) / _cell) - 1), y1 = Math.Min(_h - 1, (int)MathF.Floor((by1 - _org.y) / _cell) + 1);
-            for (int y = y0; y <= y1; y++)
-            for (int x = x0; x <= x1; x++)
-            {
-                float px = _org.x + (x + 0.5f) * _cell + nudge, py = _org.y + (y + 0.5f) * _cell + nudge, q = _cell * 0.375f;
-                if (InsideSegs(seg, px, py) || InsideSegs(seg, px - q, py) || InsideSegs(seg, px + q, py) ||
-                    InsideSegs(seg, px, py - q) || InsideSegs(seg, px, py + q))
-                    _propCell[y * _w + x] = 1;
-            }
+            MarkProp(seg, 0, seg.Count, bx0, by0, bx1, by1);
         }
         return cols;
     }
 
+    private static void MarkProp(List<Vector2> seg, int start, int end, float bx0, float by0, float bx1, float by1)
+    {
+        const float nudge = 1f / 1024f;
+        int x0 = Math.Max(0, (int)MathF.Floor((bx0 - _org.x) / _cell) - 1), x1 = Math.Min(_w - 1, (int)MathF.Floor((bx1 - _org.x) / _cell) + 1);
+        int y0 = Math.Max(0, (int)MathF.Floor((by0 - _org.y) / _cell) - 1), y1 = Math.Min(_h - 1, (int)MathF.Floor((by1 - _org.y) / _cell) + 1);
+        for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+        {
+            float px = _org.x + (x + 0.5f) * _cell + nudge, py = _org.y + (y + 0.5f) * _cell + nudge, q = _cell * 0.375f;
+            if (InsideSegs(seg, start, end, px, py) || InsideSegs(seg, start, end, px - q, py) || InsideSegs(seg, start, end, px + q, py) ||
+                InsideSegs(seg, start, end, px, py - q) || InsideSegs(seg, start, end, px, py + q))
+                _propCell[y * _w + x] = 1;
+        }
+    }
+
     // 線分の組 (a, b, a, b, ...) で囲まれた中か (偶奇)
-    private static bool InsideSegs(List<Vector2> seg, float x, float y)
+    private static bool InsideSegs(List<Vector2> seg, int start, int end, float x, float y)
     {
         bool inside = false;
-        for (int i = 0; i + 1 < seg.Count; i += 2)
+        for (int i = start; i + 1 < end; i += 2)
         {
             float ax = seg[i].x, ay = seg[i].y, bx = seg[i + 1].x, by = seg[i + 1].y;
             if ((ay > y) != (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside;
