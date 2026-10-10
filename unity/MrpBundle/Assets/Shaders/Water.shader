@@ -1,9 +1,11 @@
 // 水 (床の水たまり・噴き出し) を描くシェーダ。CPU はスプライトの絵に「水の量」だけを書き、見た目はここで決める。
 // 絵は双線形で引くので、粗い升の値でも縁はなめらかな線で切れる (fwidth で 1 画素ぶんぼかす)。
 //
-// _Mode = 0 (水たまり): R = 深さ (1 = _DeepAt)・G = 見せてよいか (壁の中・家具の上 = 0)・B = 濡れた升をならした値 (_WetLevel の線が水の縁)。_FloorMask = 床の画素 (0.5 の線が床の縁)。
+// _Mode = 0 (水たまり): R = 深さ (1 = _RUnits 単位)・G = 見せてよいか (壁の中・家具の上 = 0)・B = 濡れた升をならした値 (_WetLevel の線が水の縁)。_FloorMask = 床の画素 (0.5 の線が床の縁)。
 //   深いほど濃く不透明・浅いほど床が透ける。縁の内側に細い濃い輪郭とその内に明るい縁 (表面張力の盛り上がり)。
 //   水面の揺れ = ノイズ 2 枚を逆向きに流して、その傾きで光の照り返し (きらめき) と浅い所の明暗 (光の網) を出す。
+//   A = 壁の面の上の水の厚さ (単位 × _FaceScale / 255 + 0.5・壁の面でない所 = 0)。斜め上から見た絵では深い水は奥の壁を這い上がって見えるので、
+//   床マスクの外 (壁の面) は A の 0.5 の線を水面の線にして、その下を水で覆う。
 // _Mode = 1 (噴き出し): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)。
 //   _Flow (xy = 流れの向き) に沿って伸びる筋を流し、筋の明るい所と泡は白、それ以外は透けた水色。
 Shader "MRP/Water"
@@ -15,19 +17,27 @@ Shader "MRP/Water"
         _ShadowOnly ("Only where the view shadow is (copy in front of the shadow)", Float) = 0
         _ShadowGain ("Opacity in the shadow", Float) = 1
         _Mode ("Mode (0 puddle / 1 spray)", Float) = 0
-        _Edge ("Edge level", Float) = 0.05
         _WetLevel ("Puddle edge on the wet coverage (B)", Float) = 0.35
         [PerRendererData] _FloorMask ("Floor mask", 2D) = "white" {}
         [PerRendererData] _FloorOn ("Floor mask on", Float) = 0
         _Shallow ("Shallow color", Color) = (0.45, 0.72, 0.95, 0.38)
         _Deep ("Deep color", Color) = (0.16, 0.42, 0.78, 0.78)
-        _DeepRange ("Depth to deep", Float) = 0.6
         _Outline ("Outline color", Color) = (0.11, 0.27, 0.5, 0.9)
         _OutlinePx ("Outline width (px)", Float) = 1.6
         _Rim ("Rim color", Color) = (0.86, 0.95, 1.0, 0.85)
         _RimPx ("Rim width (px)", Float) = 2.5
         _Flow ("Flow dir (spray)", Vector) = (1, 0, 0, 0)
         _SprayEdge ("Spray edge level", Float) = 0.3
+        _FaceScale ("Face water thickness scale (A)", Float) = 96
+        _RUnits ("Depth (units) at R = 1", Float) = 1.5625
+        _ShallowDepth ("Depth (units) to the deep color", Float) = 0.35
+        _Fog ("Murk per unit of depth", Float) = 1.3
+        _Abyss ("Deep murk color", Color) = (0.05, 0.22, 0.38, 0.95)
+        _Caustic ("Caustic net strength", Float) = 0.18
+        _LineWave ("Wall waterline wave (units)", Float) = 0.05
+        _FaceView ("Extra thickness seen on the wall face (units)", Float) = 0.1
+        _FoamW ("Foam band under the wall waterline (units)", Float) = 0.06
+        _Shaft ("Light shafts when deep", Float) = 1.0
     }
 
     SubShader
@@ -54,8 +64,9 @@ Shader "MRP/Water"
             sampler2D _MrpShadowTex; // 影のカメラの描き先 (視界の所はアルファ 0)
             float _ShadowOnly, _ShadowGain;
             float _MrpShadowOn; // 影の板が出ている間だけ 1
-            float _Mode, _Edge, _WetLevel, _DeepRange, _OutlinePx, _RimPx, _SprayEdge;
-            fixed4 _Shallow, _Deep, _Outline, _Rim;
+            float _Mode, _WetLevel, _OutlinePx, _RimPx, _SprayEdge, _FaceScale;
+            float _RUnits, _ShallowDepth, _Fog, _Caustic, _LineWave, _FaceView, _FoamW, _Shaft;
+            fixed4 _Shallow, _Deep, _Outline, _Rim, _Abyss;
             float4 _Flow;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
@@ -90,23 +101,37 @@ Shader "MRP/Water"
 
             fixed4 Puddle(v2f i, float4 data)
             {
-                float d = data.r;
+                float du = data.r * _RUnits;                      // 深さ (単位)
                 float wv = data.b - _WetLevel;                    // 濡れた升をならした値 (深さの低い線は升の形の階段になる)
                 float inside = wv / max(fwidth(wv), 1e-5);       // 縁から内側へ何画素か
                 float vis = smoothstep(0.35, 0.65, data.g);
                 // 床マスクの縁 (家具・壁の絵の輪郭) から内側へ何画素か。マスクはならしてあるので、
                 // 半分の値の線を画面の画素の幅で切ると拡大しても升目の段が出ない
                 float wet = inside;
+                float faceIn = -1.0, face = 0.0, ex = 0.0;
                 if (_FloorOn > 0.5)
                 {
                     float m = tex2D(_FloorMask, EdgeUv(i.uv, _FloorMask_TexelSize)).r - 0.5;
-                    wet = min(inside, m / max(fwidth(m), 1e-4));
+                    float mIn = m / max(fwidth(m), 1e-4);
+                    wet = min(inside, mIn);
+                    // 壁の面: 水面の線 (A の 0.5) より下で、床の外
+                    // 水面は揺れているので、壁に当たる線も上下に波打つ
+                    float wave = tex2D(_Noise, float2(i.world.x * 0.35 + _Time.y * 0.04, _Time.y * 0.025)).r - 0.5;
+                    ex = (data.a - 0.5) * 255.0 / _FaceScale + wave * _LineWave * 2.0;
+                    faceIn = ex / max(fwidth(ex), 1e-4);
+                    face = data.a > 0.0 ? saturate(faceIn + 0.5) * saturate(0.5 - mIn) : 0.0;
+                    // 壁の手前の水は斜めに見通すので、同じ深さの床より厚く見える
+                    du = lerp(du, ex + _FaceView, face);
                 }
-                float body = saturate(wet + 0.5);                 // 縁を 1 画素でぼかす
+                float body = max(saturate(wet + 0.5), face);      // 縁を 1 画素でぼかす
                 if (body * vis <= 0.001) return 0;
 
-                float k = saturate((d - _Edge) / _DeepRange);
+                float k = saturate((du - 0.03) / _ShallowDepth);
                 fixed4 c = lerp(_Shallow, _Deep, k);
+                // 深い水は底がかすむ: 暗い青緑へ寄せて不透明にする (浅い水たまりは変えない)
+                float murk = 1.0 - exp(-max(du - 0.12, 0.0) * _Fog);
+                c.rgb = lerp(c.rgb, _Abyss.rgb, murk * 0.85);
+                c.a = lerp(c.a, _Abyss.a, murk);
 
                 // 水面の傾き → 照り返しと光の網
                 float e = 0.12;
@@ -118,6 +143,16 @@ Shader "MRP/Water"
                 float spec = smoothstep(0.86, 0.97, pow(saturate(dot(n, hv)), 24.0));
                 float caustic = saturate((h0 - 0.5) * 2.2) * (1.0 - k);
                 c.rgb += caustic * 0.1;
+                // 光の網: 逆向きに流れる 2 枚の模様の差が 0 に近い所を細い筋にする。深くなると底まで届かず薄れる
+                float t = _Time.y;
+                float c1 = tex2D(_Noise, i.world * 0.45 + t * float2(0.031, 0.019)).r;
+                float c2 = tex2D(_Noise, i.world * 0.7 - t * float2(0.022, 0.037)).r;
+                float net = pow(saturate(1.0 - abs(c1 - c2) * 7.0), 3.0);
+                c.rgb += net * _Caustic * smoothstep(0.06, 0.25, du) * (1.0 - murk * 0.7) * float3(0.6, 0.88, 1.0);
+                // 頭まで沈む深さ: 水面から斜めに差し込む光の筋
+                float sp = dot(i.world, float2(0.94, -0.33));
+                float ray = tex2D(_Noise, float2(sp * 0.6 + t * 0.015, t * 0.008)).r;
+                c.rgb += smoothstep(0.55, 0.85, ray) * smoothstep(0.7, 1.2, du) * _Shaft * 0.14 * float3(0.7, 0.95, 1.0);
                 c.rgb = lerp(c.rgb, float3(1, 1, 1), spec * 0.75);
                 c.a = saturate(c.a + spec * 0.35);
 
@@ -125,8 +160,16 @@ Shader "MRP/Water"
                 // 家具・壁に当たった所は絵の黒い輪郭があるので、濃い輪郭は描かず明るい縁だけ付ける
                 float rim = saturate(1.0 - (inside - _OutlinePx) / _RimPx) * step(_OutlinePx, inside);
                 rim = max(rim, saturate(1.0 - wet / _RimPx) * 0.7);
+                rim *= 1.0 - face;                                // 壁の面の上は床の縁の線を引かない
                 c = lerp(c, _Rim, rim * _Rim.a * 0.8);
-                if (inside < _OutlinePx) c = _Outline;
+                if (inside < _OutlinePx && face < 0.5) c = _Outline;
+                // 壁に這い上がった水面の線: 明るい縁と、その下のちぎれた泡の帯
+                float lip = saturate(1.0 - faceIn / _RimPx) * face;
+                float fn = tex2D(_Noise, float2(i.world.x * 2.2 + t * 0.12, ex * 6.0 - t * 0.05)).r;
+                float foam = saturate(1.0 - ex / _FoamW) * smoothstep(0.42, 0.62, fn) * face;
+                c.rgb = lerp(c.rgb, float3(0.92, 0.97, 1.0), foam * 0.75);
+                c.a = max(c.a, foam * 0.9);
+                c = lerp(c, _Rim, lip * _Rim.a);
                 c.a *= body * vis * i.color.a;
                 return c;
             }

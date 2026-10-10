@@ -10,6 +10,7 @@
   - 黒い縁取り (壁の根元・家具の輪郭) で区切られたまとまりに分け、歩ける所 (家具の当たり判定の中を除く) が
     大半を占めるまとまりを床にする
   - 床の上の細い飾り線 (両側が床) は床に含める。歩ける所から離れすぎた画素は床にしない (縁取りの切れ目から壁へ漏れた分)
+  - 壁の面 = 床の真上に途切れず続く床でない絵の画素 (FACE_MAX まで)。深い水はここを這い上がって見える
 """
 import argparse
 import glob
@@ -52,7 +53,8 @@ LEARN_SHARE = 0.9     # 取りこぼしの画素のうち、これだけを占�
 DARK_SHADE = 0.7      # 学んだ色の明るさの下限 (色に比べて)。暗い床は縁取りの明るさの線 (OUTLINE) より暗いので、色ごとの比で縁取りと分ける
 DARK_FLOOR = 0.07     # これより暗い画素は学んだ色でも床にしない (黒い縁取り)
 MAGIC = b"MRPF"
-VERSION = 3
+VERSION = 4
+FACE_MAX = 4.0        # 床の縁から真上へこれ (世界単位) までの絵を壁の面とする (水が這い上がる所)
 
 DEFAULT_BUNDLES = [
     r"C:/Program Files/Epic Games/AmongUs/Among Us_Data/StreamingAssets/aa/EGS/StandaloneWindows",
@@ -292,13 +294,25 @@ def report(j, ppu, floor, walk, furn, top=20):
     return miss
 
 
-def write_mask(path, sig, origin, ppu, floor):
+def wall_face(canvas, floor, ppu):
+    """列ごとに、床の画素の真上から途切れずに続く床でない絵の画素 (床から FACE_MAX 以内)"""
+    drawn = canvas[..., 3] > DRAWN
+    rows = np.arange(floor.shape[0])[:, None]
+    last = np.maximum.accumulate(np.where(floor, rows, -1), axis=0)
+    # 床でない絵が途切れた所 (絵の無い画素) も数える: その行より下の床から続く面は、そこで切れる
+    gap = np.maximum.accumulate(np.where(~drawn & ~floor, rows, -1), axis=0)
+    return drawn & ~floor & (last >= 0) & (last > gap) & (rows - last <= FACE_MAX * ppu)
+
+
+def write_mask(path, sig, origin, ppu, floor, face):
     h, w = floor.shape
     packed = np.packbits(floor.ravel(), bitorder="little").tobytes()
+    packed_face = zlib.compress(np.packbits(face.ravel(), bitorder="little").tobytes(), 9)
     # sig = ゲームが書き出した部屋の絵の指紋。読み込む時に今のゲームの絵の指紋と比べる
     head = MAGIC + struct.pack("<iiifffI", VERSION, w, h, origin[0], origin[1], ppu, sig)
+    body = zlib.compress(packed, 9)
     with open(path, "wb") as fo:
-        fo.write(head + zlib.compress(packed, 9))
+        fo.write(head + struct.pack("<ii", len(body), len(packed_face)) + body + packed_face)
     return os.path.getsize(path)
 
 
@@ -323,14 +337,16 @@ def main():
         canvas = compose(j, tex, ppu)
         floor, walk, furn = classify(j, canvas, ppu)
         ship = j["ship"].replace("(Clone)", "")
-        size = write_mask(os.path.join(a.out, ship + ".bin"), j["sig"], j["solid"]["origin"], ppu, floor)
-        print(f"{ship}: {floor.shape[1]}x{floor.shape[0]} ppu={ppu} floor={floor.mean():.3f} -> {size} B")
+        face = wall_face(canvas, floor, ppu)
+        size = write_mask(os.path.join(a.out, ship + ".bin"), j["sig"], j["solid"]["origin"], ppu, floor, face)
+        print(f"{ship}: {floor.shape[1]}x{floor.shape[0]} ppu={ppu} floor={floor.mean():.3f} face={face.mean():.3f} -> {size} B")
         miss = report(j, ppu, floor, walk, furn) if a.report else None
         if a.preview:
             os.makedirs(a.preview, exist_ok=True)
             rgb = canvas[..., :3].copy()
             rgb = rgb * 0.55
             rgb[floor] = rgb[floor] * 0.35 + np.array([0.0, 0.75, 1.0]) * 0.65
+            rgb[face] = rgb[face] * 0.4 + np.array([1.0, 0.7, 0.0]) * 0.6
             if miss is not None:
                 rgb[miss] = np.array([1.0, 0.1, 0.1])
             Image.fromarray((np.clip(rgb, 0, 1)[::-1] * 255).astype(np.uint8)).save(os.path.join(a.preview, ship + "_floor.png"))

@@ -212,6 +212,7 @@ internal static class WaterSim
     private static bool[] _tileDirty;
     internal static readonly List<int> DirtyTiles = new();
     internal static int TilesW => _tw;
+    internal static int TilesH => _th;
     internal static event Action<Vector2, Vector2, ushort, bool> LeakStarted; // 噴き出しを見せ始める
 
     // ── 入口 ───────────────────────────────────────────────────────────

@@ -534,6 +534,19 @@ internal static class TerrainProbe
             reply($"OK fxpause {(TerrainFx.Paused ? 1 : 0)} pieces={BreakPieces.Count} pending={RubbleBake.PendingCount} baked={RubbleBake.BakedCount} sheets={RubbleBake.SheetCount} kb={RubbleBake.SheetBytes / 1024}");
         });
 
+        TestBridge.Register("waterlook", "<名前> <値> 水のシェーダの数値をその場で変える (_Fog _Caustic _ShallowDepth _LineWave _FoamW _Shaft _FaceView など・影の中の写しにも) / 名前だけ = 今の値", (args, reply) =>
+        {
+            var mat = MoreRolesPlus.Fx.MrpBundle.WaterMaterial;
+            var p = args.Trim().Split(" ", System.StringSplitOptions.RemoveEmptyEntries);
+            if (!mat || p.Length == 0) { reply("ERR waterlook <name> [value]"); return; }
+            if (!mat.HasProperty(p[0])) { reply($"ERR waterlook no property {p[0]}"); return; }
+            if (p.Length > 1 && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v))
+            {
+                mat.SetFloat(p[0], v);
+                ShadowView.Water.SetFloat(p[0], v);
+            }
+            reply($"OK waterlook {p[0]}={mat.GetFloat(p[0])}");
+        });
         TestBridge.Register("layer", "<char|rim|underlay|junk|water> <0|1> 見た目の層を外す / 戻す (切り分け用)。char/rim/underlay/water は今ある物にすぐ効く・junk は次の破壊から", (args, reply) =>
         {
             string[] p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

@@ -15,11 +15,12 @@ namespace MoreRolesPlus.Terrain;
 internal static class FloorMask
 {
     private static readonly byte[] Magic = { (byte)'M', (byte)'R', (byte)'P', (byte)'F' };
-    private const int Version = 3;
+    private const int Version = 4;
     private const float OriginTolerance = 0.01f;
 
     private static int _gen = -1;
     private static byte[] _bits;   // 1 画素 1 ビット (左下原点・行ごと・下位ビットから)
+    private static byte[] _face;   // 壁の面 (床の真上に途切れず続く床でない絵の画素)。並びは _bits と同じ
     private static int _w, _h;
     private static float _ox, _oy, _ppu;
     internal static string Stats { get; private set; } = "none";
@@ -79,19 +80,12 @@ internal static class FloorMask
                 Stats = $"{name}: origin mismatch";
                 return;
             }
+            int lenBits = br.ReadInt32(), lenFace = br.ReadInt32();
             var bits = new byte[(w * h + 7) / 8];
-            using (var z = new ZLibStream(s, CompressionMode.Decompress))
-            {
-                int read = 0;
-                while (read < bits.Length)
-                {
-                    int n = z.Read(bits, read, bits.Length - read);
-                    if (n <= 0) break;
-                    read += n;
-                }
-                if (read != bits.Length) { Stats = $"{name}: short {read}/{bits.Length}"; return; }
-            }
+            var face = new byte[bits.Length];
+            if (!Inflate(br.ReadBytes(lenBits), bits) || !Inflate(br.ReadBytes(lenFace), face)) { Stats = $"{name}: short"; return; }
             _bits = bits;
+            _face = face;
             _w = w; _h = h; _ox = ox; _oy = oy; _ppu = ppu;
             if (_patchGen == gen) foreach (var p in Patches) Apply(p);
             Stats = $"{name}: {w}x{h} ppu={ppu:0.##}";
@@ -101,6 +95,64 @@ internal static class FloorMask
             Stats = $"{name}: {e.GetType().Name}";
             Plugin.Logger.LogError($"floor mask load failed: {e}");
         }
+    }
+
+    private static bool Inflate(byte[] src, byte[] into)
+    {
+        using var z = new ZLibStream(new MemoryStream(src), CompressionMode.Decompress);
+        int read = 0;
+        while (read < into.Length)
+        {
+            int n = z.Read(into, read, into.Length - read);
+            if (n <= 0) break;
+            read += n;
+        }
+        return read == into.Length;
+    }
+
+    // 壁の面の画素の床からの高さ (FaceUnit 分の 1 単位・壁の面でない = 255)。並びと画素の位置は Fill と同じ。
+    // 斜め上から見た絵では、床から高さ z の壁の画素は床の縁より画面で z だけ上にある。真下の床の画素までの距離がその高さ
+    internal const float FaceUnit = 64f;
+    private const float FaceMax = 254f / FaceUnit;
+
+    internal static bool FaceHeights(float x, float y, float size, int n, byte[] into)
+    {
+        Ensure();
+        if (_bits == null) return false;
+        float step = size / (n - 1);
+        int scan = (int)(FaceMax * _ppu) + 1;
+        int top = (int)((y + size - _oy) * _ppu);
+        bool any = false;
+        for (int px = 0; px < n; px++)
+        {
+            int mx = (int)((x + px * step - _ox) * _ppu);
+            int py = 0;
+            if (mx < 0 || mx >= _w)
+            {
+                for (; py < n; py++) into[py * n + px] = 255;
+                continue;
+            }
+            // 下から上へ 1 行ずつ、いちばん近い床の行を覚えながら、タイルの画素の行に来たら高さを書く
+            int last = int.MinValue;
+            int my = Math.Max(0, (int)((y - _oy) * _ppu) - scan);
+            int next = (int)((y - _oy) * _ppu);
+            for (; my <= top && my < _h && py < n; my++)
+            {
+                int k = my * _w + mx;
+                if ((_bits[k >> 3] & (1 << (k & 7))) != 0) last = my;
+                while (py < n && my == next)
+                {
+                    int z = my - last;
+                    into[py * n + px] = (_face[k >> 3] & (1 << (k & 7))) != 0 && last != int.MinValue && z < scan
+                        ? (byte)Math.Min(254f, z / _ppu * FaceUnit) : (byte)255;
+                    any |= into[py * n + px] != 255;
+                    py++;
+                    next = (int)((y + py * step - _oy) * _ppu);
+                }
+            }
+            for (; py < n; py++) into[py * n + px] = 255;
+        }
+        return any;
     }
 
     // 世界の四角 (x, y から size 四方) を n×n 画素で into へ (左下原点・床 = 255・マスクの外は床でない)。

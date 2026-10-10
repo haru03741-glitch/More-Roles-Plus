@@ -19,13 +19,16 @@ namespace MoreRolesPlus.Terrain;
 internal static class WaterArt
 {
     private const int Px = 4;                 // 升 1 つの画素
-    private const float DeepScale = 600f;     // R = 1 の深さ
+    private const float DeepScale = 1600f;    // R = 1 の深さ (シェーダの _RUnits と同じ)
     // 濡れ具合 = 深さ WetMin で 0・WetMin + WetRamp で 1 (B = それを B スプラインでならした値。シェーダはその 0.35 の線 ≒ 深さ 30 を水の縁にする)。
     // 0/1 で切ると、薄く広がった水 (深さ 30 前後) で升ごとに濡れた・乾いたが入れ替わり、縁がでこぼこになる
     private const int WetMin = 15, WetRamp = 45;
     private const float Redraw = 0.1f;
     private const int TilesPerFrame = 3;
     private const int FurnSub = Px;           // 家具の型抜きの細かさ (= 画素)
+    // A = 壁の面の上の水の厚さ (単位) × FaceScale + 128。128 の線が壁に這い上がった水面の線。壁の面でない画素は 0
+    private const float FaceScale = 96f;
+    private const int FaceBaseScan = 3;       // 壁の根元の升が閉じている (壁の線を太らせた分) 時に、下へ探す升の数
 
     private static void Enable(Tile t, bool on)
     {
@@ -42,6 +45,8 @@ internal static class WaterArt
         public Sprite Sp;
         public byte[] Px;
         public bool[] Furn;
+        public byte[] Face;       // 壁の面の画素の床からの高さ (FloorMask.FaceHeights)。壁の面が無いタイルは null
+        public bool FaceDone;
         public int FurnVersion;
         public MaterialPropertyBlock Block;
         public Texture2D Floor; // 床マスク (部屋の絵の画素ごとの床) をこのタイルの範囲で切り出した物
@@ -102,8 +107,9 @@ internal static class WaterArt
             foreach (int t in dirty)
             {
                 WaterSim.Clean(t);
-                if (!Tiles.TryGetValue(t, out var tile)) Tiles[t] = tile = new Tile { Tx = t % WaterSim.TilesW, Ty = t / WaterSim.TilesW };
-                if (!tile.Waiting) { tile.Waiting = true; Waiting.Add(t); }
+                Queue(t);
+                // 水が上の壁を這い上がるので、上のタイルも描き直す
+                if (t + WaterSim.TilesW < WaterSim.TilesW * WaterSim.TilesH) Queue(t + WaterSim.TilesW);
             }
             dirty.Clear();
         }
@@ -120,6 +126,12 @@ internal static class WaterArt
             Draw(tile);
             drawn++;
         }
+    }
+
+    private static void Queue(int t)
+    {
+        if (!Tiles.TryGetValue(t, out var tile)) Tiles[t] = tile = new Tile { Tx = t % WaterSim.TilesW, Ty = t / WaterSim.TilesW };
+        if (!tile.Waiting) { tile.Waiting = true; Waiting.Add(t); }
     }
 
     // 爆発の瞬間に呼ぶ (WaterLeak から・自分の手元だけ)。r = 水の計算の衝撃と同じ半径
@@ -191,6 +203,7 @@ internal static class WaterArt
         bool any = false;
         bool crater = Craters.Count > 0;
         float cs = WaterSim.Cell, ox = WaterSim.Origin.x, oy = WaterSim.Origin.y;
+        float org0x = ox, org0y = oy;
         for (int y = 0; y < rw; y++)
         for (int x = 0; x < rw; x++)
         {
@@ -225,7 +238,15 @@ internal static class WaterArt
             _wet[y * dw + x] = wet;
         }
         t.LastDraw = _clock;
-        if (!any)
+        int n0 = tc * Px;
+        if (!t.FaceDone)
+        {
+            t.FaceDone = true;
+            var face = new byte[n0 * n0];
+            if (FloorMask.Active && FloorMask.FaceHeights(org0x + x0 * cs, org0y + y0 * cs, tc * cs, n0, face)) t.Face = face;
+        }
+        bool faceWet = t.Face != null && FaceWet(t, x0, y0, n0);
+        if (!any && !faceWet)
         {
             if (!t.Empty && t.Sr) Enable(t, false);
             t.Empty = true;
@@ -266,13 +287,71 @@ internal static class WaterArt
             t.Px[i] = (byte)Math.Min(255f, d * (255f / DeepScale));
             t.Px[i + 1] = vis ? (byte)255 : (byte)0;
             t.Px[i + 2] = (byte)Math.Min(255f, wet * 255f + 0.5f);
-            t.Px[i + 3] = 255;
+            t.Px[i + 3] = 0;
         }
+        if (t.Face != null) WriteFace(t, x0, y0, n);
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
         if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
         Drawn++;
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    // 壁の面の画素 (wx, 床からの高さ z の所) の真下の床の水の深さ (単位)。横は升の真ん中の間を線形に引く (升ごとの段を水面の線に出さない)
+    private static float BaseDepth(float wx, float wyBase)
+    {
+        float cell = WaterSim.Cell;
+        var org = WaterSim.Origin;
+        float fx = (wx - org.x) / cell - 0.5f;
+        int cx = (int)MathF.Floor(fx), cy = (int)MathF.Floor((wyBase - org.y) / cell);
+        float f = fx - cx;
+        return (CellBase(cx, cy) * (1f - f) + CellBase(cx + 1, cy) * f) * (1f / WaterSim.Full);
+    }
+
+    private static int CellBase(int cx, int cy)
+    {
+        int w = WaterSim.W;
+        if (cx < 1 || cx >= w - 1) return 0;
+        for (int d = 0; d <= FaceBaseScan; d++)
+        {
+            int y = cy - d;
+            if (y < 1 || y >= WaterSim.H - 1) return 0;
+            int k = y * w + cx;
+            if (WaterSim.Open(k)) return WaterSim.Height(k);
+        }
+        return 0;
+    }
+
+    // 壁の面に水が掛かっているか (タイルを出すか)
+    private static bool FaceWet(Tile t, int x0, int y0, int n)
+    {
+        float cell = WaterSim.Cell, edge = (float)WaterSim.TileCells / (n - 1);
+        var org = WaterSim.Origin;
+        for (int py = 0; py < n; py += 2)
+        for (int px = 0; px < n; px += 2)
+        {
+            byte z = t.Face[py * n + px];
+            if (z == 255) continue;
+            float wx = org.x + (x0 + px * edge) * cell, wy = org.y + (y0 + py * edge) * cell, h = z * (1f / FloorMask.FaceUnit);
+            if (BaseDepth(wx, wy - h) > h) return true;
+        }
+        return false;
+    }
+
+    // A に壁の面の上の水の厚さを書く
+    private static void WriteFace(Tile t, int x0, int y0, int n)
+    {
+        float cell = WaterSim.Cell, edge = (float)WaterSim.TileCells / (n - 1);
+        var org = WaterSim.Origin;
+        for (int py = 0; py < n; py++)
+        for (int px = 0; px < n; px++)
+        {
+            int j = py * n + px, i = j * 4;
+            byte z = t.Face[j];
+            if (z == 255) continue;
+            float wx = org.x + (x0 + px * edge) * cell, wy = org.y + (y0 + py * edge) * cell, h = z * (1f / FloorMask.FaceUnit);
+            t.Px[i + 3] = (byte)FxMath.Clamp(128f + (BaseDepth(wx, wy - h) - h) * FaceScale, 0f, 255f);
+        }
     }
 
     // 水を見せてよい画素か: 歩ける所か、左右 Undilate 升・下 UndilateDown 升・上 UndilateUp 升以内に歩ける所がある所。
