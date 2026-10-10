@@ -1274,11 +1274,48 @@ internal static class PropSim
         return acc;
     }
 
+    // 高さの見積もり: 真上から斜めに見ているので、立っている物の絵は足元 (当たり判定) の上の縁より上へ高さぶん伸びる。
+    // 当たり判定が無い物は絵の縦の長さを高さの上限として出す
+    private static string WriteHeights()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("# name kind sprite(x0 y0 x1 y1) col(x0 y0 x1 y1) h_est\n");
+        int n = 0;
+        foreach (var p in Props)
+        {
+            Transform t = p.Lift != null && p.Lift.Cut ? p.Lift.Cut : p.Tr;
+            var sr = t ? t.GetComponent<SpriteRenderer>() : null;
+            var col = p.Col ? p.Col : p.Tr ? p.Tr.GetComponent<Collider2D>() : null;
+            sb.Append(p.Name).Append(' ').Append(p.Kind);
+            float est = -1f;
+            if (sr)
+            {
+                var b = sr.bounds;
+                sb.Append($" sprite={b.min.x:0.00},{b.min.y:0.00},{b.max.x:0.00},{b.max.y:0.00}");
+                est = b.size.y;
+                if (col)
+                {
+                    var c = col.bounds;
+                    sb.Append($" col={c.min.x:0.00},{c.min.y:0.00},{c.max.x:0.00},{c.max.y:0.00}");
+                    est = b.max.y - c.max.y;
+                }
+            }
+            else sb.Append(" nosprite");
+            sb.Append($" h={est:0.00}\n");
+            n++;
+        }
+        var ship = ShipStatus.Instance;
+        string path = System.IO.Path.Combine(TestBridge.ScreensDir, $"propheights_{(ship ? ship.name : "none")}.txt");
+        System.IO.File.WriteAllText(path, sb.ToString());
+        return $"OK props heights n={n} -> {path}";
+    }
+
     internal static void Register()
     {
-        TestBridge.Register("props", "[list] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元)", (args, reply) =>
+        TestBridge.Register("props", "[list | heights] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ)", (args, reply) =>
         {
             if (!_ready && !Ensure()) { reply("ERR props no ship"); return; }
+            if (args.Trim() == "heights") { reply(WriteHeights()); return; }
             int s = 0, m = 0, f = 0, moved = 0, diff = 0;
             foreach (var p in Props)
             {
