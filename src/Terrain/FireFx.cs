@@ -7,7 +7,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // 火の周りの演出 (全員の手元・電文は増やさない): 煙・火の粉・湯気・油の噴き上がり・濡れた配線の火花・音・燃え尽きた床の焦げ。
-// 計算 (FireSim) の今の状態と、そのフレームの出来事 (Steam / FlareFx / Arcs / BurntOut) から作る。
+// 計算 (FireSim) の今の状態と、そのフレームの出来事 (Steam / FlareFx / Arcs / Chars) から作る。
 // 粒は上限つきの使い回し (MaxPuffs)。出ていない時は Unity に触らない
 internal static class FireFx
 {
@@ -16,7 +16,7 @@ internal static class FireFx
     private const float EmberRate = 0.5f;     // 同じく火の粉
     private const int RateCells = 120;        // 出す量を数える升の上限 (広い火事でも粒が溢れない)
     private const float ScorchEvery = 0.5f;
-    private const float ScorchR = 0.24f, ScorchAmount = 0.6f;
+    private const float ScorchR = 0.24f;
     private const float SoundRange = 9f, SoundFull = 2.5f, SoundMuffle = 5f;
     private const float SteamGap = 0.3f;
 
@@ -38,7 +38,7 @@ internal static class FireFx
     private static int _shipGen = -1;
     private static float _smokeAcc, _emberAcc, _scorchAcc, _soundAcc, _steamSoundAt = -10f, _clock;
     private static long _lastMs;
-    private static readonly List<Vector2> Scorch = new();
+    private static readonly List<(float X, float Y, float A)> Scorch = new();
     internal static readonly List<(float X, float Y)> Ignited = new(); // FireSim が点火を受けた瞬間 (音)
 
     // 持続音
@@ -66,7 +66,7 @@ internal static class FireFx
         _lastMs = now;
         _clock += dt;
         bool fire = FireSim.Ready && (FireSim.BurningCount > 0 || FireSim.Steam.Count > 0 || FireSim.FlareFx.Count > 0
-            || FireSim.Arcs.Count > 0 || FireSim.BurntOut.Count > 0 || Ignited.Count > 0);
+            || FireSim.Arcs.Count > 0 || FireSim.Chars.Count > 0 || Ignited.Count > 0);
         if (!fire && _live == 0 && Scorch.Count == 0 && !_loopPlaying) return;
         var ship = ShipStatus.Instance;
         if (!ship || MeetingHud.Instance)
@@ -86,7 +86,7 @@ internal static class FireFx
             foreach (var s in FireSim.Steam) SteamAt(s.X, s.Y, s.Amount);
             foreach (var f in FireSim.FlareFx) FlareAt(f.X, f.Y);
             foreach (var a in FireSim.Arcs) ArcAt(a.X, a.Y);
-            foreach (var b in FireSim.BurntOut) Scorch.Add(new Vector2(b.X, b.Y));
+            Scorch.AddRange(FireSim.Chars);
         }
         foreach (var g in Ignited) BreakNoise.PlayAt("noise_fire_ignite", g.X, g.Y, SoundRange, SoundMuffle, 0.8f, FxMath.Range(0.9f, 1.1f));
         Ignited.Clear();
@@ -95,7 +95,7 @@ internal static class FireFx
         if (_scorchAcc >= ScorchEvery && Scorch.Count > 0)
         {
             _scorchAcc = 0f;
-            _scorchWhy = DamageMap.Scorch(Scorch, ScorchR, ScorchAmount) ?? $"ok n={Scorch.Count}";
+            _scorchWhy = DamageMap.Scorch(Scorch, ScorchR) ?? $"ok n={Scorch.Count}";
             Scorch.Clear();
         }
 

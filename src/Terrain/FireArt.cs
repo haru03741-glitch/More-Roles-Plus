@@ -7,7 +7,7 @@ namespace MoreRolesPlus.Terrain;
 
 // 火の計算 (FireSim) を絵にする。FireSim.TileCells 升四方のタイルごとに 1 枚の小さな絵 (1 画素 = 1 升) を持ち、
 // 火が変わったタイルだけを Redraw 秒ごとに描き直す。絵は自分の升の周りに縁 (横 Side 升・上下 1 升) と、上に炎が立ち上がる Up 升を持つ。
-//   R = 炎の大きさ・G = 熱 (床の照り)・B = 油の量・A = 歩ける升
+//   R = 炎の大きさ・G = 熱 (床の照り)・B = 油の量・A = 歩ける升 (0 = 閉じた升・OpenA..255 = 開いた升で、OpenA から上は燃やした量 = 床の焦げ)
 // 同じ絵を床の板 (照りと油・水の少し手前) と炎の板 (行の帯ごと・クルーと同じ奥行きの決まりで前後する) で使う。
 // 炎の形・色・ゆらぎはシェーダ MRP/Fire が決める
 internal static class FireArt
@@ -20,6 +20,8 @@ internal static class FireArt
     private const float SweepEvery = 2f, KeepEmpty = 5f;
     private const float GlowFrom = 150f, GlowRange = 1400f;
     private const float OilFull = 1200f;
+    private const int OpenA = 96;
+    private const int CharHalf = 120;         // 燃やした量がこれで焦げの濃さ 255×1.25/2 (金属の床はうっすら・草は中ほど・木と油は真っ黒)
 
     private sealed class Tile
     {
@@ -37,6 +39,8 @@ internal static class FireArt
         public bool Empty = true;
         public bool[] RowOn, RowShown;
         public bool FloorShown;
+        public bool Flaming;               // 燃えている行がある (炎の板が要る)
+        public float FlameAt;              // 最後に燃えている行があった時刻
     }
 
     private static readonly Dictionary<int, Tile> Tiles = new();
@@ -118,7 +122,7 @@ internal static class FireArt
         int x0 = t.Tx * tc - Side, y0 = t.Ty * tc - 1;
         int tw = TexW, th = TexH;
         t.Px ??= new byte[tw * th * 4];
-        bool any = false;
+        bool any = false, flaming = false;
         t.RowOn ??= new bool[Strips];
         Array.Clear(t.RowOn, 0, t.RowOn.Length);
         for (int py = 0; py < th; py++)
@@ -136,12 +140,16 @@ internal static class FireArt
             t.Px[i] = (byte)burn;
             t.Px[i + 1] = (byte)glow;
             t.Px[i + 2] = (byte)ob;
-            t.Px[i + 3] = WaterSim.Open(k) ? (byte)255 : (byte)0;
+            int ch = FireSim.Charred(k);
+            int cb = ch <= 0 ? 0 : Math.Min(255, ch * 319 / (ch + CharHalf));
+            t.Px[i + 3] = WaterSim.Open(k) ? (byte)(OpenA + cb * (255 - OpenA) / 255) : (byte)0;
             bool own = px >= Side && py >= 1 && px < tc + Side && py <= tc;
-            if (own && (burn | glow | ob) != 0) any = true;
-            if (own && burn != 0) t.RowOn[(py - 1) / StripRows] = true;
+            if (own && (burn | glow | ob | cb) != 0) any = true;
+            if (own && burn != 0) { t.RowOn[(py - 1) / StripRows] = true; flaming = true; }
         }
         t.LastDraw = _clock;
+        t.Flaming = flaming;
+        if (flaming) t.FlameAt = _clock;
         if (!any)
         {
             if (!t.Empty && t.FloorSr) Show(t, false);
@@ -159,14 +167,15 @@ internal static class FireArt
 
     private static void Ensure(Tile t)
     {
-        if (t.Floor) return;
         int tc = FireSim.TileCells, tw = TexW, th = TexH;
         float cell = FireSim.Cell;
         var org = FireSim.Origin;
+        float wx = org.x + (t.Tx * tc - Side) * cell, wy = org.y + (t.Ty * tc - 1) * cell;
+        if (t.Flaming && t.Flame == null && t.Floor) MakeFlames(t, wx, wy);
+        if (t.Floor) return;
         t.Tex = new Texture2D(tw, th, TextureFormat.RGBA32, false) { name = "MrpFire", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         t.Sp = Sprite.Create(t.Tex, new Rect(0, 0, tw, th), Vector2.zero, 1f / cell, 0, SpriteMeshType.FullRect);
         t.Sp.name = "MrpFire";
-        float wx = org.x + (t.Tx * tc - Side) * cell, wy = org.y + (t.Ty * tc - 1) * cell;
         // 床の板: 水と同じく部屋の絵の一番手前より前 (油は水に浮くので水より少し手前)
         float size = tc * cell, front = float.MaxValue;
         for (int k = 0; k < 5; k++)
@@ -181,6 +190,13 @@ internal static class FireArt
         t.FloorSr.sprite = t.Sp;
         t.FloorSr.sharedMaterial = MrpBundle.FireFloorMaterial;
         t.Floor.transform.position = FxMath.V3(wx, wy, front - 0.0005f * zs);
+        if (t.Flaming) MakeFlames(t, wx, wy);
+    }
+
+    private static void MakeFlames(Tile t, float wx, float wy)
+    {
+        int tw = TexW;
+        float cell = FireSim.Cell;
         // 炎の板: 行の帯ごとに 1 枚。クルーと同じ奥行きの決まり (y / 1000) で帯の下の縁に立つので、
         // 帯より奥 (上) にいる人の手前・手前 (下) にいる人の奥に描かれる。帯の番号は頂点色の緑で渡す
         int n = Strips;
@@ -206,6 +222,7 @@ internal static class FireArt
     private static void Show(Tile t, bool on)
     {
         if (t.FloorShown != on) { t.FloorShown = on; t.FloorSr.enabled = on; }
+        if (t.FlameSr == null) return;
         t.RowShown ??= new bool[t.FlameSr.Length];
         for (int s = 0; s < t.FlameSr.Length; s++)
         {
@@ -223,24 +240,43 @@ internal static class FireArt
         return n;
     }
 
-    // 火が消えてしばらくたったタイルの絵を捨てる (広く燃えた試合で板と絵が残り続けないように)
+    // 火が消えてしばらくたったタイルの絵を捨てる (広く燃えた試合で板と絵が残り続けないように)。
+    // 焦げの残るタイルは床の板 1 枚だけ残し、炎の板 (行の数だけある) を捨てる
     private static readonly List<int> Dead = new();
     private static void Sweep()
     {
         _sweepAt = _clock;
         Dead.Clear();
         foreach (var kv in Tiles)
-            if (kv.Value.Empty && !kv.Value.Waiting && _clock - kv.Value.LastDraw >= KeepEmpty) Dead.Add(kv.Key);
+        {
+            var t = kv.Value;
+            if (t.Waiting || _clock - t.LastDraw < KeepEmpty) continue;
+            if (t.Empty) Dead.Add(kv.Key);
+            else if (!t.Flaming && t.Flame != null && _clock - t.FlameAt >= KeepEmpty) DropFlames(t);
+        }
         foreach (int k in Dead) { Destroy(Tiles[k]); Tiles.Remove(k); }
+    }
+
+    private static void DropFlames(Tile t)
+    {
+        if (t.Flame != null) foreach (var go in t.Flame) if (go) UnityEngine.Object.Destroy(go);
+        if (t.FlameSp != null) foreach (var sp in t.FlameSp) if (sp) UnityEngine.Object.Destroy(sp);
+        t.Flame = null; t.FlameSr = null; t.FlameSp = null; t.RowShown = null;
     }
 
     private static void Destroy(Tile t)
     {
         if (t.Floor) UnityEngine.Object.Destroy(t.Floor);
-        if (t.Flame != null) foreach (var go in t.Flame) if (go) UnityEngine.Object.Destroy(go);
-        if (t.FlameSp != null) foreach (var sp in t.FlameSp) if (sp) UnityEngine.Object.Destroy(sp);
+        DropFlames(t);
         if (t.Sp) UnityEngine.Object.Destroy(t.Sp);
         if (t.Tex) UnityEngine.Object.Destroy(t.Tex);
+    }
+
+    private static int CountFlames()
+    {
+        int n = 0;
+        foreach (var t in Tiles.Values) if (t.Flame != null) n++;
+        return n;
     }
 
     internal static void Clear()
@@ -251,5 +287,5 @@ internal static class FireArt
         _clock = _sweepAt = 0f;
     }
 
-    internal static string Describe() => $"tiles={Tiles.Count} waiting={Waiting.Count} drawn={Drawn} drawMs={LastDrawMs:0.00}";
+    internal static string Describe() => $"tiles={Tiles.Count} flaming={CountFlames()} waiting={Waiting.Count} drawn={Drawn} drawMs={LastDrawMs:0.00}";
 }

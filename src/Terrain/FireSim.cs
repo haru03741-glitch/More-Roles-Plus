@@ -11,6 +11,8 @@ namespace MoreRolesPlus.Terrain;
 // 材質は部屋から決める (燃えにくい金属の床・よく燃える木や草・油・電気の配線)。
 // 水のある升は熱で水が湯気になって冷える。油の火は水で消えずに噴き上がり、電気の火は消えにくく水が電気を帯びる。
 // 船に穴が開いて空気が抜けている所は、口の際では炎が吹き消され、それ以外では炎が口の方へなびく。
+// 燃えた床と、炎の接した壁の面は燃やした量に応じて段階的に焦げる。壁に長く炎が当たると、ホストが壁を叩いた時と同じ破壊を
+// 起こして (耐久を 1 ずつ削る = ひび → 大きなひび → 崩れる) 焼け落ちる。外壁は打撃と同じく抜けない。
 //
 // 全員の手元でぴったり同じ結果にするため、水と同じく整数だけで計算し、ゆらぎは升の番号のハッシュから作る。
 // 出来事 (点火・油をまく・爆発の熱) はホストが刻みを押して配った物を、その刻みで入れる
@@ -35,6 +37,12 @@ internal static class FireSim
     // 爆発の熱: 爆心で BlastHeat + BlastBase・縁で BlastBase
     private const int BlastHeat = 1100, BlastBase = 300;
     private const int MaxFuel = 4000;
+    // 焦げ: 燃やした量がこの段を越えるたびに、その升に接した壁の面を濃く焦がす (床の焦げは FireArt が燃やした量から描く)
+    private static readonly int[] CharStep = { 20, 160, 600 };
+    private static readonly float[] CharAmount = { 0.5f, 0.8f, 1f };
+    // 壁の焼け落ち: 燃えている升の熱が材質の下限を越えた分を壁ごとに貯め、StageHeat 貯まるたびに耐久を 1 削る
+    private const int StageHeat = 120000;     // 木の部屋で 1 段約 4 秒 (3 段で約 12 秒)・油の金属の部屋で約 6 秒
+    private const float BurnGap = 0.35f;      // 焼け落ちの依頼の最小間隔 (秒・長い壁沿いの火でも一度に出さない)
 
     internal enum Mat : byte { Unknown = 0, None, Metal, Wood, Grass, Fuel, Electric }
     //                                        Unknown None  Metal  Wood  Grass  Fuel  Electric
@@ -42,6 +50,7 @@ internal static class FireSim
     private static readonly int[] MIgnite = { 9999,  9999, 1500,  650,   450,  380,   750 };
     private static readonly int[] MBurn   = {   0,     0,     1,    1,     1,    2,     1 };
     private static readonly int[] MFlame  = {   0,     0,  1300, 1500,  1400, 1800,  1450 };
+    private static readonly int[] MWallMin = { 9999, 9999,  1050,  600,   900, 1050,  1050 }; // 壁が傷み始める熱 (部屋の材質で引く)
 
     private const byte FBurning = 1;
 
@@ -61,6 +70,7 @@ internal static class FireSim
     private static int[] _t, _dt;
     private static int[] _fuel;
     private static byte[] _mat, _flag, _burn, _inList, _flareAt, _arcAt;
+    private static byte[] _base;             // 部屋から決めた材質 (油をまいても変わらない。壁の燃えやすさに使う)
     private static ushort[] _char;           // 燃やした燃料の量 (焦げの濃さ)
     private static bool[] _tileMat;          // 材質を決めたタイル
     private static bool[] _tileDirty;
@@ -92,7 +102,17 @@ internal static class FireSim
     internal static readonly List<(float X, float Y, int Amount)> Steam = new();
     internal static readonly List<(float X, float Y)> FlareFx = new();
     internal static readonly List<(float X, float Y)> Arcs = new();
-    internal static readonly List<(float X, float Y)> BurntOut = new();
+    internal static readonly List<(float X, float Y, float A)> Chars = new(); // 壁の面に焦げを付ける点と濃さ (0..1)
+
+    // 壁の焼け落ち (ホストと一人の時だけ数える。全員の計算の指紋には入れない)
+    private sealed class Scald { public int Heat, Stage, K, D; public bool Done, Queued; }
+    private static readonly Dictionary<long, Scald> Scalds = new();
+    private static readonly List<Scald> BurnQueue = new();
+    private static bool _decides;
+    private static int _decideFrame;
+    private static float _burnAt;
+    internal static int WallHits { get; private set; }
+    internal static string LastWallHit = "-";
 
     // 確認用
     internal static int Steps { get; private set; }
@@ -155,7 +175,7 @@ internal static class FireSim
         int n = _w * _h;
         _t = new int[n]; _dt = new int[n]; _fuel = new int[n];
         _mat = new byte[n]; _flag = new byte[n]; _burn = new byte[n]; _inList = new byte[n];
-        _flareAt = new byte[n]; _arcAt = new byte[n]; _char = new ushort[n];
+        _flareAt = new byte[n]; _arcAt = new byte[n]; _char = new ushort[n]; _base = new byte[n];
         _tw = (_w + TileCells - 1) / TileCells;
         _th = (_h + TileCells - 1) / TileCells;
         _tileMat = new bool[_tw * _th];
@@ -225,9 +245,10 @@ internal static class FireSim
         for (int cx = x0; cx < Math.Min(_w, x0 + TileCells); cx++)
         {
             int c = cy * _w + cx;
-            if (_mat[c] == (byte)Mat.Fuel) continue; // 先にまかれた油
             // 升の真ん中から少しずらして引く (部屋の縁が升の真ん中に乗ると端末ごとの丸めで割れる)
             Mat m = RoomAt(_org.x + (cx + 0.5f) * _cell + 0.0013f, _org.y + (cy + 0.5f) * _cell + 0.0017f);
+            _base[c] = (byte)m;
+            if (_mat[c] == (byte)Mat.Fuel) continue; // 先にまかれた油
             _mat[c] = (byte)m;
             _fuel[c] = MFuel[(int)m];
         }
@@ -317,13 +338,16 @@ internal static class FireSim
             if (on)
             {
                 _fuel[k] -= MBurn[m];
-                _char[k] = (ushort)Math.Min(ushort.MaxValue, _char[k] + MBurn[m]);
+                int ch = _char[k];
+                _char[k] = (ushort)Math.Min(ushort.MaxValue, ch + MBurn[m]);
                 t += (MFlame[m] + jit * 2 - t) * Rise / 256;
+                for (int i = 0; i < CharStep.Length; i++)
+                    if (ch < CharStep[i] && _char[k] >= CharStep[i]) Char(k, CharAmount[i]);
+                if (_decides) Sear(k, t);
                 if (_fuel[k] <= 0)
                 {
                     _fuel[k] = 0;
                     on = false;
-                    if (_char[k] >= 20) BurntOut.Add(Center(k));
                 }
             }
             else if (_fuel[k] > 0 && t >= MIgnite[m] + jit) on = true;
@@ -395,6 +419,77 @@ internal static class FireSim
         Active.RemoveRange(o, Active.Count - o);
         Steps++;
         if (_step % 300 == 0 && Active.Count > 0) Plugin.Logger.LogInfo($"[FireSim] step={_step} digest={Digest():x8} active={Active.Count} burning={BurningCount}");
+    }
+
+    // 升に接した壁の面を焦がす。北の壁は面が線の上に立って描かれるので、面の上の方まで焦がす
+    private static void Char(int k, float a)
+    {
+        Mark(k);
+        var c = Center(k);
+        float h = _cell * 0.5f;
+        for (int d = 0; d < 4; d++)
+        {
+            int j = k + Nx[d] + Ny[d] * _w;
+            if (WaterSim.Open(j) && WaterSim.Passable(k, d)) continue;
+            float x = c.X + Nx[d] * (h + 0.06f), y = c.Y + Ny[d] * (h + 0.06f);
+            Chars.Add((x, y, a));
+            if (d == 2) { Chars.Add((x, y + 0.28f, a * 0.85f)); Chars.Add((x, y + 0.56f, a * 0.6f)); }
+        }
+    }
+
+    // 燃えている升の熱を、接した壁に貯める (ホストと一人の時)。同じ壁の耐久の格子に接した升は 1 つの壁として数える
+    private static void Sear(int k, int t)
+    {
+        // 点火の直後は熱が上限まで跳ねるので、材質の炎の熱で頭を抑える (点けた瞬間に壁が崩れない)
+        int heat = Math.Min(t, MFlame[_mat[k]] + 128) - MWallMin[_base[k]];
+        if (heat <= 0) return;
+        float cx = _org.x + (k % _w + 0.5f) * _cell, cy = _org.y + (k / _w + 0.5f) * _cell;
+        for (int d = 0; d < 4; d++)
+        {
+            int j = k + Nx[d] + Ny[d] * _w;
+            if (WaterSim.Open(j) && WaterSim.Passable(k, d)) continue;
+            long key = WallDurability.CellKey(cx + Nx[d] * _cell * 0.5f, cy + Ny[d] * _cell * 0.5f);
+            if (!Scalds.TryGetValue(key, out var w)) Scalds[key] = w = new Scald();
+            if (w.Done) continue;
+            w.Heat += heat;
+            if (w.Queued || w.Heat < (w.Stage + 1) * StageHeat) continue;
+            w.Queued = true;
+            w.K = k; w.D = d;
+            BurnQueue.Add(w);
+        }
+    }
+
+    // 貯まった壁を 1 つずつ叩く (刻みを進め終えた後に TerrainStep から。打撃は地形・水の升をその場で変えるので刻みの途中では出さない)
+    internal static void IssueWallBurns()
+    {
+        try { IssueWallBurn(); }
+        catch (Exception e) { Plugin.Logger.LogError($"[FireSim] wall burn: {e}"); BurnQueue.Clear(); }
+    }
+
+    private static void IssueWallBurn()
+    {
+        if (BurnQueue.Count == 0 || !_ready) return;
+        if (!_decides)
+        {
+            foreach (var q in BurnQueue) q.Queued = false;
+            BurnQueue.Clear();
+            return;
+        }
+        float now = Environment.TickCount64 / 1000f;
+        if (now - _burnAt < BurnGap) return;
+        _burnAt = now;
+        var w = BurnQueue[0];
+        BurnQueue.RemoveAt(0);
+        w.Queued = false;
+        var c = Center(w.K);
+        var res = TerrainApi.WorldHit(new Vector2(c.X, c.Y), new Vector2(Nx[w.D], Ny[w.D]), 0.5f);
+        WallHits++;
+        LastWallHit = res.Why;
+        // 壁が無い・外壁・壊れない物は以後叩かない。抜けたらその壁は終わり (奥の壁まで続けて焼かない)。
+        // ホストでなくなった等の一時的な断りは、次に貯まった時にまた叩く
+        if (!res.Ok && res.Why == "host only") return;
+        if (!res.Ok || res.Why != null && res.Why.Contains("breach")) w.Done = true;
+        else if (++w.Stage >= WallDurability.MaxHp) w.Done = true;
     }
 
     // 燃えている升の熱が口の方へなびく向き (Nx/Ny の並び) と引く強さ
@@ -547,7 +642,12 @@ internal static class FireSim
 
     public static void Tick()
     {
-        try { if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Reset(); } }
+        try
+        {
+            if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Reset(); }
+            // ホストかどうかは 15 フレームに 1 回だけ見る (Unity の生存確認を毎フレーム重ねない)
+            if (_running && (++_decideFrame >= 15 || _decideFrame == 1)) { _decideFrame = 1; _decides = !TerrainSync.IsGuest(); }
+        }
         catch (Exception e) { Fail("tick", e); }
     }
 
@@ -569,21 +669,22 @@ internal static class FireSim
         _running = false;
         _t = _dt = _fuel = null;
         _mat = _flag = _burn = _inList = _flareAt = _arcAt = null;
-        _char = null;
+        _char = null; _base = null;
+        Scalds.Clear(); BurnQueue.Clear(); WallHits = 0; LastWallHit = "-";
         _tileMat = _tileDirty = null;
         Active.Clear();
         Queue.Clear();
         Flares.Clear();
         DirtyTiles.Clear();
         Rooms.Clear();
-        Steam.Clear(); FlareFx.Clear(); Arcs.Clear(); BurntOut.Clear();
+        Steam.Clear(); FlareFx.Clear(); Arcs.Clear(); Chars.Clear();
         _step = 0;
         Steps = 0; Late = 0; BurningCount = 0; SteamTotal = 0; FlareTotal = 0; MaxStepMs = 0;
     }
 
     internal static string Describe() =>
         !_ready ? $"OK fire off {GameClock.Describe()}"
-        : $"OK fire step={_step} water={WaterSim.Step} late={Late} queue={Queue.Count} active={Active.Count} burning={BurningCount} steam={SteamTotal} flares={FlareTotal} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} {GameClock.Describe()}";
+        : $"OK fire step={_step} water={WaterSim.Step} late={Late} queue={Queue.Count} active={Active.Count} burning={BurningCount} steam={SteamTotal} flares={FlareTotal} walls={Scalds.Count} wallHits={WallHits} lastWall={LastWallHit} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} {GameClock.Describe()}";
 
     internal static string CellInfo(Vector2 p)
     {
@@ -592,6 +693,6 @@ internal static class FireSim
         if (x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return "ERR fire out of map";
         int k = y * _w + x;
         EnsureTile(k);
-        return $"OK fire at ({x},{y}) mat={(Mat)_mat[k]} t={_t[k]} fuel={_fuel[k]} burning={Burning(k)} burn={_burn[k]} char={_char[k]} open={WaterSim.Open(k)} water={WaterSim.Height(k)}";
+        return $"OK fire at ({x},{y}) mat={(Mat)_mat[k]} t={_t[k]} fuel={_fuel[k]} burning={Burning(k)} burn={_burn[k]} char={_char[k]} base={(Mat)_base[k]} open={WaterSim.Open(k)} water={WaterSim.Height(k)}";
     }
 }

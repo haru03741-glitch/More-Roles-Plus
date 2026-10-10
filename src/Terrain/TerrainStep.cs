@@ -23,7 +23,7 @@ internal static class TerrainStep
             FireSim.Steam.Clear();
             FireSim.FlareFx.Clear();
             FireSim.Arcs.Clear();
-            FireSim.BurntOut.Clear();
+            FireSim.Chars.Clear();
             if (_failedGen == GameClock.ShipGen) return;
             int target = GameClock.Now - WaterSim.Delay;
             // 物と水の刻みが違う間は 1 回に片方しか進まないので、回数は 2 倍まで (どれも 1 フレーム 20 刻みまで)
@@ -38,6 +38,7 @@ internal static class TerrainStep
                 if (prop && PropSim.AuthStep == s) PropSim.AdvanceAuth();
                 if (water && WaterSim.Step == s) { WaterSim.AdvanceOne(); FireSim.AdvanceOne(s); }
             }
+            FireSim.IssueWallBurns();
         }
         catch (Exception e)
         {

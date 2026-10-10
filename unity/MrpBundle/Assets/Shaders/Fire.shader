@@ -1,8 +1,8 @@
 // 火 (床の照り・油の膜・立ち上がる炎) を描くシェーダ。CPU はタイルの絵に升ごとの値だけを書き、見た目はここで決める。
 // 絵の 1 画素 = 火の升 1 つ。タイルは自分の升の周りに 1 升の縁 (隣のタイルの値) と、上に炎が立ち上がる分の升を持つ。
 // 隣のタイルと二重に描かないよう、照りと油は自分の升の範囲 (_Own) の画素だけ、炎は自分の升から立ち上がる物だけを描く。
-//   R = 炎の大きさ・G = 熱 (床の照り)・B = 油の量・A = 開いた升 (歩ける床)
-// _Mode = 0 (床): 油の膜 (黒い膜に虹色の照り・縁に細い線) と熱の照り (橙の光をにじませる)。
+//   R = 炎の大きさ・G = 熱 (床の照り)・B = 油の量・A = 開いた升 (0 = 閉じた升・0.376 から上は燃やした量 = 焦げ)
+// _Mode = 0 (床): 焦げ (茶の焼け → 黒い炭・炭には灰の斑) の上に、油の膜 (黒い膜に虹色の照り・縁に細い線) と熱の照り (橙の光をにじませる)。
 // _Mode = 1 (炎): 燃えている行の上に、燃え方 (横になめらかに読む) の背丈で連続した炎を立てる。
 //   上へ流れるノイズで横へゆがめ (上ほど大きく) 先を削って、ちぎれて揺らぐ舌にする。升の格子には揃えない。
 //   色は温度の連続した変化 (暗い赤 → 赤橙 → 橙 → 黄 → 白) で、根元ほど熱い。先は煤で暗く透ける。
@@ -72,11 +72,40 @@ Shader "MRP/Fire"
                 float4 blur = d * 0.36 + (tex2D(_MainTex, i.uv + o) + tex2D(_MainTex, i.uv - o)
                     + tex2D(_MainTex, i.uv + float2(o.x, -o.y)) + tex2D(_MainTex, i.uv + float2(-o.x, o.y))) * 0.16;
 
+                // 開いた升 (A > 0) と燃やした量 (A の 0.376 から上)
+                float open = saturate(blur.a * 5.0 - 0.6);
+                float burnt = saturate((blur.a - 0.376) / 0.624) * open;
+
+                // 焦げ: 外から 焼け (薄い茶) → 焦げ (濃い茶) → 炭 (黒) の 3 段。段の境はノイズで不規則にずらしてくっきり切る。
+                // 炭は木目のようなむらと、斜めの座標で取った灰の斑 (軸に揃った座標だとノイズの絵の繰り返しが点の格子に見えた)。
+                // 縁の幅 (fwidth) とノイズは分岐の外で取る (分岐の境の画素で微分が乱れて縁に筋が出ないように)
+                float n1 = tex2D(_Noise, i.world * 0.8).r, n2 = tex2D(_Noise, i.world * 3.7).r;
+                float ch = burnt + (n1 - 0.5) * 0.4 + (n2 - 0.5) * 0.15;
+                float aa = fwidth(ch) * 1.5 + 1e-4;
+                float2 r = float2(i.world.x * 0.8 - i.world.y * 0.6, i.world.x * 0.6 + i.world.y * 0.8);
+                float grain = tex2D(_Noise, r * float2(2.2, 6.5)).r;
+                float fl = tex2D(_Noise, r * 4.3 + 0.37).r * tex2D(_Noise, r * 1.3 + 0.71).r;
+                if (burnt > 0.01)
+                {
+                    float singe = smoothstep(0.14 - aa, 0.14 + aa, ch);
+                    float dark = smoothstep(0.42 - aa, 0.42 + aa, ch);
+                    float coal = smoothstep(0.72 - aa, 0.72 + aa, ch);
+                    float3 col = float3(0.30, 0.18, 0.08);
+                    float a = 0.42 * singe;
+                    col = lerp(col, float3(0.11, 0.07, 0.045), dark);
+                    a = lerp(a, 0.8, dark);
+                    col = lerp(col, float3(0.03, 0.025, 0.024) * (0.75 + 0.5 * grain), coal);
+                    a = lerp(a, 0.93, coal);
+                    float ash = smoothstep(0.4, 0.48, fl) * coal;
+                    col = lerp(col, float3(0.46, 0.44, 0.41), ash * 0.6);
+                    c = fixed4(col * a, a);
+                }
+
                 // 油: 黒い膜。照りは流れるノイズで虹色にずらし、縁に細い濃い線。縁はノイズで少し波打たせる
                 float oil = blur.b + (tex2D(_Noise, i.world * 2.3).r - 0.5) * 0.08 * saturate(blur.b * 8.0);
                 float fw = max(fwidth(oil), 1e-5);
                 float inside = (oil - 0.08) / fw;
-                float body = saturate(inside + 0.5) * smoothstep(0.3, 0.7, blur.a);
+                float body = saturate(inside + 0.5) * open;
                 if (body > 0.001)
                 {
                     float n = tex2D(_Noise, i.world * 0.6 + t * float2(0.01, 0.006)).r;
@@ -89,7 +118,7 @@ Shader "MRP/Fire"
                     f.a = 0.78;
                     if (inside < 1.4) { f.rgb = float3(0.03, 0.02, 0.03); f.a = 0.9; }
                     f.a *= body;
-                    c = f;
+                    c = fixed4(f.rgb * f.a + c.rgb * (1.0 - f.a), f.a + c.a * (1.0 - f.a));
                 }
 
                 // 熱の照り: 熱い所ほど橙の光が床に乗る (炎のゆらぎに合わせて明滅)
@@ -101,11 +130,9 @@ Shader "MRP/Fire"
                     // 熱い芯 (燃えている所の床) は赤く焼けた色を濃く
                     float3 g = lerp(_Glow.rgb, float3(1.0, 0.75, 0.35), saturate(heat * 2.0 - 1.0));
                     // 照りは光として足す (床の絵を塗りつぶさず明るくする)。少しだけ覆って暗い床でも色が乗るように
-                    c.rgb = c.rgb * c.a + g * a;
+                    c.rgb = c.rgb + g * a;
                     c.a = saturate(c.a + a * 0.35 * (1.0 - c.a));
-                    return c * i.color.a;
                 }
-                c.rgb *= c.a;
                 return c * i.color.a;
             }
 

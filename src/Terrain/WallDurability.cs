@@ -44,12 +44,15 @@ internal static class WallDurability
 
     // 耐久の格子の番号 (同じ格子を叩いた打撃は同じ壁の所)
     internal static long CellKey(Vector2 p) => Key(p);
+    internal static long CellKey(float x, float y) => Key(x, y);
 
-    private static long Key(Vector2 p)
+    private static long Key(Vector2 p) => Key(p.x, p.y);
+
+    private static long Key(float px, float py)
     {
         // 境目は 1/512 の格子 (蓋・壁の線を揃える格子) の点と点の間へずらす。格子に乗った線の上の点が境目に来ると、
         // PC と Android の浮動小数の末尾の差で別の格子に数えられ、耐久が端末ごとに割れる
-        long x = (long)MathF.Floor(p.x / CellSize + BoundaryShift), y = (long)MathF.Floor(p.y / CellSize + BoundaryShift);
+        long x = (long)MathF.Floor(px / CellSize + BoundaryShift), y = (long)MathF.Floor(py / CellSize + BoundaryShift);
         return (x << 32) ^ (y & 0xffffffffL);
     }
 

@@ -116,9 +116,9 @@ internal static class DamageMap
         return null;
     }
 
-    // 燃え尽きた床の焦げ (穴は開けない)。点ごとに半径 r の円で焦げを濃くする (濃さ amount 0..1・前より薄くはしない)。
+    // 燃えた床と壁の面の焦げ (穴は開けない)。点ごとに半径 r の円で焦げを濃くする (濃さ A 0..1・前より薄くはしない)。
     // 家具の上と船の外には付けない (爆発の焦げと同じ決まり)
-    public static string Scorch(List<Vector2> points, float r, float amount)
+    public static string Scorch(List<(float X, float Y, float A)> points, float r)
     {
         if (points.Count == 0) return null;
         if (!MrpBundle.Ready) return "bundle not ready";
@@ -126,10 +126,10 @@ internal static class DamageMap
         float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
         foreach (var p in points)
         {
-            if (p.x < minX) minX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y > maxY) maxY = p.y;
+            if (p.X < minX) minX = p.X;
+            if (p.Y < minY) minY = p.Y;
+            if (p.X > maxX) maxX = p.X;
+            if (p.Y > maxY) maxY = p.Y;
         }
         var c = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
         float reach = Math.Max(maxX - minX, maxY - minY) * 0.5f + r;
@@ -143,17 +143,17 @@ internal static class DamageMap
         float inv = 1f / r;
         foreach (var p in points)
         {
-            int px0 = Math.Max(0, (int)((p.x - r - _origin.x) * PixelsPerUnit)), px1 = Math.Min(_w - 1, (int)((p.x + r - _origin.x) * PixelsPerUnit) + 1);
-            int py0 = Math.Max(0, (int)((p.y - r - _origin.y) * PixelsPerUnit)), py1 = Math.Min(_h - 1, (int)((p.y + r - _origin.y) * PixelsPerUnit) + 1);
+            int px0 = Math.Max(0, (int)((p.X - r - _origin.x) * PixelsPerUnit)), px1 = Math.Min(_w - 1, (int)((p.X + r - _origin.x) * PixelsPerUnit) + 1);
+            int py0 = Math.Max(0, (int)((p.Y - r - _origin.y) * PixelsPerUnit)), py1 = Math.Min(_h - 1, (int)((p.Y + r - _origin.y) * PixelsPerUnit) + 1);
             for (int py = py0; py <= py1; py++)
             {
-                float wy = _origin.y + (py + 0.5f) / PixelsPerUnit, dy = wy - p.y;
+                float wy = _origin.y + (py + 0.5f) / PixelsPerUnit, dy = wy - p.Y;
                 for (int px = px0; px <= px1; px++)
                 {
-                    float wx = _origin.x + (px + 0.5f) / PixelsPerUnit, dx = wx - p.x;
+                    float wx = _origin.x + (px + 0.5f) / PixelsPerUnit, dx = wx - p.X;
                     float d = MathF.Sqrt(dx * dx + dy * dy) * inv;
                     if (d >= 1f) continue;
-                    float v = amount * Clamp01((1f - d) * 2.5f);
+                    float v = p.A * Clamp01((1f - d) * 2.5f);
                     if (v > FurnitureScorch && InsideAny(keep, wx, wy)) v = FurnitureScorch;
                     if (SolidMap.NearOutside(wx, wy)) continue;
                     int i = (py * _w + px) * 4 + 1;
