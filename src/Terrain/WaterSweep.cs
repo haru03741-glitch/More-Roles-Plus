@@ -11,6 +11,7 @@ namespace MoreRolesPlus.Terrain;
 //   ・歩ける升なのに水が届いていない所 (DRY)
 //   ・歩けるのに水の升として閉じている所 (CLOSED)
 //   ・縁の先が低いのに落ちない所 (LOWER:理由) と、何も無い所へ落ちる縁 (EDGE:理由)
+//   ・濡れているのに水の板が手前の絵の裏に回って見えない所 (BEHIND)
 // を塊にまとめて Screens/watersweep_<船>.txt と .ppm に書く。試合は水浸しになるので最後に使う
 internal static partial class WaterSim
 {
@@ -91,7 +92,7 @@ internal static partial class WaterSim
         return $"OK water sweep start islands={top.Count} seeds={best.Count} rate={rate} grid={grid} step={_step} grid={_w}x{_h} hash={GridHash():x8}";
     }
 
-    private sealed class Cluster { public string Type; public int N; public long Sx, Sy; public int X0 = int.MaxValue, Y0 = int.MaxValue, X1 = -1, Y1 = -1; public int Lvl, Lvl2 = int.MinValue, Isl; }
+    private sealed class Cluster { public string Type; public int N; public long Sx, Sy; public int X0 = int.MaxValue, Y0 = int.MaxValue, X1 = -1, Y1 = -1; public int Lvl, Lvl2 = int.MinValue, Isl, First; }
 
     // 印の付いた升 (4 方向でつながる塊) をまとめる。lvl2 = 塊の縁の先の高さ (LOWER 用・無ければ MinValue)
     private static void Clusters(byte[] mark, string type, byte[] isl, sbyte[] lvl2, List<Cluster> into, byte[] seen, List<int> queue)
@@ -100,7 +101,7 @@ internal static partial class WaterSim
         for (int s = 0; s < mark.Length; s++)
         {
             if (mark[s] == 0 || seen[s] != 0) continue;
-            var c = new Cluster { Type = type, Lvl = _lvl[s], Isl = isl[s] };
+            var c = new Cluster { Type = type, Lvl = _lvl[s], Isl = isl[s], First = s };
             queue.Clear(); queue.Add(s); seen[s] = 1;
             for (int qi = 0; qi < queue.Count; qi++)
             {
@@ -209,6 +210,10 @@ internal static partial class WaterSim
                 }
             }
         }
+        var behind = new byte[n];
+        int behindCells = -1, pending = WaterArt.ReviewPending;
+        try { behindCells = SweepBehind(behind); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"[WaterSim] sweep behind: {e.Message}"); }
         var list = new List<Cluster>();
         var seen = new byte[n];
         var queue = new List<int>();
@@ -216,13 +221,15 @@ internal static partial class WaterSim
         Clusters(closed, "CLOSED", isl, null, list, seen, queue);
         foreach (var kv in lower) Clusters(kv.Value, "LOWER:" + kv.Key, isl, lowerLvl, list, seen, queue);
         foreach (var kv in edge) Clusters(kv.Value, "EDGE:" + kv.Key, isl, null, list, seen, queue);
+        Clusters(behind, "BEHIND", isl, null, list, seen, queue);
         list.Sort((p, q) => q.N - p.N);
 
         string ship = ShipStatus.Instance ? ShipStatus.Instance.name.Replace("(Clone)", "") : "none";
         var sb = new StringBuilder();
-        sb.Append($"SWEEP ship={ship} grid={_w}x{_h} cell={_cell:0.####} origin=({_org.x:0.###},{_org.y:0.###}) hash={GridHash():x8} step={_step} ran={(_sweepStart >= 0 ? _step - _sweepStart : -1)} seeds={_sweepSeeds} open={open} wet={wet} volume={Volume()} fell={FellTotal} void={VoidTotal} digest={Digest():x8} maxStepMs={MaxStepMs:0.000}\n");
+        sb.Append($"SWEEP ship={ship} grid={_w}x{_h} cell={_cell:0.####} origin=({_org.x:0.###},{_org.y:0.###}) hash={GridHash():x8} step={_step} ran={(_sweepStart >= 0 ? _step - _sweepStart : -1)} seeds={_sweepSeeds} open={open} wet={wet} volume={Volume()} fell={FellTotal} void={VoidTotal} digest={Digest():x8} maxStepMs={MaxStepMs:0.000} behind={behindCells} pending={pending}\n");
         foreach (var kv in count) sb.Append("COUNT ").Append(kv.Key).Append(' ').Append(kv.Value).Append('\n');
         int dryCells = 0, closedCells = 0;
+        SpriteRenderer[] covers = null;
         foreach (var c in list)
         {
             if (c.Type == "DRY") dryCells += c.N; else if (c.Type == "CLOSED") closedCells += c.N;
@@ -232,13 +239,15 @@ internal static partial class WaterSim
               .Append($" at=({ax:0.00},{ay:0.00}) box=({_org.x + c.X0 * _cell:0.00},{_org.y + c.Y0 * _cell:0.00})-({_org.x + (c.X1 + 1) * _cell:0.00},{_org.y + (c.Y1 + 1) * _cell:0.00})")
               .Append(" lvl=").Append(c.Lvl);
             if (c.Lvl2 != int.MinValue) sb.Append('>').Append(c.Lvl2);
-            sb.Append(" isl=").Append(c.Isl).Append(" room=").Append(RoomNameAt(ax, ay)).Append('\n');
+            sb.Append(" isl=").Append(c.Isl).Append(" room=").Append(RoomNameAt(ax, ay));
+            if (c.Type == "BEHIND") sb.Append(" by=").Append(CovererAt(c.First, ref covers));
+            sb.Append('\n');
         }
         string dir = TestBridge.ScreensDir;
         string txt = System.IO.Path.Combine(dir, $"watersweep_{ship}.txt");
         System.IO.File.WriteAllText(txt, sb.ToString());
         string ppm = System.IO.Path.Combine(dir, $"watersweep_{ship}.ppm");
-        try { SweepImage(ppm, dry, closed, lower, edge); }
+        try { SweepImage(ppm, dry, closed, lower, edge, behind); }
         catch (Exception e) { Plugin.Logger.LogWarning($"[WaterSim] sweep image: {e.Message}"); ppm = "-"; }
         int shown = 0;
         foreach (var c in list)
@@ -247,11 +256,73 @@ internal static partial class WaterSim
             float ax = _org.x + ((float)c.Sx / c.N + 0.5f) * _cell, ay = _org.y + ((float)c.Sy / c.N + 0.5f) * _cell;
             reply($"SWEEP {c.Type} n={c.N} at=({ax:0.0},{ay:0.0}) room={RoomNameAt(ax, ay)}");
         }
-        reply($"OK water sweep check open={open} wet={wet} dry={dryCells} closed={closedCells} clusters={list.Count} ran={(_sweepStart >= 0 ? _step - _sweepStart : -1)} digest={Digest():x8} txt={txt} ppm={ppm}");
+        reply($"OK water sweep check open={open} wet={wet} dry={dryCells} closed={closedCells} behind={behindCells} pending={pending} clusters={list.Count} ran={(_sweepStart >= 0 ? _step - _sweepStart : -1)} digest={Digest():x8} txt={txt} ppm={ppm}");
     }
 
-    // 船の絵の上に判定を重ねる: 濡れた升 = 青・乾いた歩ける升 = 赤・閉じた升 = 紫・落ちない低い縁 = 橙・何も無い所へ落ちる縁 = 水色
-    private static void SweepImage(string path, byte[] dry, byte[] closed, Dictionary<string, byte[]> lower, Dictionary<string, byte[]> edge)
+    // 水の板が絵の裏に回った升を印す: 水無し・一番手前・元の奥行きの 3 枚を撮り、一番手前なら色が変わる画素のうち
+    // 元の奥行きでは変わらない画素が半分以上の升。描き待ちのタイル (pending) は板がまだ無いので数えない
+    private static int SweepBehind(byte[] behind)
+    {
+        byte[] a, b, c;
+        int w, h;
+        float ppu;
+        Vector2 o;
+        try
+        {
+            WaterArt.ReviewMode(0);
+            a = TerrainReview.RenderShip(1, 1, out w, out h, out ppu, out o);
+            WaterArt.ReviewMode(2);
+            b = TerrainReview.RenderShip(1, 1, out _, out _, out _, out _);
+            // 撮るカメラは遠い (z = -150) ので、部屋の絵とのわずかな差 (ゲームのカメラなら前後が分かれる 0.000004) が
+            // 奥行きの精度に埋もれて入れ替わる。元の奥行きの 0.0001 手前で撮る
+            WaterArt.ReviewMode(3);
+            c = TerrainReview.RenderShip(1, 1, out _, out _, out _, out _);
+        }
+        finally { WaterArt.ReviewMode(1); }
+        static int Diff(byte[] p, byte[] q, int i) => Math.Max(Math.Abs(p[i] - q[i]), Math.Max(Math.Abs(p[i + 1] - q[i + 1]), Math.Abs(p[i + 2] - q[i + 2])));
+        int px = Math.Max(1, (int)MathF.Round(_cell * ppu)), cells = 0;
+        for (int k = 0; k < _w * _h; k++)
+        {
+            if (_open[k] == 0 || _hgt[k] == 0) continue;
+            int x0 = (int)MathF.Round((_org.x + (k % _w) * _cell - o.x) * ppu), y0 = (int)MathF.Round((_org.y + (k / _w) * _cell - o.y) * ppu);
+            int shown = 0, hid = 0;
+            for (int y = y0; y < y0 + px; y++)
+            for (int x = x0; x < x0 + px; x++)
+            {
+                if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                int i = (y * w + x) * 3;
+                if (Diff(a, b, i) < 24) continue;
+                shown++;
+                if (Diff(a, c, i) < 8) hid++;
+            }
+            if (shown >= 2 && hid * 2 >= shown) { behind[k] = 1; cells++; }
+        }
+        return cells;
+    }
+
+    // 升の中心を覆っている船の絵のうち、水の板より手前で一番手前の物の名前 (BEHIND の行に添える)
+    private static string CovererAt(int k, ref SpriteRenderer[] all)
+    {
+        float wz = WaterArt.ReviewZ(k % _w, k / _w);
+        if (float.IsNaN(wz) || !ShipStatus.Instance) return "-";
+        all ??= UnityEngine.Object.FindObjectsOfType<SpriteRenderer>();
+        float px = _org.x + (k % _w + 0.5f) * _cell, py = _org.y + (k / _w + 0.5f) * _cell, best = wz;
+        string name = "-";
+        foreach (var sr in all)
+        {
+            if (!sr || !sr.enabled || (1 << sr.gameObject.layer & ((1 << 0) | (1 << 9) | (1 << 11) | (1 << 12))) == 0 || sr.name.StartsWith("Mrp")) continue;
+            float z = sr.transform.position.z;
+            if (z >= best) continue;
+            var b = sr.bounds;
+            if (px < b.min.x || px > b.max.x || py < b.min.y || py > b.max.y) continue;
+            best = z;
+            name = sr.name + "@" + sr.gameObject.layer + (sr.transform.parent ? "<" + sr.transform.parent.name : "");
+        }
+        return name;
+    }
+
+    // 船の絵の上に判定を重ねる: 濡れた升 = 青・乾いた歩ける升 = 赤・閉じた升 = 紫・落ちない低い縁 = 橙・何も無い所へ落ちる縁 = 水色・絵の裏の水 = 黄
+    private static void SweepImage(string path, byte[] dry, byte[] closed, Dictionary<string, byte[]> lower, Dictionary<string, byte[]> edge, byte[] behind)
     {
         var rgb = TerrainReview.RenderShip(1, out int w, out int h, out float ppu, out Vector2 o);
         int px = Math.Max(1, (int)MathF.Round(_cell * ppu));
@@ -273,6 +344,7 @@ internal static partial class WaterSim
             if (_open[k] != 0 && _hgt[k] > 0) Fill(k, 40, 90, 255, 35);
             if (dry[k] != 0) Fill(k, 255, 30, 30, 75);
             if (closed[k] != 0) Fill(k, 220, 40, 255, 75);
+            if (behind[k] != 0) Fill(k, 255, 240, 0, 80);
         }
         foreach (var m in edge.Values) for (int k = 0; k < m.Length; k++) if (m[k] != 0) Fill(k, 0, 230, 230, 80);
         foreach (var m in lower.Values) for (int k = 0; k < m.Length; k++) if (m[k] != 0) Fill(k, 255, 150, 0, 85);

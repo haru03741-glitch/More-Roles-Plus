@@ -54,6 +54,7 @@ internal static class WaterArt
         public float LastDraw = -10f;
         public bool Waiting;
         public bool Empty = true;
+        public float Z;
     }
 
     // 爆発のくぼみ (絵だけ)。水の計算は全員の結果を揃えるため Delay 刻み遅れて爆心をえぐるので、
@@ -125,6 +126,28 @@ internal static class WaterArt
             Waiting.RemoveAt(i--);
             Draw(tile);
             drawn++;
+        }
+    }
+
+    // 確認用 (water sweep)。描き待ちのタイルの数
+    internal static int ReviewPending => Waiting.Count;
+
+    // その升を含む水の板の奥行き (板がまだ無ければ NaN)
+    internal static float ReviewZ(int cx, int cy)
+    {
+        int t = cy / WaterSim.TileCells * WaterSim.TilesW + cx / WaterSim.TileCells;
+        return Tiles.TryGetValue(t, out var tile) && tile.Go ? tile.Z : float.NaN;
+    }
+
+    // 水の板を 0 = 隠す / 1 = 元の奥行き / 2 = 一番手前 / 3 = 元の奥行きのわずかに手前 にする。撮り終えたら必ず 1 へ戻す
+    internal static void ReviewMode(int mode)
+    {
+        foreach (var t in Tiles.Values)
+        {
+            if (!t.Go) continue;
+            t.Go.SetActive(mode != 0);
+            var p = t.Go.transform.position;
+            t.Go.transform.position = FxMath.V3(p.x, p.y, mode == 2 ? -100f : mode == 3 ? t.Z - 0.0001f : t.Z);
         }
     }
 
@@ -534,7 +557,8 @@ internal static class WaterArt
         }
         float zs = DamageMap.ZScale(front);
         // 床の上・足跡 (−0.001) と波紋より奥
-        t.Go.transform.position = FxMath.V3(wx, wy, front - 0.0004f * zs);
+        t.Z = front - 0.0004f * zs;
+        t.Go.transform.position = FxMath.V3(wx, wy, t.Z);
         t.Shadow = ShadowView.Copy(t.Go, t.Sp, ShadowView.Water, FxMath.Rgba(1f, 1f, 1f, 1f), -0.002f); // 火の写しより奥
         if (FloorMask.Active)
         {

@@ -256,6 +256,13 @@ internal static class TerrainReview
         return Background(w, h, ppu, o, 100);
     }
 
+    // 船の絵に layers の層も重ねて撮る (水の板は層 0)
+    public static byte[] RenderShip(int scale, int layers, out int w, out int h, out float ppu, out Vector2 o)
+    {
+        ppu = SolidMap.Ppu * scale; w = SolidMap.W * scale; h = SolidMap.H * scale; o = SolidMap.Origin;
+        return Background(w, h, ppu, o, 100, ShipLayers | layers);
+    }
+
     // 前の絵の上に、壁の絵が抜けた所 (損傷マスクの穴) を赤く重ねる
     public static void WriteBlastDiff(string path, byte[] before, int w, int h, float ppu, Vector2 o, out int holePx)
     {
@@ -280,7 +287,7 @@ internal static class TerrainReview
     public static void WriteRgb(string path, byte[] rgb, int w, int h) => WritePpm(path, rgb, w, h);
 
     // 船の絵を Tile 画素の升ごとに撮る (下から上の行の順・明るさ pct %)
-    private static byte[] Background(int w, int h, float ppu, Vector2 o, int pct)
+    private static byte[] Background(int w, int h, float ppu, Vector2 o, int pct, int mask = ShipLayers)
     {
         var rgb = new byte[w * h * 3];
         var go = new GameObject("MrpReviewCamera");
@@ -291,7 +298,7 @@ internal static class TerrainReview
             cam.orthographic = true;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = Color.black;
-            cam.cullingMask = ShipLayers;
+            cam.cullingMask = mask;
             cam.nearClipPlane = 0.01f;
             cam.farClipPlane = 300f;
             cam.orthographicSize = Tile / ppu * 0.5f;
