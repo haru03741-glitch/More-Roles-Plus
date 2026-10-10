@@ -496,7 +496,7 @@ internal static class SolidMap
         IslandCount = count;
     }
 
-    private static bool IsWall(Collider2D c) =>
+    internal static bool IsWall(Collider2D c) =>
         c && c.enabled && !c.isTrigger && c.gameObject.layer == ShipLayer &&
         c.gameObject.name != WallBody.CapName && c.gameObject.name != WallBody.MouthName && c.gameObject.name != HullEdgeName && c.gameObject.name != HeightLevels.LedgeName && c.gameObject.name != "MrpRubbleBlock";
 

@@ -145,6 +145,7 @@ internal static class WaterSim
     private static sbyte[] _lvl;     // 升の床の高さ (NoLevel = 決まらない)
     private static byte[] _shut;     // 閉じた扉が掛かっている数
     private static byte[] _doorCell; // 扉の升 (落ちる先を探す時に越えない)
+    private static byte[] _propCell; // 床に置かれた物 (岩・結晶・机) の当たり判定の中の升
     private static bool[] _doorUnder; // 下に隙間があって水が通る扉
     private static ulong _doorBits;  // 升に入れた扉の開き
     private static byte[] _fallMask; // 縁を越えて落ちる向き (ビット = Nx/Ny の並び)
@@ -316,10 +317,12 @@ internal static class WaterSim
         _inList = new byte[n];
         _shut = new byte[n];
         _doorCell = new byte[n];
+        _propCell = new byte[n];
         _fallMask = new byte[n];
         _shadowCut = new byte[n];
         FallTo.Clear();
         ListDoorCells();
+        int props = ListPropCells();
         _tw = (_w + TileCells - 1) / TileCells;
         _th = (_h + TileCells - 1) / TileCells;
         _tileDirty = new bool[_tw * _th];
@@ -331,7 +334,7 @@ internal static class WaterSim
         Links(0, 0, _w - 1, _h - 1, true);
         long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
         double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count}");
+        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count} props={props}");
         DirtyTiles.Clear();
         Array.Clear(_tileDirty);
         _ready = true;
@@ -407,6 +410,54 @@ internal static class WaterSim
             for (int y = Math.Max(0, y0); y <= Math.Min(_h - 1, y1); y++)
             for (int x = Math.Max(0, x0); x <= Math.Min(_w - 1, x1); x++) _doorCell[y * _w + x] = 1;
         }
+    }
+
+    // 床に置かれた物: 壁の線と別に置かれた小さな閉じた当たり判定 (岩・結晶・机)。縁のすぐ隣がその中なら落ちない
+    // (先を探すと物の中を素通りして、物の向こうの崖へ落ちる)。どの升も中の 5 点のどれかが当たり判定の中なら物の升。
+    // 点は端末ごとの丸めで割れないよう 1/512 格子の間に置く
+    private const float PropMax = 4f;
+    private static int ListPropCells()
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship) return -1;
+        int cols = 0;
+        string shipName = FurnitureKinds.ShipName(ship);
+        var seg = new List<Vector2>();
+        const float nudge = 1f / 1024f;
+        foreach (var c in ship.GetComponentsInChildren<Collider2D>(false))
+        {
+            if (!SolidMap.IsWall(c) || c.TryCast<EdgeCollider2D>() || c.GetComponentInParent<OpenableDoor>()) continue;
+            if (FurnitureKinds.TryGet(c.transform, shipName, out _)) continue;
+            var b = c.bounds;
+            float bx0 = b.min.x, by0 = b.min.y, bx1 = b.max.x, by1 = b.max.y;
+            if (bx1 - bx0 > PropMax || by1 - by0 > PropMax || bx1 - bx0 + by1 - by0 < 0.05f) continue;
+            cols++;
+            seg.Clear();
+            SolidMap.Segments(c, seg);
+            int x0 = Math.Max(0, (int)MathF.Floor((bx0 - _org.x) / _cell) - 1), x1 = Math.Min(_w - 1, (int)MathF.Floor((bx1 - _org.x) / _cell) + 1);
+            int y0 = Math.Max(0, (int)MathF.Floor((by0 - _org.y) / _cell) - 1), y1 = Math.Min(_h - 1, (int)MathF.Floor((by1 - _org.y) / _cell) + 1);
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                float px = _org.x + (x + 0.5f) * _cell + nudge, py = _org.y + (y + 0.5f) * _cell + nudge, q = _cell * 0.375f;
+                if (InsideSegs(seg, px, py) || InsideSegs(seg, px - q, py) || InsideSegs(seg, px + q, py) ||
+                    InsideSegs(seg, px, py - q) || InsideSegs(seg, px, py + q))
+                    _propCell[y * _w + x] = 1;
+            }
+        }
+        return cols;
+    }
+
+    // 線分の組 (a, b, a, b, ...) で囲まれた中か (偶奇)
+    private static bool InsideSegs(List<Vector2> seg, float x, float y)
+    {
+        bool inside = false;
+        for (int i = 0; i + 1 < seg.Count; i += 2)
+        {
+            float ax = seg[i].x, ay = seg[i].y, bx = seg[i + 1].x, by = seg[i + 1].y;
+            if ((ay > y) != (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside;
+        }
+        return inside;
     }
 
     // 下に隙間があって水が通る扉 (エアシップのラウンジのトイレの個室の扉)
@@ -570,6 +621,7 @@ internal static class WaterSim
             if (cx < 1 || cy < 1 || cx >= _w - 1 || cy >= _h - 1) { why = "border"; break; }
             int c = cy * _w + cx;
             if (_doorCell[c] != 0) return "door";
+            if (i == 1 && _propCell[c] != 0 && _open[c] == 0) return "prop";
             int lc = _lvl[c];
             tx = cx; ty = cy; dist = i;
             if (_open[c] == 0)
@@ -1323,7 +1375,7 @@ internal static class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _doorUnder = null; _fallMask = null; _shadowCut = null;
+        _lvl = null; _shut = null; _doorCell = null; _propCell = null; _doorUnder = null; _fallMask = null; _shadowCut = null;
         FallTo.Clear();
         FallOut.Clear();
         Flying.Clear();
@@ -1406,7 +1458,7 @@ internal static class WaterSim
             }
             if (a.StartsWith("why"))
             {
-                // 確認用: 範囲の縁の升が落ちない理由を向きごとに数える (4 つ目に "-y:scan" などを渡すとその升の位置を並べる。scan = 先に開いた升が無い・same = 先が低くない・door・room = 谷の外で外壁の向こうの奈落・shadow = 影の線。落ちる側は fall/side/void/sky = 手すりの外の空/cliff = 何も無い崖の下)
+                // 確認用: 範囲の縁の升が落ちない理由を向きごとに数える (4 つ目に "-y:scan" などを渡すとその升の位置を並べる。scan = 先に開いた升が無い・same = 先が低くない・door・room = 谷の外で外壁の向こうの奈落・shadow = 影の線。prop = すぐ隣が床に置かれた物・落ちる側は fall/side/void/sky = 手すりの外の空/cliff = 何も無い崖の下)
                 var q = a.Substring(3).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 var ic = System.Globalization.CultureInfo.InvariantCulture;
                 if (!_ready || q.Length < 3 || !float.TryParse(q[0], System.Globalization.NumberStyles.Float, ic, out float wx) || !float.TryParse(q[1], System.Globalization.NumberStyles.Float, ic, out float wy)
