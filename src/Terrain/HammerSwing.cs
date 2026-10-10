@@ -105,7 +105,7 @@ internal static class HammerSwing
     }
 
     // 狙う向き: 歩いていればその向き、止まっていればクルーが向いている左右
-    private static Vector2 Aim(PlayerControl lp, out bool facingLeft)
+    internal static Vector2 Aim(PlayerControl lp, out bool facingLeft)
     {
         facingLeft = lp.cosmetics && lp.cosmetics.FlipX;
         Vector2 v = lp.MyPhysics ? lp.MyPhysics.Velocity : Vector2.zero;

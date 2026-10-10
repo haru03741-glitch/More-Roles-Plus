@@ -133,6 +133,28 @@ public static class TerrainApi
     // 油をまく: pos の半径 radius の床を油にする (amount 0..1)。火が付くとよく燃え、水を掛けると噴き上がる
     public static TerrainResult Spill(Vector2 pos, float radius, float amount = 1f) => Fire(DamageKind.Spill, pos, radius, amount);
 
+    // 放水 (消火・水を使う役職など): pos から dir の側へ、水漏れと同じ量の水をしばらく噴き出す。壁は壊さない
+    public static TerrainResult Water(Vector2 pos, Vector2 dir)
+    {
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        if (!Local(TerrainUse.Water, 0f, out var lp, out string why)) return TerrainResult.Fail(why);
+        Vector2 me = lp.GetTruePosition();
+        float dx = pos.x - me.x, dy = pos.y - me.y;
+        if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
+            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+        string res = TerrainSync.Request(new DamageEvent(DamageKind.Water, pos, dir.normalized, 0f, 0f, Seed()), out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
+    // プレイヤーでない放水 (ホストと一人の時だけ・水の仕掛けなど)
+    public static TerrainResult WorldWater(Vector2 pos, Vector2 dir)
+    {
+        if (TerrainSync.IsGuest()) return TerrainResult.Fail("host only");
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        string res = TerrainSync.RequestAs(new DamageEvent(DamageKind.Water, pos, dir.normalized, 0f, 0f, Seed()), World, out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
     private static TerrainResult Fire(DamageKind kind, Vector2 pos, float radius, float force)
     {
         radius = Math.Clamp(radius, 0.1f, TerrainSync.MaxFireRadius);

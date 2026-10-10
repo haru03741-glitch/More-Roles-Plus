@@ -152,6 +152,7 @@ internal static class WaterLeak
     {
         if (r.Kind == DamageKind.Explosion) Splash(r);
         if (r.Kind == DamageKind.Push) { PushSplash(r); return; }
+        if (r.Kind == DamageKind.Water) { Start(r.Position, r.Direction, r.Seed, "water", 0.8f, r.Tick, pipes: false); return; }
         if (!ShipStatus.Instance || TerrainDamage.LastCut <= 0) return;
         if (r.Kind != DamageKind.Explosion && r.Hp > 0) return;
         if (!FindLeak(r.Position, out Vector2 at, out Vector2 n, out float segLen, out string room)) return;
@@ -347,14 +348,14 @@ internal static class WaterLeak
         return WaterRooms.Contains(name) ? name : null;
     }
 
-    private static void Start(Vector2 at, Vector2 n, ushort seed, string room, float segLen, ushort tick)
+    private static void Start(Vector2 at, Vector2 n, ushort seed, string room, float segLen, ushort tick, bool pipes = true)
     {
-        // 噴く向き = 壊れた区間の両側のうち歩ける側 (壁を突き抜けた時は両側)
+        // 噴く向き = 壊れた区間の両側のうち歩ける側 (壁を突き抜けた時は両側)。配管の無い放水は手元から片側だけ
         bool pos = !SolidMap.Valid || !SolidMap.Solid(at + n * 0.4f);
-        bool neg = !SolidMap.Valid || !SolidMap.Solid(at - n * 0.4f);
+        bool neg = pipes && (!SolidMap.Valid || !SolidMap.Solid(at - n * 0.4f));
         if (!pos && !neg) pos = true;
         float floor = DamageMap.FrontZ(at), zs = DamageMap.ZScale(floor);
-        AddPipes(at.x, at.y, floor - 0.003f * zs + 0.0005f, n, segLen, seed);
+        if (pipes) AddPipes(at.x, at.y, floor - 0.003f * zs + 0.0005f, n, segLen, seed);
         var dir = pos ? n : -n;
         WaterSim.AddLeak(tick, at, dir, pos && neg, seed);
         Made++;

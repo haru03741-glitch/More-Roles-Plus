@@ -1,4 +1,4 @@
-# 能力ボタンの絵 (ハンマー・爆弾・点火) と破壊音のマーク (noise_*) を描いて Resources/Icons/*.png に書き出す。
+# 能力ボタンの絵 (ハンマー・爆弾・点火・放水) と破壊音のマーク (noise_*) を描いて Resources/Icons/*.png に書き出す。
 # 本編のボタンの絵に合わせた描き方: 外側に白い縁 → 黒い太線 → ベタ塗り + 明るい帯と一段の影。
 # 220 px 四方 (ゲーム内では 172 px = 1 単位で、本編の能力ボタンの絵の枠と同じ 1.28 単位になる)。4 倍で描いて縮める。
 #   python tools/make-button-icons.py
@@ -245,6 +245,32 @@ def fire():
     ic.save("fire")
 
 
+def drop_shape(cx, by, w, h):
+    # 水滴 1 つ: 下が丸く、上がとがる。by = 下の端・w = 幅の半分・h = 背丈
+    right, left = [], []
+    for i in range(61):
+        u = i / 60
+        # 下の半円 (u < 0.45) から先へ向かって細る
+        if u < 0.45:
+            hw = w * math.sqrt(max(0.0, 1 - ((0.45 - u) / 0.45) ** 2))
+        else:
+            hw = w * ((1 - u) / 0.55) ** 1.35
+        y = by - h * u
+        right.append((cx + hw, y))
+        left.append((cx - hw, y))
+    return poly(right + left[::-1])
+
+
+def water():
+    ic = Icon()
+    # 大きな水滴 → 暗い側の影 → 光の帯。右下に小さな水滴を 2 つ (跳ねた水)
+    ic.part(drop_shape(178, 208, 17, 54), (46, 140, 226, 255), [(drop_shape(184, 208, 12, 42), (28, 104, 196, 255))])
+    ic.part(drop_shape(192, 140, 10, 32), (60, 156, 236, 255))
+    ic.part(drop_shape(94, 202, 62, 186), (60, 156, 236, 255),
+            [(drop_shape(114, 206, 52, 150), (34, 112, 204, 255)), (ellipse(56, 114, 80, 160), (196, 232, 255, 255))])
+    ic.save("water")
+
+
 if __name__ == "__main__":
     hammer()
     hammer_held()
@@ -255,4 +281,5 @@ if __name__ == "__main__":
     noise_hit()
     noise_break()
     fire()
+    water()
     print("wrote", os.path.abspath(OUT))

@@ -239,7 +239,7 @@ internal static class PropSim
 
     private static void Enqueue(in ResolvedDamage r)
     {
-        if (r.Kind.IsFire() || !Ensure()) return;
+        if (r.Kind.IsFire() || r.Kind == DamageKind.Water || !Ensure()) return;
         int tick = GameClock.Expand(r.Tick);
         if (!_running) { _running = true; Auth.Step = Disp.Step = Math.Min(tick, GameClock.Now - Delay); }
         var p = new Pending { Tick = tick, Seed = r.Seed, Cx = ToU(r.Position.x - _org.x), Cy = ToU(r.Position.y - _org.y) };
