@@ -480,9 +480,9 @@ internal static class DamageMap
     private static float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 
     // 部屋の絵か: Ship 層の SpriteRenderer で、MaskShader (Skeld 型) か、大きな Sprites/Default (Polus・Fungle 型)。
-    // 背景・海・波・色かぶせ・影などは除く
+    // 背景・海・波・色かぶせ・影などは除く。カメラに付いて動く空 (Fungle の夕焼けと星) も除く (地図の範囲が作った時のカメラの位置で変わる)
     private static readonly System.Text.RegularExpressions.Regex NotRoomArt = new(
-        "background|overlay|water|wave|tint|shadow|light|square|starfield|hull",
+        "background|overlay|water|wave|tint|shadow|light|square|starfield|hull|parallax",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (コードを生成する初期化に 170ms・試合ごとに 1 回の走査なので解釈実行で足りる)
 
     private static bool IsRoomArt(SpriteRenderer sr)
