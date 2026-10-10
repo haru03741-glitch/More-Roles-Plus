@@ -369,6 +369,7 @@ internal static partial class WaterSim
         _stepMask = new byte[n];
         _shadowCut = new byte[n];
         _ledge = new byte[n];
+        _skyCut = new byte[n];
         FallTo.Clear();
         StepTo.Clear();
         ListDoorCells();
@@ -776,6 +777,7 @@ internal static partial class WaterSim
         _decks = airship ? AirshipDecks : NoDecks;
         _steps = airship ? AirshipSteps : NoDecks;
         _skyEdges = airship ? AirshipSkyEdges : NoDecks;
+        _skyRails = ship && ship.TryCast<MiraShipStatus>() != null ? MiraSkyRails : NoDecks;
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
         // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので屋外の影の線を見ない
@@ -920,6 +922,41 @@ internal static partial class WaterSim
     private static float[] _skyEdges = NoDecks;
     private static bool OnSkyEdge(int x, int y) => InRects(_skyEdges, _org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell);
 
+    // 手すりだけで空と隔てられた床 (x0, y0, x1, y1)。Mira の発射台 (南の縁は外壁) とバルコニー。外壁には影の線が無い所があり、手すりと見分けられない
+    private static readonly float[] MiraSkyRails = { -11.997f, 0.253f, 0.497f, 9.247f, 17.503f, -3.997f, 29.247f, -0.997f };
+    private static float[] _skyRails = NoDecks;
+
+    // 手すりの床の縁の先 (歩けない升だけを真っすぐ FallScan 升まで) に船の外の空があり、間に影の線 (壁の根元) が無ければ空へ落ちる。
+    // 影の線は壁が壊れると切れるので、作った時 (_ledgeScan) だけ調べて結果を残す (ビット d = 調べた・ビット 4 + d = 空)
+    private static byte[] _skyCut;
+    private static bool SkyBeyond(int x, int y, int d)
+    {
+        if (_skyRails.Length == 0 || !InRects(_skyRails, _org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell)) return false;
+        int k = y * _w + x;
+        if ((_skyCut[k] >> d & 1) != 0) return (_skyCut[k] >> (4 + d) & 1) != 0;
+        if (!_ledgeScan) return false;
+        bool hit = false;
+        for (int i = 1; i <= FallScan[d]; i++)
+        {
+            int cx = x + Nx[d] * i, cy = y + Ny[d] * i;
+            if (cx < 1 || cy < 1 || cx >= _w - 1 || cy >= _h - 1) break;
+            int c = cy * _w + cx;
+            if (_doorCell[c] != 0 || _open[c] != 0) break;
+            if (SkyIn(cx, cy)) { hit = !ShadowBetween(x, y, cx, cy, false); break; }
+        }
+        _skyCut[k] |= (byte)(1 << d | (hit ? 1 << (4 + d) : 0));
+        return hit;
+    }
+
+    // 升の中の SolidMap の升に船の外が 1 つでもある
+    private static bool SkyIn(int cx, int cy)
+    {
+        int sw = SolidMap.W;
+        for (int b = 0; b < Sub * Sub; b++)
+            if (SolidMap.OutsideAt((cy * Sub + b / Sub) * sw + cx * Sub + b % Sub)) return true;
+        return false;
+    }
+
     // 縁の升 (x, y) の向き d の落ちる先。to = 落ちる先の升・-1 = 奈落 (落ちた水は消える)・int.MinValue = 落ちない。返り値は理由 (確認用)。
     // 奈落の注釈は壊せない所の印も兼ねて外壁の外にも塗ってあるので、奈落へ落ちるのは谷のある部屋 (ChasmRooms) の中か、
     // 屋外のデッキの床 (_decks) の縁から真っすぐ届く所 (手すりの外の空) か、縁の際に段の影の線がある所 (足場の手すりの外) だけ。外壁には影の線も船体の塊も無い所
@@ -959,6 +996,8 @@ internal static partial class WaterSim
             // 段の縁の先に床が無い (足場の手すりの外) = 虚空へ落ちる
             if (Ny[d] <= 0 && !seen && why != "door" && LedgeNear(x, y, d)) { to = -1; return "ledge"; }
             if (Ny[d] <= 0 && !seen && why == "scan" && OnSkyEdge(x, y)) { to = -1; return "sky"; }
+            // 手すりの床は真っすぐ先が空なら落ちる (斜め下に見える別の床は手すりの外の空の向こう)
+            if (Ny[d] <= 0 && why == "scan" && SkyBeyond(x, y, d)) { to = -1; return "sky"; }
             if (!cliffs || lk <= 0 || Ny[d] > 0 || seen || why == "door") return why;
             to = -1;
             return "cliff";
@@ -1909,7 +1948,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null;
+        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null; _skyCut = null;
         FallTo.Clear();
         StepTo.Clear();
         FallOut.Clear();
@@ -1944,7 +1983,7 @@ internal static partial class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | sweep start|check | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | sweep start|check | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             if (a == "reset") Reset();
@@ -1953,6 +1992,29 @@ internal static partial class WaterSim
                 int depth = a.Length > 5 && int.TryParse(a.Substring(5).Trim(), out int dd) ? dd : Full / 4;
                 int n = Flood(depth);
                 reply(n < 0 ? "ERR water flood: no map" : $"OK water flood cells={n} depth={depth}");
+                return;
+            }
+            if (a.StartsWith("cell"))
+            {
+                // 横一列の升の中身: 開いているか・段・床の高さ・水・通れる縁 (右左上下の順・1 = 通れる)
+                var q = a.Substring(4).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                if (_open == null || q.Length < 3 || !float.TryParse(q[0], System.Globalization.NumberStyles.Float, ic, out float c0)
+                    || !float.TryParse(q[1], System.Globalization.NumberStyles.Float, ic, out float c1) || !float.TryParse(q[2], System.Globalization.NumberStyles.Float, ic, out float cy))
+                { reply("ERR water cell x0 x1 y (no grid?)"); return; }
+                var sb = new System.Text.StringBuilder("OK water cell");
+                int yy = (int)MathF.Floor((cy - _org.y) / _cell);
+                for (int xx = (int)MathF.Floor((c0 - _org.x) / _cell); xx <= (int)MathF.Floor((c1 - _org.x) / _cell); xx++)
+                {
+                    if (xx < 1 || yy < 1 || xx >= _w - 1 || yy >= _h - 1) continue;
+                    int k = yy * _w + xx;
+                    sb.Append($" | {_org.x + (xx + 0.5f) * _cell:0.##}:o{_open[k]}{(SkyIn(xx, yy) ? "s" : "")} l{_lvl[k]} b{_bed[k]} h{_hgt[k]} e");
+                    for (int d = 0; d < 4; d++) sb.Append(Passable(k, d) ? '1' : '0');
+                    if (_open[k] != 0)
+                        for (int d = 0; d < 4; d++)
+                            if (!Passable(k, d)) sb.Append(' ').Append(d).Append('=').Append(Target(xx, yy, d, _lvl[k], false, out int to, out _, out _, out _)).Append(to == -1 ? "!" : "");
+                }
+                reply(sb.ToString());
                 return;
             }
             if (a.StartsWith("pour"))

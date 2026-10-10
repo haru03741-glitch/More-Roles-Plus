@@ -47,8 +47,10 @@ REACH = 0.2           # 歩ける所からこの距離 (世界単位) より離�
 # つながっていれば床にする。当たり判定は家具や壁の絵より大きく取ってあり、REACH で切ると家具の手前に乾いた地面の帯が残る。
 # 広げるのは手前の絵の形の手前まで (影の中では水の写しが手前の絵より前に出る)。歩ける所の近くの床は手前の絵があっても削らない (乗れる床板の絵がある)
 GROUND_REACH_SHIP = {"FungleShip": 1.0}
-# 床の絵が南の壁の前面と同じ色で続く広い床 (Mira の発射台): 前面の除外と隙間の幅の下限を外す範囲 (世界座標の矩形 x0, y0, x1, y1)
+# 床の絵が壁の面と同じ色で続く広い床 (Mira の発射台): 床の色の判定・壁の面と前面の除外・隙間の幅の下限を外す範囲 (世界座標の矩形 x0, y0, x1, y1)
 PHYS_RELAX_SHIP = {"MiraShip": [(-11.7, -0.3, 0.2, 8.8)]}
+# 例外の範囲から抜く部屋の絵の家具 (手前の絵の一覧に無い物・Mira の発射台の燃料タンク)
+PHYS_RELAX_CUT_SHIP = {"MiraShip": [(-9.4, 0.9, -6.85, 4.35)]}
 # 水の届く升にしない範囲。小さな段差の縁 (エアシップの機関室の南の桃色の床の上り口) は通れない縁のままでないと段として上れない
 PHYS_EXCLUDE_SHIP = {"Airship": [(-2.6, -2.05, 2.8, -1.74)]}
 FURN_DEEP = 0.08      # 家具の当たり判定の縁からこれより内側は床にしない (当たり判定が絵より大きい所の縁の帯は床のまま)
@@ -314,14 +316,14 @@ def classify(j, canvas, ppu, cover):
         touch[np.unique(lab[walk & ground])] = True
         touch[0] = False
         floor |= touch[lab]
-    wet, show = beyond(j, ppu, floor, cand & ~wall_face(canvas, floor, ppu), front_face(canvas, floor, ppu), walk, cover, drawn, canvas)
-    return smooth((floor & ~deep) | show), walk, furn, wet
+    wet, show, hide = beyond(j, ppu, floor, cand, wall_face(canvas, floor, ppu) | front_face(canvas, floor, ppu), walk, cover, drawn, canvas)
+    return smooth((floor & ~deep & ~hide) | show), walk, furn, wet
 
 
 def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas):
     """水が物理的に届く所: 歩ける所から、床の色の画素 (壁の面は除く・地面の船は海でない地面も) だけを通り、影の線 (壁の根元) と
     手前の絵 (家具・木・岩) を越えずに PHYS_REACH まで塗った範囲。当たり判定だけで閉じた所 (見えない柵の向こうの床・家具の当たり判定の
-    張り出し) にも水は流れる。戻り値 = (水の範囲, 水を見せる画素)"""
+    張り出し) にも水は流れる。戻り値 = (水の範囲, 水を見せる画素, 水を見せない画素)"""
     s = j["solid"]
     ox, oy = s["origin"]
     shape = floor.shape
@@ -334,9 +336,12 @@ def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas):
     dr = ImageDraw.Draw(im)
     for x0, y0, x1, y1 in PHYS_RELAX_SHIP.get(j["ship"].replace("(Clone)", ""), []):
         dr.rectangle([(x0 - ox) * ppu, (y0 - oy) * ppu, (x1 - ox) * ppu, (y1 - oy) * ppu], fill=1)
+    for x0, y0, x1, y1 in PHYS_RELAX_CUT_SHIP.get(j["ship"].replace("(Clone)", ""), []):
+        dr.rectangle([(x0 - ox) * ppu, (y0 - oy) * ppu, (x1 - ox) * ppu, (y1 - oy) * ppu], fill=0)
     relax = np.asarray(im).astype(bool)
     sea = sea_mask(j, ppu, shape)
-    land = cand & (~front | relax)
+    # 例外の範囲は絵のある画素を全部床の続きにする (床の黒い模様・床に這うホース・鎖の柵)。家具は手前の絵と抜く範囲 (燃料タンク) で除く
+    land = cand & ~front | relax & drawn
     if sea is not None:
         land &= ~sea
     reach = ndimage.distance_transform_edt(~walk) <= PHYS_REACH * ppu
@@ -355,7 +360,8 @@ def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas):
     k = max(1, int(round(PHYS_MIN_W * ppu / 2)))
     region = ndimage.binary_opening(region, st, iterations=k) & ~walk
     # 絵の無い地面 (Fungle の屋外) は高さの違う台地の間もつながって見えるので、水の通り道には足さず見せるだけ (GROUND_REACH)
-    return region, region
+    # 例外の範囲の手前の絵 (ドロップシップ) は床の色でも水を見せない
+    return region, region, relax & cover
 
 
 def sea_mask(j, ppu, shape):
