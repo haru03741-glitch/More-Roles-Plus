@@ -24,7 +24,8 @@ internal static partial class WaterSim
         string mode = q.Length > 0 ? q[0] : "";
         if (mode == "start") { reply(SweepStart(q.Length > 1 && int.TryParse(q[1], out int r) ? r : 4, q.Length > 2 && int.TryParse(q[2], out int g) ? g : 24)); return; }
         if (mode == "check") { SweepCheck(reply); return; }
-        reply("ERR water sweep start [rate=4 (1 刻みに入れる深さ)] [grid=24 (口の間隔・升)] (今ある浸水は消して置き直す) | check");
+        if (mode == "levels") { reply(LevelImage()); return; }
+        reply("ERR water sweep start [rate=4 (1 刻みに入れる深さ)] [grid=24 (口の間隔・升)] (今ある浸水は消して置き直す) | check | levels");
     }
 
     // 升ごとの歩ける島 (升の中の最初の歩ける升の島)
@@ -349,5 +350,54 @@ internal static partial class WaterSim
         foreach (var m in edge.Values) for (int k = 0; k < m.Length; k++) if (m[k] != 0) Fill(k, 0, 230, 230, 80);
         foreach (var m in lower.Values) for (int k = 0; k < m.Length; k++) if (m[k] != 0) Fill(k, 255, 150, 0, 85);
         TerrainReview.WriteRgb(path, rgb, w, h);
+    }
+
+    // 確認用: 升の床の高さを色で重ねる (-2 以下 = 黒・-1 = 青・0 = 緑・1 = 黄・2 = 橙・3 以上 = 赤・決まらない = 紫)。
+    // 床の高さ = 升の内側を暗く (高いほど濃い)・海へ出る縁 = 濃い青・落ちる縁 = 白・小さな段差の縁 = 水色・影の線で切った縁 = 桃
+    private static string LevelImage()
+    {
+        if (!_ready) return "ERR water sweep levels: no grid";
+        var rgb = TerrainReview.RenderShip(1, out int w, out int h, out float ppu, out Vector2 o);
+        int px = Math.Max(1, (int)MathF.Round(_cell * ppu));
+        void Fill(int k, int r, int g, int b, int pct, int inset)
+        {
+            int x0 = (int)MathF.Round((_org.x + (k % _w) * _cell - o.x) * ppu), y0 = (int)MathF.Round((_org.y + (k / _w) * _cell - o.y) * ppu);
+            for (int y = y0 + inset; y < y0 + px - inset; y++)
+            for (int x = x0 + inset; x < x0 + px - inset; x++)
+            {
+                if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                int i = (y * w + x) * 3;
+                rgb[i] = (byte)((rgb[i] * (100 - pct) + r * pct) / 100);
+                rgb[i + 1] = (byte)((rgb[i + 1] * (100 - pct) + g * pct) / 100);
+                rgb[i + 2] = (byte)((rgb[i + 2] * (100 - pct) + b * pct) / 100);
+            }
+        }
+        var m = new Dictionary<int, int>();
+        for (int k = 0; k < _w * _h; k++)
+        {
+            if (_seaCell[k] != 0) { Fill(k, 0, 40, 160, 30, 0); continue; }
+            if (_open[k] == 0) continue;
+            int l = _lvl[k];
+            m[l] = m.TryGetValue(l, out int c) ? c + 1 : 1;
+            if (l == NoLevel) Fill(k, 200, 0, 255, 55, 0);
+            else if (l <= -2) Fill(k, 0, 0, 0, 55, 0);
+            else if (l == -1) Fill(k, 0, 80, 255, 50, 0);
+            else if (l == 0) Fill(k, 0, 200, 60, 40, 0);
+            else if (l == 1) Fill(k, 255, 230, 0, 50, 0);
+            else if (l == 2) Fill(k, 255, 130, 0, 55, 0);
+            else Fill(k, 255, 0, 0, 55, 0);
+            if (_bed[k] != 0) Fill(k, 0, 0, 0, Math.Min(60, Math.Abs(_bed[k]) * 50 / Full), 1);
+            if (_seaMask[k] != 0) Fill(k, 0, 40, 255, 95, 1);
+            else if (_fallMask[k] != 0) Fill(k, 255, 255, 255, 90, 1);
+            else if (_stepMask[k] != 0) Fill(k, 0, 240, 240, 90, 1);
+            else if (_shadowCut[k] != 0) Fill(k, 255, 100, 200, 90, 1);
+        }
+        string ship = ShipStatus.Instance ? ShipStatus.Instance.name.Replace("(Clone)", "") : "none";
+        string dir = TestBridge.ScreensDir;
+        string path = System.IO.Path.Combine(dir, $"waterlevels_{ship}.ppm");
+        TerrainReview.WriteRgb(path, rgb, w, h);
+        var sb = new System.Text.StringBuilder();
+        foreach (var kv in m) sb.Append(kv.Key == NoLevel ? "none" : kv.Key.ToString()).Append('=').Append(kv.Value).Append(' ');
+        return $"OK water sweep levels {sb}ppm={path}";
     }
 }

@@ -467,7 +467,8 @@ internal static partial class WaterSim
     private static uint GridHash()
     {
         uint h = 2166136261;
-        for (int i = 0; i < _propCell.Length; i++) h = (h ^ (uint)(_propCell[i] | _shadowCut[i] << 1 | _ledge[i] << 9)) * 16777619;
+        // 床の高さと海の縁は表の無いマップでは 0 (今までと同じ指紋)
+        for (int i = 0; i < _propCell.Length; i++) h = (h ^ (uint)(_propCell[i] | _shadowCut[i] << 1 | _ledge[i] << 9 | _seaMask[i] << 17 | (_bed[i] & 0x7ff) << 21)) * 16777619;
         uint sum = 0;
         foreach (var kv in FallTo) sum += (uint)(kv.Key * 73856093) ^ (uint)(kv.Value.To * 19349663) ^ (uint)(kv.Value.Delay * 83492791);
         foreach (var kv in StepTo) sum += (uint)(kv.Key * 2654435761u) ^ (uint)(kv.Value * 40503);
@@ -639,6 +640,7 @@ internal static partial class WaterSim
     {
         int n = _w * _h;
         _lvl = new sbyte[n];
+        LoadBed();
         if (MapNotes.HasLevels)
         {
             HeightLevels.RasterZones(_lvl, _w, _h, _org, _cell);
@@ -678,12 +680,43 @@ internal static partial class WaterSim
             area[id]++;
         }
         var rank = HeightLevels.IslandRanks(i => area[i]);
+        DoorRanks(isl, rank);
         for (int k = 0; k < n; k++)
         {
             int id = isl[k];
             lvl[k] = id == 0 ? (sbyte)0 : rank[id] == int.MinValue ? NoLevel : (sbyte)Math.Clamp(rank[id], -100, 100);
         }
         return lvl;
+    }
+
+    // はしごでつながらない島は、扉を挟んで隣り合う順位の決まった島と同じ段にする (扉の奥の部屋)。
+    // 扉の升の周り DoorReach 升にある島どうしを組にして、決まった側から決まらない側へ広げる
+    private const int DoorReach = 3;
+    private static void DoorRanks(byte[] isl, int[] rank)
+    {
+        var near = new List<int>();
+        for (bool changed = true; changed;)
+        {
+            changed = false;
+            for (int c = 0; c < _doorCell.Length; c++)
+            {
+                if (_doorCell[c] == 0) continue;
+                int cx = c % _w, cy = c / _w;
+                near.Clear();
+                for (int dy = -DoorReach; dy <= DoorReach; dy++)
+                for (int dx = -DoorReach; dx <= DoorReach; dx++)
+                {
+                    int x = cx + dx, y = cy + dy;
+                    if (x < 0 || y < 0 || x >= _w || y >= _h) continue;
+                    int id = isl[y * _w + x];
+                    if (id != 0 && id < rank.Length && !near.Contains(id)) near.Add(id);
+                }
+                int known = int.MinValue;
+                foreach (int id in near) if (rank[id] != int.MinValue) { known = rank[id]; break; }
+                if (known == int.MinValue) continue;
+                foreach (int id in near) if (rank[id] == int.MinValue) { rank[id] = known; changed = true; }
+            }
+        }
     }
 
     // 範囲の升の、縁を越えて落ちる向きと落ちる先を作り直す。縁 (隣へ流れられない向き) の先を FallScan 升まで進み、
@@ -723,6 +756,7 @@ internal static partial class WaterSim
                 for (int d = 0; d < 4; d++) StepTo.Remove(k * 4 + d);
                 _stepMask[k] = 0;
             }
+            if (_seaMask[k] != 0) { _seaMask[k] = 0; _seaListDirty = true; }
             int lk = _lvl[k];
             if (_open[k] == 0 || lk == NoLevel || lk == VoidLevel) continue;
             for (int d = 0; d < 4; d++)
@@ -737,6 +771,12 @@ internal static partial class WaterSim
                 {
                     StepTo[k * 4 + d] = ty * _w + tx;
                     _stepMask[k] |= (byte)(1 << d);
+                    continue;
+                }
+                if (to == int.MinValue && (why == "scan" || why == "border") && SeaEdge(x, y, d))
+                {
+                    _seaMask[k] |= (byte)(1 << d);
+                    _seaListDirty = true;
                     continue;
                 }
                 if (to == int.MinValue || to == -1 && OnLadder(x, y)) continue;
@@ -1201,6 +1241,8 @@ internal static partial class WaterSim
             Mark(k);
         }
 
+        SeaInflow();
+
         // 流れ: 各升が自分の 4 本の管の流れ出しを決める (読むのは前の刻みの高さだけ・順番に依らない)。
         // 低い床の隣へは向こうの水に押し返されずに流れ、高い床の隣へは流れない。縁を越えて落ちる分は FallOut へ
         FallOut.Clear();
@@ -1223,8 +1265,9 @@ internal static partial class WaterSim
                     bool known = lk != NoLevel && lj != NoLevel;
                     if (!known || lj <= lk)
                     {
-                        int hj = known && lj < lk ? 0 : _hgt[j];
-                        int diff = h - hj - (hj == 0 ? DryHold : WetHold);
+                        // 同じ段は水面 (床の高さ + 深さ) の差で流れる。低い段へは向こうの水に押し返されない
+                        int hj = _hgt[j];
+                        int diff = known && lj < lk ? h - DryHold : h + _bed[k] - hj - _bed[j] - (hj == 0 ? DryHold : WetHold);
                         f = _flux[k * 4 + d] * Damp / 256 + (diff > 0 ? diff * Gain / 256 : 0);
                         if (f < 0) f = 0;
                         f += d == 0 ? b0 : d == 1 ? b1 : d == 2 ? b2 : b3;
@@ -1252,6 +1295,18 @@ internal static partial class WaterSim
                     if (g <= 0) g = 1;
                     FallOut.Add((k, d, g));
                     sum += g;
+                }
+                else if (h > 0 && (_seaMask[k] >> d & 1) != 0)
+                {
+                    // 海へ: 水面が海面より高い分だけ出ていく
+                    int diff = h + _bed[k] - SeaLevel - WetHold;
+                    if (diff > 0)
+                    {
+                        int g = diff * Gain / 256;
+                        if (g <= 0) g = 1;
+                        FallOut.Add((k, d, g));
+                        sum += g;
+                    }
                 }
                 _flux[k * 4 + d] = f;
                 sum += f;
@@ -1281,11 +1336,14 @@ internal static partial class WaterSim
         }
 
         // 縁を越えた水: 縁の升から引き、落ちる時間の後に下の升へ (奈落なら消える)
-        foreach (var (k, d, amt) in FallOut)
+        foreach (var (k, d, a0) in FallOut)
         {
+            // 量は高さを決める前の水で決めてあり、間に浅い升が乾いて 1 減ることがある
+            int amt = Math.Min(a0, _hgt[k]);
             if (amt <= 0) continue;
             _hgt[k] -= amt;
             Mark(k);
+            if ((_seaMask[k] >> d & 1) != 0) { SeaOutTotal += amt; continue; }
             if ((_stepMask[k] >> d & 1) != 0)
             {
                 int t = StepTo[k * 4 + d];
@@ -1818,6 +1876,9 @@ internal static partial class WaterSim
         Falls.Clear();
         FellTotal = 0;
         VoidTotal = 0;
+        _bed = null; _seaCell = null; _seaMask = null; _seaCut = null; SeaCells.Clear(); _hasSea = false; SeaLevel = 0;
+        SeaOutTotal = 0;
+        SeaInTotal = 0;
         DirtyTiles.Clear();
         Active.Clear();
         Queue.Clear();
@@ -1893,6 +1954,13 @@ internal static partial class WaterSim
                 return;
             }
             if (a == "doors") { WaterDebug.ListDoors(reply); return; }
+            if (a.StartsWith("sea"))
+            {
+                // 確認用 (自分の手元だけ・同期しない): 海面を変える (水の深さの物差し・Full = 1 単位)
+                if (a.Length > 3 && int.TryParse(a.Substring(3).Trim(), out int lv)) SeaLevel = lv;
+                reply($"OK water sea level={SeaLevel} out={SeaOutTotal} in={SeaInTotal} edges={(_seaMask == null ? 0 : CountBits(_seaMask))} bed={BedStats}");
+                return;
+            }
             if (a == "links")
             {
                 // 確認用: 落ちる縁 (縁の升の真ん中・向き・落ちる先 / void)
