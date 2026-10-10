@@ -543,8 +543,8 @@ internal static class WaterSim
         _decks = ship && ship.TryCast<AirshipStatus>() != null ? AirshipDecks : NoDecks;
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
-        // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので影の線を見ない
-        // (崖の上の縁に視界の影の線が引いてあり、それで切ると崖の大半から落ちなくなる)
+        // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので屋外の影の線を見ない
+        // (崖の上の縁に視界の影の線が引いてあり、それで切ると崖の大半から落ちなくなる)。部屋の影の線 (展望台の箱と柵の縁) は見る
         bool cliffs = !MapNotes.HasLevels;
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
@@ -563,7 +563,7 @@ internal static class WaterSim
                 if (_open[j] != 0 && Passable(k, d)) continue;
                 Target(x, y, d, lk, cliffs, out int to, out int dist, out int tx, out int ty);
                 if (to == int.MinValue) continue;
-                if (full && !cliffs && ShadowBetween(x, y, tx, ty)) _shadowCut[k] |= (byte)(1 << d);
+                if (full && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
                 if ((_shadowCut[k] >> d & 1) != 0) continue;
                 _fallMask[k] |= (byte)(1 << d);
                 FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
@@ -682,13 +682,35 @@ internal static class WaterSim
         }
     }
 
-    // 縁の升の真ん中から落ちる先の升の手前までに視界の影の線があるか (あれば壁の向こうの部屋)
-    private static bool ShadowBetween(int x, int y, int tx, int ty)
+    // 縁の升の真ん中から落ちる先の升の手前までに視界の影の線があるか (あれば壁の向こうの部屋)。
+    // roomOnly = 屋外 (船の Outside の下) の影の線は数えず、部屋の影の線だけを縁の際 (升の半分手前から RoomShadowReach 升) で見る。
+    // 部屋の縁の影の線は歩ける所の境とほぼ重なり、升の真ん中より奥にあることがある。先まで伸ばすと崖の下の別の部屋の線に当たる
+    private const float RoomShadowReach = 2f;
+    private static readonly Dictionary<int, bool> OutsideShadow = new();
+    private static bool ShadowBetween(int x, int y, int tx, int ty, bool roomOnly)
     {
         float ax = _org.x + (x + 0.5f) * _cell, ay = _org.y + (y + 0.5f) * _cell;
         float dx = tx - x, dy = ty - y, len = MathF.Sqrt(dx * dx + dy * dy);
+        float ux = dx / len, uy = dy / len;
         // Linecast は Android 版に無いので、細い CircleCastAll で代える
-        return Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(dx / len, dy / len), (len - 0.5f) * _cell, ShadowMask).Length > 0;
+        if (!roomOnly)
+            return Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(ux, uy), (len - 0.5f) * _cell, ShadowMask).Length > 0;
+        var hits = Physics2D.CircleCastAll(new Vector2(ax - ux * 0.5f * _cell, ay - uy * 0.5f * _cell), 0.01f, new Vector2(ux, uy),
+                                           MathF.Min(len, RoomShadowReach) * _cell, ShadowMask);
+        foreach (var h in hits)
+        {
+            var c = h.collider;
+            if (!c) continue;
+            int id = c.GetInstanceID();
+            if (!OutsideShadow.TryGetValue(id, out bool outside))
+            {
+                outside = false;
+                for (var t = c.transform; t && !outside; t = t.parent) outside = t.name == "Outside";
+                OutsideShadow[id] = outside;
+            }
+            if (!outside) return true;
+        }
+        return false;
     }
 
     // 確認用 (water why): Links と同じ探し方で、縁の升ごとに落ちる/落ちない理由を数える
@@ -1375,7 +1397,7 @@ internal static class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _propCell = null; _doorUnder = null; _fallMask = null; _shadowCut = null;
+        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); _doorUnder = null; _fallMask = null; _shadowCut = null;
         FallTo.Clear();
         FallOut.Clear();
         Flying.Clear();
