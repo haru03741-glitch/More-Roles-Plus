@@ -289,7 +289,11 @@ internal static class WaterArt
             t.Px[i + 2] = (byte)Math.Min(255f, wet * 255f + 0.5f);
             t.Px[i + 3] = 0;
         }
-        if (t.Face != null) WriteFace(t, x0, y0, n);
+        if (t.Face != null)
+        {
+            WriteFace(t, x0, y0, n);
+            SpreadFace(t, n);
+        }
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
         if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
@@ -371,6 +375,50 @@ internal static class WaterArt
                     carry--;
                 }
                 else carry = 0;
+            }
+        }
+    }
+
+    // A を面の外へ SpreadPx 画素にじませる (横 → 縦の 2 回で四角く広げる・値は近くの面の大きい方)。
+    // 面のすぐ外の画素の A が 0 だと、双線形で引いた A が面の縁で必ず 128 を横切り、沈んだベッドや壁の輪郭が
+    // 水面の線 (明るい縁と泡) としてなぞられる。床の画素は A を持っても床として描くので見た目は変わらない。
+    // 床でない画素は G を 0 にして、面の縁はこれまでどおり G で切る
+    private const int SpreadPx = 3;
+    private static byte[] _spread;
+
+    private static void SpreadFace(Tile t, int n)
+    {
+        var px = t.Px;
+        var face = t.Face;
+        if (_spread == null || _spread.Length < n * n) _spread = new byte[n * n];
+        var tmp = _spread;
+        for (int y = 0; y < n; y++)
+        {
+            int row = y * n;
+            for (int x = 0; x < n; x++)
+            {
+                byte a = px[(row + x) * 4 + 3];
+                if (a == 0)
+                {
+                    int lo = Math.Max(0, x - SpreadPx), hi = Math.Min(n - 1, x + SpreadPx);
+                    for (int k = lo; k <= hi; k++) { byte b = px[(row + k) * 4 + 3]; if (b > a) a = b; }
+                }
+                tmp[row + x] = a;
+            }
+        }
+        for (int y = 0; y < n; y++)
+        {
+            int row = y * n;
+            for (int x = 0; x < n; x++)
+            {
+                int j = row + x, i = j * 4;
+                if (px[i + 3] != 0) continue;
+                byte a = tmp[j];
+                int lo = Math.Max(0, y - SpreadPx), hi = Math.Min(n - 1, y + SpreadPx);
+                for (int k = lo; k <= hi; k++) { byte b = tmp[k * n + x]; if (b > a) a = b; }
+                if (a == 0) continue;
+                px[i + 3] = a;
+                if (face[j] == 255) px[i + 1] = 0;
             }
         }
     }

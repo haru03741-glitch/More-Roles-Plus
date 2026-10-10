@@ -167,7 +167,8 @@ Shader "MRP/Water"
                     // 壁の手前の水は斜めに見通すので、同じ深さの床より厚く見える
                     du = lerp(du, ex + _FaceView, face);
                 }
-                float body = max(saturate(wet + 0.5), face);      // 縁を 1 画素でぼかす
+                // 床の縁と壁の面は足し合わせてつなぐ (max だと床の縁ちょうどで両方 0.5 になり、半分透けた線が出る)
+                float body = saturate(saturate(wet + 0.5) + face); // 縁を 1 画素でぼかす
                 if (body * vis <= 0.001) return 0;
 
                 float murk, t = _Time.y;
@@ -176,7 +177,8 @@ Shader "MRP/Water"
                 // 縁: 外側に細い濃い輪郭・その内に明るい縁
                 // 家具・壁に当たった所は絵の黒い輪郭があるので、濃い輪郭は描かず明るい縁だけ付ける
                 float rim = saturate(1.0 - (inside - _OutlinePx) / _RimPx) * step(_OutlinePx, inside);
-                rim = max(rim, saturate(1.0 - wet / _RimPx) * 0.7);
+                // 家具・壁の縁の明るい線は浅い水が縁に当たる所だけ。深くなると縁は水の下に沈み、線が輪郭をなぞって浮いて見える
+                rim = max(rim, saturate(1.0 - wet / _RimPx) * 0.7 * (1.0 - smoothstep(0.05, 0.18, du)));
                 rim *= 1.0 - face;                                // 壁の面の上は床の縁の線を引かない
                 c = lerp(c, _Rim, rim * _Rim.a * 0.8);
                 if (inside < _OutlinePx && face < 0.5) c = _Outline;
