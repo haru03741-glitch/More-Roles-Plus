@@ -37,8 +37,13 @@ internal static partial class WaterSim
     private const int DrainDist = Decompression.UnitDist / 2;
     private const int DrainGain = 64;         // 引く強さ 1024 あたり 1 刻みに消える割合 (/256)
     // 落ちる: 縁の升の水のうちこれより上の分が、1 刻みに FallGain/256 ずつ縁を越える
+    // 越える量は堰の式 (越えた高さの 1.5 乗) で、越えた高さ 1/4 単位の時に FallGain/256 になるよう合わせる。1 刻みに越えた分の半分まで
     private const int FallLip = 24;
     private const int FallGain = 72;
+    private const int WeirDiv = 64 * 256 / FallGain;   // e × √(16e) / これ = e=256 (√(16e)=64) で e × FallGain/256
+    // ガラスの手すり: 縁の先が空でも、この高さ (水の深さの物差し) までは溜まり、越えた分が手すりの外へ落ちる
+    private const int GlassLip = Full * 22 / 100;
+    private const int GlassDrop = 4;          // 手すりの外の空へ落ちる時間を決める距離 (升)
     private const sbyte NoLevel = sbyte.MinValue;   // 高さが決まらない升 (落ちも登りもしない)
     private const sbyte VoidLevel = -2;              // 奈落 (落ちた水は消える)
     // 縁の先の低い床を探す距離 (升)。真上から斜めに見ているので、南 (−y) の崖は面が長く見える
@@ -370,6 +375,7 @@ internal static partial class WaterSim
         _shadowCut = new byte[n];
         _ledge = new byte[n];
         _skyCut = new byte[n];
+        _lipMask = new byte[n];
         FallTo.Clear();
         StepTo.Clear();
         ListDoorCells();
@@ -777,7 +783,9 @@ internal static partial class WaterSim
         _decks = airship ? AirshipDecks : NoDecks;
         _steps = airship ? AirshipSteps : NoDecks;
         _skyEdges = airship ? AirshipSkyEdges : NoDecks;
-        _skyRails = ship && ship.TryCast<MiraShipStatus>() != null ? MiraSkyRails : NoDecks;
+        bool mira = ship && ship.TryCast<MiraShipStatus>() != null;
+        _skyRails = mira ? MiraSkyRails : NoDecks;
+        _glassRails = mira ? MiraGlassRails : NoDecks;
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
         // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので屋外の影の線を見ない
@@ -793,6 +801,7 @@ internal static partial class WaterSim
             {
                 for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
                 _fallMask[k] = 0;
+                _lipMask[k] = 0;
             }
             if (_stepMask[k] != 0)
             {
@@ -823,10 +832,11 @@ internal static partial class WaterSim
                     continue;
                 }
                 if (to == int.MinValue || to == -1 && OnLadder(x, y)) continue;
-                // 空へ落とす縁は壁の影の線の外側へ落ちるので、影の線では切らない
-                if (full && !(to == -1 && OnSkyEdge(x, y)) && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
+                // 空へ落とす縁とガラスの手すりは壁の影の線の外側へ落ちるので、影の線では切らない
+                if (full && why != "glass" && !(to == -1 && OnSkyEdge(x, y)) && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
                 if ((_shadowCut[k] >> d & 1) != 0) continue;
                 _fallMask[k] |= (byte)(1 << d);
+                if (why == "glass") _lipMask[k] |= (byte)(1 << d);
                 FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
                 if (to >= 0 && _lvl[to] == lk - 1 && OnStep(x, y, tx, ty))
                 {
@@ -926,6 +936,28 @@ internal static partial class WaterSim
     private static readonly float[] MiraSkyRails = { -11.997f, 0.253f, 0.497f, 9.247f, 17.503f, -3.997f, 29.247f, -0.997f };
     private static float[] _skyRails = NoDecks;
 
+    // ガラスの手すり (x0, y0, x1, y1, 向き): 範囲に真ん中がある升の、その向きの縁 (隣へ流れない縁) は手すりの高さまで水を溜め、
+    // 越えた分を手すりの外の空へ落とす。網のフェンスは網目を水が抜けるので含めない (床の高さから落ちる)。
+    // Mira の発射台の南 (左右 2 区間・真ん中は通路) とバルコニー (長い所の南・皿の区画の西・南・東)
+    private static readonly float[] MiraGlassRails =
+    {
+        -11.5f, -0.5f, -6.25f, -0.25f, 3,
+        -2.5f, -0.5f, -0.25f, -0.25f, 3,
+        20.5f, -2.75f, 29f, -2.5f, 3,
+        17.75f, -3.75f, 18f, -2.25f, 1,
+        17.75f, -3.75f, 20.5f, -3.5f, 3,
+        20.25f, -3.75f, 20.5f, -2.75f, 0,
+    };
+    private static float[] _glassRails = NoDecks;
+    private static byte[] _lipMask;   // 縁の向きのうち、ガラスの手すりの高さまで溜める向き
+    private static bool OnGlassRail(int x, int y, int d)
+    {
+        float px = _org.x + (x + 0.5f) * _cell, py = _org.y + (y + 0.5f) * _cell;
+        for (int i = 0; i + 4 < _glassRails.Length; i += 5)
+            if ((int)_glassRails[i + 4] == d && px >= _glassRails[i] && px <= _glassRails[i + 2] && py >= _glassRails[i + 1] && py <= _glassRails[i + 3]) return true;
+        return false;
+    }
+
     // 手すりの床の縁の先 (歩けない升だけを真っすぐ FallScan 升まで) に船の外の空があり、間に影の線 (壁の根元) が無ければ空へ落ちる。
     // 影の線は壁が壊れると切れるので、作った時 (_ledgeScan) だけ調べて結果を残す (ビット d = 調べた・ビット 4 + d = 空)
     private static byte[] _skyCut;
@@ -966,6 +998,7 @@ internal static partial class WaterSim
     private static string Target(int x, int y, int d, int lk, bool cliffs, out int to, out int dist, out int tx, out int ty)
     {
         to = int.MinValue; dist = 0; tx = x; ty = y;
+        if (OnGlassRail(x, y, d)) { to = -1; dist = GlassDrop; return "glass"; }
         string why = "scan";
         for (int i = 1; i <= FallScan[d]; i++)
         {
@@ -1369,9 +1402,10 @@ internal static partial class WaterSim
                         sum += g;
                     }
                 }
-                else if (h > FallLip && (_fallMask[k] >> d & 1) != 0)
+                else if ((_fallMask[k] >> d & 1) != 0 && h > ((_lipMask[k] >> d & 1) != 0 ? GlassLip : FallLip))
                 {
-                    int g = (h - FallLip) * FallGain / 256;
+                    int e = h - ((_lipMask[k] >> d & 1) != 0 ? GlassLip : FallLip);
+                    int g = Math.Min(e / 2, (int)((long)e * ISqrt(16L * e) / WeirDiv));
                     if (g <= 0) g = 1;
                     FallOut.Add((k, d, g));
                     sum += g;
@@ -1948,7 +1982,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null; _skyCut = null;
+        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null; _skyCut = null; _lipMask = null;
         FallTo.Clear();
         StepTo.Clear();
         FallOut.Clear();
