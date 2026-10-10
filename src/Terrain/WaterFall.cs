@@ -28,6 +28,7 @@ internal static class WaterFall
     private const float LineScale = Ppu * Ppu / (24f * 24f) * (ParcelMass / 6f);
     private const float CanvasW = 5f;          // 1 枚の絵の幅 (単位)
     private const float MaxCanvasH = 9f;
+    private const float FallZMax = 0.12f;      // 絵を置く奥行きの上限 (クルーと同じ奥行きの帯のすぐ奥)
     private const float Above = 0.4f, Below = 0.7f, Margin = 0.25f;
     private const int MaxParcels = 2000;
     private const int MaxSpawnPerFrame = 240;
@@ -297,6 +298,8 @@ internal static class WaterFall
         float floor = Math.Min(DamageMap.FrontZ(FxMath.V2(e.X0, e.Y0)), DamageMap.FrontZ(FxMath.V2(e.X1, e.Y1)));
         // 奈落へ落ちる水は縁の手前の絵 (エアシップのデッキの床と手すりはクルーと同じ奥行き) より手前を落ちる
         if (e.Void) floor = Math.Min(floor, DamageMap.FrontZ(FxMath.V2(e.X0, e.Y0), true));
+        // 屋外の崖 (ファングル) の縁には部屋の絵が無く、遠くの絵の奥行きを拾って崖の絵の裏に隠れるので、クルーのすぐ奥より奥へは置かない
+        floor = Math.Min(floor, FallZMax);
         n.Go.transform.position = FxMath.V3(x0, y0, floor - 0.003f * DamageMap.ZScale(floor));
         Canvases.Add(n);
         return n;
