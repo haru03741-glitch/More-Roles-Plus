@@ -48,7 +48,10 @@ internal static class SolidMap
     internal static readonly List<Vector2> ExtraSeeds = new(); // テスト用: 扉・出現の中心だけが新しく塗った塊の種
     internal static readonly List<Vector2> LeakedSeeds = new(); // テスト用: 塗りが地図の端に届いて捨てた種
 
-    public static bool Valid { get; private set; }
+    // 作った船の世代 (GameClock.ShipGen) が今と違えば無効 (次の船の Ensure まで前の船の地図を返さない)
+    public static bool Valid { get => _valid && _gen == GameClock.ShipGen; private set => _valid = value; }
+    private static bool _valid;
+    private static int _gen;
     public static int IslandCount { get; private set; }
     public static bool HasHull => Valid && HullRects.Count > 0;
     // 爆発で外壁を宇宙まで掘り抜けるマップか (スケルド)
@@ -63,8 +66,9 @@ internal static class SolidMap
     {
         var ship = ShipStatus.Instance;
         if (!ship) return false;
-        if (_ship == ship) return Valid;
+        if (_ship == ship && _gen == GameClock.ShipGen) return Valid;
         _ship = ship;
+        _gen = GameClock.ShipGen;
         Valid = false;
         _open = null;
         _leaked = null;
