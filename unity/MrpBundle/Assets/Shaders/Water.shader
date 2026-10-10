@@ -16,6 +16,8 @@ Shader "MRP/Water"
         _ShadowGain ("Opacity in the shadow", Float) = 1
         _Mode ("Mode (0 puddle / 1 spray)", Float) = 0
         _Edge ("Edge level", Float) = 0.05
+        [PerRendererData] _FloorMask ("Floor mask", 2D) = "white" {}
+        [PerRendererData] _FloorOn ("Floor mask on", Float) = 0
         _Shallow ("Shallow color", Color) = (0.45, 0.72, 0.95, 0.38)
         _Deep ("Deep color", Color) = (0.16, 0.42, 0.78, 0.78)
         _DeepRange ("Depth to deep", Float) = 0.6
@@ -45,6 +47,8 @@ Shader "MRP/Water"
 
             sampler2D _MainTex;
             sampler2D _Noise;
+            sampler2D _FloorMask; // 部屋の絵の床の画素 (タイルと同じ範囲・1 = 床)
+            float _FloorOn;
             sampler2D _MrpShadowTex; // 影のカメラの描き先 (視界の所はアルファ 0)
             float _ShadowOnly, _ShadowGain;
             float _MrpShadowOn; // 影の板が出ている間だけ 1
@@ -82,6 +86,7 @@ Shader "MRP/Water"
                 float inside = (d - _Edge) / fw;                 // 縁から内側へ何画素か
                 float body = saturate(inside + 0.5);              // 縁を 1 画素でぼかす
                 float vis = smoothstep(0.35, 0.65, data.g);
+                if (_FloorOn > 0.5) vis *= smoothstep(0.3, 0.7, tex2D(_FloorMask, i.uv).r);
                 if (body * vis <= 0.001) return 0;
 
                 float k = saturate((d - _Edge) / _DeepRange);

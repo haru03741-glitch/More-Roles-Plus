@@ -9,8 +9,9 @@ namespace MoreRolesPlus.Terrain;
 // 水が変わったタイルだけを Redraw 秒ごと・1 フレーム TilesPerFrame 枚まで描き直す。
 // 絵に書くのは水の量だけ (R = 深さ / DeepScale・G = 見せてよいか)。色・縁・水面の揺れときらめきはシェーダ MRP/Water が決める。
 // 高さは 3×3 (1-2-1) でならしてから升の真ん中の値として双線形で引く (シェーダの側でも双線形で引くので縁はなめらか)。
-// 壁の中 (SolidMap で歩けない所) と、部屋の絵に描き込まれた家具の上は見せない (水は家具の下を通っている)。
-// 1 画素 = SolidMap の 1 升 (1/16 単位) なので、壁の際もその細かさで切れる。
+// 床マスク (FloorMask・部屋の絵の画素ごとの床) があるマップでは、水の縁はシェーダがそのマスクで画素ごとに切る
+// (壁の面・家具の天板の上は見せない。水は家具の下を通っている)。
+// マスクが無い時は、壁の中 (SolidMap で歩けない所) と家具の当たり判定の中を見せない (1 画素 = SolidMap の 1 升 = 1/16 単位)。
 // 影の中の焼いた絵 (ShadowPatch) には描き込まない: 水は部屋いっぱいに広がり、焼く升が数十になって読み戻しで止まる (実測 127 回・1 回 30ms 前後)。
 // 水は視界の中だけに見える
 internal static class WaterArt
@@ -37,6 +38,9 @@ internal static class WaterArt
         public byte[] Px;
         public bool[] Furn;
         public int FurnVersion;
+        public MaterialPropertyBlock Block;
+        public Texture2D Floor; // 床マスク (部屋の絵の画素ごとの床) をこのタイルの範囲で切り出した物
+        public bool FloorOn;
         public float LastDraw = -10f;
         public bool Waiting;
         public bool Empty = true;
@@ -217,7 +221,12 @@ internal static class WaterArt
 
         int n = tc * Px;
         float cell = WaterSim.Cell;
-        if (t.FurnVersion != _furnVersion)
+        if (t.Floor != null && t.FloorOn == FloorMask.Off)
+        {
+            SetFloor(t, !FloorMask.Off);
+            t.FurnVersion = -1;
+        }
+        if (!t.FloorOn && t.FurnVersion != _furnVersion)
         {
             t.FurnVersion = _furnVersion;
             t.Furn = FurnitureMask(WaterSim.Origin.x + t.Tx * tc * cell, WaterSim.Origin.y + t.Ty * tc * cell, tc * cell);
@@ -285,7 +294,21 @@ internal static class WaterArt
         return (a + (b - a) * fu) * (1f - fv) + (c + (d - c) * fu) * fv;
     }
 
-    private static void Ensure(Tile t)
+    private static void SetFloor(Tile t, bool on)
+    {
+        t.FloorOn = on;
+        var mpb = t.Block ??= new MaterialPropertyBlock();
+        // SpriteRenderer にブロックを付けるとスプライトの絵が外れるので、絵もブロックで渡す
+        mpb.SetTexture(MainTexId, t.Tex);
+        mpb.SetTexture(FloorTexId, t.Floor);
+        mpb.SetFloat(FloorOnId, on ? 1f : 0f);
+        t.Sr.SetPropertyBlock(mpb);
+        if (t.Shadow) t.Shadow.SetPropertyBlock(mpb);
+    }
+
+    private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), FloorTexId = Shader.PropertyToID("_FloorMask"), FloorOnId = Shader.PropertyToID("_FloorOn");
+
+    private static unsafe void Ensure(Tile t)
     {
         if (t.Go) return;
         int tc = WaterSim.TileCells, n = tc * Px;
@@ -312,8 +335,34 @@ internal static class WaterArt
         // 床の上・足跡 (−0.001) と波紋より奥
         t.Go.transform.position = FxMath.V3(wx, wy, front - 0.0004f * zs);
         t.Shadow = ShadowView.Copy(t.Go, t.Sp, ShadowView.Water, FxMath.Rgba(1f, 1f, 1f, 1f), -0.002f); // 火の写しより奥
+        if (FloorMask.Active)
+        {
+            // 床マスクがあれば水の縁は部屋の絵の床の画素で切る (家具の型抜きも要らない)
+            int m = (int)MathF.Round(size * FloorMask.Ppu);
+            var buf = new byte[m * m];
+            FloorMask.Fill(wx, wy, size, m, buf);
+            t.Floor = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFloor", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            fixed (byte* b = buf) t.Floor.LoadRawTextureData((IntPtr)b, buf.Length);
+            t.Floor.Apply(false, true);
+            SetFloor(t, !FloorMask.Off);
+            return;
+        }
         t.Furn = FurnitureMask(wx, wy, tc * cell);
         t.FurnVersion = _furnVersion;
+    }
+
+    // テスト用: 床マスクの使う / 使わないを切り替えた。今あるタイルを全部その方式で描き直す
+    internal static void FloorMaskToggled()
+    {
+        foreach (var kv in Tiles)
+        {
+            var t = kv.Value;
+            if (t.Floor && t.Sr) SetFloor(t, !FloorMask.Off);
+            t.FurnVersion = -1;
+            if (t.Empty || t.Waiting) continue;
+            t.Waiting = true;
+            Waiting.Add(kv.Key);
+        }
     }
 
     // 家具 (部屋の絵から持ち上げた物) が a から b へ動いて止まった: 型抜きを作り直す (どのタイルも次に描く時に)。
@@ -379,6 +428,7 @@ internal static class WaterArt
             if (t.Go) UnityEngine.Object.Destroy(t.Go);
             if (t.Sp) UnityEngine.Object.Destroy(t.Sp);
             if (t.Tex) UnityEngine.Object.Destroy(t.Tex);
+            if (t.Floor) UnityEngine.Object.Destroy(t.Floor);
         }
         Tiles.Clear();
         Waiting.Clear();

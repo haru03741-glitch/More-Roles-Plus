@@ -51,6 +51,8 @@
     <!-- 能力ボタンの絵 (tools/make-button-icons.py で描く) -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
+        <!-- 床マスクはゲームの絵から tools/make-floor-mask.py で作る (リポジトリには入れない・無ければ当たり判定で切る) -->
+        <EmbeddedResource Include="Resources\FloorMasks\*.bin" LogicalName="MoreRolesPlus.Resources.FloorMasks.%(Filename)%(Extension)" />
     </ItemGroup>
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And Exists('$(MrpBepInExDir)\core')">
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />

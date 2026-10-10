@@ -23,3 +23,6 @@ unity/*/Assets/Generated.meta
 
 # 開発者の名簿 (配る DLL には入るが、リポジトリには入れない)
 src/Dev/DevUsers.Local.cs
+
+# 床マスク (ゲームの絵から tools/make-floor-mask.py で作る・配布は DLL に埋め込む)
+Resources/FloorMasks/

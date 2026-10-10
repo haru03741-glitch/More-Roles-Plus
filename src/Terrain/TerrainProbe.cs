@@ -58,6 +58,7 @@ internal static class TerrainProbe
         DecompFx.Register();
         BreakableProps.Register();
         FurnitureLift.Register();
+        FloorMask.Register();
         RegisterMapSurvey();
         RegisterNearWall();
     }
