@@ -80,7 +80,7 @@ internal static class TerrainWire
         o = WritePos(b, o, r.Position);
         o = WriteU16(b, o, QAngle(r.Direction));
         b[o++] = QForceByte(r.Force);
-        if (r.Kind == DamageKind.Blunt)
+        if (r.Kind.IsStrike())
         {
             o = WriteU16(b, o, QAngle(r.Normal));
             b[o++] = unchecked((byte)r.Hp);
@@ -105,7 +105,7 @@ internal static class TerrainWire
         r = default;
         if (o + 14 > b.Length) return -1;
         var kind = (DamageKind)b[o];
-        if (kind == DamageKind.Blunt && o + 17 > b.Length) return -1;
+        if (kind.IsStrike() && o + 17 > b.Length) return -1;
         o++;
         byte actor = b[o++];
         ushort tick = ReadU16(b, ref o);
@@ -114,7 +114,7 @@ internal static class TerrainWire
         float force = b[o++] / 255f;
         Vector2 normal = Vector2.zero;
         sbyte hp = 0;
-        if (kind == DamageKind.Blunt)
+        if (kind.IsStrike())
         {
             normal = FromAngle(ReadU16(b, ref o));
             hp = unchecked((sbyte)b[o++]);

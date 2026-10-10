@@ -41,6 +41,11 @@ internal static class FireFx
     private static readonly List<(float X, float Y, float A)> Scorch = new();
     internal static readonly List<(float X, float Y)> Ignited = new(); // FireSim が点火を受けた瞬間 (音)
 
+    // 焼けて崩れた壁の燻り: 線 (中心から Tx,Ty の向きに ±Half) の上から、薄れながら煙と火の粉を上げる
+    private sealed class Smolder { public float X, Y, Tx, Ty, Half, Age, Life, SmokeAcc, EmberAcc; public bool Burst; }
+    private static readonly List<Smolder> Smolders = new();
+    private const int MaxSmolders = 8;
+
     // 持続音
     private static GameObject _host;
     private static AudioSource _loop;
@@ -66,7 +71,7 @@ internal static class FireFx
         _lastMs = now;
         _clock += dt;
         bool fire = FireSim.Ready && (FireSim.BurningCount > 0 || FireSim.Steam.Count > 0 || FireSim.FlareFx.Count > 0
-            || FireSim.Arcs.Count > 0 || FireSim.Chars.Count > 0 || Ignited.Count > 0);
+            || FireSim.Arcs.Count > 0 || FireSim.Chars.Count > 0 || Ignited.Count > 0) || Smolders.Count > 0;
         if (!fire && _live == 0 && Scorch.Count == 0 && !_loopPlaying) return;
         var ship = ShipStatus.Instance;
         if (!ship || MeetingHud.Instance)
@@ -88,6 +93,7 @@ internal static class FireFx
             foreach (var a in FireSim.Arcs) ArcAt(a.X, a.Y);
             Scorch.AddRange(FireSim.Chars);
         }
+        TickSmolders(dt);
         foreach (var g in Ignited) BreakNoise.PlayAt("noise_fire_ignite", g.X, g.Y, SoundRange, SoundMuffle, 0.8f, FxMath.Range(0.9f, 1.1f));
         Ignited.Clear();
 
@@ -134,6 +140,56 @@ internal static class FireFx
             Cell(k, out float x, out float y);
             Spawn(Kind.Ember, x + FxMath.Range(-0.12f, 0.12f), y + 0.15f, FxMath.Range(-0.25f, 0.25f), FxMath.Range(0.7f, 1.3f),
                 FxMath.Range(0.5f, 0.9f), 0.05f, 0.03f, 1f, FxMath.Range(0.55f, 0.85f), 0.2f, 1f);
+        }
+    }
+
+    // 焼けて崩れた所 (burst = 崩れた瞬間に火の粉がぱっと舞う) を足す。崩れた時に全員が呼ぶ
+    internal static void AddSmolder(float x, float y, float tx, float ty, float half, float life, bool burst)
+    {
+        if (Smolders.Count >= MaxSmolders) Smolders.RemoveAt(0);
+        Smolders.Add(new Smolder { X = x, Y = y, Tx = tx, Ty = ty, Half = half, Life = life, Burst = burst });
+    }
+
+    private static void TickSmolders(float dt)
+    {
+        for (int i = Smolders.Count - 1; i >= 0; i--)
+        {
+            var s = Smolders[i];
+            if (s.Burst)
+            {
+                s.Burst = false;
+                for (int k = 0; k < 16; k++)
+                {
+                    float u = FxMath.Range(-s.Half, s.Half);
+                    Spawn(Kind.Ember, s.X + s.Tx * u, s.Y + s.Ty * u + 0.2f, FxMath.Range(-0.9f, 0.9f), FxMath.Range(1f, 2.2f),
+                        FxMath.Range(0.6f, 1.2f), 0.06f, 0.03f, 1f, FxMath.Range(0.5f, 0.85f), 0.18f, 1f);
+                }
+                for (int k = 0; k < 4; k++)
+                {
+                    float u = FxMath.Range(-s.Half, s.Half);
+                    Spawn(Kind.Smoke, s.X + s.Tx * u, s.Y + s.Ty * u + 0.4f, FxMath.Range(-0.15f, 0.15f), FxMath.Range(0.5f, 0.8f),
+                        FxMath.Range(2.2f, 3f), 0.4f, FxMath.Range(1.3f, 1.7f), 0.2f, 0.19f, 0.185f, 0.7f);
+                }
+            }
+            s.Age += dt;
+            if (s.Age >= s.Life) { Smolders.RemoveAt(i); continue; }
+            float left = 1f - s.Age / s.Life; // 燃え残りが冷えて煙も火の粉も減っていく
+            s.SmokeAcc += 2.5f * left * dt;
+            s.EmberAcc += 4f * left * left * dt;
+            while (s.SmokeAcc >= 1f)
+            {
+                s.SmokeAcc -= 1f;
+                float u = FxMath.Range(-s.Half, s.Half);
+                Spawn(Kind.Smoke, s.X + s.Tx * u, s.Y + s.Ty * u + 0.15f, FxMath.Range(-0.06f, 0.06f), FxMath.Range(0.3f, 0.5f),
+                    FxMath.Range(2f, 2.8f), 0.18f, FxMath.Range(0.7f, 1f), 0.26f, 0.25f, 0.24f, 0.45f * left + 0.15f);
+            }
+            while (s.EmberAcc >= 1f)
+            {
+                s.EmberAcc -= 1f;
+                float u = FxMath.Range(-s.Half, s.Half);
+                Spawn(Kind.Ember, s.X + s.Tx * u, s.Y + s.Ty * u + 0.05f, FxMath.Range(-0.2f, 0.2f), FxMath.Range(0.4f, 0.9f),
+                    FxMath.Range(0.4f, 0.8f), 0.045f, 0.025f, 1f, FxMath.Range(0.45f, 0.75f), 0.15f, 1f);
+            }
         }
     }
 
@@ -420,6 +476,7 @@ internal static class FireFx
         _root = null;
         Scorch.Clear();
         Ignited.Clear();
+        Smolders.Clear();
         _smokeAcc = _emberAcc = _scorchAcc = 0f;
         _loopWant = _loopVol = 0f;
         if (_loopPlaying) { try { if (_loop) _loop.Stop(); } catch { } _loopPlaying = false; }
@@ -431,11 +488,17 @@ internal static class FireFx
 
     internal static void Register()
     {
-        TestBridge.Register("fire", "[ignite x y r [heat] | spill x y r [amount] | at x y | reset | hide | show] 火 (x y を省くと自分の位置): 点火 / 油をまく / その升の材質と熱 / 全部消す", (args, reply) =>
+        TestBridge.Register("fire", "[ignite x y r [heat] | spill x y r [amount] | at x y | reset | hide | show | wall wood|metal|stone [min] [stage]] 火 (x y を省くと自分の位置): 点火 / 油をまく / その升の材質と熱 / 全部消す", (args, reply) =>
         {
             var q = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             string a = q.Length > 0 ? q[0] : "";
             if (a == "reset") { FireSim.Reset(); FireArt.Clear(); Clear(); reply("OK fire reset"); return; }
+            if (a == "wall" && q.Length >= 2)
+            {
+                int min = q.Length > 2 && int.TryParse(q[2], out int mm) ? mm : 0, st = q.Length > 3 && int.TryParse(q[3], out int ss) ? ss : 0;
+                reply(FireSim.TuneWall(q[1], min, st));
+                return;
+            }
             if (a == "hide" || a == "show") { reply($"OK fire {a} tiles={FireArt.DebugHide(a == "hide")}"); return; }
             if (a == "ignite" || a == "spill" || a == "at")
             {

@@ -40,8 +40,12 @@ internal static class FireSim
     // 焦げ: 燃やした量がこの段を越えるたびに、その升に接した壁の面を濃く焦がす (床の焦げは FireArt が燃やした量から描く)
     private static readonly int[] CharStep = { 20, 160, 600 };
     private static readonly float[] CharAmount = { 0.5f, 0.8f, 1f };
-    // 壁の焼け落ち: 燃えている升の熱が材質の下限を越えた分を壁ごとに貯め、StageHeat 貯まるたびに耐久を 1 削る
-    private const int StageHeat = 120000;     // 木の部屋で 1 段約 4 秒 (3 段で約 12 秒)・油の金属の部屋で約 6 秒
+    // 壁の焼け落ち: 燃えている升の熱が壁の材質の下限を越えた分を壁ごとに貯め、1 段の熱が貯まるたびに耐久を 1 削る。
+    // 壁の材質 = ポーラスは全部岩とコンクリート・ほかは部屋の床の材質から (木の部屋 = 木の壁・草地と屋外 = 崖の岩・それ以外 = 金属)。
+    // 目安 (3 段で崩れるまで): 木の壁は木の火で約 10 秒・金属の壁は油の火で約 25 秒 (木の火では傷む程度)・岩は油でも 1 分近く
+    internal enum WallMat : byte { Wood, Metal, Stone }
+    internal static readonly int[] WallMin   = {    600,   1050,   1250 }; // 壁が傷み始める熱
+    internal static readonly int[] WallStage = { 120000, 160000, 260000 }; // 耐久 1 段ぶんの熱
     private const float BurnGap = 0.35f;      // 焼け落ちの依頼の最小間隔 (秒・長い壁沿いの火でも一度に出さない)
 
     internal enum Mat : byte { Unknown = 0, None, Metal, Wood, Grass, Fuel, Electric }
@@ -50,7 +54,6 @@ internal static class FireSim
     private static readonly int[] MIgnite = { 9999,  9999, 1500,  650,   450,  380,   750 };
     private static readonly int[] MBurn   = {   0,     0,     1,    1,     1,    2,     1 };
     private static readonly int[] MFlame  = {   0,     0,  1300, 1500,  1400, 1800,  1450 };
-    private static readonly int[] MWallMin = { 9999, 9999,  1050,  600,   900, 1050,  1050 }; // 壁が傷み始める熱 (部屋の材質で引く)
 
     private const byte FBurning = 1;
 
@@ -109,6 +112,23 @@ internal static class FireSim
     private static readonly Dictionary<long, Scald> Scalds = new();
     private static readonly List<Scald> BurnQueue = new();
     private static bool _decides;
+    private static bool _polus;
+
+    internal static WallMat WallOf(int k) => _polus ? WallMat.Stone : (Mat)_base[k] switch
+    {
+        Mat.Wood => WallMat.Wood,
+        Mat.Grass or Mat.None => WallMat.Stone,
+        _ => WallMat.Metal,
+    };
+
+    // 確かめ用: 壁の材質ごとの下限と 1 段の熱を変える
+    internal static string TuneWall(string name, int min, int stage)
+    {
+        if (!Enum.TryParse(name, true, out WallMat m)) return $"ERR fire wall: unknown {name} (wood|metal|stone)";
+        if (min > 0) WallMin[(int)m] = min;
+        if (stage > 0) WallStage[(int)m] = stage;
+        return $"OK fire wall {m} min={WallMin[(int)m]} stage={WallStage[(int)m]}";
+    }
     private static int _decideFrame;
     private static float _burnAt;
     internal static int WallHits { get; private set; }
@@ -194,6 +214,7 @@ internal static class FireSim
         if (!ship) return;
         bool fungle = ship.TryCast<FungleShipStatus>() != null;
         bool polus = !fungle && ship.TryCast<PolusShipStatus>() != null;
+        _polus = polus;
         _outdoor = fungle ? Mat.Grass : polus ? Mat.None : Mat.Metal;
         _indoor = fungle ? Mat.Wood : Mat.Metal;
         // 材質の決まった部屋を先に、それ以外の部屋 (屋内の既定) を後ろに並べる (重なった所は決まった方を取る)
@@ -441,8 +462,10 @@ internal static class FireSim
     private static void Sear(int k, int t)
     {
         // 点火の直後は熱が上限まで跳ねるので、材質の炎の熱で頭を抑える (点けた瞬間に壁が崩れない)
-        int heat = Math.Min(t, MFlame[_mat[k]] + 128) - MWallMin[_base[k]];
+        int wm = (int)WallOf(k);
+        int heat = Math.Min(t, MFlame[_mat[k]] + 128) - WallMin[wm];
         if (heat <= 0) return;
+        int stage = WallStage[wm];
         float cx = _org.x + (k % _w + 0.5f) * _cell, cy = _org.y + (k / _w + 0.5f) * _cell;
         for (int d = 0; d < 4; d++)
         {
@@ -452,7 +475,7 @@ internal static class FireSim
             if (!Scalds.TryGetValue(key, out var w)) Scalds[key] = w = new Scald();
             if (w.Done) continue;
             w.Heat += heat;
-            if (w.Queued || w.Heat < (w.Stage + 1) * StageHeat) continue;
+            if (w.Queued || w.Heat < (w.Stage + 1) * stage) continue;
             w.Queued = true;
             w.K = k; w.D = d;
             BurnQueue.Add(w);
@@ -482,7 +505,7 @@ internal static class FireSim
         BurnQueue.RemoveAt(0);
         w.Queued = false;
         var c = Center(w.K);
-        var res = TerrainApi.WorldHit(new Vector2(c.X, c.Y), new Vector2(Nx[w.D], Ny[w.D]), 0.5f);
+        var res = TerrainApi.WorldBurn(new Vector2(c.X, c.Y), new Vector2(Nx[w.D], Ny[w.D]));
         WallHits++;
         LastWallHit = res.Why;
         // 壁が無い・外壁・壊れない物は以後叩かない。抜けたらその壁は終わり (奥の壁まで続けて焼かない)。
@@ -693,6 +716,6 @@ internal static class FireSim
         if (x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return "ERR fire out of map";
         int k = y * _w + x;
         EnsureTile(k);
-        return $"OK fire at ({x},{y}) mat={(Mat)_mat[k]} t={_t[k]} fuel={_fuel[k]} burning={Burning(k)} burn={_burn[k]} char={_char[k]} base={(Mat)_base[k]} open={WaterSim.Open(k)} water={WaterSim.Height(k)}";
+        return $"OK fire at ({x},{y}) mat={(Mat)_mat[k]} t={_t[k]} fuel={_fuel[k]} burning={Burning(k)} burn={_burn[k]} char={_char[k]} base={(Mat)_base[k]} wall={WallOf(k)} open={WaterSim.Open(k)} water={WaterSim.Height(k)}";
     }
 }

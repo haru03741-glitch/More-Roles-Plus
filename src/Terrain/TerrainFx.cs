@@ -63,9 +63,10 @@ internal static class TerrainFx
     // from = 叩いた側の床 (塊の落ちる先は、ここから残った壁を越えずに届く所)。
     // given = 大きな瓦礫の止まる所 (客: ホストから届いた物 / null = ここで決める)。返り値 = 置いた瓦礫
     public static RubbleLanding[] Crumble(Vector2 center, Vector2 tangent, Vector2 normal, Vector2 axis, float force, float length, ushort seed,
-        List<BreakPiece> pieces, List<Vector2> segs, float[] walls, Vector2 from, RubbleLanding[] given)
+        List<BreakPiece> pieces, List<Vector2> segs, float[] walls, Vector2 from, RubbleLanding[] given, bool burnt = false)
     {
         var rnd = new System.Random(seed ^ Hash(center));
+        int mat = burnt ? WallMat() : 0;
         Vector2 hit = center;
         center += axis * (force * 0.3f);
         int made = 0;
@@ -99,6 +100,7 @@ internal static class TerrainFx
             Vector2 rest = center + tangent * along - normal * across;
             float size = 0.24f + (float)rnd.NextDouble() * 0.22f;
             var it = Spawn(Kind.Fall, DebrisArt.Chunk(rnd.Next()), rest, size, keep: true);
+            if (burnt) it.Sr.color = Charred(mat, rnd);
             it.Height = 0.35f + (float)rnd.NextDouble() * 0.45f; // 壁の高さから落ちる
             it.T = -(float)rnd.NextDouble() * 0.25f;            // 崩れ始めをずらす
             it.Rot = (float)rnd.NextDouble() * 360f;
@@ -108,16 +110,22 @@ internal static class TerrainFx
         {
             Vector2 rest = center + tangent * (((float)rnd.NextDouble() - 0.5f) * length * 1.2f) - normal * (((float)rnd.NextDouble() - 0.4f) * 0.9f);
             var it = Spawn(Kind.Fall, DebrisArt.Pebble, rest, 0.06f + (float)rnd.NextDouble() * 0.07f, keep: true);
+            if (burnt) it.Sr.color = Ash(rnd);
             it.Height = 0.2f + (float)rnd.NextDouble() * 0.5f;
             it.T = -(float)rnd.NextDouble() * 0.35f;
         }
         for (int k = 0; k < 7; k++)
-            Dust(center + tangent * (((float)rnd.NextDouble() - 0.5f) * length), rnd, 0.55f, 1.3f);
+        {
+            var puff = Dust(center + tangent * (((float)rnd.NextDouble() - 0.5f) * length), rnd, 0.55f, 1.3f);
+            if (burnt) puff.Sr.color = SootPuff; // 焼けて崩れた所は土煙でなく煤けた煙
+        }
+        // 焼けて崩れた: 崩れた瞬間に火の粉が舞い、瓦礫の山がしばらく燻って煙と火の粉を上げる
+        if (burnt) FireFx.AddSmolder(center.x, center.y, tangent.x, tangent.y, length * 0.5f, SmolderTime, true);
         // 船の中の瓦礫: 壁の根元に山 (真ん中ほど高く積もる) を作り、金属板・パイプ・配線・ナット・壁の中身を落とす
         var pile = new Pile { X = center.x + axis.x * 0.15f, Y = center.y + axis.y * 0.15f, Rx = length * 0.65f, Ry = 0.4f, H = 0.1f + force * 0.05f };
         Stain(new Vector2(pile.X, pile.Y), length * 1.5f, 0.35f);
         foreach (var it in byRank) if (it != null) SetPile(it, pile);
-        foreach (var (art, count, size) in CrumbleJunk)
+        foreach (var (art, count, size) in burnt ? BurnJunk[mat] : CrumbleJunk)
             for (int k = 0; k < count; k++)
             {
                 Vector2 src = hit + tangent * (((float)rnd.NextDouble() - 0.5f) * length);
@@ -127,6 +135,11 @@ internal static class TerrainFx
                     : -axis * (0.1f + (float)rnd.NextDouble() * 0.35f);
                 to += tangent * (((float)rnd.NextDouble() - 0.5f) * 0.5f);
                 var it = Junk(art, rnd, src, size, walls, pile);
+                if (burnt)
+                {
+                    var c = art == JunkArt.Grit ? Ash(rnd) : Charred(mat, rnd); // 隠す時も乱数は同じだけ引く (端末ごとに続きの瓦礫がずれない)
+                    if (!HideJunk) it.Sr.color = c;
+                }
                 it.Height = 0.15f + (float)rnd.NextDouble() * 0.6f;
                 float flight = MathF.Sqrt(2f * it.Height / Gravity) + 0.25f;
                 it.Vx = to.x / flight; it.Vy = to.y / flight;
@@ -446,11 +459,48 @@ internal static class TerrainFx
     // 瓦礫の山: (X, Y) を中心に、横 Rx・縦 Ry の楕円の中ほど高く (最高 H) 積もる
     private struct Pile { public float X, Y, Rx, Ry, H; }
 
-    private enum JunkArt { Plate, Pipe, Wire, Nut, Core, Grit }
+    private enum JunkArt { Plate, Pipe, Wire, Nut, Core, Grit, Splinter }
 
     // (絵, 数, 大きさ) 打撃で崩れた時 / 爆発
     private static readonly (JunkArt Art, int Count, float Size)[] CrumbleJunk =
         { (JunkArt.Plate, 3, 0.26f), (JunkArt.Pipe, 2, 0.26f), (JunkArt.Wire, 3, 0.2f), (JunkArt.Nut, 4, 0.06f), (JunkArt.Core, 4, 0.16f), (JunkArt.Grit, 14, 0.07f) };
+    // 焼けて崩れた壁から出る物 (壁の材質 = 木 / 金属 / 岩)。木の壁は焦げた木っ端と炭、金属は煤けた部品、岩は砕けた石
+    private static readonly (JunkArt Art, int Count, float Size)[][] BurnJunk =
+    {
+        new[] { (JunkArt.Splinter, 12, 0.17f), (JunkArt.Core, 3, 0.15f), (JunkArt.Grit, 14, 0.07f) },
+        new[] { (JunkArt.Plate, 3, 0.26f), (JunkArt.Pipe, 1, 0.26f), (JunkArt.Wire, 2, 0.2f), (JunkArt.Nut, 3, 0.06f), (JunkArt.Grit, 14, 0.07f) },
+        new[] { (JunkArt.Core, 4, 0.16f), (JunkArt.Grit, 18, 0.07f) },
+    };
+    private const float SmolderTime = 7f; // 焼けて崩れた瓦礫が燻る秒数
+    private static readonly Color SootPuff = new(0.3f, 0.28f, 0.27f, 1f);
+
+    // 壁の材質 (焼けた瓦礫の色): 0 = 木 (ファングル) / 1 = 金属 / 2 = 岩とコンクリート (ポーラス)
+    private static int WallMat()
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship) return 1;
+        return ship.Type == ShipStatus.MapType.Fungle ? 0 : ship.Type == ShipStatus.MapType.Pb ? 2 : 1;
+    }
+
+    // 焼けた塊の色: 木は芯まで炭 (黒に近い焦げ茶)・金属は煤けた灰・岩は煤で黒ずむ。1 つずつ少し明るさを散らす
+    private static Color Charred(int mat, System.Random rnd)
+    {
+        float v = 0.85f + (float)rnd.NextDouble() * 0.3f;
+        return mat switch
+        {
+            0 => new Color(0.2f * v, 0.14f * v, 0.1f * v, 1f),
+            1 => new Color(0.42f * v, 0.39f * v, 0.37f * v, 1f),
+            _ => new Color(0.36f * v, 0.33f * v, 0.31f * v, 1f),
+        };
+    }
+
+    // 灰: 白っぽい灰と黒い炭のかけらが混ざる
+    private static Color Ash(System.Random rnd)
+    {
+        float v = rnd.NextDouble() < 0.4 ? 0.62f + (float)rnd.NextDouble() * 0.15f : 0.16f + (float)rnd.NextDouble() * 0.1f;
+        return new Color(v, v * 0.96f, v * 0.93f, 1f);
+    }
+
     private static readonly (JunkArt Art, int Count, float Size)[] BlastJunk =
         { (JunkArt.Plate, 4, 0.26f), (JunkArt.Pipe, 2, 0.26f), (JunkArt.Wire, 5, 0.2f), (JunkArt.Nut, 6, 0.06f), (JunkArt.Core, 5, 0.16f), (JunkArt.Grit, 18, 0.07f) };
 
@@ -464,6 +514,7 @@ internal static class TerrainFx
             JunkArt.Wire => DebrisArt.Wire(rnd.Next()),
             JunkArt.Nut => DebrisArt.Nut,
             JunkArt.Core => DebrisArt.Core(rnd.Next()),
+            JunkArt.Splinter => DebrisArt.Splinter(rnd.Next()),
             _ => rnd.NextDouble() < 0.5 ? DebrisArt.Pebble : DebrisArt.Core(rnd.Next()),
         };
         var it = Spawn(Kind.Junk, sp, at, s, keep: true);

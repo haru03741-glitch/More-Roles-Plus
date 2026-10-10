@@ -90,6 +90,15 @@ public static class TerrainApi
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
 
+    // 炎に焼かれ続けた壁 (from から dir の向きの壁の耐久を 1 削る。ホストと一人の時だけ)
+    public static TerrainResult WorldBurn(Vector2 from, Vector2 dir)
+    {
+        if (TerrainSync.IsGuest()) return TerrainResult.Fail("host only");
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        string res = TerrainSync.RequestAs(new DamageEvent(DamageKind.Burn, from, dir.normalized, 0f, 0.5f, Seed()), World, out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
     // 押し (ロケットの反動・衝撃波など): 壁は壊さず、pos から dir の向きへ length までの扇形の水と小物を押す。
     // force 0..1 = 強さ。pos は自分から MaxBlastDistance 以内
     public static TerrainResult Push(Vector2 pos, Vector2 dir, float length, float force = 1f)

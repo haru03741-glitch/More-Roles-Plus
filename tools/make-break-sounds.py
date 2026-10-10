@@ -19,6 +19,8 @@
 #   noise_steam             … 火に水が掛かって湯気になる (じゅうっ)
 #   noise_flare             … 油の火に水が掛かって噴き上がる
 #   noise_arc               … 濡れた配線の火花 (ばちばち)
+#   noise_burn_hit_<素材>   … 炎に焼かれた壁が傷む (炎が息をつく・素材がきしむ/はぜる)
+#   noise_burn_crumble_<素材> … 焼けた壁が崩れ落ちる (焦げて鈍い崩れ・炎がごうっと吹き込む・火の粉がはぜる)
 #   それぞれ <名前>_m       … 遠い・壁越しのこもった音 (16kHz)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
 #   python tools/make-break-sounds.py   (numpy と scipy が要る)
@@ -704,6 +706,62 @@ def fire_loop():
     return 1.0 * roar + 0.3 * flutter + 1.2 * pops + 0.5 * crackle
 
 
+def burn_strain(mat, dur, gain):
+    # 熱で素材が傷む音: 木 = 繊維のきしみと節のはぜ / 金属 = 熱で反る板の唸りとちりちり鳴る継ぎ目 / 岩 = 表面が弾けて剥がれる
+    n, t = T(dur)
+    out = np.zeros(n)
+    if mat == 'wood':
+        body = modal([(rng.uniform(190, 230), 0.04, 1.0), (rng.uniform(450, 520), 0.03, 0.6), (rng.uniform(900, 1000), 0.015, 0.3)], 0.12)
+        place(out, stick_slip(dur * 0.8, 28, 12, body * 0.3, 0.4), 0.0, 0.9 * gain)
+        for _ in range(4):
+            place(out, crack(0.08, 2000, 8000), rng.uniform(0.05, dur * 0.8), rng.uniform(0.4, 0.8) * gain)
+    elif mat == 'metal':
+        plate = modal([(rng.uniform(60, 75), 0.6, 1.0), (rng.uniform(130, 150), 0.4, 0.6), (rng.uniform(230, 260), 0.25, 0.4)], 0.6)
+        place(out, stick_slip(dur * 0.85, 10, 5, plate[: int(0.3 * SR)] * 0.3, 0.3, 0.6), 0.0, 1.0 * gain)
+        for _ in range(6):  # 熱で継ぎ目がちりっと鳴る
+            place(out, clank(rng.uniform(2400, 3800), 0.06, 0.015), rng.uniform(0.05, dur * 0.85), rng.uniform(0.15, 0.3) * gain)
+    else:
+        for _ in range(5):
+            place(out, crack(0.12, 1200, 6500), rng.uniform(0.03, dur * 0.8), rng.uniform(0.4, 0.8) * gain)
+        out += 0.4 * gain * grains(n, 40, 800, 4500, dur=0.015, tau=0.004, t0=0.05, t1=dur * 0.9, shape=lambda u: 1 - u)
+    return out
+
+
+def burn_hit(mat):
+    # 焼けた壁が傷む (1.4s): 叩く一撃は無く、炎がふっと強まる息 + 素材の傷む音 + ぱちぱち
+    n, t = T(1.4)
+    out = np.zeros(n)
+    breath = bp(noise(n), 150, 2200) * np.minimum(1, t / 0.12) * np.exp(-t / 0.45)
+    out += 0.7 * breath
+    place(out, burn_strain(mat, 1.1, 1.0), 0.04, 1.0)
+    out += 0.7 * grains(n, 35, 1800, 7500, dur=0.008, tau=0.002, t0=0.0, t1=1.3, shape=lambda u: 1 - u)
+    return room(out, 0.5, 2200, 0.3)
+
+
+def burn_crumble(mat):
+    # 焼けた壁が崩れる (2.8s): 傷みが強まる → 折れる → 焦げて鈍い崩れ (響かない) → 開いた穴へ炎がごうっと吹き込む → 火の粉がはぜて収まる
+    n, t = T(2.8)
+    out = np.zeros(n)
+    place(out, burn_strain(mat, 0.45, 1.3), 0.0, 1.0)
+    give = 0.38
+    place(out, crack(0.25, 900, 6000) if mat != 'metal' else tear(0.3, 900, 3200, 40), give, 1.0)
+    # 崩れ落ちる塊: 炭や焼けた板は鳴らずにぼすっと落ちる (低域だけ)
+    place(out, lp(thud(1.2), 900), give + 0.12, 1.3)
+    for _ in range(6):
+        place(out, lp(thud(rng.uniform(0.5, 0.8)), 1400), give + 0.15 + rng.uniform(0, 0.6), rng.uniform(0.25, 0.5))
+    if mat == 'metal':
+        place(out, lp(clank(rng.uniform(140, 180), 0.6, 0.12), 1200), give + 0.14, 0.5)
+    m, _ = T(1.4)  # 炭が崩れるざくざく
+    place(out, grains(m, 90, 600, 3500, 0.012, 0.003, 0, 1.4, lambda u: (1 - u) ** 1.5), give + 0.1, 0.8)
+    # 穴へ空気が吸い込まれて炎が膨らむ
+    whoosh = lp(noise(n), 320) * np.clip((t - give - 0.05) / 0.12, 0, 1) * np.exp(-np.clip(t - give - 0.05, 0, None) / 0.35)
+    out += 1.1 * whoosh
+    m, _ = T(2.2)
+    place(out, fire_bed(2.2, 0.8), give + 0.1, 0.55)
+    out += 0.8 * grains(n, 50, 1800, 8000, dur=0.008, tau=0.002, t0=give + 0.1, t1=2.7, shape=lambda u: (1 - u) ** 1.2)
+    return room(out, 0.7, 1800, 0.35)
+
+
 def fire_ignite():
     # 火が付く (0.9s): 空気を吸い込むぼっ + 炎の立ち上がり
     n, t = T(0.9)
@@ -759,6 +817,8 @@ if __name__ == '__main__':
         # 崩れる音は細かい音 (跳ねる破片・砂利) が聞こえるよう圧縮を弱める
         emit('noise_crumble_' + mat, crumbles[mat], drive=1.6, ratio=0.3)
         emit('noise_rubble_' + mat, rubbles[mat], drive=1.6, ratio=0.3)
+        emit('noise_burn_hit_' + mat, lambda m=mat: burn_hit(m), peak=0.85, drive=1.8, ratio=0.35)
+        emit('noise_burn_crumble_' + mat, lambda m=mat: burn_crumble(m), drive=1.6, ratio=0.3)
     emit('noise_decomp_breach', decomp_breach, drive=2.0)
     emit_loop('noise_decomp_loop', decomp_loop)
     emit_loop('noise_decomp_whistle', decomp_whistle, peak=0.7)

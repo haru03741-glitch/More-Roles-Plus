@@ -150,7 +150,7 @@ internal static class TerrainPermits
     {
         DamageKind.Blunt => TerrainUse.Hammer,
         DamageKind.Push => TerrainUse.Push,
-        DamageKind.Ignite or DamageKind.Spill => TerrainUse.Fire,
+        DamageKind.Ignite or DamageKind.Spill or DamageKind.Burn => TerrainUse.Fire,
         _ => TerrainUse.Blast,
     };
 }

@@ -35,7 +35,7 @@ internal static class TerrainDamage
                 TerrainWire.QForce(e.Force), TerrainWire.QSize(e.Size), 0, e.Seed);
             return true;
         }
-        if (e.Kind != DamageKind.Blunt) { why = "unknown kind"; return false; }
+        if (!e.Kind.IsStrike()) { why = "unknown kind"; return false; }
 
         Vector2 dir = e.Direction.sqrMagnitude > 1e-6f ? e.Direction.normalized : Vector2.right;
         bool wall = FindWall(e.Position, dir, p.Reach, out Vector2 hit, out Vector2 normal);
@@ -131,7 +131,7 @@ internal static class TerrainDamage
         return r.Kind switch
         {
             DamageKind.Explosion => Explode(r, profile, given, ref landings),
-            DamageKind.Blunt => Strike(r, profile, given, ref landings),
+            DamageKind.Blunt or DamageKind.Burn => Strike(r, profile, given, ref landings),
             DamageKind.Push => "push", // 地形は変えない (水と小物は TerrainSync の受け手が押す)
             DamageKind.Ignite => "ignite", // 地形は変えない (火は TerrainSync の受け手が入れる)
             DamageKind.Spill => "spill",
@@ -519,6 +519,7 @@ internal static class TerrainDamage
             float reach = hp >= WallDurability.MaxHp - 1 ? 0.3f : 0.6f;
             if (WallPeel.Hit(hit, normal, e.Direction, hp, e.Seed) ||
                 DamageMap.Cracks(hit, reach, AngleOf(SlantAxis(dir, e.Direction, p.MaxSlantDeg, out _))) == null) TerrainFx.Chip(hit, dir, e.Seed);
+            if (e.Kind == DamageKind.Burn) FireFx.AddSmolder(hit.x - normal.x * 0.1f, hit.y - normal.y * 0.1f, normal.y, -normal.x, 0.25f, 1.6f, false);
             return $"blunt hit hp={hp} at=({hit.x:0.00},{hit.y:0.00})";
         }
 
@@ -568,7 +569,7 @@ internal static class TerrainDamage
         if (cut == 0) TerrainFx.Chip(hit, dir, e.Seed);
         else if (visual == null)
             landings = TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed, pieces, removed,
-                WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f, given);
+                WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f, given, e.Kind == DamageKind.Burn);
         LastCut = cut; LastPieces = pieces.Count; LastBlocks = landings.Length;
         return $"blunt breach cut={cut} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
     }

@@ -172,10 +172,10 @@ internal static class BreakableProps
         }
         if (idx < 0) return false;
         if (wall && (wallHit - e.Position).sqrMagnitude < (point - e.Position).sqrMagnitude) return false;
-        var p = DamageProfile.Blunt;
+        var p = DamageProfile.Of(e.Kind);
         int damage = TerrainWire.QForce(e.Force) >= p.StrongForce ? p.StrongDamage : p.WallDamage;
         int hp = Math.Max(Props[idx].Hp - damage, sbyte.MinValue);
-        r = new ResolvedDamage(DamageKind.Blunt, TerrainWire.Q(point), TerrainWire.QNormal(normal), TerrainWire.QNormal(dir),
+        r = new ResolvedDamage(e.Kind, TerrainWire.Q(point), TerrainWire.QNormal(normal), TerrainWire.QNormal(dir),
             TerrainWire.QForce(e.Force), 0f, (sbyte)hp, e.Seed);
         return true;
     }

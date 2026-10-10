@@ -9,12 +9,15 @@ public enum DamageKind : byte
     Push = 3,      // 押し (反動・衝撃波など): 壁は壊さない。起点から向きの先の扇形の中の水と小物を押す
     Ignite = 4,    // 点火: 壁は壊さない。円の中の床に熱を足す (燃える物があれば燃え始める)
     Spill = 5,     // 油をまく: 壁は壊さない。円の中の床を油にする
+    Burn = 6,      // 焼け: 炎に焼かれ続けた壁 1 枚に耐久ダメージ (打撃と同じ抜け方・ホストだけが出す)。崩れた所は焦げて燻る
 }
 
 internal static class DamageKinds
 {
     // 地形 (壁) を変える種類か。押し・点火・油は水と火と小物だけに効く
-    public static bool Shapes(this DamageKind k) => k == DamageKind.Explosion || k == DamageKind.Blunt;
+    public static bool Shapes(this DamageKind k) => k == DamageKind.Explosion || k.IsStrike();
+    // 壁 1 枚の耐久を削る種類か (叩いた面の向きと残りの耐久を持つ)
+    public static bool IsStrike(this DamageKind k) => k == DamageKind.Blunt || k == DamageKind.Burn;
     public static bool IsFire(this DamageKind k) => k == DamageKind.Ignite || k == DamageKind.Spill;
 }
 
@@ -126,5 +129,24 @@ internal sealed class DamageProfile
         ForceLength = 1.6f,
     };
 
-    public static DamageProfile Of(DamageKind kind) => kind == DamageKind.Explosion ? Explosion : Blunt;
+    // 焼け: 抜け方は打撃と同じ。抜けた縁は焦げる
+    public static readonly DamageProfile Burn = new()
+    {
+        WallDamage = 1,
+        StrongDamage = 1,
+        StrongForce = 2f,
+        Scorch = true,
+        BreachLength = 1.1f,
+        BreachDepth = 1.1f,
+        Reach = 1.2f,
+        MaxSlantDeg = 50f,
+        ForceLength = 1.6f,
+    };
+
+    public static DamageProfile Of(DamageKind kind) => kind switch
+    {
+        DamageKind.Explosion => Explosion,
+        DamageKind.Burn => Burn,
+        _ => Blunt,
+    };
 }

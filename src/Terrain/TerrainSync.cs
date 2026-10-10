@@ -323,6 +323,7 @@ internal static class TerrainSync
     {
         var data = sender.Data;
         if (data == null || data.IsDead || data.Disconnected) return "not alive";
+        if (e.Kind == DamageKind.Burn) return "world only"; // 焼け落ちはホストの火の計算だけが決める
         Vector2 at = sender.GetTruePosition();
         float dx = e.Position.x - at.x, dy = e.Position.y - at.y;
         float max = e.Kind == DamageKind.Blunt ? DamageProfile.Of(e.Kind).Reach + LagMargin : MaxBlastDistance;

@@ -71,7 +71,7 @@ internal static class BreakNoise
     private static long _lastMs;
     private static IntPtr _matShip;
     private static GameObject _prefab;
-    private static string _hitClip, _crumbleClip, _rubbleClip;
+    private static string _hitClip, _crumbleClip, _rubbleClip, _mat;
 
     // テスト用
     internal static int Emitted, Dropped;
@@ -107,7 +107,7 @@ internal static class BreakNoise
         bool muffled = d > spec.Muffle || ThroughWall(lp, me, r);
         if (muffled && d <= spec.Muffle) vol *= MuffledGain;
         string m = muffled ? "_m" : "";
-        string clip = ClipName(kind) + m;
+        string clip = ClipName(kind, r.Kind == DamageKind.Burn) + m;
 
         // 崩れ方の大きさ 0..1 (割れた塊の数と大きな瓦礫の数の平均)
         float amount = 0.5f * (Math.Min(1f, TerrainDamage.LastPieces / PiecesFull) + Math.Min(1f, TerrainDamage.LastBlocks / BlocksFull));
@@ -167,13 +167,14 @@ internal static class BreakNoise
     {
         if (lp.Data == null || lp.Data.IsDead) return false;
         Vector2 src = r.Position;
-        if (r.Kind == DamageKind.Blunt) { src.x += r.Normal.x * WallProbeBack; src.y += r.Normal.y * WallProbeBack; }
+        if (r.Kind.IsStrike()) { src.x += r.Normal.x * WallProbeBack; src.y += r.Normal.y * WallProbeBack; }
         float dx = src.x - me.x, dy = src.y - me.y;
         if (dx * dx + dy * dy < 1f) return false;
         return PhysicsHelpers.AnythingBetween(me, src, Constants.ShipOnlyMask, false);
     }
 
-    private static string ClipName(Sound kind)
+    // burn = 炎に焼かれた壁 (叩く一撃の無い、焼けて傷む・崩れる音)
+    private static string ClipName(Sound kind, bool burn)
     {
         var ship = ShipStatus.Instance;
         if (ship.Pointer != _matShip)
@@ -186,10 +187,12 @@ internal static class BreakNoise
                 ShipStatus.MapType.Fungle => "wood",
                 _ => "metal",
             };
+            _mat = mat;
             _hitClip = "noise_hit_" + mat;
             _crumbleClip = "noise_crumble_" + mat;
             _rubbleClip = "noise_rubble_" + mat;
         }
+        if (burn) return (kind == Sound.Hit ? "noise_burn_hit_" : "noise_burn_crumble_") + (TerrainDamage.LastMaterial ?? _mat);
         if (kind != Sound.Boom && TerrainDamage.LastMaterial is { } own) // 物ごと壊れる家具はその素材の音
             return (kind == Sound.Hit ? "noise_hit_" : "noise_crumble_") + own;
         return kind == Sound.Boom ? "noise_boom" : kind == Sound.Hit ? _hitClip : _crumbleClip;
