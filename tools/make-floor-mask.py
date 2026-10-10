@@ -49,6 +49,8 @@ REACH = 0.2           # 歩ける所からこの距離 (世界単位) より離�
 GROUND_REACH_SHIP = {"FungleShip": 1.0}
 # 床の絵が南の壁の前面と同じ色で続く広い床 (Mira の発射台): 前面の除外と隙間の幅の下限を外す範囲 (世界座標の矩形 x0, y0, x1, y1)
 PHYS_RELAX_SHIP = {"MiraShip": [(-11.7, -0.3, 0.2, 8.8)]}
+# 水の届く升にしない範囲。小さな段差の縁 (エアシップの機関室の南の桃色の床の上り口) は通れない縁のままでないと段として上れない
+PHYS_EXCLUDE_SHIP = {"Airship": [(-2.6, -2.05, 2.8, -1.74)]}
 FURN_DEEP = 0.08      # 家具の当たり判定の縁からこれより内側は床にしない (当たり判定が絵より大きい所の縁の帯は床のまま)
 SPECK = 60            # これより小さい床の島・床の中の穴 (画素数) は消す
 EDGE_SIGMA = 1.6      # 縁をならすぼかしの幅 (画素)
@@ -415,6 +417,16 @@ def bridge_wet(j, wet):
     return wet | full
 
 
+def exclude_wet(j, wet):
+    """PHYS_EXCLUDE_SHIP の矩形の升を水の届く升から外す (隙間を埋めた後に外す)"""
+    s = j["solid"]
+    ox, oy = s["origin"]
+    c = s["ppu"]
+    for x0, y0, x1, y1 in PHYS_EXCLUDE_SHIP.get(j["ship"].replace("(Clone)", ""), []):
+        wet[max(0, int((y0 - oy) * c)):max(0, int(np.ceil((y1 - oy) * c))), max(0, int((x0 - ox) * c)):max(0, int(np.ceil((x1 - ox) * c)))] = False
+    return wet
+
+
 def write_wet(path, j, cells):
     s = j["solid"]
     packed = zlib.compress(np.packbits(cells.ravel(), bitorder="little").tobytes(), 9)
@@ -523,7 +535,7 @@ def main():
         canvas = compose(j, tex, ppu)
         cover = cover_mask(j, tex, ppu, canvas.shape[:2])
         floor, walk, furn, phys = classify(j, canvas, ppu, cover)
-        wet = bridge_wet(j, wet_cells(j, ppu, phys))
+        wet = exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys)))
         wsize = write_wet(os.path.join(a.wet, ship + ".bin"), j, wet)
         print(f"{ship}: wet cells={int(wet.sum())} -> {wsize} B")
         ship = j["ship"].replace("(Clone)", "")
