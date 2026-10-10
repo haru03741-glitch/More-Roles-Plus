@@ -26,3 +26,4 @@ src/Dev/DevUsers.Local.cs
 
 # 床マスク (ゲームの絵から tools/make-floor-mask.py で作る・配布は DLL に埋め込む)
 Resources/FloorMasks/
+tools/__pycache__/

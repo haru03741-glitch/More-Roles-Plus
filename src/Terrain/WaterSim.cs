@@ -72,6 +72,10 @@ internal static class WaterSim
     private const int GushMin = Full / 8;
     private const int GushGain = 160;
     private const int GushBand = 4;
+    // 噴き出しの勢い (水の量の流れだけでは深い水ほど遅く読めるので、物と体を押す流れを別に足す)。扉から噴く向きへ
+    // 速さ 差 × JetGain/Full (上限 JetMax・1/1024 単位/刻み)・長さ 6 升 + 差 1 単位ごとに 6 升 (上限 JetLenMax)・先へ行くほど弱く・
+    // 外へ 1/3 の割合で広がる。高い側は扉へ吸い寄せる流れ (半分の速さ・JetIntake 升)。JetLife 刻みで弱まって消える
+    private const int JetGain = 64, JetMax = 200, JetLenMax = 24, JetIntake = 10, JetLife = 45;
     private const int MouthQ = 1;             // 口を壁の線から出す距離 (1/4 升)
 
     // 噴き出しの粒 (整数・升 = 256・1 単位 = 1024)。裂け目から扇の範囲へ放物線で飛び、壁に当たると止まって垂れ、
@@ -177,6 +181,8 @@ internal static class WaterSim
     internal static int InflowCount => Inflows.Count;
     internal static long InflowTotal { get; private set; }
     internal static int Gushes { get; private set; }
+    private sealed class Jet { public int A0, A1, Lo, Hi, D, V, Len, Start; public bool Wide; }
+    private static readonly List<Jet> Jets = new();
     // 扉の噴き出し (絵だけ・見せる側が毎フレーム読んで TerrainStep が消す): 扉の真ん中・噴く向き・扉の幅 (単位)・水位の差 (Full = 1 単位)
     internal static readonly List<(Vector2 At, int Dx, int Dy, float Width, int Diff)> GushFx = new();
     private static int _step;
@@ -581,8 +587,41 @@ internal static class WaterSim
             }
         if (n == 0) return;
         Gushes++;
+        int len = Math.Min(6 + Math.Abs(diff) * 6 / Full, JetLenMax);
+        Jets.Add(new Jet { A0 = a0, A1 = a1, Lo = lo, Hi = hi, D = d, Wide = wide, V = Math.Min(Math.Abs(diff) * JetGain / Full, JetMax), Len = len, Start = _step });
         float cx = _org.x + ((x0 + x1 + 1) * 0.5f) * _cell, cy = _org.y + ((y0 + y1 + 1) * 0.5f) * _cell;
         GushFx.Add((FxMath.V2(cx, cy), Nx[d], Ny[d], (a1 - a0 + 1) * _cell, Math.Abs(diff)));
+    }
+
+    // 噴き出しの勢いをその升に足す (1/1024 単位/刻み)。噴流が無ければ何もしない
+    private static void JetAt(int x, int y, ref int vx, ref int vy)
+    {
+        for (int i = 0; i < Jets.Count; i++)
+        {
+            var j = Jets[i];
+            int age = _step - j.Start;
+            if (age < 0 || age >= JetLife) continue;
+            int a = j.Wide ? x : y, t = j.Wide ? y : x;
+            // 扉からの距離 (噴く向きを +・扉の厚みの中は 0) と、扉の幅から横へはみ出した升数
+            bool plus = j.D == 0 || j.D == 2;
+            int along = plus ? (t > j.Hi ? t - j.Hi : t < j.Lo ? t - j.Lo : 0)
+                             : (t < j.Lo ? j.Lo - t : t > j.Hi ? j.Hi - t : 0);
+            int side = a < j.A0 ? j.A0 - a : a > j.A1 ? a - j.A1 : 0;
+            int v;
+            if (along >= 0)
+            {
+                if (along >= j.Len || side * 3 > along) continue;
+                v = j.V * (j.Len - along) / j.Len;
+            }
+            else
+            {
+                if (-along >= JetIntake || side > -along) continue;
+                v = j.V * (JetIntake + along) / (JetIntake * 2);
+            }
+            v = v * (JetLife - age) / JetLife;
+            vx += Nx[j.D] * v;
+            vy += Ny[j.D] * v;
+        }
     }
 
     private static int CellAt(int x, int y) => x < 0 || y < 0 || x >= _w || y >= _h ? -1 : y * _w + x;
@@ -1088,6 +1127,8 @@ internal static class WaterSim
             if (f.End != 0 && _step >= f.End) { Inflows.RemoveAt(i); continue; }
             Pour3(f.K, f.Rate);
         }
+        for (int i = Jets.Count - 1; i >= 0; i--)
+            if (_step - Jets[i].Start >= JetLife) Jets.RemoveAt(i);
 
         // 噴き出し: 粒を出して動かし、床に落ちた粒の水を升に足す
         Landed.Clear();
@@ -1564,6 +1605,17 @@ internal static class WaterSim
         return _hgt[y * _w + x];
     }
 
+    // 水の升の範囲 (両端を含む) に扉の升があるか
+    internal static bool DoorInBox(int x0, int y0, int x1, int y1)
+    {
+        if (!_ready || _doorCell == null) return false;
+        x0 = Math.Max(x0, 0); y0 = Math.Max(y0, 0); x1 = Math.Min(x1, _w - 1); y1 = Math.Min(y1, _h - 1);
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+                if (_doorCell[y * _w + x] != 0) return true;
+        return false;
+    }
+
     // 水の升 (x, y) が机・岩などの当たり判定の中か (作った時の形)
     internal static bool UnderProp(int x, int y) => _ready && x >= 0 && y >= 0 && x < _w && y < _h && _propCell[y * _w + x] != 0;
 
@@ -1581,6 +1633,7 @@ internal static class WaterSim
         int d = Math.Max(h, Full / 8);
         vx = (int)((long)qx * (Unit / 8) / d);
         vy = (int)((long)qy * (Unit / 8) / d);
+        if (Jets.Count > 0) JetAt(x, y, ref vx, ref vy);
         return true;
     }
 
@@ -1602,6 +1655,13 @@ internal static class WaterSim
         float f = 0.5f * _cell * GameClock.Hz / Math.Max(h, Full / 8);
         vx = qx * f;
         vy = qy * f;
+        if (Jets.Count > 0)
+        {
+            int jx = 0, jy = 0;
+            JetAt(x, y, ref jx, ref jy);
+            vx += jx * (GameClock.Hz / (float)Unit);
+            vy += jy * (GameClock.Hz / (float)Unit);
+        }
         return h / (float)Full;
     }
 
@@ -1698,6 +1758,7 @@ internal static class WaterSim
         Inflows.Clear();
         InflowTotal = 0;
         Gushes = 0;
+        Jets.Clear();
         GushFx.Clear();
         Particles = 0;
         Landed.Clear();

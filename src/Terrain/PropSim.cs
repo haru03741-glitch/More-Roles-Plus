@@ -60,9 +60,11 @@ internal static class PropSim
     private const int HeavyReach = 5;         // 重い物は口からこの道のり (単位) 以内だけ
     private const int ResyncPull = 15;        // 引いている間に見せる用を確定から計算し直す間隔 (0.5 秒)
     // 水: 深さが種類ごとの浮く深さ (Full = 1 単位) を超えた物は、速さが水の流れ × 種類の割合 (/256) へ 1 刻みに 1/SweepEase ずつ寄る。
-    // 浮いている間は床の摩擦なし。重い物 (当たり判定のある家具) と固定の物は流さない
-    private const int FloatSmall = WaterSim.Full / 12, FloatMedium = WaterSim.Full / 4;
-    private const int SweepSmall = 256, SweepMedium = 200;
+    // 浮いている間は床の摩擦なし。固定の物は流さない。重い物 (当たり判定のある家具) は深い水で強い流れの時だけ、ゆっくりずれる (流されている間は震える)
+    private const int FloatSmall = WaterSim.Full / 12, FloatMedium = WaterSim.Full / 4, FloatHeavy = WaterSim.Full * 6 / 10;
+    private const int SweepSmall = 256, SweepMedium = 200, SweepHeavy = 110;
+    private const int HeavySweepStart = 24;   // 重い物は流れ (×割合) がこの速さ (0.7 単位/秒) 以上の間だけ動く
+    private const int HeavyDoorGap = 3;       // 重い物の当たりの箱からこの升数 (0.75 単位) の内に扉があれば流さない (戸口をふさがない)
     private const int SweepEase = 6;
     private const float PerchProbe = 0.05f;
     private const int FurnitureLayer = 12;
@@ -854,22 +856,26 @@ internal static class PropSim
         for (int i = 0; i < Props.Count; i++)
         {
             var p = Props[i];
-            if (p.Kind == Kind.Fixed || p.Kind == Kind.Heavy) continue;
+            if (p.Kind == Kind.Fixed) continue;
+            bool heavy = p.Kind == Kind.Heavy;
             var st = w.S(p);
             st.Pulled = false;
+            if (heavy) st.Rattle = false;
             if (st.Gone || st.Stuck) continue;
             int sx = st.Px / _cellU, sy = st.Py / _cellU;
             // 机・ベッドや岩の上に載っている物は水が下を通るので流さない
             if (p.Perch && Math.Abs(st.Px - p.A0x) + Math.Abs(st.Py - p.A0y) < PerchMove) continue;
-            if (WaterSim.UnderProp(sx / WaterSim.Sub, sy / WaterSim.Sub) || OnFurniture(w, st)) continue;
-            if (!WaterSim.FlowCell(sx / WaterSim.Sub, sy / WaterSim.Sub, out int h, out int fx, out int fy)) continue;
+            if (!heavy && (WaterSim.UnderProp(sx / WaterSim.Sub, sy / WaterSim.Sub) || OnFurniture(w, st))) continue;
+            int h, fx, fy;
+            if (heavy ? !AroundFlow(p, st, out h, out fx, out fy) : !WaterSim.FlowCell(sx / WaterSim.Sub, sy / WaterSim.Sub, out h, out fx, out fy)) continue;
             bool small = p.Kind == Kind.Small;
-            if (h < (small ? FloatSmall : FloatMedium)) continue;
-            int mul = small ? SweepSmall : SweepMedium;
+            if (h < (heavy ? FloatHeavy : small ? FloatSmall : FloatMedium)) continue;
+            int mul = heavy ? SweepHeavy : small ? SweepSmall : SweepMedium;
             int tx = fx * mul / 256, ty = fy * mul / 256;
+            if (heavy && (Math.Abs(tx) + Math.Abs(ty) < HeavySweepStart || NearDoor(p, st))) continue;
             if (!st.Active)
             {
-                if (Math.Abs(tx) + Math.Abs(ty) < PullStart || w.Act.Count >= MaxActive) continue;
+                if (Math.Abs(tx) + Math.Abs(ty) < (heavy ? HeavySweepStart : PullStart) || w.Act.Count >= MaxActive) continue;
                 st.Active = true;
                 w.Act.Add(p);
             }
@@ -884,8 +890,35 @@ internal static class PropSim
             }
             st.Pulled = true;
             st.Moved = true;
+            if (heavy) st.Rattle = true;
             if (!w.Display) { _swept = true; Swept++; }
         }
+    }
+
+    private static bool NearDoor(Prop p, St st)
+    {
+        int c = _cellU * WaterSim.Sub;
+        return WaterSim.DoorInBox((st.Px - p.Hx) / c - HeavyDoorGap, (st.Py - p.Hy) / c - HeavyDoorGap,
+                                  (st.Px + p.Hx) / c + HeavyDoorGap, (st.Py + p.Hy) / c + HeavyDoorGap);
+    }
+
+    // 重い物の下には水が入らないので、当たりの箱の 4 辺のすぐ外で測る (深さは一番深い所・流れは濡れた所の平均)
+    private static bool AroundFlow(Prop p, St st, out int h, out int fx, out int fy)
+    {
+        h = fx = fy = 0;
+        int n = 0, gap = _cellU * WaterSim.Sub;
+        for (int k = 0; k < 4; k++)
+        {
+            int x = st.Px + (k == 0 ? p.Hx + gap : k == 1 ? -p.Hx - gap : 0);
+            int y = st.Py + (k == 2 ? p.Hy + gap : k == 3 ? -p.Hy - gap : 0);
+            if (x < 0 || y < 0) continue;
+            if (!WaterSim.FlowCell(x / gap, y / gap, out int ch, out int cx, out int cy) || ch <= 0) continue;
+            if (ch > h) h = ch;
+            fx += cx; fy += cy; n++;
+        }
+        if (n == 0) return false;
+        fx /= n; fy /= n;
+        return true;
     }
 
     // 重い物 (家具) の壁の当たりの箱の中に足元がある
