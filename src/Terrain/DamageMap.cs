@@ -562,6 +562,20 @@ internal static class DamageMap
         return _pixels[(py * _w + px) * 4];
     }
 
+    // その点の穴の値 (0..255) を周りの 4 画素から双線形で (シェーダが絵を抜く線と同じ読み方)。地図の外・地図が無ければ 0
+    internal static int HoleSmoothAt(float x, float y)
+    {
+        if (_pixels == null) return 0;
+        float fx = (x - _origin.x) * PixelsPerUnit - 0.5f, fy = (y - _origin.y) * PixelsPerUnit - 0.5f;
+        int x0 = (int)MathF.Floor(fx), y0 = (int)MathF.Floor(fy);
+        if (x0 < 0 || y0 < 0 || x0 + 1 >= _w || y0 + 1 >= _h) return 0;
+        float tx = fx - x0, ty = fy - y0;
+        int i = (y0 * _w + x0) * 4, j = i + _w * 4;
+        float a = _pixels[i] + (_pixels[i + 4] - _pixels[i]) * tx;
+        float b = _pixels[j] + (_pixels[j + 4] - _pixels[j]) * tx;
+        return (int)(a + (b - a) * ty);
+    }
+
     // テスト用: その点の損傷マスクの RGBA (0..255)
     internal static string MaskAt(Vector2 p)
     {

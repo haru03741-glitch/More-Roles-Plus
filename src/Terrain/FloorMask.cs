@@ -15,7 +15,7 @@ namespace MoreRolesPlus.Terrain;
 internal static class FloorMask
 {
     private static readonly byte[] Magic = { (byte)'M', (byte)'R', (byte)'P', (byte)'F' };
-    private const int Version = 2;
+    private const int Version = 3;
     private const float OriginTolerance = 0.01f;
 
     private static int _gen = -1;
@@ -72,7 +72,7 @@ internal static class FloorMask
             float ox = br.ReadSingle(), oy = br.ReadSingle(), ppu = br.ReadSingle();
             uint sig = br.ReadUInt32();
             // 部屋の絵が作った時と違う (ゲームの更新で絵が変わった) なら使わない
-            uint now = Signature();
+            uint now = Signature(name);
             if (sig != now) { Stats = $"{name}: art changed {sig:x8}/{now:x8}"; return; }
             if (!SolidMap.Ensure() || MathF.Abs(SolidMap.Origin.x - ox) > OriginTolerance || MathF.Abs(SolidMap.Origin.y - oy) > OriginTolerance)
             {
@@ -141,6 +141,9 @@ internal static class FloorMask
         }
     }
 
+    // 壁の絵が抜けた所 (穴の値がこれ以上) は床にする。シェーダは穴の値を割れ口のずらし込みで 128 前後で切って絵を抜く
+    private const int HoleFloor = 128;
+
     // 画素 k の真ん中 = (x + k × step, y + …)
     private static void FillRaw(float x, float y, float wstep, int n, byte[] into)
     {
@@ -160,6 +163,17 @@ internal static class FloorMask
             {
                 int mx = (int)(bx + px * step);
                 into[row + px] = mx >= 0 && mx < _w && (_bits[(baseK + mx) >> 3] & (1 << ((baseK + mx) & 7))) != 0 ? (byte)255 : (byte)0;
+            }
+        }
+        // 壊した壁の穴: 水の升は開いて水が流れ込むので、絵が抜けた所も床にする (この試合でまだ何も壊していなければ飛ばす)
+        if (DamageMap.CurrentGen != 0)
+        {
+            for (int py = 0; py < n; py++)
+            {
+                float wy = y + py * wstep;
+                int row = py * n;
+                for (int px = 0; px < n; px++)
+                    if (into[row + px] == 0 && DamageMap.HoleSmoothAt(x + px * wstep, wy) >= HoleFloor) into[row + px] = 255;
             }
         }
         if (_patchGen != GameClock.ShipGen) return;
@@ -237,23 +251,33 @@ internal static class FloorMask
         }
     }
 
-    // 部屋の絵 (名前・テクスチャの範囲) の指紋。マスクを作った時と今のゲームの絵が同じかを見る。
-    // 床の層 (z が BackZ 以上) だけを見る: 手前にはコマ送りで絵が替わる物 (機関室のエンジンなど) がある
-    private const float BackZ = 4f;
+    // 部屋の絵のテクスチャ (名前・大きさ) の指紋。マスクを作った時と今のゲームの絵が同じかを見る。
+    // 床の層 (z が BackZ 以上・空の絵より手前) だけを見る: 手前にはコマ送りで絵が替わる物 (機関室のエンジンなど) があり、
+    // 床の層にもコマ送りの絵 (ファングルの原子炉) があるので、コマ送りの絵は外し、残りもテクスチャ単位で数える
+    private const float SkyZ = 20f;
 
-    private static uint Signature()
+    // 床の絵が z 1〜4 にある船 (tools/make-floor-mask.py の BACK_Z_SHIP と同じ表)。他は季節の飾り (z 1.07) を除くため 4
+    private static float BackZ(string ship) => ship is "PolusShip" or "FungleShip" ? 0.5f : 4f;
+
+    private static uint Signature(string ship)
     {
-        var keys = new List<string>();
+        float back = BackZ(ship);
+        var keys = new HashSet<string>();
         foreach (var sr in DamageMap.RoomArts)
         {
             var sp = sr ? sr.sprite : null;
-            if (!sp || sr.transform.position.z < BackZ) continue;
-            var r = sp.textureRect;
-            keys.Add($"{sp.name}|{(int)MathF.Round(r.x)}|{(int)MathF.Round(r.y)}|{(int)MathF.Round(r.width)}|{(int)MathF.Round(r.height)}");
+            if (!sp) continue;
+            float z = sr.transform.position.z;
+            if (z < back || z >= SkyZ) continue;
+            // コマ送りの絵はテクスチャ (シート) ごと替わることがある
+            if (sr.GetComponent<PowerTools.SpriteAnim>() || sr.GetComponent<Animator>()) continue;
+            var tex = sp.texture;
+            if (tex) keys.Add($"{tex.name}|{tex.width}|{tex.height}");
         }
-        keys.Sort(string.CompareOrdinal);
+        var list = new List<string>(keys);
+        list.Sort(string.CompareOrdinal);
         uint h = 2166136261;
-        foreach (var k in keys)
+        foreach (var k in list)
             foreach (byte b in Encoding.UTF8.GetBytes(k + ";"))
                 h = (h ^ b) * 16777619;
         return h;
@@ -277,7 +301,7 @@ internal static class FloorMask
         {
             var ship = ShipStatus.Instance;
             if (!ship || !DamageMap.Ready() || !SolidMap.Ensure()) { reply("ERR floorexport not ready"); return; }
-            var sb = new StringBuilder("{\n  \"ship\": \"").Append(ship.name).Append("\",\n  \"sig\": ").Append(Signature()).Append(",\n  \"rooms\": [\n");
+            var sb = new StringBuilder("{\n  \"ship\": \"").Append(ship.name).Append("\",\n  \"sig\": ").Append(Signature(ship.name.Replace("(Clone)", ""))).Append(",\n  \"rooms\": [\n");
             int n = 0, skipped = 0;
             var arts = DamageMap.RoomArts;
             for (int i = 0; i < arts.Count; i++)

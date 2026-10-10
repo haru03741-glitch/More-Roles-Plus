@@ -644,6 +644,7 @@ internal static class WaterSim
     private static void StepOnce()
     {
         // この刻みの出来事
+        int fx0 = int.MaxValue, fy0 = int.MaxValue, fx1 = int.MinValue, fy1 = int.MinValue;
         while (Queue.Count > 0 && Queue[0].Tick <= _step)
         {
             var p = Queue[0];
@@ -651,10 +652,15 @@ internal static class WaterSim
             if (p.Leak) { Sources.Add(p.Src); continue; }
             if (p.Push) { Push(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed); continue; }
             Rebuild(p.Cx - p.R, p.Cy - p.R, p.Cx + p.R, p.Cy + p.R);
+            // 壁の穴は床マスクでも床になる (絵の損傷はもう書き込み済み)。この刻みの範囲をまとめて、タイルの床の形を 1 回だけ作り直す
+            fx0 = Math.Min(fx0, p.Cx - p.R); fy0 = Math.Min(fy0, p.Cy - p.R);
+            fx1 = Math.Max(fx1, p.Cx + p.R + 1); fy1 = Math.Max(fy1, p.Cy + p.R + 1);
             int reach = p.R + FallScan[3] + 1;
             Links(p.Cx - reach, p.Cy - reach, p.Cx + reach, p.Cy + reach);
             if (p.Shock) Shock(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed);
         }
+        if (fx0 <= fx1)
+            WaterArt.FloorChanged(Rect.MinMaxRect(_org.x + fx0 * _cell, _org.y + fy0 * _cell, _org.x + fx1 * _cell, _org.y + fy1 * _cell));
 
         // 扉: この刻みの開き (ホストの記録)
         ulong doors = Decompression.DoorBitsAt(_step);
