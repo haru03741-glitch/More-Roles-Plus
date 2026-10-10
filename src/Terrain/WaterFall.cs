@@ -17,17 +17,18 @@ internal static class WaterFall
     private const float Ppu = 16f;
     private const float ParcelMass = 9f;
     private const float Redraw = 1f / 15f;
+    private const int MaxCanvases = 6;
 #else
     private const float Ppu = 24f;
     private const float ParcelMass = 6f;       // 粒 1 つの水の量 (WaterSim の量の単位)
     private const float Redraw = 1f / 30f;
+    private const int MaxCanvases = 8;
 #endif
     // 速い粒の線は長さに依らず同じ量を置くので、1 画素の濃さは画素の面積に反比例し、粒の量に比例する。PC と同じ濃さに揃える
     private const float LineScale = Ppu * Ppu / (24f * 24f) * (ParcelMass / 6f);
     private const float CanvasW = 5f;          // 1 枚の絵の幅 (単位)
     private const float MaxCanvasH = 9f;
     private const float Above = 0.4f, Below = 0.7f, Margin = 0.25f;
-    private const int MaxCanvases = 4;
     private const int MaxParcels = 2000;
     private const int MaxSpawnPerFrame = 240;
     private const float FlowTau = 0.25f;       // 流量のならし (秒)。刻みの無いフレームでも点滅しない
@@ -37,7 +38,8 @@ internal static class WaterFall
     private const float Hit = 0.55f, Side = 0.2f, Corner = 0.06f;
     private const float SprayEdge = 0.13f;     // 薄い筋も見えるように噴き出しより低く
     private const float IdleLife = 2.5f;       // 流れが止まってから縁と絵を片づけるまで
-    private const float StealEvery = 0.5f;     // 絵の上限で描けない縁が画面の近くにあるか見る間隔
+    private const float StealEvery = 0.5f;     // 画面の範囲を測り直し、絵の上限で描けない縁が画面の近くにあるか見る間隔
+    private const float ViewIn = 1.5f, ViewOut = 4f; // 画面の外へこれだけ離れた縁には絵を付けない / これだけ離れた絵は片づける
     private const float StealNear = 8f, StealGap = 3f; // その距離 (カメラから) より近い縁へ、それより StealGap 以上遠い絵を譲る
 
     private sealed class Edge
@@ -80,7 +82,8 @@ internal static class WaterFall
     private static readonly List<Canvas> Canvases = new();
     private static readonly Parcel[] Parcels = new Parcel[MaxParcels];
     private static int _parcels;
-    private static float _redrawAcc, _meetAcc, _stealAcc;
+    private static float _redrawAcc, _meetAcc, _stealAcc = StealEvery; // 最初の刻みで画面の範囲を測る
+    private static float _vx0 = float.MinValue, _vy0 = float.MinValue, _vx1 = float.MaxValue, _vy1 = float.MaxValue; // 画面の範囲 (世界)
     private static int _half;
     private static bool _meeting;
     private static long _lastMs;
@@ -125,6 +128,9 @@ internal static class WaterFall
             e.FrameSum += f.Amount;
         }
 
+        _stealAcc += dt;
+        if (_stealAcc >= StealEvery) { _stealAcc = 0f; Steal(); }
+
         // 流量をならして粒を出す
         int budget = MaxSpawnPerFrame;
         float k = Math.Min(1f, dt / FlowTau);
@@ -136,7 +142,8 @@ internal static class WaterFall
             e.FrameSum = 0;
             if (e.Q < 1f) { e.Idle += dt; if (e.Idle > IdleLife) Dead.Add(kv.Key); continue; }
             e.Idle = 0f;
-            if (e.C == null || e.C.Gone) e.C = CanvasFor(e);
+            // 画面の外の縁には絵を付けない (粒は絵だけなので、画面に入ってから出しても計算は変わらない)
+            if ((e.C == null || e.C.Gone) && InView(MathF.Min(e.X0, e.X1), MathF.Min(e.Y0, e.Y1), MathF.Max(e.X0, e.X1), MathF.Max(e.Y0, e.Y1), ViewIn)) e.C = CanvasFor(e);
             if (e.C == null) continue;
             e.C.Idle = 0f;
             e.Acc += e.Q * dt / ParcelMass;
@@ -149,8 +156,6 @@ internal static class WaterFall
             if (e.Acc > 8f) e.Acc = 8f;
         }
         foreach (var key in Dead) Edges.Remove(key);
-        _stealAcc += dt;
-        if (_stealAcc >= StealEvery) { _stealAcc = 0f; Steal(); }
 
         // 粒を進める (着いた物は消す)
         for (int i = _parcels - 1; i >= 0; i--)
@@ -203,15 +208,24 @@ internal static class WaterFall
         p.C = e.C;
     }
 
-    // 絵の上限で描けない縁のうちカメラにいちばん近い物へ、カメラからいちばん遠い絵を譲る (水が多いと縁が上限を超え、
+    // 画面の範囲を測り直して画面から離れた絵を片づけ、それでも上限なら、絵の上限で描けない縁のうちカメラにいちばん近い物へ、カメラからいちばん遠い絵を譲る (水が多いと縁が上限を超え、
     // 先に流れ始めた遠くの崖が絵を持ったまま、目の前の滝が描かれないことがある)。半秒に 1 枚だけ
     private static void Steal()
     {
-        if (Canvases.Count < MaxCanvases) return;
         var cam = Camera.main;
         if (!cam) return;
         var cp = cam.transform.position;
-        float cx = cp.x, cy = cp.y;
+        float cx = cp.x, cy = cp.y, hh = cam.orthographicSize, hw = hh * cam.aspect;
+        _vx0 = cx - hw; _vx1 = cx + hw; _vy0 = cy - hh; _vy1 = cy + hh;
+        // 画面から離れた絵を片づける (上限を画面の中の滝に回す)
+        for (int i = Canvases.Count - 1; i >= 0; i--)
+        {
+            var c = Canvases[i];
+            if (InView(c.X0, c.Y0, c.X0 + c.W / Ppu, c.Y0 + c.H / Ppu, ViewOut)) continue;
+            Destroy(c);
+            Canvases.RemoveAt(i);
+        }
+        if (Canvases.Count < MaxCanvases) return;
         Edge want = null;
         float wd = StealNear * StealNear;
         foreach (var e in Edges.Values)
@@ -235,6 +249,9 @@ internal static class WaterFall
         Canvases.RemoveAt(far);
         want.C = CanvasFor(want);
     }
+
+    private static bool InView(float x0, float y0, float x1, float y1, float m)
+        => x1 >= _vx0 - m && x0 <= _vx1 + m && y1 >= _vy0 - m && y0 <= _vy1 + m;
 
     // その縁の落ちる範囲が入る絵 (無ければ作る・上限を超えたら流れていない絵を使い回す)
     private static unsafe Canvas CanvasFor(Edge e)
@@ -413,6 +430,8 @@ internal static class WaterFall
         Edges.Clear();
         _parcels = 0;
         _lastMs = 0;
+        _vx0 = _vy0 = float.MinValue; _vx1 = _vy1 = float.MaxValue;
+        _stealAcc = StealEvery;
     }
 
     internal static string Describe()
