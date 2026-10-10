@@ -444,9 +444,12 @@ internal static class WaterSim
         if (MapNotes.HasLevels)
         {
             HeightLevels.RasterZones(_lvl, _w, _h, _org, _cell);
+            var zone = (sbyte[])_lvl.Clone();
             MapNotes.RasterLevels(_lvl, _w, _h, _org, _cell);
-            // 奈落の注釈は壊せない所の印も兼ねていて歩ける床にも掛かる。奈落は歩けない所だけ (縁の先の落ちる先)
-            for (int k = 0; k < n; k++) if (_lvl[k] == VoidLevel && _sub[k] != 0) _lvl[k] = 0;
+            // 注釈は壁の上に引いた線 (越えられない縁・奈落は壊せない所の印も兼ねる) で、升に写すと隣の歩ける床へ 1〜3 升はみ出す。
+            // はみ出した床が高い床になると周りの水が上れず、壁際に乾いた筋が残る。始めから歩ける升は区域の高さだけを使い、
+            // 注釈の高さは壁の中の升 (壊して開いた時の縁) にだけ残す
+            for (int k = 0; k < n; k++) if (_sub[k] != 0) _lvl[k] = zone[k];
             return;
         }
         // 升の島 = 升の中の最初の歩ける升の島
