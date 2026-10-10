@@ -56,17 +56,16 @@ internal static class LobbyCommands
             reply($"OK region now={sm.CurrentRegion.Name}");
         });
 
-        TestBridge.Register("hostonline", "[quick] メニューから公式サーバーの部屋作成画面を開く (数秒置いて confirmcreate。quick = 部屋に入るまでチャットの種類をクイックチャットだけにする)", (args, reply) =>
+        TestBridge.Register("hostonline", "メニューから公式サーバーの部屋作成画面を開く (数秒置いて confirmcreate)", (args, reply) =>
         {
             var mm = Object.FindObjectOfType<MainMenuManager>();
             if (!mm || TestBridge.Phase() != "Menu") { reply($"ERR hostonline not at main menu (phase={TestBridge.Phase()})"); return; }
             AmongUsClient.Instance.NetworkMode = NetworkModes.OnlineGame;
-            if (HasWord(args, "quick")) UseQuickChat();
             mm.OpenCreateGame();
             reply("OK hostonline create dialog requested (follow: confirmcreate)");
         });
 
-        TestBridge.Register("findgame", "[early [ミリ秒]] [quick] メニューから公式サーバーの部屋検索を開く (early = ログインの終わりを待たず、メニューが出てからその時間が経っていれば押す・quick = 部屋に入るまでクイックチャットだけにする)", (args, reply) =>
+        TestBridge.Register("findgame", "[early [ミリ秒]] メニューから公式サーバーの部屋検索を開く (early = ログインの終わりを待たず、メニューが出てからその時間が経っていれば押す)", (args, reply) =>
         {
             var mm = Object.FindObjectOfType<MainMenuManager>();
             var parts = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
@@ -79,7 +78,6 @@ internal static class LobbyCommands
                 if (TestBridge._menuSeenMs == 0 || seen < delayMs) { reply($"ERR findgame menu seen {seen}ms ago (< {delayMs})"); return; }
             }
             AmongUsClient.Instance.NetworkMode = NetworkModes.OnlineGame;
-            if (HasWord(args, "quick")) UseQuickChat();
             SceneChanger.ChangeScene("FindAGame");
             reply("OK findgame requested (follow: state で scene=FindAGame)");
         });
@@ -161,42 +159,14 @@ internal static class LobbyCommands
             reply($"OK netinfo mode={c.NetworkMode} amHost={c.AmHost} connected={c.AmConnected} clientId={c.ClientId} hostId={c.HostId} applied={Terrain.TerrainSync.Applied}");
         });
 
-        TestBridge.Register("chatmode", "[free|quick] チャットの種類 (本編の設定・保存される) を見る / 変える", (args, reply) =>
+        TestBridge.Register("chatmode", "[free] チャットの種類 (本編の設定・保存される) を見る / フリーチャットに戻す", (args, reply) =>
         {
             var mp = DataManager.Settings.Multiplayer;
             string a = args.Trim();
-            if (a == "free") mp.ChatMode = QuickChatModes.FreeChatOrQuickChat;
-            else if (a == "quick") mp.ChatMode = QuickChatModes.QuickChatOnly;
-            else if (a.Length > 0) { reply("ERR chatmode <free|quick>"); return; }
-            if (a.Length > 0) DataManager.Settings.Save();
-            reply($"OK chatmode {mp.ChatMode} ({(int)mp.ChatMode}) pendingRestore={_chatBefore?.ToString() ?? "none"}");
+            if (a == "free") { mp.ChatMode = QuickChatModes.FreeChatOrQuickChat; DataManager.Settings.Save(); }
+            else if (a.Length > 0) { reply("ERR chatmode [free]"); return; }
+            reply($"OK chatmode {mp.ChatMode} ({(int)mp.ChatMode})");
         });
-    }
-
-    // チャットの種類は本編が設定ファイルへ保存するので、テストで変えたら部屋に入った所で元に戻す
-    // (戻さないと、その後に普通に立てた部屋もずっとクイックチャットだけになる)
-    private static QuickChatModes? _chatBefore;
-
-    private static void UseQuickChat()
-    {
-        var mp = DataManager.Settings.Multiplayer;
-        _chatBefore ??= mp.ChatMode;
-        mp.ChatMode = QuickChatModes.QuickChatOnly;
-    }
-
-    internal static void RestoreChatMode()
-    {
-        if (_chatBefore is not { } before) return;
-        _chatBefore = null;
-        DataManager.Settings.Multiplayer.ChatMode = before;
-        DataManager.Settings.Save();
-    }
-
-    private static bool HasWord(string args, string word)
-    {
-        foreach (var p in args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))
-            if (p == word) return true;
-        return false;
     }
 
     private static void Activate(Transform t)
