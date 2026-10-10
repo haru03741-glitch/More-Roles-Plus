@@ -691,16 +691,18 @@ internal static partial class WaterSim
 
     // はしごでつながらない島は、扉を挟んで隣り合う順位の決まった島と同じ段にする (扉の奥の部屋)。
     // 扉の升の周り DoorReach 升にある島どうしを組にして、決まった側から決まらない側へ広げる
+    // 除染室の扉 (Mira・Polus) は AllDoors に入らないので、ここでだけ扉として数える (水の流れと扉の記録には使わない)
     private const int DoorReach = 3;
     private static void DoorRanks(byte[] isl, int[] rank)
     {
         var near = new List<int>();
+        var gate = DeconDoorCells();
         for (bool changed = true; changed;)
         {
             changed = false;
             for (int c = 0; c < _doorCell.Length; c++)
             {
-                if (_doorCell[c] == 0) continue;
+                if (_doorCell[c] == 0 && (gate == null || gate[c] == 0)) continue;
                 int cx = c % _w, cy = c / _w;
                 near.Clear();
                 for (int dy = -DoorReach; dy <= DoorReach; dy++)
@@ -717,6 +719,32 @@ internal static partial class WaterSim
                 foreach (int id in near) if (rank[id] == int.MinValue) { rank[id] = known; changed = true; }
             }
         }
+    }
+
+    private static byte[] DeconDoorCells()
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship) return null;
+        byte[] gate = null;
+        foreach (var dc in ship.GetComponentsInChildren<DeconSystem>(true))
+        {
+            if (!dc) continue;
+            for (int i = 0; i < 2; i++)
+            {
+                var d = i == 0 ? dc.UpperDoor : dc.LowerDoor;
+                // 当たり判定は子の Collider (同じ子の Shadow は影の線)
+                var ct = d ? d.transform.Find("Collider") : null;
+                var col = ct ? ct.GetComponent<Collider2D>() : null;
+                if (!col) continue;
+                var bb = col.bounds;
+                int x0 = (int)MathF.Floor((bb.min.x - _org.x) / _cell), y0 = (int)MathF.Floor((bb.min.y - _org.y) / _cell);
+                int x1 = (int)MathF.Floor((bb.max.x - _org.x) / _cell), y1 = (int)MathF.Floor((bb.max.y - _org.y) / _cell);
+                gate ??= new byte[_w * _h];
+                for (int y = Math.Max(0, y0); y <= Math.Min(_h - 1, y1); y++)
+                for (int x = Math.Max(0, x0); x <= Math.Min(_w - 1, x1); x++) gate[y * _w + x] = 1;
+            }
+        }
+        return gate;
     }
 
     // 範囲の升の、縁を越えて落ちる向きと落ちる先を作り直す。縁 (隣へ流れられない向き) の先を FallScan 升まで進み、
