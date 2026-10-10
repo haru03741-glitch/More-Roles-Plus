@@ -37,6 +37,8 @@ internal static class WaterFall
     private const float Hit = 0.55f, Side = 0.2f, Corner = 0.06f;
     private const float SprayEdge = 0.13f;     // 薄い筋も見えるように噴き出しより低く
     private const float IdleLife = 2.5f;       // 流れが止まってから縁と絵を片づけるまで
+    private const float StealEvery = 0.5f;     // 絵の上限で描けない縁が画面の近くにあるか見る間隔
+    private const float StealNear = 8f, StealGap = 3f; // その距離 (カメラから) より近い縁へ、それより StealGap 以上遠い絵を譲る
 
     private sealed class Edge
     {
@@ -77,7 +79,7 @@ internal static class WaterFall
     private static readonly List<Canvas> Canvases = new();
     private static readonly Parcel[] Parcels = new Parcel[MaxParcels];
     private static int _parcels;
-    private static float _redrawAcc, _meetAcc;
+    private static float _redrawAcc, _meetAcc, _stealAcc;
     private static int _half;
     private static bool _meeting;
     private static long _lastMs;
@@ -146,6 +148,8 @@ internal static class WaterFall
             if (e.Acc > 8f) e.Acc = 8f;
         }
         foreach (var key in Dead) Edges.Remove(key);
+        _stealAcc += dt;
+        if (_stealAcc >= StealEvery) { _stealAcc = 0f; Steal(); }
 
         // 粒を進める (着いた物は消す)
         for (int i = _parcels - 1; i >= 0; i--)
@@ -196,6 +200,39 @@ internal static class WaterFall
         p.Void = e.Void;
         p.Drawn = false;
         p.C = e.C;
+    }
+
+    // 絵の上限で描けない縁のうちカメラにいちばん近い物へ、カメラからいちばん遠い絵を譲る (水が多いと縁が上限を超え、
+    // 先に流れ始めた遠くの崖が絵を持ったまま、目の前の滝が描かれないことがある)。半秒に 1 枚だけ
+    private static void Steal()
+    {
+        if (Canvases.Count < MaxCanvases) return;
+        var cam = Camera.main;
+        if (!cam) return;
+        var cp = cam.transform.position;
+        float cx = cp.x, cy = cp.y;
+        Edge want = null;
+        float wd = StealNear * StealNear;
+        foreach (var e in Edges.Values)
+        {
+            if (e.Q < 1f || (e.C != null && !e.C.Gone)) continue;
+            float dx = e.X0 - cx, dy = e.Y0 - cy, d = dx * dx + dy * dy;
+            if (d < wd) { wd = d; want = e; }
+        }
+        if (want == null) return;
+        int far = -1;
+        float fd = 0f;
+        for (int i = 0; i < Canvases.Count; i++)
+        {
+            var c = Canvases[i];
+            float dx = c.X0 + c.W / Ppu * 0.5f - cx, dy = c.Y0 + c.H / Ppu * 0.5f - cy, d = dx * dx + dy * dy;
+            if (d > fd) { fd = d; far = i; }
+        }
+        float need = MathF.Sqrt(wd) + StealGap;
+        if (far < 0 || fd < need * need) return;
+        Destroy(Canvases[far]);
+        Canvases.RemoveAt(far);
+        want.C = CanvasFor(want);
     }
 
     // その縁の落ちる範囲が入る絵 (無ければ作る・上限を超えたら流れていない絵を使い回す)

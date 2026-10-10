@@ -43,6 +43,8 @@ internal static class WaterSim
     private const sbyte VoidLevel = -2;              // 奈落 (落ちた水は消える)
     // 縁の先の低い床を探す距離 (升)。真上から斜めに見ているので、南 (−y) の崖は面が長く見える
     private static readonly int[] FallScan = { 8, 8, 4, 24 };
+    private const int SideScan = 16;          // 横を向いた崖の下の床を、外へ何列まで探すか
+    private const float SideVoidOut = 0.7f;   // 横の縁から奈落へ落ちる水の、絵の上で外へ出る距離
     private const int ShadowMask = (1 << 10) | (1 << 11) | (1 << 13); // 視界を遮る層 (本編の Constants.ShadowMask と同じ)
 
     // 衝撃 (爆発など): 半径の中の水に、中心から外へ向かう流れを 1 回だけ足す (勢いは Damp で減っていく)
@@ -194,7 +196,7 @@ internal static class WaterSim
 
     private static void Enqueue(in ResolvedDamage r)
     {
-        if (!_running || r.Kind.IsFire()) return;
+        if (!_running || r.Kind.IsFire() || r.Kind == DamageKind.Water) return; // 放水の口は WaterLeak から AddLeak で入る
         int tick = GameClock.Expand(r.Tick);
         float rad = r.Kind == DamageKind.Explosion ? r.Size + 0.6f : 2f;
         int cx = (int)MathF.Floor((r.Position.x - _org.x) / _cell), cy = (int)MathF.Floor((r.Position.y - _org.y) / _cell);
@@ -490,6 +492,9 @@ internal static class WaterSim
                 if (r && r.roomArea && Array.IndexOf(ChasmRooms, r.RoomId) >= 0) Rooms.Add(r.roomArea);
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
+        // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので影の線を見ない
+        // (崖の上の縁に視界の影の線が引いてあり、それで切ると崖の大半から落ちなくなる)
+        bool cliffs = !MapNotes.HasLevels;
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
         {
@@ -505,26 +510,30 @@ internal static class WaterSim
             {
                 int j = k + Nx[d] + Ny[d] * _w;
                 if (_open[j] != 0 && Passable(k, d)) continue;
-                int to = int.MinValue, dist = 0;
+                int to = int.MinValue, dist = 0, tx = 0, ty = 0;
+                bool through = true; // 真横の先が探す範囲まで全部壁の中
                 for (int i = 1; i <= FallScan[d]; i++)
                 {
                     int cx = x + Nx[d] * i, cy = y + Ny[d] * i;
+                    through = false;
                     if (cx < 1 || cy < 1 || cx >= _w - 1 || cy >= _h - 1) break;
                     int c = cy * _w + cx;
                     if (_doorCell[c] != 0) break;
                     int lc = _lvl[c];
                     if (_open[c] == 0)
                     {
-                        if (lc == VoidLevel) { to = -1; dist = i; break; }
+                        if (lc == VoidLevel) { to = -1; dist = i; tx = cx; ty = cy; break; }
+                        through = true;
                         continue;
                     }
-                    if (lc != NoLevel && lc < lk) { to = c; dist = i; }
+                    if (lc != NoLevel && lc < lk) { to = c; dist = i; tx = cx; ty = cy; }
                     break;
                 }
+                if (to == int.MinValue && through && Nx[d] != 0) SideDrop(x, y, d, lk, ref to, ref dist, ref tx, ref ty);
                 if (to == int.MinValue) continue;
                 // 部屋の判定を先に (影の線を読むのは重く、谷の外の奈落の縁はそれだけで落ちないと決まる)
-                if (to < 0 && !InRoom(_org.x + (x + Nx[d] * dist + 0.5f) * _cell, _org.y + (y + Ny[d] * dist + 0.5f) * _cell)) continue;
-                if (full && ShadowBetween(x, y, d, dist)) _shadowCut[k] |= (byte)(1 << d);
+                if (to < 0 && !InRoom(_org.x + (tx + 0.5f) * _cell, _org.y + (ty + 0.5f) * _cell)) continue;
+                if (full && !cliffs && ShadowBetween(x, y, tx, ty)) _shadowCut[k] |= (byte)(1 << d);
                 if ((_shadowCut[k] >> d & 1) != 0) continue;
                 _fallMask[k] |= (byte)(1 << d);
                 FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
@@ -553,12 +562,98 @@ internal static class WaterSim
         return false;
     }
 
-    // 縁の升の真ん中から落ちる先の手前までに視界の影の線があるか (あれば壁の向こうの部屋)
-    private static bool ShadowBetween(int x, int y, int d, int dist)
+    // 横を向いた崖: 真横の先が壁の中のままなら、外へ 1 列ずつずらしながら画面の下へ探す。真上から斜めに見ているので、
+    // 横を向いた崖の下の床は真横でなく斜め下に見える。いちばん近い低い床 (か谷の奈落) を落ちる先にする。
+    // 列を下りて先に同じ高さ以上の床に当たった列は使わない (崖の上の床が下へ張り出している所)
+    private static void SideDrop(int x, int y, int d, int lk, ref int to, ref int dist, ref int tx, ref int ty)
+    {
+        int best = int.MaxValue;
+        for (int i = 1; i <= SideScan; i++)
+        {
+            int cx = x + Nx[d] * i;
+            if (cx < 1 || cx >= _w - 1 || i * i >= best) break;
+            for (int j = 1; j <= FallScan[3] && i * i + j * j < best; j++)
+            {
+                int cy = y - j;
+                if (cy < 1) break;
+                int c = cy * _w + cx;
+                if (_doorCell[c] != 0) break;
+                int lc = _lvl[c];
+                if (_open[c] == 0)
+                {
+                    if (lc != VoidLevel) continue;
+                    best = i * i + j * j; to = -1; dist = j; tx = cx; ty = cy;
+                    break;
+                }
+                if (lc != NoLevel && lc < lk) { best = i * i + j * j; to = c; dist = j; tx = cx; ty = cy; }
+                break;
+            }
+        }
+    }
+
+    // 縁の升の真ん中から落ちる先の升の手前までに視界の影の線があるか (あれば壁の向こうの部屋)
+    private static bool ShadowBetween(int x, int y, int tx, int ty)
     {
         float ax = _org.x + (x + 0.5f) * _cell, ay = _org.y + (y + 0.5f) * _cell;
+        float dx = tx - x, dy = ty - y, len = MathF.Sqrt(dx * dx + dy * dy);
         // Linecast は Android 版に無いので、細い CircleCastAll で代える
-        return Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(Nx[d], Ny[d]), (dist - 0.5f) * _cell, ShadowMask).Length > 0;
+        return Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(dx / len, dy / len), (len - 0.5f) * _cell, ShadowMask).Length > 0;
+    }
+
+    // 確認用 (water why): Links と同じ探し方で、縁の升ごとに落ちる/落ちない理由を数える
+    private static string WhyNoFall(float wx, float wy, float wr)
+    {
+        var count = new Dictionary<string, int>();
+        var sample = new Dictionary<string, string>();
+        int cx = (int)MathF.Floor((wx - _org.x) / _cell), cy = (int)MathF.Floor((wy - _org.y) / _cell), r = (int)(wr / _cell);
+        for (int y = Math.Max(1, cy - r); y <= Math.Min(_h - 2, cy + r); y++)
+        for (int x = Math.Max(1, cx - r); x <= Math.Min(_w - 2, cx + r); x++)
+        {
+            int k = y * _w + x;
+            int lk = _lvl[k];
+            if (_open[k] == 0 || lk == NoLevel || lk == VoidLevel) continue;
+            for (int d = 0; d < 4; d++)
+            {
+                int j = k + Nx[d] + Ny[d] * _w;
+                if (_open[j] != 0 && Passable(k, d)) continue;
+                string why = "scan";
+                int dist = 0, to = int.MinValue, lto = 0;
+                for (int i = 1; i <= FallScan[d]; i++)
+                {
+                    int sx = x + Nx[d] * i, sy = y + Ny[d] * i;
+                    if (sx < 1 || sy < 1 || sx >= _w - 1 || sy >= _h - 1) { why = "border"; break; }
+                    int c = sy * _w + sx;
+                    if (_doorCell[c] != 0) { why = "door"; break; }
+                    int lc = _lvl[c];
+                    if (_open[c] == 0)
+                    {
+                        if (lc == VoidLevel) { to = -1; dist = i; why = "void"; break; }
+                        continue;
+                    }
+                    lto = lc;
+                    if (lc != NoLevel && lc < lk) { to = c; dist = i; why = "fall"; }
+                    else why = lc == NoLevel ? "nolevel" : "same";
+                    break;
+                }
+                int tx = x + Nx[d] * dist, ty = y + Ny[d] * dist;
+                if (to == int.MinValue && why == "scan" && Nx[d] != 0)
+                {
+                    SideDrop(x, y, d, lk, ref to, ref dist, ref tx, ref ty);
+                    if (to != int.MinValue) why = "side";
+                }
+                if (to != int.MinValue)
+                {
+                    if (to < 0 && !InRoom(_org.x + (tx + 0.5f) * _cell, _org.y + (ty + 0.5f) * _cell)) why = "room";
+                    else if ((_shadowCut[k] >> d & 1) != 0) why = "shadow";
+                }
+                string key = "+x-x+y-y".Substring(d * 2, 2) + ":" + why;
+                count[key] = count.TryGetValue(key, out int n) ? n + 1 : 1;
+                if (!sample.ContainsKey(key)) sample[key] = $"({_org.x + (x + 0.5f) * _cell:0.0},{_org.y + (y + 0.5f) * _cell:0.0})L{lk}>{lto}";
+            }
+        }
+        var sb = new System.Text.StringBuilder("OK water why");
+        foreach (var kv in count) sb.Append(' ').Append(kv.Key).Append('=').Append(kv.Value).Append(sample[kv.Key]);
+        return sb.ToString();
     }
 
     // 2 つの升の境で向かい合う歩ける升の組の数。column = true なら a の列 ia と b の列 ib、false なら行
@@ -818,7 +913,7 @@ internal static class WaterSim
         float x0 = _org.x + (x + 0.5f + Nx[d] * 0.5f) * _cell, y0 = _org.y + (y + 0.5f + Ny[d] * 0.5f) * _cell;
         float x1, y1;
         if (to >= 0) { x1 = _org.x + (to % _w + 0.5f) * _cell; y1 = _org.y + (to / _w + 0.5f) * _cell; }
-        else { x1 = x0 + Nx[d] * _cell; y1 = y0 + Ny[d] * _cell - 1.5f; }
+        else { x1 = x0 + Nx[d] * (Nx[d] != 0 ? SideVoidOut : _cell); y1 = y0 + Ny[d] * _cell - 1.5f; } // 横の縁は外へ弧を描いて谷へ
         for (int i = Falls.Count - 1; i >= 0 && i >= Falls.Count - 8; i--)
         {
             var f = Falls[i];
@@ -1291,6 +1386,16 @@ internal static class WaterSim
                 }
                 if (sb.Length > 0) reply("LINKS " + sb);
                 reply($"OK water links n={FallTo.Count}");
+                return;
+            }
+            if (a.StartsWith("why"))
+            {
+                // 確認用: 範囲の縁の升が落ちない理由を向きごとに数える (scan = 先に開いた升が無い・same = 先が低くない・door・room = 谷の外の奈落・shadow = 影の線)
+                var q = a.Substring(3).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                if (!_ready || q.Length < 3 || !float.TryParse(q[0], System.Globalization.NumberStyles.Float, ic, out float wx) || !float.TryParse(q[1], System.Globalization.NumberStyles.Float, ic, out float wy)
+                    || !float.TryParse(q[2], System.Globalization.NumberStyles.Float, ic, out float wr)) { reply("ERR water why x y r"); return; }
+                reply(WhyNoFall(wx, wy, wr));
                 return;
             }
             if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return; }
