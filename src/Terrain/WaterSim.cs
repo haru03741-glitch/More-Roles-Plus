@@ -65,6 +65,13 @@ internal static class WaterSim
 
     // 漏れ: 開始から FullSteps は全開・その後 FadeSteps で止まる。最初の BurstSteps は多く遠い
     public const int FullSteps = 300, FadeSteps = 150, BurstSteps = 15;
+    // 浸水: 口の周り 3×3 升へ 1 刻みに 速さ × InflowMax/256 の水を入れる (速さ 256 = 1 秒に深さ 1 単位を 60 升ぶん)
+    private const int InflowMax = Full * 2;
+    // 扉の噴き出し: 開いた扉の両側 (扉の幅・奥行き GushBand 升) の平均の深さの差が GushMin を超えたら、高い側の帯と扉の升の水に
+    // 低い側へ向かう流れ (差 × GushGain/256・その升の水の量まで) を 1 回だけ足す。勢いは Damp で残るので水の塊が扉から押し出される
+    private const int GushMin = Full / 8;
+    private const int GushGain = 160;
+    private const int GushBand = 4;
     private const int MouthQ = 1;             // 口を壁の線から出す距離 (1/4 升)
 
     // 噴き出しの粒 (整数・升 = 256・1 単位 = 1024)。裂け目から扇の範囲へ放物線で飛び、壁に当たると止まって垂れ、
@@ -119,10 +126,18 @@ internal static class WaterSim
         public bool Shown;
     }
 
+    private sealed class Inflow
+    {
+        public int K;               // 口の升
+        public int End;             // 止まる刻み (0 = 止まらない)
+        public int Rate;            // 1 刻みに入れる量
+    }
+
     private struct Pending
     {
         public int Tick;
         public bool Leak;
+        public bool Inflow;         // 浸水: (Cx, Cy) の升へ Sp ずつ Sr 刻みのあいだ入れる (Sr = 0 は止まらない)
         public Source Src;
         public int Cx, Cy, R;       // 升を作り直す範囲 (升)
         public bool Shock;          // 作り直しの後に衝撃を足す
@@ -158,6 +173,12 @@ internal static class WaterSim
     private static readonly List<int> Active = new();
     private static readonly List<Pending> Queue = new();
     private static readonly List<Source> Sources = new();
+    private static readonly List<Inflow> Inflows = new();
+    internal static int InflowCount => Inflows.Count;
+    internal static long InflowTotal { get; private set; }
+    internal static int Gushes { get; private set; }
+    // 扉の噴き出し (絵だけ・見せる側が毎フレーム読んで TerrainStep が消す): 扉の真ん中・噴く向き・扉の幅 (単位)・水位の差 (Full = 1 単位)
+    internal static readonly List<(Vector2 At, int Dx, int Dy, float Width, int Diff)> GushFx = new();
     private static int _step;
     private static bool _running;
 
@@ -198,6 +219,7 @@ internal static class WaterSim
 
     private static void Enqueue(in ResolvedDamage r)
     {
+        if (r.Kind == DamageKind.Flood) { AddInflow(r); return; }
         if (!_running || r.Kind.IsFire() || r.Kind == DamageKind.Water) return; // 放水の口は WaterLeak から AddLeak で入る
         int tick = GameClock.Expand(r.Tick);
         float rad = r.Kind == DamageKind.Explosion ? r.Size + 0.6f : 2f;
@@ -274,11 +296,26 @@ internal static class WaterSim
             _running = true;
             _step = StartStep(tick);
         }
+        PropSim.WakeForWater(tick);
         int dx = (int)MathF.Round(n.x * 256f), dy = (int)MathF.Round(n.y * 256f);
         int mx = (int)MathF.Floor((at.x - _org.x) / _cell * 256f) + dx * MouthQ / 4;
         int my = (int)MathF.Floor((at.y - _org.y) / _cell * 256f) + dy * MouthQ / 4;
         var src = new Source { Start = tick, Mx = mx, My = my, Dx = dx, Dy = dy, Both = both, At = at, N = n, Seed = seed, Rng = 0x9E3779B9u ^ seed * 2654435761u };
         Enqueue(new Pending { Tick = tick, Leak = true, Src = src });
+    }
+
+    private static void AddInflow(in ResolvedDamage r)
+    {
+        if (!EnsureGrid()) return;
+        int tick = GameClock.Expand(r.Tick);
+        if (!_running) { _running = true; _step = StartStep(tick); }
+        PropSim.WakeForWater(tick);
+        int cx = (int)MathF.Floor((r.Position.x - _org.x) / _cell), cy = (int)MathF.Floor((r.Position.y - _org.y) / _cell);
+        if (cx < 1 || cy < 1 || cx >= _w - 1 || cy >= _h - 1) return;
+        int dur = (int)MathF.Round(r.Size * 10f * GameClock.Hz);
+        int rate = (int)((long)InflowMax * (int)MathF.Round(r.Force * 256f) / 256);
+        if (rate <= 0) return;
+        Enqueue(new Pending { Tick = tick, Inflow = true, Cx = cx, Cy = cy, Sr = dur, Sp = rate });
     }
 
     // 始める刻み。減圧が先へ進んでいたらそこから (古い刻みの気圧と流れは残っていないので、先の場を読まないように)。
@@ -504,8 +541,51 @@ internal static class WaterSim
                 else if (_shut[k] < 255) _shut[k]++;
             }
             Rebuild(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+            if (open) Gush(x0, y0, x1, y1);
         }
     }
+
+    // 開いた扉の両側の水位の差で噴き出す (ApplyDoors から・確定の刻みの中)
+    private static void Gush(int x0, int y0, int x1, int y1)
+    {
+        // 扉の長い辺に沿って並ぶ升の列の外側が両側。横長の扉は上下へ、縦長の扉は左右へ噴く
+        bool wide = x1 - x0 >= y1 - y0;
+        int a0 = wide ? x0 : y0, a1 = wide ? x1 : y1;   // 扉の幅の向き
+        int lo = wide ? y0 : x0, hi = wide ? y1 : x1;   // 扉の厚みの向き
+        long sumA = 0, sumB = 0;
+        int nA = 0, nB = 0;
+        for (int a = a0; a <= a1; a++)
+            for (int t = 1; t <= GushBand; t++)
+            {
+                int ka = wide ? CellAt(a, lo - t) : CellAt(lo - t, a), kb = wide ? CellAt(a, hi + t) : CellAt(hi + t, a);
+                if (ka >= 0 && _open[ka] != 0) { sumA += _hgt[ka]; nA++; }
+                if (kb >= 0 && _open[kb] != 0) { sumB += _hgt[kb]; nB++; }
+            }
+        if (nA == 0 || nB == 0) return;
+        int hA = (int)(sumA / nA), hB = (int)(sumB / nB);
+        int diff = hA - hB;
+        if (Math.Abs(diff) < GushMin) return;
+        // 噴く向き (Nx/Ny の並び): 横長の扉は +y (2) か −y (3)・縦長は +x (0) か −x (1)。A 側が高ければ B 側へ
+        int d = wide ? (diff > 0 ? 2 : 3) : (diff > 0 ? 0 : 1);
+        int kick = Math.Abs(diff) * GushGain / 256;
+        int from = diff > 0 ? -GushBand : 0, to = diff > 0 ? 0 : GushBand;  // 高い側の帯 (扉の升を含む)
+        int n = 0;
+        for (int a = a0; a <= a1; a++)
+            for (int t = lo + from; t <= hi + to; t++)
+            {
+                int k = wide ? CellAt(a, t) : CellAt(t, a);
+                if (k < 0 || _open[k] == 0 || _hgt[k] <= 0) continue;
+                _flux[k * 4 + d] += Math.Min(_hgt[k], kick);
+                Wake(k);
+                n++;
+            }
+        if (n == 0) return;
+        Gushes++;
+        float cx = _org.x + ((x0 + x1 + 1) * 0.5f) * _cell, cy = _org.y + ((y0 + y1 + 1) * 0.5f) * _cell;
+        GushFx.Add((FxMath.V2(cx, cy), Nx[d], Ny[d], (a1 - a0 + 1) * _cell, Math.Abs(diff)));
+    }
+
+    private static int CellAt(int x, int y) => x < 0 || y < 0 || x >= _w || y >= _h ? -1 : y * _w + x;
 
     // ── 床の高さと落ちる縁 ───────────────────────────────────────────────
 
@@ -972,6 +1052,7 @@ internal static class WaterSim
             var p = Queue[0];
             Queue.RemoveAt(0);
             if (p.Leak) { Sources.Add(p.Src); continue; }
+            if (p.Inflow) { Inflows.Add(new Inflow { K = p.Cy * _w + p.Cx, End = p.Sr > 0 ? p.Tick + p.Sr : 0, Rate = p.Sp }); continue; }
             if (p.Push) { Push(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed); continue; }
             Rebuild(p.Cx - p.R, p.Cy - p.R, p.Cx + p.R, p.Cy + p.R);
             // 壁の穴は床マスクでも床になる (絵の損傷はもう書き込み済み)。この刻みの範囲をまとめて、タイルの床の形を 1 回だけ作り直す
@@ -999,6 +1080,14 @@ internal static class WaterSim
             else VoidTotal += amt;
         }
         if (fl > 0) Flying.RemoveRange(0, fl);
+
+        // 浸水: 口の周りの開いている升へ等分して入れる (余りは並びの先頭から 1 ずつ)
+        for (int i = Inflows.Count - 1; i >= 0; i--)
+        {
+            var f = Inflows[i];
+            if (f.End != 0 && _step >= f.End) { Inflows.RemoveAt(i); continue; }
+            Pour3(f.K, f.Rate);
+        }
 
         // 噴き出し: 粒を出して動かし、床に落ちた粒の水を升に足す
         Landed.Clear();
@@ -1120,6 +1209,27 @@ internal static class WaterSim
 
         Steps++;
         if (_step % 300 == 0) { LastDigest = Digest(); Plugin.Logger.LogInfo($"[WaterSim] step={_step} digest={LastDigest:x8} active={Active.Count} volume={Volume()}"); }
+    }
+
+    private static void Pour3(int k, int amt)
+    {
+        int n = 0;
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++) if (_open[k + dx + dy * _w] != 0) n++;
+        if (n == 0) return;
+        int each = amt / n, rest = amt - each * n;
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int j = k + dx + dy * _w;
+                if (_open[j] == 0) continue;
+                int a = each + (rest > 0 ? 1 : 0);
+                if (rest > 0) rest--;
+                _hgt[j] += a;
+                Wake(j);
+                Mark(j);
+            }
+        InflowTotal += amt;
     }
 
     // 落ちている水を着く刻みの順に入れる (同じ刻みは入れた順)
@@ -1454,6 +1564,47 @@ internal static class WaterSim
         return _hgt[y * _w + x];
     }
 
+    // 水の升 (x, y) が机・岩などの当たり判定の中か (作った時の形)
+    internal static bool UnderProp(int x, int y) => _ready && x >= 0 && y >= 0 && x < _w && y < _h && _propCell[y * _w + x] != 0;
+
+    // 水の升 (x, y) の深さ (Full = 1 単位) と流れの速さ (1/1024 単位/刻み)。整数だけ (物の確定の計算から読む)
+    internal static bool FlowCell(int x, int y, out int h, out int vx, out int vy)
+    {
+        h = vx = vy = 0;
+        if (!_ready || !_running || x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return false;
+        int k = y * _w + x;
+        h = _hgt[k];
+        if (h <= 0) return false;
+        int qx = _flux[k * 4] - _flux[(k + 1) * 4 + 1] + _flux[(k - 1) * 4] - _flux[k * 4 + 1];
+        int qy = _flux[k * 4 + 2] - _flux[(k + _w) * 4 + 3] + _flux[(k - _w) * 4 + 2] - _flux[k * 4 + 3];
+        // 升 1 辺 = Unit/4・面 2 つの平均 → Unit/8。浅い縁では 1/8 単位より浅く数えない (CurrentAt と同じ)
+        int d = Math.Max(h, Full / 8);
+        vx = (int)((long)qx * (Unit / 8) / d);
+        vy = (int)((long)qy * (Unit / 8) / d);
+        return true;
+    }
+
+    // その点の水の深さ (単位) と流れの速さ (単位/秒)。升の 4 つの面を通る正味の流れの平均 ÷ 深さ。
+    // 見せる・自分の体を動かす用 (端末ごとでよい物) なので小数で返す。水の升が無ければ 0
+    internal static float CurrentAt(Vector2 p, out float vx, out float vy)
+    {
+        vx = vy = 0f;
+        if (!_ready || !_running) return 0f;
+        int x = (int)MathF.Floor((p.x - _org.x) / _cell), y = (int)MathF.Floor((p.y - _org.y) / _cell);
+        if (x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return 0f;
+        int k = y * _w + x;
+        int h = _hgt[k];
+        if (h <= 0) return 0f;
+        // +x へ: 東の面 (自分→東 − 東→自分) と西の面 (西→自分 − 自分→西) の平均。y も同じ
+        int qx = _flux[k * 4] - _flux[(k + 1) * 4 + 1] + _flux[(k - 1) * 4] - _flux[k * 4 + 1];
+        int qy = _flux[k * 4 + 2] - _flux[(k + _w) * 4 + 3] + _flux[(k - _w) * 4 + 2] - _flux[k * 4 + 3];
+        // 浅い縁では 量 ÷ 深さ が跳ねるので、深さは 1/8 単位より浅く数えない
+        float f = 0.5f * _cell * GameClock.Hz / Math.Max(h, Full / 8);
+        vx = qx * f;
+        vy = qy * f;
+        return h / (float)Full;
+    }
+
     // ── 毎フレーム ─────────────────────────────────────────────────────
 
     public static void Tick()
@@ -1489,6 +1640,7 @@ internal static class WaterSim
     {
         if (!EnsureGrid()) return -1;
         if (!_running) { _running = true; _step = StartStep(GameClock.Now - Delay); }
+        PropSim.WakeForWater(GameClock.Now - Delay);
         int n = 0;
         for (int y = 1; y < _h - 1; y++)
         for (int x = 1; x < _w - 1; x++)
@@ -1509,6 +1661,7 @@ internal static class WaterSim
     {
         if (!EnsureGrid()) return -1;
         if (!_running) { _running = true; _step = StartStep(GameClock.Now - Delay); }
+        PropSim.WakeForWater(GameClock.Now - Delay);
         int cx = (int)MathF.Floor((px - _org.x) / _cell), cy = (int)MathF.Floor((py - _org.y) / _cell), cr = (int)MathF.Ceiling(r / _cell);
         float rr = r * r;
         int n = 0;
@@ -1542,6 +1695,10 @@ internal static class WaterSim
         Active.Clear();
         Queue.Clear();
         Sources.Clear();
+        Inflows.Clear();
+        InflowTotal = 0;
+        Gushes = 0;
+        GushFx.Clear();
         Particles = 0;
         Landed.Clear();
         _step = 0;
@@ -1557,7 +1714,7 @@ internal static class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | flood [depth] | pour x y r [depth] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             if (a == "reset") Reset();
@@ -1577,6 +1734,19 @@ internal static class WaterSim
                 int pd = q.Length > 3 && int.TryParse(q[3], out int dd2) ? dd2 : Full / 4;
                 int pn = Pour(px, py, pr, pd);
                 reply(pn < 0 ? "ERR water pour: no map" : $"OK water pour cells={pn} depth={pd}");
+                return;
+            }
+            if (a.StartsWith("inflow"))
+            {
+                // 浸水の口 (同期する・ホストか一人の時だけ): 秒数 0 = 止まらない
+                var q = a.Substring(6).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                var ns = System.Globalization.NumberStyles.Float;
+                if (q.Length < 2 || !float.TryParse(q[0], ns, ic, out float ix) || !float.TryParse(q[1], ns, ic, out float iy)) { reply("ERR water inflow x y [seconds] [rate 0..1]"); return; }
+                float isec = q.Length > 2 && float.TryParse(q[2], ns, ic, out float s2) ? s2 : 30f;
+                float irate = q.Length > 3 && float.TryParse(q[3], ns, ic, out float r2) ? r2 : 0.5f;
+                var res = TerrainApi.WorldFlood(new Vector2(ix, iy), isec, irate);
+                reply(res.Ok ? $"OK water inflow {res.Why}" : $"ERR water inflow {res.Why}");
                 return;
             }
             if (a.StartsWith("show")) { reply(WaterDebug.Show(a.Length > 4 ? a.Substring(4).Trim() : "")); return; }
@@ -1624,7 +1794,7 @@ internal static class WaterSim
             }
             if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return; }
             if (!_ready) { reply($"OK water off {GameClock.Describe()}"); return; }
-            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} fell={FellTotal} void={VoidTotal} flying={Flying.Count} links={FallTo.Count} doors={System.Numerics.BitOperations.PopCount(_doorBits)}/{_doorUnder?.Length ?? 0} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
+            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} inflows={Inflows.Count} inflowed={InflowTotal} gushes={Gushes} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} fell={FellTotal} void={VoidTotal} flying={Flying.Count} links={FallTo.Count} doors={System.Numerics.BitOperations.PopCount(_doorBits)}/{_doorUnder?.Length ?? 0} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
         });
     }
 }

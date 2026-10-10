@@ -38,6 +38,7 @@ internal static class TerrainSync
     private const float MaxBlastRadius = 3f;
     internal const float MaxPushReach = 6f;
     internal const float MaxFireRadius = 2f;
+    internal const float MaxFloodSize = 7.9f; // 浸水の続く時間 (×10 秒)
     private static int _lastReport = -ReportTicks;
     private static ushort _reportedSeq = ushort.MaxValue;
     private static int _batchHost = NoHost; // 客: 最後に束を受けたホスト
@@ -331,6 +332,7 @@ internal static class TerrainSync
         if (e.Kind == DamageKind.Explosion && e.Size > MaxBlastRadius) return $"too large {e.Size:0.0}";
         if (e.Kind == DamageKind.Push && e.Size > MaxPushReach) return $"too long {e.Size:0.0}";
         if (e.Kind.IsFire() && e.Size > MaxFireRadius) return $"too large {e.Size:0.0}";
+        if (e.Kind == DamageKind.Flood && e.Size <= 0f) return "world only"; // 止まらない浸水は仕掛け (ホスト) だけ
         return null;
     }
 

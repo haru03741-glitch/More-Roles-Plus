@@ -20,6 +20,7 @@ internal static class TerrainStep
             FireSim.Tick();
             WaterSim.Spilled.Clear();
             WaterSim.Falls.Clear();
+            WaterSim.GushFx.Clear();
             FireSim.Steam.Clear();
             FireSim.FlareFx.Clear();
             FireSim.Arcs.Clear();

@@ -155,6 +155,29 @@ public static class TerrainApi
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
 
+    // 浸水 (水を満たす役職・練習など): pos の床へ seconds 秒のあいだ水を入れ続ける。rate 0..1 = 入れる速さ
+    // (1 = 1 秒に深さ 1 単位の水を約 60 升ぶん)。壁は壊さない
+    public static TerrainResult Flood(Vector2 pos, float seconds, float rate = 0.5f)
+    {
+        if (!Local(TerrainUse.Water, 0f, out var lp, out string why)) return TerrainResult.Fail(why);
+        Vector2 me = lp.GetTruePosition();
+        float dx = pos.x - me.x, dy = pos.y - me.y;
+        if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
+            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+        float size = Math.Clamp(seconds / 10f, 0.1f, TerrainSync.MaxFloodSize);
+        string res = TerrainSync.Request(new DamageEvent(DamageKind.Flood, pos, Vector2.right, size, Math.Clamp(rate, 0f, 1f), Seed()), out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
+    // プレイヤーでない浸水 (ホストと一人の時だけ・船の穴やマップの出来事)。seconds = 0 で試合の終わりまで
+    public static TerrainResult WorldFlood(Vector2 pos, float seconds, float rate = 0.5f)
+    {
+        if (TerrainSync.IsGuest()) return TerrainResult.Fail("host only");
+        float size = seconds <= 0f ? 0f : Math.Clamp(seconds / 10f, 0.1f, TerrainSync.MaxFloodSize);
+        string res = TerrainSync.RequestAs(new DamageEvent(DamageKind.Flood, pos, Vector2.right, size, Math.Clamp(rate, 0f, 1f), Seed()), World, out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
     private static TerrainResult Fire(DamageKind kind, Vector2 pos, float radius, float force)
     {
         radius = Math.Clamp(radius, 0.1f, TerrainSync.MaxFireRadius);

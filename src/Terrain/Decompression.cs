@@ -1029,7 +1029,8 @@ internal static class Decompression
     }
 }
 
-// 流れに乗る自分の体: 本編の歩行 (入力 → 速さ) の後で流れの速さを足す。当たり判定は物理が見るので壁や口で止まる
+// 流れに乗る自分の体: 本編の歩行 (入力 → 速さ) の後で流れの速さを足す。当たり判定は物理が見るので壁や口で止まる。
+// 吸い出しに引かれていない時は水の中の動き (CrewSwim)
 [HarmonyPatch(typeof(PlayerPhysics), nameof(PlayerPhysics.FixedUpdate))]
 internal static class CrewPull
 {
@@ -1037,19 +1038,26 @@ internal static class CrewPull
 
     public static void Postfix(PlayerPhysics __instance)
     {
-        if (!Decompression.Pulling && !CrewGrip.Active) return;
+        if (!Decompression.Pulling && !CrewGrip.Active && !CrewSwim.Wet) return;
         if (!__instance.AmOwner) return;
         var pc = __instance.myPlayer;
         if (!pc || !pc.CanMove || pc.inVent || pc.Data == null || pc.Data.IsDead)
         {
             CrewGrip.Cancel();
+            CrewSwim.Clear();
             return;
         }
         var pos = pc.GetTruePosition();
         bool on = Decompression.PullAt(pos, out var dir, out float mul, out int dist);
         if (Speed <= 0f) Speed = __instance.TrueSpeed;
         var body = __instance.body;
-        if (CrewGrip.Physics(pc, body, pos, on, dir, mul, dist) || !on) return;
+        if (CrewGrip.Physics(pc, body, pos, on, dir, mul, dist)) { CrewSwim.Clear(); return; }
+        if (!on)
+        {
+            if (CrewSwim.Wet) CrewSwim.Physics(body, pos, Speed);
+            return;
+        }
+        CrewSwim.Clear();
         var v = body.velocity;
         float s = mul * Speed;
         body.velocity = FxMath.V2(v.x + dir.x * s, v.y + dir.y * s);

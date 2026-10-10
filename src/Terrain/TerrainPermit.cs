@@ -161,7 +161,7 @@ internal static class TerrainPermits
         DamageKind.Blunt => TerrainUse.Hammer,
         DamageKind.Push => TerrainUse.Push,
         DamageKind.Ignite or DamageKind.Spill or DamageKind.Burn => TerrainUse.Fire,
-        DamageKind.Water => TerrainUse.Water,
+        DamageKind.Water or DamageKind.Flood => TerrainUse.Water,
         _ => TerrainUse.Blast,
     };
 }

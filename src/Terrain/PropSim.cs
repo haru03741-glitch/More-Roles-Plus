@@ -59,6 +59,14 @@ internal static class PropSim
     private const float RattleMove = 0.025f, RattleTurn = 1.2f; // 引かれている家具の震え (単位・度)
     private const int HeavyReach = 5;         // 重い物は口からこの道のり (単位) 以内だけ
     private const int ResyncPull = 15;        // 引いている間に見せる用を確定から計算し直す間隔 (0.5 秒)
+    // 水: 深さが種類ごとの浮く深さ (Full = 1 単位) を超えた物は、速さが水の流れ × 種類の割合 (/256) へ 1 刻みに 1/SweepEase ずつ寄る。
+    // 浮いている間は床の摩擦なし。重い物 (当たり判定のある家具) と固定の物は流さない
+    private const int FloatSmall = WaterSim.Full / 12, FloatMedium = WaterSim.Full / 4;
+    private const int SweepSmall = 256, SweepMedium = 200;
+    private const int SweepEase = 6;
+    private const float PerchProbe = 0.05f;
+    private const int FurnitureLayer = 12;
+    private const int PerchMove = Unit / 4;     // 元の場所からこれだけ動いたら机から落ちたとみなす
     // ぶつかる音: 壁 (家具どうし) へ向かう速さがこれ以上の時だけ。同じ物は BumpGap 刻み空ける・1 フレーム BumpPerFrame まで
     private const int BumpMin = 40;           // 1.2 単位/秒
     private const int BumpFull = 200;
@@ -114,6 +122,8 @@ internal static class PropSim
         public Vector2 F0, Pivot0;  // 元の足元・回す軸 (ワールド)
         public bool Tall, Solid;
         public bool Sway;           // 当たり判定があっても揺らす (表の Wobble)
+        public bool Perch;          // 机などの上に置かれている (元の場所にいる間は水に流されない)
+        public int A0x, A0y;        // 始めの足元 (1/1024)
         public FurnitureLift.Lift Lift; // 重い物 (部屋の絵から持ち上げる家具)
         public Rect Bounds0;            // 重い物の元の当たり判定の範囲
         public Collider2D Col;          // 重い物の当たり判定 (上に載っている物を拾う)
@@ -175,6 +185,8 @@ internal static class PropSim
     private static bool _ready, _running, _failed;
     private static int _shipGen;
     private static bool _resync;
+    private static bool _swept;               // 確定のこの刻みで水に流した物がある
+    internal static int Swept { get; private set; }
     private static bool _hitHeavy;   // 直前の Blocked が別の重い物に当たった
     private static int _heardThrough = int.MinValue; // 見せる用のこの刻みまではぶつかる音を鳴らし済み (計算し直しで同じ所を鳴らさない)
     private static int _bumpsThisFrame;
@@ -197,7 +209,7 @@ internal static class PropSim
             StepOnce(Auth);
             Auth.Step++;
             // 見せる用は今の流れで先回りしているので、引いている間は確定から時々計算し直す
-            if (Decompression.Pulling && Auth.Step % ResyncPull == 0) _resync = true;
+            if ((Decompression.Pulling || _swept) && Auth.Step % ResyncPull == 0) _resync = true;
         }
         catch (Exception e) { Fail("step", e); }
     }
@@ -239,7 +251,7 @@ internal static class PropSim
 
     private static void Enqueue(in ResolvedDamage r)
     {
-        if (r.Kind.IsFire() || r.Kind == DamageKind.Water || !Ensure()) return;
+        if (r.Kind.IsFire() || r.Kind == DamageKind.Water || r.Kind == DamageKind.Flood || !Ensure()) return;
         int tick = GameClock.Expand(r.Tick);
         if (!_running) { _running = true; Auth.Step = Disp.Step = Math.Min(tick, GameClock.Now - Delay); }
         var p = new Pending { Tick = tick, Seed = r.Seed, Cx = ToU(r.Position.x - _org.x), Cy = ToU(r.Position.y - _org.y) };
@@ -347,6 +359,21 @@ internal static class PropSim
         }
         Heavies.Clear();
         foreach (var h in Props) if (h.Kind == Kind.Heavy) Heavies.Add(h);
+        // 机など (家具の層の当たり判定) の上に置かれた物: 水は下を通るので、元の場所にいる間は流さない
+        int perched = 0;
+        foreach (var q in Props)
+        {
+            if (q.Kind != Kind.Small && q.Kind != Kind.Medium) continue;
+            foreach (var col in Physics2D.OverlapCircleAll(q.F0, PerchProbe, 1 << FurnitureLayer))
+            {
+                if (!col || col.isTrigger || !col.enabled) continue;
+                q.Perch = true;
+                q.A0x = q.A.Px; q.A0y = q.A.Py;
+                perched++;
+                break;
+            }
+        }
+        Plugin.Logger.LogInfo($"[PropSim] perched={perched}");
         _ready = true;
         return true;
     }
@@ -641,6 +668,7 @@ internal static class PropSim
             }
         }
         if (Decompression.Pulling) Pull(w);
+        else if (WaterSim.Running) Sweep(w);
         for (int i = w.Act.Count - 1; i >= 0; i--)
         {
             var p = w.Act[i];
@@ -809,6 +837,69 @@ internal static class PropSim
 
     private static readonly int[] DirX = { 256, 181, 0, -181, -256, -181, 0, 181 };
     private static readonly int[] DirY = { 0, 181, 256, 181, 0, -181, -256, -181 };
+
+    // 水が動き始めた時 (WaterSim から): 物の確定も同じ刻みから回す。水の最初の出来事の刻み以前から回っていれば、
+    // 全員が同じ刻みの水を読んで同じ所へ流れる
+    internal static void WakeForWater(int tick)
+    {
+        if (_running || _failed || !Ensure()) return;
+        _running = true;
+        Auth.Step = Disp.Step = Math.Min(tick, GameClock.Now - Delay);
+    }
+
+    // 水に流す (確定は TerrainStep が水と揃えて進めるので、全員が同じ刻みの水を読む)
+    private static void Sweep(World w)
+    {
+        if (!w.Display) _swept = false;
+        for (int i = 0; i < Props.Count; i++)
+        {
+            var p = Props[i];
+            if (p.Kind == Kind.Fixed || p.Kind == Kind.Heavy) continue;
+            var st = w.S(p);
+            st.Pulled = false;
+            if (st.Gone || st.Stuck) continue;
+            int sx = st.Px / _cellU, sy = st.Py / _cellU;
+            // 机・ベッドや岩の上に載っている物は水が下を通るので流さない
+            if (p.Perch && Math.Abs(st.Px - p.A0x) + Math.Abs(st.Py - p.A0y) < PerchMove) continue;
+            if (WaterSim.UnderProp(sx / WaterSim.Sub, sy / WaterSim.Sub) || OnFurniture(w, st)) continue;
+            if (!WaterSim.FlowCell(sx / WaterSim.Sub, sy / WaterSim.Sub, out int h, out int fx, out int fy)) continue;
+            bool small = p.Kind == Kind.Small;
+            if (h < (small ? FloatSmall : FloatMedium)) continue;
+            int mul = small ? SweepSmall : SweepMedium;
+            int tx = fx * mul / 256, ty = fy * mul / 256;
+            if (!st.Active)
+            {
+                if (Math.Abs(tx) + Math.Abs(ty) < PullStart || w.Act.Count >= MaxActive) continue;
+                st.Active = true;
+                w.Act.Add(p);
+            }
+            if (st.Rng == 0) st.Rng = 0x9E3779B9u ^ (uint)i * 40503u;
+            st.Vx += (tx - st.Vx) / SweepEase;
+            st.Vy += (ty - st.Vy) / SweepEase;
+            if (small && st.Spin == 0 && Math.Abs(tx) + Math.Abs(ty) >= PullStart)
+            {
+                int spin = SpinMin / 4 + (int)(Next(st) % (uint)(SpinMin / 4 + 1));
+                st.Spin = (Next(st) & 1) != 0 ? spin : -spin;
+                st.Tip = int.MinValue;
+            }
+            st.Pulled = true;
+            st.Moved = true;
+            if (!w.Display) { _swept = true; Swept++; }
+        }
+    }
+
+    // 重い物 (家具) の壁の当たりの箱の中に足元がある
+    private static bool OnFurniture(World w, St st)
+    {
+        for (int i = 0; i < Heavies.Count; i++)
+        {
+            var h = Heavies[i];
+            var hs = w.S(h);
+            if (hs.Gone) continue;
+            if (Math.Abs(st.Px - hs.Px) <= h.Hx && Math.Abs(st.Py - hs.Py) <= h.Hy) return true;
+        }
+        return false;
+    }
 
     // 流れに引く (Decompression の確定の刻みと揃っている時だけ全員で同じ)
     private static void Pull(World w)
@@ -1127,6 +1218,8 @@ internal static class PropSim
         _block = null;
         Late = 0;
         Kicks = 0;
+        Swept = 0;
+        _swept = false;
         Lost = 0;
         Plugs = 0;
     }
@@ -1160,8 +1253,8 @@ internal static class PropSim
             }
             if (args.Trim() == "list")
                 foreach (var p in Props)
-                    reply($"PROP {p.Name} {p.Kind} foot={TestBridge.F(_org.x + p.A.Px / (float)Unit)},{TestBridge.F(_org.y + p.A.Py / (float)Unit)} ang={p.A.Ang / 16} moved={p.A.Moved} size={p.SizeU / (float)Unit:0.00}{(p.A.Gone ? " gone" : "")}{(p.A.Stuck ? " stuck" : "")}");
-            reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} lost={Lost} plugs={Plugs} digest={Digest():x8} bumps={Bumps} lastBump={LastBump}");
+                    reply($"PROP {p.Name} {p.Kind} foot={TestBridge.F(_org.x + p.A.Px / (float)Unit)},{TestBridge.F(_org.y + p.A.Py / (float)Unit)} ang={p.A.Ang / 16} moved={p.A.Moved} size={p.SizeU / (float)Unit:0.00}{(p.A.Gone ? " gone" : "")}{(p.A.Stuck ? " stuck" : "")}{(p.Perch ? " perch" : "")}");
+            reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} swept={Swept} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} lost={Lost} plugs={Plugs} digest={Digest():x8} bumps={Bumps} lastBump={LastBump}");
         });
     }
 }
