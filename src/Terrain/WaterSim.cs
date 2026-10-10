@@ -168,6 +168,8 @@ internal static partial class WaterSim
     private static bool[] _doorUnder; // 下に隙間があって水が通る扉
     private static ulong _doorBits;  // 升に入れた扉の開き
     private static byte[] _fallMask; // 縁を越えて落ちる向き (ビット = Nx/Ny の並び)
+    private static byte[] _stepMask; // 小さな段差の縁の向き (滝にせず、段の高さぶんずらして両向きに流す)
+    private static readonly Dictionary<int, int> StepTo = new(); // 升 × 4 + 向き → 段の向こうの升
     private static byte[] _shadowCut; // 作った時に影の線を挟んでいた縁の向き
     private static byte[] _ledge;     // 作った時に縁の際に段の影の線があったか (LedgeNear)
     private static readonly Dictionary<int, (int To, int Delay)> FallTo = new(); // 升 × 4 + 向き → 落ちる先の升 (−1 = 奈落) と刻み
@@ -364,9 +366,11 @@ internal static partial class WaterSim
         _doorCell = new byte[n];
         _propCell = new byte[n];
         _fallMask = new byte[n];
+        _stepMask = new byte[n];
         _shadowCut = new byte[n];
         _ledge = new byte[n];
         FallTo.Clear();
+        StepTo.Clear();
         ListDoorCells();
         int props = ListPropCells();
         _tw = (_w + TileCells - 1) / TileCells;
@@ -466,6 +470,7 @@ internal static partial class WaterSim
         for (int i = 0; i < _propCell.Length; i++) h = (h ^ (uint)(_propCell[i] | _shadowCut[i] << 1 | _ledge[i] << 9)) * 16777619;
         uint sum = 0;
         foreach (var kv in FallTo) sum += (uint)(kv.Key * 73856093) ^ (uint)(kv.Value.To * 19349663) ^ (uint)(kv.Value.Delay * 83492791);
+        foreach (var kv in StepTo) sum += (uint)(kv.Key * 2654435761u) ^ (uint)(kv.Value * 40503);
         return h ^ sum;
     }
     // 床に置かれた物: 壁の線と別に置かれた小さな閉じた当たり判定 (岩・結晶・机)。縁のすぐ隣がその中なら落ちない
@@ -645,6 +650,8 @@ internal static partial class WaterSim
             // 注釈の高さは壁の中の升 (壊して開いた時の縁) にだけ残す
             for (int k = 0; k < n; k++)
                 if (_sub[k] != 0) _lvl[k] = zone[k] != 0 || rank[k] == NoLevel ? zone[k] : (sbyte)Math.Max((int)rank[k], VoidLevel + 1);
+            var ship = ShipStatus.Instance;
+            if (ship && ship.TryCast<AirshipStatus>() != null) RaiseCells(AirshipRaised, 1);
             return;
         }
         var lv = IslandLevels();
@@ -693,6 +700,7 @@ internal static partial class WaterSim
                 if (r && r.roomArea && Array.IndexOf(ChasmRooms, r.RoomId) >= 0) Rooms.Add(r.roomArea);
         bool airship = ship && ship.TryCast<AirshipStatus>() != null;
         _decks = airship ? AirshipDecks : NoDecks;
+        _steps = airship ? AirshipSteps : NoDecks;
         _skyEdges = airship ? AirshipSkyEdges : NoDecks;
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
@@ -710,6 +718,11 @@ internal static partial class WaterSim
                 for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
                 _fallMask[k] = 0;
             }
+            if (_stepMask[k] != 0)
+            {
+                for (int d = 0; d < 4; d++) StepTo.Remove(k * 4 + d);
+                _stepMask[k] = 0;
+            }
             int lk = _lvl[k];
             if (_open[k] == 0 || lk == NoLevel || lk == VoidLevel) continue;
             for (int d = 0; d < 4; d++)
@@ -717,13 +730,26 @@ internal static partial class WaterSim
                 int j = k + Nx[d] + Ny[d] * _w;
                 if (_open[j] != 0 && Passable(k, d)) continue;
                 if (Nx[d] != 0 && OnLadder(x, y)) continue;
-                Target(x, y, d, lk, cliffs, out int to, out int dist, out int tx, out int ty);
+                string why = Target(x, y, d, lk, cliffs, out int to, out int dist, out int tx, out int ty);
+                // 小さな段差の下の床から上の床へ (上から下へは落ちる縁の方で登録する)。両側から別々に登録するので、
+                // 部分の作り直しで片側だけが範囲に入っても対で残る
+                if (why == "same" && _lvl[ty * _w + tx] == lk + 1 && OnStep(x, y, tx, ty))
+                {
+                    StepTo[k * 4 + d] = ty * _w + tx;
+                    _stepMask[k] |= (byte)(1 << d);
+                    continue;
+                }
                 if (to == int.MinValue || to == -1 && OnLadder(x, y)) continue;
                 // 空へ落とす縁は壁の影の線の外側へ落ちるので、影の線では切らない
                 if (full && !(to == -1 && OnSkyEdge(x, y)) && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
                 if ((_shadowCut[k] >> d & 1) != 0) continue;
                 _fallMask[k] |= (byte)(1 << d);
                 FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
+                if (to >= 0 && _lvl[to] == lk - 1 && OnStep(x, y, tx, ty))
+                {
+                    StepTo[k * 4 + d] = to;
+                    _stepMask[k] |= (byte)(1 << d);
+                }
             }
         }
         _ledgeScan = false;
@@ -782,6 +808,21 @@ internal static partial class WaterSim
     // 境目は端末ごとの丸めで割れないよう 1/512 格子の点から外す
     private static readonly float[] AirshipDecks = { 5.003f, -17.497f, 10.997f, -14.3f };
     private static readonly float[] NoDecks = { };
+    // 島の順位では低く出るが、絵では一段高い床 (高さを上書きする・歩ける升だけ)。
+    // エアシップの機関室の南の出現位置の帯は、白い鉄板の通路より一段高い桃色の床
+    private static readonly float[] AirshipRaised = { -1.753f, -3.297f, 2.003f, -1.747f };
+
+    private static void RaiseCells(float[] r, int level)
+    {
+        for (int k = 0; k < _w * _h; k++)
+            if (_sub[k] != 0 && InRects(r, _org.x + (k % _w + 0.5f) * _cell, _org.y + (k / _w + 0.5f) * _cell)) _lvl[k] = (sbyte)level;
+    }
+
+    // 階段より低い段差 (滝にしない縁)。縁の両側の升の真ん中を結んだ中点で見る。エアシップの機関室の白い鉄板の通路と南の桃色の床の境
+    private static readonly float[] AirshipSteps = { -1.753f, -2.003f, 2.003f, -1.497f };
+    private const int StepHeight = Full / 4; // 段の高さ (低い側はこの深さまで溜まってから高い床とつながる)
+    private static float[] _steps = NoDecks;
+    private static bool OnStep(int x, int y, int tx, int ty) => InRects(_steps, _org.x + ((x + tx) * 0.5f + 0.5f) * _cell, _org.y + ((y + ty) * 0.5f + 0.5f) * _cell);
     private static float[] _decks = NoDecks;
     private static bool OnDeck(int x, int y) => OnDeck(_org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell);
     internal static bool OnDeck(float px, float py) => InRects(_decks, px, py);
@@ -1189,6 +1230,22 @@ internal static partial class WaterSim
                         f += d == 0 ? b0 : d == 1 ? b1 : d == 2 ? b2 : b3;
                     }
                 }
+                else if (h > 0 && (_stepMask[k] >> d & 1) != 0)
+                {
+                    // 小さな段差: 下の床の水面は段の高さぶん低い。上からは下の水面 (段より上に出た分) との差で、
+                    // 下からは段を越えた分と上の水との差で流れる
+                    int t = StepTo[k * 4 + d], ht = _hgt[t];
+                    int diff = _lvl[t] < lk
+                        ? h - Math.Max(0, ht - StepHeight) - (ht <= StepHeight ? DryHold : WetHold)
+                        : h - StepHeight - ht - (ht == 0 ? DryHold : WetHold);
+                    if (diff > 0)
+                    {
+                        int g = diff * Gain / 256;
+                        if (g <= 0) g = 1;
+                        FallOut.Add((k, d, g));
+                        sum += g;
+                    }
+                }
                 else if (h > FallLip && (_fallMask[k] >> d & 1) != 0)
                 {
                     int g = (h - FallLip) * FallGain / 256;
@@ -1229,6 +1286,14 @@ internal static partial class WaterSim
             if (amt <= 0) continue;
             _hgt[k] -= amt;
             Mark(k);
+            if ((_stepMask[k] >> d & 1) != 0)
+            {
+                int t = StepTo[k * 4 + d];
+                _hgt[t] += amt;
+                Mark(t);
+                Wake(t);
+                continue;
+            }
             FellTotal += amt;
             var (to, delay) = FallTo[k * 4 + d];
             if (to < 0) VoidTotal += amt;
@@ -1745,8 +1810,9 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _shadowCut = null; _ledge = null;
+        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null;
         FallTo.Clear();
+        StepTo.Clear();
         FallOut.Clear();
         Flying.Clear();
         Falls.Clear();
