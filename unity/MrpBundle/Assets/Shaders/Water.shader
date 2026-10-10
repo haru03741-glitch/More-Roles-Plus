@@ -1,7 +1,7 @@
 // 水 (床の水たまり・噴き出し) を描くシェーダ。CPU はスプライトの絵に「水の量」だけを書き、見た目はここで決める。
 // 絵は双線形で引くので、粗い升の値でも縁はなめらかな線で切れる (fwidth で 1 画素ぶんぼかす)。
 //
-// _Mode = 0 (水たまり): R = 深さ (1 = _DeepAt)・G = 見せてよいか (壁の中・家具の上 = 0)。
+// _Mode = 0 (水たまり): R = 深さ (1 = _DeepAt)・G = 見せてよいか (壁の中・家具の上 = 0)。_FloorMask = 床の画素 (0.5 の線が床の縁)。
 //   深いほど濃く不透明・浅いほど床が透ける。縁の内側に細い濃い輪郭とその内に明るい縁 (表面張力の盛り上がり)。
 //   水面の揺れ = ノイズ 2 枚を逆向きに流して、その傾きで光の照り返し (きらめき) と浅い所の明暗 (光の網) を出す。
 // _Mode = 1 (噴き出し): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)。
@@ -84,9 +84,16 @@ Shader "MRP/Water"
                 float d = data.r;
                 float fw = max(fwidth(d), 1e-5);
                 float inside = (d - _Edge) / fw;                 // 縁から内側へ何画素か
-                float body = saturate(inside + 0.5);              // 縁を 1 画素でぼかす
                 float vis = smoothstep(0.35, 0.65, data.g);
-                if (_FloorOn > 0.5) vis *= smoothstep(0.3, 0.7, tex2D(_FloorMask, i.uv).r);
+                // 床マスクの縁 (家具・壁の絵の輪郭) から内側へ何画素か。マスクはならしてあるので、
+                // 半分の値の線を画面の画素の幅で切ると拡大しても升目の段が出ない
+                float wet = inside;
+                if (_FloorOn > 0.5)
+                {
+                    float m = tex2D(_FloorMask, i.uv).r - 0.5;
+                    wet = min(inside, m / max(fwidth(m), 1e-4));
+                }
+                float body = saturate(wet + 0.5);                 // 縁を 1 画素でぼかす
                 if (body * vis <= 0.001) return 0;
 
                 float k = saturate((d - _Edge) / _DeepRange);
@@ -106,7 +113,9 @@ Shader "MRP/Water"
                 c.a = saturate(c.a + spec * 0.35);
 
                 // 縁: 外側に細い濃い輪郭・その内に明るい縁
+                // 家具・壁に当たった所は絵の黒い輪郭があるので、濃い輪郭は描かず明るい縁だけ付ける
                 float rim = saturate(1.0 - (inside - _OutlinePx) / _RimPx) * step(_OutlinePx, inside);
+                rim = max(rim, saturate(1.0 - wet / _RimPx) * 0.7);
                 c = lerp(c, _Rim, rim * _Rim.a * 0.8);
                 if (inside < _OutlinePx) c = _Outline;
                 c.a *= body * vis * i.color.a;

@@ -103,8 +103,44 @@ internal static class FloorMask
         }
     }
 
-    // 世界の四角 (x, y から size 四方) を n×n 画素の 0/255 で into へ (左下原点)。マスクの外は床でない
+    // 世界の四角 (x, y から size 四方) を n×n 画素で into へ (左下原点・床 = 255・マスクの外は床でない)。
+    // 縁は 1, 4, 6, 4, 1 でならす: 1 画素 1 ビットの段がそのまま水の縁に出ないよう、シェーダが 128 の線を
+    // 画素より細かく引ける値にする。ならしは周りの Blur 画素も読んでからなので、隣のタイルと縁がつながる
+    private const int Blur = 2;
+    private static byte[] _raw = Array.Empty<byte>();
+    private static ushort[] _row = Array.Empty<ushort>();
+
     internal static void Fill(float x, float y, float size, int n, byte[] into)
+    {
+        int m = n + Blur * 2;
+        if (_raw.Length < m * m) _raw = new byte[m * m];
+        if (_row.Length < m * n) _row = new ushort[m * n];
+        float pad = size / n * Blur;
+        FillRaw(x - pad, y - pad, size + pad * 2f, m, _raw);
+        // 横にならす (m 行 × n 列)
+        for (int py = 0; py < m; py++)
+        {
+            int src = py * m, dst = py * n;
+            for (int px = 0; px < n; px++)
+            {
+                int k = src + px;
+                _row[dst + px] = (ushort)(_raw[k] + _raw[k + 4] + ((_raw[k + 1] + _raw[k + 3]) << 2) + _raw[k + 2] * 6);
+            }
+        }
+        // 縦にならす (n 行 × n 列)。重みの和は 16 × 16
+        for (int py = 0; py < n; py++)
+        {
+            int dst = py * n;
+            for (int px = 0; px < n; px++)
+            {
+                int k = py * n + px;
+                int v = _row[k] + _row[k + n * 4] + ((_row[k + n] + _row[k + n * 3]) << 2) + _row[k + n * 2] * 6;
+                into[dst + px] = (byte)((v + 128) >> 8);
+            }
+        }
+    }
+
+    private static void FillRaw(float x, float y, float size, int n, byte[] into)
     {
         float step = size / n * _ppu;
         float bx = (x - _ox) * _ppu + step * 0.5f, by = (y - _oy) * _ppu + step * 0.5f;

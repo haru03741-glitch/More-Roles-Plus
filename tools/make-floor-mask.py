@@ -39,6 +39,8 @@ SHADE_MAX = 1.15
 LINE_CLOSE = 3        # 両側が床の細い線を埋める半径 (画素)
 REACH = 0.2           # 歩ける所からこの距離 (世界単位) より離れた画素は床にしない
 FURN_DEEP = 0.08      # 家具の当たり判定の縁からこれより内側は床にしない (当たり判定が絵より大きい所の縁の帯は床のまま)
+SPECK = 60            # これより小さい床の島・床の中の穴 (画素数) は消す
+EDGE_SIGMA = 1.6      # 縁をならすぼかしの幅 (画素)
 MAGIC = b"MRPF"
 VERSION = 2
 
@@ -189,9 +191,20 @@ def classify(j, canvas, ppu):
     floor = keep[lab]
     st = ndimage.generate_binary_structure(2, 1)
     floor = ndimage.binary_closing(floor, st, iterations=LINE_CLOSE) & drawn
-    near = ndimage.binary_dilation(walk, st, iterations=int(round(REACH * ppu)))
-    deep = ndimage.binary_erosion(furn, st, iterations=int(round(FURN_DEEP * ppu)))
-    return floor & near & ~deep, walk, furn
+    # 距離は丸く測る (升の歩ける所を 4 近傍で太らせると菱形の角が縁に出る)
+    near = ndimage.distance_transform_edt(~walk) <= REACH * ppu
+    deep = ndimage.distance_transform_edt(furn) > FURN_DEEP * ppu
+    return smooth(floor & near & ~deep), walk, furn
+
+
+def smooth(floor):
+    """縁の画素のぎざぎざ (絵の輪郭のにじみで床の判定が 1 画素ずつ揺れる) をならす"""
+    lab, n = ndimage.label(floor)
+    floor &= (np.bincount(lab.ravel(), minlength=n + 1) >= SPECK)[lab]
+    lab, n = ndimage.label(~floor)
+    floor |= (np.bincount(lab.ravel(), minlength=n + 1) < SPECK)[lab]
+    # ぼかして半分で切り直す: 面積はほぼ保ったまま、縁が滑らかな線になる
+    return ndimage.gaussian_filter(floor.astype(np.float32), EDGE_SIGMA) >= 0.5
 
 
 def write_mask(path, sig, origin, ppu, floor):
