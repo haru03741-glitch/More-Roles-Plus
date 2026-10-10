@@ -356,6 +356,8 @@ internal static class WaterArt
 
     private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), FloorTexId = Shader.PropertyToID("_FloorMask"), FloorOnId = Shader.PropertyToID("_FloorOn");
 
+    private const float DeckZ = -0.001f; // エアシップの警備室の下のデッキの床の絵の z (手すりは -0.1 で水より手前)
+
     private static unsafe void Ensure(Tile t)
     {
         if (t.Go) return;
@@ -377,7 +379,10 @@ internal static class WaterArt
         for (int k = 0; k < 5; k++)
         {
             float fx = k == 4 ? 0.5f : (k & 1), fy = k == 4 ? 0.5f : (k >> 1);
-            front = Math.Min(front, DamageMap.FrontZ(new Vector2(wx + size * (0.05f + 0.9f * fx), wy + size * (0.05f + 0.9f * fy))));
+            float px = wx + size * (0.05f + 0.9f * fx), py = wy + size * (0.05f + 0.9f * fy);
+            front = Math.Min(front, DamageMap.FrontZ(new Vector2(px, py)));
+            // 屋外のデッキの床の絵はクルーと同じ奥行きにあり、部屋の絵の z では床の下に隠れる
+            if (WaterSim.OnDeck(px, py)) front = Math.Min(front, DeckZ);
         }
         float zs = DamageMap.ZScale(front);
         // 床の上・足跡 (−0.001) と波紋より奥

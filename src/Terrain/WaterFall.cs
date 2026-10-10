@@ -56,6 +56,7 @@ internal static class WaterFall
         public int W, H;
         public float Idle;
         public bool Hidden, Gone;   // Gone = 片づけ済み (Unity の物の null 判定を毎回しない)
+        public bool Void;           // 奈落へ落ちる縁の絵 (置く奥行きが違うので床へ落ちる縁とは分ける)
         // 描いた範囲 (画素)。前回の範囲だけ消し、前回と今回を合わせた範囲だけ変換する
         public int X0p, Y0p, X1p = -1, Y1p = -1, Bx0, By0, Bx1, By1;
         public GameObject Go;
@@ -236,12 +237,12 @@ internal static class WaterFall
     }
 
     // その縁の落ちる範囲が入る絵 (無ければ作る・上限を超えたら流れていない絵を使い回す)
-    private static Canvas CanvasFor(Edge e)
+    private static unsafe Canvas CanvasFor(Edge e)
     {
         float lx = Math.Min(e.X0, e.X1), hx = Math.Max(e.X0, e.X1);
         float ly = Math.Min(e.Y0, e.Y1) - (e.Void ? 0f : 0.35f), hy = Math.Max(e.Y0, e.Y1);
         foreach (var c in Canvases)
-            if (lx - Margin >= c.X0 && hx + Margin <= c.X0 + c.W / Ppu && ly - Margin >= c.Y0 && hy + Margin <= c.Y0 + c.H / Ppu) return c;
+            if (c.Void == e.Void && lx - Margin >= c.X0 && hx + Margin <= c.X0 + c.W / Ppu && ly - Margin >= c.Y0 && hy + Margin <= c.Y0 + c.H / Ppu) return c;
         if (Canvases.Count >= MaxCanvases)
         {
             int idle = -1;
@@ -256,12 +257,15 @@ internal static class WaterFall
         float x0 = Math.Min(cx - CanvasW * 0.5f, lx - Margin), x1 = Math.Max(cx + CanvasW * 0.5f, hx + Margin);
         float y0 = ly - Below, y1 = hy + Above;
         if (y1 - y0 > MaxCanvasH) y0 = y1 - MaxCanvasH; // 絵が大きいほど消す・変換・転送が重いので高さに上限 (それより下は描かない)
-        var n = new Canvas { X0 = x0, Y0 = y0, W = (int)MathF.Ceiling((x1 - x0) * Ppu), H = (int)MathF.Ceiling((y1 - y0) * Ppu) };
+        var n = new Canvas { Void = e.Void, X0 = x0, Y0 = y0, W = (int)MathF.Ceiling((x1 - x0) * Ppu), H = (int)MathF.Ceiling((y1 - y0) * Ppu) };
         n.Px = new byte[n.W * n.H * 4];
         for (int i = 3; i < n.Px.Length; i += 4) n.Px[i] = 255; // 描いていない所も不透明の濃さ 0 にしておく
         n.Dens = new float[n.W * n.H];
         n.Foam = new float[n.W * n.H];
         n.Tex = new Texture2D(n.W, n.H, TextureFormat.RGBA32, false) { name = "MrpFall", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        // 作ったままの中身は決まっていない (白く出ると絵の四角い範囲いっぱいに滝が見える) ので、最初の描き直しの前に空を送る
+        fixed (byte* b = n.Px) n.Tex.LoadRawTextureData((IntPtr)b, n.Px.Length);
+        n.Tex.Apply(false, false);
         n.Sp = Sprite.Create(n.Tex, new Rect(0, 0, n.W, n.H), Vector2.zero, Ppu, 0, SpriteMeshType.FullRect);
         n.Sp.name = "MrpFall";
         n.Mat = new Material(mat0) { name = "MrpFall" };
@@ -274,6 +278,8 @@ internal static class WaterFall
         n.Sr.sharedMaterial = n.Mat;
         // 縁と着地の床のうち手前の方よりわずかに手前 (崖の面の上に見える)
         float floor = Math.Min(DamageMap.FrontZ(FxMath.V2(e.X0, e.Y0)), DamageMap.FrontZ(FxMath.V2(e.X1, e.Y1)));
+        // 奈落へ落ちる水は縁の手前の絵 (エアシップのデッキの床と手すりはクルーと同じ奥行き) より手前を落ちる
+        if (e.Void) floor = Math.Min(floor, DamageMap.FrontZ(FxMath.V2(e.X0, e.Y0), true));
         n.Go.transform.position = FxMath.V3(x0, y0, floor - 0.003f * DamageMap.ZScale(floor));
         Canvases.Add(n);
         return n;

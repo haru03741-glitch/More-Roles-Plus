@@ -479,8 +479,7 @@ internal static class WaterSim
 
     // 範囲の升の、縁を越えて落ちる向きと落ちる先を作り直す。縁 (隣へ流れられない向き) の先を FallScan 升まで進み、
     // 最初の開いた升が低ければ落ちる先 (奈落を先に通れば奈落)。扉の升を越える所と、視界の影の線を挟む所 (壁の向こうの部屋) は落ちない。
-    // 奈落は谷のある部屋 (ChasmRooms) の範囲の中だけ。奈落の注釈は壊せない所の印も兼ねて外壁の外にも塗ってあり、
-    // 外壁には影の線が無い所があるので、それだけでは谷の縁と外壁を見分けられない
+    // 奈落へ落ちる所の決め方は Target に
     // 影の線は壊れた壁と一緒に切られ、壊れの届き方は人によって先後があるので、線を読むのは作った時 (full) だけ。
     // 引き直しはその時の結果 (_shadowCut) を引く
     private static void Links(int x0, int y0, int x1, int y1, bool full = false)
@@ -490,6 +489,7 @@ internal static class WaterSim
         if (ship)
             foreach (var r in ship.AllRooms)
                 if (r && r.roomArea && Array.IndexOf(ChasmRooms, r.RoomId) >= 0) Rooms.Add(r.roomArea);
+        _decks = ship && ship.TryCast<AirshipStatus>() != null ? AirshipDecks : NoDecks;
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
         // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので影の線を見ない
@@ -510,29 +510,8 @@ internal static class WaterSim
             {
                 int j = k + Nx[d] + Ny[d] * _w;
                 if (_open[j] != 0 && Passable(k, d)) continue;
-                int to = int.MinValue, dist = 0, tx = 0, ty = 0;
-                bool through = true; // 真横の先が探す範囲まで全部壁の中
-                for (int i = 1; i <= FallScan[d]; i++)
-                {
-                    int cx = x + Nx[d] * i, cy = y + Ny[d] * i;
-                    through = false;
-                    if (cx < 1 || cy < 1 || cx >= _w - 1 || cy >= _h - 1) break;
-                    int c = cy * _w + cx;
-                    if (_doorCell[c] != 0) break;
-                    int lc = _lvl[c];
-                    if (_open[c] == 0)
-                    {
-                        if (lc == VoidLevel) { to = -1; dist = i; tx = cx; ty = cy; break; }
-                        through = true;
-                        continue;
-                    }
-                    if (lc != NoLevel && lc < lk) { to = c; dist = i; tx = cx; ty = cy; }
-                    break;
-                }
-                if (to == int.MinValue && through && Nx[d] != 0) SideDrop(x, y, d, lk, ref to, ref dist, ref tx, ref ty);
+                Target(x, y, d, lk, cliffs, out int to, out int dist, out int tx, out int ty);
                 if (to == int.MinValue) continue;
-                // 部屋の判定を先に (影の線を読むのは重く、谷の外の奈落の縁はそれだけで落ちないと決まる)
-                if (to < 0 && !InRoom(_org.x + (tx + 0.5f) * _cell, _org.y + (ty + 0.5f) * _cell)) continue;
                 if (full && !cliffs && ShadowBetween(x, y, tx, ty)) _shadowCut[k] |= (byte)(1 << d);
                 if ((_shadowCut[k] >> d & 1) != 0) continue;
                 _fallMask[k] |= (byte)(1 << d);
@@ -562,10 +541,69 @@ internal static class WaterSim
         return false;
     }
 
+    // 手すりだけで囲まれた屋外のデッキの床 (x0, y0, x1, y1)。エアシップの警備室の下 (扉の前の通路は両脇が壁なので入れない)。
+    // 境目は端末ごとの丸めで割れないよう 1/512 格子の点から外す
+    private static readonly float[] AirshipDecks = { 5.003f, -17.497f, 10.997f, -14.3f };
+    private static readonly float[] NoDecks = { };
+    private static float[] _decks = NoDecks;
+    private static bool OnDeck(int x, int y) => OnDeck(_org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell);
+    internal static bool OnDeck(float px, float py)
+    {
+        for (int i = 0; i + 3 < _decks.Length; i += 4)
+            if (px >= _decks[i] && px <= _decks[i + 2] && py >= _decks[i + 1] && py <= _decks[i + 3]) return true;
+        return false;
+    }
+
+    // 縁の升 (x, y) の向き d の落ちる先。to = 落ちる先の升・-1 = 奈落 (落ちた水は消える)・int.MinValue = 落ちない。返り値は理由 (確認用)。
+    // 奈落の注釈は壊せない所の印も兼ねて外壁の外にも塗ってあるので、奈落へ落ちるのは谷のある部屋 (ChasmRooms) の中か、
+    // 屋外のデッキの床 (_decks) の縁から真っすぐ届く所 (手すりの外の空) だけ。外壁には影の線も船体の塊も無い所
+    // (コックピットのガラス窓・扉の脇の柱) があり、それでは手すりと見分けられない。
+    // 高さをはしごの島で決めたマップでは、一番下の島より高い島の縁の先に何も無ければ崖として奈落へ落とす
+    // (一番下の島の縁は浜や森との境なので落とさない・上向きの縁は落ちる絵が床に被るので落とさない)
+    private static string Target(int x, int y, int d, int lk, bool cliffs, out int to, out int dist, out int tx, out int ty)
+    {
+        to = int.MinValue; dist = 0; tx = x; ty = y;
+        string why = "scan";
+        for (int i = 1; i <= FallScan[d]; i++)
+        {
+            int cx = x + Nx[d] * i, cy = y + Ny[d] * i;
+            if (cx < 1 || cy < 1 || cx >= _w - 1 || cy >= _h - 1) { why = "border"; break; }
+            int c = cy * _w + cx;
+            if (_doorCell[c] != 0) return "door";
+            int lc = _lvl[c];
+            tx = cx; ty = cy; dist = i;
+            if (_open[c] == 0)
+            {
+                if (lc == VoidLevel) { to = -1; why = "void"; break; }
+                continue;
+            }
+            if (lc != NoLevel && lc < lk) { to = c; return "fall"; }
+            return lc == NoLevel ? "nolevel" : "same";
+        }
+        bool seen = false;
+        if (why == "scan" && Nx[d] != 0)
+        {
+            SideDrop(x, y, d, lk, ref to, ref dist, ref tx, ref ty, ref seen);
+            if (to >= 0) return "side";
+            if (to == -1) why = "side";
+        }
+        if (to == int.MinValue)
+        {
+            if (!cliffs || lk <= 0 || Ny[d] > 0 || seen || why == "door") return why;
+            to = -1;
+            return "cliff";
+        }
+        if (InRoom(_org.x + (tx + 0.5f) * _cell, _org.y + (ty + 0.5f) * _cell)) return why;
+        if (why == "void" && OnDeck(x, y)) return "sky";
+        to = int.MinValue;
+        return "room";
+    }
+
     // 横を向いた崖: 真横の先が壁の中のままなら、外へ 1 列ずつずらしながら画面の下へ探す。真上から斜めに見ているので、
     // 横を向いた崖の下の床は真横でなく斜め下に見える。いちばん近い低い床 (か谷の奈落) を落ちる先にする。
     // 列を下りて先に同じ高さ以上の床に当たった列は使わない (崖の上の床が下へ張り出している所)
-    private static void SideDrop(int x, int y, int d, int lk, ref int to, ref int dist, ref int tx, ref int ty)
+    // seen = 探した中に開いた升が 1 つでもあった (崖ではない)
+    private static void SideDrop(int x, int y, int d, int lk, ref int to, ref int dist, ref int tx, ref int ty, ref bool seen)
     {
         int best = int.MaxValue;
         for (int i = 1; i <= SideScan; i++)
@@ -585,6 +623,7 @@ internal static class WaterSim
                     best = i * i + j * j; to = -1; dist = j; tx = cx; ty = cy;
                     break;
                 }
+                seen = true;
                 if (lc != NoLevel && lc < lk) { best = i * i + j * j; to = c; dist = j; tx = cx; ty = cy; }
                 break;
             }
@@ -601,8 +640,10 @@ internal static class WaterSim
     }
 
     // 確認用 (water why): Links と同じ探し方で、縁の升ごとに落ちる/落ちない理由を数える
-    private static string WhyNoFall(float wx, float wy, float wr)
+    private static string WhyNoFall(float wx, float wy, float wr, string list = null)
     {
+        var listed = new System.Text.StringBuilder();
+        int nl = 0;
         var count = new Dictionary<string, int>();
         var sample = new Dictionary<string, string>();
         int cx = (int)MathF.Floor((wx - _org.x) / _cell), cy = (int)MathF.Floor((wy - _org.y) / _cell), r = (int)(wr / _cell);
@@ -616,41 +657,16 @@ internal static class WaterSim
             {
                 int j = k + Nx[d] + Ny[d] * _w;
                 if (_open[j] != 0 && Passable(k, d)) continue;
-                string why = "scan";
-                int dist = 0, to = int.MinValue, lto = 0;
-                for (int i = 1; i <= FallScan[d]; i++)
-                {
-                    int sx = x + Nx[d] * i, sy = y + Ny[d] * i;
-                    if (sx < 1 || sy < 1 || sx >= _w - 1 || sy >= _h - 1) { why = "border"; break; }
-                    int c = sy * _w + sx;
-                    if (_doorCell[c] != 0) { why = "door"; break; }
-                    int lc = _lvl[c];
-                    if (_open[c] == 0)
-                    {
-                        if (lc == VoidLevel) { to = -1; dist = i; why = "void"; break; }
-                        continue;
-                    }
-                    lto = lc;
-                    if (lc != NoLevel && lc < lk) { to = c; dist = i; why = "fall"; }
-                    else why = lc == NoLevel ? "nolevel" : "same";
-                    break;
-                }
-                int tx = x + Nx[d] * dist, ty = y + Ny[d] * dist;
-                if (to == int.MinValue && why == "scan" && Nx[d] != 0)
-                {
-                    SideDrop(x, y, d, lk, ref to, ref dist, ref tx, ref ty);
-                    if (to != int.MinValue) why = "side";
-                }
-                if (to != int.MinValue)
-                {
-                    if (to < 0 && !InRoom(_org.x + (tx + 0.5f) * _cell, _org.y + (ty + 0.5f) * _cell)) why = "room";
-                    else if ((_shadowCut[k] >> d & 1) != 0) why = "shadow";
-                }
+                string why = Target(x, y, d, lk, !MapNotes.HasLevels, out int to, out _, out _, out _);
+                if (to != int.MinValue && (_shadowCut[k] >> d & 1) != 0) why = "shadow";
+                int lto = to >= 0 ? _lvl[to] : 0;
                 string key = "+x-x+y-y".Substring(d * 2, 2) + ":" + why;
                 count[key] = count.TryGetValue(key, out int n) ? n + 1 : 1;
+                if (key == list && nl++ < 80) listed.Append($" ({_org.x + (x + 0.5f) * _cell:0.0},{_org.y + (y + 0.5f) * _cell:0.0})");
                 if (!sample.ContainsKey(key)) sample[key] = $"({_org.x + (x + 0.5f) * _cell:0.0},{_org.y + (y + 0.5f) * _cell:0.0})L{lk}>{lto}";
             }
         }
+        if (list != null) return $"OK water why {list} n={nl}{listed}";
         var sb = new System.Text.StringBuilder("OK water why");
         foreach (var kv in count) sb.Append(' ').Append(kv.Key).Append('=').Append(kv.Value).Append(sample[kv.Key]);
         return sb.ToString();
@@ -1390,12 +1406,12 @@ internal static class WaterSim
             }
             if (a.StartsWith("why"))
             {
-                // 確認用: 範囲の縁の升が落ちない理由を向きごとに数える (scan = 先に開いた升が無い・same = 先が低くない・door・room = 谷の外の奈落・shadow = 影の線)
+                // 確認用: 範囲の縁の升が落ちない理由を向きごとに数える (4 つ目に "-y:scan" などを渡すとその升の位置を並べる。scan = 先に開いた升が無い・same = 先が低くない・door・room = 谷の外で外壁の向こうの奈落・shadow = 影の線。落ちる側は fall/side/void/sky = 手すりの外の空/cliff = 何も無い崖の下)
                 var q = a.Substring(3).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 var ic = System.Globalization.CultureInfo.InvariantCulture;
                 if (!_ready || q.Length < 3 || !float.TryParse(q[0], System.Globalization.NumberStyles.Float, ic, out float wx) || !float.TryParse(q[1], System.Globalization.NumberStyles.Float, ic, out float wy)
                     || !float.TryParse(q[2], System.Globalization.NumberStyles.Float, ic, out float wr)) { reply("ERR water why x y r"); return; }
-                reply(WhyNoFall(wx, wy, wr));
+                reply(WhyNoFall(wx, wy, wr, q.Length > 3 ? q[3] : null));
                 return;
             }
             if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return; }
