@@ -32,6 +32,7 @@ except ImportError:
 BACK_Z = 4.0          # これより奥 (z が大きい) の部屋の絵だけ重ねる (床に貼った飾りや手前の絵は床の判定に入れない)
 SKY_Z = 20.0          # これより奥は空の絵 (Fungle の星空・夕焼け)。床の判定に入れない
 BACK_Z_SHIP = {"PolusShip": 0.5, "FungleShip": 0.5}  # 床の絵が z 1〜4 にある船 (ゲームの FloorMask.BackZ と同じ表)
+ALWAYS_FLOOR = {"room_weapon", "room_broadcast"}  # z に関わらず床の層に入れる絵 (ゲームの FloorMask.AlwaysFloor と同じ表)
 OUTLINE = 0.22        # 明るさがこれ未満の画素は縁取り
 DRAWN = 0.25          # 不透明度がこれを超える画素は絵がある (ナビの床は半透明で 0.45 ほど)
 FLOOR_SHARE = 0.5     # まとまりのうち歩ける所の割合がこれ以上なら床
@@ -86,7 +87,7 @@ def compose(j, tex, ppu):
     canvas = np.zeros((ch, cw, 4), np.float32)
     for r in sorted(j["rooms"], key=lambda r: -r["z"]):
         key = (r["texture"], r["texSize"][0], r["texSize"][1])
-        if r["z"] < j["backZ"] or r["z"] >= SKY_Z or key not in tex:
+        if (r["z"] < j["backZ"] and r["sprite"] not in ALWAYS_FLOOR) or r["z"] >= SKY_Z or key not in tex:
             continue
         t = tex[key]
         tri = np.array(r["tris"], np.float64).reshape(-1, 3, 2)
@@ -169,7 +170,7 @@ def room_slices(j, ppu, shape):
     s = j["solid"]
     ox, oy = s["origin"]
     for r in j["rooms"]:
-        if r["z"] < j["backZ"] or r["z"] >= SKY_Z:
+        if (r["z"] < j["backZ"] and r["sprite"] not in ALWAYS_FLOOR) or r["z"] >= SKY_Z:
             continue
         x0, y0, w, h = r["texRect"]
         xs = [r["w0"][0] + (x0 + a) * r["d"][0] for a in (0, w)]

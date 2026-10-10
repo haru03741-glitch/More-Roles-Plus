@@ -313,6 +313,9 @@ internal static class FloorMask
     // 床の絵が z 1〜4 にある船 (tools/make-floor-mask.py の BACK_Z_SHIP と同じ表)。他は季節の飾り (z 1.07) を除くため 4
     private static float BackZ(string ship) => ship is "PolusShip" or "FungleShip" ? 0.5f : 4f;
 
+    // z に関わらず床の層に入れる部屋の絵 (ポーラスの武器庫と通信室は床と壁が 1 枚の絵で、クルーと同じ奥行きにある)
+    private static bool AlwaysFloor(string sprite) => sprite is "room_weapon" or "room_broadcast";
+
     private static uint Signature(string ship)
     {
         float back = BackZ(ship);
@@ -322,7 +325,7 @@ internal static class FloorMask
             var sp = sr ? sr.sprite : null;
             if (!sp) continue;
             float z = sr.transform.position.z;
-            if (z < back || z >= SkyZ) continue;
+            if ((z < back && !AlwaysFloor(sp.name)) || z >= SkyZ) continue;
             // コマ送りの絵はテクスチャ (シート) ごと替わることがある
             if (sr.GetComponent<PowerTools.SpriteAnim>() || sr.GetComponent<Animator>()) continue;
             var tex = sp.texture;
