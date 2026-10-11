@@ -317,6 +317,64 @@ internal static class WaterArt
             t.FurnVersion = _furnVersion;
             t.Furn = FurnitureMask(WaterSim.Origin.x + t.Tx * tc * cell, WaterSim.Origin.y + t.Ty * tc * cell, tc * cell);
         }
+        bool native = Native.MrpNative.On;
+        DrawPixels(t, x0, y0, n, native);
+        if (native && Native.MrpNative.Verify) VerifyPixels(t, x0, y0, n);
+        fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
+        t.Tex.Apply(false, false);
+        DrawFlow(t, x0, y0);
+        if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
+        Drawn++;
+        LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    // C++ の部品の答え合わせ (native verify): 同じタイルを C# でも作って画素の違いを数える
+    internal static long VerifyTiles, VerifyDiff;
+    private static byte[] _verifyPx;
+    private static void VerifyPixels(Tile t, int x0, int y0, int n)
+    {
+        if (_verifyPx == null || _verifyPx.Length != t.Px.Length) _verifyPx = new byte[t.Px.Length];
+        Buffer.BlockCopy(t.Px, 0, _verifyPx, 0, t.Px.Length);
+        DrawPixels(t, x0, y0, n, false);
+        VerifyTiles++;
+        for (int i = 0; i < _verifyPx.Length; i++) if (_verifyPx[i] != t.Px[i]) VerifyDiff++;
+    }
+
+    // 画素 (深さ・見せてよいか・濡れ) と壁の面の水
+    private static void DrawPixels(Tile t, int x0, int y0, int n, bool native)
+    {
+        if (native) PixelsNative(t, x0, y0, n, t.Px);
+        else Pixels(t, x0, y0, n, t.Px);
+        if (t.Face == null) return;
+        WriteFace(t, x0, y0, n);
+        if (native) SpreadFaceNative(t, n);
+        else SpreadFace(t, n);
+    }
+
+    private static unsafe void PixelsNative(Tile t, int x0, int y0, int n, byte[] dst)
+    {
+        int tc = WaterSim.TileCells;
+        var org = WaterSim.Origin;
+        var sorg = SolidMap.Origin;
+        var outside = SolidMap.OutsideCells;
+        fixed (int* depth = _depth) fixed (int* wet = _wet) fixed (byte* open = SolidMap.OpenCells)
+        fixed (bool* furn = t.FloorOn ? null : t.Furn) fixed (byte* outs = outside) fixed (byte* px = dst)
+            Native.MrpNative.WaterPixels(depth, wet, tc + 4, n, x0, y0, org.x, org.y, WaterSim.Cell, (float)tc / (n - 1),
+                open, SolidMap.W, SolidMap.H, sorg.x, sorg.y, SolidMap.Ppu,
+                t.FloorOn ? 1 : 0, (byte*)furn, outs, SolidMap.BareSkyReach, 255f / DeepScale, 1f / WetRamp, px);
+    }
+
+    private static unsafe void SpreadFaceNative(Tile t, int n)
+    {
+        if (_spread == null || _spread.Length < n * n) _spread = new byte[n * n];
+        fixed (byte* px = t.Px) fixed (byte* face = t.Face) fixed (byte* tmp = _spread)
+            Native.MrpNative.WaterSpreadFace(px, face, n, SpreadPx, tmp);
+    }
+
+    private static void Pixels(Tile t, int x0, int y0, int n, byte[] dst)
+    {
+        int tc = WaterSim.TileCells;
+        float cell = WaterSim.Cell;
         int sw = SolidMap.W;
         float sppu = SolidMap.Ppu;
         var sorg = SolidMap.Origin;
@@ -335,22 +393,11 @@ internal static class WaterArt
             // 壁の際の溝を埋めるために広げた分も、絵の無い空の上には描かない。
             // 床マスクで切る時は壁と家具をマスクが絵の形で切るので、歩ける所の升 (1/16) では切らない (縁に升の段が出る)
             bool vis = (t.FloorOn || NearOpen(sx, sy, sw) && (t.Furn == null || !t.Furn[py * n + px])) && !SolidMap.BareSky(wx, wy);
-            t.Px[i] = (byte)Math.Min(255f, d * (255f / DeepScale));
-            t.Px[i + 1] = vis ? (byte)255 : (byte)0;
-            t.Px[i + 2] = (byte)Math.Min(255f, wet * 255f + 0.5f);
-            t.Px[i + 3] = 0;
+            dst[i] = (byte)Math.Min(255f, d * (255f / DeepScale));
+            dst[i + 1] = vis ? (byte)255 : (byte)0;
+            dst[i + 2] = (byte)Math.Min(255f, wet * 255f + 0.5f);
+            dst[i + 3] = 0;
         }
-        if (t.Face != null)
-        {
-            WriteFace(t, x0, y0, n);
-            SpreadFace(t, n);
-        }
-        fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
-        t.Tex.Apply(false, false);
-        DrawFlow(t, x0, y0);
-        if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
-        Drawn++;
-        LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
     // 当たり判定は家具や壁の絵より大きく取ってある (家具の手前・壁の根元に、絵では床なのに水の升が閉じた帯ができる)。

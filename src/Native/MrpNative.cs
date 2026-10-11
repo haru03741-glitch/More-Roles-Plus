@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Native;
 // 無い・版が違う時は C# 版で動く。On は実行中に切り替えられる (答え合わせ用)
 internal static unsafe class MrpNative
 {
-    private const int Abi = 2;
+    private const int Abi = 3;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -20,10 +20,13 @@ internal static unsafe class MrpNative
     private static bool _loaded;
     internal static string Status { get; private set; } = "not loaded";
     internal static bool Enabled = true;
+    internal static bool Verify;
 
     internal static delegate* unmanaged[Cdecl]<byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, int, void> FloorRaw;
     internal static delegate* unmanaged[Cdecl]<byte*, int, ushort*, byte*, void> FloorBlur;
     internal static delegate* unmanaged[Cdecl]<byte*, byte*, int, int, float, float, float, float, float, float, int, byte*, void> FloorLips;
+    internal static delegate* unmanaged[Cdecl]<int*, int*, int, int, int, int, float, float, float, float, byte*, int, int, float, float, float, int, byte*, byte*, int, float, float, byte*, void> WaterPixels;
+    internal static delegate* unmanaged[Cdecl]<byte*, byte*, int, int, byte*, void> WaterSpreadFace;
 
     internal static bool On
     {
@@ -48,6 +51,8 @@ internal static unsafe class MrpNative
             FloorRaw = (delegate* unmanaged[Cdecl]<byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, int, void>)NativeLibrary.GetExport(lib, "mrp_floor_raw");
             FloorBlur = (delegate* unmanaged[Cdecl]<byte*, int, ushort*, byte*, void>)NativeLibrary.GetExport(lib, "mrp_floor_blur");
             FloorLips = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, float, float, float, float, float, float, int, byte*, void>)NativeLibrary.GetExport(lib, "mrp_floor_lips");
+            WaterPixels = (delegate* unmanaged[Cdecl]<int*, int*, int, int, int, int, float, float, float, float, byte*, int, int, float, float, float, int, byte*, byte*, int, float, float, byte*, void>)NativeLibrary.GetExport(lib, "mrp_water_pixels");
+            WaterSpreadFace = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, byte*, void>)NativeLibrary.GetExport(lib, "mrp_water_spread_face");
             _loaded = true;
             Status = $"ok abi={got} {path}";
         }

@@ -397,11 +397,17 @@ internal static class FloorMask
             }
             reply($"OK floormask active={Active} off={Off} {Stats}");
         });
-        TestBridge.Register("native", "[on|off | check [x y]] C++ の部品の状態 / 切り替え / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所)", (args, reply) =>
+        TestBridge.Register("native", "[on|off | check [x y] | verify [on|off]] C++ の部品の状態 / 切り替え / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             bool on = Native.MrpNative.On;
             if (a.Length > 0 && (a[0] == "on" || a[0] == "off")) { Native.MrpNative.Enabled = a[0] == "on"; reply($"OK native on={Native.MrpNative.On} {Native.MrpNative.Status}"); return; }
+            if (a.Length > 0 && a[0] == "verify")
+            {
+                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; }
+                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff}");
+                return;
+            }
             if (a.Length == 0 || a[0] != "check") { reply($"OK native on={on} {Native.MrpNative.Status}"); return; }
             if (!Active) { reply("ERR native check: floor mask not active"); return; }
             float cx, cy;
