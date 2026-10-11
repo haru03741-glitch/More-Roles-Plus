@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MoreRolesPlus.Fx;
 using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
@@ -25,8 +26,9 @@ internal static class EdgeCutter
         int n = local.Length;
         if (n < 2) return false;
 
+        // 頂点と区間ごとに回る所は Vector2 の演算 (interop) を使わない (同じ式を小数で)
         var world = new Vector2[n];
-        for (int i = 0; i < n; i++) world[i] = t.TransformPoint(local[i] + offset);
+        for (int i = 0; i < n; i++) world[i] = t.TransformPoint(FxMath.V2(local[i].x + offset.x, local[i].y + offset.y));
 
         var chains = new List<List<Vector2>>();
         List<Vector2> cur = null;
@@ -36,7 +38,7 @@ internal static class EdgeCutter
         for (int i = 0; i < n - 1; i++)
         {
             Vector2 a = world[i], b = world[i + 1];
-            Vector2 d = b - a;
+            Vector2 d = FxMath.V2(b.x - a.x, b.y - a.y);
 
             // 形の内側にある区間 [s0, s1] から、残す矩形に掛かる所を引いた区間の列
             cuts.Clear();
@@ -48,7 +50,7 @@ internal static class EdgeCutter
                     foreach (var r in keep) Subtract(cuts, a, d, r);
                     // 家具の範囲を引いて残った細い切れ目は切らない (人は通れず、縁のぼかしで絵も抜けないので見た目と食い違うだけ)
                     bool trimmed = cuts.Count != 1 || cuts[0].s0 != s0 || cuts[0].s1 != s1;
-                    float len = d.magnitude;
+                    float len = (float)Math.Sqrt(d.x * d.x + d.y * d.y); // Vector2.magnitude と同じ
                     if (trimmed) cuts.RemoveAll(c => (c.s1 - c.s0) * len < MinSliver);
                 }
                 if (allow != null) cuts.RemoveAll(c => !allow(a + d * c.s0, a + d * c.s1));

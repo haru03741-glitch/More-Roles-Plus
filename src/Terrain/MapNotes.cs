@@ -22,6 +22,8 @@ internal static partial class MapNotes
     private static Rect[] _free = Array.Empty<Rect>();
     private static Rect[] _void = Array.Empty<Rect>();
     private static Rect[] _air = Array.Empty<Rect>();
+    // Level 用の範囲 (xMin, yMin, xMax, yMax の 4 つ組)。Rect.Contains は interop なので、壁の線に沿って何度も引く所は小数で比べる
+    private static float[] _voidB = Array.Empty<float>(), _lowB = Array.Empty<float>(), _higherB = Array.Empty<float>(), _highB = Array.Empty<float>();
 
     public static string Stats => $"notes keep={_keep.Length} free={_free.Length} low={_low.Length} high={_high.Length} higher={_higher.Length} void={_void.Length}";
 
@@ -31,6 +33,7 @@ internal static partial class MapNotes
         if (_ship == ship) return;
         _ship = ship;
         _keep = _free = _low = _high = _higher = _void = _air = Array.Empty<Rect>();
+        _voidB = _lowB = _higherB = _highB = Array.Empty<float>();
         if (!ship) return;
         // 派生の型から先に調べる (どのマップも ShipStatus を継ぐ)
         if (ship.TryCast<AirshipStatus>() != null) { Load(AirshipKeep, AirshipFree, AirshipLow, AirshipHigh, AirshipHigher, AirshipVoid); _air = ToRects(AirshipAir); }
@@ -48,6 +51,30 @@ internal static partial class MapNotes
         _low = ToRects(low);
         _high = ToRects(high);
         _higher = ToRects(higher);
+        _voidB = ToBoxes(voids);
+        _lowB = ToBoxes(low);
+        _higherB = ToBoxes(higher);
+        _highB = ToBoxes(high);
+    }
+
+    // Rect.MinMaxRect と同じ値 (幅 = max - min・xMax = min + 幅) を前もって出しておく
+    private static float[] ToBoxes(float[] v)
+    {
+        var b = new float[v.Length / 4 * 4];
+        for (int i = 0; i + 3 < v.Length; i += 4)
+        {
+            float x0 = v[i], y0 = v[i + 1];
+            b[i] = x0; b[i + 1] = y0; b[i + 2] = x0 + (v[i + 2] - x0); b[i + 3] = y0 + (v[i + 3] - y0);
+        }
+        return b;
+    }
+
+    // Rect.Contains と同じ判定 (下と左の辺は含み、上と右の辺は含まない)
+    private static bool InAny(float[] b, float x, float y)
+    {
+        for (int i = 0; i < b.Length; i += 4)
+            if (x >= b[i] && x < b[i + 2] && y >= b[i + 1] && y < b[i + 3]) return true;
+        return false;
     }
 
     private static Rect[] ToRects(float[] v)
@@ -148,10 +175,18 @@ internal static partial class MapNotes
     public static int Level(Vector2 p)
     {
         Ensure();
-        foreach (var k in _void) if (k.Contains(p)) return -2;
-        foreach (var k in _low) if (k.Contains(p)) return -1;
-        foreach (var k in _higher) if (k.Contains(p)) return 2;
-        foreach (var k in _high) if (k.Contains(p)) return 1;
+        return LevelNoEnsure(p.x, p.y);
+    }
+
+    // 船の確認 (Ensure) を呼び出し側で済ませた後に、同じ船で何度も引く用
+    internal static void EnsureShip() => Ensure();
+
+    internal static int LevelNoEnsure(float x, float y)
+    {
+        if (InAny(_voidB, x, y)) return -2;
+        if (InAny(_lowB, x, y)) return -1;
+        if (InAny(_higherB, x, y)) return 2;
+        if (InAny(_highB, x, y)) return 1;
         return 0;
     }
 }

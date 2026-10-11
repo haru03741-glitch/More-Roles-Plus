@@ -165,7 +165,9 @@ internal static class TerrainDamage
 
         // 外壁は壊さない: 切り取る区間ごとに、爆心から見て壁の向こう側に奥の面があるか (動きの層の面)
         Vector2 blast = e.Position;
+        Mark("pre");
         var sky = SolidMap.SkyNear(c, core.BoundRadius + 0.5f, core);
+        Mark("sky");
         var hullCells = new Dictionary<long, Vector2>(); // 形に掛かった外壁の耐久の格子 (格子ごとに 1 回だけ削る)
         var hullSegs = new List<(Vector2 A, Vector2 B, Vector2 Away)>();
         bool Inner(Vector2 a, Vector2 b)
@@ -246,7 +248,9 @@ internal static class TerrainDamage
                 return false;
             }, keep, dryRun: true);
         }
+        Mark("dry");
         int hullHp = HullDamage(hullCells, hullSegs, allowed);
+        Mark("hulldmg");
         var shipRemoved = new List<Vector2>(); // 動きの層で切った区間 (高さの違う所に縁を張る用)
         foreach (var col in walls)
         {
@@ -256,6 +260,7 @@ internal static class TerrainDamage
             if (col.gameObject.name != WallBody.CapName) // 前の穴の蓋 (穴の中の壁) には縁を張らない
                 for (int i = from; i < removed.Count; i++) shipRemoved.Add(removed[i]);
         }
+        Mark("cutship");
 
         // 視界の層は動きの層を切った後で決める: 爆心から、残った動きの壁を横切らずに届く (穴から見通せる) 面だけ抜く。
         // 動きの壁が残った所 (外壁・家具の裏) の視界の面は残す。逆に穴が開いたのに視界の面が残ると、
@@ -278,13 +283,16 @@ internal static class TerrainDamage
             DamageMap.Cracks(q, 0.35f, AngleOf(q - e.Position));
             cracked++;
         }
+        Mark("ring");
 
         // 穴の側面 (露出した壁の中との境) に蓋。ひびを付け終えてから作る (蓋にひびが付かないように)
         var capLines = cut > 0 ? body.Caps(core) : null;
         int caps = capLines != null ? WallBody.Build(capLines) : 0;
+        Mark("caps");
         if (cut == 0) { LastMouths.Clear(); LastMouthAway.Clear(); LastBreach = 0f; LastAway = default; }
         if (SolidMap.Breachable && cut > 0) SkyMouth(); // 抜けた穴を横へ広げた時も、新しく切った外壁の区間に口を足す
         int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
+        Mark("ledges");
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
         st = Stage(1, st);
         var pieces = new List<BreakPiece>();

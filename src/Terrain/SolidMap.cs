@@ -110,10 +110,13 @@ internal static class SolidMap
     }
 
     // 試合の始めにその点がいた島の番号 (0 = 歩けない所)
-    public static int IslandAt(Vector2 p)
+    public static int IslandAt(Vector2 p) => IslandAt(p.x, p.y);
+
+    // 座標を小数で渡す版 (ループの中で Vector2 の演算 = interop を使わないため)
+    public static int IslandAt(float px, float py)
     {
         if (_island == null) return 0;
-        int x = (int)MathF.Floor((p.x - _origin.x) * _ppu), y = (int)MathF.Floor((p.y - _origin.y) * _ppu);
+        int x = (int)MathF.Floor((px - _origin.x) * _ppu), y = (int)MathF.Floor((py - _origin.y) * _ppu);
         if (x < 0 || y < 0 || x >= _w || y >= _h) return 0;
         return _island[y * _w + x];
     }
@@ -125,7 +128,7 @@ internal static class SolidMap
         float step = 0.5f / _ppu;
         for (float d = step; d <= max; d += step)
         {
-            int k = IslandAt(from + dir * d);
+            int k = IslandAt(from.x + dir.x * d, from.y + dir.y * d);
             if (k != 0) return k;
         }
         return 0;

@@ -32,6 +32,7 @@ internal static class HeightLevels
 
     private static ShipStatus _ship;
     private static (Rect Area, int Level)[] _zones = Array.Empty<(Rect, int)>();
+    private static float[] _zoneB = Array.Empty<float>(); // _zones の範囲 (xMin, yMin, xMax, yMax)。Rect.Contains (interop) を使わずに比べる用
     private static readonly HashSet<(SystemTypes, SystemTypes)> Pairs = new();
 
     internal static void Warm() => Ensure();
@@ -43,11 +44,18 @@ internal static class HeightLevels
         _ship = ship;
         Pairs.Clear();
         _zones = Array.Empty<(Rect, int)>();
+        _zoneB = Array.Empty<float>();
         if (!ship) return;
         if (ship.TryCast<AirshipStatus>() != null)
         {
             foreach (var (a, b) in AirshipPairs) AddPair(a, b);
             _zones = AirshipZones;
+        }
+        _zoneB = new float[_zones.Length * 4];
+        for (int i = 0; i < _zones.Length; i++)
+        {
+            var r = _zones[i].Area;
+            _zoneB[i * 4] = r.xMin; _zoneB[i * 4 + 1] = r.yMin; _zoneB[i * 4 + 2] = r.xMax; _zoneB[i * 4 + 3] = r.yMax;
         }
         // はしごの上と下の部屋 (同じ部屋の中のはしごは組にならない)
         foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
@@ -77,18 +85,22 @@ internal static class HeightLevels
     internal static bool Differs(Vector2 m, Vector2 n)
     {
         Ensure();
-        bool fa = FloorAlong(m, n, out int ia, out Vector2 pa), fb = FloorAlong(m, -n, out int ib, out Vector2 pb);
+        MapNotes.EnsureShip();
+        // 座標は小数のまま計算する (区間ごとに何百回も引くので、Vector2 の演算 = interop を使わない)
+        float mx = m.x, my = m.y, nx = n.x, ny = n.y;
+        bool fa = FloorAlong(mx, my, nx, ny, out int ia, out float pax, out float pay), fb = FloorAlong(mx, my, -nx, -ny, out int ib, out float pbx, out float pby);
         // 区域は床の縁から少し内側で見る (塗った範囲が壁の線を少しはみ出しても、届かなくても同じ結果になるように)
-        int za = fa ? ZoneLevel(pa + n * ZoneInset) : 0, zb = fb ? ZoneLevel(pb - n * ZoneInset) : 0;
+        int za = fa ? ZoneLevel(pax + nx * ZoneInset, pay + ny * ZoneInset) : 0, zb = fb ? ZoneLevel(pbx - nx * ZoneInset, pby - ny * ZoneInset) : 0;
         // 壁の上に高さの色の線が引いてある = 越えられない壁。片側が船体の塊 (厚い壁) でも掘り進めないように、床の有無より先に見る。
         // 両側の床が同じ色で塗ってある所 (塗りつぶした範囲の中の壁) は線とみなさない
         bool inside = za != 0 && za == zb;
-        if (!inside && (MapNotes.Level(m) != 0 || MapNotes.Level(m + n * MarkReach) != 0 || MapNotes.Level(m - n * MarkReach) != 0)) return true;
+        if (!inside && (MapNotes.LevelNoEnsure(mx, my) != 0 || MapNotes.LevelNoEnsure(mx + nx * MarkReach, my + ny * MarkReach) != 0
+            || MapNotes.LevelNoEnsure(mx - nx * MarkReach, my - ny * MarkReach) != 0)) return true;
         if (!fa || !fb) return false;
         if (ia != ib || za != zb) return true;
         if (Pairs.Count == 0) return false;
-        var ra = RoomAt(pa);
-        var rb = RoomAt(pb);
+        var ra = RoomAt(new Vector2(pax, pay));
+        var rb = RoomAt(new Vector2(pbx, pby));
         return ra != null && rb != null && Pairs.Contains((ra.RoomId, rb.RoomId));
     }
 
@@ -156,17 +168,18 @@ internal static class HeightLevels
     private static Vector2 Snap(Vector2 p) => new(MathF.Round(p.x * 64f) / 64f, MathF.Round(p.y * 64f) / 64f);
 
     // 線の片側へ進んで最初に出会う床 (島の番号とその点)
-    private static bool FloorAlong(Vector2 from, Vector2 dir, out int island, out Vector2 at)
+    private static bool FloorAlong(float fx, float fy, float dx, float dy, out int island, out float ax, out float ay)
     {
         const float step = 1f / 32f;
         for (float d = step; d <= Probe; d += step)
         {
-            at = from + dir * d;
-            island = SolidMap.IslandAt(at);
+            ax = fx + dx * d;
+            ay = fy + dy * d;
+            island = SolidMap.IslandAt(ax, ay);
             if (island != 0) return true;
         }
         island = 0;
-        at = default;
+        ax = ay = 0f;
         return false;
     }
 
@@ -214,12 +227,12 @@ internal static class HeightLevels
         return rank;
     }
 
-    private static int ZoneLevel(Vector2 p)
+    private static int ZoneLevel(float x, float y)
     {
-        int painted = MapNotes.Level(p); // マップの絵に塗った注釈を先に
+        int painted = MapNotes.LevelNoEnsure(x, y); // マップの絵に塗った注釈を先に
         if (painted != 0) return painted;
-        foreach (var (area, level) in _zones)
-            if (area.Contains(p)) return level;
+        for (int i = 0; i < _zones.Length; i++)
+            if (x >= _zoneB[i * 4] && x < _zoneB[i * 4 + 2] && y >= _zoneB[i * 4 + 1] && y < _zoneB[i * 4 + 3]) return _zones[i].Level;
         return 0;
     }
 

@@ -45,13 +45,14 @@ internal sealed class CircleShape : CutShape
 
     public override bool Interval(Vector2 a, Vector2 b, out float s0, out float s1)
     {
+        // 壁の区間ごとに呼ぶので Vector2 の演算 (interop) を使わない (sqrMagnitude・Dot と同じ式)
         s0 = 1f; s1 = 0f;
-        Vector2 d = b - a;
-        float len2 = d.sqrMagnitude;
+        float dx = b.x - a.x, dy = b.y - a.y;
+        float len2 = dx * dx + dy * dy;
         if (len2 < 1e-12f) return false;
-        Vector2 f = a - _c;
-        float bq = Vector2.Dot(f, d);
-        float c = f.sqrMagnitude - _r * _r;
+        float fx = a.x - _c.x, fy = a.y - _c.y;
+        float bq = fx * dx + fy * dy;
+        float c = fx * fx + fy * fy - _r * _r;
         float disc = bq * bq - len2 * c;
         if (disc <= 0f) return false;
         float sq = MathF.Sqrt(disc);
@@ -103,9 +104,9 @@ internal sealed class RectShape : CutShape
     public override bool Interval(Vector2 a, Vector2 b, out float s0, out float s1)
     {
         s0 = 0f; s1 = 1f;
-        Vector2 pa = a - _c, d = b - a;
-        if (!Slab(Vector2.Dot(pa, _t), Vector2.Dot(d, _t), _hl, ref s0, ref s1)) return false;
-        if (!Slab(Vector2.Dot(pa, _n), Vector2.Dot(d, _n), _hd, ref s0, ref s1)) return false;
+        float pax = a.x - _c.x, pay = a.y - _c.y, dx = b.x - a.x, dy = b.y - a.y;
+        if (!Slab(pax * _t.x + pay * _t.y, dx * _t.x + dy * _t.y, _hl, ref s0, ref s1)) return false;
+        if (!Slab(pax * _n.x + pay * _n.y, dx * _n.x + dy * _n.y, _hd, ref s0, ref s1)) return false;
         return s0 < s1;
     }
 
@@ -194,13 +195,13 @@ internal sealed class ConvexShape : CutShape
     public override bool Interval(Vector2 a, Vector2 b, out float s0, out float s1)
     {
         s0 = 0f; s1 = 1f;
-        Vector2 d = b - a;
-        float len = MathF.Sqrt(d.x * d.x + d.y * d.y);
+        float dx = b.x - a.x, dy = b.y - a.y;
+        float len = MathF.Sqrt(dx * dx + dy * dy);
         for (int i = 0; i < _v.Length; i++)
         {
             Vector2 n = _n[i];
             float num = (a.x - _v[i].x) * n.x + (a.y - _v[i].y) * n.y; // 正 = 外側
-            float den = d.x * n.x + d.y * n.y;
+            float den = dx * n.x + dy * n.y;
             // 辺とほぼ平行な線分 (前の穴の蓋が次の形の縁に重なる時など) は、辺から ParallelInset より内側でなければ外とする。
             // 縁ちょうどの線を切るかどうかが浮動小数の末尾で決まると、端末ごとに壁の形が割れる
             if (MathF.Abs(den) <= len * ParallelSlope)

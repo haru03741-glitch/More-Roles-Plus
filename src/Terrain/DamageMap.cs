@@ -790,49 +790,67 @@ internal static class DamageMap
         Vector2 off = edge.offset;
         var p = new Vector2[n];
         for (int k = 0; k < n; k++) p[k] = t.TransformPoint(src[k] + off);
-        bool loop = n >= 8 && (p[0] - p[n - 1]).magnitude < 2f;
+        // 以下は頂点数 × 出っ張りの頂点数だけ回るので、Vector2 の演算 (interop) を使わず小数で計算する (Vector2 の演算と同じ式)
+        var px = new float[n];
+        var py = new float[n];
+        for (int k = 0; k < n; k++) { px[k] = p[k].x; py[k] = p[k].y; }
+        bool loop = n >= 8 && Len(px[0] - px[n - 1], py[0] - py[n - 1]) < 2f;
 
         for (int i = 1; i < n - 2; i++)
         for (int j = i + 2; j <= Math.Min(n - 2, i + BumpMaxVerts); j++)
         {
-            Vector2 chord = p[j] - p[i];
-            float w = chord.magnitude;
+            float chx = px[j] - px[i], chy = py[j] - py[i];
+            float w = Len(chx, chy);
             if (w < 0.3f || w > BumpMaxWidth) continue;
-            Vector2 cd = chord / w;
-            if (Vector2.Dot((p[i] - p[i - 1]).normalized, cd) < BumpStraight || Vector2.Dot((p[j + 1] - p[j]).normalized, cd) < BumpStraight) continue;
+            float cdx = chx / w, cdy = chy / w;
+            if (DotNormalized(px[i] - px[i - 1], py[i] - py[i - 1], cdx, cdy) < BumpStraight
+                || DotNormalized(px[j + 1] - px[j], py[j + 1] - py[j], cdx, cdy) < BumpStraight) continue;
             float path = 0f, maxD = 0f, side = 0f;
             bool ok = true;
-            Vector2 sum = Vector2.zero;
-            float x0 = Math.Min(p[i].x, p[j].x), x1 = Math.Max(p[i].x, p[j].x), y0 = Math.Min(p[i].y, p[j].y), y1 = Math.Max(p[i].y, p[j].y);
-            for (int k = i + 1; k <= j; k++) path += (p[k] - p[k - 1]).magnitude;
+            float sumX = 0f, sumY = 0f;
+            float x0 = Math.Min(px[i], px[j]), x1 = Math.Max(px[i], px[j]), y0 = Math.Min(py[i], py[j]), y1 = Math.Max(py[i], py[j]);
+            for (int k = i + 1; k <= j; k++) path += Len(px[k] - px[k - 1], py[k] - py[k - 1]);
             for (int k = i + 1; k < j && ok; k++)
             {
-                Vector2 v = p[k] - p[i];
-                float along = Vector2.Dot(v, cd), d = cd.x * v.y - cd.y * v.x;
+                float vx = px[k] - px[i], vy = py[k] - py[i];
+                float along = vx * cdx + vy * cdy, d = cdx * vy - cdy * vx;
                 if (along < -0.1f * w || along > 1.1f * w) ok = false;
                 if (side == 0f) side = Math.Sign(d);
                 else if (Math.Sign(d) != side && Math.Abs(d) > 0.05f) ok = false;
                 maxD = Math.Max(maxD, Math.Abs(d));
-                sum += p[k];
-                x0 = Math.Min(x0, p[k].x); x1 = Math.Max(x1, p[k].x); y0 = Math.Min(y0, p[k].y); y1 = Math.Max(y1, p[k].y);
+                sumX += px[k]; sumY += py[k];
+                x0 = Math.Min(x0, px[k]); x1 = Math.Max(x1, px[k]); y0 = Math.Min(y0, py[k]); y1 = Math.Max(y1, py[k]);
             }
             if (!ok || maxD < BumpMinDepth || maxD > BumpMaxDepth || path < w + 0.6f) continue;
             // 出っ張りに視界の影の線が沿っていれば、壁の柱 (Mira の食堂と倉庫の間の扉の脇など)。家具は視界を遮らない
             // (柱は影の線が 1 辺 (奥の面) にだけ沿うことがある → 1 辺でも沿えば壁)
             bool shadowed = false;
             for (int k = i; k < j && !shadowed; k++)
-                shadowed = Physics2D.OverlapCircleAll((p[k] + p[k + 1]) * 0.5f, BumpShadowNear, Constants.ShadowMask).Length > 0; // OverlapCircle (1 個版) は Android の libunity に無い
+                shadowed = Physics2D.OverlapCircleAll(FxMath.V2((px[k] + px[k + 1]) * 0.5f, (py[k] + py[k + 1]) * 0.5f), BumpShadowNear, Constants.ShadowMask).Length > 0; // OverlapCircle (1 個版) は Android の libunity に無い
             if (shadowed) continue;
             if (loop)
             {
                 // 出っ張りの中の点 (付け根の中点から出っ張りの頂点の重心へ半分) が輪の中なら、歩けるくぼみ
-                Vector2 inside = (p[i] + p[j]) * 0.25f + sum / (j - i - 1) * 0.5f;
-                if (InsidePolyline(p, inside)) continue;
+                float cnt = j - i - 1;
+                float qx = (px[i] + px[j]) * 0.25f + sumX / cnt * 0.5f, qy = (py[i] + py[j]) * 0.25f + sumY / cnt * 0.5f;
+                if (InsidePolyline(p, FxMath.V2(qx, qy))) continue;
             }
             list.Add(Rect.MinMaxRect(x0 - FurnitureMargin, y0 - FurnitureMargin, x1 + FurnitureMargin, y1 + FurnitureUp));
             i = j - 1; // 同じ出っ張りを重ねて数えない
             break;
         }
+    }
+
+    // Vector2.magnitude と同じ (float の和を倍精度の平方根で)
+    private static float Len(float x, float y) => (float)Math.Sqrt(x * x + y * y);
+
+    // Vector2.Dot(v.normalized, c) と同じ (長さが 1e-5 以下なら 0 のベクトル)
+    private static float DotNormalized(float vx, float vy, float cx, float cy)
+    {
+        float m = Len(vx, vy);
+        if (m <= 1E-05f) return 0f;
+        vx /= m; vy /= m;
+        return vx * cx + vy * cy;
     }
 
     private static bool InsidePolyline(Vector2[] p, Vector2 q)
