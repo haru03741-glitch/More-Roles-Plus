@@ -405,7 +405,6 @@ internal static partial class WaterSim
         FallTo.Clear();
         StepTo.Clear();
         ListDoorCells();
-        ShutSensorDoors();
         int props = ListPropCells();
         _tw = (_w + TileCells - 1) / TileCells;
         _th = (_h + TileCells - 1) / TileCells;
@@ -483,32 +482,6 @@ internal static partial class WaterSim
     }
 
     // ── 扉 ─────────────────────────────────────────────────────────────
-
-    // 近づくと開くガラスの扉 (Mira の食堂とバルコニーの間)。本編では当たり判定の無い見た目だけの扉で、開くのは各自の画面の中だけ
-    // (人の位置で開くので端末ごとに違う) なので、水には閉じたままの壁にする。範囲は閉じた姿 = 扉の真ん中から左右へ板 2 枚ぶん。
-    // 開くと板が動くので、板の今の位置は読まない (作った時に誰かが扉のそばにいると端末ごとに範囲がずれる)
-    private static void ShutSensorDoors()
-    {
-        var ship = ShipStatus.Instance;
-        if (!ship) return;
-        foreach (var d in ship.GetComponentsInChildren<SensorDoor>(true))
-        {
-            if (!d || !d.LeftSide || !d.RightSide || !d.LeftSide.sprite) continue;
-            var t = d.transform;
-            var c = t.position;
-            var sc = t.lossyScale;
-            var ext = d.LeftSide.sprite.bounds.extents;
-            float hx = 2f * ext.x * MathF.Abs(sc.x), hy = ext.y * MathF.Abs(sc.y);
-            int x0 = (int)MathF.Floor((c.x - hx - _org.x) / _cell), y0 = (int)MathF.Floor((c.y - hy - _org.y) / _cell);
-            int x1 = (int)MathF.Floor((c.x + hx - _org.x) / _cell), y1 = (int)MathF.Floor((c.y + hy - _org.y) / _cell);
-            for (int y = Math.Max(0, y0); y <= Math.Min(_h - 1, y1); y++)
-            for (int x = Math.Max(0, x0); x <= Math.Min(_w - 1, x1); x++)
-            {
-                int k = y * _w + x;
-                if (_shut[k] < 255) _shut[k]++;
-            }
-        }
-    }
 
     // 扉の升 (Decompression と同じ一覧・同じ升)。下に隙間のある扉は水を止めない
     private static void ListDoorCells()

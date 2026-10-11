@@ -87,7 +87,7 @@ internal static class Decompression
     private static readonly List<(int X0, int Y0, int X1, int Y1)> DoorCells = new();
     private static readonly List<Plain> Doors = new();
     private static ulong _doorBits;
-    // 扉の記録 (刻み順)。最初の記録より前は全部開き。ホストは読んで足して配り、客は届いた物を足す
+    // 扉の記録 (刻み順)。最初の記録より前は Initial (本編の扉は開き・ガラスの扉は閉じ)。ホストは読んで足して配り、客は届いた物を足す
     private static readonly List<(int Tick, ulong Bits)> DoorLog = new();
     private static bool _doorsListed;
     private static int _nextPoll;
@@ -99,10 +99,13 @@ internal static class Decompression
     private static readonly List<Vector2> Grips = new();
     private const float GripSpacing = 0.6f;
 
+    // 本編の扉 (OpenableDoor) か、近づくと開くガラスの扉 (SensorDoor)
     private readonly struct Plain
     {
         public readonly OpenableDoor Door;
-        public Plain(OpenableDoor d) { Door = d; }
+        public readonly SensorDoor Sensor;
+        public Plain(OpenableDoor d) { Door = d; Sensor = null; }
+        public Plain(SensorDoor d) { Door = null; Sensor = d; }
     }
 
     // 確認用
@@ -205,7 +208,7 @@ internal static class Decompression
     private static int CellX(float x) => (int)MathF.Floor((x - _org.x) / _cell);
     private static int CellY(float y) => (int)MathF.Floor((y - _org.y) / _cell);
 
-    // 扉の一覧 (AllDoors の順・64 まで)。升は SolidMap と同じ原点の 0.25 単位。水 (WaterSim) も同じ一覧と記録を使う
+    // 扉の一覧 (AllDoors の順・続けて近づくと開くガラスの扉・64 まで)。升は SolidMap と同じ原点の 0.25 単位。水 (WaterSim) も同じ一覧と記録を使う
     internal static int DoorCount { get { ListDoors(); return Doors.Count; } }
     internal static (int X0, int Y0, int X1, int Y1) DoorRect(int i) => DoorCells[i];
     internal static OpenableDoor DoorAtIndex(int i) => Doors[i].Door;
@@ -233,16 +236,41 @@ internal static class Decompression
                 (int)MathF.Floor((bb.max.x - org.x) / cell), (int)MathF.Floor((bb.max.y - org.y) / cell)));
             if (Doors.Count == 64) break;
         }
+        // 近づくと開くガラスの扉 (Mira の食堂とバルコニーの間)。本編では当たり判定の無い見た目だけの扉で、各自の画面の中で開く。
+        // 開きはホストが人の位置から決めて配る (ReadDoors)。範囲は閉じた姿 = 扉の真ん中から左右へ板 2 枚ぶん
+        // (開くと板が動くので板の今の位置は読まない)
+        foreach (var d in ship.GetComponentsInChildren<SensorDoor>(true))
+        {
+            if (Doors.Count == 64) break;
+            if (!d || !d.LeftSide || !d.LeftSide.sprite) continue;
+            var c = d.transform.position;
+            var sc = d.transform.lossyScale;
+            var ext = d.LeftSide.sprite.bounds.extents;
+            float hx = 2f * ext.x * MathF.Abs(sc.x), hy = ext.y * MathF.Abs(sc.y);
+            Doors.Add(new Plain(d));
+            DoorCells.Add(((int)MathF.Floor((c.x - hx - org.x) / cell), (int)MathF.Floor((c.y - hy - org.y) / cell),
+                (int)MathF.Floor((c.x + hx - org.x) / cell), (int)MathF.Floor((c.y + hy - org.y) / cell)));
+        }
     }
 
     private static ulong AllOpen => Doors.Count >= 64 ? ulong.MaxValue : (1UL << Doors.Count) - 1;
+    // 最初の記録より前の扉: 本編の扉は開き・ガラスの扉は閉じ (ホストが最初に読むまでに水が抜けない)
+    private static ulong Initial
+    {
+        get
+        {
+            ulong bits = AllOpen;
+            for (int i = 0; i < Doors.Count; i++) if (!Doors[i].Door) bits &= ~(1UL << i);
+            return bits;
+        }
+    }
 
     // 刻み s の扉 (記録の s 以前で最後の物)
     private static ulong BitsAt(int s)
     {
         for (int i = DoorLog.Count - 1; i >= 0; i--)
             if (DoorLog[i].Tick <= s) return DoorLog[i].Bits;
-        return AllOpen;
+        return Initial;
     }
 
     // 客: ホストから扉の記録が届いた
@@ -275,7 +303,7 @@ internal static class Decompression
         ListDoors();
         if (Doors.Count == 0) return;
         ulong bits = ReadDoors();
-        ulong last = DoorLog.Count > 0 ? DoorLog[DoorLog.Count - 1].Bits : AllOpen;
+        ulong last = DoorLog.Count > 0 ? DoorLog[DoorLog.Count - 1].Bits : Initial;
         if (bits == last) return;
         ushort stamp = GameClock.Stamp;
         AddDoorLog(GameClock.Expand(stamp), bits);
@@ -288,9 +316,29 @@ internal static class Decompression
         for (int i = 0; i < Doors.Count; i++)
         {
             var d = Doors[i].Door;
-            if (d && d.IsOpen) bits |= 1UL << i;
+            if (d ? d.IsOpen : SensorOpen(Doors[i].Sensor)) bits |= 1UL << i;
         }
         return bits;
+    }
+
+    // ガラスの扉の開き: 生きている人が本編の開く距離の中にいる (本編の見た目の開きは各自の画面ごとなので、ホストが位置から決める)
+    private static bool SensorOpen(SensorDoor s)
+    {
+        if (!s) return false;
+        var c = s.transform.position;
+        float r2 = s.ActivationDistance * s.ActivationDistance;
+        var all = PlayerControl.AllPlayerControls;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var pc = all[i];
+            if (!pc) continue;
+            var data = pc.Data;
+            if (data == null || data.IsDead || data.Disconnected || pc.inVent) continue;
+            var p = pc.GetTruePosition();
+            float dx = p.x - c.x, dy = p.y - c.y;
+            if (dx * dx + dy * dy <= r2) return true;
+        }
+        return false;
     }
 
     // 歩ける升と隣へ通れる向き (WaterSim.Rebuild と同じ判定)。閉じた扉の升は閉じる。地図の端の升は閉じる
