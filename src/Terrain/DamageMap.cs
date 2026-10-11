@@ -328,7 +328,6 @@ internal static class DamageMap
         return true;
     }
 
-    // touched = この破壊が抜いた画素 (番号を書いた所) の範囲
     // Stamp の C++ 版 (同じ結果)。照合 (native verify) の時は C# 版でも書いて範囲の画素を比べ、C# の結果を残す
     internal static long VerifyStamps, VerifyStampDiff;
 
@@ -420,6 +419,7 @@ internal static class DamageMap
         }
     }
 
+    // touched = この破壊が抜いた画素 (番号を書いた所) の範囲
     private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
     {
         int tx0 = int.MaxValue, ty0 = int.MaxValue, tx1 = -1, ty1 = -1;

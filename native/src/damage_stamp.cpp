@@ -145,6 +145,7 @@ static bool s_bare_sky(const StampArgs* a, float px, float py)
 
 static bool s_solid(const StampArgs* a, float px, float py)
 {
+    if (!a->sOpen) return false;
     int x = (int)floorf((px - a->sox) * a->sppu), y = (int)floorf((py - a->soy) * a->sppu);
     if (x < 0 || y < 0 || x >= a->sw || y >= a->sh) return true;
     return a->sOpen[y * a->sw + x] == 0;
