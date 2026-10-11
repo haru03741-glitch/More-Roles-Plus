@@ -34,7 +34,7 @@ internal static class WaterFall
     private const int MaxSpawnPerFrame = 240;
     private const float FlowTau = 0.25f;       // 流量のならし (秒)。刻みの無いフレームでも点滅しない
     private const float LipSpread = 0.17f;     // 縁に沿って散らす幅の半分 (升の半分 + 隣と重なる分)
-    private const float ThrowMax = 0.2f, ThrowFlow = 900f; // 外へ投げ出す距離と、それが最大になる流量 (量/秒)
+    private const float ThrowMax = 0.35f;     // 外へ投げ出す距離の上限
     private const float ImpactR0 = 0.12f, ImpactR1 = 0.12f, ImpactFlow = 600f;
     private const float Hit = 0.55f, Side = 0.2f, Corner = 0.06f;
     private const float LipHalf = 0.13f, LipDrop = 0.3f, LipFlow = 300f, LipDens = 0.9f; // 手すりを越える膜: 縁に沿った幅の半分・垂れる長さ・濃さが最大になる流量・濃さ
@@ -53,6 +53,8 @@ internal static class WaterFall
         public int Delay;
         public bool Void, Lip;   // Lip = 低い壁 (ガラスの手すり) を越えてこぼれる縁
         public float LipH;       // その壁の高さ (絵では縁がそのぶん上にある)
+        public float Depth, BarH; // 縁の水の深さ・縁に立つ物の高さ (単位)
+        public float BarF;       // 縁に立つ物で止まる割合 (0..1)
         public float Cut = float.MinValue; // 外へ落ちる水が手前の床の裏に隠れる y (WaterSim.FrontCut)
         public Canvas C;
         public int FrameSum;
@@ -131,6 +133,7 @@ internal static class WaterFall
                 Edges[key] = e;
             }
             e.X1 = f.X1; e.Y1 = f.Y1; e.Delay = f.Delay; e.Void = f.Void; e.Lip = f.Lip > 0f; e.LipH = f.Lip;
+            e.Depth = f.Depth; e.BarF = f.BarB / 256f; e.BarH = f.BarH;
             e.FrameSum += f.Amount;
         }
 
@@ -207,23 +210,46 @@ internal static class WaterFall
     private static float CutFrom(Edge e) => (e.Ny > 0f ? e.Y0 : e.Y0 - e.LipH) - WaterSim.Cell * 0.01f;
 
     private static int _spawned;
+    private const float ThrowGain = 0.5f;      // 越えた深さ 1 単位あたりの投げ出す距離 (√ に掛ける)
+
+    // 縁に沿って u の所に、縁に立つ物の絵があるか (絵だけの判定・計算には使わない)
+    private static bool Blocked(Edge e, float u)
+    {
+        float x = e.X0 - e.Ny * u, y = e.Y0 + e.Nx * u;
+        return e.Ny != 0f ? WaterBarrier.At(x, y + 0.03f) || WaterBarrier.At(x, y - 0.03f) : WaterBarrier.At(x, y);
+    }
     private static void Spawn(Edge e)
     {
         _spawned++;
-        float u = (Rand() * 2f - 1f) * LipSpread, v = Rand();
+        float v = Rand();
+        // 縁に立つ物 (柵の柱・網) の無い所から落ちる水と、物の上を越えて落ちる水を、それぞれの越える量 (越えた高さの 1.5 乗) で分ける。
+        // 物の無い所は水面のまま、物のある所は物の上から落ち始める (絵では高さはそのまま上へずれる)
+        float over = e.Lip ? 1f : 0f;
+        if (!e.Lip && e.BarF > 0f)
+        {
+            float wo = (1f - e.BarF) * e.Depth * MathF.Sqrt(e.Depth), eb = MathF.Max(0f, e.Depth - e.BarH), wb = e.BarF * eb * MathF.Sqrt(eb);
+            over = wo + wb > 0f ? wb / (wo + wb) : 0f;
+        }
+        bool top = Rand() < over;
+        float u = (Rand() * 2f - 1f) * LipSpread;
+        if (!top && e.BarF > 0f)
+            for (int tries = 0; tries < 4 && Blocked(e, u); tries++) u = (Rand() * 2f - 1f) * LipSpread;
         // 縁に沿った向き (縁の外向きに直交)
         float sx = e.X0 - e.Ny * u, sy = e.Y0 + e.Nx * u;
+        float z0 = e.Lip ? MathF.Max(0f, e.Depth - e.LipH) : e.Depth;
         float h0 = MathF.Max(0.3f, sy - e.Y1);
-        float thr = ThrowMax * MathF.Min(1f, MathF.Pow(e.Q / ThrowFlow, 1f / 3f)) * (0.8f + 0.4f * v);
+        // 縁を越える速さは越えた深さの平方根に比例する (堰)。外へ投げ出される距離は落ちる時間ぶん
+        float thr = MathF.Min(ThrowMax, ThrowGain * MathF.Sqrt(MathF.Max(0f, e.Depth - (top ? e.BarH : 0f)))) * (0.8f + 0.4f * v);
         ref var p = ref Parcels[_parcels++];
         p.T = MathF.Max(0.12f, e.Delay / (float)GameClock.Hz) * (0.95f + 0.1f * Rand());
-        // 流れに乗って縁を越えた水は、縁に沿った勢いで流れの先へずれて落ちる (落ちる間ずっと同じ速さ)
+        // 流れに乗って縁を越えた水は、縁に沿った勢いで流れの先へずれて落ちる (落ちる間ずっと同じ速さ)。
+        // 縁に沿った位置はそのまま (膜は扇に開かない)、外向きの位置は着く升の位置
         float drift = Math.Clamp(e.Vt * Carry * p.T, -CarryMax, CarryMax);
-        u += drift;
+        float along = (sx - e.X1) * -e.Ny + (sy - e.Y1) * e.Nx + drift;
         p.Gx = sx; p.Gy = sy - h0;
-        p.Ex = e.X1 - e.Ny * u * 0.8f + e.Nx * thr - e.Ny * drift * 0.2f;
-        p.Ey = e.Y1 + e.Nx * u * 0.8f + e.Ny * thr + e.Nx * drift * 0.2f;
-        p.H0 = h0;
+        p.Ex = e.X1 - e.Ny * along + e.Nx * thr;
+        p.Ey = e.Y1 + e.Nx * along + e.Ny * thr;
+        p.H0 = h0 + z0;
         p.Age = 0f;
         p.Lx = sx; p.Ly = sy;
         p.Void = e.Void;

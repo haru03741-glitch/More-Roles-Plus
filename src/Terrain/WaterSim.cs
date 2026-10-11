@@ -114,7 +114,7 @@ internal static partial class WaterSim
     internal static readonly List<(float X, float Y, int Amount)> Spilled = new();
     internal static long SpilledTotal { get; private set; }
     // 今のフレームに縁を越えた水 (縁の位置・着く位置・量・落ちる刻み)。TerrainStep が毎フレームの始めに空にし、絵 (WaterLeak) が同じフレームで読む
-    internal static readonly List<(float X0, float Y0, float X1, float Y1, int Amount, int Delay, bool Void, int Dir, float Lip)> Falls = new();
+    internal static readonly List<(float X0, float Y0, float X1, float Y1, int Amount, int Delay, bool Void, int Dir, float Lip, float Depth, int BarB, float BarH)> Falls = new();
     internal static long FellTotal { get; private set; }  // 縁を越えた水の総量
     internal static long VoidTotal { get; private set; }  // 奈落へ落ちて消えた水
     internal static int FallLinks => FallTo.Count;
@@ -1491,14 +1491,18 @@ internal static partial class WaterSim
         float x1, y1;
         if (to >= 0) { x1 = _org.x + (to % _w + 0.5f) * _cell; y1 = _org.y + (to / _w + 0.5f) * _cell; }
         else { x1 = x0 + Nx[d] * (Nx[d] != 0 ? SideVoidOut : _cell); y1 = y0 + Ny[d] * _cell - 1.5f; } // 横の縁は外へ弧を描いて谷へ
+        // 縁の水の深さと、縁に立つ物 (止まる割合・高さ)。絵は水面から落ち始め、物の無い所からは水面のまま、物のある所からは物の上を越えて落ちる
+        float depth = _hgt[k] / (float)Full;
+        int barB = _barB[k * 4 + d];
+        float barH = _barH[k * 4 + d] / (float)Full;
         for (int i = Falls.Count - 1; i >= 0 && i >= Falls.Count - 8; i--)
         {
             var f = Falls[i];
             if (f.X0 != x0 || f.Y0 != y0) continue;
-            Falls[i] = (x0, y0, x1, y1, f.Amount + amt, delay, to < 0, d, lip);
+            Falls[i] = (x0, y0, x1, y1, f.Amount + amt, delay, to < 0, d, lip, depth, barB, barH);
             return;
         }
-        Falls.Add((x0, y0, x1, y1, amt, delay, to < 0, d, lip));
+        Falls.Add((x0, y0, x1, y1, amt, delay, to < 0, d, lip, depth, barB, barH));
     }
 
     // 口の際 (道のり DrainDist 以内) の升の水を引く強さに比例して宇宙へ出す (量を消す)
