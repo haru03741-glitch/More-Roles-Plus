@@ -65,6 +65,29 @@ internal static class BreakPieces
         cracks[last] = cracks[last].WithArea(Rect.MinMaxRect(tlo.x, tlo.y, thi.x, thi.y), FractureSites.Margin, FractureSites.Max);
         FractureSites.Build(cracks, gen);
 
+        var cells = Native.MrpNative.On ? CellsNative(touched, gen) : CountCells(touched, gen, w, h);
+        if (Native.MrpNative.On && Native.MrpNative.Verify)
+        {
+            var cs = CountCells(touched, gen, w, h);
+            long diff = cs.Count != cells.Count ? 1000 : 0;
+            foreach (var kv in cs)
+                if (!cells.TryGetValue(kv.Key, out var o) || o.X0 != kv.Value.X0 || o.Y0 != kv.Value.Y0 || o.X1 != kv.Value.X1 || o.Y1 != kv.Value.Y1 ||
+                    o.Count != kv.Value.Count || o.SumX != kv.Value.SumX || o.SumY != kv.Value.SumY) diff++;
+            VerifySpawns++;
+            VerifyDiff += diff;
+            cells = cs;
+        }
+
+        // 大きい塊から (同じ数なら細胞の番号順 = 全員で同じ順)
+        var keys = new List<byte>();
+        foreach (var kv in cells) if (kv.Value.Count >= MinTexels) keys.Add(kv.Key);
+        keys.Sort((a, b) => cells[a].Count != cells[b].Count ? cells[b].Count.CompareTo(cells[a].Count) : a.CompareTo(b));
+        MakePieces(output, cells, keys, gen, tlo, thi);
+    }
+
+    // 抜いた画素 (この破壊の番号で、周りに見える穴がある物) を、いちばん近い種点の細胞ごとに数える
+    private static Dictionary<byte, Acc> CountCells(RectInt touched, byte gen, int w, int h)
+    {
         var cells = new Dictionary<byte, Acc>();
         for (int py = touched.yMin; py < touched.yMax; py++)
         for (int px = touched.xMin; px < touched.xMax; px++)
@@ -81,12 +104,51 @@ internal static class BreakPieces
             a.SumX += px; a.SumY += py;
             cells[key] = a;
         }
+        return cells;
+    }
 
-        // 大きい塊から (同じ数なら細胞の番号順 = 全員で同じ順)
-        var keys = new List<byte>();
-        foreach (var kv in cells) if (kv.Value.Count >= MinTexels) keys.Add(kv.Key);
-        keys.Sort((a, b) => cells[a].Count != cells[b].Count ? cells[b].Count.CompareTo(cells[a].Count) : a.CompareTo(b));
+    // CountCells の C++ 版 (同じ結果)。照合 (native verify) の時は両方で数えて比べ、C# の結果を使う
+    internal static long VerifySpawns, VerifyDiff;
+    private static readonly long[] _accBuf = new long[256 * 5];
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct PieceArgs
+    {
+        public byte* Px; public byte* Gens; public int W, H, Gen, VisibleFloor;
+        public int Rx0, Ry0, Rx1, Ry1;
+        public float Ox, Oy, Ppu;
+        public float* Xs; public float* Ys; public int N;
+        public long* Acc;
+    }
+
+    private static unsafe Dictionary<byte, Acc> CellsNative(RectInt touched, byte gen)
+    {
+        var cells = new Dictionary<byte, Acc>();
+        var org = DamageMap.Origin;
+        fixed (byte* px = DamageMap.PixelBytes) fixed (byte* gens = DamageMap.GenBytes)
+        fixed (float* xs = FractureSites.SiteXs) fixed (float* ys = FractureSites.SiteYs) fixed (long* acc = _accBuf)
+        {
+            var a = new PieceArgs
+            {
+                Px = px, Gens = gens, W = DamageMap.MapW, H = DamageMap.MapH, Gen = gen, VisibleFloor = VisibleFloor,
+                Rx0 = touched.xMin, Ry0 = touched.yMin, Rx1 = touched.xMax, Ry1 = touched.yMax,
+                Ox = org.x, Oy = org.y, Ppu = DamageMap.Ppu, Xs = xs, Ys = ys, N = FractureSites.Count, Acc = acc,
+            };
+            Native.MrpNative.PieceCells(&a);
+            // 1 個 = int x0 y0 x1 y1 count pad + long sumX sumY (40 バイト = long 5 個)
+            for (int k = 0; k < 256; k++)
+            {
+                int* c = (int*)(acc + k * 5);
+                if (c[4] == 0) continue;
+                cells[(byte)k] = new Acc { X0 = c[0], Y0 = c[1], X1 = c[2], Y1 = c[3], Count = c[4], SumX = acc[k * 5 + 3], SumY = acc[k * 5 + 4] };
+            }
+        }
+        return cells;
+    }
+
+    // 大きい細胞から、いちばん手前の部屋の絵を切り出して塊にする
+    private static void MakePieces(List<BreakPiece> output, Dictionary<byte, Acc> cells, List<byte> keys, byte gen, Vector2 tlo, Vector2 thi)
+    {
         int made = output.Count;
         LastStats = $"sites={FractureSites.Count} cells={cells.Count} big={keys.Count}";
         if (keys.Count == 0) return;

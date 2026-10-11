@@ -32,6 +32,8 @@ internal static class FractureSites
     private static int _n, _from;
     private static readonly int[] Starts = new int[9];
     internal static int Count => _n;
+    internal static float[] SiteXs => Xs; // C++ の部品へ渡す用 (読むだけ)
+    internal static float[] SiteYs => Ys;
     // 重ねた割れ目 i の種点の番号の始まり (終わりは i + 1 の始まり)
     internal static int Start(int i) => Starts[i];
     private const float Gap = 0.08f; // 前の割れ目の種点にこれより近い種点は置かない (同じ所を叩き直すとひびが育つだけ)

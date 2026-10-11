@@ -1135,6 +1135,9 @@ internal static class DamageMap
     internal static int MapH => _h;
     internal static byte HoleByte(int px, int py) => _pixels[(py * _w + px) * 4];
     internal static byte GenAt(int px, int py) => _gens[py * _w + px];
+    internal static byte[] PixelBytes => _pixels; // C++ の部品へ渡す用 (読むだけ)
+    internal static byte[] GenBytes => _gens;
+    internal const float Ppu = PixelsPerUnit;
     internal static byte CurrentGen => _gen;
     internal static bool GenWrapped { get; private set; }
     internal static Vector2 TexelCenter(int px, int py) => new(_origin.x + (px + 0.5f) / PixelsPerUnit, _origin.y + (py + 0.5f) / PixelsPerUnit);
