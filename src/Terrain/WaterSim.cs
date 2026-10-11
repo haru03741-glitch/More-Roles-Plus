@@ -193,6 +193,7 @@ internal static partial class WaterSim
     private static byte[] _inList;
     private static byte[] _stir;     // この刻みに起こされた (高さか地形が自分か隣で変わった)。片付けで眠らせない
     private static bool _blowing;    // 前の刻みが吸い出しの最中だった
+    private static bool _noSleep;    // 確認用: 眠らせない (water sleep off・自分の手元だけ)
     // 水か流れのある升 (Wake で足す・刻みの終わりに外す)。升ごとに 1 回までなので長さは升の数
     private static int[] _act = Array.Empty<int>();
     private static int _actN;
@@ -1158,10 +1159,15 @@ internal static partial class WaterSim
         if (x >= 1 && y >= 1 && x < _w - 1 && y < _h - 1) WakeAround(k);
     }
 
+    // 乾いた隣は流れ出さない (水が入る所で起こされる) ので、起こすのは濡れた隣だけ
     private static void WakeAround(int k)
     {
         Wake(k);
-        for (int d = 0; d < 4; d++) Wake(k + Nx[d] + Ny[d] * _w);
+        for (int d = 0; d < 4; d++)
+        {
+            int j = k + Nx[d] + Ny[d] * _w;
+            if (_hgt[j] > 0) Wake(j);
+        }
     }
 
     // 範囲の濡れた升を起こす (流れの決まり方 (縁・段差・落ちる縁) を作り直した所)
@@ -1359,7 +1365,7 @@ internal static partial class WaterSim
             bool stir = _stir[k] != 0;
             _stir[k] = 0;
             int h = _hgt[k];
-            if (still && (h == 0 || !stir && !blow && h >= MinDepth && _stepMask[k] == 0 && _seaMask[k] == 0)) { _inList[k] = 0; continue; }
+            if (still && (h == 0 || !stir && !blow && !_noSleep && h >= MinDepth && _stepMask[k] == 0 && _seaMask[k] == 0)) { _inList[k] = 0; continue; }
             _act[o++] = k;
         }
         _actN = o;
@@ -1958,6 +1964,13 @@ internal static partial class WaterSim
     }
 
     // 升の順番に依らない指紋 (刻みの番号も混ぜる)
+    private static string ArtProf()
+    {
+        double k = WaterArt.ProfTiles > 0 ? 1000.0 / System.Diagnostics.Stopwatch.Frequency / WaterArt.ProfTiles : 0;
+        var t = WaterArt.ProfTicks;
+        return $"raw={t[0] * k:0.000} face={t[1] * k:0.000} prep={t[2] * k:0.000} pix={t[3] * k:0.000} upload={t[4] * k:0.000} flow={t[5] * k:0.000}";
+    }
+
     // 指紋と量に数える升 = 回す升と眠っている升 (縁の升は回さないので数えない)
     private static bool Counted(int k)
     {
@@ -2247,14 +2260,21 @@ internal static partial class WaterSim
         {
             string a = args.Trim();
             if (a == "reset") Reset();
+            if (a.StartsWith("sleep"))
+            {
+                if (a.EndsWith("off")) _noSleep = true;
+                else if (a.EndsWith("on")) _noSleep = false;
+                reply($"OK water sleep={!_noSleep} (this device only)");
+                return;
+            }
             if (a.StartsWith("prof"))
             {
                 double k = ProfSteps > 0 ? 1000.0 / System.Diagnostics.Stopwatch.Frequency / ProfSteps : 0;
                 var t = ProfTicks;
                 int sleeping = 0;
                 for (int c = 0; _inList != null && c < _inList.Length; c++) if (_inList[c] == 0 && Counted(c)) sleeping++;
-                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000}");
-                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; }
+                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()}");
+                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; }
                 return;
             }
             if (a.StartsWith("flood"))

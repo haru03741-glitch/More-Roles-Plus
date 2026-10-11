@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Native;
 // 無い・版が違う時は C# 版で動く。On は実行中に切り替えられる (答え合わせ用)
 internal static unsafe class MrpNative
 {
-    private const int Abi = 7;
+    private const int Abi = 8;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else

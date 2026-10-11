@@ -223,9 +223,22 @@ internal static class WaterArt
         return k;
     }
 
+    // 描き直し 1 枚の区間ごとの時間 (water prof): 高さの写し・面・準備・画素・転送・流れの絵
+    internal static readonly long[] ProfTicks = new long[6];
+    internal static long ProfTiles;
+    private static long _profT;
+    private static void Prof(int i)
+    {
+        long t = System.Diagnostics.Stopwatch.GetTimestamp();
+        ProfTicks[i] += t - _profT;
+        _profT = t;
+    }
+
     private static unsafe void Draw(Tile t)
     {
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        _profT = t0;
+        ProfTiles++;
         int tc = WaterSim.TileCells, w = WaterSim.W, h = WaterSim.H;
         int x0 = t.Tx * tc, y0 = t.Ty * tc;
         // 高さを縁 3 升ぶん広げて写し (光の筋はずらした所を見るので余分に)、1-2-1 でならす
@@ -279,6 +292,7 @@ internal static class WaterArt
             _wet[y * dw + x] = wet;
         }
         t.LastDraw = _clock;
+        Prof(0);
         int n0 = tc * Px;
         if (t.FloorDirty)
         {
@@ -296,6 +310,7 @@ internal static class WaterArt
             got |= WaterHeight.StampFace(face, n0, fx, fy, fs);
             if (got) { WaterHeight.CutHoles(face, n0, fx, fy, fs); t.Face = face; }
         }
+        Prof(1);
         bool faceWet = t.Face != null && FaceWet(t, x0, y0, n0);
         if (!any && !faceWet)
         {
@@ -318,11 +333,15 @@ internal static class WaterArt
             t.Furn = FurnitureMask(WaterSim.Origin.x + t.Tx * tc * cell, WaterSim.Origin.y + t.Ty * tc * cell, tc * cell);
         }
         bool native = Native.MrpNative.On;
+        Prof(2);
         DrawPixels(t, x0, y0, n, native);
         if (native && Native.MrpNative.Verify) VerifyPixels(t, x0, y0, n);
+        Prof(3);
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
+        Prof(4);
         DrawFlow(t, x0, y0);
+        Prof(5);
         if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
         Drawn++;
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;

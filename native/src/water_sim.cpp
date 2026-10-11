@@ -71,7 +71,11 @@ static inline void mark(WaterFlowArgs* a, int k)
     if (x >= 1 && y >= 1 && x < a->w - 1 && y < a->h - 1)
     {
         wake(a, k);
-        for (int d = 0; d < 4; d++) wake(a, k + Nx[d] + Ny[d] * a->w);
+        for (int d = 0; d < 4; d++)
+        {
+            int j = k + Nx[d] + Ny[d] * a->w;
+            if (a->hgt[j] > 0) wake(a, j);
+        }
     }
 }
 
