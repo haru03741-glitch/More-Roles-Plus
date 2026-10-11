@@ -27,6 +27,11 @@ internal static partial class WaterSim
     public const int Full = 1024;             // 深さ 1 単位分の水の量
     private const int Gain = 56;              // 高さの差 → 流れ (/256)
     private const int Damp = 236;             // 前の刻みの流れを残す割合 (/256)
+    // 1 刻みを SubN 回の小刻みに分けて流す。流れ (_flux) の単位は 1 刻みあたりのままで、小刻みには 1/SubN ずつ運ぶ。
+    // 安定の条件は小刻みごとに掛かるので、流れの伸び (SubGain) を Gain より大きくでき、強い注水でも水面が傾きにくい。
+    // SubDamp は勢いの残り方が 1 刻みあたり Damp と同じになる値
+    // SubGain = Gain × SubN が小刻みあたりの安定の目安。この 2 倍では升ごとに水面がぎざぎざに揺れた (実測)
+    private const int SubN = 4, SubGain = Gain * SubN, SubDamp = 256 - (256 - Damp) / SubN;
     private const int DryHold = 48;           // 乾いた升へは、これより高い時だけ流れ出す (水たまりの縁が止まる)
     private const int WetHold = 3;            // 濡れた升の間で流れない小さな差
     private const int MinDepth = 6;           // これより浅い升は少しずつ乾く
@@ -181,6 +186,9 @@ internal static partial class WaterSim
     private static byte[] _ledge;     // 作った時に縁の際に段の影の線があったか (LedgeNear)
     private static readonly Dictionary<int, (int To, int Delay)> FallTo = new(); // 升 × 4 + 向き → 落ちる先の升 (−1 = 奈落) と刻み
     private static readonly List<(int K, int D, int Amount)> FallOut = new();
+    private static readonly List<(int K, int D, int Amount)> FallStep = new(); // 1 刻みの間に縁を越えた量 (升 × 向きごとに合計)
+    private static int[] _fallAt;    // 升 × 4 + 向き → FallStep の番号 + 1 (0 = まだ無い)
+    private static int[] _move;      // この小刻みに升 × 4 向きへ運ぶ量
     private static readonly List<(int Due, int To, int Amount)> Flying = new(); // 落ちている水 (着く刻みの順)
     private static byte[] _inList;
     private static readonly List<int> Active = new();
@@ -395,6 +403,8 @@ internal static partial class WaterSim
         _edge = new byte[n];
         _hgt = new int[n];
         _flux = new int[n * 4];
+        _move = new int[n * 4];
+        _fallAt = new int[n * 4];
         _inList = new byte[n];
         _shut = new byte[n];
         _doorCell = new byte[n];
@@ -465,7 +475,7 @@ internal static partial class WaterSim
                 if (to >= 0) { _hgt[to] += _hgt[k]; Wake(to); }
                 _hgt[k] = 0;
             }
-            for (int d = 0; d < 4; d++) _flux[k * 4 + d] = 0;
+            for (int d = 0; d < 4; d++) { _flux[k * 4 + d] = 0; _move[k * 4 + d] = 0; }
             if (open != 0) Wake(k);
             for (int d = 0; d < 4; d++) Wake(k + Nx[d] + Ny[d] * _w);
             if (_ready) Mark(k); // 升を作る時の印は作り終えた所で捨てる
@@ -1354,12 +1364,11 @@ internal static partial class WaterSim
         }
         if (fl > 0) Flying.RemoveRange(0, fl);
 
-        // 浸水: 口の周りの開いている升へ等分して入れる (余りは並びの先頭から 1 ずつ)
+        // 浸水の口の寿命 (入れるのは小刻みごと)
         for (int i = Inflows.Count - 1; i >= 0; i--)
         {
             var f = Inflows[i];
-            if (f.End != 0 && _step >= f.End) { Inflows.RemoveAt(i); continue; }
-            Pour3(f.K, f.Rate);
+            if (f.End != 0 && _step >= f.End) Inflows.RemoveAt(i);
         }
         for (int i = Jets.Count - 1; i >= 0; i--)
             if (_step - Jets[i].Start >= JetLife) Jets.RemoveAt(i);
@@ -1382,8 +1391,57 @@ internal static partial class WaterSim
         // 口の際の升の水は宇宙へ出る (流れを決める前に自分の升だけを減らすので順番に依らない)
         if (blow)
             for (int a = 0; a < Active.Count; a++) if (_hgt[Active[a]] > 0) Drain(Active[a]);
+        SeaInflow();
 
-        // 奈落の升の水は消える (落ちていく)
+        for (int s = 0; s < SubN; s++)
+        {
+            // 浸水: 口の周りの開いている升へ等分して入れる (1 刻みの量を小刻みに分ける)
+            for (int i = 0; i < Inflows.Count; i++)
+            {
+                int amt = Share(Inflows[i].Rate, s);
+                if (amt > 0) Pour3(Inflows[i].K, amt);
+            }
+            DropVoid();
+            Flow(s, blow && s == 0);
+            Heights(s == SubN - 1 && (_step & 3) == 0);
+            SubFalls();
+        }
+
+        // 縁を越えた水: 落ちる時間の後に下の升へ (奈落なら消える)。1 刻みの合計で 1 回
+        foreach (var (k, d, amt) in FallStep)
+        {
+            _fallAt[k * 4 + d] = 0;
+            FellTotal += amt;
+            var (to, delay) = FallTo[k * 4 + d];
+            if (to < 0) VoidTotal += amt;
+            else AddFlying(_step + delay, to, amt);
+            FallFx(k, d, to, amt, delay);
+        }
+        FallStep.Clear();
+
+        // 水も流れも無い升を外す
+        int o = 0;
+        for (int a = 0; a < Active.Count; a++)
+        {
+            int k = Active[a];
+            bool idle = _hgt[k] == 0;
+            if (idle)
+                for (int d = 0; d < 4; d++) if (_flux[k * 4 + d] != 0) { idle = false; break; }
+            if (idle) { _inList[k] = 0; continue; }
+            Active[o++] = k;
+        }
+        Active.RemoveRange(o, Active.Count - o);
+
+        Steps++;
+        if (_step % 300 == 0) { LastDigest = Digest(); Plugin.Logger.LogInfo($"[WaterSim] step={_step} digest={LastDigest:x8} active={Active.Count} volume={Volume()}"); }
+    }
+
+    // 1 刻みの量 f のうち小刻み s に運ぶ分 (SubN 回の合計がちょうど f)
+    private static int Share(int f, int s) => (int)((long)f * (s + 1) / SubN - (long)f * s / SubN);
+
+    // 奈落の升の水は消える (落ちていく)
+    private static void DropVoid()
+    {
         for (int a = 0; a < Active.Count; a++)
         {
             int k = Active[a];
@@ -1392,11 +1450,13 @@ internal static partial class WaterSim
             _hgt[k] = 0;
             Mark(k);
         }
+    }
 
-        SeaInflow();
-
-        // 流れ: 各升が自分の 4 本の管の流れ出しを決める (読むのは前の刻みの高さだけ・順番に依らない)。
-        // 低い床の隣へは向こうの水に押し返されずに流れ、高い床の隣へは流れない。縁を越えて落ちる分は FallOut へ
+    // 流れ: 各升が自分の 4 本の管の流れ出しを決める (読むのは前の小刻みの高さだけ・順番に依らない)。
+    // 低い床の隣へは向こうの水に押し返されずに流れ、高い床の隣へは流れない。縁を越えて落ちる分は FallOut へ。
+    // 勢いの無い流れ (段差・堰・海) の量は 1 刻みあたりで決めて小刻みに分ける
+    private static void Flow(int s, bool blow)
+    {
         FallOut.Clear();
         for (int a = 0; a < Active.Count; a++)
         {
@@ -1420,7 +1480,7 @@ internal static partial class WaterSim
                         // 同じ段は水面 (床の高さ + 深さ) の差で流れる。低い段へは向こうの水に押し返されない
                         int hj = _hgt[j];
                         int diff = known && lj < lk ? h - DryHold : h + _bed[k] + _furn[k] - hj - _bed[j] - _furn[j] - (hj == 0 ? DryHold : WetHold);
-                        f = _flux[k * 4 + d] * Damp / 256 + (diff > 0 ? diff * Gain / 256 : 0);
+                        f = _flux[k * 4 + d] * SubDamp / 256 + (diff > 0 ? diff * SubGain / 256 : 0);
                         if (f < 0) f = 0;
                         f += d == 0 ? b0 : d == 1 ? b1 : d == 2 ? b2 : b3;
                     }
@@ -1433,62 +1493,68 @@ internal static partial class WaterSim
                     int diff = _lvl[t] < lk
                         ? h - Math.Max(0, ht - StepHeight) - (ht <= StepHeight ? DryHold : WetHold)
                         : h - StepHeight - ht - (ht == 0 ? DryHold : WetHold);
-                    if (diff > 0)
-                    {
-                        int g = diff * Gain / 256;
-                        if (g <= 0) g = 1;
-                        FallOut.Add((k, d, g));
-                        sum += g;
-                    }
+                    if (diff > 0) sum += SubOut(k, d, diff * Gain / 256, s);
                 }
                 else if ((_fallMask[k] >> d & 1) != 0 && h > ((_lipMask[k] >> d & 1) != 0 ? GlassLip : FallLip))
                 {
                     int e = h - ((_lipMask[k] >> d & 1) != 0 ? GlassLip : FallLip);
-                    int g = Math.Min(e / 2, (int)((long)e * ISqrt(16L * e) / WeirDiv));
-                    if (g <= 0) g = 1;
-                    FallOut.Add((k, d, g));
-                    sum += g;
+                    sum += SubOut(k, d, Math.Min(e / 2, (int)((long)e * ISqrt(16L * e) / WeirDiv)), s);
                 }
                 else if (h > 0 && (_seaMask[k] >> d & 1) != 0)
                 {
                     // 海へ: 水面が海面より高い分だけ出ていく
                     int diff = h + _bed[k] + _furn[k] - SeaLevel - WetHold;
-                    if (diff > 0)
-                    {
-                        int g = diff * Gain / 256;
-                        if (g <= 0) g = 1;
-                        FallOut.Add((k, d, g));
-                        sum += g;
-                    }
+                    if (diff > 0) sum += SubOut(k, d, diff * Gain / 256, s);
                 }
                 _flux[k * 4 + d] = f;
-                sum += f;
+                int q = Share(f, s);
+                _move[k * 4 + d] = q;
+                sum += q;
                 if (f > 0) Wake(j);
             }
             if (sum > h)
             {
-                for (int d = 0; d < 4; d++) _flux[k * 4 + d] = (int)((long)_flux[k * 4 + d] * h / sum);
+                for (int d = 0; d < 4; d++)
+                {
+                    _flux[k * 4 + d] = (int)((long)_flux[k * 4 + d] * h / sum);
+                    _move[k * 4 + d] = (int)((long)_move[k * 4 + d] * h / sum);
+                }
                 for (int i = falls; i < FallOut.Count; i++) { var fo = FallOut[i]; FallOut[i] = (fo.K, fo.D, (int)((long)fo.Amount * h / sum)); }
             }
         }
+    }
 
-        // 高さ: 入ってくる流れ − 出ていく流れ
+    // 勢いの無い流れ出し g (1 刻みあたり・最低 1) のうちこの小刻みの分を FallOut へ
+    private static int SubOut(int k, int d, int g, int s)
+    {
+        if (g <= 0) g = 1;
+        int q = Share(g, s);
+        if (q > 0) FallOut.Add((k, d, q));
+        return q;
+    }
+
+    // 高さ: 入ってくる流れ − 出ていく流れ
+    private static void Heights(bool dry)
+    {
         for (int a = 0; a < Active.Count; a++)
         {
             int k = Active[a];
             int dh = 0;
             for (int d = 0; d < 4; d++)
             {
-                dh -= _flux[k * 4 + d];
+                dh -= _move[k * 4 + d];
                 int j = k + Nx[d] + Ny[d] * _w;
-                dh += _flux[j * 4 + Opp[d]];
+                dh += _move[j * 4 + Opp[d]];
             }
             if (dh != 0) { _hgt[k] += dh; Mark(k); }
             // 浅すぎる升は 4 刻みに 1 ずつ乾く
-            if (_hgt[k] > 0 && _hgt[k] < MinDepth && (_step & 3) == 0) { _hgt[k]--; Mark(k); }
+            if (dry && _hgt[k] > 0 && _hgt[k] < MinDepth) { _hgt[k]--; Mark(k); }
         }
+    }
 
-        // 縁を越えた水: 縁の升から引き、落ちる時間の後に下の升へ (奈落なら消える)
+    // 縁を越えた水を縁の升から引く。段差と海へはすぐ移し、落ちる分は 1 刻みの合計 (FallStep) へ足す
+    private static void SubFalls()
+    {
         foreach (var (k, d, a0) in FallOut)
         {
             // 量は高さを決める前の水で決めてあり、間に浅い升が乾いて 1 減ることがある
@@ -1505,28 +1571,10 @@ internal static partial class WaterSim
                 Wake(t);
                 continue;
             }
-            FellTotal += amt;
-            var (to, delay) = FallTo[k * 4 + d];
-            if (to < 0) VoidTotal += amt;
-            else AddFlying(_step + delay, to, amt);
-            FallFx(k, d, to, amt, delay);
+            int key = k * 4 + d, at = _fallAt[key];
+            if (at == 0) { FallStep.Add((k, d, amt)); _fallAt[key] = FallStep.Count; }
+            else { var fs = FallStep[at - 1]; FallStep[at - 1] = (fs.K, fs.D, fs.Amount + amt); }
         }
-
-        // 水も流れも無い升を外す
-        int o = 0;
-        for (int a = 0; a < Active.Count; a++)
-        {
-            int k = Active[a];
-            bool idle = _hgt[k] == 0;
-            if (idle)
-                for (int d = 0; d < 4; d++) if (_flux[k * 4 + d] != 0) { idle = false; break; }
-            if (idle) { _inList[k] = 0; continue; }
-            Active[o++] = k;
-        }
-        Active.RemoveRange(o, Active.Count - o);
-
-        Steps++;
-        if (_step % 300 == 0) { LastDigest = Digest(); Plugin.Logger.LogInfo($"[WaterSim] step={_step} digest={LastDigest:x8} active={Active.Count} volume={Volume()}"); }
     }
 
     private static void Pour3(int k, int amt)
