@@ -6,8 +6,8 @@ using UnityEngine;
 namespace MoreRolesPlus.Terrain;
 
 // 水に浸かった家具の絵に水面を描く: 家具の絵 (部屋の絵から持ち上げた家具は切り抜きの形) を型にした板を家具の手前に置き、
-// 足元から水の深さぶん上までを周りと同じ水の色で覆う (形と色は水のシェーダの _Mode 3)。
-// 天板の上まで水が来たら家具ごと覆い、家具は水越しの影として残す。
+// 画素ごとの高さ (絵の一番下を床とした斜め投影の高さ・天板の高さで頭打ち) と水位を比べて、水より低い所を周りと同じ水の色で覆う (形と色は水のシェーダの _Mode 3)。
+// 天板の上まで水が来たら天板もまだらに覆い、家具は水越しの影として残す。
 // 板は家具の子なので動きには毎フレーム触らず、水面の線と沈み具合だけを 0.1 秒ごとに見直す
 internal static partial class PropSim
 {
@@ -26,13 +26,13 @@ internal static partial class PropSim
         public SpriteRenderer Sr, Shadow; // Shadow = 影の中に見せる写し (ShadowView)
         public MaterialPropertyBlock Block;
         public Sprite Own;          // 切り抜きの形から作った絵 (片付けで消す)
-        public float Line = float.NaN, Cover = -1f;
-        public float Above;         // 絵の上の縁が足元の箱の下の縁から何単位上か (作った時の姿)
+        public float Lvl = float.NaN, Cover = -1f;
         public bool Shown, Failed;
     }
 
     private static readonly List<Prop> Furnished = new(); // 高さの表に載った家具 (中の詰まった物と脚のある物)
-    private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), LineId = Shader.PropertyToID("_Line"), CoverId = Shader.PropertyToID("_Cover"), TopId = Shader.PropertyToID("_Top"), TopWId = Shader.PropertyToID("_TopW"), SilRId = Shader.PropertyToID("_SilR");
+    private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), LvlId = Shader.PropertyToID("_Lvl"), CoverId = Shader.PropertyToID("_Cover"), FaceHId = Shader.PropertyToID("_FaceH"),
+        VPerUnitId = Shader.PropertyToID("_VPerUnit"), VBaseId = Shader.PropertyToID("_VBase"), SilRId = Shader.PropertyToID("_SilR");
     private static Material _sunkMat;
     private static long _sunkNext;
     private static int _sunkGen = -1;
@@ -60,20 +60,19 @@ internal static partial class PropSim
                 if (s != null && s.Shown) { if (s.Go) s.Go.SetActive(false); s.Shown = false; }
                 continue;
             }
-            if (s == null || (!s.Go && !s.Failed)) s = p.Sk = SunkMake(p, by);
+            if (s == null || (!s.Go && !s.Failed)) s = p.Sk = SunkMake(p);
             if (s.Failed) continue;
             if (!s.Shown) { s.Go.SetActive(true); s.Shown = true; _sunkAny = true; SunkShadow(s); }
-            // 天板の上に水が乗ったら、線を絵の上の縁より上へ (家具ごと水の下)。それまでは足元から周りの深さぶん
+            // 水位 (足元の床から): 天板に水が乗ったら天板 + 乗った厚さ。それまでは周りの深さ (中の詰まった家具は天板で止まる)
+            float top = p.Top / (float)WaterSim.Full;
             float cover = over > SunkTopWet ? Math.Min(1f, (over - SunkTopWet) / SunkFade) : 0f;
-            float line = cover > 0f ? by + s.Above + over : by + (p.Legs ? around : Math.Min(around, p.Top / (float)WaterSim.Full));
-            if (MathF.Abs(line - s.Line) < SunkStep && MathF.Abs(cover - s.Cover) < 0.05f) continue;
-            s.Line = line;
+            float lvl = over > SunkTopWet ? Math.Max(around, top + over) : p.Legs ? around : Math.Min(around, top);
+            if (MathF.Abs(lvl - s.Lvl) < SunkStep && MathF.Abs(cover - s.Cover) < 0.05f) continue;
+            s.Lvl = lvl;
             s.Cover = cover;
-            s.Block.SetFloat(LineId, line);
+            s.Block.SetFloat(LvlId, lvl);
             s.Block.SetFloat(CoverId, cover);
-            s.Block.SetFloat(TopId, by + p.Top / (float)WaterSim.Full);
-            s.Block.SetFloat(TopWId, Math.Max(over, 0f));
-            s.Block.SetFloat(SilRId, p.Lift != null ? 1f : 0f);
+            s.Block.SetFloat(FaceHId, top);
             s.Sr.SetPropertyBlock(s.Block);
             if (s.Shadow) s.Shadow.SetPropertyBlock(s.Block);
         }
@@ -115,13 +114,14 @@ internal static partial class PropSim
         return around >= SunkShow || over > SunkTopWet;
     }
 
-    private static Sunk SunkMake(Prop p, float by)
+    private static Sunk SunkMake(Prop p)
     {
         var s = new Sunk();
         Transform parent;
         Sprite sp;
         Vector3 local = FxMath.V3(0f, 0f, SunkFrontZ), scale = FxMath.V3(1f, 1f, 1f);
         bool flipX = false, flipY = false;
+        float vBase = 0f, vPerUnit; // 床の線 (絵の一番下) の v と、世界の 1 単位が v でいくつか (画素の高さを測るのに使う)
         if (p.Lift != null)
         {
             var l = p.Lift;
@@ -133,6 +133,7 @@ internal static partial class PropSim
             sp.name = "MrpSunk";
             local = FxMath.V3(l.ShapeOff.x, l.ShapeOff.y, SunkFrontZ);
             scale = FxMath.V3(l.ShapeScale.x, l.ShapeScale.y * (w.height / w.width) * (l.Shape.width / (float)l.Shape.height), 1f);
+            vPerUnit = 1f / Math.Max(w.height, 0.01f);
         }
         else
         {
@@ -142,6 +143,22 @@ internal static partial class PropSim
             sp = src.sprite;
             flipX = src.flipX;
             flipY = src.flipY;
+            // 床の線 = 網目の一番下の頂点 (網目は絵の不透明な所に沿う)。上下反転の絵は v の上端が下
+            var tex = sp.texture;
+            float sy = p.Tr.lossyScale.y;
+            vPerUnit = sp.pixelsPerUnit / (Math.Max(MathF.Abs(sy), 1e-3f) * tex.height);
+            var vs = sp.vertices;
+            var uv = sp.uv;
+            float lowY = float.MaxValue, highY = float.MinValue, vLow = 0f, vHigh = 0f;
+            for (int i = 0; i < vs.Length && i < uv.Length; i++)
+            {
+                float y = vs[i].y;
+                if (y < lowY) { lowY = y; vLow = uv[i].y; }
+                if (y > highY) { highY = y; vHigh = uv[i].y; }
+            }
+            bool down = flipY != sy < 0f;
+            vBase = down ? vHigh : vLow;
+            if (down) vPerUnit = -vPerUnit;
         }
         if (!_sunkMat)
         {
@@ -162,7 +179,9 @@ internal static partial class PropSim
         s.Block = new MaterialPropertyBlock();
         // SpriteRenderer にブロックを付けるとスプライトの絵が外れる (シェーダの既定の黒になり、型が無くて何も描かれない) ので、絵もブロックで渡す
         s.Block.SetTexture(MainTexId, sp.texture);
-        s.Above = Math.Max(sr.bounds.max.y - by, p.Top / (float)WaterSim.Full);
+        s.Block.SetFloat(SilRId, p.Lift != null ? 1f : 0f);
+        s.Block.SetFloat(VPerUnitId, vPerUnit);
+        s.Block.SetFloat(VBaseId, vBase);
         go.SetActive(false);
         return s;
     }
@@ -226,8 +245,8 @@ internal static partial class PropSim
             var s = p.Sk;
             if (!wet && s == null) continue;
             n++;
-            reply($"SUNK {p.Name} legs={p.Legs} by={by:0.###} around={around:0.###} over={over:0.###} shown={s?.Shown} failed={s?.Failed} line={s?.Line:0.###} cover={s?.Cover:0.##} above={s?.Above:0.###}");
-            if (force && s != null && s.Sr) { s.Block.SetFloat(LineId, 100f); s.Block.SetFloat(CoverId, 1f); s.Sr.SetPropertyBlock(s.Block); if (s.Shadow) s.Shadow.SetPropertyBlock(s.Block); s.Line = float.NaN; }
+            reply($"SUNK {p.Name} legs={p.Legs} by={by:0.###} around={around:0.###} over={over:0.###} shown={s?.Shown} failed={s?.Failed} lvl={s?.Lvl:0.###} cover={s?.Cover:0.##}");
+            if (force && s != null && s.Sr) { s.Block.SetFloat(LvlId, 100f); s.Block.SetFloat(CoverId, 1f); s.Sr.SetPropertyBlock(s.Block); if (s.Shadow) s.Shadow.SetPropertyBlock(s.Block); s.Lvl = float.NaN; }
         }
         reply($"OK props sunk n={n} of {Furnished.Count}");
     }

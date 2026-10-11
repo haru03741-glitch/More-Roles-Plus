@@ -9,8 +9,11 @@
 // _Mode = 2 (体の水面): クルー・小物の手前に置く板。板の原点 = 足元。_Depth = 足元の水の深さ (単位)・_Body = (半幅, 体の高さ, 沈んだ時に足す頭の上, 水面の輪の縦の半径)。
 //   板は _Quad (幅, 高さ, 足元の UV の高さ)。体の形は上の角を丸めた縦長の四角で近似し、その中の水面の線より下を周りと同じ水の色で覆う (覆いの厚さ = 線からの深さ)。
 //   頭まで沈んだら覆いを _SubMax までにして体を水越しの影として残し、頭の上から泡を昇らせる。
-// _Mode = 3 (家具の水面): 家具の絵の手前に、家具と同じ絵 (持ち上げた家具は形の白黒) を型にした板。_Line = 家具に当たる水面の線 (世界の y)・
-//   _Cover = 天板まで沈んだか (0..1)・_SilR = 型を R で見る (1) か A で見る (0)。線より下を周りと同じ水の色で覆い、沈んだら家具を水越しの影にする。
+// _Mode = 3 (家具の水面): 家具の絵の手前に、家具と同じ絵 (持ち上げた家具は形の白黒) を型にした板。_SilR = 型を R で見る (1) か A で見る (0)。
+//   斜めに見下ろした絵では高さ h の所が床から画面で h × _Rise だけ上に描かれる (本編の絵は高さを縮めて描く)。絵の一番下 (_VBase) を床とし、
+//   画素の高さ h = (下からの距離 / _Rise) を天板の高さ _FaceH で頭打ちにする。_FaceH × _Rise より下が前面 (脚・側面)・その上が天板。
+//   _Lvl = 床から測った水位で、h < _Lvl の画素を水の厚さ (_Lvl - h) の色で覆う。
+//   _Cover = 天板に乗った水がまだらに広がる具合 (0..1)。_VPerUnit = 世界の 1 単位が型の v でいくつか (上下反転なら負)。
 // _Mode = 1 (噴き出し): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)。
 // 影の中の写し (_ShadowOnly = 1) は影の板の手前にあって家具より手前になるので、_FrontOn の時は _FrontMask (水より手前の家具の絵の形) の所を抜く。
 //   _Flow (xy = 流れの向き) に沿って伸びる筋を流し、筋の明るい所と泡は白、それ以外は透けた水色。
@@ -49,10 +52,12 @@ Shader "MRP/Water"
         [PerRendererData] _Depth ("Water depth at the feet (units, wade)", Float) = 0
         _Body ("Half width, height, extra top when sunk, ring radius (wade)", Vector) = (0.25, 0.7, 0, 0.1)
         _SubMax ("Max cover over a sunk body (wade)", Float) = 0.72
-        [PerRendererData] _Line ("Waterline world y (furniture)", Float) = -10000
-        [PerRendererData] _Cover ("Sunk below the water (furniture)", Float) = 0
-        [PerRendererData] _Top ("Top edge world y (furniture)", Float) = -10000
-        [PerRendererData] _TopW ("Water over the top (furniture)", Float) = 0
+        [PerRendererData] _Lvl ("Water level above the feet (units, furniture)", Float) = -1
+        [PerRendererData] _Cover ("Water spread over the top (furniture)", Float) = 0
+        [PerRendererData] _FaceH ("Top height (units, furniture)", Float) = 0.35
+        [PerRendererData] _VPerUnit ("Silhouette v per world unit (furniture)", Float) = 0.01
+        [PerRendererData] _VBase ("Silhouette v of the floor line (furniture)", Float) = 0
+        _Rise ("Screen rise per unit of height (furniture)", Float) = 0.6
         [PerRendererData] _SilR ("Silhouette from R instead of A (furniture)", Float) = 0
         _Quad ("Board width, height, feet from the bottom (0..1) (wade)", Vector) = (0.84, 1.75, 0.0857, 0)
     }
@@ -87,7 +92,7 @@ Shader "MRP/Water"
             float _RUnits, _ShallowDepth, _Fog, _Caustic, _LineWave, _FaceView, _FoamW, _Shaft;
             fixed4 _Shallow, _Deep, _Outline, _Rim, _Abyss;
             float4 _Flow;
-            float _Depth, _SubMax, _Line, _Cover, _SilR, _Top, _TopW;
+            float _Depth, _SubMax, _Lvl, _Cover, _SilR, _FaceH, _VPerUnit, _VBase, _Rise;
             float4 _Body, _Quad;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
@@ -295,27 +300,28 @@ Shader "MRP/Water"
                 return c;
             }
 
+            float Silhouette(float4 s) { return _SilR > 0.5 ? s.r * s.a : s.a; }
+
             fixed4 Submerge(v2f i)
             {
-                float4 s = tex2D(_MainTex, i.uv);
-                float sil = _SilR > 0.5 ? s.r * s.a : s.a;
+                float sil = Silhouette(tex2D(_MainTex, i.uv));
                 if (sil <= 0.003) return 0;
+                float h = clamp((i.uv.y - _VBase) / (_VPerUnit * _Rise), 0.0, _FaceH); // この画素の高さ (単位)
                 float t = _Time.y, sub = _Cover;
+                float onTop = step(_FaceH - 1e-4, h);
                 float px = max(fwidth(i.world.y), 1e-4);
                 float wave = (tex2D(_Noise, float2(i.world.x * 0.9 + t * 0.05, t * 0.03)).r - 0.5) * _LineWave * 2.0;
-                float ex = _Line + wave * (1.0 - sub) - i.world.y;   // 水面の線から下へ何単位か
+                float ex = _Lvl + wave * (1.0 - onTop) - h;   // この画素の上の水の厚さ
                 float under = saturate(ex / px + 0.5);
                 float murk;
-                // 色を決める深さ: 天板の上に乗った水は線からの距離でなく水の厚さ (絵の高い家具でも、乗った水が浅いうちは浅い水の色)。
-                // 天板の上は真上から見るので、壁の面のような斜めの厚みは足さない
-                float onTop = sub > 0.0 ? saturate((i.world.y - _Top) / px + 0.5) : 0.0;
-                float du = sub > 0.0 ? max(_Top - i.world.y, 0.0) + _TopW : max(ex, 0.0);
-                fixed4 c = Tint(i.world, du + _FaceView * (1.0 - onTop), murk);
+                // 前面は斜めに見るので壁の面と同じく厚みを足す。天板は真上から見るので水の厚さだけ
+                fixed4 c = Tint(i.world, max(ex, 0.0) + _FaceView * (1.0 - onTop), murk);
                 c.a = min(c.a, _SubMax);
-                // 水面の線の明るい縁と、その下のちぎれた泡の帯
-                float lip = saturate(1.0 - abs(ex) / (px * _RimPx)) * (1.0 - sub);
+                // 前面に当たる水面の線の明るい縁と、その下のちぎれた泡の帯
+                float face = 1.0 - onTop;
+                float lip = saturate(1.0 - abs(ex) / (px * _RimPx)) * face;
                 float fn = tex2D(_Noise, float2(i.world.x * 2.2 + t * 0.12, ex * 6.0 - t * 0.05)).r;
-                float foam = saturate(1.0 - ex / _FoamW) * smoothstep(0.42, 0.62, fn) * (1.0 - sub) * under;
+                float foam = saturate(1.0 - ex / _FoamW) * smoothstep(0.42, 0.62, fn) * face * under;
                 c.rgb = lerp(c.rgb, float3(0.92, 0.97, 1.0), foam * 0.75);
                 c.a = max(c.a, foam * 0.9);
                 c = lerp(c, _Rim, lip * _Rim.a);
