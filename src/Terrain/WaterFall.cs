@@ -222,8 +222,7 @@ internal static class WaterFall
     {
         _spawned++;
         float v = Rand();
-        // 縁に立つ物 (柵の柱・網) の無い所から落ちる水と、物の上を越えて落ちる水を、それぞれの越える量 (越えた高さの 1.5 乗) で分ける。
-        // 物の無い所は水面のまま、物のある所は物の上から落ち始める (絵では高さはそのまま上へずれる)
+        // 縁に立つ物 (柵の柱・網) の無い所から落ちる水と、物の上を越えて落ちる水を、それぞれの越える量 (越えた高さの 1.5 乗) で分ける
         float over = e.Lip ? 1f : 0f;
         if (!e.Lip && e.BarF > 0f)
         {
@@ -236,7 +235,9 @@ internal static class WaterFall
             for (int tries = 0; tries < 4 && Blocked(e, u); tries++) u = (Rand() * 2f - 1f) * LipSpread;
         // 縁に沿った向き (縁の外向きに直交)
         float sx = e.X0 - e.Ny * u, sy = e.Y0 + e.Nx * u;
-        float z0 = e.Lip ? MathF.Max(0f, e.Depth - e.LipH) : e.Depth;
+        // 水たまりの絵は床の高さに平らに描くので、物の無い所の水は縁の線から落ちる。物の上を越える水は物の上の端から
+        // (低い壁の縁は縁の位置がもう壁の上の端にある)
+        float z0 = top && !e.Lip ? e.BarH : 0f;
         // 落ちる高さは縁ごとに 1 つ (縁に沿った位置で変えると、横の縁では上の端の粒が跳ね上がり下の端の粒が潜って、縁の脇が空く)
         float h0 = MathF.Max(0.3f, e.Y0 - e.Y1);
         // 縁を越える速さは越えた深さの平方根に比例する (堰)。外へ投げ出される距離は落ちる時間ぶん
