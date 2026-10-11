@@ -126,7 +126,8 @@ internal static partial class PropSim
         public Vector2 F0, Pivot0;  // 元の足元・回す軸 (ワールド)
         public bool Tall, Solid;
         public bool Sway;           // 当たり判定があっても揺らす (表の Wobble)
-        public bool Perch;          // 机などの上に置かれている (元の場所にいる間は水に流されない)
+        public bool Perch;          // 机などの上に置かれている (元の場所にいる間は水に流されない・床の水に浸からない)
+        public bool Planted;        // 自分の当たり判定で床に立っている (元の場所にいる間は水に流されない・床の水には浸かる)
         public int A0x, A0y;        // 始めの足元 (1/1024)
         public FurnitureLift.Lift Lift; // 重い物 (部屋の絵から持ち上げる家具)
         public Rect Bounds0;            // 重い物の元の当たり判定の範囲
@@ -150,6 +151,7 @@ internal static partial class PropSim
         public int Top, FootOx, FootOy, FootHx, FootHy;
         public int Sx0, Sy0, Sx1 = -1, Sy1 = -1, STop;
         public bool Legs;  // 脚のある家具 (水は下を通る)
+        public bool Upright; // 真横から見た板 (絵の高さ = 本当の高さ)
         public Sunk Sk;    // 水に浸かった時の水面の板
     }
 
@@ -380,8 +382,11 @@ internal static partial class PropSim
             foreach (var col in Physics2D.OverlapCircleAll(q.F0, PerchProbe, 1 << FurnitureLayer))
             {
                 if (!col || col.isTrigger || !col.enabled) continue;
-                q.Perch = true;
                 q.A0x = q.A.Px; q.A0y = q.A.Py;
+                // 自分の当たり判定 (壁際の自販機・棚) は載っている机ではない
+                var ct = col.transform;
+                if (q.Tr && (ct == q.Tr || ct.IsChildOf(q.Tr) || q.Tr.IsChildOf(ct))) { q.Planted = true; continue; }
+                q.Perch = true;
                 perched++;
                 break;
             }
@@ -392,12 +397,32 @@ internal static partial class PropSim
         string shipName = FurnitureKinds.ShipName(ship);
         foreach (var q in Props)
         {
-            if (q.FootHx <= 0 || q.FootHy <= 0 || !FurnitureHeights.TryGet(shipName, q.Name, out var fe)) continue;
-            q.Top = (int)(fe.Top * WaterSim.Full);
-            q.Legs = fe.Fill == FurnitureFill.Legs;
-            Furnished.Add(q);
-            if (!q.Legs) Solids.Add(q);
+            if (!FurnitureHeights.TryGet(shipName, q.Name, out var fe)) continue;
+            if (q.FootHx <= 0 || q.FootHy <= 0) FootFromSprite(q);
+            AddFurnished(q, fe);
         }
+        // 動かないが水には沈む家具 (動く物の一覧には入れない = 動かず、姿は始めのまま)
+        Stills.Clear();
+        foreach (var sr in decor)
+        {
+            if (!FurnitureHeights.TryGetStill(shipName, sr.sprite.name, out var fe)) continue;
+            var q = Make(sr, true);
+            if (q == null) continue;
+            q.Kind = Kind.Fixed;
+            FootFromSprite(q);
+            Stills.Add(q);
+            AddFurnished(q, fe);
+        }
+        var still = new List<FurnitureLift.Lift>();
+        FurnitureLift.CollectStill(ship, still);
+        foreach (var l in still)
+        {
+            if (!FurnitureHeights.TryGet(shipName, l.Name, out var fe) && !FurnitureHeights.TryGetStill(shipName, l.Name, out fe)) continue;
+            var q = MakeHeavy(l);
+            Stills.Add(q);
+            AddFurnished(q, fe);
+        }
+        Untie();
         Plugin.Logger.LogInfo($"[PropSim] perched={perched} solids={Solids.Count}");
         _ready = true;
         WaterArt.FrontAll();
@@ -613,6 +638,41 @@ internal static partial class PropSim
         }
         SetFoot(p, rect);
         return p;
+    }
+
+    private static void AddFurnished(Prop q, FurnitureHeights.Entry fe)
+    {
+        if (q.FootHx <= 0 || q.FootHy <= 0) return;
+        q.Top = (int)(fe.Top * WaterSim.Full);
+        q.Legs = fe.Fill == FurnitureFill.Legs;
+        q.Upright = fe.Upright;
+        Furnished.Add(q);
+        if (!q.Legs) Solids.Add(q);
+    }
+
+    // 足元の箱を持たない物 (当たり判定の無い動く物・動かない家具の絵): 当たり判定があればその範囲、
+    // 無ければ絵の下の帯 (幅は絵の 8 割・奥行きは幅の半分まで)。
+    // 動かない家具も全員の水の升を持ち上げるので、端は 1/256 に丸めて 1/2048 ずらす (端末ごとの浮動小数の末尾の差で 1/1024 の境目の両側に割れない)
+    private static void FootFromSprite(Prop p)
+    {
+        var col = p.Tr ? p.Tr.GetComponent<Collider2D>() : null;
+        float x0, y0, x1, y1;
+        if (col && !col.isTrigger)
+        {
+            var c = col.bounds;
+            x0 = c.min.x; y0 = c.min.y; x1 = c.max.x; y1 = c.max.y;
+        }
+        else
+        {
+            var sr = p.Tr ? p.Tr.GetComponent<SpriteRenderer>() : null;
+            if (!sr) return;
+            var b = sr.bounds;
+            float w = b.size.x * 0.8f, d = Math.Min(b.size.y, b.size.x * 0.5f);
+            x0 = b.center.x - w * 0.5f; x1 = b.center.x + w * 0.5f; y0 = b.min.y; y1 = b.min.y + d;
+        }
+        SetFoot(p, Rect.MinMaxRect(Snap(x0), Snap(y0), Snap(x1), Snap(y1)));
+
+        static float Snap(float v) => MathF.Round(v * 256f) / 256f + 1f / 2048f;
     }
 
     private static void SetFoot(Prop p, Rect r)
@@ -963,7 +1023,7 @@ internal static partial class PropSim
             if (st.Gone || st.Stuck) continue;
             int sx = st.Px / _cellU, sy = st.Py / _cellU;
             // 机・ベッドや岩の上に載っている物は水が下を通るので流さない
-            if (p.Perch && Math.Abs(st.Px - p.A0x) + Math.Abs(st.Py - p.A0y) < PerchMove) continue;
+            if ((p.Perch || p.Planted) && Math.Abs(st.Px - p.A0x) + Math.Abs(st.Py - p.A0y) < PerchMove) continue;
             if (!heavy && (WaterSim.UnderProp(sx / WaterSim.Sub, sy / WaterSim.Sub) || OnFurniture(w, st))) continue;
             int h, fx, fy;
             if (heavy ? !AroundFlow(p, st, out h, out fx, out fy) : !WaterSim.FlowCell(sx / WaterSim.Sub, sy / WaterSim.Sub, out h, out fx, out fy)) continue;
@@ -1338,6 +1398,7 @@ internal static partial class PropSim
         _running = false;
         SunkClear();
         Furnished.Clear();
+        Stills.Clear();
         Solids.Clear();
         Props.Clear();
         Heavies.Clear();
@@ -1412,10 +1473,11 @@ internal static partial class PropSim
 
     internal static void Register()
     {
-        TestBridge.Register("props", "[list | heights | sunk [force]] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / sunk = 水に浸かった家具の水面の線と板に渡した値・force = 確認用に全部の板を家具ごと沈めたまま止める (sunk だけで戻る))", (args, reply) =>
+        TestBridge.Register("props", "[list | heights | audit | sunk [force]] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / audit = 家具の層の当たり判定・高さの表・水面の板・水より手前の絵の対応を Screens/propaudit_<船>.txt へ / sunk = 水に浸かった家具の水面の線と板に渡した値・force = 確認用に全部の板を家具ごと沈めたまま止める (sunk だけで戻る))", (args, reply) =>
         {
             if (!_ready && !Ensure()) { reply("ERR props no ship"); return; }
             if (args.Trim() == "heights") { reply(WriteHeights()); return; }
+            if (args.Trim() == "audit") { reply(WriteAudit()); return; }
             if (args.Trim().StartsWith("sunk")) { SunkReport(args.Trim() == "sunk force", reply); return; }
             int s = 0, m = 0, f = 0, moved = 0, diff = 0;
             foreach (var p in Props)
@@ -1426,7 +1488,7 @@ internal static partial class PropSim
             }
             if (args.Trim() == "list")
                 foreach (var p in Props)
-                    reply($"PROP {p.Name} {p.Kind} foot={TestBridge.F(_org.x + p.A.Px / (float)Unit)},{TestBridge.F(_org.y + p.A.Py / (float)Unit)} ang={p.A.Ang / 16} moved={p.A.Moved} size={p.SizeU / (float)Unit:0.00}{(p.A.Gone ? " gone" : "")}{(p.A.Stuck ? " stuck" : "")}{(p.Perch ? " perch" : "")}");
+                    reply($"PROP {p.Name} {p.Kind} foot={TestBridge.F(_org.x + p.A.Px / (float)Unit)},{TestBridge.F(_org.y + p.A.Py / (float)Unit)} ang={p.A.Ang / 16} moved={p.A.Moved} size={p.SizeU / (float)Unit:0.00}{(p.A.Gone ? " gone" : "")}{(p.A.Stuck ? " stuck" : "")}{(p.Perch ? " perch" : "")}{(p.Planted ? " planted" : "")}");
             reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} swept={Swept} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} lost={Lost} plugs={Plugs} digest={Digest():x8} bumps={Bumps} lastBump={LastBump}");
         });
     }

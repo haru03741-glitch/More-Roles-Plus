@@ -37,6 +37,7 @@ internal static class WaterFall
     private const float ThrowMax = 0.2f, ThrowFlow = 900f; // 外へ投げ出す距離と、それが最大になる流量 (量/秒)
     private const float ImpactR0 = 0.12f, ImpactR1 = 0.12f, ImpactFlow = 600f;
     private const float Hit = 0.55f, Side = 0.2f, Corner = 0.06f;
+    private const float LipHalf = 0.13f, LipDrop = 0.3f, LipFlow = 300f, LipDens = 0.9f; // 手すりを越える膜: 縁に沿った幅の半分・垂れる長さ・濃さが最大になる流量・濃さ
     private const float SprayEdge = 0.13f;     // 薄い筋も見えるように噴き出しより低く
     private const float IdleLife = 2.5f;       // 流れが止まってから縁と絵を片づけるまで
     private const float StealEvery = 0.5f;     // 画面の範囲を測り直し、絵の上限で描けない縁が画面の近くにあるか見る間隔
@@ -48,7 +49,7 @@ internal static class WaterFall
         public float X0, Y0, X1, Y1, Nx, Ny;
         public float Q, Acc, Idle;
         public int Delay;
-        public bool Void;
+        public bool Void, Lip;   // Lip = ガラスの手すりを越えてこぼれる縁
         public Canvas C;
         public int FrameSum;
     }
@@ -118,6 +119,8 @@ internal static class WaterFall
 
         foreach (var f in falls)
         {
+            // 奥 (北) の縁から奈落へ落ちる水は、その縁の床より奥へ落ちるので見えない (描くと手前の床の上に滝が被る)
+            if (f.Dir == 2 && f.Void) continue;
             long key = ((long)MathF.Round(f.X0 * 64f) << 32) ^ (uint)(int)MathF.Round(f.Y0 * 64f);
             if (!Edges.TryGetValue(key, out var e))
             {
@@ -125,7 +128,7 @@ internal static class WaterFall
                 e = new Edge { X0 = f.X0, Y0 = f.Y0, Nx = d == 0 ? 1 : d == 1 ? -1 : 0, Ny = d == 2 ? 1 : d == 3 ? -1 : 0 };
                 Edges[key] = e;
             }
-            e.X1 = f.X1; e.Y1 = f.Y1; e.Delay = f.Delay; e.Void = f.Void;
+            e.X1 = f.X1; e.Y1 = f.Y1; e.Delay = f.Delay; e.Void = f.Void; e.Lip = f.Lip;
             e.FrameSum += f.Amount;
         }
 
@@ -335,6 +338,13 @@ internal static class WaterFall
             float r = ImpactR0 + ImpactR1 * Math.Min(1f, e.Q / ImpactFlow);
             Disc(c, e.X1 + e.Nx * 0.05f, e.Y1 + e.Ny * 0.05f, r, Math.Min(1f, e.Q / ImpactFlow * 2f));
         }
+        // ガラスの手すりを越える水: 手すりの上の縁を覆う膜 (縁に沿って切れ目なく・上の縁は泡で白く) を、手すりの面に沿って垂らす
+        foreach (var e in Edges.Values)
+        {
+            if (e.C != c || !e.Lip || e.Q < 1f) continue;
+            float s = Math.Min(1f, e.Q / LipFlow);
+            LipSheet(c, e, s);
+        }
         bool now = c.Bx1 >= 0, before = c.X1p >= 0;
         // 流れが止まったら 1 回だけ空の絵を書いて、それ以降は描かない
         if (!now && !before) return;
@@ -370,6 +380,24 @@ internal static class WaterFall
         {
             float f = (float)k / steps;
             Splat(c, (int)(ax + dx * f), (int)(ay + dy * f), w, foam);
+        }
+    }
+
+    // 手すりの上の縁 (Y0) から手すりの面を LipDrop だけ垂れる膜。縁に沿って 1 画素ごとに縦の線を置き、長さを少し揺らす
+    private static void LipSheet(Canvas c, Edge e, float s)
+    {
+        float tx = -e.Ny, ty = e.Nx; // 縁に沿った向き
+        int n = (int)MathF.Ceiling(LipHalf * 2f * Ppu);
+        float t = (float)(System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency);
+        for (int k = 0; k <= n; k++)
+        {
+            float u = -LipHalf + k / Ppu;
+            float x = e.X0 + tx * u, y = e.Y0 + ty * u;
+            float wob = 0.5f + 0.5f * MathF.Sin(x * 23f + t * 9f);
+            int ax = (int)((x - c.X0) * Ppu), ay = (int)((y - c.Y0) * Ppu);
+            int len = (int)((LipDrop * (0.7f + 0.3f * wob)) * Ppu);
+            for (int j = 0; j <= len; j++)
+                Splat(c, ax, ay - j, LipDens * s, j == 0 ? 0.9f : 0.15f);
         }
     }
 

@@ -479,7 +479,8 @@ internal static class WaterArt
         }
     }
 
-    // 壁の面の画素 (wx, 床からの高さ z の所) の真下の床の水の深さ (単位)。横は升の真ん中の間を線形に引く (升ごとの段を水面の線に出さない)
+    // 壁の面の画素 (wx, 床からの高さ z の所) の真下の床の水の深さ (単位)。横は升の真ん中の間を線形に引く (升ごとの段を水面の線に出さない)。
+    // 真下に水の升が無い列 (壁の角・家具が壁に沿って並ぶ所) は隣の列の水面を続ける: 0 へ引くと水面の線が床まで V 字に落ちて尖る
     private static float BaseDepth(float wx, float wyBase)
     {
         float cell = WaterSim.Cell;
@@ -487,21 +488,41 @@ internal static class WaterArt
         float fx = (wx - org.x) / cell - 0.5f;
         int cx = (int)MathF.Floor(fx), cy = (int)MathF.Floor((wyBase - org.y) / cell);
         float f = fx - cx;
-        return (CellBase(cx, cy) * (1f - f) + CellBase(cx + 1, cy) * f) * (1f / WaterSim.Full);
+        int a = CellBase(cx, cy), b = CellBase(cx + 1, cy);
+        if (a < 0 && b < 0)
+        {
+            a = CellBase(cx - 1, cy);
+            b = CellBase(cx + 2, cy);
+            if (a < 0 && b < 0) return 0f;
+        }
+        if (a < 0) a = b;
+        else if (b < 0) b = a;
+        return (a * (1f - f) + b * f) * (1f / WaterSim.Full);
     }
 
+    // 升 (cx, cy) から下へ探した最初の水の升の見せる深さ。家具の足元の升 (水は家具の周りにある) は飛ばして先を探す。
+    // 見つからなければ -1
+    private const int FaceFurnScan = 8;
     private static int CellBase(int cx, int cy)
     {
         int w = WaterSim.W;
-        if (cx < 1 || cx >= w - 1) return 0;
-        for (int d = 0; d <= FaceBaseScan; d++)
+        if (cx < 1 || cx >= w - 1) return -1;
+        int open = 0;
+        for (int d = 0; d <= FaceFurnScan; d++)
         {
             int y = cy - d;
-            if (y < 1 || y >= WaterSim.H - 1) return 0;
+            if (y < 1 || y >= WaterSim.H - 1) return -1;
             int k = y * w + cx;
-            if (WaterSim.Open(k)) return WaterSim.ShownDepth(k);
+            if (!WaterSim.Open(k))
+            {
+                // 壁の根元の閉じた升 (壁の線を太らせた分) は FaceBaseScan 升まで
+                if (open == 0 && d < FaceBaseScan) continue;
+                return -1;
+            }
+            open++;
+            if (WaterSim.FurnAt(k) == 0 || WaterSim.Height(k) > WaterSim.TopFilm) return WaterSim.ShownDepth(k);
         }
-        return 0;
+        return -1;
     }
 
     // 壁の面に水が掛かっているか (タイルを出すか)

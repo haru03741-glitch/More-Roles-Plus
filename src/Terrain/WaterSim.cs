@@ -43,6 +43,7 @@ internal static partial class WaterSim
     private const int WeirDiv = 64 * 256 / FallGain;   // e × √(16e) / これ = e=256 (√(16e)=64) で e × FallGain/256
     // ガラスの手すり: 縁の先が空でも、この高さ (水の深さの物差し) までは溜まり、越えた分が手すりの外へ落ちる
     private const int GlassLip = Full * 22 / 100;
+    private const float GlassRailUp = 0.2f;   // ガラスの手すりの絵の高さ (世界単位・上の縁が床の縁からどれだけ上に描かれているか)
     private const int GlassDrop = 4;          // 手すりの外の空へ落ちる時間を決める距離 (升)
     private const sbyte NoLevel = sbyte.MinValue;   // 高さが決まらない升 (落ちも登りもしない)
     private const sbyte VoidLevel = -2;              // 奈落 (落ちた水は消える)
@@ -110,7 +111,7 @@ internal static partial class WaterSim
     internal static readonly List<(float X, float Y, int Amount)> Spilled = new();
     internal static long SpilledTotal { get; private set; }
     // 今のフレームに縁を越えた水 (縁の位置・着く位置・量・落ちる刻み)。TerrainStep が毎フレームの始めに空にし、絵 (WaterLeak) が同じフレームで読む
-    internal static readonly List<(float X0, float Y0, float X1, float Y1, int Amount, int Delay, bool Void, int Dir)> Falls = new();
+    internal static readonly List<(float X0, float Y0, float X1, float Y1, int Amount, int Delay, bool Void, int Dir, bool Lip)> Falls = new();
     internal static long FellTotal { get; private set; }  // 縁を越えた水の総量
     internal static long VoidTotal { get; private set; }  // 奈落へ落ちて消えた水
     internal static int FallLinks => FallTo.Count;
@@ -212,12 +213,15 @@ internal static partial class WaterSim
 
     // 床の高さで描く水の深さ: 家具の足元の升 (当たり判定の四角なので絵の外の床も含む) は、床から見えるのは家具の周りの水なので、
     // 天板の上に水があれば天板からの深さを足し、無ければ家具の外の一番近い升の深さ (縦横 FurnScan 升まで) を使う
+    // 天板に残った薄い膜 (流れ落ちきらない分) は天板の上の水として数えない: 膜でも天板の高さ + 膜の水面になり、
+    // 周りの水よりずっと高い水面が壁の面に這い上がって尖る
     private const int FurnScan = 8;
+    internal const int TopFilm = Full * 3 / 100;
     internal static int ShownDepth(int k)
     {
         int f = _furn == null ? 0 : _furn[k], h = _hgt[k];
         if (f == 0) return h;
-        if (h > 0) return h + f;
+        if (h > TopFilm) return h + f;
         int best = 0;
         for (int d = 0; d < 4; d++)
         {
@@ -964,11 +968,16 @@ internal static partial class WaterSim
 
     // ガラスの手すり (x0, y0, x1, y1, 向き): 範囲に真ん中がある升の、その向きの縁 (隣へ流れない縁) は手すりの高さまで水を溜め、
     // 越えた分を手すりの外の空へ落とす。網のフェンスは網目を水が抜けるので含めない (床の高さから落ちる)。
-    // Mira の発射台の南 (左右 2 区間・真ん中は通路) とバルコニー (長い所の南・皿の区画の西・南・東)
+    // Mira の発射台の南 (左右 2 区間・真ん中は通路)・発射台から東の廊下へ続く渡り廊下 (南・北・西の端・北の手すりの外の小さな出っ張り)・
+    // バルコニー (長い所の南・皿の区画の西・南・東)
     private static readonly float[] MiraGlassRails =
     {
         -11.5f, -0.5f, -6.25f, -0.25f, 3,
         -2.5f, -0.5f, -0.25f, -0.25f, 3,
+        -6.25f, -2.75f, 3.75f, -2.5f, 3,
+        -2.5f, -1f, 2.25f, -0.75f, 2,
+        2.25f, -0.75f, 3.75f, -0.5f, 2,
+        -6.25f, -2.75f, -6f, -0.75f, 1,
         20.5f, -2.75f, 29f, -2.5f, 3,
         17.75f, -3.75f, 18f, -2.25f, 1,
         17.75f, -3.75f, 20.5f, -3.5f, 3,
@@ -1578,6 +1587,9 @@ internal static partial class WaterSim
     {
         int x = k % _w, y = k / _w;
         float x0 = _org.x + (x + 0.5f + Nx[d] * 0.5f) * _cell, y0 = _org.y + (y + 0.5f + Ny[d] * 0.5f) * _cell;
+        // ガラスの手すりは越えた水が手すりの上の縁からこぼれる (絵では高さは上へずれる)
+        bool lip = (_lipMask[k] >> d & 1) != 0;
+        if (lip) y0 += GlassRailUp;
         float x1, y1;
         if (to >= 0) { x1 = _org.x + (to % _w + 0.5f) * _cell; y1 = _org.y + (to / _w + 0.5f) * _cell; }
         else { x1 = x0 + Nx[d] * (Nx[d] != 0 ? SideVoidOut : _cell); y1 = y0 + Ny[d] * _cell - 1.5f; } // 横の縁は外へ弧を描いて谷へ
@@ -1585,10 +1597,10 @@ internal static partial class WaterSim
         {
             var f = Falls[i];
             if (f.X0 != x0 || f.Y0 != y0) continue;
-            Falls[i] = (x0, y0, x1, y1, f.Amount + amt, delay, to < 0, d);
+            Falls[i] = (x0, y0, x1, y1, f.Amount + amt, delay, to < 0, d, lip);
             return;
         }
-        Falls.Add((x0, y0, x1, y1, amt, delay, to < 0, d));
+        Falls.Add((x0, y0, x1, y1, amt, delay, to < 0, d, lip));
     }
 
     // 口の際 (道のり DrainDist 以内) の升の水を引く強さに比例して宇宙へ出す (量を消す)

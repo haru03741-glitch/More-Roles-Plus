@@ -16,7 +16,7 @@ namespace MoreRolesPlus.Terrain;
 internal static class FurnitureLift
 {
     private const int FurnitureLayer = 12;
-    private const int ShapePx = 64;          // 形のテクスチャの 1 辺
+    internal const int ShapePx = 64;         // 形のテクスチャの 1 辺
     internal const float Pad = 0.3f;         // 形を当たり判定から広げる幅の上限 (当たり判定は絵より小さい所がある。広げた所の床は模様で外す)
     private const float CutZ = 0.0006f;      // 部屋の絵より手前・水 (0.0004) より手前
     private const float FillZ = 0.0002f;     // 部屋の絵より手前・水より奥
@@ -74,16 +74,23 @@ internal static class FurnitureLift
         public Transform Cut;
         // 切り抜きの形 (白黒) と、その真ん中の切り抜きの絵から見た位置・絵の大きさ (家具の水面の板が型に使う)
         public Texture2D Shape;
+        public bool[] ShapeIn;  // Shape と同じ形 (ShapePx 四方・左下原点)
         public Rect ShapeWorld;
         public Vector2 ShapeOff, ShapeScale;
         public bool Tried, Failed;
+        public bool Still;      // 端末が載っていて動かさない家具 (切り抜かず、水面の板の型と置き場だけ作る)
         // 今の置き方 (元の足元 Pivot を軸に PoseAng 度回して Pose へ)。床マスクが家具の今いる所を抜くのに使う
         public float PivotX, PivotY, PoseX, PoseY, PoseAng;
     }
 
     // 船の中の持ち上げられそうな家具 (並びは当たり判定の階層順 = 全員同じ)
     // all = 床を測っていない部屋の家具も (床を測る道具へ書き出す用)
-    internal static void Collect(ShipStatus ship, List<Lift> into, bool all = false)
+    internal static void Collect(ShipStatus ship, List<Lift> into, bool all = false) => Collect(ship, into, all, false);
+
+    // 端末が載っていて動かさない家具 (水面の板だけ付ける)
+    internal static void CollectStill(ShipStatus ship, List<Lift> into) => Collect(ship, into, true, true);
+
+    private static void Collect(ShipStatus ship, List<Lift> into, bool all, bool still)
     {
         var consoles = new List<Vector2>();
         foreach (var c in ship.AllConsoles) if (c) consoles.Add(c.transform.position);
@@ -94,7 +101,7 @@ internal static class FurnitureLift
             if (col.GetComponent<SpriteRenderer>()) continue; // 自分の絵を持つ物は部屋の絵に描き込まれていない
             bool hasConsole = false;
             foreach (var p in consoles) if (col.OverlapPoint(p)) { hasConsole = true; break; }
-            if (hasConsole) continue;
+            if (hasConsole != still) continue;
             var b = col.bounds;
             var r = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
             string room = BreakPieces.RoomNameAt(r.center, r);
@@ -104,7 +111,7 @@ internal static class FurnitureLift
             into.Add(new Lift
             {
                 Name = col.name, Room = room, Floor = floor ?? default, Col = col, ColTr = tr, ColT0 = tr.position, ColRot0 = tr.eulerAngles.z,
-                Bounds = r,
+                Bounds = r, Still = still,
             });
         }
     }
@@ -153,6 +160,7 @@ internal static class FurnitureLift
             var cp = cut.Tr.position;
             var cs = cut.Tr.lossyScale;
             l.Shape = shape;
+            l.ShapeIn = shapeIn;
             l.ShapeWorld = world;
             l.ShapeScale = FxMath.V2(cs.x != 0f ? 1f / cs.x : 1f, cs.y != 0f ? 1f / cs.y : 1f);
             l.ShapeOff = FxMath.V2((world.center.x - cp.x) * l.ShapeScale.x, (world.center.y - cp.y) * l.ShapeScale.y);
@@ -167,6 +175,36 @@ internal static class FurnitureLift
         catch (Exception e)
         {
             Plugin.Logger.LogError($"[FurnitureLift] {l.Name}: {e}");
+            l.Failed = true;
+            return false;
+        }
+    }
+
+    // 動かさない家具: 部屋の絵は切り抜かず、水面の板の型 (当たり判定の形) と、板を下げる置き場 (切り抜きと同じ奥行き) だけ作る
+    internal static bool EnsureStill(Lift l)
+    {
+        if (l.Tried) return !l.Failed;
+        l.Tried = true;
+        try
+        {
+            var shape = MakeShape(l, out var shapeIn);
+            Owned.Add(shape);
+            var world = PaddedRect(l);
+            var go = new GameObject("MrpStillAnchor");
+            go.transform.position = FxMath.V3(world.center.x, world.center.y, 0f);
+            SetZ(go.transform, CutZ);
+            Lifted.Add(go);
+            l.Cut = go.transform;
+            l.Shape = shape;
+            l.ShapeIn = shapeIn;
+            l.ShapeWorld = world;
+            l.ShapeScale = FxMath.V2(1f, 1f);
+            l.ShapeOff = FxMath.V2(0f, 0f);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"[FurnitureLift] still {l.Name}: {e}");
             l.Failed = true;
             return false;
         }

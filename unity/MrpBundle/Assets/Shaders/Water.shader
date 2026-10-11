@@ -10,9 +10,10 @@
 //   板は _Quad (幅, 高さ, 足元の UV の高さ)。体の形は上の角を丸めた縦長の四角で近似し、その中の水面の線より下を周りと同じ水の色で覆う (覆いの厚さ = 線からの深さ)。
 //   頭まで沈んだら覆いを _SubMax までにして体を水越しの影として残し、頭の上から泡を昇らせる。
 // _Mode = 3 (家具の水面): 家具の絵の手前に、家具と同じ絵 (持ち上げた家具は形の白黒) を型にした板。_SilR = 型を R で見る (1) か A で見る (0)。
-//   斜めに見下ろした絵では高さ h の所が床から画面で h × _Rise だけ上に描かれる (本編の絵は高さを縮めて描く)。絵の一番下 (_VBase) を床とし、
+//   斜めに見下ろした絵では高さ h の所が床から画面で h × _Rise だけ上に描かれる (本編の絵は高さを縮めて描く)。絵の下の縁を床とし、
 //   画素の高さ h = (下からの距離 / _Rise) を天板の高さ _FaceH で頭打ちにする。_FaceH × _Rise より下が前面 (脚・側面)・その上が天板。
 //   _Lvl = 床から測った水位で、h < _Lvl の画素を水の厚さ (_Lvl - h) の色で覆う。
+//   床の線は列ごと (_BaseTex・_BaseOn) で、無い時は絵全体の一番下 (_VBase)。
 //   _Cover = 天板に乗った水がまだらに広がる具合 (0..1)。_VPerUnit = 世界の 1 単位が型の v でいくつか (上下反転なら負)。
 // _Mode = 1 (噴き出し): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)。
 // 影の中の写し (_ShadowOnly = 1) は影の板の手前にあって家具より手前になるので、_FrontOn の時は _FrontMask (水より手前の家具の絵の形) の所を抜く。
@@ -57,6 +58,12 @@ Shader "MRP/Water"
         [PerRendererData] _FaceH ("Top height (units, furniture)", Float) = 0.35
         [PerRendererData] _VPerUnit ("Silhouette v per world unit (furniture)", Float) = 0.01
         [PerRendererData] _VBase ("Silhouette v of the floor line (furniture)", Float) = 0
+        [PerRendererData] _BaseTex ("Floor line per column (furniture)", 2D) = "black" {}
+        [PerRendererData] _BaseU0 ("Floor line columns: u0 (furniture)", Float) = 0
+        [PerRendererData] _BaseUS ("Floor line columns: 1/du (furniture)", Float) = 1
+        [PerRendererData] _BaseV0 ("Floor line columns: v0 (furniture)", Float) = 0
+        [PerRendererData] _BaseVS ("Floor line columns: dv (furniture)", Float) = 1
+        [PerRendererData] _BaseOn ("Floor line per column on (furniture)", Float) = 0
         _Rise ("Screen rise per unit of height (furniture)", Float) = 0.6
         [PerRendererData] _SilR ("Silhouette from R instead of A (furniture)", Float) = 0
         _Quad ("Board width, height, feet from the bottom (0..1) (wade)", Vector) = (0.84, 1.75, 0.0857, 0)
@@ -80,6 +87,9 @@ Shader "MRP/Water"
 
             sampler2D _MainTex;
             sampler2D _Noise;
+            sampler2D _BaseTex;   // 家具の水面: 列ごとの床の線 (型の u の列ごとに、絵の一番下の v を _BaseV0・_BaseVS の範囲で 0..1)
+            float _BaseU0, _BaseUS, _BaseV0, _BaseVS;   // 列の範囲 (u0・1/du) と床の線の範囲 (v0・dv)
+            float _BaseOn;
             sampler2D _FloorMask; // 部屋の絵の床の画素 (タイルと同じ範囲・1 = 床)
             float4 _MainTex_TexelSize, _FloorMask_TexelSize;
             float _FloorOn;
@@ -306,7 +316,10 @@ Shader "MRP/Water"
             {
                 float sil = Silhouette(tex2D(_MainTex, i.uv));
                 if (sil <= 0.003) return 0;
-                float h = clamp((i.uv.y - _VBase) / (_VPerUnit * _Rise), 0.0, _FaceH); // この画素の高さ (単位)
+                // 床の線: 列ごと (斜めに置いた箱や形の崩れた家具は、列ごとに絵の下の縁が違う)。無ければ絵全体の一番下
+                float vb = _VBase;
+                if (_BaseOn > 0.5) vb = _BaseV0 + tex2Dlod(_BaseTex, float4(saturate((i.uv.x - _BaseU0) * _BaseUS), 0.5, 0, 0)).r * _BaseVS;
+                float h = clamp((i.uv.y - vb) / (_VPerUnit * _Rise), 0.0, _FaceH); // この画素の高さ (単位)
                 float t = _Time.y, sub = _Cover;
                 float onTop = step(_FaceH - 1e-4, h);
                 float px = max(fwidth(i.world.y), 1e-4);
@@ -346,7 +359,9 @@ Shader "MRP/Water"
                 if (_ShadowOnly > 0.5)
                 {
                     c.a *= tex2Dlod(_MrpShadowTex, float4(i.screen.xy / i.screen.w, 0, 0)).a * _ShadowGain * _MrpShadowOn;
-                    if (_FrontOn > 0.5) c.a *= 1.0 - tex2D(_FrontMask, i.uv).r;
+                    // 家具の水面の板は絵の uv の範囲 (床の線と同じ) を型の 0..1 にしてある
+                    float2 fuv = _Mode > 2.5 ? float2((i.uv.x - _BaseU0) * _BaseUS, (i.uv.y - _BaseV0) / _BaseVS) : i.uv;
+                    if (_FrontOn > 0.5) c.a *= 1.0 - tex2D(_FrontMask, fuv).r;
                 }
                 return c;
             }
