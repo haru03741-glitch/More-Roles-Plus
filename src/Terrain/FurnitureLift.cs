@@ -72,6 +72,10 @@ internal static class FurnitureLift
         public float ColRot0;
         public Rect Bounds;
         public Transform Cut;
+        // 切り抜きの形 (白黒) と、その真ん中の切り抜きの絵から見た位置・絵の大きさ (家具の水面の板が型に使う)
+        public Texture2D Shape;
+        public Rect ShapeWorld;
+        public Vector2 ShapeOff, ShapeScale;
         public bool Tried, Failed;
         // 今の置き方 (元の足元 Pivot を軸に PoseAng 度回して Pose へ)。床マスクが家具の今いる所を抜くのに使う
         public float PivotX, PivotY, PoseX, PoseY, PoseAng;
@@ -146,6 +150,12 @@ internal static class FurnitureLift
             Lifted.Add(fill.Tr.gameObject);
             Lifted.Add(cut.Tr.gameObject);
             l.Cut = cut.Tr;
+            var cp = cut.Tr.position;
+            var cs = cut.Tr.lossyScale;
+            l.Shape = shape;
+            l.ShapeWorld = world;
+            l.ShapeScale = FxMath.V2(cs.x != 0f ? 1f / cs.x : 1f, cs.y != 0f ? 1f / cs.y : 1f);
+            l.ShapeOff = FxMath.V2((world.center.x - cp.x) * l.ShapeScale.x, (world.center.y - cp.y) * l.ShapeScale.y);
             // 跡は床になった (跡の床を描くのは形の中だけ) ので、水もそこまで広がって見せる
             var padded = PaddedRect(l);
             l.PivotX = l.PoseX = l.Bounds.center.x;

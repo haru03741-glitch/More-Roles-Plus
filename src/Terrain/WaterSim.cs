@@ -209,6 +209,30 @@ internal static partial class WaterSim
     internal static Vector2 Origin => _org;
     internal static float Cell => _cell;
     internal static int Height(int k) => _hgt[k];
+
+    // 床の高さで描く水の深さ: 家具の足元の升 (当たり判定の四角なので絵の外の床も含む) は、床から見えるのは家具の周りの水なので、
+    // 天板の上に水があれば天板からの深さを足し、無ければ家具の外の一番近い升の深さ (縦横 FurnScan 升まで) を使う
+    private const int FurnScan = 8;
+    internal static int ShownDepth(int k)
+    {
+        int f = _furn == null ? 0 : _furn[k], h = _hgt[k];
+        if (f == 0) return h;
+        if (h > 0) return h + f;
+        int best = 0;
+        for (int d = 0; d < 4; d++)
+        {
+            int j = k, step = Nx[d] + Ny[d] * _w;
+            for (int i = 0; i < FurnScan; i++)
+            {
+                j += step;
+                if (j < 0 || j >= _hgt.Length || _open[j] == 0) break;
+                if (_furn[j] != 0) continue;
+                best = Math.Max(best, _hgt[j]);
+                break;
+            }
+        }
+        return Math.Min(best, f);
+    }
     internal static bool Open(int k) => _open[k] != 0;
     internal static bool Ready => _ready;
     internal static int Step => _step;

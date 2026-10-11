@@ -234,14 +234,14 @@ internal static class WaterArt
         {
             int cx = x0 + x - 3, cy = y0 + y - 3;
             bool inGrid = cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1;
-            int v = inGrid ? WaterSim.Height(cy * w + cx) : 0;
+            int v = inGrid ? WaterSim.ShownDepth(cy * w + cx) : 0;
             _closed[y * rw + x] = inGrid && !WaterSim.Open(cy * w + cx);
             // 閉じた升 (壁の際) には、開いた隣が 1 つだけの時にその水を描き込む。壁の中は画素ごとの SolidMap で切るので、
             // 水が壁の際まで届いて見える。開いた隣が 2 つ以上 (升の中を細い壁が通っている) だと、乾いた側まで水を描いてしまうので描かない
             if (inGrid && fill != null && fill[cy * w + cx] >= 0 && !WaterSim.Open(cy * w + cx))
             {
                 // 当たり判定の中でも絵の上では床の所: 近くの水をそのまま描き、縁は床マスク (絵の形) で切る
-                v = WaterSim.Height(fill[cy * w + cx]);
+                v = WaterSim.ShownDepth(fill[cy * w + cx]);
                 _closed[y * rw + x] = false;
             }
             else if (v == 0 && cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1 && !WaterSim.Open(cy * w + cx))
@@ -251,7 +251,7 @@ internal static class WaterArt
                 if (WaterSim.Open(k - 1)) { open++; from = k - 1; }
                 if (WaterSim.Open(k + w)) { open++; from = k + w; }
                 if (WaterSim.Open(k - w)) { open++; from = k - w; }
-                if (open == 1) v = WaterSim.Height(from);
+                if (open == 1) v = WaterSim.ShownDepth(from);
             }
             if (v > 0 && crater) v = (int)(v * CraterScale(ox + (cx + 0.5f) * cs, oy + (cy + 0.5f) * cs));
             _raw[y * rw + x] = v;
@@ -497,7 +497,7 @@ internal static class WaterArt
             int y = cy - d;
             if (y < 1 || y >= WaterSim.H - 1) return 0;
             int k = y * w + cx;
-            if (WaterSim.Open(k)) return WaterSim.Height(k);
+            if (WaterSim.Open(k)) return WaterSim.ShownDepth(k);
         }
         return 0;
     }

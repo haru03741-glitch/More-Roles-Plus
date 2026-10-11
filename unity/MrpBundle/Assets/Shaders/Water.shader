@@ -9,6 +9,8 @@
 // _Mode = 2 (体の水面): クルー・小物の手前に置く板。板の原点 = 足元。_Depth = 足元の水の深さ (単位)・_Body = (半幅, 体の高さ, 沈んだ時に足す頭の上, 水面の輪の縦の半径)。
 //   板は _Quad (幅, 高さ, 足元の UV の高さ)。体の形は上の角を丸めた縦長の四角で近似し、その中の水面の線より下を周りと同じ水の色で覆う (覆いの厚さ = 線からの深さ)。
 //   頭まで沈んだら覆いを _SubMax までにして体を水越しの影として残し、頭の上から泡を昇らせる。
+// _Mode = 3 (家具の水面): 家具の絵の手前に、家具と同じ絵 (持ち上げた家具は形の白黒) を型にした板。_Line = 家具に当たる水面の線 (世界の y)・
+//   _Cover = 天板まで沈んだか (0..1)・_SilR = 型を R で見る (1) か A で見る (0)。線より下を周りと同じ水の色で覆い、沈んだら家具を水越しの影にする。
 // _Mode = 1 (噴き出し): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)。
 //   _Flow (xy = 流れの向き) に沿って伸びる筋を流し、筋の明るい所と泡は白、それ以外は透けた水色。
 Shader "MRP/Water"
@@ -44,6 +46,9 @@ Shader "MRP/Water"
         [PerRendererData] _Depth ("Water depth at the feet (units, wade)", Float) = 0
         _Body ("Half width, height, extra top when sunk, ring radius (wade)", Vector) = (0.25, 0.7, 0, 0.1)
         _SubMax ("Max cover over a sunk body (wade)", Float) = 0.72
+        [PerRendererData] _Line ("Waterline world y (furniture)", Float) = -10000
+        [PerRendererData] _Cover ("Sunk below the water (furniture)", Float) = 0
+        [PerRendererData] _SilR ("Silhouette from R instead of A (furniture)", Float) = 0
         _Quad ("Board width, height, feet from the bottom (0..1) (wade)", Vector) = (0.84, 1.75, 0.0857, 0)
     }
 
@@ -75,7 +80,7 @@ Shader "MRP/Water"
             float _RUnits, _ShallowDepth, _Fog, _Caustic, _LineWave, _FaceView, _FoamW, _Shaft;
             fixed4 _Shallow, _Deep, _Outline, _Rim, _Abyss;
             float4 _Flow;
-            float _Depth, _SubMax;
+            float _Depth, _SubMax, _Line, _Cover, _SilR;
             float4 _Body, _Quad;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
@@ -283,10 +288,35 @@ Shader "MRP/Water"
                 return c;
             }
 
+            fixed4 Submerge(v2f i)
+            {
+                float4 s = tex2D(_MainTex, i.uv);
+                float sil = _SilR > 0.5 ? s.r * s.a : s.a;
+                if (sil <= 0.003) return 0;
+                float t = _Time.y, sub = _Cover;
+                float px = max(fwidth(i.world.y), 1e-4);
+                float wave = (tex2D(_Noise, float2(i.world.x * 0.9 + t * 0.05, t * 0.03)).r - 0.5) * _LineWave * 2.0;
+                float ex = _Line + wave * (1.0 - sub) - i.world.y;   // 水面の線から下へ何単位か
+                float under = saturate(ex / px + 0.5);
+                float murk;
+                fixed4 c = Tint(i.world, max(ex, 0.0) + _FaceView, murk);
+                c.a = min(c.a, _SubMax);
+                // 水面の線の明るい縁と、その下のちぎれた泡の帯
+                float lip = saturate(1.0 - abs(ex) / (px * _RimPx)) * (1.0 - sub);
+                float fn = tex2D(_Noise, float2(i.world.x * 2.2 + t * 0.12, ex * 6.0 - t * 0.05)).r;
+                float foam = saturate(1.0 - ex / _FoamW) * smoothstep(0.42, 0.62, fn) * (1.0 - sub) * under;
+                c.rgb = lerp(c.rgb, float3(0.92, 0.97, 1.0), foam * 0.75);
+                c.a = max(c.a, foam * 0.9);
+                c = lerp(c, _Rim, lip * _Rim.a);
+                c.a *= sil * max(under, lip);
+                return c;
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 fixed4 c;
-                if (_Mode > 1.5) c = Wade(i);
+                if (_Mode > 2.5) c = Submerge(i);
+                else if (_Mode > 1.5) c = Wade(i);
                 else
                 {
                     float4 data = tex2D(_MainTex, _Mode < 0.5 ? EdgeUv(i.uv, _MainTex_TexelSize) : i.uv);

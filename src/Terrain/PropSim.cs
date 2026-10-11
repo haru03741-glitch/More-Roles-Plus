@@ -19,7 +19,7 @@ namespace MoreRolesPlus.Terrain;
 // 絵は 1 刻み前と今の間を GameClock.Frac で補間して、動いている物・揺れている物だけ毎フレーム書く。
 // 外壁の穴 (Decompression) が開いている間は流れに引かれる: 小物と中くらいの物は気圧 30% 以上の間・重い物は口から 5 単位以内だけ (引かれている間は見た目だけ震える)。
 // 口に着いたら、口より小さい物は宇宙へ消え、大きい物は口をふさぐ (確定側の刻みで Decompression へ知らせる)
-internal static class PropSim
+internal static partial class PropSim
 {
     private const int Delay = WaterSim.Delay;
     private const int Unit = 1024;
@@ -146,6 +146,8 @@ internal static class PropSim
         // 足元の箱は足元 (A) からのずれと半幅 (1/1024)。Sx0..Sy1/STop = 今の刻印 (水の升・Sx1 < Sx0 = 無し)
         public int Top, FootOx, FootOy, FootHx, FootHy;
         public int Sx0, Sy0, Sx1 = -1, Sy1 = -1, STop;
+        public bool Legs;  // 脚のある家具 (水は下を通る)
+        public Sunk Sk;    // 水に浸かった時の水面の板
     }
 
     // 重い物 (家具) の上に載っている絵。Prop = 動く物として数えている物 (自分が押されて動いたら家具から離れる)・
@@ -383,12 +385,15 @@ internal static class PropSim
         }
         // 中の詰まった家具 (高さの表)
         Solids.Clear();
+        Furnished.Clear();
         string shipName = FurnitureKinds.ShipName(ship);
         foreach (var q in Props)
         {
-            if (q.FootHx <= 0 || q.FootHy <= 0 || !FurnitureHeights.TryGet(shipName, q.Name, out var fe) || fe.Fill != FurnitureFill.Solid) continue;
+            if (q.FootHx <= 0 || q.FootHy <= 0 || !FurnitureHeights.TryGet(shipName, q.Name, out var fe)) continue;
             q.Top = (int)(fe.Top * WaterSim.Full);
-            Solids.Add(q);
+            q.Legs = fe.Fill == FurnitureFill.Legs;
+            Furnished.Add(q);
+            if (!q.Legs) Solids.Add(q);
         }
         Plugin.Logger.LogInfo($"[PropSim] perched={perched} solids={Solids.Count}");
         _ready = true;
@@ -897,13 +902,23 @@ internal static class PropSim
         foreach (var p in Solids) { p.Sx0 = p.Sy0 = 0; p.Sx1 = p.Sy1 = -1; p.STop = 0; }
     }
 
-    // 今の足元の箱に真ん中が入る水の升と天板。倒れた物は 90° 単位に丸めて箱を回し、天板は横倒しの厚み (短い辺) まで下げる
+    // 今の足元の箱に真ん中が入る水の升と天板
     private static void Foot(Prop p, int cw, out int x0, out int y0, out int x1, out int y1, out int top)
     {
-        var a = p.A;
-        x0 = y0 = 0; x1 = y1 = -1; top = 0;
-        if (a.Gone) return;
-        int ox = p.FootOx, oy = p.FootOy, hx = p.FootHx, hy = p.FootHy;
+        x0 = y0 = 0; x1 = y1 = -1;
+        if (!FootBox(p, p.A, out int cx, out int cy, out int hx, out int hy, out top)) return;
+        int half = cw / 2;
+        x0 = CeilDiv(cx - hx - half, cw); x1 = FloorDiv(cx + hx - half, cw);
+        y0 = CeilDiv(cy - hy - half, cw); y1 = FloorDiv(cy + hy - half, cw);
+    }
+
+    // 姿 a の足元の箱 (真ん中と半幅・1/1024) と天板。倒れた物は 90° 単位に丸めて箱を回し、天板は横倒しの厚み (短い辺) まで下げる
+    private static bool FootBox(Prop p, St a, out int cx, out int cy, out int hx, out int hy, out int top)
+    {
+        cx = cy = hx = hy = top = 0;
+        if (a.Gone) return false;
+        int ox = p.FootOx, oy = p.FootOy;
+        hx = p.FootHx; hy = p.FootHy;
         top = p.Top;
         int q = (FloorDiv(a.Ang + 45 * 16, 90 * 16) % 4 + 4) % 4;
         for (int i = 0; i < q; i++) { int t = ox; ox = -oy; oy = t; }
@@ -912,9 +927,8 @@ internal static class PropSim
             (hx, hy) = (hy, hx);
             top = Math.Min(top, 2 * Math.Min(hx, hy) * WaterSim.Full / Unit);
         }
-        int cx = a.Px + ox, cy = a.Py + oy, half = cw / 2;
-        x0 = CeilDiv(cx - hx - half, cw); x1 = FloorDiv(cx + hx - half, cw);
-        y0 = CeilDiv(cy - hy - half, cw); y1 = FloorDiv(cy + hy - half, cw);
+        cx = a.Px + ox; cy = a.Py + oy;
+        return true;
     }
 
     private static int FloorDiv(int a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);
@@ -1317,6 +1331,9 @@ internal static class PropSim
     {
         _ready = false;
         _running = false;
+        SunkClear();
+        Furnished.Clear();
+        Solids.Clear();
         Props.Clear();
         Heavies.Clear();
         FurnitureLift.Clear();
@@ -1390,10 +1407,11 @@ internal static class PropSim
 
     internal static void Register()
     {
-        TestBridge.Register("props", "[list | heights] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ)", (args, reply) =>
+        TestBridge.Register("props", "[list | heights | sunk] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / sunk = 水に浸かった家具の水面の線)", (args, reply) =>
         {
             if (!_ready && !Ensure()) { reply("ERR props no ship"); return; }
             if (args.Trim() == "heights") { reply(WriteHeights()); return; }
+            if (args.Trim() == "sunk") { SunkReport(reply); return; }
             int s = 0, m = 0, f = 0, moved = 0, diff = 0;
             foreach (var p in Props)
             {
