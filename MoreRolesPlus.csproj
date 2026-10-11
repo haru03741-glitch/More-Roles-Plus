@@ -55,6 +55,7 @@
         <EmbeddedResource Include="Resources\FloorMasks\*.bin" LogicalName="MoreRolesPlus.Resources.FloorMasks.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Heights\*.bin" LogicalName="MoreRolesPlus.Resources.Heights.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\WaterOpen\*.bin" LogicalName="MoreRolesPlus.Resources.WaterOpen.%(Filename)%(Extension)" />
+        <EmbeddedResource Include="Resources\WaterBarrier\*.bin" LogicalName="MoreRolesPlus.Resources.WaterBarrier.%(Filename)%(Extension)" />
     </ItemGroup>
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And Exists('$(MrpBepInExDir)\core')">
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />

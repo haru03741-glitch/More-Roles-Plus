@@ -26,4 +26,6 @@ src/Dev/DevUsers.Local.cs
 
 # 床マスク (ゲームの絵から tools/make-floor-mask.py で作る・配布は DLL に埋め込む)
 Resources/FloorMasks/
+# 水を止める絵の画素の地図 (tools/make-water-barrier.py で作る・同じく DLL に埋め込む)
+Resources/WaterBarrier/
 tools/__pycache__/

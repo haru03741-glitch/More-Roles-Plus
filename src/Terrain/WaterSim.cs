@@ -413,6 +413,8 @@ internal static partial class WaterSim
         _shadowCut = new byte[n];
         _lipMask = new byte[n];
         _lipH = new short[n * 4];
+        _barB = new byte[n * 4];
+        _barH = new short[n * 4];
         _furn = new short[n];
         PropSim.ForgetTops(); // 新しい格子へ家具の床を刻み直す
         FallTo.Clear();
@@ -811,6 +813,7 @@ internal static partial class WaterSim
                 for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
                 _fallMask[k] = 0;
                 _lipMask[k] = 0;
+                for (int d = 0; d < 4; d++) { _barB[k * 4 + d] = 0; _barH[k * 4 + d] = 0; }
             }
             if (_stepMask[k] != 0)
             {
@@ -848,6 +851,7 @@ internal static partial class WaterSim
                 if (why == "glass") { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = (short)(_glass.Height * Full); }
                 else if (PlatformRimAt(k, to)) { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = PlatformRim; }
                 FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
+                EdgeBarrier(x, y, d, k);
                 if (to >= 0 && _lvl[to] == lk - 1 && OnStep(x, y, tx, ty))
                 {
                     StepTo[k * 4 + d] = to;
@@ -934,6 +938,43 @@ internal static partial class WaterSim
 
     // 縁 (k, d) を越え始める高さ: 低い壁ならその高さ・それ以外は床の縁の盛り上がり
     private static int LipOf(int k, int d) => (_lipMask[k] >> d & 1) != 0 ? _lipH[k * 4 + d] : FallLip;
+
+    // 縁の上に立つ物 (柵の柱・網・手すり) で止まる割合 (/256) と、その物の高さ (水の深さの物差し)。
+    // 止まる所の水はその高さを越えた分だけ、抜ける所 (柱の間・網の目) の水は縁の盛り上がりを越えた分だけ落ちる
+    private static byte[] _barB;
+    private static short[] _barH;
+    private const int BarMax = Full;          // これより高い物は越えない (壁と同じ)
+
+    private static void EdgeBarrier(int x, int y, int d, int k)
+    {
+        int key = k * 4 + d;
+        if ((_lipMask[k] >> d & 1) != 0)
+        {
+            // 低い壁の表 (部屋の絵に描き込まれた手すり・動く床の枠) は縁の全部を止める
+            _barB[key] = 255;
+            _barH[key] = _lipH[key];
+        }
+        float ex0 = _org.x + x * _cell, ey0 = _org.y + y * _cell, ex1 = ex0 + _cell, ey1 = ey0 + _cell;
+        if (d == 0) ex0 = ex1; else if (d == 1) ex1 = ex0; else if (d == 2) ey0 = ey1; else ey1 = ey0;
+        if (!WaterBarrier.Edge(ex0, ey0, ex1, ey1, d, out int b, out float hgt) || b == 0) return;
+        int h = Math.Min(BarMax, (int)(hgt * Full));
+        if (_barB[key] == 255) { _barH[key] = (short)Math.Max(_barH[key], h); return; }
+        _barB[key] = (byte)Math.Min(255, b);
+        _barH[key] = (short)h;
+    }
+
+    // 堰の式: 越えた高さ e の 1.5 乗 (1 刻みに越えた分の半分まで)
+    private static int Weir(int e) => e <= 0 ? 0 : Math.Min(e / 2, (int)((long)e * ISqrt(16L * e) / WeirDiv));
+
+    // 縁 (k, d) から 1 刻みに落ちる量。抜ける所と止まる所を別々の堰として足す
+    private static int FallRate(int k, int d, int h)
+    {
+        int key = k * 4 + d, b = _barB[key];
+        if (b == 0) return Weir(h - LipOf(k, d));
+        int open = b == 255 ? 0 : Weir(h - FallLip) * (256 - b);
+        int over = _barH[key] >= BarMax ? 0 : Weir(h - Math.Max(FallLip, (int)_barH[key])) * (b == 255 ? 256 : b);
+        return (open + over) / 256;
+    }
 
     // 升の中の SolidMap の升に船の外が 1 つでもある
     private static bool SkyIn(int cx, int cy)
@@ -1323,10 +1364,10 @@ internal static partial class WaterSim
                         : h - StepHeight - ht - (ht == 0 ? DryHold : WetHold);
                     if (diff > 0) sum += SubOut(k, d, diff * Gain / 256, s);
                 }
-                else if ((_fallMask[k] >> d & 1) != 0 && h > LipOf(k, d))
+                else if ((_fallMask[k] >> d & 1) != 0 && h > FallLip)
                 {
-                    int e = h - LipOf(k, d);
-                    sum += SubOut(k, d, Math.Min(e / 2, (int)((long)e * ISqrt(16L * e) / WeirDiv)), s);
+                    int g = FallRate(k, d, h);
+                    if (g > 0) sum += SubOut(k, d, g, s);
                 }
                 else if (h > 0 && (_seaMask[k] >> d & 1) != 0)
                 {
@@ -1833,9 +1874,8 @@ internal static partial class WaterSim
         for (int d = 0; d < 4; d++)
         {
             if ((fm >> d & 1) == 0) continue;
-            int e = h - LipOf(k, d);
-            if (e <= 0) continue;
-            int g = Math.Min(e / 2, (int)((long)e * ISqrt(16L * e) / WeirDiv));
+            int g = FallRate(k, d, h);
+            if (g <= 0) continue;
             qx += Nx[d] * g;
             qy += Ny[d] * g;
         }
@@ -1947,7 +1987,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _furn = null; LowWalls.Clear();
+        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; LowWalls.Clear();
         FallTo.Clear();
         StepTo.Clear();
         FallOut.Clear();
@@ -2064,6 +2104,19 @@ internal static partial class WaterSim
             }
             if (a.StartsWith("show")) { reply(WaterDebug.Show(a.Length > 4 ? a.Substring(4).Trim() : "")); return; }
             if (a == "hide") { WaterDebug.Hide(); reply("OK water hide"); return; }
+            if (a.StartsWith("barrier"))
+            {
+                // 確認用: barrier [x y] [r] = 止める絵と落ちる縁の止まる割合を Screens/barrier.ppm へ (既定は自分の周り 4)
+                var q = a.Substring(7).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                var lp = PlayerControl.LocalPlayer;
+                Vector2 at = lp ? (Vector2)lp.transform.position : Vector2.zero;
+                float br = 4f;
+                if (q.Length >= 2) at = new Vector2(float.Parse(q[0], ic), float.Parse(q[1], ic));
+                if (q.Length == 1 || q.Length >= 3) br = float.Parse(q[q.Length == 1 ? 0 : 2], ic);
+                reply(BarrierView(at.x, at.y, br));
+                return;
+            }
             if (a.StartsWith("line"))
             {
                 // 確認用: その点を通る横一列 (左右 n 升) の深さ

@@ -333,7 +333,7 @@ internal static class FloorMask
     // z に関わらず床の層に入れる部屋の絵 (ポーラスの武器庫と通信室は床と壁が 1 枚の絵で、クルーと同じ奥行きにある)
     private static bool AlwaysFloor(string sprite) => sprite is "room_weapon" or "room_broadcast";
 
-    private static uint Signature(string ship)
+    internal static uint Signature(string ship)
     {
         float back = BackZ(ship);
         var keys = new HashSet<string>();
