@@ -20,6 +20,9 @@ internal abstract class CutShape
     // 縁を反時計回りに step 間隔で並べた閉じた点列 (最初の点は繰り返さない)
     public abstract List<Vector2> Outline(float step);
 
+    // C++ の部品へ渡す形 (kind 0 = 円 cx cy r・1 = 長方形 cx cy tx ty nx ny hl hd・2 = 凸 頂点 n 個と法線 n 個)
+    internal abstract float[] Native(out int kind, out int n);
+
     protected static void AddEdge(List<Vector2> pts, Vector2 a, Vector2 b, float step)
     {
         float dx = b.x - a.x, dy = b.y - a.y;
@@ -34,6 +37,8 @@ internal sealed class CircleShape : CutShape
     private readonly float _r;
 
     public CircleShape(Vector2 center, float radius) { _c = center; _r = radius; }
+
+    internal override float[] Native(out int kind, out int n) { kind = 0; n = 0; return new[] { _c.x, _c.y, _r }; }
 
     public override Vector2 Center => _c;
     public override float BoundRadius => _r;
@@ -91,6 +96,8 @@ internal sealed class RectShape : CutShape
 
     public override Vector2 Center => _c;
     public override float BoundRadius => MathF.Sqrt(_hl * _hl + _hd * _hd);
+
+    internal override float[] Native(out int kind, out int n) { kind = 1; n = 0; return new[] { _c.x, _c.y, _t.x, _t.y, _n.x, _n.y, _hl, _hd }; }
 
     // 長方形の局所座標 (u = 接線方向, v = 法線方向) で 2 つの帯に挟まれた区間を求める
     public override bool Interval(Vector2 a, Vector2 b, out float s0, out float s1)
@@ -166,6 +173,19 @@ internal sealed class ConvexShape : CutShape
 
     public override Vector2 Center => _c;
     public override float BoundRadius => _r;
+
+    internal override float[] Native(out int kind, out int n)
+    {
+        kind = 2;
+        n = _v.Length;
+        var a = new float[n * 4];
+        for (int i = 0; i < n; i++)
+        {
+            a[i * 2] = _v[i].x; a[i * 2 + 1] = _v[i].y;
+            a[n * 2 + i * 2] = _n[i].x; a[n * 2 + i * 2 + 1] = _n[i].y;
+        }
+        return a;
+    }
 
     private const float ParallelSlope = 1e-3f; // 辺に対する傾きがこれ以下の線分は平行とみなす
     private const float ParallelInset = 0.005f;

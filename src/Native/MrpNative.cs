@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Native;
 // 無い・版が違う時は C# 版で動く。On は実行中に切り替えられる (答え合わせ用)
 internal static unsafe class MrpNative
 {
-    private const int Abi = 4;
+    private const int Abi = 5;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -28,6 +28,7 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<int*, int*, int, int, int, int, float, float, float, float, byte*, int, int, float, float, float, int, byte*, byte*, int, float, float, byte*, void> WaterPixels;
     internal static delegate* unmanaged[Cdecl]<byte*, byte*, int, int, byte*, void> WaterSpreadFace;
     internal static delegate* unmanaged[Cdecl]<void*, int> WaterSubstep;
+    internal static delegate* unmanaged[Cdecl]<void*, void> DamageStamp;
 
     internal static bool On
     {
@@ -55,6 +56,7 @@ internal static unsafe class MrpNative
             WaterPixels = (delegate* unmanaged[Cdecl]<int*, int*, int, int, int, int, float, float, float, float, byte*, int, int, float, float, float, int, byte*, byte*, int, float, float, byte*, void>)NativeLibrary.GetExport(lib, "mrp_water_pixels");
             WaterSpreadFace = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, byte*, void>)NativeLibrary.GetExport(lib, "mrp_water_spread_face");
             WaterSubstep = (delegate* unmanaged[Cdecl]<void*, int>)NativeLibrary.GetExport(lib, "mrp_water_substep");
+            DamageStamp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_damage_stamp");
             _loaded = true;
             Status = $"ok abi={got} {path}";
         }

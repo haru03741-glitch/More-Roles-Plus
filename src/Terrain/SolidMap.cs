@@ -46,6 +46,7 @@ internal static class SolidMap
     internal static bool OutsideAt(int k) => _outside != null && _outside[k] == 1;
     internal static byte[] OutsideCells => _outside; // BareSky の元 (読むだけ・無ければ null)
     internal const int BareSkyReach = OutsideReach;
+    internal static Vector2 Org => _origin;
     internal static bool LeakedCell(int k) => _leaked != null && _leaked[k] != 0;
     private static float _ppu;
     private static readonly List<Rect> HullRects = new();

@@ -95,7 +95,7 @@ internal static class DamageMap
                 if (_gens[k] == _gen) _gens[k] = 0;
             MarkDirtyAll();
         }
-        Stamp(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body, out RectInt touched);
+        StampAny(shape, removedSegments, scorch, floorY, keep ?? FurnitureFor(shape), body, out RectInt touched);
         TerrainDamage.Mark("stamp");
         SpawnUnderlay(shape.Center, shape.BoundRadius, removedSegments);
         TerrainDamage.Mark("underlay"); // ひびの家具よけを A に書く (送るのは Flush)
@@ -329,6 +329,97 @@ internal static class DamageMap
     }
 
     // touched = この破壊が抜いた画素 (番号を書いた所) の範囲
+    // Stamp の C++ 版 (同じ結果)。照合 (native verify) の時は C# 版でも書いて範囲の画素を比べ、C# の結果を残す
+    internal static long VerifyStamps, VerifyStampDiff;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct StampArgs
+    {
+        public byte* Px; public byte* Gens;
+        public int W, H; public float Ox, Oy, Ppu;
+        public int X0, Y0, X1, Y1;
+        public int Gen;
+        public int ShapeKind; public float* Shape; public int ShapeN;
+        public float R; public int Scorch;
+        public int Banded, BandSegs; public float* Band; public int BandN;
+        public int HasBody, BodySpace, BodyMap; public float* BSeg; public int BSegN; public float* BOpen; public int BOpenN; public float RefX, RefY;
+        public float* Keep; public int KeepN;
+        public float FloorY;
+        public byte* SOpen; public byte* SOutside; public int Sw, Sh; public float Sox, Soy, Sppu; public int Reach;
+        public int Tx0, Ty0, Tx1, Ty1;
+    }
+
+    private static void StampAny(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
+    {
+        if (!Native.MrpNative.On) { Stamp(shape, segs, withScorch, floorY, keep, body, out touched); return; }
+        if (!Native.MrpNative.Verify) { StampNative(shape, segs, withScorch, floorY, keep, body, out touched); return; }
+        var px0 = (byte[])_pixels.Clone();
+        var gens0 = (byte[])_gens.Clone();
+        StampNative(shape, segs, withScorch, floorY, keep, body, out var tn);
+        var pxN = _pixels; var gensN = _gens;
+        _pixels = px0; _gens = gens0;
+        Stamp(shape, segs, withScorch, floorY, keep, body, out touched);
+        long diff = 0;
+        for (int i = 0; i < _pixels.Length; i++) if (_pixels[i] != pxN[i]) diff++;
+        for (int i = 0; i < _gens.Length; i++) if (_gens[i] != gensN[i]) diff++;
+        if (!tn.Equals(touched)) diff += 1000000;
+        VerifyStamps++;
+        VerifyStampDiff += diff;
+        if (diff != 0) Plugin.Logger.LogWarning($"[native] stamp diff={diff} shape={shape.GetType().Name} body={body != null}");
+    }
+
+    private static unsafe void StampNative(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
+    {
+        Vector2 c = shape.Center;
+        float r = shape.BoundRadius;
+        bool banded = segs != null && segs.Count >= 2;
+        float reach = r * (1f + ScorchWidth) + HoleEdge;
+        int x0 = Math.Max(0, (int)((c.x - reach - _origin.x) * PixelsPerUnit));
+        int x1 = Math.Min(_w - 1, (int)((c.x + reach - _origin.x) * PixelsPerUnit) + 1);
+        int y0 = Math.Max(0, (int)((c.y - reach - _origin.y) * PixelsPerUnit));
+        int y1 = Math.Min(_h - 1, (int)((c.y + reach - _origin.y) * PixelsPerUnit) + 1);
+        MarkDirtyPx(x0, y0, x1, y1);
+        float[] shapeData = shape.Native(out int kind, out int shapeN);
+        float[] band = null;
+        int bandN = 0;
+        if (banded)
+        {
+            var pts = body != null ? segs : ConvexHull(segs);
+            band = WallBody.Flat(pts);
+            bandN = pts.Count;
+        }
+        float[] bseg = null, bopen = null;
+        Vector2 walkRef = default;
+        bool bodyMap = false;
+        body?.Native(out bseg, out bopen, out walkRef, out bodyMap);
+        var keepData = new float[keep.Count * 4];
+        for (int i = 0; i < keep.Count; i++)
+        {
+            var k = keep[i];
+            keepData[i * 4] = k.xMin; keepData[i * 4 + 1] = k.yMin; keepData[i * 4 + 2] = k.xMax; keepData[i * 4 + 3] = k.yMax;
+        }
+        var sorg = SolidMap.Org;
+        fixed (byte* px = _pixels) fixed (byte* gens = _gens) fixed (float* sh = shapeData) fixed (float* bd = band)
+        fixed (float* bs = bseg) fixed (float* bo = bopen) fixed (float* kp = keepData)
+        fixed (byte* sOpen = SolidMap.OpenCells) fixed (byte* sOut = SolidMap.OutsideCells)
+        {
+            var a = new StampArgs
+            {
+                Px = px, Gens = gens, W = _w, H = _h, Ox = _origin.x, Oy = _origin.y, Ppu = PixelsPerUnit,
+                X0 = x0, Y0 = y0, X1 = x1, Y1 = y1, Gen = _gen,
+                ShapeKind = kind, Shape = sh, ShapeN = shapeN, R = r, Scorch = withScorch ? 1 : 0,
+                Banded = banded ? 1 : 0, BandSegs = body != null ? 1 : 0, Band = bd, BandN = bandN,
+                HasBody = body != null ? 1 : 0, BodySpace = body != null && body.OpenToSpace ? 1 : 0, BodyMap = bodyMap ? 1 : 0,
+                BSeg = bs, BSegN = bseg == null ? 0 : bseg.Length / 2, BOpen = bo, BOpenN = bopen == null ? 0 : bopen.Length / 2,
+                RefX = walkRef.x, RefY = walkRef.y,
+                Keep = kp, KeepN = keep.Count, FloorY = floorY,
+                SOpen = sOpen, SOutside = sOut, Sw = SolidMap.W, Sh = SolidMap.H, Sox = sorg.x, Soy = sorg.y, Sppu = SolidMap.Ppu, Reach = SolidMap.BareSkyReach,
+            };
+            Native.MrpNative.DamageStamp(&a);
+            touched = a.Tx1 < 0 ? default : new RectInt(a.Tx0, a.Ty0, a.Tx1 - a.Tx0 + 1, a.Ty1 - a.Ty0 + 1);
+        }
+    }
+
     private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
     {
         int tx0 = int.MaxValue, ty0 = int.MaxValue, tx1 = -1, ty1 = -1;

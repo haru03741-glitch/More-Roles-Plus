@@ -60,6 +60,19 @@ internal sealed class WallBody
         _opening.AddRange(removed);
     }
 
+    // C++ の部品へ渡す判定の材料 (線分は 2 点ずつ x y を並べる)
+    internal void Native(out float[] seg, out float[] opening, out Vector2 walkRef, out bool solidMap)
+    {
+        seg = Flat(_seg); opening = Flat(_opening); walkRef = _ref; solidMap = _solidMap;
+    }
+
+    internal static float[] Flat(List<Vector2> pts)
+    {
+        var a = new float[pts.Count * 2];
+        for (int i = 0; i < pts.Count; i++) { a[i * 2] = pts[i].x; a[i * 2 + 1] = pts[i].y; }
+        return a;
+    }
+
     // 穴から露出した壁の中か
     public bool Exposed(float x, float y)
     {
