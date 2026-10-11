@@ -3,7 +3,9 @@ package dev.allofus.fusioncore;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.os.Bundle;
 import android.os.Environment;
@@ -15,23 +17,26 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.pm.PackageInfoCompat;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.Locale;
 
-import dev.allofus.fusioncore.hooks.ClassHooks;
-import dev.allofus.fusioncore.hooks.ClassLoaderHooks;
 import dev.allofus.fusioncore.hooks.InstrumentationHooks;
-import dev.allofus.fusioncore.hooks.PackageManagerHooks;
-import dev.allofus.fusioncore.hooks.ResourceHooks;
-import dev.allofus.fusioncore.hooks.UnityPlayerHooks;
+import dev.allofus.fusioncore.bridge.UnityActivityHost;
+import dev.allofus.fusioncore.tools.CustomContextWrapper;
+import dev.allofus.fusioncore.tools.FallbackResources;
 import dev.allofus.fusioncore.tools.FusionConfig;
-import dev.allofus.fusioncore.tools.LibUnityDownloader;
-import dev.allofus.fusioncore.tools.NativeLibraryManager;
+import dev.allofus.fusioncore.tools.GameClassLoaderFactory;
+import dev.allofus.fusioncore.tools.GameDataStager;
+import dev.allofus.fusioncore.tools.BootTimeline;
+import dev.allofus.fusioncore.tools.LogBundle;
 import dev.allofus.fusioncore.tools.Utilities;
+import dev.allofus.fusioncore.tools.InteropInstaller;
+import dev.allofus.fusioncore.tools.ItchAuth;
+import dev.allofus.fusioncore.tools.PluginInstaller;
 import dev.allofus.fusioncore.tools.VersionLookup;
 
 public class BootstrapActivity extends AppCompatActivity {
@@ -39,19 +44,39 @@ public class BootstrapActivity extends AppCompatActivity {
     private static final String TAG = "FusionCore";
 
     public static final String EXTRA_TARGET_PACKAGE = "target_package";
-    public static final String EXTRA_USE_ORIGINAL_LIBUNITY = "og_libunity";
     public static final String BACKUP_UNITY_VERSION = "2017.0.0";
     private static final String GLOBAL_METADATA_FILE = "global-metadata.dat";
+    private static ClassLoader sGameClassLoader;
 
+    /** True once the game's class loader exists in this process, i.e. the game has been bootstrapped. */
+    static boolean isGameLoaded() {
+        return sGameClassLoader != null;
+    }
+
+    /** True once the game activity itself has been started; the class loader exists well before that. */
+    private static volatile boolean sGameActivityStarted;
+
+    static boolean isGameActivityStarted() {
+        return sGameActivityStarted;
+    }
+
+    /** Where the player gets a newer launcher when this build no longer matches the game. */
+    private static final String RELEASES_URL = "https://github.com/waffle-ful/Aeterna-End-K-not/releases/latest";
+
+    private TextView titleView;
     private TextView statusView;
     private TextView progressDetailsView;
-    private ProgressBar spinnerProgress;
+    private View actionsRow;
+    private View spinnerProgress;
     private ProgressBar downloadProgress;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_bootstrap);
+        BootTimeline.mark("bootstrap");
+        Utilities.initStorage(this);
+        titleView = findViewById(R.id.bootstrap_title);
         statusView = findViewById(R.id.bootstrap_status);
         progressDetailsView = findViewById(R.id.bootstrap_progress_details);
         spinnerProgress = findViewById(R.id.bootstrap_progress);
@@ -59,6 +84,17 @@ public class BootstrapActivity extends AppCompatActivity {
         setPhaseStatus(getString(R.string.bootstrap_status_preparing));
 
         String targetPackage = getIntent().getStringExtra(EXTRA_TARGET_PACKAGE);
+        actionsRow = findViewById(R.id.bootstrap_actions);
+        findViewById(R.id.bootstrap_action_update).setOnClickListener(v -> {
+            Intent open = new Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL));
+            try {
+                startActivity(open);
+            } catch (Exception e) {
+                Toast.makeText(this, RELEASES_URL, Toast.LENGTH_LONG).show();
+            }
+        });
+        String logsPackage = targetPackage != null ? targetPackage : SelectorActivity.TARGET_PACKAGE;
+        findViewById(R.id.bootstrap_action_share_logs).setOnClickListener(v -> LogBundle.shareAsync(this, logsPackage));
         if (targetPackage == null || targetPackage.isEmpty()) {
             failAndFinish("No target package specified in intent extras!", null);
             return;
@@ -77,6 +113,29 @@ public class BootstrapActivity extends AppCompatActivity {
             return;
         }
 
+        // Build our own loader for the game code, parented to the launcher's loader.
+        // It is created once per process: the game's ApplicationInfo is modified at runtime
+        // after the first launch, and every hook must keep seeing the same loader instance.
+        // Never call gameContext.getClassLoader() - that would create a second, unrelated loader.
+        ClassLoader gameClassLoader;
+        try {
+            if (sGameClassLoader == null) {
+                // Native library search order: patched libs in code_cache (libil2cpp),
+                // then the launcher's own libs (libmain), then the game's original directory.
+                // The files in the first two directories are written before the game asks for them.
+                File codeCacheScoped = new File(getApplicationContext().getCodeCacheDir(), targetPackage);
+                File launcherLibDir = new File(getApplicationContext().getApplicationInfo().nativeLibraryDir);
+                sGameClassLoader = GameClassLoaderFactory.create(gameContext.getApplicationInfo(), getClassLoader(),
+                        codeCacheScoped, launcherLibDir);
+            }
+            gameClassLoader = sGameClassLoader;
+            CustomContextWrapper.setGameClassLoader(gameClassLoader);
+            BootTimeline.mark("classloader");
+        } catch (Exception e) {
+            failAndFinish("Failed to create class loader for target package: " + targetPackage, e);
+            return;
+        }
+
         Intent launchIntent = getPackageManager().getLaunchIntentForPackage(targetPackage);
         if (launchIntent == null) {
             failAndFinish("No launch intent for target package: " + targetPackage, null);
@@ -88,22 +147,8 @@ public class BootstrapActivity extends AppCompatActivity {
             launcherComponent = launchIntent.resolveActivity(getPackageManager());
         }
 
-        var overrideActivity = FusionSettings.getActivityOverrideForGame(this, targetPackage);
-        try {
-            if (!overrideActivity.equals(getString(R.string.settings_automatic))) {
-                var overrideClass = gameContext.getClassLoader().loadClass(overrideActivity);
-                if (overrideClass != null) {
-                    launcherComponent = new ComponentName(targetPackage, overrideActivity);
-                    Log.i(TAG, "Using override activity " + overrideActivity);
-                    runOnUiThread(() -> Toast.makeText(this, "Using override activity " + overrideActivity, Toast.LENGTH_LONG).show());
-                } else {
-                    Log.i(TAG, "Failed to find override activity " + overrideActivity);
-                    runOnUiThread(()-> Toast.makeText(this, "Failed to find override activity.", Toast.LENGTH_LONG).show());
-                }
-            }
-        } catch (Exception e) {
-            runOnUiThread(()-> Toast.makeText(this, "Exception when finding override activity.", Toast.LENGTH_LONG).show());
-            Log.e(TAG, "Failed to get override activity "+ overrideActivity, e);
+        if (FusionSettings.dropActivityOverrideForGame(this, targetPackage)) {
+            Log.i(TAG, "Dropped a stored launch activity override; the main activity is used.");
         }
 
         if (launcherComponent == null) {
@@ -113,7 +158,6 @@ public class BootstrapActivity extends AppCompatActivity {
 
         final int targetOrientation = resolveTargetOrientation(launcherComponent);
 
-        boolean useOriginalLibUnity = getIntent().getBooleanExtra(EXTRA_USE_ORIGINAL_LIBUNITY, false);
         FusionConfig config;
 
         try {
@@ -121,9 +165,13 @@ public class BootstrapActivity extends AppCompatActivity {
                     getApplicationContext(),
                     gameContext,
                     launcherComponent,
-                    targetPackage,
-                    useOriginalLibUnity
+                    targetPackage
             );
+        } catch (LauncherUpdateRequiredException e) {
+            failAndStay(e.userMessage != null
+                    ? e.userMessage
+                    : getString(R.string.bootstrap_launcher_update_required, e.builtFor, e.installed));
+            return;
         } catch (Throwable t) {
             failAndFinish("Failed while preparing Fusion runtime.", t);
             return;
@@ -131,29 +179,38 @@ public class BootstrapActivity extends AppCompatActivity {
 
         Class<?> launcherClass;
         try {
-            launcherClass = gameContext.getClassLoader().loadClass(launcherComponent.getClassName());
+            launcherClass = gameClassLoader.loadClass(launcherComponent.getClassName());
         } catch (ClassNotFoundException e) {
             Log.e(TAG, "Failed to get class for launcher activity!");
             return;
         }
 
         setPhaseStatus(getString(R.string.bootstrap_status_installing_hooks));
+        // The bridge subclass hands the UnityPlayer its Context. It replays the game's
+        // onCreate, so a game build it does not recognize is a launcher update, not a
+        // degraded start.
+        if (!UnityActivityHost.install(getApplicationContext(), gameContext, gameClassLoader,
+                launcherComponent.getClassName())) {
+            failAndStay(getString(R.string.bootstrap_game_layout_unsupported));
+            return;
+        }
         try {
-            ClassLoaderHooks.installHooks(gameContext.getClassLoader());
-            ClassHooks.installHooks(gameContext.getClassLoader());
-            PackageManagerHooks.installHooks(getPackageManager());
-            InstrumentationHooks.install(getApplicationContext());
-            UnityPlayerHooks.installHooks(gameContext);
-            ResourceHooks.installHooks(gameContext.getResources(), getApplicationContext().getResources());
+            InstrumentationHooks.install(getApplicationContext(), gameClassLoader, launcherComponent.getClassName());
+            android.content.res.Resources launcherResources = getApplicationContext().getResources();
+            InstrumentationHooks.setFallbackResources(gameContext.getResources(), launcherResources);
+            FallbackResources.install(getApplicationContext(), gameContext.getResources(), launcherResources);
         } catch (Exception e) {
             Log.e(TAG, "Failed to install base hooks", e);
         }
+        BootTimeline.mark("hooks");
 
         var className = launcherComponent.getClassName();
 
         try {
             setPhaseStatus(getString(R.string.bootstrap_status_launching));
             initializeFusion(config);
+            BootTimeline.mark("launch");
+            BootTimeline.publish();
             runOnMainThread(() -> {
                 try {
                     var intent = new Intent(this, launcherClass);
@@ -166,6 +223,7 @@ public class BootstrapActivity extends AppCompatActivity {
                     intentWrapped.putExtra(InstrumentationHooks.EXTRA_FUSION_CONFIG, config);
                     intentWrapped.putExtra(InstrumentationHooks.EXTRA_TARGET_ORIENTATION, targetOrientation);
 
+                    sGameActivityStarted = true;
                     startActivity(intentWrapped);
                     finish();
                 } catch (Throwable t) {
@@ -197,52 +255,7 @@ public class BootstrapActivity extends AppCompatActivity {
         });
     }
 
-    private void setDownloadStatus(long downloadedBytes, long totalBytes) {
-        runOnMainThread(() -> {
-            if (spinnerProgress != null) {
-                spinnerProgress.setVisibility(View.GONE);
-            }
-            long progress = Math.max(0L, Math.min(100L, (downloadedBytes * 100L) / totalBytes));
-            if (downloadProgress != null) {
-                downloadProgress.setVisibility(View.VISIBLE);
-                boolean hasTotal = totalBytes > 0L;
-                downloadProgress.setIndeterminate(!hasTotal);
-                if (hasTotal) {
-                    int percent = (int) progress;
-                    downloadProgress.setProgress(percent);
-                }
-            }
-            if (statusView != null) {
-                statusView.setText(getString(R.string.bootstrap_status_downloading_libunity));
-            }
-            if (progressDetailsView != null) {
-                progressDetailsView.setVisibility(View.VISIBLE);
-                int percent = totalBytes > 0L
-                        ? (int) progress
-                        : 0;
-                progressDetailsView.setText(getString(
-                        R.string.bootstrap_download_progress,
-                        percent,
-                        formatBytes(downloadedBytes),
-                        totalBytes > 0L ? formatBytes(totalBytes) : "?"
-                ));
-            }
-        });
-    }
 
-    private String formatBytes(long bytes) {
-        if (bytes < 1024L) {
-            return bytes + " B";
-        }
-        double value = bytes;
-        String[] units = new String[]{"B", "KB", "MB", "GB"};
-        int unitIndex = 0;
-        while (value >= 1024.0 && unitIndex < units.length - 1) {
-            value /= 1024.0;
-            unitIndex++;
-        }
-        return String.format(Locale.US, "%.1f %s", value, units[unitIndex]);
-    }
 
     private void failAndFinish(String message, Throwable error) {
         runOnMainThread(() -> {
@@ -259,6 +272,53 @@ public class BootstrapActivity extends AppCompatActivity {
         });
     }
 
+    /** Shows a message the player has to act on and leaves the screen up instead of closing it. */
+    private void failAndStay(String message) {
+        runOnMainThread(() -> {
+            Log.e(TAG, message);
+            if (titleView != null) {
+                titleView.setText(R.string.bootstrap_status_error);
+            }
+            if (statusView != null) {
+                statusView.setText(message);
+            }
+            if (spinnerProgress != null) {
+                spinnerProgress.setVisibility(View.GONE);
+            }
+            if (downloadProgress != null) {
+                downloadProgress.setVisibility(View.GONE);
+            }
+            if (progressDetailsView != null) {
+                progressDetailsView.setVisibility(View.GONE);
+            }
+            if (actionsRow != null) {
+                actionsRow.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
+    /** The installed game moved to a Unity version this build was not made for. */
+    private static final class LauncherUpdateRequiredException extends RuntimeException {
+        final String builtFor;
+        final String installed;
+        /** Already localized text shown as-is; null means the Unity-version wording applies. */
+        final String userMessage;
+
+        LauncherUpdateRequiredException(String builtFor, String installed) {
+            super("Launcher is built for Unity " + builtFor + " but the game uses " + installed);
+            this.builtFor = builtFor;
+            this.installed = installed;
+            this.userMessage = null;
+        }
+
+        LauncherUpdateRequiredException(String userMessage) {
+            super(userMessage);
+            this.builtFor = null;
+            this.installed = null;
+            this.userMessage = userMessage;
+        }
+    }
+
     private void runOnMainThread(Runnable runnable) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             runnable.run();
@@ -269,96 +329,96 @@ public class BootstrapActivity extends AppCompatActivity {
 
     private void initializeFusion(FusionConfig config) {
         Log.i(TAG, "Initializing Fusion for " + config.gamePackageId + " via " + config.gameLauncherName);
-
-        try {
-            NativeLibraryManager.addFusionLibrary("main");
-            NativeLibraryManager.addFusionLibrary("fusion");
-            NativeLibraryManager.addCacheLibrary("il2cpp");
-            NativeLibraryManager.addCacheLibrary("unity");
-            NativeLibraryManager.setupLibraryHooks(config);
-        } catch (Throwable t) {
-            Log.e(TAG, "Failed to initialize Fusion in launcher beforeCall", t);
-        }
     }
 
     private FusionConfig prepareConfig(Context appContext,
                                        Context gameContext,
                                        ComponentName launcherComponent,
-                                       String targetPackage,
-                                       boolean useOriginalLibUnity) {
+                                       String targetPackage) {
 
         String gameLibDir = gameContext.getApplicationInfo().nativeLibraryDir;
         String appLibDir = appContext.getApplicationInfo().nativeLibraryDir;
 
-        String targetGameAbi = resolveTargetGameAbi(gameLibDir);
         File appDataDir = new File(appContext.getFilesDir(), targetPackage);
 
         File dataOnSdCard = Utilities.getExternalFusionCoreDirectory(targetPackage);
         File codeCacheScoped = new File(appContext.getCodeCacheDir(), targetPackage);
 
-        setPhaseStatus(getString(R.string.bootstrap_status_copy_assets));
-        File copiedData = new File(appDataDir, "Data_copy");
-        boolean copied = Utilities.copyAssets(gameContext.getAssets(), "bin/Data", copiedData);
-        if (!copied) {
-            Log.e(TAG, "Failed to copy Unity Data assets! BepInEx may not work correctly.");
-        } else {
-            applyGlobalMetadataOverride(dataOnSdCard, copiedData);
+        // Earlier launcher builds copied an unstripped libunity into this directory. It comes first
+        // in the native library search order, so a leftover copy must not stay behind.
+        for (String stale : new String[]{"libunity.so", "libunity.sym.so", "libunity.cache.properties"}) {
+            File file = new File(codeCacheScoped, stale);
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "Could not remove stale " + file);
+            }
         }
 
+        setPhaseStatus(getString(R.string.bootstrap_status_copy_assets));
+        File copiedData = new File(appDataDir, "Data_copy");
+        PackageInfo gameInfo = null;
+        try {
+            gameInfo = gameContext.getPackageManager().getPackageInfo(targetPackage, 0);
+        } catch (NameNotFoundException e) {
+            Log.w(TAG, "Could not read the game's package info; Unity data is staged every launch");
+        }
+        File overrideMetadata = new File(dataOnSdCard, GLOBAL_METADATA_FILE);
+        boolean copied = GameDataStager.stage(gameContext.getAssets(), gameInfo, copiedData, overrideMetadata);
+        if (!copied) {
+            Log.e(TAG, "Failed to stage Unity Data assets! BepInEx may not work correctly.");
+        } else {
+            applyGlobalMetadataOverride(overrideMetadata, copiedData);
+        }
+
+        BootTimeline.mark("assets");
         setPhaseStatus(getString(R.string.bootstrap_status_detecting_version));
         String version = VersionLookup.TryLookup(copiedData);
         if (version == null) {
             Log.e(TAG, "Failed to determine Unity version! BepInEx may not work correctly.");
             version = BACKUP_UNITY_VERSION;
-            useOriginalLibUnity = true;
-        } else if (useOriginalLibUnity) {
-            Log.i(TAG, "Skipping libunity download");
         } else {
             Log.i(TAG, "Determined Unity version: " + version);
-            if (LibUnityDownloader.downloadAndCacheSafely(codeCacheScoped, version, targetGameAbi, new LibUnityDownloader.DownloadProgressListener() {
-                @Override
-                public void onDownloadStarted(String url, long totalBytes) {
-                    setDownloadStatus(0L, totalBytes);
+            if (!version.trim().equals(BuildConfig.BUNDLED_UNITY_VERSION)) {
+                // The game's own libunity is used, but the bundled Unity support libraries that
+                // BepInEx builds its interop against are tied to one version: a game update past
+                // it means the launcher itself needs updating. Debug builds carry on regardless.
+                if (!BuildConfig.DEBUG) {
+                    throw new LauncherUpdateRequiredException(BuildConfig.BUNDLED_UNITY_VERSION, version);
                 }
-
-                @Override
-                public void onDownloadProgress(long downloadedBytes, long totalBytes) {
-                    setDownloadStatus(downloadedBytes, totalBytes);
-                }
-
-                @Override
-                public void onDownloadFinished(boolean success, boolean usedCache) {
-                    // No-op: next phase will handle this.
-                }
-            })) {
-                Log.i(TAG, "Successfully downloaded libunity for version " + version + " and ABI " + targetGameAbi);
-            } else {
-                Log.e(TAG, "Failed to download libunity for version " + version + " and ABI " + targetGameAbi + ", falling back to original.");
-                useOriginalLibUnity = true;
+                Log.w(TAG, "Game uses Unity " + version + " but the launcher is built for " + BuildConfig.BUNDLED_UNITY_VERSION);
             }
         }
 
+        BootTimeline.mark("version");
         setPhaseStatus(getString(R.string.bootstrap_status_extracting_runtime));
 
         File dotnetDir = new File(appContext.getCodeCacheDir(), "dotnet");
         File bepInExDir = new File(dataOnSdCard, "BepInEx");
 
-        Utilities.extractZipFromAssets(appContext, "BepInEx-arm64.zip", bepInExDir);
-        Utilities.extractZipFromAssets(appContext, "dotnet-arm64.zip", dotnetDir);
-
-        setPhaseStatus(getString(R.string.bootstrap_status_registering_libraries));
-        File[] nativeLibs = new File(gameLibDir).listFiles();
-        if (nativeLibs != null) {
-            for (File file : nativeLibs) {
-                String name = file.getName();
-                if (name.startsWith("lib") && name.endsWith(".so") && name.length() > 6) {
-                    String extractedName = name.substring(3, name.length() - 3);
-                    NativeLibraryManager.addGameLibrary(extractedName);
-                }
-            }
-        } else {
-            Log.e(TAG, "Failed to list game native libraries! BepInEx may not work correctly.");
+        if (!Utilities.extractZipFromAssetsOnce(appContext, "BepInEx-arm64.zip", bepInExDir, "core/BepInEx.Unity.IL2CPP.dll")) {
+            Log.e(TAG, "BepInEx runtime is incomplete; the game may start without the mod loader");
         }
+        if (!Utilities.extractZipFromAssetsOnce(appContext, "dotnet-arm64.zip", dotnetDir, "System.Private.CoreLib.dll")) {
+            Log.e(TAG, ".NET runtime is incomplete; the game may start without the mod loader");
+        }
+
+        BootTimeline.mark("runtime");
+        setPhaseStatus(getString(R.string.bootstrap_status_installing_interop));
+        installBundledInterop(appContext, gameContext, targetPackage, bepInExDir);
+        BootTimeline.mark("interop");
+
+        setPhaseStatus(getString(R.string.bootstrap_status_installing_plugin));
+        if (!PluginInstaller.installBundledPlugins(appContext, bepInExDir)) {
+            Log.w(TAG, "Bundled plugin install did not complete; continuing with whatever is in plugins/");
+        }
+        BootTimeline.mark("plugin");
+
+        // The itch.io token reaches the game only through this process's environment: it is never
+        // put into the config or an Intent, and no plaintext copy stays on disk.
+        ItchAuth.reconcile(appContext, targetPackage);
+        if (!ItchAuth.exportToEnvironment(appContext, targetPackage)) {
+            Log.i(TAG, "No itch.io token stored; the game signs in on its own");
+        }
+        BootTimeline.mark("token");
 
         return new FusionConfig(
                 targetPackage,
@@ -371,14 +431,53 @@ public class BootstrapActivity extends AppCompatActivity {
                 dotnetDir.getAbsolutePath(),
                 copiedData.getAbsolutePath(),
                 version,
-                useOriginalLibUnity,
                 new String[]{},
                 new String[]{}
         );
     }
 
-    private void applyGlobalMetadataOverride(File dataOnSdCard, File copiedData) {
-        File overrideMetadata = new File(dataOnSdCard, GLOBAL_METADATA_FILE);
+    /**
+     * Puts the pre-generated interop assemblies in place so BepInEx skips generating them on the
+     * device. The bundle matches one game build; a release build refuses to start against another
+     * (generating on the device is what runs phones out of memory), a debug build carries on and
+     * lets BepInEx regenerate.
+     */
+    private void installBundledInterop(Context appContext, Context gameContext, String targetPackage, File bepInExDir) {
+        long gameVersionCode = -1;
+        String gameVersionName = "?";
+        try {
+            PackageInfo info = gameContext.getPackageManager().getPackageInfo(targetPackage, 0);
+            gameVersionCode = PackageInfoCompat.getLongVersionCode(info);
+            gameVersionName = info.versionName == null ? "?" : info.versionName;
+        } catch (NameNotFoundException e) {
+            // A release build must not guess: the bundle is only known to fit one game build.
+            if (!BuildConfig.DEBUG) {
+                throw new LauncherUpdateRequiredException(
+                        getString(R.string.bootstrap_interop_update_required, InteropInstaller.bundledGameVersionName(appContext), gameVersionName));
+            }
+            Log.w(TAG, "Could not read the game's version; installing the bundled interop unchecked");
+        }
+
+        InteropInstaller.Result result = InteropInstaller.installBundledInterop(appContext, bepInExDir, gameVersionCode);
+        switch (result) {
+            case GAME_MISMATCH:
+                String bundledFor = InteropInstaller.bundledGameVersionName(appContext);
+                if (!BuildConfig.DEBUG) {
+                    throw new LauncherUpdateRequiredException(
+                            getString(R.string.bootstrap_interop_update_required, bundledFor, gameVersionName));
+                }
+                Log.w(TAG, "Bundled interop is for Among Us " + bundledFor + " but " + gameVersionName
+                        + " is installed; BepInEx will generate on the device");
+                break;
+            case FAILED:
+                Log.w(TAG, "Bundled interop install failed; BepInEx will generate on the device");
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void applyGlobalMetadataOverride(File overrideMetadata, File copiedData) {
         if (!overrideMetadata.isFile()) {
             Log.i(TAG, "No global-metadata override found at " + overrideMetadata.getAbsolutePath());
             return;
@@ -423,16 +522,5 @@ public class BootstrapActivity extends AppCompatActivity {
         }
     }
 
-    private String resolveTargetGameAbi(String gameLibDir) {
-        if (gameLibDir == null || gameLibDir.isEmpty()) {
-            return null;
-        }
 
-        String abi = new File(gameLibDir).getName();
-        if (abi.isEmpty()) {
-            return null;
-        }
-
-        return abi;
-    }
 }

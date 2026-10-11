@@ -1,32 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" android:installLocation="preferExternal">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
   <supports-screens android:smallScreens="true" android:normalScreens="true" android:largeScreens="true" android:xlargeScreens="true" android:anyDensity="true" />
   <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-  <uses-permission android:name="com.android.vending.BILLING" />
-  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-      tools:ignore="AllFilesAccessPolicy,ScopedStorage" />
-  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
-      tools:ignore="PhotoAndVideoPolicy,SelectedPhotoAccess" />
-  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
-      tools:ignore="PhotoAndVideoPolicy,SelectedPhotoAccess" />
-  <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-  <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-      tools:ignore="PackageVisibilityPolicy,QueryAllPackagesPermission" />
-  <uses-permission android:name="android.permission.CAMERA" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- Package visibility is limited to what the launcher actually touches: the game it hosts,
+       and a browser for the itch.io sign-in page. -->
+  <queries>
+    <package android:name="com.innersloth.spacemafia" />
+    <intent>
+      <action android:name="android.intent.action.VIEW" />
+      <category android:name="android.intent.category.BROWSABLE" />
+      <data android:scheme="https" />
+    </intent>
+    <intent>
+      <action android:name="android.support.customtabs.action.CustomTabsService" />
+    </intent>
+  </queries>
   <uses-feature android:glEsVersion="0x00030000" />
   <uses-feature android:name="android.hardware.vulkan.version" android:required="false" />
   <uses-feature android:name="android.software.home_screen" android:required="true" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <uses-feature
-        android:name="android.hardware.camera"
-        android:required="false" />
-    <application android:label="@string/app_name" android:icon="@mipmap/app_icon" android:enableOnBackInvokedCallback="true" android:extractNativeLibs="true">
+    <!-- Nothing here is worth restoring on another device, and the itch.io sign-in token must not
+         leave the device through cloud or device-to-device backup. -->
+    <application android:label="@string/app_name" android:icon="@mipmap/app_icon" android:enableOnBackInvokedCallback="true" android:extractNativeLibs="true"
+        android:allowBackup="false">
     <meta-data android:name="unity.splash-mode" android:value="0" />
     <meta-data android:name="unity.splash-enable" android:value="False" />
     <meta-data android:name="unity.launch-fullscreen" android:value="True" />
@@ -34,9 +32,19 @@
     <meta-data android:name="notch.config" android:value="portrait|landscape" />
     <meta-data android:name="unity.auto-report-fully-drawn" android:value="true" />
     <meta-data android:name="com.google.android.gms.version" android:value="12451000" />
+    <!-- Play Asset Delivery (bundled with the game) enables these two services in whatever
+         package it runs in and aborts the process when the package does not declare them.
+         Declared here so the enable step finds them already on. They must never be started:
+         the launcher's own class loader has no play-core classes, so instantiation would fail
+         with ClassNotFoundException before any foreground-service check. That holds as long
+         as the game's data ships as an install-time split, which needs no extraction. -->
+    <service android:name="com.google.android.play.core.assetpacks.AssetPackExtractionService"
+        android:exported="false" />
+    <service android:name="com.google.android.play.core.assetpacks.ExtractionForegroundService"
+        android:exported="false" />
     <activity
         android:name="dev.allofus.fusioncore.SelectorActivity"
-        android:theme="@style/Theme.Material3.Dark.NoActionBar" android:exported="true"
+        android:theme="@style/Theme.EndKnot" android:exported="true"
         android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
         >
       <intent-filter>
@@ -45,15 +53,28 @@
       </intent-filter>
     </activity>
     <activity
+        android:name="dev.allofus.fusioncore.ItchAuthCallbackActivity"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
+        android:launchMode="singleTask"
+        android:noHistory="true"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="endknot" android:host="itch-auth" />
+      </intent-filter>
+    </activity>
+    <activity
         android:name="dev.allofus.fusioncore.BootstrapActivity"
-        android:theme="@style/Theme.Material3.Dark.NoActionBar"
+        android:theme="@style/Theme.EndKnot"
         android:screenOrientation="locked"
         android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
         android:launchMode="singleTask"
         android:exported="false" />
     <activity
         android:name="dev.allofus.fusioncore.GameSettingsActivity"
-        android:theme="@style/Theme.Material3.Dark.NoActionBar"
+        android:theme="@style/Theme.EndKnot"
         android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
         android:exported="false" />
     <!-- StubActivity for dynamic loading of unregistered activities -->
@@ -64,5 +85,22 @@
         android:hardwareAccelerated="true"
         android:launchMode="singleTask"
         android:exported="false" />
+    <!-- Standard-launch stub for the game's secondary activities (ads, web sign-in) -->
+    <activity
+        android:name="dev.allofus.fusioncore.SecondaryStubActivity"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
+        android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
+        android:hardwareAccelerated="true"
+        android:exported="false" />
+    <!-- Read-only handle for the log bundle handed to the share sheet (cache/share only). -->
+    <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.fileprovider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+      <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/file_paths" />
+    </provider>
   </application>
 </manifest>

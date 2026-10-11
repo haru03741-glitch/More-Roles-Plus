@@ -5,10 +5,15 @@
 #include <logger.h>
 #include <libmain.h>
 #include <fusion_config.h>
+#include <crash_maps.h>
+#include <blackbox.h>
+#include <crash_handler.h>
+#include <runtime_log_tap.h>
+#include <stderr_pump.h>
+#include <vitals.h>
 #include <hooking/il2cpp.h>
 #include <hooking/safehook.h>
 #include <hooking/allocator.h>
-#include <hooking/libunity.h>
 #include <dotnet.h>
 #include <external/dobby.h>
 #include <utilities/java.h>
@@ -27,19 +32,8 @@ static bool execute_fusion_config(const FusionConfig &config)
     fs::path codeCache(config.codeCacheDirectory);
 
     fs::path libIl2Cpp = gameLibsPath / "libil2cpp.so";
-    fs::path libUnity;
-
-    if (config.useOriginalLibUnity)
-    {
-        libUnity = gameLibsPath / "libunity.so";
-    }
-    else
-    {
-        libUnity = codeCache / "libunity.so";
-    }
-
-    std::string libUnityPath = libUnity.string();
-    try_hook_libunity(libUnityPath, (gameLibsPath / "libunity.so").string());
+    // The game's own libunity is used unmodified.
+    std::string libUnityPath = (gameLibsPath / "libunity.so").string();
 
     fs::path patchedLibIl2Cpp = codeCache / "libil2cpp.so";
     allocate_setup_injected(libIl2Cpp.c_str(), patchedLibIl2Cpp.c_str(), 1024 * 1024);
@@ -62,6 +56,20 @@ int il2cpp_init_hook(char *domain_name)
 
     if (runtimeConfig.initialized)
     {
+        // libil2cpp and libunity are loaded by now; a crash from here on finds them in the table.
+        blackbox_record_modules();
+
+        // The launcher saves crash reports in the parent of the game data directory; the symbol
+        // maps go to the same place so they are collected together.
+        std::string crashDirectory = fs::path(runtimeConfig.appDataDirectory).parent_path().string();
+        crash_maps_prune_perf_maps(crashDirectory, 3);
+        auto il2cppBase = il2cpp_get_library_base();
+        crash_maps_write_il2cpp_methods(
+                crashDirectory,
+                (fs::path(runtimeConfig.gameLibraryDirectory) / "libil2cpp.so").string(),
+                il2cppBase,
+                reinterpret_cast<uintptr_t>(get_injected_pool_base()) - il2cppBase);
+
         // setup environment variables
         setenv("BEPINEX_GAME_ASSEMBLY_PATH", libmain_get_override_il2cpp_path(), 1);
         setenv("FUSION_BEPINEX_PATH", runtimeConfig.bepInExDirectory.c_str(), 1);
@@ -89,6 +97,7 @@ int il2cpp_init_hook(char *domain_name)
         dotNetConfig.entryPointAssembly = "BepInEx.Unity.IL2CPP";
         dotNetConfig.entryPointType = "BepInEx.Unity.IL2CPP.FusionCoreEntrypoint";
         dotNetConfig.entryPointMethod = "Start";
+        dotNetConfig.perfMapDir = crashDirectory;
 
         // set TMPDIR for MonoMod lib drops
         setenv("TMPDIR", runtimeConfig.codeCacheDirectory.c_str(), 1);
@@ -134,6 +143,18 @@ extern "C" [[maybe_unused]] bool fusion_bootstrap_from_libmain(JNIEnv *env)
     FusionConfig config = fusion_parse_config(env, javaConfig);
     env->DeleteLocalRef(javaConfig);
 
+    if (config.initialized)
+    {
+        // Both go in before il2cpp and CoreCLR are started: the ring then holds the whole boot,
+        // and the runtimes' own signal handlers end up in front of this one.
+        std::string crashDirectory = fs::path(config.appDataDirectory).parent_path().string();
+        blackbox_open(crashDirectory, 3);
+        crash_handler_install();
+        stderr_pump_start();
+        runtime_log_tap_install();
+        vitals_start();
+    }
+
     log(LogLevel::INFO, TAG, "Executing Fusion bootstrap from libmain namespace...");
     if (!execute_fusion_config(config)) {
         log(LogLevel::ERROR, TAG, "Failed to execute Fusion bootstrap.");
@@ -155,6 +176,7 @@ extern "C" [[maybe_unused]] bool fusion_bootstrap_from_libmain(JNIEnv *env)
         log(LogLevel::ERROR, TAG, "Failed to initialize SafeHook");
         return false;
     }
+    safehook_probe_code_patch();
 
     log(LogLevel::INFO, TAG, "Installing il2cpp hooks...");
     il2cpp_install_init_hook(il2cpp_init_hook);

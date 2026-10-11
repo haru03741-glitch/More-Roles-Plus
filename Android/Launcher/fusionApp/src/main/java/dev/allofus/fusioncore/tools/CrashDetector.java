@@ -23,6 +23,8 @@ public class CrashDetector {
     public static final String TAG = "CrashDetector";
 
     public static void init(Context context) {
+        // Before the handler is registered: it resolves the crash-note folder when it fires.
+        Utilities.initStorage(context);
         setupUncaughtExceptionHandler(context);
 
         ActivityManager activityManager = context.getSystemService(ActivityManager.class);
@@ -34,20 +36,37 @@ public class CrashDetector {
         var fusionFolder = Utilities.getExternalFusionCoreDirectory(null);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            List<ApplicationExitInfo> exitInfos = activityManager.getHistoricalProcessExitReasons(context.getPackageName(), 0, 1);
+            // maxNum 0 = every retained record, so a crash followed by a normal exit is still seen.
+            List<ApplicationExitInfo> exitInfos = activityManager.getHistoricalProcessExitReasons(context.getPackageName(), 0, 0);
+            Log.i(TAG, "scanning " + exitInfos.size() + " exit info records");
 
-            for (var exitInfo : exitInfos) {
-                if (exitInfo.getReason() != ApplicationExitInfo.REASON_CRASH &&
-                        exitInfo.getReason() != ApplicationExitInfo.REASON_CRASH_NATIVE &&
-                        exitInfo.getReason() != ApplicationExitInfo.REASON_ANR
-                ) {
-                    Log.i(TAG, "skipping exit info with reason " + exitInfo.getReason());
-                    continue;
-                }
+            // Trace streams can be several MB each; keep the read/decode/write off the main thread.
+            var thread = new Thread(() -> writeExitInfos(context, exitInfos, fusionFolder), "CrashDetector");
+            thread.setDaemon(true);
+            thread.start();
+        }
+    }
 
-                var outputFile = new File(fusionFolder, "exit_info_" + System.currentTimeMillis() + ".txt");
-                writeExitInfo(context, exitInfo, outputFile);
-                Log.i(TAG, "wrote exit info log to " + outputFile.getAbsolutePath());
+    @RequiresApi(api = Build.VERSION_CODES.R)
+    private static void writeExitInfos(Context context, List<ApplicationExitInfo> exitInfos, File fusionFolder) {
+        for (var exitInfo : exitInfos) {
+            if (exitInfo.getReason() != ApplicationExitInfo.REASON_CRASH &&
+                    exitInfo.getReason() != ApplicationExitInfo.REASON_CRASH_NATIVE &&
+                    exitInfo.getReason() != ApplicationExitInfo.REASON_ANR
+            ) {
+                Log.i(TAG, "skipping exit info with reason " + exitInfo.getReason() + " at " + exitInfo.getTimestamp());
+                continue;
+            }
+
+            // Named by the record's own timestamp and pid: the same record is written once across
+            // launches, and two records sharing a timestamp still get separate files.
+            var outputFile = new File(fusionFolder, "exit_info_" + exitInfo.getTimestamp() + "_" + exitInfo.getPid() + ".txt");
+            if (outputFile.exists()) {
+                Log.i(TAG, "already recorded exit info at " + exitInfo.getTimestamp() + " (reason " + exitInfo.getReason() + ")");
+                continue;
+            }
+            if (writeExitInfo(context, exitInfo, outputFile)) {
+                Log.i(TAG, "wrote exit info (reason " + exitInfo.getReason() + " at " + exitInfo.getTimestamp() + ") to " + outputFile.getAbsolutePath());
             }
         }
     }
@@ -111,7 +130,7 @@ public class CrashDetector {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.R)
-    private static void writeExitInfo(Context context, ApplicationExitInfo exitInfo, File outputFile) {
+    private static boolean writeExitInfo(Context context, ApplicationExitInfo exitInfo, File outputFile) {
         try (var writer = new FileWriter(outputFile, false)) {
             writer.write("FusionCore Exit Log:\n");
             writer.write(buildDeviceData(context));
@@ -122,14 +141,14 @@ public class CrashDetector {
             if (exitInfo.getReason() == ApplicationExitInfo.REASON_CRASH) {
                 writer.write("Note: Java runtime crashes do not populate ApplicationExitInfo trace streams.\n");
                 writer.write("Description: " + exitInfo.getDescription() + "\n");
-                return;
+                return true;
             }
 
             var inputStream = exitInfo.getTraceInputStream();
             if (inputStream == null) {
                 writer.write("failed to get trace input stream\n");
                 Log.e(TAG, "No trace input stream");
-                return;
+                return true;
             }
 
             byte[] rawBytes;
@@ -141,13 +160,13 @@ public class CrashDetector {
                 if (read < 0) {
                     writer.write("failed to read trace input stream\n");
                     Log.e(TAG, "No trace input stream bytes");
-                    return;
+                    return true;
                 }
             }
             if (rawBytes == null || rawBytes.length == 0) {
                 writer.write("failed to read trace input stream\n");
                 Log.e(TAG, "No trace input stream bytes");
-                return;
+                return true;
             }
 
             writer.write("=".repeat(50) + "\n");
@@ -160,9 +179,15 @@ public class CrashDetector {
                 var tombstoneDecoded = dev.allofus.fusioncore.proto.TombstoneProtos.Tombstone.parseFrom(rawBytes);
                 writer.write(tombstoneDecoded.toString());
             }
+            return true;
 
         } catch (Exception e) {
             Log.e(TAG, "failed to extract exit info data", e);
+            // A partial file would count as "already recorded" on the next launch.
+            if (outputFile.delete()) {
+                Log.i(TAG, "removed partial exit info file " + outputFile.getName());
+            }
+            return false;
         }
     }
 

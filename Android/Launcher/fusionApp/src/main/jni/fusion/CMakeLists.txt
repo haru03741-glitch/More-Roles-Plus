@@ -9,13 +9,18 @@ set(LIB_FOLDER ${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 add_library(fusion SHARED
         src/fusion.cpp
         src/fusion_config.cpp
+        src/blackbox.cpp
+        src/crash_handler.cpp
+        src/crash_maps.cpp
         src/dotnet.cpp
         src/exports.cpp
         src/logger.cpp
+        src/runtime_log_tap.cpp
+        src/stderr_pump.cpp
+        src/vitals.cpp
         src/hooking/allocator.cpp
         src/hooking/il2cpp.cpp
         src/hooking/safehook.cpp
-        src/hooking/libunity.cpp
         src/utilities/asm.cpp
         src/utilities/elf.cpp
         src/utilities/library.cpp

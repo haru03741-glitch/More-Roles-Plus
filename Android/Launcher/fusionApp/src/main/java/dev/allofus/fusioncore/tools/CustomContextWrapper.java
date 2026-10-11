@@ -16,10 +16,18 @@ public class CustomContextWrapper extends ContextWrapper {
     Context fusionContext;
     Context gameContext;
 
+    private static volatile ClassLoader gameClassLoader;
+
+    /** Registers the loader that game code should see from this context. */
+    public static void setGameClassLoader(ClassLoader loader) {
+        gameClassLoader = loader;
+    }
+
     public CustomContextWrapper(Context gameContext, Context fusionContext) {
         super(gameContext);
         this.gameContext = gameContext;
         this.fusionContext = fusionContext;
+        Utilities.initStorage(fusionContext);
         this.getApplicationInfo().dataDir = Utilities.getExternalFusionCoreDirectory(gameContext.getPackageName()).getAbsolutePath();
         // this prevents the game from resolving its own libraries
         // that way we can override them properly with our own versions
@@ -28,6 +36,16 @@ public class CustomContextWrapper extends ContextWrapper {
 
     public Context getOriginalActivity() {
         return fusionContext;
+    }
+
+    @Override
+    public ClassLoader getClassLoader() {
+        ClassLoader loader = gameClassLoader;
+        if (loader != null) {
+            return loader;
+        }
+        Log.w("CustomContextWrapper", "Game class loader not registered; falling back to base context loader");
+        return super.getClassLoader();
     }
 
 //    @Override

@@ -1,15 +1,11 @@
 package dev.allofus.fusioncore;
 
-import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -19,18 +15,11 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.content.res.AppCompatResources;
-import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.content.pm.PackageInfoCompat;
 
 import com.google.android.material.appbar.MaterialToolbar;
 
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
-import dalvik.system.DexFile;
 
 public class GameSettingsActivity extends AppCompatActivity {
 
@@ -42,7 +31,6 @@ public class GameSettingsActivity extends AppCompatActivity {
     private TextView tvVersionInfo;
 
     private AutoCompleteTextView actvOverrideActivity;
-    private SwitchCompat switchLibUnity;
 
     private String targetPackageName;
 
@@ -63,9 +51,22 @@ public class GameSettingsActivity extends AppCompatActivity {
         }
 
         resolveAndDisplayPackageInfo(targetPackageName);
-        switchLibUnity.setChecked(FusionSettings.getUseUnstrippedLibUnityForGame(this, targetPackageName));
-        actvOverrideActivity.setText(FusionSettings.getActivityOverrideForGame(this, targetPackageName), false);
+        // The launch activity is always resolved automatically, so the field is read-only.
+        FusionSettings.dropActivityOverrideForGame(this, targetPackageName);
+        actvOverrideActivity.setText(getString(R.string.settings_automatic), false);
+        setupAdvancedFold();
         setupListeners();
+    }
+
+    private void setupAdvancedFold() {
+        View header = findViewById(R.id.settings_advanced_header);
+        View card = findViewById(R.id.settings_advanced_card);
+        TextView chevron = findViewById(R.id.settings_advanced_chevron);
+        header.setOnClickListener(v -> {
+            boolean open = card.getVisibility() != View.VISIBLE;
+            card.setVisibility(open ? View.VISIBLE : View.GONE);
+            chevron.setText(open ? "▲" : "▼");
+        });
     }
 
     private void initViews() {
@@ -75,7 +76,6 @@ public class GameSettingsActivity extends AppCompatActivity {
         tvVersionInfo = findViewById(R.id.tvVersionInfo);
 
         actvOverrideActivity = findViewById(R.id.activity_override_actv);
-        switchLibUnity = findViewById(R.id.switchLibUnity);
     }
 
     private void setupToolbar() {
@@ -106,23 +106,6 @@ public class GameSettingsActivity extends AppCompatActivity {
             tvPackageName.setText(packageName);
             tvVersionInfo.setText(getString(R.string.settings_version_format, versionName, versionCode));
             ivAppIcon.setImageDrawable(appIcon);
-
-            Set<String> activities = new HashSet<>();
-            activities.add(getString(R.string.settings_automatic));
-            if (packageInfo.activities != null) {
-                for (ActivityInfo activity : packageInfo.activities) {
-                    activities.add(activity.name);
-                }
-            } else {
-                Toast.makeText(this, getString(R.string.settings_cannot_read_activities), Toast.LENGTH_LONG).show();
-            }
-
-            var arrayAdapter = new ArrayAdapter<>(this, R.layout.item_dropdown, activities.toArray());
-            actvOverrideActivity.setAdapter(arrayAdapter);
-            actvOverrideActivity.setOnItemClickListener((AdapterView<?> parent, View view, int position, long id) -> {
-                String selectedItem = (String) parent.getItemAtPosition(position);
-                FusionSettings.setActivityOverrideForGame(this, targetPackageName, selectedItem);
-            });
         } catch (PackageManager.NameNotFoundException e) {
             Toast.makeText(this, getString(R.string.settings_package_not_found, packageName), Toast.LENGTH_SHORT).show();
             finish();
@@ -130,7 +113,5 @@ public class GameSettingsActivity extends AppCompatActivity {
     }
 
     private void setupListeners() {
-        switchLibUnity.setOnCheckedChangeListener((buttonView, isChecked) ->
-                FusionSettings.setUseUnstrippedLibUnityForGame(this, targetPackageName, isChecked));
     }
 }
