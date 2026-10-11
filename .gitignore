@@ -2,9 +2,6 @@ bin/
 obj/
 build-android/
 build/
-*.user
-.vs/
-.idea/
 local.props
 node_modules/
 
@@ -28,3 +25,144 @@ src/Dev/DevUsers.Local.cs
 # 床マスク (ゲームの絵から tools/make-floor-mask.py で作る・配布は DLL に埋め込む)
 Resources/FloorMasks/
 tools/__pycache__/
+
+# --- AI アシスタント / コーディングエージェントの個人設定 ---
+# 各自の手元で作られる設定やメモ。共有したい設定はここに足さず相談してから入れる。
+CLAUDE.local.md
+.claudeignore
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.windsurf/
+.windsurfrules
+.codeium/
+.aider*
+.continue/
+.cline/
+.clinerules
+.clineignore
+.roo/
+.roomodes
+.rooignore
+.kilocode/
+.gemini/
+GEMINI.md
+.codex/
+AGENTS.md
+.agents/
+.junie/
+.kiro/
+.trae/
+.augment/
+.augmentignore
+.tabnine/
+.sourcegraph/
+.copilot/
+.specstory/
+skills-lock.json
+
+# --- エディター / IDE ---
+# Visual Studio
+.vs/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+.localhistory/
+.vshistory/
+# JetBrains (Rider / CLion / Android Studio)
+.idea/
+*.iml
+*.sln.iml
+.fleet/
+# VS Code (共有したい設定は ! で個別に戻す)
+.vscode/*
+!.vscode/extensions.json
+.history/
+*.code-workspace
+# Zed / Sublime Text / Vim / Emacs / Nova
+.zed/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+.nova/
+
+# --- .NET / ビルドの副産物 ---
+*.binlog
+*.nupkg
+*.snupkg
+TestResults/
+[Ll]og/
+*.log
+.dotnet/
+.nuget/
+*.ncrunch*
+_ReSharper*/
+*.DotSettings.user
+
+# --- C++ (native/) ---
+CMakeFiles/
+CMakeCache.txt
+cmake-build-*/
+compile_commands.json
+.cache/
+*.o
+*.obj
+*.ilk
+*.exp
+
+# --- Android / Gradle ---
+.gradle/
+.cxx/
+.externalNativeBuild/
+local.properties
+captures/
+*.apk
+*.aab
+*.ap_
+*.idsig
+*.jks
+*.keystore
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.python-version
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- Node ---
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- 秘密情報 (どこに置かれても追跡しない) ---
+.env
+.env.*
+*.pem
+*.pfx
+
+# --- OS が作るファイル ---
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# --- 一時ファイル ---
+*.tmp
+*.bak
+*.orig
+*.rej
