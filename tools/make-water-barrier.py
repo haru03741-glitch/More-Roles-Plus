@@ -4,7 +4,7 @@
   python tools/make-water-barrier.py <floor_*.json ...> [--bundles <StandaloneWindows の aa フォルダ>] [--preview <dir>]
   (json はブリッジの `floorexport` が書く物。床マスクと同じ)
 
-出力は Resources/WaterBarrier/<船>.bin (リポジトリには入れない・ビルドで DLL に埋め込む)。
+出力は Resources/WaterBarrier/<船>.bin (ビルドで DLL に埋め込む)。水の計算に使うので、全員が同じ地図を使うようリポジトリに入れる。
 水は縁を越える所の画面の上に、物の絵の不透明な画素があれば止まり、無ければ抜ける (網の目や柵の柱の間は抜ける)。
 止まる絵の画素:
   - 手前の絵 (柵・家具・小物) の不透明な所は全部

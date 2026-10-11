@@ -237,7 +237,8 @@ internal static class WaterFall
         // 縁に沿った向き (縁の外向きに直交)
         float sx = e.X0 - e.Ny * u, sy = e.Y0 + e.Nx * u;
         float z0 = e.Lip ? MathF.Max(0f, e.Depth - e.LipH) : e.Depth;
-        float h0 = MathF.Max(0.3f, sy - e.Y1);
+        // 落ちる高さは縁ごとに 1 つ (縁に沿った位置で変えると、横の縁では上の端の粒が跳ね上がり下の端の粒が潜って、縁の脇が空く)
+        float h0 = MathF.Max(0.3f, e.Y0 - e.Y1);
         // 縁を越える速さは越えた深さの平方根に比例する (堰)。外へ投げ出される距離は落ちる時間ぶん
         float thr = MathF.Min(ThrowMax, ThrowGain * MathF.Sqrt(MathF.Max(0f, e.Depth - (top ? e.BarH : 0f)))) * (0.8f + 0.4f * v);
         ref var p = ref Parcels[_parcels++];
@@ -251,7 +252,7 @@ internal static class WaterFall
         p.Ey = e.Y1 + e.Nx * along + e.Ny * thr;
         p.H0 = h0 + z0;
         p.Age = 0f;
-        p.Lx = sx; p.Ly = sy;
+        p.Lx = sx; p.Ly = sy + z0;
         p.Void = e.Void;
         p.Cut = e.Void ? WaterSim.FrontCut(p.Ex, CutFrom(e), p.Ey) : float.MinValue;
         p.Drawn = false;
