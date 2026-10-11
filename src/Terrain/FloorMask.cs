@@ -404,8 +404,8 @@ internal static class FloorMask
             if (a.Length > 0 && (a[0] == "on" || a[0] == "off")) { Native.MrpNative.Enabled = a[0] == "on"; reply($"OK native on={Native.MrpNative.On} {Native.MrpNative.Status}"); return; }
             if (a.Length > 0 && a[0] == "verify")
             {
-                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; }
-                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff}");
+                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; }
+                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} simSubsteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff}");
                 return;
             }
             if (a.Length == 0 || a[0] != "check") { reply($"OK native on={on} {Native.MrpNative.Status}"); return; }
