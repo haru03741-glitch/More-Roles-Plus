@@ -252,6 +252,10 @@ internal static partial class WaterSim
         return Math.Min(best, f);
     }
     internal static bool Open(int k) => _open[k] != 0;
+    // C++ の部品へ渡す用 (読むだけ)
+    internal static byte[] OpenCells => _open;
+    internal static short[] FurnCells => _furn;
+    internal static int[] HeightCells => _hgt;
     internal static bool Ready => _ready;
     internal static int Step => _step;
     internal static bool Running => _running;
@@ -1968,7 +1972,7 @@ internal static partial class WaterSim
     {
         double k = WaterArt.ProfTiles > 0 ? 1000.0 / System.Diagnostics.Stopwatch.Frequency / WaterArt.ProfTiles : 0;
         var t = WaterArt.ProfTicks;
-        return $"raw={t[0] * k:0.000} face={t[1] * k:0.000} prep={t[2] * k:0.000} pix={t[3] * k:0.000} upload={t[4] * k:0.000} flow={t[5] * k:0.000}";
+        return $"raw={t[0] * k:0.000} face={t[1] * k:0.000} prep={t[2] * k:0.000} pix={t[3] * k:0.000} upload={t[4] * k:0.000} flow={t[5] * k:0.000} (face={t[6] * k:0.000} spread={t[7] * k:0.000})";
     }
 
     // 指紋と量に数える升 = 回す升と眠っている升 (縁の升は回さないので数えない)

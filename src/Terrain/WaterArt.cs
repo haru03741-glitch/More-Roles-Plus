@@ -223,8 +223,8 @@ internal static class WaterArt
         return k;
     }
 
-    // 描き直し 1 枚の区間ごとの時間 (water prof): 高さの写し・面・準備・画素・転送・流れの絵
-    internal static readonly long[] ProfTicks = new long[6];
+    // 描き直し 1 枚の区間ごとの時間 (water prof): 高さの写し・面・準備・画素・転送・流れの絵・壁の面の水・にじませ
+    internal static readonly long[] ProfTicks = new long[8];
     internal static long ProfTiles;
     private static long _profT;
     private static void Prof(int i)
@@ -365,9 +365,13 @@ internal static class WaterArt
         if (native) PixelsNative(t, x0, y0, n, t.Px);
         else Pixels(t, x0, y0, n, t.Px);
         if (t.Face == null) return;
-        WriteFace(t, x0, y0, n);
+        Prof(3);
+        if (native) FaceNative(t, x0, y0, n);
+        else WriteFace(t, x0, y0, n);
+        Prof(6);
         if (native) SpreadFaceNative(t, n);
         else SpreadFace(t, n);
+        Prof(7);
     }
 
     private static unsafe void PixelsNative(Tile t, int x0, int y0, int n, byte[] dst)
@@ -381,6 +385,30 @@ internal static class WaterArt
             Native.MrpNative.WaterPixels(depth, wet, tc + 4, n, x0, y0, org.x, org.y, WaterSim.Cell, (float)tc / (n - 1),
                 open, SolidMap.W, SolidMap.H, sorg.x, sorg.y, SolidMap.Ppu,
                 t.FloorOn ? 1 : 0, (byte*)furn, outs, SolidMap.BareSkyReach, 255f / DeepScale, 1f / WetRamp, px);
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct FaceArgs
+    {
+        public byte* Px; public byte* Face; public int N, X0, Y0;
+        public float Edge, Ox, Oy, Cell;
+        public byte* Open; public short* Furn; public int* Hgt; public int W, H;
+    }
+
+    private static unsafe void FaceNative(Tile t, int x0, int y0, int n)
+    {
+        var org = WaterSim.Origin;
+        fixed (byte* px = t.Px) fixed (byte* face = t.Face) fixed (byte* open = WaterSim.OpenCells)
+        fixed (short* furn = WaterSim.FurnCells) fixed (int* hgt = WaterSim.HeightCells)
+        {
+            var a = new FaceArgs
+            {
+                Px = px, Face = face, N = n, X0 = x0, Y0 = y0,
+                Edge = (float)WaterSim.TileCells / (n - 1), Ox = org.x, Oy = org.y, Cell = WaterSim.Cell,
+                Open = open, Furn = furn, Hgt = hgt, W = WaterSim.W, H = WaterSim.H,
+            };
+            Native.MrpNative.WaterFace(&a);
+        }
     }
 
     private static unsafe void SpreadFaceNative(Tile t, int n)

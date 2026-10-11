@@ -144,9 +144,21 @@ MRP_API void mrp_water_pixels(
 // A を面の外へ spread 画素にじませる (WaterArt.SpreadFace)。tmp は n×n の作業場所
 MRP_API void mrp_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, int32_t spread, uint8_t* tmp)
 {
+    // A が全部 0 の行は横に広げても 0 なので飛ばす。縦は上下 spread 行の tmp が全部 0 なら何も変わらない
+    uint8_t rowAny[256];
+    if (n > 256) return;
     for (int y = 0; y < n; y++)
     {
         int row = y * n;
+        uint8_t any = 0;
+        for (int x = 0; x < n; x++) any |= px[(row + x) * 4 + 3];
+        if (!any)
+        {
+            for (int x = 0; x < n; x++) tmp[row + x] = 0;
+            rowAny[y] = 0;
+            continue;
+        }
+        rowAny[y] = 1;
         for (int x = 0; x < n; x++)
         {
             uint8_t a = px[(row + x) * 4 + 3];
@@ -160,13 +172,16 @@ MRP_API void mrp_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, 
     }
     for (int y = 0; y < n; y++)
     {
+        int lo = y - spread < 0 ? 0 : y - spread, hi = y + spread > n - 1 ? n - 1 : y + spread;
+        bool near = false;
+        for (int k = lo; k <= hi; k++) if (rowAny[k]) { near = true; break; }
+        if (!near) continue;
         int row = y * n;
         for (int x = 0; x < n; x++)
         {
             int j = row + x, i = j * 4;
             if (px[i + 3] != 0) continue;
             uint8_t a = tmp[j];
-            int lo = y - spread < 0 ? 0 : y - spread, hi = y + spread > n - 1 ? n - 1 : y + spread;
             for (int k = lo; k <= hi; k++) { uint8_t b = tmp[k * n + x]; if (b > a) a = b; }
             if (a == 0) continue;
             px[i + 3] = a;
