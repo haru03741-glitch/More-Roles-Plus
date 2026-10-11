@@ -17,7 +17,8 @@
 //   _Lvl = 床から測った水位で、h < _Lvl の画素を水の厚さ (_Lvl - h) の色で覆う。
 //   床の線は列ごと (_BaseTex・_BaseOn) で、無い時は絵全体の一番下 (_VBase)。
 //   _Cover = 天板に乗った水がまだらに広がる具合 (0..1)。_VPerUnit = 世界の 1 単位が型の v でいくつか (上下反転なら負)。
-// _Mode = 1 (噴き出し): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)。
+// _Mode = 1 (噴き出し・滝): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)・B = 水の深さ (1 = 2 単位)。
+//   深さのある所 (縁を越える前の水) は水たまりと同じ色の作りで塗り、浅くなるほど噴き出しの透けた水色へ移る。深さのある所は縁の線を引かない (水たまりとつながる)。
 // 影の中の写し (_ShadowOnly = 1) は影の板の手前にあって家具より手前になるので、_FrontOn の時は _FrontMask (水より手前の家具の絵の形) の所を抜く。
 //   _Flow (xy = 流れの向き) に沿って伸びる筋を流し、筋の明るい所と泡は白、それ以外は透けた水色。
 Shader "MRP/Water"
@@ -342,12 +343,18 @@ Shader "MRP/Water"
                 float dense = saturate(d);
                 // 薄い所は透けた水色・濃い所 (芯) は深い青。筋と泡だけ白
                 float3 water = lerp(float3(0.55, 0.82, 1.0), float3(0.3, 0.6, 0.95), saturate(dense * 1.2 - 0.2));
-                float white = saturate(foam * 0.85 + streak * 0.55);
+                // 深さのある水は水たまりと同じ色
+                float du = data.b * 2.0;
+                float pool = smoothstep(0.0, 0.9, du);
+                float murk;
+                fixed4 tint = Tint(i.world, du, murk);
+                water = lerp(water, tint.rgb, pool);
+                float white = saturate(foam * 0.85 + streak * 0.55 * (1.0 - pool * 0.8));
                 fixed4 c;
                 c.rgb = lerp(water, float3(1, 1, 1), white);
-                c.a = lerp(0.35, 0.85, saturate(dense * 0.9 + white * 0.3));
-                // 縁: 薄い青の線 (水の膜の縁が光を曲げて暗く見える)
-                float edge = saturate(1.0 - inside / 1.3);
+                c.a = lerp(lerp(0.35, 0.85, saturate(dense * 0.9 + white * 0.3)), saturate(tint.a + white * 0.3), pool);
+                // 縁: 薄い青の線 (水の膜の縁が光を曲げて暗く見える)。水たまりとつながる所 (深さのある所) は引かない
+                float edge = saturate(1.0 - inside / 1.3) * (1.0 - pool);
                 c.rgb = lerp(c.rgb, float3(0.3, 0.52, 0.82), edge * 0.8);
                 c.a = max(c.a, edge * 0.85);
                 c.a *= body * i.color.a;
