@@ -59,6 +59,9 @@ internal static partial class WaterSim
         }
         string path = System.IO.Path.Combine(TestBridge.ScreensDir, "barrier.ppm");
         TerrainReview.WriteRgb(path, rgb, w, h);
-        return $"OK water barrier {WaterBarrier.Stats} edges={edges} blocked={blockedAll} partial={partial} -> {path}";
+        // 全升の縁の止まる割合と高さの指紋 (端末どうしで同じになるか比べる)
+        uint hash = 2166136261u;
+        for (int i = 0; i < _barB.Length; i++) hash = (hash ^ _barB[i] ^ (uint)(ushort)_barH[i] << 8) * 16777619u;
+        return $"OK water barrier {WaterBarrier.Stats} edges={edges} blocked={blockedAll} partial={partial} hash={hash:x8} -> {path}";
     }
 }

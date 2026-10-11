@@ -110,12 +110,13 @@ internal static class WaterBarrier
         blocked = 0; height = 0f;
         Ensure();
         if (_bits == null) return false;
+        // 縁は画素の境目に乗る (升 0.25 × 32 画素)。端末ごとの丸めで隣の画素へずれないよう、切り捨てでなく四捨五入で画素の境目へ寄せる
         int band = Math.Max(1, (int)(FootBand * _ppu)), maxRun = (int)(MaxHeight * _ppu);
         int cols = 0, hit = 0, best = 0;
         if (d >= 2)
         {
-            int my = (int)MathF.Floor((y0 - _oy) * _ppu);
-            int a = (int)MathF.Floor((x0 - _ox) * _ppu), b = (int)MathF.Ceiling((x1 - _ox) * _ppu);
+            int my = (int)MathF.Round((y0 - _oy) * _ppu);
+            int a = (int)MathF.Round((x0 - _ox) * _ppu), b = (int)MathF.Round((x1 - _ox) * _ppu);
             for (int mx = a; mx < b; mx++)
             {
                 cols++;
@@ -131,8 +132,8 @@ internal static class WaterBarrier
         }
         else
         {
-            int mx = (int)MathF.Floor((x0 - _ox) * _ppu);
-            int a = (int)MathF.Floor((y0 - _oy) * _ppu), b = (int)MathF.Ceiling((y1 - _oy) * _ppu);
+            int mx = (int)MathF.Round((x0 - _ox) * _ppu);
+            int a = (int)MathF.Round((y0 - _oy) * _ppu), b = (int)MathF.Round((y1 - _oy) * _ppu);
             for (int my = a; my < b; my++)
             {
                 cols++;

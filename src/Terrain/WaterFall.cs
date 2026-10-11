@@ -243,9 +243,9 @@ internal static class WaterFall
         ref var p = ref Parcels[_parcels++];
         p.T = MathF.Max(0.12f, e.Delay / (float)GameClock.Hz) * (0.95f + 0.1f * Rand());
         // 流れに乗って縁を越えた水は、縁に沿った勢いで流れの先へずれて落ちる (落ちる間ずっと同じ速さ)。
-        // 縁に沿った位置はそのまま (膜は扇に開かない)、外向きの位置は着く升の位置
+        // 着く位置は縁から着く升へ平行に移した所 (膜は扇に開かない)。横の縁は縁に沿う向きが画面の縦なので、着く升との差はそのまま残す
         float drift = Math.Clamp(e.Vt * Carry * p.T, -CarryMax, CarryMax);
-        float along = (sx - e.X1) * -e.Ny + (sy - e.Y1) * e.Nx + drift;
+        float along = u + drift;
         p.Gx = sx; p.Gy = sy - h0;
         p.Ex = e.X1 - e.Ny * along + e.Nx * thr;
         p.Ey = e.Y1 + e.Nx * along + e.Ny * thr;
