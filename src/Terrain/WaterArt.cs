@@ -29,6 +29,7 @@ internal static class WaterArt
     // A = 壁の面の上の水の厚さ (単位) × FaceScale + 128。128 の線が壁に這い上がった水面の線。壁の面でない画素は 0
     private const float FaceScale = 96f;
     private const int FaceBaseScan = 3;       // 壁の根元の升が閉じている (壁の線を太らせた分) 時に、下へ探す升の数
+    private const float BaseIn = 1f / 32f;    // 面の根元を升の縁ちょうどから手前へずらす量 (縁ちょうどは奥の升に入る)
     // 流れの絵: R, G = 128 + 速さ (単位/秒) / FlowMax × 127。浅い縁では 量 ÷ 深さ が跳ねるので深さは FlowMinDepth より浅く数えない
     internal const float FlowMax = 4f;
     private const int FlowMinDepth = WaterSim.Full / 8;
@@ -50,6 +51,7 @@ internal static class WaterArt
         public bool[] Furn;
         public byte[] Face;       // 壁の面の画素の床からの高さ (FloorMask.FaceHeights)。壁の面が無いタイルは null
         public bool FaceDone;
+        public bool FloorDirty;   // 床の切り抜きを次に描く時に作り直す (壁の穴・低い壁が変わった)
         public int FurnVersion;
         public MaterialPropertyBlock Block;
         public Texture2D Floor; // 床マスク (部屋の絵の画素ごとの床) をこのタイルの範囲で切り出した物
@@ -277,11 +279,21 @@ internal static class WaterArt
         }
         t.LastDraw = _clock;
         int n0 = tc * Px;
+        if (t.FloorDirty)
+        {
+            t.FloorDirty = false;
+            if (t.Floor && t.Sr) { UnityEngine.Object.Destroy(t.Floor); MakeFloor(t, org0x + x0 * cs, org0y + y0 * cs, tc * cs); }
+        }
         if (!t.FaceDone)
         {
             t.FaceDone = true;
+            t.Face = null;
             var face = new byte[n0 * n0];
-            if (FloorMask.Active && FloorMask.FaceHeights(org0x + x0 * cs, org0y + y0 * cs, tc * cs, n0, face)) t.Face = face;
+            float fx = org0x + x0 * cs, fy = org0y + y0 * cs, fs = tc * cs;
+            bool got = FloorMask.Active && FloorMask.FaceHeights(fx, fy, fs, n0, face);
+            if (!got) Array.Fill(face, (byte)255);
+            got |= WaterHeight.StampFace(face, n0, fx, fy, fs);
+            if (got) { WaterHeight.CutHoles(face, n0, fx, fy, fs); t.Face = face; }
         }
         bool faceWet = t.Face != null && FaceWet(t, x0, y0, n0);
         if (!any && !faceWet)
@@ -542,7 +554,7 @@ internal static class WaterArt
             byte z = t.Face[py * n + px];
             if (z > FloorMask.FaceTop) continue;
             float wx = org.x + (x0 + px * edge) * cell, wy = org.y + (y0 + py * edge) * cell, h = z * (1f / FloorMask.FaceUnit);
-            if (BaseDepth(wx, wy - h) > h) return true;
+            if (BaseDepth(wx, wy - h - BaseIn) > h) return true;
         }
         return false;
     }
@@ -567,7 +579,7 @@ internal static class WaterArt
                 if (z <= FloorMask.FaceTop)
                 {
                     float wx = org.x + (x0 + px * edge) * cell, wy = org.y + (y0 + py * edge) * cell, h = z * (1f / FloorMask.FaceUnit);
-                    byte a = (byte)FxMath.Clamp(128f + (BaseDepth(wx, wy - h) - h) * FaceScale, 0f, 255f);
+                    byte a = (byte)FxMath.Clamp(128f + (BaseDepth(wx, wy - h - BaseIn) - h) * FaceScale, 0f, 255f);
                     t.Px[i + 3] = a;
                     topA = a;
                     carry = a > 128 ? OvertopPx : 0;
@@ -947,6 +959,7 @@ internal static class WaterArt
         int m = (int)MathF.Round(size * FloorMask.Ppu);
         var buf = new byte[m * m];
         FloorMask.Fill(wx, wy, size, m, buf);
+        WaterHeight.StampFloor(buf, m, wx, wy, size);
         t.Floor = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFloor", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         fixed (byte* b = buf) t.Floor.LoadRawTextureData((IntPtr)b, buf.Length);
         t.Floor.Apply(false, true);
@@ -973,6 +986,23 @@ internal static class WaterArt
             if (r.xMax <= x0 || r.xMin >= x0 + size || r.yMax <= y0 || r.yMin >= y0 + size) continue;
             UnityEngine.Object.Destroy(t.Floor);
             MakeFloor(t, x0, y0, size);
+        }
+    }
+
+    // 画素ごとの高さの元 (壁の穴・低い壁) が r の範囲で変わった: 掛かるタイルの高さと床の切り抜きを次に描く時に作り直す
+    internal static void HeightChanged(Rect r)
+    {
+        if (Tiles.Count == 0) return;
+        float size = WaterSim.TileCells * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        foreach (var kv in Tiles)
+        {
+            var t = kv.Value;
+            float x0 = org.x + t.Tx * size, y0 = org.y + t.Ty * size;
+            if (r.xMax <= x0 || r.xMin >= x0 + size || r.yMax <= y0 || r.yMin >= y0 + size) continue;
+            t.FaceDone = false;
+            t.FloorDirty = true;
+            if (!t.Empty && !t.Waiting) { t.Waiting = true; Waiting.Add(kv.Key); }
         }
     }
 

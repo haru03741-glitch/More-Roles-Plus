@@ -51,7 +51,8 @@ internal static class WaterFall
         public float Q, Acc, Idle;
         public float Vt;         // 縁の手前の水の、縁に沿った速さ (単位/秒・ならした値)。落ちる水はこの勢いのまま流れの先へずれて落ちる
         public int Delay;
-        public bool Void, Lip;   // Lip = ガラスの手すりを越えてこぼれる縁
+        public bool Void, Lip;   // Lip = 低い壁 (ガラスの手すり) を越えてこぼれる縁
+        public float LipH;       // その壁の高さ (絵では縁がそのぶん上にある)
         public Canvas C;
         public int FrameSum;
     }
@@ -121,8 +122,9 @@ internal static class WaterFall
 
         foreach (var f in falls)
         {
-            // 奥 (北) の縁から奈落へ落ちる水は、その縁の床より奥へ落ちるので見えない (描くと手前の床の上に滝が被る)
-            if (f.Dir == 2 && f.Void) continue;
+            // 奥 (北) の縁から奈落へ落ちる水は、その縁の床より奥へ落ちるので見えない (描くと手前の床の上に滝が被る)。
+            // 低い壁 (手すり) を越える所だけ、上の縁から向こうへこぼれる膜を描く
+            if (f.Dir == 2 && f.Void && f.Lip <= 0f) continue;
             long key = ((long)MathF.Round(f.X0 * 64f) << 32) ^ (uint)(int)MathF.Round(f.Y0 * 64f);
             if (!Edges.TryGetValue(key, out var e))
             {
@@ -130,7 +132,7 @@ internal static class WaterFall
                 e = new Edge { X0 = f.X0, Y0 = f.Y0, Nx = d == 0 ? 1 : d == 1 ? -1 : 0, Ny = d == 2 ? 1 : d == 3 ? -1 : 0 };
                 Edges[key] = e;
             }
-            e.X1 = f.X1; e.Y1 = f.Y1; e.Delay = f.Delay; e.Void = f.Void; e.Lip = f.Lip;
+            e.X1 = f.X1; e.Y1 = f.Y1; e.Delay = f.Delay; e.Void = f.Void; e.Lip = f.Lip > 0f; e.LipH = f.Lip;
             e.FrameSum += f.Amount;
         }
 
@@ -149,13 +151,15 @@ internal static class WaterFall
             if (e.Q < 1f) { e.Idle += dt; if (e.Idle > IdleLife) Dead.Add(kv.Key); continue; }
             e.Idle = 0f;
             // 縁の手前の升 (手すりの縁は絵の高さぶん上へずらしてあるので、そのぶん内へ) の流れの、縁に沿った成分
-            float back = WaterSim.Cell * 0.5f + (e.Lip ? WaterSim.GlassRailUp : 0f);
+            float back = WaterSim.Cell * 0.5f + e.LipH;
             WaterSim.CurrentAt(FxMath.V2(e.X0 - e.Nx * back, e.Y0 - e.Ny * back), out float cvx, out float cvy);
             e.Vt += (-e.Ny * cvx + e.Nx * cvy - e.Vt) * k;
             // 画面の外の縁には絵を付けない (粒は絵だけなので、画面に入ってから出しても計算は変わらない)
             if ((e.C == null || e.C.Gone) && InView(MathF.Min(e.X0, e.X1), MathF.Min(e.Y0, e.Y1), MathF.Max(e.X0, e.X1), MathF.Max(e.Y0, e.Y1), ViewIn)) e.C = CanvasFor(e);
             if (e.C == null) continue;
             e.C.Idle = 0f;
+            // 奥へこぼれる水は落ちる本体が手すりと手前の床に隠れるので、粒は出さず膜だけ
+            if (e.Void && e.Ny > 0f) continue;
             e.Acc += e.Q * dt / ParcelMass;
             while (e.Acc >= 1f && budget > 0 && _parcels < MaxParcels)
             {
@@ -352,7 +356,8 @@ internal static class WaterFall
         {
             if (e.C != c || !e.Lip || e.Q < 1f) continue;
             float s = Math.Min(1f, e.Q / LipFlow);
-            LipSheet(c, e, s);
+            if (e.Void && e.Ny > 0f) LipCrest(c, e, s);
+            else LipSheet(c, e, s);
         }
         bool now = c.Bx1 >= 0, before = c.X1p >= 0;
         // 流れが止まったら 1 回だけ空の絵を書いて、それ以降は描かない
@@ -407,6 +412,25 @@ internal static class WaterFall
             int len = (int)((LipDrop * (0.7f + 0.3f * wob)) * Ppu);
             for (int j = 0; j <= len; j++)
                 Splat(c, ax, ay - j, LipDens * s, j == 0 ? 0.9f : 0.15f);
+        }
+    }
+
+    // 奥の手すりを越えて向こうへこぼれる水: 上の縁 (Y0) から CrestUp だけ盛り上がって奥へ消える膜。上ほど薄く、先端は泡で白い
+    private const float CrestUp = 0.06f, CrestDens = 0.6f;
+    private static void LipCrest(Canvas c, Edge e, float s)
+    {
+        float tx = -e.Ny, ty = e.Nx;
+        int n = (int)MathF.Ceiling(LipHalf * 2f * Ppu);
+        float t = (float)(System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency);
+        for (int k = 0; k <= n; k++)
+        {
+            float u = -LipHalf + k / Ppu;
+            float x = e.X0 + tx * u, y = e.Y0 + ty * u;
+            float wob = 0.5f + 0.5f * MathF.Sin(x * 19f + t * 7f);
+            int ax = (int)((x - c.X0) * Ppu), ay = (int)((y - c.Y0) * Ppu);
+            int len = Math.Max(1, (int)((CrestUp * (0.6f + 0.4f * wob)) * Ppu));
+            for (int j = 0; j <= len; j++)
+                Splat(c, ax, ay + j, LipDens * CrestDens * s * (1f - 0.6f * j / (len + 1f)), j == len ? 0.9f : 0.2f);
         }
     }
 

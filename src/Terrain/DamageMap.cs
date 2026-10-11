@@ -544,6 +544,8 @@ internal static class DamageMap
     // 0.32 未満なら家具には焦げが出ない (出すと家具の上だけ角張った暗い面になり影に見える)
     private const float FurnitureScorch = 0.3f;
 
+    internal static bool HasHoles => _pixels != null;
+
     // テスト用: その点の壁の絵がどれだけ抜けているか (0..1)。地図が無ければ -1
     internal static float HoleAt(Vector2 p)
     {
@@ -881,6 +883,10 @@ internal static class DamageMap
         if (!_dirty) return;
         _dirty = false;
         Flushes++;
+        // 壁の絵が抜けた所には水を掛けない: 掛かる水のタイルの高さを作り直す
+        float ppu = 1f / PixelsPerUnit;
+        WaterArt.HeightChanged(Rect.MinMaxRect(_origin.x + (_dirtyAll ? 0 : _dx0) * ppu, _origin.y + (_dirtyAll ? 0 : _dy0) * ppu,
+            _origin.x + (_dirtyAll ? _w : _dx1 + 1) * ppu, _origin.y + (_dirtyAll ? _h : _dy1 + 1) * ppu));
         if (!_useRt) { UploadFull(); return; }
 #if !ANDROID
         if (!_rt.IsCreated()) _rt.Create();
