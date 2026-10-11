@@ -48,7 +48,7 @@ internal static partial class WaterSim
     private const int WeirDiv = 64 * 256 / FallGain;   // e × √(16e) / これ = e=256 (√(16e)=64) で e × FallGain/256
     // ガラスの手すり: 縁の先が空でも、この高さ (水の深さの物差し) までは溜まり、越えた分が手すりの外へ落ちる
     private const int GlassLip = Full * 22 / 100;
-    private const float GlassRailUp = 0.2f;   // ガラスの手すりの絵の高さ (世界単位・上の縁が床の縁からどれだけ上に描かれているか)
+    internal const float GlassRailUp = 0.2f;  // ガラスの手すりの絵の高さ (世界単位・上の縁が床の縁からどれだけ上に描かれているか)
     private const int GlassDrop = 4;          // 手すりの外の空へ落ちる時間を決める距離 (升)
     private const sbyte NoLevel = sbyte.MinValue;   // 高さが決まらない升 (落ちも登りもしない)
     private const sbyte VoidLevel = -2;              // 奈落 (落ちた水は消える)
@@ -1967,6 +1967,26 @@ internal static partial class WaterSim
 
     // その点の水の深さ (単位) と流れの速さ (単位/秒)。升の 4 つの面を通る正味の流れの平均 ÷ 深さ。
     // 見せる・自分の体を動かす用 (端末ごとでよい物) なので小数で返す。水の升が無ければ 0
+    // 絵用: 升 k を通る流れ (量/刻み・CurrentAt と同じ 2 面の和)。縁を越えて落ちる分は流れ (_flux) に入らないので、
+    // 堰の式の量をその向きに足す (手すりへ向かう水が縁で止まって見えないように)
+    internal static void FlowThrough(int k, out int qx, out int qy)
+    {
+        qx = _flux[k * 4] - _flux[(k + 1) * 4 + 1] + _flux[(k - 1) * 4] - _flux[k * 4 + 1];
+        qy = _flux[k * 4 + 2] - _flux[(k + _w) * 4 + 3] + _flux[(k - _w) * 4 + 2] - _flux[k * 4 + 3];
+        int fm = _fallMask[k];
+        if (fm == 0) return;
+        int h = _hgt[k];
+        for (int d = 0; d < 4; d++)
+        {
+            if ((fm >> d & 1) == 0) continue;
+            int e = h - ((_lipMask[k] >> d & 1) != 0 ? GlassLip : FallLip);
+            if (e <= 0) continue;
+            int g = Math.Min(e / 2, (int)((long)e * ISqrt(16L * e) / WeirDiv));
+            qx += Nx[d] * g;
+            qy += Ny[d] * g;
+        }
+    }
+
     internal static float CurrentAt(Vector2 p, out float vx, out float vy)
     {
         vx = vy = 0f;
@@ -2116,6 +2136,28 @@ internal static partial class WaterSim
                 int depth = a.Length > 5 && int.TryParse(a.Substring(5).Trim(), out int dd) ? dd : Full / 4;
                 int n = Flood(depth);
                 reply(n < 0 ? "ERR water flood: no map" : $"OK water flood cells={n} depth={depth}");
+                return;
+            }
+            if (a.StartsWith("flow"))
+            {
+                // 確認用: 横一列 (step 升おき) の深さと流れの速さ (単位/秒・縁を越える分を含む・絵と同じ値)
+                var q = a.Substring(4).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                var ns = System.Globalization.NumberStyles.Float;
+                if (_open == null || q.Length < 3 || !float.TryParse(q[0], ns, ic, out float f0) || !float.TryParse(q[1], ns, ic, out float f1) || !float.TryParse(q[2], ns, ic, out float fy))
+                { reply("ERR water flow x0 x1 y [step]"); return; }
+                int st = q.Length > 3 && int.TryParse(q[3], out int st2) ? Math.Max(1, st2) : 2;
+                var sb = new System.Text.StringBuilder("OK water flow");
+                int yy = (int)MathF.Floor((fy - _org.y) / _cell);
+                for (int xx = (int)MathF.Floor((f0 - _org.x) / _cell); xx <= (int)MathF.Floor((f1 - _org.x) / _cell); xx += st)
+                {
+                    if (xx < 1 || yy < 1 || xx >= _w - 1 || yy >= _h - 1) continue;
+                    int k = yy * _w + xx;
+                    FlowThrough(k, out int qx, out int qy);
+                    float fs = 0.5f * _cell * GameClock.Hz / Math.Max(_hgt[k], Full / 8);
+                    sb.Append($" | {_org.x + (xx + 0.5f) * _cell:0.00}:h{_hgt[k]} v({qx * fs:0.00},{qy * fs:0.00})");
+                }
+                reply(sb.ToString());
                 return;
             }
             if (a.StartsWith("cell"))

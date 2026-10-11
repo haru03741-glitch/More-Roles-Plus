@@ -39,6 +39,7 @@ internal static class WaterFall
     private const float Hit = 0.55f, Side = 0.2f, Corner = 0.06f;
     private const float LipHalf = 0.13f, LipDrop = 0.3f, LipFlow = 300f, LipDens = 0.9f; // 手すりを越える膜: 縁に沿った幅の半分・垂れる長さ・濃さが最大になる流量・濃さ
     private const float SprayEdge = 0.13f;     // 薄い筋も見えるように噴き出しより低く
+    private const float Carry = 0.85f, CarryMax = 1.6f; // 縁に沿った勢いのうち落ちる間に残る割合と、ずれの上限 (単位)
     private const float IdleLife = 2.5f;       // 流れが止まってから縁と絵を片づけるまで
     private const float StealEvery = 0.5f;     // 画面の範囲を測り直し、絵の上限で描けない縁が画面の近くにあるか見る間隔
     private const float ViewIn = 1.5f, ViewOut = 4f; // 画面の外へこれだけ離れた縁には絵を付けない / これだけ離れた絵は片づける
@@ -48,6 +49,7 @@ internal static class WaterFall
     {
         public float X0, Y0, X1, Y1, Nx, Ny;
         public float Q, Acc, Idle;
+        public float Vt;         // 縁の手前の水の、縁に沿った速さ (単位/秒・ならした値)。落ちる水はこの勢いのまま流れの先へずれて落ちる
         public int Delay;
         public bool Void, Lip;   // Lip = ガラスの手すりを越えてこぼれる縁
         public Canvas C;
@@ -146,6 +148,10 @@ internal static class WaterFall
             e.FrameSum = 0;
             if (e.Q < 1f) { e.Idle += dt; if (e.Idle > IdleLife) Dead.Add(kv.Key); continue; }
             e.Idle = 0f;
+            // 縁の手前の升 (手すりの縁は絵の高さぶん上へずらしてあるので、そのぶん内へ) の流れの、縁に沿った成分
+            float back = WaterSim.Cell * 0.5f + (e.Lip ? WaterSim.GlassRailUp : 0f);
+            WaterSim.CurrentAt(FxMath.V2(e.X0 - e.Nx * back, e.Y0 - e.Ny * back), out float cvx, out float cvy);
+            e.Vt += (-e.Ny * cvx + e.Nx * cvy - e.Vt) * k;
             // 画面の外の縁には絵を付けない (粒は絵だけなので、画面に入ってから出しても計算は変わらない)
             if ((e.C == null || e.C.Gone) && InView(MathF.Min(e.X0, e.X1), MathF.Min(e.Y0, e.Y1), MathF.Max(e.X0, e.X1), MathF.Max(e.Y0, e.Y1), ViewIn)) e.C = CanvasFor(e);
             if (e.C == null) continue;
@@ -200,11 +206,14 @@ internal static class WaterFall
         float h0 = MathF.Max(0.3f, sy - e.Y1);
         float thr = ThrowMax * MathF.Min(1f, MathF.Pow(e.Q / ThrowFlow, 1f / 3f)) * (0.8f + 0.4f * v);
         ref var p = ref Parcels[_parcels++];
-        p.Gx = sx; p.Gy = sy - h0;
-        p.Ex = e.X1 - e.Ny * u * 0.8f + e.Nx * thr;
-        p.Ey = e.Y1 + e.Nx * u * 0.8f + e.Ny * thr;
-        p.H0 = h0;
         p.T = MathF.Max(0.12f, e.Delay / (float)GameClock.Hz) * (0.95f + 0.1f * Rand());
+        // 流れに乗って縁を越えた水は、縁に沿った勢いで流れの先へずれて落ちる (落ちる間ずっと同じ速さ)
+        float drift = Math.Clamp(e.Vt * Carry * p.T, -CarryMax, CarryMax);
+        u += drift;
+        p.Gx = sx; p.Gy = sy - h0;
+        p.Ex = e.X1 - e.Ny * u * 0.8f + e.Nx * thr - e.Ny * drift * 0.2f;
+        p.Ey = e.Y1 + e.Nx * u * 0.8f + e.Ny * thr + e.Nx * drift * 0.2f;
+        p.H0 = h0;
         p.Age = 0f;
         p.Lx = sx; p.Ly = sy;
         p.Void = e.Void;

@@ -4,6 +4,8 @@
 // _Mode = 0 (水たまり): R = 深さ (1 = _RUnits 単位)・G = 見せてよいか (壁の中・家具の上 = 0)・B = 濡れた升をならした値 (_WetLevel の線が水の縁)。_FloorMask = 床の画素 (0.5 の線が床の縁)。
 //   深いほど濃く不透明・浅いほど床が透ける。縁の内側に細い濃い輪郭とその内に明るい縁 (表面張力の盛り上がり)。
 //   水面の揺れ = ノイズ 2 枚を逆向きに流して、その傾きで光の照り返し (きらめき) と浅い所の明暗 (光の網) を出す。
+//   _FlowTex = 升ごとの流れ (RG = 128 + 速さ / _FlowMax × 127・周りに隣のタイルの升を 1 列)。流れの向きに伸びた明るい筋をその速さで流す (2 つの位相を交互に
+//   重ねるので、筋は流れが曲がっても伸び続けずに入れ替わる)。速い所ほど筋が濃く、白く泡立つ。
 //   A = 壁の面の上の水の厚さ (単位 × _FaceScale / 255 + 0.5・壁の面でない所 = 0)。斜め上から見た絵では深い水は奥の壁を這い上がって見えるので、
 //   床マスクの外 (壁の面) は A の 0.5 の線を水面の線にして、その下を水で覆う。
 // _Mode = 2 (体の水面): クルー・小物の手前に置く板。板の原点 = 足元。_Depth = 足元の水の深さ (単位)・_Body = (半幅, 体の高さ, 沈んだ時に足す頭の上, 水面の輪の縦の半径)。
@@ -39,6 +41,11 @@ Shader "MRP/Water"
         _Rim ("Rim color", Color) = (0.86, 0.95, 1.0, 0.85)
         _RimPx ("Rim width (px)", Float) = 2.5
         _Flow ("Flow dir (spray)", Vector) = (1, 0, 0, 0)
+        [PerRendererData] _FlowTex ("Current per cell (puddle)", 2D) = "gray" {}
+        _FlowMax ("Speed (units/s) at full scale of the current", Float) = 4
+        _FlowCycle ("Streak refresh period (s)", Float) = 1.6
+        _FlowStreak ("Streak strength", Float) = 0.55
+        _FlowFoam ("Foam where fast", Float) = 0.35
         _SprayEdge ("Spray edge level", Float) = 0.3
         _FaceScale ("Face water thickness scale (A)", Float) = 96
         _RUnits ("Depth (units) at R = 1", Float) = 1.5625
@@ -102,6 +109,9 @@ Shader "MRP/Water"
             float _RUnits, _ShallowDepth, _Fog, _Caustic, _LineWave, _FaceView, _FoamW, _Shaft;
             fixed4 _Shallow, _Deep, _Outline, _Rim, _Abyss;
             float4 _Flow;
+            sampler2D _FlowTex;
+            float4 _FlowTex_TexelSize;
+            float _FlowMax, _FlowCycle, _FlowStreak, _FlowFoam;
             float _Depth, _SubMax, _Lvl, _Cover, _SilR, _FaceH, _VPerUnit, _VBase, _Rise;
             float4 _Body, _Quad;
 
@@ -170,6 +180,39 @@ Shader "MRP/Water"
                 return c;
             }
 
+            // 流れ: 流れの向きに伸びた筋を速さで流す。筋の座標は位相ごとに 0 から流れの分ずらし、位相の切り替わりは重みを 0 にして隠す
+            float Streak(float2 w, float2 dir, float2 off, float seed)
+            {
+                float2 p = w - off;
+                float2 q = float2(dot(p, dir), dot(p, float2(-dir.y, dir.x)));
+                // 流れの向きに長く (約 2.5 単位)・横に細い (約 0.3 単位) 筋。2 枚目で筋の途中を切って、途切れ途切れの泡の線にする
+                float a = tex2D(_Noise, q * float2(0.18, 1.5) + seed).r;
+                float b = tex2D(_Noise, q * float2(0.9, 0.9) + seed * 1.7 + 0.31).r;
+                return smoothstep(0.6, 0.78, a) * smoothstep(0.35, 0.65, b);
+            }
+
+            void Current(inout fixed4 c, v2f i, float du)
+            {
+                // 流れの絵は周りに隣のタイルの升を 1 列ずつ持つ (n = タイルの升 + 2)
+                float n = 1.0 / _FlowTex_TexelSize.x;
+                float2 v = (tex2D(_FlowTex, (i.uv * (n - 2.0) + 1.0) / n).rg - 0.5) * (2.0 * _FlowMax);
+                float sp = length(v);
+                if (sp < 0.03) return;
+                float2 dir = v / sp;
+                float t = _Time.y / _FlowCycle;
+                float p0 = frac(t), p1 = frac(t + 0.5);
+                float w0 = 1.0 - abs(p0 * 2.0 - 1.0);
+                float s0 = Streak(i.world, dir, v * (p0 * _FlowCycle), floor(t) * 0.37);
+                float s1 = Streak(i.world, dir, v * (p1 * _FlowCycle), floor(t + 0.5) * 0.37 + 0.5);
+                float s = s0 * w0 + s1 * (1.0 - w0);
+                float k = saturate(sp / (_FlowMax * 0.5));
+                float lane = s * k * smoothstep(0.02, 0.1, du);
+                // 速い所は筋が太り白く泡立つ
+                float foam = s * saturate((sp - _FlowMax * 0.4) / (_FlowMax * 0.5));
+                c.rgb = lerp(c.rgb, float3(0.86, 0.95, 1.0), saturate(lane * _FlowStreak + foam * _FlowFoam));
+                c.a = saturate(c.a + lane * _FlowStreak * 0.3 + foam * _FlowFoam * 0.5);
+            }
+
             fixed4 Puddle(v2f i, float4 data)
             {
                 float du = data.r * _RUnits;                      // 深さ (単位)
@@ -200,6 +243,7 @@ Shader "MRP/Water"
 
                 float murk, t = _Time.y;
                 fixed4 c = Tint(i.world, du, murk);
+                Current(c, i, du);
 
                 // 縁: 外側に細い濃い輪郭・その内に明るい縁
                 // 家具・壁に当たった所は絵の黒い輪郭があるので、濃い輪郭は描かず明るい縁だけ付ける

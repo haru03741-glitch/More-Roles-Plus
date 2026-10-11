@@ -29,6 +29,9 @@ internal static class WaterArt
     // A = 壁の面の上の水の厚さ (単位) × FaceScale + 128。128 の線が壁に這い上がった水面の線。壁の面でない画素は 0
     private const float FaceScale = 96f;
     private const int FaceBaseScan = 3;       // 壁の根元の升が閉じている (壁の線を太らせた分) 時に、下へ探す升の数
+    // 流れの絵: R, G = 128 + 速さ (単位/秒) / FlowMax × 127。浅い縁では 量 ÷ 深さ が跳ねるので深さは FlowMinDepth より浅く数えない
+    internal const float FlowMax = 4f;
+    private const int FlowMinDepth = WaterSim.Full / 8;
 
     private static void Enable(Tile t, bool on)
     {
@@ -51,6 +54,8 @@ internal static class WaterArt
         public MaterialPropertyBlock Block;
         public Texture2D Floor; // 床マスク (部屋の絵の画素ごとの床) をこのタイルの範囲で切り出した物
         public Texture2D Front; // 影の中の写しで抜く、水より手前の家具の絵の形 (家具の無いタイルは null)
+        public Texture2D Flow;  // 升ごとの流れの速さ (R, G = x, y)。シェーダが水面の筋をこの向きと速さで流す
+        public byte[] FlowPx;
         public MaterialPropertyBlock ShadowBlock;
         public bool FloorOn;
         public float LastDraw = -10f;
@@ -329,6 +334,7 @@ internal static class WaterArt
         }
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
+        DrawFlow(t, x0, y0);
         if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
         Drawn++;
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -689,6 +695,37 @@ internal static class WaterArt
         w3 = t3 * (1f / 6f);
     }
 
+    // 升ごとの流れの速さを流れの絵へ (水を描き直す時だけ)
+    private static unsafe void DrawFlow(Tile t, int x0, int y0)
+    {
+        if (t.Flow == null) return;
+        int tc = WaterSim.TileCells, w = WaterSim.W, h = WaterSim.H;
+        // 量/刻み → 単位/秒 (2 面の和なので半分)、それを FlowMax で 127 に
+        float f = 0.5f * WaterSim.Cell * GameClock.Hz * (127f / FlowMax);
+        var px = t.FlowPx;
+        int fn = tc + 2;
+        for (int y = 0; y < fn; y++)
+        for (int x = 0; x < fn; x++)
+        {
+            int cx = x0 + x - 1, cy = y0 + y - 1, i = (y * fn + x) * 4;
+            int vx = 128, vy = 128;
+            if (cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1)
+            {
+                int k = cy * w + cx, d = WaterSim.Height(k);
+                if (d > 0 && WaterSim.Open(k))
+                {
+                    WaterSim.FlowThrough(k, out int qx, out int qy);
+                    float s = f / Math.Max(d, FlowMinDepth);
+                    vx = 128 + (int)Math.Clamp(qx * s, -127f, 127f);
+                    vy = 128 + (int)Math.Clamp(qy * s, -127f, 127f);
+                }
+            }
+            px[i] = (byte)vx; px[i + 1] = (byte)vy; px[i + 2] = 0; px[i + 3] = 255;
+        }
+        fixed (byte* b = px) t.Flow.LoadRawTextureData((IntPtr)b, px.Length);
+        t.Flow.Apply(false, false);
+    }
+
     private static void SetFloor(Tile t, bool on)
     {
         t.FloorOn = on;
@@ -697,6 +734,8 @@ internal static class WaterArt
         mpb.SetTexture(MainTexId, t.Tex);
         mpb.SetTexture(FloorTexId, t.Floor);
         mpb.SetFloat(FloorOnId, on ? 1f : 0f);
+        mpb.SetTexture(FlowTexId, t.Flow);
+        mpb.SetFloat(FlowMaxId, FlowMax);
         t.Sr.SetPropertyBlock(mpb);
         ApplyShadow(t);
     }
@@ -711,6 +750,8 @@ internal static class WaterArt
         mpb.SetFloat(FloorOnId, t.Floor && t.FloorOn ? 1f : 0f);
         if (t.Front) mpb.SetTexture(FrontTexId, t.Front);
         mpb.SetFloat(FrontOnId, t.Front ? 1f : 0f);
+        mpb.SetTexture(FlowTexId, t.Flow);
+        mpb.SetFloat(FlowMaxId, FlowMax);
         t.Shadow.SetPropertyBlock(mpb);
     }
 
@@ -811,6 +852,7 @@ internal static class WaterArt
     }
 
     private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), FloorTexId = Shader.PropertyToID("_FloorMask"), FloorOnId = Shader.PropertyToID("_FloorOn");
+    private static readonly int FlowTexId = Shader.PropertyToID("_FlowTex"), FlowMaxId = Shader.PropertyToID("_FlowMax");
     private static readonly int FrontTexId = Shader.PropertyToID("_FrontMask"), FrontOnId = Shader.PropertyToID("_FrontOn");
 
     private const float DeckZ = -0.001f; // エアシップの警備室の下のデッキの床の絵の z (手すりは -0.1 で水より手前)
@@ -830,6 +872,14 @@ internal static class WaterArt
         t.Sr = t.Go.AddComponent<SpriteRenderer>();
         t.Sr.sprite = t.Sp;
         t.Sr.sharedMaterial = MrpBundle.WaterMaterial;
+        // 流れの絵は升 1 つ = 1 画素 (画素の真ん中 = 升の真ん中) で、周りに隣のタイルの升を 1 列ずつ持つ (継ぎ目で流れがつながり、筋が切れない)。
+        // 最初は流れ無し (128)
+        int fn = tc + 2;
+        t.FlowPx = new byte[fn * fn * 4];
+        for (int i = 0; i < t.FlowPx.Length; i++) t.FlowPx[i] = 128;
+        t.Flow = new Texture2D(fn, fn, TextureFormat.RGBA32, false) { name = "MrpWaterFlow", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        fixed (byte* fb = t.FlowPx) t.Flow.LoadRawTextureData((IntPtr)fb, t.FlowPx.Length);
+        t.Flow.Apply(false, false);
         float wx = org.x + t.Tx * tc * cell, wy = org.y + t.Ty * tc * cell;
         // タイルは部屋の境をまたぐので、4 隅と真ん中で部屋の絵を引いて一番手前より前に置く
         // (真ん中だけだと、隣の部屋の絵のほうが手前の所で水がその下に隠れて四角く欠けた)
@@ -854,6 +904,13 @@ internal static class WaterArt
             MakeFloor(t, wx, wy, size);
             return;
         }
+        // 床マスクの無いマップでも流れの絵はブロックで渡す (ブロックを付けるとスプライトの絵が外れるので絵も渡す)
+        var mpb = t.Block ??= new MaterialPropertyBlock();
+        mpb.SetTexture(MainTexId, t.Tex);
+        mpb.SetTexture(FlowTexId, t.Flow);
+        mpb.SetFloat(FlowMaxId, FlowMax);
+        t.Sr.SetPropertyBlock(mpb);
+        ApplyShadow(t);
         t.Furn = FurnitureMask(wx, wy, tc * cell);
         t.FurnVersion = _furnVersion;
     }
@@ -1002,6 +1059,7 @@ internal static class WaterArt
             if (t.Tex) UnityEngine.Object.Destroy(t.Tex);
             if (t.Floor) UnityEngine.Object.Destroy(t.Floor);
             if (t.Front) UnityEngine.Object.Destroy(t.Front);
+            if (t.Flow) UnityEngine.Object.Destroy(t.Flow);
         }
         Tiles.Clear();
         Waiting.Clear();
