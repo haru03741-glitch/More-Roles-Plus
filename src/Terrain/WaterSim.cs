@@ -1837,6 +1837,13 @@ internal static partial class WaterSim
 
     // 床のマスクに縁を越えて落ちる升 (低い壁で溜める向きを除く) を床として足す。画素 k の真ん中 = x + k × step。
     // 床の絵は縁の手前で切れている所 (縁取りの帯) があり、水はその帯の上も縁まで流れているので、水たまりの絵を縁まで見せる
+    // C++ の部品へ渡す落ちる縁の地図 (StampLips と同じ物)。まだ升が無ければ false
+    internal static bool LipMaps(out byte[] fall, out byte[] lip, out int w, out int h, out float ox, out float oy, out float cell)
+    {
+        fall = _fallMask; lip = _lipMask; w = _w; h = _h; ox = _org.x; oy = _org.y; cell = _cell;
+        return _ready && _fallMask != null;
+    }
+
     internal static void StampLips(float x, float y, float step, int n, byte[] into)
     {
         if (!_ready || _fallMask == null) return;

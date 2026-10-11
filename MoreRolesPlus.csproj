@@ -61,6 +61,8 @@
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\plugins\" ContinueOnError="WarnAndContinue" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(MrpBepInExDir)\plugins\" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" ContinueOnError="WarnAndContinue" />
+        <!-- C++ の部品 (tools/build-native.ps1 で組んだ物があれば) -->
+        <Copy SourceFiles="$(MSBuildProjectDirectory)/build/native/win-x64/MrpNative.dll" DestinationFolder="$(MrpBepInExDir)/plugins/" Condition="Exists('$(MSBuildProjectDirectory)/build/native/win-x64/MrpNative.dll')" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" />
     </Target>
     <!-- Android: ランチャーの APK が DLL を同梱し、端末の BepInEx/plugins と違う時だけ入れ直す。
          横の .properties (DLL の SHA-256 と版) がランチャーの見比べる目印。 -->
@@ -80,5 +82,14 @@
         <MakeDir Directories="$(AndroidApkAssetsDir)" />
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AndroidApkAssetsDir)" />
         <WriteLinesToFile File="$(AndroidApkAssetsDir)$(AssemblyName).dll.properties" Overwrite="true" Lines="version=$(_PluginVersion);sha256=$([System.String]::Copy('$(_PluginSha256)').ToLowerInvariant())" />
+        <!-- C++ の部品 (tools/build-native.ps1 で組んだ物があれば)。ランチャーが DLL と同じ目印で入れる -->
+        <PropertyGroup>
+            <_NativeSo>$(MSBuildProjectDirectory)/build/native/android-arm64/libmrpnative.so</_NativeSo>
+        </PropertyGroup>
+        <GetFileHash Files="$(_NativeSo)" Algorithm="SHA256" HashEncoding="hex" Condition="Exists('$(_NativeSo)')">
+            <Output TaskParameter="Hash" PropertyName="_NativeSha256" />
+        </GetFileHash>
+        <Copy SourceFiles="$(_NativeSo)" DestinationFolder="$(AndroidApkAssetsDir)" Condition="Exists('$(_NativeSo)')" />
+        <WriteLinesToFile File="$(AndroidApkAssetsDir)libmrpnative.so.properties" Overwrite="true" Lines="version=$(_PluginVersion);sha256=$([System.String]::Copy('$(_NativeSha256)').ToLowerInvariant())" Condition="Exists('$(_NativeSo)')" />
     </Target>
 </Project>

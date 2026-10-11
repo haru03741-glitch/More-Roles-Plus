@@ -564,6 +564,13 @@ internal static class DamageMap
         return _pixels[(py * _w + px) * 4];
     }
 
+    // C++ の部品へ渡す穴の地図 (RGBA・R = 穴)。無ければ false
+    internal static bool HoleMap(out byte[] px, out int w, out int h, out float ox, out float oy, out float ppu)
+    {
+        px = _pixels; w = _w; h = _h; ox = _origin.x; oy = _origin.y; ppu = PixelsPerUnit;
+        return px != null;
+    }
+
     // その点の穴の値 (0..255) を周りの 4 画素から双線形で (シェーダが絵を抜く線と同じ読み方)。地図の外・地図が無ければ 0
     internal static int HoleSmoothAt(float x, float y)
     {

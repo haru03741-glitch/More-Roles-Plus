@@ -111,6 +111,7 @@ internal static class WaterArt
 
         if (Craters.Count > 0) TickCraters();
         if (Tiles.Count > 0) ShadowView.Check(now);
+        RemakeQueuedFloors();
         var dirty = WaterSim.DirtyTiles;
         if (dirty.Count > 0)
         {
@@ -968,6 +969,38 @@ internal static class WaterArt
         SetFloor(t, !FloorMask.Off);
     }
 
+    // 床マスクを作り直すタイル (1 タイル数 ms かかるので 1 フレームに FloorBudgetMs まで。作り終わるまでは前の床のまま)
+    private static readonly List<int> FloorQueue = new();
+    private static readonly HashSet<int> FloorQueued = new();
+    private const double FloorBudgetMs = 2.0;
+
+    private static float FloorDist(int key, float mx, float my, float size)
+    {
+        if (!Tiles.TryGetValue(key, out var t)) return float.MaxValue;
+        float dx = t.Tx * size - mx, dy = t.Ty * size - my;
+        return dx * dx + dy * dy;
+    }
+
+    private static void RemakeQueuedFloors()
+    {
+        if (FloorQueue.Count == 0) return;
+        float size = WaterSim.TileCells * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        long budget = (long)(FloorBudgetMs * System.Diagnostics.Stopwatch.Frequency / 1000.0);
+        int done = 0;
+        while (done < FloorQueue.Count)
+        {
+            int key = FloorQueue[done++];
+            FloorQueued.Remove(key);
+            if (!Tiles.TryGetValue(key, out var t) || !t.Floor || !t.Sr) continue;
+            UnityEngine.Object.Destroy(t.Floor);
+            MakeFloor(t, org.x + t.Tx * size, org.y + t.Ty * size, size);
+            if (System.Diagnostics.Stopwatch.GetTimestamp() - start >= budget) break;
+        }
+        FloorQueue.RemoveRange(0, done);
+    }
+
     // 床マスクの r の範囲が変わった (持ち上げた家具の跡が床になった): 掛かるタイルのマスクを作り直す。
     // マスクは CPU 側の写しを捨てて作ってあるので、書き換えずに作り直す
     internal static void FloorChanged(Rect r)
@@ -986,9 +1019,11 @@ internal static class WaterArt
             if (_fillFrom != null && !t.Empty && !t.Waiting) { t.Waiting = true; Waiting.Add(kv.Key); }
             if (!t.Floor || !t.Sr) continue;
             if (r.xMax <= x0 || r.xMin >= x0 + size || r.yMax <= y0 || r.yMin >= y0 + size) continue;
-            UnityEngine.Object.Destroy(t.Floor);
-            MakeFloor(t, x0, y0, size);
+            if (FloorQueued.Add(kv.Key)) FloorQueue.Add(kv.Key);
         }
+        // 変わった所の真ん中に近いタイルから作り直す
+        float mx = r.center.x - org.x - size * 0.5f, my = r.center.y - org.y - size * 0.5f;
+        FloorQueue.Sort((a, b) => FloorDist(a, mx, my, size).CompareTo(FloorDist(b, mx, my, size)));
     }
 
     // 画素ごとの高さの元 (壁の穴・低い壁) が r の範囲で変わった: 掛かるタイルの高さと床の切り抜きを次に描く時に作り直す
@@ -1095,6 +1130,8 @@ internal static class WaterArt
         }
         Tiles.Clear();
         Waiting.Clear();
+        FloorQueue.Clear();
+        FloorQueued.Clear();
         Craters.Clear();
         _clock = 0f;
     }

@@ -179,12 +179,18 @@ internal static class FloorMask
     private static byte[] _raw = Array.Empty<byte>();
     private static ushort[] _row = Array.Empty<ushort>();
 
-    internal static void Fill(float x, float y, float size, int n, byte[] into)
+    internal static unsafe void Fill(float x, float y, float size, int n, byte[] into)
     {
         int m = n + Blur * 2;
         if (_raw.Length < m * m) _raw = new byte[m * m];
         if (_row.Length < m * n) _row = new ushort[m * n];
         float step = size / (n - 1);
+        if (Native.MrpNative.On)
+        {
+            FillRawNative(x - step * Blur, y - step * Blur, step, m, _raw);
+            fixed (byte* raw = _raw) fixed (ushort* row = _row) fixed (byte* o = into) Native.MrpNative.FloorBlur(raw, n, row, o);
+            return;
+        }
         FillRaw(x - step * Blur, y - step * Blur, step, m, _raw);
         // 横にならす (m 行 × n 列)
         for (int py = 0; py < m; py++)
@@ -211,6 +217,20 @@ internal static class FloorMask
 
     // 壁の絵が抜けた所 (穴の値がこれ以上) は床にする。シェーダは穴の値を割れ口のずらし込みで 128 前後で切って絵を抜く
     private const int HoleFloor = 128;
+
+    // FillRaw の床の地図と穴を C++ で (同じ結果)。動く床・手すり・持ち上げた家具はそのあと C# で
+    private static unsafe void FillRawNative(float x, float y, float wstep, int n, byte[] into)
+    {
+        bool holes = DamageMap.HoleMap(out var hp, out int hw, out int hh, out float hox, out float hoy, out float hppu) && DamageMap.CurrentGen != 0;
+        fixed (byte* bits = _bits) fixed (byte* o = into) fixed (byte* h = hp)
+            Native.MrpNative.FloorRaw(bits, _w, _h, _ox, _oy, _ppu, x, y, wstep, n, o, holes ? h : null, hw, hh, hox, hoy, hppu, HoleFloor);
+        if (WaterSim.LipMaps(out var fall, out var lip, out int lw, out int lh, out float lox, out float loy, out float cell))
+            fixed (byte* f = fall) fixed (byte* l = lip) fixed (byte* o = into)
+                Native.MrpNative.FloorLips(f, l, lw, lh, lox, loy, cell, x, y, wstep, n, o);
+        // 床にするだけの書き込み (縁・動く床) は順番に依らない。床でなくする持ち上げた家具は最後
+        WaterSim.StampPlatform(x, y, wstep, n, into);
+        CutAllMoved(x, y, wstep, n, into);
+    }
 
     // 画素 k の真ん中 = (x + k × step, y + …)
     private static void FillRaw(float x, float y, float wstep, int n, byte[] into)
@@ -247,6 +267,11 @@ internal static class FloorMask
         // 動く床 (昇降機の台) の今の所
         WaterSim.StampPlatform(x, y, wstep, n, into);
         WaterSim.StampLips(x, y, wstep, n, into);
+        CutAllMoved(x, y, wstep, n, into);
+    }
+
+    private static void CutAllMoved(float x, float y, float wstep, int n, byte[] into)
+    {
         if (_patchGen != GameClock.ShipGen) return;
         foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, wstep, n, into);
     }
@@ -371,6 +396,38 @@ internal static class FloorMask
                 WaterArt.FloorMaskToggled();
             }
             reply($"OK floormask active={Active} off={Off} {Stats}");
+        });
+        TestBridge.Register("native", "[on|off | check [x y]] C++ の部品の状態 / 切り替え / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所)", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            bool on = Native.MrpNative.On;
+            if (a.Length > 0 && (a[0] == "on" || a[0] == "off")) { Native.MrpNative.Enabled = a[0] == "on"; reply($"OK native on={Native.MrpNative.On} {Native.MrpNative.Status}"); return; }
+            if (a.Length == 0 || a[0] != "check") { reply($"OK native on={on} {Native.MrpNative.Status}"); return; }
+            if (!Active) { reply("ERR native check: floor mask not active"); return; }
+            float cx, cy;
+            if (a.Length >= 3) { cx = float.Parse(a[1], System.Globalization.CultureInfo.InvariantCulture); cy = float.Parse(a[2], System.Globalization.CultureInfo.InvariantCulture); }
+            else { var lp = PlayerControl.LocalPlayer; if (!lp) { reply("ERR native check: no local player"); return; } var p = lp.GetTruePosition(); cx = p.x; cy = p.y; }
+            float size = WaterSim.TileCells * WaterSim.Cell;
+            int n = (int)MathF.Round(size * _ppu);
+            var cs = new byte[n * n];
+            var nat = new byte[n * n];
+            bool keep = Native.MrpNative.Enabled;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Native.MrpNative.Enabled = false;
+            Fill(cx - size / 2, cy - size / 2, size, n, cs);
+            double msCs = sw.Elapsed.TotalMilliseconds;
+            Native.MrpNative.Enabled = true;
+            sw.Restart();
+            Fill(cx - size / 2, cy - size / 2, size, n, nat);
+            double msNat = sw.Elapsed.TotalMilliseconds;
+            Native.MrpNative.Enabled = keep;
+            int diff = 0, first = -1, floor = 0;
+            for (int i = 0; i < cs.Length; i++)
+            {
+                if (cs[i] != nat[i]) { diff++; if (first < 0) first = i; }
+                if (cs[i] >= 128) floor++;
+            }
+            reply($"OK native check native={on} n={n} diff={diff} first={first} floorPx={floor} cs={msCs:F2}ms native={msNat:F2}ms holes={DamageMap.CurrentGen != 0}");
         });
         TestBridge.Register("floorexport", "水の床マスクを作る道具用に、部屋の絵の配置と歩ける所の地図を Screens/floor_<船>.json へ書き出す", (_, reply) =>
         {
