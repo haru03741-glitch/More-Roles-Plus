@@ -2264,6 +2264,7 @@ internal static partial class WaterSim
         _actN = 0;
         _sortedN = 0;
         _blowing = false;
+        _noSleep = false;
         Queue.Clear();
         Sources.Clear();
         Inflows.Clear();
@@ -2294,7 +2295,7 @@ internal static partial class WaterSim
             {
                 if (a.EndsWith("off")) _noSleep = true;
                 else if (a.EndsWith("on")) _noSleep = false;
-                reply($"OK water sleep={!_noSleep} (this device only)");
+                reply($"OK water sleep={!_noSleep} (this device only・水を消すと on に戻る)");
                 return;
             }
             if (a.StartsWith("prof"))

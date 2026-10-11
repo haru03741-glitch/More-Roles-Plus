@@ -146,7 +146,7 @@ MRP_API void mrp_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, 
 {
     // A が全部 0 の行は横に広げても 0 なので飛ばす。縦は上下 spread 行の tmp が全部 0 なら何も変わらない
     uint8_t rowAny[256];
-    if (n > 256) return;
+    if (n > 256) return;   // タイルは 64 画素四方 (C# の SpreadFaceNative は n ≤ 256 でしか呼ばない前提)
     for (int y = 0; y < n; y++)
     {
         int row = y * n;
