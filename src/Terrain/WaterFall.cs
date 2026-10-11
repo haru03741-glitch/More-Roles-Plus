@@ -74,7 +74,7 @@ internal static class WaterFall
         public Sprite Sp;
         public Material Mat;
         public byte[] Px;
-        public float[] Dens, Foam, Dep;
+        public float[] Dens, Foam, Dep, Pool;
     }
 
     private static readonly Dictionary<long, Edge> Edges = new();
@@ -256,7 +256,8 @@ internal static class WaterFall
         {
             float u0 = col / Ppu - s0;
             bool top = !e.Lip && e.BarF > 0f && Blocked(e, u0);
-            float z0 = top ? e.BarH : 0f;
+            // 物の上を越える水がある列だけ物の上から落ちる。越えない列 (水面が物より低い) は隣の列から回り込んだ水なので水面から落ちる
+            float z0 = top && e.Depth > e.BarH ? e.BarH : 0f;
             float thin = 1f;
             float thr = MathF.Min(ThrowMax, ThrowGain * MathF.Sqrt(MathF.Max(0f, e.Depth - z0))) * (0.9f + 0.2f * Noise(col + 7919, now * 0.6f));
             for (int si = 0; si < sub; si++)
@@ -297,13 +298,15 @@ internal static class WaterFall
                     float d = dc + (dm - dc) * sp * sp * (3f - 2f * sp);
                     if (d <= 0.005f) continue;
                     float v = d * w * a / (1f + Thin * tau);
+                    // 色は縁の水たまりの深さのまま、水たまりの色から噴き出しの色へ移る割合だけを落ちた割合で変える
+                    // (縁に立つ物の有無で深さを変えると、物の形どおりに色が割れる)
                     float pf = tau >= PoolFade ? 0f : 1f - tau / PoolFade;
-                    float dep = MathF.Max(0f, e.Depth - z0) * pf * pf * (3f - 2f * pf);
-                    if (e.Nx == 0f) { Splat(c, x, y, v, foam, dep); continue; }
+                    float pool = pf * pf * (3f - 2f * pf);
+                    if (e.Nx == 0f) { Splat(c, x, y, v, foam, e.Depth, pool); continue; }
                     // 横の縁の膜は縁に沿った面なので画面では縦の帯になる。投げ出された先から縁の側へ厚さを付けて、縁と膜の間を空けない
                     float span = (x - sx) * SideBody;
                     int n = Math.Max(1, (int)MathF.Ceiling(MathF.Abs(span) * Ppu));
-                    for (int b = 0; b < n; b++) Splat(c, x - span * b / n, y, v, foam, dep);
+                    for (int b = 0; b < n; b++) Splat(c, x - span * b / n, y, v, foam, e.Depth, pool);
                 }
             }
         }
@@ -381,6 +384,7 @@ internal static class WaterFall
         n.Dens = new float[n.W * n.H];
         n.Foam = new float[n.W * n.H];
         n.Dep = new float[n.W * n.H];
+        n.Pool = new float[n.W * n.H];
         n.Tex = new Texture2D(n.W, n.H, TextureFormat.RGBA32, false) { name = "MrpFall", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         // 作ったままの中身は決まっていない (白く出ると絵の四角い範囲いっぱいに滝が見える) ので、最初の描き直しの前に空を送る
         fixed (byte* b = n.Px) n.Tex.LoadRawTextureData((IntPtr)b, n.Px.Length);
@@ -416,6 +420,7 @@ internal static class WaterFall
             Array.Clear(c.Dens, o, len);
             Array.Clear(c.Foam, o, len);
             Array.Clear(c.Dep, o, len);
+            Array.Clear(c.Pool, o, len);
         }
         c.Bx0 = w; c.By0 = c.H; c.Bx1 = -1; c.By1 = -1;
         float clock = (float)(System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency % 4096.0);
@@ -455,7 +460,9 @@ internal static class WaterFall
                 uint g = f >= 1f ? 255u : (uint)(f * 255f);
                 float dp = c.Dep[i] * 0.5f;
                 uint bl = dp >= 1f ? 255u : (uint)(dp * 255f);
-                px[i] = 0xFF000000u | (bl << 16) | (g << 8) | r; // RGBA32 を little endian で (R = 濃さ・G = 泡・B = 深さ / 2)
+                float pl = c.Pool[i];
+                uint al = 255u - (pl >= 1f ? 255u : (uint)(pl * 255f));
+                px[i] = (al << 24) | (bl << 16) | (g << 8) | r; // RGBA32 を little endian で (R = 濃さ・G = 泡・B = 深さ / 2・A = 1 - 水たまりの色の割合)
             }
             c.Tex.LoadRawTextureData((IntPtr)b, c.Px.Length);
         }
@@ -504,7 +511,7 @@ internal static class WaterFall
     }
 
     // 世界の点へ濃さ w を周りの 4 画素に割り振って置く (隣の列・隣の点と継ぎ目なく重なる)
-    private static void Splat(Canvas c, float wx, float wy, float w, float foam, float dep = 0f)
+    private static void Splat(Canvas c, float wx, float wy, float w, float foam, float dep = 0f, float pool = 0f)
     {
         float fx = (wx - c.X0) * Ppu - 0.5f, fy = (wy - c.Y0) * Ppu - 0.5f;
         int x = (int)MathF.Floor(fx), y = (int)MathF.Floor(fy);
@@ -522,6 +529,13 @@ internal static class WaterFall
             if (c.Dep[i + 1] < dep) c.Dep[i + 1] = dep;
             if (c.Dep[i + n] < dep) c.Dep[i + n] = dep;
             if (c.Dep[i + n + 1] < dep) c.Dep[i + n + 1] = dep;
+        }
+        if (pool > 0f)
+        {
+            if (c.Pool[i] < pool) c.Pool[i] = pool;
+            if (c.Pool[i + 1] < pool) c.Pool[i + 1] = pool;
+            if (c.Pool[i + n] < pool) c.Pool[i + n] = pool;
+            if (c.Pool[i + n + 1] < pool) c.Pool[i + n + 1] = pool;
         }
     }
 

@@ -17,8 +17,9 @@
 //   _Lvl = 床から測った水位で、h < _Lvl の画素を水の厚さ (_Lvl - h) の色で覆う。
 //   床の線は列ごと (_BaseTex・_BaseOn) で、無い時は絵全体の一番下 (_VBase)。
 //   _Cover = 天板に乗った水がまだらに広がる具合 (0..1)。_VPerUnit = 世界の 1 単位が型の v でいくつか (上下反転なら負)。
-// _Mode = 1 (噴き出し・滝): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)・B = 水の深さ (1 = 2 単位)。
-//   深さのある所 (縁を越える前の水) は水たまりと同じ色の作りで塗り、浅くなるほど噴き出しの透けた水色へ移る。深さのある所は縁の線を引かない (水たまりとつながる)。
+// _Mode = 1 (噴き出し・滝): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)・B = 水の深さ (1 = 2 単位)・A = 1 - 水たまりの色の割合。
+//   水たまりの色の割合の所 (縁を越えたばかりの水) は B の深さの水たまりと同じ色の作りで塗り、割合が下がるほど噴き出しの透けた水色へ移る。その所は縁の線・筋・泡を引かない (水たまりとつながる)。
+//   落ちた後も地の色は B の深さの水たまりの色を主にする (水たまりと滝の色がそろう)。噴き出し (A = 1・B = 0) は割合 0。
 // 影の中の写し (_ShadowOnly = 1) は影の板の手前にあって家具より手前になるので、_FrontOn の時は _FrontMask (水より手前の家具の絵の形) の所を抜く。
 //   _Flow (xy = 流れの向き) に沿って伸びる筋を流し、筋の明るい所と泡は白、それ以外は透けた水色。
 Shader "MRP/Water"
@@ -324,6 +325,8 @@ Shader "MRP/Water"
                 return c;
             }
 
+            static const float FallTint = 0.8;   // 落ち切った滝の地の色のうち水たまりの色の割合
+
             fixed4 Spray(v2f i, float4 data)
             {
                 float d = data.r;
@@ -345,11 +348,12 @@ Shader "MRP/Water"
                 float3 water = lerp(float3(0.55, 0.82, 1.0), float3(0.3, 0.6, 0.95), saturate(dense * 1.2 - 0.2));
                 // 深さのある水は水たまりと同じ色
                 float du = data.b * 2.0;
-                float pool = smoothstep(0.0, 0.9, du);
+                float pool = 1.0 - data.a;
                 float murk;
                 fixed4 tint = Tint(i.world, du, murk);
-                water = lerp(water, tint.rgb, pool);
-                float white = saturate(foam * 0.85 + streak * 0.55 * (1.0 - pool));
+                // 縁から落ちた水 (深さがある) の地の色は落ちた後も元の水たまりの色。落ちるほど少しだけ噴き出しの水色へ寄せる
+                water = lerp(water, tint.rgb, du > 0.001 ? lerp(FallTint, 1.0, pool) : pool);
+                float white = saturate((foam * 0.85 + streak * 0.55) * (1.0 - pool));
                 fixed4 c;
                 c.rgb = lerp(water, float3(1, 1, 1), white);
                 c.a = lerp(lerp(0.35, 0.85, saturate(dense * 0.9 + white * 0.3)), saturate(tint.a + white * 0.3), pool);
