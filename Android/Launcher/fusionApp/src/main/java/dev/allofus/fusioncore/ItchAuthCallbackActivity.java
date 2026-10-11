@@ -8,7 +8,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import dev.allofus.fusioncore.tools.ItchAuth;
 
-/** Receives the {@code endknot://itch-auth} redirect from the itch.io sign-in page. */
+/** Receives the {@code morerolesplus://itch-auth} redirect from the itch.io sign-in page. */
 public class ItchAuthCallbackActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">End K not</string>
+    <string name="app_name">More Roles Plus</string>
     <string name="home_subtitle">Among Us モッドランチャー</string>
     <string name="home_launch_title">Among Us を起動</string>
     <string name="home_launch_countdown">%1$d 秒後に自動で起動します。タップするとすぐに起動します。</string>
@@ -8,11 +8,10 @@
     <string name="home_launch_sign_in_first">itch.io でログインすると自動で起動します。タップするとアカウントなしで起動します。</string>
     <string name="home_row_itch">itch.io</string>
     <string name="home_row_game">Among Us</string>
-    <string name="home_row_mod">End K not (同梱モッド)</string>
+    <string name="home_row_mod">More Roles Plus (同梱モッド)</string>
     <string name="home_row_mod_none">同梱なし</string>
     <string name="home_row_game_none">未インストール</string>
     <string name="home_action_share_logs">ログを共有</string>
-    <string name="home_action_role_maker">役職メーカーを開く</string>
     <string name="selector_action_settings">設定</string>
     <string name="settings_title">設定</string>
     <string name="settings_action_back">戻る</string>
@@ -46,10 +45,10 @@
     <string name="itch_sign_in_done">itch.io にログインしました。</string>
     <string name="itch_sign_in_failed">itch.io のログインが完了しませんでした。もう一度お試しください。</string>
     <string name="logs_preparing">ログを準備しています…</string>
-    <string name="logs_share_title">End K not のログを共有</string>
+    <string name="logs_share_title">More Roles Plus のログを共有</string>
     <string name="logs_share_failed">ログを準備できませんでした: %1$s</string>
     <string name="logs_share_empty">共有できるログがまだありません。</string>
-    <string name="bootstrap_launcher_update_required">この End K not は Unity %1$s 向けですが、インストール済みの Among Us は Unity %2$s です。End K not を更新してください。</string>
-    <string name="bootstrap_interop_update_required">この End K not は Among Us %1$s 向けですが、インストール済みの Among Us は %2$s です。End K not を更新してください。</string>
-    <string name="bootstrap_game_layout_unsupported">この End K not はインストール済みの Among Us のビルドに対応していません。End K not を更新してください。</string>
+    <string name="bootstrap_launcher_update_required">この More Roles Plus は Unity %1$s 向けですが、インストール済みの Among Us は Unity %2$s です。More Roles Plus を更新してください。</string>
+    <string name="bootstrap_interop_update_required">この More Roles Plus は Among Us %1$s 向けですが、インストール済みの Among Us は %2$s です。More Roles Plus を更新してください。</string>
+    <string name="bootstrap_game_layout_unsupported">この More Roles Plus はインストール済みの Among Us のビルドに対応していません。More Roles Plus を更新してください。</string>
 </resources>

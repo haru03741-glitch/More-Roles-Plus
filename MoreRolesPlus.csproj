@@ -62,4 +62,23 @@
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\plugins\" ContinueOnError="WarnAndContinue" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(MrpBepInExDir)\plugins\" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" ContinueOnError="WarnAndContinue" />
     </Target>
+    <!-- Android: ランチャーの APK が DLL を同梱し、端末の BepInEx/plugins と違う時だけ入れ直す。
+         横の .properties (DLL の SHA-256 と版) がランチャーの見比べる目印。 -->
+    <PropertyGroup Condition="'$(Configuration)' == 'Android'">
+        <AndroidApkAssetsDir Condition="'$(AndroidApkAssetsDir)' == ''">$(MSBuildProjectDirectory)\build-android\apk-assets\plugins\</AndroidApkAssetsDir>
+    </PropertyGroup>
+    <Target Name="AndroidApkAssets" AfterTargets="Build" Condition="'$(Configuration)' == 'Android'">
+        <GetAssemblyIdentity AssemblyFiles="$(TargetPath)">
+            <Output TaskParameter="Assemblies" ItemName="_PluginAssemblyIdentity" />
+        </GetAssemblyIdentity>
+        <PropertyGroup>
+            <_PluginVersion>%(_PluginAssemblyIdentity.Version)</_PluginVersion>
+        </PropertyGroup>
+        <GetFileHash Files="$(TargetPath)" Algorithm="SHA256" HashEncoding="hex">
+            <Output TaskParameter="Hash" PropertyName="_PluginSha256" />
+        </GetFileHash>
+        <MakeDir Directories="$(AndroidApkAssetsDir)" />
+        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AndroidApkAssetsDir)" />
+        <WriteLinesToFile File="$(AndroidApkAssetsDir)$(AssemblyName).dll.properties" Overwrite="true" Lines="version=$(_PluginVersion);sha256=$([System.String]::Copy('$(_PluginSha256)').ToLowerInvariant())" />
+    </Target>
 </Project>

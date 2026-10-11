@@ -47,12 +47,12 @@ public class FuseView extends View {
     public FuseView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         density = getResources().getDisplayMetrics().density;
-        int ember = ContextCompat.getColor(context, R.color.ek_ember);
-        int afterglow = ContextCompat.getColor(context, R.color.ek_afterglow);
+        int ember = ContextCompat.getColor(context, R.color.lc_ember);
+        int afterglow = ContextCompat.getColor(context, R.color.lc_afterglow);
 
         ropePaint = Crayon.stroke(withAlpha(afterglow, 0.55f), 3.2f * density);
         ropeEchoPaint = Crayon.stroke(withAlpha(afterglow, 0.3f), 1.6f * density);
-        ashPaint = Crayon.stroke(ContextCompat.getColor(context, R.color.ek_cinder), 2.2f * density);
+        ashPaint = Crayon.stroke(ContextCompat.getColor(context, R.color.lc_cinder), 2.2f * density);
         ashPaint.setPathEffect(new DashPathEffect(new float[] {
                 1f * density, 4f * density, 2.5f * density, 6f * density, 0.5f * density, 3f * density}, 0));
         sparkPaint = Crayon.stroke(ember, 1.7f * density);

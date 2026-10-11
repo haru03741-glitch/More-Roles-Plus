@@ -113,7 +113,7 @@ public final class LogBundle {
             }
         }
         String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date());
-        File zip = new File(shareDir, "endknot-logs-" + stamp + "-" + Long.toHexString(System.nanoTime()) + ".zip");
+        File zip = new File(shareDir, "morerolesplus-logs-" + stamp + "-" + Long.toHexString(System.nanoTime()) + ".zip");
 
         File filesRoot = context.getFilesDir();
         File gameRoot = new File(filesRoot, targetPackage);

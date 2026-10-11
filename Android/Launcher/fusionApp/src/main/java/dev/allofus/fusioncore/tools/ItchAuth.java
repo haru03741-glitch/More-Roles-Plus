@@ -30,7 +30,7 @@ import javax.crypto.spec.GCMParameterSpec;
  * itch.io sign-in for the launcher.
  *
  * The launcher opens the itch.io OAuth page in a browser tab; itch.io sends the browser back to
- * {@code endknot://itch-auth} with the access token in the URL fragment, which
+ * {@code morerolesplus://itch-auth} with the access token in the URL fragment, which
  * {@code ItchAuthCallbackActivity} receives. The token is encrypted with a key that lives in the
  * Android Keystore and stored in the launcher's private files directory for the game package.
  * When the game starts, {@code BootstrapActivity} decrypts it and hands it to the game process
@@ -39,22 +39,25 @@ import javax.crypto.spec.GCMParameterSpec;
  */
 public final class ItchAuth {
     private static final String TAG = "ItchAuth";
-    /** Public identifier of the launcher's OAuth application on itch.io (implicit grant, no secret). */
-    private static final String CLIENT_ID = "01c313b3a6f82c2f0485804bfcd56c94";
+    /**
+     * Public identifier of the launcher's OAuth application on itch.io (implicit grant, no secret).
+     * Empty while no application is registered for this launcher; sign-in is then hidden.
+     */
+    private static final String CLIENT_ID = "";
     private static final String SCOPE = "profile:me";
-    public static final String REDIRECT_SCHEME = "endknot";
+    public static final String REDIRECT_SCHEME = "morerolesplus";
     public static final String REDIRECT_HOST = "itch-auth";
     private static final String REDIRECT_URI = REDIRECT_SCHEME + "://" + REDIRECT_HOST;
     private static final String AUTHORIZE_URL = "https://itch.io/user/oauth";
     /** Environment variable the game reads the token from (set for this process only). */
-    public static final String TOKEN_ENV = "ENDKNOT_ITCH_TOKEN";
+    public static final String TOKEN_ENV = "MRP_ITCH_TOKEN";
     /** Encrypted token file: one version byte, the 12-byte GCM nonce, then the ciphertext. */
-    public static final String ENCRYPTED_FILE_NAME = "EndKnot.ItchApiKey.enc";
+    public static final String ENCRYPTED_FILE_NAME = "MoreRolesPlus.ItchApiKey.enc";
     /** Plaintext token file written by earlier launcher builds; migrated and deleted on sight. */
-    public static final String LEGACY_FILE_NAME = "EndKnot.ItchApiKey.txt";
+    public static final String LEGACY_FILE_NAME = "MoreRolesPlus.ItchApiKey.txt";
     /** Written by the game when the token was rejected repeatedly; consumed on the next launcher start. */
-    public static final String FAILED_MARKER_NAME = "EndKnot.ItchApiKey.failed";
-    private static final String KEY_ALIAS = "endknot.itch.token";
+    public static final String FAILED_MARKER_NAME = "MoreRolesPlus.ItchApiKey.failed";
+    private static final String KEY_ALIAS = "morerolesplus.itch.token";
     private static final String KEYSTORE = "AndroidKeyStore";
     private static final String CIPHER = "AES/GCM/NoPadding";
     private static final byte FORMAT_VERSION = 1;
@@ -64,6 +67,11 @@ public final class ItchAuth {
     private static final String PREF_STATE = "pending_state";
 
     private ItchAuth() {
+    }
+
+    /** Whether itch.io sign-in is offered by this build. */
+    public static boolean isAvailable() {
+        return !CLIENT_ID.isEmpty();
     }
 
     /** Private data directory of the game package (readable only by this app's uid). */

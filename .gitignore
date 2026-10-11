@@ -1,5 +1,6 @@
 bin/
 obj/
+build-android/
 build/
 *.user
 .vs/

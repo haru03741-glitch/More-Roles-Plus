@@ -4,7 +4,7 @@
     android:id="@+id/selector_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/ek_soot"
+    android:background="@color/lc_soot"
     android:fillViewport="true">
 
     <LinearLayout
@@ -28,7 +28,7 @@
                 android:layout_height="72dp"
                 android:layout_marginStart="-10dp"
                 android:layout_marginEnd="6dp"
-                android:src="@drawable/ek_mark"
+                android:src="@mipmap/app_icon"
                 android:contentDescription="@null" />
 
             <LinearLayout
@@ -37,13 +37,12 @@
                 android:layout_weight="1"
                 android:orientation="vertical">
 
-                <ImageView
+                <TextView
                     android:layout_width="wrap_content"
-                    android:layout_height="30dp"
-                    android:adjustViewBounds="true"
-                    android:scaleType="fitStart"
-                    android:src="@drawable/ek_wordmark"
-                    android:contentDescription="@string/app_name" />
+                    android:layout_height="wrap_content"
+                    android:text="@string/app_name"
+                    android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                    android:textColor="@color/lc_afterglow" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -51,7 +50,7 @@
                     android:layout_marginTop="6dp"
                     android:text="@string/home_subtitle"
                     android:textAppearance="?attr/textAppearanceBodyMedium"
-                    android:textColor="@color/ek_slate" />
+                    android:textColor="@color/lc_slate" />
             </LinearLayout>
         </LinearLayout>
 
@@ -65,9 +64,9 @@
             app:cardCornerRadius="18dp"
             app:cardElevation="0dp"
             app:strokeWidth="1dp"
-            app:strokeColor="@color/ek_ash_line"
+            app:strokeColor="@color/lc_ash_line"
             app:rippleColor="#33FF7320"
-            app:cardBackgroundColor="@color/ek_ash">
+            app:cardBackgroundColor="@color/lc_ash">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -104,7 +103,7 @@
                             android:text="@string/home_launch_title"
                             android:textAppearance="?attr/textAppearanceTitleLarge"
                             android:textStyle="bold"
-                            android:textColor="@color/ek_afterglow" />
+                            android:textColor="@color/lc_afterglow" />
 
                         <TextView
                             android:id="@+id/home_launch_hint"
@@ -113,7 +112,7 @@
                             android:layout_marginTop="4dp"
                             android:text="@string/loading"
                             android:textAppearance="?attr/textAppearanceBodyMedium"
-                            android:textColor="@color/ek_slate" />
+                            android:textColor="@color/lc_slate" />
                     </LinearLayout>
                 </LinearLayout>
 
@@ -135,9 +134,10 @@
             android:layout_marginTop="28dp"
             android:orientation="vertical"
             android:showDividers="middle|end"
-            android:divider="@drawable/ek_divider">
+            android:divider="@drawable/lc_divider">
 
             <LinearLayout
+                android:id="@+id/selector_itch_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -155,7 +155,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/home_row_itch"
-                    android:textAppearance="@style/TextAppearance.EndKnot.Label" />
+                    android:textAppearance="@style/TextAppearance.Launcher.Label" />
 
                 <TextView
                     android:id="@+id/selector_itch_status"
@@ -166,12 +166,12 @@
                     android:ellipsize="end"
                     android:text="@string/selector_itch_not_signed_in"
                     android:textAppearance="?attr/textAppearanceBodyLarge"
-                    android:textColor="@color/ek_afterglow" />
+                    android:textColor="@color/lc_afterglow" />
                 </LinearLayout>
 
                 <Button
                     android:id="@+id/selector_itch_button"
-                    style="@style/Widget.EndKnot.Button.Text"
+                    style="@style/Widget.Launcher.Button.Text"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="-12dp"
@@ -196,7 +196,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/home_row_game"
-                    android:textAppearance="@style/TextAppearance.EndKnot.Label" />
+                    android:textAppearance="@style/TextAppearance.Launcher.Label" />
 
                 <TextView
                     android:id="@+id/home_game_version"
@@ -204,7 +204,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
                     android:text="@string/loading"
-                    android:textAppearance="@style/TextAppearance.EndKnot.Readout" />
+                    android:textAppearance="@style/TextAppearance.Launcher.Readout" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -226,7 +226,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/home_row_mod"
-                    android:textAppearance="@style/TextAppearance.EndKnot.Label" />
+                    android:textAppearance="@style/TextAppearance.Launcher.Label" />
 
                 <TextView
                     android:id="@+id/home_mod_version"
@@ -234,21 +234,12 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
                     android:text="@string/loading"
-                    android:textAppearance="@style/TextAppearance.EndKnot.Readout" />
+                    android:textAppearance="@style/TextAppearance.Launcher.Readout" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
         <!-- Secondary actions -->
-        <Button
-            android:id="@+id/home_open_role_maker"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
-            android:layout_marginBottom="4dp"
-            android:text="@string/home_action_role_maker" />
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

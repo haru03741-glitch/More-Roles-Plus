@@ -40,12 +40,12 @@ public class EmberView extends View {
     public EmberView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         density = getResources().getDisplayMetrics().density;
-        int ember = ContextCompat.getColor(context, R.color.ek_ember);
+        int ember = ContextCompat.getColor(context, R.color.lc_ember);
         fillPaint = Crayon.stroke(FuseView.withAlpha(ember, 0.9f), 2.6f * density);
         outlinePaint = Crayon.stroke(ember, 2.2f * density);
         rayPaint = Crayon.stroke(FuseView.withAlpha(ember, 0.75f), 2f * density);
         corePaint = Crayon.stroke(0xFFFFDEA0, 2.4f * density);
-        sparkPaint = Crayon.stroke(ContextCompat.getColor(context, R.color.ek_afterglow), 1.8f * density);
+        sparkPaint = Crayon.stroke(ContextCompat.getColor(context, R.color.lc_afterglow), 1.8f * density);
         allPaints = new Paint[] {fillPaint, outlinePaint, rayPaint, corePaint, sparkPaint};
     }
 

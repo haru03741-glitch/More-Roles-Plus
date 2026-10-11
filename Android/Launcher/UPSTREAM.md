@@ -1,11 +1,13 @@
 # Upstream: FusionCore
 
 This directory is a `git subtree` of [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore)
-(All-Of-Us-Mods, GPL-3.0), rebranded as the End K not launcher for Android.
+(All-Of-Us-Mods, GPL-3.0), rebranded as the More Roles Plus launcher for Android.
+The launcher changes made in [End K not](https://github.com/waffle-ful/Aeterna-End-K-not)
+(`Android/Launcher/` at commit `be5ee5f75`) were taken over on 2026-10-12, without its map / role editor.
 
 - Upstream repository: https://github.com/All-Of-Us-Mods/FusionCore
 - Imported commit: `e3aa9b4` (`e3aa9b4ffc3545d545810161f4401bf6cffc29ab`, upstream `main`)
-- Imported on: 2026-09-20 (upstream `main` re-checked on 2026-09-25: still `e3aa9b4`, nothing to pull)
+- Imported on: 2026-10-12
 
 ## Pulling upstream changes
 

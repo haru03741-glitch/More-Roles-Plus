@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
-    android:background="@color/ek_soot"
+    android:background="@color/lc_soot"
     android:padding="24dp">
 
     <dev.allofus.fusioncore.ui.EmberView
@@ -23,8 +23,8 @@
         android:max="100"
         android:indeterminate="false"
         android:progress="0"
-        android:progressTint="@color/ek_ember"
-        android:progressBackgroundTint="@color/ek_ash_line"
+        android:progressTint="@color/lc_ember"
+        android:progressBackgroundTint="@color/lc_ash_line"
         android:visibility="gone" />
 
     <TextView
@@ -34,7 +34,7 @@
         android:layout_marginTop="16dp"
         android:gravity="center"
         android:text="@string/bootstrap_title"
-        android:textColor="@color/ek_afterglow"
+        android:textColor="@color/lc_afterglow"
         android:textSize="20sp"
         android:textStyle="bold" />
 
@@ -45,7 +45,7 @@
         android:layout_marginTop="8dp"
         android:gravity="center"
         android:text="@string/bootstrap_status_preparing"
-        android:textColor="@color/ek_slate"
+        android:textColor="@color/lc_slate"
         android:textSize="14sp" />
 
     <TextView
@@ -54,7 +54,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
         android:gravity="center"
-        android:textColor="@color/ek_slate"
+        android:textColor="@color/lc_slate"
         android:textSize="12sp"
         android:visibility="gone" />
 

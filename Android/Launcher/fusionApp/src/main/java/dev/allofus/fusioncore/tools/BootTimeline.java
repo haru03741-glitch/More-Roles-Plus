@@ -18,7 +18,7 @@ public final class BootTimeline {
     private static final String TAG = "BootTimeline";
 
     /** Launcher stage summary, e.g. {@code selector=210ms bootstrap=1520ms ... launch=9800ms}. */
-    public static final String ENV_LAUNCHER = "ENDKNOT_BOOT_LAUNCHER";
+    public static final String ENV_LAUNCHER = "MRP_BOOT_LAUNCHER";
 
     private static final List<String> marks = new ArrayList<>();
 

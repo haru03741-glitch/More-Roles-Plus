@@ -95,9 +95,9 @@ android {
     defaultConfig {
         minSdk = 27
         targetSdk = 36
-        applicationId = "dev.waffleful.endknot"
-        versionCode = 130100
-        versionName = "0.13.1-beta"
+        applicationId = "dev.waffleful.morerolesplus"
+        versionCode = 1
+        versionName = "0.1.0"
         ndk {
             abiFilters.add("arm64-v8a")
             // abiFilters.add("armeabi-v7a")
@@ -113,14 +113,14 @@ android {
     }
 
     // Release signing is optional: without a keystore the release build is simply left unsigned.
-    val releaseKeystore = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks").takeIf { it.exists() }
+    val releaseKeystore = file(System.getenv("MRP_KEYSTORE_PATH") ?: "keystore.jks").takeIf { it.exists() }
     signingConfigs {
         if (releaseKeystore != null) {
             create("release") {
                 storeFile = releaseKeystore
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
+                storePassword = System.getenv("MRP_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("MRP_KEY_ALIAS")
+                keyPassword = System.getenv("MRP_KEY_PASSWORD")
             }
         }
     }
@@ -146,7 +146,7 @@ android {
         }
     }
 
-    // The mod DLL is bundled from the C# build output (`dotnet build EndKnot.csproj -c Android`
+    // The mod DLL is bundled from the C# build output (`dotnet build MoreRolesPlus.csproj -c Android`
     // writes build-android/apk-assets/plugins/). The directory may be absent when only the
     // launcher is being built; the APK then ships without a bundled plugin.
     sourceSets {

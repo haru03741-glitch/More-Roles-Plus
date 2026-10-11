@@ -44,7 +44,7 @@
         android:exported="false" />
     <activity
         android:name="dev.allofus.fusioncore.SelectorActivity"
-        android:theme="@style/Theme.EndKnot" android:exported="true"
+        android:theme="@style/Theme.Launcher" android:exported="true"
         android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
         >
       <intent-filter>
@@ -62,19 +62,19 @@
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="endknot" android:host="itch-auth" />
+        <data android:scheme="morerolesplus" android:host="itch-auth" />
       </intent-filter>
     </activity>
     <activity
         android:name="dev.allofus.fusioncore.BootstrapActivity"
-        android:theme="@style/Theme.EndKnot"
+        android:theme="@style/Theme.Launcher"
         android:screenOrientation="locked"
         android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
         android:launchMode="singleTask"
         android:exported="false" />
     <activity
         android:name="dev.allofus.fusioncore.GameSettingsActivity"
-        android:theme="@style/Theme.EndKnot"
+        android:theme="@style/Theme.Launcher"
         android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
         android:exported="false" />
     <!-- StubActivity for dynamic loading of unregistered activities -->

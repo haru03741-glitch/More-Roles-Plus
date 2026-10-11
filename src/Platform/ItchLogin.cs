@@ -15,9 +15,9 @@ namespace MoreRolesPlus.Platform;
 internal static class ItchLogin
 {
     // ランチャーとの約束の名前 (変えるとランチャー側と食い違う)
-    private const string TokenEnv = "ENDKNOT_ITCH_TOKEN";
-    private const string KeyFileName = "EndKnot.ItchApiKey.txt";
-    private const string FailedMarkerName = "EndKnot.ItchApiKey.failed";
+    private const string TokenEnv = "MRP_ITCH_TOKEN";
+    private const string KeyFileName = "MoreRolesPlus.ItchApiKey.txt";
+    private const string FailedMarkerName = "MoreRolesPlus.ItchApiKey.failed";
 
     // 本編はログインに失敗するたびに LoginWithCorrectPlatformImpl を呼び直す → 3 回で本編の流れ (Google → ゲスト) に譲る
     private const int MaxAttempts = 3;

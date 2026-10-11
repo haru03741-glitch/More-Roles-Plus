@@ -48,7 +48,6 @@ public class SelectorActivity extends AppCompatActivity {
     private static final String[] UNITY_ABIS = {"arm64-v8a", "armeabi-v7a", "x86_64", "x86"};
     static final String TARGET_PACKAGE = "com.innersloth.spacemafia";
     /** The web role maker; a role made there is pasted into the game with /role import. */
-    private static final String ROLE_MAKER_URL = "https://waffle-ful.github.io/Aeterna-End-K-not/editor/#role-maker";
     /** Set on the intent that brings the player back after the itch.io sign-in page. */
     static final String EXTRA_AFTER_SIGN_IN = "after_sign_in";
     private static final int AUTO_LAUNCH_SECONDS = 3;
@@ -99,10 +98,6 @@ public class SelectorActivity extends AppCompatActivity {
             intent.putExtra(GameSettingsActivity.EXTRA_PACKAGE_NAME, TARGET_PACKAGE);
             startActivity(intent);
         });
-        findViewById(R.id.home_open_role_maker).setOnClickListener(v -> {
-            stopCountdown();
-            openWebPage(ROLE_MAKER_URL);
-        });
         findViewById(R.id.home_share_logs).setOnClickListener(v -> {
             stopCountdown();
             LogBundle.shareAsync(this, TARGET_PACKAGE);
@@ -125,7 +120,7 @@ public class SelectorActivity extends AppCompatActivity {
                     CrashDetector.init(this);
                     // Launch by itself only once an itch.io account is attached; otherwise wait for
                     // the player to sign in or to tap the card.
-                    if (targetInstalled && signedIn) {
+                    if (targetInstalled && (signedIn || !ItchAuth.isAvailable())) {
                         startCountdown();
                     }
                 });
@@ -136,13 +131,14 @@ public class SelectorActivity extends AppCompatActivity {
     /** Updates the itch.io row and the launch hint; returns whether a token is stored. */
     private boolean refreshItchStatus() {
         boolean signedIn = ItchAuth.isSignedIn(this, TARGET_PACKAGE);
+        findViewById(R.id.selector_itch_row).setVisibility(ItchAuth.isAvailable() ? View.VISIBLE : View.GONE);
         TextView status = findViewById(R.id.selector_itch_status);
         Button button = findViewById(R.id.selector_itch_button);
         status.setText(signedIn ? R.string.selector_itch_signed_in : R.string.selector_itch_not_signed_in);
         button.setText(signedIn ? R.string.selector_itch_sign_out : R.string.selector_itch_sign_in);
         if (!targetInstalled) {
             launchHint.setText(R.string.selector_target_not_installed);
-        } else if (!signedIn) {
+        } else if (!signedIn && ItchAuth.isAvailable()) {
             launchHint.setText(R.string.home_launch_sign_in_first);
         } else if (countdownLeft <= 0) {
             launchHint.setText(R.string.home_launch_tap);

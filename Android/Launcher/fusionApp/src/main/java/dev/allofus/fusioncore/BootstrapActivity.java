@@ -61,7 +61,7 @@ public class BootstrapActivity extends AppCompatActivity {
     }
 
     /** Where the player gets a newer launcher when this build no longer matches the game. */
-    private static final String RELEASES_URL = "https://github.com/waffle-ful/Aeterna-End-K-not/releases/latest";
+    private static final String RELEASES_URL = "https://github.com/haru03741-glitch/More-Roles-Plus/releases/latest";
 
     private TextView titleView;
     private TextView statusView;
