@@ -419,6 +419,7 @@ internal static partial class WaterSim
         _stir = new byte[n];
         _act = new int[n];
         _actN = 0;
+        _sortedN = 0;
         _stepTo = new int[n * 4];
         _fo = new int[n * 4 * 3];
         _foN = 0;
@@ -1360,7 +1361,7 @@ internal static partial class WaterSim
         // 水も流れも無い升を外す。濡れていても、この刻みに起こされず流れ出しが全部 0 の升は眠らせる
         // (流れ出しは自分と隣の高さと地形だけで決まり、それが変わる所は全部 Wake を通るので、起こされるまで 0 のまま)。
         // 浅くて乾いていく升・段差と海の縁 (離れた升や海面を読む) は眠らせない
-        int o = 0;
+        int o = 0, kept = 0;
         for (int a = 0; a < _actN; a++)
         {
             int k = _act[a];
@@ -1371,10 +1372,15 @@ internal static partial class WaterSim
             int h = _hgt[k];
             if (still && (h == 0 || !stir && !blow && !_noSleep && h >= MinDepth && _stepMask[k] == 0 && _seaMask[k] == 0)) { _inList[k] = 0; continue; }
             _act[o++] = k;
+            if (a < _sortedN) kept++;
         }
         _actN = o;
-        // 升の番号順に並べておく (隣の升を続けて読むので速い。C# 版と C++ 版で同じ順)
-        Array.Sort(_act, 0, _actN);
+        // 升の番号順に並べておく (隣の升を続けて読むので速い。C# 版と C++ 版で同じ順)。
+        // 前の刻みの終わりに並べた分は外しても番号順のままなので、後から起こした分だけ並べて後ろから混ぜる
+        SortTail(kept);
+        _sortedN = _actN;
+        if (Native.MrpNative.Verify)
+            for (int a = 1; a < _actN; a++) if (_act[a - 1] >= _act[a]) VerifyDiff++;
         Prof(7);
 
         Steps++;
@@ -1975,6 +1981,25 @@ internal static partial class WaterSim
         return $"raw={t[0] * k:0.000} face={t[1] * k:0.000} prep={t[2] * k:0.000} pix={t[3] * k:0.000} upload={t[4] * k:0.000} flow={t[5] * k:0.000} (face={t[6] * k:0.000} spread={t[7] * k:0.000})";
     }
 
+    private static int _sortedN;     // _act の先頭のこの数までは番号順 (前の刻みの終わりに並べた分)
+    private static int[] _sortTmp = Array.Empty<int>();
+
+    private static void SortTail(int head)
+    {
+        int n = _actN - head;
+        if (n <= 0) return;
+        Array.Sort(_act, head, n);
+        if (head == 0 || _act[head - 1] < _act[head]) return;
+        if (_sortTmp.Length < n) _sortTmp = new int[Math.Max(n, 1024)];
+        Array.Copy(_act, head, _sortTmp, 0, n);
+        int i = head - 1, j = n - 1, w = _actN - 1;
+        while (j >= 0)
+        {
+            if (i >= 0 && _act[i] > _sortTmp[j]) _act[w--] = _act[i--];
+            else _act[w--] = _sortTmp[j--];
+        }
+    }
+
     // 指紋と量に数える升 = 回す升と眠っている升 (縁の升は回さないので数えない)
     private static bool Counted(int k)
     {
@@ -2237,6 +2262,7 @@ internal static partial class WaterSim
         SeaInTotal = 0;
         DirtyTiles.Clear();
         _actN = 0;
+        _sortedN = 0;
         _blowing = false;
         Queue.Clear();
         Sources.Clear();
