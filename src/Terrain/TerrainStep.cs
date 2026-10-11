@@ -10,8 +10,19 @@ internal static class TerrainStep
     private const int MaxStepsPerFrame = 20;
     private static int _failedGen = -1;
 
+    // 区間ごとの時間 (water prof): 前置き・減圧・物・水・火
+    internal static readonly long[] ProfTicks = new long[5];
+    private static long _profT;
+    private static void Prof(int i)
+    {
+        long t = System.Diagnostics.Stopwatch.GetTimestamp();
+        ProfTicks[i] += t - _profT;
+        _profT = t;
+    }
+
     public static void Tick()
     {
+        _profT = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
             Decompression.CheckShip();
@@ -25,6 +36,7 @@ internal static class TerrainStep
             FireSim.FlareFx.Clear();
             FireSim.Arcs.Clear();
             FireSim.Chars.Clear();
+            Prof(0);
             if (_failedGen == GameClock.ShipGen) return;
             int target = GameClock.Now - WaterSim.Delay;
             // 物と水の刻みが違う間は 1 回に片方しか進まないので、回数は 2 倍まで (どれも 1 フレーム 20 刻みまで)
@@ -36,10 +48,14 @@ internal static class TerrainStep
                 if (water && WaterSim.Step < s) s = WaterSim.Step;
                 if (s >= target) break;
                 Decompression.StepThrough(s);
+                Prof(1);
                 if (prop && PropSim.AuthStep == s) PropSim.AdvanceAuth();
-                if (water && WaterSim.Step == s) { WaterSim.AdvanceOne(); FireSim.AdvanceOne(s); }
+                Prof(2);
+                if (water && WaterSim.Step == s) { WaterSim.AdvanceOne(); Prof(3); FireSim.AdvanceOne(s); }
+                Prof(4);
             }
             FireSim.IssueWallBurns();
+            Prof(4);
         }
         catch (Exception e)
         {

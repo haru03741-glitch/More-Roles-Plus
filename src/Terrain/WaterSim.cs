@@ -191,6 +191,8 @@ internal static partial class WaterSim
     private static int[] _move;      // この小刻みに升 × 4 向きへ運ぶ量
     private static readonly List<(int Due, int To, int Amount)> Flying = new(); // 落ちている水 (着く刻みの順)
     private static byte[] _inList;
+    private static byte[] _stir;     // この刻みに起こされた (高さか地形が自分か隣で変わった)。片付けで眠らせない
+    private static bool _blowing;    // 前の刻みが吸い出しの最中だった
     // 水か流れのある升 (Wake で足す・刻みの終わりに外す)。升ごとに 1 回までなので長さは升の数
     private static int[] _act = Array.Empty<int>();
     private static int _actN;
@@ -409,6 +411,7 @@ internal static partial class WaterSim
         _move = new int[n * 4];
         _fallAt = new int[n * 4];
         _inList = new byte[n];
+        _stir = new byte[n];
         _act = new int[n];
         _actN = 0;
         _stepTo = new int[n * 4];
@@ -482,7 +485,7 @@ internal static partial class WaterSim
                 // 閉じた升の水は消さずに開いている隣へ寄せる (量を保つ)
                 int to = -1;
                 for (int d = 0; d < 4 && to < 0; d++) { int j = k + Nx[d] + Ny[d] * _w; if (_open[j] != 0) to = j; }
-                if (to >= 0) { _hgt[to] += _hgt[k]; Wake(to); }
+                if (to >= 0) { _hgt[to] += _hgt[k]; WakeAround(to); }
                 _hgt[k] = 0;
             }
             for (int d = 0; d < 4; d++) { _flux[k * 4 + d] = 0; _move[k * 4 + d] = 0; }
@@ -870,6 +873,7 @@ internal static partial class WaterSim
             }
         }
         _ledgeScan = false;
+        WakeWet(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
     }
 
     // 最初に水が出た時の升作りで払っていた準備 (段の注釈の読み込み・部屋の範囲・影の線の判定の初回) を先に済ませる
@@ -1150,6 +1154,24 @@ internal static partial class WaterSim
         else if (lx == TileCells - 1) MarkTile(x / TileCells + 1, y / TileCells);
         if (ly == 0) MarkTile(x / TileCells, y / TileCells - 1);
         else if (ly == TileCells - 1) MarkTile(x / TileCells, y / TileCells + 1);
+        // 高さが変わった升の隣は流れが変わりうるので、眠っていれば起こす
+        if (x >= 1 && y >= 1 && x < _w - 1 && y < _h - 1) WakeAround(k);
+    }
+
+    private static void WakeAround(int k)
+    {
+        Wake(k);
+        for (int d = 0; d < 4; d++) Wake(k + Nx[d] + Ny[d] * _w);
+    }
+
+    // 範囲の濡れた升を起こす (流れの決まり方 (縁・段差・落ちる縁) を作り直した所)
+    private static void WakeWet(int x0, int y0, int x1, int y1)
+    {
+        x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
+        x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
+        for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+            if (_hgt[y * _w + x] > 0) Wake(y * _w + x);
     }
 
     private static void MarkTile(int tx, int ty)
@@ -1191,19 +1213,35 @@ internal static partial class WaterSim
         }
     }
 
+    // 回す升に入れる。濡れていて回す升に居ない升は「眠っている」= 流れ出しが 0 のまま変わらない升 (片付けで外す)。
+    // 自分か隣の高さ・地形が変わる所は必ずここを通して起こす
     private static void Wake(int k)
     {
-        if (_inList[k] != 0) return;
+        if (_inList[k] != 0) { _stir[k] = 1; return; }
         int x = k % _w, y = k / _w;
         if (x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return;
         _inList[k] = 1;
+        _stir[k] = 1;
         _act[_actN++] = k;
     }
 
     // ── 1 刻み ─────────────────────────────────────────────────────────
 
+    // 1 刻みの区間ごとの時間 (water prof)。出来事・扉と着水・噴き出し・吸い出しと海・小刻み・縁を越える量・落ちる水・片付け
+    internal static readonly long[] ProfTicks = new long[8];
+    internal static long ProfSteps;
+    private static long _profT;
+    private static void Prof(int i)
+    {
+        long t = System.Diagnostics.Stopwatch.GetTimestamp();
+        ProfTicks[i] += t - _profT;
+        _profT = t;
+    }
+
     private static void StepOnce()
     {
+        _profT = System.Diagnostics.Stopwatch.GetTimestamp();
+        ProfSteps++;
         // この刻みの出来事
         int fx0 = int.MaxValue, fy0 = int.MaxValue, fx1 = int.MinValue, fy1 = int.MinValue;
         while (Queue.Count > 0 && Queue[0].Tick <= _step)
@@ -1228,6 +1266,7 @@ internal static partial class WaterSim
         PropSim.StampTops();
         if (fx0 <= fx1)
             WaterArt.FloorChanged(Rect.MinMaxRect(_org.x + fx0 * _cell, _org.y + fy0 * _cell, _org.x + fx1 * _cell, _org.y + fy1 * _cell));
+        Prof(0);
 
         // 扉: この刻みの開き (ホストの記録)
         ulong doors = Decompression.DoorBitsAt(_step);
@@ -1255,6 +1294,7 @@ internal static partial class WaterSim
         for (int i = Jets.Count - 1; i >= 0; i--)
             if (_step - Jets[i].Start >= JetLife) Jets.RemoveAt(i);
 
+        Prof(1);
         // 噴き出し: 粒を出して動かし、床に落ちた粒の水を升に足す
         Landed.Clear();
         for (int i = Sources.Count - 1; i >= 0; i--)
@@ -1267,13 +1307,18 @@ internal static partial class WaterSim
             Emit(src, k256, age < BurstSteps);
         }
         MoveParticles();
+        Prof(2);
 
         // 吸い出し: 減圧の場はこの刻みの物 (TerrainStep が先に減圧をこの刻みまで進めている)
         bool blow = Decompression.Running && Decompression.Pulling;
+        // 吸い出しの場は升ごとに流れを足すので、吸い出しの間は眠らせない (始まった刻みに全部起こす)
+        if (blow && !_blowing) WakeWet(1, 1, _w - 2, _h - 2);
+        _blowing = blow;
         // 口の際の升の水は宇宙へ出る (流れを決める前に自分の升だけを減らすので順番に依らない)
         if (blow)
             for (int a = 0; a < _actN; a++) if (_hgt[_act[a]] > 0) Drain(_act[a]);
         SeaInflow();
+        Prof(3);
 
         for (int s = 0; s < SubN; s++)
         {
@@ -1284,7 +1329,9 @@ internal static partial class WaterSim
                 if (amt > 0) Pour3(Inflows[i].K, amt);
             }
             SubStep(s, blow && s == 0, s == SubN - 1 && (_step & 3) == 0);
+            Prof(4);
             SubFalls();
+            Prof(5);
         }
 
         // 縁を越えた水: 落ちる時間の後に下の升へ (奈落なら消える)。1 刻みの合計で 1 回
@@ -1298,21 +1345,27 @@ internal static partial class WaterSim
             FallFx(k, d, to, amt, delay);
         }
         FallStep.Clear();
+        Prof(6);
 
-        // 水も流れも無い升を外す
+        // 水も流れも無い升を外す。濡れていても、この刻みに起こされず流れ出しが全部 0 の升は眠らせる
+        // (流れ出しは自分と隣の高さと地形だけで決まり、それが変わる所は全部 Wake を通るので、起こされるまで 0 のまま)。
+        // 浅くて乾いていく升・段差と海の縁 (離れた升や海面を読む) は眠らせない
         int o = 0;
         for (int a = 0; a < _actN; a++)
         {
             int k = _act[a];
-            bool idle = _hgt[k] == 0;
-            if (idle)
-                for (int d = 0; d < 4; d++) if (_flux[k * 4 + d] != 0) { idle = false; break; }
-            if (idle) { _inList[k] = 0; continue; }
+            bool still = true;
+            for (int d = 0; d < 4; d++) if (_flux[k * 4 + d] != 0 || _move[k * 4 + d] != 0) { still = false; break; }
+            bool stir = _stir[k] != 0;
+            _stir[k] = 0;
+            int h = _hgt[k];
+            if (still && (h == 0 || !stir && !blow && h >= MinDepth && _stepMask[k] == 0 && _seaMask[k] == 0)) { _inList[k] = 0; continue; }
             _act[o++] = k;
         }
         _actN = o;
         // 升の番号順に並べておく (隣の升を続けて読むので速い。C# 版と C++ 版で同じ順)
         Array.Sort(_act, 0, _actN);
+        Prof(7);
 
         Steps++;
         if (_step % 300 == 0) { LastDigest = Digest(); Plugin.Logger.LogInfo($"[WaterSim] step={_step} digest={LastDigest:x8} active={_actN} volume={Volume()}"); }
@@ -1348,6 +1401,8 @@ internal static partial class WaterSim
         public int W, H, Tw, Th, TileCells;
         public int Sub, SubN, Dry, SeaLevel;
         public long VoidAdd;
+        public byte* Stir;
+        public int CheckSleep, SleepViol;
     }
 
     private static int[] _dirtyBuf = Array.Empty<int>();
@@ -1361,6 +1416,7 @@ internal static partial class WaterSim
         fixed (byte* stepMask = _stepMask) fixed (byte* fallMask = _fallMask) fixed (byte* seaMask = _seaMask) fixed (byte* lipMask = _lipMask)
         fixed (short* lipH = _lipH) fixed (byte* barB = _barB) fixed (short* barH = _barH) fixed (int* stepTo = _stepTo)
         fixed (int* act = _act) fixed (byte* inList = _inList) fixed (int* fo = _fo) fixed (bool* tileDirty = _tileDirty) fixed (int* dirty = _dirtyBuf)
+        fixed (byte* stir = _stir)
         {
             var a = new FlowArgs
             {
@@ -1370,11 +1426,13 @@ internal static partial class WaterSim
                 Act = act, InList = inList, Fo = fo, TileDirty = (byte*)tileDirty, DirtyOut = dirty,
                 ActN = _actN, FoN = _foN, W = _w, H = _h, Tw = _tw, Th = _th, TileCells = TileCells,
                 Sub = s, SubN = SubN, Dry = dry ? 1 : 0, SeaLevel = SeaLevel,
+                Stir = stir, CheckSleep = Native.MrpNative.Verify ? 1 : 0,
             };
             if (Native.MrpNative.WaterSubstep(&a) == 0) return false;
             _actN = a.ActN;
             _foN = a.FoN;
             VoidTotal += a.VoidAdd;
+            VerifySleepViol += a.SleepViol;
             for (int i = 0; i < a.DirtyN; i++) DirtyTiles.Add(dirty[i]);
         }
         return true;
@@ -1382,28 +1440,29 @@ internal static partial class WaterSim
 
     // 答え合わせ (native verify): 同じ小刻みを C++ と C# の両方で回して、升の水・流れ・回す升・縁を越える量を比べる。続きは C# の結果で
     internal static long VerifySteps, VerifyDiff;
+    internal static long VerifySleepViol; // 眠っている升が流れ出すはずだった・浅かった数 (起こし忘れ)
     private static int[] _vHgt, _vFlux, _vMove, _vAct, _vFo;
-    private static byte[] _vIn;
+    private static byte[] _vIn, _vStir;
     private static void VerifySubStep(int s, bool dry)
     {
         int n = _hgt.Length;
         if (_vHgt == null || _vHgt.Length != n)
         {
-            _vHgt = new int[n]; _vFlux = new int[n * 4]; _vMove = new int[n * 4]; _vAct = new int[n]; _vFo = new int[n * 12]; _vIn = new byte[n];
+            _vHgt = new int[n]; _vFlux = new int[n * 4]; _vMove = new int[n * 4]; _vAct = new int[n]; _vFo = new int[n * 12]; _vIn = new byte[n]; _vStir = new byte[n];
         }
         // 前の状態を取っておく
         var hgt0 = (int[])_hgt.Clone(); var flux0 = (int[])_flux.Clone(); var move0 = (int[])_move.Clone();
-        var act0 = (int[])_act.Clone(); var in0 = (byte[])_inList.Clone(); var dirty0 = (bool[])_tileDirty.Clone();
+        var act0 = (int[])_act.Clone(); var in0 = (byte[])_inList.Clone(); var dirty0 = (bool[])_tileDirty.Clone(); var stir0 = (byte[])_stir.Clone();
         int actN0 = _actN, foN0 = _foN, dirtyN0 = DirtyTiles.Count;
         long void0 = VoidTotal;
         SubStepNative(s, dry);
         Array.Copy(_hgt, _vHgt, n); Array.Copy(_flux, _vFlux, n * 4); Array.Copy(_move, _vMove, n * 4);
-        Array.Copy(_act, _vAct, n); Array.Copy(_inList, _vIn, n); Array.Copy(_fo, _vFo, _foN * 3);
+        Array.Copy(_act, _vAct, n); Array.Copy(_inList, _vIn, n); Array.Copy(_fo, _vFo, _foN * 3); Array.Copy(_stir, _vStir, n);
         int nActN = _actN, nFoN = _foN;
         long nVoid = VoidTotal;
         // 戻して C# で
         Array.Copy(hgt0, _hgt, n); Array.Copy(flux0, _flux, n * 4); Array.Copy(move0, _move, n * 4);
-        Array.Copy(act0, _act, n); Array.Copy(in0, _inList, n); Array.Copy(dirty0, _tileDirty, dirty0.Length);
+        Array.Copy(act0, _act, n); Array.Copy(in0, _inList, n); Array.Copy(dirty0, _tileDirty, dirty0.Length); Array.Copy(stir0, _stir, n);
         _actN = actN0; _foN = foN0; VoidTotal = void0;
         DirtyTiles.RemoveRange(dirtyN0, DirtyTiles.Count - dirtyN0);
         DropVoid();
@@ -1414,7 +1473,7 @@ internal static partial class WaterSim
         if (nActN != _actN) diff += 1000000;
         if (nFoN != _foN) diff += 1000000;
         if (nVoid != VoidTotal) diff += 1000000;
-        for (int i = 0; i < n; i++) { if (_vHgt[i] != _hgt[i]) diff++; if (_vIn[i] != _inList[i]) diff++; }
+        for (int i = 0; i < n; i++) { if (_vHgt[i] != _hgt[i]) diff++; if (_vIn[i] != _inList[i]) diff++; if (_vStir[i] != _stir[i]) diff++; }
         for (int i = 0; i < n * 4; i++) { if (_vFlux[i] != _flux[i]) diff++; if (_vMove[i] != _move[i]) diff++; }
         for (int i = 0; i < Math.Min(nActN, _actN); i++) if (_vAct[i] != _act[i]) diff++;
         for (int i = 0; i < Math.Min(nFoN, _foN) * 3; i++) if (_vFo[i] != _fo[i]) diff++;
@@ -1521,7 +1580,8 @@ internal static partial class WaterSim
     // 高さ: 入ってくる流れ − 出ていく流れ
     private static void Heights(bool dry)
     {
-        for (int a = 0; a < _actN; a++)
+        int n = _actN; // 途中で起こした升は流れ込みが無い (流れ込みは Flow で起こす) ので、この回では回さない
+        for (int a = 0; a < n; a++)
         {
             int k = _act[a];
             int dh = 0;
@@ -1898,13 +1958,22 @@ internal static partial class WaterSim
     }
 
     // 升の順番に依らない指紋 (刻みの番号も混ぜる)
+    // 指紋と量に数える升 = 回す升と眠っている升 (縁の升は回さないので数えない)
+    private static bool Counted(int k)
+    {
+        if (_inList[k] != 0) return true;
+        if (_hgt[k] == 0) return false;
+        int x = k % _w, y = k / _w;
+        return x >= 1 && y >= 1 && x < _w - 1 && y < _h - 1;
+    }
+
     internal static uint Digest()
     {
         uint acc = (uint)_step * 2654435761u + (uint)Particles * 40503u + (uint)Flying.Count * 0x27D4EB2Fu;
         foreach (var (due, to, amt) in Flying) acc += (uint)due * 0x9E3779B1u ^ (uint)to * 0x85EBCA77u ^ (uint)amt;
-        for (int a = 0; a < _actN; a++)
+        for (int k = 0; _inList != null && k < _inList.Length; k++)
         {
-            int k = _act[a];
+            if (!Counted(k)) continue;
             uint v = (uint)k * 0x9E3779B1u ^ (uint)_hgt[k] * 0x85EBCA77u;
             v ^= v >> 15; v *= 0xC2B2AE3Du; v ^= v >> 13;
             acc += v;
@@ -1915,7 +1984,7 @@ internal static partial class WaterSim
     internal static long Volume()
     {
         long v = 0;
-        for (int a = 0; a < _actN; a++) v += _hgt[_act[a]];
+        for (int k = 0; _inList != null && k < _inList.Length; k++) if (Counted(k)) v += _hgt[k];
         foreach (var f in Flying) v += f.Amount;
         return v;
     }
@@ -2137,7 +2206,7 @@ internal static partial class WaterSim
     {
         _ready = false;
         _running = false;
-        _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
+        _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _stir = null; _tileDirty = null;
         _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; LowWalls.Clear();
         FallTo.Clear();
         StepTo.Clear();
@@ -2151,6 +2220,7 @@ internal static partial class WaterSim
         SeaInTotal = 0;
         DirtyTiles.Clear();
         _actN = 0;
+        _blowing = false;
         Queue.Clear();
         Sources.Clear();
         Inflows.Clear();
@@ -2177,6 +2247,16 @@ internal static partial class WaterSim
         {
             string a = args.Trim();
             if (a == "reset") Reset();
+            if (a.StartsWith("prof"))
+            {
+                double k = ProfSteps > 0 ? 1000.0 / System.Diagnostics.Stopwatch.Frequency / ProfSteps : 0;
+                var t = ProfTicks;
+                int sleeping = 0;
+                for (int c = 0; _inList != null && c < _inList.Length; c++) if (_inList[c] == 0 && Counted(c)) sleeping++;
+                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000}");
+                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; }
+                return;
+            }
             if (a.StartsWith("flood"))
             {
                 int depth = a.Length > 5 && int.TryParse(a.Substring(5).Trim(), out int dd) ? dd : Full / 4;
