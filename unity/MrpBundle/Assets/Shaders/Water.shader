@@ -12,6 +12,7 @@
 // _Mode = 3 (家具の水面): 家具の絵の手前に、家具と同じ絵 (持ち上げた家具は形の白黒) を型にした板。_Line = 家具に当たる水面の線 (世界の y)・
 //   _Cover = 天板まで沈んだか (0..1)・_SilR = 型を R で見る (1) か A で見る (0)。線より下を周りと同じ水の色で覆い、沈んだら家具を水越しの影にする。
 // _Mode = 1 (噴き出し): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)。
+// 影の中の写し (_ShadowOnly = 1) は影の板の手前にあって家具より手前になるので、_FrontOn の時は _FrontMask (水より手前の家具の絵の形) の所を抜く。
 //   _Flow (xy = 流れの向き) に沿って伸びる筋を流し、筋の明るい所と泡は白、それ以外は透けた水色。
 Shader "MRP/Water"
 {
@@ -25,6 +26,8 @@ Shader "MRP/Water"
         _WetLevel ("Puddle edge on the wet coverage (B)", Float) = 0.35
         [PerRendererData] _FloorMask ("Floor mask", 2D) = "white" {}
         [PerRendererData] _FloorOn ("Floor mask on", Float) = 0
+        [PerRendererData] _FrontMask ("Furniture in front of the water (shadow copy)", 2D) = "black" {}
+        [PerRendererData] _FrontOn ("Front mask on", Float) = 0
         _Shallow ("Shallow color", Color) = (0.45, 0.72, 0.95, 0.38)
         _Deep ("Deep color", Color) = (0.16, 0.42, 0.78, 0.78)
         _Outline ("Outline color", Color) = (0.11, 0.27, 0.5, 0.9)
@@ -48,6 +51,8 @@ Shader "MRP/Water"
         _SubMax ("Max cover over a sunk body (wade)", Float) = 0.72
         [PerRendererData] _Line ("Waterline world y (furniture)", Float) = -10000
         [PerRendererData] _Cover ("Sunk below the water (furniture)", Float) = 0
+        [PerRendererData] _Top ("Top edge world y (furniture)", Float) = -10000
+        [PerRendererData] _TopW ("Water over the top (furniture)", Float) = 0
         [PerRendererData] _SilR ("Silhouette from R instead of A (furniture)", Float) = 0
         _Quad ("Board width, height, feet from the bottom (0..1) (wade)", Vector) = (0.84, 1.75, 0.0857, 0)
     }
@@ -73,6 +78,8 @@ Shader "MRP/Water"
             sampler2D _FloorMask; // 部屋の絵の床の画素 (タイルと同じ範囲・1 = 床)
             float4 _MainTex_TexelSize, _FloorMask_TexelSize;
             float _FloorOn;
+            sampler2D _FrontMask; // 影の中の写しだけ: 水より手前の家具の絵の形 (1 = 家具。視界の中では家具が水の上に描かれるので、写しもそこを抜く)
+            float _FrontOn;
             sampler2D _MrpShadowTex; // 影のカメラの描き先 (視界の所はアルファ 0)
             float _ShadowOnly, _ShadowGain;
             float _MrpShadowOn; // 影の板が出ている間だけ 1
@@ -80,7 +87,7 @@ Shader "MRP/Water"
             float _RUnits, _ShallowDepth, _Fog, _Caustic, _LineWave, _FaceView, _FoamW, _Shaft;
             fixed4 _Shallow, _Deep, _Outline, _Rim, _Abyss;
             float4 _Flow;
-            float _Depth, _SubMax, _Line, _Cover, _SilR;
+            float _Depth, _SubMax, _Line, _Cover, _SilR, _Top, _TopW;
             float4 _Body, _Quad;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
@@ -299,7 +306,11 @@ Shader "MRP/Water"
                 float ex = _Line + wave * (1.0 - sub) - i.world.y;   // 水面の線から下へ何単位か
                 float under = saturate(ex / px + 0.5);
                 float murk;
-                fixed4 c = Tint(i.world, max(ex, 0.0) + _FaceView, murk);
+                // 色を決める深さ: 天板の上に乗った水は線からの距離でなく水の厚さ (絵の高い家具でも、乗った水が浅いうちは浅い水の色)。
+                // 天板の上は真上から見るので、壁の面のような斜めの厚みは足さない
+                float onTop = sub > 0.0 ? saturate((i.world.y - _Top) / px + 0.5) : 0.0;
+                float du = sub > 0.0 ? max(_Top - i.world.y, 0.0) + _TopW : max(ex, 0.0);
+                fixed4 c = Tint(i.world, du + _FaceView * (1.0 - onTop), murk);
                 c.a = min(c.a, _SubMax);
                 // 水面の線の明るい縁と、その下のちぎれた泡の帯
                 float lip = saturate(1.0 - abs(ex) / (px * _RimPx)) * (1.0 - sub);
@@ -309,6 +320,9 @@ Shader "MRP/Water"
                 c.a = max(c.a, foam * 0.9);
                 c = lerp(c, _Rim, lip * _Rim.a);
                 c.a *= sil * max(under, lip);
+                // 天板に乗り始めた水は一面に一度には広がらない: まだらに濡れた所が沈むにつれてつながる
+                float n = tex2D(_Noise, i.world.xy * 0.7).r;
+                c.a *= lerp(1.0, smoothstep(n - 0.06, n + 0.06, sub * 1.12 - 0.06), onTop);
                 return c;
             }
 
@@ -323,7 +337,11 @@ Shader "MRP/Water"
                     c = _Mode < 0.5 ? Puddle(i, data) : Spray(i, data);
                 }
                 // 影の手前の写し: 影の所だけに出す
-                if (_ShadowOnly > 0.5) c.a *= tex2Dlod(_MrpShadowTex, float4(i.screen.xy / i.screen.w, 0, 0)).a * _ShadowGain * _MrpShadowOn;
+                if (_ShadowOnly > 0.5)
+                {
+                    c.a *= tex2Dlod(_MrpShadowTex, float4(i.screen.xy / i.screen.w, 0, 0)).a * _ShadowGain * _MrpShadowOn;
+                    if (_FrontOn > 0.5) c.a *= 1.0 - tex2D(_FrontMask, i.uv).r;
+                }
                 return c;
             }
             ENDCG

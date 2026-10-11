@@ -15,7 +15,7 @@ internal static class ShadowView
     private static int _shipGen = -1;
     private static bool _ok;
     private static float _z;
-    private static Material _floor, _flame, _water;
+    private static Material _floor, _flame, _water, _sunk;
     private static RenderTexture _rt;
     private static Camera _cam;
     private static long _checkAt;
@@ -64,7 +64,8 @@ internal static class ShadowView
 
     internal static Material FireFloor => _floor ??= Shadowed(MrpBundle.FireFloorMaterial, 1f);
     internal static Material Flame => _flame ??= Shadowed(MrpBundle.FlameMaterial, 1f);
-    internal static Material Water => _water ??= Shadowed(MrpBundle.WaterMaterial, 0.7f); // 水は少し透かす (影の中の家具の上にも重なるので)
+    internal static Material Water => _water ??= Shadowed(MrpBundle.WaterMaterial, 0.7f); // 水は少し透かす
+    internal static Material Sunk(Material src) => _sunk ??= Shadowed(src, 0.7f); // 沈んだ家具の水面 (水と同じ濃さ)
 
     private static Material Shadowed(Material src, float gain)
     {

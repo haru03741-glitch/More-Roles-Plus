@@ -134,6 +134,9 @@ internal static partial class PropSim
         public int Hx, Hy, Rad;          // 重い物の壁の当たりの箱の半分・押される距離に足す半径 (1/1024)
         public List<Rider> Riders;       // 重い物の上に載っていて一緒に動く絵
         public float Z;
+        public SpriteRenderer[] Front;  // 水の影の写しで抜く絵 (この物と子の絵)
+        public Vector3 FrontAt;         // 抜き型に塗った時の Transform の位置
+        public float FrontR;            // Transform の位置から絵の端までの最大の距離
         public int SizeU;               // 長い辺 (1/1024)。口の幅より大きいと口をふさぐ
         public bool Hidden;             // 消えた絵を隠している
         public readonly St A = new(), D = new();
@@ -397,6 +400,7 @@ internal static partial class PropSim
         }
         Plugin.Logger.LogInfo($"[PropSim] perched={perched} solids={Solids.Count}");
         _ready = true;
+        WaterArt.FrontAll();
         return true;
     }
 
@@ -718,6 +722,7 @@ internal static partial class PropSim
             if (w.Display)
             {
                 p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; Draw(p, 1f);
+                FrontSettled(p);
                 if (p.Kind == Kind.Heavy)
                 {
                     // 水の型抜きと、影の中の焼いた絵 (元の場所と止まった所) を作り直す (自分の絵を持つ家具は水の型抜きに入らないが同じ扱い)。
@@ -1407,11 +1412,11 @@ internal static partial class PropSim
 
     internal static void Register()
     {
-        TestBridge.Register("props", "[list | heights | sunk] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / sunk = 水に浸かった家具の水面の線)", (args, reply) =>
+        TestBridge.Register("props", "[list | heights | sunk [force]] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / sunk = 水に浸かった家具の水面の線と板に渡した値・force = 確認用に全部の板を家具ごと沈めたまま止める (sunk だけで戻る))", (args, reply) =>
         {
             if (!_ready && !Ensure()) { reply("ERR props no ship"); return; }
             if (args.Trim() == "heights") { reply(WriteHeights()); return; }
-            if (args.Trim() == "sunk") { SunkReport(reply); return; }
+            if (args.Trim().StartsWith("sunk")) { SunkReport(args.Trim() == "sunk force", reply); return; }
             int s = 0, m = 0, f = 0, moved = 0, diff = 0;
             foreach (var p in Props)
             {

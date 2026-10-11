@@ -50,6 +50,8 @@ internal static class WaterArt
         public int FurnVersion;
         public MaterialPropertyBlock Block;
         public Texture2D Floor; // 床マスク (部屋の絵の画素ごとの床) をこのタイルの範囲で切り出した物
+        public Texture2D Front; // 影の中の写しで抜く、水より手前の家具の絵の形 (家具の無いタイルは null)
+        public MaterialPropertyBlock ShadowBlock;
         public bool FloorOn;
         public float LastDraw = -10f;
         public bool Waiting;
@@ -675,10 +677,120 @@ internal static class WaterArt
         mpb.SetTexture(FloorTexId, t.Floor);
         mpb.SetFloat(FloorOnId, on ? 1f : 0f);
         t.Sr.SetPropertyBlock(mpb);
-        if (t.Shadow) t.Shadow.SetPropertyBlock(mpb);
+        ApplyShadow(t);
+    }
+
+    // 影の中の写しのブロック: 本体と同じ絵と床マスクに、家具の形の抜き型を足す
+    private static void ApplyShadow(Tile t)
+    {
+        if (!t.Shadow) return;
+        var mpb = t.ShadowBlock ??= new MaterialPropertyBlock();
+        mpb.SetTexture(MainTexId, t.Tex);
+        if (t.Floor) mpb.SetTexture(FloorTexId, t.Floor);
+        mpb.SetFloat(FloorOnId, t.Floor && t.FloorOn ? 1f : 0f);
+        if (t.Front) mpb.SetTexture(FrontTexId, t.Front);
+        mpb.SetFloat(FrontOnId, t.Front ? 1f : 0f);
+        t.Shadow.SetPropertyBlock(mpb);
+    }
+
+    // 影の中の写しは影の板のすぐ手前 (家具より手前) にあるので、そのままだと影の中では水が家具の上に乗って見える。
+    // 視界の中で水より手前に描かれる家具 (PropSim の物・部屋の絵から持ち上げた物は床マスクが抜く) の絵の網目をタイルの抜き型に塗り、写しはそこを描かない。
+    // 絵のテクスチャは読めないので形は網目の多角形 (透明な縁が少し入る)。作るのはタイルを作った時と家具が動いて止まった時だけ
+    private const float FrontPpu = 32f;
+    private static readonly List<SpriteRenderer> FrontSrs = new();
+
+    private static unsafe void MakeFront(Tile t, float wx, float wy, float size)
+    {
+        if (!t.Shadow) return;
+        if (t.Front) { UnityEngine.Object.Destroy(t.Front); t.Front = null; }
+        FrontSrs.Clear();
+        PropSim.FrontSprites(Rect.MinMaxRect(wx, wy, wx + size, wy + size), t.Z, FrontSrs);
+        if (FrontSrs.Count > 0)
+        {
+            int m = (int)MathF.Round(size * FrontPpu);
+            var buf = new byte[m * m];
+            float k = m / size;
+            bool any = false;
+            foreach (var sr in FrontSrs) any |= FillSprite(sr, wx, wy, k, m, buf);
+            if (any)
+            {
+                t.Front = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFront", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+                fixed (byte* b = buf) t.Front.LoadRawTextureData((IntPtr)b, buf.Length);
+                t.Front.Apply(false, true);
+            }
+            FrontSrs.Clear();
+        }
+        ApplyShadow(t);
+    }
+
+    // 絵の網目の三角形を、画素の真ん中が入る所だけ 255 で塗る (k = 1 単位の画素数)
+    private static bool FillSprite(SpriteRenderer sr, float wx, float wy, float k, int m, byte[] buf)
+    {
+        var sp = sr.sprite;
+        var v = sp.vertices;
+        var tri = sp.triangles;
+        var mx = sr.transform.localToWorldMatrix;
+        float fx = sr.flipX ? -1f : 1f, fy = sr.flipY ? -1f : 1f;
+        int nv = v.Length;
+        var px = new float[nv];
+        var py = new float[nv];
+        for (int i = 0; i < nv; i++)
+        {
+            var q = v[i];
+            float lx = q.x * fx, ly = q.y * fy;
+            px[i] = (mx.m00 * lx + mx.m01 * ly + mx.m03 - wx) * k - 0.5f;
+            py[i] = (mx.m10 * lx + mx.m11 * ly + mx.m13 - wy) * k - 0.5f;
+        }
+        bool any = false;
+        for (int n = 0; n + 2 < tri.Length; n += 3)
+        {
+            int a = tri[n], b = tri[n + 1], c = tri[n + 2];
+            float ax = px[a], ay = py[a], bx = px[b], by = py[b], cx = px[c], cy = py[c];
+            float area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+            if (MathF.Abs(area) < 1e-6f) continue;
+            int x0 = Math.Max(0, (int)MathF.Ceiling(MathF.Min(ax, MathF.Min(bx, cx)))), x1 = Math.Min(m - 1, (int)MathF.Floor(MathF.Max(ax, MathF.Max(bx, cx))));
+            int y0 = Math.Max(0, (int)MathF.Ceiling(MathF.Min(ay, MathF.Min(by, cy)))), y1 = Math.Min(m - 1, (int)MathF.Floor(MathF.Max(ay, MathF.Max(by, cy))));
+            float inv = 1f / area;
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                float w0 = ((bx - x) * (cy - y) - (by - y) * (cx - x)) * inv;
+                float w1 = ((cx - x) * (ay - y) - (cy - y) * (ax - x)) * inv;
+                if (w0 < 0f || w1 < 0f || w0 + w1 > 1f) continue;
+                buf[y * m + x] = 255;
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    // 家具が a から b へ動いて止まった (r = 足元からの絵の広がり): 掛かるタイルの抜き型を作り直す
+    internal static void FrontMoved(Vector2 a, Vector2 b, float r)
+    {
+        float size = WaterSim.TileCells * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        foreach (var t in Tiles.Values)
+        {
+            if (!t.Shadow) continue;
+            float x0 = org.x + t.Tx * size, y0 = org.y + t.Ty * size;
+            if (!Near(a) && !Near(b)) continue;
+            MakeFront(t, x0, y0, size);
+
+            bool Near(Vector2 c) => c.x + r > x0 && c.x - r < x0 + size && c.y + r > y0 && c.y - r < y0 + size;
+        }
+    }
+
+    // 家具の一覧ができた (タイルが先にできていたら抜き型が空のまま)
+    internal static void FrontAll()
+    {
+        float size = WaterSim.TileCells * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        foreach (var t in Tiles.Values)
+            if (t.Shadow) MakeFront(t, org.x + t.Tx * size, org.y + t.Ty * size, size);
     }
 
     private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), FloorTexId = Shader.PropertyToID("_FloorMask"), FloorOnId = Shader.PropertyToID("_FloorOn");
+    private static readonly int FrontTexId = Shader.PropertyToID("_FrontMask"), FrontOnId = Shader.PropertyToID("_FrontOn");
 
     private const float DeckZ = -0.001f; // エアシップの警備室の下のデッキの床の絵の z (手すりは -0.1 で水より手前)
 
@@ -714,6 +826,7 @@ internal static class WaterArt
         t.Z = front - 0.0004f * zs;
         t.Go.transform.position = FxMath.V3(wx, wy, t.Z);
         t.Shadow = ShadowView.Copy(t.Go, t.Sp, ShadowView.Water, FxMath.Rgba(1f, 1f, 1f, 1f), -0.002f); // 火の写しより奥
+        MakeFront(t, wx, wy, size);
         if (FloorMask.Active)
         {
             // 床マスクがあれば水の縁は部屋の絵の床の画素で切る (家具の型抜きも要らない)
@@ -867,6 +980,7 @@ internal static class WaterArt
             if (t.Sp) UnityEngine.Object.Destroy(t.Sp);
             if (t.Tex) UnityEngine.Object.Destroy(t.Tex);
             if (t.Floor) UnityEngine.Object.Destroy(t.Floor);
+            if (t.Front) UnityEngine.Object.Destroy(t.Front);
         }
         Tiles.Clear();
         Waiting.Clear();
