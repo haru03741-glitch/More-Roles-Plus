@@ -41,7 +41,6 @@ internal static class WaterBarrier
         if (!GameClock.ShipAlive) { Stats = "no ship"; return; }
         var ship = ShipStatus.Instance;
         if (!ship) { Stats = "no ship"; return; }
-        if (!DamageMap.Ready()) { _gen = -1; Stats = "waiting"; return; }
         string name = ship.name.Replace("(Clone)", "");
         try
         {
@@ -54,9 +53,10 @@ internal static class WaterBarrier
             int w = br.ReadInt32(), h = br.ReadInt32();
             if (ver != Version) { Stats = $"{name}: version {ver}"; return; }
             float ox = br.ReadSingle(), oy = br.ReadSingle(), ppu = br.ReadSingle();
+            // 水の計算に使うので、全員が同じ DLL の同じ地図を使う。ゲームの絵が作った時と違っても読み、確認用に印だけ残す
+            // (絵の指紋は部屋の絵の読み込みの早さや端末の版で変わり、それで読む読まないが割れると結果が割れる)
             uint sig = br.ReadUInt32();
-            uint now = FloorMask.Signature(name);
-            if (sig != now) { Stats = $"{name}: art changed {sig:x8}/{now:x8}"; return; }
+            bool stale = DamageMap.Ready() && sig != FloorMask.Signature(name);
             if (!SolidMap.Ensure() || MathF.Abs(SolidMap.Origin.x - ox) > OriginTolerance || MathF.Abs(SolidMap.Origin.y - oy) > OriginTolerance)
             {
                 Stats = $"{name}: origin mismatch";
@@ -77,7 +77,7 @@ internal static class WaterBarrier
             }
             _bits = bits;
             _w = w; _h = h; _ox = ox; _oy = oy; _ppu = ppu;
-            Stats = $"{name}: {w}x{h} ppu={ppu:0.##}";
+            Stats = $"{name}: {w}x{h} ppu={ppu:0.##}{(stale ? " art changed" : "")}";
         }
         catch (Exception e)
         {
@@ -121,7 +121,8 @@ internal static class WaterBarrier
                 cols++;
                 int foot = int.MinValue;
                 for (int t = -band; t <= band; t++) if (Px(mx, my + t)) { foot = my + t; break; }
-                if (foot == int.MinValue) continue;
+                // 縁の線の下まで続く物 (縦の柱・管) は縁に立っていない
+                if (foot == int.MinValue || foot == my - band && Px(mx, my - band - 1)) continue;
                 hit++;
                 int top = foot;
                 while (top + 1 - my < maxRun && Px(mx, top + 1)) top++;
@@ -135,9 +136,10 @@ internal static class WaterBarrier
             for (int my = a; my < b; my++)
             {
                 cols++;
-                bool any = false;
-                for (int t = -band; t <= band && !any; t++) any = Px(mx + t, my);
-                if (!any) continue;
+                int at = int.MinValue;
+                for (int t = -band; t <= band; t++) if (Px(mx + t, my)) { at = mx + t; break; }
+                // 縁の線の外まで横に続く物は縁に立っていない
+                if (at == int.MinValue || Px(mx - band - 1, my) && Px(mx + band + 1, my)) continue;
                 hit++;
                 int top = my;
                 while (top + 1 - my < maxRun && (Px(mx, top + 1) || Px(mx - 1, top + 1) || Px(mx + 1, top + 1))) top++;
