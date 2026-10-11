@@ -77,6 +77,7 @@ internal static class Decompression
     private static ushort[] _sub;
     private static byte[] _edge;
     private static byte[] _blocked;           // 閉じた扉の升
+    private static byte[] _floor;             // 開いた除染室の扉の通り道の升
     private static byte[] _furn;              // 家具の当たり判定の升 (空気は上を通るので範囲には入れ、道のりだけ回り込ませる)
     private static int[] _comp;               // 範囲の番号 (-1 = 閉じた升)
     private static int[] _compCells;
@@ -86,8 +87,11 @@ internal static class Decompression
     private static int[] _seed;               // 口の際の升の口の番号 + 1 (0 = 口の際でない)
     private static readonly List<(int X0, int Y0, int X1, int Y1)> DoorCells = new();
     private static readonly List<Plain> Doors = new();
+    // 扉ごとの、開いた時だけ床にする升 (除染室の扉は当たり判定が壁として歩ける所の地図に入っているので、通り道の升を足す)
+    private static readonly List<int[]> DoorFloors = new();
+    private static readonly int[] NoCells = Array.Empty<int>();
     private static ulong _doorBits;
-    // 扉の記録 (刻み順)。最初の記録より前は Initial (本編の扉は開き・ガラスの扉は閉じ)。ホストは読んで足して配り、客は届いた物を足す
+    // 扉の記録 (刻み順)。最初の記録より前は Initial (本編の扉は開き・ガラスの扉と除染室の扉は閉じ)。ホストは読んで足して配り、客は届いた物を足す
     private static readonly List<(int Tick, ulong Bits)> DoorLog = new();
     private static bool _doorsListed;
     private static int _nextPoll;
@@ -99,13 +103,16 @@ internal static class Decompression
     private static readonly List<Vector2> Grips = new();
     private const float GripSpacing = 0.6f;
 
-    // 本編の扉 (OpenableDoor) か、近づくと開くガラスの扉 (SensorDoor)
+    // 本編の扉 (OpenableDoor) か、近づくと開くガラスの扉 (SensorDoor) か、除染室の扉 (ManualDoor)
     private readonly struct Plain
     {
         public readonly OpenableDoor Door;
         public readonly SensorDoor Sensor;
-        public Plain(OpenableDoor d) { Door = d; Sensor = null; }
-        public Plain(SensorDoor d) { Door = null; Sensor = d; }
+        public readonly ManualDoor Manual;
+        public readonly Collider2D Gate; // 開きを当たり判定で読む扉 (Polus の除染室: 閉じた姿で始まるのに IsOpen は開を返す)
+        public Plain(OpenableDoor d, Collider2D gate = null) { Door = d; Sensor = null; Manual = null; Gate = gate; }
+        public Plain(SensorDoor d) { Door = null; Sensor = d; Manual = null; Gate = null; }
+        public Plain(ManualDoor d) { Door = null; Sensor = null; Manual = d; Gate = null; }
     }
 
     // 確認用
@@ -190,6 +197,7 @@ internal static class Decompression
         _sub = new ushort[n];
         _edge = new byte[n];
         _blocked = new byte[n];
+        _floor = new byte[n];
         _furn = new byte[n];
         _comp = new int[n];
         _dist = new ushort[n];
@@ -212,6 +220,7 @@ internal static class Decompression
     internal static int DoorCount { get { ListDoors(); return Doors.Count; } }
     internal static (int X0, int Y0, int X1, int Y1) DoorRect(int i) => DoorCells[i];
     internal static OpenableDoor DoorAtIndex(int i) => Doors[i].Door;
+    internal static int[] DoorFloor(int i) => DoorFloors[i];
     internal static ulong DoorBitsAt(int s) => BitsAt(s);
     internal static ulong AllDoorsOpen => AllOpen;
 
@@ -223,17 +232,22 @@ internal static class Decompression
         _doorsListed = true;
         Doors.Clear();
         DoorCells.Clear();
+        DoorFloors.Clear();
         var org = SolidMap.Origin;
         float cell = Sub / SolidMap.Ppu;
         foreach (var d in ship.AllDoors)
         {
             if (!d) continue;
+            // Polus の除染室の扉は当たり判定が子 (Collider) に付いている
             var col = d.GetComponent<Collider2D>();
+            bool decon = false;
+            if (!col) { var pd = d.TryCast<PlainDoor>(); if (pd) col = pd.myCollider; decon = col && d.GetComponentInParent<DeconSystem>(); }
             if (!col) continue;
             var bb = col.bounds;
-            Doors.Add(new Plain(d));
+            Doors.Add(new Plain(d, decon ? col : null));
             DoorCells.Add(((int)MathF.Floor((bb.min.x - org.x) / cell), (int)MathF.Floor((bb.min.y - org.y) / cell),
                 (int)MathF.Floor((bb.max.x - org.x) / cell), (int)MathF.Floor((bb.max.y - org.y) / cell)));
+            DoorFloors.Add(NoCells);
             if (Doors.Count == 64) break;
         }
         // 近づくと開くガラスの扉 (Mira の食堂とバルコニーの間)。本編では当たり判定の無い見た目だけの扉で、各自の画面の中で開く。
@@ -250,17 +264,66 @@ internal static class Decompression
             Doors.Add(new Plain(d));
             DoorCells.Add(((int)MathF.Floor((c.x - hx - org.x) / cell), (int)MathF.Floor((c.y - hy - org.y) / cell),
                 (int)MathF.Floor((c.x + hx - org.x) / cell), (int)MathF.Floor((c.y + hy - org.y) / cell)));
+            DoorFloors.Add(NoCells);
+        }
+        // 除染室の扉 (Mira・Polus)。開け閉めは除染室の仕組みが全員へ配るが、届く時刻が人ごとに違うのでホストが読んで扉の記録で配る
+        foreach (var dc in ship.GetComponentsInChildren<DeconSystem>(true))
+        {
+            if (!dc) continue;
+            for (int j = 0; j < 2 && Doors.Count < 64; j++)
+            {
+                var some = j == 0 ? dc.UpperDoor : dc.LowerDoor;
+                var d = some ? some.TryCast<ManualDoor>() : null;
+                if (!d || !d.myCollider) continue;
+                var bb = d.myCollider.bounds;
+                var r = ((int)MathF.Floor((bb.min.x - org.x) / cell), (int)MathF.Floor((bb.min.y - org.y) / cell),
+                    (int)MathF.Floor((bb.max.x - org.x) / cell), (int)MathF.Floor((bb.max.y - org.y) / cell));
+                Doors.Add(new Plain(d));
+                DoorCells.Add(r);
+                DoorFloors.Add(PassCells(r));
+            }
         }
     }
 
+    // 扉の範囲のうち、通り道の向きの両側 2 升先が床の列。範囲を通り道の向きへ 1 升ずつ広げて返す
+    // (歩ける所の地図は壁の線を太らせて塗るので、扉の板のすぐ外の升も一部が歩けない)
+    private static int[] PassCells((int X0, int Y0, int X1, int Y1) r)
+    {
+        int w = SolidMap.W / Sub, h = SolidMap.H / Sub;
+        bool wide = r.X1 - r.X0 >= r.Y1 - r.Y0;
+        var list = new List<int>();
+        int a0 = wide ? r.X0 : r.Y0, a1 = wide ? r.X1 : r.Y1, lo = (wide ? r.Y0 : r.X0) - 1, hi = (wide ? r.Y1 : r.X1) + 1;
+        for (int a = a0; a <= a1; a++)
+        {
+            if (!Walk(wide ? a : lo - 1, wide ? lo - 1 : a, w, h) || !Walk(wide ? a : hi + 1, wide ? hi + 1 : a, w, h)) continue;
+            for (int t = lo; t <= hi; t++)
+            {
+                int x = wide ? a : t, y = wide ? t : a;
+                if (x > 0 && y > 0 && x < w - 1 && y < h - 1) list.Add(y * w + x);
+            }
+        }
+        return list.ToArray();
+    }
+
+    // 升 (0.25 単位) の中の歩ける所が半分以上か
+    private static bool Walk(int x, int y, int w, int h)
+    {
+        if (x < 0 || y < 0 || x >= w || y >= h) return false;
+        int sw = SolidMap.W, n = 0;
+        for (int sy = 0; sy < Sub; sy++)
+        for (int sx = 0; sx < Sub; sx++)
+            if (SolidMap.OpenCell((y * Sub + sy) * sw + x * Sub + sx)) n++;
+        return n * 2 >= Sub * Sub;
+    }
+
     private static ulong AllOpen => Doors.Count >= 64 ? ulong.MaxValue : (1UL << Doors.Count) - 1;
-    // 最初の記録より前の扉: 本編の扉は開き・ガラスの扉は閉じ (ホストが最初に読むまでに水が抜けない)
+    // 最初の記録より前の扉: 本編の扉は開き・ガラスの扉と除染室の扉は閉じ (ホストが最初に読むまでに水が抜けない)
     private static ulong Initial
     {
         get
         {
             ulong bits = AllOpen;
-            for (int i = 0; i < Doors.Count; i++) if (!Doors[i].Door) bits &= ~(1UL << i);
+            for (int i = 0; i < Doors.Count; i++) if (!Doors[i].Door || Doors[i].Gate) bits &= ~(1UL << i);
             return bits;
         }
     }
@@ -316,7 +379,9 @@ internal static class Decompression
         for (int i = 0; i < Doors.Count; i++)
         {
             var d = Doors[i].Door;
-            if (d ? d.IsOpen : SensorOpen(Doors[i].Sensor)) bits |= 1UL << i;
+            var m = Doors[i].Manual;
+            var g = Doors[i].Gate;
+            if (g ? !g.enabled || g.isTrigger : d ? d.IsOpen : m ? m.Opening : SensorOpen(Doors[i].Sensor)) bits |= 1UL << i;
         }
         return bits;
     }
@@ -353,6 +418,9 @@ internal static class Decompression
             for (int x = Math.Max(0, x0); x <= Math.Min(_w - 1, x1); x++)
                 _blocked[y * _w + x] = 1;
         }
+        Array.Clear(_floor);
+        for (int i = 0; i < DoorFloors.Count; i++)
+            if ((_doorBits >> i & 1) != 0) foreach (int k in DoorFloors[i]) _floor[k] = 1;
         int sw = SolidMap.W;
         for (int y = 0; y < _h; y++)
         for (int x = 0; x < _w; x++)
@@ -363,6 +431,7 @@ internal static class Decompression
                 for (int sy = 0; sy < Sub; sy++)
                 for (int sx = 0; sx < Sub; sx++)
                     if (SolidMap.OpenCell((y * Sub + sy) * sw + x * Sub + sx)) bits |= 1 << (sy * Sub + sx);
+                if (_floor[k] != 0) bits = 0xFFFF;
                 if (WaterSim.PopCount(bits) < 4 || !WaterSim.Connected(bits)) bits = 0;
             }
             _sub[k] = (ushort)bits;
@@ -970,12 +1039,13 @@ internal static class Decompression
     {
         _running = false;
         Pulling = false;
-        _sub = null; _edge = null; _blocked = null; _furn = null; _comp = null; _dist = null; _par = null; _seed = null;
+        _sub = null; _edge = null; _blocked = null; _floor = null; _furn = null; _comp = null; _dist = null; _par = null; _seed = null;
         _compCells = Array.Empty<int>();
         _press = Array.Empty<int>();
         _open1024 = Array.Empty<int>();
         Doors.Clear();
         DoorCells.Clear();
+        DoorFloors.Clear();
         _doorsListed = false;
         _sealDirty = false;
         Breaches.Clear();
@@ -1012,7 +1082,9 @@ internal static class Decompression
                 if (!ship || a.Length < 2) { reply("ERR decomp doors open|close"); return; }
                 bool open = a[1] == "open";
                 foreach (var d in ship.AllDoors) if (d) d.SetDoorway(open);
-                reply($"OK decomp doors {(open ? "open" : "close")} n={ship.AllDoors.Count}");
+                int manual = 0;
+                foreach (var pd in Doors) if (pd.Manual) { pd.Manual.SetDoorway(open); manual++; }
+                reply($"OK decomp doors {(open ? "open" : "close")} n={ship.AllDoors.Count} decon={manual}");
                 return;
             }
             if (cmd == "breach")

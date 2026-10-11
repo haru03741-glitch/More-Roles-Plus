@@ -170,6 +170,7 @@ internal static partial class WaterSim
     private static sbyte[] _lvl;     // 升の床の高さ (NoLevel = 決まらない)
     private static byte[] _shut;     // 閉じた扉が掛かっている数
     private static byte[] _doorCell; // 扉の升 (落ちる先を探す時に越えない)
+    private static byte[] _doorFloor; // 歩ける所の地図では壁だが扉が開けば通れる升 (除染室の扉の通り道。閉じている間は _shut で閉じる)
     private static byte[] _propCell; // 床に置かれた物 (岩・結晶・机) の当たり判定の中の升
     private static bool[] _doorUnder; // 下に隙間があって水が通る扉
     private static ulong _doorBits;  // 升に入れた扉の開き
@@ -397,6 +398,7 @@ internal static partial class WaterSim
         _inList = new byte[n];
         _shut = new byte[n];
         _doorCell = new byte[n];
+        _doorFloor = new byte[n];
         _propCell = new byte[n];
         _fallMask = new byte[n];
         _stepMask = new byte[n];
@@ -449,6 +451,7 @@ internal static partial class WaterSim
             for (int sx = 0; sx < Sub; sx++)
                 if (solid[row + sx] != 0 || wet != null && wet[row + sx] != 0) bits |= 1 << (sy * Sub + sx);
             int k = y * _w + x;
+            if (_doorFloor[k] != 0) bits = 0xFFFF;
             if (PopCount(bits) < 4 || !Connected(bits) || _shut[k] != 0) bits = 0;
             _sub[k] = (ushort)bits;
             byte open = bits != 0 ? (byte)1 : (byte)0;
@@ -499,6 +502,7 @@ internal static partial class WaterSim
             var (x0, y0, x1, y1) = Decompression.DoorRect(i);
             for (int y = Math.Max(0, y0); y <= Math.Min(_h - 1, y1); y++)
             for (int x = Math.Max(0, x0); x <= Math.Min(_w - 1, x1); x++) _doorCell[y * _w + x] = 1;
+            foreach (int k in Decompression.DoorFloor(i)) _doorFloor[k] = 1;
         }
     }
 
@@ -741,18 +745,16 @@ internal static partial class WaterSim
 
     // はしごでつながらない島は、扉を挟んで隣り合う順位の決まった島と同じ段にする (扉の奥の部屋)。
     // 扉の升の周り DoorReach 升にある島どうしを組にして、決まった側から決まらない側へ広げる
-    // 除染室の扉 (Mira・Polus) は AllDoors に入らないので、ここでだけ扉として数える (水の流れと扉の記録には使わない)
     private const int DoorReach = 3;
     private static void DoorRanks(byte[] isl, int[] rank)
     {
         var near = new List<int>();
-        var gate = DeconDoorCells();
         for (bool changed = true; changed;)
         {
             changed = false;
             for (int c = 0; c < _doorCell.Length; c++)
             {
-                if (_doorCell[c] == 0 && (gate == null || gate[c] == 0)) continue;
+                if (_doorCell[c] == 0) continue;
                 int cx = c % _w, cy = c / _w;
                 near.Clear();
                 for (int dy = -DoorReach; dy <= DoorReach; dy++)
@@ -769,32 +771,6 @@ internal static partial class WaterSim
                 foreach (int id in near) if (rank[id] == int.MinValue) { rank[id] = known; changed = true; }
             }
         }
-    }
-
-    private static byte[] DeconDoorCells()
-    {
-        var ship = ShipStatus.Instance;
-        if (!ship) return null;
-        byte[] gate = null;
-        foreach (var dc in ship.GetComponentsInChildren<DeconSystem>(true))
-        {
-            if (!dc) continue;
-            for (int i = 0; i < 2; i++)
-            {
-                var d = i == 0 ? dc.UpperDoor : dc.LowerDoor;
-                // 当たり判定は子の Collider (同じ子の Shadow は影の線)
-                var ct = d ? d.transform.Find("Collider") : null;
-                var col = ct ? ct.GetComponent<Collider2D>() : null;
-                if (!col) continue;
-                var bb = col.bounds;
-                int x0 = (int)MathF.Floor((bb.min.x - _org.x) / _cell), y0 = (int)MathF.Floor((bb.min.y - _org.y) / _cell);
-                int x1 = (int)MathF.Floor((bb.max.x - _org.x) / _cell), y1 = (int)MathF.Floor((bb.max.y - _org.y) / _cell);
-                gate ??= new byte[_w * _h];
-                for (int y = Math.Max(0, y0); y <= Math.Min(_h - 1, y1); y++)
-                for (int x = Math.Max(0, x0); x <= Math.Min(_w - 1, x1); x++) gate[y * _w + x] = 1;
-            }
-        }
-        return gate;
     }
 
     // 範囲の升の、縁を越えて落ちる向きと落ちる先を作り直す。縁 (隣へ流れられない向き) の先を FallScan 升まで進み、
@@ -2048,7 +2024,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null; _skyCut = null; _lipMask = null; _furn = null;
+        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _ledge = null; _skyCut = null; _lipMask = null; _furn = null;
         FallTo.Clear();
         StepTo.Clear();
         FallOut.Clear();
