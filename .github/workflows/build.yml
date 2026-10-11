@@ -60,3 +60,25 @@ jobs:
           path: build/native/win-x64/MrpNative.dll
           retention-days: 30
           if-no-files-found: error
+
+  package:
+    name: Plugins folder (MoreRolesPlus.dll + MrpNative.dll)
+    needs: [build, native]
+    runs-on: ubuntu-latest
+    steps:
+      # 配る時は plugins に 2 つとも入れる (MrpNative.dll が無いと計算が C# 版に落ちて遅い)
+      - uses: actions/download-artifact@v4
+        with:
+          name: MoreRolesPlus-${{ github.sha }}
+          path: plugins
+      - uses: actions/download-artifact@v4
+        with:
+          name: MrpNative-${{ github.sha }}
+          path: plugins
+      - name: Upload plugins
+        uses: actions/upload-artifact@v4
+        with:
+          name: MoreRolesPlus-plugins-${{ github.sha }}
+          path: plugins/
+          retention-days: 30
+          if-no-files-found: error

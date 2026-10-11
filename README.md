@@ -11,6 +11,14 @@ dotnet build MoreRolesPlus.csproj -c Release                       # → <AmongU
 dotnet build patcher/MoreRolesPlus.BootAccel.csproj -c Release     # → <AmongUs>/BepInEx-MRP/patchers (起動の高速化)
 ```
 
+地形と水の重い計算は C++ の部品 (`native/src`) にあります。先に組んでおくと、本体のビルドが `MrpNative.dll` も plugins に置きます (Visual Studio の C++ ビルドツールが要ります。無ければ C# 版の計算で動きますが遅くなります)。
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -SkipAndroid   # → build/native/win-x64/MrpNative.dll
+```
+
+配る時は `MoreRolesPlus.dll` と `MrpNative.dll` を両方 plugins に入れます。CI の成果物 `MoreRolesPlus-plugins-<コミット>` に 2 つともまとめてあります。
+
 ## クレジット
 
 - [Nebula on the Ship](https://github.com/Dolly1016/Nebula-Public) (Dolly1016、GPL-3.0): incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方、mod の通信を 1 つの番号にまとめて名前で振り分ける仕組み、試合の出来事を寿命付きで受け取る仕組み、ダミープレイヤーを出す手順
