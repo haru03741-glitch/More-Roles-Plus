@@ -1209,6 +1209,9 @@ internal static partial class WaterSim
             fx1 = Math.Max(fx1, p.Cx + p.R + 1); fy1 = Math.Max(fy1, p.Cy + p.R + 1);
             int reach = p.R + FallScan[3] + 1;
             Links(p.Cx - reach, p.Cy - reach, p.Cx + reach, p.Cy + reach);
+            // 落ちる縁は床の形にも出る (StampLips) ので、縁を引き直した範囲まで作り直す
+            fx0 = Math.Min(fx0, p.Cx - reach); fy0 = Math.Min(fy0, p.Cy - reach);
+            fx1 = Math.Max(fx1, p.Cx + reach + 1); fy1 = Math.Max(fy1, p.Cy + reach + 1);
             if (p.Shock) Shock(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed);
         }
         // 中の詰まった家具の足元の床 (この刻みの確定した家具の姿)
@@ -1830,6 +1833,28 @@ internal static partial class WaterSim
             return top;
         }
         return float.MinValue;
+    }
+
+    // 床のマスクに縁を越えて落ちる升 (低い壁で溜める向きを除く) を床として足す。画素 k の真ん中 = x + k × step。
+    // 床の絵は縁の手前で切れている所 (縁取りの帯) があり、水はその帯の上も縁まで流れているので、水たまりの絵を縁まで見せる
+    internal static void StampLips(float x, float y, float step, int n, byte[] into)
+    {
+        if (!_ready || _fallMask == null) return;
+        float inv = 1f / _cell;
+        for (int py = 0; py < n; py++)
+        {
+            int cy = (int)MathF.Floor((y + py * step - _org.y) * inv);
+            if (cy < 0 || cy >= _h) continue;
+            int row = py * n, baseK = cy * _w;
+            for (int px = 0; px < n; px++)
+            {
+                if (into[row + px] != 0) continue;
+                int cx = (int)MathF.Floor((x + px * step - _org.x) * inv);
+                if (cx < 0 || cx >= _w) continue;
+                int k = baseK + cx;
+                if ((_fallMask[k] & ~_lipMask[k]) != 0) into[row + px] = 255;
+            }
+        }
     }
 
     // 水の升の範囲 (両端を含む) に扉の升があるか

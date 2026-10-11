@@ -349,7 +349,7 @@ Shader "MRP/Water"
                 float murk;
                 fixed4 tint = Tint(i.world, du, murk);
                 water = lerp(water, tint.rgb, pool);
-                float white = saturate(foam * 0.85 + streak * 0.55 * (1.0 - pool * 0.8));
+                float white = saturate(foam * 0.85 + streak * 0.55 * (1.0 - pool));
                 fixed4 c;
                 c.rgb = lerp(water, float3(1, 1, 1), white);
                 c.a = lerp(lerp(0.35, 0.85, saturate(dense * 0.9 + white * 0.3)), saturate(tint.a + white * 0.3), pool);

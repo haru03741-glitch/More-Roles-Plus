@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Terrain;
 // 見た目はシェーダ MRP/Water (_Mode = 1・流れは画面の下向き)。
 // 膜は縁に沿って 1 画素ごとの列で、列の位置は世界の画素の格子に揃える (隣の縁・隣の絵と隙間も重なりも無くつながる)。
 // 列ごとの濃さは隣の縁との間で量をなめらかにつなぎ、縁に立つ物 (柵の柱・網) の絵がある列だけ物を越える量に減らす。
-// 量が少ない縁だけ列ごとの揺らぎで筋にちぎれる。膜は水たまりの縁の内側から描き始めて水たまりと重ねる。
+// 量が少ない縁だけ列ごとの揺らぎで筋にちぎれる。水たまりの絵は落ちる縁の升まで床として見せる (WaterSim.StampLips) ので、膜は縁から描き始めれば水たまりとつながる。
 // 流れ始めの膜の先は計算の落ちる遅れと同じ時間で着くので、着いた頃に下の水たまりが増える。着地点には泡を描いて水たまりへつなぐ。
 // 計算には戻らない (全員の結果に関わらない)。会議中は隠す
 internal static class WaterFall
@@ -27,7 +27,6 @@ internal static class WaterFall
     private const float SheetFull = 240f;      // 列の濃さが 1 になる縁の流量 (WaterSim の量の単位/秒)
     private const float DensMax = 1.3f;
     private const float ThinD = 0.35f;         // これより薄い膜は列ごとに筋へちぎれる
-    private const float FilmMax = 0.5f;        // 縁から内へ水たまりの絵の縁を探す距離 (升の縁と床の絵の縁の間の帯を水の膜で埋める)
     private const float PoolFade = 0.6f;      // 落ち始めてから水たまりの色が噴き出しの色へ移り切るまでの落ちた割合
     private const float SideBody = 0.75f;      // 横の縁の膜の厚さ (縁から投げ出された先までのうち、先の側から何割を埋めるか)
     private const float Thin = 0.5f;           // 落ちるほど速くなって膜が薄くなる割合 (着地で 1 / (1 + Thin))
@@ -280,8 +279,6 @@ internal static class WaterFall
                 float ex = sx + ldx + e.Nx * thr, ey = sy + ldy + e.Ny * thr;
                 // 手前の床は縁の外側の升の列で探す (横の縁は縁の線ちょうどだと縁の内側の升 = 落ちる元の床を拾い、膜が丸ごと隠れる)
                 float cut = e.Void ? WaterSim.FrontCut(sx + e.Nx * WaterSim.Cell * 0.25f, CutFrom(e), ey) : float.MinValue;
-                // 縁の手前で床の絵が先に切れている所 (縁取りの帯) も水が流れているので、水たまりの絵の縁から縁まで水たまりと同じ色の膜で埋める
-                if (tau0 <= 0f) Film(c, e, sx, sy, dc);
                 if (sy + z0 <= cut) continue;
                 // 奥の縁を越えた水は床の向こう側へ落ちて見えない (手前に幕を描くと奥の柵の前に滝が立って見える)
                 if (e.Ny > 0f && !e.Lip) continue;
@@ -310,22 +307,6 @@ internal static class WaterFall
                 }
             }
         }
-    }
-
-    private static void Film(Canvas c, Edge e, float sx, float sy, float d)
-    {
-        if (d <= 0.01f) return;
-        float step = 1f / Ppu, g = 0f;
-        for (float b = step; b <= FilmMax; b += step)
-        {
-            var fl = FloorMask.IsFloor(sx - e.Nx * b, sy - e.Ny * b);
-            if (fl == null) return;
-            if (fl.Value) break;
-            g = b;
-        }
-        // 1 画素ぶん水たまりの絵に重ねる
-        for (float b = g + step; b >= 0f; b -= step)
-            Splat(c, sx - e.Nx * b, sy - e.Ny * b, d, 0f, e.Depth);
     }
 
     // 画面の範囲を測り直して画面から離れた絵を片づけ、それでも上限なら、絵の上限で描けない縁のうちカメラにいちばん近い物へ、カメラからいちばん遠い絵を譲る (水が多いと縁が上限を超え、

@@ -157,17 +157,6 @@ internal static class FloorMask
         return any;
     }
 
-    // 世界の点が床の画素か。マスクが無ければ null
-    internal static bool? IsFloor(float x, float y)
-    {
-        Ensure();
-        if (_bits == null) return null;
-        int mx = (int)MathF.Floor((x - _ox) * _ppu), my = (int)MathF.Floor((y - _oy) * _ppu);
-        if (mx < 0 || my < 0 || mx >= _w || my >= _h) return false;
-        int k = my * _w + mx;
-        return (_bits[k >> 3] & (1 << (k & 7))) != 0;
-    }
-
     // 世界の四角 (x, y から size 四方) の画素が全部床か (マスクの外は床でない)
     internal static bool AllFloor(float x, float y, float size)
     {
@@ -257,6 +246,7 @@ internal static class FloorMask
         }
         // 動く床 (昇降機の台) の今の所
         WaterSim.StampPlatform(x, y, wstep, n, into);
+        WaterSim.StampLips(x, y, wstep, n, into);
         if (_patchGen != GameClock.ShipGen) return;
         foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, wstep, n, into);
     }
