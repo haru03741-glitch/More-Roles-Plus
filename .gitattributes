@@ -1,0 +1,50 @@
+# Normalize text files to LF in the repository.
+* text=auto
+
+# Scripts that must keep a fixed line ending regardless of platform
+*.sh        text eol=lf
+gradlew     text eol=lf
+*.patch     text eol=lf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Source and config
+*.cs        text diff=csharp
+*.csproj    text
+*.props     text
+*.targets   text
+*.cpp       text diff=cpp
+*.h         text diff=cpp
+*.java      text diff=java
+*.kt        text
+*.kts       text
+*.py        text diff=python
+*.ps1       text
+*.shader    text
+*.proto     text
+*.json      text
+*.js        text
+*.yml       text
+*.xml       text
+*.md        text diff=markdown
+*.txt       text
+
+# Unity YAML (text, but merging by hand is rarely useful)
+*.asset     text -merge
+*.meta      text -merge
+
+# Binary
+*.png       binary
+*.jpg       binary
+*.ttf       binary
+*.otf       binary
+*.wav       binary
+*.ogg       binary
+*.webm      binary
+*.bin       binary
+*.bundle    binary
+*.so        binary
+*.dll       binary
+*.jar       binary
+*.zip       binary
+*.apk       binary
