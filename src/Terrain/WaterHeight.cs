@@ -10,7 +10,12 @@ internal static class WaterHeight
 {
     private const byte HoleMin = 128;   // 穴の値がこれ以上の画素は壁の絵が抜けている (水を掛けない)
 
-    // 低い壁の帯 (縁から Height まで) を壁の面として刻印する。刻印した画素があれば true
+    // 手すりの上に盛り上がった水を描ける高さ (根元から・単位)。越える水は手すりより上に水面があるので、帯の上の何も無い画素にも面を延ばす
+    private const float OverMax = 1f;
+
+    // 低い壁の帯 (縁から Height まで) を壁の面として刻印し、その上の何も無い画素 (向こうの空) へ OverMax まで面を延ばす。
+    // 高さはどの画素も同じ根元 (縁) から測るので、帯の上の水面の線と隣の壁の水面の線が同じ深さで並ぶ。
+    // 延ばす列は床の画素に当たったら止める (その先は向こうの床で、手前の水はそこまで)。刻印した画素があれば true
     internal static bool StampFace(byte[] into, int n, float x, float y, float size)
     {
         bool any = false;
@@ -20,14 +25,23 @@ internal static class WaterHeight
         {
             var e = all[i];
             if (!e.Stamp || e.Dir != 2) continue;
-            float edge = e.Base, bx0 = e.X0 - half, bx1 = e.X1 + half, by1 = e.Top;
-            if (bx1 <= x || bx0 >= x + size || by1 <= y || edge >= y + size) continue;
+            float edge = e.Base, bx0 = e.X0 - half, bx1 = e.X1 + half, by1 = e.Top, byMax = edge + OverMax;
+            if (bx1 <= x || bx0 >= x + size || byMax <= y || edge >= y + size) continue;
             int px0 = Math.Max(0, (int)MathF.Ceiling((bx0 - x) / step)), px1 = Math.Min(n - 1, (int)((bx1 - x) / step));
             int py0 = Math.Max(0, (int)MathF.Ceiling((edge - y) / step)), py1 = Math.Min(n - 1, (int)((by1 - y) / step));
+            int pyMax = Math.Min(n - 1, (int)((byMax - y) / step));
             for (int py = py0; py <= py1; py++)
             {
                 byte h = (byte)Math.Min(FloorMask.FaceTop, (int)((y + py * step - edge) * FloorMask.FaceUnit));
                 for (int px = px0; px <= px1; px++) into[py * n + px] = h;
+                any = true;
+            }
+            for (int px = px0; px <= px1; px++)
+            for (int py = Math.Max(py0, py1 + 1); py <= pyMax; py++)
+            {
+                int j = py * n + px;
+                if (into[j] == FloorMask.FaceFloor) break;
+                into[j] = (byte)Math.Min(FloorMask.FaceTop, (int)((y + py * step - edge) * FloorMask.FaceUnit));
                 any = true;
             }
         }

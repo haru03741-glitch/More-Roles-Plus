@@ -53,6 +53,7 @@ internal static class WaterFall
         public int Delay;
         public bool Void, Lip;   // Lip = 低い壁 (ガラスの手すり) を越えてこぼれる縁
         public float LipH;       // その壁の高さ (絵では縁がそのぶん上にある)
+        public float Cut = float.MinValue; // 外へ落ちる水が手前の床の裏に隠れる y (WaterSim.FrontCut)
         public Canvas C;
         public int FrameSum;
     }
@@ -78,7 +79,7 @@ internal static class WaterFall
     // 粒 (絵だけ)。地面の上の軌跡は (Gx,Gy) → (Ex,Ey)、高さは H0 から 2 次で 0 へ
     private struct Parcel
     {
-        public float Gx, Gy, Ex, Ey, H0, T, Age, Lx, Ly;
+        public float Gx, Gy, Ex, Ey, H0, T, Age, Lx, Ly, Cut;
         public bool Void, Drawn;
         public Canvas C;
     }
@@ -122,9 +123,6 @@ internal static class WaterFall
 
         foreach (var f in falls)
         {
-            // 奥 (北) の縁から奈落へ落ちる水は、その縁の床より奥へ落ちるので見えない (描くと手前の床の上に滝が被る)。
-            // 低い壁 (手すり) を越える所だけ、上の縁から向こうへこぼれる膜を描く
-            if (f.Dir == 2 && f.Void && f.Lip <= 0f) continue;
             long key = ((long)MathF.Round(f.X0 * 64f) << 32) ^ (uint)(int)MathF.Round(f.Y0 * 64f);
             if (!Edges.TryGetValue(key, out var e))
             {
@@ -158,8 +156,12 @@ internal static class WaterFall
             if ((e.C == null || e.C.Gone) && InView(MathF.Min(e.X0, e.X1), MathF.Min(e.Y0, e.Y1), MathF.Max(e.X0, e.X1), MathF.Max(e.Y0, e.Y1), ViewIn)) e.C = CanvasFor(e);
             if (e.C == null) continue;
             e.C.Idle = 0f;
-            // 奥へこぼれる水は落ちる本体が手すりと手前の床に隠れるので、粒は出さず膜だけ
-            if (e.Void && e.Ny > 0f) continue;
+            // 外へ落ちる水は手前の床 (と奥の縁の手すり・その上に盛り上がった水) より下では裏に隠れる。縁そのものが隠れていれば粒を出さない
+            if (e.Void)
+            {
+                e.Cut = WaterSim.FrontCut(e.X0, CutFrom(e), e.Y1);
+                if (e.Y0 <= e.Cut) continue;
+            }
             e.Acc += e.Q * dt / ParcelMass;
             while (e.Acc >= 1f && budget > 0 && _parcels < MaxParcels)
             {
@@ -200,6 +202,10 @@ internal static class WaterFall
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
+    // 手前の床を探し始める y。奥の縁は縁の床そのもの (手すりの絵の根元は升の縁とずれている所があるので上の縁のすぐ下から)、
+    // 手前と横の縁は縁の外側から
+    private static float CutFrom(Edge e) => (e.Ny > 0f ? e.Y0 : e.Y0 - e.LipH) - WaterSim.Cell * 0.01f;
+
     private static int _spawned;
     private static void Spawn(Edge e)
     {
@@ -221,6 +227,7 @@ internal static class WaterFall
         p.Age = 0f;
         p.Lx = sx; p.Ly = sy;
         p.Void = e.Void;
+        p.Cut = e.Void ? WaterSim.FrontCut(p.Ex, CutFrom(e), p.Ey) : float.MinValue;
         p.Drawn = false;
         p.C = e.C;
     }
@@ -341,6 +348,17 @@ internal static class WaterFall
             float sx = p.Gx + (p.Ex - p.Gx) * tau, sy = p.Gy + (p.Ey - p.Gy) * tau + h;
             float foam = tau > 0.92f ? 0.8f : 0.05f + 0.3f * tau * tau;
             float a = p.Void && tau > 0.7f ? (1f - tau) / 0.3f : 1f;
+            if (p.Ly <= p.Cut) continue; // もう手前の床の裏
+            if (sy < p.Cut)
+            {
+                // 手前の床の上の縁で切る (そこから先は裏を落ちる)
+                float k = (p.Ly - p.Cut) / (p.Ly - sy);
+                sx = p.Lx + (sx - p.Lx) * k;
+                sy = p.Cut;
+                Line(c, p.Lx, p.Ly, sx, sy, a, foam);
+                p.Lx = sx; p.Ly = sy - 1e-4f;
+                continue;
+            }
             Line(c, p.Lx, p.Ly, sx, sy, a, foam);
             p.Lx = sx; p.Ly = sy;
         }
@@ -409,23 +427,26 @@ internal static class WaterFall
             float x = e.X0 + tx * u, y = e.Y0 + ty * u;
             float wob = 0.5f + 0.5f * MathF.Sin(x * 23f + t * 9f);
             int ax = (int)((x - c.X0) * Ppu), ay = (int)((y - c.Y0) * Ppu);
-            int len = (int)((LipDrop * (0.7f + 0.3f * wob)) * Ppu);
+            float drop = LipDrop * (0.7f + 0.3f * wob);
+            if (e.Void) drop = MathF.Min(drop, y - e.Cut);
+            int len = (int)(drop * Ppu);
             for (int j = 0; j <= len; j++)
                 Splat(c, ax, ay - j, LipDens * s, j == 0 ? 0.9f : 0.15f);
         }
     }
 
-    // 奥の手すりを越えて向こうへこぼれる水: 上の縁 (Y0) から CrestUp だけ盛り上がって奥へ消える膜。上ほど薄く、先端は泡で白い
+    // 奥の手すりを越えて向こうへこぼれる水: 水面 (手すりの上の縁か、その上に盛り上がった水面) から CrestUp だけ盛り上がって奥へ消える膜。上ほど薄く、先端は泡で白い
     private const float CrestUp = 0.06f, CrestDens = 0.6f;
     private static void LipCrest(Canvas c, Edge e, float s)
     {
         float tx = -e.Ny, ty = e.Nx;
+        float top = MathF.Max(e.Y0, e.Cut);
         int n = (int)MathF.Ceiling(LipHalf * 2f * Ppu);
         float t = (float)(System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency);
         for (int k = 0; k <= n; k++)
         {
             float u = -LipHalf + k / Ppu;
-            float x = e.X0 + tx * u, y = e.Y0 + ty * u;
+            float x = e.X0 + tx * u, y = top + ty * u;
             float wob = 0.5f + 0.5f * MathF.Sin(x * 19f + t * 7f);
             int ax = (int)((x - c.X0) * Ppu), ay = (int)((y - c.Y0) * Ppu);
             int len = Math.Max(1, (int)((CrestUp * (0.6f + 0.4f * wob)) * Ppu));

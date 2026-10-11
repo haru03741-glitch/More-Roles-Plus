@@ -1037,8 +1037,8 @@ internal static partial class WaterSim
             to = -1;
             return "cliff";
         }
-        // 奈落へは上向き (画面の上) には落とさない (落ちる絵が縁の向こうの壁に被る)
-        if (to == -1 && Ny[d] > 0) { to = int.MinValue; return "up"; }
+        // 上向き (画面の上) の縁の先は壁のことが多いので、壁を挟まずすぐ先が奈落の時だけ落とす (落ちる水は縁の床の裏に隠れる)
+        if (to == -1 && Ny[d] > 0 && dist > 1) { to = int.MinValue; return "up"; }
         // 谷の奈落は縁と同じ部屋の中だけ (隣の部屋の谷へ壁越しに落とさない)
         if (InRoom(_org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell, _org.x + (tx + 0.5f) * _cell, _org.y + (ty + 0.5f) * _cell)) return why;
         if (why == "void" && (OnDeck(x, y) || OnSkyEdge(x, y))) return "sky";
@@ -1917,6 +1917,27 @@ internal static partial class WaterSim
         int x = (int)MathF.Floor((p.x - _org.x) / _cell), y = (int)MathF.Floor((p.y - _org.y) / _cell);
         if (x < 0 || y < 0 || x >= _w || y >= _h) return 0;
         return _hgt[y * _w + x];
+    }
+
+    // 点 (x, y0) から画面の下 (手前) へ y1 まで升を見て、最初に当たる床の絵の上の縁の y。外へ落ちる水はこれより下では手前の床の裏に隠れる。
+    // その床の奥の縁に低い壁があれば壁の上の縁か、壁の上に盛り上がった水面の高いほう。床が無ければ float.MinValue
+    internal static float FrontCut(float x, float y0, float y1)
+    {
+        if (!_ready) return float.MinValue;
+        int cx = (int)MathF.Floor((x - _org.x) / _cell);
+        if (cx < 0 || cx >= _w) return float.MinValue;
+        int cy = (int)MathF.Floor((y0 - _org.y) / _cell), end = (int)MathF.Floor((y1 - _org.y) / _cell);
+        if (cy >= _h) cy = _h - 1;
+        for (; cy >= 0 && cy >= end; cy--)
+        {
+            int c = cy * _w + cx;
+            if (_open[c] == 0) continue;
+            float top = _org.y + (cy + 1) * _cell;
+            if (LowWalls.At(_org.x + (cx + 0.5f) * _cell, _org.y + (cy + 0.5f) * _cell, 2, out var e))
+                top = MathF.Max(e.Top, e.Base + _hgt[c] * (1f / Full));
+            return top;
+        }
+        return float.MinValue;
     }
 
     // 水の升の範囲 (両端を含む) に扉の升があるか
