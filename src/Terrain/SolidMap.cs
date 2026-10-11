@@ -900,10 +900,86 @@ internal static class SolidMap
         if (x1 < x0 || y1 < y0) return;
         int bw = x1 - x0 + 1, bh = y1 - y0 + 1, bn = bw * bh;
 
-        // 切った後の壁を描いて 1 升太らせる
+        // 切った後の壁を描く
         var barrier = new byte[bn];
         var segs = WallSegmentsNear(c, r + 0.2f);
         for (int i = 0; i + 1 < segs.Count; i += 2) Raster(barrier, bw, bh, x0, y0, segs[i], segs[i + 1]);
+        int refK = -1;
+        {
+            int rx = (int)MathF.Floor((walkableRef.x - _origin.x) * _ppu) - x0, ry = (int)MathF.Floor((walkableRef.y - _origin.y) * _ppu) - y0;
+            if (rx >= 0 && ry >= 0 && rx < bw && ry < bh) refK = ry * bw + rx;
+        }
+        byte refLab = (byte)IslandAt(walkableRef);
+        if (!Native.MrpNative.On) { CarveGrid(shape, keep, x0, y0, bw, bh, barrier, refK, refLab); return; }
+        if (!Native.MrpNative.Verify) { CarveNative(shape, keep, x0, y0, bw, bh, barrier, refK, refLab); return; }
+        var open0 = (byte[])_open.Clone();
+        var island0 = (byte[])_island?.Clone();
+        CarveNative(shape, keep, x0, y0, bw, bh, barrier, refK, refLab);
+        var openN = _open; var islandN = _island;
+        _open = open0; _island = island0;
+        CarveGrid(shape, keep, x0, y0, bw, bh, barrier, refK, refLab);
+        long diff = 0;
+        for (int i = 0; i < _open.Length; i++) if (_open[i] != openN[i]) diff++;
+        if (_island != null) for (int i = 0; i < _island.Length; i++) if (_island[i] != islandN[i]) diff++;
+        VerifyCarves++;
+        VerifyCarveDiff += diff;
+        if (diff != 0) Plugin.Logger.LogWarning($"[native] carve diff={diff} shape={shape.GetType().Name} box={bw}x{bh}");
+    }
+
+    // Carve の C++ 版 (同じ結果)。照合 (native verify) の時は C# 版でも塗って地図全体を比べ、C# の結果を残す
+    internal static long VerifyCarves, VerifyCarveDiff;
+    private static byte[] _carveScratch;
+    private static int[] _carveQueue;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct CarveArgs
+    {
+        public byte* Open; public byte* Island; public byte* Outside;
+        public int W, H; public float Ox, Oy, Ppu; public int Reach;
+        public int X0, Y0, Bw, Bh;
+        public int ShapeKind; public float* Shape; public int ShapeN;
+        public float* Keep; public int KeepN;
+        public int RefK, RefLab;
+        public byte* Barrier; public byte* Scratch; public int* Queue;
+        public int Opened;
+    }
+
+    private static unsafe void CarveNative(CutShape shape, List<Rect> keep, int x0, int y0, int bw, int bh, byte[] barrier, int refK, byte refLab)
+    {
+        int bn = bw * bh;
+        if (_carveQueue == null || _carveQueue.Length < bn)
+        {
+            _carveQueue = new int[bn];
+            _carveScratch = new byte[bn * 5];
+        }
+        float[] shapeData = shape.Native(out int kind, out int shapeN);
+        int keepN = keep == null ? 0 : keep.Count;
+        var keepData = new float[Math.Max(1, keepN * 4)];
+        for (int i = 0; i < keepN; i++)
+        {
+            var k = keep[i];
+            keepData[i * 4] = k.xMin; keepData[i * 4 + 1] = k.yMin; keepData[i * 4 + 2] = k.xMax; keepData[i * 4 + 3] = k.yMax;
+        }
+        fixed (byte* open = _open) fixed (byte* island = _island) fixed (byte* outside = _outside)
+        fixed (float* sh = shapeData) fixed (float* kp = keepData) fixed (byte* bar = barrier)
+        fixed (byte* scr = _carveScratch) fixed (int* q = _carveQueue)
+        {
+            var a = new CarveArgs
+            {
+                Open = open, Island = island, Outside = outside,
+                W = _w, H = _h, Ox = _origin.x, Oy = _origin.y, Ppu = _ppu, Reach = OutsideReach,
+                X0 = x0, Y0 = y0, Bw = bw, Bh = bh,
+                ShapeKind = kind, Shape = sh, ShapeN = shapeN, Keep = kp, KeepN = keepN,
+                RefK = refK, RefLab = refLab, Barrier = bar, Scratch = scr, Queue = q,
+            };
+            Native.MrpNative.SolidCarve(&a);
+        }
+    }
+
+    private static void CarveGrid(CutShape shape, List<Rect> keep, int x0, int y0, int bw, int bh, byte[] barrier, int refK, byte refLab)
+    {
+        int bn = bw * bh;
+        // 壁の線を 1 升太らせる
         var blocked = DilateGrid(barrier, bw, bh, 1);
 
         // 形の中 (家具の範囲を除く)
@@ -931,14 +1007,7 @@ internal static class SolidMap
             seen[k] = 1; queue[tail++] = k;
             lab[k] = _island != null ? _island[gy * _w + gx] : (byte)0;
         }
-        {
-            int rx = (int)MathF.Floor((walkableRef.x - _origin.x) * _ppu) - x0, ry = (int)MathF.Floor((walkableRef.y - _origin.y) * _ppu) - y0;
-            if (rx >= 0 && ry >= 0 && rx < bw && ry < bh)
-            {
-                int k = ry * bw + rx;
-                if (seen[k] == 0 && blocked[k] == 0) { seen[k] = 1; queue[tail++] = k; lab[k] = (byte)IslandAt(walkableRef); }
-            }
-        }
+        if (refK >= 0 && seen[refK] == 0 && blocked[refK] == 0) { seen[refK] = 1; queue[tail++] = refK; lab[refK] = refLab; }
         int head = 0;
         while (head < tail)
         {

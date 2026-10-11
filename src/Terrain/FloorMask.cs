@@ -405,7 +405,7 @@ internal static class FloorMask
             if (a.Length > 0 && a[0] == "verify")
             {
                 if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; DamageMap.VerifyStamps = DamageMap.VerifyStampDiff = 0; }
-                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} simSubsteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff}");
+                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} simSubsteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff} carves={SolidMap.VerifyCarves} carveDiff={SolidMap.VerifyCarveDiff}");
                 return;
             }
             if (a.Length == 0 || a[0] != "check") { reply($"OK native on={on} {Native.MrpNative.Status}"); return; }

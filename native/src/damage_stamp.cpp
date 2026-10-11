@@ -1,6 +1,7 @@
 #include "mrp_native.h"
 #include <math.h>
 #include <float.h>
+#include "cut_shape.h"
 
 // 壊した形を損傷マスク (RGBA: R = 穴・G = 焦げ・B = 切り口) に書く (src/Terrain/DamageMap.cs の Stamp と同じ結果)。
 // 形 (CutShape)・帯 (切った壁の線の近く)・壁の中の判定 (WallBody.Exposed)・家具よけ・船の外の判定も C# と同じ式と順序
@@ -30,46 +31,7 @@ static inline float clampf(float v, float lo, float hi) { return v < lo ? lo : v
 static inline float fminf_(float a, float b) { return a < b ? a : b; }   // Math.Min (NaN は来ない)
 static inline float fmaxf_(float a, float b) { return a > b ? a : b; }
 
-static float shape_sd(const StampArgs* a, float x, float y)
-{
-    const float* s = a->shape;
-    if (a->shapeKind == 0)
-    {
-        float dx = x - s[0], dy = y - s[1];
-        return sqrtf(dx * dx + dy * dy) - s[2];
-    }
-    if (a->shapeKind == 1)
-    {
-        float px = x - s[0], py = y - s[1];
-        float qu = fabsf(px * s[2] + py * s[3]) - s[6];
-        float qv = fabsf(px * s[4] + py * s[5]) - s[7];
-        float ou = fmaxf_(qu, 0.0f), ov = fmaxf_(qv, 0.0f);
-        return sqrtf(ou * ou + ov * ov) + fminf_(fmaxf_(qu, qv), 0.0f);
-    }
-    int k = a->shapeN;
-    const float* v = s;
-    const float* n = s + k * 2;
-    float inside = -FLT_MAX;
-    bool outside = false;
-    for (int i = 0; i < k; i++)
-    {
-        float d = (x - v[i * 2]) * n[i * 2] + (y - v[i * 2 + 1]) * n[i * 2 + 1];
-        if (d > 0.0f) outside = true;
-        if (d > inside) inside = d;
-    }
-    if (!outside) return inside;
-    float best = FLT_MAX;
-    for (int i = 0; i < k; i++)
-    {
-        int j = (i + 1) % k;
-        float ax = v[i * 2], ay = v[i * 2 + 1];
-        float sx = v[j * 2] - ax, sy = v[j * 2 + 1] - ay, l2 = sx * sx + sy * sy;
-        float t = l2 > 0 ? clampf(((x - ax) * sx + (y - ay) * sy) / l2, 0.0f, 1.0f) : 0.0f;
-        float dx = ax + sx * t - x, dy = ay + sy * t - y;
-        best = fminf_(best, dx * dx + dy * dy);
-    }
-    return sqrtf(best);
-}
+static inline float shape_sd(const StampArgs* a, float x, float y) { return cut_shape_sd(a->shapeKind, a->shape, a->shapeN, x, y); }
 
 static bool inside_convex(const float* hull, int n, float x, float y)
 {
@@ -218,15 +180,7 @@ static bool exposed(const StampArgs* a, float x, float y)
     return crossings(a, x, y, tx, ty) == 0;
 }
 
-static bool inside_any(const StampArgs* a, float x, float y)
-{
-    for (int i = 0; i < a->keepN; i++)
-    {
-        const float* k = a->keep + i * 4;
-        if (x >= k[0] && x <= k[2] && y >= k[1] && y <= k[3]) return true;
-    }
-    return false;
-}
+static inline bool inside_any(const StampArgs* a, float x, float y) { return cut_inside_any(a->keep, a->keepN, x, y); }
 
 MRP_API void mrp_damage_stamp(StampArgs* a)
 {
