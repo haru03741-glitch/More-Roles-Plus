@@ -904,6 +904,8 @@ internal static class WaterArt
             // 屋外のデッキの床の絵はクルーと同じ奥行きにあり、部屋の絵の z では床の下に隠れる
             if (WaterSim.OnDeck(px, py)) front = Math.Min(front, DeckZ);
         }
+        // 動く床 (昇降機の台) は部屋の絵より手前にあるので、台に載った水が台の下に隠れないよう台より手前へ
+        front = WaterSim.PlatformFront(wx, wy, size, front);
         float zs = DamageMap.ZScale(front);
         // 床の上・足跡 (−0.001) と波紋より奥
         t.Z = front - 0.0004f * zs;

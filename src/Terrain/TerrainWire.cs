@@ -20,6 +20,9 @@ internal static class TerrainWire
     // ホスト → 全員: [op][刻み u16][扉の開き u64 (AllDoors の順・1 = 開)] 扉が変わった時 (外壁の穴の気圧・物の流れ・床の水を全員で揃える)
     public const byte OpDoors = 9;
     public const int DoorsBytes = 11;
+    // ホスト → 全員: [op][刻み u16][種類 u8 (0 = 左へ動き始めた・1 = 右へ・2 = 位置を移した)][位置 u8 (升の数・255 = 右の端)] 動く床 (昇降機の台)
+    public const byte OpPlatform = 10;
+    public const int PlatformBytes = 5;
 
     public const int MaxRequestBytes = 11;
     public const int MaxResolvedBytes = 17 + 1 + RubbleBlocks.MaxPerEvent * 6;

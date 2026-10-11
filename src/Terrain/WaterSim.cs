@@ -397,6 +397,7 @@ internal static partial class WaterSim
         int n = _w * _h;
         _open = new byte[n];
         _sub = new ushort[n];
+        _platFloor = new byte[n];
         _edge = new byte[n];
         _hgt = new int[n];
         _flux = new int[n * 4];
@@ -426,6 +427,7 @@ internal static partial class WaterSim
         Rebuild(0, 0, _w - 1, _h - 1);
         long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
         Levels();
+        LoadPlatform();
         long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
         Links(0, 0, _w - 1, _h - 1, true);
         long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -457,7 +459,7 @@ internal static partial class WaterSim
             for (int sx = 0; sx < Sub; sx++)
                 if (solid[row + sx] != 0 || wet != null && wet[row + sx] != 0) bits |= 1 << (sy * Sub + sx);
             int k = y * _w + x;
-            if (_doorFloor[k] != 0) bits = 0xFFFF;
+            if (_doorFloor[k] != 0 || _platFloor[k] != 0) bits = 0xFFFF;
             if (PopCount(bits) < 4 || !Connected(bits) || _shut[k] != 0) bits = 0;
             _sub[k] = (ushort)bits;
             byte open = bits != 0 ? (byte)1 : (byte)0;
@@ -844,6 +846,7 @@ internal static partial class WaterSim
                 if ((_shadowCut[k] >> d & 1) != 0) continue;
                 _fallMask[k] |= (byte)(1 << d);
                 if (why == "glass") { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = (short)(_glass.Height * Full); }
+                else if (PlatformRimAt(k, to)) { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = PlatformRim; }
                 FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
                 if (to >= 0 && _lvl[to] == lk - 1 && OnStep(x, y, tx, ty))
                 {
@@ -1175,6 +1178,7 @@ internal static partial class WaterSim
         // 扉: この刻みの開き (ホストの記録)
         ulong doors = Decompression.DoorBitsAt(_step);
         if (doors != _doorBits) ApplyDoors(doors);
+        StepPlatform();
 
         // 落ちていた水が下の床に着く (着いた升が閉じていたら開いている隣へ)
         int fl = 0;
@@ -1875,6 +1879,7 @@ internal static partial class WaterSim
     private static void TickCore()
     {
         if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Reset(); }
+        PollPlatform();
     }
 
     // 1 刻み進める (TerrainStep から・_step の刻み)
@@ -1942,7 +1947,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _lipMask = null; _lipH = null; _furn = null; LowWalls.Clear();
+        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _furn = null; LowWalls.Clear();
         FallTo.Clear();
         StepTo.Clear();
         FallOut.Clear();
@@ -2098,6 +2103,15 @@ internal static partial class WaterSim
                 return;
             }
             if (a.StartsWith("sweep")) { Sweep(a.Substring(5).Trim(), reply); return; }
+            if (a == "platuse")
+            {
+                // 確認用: 昇降機を動かす (自分が乗る)
+                var pf = FindPlatform();
+                if (!pf) { reply("ERR no platform"); return; }
+                pf.Use();
+                reply($"OK water platuse left={pf.IsLeft}");
+                return;
+            }
             if (a.StartsWith("why"))
             {
                 // 確認用: 範囲の縁の升が落ちない理由を向きごとに数える (4 つ目に "-y:scan" などを渡すとその升の位置を並べる。scan = 先に開いた升が無い・same = 先が低くない・door・room = 谷の外で外壁の向こうの奈落・shadow = 影の線。prop = すぐ隣が床に置かれた物・落ちる側は fall/side/void/sky = 手すりの外の空/cliff = 何も無い崖の下)
@@ -2110,7 +2124,7 @@ internal static partial class WaterSim
             }
             if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return; }
             if (!_ready) { reply($"OK water off {GameClock.Describe()}"); return; }
-            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} inflows={Inflows.Count} inflowed={InflowTotal} gushes={Gushes} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} fell={FellTotal} void={VoidTotal} flying={Flying.Count} links={FallTo.Count} doors={System.Numerics.BitOperations.PopCount(_doorBits)}/{_doorUnder?.Length ?? 0} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
+            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} latePlatform={LatePlatform} platform={(_plat ? _pfOff : -1)}/{PlatLog.Count} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} inflows={Inflows.Count} inflowed={InflowTotal} gushes={Gushes} particles={Particles} active={Active.Count} volume={Volume()} spilled={SpilledTotal} fell={FellTotal} void={VoidTotal} flying={Flying.Count} links={FallTo.Count} doors={System.Numerics.BitOperations.PopCount(_doorBits)}/{_doorUnder?.Length ?? 0} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
         });
     }
 }

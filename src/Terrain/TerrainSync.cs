@@ -25,6 +25,7 @@ internal static class TerrainSync
     private static readonly byte[] Buf = new byte[TerrainWire.BatchHeader + MaxEventsPerRpc * TerrainWire.MaxResolvedBytes];
     private static readonly byte[] BombBuf = new byte[2 + TerrainWire.BombBytes];
     private static readonly byte[] DoorBuf = new byte[TerrainWire.DoorsBytes];
+    private static readonly byte[] PlatformBuf = new byte[TerrainWire.PlatformBytes];
 
     // ホストは次に振る連番、客は次に適用する連番。ホストが替わったら新ホストはここから振り続ける
     private static ushort _nextSeq;
@@ -300,6 +301,15 @@ internal static class TerrainSync
                 Decompression.OnDoors(GameClock.Expand(tick), bits);
                 break;
             }
+            case TerrainWire.OpPlatform:
+            {
+                if (client.AmHost || sender.OwnerId != client.HostId || b.Length < TerrainWire.PlatformBytes) return;
+                ushort tick = TerrainWire.ReadU16(b, ref o);
+                byte kind = b[o++], off = b[o++];
+                GameClock.Observe(tick);
+                WaterSim.OnPlatform(GameClock.Expand(tick), kind, off);
+                break;
+            }
             case TerrainWire.OpDigest:
             {
                 if (!client.AmHost || b.Length < 7) return;
@@ -398,6 +408,17 @@ internal static class TerrainSync
         o = TerrainWire.WriteU32(DoorBuf, o, (uint)bits);
         o = TerrainWire.WriteU32(DoorBuf, o, (uint)(bits >> 32));
         Wire.Send(new ArraySegment<byte>(DoorBuf, 0, o), -1);
+    }
+
+    // ホスト → 全員: 動く床が動き始めた刻み (変わった時だけ)
+    internal static void BroadcastPlatform(ushort tick, byte kind, byte off)
+    {
+        if (!Online() || !AmongUsClient.Instance.AmHost) return;
+        PlatformBuf[0] = TerrainWire.OpPlatform;
+        int o = TerrainWire.WriteU16(PlatformBuf, 1, tick);
+        PlatformBuf[o++] = kind;
+        PlatformBuf[o++] = off;
+        Wire.Send(new ArraySegment<byte>(PlatformBuf, 0, o), -1);
     }
 
     // ホストと一人の時: その人の破壊として決めて配る (爆弾の導火線が尽きた時など、依頼を受けた後でホストが起こす破壊)

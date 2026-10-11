@@ -244,6 +244,8 @@ internal static class FloorMask
                     if (into[row + px] == 0 && DamageMap.HoleSmoothAt(x + px * wstep, wy) >= HoleFloor) into[row + px] = 255;
             }
         }
+        // 動く床 (昇降機の台) の今の所
+        WaterSim.StampPlatform(x, y, wstep, n, into);
         if (_patchGen != GameClock.ShipGen) return;
         foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, wstep, n, into);
     }
