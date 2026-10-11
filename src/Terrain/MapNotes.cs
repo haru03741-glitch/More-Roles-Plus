@@ -21,6 +21,7 @@ internal static partial class MapNotes
     private static Rect[] _higher = Array.Empty<Rect>();
     private static Rect[] _free = Array.Empty<Rect>();
     private static Rect[] _void = Array.Empty<Rect>();
+    private static Rect[] _air = Array.Empty<Rect>();
 
     public static string Stats => $"notes keep={_keep.Length} free={_free.Length} low={_low.Length} high={_high.Length} higher={_higher.Length} void={_void.Length}";
 
@@ -29,14 +30,14 @@ internal static partial class MapNotes
         var ship = ShipStatus.Instance;
         if (_ship == ship) return;
         _ship = ship;
-        _keep = _free = _low = _high = _higher = _void = Array.Empty<Rect>();
+        _keep = _free = _low = _high = _higher = _void = _air = Array.Empty<Rect>();
         if (!ship) return;
         // 派生の型から先に調べる (どのマップも ShipStatus を継ぐ)
-        if (ship.TryCast<AirshipStatus>() != null) Load(AirshipKeep, AirshipFree, AirshipLow, AirshipHigh, AirshipHigher, AirshipVoid);
-        else if (ship.TryCast<FungleShipStatus>() != null) Load(FungleKeep, FungleFree, FungleLow, FungleHigh, FungleHigher, FungleVoid);
-        else if (ship.TryCast<PolusShipStatus>() != null) Load(PolusKeep, PolusFree, PolusLow, PolusHigh, PolusHigher, PolusVoid);
-        else if (ship.TryCast<MiraShipStatus>() != null) Load(MiraKeep, MiraFree, MiraLow, MiraHigh, MiraHigher, MiraVoid);
-        else if (ship.Type == ShipStatus.MapType.Ship && ship.transform.lossyScale.x > 0f) Load(SkeldKeep, SkeldFree, SkeldLow, SkeldHigh, SkeldHigher, SkeldVoid); // 左右反転のスケルドは座標が合わないので使わない
+        if (ship.TryCast<AirshipStatus>() != null) { Load(AirshipKeep, AirshipFree, AirshipLow, AirshipHigh, AirshipHigher, AirshipVoid); _air = ToRects(AirshipAir); }
+        else if (ship.TryCast<FungleShipStatus>() != null) { Load(FungleKeep, FungleFree, FungleLow, FungleHigh, FungleHigher, FungleVoid); _air = ToRects(FungleAir); }
+        else if (ship.TryCast<PolusShipStatus>() != null) { Load(PolusKeep, PolusFree, PolusLow, PolusHigh, PolusHigher, PolusVoid); _air = ToRects(PolusAir); }
+        else if (ship.TryCast<MiraShipStatus>() != null) { Load(MiraKeep, MiraFree, MiraLow, MiraHigh, MiraHigher, MiraVoid); _air = ToRects(MiraAir); }
+        else if (ship.Type == ShipStatus.MapType.Ship && ship.transform.lossyScale.x > 0f) { Load(SkeldKeep, SkeldFree, SkeldLow, SkeldHigh, SkeldHigher, SkeldVoid); _air = ToRects(SkeldAir); } // 左右反転のスケルドは座標が合わないので使わない
     }
 
     private static void Load(float[] keep, float[] free, float[] low, float[] high, float[] higher, float[] voids)
@@ -121,6 +122,25 @@ internal static partial class MapNotes
                 for (int y = y0; y <= y1; y++)
                 for (int x = x0; x <= x1; x++) lvl[y * w + x] = (sbyte)level;
             }
+        }
+    }
+
+    // 空 (縁を越えた水が落ちて消える所) を塗ったマップか
+    public static bool HasAir
+    {
+        get { Ensure(); return _air.Length > 0; }
+    }
+
+    // 升 (原点 org・1 辺 cell・w×h) の真ん中が空の範囲に入る升を 1 にする
+    public static void RasterAir(byte[] air, int w, int h, Vector2 org, float cell)
+    {
+        Ensure();
+        foreach (var r in _air)
+        {
+            int x0 = Math.Max(0, (int)MathF.Ceiling((r.xMin - org.x) / cell - 0.5f)), x1 = Math.Min(w - 1, (int)MathF.Floor((r.xMax - org.x) / cell - 0.5f));
+            int y0 = Math.Max(0, (int)MathF.Ceiling((r.yMin - org.y) / cell - 0.5f)), y1 = Math.Min(h - 1, (int)MathF.Floor((r.yMax - org.y) / cell - 0.5f));
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++) air[y * w + x] = 1;
         }
     }
 

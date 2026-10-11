@@ -172,7 +172,7 @@ internal static partial class WaterSim
                 int j = k + Nx[d] + Ny[d] * _w;
                 if (_open[j] != 0 && Passable(k, d)) continue;
                 int to = int.MinValue;
-                string why = Nx[d] != 0 && OnLadder(x, y) ? "ladder" : Target(x, y, d, lk, !MapNotes.HasLevels, out to, out _, out _, out _);
+                string why = Nx[d] != 0 && OnLadder(x, y) ? "ladder" : Target(x, y, d, lk, out to, out _, out _, out _);
                 if (to == -1 && OnLadder(x, y)) { to = int.MinValue; why = "ladder"; }
                 if (to != int.MinValue && (_shadowCut[k] >> d & 1) != 0) why = "shadow";
                 string key = "+x-x+y-y".Substring(d * 2, 2) + ":" + why;
