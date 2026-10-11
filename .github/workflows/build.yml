@@ -39,3 +39,24 @@ jobs:
           path: bin/Release/net6.0/MoreRolesPlus.dll
           retention-days: 30
           if-no-files-found: error
+
+  native:
+    name: Native parts (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # C++ の部品 (native/src) を MSVC で組む。無いと PC 版は C# 版の計算で動く (遅い)
+      - name: Build MrpNative.dll
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -SkipAndroid
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Upload MrpNative.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: MrpNative-${{ github.sha }}
+          path: build/native/win-x64/MrpNative.dll
+          retention-days: 30
+          if-no-files-found: error
