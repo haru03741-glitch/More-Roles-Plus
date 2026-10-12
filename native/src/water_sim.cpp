@@ -18,6 +18,9 @@ struct WaterFlowArgs
     int64_t voidAdd;
     uint8_t* stir;                  // 起こされた升 (C# の _stir)
     int32_t checkSleep, sleepViol;  // 照合: 眠っている升が流れ出すか浅いかを数える
+    // 床の本当の高さ (useZ = 1 の時だけ読む)。升の島 → 島の基準の高さ (島の高さ − 島の段 × 段差・NoZ = 決まらない)
+    const uint8_t* isl; const int32_t* islBase;
+    int32_t islN, useZ;
 };
 
 // WaterSim の定数と同じ値
@@ -26,6 +29,7 @@ static const int DryHold = 48, WetHold = 3, MinDepth = 6, FallLip = 24, FallGain
 static const int WeirDiv = 64 * 256 / FallGain;
 static const int Full = 1024, StepHeight = Full / 4, BarMax = Full;
 static const int NoLevel = -128, VoidLevel = -2;
+static const int32_t NoZ = INT32_MIN;
 // 小刻みの数とタイルの升の数は C# の定数と同じ (割り算を定数にするため。違えば計算しない)
 static const int SubN = 4, TileCells = 16;
 static const int Nx[4] = { 1, -1, 0, 0 }, Ny[4] = { 0, 0, 1, -1 }, Opp[4] = { 1, 0, 3, 2 };
@@ -41,6 +45,16 @@ static inline int isqrt(int64_t v)
 
 static inline int imin(int a, int b) { return a < b ? a : b; }
 static inline int imax(int a, int b) { return a > b ? a : b; }
+
+// 升の床の高さ (段と島の基準・bed と furn は含めない)。決まらない升は NoZ
+static inline int32_t base_z(const WaterFlowArgs* a, int k)
+{
+    int l = a->lvl[k];
+    if (l == NoLevel || l == VoidLevel) return NoZ;
+    int i = a->isl[k];
+    if (i == 0 || i >= a->islN || a->islBase[i] == NoZ) return NoZ;
+    return a->islBase[i] + l * StepHeight;
+}
 
 static inline int weir(int e) { return e <= 0 ? 0 : imin(e / 2, (int)((int64_t)e * isqrt(16LL * e) / WeirDiv)); }
 
@@ -138,6 +152,7 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
     int h = a->hgt[k];
     int sum = 0;
     int lk = a->lvl[k];
+    int32_t zk = a->useZ && h > 0 ? base_z(a, k) : NoZ; // 高さを使う流れは全部 h > 0 の時だけ
     int falls = a->foN;
     for (int d = 0; d < 4; d++)
     {
@@ -147,7 +162,17 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
         {
             int lj = a->lvl[j];
             bool known = lk != NoLevel && lj != NoLevel;
-            if (!known || lj <= lk)
+            // 同じ島の同じ段なら高さも同じ (表を引かない)
+            int32_t zj = zk == NoZ ? NoZ : lj == lk && a->isl[j] == a->isl[k] ? zk : base_z(a, j);
+            if (zj != NoZ)
+            {
+                // 両側の高さが決まっていれば水面 (床 + 深さ) の差で流す (段の順位の一方通行は使わない)
+                int hj = a->hgt[j];
+                int diff = (int)((int64_t)zk + h + a->bed[k] + a->furn[k] - zj - hj - a->bed[j] - a->furn[j]) - (hj == 0 ? DryHold : WetHold);
+                f = a->flux[k * 4 + d] * subDamp / 256 + (diff > 0 ? diff * subGain / 256 : 0);
+                if (f < 0) f = 0;
+            }
+            else if (!known || lj <= lk)
             {
                 int hj = a->hgt[j];
                 int diff = known && lj < lk ? h - DryHold
@@ -159,7 +184,16 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
         else if (h > 0 && (a->stepMask[k] >> d & 1) != 0)
         {
             int t = a->stepTo[k * 4 + d], ht = a->hgt[t];
-            int diff = a->lvl[t] < lk
+            int32_t zt = zk == NoZ ? NoZ : base_z(a, t);
+            int diff;
+            if (zt != NoZ)
+            {
+                // 段の向こうの床が dz だけ低い (負なら高い)。低い側は段の高さまで溜まってから高い床とつながる
+                int dz = (int)((int64_t)zk + a->bed[k] + a->furn[k] - zt - a->bed[t] - a->furn[t]);
+                diff = dz > 0 ? h - imax(0, ht - dz) - (ht <= dz ? DryHold : WetHold)
+                    : h + dz - ht - (ht == 0 ? DryHold : WetHold);
+            }
+            else diff = a->lvl[t] < lk
                 ? h - imax(0, ht - StepHeight) - (ht <= StepHeight ? DryHold : WetHold)
                 : h - StepHeight - ht - (ht == 0 ? DryHold : WetHold);
             if (diff > 0) sum += sub_out<W>(a, k, d, diff * Gain / 256);

@@ -26,7 +26,8 @@ internal static partial class WaterSim
         if (mode == "check") { SweepCheck(reply); return; }
         if (mode == "levels") { reply(LevelImage()); return; }
         if (mode == "z") { reply(ZImage()); return; }
-        reply("ERR water sweep start [rate=4 (1 刻みに入れる深さ)] [grid=24 (口の間隔・升)] (今ある浸水は消して置き直す) | check | levels | z");
+        if (mode == "zedge") { reply(ZEdges()); return; }
+        reply("ERR water sweep start [rate=4 (1 刻みに入れる深さ)] [grid=24 (口の間隔・升)] (今ある浸水は消して置き直す) | check | levels | z | zedge");
     }
 
     // 升ごとの歩ける島 (升の中の最初の歩ける升の島)

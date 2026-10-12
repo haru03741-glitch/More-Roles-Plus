@@ -1425,6 +1425,8 @@ internal static partial class WaterSim
         public long VoidAdd;
         public byte* Stir;
         public int CheckSleep, SleepViol;
+        public byte* Isl; public int* IslBase;
+        public int IslN, UseZ;
     }
 
     private static int[] _dirtyBuf = Array.Empty<int>();
@@ -1438,7 +1440,7 @@ internal static partial class WaterSim
         fixed (byte* stepMask = _stepMask) fixed (byte* fallMask = _fallMask) fixed (byte* seaMask = _seaMask) fixed (byte* lipMask = _lipMask)
         fixed (short* lipH = _lipH) fixed (byte* barB = _barB) fixed (short* barH = _barH) fixed (int* stepTo = _stepTo)
         fixed (int* act = _act) fixed (byte* inList = _inList) fixed (int* fo = _fo) fixed (bool* tileDirty = _tileDirty) fixed (int* dirty = _dirtyBuf)
-        fixed (byte* stir = _stir)
+        fixed (byte* stir = _stir) fixed (byte* isl = _cellIsl) fixed (int* islBase = _islBase)
         {
             var a = new FlowArgs
             {
@@ -1449,6 +1451,8 @@ internal static partial class WaterSim
                 ActN = _actN, FoN = _foN, W = _w, H = _h, Tw = _tw, Th = _th, TileCells = TileCells,
                 Sub = s, SubN = SubN, Dry = dry ? 1 : 0, SeaLevel = SeaLevel,
                 Stir = stir, CheckSleep = Native.MrpNative.Verify ? 1 : 0,
+                // 照合の時は C# と同じ古いルールで回して 1 バイトずつ比べる
+                Isl = isl, IslBase = islBase, IslN = _islBase.Length, UseZ = ZFlow && !Native.MrpNative.Verify && isl != null ? 1 : 0,
             };
             if (Native.MrpNative.WaterSubstep(&a) == 0) return false;
             _actN = a.ActN;
@@ -2255,7 +2259,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _stir = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; _cellIsl = null; _islRank = null; _islArea = null; LowWalls.Clear();
+        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; _cellIsl = null; _islRank = null; _islArea = null; _islBase = Array.Empty<int>(); LowWalls.Clear();
         FallTo.Clear();
         StepTo.Clear();
         _foN = 0;
@@ -2271,6 +2275,7 @@ internal static partial class WaterSim
         _sortedN = 0;
         _blowing = false;
         _noSleep = false;
+        ZFlow = true;
         Queue.Clear();
         Sources.Clear();
         Inflows.Clear();
@@ -2302,6 +2307,13 @@ internal static partial class WaterSim
                 if (a.EndsWith("off")) _noSleep = true;
                 else if (a.EndsWith("on")) _noSleep = false;
                 reply($"OK water sleep={!_noSleep} (this device only・水を消すと on に戻る)");
+                return;
+            }
+            if (a.StartsWith("zflow"))
+            {
+                if (a.EndsWith("off")) ZFlow = false;
+                else if (a.EndsWith("on")) ZFlow = true;
+                reply($"OK water zflow={ZFlow} native={Native.MrpNative.On} (this device only・水を消すと on に戻る)");
                 return;
             }
             if (a.StartsWith("prof"))
@@ -2387,7 +2399,9 @@ internal static partial class WaterSim
                 if (q.Length < 4 || !int.TryParse(q[0], out int bn) || !float.TryParse(q[1], ns, ic, out float bx) || !float.TryParse(q[2], ns, ic, out float by)
                     || !float.TryParse(q[3], ns, ic, out float br)) { reply("ERR water bench n x y r [depth]"); return; }
                 int bd = q.Length > 4 && int.TryParse(q[4], out int bd2) ? bd2 : Full;
+                bool bz = ZFlow;
                 Reset();
+                ZFlow = bz;
                 if (Pour(bx, by, br, bd) < 0) { reply("ERR water bench: no map"); return; }
                 _step = 0;
                 Array.Clear(ProfTicks); ProfSteps = 0;
@@ -2396,8 +2410,9 @@ internal static partial class WaterSim
                 for (int i = 0; i < bn; i++) { bact += _actN; StepOnce(); _step++; }
                 double bms = (System.Diagnostics.Stopwatch.GetTimestamp() - b0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
                 double pk = 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, bn);
-                reply($"OK water bench steps={bn} digest={Digest():x8} volume={Volume()} active={_actN} avgActive={bact / Math.Max(1, bn)} fell={FellTotal} void={VoidTotal} native={Native.MrpNative.On} ms/step={bms / Math.Max(1, bn):0.000} sub={ProfTicks[4] * pk:0.000} tidy={ProfTicks[7] * pk:0.000}");
+                reply($"OK water bench steps={bn} digest={Digest():x8} volume={Volume()} active={_actN} avgActive={bact / Math.Max(1, bn)} fell={FellTotal} void={VoidTotal} native={Native.MrpNative.On} zflow={ZFlow} ms/step={bms / Math.Max(1, bn):0.000} sub={ProfTicks[4] * pk:0.000} tidy={ProfTicks[7] * pk:0.000}");
                 Reset();
+                ZFlow = bz;
                 return;
             }
             if (a.StartsWith("inflow"))
