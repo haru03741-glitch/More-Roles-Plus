@@ -20,6 +20,13 @@ internal static class TerrainStep
         _profT = t;
     }
 
+    // 預けた水の刻みを終わらせて、その刻みの火を進める (刻みを外から進める・書き換える前にも呼ぶ)
+    internal static void Settle()
+    {
+        int s = WaterSim.Settle();
+        if (s >= 0) FireSim.AdvanceOne(s);
+    }
+
     public static void Tick()
     {
         _profT = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -38,6 +45,9 @@ internal static class TerrainStep
             FireSim.Chars.Clear();
             Prof(0);
             if (_failedGen == GameClock.ShipGen) return;
+            // 前のフレームで預けた水の刻みの後始末と、その刻みの火 (演出の記録は上で空にした後に積む)
+            Settle();
+            Prof(3);
             int target = GameClock.Now - WaterSim.Delay;
             // 物と水の刻みが違う間は 1 回に片方しか進まないので、回数は 2 倍まで (どれも 1 フレーム 20 刻みまで)
             for (int n = 0; n < MaxStepsPerFrame * 2; n++)
@@ -51,7 +61,13 @@ internal static class TerrainStep
                 Prof(1);
                 if (prop && PropSim.AuthStep == s) PropSim.AdvanceAuth();
                 Prof(2);
-                if (water && WaterSim.Step == s) { WaterSim.AdvanceOne(); Prof(3); FireSim.AdvanceOne(s); }
+                if (water && WaterSim.Step == s)
+                {
+                    // このフレームの最後の刻みは水の小刻みを預けて描画の裏で回す (火は次のフレームの頭で)
+                    if (!WaterSim.AdvanceOne(s + 1 >= target && Native.MrpNative.Async)) { Prof(3); break; }
+                    Prof(3);
+                    FireSim.AdvanceOne(s);
+                }
                 Prof(4);
             }
             FireSim.IssueWallBurns();

@@ -21,6 +21,7 @@ internal static unsafe class MrpNative
     internal static string Status { get; private set; } = "not loaded";
     internal static bool Enabled = true;
     internal static bool Verify;
+    internal static bool Async = true; // 水の小刻みを作業スレッドで回す (切り替えは答え合わせ用)
 
     internal static delegate* unmanaged[Cdecl]<byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, int, void> FloorRaw;
     internal static delegate* unmanaged[Cdecl]<byte*, int, ushort*, byte*, void> FloorBlur;

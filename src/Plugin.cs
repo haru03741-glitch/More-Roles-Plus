@@ -107,6 +107,7 @@ public class Ticker : MonoBehaviour
         Terrain.DamageMap.Flush(); // 溜めた損傷マスクの変更を描画の前に送る
         Bridge.Perf.Lane(34, t);
         Terrain.DecompFx.LateTick();
+        Terrain.WaterSim.Kick(); // 預けた水の小刻みを描画の裏で回す (読み手は次に水の配列に触る時に終わりを待つ)
         Bridge.Perf.FrameLate();
     }
 

@@ -224,7 +224,7 @@ internal static partial class WaterSim
     internal static int H => _h;
     internal static Vector2 Origin => _org;
     internal static float Cell => _cell;
-    internal static int Height(int k) => _hgt[k];
+    internal static int Height(int k) { EnsureIdle(); return _hgt[k]; }
 
     // 床の高さで描く水の深さ: 家具の足元の升 (当たり判定の四角なので絵の外の床も含む) は、床から見えるのは家具の周りの水なので、
     // 天板の上に水があれば天板からの深さを足し、無ければ家具の外の一番近い升の深さ (縦横 FurnScan 升まで) を使う
@@ -234,6 +234,7 @@ internal static partial class WaterSim
     internal const int TopFilm = Full * 3 / 100;
     internal static int ShownDepth(int k)
     {
+        EnsureIdle();
         int f = _furn == null ? 0 : _furn[k], h = _hgt[k];
         if (f == 0) return h;
         if (h > TopFilm) return h + f;
@@ -256,14 +257,14 @@ internal static partial class WaterSim
     // C++ の部品へ渡す用 (読むだけ)
     internal static byte[] OpenCells => _open;
     internal static short[] FurnCells => _furn;
-    internal static int[] HeightCells => _hgt;
+    internal static int[] HeightCells { get { EnsureIdle(); return _hgt; } }
     internal static bool Ready => _ready;
     internal static int Step => _step;
     internal static bool Running => _running;
     // 絵のタイル (TileCells 升四方) の描き直しの印
     public const int TileCells = 16;
     private static int _tw, _th;
-    private static bool[] _tileDirty;
+    private static byte[] _tileDirty;
     internal static readonly List<int> DirtyTiles = new();
     internal static int TilesW => _tw;
     internal static int TilesH => _th;
@@ -326,6 +327,7 @@ internal static partial class WaterSim
     // 火の熱で升の水を減らす (湯気)。減らした量
     internal static int Evaporate(int k, int amount)
     {
+        EnsureIdle();
         int h = _hgt[k];
         if (amount > h) amount = h;
         if (amount <= 0) return 0;
@@ -440,7 +442,7 @@ internal static partial class WaterSim
         int props = ListPropCells();
         _tw = (_w + TileCells - 1) / TileCells;
         _th = (_h + TileCells - 1) / TileCells;
-        _tileDirty = new bool[_tw * _th];
+        _tileDirty = new byte[_tw * _th];
         LoadWet();
         long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
         Rebuild(0, 0, _w - 1, _h - 1);
@@ -1342,13 +1344,13 @@ internal static partial class WaterSim
     {
         if (tx < 0 || ty < 0 || tx >= _tw || ty >= _th) return;
         int t = ty * _tw + tx;
-        if (_tileDirty[t]) return;
-        _tileDirty[t] = true;
+        if (_tileDirty[t] != 0) return;
+        _tileDirty[t] = 1;
         DirtyTiles.Add(t);
     }
 
     // 絵が描き直したタイルの印を消す
-    internal static void Clean(int t) => _tileDirty[t] = false;
+    internal static void Clean(int t) { EnsureIdle(); _tileDirty[t] = 0; }
 
     // 地図の端の升 (外周 1 升) は計算に入れない (隣を読む時に配列の外へ出る)
     // 中の詰まった家具の足元の床 (水の深さの物差し・床の高さ _bed に足す)。PropSim が刻みの始めに付け替える
@@ -1402,7 +1404,8 @@ internal static partial class WaterSim
         _profT = t;
     }
 
-    private static void StepOnce()
+    // defer = 小刻みを預ける (作業スレッドで回して次のフレームの頭で後始末)。預けたら真
+    private static bool StepOnce(bool defer = false)
     {
         _profT = System.Diagnostics.Stopwatch.GetTimestamp();
         ProfSteps++;
@@ -1484,16 +1487,28 @@ internal static partial class WaterSim
         SeaInflow();
         Prof(3);
 
-        // 小刻み SubN 回。C++ の部品があればまとめて 1 回で (吸い出しの刻みは C# のまま)
+        if (defer && !blow && Native.MrpNative.On && !Native.MrpNative.Verify) { Defer(_step); return true; }
+        RunSubsteps(blow, _step);
+        PostStep(_step, blow);
+        return false;
+    }
+
+    // 小刻み SubN 回。C++ の部品があればまとめて 1 回で (吸い出しの刻みは C# のまま)
+    private static void RunSubsteps(bool blow, int step)
+    {
         if (_fs.Length < _fallAt.Length * 3) _fs = new int[_fallAt.Length * 3];
         if (!blow && Native.MrpNative.On)
         {
-            if (Native.MrpNative.Verify) VerifyStep();
-            else if (!StepNative(false)) StepManaged(false);
+            if (Native.MrpNative.Verify) VerifyStep(step);
+            else if (!StepNative(false, step)) StepManaged(false, step);
             Prof(4);
         }
-        else StepManaged(blow);
+        else StepManaged(blow, step);
+    }
 
+    // 小刻みの後: 落ちる水・眠らせる升の片付け (刻み step)
+    private static void PostStep(int step, bool blow)
+    {
         // 縁を越えた水: 落ちる時間の後に下の升へ (奈落なら消える)。1 刻みの合計で 1 回
         for (int i = 0; i < _fsN; i++)
         {
@@ -1502,7 +1517,7 @@ internal static partial class WaterSim
             FellTotal += amt;
             var (to, delay) = FallTo[k * 4 + d];
             if (to < 0) VoidTotal += amt;
-            else AddFlying(_step + delay, to, amt);
+            else AddFlying(step + delay, to, amt);
             FallFx(k, d, to, amt, delay);
         }
         _fsN = 0;
@@ -1534,11 +1549,11 @@ internal static partial class WaterSim
         Prof(7);
 
         Steps++;
-        if (_step % 300 == 0) { LastDigest = Digest(); Plugin.Logger.LogInfo($"[WaterSim] step={_step} digest={LastDigest:x8} active={_actN} volume={Volume()}"); }
+        if (step % 300 == 0) { LastDigest = Digest(step); Plugin.Logger.LogInfo($"[WaterSim] step={step} digest={LastDigest:x8} active={_actN} volume={Volume()}"); }
     }
 
     // C# 版の小刻み SubN 回 (浸水の口へ注ぐ → DropVoid → Flow → Heights → 縁を越えた量)。吸い出しは最初の小刻みだけ
-    private static void StepManaged(bool blow)
+    private static void StepManaged(bool blow, int step)
     {
         for (int s = 0; s < SubN; s++)
         {
@@ -1550,7 +1565,7 @@ internal static partial class WaterSim
             }
             DropVoid();
             Flow(s, blow && s == 0);
-            Heights(s == SubN - 1 && (_step & 3) == 0);
+            Heights(s == SubN - 1 && (step & 3) == 0);
             Prof(4);
             SubFalls();
             Prof(5);
@@ -1592,52 +1607,16 @@ internal static partial class WaterSim
     private static int[] _dirtyBuf = Array.Empty<int>();
     private static int[] _infK = Array.Empty<int>(), _infRate = Array.Empty<int>();
 
-    // C++ 版の小刻み SubN 回。check = 照合 (C# と同じ古いルールで回し、眠っている升の起こし忘れも数える)
-    private static unsafe bool StepNative(bool check)
+    // C++ 版の小刻み SubN 回 (その場で)。check = 照合 (C# と同じ古いルールで回し、眠っている升の起こし忘れも数える)
+    private static unsafe bool StepNative(bool check, int step)
     {
-        if (_dirtyBuf.Length < _tw * _th) _dirtyBuf = new int[_tw * _th];
-        if (_infK.Length < Inflows.Count) { _infK = new int[Inflows.Count * 2]; _infRate = new int[Inflows.Count * 2]; }
-        for (int i = 0; i < Inflows.Count; i++) { _infK[i] = Inflows[i].K; _infRate[i] = Inflows[i].Rate; }
-        fixed (int* hgt = _hgt) fixed (int* flux = _flux) fixed (int* move = _move)
-        fixed (byte* open = _open) fixed (byte* edge = _edge) fixed (sbyte* lvl = _lvl)
-        fixed (short* bed = _bed) fixed (short* furn = _furn)
-        fixed (byte* stepMask = _stepMask) fixed (byte* fallMask = _fallMask) fixed (byte* seaMask = _seaMask) fixed (byte* lipMask = _lipMask)
-        fixed (short* lipH = _lipH) fixed (byte* barB = _barB) fixed (short* barH = _barH) fixed (int* stepTo = _stepTo) fixed (int* slot = _eSlot)
-        fixed (int* act = _act) fixed (byte* inList = _inList) fixed (int* fo = _fo) fixed (bool* tileDirty = _tileDirty) fixed (int* dirty = _dirtyBuf)
-        fixed (byte* stir = _stir) fixed (byte* isl = _cellIsl) fixed (int* islBase = _islBase)
-        fixed (int* infK = _infK) fixed (int* infRate = _infRate) fixed (int* fs = _fs) fixed (int* fallAt = _fallAt)
-        {
-            var a = new StepArgs
-            {
-                F = new FlowArgs
-                {
-                    Hgt = hgt, Flux = flux, Move = move, Open = open, Edge = edge, Lvl = lvl, Bed = bed, Furn = furn,
-                    StepMask = stepMask, FallMask = fallMask, SeaMask = seaMask, LipMask = lipMask,
-                    LipH = lipH, BarB = barB, BarH = barH, StepTo = stepTo, Slot = slot,
-                    Act = act, InList = inList, Fo = fo, TileDirty = (byte*)tileDirty, DirtyOut = dirty,
-                    ActN = _actN, FoN = _foN, W = _w, H = _h, Tw = _tw, Th = _th, TileCells = TileCells,
-                    SubN = SubN, SeaLevel = SeaLevel,
-                    Stir = stir, CheckSleep = check ? 1 : 0,
-                    // 照合の時は C# と同じ古いルールで回して 1 バイトずつ比べる
-                    Isl = isl, IslBase = islBase, IslN = _islBase.Length, UseZ = ZFlow && !check && isl != null ? 1 : 0,
-                    FoCap = _fo.Length / 3,
-                },
-                InfK = infK, InfRate = infRate, InfN = Inflows.Count,
-                DryStep = (_step & 3) == 0 ? 1 : 0,
-                FallStep = fs, FsN = _fsN, FsCap = _fs.Length / 3, FallAt = fallAt,
-            };
-            if (Native.MrpNative.WaterStep(&a) == 0) return false;
-            _actN = a.F.ActN;
-            _foN = a.F.FoN;
-            _fsN = a.FsN;
-            if (a.F.FoOver != 0) Plugin.Logger.LogError($"[WaterSim] fo over {a.F.FoOver} cap={_fo.Length / 3}");
-            if (a.FsOver != 0) Plugin.Logger.LogError($"[WaterSim] fall step over {a.FsOver} cap={_fs.Length / 3}");
-            VoidTotal += a.F.VoidAdd;
-            InflowTotal += a.InflowAdd;
-            SeaOutTotal += a.SeaOutAdd;
-            VerifySleepViol += a.F.SleepViol;
-            for (int i = 0; i < a.F.DirtyN; i++) DirtyTiles.Add(dirty[i]);
-        }
+        var a = Args();
+        Fill(a, check, step);
+        int r;
+        try { r = Native.MrpNative.WaterStep(a); }
+        finally { Unpin(); }
+        if (r == 0) return false;
+        Apply(a);
         return true;
     }
 
@@ -1645,16 +1624,16 @@ internal static partial class WaterSim
     internal static long VerifySteps, VerifyDiff;
     internal static long VerifySleepViol; // 眠っている升が流れ出すはずだった・浅かった数 (起こし忘れ)
 
-    private static void VerifyStep()
+    private static void VerifyStep(int step)
     {
         int n = _hgt.Length;
         // 前の状態を取っておく
         var hgt0 = (int[])_hgt.Clone(); var flux0 = (int[])_flux.Clone(); var move0 = (int[])_move.Clone();
-        var act0 = (int[])_act.Clone(); var in0 = (byte[])_inList.Clone(); var dirty0 = (bool[])_tileDirty.Clone(); var stir0 = (byte[])_stir.Clone();
+        var act0 = (int[])_act.Clone(); var in0 = (byte[])_inList.Clone(); var dirty0 = (byte[])_tileDirty.Clone(); var stir0 = (byte[])_stir.Clone();
         var fo0 = (int[])_fo.Clone(); var fs0 = (int[])_fs.Clone(); var fallAt0 = (int[])_fallAt.Clone();
         int actN0 = _actN, foN0 = _foN, fsN0 = _fsN, dirtyN0 = DirtyTiles.Count;
         long void0 = VoidTotal, inflow0 = InflowTotal, seaOut0 = SeaOutTotal;
-        if (!StepNative(true)) { StepManaged(false); return; }
+        if (!StepNative(true, step)) { StepManaged(false, step); return; }
         var vHgt = (int[])_hgt.Clone(); var vFlux = (int[])_flux.Clone(); var vMove = (int[])_move.Clone();
         var vAct = (int[])_act.Clone(); var vIn = (byte[])_inList.Clone(); var vStir = (byte[])_stir.Clone();
         var vFo = (int[])_fo.Clone(); var vFs = (int[])_fs.Clone(); var vFallAt = (int[])_fallAt.Clone();
@@ -1667,7 +1646,7 @@ internal static partial class WaterSim
         Array.Copy(fo0, _fo, fo0.Length); Array.Copy(fs0, _fs, fs0.Length); Array.Copy(fallAt0, _fallAt, fallAt0.Length);
         _actN = actN0; _foN = foN0; _fsN = fsN0; VoidTotal = void0; InflowTotal = inflow0; SeaOutTotal = seaOut0;
         DirtyTiles.RemoveRange(dirtyN0, DirtyTiles.Count - dirtyN0);
-        StepManaged(false);
+        StepManaged(false, step);
         VerifySteps++;
         long diff = 0;
         if (nActN != _actN) diff += 1000000;
@@ -2198,9 +2177,13 @@ internal static partial class WaterSim
         return x >= 1 && y >= 1 && x < _w - 1 && y < _h - 1;
     }
 
-    internal static uint Digest()
+    internal static uint Digest() => Digest(_step);
+
+    // step = 刻みの番号 (預けた刻みの後始末では _step がもう次へ進んでいるので、同期で回した時と同じ番号を渡す)
+    private static uint Digest(int step)
     {
-        uint acc = (uint)_step * 2654435761u + (uint)Particles * 40503u + (uint)Flying.Count * 0x27D4EB2Fu;
+        EnsureIdle();
+        uint acc = (uint)step * 2654435761u + (uint)Particles * 40503u + (uint)Flying.Count * 0x27D4EB2Fu;
         foreach (var (due, to, amt) in Flying) acc += (uint)due * 0x9E3779B1u ^ (uint)to * 0x85EBCA77u ^ (uint)amt;
         for (int k = 0; _inList != null && k < _inList.Length; k++)
         {
@@ -2214,6 +2197,7 @@ internal static partial class WaterSim
 
     internal static long Volume()
     {
+        EnsureIdle();
         long v = 0;
         for (int k = 0; _inList != null && k < _inList.Length; k++) if (Counted(k)) v += _hgt[k];
         foreach (var f in Flying) v += f.Amount;
@@ -2223,6 +2207,7 @@ internal static partial class WaterSim
     // その点の水の深さ (Full = 1 単位)
     internal static int DepthAt(Vector2 p)
     {
+        EnsureIdle();
         if (!_ready) return 0;
         int x = (int)MathF.Floor((p.x - _org.x) / _cell), y = (int)MathF.Floor((p.y - _org.y) / _cell);
         if (x < 0 || y < 0 || x >= _w || y >= _h) return 0;
@@ -2233,6 +2218,7 @@ internal static partial class WaterSim
     // その床の奥の縁に低い壁があれば壁の上の縁か、壁の上に盛り上がった水面の高いほう。床が無ければ float.MinValue
     internal static float FrontCut(float x, float y0, float y1)
     {
+        EnsureIdle();
         if (!_ready) return float.MinValue;
         int cx = (int)MathF.Floor((x - _org.x) / _cell);
         if (cx < 0 || cx >= _w) return float.MinValue;
@@ -2296,6 +2282,7 @@ internal static partial class WaterSim
     // 水の升 (x, y) の深さ (Full = 1 単位) と流れの速さ (1/1024 単位/刻み)。整数だけ (物の確定の計算から読む)
     internal static bool FlowCell(int x, int y, out int h, out int vx, out int vy)
     {
+        EnsureIdle();
         h = vx = vy = 0;
         if (!_ready || !_running || x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return false;
         int k = y * _w + x;
@@ -2317,6 +2304,7 @@ internal static partial class WaterSim
     // 堰の式の量をその向きに足す (手すりへ向かう水が縁で止まって見えないように)
     internal static void FlowThrough(int k, out int qx, out int qy)
     {
+        EnsureIdle();
         qx = _flux[k * 4] - _flux[(k + 1) * 4 + 1] + _flux[(k - 1) * 4] - _flux[k * 4 + 1];
         qy = _flux[k * 4 + 2] - _flux[(k + _w) * 4 + 3] + _flux[(k - _w) * 4 + 2] - _flux[k * 4 + 3];
         int fm = _fallMask[k];
@@ -2334,6 +2322,7 @@ internal static partial class WaterSim
 
     internal static float CurrentAt(Vector2 p, out float vx, out float vy)
     {
+        EnsureIdle();
         vx = vy = 0f;
         if (!_ready || !_running) return 0f;
         int x = (int)MathF.Floor((p.x - _org.x) / _cell), y = (int)MathF.Floor((p.y - _org.y) / _cell);
@@ -2373,18 +2362,20 @@ internal static partial class WaterSim
         PollPlatform();
     }
 
-    // 1 刻み進める (TerrainStep から・_step の刻み)
-    internal static void AdvanceOne()
+    // 1 刻み進める (TerrainStep から・_step の刻み)。defer = 小刻みを預けてよい。預けたら偽 (続きは Settle)
+    internal static bool AdvanceOne(bool defer = false)
     {
+        bool deferred = false;
         try
         {
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-            StepOnce();
+            deferred = StepOnce(defer);
             _step++;
             LastStepMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             if (LastStepMs > MaxStepMs) MaxStepMs = LastStepMs;
         }
         catch (Exception e) { Fail("step", e); }
+        return !deferred;
     }
 
     internal static double MaxStepMs { get; private set; }
@@ -2438,6 +2429,7 @@ internal static partial class WaterSim
 
     internal static void Reset()
     {
+        DropDeferred();
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _stir = null; _tileDirty = null;
@@ -2483,6 +2475,8 @@ internal static partial class WaterSim
         TestBridge.Register("water", "[reset | sweep start|check | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
+            // 預けた刻みを終わらせてから (確認用の操作は水の配列を直に読み書きする)
+            TerrainStep.Settle();
             if (a == "reset") Reset();
             if (a.StartsWith("sleep"))
             {
@@ -2504,8 +2498,8 @@ internal static partial class WaterSim
                 var t = ProfTicks;
                 int sleeping = 0;
                 for (int c = 0; _inList != null && c < _inList.Length; c++) if (_inList[c] == 0 && Counted(c)) sleeping++;
-                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()}");
-                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; }
+                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()} | thread async={AsyncSteps} sync={SyncSteps} wait={JoinWaitTicks * k:0.000} early={EarlyJoins}");
+                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; AsyncSteps = SyncSteps = JoinWaitTicks = EarlyJoins = 0; }
                 return;
             }
             if (a.StartsWith("flood"))
@@ -2589,7 +2583,14 @@ internal static partial class WaterSim
                 Array.Clear(ProfTicks); ProfSteps = 0;
                 long b0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 long bact = 0;
-                for (int i = 0; i < bn; i++) { bact += _actN; StepOnce(); _step++; }
+                for (int i = 0; i < bn; i++)
+                {
+                    bact += _actN;
+                    // 作業スレッドを使う時はゲーム中と同じく預けて投げて受け取る
+                    bool deferred = StepOnce(Native.MrpNative.Async);
+                    _step++;
+                    if (deferred) { Kick(); Settle(); }
+                }
                 double bms = (System.Diagnostics.Stopwatch.GetTimestamp() - b0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
                 double pk = 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, bn);
                 reply($"OK water bench steps={bn} digest={Digest():x8} volume={Volume()} active={_actN} avgActive={bact / Math.Max(1, bn)} fell={FellTotal} void={VoidTotal} native={Native.MrpNative.On} zflow={ZFlow} ms/step={bms / Math.Max(1, bn):0.000} sub={ProfTicks[4] * pk:0.000} tidy={ProfTicks[7] * pk:0.000}");
