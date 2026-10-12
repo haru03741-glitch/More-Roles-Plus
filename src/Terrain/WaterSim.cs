@@ -256,6 +256,7 @@ internal static partial class WaterSim
     internal static bool Open(int k) => _open[k] != 0;
     // C++ の部品へ渡す用 (読むだけ)
     internal static byte[] OpenCells => _open;
+    internal static byte[] EdgeCells => _edge;
     internal static short[] FurnCells => _furn;
     internal static int[] HeightCells { get { EnsureIdle(); return _hgt; } }
     internal static bool Ready => _ready;

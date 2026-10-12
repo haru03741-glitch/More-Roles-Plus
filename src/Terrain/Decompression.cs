@@ -1122,6 +1122,17 @@ internal static class Decompression
     internal static int RegionCount => _press.Length;
     internal static int PressOf(int c) => EffPress(c);
 
+    // C++ の部品へ渡す FlowAt の地図 (読むだけ)。範囲ごとの実効の気圧は press へ書く (足りなければ作り直す)。
+    // 升の格子は水と同じ (どちらも SolidMap の升 Sub 個で 1 升)。引いていない時は false
+    internal static bool FlowMaps(out ushort[] dist, out int[] comp, out int[] par, out int w, out int h, ref int[] press)
+    {
+        dist = _dist; comp = _comp; par = _par; w = _w; h = _h;
+        if (!_running || !Pulling || _dist == null || _press == null) return false;
+        if (press == null || press.Length < _press.Length) press = new int[_press.Length];
+        for (int c = 0; c < _press.Length; c++) press[c] = EffPress(c);
+        return true;
+    }
+
     // 道のり → 満タン時の引く強さ (/1024)。Strength と同じ折れ線
     internal static int Strength1024(int d)
     {
