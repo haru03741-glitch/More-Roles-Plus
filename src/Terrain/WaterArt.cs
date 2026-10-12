@@ -203,14 +203,20 @@ internal static class WaterArt
         }
     }
 
+    // くぼみの効き (0 = まだ/もう無い・1 = いちばん深い)
+    private static float CraterAmount(Crater c)
+    {
+        float age = _clock - c.T0, hold = CraterHold;
+        return age < CraterIn ? age / CraterIn : age < hold ? 1f : 1f - (age - hold) / CraterOut;
+    }
+
     // 升の真ん中 (wx, wy) の描く高さに掛ける倍率 (くぼみ = 0 に近い・縁 = 1 を超える)
     private static float CraterScale(float wx, float wy)
     {
-        float k = 1f, hold = CraterHold;
+        float k = 1f;
         foreach (var c in Craters)
         {
-            float age = _clock - c.T0;
-            float amt = age < CraterIn ? age / CraterIn : age < hold ? 1f : 1f - (age - hold) / CraterOut;
+            float amt = CraterAmount(c);
             if (amt <= 0f) continue;
             float dx = wx - c.X, dy = wy - c.Y, d2 = (dx * dx + dy * dy) / (c.R * c.R);
             if (d2 < 1f) k *= 1f - amt * FxMath.Min(1f, CraterDepth * (1f - d2));   // 真ん中 (半径の半分弱) は乾いた床まで (計算の水のくぼみと同じ広さ)
@@ -247,50 +253,11 @@ internal static class WaterArt
         _depth ??= new int[dw * dw];
         _wet ??= new int[dw * dw];
         _closed ??= new bool[rw * rw];
-        bool any = false;
-        bool crater = Craters.Count > 0;
         var fill = EnsureFill();
-        float cs = WaterSim.Cell, ox = WaterSim.Origin.x, oy = WaterSim.Origin.y;
-        float org0x = ox, org0y = oy;
-        for (int y = 0; y < rw; y++)
-        for (int x = 0; x < rw; x++)
-        {
-            int cx = x0 + x - 3, cy = y0 + y - 3;
-            bool inGrid = cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1;
-            int v = inGrid ? WaterSim.ShownDepth(cy * w + cx) : 0;
-            _closed[y * rw + x] = inGrid && !WaterSim.Open(cy * w + cx);
-            // 閉じた升 (壁の際) には、開いた隣が 1 つだけの時にその水を描き込む。壁の中は画素ごとの SolidMap で切るので、
-            // 水が壁の際まで届いて見える。開いた隣が 2 つ以上 (升の中を細い壁が通っている) だと、乾いた側まで水を描いてしまうので描かない
-            if (inGrid && fill != null && fill[cy * w + cx] >= 0 && !WaterSim.Open(cy * w + cx))
-            {
-                // 当たり判定の中でも絵の上では床の所: 近くの水をそのまま描き、縁は床マスク (絵の形) で切る
-                v = WaterSim.ShownDepth(fill[cy * w + cx]);
-                _closed[y * rw + x] = false;
-            }
-            else if (v == 0 && cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1 && !WaterSim.Open(cy * w + cx))
-            {
-                int k = cy * w + cx, open = 0, from = 0;
-                if (WaterSim.Open(k + 1)) { open++; from = k + 1; }
-                if (WaterSim.Open(k - 1)) { open++; from = k - 1; }
-                if (WaterSim.Open(k + w)) { open++; from = k + w; }
-                if (WaterSim.Open(k - w)) { open++; from = k - w; }
-                if (open == 1) v = WaterSim.ShownDepth(from);
-            }
-            if (v > 0 && crater) v = (int)(v * CraterScale(ox + (cx + 0.5f) * cs, oy + (cy + 0.5f) * cs));
-            _raw[y * rw + x] = v;
-            if (v > 0 && x >= 2 && y >= 2 && x < rw - 2 && y < rw - 2) any = true;
-        }
-        for (int y = 0; y < dw; y++)
-        for (int x = 0; x < dw; x++)
-        {
-            int c = (y + 1) * rw + x + 1;
-            int sum = _raw[c] * 4 + (_raw[c - 1] + _raw[c + 1] + _raw[c - rw] + _raw[c + rw]) * 2
-                + _raw[c - rw - 1] + _raw[c - rw + 1] + _raw[c + rw - 1] + _raw[c + rw + 1];
-            _depth[y * dw + x] = sum / 16;
-            int wet = Wet(_raw[c]);
-            if (_closed[c]) wet = Math.Max(wet, WallWet(c, rw));
-            _wet[y * dw + x] = wet;
-        }
+        float cs = WaterSim.Cell, org0x = WaterSim.Origin.x, org0y = WaterSim.Origin.y;
+        bool native = Native.MrpNative.On;
+        bool any = native ? RawNative(x0, y0, fill) : RawCells(x0, y0, fill);
+        if (native && Native.MrpNative.Verify) VerifyRaw(x0, y0, fill, any);
         t.LastDraw = _clock;
         Prof(0);
         int n0 = tc * Px;
@@ -332,7 +299,6 @@ internal static class WaterArt
             t.FurnVersion = _furnVersion;
             t.Furn = FurnitureMask(WaterSim.Origin.x + t.Tx * tc * cell, WaterSim.Origin.y + t.Ty * tc * cell, tc * cell);
         }
-        bool native = Native.MrpNative.On;
         Prof(2);
         DrawPixels(t, x0, y0, n, native);
         if (native && Native.MrpNative.Verify) VerifyPixels(t, x0, y0, n);
@@ -345,6 +311,112 @@ internal static class WaterArt
         if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
         Drawn++;
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    // 描く間の高さ _raw / _closed をタイル + 縁 3 升で写し、ならした深さ _depth と濡れ具合 _wet を作る。タイルの中に水があるか
+    private static bool RawCells(int x0, int y0, int[] fill)
+    {
+        int tc = WaterSim.TileCells, w = WaterSim.W, h = WaterSim.H;
+        int dw = tc + 4, rw = tc + 6;
+        bool any = false;
+        bool crater = Craters.Count > 0;
+        float cs = WaterSim.Cell, ox = WaterSim.Origin.x, oy = WaterSim.Origin.y;
+        for (int y = 0; y < rw; y++)
+        for (int x = 0; x < rw; x++)
+        {
+            int cx = x0 + x - 3, cy = y0 + y - 3;
+            bool inGrid = cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1;
+            int v = inGrid ? WaterSim.ShownDepth(cy * w + cx) : 0;
+            _closed[y * rw + x] = inGrid && !WaterSim.Open(cy * w + cx);
+            // 閉じた升 (壁の際) には、開いた隣が 1 つだけの時にその水を描き込む。壁の中は画素ごとの SolidMap で切るので、
+            // 水が壁の際まで届いて見える。開いた隣が 2 つ以上 (升の中を細い壁が通っている) だと、乾いた側まで水を描いてしまうので描かない
+            if (inGrid && fill != null && fill[cy * w + cx] >= 0 && !WaterSim.Open(cy * w + cx))
+            {
+                // 当たり判定の中でも絵の上では床の所: 近くの水をそのまま描き、縁は床マスク (絵の形) で切る
+                v = WaterSim.ShownDepth(fill[cy * w + cx]);
+                _closed[y * rw + x] = false;
+            }
+            else if (v == 0 && cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1 && !WaterSim.Open(cy * w + cx))
+            {
+                int k = cy * w + cx, open = 0, from = 0;
+                if (WaterSim.Open(k + 1)) { open++; from = k + 1; }
+                if (WaterSim.Open(k - 1)) { open++; from = k - 1; }
+                if (WaterSim.Open(k + w)) { open++; from = k + w; }
+                if (WaterSim.Open(k - w)) { open++; from = k - w; }
+                if (open == 1) v = WaterSim.ShownDepth(from);
+            }
+            if (v > 0 && crater) v = (int)(v * CraterScale(ox + (cx + 0.5f) * cs, oy + (cy + 0.5f) * cs));
+            _raw[y * rw + x] = v;
+            if (v > 0 && x >= 2 && y >= 2 && x < rw - 2 && y < rw - 2) any = true;
+        }
+        for (int y = 0; y < dw; y++)
+        for (int x = 0; x < dw; x++)
+        {
+            int c = (y + 1) * rw + x + 1;
+            int sum = _raw[c] * 4 + (_raw[c - 1] + _raw[c + 1] + _raw[c - rw] + _raw[c + rw]) * 2
+                + _raw[c - rw - 1] + _raw[c - rw + 1] + _raw[c + rw - 1] + _raw[c + rw + 1];
+            _depth[y * dw + x] = sum / 16;
+            int wet = Wet(_raw[c]);
+            if (_closed[c]) wet = Math.Max(wet, WallWet(c, rw));
+            _wet[y * dw + x] = wet;
+        }
+        return any;
+    }
+
+    private static float[] _craterArgs = new float[16];
+    private static unsafe bool RawNative(int x0, int y0, int[] fill)
+    {
+        // くぼみの効きはタイルの間で変わらないので先に出す (効きが 0 以下のくぼみは倍率を変えないので渡さない)
+        int cn = 0;
+        if (_craterArgs.Length < Craters.Count * 4) _craterArgs = new float[Craters.Count * 4];
+        foreach (var c in Craters)
+        {
+            float amt = CraterAmount(c);
+            if (amt <= 0f) continue;
+            _craterArgs[cn * 4] = c.X; _craterArgs[cn * 4 + 1] = c.Y; _craterArgs[cn * 4 + 2] = c.R; _craterArgs[cn * 4 + 3] = amt;
+            cn++;
+        }
+        var org = WaterSim.Origin;
+        fixed (int* hgt = WaterSim.HeightCells) fixed (short* furn = WaterSim.FurnCells) fixed (byte* open = WaterSim.OpenCells)
+        fixed (int* fl = fill) fixed (float* cr = _craterArgs)
+        fixed (int* raw = _raw) fixed (bool* closed = _closed) fixed (int* depth = _depth) fixed (int* wet = _wet)
+        {
+            var a = new RawArgs
+            {
+                Hgt = hgt, Furn = furn, Open = open, Fill = fl,
+                W = WaterSim.W, H = WaterSim.H, X0 = x0, Y0 = y0, Tc = WaterSim.TileCells,
+                Ox = org.x, Oy = org.y, Cs = WaterSim.Cell,
+                Crater = cr, CraterN = cn,
+                Raw = raw, Closed = (byte*)closed, Depth = depth, Wet = wet,
+            };
+            Native.MrpNative.WaterRaw(&a);
+            return a.Any != 0;
+        }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct RawArgs
+    {
+        public int* Hgt; public short* Furn; public byte* Open; public int* Fill;
+        public int W, H, X0, Y0, Tc;
+        public float Ox, Oy, Cs;
+        public float* Crater; public int CraterN;
+        public int* Raw; public byte* Closed; public int* Depth; public int* Wet;
+        public int Any;
+    }
+
+    // C++ の部品の答え合わせ (native verify): 同じ写しを C# でも作って違う升を数える (描くのは C# の結果)
+    internal static long VerifyRaws, VerifyRawDiff;
+    private static int[] _vRaw, _vDepth, _vWet;
+    private static bool[] _vClosed;
+    private static void VerifyRaw(int x0, int y0, int[] fill, bool any)
+    {
+        _vRaw = (int[])_raw.Clone(); _vDepth = (int[])_depth.Clone(); _vWet = (int[])_wet.Clone(); _vClosed = (bool[])_closed.Clone();
+        bool anyCs = RawCells(x0, y0, fill);
+        VerifyRaws++;
+        if (anyCs != any) VerifyRawDiff++;
+        for (int i = 0; i < _raw.Length; i++) if (_raw[i] != _vRaw[i] || _closed[i] != _vClosed[i]) VerifyRawDiff++;
+        for (int i = 0; i < _depth.Length; i++) if (_depth[i] != _vDepth[i] || _wet[i] != _vWet[i]) VerifyRawDiff++;
     }
 
     // C++ の部品の答え合わせ (native verify): 同じタイルを C# でも作って画素の違いを数える
