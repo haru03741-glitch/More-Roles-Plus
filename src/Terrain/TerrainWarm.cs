@@ -17,19 +17,19 @@ internal static class TerrainWarm
     private static List<RuntimeMethodHandle> _list;
     private static int _at;
     private static readonly Stopwatch Clock = new();
-    private static readonly double[] StageMs = new double[12];
+    private static readonly double[] StageMs = new double[13];
     private static int _methods;
     private static double _maxTick;
 
     public static string Report =>
-        $"stage={_stage} jit={StageMs[0]:F1}ms ({_methods} methods, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1} props={StageMs[6]:F1} breakables={StageMs[7]:F1} decompfx={StageMs[8]:F1} water={StageMs[9]:F1} edges={StageMs[10]:F1} gc={StageMs[11]:F1}";
+        $"stage={_stage} jit={StageMs[0]:F1}ms ({_methods} methods, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1} props={StageMs[6]:F1} breakables={StageMs[7]:F1} decompfx={StageMs[8]:F1} water={StageMs[9]:F1} edges={StageMs[10]:F1} floor={StageMs[11]:F1} gc={StageMs[12]:F1}";
 
     public static void Tick()
     {
         var ship = ShipStatus.Instance;
         if (!ship) return;
         if (_ship != ship) { _ship = ship; _stage = 0; _at = 0; _methods = 0; _maxTick = 0; Array.Clear(StageMs, 0, StageMs.Length); }
-        if (_stage >= 12 || !Fx.MrpBundle.Ready) return;
+        if (_stage >= 13 || !Fx.MrpBundle.Ready) return;
 
         Clock.Restart();
         try
@@ -54,15 +54,16 @@ internal static class TerrainWarm
                 case 8: DecompFx.Warm(); break;
                 case 9: WaterSim.Warm(); break;
                 case 10: WaterSim.WarmEdges(); break;
+                case 11: _ = FloorMask.Active; break; // 水の床の形 (最初の水のタイルを描く時に読むと端末で 50ms 級)
                 // 準備で出たごみを今まとめて回収し、最初の破壊や水の作り直しの途中で全体の回収が走らないようにする
-                case 11: GC.Collect(); break;
+                case 12: GC.Collect(); break;
             }
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"[TerrainWarm] stage {_stage}: {e.Message}"); }
         StageMs[_stage] += Clock.Elapsed.TotalMilliseconds;
         _maxTick = Math.Max(_maxTick, Clock.Elapsed.TotalMilliseconds);
         _stage++;
-        if (_stage == 12) Plugin.Logger.LogInfo($"[TerrainWarm] {Report}");
+        if (_stage == 13) Plugin.Logger.LogInfo($"[TerrainWarm] {Report}");
     }
 
     // 地形のメソッドを先にコンパイルする (1 回に TickBudgetMs まで・メソッド単位)。全部終わったら true

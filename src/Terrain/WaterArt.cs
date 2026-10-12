@@ -108,7 +108,15 @@ internal static class WaterArt
     {
         if (!WaterSim.Ready) { if (Tiles.Count > 0) Clear(); _lastMs = 0; return; }
         if (!MrpBundle.WaterMaterial) return;
+        bool spike = TerrainStep.SpikeMs > 0;
+        long s0 = spike ? System.Diagnostics.Stopwatch.GetTimestamp() : 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+        long e0 = EnsureTicks, f0 = FurnTicks, c0 = FaceTicks;
+        Span<long> ep0 = stackalloc long[9];
+        for (int q = 0; q < 9; q++) ep0[q] = EnsureParts[q];
+        Span<long> pt0 = stackalloc long[6];
+        for (int q = 0; q < 6; q++) pt0[q] = ProfTicks[q];
         FinishJobs();
+        if (spike) s1 = System.Diagnostics.Stopwatch.GetTimestamp();
         long now = Environment.TickCount64;
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.1f, (now - _lastMs) / 1000f);
         _lastMs = now;
@@ -116,7 +124,9 @@ internal static class WaterArt
 
         if (Craters.Count > 0) TickCraters();
         if (Tiles.Count > 0) ShadowView.Check(now);
+        if (spike) s2 = System.Diagnostics.Stopwatch.GetTimestamp();
         RemakeQueuedFloors();
+        if (spike) s3 = System.Diagnostics.Stopwatch.GetTimestamp();
         var dirty = WaterSim.DirtyTiles;
         if (dirty.Count > 0)
         {
@@ -130,6 +140,7 @@ internal static class WaterArt
             }
             dirty.Clear();
         }
+        if (spike) s4 = System.Diagnostics.Stopwatch.GetTimestamp();
         int drawn = 0;
         bool created = false;
         for (int i = 0; i < Waiting.Count && drawn < TilesPerFrame; i++)
@@ -144,7 +155,17 @@ internal static class WaterArt
             else Draw(tile);
             drawn++;
         }
+        if (spike)
+        {
+            long s5 = System.Diagnostics.Stopwatch.GetTimestamp();
+            double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if ((s5 - s0) * k >= TerrainStep.SpikeMs)
+                Bridge.TestBridge.Log($"artspike {(s5 - s0) * k:0.00}ms finish={(s1 - s0) * k:0.00} pre={(s2 - s1) * k:0.00} remake={(s3 - s2) * k:0.00} dirty={(s4 - s3) * k:0.00} draw={(s5 - s4) * k:0.00} (n={drawn} new={(created ? 1 : 0)} ensure={(EnsureTicks - e0) * k:0.00} furn={(FurnTicks - f0) * k:0.00} face={(FaceTicks - c0) * k:0.00}) tiles={Tiles.Count} waiting={Waiting.Count} ep[vent,tex,flow,z,shadow,front]={(EnsureParts[0] - ep0[0]) * k:0.00},{(EnsureParts[1] - ep0[1]) * k:0.00},{(EnsureParts[2] - ep0[2]) * k:0.00},{(EnsureParts[3] - ep0[3]) * k:0.00},{(EnsureParts[4] - ep0[4]) * k:0.00},{(EnsureParts[5] - ep0[5]) * k:0.00} mf[props,fill,tex]={(EnsureParts[6] - ep0[6]) * k:0.00},{(EnsureParts[7] - ep0[7]) * k:0.00},{(EnsureParts[8] - ep0[8]) * k:0.00} p[raw,face,prep,pix,up,flow]={(ProfTicks[0] - pt0[0]) * k:0.00},{(ProfTicks[1] - pt0[1]) * k:0.00},{(ProfTicks[2] - pt0[2]) * k:0.00},{(ProfTicks[3] - pt0[3]) * k:0.00},{(ProfTicks[4] - pt0[4]) * k:0.00},{(ProfTicks[5] - pt0[5]) * k:0.00}");
+        }
     }
+
+    // 重かったフレームの内訳 (water spikes): タイルの部品作り・家具の型抜き・壁の面の高さ
+    internal static long EnsureTicks, FurnTicks, FaceTicks;
 
     // 確認用 (water sweep)。描き待ちのタイルの数
     internal static int ReviewPending => Waiting.Count;
@@ -314,6 +335,7 @@ internal static class WaterArt
         }
         if (!t.FaceDone)
         {
+            long ft = System.Diagnostics.Stopwatch.GetTimestamp();
             t.FaceDone = true;
             t.Face = null;
             var face = new byte[n0 * n0];
@@ -322,6 +344,7 @@ internal static class WaterArt
             if (!got) Array.Fill(face, (byte)255);
             got |= WaterHeight.StampFace(face, n0, fx, fy, fs);
             if (got) { WaterHeight.CutHoles(face, n0, fx, fy, fs); t.Face = face; }
+            FaceTicks += System.Diagnostics.Stopwatch.GetTimestamp() - ft;
         }
     }
 
@@ -338,7 +361,9 @@ internal static class WaterArt
         if (!t.FloorOn && t.FurnVersion != _furnVersion)
         {
             t.FurnVersion = _furnVersion;
+            long ft = System.Diagnostics.Stopwatch.GetTimestamp();
             t.Furn = FurnitureMask(WaterSim.Origin.x + t.Tx * tc * cell, WaterSim.Origin.y + t.Ty * tc * cell, tc * cell);
+            FurnTicks += System.Diagnostics.Stopwatch.GetTimestamp() - ft;
         }
     }
 
@@ -1150,7 +1175,10 @@ internal static class WaterArt
         if (!t.Shadow) return;
         if (t.Front) { UnityEngine.Object.Destroy(t.Front); t.Front = null; }
         FrontSrs.Clear();
+        long q0 = System.Diagnostics.Stopwatch.GetTimestamp();
         PropSim.FrontSprites(Rect.MinMaxRect(wx, wy, wx + size, wy + size), t.Z, FrontSrs);
+        long q1 = System.Diagnostics.Stopwatch.GetTimestamp();
+        EnsureParts[6] += q1 - q0;
         if (FrontSrs.Count > 0)
         {
             int m = (int)MathF.Round(size * FrontPpu);
@@ -1158,37 +1186,78 @@ internal static class WaterArt
             float k = m / size;
             bool any = false;
             foreach (var sr in FrontSrs) any |= FillSprite(sr, wx, wy, k, m, buf);
+            long q2 = System.Diagnostics.Stopwatch.GetTimestamp();
+            EnsureParts[7] += q2 - q1;
+            q1 = q2;
             if (any)
             {
                 t.Front = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFront", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
                 fixed (byte* b = buf) t.Front.LoadRawTextureData((IntPtr)b, buf.Length);
                 t.Front.Apply(false, true);
             }
+            EnsureParts[8] += System.Diagnostics.Stopwatch.GetTimestamp() - q1;
             FrontSrs.Clear();
         }
         ApplyShadow(t);
     }
 
-    // 絵の網目の三角形を、画素の真ん中が入る所だけ 255 で塗る (k = 1 単位の画素数)
-    private static bool FillSprite(SpriteRenderer sr, float wx, float wy, float k, int m, byte[] buf)
+    // 絵の網目の三角形を、画素の真ん中が入る所だけ 255 で塗る (k = 1 単位の画素数)。塗るのは C++
+    private static float[] _fpx = new float[64], _fpy = new float[64];
+    private static ushort[] _ftri = new ushort[192];
+    internal static long VerifyFronts, VerifyFrontDiff;
+
+    private static unsafe bool FillSprite(SpriteRenderer sr, float wx, float wy, float k, int m, byte[] buf)
     {
         var sp = sr.sprite;
         var v = sp.vertices;
         var tri = sp.triangles;
         var mx = sr.transform.localToWorldMatrix;
         float fx = sr.flipX ? -1f : 1f, fy = sr.flipY ? -1f : 1f;
-        int nv = v.Length;
-        var px = new float[nv];
-        var py = new float[nv];
+        int nv = v.Length, nt = tri.Length;
+        if (_fpx.Length < nv) { _fpx = new float[nv]; _fpy = new float[nv]; }
+        if (_ftri.Length < nt) _ftri = new ushort[nt];
         for (int i = 0; i < nv; i++)
         {
             var q = v[i];
             float lx = q.x * fx, ly = q.y * fy;
-            px[i] = (mx.m00 * lx + mx.m01 * ly + mx.m03 - wx) * k - 0.5f;
-            py[i] = (mx.m10 * lx + mx.m11 * ly + mx.m13 - wy) * k - 0.5f;
+            _fpx[i] = (mx.m00 * lx + mx.m01 * ly + mx.m03 - wx) * k - 0.5f;
+            _fpy[i] = (mx.m10 * lx + mx.m11 * ly + mx.m13 - wy) * k - 0.5f;
         }
+        for (int i = 0; i < nt; i++) _ftri[i] = tri[i];
+        byte[] check = Native.MrpNative.Verify ? (byte[])buf.Clone() : null;
+        bool any;
+        fixed (float* pxp = _fpx) fixed (float* pyp = _fpy) fixed (ushort* tp = _ftri) fixed (byte* bp = buf)
+        {
+            var a = new FrontFillArgs { Px = pxp, Py = pyp, Tri = tp, TriN = nt, M = m, Buf = bp };
+            Native.MrpNative.FrontFill(&a);
+            any = a.Any != 0;
+        }
+        if (check != null)
+        {
+            bool anyCs = FillTrisCs(_fpx, _fpy, _ftri, nt, m, check);
+            long diff = anyCs != any ? 1 : 0;
+            for (int i = 0; i < buf.Length; i++) if (buf[i] != check[i]) diff++;
+            VerifyFronts++;
+            VerifyFrontDiff += diff;
+        }
+        return any;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct FrontFillArgs
+    {
+        public float* Px, Py;
+        public ushort* Tri; public int TriN;
+        public int M;
+        public byte* Buf;
+        public int Any;
+    }
+
+    // C# 版 (照合用)
+    private static bool FillTrisCs(float[] px, float[] py, ushort[] tri, int nt, int m, byte[] buf)
+    {
         bool any = false;
-        for (int n = 0; n + 2 < tri.Length; n += 3)
+        for (int n = 0; n + 2 < nt; n += 3)
         {
             int a = tri[n], b = tri[n + 1], c = tri[n + 2];
             float ax = px[a], ay = py[a], bx = px[b], by = py[b], cx = px[c], cy = py[c];
@@ -1244,7 +1313,20 @@ internal static class WaterArt
     private static unsafe void Ensure(Tile t)
     {
         if (t.Go) return;
+        long et = System.Diagnostics.Stopwatch.GetTimestamp();
+        try { EnsureCore(t); }
+        finally { EnsureTicks += System.Diagnostics.Stopwatch.GetTimestamp() - et; }
+    }
+
+    internal static readonly long[] EnsureParts = new long[9];
+    private static long _epT;
+    private static void EP(int i) { long n = System.Diagnostics.Stopwatch.GetTimestamp(); EnsureParts[i] += n - _epT; _epT = n; }
+
+    private static unsafe void EnsureCore(Tile t)
+    {
+        _epT = System.Diagnostics.Stopwatch.GetTimestamp();
         SinkVents();
+        EP(0);
         int tc = WaterSim.TileCells, n = tc * Px;
         float cell = WaterSim.Cell;
         var org = WaterSim.Origin;
@@ -1256,6 +1338,7 @@ internal static class WaterArt
         t.Sr = t.Go.AddComponent<SpriteRenderer>();
         t.Sr.sprite = t.Sp;
         t.Sr.sharedMaterial = MrpBundle.WaterMaterial;
+        EP(1);
         // 流れの絵は升 1 つ = 1 画素 (画素の真ん中 = 升の真ん中) で、周りに隣のタイルの升を 1 列ずつ持つ (継ぎ目で流れがつながり、筋が切れない)。
         // 最初は流れ無し (128)
         int fn = tc + 2;
@@ -1264,6 +1347,7 @@ internal static class WaterArt
         t.Flow = new Texture2D(fn, fn, TextureFormat.RGBA32, false) { name = "MrpWaterFlow", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         fixed (byte* fb = t.FlowPx) t.Flow.LoadRawTextureData((IntPtr)fb, t.FlowPx.Length);
         t.Flow.Apply(false, false);
+        EP(2);
         float wx = org.x + t.Tx * tc * cell, wy = org.y + t.Ty * tc * cell;
         // タイルは部屋の境をまたぐので、4 隅と真ん中で部屋の絵を引いて一番手前より前に置く
         // (真ん中だけだと、隣の部屋の絵のほうが手前の所で水がその下に隠れて四角く欠けた)
@@ -1278,12 +1362,15 @@ internal static class WaterArt
         }
         // 動く床 (昇降機の台) は部屋の絵より手前にあるので、台に載った水が台の下に隠れないよう台より手前へ
         front = WaterSim.PlatformFront(wx, wy, size, front);
+        EP(3);
         float zs = DamageMap.ZScale(front);
         // 床の上・足跡 (−0.001) と波紋より奥
         t.Z = front - 0.0004f * zs;
         t.Go.transform.position = FxMath.V3(wx, wy, t.Z);
         t.Shadow = ShadowView.Copy(t.Go, t.Sp, ShadowView.Water, FxMath.Rgba(1f, 1f, 1f, 1f), -0.002f); // 火の写しより奥
+        EP(4);
         MakeFront(t, wx, wy, size);
+        EP(5);
         if (FloorMask.Active)
         {
             // 床マスクがあれば水の縁は部屋の絵の床の画素で切る (家具の型抜きも要らない)
