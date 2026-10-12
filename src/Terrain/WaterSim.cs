@@ -400,6 +400,7 @@ internal static partial class WaterSim
     private static bool EnsureGrid()
     {
         if (_ready) return true;
+        if (!Native.MrpNative.Loaded) return false; // 水の計算は C++ の部品が前提 (無い人はメニューで知らせる)
         if (!SolidMap.Ensure() || !SolidMap.Valid) return false;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _w = SolidMap.W / Sub;
@@ -2306,6 +2307,9 @@ internal static partial class WaterSim
         return n;
     }
 
+    // 水の網が作れない理由 (確認口の返事用)
+    private static string NoGrid() => Native.MrpNative.Loaded ? "no map" : $"no native ({Native.MrpNative.Status})";
+
     internal static void Reset()
     {
         _ready = false;
@@ -2382,7 +2386,7 @@ internal static partial class WaterSim
             {
                 int depth = a.Length > 5 && int.TryParse(a.Substring(5).Trim(), out int dd) ? dd : Full / 4;
                 int n = Flood(depth);
-                reply(n < 0 ? "ERR water flood: no map" : $"OK water flood cells={n} depth={depth}");
+                reply(n < 0 ? $"ERR water flood: {NoGrid()}" : $"OK water flood cells={n} depth={depth}");
                 return;
             }
             if (a.StartsWith("flow"))
@@ -2438,7 +2442,7 @@ internal static partial class WaterSim
                     || !float.TryParse(q[2], System.Globalization.NumberStyles.Float, ic, out float pr)) { reply("ERR water pour x y r [depth]"); return; }
                 int pd = q.Length > 3 && int.TryParse(q[3], out int dd2) ? dd2 : Full / 4;
                 int pn = Pour(px, py, pr, pd);
-                reply(pn < 0 ? "ERR water pour: no map" : $"OK water pour cells={pn} depth={pd}");
+                reply(pn < 0 ? $"ERR water pour: {NoGrid()}" : $"OK water pour cells={pn} depth={pd}");
                 return;
             }
             if (a.StartsWith("bench"))
@@ -2454,7 +2458,7 @@ internal static partial class WaterSim
                 bool bz = ZFlow;
                 Reset();
                 ZFlow = bz;
-                if (Pour(bx, by, br, bd) < 0) { reply("ERR water bench: no map"); return; }
+                if (Pour(bx, by, br, bd) < 0) { reply($"ERR water bench: {NoGrid()}"); return; }
                 _step = 0;
                 Array.Clear(ProfTicks); ProfSteps = 0;
                 long b0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -2568,7 +2572,7 @@ internal static partial class WaterSim
             }
             if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return; }
             if (!_ready) { reply($"OK water off {GameClock.Describe()}"); return; }
-            reply($"OK water step={_step} target={GameClock.Now - Delay} late={Late} latePlatform={LatePlatform} platform={(_plat ? _pfOff : -1)}/{PlatLog.Count} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} inflows={Inflows.Count} inflowed={InflowTotal} gushes={Gushes} particles={Particles} active={_actN} volume={Volume()} spilled={SpilledTotal} fell={FellTotal} void={VoidTotal} flying={Flying.Count} links={FallTo.Count} doors={System.Numerics.BitOperations.PopCount(_doorBits)}/{_doorUnder?.Length ?? 0} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
+            reply($"OK water native={Native.MrpNative.Loaded} step={_step} target={GameClock.Now - Delay} late={Late} latePlatform={LatePlatform} platform={(_plat ? _pfOff : -1)}/{PlatLog.Count} shocks={Shocks} splashes={Splashes} queue={Queue.Count} sources={Sources.Count} inflows={Inflows.Count} inflowed={InflowTotal} gushes={Gushes} particles={Particles} active={_actN} volume={Volume()} spilled={SpilledTotal} fell={FellTotal} void={VoidTotal} flying={Flying.Count} links={FallTo.Count} doors={System.Numerics.BitOperations.PopCount(_doorBits)}/{_doorUnder?.Length ?? 0} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} grid={_w}x{_h} {GameClock.Describe()}");
         });
     }
 }

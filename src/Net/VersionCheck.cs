@@ -14,6 +14,7 @@ internal static class VersionCheck
     // clientId → 同じ版か
     private static readonly Dictionary<int, bool> Seen = new();
     private static readonly Dictionary<int, string> SeenVersion = new();
+    private static readonly Dictionary<int, int> SeenAbi = new();
 
     // 自分のキャラが出た合図から少し待って送る (Start はコルーチンで、合図の時点ではまだ送れないことがある)
     private static bool _helloPending;
@@ -39,10 +40,12 @@ internal static class VersionCheck
 
     public static void SendHello()
     {
-        Plugin.Logger.LogInfo($"hello -> host: {Plugin.Version} fp={Registry.Fingerprint:X8}");
+        int abi = NativeAbi();
+        Plugin.Logger.LogInfo($"hello -> host: {Plugin.Version} fp={Registry.Fingerprint:X8} abi={abi}");
         var w = Rpc.Start(Rpc.Hello);
         w.Write(Plugin.Version);
         w.Write(Registry.Fingerprint);
+        w.Write(abi);
         Rpc.Finish(w);
     }
 
@@ -50,13 +53,18 @@ internal static class VersionCheck
     {
         string version = r.ReadString();
         uint fp = r.ReadUInt32();
+        int abi = r.BytesRemaining >= 4 ? r.ReadInt32() : -1; // 古い版は送ってこない
         if (!AmongUsClient.Instance.AmHost) return;
-        bool same = version == Plugin.Version && fp == Registry.Fingerprint;
+        bool same = version == Plugin.Version && fp == Registry.Fingerprint && abi == Native.MrpNative.Abi;
         Seen[sender.OwnerId] = same;
         SeenVersion[sender.OwnerId] = version;
-        Plugin.Logger.LogInfo($"hello from client {sender.OwnerId}: {version} fp={fp:X8} same={same}");
+        SeenAbi[sender.OwnerId] = abi;
+        Plugin.Logger.LogInfo($"hello from client {sender.OwnerId}: {version} fp={fp:X8} abi={abi} same={same}");
         if (same) OptionSync.SendAll(sender.OwnerId);
     }
+
+    // 自分の C++ の部品の版 (読めなければ 0)。水の計算は部品が前提なので全員そろわないと始めない
+    private static int NativeAbi() => Native.MrpNative.Loaded ? Native.MrpNative.Abi : 0;
 
     public static bool IsSame(int clientId) => Seen.TryGetValue(clientId, out bool s) && s;
 
@@ -65,24 +73,30 @@ internal static class VersionCheck
     {
         Seen.Clear();
         SeenVersion.Clear();
+        SeenAbi.Clear();
         _helloSentFor = System.IntPtr.Zero;
     }
 
-    public static void ForgetClient(int clientId) { Seen.Remove(clientId); SeenVersion.Remove(clientId); }
+    public static void ForgetClient(int clientId) { Seen.Remove(clientId); SeenVersion.Remove(clientId); SeenAbi.Remove(clientId); }
 
     // 始められない人の一覧 (空なら始めてよい)
     public static List<string> Blockers()
     {
         var list = new List<string>();
+        if (NativeAbi() != Native.MrpNative.Abi)
+            list.Add(new Text("自分 (C++ の部品が読めない)", "you (native module missing)"));
         int host = AmongUsClient.Instance.HostId;
         foreach (var p in PlayerControl.AllPlayerControls)
         {
             if (!p || p.OwnerId == host || p.notRealPlayer || p.isDummy) continue; // ダミーはホストの端末で動く
             if (IsSame(p.OwnerId)) continue;
             string name = p.Data != null ? p.Data.PlayerName : $"#{p.PlayerId}";
-            list.Add(SeenVersion.TryGetValue(p.OwnerId, out string v)
-                ? new Text($"{name} (版が違う: {v})", $"{name} (different version: {v})")
-                : new Text($"{name} (MRP が入っていない)", $"{name} (no MRP)"));
+            if (!SeenVersion.TryGetValue(p.OwnerId, out string v))
+                list.Add(new Text($"{name} (MRP が入っていない)", $"{name} (no MRP)"));
+            else if (v == Plugin.Version && SeenAbi.TryGetValue(p.OwnerId, out int abi) && abi != Native.MrpNative.Abi)
+                list.Add(new Text($"{name} (C++ の部品が読めない)", $"{name} (native module missing)"));
+            else
+                list.Add(new Text($"{name} (版が違う: {v})", $"{name} (different version: {v})"));
         }
         return list;
     }
