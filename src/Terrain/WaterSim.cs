@@ -1033,7 +1033,26 @@ internal static partial class WaterSim
         if (!ship) return;
         foreach (var r in ship.AllRooms)
             if (r && r.roomArea) { _ = r.roomArea.OverlapPoint(Vector2.zero); break; }
-        _ = Physics2D.CircleCastAll(Vector2.zero, 0.01f, Vector2.right, 0.1f, ShadowMask).Length;
+        if (!_ready)
+        {
+            FallTo[-1] = (0, 0); FallTo.Remove(-1);
+            StepTo[-1] = 0; StepTo.Remove(-1);
+        }
+    }
+
+    // 縁の柵の地図を読み、影の線の判定 (段の影の線か・屋外か) を船を横切る 1 本で通しておく (Warm の次のフレーム)
+    internal static void WarmEdges()
+    {
+        if (!ShipStatus.Instance) return;
+        WaterBarrier.Ensure();
+        foreach (var h in Physics2D.CircleCastAll(new Vector2(-50f, 0f), 0.01f, Vector2.right, 100f, ShadowMask))
+        {
+            var c = h.collider;
+            if (!c || IsLedge(c) || OutsideShadow.ContainsKey(c.GetInstanceID())) continue;
+            bool outside = false;
+            for (var t = c.transform; t && !outside; t = t.parent) outside = t.name == "Outside";
+            OutsideShadow[c.GetInstanceID()] = outside;
+        }
     }
 
     // はしごの通り道 (x0, y0, x1, y1)。はしごの上の床の切れ目の脇の升は横向きの縁になるが、そこから横へ落とすと

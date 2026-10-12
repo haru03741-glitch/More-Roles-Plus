@@ -32,7 +32,7 @@ internal static class WaterBarrier
         }
     }
 
-    private static void Ensure()
+    internal static void Ensure()
     {
         int gen = GameClock.ShipGen;
         if (gen == _gen) return;
