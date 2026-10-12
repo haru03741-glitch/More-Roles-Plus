@@ -116,10 +116,46 @@ internal static class FloorMask
     internal const byte FaceTop = 253, FaceFloor = 254;
     private const float FaceMax = FaceTop / FaceUnit;
 
-    internal static bool FaceHeights(float x, float y, float size, int n, byte[] into)
+    // 答え合わせ (native verify): 面の高さを C# でも作って比べる
+    internal static long VerifyFaces, VerifyFaceDiff;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct FaceArgs
+    {
+        public byte* Bits; public byte* Face; public int W, H;
+        public float Ox, Oy, Ppu;
+        public float X, Y, Size; public int N;
+        public byte* Into;
+        public int Any;
+    }
+
+    // C++ (FaceHeightsCs と同じ結果)
+    internal static unsafe bool FaceHeights(float x, float y, float size, int n, byte[] into)
     {
         Ensure();
         if (_bits == null) return false;
+        bool any;
+        fixed (byte* b = _bits) fixed (byte* f = _face) fixed (byte* o = into)
+        {
+            var a = new FaceArgs { Bits = b, Face = f, W = _w, H = _h, Ox = _ox, Oy = _oy, Ppu = _ppu, X = x, Y = y, Size = size, N = n, Into = o };
+            Native.MrpNative.FaceHeights(&a);
+            any = a.Any != 0;
+        }
+        if (Native.MrpNative.Verify)
+        {
+            var cs = new byte[into.Length];
+            bool csAny = FaceHeightsCs(x, y, size, n, cs);
+            long diff = csAny != any ? 1000000 : 0;
+            for (int i = 0; i < n * n; i++) if (cs[i] != into[i]) diff++;
+            VerifyFaces++;
+            VerifyFaceDiff += diff;
+        }
+        return any;
+    }
+
+    // C# 版 (照合用)
+    private static bool FaceHeightsCs(float x, float y, float size, int n, byte[] into)
+    {
         float step = size / (n - 1);
         int scan = (int)(FaceMax * _ppu) + 1;
         int top = (int)((y + size - _oy) * _ppu);
@@ -488,8 +524,8 @@ internal static class FloorMask
             }
             if (a.Length > 0 && a[0] == "verify")
             {
-                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterArt.VerifyRaws = WaterArt.VerifyRawDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; DamageMap.VerifyStamps = DamageMap.VerifyStampDiff = 0; WaterSim.VerifyRays = WaterSim.VerifyRayDiff = 0; WaterSim.VerifyCells = WaterSim.VerifyCellDiff = 0; WaterSim.VerifyScans = WaterSim.VerifyScanDiff = 0; HullThroat.VerifyClips = HullThroat.VerifyClipDiff = 0; FoamArt.VerifyDraws = FoamArt.VerifyDrawDiff = 0; Decompression.VerifyBuilds = Decompression.VerifyDiff = 0; FloorFlood.VerifyFills = FloorFlood.VerifyDiff = 0; VerifyPatches = VerifyPatchDiff = 0; WaterArt.VerifyFills = WaterArt.VerifyFillDiff = 0; FurnitureLift.VerifyShapes = FurnitureLift.VerifyShapeDiff = 0; }
-                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} raws={WaterArt.VerifyRaws} rawDiff={WaterArt.VerifyRawDiff} simSteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} sleepViol={WaterSim.VerifySleepViol} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff} carves={SolidMap.VerifyCarves} carveDiff={SolidMap.VerifyCarveDiff} pieces={BreakPieces.VerifySpawns} pieceDiff={BreakPieces.VerifyDiff} rays={WaterSim.VerifyRays} rayDiff={WaterSim.VerifyRayDiff} cells={WaterSim.VerifyCells} cellDiff={WaterSim.VerifyCellDiff} scans={WaterSim.VerifyScans} scanDiff={WaterSim.VerifyScanDiff} clips={HullThroat.VerifyClips} clipDiff={HullThroat.VerifyClipDiff} foams={FoamArt.VerifyDraws} foamDiff={FoamArt.VerifyDrawDiff} decomps={Decompression.VerifyBuilds} decompDiff={Decompression.VerifyDiff} fills={FloorFlood.VerifyFills} fillDiff={FloorFlood.VerifyDiff} patches={VerifyPatches} patchDiff={VerifyPatchDiff} shapes={FurnitureLift.VerifyShapes} shapeDiff={FurnitureLift.VerifyShapeDiff} artFills={WaterArt.VerifyFills} artFillDiff={WaterArt.VerifyFillDiff}");
+                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterArt.VerifyRaws = WaterArt.VerifyRawDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; DamageMap.VerifyStamps = DamageMap.VerifyStampDiff = 0; WaterSim.VerifyRays = WaterSim.VerifyRayDiff = 0; WaterSim.VerifyCells = WaterSim.VerifyCellDiff = 0; WaterSim.VerifyScans = WaterSim.VerifyScanDiff = 0; HullThroat.VerifyClips = HullThroat.VerifyClipDiff = 0; FoamArt.VerifyDraws = FoamArt.VerifyDrawDiff = 0; Decompression.VerifyBuilds = Decompression.VerifyDiff = 0; FloorFlood.VerifyFills = FloorFlood.VerifyDiff = 0; VerifyPatches = VerifyPatchDiff = 0; VerifyFaces = VerifyFaceDiff = 0; WaterHeight.VerifyHoles = WaterHeight.VerifyHoleDiff = 0; WaterArt.VerifyFills = WaterArt.VerifyFillDiff = 0; FurnitureLift.VerifyShapes = FurnitureLift.VerifyShapeDiff = 0; }
+                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} raws={WaterArt.VerifyRaws} rawDiff={WaterArt.VerifyRawDiff} simSteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} sleepViol={WaterSim.VerifySleepViol} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff} carves={SolidMap.VerifyCarves} carveDiff={SolidMap.VerifyCarveDiff} pieces={BreakPieces.VerifySpawns} pieceDiff={BreakPieces.VerifyDiff} rays={WaterSim.VerifyRays} rayDiff={WaterSim.VerifyRayDiff} cells={WaterSim.VerifyCells} cellDiff={WaterSim.VerifyCellDiff} scans={WaterSim.VerifyScans} scanDiff={WaterSim.VerifyScanDiff} clips={HullThroat.VerifyClips} clipDiff={HullThroat.VerifyClipDiff} foams={FoamArt.VerifyDraws} foamDiff={FoamArt.VerifyDrawDiff} decomps={Decompression.VerifyBuilds} decompDiff={Decompression.VerifyDiff} fills={FloorFlood.VerifyFills} fillDiff={FloorFlood.VerifyDiff} patches={VerifyPatches} patchDiff={VerifyPatchDiff} shapes={FurnitureLift.VerifyShapes} shapeDiff={FurnitureLift.VerifyShapeDiff} artFills={WaterArt.VerifyFills} artFillDiff={WaterArt.VerifyFillDiff} faces={VerifyFaces} faceDiff={VerifyFaceDiff} holes={WaterHeight.VerifyHoles} holeDiff={WaterHeight.VerifyHoleDiff}");
                 return;
             }
             if (a.Length == 0 || a[0] != "check") { reply($"OK native on={on} {Native.MrpNative.Status}"); return; }
