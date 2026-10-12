@@ -417,12 +417,16 @@ internal static class TerrainDamage
 
     private static void SkyMouth()
     {
-        for (int i = 0; i < LastMouths.Count; i++)
+        try
         {
-            var (p, q) = LastMouths[i];
-            WallBody.BuildMouth(p, q);
-            HullThroat.Open(p, q, LastMouthAway[i]); // 口の奥の船体の絵を宇宙 (エアシップは空) まで抜く
+            for (int i = 0; i < LastMouths.Count; i++)
+            {
+                var (p, q) = LastMouths[i];
+                WallBody.BuildMouth(p, q);
+                HullThroat.Open(p, q, LastMouthAway[i]); // 口の奥の船体の絵を宇宙 (エアシップは空) まで抜く
+            }
         }
+        finally { HullThroat.Flush(); } // 途中の口で落ちても、それまでに切った分は絵に出す
     }
 
     // 切った外壁の区間の端から口の線を決める (LastMouths・LastBreach・LastAway)。切る前に呼ぶ (地図は切っても変わらない)

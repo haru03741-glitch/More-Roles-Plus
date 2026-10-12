@@ -42,6 +42,7 @@ internal static class HullThroat
         public int[] T = Array.Empty<int>();
         public int TN;
         public bool HasUv;
+        public bool Dirty; // 切ったがまだメッシュへ書いていない
 
         public void EnsureVerts(int n)
         {
@@ -74,6 +75,33 @@ internal static class HullThroat
             _failed = true;
             Plugin.Logger.LogError($"[HullThroat] open: {e}");
             // 切り抜きの途中で落ちたら元の船体の絵に戻す (船体が消えたままにしない)
+            foreach (var c in Cuts)
+            {
+                if (c.Go) c.Go.SetActive(false);
+                if (c.Src) c.Src.enabled = true;
+            }
+        }
+    }
+
+    // 開けた喉をメッシュへ書く。1 回の爆発で口がいくつできても、書くのは最後に 1 回だけ
+    internal static void Flush()
+    {
+        if (GameClock.ShipGen != _shipGen || _failed) return;
+        try
+        {
+            foreach (var c in Cuts)
+            {
+                if (!c.Dirty) continue;
+                Upload(c);
+                c.Dirty = false;
+            }
+            // 切り抜いた複製ができてから元の描画を止める
+            foreach (var c in Cuts) if (c.Src.enabled) c.Src.enabled = false;
+        }
+        catch (Exception e)
+        {
+            _failed = true;
+            Plugin.Logger.LogError($"[HullThroat] flush: {e}");
             foreach (var c in Cuts)
             {
                 if (c.Go) c.Go.SetActive(false);
@@ -188,8 +216,6 @@ internal static class HullThroat
                 Apply(c, holes);
                 after += c.TN / 3;
             }
-            // 切り抜いた複製ができてから元の描画を止める
-            foreach (var c in Cuts) if (c.Src.enabled) c.Src.enabled = false;
         }
         if (crater && float.IsNaN(_craterZ)) _craterZ = HullBlockZ();
         DamageMap.MarkThroat(Throat(holes));
@@ -339,7 +365,7 @@ internal static class HullThroat
             VerifyClips++;
             VerifyClipDiff += diff;
         }
-        Upload(c);
+        c.Dirty = true;
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -368,7 +394,7 @@ internal static class HullThroat
         for (int i = 0, o = 0; i < grown.Count; i++) { gn[i] = grown[i].Length; foreach (var q in grown[i]) { gs[o++] = q.X; gs[o++] = q.Y; } }
         var triIn = new int[c.TN];
         Array.Copy(c.T, triIn, c.TN);
-        int vcap = c.VN + 4096, tcap = c.TN + 8192;
+        int vcap = c.VN + 16384, tcap = c.TN + 32768;
         for (int tries = 0; tries < 6; tries++)
         {
             c.EnsureVerts(vcap);
@@ -409,12 +435,16 @@ internal static class HullThroat
         var keep = new List<P[]>();
         var ring = new List<P[]>();
         var tmp = new List<P[]>();
+        var hBox = new float[local.Count * 4];
+        var gBox = new float[grown.Count * 4];
+        for (int i = 0; i < local.Count; i++) { Bounds(local[i], hBox, i * 4); Bounds(grown[i], gBox, i * 4); }
         for (int k = 0; k + 2 < oldT.Length; k += 3)
         {
             int i0 = oldT[k], i1 = oldT[k + 1], i2 = oldT[k + 2];
             float x0 = c.V[i0 * 3], y0 = c.V[i0 * 3 + 1], x1 = c.V[i1 * 3], y1 = c.V[i1 * 3 + 1], x2 = c.V[i2 * 3], y2 = c.V[i2 * 3 + 1];
-            if (MathF.Max(x0, MathF.Max(x1, x2)) < minX || MathF.Min(x0, MathF.Min(x1, x2)) > maxX ||
-                MathF.Max(y0, MathF.Max(y1, y2)) < minY || MathF.Min(y0, MathF.Min(y1, y2)) > maxY)
+            float tx0 = MathF.Min(x0, MathF.Min(x1, x2)), tx1 = MathF.Max(x0, MathF.Max(x1, x2));
+            float ty0 = MathF.Min(y0, MathF.Min(y1, y2)), ty1 = MathF.Max(y0, MathF.Max(y1, y2));
+            if (tx1 < minX || tx0 > maxX || ty1 < minY || ty0 > maxY)
             {
                 outT.Add(i0); outT.Add(i1); outT.Add(i2);
                 continue;
@@ -422,14 +452,17 @@ internal static class HullThroat
             var tri = Ccw(new[] { new P(x0, y0), new P(x1, y1), new P(x2, y2) });
             if (MathF.Abs(Area(tri)) < 1e-9f) continue;
 
-            // 広げた喉の外 = そのまま / 中 = 喉そのものを引いた残りが輪郭
+            // 広げた喉の外 = そのまま / 中 = 喉そのものを引いた残りが輪郭。三角形と範囲が重ならない塊は見ない (余計に割らない)
             keep.Clear(); keep.Add(tri);
             ring.Clear();
-            foreach (var g in grown)
+            for (int gi = 0; gi < grown.Count; gi++)
             {
+                if (Apart(gBox, gi * 4, tx0, ty0, tx1, ty1)) continue;
+                var g = grown[gi];
                 tmp.Clear();
                 foreach (var piece in keep)
                 {
+                    if (Separated(piece, g)) { tmp.Add(piece); continue; }
                     var inside = Intersect(piece, g);
                     if (inside != null) ring.Add(inside);
                     Subtract(piece, g, tmp);
@@ -437,10 +470,16 @@ internal static class HullThroat
                 (keep, tmp) = (tmp, keep);
             }
             if (ring.Count == 0) { outT.Add(i0); outT.Add(i1); outT.Add(i2); continue; }
-            foreach (var h in local)
+            for (int hi = 0; hi < local.Count; hi++)
             {
+                if (Apart(hBox, hi * 4, tx0, ty0, tx1, ty1)) continue;
+                var h = local[hi];
                 tmp.Clear();
-                foreach (var piece in ring) Subtract(piece, h, tmp);
+                foreach (var piece in ring)
+                {
+                    if (Separated(piece, h)) tmp.Add(piece);
+                    else Subtract(piece, h, tmp);
+                }
                 (ring, tmp) = (tmp, ring);
             }
             foreach (var piece in keep) Emit(c, outT, piece, i0, i1, i2, false);
@@ -450,6 +489,39 @@ internal static class HullThroat
         outT.CopyTo(c.T);
         c.TN = outT.Count;
     }
+
+    private static void Bounds(P[] p, float[] b, int o)
+    {
+        b[o] = b[o + 2] = p[0].X; b[o + 1] = b[o + 3] = p[0].Y;
+        for (int i = 1; i < p.Length; i++)
+        {
+            b[o] = MathF.Min(b[o], p[i].X); b[o + 1] = MathF.Min(b[o + 1], p[i].Y);
+            b[o + 2] = MathF.Max(b[o + 2], p[i].X); b[o + 3] = MathF.Max(b[o + 3], p[i].Y);
+        }
+    }
+
+    // h か s のどれかの辺の外側 (右) に相手が全部ある = 重ならない (s は割らずにそのまま残す)。両方が反時計回りの凸の時だけ正しい
+    private static bool Separated(P[] s, P[] h)
+    {
+        for (int i = 0; i < h.Length; i++)
+        {
+            P a = h[i], b = h[(i + 1) % h.Length];
+            int k = 0;
+            while (k < s.Length && Side(a, b, s[k]) <= 0f) k++;
+            if (k == s.Length) return true;
+        }
+        for (int i = 0; i < s.Length; i++)
+        {
+            P a = s[i], b = s[(i + 1) % s.Length];
+            int k = 0;
+            while (k < h.Length && Side(a, b, h[k]) <= 0f) k++;
+            if (k == h.Length) return true;
+        }
+        return false;
+    }
+
+    private static bool Apart(float[] b, int o, float x0, float y0, float x1, float y1)
+        => x1 < b[o] || x0 > b[o + 2] || y1 < b[o + 1] || y0 > b[o + 3];
 
     private static void Emit(Cut c, List<int> outT, P[] poly, int i0, int i1, int i2, bool outline)
     {
@@ -488,32 +560,33 @@ internal static class HullThroat
     private static byte Mix(byte a, byte b, byte c, float wa, float wb, float wc)
         => (byte)Math.Clamp((int)MathF.Round(a * wa + b * wb + c * wc), 0, 255);
 
-    private static void Upload(Cut c)
+    private static unsafe void Upload(Cut c)
     {
-        // 使われなくなった頂点は詰めない (穴は数えるほどしか開かない)。値を入れるのは構造体の欄だけ (new Vector3 は使わない)
+        // 使われなくなった頂点は詰めない (穴は数えるほどしか開かない)。
+        // 頂点・色・uv・三角形の並びは本編の配列と同じなので、本編の配列を作ってバイトのまま写す (要素ごとの変換をしない)
         int n = c.VN;
         if (n > 65000) c.Mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-        var vs = new Vector3[n];
-        var cs = new Color32[n];
-        for (int i = 0; i < n; i++)
-        {
-            vs[i].x = c.V[i * 3]; vs[i].y = c.V[i * 3 + 1]; vs[i].z = c.V[i * 3 + 2];
-            cs[i].r = c.C[i * 4]; cs[i].g = c.C[i * 4 + 1]; cs[i].b = c.C[i * 4 + 2]; cs[i].a = c.C[i * 4 + 3];
-        }
-        var ts = new int[c.TN];
-        Array.Copy(c.T, ts, c.TN);
+        var vs = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>((long)n);
+        var cs = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Color32>((long)n);
+        var ts = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int>((long)c.TN);
+        fixed (float* v = c.V) Buffer.MemoryCopy(v, (void*)Data(vs), n * 12L, n * 12L);
+        fixed (byte* col = c.C) Buffer.MemoryCopy(col, (void*)Data(cs), n * 4L, n * 4L);
+        fixed (int* t = c.T) Buffer.MemoryCopy(t, (void*)Data(ts), c.TN * 4L, c.TN * 4L);
         c.Mesh.Clear();
         c.Mesh.vertices = vs;
         c.Mesh.colors32 = cs;
         if (c.HasUv)
         {
-            var us = new Vector2[n];
-            for (int i = 0; i < n; i++) { us[i].x = c.U[i * 2]; us[i].y = c.U[i * 2 + 1]; }
+            var us = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector2>((long)n);
+            fixed (float* u = c.U) Buffer.MemoryCopy(u, (void*)Data(us), n * 8L, n * 8L);
             c.Mesh.uv = us;
         }
         c.Mesh.triangles = ts;
         c.Mesh.RecalculateBounds();
     }
+
+    // il2cpp の配列の中身の先頭 (頭 = 型・監視・範囲・長さの 4 語)
+    private static IntPtr Data(Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase a) => a.Pointer + 4 * IntPtr.Size;
 
     private static P[] ToLocal(Transform tf, P[] poly)
     {

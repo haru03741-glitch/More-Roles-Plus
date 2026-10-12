@@ -102,6 +102,40 @@ static void subtract(const Poly& s, const float* h, int hn, PolyList& into, int3
     }
 }
 
+// 点の並びの範囲 (x0 y0 x1 y1)
+static void bounds(const float* pts, int n, float* b)
+{
+    b[0] = b[2] = pts[0]; b[1] = b[3] = pts[1];
+    for (int i = 1; i < n; i++)
+    {
+        b[0] = fminf(b[0], pts[i * 2]); b[1] = fminf(b[1], pts[i * 2 + 1]);
+        b[2] = fmaxf(b[2], pts[i * 2]); b[3] = fmaxf(b[3], pts[i * 2 + 1]);
+    }
+}
+
+static bool apart(const float* b, float x0, float y0, float x1, float y1) { return x1 < b[0] || x0 > b[2] || y1 < b[1] || y0 > b[3]; }
+
+// h か s のどれかの辺の外側 (右) に相手が全部ある = 重ならない (s は割らずにそのまま残す)。両方が反時計回りの凸の時だけ正しい
+static bool separated(const Poly& s, const float* h, int hn)
+{
+    for (int i = 0; i < hn; i++)
+    {
+        int j = (i + 1) % hn;
+        float ax = h[i * 2], ay = h[i * 2 + 1], bx = h[j * 2], by = h[j * 2 + 1];
+        int k = 0;
+        while (k < s.n && side(ax, ay, bx, by, s.x[k], s.y[k]) <= 0.0f) k++;
+        if (k == s.n) return true;
+    }
+    for (int i = 0; i < s.n; i++)
+    {
+        int j = (i + 1) % s.n;
+        int k = 0;
+        while (k < hn && side(s.x[i], s.y[i], s.x[j], s.y[j], h[k * 2], h[k * 2 + 1]) <= 0.0f) k++;
+        if (k == hn) return true;
+    }
+    return false;
+}
+
 static uint8_t mix(uint8_t a, uint8_t b, uint8_t c, float wa, float wb, float wc)
 {
     float r = nearbyintf((float)a * wa + (float)b * wb + (float)c * wc);
@@ -162,15 +196,23 @@ MRP_API void mrp_hull_clip(HullClipArgs* p)
     a.triOutN = 0;
     // 塊の始まりの位置
     int32_t hOff[256], gOff[256];
+    float hBox[256 * 4], gBox[256 * 4];
     if (a.holeCount > 256) { p->over = 2; return; }
-    for (int h = 0, ho = 0, go = 0; h < a.holeCount; h++) { hOff[h] = ho; gOff[h] = go; ho += a.holeN[h] * 2; go += a.grownN[h] * 2; }
+    for (int h = 0, ho = 0, go = 0; h < a.holeCount; h++)
+    {
+        hOff[h] = ho; gOff[h] = go;
+        bounds(a.holes + ho, a.holeN[h], hBox + h * 4);
+        bounds(a.grown + go, a.grownN[h], gBox + h * 4);
+        ho += a.holeN[h] * 2; go += a.grownN[h] * 2;
+    }
     PolyList keep = { g_pool[0], 0 }, ring = { g_pool[1], 0 }, tmp = { g_pool[2], 0 };
     for (int k = 0; k + 2 < a.triInN && a.over == 0; k += 3)
     {
         int i0 = a.triIn[k], i1 = a.triIn[k + 1], i2 = a.triIn[k + 2];
         const float* v0 = a.v + i0 * 3; const float* v1 = a.v + i1 * 3; const float* v2 = a.v + i2 * 3;
-        if (fmaxf(v0[0], fmaxf(v1[0], v2[0])) < a.minX || fminf(v0[0], fminf(v1[0], v2[0])) > a.maxX ||
-            fmaxf(v0[1], fmaxf(v1[1], v2[1])) < a.minY || fminf(v0[1], fminf(v1[1], v2[1])) > a.maxY)
+        float tx0 = fminf(v0[0], fminf(v1[0], v2[0])), tx1 = fmaxf(v0[0], fmaxf(v1[0], v2[0]));
+        float ty0 = fminf(v0[1], fminf(v1[1], v2[1])), ty1 = fmaxf(v0[1], fmaxf(v1[1], v2[1]));
+        if (tx1 < a.minX || tx0 > a.maxX || ty1 < a.minY || ty0 > a.maxY)
         {
             keep_tri(&a, i0, i1, i2);
             continue;
@@ -181,16 +223,18 @@ MRP_API void mrp_hull_clip(HullClipArgs* p)
         if (area(tri) < 0.0f) { float tx = tri.x[0], ty = tri.y[0]; tri.x[0] = tri.x[2]; tri.y[0] = tri.y[2]; tri.x[2] = tx; tri.y[2] = ty; }
         if (fabsf(area(tri)) < 1e-9f) continue;
 
-        // 広げた喉の外 = そのまま / 中 = 喉そのものを引いた残りが輪郭
+        // 広げた喉の外 = そのまま / 中 = 喉そのものを引いた残りが輪郭。三角形と範囲が重ならない塊は見ない (余計に割らない)
         keep.n = 0; push(keep, tri, &a.over);
         ring.n = 0;
         for (int g = 0; g < a.holeCount; g++)
         {
+            if (apart(gBox + g * 4, tx0, ty0, tx1, ty1)) continue;
             const float* gp = a.grown + gOff[g];
             int gn = a.grownN[g];
             tmp.n = 0;
             for (int i = 0; i < keep.n; i++)
             {
+                if (separated(keep.p[i], gp, gn)) { push(tmp, keep.p[i], &a.over); continue; }
                 Poly inside;
                 if (intersect(keep.p[i], gp, gn, inside, &a.over)) push(ring, inside, &a.over);
                 subtract(keep.p[i], gp, gn, tmp, &a.over);
@@ -200,8 +244,14 @@ MRP_API void mrp_hull_clip(HullClipArgs* p)
         if (ring.n == 0) { keep_tri(&a, i0, i1, i2); continue; }
         for (int h = 0; h < a.holeCount; h++)
         {
+            if (apart(hBox + h * 4, tx0, ty0, tx1, ty1)) continue;
             tmp.n = 0;
-            for (int i = 0; i < ring.n; i++) subtract(ring.p[i], a.holes + hOff[h], a.holeN[h], tmp, &a.over);
+            const float* hp = a.holes + hOff[h];
+            for (int i = 0; i < ring.n; i++)
+            {
+                if (separated(ring.p[i], hp, a.holeN[h])) push(tmp, ring.p[i], &a.over);
+                else subtract(ring.p[i], hp, a.holeN[h], tmp, &a.over);
+            }
             PolyList s = ring; ring = tmp; tmp = s;
         }
         for (int i = 0; i < keep.n; i++) emit(&a, keep.p[i], i0, i1, i2, false);
