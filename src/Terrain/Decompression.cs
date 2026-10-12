@@ -124,6 +124,8 @@ internal static class Decompression
     internal static double LastFieldMs { get; private set; }
     internal static double LastFurnMs { get; private set; }
     internal static int Fields { get; private set; }
+    // 場 (道のり・範囲) を作り直すたびに増える (船が変わっても戻さない)。水の吸い出しの表の作り直しの合図
+    internal static int FieldGen { get; private set; }
     // クルーを引くか (毎フレームの入口で読む・il2cpp を触らない)
     internal static bool Pulling { get; private set; }
 
@@ -600,6 +602,7 @@ internal static class Decompression
         Grips.Clear();
         if (any) FindGrips();
         Fields++;
+        FieldGen++;
         LastFieldMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
@@ -942,6 +945,27 @@ internal static class Decompression
         return true;
     }
 
+    // FlowAt の気圧を除いた所 (水の吸い出しの表を作る用): 満タン時の引く強さ (/1024)・範囲・向き。引かない所は false
+    internal static bool PullAt(int sx, int sy, out int s1024, out int comp, out int dx, out int dy)
+    {
+        s1024 = 0; comp = -1; dx = 0; dy = 0;
+        if (!_running) return false;
+        int x = sx / Sub, y = sy / Sub;
+        if (sx < 0 || sy < 0 || x < 1 || y < 1 || x >= _w - 1 || y >= _h - 1) return false;
+        int k = y * _w + x;
+        if (_dist[k] == Far || _comp[k] < 0) return false;
+        s1024 = Strength1024(_dist[k]);
+        comp = _comp[k];
+        int t = k;
+        for (int i = 0; i < 3 && _par[t] >= 0; i++) t = _par[t];
+        dx = t % _w - x;
+        dy = t / _w - y;
+        return true;
+    }
+
+    internal static int RegionCount => _press.Length;
+    internal static int PressOf(int c) => EffPress(c);
+
     // 道のり → 満タン時の引く強さ (/1024)。Strength と同じ折れ線
     internal static int Strength1024(int d)
     {
@@ -1039,6 +1063,7 @@ internal static class Decompression
     {
         _running = false;
         Pulling = false;
+        FieldGen++;
         _sub = null; _edge = null; _blocked = null; _floor = null; _furn = null; _comp = null; _dist = null; _par = null; _seed = null;
         _compCells = Array.Empty<int>();
         _press = Array.Empty<int>();

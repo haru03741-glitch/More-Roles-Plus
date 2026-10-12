@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Native;
 // 無い・版が違う時は地形を全部止める (Loaded が偽)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 18;
+    internal const int Abi = 19;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else

@@ -13,6 +13,7 @@ internal static unsafe partial class WaterSim
     private enum Phase { None, Prepared, Running, Joined }
     private static Phase _phase;
     private static int _defStep;        // 預けた刻み
+    private static bool _defBlow;       // 預けた刻みが吸い出しの最中か
     private static bool _simJob;        // 投げた仕事に水の刻みが入っているか (false = 水の絵だけ)
     [ThreadStatic] private static bool _onWorker;
     internal static bool Deferred => _phase != Phase.None;
@@ -53,7 +54,7 @@ internal static unsafe partial class WaterSim
     }
 
     // 小刻みの引数を詰める (配列は Unpin まで固定)。step = 回す刻み
-    private static void Fill(StepArgs* a, bool check, int step)
+    private static void Fill(StepArgs* a, bool check, int step, bool blow)
     {
         if (_dirtyBuf.Length < _tw * _th) _dirtyBuf = new int[_tw * _th];
         if (_infK.Length < Inflows.Count) { _infK = new int[Inflows.Count * 2]; _infRate = new int[Inflows.Count * 2]; }
@@ -75,6 +76,10 @@ internal static unsafe partial class WaterSim
                 // 照合の時は C# と同じ古いルールで回して 1 バイトずつ比べる
                 Isl = isl, IslBase = (int*)Pin(_islBase), IslN = _islBase.Length, UseZ = ZFlow && !check && isl != null ? 1 : 0,
                 FoCap = _fo.Length / 3,
+                Blow = blow ? 1 : 0,
+                BlowS = blow ? (ushort*)Pin(_blowS) : null, BlowComp = blow ? (short*)Pin(_blowComp) : null,
+                BlowDir = blow ? (byte*)Pin(_blowDir) : null, BlowPress = blow ? (int*)Pin(_blowPress) : null,
+                BlowPressN = blow ? Decompression.RegionCount : 0,
             },
             InfK = (int*)Pin(_infK), InfRate = (int*)Pin(_infRate), InfN = Inflows.Count,
             DryStep = (step & 3) == 0 ? 1 : 0,
@@ -98,9 +103,10 @@ internal static unsafe partial class WaterSim
     }
 
     // 前置きまで済んだ刻み step の小刻みを預ける (投げるのは LateUpdate)
-    private static void Defer(int step)
+    private static void Defer(int step, bool blow)
     {
         _defStep = step;
+        _defBlow = blow;
         _phase = Phase.Prepared;
     }
 
@@ -117,7 +123,7 @@ internal static unsafe partial class WaterSim
         // 詰める途中で落ちたら固定を外して預けたままにする (次の Settle がその場で回す。絵は次の WaterArt.Tick がその場で描く)
         if (sim)
         {
-            try { Fill(Args(), false, _defStep); }
+            try { Fill(Args(), false, _defStep, _defBlow); }
             catch (Exception e) { Unpin(); Plugin.Logger.LogError($"[WaterSim] kick: {e}"); return; }
         }
         _simJob = sim;
@@ -182,10 +188,10 @@ internal static unsafe partial class WaterSim
         {
             _profT = System.Diagnostics.Stopwatch.GetTimestamp();
             if (_phase == Phase.Running) Join();
-            else if (_phase == Phase.Prepared) { RunSubsteps(false, _defStep); SyncSteps++; }
+            else if (_phase == Phase.Prepared) { RunSubsteps(_defBlow, _defStep); SyncSteps++; }
             _profT = System.Diagnostics.Stopwatch.GetTimestamp();
             _phase = Phase.None;
-            PostStep(_defStep, false);
+            PostStep(_defStep, _defBlow);
         }
         catch (Exception e) { _phase = Phase.None; Fail("settle", e); }
         return _defStep;

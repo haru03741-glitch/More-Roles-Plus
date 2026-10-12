@@ -1493,24 +1493,60 @@ internal static partial class WaterSim
         _blowing = blow;
         // 口の際の升の水は宇宙へ出る (流れを決める前に自分の升だけを減らすので順番に依らない)
         if (blow)
+        {
             for (int a = 0; a < _actN; a++) if (_hgt[_act[a]] > 0) Drain(_act[a]);
+            BlowTable();
+        }
         SeaInflow();
         Prof(3);
 
-        if (defer && !blow && !Native.MrpNative.Verify) { Defer(_step); return true; }
+        if (defer && !Native.MrpNative.Verify) { Defer(_step, blow); return true; }
         RunSubsteps(blow, _step);
         PostStep(_step, blow);
         return false;
     }
 
-    // 小刻み SubN 回を C++ でまとめて 1 回で (吸い出しの刻みは C# のまま)
+    // 小刻み SubN 回を C++ でまとめて 1 回で
     private static void RunSubsteps(bool blow, int step)
     {
         if (_fs.Length < _fallAt.Length * 3) _fs = new int[_fallAt.Length * 3];
-        if (blow) { StepManaged(true, step); return; }
-        if (Native.MrpNative.Verify) VerifyStep(step);
-        else if (!StepNative(false, step)) NativeRefused();
+        if (Native.MrpNative.Verify) VerifyStep(step, blow);
+        else if (!StepNative(false, step, blow)) NativeRefused();
         Prof(4);
+    }
+
+    // 吸い出しの表 (C++ の小刻みが読む・升ごと): 満タン時の引く強さ (/1024・0 = 引かない)・範囲・向き ((dx+4) | (dy+4) << 4)。
+    // 場が作り直された時だけ作り直し、範囲ごとの気圧は刻みごとに写す。刻みを預ける前に作るので、作業スレッドが回す間に場が変わっても混ざらない
+    private static ushort[] _blowS = Array.Empty<ushort>();
+    private static short[] _blowComp = Array.Empty<short>();
+    private static byte[] _blowDir = Array.Empty<byte>();
+    private static int[] _blowPress = Array.Empty<int>();
+    private static int _blowGen = -1;
+
+    private static void BlowTable()
+    {
+        int n = _w * _h;
+        if (_blowGen != Decompression.FieldGen || _blowS.Length != n)
+        {
+            _blowGen = Decompression.FieldGen;
+            if (_blowS.Length != n) { _blowS = new ushort[n]; _blowComp = new short[n]; _blowDir = new byte[n]; }
+            for (int y = 0; y < _h; y++)
+            for (int x = 0; x < _w; x++)
+            {
+                int k = y * _w + x;
+                if (!Decompression.PullAt(x * Sub, y * Sub, out int s1024, out int comp, out int dx, out int dy) || s1024 <= 0)
+                {
+                    _blowS[k] = 0;
+                    continue;
+                }
+                _blowS[k] = (ushort)s1024;
+                _blowComp[k] = (short)comp;
+                _blowDir[k] = (byte)((dx + 4) | (dy + 4) << 4);
+            }
+        }
+        int rc = Decompression.RegionCount;
+        if (_blowPress.Length < rc) _blowPress = new int[Math.Max(rc, 8)];
+        for (int c = 0; c < rc; c++) _blowPress[c] = Decompression.PressOf(c);
     }
 
     // C++ が刻みを断った (定数が C# と違う = 部品の作り違い)。C# で代わりに回さず、その刻みは水を動かさない
@@ -1607,6 +1643,8 @@ internal static partial class WaterSim
         public int IslN, UseZ;
         public int FoCap, FoOver;
         public int* Slot;
+        public ushort* BlowS; public short* BlowComp; public byte* BlowDir; public int* BlowPress;
+        public int Blow, BlowPressN;
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -1624,10 +1662,10 @@ internal static partial class WaterSim
     private static int[] _infK = Array.Empty<int>(), _infRate = Array.Empty<int>();
 
     // C++ 版の小刻み SubN 回 (その場で)。check = 照合 (C# と同じ古いルールで回し、眠っている升の起こし忘れも数える)
-    private static unsafe bool StepNative(bool check, int step)
+    private static unsafe bool StepNative(bool check, int step, bool blow)
     {
         var a = Args();
-        Fill(a, check, step);
+        Fill(a, check, step, blow);
         int r;
         try { r = Native.MrpNative.WaterStep(a); }
         finally { Unpin(); }
@@ -1640,7 +1678,7 @@ internal static partial class WaterSim
     internal static long VerifySteps, VerifyDiff;
     internal static long VerifySleepViol; // 眠っている升が流れ出すはずだった・浅かった数 (起こし忘れ)
 
-    private static void VerifyStep(int step)
+    private static void VerifyStep(int step, bool blow)
     {
         int n = _hgt.Length;
         // 前の状態を取っておく
@@ -1649,7 +1687,7 @@ internal static partial class WaterSim
         var fo0 = (int[])_fo.Clone(); var fs0 = (int[])_fs.Clone(); var fallAt0 = (int[])_fallAt.Clone();
         int actN0 = _actN, foN0 = _foN, fsN0 = _fsN, dirtyN0 = DirtyTiles.Count;
         long void0 = VoidTotal, inflow0 = InflowTotal, seaOut0 = SeaOutTotal;
-        if (!StepNative(true, step)) { NativeRefused(); return; }
+        if (!StepNative(true, step, blow)) { NativeRefused(); return; }
         var vHgt = (int[])_hgt.Clone(); var vFlux = (int[])_flux.Clone(); var vMove = (int[])_move.Clone();
         var vAct = (int[])_act.Clone(); var vIn = (byte[])_inList.Clone(); var vStir = (byte[])_stir.Clone();
         var vFo = (int[])_fo.Clone(); var vFs = (int[])_fs.Clone(); var vFallAt = (int[])_fallAt.Clone();
@@ -1662,7 +1700,7 @@ internal static partial class WaterSim
         Array.Copy(fo0, _fo, fo0.Length); Array.Copy(fs0, _fs, fs0.Length); Array.Copy(fallAt0, _fallAt, fallAt0.Length);
         _actN = actN0; _foN = foN0; _fsN = fsN0; VoidTotal = void0; InflowTotal = inflow0; SeaOutTotal = seaOut0;
         DirtyTiles.RemoveRange(dirtyN0, DirtyTiles.Count - dirtyN0);
-        StepManaged(false, step);
+        StepManaged(blow, step);
         VerifySteps++;
         long diff = 0;
         if (nActN != _actN) diff += 1000000;
@@ -2464,6 +2502,7 @@ internal static partial class WaterSim
         _actN = 0;
         _sortedN = 0;
         _blowing = false;
+        _blowGen = -1;
         _noSleep = false;
         ZFlow = true;
         Queue.Clear();

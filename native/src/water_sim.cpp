@@ -30,6 +30,9 @@ struct WaterFlowArgs
     int32_t islN, useZ;
     int32_t foCap, foOver;          // fo の容量 (縁 3 個ずつ)・入らなかった数 (C# が縁の数に合わせて広げるので 0 のはず)
     const int32_t* slot;            // 升 → 縁の枠の番号 + 1。lipH / barB / barH / stepTo は枠 × 4 + 向き (落ちる縁と段差の升だけ)
+    // 吸い出し (blow = 1 の刻みの最初の小刻みだけ)。升ごとの満タン時の引く強さ (/1024・0 = 引かない)・範囲・向き ((dx+4) | (dy+4) << 4)、範囲ごとの気圧
+    const uint16_t* blowS; const int16_t* blowComp; const uint8_t* blowDir; const int32_t* blowPress;
+    int32_t blow, blowPressN;
 };
 
 // WaterSim の定数と同じ値
@@ -41,6 +44,7 @@ static const int NoLevel = -128, VoidLevel = -2;
 static const int32_t NoZ = INT32_MIN;
 // 小刻みの数とタイルの升の数は C# の定数と同じ (割り算を定数にするため。違えば計算しない)
 static const int SubN = 4, TileCells = 16;
+static const int BlowGain = 6, BlowMax = 12, DecompFull = 1 << 16;
 static const int Nx[4] = { 1, -1, 0, 0 }, Ny[4] = { 0, 0, 1, -1 }, Opp[4] = { 1, 0, 3, 2 };
 
 static MRP_INLINE int isqrt(int64_t v)
@@ -159,6 +163,33 @@ static MRP_INLINE void drop_void(WaterFlowArgs* a)
     }
 }
 
+// 吸い出しで升 k (深さ h) から 4 向きへ足す流れ (src/Terrain/WaterSim.cs の Blow と同じ)
+static MRP_INLINE void blow_of(const WaterFlowArgs* a, int k, int h, int* b)
+{
+    int s1 = a->blowS[k];
+    if (s1 == 0) return;
+    int c = a->blowComp[k];
+    if (c < 0 || c >= a->blowPressN) return;
+    int s = (int)((int64_t)s1 * a->blowPress[c] / DecompFull);
+    if (s <= 0) return;
+    int dir = a->blowDir[k];
+    int fx = (dir & 15) - 4, fy = (dir >> 4) - 4;
+    int ax = fx < 0 ? -fx : fx, ay = fy < 0 ? -fy : fy;
+    if (ax + ay == 0) return;
+    int w = a->w;
+    int dX = fx > 0 ? 0 : 1, dY = fy > 0 ? 2 : 3;
+    int ek = a->edge[k];
+    int jx = k + Nx[dX], jy = k + Ny[dY] * w;
+    bool okX = ax > 0 && a->open[jx] != 0 && (ek >> dX & 1) != 0 && (a->edge[jx] >> Opp[dX] & 1) != 0;
+    bool okY = ay > 0 && a->open[jy] != 0 && (ek >> dY & 1) != 0 && (a->edge[jy] >> Opp[dY] & 1) != 0;
+    if (!okX && !okY) return;
+    int all = (int)((int64_t)h * imin(BlowMax, s * BlowGain / 1024) / 256);
+    if (all <= 0) return;
+    int bx = okX && okY ? all * ax / (ax + ay) : okX ? all : 0;
+    b[dX] = bx;
+    b[dY] = all - bx;
+}
+
 // 升 k の 4 本の流れ出しを決める。W = false は書かずに流れ出しの合計だけ返す (眠っている升の検査用)
 template <bool W>
 static MRP_INLINE int flow_cell(WaterFlowArgs* a, int k)
@@ -172,6 +203,8 @@ static MRP_INLINE int flow_cell(WaterFlowArgs* a, int k)
     int ek = a->edge[k], sm = a->stepMask[k], fm = a->fallMask[k], cm = a->seaMask[k];
     int32_t zk = a->useZ && h > 0 ? base_z(a, k) : NoZ; // 高さを使う流れは全部 h > 0 の時だけ
     int falls = a->foN;
+    int b[4] = { 0, 0, 0, 0 };
+    if (a->blow && a->sub == 0 && h > 0) blow_of(a, k, h, b);
     for (int d = 0; d < 4; d++)
     {
         int j = k + Nx[d] + Ny[d] * w;
@@ -189,6 +222,7 @@ static MRP_INLINE int flow_cell(WaterFlowArgs* a, int k)
                 int diff = (int)((int64_t)zk + h + bk - zj - hj - a->bed[j] - a->furn[j]) - (hj == 0 ? DryHold : WetHold);
                 f = a->flux[k * 4 + d] * subDamp / 256 + (diff > 0 ? diff * subGain / 256 : 0);
                 if (f < 0) f = 0;
+                f += b[d];
             }
             else if (!known || lj <= lk)
             {
@@ -197,6 +231,7 @@ static MRP_INLINE int flow_cell(WaterFlowArgs* a, int k)
                     : h + bk - hj - a->bed[j] - a->furn[j] - (hj == 0 ? DryHold : WetHold);
                 f = a->flux[k * 4 + d] * subDamp / 256 + (diff > 0 ? diff * subGain / 256 : 0);
                 if (f < 0) f = 0;
+                f += b[d];
             }
         }
         else if (h > 0 && (sm >> d & 1) != 0)
