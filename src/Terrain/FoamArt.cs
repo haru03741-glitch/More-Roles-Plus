@@ -339,11 +339,64 @@ internal static class FoamArt
         }
     }
 
-    // p = 吹き付け始めからの経過 / FoamTime
-    private static void Draw(Plug pl, float p, bool last)
+    // 答え合わせ (native verify): 栓の絵を C# でも描いて 1 バイトずつ比べる
+    internal static long VerifyDraws, VerifyDrawDiff;
+    private static float[] _balls = Array.Empty<float>();
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct DrawArgs
+    {
+        public float* F, G, Hs;
+        public byte* Px;
+        public byte* Vis, Pores;
+        public float* Balls; public int BallN;
+        public int W, H;
+        public float U0, V0, Reach, VMin, VMax, Bleed, UMax;
+        public int SoftInner;
+        public float P;
+    }
+
+    // p = 吹き付け始めからの経過 / FoamTime。絵は C++ で描く (照合の時は C# でも描いて比べる)
+    private static unsafe void Draw(Plug pl, float p, bool last)
+    {
+        int w = pl.W, h = pl.H, gw = (w + 2) >> 1, gh = (h + 2) >> 1;
+        var G = Scratch(ref _grid, gw * gh);
+        var Hs = Scratch(ref _height, w * h);
+        if (_balls.Length < pl.Balls.Count * 4) _balls = new float[pl.Balls.Count * 4];
+        int bn = 0;
+        foreach (var bl in pl.Balls)
+        {
+            if (bl.Hidden) continue;
+            _balls[bn * 4] = bl.U; _balls[bn * 4 + 1] = bl.V; _balls[bn * 4 + 2] = bl.R; _balls[bn * 4 + 3] = bl.Start;
+            bn++;
+        }
+        fixed (float* f = pl.F) fixed (float* g = G) fixed (float* hs = Hs) fixed (byte* px = pl.Px) fixed (byte* vis = pl.Vis) fixed (byte* pores = pl.Pores) fixed (float* balls = _balls)
+        {
+            var a = new DrawArgs
+            {
+                F = f, G = g, Hs = hs, Px = px, Vis = vis, Pores = pores, Balls = balls, BallN = bn,
+                W = w, H = h, U0 = pl.U0, V0 = pl.V0, Reach = pl.Reach, VMin = pl.VMin, VMax = pl.VMax, Bleed = pl.Bleed0, UMax = pl.Len + pl.Bleed1,
+                SoftInner = pl.SoftInner ? 1 : 0, P = p,
+            };
+            Native.MrpNative.FoamDraw(&a);
+        }
+        if (Native.MrpNative.Verify)
+        {
+            var px = (byte[])pl.Px.Clone();
+            DrawCs(pl, p, px, new float[w * h]);
+            long diff = 0;
+            for (int i = 0; i < px.Length; i++) if (px[i] != pl.Px[i]) diff++;
+            VerifyDraws++;
+            VerifyDrawDiff += diff;
+        }
+        Upload(pl, last);
+        if (last) { pl.Px = null; pl.F = null; pl.Pores = null; } // 跡はもう描き直さない
+    }
+
+    // C# 版 (照合用)。px と F に描く
+    private static void DrawCs(Plug pl, float p, byte[] px, float[] F)
     {
         int w = pl.W, h = pl.H;
-        var F = pl.F;
         const float inv = 1f / Ppu;
         // 場はなめらかなので 2 画素おきの格子で足し込み、画素へは線形に補間する (足し込みの手間が 1/4)
         int gw = (w + 2) >> 1, gh = (h + 2) >> 1;
@@ -432,7 +485,6 @@ internal static class FoamArt
         const float lx = -0.45f, ly = 0.55f, lz = 0.70f;
         float hl = MathF.Sqrt(lx * lx + ly * ly + (lz + 1f) * (lz + 1f));
         float hx = lx / hl, hy = ly / hl, hz = (lz + 1f) / hl;
-        var px = pl.Px;
         // 高さは隣の画素からも読むので先に 1 画素 1 回だけ計算しておく
         var Hs = Scratch(ref _height, w * h);
         for (int i = 0; i < w * h; i++) Hs[i] = Height(F[i]);
@@ -481,8 +533,6 @@ internal static class FoamArt
             px[o + 2] = (byte)Math.Clamp((int)b, 0, 255);
             px[o + 3] = (byte)(alpha * 255f);
         }
-        Upload(pl, last);
-        if (last) { pl.Px = null; pl.F = null; pl.Pores = null; } // 跡はもう描き直さない
     }
 
     // 描き直しの作業用 (描くのは 1 枚ずつなので使い回す)
