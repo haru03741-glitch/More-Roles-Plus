@@ -235,7 +235,8 @@ internal static class WaterFall
     private static float LandDx(Edge e) => e.Nx != 0f ? 0f : e.X1 - e.X0;
     private static float LandDy(Edge e) => e.Y1 - e.Y0;
 
-    private const float Spread = 0.4f;         // 柱の間を抜けた水が横へ広がって 1 枚に戻るまでの落ちた割合
+    private const float Spread = 0.4f;
+    private const float EndSpread = 0.12f;     // 隣に流れる縁が無い側へ膜を薄れながら延ばす幅 (世界単位)         // 柱の間を抜けた水が横へ広がって 1 枚に戻るまでの落ちた割合
 
     // 縁から着地までの膜。縁に沿った世界の画素の格子の列ごとに、縁 (水たまりの縁の内側) から落ちた先までを 1 本の線で描く。
     // 落ちる道: 地面の上を (縁 - 落ちる高さ) → 着く所へまっすぐ、高さは落ちる高さから 2 次で 0 へ。
@@ -274,10 +275,9 @@ internal static class WaterFall
     {
         float fall = e.Fall;
         float tau0 = Math.Min(1f, e.Tail / fall), tau1 = Math.Min(1f, e.Head / fall);
-        if (tau1 <= tau0) return;
         float tx = -e.Ny, ty = e.Nx, half = WaterSim.Cell * 0.5f;
         float s0 = e.X0 * tx + e.Y0 * ty;
-        int k0 = (int)MathF.Ceiling((s0 - half) * Ppu), k1 = (int)MathF.Ceiling((s0 + half) * Ppu) - 1;
+        int k0 = (int)MathF.Ceiling((s0 - half - e.Ea) * Ppu), k1 = (int)MathF.Ceiling((s0 + half + e.Eb) * Ppu) - 1;
         if (k1 < k0) return;
         float dx = e.Dx, dy = e.Dy;
         float qa = e.Qa, qb = e.Qb, xa = e.Xa, xb = e.Xb, ya = e.Ya, yb = e.Yb;
@@ -297,19 +297,27 @@ internal static class WaterFall
         for (int col = k0; col <= k1; col++)
         {
             float u0 = col / Ppu - s0;
+            // 列の深さと膜の先端・後ろの端は隣の縁との間でつなぎ (升ごとの段を作らない)、縁の外へ延ばした列は端の値のまま薄れる
+            float fc = MathF.Min(1f, (u0 < 0f ? -u0 : u0) / half);
+            float fade = u0 < -half && e.Ea > 0f ? 1f - (-u0 - half) / e.Ea : u0 > half && e.Eb > 0f ? 1f - (u0 - half) / e.Eb : 1f;
+            if (fade <= 0f) continue;
+            float dep = u0 < 0f ? e.Depth + (e.Da - e.Depth) * fc : e.Depth + (e.Db - e.Depth) * fc;
+            float t0 = u0 < 0f ? tau0 + (e.Ta - tau0) * fc : tau0 + (e.Tb - tau0) * fc;
+            float t1 = u0 < 0f ? tau1 + (e.Ha - tau1) * fc : tau1 + (e.Hb - tau1) * fc;
+            if (t1 <= t0) continue;
             bool top = e.Lip == 0 && e.BarF > 0f && Blocked(e, u0);
             // 物の上を越える水がある列だけ物の上から落ちる。越えない列 (水面が物より低い) は隣の列から回り込んだ水なので水面から落ちる
             float z0 = top && e.Depth > e.BarH ? e.BarH : 0f;
             float thin = 1f;
-            float thr = MathF.Min(ThrowMax, ThrowGain * MathF.Sqrt(MathF.Max(0f, e.Depth - z0))) * (0.9f + 0.2f * Noise(col + 7919, now * 0.6f));
+            float thr = MathF.Min(ThrowMax, ThrowGain * MathF.Sqrt(MathF.Max(0f, dep - z0))) * (0.9f + 0.2f * Noise(col + 7919, now * 0.6f));
             for (int si = 0; si < sub; si++)
             {
                 float u = u0 + si / (Ppu * sub);
-                float f = u < 0f ? -u / half : u / half;
+                float f = MathF.Min(1f, u < 0f ? -u / half : u / half);
                 float q = u < 0f ? e.Q + (qa - e.Q) * f : e.Q + (qb - e.Q) * f;
                 float ldx = u < 0f ? dx + (xa - dx) * f : dx + (xb - dx) * f;
                 float ldy = u < 0f ? dy + (ya - dy) * f : dy + (yb - dy) * f;
-                float dm = q / SheetFull;
+                float dm = q * fade / SheetFull;
                 if (dm < ThinD) { if (si == 0) thin = 1f + (Noise(col, now * 1.3f) * 1.6f - 0.8f) * (1f - dm / ThinD) * 1.25f; dm *= thin; }
                 if (dm > DensMax) dm = DensMax;
                 float dc = dm * (top ? wb : wo);
@@ -328,12 +336,12 @@ internal static class WaterFall
                 if (sy + z0 <= cut) continue;
                 // 奥の縁を越えた水は床の向こう側へ落ちて見えない (手前に幕を描くと奥の柵の前に滝が立って見える)
                 if (e.Ny > 0f && e.Lip == 0) continue;
-                float len = (MathF.Abs(ex - sx) + MathF.Abs(ey - sy) + 2f * hh) * Ppu * (tau1 - tau0);
+                float len = (MathF.Abs(ex - sx) + MathF.Abs(ey - sy) + 2f * hh) * Ppu * (t1 - t0);
                 int steps = Math.Clamp((int)MathF.Ceiling(len), 1, 600);
                 float w = MathF.Min(1f, len / steps) * 0.85f;
                 for (int j = 0; j <= steps; j++)
                 {
-                    float tau = tau0 + (tau1 - tau0) * j / steps;
+                    float tau = t0 + (t1 - t0) * j / steps;
                     float x = gx + (ex - gx) * tau, y = gy + (ey - gy) * tau + hh * (1f - tau * tau);
                     if (y < cut) break; // ここから先は手前の床の裏
                     float foam = tau > 0.92f ? 0.8f : tau < 0.03f ? 0.4f : 0.05f + 0.3f * tau * tau;
@@ -347,11 +355,11 @@ internal static class WaterFall
                     // (縁に立つ物の有無で深さを変えると、物の形どおりに色が割れる)
                     float pf = tau >= PoolFade ? 0f : 1f - tau / PoolFade;
                     float pool = pf * pf * (3f - 2f * pf);
-                    if (e.Nx == 0f) { Splat(e.Void != 0, x, y, v, foam, e.Depth, pool); continue; }
+                    if (e.Nx == 0f) { Splat(e.Void != 0, x, y, v, foam, dep, pool); continue; }
                     // 横の縁の膜は縁に沿った面なので画面では縦の帯になる。投げ出された先から縁の側へ厚さを付けて、縁と膜の間を空けない
                     float span = (x - sx) * SideBody;
                     int n = Math.Max(1, (int)MathF.Ceiling(MathF.Abs(span) * Ppu));
-                    for (int b = 0; b < n; b++) Splat(e.Void != 0, x - span * b / n, y, v, foam, e.Depth, pool);
+                    for (int b = 0; b < n; b++) Splat(e.Void != 0, x - span * b / n, y, v, foam, dep, pool);
                 }
             }
         }
@@ -511,6 +519,8 @@ internal static class WaterFall
     {
         public float X0, Y0, Nx, Ny, Q, Head, Tail, Fall, Depth, BarH, BarF, LipH, Cut, CutFrom;
         public float Dx, Dy, Qa, Xa, Ya, Qb, Xb, Yb;
+        public float Da, Db, Ha, Hb, Ta, Tb;   // 隣の縁とならした深さ・膜の先端と後ろの端 (落ちた割合・縁の両端)
+        public float Ea, Eb;                   // 隣に流れる縁が無い側へ膜を薄れながら延ばす幅 (無ければ 0)
         public int Lip, Void;
         public int Disc; public float DiscX, DiscY, DiscR, DiscS;
         public int LipMode; public float LipS;
@@ -598,6 +608,12 @@ internal static class WaterFall
             p.Qa = na == null ? e.Q : (na.Q + e.Q) * 0.5f; p.Qb = nb == null ? e.Q : (nb.Q + e.Q) * 0.5f;
             p.Xa = na == null ? dx : (LandDx(na) + dx) * 0.5f; p.Xb = nb == null ? dx : (LandDx(nb) + dx) * 0.5f;
             p.Ya = na == null ? dy : (LandDy(na) + dy) * 0.5f; p.Yb = nb == null ? dy : (LandDy(nb) + dy) * 0.5f;
+            // 深さと膜の先端・後ろの端 (落ちた割合) も隣とならす。隣に流れる縁が無い側は膜を少し外へ薄れながら延ばす (並びの端の角を丸める)
+            float hd = Math.Min(1f, e.Head / p.Fall), tl = Math.Min(1f, e.Tail / p.Fall);
+            p.Da = na == null ? e.Depth : (na.Depth + e.Depth) * 0.5f; p.Db = nb == null ? e.Depth : (nb.Depth + e.Depth) * 0.5f;
+            p.Ha = na == null ? hd : (Math.Min(1f, na.Head / FallTime(na)) + hd) * 0.5f; p.Hb = nb == null ? hd : (Math.Min(1f, nb.Head / FallTime(nb)) + hd) * 0.5f;
+            p.Ta = na == null ? tl : (Math.Min(1f, na.Tail / FallTime(na)) + tl) * 0.5f; p.Tb = nb == null ? tl : (Math.Min(1f, nb.Tail / FallTime(nb)) + tl) * 0.5f;
+            p.Ea = na == null ? EndSpread : 0f; p.Eb = nb == null ? EndSpread : 0f;
             // 着地の泡 (下の水たまりへつなぐ)
             p.Disc = !e.Void && e.Q >= 1f && e.Head >= p.Fall ? 1 : 0;
             if (p.Disc != 0)

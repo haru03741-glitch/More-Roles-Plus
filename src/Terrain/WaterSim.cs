@@ -2337,10 +2337,10 @@ internal static partial class WaterSim
         return _ready && _fallMask != null;
     }
 
-    // 落ちる縁の升を床にする (水が縁の線まで届く)。ただし落ちる縁から升の真ん中までの間に床マスクの床があれば (絵の崖の縁が
-    // 升の中か縁の線より外) 塗らない: 水の絵は床マスクの形で崖の縁まで届き、升の四角が出ない (C++ の mrp_floor_lips と同じ)
-    private const float LipInset = 0.02f;
-    private const int LipSteps = 6;
+    // 落ちる縁の升を床にする (水が縁の線まで届く)。ただし落ちる縁から内へ LipReach (滝の膜が崖の縁を探す幅と同じ) までに
+    // 床マスクの床があれば塗らない: 水の絵は床マスクの形で崖の縁まで届き、膜はそこから始まる (C++ の mrp_floor_lips と同じ)
+    private const float LipInset = 0.02f, LipReach = 0.3f;
+    private const int LipSteps = 15;
 
     private static bool LipCovered(int bits, int cx, int cy, byte[] mb, int mw, int mh, float mox, float moy, float mppu)
     {
@@ -2351,7 +2351,7 @@ internal static partial class WaterSim
             bool hit = false;
             for (int s = 0; s <= LipSteps && !hit; s++)
             {
-                float r = (0.5f * _cell - LipInset) * (LipSteps - s) / LipSteps;
+                float r = 0.5f * _cell - (LipInset + (LipReach - LipInset) * s / LipSteps);
                 float ex = _org.x + (cx + 0.5f) * _cell + Nx[d] * r;
                 float ey = _org.y + (cy + 0.5f) * _cell + Ny[d] * r;
                 int mx = (int)MathF.Floor((ex - mox) * mppu), my = (int)MathF.Floor((ey - moy) * mppu);

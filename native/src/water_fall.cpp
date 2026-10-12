@@ -19,6 +19,8 @@ struct FallEdge
 {
     float x0, y0, nx, ny, q, head, tail, fall, depth, barH, barF, lipH, cut, cutFrom;
     float dx, dy, qa, xa, ya, qb, xb, yb;  // 着く所のずれと、隣の縁とならした量・ずれ (縁の両端)
+    float da, db, ha, hb, ta, tb;          // 隣の縁とならした深さ・膜の先端と後ろの端 (落ちた割合・縁の両端)
+    float ea, eb;                          // 隣に流れる縁が無い側へ膜を薄れながら延ばす幅 (無ければ 0)
     int32_t lip, isVoid;
     int32_t disc; float discX, discY, discR, discS;   // 着地の泡
     int32_t lipMode; float lipS;                      // 1 = 手すりを垂れる膜・2 = 奥の手すりを越える膜
@@ -223,10 +225,9 @@ static void Sheet(Ctx& c, const FallEdge& e)
     float ppu = a->ppu, now = a->clock;
     float fall = e.fall;
     float tau0 = fmn(1.0f, e.tail / fall), tau1 = fmn(1.0f, e.head / fall);
-    if (tau1 <= tau0) return;
     float tx = -e.ny, ty = e.nx, half = a->cell * 0.5f;
     float s0 = e.x0 * tx + e.y0 * ty;
-    int k0 = (int)ceilf((s0 - half) * ppu), k1 = (int)ceilf((s0 + half) * ppu) - 1;
+    int k0 = (int)ceilf((s0 - half - e.ea) * ppu), k1 = (int)ceilf((s0 + half + e.eb) * ppu) - 1;
     if (k1 < k0) return;
     float dx = e.dx, dy = e.dy;
     float qa = e.qa, qb = e.qb, xa = e.xa, xb = e.xb, ya = e.ya, yb = e.yb;
@@ -246,18 +247,26 @@ static void Sheet(Ctx& c, const FallEdge& e)
     for (int col = k0; col <= k1; col++)
     {
         float u0 = (float)col / ppu - s0;
+        // 列の深さと膜の先端・後ろの端は隣の縁との間でつなぎ (升ごとの段を作らない)、縁の外へ延ばした列は端の値のまま薄れる
+        float fc = fmn(1.0f, (u0 < 0.0f ? -u0 : u0) / half);
+        float fade = u0 < -half && e.ea > 0.0f ? 1.0f - (-u0 - half) / e.ea : u0 > half && e.eb > 0.0f ? 1.0f - (u0 - half) / e.eb : 1.0f;
+        if (fade <= 0.0f) continue;
+        float dep = u0 < 0.0f ? e.depth + (e.da - e.depth) * fc : e.depth + (e.db - e.depth) * fc;
+        float t0 = u0 < 0.0f ? tau0 + (e.ta - tau0) * fc : tau0 + (e.tb - tau0) * fc;
+        float t1 = u0 < 0.0f ? tau1 + (e.ha - tau1) * fc : tau1 + (e.hb - tau1) * fc;
+        if (t1 <= t0) continue;
         bool top = !e.lip && e.barF > 0.0f && Blocked(a, e, u0);
         float z0 = top && e.depth > e.barH ? e.barH : 0.0f;
         float thin = 1.0f;
-        float thr = fmn(ThrowMax, ThrowGain * sqrtf(fmx(0.0f, e.depth - z0))) * (0.9f + 0.2f * Noise(col + 7919, now * 0.6f));
+        float thr = fmn(ThrowMax, ThrowGain * sqrtf(fmx(0.0f, dep - z0))) * (0.9f + 0.2f * Noise(col + 7919, now * 0.6f));
         for (int si = 0; si < sub; si++)
         {
             float u = u0 + (float)si / (ppu * (float)sub);
-            float f = u < 0.0f ? -u / half : u / half;
+            float f = fmn(1.0f, u < 0.0f ? -u / half : u / half);
             float q = u < 0.0f ? e.q + (qa - e.q) * f : e.q + (qb - e.q) * f;
             float ldx = u < 0.0f ? dx + (xa - dx) * f : dx + (xb - dx) * f;
             float ldy = u < 0.0f ? dy + (ya - dy) * f : dy + (yb - dy) * f;
-            float dm = q / SheetFull;
+            float dm = q * fade / SheetFull;
             if (dm < ThinD) { if (si == 0) thin = 1.0f + (Noise(col, now * 1.3f) * 1.6f - 0.8f) * (1.0f - dm / ThinD) * 1.25f; dm *= thin; }
             if (dm > DensMax) dm = DensMax;
             float dc = dm * (top ? wb : wo);
@@ -273,12 +282,12 @@ static void Sheet(Ctx& c, const FallEdge& e)
             float cut = v ? FrontCut(a, sx + e.nx * a->cell * 0.25f, e.cutFrom, ey) : -3.40282347e+38f;
             if (sy + z0 <= cut) continue;
             if (e.ny > 0.0f && !e.lip) continue;
-            float len = (fabsf(ex - sx) + fabsf(ey - sy) + 2.0f * hh) * ppu * (tau1 - tau0);
+            float len = (fabsf(ex - sx) + fabsf(ey - sy) + 2.0f * hh) * ppu * (t1 - t0);
             int steps = iclamp((int)ceilf(len), 1, 600);
             float w = fmn(1.0f, len / (float)steps) * 0.85f;
             for (int j = 0; j <= steps; j++)
             {
-                float tau = tau0 + (tau1 - tau0) * (float)j / (float)steps;
+                float tau = t0 + (t1 - t0) * (float)j / (float)steps;
                 float x = gx + (ex - gx) * tau, y = gy + (ey - gy) * tau + hh * (1.0f - tau * tau);
                 if (y < cut) break;
                 float foam = tau > 0.92f ? 0.8f : tau < 0.03f ? 0.4f : 0.05f + 0.3f * tau * tau;
@@ -289,10 +298,10 @@ static void Sheet(Ctx& c, const FallEdge& e)
                 float val = d * w * al / (1.0f + Thin * tau);
                 float pf = tau >= PoolFade ? 0.0f : 1.0f - tau / PoolFade;
                 float pool = pf * pf * (3.0f - 2.0f * pf);
-                if (e.nx == 0.0f) { Splat(c, v, x, y, val, foam, e.depth, pool); continue; }
+                if (e.nx == 0.0f) { Splat(c, v, x, y, val, foam, dep, pool); continue; }
                 float span = (x - sx) * SideBody;
                 int n = imax(1, (int)ceilf(fabsf(span) * ppu));
-                for (int b = 0; b < n; b++) Splat(c, v, x - span * (float)b / (float)n, y, val, foam, e.depth, pool);
+                for (int b = 0; b < n; b++) Splat(c, v, x - span * (float)b / (float)n, y, val, foam, dep, pool);
             }
         }
     }

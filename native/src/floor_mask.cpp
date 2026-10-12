@@ -79,9 +79,9 @@ MRP_API void mrp_floor_raw(
 
 // 落ちる縁の升 (fall の向きのうち lip に無いものがある升) の床でない画素を床にする (WaterSim.StampLips と同じ)。
 // 升 = 原点 (ox, oy) から 1 辺 cell の格子・w×h 升
-// 落ちる縁から升の真ん中までの間に床マスクの床があるか (絵の崖の縁が升の中か縁の線より外にある)。全部の落ちる縁がそうなら
-// 升を塗らない (水の絵は床マスクの形で崖の縁まで届く)。升の中に絵の床が無い所 (絵の床が升の手前で終わる) だけ升ごと塗る
-static const float LipInset = 0.02f; static const int LipSteps = 6;
+// 落ちる縁から内へ LipReach (滝の膜が崖の縁を探す幅と同じ) までに床マスクの床があるか。全部の落ちる縁がそうなら升を塗らない
+// (水の絵は床マスクの形で崖の縁まで届き、膜はそこから始まる)。絵の床がそれより手前で終わる所だけ升ごと塗る
+static const float LipInset = 0.02f, LipReach = 0.3f; static const int LipSteps = 15;
 static const int LipNx[4] = { 1, -1, 0, 0 }, LipNy[4] = { 0, 0, 1, -1 };
 
 static bool lip_covered(int bits, int cx, int cy, float ox, float oy, float cell,
@@ -94,7 +94,7 @@ static bool lip_covered(int bits, int cx, int cy, float ox, float oy, float cell
         bool hit = false;
         for (int s = 0; s <= LipSteps && !hit; s++)
         {
-            float r = (0.5f * cell - LipInset) * (float)(LipSteps - s) / (float)LipSteps;
+            float r = 0.5f * cell - (LipInset + (LipReach - LipInset) * (float)s / (float)LipSteps);
             float ex = ox + ((float)cx + 0.5f) * cell + (float)LipNx[d] * r;
             float ey = oy + ((float)cy + 0.5f) * cell + (float)LipNy[d] * r;
             int mx = (int)floorf((ex - mox) * mppu), my = (int)floorf((ey - moy) * mppu);
