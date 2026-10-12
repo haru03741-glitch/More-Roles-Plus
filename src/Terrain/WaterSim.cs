@@ -453,7 +453,7 @@ internal static partial class WaterSim
         Links(0, 0, _w - 1, _h - 1, true);
         long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
         double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count} props={props} wet={WetStats} hash={GridHash():x8}");
+        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count} steps={CountBits(_stepMask)} z=[{_zInfo}] props={props} wet={WetStats} hash={GridHash():x8}");
         DirtyTiles.Clear();
         Array.Clear(_tileDirty);
         _ready = true;
@@ -765,6 +765,7 @@ internal static partial class WaterSim
         SpreadWetIslands(isl, wetOnly);
         var rank = HeightLevels.IslandRanks(i => area[i]);
         DoorRanks(isl, rank);
+        _cellIsl = isl; _islRank = rank; _islArea = area; // 島ごとの高さ (WaterElevation) 用
         for (int k = 0; k < n; k++)
         {
             int id = isl[k];
@@ -813,7 +814,6 @@ internal static partial class WaterSim
         var ship = ShipStatus.Instance;
         bool airship = ship && ship.TryCast<AirshipStatus>() != null;
         _decks = airship ? AirshipDecks : NoDecks;
-        _steps = airship ? AirshipSteps : NoDecks;
         bool mira = ship && ship.TryCast<MiraShipStatus>() != null;
         LowWalls.Load(mira);
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
@@ -821,7 +821,7 @@ internal static partial class WaterSim
         // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので屋外の影の線を見ない
         // (崖の上の縁に視界の影の線が引いてあり、それで切ると崖の大半から落ちなくなる)。部屋の影の線 (展望台の箱と柵の縁) は見る
         bool cliffs = !MapNotes.HasLevels;
-        if (full) ListLadders(ship);
+        if (full) { ListLadders(ship); ZBegin(); }
         _ledgeScan = full;
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
@@ -848,9 +848,11 @@ internal static partial class WaterSim
                 if (_open[j] != 0 && Passable(k, d)) continue;
                 if (Nx[d] != 0 && OnLadder(x, y)) continue;
                 string why = Target(x, y, d, lk, out int to, out int dist, out int tx, out int ty);
+                // 画面の下へ面を越えて下の床に着いた長さ = 段の差 (横を向いた崖も、下へ探した長さ)
+                if (full && to >= 0 && (why == "fall" && d == 3 || why == "side")) ZSample(k, to, dist - 1);
                 // 小さな段差の下の床から上の床へ (上から下へは落ちる縁の方で登録する)。両側から別々に登録するので、
                 // 部分の作り直しで片側だけが範囲に入っても対で残る
-                if (why == "same" && _lvl[ty * _w + tx] == lk + 1 && OnStep(x, y, tx, ty))
+                if (why == "same" && _lvl[ty * _w + tx] == lk + 1 && StepEdge(k, ty * _w + tx, dist))
                 {
                     StepTo[k * 4 + d] = _stepTo[k * 4 + d] = ty * _w + tx;
                     _stepMask[k] |= (byte)(1 << d);
@@ -866,19 +868,22 @@ internal static partial class WaterSim
                 // 空へ落とす縁とガラスの手すりは壁の影の線の外側へ落ちるので、影の線では切らない (塗った空も同じ)
                 if (full && why != "glass" && why != "air" && why != "airside" && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
                 if ((_shadowCut[k] >> d & 1) != 0) continue;
+                // 段差は滝にしない (段の高さぶんずらして流すだけ・床の絵にも落ちる縁を描かない)
+                if (to >= 0 && _lvl[to] == lk - 1 && StepEdge(k, to, dist))
+                {
+                    StepTo[k * 4 + d] = _stepTo[k * 4 + d] = to;
+                    _stepMask[k] |= (byte)(1 << d);
+                    continue;
+                }
                 _fallMask[k] |= (byte)(1 << d);
                 if (why == "glass") { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = (short)(_glass.Height * Full); }
                 else if (PlatformRimAt(k, to)) { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = PlatformRim; }
                 FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
                 EdgeBarrier(x, y, d, k);
-                if (to >= 0 && _lvl[to] == lk - 1 && OnStep(x, y, tx, ty))
-                {
-                    StepTo[k * 4 + d] = _stepTo[k * 4 + d] = to;
-                    _stepMask[k] |= (byte)(1 << d);
-                }
             }
         }
         _ledgeScan = false;
+        if (full) ZSolve();
         WakeWet(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
     }
 
@@ -927,7 +932,7 @@ internal static partial class WaterSim
     private static readonly float[] NoDecks = { };
     // 島の順位では低く出るが、絵では一段高い床 (高さを上書きする・歩ける升だけ)。
     // エアシップの機関室の南の出現位置の帯は、白い鉄板の通路より一段高い桃色の床
-    private static readonly float[] AirshipRaised = { -1.753f, -3.297f, 2.003f, -1.747f };
+    private static readonly float[] AirshipRaised = { -2.197f, -3.297f, 2.397f, -1.747f };
 
     private static void RaiseCells(float[] r, int level)
     {
@@ -935,11 +940,12 @@ internal static partial class WaterSim
             if (_sub[k] != 0 && InRects(r, _org.x + (k % _w + 0.5f) * _cell, _org.y + (k / _w + 0.5f) * _cell)) _lvl[k] = (sbyte)level;
     }
 
-    // 階段より低い段差 (滝にしない縁)。縁の両側の升の真ん中を結んだ中点で見る。エアシップの機関室の白い鉄板の通路と南の桃色の床の境
-    private static readonly float[] AirshipSteps = { -1.753f, -2.003f, 2.003f, -1.497f };
+    // 階段より低い段差 (滝にしない縁): 歩いてつながる同じ島の中で段が 1 つ違う隣 (段差の面は StepScan 升まで)。
+    // はしごや崖でしかつながらない島どうしの段は滝
     private const int StepHeight = Full / 4; // 段の高さ (低い側はこの深さまで溜まってから高い床とつながる)
-    private static float[] _steps = NoDecks;
-    private static bool OnStep(int x, int y, int tx, int ty) => InRects(_steps, _org.x + ((x + tx) * 0.5f + 0.5f) * _cell, _org.y + ((y + ty) * 0.5f + 0.5f) * _cell);
+    private const int StepScan = 4;
+    private static bool StepEdge(int k, int c, int dist) =>
+        dist <= StepScan && _cellIsl != null && _cellIsl[k] != 0 && _cellIsl[k] == _cellIsl[c];
     private static float[] _decks = NoDecks;
     private static bool OnDeck(int x, int y) => OnDeck(_org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell);
     internal static bool OnDeck(float px, float py) => InRects(_decks, px, py);
@@ -2249,7 +2255,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _stir = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; LowWalls.Clear();
+        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; _cellIsl = null; _islRank = null; _islArea = null; LowWalls.Clear();
         FallTo.Clear();
         StepTo.Clear();
         _foN = 0;
@@ -2457,7 +2463,20 @@ internal static partial class WaterSim
                     if (++c % 8 == 0) { reply("LINKS " + sb); sb.Clear(); }
                 }
                 if (sb.Length > 0) reply("LINKS " + sb);
-                reply($"OK water links n={FallTo.Count}");
+                sb.Clear();
+                foreach (var kv in StepTo)
+                {
+                    int k = kv.Key / 4, d = kv.Key % 4;
+                    sb.Append($"({_org.x + (k % _w + 0.5f) * _cell:0.00},{_org.y + (k / _w + 0.5f) * _cell:0.00}){"+x-x+y-y".Substring(d * 2, 2)} ");
+                }
+                reply("STEPS " + sb);
+                uint hl = 2166136261, hi = 2166136261;
+                for (int k = 0; k < _w * _h; k++) { hl = (hl ^ (byte)_lvl[k]) * 16777619; hi = (hi ^ (_cellIsl == null ? 0u : _cellIsl[k])) * 16777619; }
+                // 升ごとの段・島・開き・縁を書き出す (端末の突き合わせ用)
+                var dump = new byte[_w * _h * 4];
+                for (int k = 0; k < _w * _h; k++) { dump[k * 4] = (byte)_lvl[k]; dump[k * 4 + 1] = _cellIsl == null ? (byte)0 : _cellIsl[k]; dump[k * 4 + 2] = _open[k]; dump[k * 4 + 3] = _edge[k]; }
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(MoreRolesPlus.Bridge.TestBridge.ScreensDir, "waterlinks.bin"), dump);
+                reply($"OK water links n={FallTo.Count} steps={StepTo.Count} lvl={hl:x8} isl={hi:x8} grid={GridHash():x8} w={_w} h={_h} org={_org.x:0.0000},{_org.y:0.0000} cell={_cell:0.000000}");
                 return;
             }
             if (a.StartsWith("sweep")) { Sweep(a.Substring(5).Trim(), reply); return; }

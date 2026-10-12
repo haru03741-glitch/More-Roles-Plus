@@ -27,7 +27,7 @@ internal static class HeightLevels
     // マップごとの高さの区域 (範囲・高さ)。どの区域にも入らない所は高さ 0
     private static readonly (Rect Area, int Level)[] AirshipZones =
     {
-        (Rect.MinMaxRect(-2.2f, -3.6f, 2.4f, -1.86f), -1), // エンジン室の南の一段低い床 (真ん中の階段で通路とつながる)
+        (Rect.MinMaxRect(-2.2f, -3.6f, 2.4f, -1.86f), 1), // エンジン室の南の桃色の床 (白い鉄板の通路より一段高い)
     };
 
     private static ShipStatus _ship;
