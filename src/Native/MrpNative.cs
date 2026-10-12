@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Native;
 // 無い・版が違う時は地形を全部止める (Loaded が偽)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 19;
+    internal const int Abi = 20;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -36,6 +36,7 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> WaterCells;
     internal static delegate* unmanaged[Cdecl]<void*, void> LinkScan;
     internal static delegate* unmanaged[Cdecl]<void*, void> WaterRaw;
+    internal static delegate* unmanaged[Cdecl]<void*, void> HullClip;
 
     // 部品が読めたか。偽なら地形 (壊す・水・火・小物) を全部止め、部屋の版チェックでも弾く
     internal static bool Loaded
@@ -73,6 +74,7 @@ internal static unsafe class MrpNative
             WaterCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_cells");
             LinkScan = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_link_scan");
             WaterRaw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_raw");
+            HullClip = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_hull_clip");
             _loaded = true;
             Status = $"ok abi={got} {path}";
         }

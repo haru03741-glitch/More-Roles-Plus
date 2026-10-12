@@ -34,12 +34,30 @@ internal static class HullThroat
         public MeshRenderer Src;
         public GameObject Go;
         public Mesh Mesh;
-        public readonly List<Vector3> V = new();
-        public readonly List<Color32> C = new();
-        public readonly List<Vector2> U = new();
-        public readonly List<int> T = new();
+        // 頂点 (x y z)・色 (r g b a)・uv (x y) を VN 個、三角形の頂点の番号を TN 個 (C++ へそのまま渡す並び)
+        public float[] V = Array.Empty<float>();
+        public byte[] C = Array.Empty<byte>();
+        public float[] U = Array.Empty<float>();
+        public int VN;
+        public int[] T = Array.Empty<int>();
+        public int TN;
         public bool HasUv;
+
+        public void EnsureVerts(int n)
+        {
+            if (V.Length >= n * 3) return;
+            int cap = Math.Max(n, VN * 2);
+            Array.Resize(ref V, cap * 3); Array.Resize(ref C, cap * 4); Array.Resize(ref U, cap * 2);
+        }
+
+        public Cut Copy() => new()
+        {
+            V = (float[])V.Clone(), C = (byte[])C.Clone(), U = (float[])U.Clone(), VN = VN, T = (int[])T.Clone(), TN = TN, HasUv = HasUv,
+        };
     }
+
+    // 答え合わせ (native verify): 喉の切り抜きを C# でもやって頂点・色・uv・三角形を比べる
+    internal static long VerifyClips, VerifyClipDiff;
 
     private static readonly List<Cut> Cuts = new();
     private static readonly List<P[]> Opened = new(); // 開けた喉の塊 (世界座標・反時計回り)
@@ -166,9 +184,9 @@ internal static class HullThroat
             if (Cuts.Count == 0 && !Prepare()) { _failed = true; return; }
             foreach (var c in Cuts)
             {
-                before += c.T.Count / 3;
+                before += c.TN / 3;
                 Apply(c, holes);
-                after += c.T.Count / 3;
+                after += c.TN / 3;
             }
             // 切り抜いた複製ができてから元の描画を止める
             foreach (var c in Cuts) if (c.Src.enabled) c.Src.enabled = false;
@@ -177,13 +195,17 @@ internal static class HullThroat
         DamageMap.MarkThroat(Throat(holes));
         Opened.AddRange(holes);
         // 影の中の焼いた絵も喉の範囲で焼き直す (喉は穴の絵の範囲より奥まで伸びる)
+        float bx0 = float.MaxValue, by0 = float.MaxValue, bx1 = float.MinValue, by1 = float.MinValue;
         foreach (var h in holes)
         {
             float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
             foreach (var q in h) { x0 = MathF.Min(x0, q.X); y0 = MathF.Min(y0, q.Y); x1 = MathF.Max(x1, q.X); y1 = MathF.Max(y1, q.Y); }
             ShadowPatch.MarkDirty(new Vector2((x0 + x1) * 0.5f, (y0 + y1) * 0.5f), MathF.Max(x1 - x0, y1 - y0) * 0.5f + 0.2f);
+            bx0 = MathF.Min(bx0, x0); by0 = MathF.Min(by0, y0); bx1 = MathF.Max(bx1, x1); by1 = MathF.Max(by1, y1);
         }
-        int hidden = WallDecor.Hide(Vector2.zero, 1e5f, p => Contains(p)); // 壁に付いていた飾りのうち喉の中の物 (範囲は喉の形で決める)
+        // 壁に付いていた飾りのうち喉の中の物 (中かどうかは開けた喉全部で見る)。今回の喉に掛からない飾りは前の喉の時と変わらないので見ない
+        float hw = (bx1 - bx0) * 0.5f, hh = (by1 - by0) * 0.5f;
+        int hidden = WallDecor.Hide(new Vector2(bx0 + hw, by0 + hh), MathF.Sqrt(hw * hw + hh * hh) + 0.01f, p => Contains(p));
         hidden += WaterLeak.HidePipesInThroat();
         Plugin.Logger.LogInfo($"[HullThroat] mouth {ax:0.00},{ay:0.00}-{bx:0.00},{by:0.00} depth={depth:0.00} pieces={holes.Count} tris {before}->{after} hidden={hidden}");
     }
@@ -259,13 +281,19 @@ internal static class HullThroat
             var ts = src.triangles;
             bool hasColor = cs != null && cs.Length == vs.Length;
             c.HasUv = us != null && us.Length == vs.Length;
+            c.EnsureVerts(vs.Length);
             for (int i = 0; i < vs.Length; i++)
             {
-                c.V.Add(vs[i]);
-                c.C.Add(hasColor ? cs[i] : new Color32(255, 255, 255, 255));
-                c.U.Add(c.HasUv ? us[i] : default);
+                var v = vs[i];
+                c.V[i * 3] = v.x; c.V[i * 3 + 1] = v.y; c.V[i * 3 + 2] = v.z;
+                if (hasColor) { var col = cs[i]; c.C[i * 4] = col.r; c.C[i * 4 + 1] = col.g; c.C[i * 4 + 2] = col.b; c.C[i * 4 + 3] = col.a; }
+                else c.C[i * 4] = c.C[i * 4 + 1] = c.C[i * 4 + 2] = c.C[i * 4 + 3] = 255;
+                if (c.HasUv) { var uv = us[i]; c.U[i * 2] = uv.x; c.U[i * 2 + 1] = uv.y; }
             }
-            for (int i = 0; i < ts.Length; i++) c.T.Add(ts[i]);
+            c.VN = vs.Length;
+            c.T = new int[ts.Length];
+            for (int i = 0; i < ts.Length; i++) c.T[i] = ts[i];
+            c.TN = ts.Length;
 
             var go = new GameObject("MrpThroatHull") { layer = mf.gameObject.layer };
             go.transform.SetParent(mf.transform, false);
@@ -283,7 +311,7 @@ internal static class HullThroat
         return Cuts.Count > 0;
     }
 
-    // 三角形ごとに喉の塊を引き、喉を輪郭の太さだけ広げた塊に掛かる所は輪郭の色で残す
+    // 三角形ごとに喉の塊を引き、喉を輪郭の太さだけ広げた塊に掛かる所は輪郭の色で残す (C++。照合の時は C# でもやって比べる)
     private static void Apply(Cut c, List<P[]> holes)
     {
         var tf = c.Tf;
@@ -297,23 +325,101 @@ internal static class HullThroat
             grown.Add(g);
             foreach (var p in g) { minX = MathF.Min(minX, p.X); minY = MathF.Min(minY, p.Y); maxX = MathF.Max(maxX, p.X); maxY = MathF.Max(maxY, p.Y); }
         }
+        Cut cs = Native.MrpNative.Verify ? c.Copy() : null;
+        ClipNative(c, local, grown, minX, minY, maxX, maxY);
+        if (cs != null)
+        {
+            ClipCs(cs, local, grown, minX, minY, maxX, maxY);
+            long diff = cs.VN != c.VN || cs.TN != c.TN ? 1000000 : 0;
+            int vn = Math.Min(cs.VN, c.VN);
+            for (int i = 0; i < vn * 3; i++) if (BitConverter.SingleToInt32Bits(cs.V[i]) != BitConverter.SingleToInt32Bits(c.V[i])) diff++;
+            for (int i = 0; i < vn * 2; i++) if (BitConverter.SingleToInt32Bits(cs.U[i]) != BitConverter.SingleToInt32Bits(c.U[i])) diff++;
+            for (int i = 0; i < vn * 4; i++) if (cs.C[i] != c.C[i]) diff++;
+            for (int i = 0; i < Math.Min(cs.TN, c.TN); i++) if (cs.T[i] != c.T[i]) diff++;
+            VerifyClips++;
+            VerifyClipDiff += diff;
+        }
+        Upload(c);
+    }
 
-        var oldT = c.T.ToArray();
-        c.T.Clear();
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct ClipArgs
+    {
+        public float* V; public byte* C; public float* U;
+        public int VN, VCap;
+        public int* TriIn; public int TriInN;
+        public int* TriOut; public int TriOutN, TriOutCap;
+        public float* Holes; public int* HoleN;
+        public float* Grown; public int* GrownN;
+        public int HoleCount;
+        public float MinX, MinY, MaxX, MaxY;
+        public int OutR, OutG, OutB;
+        public int Over;
+    }
+
+    private static unsafe void ClipNative(Cut c, List<P[]> local, List<P[]> grown, float minX, float minY, float maxX, float maxY)
+    {
+        int hp = 0, gp = 0;
+        foreach (var h in local) hp += h.Length;
+        foreach (var g in grown) gp += g.Length;
+        var hs = new float[hp * 2]; var gs = new float[gp * 2];
+        var hn = new int[local.Count]; var gn = new int[grown.Count];
+        for (int i = 0, o = 0; i < local.Count; i++) { hn[i] = local[i].Length; foreach (var q in local[i]) { hs[o++] = q.X; hs[o++] = q.Y; } }
+        for (int i = 0, o = 0; i < grown.Count; i++) { gn[i] = grown[i].Length; foreach (var q in grown[i]) { gs[o++] = q.X; gs[o++] = q.Y; } }
+        var triIn = new int[c.TN];
+        Array.Copy(c.T, triIn, c.TN);
+        int vcap = c.VN + 4096, tcap = c.TN + 8192;
+        for (int tries = 0; tries < 6; tries++)
+        {
+            c.EnsureVerts(vcap);
+            if (c.T.Length < tcap) c.T = new int[tcap];
+            int over;
+            fixed (float* v = c.V) fixed (byte* col = c.C) fixed (float* u = c.U) fixed (int* ti = triIn) fixed (int* to = c.T)
+            fixed (float* h = hs) fixed (int* hc = hn) fixed (float* g = gs) fixed (int* gc = gn)
+            {
+                var a = new ClipArgs
+                {
+                    V = v, C = col, U = u, VN = c.VN, VCap = c.V.Length / 3,
+                    TriIn = ti, TriInN = triIn.Length, TriOut = to, TriOutCap = c.T.Length,
+                    Holes = h, HoleN = hc, Grown = g, GrownN = gc, HoleCount = local.Count,
+                    MinX = minX, MinY = minY, MaxX = maxX, MaxY = maxY,
+                    OutR = OutlineColor.r, OutG = OutlineColor.g, OutB = OutlineColor.b,
+                };
+                Native.MrpNative.HullClip(&a);
+                over = a.Over;
+                if (over == 0) { c.VN = a.VN; c.TN = a.TriOutN; return; }
+            }
+            // 頂点・三角形の置き場が足りなければ広げて最初からやり直す (足りない時は何も書き換えていない)
+            if ((over & 1) == 0) break;
+            vcap = c.VN + (vcap - c.VN) * 4;
+            tcap *= 4;
+        }
+        // 1 枚の三角形が細かく割れすぎた (起こらないはず)。この喉は切らずに残す
+        Array.Copy(triIn, c.T, triIn.Length);
+        c.TN = triIn.Length;
+        Plugin.Logger.LogError($"[HullThroat] clip overflow tris={c.TN / 3} holes={local.Count}");
+    }
+
+    // C# 版 (照合用)
+    private static void ClipCs(Cut c, List<P[]> local, List<P[]> grown, float minX, float minY, float maxX, float maxY)
+    {
+        var oldT = new int[c.TN];
+        Array.Copy(c.T, oldT, c.TN);
+        var outT = new List<int>(c.TN + 64);
         var keep = new List<P[]>();
         var ring = new List<P[]>();
         var tmp = new List<P[]>();
         for (int k = 0; k + 2 < oldT.Length; k += 3)
         {
             int i0 = oldT[k], i1 = oldT[k + 1], i2 = oldT[k + 2];
-            Vector3 v0 = c.V[i0], v1 = c.V[i1], v2 = c.V[i2];
-            if (MathF.Max(v0.x, MathF.Max(v1.x, v2.x)) < minX || MathF.Min(v0.x, MathF.Min(v1.x, v2.x)) > maxX ||
-                MathF.Max(v0.y, MathF.Max(v1.y, v2.y)) < minY || MathF.Min(v0.y, MathF.Min(v1.y, v2.y)) > maxY)
+            float x0 = c.V[i0 * 3], y0 = c.V[i0 * 3 + 1], x1 = c.V[i1 * 3], y1 = c.V[i1 * 3 + 1], x2 = c.V[i2 * 3], y2 = c.V[i2 * 3 + 1];
+            if (MathF.Max(x0, MathF.Max(x1, x2)) < minX || MathF.Min(x0, MathF.Min(x1, x2)) > maxX ||
+                MathF.Max(y0, MathF.Max(y1, y2)) < minY || MathF.Min(y0, MathF.Min(y1, y2)) > maxY)
             {
-                c.T.Add(i0); c.T.Add(i1); c.T.Add(i2);
+                outT.Add(i0); outT.Add(i1); outT.Add(i2);
                 continue;
             }
-            var tri = Ccw(new[] { new P(v0.x, v0.y), new P(v1.x, v1.y), new P(v2.x, v2.y) });
+            var tri = Ccw(new[] { new P(x0, y0), new P(x1, y1), new P(x2, y2) });
             if (MathF.Abs(Area(tri)) < 1e-9f) continue;
 
             // 広げた喉の外 = そのまま / 中 = 喉そのものを引いた残りが輪郭
@@ -330,43 +436,52 @@ internal static class HullThroat
                 }
                 (keep, tmp) = (tmp, keep);
             }
-            if (ring.Count == 0) { c.T.Add(i0); c.T.Add(i1); c.T.Add(i2); continue; }
+            if (ring.Count == 0) { outT.Add(i0); outT.Add(i1); outT.Add(i2); continue; }
             foreach (var h in local)
             {
                 tmp.Clear();
                 foreach (var piece in ring) Subtract(piece, h, tmp);
                 (ring, tmp) = (tmp, ring);
             }
-            foreach (var piece in keep) Emit(c, piece, i0, i1, i2, false);
-            foreach (var piece in ring) Emit(c, piece, i0, i1, i2, true);
+            foreach (var piece in keep) Emit(c, outT, piece, i0, i1, i2, false);
+            foreach (var piece in ring) Emit(c, outT, piece, i0, i1, i2, true);
         }
-        Upload(c);
+        if (c.T.Length < outT.Count) c.T = new int[outT.Count];
+        outT.CopyTo(c.T);
+        c.TN = outT.Count;
     }
 
-    private static void Emit(Cut c, P[] poly, int i0, int i1, int i2, bool outline)
+    private static void Emit(Cut c, List<int> outT, P[] poly, int i0, int i1, int i2, bool outline)
     {
         if (poly.Length < 3 || Area(poly) < 1e-7f) return;
-        Vector3 v0 = c.V[i0], v1 = c.V[i1], v2 = c.V[i2];
-        float det = (v1.y - v2.y) * (v0.x - v2.x) + (v2.x - v1.x) * (v0.y - v2.y);
+        float[] V = c.V;
+        float v0x = V[i0 * 3], v0y = V[i0 * 3 + 1], v0z = V[i0 * 3 + 2];
+        float v1x = V[i1 * 3], v1y = V[i1 * 3 + 1], v1z = V[i1 * 3 + 2];
+        float v2x = V[i2 * 3], v2y = V[i2 * 3 + 1], v2z = V[i2 * 3 + 2];
+        float det = (v1y - v2y) * (v0x - v2x) + (v2x - v1x) * (v0y - v2y);
         if (MathF.Abs(det) < 1e-12f) return;
-        Color32 c0 = c.C[i0], c1 = c.C[i1], c2 = c.C[i2];
-        Vector2 u0 = c.U[i0], u1 = c.U[i1], u2 = c.U[i2];
-        int baseIdx = c.V.Count;
+        c.EnsureVerts(c.VN + poly.Length);
+        V = c.V;
+        float[] U = c.U;
+        byte[] C = c.C;
+        int baseIdx = c.VN;
         foreach (var p in poly)
         {
-            float w0 = ((v1.y - v2.y) * (p.X - v2.x) + (v2.x - v1.x) * (p.Y - v2.y)) / det;
-            float w1 = ((v2.y - v0.y) * (p.X - v2.x) + (v0.x - v2.x) * (p.Y - v2.y)) / det;
+            float w0 = ((v1y - v2y) * (p.X - v2x) + (v2x - v1x) * (p.Y - v2y)) / det;
+            float w1 = ((v2y - v0y) * (p.X - v2x) + (v0x - v2x) * (p.Y - v2y)) / det;
             float w2 = 1f - w0 - w1;
-            c.V.Add(new Vector3(p.X, p.Y, v0.z * w0 + v1.z * w1 + v2.z * w2));
-            c.C.Add(outline
-                ? new Color32(OutlineColor.r, OutlineColor.g, OutlineColor.b, c0.a)
-                : new Color32(Mix(c0.r, c1.r, c2.r, w0, w1, w2), Mix(c0.g, c1.g, c2.g, w0, w1, w2),
-                              Mix(c0.b, c1.b, c2.b, w0, w1, w2), Mix(c0.a, c1.a, c2.a, w0, w1, w2)));
-            c.U.Add(new Vector2(u0.x * w0 + u1.x * w1 + u2.x * w2, u0.y * w0 + u1.y * w1 + u2.y * w2));
+            int n = c.VN;
+            V[n * 3] = p.X; V[n * 3 + 1] = p.Y; V[n * 3 + 2] = v0z * w0 + v1z * w1 + v2z * w2;
+            if (outline) { C[n * 4] = OutlineColor.r; C[n * 4 + 1] = OutlineColor.g; C[n * 4 + 2] = OutlineColor.b; C[n * 4 + 3] = C[i0 * 4 + 3]; }
+            else
+                for (int ch = 0; ch < 4; ch++) C[n * 4 + ch] = Mix(C[i0 * 4 + ch], C[i1 * 4 + ch], C[i2 * 4 + ch], w0, w1, w2);
+            U[n * 2] = U[i0 * 2] * w0 + U[i1 * 2] * w1 + U[i2 * 2] * w2;
+            U[n * 2 + 1] = U[i0 * 2 + 1] * w0 + U[i1 * 2 + 1] * w1 + U[i2 * 2 + 1] * w2;
+            c.VN++;
         }
         for (int i = 1; i + 1 < poly.Length; i++)
         {
-            c.T.Add(baseIdx); c.T.Add(baseIdx + i); c.T.Add(baseIdx + i + 1);
+            outT.Add(baseIdx); outT.Add(baseIdx + i); outT.Add(baseIdx + i + 1);
         }
     }
 
@@ -375,13 +490,28 @@ internal static class HullThroat
 
     private static void Upload(Cut c)
     {
-        // 使われなくなった頂点は詰めない (穴は数えるほどしか開かない)
-        if (c.V.Count > 65000) c.Mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        // 使われなくなった頂点は詰めない (穴は数えるほどしか開かない)。値を入れるのは構造体の欄だけ (new Vector3 は使わない)
+        int n = c.VN;
+        if (n > 65000) c.Mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        var vs = new Vector3[n];
+        var cs = new Color32[n];
+        for (int i = 0; i < n; i++)
+        {
+            vs[i].x = c.V[i * 3]; vs[i].y = c.V[i * 3 + 1]; vs[i].z = c.V[i * 3 + 2];
+            cs[i].r = c.C[i * 4]; cs[i].g = c.C[i * 4 + 1]; cs[i].b = c.C[i * 4 + 2]; cs[i].a = c.C[i * 4 + 3];
+        }
+        var ts = new int[c.TN];
+        Array.Copy(c.T, ts, c.TN);
         c.Mesh.Clear();
-        c.Mesh.vertices = c.V.ToArray();
-        c.Mesh.colors32 = c.C.ToArray();
-        if (c.HasUv) c.Mesh.uv = c.U.ToArray();
-        c.Mesh.triangles = c.T.ToArray();
+        c.Mesh.vertices = vs;
+        c.Mesh.colors32 = cs;
+        if (c.HasUv)
+        {
+            var us = new Vector2[n];
+            for (int i = 0; i < n; i++) { us[i].x = c.U[i * 2]; us[i].y = c.U[i * 2 + 1]; }
+            c.Mesh.uv = us;
+        }
+        c.Mesh.triangles = ts;
         c.Mesh.RecalculateBounds();
     }
 

@@ -293,6 +293,7 @@ internal static class TerrainDamage
         Mark("caps");
         if (cut == 0) { LastMouths.Clear(); LastMouthAway.Clear(); LastBreach = 0f; LastAway = default; }
         if (SolidMap.Breachable && cut > 0) SkyMouth(); // 抜けた穴を横へ広げた時も、新しく切った外壁の区間に口を足す
+        Mark("mouth");
         int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
         Mark("ledges");
         LastRemoved.Clear(); LastRemoved.AddRange(removed);
