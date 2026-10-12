@@ -41,7 +41,7 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> HullClip;
     internal static delegate* unmanaged[Cdecl]<void*, void> FoamDraw;
 
-    // 部品が読めたか。偽なら地形 (壊す・水・火・小物) を全部止め、部屋の版チェックでも弾く
+    // 部品が読めたか。偽なら Plugin.Load が mod ごと起動しない
     internal static bool Loaded
     {
         get

@@ -95,28 +95,25 @@ internal static class TerrainSync
         {
             TerrainDigest.End(seq);
             TerrainDamage.Mark("digest");
-            if (Native.MrpNative.Loaded) // 部品が無ければ地形は変わっていないので、音や水などの後追いも出さない
-            {
-                BreakNoise.Emit(r);
-                TerrainDamage.Mark("noise");
-                HammerSwing.OnApplied(r);
-                BombFuse.OnApplied(r);
-                DustCloud.OnApplied(r);
-                TerrainDamage.Mark("dust");
-                WaterLeak.OnApplied(r);
-                TerrainDamage.Mark("leak");
-                WaterSim.OnApplied(r);
-                TerrainDamage.Mark("water");
-                FireSim.OnApplied(r);
-                TerrainDamage.Mark("fire");
-                PropSim.OnApplied(r);
-                TerrainDamage.Mark("props");
-                Decompression.OnApplied(r);
-                TerrainDamage.Mark("decomp");
-            }
+            BreakNoise.Emit(r);
+            TerrainDamage.Mark("noise");
+            HammerSwing.OnApplied(r);
+            BombFuse.OnApplied(r);
+            DustCloud.OnApplied(r);
+            TerrainDamage.Mark("dust");
+            WaterLeak.OnApplied(r);
+            TerrainDamage.Mark("leak");
+            WaterSim.OnApplied(r);
+            TerrainDamage.Mark("water");
+            FireSim.OnApplied(r);
+            TerrainDamage.Mark("fire");
+            PropSim.OnApplied(r);
+            TerrainDamage.Mark("props");
+            Decompression.OnApplied(r);
+            TerrainDamage.Mark("decomp");
         }
         // 役職への知らせは呼び出し元が連番と配る列を書き終えてから (FireBroken)。受け手がさらに壊しても順番がずれない
-        if (!r.Kind.Shapes() || !Native.MrpNative.Loaded) return res;
+        if (!r.Kind.Shapes()) return res;
         Broken.Add(new Roles.TerrainBrokenEvent
         {
             PlayerId = r.Actor,

@@ -40,7 +40,7 @@ internal static class VersionCheck
 
     public static void SendHello()
     {
-        int abi = NativeAbi();
+        int abi = Native.MrpNative.Abi;
         Plugin.Logger.LogInfo($"hello -> host: {Plugin.Version} fp={Registry.Fingerprint:X8} abi={abi}");
         var w = Rpc.Start(Rpc.Hello);
         w.Write(Plugin.Version);
@@ -63,9 +63,6 @@ internal static class VersionCheck
         if (same) OptionSync.SendAll(sender.OwnerId);
     }
 
-    // 自分の C++ の部品の版 (読めなければ 0)。地形は部品が前提なので全員そろわないと始めない
-    private static int NativeAbi() => Native.MrpNative.Loaded ? Native.MrpNative.Abi : 0;
-
     public static bool IsSame(int clientId) => Seen.TryGetValue(clientId, out bool s) && s;
 
     // 部屋に入る (自分が立てた時も) たびに、前の部屋の照合結果と送った記録を捨てる
@@ -83,8 +80,6 @@ internal static class VersionCheck
     public static List<string> Blockers()
     {
         var list = new List<string>();
-        if (NativeAbi() != Native.MrpNative.Abi)
-            list.Add(new Text("自分 (C++ の部品が読めない)", "you (native module missing)"));
         int host = AmongUsClient.Instance.HostId;
         foreach (var p in PlayerControl.AllPlayerControls)
         {
@@ -94,7 +89,7 @@ internal static class VersionCheck
             if (!SeenVersion.TryGetValue(p.OwnerId, out string v))
                 list.Add(new Text($"{name} (MRP が入っていない)", $"{name} (no MRP)"));
             else if (v == Plugin.Version && SeenAbi.TryGetValue(p.OwnerId, out int abi) && abi != Native.MrpNative.Abi)
-                list.Add(new Text($"{name} (C++ の部品が読めない)", $"{name} (native module missing)"));
+                list.Add(new Text($"{name} (C++ の部品の版が違う)", $"{name} (different native module)"));
             else
                 list.Add(new Text($"{name} (版が違う: {v})", $"{name} (different version: {v})"));
         }

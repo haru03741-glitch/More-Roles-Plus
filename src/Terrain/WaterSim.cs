@@ -403,7 +403,6 @@ internal static partial class WaterSim
     private static bool EnsureGrid()
     {
         if (_ready) return true;
-        if (!Native.MrpNative.Loaded) return false; // 水の計算は C++ の部品が前提 (無い人はメニューで知らせる)
         if (!SolidMap.Ensure() || !SolidMap.Valid) return false;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _w = SolidMap.W / Sub;
@@ -2479,7 +2478,7 @@ internal static partial class WaterSim
     }
 
     // 水の網が作れない理由 (確認口の返事用)
-    private static string NoGrid() => Native.MrpNative.Loaded ? "no map" : $"no native ({Native.MrpNative.Status})";
+    private static string NoGrid() => "no map";
 
     internal static void Reset()
     {

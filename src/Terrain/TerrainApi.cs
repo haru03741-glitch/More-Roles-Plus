@@ -208,7 +208,6 @@ public static class TerrainApi
         why = null;
         if (!lp || lp.Data == null || lp.Data.IsDead) { why = new Text("生きている時だけ使えます", "Only while alive"); return false; }
         if (!GameClock.ShipAlive) { why = new Text("試合の中だけ使えます", "Only during a game"); return false; }
-        if (!Native.MrpNative.Loaded) { why = new Text("C++ の部品が読めないので使えません", "Native component missing"); return false; }
         string bad = TerrainPermits.Check(lp.PlayerId, use, radius, host: false);
         if (bad == null) return true;
         why = bad == "cooling down" ? new Text("まだ使えません", "Not ready yet") : new Text("この役職では使えません", "Your role can't do that");

@@ -173,7 +173,6 @@ internal static class DamageMap
 
     private static bool EnsureMap()
     {
-        if (!Native.MrpNative.Loaded) return false; // 地形は C++ の部品が前提 (無い人はメニューで知らせる)
         var ship = ShipStatus.Instance;
         if (!ship) return false;
         if (_ship == ship && (_useRt ? (bool)_rt : (bool)_tex)) return true;

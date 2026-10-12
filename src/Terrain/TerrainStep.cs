@@ -29,7 +29,6 @@ internal static class TerrainStep
 
     public static void Tick()
     {
-        if (!Native.MrpNative.Loaded) return; // 地形は C++ の部品が前提
         _profT = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {

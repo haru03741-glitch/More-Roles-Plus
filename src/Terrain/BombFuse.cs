@@ -54,7 +54,6 @@ internal static class BombFuse
         ok = false;
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.Data == null || lp.Data.IsDead) return new Text("生きている時だけ使えます", "Only while alive");
-        if (!Native.MrpNative.Loaded) return new Text("C++ の部品が読めないので使えません", "Native component missing");
         if (Bombs.Count + Timers.Count >= MaxBombs) return new Text("置ける数の上限です", "Too many bombs");
         Vector2 at = lp.GetTruePosition();
         var front = new Vector2(at.x + (lp.cosmetics && lp.cosmetics.FlipX ? -FrontOffset : FrontOffset), at.y);
