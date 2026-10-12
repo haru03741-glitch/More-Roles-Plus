@@ -930,34 +930,7 @@ internal static partial class WaterSim
         // 作った時の 2 回目は行き先が変わりうるので、影の線の判定も引き直す
         if (full && useZ)
             for (int y = y0; y <= y1; y++) Array.Clear(_shadowCut, y * _w + x0, x1 - x0 + 1);
-        for (int y = y0; y <= y1; y++)
-        for (int x = x0; x <= x1; x++)
-        {
-            int k = y * _w + x;
-            if (_fallMask[k] != 0)
-            {
-                for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
-                _fallMask[k] = 0;
-                _lipMask[k] = 0;
-                for (int d = 0; d < 4; d++) { _barB[k * 4 + d] = 0; _barH[k * 4 + d] = 0; }
-            }
-            if (_stepMask[k] != 0)
-            {
-                for (int d = 0; d < 4; d++) StepTo.Remove(k * 4 + d);
-                _stepMask[k] = 0;
-            }
-            if (_seaMask[k] != 0) { _seaMask[k] = 0; _seaListDirty = true; }
-            int lk = _lvl[k];
-            if (_open[k] == 0 || lk == NoLevel || lk == VoidLevel) continue;
-            for (int d = 0; d < 4; d++)
-            {
-                int j = k + Nx[d] + Ny[d] * _w;
-                if (_open[j] != 0 && Passable(k, d)) continue;
-                if (Nx[d] != 0 && OnLadder(x, y)) continue;
-                // ガラスの手すりは光線を引かない (C++ の答えの -1 と同じ印で後で見分ける)
-                RayAdd(OnGlassRail(x, y, d) ? -1 - (k * 4 + d) : k * 4 + d);
-            }
-        }
+        Scan(x0, y0, x1, y1);
         // ガラスの手すりの縁を除いて光線を引き、元の並びへ戻す
         int all = _rayN, n = 0;
         if (_rayAll.Length < all) _rayAll = new int[_rayQ.Length];
@@ -2418,7 +2391,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _stir = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; _cellIsl = null; _islRank = null; _islArea = null; _islBase = Array.Empty<int>(); LowWalls.Clear();
+        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; _cellIsl = null; _islRank = null; _islArea = null; _islBase = Array.Empty<int>(); _rim = null; LowWalls.Clear();
         FallTo.Clear();
         StepTo.Clear();
         _foN = 0;
