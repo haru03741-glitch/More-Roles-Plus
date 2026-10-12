@@ -3,14 +3,13 @@
 // 水の縁の走査 (src/Terrain/WaterSim.cs の LinkPass の前半と同じ結果)。
 // 範囲の升の前の縁の印を消し、開いている升の向きのうち隣へ流れない向きを光線の待ち行列へ升の番号順に並べる。
 // はしごの上の升の横の向きは並べない・ガラスの手すりの向きは −1 − (升 × 4 + 向き) で並べる (光線を引かない印)。
-// 前に落ちる縁/段差の縁があった升は cleared へ並べる (C# が表から同じ升を消す)。dry = 1 は印を消さずに答えだけ出す (照合用)
+// 前に落ちる縁/段差の縁があった升は cleared へ並べる (C# が表と縁の枠から同じ升を消す)。dry = 1 は印を消さずに答えだけ出す (照合用)
 
 struct LinkScanArgs
 {
     const uint8_t* open; const int8_t* lvl; const uint8_t* edge;
     const uint8_t* rim;                             // 升ごと: 0〜3 ビット = その向きにガラスの手すり・4 ビット = はしごの上
     uint8_t* fallMask; uint8_t* stepMask; uint8_t* seaMask; uint8_t* lipMask;
-    uint8_t* barB; int16_t* barH;                   // 升 × 4 + 向き
     int32_t w, x0, y0, x1, y1, dry;
     int32_t* q; int32_t qCap, qN;                   // 戻り: 光線の待ち行列 (容量を超えた分は数えるだけ・同じ範囲を dry で引き直せば同じ並び)
     int32_t* cleared; int32_t clearedCap, clearedN; // 戻り: 升 × 16 + 落ちる縁の印 + 段差の印 × 2 (落ちる縁と段差の表の件数より多くはならない)
@@ -40,7 +39,6 @@ MRP_API void mrp_link_scan(LinkScanArgs* a)
             {
                 a->fallMask[k] = 0;
                 a->lipMask[k] = 0;
-                for (int d = 0; d < 4; d++) { a->barB[k * 4 + d] = 0; a->barH[k * 4 + d] = 0; }
             }
             if (sm != 0) a->stepMask[k] = 0;
             if (a->seaMask[k] != 0) { a->seaMask[k] = 0; sea = 1; }

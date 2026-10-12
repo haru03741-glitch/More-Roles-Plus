@@ -16,7 +16,6 @@ internal static partial class WaterSim
         public byte* Open; public sbyte* Lvl; public byte* Edge;
         public byte* Rim;
         public byte* FallMask, StepMask, SeaMask, LipMask;
-        public byte* BarB; public short* BarH;
         public int W, X0, Y0, X1, Y1, Dry;
         public int* Q; public int QCap, QN;
         public int* Cleared; public int ClearedCap, ClearedN;
@@ -63,11 +62,11 @@ internal static partial class WaterSim
     {
         fixed (byte* open = _open) fixed (sbyte* lvl = _lvl) fixed (byte* edge = _edge) fixed (byte* rim = _rim)
         fixed (byte* fm = _fallMask) fixed (byte* sm = _stepMask) fixed (byte* sea = _seaMask) fixed (byte* lip = _lipMask)
-        fixed (byte* bb = _barB) fixed (short* bh = _barH) fixed (int* qp = q) fixed (int* cp = cleared)
+        fixed (int* qp = q) fixed (int* cp = cleared)
         {
             var a = new LinkScanArgs
             {
-                Open = open, Lvl = lvl, Edge = edge, Rim = rim, FallMask = fm, StepMask = sm, SeaMask = sea, LipMask = lip, BarB = bb, BarH = bh,
+                Open = open, Lvl = lvl, Edge = edge, Rim = rim, FallMask = fm, StepMask = sm, SeaMask = sea, LipMask = lip,
                 W = _w, X0 = x0, Y0 = y0, X1 = x1, Y1 = y1, Dry = dry ? 1 : 0,
                 Q = qp, QCap = q.Length, Cleared = cp, ClearedCap = cleared.Length,
             };
@@ -95,13 +94,17 @@ internal static partial class WaterSim
                 Plugin.Logger.LogError($"[WaterSim] scan cleared {cn} > {_scanCleared.Length}");
                 for (int y = y0; y <= y1; y++)
                 for (int x = x0; x <= x1; x++)
-                for (int d = 0; d < 4; d++) { FallTo.Remove((y * _w + x) * 4 + d); StepTo.Remove((y * _w + x) * 4 + d); }
+                {
+                    for (int d = 0; d < 4; d++) { FallTo.Remove((y * _w + x) * 4 + d); StepTo.Remove((y * _w + x) * 4 + d); }
+                    FreeSlot(y * _w + x);
+                }
             }
             for (int i = 0, m = Math.Min(cn, _scanCleared.Length); i < m; i++)
             {
                 int k = _scanCleared[i] >> 4;
                 if ((_scanCleared[i] & 1) != 0) for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
                 if ((_scanCleared[i] & 2) != 0) for (int d = 0; d < 4; d++) StepTo.Remove(k * 4 + d);
+                FreeSlot(k);
             }
             if (n > _rayQ.Length)
             {
@@ -146,13 +149,13 @@ internal static partial class WaterSim
                 for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
                 _fallMask[k] = 0;
                 _lipMask[k] = 0;
-                for (int d = 0; d < 4; d++) { _barB[k * 4 + d] = 0; _barH[k * 4 + d] = 0; }
             }
             if (_stepMask[k] != 0)
             {
                 for (int d = 0; d < 4; d++) StepTo.Remove(k * 4 + d);
                 _stepMask[k] = 0;
             }
+            FreeSlot(k);
             if (_seaMask[k] != 0) { _seaMask[k] = 0; _seaListDirty = true; }
             int lk = _lvl[k];
             if (_open[k] == 0 || lk == NoLevel || lk == VoidLevel) continue;

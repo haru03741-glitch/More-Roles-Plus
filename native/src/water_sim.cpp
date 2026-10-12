@@ -22,6 +22,7 @@ struct WaterFlowArgs
     const uint8_t* isl; const int32_t* islBase;
     int32_t islN, useZ;
     int32_t foCap, foOver;          // fo の容量 (縁 3 個ずつ)・入らなかった数 (C# が縁の数に合わせて広げるので 0 のはず)
+    const int32_t* slot;            // 升 → 縁の枠の番号 + 1。lipH / barB / barH / stepTo は枠 × 4 + 向き (落ちる縁と段差の升だけ)
 };
 
 // WaterSim の定数と同じ値
@@ -109,14 +110,16 @@ static inline bool passable(const WaterFlowArgs* a, int k, int d)
     return (a->edge[k] >> d & 1) != 0 && (a->edge[k + Nx[d] + Ny[d] * a->w] >> Opp[d] & 1) != 0;
 }
 
+static inline int edge_key(const WaterFlowArgs* a, int k, int d) { return (a->slot[k] - 1) * 4 + d; }
+
 static inline int lip_of(const WaterFlowArgs* a, int k, int d)
 {
-    return (a->lipMask[k] >> d & 1) != 0 ? a->lipH[k * 4 + d] : FallLip;
+    return (a->lipMask[k] >> d & 1) != 0 ? a->lipH[edge_key(a, k, d)] : FallLip;
 }
 
 static inline int fall_rate(const WaterFlowArgs* a, int k, int d, int h)
 {
-    int key = k * 4 + d, b = a->barB[key];
+    int key = edge_key(a, k, d), b = a->barB[key];
     if (b == 0) return weir(h - lip_of(a, k, d));
     int open = b == 255 ? 0 : weir(h - FallLip) * (256 - b);
     int over = a->barH[key] >= BarMax ? 0 : weir(h - imax(FallLip, (int)a->barH[key])) * (b == 255 ? 256 : b);
@@ -188,7 +191,7 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
         }
         else if (h > 0 && (a->stepMask[k] >> d & 1) != 0)
         {
-            int t = a->stepTo[k * 4 + d], ht = a->hgt[t];
+            int t = a->stepTo[edge_key(a, k, d)], ht = a->hgt[t];
             int32_t zt = zk == NoZ ? NoZ : base_z(a, t);
             int diff;
             if (zt != NoZ)

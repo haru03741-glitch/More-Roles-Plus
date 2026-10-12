@@ -49,7 +49,7 @@ internal static partial class WaterSim
                     int i = (py * w + px) * 3;
                     rgb[i] = cr; rgb[i + 1] = cg; rgb[i + 2] = 0;
                 }
-                float lip = (_lipMask[k] >> d & 1) != 0 ? _lipH[k * 4 + d] / (float)Full : 0f;
+                float lip = (_lipMask[k] >> d & 1) != 0 ? _lipH[EdgeKey(k, d)] / (float)Full : 0f;
                 if (blocked > 0 && height > lip)
                 {
                     int mx = (p0x + p1x) / 2, my = (p0y + p1y) / 2;
@@ -59,9 +59,15 @@ internal static partial class WaterSim
         }
         string path = System.IO.Path.Combine(TestBridge.ScreensDir, "barrier.ppm");
         TerrainReview.WriteRgb(path, rgb, w, h);
-        // 全升の縁の止まる割合と高さの指紋 (端末どうしで同じになるか比べる)
+        // 全升の縁の止まる割合と高さ・手すりの高さ・段差の行き先の指紋 (端末どうしで同じになるか比べる)
         uint hash = 2166136261u;
-        for (int i = 0; i < _barB.Length; i++) hash = (hash ^ _barB[i] ^ (uint)(ushort)_barH[i] << 8) * 16777619u;
+        for (int i = 0; i < _eSlot.Length * 4; i++)
+        {
+            int e = _eSlot[i >> 2] == 0 ? -1 : EdgeKey(i >> 2, i & 3);
+            hash = (hash ^ (e < 0 ? 0u : _barB[e]) ^ (uint)(e < 0 ? 0 : (ushort)_barH[e]) << 8) * 16777619u;
+            if (e >= 0 && (_lipMask[i >> 2] >> (i & 3) & 1) != 0) hash = (hash ^ (uint)(ushort)_lipH[e]) * 16777619u;
+            if (e >= 0 && (_stepMask[i >> 2] >> (i & 3) & 1) != 0) hash = (hash ^ (uint)_stepTo[e]) * 16777619u;
+        }
         return $"OK water barrier {WaterBarrier.Stats} edges={edges} blocked={blockedAll} partial={partial} hash={hash:x8} -> {path}";
     }
 }

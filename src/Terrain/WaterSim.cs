@@ -180,14 +180,14 @@ internal static partial class WaterSim
     private static byte[] _fallMask; // 縁を越えて落ちる向き (ビット = Nx/Ny の並び)
     private static byte[] _stepMask; // 小さな段差の縁の向き (滝にせず、段の高さぶんずらして両向きに流す)
     private static readonly Dictionary<int, int> StepTo = new(); // 升 × 4 + 向き → 段の向こうの升
-    private static int[] _stepTo;    // StepTo と同じ (_stepMask の立っている向きだけ読む)
+    private static int[] _stepTo;    // StepTo と同じ (縁の枠・_stepMask の立っている向きだけ読む)
     private static byte[] _shadowCut; // 作った時に影の線を挟んでいた縁の向き
     private static readonly Dictionary<int, (int To, int Delay)> FallTo = new(); // 升 × 4 + 向き → 落ちる先の升 (−1 = 奈落) と刻み
     // この小刻みに縁を越える量 (升, 向き, 量 の 3 つ組を並べる)
     private static int[] _fo = Array.Empty<int>();
     private static int _foN;
     private static readonly List<(int K, int D, int Amount)> FallStep = new(); // 1 刻みの間に縁を越えた量 (升 × 向きごとに合計)
-    private static int[] _fallAt;    // 升 × 4 + 向き → FallStep の番号 + 1 (0 = まだ無い)
+    private static int[] _fallAt;    // 縁の枠 → FallStep の番号 + 1 (0 = まだ無い)
     private static int[] _move;      // この小刻みに升 × 4 向きへ運ぶ量
     private static readonly List<(int Due, int To, int Amount)> Flying = new(); // 落ちている水 (着く刻みの順)
     private static byte[] _inList;
@@ -415,13 +415,11 @@ internal static partial class WaterSim
         _hgt = new int[n];
         _flux = new int[n * 4];
         _move = new int[n * 4];
-        _fallAt = new int[n * 4];
         _inList = new byte[n];
         _stir = new byte[n];
         _act = new int[n];
         _actN = 0;
         _sortedN = 0;
-        _stepTo = new int[n * 4];
         _fo = Array.Empty<int>(); // 縁の数に合わせて Links で広げる
         _foN = 0;
         _shut = new byte[n];
@@ -432,9 +430,7 @@ internal static partial class WaterSim
         _stepMask = new byte[n];
         _shadowCut = new byte[n];
         _lipMask = new byte[n];
-        _lipH = new short[n * 4];
-        _barB = new byte[n * 4];
-        _barH = new short[n * 4];
+        InitSlots(n);
         _furn = new short[n];
         PropSim.ForgetTops(); // 新しい格子へ家具の床を刻み直す
         FallTo.Clear();
@@ -979,7 +975,8 @@ internal static partial class WaterSim
         // 部分の作り直しで片側だけが範囲に入っても対で残る
         if (why == "same" && StepBetween(k, ty * _w + tx, dist, useZ, 1))
         {
-            StepTo[k * 4 + d] = _stepTo[k * 4 + d] = ty * _w + tx;
+            UseSlot(k);
+            StepTo[k * 4 + d] = _stepTo[EdgeKey(k, d)] = ty * _w + tx;
             _stepMask[k] |= (byte)(1 << d);
             return;
         }
@@ -996,13 +993,15 @@ internal static partial class WaterSim
         // 段差は滝にしない (段の高さぶんずらして流すだけ・床の絵にも落ちる縁を描かない)
         if (to >= 0 && StepBetween(k, to, dist, useZ, -1))
         {
-            StepTo[k * 4 + d] = _stepTo[k * 4 + d] = to;
+            UseSlot(k);
+            StepTo[k * 4 + d] = _stepTo[EdgeKey(k, d)] = to;
             _stepMask[k] |= (byte)(1 << d);
             return;
         }
+        UseSlot(k);
         _fallMask[k] |= (byte)(1 << d);
-        if (why == "glass") { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = (short)(_glass.Height * Full); }
-        else if (PlatformRimAt(k, to)) { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = PlatformRim; }
+        if (why == "glass") { _lipMask[k] |= (byte)(1 << d); _lipH[EdgeKey(k, d)] = (short)(_glass.Height * Full); }
+        else if (PlatformRimAt(k, to)) { _lipMask[k] |= (byte)(1 << d); _lipH[EdgeKey(k, d)] = PlatformRim; }
         FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
         EdgeBarrier(x, y, d, k);
     }
@@ -1104,13 +1103,13 @@ internal static partial class WaterSim
     }
 
     private static byte[] _lipMask;   // 縁の向きのうち、低い壁 (手すり) の高さまで溜める向き
-    private static short[] _lipH;     // その高さ (升 × 向き・水の深さの物差し)
+    private static short[] _lipH;     // その高さ (縁の枠・水の深さの物差し)
     private static LowWalls.Entry _glass; // 直前に OnGlassRail が見つけた低い壁
     private static bool OnGlassRail(int x, int y, int d) =>
         LowWalls.At(_org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell, d, out _glass);
 
     // 縁 (k, d) を越え始める高さ: 低い壁ならその高さ・それ以外は床の縁の盛り上がり
-    private static int LipOf(int k, int d) => (_lipMask[k] >> d & 1) != 0 ? _lipH[k * 4 + d] : FallLip;
+    private static int LipOf(int k, int d) => (_lipMask[k] >> d & 1) != 0 ? _lipH[EdgeKey(k, d)] : FallLip;
 
     // 縁の上に立つ物 (柵の柱・網・手すり) で止まる割合 (/256) と、その物の高さ (水の深さの物差し)。
     // 止まる所の水はその高さを越えた分だけ、抜ける所 (柱の間・網の目) の水は縁の盛り上がりを越えた分だけ落ちる
@@ -1120,7 +1119,7 @@ internal static partial class WaterSim
 
     private static void EdgeBarrier(int x, int y, int d, int k)
     {
-        int key = k * 4 + d;
+        int key = EdgeKey(k, d);
         if ((_lipMask[k] >> d & 1) != 0)
         {
             // 低い壁の表 (部屋の絵に描き込まれた手すり・動く床の枠) は縁の全部を止める
@@ -1142,7 +1141,7 @@ internal static partial class WaterSim
     // 縁 (k, d) から 1 刻みに落ちる量。抜ける所と止まる所を別々の堰として足す
     private static int FallRate(int k, int d, int h)
     {
-        int key = k * 4 + d, b = _barB[key];
+        int key = EdgeKey(k, d), b = _barB[key];
         if (b == 0) return Weir(h - LipOf(k, d));
         int open = b == 255 ? 0 : Weir(h - FallLip) * (256 - b);
         int over = _barH[key] >= BarMax ? 0 : Weir(h - Math.Max(FallLip, (int)_barH[key])) * (b == 255 ? 256 : b);
@@ -1501,7 +1500,7 @@ internal static partial class WaterSim
         // 縁を越えた水: 落ちる時間の後に下の升へ (奈落なら消える)。1 刻みの合計で 1 回
         foreach (var (k, d, amt) in FallStep)
         {
-            _fallAt[k * 4 + d] = 0;
+            _fallAt[EdgeKey(k, d)] = 0;
             FellTotal += amt;
             var (to, delay) = FallTo[k * 4 + d];
             if (to < 0) VoidTotal += amt;
@@ -1575,6 +1574,7 @@ internal static partial class WaterSim
         public byte* Isl; public int* IslBase;
         public int IslN, UseZ;
         public int FoCap, FoOver;
+        public int* Slot;
     }
 
     private static int[] _dirtyBuf = Array.Empty<int>();
@@ -1586,7 +1586,7 @@ internal static partial class WaterSim
         fixed (byte* open = _open) fixed (byte* edge = _edge) fixed (sbyte* lvl = _lvl)
         fixed (short* bed = _bed) fixed (short* furn = _furn)
         fixed (byte* stepMask = _stepMask) fixed (byte* fallMask = _fallMask) fixed (byte* seaMask = _seaMask) fixed (byte* lipMask = _lipMask)
-        fixed (short* lipH = _lipH) fixed (byte* barB = _barB) fixed (short* barH = _barH) fixed (int* stepTo = _stepTo)
+        fixed (short* lipH = _lipH) fixed (byte* barB = _barB) fixed (short* barH = _barH) fixed (int* stepTo = _stepTo) fixed (int* slot = _eSlot)
         fixed (int* act = _act) fixed (byte* inList = _inList) fixed (int* fo = _fo) fixed (bool* tileDirty = _tileDirty) fixed (int* dirty = _dirtyBuf)
         fixed (byte* stir = _stir) fixed (byte* isl = _cellIsl) fixed (int* islBase = _islBase)
         {
@@ -1594,7 +1594,7 @@ internal static partial class WaterSim
             {
                 Hgt = hgt, Flux = flux, Move = move, Open = open, Edge = edge, Lvl = lvl, Bed = bed, Furn = furn,
                 StepMask = stepMask, FallMask = fallMask, SeaMask = seaMask, LipMask = lipMask,
-                LipH = lipH, BarB = barB, BarH = barH, StepTo = stepTo,
+                LipH = lipH, BarB = barB, BarH = barH, StepTo = stepTo, Slot = slot,
                 Act = act, InList = inList, Fo = fo, TileDirty = (byte*)tileDirty, DirtyOut = dirty,
                 ActN = _actN, FoN = _foN, W = _w, H = _h, Tw = _tw, Th = _th, TileCells = TileCells,
                 Sub = s, SubN = SubN, Dry = dry ? 1 : 0, SeaLevel = SeaLevel,
@@ -1710,7 +1710,7 @@ internal static partial class WaterSim
                 {
                     // 小さな段差: 下の床の水面は段の高さぶん低い。上からは下の水面 (段より上に出た分) との差で、
                     // 下からは段を越えた分と上の水との差で流れる
-                    int t = _stepTo[k * 4 + d], ht = _hgt[t];
+                    int t = _stepTo[EdgeKey(k, d)], ht = _hgt[t];
                     int diff = _lvl[t] < lk
                         ? h - Math.Max(0, ht - StepHeight) - (ht <= StepHeight ? DryHold : WetHold)
                         : h - StepHeight - ht - (ht == 0 ? DryHold : WetHold);
@@ -1788,13 +1788,13 @@ internal static partial class WaterSim
             if ((_seaMask[k] >> d & 1) != 0) { SeaOutTotal += amt; continue; }
             if ((_stepMask[k] >> d & 1) != 0)
             {
-                int t = _stepTo[k * 4 + d];
+                int t = _stepTo[EdgeKey(k, d)];
                 _hgt[t] += amt;
                 Mark(t);
                 Wake(t);
                 continue;
             }
-            int key = k * 4 + d, at = _fallAt[key];
+            int key = EdgeKey(k, d), at = _fallAt[key];
             if (at == 0) { FallStep.Add((k, d, amt)); _fallAt[key] = FallStep.Count; }
             else { var fs = FallStep[at - 1]; FallStep[at - 1] = (fs.K, fs.D, fs.Amount + amt); }
         }
@@ -1847,8 +1847,8 @@ internal static partial class WaterSim
         else { x1 = x0 + Nx[d] * (Nx[d] != 0 ? SideVoidOut : _cell); y1 = y0 + Ny[d] * _cell - 1.5f; } // 横の縁は外へ弧を描いて谷へ
         // 縁の水の深さと、縁に立つ物 (止まる割合・高さ)。絵は水面から落ち始め、物の無い所からは水面のまま、物のある所からは物の上を越えて落ちる
         float depth = _hgt[k] / (float)Full;
-        int barB = _barB[k * 4 + d];
-        float barH = _barH[k * 4 + d] / (float)Full;
+        int barB = _barB[EdgeKey(k, d)];
+        float barH = _barH[EdgeKey(k, d)] / (float)Full;
         for (int i = Falls.Count - 1; i >= 0 && i >= Falls.Count - 8; i--)
         {
             var f = Falls[i];
@@ -2413,7 +2413,7 @@ internal static partial class WaterSim
         _ready = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _stir = null; _tileDirty = null;
-        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; _lipH = null; _barB = null; _barH = null; _furn = null; _cellIsl = null; _islRank = null; _islArea = null; _islBase = Array.Empty<int>(); _rim = null; LowWalls.Clear();
+        _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; ClearSlots(); _furn = null; _cellIsl = null; _islRank = null; _islArea = null; _islBase = Array.Empty<int>(); _rim = null; LowWalls.Clear();
         FallTo.Clear();
         StepTo.Clear();
         _foN = 0;

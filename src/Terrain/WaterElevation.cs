@@ -226,7 +226,7 @@ internal static partial class WaterSim
                 int bit = 1 << d;
                 if ((_stepMask[k] & bit) != 0)
                 {
-                    int zt = GroundZ(_stepTo[k * 4 + d]);
+                    int zt = GroundZ(_stepTo[EdgeKey(k, d)]);
                     int dz = zt == int.MinValue ? int.MinValue : zk - zt;
                     Add(dz == int.MinValue ? "step:noZ" : Math.Abs(dz) <= StepHeight ? "step:ok" : dz > 0 ? "step>fall" : "step>wall", k, dz);
                 }

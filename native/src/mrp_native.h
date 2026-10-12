@@ -8,4 +8,4 @@
 #endif
 
 // C# 側 (src/Native/MrpNative.cs の Abi) と同じ数。関数の形を変えたら上げる
-#define MRP_NATIVE_ABI 15
+#define MRP_NATIVE_ABI 16
