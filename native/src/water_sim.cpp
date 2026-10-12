@@ -1,6 +1,13 @@
 #include "mrp_native.h"
 #include <math.h>
 
+// 小刻みの関数は全部 mrp_water_substep の中へ展開する (引数の構造体を手元に写した物の値をレジスタに置いたままにするため)
+#if defined(_MSC_VER)
+#define MRP_INLINE __forceinline
+#else
+#define MRP_INLINE inline __attribute__((always_inline))
+#endif
+
 // 床の上の水の計算の 1 小刻み (src/Terrain/WaterSim.cs の DropVoid → Flow → Heights と同じ結果)。
 // 整数だけで計算する。升を回す順番も C# と同じ (Flow の途中で起こした升は同じ回のうちに回る)
 
@@ -36,7 +43,7 @@ static const int32_t NoZ = INT32_MIN;
 static const int SubN = 4, TileCells = 16;
 static const int Nx[4] = { 1, -1, 0, 0 }, Ny[4] = { 0, 0, 1, -1 }, Opp[4] = { 1, 0, 3, 2 };
 
-static inline int isqrt(int64_t v)
+static MRP_INLINE int isqrt(int64_t v)
 {
     if (v <= 0) return 0;
     int64_t r = (int64_t)sqrt((double)v);
@@ -45,11 +52,11 @@ static inline int isqrt(int64_t v)
     return (int)r;
 }
 
-static inline int imin(int a, int b) { return a < b ? a : b; }
-static inline int imax(int a, int b) { return a > b ? a : b; }
+static MRP_INLINE int imin(int a, int b) { return a < b ? a : b; }
+static MRP_INLINE int imax(int a, int b) { return a > b ? a : b; }
 
 // 升の床の高さ (段と島の基準・bed と furn は含めない)。決まらない升は NoZ
-static inline int32_t base_z(const WaterFlowArgs* a, int k)
+static MRP_INLINE int32_t base_z(const WaterFlowArgs* a, int k)
 {
     int l = a->lvl[k];
     if (l == NoLevel || l == VoidLevel) return NoZ;
@@ -58,11 +65,11 @@ static inline int32_t base_z(const WaterFlowArgs* a, int k)
     return a->islBase[i] + l * StepHeight;
 }
 
-static inline int weir(int e) { return e <= 0 ? 0 : imin(e / 2, (int)((int64_t)e * isqrt(16LL * e) / WeirDiv)); }
+static MRP_INLINE int weir(int e) { return e <= 0 ? 0 : imin(e / 2, (int)((int64_t)e * isqrt(16LL * e) / WeirDiv)); }
 
-static inline int share(int f, int s) { return (int)((int64_t)f * (s + 1) / SubN - (int64_t)f * s / SubN); }
+static MRP_INLINE int share(int f, int s) { return (int)((int64_t)f * (s + 1) / SubN - (int64_t)f * s / SubN); }
 
-static inline void mark_tile(WaterFlowArgs* a, int tx, int ty)
+static MRP_INLINE void mark_tile(WaterFlowArgs* a, int tx, int ty)
 {
     if (tx < 0 || ty < 0 || tx >= a->tw || ty >= a->th) return;
     int t = ty * a->tw + tx;
@@ -71,12 +78,27 @@ static inline void mark_tile(WaterFlowArgs* a, int tx, int ty)
     a->dirtyOut[a->dirtyN++] = t;
 }
 
-static inline void wake(WaterFlowArgs* a, int k);
+// 升 k (x, y) を回す升に入れる。もう入っていれば起こされた印だけ付ける
+static MRP_INLINE void wake_at(WaterFlowArgs* a, int k, int x, int y)
+{
+    if (a->inList[k] != 0) { a->stir[k] = 1; return; }
+    if (x < 1 || y < 1 || x >= a->w - 1 || y >= a->h - 1) return;
+    a->inList[k] = 1;
+    a->stir[k] = 1;
+    a->act[a->actN++] = k;
+}
 
-static inline void mark(WaterFlowArgs* a, int k)
+// 座標の分からない升 (割り算は入っていない升の時だけ)
+static MRP_INLINE void wake(WaterFlowArgs* a, int k)
+{
+    if (a->inList[k] != 0) { a->stir[k] = 1; return; }
+    int y = k / a->w;
+    wake_at(a, k, k - y * a->w, y);
+}
+
+static MRP_INLINE void mark(WaterFlowArgs* a, int k, int x, int y)
 {
     const int tc = TileCells;
-    int y = k / a->w, x = k - y * a->w;
     mark_tile(a, x / tc, y / tc);
     int lx = x % tc, ly = y % tc;
     if (lx == 0) mark_tile(a, x / tc - 1, y / tc);
@@ -86,38 +108,23 @@ static inline void mark(WaterFlowArgs* a, int k)
     // 高さが変わった升の隣は流れが変わりうるので、眠っていれば起こす (C# の Mark と同じ順)
     if (x >= 1 && y >= 1 && x < a->w - 1 && y < a->h - 1)
     {
-        wake(a, k);
+        wake_at(a, k, x, y);
         for (int d = 0; d < 4; d++)
         {
             int j = k + Nx[d] + Ny[d] * a->w;
-            if (a->hgt[j] > 0) wake(a, j);
+            if (a->hgt[j] > 0) wake_at(a, j, x + Nx[d], y + Ny[d]);
         }
     }
 }
 
-static inline void wake(WaterFlowArgs* a, int k)
-{
-    if (a->inList[k] != 0) { a->stir[k] = 1; return; }
-    int y = k / a->w, x = k - y * a->w;
-    if (x < 1 || y < 1 || x >= a->w - 1 || y >= a->h - 1) return;
-    a->inList[k] = 1;
-    a->stir[k] = 1;
-    a->act[a->actN++] = k;
-}
+static MRP_INLINE int edge_key(const WaterFlowArgs* a, int k, int d) { return (a->slot[k] - 1) * 4 + d; }
 
-static inline bool passable(const WaterFlowArgs* a, int k, int d)
-{
-    return (a->edge[k] >> d & 1) != 0 && (a->edge[k + Nx[d] + Ny[d] * a->w] >> Opp[d] & 1) != 0;
-}
-
-static inline int edge_key(const WaterFlowArgs* a, int k, int d) { return (a->slot[k] - 1) * 4 + d; }
-
-static inline int lip_of(const WaterFlowArgs* a, int k, int d)
+static MRP_INLINE int lip_of(const WaterFlowArgs* a, int k, int d)
 {
     return (a->lipMask[k] >> d & 1) != 0 ? a->lipH[edge_key(a, k, d)] : FallLip;
 }
 
-static inline int fall_rate(const WaterFlowArgs* a, int k, int d, int h)
+static MRP_INLINE int fall_rate(const WaterFlowArgs* a, int k, int d, int h)
 {
     int key = edge_key(a, k, d), b = a->barB[key];
     if (b == 0) return weir(h - lip_of(a, k, d));
@@ -127,7 +134,7 @@ static inline int fall_rate(const WaterFlowArgs* a, int k, int d, int h)
 }
 
 template <bool W>
-static inline int sub_out(WaterFlowArgs* a, int k, int d, int g)
+static MRP_INLINE int sub_out(WaterFlowArgs* a, int k, int d, int g)
 {
     if (g <= 0) g = 1;
     int q = share(g, a->sub);
@@ -139,7 +146,7 @@ static inline int sub_out(WaterFlowArgs* a, int k, int d, int g)
     return q;
 }
 
-static void drop_void(WaterFlowArgs* a)
+static MRP_INLINE void drop_void(WaterFlowArgs* a)
 {
     for (int i = 0; i < a->actN; i++)
     {
@@ -147,26 +154,29 @@ static void drop_void(WaterFlowArgs* a)
         if (a->lvl[k] != VoidLevel || a->hgt[k] <= 0) continue;
         a->voidAdd += a->hgt[k];
         a->hgt[k] = 0;
-        mark(a, k);
+        int y = k / a->w;
+        mark(a, k, k - y * a->w, y);
     }
 }
 
 // 升 k の 4 本の流れ出しを決める。W = false は書かずに流れ出しの合計だけ返す (眠っている升の検査用)
 template <bool W>
-static inline int flow_cell(WaterFlowArgs* a, int k)
+static MRP_INLINE int flow_cell(WaterFlowArgs* a, int k)
 {
     const int subGain = Gain * SubN, subDamp = 256 - (256 - Damp) / SubN;
     int w = a->w;
     int h = a->hgt[k];
     int sum = 0;
     int lk = a->lvl[k];
+    int bk = a->bed[k] + a->furn[k];
+    int ek = a->edge[k], sm = a->stepMask[k], fm = a->fallMask[k], cm = a->seaMask[k];
     int32_t zk = a->useZ && h > 0 ? base_z(a, k) : NoZ; // 高さを使う流れは全部 h > 0 の時だけ
     int falls = a->foN;
     for (int d = 0; d < 4; d++)
     {
         int j = k + Nx[d] + Ny[d] * w;
         int f = 0;
-        if (h > 0 && a->open[j] != 0 && passable(a, k, d))
+        if (h > 0 && a->open[j] != 0 && (ek >> d & 1) != 0 && (a->edge[j] >> Opp[d] & 1) != 0)
         {
             int lj = a->lvl[j];
             bool known = lk != NoLevel && lj != NoLevel;
@@ -176,7 +186,7 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
             {
                 // 両側の高さが決まっていれば水面 (床 + 深さ) の差で流す (段の順位の一方通行は使わない)
                 int hj = a->hgt[j];
-                int diff = (int)((int64_t)zk + h + a->bed[k] + a->furn[k] - zj - hj - a->bed[j] - a->furn[j]) - (hj == 0 ? DryHold : WetHold);
+                int diff = (int)((int64_t)zk + h + bk - zj - hj - a->bed[j] - a->furn[j]) - (hj == 0 ? DryHold : WetHold);
                 f = a->flux[k * 4 + d] * subDamp / 256 + (diff > 0 ? diff * subGain / 256 : 0);
                 if (f < 0) f = 0;
             }
@@ -184,12 +194,12 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
             {
                 int hj = a->hgt[j];
                 int diff = known && lj < lk ? h - DryHold
-                    : h + a->bed[k] + a->furn[k] - hj - a->bed[j] - a->furn[j] - (hj == 0 ? DryHold : WetHold);
+                    : h + bk - hj - a->bed[j] - a->furn[j] - (hj == 0 ? DryHold : WetHold);
                 f = a->flux[k * 4 + d] * subDamp / 256 + (diff > 0 ? diff * subGain / 256 : 0);
                 if (f < 0) f = 0;
             }
         }
-        else if (h > 0 && (a->stepMask[k] >> d & 1) != 0)
+        else if (h > 0 && (sm >> d & 1) != 0)
         {
             int t = a->stepTo[edge_key(a, k, d)], ht = a->hgt[t];
             int32_t zt = zk == NoZ ? NoZ : base_z(a, t);
@@ -197,7 +207,7 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
             if (zt != NoZ)
             {
                 // 段の向こうの床が dz だけ低い (負なら高い)。低い側は段の高さまで溜まってから高い床とつながる
-                int dz = (int)((int64_t)zk + a->bed[k] + a->furn[k] - zt - a->bed[t] - a->furn[t]);
+                int dz = (int)((int64_t)zk + bk - zt - a->bed[t] - a->furn[t]);
                 diff = dz > 0 ? h - imax(0, ht - dz) - (ht <= dz ? DryHold : WetHold)
                     : h + dz - ht - (ht == 0 ? DryHold : WetHold);
             }
@@ -206,14 +216,14 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
                 : h - StepHeight - ht - (ht == 0 ? DryHold : WetHold);
             if (diff > 0) sum += sub_out<W>(a, k, d, diff * Gain / 256);
         }
-        else if ((a->fallMask[k] >> d & 1) != 0 && h > FallLip)
+        else if ((fm >> d & 1) != 0 && h > FallLip)
         {
             int g = fall_rate(a, k, d, h);
             if (g > 0) sum += sub_out<W>(a, k, d, g);
         }
-        else if (h > 0 && (a->seaMask[k] >> d & 1) != 0)
+        else if (h > 0 && (cm >> d & 1) != 0)
         {
-            int diff = h + a->bed[k] + a->furn[k] - a->seaLevel - WetHold;
+            int diff = h + bk - a->seaLevel - WetHold;
             if (diff > 0) sum += sub_out<W>(a, k, d, diff * Gain / 256);
         }
         int q = share(f, a->sub);
@@ -235,14 +245,14 @@ static inline int flow_cell(WaterFlowArgs* a, int k)
     return sum;
 }
 
-static void flow(WaterFlowArgs* a)
+static MRP_INLINE void flow(WaterFlowArgs* a)
 {
     a->foN = 0;
     for (int i = 0; i < a->actN; i++) flow_cell<true>(a, a->act[i]);
 }
 
 // 眠っている升 (濡れていて回す升に居ない) は流れ出しが 0 で、乾いていく深さでもないはず。外れた升を数える
-static void check_sleep(WaterFlowArgs* a)
+static MRP_INLINE void check_sleep(WaterFlowArgs* a)
 {
     int w = a->w;
     for (int y = 1; y < a->h - 1; y++)
@@ -254,7 +264,7 @@ static void check_sleep(WaterFlowArgs* a)
     }
 }
 
-static void heights(WaterFlowArgs* a)
+static MRP_INLINE void heights(WaterFlowArgs* a)
 {
     int w = a->w, n = a->actN; // 途中で起こした升は流れ込みが無い (流れ込みは flow で起こす) ので、この回では回さない
     for (int i = 0; i < n; i++)
@@ -267,8 +277,14 @@ static void heights(WaterFlowArgs* a)
             int j = k + Nx[d] + Ny[d] * w;
             dh += a->move[j * 4 + Opp[d]];
         }
-        if (dh != 0) { a->hgt[k] += dh; mark(a, k); }
-        if (a->dry && a->hgt[k] > 0 && a->hgt[k] < MinDepth) { a->hgt[k]--; mark(a, k); }
+        // 深さが変わったら 1 回だけ印を付ける (印は k 自身の深さを読まないので、増減と乾きで 2 回付けるのと同じ)
+        int hk = a->hgt[k] + dh;
+        bool changed = dh != 0;
+        if (a->dry && hk > 0 && hk < MinDepth) { hk--; changed = true; }
+        if (!changed) continue;
+        a->hgt[k] = hk;
+        int y = k / w;
+        mark(a, k, k - y * w, y);
     }
 }
 
@@ -277,9 +293,12 @@ static void heights(WaterFlowArgs* a)
 MRP_API int32_t mrp_water_substep(WaterFlowArgs* a)
 {
     if (a->subN != SubN || a->tileCells != TileCells) return 0;
-    drop_void(a);
-    if (a->checkSleep) check_sleep(a);
-    flow(a);
-    heights(a);
+    // 手元に写して回す (配列への書き込みが引数の数と重なりうると見なされ、w や actN を毎回読み直すのを避ける)
+    WaterFlowArgs s = *a;
+    drop_void(&s);
+    if (s.checkSleep) check_sleep(&s);
+    flow(&s);
+    heights(&s);
+    *a = s;
     return 1;
 }
