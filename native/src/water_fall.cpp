@@ -35,6 +35,8 @@ struct FallArgs
     const float* low; int32_t lowN;          // 奥向きの低い壁 (x0 x1 y0 y1 top base の 6 個ずつ)
     // 縁に立つ物の絵 (WaterBarrier)
     const uint8_t* bits; int32_t bw, bh; float box, boy, bppu;
+    // 床マスク (FloorMask・膜の始点を絵の崖の縁へ寄せる)
+    const uint8_t* mask; int32_t mw, mh; float mox, moy, mppu;
     int64_t puts, clipped;                   // 出力: 置いた画素・升が無くて置けなかった画素
 };
 
@@ -42,6 +44,7 @@ static const float SheetFull = 240.0f, DensMax = 1.3f, ThinD = 0.35f, PoolFade =
 static const float ThrowMax = 0.35f, ThrowGain = 0.5f, Spread = 0.4f;
 static const float LipHalf = 0.13f, LipDrop = 0.3f, LipDens = 0.9f, CrestUp = 0.06f, CrestDens = 0.6f;
 static const float Full = 1024.0f;
+static const float BrinkStep = 0.02f; static const int BrinkSteps = 15;
 
 static inline float fmn(float a, float b) { return a < b ? a : b; }
 static inline float fmx(float a, float b) { return a > b ? a : b; }
@@ -188,6 +191,32 @@ static float FrontCut(const FallArgs* a, float x, float y0, float y1)
     return -3.40282347e+38f;
 }
 
+static inline int MaskAt(const FallArgs* a, float x, float y)
+{
+    int mx = Floor((x - a->mox) * a->mppu), my = Floor((y - a->moy) * a->mppu);
+    if (mx < 0 || my < 0 || mx >= a->mw || my >= a->mh) return -1;
+    int i = my * a->mw + mx;
+    return (a->mask[i >> 3] & (1 << (i & 7))) != 0 ? 1 : 0;
+}
+
+// 縁 (水の升の境) から床マスクの崖の縁 (床が終わる所) までの、外向きを正とする距離。膜はそこから始める
+// (縁と崖の縁の間の水は床の水の絵が描く)。縁の上が床なら外へ、床でなければ内へ BrinkSteps まで探す。見つからなければ 0
+static float Brink(const FallArgs* a, float x, float y, float nx, float ny)
+{
+    if (!a->mask) return 0.0f;
+    int at = MaskAt(a, x, y);
+    if (at < 0) return 0.0f;
+    float sgn = at != 0 ? 1.0f : -1.0f;
+    for (int k = 1; k <= BrinkSteps; k++)
+    {
+        float d = (float)k * BrinkStep * sgn;
+        int m = MaskAt(a, x + nx * d, y + ny * d);
+        if (m < 0) return 0.0f;
+        if (m != at) return at != 0 ? d : d + BrinkStep;
+    }
+    return 0.0f;
+}
+
 static void Sheet(Ctx& c, const FallEdge& e)
 {
     const FallArgs* a = c.a;
@@ -237,8 +266,10 @@ static void Sheet(Ctx& c, const FallEdge& e)
             dm /= (float)sub; dc /= (float)sub;
             float sx = e.x0 + tx * u, sy = e.y0 + ty * u;
             float h0 = fmx(0.3f, -ldy);
-            float gx = sx, gy = sy - h0, hh = h0 + z0;
             float ex = sx + ldx + e.nx * thr, ey = sy + ldy + e.ny * thr;
+            float br = Brink(a, sx, sy, e.nx, e.ny);
+            sx += e.nx * br; sy += e.ny * br;
+            float gx = sx, gy = sy - h0, hh = h0 + z0;
             float cut = v ? FrontCut(a, sx + e.nx * a->cell * 0.25f, e.cutFrom, ey) : -3.40282347e+38f;
             if (sy + z0 <= cut) continue;
             if (e.ny > 0.0f && !e.lip) continue;

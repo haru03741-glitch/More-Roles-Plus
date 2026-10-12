@@ -694,6 +694,7 @@ internal static class WaterArt
     // 絵だけの話で、水の計算 (量・流れ・指紋) は変えない
     private const float FillReach = 2f; // 縦横の升の数で数える (斜めは短くなる)
     private static int[] _fillFrom;          // 水の升ごとの写し元の水の升 (-1 = 写さない)
+    internal static int FillOf(int k) => _fillFrom == null || k < 0 || k >= _fillFrom.Length ? -2 : _fillFrom[k]; // 確認用 (-2 = 写し元の表が無い)
     private static byte[] _fillTargets;      // タイルごとに、そこを写し元にしている隣のタイルの向き (8 方向のビット)
     private static int _fillGen = -1;
     private static bool _fillDirty = true;

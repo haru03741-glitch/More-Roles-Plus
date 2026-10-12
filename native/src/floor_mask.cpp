@@ -79,8 +79,37 @@ MRP_API void mrp_floor_raw(
 
 // 落ちる縁の升 (fall の向きのうち lip に無いものがある升) の床でない画素を床にする (WaterSim.StampLips と同じ)。
 // 升 = 原点 (ox, oy) から 1 辺 cell の格子・w×h 升
+// 落ちる縁から升の真ん中までの間に床マスクの床があるか (絵の崖の縁が升の中か縁の線より外にある)。全部の落ちる縁がそうなら
+// 升を塗らない (水の絵は床マスクの形で崖の縁まで届く)。升の中に絵の床が無い所 (絵の床が升の手前で終わる) だけ升ごと塗る
+static const float LipInset = 0.02f; static const int LipSteps = 6;
+static const int LipNx[4] = { 1, -1, 0, 0 }, LipNy[4] = { 0, 0, 1, -1 };
+
+static bool lip_covered(int bits, int cx, int cy, float ox, float oy, float cell,
+    const uint8_t* mb, int32_t mw, int32_t mh, float mox, float moy, float mppu)
+{
+    if (!mb) return false;
+    for (int d = 0; d < 4; d++)
+    {
+        if ((bits >> d & 1) == 0) continue;
+        bool hit = false;
+        for (int s = 0; s <= LipSteps && !hit; s++)
+        {
+            float r = (0.5f * cell - LipInset) * (float)(LipSteps - s) / (float)LipSteps;
+            float ex = ox + ((float)cx + 0.5f) * cell + (float)LipNx[d] * r;
+            float ey = oy + ((float)cy + 0.5f) * cell + (float)LipNy[d] * r;
+            int mx = (int)floorf((ex - mox) * mppu), my = (int)floorf((ey - moy) * mppu);
+            if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
+            int i = my * mw + mx;
+            hit = (mb[i >> 3] & (1 << (i & 7))) != 0;
+        }
+        if (!hit) return false;
+    }
+    return true;
+}
+
 MRP_API void mrp_floor_lips(const uint8_t* fall, const uint8_t* lip, int32_t w, int32_t h, float ox, float oy, float cell,
-    float x, float y, float step, int32_t n, uint8_t* into)
+    float x, float y, float step, int32_t n, uint8_t* into,
+    const uint8_t* mb, int32_t mw, int32_t mh, float mox, float moy, float mppu)
 {
     if (n <= 0 || n > MaxN) return;
     int32_t col[MaxN];
@@ -101,7 +130,8 @@ MRP_API void mrp_floor_lips(const uint8_t* fall, const uint8_t* lip, int32_t w, 
             int cx = col[px];
             if (row[px] != 0 || cx < 0) continue;
             int k = baseK + cx;
-            if ((fall[k] & ~lip[k]) != 0) row[px] = 255;
+            int b = fall[k] & ~lip[k];
+            if (b != 0 && !lip_covered(b, cx, cy, ox, oy, cell, mb, mw, mh, mox, moy, mppu)) row[px] = 255;
         }
     }
 }

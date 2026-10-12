@@ -241,6 +241,35 @@ internal static class WaterFall
     // 落ちる道: 地面の上を (縁 - 落ちる高さ) → 着く所へまっすぐ、高さは落ちる高さから 2 次で 0 へ。
     // 量と着く所のずれは隣の縁との間で縁に沿ってなめらかにつなぐ (縁ごとに道が違っても膜が割れない)。
     // ずれが列の間隔より大きく変わる所は列を細かく分けて隙間を埋める
+    // 縁 (水の升の境) から床マスクの崖の縁 (床が終わる所) までの、外向きを正とする距離 (C++ の Brink と同じ)。
+    // 縁の上が床なら外へ、床でなければ内へ BrinkSteps まで探す。見つからない (下の床まで続いている・升の中に床が無い) なら 0
+    private const float BrinkStep = 0.02f;
+    private const int BrinkSteps = 15;
+
+    private static int MaskAt(float x, float y)
+    {
+        int mx = (int)MathF.Floor((x - _mox) * _mppu), my = (int)MathF.Floor((y - _moy) * _mppu);
+        if (mx < 0 || my < 0 || mx >= _mw || my >= _mh) return -1;
+        int i = my * _mw + mx;
+        return (_mask[i >> 3] & (1 << (i & 7))) != 0 ? 1 : 0;
+    }
+
+    private static float Brink(float x, float y, float nx, float ny)
+    {
+        if (_mask == null) return 0f;
+        int at = MaskAt(x, y);
+        if (at < 0) return 0f;
+        float sgn = at != 0 ? 1f : -1f;
+        for (int k = 1; k <= BrinkSteps; k++)
+        {
+            float d = k * BrinkStep * sgn;
+            int m = MaskAt(x + nx * d, y + ny * d);
+            if (m < 0) return 0f;
+            if (m != at) return at != 0 ? d : d + BrinkStep;
+        }
+        return 0f;
+    }
+
     private static void SheetCs(in FallEdge e, float now)
     {
         float fall = e.Fall;
@@ -289,8 +318,11 @@ internal static class WaterFall
                 dm /= sub; dc /= sub;
                 float sx = e.X0 + tx * u, sy = e.Y0 + ty * u;
                 float h0 = MathF.Max(0.3f, -ldy);
-                float gx = sx, gy = sy - h0, hh = h0 + z0;
                 float ex = sx + ldx + e.Nx * thr, ey = sy + ldy + e.Ny * thr;
+                // 膜は絵の崖の縁から始める (縁と崖の縁の間の水は床の水の絵が描く)。着く所は変えない
+                float br = Brink(sx, sy, e.Nx, e.Ny);
+                sx += e.Nx * br; sy += e.Ny * br;
+                float gx = sx, gy = sy - h0, hh = h0 + z0;
                 // 手前の床は縁の外側の升の列で探す (横の縁は縁の線ちょうどだと縁の内側の升 = 落ちる元の床を拾い、膜が丸ごと隠れる)
                 float cut = e.Void != 0 ? WaterSim.FrontCut(sx + e.Nx * WaterSim.Cell * 0.25f, e.CutFrom, ey) : float.MinValue;
                 if (sy + z0 <= cut) continue;
@@ -505,6 +537,7 @@ internal static class WaterFall
         public byte* Open; public int* Hgt; public int W, H; public float Ox, Oy, Cell;
         public float* Low; public int LowN;
         public byte* Bits; public int Bw, Bh; public float Box, Boy, Bppu;
+        public byte* Mask; public int Mw, Mh; public float Mox, Moy, Mppu;
         public long Puts, Clipped;
     }
 
@@ -514,11 +547,11 @@ internal static class WaterFall
     private static readonly Canvas[] JobTiles = new Canvas[MaxCanvases];
     private static int _edgeN, _tileN, _jobState, _jobGen; // _jobState: 0 = 無し / 1 = 積んだ / 2 = 描いた
     private static float _clock;
-    private static byte[] _open, _bits;
+    private static byte[] _open, _bits, _mask;
     private static int[] _hgt;
     private static float[] _low = new float[0];
-    private static int _lowN, _gw, _gh, _bw, _bh;
-    private static float _gox, _goy, _box, _boy, _bppu;
+    private static int _lowN, _gw, _gh, _bw, _bh, _mw, _mh;
+    private static float _gox, _goy, _box, _boy, _bppu, _mox, _moy, _mppu;
     internal static bool HasJobs => _jobState == 1;
     internal static Exception JobError;
     internal static long VerifyDraws, VerifyDrawDiff; // 答え合わせ (native verify): C# でも描いて画素を 1 バイトずつ比べる
@@ -604,6 +637,7 @@ internal static class WaterFall
         // 手前の床 (WaterSim.FrontCut) と縁に立つ物の絵 (WaterBarrier) の地図。配列が差し替わっても古い方は残るので参照だけ持つ
         if (!WaterSim.CutMaps(out _open, out _hgt, out _gw, out _gh, out _gox, out _goy)) { _open = null; _hgt = null; }
         if (!WaterBarrier.Bits(out _bits, out _bw, out _bh, out _box, out _boy, out _bppu)) _bits = null;
+        if (FloorMask.Off || !FloorMask.MaskBits(out _mask, out _mw, out _mh, out _mox, out _moy, out _mppu)) _mask = null;
         var low = LowWalls.All;
         if (_low.Length < low.Count * 6) _low = new float[low.Count * 6];
         _lowN = 0;
@@ -626,13 +660,14 @@ internal static class WaterFall
 
     private static unsafe void DrawNative()
     {
-        fixed (FallEdge* ep = _edges) fixed (FallTile* tp = TileArgs) fixed (byte* op = _open) fixed (int* hp = _hgt) fixed (float* lp = _low) fixed (byte* bp = _bits)
+        fixed (FallEdge* ep = _edges) fixed (FallTile* tp = TileArgs) fixed (byte* op = _open) fixed (int* hp = _hgt) fixed (float* lp = _low) fixed (byte* bp = _bits) fixed (byte* mp = _mask)
         {
             var a = new FallArgs
             {
                 Tiles = tp, TileN = _tileN, TilePx = TilePx, Edges = ep, EdgeN = _edgeN, Ppu = Ppu, Clock = _clock,
                 Open = op, Hgt = hp, W = _gw, H = _gh, Ox = _gox, Oy = _goy, Cell = WaterSim.Cell,
                 Low = lp, LowN = _lowN, Bits = bp, Bw = _bw, Bh = _bh, Box = _box, Boy = _boy, Bppu = _bppu,
+                Mask = mp, Mw = _mw, Mh = _mh, Mox = _mox, Moy = _moy, Mppu = _mppu,
             };
             Native.MrpNative.FallDraw(&a);
             _puts += a.Puts;

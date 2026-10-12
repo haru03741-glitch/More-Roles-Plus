@@ -72,6 +72,20 @@ PHYS_MIN_W = 0.1      # これより細い筋は水の通り道にしない (世
 BARRIER_PX = 3        # 影の線を画素に引く太さ (線の継ぎ目から漏れないように)
 FRONT_MAX = 1.0       # 床の縁から真下へこれまでの床でない絵は南の壁の前面 (水の通り道にしない)
 FACE_MAX = 4.0        # 床の縁から真上へこれ (世界単位) までの絵を壁の面とする (水が這い上がる所)
+# 一方向の影の多角形 (台地の上の面) が上の面の外 (岩の面・空) まで含む所で、上の面と外を分ける折れ線 (世界座標)。
+# 空の絵と岩の面は床の判定の絵に無く、上の面の地面と同じ「絵の無い所」になるので線で分ける。
+# Fungle の通信室の台地 = 建物の裏から旗の角 (砂の上の面と後ろの空の境・建物の当たり判定の中の隙間から裏の空へ回らない)、旗の角から採掘坑の上まで
+# (砂の上の面と左の高い岩・採掘坑へ下りる崖の境・崖の縁の当たり判定に沿う)
+TOP_SPLIT_SHIP = {"FungleShip": [[(20.587, 14.668), (18.329, 14.6), (16.464, 14.919), (16.536, 14.027), (16.483, 13.521), (17.11, 12.715), (17.023, 11.524), (17.139, 11.267)]]}
+TOP_LINE_W = 0.16     # 上の面を分ける線を引く幅 (世界単位)。歩ける所の升 (1/16) の丸めのはみ出しより太く
+TOP_REFINE = 0.5      # 絵の色で崖の縁を決め直す、多角形の輪郭の前後の幅 (世界単位)
+TOP_LEARN_IN = 0.3    # 上の面の色を学ぶのは、上の面の歩ける所のうち輪郭からこれより奥の画素
+TOP_LEARN_OUT = (0.15, 0.8)  # 崖の面の色を学ぶのは、輪郭の外のこの距離の帯 (歩ける所の近くは除く)
+FACE_SCAN = 2.5       # 上の面の輪郭の外のこの距離 (世界単位) まで、崖の面の色の画素を下の地面の床にしない
+TOP_LINE_CLOSE = 0.05 # 上の面の中の黒い縁取りの線を埋める半径 (世界単位)
+TOP_HOLE = 0.01       # 上の面の中で埋める穴の広さの上限 (世界単位の 2 乗)
+TOP_SMOOTH = 0.03     # 色で分けた後にならす半径 (世界単位)
+TOP_FACE = 0.5        # 上の面の輪郭 (崖の縁) の外のこの幅 (世界単位) は崖の面として、下の地面の床を広げない
 
 DEFAULT_BUNDLES = [
     r"C:/Program Files/Epic Games/AmongUs/Among Us_Data/StreamingAssets/aa/EGS/StandaloneWindows",
@@ -188,6 +202,118 @@ def furniture_mask(j, ppu, shape):
     return np.asarray(im).astype(bool)
 
 
+def top_mask(j, ppu, shape):
+    """一方向の影の多角形 (外から中が見えない = 一段高い台地の上の面・輪郭は崖の縁) の内側の画素"""
+    s = j["solid"]
+    ox, oy = s["origin"]
+    ch, cw = shape
+    im = Image.new("L", (cw, ch), 0)
+    dr = ImageDraw.Draw(im)
+    for path in j.get("tops", []):
+        pts = [((x - ox) * ppu, (y - oy) * ppu) for x, y in path]
+        if len(pts) >= 3:
+            dr.polygon(pts, fill=1)
+    return np.asarray(im).astype(bool)
+
+
+def top_split(j, ppu, shape, top):
+    """TOP_SPLIT_SHIP の折れ線を TOP_LINE_W の幅で引いた画素 (台地の上の面の中だけ)。
+    上の面の地面はこれを越えてつながない (歩ける所の升の丸めで線の外へはみ出した分も切る)"""
+    s = j["solid"]
+    ox, oy = s["origin"]
+    ch, cw = shape
+    im = Image.new("L", (cw, ch), 0)
+    dr = ImageDraw.Draw(im)
+    w = max(1, int(round(TOP_LINE_W * ppu)))
+    for line in TOP_SPLIT_SHIP.get(j["ship"].replace("(Clone)", ""), []):
+        dr.line([((x - ox) * ppu, (y - oy) * ppu) for x, y in line], fill=1, width=w, joint="curve")
+    return np.asarray(im).astype(bool) & top
+
+
+def top_walk(walk, top):
+    """歩ける所のまとまりのうち、大半が台地の上の面の内側にあるもの (戻り値は内側の分) と、大半が外にあるもの (外の分)。
+    升の丸めで輪郭の反対側へはみ出した歩ける所は、どちらの起点にも使わない"""
+    lab, n = ndimage.label(walk)
+    tot = np.bincount(lab.ravel(), minlength=n + 1)
+    hit = np.bincount(lab.ravel(), weights=top.ravel(), minlength=n + 1)
+    keep = hit * 2 >= tot
+    keep[0] = False
+    on = keep[lab]
+    return on & top, walk & ~on & ~top
+
+
+def load_art(path, appu):
+    """paintbase の絵 (上の行から) を下の行からの配列にして返す"""
+    Image.MAX_IMAGE_PIXELS = None
+    return np.asarray(Image.open(path).convert("RGB"))[::-1], appu
+
+
+def refine_top(j, ppu, top, walk, art):
+    """台地の上の面の輪郭を、ゲームが描いた絵の色で画素ごとに決め直す。一方向の影の多角形の輪郭は崖の縁を粗くなぞっただけで、
+    垂れた草や砂の縁が 0.1〜0.3 外へ出ている所・内へ入っている所がある。輪郭の前後 TOP_REFINE の帯の中だけ、
+    上の面の色 (上の面の歩ける所の画素で学ぶ) と崖の面の色 (輪郭のすぐ外の画素で学ぶ) のどちらに近いかで分け直す。
+    先に上の面と岩の面を分ける線 (TOP_SPLIT_SHIP) で切って上の面の歩ける所につながる側だけにするので、手で引いた直線も絵の縁へ寄る"""
+    img, appu = art
+    s = j["solid"]
+    ah, aw = img.shape[:2]
+    cut = top & ~top_split(j, ppu, top.shape, top)
+    lab, n = ndimage.label(cut)
+    keep = np.zeros(n + 1, bool)
+    keep[np.unique(lab[top_walk(walk, top)[0] & cut])] = True
+    keep[0] = False
+    top = keep[lab]
+    ys, xs = np.nonzero(ndimage.binary_dilation(top, iterations=1) ^ ndimage.binary_erosion(top, iterations=1))
+    if len(xs) == 0:
+        return top
+    m = int((max(TOP_REFINE, FACE_SCAN) + 0.5) * ppu)
+    y0, y1 = max(0, ys.min() - m), min(top.shape[0], ys.max() + m + 1)
+    x0, x1 = max(0, xs.min() - m), min(top.shape[1], xs.max() + m + 1)
+    t = top[y0:y1, x0:x1]
+    wk = walk[y0:y1, x0:x1]
+    gx = np.clip(((np.arange(x0, x1) + 0.5) / ppu * appu).astype(int), 0, aw - 1)
+    gy = np.clip(((np.arange(y0, y1) + 0.5) / ppu * appu).astype(int), 0, ah - 1)
+    q = (img[gy[:, None], gx[None, :]] >> 3).astype(np.int32)
+    key = (q[..., 0] << 10) | (q[..., 1] << 5) | q[..., 2]
+    din = ndimage.distance_transform_edt(t)
+    dout = ndimage.distance_transform_edt(~t)
+    on_top, _ = top_walk(wk, t)
+    learn_top = on_top & (din > TOP_LEARN_IN * ppu)
+    learn_face = ~t & (dout > TOP_LEARN_OUT[0] * ppu) & (dout < TOP_LEARN_OUT[1] * ppu) & ~ndimage.binary_dilation(wk, iterations=int(0.3 * ppu))
+    def hist(sel):
+        hh = np.bincount(key[sel], minlength=1 << 15).astype(np.float32).reshape(32, 32, 32)
+        return ndimage.uniform_filter(hh, 3) / max(1, sel.sum())
+    ht, hf = hist(learn_top), hist(learn_face)
+    like = (ht >= hf).reshape(-1)[key]
+    band = np.where(t, din, dout) <= TOP_REFINE * ppu
+    core = t & ~band
+    new = core | (band & like)
+    # 色のまだら (草の中の橙の石・崖の面の明るい縞) をならし、上の面の奥につながる分だけ残す
+    st = ndimage.generate_binary_structure(2, 1)
+    r = max(1, int(round(TOP_SMOOTH * ppu)))
+    # 草の葉や砂の縁取りの黒い線 (上の面にも崖の面にも出る色) は閉じてから穴を埋め、上の面の中を切らない
+    # (水の絵の写しは床の画素だけを伝うので、細い線で切れると縁の升に水が入らず升の形の段が出る)
+    new = ndimage.binary_closing(new, st, iterations=max(r, int(round(TOP_LINE_CLOSE * ppu)))) | core
+    holes = ndimage.binary_fill_holes(new) & ~new
+    lab, n = ndimage.label(holes)
+    small = np.bincount(lab.ravel(), minlength=n + 1) <= TOP_HOLE * ppu * ppu
+    small[0] = False
+    new |= small[lab]  # 岩やキノコ (上の面の上に立つ物) の大きな穴は残す
+    new = ndimage.binary_opening(new, st, iterations=r) | core
+    lab, n = ndimage.label(new)
+    keep = np.zeros(n + 1, bool)
+    keep[np.unique(lab[core])] = True
+    keep[0] = False
+    out = top.copy()
+    out[y0:y1, x0:x1] = keep[lab]
+    # 上の面の外で崖の面の色の画素 (下の地面の床の続きにしない・下の水が崖の面を這い上がって見えない)
+    fc = ~keep[lab] & ~like & (dout <= FACE_SCAN * ppu)
+    fc = ndimage.binary_closing(ndimage.binary_opening(fc, st, iterations=r), st, iterations=r)
+    face = np.zeros_like(top)
+    face[y0:y1, x0:x1] = fc
+    print(f"{j['ship']}: top refined +{int((out & ~top).sum())} -{int((top & ~out).sum())} px face {int(fc.sum())} px (learn top {int(learn_top.sum())} face {int(learn_face.sum())})")
+    return out, face
+
+
 def chroma(rgb):
     return rgb / np.maximum(rgb.sum(axis=-1, keepdims=True), 1e-3)
 
@@ -267,7 +393,7 @@ def learn(j, canvas, ppu, floor, inner, rgb, lum, ch, key):
     return out
 
 
-def classify(j, canvas, ppu, cover):
+def classify(j, canvas, ppu, cover, art=None):
     s = j["solid"]
     raw = np.frombuffer(__import__("base64").b64decode(s["open"]), np.uint8)
     bits = np.unpackbits(raw, bitorder="little")[: s["w"] * s["h"]].reshape(s["h"], s["w"]).astype(bool)
@@ -308,19 +434,37 @@ def classify(j, canvas, ppu, cover):
     cand = drawn & ((lum >= OUTLINE) & colored | learned & (lsum >= DARK_FLOOR * 3)) & ~cover
     floor &= near
     reach = GROUND_REACH_SHIP.get(j["ship"].replace("(Clone)", ""))
+    top = poly = top_mask(j, ppu, shape)
+    cliff = None
+    if art is not None and top.any():
+        top, cliff = refine_top(j, ppu, poly, walk, art)
+    band = top_split(j, ppu, shape, top)
     if reach:
-        # 歩ける所につながった絵の無い地面 (家具と壁の絵の縁まで)
+        # 歩ける所につながった絵の無い地面 (家具と壁の絵の縁まで)。台地の上の面と外 (崖の面・下の地面) は同じ絵の無い地面なので、
+        # 崖の縁 (上の面の輪郭) をまたいでつながない: 上の面の地面は上の面の歩ける所から、外の地面は外の歩ける所からだけ。
+        # 上の面の中でも上の面と岩の面を分ける線 (TOP_SPLIT_SHIP) は越えない
         ground = ~drawn & ~cover & (ndimage.distance_transform_edt(~walk) <= reach * ppu)
-        lab, n = ndimage.label(ground)
-        touch = np.zeros(n + 1, bool)
-        touch[np.unique(lab[walk & ground])] = True
-        touch[0] = False
-        floor |= touch[lab]
-    wet, show, hide = beyond(j, ppu, floor, cand, wall_face(canvas, floor, ppu) | front_face(canvas, floor, ppu), walk, cover, drawn, canvas)
+        on_top, off_top = top_walk(walk, top)
+        # 外の地面のうち上の面の輪郭 (崖の縁) から TOP_FACE までは崖の面: 下の地面の水はそこまで這い上がらず、
+        # 上の面の床とも離れる (写しが崖の縁を越えて上の面の水を崖の面へ運ばない)
+        below = ~top & (ndimage.distance_transform_edt(~top) > TOP_FACE * ppu) if top.any() else ~top
+        # 多角形のうち上の面から離れた所 (分け線の向こうの岩の面) は下の地面の床にもしない
+        if top is not poly:
+            below &= ~(poly & (ndimage.distance_transform_edt(~top) > TOP_REFINE * ppu))
+        if cliff is not None:
+            below &= ~cliff
+        for side, seed in ((top & ~band, on_top), (below, off_top)):
+            g = ground & side
+            lab, n = ndimage.label(g)
+            touch = np.zeros(n + 1, bool)
+            touch[np.unique(lab[seed & g])] = True
+            touch[0] = False
+            floor |= touch[lab]
+    wet, show, hide = beyond(j, ppu, floor, cand, wall_face(canvas, floor, ppu) | front_face(canvas, floor, ppu), walk, cover, drawn, canvas, top, band)
     return smooth((floor & ~deep & ~hide) | show), walk, furn, wet
 
 
-def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas):
+def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas, top, band):
     """水が物理的に届く所: 歩ける所から、床の色の画素 (壁の面は除く・地面の船は海でない地面も) だけを通り、影の線 (壁の根元) と
     手前の絵 (家具・木・岩) を越えずに PHYS_REACH まで塗った範囲。当たり判定だけで閉じた所 (見えない柵の向こうの床・家具の当たり判定の
     張り出し) にも水は流れる。戻り値 = (水の範囲, 水を見せる画素, 水を見せない画素)"""
@@ -359,7 +503,18 @@ def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas):
     # 細い筋 (絵の枠・縁取りの脇の 1〜3 画素) は水の通り道にしない
     k = max(1, int(round(PHYS_MIN_W * ppu / 2)))
     region = ndimage.binary_opening(region, st, iterations=k) & ~walk
-    # 絵の無い地面 (Fungle の屋外) は高さの違う台地の間もつながって見えるので、水の通り道には足さず見せるだけ (GROUND_REACH)
+    # 台地の上の面の絵の無い地面: 輪郭が崖の縁なので、崖の面へ出ずに縁まで水が届く (当たり判定の多角形で閉じた縁の帯も)。
+    # 上の面の歩ける所からだけ広げ、上の面と岩の面を分ける線 (TOP_SPLIT_SHIP) は越えない
+    seed = top_walk(walk, top)[0] & ~band
+    up = top & ~drawn & ~cover & ~band & ~barrier & reach
+    if sea is not None:
+        up &= ~sea
+    lab, n = ndimage.label(up | seed)
+    touch = np.zeros(n + 1, bool)
+    touch[np.unique(lab[seed])] = True
+    touch[0] = False
+    region |= ndimage.binary_opening(touch[lab], st, iterations=k) & ~walk
+    # 台地の上の面の外の絵の無い地面 (Fungle の崖の面・下の地面) は高さの違う所がつながって見えるので、水の通り道には足さず見せるだけ (GROUND_REACH)
     # 例外の範囲の手前の絵 (ドロップシップ) は床の色でも水を見せない
     return region, region, relax & cover
 
@@ -413,6 +568,8 @@ def bridge_wet(j, wet):
     for x0, y0, x1, y1 in j.get("shadows", []):
         dr.line([((x0 - ox) * c, (y0 - oy) * c), ((x1 - ox) * c, (y1 - oy) * c)], fill=1, width=1)
     bar = ndimage.binary_dilation(np.asarray(im).astype(bool))
+    # 台地の上の面と岩の面を分ける線 (TOP_SPLIT_SHIP) も埋めない
+    bar |= top_split(j, c, (h, w), top_mask(j, c, (h, w)))
     st = ndimage.generate_binary_structure(2, 1)
     near_wet = ndimage.binary_dilation(wet, st, iterations=WET_BRIDGE)
     near_walk = ndimage.binary_dilation(walk, st, iterations=WET_BRIDGE)
@@ -525,6 +682,8 @@ def main():
     ap.add_argument("--wet", default=os.path.join(os.path.dirname(__file__), "..", "Resources", "WaterOpen"))
     ap.add_argument("--preview", default=None)
     ap.add_argument("--report", action="store_true", help="取りこぼし (歩ける所なのに床でない塊) を一覧し、プレビューに赤で出す")
+    ap.add_argument("--art", default=None, help="ゲームの paintbase が描いたマップ全体の絵 (台地の上の面の崖の縁を画素で決め直す・左下 = 歩ける所の地図の左下)")
+    ap.add_argument("--art-ppu", type=float, default=64.0, help="--art の 1 単位の画素数 (paintbase 4 = 64)")
     a = ap.parse_args()
     folder = a.bundles or next((b for b in DEFAULT_BUNDLES if os.path.isdir(b)), None)
     if not folder:
@@ -540,7 +699,8 @@ def main():
         tex = load_textures(folder, j["rooms"] + j.get("covers", []))
         canvas = compose(j, tex, ppu)
         cover = cover_mask(j, tex, ppu, canvas.shape[:2])
-        floor, walk, furn, phys = classify(j, canvas, ppu, cover)
+        art = load_art(a.art, a.art_ppu) if a.art else None
+        floor, walk, furn, phys = classify(j, canvas, ppu, cover, art)
         wet = exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys)))
         wsize = write_wet(os.path.join(a.wet, ship + ".bin"), j, wet)
         print(f"{ship}: wet cells={int(wet.sum())} -> {wsize} B")

@@ -2337,7 +2337,34 @@ internal static partial class WaterSim
         return _ready && _fallMask != null;
     }
 
-    internal static void StampLips(float x, float y, float step, int n, byte[] into)
+    // 落ちる縁の升を床にする (水が縁の線まで届く)。ただし落ちる縁から升の真ん中までの間に床マスクの床があれば (絵の崖の縁が
+    // 升の中か縁の線より外) 塗らない: 水の絵は床マスクの形で崖の縁まで届き、升の四角が出ない (C++ の mrp_floor_lips と同じ)
+    private const float LipInset = 0.02f;
+    private const int LipSteps = 6;
+
+    private static bool LipCovered(int bits, int cx, int cy, byte[] mb, int mw, int mh, float mox, float moy, float mppu)
+    {
+        if (mb == null) return false;
+        for (int d = 0; d < 4; d++)
+        {
+            if ((bits >> d & 1) == 0) continue;
+            bool hit = false;
+            for (int s = 0; s <= LipSteps && !hit; s++)
+            {
+                float r = (0.5f * _cell - LipInset) * (LipSteps - s) / LipSteps;
+                float ex = _org.x + (cx + 0.5f) * _cell + Nx[d] * r;
+                float ey = _org.y + (cy + 0.5f) * _cell + Ny[d] * r;
+                int mx = (int)MathF.Floor((ex - mox) * mppu), my = (int)MathF.Floor((ey - moy) * mppu);
+                if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
+                int i = my * mw + mx;
+                hit = (mb[i >> 3] & (1 << (i & 7))) != 0;
+            }
+            if (!hit) return false;
+        }
+        return true;
+    }
+
+    internal static void StampLips(float x, float y, float step, int n, byte[] into, byte[] mb, int mw, int mh, float mox, float moy, float mppu)
     {
         if (!_ready || _fallMask == null) return;
         float inv = 1f / _cell;
@@ -2352,7 +2379,8 @@ internal static partial class WaterSim
                 int cx = (int)MathF.Floor((x + px * step - _org.x) * inv);
                 if (cx < 0 || cx >= _w) continue;
                 int k = baseK + cx;
-                if ((_fallMask[k] & ~_lipMask[k]) != 0) into[row + px] = 255;
+                int b = _fallMask[k] & ~_lipMask[k];
+                if (b != 0 && !LipCovered(b, cx, cy, mb, mw, mh, mox, moy, mppu)) into[row + px] = 255;
             }
         }
     }
@@ -2653,6 +2681,7 @@ internal static partial class WaterSim
                     int k = yy * _w + xx;
                     sb.Append($" | {_org.x + (xx + 0.5f) * _cell:0.##}:o{_open[k]}{(SkyIn(xx, yy) ? "s" : "")} l{_lvl[k]} b{_bed[k]}{(_furn[k] != 0 ? $" f{_furn[k]}" : "")} h{_hgt[k]} e");
                     for (int d = 0; d < 4; d++) sb.Append(Passable(k, d) ? '1' : '0');
+                    if (_open[k] == 0) sb.Append(" F").Append(WaterArt.FillOf(k));
                     if (_open[k] != 0)
                         for (int d = 0; d < 4; d++)
                             if (!Passable(k, d)) sb.Append(' ').Append(d).Append('=').Append(Target(xx, yy, d, _lvl[k], out int to, out _, out _, out _)).Append(to == -1 ? "!" : "");

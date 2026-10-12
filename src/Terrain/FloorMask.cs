@@ -324,8 +324,8 @@ internal static class FloorMask
         fixed (byte* bits = s.Bits) fixed (byte* o = into) fixed (byte* h = s.Holes)
             Native.MrpNative.FloorRaw(bits, s.W, s.H, s.Ox, s.Oy, s.Ppu, x, y, wstep, n, o, h, s.Hw, s.Hh, s.Hox, s.Hoy, s.Hppu, HoleFloor);
         if (s.Fall != null)
-            fixed (byte* f = s.Fall) fixed (byte* l = s.Lip) fixed (byte* o = into)
-                Native.MrpNative.FloorLips(f, l, s.Lw, s.Lh, s.Lox, s.Loy, s.Cell, x, y, wstep, n, o);
+            fixed (byte* f = s.Fall) fixed (byte* l = s.Lip) fixed (byte* o = into) fixed (byte* mb = s.Bits)
+                Native.MrpNative.FloorLips(f, l, s.Lw, s.Lh, s.Lox, s.Loy, s.Cell, x, y, wstep, n, o, mb, s.W, s.H, s.Ox, s.Oy, s.Ppu);
         if (!moving) return;
         // 床にするだけの書き込み (縁・動く床) は順番に依らない。床でなくする持ち上げた家具は最後
         WaterSim.StampPlatform(x, y, wstep, n, into);
@@ -366,7 +366,7 @@ internal static class FloorMask
         }
         // 動く床 (昇降機の台) の今の所
         WaterSim.StampPlatform(x, y, wstep, n, into);
-        WaterSim.StampLips(x, y, wstep, n, into);
+        WaterSim.StampLips(x, y, wstep, n, into, _bits, _w, _h, _ox, _oy, _ppu);
         CutAllMoved(x, y, wstep, n, into);
     }
 
@@ -518,7 +518,6 @@ internal static class FloorMask
     // 床の層にもコマ送りの絵 (ファングルの原子炉) があるので、コマ送りの絵は外し、残りもテクスチャ単位で数える
     private const float SkyZ = 20f;
     private const int ShadowLayers = (1 << 10) | (1 << 11) | (1 << 13); // 視界を遮る層 (本編の Constants.ShadowMask と同じ)
-
     // 床の絵が z 1〜4 にある船 (tools/make-floor-mask.py の BACK_Z_SHIP と同じ表)。他は季節の飾り (z 1.07) を除くため 4
     private static float BackZ(string ship) => ship is "PolusShip" or "FungleShip" ? 0.5f : 4f;
 
@@ -674,10 +673,33 @@ internal static class FloorMask
                     shadows++;
                 }
             }
+            // 一方向の影 (外から中が見えない) の多角形 = 一段高い台地の上の面。輪郭は崖の縁をなぞっている。
+            // 台地の上の地面は崖の面と同じ絵の無い地面なので、上の面かどうかはこの内側かで決める
+            sb.Append("\n  ],\n  \"tops\": [\n");
+            int tops = 0;
+            foreach (var c in ship.GetComponentsInChildren<Collider2D>(true))
+            {
+                if (!c || c.isTrigger || ((1 << c.gameObject.layer) & ShadowLayers) == 0) continue;
+                if (c.name.Contains("Ledge", StringComparison.OrdinalIgnoreCase) || !c.GetComponent<OneWayShadows>()) continue;
+                var poly = c.TryCast<PolygonCollider2D>();
+                if (!poly) continue;
+                for (int p = 0; p < poly.pathCount; p++)
+                {
+                    var path = poly.GetPath(p);
+                    sb.Append(tops == 0 ? "    [" : ",\n    [");
+                    for (int k = 0; k < path.Length; k++)
+                    {
+                        Vector2 w = poly.transform.TransformPoint(path[k] + poly.offset);
+                        sb.Append(k == 0 ? "" : ", ").Append('[').Append(F(w.x)).Append(", ").Append(F(w.y)).Append(']');
+                    }
+                    sb.Append(']');
+                    tops++;
+                }
+            }
             sb.Append("\n  ]\n}\n");
-            string path = System.IO.Path.Combine(TestBridge.ScreensDir, $"floor_{ship.name}.json");
-            System.IO.File.WriteAllText(path, sb.ToString());
-            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} shadows={shadows} -> {path}");
+            string outPath = System.IO.Path.Combine(TestBridge.ScreensDir, $"floor_{ship.name}.json");
+            System.IO.File.WriteAllText(outPath, sb.ToString());
+            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} shadows={shadows} tops={tops} -> {outPath}");
         });
     }
 
