@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 22;
+    internal const int Abi = 23;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -42,6 +42,7 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> FoamDraw;
     internal static delegate* unmanaged[Cdecl]<void*, void> DecompRegions;
     internal static delegate* unmanaged[Cdecl]<void*, void> DecompField;
+    internal static delegate* unmanaged[Cdecl]<void*, void> FloorFlood;
 
     // 部品が読めたか。偽なら Plugin.Load が mod ごと起動しない
     internal static bool Loaded
@@ -101,6 +102,7 @@ internal static unsafe class MrpNative
             FoamDraw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_foam_draw");
             DecompRegions = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_decomp_regions");
             DecompField = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_decomp_field");
+            FloorFlood = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_floor_flood");
             _loaded = true;
             Status = $"ok abi={got} {path}";
         }
