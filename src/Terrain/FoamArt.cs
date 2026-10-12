@@ -196,11 +196,62 @@ internal static class FoamArt
         return f;
     }
 
-    // 損傷マスクで穴の開いた所 (と縁の少し外) だけを見える画素にし (喉の外でも爆発で船体の板が抜けた所は空が見える)、見える画素に影響しない玉を外す。作る時に 1 回だけ
-    private static void Cull(Plug pl, Vector2 a, float ux, float uy, bool flip)
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct CullArgs
+    {
+        public byte* Mask; public int MW, MH;
+        public float OX, OY, MPpu;
+        public int W, H;
+        public float U0, V0;
+        public float AX, AY, UX, UY, VX, VY;
+        public float* Balls; public int BallN;
+        public float Reach;
+        public byte* Vis;
+        public byte* Hidden;
+        public int HiddenN;
+    }
+
+    internal static long VerifyCulls, VerifyCullDiff;
+
+    // 損傷マスクで穴の開いた所 (と縁の少し外) だけを見える画素にし (喉の外でも爆発で船体の板が抜けた所は空が見える)、見える画素に影響しない玉を外す。作る時に 1 回だけ (C++)
+    private static unsafe void Cull(Plug pl, Vector2 a, float ux, float uy, bool flip)
+    {
+        int w = pl.W, h = pl.H, n = pl.Balls.Count;
+        float vx = flip ? uy : -uy, vy = flip ? -ux : ux; // 絵の v 軸の世界での向き (flip は縦を裏返して置く)
+        var vis = new byte[w * h];
+        var hide = new byte[n];
+        var balls = new float[n * 3];
+        for (int i = 0; i < n; i++) { var bl = pl.Balls[i]; balls[i * 3] = bl.U; balls[i * 3 + 1] = bl.V; balls[i * 3 + 2] = bl.R; }
+        int hidden;
+        if (!DamageMap.HoleMap(out var mask, out int mw, out int mh, out float ox, out float oy, out float mppu)) { mask = Array.Empty<byte>(); mw = mh = 0; }
+        fixed (byte* m = mask) fixed (float* bp = balls) fixed (byte* vp = vis) fixed (byte* hp = hide)
+        {
+            var c = new CullArgs
+            {
+                Mask = m, MW = mw, MH = mh, OX = ox, OY = oy, MPpu = mppu, W = w, H = h, U0 = pl.U0, V0 = pl.V0,
+                AX = a.x, AY = a.y, UX = ux, UY = uy, VX = vx, VY = vy, Balls = bp, BallN = n, Reach = pl.Reach, Vis = vp, Hidden = hp,
+            };
+            Native.MrpNative.FoamCull(&c);
+            hidden = c.HiddenN;
+        }
+        if (Native.MrpNative.Verify)
+        {
+            int cs = CullCs(pl, a, ux, uy, vx, vy, out var vis2, out var hide2);
+            long diff = cs != hidden ? 1 : 0;
+            for (int i = 0; i < vis.Length; i++) if (vis[i] != vis2[i]) diff++;
+            for (int i = 0; i < n; i++) if (hide[i] != hide2[i]) diff++;
+            VerifyCulls++;
+            VerifyCullDiff += diff;
+        }
+        pl.Vis = vis;
+        for (int i = 0; i < n; i++) pl.Balls[i].Hidden = hide[i] != 0;
+        Plugin.Logger.LogInfo($"[FoamArt] cull {w}x{h} balls={n} hidden={hidden}");
+    }
+
+    // C# 版 (照合用)
+    private static int CullCs(Plug pl, Vector2 a, float ux, float uy, float vx, float vy, out byte[] vis, out byte[] hide)
     {
         int w = pl.W, h = pl.H;
-        float vx = flip ? uy : -uy, vy = flip ? -ux : ux; // 絵の v 軸の世界での向き (flip は縦を裏返して置く)
         const float inv = 1f / Ppu;
         float ax = a.x, ay = a.y;
         var hole = new byte[w * h];
@@ -222,14 +273,13 @@ internal static class FoamArt
                 if (hole[y * w + x] == 0) continue;
                 for (int k = Math.Max(0, x - Grow); k <= Math.Min(w - 1, x + Grow); k++) tmp[y * w + k] = 1;
             }
-        var vis = new byte[w * h];
+        vis = new byte[w * h];
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
                 if (tmp[y * w + x] == 0) continue;
                 for (int k = Math.Max(0, y - Grow); k <= Math.Min(h - 1, y + Grow); k++) vis[k * w + x] = 1;
             }
-        pl.Vis = vis;
         // 見える画素の累積和で、玉の届く四角に見える画素が 1 つも無ければ外す
         var sum = new int[(w + 1) * (h + 1)];
         for (int y = 0; y < h; y++)
@@ -242,16 +292,18 @@ internal static class FoamArt
             }
         }
         int hidden = 0;
-        foreach (var bl in pl.Balls)
+        hide = new byte[pl.Balls.Count];
+        for (int i = 0; i < pl.Balls.Count; i++)
         {
+            var bl = pl.Balls[i];
             float reach = bl.R * 1.15f * pl.Reach;
             int x0 = Math.Max(0, (int)((bl.U - reach - pl.U0) * Ppu)), x1 = Math.Min(w, (int)((bl.U + reach - pl.U0) * Ppu) + 2);
             int y0 = Math.Max(0, (int)((bl.V - reach - pl.V0) * Ppu)), y1 = Math.Min(h, (int)((bl.V + reach - pl.V0) * Ppu) + 2);
             if (x1 <= x0 || y1 <= y0
                 || sum[y1 * (w + 1) + x1] - sum[y0 * (w + 1) + x1] - sum[y1 * (w + 1) + x0] + sum[y0 * (w + 1) + x0] == 0)
-            { bl.Hidden = true; hidden++; }
+            { hide[i] = 1; hidden++; }
         }
-        Plugin.Logger.LogInfo($"[FoamArt] cull {w}x{h} balls={pl.Balls.Count} hidden={hidden}");
+        return hidden;
     }
 
     // 口の線 a-b の端 end が、同じ口の別の線の端とつながっているか
