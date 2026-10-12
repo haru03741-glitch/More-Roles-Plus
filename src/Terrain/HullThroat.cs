@@ -569,24 +569,21 @@ internal static class HullThroat
         var vs = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>((long)n);
         var cs = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Color32>((long)n);
         var ts = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int>((long)c.TN);
-        fixed (float* v = c.V) Buffer.MemoryCopy(v, (void*)Data(vs), n * 12L, n * 12L);
-        fixed (byte* col = c.C) Buffer.MemoryCopy(col, (void*)Data(cs), n * 4L, n * 4L);
-        fixed (int* t = c.T) Buffer.MemoryCopy(t, (void*)Data(ts), c.TN * 4L, c.TN * 4L);
+        fixed (float* v = c.V) Buffer.MemoryCopy(v, (void*)Il2Array.Data(vs), n * 12L, n * 12L);
+        fixed (byte* col = c.C) Buffer.MemoryCopy(col, (void*)Il2Array.Data(cs), n * 4L, n * 4L);
+        fixed (int* t = c.T) Buffer.MemoryCopy(t, (void*)Il2Array.Data(ts), c.TN * 4L, c.TN * 4L);
         c.Mesh.Clear();
         c.Mesh.vertices = vs;
         c.Mesh.colors32 = cs;
         if (c.HasUv)
         {
             var us = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector2>((long)n);
-            fixed (float* u = c.U) Buffer.MemoryCopy(u, (void*)Data(us), n * 8L, n * 8L);
+            fixed (float* u = c.U) Buffer.MemoryCopy(u, (void*)Il2Array.Data(us), n * 8L, n * 8L);
             c.Mesh.uv = us;
         }
         c.Mesh.triangles = ts;
         c.Mesh.RecalculateBounds();
     }
-
-    // il2cpp の配列の中身の先頭 (頭 = 型・監視・範囲・長さの 4 語)
-    private static IntPtr Data(Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase a) => a.Pointer + 4 * IntPtr.Size;
 
     private static P[] ToLocal(Transform tf, P[] poly)
     {

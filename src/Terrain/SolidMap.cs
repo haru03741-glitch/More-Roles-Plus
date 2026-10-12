@@ -558,24 +558,15 @@ internal static class SolidMap
     private static byte[] Outside(byte[] blocked, List<MeshFilter> hullMeshes, ref long verifyDiff, ref long xfDiff, out int triN)
     {
         int n = _w * _h;
-        var tris = new List<float>();
+        // 頂点と三角形は il2cpp の配列の中身を直に読む (添字で 1 要素ずつ読むと interop を通って遅い)
+        var srcs = new List<TriSrc>();
         if (hullMeshes != null)
             foreach (var mf in hullMeshes)
             {
                 var mesh = mf.sharedMesh;
                 var vs = mesh.vertices;
-                int vn = vs.Length;
-                var wx = new float[vn];
-                var wy = new float[vn];
-                var m = mf.transform.localToWorldMatrix;
-                for (int i = 0; i < vn; i++)
-                {
-                    var v = vs[i];
-                    wx[i] = m.m00 * v.x + m.m01 * v.y + m.m02 * v.z + m.m03;
-                    wy[i] = m.m10 * v.x + m.m11 * v.y + m.m12 * v.z + m.m13;
-                }
                 var ts = mesh.triangles;
-                for (int i = 0; i + 2 < ts.Length; i += 3) AddTri(tris, wx, wy, ts[i], ts[i + 1], ts[i + 2]);
+                srcs.Add(new TriSrc { Vs = vs, Ts = ts, Vn = vs.Length, Tn = ts.Length, M = mf.transform.localToWorldMatrix, Mesh = true });
             }
         foreach (var sr in DamageMap.RoomArts)
         {
@@ -583,24 +574,20 @@ internal static class SolidMap
             var sp = sr.sprite;
             if (!sp) continue;
             var vs = sp.vertices;
-            int vn = vs.Length;
-            var wx = new float[vn];
-            var wy = new float[vn];
-            var m = sr.transform.localToWorldMatrix;
-            for (int i = 0; i < vn; i++)
-            {
-                var v = vs[i];
-                wx[i] = m.m00 * v.x + m.m01 * v.y + m.m03;
-                wy[i] = m.m10 * v.x + m.m11 * v.y + m.m13;
-            }
             var ts = sp.triangles;
-            for (int i = 0; i + 2 < ts.Length; i += 3) AddTri(tris, wx, wy, ts[i], ts[i + 1], ts[i + 2]);
+            srcs.Add(new TriSrc { Vs = vs, Ts = ts, Vn = vs.Length, Tn = ts.Length, M = sr.transform.localToWorldMatrix });
         }
-        triN = tris.Count / 6;
+        int floats = 0, maxV = 0;
+        foreach (var t in srcs) { floats += t.Tn / 3 * 6; maxV = Math.Max(maxV, t.Vn); }
+        var triData = new float[floats];
+        var wx = new float[maxV];
+        var wy = new float[maxV];
+        int at = 0;
+        foreach (var t in srcs) at = AddTris(triData, at, t, wx, wy);
+        triN = floats / 6;
         // エアシップの船体の塊 (部屋と部屋の間の赤い板) も船の中
         var art = new byte[n];
         FillHullRects(art);
-        var triData = tris.ToArray();
         if (!Native.MrpNative.Verify) return OutsideNative(art, triData, blocked);
 
         var artCs = (byte[])art.Clone();
@@ -624,9 +611,42 @@ internal static class SolidMap
         }
     }
 
-    private static void AddTri(List<float> tris, float[] wx, float[] wy, int a, int b, int c)
+    // 船体の mesh (頂点 = Vector3・三角形 = int) か部屋の絵の sprite (Vector2・ushort)
+    private struct TriSrc
     {
-        tris.Add(wx[a]); tris.Add(wy[a]); tris.Add(wx[b]); tris.Add(wy[b]); tris.Add(wx[c]); tris.Add(wy[c]);
+        public Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase Vs, Ts;
+        public int Vn, Tn;
+        public Matrix4x4 M;
+        public bool Mesh;
+    }
+
+    // 頂点を行列でワールドへ直して、三角形ごとに 6 個 (x,y ×3) を dst[at..] へ。次の at を返す
+    private static unsafe int AddTris(float[] dst, int at, in TriSrc t, float[] wx, float[] wy)
+    {
+        var m = t.M;
+        float* v = (float*)Il2Array.Data(t.Vs);
+        if (t.Mesh)
+            for (int i = 0; i < t.Vn; i++, v += 3)
+            {
+                wx[i] = m.m00 * v[0] + m.m01 * v[1] + m.m02 * v[2] + m.m03;
+                wy[i] = m.m10 * v[0] + m.m11 * v[1] + m.m12 * v[2] + m.m13;
+            }
+        else
+            for (int i = 0; i < t.Vn; i++, v += 2)
+            {
+                wx[i] = m.m00 * v[0] + m.m01 * v[1] + m.m03;
+                wy[i] = m.m10 * v[0] + m.m11 * v[1] + m.m13;
+            }
+        int* ti = t.Mesh ? (int*)Il2Array.Data(t.Ts) : null;
+        ushort* ts = t.Mesh ? null : (ushort*)Il2Array.Data(t.Ts);
+        for (int i = 0; i + 2 < t.Tn; i += 3)
+            for (int j = 0; j < 3; j++)
+            {
+                int k = ti != null ? ti[i + j] : ts[i + j];
+                dst[at++] = wx[k];
+                dst[at++] = wy[k];
+            }
+        return at;
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]

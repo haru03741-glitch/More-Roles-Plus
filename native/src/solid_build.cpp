@@ -269,31 +269,68 @@ struct SolidOutsideArgs
 static inline float fmin3(float a, float b, float c) { float m = a < b ? a : b; return m < c ? m : c; }
 static inline float fmax3(float a, float b, float c) { float m = a > b ? a : b; return m > c ? m : c; }
 
-// 閉じた輪郭 (3 辺) の中の升を塗る (升の中心で偶奇)。C# の FillPolygon と同じ式の順
-static void fill_tri(uint8_t* grid, int w, int h, float ox, float oy, float ppu, const float* t)
+// 切り上げ・切り捨て。x64 の既定 (SSE2) では ceilf/floorf が関数呼び出しになるので整数で (同じ値。int に入らない値は先に挟む)
+static inline float clamp_i(float v) { return v < -1e9f ? -1e9f : (v > 1e9f ? 1e9f : v); }
+#if defined(__aarch64__)
+static inline int ceil_i(float v) { return (int)ceilf(v); }
+static inline int floor_i(float v) { return (int)floorf(v); }
+#else
+static inline int ceil_i(float v) { v = clamp_i(v); int t = (int)v; return t + ((float)t < v); }
+static inline int floor_i(float v) { v = clamp_i(v); int t = (int)v; return t - ((float)t > v); }
+#endif
+
+// 三角形の 1 辺 (向きは元のまま = 交点の式の結果を変えない)。行 [r0, r1) で升の中心の行と交わる
+struct TriEdge { float ax, ay, dx, dy; int r0, r1; };
+
+// wy[y] >= v になる最初の行 (wy は増える一方)。lo..hi の外は端へ寄せる
+static inline int first_row_at(const float* wy, int lo, int hi, float v)
+{
+    int y = lo;
+    while (y < hi && wy[y] < v) y++;
+    return y;
+}
+
+// 閉じた輪郭 (3 辺) の中の升を塗る (升の中心で偶奇)。C# の FillPolygon と同じ式の順。
+// 升の中心の行と交わる辺は行ごとに 0 か 2 本なので、行を「交わる 2 辺が同じ区間」に分けて区間ごとにまとめて塗る。
+// wy = 行の升の中心の y (oy + (y + 0.5) / ppu を行ごとに 1 回だけ)
+static void fill_tri(uint8_t* grid, int w, int h, float ox, float oy, float ppu, const float* wy, const float* t)
 {
     float px[3] = { t[0], t[2], t[4] }, py[3] = { t[1], t[3], t[5] };
     float minY = fmin3(py[0], py[1], py[2]), maxY = fmax3(py[0], py[1], py[2]);
     int y0 = (int)floorf((minY - oy) * ppu), y1 = (int)floorf((maxY - oy) * ppu);
     if (y0 < 0) y0 = 0;
     if (y1 > h - 1) y1 = h - 1;
-    for (int y = y0; y <= y1; y++)
+    if (y1 < y0) return;
+    TriEdge e[3];
+    for (int i = 0; i < 3; i++)
     {
-        float wy = oy + ((float)y + 0.5f) / ppu;
-        float xs[3]; int c = 0;
+        float ax = px[i], ay = py[i], bx = px[(i + 1) % 3], by = py[(i + 1) % 3];
+        // (ay > wy) != (by > wy) の行 = min <= wy < max
+        float lo = ay < by ? ay : by, hi = ay < by ? by : ay;
+        e[i] = { ax, ay, bx - ax, by - ay, 0, 0 };
+        e[i].r0 = first_row_at(wy, y0, y1 + 1, lo);
+        e[i].r1 = first_row_at(wy, e[i].r0, y1 + 1, hi);
+    }
+    // 区切り (辺の始まりと終わり) の順に区間を進む
+    int cut[8] = { y0, e[0].r0, e[0].r1, e[1].r0, e[1].r1, e[2].r0, e[2].r1, y1 + 1 };
+    for (int i = 1; i < 8; i++)
+        for (int j = i; j > 0 && cut[j - 1] > cut[j]; j--) { int s = cut[j]; cut[j] = cut[j - 1]; cut[j - 1] = s; }
+    for (int s = 0; s + 1 < 8; s++)
+    {
+        int ya = cut[s], yb = cut[s + 1];
+        if (ya >= yb || ya < y0 || yb > y1 + 1) continue;
+        const TriEdge* A = nullptr; const TriEdge* B = nullptr;
         for (int i = 0; i < 3; i++)
+            if (e[i].r0 <= ya && ya < e[i].r1) { if (!A) A = &e[i]; else B = &e[i]; }
+        if (!B) continue;
+        for (int y = ya; y < yb; y++)
         {
-            float ax = px[i], ay = py[i], bx = px[(i + 1) % 3], by = py[(i + 1) % 3];
-            if ((ay > wy) == (by > wy)) continue;
-            xs[c++] = ax + (wy - ay) / (by - ay) * (bx - ax);
-        }
-        // 並べ替え (偶奇なので同じ値の順は結果に効かない)
-        for (int i = 1; i < c; i++)
-            for (int j = i; j > 0 && xs[j - 1] > xs[j]; j--) { float s = xs[j]; xs[j] = xs[j - 1]; xs[j - 1] = s; }
-        for (int k = 0; k + 1 < c; k += 2)
-        {
-            int x0 = (int)ceilf((xs[k] - ox) * ppu - 0.5f);
-            int x1 = (int)floorf((xs[k + 1] - ox) * ppu - 0.5f);
+            float v = wy[y];
+            float xa = A->ax + (v - A->ay) / A->dy * A->dx;
+            float xb = B->ax + (v - B->ay) / B->dy * B->dx;
+            float l = xa > xb ? xb : xa, r = xa > xb ? xa : xb;
+            int x0 = ceil_i((l - ox) * ppu - 0.5f);
+            int x1 = floor_i((r - ox) * ppu - 0.5f);
             if (x0 < 0) x0 = 0;
             if (x1 > w - 1) x1 = w - 1;
             if (x1 >= x0) memset(grid + y * w + x0, 1, x1 - x0 + 1);
@@ -304,7 +341,11 @@ static void fill_tri(uint8_t* grid, int w, int h, float ox, float oy, float ppu,
 MRP_API void mrp_solid_outside(SolidOutsideArgs* a)
 {
     int w = a->w, h = a->h, n = w * h;
-    for (int i = 0; i < a->triN; i++) fill_tri(a->art, w, h, a->ox, a->oy, a->ppu, a->tris + i * 6);
+    float* wy = (float*)malloc(sizeof(float) * (h > 0 ? h : 1));
+    if (!wy) return;
+    for (int y = 0; y < h; y++) wy[y] = a->oy + ((float)y + 0.5f) / a->ppu;
+    for (int i = 0; i < a->triN; i++) fill_tri(a->art, w, h, a->ox, a->oy, a->ppu, wy, a->tris + i * 6);
+    free(wy);
     dilate(a->art, a->tmp, a->grown, w, h, a->dilate);
     const uint8_t* grown = a->grown; const uint8_t* blocked = a->blocked; const uint8_t* open = a->open; const uint8_t* art = a->art;
     uint8_t* out = a->outside;
