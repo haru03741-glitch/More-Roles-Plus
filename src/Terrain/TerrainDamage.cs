@@ -536,7 +536,7 @@ internal static class TerrainDamage
             // 面を持つ壁は表面が剥げかける (崩れる時と同じ割れ目のひび)。他の壁はひびの板
             float reach = hp >= WallDurability.MaxHp - 1 ? 0.3f : 0.6f;
             if (WallPeel.Hit(hit, normal, e.Direction, hp, e.Seed) ||
-                DamageMap.Cracks(hit, reach, AngleOf(SlantAxis(dir, e.Direction, p.MaxSlantDeg, out _))) == null) TerrainFx.Chip(hit, dir, e.Seed);
+                DamageMap.Cracks(hit, reach, AngleOf(SlantAxis(dir, e.Direction, p.MaxSlantDeg, out _)), e.Kind != DamageKind.Burn) == null) TerrainFx.Chip(hit, dir, e.Seed);
             if (e.Kind == DamageKind.Burn) FireFx.AddSmolder(hit.x - normal.x * 0.1f, hit.y - normal.y * 0.1f, normal.y, -normal.x, 0.25f, 1.6f, false);
             Mark("crack");
             return $"blunt hit hp={hp} at=({hit.x:0.00},{hit.y:0.00})";

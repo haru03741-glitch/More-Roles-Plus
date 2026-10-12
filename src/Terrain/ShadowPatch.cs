@@ -14,7 +14,8 @@ namespace MoreRolesPlus.Terrain;
 // 焼く見た目は影のカメラにそろえる: 本編の絵は影のカメラと同じ置き換えシェーダで描き (Polus の地面は影の中では暗く描かれるので、
 // 普通に描くと壊れた所だけ明るく浮く)、何も無い所は影のカメラと同じ不透明の黒にする (透明にすると壊れる前の壁が透ける)。
 // 止まった瓦礫 (層 0) は影のカメラに写らないので、型抜きの後に上から描き込む (止まるたびに少し待ってその升を焼き直す)。
-// 焼いた絵は Texture2D へ読み戻して持つ (RenderTexture のままだと Android でアプリが裏へ回った時に消える)。
+// 焼いた絵は焼き先の RenderTexture のまま貼る。端末でアプリが裏へ回ると中身が消えるので、戻ったら焼き直す。
+// 画面に掛からない升は見えないので、画面に入ってきた時に焼く。
 internal static class ShadowPatch
 {
     private const int PatchLayer = 10;      // 影のカメラだけが描く層
@@ -33,6 +34,9 @@ internal static class ShadowPatch
 
     // テスト用: false で焼かない (影の中で壊れる前の壁が見える、直す前の見え方と比べる)
     internal static bool Enabled = true;
+    // 焼いた絵を Texture2D へ読み戻して持つか。読み戻しは GPU がそのフレームの描画を終えるまで待つので、端末の重い場面では
+    // 1 升 15〜28ms かかる (実測)。普段は焼き先の RenderTexture をそのまま貼り、端末で画面が消えて中身が失われたら焼き直す
+    internal static bool ReadBack;
     internal static int TileCount => Tiles.Count;
     internal static int BakedTotal { get; private set; }
     // 焼き 1 升の内訳 (手前の判定 / 船の絵 / 型抜き / 瓦礫 / 読み戻し / 絵と物の生成) の累計 ticks。bridge `shadowpatch` が avg を出す
@@ -57,10 +61,8 @@ internal static class ShadowPatch
         public long Order;
     }
     private static long _firstLateMs;
-#if !ANDROID
     private static Mesh _quad;
     private static Shader _patchShader;
-#endif
 
     private static readonly Dictionary<(int, int), Patch> Tiles = new();
     private static readonly List<(int, int)> Dirty = new();
@@ -93,6 +95,7 @@ internal static class ShadowPatch
         for (int ix = x0; ix <= x1; ix++)
         for (int iy = y0; iy <= y1; iy++)
             if (DirtySet.Add((ix, iy))) Dirty.Add((ix, iy));
+        _idleFrames = 0; // 新しく壊れた所は待たずに画面の中か見る
     }
 
     // 四角に掛かる升のうち、もう焼いてある升だけを (瓦礫が落ち着いてから) 焼き直す予定に入れる (動いた小物の写り込みを直す)。
@@ -143,31 +146,96 @@ internal static class ShadowPatch
             && (TerrainFx.LiveCount == 0 || Environment.TickCount64 - _firstLateMs >= SettleCapMs))
         {
             foreach (var key in Late) if (DirtySet.Add(key)) Dirty.Add(key);
+            _idleFrames = 0;
             Late.Clear();
             LateSet.Clear();
         }
+        // 端末で画面が消えて戻ると RenderTexture の中身が失われる → 焼いた升を全部焼き直す (画面に入った時に焼く)。
+        // 端末の libunity には IsCreated が無いので、フレームの間が大きく空いた (裏へ回っていた) ことで知る
+        long now = Environment.TickCount64;
+        if (now - _lastTickMs > LostGapMs && Tiles.Count > 0 && !ReadBack) RebakeAll();
+        _lastTickMs = now;
+#if !ANDROID
+        if ((++_lostPolls & 63) == 0 && Tiles.Count > 0) CheckLost();
+#endif
         if (Dirty.Count == 0) return;
         if (!Enabled || !DamageMap.ShipTransform || !EnsureCamera()) { Dirty.Clear(); DirtySet.Clear(); return; }
-        DamageMap.Flush(); // 焼く絵は今の損傷マスクで
-        int n = 0;
-        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (n < TilesPerFrame && n < Dirty.Count)
+        // 画面 (と余白) に掛かる升だけ焼く。外の升は見えないので、画面に入ってきた時に焼く (遠くの火や水漏れで焼き直し続けない)
+        bool all = _flushing;
+        // 前に見た時に画面の中の升が無ければ、しばらくカメラを読まない (焼き待ちが画面の外に残り続けても毎フレームの呼び出しを増やさない)
+        if (!all && _idleFrames > 0) { _idleFrames--; return; }
+        float vx0 = 0f, vy0 = 0f, vx1 = 0f, vy1 = 0f;
+        if (!all)
         {
-            var key = Dirty[n];
+            var main = Camera.main;
+            if (!main) all = true;
+            else
+            {
+                var cp = main.transform.position;
+                float hh = main.orthographicSize, hw = hh * main.aspect;
+                vx0 = cp.x - hw - ViewMargin; vx1 = cp.x + hw + ViewMargin;
+                vy0 = cp.y - hh - ViewMargin; vy1 = cp.y + hh + ViewMargin;
+            }
+        }
+        int n = 0;
+        long t0 = 0;
+        for (int i = 0; i < Dirty.Count && n < TilesPerFrame; i++)
+        {
+            var key = Dirty[i];
+            if (!all && (key.Item1 * Tile > vx1 || (key.Item1 + 1) * Tile < vx0 || key.Item2 * Tile > vy1 || (key.Item2 + 1) * Tile < vy0)) continue;
+            if (n == 0)
+            {
+                DamageMap.Flush(); // 焼く絵は今の損傷マスクで
+                t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            }
+            Dirty.RemoveAt(i--);
             DirtySet.Remove(key);
             Bake(key);
             n++;
             if ((System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency > FrameBudgetMs) break;
         }
-        Dirty.RemoveRange(0, n);
+        if (n == 0) _idleFrames = IdleSkip;
     }
+
+    private const long LostGapMs = 1000;
+    private static long _lastTickMs;
+    private static int _lostPolls;
+    internal static int Rebakes; // 中身が失われたとみて全部を焼き直した回数 (bridge `shadowpatch`)
+
+#if !ANDROID
+    private static void CheckLost()
+    {
+        // 失われる時は全部まとめてなので、1 升だけ見る
+        foreach (var p in Tiles.Values)
+        {
+            if (p.Rt && !p.Rt.IsCreated()) RebakeAll();
+            return;
+        }
+    }
+#endif
+
+    private static void RebakeAll()
+    {
+        Rebakes++;
+        foreach (var key in Tiles.Keys) if (DirtySet.Add(key)) Dirty.Add(key);
+        _idleFrames = 0;
+    }
+
+    private const int IdleSkip = 7;
+    private static int _idleFrames;
+
+    private const float ViewMargin = Tile; // 画面の外でも焼いておく幅 (歩いて入ってくる升を入る前に焼く)
+    private static bool _flushing;
+    internal static int PendingCount => Dirty.Count;
 
     // 溜まっている升を今すぐ全部焼く (テスト用)
     internal static int FlushAll()
     {
         int n = 0;
         _lastLateMs = 0;
-        while (Dirty.Count > 0 || Late.Count > 0) { n += Math.Min(TilesPerFrame, Dirty.Count + Late.Count); Tick(); }
+        _flushing = true;
+        try { while (Dirty.Count > 0 || Late.Count > 0) { n += Math.Min(TilesPerFrame, Dirty.Count + Late.Count); Tick(); } }
+        finally { _flushing = false; }
         return n;
     }
 
@@ -189,17 +257,21 @@ internal static class ShadowPatch
         }
         st = Stage(0, st);
 
-#if ANDROID
-        var rt = RenderTexture.GetTemporary(Px, Px, 0, RenderTextureFormat.ARGB32);
-#else
-        Tiles.TryGetValue(key, out var patch);
-        var rt = patch?.Rt;
-        if (!rt)
+        bool readBack = ReadBack;
+        RenderTexture rt;
+        Patch patch = null;
+        if (readBack) rt = RenderTexture.GetTemporary(Px, Px, 0, RenderTextureFormat.ARGB32);
+        else
         {
-            rt = new RenderTexture(Px, Px, 0, RenderTextureFormat.ARGB32) { name = "MrpShadowPatch", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-            rt.Create();
+            Tiles.TryGetValue(key, out patch);
+            if (patch != null && !patch.Rt) { Drop(patch); Tiles.Remove(key); patch = null; } // 読み戻し版で焼いた升
+            rt = patch?.Rt;
+            if (!rt)
+            {
+                rt = new RenderTexture(Px, Px, 0, RenderTextureFormat.ARGB32) { name = "MrpShadowPatch", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+                rt.Create();
+            }
         }
-#endif
         var prev = RenderTexture.active;
         Texture2D tex = null;
         Sprite sp = null;
@@ -225,42 +297,45 @@ internal static class ShadowPatch
             RenderDebris(new Rect(x0, y0, Tile, Tile));
             st = Stage(3, st);
 
-#if ANDROID
-            RenderTexture.active = rt;
-            tex = new Texture2D(Px, Px, TextureFormat.RGBA32, false) { name = "MrpShadowPatch", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-            tex.ReadPixels(new Rect(0f, 0f, Px, Px), 0, 0, false);
-            tex.Apply(false, true); // CPU 側の写しは捨てる
-            st = Stage(4, st);
-            sp = Sprite.Create(tex, new Rect(0f, 0f, Px, Px), new Vector2(0.5f, 0.5f), Px / Tile, 0, SpriteMeshType.FullRect);
-            sp.name = "MrpShadowPatch";
-
-            if (Tiles.TryGetValue(key, out var old)) Drop(old);
-            var go = new GameObject("MrpShadowPatch") { layer = PatchLayer };
-            go.transform.SetParent(DamageMap.ShipTransform, true); // 焼き直すたびに作り直すので DamageMap の片付けの一覧には入れない
-            go.transform.position = new Vector3(center.x, center.y, near - 0.005f);
-            go.transform.localScale = Vector3.one / DamageMap.ShipTransform.lossyScale.x;
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = sp;
-            Tiles[key] = new Patch { Go = go, Tex = tex, Sp = sp, Order = _order++ };
-#else
-            st = Stage(4, st);
-            if (patch == null)
+            if (readBack)
             {
-                // 升の板: 焼き先の RenderTexture を貼った四角 (SpriteRenderer は Texture2D しか貼れない)。影のカメラの置き換えは RenderType で決まるので見え方は Sprite と同じ
-                _quad ??= MakeQuad();
-                _patchShader ??= Shader.Find("Sprites/Default");
+                RenderTexture.active = rt;
+                tex = new Texture2D(Px, Px, TextureFormat.RGBA32, false) { name = "MrpShadowPatch", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+                tex.ReadPixels(new Rect(0f, 0f, Px, Px), 0, 0, false);
+                tex.Apply(false, true); // CPU 側の写しは捨てる
+                st = Stage(4, st);
+                sp = Sprite.Create(tex, new Rect(0f, 0f, Px, Px), new Vector2(0.5f, 0.5f), Px / Tile, 0, SpriteMeshType.FullRect);
+                sp.name = "MrpShadowPatch";
+
+                if (Tiles.TryGetValue(key, out var old)) Drop(old);
                 var go = new GameObject("MrpShadowPatch") { layer = PatchLayer };
-                go.transform.SetParent(DamageMap.ShipTransform, true); // 升ごとに 1 つを使い回すので DamageMap の片付けの一覧には入れない
-                go.AddComponent<MeshFilter>().sharedMesh = _quad;
-                var mat = new Material(_patchShader) { name = "MrpShadowPatch", mainTexture = rt };
-                go.AddComponent<MeshRenderer>().sharedMaterial = mat;
-                patch = new Patch { Go = go, Rt = rt, Mat = mat };
-                Tiles[key] = patch;
+                go.transform.SetParent(DamageMap.ShipTransform, true); // 焼き直すたびに作り直すので DamageMap の片付けの一覧には入れない
+                go.transform.position = new Vector3(center.x, center.y, near - 0.005f);
+                go.transform.localScale = Vector3.one / DamageMap.ShipTransform.lossyScale.x;
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = sp;
+                Tiles[key] = new Patch { Go = go, Tex = tex, Sp = sp, Order = _order++ };
             }
-            patch.Go.transform.position = new Vector3(center.x, center.y, near - 0.005f);
-            patch.Go.transform.localScale = Vector3.one * (Tile / DamageMap.ShipTransform.lossyScale.x);
-            patch.Order = _order++;
-#endif
+            else
+            {
+                st = Stage(4, st);
+                if (patch == null)
+                {
+                    // 升の板: 焼き先の RenderTexture を貼った四角 (SpriteRenderer は Texture2D しか貼れない)。影のカメラの置き換えは RenderType で決まるので見え方は Sprite と同じ
+                    _quad ??= MakeQuad();
+                    _patchShader ??= Shader.Find("Sprites/Default");
+                    var go = new GameObject("MrpShadowPatch") { layer = PatchLayer };
+                    go.transform.SetParent(DamageMap.ShipTransform, true); // 升ごとに 1 つを使い回すので DamageMap の片付けの一覧には入れない
+                    go.AddComponent<MeshFilter>().sharedMesh = _quad;
+                    var mat = new Material(_patchShader) { name = "MrpShadowPatch", mainTexture = rt };
+                    go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+                    patch = new Patch { Go = go, Rt = rt, Mat = mat };
+                    Tiles[key] = patch;
+                }
+                patch.Go.transform.position = new Vector3(center.x, center.y, near - 0.005f);
+                patch.Go.transform.localScale = Vector3.one * (Tile / DamageMap.ShipTransform.lossyScale.x);
+                patch.Order = _order++;
+            }
             BakedTotal++;
             Stage(5, st);
             _stageN++;
@@ -277,15 +352,11 @@ internal static class ShadowPatch
         {
             _cam.targetTexture = null;
             RenderTexture.active = prev;
-#if ANDROID
-            RenderTexture.ReleaseTemporary(rt);
-#else
-            if (!Tiles.TryGetValue(key, out var kept) || kept.Rt != rt) { rt.Release(); UnityEngine.Object.Destroy(rt); }
-#endif
+            if (readBack) RenderTexture.ReleaseTemporary(rt);
+            else if (!Tiles.TryGetValue(key, out var kept) || kept.Rt != rt) { rt.Release(); UnityEngine.Object.Destroy(rt); }
         }
     }
 
-#if !ANDROID
     // 1 単位角の四角 (中心が原点・UV は左下 0,0)
     private static Mesh MakeQuad()
     {
@@ -296,7 +367,6 @@ internal static class ShadowPatch
         m.RecalculateBounds();
         return m;
     }
-#endif
 
     // 本編の絵は影のカメラの置き換えシェーダで描く (普通に描くと Polus の地面などが影の中より明るく出て、壊れた所だけ浮く)。
     // この mod の絵は置き換えると損傷マスクが効かないので普通に描き、その手前にある本編の絵 (家具・扉・壁の上面) はもう一度置き換えて描く

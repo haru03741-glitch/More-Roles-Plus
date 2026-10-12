@@ -105,14 +105,15 @@ internal static class DamageMap
         return null;
     }
 
-    // 抜けない損傷 (耐久が残った打撃・爆発の外側の輪): ひびだけを貼る
-    public static string Cracks(Vector2 at, float reach, float angleDeg)
+    // 抜けない損傷 (耐久が残った打撃・爆発の外側の輪): ひびだけを貼る。
+    // rebake = 影の中の見た目も焼き直す (火の焼けは燃える間ずっと焼き直しが続いて重いので、焦げと同じく視界の中で見えれば足りる)
+    public static string Cracks(Vector2 at, float reach, float angleDeg, bool rebake = true)
     {
         if (!MrpBundle.Ready) return "bundle not ready";
         if (!EnsureMap()) return "no ship";
         SwapNear(at, reach + 0.5f);
         SpawnCracks(at, reach, angleDeg, true);
-        ShadowPatch.MarkDirty(at, reach + 0.3f); // 影の中の見た目を焼き直す
+        if (rebake) ShadowPatch.MarkDirty(at, reach + 0.3f); // 影の中の見た目を焼き直す
         return null;
     }
 
