@@ -26,6 +26,7 @@ internal static unsafe partial class WaterSim
     private static int _wr;
     private static long _wTicks;
     internal static long ArtThreadTicks; // 作業スレッドで水の絵に掛かった時間 (water prof)
+    internal static long FoamThreadTicks; // 作業スレッドで泡の絵に掛かった時間 (water prof)
 
     // 区間の時間 (water prof): 裏で回った刻み・その場で回した刻み・受け取りで待った時間・Tick より前に読み手が待った回数
     internal static long AsyncSteps, SyncSteps, JoinWaitTicks, EarlyJoins;
@@ -113,7 +114,7 @@ internal static unsafe partial class WaterSim
     // LateUpdate の最後: 預けた刻みと水の絵の描き直しを作業スレッドへ (絵は刻みの後に描く)
     internal static void Kick()
     {
-        bool sim = _phase == Phase.Prepared, art = WaterArt.HasJobs && (sim || _phase == Phase.None);
+        bool sim = _phase == Phase.Prepared, art = (WaterArt.HasJobs || FoamArt.HasJobs) && (sim || _phase == Phase.None);
         if (!sim && !art) return;
         if (_worker == null)
         {
@@ -151,7 +152,12 @@ internal static unsafe partial class WaterSim
                 _wTicks = t1 - t;
                 // 刻みが C# 版へ回る時は絵も受け取り側で描き直す (その刻みの後の水を描くように)
                 if (!_simJob || _wr != 0) WaterArt.RunJobs();
-                ArtThreadTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t1;
+                long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+                ArtThreadTicks += t2 - t1;
+                // 泡の絵は水と関係ないので刻みの結果によらず描く (落ちたら泡の側で受け取る)
+                try { FoamArt.RunJobs(); }
+                catch (Exception e) { FoamArt.JobError = e; }
+                FoamThreadTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t2;
             }
             catch (Exception e) { WaterArt.JobError = e; }
             finally { Done.Release(); }

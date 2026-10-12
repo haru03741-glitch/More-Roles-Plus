@@ -55,6 +55,7 @@ internal static class FoamArt
         public float Reach = 2f; // 玉の影響が届く距離 (半径の倍数)
         public bool Final;     // 固まり終わりの描き直しを済ませた
         public byte[] Vis;     // 穴から見える画素 (null = 全部)。船体の板の裏に広く置いた栓 (エアシップ) で隠れる所を描かない
+        public float[] BallArgs; // 描く玉 (u v r start を 4 個ずつ)。作った後は変わらないので 1 回だけ詰める
     }
 
     private sealed class Foam
@@ -71,6 +72,15 @@ internal static class FoamArt
 
     public static void Tick()
     {
+        if (_jobState != 0)
+        {
+            try { FinishJobs(); }
+            catch (Exception e)
+            {
+                Plugin.Logger.LogError($"[FoamArt] job: {e}");
+                _failedGen = _shipGen;
+            }
+        }
         if (GameClock.ShipGen != _shipGen)
         {
             _shipGen = GameClock.ShipGen;
@@ -341,7 +351,6 @@ internal static class FoamArt
 
     // 答え合わせ (native verify): 栓の絵を C# でも描いて 1 バイトずつ比べる
     internal static long VerifyDraws, VerifyDrawDiff;
-    private static float[] _balls = Array.Empty<float>();
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private unsafe struct DrawArgs
@@ -356,33 +365,109 @@ internal static class FoamArt
         public float P;
     }
 
-    // p = 吹き付け始めからの経過 / FoamTime。絵は C++ で描く (照合の時は C# でも描いて比べる)
-    private static unsafe void Draw(Plug pl, float p, bool last)
+    // 描き直しは水の作業スレッドへ積み (LateUpdate で投げる)、次のフレームの Tick の頭で受け取って転送する (絵は 1 フレーム遅れ)
+    private struct Job { public Plug Pl; public float P; public bool Last; }
+    private static Job[] Jobs = new Job[16];
+    private static int _jobN, _jobState, _jobGen; // 0 = 無し / 1 = 積んだ / 2 = 描いた
+    internal static bool HasJobs => _jobState == 1;
+    internal static Exception JobError;
+
+    // p = 吹き付け始めからの経過 / FoamTime
+    private static void Draw(Plug pl, float p, bool last)
     {
         if (pl.Px == null || pl.F == null || pl.Pores == null) return; // 固まり終わって手放した絵 (C++ に空の置き場を渡さない)
+        if (Native.MrpNative.Async && !Native.MrpNative.Verify && _jobState != 2)
+        {
+            if (_jobN == Jobs.Length) Array.Resize(ref Jobs, _jobN * 2); // 同じ栓を積んだ描きと同期の描きに分けない (転送の順が入れ替わる)
+            Jobs[_jobN++] = new Job { Pl = pl, P = p, Last = last };
+            _jobState = 1;
+            _jobGen = _shipGen;
+            return;
+        }
+        WaterSim.EnsureIdle(); // 作業スレッドと同じ置き場 (_grid/_height) を使う
+        DrawNative(pl, p);
+        Verify(pl, p);
+        Finish(pl, last);
+    }
+
+    // 積んだ栓を描く (作業スレッド。投げられなかった時はメイン)。Unity には触らない
+    internal static void RunJobs()
+    {
+        if (_jobState != 1) return;
+        for (int i = 0; i < _jobN; i++) DrawNative(Jobs[i].Pl, Jobs[i].P);
+        _jobState = 2;
+    }
+
+    // 描いた栓を受け取って転送する (メイン)。船が替わっていたら絵ごと壊れているので捨てる
+    private static void FinishJobs()
+    {
+        try
+        {
+            WaterSim.EnsureIdle();
+            if (JobError != null)
+            {
+                var e = JobError;
+                JobError = null;
+                throw new InvalidOperationException("foam job", e);
+            }
+            if (_jobGen != GameClock.ShipGen) return;
+            if (_jobState == 1) RunJobs(); // 投げられなかった
+            for (int i = 0; i < _jobN; i++) Finish(Jobs[i].Pl, Jobs[i].Last);
+        }
+        finally
+        {
+            for (int i = 0; i < _jobN; i++) Jobs[i].Pl = null;
+            _jobN = 0;
+            _jobState = 0;
+        }
+    }
+
+    // 絵は C++ で描く
+    private static unsafe void DrawNative(Plug pl, float p)
+    {
         int w = pl.W, h = pl.H, gw = (w + 2) >> 1, gh = (h + 2) >> 1;
         var G = Scratch(ref _grid, gw * gh);
         var Hs = Scratch(ref _height, w * h);
-        if (_balls.Length < pl.Balls.Count * 4) _balls = new float[pl.Balls.Count * 4];
-        int bn = 0;
-        foreach (var bl in pl.Balls)
-        {
-            if (bl.Hidden) continue;
-            _balls[bn * 4] = bl.U; _balls[bn * 4 + 1] = bl.V; _balls[bn * 4 + 2] = bl.R; _balls[bn * 4 + 3] = bl.Start;
-            bn++;
-        }
-        fixed (float* f = pl.F) fixed (float* g = G) fixed (float* hs = Hs) fixed (byte* px = pl.Px) fixed (byte* vis = pl.Vis) fixed (byte* pores = pl.Pores) fixed (float* balls = _balls)
+        var balls = pl.BallArgs ??= PackBalls(pl);
+        fixed (float* f = pl.F) fixed (float* g = G) fixed (float* hs = Hs) fixed (byte* px = pl.Px) fixed (byte* vis = pl.Vis) fixed (byte* pores = pl.Pores) fixed (float* bp = balls)
         {
             var a = new DrawArgs
             {
-                F = f, G = g, Hs = hs, Px = px, Vis = vis, Pores = pores, Balls = balls, BallN = bn,
+                F = f, G = g, Hs = hs, Px = px, Vis = vis, Pores = pores, Balls = bp, BallN = balls.Length / 4,
                 W = w, H = h, U0 = pl.U0, V0 = pl.V0, Reach = pl.Reach, VMin = pl.VMin, VMax = pl.VMax, Bleed = pl.Bleed0, UMax = pl.Len + pl.Bleed1,
                 SoftInner = pl.SoftInner ? 1 : 0, P = p,
             };
             Native.MrpNative.FoamDraw(&a);
         }
+    }
+
+    private static float[] PackBalls(Plug pl)
+    {
+        int n = 0;
+        foreach (var bl in pl.Balls) if (!bl.Hidden) n++;
+        var b = new float[n * 4];
+        n = 0;
+        foreach (var bl in pl.Balls)
+        {
+            if (bl.Hidden) continue;
+            b[n * 4] = bl.U; b[n * 4 + 1] = bl.V; b[n * 4 + 2] = bl.R; b[n * 4 + 3] = bl.Start;
+            n++;
+        }
+        return b;
+    }
+
+    private static void Finish(Plug pl, bool last)
+    {
+        Upload(pl, last);
+        if (last) { pl.Px = null; pl.F = null; pl.Pores = null; } // 跡はもう描き直さない
+    }
+
+    // 照合の時は C# でも描いて比べる
+    private static void Verify(Plug pl, float p)
+    {
         if (Native.MrpNative.Verify)
         {
+            int w = pl.W, h = pl.H;
             var px = (byte[])pl.Px.Clone();
             DrawCs(pl, p, px, new float[w * h]);
             long diff = 0;
@@ -390,8 +475,6 @@ internal static class FoamArt
             VerifyDraws++;
             VerifyDrawDiff += diff;
         }
-        Upload(pl, last);
-        if (last) { pl.Px = null; pl.F = null; pl.Pores = null; } // 跡はもう描き直さない
     }
 
     // C# 版 (照合用)。px と F に描く
