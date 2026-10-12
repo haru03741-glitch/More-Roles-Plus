@@ -10,33 +10,114 @@
 // 4. 歩ける所を 4 近傍のつながりで番号分けする (番号は升の並び順で最初に出会った順)
 // 升の並びと塗る順は C# と同じにする (島の番号が全員の手元で同じになるように)
 
+// 升 8 つを 1 語として読み書きする (升は 1 バイト)
+static inline uint64_t ld8(const uint8_t* p) { uint64_t v; memcpy(&v, p, 8); return v; }
+static inline void st8(uint8_t* p, uint64_t v) { memcpy(p, &v, 8); }
+static const uint64_t Lo7 = 0x7F7F7F7F7F7F7F7FULL, Ones = 0x0101010101010101ULL;
+// 0 でないバイトを 1 に
+static inline uint64_t nz8(uint64_t v) { return ((((v & Lo7) + Lo7) | v) >> 7) & Ones; }
+
 // 横に r 升以内に壁がある升 (tmp)・その縦に r 升以内 (dst) を 1 にする (C# の DilateGrid と同じ結果)。
-// ずらした行どうしの OR で書く (分岐が無く、まとめて処理できる)
+// ずらした行どうしの OR を 8 升ずつ。0/1 に揃えるのは最後に 1 回
 static void dilate(const uint8_t* __restrict src, uint8_t* __restrict tmp, uint8_t* __restrict dst, int w, int h, int r)
 {
     for (int y = 0; y < h; y++)
     {
         const uint8_t* __restrict s = src + y * w;
         uint8_t* __restrict t = tmp + y * w;
-        for (int x = 0; x < w; x++) t[x] = s[x];
-        for (int d = 1; d <= r; d++)
+        int x = 0;
+        for (; x < r && x < w; x++)
         {
-            for (int x = d; x < w; x++) t[x] |= s[x - d];
-            for (int x = 0; x + d < w; x++) t[x] |= s[x + d];
+            uint8_t v = 0;
+            for (int xx = x - r < 0 ? 0 : x - r, xe = x + r > w - 1 ? w - 1 : x + r; xx <= xe; xx++) v |= s[xx];
+            t[x] = v;
         }
-        for (int x = 0; x < w; x++) t[x] = t[x] != 0;
+        for (; x + 8 <= w - r; x += 8)
+        {
+            uint64_t v = ld8(s + x);
+            for (int d = 1; d <= r; d++) v |= ld8(s + x - d) | ld8(s + x + d);
+            st8(t + x, v);
+        }
+        for (; x < w; x++)
+        {
+            uint8_t v = 0;
+            for (int xx = x - r < 0 ? 0 : x - r, xe = x + r > w - 1 ? w - 1 : x + r; xx <= xe; xx++) v |= s[xx];
+            t[x] = v;
+        }
     }
     for (int y = 0; y < h; y++)
     {
         uint8_t* __restrict d = dst + y * w;
         int ya = y - r < 0 ? 0 : y - r, yb = y + r > h - 1 ? h - 1 : y + r;
-        memcpy(d, tmp + ya * w, w);
-        for (int yy = ya + 1; yy <= yb; yy++)
+        int x = 0;
+        for (; x + 8 <= w; x += 8)
         {
-            const uint8_t* __restrict t = tmp + yy * w;
-            for (int x = 0; x < w; x++) d[x] |= t[x];
+            uint64_t v = 0;
+            for (int yy = ya; yy <= yb; yy++) v |= ld8(tmp + yy * w + x);
+            st8(d + x, nz8(v));
+        }
+        for (; x < w; x++)
+        {
+            uint8_t v = 0;
+            for (int yy = ya; yy <= yb; yy++) v |= tmp[yy * w + x];
+            d[x] = v != 0;
         }
     }
+}
+
+// 伸びる int 列 (塗りの積み・塗った横一列の記録)
+struct IntBuf
+{
+    int32_t* d = nullptr; int n = 0, cap = 0; bool bad = false;
+    ~IntBuf() { free(d); }
+    inline void push(int32_t v)
+    {
+        if (n == cap)
+        {
+            int nc = cap < 1024 ? 1024 : cap * 2;
+            int32_t* p = (int32_t*)realloc(d, sizeof(int32_t) * nc);
+            if (!p) { bad = true; return; }
+            d = p; cap = nc;
+        }
+        d[n++] = v;
+    }
+};
+
+// (sx, sy) から can(k) の升を 4 近傍で塗る (mark)。横一列ずつ塗り、上下の行の続きを積む。
+// 塗る升の集合は 1 升ずつの塗りと同じ (島の番号は呼ぶ側が升の並び順で決めるので塗る順に依らない)。
+// 塗った横一列は spans へ (y, x0, x1)。地図の端に触れたら border
+template <class Can, class Mark>
+static int span_fill(int w, int h, int sx, int sy, Can can, Mark mark, IntBuf& stack, IntBuf* spans, bool& border)
+{
+    int cells = 0;
+    stack.n = 0;
+    stack.push(sx); stack.push(sy);
+    while (stack.n > 0 && !stack.bad)
+    {
+        int y = stack.d[--stack.n], x = stack.d[--stack.n];
+        int row = y * w;
+        if (!can(row + x)) continue;
+        int x0 = x, x1 = x;
+        while (x0 > 0 && can(row + x0 - 1)) x0--;
+        while (x1 < w - 1 && can(row + x1 + 1)) x1++;
+        for (int i = x0; i <= x1; i++) mark(row + i);
+        cells += x1 - x0 + 1;
+        if (x0 == 0 || x1 == w - 1 || y == 0 || y == h - 1) border = true;
+        if (spans) { spans->push(y); spans->push(x0); spans->push(x1); }
+        for (int ny = y - 1; ny <= y + 1; ny += 2)
+        {
+            if (ny < 0 || ny >= h) continue;
+            int nrow = ny * w;
+            bool in = false;
+            for (int i = x0; i <= x1; i++)
+            {
+                bool c = can(nrow + i);
+                if (c && !in) { stack.push(i); stack.push(ny); }
+                in = c;
+            }
+        }
+    }
+    return cells;
 }
 
 struct SolidFloodArgs
@@ -49,7 +130,7 @@ struct SolidFloodArgs
     uint8_t* open;                      // 戻り: 歩ける所 (1)
     uint8_t* leaked;                    // 戻り: 漏れた塗り (1)
     uint8_t* island;                    // 戻り: 島の番号 (valid の時だけ書く)
-    int32_t* queue;                     // 置き場 (w*h)
+    int32_t* queue;                     // 使わない (null・並びを変えないために残す)
     uint8_t* seedRes;                   // 戻り: 種ごと 0 = 使わない・1 = 受け入れた・2 = 漏れた
     int32_t openCells, islands, accepted, leakedN, valid; // 戻り
 };
@@ -75,86 +156,78 @@ MRP_API void mrp_solid_flood(SolidFloodArgs* a)
     const uint8_t* barrier = a->barrier;
     uint8_t* blocked = a->blocked;
     uint8_t* open = a->open;
-    int32_t* queue = a->queue;
     dilate(barrier, a->tmp, blocked, w, h, a->dilate);
-
     memset(open, 0, n);
     int accepted = 0, leakedN = 0, openCells = 0;
+    IntBuf stack, spans;
     for (int s = 0; s < a->seedN; s++)
     {
         a->seedRes[s] = 0;
         int start = nearest_free(blocked, w, h, a->seedX[s], a->seedY[s]);
         if (start < 0 || open[start] != 0) continue;
-        int head = 0, tail = 0;
         bool border = false;
-        open[start] = 1;
-        queue[tail++] = start;
-        while (head < tail)
-        {
-            int k = queue[head++];
-            int x = k % w, y = k / w;
-            if (x == 0 || y == 0 || x == w - 1 || y == h - 1) border = true;
-            int nb[4]; int c = 0;
-            if (x > 0) nb[c++] = k - 1;
-            if (x < w - 1) nb[c++] = k + 1;
-            if (y > 0) nb[c++] = k - w;
-            if (y < h - 1) nb[c++] = k + w;
-            for (int i = 0; i < c; i++)
-            {
-                int k2 = nb[i];
-                if (open[k2] != 0 || blocked[k2] != 0) continue;
-                open[k2] = 1;
-                queue[tail++] = k2;
-            }
-        }
+        spans.n = 0;
+        int cells = span_fill(w, h, start % w, start / w,
+            [&](int k) { return open[k] == 0 && blocked[k] == 0; }, [&](int k) { open[k] = 1; }, stack, &spans, border);
+        if (stack.bad || spans.bad) { a->openCells = openCells; a->accepted = accepted; a->leakedN = leakedN; a->valid = 0; a->islands = 0; return; }
         if (border)
         {
-            for (int i = 0; i < tail; i++) open[queue[i]] = 2;
+            for (int i = 0; i < spans.n; i += 3) memset(open + spans.d[i] * w + spans.d[i + 1], 2, spans.d[i + 2] - spans.d[i + 1] + 1);
             leakedN++;
             a->seedRes[s] = 2;
         }
         else
         {
             accepted++;
-            openCells += tail;
+            openCells += cells;
             a->seedRes[s] = 1;
         }
     }
     memset(a->leaked, 0, n);
     if (leakedN > 0)
-        for (int k = 0; k < n; k++) if (open[k] == 2) { open[k] = 0; a->leaked[k] = 1; }
+        for (int k = 0; k < n; k++) { uint8_t l = open[k] == 2; a->leaked[k] = l; open[k] = l ? 0 : open[k]; }
 
-    // 戻せる升は太らせた壁の中で壁の線でない所だけなので、その升 (行・列を詰めた値) を先に集めて段ごとに見る。
-    // 升の番号の順に見るので、全部の升を見るのと同じ結果
-    int cn = 0;
-    for (int k = 0; k < n; k++) if (blocked[k] != 0 && barrier[k] == 0) cn++;
-    int32_t* cand = (int32_t*)malloc(sizeof(int32_t) * (cn > 0 ? cn : 1));
-    if (!cand) { a->openCells = openCells; a->accepted = accepted; a->leakedN = leakedN; a->valid = 0; a->islands = 0; return; }
-    bool packed = w <= 0xFFFF && h <= 0x7FFF; // 詰められない大きさの地図は升の番号のまま持って割り算で戻す
-    cn = 0;
-    for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-        {
-            int k = y * w + x;
-            if (blocked[k] != 0 && barrier[k] == 0) cand[cn++] = packed ? (y << 16) | x : k;
-        }
+    // 太らせた分を戻す: 太らせた壁の中で壁の線でない升のうち、上下左右に歩ける所がある升を段ごとにまとめて開ける。
+    // 1 段の中では前の段の歩ける所だけを見る (先に全部の升を決めてから開ける)。ここで歩ける所は 0/1 だけ
+    uint8_t* g = a->tmp;
+    uint8_t* zero = (uint8_t*)calloc(w, 1);
+    if (!zero) { a->openCells = openCells; a->accepted = accepted; a->leakedN = leakedN; a->valid = 0; a->islands = 0; return; }
     for (int step = 0; step <= a->dilate; step++)
     {
         int grown = 0;
-        for (int i = 0; i < cn; i++)
+        for (int y = 0; y < h; y++)
         {
-            int x, y, k;
-            if (packed) { x = cand[i] & 0xFFFF; y = cand[i] >> 16; k = y * w + x; }
-            else { k = cand[i]; y = k / w; x = k - y * w; }
-            if (open[k] != 0) continue;
-            if ((x > 0 && open[k - 1] == 1) || (x < w - 1 && open[k + 1] == 1) ||
-                (y > 0 && open[k - w] == 1) || (y < h - 1 && open[k + w] == 1))
-                queue[grown++] = k;
+            const uint8_t* __restrict op = open + y * w;
+            const uint8_t* __restrict up = y > 0 ? op - w : zero;
+            const uint8_t* __restrict dn = y < h - 1 ? op + w : zero;
+            const uint8_t* __restrict bk = blocked + y * w;
+            const uint8_t* __restrict br = barrier + y * w;
+            uint8_t* __restrict gr = g + y * w;
+            auto one = [&](int x)
+            {
+                uint8_t l = x > 0 ? op[x - 1] : 0, r = x < w - 1 ? op[x + 1] : 0;
+                uint8_t v = (uint8_t)((bk[x] != 0) & (br[x] == 0) & (op[x] == 0) & ((l | r | up[x] | dn[x]) != 0));
+                gr[x] = v;
+                grown += v;
+            };
+            // 両端の升は 1 升ずつ・間は 8 升ずつ (左右の升を読むので x - 1 から x + 8 までが行の中)
+            int x = 0;
+            if (w > 0) one(x++);
+            for (; x + 9 <= w; x += 8)
+            {
+                uint64_t nb = ld8(op + x - 1) | ld8(op + x + 1) | ld8(up + x) | ld8(dn + x);
+                uint64_t v = nz8(nb) & nz8(ld8(bk + x)) & ~nz8(ld8(br + x)) & ~nz8(ld8(op + x)) & Ones;
+                st8(gr + x, v);
+                grown += (int)((v * Ones) >> 56);
+            }
+            for (; x < w; x++) one(x);
         }
-        for (int i = 0; i < grown; i++) open[queue[i]] = 1;
+        int k = 0;
+        for (; k + 8 <= n; k += 8) st8(open + k, ld8(open + k) | ld8(g + k));
+        for (; k < n; k++) open[k] |= g[k];
         openCells += grown;
     }
-    free(cand);
+    free(zero);
 
     a->openCells = openCells;
     a->accepted = accepted;
@@ -163,34 +236,20 @@ MRP_API void mrp_solid_flood(SolidFloodArgs* a)
     a->islands = 0;
     if (!a->valid) return;
 
+    // 島の番号 = 升の並び順で最初に出会った順
     uint8_t* island = a->island;
     memset(island, 0, n);
     int count = 0;
+    bool unused = false;
     for (int s = 0; s < n; s++)
     {
+        if ((s & 7) == 0 && s + 8 <= n && (nz8(ld8(open + s)) & ~nz8(ld8(island + s)) & Ones) == 0) { s += 7; continue; }
         if (open[s] == 0 || island[s] != 0) continue;
         uint8_t id = count < 254 ? (uint8_t)(count + 1) : (uint8_t)255;
         count++;
-        int head = 0, tail = 0;
-        island[s] = id;
-        queue[tail++] = s;
-        while (head < tail)
-        {
-            int k = queue[head++];
-            int x = k % w;
-            int nb[4]; int c = 0;
-            if (x > 0) nb[c++] = k - 1;
-            if (x < w - 1) nb[c++] = k + 1;
-            if (k >= w) nb[c++] = k - w;
-            if (k + w < n) nb[c++] = k + w;
-            for (int i = 0; i < c; i++)
-            {
-                int k2 = nb[i];
-                if (open[k2] == 0 || island[k2] != 0) continue;
-                island[k2] = id;
-                queue[tail++] = k2;
-            }
-        }
+        span_fill(w, h, s % w, s / w,
+            [&](int k) { return open[k] != 0 && island[k] == 0; }, [&](int k) { island[k] = id; }, stack, nullptr, unused);
+        if (stack.bad) { a->valid = 0; a->islands = 0; return; }
     }
     a->islands = count;
 }
@@ -237,7 +296,7 @@ static void fill_tri(uint8_t* grid, int w, int h, float ox, float oy, float ppu,
             int x1 = (int)floorf((xs[k + 1] - ox) * ppu - 0.5f);
             if (x0 < 0) x0 = 0;
             if (x1 > w - 1) x1 = w - 1;
-            for (int x = x0; x <= x1; x++) grid[y * w + x] = 1;
+            if (x1 >= x0) memset(grid + y * w + x0, 1, x1 - x0 + 1);
         }
     }
 }
@@ -249,6 +308,16 @@ MRP_API void mrp_solid_outside(SolidOutsideArgs* a)
     dilate(a->art, a->tmp, a->grown, w, h, a->dilate);
     const uint8_t* grown = a->grown; const uint8_t* blocked = a->blocked; const uint8_t* open = a->open; const uint8_t* art = a->art;
     uint8_t* out = a->outside;
-    for (int k = 0; k < n; k++)
-        out[k] = grown[k] == 0 && blocked[k] == 0 && open[k] == 0 ? 1 : art[k] == 0 ? 2 : 0;
+    // 外 = 1・絵が無い = 2・他 = 0 (8 升ずつ)
+    int k = 0;
+    for (; k + 8 <= n; k += 8)
+    {
+        uint64_t z = ~nz8(ld8(grown + k) | ld8(blocked + k) | ld8(open + k)) & Ones, na = ~nz8(ld8(art + k)) & Ones;
+        st8(out + k, z | ((na & ~z & Ones) << 1));
+    }
+    for (; k < n; k++)
+    {
+        uint8_t z = (uint8_t)((grown[k] | blocked[k] | open[k]) == 0), na = (uint8_t)(art[k] == 0);
+        out[k] = (uint8_t)(z | ((na & (z ^ 1)) << 1));
+    }
 }

@@ -376,14 +376,13 @@ internal static class SolidMap
             sx[i] = (int)MathF.Floor((seeds[i].P.x - _origin.x) * _ppu);
             sy[i] = (int)MathF.Floor((seeds[i].P.y - _origin.y) * _ppu);
         }
-        var queue = new int[n];
         var fl = new Flood(n, sn);
-        FloodNative(barrier, sx, sy, sn, fl, queue);
+        FloodNative(barrier, sx, sy, sn, fl);
         long verifyDiff = -1, xfDiff = -1;
         if (Native.MrpNative.Verify)
         {
             var cs = new Flood(n, sn);
-            FloodCs(barrier, sx, sy, sn, cs, queue);
+            FloodCs(barrier, sx, sy, sn, cs, new int[n]);
             verifyDiff = cs.Diff(fl);
             fl = cs;
         }
@@ -462,18 +461,18 @@ internal static class SolidMap
         public int OpenCells, Islands, Accepted, LeakedN, Valid;
     }
 
-    private static unsafe void FloodNative(byte[] barrier, int[] sx, int[] sy, int sn, Flood f, int[] queue)
+    private static unsafe void FloodNative(byte[] barrier, int[] sx, int[] sy, int sn, Flood f)
     {
         var tmp = new byte[_w * _h];
         fixed (byte* bar = barrier) fixed (int* px = sx) fixed (int* py = sy)
         fixed (byte* blk = f.Blocked) fixed (byte* t = tmp) fixed (byte* op = f.Open) fixed (byte* lk = f.Leaked) fixed (byte* isl = f.Island)
-        fixed (int* q = queue) fixed (byte* res = f.SeedRes)
+        fixed (byte* res = f.SeedRes)
         {
             var a = new SolidFloodArgs
             {
                 Barrier = bar, W = _w, H = _h, Dilate = Dilate,
                 SeedX = px, SeedY = py, SeedN = sn,
-                Blocked = blk, Tmp = t, Open = op, Leaked = lk, Island = isl, Queue = q, SeedRes = res,
+                Blocked = blk, Tmp = t, Open = op, Leaked = lk, Island = isl, Queue = null, SeedRes = res,
             };
             Native.MrpNative.SolidFlood(&a);
             f.OpenCells = a.OpenCells; f.Islands = a.Islands; f.Accepted = a.Accepted; f.LeakedN = a.LeakedN; f.Valid = a.Valid != 0;
