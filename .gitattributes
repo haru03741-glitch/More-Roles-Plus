@@ -58,3 +58,4 @@ gradlew     text eol=lf
 *.txt linguist-vendored
 *.shader linguist-vendored
 *.json linguist-vendored
+*.js linguist-vendored
