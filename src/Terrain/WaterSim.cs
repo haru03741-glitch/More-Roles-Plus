@@ -821,8 +821,30 @@ internal static partial class WaterSim
         // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので屋外の影の線を見ない
         // (崖の上の縁に視界の影の線が引いてあり、それで切ると崖の大半から落ちなくなる)。部屋の影の線 (展望台の箱と柵の縁) は見る
         bool cliffs = !MapNotes.HasLevels;
-        if (full) { ListLadders(ship); ZBegin(); }
+        // 床の本当の高さで縁を決めるのは C++ の部品がある時だけ (照合の時は C# と同じ段の順位)。
+        // 作った時は先に段の順位で崖の面を測って島の高さを決め、その高さで引き直す
+        bool zray = ZFlow && Native.MrpNative.On && Native.MrpNative.HasFallRay && !Native.MrpNative.Verify;
+        if (full)
+        {
+            ListLadders(ship);
+            ZBegin();
+            LinkPass(x0, y0, x1, y1, true, cliffs, false);
+            ZSolve();
+            if (zray) LinkPass(x0, y0, x1, y1, true, cliffs, true);
+        }
+        else LinkPass(x0, y0, x1, y1, false, cliffs, zray);
+        WakeWet(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+    }
+
+    // 範囲の縁を消して、光線を引き直して登録する。measure = 崖の面の長さを島の高さの測りに足す (作った時の 1 回目)
+    private static void LinkPass(int x0, int y0, int x1, int y1, bool full, bool cliffs, bool useZ)
+    {
+        bool measure = full && !useZ;
         _ledgeScan = full;
+        _rayN = 0;
+        // 作った時の 2 回目は行き先が変わりうるので、影の線の判定も引き直す
+        if (full && useZ)
+            for (int y = y0; y <= y1; y++) Array.Clear(_shadowCut, y * _w + x0, x1 - x0 + 1);
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
         {
@@ -847,44 +869,74 @@ internal static partial class WaterSim
                 int j = k + Nx[d] + Ny[d] * _w;
                 if (_open[j] != 0 && Passable(k, d)) continue;
                 if (Nx[d] != 0 && OnLadder(x, y)) continue;
-                string why = Target(x, y, d, lk, out int to, out int dist, out int tx, out int ty);
-                // 画面の下へ面を越えて下の床に着いた長さ = 段の差 (横を向いた崖も、下へ探した長さ)
-                if (full && to >= 0 && (why == "fall" && d == 3 || why == "side")) ZSample(k, to, dist - 1);
-                // 小さな段差の下の床から上の床へ (上から下へは落ちる縁の方で登録する)。両側から別々に登録するので、
-                // 部分の作り直しで片側だけが範囲に入っても対で残る
-                if (why == "same" && _lvl[ty * _w + tx] == lk + 1 && StepEdge(k, ty * _w + tx, dist))
-                {
-                    StepTo[k * 4 + d] = _stepTo[k * 4 + d] = ty * _w + tx;
-                    _stepMask[k] |= (byte)(1 << d);
-                    continue;
-                }
-                if (to == int.MinValue && (why == "scan" || why == "border") && SeaEdge(x, y, d))
-                {
-                    _seaMask[k] |= (byte)(1 << d);
-                    _seaListDirty = true;
-                    continue;
-                }
-                if (to == int.MinValue || to == -1 && OnLadder(x, y)) continue;
-                // 空へ落とす縁とガラスの手すりは壁の影の線の外側へ落ちるので、影の線では切らない (塗った空も同じ)
-                if (full && why != "glass" && why != "air" && why != "airside" && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
-                if ((_shadowCut[k] >> d & 1) != 0) continue;
-                // 段差は滝にしない (段の高さぶんずらして流すだけ・床の絵にも落ちる縁を描かない)
-                if (to >= 0 && _lvl[to] == lk - 1 && StepEdge(k, to, dist))
-                {
-                    StepTo[k * 4 + d] = _stepTo[k * 4 + d] = to;
-                    _stepMask[k] |= (byte)(1 << d);
-                    continue;
-                }
-                _fallMask[k] |= (byte)(1 << d);
-                if (why == "glass") { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = (short)(_glass.Height * Full); }
-                else if (PlatformRimAt(k, to)) { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = PlatformRim; }
-                FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
-                EdgeBarrier(x, y, d, k);
+                // ガラスの手すりは光線を引かない (C++ の答えの -1 と同じ印で後で見分ける)
+                RayAdd(OnGlassRail(x, y, d) ? -1 - (k * 4 + d) : k * 4 + d);
             }
         }
+        // ガラスの手すりの縁を除いて光線を引き、元の並びへ戻す
+        int all = _rayN, n = 0;
+        if (_rayAll.Length < all) _rayAll = new int[_rayQ.Length];
+        Array.Copy(_rayQ, _rayAll, all);
+        for (int i = 0; i < all; i++) if (_rayAll[i] >= 0) _rayQ[n++] = _rayAll[i];
+        _rayN = n;
+        RayRun(useZ);
+        for (int i = 0, r = 0; i < all; i++)
+        {
+            int key = _rayAll[i], to, dist, tx, ty;
+            string why;
+            if (key < 0)
+            {
+                key = -1 - key;
+                why = "glass"; to = -1; dist = GlassDrop; tx = key / 4 % _w; ty = key / 4 / _w;
+                OnGlassRail(tx, ty, key & 3); // _glass をこの縁の物にする
+            }
+            else
+            {
+                why = RayWhy[_rayOut[r * 5]]; to = _rayOut[r * 5 + 1]; dist = _rayOut[r * 5 + 2]; tx = _rayOut[r * 5 + 3]; ty = _rayOut[r * 5 + 4];
+                r++;
+            }
+            LinkEdge(key >> 2, key & 3, why, to, dist, tx, ty, full, measure, cliffs, useZ);
+        }
         _ledgeScan = false;
-        if (full) ZSolve();
-        WakeWet(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+    }
+
+    private static int[] _rayAll = Array.Empty<int>();
+
+    private static void LinkEdge(int k, int d, string why, int to, int dist, int tx, int ty, bool full, bool measure, bool cliffs, bool useZ)
+    {
+        int x = k % _w, y = k / _w;
+        // 画面の下へ面を越えて下の床に着いた長さ = 段の差 (横を向いた崖も、下へ探した長さ)
+        if (measure && to >= 0 && (why == "fall" && d == 3 || why == "side")) ZSample(k, to, dist - 1);
+        // 小さな段差の下の床から上の床へ (上から下へは落ちる縁の方で登録する)。両側から別々に登録するので、
+        // 部分の作り直しで片側だけが範囲に入っても対で残る
+        if (why == "same" && StepBetween(k, ty * _w + tx, dist, useZ, 1))
+        {
+            StepTo[k * 4 + d] = _stepTo[k * 4 + d] = ty * _w + tx;
+            _stepMask[k] |= (byte)(1 << d);
+            return;
+        }
+        if (to == int.MinValue && (why == "scan" || why == "border") && SeaEdge(x, y, d))
+        {
+            _seaMask[k] |= (byte)(1 << d);
+            _seaListDirty = true;
+            return;
+        }
+        if (to == int.MinValue || to == -1 && OnLadder(x, y)) return;
+        // 空へ落とす縁とガラスの手すりは壁の影の線の外側へ落ちるので、影の線では切らない (塗った空も同じ)
+        if (full && why != "glass" && why != "air" && why != "airside" && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
+        if ((_shadowCut[k] >> d & 1) != 0) return;
+        // 段差は滝にしない (段の高さぶんずらして流すだけ・床の絵にも落ちる縁を描かない)
+        if (to >= 0 && StepBetween(k, to, dist, useZ, -1))
+        {
+            StepTo[k * 4 + d] = _stepTo[k * 4 + d] = to;
+            _stepMask[k] |= (byte)(1 << d);
+            return;
+        }
+        _fallMask[k] |= (byte)(1 << d);
+        if (why == "glass") { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = (short)(_glass.Height * Full); }
+        else if (PlatformRimAt(k, to)) { _lipMask[k] |= (byte)(1 << d); _lipH[k * 4 + d] = PlatformRim; }
+        FallTo[k * 4 + d] = (to, 3 + 2 * ISqrt(dist));
+        EdgeBarrier(x, y, d, k);
     }
 
     // 最初に水が出た時の升作りで払っていた準備 (段の注釈の読み込み・部屋の範囲・影の線の判定の初回) を先に済ませる
