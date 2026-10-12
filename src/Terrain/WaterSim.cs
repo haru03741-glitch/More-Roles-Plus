@@ -186,8 +186,9 @@ internal static partial class WaterSim
     // この小刻みに縁を越える量 (升, 向き, 量 の 3 つ組を並べる)
     private static int[] _fo = Array.Empty<int>();
     private static int _foN;
-    private static readonly List<(int K, int D, int Amount)> FallStep = new(); // 1 刻みの間に縁を越えた量 (升 × 向きごとに合計)
-    private static int[] _fallAt;    // 縁の枠 → FallStep の番号 + 1 (0 = まだ無い)
+    private static int[] _fs = Array.Empty<int>(); // 1 刻みの間に縁を越えた量 (升・向き・量の 3 個ずつ・升 × 向きごとに合計)
+    private static int _fsN;
+    private static int[] _fallAt;    // 縁の枠 → _fs の番号 + 1 (0 = まだ無い)
     private static int[] _move;      // この小刻みに升 × 4 向きへ運ぶ量
     private static readonly List<(int Due, int To, int Amount)> Flying = new(); // 落ちている水 (着く刻みの順)
     private static byte[] _inList;
@@ -1483,23 +1484,20 @@ internal static partial class WaterSim
         SeaInflow();
         Prof(3);
 
-        for (int s = 0; s < SubN; s++)
+        // 小刻み SubN 回。C++ の部品があればまとめて 1 回で (吸い出しの刻みは C# のまま)
+        if (_fs.Length < _fallAt.Length * 3) _fs = new int[_fallAt.Length * 3];
+        if (!blow && Native.MrpNative.On)
         {
-            // 浸水: 口の周りの開いている升へ等分して入れる (1 刻みの量を小刻みに分ける)
-            for (int i = 0; i < Inflows.Count; i++)
-            {
-                int amt = Share(Inflows[i].Rate, s);
-                if (amt > 0) Pour3(Inflows[i].K, amt);
-            }
-            SubStep(s, blow && s == 0, s == SubN - 1 && (_step & 3) == 0);
+            if (Native.MrpNative.Verify) VerifyStep();
+            else if (!StepNative(false)) StepManaged(false);
             Prof(4);
-            SubFalls();
-            Prof(5);
         }
+        else StepManaged(blow);
 
         // 縁を越えた水: 落ちる時間の後に下の升へ (奈落なら消える)。1 刻みの合計で 1 回
-        foreach (var (k, d, amt) in FallStep)
+        for (int i = 0; i < _fsN; i++)
         {
+            int k = _fs[i * 3], d = _fs[i * 3 + 1], amt = _fs[i * 3 + 2];
             _fallAt[EdgeKey(k, d)] = 0;
             FellTotal += amt;
             var (to, delay) = FallTo[k * 4 + d];
@@ -1507,7 +1505,7 @@ internal static partial class WaterSim
             else AddFlying(_step + delay, to, amt);
             FallFx(k, d, to, amt, delay);
         }
-        FallStep.Clear();
+        _fsN = 0;
         Prof(6);
 
         // 水も流れも無い升を外す。濡れていても、この刻みに起こされず流れ出しが全部 0 の升は眠らせる
@@ -1539,21 +1537,24 @@ internal static partial class WaterSim
         if (_step % 300 == 0) { LastDigest = Digest(); Plugin.Logger.LogInfo($"[WaterSim] step={_step} digest={LastDigest:x8} active={_actN} volume={Volume()}"); }
     }
 
-    // 小刻み s の DropVoid → Flow → Heights。C++ の部品があればそちらで (吸い出しの小刻みは C# のまま)
-    private static void SubStep(int s, bool blow, bool dry)
+    // C# 版の小刻み SubN 回 (浸水の口へ注ぐ → DropVoid → Flow → Heights → 縁を越えた量)。吸い出しは最初の小刻みだけ
+    private static void StepManaged(bool blow)
     {
-        if (blow || !Native.MrpNative.On)
+        for (int s = 0; s < SubN; s++)
         {
+            // 浸水: 口の周りの開いている升へ等分して入れる (1 刻みの量を小刻みに分ける)
+            for (int i = 0; i < Inflows.Count; i++)
+            {
+                int amt = Share(Inflows[i].Rate, s);
+                if (amt > 0) Pour3(Inflows[i].K, amt);
+            }
             DropVoid();
-            Flow(s, blow);
-            Heights(dry);
-            return;
+            Flow(s, blow && s == 0);
+            Heights(s == SubN - 1 && (_step & 3) == 0);
+            Prof(4);
+            SubFalls();
+            Prof(5);
         }
-        if (Native.MrpNative.Verify) { VerifySubStep(s, dry); return; }
-        if (SubStepNative(s, dry)) return;
-        DropVoid();
-        Flow(s, false);
-        Heights(dry);
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -1577,11 +1578,26 @@ internal static partial class WaterSim
         public int* Slot;
     }
 
-    private static int[] _dirtyBuf = Array.Empty<int>();
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct StepArgs
+    {
+        public FlowArgs F;
+        public int* InfK, InfRate; public int InfN;
+        public int DryStep;
+        public int* FallStep; public int FsN, FsCap, FsOver;
+        public int* FallAt;
+        public long InflowAdd, SeaOutAdd;
+    }
 
-    private static unsafe bool SubStepNative(int s, bool dry)
+    private static int[] _dirtyBuf = Array.Empty<int>();
+    private static int[] _infK = Array.Empty<int>(), _infRate = Array.Empty<int>();
+
+    // C++ 版の小刻み SubN 回。check = 照合 (C# と同じ古いルールで回し、眠っている升の起こし忘れも数える)
+    private static unsafe bool StepNative(bool check)
     {
         if (_dirtyBuf.Length < _tw * _th) _dirtyBuf = new int[_tw * _th];
+        if (_infK.Length < Inflows.Count) { _infK = new int[Inflows.Count * 2]; _infRate = new int[Inflows.Count * 2]; }
+        for (int i = 0; i < Inflows.Count; i++) { _infK[i] = Inflows[i].K; _infRate[i] = Inflows[i].Rate; }
         fixed (int* hgt = _hgt) fixed (int* flux = _flux) fixed (int* move = _move)
         fixed (byte* open = _open) fixed (byte* edge = _edge) fixed (sbyte* lvl = _lvl)
         fixed (short* bed = _bed) fixed (short* furn = _furn)
@@ -1589,71 +1605,83 @@ internal static partial class WaterSim
         fixed (short* lipH = _lipH) fixed (byte* barB = _barB) fixed (short* barH = _barH) fixed (int* stepTo = _stepTo) fixed (int* slot = _eSlot)
         fixed (int* act = _act) fixed (byte* inList = _inList) fixed (int* fo = _fo) fixed (bool* tileDirty = _tileDirty) fixed (int* dirty = _dirtyBuf)
         fixed (byte* stir = _stir) fixed (byte* isl = _cellIsl) fixed (int* islBase = _islBase)
+        fixed (int* infK = _infK) fixed (int* infRate = _infRate) fixed (int* fs = _fs) fixed (int* fallAt = _fallAt)
         {
-            var a = new FlowArgs
+            var a = new StepArgs
             {
-                Hgt = hgt, Flux = flux, Move = move, Open = open, Edge = edge, Lvl = lvl, Bed = bed, Furn = furn,
-                StepMask = stepMask, FallMask = fallMask, SeaMask = seaMask, LipMask = lipMask,
-                LipH = lipH, BarB = barB, BarH = barH, StepTo = stepTo, Slot = slot,
-                Act = act, InList = inList, Fo = fo, TileDirty = (byte*)tileDirty, DirtyOut = dirty,
-                ActN = _actN, FoN = _foN, W = _w, H = _h, Tw = _tw, Th = _th, TileCells = TileCells,
-                Sub = s, SubN = SubN, Dry = dry ? 1 : 0, SeaLevel = SeaLevel,
-                Stir = stir, CheckSleep = Native.MrpNative.Verify ? 1 : 0,
-                // 照合の時は C# と同じ古いルールで回して 1 バイトずつ比べる
-                Isl = isl, IslBase = islBase, IslN = _islBase.Length, UseZ = ZFlow && !Native.MrpNative.Verify && isl != null ? 1 : 0,
-                FoCap = _fo.Length / 3,
+                F = new FlowArgs
+                {
+                    Hgt = hgt, Flux = flux, Move = move, Open = open, Edge = edge, Lvl = lvl, Bed = bed, Furn = furn,
+                    StepMask = stepMask, FallMask = fallMask, SeaMask = seaMask, LipMask = lipMask,
+                    LipH = lipH, BarB = barB, BarH = barH, StepTo = stepTo, Slot = slot,
+                    Act = act, InList = inList, Fo = fo, TileDirty = (byte*)tileDirty, DirtyOut = dirty,
+                    ActN = _actN, FoN = _foN, W = _w, H = _h, Tw = _tw, Th = _th, TileCells = TileCells,
+                    SubN = SubN, SeaLevel = SeaLevel,
+                    Stir = stir, CheckSleep = check ? 1 : 0,
+                    // 照合の時は C# と同じ古いルールで回して 1 バイトずつ比べる
+                    Isl = isl, IslBase = islBase, IslN = _islBase.Length, UseZ = ZFlow && !check && isl != null ? 1 : 0,
+                    FoCap = _fo.Length / 3,
+                },
+                InfK = infK, InfRate = infRate, InfN = Inflows.Count,
+                DryStep = (_step & 3) == 0 ? 1 : 0,
+                FallStep = fs, FsN = _fsN, FsCap = _fs.Length / 3, FallAt = fallAt,
             };
-            if (Native.MrpNative.WaterSubstep(&a) == 0) return false;
-            _actN = a.ActN;
-            _foN = a.FoN;
-            if (a.FoOver != 0) Plugin.Logger.LogError($"[WaterSim] fo over {a.FoOver} cap={_fo.Length / 3}");
-            VoidTotal += a.VoidAdd;
-            VerifySleepViol += a.SleepViol;
-            for (int i = 0; i < a.DirtyN; i++) DirtyTiles.Add(dirty[i]);
+            if (Native.MrpNative.WaterStep(&a) == 0) return false;
+            _actN = a.F.ActN;
+            _foN = a.F.FoN;
+            _fsN = a.FsN;
+            if (a.F.FoOver != 0) Plugin.Logger.LogError($"[WaterSim] fo over {a.F.FoOver} cap={_fo.Length / 3}");
+            if (a.FsOver != 0) Plugin.Logger.LogError($"[WaterSim] fall step over {a.FsOver} cap={_fs.Length / 3}");
+            VoidTotal += a.F.VoidAdd;
+            InflowTotal += a.InflowAdd;
+            SeaOutTotal += a.SeaOutAdd;
+            VerifySleepViol += a.F.SleepViol;
+            for (int i = 0; i < a.F.DirtyN; i++) DirtyTiles.Add(dirty[i]);
         }
         return true;
     }
 
-    // 答え合わせ (native verify): 同じ小刻みを C++ と C# の両方で回して、升の水・流れ・回す升・縁を越える量を比べる。続きは C# の結果で
+    // 答え合わせ (native verify): 同じ刻みの小刻みを C++ と C# の両方で回して、升の水・流れ・回す升・縁を越える量・描き直すタイルを比べる。続きは C# の結果で
     internal static long VerifySteps, VerifyDiff;
     internal static long VerifySleepViol; // 眠っている升が流れ出すはずだった・浅かった数 (起こし忘れ)
-    private static int[] _vHgt, _vFlux, _vMove, _vAct, _vFo;
-    private static byte[] _vIn, _vStir;
-    private static void VerifySubStep(int s, bool dry)
+
+    private static void VerifyStep()
     {
         int n = _hgt.Length;
-        if (_vHgt == null || _vHgt.Length != n)
-        {
-            _vHgt = new int[n]; _vFlux = new int[n * 4]; _vMove = new int[n * 4]; _vAct = new int[n]; _vFo = Array.Empty<int>(); _vIn = new byte[n]; _vStir = new byte[n];
-        }
-        if (_vFo.Length != _fo.Length) _vFo = new int[_fo.Length];
         // 前の状態を取っておく
         var hgt0 = (int[])_hgt.Clone(); var flux0 = (int[])_flux.Clone(); var move0 = (int[])_move.Clone();
         var act0 = (int[])_act.Clone(); var in0 = (byte[])_inList.Clone(); var dirty0 = (bool[])_tileDirty.Clone(); var stir0 = (byte[])_stir.Clone();
-        int actN0 = _actN, foN0 = _foN, dirtyN0 = DirtyTiles.Count;
-        long void0 = VoidTotal;
-        SubStepNative(s, dry);
-        Array.Copy(_hgt, _vHgt, n); Array.Copy(_flux, _vFlux, n * 4); Array.Copy(_move, _vMove, n * 4);
-        Array.Copy(_act, _vAct, n); Array.Copy(_inList, _vIn, n); Array.Copy(_fo, _vFo, _foN * 3); Array.Copy(_stir, _vStir, n);
-        int nActN = _actN, nFoN = _foN;
-        long nVoid = VoidTotal;
+        var fo0 = (int[])_fo.Clone(); var fs0 = (int[])_fs.Clone(); var fallAt0 = (int[])_fallAt.Clone();
+        int actN0 = _actN, foN0 = _foN, fsN0 = _fsN, dirtyN0 = DirtyTiles.Count;
+        long void0 = VoidTotal, inflow0 = InflowTotal, seaOut0 = SeaOutTotal;
+        if (!StepNative(true)) { StepManaged(false); return; }
+        var vHgt = (int[])_hgt.Clone(); var vFlux = (int[])_flux.Clone(); var vMove = (int[])_move.Clone();
+        var vAct = (int[])_act.Clone(); var vIn = (byte[])_inList.Clone(); var vStir = (byte[])_stir.Clone();
+        var vFo = (int[])_fo.Clone(); var vFs = (int[])_fs.Clone(); var vFallAt = (int[])_fallAt.Clone();
+        var vDirty = DirtyTiles.GetRange(dirtyN0, DirtyTiles.Count - dirtyN0);
+        int nActN = _actN, nFoN = _foN, nFsN = _fsN;
+        long nVoid = VoidTotal, nInflow = InflowTotal, nSeaOut = SeaOutTotal;
         // 戻して C# で
         Array.Copy(hgt0, _hgt, n); Array.Copy(flux0, _flux, n * 4); Array.Copy(move0, _move, n * 4);
         Array.Copy(act0, _act, n); Array.Copy(in0, _inList, n); Array.Copy(dirty0, _tileDirty, dirty0.Length); Array.Copy(stir0, _stir, n);
-        _actN = actN0; _foN = foN0; VoidTotal = void0;
+        Array.Copy(fo0, _fo, fo0.Length); Array.Copy(fs0, _fs, fs0.Length); Array.Copy(fallAt0, _fallAt, fallAt0.Length);
+        _actN = actN0; _foN = foN0; _fsN = fsN0; VoidTotal = void0; InflowTotal = inflow0; SeaOutTotal = seaOut0;
         DirtyTiles.RemoveRange(dirtyN0, DirtyTiles.Count - dirtyN0);
-        DropVoid();
-        Flow(s, false);
-        Heights(dry);
+        StepManaged(false);
         VerifySteps++;
         long diff = 0;
         if (nActN != _actN) diff += 1000000;
         if (nFoN != _foN) diff += 1000000;
-        if (nVoid != VoidTotal) diff += 1000000;
-        for (int i = 0; i < n; i++) { if (_vHgt[i] != _hgt[i]) diff++; if (_vIn[i] != _inList[i]) diff++; if (_vStir[i] != _stir[i]) diff++; }
-        for (int i = 0; i < n * 4; i++) { if (_vFlux[i] != _flux[i]) diff++; if (_vMove[i] != _move[i]) diff++; }
-        for (int i = 0; i < Math.Min(nActN, _actN); i++) if (_vAct[i] != _act[i]) diff++;
-        for (int i = 0; i < Math.Min(nFoN, _foN) * 3; i++) if (_vFo[i] != _fo[i]) diff++;
+        if (nFsN != _fsN) diff += 1000000;
+        if (nVoid != VoidTotal || nInflow != InflowTotal || nSeaOut != SeaOutTotal) diff += 1000000;
+        if (vDirty.Count != DirtyTiles.Count - dirtyN0) diff += 1000000;
+        else for (int i = 0; i < vDirty.Count; i++) if (vDirty[i] != DirtyTiles[dirtyN0 + i]) diff++;
+        for (int i = 0; i < n; i++) { if (vHgt[i] != _hgt[i]) diff++; if (vIn[i] != _inList[i]) diff++; if (vStir[i] != _stir[i]) diff++; }
+        for (int i = 0; i < n * 4; i++) { if (vFlux[i] != _flux[i]) diff++; if (vMove[i] != _move[i]) diff++; }
+        for (int i = 0; i < Math.Min(nActN, _actN); i++) if (vAct[i] != _act[i]) diff++;
+        for (int i = 0; i < Math.Min(nFoN, _foN) * 3; i++) if (vFo[i] != _fo[i]) diff++;
+        for (int i = 0; i < Math.Min(nFsN, _fsN) * 3; i++) if (vFs[i] != _fs[i]) diff++;
+        for (int i = 0; i < _fallAt.Length; i++) if (vFallAt[i] != _fallAt[i]) diff++;
         VerifyDiff += diff;
     }
 
@@ -1774,7 +1802,7 @@ internal static partial class WaterSim
         }
     }
 
-    // 縁を越えた水を縁の升から引く。段差と海へはすぐ移し、落ちる分は 1 刻みの合計 (FallStep) へ足す
+    // 縁を越えた水を縁の升から引く。段差と海へはすぐ移し、落ちる分は 1 刻みの合計 (_fs) へ足す
     private static void SubFalls()
     {
         for (int i = 0; i < _foN; i++)
@@ -1795,8 +1823,8 @@ internal static partial class WaterSim
                 continue;
             }
             int key = EdgeKey(k, d), at = _fallAt[key];
-            if (at == 0) { FallStep.Add((k, d, amt)); _fallAt[key] = FallStep.Count; }
-            else { var fs = FallStep[at - 1]; FallStep[at - 1] = (fs.K, fs.D, fs.Amount + amt); }
+            if (at == 0) { _fs[_fsN * 3] = k; _fs[_fsN * 3 + 1] = d; _fs[_fsN * 3 + 2] = amt; _fallAt[key] = ++_fsN; }
+            else _fs[(at - 1) * 3 + 2] += amt;
         }
     }
 

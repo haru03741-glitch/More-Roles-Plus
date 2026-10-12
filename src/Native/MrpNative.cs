@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Native;
 // 無い・版が違う時は水を止める (Loaded が偽)。On は実行中に切り替えられる (C# 版との答え合わせ用)
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 17;
+    internal const int Abi = 18;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -27,7 +27,7 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<byte*, byte*, int, int, float, float, float, float, float, float, int, byte*, void> FloorLips;
     internal static delegate* unmanaged[Cdecl]<int*, int*, int, int, int, int, float, float, float, float, byte*, int, int, float, float, float, int, byte*, byte*, int, float, float, byte*, void> WaterPixels;
     internal static delegate* unmanaged[Cdecl]<byte*, byte*, int, int, byte*, void> WaterSpreadFace;
-    internal static delegate* unmanaged[Cdecl]<void*, int> WaterSubstep;
+    internal static delegate* unmanaged[Cdecl]<void*, int> WaterStep;
     internal static delegate* unmanaged[Cdecl]<void*, void> DamageStamp;
     internal static delegate* unmanaged[Cdecl]<void*, void> SolidCarve;
     internal static delegate* unmanaged[Cdecl]<void*, void> WaterFace;
@@ -74,7 +74,7 @@ internal static unsafe class MrpNative
             FloorLips = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, float, float, float, float, float, float, int, byte*, void>)NativeLibrary.GetExport(lib, "mrp_floor_lips");
             WaterPixels = (delegate* unmanaged[Cdecl]<int*, int*, int, int, int, int, float, float, float, float, byte*, int, int, float, float, float, int, byte*, byte*, int, float, float, byte*, void>)NativeLibrary.GetExport(lib, "mrp_water_pixels");
             WaterSpreadFace = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, byte*, void>)NativeLibrary.GetExport(lib, "mrp_water_spread_face");
-            WaterSubstep = (delegate* unmanaged[Cdecl]<void*, int>)NativeLibrary.GetExport(lib, "mrp_water_substep");
+            WaterStep = (delegate* unmanaged[Cdecl]<void*, int>)NativeLibrary.GetExport(lib, "mrp_water_step");
             DamageStamp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_damage_stamp");
             SolidCarve = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_solid_carve");
             WaterFace = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_face");

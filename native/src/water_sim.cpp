@@ -1,7 +1,7 @@
 #include "mrp_native.h"
 #include <math.h>
 
-// 小刻みの関数は全部 mrp_water_substep の中へ展開する (引数の構造体を手元に写した物の値をレジスタに置いたままにするため)
+// 小刻みの関数は全部 mrp_water_step の中へ展開する (引数の構造体を手元に写した物の値をレジスタに置いたままにするため)
 #if defined(_MSC_VER)
 #define MRP_INLINE __forceinline
 #else
@@ -288,17 +288,96 @@ static MRP_INLINE void heights(WaterFlowArgs* a)
     }
 }
 
-// 1 小刻みの DropVoid → Flow → Heights (減圧の吸い出しの無い時)。actN / foN / dirtyN / voidAdd を書き戻す。
-// 定数が C# と違えば何もせず 0 (C# 版で回す)
-MRP_API int32_t mrp_water_substep(WaterFlowArgs* a)
+// 1 刻みの小刻み SubN 回 (浸水の口へ注ぐ → 小刻み → 縁を越えた量を縁ごとに集める) をまとめて回す
+// (src/Terrain/WaterSim.cs の StepOnce の小刻みのループ・Pour3・SubFalls と同じ結果)
+struct WaterStepArgs
 {
-    if (a->subN != SubN || a->tileCells != TileCells) return 0;
-    // 手元に写して回す (配列への書き込みが引数の数と重なりうると見なされ、w や actN を毎回読み直すのを避ける)
-    WaterFlowArgs s = *a;
-    drop_void(&s);
-    if (s.checkSleep) check_sleep(&s);
-    flow(&s);
-    heights(&s);
-    *a = s;
+    WaterFlowArgs f;
+    const int32_t* infK; const int32_t* infRate; int32_t infN;
+    int32_t dryStep;                // この刻みの最後の小刻みで浅い升を乾かすか
+    int32_t* fallStep;              // 縁を越えた量 (升・向き・量の 3 個ずつ・縁ごとに合計)
+    int32_t fsN, fsCap, fsOver;
+    int32_t* fallAt;                // 縁の枠 × 4 + 向き → fallStep の番号 + 1
+    int64_t inflowAdd, seaOutAdd;
+};
+
+// 口の周りの開いている升へ等分して入れる。入れた量 (周りが全部閉じていれば 0) を返す
+static MRP_INLINE int pour3(WaterFlowArgs* a, int k, int amt)
+{
+    int w = a->w, n = 0;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) if (a->open[k + dx + dy * w] != 0) n++;
+    if (n == 0) return 0;
+    int each = amt / n, rest = amt - each * n;
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            int j = k + dx + dy * w;
+            if (a->open[j] == 0) continue;
+            int v = each + (rest > 0 ? 1 : 0);
+            if (rest > 0) rest--;
+            a->hgt[j] += v;
+            wake(a, j);
+            int y = j / w;
+            mark(a, j, j - y * w, y);
+        }
+    return amt;
+}
+
+static MRP_INLINE void sub_falls(WaterStepArgs* s)
+{
+    WaterFlowArgs* a = &s->f;
+    int w = a->w;
+    for (int i = 0; i < a->foN; i++)
+    {
+        int k = a->fo[i * 3], d = a->fo[i * 3 + 1], a0 = a->fo[i * 3 + 2];
+        int amt = imin(a0, a->hgt[k]);
+        if (amt <= 0) continue;
+        a->hgt[k] -= amt;
+        int y = k / w;
+        mark(a, k, k - y * w, y);
+        if ((a->seaMask[k] >> d & 1) != 0) { s->seaOutAdd += amt; continue; }
+        int key = edge_key(a, k, d);
+        if ((a->stepMask[k] >> d & 1) != 0)
+        {
+            int t = a->stepTo[key];
+            a->hgt[t] += amt;
+            int ty = t / w;
+            mark(a, t, t - ty * w, ty);
+            wake(a, t);
+            continue;
+        }
+        int at = s->fallAt[key];
+        if (at == 0)
+        {
+            if (s->fsN >= s->fsCap) { s->fsOver++; continue; }
+            int32_t* e = s->fallStep + s->fsN * 3; e[0] = k; e[1] = d; e[2] = amt;
+            s->fallAt[key] = ++s->fsN;
+        }
+        else s->fallStep[(at - 1) * 3 + 2] += amt;
+    }
+}
+
+// 定数が C# と違えば何もせず 0 (C# 版で回す)
+MRP_API int32_t mrp_water_step(WaterStepArgs* p)
+{
+    if (p->f.subN != SubN || p->f.tileCells != TileCells) return 0;
+    WaterStepArgs s = *p;
+    for (int sub = 0; sub < SubN; sub++)
+    {
+        for (int i = 0; i < s.infN; i++)
+        {
+            int amt = share(s.infRate[i], sub);
+            if (amt > 0) s.inflowAdd += pour3(&s.f, s.infK[i], amt);
+        }
+        s.f.sub = sub;
+        s.f.dry = sub == SubN - 1 && s.dryStep;
+        drop_void(&s.f);
+        if (s.f.checkSleep) check_sleep(&s.f);
+        flow(&s.f);
+        heights(&s.f);
+        sub_falls(&s);
+    }
+    *p = s;
     return 1;
 }
