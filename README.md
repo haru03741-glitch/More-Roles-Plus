@@ -11,13 +11,13 @@ dotnet build MoreRolesPlus.csproj -c Release                       # → <AmongU
 dotnet build patcher/MoreRolesPlus.BootAccel.csproj -c Release     # → <AmongUs>/BepInEx-MRP/patchers (起動の高速化)
 ```
 
-地形と水の重い計算は C++ の部品 (`native/src`) にあります。先に組んでおくと、本体のビルドが `MrpNative.dll` も plugins に置きます (Visual Studio の C++ ビルドツールが要ります。無ければ C# 版の計算で動きますが遅くなります)。
+地形と水の重い計算は C++ の部品 (`native/src`) にあります。部品は `MoreRolesPlus.dll` の中に埋め込まれ、起動時に `BepInEx-MRP/cache` へ書き出して読み込まれます。本体のビルドは `native/src` が変わっていれば先に部品を組み直します (Visual Studio の C++ ビルドツールが要ります)。部品だけを組む時は次のとおりです。
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -SkipAndroid   # → build/native/win-x64/MrpNative.dll
 ```
 
-配る時は `MoreRolesPlus.dll` と `MrpNative.dll` を両方 plugins に入れます。CI の成果物 `MoreRolesPlus-plugins-<コミット>` に 2 つともまとめてあります。
+配る時は `MoreRolesPlus.dll` を 1 つ plugins に入れるだけです。
 
 ## クレジット
 

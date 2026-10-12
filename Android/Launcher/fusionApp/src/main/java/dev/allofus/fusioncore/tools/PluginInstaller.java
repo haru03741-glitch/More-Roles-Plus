@@ -60,8 +60,8 @@ public final class PluginInstaller {
 
         boolean allOk = true;
         for (String entry : entries) {
-            // The managed plugin and its native companion (.so loaded from plugins/ by the plugin)
-            if (!entry.endsWith(".dll") && !entry.endsWith(".so")) {
+            // The managed plugin (its native part is embedded in the DLL and extracted by the plugin)
+            if (!entry.endsWith(".dll")) {
                 continue;
             }
             allOk &= installOne(assets, bepInExDir, entry);

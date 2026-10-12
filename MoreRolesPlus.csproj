@@ -41,6 +41,27 @@
     <ItemGroup Condition="'$(Configuration)' == 'Android'">
         <EmbeddedResource Include="Resources\Bundles\mrp_fx.android.bundle" LogicalName="MoreRolesPlus.Resources.Bundles.mrp_fx.bundle" />
     </ItemGroup>
+    <!-- C++ の部品 (native/src) は本体に埋め込み、起動時に cache へ書き出して読む (別ファイルで配ると入れ忘れ・片方だけの更新が起きる)。
+         native/src が出力より新しければビルドの前に組み直す -->
+    <PropertyGroup>
+        <NativeRid Condition="'$(Configuration)' == 'Android'">android-arm64</NativeRid>
+        <NativeRid Condition="'$(Configuration)' != 'Android'">win-x64</NativeRid>
+        <NativeFile Condition="'$(Configuration)' == 'Android'">libmrpnative.so</NativeFile>
+        <NativeFile Condition="'$(Configuration)' != 'Android'">MrpNative.dll</NativeFile>
+        <NativeBinary>$(MSBuildProjectDirectory)/build/native/$(NativeRid)/$(NativeFile)</NativeBinary>
+        <NativeSkip Condition="'$(Configuration)' == 'Android'">-SkipPc</NativeSkip>
+        <NativeSkip Condition="'$(Configuration)' != 'Android'">-SkipAndroid</NativeSkip>
+    </PropertyGroup>
+    <ItemGroup>
+        <NativeSource Include="native/src/**/*.cpp;native/src/**/*.h;tools/build-native.ps1" />
+        <EmbeddedResource Include="$(NativeBinary)" LogicalName="MoreRolesPlus.Native.$(NativeFile)" />
+    </ItemGroup>
+    <Target Name="BuildNative" BeforeTargets="BeforeBuild" Inputs="@(NativeSource)" Outputs="$(NativeBinary)" Condition="'$(DesignTimeBuild)' != 'true'">
+        <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/tools/build-native.ps1&quot; $(NativeSkip)" />
+    </Target>
+    <Target Name="RequireNative" BeforeTargets="BeforeBuild" AfterTargets="BuildNative" Condition="'$(DesignTimeBuild)' != 'true'">
+        <Error Text="C++ の部品がありません ($(NativeBinary))。tools/build-native.ps1 を回してください" Condition="!Exists('$(NativeBinary)')" />
+    </Target>
     <!-- 設定画面の見出し用のフォント (SIL OFL 1.1・JIS 第一水準までに削ったもの) -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Fonts\MochiyPopOne-Regular.ttf" LogicalName="MoreRolesPlus.Resources.Fonts.MochiyPopOne-Regular.ttf" />
@@ -61,8 +82,8 @@
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\plugins\" ContinueOnError="WarnAndContinue" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(MrpBepInExDir)\plugins\" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" ContinueOnError="WarnAndContinue" />
-        <!-- C++ の部品 (tools/build-native.ps1 で組んだ物があれば) -->
-        <Copy SourceFiles="$(MSBuildProjectDirectory)/build/native/win-x64/MrpNative.dll" DestinationFolder="$(MrpBepInExDir)/plugins/" Condition="Exists('$(MSBuildProjectDirectory)/build/native/win-x64/MrpNative.dll')" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" />
+        <!-- C++ の部品は本体に入ったので、前に別ファイルで置いた物は消す -->
+        <Delete Files="$(MrpBepInExDir)/plugins/MrpNative.dll" ContinueOnError="WarnAndContinue" />
     </Target>
     <!-- Android: ランチャーの APK が DLL を同梱し、端末の BepInEx/plugins と違う時だけ入れ直す。
          横の .properties (DLL の SHA-256 と版) がランチャーの見比べる目印。 -->
@@ -82,15 +103,7 @@
         <MakeDir Directories="$(AndroidApkAssetsDir)" />
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AndroidApkAssetsDir)" />
         <WriteLinesToFile File="$(AndroidApkAssetsDir)$(AssemblyName).dll.properties" Overwrite="true" Lines="version=$(_PluginVersion);sha256=$([System.String]::Copy('$(_PluginSha256)').ToLowerInvariant())" />
-        <!-- C++ の部品 (tools/build-native.ps1 で組む)。ランチャーが DLL と同じ目印で入れる。無いと地形が動かないので止める -->
-        <PropertyGroup>
-            <_NativeSo>$(MSBuildProjectDirectory)/build/native/android-arm64/libmrpnative.so</_NativeSo>
-        </PropertyGroup>
-        <Error Text="libmrpnative.so がありません。先に tools/build-native.ps1 を回してください ($(_NativeSo))" Condition="!Exists('$(_NativeSo)')" />
-        <GetFileHash Files="$(_NativeSo)" Algorithm="SHA256" HashEncoding="hex" Condition="Exists('$(_NativeSo)')">
-            <Output TaskParameter="Hash" PropertyName="_NativeSha256" />
-        </GetFileHash>
-        <Copy SourceFiles="$(_NativeSo)" DestinationFolder="$(AndroidApkAssetsDir)" Condition="Exists('$(_NativeSo)')" />
-        <WriteLinesToFile File="$(AndroidApkAssetsDir)libmrpnative.so.properties" Overwrite="true" Lines="version=$(_PluginVersion);sha256=$([System.String]::Copy('$(_NativeSha256)').ToLowerInvariant())" Condition="Exists('$(_NativeSo)')" />
+        <!-- C++ の部品は本体に入ったので、前に別ファイルで入れていた物は APK から外す -->
+        <Delete Files="$(AndroidApkAssetsDir)libmrpnative.so;$(AndroidApkAssetsDir)libmrpnative.so.properties" />
     </Target>
 </Project>

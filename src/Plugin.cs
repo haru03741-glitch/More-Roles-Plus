@@ -27,6 +27,14 @@ public class Plugin : BasePlugin
     {
         Logger = Log;
         Boot.BootClock.Mark("load");
+        // C++ の部品が読めない時は mod ごと起動しない (地形を部品抜きで動かさない)。本編はそのまま遊べる
+        if (!Native.MrpNative.Loaded)
+        {
+            Log.LogError($"More Roles Plus {Version} not started: {Native.MrpNative.Status}");
+            Native.MrpNative.ShowMissing();
+            return;
+        }
+        Boot.BootClock.Mark("native");
         EnableTestBridge = Config.Bind("Debug", "EnableTestBridge", false, "外部ツールからの遠隔テスト口を有効にする");
         DisableIncrementalGc = Config.Bind("Performance", "DisableIncrementalGc", true, "incremental GC を切る (GC 中の interop の書き込みで落ちるのを防ぐ・Windows のみ)");
         ReuseDelegateTypes = Config.Bind("Performance", "ReuseDelegateTypes", true, "パッチを当てる時の型を形ごとに使い回して起動を速くする (パッチが当たらない時は切る)");

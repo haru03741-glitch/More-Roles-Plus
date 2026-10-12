@@ -1,12 +1,14 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 namespace MoreRolesPlus.Native;
 
-// C++ の部品 (native/src) の読み込み口。plugins の隣の MrpNative.dll / libmrpnative.so を最初に使う時に 1 回だけ読み、
-// 関数の番地を引いておく (DllImport の名前解決は端末で失敗すると呼ぶたびに例外になるので使わない)。
-// 無い・版が違う時は地形を全部止める (Loaded が偽)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
+// C++ の部品 (native/src) の読み込み口。部品は本体の DLL に埋め込んであり (別ファイルで配ると入れ忘れや片方だけの更新が起きる)、
+// 最初に使う時に 1 回だけ cache へ書き出して読み、関数の番地を引いておく (DllImport の名前解決は端末で失敗すると呼ぶたびに例外になるので使わない)。
+// 書き出す名前に中身のハッシュを入れるので、別の版の AU が同じ場所の部品を掴んでいても上書きで揉めない。
+// 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
 internal static unsafe class MrpNative
 {
     internal const int Abi = 21;
@@ -53,11 +55,29 @@ internal static unsafe class MrpNative
     private static void Load()
     {
         _tried = true;
-        string path = Path.Combine(BepInEx.Paths.PluginPath, FileName);
         try
         {
-            if (!File.Exists(path)) { Status = $"missing {path}"; return; }
-            if (!NativeLibrary.TryLoad(path, out var lib)) { Status = $"load failed {path}"; return; }
+            using var stream = typeof(MrpNative).Assembly.GetManifestResourceStream("MoreRolesPlus.Native." + FileName);
+            if (stream == null) { Status = $"not embedded {FileName}"; return; }
+            var bytes = new byte[stream.Length];
+            for (int n = 0; n < bytes.Length;)
+            {
+                int r = stream.Read(bytes, n, bytes.Length - n);
+                if (r <= 0) { Status = $"short read {FileName}"; return; }
+                n += r;
+            }
+            string name = Path.GetFileNameWithoutExtension(FileName) + "-" + Convert.ToHexString(SHA256.HashData(bytes), 0, 8).ToLowerInvariant() + Path.GetExtension(FileName);
+
+            // 置き場は BepInEx の cache。書けない・読めない時は plugins、最後に OS の一時フォルダ
+            string path = null;
+            IntPtr lib = IntPtr.Zero;
+            foreach (string dir in new[] { BepInEx.Paths.CachePath, BepInEx.Paths.PluginPath, Path.GetTempPath() })
+            {
+                path = Export(bytes, dir, name);
+                if (path != null && NativeLibrary.TryLoad(path, out lib)) break;
+                lib = IntPtr.Zero;
+            }
+            if (lib == IntPtr.Zero) { Status = $"load failed {name}"; return; }
             var abi = (delegate* unmanaged[Cdecl]<int>)NativeLibrary.GetExport(lib, "mrp_abi");
             int got = abi();
             if (got != Abi) { Status = $"abi {got} != {Abi} {path}"; return; }
@@ -87,6 +107,56 @@ internal static unsafe class MrpNative
         finally
         {
             Plugin.Logger.LogInfo($"[native] {Status}");
+        }
+    }
+
+#if !ANDROID
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+#endif
+
+    // mod を起動しなかったことを本人に知らせる (PC は Windows の通知窓・Android はログだけ)
+    internal static void ShowMissing()
+    {
+#if !ANDROID
+        try
+        {
+            MessageBoxW(IntPtr.Zero,
+                "C++ の部品を読み込めなかったので、More Roles Plus を起動しませんでした (本編はそのまま遊べます)。\n" +
+                "ウイルス対策ソフトが BepInEx-MRP\\cache の MrpNative-*.dll を隔離していないか確認してください。\n\n" +
+                "More Roles Plus was not started because its native component could not be loaded.\n\n" + Status,
+                "More Roles Plus", 0x10 | 0x40000); // MB_ICONERROR | MB_TOPMOST
+        }
+        catch { }
+#endif
+    }
+
+    // 中身が同じ物が既にあればそれを使い、無ければ一時名で書いてから置き換える (書きかけを読ませない)。
+    // 同じ場所の古い版は消す (別の AU が掴んでいる物は消えないので残す)
+    private static string Export(byte[] bytes, string dir, string name)
+    {
+        try
+        {
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, name);
+            if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
+            {
+                string tmp = path + "." + Environment.ProcessId + ".tmp";
+                File.WriteAllBytes(tmp, bytes);
+                File.Move(tmp, path, true);
+            }
+            string prefix = Path.GetFileNameWithoutExtension(FileName) + "-";
+            foreach (string old in Directory.GetFiles(dir, prefix + "*" + Path.GetExtension(FileName)))
+            {
+                if (Path.GetFileName(old) == name) continue;
+                try { File.Delete(old); } catch { }
+            }
+            return path;
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogWarning($"[native] cannot write under {dir}: {e.Message}");
+            return null;
         }
     }
 }

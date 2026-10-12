@@ -9,11 +9,39 @@ on:
   workflow_dispatch:
 
 jobs:
+  native:
+    name: Native parts (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # C++ の部品 (native/src) を MSVC で組む。本体の MoreRolesPlus.dll に埋め込まれる
+      - name: Build MrpNative.dll
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -SkipAndroid
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Upload MrpNative.dll
+        uses: actions/upload-artifact@v4
+        with:
+          name: MrpNative-${{ github.sha }}
+          path: build/native/win-x64/MrpNative.dll
+          retention-days: 30
+          if-no-files-found: error
+
   build:
     name: Release build + checks (PC only)
+    needs: native
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # C++ の部品は本体に埋め込むので、先に組んだ物をビルドの前に置く
+      - uses: actions/download-artifact@v4
+        with:
+          name: MrpNative-${{ github.sha }}
+          path: build/native/win-x64
 
       # SDK は global.json (10.0) に固定。net6.0 の参照アセンブリも要る
       - name: Set up .NET
@@ -37,48 +65,5 @@ jobs:
         with:
           name: MoreRolesPlus-${{ github.sha }}
           path: bin/Release/net6.0/MoreRolesPlus.dll
-          retention-days: 30
-          if-no-files-found: error
-
-  native:
-    name: Native parts (Windows x64)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # C++ の部品 (native/src) を MSVC で組む。無いと地形 (壊す・水・火) が動かない
-      - name: Build MrpNative.dll
-        shell: pwsh
-        run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -SkipAndroid
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-
-      - name: Upload MrpNative.dll
-        uses: actions/upload-artifact@v4
-        with:
-          name: MrpNative-${{ github.sha }}
-          path: build/native/win-x64/MrpNative.dll
-          retention-days: 30
-          if-no-files-found: error
-
-  package:
-    name: Plugins folder (MoreRolesPlus.dll + MrpNative.dll)
-    needs: [build, native]
-    runs-on: ubuntu-latest
-    steps:
-      # 配る時は plugins に 2 つとも入れる (MrpNative.dll が無いと地形が動かない)
-      - uses: actions/download-artifact@v4
-        with:
-          name: MoreRolesPlus-${{ github.sha }}
-          path: plugins
-      - uses: actions/download-artifact@v4
-        with:
-          name: MrpNative-${{ github.sha }}
-          path: plugins
-      - name: Upload plugins
-        uses: actions/upload-artifact@v4
-        with:
-          name: MoreRolesPlus-plugins-${{ github.sha }}
-          path: plugins/
           retention-days: 30
           if-no-files-found: error
