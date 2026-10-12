@@ -335,6 +335,7 @@ internal static class SolidMap
             if (on) { Segments(c, all); cols++; }
             AddSmallShape(c, all, from, on);
         }
+        double tSeg = sw.Elapsed.TotalMilliseconds;
         float minX = DamageMap.Origin.x, minY = DamageMap.Origin.y;
         float maxX = minX + DamageMap.MapW * DamageMap.TexelSize, maxY = minY + DamageMap.MapH * DamageMap.TexelSize;
         foreach (var p in all)
@@ -357,21 +358,141 @@ internal static class SolidMap
         var barrier = new byte[n];
         for (int i = 0; i + 1 < all.Count; i += 2) Raster(barrier, _w, _h, 0, 0, all[i], all[i + 1]);
 
+        double tRaster = sw.Elapsed.TotalMilliseconds;
+        var seeds = Seeds(ship);
+        double tSeeds = sw.Elapsed.TotalMilliseconds;
+
+        // 2〜4 と島分け (C++)。種は升に直して渡す
+        int sn = seeds.Count;
+        var sx = new int[Math.Max(1, sn)];
+        var sy = new int[Math.Max(1, sn)];
+        for (int i = 0; i < sn; i++)
+        {
+            sx[i] = (int)MathF.Floor((seeds[i].P.x - _origin.x) * _ppu);
+            sy[i] = (int)MathF.Floor((seeds[i].P.y - _origin.y) * _ppu);
+        }
+        var queue = new int[n];
+        var fl = new Flood(n, sn);
+        FloodNative(barrier, sx, sy, sn, fl, queue);
+        long verifyDiff = -1, xfDiff = -1;
+        if (Native.MrpNative.Verify)
+        {
+            var cs = new Flood(n, sn);
+            FloodCs(barrier, sx, sy, sn, cs, queue);
+            verifyDiff = cs.Diff(fl);
+            fl = cs;
+        }
+        var blocked = fl.Blocked;
+        _open = fl.Open;
+        int accepted = fl.Accepted, leaked = fl.LeakedN, extra = 0;
+        for (int i = 0; i < sn; i++)
+        {
+            if (fl.SeedRes[i] == 2) LeakedSeeds.Add(seeds[i].P);
+            else if (fl.SeedRes[i] == 1 && !seeds[i].Sure) { extra++; ExtraSeeds.Add(seeds[i].P); }
+        }
+        _leaked = leaked > 0 ? fl.Leaked : null;
+        int openCells = fl.OpenCells;
+        Valid = fl.Valid;
+        if (Valid) { _island = fl.Island; IslandCount = fl.Islands; }
+        double tFlood = sw.Elapsed.TotalMilliseconds;
+
+        // 5. エアシップの船体の塊と、その外周の壊れない壁
+        int edges = 0;
+        if (Valid) edges = BuildHull(ship);
+        double tHull = sw.Elapsed.TotalMilliseconds;
+
+        // 6. 船の外。ミラ・エアシップは部屋と部屋の間に空が見える。スケルドの部屋の間は船体のメッシュ (Hull*) が描いていて、
+        // その外が星空。ポーラス・ファングルの屋外は地面の絵が描いていて外と分からないので作らない (奥の面と床で決める)
+        bool sky = ship.TryCast<MiraShipStatus>() != null || ship.TryCast<AirshipStatus>() != null;
+        var hullMeshes = !sky && ship.Type == ShipStatus.MapType.Ship ? HullMeshes(ship) : null;
+        int tris = 0;
+        _outside = sky || hullMeshes is { Count: > 0 } ? Outside(blocked, hullMeshes, ref verifyDiff, ref xfDiff, out tris) : null;
+        BreachableHull = Valid && hullMeshes is { Count: > 0 };
+        double tOut = sw.Elapsed.TotalMilliseconds;
+        _orig = (byte[])_open.Clone();
+        SkyHull = Valid && HullRects.Count > 0 && ship.TryCast<AirshipStatus>() != null;
+
+        string verify = verifyDiff >= 0 ? $" verify diff={verifyDiff} xfDiff={xfDiff}" : "";
+        Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} tris={tris} ms={sw.Elapsed.TotalMilliseconds:F1} (segs={tSeg:F1} raster={tRaster - tSeg:F1} seeds={tSeeds - tRaster:F1} flood={tFlood - tSeeds:F1} hull={tHull - tFlood:F1} out={tOut - tHull:F1}){verify}";
+        Plugin.Logger.LogInfo($"solid map: {Stats}");
+    }
+
+    // 太らせた壁・歩ける所・漏れた塗り・島の番号と、種ごとの結果 (0 = 使わない・1 = 受け入れた・2 = 漏れた)
+    private sealed class Flood
+    {
+        public readonly byte[] Blocked, Open, Leaked, Island, SeedRes;
+        public int OpenCells, Islands, Accepted, LeakedN;
+        public bool Valid;
+
+        public Flood(int n, int sn)
+        {
+            Blocked = new byte[n]; Open = new byte[n]; Leaked = new byte[n]; Island = new byte[n];
+            SeedRes = new byte[Math.Max(1, sn)];
+        }
+
+        public long Diff(Flood o)
+        {
+            long d = 0;
+            for (int i = 0; i < Open.Length; i++)
+            {
+                if (Blocked[i] != o.Blocked[i]) d++;
+                if (Open[i] != o.Open[i]) d++;
+                if (Leaked[i] != o.Leaked[i]) d++;
+                if (Valid && Island[i] != o.Island[i]) d++;
+            }
+            for (int i = 0; i < SeedRes.Length; i++) if (SeedRes[i] != o.SeedRes[i]) d++;
+            if (OpenCells != o.OpenCells || Islands != o.Islands || Accepted != o.Accepted || LeakedN != o.LeakedN || Valid != o.Valid) d++;
+            return d;
+        }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct SolidFloodArgs
+    {
+        public byte* Barrier;
+        public int W, H, Dilate;
+        public int* SeedX; public int* SeedY; public int SeedN;
+        public byte* Blocked; public byte* Tmp; public byte* Open; public byte* Leaked; public byte* Island;
+        public int* Queue; public byte* SeedRes;
+        public int OpenCells, Islands, Accepted, LeakedN, Valid;
+    }
+
+    private static unsafe void FloodNative(byte[] barrier, int[] sx, int[] sy, int sn, Flood f, int[] queue)
+    {
+        var tmp = new byte[_w * _h];
+        fixed (byte* bar = barrier) fixed (int* px = sx) fixed (int* py = sy)
+        fixed (byte* blk = f.Blocked) fixed (byte* t = tmp) fixed (byte* op = f.Open) fixed (byte* lk = f.Leaked) fixed (byte* isl = f.Island)
+        fixed (int* q = queue) fixed (byte* res = f.SeedRes)
+        {
+            var a = new SolidFloodArgs
+            {
+                Barrier = bar, W = _w, H = _h, Dilate = Dilate,
+                SeedX = px, SeedY = py, SeedN = sn,
+                Blocked = blk, Tmp = t, Open = op, Leaked = lk, Island = isl, Queue = q, SeedRes = res,
+            };
+            Native.MrpNative.SolidFlood(&a);
+            f.OpenCells = a.OpenCells; f.Islands = a.Islands; f.Accepted = a.Accepted; f.LeakedN = a.LeakedN; f.Valid = a.Valid != 0;
+        }
+    }
+
+    // FloodNative の C# 版 (照合の答え)
+    private static void FloodCs(byte[] barrier, int[] sx, int[] sy, int sn, Flood f, int[] queue)
+    {
+        int n = _w * _h;
         // 2. 太らせる (縦横それぞれ Dilate 升)
         var blocked = DilateGrid(barrier, _w, _h, Dilate);
+        Array.Copy(blocked, f.Blocked, n);
 
         // 3. 床の上と分かっている点から塗る (地図の端に届いた塗りは壁の外へ漏れたので捨てる)
-        _open = new byte[n];
-        var queue = new int[n];
-        var seeds = Seeds(ship);
-        int accepted = 0, leaked = 0, extra = 0;
-        foreach (var (sp, sure) in seeds)
+        var open = f.Open;
+        int accepted = 0, leaked = 0;
+        for (int s = 0; s < sn; s++)
         {
-            int start = NearestFree(blocked, sp);
-            if (start < 0 || _open[start] != 0) continue;
+            int start = NearestFree(blocked, sx[s], sy[s]);
+            if (start < 0 || open[start] != 0) continue;
             int head = 0, tail = 0;
             bool border = false;
-            _open[start] = 1;
+            open[start] = 1;
             queue[tail++] = start;
             while (head < tail)
             {
@@ -385,25 +506,24 @@ internal static class SolidMap
             }
             if (border)
             {
-                for (int i = 0; i < tail; i++) _open[queue[i]] = 2; // 漏れた塗り (もう塗らない印)
+                for (int i = 0; i < tail; i++) open[queue[i]] = 2; // 漏れた塗り (もう塗らない印)
                 leaked++;
-                LeakedSeeds.Add(sp);
+                f.SeedRes[s] = 2;
             }
             else
             {
                 accepted++;
-                if (!sure) { extra++; ExtraSeeds.Add(sp); }
+                f.SeedRes[s] = 1;
             }
 
             void Push(int k2)
             {
-                if (_open[k2] != 0 || blocked[k2] != 0) return;
-                _open[k2] = 1;
+                if (open[k2] != 0 || blocked[k2] != 0) return;
+                open[k2] = 1;
                 queue[tail++] = k2;
             }
         }
-        _leaked = leaked > 0 ? new byte[n] : null;
-        for (int k = 0; k < n; k++) if (_open[k] == 2) { _open[k] = 0; _leaked[k] = 1; }
+        for (int k = 0; k < n; k++) if (open[k] == 2) { open[k] = 0; f.Leaked[k] = 1; }
 
         // 4. 太らせた分を戻す (壁の線そのものの升は閉じたまま)。角の升は斜めにしか届かないので 1 段多く
         for (int step = 0; step <= Dilate; step++)
@@ -411,39 +531,153 @@ internal static class SolidMap
             int grown = 0;
             for (int k = 0; k < n; k++)
             {
-                if (_open[k] != 0 || barrier[k] != 0 || blocked[k] == 0) continue;
+                if (open[k] != 0 || barrier[k] != 0 || blocked[k] == 0) continue;
                 int x = k % _w, y = k / _w;
-                if ((x > 0 && _open[k - 1] == 1) || (x < _w - 1 && _open[k + 1] == 1) ||
-                    (y > 0 && _open[k - _w] == 1) || (y < _h - 1 && _open[k + _w] == 1))
+                if ((x > 0 && open[k - 1] == 1) || (x < _w - 1 && open[k + 1] == 1) ||
+                    (y > 0 && open[k - _w] == 1) || (y < _h - 1 && open[k + _w] == 1))
                 { queue[grown++] = k; }
             }
-            for (int i = 0; i < grown; i++) _open[queue[i]] = 1; // 段ごとにまとめて開ける (同じ段で連鎖させない)
+            for (int i = 0; i < grown; i++) open[queue[i]] = 1; // 段ごとにまとめて開ける (同じ段で連鎖させない)
         }
 
         int openCells = 0;
-        for (int k = 0; k < n; k++) if (_open[k] != 0) openCells++;
-        Valid = accepted > 0 && openCells > n / 50;
-        if (Valid) LabelIslands(queue);
-
-        // 5. エアシップの船体の塊と、その外周の壊れない壁
-        int edges = 0;
-        if (Valid) edges = BuildHull(ship);
-
-        // 6. 船の外。ミラ・エアシップは部屋と部屋の間に空が見える。スケルドの部屋の間は船体のメッシュ (Hull*) が描いていて、
-        // その外が星空。ポーラス・ファングルの屋外は地面の絵が描いていて外と分からないので作らない (奥の面と床で決める)
-        bool sky = ship.TryCast<MiraShipStatus>() != null || ship.TryCast<AirshipStatus>() != null;
-        var hullMeshes = !sky && ship.Type == ShipStatus.MapType.Ship ? HullMeshes(ship) : null;
-        _outside = sky || hullMeshes is { Count: > 0 } ? Outside(blocked, hullMeshes) : null;
-        BreachableHull = Valid && hullMeshes is { Count: > 0 };
-        _orig = (byte[])_open.Clone();
-        SkyHull = Valid && HullRects.Count > 0 && ship.TryCast<AirshipStatus>() != null;
-
-        Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} ms={sw.Elapsed.TotalMilliseconds:F1}";
-        Plugin.Logger.LogInfo($"solid map: {Stats}");
+        for (int k = 0; k < n; k++) if (open[k] != 0) openCells++;
+        f.OpenCells = openCells;
+        f.Accepted = accepted;
+        f.LeakedN = leaked;
+        f.Valid = accepted > 0 && openCells > n / 50;
+        if (f.Valid) f.Islands = LabelIslands(open, f.Island, queue);
     }
 
-    // 船の外 (_outside の説明)。絵と船体の塊は Dilate 升太らせて、際の 1 画素ずれで外が食い込まないようにする
-    private static byte[] Outside(byte[] blocked, List<MeshFilter> hullMeshes)
+    // 船の外 (_outside の説明)。絵と船体の塊は Dilate 升太らせて、際の 1 画素ずれで外が食い込まないようにする。
+    // 絵の三角形はワールド座標に直してから (変換の行列は物ごとに 1 回だけ読む) C++ で塗る
+    private static byte[] Outside(byte[] blocked, List<MeshFilter> hullMeshes, ref long verifyDiff, ref long xfDiff, out int triN)
+    {
+        int n = _w * _h;
+        var tris = new List<float>();
+        if (hullMeshes != null)
+            foreach (var mf in hullMeshes)
+            {
+                var mesh = mf.sharedMesh;
+                var vs = mesh.vertices;
+                int vn = vs.Length;
+                var wx = new float[vn];
+                var wy = new float[vn];
+                var m = mf.transform.localToWorldMatrix;
+                for (int i = 0; i < vn; i++)
+                {
+                    var v = vs[i];
+                    wx[i] = m.m00 * v.x + m.m01 * v.y + m.m02 * v.z + m.m03;
+                    wy[i] = m.m10 * v.x + m.m11 * v.y + m.m12 * v.z + m.m13;
+                }
+                var ts = mesh.triangles;
+                for (int i = 0; i + 2 < ts.Length; i += 3) AddTri(tris, wx, wy, ts[i], ts[i + 1], ts[i + 2]);
+            }
+        foreach (var sr in DamageMap.RoomArts)
+        {
+            if (!sr) continue;
+            var sp = sr.sprite;
+            if (!sp) continue;
+            var vs = sp.vertices;
+            int vn = vs.Length;
+            var wx = new float[vn];
+            var wy = new float[vn];
+            var m = sr.transform.localToWorldMatrix;
+            for (int i = 0; i < vn; i++)
+            {
+                var v = vs[i];
+                wx[i] = m.m00 * v.x + m.m01 * v.y + m.m03;
+                wy[i] = m.m10 * v.x + m.m11 * v.y + m.m13;
+            }
+            var ts = sp.triangles;
+            for (int i = 0; i + 2 < ts.Length; i += 3) AddTri(tris, wx, wy, ts[i], ts[i + 1], ts[i + 2]);
+        }
+        triN = tris.Count / 6;
+        // エアシップの船体の塊 (部屋と部屋の間の赤い板) も船の中
+        var art = new byte[n];
+        FillHullRects(art);
+        var triData = tris.ToArray();
+        if (!Native.MrpNative.Verify) return OutsideNative(art, triData, blocked);
+
+        var artCs = (byte[])art.Clone();
+        var outN = OutsideNative(art, triData, blocked);
+        var outCs = OutsideCs(artCs, triData, blocked);
+        long d = 0;
+        for (int k = 0; k < n; k++) if (outN[k] != outCs[k]) d++;
+        verifyDiff = Math.Max(0, verifyDiff) + d;
+        xfDiff = TransformDiff(hullMeshes, artCs);
+        return outCs;
+    }
+
+    private static void FillHullRects(byte[] art)
+    {
+        foreach (var hr in HullRects)
+        {
+            int hx0 = Math.Max(0, (int)MathF.Floor((hr.xMin - _origin.x) * _ppu)), hx1 = Math.Min(_w - 1, (int)MathF.Floor((hr.xMax - _origin.x) * _ppu));
+            int hy0 = Math.Max(0, (int)MathF.Floor((hr.yMin - _origin.y) * _ppu)), hy1 = Math.Min(_h - 1, (int)MathF.Floor((hr.yMax - _origin.y) * _ppu));
+            for (int y = hy0; y <= hy1; y++)
+            for (int x = hx0; x <= hx1; x++) art[y * _w + x] = 1;
+        }
+    }
+
+    private static void AddTri(List<float> tris, float[] wx, float[] wy, int a, int b, int c)
+    {
+        tris.Add(wx[a]); tris.Add(wy[a]); tris.Add(wx[b]); tris.Add(wy[b]); tris.Add(wx[c]); tris.Add(wy[c]);
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct SolidOutsideArgs
+    {
+        public byte* Art;
+        public float* Tris; public int TriN;
+        public int W, H; public float Ox, Oy, Ppu; public int Dilate;
+        public byte* Blocked; public byte* Open;
+        public byte* Tmp; public byte* Grown;
+        public byte* Outside;
+    }
+
+    private static unsafe byte[] OutsideNative(byte[] art, float[] triData, byte[] blocked)
+    {
+        int n = _w * _h;
+        var outside = new byte[n];
+        var tmp = new byte[n];
+        var grown = new byte[n];
+        fixed (byte* ar = art) fixed (float* tr = triData) fixed (byte* blk = blocked) fixed (byte* op = _open)
+        fixed (byte* t = tmp) fixed (byte* g = grown) fixed (byte* o = outside)
+        {
+            var a = new SolidOutsideArgs
+            {
+                Art = ar, Tris = tr, TriN = triData.Length / 6,
+                W = _w, H = _h, Ox = _origin.x, Oy = _origin.y, Ppu = _ppu, Dilate = Dilate,
+                Blocked = blk, Open = op, Tmp = t, Grown = g, Outside = o,
+            };
+            Native.MrpNative.SolidOutside(&a);
+        }
+        return outside;
+    }
+
+    // OutsideNative の C# 版 (照合の答え)。art に三角形を足す
+    private static byte[] OutsideCs(byte[] art, float[] triData, byte[] blocked)
+    {
+        int n = _w * _h;
+        var tri = new List<Vector2>(6);
+        for (int i = 0; i + 5 < triData.Length; i += 6)
+        {
+            Vector2 a = new(triData[i], triData[i + 1]), b = new(triData[i + 2], triData[i + 3]), c = new(triData[i + 4], triData[i + 5]);
+            tri.Clear();
+            tri.Add(a); tri.Add(b); tri.Add(b); tri.Add(c); tri.Add(c); tri.Add(a);
+            FillPolygon(art, tri);
+        }
+        var grown = DilateGrid(art, _w, _h, Dilate);
+        var outside = new byte[n];
+        for (int k = 0; k < n; k++)
+            if (grown[k] == 0 && blocked[k] == 0 && _open[k] == 0) outside[k] = 1;
+            else if (art[k] == 0) outside[k] = 2; // 絵は無いが外にも数えない升 (太らせた分の縁・壁の線の上など)
+        return outside;
+    }
+
+    // 照合用: 頂点を 1 個ずつ Transform.TransformPoint で直した時と、行列で直した時 (artCs) の絵の升の違い
+    private static long TransformDiff(List<MeshFilter> hullMeshes, byte[] artCs)
     {
         int n = _w * _h;
         var art = new byte[n];
@@ -477,20 +711,10 @@ internal static class SolidMap
                 FillPolygon(art, tri);
             }
         }
-        // エアシップの船体の塊 (部屋と部屋の間の赤い板) も船の中
-        foreach (var hr in HullRects)
-        {
-            int hx0 = Math.Max(0, (int)MathF.Floor((hr.xMin - _origin.x) * _ppu)), hx1 = Math.Min(_w - 1, (int)MathF.Floor((hr.xMax - _origin.x) * _ppu));
-            int hy0 = Math.Max(0, (int)MathF.Floor((hr.yMin - _origin.y) * _ppu)), hy1 = Math.Min(_h - 1, (int)MathF.Floor((hr.yMax - _origin.y) * _ppu));
-            for (int y = hy0; y <= hy1; y++)
-            for (int x = hx0; x <= hx1; x++) art[y * _w + x] = 1;
-        }
-        var grown = DilateGrid(art, _w, _h, Dilate);
-        var outside = new byte[n];
-        for (int k = 0; k < n; k++)
-            if (grown[k] == 0 && blocked[k] == 0 && _open[k] == 0) outside[k] = 1;
-            else if (art[k] == 0) outside[k] = 2; // 絵は無いが外にも数えない升 (太らせた分の縁・壁の線の上など)
-        return outside;
+        FillHullRects(art);
+        long d = 0;
+        for (int k = 0; k < n; k++) if (art[k] != artCs[k]) d++;
+        return d;
     }
 
     // 閉じた輪郭 (線分の組) の中の升を塗る (升の中心で偶奇)
@@ -521,19 +745,18 @@ internal static class SolidMap
         }
     }
 
-    // 歩ける所を 4 近傍のつながりで塗り分ける。番号は升の並び順で最初に出会った順 (どの端末でも同じ)
-    private static void LabelIslands(int[] queue)
+    // 歩ける所を 4 近傍のつながりで塗り分ける。番号は升の並び順で最初に出会った順 (どの端末でも同じ)。島の数を返す
+    private static int LabelIslands(byte[] open, byte[] island, int[] queue)
     {
         int n = _w * _h;
-        _island = new byte[n];
         int count = 0;
         for (int s = 0; s < n; s++)
         {
-            if (_open[s] == 0 || _island[s] != 0) continue;
+            if (open[s] == 0 || island[s] != 0) continue;
             byte id = count < 254 ? (byte)(count + 1) : (byte)255;
             count++;
             int head = 0, tail = 0;
-            _island[s] = id;
+            island[s] = id;
             queue[tail++] = s;
             while (head < tail)
             {
@@ -547,12 +770,12 @@ internal static class SolidMap
 
             void Visit(int k2)
             {
-                if (_open[k2] == 0 || _island[k2] != 0) return;
-                _island[k2] = id;
+                if (open[k2] == 0 || island[k2] != 0) return;
+                island[k2] = id;
                 queue[tail++] = k2;
             }
         }
-        IslandCount = count;
+        return count;
     }
 
     // 床に置かれた小さな閉じた当たり判定 (岩・結晶・机・切ってある物も)。水が縁の先の物を飛び越えないための升作り (WaterSim) が使う。
@@ -640,9 +863,8 @@ internal static class SolidMap
     private const float DoorSide = 0.45f; // 扉の板の面から通り道の両側へ出す距離
 
     // 点のいる升 (塞がっていれば 3 升以内のいちばん近い空いた升)。地図の外は -1
-    private static int NearestFree(byte[] blocked, Vector2 p)
+    private static int NearestFree(byte[] blocked, int cx, int cy)
     {
-        int cx = (int)MathF.Floor((p.x - _origin.x) * _ppu), cy = (int)MathF.Floor((p.y - _origin.y) * _ppu);
         for (int r = 0; r <= 3; r++)
         for (int dy = -r; dy <= r; dy++)
         for (int dx = -r; dx <= r; dx++)

@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 31;
+    internal const int Abi = 32;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -53,6 +53,8 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> FrontFill;
     internal static delegate* unmanaged[Cdecl]<void*, void> FallDraw;
     internal static delegate* unmanaged[Cdecl]<void*, void> FireStep;
+    internal static delegate* unmanaged[Cdecl]<void*, void> SolidFlood;
+    internal static delegate* unmanaged[Cdecl]<void*, void> SolidOutside;
 
     // 部品が読めたか。偽なら Plugin.Load が mod ごと起動しない
     internal static bool Loaded
@@ -123,6 +125,8 @@ internal static unsafe class MrpNative
             FrontFill = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_front_fill");
             FallDraw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_fall_draw");
             FireStep = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_fire_step");
+            SolidFlood = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_solid_flood");
+            SolidOutside = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_solid_outside");
             _loaded = true;
             Status = $"ok abi={got} {path}";
         }
