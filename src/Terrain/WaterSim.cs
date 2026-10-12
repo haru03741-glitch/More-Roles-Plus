@@ -2230,7 +2230,7 @@ internal static partial class WaterSim
     {
         double k = WaterArt.ProfTiles > 0 ? 1000.0 / System.Diagnostics.Stopwatch.Frequency / WaterArt.ProfTiles : 0;
         var t = WaterArt.ProfTicks;
-        return $"raw={t[0] * k:0.000} face={t[1] * k:0.000} prep={t[2] * k:0.000} pix={t[3] * k:0.000} upload={t[4] * k:0.000} flow={t[5] * k:0.000} (face={t[6] * k:0.000} spread={t[7] * k:0.000}) thread={WaterArt.ProfThreadTiles}/{(WaterArt.ProfThreadTiles > 0 ? ArtThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / WaterArt.ProfThreadTiles : 0):0.000} foamThread={FoamThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0}ms";
+        return $"raw={t[0] * k:0.000} face={t[1] * k:0.000} prep={t[2] * k:0.000} pix={t[3] * k:0.000} upload={t[4] * k:0.000} flow={t[5] * k:0.000} (face={t[6] * k:0.000} spread={t[7] * k:0.000}) thread={WaterArt.ProfThreadTiles}/{(WaterArt.ProfThreadTiles > 0 ? ArtThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / WaterArt.ProfThreadTiles : 0):0.000} foamThread={FoamThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0}ms fallThread={FallThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0}ms";
     }
 
     private static int _sortedN;     // _act の先頭のこの数までは番号順 (前の刻みの終わりに並べた分)
@@ -2322,6 +2322,13 @@ internal static partial class WaterSim
 
     // 床のマスクに縁を越えて落ちる升 (低い壁で溜める向きを除く) を床として足す。画素 k の真ん中 = x + k × step。
     // 床の絵は縁の手前で切れている所 (縁取りの帯) があり、水はその帯の上も縁まで流れているので、水たまりの絵を縁まで見せる
+    // C++ の部品へ渡す手前の床の地図 (FrontCut と同じ物)。まだ升が無ければ false
+    internal static bool CutMaps(out byte[] open, out int[] hgt, out int w, out int h, out float ox, out float oy)
+    {
+        open = _open; hgt = _hgt; w = _w; h = _h; ox = _org.x; oy = _org.y;
+        return _ready && _open != null && _hgt != null;
+    }
+
     // C++ の部品へ渡す落ちる縁の地図 (StampLips と同じ物)。まだ升が無ければ false
     internal static bool LipMaps(out byte[] fall, out byte[] lip, out int w, out int h, out float ox, out float oy, out float cell)
     {
@@ -2597,7 +2604,7 @@ internal static partial class WaterSim
                 int sleeping = 0;
                 for (int c = 0; _inList != null && c < _inList.Length; c++) if (_inList[c] == 0 && Counted(c)) sleeping++;
                 reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} burn={TerrainStep.ProfTicks[5] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()} | thread async={AsyncSteps} sync={SyncSteps} wait={JoinWaitTicks * k:0.000} early={EarlyJoins} | links n={LinkPasses} edges={LinkEdges} ms/pass scan={(LinkPasses > 0 ? LinkProf[0] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} ray={(LinkPasses > 0 ? LinkProf[1] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} post={(LinkPasses > 0 ? LinkProf[2] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} | floor queue={WaterArt.FloorFromQueue} dirty={WaterArt.FloorFromDirty} ms={WaterArt.FloorTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0} thread={WaterArt.FloorFromThread}/{WaterArt.FloorThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0}ms");
-                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; WaterArt.ProfThreadTiles = 0; ArtThreadTicks = FoamThreadTicks = 0; AsyncSteps = SyncSteps = JoinWaitTicks = EarlyJoins = 0; Array.Clear(LinkProf); LinkPasses = LinkEdges = 0; WaterArt.FloorFromQueue = WaterArt.FloorFromDirty = WaterArt.FloorTicks = WaterArt.FloorFromThread = WaterArt.FloorThreadTicks = 0; }
+                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; WaterArt.ProfThreadTiles = 0; ArtThreadTicks = FoamThreadTicks = FallThreadTicks = 0; AsyncSteps = SyncSteps = JoinWaitTicks = EarlyJoins = 0; Array.Clear(LinkProf); LinkPasses = LinkEdges = 0; WaterArt.FloorFromQueue = WaterArt.FloorFromDirty = WaterArt.FloorTicks = WaterArt.FloorFromThread = WaterArt.FloorThreadTicks = 0; }
                 return;
             }
             if (a.StartsWith("flood"))

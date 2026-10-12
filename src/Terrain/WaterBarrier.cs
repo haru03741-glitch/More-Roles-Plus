@@ -96,6 +96,14 @@ internal static class WaterBarrier
     }
 
     // 世界の点に止める絵があるか
+    // C++ の部品へ渡す地図 (At と同じ物)。無ければ false
+    internal static bool Bits(out byte[] bits, out int w, out int h, out float ox, out float oy, out float ppu)
+    {
+        Ensure();
+        bits = _bits; w = _w; h = _h; ox = _ox; oy = _oy; ppu = _ppu;
+        return _bits != null;
+    }
+
     internal static bool At(float x, float y)
     {
         Ensure();
