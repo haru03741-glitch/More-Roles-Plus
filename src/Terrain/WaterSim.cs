@@ -422,7 +422,7 @@ internal static partial class WaterSim
         _actN = 0;
         _sortedN = 0;
         _stepTo = new int[n * 4];
-        _fo = new int[n * 4 * 3];
+        _fo = Array.Empty<int>(); // 縁の数に合わせて Links で広げる
         _foN = 0;
         _shut = new byte[n];
         _doorCell = new byte[n];
@@ -919,6 +919,16 @@ internal static partial class WaterSim
         }
         else LinkPass(x0, y0, x1, y1, false, cliffs, zray);
         WakeWet(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+        EnsureFo();
+    }
+
+    // 縁を越える水の記録 (_fo) は 1 小刻みに縁 1 本につき 1 個まで。落ちる縁・段差・海の縁の数に合わせて広げる
+    private static void EnsureFo()
+    {
+        int sea = 0;
+        foreach (byte b in _seaMask) if (b != 0) sea += System.Numerics.BitOperations.PopCount(b);
+        int need = (FallTo.Count + StepTo.Count + sea) * 3;
+        if (_fo.Length < need) _fo = new int[Math.Max(need + need / 2, 768)];
     }
 
     // 範囲の縁を消して、光線を引き直して登録する。measure = 崖の面の長さを島の高さの測りに足す (作った時の 1 回目)
@@ -1556,6 +1566,7 @@ internal static partial class WaterSim
         public int CheckSleep, SleepViol;
         public byte* Isl; public int* IslBase;
         public int IslN, UseZ;
+        public int FoCap, FoOver;
     }
 
     private static int[] _dirtyBuf = Array.Empty<int>();
@@ -1582,10 +1593,12 @@ internal static partial class WaterSim
                 Stir = stir, CheckSleep = Native.MrpNative.Verify ? 1 : 0,
                 // 照合の時は C# と同じ古いルールで回して 1 バイトずつ比べる
                 Isl = isl, IslBase = islBase, IslN = _islBase.Length, UseZ = ZFlow && !Native.MrpNative.Verify && isl != null ? 1 : 0,
+                FoCap = _fo.Length / 3,
             };
             if (Native.MrpNative.WaterSubstep(&a) == 0) return false;
             _actN = a.ActN;
             _foN = a.FoN;
+            if (a.FoOver != 0) Plugin.Logger.LogError($"[WaterSim] fo over {a.FoOver} cap={_fo.Length / 3}");
             VoidTotal += a.VoidAdd;
             VerifySleepViol += a.SleepViol;
             for (int i = 0; i < a.DirtyN; i++) DirtyTiles.Add(dirty[i]);
@@ -1603,8 +1616,9 @@ internal static partial class WaterSim
         int n = _hgt.Length;
         if (_vHgt == null || _vHgt.Length != n)
         {
-            _vHgt = new int[n]; _vFlux = new int[n * 4]; _vMove = new int[n * 4]; _vAct = new int[n]; _vFo = new int[n * 12]; _vIn = new byte[n]; _vStir = new byte[n];
+            _vHgt = new int[n]; _vFlux = new int[n * 4]; _vMove = new int[n * 4]; _vAct = new int[n]; _vFo = Array.Empty<int>(); _vIn = new byte[n]; _vStir = new byte[n];
         }
+        if (_vFo.Length != _fo.Length) _vFo = new int[_fo.Length];
         // 前の状態を取っておく
         var hgt0 = (int[])_hgt.Clone(); var flux0 = (int[])_flux.Clone(); var move0 = (int[])_move.Clone();
         var act0 = (int[])_act.Clone(); var in0 = (byte[])_inList.Clone(); var dirty0 = (bool[])_tileDirty.Clone(); var stir0 = (byte[])_stir.Clone();

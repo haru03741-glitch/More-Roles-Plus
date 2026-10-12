@@ -21,6 +21,7 @@ struct WaterFlowArgs
     // 床の本当の高さ (useZ = 1 の時だけ読む)。升の島 → 島の基準の高さ (島の高さ − 島の段 × 段差・NoZ = 決まらない)
     const uint8_t* isl; const int32_t* islBase;
     int32_t islN, useZ;
+    int32_t foCap, foOver;          // fo の容量 (縁 3 個ずつ)・入らなかった数 (C# が縁の数に合わせて広げるので 0 のはず)
 };
 
 // WaterSim の定数と同じ値
@@ -127,7 +128,11 @@ static inline int sub_out(WaterFlowArgs* a, int k, int d, int g)
 {
     if (g <= 0) g = 1;
     int q = share(g, a->sub);
-    if (W && q > 0) { int* f = a->fo + a->foN * 3; f[0] = k; f[1] = d; f[2] = q; a->foN++; }
+    if (W && q > 0)
+    {
+        if (a->foN >= a->foCap) { a->foOver++; return q; }
+        int* f = a->fo + a->foN * 3; f[0] = k; f[1] = d; f[2] = q; a->foN++;
+    }
     return q;
 }
 
