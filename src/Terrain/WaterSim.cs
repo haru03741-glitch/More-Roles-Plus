@@ -470,9 +470,15 @@ internal static partial class WaterSim
     {
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
+        if (Native.MrpNative.On)
+        {
+            if (!Native.MrpNative.Verify) { RebuildNative(x0, y0, x1, y1); return; }
+            VerifyCellsBefore(x0, y0, x1, y1);
+        }
         int sw = SolidMap.W;
         var solid = SolidMap.OpenCells;
         var wet = _wet;
+        int changes = 0;
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
         {
@@ -486,19 +492,8 @@ internal static partial class WaterSim
             _sub[k] = (ushort)bits;
             byte open = bits != 0 ? (byte)1 : (byte)0;
             if (open == _open[k]) continue;
-            _open[k] = open;
-            if (open == 0 && _hgt[k] != 0)
-            {
-                // 閉じた升の水は消さずに開いている隣へ寄せる (量を保つ)
-                int to = -1;
-                for (int d = 0; d < 4 && to < 0; d++) { int j = k + Nx[d] + Ny[d] * _w; if (_open[j] != 0) to = j; }
-                if (to >= 0) { _hgt[to] += _hgt[k]; WakeAround(to); }
-                _hgt[k] = 0;
-            }
-            for (int d = 0; d < 4; d++) { _flux[k * 4 + d] = 0; _move[k * 4 + d] = 0; }
-            if (open != 0) Wake(k);
-            for (int d = 0; d < 4; d++) Wake(k + Nx[d] + Ny[d] * _w);
-            if (_ready) Mark(k); // 升を作る時の印は作り終えた所で捨てる
+            changes++;
+            OpenChanged(k, open);
         }
         // 境の通れる向き (作り直した範囲と、その外周 1 升)
         for (int y = Math.Max(1, y0 - 1); y <= Math.Min(_h - 2, y1 + 1); y++)
@@ -516,6 +511,95 @@ internal static partial class WaterSim
             }
             _edge[k] = (byte)e;
         }
+        if (Native.MrpNative.On) VerifyCellsAfter(x0, y0, x1, y1, changes);
+    }
+
+    // 升の開閉が変わった時の後始末。範囲の升の番号順に呼ぶ (閉じた升の水の寄せ先は、先に変わった升の開閉を見る)
+    private static void OpenChanged(int k, byte open)
+    {
+        _open[k] = open;
+        if (open == 0 && _hgt[k] != 0)
+        {
+            // 閉じた升の水は消さずに開いている隣へ寄せる (量を保つ)
+            int to = -1;
+            for (int d = 0; d < 4 && to < 0; d++) { int j = k + Nx[d] + Ny[d] * _w; if (_open[j] != 0) to = j; }
+            if (to >= 0) { _hgt[to] += _hgt[k]; WakeAround(to); }
+            _hgt[k] = 0;
+        }
+        for (int d = 0; d < 4; d++) { _flux[k * 4 + d] = 0; _move[k * 4 + d] = 0; }
+        if (open != 0) Wake(k);
+        for (int d = 0; d < 4; d++) Wake(k + Nx[d] + Ny[d] * _w);
+        if (_ready) Mark(k); // 升を作る時の印は作り終えた所で捨てる
+    }
+
+    // Rebuild の C++ 版 (升の形と境の向きを sub/edge へ書き、開閉が変わった升を返す)。後始末は C# が同じ順に行う
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct CellsArgs
+    {
+        public byte* Solid; public byte* Wet;
+        public int Sw, W, H, Sub;
+        public int X0, Y0, X1, Y1;
+        public byte* DoorFloor; public byte* PlatFloor; public byte* Shut; public byte* Open;
+        public ushort* SubOut; public byte* EdgeOut;
+        public int* Changed; public int ChangedN;
+    }
+
+    private static int[] _cellChanged = Array.Empty<int>();
+
+    private static unsafe int CellsNative(int x0, int y0, int x1, int y1, ushort[] sub, byte[] edge)
+    {
+        int need = Math.Max(1, (x1 - x0 + 1) * (y1 - y0 + 1));
+        if (_cellChanged.Length < need) _cellChanged = new int[need];
+        var wet = _wet;
+        fixed (byte* solid = SolidMap.OpenCells) fixed (byte* wp = wet) fixed (byte* df = _doorFloor) fixed (byte* pf = _platFloor)
+        fixed (byte* shut = _shut) fixed (byte* open = _open) fixed (ushort* so = sub) fixed (byte* eo = edge) fixed (int* ch = _cellChanged)
+        {
+            var a = new CellsArgs
+            {
+                Solid = solid, Wet = wet != null ? wp : null, Sw = SolidMap.W, W = _w, H = _h, Sub = Sub,
+                X0 = x0, Y0 = y0, X1 = x1, Y1 = y1,
+                DoorFloor = df, PlatFloor = pf, Shut = shut, Open = open, SubOut = so, EdgeOut = eo, Changed = ch,
+            };
+            Native.MrpNative.WaterCells(&a);
+            return a.ChangedN;
+        }
+    }
+
+    private static void RebuildNative(int x0, int y0, int x1, int y1)
+    {
+        int n = CellsNative(x0, y0, x1, y1, _sub, _edge);
+        for (int i = 0; i < n; i++)
+        {
+            int k = _cellChanged[i];
+            OpenChanged(k, _sub[k] != 0 ? (byte)1 : (byte)0);
+        }
+    }
+
+    // 照合 (native verify): C++ の答えを写しの配列へ作り、C# で作り直した後の配列と範囲 (境の向きは外周 1 升も) を比べる
+    internal static long VerifyCells, VerifyCellDiff;
+    private static ushort[] _vSub;
+    private static byte[] _vEdge;
+    private static int _vChanged;
+
+    private static void VerifyCellsBefore(int x0, int y0, int x1, int y1)
+    {
+        if (_vSub == null || _vSub.Length != _sub.Length) { _vSub = new ushort[_sub.Length]; _vEdge = new byte[_edge.Length]; }
+        Array.Copy(_sub, _vSub, _sub.Length);
+        Array.Copy(_edge, _vEdge, _edge.Length);
+        _vChanged = CellsNative(x0, y0, x1, y1, _vSub, _vEdge);
+    }
+
+    private static void VerifyCellsAfter(int x0, int y0, int x1, int y1, int changes)
+    {
+        VerifyCells++;
+        long diff = _vChanged != changes ? 1 : 0;
+        for (int y = Math.Max(1, y0 - 1); y <= Math.Min(_h - 2, y1 + 1); y++)
+        for (int x = Math.Max(1, x0 - 1); x <= Math.Min(_w - 2, x1 + 1); x++)
+        {
+            int k = y * _w + x;
+            if (_vSub[k] != _sub[k] || _vEdge[k] != _edge[k]) diff++;
+        }
+        VerifyCellDiff += diff;
     }
 
     // ── 扉 ─────────────────────────────────────────────────────────────

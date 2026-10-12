@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Native;
 // 無い・版が違う時は水を止める (Loaded が偽)。On は実行中に切り替えられる (C# 版との答え合わせ用)
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 12;
+    internal const int Abi = 13;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -33,6 +33,7 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> WaterFace;
     internal static delegate* unmanaged[Cdecl]<void*, void> PieceCells;
     internal static delegate* unmanaged[Cdecl]<void*, void> FallRay;
+    internal static delegate* unmanaged[Cdecl]<void*, void> WaterCells;
     internal static bool HasFallRay => FallRay != null;
 
     // 部品が読めたか (On と違い答え合わせの切り替えを含めない)。偽なら水を止め、部屋の版チェックでも弾く
@@ -76,6 +77,7 @@ internal static unsafe class MrpNative
             WaterFace = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_face");
             PieceCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_piece_cells");
             FallRay = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_fall_ray");
+            WaterCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_cells");
             _loaded = true;
             Status = $"ok abi={got} {path}";
         }
