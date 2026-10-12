@@ -111,10 +111,12 @@ internal static class WaterArt
         bool spike = TerrainStep.SpikeMs > 0;
         long s0 = spike ? System.Diagnostics.Stopwatch.GetTimestamp() : 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
         long e0 = EnsureTicks, f0 = FurnTicks, c0 = FaceTicks;
-        Span<long> ep0 = stackalloc long[9];
-        for (int q = 0; q < 9; q++) ep0[q] = EnsureParts[q];
-        Span<long> pt0 = stackalloc long[6];
-        for (int q = 0; q < 6; q++) pt0[q] = ProfTicks[q];
+        Span<long> ep0 = stackalloc long[9], pt0 = stackalloc long[6];
+        if (spike)
+        {
+            for (int q = 0; q < 9; q++) ep0[q] = EnsureParts[q];
+            for (int q = 0; q < 6; q++) pt0[q] = ProfTicks[q];
+        }
         FinishJobs();
         if (spike) s1 = System.Diagnostics.Stopwatch.GetTimestamp();
         long now = Environment.TickCount64;

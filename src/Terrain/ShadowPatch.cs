@@ -152,17 +152,18 @@ internal static class ShadowPatch
         }
         // 端末で画面が消えて戻ると RenderTexture の中身が失われる → 焼いた升を全部焼き直す (画面に入った時に焼く)。
         // 端末の libunity には IsCreated が無いので、フレームの間が大きく空いた (裏へ回っていた) ことで知る
+#if ANDROID
         long now = Environment.TickCount64;
         if (now - _lastTickMs > LostGapMs && Tiles.Count > 0 && !ReadBack) RebakeAll();
         _lastTickMs = now;
-#if !ANDROID
+#else
         if ((++_lostPolls & 63) == 0 && Tiles.Count > 0) CheckLost();
 #endif
         if (Dirty.Count == 0) return;
         if (!Enabled || !DamageMap.ShipTransform || !EnsureCamera()) { Dirty.Clear(); DirtySet.Clear(); return; }
         // 画面 (と余白) に掛かる升だけ焼く。外の升は見えないので、画面に入ってきた時に焼く (遠くの火や水漏れで焼き直し続けない)
         bool all = _flushing;
-        // 前に見た時に画面の中の升が無ければ、しばらくカメラを読まない (焼き待ちが画面の外に残り続けても毎フレームの呼び出しを増やさない)
+        // 前に見た時に画面の中の升が無ければ、しばらく (IdleSkip フレーム) カメラを読まない (焼き待ちが画面の外に残り続けても毎フレームの呼び出しを増やさない)
         if (!all && _idleFrames > 0) { _idleFrames--; return; }
         float vx0 = 0f, vy0 = 0f, vx1 = 0f, vy1 = 0f;
         if (!all)
@@ -197,9 +198,12 @@ internal static class ShadowPatch
         if (n == 0) _idleFrames = IdleSkip;
     }
 
+#if ANDROID
     private const long LostGapMs = 1000;
     private static long _lastTickMs;
+#else
     private static int _lostPolls;
+#endif
     internal static int Rebakes; // 中身が失われたとみて全部を焼き直した回数 (bridge `shadowpatch`)
 
 #if !ANDROID
@@ -221,7 +225,7 @@ internal static class ShadowPatch
         _idleFrames = 0;
     }
 
-    private const int IdleSkip = 7;
+    private const int IdleSkip = 15;
     private static int _idleFrames;
 
     private const float ViewMargin = Tile; // 画面の外でも焼いておく幅 (歩いて入ってくる升を入る前に焼く)
