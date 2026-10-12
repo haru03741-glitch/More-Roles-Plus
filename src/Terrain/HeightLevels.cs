@@ -206,10 +206,9 @@ internal static class HeightLevels
         var ship = ShipStatus.Instance;
         if (!ship || n == 0) return rank;
         var pairs = new List<(int Top, int Bottom)>();
-        foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
+        foreach (var (top, bottom) in ShipLadders.Of(ship))
         {
-            if (!l || !l.IsTop || !l.Destination) continue;
-            int a = SolidMap.IslandAt(l.transform.position), b = SolidMap.IslandAt(l.Destination.transform.position);
+            int a = SolidMap.IslandAt(top.x, top.y), b = SolidMap.IslandAt(bottom.x, bottom.y);
             if (a > 0 && b > 0 && a != b) pairs.Add((a, b));
         }
         int big = 1;

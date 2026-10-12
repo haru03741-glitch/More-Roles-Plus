@@ -14,52 +14,104 @@ internal static partial class WaterSim
     private static byte[] _wet;                // SolidMap の升ごと: 1 = 水が届く (歩ける升は含まない)
     internal static string WetStats = "-";
 
+    // 展開した表 (船の名前ごとに 1 つ)。表は試合で変わらないので、試合の始めの準備 (Warm) で読んでおく
+    private static string _bitsName;
+    private static byte[] _bits;
+    private static int _bitsOx16, _bitsOy16, _bitsW, _bitsH, _bitsPpu;
+    private static string _bitsErr;
+
+    private static void LoadWetBits(string name)
+    {
+        if (_bitsName == name) return;
+        _bitsName = name;
+        _bits = null;
+        _bitsErr = null;
+        try
+        {
+            using Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("MoreRolesPlus.Resources.WaterOpen." + name + ".bin");
+            if (s == null) { _bitsErr = "none"; return; }
+            using var br = new BinaryReader(s);
+            var magic = br.ReadBytes(4);
+            if (magic.Length != 4 || magic[0] != WetMagic[0] || magic[1] != WetMagic[1] || magic[2] != WetMagic[2] || magic[3] != WetMagic[3]) { _bitsErr = "bad magic"; return; }
+            int ver = br.ReadByte();
+            if (ver != 1) { _bitsErr = $"version {ver}"; return; }
+            _bitsOx16 = br.ReadInt16(); _bitsOy16 = br.ReadInt16();
+            _bitsW = br.ReadUInt16(); _bitsH = br.ReadUInt16(); _bitsPpu = br.ReadByte();
+            int len = br.ReadInt32();
+            var packed = br.ReadBytes(len);
+            if (packed.Length != len) { _bitsErr = "short"; return; }
+            var bits = new byte[(_bitsW * _bitsH + 7) / 8];
+            using (var z = new ZLibStream(new MemoryStream(packed), CompressionMode.Decompress))
+            {
+                int got = 0, r;
+                while (got < bits.Length && (r = z.Read(bits, got, bits.Length - got)) > 0) got += r;
+                if (got != bits.Length) { _bitsErr = "short bits"; return; }
+            }
+            _bits = bits;
+        }
+        catch (Exception e) { _bitsErr = e.Message; }
+    }
+
     private static void LoadWet()
     {
         _wet = null;
         var ship = ShipStatus.Instance;
         if (!ship) { WetStats = "no ship"; return; }
         string name = ship.name.Replace("(Clone)", "");
-        try
+        LoadWetBits(name);
+        if (_bits == null) { WetStats = $"{name}: {_bitsErr}"; return; }
+        // 升の並び (原点・大きさ・細かさ) が SolidMap と同じ時だけ使う
+        int mx16 = (int)MathF.Round(SolidMap.Origin.x * 16f), my16 = (int)MathF.Round(SolidMap.Origin.y * 16f);
+        if (_bitsW != SolidMap.W || _bitsH != SolidMap.H || _bitsPpu != (int)MathF.Round(SolidMap.Ppu) || _bitsOx16 != mx16 || _bitsOy16 != my16)
+        { WetStats = $"{name}: grid {_bitsW}x{_bitsH}@{_bitsOx16},{_bitsOy16} != {SolidMap.W}x{SolidMap.H}@{mx16},{my16}"; return; }
+        // 歩ける升と船の外は除く (水が動く前の爆破で歩ける所が変わっているので、升を作る時に濾す)
+        int n = _bitsW * _bitsH;
+        var wet = new byte[n];
+        int cnt = WetFilterNative(_bits, wet, n);
+        if (Native.MrpNative.Verify)
         {
-            using Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("MoreRolesPlus.Resources.WaterOpen." + name + ".bin");
-            if (s == null) { WetStats = $"{name}: none"; return; }
-            using var br = new BinaryReader(s);
-            var magic = br.ReadBytes(4);
-            if (magic.Length != 4 || magic[0] != WetMagic[0] || magic[1] != WetMagic[1] || magic[2] != WetMagic[2] || magic[3] != WetMagic[3]) { WetStats = $"{name}: bad magic"; return; }
-            int ver = br.ReadByte();
-            if (ver != 1) { WetStats = $"{name}: version {ver}"; return; }
-            int ox16 = br.ReadInt16(), oy16 = br.ReadInt16();
-            int sw = br.ReadUInt16(), sh = br.ReadUInt16(), ppu = br.ReadByte();
-            int len = br.ReadInt32();
-            // 升の並び (原点・大きさ・細かさ) が SolidMap と同じ時だけ使う
-            int mx16 = (int)MathF.Round(SolidMap.Origin.x * 16f), my16 = (int)MathF.Round(SolidMap.Origin.y * 16f);
-            if (sw != SolidMap.W || sh != SolidMap.H || ppu != (int)MathF.Round(SolidMap.Ppu) || ox16 != mx16 || oy16 != my16)
-            { WetStats = $"{name}: grid {sw}x{sh}@{ox16},{oy16} != {SolidMap.W}x{SolidMap.H}@{mx16},{my16}"; return; }
-            var packed = br.ReadBytes(len);
-            if (packed.Length != len) { WetStats = $"{name}: short"; return; }
-            int n = sw * sh;
-            var bits = new byte[(n + 7) / 8];
-            using (var z = new ZLibStream(new MemoryStream(packed), CompressionMode.Decompress))
-            {
-                int got = 0, r;
-                while (got < bits.Length && (r = z.Read(bits, got, bits.Length - got)) > 0) got += r;
-                if (got != bits.Length) { WetStats = $"{name}: short bits"; return; }
-            }
-            var wet = new byte[n];
-            var solid = SolidMap.OpenCells;
-            int cnt = 0;
-            for (int k = 0; k < n; k++)
-            {
-                if ((bits[k >> 3] >> (k & 7) & 1) == 0 || solid[k] != 0 || SolidMap.OutsideAt(k)) continue;
-                wet[k] = 1;
-                cnt++;
-            }
-            _wet = wet;
-            WetStats = $"{name}: {cnt}";
+            var cs = new byte[n];
+            VerifyLevels++;
+            if (WetFilterCs(_bits, cs, n) != cnt) VerifyLevelDiff++;
+            for (int k = 0; k < n; k++) if (cs[k] != wet[k]) VerifyLevelDiff++;
         }
-        catch (Exception e) { WetStats = $"{name}: {e.Message}"; }
+        _wet = wet;
+        WetStats = $"{name}: {cnt}";
     }
+
+    private unsafe struct WetFilterArgs
+    {
+        public byte* Bits, Solid, Outside;
+        public int N;
+        public byte* Wet;
+        public int Count;
+    }
+
+    private static unsafe int WetFilterNative(byte[] bits, byte[] wet, int n)
+    {
+        fixed (byte* bp = bits) fixed (byte* sp = SolidMap.OpenCells) fixed (byte* op = SolidMap.OutsideCells) fixed (byte* wp = wet)
+        {
+            var a = new WetFilterArgs { Bits = bp, Solid = sp, Outside = op, N = n, Wet = wp };
+            Native.MrpNative.WetFilter(&a);
+            return a.Count;
+        }
+    }
+
+    private static int WetFilterCs(byte[] bits, byte[] wet, int n)
+    {
+        var solid = SolidMap.OpenCells;
+        int cnt = 0;
+        for (int k = 0; k < n; k++)
+        {
+            if ((bits[k >> 3] >> (k & 7) & 1) == 0 || solid[k] != 0 || SolidMap.OutsideAt(k)) continue;
+            wet[k] = 1;
+            cnt++;
+        }
+        return cnt;
+    }
+
+    // 照合 (native verify): 表の濾しと升ごとの島の C++ と C# の違い
+    internal static long VerifyLevels, VerifyLevelDiff;
 
     // 歩ける升を含まない (水だけが届く) 升は、開いている隣から島をもらう (幅優先・升の番号の順で決まる)
     private static int SpreadWetIslands(byte[] isl, byte[] wetOnly)

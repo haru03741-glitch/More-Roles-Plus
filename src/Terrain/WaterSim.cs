@@ -821,9 +821,65 @@ internal static partial class WaterSim
         var lvl = new sbyte[n];
         var isl = new byte[n];
         var area = new int[SolidMap.IslandCount + 1];
+        var wetOnly = new byte[n];
+        IslandCellsNative(isl, wetOnly, area);
+        if (Native.MrpNative.Verify)
+        {
+            var cIsl = new byte[n];
+            var cArea = new int[area.Length];
+            var cWet = new byte[n];
+            IslandCellsCs(cIsl, cWet, cArea);
+            VerifyLevels++;
+            for (int k = 0; k < n; k++) if (cIsl[k] != isl[k] || cWet[k] != wetOnly[k]) VerifyLevelDiff++;
+            for (int i = 0; i < area.Length; i++) if (cArea[i] != area[i]) VerifyLevelDiff++;
+        }
+        var rank = HeightLevels.IslandRanks(i => area[i]);
+        DoorRanks(isl, rank);
+        _cellIsl = isl; _islRank = rank; _islArea = area; // 島ごとの高さ (WaterElevation) 用
+        for (int k = 0; k < n; k++)
+        {
+            int id = isl[k];
+            lvl[k] = id == 0 ? (sbyte)0 : rank[id] == int.MinValue ? NoLevel : (sbyte)Math.Clamp(rank[id], -100, 100);
+        }
+        return lvl;
+    }
+
+    private unsafe struct IslandCellsArgs
+    {
+        public ushort* Sub;
+        public int W, H, SubN;
+        public byte* Solid, Island;
+        public int Sw, AreaN, Spread;
+        public byte* Isl, WetOnly;
+        public int* Area, Queue;
+        public int Left;
+    }
+
+    private static int[] _islQueue = Array.Empty<int>();
+
+    // 升ごとの島と水だけが届く升 (C++)。SpreadWetIslands まで
+    private static unsafe void IslandCellsNative(byte[] isl, byte[] wetOnly, int[] area)
+    {
+        int n = _w * _h;
+        if (_islQueue.Length < n) _islQueue = new int[n];
+        fixed (ushort* sp = _sub) fixed (byte* so = SolidMap.OpenCells) fixed (byte* il = SolidMap.IslandCells)
+        fixed (byte* ip = isl) fixed (byte* wp = wetOnly) fixed (int* ap = area) fixed (int* qp = _islQueue)
+        {
+            var a = new IslandCellsArgs
+            {
+                Sub = sp, W = _w, H = _h, SubN = Sub, Solid = so, Island = il, Sw = SolidMap.W, AreaN = area.Length,
+                Spread = _wet != null ? 1 : 0, Isl = ip, WetOnly = wp, Area = ap, Queue = qp,
+            };
+            Native.MrpNative.IslandCells(&a);
+        }
+    }
+
+    // 照合用の C# 版 (IslandCellsNative と同じ結果)
+    private static void IslandCellsCs(byte[] isl, byte[] wetOnly, int[] area)
+    {
+        int n = _w * _h;
         int sw = SolidMap.W;
         var solid = SolidMap.OpenCells;
-        var wetOnly = new byte[n];
         for (int k = 0; k < n; k++)
         {
             int bits = _sub[k];
@@ -844,15 +900,6 @@ internal static partial class WaterSim
             area[id]++;
         }
         SpreadWetIslands(isl, wetOnly);
-        var rank = HeightLevels.IslandRanks(i => area[i]);
-        DoorRanks(isl, rank);
-        _cellIsl = isl; _islRank = rank; _islArea = area; // 島ごとの高さ (WaterElevation) 用
-        for (int k = 0; k < n; k++)
-        {
-            int id = isl[k];
-            lvl[k] = id == 0 ? (sbyte)0 : rank[id] == int.MinValue ? NoLevel : (sbyte)Math.Clamp(rank[id], -100, 100);
-        }
-        return lvl;
     }
 
     // はしごでつながらない島は、扉を挟んで隣り合う順位の決まった島と同じ段にする (扉の奥の部屋)。
@@ -861,12 +908,13 @@ internal static partial class WaterSim
     private static void DoorRanks(byte[] isl, int[] rank)
     {
         var near = new List<int>();
+        var doors = new List<int>();
+        for (int c = 0; c < _doorCell.Length; c++) if (_doorCell[c] != 0) doors.Add(c);
         for (bool changed = true; changed;)
         {
             changed = false;
-            for (int c = 0; c < _doorCell.Length; c++)
+            foreach (int c in doors)
             {
-                if (_doorCell[c] == 0) continue;
                 int cx = c % _w, cy = c / _w;
                 near.Clear();
                 for (int dy = -DoorReach; dy <= DoorReach; dy++)
@@ -909,9 +957,11 @@ internal static partial class WaterSim
         {
             ListLadders(ship);
             ZBegin();
+            ShadowMemo.Clear();
             LinkPass(x0, y0, x1, y1, true, cliffs, false);
             ZSolve();
             if (zray) LinkPass(x0, y0, x1, y1, true, cliffs, true);
+            ShadowMemo.Clear();
         }
         else LinkPass(x0, y0, x1, y1, false, cliffs, zray);
         WakeWet(x0 - 1, y0 - 1, x1 + 1, y1 + 1);
@@ -1002,7 +1052,7 @@ internal static partial class WaterSim
         }
         if (to == int.MinValue || to == -1 && OnLadder(x, y)) return;
         // 空へ落とす縁とガラスの手すりは壁の影の線の外側へ落ちるので、影の線では切らない (塗った空も同じ)
-        if (full && why != "glass" && why != "air" && why != "airside" && ShadowBetween(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
+        if (full && why != "glass" && why != "air" && why != "airside" && ShadowOnce(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
         if ((_shadowCut[k] >> d & 1) != 0) return;
         // 段差は滝にしない (段の高さぶんずらして流すだけ・床の絵にも落ちる縁を描かない)
         if (to >= 0 && StepBetween(k, to, dist, useZ, -1))
@@ -1027,12 +1077,15 @@ internal static partial class WaterSim
         HeightLevels.Warm();
         var ship = ShipStatus.Instance;
         if (!ship) return;
+        LoadWetBits(ship.name.Replace("(Clone)", ""));
+        ShipLadders.Of(ship);
         foreach (var r in ship.AllRooms)
             if (r && r.roomArea) { _ = r.roomArea.OverlapPoint(Vector2.zero); break; }
         if (!_ready)
         {
             FallTo[-1] = (0, 0); FallTo.Remove(-1);
             StepTo[-1] = 0; StepTo.Remove(-1);
+            ShadowMemo[-1] = false; ShadowMemo.Clear();
             // 島の高さを決める時の並べ替えと測りの表 (型ごとの初回のコンパイル)
             var rel = new List<(int U, int V, int D)> { (2, 1, 3), (1, 2, 3) };
             rel.Sort((p, q) => p.U != q.U ? p.U.CompareTo(q.U) : p.V.CompareTo(q.V));
@@ -1067,10 +1120,8 @@ internal static partial class WaterSim
     {
         Ladders.Clear();
         if (!ship) return;
-        foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
+        foreach (var (a, b) in ShipLadders.Of(ship))
         {
-            if (!l || !l.IsTop || !l.Destination) continue;
-            Vector3 a = l.transform.position, b = l.Destination.transform.position;
             Ladders.Add(MathF.Min(a.x, b.x) - LadderHalf);
             Ladders.Add(MathF.Min(a.y, b.y));
             Ladders.Add(MathF.Max(a.x, b.x) + LadderHalf);
@@ -1096,8 +1147,18 @@ internal static partial class WaterSim
 
     private static void RaiseCells(float[] r, int level)
     {
-        for (int k = 0; k < _w * _h; k++)
-            if (_sub[k] != 0 && InRects(r, _org.x + (k % _w + 0.5f) * _cell, _org.y + (k / _w + 0.5f) * _cell)) _lvl[k] = (sbyte)level;
+        // 矩形の周り 1 升までだけを見る (判定は升の真ん中で、全部の升を見るのと同じ)
+        for (int i = 0; i + 3 < r.Length; i += 4)
+        {
+            int xa = Math.Max(0, (int)MathF.Floor((r[i] - _org.x) / _cell) - 1), xb = Math.Min(_w - 1, (int)MathF.Ceiling((r[i + 2] - _org.x) / _cell) + 1);
+            int ya = Math.Max(0, (int)MathF.Floor((r[i + 1] - _org.y) / _cell) - 1), yb = Math.Min(_h - 1, (int)MathF.Ceiling((r[i + 3] - _org.y) / _cell) + 1);
+            for (int y = ya; y <= yb; y++)
+            for (int x = xa; x <= xb; x++)
+            {
+                int k = y * _w + x;
+                if (_sub[k] != 0 && InRects(r, _org.x + (x + 0.5f) * _cell, _org.y + (y + 0.5f) * _cell)) _lvl[k] = (sbyte)level;
+            }
+        }
     }
 
     // 階段より低い段差 (滝にしない縁): 歩いてつながる同じ島の中で段が 1 つ違う隣 (段差の面は StepScan 升まで)。
@@ -1176,6 +1237,18 @@ internal static partial class WaterSim
     // 部屋の縁の影の線は歩ける所の境とほぼ重なり、升の真ん中より奥にあることがある。先まで伸ばすと崖の下の別の部屋の線に当たる
     private const float RoomShadowReach = 2f;
     private static readonly Dictionary<int, bool> OutsideShadow = new();
+
+    // 作った時は縁を 2 回引く (段の順位で 1 回・床の高さでもう 1 回)。同じフレームで当たり判定は変わらないので、
+    // 行き先の同じ縁は 1 回目の答えを使う
+    private static readonly Dictionary<long, bool> ShadowMemo = new();
+    private static bool ShadowOnce(int x, int y, int tx, int ty, bool roomOnly)
+    {
+        long key = (long)(x & 0xFFFF) << 48 | (long)(y & 0xFFFF) << 32 | (long)(tx & 0xFFFF) << 16 | (long)(ty & 0xFFFF);
+        if (ShadowMemo.TryGetValue(key, out bool cut)) return cut;
+        cut = ShadowBetween(x, y, tx, ty, roomOnly);
+        ShadowMemo[key] = cut;
+        return cut;
+    }
     private static bool ShadowBetween(int x, int y, int tx, int ty, bool roomOnly)
     {
         float ax = _org.x + (x + 0.5f) * _cell, ay = _org.y + (y + 0.5f) * _cell;

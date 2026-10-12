@@ -68,10 +68,8 @@ internal static partial class WaterSim
         var faces = new List<(int U, int V, int D)>();
         var ship = ShipStatus.Instance;
         if (ship)
-            foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
+            foreach (var (a, b) in ShipLadders.Of(ship))
             {
-                if (!l || !l.IsTop || !l.Destination) continue;
-                Vector3 a = l.transform.position, b = l.Destination.transform.position;
                 int u = SolidMap.IslandAt(a.x, a.y), v = SolidMap.IslandAt(b.x, b.y);
                 if (u <= 0 || v <= 0 || u == v || u >= n || v >= n) continue;
                 ladders.Add((u, v, ToZ(MathF.Abs(a.y - b.y))));
