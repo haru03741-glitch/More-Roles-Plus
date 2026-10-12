@@ -104,6 +104,7 @@ internal static class WaterArt
     {
         if (!WaterSim.Ready) { if (Tiles.Count > 0) Clear(); _lastMs = 0; return; }
         if (!MrpBundle.WaterMaterial) return;
+        FinishJobs();
         long now = Environment.TickCount64;
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.1f, (now - _lastMs) / 1000f);
         _lastMs = now;
@@ -135,7 +136,8 @@ internal static class WaterArt
             if (tile.Px == null) { if (created) continue; created = true; }
             tile.Waiting = false;
             Waiting.RemoveAt(i--);
-            Draw(tile);
+            if (CanDefer(tile)) Defer(tile);
+            else Draw(tile);
             drawn++;
         }
     }
@@ -245,22 +247,58 @@ internal static class WaterArt
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _profT = t0;
         ProfTiles++;
-        int tc = WaterSim.TileCells, w = WaterSim.W, h = WaterSim.H;
+        int tc = WaterSim.TileCells;
         int x0 = t.Tx * tc, y0 = t.Ty * tc;
-        // 高さを縁 3 升ぶん広げて写し (光の筋はずらした所を見るので余分に)、1-2-1 でならす
-        int dw = tc + 4, rw = tc + 6;
-        _raw ??= new int[rw * rw];
-        _depth ??= new int[dw * dw];
-        _wet ??= new int[dw * dw];
-        _closed ??= new bool[rw * rw];
+        EnsureScratch();
         var fill = EnsureFill();
-        float cs = WaterSim.Cell, org0x = WaterSim.Origin.x, org0y = WaterSim.Origin.y;
         bool native = Native.MrpNative.On;
-        bool any = native ? RawNative(x0, y0, fill) : RawCells(x0, y0, fill);
+        bool any = native ? RawNative(x0, y0, fill, CraterArgs()) : RawCells(x0, y0, fill);
         if (native && Native.MrpNative.Verify) VerifyRaw(x0, y0, fill, any);
         t.LastDraw = _clock;
         Prof(0);
         int n0 = tc * Px;
+        PrepFace(t, x0, y0);
+        Prof(1);
+        bool faceWet = t.Face != null && FaceWet(t, x0, y0, n0);
+        if (!any && !faceWet)
+        {
+            if (!t.Empty && t.Sr) Enable(t, false);
+            t.Empty = true;
+            return;
+        }
+        Ensure(t);
+
+        int n = tc * Px;
+        PrepFloor(t);
+        Prof(2);
+        DrawPixels(t, x0, y0, n, native);
+        if (native && Native.MrpNative.Verify) VerifyPixels(t, x0, y0, n);
+        Prof(3);
+        fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
+        t.Tex.Apply(false, false);
+        Prof(4);
+        DrawFlow(t, x0, y0);
+        Prof(5);
+        if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
+        Drawn++;
+        LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    // 高さを縁 3 升ぶん広げて写し (光の筋はずらした所を見るので余分に)、1-2-1 でならす作業場所
+    private static void EnsureScratch()
+    {
+        int tc = WaterSim.TileCells, dw = tc + 4, rw = tc + 6;
+        _raw ??= new int[rw * rw];
+        _depth ??= new int[dw * dw];
+        _wet ??= new int[dw * dw];
+        _closed ??= new bool[rw * rw];
+    }
+
+    // 床の切り抜きの作り直しと壁の面の高さ (Unity に触るのでメインで)
+    private static void PrepFace(Tile t, int x0, int y0)
+    {
+        int tc = WaterSim.TileCells, n0 = tc * Px;
+        float cs = WaterSim.Cell, org0x = WaterSim.Origin.x, org0y = WaterSim.Origin.y;
         if (t.FloorDirty)
         {
             t.FloorDirty = false;
@@ -277,17 +315,12 @@ internal static class WaterArt
             got |= WaterHeight.StampFace(face, n0, fx, fy, fs);
             if (got) { WaterHeight.CutHoles(face, n0, fx, fy, fs); t.Face = face; }
         }
-        Prof(1);
-        bool faceWet = t.Face != null && FaceWet(t, x0, y0, n0);
-        if (!any && !faceWet)
-        {
-            if (!t.Empty && t.Sr) Enable(t, false);
-            t.Empty = true;
-            return;
-        }
-        Ensure(t);
+    }
 
-        int n = tc * Px;
+    // 床マスクの切り替えと家具の型抜き (Unity に触るのでメインで)
+    private static void PrepFloor(Tile t)
+    {
+        int tc = WaterSim.TileCells;
         float cell = WaterSim.Cell;
         if (t.Floor != null && t.FloorOn == FloorMask.Off)
         {
@@ -299,18 +332,107 @@ internal static class WaterArt
             t.FurnVersion = _furnVersion;
             t.Furn = FurnitureMask(WaterSim.Origin.x + t.Tx * tc * cell, WaterSim.Origin.y + t.Ty * tc * cell, tc * cell);
         }
+    }
+
+    // ── 作業スレッドで描く ──────────────────────────────────────────
+    // 描き直すタイルの準備 (Unity に触る所) だけをメインで済ませて積み、LateUpdate で水の刻みと一緒に作業スレッドへ投げる
+    // (刻みの後の水を描く)。次のフレームの Tick の頭で受け取って転送する。新しいタイル・隠れているタイル・照合の時はその場で描く
+    private sealed class Job { public Tile T; public bool Any, Wet, Flow; }
+    private static readonly Job[] Jobs = { new(), new(), new() };
+    private static int _jobN, _jobState; // 0 = 無し / 1 = 積んだ / 2 = 描いた
+    private static int[] _jobFill;
+    private static int _jobCraterN;
+    internal static bool HasJobs => _jobState == 1;
+    internal static Exception JobError;
+    internal static long ProfThreadTiles;
+
+    // 隠れているタイル (乾いていた) は水があると分かってから家具の型抜きを払うよう、その場で描く
+    private static bool CanDefer(Tile t) =>
+        t.Px != null && !t.Empty && _jobN < Jobs.Length && Native.MrpNative.On && Native.MrpNative.Async && !Native.MrpNative.Verify;
+
+    private static void Defer(Tile t)
+    {
+        _profT = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_jobN == 0)
+        {
+            EnsureScratch();
+            _jobFill = EnsureFill();
+            _jobCraterN = CraterArgs();
+        }
+        int tc = WaterSim.TileCells;
+        t.LastDraw = _clock;
+        PrepFace(t, t.Tx * tc, t.Ty * tc);
+        PrepFloor(t);
+        var j = Jobs[_jobN++];
+        j.T = t;
+        j.Flow = t.Flow != null;
+        _jobState = 1;
+        ProfTiles++;
         Prof(2);
-        DrawPixels(t, x0, y0, n, native);
-        if (native && Native.MrpNative.Verify) VerifyPixels(t, x0, y0, n);
-        Prof(3);
-        fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
-        t.Tex.Apply(false, false);
+    }
+
+    // 積んだタイルを描く (作業スレッド。投げられなかった時はメイン)。Unity には触らない
+    internal static void RunJobs()
+    {
+        if (_jobState != 1) return;
+        int tc = WaterSim.TileCells, n = tc * Px;
+        for (int i = 0; i < _jobN; i++)
+        {
+            var j = Jobs[i];
+            var t = j.T;
+            int x0 = t.Tx * tc, y0 = t.Ty * tc;
+            j.Any = RawNative(x0, y0, _jobFill, _jobCraterN);
+            j.Wet = t.Face != null && FaceWet(t, x0, y0, n);
+            if (!j.Any && !j.Wet) continue;
+            PixelsNative(t, x0, y0, n, t.Px);
+            if (t.Face != null)
+            {
+                FaceNative(t, x0, y0, n);
+                SpreadFaceNative(t, n);
+            }
+            if (j.Flow) FlowPixels(t, x0, y0);
+        }
+        _jobState = 2;
+    }
+
+    // 描いたタイルを受け取って転送する (メイン)
+    private static unsafe void FinishJobs()
+    {
+        if (_jobState == 0) return;
+        WaterSim.EnsureIdle();
+        if (JobError != null)
+        {
+            var e = JobError;
+            JobError = null;
+            throw new InvalidOperationException("water art job", e);
+        }
+        if (_jobState == 1) RunJobs(); // 投げられなかった
+        _profT = System.Diagnostics.Stopwatch.GetTimestamp();
+        for (int i = 0; i < _jobN; i++)
+        {
+            var j = Jobs[i];
+            var t = j.T;
+            j.T = null;
+            if (!j.Any && !j.Wet)
+            {
+                if (!t.Empty && t.Sr) Enable(t, false);
+                t.Empty = true;
+                continue;
+            }
+            fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
+            t.Tex.Apply(false, false);
+            if (j.Flow)
+            {
+                fixed (byte* b = t.FlowPx) t.Flow.LoadRawTextureData((IntPtr)b, t.FlowPx.Length);
+                t.Flow.Apply(false, false);
+            }
+            if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
+            Drawn++;
+            ProfThreadTiles++;
+        }
         Prof(4);
-        DrawFlow(t, x0, y0);
-        Prof(5);
-        if (t.Empty) { Enable(t, !Hidden); t.Empty = false; }
-        Drawn++;
-        LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        _jobN = 0;
+        _jobState = 0;
     }
 
     // 描く間の高さ _raw / _closed をタイル + 縁 3 升で写し、ならした深さ _depth と濡れ具合 _wet を作る。タイルの中に水があるか
@@ -364,9 +486,9 @@ internal static class WaterArt
     }
 
     private static float[] _craterArgs = new float[16];
-    private static unsafe bool RawNative(int x0, int y0, int[] fill)
+    // くぼみの効きはタイルの間で変わらないので先に出す (効きが 0 以下のくぼみは倍率を変えないので渡さない)。渡す数
+    private static int CraterArgs()
     {
-        // くぼみの効きはタイルの間で変わらないので先に出す (効きが 0 以下のくぼみは倍率を変えないので渡さない)
         int cn = 0;
         if (_craterArgs.Length < Craters.Count * 4) _craterArgs = new float[Craters.Count * 4];
         foreach (var c in Craters)
@@ -376,6 +498,11 @@ internal static class WaterArt
             _craterArgs[cn * 4] = c.X; _craterArgs[cn * 4 + 1] = c.Y; _craterArgs[cn * 4 + 2] = c.R; _craterArgs[cn * 4 + 3] = amt;
             cn++;
         }
+        return cn;
+    }
+
+    private static unsafe bool RawNative(int x0, int y0, int[] fill, int cn)
+    {
         var org = WaterSim.Origin;
         fixed (int* hgt = WaterSim.HeightCells) fixed (short* furn = WaterSim.FurnCells) fixed (byte* open = WaterSim.OpenCells)
         fixed (int* fl = fill) fixed (float* cr = _craterArgs)
@@ -878,6 +1005,13 @@ internal static class WaterArt
     private static unsafe void DrawFlow(Tile t, int x0, int y0)
     {
         if (t.Flow == null) return;
+        FlowPixels(t, x0, y0);
+        fixed (byte* b = t.FlowPx) t.Flow.LoadRawTextureData((IntPtr)b, t.FlowPx.Length);
+        t.Flow.Apply(false, false);
+    }
+
+    private static void FlowPixels(Tile t, int x0, int y0)
+    {
         int tc = WaterSim.TileCells, w = WaterSim.W, h = WaterSim.H;
         // 量/刻み → 単位/秒 (2 面の和なので半分)、それを FlowMax で 127 に
         float f = 0.5f * WaterSim.Cell * GameClock.Hz * (127f / FlowMax);
@@ -901,8 +1035,6 @@ internal static class WaterArt
             }
             px[i] = (byte)vx; px[i + 1] = (byte)vy; px[i + 2] = 0; px[i + 3] = 255;
         }
-        fixed (byte* b = px) t.Flow.LoadRawTextureData((IntPtr)b, px.Length);
-        t.Flow.Apply(false, false);
     }
 
     private static void SetFloor(Tile t, bool on)
@@ -1285,6 +1417,11 @@ internal static class WaterArt
 
     internal static void Clear()
     {
+        WaterSim.EnsureIdle();
+        for (int i = 0; i < Jobs.Length; i++) Jobs[i].T = null;
+        _jobN = 0;
+        _jobState = 0;
+        JobError = null;
         foreach (var t in Tiles.Values)
         {
             if (t.Go) UnityEngine.Object.Destroy(t.Go);

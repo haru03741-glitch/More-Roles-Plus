@@ -13,6 +13,8 @@ internal static unsafe partial class WaterSim
     private enum Phase { None, Prepared, Running, Joined }
     private static Phase _phase;
     private static int _defStep;        // 預けた刻み
+    private static bool _simJob;        // 投げた仕事に水の刻みが入っているか (false = 水の絵だけ)
+    [ThreadStatic] private static bool _onWorker;
     internal static bool Deferred => _phase != Phase.None;
     internal static int DeferredStep => _defStep;
 
@@ -22,6 +24,7 @@ internal static unsafe partial class WaterSim
     private static StepArgs* _wa;
     private static int _wr;
     private static long _wTicks;
+    internal static long ArtThreadTicks; // 作業スレッドで水の絵に掛かった時間 (water prof)
 
     // 区間の時間 (water prof): 裏で回った刻み・その場で回した刻み・受け取りで待った時間・Tick より前に読み手が待った回数
     internal static long AsyncSteps, SyncSteps, JoinWaitTicks, EarlyJoins;
@@ -101,43 +104,58 @@ internal static unsafe partial class WaterSim
         _phase = Phase.Prepared;
     }
 
-    // LateUpdate の最後: 預けた刻みを作業スレッドへ
+    // LateUpdate の最後: 預けた刻みと水の絵の描き直しを作業スレッドへ (絵は刻みの後に描く)
     internal static void Kick()
     {
-        if (_phase != Phase.Prepared) return;
+        bool sim = _phase == Phase.Prepared, art = WaterArt.HasJobs && (sim || _phase == Phase.None);
+        if (!sim && !art) return;
         if (_worker == null)
         {
             _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "MRP water" };
             _worker.Start();
         }
-        // 詰める途中で落ちたら固定を外して預けたままにする (次の Settle がその場で回す)
-        try { Fill(Args(), false, _defStep); }
-        catch (Exception e) { Unpin(); Plugin.Logger.LogError($"[WaterSim] kick: {e}"); return; }
+        // 詰める途中で落ちたら固定を外して預けたままにする (次の Settle がその場で回す。絵は次の WaterArt.Tick がその場で描く)
+        if (sim)
+        {
+            try { Fill(Args(), false, _defStep); }
+            catch (Exception e) { Unpin(); Plugin.Logger.LogError($"[WaterSim] kick: {e}"); return; }
+        }
+        _simJob = sim;
         _phase = Phase.Running;
         Go.Release();
     }
 
     private static void WorkerLoop()
     {
+        // 作業スレッドの上では EnsureIdle を素通りする (自分の終わりを待って止まらないように)
+        _onWorker = true;
         while (true)
         {
             Go.Wait();
             long t = System.Diagnostics.Stopwatch.GetTimestamp();
             // 落ちても必ず終わりを知らせる (待つ側が止まらないように。0 なら C# 版で回し直す)
-            try { _wr = Native.MrpNative.WaterStep(_wa); }
-            catch { _wr = 0; }
-            finally
+            try
             {
-                _wTicks = System.Diagnostics.Stopwatch.GetTimestamp() - t;
-                Done.Release();
+                if (_simJob)
+                {
+                    try { _wr = Native.MrpNative.WaterStep(_wa); }
+                    catch { _wr = 0; }
+                }
+                long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                _wTicks = t1 - t;
+                // 刻みが C# 版へ回る時は絵も受け取り側で描き直す (その刻みの後の水を描くように)
+                if (!_simJob || _wr != 0) WaterArt.RunJobs();
+                ArtThreadTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t1;
             }
+            catch (Exception e) { WaterArt.JobError = e; }
+            finally { Done.Release(); }
         }
     }
 
     // 水の配列に触る前に: 裏で回っていれば終わりを待って結果を受け取る (後始末は Settle)
     internal static void EnsureIdle()
     {
-        if (_phase != Phase.Running) return;
+        if (_phase != Phase.Running || _onWorker) return;
         Join();
         EarlyJoins++;
     }
@@ -147,8 +165,9 @@ internal static unsafe partial class WaterSim
         long t = System.Diagnostics.Stopwatch.GetTimestamp();
         Done.Wait();
         JoinWaitTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t;
-        ProfTicks[4] += _wTicks;
         Unpin();
+        if (!_simJob) { _phase = Phase.None; return; }
+        ProfTicks[4] += _wTicks;
         _phase = Phase.Joined;
         if (_wr != 0) { Apply(_wa); AsyncSteps++; }
         else { StepManaged(false, _defStep); SyncSteps++; } // 定数が C++ と違う (起こらないはず)
@@ -157,6 +176,7 @@ internal static unsafe partial class WaterSim
     // 預けた刻みを終わらせる (投げる前ならその場で回す)。終わらせた刻みを返す (無ければ −1)。続きの火は TerrainStep が回す
     internal static int Settle()
     {
+        if (_phase == Phase.Running && !_simJob) Join(); // 絵だけの仕事
         if (_phase == Phase.None) return -1;
         try
         {

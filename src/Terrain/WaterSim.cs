@@ -939,7 +939,9 @@ internal static partial class WaterSim
         // 作った時の 2 回目は行き先が変わりうるので、影の線の判定も引き直す
         if (full && useZ)
             for (int y = y0; y <= y1; y++) Array.Clear(_shadowCut, y * _w + x0, x1 - x0 + 1);
+        long l0 = System.Diagnostics.Stopwatch.GetTimestamp();
         Scan(x0, y0, x1, y1);
+        long l1 = System.Diagnostics.Stopwatch.GetTimestamp();
         // ガラスの手すりの縁を除いて光線を引き、元の並びへ戻す
         int all = _rayN, n = 0;
         if (_rayAll.Length < all) _rayAll = new int[_rayQ.Length];
@@ -947,6 +949,7 @@ internal static partial class WaterSim
         for (int i = 0; i < all; i++) if (_rayAll[i] >= 0) _rayQ[n++] = _rayAll[i];
         _rayN = n;
         RayRun(useZ);
+        long l2 = System.Diagnostics.Stopwatch.GetTimestamp();
         for (int i = 0, r = 0; i < all; i++)
         {
             int key = _rayAll[i], to, dist, tx, ty;
@@ -965,7 +968,17 @@ internal static partial class WaterSim
             LinkEdge(key >> 2, key & 3, why, to, dist, tx, ty, full, measure, cliffs, useZ);
         }
         _ledgeScan = false;
+        if (!full)
+        {
+            long l3 = System.Diagnostics.Stopwatch.GetTimestamp();
+            LinkProf[0] += l1 - l0; LinkProf[1] += l2 - l1; LinkProf[2] += l3 - l2;
+            LinkPasses++; LinkEdges += all;
+        }
     }
+
+    // 部分の引き直しの区間の時間 (water prof): 走査・光線・登録
+    internal static readonly long[] LinkProf = new long[3];
+    internal static long LinkPasses, LinkEdges;
 
     private static int[] _rayAll = Array.Empty<int>();
 
@@ -2146,7 +2159,7 @@ internal static partial class WaterSim
     {
         double k = WaterArt.ProfTiles > 0 ? 1000.0 / System.Diagnostics.Stopwatch.Frequency / WaterArt.ProfTiles : 0;
         var t = WaterArt.ProfTicks;
-        return $"raw={t[0] * k:0.000} face={t[1] * k:0.000} prep={t[2] * k:0.000} pix={t[3] * k:0.000} upload={t[4] * k:0.000} flow={t[5] * k:0.000} (face={t[6] * k:0.000} spread={t[7] * k:0.000})";
+        return $"raw={t[0] * k:0.000} face={t[1] * k:0.000} prep={t[2] * k:0.000} pix={t[3] * k:0.000} upload={t[4] * k:0.000} flow={t[5] * k:0.000} (face={t[6] * k:0.000} spread={t[7] * k:0.000}) thread={WaterArt.ProfThreadTiles}/{(WaterArt.ProfThreadTiles > 0 ? ArtThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / WaterArt.ProfThreadTiles : 0):0.000}";
     }
 
     private static int _sortedN;     // _act の先頭のこの数までは番号順 (前の刻みの終わりに並べた分)
@@ -2498,8 +2511,8 @@ internal static partial class WaterSim
                 var t = ProfTicks;
                 int sleeping = 0;
                 for (int c = 0; _inList != null && c < _inList.Length; c++) if (_inList[c] == 0 && Counted(c)) sleeping++;
-                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()} | thread async={AsyncSteps} sync={SyncSteps} wait={JoinWaitTicks * k:0.000} early={EarlyJoins}");
-                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; AsyncSteps = SyncSteps = JoinWaitTicks = EarlyJoins = 0; }
+                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()} | thread async={AsyncSteps} sync={SyncSteps} wait={JoinWaitTicks * k:0.000} early={EarlyJoins} | links n={LinkPasses} edges={LinkEdges} ms/pass scan={(LinkPasses > 0 ? LinkProf[0] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} ray={(LinkPasses > 0 ? LinkProf[1] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} post={(LinkPasses > 0 ? LinkProf[2] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000}");
+                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; WaterArt.ProfThreadTiles = 0; ArtThreadTicks = 0; AsyncSteps = SyncSteps = JoinWaitTicks = EarlyJoins = 0; Array.Clear(LinkProf); LinkPasses = LinkEdges = 0; }
                 return;
             }
             if (a.StartsWith("flood"))
