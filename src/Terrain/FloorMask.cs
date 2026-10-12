@@ -193,7 +193,6 @@ internal static class FloorMask
         return any;
     }
 
-    // 世界の四角 (x, y から size 四方) の画素が全部床か (マスクの外は床でない)
     // 床マスクのビットと置き場 (C++ に渡す・読むだけ)。マスクが無ければ false
     internal static bool MaskBits(out byte[] bits, out int w, out int h, out float ox, out float oy, out float ppu)
     {
@@ -202,6 +201,7 @@ internal static class FloorMask
         return _bits != null;
     }
 
+    // 世界の四角 (x, y から size 四方) の画素が全部床か (マスクの外は床でない)
     internal static bool AllFloor(float x, float y, float size)
     {
         Ensure();
