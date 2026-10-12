@@ -59,3 +59,4 @@ gradlew     text eol=lf
 *.shader linguist-vendored
 *.json linguist-vendored
 *.js linguist-vendored
+*.h linguist-language=C++
