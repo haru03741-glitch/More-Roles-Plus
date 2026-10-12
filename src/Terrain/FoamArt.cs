@@ -359,6 +359,7 @@ internal static class FoamArt
     // p = 吹き付け始めからの経過 / FoamTime。絵は C++ で描く (照合の時は C# でも描いて比べる)
     private static unsafe void Draw(Plug pl, float p, bool last)
     {
+        if (pl.Px == null || pl.F == null || pl.Pores == null) return; // 固まり終わって手放した絵 (C++ に空の置き場を渡さない)
         int w = pl.W, h = pl.H, gw = (w + 2) >> 1, gh = (h + 2) >> 1;
         var G = Scratch(ref _grid, gw * gh);
         var Hs = Scratch(ref _height, w * h);
