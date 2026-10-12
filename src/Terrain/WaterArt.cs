@@ -36,6 +36,7 @@ internal static class WaterArt
 
     private static void Enable(Tile t, bool on)
     {
+        on &= !t.FloorWait; // 最初の床の切り抜きが届くまでは見せない (壁の上まで水が乗る)
         t.Sr.enabled = on;
         if (t.Shadow) t.Shadow.enabled = on;
     }
@@ -61,6 +62,8 @@ internal static class WaterArt
         public byte[] FlowPx;
         public MaterialPropertyBlock ShadowBlock;
         public bool FloorOn;
+        public bool FloorJob;   // 床の切り抜きを作業スレッドへ積んである
+        public bool FloorWait;  // 最初の床の切り抜きを待っている (届くまで隠す)
         public float LastDraw = -10f;
         public bool Waiting;
         public bool Empty = true;
@@ -302,7 +305,12 @@ internal static class WaterArt
         if (t.FloorDirty)
         {
             t.FloorDirty = false;
-            if (t.Floor && t.Sr) { UnityEngine.Object.Destroy(t.Floor); MakeFloor(t, org0x + x0 * cs, org0y + y0 * cs, tc * cs); FloorFromDirty++; }
+            if ((t.Floor || t.FloorWait) && t.Sr)
+            {
+                int key = t.Ty * WaterSim.TilesW + t.Tx;
+                if (RequestFloor(t, org0x + x0 * cs, org0y + y0 * cs, tc * cs, false)) FloorFromDirty++;
+                else if (FloorQueued.Add(key)) FloorQueue.Add(key); // 積む枠が埋まった: 待ち行列で次のフレームへ
+            }
         }
         if (!t.FaceDone)
         {
@@ -392,6 +400,9 @@ internal static class WaterArt
             }
             if (j.Flow) FlowPixels(t, x0, y0);
         }
+        long f0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (var f in FloorJobs) FloorMask.FillFrom(f.Src, f.X, f.Y, f.Size, f.M, f.Buf, FloorScratch, false);
+        FloorThreadTicks += System.Diagnostics.Stopwatch.GetTimestamp() - f0;
         _jobState = 2;
     }
 
@@ -433,6 +444,7 @@ internal static class WaterArt
         Prof(4);
         _jobN = 0;
         _jobState = 0;
+        FinishFloors();
     }
 
     // 描く間の高さ _raw / _closed をタイル + 縁 3 升で写し、ならした深さ _depth と濡れ具合 _wet を作る。タイルの中に水があるか
@@ -1275,7 +1287,8 @@ internal static class WaterArt
         if (FloorMask.Active)
         {
             // 床マスクがあれば水の縁は部屋の絵の床の画素で切る (家具の型抜きも要らない)
-            MakeFloor(t, wx, wy, size);
+            RequestFloor(t, wx, wy, size, true);
+            if (t.FloorJob) { t.FloorWait = true; Enable(t, false); }
             return;
         }
         // 床マスクの無いマップでも流れの絵はブロックで渡す (ブロックを付けるとスプライトの絵が外れるので絵も渡す)
@@ -1319,19 +1332,118 @@ internal static class WaterArt
     // 床マスクの作り直しの回数 (water prof): 出来事の待ち行列から・描く時の壊れから・合計時間
     internal static long FloorFromQueue, FloorFromDirty, FloorTicks;
 
-    private static unsafe void MakeFloor(Tile t, float wx, float wy, float size)
+    private static byte[] _floorBuf = Array.Empty<byte>();
+
+    private static void MakeFloor(Tile t, float wx, float wy, float size)
     {
         long f0 = System.Diagnostics.Stopwatch.GetTimestamp();
         int m = (int)MathF.Round(size * FloorMask.Ppu);
-        var buf = new byte[m * m];
-        FloorMask.Fill(wx, wy, size, m, buf);
+        if (_floorBuf.Length != m * m) _floorBuf = new byte[m * m];
+        FloorMask.Fill(wx, wy, size, m, _floorBuf);
+        if (Native.MrpNative.Verify) VerifyThreadFloor(wx, wy, size, m);
+        UploadFloor(t, _floorBuf, m, wx, wy, size);
+        FloorTicks += System.Diagnostics.Stopwatch.GetTimestamp() - f0;
+    }
+
+    // 照合 (native verify): 動く床・持ち上げた家具が掛からないタイルでは、作業スレッドの作り方 (それらを書かない・積んだ時の地図の写し) が同じ床になるか
+    // 掛かるタイル (その場で作る) も数え、作業スレッドの作り方なら違う床になった枚数を出す (掛かる判定が効いている証拠)
+    internal static long VerifyFloorThreads, VerifyFloorThreadDiff, VerifyFloorMoving, VerifyFloorMovingDiff;
+    private static byte[] _verifyFloor = Array.Empty<byte>();
+
+    private static void VerifyThreadFloor(float wx, float wy, float size, int m)
+    {
+        bool moving = FloorMask.MovingAt(wx, wy, size, m);
+        if (_verifyFloor.Length != m * m) _verifyFloor = new byte[m * m];
+        FloorMask.FillFrom(FloorMask.Take(), wx, wy, size, m, _verifyFloor, FloorScratch, false);
+        long diff = 0;
+        for (int i = 0; i < _verifyFloor.Length; i++) if (_verifyFloor[i] != _floorBuf[i]) diff++;
+        if (moving)
+        {
+            VerifyFloorMoving++;
+            if (diff > 0) VerifyFloorMovingDiff++;
+            return;
+        }
+        VerifyFloorThreads++;
+        VerifyFloorThreadDiff += diff;
+    }
+
+    // 作った床の切り抜きに低い壁を書いてテクスチャにする (メイン)
+    private static unsafe void UploadFloor(Tile t, byte[] buf, int m, float wx, float wy, float size)
+    {
         WaterHeight.StampFloor(buf, m, wx, wy, size);
         t.FloorHash = Native.MrpNative.Verify ? Fnv(buf) : 0;
         t.Floor = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFloor", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         fixed (byte* b = buf) t.Floor.LoadRawTextureData((IntPtr)b, buf.Length);
         t.Floor.Apply(false, true);
         SetFloor(t, !FloorMask.Off);
+        t.FloorWait = false; // 床が付いたら隠す理由は無い (見せるのは呼び手)
+    }
+
+    // ── 床の切り抜きを作業スレッドで作る ──────────────────────────────
+    // 作り直しと新しいタイルの床 (1 枚 1.5ms 前後・中身は C++) を水の絵と一緒に作業スレッドへ積み、次のフレームの頭でテクスチャにする。
+    // 動く床・持ち上げた家具が掛かるタイル (メインの状態を読む)・照合の時・同期で回す時はその場で作る
+    private sealed class FloorJob { public Tile T; public float X, Y, Size; public int M; public byte[] Buf; public FloorMask.Source Src; }
+    private static readonly List<FloorJob> FloorJobs = new();
+    private static readonly Stack<FloorJob> FloorJobPool = new();
+    private static readonly FloorMask.Scratch FloorScratch = new();
+    private const int FloorJobsPerFrame = 3; // 作業スレッドで 1 フレームに作る枚数 (多いと次のフレームの頭で待つ)
+    internal static long FloorFromThread, FloorThreadTicks;
+
+    // 床の切り抜きを作る (作業スレッドへ積むか、その場で)。積む枠が埋まっていて now でなければ何もせず false (呼び手が後で回す)
+    private static bool RequestFloor(Tile t, float wx, float wy, float size, bool now)
+    {
+        if (t.FloorJob) return true; // 積んだ物はまだ作られていない (作る時に今の地図を読む)
+        WaterSim.EnsureIdle();
+        int m = (int)MathF.Round(size * FloorMask.Ppu);
+        bool defer = Native.MrpNative.Async && !Native.MrpNative.Verify && _jobState != 2 && !FloorMask.MovingAt(wx, wy, size, m);
+        if (defer && FloorJobs.Count < FloorJobsPerFrame)
+        {
+            var j = FloorJobPool.Count > 0 ? FloorJobPool.Pop() : new FloorJob();
+            j.T = t; j.X = wx; j.Y = wy; j.Size = size; j.M = m; j.Src = FloorMask.Take();
+            if (j.Buf == null || j.Buf.Length != m * m) j.Buf = new byte[m * m];
+            FloorJobs.Add(j);
+            t.FloorJob = true;
+            _jobState = 1;
+            return true;
+        }
+        if (defer && !now) return false;
+        if (t.Floor) UnityEngine.Object.Destroy(t.Floor);
+        MakeFloor(t, wx, wy, size);
+        return true;
+    }
+
+    // 作業スレッドで作った床を受け取ってテクスチャにする (メイン・作業の終わりを待った後)
+    private static void FinishFloors()
+    {
+        if (FloorJobs.Count == 0) return;
+        long f0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        foreach (var j in FloorJobs)
+        {
+            var t = j.T;
+            j.T = null;
+            t.FloorJob = false;
+            // 片付けたタイル (船が替わった・Clear) は捨てる
+            if (!t.Sr || !Tiles.TryGetValue(t.Ty * WaterSim.TilesW + t.Tx, out var cur) || cur != t) continue;
+            bool wait = t.FloorWait;
+            if (t.Floor) UnityEngine.Object.Destroy(t.Floor);
+            UploadFloor(t, j.Buf, j.M, j.X, j.Y, j.Size);
+            FloorFromThread++;
+            if (wait && !t.Empty) Enable(t, !Hidden);
+        }
+        foreach (var j in FloorJobs) FloorJobPool.Push(j);
+        FloorJobs.Clear();
         FloorTicks += System.Diagnostics.Stopwatch.GetTimestamp() - f0;
+    }
+
+    private static void DropFloorJobs()
+    {
+        foreach (var j in FloorJobs)
+        {
+            if (j.T != null) j.T.FloorJob = false;
+            j.T = null;
+            FloorJobPool.Push(j);
+        }
+        FloorJobs.Clear();
     }
 
     private static ulong Fnv(byte[] b)
@@ -1353,7 +1465,7 @@ internal static class WaterArt
         {
             var t = kv.Value;
             if (!t.Floor || !t.Sr || t.FloorHash == 0) continue;
-            if (t.FloorDirty || FloorQueued.Contains(kv.Key)) { pending++; continue; }
+            if (t.FloorDirty || t.FloorJob || FloorQueued.Contains(kv.Key)) { pending++; continue; }
             float wx = org.x + t.Tx * size, wy = org.y + t.Ty * size;
             int m = (int)MathF.Round(size * FloorMask.Ppu);
             var buf = new byte[m * m];
@@ -1364,7 +1476,7 @@ internal static class WaterArt
             diff++;
             if (diff <= 6) sb.Append($" ({t.Tx},{t.Ty})");
         }
-        return $"tiles={n} floorDiff={diff} pending={pending}{sb}";
+        return $"tiles={n} floorDiff={diff} pending={pending} thread={VerifyFloorThreads} threadDiff={VerifyFloorThreadDiff} moving={VerifyFloorMoving}/{VerifyFloorMovingDiff} platform={WaterSim.PlatformRect()}{sb}";
     }
 
     // 床マスクを作り直すタイル (1 タイル数 ms かかるので 1 フレームに FloorBudgetMs まで。作り終わるまでは前の床のまま)
@@ -1389,12 +1501,14 @@ internal static class WaterArt
         int done = 0;
         while (done < FloorQueue.Count)
         {
-            int key = FloorQueue[done++];
+            int key = FloorQueue[done];
+            if (Tiles.TryGetValue(key, out var t) && (t.Floor || t.FloorWait) && t.Sr)
+            {
+                if (!RequestFloor(t, org.x + t.Tx * size, org.y + t.Ty * size, size, false)) break; // 積む枠が埋まった: 残りは次のフレーム
+                FloorFromQueue++;
+            }
             FloorQueued.Remove(key);
-            if (!Tiles.TryGetValue(key, out var t) || !t.Floor || !t.Sr) continue;
-            UnityEngine.Object.Destroy(t.Floor);
-            MakeFloor(t, org.x + t.Tx * size, org.y + t.Ty * size, size);
-            FloorFromQueue++;
+            done++;
             if (System.Diagnostics.Stopwatch.GetTimestamp() - start >= budget) break;
         }
         FloorQueue.RemoveRange(0, done);
@@ -1421,7 +1535,7 @@ internal static class WaterArt
             float x0 = org.x + t.Tx * size, y0 = org.y + t.Ty * size;
             if (wide.xMax <= x0 || wide.xMin >= x0 + size || wide.yMax <= y0 || wide.yMin >= y0 + size) continue;
             if (_fillFrom != null && !t.Empty && !t.Waiting) { t.Waiting = true; Waiting.Add(kv.Key); }
-            if (!floor || !t.Floor || !t.Sr) continue;
+            if (!floor || (!t.Floor && !t.FloorWait) || !t.Sr) continue;
             if (r.xMax <= x0 || r.xMin >= x0 + size || r.yMax <= y0 || r.yMin >= y0 + size) continue;
             if (FloorQueued.Add(kv.Key)) FloorQueue.Add(kv.Key);
         }
@@ -1529,6 +1643,7 @@ internal static class WaterArt
         _jobN = 0;
         _jobState = 0;
         JobError = null;
+        DropFloorJobs();
         foreach (var t in Tiles.Values)
         {
             if (t.Go) UnityEngine.Object.Destroy(t.Go);

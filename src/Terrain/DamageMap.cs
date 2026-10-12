@@ -350,6 +350,7 @@ internal static class DamageMap
 
     private static void StampAny(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
     {
+        WaterSim.EnsureIdle(); // 作業スレッドが穴の地図を読んでいる間は書き換えない
         if (!Native.MrpNative.Verify) { StampNative(shape, segs, withScorch, floorY, keep, body, out touched); return; }
         var px0 = (byte[])_pixels.Clone();
         var gens0 = (byte[])_gens.Clone();
@@ -864,6 +865,7 @@ internal static class DamageMap
     // 家具の範囲を損傷マスクの A に書く (ひびの板がそこを描かない)。呼んだ側で Upload する
     private static void MarkFurniture(Vector2 c, float reach)
     {
+        WaterSim.EnsureIdle(); // 作業スレッドが穴の地図を読んでいる間は書き換えない
         foreach (var rc in FurnitureNear(c, reach))
         {
             int x0 = Math.Max(0, (int)((rc.xMin - _origin.x) * PixelsPerUnit));
@@ -880,6 +882,7 @@ internal static class DamageMap
     // 宇宙へ抜けた喉 (口から宇宙まで) を損傷マスクに書く: R = 穴 (部屋の絵の壁の帯を抜く)・A = 喉の印 (穴の向こうの船体の中を描かない)
     internal static void MarkThroat(List<Vector2[]> polys)
     {
+        WaterSim.EnsureIdle(); // 作業スレッドが穴の地図を読んでいる間は書き換えない
         if (!EnsureMap()) return;
         foreach (var poly in polys)
         {
@@ -948,6 +951,7 @@ internal static class DamageMap
 
     internal static string DebugChannel(int ch, bool on)
     {
+        WaterSim.EnsureIdle(); // 作業スレッドが穴の地図を読んでいる間は書き換えない
         if (_pixels == null) return "no map";
         if (!on)
         {

@@ -220,27 +220,78 @@ internal static class FloorMask
     // 縁は 1, 4, 6, 4, 1 でならす: 1 画素 1 ビットの段がそのまま水の縁に出ないよう、シェーダが 128 の線を
     // 画素より細かく引ける値にする。ならしは周りの Blur 画素も読んでからなので、隣のタイルと縁がつながる
     private const int Blur = 2;
-    private static byte[] _raw = Array.Empty<byte>();
-    private static ushort[] _row = Array.Empty<ushort>();
 
-    internal static unsafe void Fill(float x, float y, float size, int n, byte[] into)
+    // 作るのに読む地図 (床の地図・穴の地図・落ちる縁の地図) の写し。船が替わると地図ごと差し替わるので、
+    // 作業スレッドで作る時は積んだ時に取っておいた物を読む (中身を書き換える所は作業スレッドの終わりを待つ)
+    internal struct Source
+    {
+        public byte[] Bits; public int W, H; public float Ox, Oy, Ppu;
+        public byte[] Holes; public int Hw, Hh; public float Hox, Hoy, Hppu;
+        public byte[] Fall, Lip; public int Lw, Lh; public float Lox, Loy, Cell;
+    }
+
+    // 作り置きの作業場 (作業スレッドはメインと別の物を使う)
+    internal sealed class Scratch
+    {
+        public byte[] Raw = Array.Empty<byte>();
+        public ushort[] Row = Array.Empty<ushort>();
+    }
+
+    internal static Source Take()
+    {
+        var s = new Source { Bits = _bits, W = _w, H = _h, Ox = _ox, Oy = _oy, Ppu = _ppu };
+        if (DamageMap.HoleMap(out var hp, out s.Hw, out s.Hh, out s.Hox, out s.Hoy, out s.Hppu) && DamageMap.CurrentGen != 0) s.Holes = hp;
+        if (WaterSim.LipMaps(out var fall, out var lip, out s.Lw, out s.Lh, out s.Lox, out s.Loy, out s.Cell)) { s.Fall = fall; s.Lip = lip; }
+        return s;
+    }
+
+    private static readonly Scratch MainScratch = new();
+
+    internal static void Fill(float x, float y, float size, int n, byte[] into) => FillFrom(Take(), x, y, size, n, into, MainScratch, true);
+
+    // moving = 動く床と持ち上げた家具も書く (メインの状態を読むのでメインだけ。作業スレッドはそれが掛からないタイルだけを作る)
+    internal static unsafe void FillFrom(in Source s, float x, float y, float size, int n, byte[] into, Scratch sc, bool moving)
     {
         int m = n + Blur * 2;
-        if (_raw.Length < m * m) _raw = new byte[m * m];
-        if (_row.Length < m * n) _row = new ushort[m * n];
+        if (sc.Raw.Length < m * m) sc.Raw = new byte[m * m];
+        if (sc.Row.Length < m * n) sc.Row = new ushort[m * n];
         float step = size / (n - 1);
-        FillRawNative(x - step * Blur, y - step * Blur, step, m, _raw);
-        fixed (byte* raw = _raw) fixed (ushort* row = _row) fixed (byte* o = into) Native.MrpNative.FloorBlur(raw, n, row, o);
+        FillRawNative(s, x - step * Blur, y - step * Blur, step, m, sc.Raw, moving);
+        fixed (byte* raw = sc.Raw) fixed (ushort* row = sc.Row) fixed (byte* o = into) Native.MrpNative.FloorBlur(raw, n, row, o);
+    }
+
+    // 動く床か持ち上げた家具が x, y から size 四方の床 (ならしの縁を含む) に掛かるか
+    internal static bool MovingAt(float x, float y, float size, int n)
+    {
+        float step = size / (n - 1), x0 = x - step * Blur, y0 = y - step * Blur, s = step * (n - 1 + Blur * 2);
+        if (WaterSim.PlatformTouches(x0, y0, s)) return true;
+        if (_patchGen != GameClock.ShipGen) return false;
+        foreach (var p in Patches)
+        {
+            if (p.Lift == null || p.Dry == null) continue;
+            // CutMoved と同じ範囲 (動いた先の中心から元の範囲の対角線の半分)
+            var l = p.Lift;
+            float rad = -l.PoseAng * (MathF.PI / 180f);
+            var r = p.World;
+            float hx = r.width * 0.5f, hy = r.height * 0.5f, half = MathF.Sqrt(hx * hx + hy * hy);
+            float rcx = r.xMin + hx - l.PivotX, rcy = r.yMin + hy - l.PivotY;
+            float mcx = l.PoseX + rcx * MathF.Cos(-rad) - rcy * MathF.Sin(-rad), mcy = l.PoseY + rcx * MathF.Sin(-rad) + rcy * MathF.Cos(-rad);
+            if (!(mcx + half <= x0 || mcx - half >= x0 + s || mcy + half <= y0 || mcy - half >= y0 + s)) return true;
+        }
+        return false;
     }
 
     // C# 版 (native check の答え合わせ用)
     private static void FillCs(float x, float y, float size, int n, byte[] into)
     {
         int m = n + Blur * 2;
-        if (_raw.Length < m * m) _raw = new byte[m * m];
-        if (_row.Length < m * n) _row = new ushort[m * n];
+        var sc = MainScratch;
+        if (sc.Raw.Length < m * m) sc.Raw = new byte[m * m];
+        if (sc.Row.Length < m * n) sc.Row = new ushort[m * n];
+        byte[] raw = sc.Raw;
+        ushort[] rows = sc.Row;
         float step = size / (n - 1);
-        FillRaw(x - step * Blur, y - step * Blur, step, m, _raw);
+        FillRaw(x - step * Blur, y - step * Blur, step, m, raw);
         // 横にならす (m 行 × n 列)
         for (int py = 0; py < m; py++)
         {
@@ -248,7 +299,7 @@ internal static class FloorMask
             for (int px = 0; px < n; px++)
             {
                 int k = src + px;
-                _row[dst + px] = (ushort)(_raw[k] + _raw[k + 4] + ((_raw[k + 1] + _raw[k + 3]) << 2) + _raw[k + 2] * 6);
+                rows[dst + px] = (ushort)(raw[k] + raw[k + 4] + ((raw[k + 1] + raw[k + 3]) << 2) + raw[k + 2] * 6);
             }
         }
         // 縦にならす (n 行 × n 列)。重みの和は 16 × 16
@@ -258,7 +309,7 @@ internal static class FloorMask
             for (int px = 0; px < n; px++)
             {
                 int k = py * n + px;
-                int v = _row[k] + _row[k + n * 4] + ((_row[k + n] + _row[k + n * 3]) << 2) + _row[k + n * 2] * 6;
+                int v = rows[k] + rows[k + n * 4] + ((rows[k + n] + rows[k + n * 3]) << 2) + rows[k + n * 2] * 6;
                 into[dst + px] = (byte)((v + 128) >> 8);
             }
         }
@@ -268,14 +319,14 @@ internal static class FloorMask
     private const int HoleFloor = 128;
 
     // FillRaw の床の地図と穴を C++ で (同じ結果)。動く床・手すり・持ち上げた家具はそのあと C# で
-    private static unsafe void FillRawNative(float x, float y, float wstep, int n, byte[] into)
+    private static unsafe void FillRawNative(in Source s, float x, float y, float wstep, int n, byte[] into, bool moving)
     {
-        bool holes = DamageMap.HoleMap(out var hp, out int hw, out int hh, out float hox, out float hoy, out float hppu) && DamageMap.CurrentGen != 0;
-        fixed (byte* bits = _bits) fixed (byte* o = into) fixed (byte* h = hp)
-            Native.MrpNative.FloorRaw(bits, _w, _h, _ox, _oy, _ppu, x, y, wstep, n, o, holes ? h : null, hw, hh, hox, hoy, hppu, HoleFloor);
-        if (WaterSim.LipMaps(out var fall, out var lip, out int lw, out int lh, out float lox, out float loy, out float cell))
-            fixed (byte* f = fall) fixed (byte* l = lip) fixed (byte* o = into)
-                Native.MrpNative.FloorLips(f, l, lw, lh, lox, loy, cell, x, y, wstep, n, o);
+        fixed (byte* bits = s.Bits) fixed (byte* o = into) fixed (byte* h = s.Holes)
+            Native.MrpNative.FloorRaw(bits, s.W, s.H, s.Ox, s.Oy, s.Ppu, x, y, wstep, n, o, h, s.Hw, s.Hh, s.Hox, s.Hoy, s.Hppu, HoleFloor);
+        if (s.Fall != null)
+            fixed (byte* f = s.Fall) fixed (byte* l = s.Lip) fixed (byte* o = into)
+                Native.MrpNative.FloorLips(f, l, s.Lw, s.Lh, s.Lox, s.Loy, s.Cell, x, y, wstep, n, o);
+        if (!moving) return;
         // 床にするだけの書き込み (縁・動く床) は順番に依らない。床でなくする持ち上げた家具は最後
         WaterSim.StampPlatform(x, y, wstep, n, into);
         CutAllMoved(x, y, wstep, n, into, native: true);
@@ -410,6 +461,7 @@ internal static class FloorMask
 
     private static unsafe void Apply(Patch p)
     {
+        WaterSim.EnsureIdle(); // 作業スレッドが床の地図を読んでいる間は書き換えない
         var r = p.World;
         int x0 = Math.Max(0, (int)MathF.Floor((r.xMin - _ox) * _ppu)), x1 = Math.Min(_w - 1, (int)MathF.Ceiling((r.xMax - _ox) * _ppu));
         int y0 = Math.Max(0, (int)MathF.Floor((r.yMin - _oy) * _ppu)), y1 = Math.Min(_h - 1, (int)MathF.Ceiling((r.yMax - _oy) * _ppu));

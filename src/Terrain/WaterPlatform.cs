@@ -251,6 +251,19 @@ internal static partial class WaterSim
     }
 
     // 床のマスクに台の今の所 (水の升の位置) を床として足す。画素 k の真ん中 = x + k × step
+    // 確認用: 動く床の今の範囲 (無ければ空)
+    internal static string PlatformRect() => !_plat || _pfOff < 0 ? "none"
+        : $"{_org.x + (_pfX0 + _pfOff) * _cell:0.00},{_org.y + _pfY0 * _cell:0.00} {_pfW * _cell:0.00}x{_pfH * _cell:0.00}";
+
+    // 動く床の今の範囲が x, y から size 四方に掛かるか (StampPlatform が何か書くか)
+    internal static bool PlatformTouches(float x, float y, float size)
+    {
+        if (!_plat || _pfOff < 0) return false;
+        float x0 = _org.x + (_pfX0 + _pfOff) * _cell, x1 = x0 + _pfW * _cell;
+        float y0 = _org.y + _pfY0 * _cell, y1 = y0 + _pfH * _cell;
+        return !(x1 <= x || x0 >= x + size || y1 <= y || y0 >= y + size);
+    }
+
     internal static void StampPlatform(float x, float y, float step, int n, byte[] into)
     {
         if (!_plat || _pfOff < 0) return;
