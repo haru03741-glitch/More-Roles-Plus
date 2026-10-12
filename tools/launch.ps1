@@ -23,7 +23,9 @@ $profileRoot = Join-Path $AmongUsPath "BepInEx-MRP"
 $mrpTarget = "BepInEx-MRP\core\BepInEx.Unity.IL2CPP.dll"
 $log = Join-Path $profileRoot "LogOutput.log"
 
-if (Get-Process -Name "Among Us" -ErrorAction SilentlyContinue) { Write-Output "ERR Among Us が起動中なので切り替えない"; exit 1 }
+# 同じインストール先の AU だけを見る (Steam 版など別の場所の AU は doorstop の設定を共有しないので並べて動かせる)
+function Get-OwnAu { Get-Process -Name "Among Us" -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$AmongUsPath\*" } }
+if (Get-OwnAu) { Write-Output "ERR Among Us が起動中なので切り替えない"; exit 1 }
 if (-not (Test-Path (Join-Path $profileRoot "core\BepInEx.Unity.IL2CPP.dll"))) { Write-Output "ERR 先に tools/setup-profile.ps1 を実行する"; exit 1 }
 
 $original = [IO.File]::ReadAllText($ini)
@@ -49,7 +51,7 @@ try {
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 500
         if ((Test-Path $log) -and (Get-Item $log).LastWriteTimeUtc -gt $before) { $started = $true; break }
-        if (-not $retried -and (Get-Date) -gt $retryAt -and -not (Get-Process -Name "Among Us" -ErrorAction SilentlyContinue)) {
+        if (-not $retried -and (Get-Date) -gt $retryAt -and -not (Get-OwnAu)) {
             Start-Process $EpicUrl
             $retried = $true
         }
@@ -65,7 +67,7 @@ $otherLog = Join-Path $AmongUsPath "BepInEx\LogOutput.log"
 $otherBefore = if (Test-Path $otherLog) { (Get-Item $otherLog).LastWriteTimeUtc } else { [datetime]::MinValue }
 if ($started) {
     Start-Sleep -Seconds 8
-    $procs = @(Get-Process -Name "Among Us" -ErrorAction SilentlyContinue)
+    $procs = @(Get-OwnAu)
     $otherMoved = (Test-Path $otherLog) -and (Get-Item $otherLog).LastWriteTimeUtc -gt $otherBefore
     if ($procs.Count -ne 1 -or $otherMoved) {
         Write-Output "ERR 起動が競合した (AU プロセス数=$($procs.Count), 他ツリーのログ更新=$otherMoved)。AU を閉じてやり直す"

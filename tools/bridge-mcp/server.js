@@ -1,7 +1,8 @@
 // Based on https://github.com/waffle-ful/Aeterna-End-K-not tools/bridge-mcp/server.js (GPL-3.0)
 // mrp-bridge-mcp — ゲーム内 TestBridge (src/Bridge/TestBridge.cs) のファイルプロトコルを
 // 型付きツールとして提供する stdio MCP サーバー。
-// 入出力先は <Desktop>/MRP_Logs/bridge (MRP_BRIDGE_DIR で上書き可)。
+// 入出力先は <Desktop>/MRP_Logs/bridge (Epic 版) / bridge-steam (Steam 版)。MRP_BRIDGE_DIR で上書き可。
+// どちらの版を操作するかはサーバーごと (= 使う人ごと) に持つので、Epic 版と Steam 版を別々の人が同時に動かせる。
 
 import path from "node:path";
 import fs from "node:fs";
@@ -20,17 +21,25 @@ const MAX_WAIT_SEC = 110;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 入出力先 ────────────────────────────────────────────────────────────────
-let cachedDir = null;
-function bridgeDir() {
-    if (cachedDir) return cachedDir;
-    if (process.env.MRP_BRIDGE_DIR) return (cachedDir = process.env.MRP_BRIDGE_DIR);
+const EDITIONS = {
+    epic: { root: String.raw`C:\Program Files\Epic Games\AmongUs`, dir: "bridge" },
+    steam: { root: String.raw`C:\Program Files (x86)\Steam\steamapps\common\Among Us`, dir: "bridge-steam" },
+};
+let edition = EDITIONS[process.env.MRP_AU_EDITION] ? process.env.MRP_AU_EDITION : "epic";
+let cachedDesktop = null;
+function desktopDir() {
+    if (cachedDesktop) return cachedDesktop;
     let desktop = null;
     try {
         desktop = execFileSync("powershell.exe",
             ["-NoProfile", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Environment]::GetFolderPath('DesktopDirectory')"],
             { encoding: "utf8", timeout: 15000, windowsHide: true }).trim();
     } catch { }
-    return (cachedDir = path.join(desktop || path.join(os.homedir(), "Desktop"), "MRP_Logs", "bridge"));
+    return (cachedDesktop = desktop || path.join(os.homedir(), "Desktop"));
+}
+function bridgeDir() {
+    if (process.env.MRP_BRIDGE_DIR) return process.env.MRP_BRIDGE_DIR;
+    return path.join(desktopDir(), "MRP_Logs", EDITIONS[edition].dir);
 }
 const file = {
     cmd: () => path.join(bridgeDir(), "bridge-cmd.txt"),
@@ -119,6 +128,7 @@ const server = new McpServer(
             "More Roles Plus の実機テスト運転ツール。",
             "段取り: game_launch (BepInEx-MRP ツリーで AU を起動) → bridge_wait phase=Menu → bridge_send 'freeplay 0' → bridge_wait phase=InGame → 検証 → game_quit。",
             "他の mod で AU が起動中なら game_launch は何もしない (切り替え事故の防止)。",
+            "game_launch の edition (epic|steam) で操作する版を選ぶ (以後の bridge_* と game_quit はその版だけを相手にする)。別の人が片方を使っている時はもう片方を使う。フリープレイは同時に動かせる (2 つ目は空いた番号で待ち受ける)。",
             "コマンド一覧は bridge_send ['help']。機能側の検証コマンドもそこに出る。",
         ].join("\n"),
     }
@@ -241,39 +251,70 @@ server.registerTool("bridge_errors", {
     return textResult(r.output, !r.ok);
 });
 
+// 選んだ版の AU のプロセス番号 (パスで見分ける)
+function auPids(ed) {
+    try {
+        const out = execFileSync("powershell.exe", ["-NoProfile", "-Command",
+            `Get-Process 'Among Us' -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '${EDITIONS[ed].root}\\*' } | ForEach-Object { $_.Id }`],
+            { encoding: "utf8", timeout: 15000, windowsHide: true });
+        return out.split(/\s+/).filter(Boolean).map(Number);
+    } catch { return []; }
+}
+
 server.registerTool("game_launch", {
     title: "AU を MRP で起動",
-    description: "tools/launch.ps1 で Among Us を BepInEx-MRP ツリーで起動し、ブリッジの応答まで待つ。AU が既に起動中なら何もしない。",
-    inputSchema: { timeoutSec: z.number().int().min(30).max(MAX_WAIT_SEC).optional() },
-}, async ({ timeoutSec }) => {
-    if (bridgeAliveMs() < 3000) return textResult("既に MRP で起動中 (bridge-state.json が更新されている)");
+    description: "Among Us を BepInEx-MRP ツリーで起動し、ブリッジの応答まで待つ。edition (epic 既定 | steam) で版を選び、以後の bridge_* と game_quit はその版を相手にする。その版の AU が既に起動中なら何もしない。",
+    inputSchema: {
+        edition: z.enum(["epic", "steam"]).optional(),
+        timeoutSec: z.number().int().min(30).max(MAX_WAIT_SEC).optional(),
+    },
+}, async ({ edition: ed, timeoutSec }) => {
+    if (ed) edition = ed;
+    if (bridgeAliveMs() < 3000) return textResult(`既に MRP で起動中 (${edition}・bridge-state.json が更新されている)`);
+    if (auPids(edition).length) return textResult(`${edition} 版の AU が別の用途で起動中なので触らない`, true);
     let out = "";
-    try {
-        out = execFileSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", LAUNCH_PS1],
-            { encoding: "utf8", timeout: 130000, windowsHide: true });
-    } catch (e) {
-        return textResult(`launch.ps1 失敗:\n${e.stdout ?? ""}${e.stderr ?? ""}`, true);
+    if (edition === "steam") {
+        const root = EDITIONS.steam.root;
+        fs.mkdirSync(bridgeDir(), { recursive: true });
+        try {
+            const child = spawn(path.join(root, "Among Us.exe"),
+                ["--doorstop-target-assembly", String.raw`BepInEx-MRP\core\BepInEx.Unity.IL2CPP.dll`],
+                { cwd: root, detached: true, stdio: "ignore", env: { ...process.env, MRP_BRIDGE_DIR: bridgeDir() } });
+            child.unref();
+            out = `steam 版を起動 (pid ${child.pid})`;
+        } catch (e) {
+            return textResult(`steam 版の起動失敗: ${e.message}`, true);
+        }
+    } else {
+        try {
+            out = execFileSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", LAUNCH_PS1],
+                { encoding: "utf8", timeout: 130000, windowsHide: true });
+        } catch (e) {
+            return textResult(`launch.ps1 失敗:\n${e.stdout ?? ""}${e.stderr ?? ""}`, true);
+        }
     }
     const deadline = Date.now() + (timeoutSec ?? 90) * 1000;
     while (Date.now() < deadline) {
         if (bridgeAliveMs() < 3000) return textResult(`${out.trim()}\nブリッジ応答あり`);
         await sleep(1000);
     }
-    return textResult(`${out.trim()}\nブリッジの state が更新されない (EnableTestBridge が false の可能性)`, true);
+    return textResult(`${out.trim()}\nブリッジの state が更新されない (EnableTestBridge が false の可能性・steam 版は Steam 本体が起動しているか)`, true);
 });
 
 server.registerTool("game_quit", {
     title: "AU を終了",
-    description: "MRP で動いている Among Us を終了する。ブリッジの state が新しい時 (= MRP で起動中) だけ動く。",
+    description: "game_launch で選んだ版 (既定 epic) の MRP の Among Us だけを終了する。ブリッジの state が新しい時 (= MRP で起動中) だけ動く。もう片方の版には触らない。",
     inputSchema: {},
 }, async () => {
-    if (bridgeAliveMs() > 3000) return textResult("MRP で起動中の AU が見当たらない (他の mod で起動中なら触らない)", true);
+    if (bridgeAliveMs() > 3000) return textResult(`MRP で起動中の ${edition} 版 AU が見当たらない (他の mod で起動中なら触らない)`, true);
+    const pids = auPids(edition);
+    if (!pids.length) return textResult(`${edition} 版の AU のプロセスが見つからない`, true);
     try {
-        execFileSync("taskkill", ["/IM", "Among Us.exe", "/F"], { encoding: "utf8", windowsHide: true });
+        for (const pid of pids) execFileSync("taskkill", ["/PID", String(pid), "/F"], { encoding: "utf8", windowsHide: true });
     } catch (e) {
         return textResult(`taskkill 失敗: ${e.message}`, true);
     }
-    return textResult("OK Among Us を終了した");
+    return textResult(`OK ${edition} 版の Among Us を終了した (pid ${pids.join(",")})`);
 });
 
 await server.connect(new StdioServerTransport());
