@@ -529,7 +529,7 @@ internal static partial class WaterSim
 
     // Rebuild の C++ 版 (升の形と境の向きを sub/edge へ書き、開閉が変わった升を返す)。後始末は C# が同じ順に行う
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-    private unsafe struct CellsArgs
+    internal unsafe struct CellsArgs
     {
         public byte* Solid; public byte* Wet;
         public int Sw, W, H, Sub;

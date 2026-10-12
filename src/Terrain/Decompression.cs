@@ -423,6 +423,35 @@ internal static class Decompression
         Array.Clear(_floor);
         for (int i = 0; i < DoorFloors.Count; i++)
             if ((_doorBits >> i & 1) != 0) foreach (int k in DoorFloors[i]) _floor[k] = 1;
+        if (!Native.MrpNative.Verify) { GridNative(_sub, _edge); return; }
+        var vSub = (ushort[])_sub.Clone();
+        var vEdge = (byte[])_edge.Clone();
+        GridNative(vSub, vEdge);
+        GridCs();
+        long diff = 0;
+        for (int k = 0; k < _sub.Length; k++) if (vSub[k] != _sub[k] || vEdge[k] != _edge[k]) diff++;
+        VerifyBuilds++;
+        VerifyDiff += diff;
+    }
+
+    // Grid の C++ 版 (水の升と同じ部品。外周の升は書かない = 作った時の 0 のまま)
+    private static unsafe void GridNative(ushort[] sub, byte[] edge)
+    {
+        fixed (byte* solid = SolidMap.OpenCells) fixed (byte* fl = _floor) fixed (byte* bl = _blocked) fixed (ushort* so = sub) fixed (byte* eo = edge)
+        {
+            var a = new WaterSim.CellsArgs
+            {
+                Solid = solid, Wet = null, Sw = SolidMap.W, W = _w, H = _h, Sub = Sub,
+                X0 = 1, Y0 = 1, X1 = _w - 2, Y1 = _h - 2,
+                DoorFloor = fl, PlatFloor = null, Shut = bl, Open = null, SubOut = so, EdgeOut = eo, Changed = null,
+            };
+            Native.MrpNative.WaterCells(&a);
+        }
+    }
+
+    // Grid の C# 版 (照合用)
+    private static void GridCs()
+    {
         int sw = SolidMap.W;
         for (int y = 0; y < _h; y++)
         for (int x = 0; x < _w; x++)
@@ -497,6 +526,69 @@ internal static class Decompression
     // 範囲を塗り直し、前の範囲の気圧を升の数で混ぜて移す。oldComp/oldPress = 作り直す前 (無ければ全部満タン)
     private static void Regions(int[] oldComp, int[] oldPress)
     {
+        if (!Native.MrpNative.Verify) RegionsNative(_comp, oldComp, oldPress, out _compCells, out _press);
+        else
+        {
+            var vComp = new int[_comp.Length];
+            RegionsNative(vComp, oldComp, oldPress, out var vCells, out var vPress);
+            RegionsCs(oldComp, oldPress);
+            long diff = vCells.Length != _compCells.Length || vPress.Length != _press.Length ? 1 : 0;
+            for (int k = 0; k < vComp.Length; k++) if (vComp[k] != _comp[k]) diff++;
+            for (int c = 0; c < Math.Min(vCells.Length, _compCells.Length); c++) if (vCells[c] != _compCells[c] || vPress[c] != _press[c]) diff++;
+            VerifyBuilds++;
+            VerifyDiff += diff;
+        }
+        Field();
+    }
+
+    // 照合 (native verify): 升・範囲・道のり・つかめる所を C# でも作って比べた回数と食い違った数
+    internal static long VerifyBuilds, VerifyDiff;
+    // C++ に渡す置き場 (升の数ぶん。外壁が抜けてから船が変わるまで持つ)
+    private static int[] _nStack, _nCells, _nPress, _nCnt, _nQk, _nQnext, _nSeeds;
+    private static long[] _nSum, _nGrips;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct RegionArgs
+    {
+        public ushort* Sub; public byte* Edge;
+        public int W, H;
+        public int* Comp, Stack, Cells, Press;
+        public int* OldComp, OldPress;
+        public long* Sum; public int* Cnt;
+        public int Full;
+        public int CompN;
+    }
+
+    private static int[] Scratch(ref int[] a, int n) => a != null && a.Length >= n ? a : a = new int[n];
+    private static long[] Scratch(ref long[] a, int n) => a != null && a.Length >= n ? a : a = new long[n];
+
+    private static unsafe void RegionsNative(int[] comp, int[] oldComp, int[] oldPress, out int[] cells, out int[] press)
+    {
+        int n = _w * _h;
+        var st = Scratch(ref _nStack, n);
+        var ce = Scratch(ref _nCells, n);
+        var pr = Scratch(ref _nPress, n);
+        var cn = Scratch(ref _nCnt, n);
+        var su = Scratch(ref _nSum, n);
+        int nc;
+        fixed (ushort* sub = _sub) fixed (byte* edge = _edge) fixed (int* co = comp) fixed (int* stp = st) fixed (int* cep = ce) fixed (int* prp = pr)
+        fixed (int* oc = oldComp) fixed (int* op = oldPress) fixed (long* sup = su) fixed (int* cnp = cn)
+        {
+            var a = new RegionArgs
+            {
+                Sub = sub, Edge = edge, W = _w, H = _h, Comp = co, Stack = stp, Cells = cep, Press = prp,
+                OldComp = oc, OldPress = op, Sum = sup, Cnt = cnp, Full = Full,
+            };
+            Native.MrpNative.DecompRegions(&a);
+            nc = a.CompN;
+        }
+        cells = ce.AsSpan(0, nc).ToArray();
+        press = pr.AsSpan(0, nc).ToArray();
+    }
+
+    // Regions の C# 版 (照合用)
+    private static void RegionsCs(int[] oldComp, int[] oldPress)
+    {
         int n = _w * _h;
         Array.Fill(_comp, -1);
         var cells = new List<int>();
@@ -539,7 +631,6 @@ internal static class Decompression
             for (int c = 0; c < press.Length; c++) press[c] = cnt[c] > 0 ? (int)(sum[c] / cnt[c]) : Full;
         }
         _press = press;
-        Field();
     }
 
     // 開いている口からの道のり (縦横 2・斜め 3 の最短路を道のりの値ごとの桶で)。Cap より先は塗らない
@@ -549,9 +640,7 @@ internal static class Decompression
         Array.Fill(_dist, Far);
         Array.Fill(_par, -1);
         Array.Clear(_seed);
-        var buckets = new List<int>[Cap + 4];
-        for (int i = 0; i < buckets.Length; i++) buckets[i] = new List<int>();
-        bool any = false;
+        Seeds.Clear();
         for (int bi = 0; bi < Breaches.Count; bi++)
         {
             var br = Breaches[bi];
@@ -570,13 +659,77 @@ internal static class Decompression
                     if (SegDist(c, a, b) > SeedReach) continue;
                     _dist[k] = 0;
                     _seed[k] = bi + 1;
-                    buckets[0].Add(k);
+                    Seeds.Add(k);
                     if (br.Comp < 0) br.Comp = _comp[k];
-                    any = true;
                 }
             }
         }
-        if (any)
+        bool any = Seeds.Count > 0;
+        Grips.Clear();
+        int gn;
+        if (!Native.MrpNative.Verify) gn = FieldNative(_dist, _par);
+        else
+        {
+            var vDist = (ushort[])_dist.Clone();
+            var vPar = (int[])_par.Clone();
+            gn = FieldNative(vDist, vPar);
+            FieldCs();
+            var cand = any ? GripCandsCs() : new List<long>();
+            long diff = cand.Count != gn ? 1 : 0;
+            for (int k = 0; k < _dist.Length; k++) if (vDist[k] != _dist[k] || vPar[k] != _par[k]) diff++;
+            for (int i = 0; i < Math.Min(gn, cand.Count); i++) if (cand[i] != _nGrips[i]) diff++;
+            VerifyBuilds++;
+            VerifyDiff += diff;
+        }
+        if (any) PickGrips(gn);
+        Fields++;
+        FieldGen++;
+        LastFieldMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    private static readonly List<int> Seeds = new(); // 口の際の升 (入れた順 = 道のりの桶 0 の順)
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct FieldArgs
+    {
+        public ushort* Sub; public byte* Edge; public byte* Furn;
+        public int W, H, Cap;
+        public ushort* Dist; public int* Par;
+        public int* Seeds; public int SeedN;
+        public int* Qk; public int* Qnext;
+        public int GripR, GripMax;
+        public long* Grips; public int GripN;
+    }
+
+    // Field の C++ 版。dist と par へ道のりを書き、出っ張った角の候補を _nGrips に並べて数を返す
+    private static unsafe int FieldNative(ushort[] dist, int[] par)
+    {
+        int n = _w * _h, sn = Seeds.Count;
+        var seeds = Scratch(ref _nSeeds, Math.Max(1, sn));
+        for (int i = 0; i < sn; i++) seeds[i] = Seeds[i];
+        var qk = Scratch(ref _nQk, sn + 8 * n);
+        var qn = Scratch(ref _nQnext, sn + 8 * n);
+        var gr = Scratch(ref _nGrips, n);
+        fixed (ushort* sub = _sub) fixed (byte* edge = _edge) fixed (byte* furn = _furn) fixed (ushort* dp = dist) fixed (int* pp = par)
+        fixed (int* sp = seeds) fixed (int* qkp = qk) fixed (int* qnp = qn) fixed (long* gp = gr)
+        {
+            var a = new FieldArgs
+            {
+                Sub = sub, Edge = edge, Furn = furn, W = _w, H = _h, Cap = Cap, Dist = dp, Par = pp,
+                Seeds = sp, SeedN = sn, Qk = qkp, Qnext = qnp, GripR = GripR, GripMax = GripMaxSolid, Grips = gp,
+            };
+            Native.MrpNative.DecompField(&a);
+            return a.GripN;
+        }
+    }
+
+    // Field の道のりの C# 版 (照合用)
+    private static void FieldCs()
+    {
+        var buckets = new List<int>[Cap + 4];
+        for (int i = 0; i < buckets.Length; i++) buckets[i] = new List<int>();
+        buckets[0].AddRange(Seeds);
+        if (Seeds.Count > 0)
             for (int v = 0; v <= Cap; v++)
             {
                 var list = buckets[v];
@@ -599,11 +752,6 @@ internal static class Decompression
                     }
                 }
             }
-        Grips.Clear();
-        if (any) FindGrips();
-        Fields++;
-        FieldGen++;
-        LastFieldMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
     private static bool Solid(int x, int y)
@@ -617,9 +765,10 @@ internal static class Decompression
     // 爆発で縁がギザギザ・斜めでも拾えるように面の形でなく塞がりの割合で見る。尖った物から順に GripSpacing 以上離して取る
     private const int GripR = 3, GripMaxSolid = 20;
 
-    private static void FindGrips()
+    // 候補の C# 版 (照合用)。(塞がりの数 << 32 | 升) の小さい順
+    private static List<long> GripCandsCs()
     {
-        var cand = new List<(int N, int K)>();
+        var cand = new List<long>();
         for (int y = GripR; y < _h - GripR; y++)
         for (int x = GripR; x < _w - GripR; x++)
         {
@@ -635,11 +784,18 @@ internal static class Decompression
             for (int dy = -GripR; dy <= GripR; dy++)
             for (int dx = -GripR; dx <= GripR; dx++)
                 if (Solid(x + dx, y + dy)) n++;
-            if (n >= 4 && n <= GripMaxSolid) cand.Add((n, y * _w + x)); // 4 升未満は爆発の後の塵
+            if (n >= 4 && n <= GripMaxSolid) cand.Add((long)n << 32 | (uint)(y * _w + x)); // 4 升未満は爆発の後の塵
         }
-        cand.Sort((a, b) => a.N != b.N ? a.N.CompareTo(b.N) : a.K.CompareTo(b.K));
-        foreach (var (_, k) in cand)
+        cand.Sort();
+        return cand;
+    }
+
+    // 候補 (_nGrips の先頭 gn 個) を尖った物から順に GripSpacing 以上離して取る
+    private static void PickGrips(int gn)
+    {
+        for (int i = 0; i < gn; i++)
         {
+            int k = (int)(uint)_nGrips[i];
             float px = _org.x + (k % _w + 0.5f) * _cell, py = _org.y + (k / _w + 0.5f) * _cell;
             bool near = false;
             foreach (var g in Grips)
@@ -1065,6 +1221,7 @@ internal static class Decompression
         Pulling = false;
         FieldGen++;
         _sub = null; _edge = null; _blocked = null; _floor = null; _furn = null; _comp = null; _dist = null; _par = null; _seed = null;
+        _nStack = _nCells = _nPress = _nCnt = _nQk = _nQnext = _nSeeds = null; _nSum = _nGrips = null;
         _compCells = Array.Empty<int>();
         _press = Array.Empty<int>();
         _open1024 = Array.Empty<int>();

@@ -6,6 +6,7 @@
 // 水の升 1 つ = SolidMap の升 sub×sub 個。歩ける升 (か水だけが届く升) の並びを升ごとのビットにし、
 // 4 個未満・ばらばら・閉じた扉の升は 0。境の通れる向きは範囲と外周 1 升に書く。
 // 開いているか (open) が変わった升は範囲の升の番号順に changed へ並べる (水の寄せと起こしは C# が同じ順に行う)
+// 外壁の気圧 (Decompression) も同じ判定で呼ぶ: platFloor・open・changed は null (開閉の記録は取らない)
 
 struct CellsArgs
 {
@@ -109,9 +110,10 @@ MRP_API void mrp_water_cells(CellsArgs* a)
             for (int sx = 0; sx < sub; sx++)
                 if (a->solid[row + sx] != 0 || a->wet != nullptr && a->wet[row + sx] != 0) bits |= 1 << (sy * sub + sx);
         int k = y * w + x;
-        if (a->doorFloor[k] != 0 || a->platFloor[k] != 0) bits = 0xFFFF;
+        if (a->doorFloor[k] != 0 || a->platFloor != nullptr && a->platFloor[k] != 0) bits = 0xFFFF;
         if (std::popcount((unsigned)bits) < 4 || !connected(bits, sub) || a->shut[k] != 0) bits = 0;
         a->subOut[k] = (uint16_t)bits;
+        if (a->open == nullptr) continue;
         uint8_t open = bits != 0 ? 1 : 0;
         if (open != a->open[k]) a->changed[nc++] = k;
     }
