@@ -19,7 +19,14 @@ internal static class RubbleBake
     private const int MaxPx = 2048;         // 1 枚の縦横の上限 (升より大きくはみ出した時の歯止め)
     private const long SettleMs = 500;      // 最後に止まってからこれだけ待ってまとめて焼く (読み戻しは GPU を待つので回数を減らす)
     private const int MaxBatch = 96;        // これだけ溜まったら待たずに焼く
-    private const int SheetsPerFrame = 2;   // 1 フレームに焼く枚数 (読み戻しは GPU を待つので、残りは次のフレームへ)
+    // 1 フレームに焼く量: 1 枚焼いた後、さらにこの時間まで続けて焼く (残りは次のフレームへ)。端末の読み戻しは GPU がそれまでの描画を
+    // 終えるまで待つので 1 枚目が重く (重い場面で 5〜35ms)、同じフレームの 2 枚目からは 1ms 前後 (実測)。枚数で区切ると重いフレームが増える。
+    // PC は GPU の中で写すので待ちが無く、1 枚ずつの重さだけ
+#if ANDROID
+    private const double ExtraBudgetMs = 6.0;
+#else
+    private const double ExtraBudgetMs = 1.0;
+#endif
 
     // テスト用: false で自動では焼かない (止まった物は GameObject のまま溜めておき、bake now で焼く = 焼く前後の比較)
     internal static bool Enabled = true;
@@ -53,7 +60,7 @@ internal static class RubbleBake
     {
         if (Queue.Count == 0 || !Enabled) return;
         if (Queue.Count < MaxBatch && Environment.TickCount64 - _lastAddMs < SettleMs) return;
-        Flush(SheetsPerFrame);
+        Flush(budget: true);
     }
 
     private sealed class Group
@@ -63,8 +70,8 @@ internal static class RubbleBake
         public readonly List<Pending> Items = new();
     }
 
-    // 溜まっている瓦礫を焼く (maxSheets 枚まで。残りは列に戻して次に回す)
-    public static string Flush(int maxSheets = int.MaxValue)
+    // 溜まっている瓦礫を焼く (budget = 1 フレームの予算まで。残りは列に戻して次に回す)
+    public static string Flush(bool budget = false)
     {
         if (Queue.Count == 0) return "nothing";
         if (!EnsureCamera()) { Queue.Clear(); return "no camera"; }
@@ -82,10 +89,15 @@ internal static class RubbleBake
         }
         Queue.Clear();
 
-        int sheets = 0, items = 0, tried = 0;
+        int sheets = 0, items = 0;
+        long firstDone = 0;
         foreach (var g in groups.Values)
         {
-            if (tried++ >= maxSheets) { Queue.AddRange(g.Items); continue; }
+            if (budget && firstDone != 0 && (System.Diagnostics.Stopwatch.GetTimestamp() - firstDone) * 1000.0 / System.Diagnostics.Stopwatch.Frequency > ExtraBudgetMs)
+            {
+                Queue.AddRange(g.Items);
+                continue;
+            }
             int layer = g.Items[0].Go.layer;
             foreach (var p in g.Items) p.Go.layer = BakeLayer;
             if (!Render(g))
@@ -95,6 +107,7 @@ internal static class RubbleBake
                 continue;
             }
             sheets++;
+            if (firstDone == 0) firstDone = System.Diagnostics.Stopwatch.GetTimestamp();
             foreach (var p in g.Items)
             {
                 if (p.OwnSprite && p.Sr.sprite) UnityEngine.Object.Destroy(p.Sr.sprite);
