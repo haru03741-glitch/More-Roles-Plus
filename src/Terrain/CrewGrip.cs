@@ -183,8 +183,10 @@ internal static class CrewGrip
             _popAt = -1f;
             _state = State.Free;
             _shown = false;
+            _strandTried = false;
         }
         if (Flights.Count > 0) TickFlights();
+        if (SolidMap.AnySealed && ++_strandFrame >= StrandEvery) { _strandFrame = 0; CheckStranded(); }
         bool danger = _state != State.Free || (Decompression.Pulling && _hasTarget);
         if (!danger)
         {
@@ -454,6 +456,48 @@ internal static class CrewGrip
         _presses = 0;
         RestoreBody();
         if (_shown) Hide();
+    }
+
+    // ── 口の外側に取り残された自分 ─────────────────────────────────────
+    // 口の線は切れた壁の線から引くので、掘った穴の中に立っていると口の外側 (船の外にした升) に残ることがある。
+    // そこは流れの範囲の外なので引かれず、口の線で船の中へも戻れない。開いた口が近ければ吸い出し、
+    // ふさがった後やホストが断った時は船の中のいちばん近い床へ戻す
+    private const int StrandEvery = 15;      // 何フレームおきに見るか
+    private const float StrandOut = 1.5f;    // 開いた口がこれ以内なら吸い出す (ホストが確かめる HostReach より内側)
+    private const float StrandSearch = 3f;   // 戻す床を探す距離
+    private const float StrandClear = 0.2f;  // 戻す所で体が壁に掛からない余白
+    private static int _strandFrame;
+    private static bool _strandTried;        // 取り残されて吸い出しを頼んだ (断られたら床へ戻す)
+
+    private static void CheckStranded()
+    {
+        if (_state != State.Free) return;
+        var pc = PlayerControl.LocalPlayer;
+        if (!pc || pc.Data == null || pc.Data.IsDead || pc.inVent || !pc.CanMove) return;
+        var pos = pc.GetTruePosition();
+        if (!SolidMap.SealedAt(pos.x, pos.y)) { _strandTried = false; return; }
+        if (!_strandTried && Decompression.MouthDist(pos, out _) <= StrandOut)
+        {
+            _strandTried = true;
+            Plugin.Logger.LogInfo($"[CrewGrip] stranded behind mouth at {pos.x:0.00},{pos.y:0.00}");
+            Out(pc);
+            return;
+        }
+        if (!SolidMap.NearestFloor(pos.x, pos.y, StrandSearch, StrandClear, out var floor))
+        {
+            Plugin.Logger.LogWarning($"[CrewGrip] stranded at {pos.x:0.00},{pos.y:0.00} with no floor nearby");
+            return;
+        }
+        _strandTried = false;
+        // SnapTo は体の根の位置なので、足元 (GetTruePosition) との差を引く
+        var root = pc.transform.position;
+        var to = FxMath.V2(floor.x - (pos.x - root.x), floor.y - (pos.y - root.y));
+        Plugin.Logger.LogInfo($"[CrewGrip] stranded at {pos.x:0.00},{pos.y:0.00} -> back to {floor.x:0.00},{floor.y:0.00}");
+        var nt = pc.NetTransform;
+        if (AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay)
+            nt.SnapTo(to, (ushort)(nt.lastSequenceId + 328)); // 手元だけ動かす。同じ sequence id だと古い位置として捨てられる
+        else
+            nt.RpcSnapTo(to);
     }
 
     // ── 吸い出し ───────────────────────────────────────────────────────

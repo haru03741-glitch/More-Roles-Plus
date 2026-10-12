@@ -263,6 +263,44 @@ internal static class SolidMap
 
     private static bool OutsideCell(int x, int y) => x < 0 || y < 0 || x >= _w || y >= _h || _outside[y * _w + x] == 1;
 
+    // 口の向こうとして船の外にした升の上か (口が引かれた時にその外側に取り残された人を見つける用)
+    internal static bool AnySealed => _sealed != null;
+
+    internal static bool SealedAt(float px, float py)
+    {
+        if (_sealed == null || !Valid) return false;
+        int x = (int)MathF.Floor((px - _origin.x) * _ppu), y = (int)MathF.Floor((py - _origin.y) * _ppu);
+        if (x < 0 || y < 0 || x >= _w || y >= _h) return false;
+        return _sealed[y * _w + x] != 0;
+    }
+
+    // (px, py) から max 以内で、半径 clear の体が収まる歩ける所 (口の向こうでない) のいちばん近い升の中心
+    internal static bool NearestFloor(float px, float py, float max, float clear, out Vector2 at)
+    {
+        at = default;
+        if (!Valid) return false;
+        int cx = (int)MathF.Floor((px - _origin.x) * _ppu), cy = (int)MathF.Floor((py - _origin.y) * _ppu);
+        int r = (int)MathF.Ceiling(max * _ppu), c = Math.Max(1, (int)MathF.Ceiling(clear * _ppu));
+        int best = int.MaxValue, bx = 0, by = 0;
+        for (int y = Math.Max(c, cy - r); y <= Math.Min(_h - 1 - c, cy + r); y++)
+        for (int x = Math.Max(c, cx - r); x <= Math.Min(_w - 1 - c, cx + r); x++)
+        {
+            int d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+            if (d >= best || d > r * r) continue;
+            if (!Floor(x, y) || !Floor(x - c, y) || !Floor(x + c, y) || !Floor(x, y - c) || !Floor(x, y + c)) continue;
+            best = d; bx = x; by = y;
+        }
+        if (best == int.MaxValue) return false;
+        at = new Vector2(_origin.x + (bx + 0.5f) / _ppu, _origin.y + (by + 0.5f) / _ppu);
+        return true;
+
+        bool Floor(int x, int y)
+        {
+            int k = y * _w + x;
+            return _open[k] != 0 && (_sealed == null || _sealed[k] == 0) && (_outside == null || _outside[k] != 1);
+        }
+    }
+
     // エアシップの船体の塊 (赤い板) の中か
     public static bool InHull(Vector2 p)
     {
