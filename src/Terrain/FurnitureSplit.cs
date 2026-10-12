@@ -175,6 +175,16 @@ internal static class FurnitureSplit
 
     private static IntPtr _ship; // Sprite を作った船
 
+    // 表の鍵 (船/親/名前) の名前の部分
+    private static readonly HashSet<string> Leaves = MakeLeaves();
+
+    private static HashSet<string> MakeLeaves()
+    {
+        var set = new HashSet<string>();
+        foreach (var k in Table.Keys) set.Add(k.Substring(k.LastIndexOf('/') + 1));
+        return set;
+    }
+
     // 船ごとに 1 回 (PropSim と壊れる家具が集める前・どちらが先に呼んでもよい)。前の船で作った Sprite はここで消す。
     // 同じ船で 2 回目に呼ばれた時は、もう分けた物 (分けた家具の兄弟がある) を飛ばす
     internal static void Apply(ShipStatus ship)
@@ -188,8 +198,10 @@ internal static class FurnitureSplit
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
         {
             var tr = sr.transform;
+            string name = tr.name;
+            if (!Leaves.Contains(name)) continue; // 名前を先に見る (親と有効かを全部の絵で読まない)
             if (!sr.enabled || !tr.parent) continue;
-            if (!Table.TryGetValue(shipName + "/" + tr.parent.name + "/" + tr.name, out var entry)) continue;
+            if (!Table.TryGetValue(shipName + "/" + tr.parent.name + "/" + name, out var entry)) continue;
             if (tr.parent.Find(tr.name + "-" + entry.Pieces[0].Name)) continue;
             Made.Clear();
             try { Split(sr, entry); }

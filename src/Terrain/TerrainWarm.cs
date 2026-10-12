@@ -22,7 +22,7 @@ internal static class TerrainWarm
     private static double _maxTick;
 
     public static string Report =>
-        $"stage={_stage} jit={StageMs[0]:F1}ms ({_methods} methods, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1} props={StageMs[6]:F1} breakables={StageMs[7]:F1} decompfx={StageMs[8]:F1} water={StageMs[9]:F1} edges={StageMs[10]:F1} floor={StageMs[11]:F1} gc={StageMs[12]:F1}";
+        $"stage={_stage} jit={StageMs[0]:F1}ms ({_methods} methods, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1} props={StageMs[6]:F1} breakables+low={StageMs[7]:F1} decompfx={StageMs[8]:F1} water={StageMs[9]:F1} edges={StageMs[10]:F1} floor={StageMs[11]:F1} gc={StageMs[12]:F1}";
 
     public static void Tick()
     {
@@ -49,8 +49,8 @@ internal static class TerrainWarm
                 case 3: FractureSites.Warm(); break;
                 case 4: RubbleBake.Warm(); ShadowPatch.Warm(); break;
                 case 5: SolidMap.Ensure(); break;
-                case 6: PropSim.Warm(); LowFurniture.Ensure(); break; // 歩ける所の地図の次のフレーム (同じフレームに積むと 1 回の止まりが長い)
-                case 7: BreakableProps.Warm(); break;
+                case 6: PropSim.Warm(); break; // 歩ける所の地図の次のフレーム (同じフレームに積むと 1 回の止まりが長い)
+                case 7: BreakableProps.Warm(); LowFurniture.Ensure(); break; // 低い家具は壊れる家具を集めてから数える (PropSim と同じフレームに積むと PC でも 20ms を超える)
                 case 8: DecompFx.Warm(); FireFx.Warm(); BreakNoise.Warm(); break;
                 case 9: WaterSim.Warm(); break;
                 case 10: WaterSim.WarmEdges(); break;

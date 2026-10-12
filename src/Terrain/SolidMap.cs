@@ -102,9 +102,11 @@ internal static class SolidMap
     }
 
     // 歩けない所 (壁の中・塊・船の外・地図の外) か
-    public static bool Solid(Vector2 p)
+    public static bool Solid(Vector2 p) => Solid(p.x, p.y);
+
+    public static bool Solid(float px, float py)
     {
-        int x = (int)MathF.Floor((p.x - _origin.x) * _ppu), y = (int)MathF.Floor((p.y - _origin.y) * _ppu);
+        int x = (int)MathF.Floor((px - _origin.x) * _ppu), y = (int)MathF.Floor((py - _origin.y) * _ppu);
         if (x < 0 || y < 0 || x >= _w || y >= _h) return true;
         return _open[y * _w + x] == 0;
     }
@@ -303,12 +305,14 @@ internal static class SolidMap
 
     // エアシップの船体の塊 (赤い板) の中か
     // 画素ごとにも呼ぶので Rect の数は直に読む (InsideAny と同じ)
-    public static bool InHull(Vector2 p)
+    public static bool InHull(Vector2 p) => InHull(p.x, p.y);
+
+    public static bool InHull(float px, float py)
     {
         for (int i = 0; i < HullRects.Count; i++)
         {
             var r = HullRects[i];
-            if (p.x > r.m_XMin && p.x < r.m_XMin + r.m_Width && p.y > r.m_YMin && p.y < r.m_YMin + r.m_Height) return true;
+            if (px > r.m_XMin && px < r.m_XMin + r.m_Width && py > r.m_YMin && py < r.m_YMin + r.m_Height) return true;
         }
         return false;
     }
@@ -1449,35 +1453,44 @@ internal static class SolidMap
         float step = 1f / _ppu;
         foreach (var r in HullRects)
         {
-            made += Side(new Vector2(r.xMin, r.yMin), new Vector2(r.xMax, r.yMin), new Vector2(0, -1));
-            made += Side(new Vector2(r.xMax, r.yMin), new Vector2(r.xMax, r.yMax), new Vector2(1, 0));
-            made += Side(new Vector2(r.xMax, r.yMax), new Vector2(r.xMin, r.yMax), new Vector2(0, 1));
-            made += Side(new Vector2(r.xMin, r.yMax), new Vector2(r.xMin, r.yMin), new Vector2(-1, 0));
+            float x0 = r.m_XMin, y0 = r.m_YMin, x1 = r.m_XMin + r.m_Width, y1 = r.m_YMin + r.m_Height;
+            made += Side(x0, y0, x1, y0, 0, -1);
+            made += Side(x1, y0, x1, y1, 1, 0);
+            made += Side(x1, y1, x0, y1, 0, 1);
+            made += Side(x0, y1, x0, y0, -1, 0);
         }
         return made;
 
-        int Side(Vector2 a, Vector2 b, Vector2 outward)
+        // 辺の上を 1 升ずつ見る。Vector2 の演算子は 1 回ごとに interop なので小数で書く
+        int Side(float ax, float ay, float bx, float by, float ox, float oy)
         {
-            float len = (b - a).magnitude;
-            Vector2 dir = (b - a) / len;
+            float ex = bx - ax, ey = by - ay;
+            float len = MathF.Sqrt(ex * ex + ey * ey);
+            float dx = ex / len, dy = ey / len;
             int count = (int)MathF.Ceiling(len / step);
-            var run = new List<Vector2>();
-            int k = 0;
+            int k = 0, runN = 0;
+            float sx = 0, sy = 0, lx = 0, ly = 0; // 続きの始めと終わり
             for (int i = 0; i <= count; i++)
             {
-                Vector2 p = a + dir * Math.Min(i * step, len);
-                bool outer = !InHull(p + outward * 0.02f);
-                bool keepPt = outer && Solid(p + outward * EdgeProbe) && Solid(p - outward * EdgeProbe);
-                if (keepPt) run.Add(p);
-                if ((!keepPt || i == count) && run.Count > 0)
+                float s = Math.Min(i * step, len);
+                float px = ax + dx * s, py = ay + dy * s;
+                bool outer = !InHull(px + ox * 0.02f, py + oy * 0.02f);
+                bool keepPt = outer && Solid(px + ox * EdgeProbe, py + oy * EdgeProbe) && Solid(px - ox * EdgeProbe, py - oy * EdgeProbe);
+                if (keepPt)
                 {
-                    if (run.Count >= 2 && (run[run.Count - 1] - run[0]).magnitude >= 0.2f)
+                    if (runN == 0) { sx = px; sy = py; }
+                    lx = px; ly = py; runN++;
+                }
+                if ((!keepPt || i == count) && runN > 0)
+                {
+                    float rx = lx - sx, ry = ly - sy;
+                    if (runN >= 2 && MathF.Sqrt(rx * rx + ry * ry) >= 0.2f)
                     {
                         var col = go.AddComponent<EdgeCollider2D>();
-                        col.points = new[] { (Vector2)t.InverseTransformPoint(run[0]), (Vector2)t.InverseTransformPoint(run[run.Count - 1]) };
+                        col.points = new[] { (Vector2)t.InverseTransformPoint(new Vector3(sx, sy, 0)), (Vector2)t.InverseTransformPoint(new Vector3(lx, ly, 0)) };
                         k++;
                     }
-                    run.Clear();
+                    runN = 0;
                 }
             }
             return k;

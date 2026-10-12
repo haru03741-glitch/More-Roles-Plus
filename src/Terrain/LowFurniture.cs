@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MoreRolesPlus.Fx;
 using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
@@ -52,21 +53,27 @@ internal static class LowFurniture
         if (!ship || !SolidMap.Valid) return;
         string shipName = FurnitureKinds.ShipName(ship);
         var pts = new List<Vector2>();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        int nCol = 0;
         foreach (var c in ship.GetComponentsInChildren<Collider2D>(false))
         {
             if (!c || !c.enabled || c.isTrigger || c.gameObject.layer != ShipLayer) continue;
             if (c.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || c.GetComponentInParent<OpenableDoor>()) continue;
             if (FurnitureKinds.TryGet(c.transform, shipName, out _) || BreakableProps.Owns(c)) continue; // 動く家具・物ごと壊れる家具は別に守る
+            nCol++;
             if (Natural(c.transform)) continue;
-            var t = c.transform;
+            // 頂点は物ごとに行列を 1 回読んで小数で直す (TransformPoint と Vector2 の演算子は 1 回ごとに interop)
+            var m = c.transform.localToWorldMatrix;
             var edge = c.TryCast<EdgeCollider2D>();
             if (edge)
             {
                 var src = edge.points;
                 if (src.Length < 2) continue;
+                var o = edge.offset;
                 pts.Clear();
-                foreach (var p in src) pts.Add(t.TransformPoint(p + edge.offset));
-                if (pts.Count < 4 || (pts[0] - pts[pts.Count - 1]).magnitude >= 0.05f) continue; // 開いた線
+                foreach (var p in src) Add(pts, m, p.x + o.x, p.y + o.y);
+                float gx = pts[0].x - pts[pts.Count - 1].x, gy = pts[0].y - pts[pts.Count - 1].y;
+                if (pts.Count < 4 || MathF.Sqrt(gx * gx + gy * gy) >= 0.05f) continue; // 開いた線
                 pts.RemoveAt(pts.Count - 1);
                 Check(c, pts);
                 continue;
@@ -74,21 +81,24 @@ internal static class LowFurniture
             var box = c.TryCast<BoxCollider2D>();
             if (box)
             {
-                Vector2 hs = box.size * 0.5f, o = box.offset;
+                var sz = box.size;
+                var o = box.offset;
+                float hx = sz.x * 0.5f, hy = sz.y * 0.5f;
                 pts.Clear();
-                pts.Add(t.TransformPoint(o + new Vector2(-hs.x, -hs.y))); pts.Add(t.TransformPoint(o + new Vector2(hs.x, -hs.y)));
-                pts.Add(t.TransformPoint(o + new Vector2(hs.x, hs.y))); pts.Add(t.TransformPoint(o + new Vector2(-hs.x, hs.y)));
+                Add(pts, m, o.x - hx, o.y - hy); Add(pts, m, o.x + hx, o.y - hy);
+                Add(pts, m, o.x + hx, o.y + hy); Add(pts, m, o.x - hx, o.y + hy);
                 Check(c, pts);
                 continue;
             }
             var poly = c.TryCast<PolygonCollider2D>();
             if (poly)
             {
+                var o = poly.offset;
                 for (int k = 0; k < poly.pathCount; k++)
                 {
                     var path = poly.GetPath(k);
                     pts.Clear();
-                    foreach (var p in path) pts.Add(t.TransformPoint(p + poly.offset));
+                    foreach (var p in path) Add(pts, m, p.x + o.x, p.y + o.y);
                     Check(c, pts);
                 }
                 continue;
@@ -96,18 +106,26 @@ internal static class LowFurniture
             var circle = c.TryCast<CircleCollider2D>();
             if (circle)
             {
+                var o = circle.offset;
+                float rad = circle.radius;
                 pts.Clear();
                 for (int i = 0; i < 16; i++)
                 {
                     float ang = i * MathF.PI / 8f;
-                    pts.Add(t.TransformPoint(circle.offset + new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * circle.radius));
+                    Add(pts, m, o.x + MathF.Cos(ang) * rad, o.y + MathF.Sin(ang) * rad);
                 }
                 Check(c, pts);
             }
         }
+        double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        Plugin.Logger.LogInfo($"[LowFurniture] rects={Rects.Count} surveyed={Survey.Count} colliders={nCol} shadowProbes={_nShadow} ms={sw.Elapsed.TotalMilliseconds:F1}");
+        _nShadow = 0;
     }
 
     // 輪の外側が床か・影の線が沿っているか
+    private static void Add(List<Vector2> pts, Matrix4x4 m, float x, float y) =>
+        pts.Add(FxMath.V2(m.m00 * x + m.m01 * y + m.m03, m.m10 * x + m.m11 * y + m.m13));
+
     private static void Check(Collider2D c, List<Vector2> pts)
     {
         int n = pts.Count;
@@ -121,29 +139,52 @@ internal static class LowFurniture
         }
         if (x1 - x0 > MaxSide || y1 - y0 > MaxSide) return;
         float outSign = area2 >= 0f ? -1f : 1f; // 左回りの輪なら、進む向きの右が外
+        // 先に床だけ数え、床が足りた輪だけ影の線を問い合わせる (物理の問い合わせが重い)。
+        // 影が上限を超えた所で打ち切る (守らないと決まる)。打ち切った輪の影の割合はテスト用の記録に NaN で残す
         int pieces = 0, floor = 0, shadow = 0;
-        for (int i = 0; i < n; i++)
+        bool measured = false;
+        for (int pass = 0; pass < 2; pass++)
         {
-            Vector2 a = pts[i], d = pts[(i + 1) % n] - a;
-            float len = d.magnitude;
-            if (len < 1e-4f) continue;
-            Vector2 dir = d / len, nrm = new(-dir.y, dir.x);
-            int parts = Math.Max(1, (int)MathF.Ceiling(len / Piece));
-            for (int k = 0; k < parts; k++)
+            if (pass == 1)
             {
-                Vector2 m = a + dir * (len * (k + 0.5f) / parts);
-                pieces++;
-                if (SolidMap.IslandAt(m + nrm * (outSign * FloorProbe)) != 0) floor++;
-                if (Physics2D.OverlapCircleAll(m, ShadowNear, Constants.ShadowMask).Length > 0) shadow++; // OverlapCircle (1 個版) は Android の libunity に無い
+                if (pieces == 0 || floor / (float)pieces < MinFloor) break;
+                measured = true;
+            }
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 a = pts[i], b = pts[(i + 1) % n];
+                float ex = b.x - a.x, ey = b.y - a.y;
+                float len = MathF.Sqrt(ex * ex + ey * ey);
+                if (len < 1e-4f) continue;
+                float dx = ex / len, dy = ey / len, nx = -dy, ny = dx;
+                int parts = Math.Max(1, (int)MathF.Ceiling(len / Piece));
+                for (int k = 0; k < parts; k++)
+                {
+                    float s = len * (k + 0.5f) / parts;
+                    float mx = a.x + dx * s, my = a.y + dy * s;
+                    if (pass == 0)
+                    {
+                        pieces++;
+                        float q = outSign * FloorProbe;
+                        if (SolidMap.IslandAt(mx + nx * q, my + ny * q) != 0) floor++;
+                        continue;
+                    }
+                    if (Physics2D.OverlapCircleAll(FxMath.V2(mx, my), ShadowNear, Constants.ShadowMask).Length > 0) shadow++; // OverlapCircle (1 個版) は Android の libunity に無い
+                    _nShadow++;
+                    if (shadow / (float)pieces > MaxShadow) { measured = false; break; }
+                }
+                if (pass == 1 && !measured) break;
             }
         }
         if (pieces == 0) return;
-        float fFloor = floor / (float)pieces, fShadow = shadow / (float)pieces;
-        bool kept = fFloor >= MinFloor && fShadow <= MaxShadow;
+        float fFloor = floor / (float)pieces, fShadow = measured ? shadow / (float)pieces : float.NaN;
+        bool kept = measured && fShadow <= MaxShadow;
         var rc = Rect.MinMaxRect(x0 - Margin, y0 - Margin, x1 + Margin, y1 + DamageMap.FurnitureUp);
         if (kept) Rects.Add(rc);
         if (fFloor >= 0.2f) Survey.Add(new Found(rc, Path(c), kept, fFloor, fShadow));
     }
+
+    private static int _nShadow; // 影の線の問い合わせの数 (ログ用)
 
     private static bool Natural(Transform t)
     {

@@ -321,8 +321,11 @@ internal static partial class PropSim
         _w = SolidMap.W; _h = SolidMap.H; _org = SolidMap.Origin;
         _cellU = (int)MathF.Round(Unit / SolidMap.Ppu);
         _block = new byte[_w * _h];
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         FurnitureSplit.Apply(ship); // 1 枚の絵にまとめて描かれた家具を家具ごとに分けてから集める
+        double tSplit = sw.Elapsed.TotalMilliseconds;
         var own = OwnFurniture(ship);
+        double tOwn = sw.Elapsed.TotalMilliseconds;
         foreach (var v in ship.AllVents) if (v) Stamp(v.transform.position);
         // 家具に載った端末は家具と一緒に動くので、周りを塞がない (塞ぐと家具が自分の端末に引っ掛かる)
         foreach (var c in ship.AllConsoles) if (c && !OnOwnFurniture(c.transform, own)) Stamp(c.transform.position);
@@ -343,6 +346,7 @@ internal static partial class PropSim
             var prop = Make(sr);
             if (prop != null) Props.Add(prop);
         }
+        double tScan = sw.Elapsed.TotalMilliseconds;
         var lifts = new List<FurnitureLift.Lift>();
         FurnitureLift.Collect(ship, lifts);
         int plain = Props.Count;
@@ -358,6 +362,7 @@ internal static partial class PropSim
         for (int i = 0; i < Props.Count; i++) Props[i].Index = i;
         // 家具 (重い物) の上に載っている絵 (動く物と飾り) は家具と一緒に動かす。
         // 当たり判定が重なった家具 (分けた箱の山の手前の箱と奥の台) では、先に並んだ家具 (手前) だけが載せる
+        double tLift = sw.Elapsed.TotalMilliseconds;
         var claimed = new HashSet<int>();
         foreach (var h in Props)
         {
@@ -375,6 +380,7 @@ internal static partial class PropSim
         Heavies.Clear();
         foreach (var h in Props) if (h.Kind == Kind.Heavy) Heavies.Add(h);
         // 机など (家具の層の当たり判定) の上に置かれた物: 水は下を通るので、元の場所にいる間は流さない
+        double tRide = sw.Elapsed.TotalMilliseconds;
         int perched = 0;
         foreach (var q in Props)
         {
@@ -392,6 +398,7 @@ internal static partial class PropSim
             }
         }
         // 中の詰まった家具 (高さの表)
+        double tPerch = sw.Elapsed.TotalMilliseconds;
         Solids.Clear();
         Furnished.Clear();
         string shipName = FurnitureKinds.ShipName(ship);
@@ -422,10 +429,12 @@ internal static partial class PropSim
             Stills.Add(q);
             AddFurnished(q, fe);
         }
+        double tSolid = sw.Elapsed.TotalMilliseconds;
         Untie();
-        Plugin.Logger.LogInfo($"[PropSim] perched={perched} solids={Solids.Count}");
+        double tUntie = sw.Elapsed.TotalMilliseconds;
         _ready = true;
         WaterArt.FrontAll();
+        Plugin.Logger.LogInfo($"[PropSim] perched={perched} solids={Solids.Count} props={Props.Count} ms={sw.Elapsed.TotalMilliseconds:F1} (split={tSplit:F1} own={tOwn - tSplit:F1} scan={tScan - tOwn:F1} lift={tLift - tScan:F1} ride={tRide - tLift:F1} perch={tPerch - tRide:F1} solid={tSolid - tPerch:F1} untie={tUntie - tSolid:F1} front={sw.Elapsed.TotalMilliseconds - tUntie:F1})");
         return true;
     }
 

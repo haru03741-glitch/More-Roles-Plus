@@ -90,6 +90,8 @@ internal static class FurnitureLift
     // 端末が載っていて動かさない家具 (水面の板だけ付ける)
     internal static void CollectStill(ShipStatus ship, List<Lift> into) => Collect(ship, into, true, true);
 
+    private const float BoxSlack = 0.05f; // 外接箱で端末を省く時のゆとり (当たり判定の形は箱の中に収まる)
+
     private static void Collect(ShipStatus ship, List<Lift> into, bool all, bool still)
     {
         var consoles = new List<Vector2>();
@@ -99,11 +101,17 @@ internal static class FurnitureLift
         {
             if (!col || !col.enabled || col.isTrigger || col.gameObject.layer != FurnitureLayer) continue;
             if (col.GetComponent<SpriteRenderer>()) continue; // 自分の絵を持つ物は部屋の絵に描き込まれていない
-            bool hasConsole = false;
-            foreach (var p in consoles) if (col.OverlapPoint(p)) { hasConsole = true; break; }
-            if (hasConsole != still) continue;
+            // 外接箱は直に読む (Bounds の min/max は 1 回ごとに interop)。箱の外の端末は物理に問い合わせない
             var b = col.bounds;
-            var r = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
+            float x0 = b.m_Center.x - b.m_Extents.x, y0 = b.m_Center.y - b.m_Extents.y, x1 = b.m_Center.x + b.m_Extents.x, y1 = b.m_Center.y + b.m_Extents.y;
+            bool hasConsole = false;
+            foreach (var p in consoles)
+            {
+                if (p.x < x0 - BoxSlack || p.x > x1 + BoxSlack || p.y < y0 - BoxSlack || p.y > y1 + BoxSlack) continue;
+                if (col.OverlapPoint(p)) { hasConsole = true; break; }
+            }
+            if (hasConsole != still) continue;
+            var r = Rect.MinMaxRect(x0, y0, x1, y1);
             string room = BreakPieces.RoomNameAt(r.center, r);
             var floor = room == null ? null : FloorFor(room, col.name);
             if (room == null || (!all && floor == null)) continue; // 床を測っていない家具は動かさない
