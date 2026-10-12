@@ -362,16 +362,26 @@ internal static class ShadowPatch
     private static void FillSpare()
     {
         if (ReadBack || !Enabled || Spare.Count >= SpareTarget || Tiles.Count + Spare.Count >= MaxTiles) return;
+        if (!SolidMap.Valid || _spareFailGen == GameClock.ShipGen) return; // 試合の外では Unity を呼ばない
         if (!DamageMap.ShipTransform || !EnsureCamera()) return;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         long budget = (long)(SpareBudgetMs * System.Diagnostics.Stopwatch.Frequency / 1000.0);
-        do
+        try
         {
-            Spare.Push(MakePatch());
-            SpareMade++;
+            do
+            {
+                Spare.Push(MakePatch());
+                SpareMade++;
+            }
+            while (Spare.Count < SpareTarget && Tiles.Count + Spare.Count < MaxTiles && System.Diagnostics.Stopwatch.GetTimestamp() - t0 < budget);
         }
-        while (Spare.Count < SpareTarget && Tiles.Count + Spare.Count < MaxTiles && System.Diagnostics.Stopwatch.GetTimestamp() - t0 < budget);
+        catch (Exception e)
+        {
+            _spareFailGen = GameClock.ShipGen; // この船では作り置かない (焼く時にその場で作る)
+            Plugin.Logger.LogWarning($"shadow patch spare failed: {e.Message}");
+        }
     }
+    private static int _spareFailGen = -1;
 
     private static Patch TakeSpare()
     {

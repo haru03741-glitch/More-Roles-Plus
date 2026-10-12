@@ -107,9 +107,9 @@ internal static class WaterArt
     private static void TickCore()
     {
         if (_spareGen != GameClock.ShipGen) { _spareGen = GameClock.ShipGen; DropSpare(); }
-        if (!MrpBundle.WaterMaterial) return;
         // 水が出る前 (水の格子が無い) から作り置く: 最初の水が広がる時がいちばん多く要る
         if (!WaterSim.Ready) { if (Tiles.Count > 0) Clear(); _lastMs = 0; FillSpare(); return; }
+        if (!MrpBundle.WaterMaterial) return;
         bool spike = TerrainStep.SpikeMs > 0;
         long s0 = spike ? System.Diagnostics.Stopwatch.GetTimestamp() : 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
         long e0 = EnsureTicks, f0 = FurnTicks, c0 = FaceTicks;
@@ -1384,7 +1384,7 @@ internal static class WaterArt
     // 描くタイルが無いフレームに 1 枚
     private static void FillSpare()
     {
-        if (Spare.Count >= SpareTarget || !SolidMap.Valid || !ShadowView.Ready(out _)) return;
+        if (Spare.Count >= SpareTarget || !SolidMap.Valid || !MrpBundle.WaterMaterial || !ShadowView.Ready(out _)) return;
         Spare.Push(MakeParts(WaterSim.Sub / SolidMap.Ppu)); // 水の升の大きさ (水の格子を作る時と同じ式)
         SpareMade++;
     }
