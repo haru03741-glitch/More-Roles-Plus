@@ -55,6 +55,7 @@ internal static class WaterArt
         public int FurnVersion;
         public MaterialPropertyBlock Block;
         public Texture2D Floor; // 床マスク (部屋の絵の画素ごとの床) をこのタイルの範囲で切り出した物
+        public ulong FloorHash; // 照合 (native verify) の時だけ: 作った時の床マスクの指紋
         public Texture2D Front; // 影の中の写しで抜く、水より手前の家具の絵の形 (家具の無いタイルは null)
         public Texture2D Flow;  // 升ごとの流れの速さ (R, G = x, y)。シェーダが水面の筋をこの向きと速さで流す
         public byte[] FlowPx;
@@ -301,7 +302,7 @@ internal static class WaterArt
         if (t.FloorDirty)
         {
             t.FloorDirty = false;
-            if (t.Floor && t.Sr) { UnityEngine.Object.Destroy(t.Floor); MakeFloor(t, org0x + x0 * cs, org0y + y0 * cs, tc * cs); }
+            if (t.Floor && t.Sr) { UnityEngine.Object.Destroy(t.Floor); MakeFloor(t, org0x + x0 * cs, org0y + y0 * cs, tc * cs); FloorFromDirty++; }
         }
         if (!t.FaceDone)
         {
@@ -1315,16 +1316,55 @@ internal static class WaterArt
         }
     }
 
+    // 床マスクの作り直しの回数 (water prof): 出来事の待ち行列から・描く時の壊れから・合計時間
+    internal static long FloorFromQueue, FloorFromDirty, FloorTicks;
+
     private static unsafe void MakeFloor(Tile t, float wx, float wy, float size)
     {
+        long f0 = System.Diagnostics.Stopwatch.GetTimestamp();
         int m = (int)MathF.Round(size * FloorMask.Ppu);
         var buf = new byte[m * m];
         FloorMask.Fill(wx, wy, size, m, buf);
         WaterHeight.StampFloor(buf, m, wx, wy, size);
+        t.FloorHash = Native.MrpNative.Verify ? Fnv(buf) : 0;
         t.Floor = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFloor", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         fixed (byte* b = buf) t.Floor.LoadRawTextureData((IntPtr)b, buf.Length);
         t.Floor.Apply(false, true);
         SetFloor(t, !FloorMask.Off);
+        FloorTicks += System.Diagnostics.Stopwatch.GetTimestamp() - f0;
+    }
+
+    private static ulong Fnv(byte[] b)
+    {
+        ulong h = 14695981039346656037UL;
+        foreach (byte v in b) h = (h ^ v) * 1099511628211UL;
+        return h;
+    }
+
+    // 照合: 指紋のあるタイルの床マスクを今の状態で作り直して比べる (作り直し待ちのタイルは数えない)。
+    // 違う = 床の形が変わったのに作り直していない
+    internal static string FloorCheck()
+    {
+        float size = WaterSim.TileCells * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        int n = 0, diff = 0, pending = 0;
+        var sb = new System.Text.StringBuilder();
+        foreach (var kv in Tiles)
+        {
+            var t = kv.Value;
+            if (!t.Floor || !t.Sr || t.FloorHash == 0) continue;
+            if (t.FloorDirty || FloorQueued.Contains(kv.Key)) { pending++; continue; }
+            float wx = org.x + t.Tx * size, wy = org.y + t.Ty * size;
+            int m = (int)MathF.Round(size * FloorMask.Ppu);
+            var buf = new byte[m * m];
+            FloorMask.Fill(wx, wy, size, m, buf);
+            WaterHeight.StampFloor(buf, m, wx, wy, size);
+            n++;
+            if (Fnv(buf) == t.FloorHash) continue;
+            diff++;
+            if (diff <= 6) sb.Append($" ({t.Tx},{t.Ty})");
+        }
+        return $"tiles={n} floorDiff={diff} pending={pending}{sb}";
     }
 
     // 床マスクを作り直すタイル (1 タイル数 ms かかるので 1 フレームに FloorBudgetMs まで。作り終わるまでは前の床のまま)
@@ -1354,6 +1394,7 @@ internal static class WaterArt
             if (!Tiles.TryGetValue(key, out var t) || !t.Floor || !t.Sr) continue;
             UnityEngine.Object.Destroy(t.Floor);
             MakeFloor(t, org.x + t.Tx * size, org.y + t.Ty * size, size);
+            FloorFromQueue++;
             if (System.Diagnostics.Stopwatch.GetTimestamp() - start >= budget) break;
         }
         FloorQueue.RemoveRange(0, done);
@@ -1361,7 +1402,12 @@ internal static class WaterArt
 
     // 床マスクの r の範囲が変わった (持ち上げた家具の跡が床になった): 掛かるタイルのマスクを作り直す。
     // マスクは CPU 側の写しを捨てて作ってあるので、書き換えずに作り直す
-    internal static void FloorChanged(Rect r)
+    internal static void FloorChanged(Rect r) => Changed(r, true);
+
+    // 歩ける所が r の範囲で変わった (床マスクの形は別の道で作り直す): 水の写し元だけ決め直して描き直す
+    internal static void FillChanged(Rect r) => Changed(r, false);
+
+    private static void Changed(Rect r, bool floor)
     {
         if (!FloorMask.Active) return;
         float size = WaterSim.TileCells * WaterSim.Cell;
@@ -1375,10 +1421,11 @@ internal static class WaterArt
             float x0 = org.x + t.Tx * size, y0 = org.y + t.Ty * size;
             if (wide.xMax <= x0 || wide.xMin >= x0 + size || wide.yMax <= y0 || wide.yMin >= y0 + size) continue;
             if (_fillFrom != null && !t.Empty && !t.Waiting) { t.Waiting = true; Waiting.Add(kv.Key); }
-            if (!t.Floor || !t.Sr) continue;
+            if (!floor || !t.Floor || !t.Sr) continue;
             if (r.xMax <= x0 || r.xMin >= x0 + size || r.yMax <= y0 || r.yMin >= y0 + size) continue;
             if (FloorQueued.Add(kv.Key)) FloorQueue.Add(kv.Key);
         }
+        if (!floor) return;
         // 変わった所の真ん中に近いタイルから作り直す
         float mx = r.center.x - org.x - size * 0.5f, my = r.center.y - org.y - size * 0.5f;
         FloorQueue.Sort((a, b) => FloorDist(a, mx, my, size).CompareTo(FloorDist(b, mx, my, size)));

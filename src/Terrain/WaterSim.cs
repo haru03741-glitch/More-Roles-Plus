@@ -1388,6 +1388,35 @@ internal static partial class WaterSim
         }
     }
 
+    // 床マスクに出る落ちる縁 (StampLips と同じ判定) の、出来事の前の写し。範囲は両端を含む
+    private static byte[] _lipSnap = Array.Empty<byte>();
+    private static int _snapX0, _snapY0, _snapX1, _snapY1;
+
+    private static void SnapLips(int x0, int y0, int x1, int y1)
+    {
+        _snapX0 = Math.Max(0, x0); _snapY0 = Math.Max(0, y0);
+        _snapX1 = Math.Min(_w - 1, x1); _snapY1 = Math.Min(_h - 1, y1);
+        int sw = _snapX1 - _snapX0 + 1, sh = _snapY1 - _snapY0 + 1;
+        if (sw <= 0 || sh <= 0) return;
+        if (_lipSnap.Length < sw * sh) _lipSnap = new byte[sw * sh];
+        for (int y = _snapY0, i = 0; y <= _snapY1; y++)
+            for (int x = _snapX0, k = y * _w + _snapX0; x <= _snapX1; x++, k++, i++)
+                _lipSnap[i] = (_fallMask[k] & ~_lipMask[k]) != 0 ? (byte)1 : (byte)0;
+    }
+
+    // 写しと今を比べ、変わった升の範囲を (x0, y0)〜(x1, y1) (x1, y1 は含まない) へ足す
+    private static void LipsChanged(ref int x0, ref int y0, ref int x1, ref int y1)
+    {
+        for (int y = _snapY0, i = 0; y <= _snapY1; y++)
+            for (int x = _snapX0, k = y * _w + _snapX0; x <= _snapX1; x++, k++, i++)
+            {
+                byte now = (_fallMask[k] & ~_lipMask[k]) != 0 ? (byte)1 : (byte)0;
+                if (now == _lipSnap[i]) continue;
+                x0 = Math.Min(x0, x); y0 = Math.Min(y0, y);
+                x1 = Math.Max(x1, x + 1); y1 = Math.Max(y1, y + 1);
+            }
+    }
+
     // 回す升に入れる。濡れていて回す升に居ない升は「眠っている」= 流れ出しが 0 のまま変わらない升 (片付けで外す)。
     // 自分か隣の高さ・地形が変わる所は必ずここを通して起こす
     private static void Wake(int k)
@@ -1427,15 +1456,16 @@ internal static partial class WaterSim
             if (p.Leak) { Sources.Add(p.Src); continue; }
             if (p.Inflow) { Inflows.Add(new Inflow { K = p.Cy * _w + p.Cx, End = p.Sr > 0 ? p.Tick + p.Sr : 0, Rate = p.Sp }); continue; }
             if (p.Push) { Push(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed); continue; }
-            Rebuild(p.Cx - p.R, p.Cy - p.R, p.Cx + p.R, p.Cy + p.R);
-            // 壁の穴は床マスクでも床になる (絵の損傷はもう書き込み済み)。この刻みの範囲をまとめて、タイルの床の形を 1 回だけ作り直す
-            fx0 = Math.Min(fx0, p.Cx - p.R); fy0 = Math.Min(fy0, p.Cy - p.R);
-            fx1 = Math.Max(fx1, p.Cx + p.R + 1); fy1 = Math.Max(fy1, p.Cy + p.R + 1);
             int reach = p.R + FallScan[3] + 1;
+            SnapLips(p.Cx - reach, p.Cy - reach, p.Cx + reach, p.Cy + reach);
+            Rebuild(p.Cx - p.R, p.Cy - p.R, p.Cx + p.R, p.Cy + p.R);
             Links(p.Cx - reach, p.Cy - reach, p.Cx + reach, p.Cy + reach);
-            // 落ちる縁は床の形にも出る (StampLips) ので、縁を引き直した範囲まで作り直す
-            fx0 = Math.Min(fx0, p.Cx - reach); fy0 = Math.Min(fy0, p.Cy - reach);
-            fx1 = Math.Max(fx1, p.Cx + reach + 1); fy1 = Math.Max(fy1, p.Cy + reach + 1);
+            // 壁の穴は歩ける所が変わるので、水の写し元をその周りだけ決め直す。
+            // 穴が床マスクに出る分は壁の絵の側 (HeightChanged) がタイルの床を作り直す
+            WaterArt.FillChanged(Rect.MinMaxRect(_org.x + (p.Cx - p.R) * _cell, _org.y + (p.Cy - p.R) * _cell,
+                _org.x + (p.Cx + p.R + 1) * _cell, _org.y + (p.Cy + p.R + 1) * _cell));
+            // 落ちる縁は床の形にも出る (StampLips) ので、縁が本当に変わった升の範囲だけタイルの床を作り直す
+            LipsChanged(ref fx0, ref fy0, ref fx1, ref fy1);
             if (p.Shock) Shock(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed);
         }
         // 中の詰まった家具の足元の床 (この刻みの確定した家具の姿)
@@ -2546,14 +2576,19 @@ internal static partial class WaterSim
                 reply($"OK water zflow={ZFlow} native={Native.MrpNative.Loaded} (this device only・水を消すと on に戻る)");
                 return;
             }
+            if (a.StartsWith("floorcheck"))
+            {
+                reply($"OK water floorcheck {WaterArt.FloorCheck()}");
+                return;
+            }
             if (a.StartsWith("prof"))
             {
                 double k = ProfSteps > 0 ? 1000.0 / System.Diagnostics.Stopwatch.Frequency / ProfSteps : 0;
                 var t = ProfTicks;
                 int sleeping = 0;
                 for (int c = 0; _inList != null && c < _inList.Length; c++) if (_inList[c] == 0 && Counted(c)) sleeping++;
-                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()} | thread async={AsyncSteps} sync={SyncSteps} wait={JoinWaitTicks * k:0.000} early={EarlyJoins} | links n={LinkPasses} edges={LinkEdges} ms/pass scan={(LinkPasses > 0 ? LinkProf[0] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} ray={(LinkPasses > 0 ? LinkProf[1] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} post={(LinkPasses > 0 ? LinkProf[2] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000}");
-                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; WaterArt.ProfThreadTiles = 0; ArtThreadTicks = 0; AsyncSteps = SyncSteps = JoinWaitTicks = EarlyJoins = 0; Array.Clear(LinkProf); LinkPasses = LinkEdges = 0; }
+                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()} | thread async={AsyncSteps} sync={SyncSteps} wait={JoinWaitTicks * k:0.000} early={EarlyJoins} | links n={LinkPasses} edges={LinkEdges} ms/pass scan={(LinkPasses > 0 ? LinkProf[0] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} ray={(LinkPasses > 0 ? LinkProf[1] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} post={(LinkPasses > 0 ? LinkProf[2] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} | floor queue={WaterArt.FloorFromQueue} dirty={WaterArt.FloorFromDirty} ms={WaterArt.FloorTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0}");
+                if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; WaterArt.ProfThreadTiles = 0; ArtThreadTicks = 0; AsyncSteps = SyncSteps = JoinWaitTicks = EarlyJoins = 0; Array.Clear(LinkProf); LinkPasses = LinkEdges = 0; WaterArt.FloorFromQueue = WaterArt.FloorFromDirty = WaterArt.FloorTicks = 0; }
                 return;
             }
             if (a.StartsWith("flood"))
