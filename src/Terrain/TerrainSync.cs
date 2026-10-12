@@ -434,8 +434,10 @@ internal static class TerrainSync
     // 一人の時 (フリープレイ・オフライン): その場で決めて適用する
     private static string ApplyAlone(in DamageEvent e, byte actor, out bool ok)
     {
+        long rt = System.Diagnostics.Stopwatch.GetTimestamp();
         SyncShip();
         ok = TerrainDamage.TryResolve(e, out var r, out string why);
+        TerrainDamage.LastResolveMs = (System.Diagnostics.Stopwatch.GetTimestamp() - rt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         if (!ok) return why;
         string res = ApplyNow(_nextSeq++, TerrainWire.RoundTrip(r.WithActor(actor).WithTick(GameClock.Stamp)), decide: true, out _);
         FireBroken();

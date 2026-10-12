@@ -2557,7 +2557,7 @@ internal static partial class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | sweep start|check | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             // 預けた刻みを終わらせてから (確認用の操作は水の配列を直に読み書きする)
@@ -2582,13 +2582,21 @@ internal static partial class WaterSim
                 reply($"OK water floorcheck {WaterArt.FloorCheck()}");
                 return;
             }
+            if (a.StartsWith("spikes"))
+            {
+                // 刻みの計算が閾値 (ms・既定 1) を超えたフレームの区間の内訳を記録に出す。off で止める
+                var q = a.Substring(6).Trim();
+                TerrainStep.SpikeMs = q == "off" ? 0 : double.TryParse(q, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double sm) ? sm : 1.0;
+                reply($"OK water spikes {(TerrainStep.SpikeMs > 0 ? $"{TerrainStep.SpikeMs:0.##}ms" : "off")}");
+                return;
+            }
             if (a.StartsWith("prof"))
             {
                 double k = ProfSteps > 0 ? 1000.0 / System.Diagnostics.Stopwatch.Frequency / ProfSteps : 0;
                 var t = ProfTicks;
                 int sleeping = 0;
                 for (int c = 0; _inList != null && c < _inList.Length; c++) if (_inList[c] == 0 && Counted(c)) sleeping++;
-                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()} | thread async={AsyncSteps} sync={SyncSteps} wait={JoinWaitTicks * k:0.000} early={EarlyJoins} | links n={LinkPasses} edges={LinkEdges} ms/pass scan={(LinkPasses > 0 ? LinkProf[0] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} ray={(LinkPasses > 0 ? LinkProf[1] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} post={(LinkPasses > 0 ? LinkProf[2] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} | floor queue={WaterArt.FloorFromQueue} dirty={WaterArt.FloorFromDirty} ms={WaterArt.FloorTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0} thread={WaterArt.FloorFromThread}/{WaterArt.FloorThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0}ms");
+                reply($"OK water prof steps={ProfSteps} active={_actN} sleeping={sleeping} ms/step events={t[0] * k:0.000} doors={t[1] * k:0.000} jets={t[2] * k:0.000} blow={t[3] * k:0.000} sub={t[4] * k:0.000} subfalls={t[5] * k:0.000} falls={t[6] * k:0.000} tidy={t[7] * k:0.000} | per step pre={TerrainStep.ProfTicks[0] * k:0.000} decomp={TerrainStep.ProfTicks[1] * k:0.000} prop={TerrainStep.ProfTicks[2] * k:0.000} water={TerrainStep.ProfTicks[3] * k:0.000} fire={TerrainStep.ProfTicks[4] * k:0.000} burn={TerrainStep.ProfTicks[5] * k:0.000} | art tiles/step={(ProfSteps > 0 ? (double)WaterArt.ProfTiles / ProfSteps : 0):0.00} ms/tile {ArtProf()} | thread async={AsyncSteps} sync={SyncSteps} wait={JoinWaitTicks * k:0.000} early={EarlyJoins} | links n={LinkPasses} edges={LinkEdges} ms/pass scan={(LinkPasses > 0 ? LinkProf[0] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} ray={(LinkPasses > 0 ? LinkProf[1] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} post={(LinkPasses > 0 ? LinkProf[2] * 1000.0 / System.Diagnostics.Stopwatch.Frequency / LinkPasses : 0):0.000} | floor queue={WaterArt.FloorFromQueue} dirty={WaterArt.FloorFromDirty} ms={WaterArt.FloorTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0} thread={WaterArt.FloorFromThread}/{WaterArt.FloorThreadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0}ms");
                 if (a.Contains("reset")) { Array.Clear(ProfTicks); Array.Clear(TerrainStep.ProfTicks); ProfSteps = 0; Array.Clear(WaterArt.ProfTicks); WaterArt.ProfTiles = 0; WaterArt.ProfThreadTiles = 0; ArtThreadTicks = FoamThreadTicks = 0; AsyncSteps = SyncSteps = JoinWaitTicks = EarlyJoins = 0; Array.Clear(LinkProf); LinkPasses = LinkEdges = 0; WaterArt.FloorFromQueue = WaterArt.FloorFromDirty = WaterArt.FloorTicks = WaterArt.FloorFromThread = WaterArt.FloorThreadTicks = 0; }
                 return;
             }

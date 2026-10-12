@@ -121,7 +121,10 @@ internal static class TerrainDamage
 
     public static string Apply(in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
-        if (decide) { Array.Clear(StageTicks, 0, StageTicks.Length); Marks.Clear(); _markT = System.Diagnostics.Stopwatch.GetTimestamp(); }
+        // 刻みの記録は客でも毎回空にする (客は決めないが Mark は積むので、空にしないと増え続ける)
+        if (decide) Array.Clear(StageTicks, 0, StageTicks.Length);
+        Marks.Clear();
+        _markT = System.Diagnostics.Stopwatch.GetTimestamp();
         LastCut = LastPieces = LastBlocks = 0;
         LastMaterial = null;
         LastPitch = 1f;
@@ -535,6 +538,7 @@ internal static class TerrainDamage
             if (WallPeel.Hit(hit, normal, e.Direction, hp, e.Seed) ||
                 DamageMap.Cracks(hit, reach, AngleOf(SlantAxis(dir, e.Direction, p.MaxSlantDeg, out _))) == null) TerrainFx.Chip(hit, dir, e.Seed);
             if (e.Kind == DamageKind.Burn) FireFx.AddSmolder(hit.x - normal.x * 0.1f, hit.y - normal.y * 0.1f, normal.y, -normal.x, 0.25f, 1.6f, false);
+            Mark("crack");
             return $"blunt hit hp={hp} at=({hit.x:0.00},{hit.y:0.00})";
         }
 
@@ -551,6 +555,7 @@ internal static class TerrainDamage
         var walls = WallsNear(center, shape.BoundRadius);
         var body = new WallBody(ShipOnly(walls), hit + normal * 0.1f); // 地図が無い時は叩いた側 (歩ける床) を基準に壁の中を判定
         body.UseSolidMap(center, shape.BoundRadius + 0.2f);
+        Mark("walls");
         var shipRemoved = new List<Vector2>(); // 動きの層で切った区間 (高さの違う所に縁を張る用)
         foreach (var col in walls)
         {
@@ -562,6 +567,7 @@ internal static class TerrainDamage
         body.SetOpening(removed);
         int caps = cut > 0 ? WallBody.Build(body.Caps(shape)) : 0;
         int ledges = cut > 0 ? HeightLevels.Build(shipRemoved) : 0; // 高さの違う床の境は、見た目と視界だけ抜けて歩いては越えられない
+        Mark("cut");
 
         // 下から叩いた (壁の手前の床に立っている) 時は、叩いた点の少し上から下を見た目では抜かない
         // Polus だけ (壁の当たり判定が見た目の根元より下まで伸びている実測)。他のマップで掛けると壁の根元の線が残る
@@ -577,7 +583,9 @@ internal static class TerrainDamage
         cracks.Add(StrikeCrack(crackAt, normal, e.Direction, e.Seed, default));
         string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, cracks) : null;
         if (visual == null && cut > 0) HideWallDecor(shape);
+        Mark("breach");
         if (cut > 0) SolidMap.Carve(shape, keep, hit + normal * 0.1f); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
+        Mark("carve");
         if (cut > 0) WallPeel.Release(hit);
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
         // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
@@ -585,6 +593,7 @@ internal static class TerrainDamage
         else if (visual == null)
             landings = TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed, pieces, removed,
                 WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f, given, e.Kind == DamageKind.Burn);
+        Mark("fx");
         LastCut = cut; LastPieces = pieces.Count; LastBlocks = landings.Length;
         return $"blunt breach cut={cut} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";
     }

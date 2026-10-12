@@ -10,8 +10,11 @@ internal static class TerrainStep
     private const int MaxStepsPerFrame = 20;
     private static int _failedGen = -1;
 
-    // 区間ごとの時間 (water prof): 前置き・減圧・物・水・火
-    internal static readonly long[] ProfTicks = new long[5];
+    // 区間ごとの時間 (water prof): 前置き・減圧・物・水・火・壁の焼け
+    internal static readonly long[] ProfTicks = new long[6];
+    // 重かったフレームの内訳を記録に出す (water spikes on/off・閾値 ms)
+    internal static double SpikeMs;
+    private static readonly long[] _spike0 = new long[6 + 8 + 3];
     private static long _profT;
     private static void Prof(int i)
     {
@@ -30,6 +33,8 @@ internal static class TerrainStep
     public static void Tick()
     {
         _profT = System.Diagnostics.Stopwatch.GetTimestamp();
+        long t0 = _profT, steps0 = WaterSim.ProfSteps;
+        if (SpikeMs > 0) SpikeBegin();
         try
         {
             Decompression.CheckShip();
@@ -71,7 +76,7 @@ internal static class TerrainStep
                 Prof(4);
             }
             FireSim.IssueWallBurns();
-            Prof(4);
+            Prof(5);
         }
         catch (Exception e)
         {
@@ -79,5 +84,36 @@ internal static class TerrainStep
             _failedGen = GameClock.ShipGen;
             Plugin.Logger.LogError($"[TerrainStep] {e}");
         }
+        if (SpikeMs > 0) SpikeEnd(t0, steps0);
+    }
+
+    // 焼けが壁まで届いて適用された (届かなかった打は Apply の記録が前の打の物のまま)
+    private static bool BurnApplied()
+    {
+        string w = FireSim.LastWallHit;
+        return w != null && (w.StartsWith("blunt hit") || w.StartsWith("blunt breach"));
+    }
+
+    private static void SpikeBegin()
+    {
+        Array.Copy(ProfTicks, 0, _spike0, 0, 6);
+        Array.Copy(WaterSim.ProfTicks, 0, _spike0, 6, 8);
+        Array.Copy(WaterSim.LinkProf, 0, _spike0, 14, 3);
+    }
+
+    private static void SpikeEnd(long t0, long steps0)
+    {
+        double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * k;
+        if (ms < SpikeMs) return;
+        var sb = new System.Text.StringBuilder($"spike {ms:0.00}ms steps={WaterSim.ProfSteps - steps0} |");
+        string[] a = { "pre", "decomp", "prop", "water", "fire", "burn" };
+        for (int i = 0; i < 6; i++) sb.Append($" {a[i]}={(ProfTicks[i] - _spike0[i]) * k:0.00}");
+        string[] w = { "events", "doors", "jets", "blow", "sub", "subfalls", "falls", "tidy" };
+        sb.Append(" | w");
+        for (int i = 0; i < 8; i++) sb.Append($" {w[i]}={(WaterSim.ProfTicks[i] - _spike0[6 + i]) * k:0.00}");
+        sb.Append($" | link scan={(WaterSim.LinkProf[0] - _spike0[14]) * k:0.00} ray={(WaterSim.LinkProf[1] - _spike0[15]) * k:0.00} post={(WaterSim.LinkProf[2] - _spike0[16]) * k:0.00}");
+        if ((ProfTicks[5] - _spike0[5]) * k > 0.5) sb.Append(" | burn ").Append(BurnApplied() ? TerrainDamage.MarksText() + ' ' + TerrainDamage.Breakdown() : $"why={FireSim.LastWallHit}");
+        Bridge.TestBridge.Log(sb.ToString());
     }
 }
