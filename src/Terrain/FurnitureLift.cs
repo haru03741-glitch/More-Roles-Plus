@@ -240,6 +240,49 @@ internal static class FurnitureLift
         int rx = (int)MathF.Ceiling(Math.Max(f.PadL, f.PadR) / sx), ry = (int)MathF.Ceiling(Math.Max(f.PadB, f.PadT) / sy);
         var px = new byte[ShapePx * ShapePx * 4];
         shapeIn = new bool[ShapePx * ShapePx];
+        fixed (bool* ins = inside) fixed (byte* o = px) fixed (bool* si = shapeIn)
+        {
+            var a = new ShapeArgs
+            {
+                Inside = (byte*)ins, N = ShapePx, Rx = rx, Ry = ry, PadL = f.PadL, PadR = f.PadR, PadB = f.PadB, PadT = f.PadT,
+                Sx = sx, Sy = sy, Px = o, ShapeIn = (byte*)si,
+            };
+            Native.MrpNative.LiftShape(&a);
+        }
+        if (Native.MrpNative.Verify)
+        {
+            var csPx = new byte[px.Length];
+            var csIn = new bool[shapeIn.Length];
+            GrowCs(inside, rx, ry, f, sx, sy, csPx, csIn);
+            long diff = 0;
+            for (int i = 0; i < px.Length; i++) if (px[i] != csPx[i]) diff++;
+            for (int i = 0; i < csIn.Length; i++) if (shapeIn[i] != csIn[i]) diff++;
+            VerifyShapes++;
+            VerifyShapeDiff += diff;
+        }
+        var tex = new Texture2D(ShapePx, ShapePx, TextureFormat.RGBA32, false) { name = "MrpLiftShape", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        fixed (byte* b = px) tex.LoadRawTextureData((IntPtr)b, px.Length);
+        tex.Apply(false, false);
+        return tex;
+    }
+
+    // 答え合わせ (native verify): 太らせを C# でもやって比べる
+    internal static long VerifyShapes, VerifyShapeDiff;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct ShapeArgs
+    {
+        public byte* Inside; public int N;
+        public int Rx, Ry;
+        public float PadL, PadR, PadB, PadT;
+        public float Sx, Sy;
+        public byte* Px;
+        public byte* ShapeIn;
+    }
+
+    // C# 版 (照合用)
+    private static void GrowCs(bool[] inside, int rx, int ry, Floor f, float sx, float sy, byte[] px, bool[] shapeIn)
+    {
         for (int y = 0; y < ShapePx; y++)
             for (int x = 0; x < ShapePx; x++)
             {
@@ -263,10 +306,6 @@ internal static class FurnitureLift
                 int i = (y * ShapePx + x) * 4;
                 px[i] = 255; px[i + 1] = 255; px[i + 2] = 255; px[i + 3] = 255;
             }
-        var tex = new Texture2D(ShapePx, ShapePx, TextureFormat.RGBA32, false) { name = "MrpLiftShape", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-        fixed (byte* b = px) tex.LoadRawTextureData((IntPtr)b, px.Length);
-        tex.Apply(false, false);
-        return tex;
     }
 
     // 家具の絵と当たり判定を、元の足元 (pivot) を軸に ang 度回して中心を (cx, cy) へ
