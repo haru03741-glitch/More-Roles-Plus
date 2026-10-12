@@ -2371,6 +2371,28 @@ internal static partial class WaterSim
                 reply(pn < 0 ? "ERR water pour: no map" : $"OK water pour cells={pn} depth={pd}");
                 return;
             }
+            if (a.StartsWith("bench"))
+            {
+                // 確認用: 水を消して丸く注ぎ、刻みを n 回その場で回して指紋と時間を返す (刻みの番号は 0 から・終わったら水を消す)。
+                // 時刻に左右されないので、同じ地形なら端末や版をまたいで同じ指紋になる
+                var q = a.Substring(5).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                var ns = System.Globalization.NumberStyles.Float;
+                if (q.Length < 4 || !int.TryParse(q[0], out int bn) || !float.TryParse(q[1], ns, ic, out float bx) || !float.TryParse(q[2], ns, ic, out float by)
+                    || !float.TryParse(q[3], ns, ic, out float br)) { reply("ERR water bench n x y r [depth]"); return; }
+                int bd = q.Length > 4 && int.TryParse(q[4], out int bd2) ? bd2 : Full;
+                Reset();
+                if (Pour(bx, by, br, bd) < 0) { reply("ERR water bench: no map"); return; }
+                _step = 0;
+                Array.Clear(ProfTicks); ProfSteps = 0;
+                long b0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                for (int i = 0; i < bn; i++) { StepOnce(); _step++; }
+                double bms = (System.Diagnostics.Stopwatch.GetTimestamp() - b0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                double pk = 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, bn);
+                reply($"OK water bench steps={bn} digest={Digest():x8} volume={Volume()} active={_actN} fell={FellTotal} void={VoidTotal} native={Native.MrpNative.On} ms/step={bms / Math.Max(1, bn):0.000} sub={ProfTicks[4] * pk:0.000} tidy={ProfTicks[7] * pk:0.000}");
+                Reset();
+                return;
+            }
             if (a.StartsWith("inflow"))
             {
                 // 浸水の口 (同期する・ホストか一人の時だけ): 秒数 0 = 止まらない
