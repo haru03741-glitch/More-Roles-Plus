@@ -82,10 +82,11 @@
         <MakeDir Directories="$(AndroidApkAssetsDir)" />
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AndroidApkAssetsDir)" />
         <WriteLinesToFile File="$(AndroidApkAssetsDir)$(AssemblyName).dll.properties" Overwrite="true" Lines="version=$(_PluginVersion);sha256=$([System.String]::Copy('$(_PluginSha256)').ToLowerInvariant())" />
-        <!-- C++ の部品 (tools/build-native.ps1 で組んだ物があれば)。ランチャーが DLL と同じ目印で入れる -->
+        <!-- C++ の部品 (tools/build-native.ps1 で組む)。ランチャーが DLL と同じ目印で入れる。無いと地形が動かないので止める -->
         <PropertyGroup>
             <_NativeSo>$(MSBuildProjectDirectory)/build/native/android-arm64/libmrpnative.so</_NativeSo>
         </PropertyGroup>
+        <Error Text="libmrpnative.so がありません。先に tools/build-native.ps1 を回してください ($(_NativeSo))" Condition="!Exists('$(_NativeSo)')" />
         <GetFileHash Files="$(_NativeSo)" Algorithm="SHA256" HashEncoding="hex" Condition="Exists('$(_NativeSo)')">
             <Output TaskParameter="Hash" PropertyName="_NativeSha256" />
         </GetFileHash>

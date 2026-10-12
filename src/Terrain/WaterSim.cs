@@ -469,11 +469,8 @@ internal static partial class WaterSim
     {
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
-        if (Native.MrpNative.On)
-        {
-            if (!Native.MrpNative.Verify) { RebuildNative(x0, y0, x1, y1); return; }
-            VerifyCellsBefore(x0, y0, x1, y1);
-        }
+        if (!Native.MrpNative.Verify) { RebuildNative(x0, y0, x1, y1); return; }
+        VerifyCellsBefore(x0, y0, x1, y1);
         int sw = SolidMap.W;
         var solid = SolidMap.OpenCells;
         var wet = _wet;
@@ -510,7 +507,7 @@ internal static partial class WaterSim
             }
             _edge[k] = (byte)e;
         }
-        if (Native.MrpNative.On) VerifyCellsAfter(x0, y0, x1, y1, changes);
+        VerifyCellsAfter(x0, y0, x1, y1, changes);
     }
 
     // 升の開閉が変わった時の後始末。範囲の升の番号順に呼ぶ (閉じた升の水の寄せ先は、先に変わった升の開閉を見る)
@@ -907,7 +904,7 @@ internal static partial class WaterSim
         bool cliffs = !MapNotes.HasLevels;
         // 床の本当の高さで縁を決めるのは C++ の部品がある時だけ (照合の時は C# と同じ段の順位)。
         // 作った時は先に段の順位で崖の面を測って島の高さを決め、その高さで引き直す
-        bool zray = ZFlow && Native.MrpNative.On && Native.MrpNative.HasFallRay && !Native.MrpNative.Verify;
+        bool zray = ZFlow && !Native.MrpNative.Verify;
         if (full)
         {
             ListLadders(ship);
@@ -1500,23 +1497,29 @@ internal static partial class WaterSim
         SeaInflow();
         Prof(3);
 
-        if (defer && !blow && Native.MrpNative.On && !Native.MrpNative.Verify) { Defer(_step); return true; }
+        if (defer && !blow && !Native.MrpNative.Verify) { Defer(_step); return true; }
         RunSubsteps(blow, _step);
         PostStep(_step, blow);
         return false;
     }
 
-    // 小刻み SubN 回。C++ の部品があればまとめて 1 回で (吸い出しの刻みは C# のまま)
+    // 小刻み SubN 回を C++ でまとめて 1 回で (吸い出しの刻みは C# のまま)
     private static void RunSubsteps(bool blow, int step)
     {
         if (_fs.Length < _fallAt.Length * 3) _fs = new int[_fallAt.Length * 3];
-        if (!blow && Native.MrpNative.On)
-        {
-            if (Native.MrpNative.Verify) VerifyStep(step);
-            else if (!StepNative(false, step)) StepManaged(false, step);
-            Prof(4);
-        }
-        else StepManaged(blow, step);
+        if (blow) { StepManaged(true, step); return; }
+        if (Native.MrpNative.Verify) VerifyStep(step);
+        else if (!StepNative(false, step)) NativeRefused();
+        Prof(4);
+    }
+
+    // C++ が刻みを断った (定数が C# と違う = 部品の作り違い)。C# で代わりに回さず、その刻みは水を動かさない
+    private static bool _refusedLogged;
+    private static void NativeRefused()
+    {
+        if (_refusedLogged) return;
+        _refusedLogged = true;
+        Plugin.Logger.LogError($"[WaterSim] native step refused (constants differ) {Native.MrpNative.Status}");
     }
 
     // 小刻みの後: 落ちる水・眠らせる升の片付け (刻み step)
@@ -1646,7 +1649,7 @@ internal static partial class WaterSim
         var fo0 = (int[])_fo.Clone(); var fs0 = (int[])_fs.Clone(); var fallAt0 = (int[])_fallAt.Clone();
         int actN0 = _actN, foN0 = _foN, fsN0 = _fsN, dirtyN0 = DirtyTiles.Count;
         long void0 = VoidTotal, inflow0 = InflowTotal, seaOut0 = SeaOutTotal;
-        if (!StepNative(true, step)) { StepManaged(false, step); return; }
+        if (!StepNative(true, step)) { NativeRefused(); return; }
         var vHgt = (int[])_hgt.Clone(); var vFlux = (int[])_flux.Clone(); var vMove = (int[])_move.Clone();
         var vAct = (int[])_act.Clone(); var vIn = (byte[])_inList.Clone(); var vStir = (byte[])_stir.Clone();
         var vFo = (int[])_fo.Clone(); var vFs = (int[])_fs.Clone(); var vFallAt = (int[])_fallAt.Clone();
@@ -2502,7 +2505,7 @@ internal static partial class WaterSim
             {
                 if (a.EndsWith("off")) ZFlow = false;
                 else if (a.EndsWith("on")) ZFlow = true;
-                reply($"OK water zflow={ZFlow} native={Native.MrpNative.On} (this device only・水を消すと on に戻る)");
+                reply($"OK water zflow={ZFlow} native={Native.MrpNative.Loaded} (this device only・水を消すと on に戻る)");
                 return;
             }
             if (a.StartsWith("prof"))
@@ -2606,7 +2609,7 @@ internal static partial class WaterSim
                 }
                 double bms = (System.Diagnostics.Stopwatch.GetTimestamp() - b0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
                 double pk = 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, bn);
-                reply($"OK water bench steps={bn} digest={Digest():x8} volume={Volume()} active={_actN} avgActive={bact / Math.Max(1, bn)} fell={FellTotal} void={VoidTotal} native={Native.MrpNative.On} zflow={ZFlow} ms/step={bms / Math.Max(1, bn):0.000} sub={ProfTicks[4] * pk:0.000} tidy={ProfTicks[7] * pk:0.000}");
+                reply($"OK water bench steps={bn} digest={Digest():x8} volume={Volume()} active={_actN} avgActive={bact / Math.Max(1, bn)} fell={FellTotal} void={VoidTotal} native={Native.MrpNative.Loaded} zflow={ZFlow} ms/step={bms / Math.Max(1, bn):0.000} sub={ProfTicks[4] * pk:0.000} tidy={ProfTicks[7] * pk:0.000}");
                 Reset();
                 ZFlow = bz;
                 return;

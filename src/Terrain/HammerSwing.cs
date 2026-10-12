@@ -41,6 +41,7 @@ internal static class HammerSwing
         ok = false;
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.Data == null || lp.Data.IsDead) return new Text("生きている時だけ使えます", "Only while alive");
+        if (!Native.MrpNative.Loaded) return new Text("C++ の部品が読めないので使えません", "Native component missing");
         if (_pendingAt > 0f) return new Text("振っている途中です", "Already swinging");
         Vector2 at = lp.GetTruePosition();
         Vector2 dirAim = Aim(lp, out bool facingLeft);

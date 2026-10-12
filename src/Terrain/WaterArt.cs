@@ -251,9 +251,8 @@ internal static class WaterArt
         int x0 = t.Tx * tc, y0 = t.Ty * tc;
         EnsureScratch();
         var fill = EnsureFill();
-        bool native = Native.MrpNative.On;
-        bool any = native ? RawNative(x0, y0, fill, CraterArgs()) : RawCells(x0, y0, fill);
-        if (native && Native.MrpNative.Verify) VerifyRaw(x0, y0, fill, any);
+        bool any = RawNative(x0, y0, fill, CraterArgs());
+        if (Native.MrpNative.Verify) VerifyRaw(x0, y0, fill, any);
         t.LastDraw = _clock;
         Prof(0);
         int n0 = tc * Px;
@@ -271,8 +270,8 @@ internal static class WaterArt
         int n = tc * Px;
         PrepFloor(t);
         Prof(2);
-        DrawPixels(t, x0, y0, n, native);
-        if (native && Native.MrpNative.Verify) VerifyPixels(t, x0, y0, n);
+        DrawPixels(t, x0, y0, n, true);
+        if (Native.MrpNative.Verify) VerifyPixels(t, x0, y0, n);
         Prof(3);
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
@@ -348,7 +347,7 @@ internal static class WaterArt
 
     // 隠れているタイル (乾いていた) は水があると分かってから家具の型抜きを払うよう、その場で描く
     private static bool CanDefer(Tile t) =>
-        t.Px != null && !t.Empty && _jobN < Jobs.Length && Native.MrpNative.On && Native.MrpNative.Async && !Native.MrpNative.Verify;
+        t.Px != null && !t.Empty && _jobN < Jobs.Length && Native.MrpNative.Async && !Native.MrpNative.Verify;
 
     private static void Defer(Tile t)
     {

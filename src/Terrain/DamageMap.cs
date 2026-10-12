@@ -173,6 +173,7 @@ internal static class DamageMap
 
     private static bool EnsureMap()
     {
+        if (!Native.MrpNative.Loaded) return false; // 地形は C++ の部品が前提 (無い人はメニューで知らせる)
         var ship = ShipStatus.Instance;
         if (!ship) return false;
         if (_ship == ship && (_useRt ? (bool)_rt : (bool)_tex)) return true;
@@ -350,7 +351,6 @@ internal static class DamageMap
 
     private static void StampAny(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
     {
-        if (!Native.MrpNative.On) { Stamp(shape, segs, withScorch, floorY, keep, body, out touched); return; }
         if (!Native.MrpNative.Verify) { StampNative(shape, segs, withScorch, floorY, keep, body, out touched); return; }
         var px0 = (byte[])_pixels.Clone();
         var gens0 = (byte[])_gens.Clone();

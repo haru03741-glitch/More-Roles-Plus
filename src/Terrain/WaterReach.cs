@@ -65,38 +65,31 @@ internal static partial class WaterSim
         _rayQ[_rayN++] = key;
     }
 
-    // 集めた縁の光線をまとめて引く (C++ があればそちら)。照合の時は C# でも引いて比べ、続きは C# の結果で
+    // 集めた縁の光線をまとめて C++ で引く。照合の時は C# でも引いて比べ、続きは C# の結果で
     private static unsafe void RayRun(bool useZ)
     {
         if (_rayOut.Length < _rayN * 5) _rayOut = new int[Math.Max(_rayQ.Length * 5, _rayN * 5)];
-        bool native = Native.MrpNative.On && Native.MrpNative.HasFallRay;
-        if (native)
+        fixed (byte* open = _open) fixed (byte* door = _doorCell) fixed (byte* prop = _propCell) fixed (byte* air = _air)
+        fixed (sbyte* lvl = _lvl) fixed (byte* isl = _cellIsl) fixed (int* islBase = _islBase)
+        fixed (int* q = _rayQ) fixed (int* o = _rayOut)
         {
-            fixed (byte* open = _open) fixed (byte* door = _doorCell) fixed (byte* prop = _propCell) fixed (byte* air = _air)
-            fixed (sbyte* lvl = _lvl) fixed (byte* isl = _cellIsl) fixed (int* islBase = _islBase)
-            fixed (int* q = _rayQ) fixed (int* o = _rayOut)
+            var a = new RayArgs
             {
-                var a = new RayArgs
-                {
-                    Open = open, Door = door, Prop = prop, Air = air, Lvl = lvl, Isl = isl, IslBase = islBase,
-                    Q = q, Out = o, N = _rayN, W = _w, H = _h, IslN = _islBase.Length,
-                    UseZ = useZ && !Native.MrpNative.Verify && isl != null ? 1 : 0, SideScan = SideScan, AirLip = AirLip,
-                };
-                for (int d = 0; d < 4; d++) a.FallScan[d] = FallScan[d];
-                Native.MrpNative.FallRay(&a);
-            }
-            if (!Native.MrpNative.Verify) return;
+                Open = open, Door = door, Prop = prop, Air = air, Lvl = lvl, Isl = isl, IslBase = islBase,
+                Q = q, Out = o, N = _rayN, W = _w, H = _h, IslN = _islBase.Length,
+                UseZ = useZ && !Native.MrpNative.Verify && isl != null ? 1 : 0, SideScan = SideScan, AirLip = AirLip,
+            };
+            for (int d = 0; d < 4; d++) a.FallScan[d] = FallScan[d];
+            Native.MrpNative.FallRay(&a);
         }
+        if (!Native.MrpNative.Verify) return;
         for (int i = 0; i < _rayN; i++)
         {
             int k = _rayQ[i] >> 2, d = _rayQ[i] & 3;
             string why = Ray(k % _w, k / _w, d, _lvl[k], out int to, out int dist, out int tx, out int ty);
             int code = Array.IndexOf(RayWhy, why), o = i * 5;
-            if (native)
-            {
-                VerifyRays++;
-                if (_rayOut[o] != code || _rayOut[o + 1] != to || _rayOut[o + 2] != dist || _rayOut[o + 3] != tx || _rayOut[o + 4] != ty) VerifyRayDiff++;
-            }
+            VerifyRays++;
+            if (_rayOut[o] != code || _rayOut[o + 1] != to || _rayOut[o + 2] != dist || _rayOut[o + 3] != tx || _rayOut[o + 4] != ty) VerifyRayDiff++;
             _rayOut[o] = code; _rayOut[o + 1] = to; _rayOut[o + 2] = dist; _rayOut[o + 3] = tx; _rayOut[o + 4] = ty;
         }
     }

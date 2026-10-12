@@ -81,10 +81,9 @@ internal static partial class WaterSim
     private static void Scan(int x0, int y0, int x1, int y1)
     {
         RimMarks(x0, y0, x1, y1);
-        bool native = Native.MrpNative.On && Native.MrpNative.HasLinkScan;
         // 前の縁の升は落ちる縁と段差の表の件数より多くない
         int cap = FallTo.Count + StepTo.Count + 1;
-        if (native && !Native.MrpNative.Verify)
+        if (!Native.MrpNative.Verify)
         {
             if (_scanCleared.Length < cap) _scanCleared = new int[Math.Max(cap, 256)];
             int n = ScanNative(x0, y0, x1, y1, false, _rayQ, _scanCleared, out int cn);
@@ -115,20 +114,15 @@ internal static partial class WaterSim
             _rayN = n;
             return;
         }
-        int vn = 0, vcn = 0;
-        if (native)
+        if (_vScanCleared.Length < cap) _vScanCleared = new int[Math.Max(cap, 256)];
+        int vn = ScanNative(x0, y0, x1, y1, true, _vScanQ, _vScanCleared, out int vcn);
+        if (vn > _vScanQ.Length)
         {
-            if (_vScanCleared.Length < cap) _vScanCleared = new int[Math.Max(cap, 256)];
-            vn = ScanNative(x0, y0, x1, y1, true, _vScanQ, _vScanCleared, out vcn);
-            if (vn > _vScanQ.Length)
-            {
-                _vScanQ = new int[vn];
-                ScanNative(x0, y0, x1, y1, true, _vScanQ, _vScanCleared, out vcn);
-            }
+            _vScanQ = new int[vn];
+            ScanNative(x0, y0, x1, y1, true, _vScanQ, _vScanCleared, out vcn);
         }
         CsCleared.Clear();
-        ScanCs(x0, y0, x1, y1, native);
-        if (!native) return;
+        ScanCs(x0, y0, x1, y1, true);
         VerifyScans++;
         long diff = vn != _rayN ? 1 : 0;
         if (vcn != CsCleared.Count) diff++;

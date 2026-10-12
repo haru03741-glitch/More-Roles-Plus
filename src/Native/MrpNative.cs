@@ -6,7 +6,7 @@ namespace MoreRolesPlus.Native;
 
 // C++ の部品 (native/src) の読み込み口。plugins の隣の MrpNative.dll / libmrpnative.so を最初に使う時に 1 回だけ読み、
 // 関数の番地を引いておく (DllImport の名前解決は端末で失敗すると呼ぶたびに例外になるので使わない)。
-// 無い・版が違う時は水を止める (Loaded が偽)。On は実行中に切り替えられる (C# 版との答え合わせ用)
+// 無い・版が違う時は地形を全部止める (Loaded が偽)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
 internal static unsafe class MrpNative
 {
     internal const int Abi = 18;
@@ -19,7 +19,6 @@ internal static unsafe class MrpNative
     private static bool _tried;
     private static bool _loaded;
     internal static string Status { get; private set; } = "not loaded";
-    internal static bool Enabled = true;
     internal static bool Verify;
     internal static bool Async = true; // 水の小刻みを作業スレッドで回す (切り替えは答え合わせ用)
 
@@ -37,10 +36,8 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> WaterCells;
     internal static delegate* unmanaged[Cdecl]<void*, void> LinkScan;
     internal static delegate* unmanaged[Cdecl]<void*, void> WaterRaw;
-    internal static bool HasFallRay => FallRay != null;
-    internal static bool HasLinkScan => LinkScan != null;
 
-    // 部品が読めたか (On と違い答え合わせの切り替えを含めない)。偽なら水を止め、部屋の版チェックでも弾く
+    // 部品が読めたか。偽なら地形 (壊す・水・火・小物) を全部止め、部屋の版チェックでも弾く
     internal static bool Loaded
     {
         get
@@ -50,14 +47,6 @@ internal static unsafe class MrpNative
         }
     }
 
-    internal static bool On
-    {
-        get
-        {
-            if (!_tried) Load();
-            return _loaded && Enabled;
-        }
-    }
 
     private static void Load()
     {

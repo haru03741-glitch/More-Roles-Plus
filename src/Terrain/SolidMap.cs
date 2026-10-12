@@ -913,7 +913,6 @@ internal static class SolidMap
             if (rx >= 0 && ry >= 0 && rx < bw && ry < bh) refK = ry * bw + rx;
         }
         byte refLab = (byte)IslandAt(walkableRef);
-        if (!Native.MrpNative.On) { CarveGrid(shape, keep, x0, y0, bw, bh, barrier, refK, refLab); return; }
         if (!Native.MrpNative.Verify) { CarveNative(shape, keep, x0, y0, bw, bh, barrier, refK, refLab); return; }
         var open0 = (byte[])_open.Clone();
         var island0 = (byte[])_island?.Clone();

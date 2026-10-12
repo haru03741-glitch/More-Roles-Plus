@@ -27,6 +27,7 @@ internal static class TerrainDamage
     {
         r = default;
         why = null;
+        if (!Native.MrpNative.Loaded) { why = "no native"; return false; }
         SolidMap.Ensure(); // 壁を切る前に歩ける所の地図を作っておく
         var p = DamageProfile.Of(e.Kind);
         if (e.Kind == DamageKind.Explosion || e.Kind == DamageKind.Push || e.Kind == DamageKind.Water || e.Kind == DamageKind.Flood || e.Kind.IsFire())
@@ -128,6 +129,7 @@ internal static class TerrainDamage
         var profile = DamageProfile.Of(r.Kind);
         var given = decide ? null : r.Landings ?? Array.Empty<RubbleLanding>();
         landings = Array.Empty<RubbleLanding>();
+        if (!Native.MrpNative.Loaded) return "no native";
         return r.Kind switch
         {
             DamageKind.Explosion => Explode(r, profile, given, ref landings),

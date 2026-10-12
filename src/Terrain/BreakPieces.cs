@@ -65,8 +65,8 @@ internal static class BreakPieces
         cracks[last] = cracks[last].WithArea(Rect.MinMaxRect(tlo.x, tlo.y, thi.x, thi.y), FractureSites.Margin, FractureSites.Max);
         FractureSites.Build(cracks, gen);
 
-        var cells = Native.MrpNative.On ? CellsNative(touched, gen) : CountCells(touched, gen, w, h);
-        if (Native.MrpNative.On && Native.MrpNative.Verify)
+        var cells = CellsNative(touched, gen);
+        if (Native.MrpNative.Verify)
         {
             var cs = CountCells(touched, gen, w, h);
             long diff = cs.Count != cells.Count ? 1000 : 0;

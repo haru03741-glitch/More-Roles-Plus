@@ -185,12 +185,17 @@ internal static class FloorMask
         if (_raw.Length < m * m) _raw = new byte[m * m];
         if (_row.Length < m * n) _row = new ushort[m * n];
         float step = size / (n - 1);
-        if (Native.MrpNative.On)
-        {
-            FillRawNative(x - step * Blur, y - step * Blur, step, m, _raw);
-            fixed (byte* raw = _raw) fixed (ushort* row = _row) fixed (byte* o = into) Native.MrpNative.FloorBlur(raw, n, row, o);
-            return;
-        }
+        FillRawNative(x - step * Blur, y - step * Blur, step, m, _raw);
+        fixed (byte* raw = _raw) fixed (ushort* row = _row) fixed (byte* o = into) Native.MrpNative.FloorBlur(raw, n, row, o);
+    }
+
+    // C# 版 (native check の答え合わせ用)
+    private static void FillCs(float x, float y, float size, int n, byte[] into)
+    {
+        int m = n + Blur * 2;
+        if (_raw.Length < m * m) _raw = new byte[m * m];
+        if (_row.Length < m * n) _row = new ushort[m * n];
+        float step = size / (n - 1);
         FillRaw(x - step * Blur, y - step * Blur, step, m, _raw);
         // 横にならす (m 行 × n 列)
         for (int py = 0; py < m; py++)
@@ -397,11 +402,10 @@ internal static class FloorMask
             }
             reply($"OK floormask active={Active} off={Off} {Stats}");
         });
-        TestBridge.Register("native", "[on|off | check [x y] | verify [on|off] | async [on|off]] C++ の部品の状態 / 切り替え / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
+        TestBridge.Register("native", "[check [x y] | verify [on|off] | async [on|off]] C++ の部品の状態 / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            bool on = Native.MrpNative.On;
-            if (a.Length > 0 && (a[0] == "on" || a[0] == "off")) { Native.MrpNative.Enabled = a[0] == "on"; reply($"OK native on={Native.MrpNative.On} {Native.MrpNative.Status}"); return; }
+            bool on = Native.MrpNative.Loaded;
             if (a.Length > 0 && a[0] == "async")
             {
                 TerrainStep.Settle();
@@ -424,16 +428,12 @@ internal static class FloorMask
             int n = (int)MathF.Round(size * _ppu);
             var cs = new byte[n * n];
             var nat = new byte[n * n];
-            bool keep = Native.MrpNative.Enabled;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            Native.MrpNative.Enabled = false;
-            Fill(cx - size / 2, cy - size / 2, size, n, cs);
+            FillCs(cx - size / 2, cy - size / 2, size, n, cs);
             double msCs = sw.Elapsed.TotalMilliseconds;
-            Native.MrpNative.Enabled = true;
             sw.Restart();
             Fill(cx - size / 2, cy - size / 2, size, n, nat);
             double msNat = sw.Elapsed.TotalMilliseconds;
-            Native.MrpNative.Enabled = keep;
             int diff = 0, first = -1, floor = 0;
             for (int i = 0; i < cs.Length; i++)
             {

@@ -63,7 +63,7 @@ internal static class VersionCheck
         if (same) OptionSync.SendAll(sender.OwnerId);
     }
 
-    // 自分の C++ の部品の版 (読めなければ 0)。水の計算は部品が前提なので全員そろわないと始めない
+    // 自分の C++ の部品の版 (読めなければ 0)。地形は部品が前提なので全員そろわないと始めない
     private static int NativeAbi() => Native.MrpNative.Loaded ? Native.MrpNative.Abi : 0;
 
     public static bool IsSame(int clientId) => Seen.TryGetValue(clientId, out bool s) && s;

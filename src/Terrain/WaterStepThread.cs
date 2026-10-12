@@ -170,7 +170,7 @@ internal static unsafe partial class WaterSim
         ProfTicks[4] += _wTicks;
         _phase = Phase.Joined;
         if (_wr != 0) { Apply(_wa); AsyncSteps++; }
-        else { StepManaged(false, _defStep); SyncSteps++; } // 定数が C++ と違う (起こらないはず)
+        else NativeRefused(); // 定数が C++ と違う (起こらないはず)
     }
 
     // 預けた刻みを終わらせる (投げる前ならその場で回す)。終わらせた刻みを返す (無ければ −1)。続きの火は TerrainStep が回す
