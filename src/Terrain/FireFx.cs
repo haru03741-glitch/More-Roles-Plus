@@ -388,6 +388,20 @@ internal static class FireFx
         if (qn != _qPan) { _qPan = qn; _loop.panStereo = qn / 32f; }
     }
 
+    // 試合が出たら粒と音の置き場を先に作っておく (最初の火のフレームで作ると止まる)
+    internal static void Warm()
+    {
+        try
+        {
+            var ship = ShipStatus.Instance;
+            if (!ship) return;
+            if (GameClock.ShipGen != _shipGen) { _shipGen = GameClock.ShipGen; Clear(); }
+            EnsureArt(ship);
+            EnsureHost();
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"[FireFx] warm: {e}"); }
+    }
+
     // 本編の効果音の音量設定に従うよう効果音のミキサーへ流す。置き場は消えないので作った後は bool だけ見る
     private static bool _hostReady;
     private static bool EnsureHost()

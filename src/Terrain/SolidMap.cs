@@ -302,10 +302,14 @@ internal static class SolidMap
     }
 
     // エアシップの船体の塊 (赤い板) の中か
+    // 画素ごとにも呼ぶので Rect の数は直に読む (InsideAny と同じ)
     public static bool InHull(Vector2 p)
     {
-        foreach (var r in HullRects)
-            if (p.x > r.xMin && p.x < r.xMax && p.y > r.yMin && p.y < r.yMax) return true;
+        for (int i = 0; i < HullRects.Count; i++)
+        {
+            var r = HullRects[i];
+            if (p.x > r.m_XMin && p.x < r.m_XMin + r.m_Width && p.y > r.m_YMin && p.y < r.m_YMin + r.m_Height) return true;
+        }
         return false;
     }
 
@@ -1175,10 +1179,14 @@ internal static class SolidMap
 
     private const float SkyProbe = 0.2f;
 
+    // 画素ごとに呼ぶので Rect の xMin などの取得 (本編への呼び出しになる) を使わず、中の数を直に読む (xMax = xMin + 幅 も本編と同じ式)
     private static bool InsideAny(List<Rect> rects, float x, float y)
     {
-        foreach (var rc in rects)
-            if (x >= rc.xMin && x <= rc.xMax && y >= rc.yMin && y <= rc.yMax) return true;
+        for (int i = 0; i < rects.Count; i++)
+        {
+            var rc = rects[i];
+            if (x >= rc.m_XMin && x <= rc.m_XMin + rc.m_Width && y >= rc.m_YMin && y <= rc.m_YMin + rc.m_Height) return true;
+        }
         return false;
     }
 

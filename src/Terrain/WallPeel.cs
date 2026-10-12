@@ -193,8 +193,9 @@ internal static class WallPeel
         var want = new HashSet<int>();
         foreach (var c in cells) want.Add(c.Index);
         var lo = new Dictionary<int, (float X0, float Y0, float X1, float Y1)>();
-        for (float y = area.yMin + Sample * 0.5f; y < area.yMax; y += Sample)
-        for (float x = area.xMin + Sample * 0.5f; x < area.xMax; x += Sample)
+        float ax0 = area.xMin, ax1 = area.xMax, ay0 = area.yMin, ay1 = area.yMax; // ループの条件で毎回読まない (本編への呼び出しになる)
+        for (float y = ay0 + Sample * 0.5f; y < ay1; y += Sample)
+        for (float x = ax0 + Sample * 0.5f; x < ax1; x += Sample)
         {
             int k = FractureSites.KeyAt(x, y);
             if (!want.Contains(k)) continue;

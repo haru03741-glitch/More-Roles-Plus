@@ -905,10 +905,14 @@ internal static class DamageMap
         }
     }
 
+    // 画素ごとに呼ぶので Rect の xMin などの取得 (本編への呼び出しになる) を使わず、中の数を直に読む (xMax = xMin + 幅 も本編と同じ式)
     private static bool InsideAny(List<Rect> rects, float x, float y)
     {
-        foreach (var rc in rects)
-            if (x >= rc.xMin && x <= rc.xMax && y >= rc.yMin && y <= rc.yMax) return true;
+        for (int i = 0; i < rects.Count; i++)
+        {
+            var rc = rects[i];
+            if (x >= rc.m_XMin && x <= rc.m_XMin + rc.m_Width && y >= rc.m_YMin && y <= rc.m_YMin + rc.m_Height) return true;
+        }
         return false;
     }
 

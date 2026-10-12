@@ -213,6 +213,9 @@ internal static class BreakNoise
         else src.Play();
     }
 
+    // 試合が出たら鳴らす係を先に作っておく
+    internal static void Warm() => EnsureVoices();
+
     // 本編の効果音の音量設定に従うよう、効果音のミキサーへ流す
     private static bool EnsureVoices()
     {
