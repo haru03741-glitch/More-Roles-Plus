@@ -106,8 +106,10 @@ internal static class WaterArt
 
     private static void TickCore()
     {
-        if (!WaterSim.Ready) { if (Tiles.Count > 0) Clear(); _lastMs = 0; return; }
+        if (_spareGen != GameClock.ShipGen) { _spareGen = GameClock.ShipGen; DropSpare(); }
         if (!MrpBundle.WaterMaterial) return;
+        // 水が出る前 (水の格子が無い) から作り置く: 最初の水が広がる時がいちばん多く要る
+        if (!WaterSim.Ready) { if (Tiles.Count > 0) Clear(); _lastMs = 0; FillSpare(); return; }
         bool spike = TerrainStep.SpikeMs > 0;
         long s0 = spike ? System.Diagnostics.Stopwatch.GetTimestamp() : 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
         long e0 = EnsureTicks, f0 = FurnTicks, c0 = FaceTicks;
@@ -157,6 +159,7 @@ internal static class WaterArt
             else Draw(tile);
             drawn++;
         }
+        if (drawn == 0 && Waiting.Count == 0) FillSpare();
         if (spike)
         {
             long s5 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1171,11 +1174,16 @@ internal static class WaterArt
     // 絵のテクスチャは読めないので形は網目の多角形 (透明な縁が少し入る)。作るのはタイルを作った時と家具が動いて止まった時だけ
     private const float FrontPpu = 32f;
     private static readonly List<SpriteRenderer> FrontSrs = new();
+    private static byte[] _frontBuf = Array.Empty<byte>();
+    // 家具が退いて要らなくなった抜き型 (大きさはマップごとに同じ)。次に家具の掛かるタイルで使う
+    private const int FrontPoolMax = 8;
+    private static readonly Stack<Texture2D> FrontPool = new();
 
     private static unsafe void MakeFront(Tile t, float wx, float wy, float size)
     {
         if (!t.Shadow) return;
-        if (t.Front) { UnityEngine.Object.Destroy(t.Front); t.Front = null; }
+        var old = t.Front;
+        t.Front = null;
         FrontSrs.Clear();
         long q0 = System.Diagnostics.Stopwatch.GetTimestamp();
         PropSim.FrontSprites(Rect.MinMaxRect(wx, wy, wx + size, wy + size), t.Z, FrontSrs);
@@ -1184,7 +1192,9 @@ internal static class WaterArt
         if (FrontSrs.Count > 0)
         {
             int m = (int)MathF.Round(size * FrontPpu);
-            var buf = new byte[m * m];
+            if (_frontBuf.Length != m * m) _frontBuf = new byte[m * m];
+            else Array.Clear(_frontBuf, 0, _frontBuf.Length);
+            var buf = _frontBuf;
             float k = m / size;
             bool any = false;
             foreach (var sr in FrontSrs) any |= FillSprite(sr, wx, wy, k, m, buf);
@@ -1193,12 +1203,19 @@ internal static class WaterArt
             q1 = q2;
             if (any)
             {
-                t.Front = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFront", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+                // 作り直しは前の抜き型へ書き直す (読み書きできるまま持つ・1 枚 m×m バイト)
+                if (old && old.width == m) { t.Front = old; old = null; }
+                else t.Front = FrontPool.Count > 0 && FrontPool.Peek() && FrontPool.Peek().width == m ? FrontPool.Pop() : new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFront", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
                 fixed (byte* b = buf) t.Front.LoadRawTextureData((IntPtr)b, buf.Length);
-                t.Front.Apply(false, true);
+                t.Front.Apply(false, false);
             }
             EnsureParts[8] += System.Diagnostics.Stopwatch.GetTimestamp() - q1;
             FrontSrs.Clear();
+        }
+        if (old)
+        {
+            if (FrontPool.Count < FrontPoolMax) FrontPool.Push(old);
+            else UnityEngine.Object.Destroy(old);
         }
         ApplyShadow(t);
     }
@@ -1310,6 +1327,82 @@ internal static class WaterArt
     private static readonly int FlowTexId = Shader.PropertyToID("_FlowTex"), FlowMaxId = Shader.PropertyToID("_FlowMax");
     private static readonly int FrontTexId = Shader.PropertyToID("_FrontMask"), FrontOnId = Shader.PropertyToID("_FrontOn");
 
+    // ── タイルの部品の作り置き ──────────────────────────────
+    // 新しいタイルの絵・流れの絵・板・影の写しを作るのは端末で 1 枚 0.6〜1ms (偶に 10ms 級)。水が広がる最中に作らないよう、
+    // 描くタイルが無いフレームに 1 枚ずつ作っておく。水のタイルは船が替わるまで残るので戻ってこない (使った分を補う)
+    private const float ShadowDz = -0.002f; // 写しの奥行きのずらし (火の写しより奥)
+    private const int SpareTarget = 12;
+    private sealed class Parts
+    {
+        public GameObject Go;
+        public SpriteRenderer Sr, Shadow;
+        public Texture2D Tex, Flow;
+        public Sprite Sp;
+        public byte[] Px, FlowPx;
+        public float Cell;
+    }
+    private static int _spareGen = -1;
+    private static readonly Stack<Parts> Spare = new();
+    internal static int SpareMade, SpareMiss;
+
+    private static unsafe Parts MakeParts(float cell)
+    {
+        int tc = WaterSim.TileCells, n = tc * Px;
+        var p = new Parts { Px = new byte[n * n * 4], Cell = cell };
+        p.Tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { name = "MrpWater", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        p.Sp = Sprite.Create(p.Tex, new Rect(0, 0, n, n), Vector2.zero, Px / cell, 0, SpriteMeshType.FullRect);
+        p.Sp.name = "MrpWater";
+        p.Go = new GameObject("MrpWater") { layer = 0 };
+        p.Sr = p.Go.AddComponent<SpriteRenderer>();
+        p.Sr.enabled = false;
+        p.Sr.sprite = p.Sp;
+        p.Sr.sharedMaterial = MrpBundle.WaterMaterial;
+        // 流れの絵は升 1 つ = 1 画素 (画素の真ん中 = 升の真ん中) で、周りに隣のタイルの升を 1 列ずつ持つ (継ぎ目で流れがつながり、筋が切れない)。
+        // 最初は流れ無し (128)
+        int fn = tc + 2;
+        p.FlowPx = new byte[fn * fn * 4];
+        for (int i = 0; i < p.FlowPx.Length; i++) p.FlowPx[i] = 128;
+        p.Flow = new Texture2D(fn, fn, TextureFormat.RGBA32, false) { name = "MrpWaterFlow", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        fixed (byte* fb = p.FlowPx) p.Flow.LoadRawTextureData((IntPtr)fb, p.FlowPx.Length);
+        p.Flow.Apply(false, false);
+        p.Shadow = ShadowView.Copy(p.Go, p.Sp, ShadowView.Water, FxMath.Rgba(1f, 1f, 1f, 1f), ShadowDz);
+        return p;
+    }
+
+    private static Parts TakeParts()
+    {
+        while (Spare.Count > 0)
+        {
+            var p = Spare.Pop();
+            if (p.Go && p.Tex && p.Flow && p.Cell == WaterSim.Cell) return p;
+            DropParts(p);
+        }
+        SpareMiss++;
+        return MakeParts(WaterSim.Cell);
+    }
+
+    // 描くタイルが無いフレームに 1 枚
+    private static void FillSpare()
+    {
+        if (Spare.Count >= SpareTarget || !SolidMap.Valid || !ShadowView.Ready(out _)) return;
+        Spare.Push(MakeParts(WaterSim.Sub / SolidMap.Ppu)); // 水の升の大きさ (水の格子を作る時と同じ式)
+        SpareMade++;
+    }
+
+    private static void DropSpare()
+    {
+        while (Spare.Count > 0) DropParts(Spare.Pop());
+        while (FrontPool.Count > 0) { var f = FrontPool.Pop(); if (f) UnityEngine.Object.Destroy(f); }
+    }
+
+    private static void DropParts(Parts p)
+    {
+        if (p.Go) UnityEngine.Object.Destroy(p.Go);
+        if (p.Sp) UnityEngine.Object.Destroy(p.Sp);
+        if (p.Tex) UnityEngine.Object.Destroy(p.Tex);
+        if (p.Flow) UnityEngine.Object.Destroy(p.Flow);
+    }
+
     private const float DeckZ = -0.001f; // エアシップの警備室の下のデッキの床の絵の z (手すりは -0.1 で水より手前)
 
     private static unsafe void Ensure(Tile t)
@@ -1332,23 +1425,16 @@ internal static class WaterArt
         int tc = WaterSim.TileCells, n = tc * Px;
         float cell = WaterSim.Cell;
         var org = WaterSim.Origin;
-        t.Px = new byte[n * n * 4];
-        t.Tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { name = "MrpWater", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-        t.Sp = Sprite.Create(t.Tex, new Rect(0, 0, n, n), Vector2.zero, Px / cell, 0, SpriteMeshType.FullRect);
-        t.Sp.name = "MrpWater";
-        t.Go = new GameObject("MrpWater") { layer = 0 };
-        t.Sr = t.Go.AddComponent<SpriteRenderer>();
-        t.Sr.sprite = t.Sp;
-        t.Sr.sharedMaterial = MrpBundle.WaterMaterial;
+        var parts = TakeParts();
+        t.Px = parts.Px;
+        t.Tex = parts.Tex;
+        t.Sp = parts.Sp;
+        t.Go = parts.Go;
+        t.Sr = parts.Sr;
+        t.Sr.enabled = true;
         EP(1);
-        // 流れの絵は升 1 つ = 1 画素 (画素の真ん中 = 升の真ん中) で、周りに隣のタイルの升を 1 列ずつ持つ (継ぎ目で流れがつながり、筋が切れない)。
-        // 最初は流れ無し (128)
-        int fn = tc + 2;
-        t.FlowPx = new byte[fn * fn * 4];
-        for (int i = 0; i < t.FlowPx.Length; i++) t.FlowPx[i] = 128;
-        t.Flow = new Texture2D(fn, fn, TextureFormat.RGBA32, false) { name = "MrpWaterFlow", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-        fixed (byte* fb = t.FlowPx) t.Flow.LoadRawTextureData((IntPtr)fb, t.FlowPx.Length);
-        t.Flow.Apply(false, false);
+        t.FlowPx = parts.FlowPx;
+        t.Flow = parts.Flow;
         EP(2);
         float wx = org.x + t.Tx * tc * cell, wy = org.y + t.Ty * tc * cell;
         // タイルは部屋の境をまたぐので、4 隅と真ん中で部屋の絵を引いて一番手前より前に置く
@@ -1369,7 +1455,13 @@ internal static class WaterArt
         // 床の上・足跡 (−0.001) と波紋より奥
         t.Z = front - 0.0004f * zs;
         t.Go.transform.position = FxMath.V3(wx, wy, t.Z);
-        t.Shadow = ShadowView.Copy(t.Go, t.Sp, ShadowView.Water, FxMath.Rgba(1f, 1f, 1f, 1f), -0.002f); // 火の写しより奥
+        // 作り置きの写しは作った時の親の位置で置いてあるので、親を動かした後に置き直す
+        if (parts.Shadow && ShadowView.Place(parts.Shadow, ShadowDz)) t.Shadow = parts.Shadow;
+        else
+        {
+            if (parts.Shadow) UnityEngine.Object.Destroy(parts.Shadow.gameObject);
+            t.Shadow = ShadowView.Copy(t.Go, t.Sp, ShadowView.Water, FxMath.Rgba(1f, 1f, 1f, 1f), ShadowDz);
+        }
         EP(4);
         MakeFront(t, wx, wy, size);
         EP(5);
@@ -1743,6 +1835,7 @@ internal static class WaterArt
             if (t.Flow) UnityEngine.Object.Destroy(t.Flow);
         }
         Tiles.Clear();
+        DropSpare();
         Waiting.Clear();
         FloorQueue.Clear();
         FloorQueued.Clear();
@@ -1750,5 +1843,5 @@ internal static class WaterArt
         _clock = 0f;
     }
 
-    internal static string Describe() => $"tiles={Tiles.Count} waiting={Waiting.Count} drawn={Drawn} drawMs={LastDrawMs:0.00} fill={FillCells}/{FillMs:0.0}ms";
+    internal static string Describe() => $"tiles={Tiles.Count} waiting={Waiting.Count} spare={Spare.Count} made={SpareMade} miss={SpareMiss} drawn={Drawn} drawMs={LastDrawMs:0.00} fill={FillCells}/{FillMs:0.0}ms";
 }

@@ -92,4 +92,14 @@ internal static class ShadowView
         sr.color = color;
         return sr;
     }
+
+    // 写しを親の今の位置へ置き直す (親を動かした後)。影のカメラが無い時は false
+    internal static bool Place(SpriteRenderer sr, float dz)
+    {
+        if (!Ready(out float z)) return false;
+        var tr = sr.transform;
+        var p = tr.parent.position;
+        tr.position = FxMath.V3(p.x, p.y, z - dz);
+        return true;
+    }
 }

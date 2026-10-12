@@ -40,13 +40,13 @@ internal static class ShadowPatch
     internal static int TileCount => Tiles.Count;
     internal static int BakedTotal { get; private set; }
     // 焼き 1 升の内訳 (手前の判定 / 船の絵 / 型抜き / 瓦礫 / 読み戻し / 絵と物の生成) の累計 ticks。bridge `shadowpatch` が avg を出す
-    private static readonly long[] StageTicks = new long[6];
+    private static readonly long[] StageTicks = new long[7];
     private static int _stageN;
     internal static string Breakdown()
     {
         if (_stageN == 0) return "bakes=0";
         double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency / _stageN;
-        return $"bakes={_stageN} frontz={StageTicks[0] * k:0.00} ship={StageTicks[1] * k:0.00} mask={StageTicks[2] * k:0.00} debris={StageTicks[3] * k:0.00} read={StageTicks[4] * k:0.00} make={StageTicks[5] * k:0.00}ms/升";
+        return $"bakes={_stageN} frontz={StageTicks[0] * k:0.00} new={StageTicks[6] * k:0.00} ship={StageTicks[1] * k:0.00} mask={StageTicks[2] * k:0.00} debris={StageTicks[3] * k:0.00} read={StageTicks[4] * k:0.00} make={StageTicks[5] * k:0.00}ms/升 spare={Spare.Count} made={SpareMade} miss={SpareMiss}";
     }
     internal static void ResetBreakdown() { Array.Clear(StageTicks, 0, StageTicks.Length); _stageN = 0; }
     private static long Stage(int i, long t) { long now = System.Diagnostics.Stopwatch.GetTimestamp(); StageTicks[i] += now - t; return now; }
@@ -159,7 +159,7 @@ internal static class ShadowPatch
 #else
         if ((++_lostPolls & 63) == 0 && Tiles.Count > 0) CheckLost();
 #endif
-        if (Dirty.Count == 0) return;
+        if (Dirty.Count == 0) { FillSpare(); return; }
         if (!Enabled || !DamageMap.ShipTransform || !EnsureCamera()) { Dirty.Clear(); DirtySet.Clear(); return; }
         // 画面 (と余白) に掛かる升だけ焼く。外の升は見えないので、画面に入ってきた時に焼く (遠くの火や水漏れで焼き直し続けない)
         bool all = _flushing;
@@ -262,6 +262,7 @@ internal static class ShadowPatch
         st = Stage(0, st);
 
         bool readBack = ReadBack;
+        Patch spare = null;
         RenderTexture rt;
         Patch patch = null;
         if (readBack) rt = RenderTexture.GetTemporary(Px, Px, 0, RenderTextureFormat.ARGB32);
@@ -269,13 +270,14 @@ internal static class ShadowPatch
         {
             Tiles.TryGetValue(key, out patch);
             if (patch != null && !patch.Rt) { Drop(patch); Tiles.Remove(key); patch = null; } // 読み戻し版で焼いた升
-            rt = patch?.Rt;
-            if (!rt)
+            if (patch == null)
             {
-                rt = new RenderTexture(Px, Px, 0, RenderTextureFormat.ARGB32) { name = "MrpShadowPatch", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-                rt.Create();
+                patch = spare = TakeSpare();
+                Tiles[key] = patch;
             }
+            rt = patch.Rt;
         }
+        st = Stage(6, st);
         var prev = RenderTexture.active;
         Texture2D tex = null;
         Sprite sp = null;
@@ -323,19 +325,7 @@ internal static class ShadowPatch
             else
             {
                 st = Stage(4, st);
-                if (patch == null)
-                {
-                    // 升の板: 焼き先の RenderTexture を貼った四角 (SpriteRenderer は Texture2D しか貼れない)。影のカメラの置き換えは RenderType で決まるので見え方は Sprite と同じ
-                    _quad ??= MakeQuad();
-                    _patchShader ??= Shader.Find("Sprites/Default");
-                    var go = new GameObject("MrpShadowPatch") { layer = PatchLayer };
-                    go.transform.SetParent(DamageMap.ShipTransform, true); // 升ごとに 1 つを使い回すので DamageMap の片付けの一覧には入れない
-                    go.AddComponent<MeshFilter>().sharedMesh = _quad;
-                    var mat = new Material(_patchShader) { name = "MrpShadowPatch", mainTexture = rt };
-                    go.AddComponent<MeshRenderer>().sharedMaterial = mat;
-                    patch = new Patch { Go = go, Rt = rt, Mat = mat };
-                    Tiles[key] = patch;
-                }
+                if (spare != null) patch.Go.SetActive(true);
                 patch.Go.transform.position = new Vector3(center.x, center.y, near - 0.005f);
                 patch.Go.transform.localScale = Vector3.one * (Tile / DamageMap.ShipTransform.lossyScale.x);
                 patch.Order = _order++;
@@ -351,14 +341,81 @@ internal static class ShadowPatch
             if (sp) UnityEngine.Object.Destroy(sp);
             if (tex) UnityEngine.Object.Destroy(tex);
             if (_mask) _mask.SetActive(false);
+            if (spare != null) { Tiles.Remove(key); Drop(spare); } // 初めて焼いた升は残さない (前に焼けた升は前の絵のまま)
         }
         finally
         {
             _cam.targetTexture = null;
             RenderTexture.active = prev;
             if (readBack) RenderTexture.ReleaseTemporary(rt);
-            else if (!Tiles.TryGetValue(key, out var kept) || kept.Rt != rt) { rt.Release(); UnityEngine.Object.Destroy(rt); }
         }
+    }
+
+    // ── 升の作り置き ──────────────────────────────
+    // 新しい升の焼き先 (RenderTexture)・板・材質を作るのは端末で 1 升数 ms かかり、爆発の直後に 30 升ほどまとめて要る。
+    // 焼く物が無いフレームに時間を決めて作っておき、使い終わった升 (古い順に捨てた升) も戻して使い回す
+    private const int SpareTarget = 32;        // 作り置く数 (持つ升と合わせて MaxTiles まで)
+    private const double SpareBudgetMs = 0.5;  // 1 フレームに作り置きへ使う時間
+    private static readonly Stack<Patch> Spare = new();
+    internal static int SpareMade, SpareMiss;
+
+    private static void FillSpare()
+    {
+        if (ReadBack || !Enabled || Spare.Count >= SpareTarget || Tiles.Count + Spare.Count >= MaxTiles) return;
+        if (!DamageMap.ShipTransform || !EnsureCamera()) return;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        long budget = (long)(SpareBudgetMs * System.Diagnostics.Stopwatch.Frequency / 1000.0);
+        do
+        {
+            Spare.Push(MakePatch());
+            SpareMade++;
+        }
+        while (Spare.Count < SpareTarget && Tiles.Count + Spare.Count < MaxTiles && System.Diagnostics.Stopwatch.GetTimestamp() - t0 < budget);
+    }
+
+    private static Patch TakeSpare()
+    {
+        while (Spare.Count > 0)
+        {
+            var p = Spare.Pop();
+            if (p.Go && p.Rt) return p;
+            Drop(p); // 船ごと消えた板
+        }
+        SpareMiss++;
+        return MakePatch();
+    }
+
+    // 升の板: 焼き先の RenderTexture を貼った四角 (SpriteRenderer は Texture2D しか貼れない)。影のカメラの置き換えは RenderType で決まるので見え方は Sprite と同じ。
+    // 作った時は隠しておく (焼いた時に出す)
+    private static Patch MakePatch()
+    {
+        var rt = new RenderTexture(Px, Px, 0, RenderTextureFormat.ARGB32) { name = "MrpShadowPatch", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        rt.Create();
+        // 端末では中身を最初に描く時まで GPU 側の確保が遅れることがあるので、ここで 1 度消して確保させる
+        var prev = RenderTexture.active;
+        RenderTexture.active = rt;
+        GL.Clear(false, true, new Color(0f, 0f, 0f, 1f));
+        RenderTexture.active = prev;
+        _quad ??= MakeQuad();
+        _patchShader ??= Shader.Find("Sprites/Default");
+        var go = new GameObject("MrpShadowPatch") { layer = PatchLayer };
+        go.SetActive(false);
+        go.transform.SetParent(DamageMap.ShipTransform, true); // 升ごとに 1 つを使い回すので DamageMap の片付けの一覧には入れない
+        go.AddComponent<MeshFilter>().sharedMesh = _quad;
+        var mat = new Material(_patchShader) { name = "MrpShadowPatch", mainTexture = rt };
+        go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+        return new Patch { Go = go, Rt = rt, Mat = mat };
+    }
+
+    // 捨てる升を作り置きへ戻す (読み戻し版の升・作り置きが十分ある時は捨てる)
+    private static void Release(Patch p)
+    {
+        if (p.Rt && p.Go && !p.Tex && Spare.Count < SpareTarget)
+        {
+            p.Go.SetActive(false);
+            Spare.Push(p);
+        }
+        else Drop(p);
     }
 
     // 1 単位角の四角 (中心が原点・UV は左下 0,0)
@@ -511,7 +568,7 @@ internal static class ShadowPatch
         foreach (var kv in Tiles)
             if (kv.Value.Order < best) { best = kv.Value.Order; oldest = kv.Key; }
         if (best == long.MaxValue) return;
-        Drop(Tiles[oldest]);
+        Release(Tiles[oldest]);
         Tiles.Remove(oldest);
     }
 
@@ -576,6 +633,7 @@ internal static class ShadowPatch
     {
         foreach (var p in Tiles.Values) Drop(p);
         Tiles.Clear();
+        while (Spare.Count > 0) Drop(Spare.Pop());
         Dirty.Clear();
         DirtySet.Clear();
         Late.Clear();
