@@ -2386,10 +2386,11 @@ internal static partial class WaterSim
                 _step = 0;
                 Array.Clear(ProfTicks); ProfSteps = 0;
                 long b0 = System.Diagnostics.Stopwatch.GetTimestamp();
-                for (int i = 0; i < bn; i++) { StepOnce(); _step++; }
+                long bact = 0;
+                for (int i = 0; i < bn; i++) { bact += _actN; StepOnce(); _step++; }
                 double bms = (System.Diagnostics.Stopwatch.GetTimestamp() - b0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
                 double pk = 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, bn);
-                reply($"OK water bench steps={bn} digest={Digest():x8} volume={Volume()} active={_actN} fell={FellTotal} void={VoidTotal} native={Native.MrpNative.On} ms/step={bms / Math.Max(1, bn):0.000} sub={ProfTicks[4] * pk:0.000} tidy={ProfTicks[7] * pk:0.000}");
+                reply($"OK water bench steps={bn} digest={Digest():x8} volume={Volume()} active={_actN} avgActive={bact / Math.Max(1, bn)} fell={FellTotal} void={VoidTotal} native={Native.MrpNative.On} ms/step={bms / Math.Max(1, bn):0.000} sub={ProfTicks[4] * pk:0.000} tidy={ProfTicks[7] * pk:0.000}");
                 Reset();
                 return;
             }
