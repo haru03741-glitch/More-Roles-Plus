@@ -1020,6 +1020,14 @@ internal static partial class WaterSim
         {
             FallTo[-1] = (0, 0); FallTo.Remove(-1);
             StepTo[-1] = 0; StepTo.Remove(-1);
+            // 島の高さを決める時の並べ替えと測りの表 (型ごとの初回のコンパイル)
+            var rel = new List<(int U, int V, int D)> { (2, 1, 3), (1, 2, 3) };
+            rel.Sort((p, q) => p.U != q.U ? p.U.CompareTo(q.U) : p.V.CompareTo(q.V));
+            foreach (var (u, v, d) in rel) _ = u + v + d;
+            ZSamples[-1] = new List<int> { 2, 1 };
+            _ = Median(ZSamples[-1]);
+            ZSamples.Clear();
+            _ = new System.Text.StringBuilder().Append(1.5f.ToString("0.00"));
         }
     }
 
