@@ -234,7 +234,7 @@ internal static class FloorMask
                 Native.MrpNative.FloorLips(f, l, lw, lh, lox, loy, cell, x, y, wstep, n, o);
         // 床にするだけの書き込み (縁・動く床) は順番に依らない。床でなくする持ち上げた家具は最後
         WaterSim.StampPlatform(x, y, wstep, n, into);
-        CutAllMoved(x, y, wstep, n, into);
+        CutAllMoved(x, y, wstep, n, into, native: true);
     }
 
     // 画素 k の真ん中 = (x + k × step, y + …)
@@ -275,14 +275,25 @@ internal static class FloorMask
         CutAllMoved(x, y, wstep, n, into);
     }
 
-    private static void CutAllMoved(float x, float y, float wstep, int n, byte[] into)
+    private static void CutAllMoved(float x, float y, float wstep, int n, byte[] into, bool native = false)
     {
         if (_patchGen != GameClock.ShipGen) return;
-        foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, wstep, n, into);
+        foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, wstep, n, into, native);
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct CutArgs
+    {
+        public byte* Into; public int N;
+        public float X, Y, Step;
+        public float Px0, Py0, Cx, Cy, Cs, Sn;
+        public float Mcx, Mcy, Half;
+        public float Ox, Oy, Ppu;
+        public byte* Dry; public int Dx0, Dy0, Dw, Dh;
     }
 
     // 持ち上げた家具の今いる所 (元の所から回して動かした所) を床でなくする。画素 k の真ん中 = x + k × step
-    private static void CutMoved(Patch p, float x, float y, float step, int n, byte[] into)
+    private static unsafe void CutMoved(Patch p, float x, float y, float step, int n, byte[] into, bool native)
     {
         var l = p.Lift;
         float px0 = l.PivotX, py0 = l.PivotY, cx = l.PoseX, cy = l.PoseY;
@@ -294,6 +305,20 @@ internal static class FloorMask
         float mcx = cx + rcx * MathF.Cos(-rad) - rcy * MathF.Sin(-rad), mcy = cy + rcx * MathF.Sin(-rad) + rcy * MathF.Cos(-rad);
         float size = step * (n - 1);
         if (mcx + half <= x || mcx - half >= x + size || mcy + half <= y || mcy - half >= y + size) return;
+        if (native)
+        {
+            // C++ (C# で床の型を作る道は下の C# のまま = 照合の答え)
+            fixed (byte* o = into) fixed (byte* d = p.Dry)
+            {
+                var a = new CutArgs
+                {
+                    Into = o, N = n, X = x, Y = y, Step = step, Px0 = px0, Py0 = py0, Cx = cx, Cy = cy, Cs = cs, Sn = sn,
+                    Mcx = mcx, Mcy = mcy, Half = half, Ox = _ox, Oy = _oy, Ppu = _ppu, Dry = d, Dx0 = p.DX0, Dy0 = p.DY0, Dw = p.DW, Dh = p.DH,
+                };
+                Native.MrpNative.FloorCutMoved(&a);
+            }
+            return;
+        }
         for (int py = 0; py < n; py++)
         {
             float wy = y + py * step - cy;
@@ -325,7 +350,21 @@ internal static class FloorMask
         if (_bits != null && _gen == gen) Apply(p);
     }
 
-    private static void Apply(Patch p)
+    // 答え合わせ (native verify): 跡を床にするのを C# でも写しのマスクにやって比べる
+    internal static long VerifyPatches, VerifyPatchDiff;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct PatchArgs
+    {
+        public byte* Bits; public int W;
+        public int X0, Y0, X1, Y1;
+        public float Ox, Oy, Ppu;
+        public float RxMin, RyMin, Sx, Sy;
+        public byte* Shape; public int N;
+        public byte* Dry; public int Dw;
+    }
+
+    private static unsafe void Apply(Patch p)
     {
         var r = p.World;
         int x0 = Math.Max(0, (int)MathF.Floor((r.xMin - _ox) * _ppu)), x1 = Math.Min(_w - 1, (int)MathF.Ceiling((r.xMax - _ox) * _ppu));
@@ -333,6 +372,32 @@ internal static class FloorMask
         float sx = p.N / r.width, sy = p.N / r.height;
         p.DX0 = x0; p.DY0 = y0; p.DW = Math.Max(0, x1 - x0 + 1); p.DH = Math.Max(0, y1 - y0 + 1);
         p.Dry = new byte[(p.DW * p.DH + 7) / 8];
+        byte[] csBits = null, csDry = null;
+        if (Native.MrpNative.Verify) { csBits = (byte[])_bits.Clone(); csDry = new byte[p.Dry.Length]; }
+        fixed (byte* b = _bits) fixed (bool* sh = p.Shape) fixed (byte* d = p.Dry)
+        {
+            var a = new PatchArgs
+            {
+                Bits = b, W = _w, X0 = x0, Y0 = y0, X1 = x1, Y1 = y1, Ox = _ox, Oy = _oy, Ppu = _ppu,
+                RxMin = r.xMin, RyMin = r.yMin, Sx = sx, Sy = sy, Shape = (byte*)sh, N = p.N, Dry = d, Dw = p.DW,
+            };
+            Native.MrpNative.FloorPatch(&a);
+        }
+        if (csBits != null)
+        {
+            ApplyCs(p, csBits, csDry, x0, y0, x1, y1, sx, sy);
+            long diff = 0;
+            for (int i = 0; i < csBits.Length; i++) if (csBits[i] != _bits[i]) diff++;
+            for (int i = 0; i < csDry.Length; i++) if (csDry[i] != p.Dry[i]) diff++;
+            VerifyPatches++;
+            VerifyPatchDiff += diff;
+        }
+    }
+
+    // C# 版 (照合用)
+    private static void ApplyCs(Patch p, byte[] bits, byte[] dry, int x0, int y0, int x1, int y1, float sx, float sy)
+    {
+        var r = p.World;
         for (int my = y0; my <= y1; my++)
         {
             int sy0 = (int)MathF.Floor(((my + 0.5f) / _ppu + _oy - r.yMin) * sy);
@@ -342,12 +407,12 @@ internal static class FloorMask
                 int sx0 = (int)MathF.Floor(((mx + 0.5f) / _ppu + _ox - r.xMin) * sx);
                 if (sx0 < 0 || sx0 >= p.N || !p.Shape[sy0 * p.N + sx0]) continue;
                 int k = my * _w + mx;
-                if ((_bits[k >> 3] & (1 << (k & 7))) == 0)
+                if ((bits[k >> 3] & (1 << (k & 7))) == 0)
                 {
                     int d = (my - y0) * p.DW + (mx - x0);
-                    p.Dry[d >> 3] |= (byte)(1 << (d & 7));
+                    dry[d >> 3] |= (byte)(1 << (d & 7));
                 }
-                _bits[k >> 3] |= (byte)(1 << (k & 7));
+                bits[k >> 3] |= (byte)(1 << (k & 7));
             }
         }
     }
@@ -415,8 +480,8 @@ internal static class FloorMask
             }
             if (a.Length > 0 && a[0] == "verify")
             {
-                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterArt.VerifyRaws = WaterArt.VerifyRawDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; DamageMap.VerifyStamps = DamageMap.VerifyStampDiff = 0; WaterSim.VerifyRays = WaterSim.VerifyRayDiff = 0; WaterSim.VerifyCells = WaterSim.VerifyCellDiff = 0; WaterSim.VerifyScans = WaterSim.VerifyScanDiff = 0; HullThroat.VerifyClips = HullThroat.VerifyClipDiff = 0; FoamArt.VerifyDraws = FoamArt.VerifyDrawDiff = 0; Decompression.VerifyBuilds = Decompression.VerifyDiff = 0; }
-                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} raws={WaterArt.VerifyRaws} rawDiff={WaterArt.VerifyRawDiff} simSteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} sleepViol={WaterSim.VerifySleepViol} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff} carves={SolidMap.VerifyCarves} carveDiff={SolidMap.VerifyCarveDiff} pieces={BreakPieces.VerifySpawns} pieceDiff={BreakPieces.VerifyDiff} rays={WaterSim.VerifyRays} rayDiff={WaterSim.VerifyRayDiff} cells={WaterSim.VerifyCells} cellDiff={WaterSim.VerifyCellDiff} scans={WaterSim.VerifyScans} scanDiff={WaterSim.VerifyScanDiff} clips={HullThroat.VerifyClips} clipDiff={HullThroat.VerifyClipDiff} foams={FoamArt.VerifyDraws} foamDiff={FoamArt.VerifyDrawDiff} decomps={Decompression.VerifyBuilds} decompDiff={Decompression.VerifyDiff} fills={FloorFlood.VerifyFills} fillDiff={FloorFlood.VerifyDiff}");
+                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterArt.VerifyRaws = WaterArt.VerifyRawDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; DamageMap.VerifyStamps = DamageMap.VerifyStampDiff = 0; WaterSim.VerifyRays = WaterSim.VerifyRayDiff = 0; WaterSim.VerifyCells = WaterSim.VerifyCellDiff = 0; WaterSim.VerifyScans = WaterSim.VerifyScanDiff = 0; HullThroat.VerifyClips = HullThroat.VerifyClipDiff = 0; FoamArt.VerifyDraws = FoamArt.VerifyDrawDiff = 0; Decompression.VerifyBuilds = Decompression.VerifyDiff = 0; FloorFlood.VerifyFills = FloorFlood.VerifyDiff = 0; VerifyPatches = VerifyPatchDiff = 0; }
+                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} raws={WaterArt.VerifyRaws} rawDiff={WaterArt.VerifyRawDiff} simSteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} sleepViol={WaterSim.VerifySleepViol} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff} carves={SolidMap.VerifyCarves} carveDiff={SolidMap.VerifyCarveDiff} pieces={BreakPieces.VerifySpawns} pieceDiff={BreakPieces.VerifyDiff} rays={WaterSim.VerifyRays} rayDiff={WaterSim.VerifyRayDiff} cells={WaterSim.VerifyCells} cellDiff={WaterSim.VerifyCellDiff} scans={WaterSim.VerifyScans} scanDiff={WaterSim.VerifyScanDiff} clips={HullThroat.VerifyClips} clipDiff={HullThroat.VerifyClipDiff} foams={FoamArt.VerifyDraws} foamDiff={FoamArt.VerifyDrawDiff} decomps={Decompression.VerifyBuilds} decompDiff={Decompression.VerifyDiff} fills={FloorFlood.VerifyFills} fillDiff={FloorFlood.VerifyDiff} patches={VerifyPatches} patchDiff={VerifyPatchDiff}");
                 return;
             }
             if (a.Length == 0 || a[0] != "check") { reply($"OK native on={on} {Native.MrpNative.Status}"); return; }
