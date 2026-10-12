@@ -158,6 +158,14 @@ internal static class FloorMask
     }
 
     // 世界の四角 (x, y から size 四方) の画素が全部床か (マスクの外は床でない)
+    // 床マスクのビットと置き場 (C++ に渡す・読むだけ)。マスクが無ければ false
+    internal static bool MaskBits(out byte[] bits, out int w, out int h, out float ox, out float oy, out float ppu)
+    {
+        Ensure();
+        bits = _bits; w = _w; h = _h; ox = _ox; oy = _oy; ppu = _ppu;
+        return _bits != null;
+    }
+
     internal static bool AllFloor(float x, float y, float size)
     {
         Ensure();
@@ -480,8 +488,8 @@ internal static class FloorMask
             }
             if (a.Length > 0 && a[0] == "verify")
             {
-                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterArt.VerifyRaws = WaterArt.VerifyRawDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; DamageMap.VerifyStamps = DamageMap.VerifyStampDiff = 0; WaterSim.VerifyRays = WaterSim.VerifyRayDiff = 0; WaterSim.VerifyCells = WaterSim.VerifyCellDiff = 0; WaterSim.VerifyScans = WaterSim.VerifyScanDiff = 0; HullThroat.VerifyClips = HullThroat.VerifyClipDiff = 0; FoamArt.VerifyDraws = FoamArt.VerifyDrawDiff = 0; Decompression.VerifyBuilds = Decompression.VerifyDiff = 0; FloorFlood.VerifyFills = FloorFlood.VerifyDiff = 0; VerifyPatches = VerifyPatchDiff = 0; FurnitureLift.VerifyShapes = FurnitureLift.VerifyShapeDiff = 0; }
-                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} raws={WaterArt.VerifyRaws} rawDiff={WaterArt.VerifyRawDiff} simSteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} sleepViol={WaterSim.VerifySleepViol} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff} carves={SolidMap.VerifyCarves} carveDiff={SolidMap.VerifyCarveDiff} pieces={BreakPieces.VerifySpawns} pieceDiff={BreakPieces.VerifyDiff} rays={WaterSim.VerifyRays} rayDiff={WaterSim.VerifyRayDiff} cells={WaterSim.VerifyCells} cellDiff={WaterSim.VerifyCellDiff} scans={WaterSim.VerifyScans} scanDiff={WaterSim.VerifyScanDiff} clips={HullThroat.VerifyClips} clipDiff={HullThroat.VerifyClipDiff} foams={FoamArt.VerifyDraws} foamDiff={FoamArt.VerifyDrawDiff} decomps={Decompression.VerifyBuilds} decompDiff={Decompression.VerifyDiff} fills={FloorFlood.VerifyFills} fillDiff={FloorFlood.VerifyDiff} patches={VerifyPatches} patchDiff={VerifyPatchDiff} shapes={FurnitureLift.VerifyShapes} shapeDiff={FurnitureLift.VerifyShapeDiff}");
+                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterArt.VerifyRaws = WaterArt.VerifyRawDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; DamageMap.VerifyStamps = DamageMap.VerifyStampDiff = 0; WaterSim.VerifyRays = WaterSim.VerifyRayDiff = 0; WaterSim.VerifyCells = WaterSim.VerifyCellDiff = 0; WaterSim.VerifyScans = WaterSim.VerifyScanDiff = 0; HullThroat.VerifyClips = HullThroat.VerifyClipDiff = 0; FoamArt.VerifyDraws = FoamArt.VerifyDrawDiff = 0; Decompression.VerifyBuilds = Decompression.VerifyDiff = 0; FloorFlood.VerifyFills = FloorFlood.VerifyDiff = 0; VerifyPatches = VerifyPatchDiff = 0; WaterArt.VerifyFills = WaterArt.VerifyFillDiff = 0; FurnitureLift.VerifyShapes = FurnitureLift.VerifyShapeDiff = 0; }
+                reply($"OK native verify={Native.MrpNative.Verify} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} raws={WaterArt.VerifyRaws} rawDiff={WaterArt.VerifyRawDiff} simSteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} sleepViol={WaterSim.VerifySleepViol} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff} carves={SolidMap.VerifyCarves} carveDiff={SolidMap.VerifyCarveDiff} pieces={BreakPieces.VerifySpawns} pieceDiff={BreakPieces.VerifyDiff} rays={WaterSim.VerifyRays} rayDiff={WaterSim.VerifyRayDiff} cells={WaterSim.VerifyCells} cellDiff={WaterSim.VerifyCellDiff} scans={WaterSim.VerifyScans} scanDiff={WaterSim.VerifyScanDiff} clips={HullThroat.VerifyClips} clipDiff={HullThroat.VerifyClipDiff} foams={FoamArt.VerifyDraws} foamDiff={FoamArt.VerifyDrawDiff} decomps={Decompression.VerifyBuilds} decompDiff={Decompression.VerifyDiff} fills={FloorFlood.VerifyFills} fillDiff={FloorFlood.VerifyDiff} patches={VerifyPatches} patchDiff={VerifyPatchDiff} shapes={FurnitureLift.VerifyShapes} shapeDiff={FurnitureLift.VerifyShapeDiff} artFills={WaterArt.VerifyFills} artFillDiff={WaterArt.VerifyFillDiff}");
                 return;
             }
             if (a.Length == 0 || a[0] != "check") { reply($"OK native on={on} {Native.MrpNative.Status}"); return; }

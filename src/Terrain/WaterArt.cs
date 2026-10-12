@@ -712,6 +712,67 @@ internal static class WaterArt
         int rx1 = Math.Min(sw, (x1 + margin) * sub), ry1 = Math.Min(sh, (y1 + margin) * sub);
         int rw = rx1 - rx0, rh = ry1 - ry0, n = rw * rh;
         if (_fillSrc.Length < n) { _fillSrc = new int[n]; _fillDist = new byte[n]; _fillQueue = new int[n]; }
+        int[] csFrom = null; byte[] csTargets = null;
+        if (Native.MrpNative.Verify) { csFrom = (int[])_fillFrom.Clone(); csTargets = (byte[])_fillTargets.Clone(); }
+        FillCells += FillNative(x0, y0, x1, y1, max, rx0, ry0, rw, rh);
+        if (csFrom != null)
+        {
+            int csCells = 0;
+            FillCs(x0, y0, x1, y1, max, rx0, ry0, rw, rh, csFrom, csTargets, ref csCells);
+            long diff = 0;
+            for (int i = 0; i < csFrom.Length; i++) if (csFrom[i] != _fillFrom[i]) diff++;
+            for (int i = 0; i < csTargets.Length; i++) if (csTargets[i] != _fillTargets[i]) diff++;
+            VerifyFills++;
+            VerifyFillDiff += diff;
+        }
+    }
+
+    // 答え合わせ (native verify): 写し元の決め直しを C# でも写しの表にやって比べる
+    internal static long VerifyFills, VerifyFillDiff;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct FillArgs
+    {
+        public byte* SolidOpen; public int Sw;
+        public byte* WaterOpen; public int W, H, Sub;
+        public byte* Mask; public int Mw, Mh;
+        public float Mox, Moy, Mppu;
+        public float Sox, Soy, Cell;
+        public int Max;
+        public int X0, Y0, X1, Y1;
+        public int Rx0, Ry0, Rw, Rh;
+        public int* Src; public byte* Dist; public int* Queue;
+        public int* FillFrom;
+        public byte* Targets; public int Tw, Tc;
+        public int Cells;
+    }
+
+    // C++ (WaterArt.Fill と同じ結果)。写し元のある升の数の増減を返す
+    private static unsafe int FillNative(int x0, int y0, int x1, int y1, int max, int rx0, int ry0, int rw, int rh)
+    {
+        bool mask = FloorMask.MaskBits(out var bits, out int mw, out int mh, out float mox, out float moy, out float mppu);
+        var org = SolidMap.Origin;
+        fixed (byte* so = SolidMap.OpenCells) fixed (byte* wo = WaterSim.OpenCells) fixed (byte* mb = mask ? bits : null)
+        fixed (int* src = _fillSrc) fixed (byte* dist = _fillDist) fixed (int* queue = _fillQueue)
+        fixed (int* from = _fillFrom) fixed (byte* tg = _fillTargets)
+        {
+            var a = new FillArgs
+            {
+                SolidOpen = so, Sw = SolidMap.W, WaterOpen = wo, W = WaterSim.W, H = WaterSim.H, Sub = WaterSim.Sub,
+                Mask = mb, Mw = mw, Mh = mh, Mox = mox, Moy = moy, Mppu = mppu,
+                Sox = org.x, Soy = org.y, Cell = 1f / SolidMap.Ppu, Max = max,
+                X0 = x0, Y0 = y0, X1 = x1, Y1 = y1, Rx0 = rx0, Ry0 = ry0, Rw = rw, Rh = rh,
+                Src = src, Dist = dist, Queue = queue, FillFrom = from, Targets = tg, Tw = WaterSim.TilesW, Tc = WaterSim.TileCells,
+            };
+            Native.MrpNative.WaterFill(&a);
+            return a.Cells;
+        }
+    }
+
+    // C# 版 (照合用)
+    private static void FillCs(int x0, int y0, int x1, int y1, int max, int rx0, int ry0, int rw, int rh, int[] fillFrom, byte[] fillTargets, ref int fillCells)
+    {
+        int w = WaterSim.W, h = WaterSim.H, sub = WaterSim.Sub, sw = SolidMap.W, n = rw * rh;
         var src = _fillSrc;
         var dist = _fillDist;
         var queue = _fillQueue;
@@ -747,8 +808,8 @@ internal static class WaterArt
         for (int wx = x0; wx < x1; wx++)
         {
             int wk = wy * w + wx;
-            if (_fillFrom[wk] >= 0) FillCells--;
-            _fillFrom[wk] = -1;
+            if (fillFrom[wk] >= 0) fillCells--;
+            fillFrom[wk] = -1;
             if (WaterSim.Open(wk)) continue;
             int best = -1, bestD = int.MaxValue;
             for (int sy = wy * sub - ry0; sy < wy * sub + sub - ry0 && sy < rh; sy++)
@@ -759,12 +820,12 @@ internal static class WaterArt
                 if (src[k] >= 0 && dist[k] < bestD) { bestD = dist[k]; best = src[k]; }
             }
             if (best < 0) continue;
-            _fillFrom[wk] = best;
-            FillCells++;
+            fillFrom[wk] = best;
+            fillCells++;
             int ftx = best % w / tc, fty = best / w / tc, ttx = wx / tc, tty = wy / tc;
             if (ftx == ttx && fty == tty) continue;
             for (int i = 0; i < 8; i++)
-                if (ttx - ftx == TileDx[i] && tty - fty == TileDy[i]) _fillTargets[fty * tw + ftx] |= (byte)(1 << i);
+                if (ttx - ftx == TileDx[i] && tty - fty == TileDy[i]) fillTargets[fty * tw + ftx] |= (byte)(1 << i);
         }
 
         void Step(int j, int from, int d)
