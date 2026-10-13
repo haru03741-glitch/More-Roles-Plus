@@ -324,7 +324,8 @@ internal static partial class PropSim
         var sw = System.Diagnostics.Stopwatch.StartNew();
         FurnitureSplit.Apply(ship); // 1 枚の絵にまとめて描かれた家具を家具ごとに分けてから集める
         double tSplit = sw.Elapsed.TotalMilliseconds;
-        var own = OwnFurniture(ship);
+        var ownGo = new Dictionary<int, GameObject>();
+        var own = OwnFurniture(ship, ownGo);
         double tOwn = sw.Elapsed.TotalMilliseconds;
         foreach (var v in ship.AllVents) if (v) Stamp(v.transform.position);
         // 家具に載った端末は家具と一緒に動くので、周りを塞がない (塞ぐと家具が自分の端末に引っ掛かる)
@@ -332,16 +333,17 @@ internal static partial class PropSim
         Props.Clear();
         Heavies.Clear();
         var decor = new List<SpriteRenderer>();
+        OwnRenderers(own, ownGo, out var ownSr, out var underOwn);
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
         {
             if (!sr.gameObject.activeInHierarchy || !sr.sprite) continue;
-            if (own.TryGetValue(sr.gameObject.GetInstanceID(), out var ok))
+            if (ownSr.TryGetValue(sr.Pointer, out var ok))
             {
                 var made = MakeOwn(sr, ok.Col, ok.Kind);
                 if (made != null) Props.Add(made);
                 continue;
             }
-            if (OnOwnFurniture(sr.transform, own)) continue; // 家具の子 (端末など) は親と一緒に動く
+            if (underOwn.Contains(sr.Pointer)) continue; // 家具の子 (端末など) は親と一緒に動く
             if (!Movable.Contains(sr.sprite.name)) { decor.Add(sr); continue; }
             var prop = Make(sr);
             if (prop != null) Props.Add(prop);
@@ -586,7 +588,7 @@ internal static partial class PropSim
 
     // 自分の絵と当たり判定 (層 12 か船の層 9) を持つ家具のうち、動かし方の表 (FurnitureKinds) に載っている物 (絵の GameObject → 種類と当たり判定)。
     // 載っている端末 (子) は家具と一緒に動く
-    private static Dictionary<int, (FurnitureKind Kind, Collider2D Col)> OwnFurniture(ShipStatus ship)
+    private static Dictionary<int, (FurnitureKind Kind, Collider2D Col)> OwnFurniture(ShipStatus ship, Dictionary<int, GameObject> gos)
     {
         var map = new Dictionary<int, (FurnitureKind, Collider2D)>();
         string shipName = FurnitureKinds.ShipName(ship);
@@ -597,10 +599,29 @@ internal static partial class PropSim
             if (layer != 12 && layer != 9) continue;
             if (!FurnitureKinds.TryGet(col.transform, shipName, out var kind, out var owner)) continue;
             // 当たり判定が絵の子にある家具は絵の GameObject で引く (絵と同じ GameObject の当たり判定があればそちら)
-            int id = owner.gameObject.GetInstanceID();
-            if (owner == col.transform || !map.ContainsKey(id)) map[id] = (kind, col);
+            var go = owner.gameObject;
+            int id = go.GetInstanceID();
+            if (owner == col.transform || !map.ContainsKey(id)) { map[id] = (kind, col); gos[id] = go; }
         }
         return map;
+    }
+
+    // 船の絵を全部見る前に、表の家具の絵 (ownSr) と家具の子孫の絵 (underOwn = 家具そのものは含めない) を il2cpp の物の場所で引けるようにしておく
+    // (絵ごとに GameObject の番号や親を読みに行くと interop が多い)
+    private static void OwnRenderers(Dictionary<int, (FurnitureKind Kind, Collider2D Col)> own, Dictionary<int, GameObject> gos,
+        out Dictionary<IntPtr, (FurnitureKind Kind, Collider2D Col)> ownSr, out HashSet<IntPtr> underOwn)
+    {
+        ownSr = new Dictionary<IntPtr, (FurnitureKind, Collider2D)>();
+        underOwn = new HashSet<IntPtr>();
+        foreach (var (id, go) in gos)
+        {
+            if (!go) continue;
+            var self = go.GetComponent<SpriteRenderer>();
+            IntPtr selfPtr = self ? self.Pointer : IntPtr.Zero;
+            if (self) ownSr[selfPtr] = own[id];
+            foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
+                if (sr.Pointer != selfPtr) underOwn.Add(sr.Pointer);
+        }
     }
 
     // tr が表の家具の子孫か (家具そのものは含めない)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using MoreRolesPlus.Fx;
 
 namespace MoreRolesPlus.Terrain;
 
@@ -853,9 +854,14 @@ internal static class SolidMap
     internal static bool IsWall(Collider2D c) => c && c.enabled && IsWallShape(c);
 
     // 壁の当たり判定の形か (今切ってあるかは見ない)
-    private static bool IsWallShape(Collider2D c) =>
-        c && !c.isTrigger && c.gameObject.layer == ShipLayer &&
-        c.gameObject.name != WallBody.CapName && c.gameObject.name != WallBody.MouthName && c.gameObject.name != HullEdgeName && c.gameObject.name != HeightLevels.LedgeName && c.gameObject.name != "MrpRubbleBlock";
+    private static bool IsWallShape(Collider2D c)
+    {
+        if (!c || c.isTrigger) return false;
+        var go = c.gameObject;
+        if (go.layer != ShipLayer) return false;
+        string name = go.name;
+        return name != WallBody.CapName && name != WallBody.MouthName && name != HullEdgeName && name != HeightLevels.LedgeName && name != "MrpRubbleBlock";
+    }
 
     // 床の上の点。確か = 通気口とダミーの出現位置 (床に置かれる物)。扉は扉の板の両脇 (通り道の両側) の点を後から足し、
     // それだけが新しく塗った塊の数を数えておく (壁の中に落ちていないかを地図の書き出しで確かめる用)。
@@ -952,63 +958,94 @@ internal static class SolidMap
     }
 
     // 当たり判定の輪郭を世界座標の線分 (両端を 2 つずつ) で足す。形は変えない
-    internal static void Segments(Collider2D c, List<Vector2> outPairs)
+    // 点は il2cpp の配列の中身を直に読み、ワールドへの変換は 1 点 1 回 (足し算・掛け算は Unity の演算子と同じ順で、結果は前と同じビット)
+    internal static unsafe void Segments(Collider2D c, List<Vector2> outPairs)
     {
         var t = c.transform;
         var edge = c.TryCast<EdgeCollider2D>();
         if (edge)
         {
             var pts = edge.points;
+            int n = pts.Length;
+            if (n < 2) return;
             Vector2 off = edge.offset;
-            if (pts.Length < 2) return;
-            Vector2 prev = t.TransformPoint(pts[0] + off);
-            for (int i = 1; i < pts.Length; i++)
+            float* p = (float*)Il2Array.Data(pts);
+            Vector2 prev = World(t, p[0] + off.x, p[1] + off.y);
+            for (int i = 1; i < n; i++)
             {
-                Vector2 cur = t.TransformPoint(pts[i] + off);
+                Vector2 cur = World(t, p[2 * i] + off.x, p[2 * i + 1] + off.y);
                 outPairs.Add(prev); outPairs.Add(cur);
                 prev = cur;
             }
+            GC.KeepAlive(pts); // 生ポインタで読んでいる間は配列を回収させない
             return;
         }
         var box = c.TryCast<BoxCollider2D>();
         if (box)
         {
-            Vector2 hs = box.size * 0.5f, o = box.offset;
-            Loop(t, new[] { o + new Vector2(-hs.x, -hs.y), o + new Vector2(hs.x, -hs.y), o + new Vector2(hs.x, hs.y), o + new Vector2(-hs.x, hs.y) }, outPairs);
+            Vector2 size = box.size, o = box.offset;
+            float hx = size.x * 0.5f, hy = size.y * 0.5f;
+            var w = LoopBuf(4);
+            w[0] = World(t, o.x + -hx, o.y + -hy);
+            w[1] = World(t, o.x + hx, o.y + -hy);
+            w[2] = World(t, o.x + hx, o.y + hy);
+            w[3] = World(t, o.x + -hx, o.y + hy);
+            Loop(w, 4, outPairs);
             return;
         }
         var poly = c.TryCast<PolygonCollider2D>();
         if (poly)
         {
-            for (int p = 0; p < poly.pathCount; p++)
+            Vector2 off = poly.offset;
+            int paths = poly.pathCount;
+            for (int q = 0; q < paths; q++)
             {
-                var path = poly.GetPath(p);
-                var pts = new Vector2[path.Length];
-                for (int i = 0; i < pts.Length; i++) pts[i] = path[i] + poly.offset;
-                Loop(t, pts, outPairs);
+                var path = poly.GetPath(q);
+                int n = path.Length;
+                float* p = (float*)Il2Array.Data(path);
+                var w = LoopBuf(n);
+                for (int i = 0; i < n; i++) w[i] = World(t, p[2 * i] + off.x, p[2 * i + 1] + off.y);
+                GC.KeepAlive(path);
+                Loop(w, n, outPairs);
             }
             return;
         }
         var circle = c.TryCast<CircleCollider2D>();
         if (circle)
         {
-            var pts = new Vector2[16];
+            Vector2 off = circle.offset;
+            float r = circle.radius;
+            var w = LoopBuf(16);
             for (int i = 0; i < 16; i++)
             {
                 float ang = i * MathF.PI / 8f;
-                pts[i] = circle.offset + new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * circle.radius;
+                w[i] = World(t, off.x + MathF.Cos(ang) * r, off.y + MathF.Sin(ang) * r);
             }
-            Loop(t, pts, outPairs);
+            Loop(w, 16, outPairs);
         }
     }
 
-    private static void Loop(Transform t, Vector2[] local, List<Vector2> outPairs)
+    private static Vector2 World(Transform t, float x, float y)
     {
-        if (local.Length < 2) return;
-        for (int i = 0; i < local.Length; i++)
+        var v = t.TransformPoint(FxMath.V3(x, y));
+        return FxMath.V2(v.x, v.y);
+    }
+
+    private static Vector2[] _loopBuf = new Vector2[64];
+
+    private static Vector2[] LoopBuf(int n)
+    {
+        if (_loopBuf.Length < n) _loopBuf = new Vector2[Math.Max(n, _loopBuf.Length * 2)];
+        return _loopBuf;
+    }
+
+    private static void Loop(Vector2[] w, int n, List<Vector2> outPairs)
+    {
+        if (n < 2) return;
+        for (int i = 0; i < n; i++)
         {
-            outPairs.Add(t.TransformPoint(local[i]));
-            outPairs.Add(t.TransformPoint(local[(i + 1) % local.Length]));
+            outPairs.Add(w[i]);
+            outPairs.Add(w[i + 1 < n ? i + 1 : 0]);
         }
     }
 

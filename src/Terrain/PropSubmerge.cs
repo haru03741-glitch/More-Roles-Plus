@@ -71,6 +71,7 @@ internal static partial class PropSim
         }
         order.Sort((a, c) => lo[c].CompareTo(lo[a]));
         int moved = 0;
+        System.Text.StringBuilder log = null; // ずらした組は 1 行にまとめて書く (1 組 1 行だと書き出しだけで数 ms)
         for (int oi = 0; oi < order.Count; oi++)
         {
             int back = order[oi];
@@ -86,10 +87,10 @@ internal static partial class PropSim
                 if (fq.Z <= bq.Z - TieDz) continue;
                 SetZ(fq, bq.Z - TieDz);
                 moved++;
-                Plugin.Logger.LogInfo($"[PropSim] untie {fq.Name} z={z0[front]:F5}->{fq.Z:F5} before {bq.Name} z={bq.Z:F5}");
+                (log ??= new System.Text.StringBuilder()).Append($" | {fq.Name} z={z0[front]:F5}->{fq.Z:F5} before {bq.Name} z={bq.Z:F5}");
             }
         }
-        if (moved > 0) Plugin.Logger.LogInfo($"[PropSim] untied={moved}");
+        if (moved > 0) Plugin.Logger.LogInfo($"[PropSim] untied={moved}{log}");
 
         static void SetZ(Prop q, float z)
         {
