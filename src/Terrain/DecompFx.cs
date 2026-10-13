@@ -108,18 +108,38 @@ internal static class DecompFx
 
     // ── 準備 (TerrainWarm から・外壁を壊せる船だけ) ───────────────────────
 
-    internal static void Warm()
+    // 粒の GameObject (460 個・PC で 4〜5ms) は数フレームに分けて作る。clock が budgetMs を超えたら次の呼び出しで続き。
+    // 作り終わった (か作らない船・失敗した) ら true
+    internal static bool WarmSome(System.Diagnostics.Stopwatch clock, double budgetMs)
     {
-        if (!SolidMap.Breachable) return;
-        try { EnsurePool(); }
-        catch (Exception e) { Plugin.Logger.LogError($"[DecompFx] warm: {e}"); _failedGen = GameClock.ShipGen; }
+        if (!SolidMap.Breachable) return true;
+        try { return EnsurePool(clock, budgetMs) || _failedGen == GameClock.ShipGen || !ShipStatus.Instance; }
+        catch (Exception e) { Plugin.Logger.LogError($"[DecompFx] warm: {e}"); _failedGen = GameClock.ShipGen; return true; }
     }
 
-    private static bool EnsurePool()
+    private const int PoolSize = Streaks + Scraps + Puffs + Rays + Dusts + Debris + 3 * MaxBursts + 4;
+    private static int _made; // 作った粒の数 (PoolSize で揃う)
+
+    // 演出を出す時は残りを全部作ってから
+    private static bool EnsurePool() => EnsurePool(null, 0);
+
+    private static bool EnsurePool(System.Diagnostics.Stopwatch clock, double budgetMs)
     {
         if (GameClock.ShipGen != _shipGen) Forget();
-        if (_root) return true;
+        if (_root && _made == PoolSize) return true;
         if (_failedGen == GameClock.ShipGen || !ShipStatus.Instance) return false;
+        if (!_root) Begin();
+        while (_made < PoolSize)
+        {
+            if (clock != null && clock.Elapsed.TotalMilliseconds > budgetMs) return false;
+            MakeAt(_made++);
+        }
+        Plugin.Logger.LogInfo($"[DecompFx] pool={All.Count}");
+        return true;
+    }
+
+    private static void Begin()
+    {
         _shipGen = GameClock.ShipGen;
         _glow ??= Bake(64, (x, y) => { float r2 = (x * x + y * y) * 4f; float a = MathF.Exp(-r2 * 4.5f); return (a, 1f); }, "MrpDecompGlow");
         // 風の筋: 頭 (+x) が明るく尾へ細く薄れる。芯は白・縁は暗い灰 (明るい床でも沈まない)
@@ -157,23 +177,34 @@ internal static class DecompFx
         _isy = MathF.Abs(ss.y) > 1e-4f ? 1f / ss.y : 1f;
         GameClock.Ship.Bind(_root);
         GameClock.Ship.OnRelease(Forget);
+    }
 
-        for (int i = 0; i < Streaks; i++) FreeStreak.Add(Make(Kind.Streak, _streak, i));
-        for (int i = 0; i < Scraps; i++)
+    // j 番目の粒 (並びは筋・破片・煙・光線・塵・欠片・閃光・噴流の芯の順)
+    private static void MakeAt(int j)
+    {
+        int i = j;
+        if (i < Streaks) { FreeStreak.Add(Make(Kind.Streak, _streak, i)); return; }
+        i -= Streaks;
+        if (i < Scraps)
         {
             bool spark = (i & 1) == 0;
             var b = Make(Kind.Scrap, spark ? DebrisArt.Spark : DebrisArt.Plate(i), i);
             b.Spark = spark;
             FreeScrap.Add(b);
+            return;
         }
-        for (int i = 0; i < Puffs; i++) FreePuff.Add(Make(Kind.Puff, _fog[i % _fog.Length], i));
-        for (int i = 0; i < Rays; i++) FreeRay.Add(Make(Kind.Ray, _streak, i));
-        for (int i = 0; i < Dusts; i++) FreeDust.Add(Make(Kind.Dust, _fog[i % _fog.Length], i));
-        for (int i = 0; i < Debris; i++) FreeChip.Add(Make(Kind.Chip, (i % 3) == 0 ? DebrisArt.Plate(i) : DebrisArt.Chunk(i), i));
-        for (int i = 0; i < 3 * MaxBursts; i++) FreeFlash.Add(Make(Kind.Flash, _glow, i));
-        for (int i = 0; i < 4; i++) FreeCore.Add(Make(Kind.Flash, _cone, 100 + i));
-        Plugin.Logger.LogInfo($"[DecompFx] pool={All.Count}");
-        return true;
+        i -= Scraps;
+        if (i < Puffs) { FreePuff.Add(Make(Kind.Puff, _fog[i % _fog.Length], i)); return; }
+        i -= Puffs;
+        if (i < Rays) { FreeRay.Add(Make(Kind.Ray, _streak, i)); return; }
+        i -= Rays;
+        if (i < Dusts) { FreeDust.Add(Make(Kind.Dust, _fog[i % _fog.Length], i)); return; }
+        i -= Dusts;
+        if (i < Debris) { FreeChip.Add(Make(Kind.Chip, (i % 3) == 0 ? DebrisArt.Plate(i) : DebrisArt.Chunk(i), i)); return; }
+        i -= Debris;
+        if (i < 3 * MaxBursts) { FreeFlash.Add(Make(Kind.Flash, _glow, i)); return; }
+        i -= 3 * MaxBursts;
+        FreeCore.Add(Make(Kind.Flash, _cone, 100 + i));
     }
 
     private static Bit Make(Kind kind, Sprite sp, int i)
@@ -784,6 +815,7 @@ internal static class DecompFx
         Pre.Clear();
         Recent.Clear();
         _root = null;
+        _made = 0;
         _live = 0;
         _meeting = false;
         _haveMe = false;
