@@ -68,12 +68,19 @@ internal static class SolidMap
     public static bool Breachable => BreachableHull || SkyHull;
     public static string Stats { get; private set; } = "not built";
 
-    // 試合の始め (TerrainWarm) と、最初の破壊の前に呼ぶ。壁を切る前に作ること
-    public static bool Ensure()
+    // 試合の始め (TerrainWarm) と、最初の破壊の前に呼ぶ。壁を切る前に作ること。
+    // firstHalf = 前半 (壁の線〜塗り) だけ作って止める (TerrainWarm が 2 フレームに分ける用)。後半が済むまで Valid は false で、
+    // その間に誰かが Ensure を呼べばその場で後半を作る
+    public static bool Ensure(bool firstHalf = false)
     {
         var ship = ShipStatus.Instance;
         if (!ship) return false;
-        if (_ship == ship && _gen == GameClock.ShipGen) return Valid;
+        if (_ship == ship && _gen == GameClock.ShipGen)
+        {
+            if (_half != null && !firstHalf) Finish();
+            return Valid;
+        }
+        _half = null;
         _ship = ship;
         _gen = GameClock.ShipGen;
         Valid = false;
@@ -93,14 +100,24 @@ internal static class SolidMap
         LateShapes.Clear();
         LeakedSeeds.Clear();
         if (!DamageMap.Ready()) { _ship = null; return false; }
-        try { Build(ship); }
-        catch (Exception e)
-        {
-            Valid = false;
-            Stats = $"build failed: {e.Message}";
-            Plugin.Logger.LogWarning($"solid map: {Stats}");
-        }
+        try { BuildFirst(ship); }
+        catch (Exception e) { BuildFailed(e); return false; }
+        if (!firstHalf) Finish();
         return Valid;
+    }
+
+    private static void Finish()
+    {
+        try { BuildRest(); }
+        catch (Exception e) { BuildFailed(e); }
+    }
+
+    private static void BuildFailed(Exception e)
+    {
+        _half = null;
+        Valid = false;
+        Stats = $"build failed: {e.Message}";
+        Plugin.Logger.LogWarning($"solid map: {Stats}");
     }
 
     // 歩けない所 (壁の中・塊・船の外・地図の外) か
@@ -321,7 +338,20 @@ internal static class SolidMap
 
     // ---- 作る ----
 
-    private static void Build(ShipStatus ship)
+    // 前半で作って後半へ渡す物 (後半が済むまで歩ける所・島は外へ出さない)
+    private sealed class Half
+    {
+        public ShipStatus Ship;
+        public System.Diagnostics.Stopwatch Sw;
+        public Flood Fl;
+        public List<(Vector2 P, bool Sure)> Seeds;
+        public int Cols, Movable, N;
+        public long VerifyDiff;
+        public double TSeg, TRaster, TSeeds;
+    }
+    private static Half _half;
+
+    private static void BuildFirst(ShipStatus ship)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         _ppu = 1f / DamageMap.TexelSize;
@@ -379,7 +409,7 @@ internal static class SolidMap
         }
         var fl = new Flood(n, sn);
         FloodNative(barrier, sx, sy, sn, fl);
-        long verifyDiff = -1, xfDiff = -1;
+        long verifyDiff = -1;
         if (Native.MrpNative.Verify)
         {
             var cs = new Flood(n, sn);
@@ -387,6 +417,22 @@ internal static class SolidMap
             verifyDiff = cs.Diff(fl);
             fl = cs;
         }
+        sw.Stop();
+        _half = new Half { Ship = ship, Sw = sw, Fl = fl, Seeds = seeds, Cols = cols, Movable = movable, N = n, VerifyDiff = verifyDiff, TSeg = tSeg, TRaster = tRaster, TSeeds = tSeeds };
+    }
+
+    private static void BuildRest()
+    {
+        var h = _half;
+        _half = null;
+        var ship = h.Ship;
+        var sw = h.Sw;
+        sw.Start();
+        var fl = h.Fl;
+        var seeds = h.Seeds;
+        int sn = seeds.Count, n = h.N, cols = h.Cols, movable = h.Movable;
+        long verifyDiff = h.VerifyDiff, xfDiff = -1;
+        double tSeg = h.TSeg, tRaster = h.TRaster, tSeeds = h.TSeeds;
         var blocked = fl.Blocked;
         _open = fl.Open;
         int accepted = fl.Accepted, leaked = fl.LeakedN, extra = 0;
