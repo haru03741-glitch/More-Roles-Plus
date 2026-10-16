@@ -42,7 +42,7 @@ struct FallArgs
     int64_t puts, clipped;                   // 出力: 置いた画素・升が無くて置けなかった画素
 };
 
-static const float SheetFull = 240.0f, DensMax = 1.3f, ThinD = 0.35f, PoolFade = 0.6f, SideBody = 0.75f, Thin = 0.5f;
+static const float SheetFull = 240.0f, DensMax = 1.3f, ThinD = 0.35f, PoolFade = 0.36f, SideBody = 0.75f, Thin = 0.5f;
 static const float ThrowMax = 0.35f, ThrowGain = 0.5f, Spread = 0.4f;
 static const float LipIn = 0.1f;   // 膜を縁から内へさかのぼらせる長さ (水たまりの縁の線にかぶせる)
 static const float ApronMin = 0.12f, ApronGain = 0.06f, ApronMax = 0.45f, ApronDens = 0.8f;   // 着地の白い水の長さ (落ちた高さ 1 単位あたり) と濃さ
@@ -320,7 +320,7 @@ static void Sheet(Ctx& c, const FallEdge& e)
                 float d = dc + (dm - dc) * sp * sp * (3.0f - 2.0f * sp);
                 if (d <= 0.005f) continue;
                 float val = d * w * al / (1.0f + Thin * tau);
-                float pf = tau >= PoolFade ? 0.0f : 1.0f - tau / PoolFade;
+                float pf = 1.0f - fmn(1.0f, fmx(0.0f, sy - y) / (PoolFade * hh));
                 float pool = pf * pf * (3.0f - 2.0f * pf);
                 if (e.nx == 0.0f) { Splat(c, v, x, y, val, foam, dep, pool); continue; }
                 float span = (x - sx) * SideBody;

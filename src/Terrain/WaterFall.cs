@@ -28,7 +28,7 @@ internal static class WaterFall
     private const float SheetFull = 240f;      // 列の濃さが 1 になる縁の流量 (WaterSim の量の単位/秒)
     private const float DensMax = 1.3f;
     private const float ThinD = 0.35f;         // これより薄い膜は列ごとに筋へちぎれる
-    private const float PoolFade = 0.6f;      // 落ち始めてから水たまりの色が噴き出しの色へ移り切るまでの落ちた割合
+    private const float PoolFade = 0.36f;     // 水たまりの色が噴き出しの色へ移り切るまでに落ちる距離の、落ちる高さに対する割合 (落ちた距離に比例して移す・縁のすぐ下で急に変わらない)
     private const float SideBody = 0.75f;      // 横の縁の膜の厚さ (縁から投げ出された先までのうち、先の側から何割を埋めるか)
     private const float Thin = 0.5f;           // 落ちるほど速くなって膜が薄くなる割合 (着地で 1 / (1 + Thin))
     // 絵は世界の格子に揃えた一辺 TileW の升 (隣の升と重ならず、縁はかかる升の全部へ描く)。一辺の画素数が整数になる長さ
@@ -378,7 +378,7 @@ internal static class WaterFall
                     float v = d * w * a / (1f + Thin * tau);
                     // 色は縁の水たまりの深さのまま、水たまりの色から噴き出しの色へ移る割合だけを落ちた割合で変える
                     // (縁に立つ物の有無で深さを変えると、物の形どおりに色が割れる)
-                    float pf = tau >= PoolFade ? 0f : 1f - tau / PoolFade;
+                    float pf = 1f - MathF.Min(1f, MathF.Max(0f, sy - y) / (PoolFade * hh));
                     float pool = pf * pf * (3f - 2f * pf);
                     if (e.Nx == 0f) { Splat(e.Void != 0, x, y, v, foam, dep, pool); continue; }
                     // 横の縁の膜は縁に沿った面なので画面では縦の帯になる。投げ出された先から縁の側へ厚さを付けて、縁と膜の間を空けない
