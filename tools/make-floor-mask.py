@@ -90,6 +90,10 @@ TOP_LINE_CLOSE = 0.05 # 上の面の中の黒い縁取りの線を埋める半�
 TOP_HOLE = 0.01       # 上の面の中で埋める穴の広さの上限 (世界単位の 2 乗)
 TOP_SMOOTH = 0.03     # 色で分けた後にならす半径 (世界単位)
 TOP_FACE = 0.5        # 上の面の輪郭 (崖の縁) の外のこの幅 (世界単位) は崖の面として、下の地面の床を広げない
+CLIFF_SCAN = 5.5      # 台地 (いちばん広い地面以外の歩ける所) からこの距離 (世界単位) まで、崖の面の色の画素を地面の床にしない
+CLIFF_LEARN_OUT = (1.2, 3.0)  # 崖の面の色を学ぶのは、歩ける所からこの距離の帯の絵の無い地面
+CLIFF_BLOCK = 4.0     # 色を学ぶ升の一辺 (世界単位)。学ぶ範囲は升の周りこの幅まで (地面の色も崖の色も場所で違う)
+CLIFF_MIN = 200       # 升の周りで地面と崖の面の色がこれだけ (画素) 学べない所は分けない
 
 DEFAULT_BUNDLES = [
     r"C:/Program Files/Epic Games/AmongUs/Among Us_Data/StreamingAssets/aa/EGS/StandaloneWindows",
@@ -397,6 +401,63 @@ def learn(j, canvas, ppu, floor, inner, rgb, lum, ch, key):
     return out
 
 
+def cliff_faces(j, ppu, walk, bare, art):
+    """台地の周りの崖の面の色の画素。台地 = 歩ける所のまとまりのうち、いちばん広い地面以外 (はしごでだけつながる高い所と低い所)。
+    地面の船では台地の上の面・崖の面・下の地面が同じ絵の無い地面で、歩ける所から GROUND_REACH まで床にすると崖の面まで床になる
+    (台地の水が崖の面へはみ出し、下の地面の水が崖の面を這い上がって見える)。台地から CLIFF_SCAN までの絵の無い地面を、
+    近くの歩ける所の色 (地面) と歩ける所から少し離れた絵の無い所の色 (崖の面) のどちらに近いかで分ける。色は CLIFF_BLOCK の升ごとに学ぶ"""
+    img, appu = art
+    ah, aw = img.shape[:2]
+    out = np.zeros(walk.shape, bool)
+    lab, n = ndimage.label(walk)
+    if n < 2:
+        return out
+    size = np.bincount(lab.ravel(), minlength=n + 1)
+    size[0] = 0
+    high = walk & (lab != size.argmax())
+    ys, xs = np.nonzero(high)
+    # 切り出しの角は升の格子に揃える (升の区切りが範囲で動かない)
+    b = int(CLIFF_BLOCK * ppu)
+    m = int((CLIFF_SCAN + CLIFF_LEARN_OUT[1] + CLIFF_BLOCK) * ppu)
+    y0, y1 = max(0, ys.min() - m) // b * b, min(walk.shape[0], ys.max() + m + 1)
+    x0, x1 = max(0, xs.min() - m) // b * b, min(walk.shape[1], xs.max() + m + 1)
+    wk, bw = walk[y0:y1, x0:x1], bare[y0:y1, x0:x1]
+    gx = np.clip(((np.arange(x0, x1) + 0.5) / ppu * appu).astype(int), 0, aw - 1)
+    gy = np.clip(((np.arange(y0, y1) + 0.5) / ppu * appu).astype(int), 0, ah - 1)
+    q = (img[gy[:, None], gx[None, :]] >> 3).astype(np.int32)
+    key = (q[..., 0] << 10) | (q[..., 1] << 5) | q[..., 2]
+    dout = ndimage.distance_transform_edt(~wk)
+    learn_ground = wk & (ndimage.distance_transform_edt(wk) > TOP_LEARN_IN * ppu)
+    learn_face = bw & (dout > CLIFF_LEARN_OUT[0] * ppu) & (dout < CLIFF_LEARN_OUT[1] * ppu)
+    scope = bw & ~wk & (ndimage.distance_transform_edt(~high[y0:y1, x0:x1]) <= CLIFF_SCAN * ppu)
+    fc = np.zeros(wk.shape, bool)
+    for by in range(0, wk.shape[0], b):
+        for bx in range(0, wk.shape[1], b):
+            blk = (slice(by, by + b), slice(bx, bx + b))
+            if not scope[blk].any():
+                continue
+            win = (slice(max(0, by - b), by + 2 * b), slice(max(0, bx - b), bx + 2 * b))
+            sg, sf = learn_ground[win], learn_face[win]
+            if sg.sum() < CLIFF_MIN or sf.sum() < CLIFF_MIN:
+                continue
+            kw = key[win]
+            like = (hist_of(kw, sg) >= hist_of(kw, sf)).reshape(-1)
+            fc[blk] = scope[blk] & ~like[key[blk]]
+    # 色のまだら (崖の面の明るい縞・地面の中の橙の石) をならす
+    st = ndimage.generate_binary_structure(2, 1)
+    r = max(1, int(round(TOP_SMOOTH * ppu)))
+    fc = ndimage.binary_closing(ndimage.binary_opening(fc, st, iterations=r), st, iterations=r) & scope
+    out[y0:y1, x0:x1] = fc
+    print(f"{j['ship']}: cliff faces {int(fc.sum())} px around {n - 1} raised areas")
+    return out
+
+
+def hist_of(key, sel):
+    """色 (各 5 ビット) の出現の割合 (隣の色へ少しならす)"""
+    hh = np.bincount(key[sel], minlength=1 << 15).astype(np.float32).reshape(32, 32, 32)
+    return ndimage.uniform_filter(hh, 3) / max(1, sel.sum())
+
+
 def classify(j, canvas, ppu, cover, art=None):
     s = j["solid"]
     raw = np.frombuffer(__import__("base64").b64decode(s["open"]), np.uint8)
@@ -457,6 +518,9 @@ def classify(j, canvas, ppu, cover, art=None):
             below &= ~(poly & (ndimage.distance_transform_edt(~top) > TOP_REFINE * ppu))
         if cliff is not None:
             below &= ~cliff
+        # 一方向の影の多角形の無い台地 (上の面と崖の縁の手がかりが無い) の崖の面も、絵の色で下の地面と台地の地面から外す
+        if art is not None:
+            below &= ~cliff_faces(j, ppu, walk, ~drawn & ~cover, art)
         for side, seed in ((top & ~band, on_top), (below, off_top)):
             g = ground & side
             lab, n = ndimage.label(g)
