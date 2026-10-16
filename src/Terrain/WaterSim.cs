@@ -283,7 +283,9 @@ internal static partial class WaterSim
     private static void Enqueue(in ResolvedDamage r)
     {
         if (r.Kind == DamageKind.Flood) { AddInflow(r); return; }
-        if (!_running || r.Kind.IsFire() || r.Kind == DamageKind.Water) return; // 放水の口は WaterLeak から AddLeak で入る
+        if (r.Kind.IsFire() || r.Kind == DamageKind.Water) return; // 放水の口は WaterLeak から AddLeak で入る
+        // 動き出す前: 升の土台があれば壊れた所をその場で作り直す (動き出してからと同じ範囲・水が無いので衝撃は無し)
+        if (!_running && !(_based && r.Kind.Shapes())) return;
         int tick = GameClock.Expand(r.Tick);
         float rad = r.Kind == DamageKind.Explosion ? r.Size + 0.6f : 2f;
         int cx = (int)MathF.Floor((r.Position.x - _org.x) / _cell), cy = (int)MathF.Floor((r.Position.y - _org.y) / _cell);
@@ -314,7 +316,37 @@ internal static partial class WaterSim
             int reach = p.Sr / 256 + 2;
             if (reach > p.R) p.R = reach;
         }
+        if (!_running) { Reshape(p.Cx, p.Cy, p.R); return; }
         Enqueue(p);
+    }
+
+    // 壊れた所の升と落ちる縁を作り直す (StepOnce の出来事と同じ範囲)
+    private static void Reshape(int cx, int cy, int r)
+    {
+        int reach = r + FallScan[3] + 1;
+        Rebuild(cx - r, cy - r, cx + r, cy + r);
+        Links(cx - reach, cy - reach, cx + reach, cy + reach);
+    }
+
+    // 壊す前 (TerrainSync が地形を削る前・全員の手元)。準備段で升の土台を作り終える前に壊れたら、削る前の地図で今作る。
+    // 土台はいつも壊れる前の地図から作り、その後の破壊は Reshape で足すので、準備の早さが人ごとに違っても升は同じになる
+    public static void BeforeApply(in ResolvedDamage r)
+    {
+        if (_based || _ready || !r.Kind.Shapes()) return;
+        try
+        {
+            // 作れない (歩ける所の地図が無い) と、この人だけ後で壊れた後の地図から升を作るので他の人とずれる
+            if (!BuildBase()) Plugin.Logger.LogWarning("[WaterSim] base: no walkable map before the first break");
+        }
+        catch (Exception e) { Fail("base", e); }
+    }
+
+    // 準備段 (TerrainWarm) から
+    private static bool _noWarmBase; // 確認用 (water prebase off)
+    internal static void WarmBase(bool firstHalf = false)
+    {
+        if (_based || _ready || _noWarmBase) return;
+        BuildBase(firstHalf);
     }
 
     // 火 (FireSim) から: 升を用意して刻みを回し始める (水が無くても火は水の升と刻みで動く)
@@ -401,62 +433,85 @@ internal static partial class WaterSim
 
     // ── 升 ─────────────────────────────────────────────────────────────
 
+    // 升を使い始める (水か火が最初に出た時)。土台は準備段で作ってあればそれを使う
     private static bool EnsureGrid()
     {
         if (_ready) return true;
-        if (!SolidMap.Ensure() || !SolidMap.Valid) return false;
-        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        _w = SolidMap.W / Sub;
-        _h = SolidMap.H / Sub;
-        _org = SolidMap.Origin;
-        _cell = Sub / SolidMap.Ppu;
-        int n = _w * _h;
-        _open = new byte[n];
-        _sub = new ushort[n];
-        _platFloor = new byte[n];
-        _edge = new byte[n];
-        _hgt = new int[n];
-        _flux = new int[n * 4];
-        _move = new int[n * 4];
-        _inList = new byte[n];
-        _stir = new byte[n];
-        _act = new int[n];
-        _actN = 0;
-        _sortedN = 0;
-        _fo = Array.Empty<int>(); // 縁の数に合わせて Links で広げる
-        _foN = 0;
-        _shut = new byte[n];
-        _doorCell = new byte[n];
-        _doorFloor = new byte[n];
-        _propCell = new byte[n];
-        _fallMask = new byte[n];
-        _stepMask = new byte[n];
-        _shadowCut = new byte[n];
-        _lipMask = new byte[n];
-        InitSlots(n);
-        _furn = new short[n];
-        PropSim.ForgetTops(); // 新しい格子へ家具の床を刻み直す
-        FallTo.Clear();
-        StepTo.Clear();
-        ListDoorCells();
-        int props = ListPropCells();
-        _tw = (_w + TileCells - 1) / TileCells;
-        _th = (_h + TileCells - 1) / TileCells;
-        _tileDirty = new byte[_tw * _th];
-        LoadWet();
-        long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
-        Rebuild(0, 0, _w - 1, _h - 1);
-        long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
-        Levels();
-        LoadPlatform();
-        long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
-        Links(0, 0, _w - 1, _h - 1, true);
-        long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
-        double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} alloc={(t1 - t0) * f:0.00}ms rebuild={(t2 - t1) * f:0.00} levels={(t3 - t2) * f:0.00} links={(t4 - t3) * f:0.00} n={FallTo.Count} steps={CountBits(_stepMask)} z=[{_zInfo}] props={props} wet={WetStats} hash={GridHash():x8}");
+        if (!_based && !BuildBase()) return false;
+        Plugin.Logger.LogInfo($"[WaterSim] grid {_w}x{_h} {_baseInfo} n={FallTo.Count} steps={CountBits(_stepMask)} z=[{_zInfo}] wet={WetStats} hash={GridHash():x8} cells={CellHash():x8}");
         DirtyTiles.Clear();
         Array.Clear(_tileDirty);
         _ready = true;
+        return true;
+    }
+
+    // 升の土台 (開いた升・高さ・落ちる縁)。作った後の破壊は Reshape で足す
+    private static bool _based;
+    private static string _baseInfo = "";
+    // 準備段では 2 フレームに分ける (firstHalf = 升と高さまで・残りの落ちる縁は次)。途中で使われたらその場で残りを作る
+    private static bool _baseHalf;
+    private static double _baseMs0, _baseMs1, _baseMs2;
+    private static int _baseProps;
+    private static bool BuildBase(bool firstHalf = false)
+    {
+        double f = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        if (!_baseHalf)
+        {
+            if (!SolidMap.Ensure() || !SolidMap.Valid) return false;
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            _w = SolidMap.W / Sub;
+            _h = SolidMap.H / Sub;
+            _org = SolidMap.Origin;
+            _cell = Sub / SolidMap.Ppu;
+            int n = _w * _h;
+            _open = new byte[n];
+            _sub = new ushort[n];
+            _platFloor = new byte[n];
+            _edge = new byte[n];
+            _hgt = new int[n];
+            _flux = new int[n * 4];
+            _move = new int[n * 4];
+            _inList = new byte[n];
+            _stir = new byte[n];
+            _act = new int[n];
+            _actN = 0;
+            _sortedN = 0;
+            _fo = Array.Empty<int>(); // 縁の数に合わせて Links で広げる
+            _foN = 0;
+            _shut = new byte[n];
+            _doorCell = new byte[n];
+            _doorFloor = new byte[n];
+            _propCell = new byte[n];
+            _fallMask = new byte[n];
+            _stepMask = new byte[n];
+            _shadowCut = new byte[n];
+            _lipMask = new byte[n];
+            InitSlots(n);
+            _furn = new short[n];
+            PropSim.ForgetTops(); // 新しい格子へ家具の床を刻み直す
+            FallTo.Clear();
+            StepTo.Clear();
+            ListDoorCells();
+            _baseProps = ListPropCells();
+            _tw = (_w + TileCells - 1) / TileCells;
+            _th = (_h + TileCells - 1) / TileCells;
+            _tileDirty = new byte[_tw * _th];
+            LoadWet();
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            Rebuild(0, 0, _w - 1, _h - 1);
+            long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+            Levels();
+            LoadPlatform();
+            long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
+            _baseMs0 = (t1 - t0) * f; _baseMs1 = (t2 - t1) * f; _baseMs2 = (t3 - t2) * f;
+            _baseHalf = true;
+            if (firstHalf) return true;
+        }
+        long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
+        Links(0, 0, _w - 1, _h - 1, true);
+        long t5 = System.Diagnostics.Stopwatch.GetTimestamp();
+        _baseInfo = $"base@{GameClock.Now} alloc={_baseMs0:0.00}ms rebuild={_baseMs1:0.00} levels={_baseMs2:0.00} links={(t5 - t4) * f:0.00} props={_baseProps} basehash={GridHash():x8} basecells={CellHash():x8}";
+        _based = true;
         return true;
     }
 
@@ -617,6 +672,14 @@ internal static partial class WaterSim
     }
 
     // 升作りの結果 (物の升・影の線で切った向き・落ちる先) の指紋。作り方を変えても同じになることの確認用
+    // 升そのもの (開いた升・流れてよい向き・高さ) まで含めた指紋。土台 + 作り直しと、壊れた後に丸ごと作った升の照合用
+    private static uint CellHash()
+    {
+        uint h = GridHash();
+        for (int i = 0; i < _open.Length; i++) h = (h ^ (uint)(_open[i] | _edge[i] << 1 | (byte)_lvl[i] << 9 | _sub[i] << 17)) * 16777619;
+        return h;
+    }
+
     private static uint GridHash()
     {
         uint h = 2166136261;
@@ -2624,6 +2687,8 @@ internal static partial class WaterSim
     {
         DropDeferred();
         _ready = false;
+        _based = false;
+        _baseHalf = false;
         _running = false;
         _open = null; _sub = null; _edge = null; _hgt = null; _flux = null; _inList = null; _stir = null; _tileDirty = null;
         _lvl = null; _shut = null; _doorCell = null; _doorFloor = null; _propCell = null; OutsideShadow.Clear(); LedgeShadow.Clear(); _doorUnder = null; _fallMask = null; _stepMask = null; _shadowCut = null; _air = null; _platFloor = null; _plat = false; _lipMask = null; ClearSlots(); _furn = null; _cellIsl = null; _islRank = null; _islArea = null; _islBase = Array.Empty<int>(); _rim = null; LowWalls.Clear();
@@ -2666,7 +2731,7 @@ internal static partial class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             // 預けた刻みを終わらせてから (確認用の操作は水の配列を直に読み書きする)
@@ -2677,6 +2742,13 @@ internal static partial class WaterSim
                 if (a.EndsWith("off")) _noSleep = true;
                 else if (a.EndsWith("on")) _noSleep = false;
                 reply($"OK water sleep={!_noSleep} (this device only・水を消すと on に戻る)");
+                return;
+            }
+            if (a.StartsWith("prebase"))
+            {
+                if (a.EndsWith("off")) _noWarmBase = true;
+                else if (a.EndsWith("on")) _noWarmBase = false;
+                reply($"OK water prebase={!_noWarmBase} based={_based} ready={_ready} (this device only・off = 準備段で升の土台を作らず、最初の破壊の前に作る)");
                 return;
             }
             if (a.StartsWith("zflow"))

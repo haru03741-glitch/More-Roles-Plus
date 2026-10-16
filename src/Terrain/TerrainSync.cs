@@ -88,6 +88,7 @@ internal static class TerrainSync
     private static string ApplyNow(ushort seq, in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
         Applied++;
+        WaterSim.BeforeApply(r);
         TerrainDigest.Begin();
         string res;
         try { res = TerrainDamage.Apply(r, decide, out landings); }
