@@ -181,19 +181,42 @@ internal static class DustCloud
     // ── 煙の絵 ─────────────────────────────────────────────────────────
 
     // 煙の板は届いた升を近い順に並べて等間隔に拾った所に置く (= 広がった形の上に均等に散る)
+    // 届いた升を近い順に _order へ並べる (同じ距離は升の番号順)。距離は整数なので数えて並べる
+    // (升は数万あり、比べる関数を渡す並べ替えだと端末で爆発 1 回に 20ms 級だった)
+    private static int[] _order = Array.Empty<int>(), _hist = Array.Empty<int>();
+    private static int SortByDist(ushort[] dist)
+    {
+        int max = -1, count = 0;
+        for (int i = 0; i < dist.Length; i++)
+        {
+            int d = dist[i];
+            if (d == ushort.MaxValue) continue;
+            count++;
+            if (d > max) max = d;
+        }
+        if (count == 0) return 0;
+        if (_hist.Length < max + 2) _hist = new int[max + 2];
+        else Array.Clear(_hist, 0, max + 2);
+        if (_order.Length < count) _order = new int[count];
+        for (int i = 0; i < dist.Length; i++)
+            if (dist[i] != ushort.MaxValue) _hist[dist[i] + 1]++;
+        for (int d = 1; d <= max + 1; d++) _hist[d] += _hist[d - 1];
+        for (int i = 0; i < dist.Length; i++)
+            if (dist[i] != ushort.MaxValue) _order[_hist[dist[i]]++] = i;
+        return count;
+    }
+
     private static void MakePuffs(Cloud c, float radius, ushort seed)
     {
-        var order = new List<int>(c.Cells);
-        for (int i = 0; i < c.Dist.Length; i++)
-            if (c.Dist[i] != ushort.MaxValue) order.Add(i);
-        if (order.Count == 0) return;
-        order.Sort((a, b) => c.Dist[a].CompareTo(c.Dist[b]));
+        int count = SortByDist(c.Dist);
+        if (count == 0) return;
+        var order = _order;
 
         float ppu = SolidMap.Valid ? SolidMap.Ppu : 1f / DamageMap.TexelSize;
         float ox = SolidMap.Valid ? SolidMap.Origin.x : 0f, oy = SolidMap.Valid ? SolidMap.Origin.y : 0f;
         var rnd = new System.Random(seed);
         int n = c.Spec.Puffs;
-        float area = order.Count / (ppu * ppu);
+        float area = count / (ppu * ppu);
         float size = Math.Clamp(MathF.Sqrt(area / n) * 1.8f, 0.7f, 2.4f);
         var sprite = DebrisArt.DustBlob;
         float sw = Math.Max(0.0001f, sprite.bounds.size.x);
@@ -201,7 +224,7 @@ internal static class DustCloud
         for (int i = 0; i < n; i++)
         {
             float f = (i + 0.2f + 0.6f * (float)rnd.NextDouble()) / n;
-            int k = order[Math.Min(order.Count - 1, (int)(f * order.Count))];
+            int k = order[Math.Min(count - 1, (int)(f * count))];
             var p = new Puff
             {
                 X = ox + (c.X0 + k % c.W + 0.5f) / ppu,
