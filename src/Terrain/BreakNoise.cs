@@ -64,6 +64,8 @@ internal static class BreakNoise
     }
 
     private static readonly List<Mark> Marks = new();
+    // 消した印は壊さず隠して取っておく (作るのは本編の矢印の複製と部品外しで 1 つ 4ms 級)。HUD ごと消えた物は捨てる
+    private static readonly List<Mark> Spare = new();
     private static readonly Queue<long> Recent = new();
     private static GameObject _voiceHost;
     private static AudioSource[] _voices;
@@ -213,8 +215,34 @@ internal static class BreakNoise
         else src.Play();
     }
 
-    // 試合が出たら鳴らす係を先に作っておく
-    internal static void Warm() => EnsureVoices();
+    // 試合が出たら鳴らす係と印 1 つを先に作っておく
+    internal static void Warm()
+    {
+        EnsureVoices();
+        if (Marks.Count > 0) return;
+        for (int i = Spare.Count - 1; i >= 0; i--) if (!Spare[i].Root) Spare.RemoveAt(i);
+        if (Spare.Count > 0) return;
+        var m = Create(Sound.Boom);
+        if (m == null) return;
+        m.Root.gameObject.SetActive(false);
+        Spare.Add(m);
+    }
+
+    private static Mark Take(Sound kind)
+    {
+        while (Spare.Count > 0)
+        {
+            var m = Spare[Spare.Count - 1];
+            Spare.RemoveAt(Spare.Count - 1);
+            if (!m.Root) continue;
+            m.T = 0f;
+            m.Alpha = -1f;
+            SetKind(m, kind);
+            m.Root.gameObject.SetActive(true);
+            return m;
+        }
+        return Create(kind);
+    }
 
     // 本編の効果音の音量設定に従うよう、効果音のミキサーへ流す
     private static bool EnsureVoices()
@@ -253,7 +281,7 @@ internal static class BreakNoise
             return;
         }
         if (Marks.Count >= MaxMarks) { DestroyMark(Marks[0]); Marks.RemoveAt(0); }
-        var mk = Create(kind);
+        var mk = Take(kind);
         if (mk == null) return;
         mk.Sx = x; mk.Sy = y; mk.Size = size;
         Marks.Add(mk);
@@ -370,7 +398,10 @@ internal static class BreakNoise
 
     private static void DestroyMark(Mark m)
     {
-        if (m.Root) UnityEngine.Object.Destroy(m.Root.gameObject);
+        if (!m.Root) return;
+        if (Spare.Count >= MaxMarks) { UnityEngine.Object.Destroy(m.Root.gameObject); return; }
+        m.Root.gameObject.SetActive(false);
+        Spare.Add(m);
     }
 
     private static Vector3 V3(float x, float y, float z)

@@ -677,6 +677,14 @@ internal static class TerrainProbe
 
         TestBridge.Register("warm", "試合の始めの先回りの準備 (損傷マスク・絵・種点・焼くカメラ・コンパイル) にかかった時間", (_, reply) => reply($"OK warm {TerrainWarm.Report}"));
 
+        TestBridge.Register("jitlog", "<start | stop [件数=200]> その場でコンパイルされたメソッドを集める (準備段のコンパイル漏れ探し)", (args, reply) =>
+        {
+            var q = args.Trim().Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (q.Length > 0 && q[0] == "start") { reply(Dev.JitLog.Start()); return; }
+            if (q.Length > 0 && q[0] == "stop") { reply(Dev.JitLog.Stop(q.Length > 1 && int.TryParse(q[1], out int mx) ? mx : 200)); return; }
+            reply("ERR jitlog <start | stop [件数]>");
+        });
+
         TestBridge.Register("shadowmask", "視界の影を作る層 (Constants.ShadowMask) と船の層 (ShipOnlyMask・ShipAndObjectsMask) のビット", (_, reply) =>
             reply($"OK shadowmask shadow={(int)Constants.ShadowMask:X} shipOnly={(int)Constants.ShipOnlyMask:X} shipAndObjects={(int)Constants.ShipAndObjectsMask:X}"));
 
