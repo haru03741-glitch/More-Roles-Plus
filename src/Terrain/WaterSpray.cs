@@ -31,6 +31,7 @@ internal static class WaterSpray
         public byte[] Px;
         public float[] Dens, Foam;
         public int N;
+        public readonly int[] Box = { 0, 0, -1, -1 }; // 前の刻みで粒が触った範囲 (C++ が消す・詰め直す所)
     }
 
     private static readonly List<Spray> Sprays = new();
@@ -46,6 +47,7 @@ internal static class WaterSpray
         while (Sprays.Count >= MaxSprays) { Destroy(Sprays[0]); Sprays.RemoveAt(0); }
         int n = (int)(Half * 2f * Ppu);
         var s = new Spray { Cx = at.x, Cy = at.y, N = n, Px = new byte[n * n * 4], Dens = new float[n * n], Foam = new float[n * n] };
+        for (int i = 3; i < s.Px.Length; i += 4) s.Px[i] = 255; // 濃さ 0 の画素 (C++ は粒が触った範囲だけ詰め直す)
         s.Tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { name = "MrpSpray", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         s.Sp = Sprite.Create(s.Tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), Ppu, 0, SpriteMeshType.FullRect);
         s.Sp.name = "MrpSpray";
@@ -88,10 +90,53 @@ internal static class WaterSpray
         LastDrawMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private unsafe struct SprayArgs
+    {
+        public int* Ox, Oy, Oh, Px, Py, Ph;
+        public byte* Stuck;
+        public int Count;
+        public float* Dens, Foam;
+        public byte* Out;
+        public int N;
+        public float OrgX, OrgY, X0, Y0;
+        public int* Box;
+    }
+
+    internal static long VerifyDraws, VerifyDrawDiff; // 答え合わせ (native verify): C# でも描いて画素を 1 バイトずつ比べる
+
+    // 絵は C++ で描く (粒 1024 × 噴き出し 3 枚を刻みごとに描き直す・消すのと詰めるのは粒が触った範囲だけ)
     private static unsafe void Draw(Spray s)
     {
-        Array.Clear(s.Dens);
-        Array.Clear(s.Foam);
+        var org = WaterSim.Origin;
+        fixed (int* ox = WaterSim.Ox) fixed (int* oy = WaterSim.Oy) fixed (int* oh = WaterSim.Oh)
+        fixed (int* px = WaterSim.Px) fixed (int* py = WaterSim.Py) fixed (int* ph = WaterSim.Ph) fixed (bool* st = WaterSim.Stuck)
+        fixed (float* dens = s.Dens) fixed (float* foam = s.Foam) fixed (byte* outPx = s.Px) fixed (int* box = s.Box)
+        {
+            var a = new SprayArgs
+            {
+                Ox = ox, Oy = oy, Oh = oh, Px = px, Py = py, Ph = ph, Stuck = (byte*)st, Count = WaterSim.Particles,
+                Dens = dens, Foam = foam, Out = outPx, N = s.N,
+                OrgX = org.x, OrgY = org.y, X0 = s.Cx - Half, Y0 = s.Cy - Half, Box = box,
+            };
+            Native.MrpNative.WaterSpray(&a);
+        }
+        if (Native.MrpNative.Verify)
+        {
+            var px2 = new byte[s.Px.Length];
+            DrawCs(s, px2, new float[s.Dens.Length], new float[s.Foam.Length]);
+            long diff = 0;
+            for (int i = 0; i < px2.Length; i++) if (px2[i] != s.Px[i]) diff++;
+            VerifyDraws++;
+            VerifyDrawDiff += diff;
+        }
+        fixed (byte* b = s.Px) s.Tex.LoadRawTextureData((IntPtr)b, s.Px.Length);
+        s.Tex.Apply(false, false);
+    }
+
+    // C# 版 (照合用)。px・dens・foam に描く
+    private static void DrawCs(Spray s, byte[] outPx, float[] dens, float[] foamBuf)
+    {
         int n = s.N;
         var org = WaterSim.Origin;
         float x0 = s.Cx - Half, y0 = s.Cy - Half;
@@ -111,36 +156,33 @@ internal static class WaterSpray
             for (int k = 0; k <= steps; k++)
             {
                 float f = (float)k / steps;
-                Splat(s, (int)(ax + dx * f), (int)(ay + dy * f), w, foam);
+                Splat(dens, foamBuf, n, (int)(ax + dx * f), (int)(ay + dy * f), w, foam);
             }
         }
         for (int i = 0; i < n * n; i++)
         {
-            float d = s.Dens[i];
+            float d = dens[i];
             int o = i * 4;
-            s.Px[o] = (byte)Math.Min(255f, d * 255f);
-            s.Px[o + 1] = d > 0f ? (byte)Math.Min(255f, s.Foam[i] / d * 255f) : (byte)0;
-            s.Px[o + 2] = 0;
-            s.Px[o + 3] = 255;
+            outPx[o] = (byte)Math.Min(255f, d * 255f);
+            outPx[o + 1] = d > 0f ? (byte)Math.Min(255f, foamBuf[i] / d * 255f) : (byte)0;
+            outPx[o + 2] = 0;
+            outPx[o + 3] = 255;
         }
-        fixed (byte* b = s.Px) s.Tex.LoadRawTextureData((IntPtr)b, s.Px.Length);
-        s.Tex.Apply(false, false);
     }
 
-    private static void Splat(Spray s, int x, int y, float w, float foam)
+    private static void Splat(float[] dens, float[] foamBuf, int n, int x, int y, float w, float foam)
     {
-        int n = s.N;
         if (x < 1 || y < 1 || x >= n - 1 || y >= n - 1) return;
         int c = y * n + x;
-        Add(s, c, Hit * w, foam);
-        Add(s, c - 1, Side * w, foam); Add(s, c + 1, Side * w, foam); Add(s, c - n, Side * w, foam); Add(s, c + n, Side * w, foam);
-        Add(s, c - n - 1, Corner * w, foam); Add(s, c - n + 1, Corner * w, foam); Add(s, c + n - 1, Corner * w, foam); Add(s, c + n + 1, Corner * w, foam);
+        Add(dens, foamBuf, c, Hit * w, foam);
+        Add(dens, foamBuf, c - 1, Side * w, foam); Add(dens, foamBuf, c + 1, Side * w, foam); Add(dens, foamBuf, c - n, Side * w, foam); Add(dens, foamBuf, c + n, Side * w, foam);
+        Add(dens, foamBuf, c - n - 1, Corner * w, foam); Add(dens, foamBuf, c - n + 1, Corner * w, foam); Add(dens, foamBuf, c + n - 1, Corner * w, foam); Add(dens, foamBuf, c + n + 1, Corner * w, foam);
     }
 
-    private static void Add(Spray s, int i, float v, float foam)
+    private static void Add(float[] dens, float[] foamBuf, int i, float v, float foam)
     {
-        s.Dens[i] += v;
-        s.Foam[i] += v * foam;
+        dens[i] += v;
+        foamBuf[i] += v * foam;
     }
 
     private static void Destroy(Spray s)
