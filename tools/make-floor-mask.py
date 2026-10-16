@@ -16,6 +16,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import struct
 import sys
 import zlib
@@ -94,6 +95,14 @@ CLIFF_SCAN = 5.5      # 台地 (いちばん広い地面以外の歩ける所) �
 CLIFF_LEARN_OUT = (1.2, 3.0)  # 崖の面の色を学ぶのは、歩ける所からこの距離の帯の絵の無い地面
 CLIFF_BLOCK = 4.0     # 色を学ぶ升の一辺 (世界単位)。学ぶ範囲は升の周りこの幅まで (地面の色も崖の色も場所で違う)
 CLIFF_MIN = 200       # 升の周りで地面と崖の面の色がこれだけ (画素) 学べない所は分けない
+# 一方向の影の多角形の無い台地: 歩ける所からこの距離 (世界単位) までの台地の地面と、その上に置いた物 (箱・双眼鏡) の下を水の升にする。
+# 歩ける所は物の当たり判定で崖の縁より手前で終わるので、そのままでは物の裏が崖の縁になり、物から滝が出る。
+# 崖の縁 (壁の線)・視界の影の線 (柵)・崖の面の色の画素・はしごの絵は越えない
+PLATEAU_REACH_SHIP = {"FungleShip": 2.0}
+PLATEAU_SKIP = {"ladder1", "ladder2"}
+PLATEAU_GAP = 0.5     # 別のまとまり (歩ける所・足した地面) からこの距離 (世界単位) までは足さない
+PLATEAU_POCKET = 0.5  # 台地の地面と歩ける所と線で囲まれて残った所を埋める広さの上限 (世界単位の 2 乗)
+WATER_SUB = 4         # 水の計算の升 (0.25 単位) の一辺の、歩ける所の地図の升 (1/16 単位) の数
 
 DEFAULT_BUNDLES = [
     r"C:/Program Files/Epic Games/AmongUs/Among Us_Data/StreamingAssets/aa/EGS/StandaloneWindows",
@@ -504,6 +513,8 @@ def classify(j, canvas, ppu, cover, art=None):
     if art is not None and top.any():
         top, cliff = refine_top(j, ppu, poly, walk, art)
     band = top_split(j, ppu, shape, top)
+    # 一方向の影の多角形の無い台地 (上の面と崖の縁の手がかりが無い) の崖の面の画素 (絵の色で分ける)
+    faces = cliff_faces(j, ppu, walk, ~drawn & ~cover, art) if art is not None else np.zeros(shape, bool)
     if reach:
         # 歩ける所につながった絵の無い地面 (家具と壁の絵の縁まで)。台地の上の面と外 (崖の面・下の地面) は同じ絵の無い地面なので、
         # 崖の縁 (上の面の輪郭) をまたいでつながない: 上の面の地面は上の面の歩ける所から、外の地面は外の歩ける所からだけ。
@@ -518,9 +529,8 @@ def classify(j, canvas, ppu, cover, art=None):
             below &= ~(poly & (ndimage.distance_transform_edt(~top) > TOP_REFINE * ppu))
         if cliff is not None:
             below &= ~cliff
-        # 一方向の影の多角形の無い台地 (上の面と崖の縁の手がかりが無い) の崖の面も、絵の色で下の地面と台地の地面から外す
-        if art is not None:
-            below &= ~cliff_faces(j, ppu, walk, ~drawn & ~cover, art)
+        # 崖の面は下の地面と台地の地面から外す
+        below &= ~faces
         for side, seed in ((top & ~band, on_top), (below, off_top)):
             g = ground & side
             lab, n = ndimage.label(g)
@@ -528,11 +538,11 @@ def classify(j, canvas, ppu, cover, art=None):
             touch[np.unique(lab[seed & g])] = True
             touch[0] = False
             floor |= touch[lab]
-    wet, show, hide = beyond(j, ppu, floor, cand, wall_face(canvas, floor, ppu) | front_face(canvas, floor, ppu), walk, cover, drawn, canvas, top, band)
-    return smooth((floor & ~deep & ~hide) | show), walk, furn, wet
+    wet, show, hide, plat = beyond(j, ppu, floor, cand, wall_face(canvas, floor, ppu) | front_face(canvas, floor, ppu), walk, cover, drawn, canvas, top, band, faces)
+    return smooth((floor & ~deep & ~hide) | show), walk, furn, wet, plat
 
 
-def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas, top, band):
+def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas, top, band, faces):
     """水が物理的に届く所: 歩ける所から、床の色の画素 (壁の面は除く・地面の船は海でない地面も) だけを通り、影の線 (壁の根元) と
     手前の絵 (家具・木・岩) を越えずに PHYS_REACH まで塗った範囲。当たり判定だけで閉じた所 (見えない柵の向こうの床・家具の当たり判定の
     張り出し) にも水は流れる。戻り値 = (水の範囲, 水を見せる画素, 水を見せない画素)"""
@@ -582,9 +592,150 @@ def beyond(j, ppu, floor, cand, front, walk, cover, drawn, canvas, top, band):
     touch[np.unique(lab[seed])] = True
     touch[0] = False
     region |= ndimage.binary_opening(touch[lab], st, iterations=k) & ~walk
-    # 台地の上の面の外の絵の無い地面 (Fungle の崖の面・下の地面) は高さの違う所がつながって見えるので、水の通り道には足さず見せるだけ (GROUND_REACH)
+    # 台地の上の面の外の絵の無い地面 (Fungle の崖の面・下の地面) は高さの違う所がつながって見えるので、水の通り道には足さず見せるだけ (GROUND_REACH)。
+    # 一方向の影の多角形の無い台地は、崖の縁 (壁の線) までの台地の地面と置いた物の下を水の通り道にする (見せるのは絵の無い地面だけ)
+    plat = plateau_ground(j, ppu, walk, top, faces, barrier, sea)
     # 例外の範囲の手前の絵 (ドロップシップ) は床の色でも水を見せない
-    return region, region, relax & cover
+    return region | plat, region | (plat & ~drawn & ~cover), relax & cover, plat
+
+
+def plateau_ground(j, ppu, walk, top, faces, barrier, sea):
+    """一方向の影の多角形の無い台地 (歩ける所のまとまりのうち、いちばん広い地面以外) ごとに、歩ける所から PLATEAU_REACH までを、
+    崖の縁の壁の線・視界の影の線・崖の面の色の画素・はしごの絵・海・ほかのまとまりの歩ける所を越えずに塗った範囲 (歩ける所を除く)"""
+    out = np.zeros(walk.shape, bool)
+    own = np.zeros(walk.shape, np.int16)  # 足した地面のまとまりの番号 (-1 = 2 つ以上から届く)
+    reach = PLATEAU_REACH_SHIP.get(j["ship"].replace("(Clone)", ""))
+    if not reach:
+        return out
+    s = j["solid"]
+    ox, oy = s["origin"]
+    shape = walk.shape
+    im = Image.new("L", (shape[1], shape[0]), 0)
+    dr = ImageDraw.Draw(im)
+    for x0, y0, x1, y1 in j.get("lines", []):
+        dr.line([((x0 - ox) * ppu, (y0 - oy) * ppu), ((x1 - ox) * ppu, (y1 - oy) * ppu)], fill=1, width=BARRIER_PX)
+    for r in j.get("covers", []):
+        if r["sprite"] not in PLATEAU_SKIP:
+            continue
+        for p in np.array(r["tris"], np.float64).reshape(-1, 3, 2):
+            dr.polygon([((x - ox) * ppu, (y - oy) * ppu) for x, y in p], fill=1)
+    edges = np.asarray(im).astype(bool) | barrier
+    block = edges | faces
+    if sea is not None:
+        block |= sea
+    lab, n = ndimage.label(walk)
+    size = np.bincount(lab.ravel(), minlength=n + 1)
+    size[0] = 0
+    r = int(np.ceil(reach * ppu)) + BARRIER_PX
+    st = ndimage.generate_binary_structure(2, 1)
+    for i, sl in enumerate(ndimage.find_objects(lab), 1):
+        if i == size.argmax() or sl is None:
+            continue
+        isl = lab == i
+        # 一方向の影の多角形の中の台地は上の面の地面として塗ってある
+        if (isl & top).sum() * 2 >= size[i]:
+            continue
+        win = (slice(max(0, sl[0].start - r), sl[0].stop + r), slice(max(0, sl[1].start - r), sl[1].stop + r))
+        me = isl[win]
+        other = ndimage.binary_dilation(walk[win] & ~me, st, iterations=BARRIER_PX)
+        dist, (iy, ix) = ndimage.distance_transform_edt(~me, return_indices=True)
+        near = dist <= reach * ppu
+        # 歩ける所に囲まれた物 (台地の真ん中の水晶) は崖の縁に接していないので、水の通り道のまま閉じておく
+        near &= ~(ndimage.binary_fill_holes(me) & ~me)
+        reachable = near.copy()
+        # いちばん近い歩ける所から真っすぐ見えない所 (線の端を回り込んだ柵の裏) は広げない
+        vy, vx = np.indices(me.shape)
+        vy, vx = vy - iy, vx - ix
+        bw = block[win]
+        thick = ndimage.binary_dilation(bw, st, iterations=BARRIER_PX)
+        steps = max(2, int(np.ceil(reach * ppu / (2 * BARRIER_PX))))
+        for t in np.arange(1, steps) / steps:
+            near &= ~thick[np.round(iy + vy * t).astype(int), np.round(ix + vx * t).astype(int)]
+        l2, m = ndimage.label((near & ~bw & ~other) | me)
+        touch = np.zeros(m + 1, bool)
+        touch[np.unique(l2[me])] = True
+        touch[0] = False
+        got = touch[l2] & ~me
+        # 足した地面と歩ける所と線で囲まれた小さな残り (箱の上の面が崖の面の色で外れた所) も埋める。
+        # 残すと箱の裏の柵の線まで升が届かず、箱の上の列だけ柵を越えて落ちる縁になる
+        wall = ndimage.binary_dilation(edges[win], st, iterations=BARRIER_PX)
+        pocket = ndimage.binary_fill_holes(me | got | wall) & ~(me | got | wall) & reachable & ~other
+        l3, m3 = ndimage.label(pocket)
+        if m3:
+            small = np.bincount(l3.ravel(), minlength=m3 + 1) <= PLATEAU_POCKET * ppu * ppu
+            small[0] = False
+            got |= small[l3]
+        own[win][got & (own[win] == 0)] = i
+        own[win][got & (own[win] != i)] = -1
+    # 別のまとまりの歩ける所か足した地面に PLATEAU_GAP より近い所は足さない (2 つの台地の間の柵の裏を水だけの升でつなぐと、
+    # どちらでもない高さの升になって両側から滝が落ちる)
+    gap = max(1, int(round(PLATEAU_GAP * ppu)))
+    for i in np.unique(own[own > 0]):
+        mine = own == i
+        others = (own != 0) & ~mine | (lab != 0) & (lab != i)
+        out |= mine & (ndimage.distance_transform_edt(~others) > gap)
+    k = max(1, int(round(PHYS_MIN_W * ppu / 2)))
+    out = ndimage.binary_opening(out, st, iterations=k) & ~walk
+    print(f"{j['ship']}: plateau ground {int(out.sum())} px")
+    return out
+
+
+def air_cells(j):
+    """手で塗った空 (src/Terrain/MapAirData.cs の <船>Air の矩形) を水の計算の升 (0.25 単位) へ。升の真ん中が矩形に入る升 (MapNotes.RasterAir と同じ)"""
+    s = j["solid"]
+    ship = j["ship"].replace("(Clone)", "").replace("Ship", "")
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "Terrain", "MapAirData.cs")
+    m = re.search(r"\W" + ship + r"Air\s*=\s*\{([^}]*)\}", open(path, encoding="utf-8").read()) if os.path.exists(path) else None
+    if not m:
+        return None
+    v = [float(t.strip().rstrip("fF")) for t in m.group(1).split(",") if t.strip()]
+    ox, oy = s["origin"]
+    w, h = s["w"] // WATER_SUB, s["h"] // WATER_SUB
+    c = WATER_SUB / s["ppu"]
+    air = np.zeros((h, w), bool)
+    for i in range(0, len(v) - 3, 4):
+        x0 = max(0, int(np.ceil((v[i] - ox) / c - 0.5)))
+        x1 = min(w - 1, int(np.floor((v[i + 2] - ox) / c - 0.5)))
+        y0 = max(0, int(np.ceil((v[i + 1] - oy) / c - 0.5)))
+        y1 = min(h - 1, int(np.floor((v[i + 3] - oy) / c - 0.5)))
+        if x0 <= x1 and y0 <= y1:
+            air[y0:y1 + 1, x0:x1 + 1] = True
+    return air
+
+
+def drop_air_backs(j, wet, plat):
+    """台地の地面として足した水の升のうち、画面の上隣か横隣が閉じた空の升になるものを外す (不動点まで)。
+    空は足す前の歩ける所の境に合わせて塗ってあり、台地の上の物 (機械・箱) や奥の上の崖の根元まで掛かっている所がある。
+    隣が空だと、計算は物の向こうの空へ落ちる縁にする (物や上の崖の根元から水が消える)。台地の地面の水は画面の下向きの縁から落とす"""
+    air = air_cells(j)
+    if air is None or not plat.any():
+        return wet
+    s = j["solid"]
+    raw = np.frombuffer(__import__("base64").b64decode(s["open"]), np.uint8)
+    walk = np.unpackbits(raw, bitorder="little")[: s["w"] * s["h"]].reshape(s["h"], s["w"]).astype(bool)
+    h, w = air.shape
+    hs, ws = h * WATER_SUB, w * WATER_SUB
+    wet = wet.copy()
+    plat = plat & wet
+    dropped = 0
+    while True:
+        both = (walk | wet)[:hs, :ws].reshape(h, WATER_SUB, w, WATER_SUB).sum(axis=(1, 3))
+        opened = both >= WATER_SUB
+        mine = plat[:hs, :ws].reshape(h, WATER_SUB, w, WATER_SUB).any(axis=(1, 3))
+        shut = ~opened & air
+        back = np.zeros_like(opened)
+        back[:-1] |= shut[1:]
+        back[:, :-1] |= shut[:, 1:]
+        back[:, 1:] |= shut[:, :-1]
+        bad = opened & back & mine
+        if not bad.any():
+            break
+        cut = np.repeat(np.repeat(bad, WATER_SUB, 0), WATER_SUB, 1) & plat[:hs, :ws]
+        wet[:hs, :ws] &= ~cut
+        plat[:hs, :ws] &= ~cut
+        dropped += int(bad.sum())
+    print(f"{j['ship']}: dropped {dropped} plateau cells next to painted air")
+    return wet
 
 
 def sea_mask(j, ppu, shape):
@@ -804,8 +955,11 @@ def main():
         canvas = compose(j, tex, ppu)
         cover = cover_mask(j, tex, ppu, canvas.shape[:2])
         art = load_art(a.art, a.art_ppu) if a.art else None
-        floor, walk, furn, phys = classify(j, canvas, ppu, cover, art)
+        floor, walk, furn, phys, plat = classify(j, canvas, ppu, cover, art)
         wet = seal_walls(j, exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys))))
+        if plat.any():
+            base = seal_walls(j, exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys & ~plat))))
+            wet = drop_air_backs(j, wet, wet & ~base)
         wsize = write_wet(os.path.join(a.wet, ship + ".bin"), j, wet)
         print(f"{ship}: wet cells={int(wet.sum())} -> {wsize} B")
         ship = j["ship"].replace("(Clone)", "")

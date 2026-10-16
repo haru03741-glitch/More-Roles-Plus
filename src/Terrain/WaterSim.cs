@@ -1116,6 +1116,9 @@ internal static partial class WaterSim
         if (to == int.MinValue || to == -1 && OnLadder(x, y)) return;
         // 空へ落とす縁とガラスの手すりは壁の影の線の外側へ落ちるので、影の線では切らない (塗った空も同じ)
         if (full && why != "glass" && why != "air" && why != "airside" && ShadowOnce(x, y, tx, ty, cliffs)) _shadowCut[k] |= (byte)(1 << d);
+        // 横を向いた崖へ落ちる縁は、落ちる列までの縁の行に部屋の影の線 (柵・壁) があれば柵の手前で止まる
+        // (台地の縁の物の当たり判定で歩ける所が柵より手前で終わり、柵が縁の際の確かめの届く所より奥にある)
+        if (full && cliffs && why == "side" && ShadowRowOnce(x, y, tx)) _shadowCut[k] |= (byte)(1 << d);
         if ((_shadowCut[k] >> d & 1) != 0) return;
         // 段差は滝にしない (段の高さぶんずらして流すだけ・床の絵にも落ちる縁を描かない)
         if (to >= 0 && StepBetween(k, to, dist, useZ, -1))
@@ -1327,19 +1330,37 @@ internal static partial class WaterSim
         var hits = Physics2D.CircleCastAll(new Vector2(ax - ux * 0.5f * _cell, ay - uy * 0.5f * _cell), 0.01f, new Vector2(ux, uy),
                                            MathF.Min(len, RoomShadowReach) * _cell, ShadowMask);
         foreach (var h in hits)
-        {
-            var c = h.collider;
-            if (!c || IsLedge(c)) continue;
-            int id = c.GetInstanceID();
-            if (!OutsideShadow.TryGetValue(id, out bool outside))
-            {
-                outside = false;
-                for (var t = c.transform; t && !outside; t = t.parent) outside = t.name == "Outside";
-                OutsideShadow[id] = outside;
-            }
-            if (!outside) return true;
-        }
+            if (RoomShadow(h.collider)) return true;
         return false;
+    }
+
+    // 部屋の影の線か (屋外 = 船の Outside の下の線と段の影の線は数えない)
+    private static bool RoomShadow(Collider2D c)
+    {
+        if (!c || IsLedge(c)) return false;
+        int id = c.GetInstanceID();
+        if (!OutsideShadow.TryGetValue(id, out bool outside))
+        {
+            outside = false;
+            for (var t = c.transform; t && !outside; t = t.parent) outside = t.name == "Outside";
+            OutsideShadow[id] = outside;
+        }
+        return !outside;
+    }
+
+    // 縁の升 (x, y) から同じ行の升 tx の手前までに、部屋の影の線 (屋外と段の影の線は数えない) があるか
+    private static bool ShadowRowOnce(int x, int y, int tx)
+    {
+        // 最上位のビットで ShadowOnce のキー (x は升の番号で 0x7FFF を超えない) と分ける
+        long key = long.MinValue | (long)(x & 0xFFFF) << 48 | (long)(y & 0xFFFF) << 32 | (long)(tx & 0xFFFF) << 16;
+        if (ShadowMemo.TryGetValue(key, out bool cut)) return cut;
+        float ux = tx > x ? 1f : -1f;
+        float ax = _org.x + (x + 0.5f) * _cell - ux * 0.5f * _cell, ay = _org.y + (y + 0.5f) * _cell;
+        cut = false;
+        foreach (var h in Physics2D.CircleCastAll(new Vector2(ax, ay), 0.01f, new Vector2(ux, 0f), Math.Abs(tx - x) * _cell, ShadowMask))
+            if (RoomShadow(h.collider)) { cut = true; break; }
+        ShadowMemo[key] = cut;
+        return cut;
     }
 
     private static string ShadowName(int x, int y, int tx, int ty)
@@ -2730,7 +2751,7 @@ internal static partial class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | fallsat x y [r] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             // 預けた刻みを終わらせてから (確認用の操作は水の配列を直に読み書きする)
@@ -2888,6 +2909,17 @@ internal static partial class WaterSim
                 float irate = q.Length > 3 && float.TryParse(q[3], ns, ic, out float r2) ? r2 : 0.5f;
                 var res = TerrainApi.WorldFlood(new Vector2(ix, iy), isec, irate);
                 reply(res.Ok ? $"OK water inflow {res.Why}" : $"ERR water inflow {res.Why}");
+                return;
+            }
+            if (a.StartsWith("fallsat"))
+            {
+                // 確認用: 点の近くの滝の縁 (x y [r])
+                var q = a.Substring(7).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var ic = System.Globalization.CultureInfo.InvariantCulture;
+                var ns = System.Globalization.NumberStyles.Float;
+                if (q.Length < 2 || !float.TryParse(q[0], ns, ic, out float fx) || !float.TryParse(q[1], ns, ic, out float fy)) { reply("ERR water fallsat x y [r]"); return; }
+                float fr = q.Length > 2 && float.TryParse(q[2], ns, ic, out float r3) ? r3 : 1f;
+                reply("OK water fallsat" + WaterFall.DescribeNear(fx, fy, fr));
                 return;
             }
             if (a.StartsWith("show")) { reply(WaterDebug.Show(a.Length > 4 ? a.Substring(4).Trim() : "")); return; }

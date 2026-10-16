@@ -44,6 +44,8 @@ struct FallArgs
 
 static const float SheetFull = 240.0f, DensMax = 1.3f, ThinD = 0.35f, PoolFade = 0.6f, SideBody = 0.75f, Thin = 0.5f;
 static const float ThrowMax = 0.35f, ThrowGain = 0.5f, Spread = 0.4f;
+static const float LipIn = 0.1f;   // 膜を縁から内へさかのぼらせる長さ (水たまりの縁の線にかぶせる)
+static const float ApronMin = 0.12f, ApronGain = 0.06f, ApronMax = 0.45f, ApronDens = 0.8f;   // 着地の白い水の長さ (落ちた高さ 1 単位あたり) と濃さ
 static const float LipHalf = 0.13f, LipDrop = 0.3f, LipDens = 0.9f, CrestUp = 0.06f, CrestDens = 0.6f;
 static const float Full = 1024.0f;
 static const float BrinkStep = 0.02f; static const int BrinkSteps = 15;
@@ -285,6 +287,28 @@ static void Sheet(Ctx& c, const FallEdge& e)
             float len = (fabsf(ex - sx) + fabsf(ey - sy) + 2.0f * hh) * ppu * (t1 - t0);
             int steps = iclamp((int)ceilf(len), 1, 600);
             float w = fmn(1.0f, len / (float)steps) * 0.85f;
+            // 膜の後ろの端が縁を離れるまでは、縁から内へさかのぼって水たまりの色のまま濃くしていく (水たまりの縁の線と膜の間を見せない)
+            if (t0 <= 0.0f && !e.lip)
+            {
+                int ni = (int)ceilf(LipIn * ppu);
+                for (int b = 1; b <= ni; b++)
+                {
+                    float s = (float)b / (float)ni;
+                    Splat(c, v, sx - e.nx * LipIn * s, sy - e.ny * LipIn * s, dc * 0.85f * (1.0f - s), 0.05f, dep, 1.0f);
+                }
+            }
+            // 着いた水は着地の手前 (水たまりの上) へ白く泡立って広がり、薄れて水たまりに戻る (奈落へ落ちる水は除く)
+            if (!v && t1 >= 1.0f)
+            {
+                float lap = fmn(ApronMax, ApronMin + ApronGain * hh);
+                int na = (int)ceilf(lap * ppu);
+                float base = dm * w / (1.0f + Thin) * ApronDens;
+                for (int b = 1; b <= na; b++)
+                {
+                    float s = (float)b / (float)na, k = 1.0f - s;
+                    Splat(c, v, ex, ey - lap * s, base * k * sqrtf(k), 0.9f - 0.4f * s, dep, 0.0f);
+                }
+            }
             for (int j = 0; j <= steps; j++)
             {
                 float tau = t0 + (t1 - t0) * (float)j / (float)steps;

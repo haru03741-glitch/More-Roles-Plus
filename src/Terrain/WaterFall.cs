@@ -236,6 +236,8 @@ internal static class WaterFall
     private static float LandDy(Edge e) => e.Y1 - e.Y0;
 
     private const float Spread = 0.4f;
+    private const float LipIn = 0.1f;          // 膜を縁から内へさかのぼらせる長さ (水たまりの縁の線にかぶせる)
+    private const float ApronMin = 0.12f, ApronGain = 0.06f, ApronMax = 0.45f, ApronDens = 0.8f; // 着地の白い水の長さ (落ちた高さ 1 単位あたり) と濃さ
     private const float EndSpread = 0.12f;     // 隣に流れる縁が無い側へ膜を薄れながら延ばす幅 (世界単位)         // 柱の間を抜けた水が横へ広がって 1 枚に戻るまでの落ちた割合
 
     // 縁から着地までの膜。縁に沿った世界の画素の格子の列ごとに、縁 (水たまりの縁の内側) から落ちた先までを 1 本の線で描く。
@@ -340,6 +342,28 @@ internal static class WaterFall
                 float len = (MathF.Abs(ex - sx) + MathF.Abs(ey - sy) + 2f * hh) * Ppu * (t1 - t0);
                 int steps = Math.Clamp((int)MathF.Ceiling(len), 1, 600);
                 float w = MathF.Min(1f, len / steps) * 0.85f;
+                // 膜の後ろの端が縁を離れるまでは、縁から内へさかのぼって水たまりの色のまま濃くしていく (水たまりの縁の線と膜の間を見せない)
+                if (t0 <= 0f && e.Lip == 0)
+                {
+                    int ni = (int)MathF.Ceiling(LipIn * Ppu);
+                    for (int b = 1; b <= ni; b++)
+                    {
+                        float s = (float)b / ni;
+                        Splat(e.Void != 0, sx - e.Nx * LipIn * s, sy - e.Ny * LipIn * s, dc * 0.85f * (1f - s), 0.05f, dep, 1f);
+                    }
+                }
+                // 着いた水は着地の手前 (水たまりの上) へ白く泡立って広がり、薄れて水たまりに戻る (奈落へ落ちる水は除く)
+                if (e.Void == 0 && t1 >= 1f)
+                {
+                    float lap = MathF.Min(ApronMax, ApronMin + ApronGain * hh);
+                    int na = (int)MathF.Ceiling(lap * Ppu);
+                    float bas = dm * w / (1f + Thin) * ApronDens;
+                    for (int b = 1; b <= na; b++)
+                    {
+                        float s = (float)b / na, k = 1f - s;
+                        Splat(false, ex, ey - lap * s, bas * k * MathF.Sqrt(k), 0.9f - 0.4f * s, dep, 0f);
+                    }
+                }
                 for (int j = 0; j <= steps; j++)
                 {
                     float tau = t0 + (t1 - t0) * j / steps;
@@ -950,6 +974,18 @@ internal static class WaterFall
         _lastMs = 0;
         _vx0 = _vy0 = float.MinValue; _vx1 = _vy1 = float.MaxValue;
         _stealAcc = StealEvery;
+    }
+
+    // 確認用: 点の近くの縁 (縁の両端・向き・着く所・流量・奈落か)
+    internal static string DescribeNear(float x, float y, float r)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var e in Edges.Values)
+        {
+            if (MathF.Abs(e.X0 - x) > r || MathF.Abs(e.Y0 - y) > r) continue;
+            sb.Append($" | ({e.X0:0.00},{e.Y0:0.00}) n({e.Nx:0},{e.Ny:0}) to({e.X1:0.00},{e.Y1:0.00}) q{e.Q:0}{(e.Void ? " void" : "")}{(e.Live ? "" : " idle")}");
+        }
+        return sb.ToString();
     }
 
     internal static string Describe()
