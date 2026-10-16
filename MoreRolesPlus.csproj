@@ -62,6 +62,19 @@
     <Target Name="RequireNative" BeforeTargets="BeforeBuild" AfterTargets="BuildNative" Condition="'$(DesignTimeBuild)' != 'true'">
         <Error Text="C++ の部品がありません ($(NativeBinary))。tools/build-native.ps1 を回してください" Condition="!Exists('$(NativeBinary)')" />
     </Target>
+    <!-- Unity の値型の小さなメソッド (Vector2 の四則・Rect.xMin など) の呼び出しを、コンパイルの直後に mod の中の同じ計算
+         (src/Fx/UnityStructs.cs) へ差し替える。interop 経由だと 1 回ごとに il2cpp_runtime_invoke とゲーム側のごみになる -->
+    <PropertyGroup>
+        <StructInlineDir>$(MSBuildProjectDirectory)/tools/StructInline</StructInlineDir>
+        <StructInlineDll>$(StructInlineDir)/bin/Release/net8.0/StructInline.dll</StructInlineDll>
+    </PropertyGroup>
+    <Target Name="BuildStructInline" BeforeTargets="BeforeBuild" Inputs="$(StructInlineDir)/Program.cs;$(StructInlineDir)/StructInline.csproj" Outputs="$(StructInlineDll)" Condition="'$(DesignTimeBuild)' != 'true'">
+        <Exec Command="dotnet build &quot;$(StructInlineDir)/StructInline.csproj&quot; -c Release -v:q -nologo" />
+    </Target>
+    <Target Name="StructInline" AfterTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true' And '$(StructInline)' != 'false'">
+        <WriteLinesToFile File="$(IntermediateOutputPath)structinline.refs" Lines="@(ReferencePath->'%(FullPath)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+        <Exec Command="dotnet &quot;$(StructInlineDll)&quot; &quot;@(IntermediateAssembly->'%(FullPath)')&quot; &quot;$(IntermediateOutputPath)structinline.refs&quot;" />
+    </Target>
     <!-- 設定画面の見出し用のフォント (SIL OFL 1.1・JIS 第一水準までに削ったもの) -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Fonts\MochiyPopOne-Regular.ttf" LogicalName="MoreRolesPlus.Resources.Fonts.MochiyPopOne-Regular.ttf" />
