@@ -120,6 +120,7 @@ internal static class TerrainWarm
                     _ = DebrisArt.Nut; _ = DebrisArt.Stain; _ = DebrisArt.Pebble; _ = DebrisArt.Puff; _ = DebrisArt.Spark;
                     DamageMap.WarmArt();
                     TerrainFx.WarmFlash();
+                    TerrainFx.WarmPool(48); // 爆発 2 回分の火花・閃光・煙
                     break;
                 case 3: FractureSites.Warm(); break;
                 case 4: RubbleBake.Warm(); ShadowPatch.Warm(); break;

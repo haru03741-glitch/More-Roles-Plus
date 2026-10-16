@@ -565,27 +565,81 @@ internal static class TerrainFx
 
     private static Item Spawn(Kind kind, Sprite sprite, Vector2 pos, float worldSize, bool keep)
     {
-        float s = worldSize / Math.Max(0.0001f, sprite.bounds.size.x);
-        return SpawnScaled(kind, sprite, pos, s, s, keep);
+        float w = Math.Max(0.0001f, sprite.bounds.size.x); // 絵の大きさは本編に聞くので 1 回だけ
+        float s = worldSize / w;
+        return SpawnScaled(kind, sprite, pos, s, s, keep, w);
     }
 
-    private static Item SpawnScaled(Kind kind, Sprite sprite, Vector2 pos, float sx, float sy, bool keep = true)
+    private static Item SpawnScaled(Kind kind, Sprite sprite, Vector2 pos, float sx, float sy, bool keep = true, float spriteW = 0f)
     {
-        var go = new GameObject("MrpDebris");
-        var tr = go.transform;
-        var sr = go.AddComponent<SpriteRenderer>();
+        Transform tr;
+        SpriteRenderer sr;
+        if (!keep && Rent(out tr, out sr))
+        {
+            sr.color = Color.white;
+            tr.rotation = RotZ(0f);
+            sr.enabled = true;
+        }
+        else
+        {
+            var go = new GameObject("MrpDebris");
+            tr = go.transform;
+            sr = go.AddComponent<SpriteRenderer>();
+            if (DamageMap.PropMaterial) sr.sharedMaterial = DamageMap.PropMaterial;
+        }
         sr.sprite = sprite;
-        if (DamageMap.PropMaterial) sr.sharedMaterial = DamageMap.PropMaterial;
         float front = DamageMap.FrontZ(pos), zs = DamageMap.ZScale(front);
         float z = front - 0.004f * zs;
         tr.position = new Vector3(pos.x, pos.y, z);
-        float sw = Math.Max(0.0001f, sprite.bounds.size.x);
+        float sw = spriteW > 0f ? spriteW : Math.Max(0.0001f, sprite.bounds.size.x);
         tr.localScale = new Vector3(sx, sy, 1f);
-        if (keep) DamageMap.Track(go);
+        if (keep) DamageMap.Track(tr.gameObject);
         var it = new Item { Kind = kind, Tr = tr, Sr = sr, Px = pos.x, Py = pos.y, S0 = sx, S1 = sx, Sy = sy, Z = z, ZS = zs, Life = 1f, SpriteW = sw };
         it.HomeX = it.Px; it.HomeY = it.Py;
         Items.Add(it);
         return it;
+    }
+
+    // 寿命の短い演出 (火花・閃光・煙) の GameObject は使い回す。爆発 1 回で 20 個以上を作って捨てており、
+    // 作る (GameObject と SpriteRenderer の追加) のが爆発の処理の大きな割合だった。終わった物は描画を切って取っておく。
+    // 船が替わると船の場面ごと消えるので、世代が変わったら持っている物は捨てる
+    private const int PoolMax = 96;
+    private static readonly Stack<(Transform Tr, SpriteRenderer Sr)> Pool = new();
+    private static int _poolGen = -1;
+
+    private static bool Rent(out Transform tr, out SpriteRenderer sr)
+    {
+        if (_poolGen != GameClock.ShipGen) { Pool.Clear(); _poolGen = GameClock.ShipGen; }
+        while (Pool.Count > 0)
+        {
+            (tr, sr) = Pool.Pop();
+            if (tr) return true;
+        }
+        tr = null;
+        sr = null;
+        return false;
+    }
+
+    private static void Release(Transform tr, SpriteRenderer sr)
+    {
+        if (_poolGen != GameClock.ShipGen) { Pool.Clear(); _poolGen = GameClock.ShipGen; }
+        if (Pool.Count >= PoolMax) { UnityEngine.Object.Destroy(tr.gameObject); return; }
+        sr.enabled = false;
+        Pool.Push((tr, sr));
+    }
+
+    // 準備の段で使い回しの分を先に作っておく (最初の爆発で作らない)
+    internal static void WarmPool(int n)
+    {
+        if (_poolGen != GameClock.ShipGen) { Pool.Clear(); _poolGen = GameClock.ShipGen; }
+        while (Pool.Count < n)
+        {
+            var go = new GameObject("MrpDebris");
+            var sr = go.AddComponent<SpriteRenderer>();
+            if (DamageMap.PropMaterial) sr.sharedMaterial = DamageMap.PropMaterial;
+            sr.enabled = false;
+            Pool.Push((go.transform, sr));
+        }
     }
 
     internal static void WarmFlash() => FlashSprite(); // 絵の検索は 10ms 級なので準備の段で
@@ -647,7 +701,7 @@ internal static class TerrainFx
             if (done)
             {
                 Items.RemoveAt(i);
-                if (it.Kind is Kind.Puff or Kind.Spark or Kind.Flash) UnityEngine.Object.Destroy(it.Tr.gameObject);
+                if (it.Kind is Kind.Puff or Kind.Spark or Kind.Flash) Release(it.Tr, it.Sr);
                 else
                 {
                     // 山の上に乗った物ほど手前 (上に積もって見える)
