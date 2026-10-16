@@ -48,6 +48,15 @@ REACH = 0.2           # 歩ける所からこの距離 (世界単位) より離�
 # つながっていれば床にする。当たり判定は家具や壁の絵より大きく取ってあり、REACH で切ると家具の手前に乾いた地面の帯が残る。
 # 広げるのは手前の絵の形の手前まで (影の中では水の写しが手前の絵より前に出る)。歩ける所の近くの床は手前の絵があっても削らない (乗れる床板の絵がある)
 GROUND_REACH_SHIP = {"FungleShip": 1.0}
+# 背景の網目のうち、水より手前 (クルーより手前) に描かれる物。水はこの形の下に見せない。
+# 影の中の水の写しは一番手前に出るので、ここで抜かないと影の中だけ水晶や茂みの上に水が乗る
+MESH_COVERS_SHIP = {"FungleShip": {"BaseOverlays", "BaseOverlaysForegroud"}}
+# 手前の網目は水晶の尖った上の方だけで、本体は地面と同じ網目に描かれている。手前の網目に触れる赤い画素のまとまりを本体として水を見せない
+# (色だけで拾うとジャングルの赤い草木まで入るので、手前の網目から辿れる物だけ)
+CRYSTAL_SEED_SHIP = {"FungleShip": {"BaseOverlaysForegroud"}}
+CRYSTAL_HUE = (330.0, 15.0)   # 赤〜赤紫 (度・0 をまたぐ)
+CRYSTAL_SAT = 0.35
+CRYSTAL_VAL = 0.15
 # 床の絵が壁の面と同じ色で続く広い床 (Mira の発射台): 床の色の判定・壁の面と前面の除外・隙間の幅の下限を外す範囲 (世界座標の矩形 x0, y0, x1, y1)
 PHYS_RELAX_SHIP = {"MiraShip": [(-11.7, -0.3, 0.2, 8.8)]}
 # 例外の範囲から抜く部屋の絵の家具 (手前の絵の一覧に無い物・Mira の発射台の燃料タンク)
@@ -160,6 +169,61 @@ def compose(j, tex, ppu):
         out[:, 3] = np.maximum(dst[:, 3], src[:, 3])
         canvas[ys, xs] = out
     return canvas
+
+
+def mesh_cover_mask(j, ppu, shape):
+    """MESH_COVERS_SHIP の網目の三角形が描く画素 (網目は頂点の色で塗った形なので三角形がそのまま絵の形)"""
+    names = MESH_COVERS_SHIP.get(j["ship"].replace("(Clone)", ""), set())
+    ox, oy = j["solid"]["origin"]
+    ch, cw = shape
+    im = Image.new("L", (cw, ch), 0)
+    dr = ImageDraw.Draw(im)
+    for m in j.get("meshCovers", []):
+        if m["name"] not in names:
+            continue
+        for p in np.array(m["tris"], np.float64).reshape(-1, 3, 2):
+            dr.polygon([((x - ox) * ppu, (y - oy) * ppu) for x, y in p], fill=1)
+    return np.asarray(im).astype(bool)
+
+
+def crystal_mask(j, ppu, shape, art):
+    """CRYSTAL_SEED_SHIP の網目の三角形に触れる、絵の赤い画素のまとまり (水晶の本体)"""
+    names = CRYSTAL_SEED_SHIP.get(j["ship"].replace("(Clone)", ""))
+    if not names or art is None:
+        return np.zeros(shape, bool)
+    img, appu = art
+    ah, aw = img.shape[:2]
+    ox, oy = j["solid"]["origin"]
+    im = Image.new("L", (aw, ah), 0)
+    dr = ImageDraw.Draw(im)
+    for m in j.get("meshCovers", []):
+        if m["name"] not in names:
+            continue
+        for p in np.array(m["tris"], np.float64).reshape(-1, 3, 2):
+            dr.polygon([((x - ox) * appu, (y - oy) * appu) for x, y in p], fill=1)
+    seed = np.asarray(im).astype(bool)
+    rgb = img.astype(np.float32) / 255.0
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    c = mx - mn
+    sat = np.where(mx > 0, c / np.maximum(mx, 1e-6), 0)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    hue = np.zeros_like(mx)
+    has = c > 1e-6
+    rr = has & (mx == r)
+    gg = has & (mx == g) & ~rr
+    bb = has & ~rr & ~gg
+    hue[rr] = ((g - b)[rr] / c[rr]) % 6
+    hue[gg] = (b - r)[gg] / c[gg] + 2
+    hue[bb] = (r - g)[bb] / c[bb] + 4
+    hue *= 60
+    red = ((hue >= CRYSTAL_HUE[0]) | (hue <= CRYSTAL_HUE[1])) & (sat >= CRYSTAL_SAT) & (mx >= CRYSTAL_VAL)
+    red = ndimage.binary_closing(red, iterations=2)
+    lab, _ = ndimage.label(red)
+    hit = np.unique(lab[seed & red])
+    body = ndimage.binary_fill_holes(np.isin(lab, hit[hit > 0]))
+    gx = np.clip(((np.arange(shape[1]) + 0.5) / ppu * appu).astype(int), 0, aw - 1)
+    gy = np.clip(((np.arange(shape[0]) + 0.5) / ppu * appu).astype(int), 0, ah - 1)
+    return body[gy[:, None], gx[None, :]]
 
 
 def cover_mask(j, tex, ppu, shape):
@@ -956,6 +1020,7 @@ def main():
         cover = cover_mask(j, tex, ppu, canvas.shape[:2])
         art = load_art(a.art, a.art_ppu) if a.art else None
         floor, walk, furn, phys, plat = classify(j, canvas, ppu, cover, art)
+        floor &= ~(mesh_cover_mask(j, ppu, floor.shape) | crystal_mask(j, ppu, floor.shape, art))
         wet = seal_walls(j, exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys))))
         if plat.any():
             base = seal_walls(j, exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys & ~plat))))

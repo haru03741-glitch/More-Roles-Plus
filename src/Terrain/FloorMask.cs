@@ -636,6 +636,20 @@ internal static class FloorMask
                 if (sr.GetComponentInParent<OpenableDoor>() || sr.GetComponentInParent<Vent>()) continue;
                 if (WriteArt(sb, sr, covers == 0, false)) covers++;
             }
+            // 網目で描く手前の絵 (Fungle の水晶・茂み・岩などは背景の網目にまとめて描かれている)。どれを手前の絵として使うかは道具が名前で選ぶ
+            sb.Append("\n  ],\n  \"meshCovers\": [\n");
+            int meshCovers = 0, meshUnread = 0;
+            foreach (var mr in ship.GetComponentsInChildren<MeshRenderer>(false))
+            {
+                if (!mr || !mr.enabled || mr.name.StartsWith("Mrp", StringComparison.Ordinal)) continue;
+                var mf = mr.GetComponent<MeshFilter>();
+                var mesh = mf ? mf.sharedMesh : null;
+                if (!mesh) continue;
+                if (!mesh.isReadable) { meshUnread++; continue; }
+                float z = mr.bounds.center.z;
+                if (z >= SkyZ || mr.GetComponentInParent<OpenableDoor>() || mr.GetComponentInParent<Vent>()) continue;
+                if (WriteMesh(sb, mr, mesh, z, meshCovers == 0)) meshCovers++;
+            }
             sb.Append("\n  ],\n  \"solid\": {\"w\": ").Append(SolidMap.W).Append(", \"h\": ").Append(SolidMap.H)
               .Append(", \"origin\": [").Append(F(SolidMap.Origin.x)).Append(", ").Append(F(SolidMap.Origin.y))
               .Append("], \"ppu\": ").Append(F(SolidMap.Ppu)).Append(", \"open\": \"");
@@ -699,8 +713,25 @@ internal static class FloorMask
             sb.Append("\n  ]\n}\n");
             string outPath = System.IO.Path.Combine(TestBridge.ScreensDir, $"floor_{ship.name}.json");
             System.IO.File.WriteAllText(outPath, sb.ToString());
-            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} shadows={shadows} tops={tops} -> {outPath}");
+            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} meshCovers={meshCovers} meshUnread={meshUnread} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} shadows={shadows} tops={tops} -> {outPath}");
         });
+    }
+
+    // 網目 1 つの三角形 (世界座標)。Fungle の背景の網目は頂点の色で塗った形なので、三角形がそのまま絵の形になる
+    private static bool WriteMesh(StringBuilder sb, MeshRenderer mr, Mesh mesh, float z, bool first)
+    {
+        var vs = mesh.vertices;
+        var ts = mesh.triangles;
+        if (ts.Length == 0) return false;
+        var t = mr.transform;
+        sb.Append(first ? "" : ",\n").Append("    {\"name\": \"").Append(mr.name).Append("\", \"z\": ").Append(F(z)).Append(", \"tris\": [");
+        for (int k = 0; k < ts.Length; k++)
+        {
+            var p = t.TransformPoint(vs[ts[k]]);
+            sb.Append(k == 0 ? "" : ", ").Append(F(p.x)).Append(", ").Append(F(p.y));
+        }
+        sb.Append("]}");
+        return true;
     }
 
     // 絵 1 枚の配置 (テクスチャの四角・世界への写し方・絵が描かれる三角形)。部屋の絵は、詰め方が密・回転の物は画素を引けないので書かない。
