@@ -88,6 +88,7 @@ internal static class TerrainSync
     private static string ApplyNow(ushort seq, in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
         Applied++;
+        TerrainFx.RunDeferred(); // 前の破壊の見た目を先に出す (出る順を適用の順に保つ)
         WaterSim.BeforeApply(r);
         TerrainDigest.Begin();
         string res;
@@ -96,11 +97,10 @@ internal static class TerrainSync
         {
             TerrainDigest.End(seq);
             TerrainDamage.Mark("digest");
-            BreakNoise.Emit(r);
-            TerrainDamage.Mark("noise");
+            var rc = r;
+            TerrainFx.Defer(() => { BreakNoise.Emit(rc); DustCloud.OnApplied(rc); }); // 音と煙は見た目だけ: 次のフレームで
             HammerSwing.OnApplied(r);
             BombFuse.OnApplied(r);
-            DustCloud.OnApplied(r);
             TerrainDamage.Mark("dust");
             WaterLeak.OnApplied(r);
             TerrainDamage.Mark("leak");

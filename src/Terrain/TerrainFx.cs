@@ -284,6 +284,16 @@ internal static class TerrainFx
                 made++;
             }
         TerrainDamage.Mark("fxpieces");
+        // 閃光・飛ぶ塊・染み・火花・煙は見た目だけ (止まる所の同期に使う塊は上で作った)。爆発のフレームを軽くするため次のフレームで出す
+        Defer(() => ExplosionArt(c, radius, dir, force, made, rnd, walls));
+        var res = Settle(byRank, pieces, walls, given);
+        TerrainDamage.Mark("settle");
+        return res;
+    }
+
+    // 爆発の見た目だけの物 (rnd は塊の後の続きをそのまま使う)
+    private static void ExplosionArt(Vector2 c, float radius, Vector2 dir, float force, int made, System.Random rnd, float[] walls)
+    {
         var flash = FlashSprite();
         if (flash)
         {
@@ -291,7 +301,6 @@ internal static class TerrainFx
             f.Life = 0.45f;
             f.Z -= 0.01f * f.ZS;
         }
-        TerrainDamage.Mark("flash");
         int chunks = made >= 6 ? 4 : 12;
         for (int k = 0; k < chunks; k++)
         {
@@ -317,9 +326,7 @@ internal static class TerrainFx
                 it.VH = 1.5f + (float)rnd.NextDouble() * 2.5f;
                 it.T = -(float)rnd.NextDouble() * 0.06f;
             }
-        TerrainDamage.Mark("chunks");
         Stain(c, radius * 1.6f, 0.2f);
-        TerrainDamage.Mark("stain");
         for (int k = 0; k < 18; k++)
         {
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
@@ -335,10 +342,29 @@ internal static class TerrainFx
             float ang = (float)(rnd.NextDouble() * Math.PI * 2);
             Dust(c + new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * radius * 0.5f * (float)rnd.NextDouble(), rnd, radius * 0.6f, 1.3f);
         }
-        TerrainDamage.Mark("sparks");
-        var res = Settle(byRank, pieces, walls, given);
-        TerrainDamage.Mark("settle");
-        return res;
+    }
+
+    // 破壊の見た目だけの後回し (次のフレームの頭か、次の破壊を適用する前に出す。船が替わっていたら捨てる)
+    private static readonly List<Action> Deferred = new();
+    private static int _deferGen;
+    internal static void Defer(Action a)
+    {
+        if (Deferred.Count == 0) _deferGen = GameClock.ShipGen;
+        else if (_deferGen != GameClock.ShipGen) { Deferred.Clear(); _deferGen = GameClock.ShipGen; }
+        Deferred.Add(a);
+    }
+
+    internal static void RunDeferred()
+    {
+        if (Deferred.Count == 0) return;
+        if (_deferGen != GameClock.ShipGen) { Deferred.Clear(); return; }
+        // 走っている間に足された分も同じ回で出す (順は足した順)
+        for (int i = 0; i < Deferred.Count; i++)
+        {
+            try { Deferred[i](); }
+            catch (Exception e) { Plugin.Logger.LogError($"[TerrainFx] deferred: {e}"); }
+        }
+        Deferred.Clear();
     }
 
     // 大きな瓦礫: ホストは割れた塊の止まる所を先に計算して置ける物を選び (RubbleBlocks.Decide)、
@@ -666,6 +692,7 @@ internal static class TerrainFx
 
     public static void Tick()
     {
+        RunDeferred();
         if (Items.Count == 0 || Paused) { _lastMs = 0; return; }
         long now = Environment.TickCount64;
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.05f, (now - _lastMs) / 1000f);
@@ -922,5 +949,5 @@ internal static class TerrainFx
 
     private static int Hash(Vector2 p) => (int)(p.x * 73856.093f) ^ (int)(p.y * 19349.663f);
 
-    public static void Clear() => Items.Clear();
+    public static void Clear() { Items.Clear(); Deferred.Clear(); }
 }
