@@ -18,7 +18,7 @@ public class Plugin : BasePlugin
     internal static ManualLogSource Logger;
     internal static Harmony Harmony;
     internal static ConfigEntry<bool> EnableTestBridge;
-    internal static ConfigEntry<bool> DisableIncrementalGc;
+    internal static ConfigEntry<bool> ForceDisableIncrementalGc;
     internal static ConfigEntry<bool> PreemptiveGc;
     internal static ConfigEntry<bool> ReuseDelegateTypes;
     internal static ConfigEntry<bool> SleepAccountManager;
@@ -36,7 +36,7 @@ public class Plugin : BasePlugin
         }
         Boot.BootClock.Mark("native");
         EnableTestBridge = Config.Bind("Debug", "EnableTestBridge", false, "外部ツールからの遠隔テスト口を有効にする");
-        DisableIncrementalGc = Config.Bind("Performance", "DisableIncrementalGc", true, "incremental GC を切る (GC 中の interop の書き込みで落ちるのを防ぐ・Windows のみ)");
+        ForceDisableIncrementalGc = Config.Bind("Performance", "ForceDisableIncrementalGc", false, "incremental GC を常に切る (既定は書き込みバリア付きの Il2CppInterop.Runtime が載っている 64bit の時だけ残す・Windows のみ)");
         ReuseDelegateTypes = Config.Bind("Performance", "ReuseDelegateTypes", true, "パッチを当てる時の型を形ごとに使い回して起動を速くする (パッチが当たらない時は切る)");
         SleepAccountManager = Config.Bind("Performance", "SleepAccountManager", true, "メニューのアカウント表示を止めておき、ログイン待ちの間もメニューを使えるようにする");
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");

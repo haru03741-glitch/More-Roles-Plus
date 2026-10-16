@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Boot;
 // 止まっても見えない瞬間 (試合開始のイントロの頭・終了画面の構築中) に、mod 側 (CoreCLR) と
 // ゲーム側 (il2cpp の Boehm) の両方のフル GC を先に回しておき、遊んでいる最中の GC の引っかかりを減らす。
 // Resources.UnloadUnusedAssets は呼ばない (全オブジェクトの走査で数秒止まることがある)。
-// incremental GC を切っている (IncrementalGcInvalidator) と 1 回の GC が長くなるので、この先回しと組で使う。
+// incremental GC を切っている時 (IncrementalGcInvalidator) は 1 回の GC が長くなるので、この先回しと組で使う。
 // Nebula on the Ship が読み込み完了時に GC.Collect(2) を打っているのと同じ考え方。
 internal static class GcPrepass
 {

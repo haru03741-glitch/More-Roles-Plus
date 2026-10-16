@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace MoreRolesPlus.Boot;
@@ -7,12 +8,18 @@ namespace MoreRolesPlus.Boot;
 // Ported from https://github.com/waffle-ful/Aeterna-End-K-not Modules/IncrementalGcInvalidator.cs (GPL-3.0)
 // Based on https://github.com/Dolly1016/Nebula-Public/blob/master/NebulaPluginNova/Utilities/IncrementalGcInvalidator.cs (GPL-3.0)
 //
-// 速くするためでなく安全のため: 書き込みバリア無しで il2cpp のオブジェクトへ書く interop が、
-// incremental GC の途中だと生きているオブジェクトを回収させてしまう (落ちる) ことがある。
-// incremental を切ればこの種の事故は原理的に起きない。代わりに 1 回の GC の停止が少し長くなる
-// (その分は GcPrepass で見えない瞬間に先に回収しておく)。
+// いつ切るか:
+//   - 書き込みバリア無しで il2cpp のオブジェクトへ参照を書くと、incremental GC の途中なら書いた先が
+//     生きているのに回収される (落ちる)。BepInEx-MRP/core の Il2CppInterop.Runtime.dll を tools/InteropWbPatch で
+//     バリア付きにした版は目印の IL2CPP.WbStore を持つ。それがあって 64bit なら incremental は ON のまま残す
+//     (定期の収集が 3ms ずつに分かれ、1 回の停止が短くなる)。
+//   - それ以外 (元の Runtime・32bit・ForceDisableIncrementalGc) は切る。incremental が切れていれば
+//     バリア無しでもこの種の事故は原理的に起きない。代わりに 1 回の GC の停止が長くなる
+//     (その分は GcPrepass で見えない瞬間に先に回収しておく)。
+//   - doorstop_config.ini の [Environment] GC_DISABLE_INCREMENTAL=1 は Unity の起動時点で切るので、後から ON には戻せない。
 // boot.config の gc-max-time-slice を消しても incremental は切れない (既定の 3ms で走る) ので、
 // il2cpp_gc_is_incremental() が読む Boehm のフラグを直接 0 にする。
+// Android はフラグを探せないので切らない (ログに Runtime がバリア付きかだけ出す)。
 //
 // フラグの場所の探し方:
 //   GetProcAddress("il2cpp_gc_is_incremental") → jmp の中継 (E9) を辿る →
@@ -81,18 +88,21 @@ public static unsafe class IncrementalGcInvalidator
         _applied = true;
 
         try { Apply(); }
-        catch (Exception e) { Log.LogWarning($"INCGC: unexpected failure ({e.GetType().Name}: {e.Message}) — leaving the GC mode untouched"); }
+        catch (Exception e)
+        {
+            Log.LogWarning($"INCGC: unexpected failure ({e.GetType().Name}: {e.Message})");
+            // バリアの無い環境で ON のまま残すのが最悪なので、そこだけは切るのを 1 回だけ試し直す
+            try
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && !KeepOn(out _) && IsIncrementalNative())
+                    Log.LogInfo($"INCGC: retry disable after failure: result={Disable()}");
+            }
+            catch (Exception e2) { Log.LogWarning($"INCGC: retry failed ({e2.GetType().Name}: {e2.Message}) — leaving the GC mode untouched"); }
+        }
     }
 
     private static void Apply()
     {
-        // 場所の特定と保護の確認は kernel32 に頼るので Windows だけ (Android では何もしない)
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            Log.LogInfo("INCGC: skipped (Windows-only; the flag lookup needs kernel32)");
-            return;
-        }
-
         bool before;
         try { before = IsIncrementalNative(); }
         catch (Exception e)
@@ -101,20 +111,48 @@ public static unsafe class IncrementalGcInvalidator
             return;
         }
 
-        if (!Plugin.DisableIncrementalGc.Value)
+        // 場所の特定と保護の確認は kernel32 に頼るので Windows だけ
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            Log.LogInfo($"INCGC: incremental={before} (left as-is; DisableIncrementalGc is off)");
+            Log.LogInfo($"INCGC: incremental={before} barrierRuntime={HasBarrierRuntime()} (not changed; the flag lookup needs kernel32)");
+            return;
+        }
+
+        if (KeepOn(out string reason))
+        {
+            Log.LogInfo(before
+                ? "INCGC: incremental=True (left as-is; write-barrier Il2CppInterop.Runtime detected)"
+                : "INCGC: incremental=False although the write-barrier Il2CppInterop.Runtime is present — it was turned off before the mod loaded (GC_DISABLE_INCREMENTAL=1 in doorstop_config.ini?) and cannot be turned back on");
             return;
         }
 
         if (!before)
         {
-            Log.LogInfo("INCGC: incremental already off — nothing to do");
+            Log.LogInfo($"INCGC: incremental already off — nothing to do ({reason})");
             return;
         }
 
-        Log.LogInfo($"INCGC: disabling incremental GC (before={before})");
+        Log.LogInfo($"INCGC: disabling incremental GC ({reason})");
         Log.LogInfo($"INCGC: result={Disable()}");
+    }
+
+    private static bool KeepOn(out string reason)
+    {
+        if (Plugin.ForceDisableIncrementalGc.Value) reason = "ForceDisableIncrementalGc is on";
+        else if (!Environment.Is64BitProcess) reason = "32-bit process";
+        else if (!HasBarrierRuntime()) reason = "Il2CppInterop.Runtime is not the write-barrier build (no IL2CPP.WbStore)";
+        else { reason = null; return true; }
+        return false;
+    }
+
+    // tools/InteropWbPatch が足す IL2CPP.WbStore(IntPtr, IntPtr) の有無で書き換え版かを判定する
+    private static bool HasBarrierRuntime()
+    {
+        try
+        {
+            return typeof(Il2CppInterop.Runtime.IL2CPP).GetMethod("WbStore", BindingFlags.Public | BindingFlags.Static, null, [typeof(IntPtr), typeof(IntPtr)], null) != null;
+        }
+        catch { return false; }
     }
 
     private static string Disable()
