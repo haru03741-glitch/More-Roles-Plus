@@ -17,6 +17,9 @@
 //   _Lvl = 床から測った水位で、h < _Lvl の画素を水の厚さ (_Lvl - h) の色で覆う。
 //   床の線は列ごと (_BaseTex・_BaseOn) で、無い時は絵全体の一番下 (_VBase)。
 //   _Cover = 天板に乗った水がまだらに広がる具合 (0..1)。_VPerUnit = 世界の 1 単位が型の v でいくつか (上下反転なら負)。
+//   _RoomOn = 1: 持ち上げた家具の型 (当たり判定を広げた形) のうち、部屋の絵 (_RoomTex) がきれいな床の色のままの画素には描かない
+//   (切り抜きの絵と同じ見分け方。型の uv = 元の場所の四角 _ShX.._ShH・床の模様 = _FlX.._FlTy)。
+//   ただし型の G = 1 (広げる前の当たり判定の中) の床の画素は、床の水の絵が家具として抜いているので床の高さの水として描く。
 // _Mode = 1 (噴き出し・滝): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)・B = 水の深さ (1 = 2 単位)・A = 1 - 水たまりの色の割合。
 //   水たまりの色の割合の所 (縁を越えたばかりの水) は B の深さの水たまりと同じ色の作りで塗り、割合が下がるほど噴き出しの透けた水色へ移る。その所は縁の線・筋・泡を引かない (水たまりとつながる)。
 //   落ちた後も地の色は B の深さの水たまりの色を主にする (水たまりと滝の色がそろう)。噴き出し (A = 1・B = 0) は割合 0。
@@ -75,6 +78,23 @@ Shader "MRP/Water"
         [PerRendererData] _BaseOn ("Floor line per column on (furniture)", Float) = 0
         _Rise ("Screen rise per unit of height (furniture)", Float) = 0.6
         [PerRendererData] _SilR ("Silhouette from R instead of A (furniture)", Float) = 0
+        [PerRendererData] _RoomTex ("Room art under lifted furniture (furniture)", 2D) = "black" {}
+        [PerRendererData] _RoomOn ("Draw only on furniture pixels of the room art (furniture)", Float) = 0
+        [PerRendererData] _RoomSx ("Room uv to world: scale x", Float) = 1
+        [PerRendererData] _RoomSy ("Room uv to world: scale y", Float) = 1
+        [PerRendererData] _RoomOx ("Room uv to world: offset x", Float) = 0
+        [PerRendererData] _RoomOy ("Room uv to world: offset y", Float) = 0
+        [PerRendererData] _RoomDx ("Room pixel size x (world)", Float) = 0.01
+        [PerRendererData] _RoomDy ("Room pixel size y (world)", Float) = 0.01
+        [PerRendererData] _FlX ("Clean floor min x (world)", Float) = 0
+        [PerRendererData] _FlY ("Clean floor min y (world)", Float) = 0
+        [PerRendererData] _FlTx ("Clean floor period x (0 = same column)", Float) = 0
+        [PerRendererData] _FlTy ("Clean floor period y (0 = same row)", Float) = 0
+        [PerRendererData] _ShX ("Shape rect min x (world, original place)", Float) = 0
+        [PerRendererData] _ShY ("Shape rect min y (world, original place)", Float) = 0
+        [PerRendererData] _ShW ("Shape rect width", Float) = 1
+        [PerRendererData] _ShH ("Shape rect height", Float) = 1
+        _FloorTol ("Floor difference tolerance (furniture)", Float) = 0.05
         _Quad ("Board width, height, feet from the bottom (0..1) (wade)", Vector) = (0.84, 1.75, 0.0857, 0)
     }
 
@@ -116,6 +136,9 @@ Shader "MRP/Water"
             float _FlowMax, _FlowCycle, _FlowStreak, _FlowFoam;
             float _Depth, _SubMax, _Lvl, _Cover, _SilR, _FaceH, _VPerUnit, _VBase, _Rise;
             float4 _Body, _Quad;
+            sampler2D _RoomTex;   // 家具の水面: 持ち上げた家具を描き込んだ部屋の絵 (_RoomOn = 1 の時だけ)
+            float _RoomOn, _RoomSx, _RoomSy, _RoomOx, _RoomOy, _RoomDx, _RoomDy;
+            float _FlX, _FlY, _FlTx, _FlTy, _ShX, _ShY, _ShW, _ShH, _FloorTol;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float2 world : TEXCOORD1; fixed4 color : COLOR; float4 screen : TEXCOORD2; };
@@ -367,26 +390,79 @@ Shader "MRP/Water"
 
             float Silhouette(float4 s) { return _SilR > 0.5 ? s.r * s.a : s.a; }
 
+            // 持ち上げた家具の見分け (TerrainSprite の _UseDamage = 7 と同じ式): 部屋の絵がその場所のきれいな床の色のままなら床
+            float2 RoomUv(float2 ow) { return (ow - float2(_RoomOx, _RoomOy)) / float2(_RoomSx, _RoomSy); }
+
+            float3 RoomFloorAt(float2 ow)
+            {
+                float2 o = float2(_FlX, _FlY), t = max(float2(_FlTx, _FlTy), 1e-5);
+                float2 rep = o + frac((ow - o) / t) * t;
+                float2 fw = float2(_FlTx > 0 ? rep.x : ow.x, _FlTy > 0 ? rep.y : ow.y);
+                return tex2Dlod(_RoomTex, float4(RoomUv(fw), 0, 0)).rgb;
+            }
+
+            bool RoomIsFloor(float2 ow)
+            {
+                fixed4 c = tex2Dlod(_RoomTex, float4(RoomUv(ow), 0, 0));
+                if (c.a < 0.5) return true;
+                float3 d = abs(c.rgb - RoomFloorAt(ow));
+                return max(d.r, max(d.g, d.b)) < _FloorTol;
+            }
+
+            // 家具が床に落とす影か: その場所の床の色を一様に暗くした色 (床の色との比が 3 色でそろっている)
+            bool RoomIsShadow(float2 ow)
+            {
+                float3 c = tex2Dlod(_RoomTex, float4(RoomUv(ow), 0, 0)).rgb, f = RoomFloorAt(ow);
+                float k = dot(c, f) / max(dot(f, f), 1e-4);
+                float3 d = abs(c - f * k);
+                return k > 0.25 && k < 0.97 && max(d.r, max(d.g, d.b)) < _FloorTol;
+            }
+
+            // 型 (広げた四角の uv) の画素が家具の絵か。床の模様の手描きのずれ (細い線) は上下左右の 3 つ以上も床でない画素だけ家具
+            bool OnFurniture(float2 uv)
+            {
+                float2 ow = float2(_ShX, _ShY) + uv * float2(_ShW, _ShH);
+                if (RoomIsFloor(ow)) return false;
+                float2 dx = float2(_RoomDx, 0), dy = float2(0, _RoomDy);
+                int n = (RoomIsFloor(ow + dx) ? 0 : 1) + (RoomIsFloor(ow - dx) ? 0 : 1)
+                      + (RoomIsFloor(ow + dy) ? 0 : 1) + (RoomIsFloor(ow - dy) ? 0 : 1);
+                return n >= 3;
+            }
+
             fixed4 Submerge(v2f i)
             {
-                float sil = Silhouette(tex2D(_MainTex, i.uv));
+                float4 shape = tex2D(_MainTex, i.uv);
+                float sil = Silhouette(shape);
                 if (sil <= 0.003) return 0;
+                // 型の中の床の画素: 広げた余白 (G = 0) は床の水の絵が描くので板は描かない。
+                // 当たり判定の中 (G = 1) は床の水の絵が家具として抜いているので、板が床の高さ (h = 0) の水として描く。
+                // 当たり判定の外の家具の落とす影は、切り抜きが床の水より手前に描くので板が描くが、床の上なので床の高さの水にする
+                float bare = 0.0;
+                if (_RoomOn > 0.5)
+                {
+                    if (!OnFurniture(i.uv))
+                    {
+                        if (shape.g < 0.5) return 0;
+                        bare = 1.0;
+                    }
+                    else if (shape.g < 0.5 && RoomIsShadow(float2(_ShX, _ShY) + i.uv * float2(_ShW, _ShH))) bare = 1.0;
+                }
                 // 床の線: 列ごと (斜めに置いた箱や形の崩れた家具は、列ごとに絵の下の縁が違う)。無ければ絵全体の一番下
                 float vb = _VBase;
                 if (_BaseOn > 0.5) vb = _BaseV0 + tex2Dlod(_BaseTex, float4(saturate((i.uv.x - _BaseU0) * _BaseUS), 0.5, 0, 0)).r * _BaseVS;
-                float h = clamp((i.uv.y - vb) / (_VPerUnit * _Rise), 0.0, _FaceH); // この画素の高さ (単位)
+                float h = clamp((i.uv.y - vb) / (_VPerUnit * _Rise), 0.0, _FaceH) * (1.0 - bare); // この画素の高さ (単位)
                 float t = _Time.y, sub = _Cover;
-                float onTop = step(_FaceH - 1e-4, h);
+                float onTop = step(_FaceH - 1e-4, h) * (1.0 - bare);
                 float px = max(fwidth(i.world.y), 1e-4);
                 float wave = (tex2D(_Noise, float2(i.world.x * 0.9 + t * 0.05, t * 0.03)).r - 0.5) * _LineWave * 2.0;
                 float ex = _Lvl + wave * (1.0 - onTop) - h;   // この画素の上の水の厚さ
                 float under = saturate(ex / px + 0.5);
                 float murk;
-                // 前面は斜めに見るので壁の面と同じく厚みを足す。天板は真上から見るので水の厚さだけ
-                fixed4 c = Tint(i.world, max(ex, 0.0) + _FaceView * (1.0 - onTop), murk);
-                c.a = min(c.a, _SubMax);
+                // 前面は斜めに見るので壁の面と同じく厚みを足す。天板は真上から見るので水の厚さだけ。床の画素は床の水と同じく厚みも泡も足さない
+                float face = (1.0 - onTop) * (1.0 - bare);
+                fixed4 c = Tint(i.world, max(ex, 0.0) + _FaceView * face, murk);
+                c.a = min(c.a, lerp(_SubMax, 1.0, bare));
                 // 前面に当たる水面の線の明るい縁と、その下のちぎれた泡の帯
-                float face = 1.0 - onTop;
                 float lip = saturate(1.0 - abs(ex) / (px * _RimPx)) * face;
                 float fn = tex2D(_Noise, float2(i.world.x * 2.2 + t * 0.12, ex * 6.0 - t * 0.05)).r;
                 float foam = saturate(1.0 - ex / _FoamW) * smoothstep(0.42, 0.62, fn) * face * under;

@@ -65,6 +65,7 @@ internal static class FurnitureLift
     {
         public string Name, Room;
         public Floor Floor;
+        public bool Measured;       // Floor を測ってある (無い家具は Floor が既定値)
         public Vector2 CutOffset;   // 切り抜きの絵の中心 - 当たり判定の範囲の中心 (広げる幅が左右で違う時)
         public Collider2D Col;
         public Transform ColTr;
@@ -77,6 +78,9 @@ internal static class FurnitureLift
         public bool[] ShapeIn;  // Shape と同じ形 (ShapePx 四方・左下原点)
         public Rect ShapeWorld;
         public Vector2 ShapeOff, ShapeScale;
+        public bool[] ColIn;    // 広げる前の当たり判定の中 (Shape と同じ格子)
+        // 家具を描き込んだ部屋の絵 (床を測った家具だけ)。水面の板が切り抜きと同じ見分け方で、型の中の家具の画素だけに描くのに使う
+        public BreakPieces.Room Art;
         public bool Tried, Failed;
         public bool Still;      // 端末が載っていて動かさない家具 (切り抜かず、水面の板の型と置き場だけ作る)
         // 今の置き方 (元の足元 Pivot を軸に PoseAng 度回して Pose へ)。床マスクが家具の今いる所を抜くのに使う
@@ -118,7 +122,7 @@ internal static class FurnitureLift
             var tr = col.transform;
             into.Add(new Lift
             {
-                Name = col.name, Room = room, Floor = floor ?? default, Col = col, ColTr = tr, ColT0 = tr.position, ColRot0 = tr.eulerAngles.z,
+                Name = col.name, Room = room, Floor = floor ?? default, Measured = floor != null, Col = col, ColTr = tr, ColT0 = tr.position, ColRot0 = tr.eulerAngles.z,
                 Bounds = r, Still = still,
             });
         }
@@ -139,11 +143,10 @@ internal static class FurnitureLift
             Func<Material, BreakPieces.Room, bool> configure = (mat, room) =>
             {
                 if (room.Name != l.Room) return false;
-                var f = l.Floor;
                 mat.SetTexture("_ShapeTex", shape);
                 mat.SetVector("_ShapeRect", new Vector4(world.xMin, world.yMin, 1f / world.width, 1f / world.height));
-                float px = room.W0x + (room.TexRect.xMin + f.X) * room.Dx, py = room.W0y + (room.TexRect.yMin + f.Y) * room.Dy;
-                mat.SetVector("_FloorPatch", new Vector4(px, py, f.Tx * Math.Abs(room.Dx), f.Ty * Math.Abs(room.Dy)));
+                mat.SetVector("_FloorPatch", FloorPatch(l.Floor, room));
+                l.Art = room;
                 return true;
             };
             var fill = BreakPieces.MakeLift(at, world, 8f, configure);
@@ -157,6 +160,7 @@ internal static class FurnitureLift
             if (fill == null || cut == null)
             {
                 if (fill != null) UnityEngine.Object.Destroy(fill.Tr.gameObject);
+                l.Art = null;
                 l.Failed = true;
                 return false;
             }
@@ -208,6 +212,12 @@ internal static class FurnitureLift
             l.ShapeWorld = world;
             l.ShapeScale = FxMath.V2(1f, 1f);
             l.ShapeOff = FxMath.V2(0f, 0f);
+            // 床を測っていない家具は形を広げていない (型 = 当たり判定) ので、画素の見分けは要らない
+            if (l.Measured)
+            {
+                var room = BreakPieces.RoomAt(world.center, world);
+                if (room != null && room.Name == l.Room) l.Art = room;
+            }
             return true;
         }
         catch (Exception e)
@@ -223,6 +233,13 @@ internal static class FurnitureLift
         var p = tr.position;
         float front = DamageMap.FrontZ(FxMath.V2(p.x, p.y));
         tr.position = FxMath.V3(p.x, p.y, front - dz * DamageMap.ZScale(front));
+    }
+
+    // きれいな床の左下 (世界) と繰り返しの幅 (世界単位) = シェーダの _FloorPatch
+    internal static Vector4 FloorPatch(Floor f, BreakPieces.Room room)
+    {
+        float px = room.W0x + (room.TexRect.xMin + f.X) * room.Dx, py = room.W0y + (room.TexRect.yMin + f.Y) * room.Dy;
+        return new Vector4(px, py, f.Tx * Math.Abs(room.Dx), f.Ty * Math.Abs(room.Dy));
     }
 
     // 当たり判定の範囲を左右下上の広げる幅だけ広げた四角
@@ -245,6 +262,7 @@ internal static class FurnitureLift
         for (int y = 0; y < ShapePx; y++)
             for (int x = 0; x < ShapePx; x++)
                 inside[y * ShapePx + x] = l.Col.OverlapPoint(FxMath.V2(x0 + (x + 0.5f) * sx, y0 + (y + 0.5f) * sy));
+        l.ColIn = inside;
         int rx = (int)MathF.Ceiling(Math.Max(f.PadL, f.PadR) / sx), ry = (int)MathF.Ceiling(Math.Max(f.PadB, f.PadT) / sy);
         var px = new byte[ShapePx * ShapePx * 4];
         shapeIn = new bool[ShapePx * ShapePx];
@@ -268,6 +286,8 @@ internal static class FurnitureLift
             VerifyShapes++;
             VerifyShapeDiff += diff;
         }
+        // G = 広げる前の当たり判定の中 (水面の板が、当たり判定の中の床の画素を床の水として描くのに使う。切り抜きは R だけを見る)
+        for (int i = 0; i < inside.Length; i++) px[i * 4 + 1] = inside[i] ? (byte)255 : (byte)0;
         var tex = new Texture2D(ShapePx, ShapePx, TextureFormat.RGBA32, false) { name = "MrpLiftShape", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         fixed (byte* b = px) tex.LoadRawTextureData((IntPtr)b, px.Length);
         tex.Apply(false, false);

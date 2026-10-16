@@ -319,6 +319,7 @@ internal static partial class PropSim
         float vBase = 0f, vPerUnit; // 床の線 (絵の一番下) の v と、世界の 1 単位が v でいくつか (画素の高さを測るのに使う)
         byte[] baseCol = null;      // 列ごとの床の線 (baseUv の範囲で 0..255)
         var baseUv = V4(0f, 1f, 0f, 1f);
+        BreakPieces.Room art = null; // 持ち上げた家具の型の中で家具の画素を見分ける部屋の絵
         if (p.Lift != null)
         {
             var l = p.Lift;
@@ -333,7 +334,10 @@ internal static partial class PropSim
             local = FxMath.V3(l.ShapeOff.x, l.ShapeOff.y, SunkFrontZ);
             scale = FxMath.V3(l.ShapeScale.x, l.ShapeScale.y * (w.height / w.width) * (l.Shape.width / (float)l.Shape.height), 1f);
             vPerUnit = 1f / Math.Max(w.height, 0.01f);
-            if (l.ShapeIn != null) baseCol = ShapeBase(l.ShapeIn, FurnitureLift.ShapePx, out baseUv);
+            // 床の線は広げる前の当たり判定の下の縁 (広げた所は床なので、そこから測ると家具の高さが余白の分だけずれる)
+            var foot = l.ColIn ?? l.ShapeIn;
+            if (foot != null) baseCol = ShapeBase(foot, FurnitureLift.ShapePx, out baseUv);
+            art = l.Art;
         }
         else
         {
@@ -400,8 +404,43 @@ internal static partial class PropSim
             s.Range = baseUv;
         }
         s.Block.SetFloat(BaseOnId, baseCol != null ? 1f : 0f);
+        if (art != null && art.Tex) SetRoomTest(s.Block, p.Lift, art);
         go.SetActive(false);
         return s;
+    }
+
+    // 持ち上げた家具の型は当たり判定を広げてあり、広げた所の多くは床の画素 (切り抜きの絵は描かない所)。そこに板を描くと
+    // 床の水の上に板の色が重なり、天板扱いの余白が天板の水と一緒に後から覆われる。切り抜きと同じ見分け方
+    // (部屋の絵が、その場所にあるはずのきれいな床の色と違う画素) を板にも渡し、家具の画素だけに描かせる。
+    // 型の uv は元の場所の広げた四角 (ShapeWorld) なので、家具が動いても元の場所の部屋の絵を引く
+    private static readonly int RoomTexId = Shader.PropertyToID("_RoomTex"), RoomOnId = Shader.PropertyToID("_RoomOn"),
+        RoomSxId = Shader.PropertyToID("_RoomSx"), RoomSyId = Shader.PropertyToID("_RoomSy"), RoomOxId = Shader.PropertyToID("_RoomOx"), RoomOyId = Shader.PropertyToID("_RoomOy"),
+        RoomDxId = Shader.PropertyToID("_RoomDx"), RoomDyId = Shader.PropertyToID("_RoomDy"),
+        FlXId = Shader.PropertyToID("_FlX"), FlYId = Shader.PropertyToID("_FlY"), FlTxId = Shader.PropertyToID("_FlTx"), FlTyId = Shader.PropertyToID("_FlTy"),
+        ShXId = Shader.PropertyToID("_ShX"), ShYId = Shader.PropertyToID("_ShY"), ShWId = Shader.PropertyToID("_ShW"), ShHId = Shader.PropertyToID("_ShH");
+
+    private static void SetRoomTest(MaterialPropertyBlock b, FurnitureLift.Lift l, BreakPieces.Room art)
+    {
+        var tex = art.Tex;
+        var fp = FurnitureLift.FloorPatch(l.Floor, art);
+        var w = l.ShapeWorld;
+        b.SetTexture(RoomTexId, tex);
+        // Android 版の MaterialPropertyBlock には SetVector が無いので Float で渡す
+        b.SetFloat(RoomSxId, art.Dx * tex.width);
+        b.SetFloat(RoomSyId, art.Dy * tex.height);
+        b.SetFloat(RoomOxId, art.W0x);
+        b.SetFloat(RoomOyId, art.W0y);
+        b.SetFloat(RoomDxId, art.Dx);
+        b.SetFloat(RoomDyId, art.Dy);
+        b.SetFloat(FlXId, fp.x);
+        b.SetFloat(FlYId, fp.y);
+        b.SetFloat(FlTxId, fp.z);
+        b.SetFloat(FlTyId, fp.w);
+        b.SetFloat(ShXId, w.xMin);
+        b.SetFloat(ShYId, w.yMin);
+        b.SetFloat(ShWId, w.width);
+        b.SetFloat(ShHId, w.height);
+        b.SetFloat(RoomOnId, 1f);
     }
 
     // 列ごとの床の線: 斜めに置いた箱や脚の長さが違う家具は、列ごとに絵の下の縁の高さが違う。
