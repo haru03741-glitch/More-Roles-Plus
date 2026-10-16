@@ -47,8 +47,17 @@
                Text="'$(MrpBepInExDir)\core\BepInEx.Preloader.Core.dll' が見つかりません。local.props の AmongUsPath を BepInEx-MRP を置いた Among Us のフォルダに合わせてください。" />
     </Target>
 
-    <Target Name="CopyToGame" AfterTargets="Build" Condition="Exists('$(MrpBepInExDir)\core')">
-        <MakeDir Directories="$(MrpBepInExDir)\patchers" />
-        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\patchers\" ContinueOnError="WarnAndContinue" />
+    <!-- 配置先は本体と同じ (AmongUsPath と MrpExtraGamePaths・BepInEx-MRP\core が無い所は飛ばす) -->
+    <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(MrpNoDeploy)' != 'true'">
+        <ItemGroup>
+            <_MrpGameRoot Include="$(AmongUsPath);$(MrpExtraGamePaths)" />
+            <_MrpGameRoot Remove="@(_MrpGameRoot)" Condition="!Exists('%(Identity)\BepInEx-MRP\core')" />
+            <_MrpPatcherDir Include="@(_MrpGameRoot->'%(Identity)\BepInEx-MRP\patchers')" />
+        </ItemGroup>
+        <RemoveDuplicates Inputs="@(_MrpPatcherDir)">
+            <Output TaskParameter="Filtered" ItemName="_MrpPatcherDirUnique" />
+        </RemoveDuplicates>
+        <MakeDir Directories="@(_MrpPatcherDirUnique)" />
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="%(_MrpPatcherDirUnique.Identity)\" ContinueOnError="WarnAndContinue" Condition="'@(_MrpPatcherDirUnique)' != ''" />
     </Target>
 </Project>

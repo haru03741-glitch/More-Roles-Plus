@@ -2,6 +2,8 @@
 <Project>
     <PropertyGroup>
         <AmongUsPath>C:\Program Files\Epic Games\AmongUs</AmongUsPath>
+        <!-- 別の場所にも同時に置く時 (; 区切り)。例: Epic 版と Steam 版の両方 -->
+        <!-- <MrpExtraGamePaths>C:\Program Files (x86)\Steam\steamapps\common\Among Us</MrpExtraGamePaths> -->
         <!-- Android 版をビルドする時: 端末のローダーが生成した BepInEx の core / interop を置いた場所 -->
         <AndroidBepInExPath>D:\path\to\android-bepinex</AndroidBepInExPath>
     </PropertyGroup>

@@ -29,7 +29,7 @@ function Step([string]$name, [scriptblock]$body) {
 }
 
 # 1. Release (ゲームへの配置はしない: 配置先を存在しないパスにする)
-Step 'Release build' { dotnet build $proj -c Release -v:q -nologo "-p:AmongUsPath=$repo\__no_deploy__" }
+Step 'Release build' { dotnet build $proj -c Release -v:q -nologo "-p:AmongUsPath=$repo\__no_deploy__" "-p:MrpNoDeploy=true" }
 
 if (-not $SkipAndroid) {
     $localProps = Join-Path $repo 'local.props'

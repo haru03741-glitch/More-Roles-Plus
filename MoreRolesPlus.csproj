@@ -98,12 +98,34 @@
         </ItemGroup>
         <Warning Code="MRP001" Text="Resources\FloorMasks の床マスクが @(_MrpFloorMask->Count()) 枚しかありません (5 マップ分要る)。tools/make-floor-mask.py で作るか、作ってある所から写してください" Condition="@(_MrpFloorMask->Count()) &lt; 5" />
     </Target>
-    <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And Exists('$(MrpBepInExDir)\core')">
-        <MakeDir Directories="$(MrpBepInExDir)\plugins" />
-        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\plugins\" ContinueOnError="WarnAndContinue" />
-        <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="$(MrpBepInExDir)\plugins\" Condition="Exists('$(OutputPath)$(AssemblyName).pdb')" ContinueOnError="WarnAndContinue" />
+    <!-- 配置先は AmongUsPath と、local.props の MrpExtraGamePaths (; 区切り・Epic 版と Steam 版の両方へ置く時など)。
+         BepInEx-MRP\core が無い所は飛ばす。MrpNoDeploy=true で配置しない。 -->
+    <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And '$(MrpNoDeploy)' != 'true'">
+        <ItemGroup>
+            <_MrpGameRoot Include="$(AmongUsPath);$(MrpExtraGamePaths)" />
+            <_MrpGameRoot Remove="@(_MrpGameRoot)" Condition="!Exists('%(Identity)\BepInEx-MRP\core')" />
+            <_MrpPluginDir Include="@(_MrpGameRoot->'%(Identity)\BepInEx-MRP\plugins')" />
+        </ItemGroup>
+        <RemoveDuplicates Inputs="@(_MrpPluginDir)">
+            <Output TaskParameter="Filtered" ItemName="_MrpPluginDirUnique" />
+        </RemoveDuplicates>
+        <MakeDir Directories="@(_MrpPluginDirUnique)" />
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="%(_MrpPluginDirUnique.Identity)\" ContinueOnError="WarnAndContinue" Condition="'@(_MrpPluginDirUnique)' != ''" />
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb" DestinationFolder="%(_MrpPluginDirUnique.Identity)\" Condition="'@(_MrpPluginDirUnique)' != '' And Exists('$(OutputPath)$(AssemblyName).pdb')" ContinueOnError="WarnAndContinue" />
         <!-- C++ の部品は本体に入ったので、前に別ファイルで置いた物は消す -->
-        <Delete Files="$(MrpBepInExDir)/plugins/MrpNative.dll" ContinueOnError="WarnAndContinue" />
+        <Delete Files="@(_MrpPluginDirUnique->'%(Identity)\MrpNative.dll')" ContinueOnError="WarnAndContinue" />
+        <!-- ゲームが DLL を掴んでいると Copy は警告だけで古い DLL が残るので、置いた物の中身を見比べる -->
+        <GetFileHash Files="$(OutputPath)$(AssemblyName).dll" Condition="'@(_MrpPluginDirUnique)' != ''">
+            <Output TaskParameter="Hash" PropertyName="_MrpBuiltHash" />
+        </GetFileHash>
+        <ItemGroup>
+            <_MrpPlaced Include="@(_MrpPluginDirUnique->'%(Identity)\$(AssemblyName).dll')" />
+        </ItemGroup>
+        <GetFileHash Files="@(_MrpPlaced)" Condition="'@(_MrpPlaced)' != ''" ContinueOnError="WarnAndContinue">
+            <Output TaskParameter="Items" ItemName="_MrpPlacedHash" />
+        </GetFileHash>
+        <Message Importance="high" Text="配置済み: %(_MrpPlacedHash.Identity)" Condition="'@(_MrpPlacedHash)' != '' And '%(_MrpPlacedHash.FileHash)' == '$(_MrpBuiltHash)'" />
+        <Warning Text="配置できていない (古い DLL のまま・ゲームが起動中なら閉じてビルドし直す): %(_MrpPlacedHash.Identity)" Condition="'@(_MrpPlacedHash)' != '' And '%(_MrpPlacedHash.FileHash)' != '$(_MrpBuiltHash)'" />
     </Target>
     <!-- Android: ランチャーの APK が DLL を同梱し、端末の BepInEx/plugins と違う時だけ入れ直す。
          横の .properties (DLL の SHA-256 と版) がランチャーの見比べる目印。 -->
