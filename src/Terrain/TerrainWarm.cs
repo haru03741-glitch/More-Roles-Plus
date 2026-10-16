@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 namespace MoreRolesPlus.Terrain;
 
 // 試合 (船) が出たら、最初の破壊で払っていた準備 (PC 実測 365ms) を先に済ませる。
-// 地形のメソッドを先にコンパイルし (初回の呼び出しのコンパイルが準備の大半だった)、損傷マスク・瓦礫/ひび/船体の中の絵・種点の板・焼くカメラを作っておく。
+// この mod のメソッドを先にコンパイルし (初回の呼び出しのコンパイルが準備の大半だった)、損傷マスク・瓦礫/ひび/船体の中の絵・種点の板・焼くカメラを作っておく。
 // コンパイルはプロセスに 1 回で済むので、メニューに着いた後 (起動の処理が終わってから) に始める。メニューで終わらなければ
 // ロビーと試合でも続け、船ごとの準備 (段 1〜) はコンパイルが済んでから始める。
 // コンパイルは 1 回の FixedUpdate に 4ms ずつ (メニューでは MenuBudgetMs ずつ) に分けて、1 フレームを長く止めない。
@@ -148,8 +148,8 @@ internal static class TerrainWarm
         if (_stage == Stages) Plugin.Logger.LogInfo($"[TerrainWarm] {Report}");
     }
 
-    // 地形のメソッドを先にコンパイルする (1 回に TickBudgetMs まで・メソッド単位)。全部終わったら true。
-    // 地形のメソッドが呼ぶ先 (値型を入れる List/Dictionary・本編と Unity の包み・Fx などの別の名前空間) も、
+    // 試合中に走るこの mod のメソッドを先にコンパイルする (1 回に budgetMs まで・メソッド単位)。全部終わったら true。
+    // 呼ぶ先 (値型を入れる List/Dictionary・本編と Unity の包み・Fx などの別の名前空間) も、
     // メソッドの中身 (IL) から拾って足す。値型のジェネリックとこの mod のメソッドはさらに奥 (MaxDepth 段) まで辿る
     // (拾わないと、試合で最初の爆破の時に 200 件以上をその場でコンパイルしていた)
     private const int MaxDepth = 4;
@@ -172,7 +172,7 @@ internal static class TerrainWarm
             _seen = new HashSet<MethodBase>();
             foreach (var t in typeof(TerrainWarm).Assembly.GetTypes())
             {
-                if (t.Namespace != typeof(TerrainWarm).Namespace || t.ContainsGenericParameters) continue;
+                if (!Root(t.Namespace) || t.ContainsGenericParameters) continue;
                 foreach (var m in t.GetMethods(AllDeclared)) Add(m, 0);
                 foreach (var c in t.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)) Add(c, 0);
             }
@@ -193,6 +193,12 @@ internal static class TerrainWarm
         _scanGarbage = true; // 次の tick から回収して終わる
         return false;
     }
+
+    // 試合中に走る名前空間 (地形・役職・通信・演出・設定・チャット)。起動の処理と開発用の道具は除く
+    private static bool Root(string ns) =>
+        ns != null && ns.StartsWith("MoreRolesPlus", StringComparison.Ordinal)
+        && !ns.StartsWith("MoreRolesPlus.Bridge", StringComparison.Ordinal) && !ns.StartsWith("MoreRolesPlus.Dev", StringComparison.Ordinal)
+        && !ns.StartsWith("MoreRolesPlus.Boot", StringComparison.Ordinal);
 
     private static void Add(MethodBase m, int depth)
     {
