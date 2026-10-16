@@ -501,6 +501,7 @@ internal static class TerrainProbe
 
     internal static void RegisterNearWall()
     {
+        TestBridge.Register("damagegpu", "損傷マスクを GPU から読み戻して CPU 側と比べる (bad=0 なら変わった範囲の転送が正しい)", (args, reply) => reply("OK damagegpu " + DamageMap.GpuCheck()));
         TestBridge.Register("holecheck", "直前の破壊で切り取った壁の線の上で、壁の絵が抜けていない所 (当たり判定だけ抜けた所) を出す", (args, reply) =>
         {
             var segs = TerrainDamage.LastRemoved;

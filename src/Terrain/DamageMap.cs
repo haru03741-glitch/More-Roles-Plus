@@ -215,42 +215,24 @@ internal static class DamageMap
         _pixels = new byte[_w * _h * 4];
         _gens = new byte[_w * _h];
 #if ANDROID
-        // 端末のゲーム付属の libunity には CopyTexture の範囲複写が無い → 全面送信 (1 フレーム 1 回にまとめる所までは同じ)
-        _useRt = false;
+        // 端末のゲーム付属の libunity には CopyTexture の範囲複写が無い → 中継の絵を RenderTexture の同じ場所へ四角で描く (CopyStage)。
+        // 複写のシェーダ (本編の Blit が使う物) が引けない端末だけ全面送信 (1 フレーム 1 回にまとめる所までは同じ)
+        _copyMat ??= MakeCopyMat();
+        _useRt = _copyMat;
 #else
         _useRt = (SystemInfo.copyTextureSupport & UnityEngine.Rendering.CopyTextureSupport.Basic) != 0;
 #endif
         if (_useRt)
         {
-#if !ANDROID
-            _rt = new RenderTexture(_w, _h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear)
-            {
-                name = "MrpDamage",
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear,
-                useMipMap = false,
-                autoGenerateMips = false,
-                hideFlags = HideFlags.DontUnloadUnusedAsset,
-            };
-            _rt.Create();
-            _stage = new Texture2D(StagePx, StagePx, TextureFormat.RGBA32, false, true) { name = "MrpDamageStage", hideFlags = HideFlags.DontUnloadUnusedAsset };
+            _rt = MakeRt("MrpDamage", RenderTextureFormat.ARGB32, FilterMode.Bilinear);
+            _stage = new Texture2D(StagePx, StagePx, TextureFormat.RGBA32, false, true) { name = "MrpDamageStage", filterMode = FilterMode.Point, hideFlags = HideFlags.DontUnloadUnusedAsset };
             _stageBuf = new byte[StagePx * StagePx * 4];
             if (SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.R8))
             {
-                _genRt = new RenderTexture(_w, _h, 0, RenderTextureFormat.R8, RenderTextureReadWrite.Linear)
-                {
-                    name = "MrpDamageGen",
-                    wrapMode = TextureWrapMode.Clamp,
-                    filterMode = FilterMode.Point,
-                    useMipMap = false,
-                    autoGenerateMips = false,
-                    hideFlags = HideFlags.DontUnloadUnusedAsset,
-                };
-                _genRt.Create();
-                _genStage = new Texture2D(StagePx, StagePx, TextureFormat.R8, false, true) { name = "MrpDamageGenStage", hideFlags = HideFlags.DontUnloadUnusedAsset };
+                _genRt = MakeRt("MrpDamageGen", RenderTextureFormat.R8, FilterMode.Point);
+                _genStage = new Texture2D(StagePx, StagePx, TextureFormat.R8, false, true) { name = "MrpDamageGenStage", filterMode = FilterMode.Point, hideFlags = HideFlags.DontUnloadUnusedAsset };
                 _genStageBuf = new byte[StagePx * StagePx];
             }
-#endif
         }
         else
         {
@@ -996,12 +978,34 @@ internal static class DamageMap
 
     private static void MarkDirtyAll() { _dirtyAll = true; _dirty = true; }
 
+    private static RenderTexture MakeRt(string name, RenderTextureFormat format, FilterMode filter)
+    {
+        var rt = new RenderTexture(_w, _h, 0, format, RenderTextureReadWrite.Linear)
+        {
+            name = name,
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = filter,
+#if !ANDROID
+            useMipMap = false,       // 端末の libunity には無い (既定で false)
+            autoGenerateMips = false,
+#endif
+            hideFlags = HideFlags.DontUnloadUnusedAsset,
+        };
+        rt.Create();
+        return rt;
+    }
+
     // 溜めた範囲を GPU へ送る。描画の前 (LateUpdate) と、影の焼き (カメラで描く) の前に呼ぶ
     internal static void Flush()
     {
         if (_pixels == null) return;
         // 端末で画面が消えて戻ると RenderTexture の中身が失われる → 時々確かめて全面を送り直す
-#if !ANDROID
+#if ANDROID
+        // 端末の libunity には IsCreated が無いので、呼ばれる間が大きく空いた (裏へ回っていた) ことで知る (ShadowPatch と同じ)
+        long now = Environment.TickCount64;
+        if (_useRt && now - _lastFlushMs > LostGapMs) MarkDirtyAll();
+        _lastFlushMs = now;
+#else
         if (_useRt && (++_flushPolls & 63) == 0 && !_rt.IsCreated()) MarkDirtyAll();
 #endif
         if (!_dirty) return;
@@ -1015,16 +1019,15 @@ internal static class DamageMap
 #if !ANDROID
         if (!_rt.IsCreated()) _rt.Create();
         if (_genRt != null && !_genRt.IsCreated()) _genRt.Create();
+#endif
         int x0 = _dirtyAll ? 0 : _dx0, y0 = _dirtyAll ? 0 : _dy0, x1 = _dirtyAll ? _w - 1 : _dx1, y1 = _dirtyAll ? _h - 1 : _dy1;
         _dirtyAll = false;
         for (int y = y0; y <= y1; y += StagePx)
         for (int x = x0; x <= x1; x += StagePx)
             CopyChunk(x, y, Math.Min(StagePx, x1 - x + 1), Math.Min(StagePx, y1 - y + 1));
         if (_genRt == null) UploadGenFull();
-#endif
     }
 
-#if !ANDROID
     // 中継の絵の左下 w×h に写して、GPU 側で RenderTexture の同じ場所へ複写する
     private static unsafe void CopyChunk(int x, int y, int w, int h)
     {
@@ -1032,7 +1035,7 @@ internal static class DamageMap
             Buffer.BlockCopy(_pixels, ((y + row) * _w + x) * 4, _stageBuf, row * StagePx * 4, w * 4);
         fixed (byte* p = _stageBuf) _stage.LoadRawTextureData((IntPtr)p, _stageBuf.Length);
         _stage.Apply(false, false);
-        Graphics.CopyTexture(_stage, 0, 0, 0, 0, w, h, _rt, 0, 0, x, y);
+        CopyStage(_stage, _rt, x, y, w, h);
         long bytes = (long)w * h * 4;
         if (_genRt != null)
         {
@@ -1040,13 +1043,88 @@ internal static class DamageMap
                 Buffer.BlockCopy(_gens, (y + row) * _w + x, _genStageBuf, row * StagePx, w);
             fixed (byte* p = _genStageBuf) _genStage.LoadRawTextureData((IntPtr)p, _genStageBuf.Length);
             _genStage.Apply(false, false);
-            Graphics.CopyTexture(_genStage, 0, 0, 0, 0, w, h, _genRt, 0, 0, x, y);
+            CopyStage(_genStage, _genRt, x, y, w, h);
             bytes += (long)w * h;
         }
         FlushBytes += bytes;
         Bridge.Perf.Upload(bytes);
     }
+
+#if ANDROID
+    private static Material _copyMat;
+    private static long _lastFlushMs;
+    private const long LostGapMs = 1000;
+
+    private static Material MakeCopyMat()
+    {
+        var sh = Shader.Find("Hidden/BlitCopy");
+        if (!sh) { Plugin.Logger.LogWarning("DamageMap: no Hidden/BlitCopy -> full uploads"); return null; }
+        return new Material(sh) { name = "MrpDamageCopy", hideFlags = HideFlags.DontUnloadUnusedAsset };
+    }
+
+    // 中継の絵の左下 w×h を、合成なしの四角で RenderTexture の (x, y) へ描く。
+    // 四角の辺を画素の境目に置き、点サンプリングの中継の画素の中心を引くので値はそのまま写る
+    private static void CopyStage(Texture2D src, RenderTexture dst, int x, int y, int w, int h)
+    {
+        var prev = RenderTexture.active;
+        RenderTexture.active = dst;
+        _copyMat.mainTexture = src;
+        _copyMat.SetPass(0);
+        GL.PushMatrix();
+        GL.LoadOrtho();
+        float u = w / (float)StagePx, v = h / (float)StagePx;
+        float ax = x / (float)_w, ay = y / (float)_h, bx = (x + w) / (float)_w, by = (y + h) / (float)_h;
+        GL.Begin(GL.QUADS);
+        GL.TexCoord3(0f, 0f, 0f); GL.Vertex3(ax, ay, 0f);
+        GL.TexCoord3(0f, v, 0f); GL.Vertex3(ax, by, 0f);
+        GL.TexCoord3(u, v, 0f); GL.Vertex3(bx, by, 0f);
+        GL.TexCoord3(u, 0f, 0f); GL.Vertex3(bx, ay, 0f);
+        GL.End();
+        GL.PopMatrix();
+        RenderTexture.active = prev;
+    }
+#else
+    private static void CopyStage(Texture2D src, RenderTexture dst, int x, int y, int w, int h)
+        => Graphics.CopyTexture(src, 0, 0, 0, 0, w, h, dst, 0, 0, x, y);
 #endif
+
+    // bridge `damagegpu`: GPU 側のマスクと番号を読み戻して CPU 側と 1 画素ずつ比べる (変わった範囲だけ送る経路の検収)
+    internal static string GpuCheck()
+    {
+        if (_pixels == null) return "no map";
+        if (!_useRt) return "not rt (full uploads)";
+        Flush();
+        var t = new Texture2D(_w, _h, TextureFormat.RGBA32, false, true);
+        var prev = RenderTexture.active;
+        try
+        {
+            RenderTexture.active = _rt;
+            t.ReadPixels(new Rect(0, 0, _w, _h), 0, 0, false);
+            var got = t.GetRawTextureData();
+            int bad = 0, first = -1;
+            for (int i = 0; i < _pixels.Length; i++)
+                if (got[i] != _pixels[i]) { bad++; if (first < 0) first = i / 4; }
+            string res = $"mask bad={bad}" + (first >= 0 ? $" first=({first % _w},{first / _w})" : "");
+            if (_genRt != null)
+            {
+                RenderTexture.active = _genRt;
+                t.ReadPixels(new Rect(0, 0, _w, _h), 0, 0, false);
+                got = t.GetRawTextureData();
+                int gbad = 0, gfirst = -1;
+                for (int i = 0; i < _gens.Length; i++)
+                    if (got[i * 4] != _gens[i]) { gbad++; if (gfirst < 0) gfirst = i; }
+                res += $" gen bad={gbad}" + (gfirst >= 0 ? $" first=({gfirst % _w},{gfirst / _w})" : "");
+            }
+            int holes = 0;
+            for (int i = 0; i < _pixels.Length; i += 4) if (_pixels[i] != 0) holes++;
+            return res + $" size={_w}x{_h} holePx={holes}";
+        }
+        finally
+        {
+            RenderTexture.active = prev;
+            UnityEngine.Object.Destroy(t);
+        }
+    }
 
     private static unsafe void UploadFull()
     {
