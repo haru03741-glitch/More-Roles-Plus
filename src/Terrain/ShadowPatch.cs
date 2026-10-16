@@ -160,6 +160,7 @@ internal static class ShadowPatch
         if ((++_lostPolls & 63) == 0 && Tiles.Count > 0) CheckLost();
 #endif
         if (Dirty.Count == 0) { FillSpare(); return; }
+        if (TerrainFx.HasDeferred) return; // 破壊の見た目 (ひびの板など) が次のフレームで出るのを待ってから焼く
         if (!Enabled || !DamageMap.ShipTransform || !EnsureCamera()) { Dirty.Clear(); DirtySet.Clear(); return; }
         // 画面 (と余白) に掛かる升だけ焼く。外の升は見えないので、画面に入ってきた時に焼く (遠くの火や水漏れで焼き直し続けない)
         bool all = _flushing;

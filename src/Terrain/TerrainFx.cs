@@ -354,6 +354,8 @@ internal static class TerrainFx
         Deferred.Add(a);
     }
 
+    internal static bool HasDeferred => Deferred.Count > 0;
+
     internal static void RunDeferred()
     {
         if (Deferred.Count == 0) return;

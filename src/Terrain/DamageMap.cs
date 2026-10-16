@@ -1146,19 +1146,32 @@ internal static class DamageMap
     // 抜いた穴の向こうには床が無い (部屋と部屋の間は船体と宇宙) ので、部屋の絵より奥に瓦礫の床を敷く
     private static void SpawnUnderlay(Vector2 c, float r, List<Vector2> segs)
     {
-        RoomZRange(c, out float nearZ, out float farZ);
+        RoomZRange(c, out _, out float farZ);
         // 部屋の後ろに地面が描かれているマップ (Polus・Fungle = 部屋の絵が Sprites/Default) は、抜けた所から地面がそのまま見える
-        if (_roomMatMask && !HasGroundBehind(c)) SpawnHullInterior(c, r, segs, farZ + UnderlayDepth);
-
-        SpawnCracks(c, r * UnderlayArt.CrackReach, (_holeCount++ * 137.5f) % 360f, false);
+        bool hull = _roomMatMask && !HasGroundBehind(c);
+        float reach = r * UnderlayArt.CrackReach, angle = (_holeCount++ * 137.5f) % 360f;
+        MarkFurniture(c, reach); // 損傷マスクへの書き込みは今 (水の計算が読む)
+        // 板 (GameObject) を作るのは見た目だけ: 爆発のフレームを軽くするため次のフレームで (船が替われば Reset が捨てる)
+        var segsCopy = segs != null ? new List<Vector2>(segs) : null;
+        TerrainFx.Defer(() =>
+        {
+            if (!_ship) return;
+            if (hull) SpawnHullInterior(c, r, segsCopy, farZ + UnderlayDepth);
+            CrackGo(c, reach, angle, false);
+        });
     }
 
     // ひびは部屋の絵のすぐ手前に、部屋と同じマテリアルで貼る (穴の中は損傷マスクで自動的に抜ける・影も効く)。
     // reach = ひびの絵の半径 (世界単位)
     private static void SpawnCracks(Vector2 c, float reach, float angleDeg, bool impact)
     {
-        RoomZRange(c, out float nearZ, out _);
         MarkFurniture(c, reach);
+        CrackGo(c, reach, angleDeg, impact);
+    }
+
+    private static void CrackGo(Vector2 c, float reach, float angleDeg, bool impact)
+    {
+        RoomZRange(c, out float nearZ, out _);
         var sprite = impact ? (_impactSprite ??= UnderlayArt.MakeCracks(true)) : (_crackSprite ??= UnderlayArt.MakeCracks(false));
         var crack = new GameObject("MrpCracks") { layer = OwnArtLayer };
         crack.transform.SetParent(_ship.transform, true);
