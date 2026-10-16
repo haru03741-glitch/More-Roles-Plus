@@ -80,5 +80,16 @@ $bad = Get-ChildItem (Join-Path $repo 'src') -Recurse -Filter *.cs |
 if ($bad) { $bad | ForEach-Object { Write-Output "   $($_.Path):$($_.LineNumber): $($_.Line.Trim())" }; Write-Output '   [FAIL] Vanilla.Hud / StartManager / LobbyInfo / Store を使う'; $fail++ }
 else { Write-Output '   [ OK ]' }
 
+# 6. 水の床マスク (gitignore・ゲームの絵から tools/make-floor-mask.py で作る) が全マップ分そろっているか。
+#    欠けると DLL に埋め込まれず、水の縁を当たり判定で切る古い見え方に無音で戻る (壁の上に水がはみ出す)。
+#    CI はマスクを持たないので数えない
+Write-Output '== floor masks'
+if ($env:GITHUB_ACTIONS) { Write-Output '   [SKIP] CI' }
+else {
+    $masks = @(Get-ChildItem (Join-Path $repo 'Resources\FloorMasks') -Filter *.bin -ErrorAction SilentlyContinue)
+    if ($masks.Count -lt 5) { Write-Output "   [FAIL] Resources\FloorMasks の .bin が $($masks.Count) 枚 (5 マップ分要る)。作業ツリーを作り直した時は写す"; $fail++ }
+    else { Write-Output '   [ OK ]' }
+}
+
 if ($fail -gt 0) { Write-Output "RESULT: FAIL ($fail)"; exit 1 }
 if ($SkipAndroid) { Write-Output 'RESULT: OK (ANDROID SKIPPED)' } else { Write-Output 'RESULT: OK' }

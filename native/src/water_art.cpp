@@ -142,6 +142,8 @@ MRP_API void mrp_water_pixels(
 }
 
 // A を面の外へ spread 画素にじませる (WaterArt.SpreadFace)。tmp は n×n の作業場所
+static const int SpreadFaceTop = 253;   // FloorMask.FaceTop (これ以下が壁の面の高さ)
+
 MRP_API void mrp_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, int32_t spread, uint8_t* tmp)
 {
     // A が全部 0 の行は横に広げても 0 なので飛ばす。縦は上下 spread 行の tmp が全部 0 なら何も変わらない
@@ -180,7 +182,7 @@ MRP_API void mrp_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, 
         for (int x = 0; x < n; x++)
         {
             int j = row + x, i = j * 4;
-            if (px[i + 3] != 0) continue;
+            if (px[i + 3] != 0 || face[j] <= SpreadFaceTop) continue;   // 面の画素は自分の厚さを持つ
             uint8_t a = tmp[j];
             for (int k = lo; k <= hi; k++) { uint8_t b = tmp[k * n + x]; if (b > a) a = b; }
             if (a == 0) continue;

@@ -79,32 +79,32 @@ MRP_API void mrp_floor_raw(
 
 // 落ちる縁の升 (fall の向きのうち lip に無いものがある升) の床でない画素を床にする (WaterSim.StampLips と同じ)。
 // 升 = 原点 (ox, oy) から 1 辺 cell の格子・w×h 升
-// 落ちる縁から内へ LipReach (滝の膜が崖の縁を探す幅と同じ) までに床マスクの床があるか。全部の落ちる縁がそうなら升を塗らない
-// (水の絵は床マスクの形で崖の縁まで届き、膜はそこから始まる)。絵の床がそれより手前で終わる所だけ升ごと塗る
-static const float LipInset = 0.02f, LipReach = 0.3f; static const int LipSteps = 15;
+// 落ちる縁のどれかで、画素から内へ縁から LipReach (滝の膜が崖の縁を探す幅と同じ) までに床マスクの床があるか。あれば塗らない
+// (水の絵は床マスクの形で崖の縁まで届き、膜はそこから始まる)。絵の床がそれより手前で終わる所だけ塗る。
+// 画素ごとに決める (升ごとに真ん中の列だけで決めると、2 方向へ落ちる角の升で、床の絵の外の列が升ごと床に塗られる)
+static const float LipStep = 0.02f, LipReach = 0.3f;
 static const int LipNx[4] = { 1, -1, 0, 0 }, LipNy[4] = { 0, 0, 1, -1 };
 
-static bool lip_covered(int bits, int cx, int cy, float ox, float oy, float cell,
+static bool lip_beyond(int bits, int cx, int cy, float wx, float wy, float ox, float oy, float cell,
     const uint8_t* mb, int32_t mw, int32_t mh, float mox, float moy, float mppu)
 {
     if (!mb) return false;
     for (int d = 0; d < 4; d++)
     {
         if ((bits >> d & 1) == 0) continue;
-        bool hit = false;
-        for (int s = 0; s <= LipSteps && !hit; s++)
+        float ex = ox + ((float)cx + 0.5f) * cell + (float)LipNx[d] * (0.5f * cell);
+        float ey = oy + ((float)cy + 0.5f) * cell + (float)LipNy[d] * (0.5f * cell);
+        float p = LipNx[d] != 0 ? (ex - wx) * (float)LipNx[d] : (ey - wy) * (float)LipNy[d];
+        for (int s = 1; p + (float)s * LipStep <= LipReach; s++)
         {
-            float r = 0.5f * cell - (LipInset + (LipReach - LipInset) * (float)s / (float)LipSteps);
-            float ex = ox + ((float)cx + 0.5f) * cell + (float)LipNx[d] * r;
-            float ey = oy + ((float)cy + 0.5f) * cell + (float)LipNy[d] * r;
-            int mx = (int)floorf((ex - mox) * mppu), my = (int)floorf((ey - moy) * mppu);
+            float qx = wx - (float)LipNx[d] * ((float)s * LipStep), qy = wy - (float)LipNy[d] * ((float)s * LipStep);
+            int mx = (int)floorf((qx - mox) * mppu), my = (int)floorf((qy - moy) * mppu);
             if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
             int i = my * mw + mx;
-            hit = (mb[i >> 3] & (1 << (i & 7))) != 0;
+            if ((mb[i >> 3] & (1 << (i & 7))) != 0) return true;
         }
-        if (!hit) return false;
     }
-    return true;
+    return false;
 }
 
 MRP_API void mrp_floor_lips(const uint8_t* fall, const uint8_t* lip, int32_t w, int32_t h, float ox, float oy, float cell,
@@ -131,7 +131,7 @@ MRP_API void mrp_floor_lips(const uint8_t* fall, const uint8_t* lip, int32_t w, 
             if (row[px] != 0 || cx < 0) continue;
             int k = baseK + cx;
             int b = fall[k] & ~lip[k];
-            if (b != 0 && !lip_covered(b, cx, cy, ox, oy, cell, mb, mw, mh, mox, moy, mppu)) row[px] = 255;
+            if (b != 0 && !lip_beyond(b, cx, cy, x + (float)px * step, y + (float)py * step, ox, oy, cell, mb, mw, mh, mox, moy, mppu)) row[px] = 255;
         }
     }
 }

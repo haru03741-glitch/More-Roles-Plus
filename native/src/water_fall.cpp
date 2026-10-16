@@ -277,9 +277,9 @@ static void Sheet(Ctx& c, const FallEdge& e)
             float h0 = fmx(0.3f, -ldy);
             float ex = sx + ldx + e.nx * thr, ey = sy + ldy + e.ny * thr;
             float br = Brink(a, sx, sy, e.nx, e.ny);
+            float cut = v ? FrontCut(a, sx + e.nx * a->cell * 0.25f, e.cutFrom, ey) : -3.40282347e+38f;   // ずらす前の縁の外側で探す
             sx += e.nx * br; sy += e.ny * br;
             float gx = sx, gy = sy - h0, hh = h0 + z0;
-            float cut = v ? FrontCut(a, sx + e.nx * a->cell * 0.25f, e.cutFrom, ey) : -3.40282347e+38f;
             if (sy + z0 <= cut) continue;
             if (e.ny > 0.0f && !e.lip) continue;
             float len = (fabsf(ex - sx) + fabsf(ey - sy) + 2.0f * hh) * ppu * (t1 - t0);

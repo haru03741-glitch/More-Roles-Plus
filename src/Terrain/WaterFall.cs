@@ -329,10 +329,11 @@ internal static class WaterFall
                 float ex = sx + ldx + e.Nx * thr, ey = sy + ldy + e.Ny * thr;
                 // 膜は絵の崖の縁から始める (縁と崖の縁の間の水は床の水の絵が描く)。着く所は変えない
                 float br = Brink(sx, sy, e.Nx, e.Ny);
+                // 手前の床は縁の外側の升の列で探す (横の縁は縁の線ちょうどだと縁の内側の升 = 落ちる元の床を拾い、膜が丸ごと隠れる)。
+                // 崖の縁まで内へずらす前の縁で探す (ずらした所で探すと、横の縁は自分の水たまりの升の列に入って膜が消える)
+                float cut = e.Void != 0 ? WaterSim.FrontCut(sx + e.Nx * WaterSim.Cell * 0.25f, e.CutFrom, ey) : float.MinValue;
                 sx += e.Nx * br; sy += e.Ny * br;
                 float gx = sx, gy = sy - h0, hh = h0 + z0;
-                // 手前の床は縁の外側の升の列で探す (横の縁は縁の線ちょうどだと縁の内側の升 = 落ちる元の床を拾い、膜が丸ごと隠れる)
-                float cut = e.Void != 0 ? WaterSim.FrontCut(sx + e.Nx * WaterSim.Cell * 0.25f, e.CutFrom, ey) : float.MinValue;
                 if (sy + z0 <= cut) continue;
                 // 奥の縁を越えた水は床の向こう側へ落ちて見えない (手前に幕を描くと奥の柵の前に滝が立って見える)
                 if (e.Ny > 0f && e.Lip == 0) continue;
@@ -405,7 +406,8 @@ internal static class WaterFall
         e.Bx0 = e.X0 - tx + MathF.Min(0f, dx0) - Pad;
         e.Bx1 = e.X0 + tx + MathF.Max(0f, dx1) + Pad;
         e.By0 = e.Y0 - ty + MathF.Min(0f, dy0) - Pad;
-        e.By1 = e.Y0 + ty + MathF.Max(e.LipH, e.BarH) + TopPad;
+        // 手前へ落ちる縁は膜の頭を崖の縁まで内 (上) へずらすので、その分も (横と奥の縁は Pad に収まる)
+        e.By1 = e.Y0 + ty + MathF.Max(e.LipH, e.BarH) + (e.Ny < 0f ? BrinkSteps * BrinkStep : 0f) + TopPad;
     }
 
     private static long TileKey(int tx, int ty, bool v) => ((long)(tx + 32768) << 17) | ((long)(ty + 32768) << 1) | (v ? 1L : 0L);

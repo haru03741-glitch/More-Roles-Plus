@@ -997,7 +997,8 @@ internal static class WaterArt
     // A を面の外へ SpreadPx 画素にじませる (横 → 縦の 2 回で四角く広げる・値は近くの面の大きい方)。
     // 面のすぐ外の画素の A が 0 だと、双線形で引いた A が面の縁で必ず 128 を横切り、沈んだベッドや壁の輪郭が
     // 水面の線 (明るい縁と泡) としてなぞられる。床の画素は A を持っても床として描くので見た目は変わらない。
-    // 床でない画素は G を 0 にして、面の縁はこれまでどおり G で切る
+    // 床でない画素は G を 0 にして、面の縁はこれまでどおり G で切る。
+    // 面の画素は自分の水の厚さを持っているので上書きしない (乾いた面へにじませると、床の端の横の壁に水の四角が出る)
     private const int SpreadPx = 3;
     private static byte[] _spread;
 
@@ -1027,7 +1028,7 @@ internal static class WaterArt
             for (int x = 0; x < n; x++)
             {
                 int j = row + x, i = j * 4;
-                if (px[i + 3] != 0) continue;
+                if (px[i + 3] != 0 || face[j] <= FloorMask.FaceTop) continue;
                 byte a = tmp[j];
                 int lo = Math.Max(0, y - SpreadPx), hi = Math.Min(n - 1, y + SpreadPx);
                 for (int k = lo; k <= hi; k++) { byte b = tmp[k * n + x]; if (b > a) a = b; }

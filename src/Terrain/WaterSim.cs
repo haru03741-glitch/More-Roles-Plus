@@ -2473,31 +2473,30 @@ internal static partial class WaterSim
         return _ready && _fallMask != null;
     }
 
-    // 落ちる縁の升を床にする (水が縁の線まで届く)。ただし落ちる縁から内へ LipReach (滝の膜が崖の縁を探す幅と同じ) までに
-    // 床マスクの床があれば塗らない: 水の絵は床マスクの形で崖の縁まで届き、膜はそこから始まる (C++ の mrp_floor_lips と同じ)
-    private const float LipInset = 0.02f, LipReach = 0.3f;
-    private const int LipSteps = 15;
+    // 落ちる縁の升の床でない画素を床にする (水が縁の線まで届く)。ただし落ちる縁のどれかで、その画素から内へ縁から LipReach
+    // (滝の膜が崖の縁を探す幅と同じ) までに床マスクの床があれば塗らない: 水の絵は床マスクの形で崖の縁まで届き、膜はそこから始まる。
+    // 画素ごとに決める (升ごとに真ん中の列だけで決めると、2 方向へ落ちる角の升で、床の絵の外の列が升ごと床に塗られる) (C++ の mrp_floor_lips と同じ)
+    private const float LipStep = 0.02f, LipReach = 0.3f;
 
-    private static bool LipCovered(int bits, int cx, int cy, byte[] mb, int mw, int mh, float mox, float moy, float mppu)
+    private static bool LipBeyond(int bits, int cx, int cy, float wx, float wy, byte[] mb, int mw, int mh, float mox, float moy, float mppu)
     {
         if (mb == null) return false;
         for (int d = 0; d < 4; d++)
         {
             if ((bits >> d & 1) == 0) continue;
-            bool hit = false;
-            for (int s = 0; s <= LipSteps && !hit; s++)
+            float ex = _org.x + (cx + 0.5f) * _cell + Nx[d] * (0.5f * _cell);
+            float ey = _org.y + (cy + 0.5f) * _cell + Ny[d] * (0.5f * _cell);
+            float p = Nx[d] != 0 ? (ex - wx) * Nx[d] : (ey - wy) * Ny[d];
+            for (int s = 1; p + s * LipStep <= LipReach; s++)
             {
-                float r = 0.5f * _cell - (LipInset + (LipReach - LipInset) * s / LipSteps);
-                float ex = _org.x + (cx + 0.5f) * _cell + Nx[d] * r;
-                float ey = _org.y + (cy + 0.5f) * _cell + Ny[d] * r;
-                int mx = (int)MathF.Floor((ex - mox) * mppu), my = (int)MathF.Floor((ey - moy) * mppu);
+                float qx = wx - Nx[d] * (s * LipStep), qy = wy - Ny[d] * (s * LipStep);
+                int mx = (int)MathF.Floor((qx - mox) * mppu), my = (int)MathF.Floor((qy - moy) * mppu);
                 if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
                 int i = my * mw + mx;
-                hit = (mb[i >> 3] & (1 << (i & 7))) != 0;
+                if ((mb[i >> 3] & (1 << (i & 7))) != 0) return true;
             }
-            if (!hit) return false;
         }
-        return true;
+        return false;
     }
 
     internal static void StampLips(float x, float y, float step, int n, byte[] into, byte[] mb, int mw, int mh, float mox, float moy, float mppu)
@@ -2516,7 +2515,7 @@ internal static partial class WaterSim
                 if (cx < 0 || cx >= _w) continue;
                 int k = baseK + cx;
                 int b = _fallMask[k] & ~_lipMask[k];
-                if (b != 0 && !LipCovered(b, cx, cy, mb, mw, mh, mox, moy, mppu)) into[row + px] = 255;
+                if (b != 0 && !LipBeyond(b, cx, cy, x + px * step, y + py * step, mb, mw, mh, mox, moy, mppu)) into[row + px] = 255;
             }
         }
     }

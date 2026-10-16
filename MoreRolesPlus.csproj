@@ -91,6 +91,13 @@
         <EmbeddedResource Include="Resources\WaterOpen\*.bin" LogicalName="MoreRolesPlus.Resources.WaterOpen.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\WaterBarrier\*.bin" LogicalName="MoreRolesPlus.Resources.WaterBarrier.%(Filename)%(Extension)" />
     </ItemGroup>
+    <!-- 床マスクが欠けたまま配る DLL を作らないように (欠けたマップは水が壁の上にはみ出す古い見え方になる) -->
+    <Target Name="WarnFloorMasks" BeforeTargets="BeforeBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+        <ItemGroup>
+            <_MrpFloorMask Include="Resources\FloorMasks\*.bin" />
+        </ItemGroup>
+        <Warning Code="MRP001" Text="Resources\FloorMasks の床マスクが @(_MrpFloorMask->Count()) 枚しかありません (5 マップ分要る)。tools/make-floor-mask.py で作るか、作ってある所から写してください" Condition="@(_MrpFloorMask->Count()) &lt; 5" />
+    </Target>
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And Exists('$(MrpBepInExDir)\core')">
         <MakeDir Directories="$(MrpBepInExDir)\plugins" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(MrpBepInExDir)\plugins\" ContinueOnError="WarnAndContinue" />
