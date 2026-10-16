@@ -238,7 +238,8 @@ internal static class LocalClientPortPatch
     }
 }
 
-// テスト用の歩行: 自分の物理更新の後で歩く向きを上書きする (本編の歩行と同じく当たり判定に止められる)
+// テスト用の歩行: 自分の物理更新の後で歩く向きを上書きする (本編の歩行と同じく当たり判定に止められる)。
+// 流れや水 (CrewPull) が入力の後に足すのと同じ順にするため、他の後置きより先に走る
 [HarmonyLib.HarmonyPatch(typeof(PlayerPhysics), nameof(PlayerPhysics.FixedUpdate))]
 internal static class WalkPatch
 {
@@ -253,6 +254,7 @@ internal static class WalkPatch
         _active = true;
     }
 
+    [HarmonyLib.HarmonyPriority(HarmonyLib.Priority.First)]
     public static void Postfix(PlayerPhysics __instance)
     {
         if (!_active) return;
