@@ -68,6 +68,10 @@ VERSION = 4
 PHYS_REACH = 6.0      # 当たり判定で閉じた所を水に開けるのは、歩ける所からこの距離 (世界単位) まで
 PHYS_GATE = 0.3       # 歩ける所から床の続きへ水が通れる隙間の幅の下限 (世界単位)
 WET_BRIDGE = 2        # 水の届く升と歩ける升の間でこれまでの隙間は埋める (SolidMap の升)
+SEAL_LOCAL = 12       # 水だけの升のまとまりの周りこの升の中で、触れている歩ける所が歩いてつながらなければ壁を挟んでいる
+# 壁を挟んだ水の升を外さない船。Fungle の採掘場は、床 (低い) と穴のまわりの高台 (高い) が水の計算では同じ段で、
+# 高台の水が床へ入る道はドリルの穴の当たり判定の切り欠きの下の水の升だけ (外すと採掘場に水が入らない)
+SEAL_SKIP_SHIP = {"FungleShip"}
 PHYS_MIN_W = 0.1      # これより細い筋は水の通り道にしない (世界単位)
 BARRIER_PX = 3        # 影の線を画素に引く太さ (線の継ぎ目から漏れないように)
 FRONT_MAX = 1.0       # 床の縁から真下へこれまでの床でない絵は南の壁の前面 (水の通り道にしない)
@@ -590,6 +594,42 @@ def exclude_wet(j, wet):
     return wet
 
 
+def seal_walls(j, wet):
+    """水だけの升のまとまりが、近くで歩いてつながらない 2 つ以上の歩ける所に触れていたら (壁を挟んでいる)、
+    まとまりを近い方の歩ける所で塗り分け、持ち主の替わる境目の升を外す。床の絵が壁の根元まで続き、
+    壁のすぐ外がまた歩ける所だと (Polus の筒の通路の壁・屋外との境・壁の線の角)、水だけの升が壁を越えて内と外をつないでいた。
+    柵や扉の敷居のように近くで回り込める所は 1 つの歩ける所に触れているだけなので外さない"""
+    if j["ship"].replace("(Clone)", "") in SEAL_SKIP_SHIP:
+        return wet
+    s = j["solid"]
+    w, h = s["w"], s["h"]
+    raw = np.frombuffer(__import__("base64").b64decode(s["open"]), np.uint8)
+    walk = np.unpackbits(raw, bitorder="little")[: w * h].reshape(h, w).astype(bool)
+    st = ndimage.generate_binary_structure(2, 1)
+    lab, n = ndimage.label(wet & ~walk, st)
+    cut = np.zeros_like(wet)
+    for i, sl in enumerate(ndimage.find_objects(lab)):
+        y0, x0 = max(0, sl[0].start - SEAL_LOCAL), max(0, sl[1].start - SEAL_LOCAL)
+        y1, x1 = min(h, sl[0].stop + SEAL_LOCAL), min(w, sl[1].stop + SEAL_LOCAL)
+        g = lab[y0:y1, x0:x1] == i + 1
+        wl, _ = ndimage.label(walk[y0:y1, x0:x1], st)
+        ids = np.unique(wl[ndimage.binary_dilation(g, st) & (wl > 0)])
+        if len(ids) < 2:
+            continue
+        own = np.where(np.isin(wl, ids), wl, 0)
+        reach = g | (own > 0)
+        while True:
+            grow = ndimage.grey_dilation(own, footprint=st) * (reach & (own == 0))
+            if not grow.any():
+                break
+            own = np.where(grow > 0, grow, own)
+        hi = ndimage.maximum_filter(own, footprint=st)
+        lo = ndimage.minimum_filter(np.where(own > 0, own, np.iinfo(own.dtype).max), footprint=st)
+        cut[y0:y1, x0:x1] |= g & (own > 0) & ((hi != own) | (lo != own))
+    print(f"{j['ship']}: sealed {int(cut.sum())} cells")
+    return wet & ~cut
+
+
 def write_wet(path, j, cells):
     s = j["solid"]
     packed = zlib.compress(np.packbits(cells.ravel(), bitorder="little").tobytes(), 9)
@@ -701,7 +741,7 @@ def main():
         cover = cover_mask(j, tex, ppu, canvas.shape[:2])
         art = load_art(a.art, a.art_ppu) if a.art else None
         floor, walk, furn, phys = classify(j, canvas, ppu, cover, art)
-        wet = exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys)))
+        wet = seal_walls(j, exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys))))
         wsize = write_wet(os.path.join(a.wet, ship + ".bin"), j, wet)
         print(f"{ship}: wet cells={int(wet.sum())} -> {wsize} B")
         ship = j["ship"].replace("(Clone)", "")
