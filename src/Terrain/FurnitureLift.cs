@@ -46,10 +46,41 @@ internal static class FurnitureLift
     // 切り抜いた家具と跡の床 (影の中の焼き込みが上から描き込む)・作った絵と形 (船が替わる時に片付ける)
     private static readonly List<GameObject> Lifted = new();
     private static readonly List<UnityEngine.Object> Owned = new();
+    // 動かさない家具 (部屋の絵に描かれたまま)。床マスクではその絵が壁の面なので、床の水が家具を壁として這い上がり、水面の板と二重に覆う。
+    // 水の絵の壁の面の高さから、この型の中を外す
+    private static readonly List<Lift> StillShapes = new();
+    private static int _stillGen = -1;
 
     internal static void CollectLifted(List<GameObject> into)
     {
         foreach (var go in Lifted) if (go) into.Add(go);
+    }
+
+    // 水の絵のタイル (x, y から size 四方を n×n・画素 k = x + k × step) の壁の面の画素のうち、動かさない家具の型の中を面でなくする
+    internal static void CutStillFaces(float x, float y, float size, int n, byte[] face)
+    {
+        if (_stillGen != GameClock.ShipGen || StillShapes.Count == 0) return;
+        float step = size / (n - 1);
+        foreach (var l in StillShapes)
+        {
+            var r = l.ShapeWorld;
+            var inside = l.ShapeIn;
+            if (inside == null || r.xMax < x || r.xMin > x + size || r.yMax < y || r.yMin > y + size) continue;
+            int px0 = Math.Max(0, (int)MathF.Ceiling((r.xMin - x) / step)), px1 = Math.Min(n - 1, (int)MathF.Floor((r.xMax - x) / step));
+            int py0 = Math.Max(0, (int)MathF.Ceiling((r.yMin - y) / step)), py1 = Math.Min(n - 1, (int)MathF.Floor((r.yMax - y) / step));
+            float sx = ShapePx / r.width, sy = ShapePx / r.height;
+            for (int py = py0; py <= py1; py++)
+            {
+                int ty = Math.Min(ShapePx - 1, (int)((y + py * step - r.yMin) * sy));
+                for (int px = px0; px <= px1; px++)
+                {
+                    int i = py * n + px;
+                    if (face[i] > FloorMask.FaceTop) continue;
+                    int tx = Math.Min(ShapePx - 1, (int)((x + px * step - r.xMin) * sx));
+                    if (inside[ty * ShapePx + tx]) face[i] = 255;
+                }
+            }
+        }
     }
 
     // 船が替わった時・失敗した時: 切り抜いた絵と、家具ごとに作ったマテリアル・Sprite・形のテクスチャを消す
@@ -59,6 +90,7 @@ internal static class FurnitureLift
         foreach (var o in Owned) if (o) UnityEngine.Object.Destroy(o);
         Lifted.Clear();
         Owned.Clear();
+        StillShapes.Clear();
     }
 
     internal sealed class Lift
@@ -182,6 +214,9 @@ internal static class FurnitureLift
             l.PivotY = l.PoseY = l.Bounds.center.y;
             FloorMask.AddFloor(padded, shapeIn, ShapePx, l);
             WaterArt.FloorChanged(padded);
+            // 持ち上げるのは水が来てからなので、掛かるタイルの壁の面の高さは跡にする前の床 (家具の絵 = 壁の面) で作ってある。
+            // そのままだと床の水が家具を壁として這い上がり、水面の板と二重に覆う
+            WaterArt.HeightChanged(padded);
             return true;
         }
         catch (Exception e)
@@ -218,6 +253,10 @@ internal static class FurnitureLift
                 var room = BreakPieces.RoomAt(world.center, world);
                 if (room != null && room.Name == l.Room) l.Art = room;
             }
+            // 板を出すのは水が来てからなので、掛かるタイルの壁の面の高さは作り直す
+            if (_stillGen != GameClock.ShipGen) { StillShapes.Clear(); _stillGen = GameClock.ShipGen; }
+            StillShapes.Add(l);
+            WaterArt.HeightChanged(world);
             return true;
         }
         catch (Exception e)

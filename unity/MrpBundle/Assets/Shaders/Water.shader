@@ -20,6 +20,8 @@
 //   _RoomOn = 1: 持ち上げた家具の型 (当たり判定を広げた形) のうち、部屋の絵 (_RoomTex) がきれいな床の色のままの画素には描かない
 //   (切り抜きの絵と同じ見分け方。型の uv = 元の場所の四角 _ShX.._ShH・床の模様 = _FlX.._FlTy)。
 //   ただし型の G = 1 (広げる前の当たり判定の中) の床の画素は、床の水の絵が家具として抜いているので床の高さの水として描く。
+//   _FlatTop = 1: 奥行きのある低い机。絵の縦の広がりは高さでなく奥行きなので、床の画素以外は全部天板の高さ (_FaceH) とし、
+//   水が天板を越えるまで描かず、越えたら家具ごとまだらに沈める (下から水面の線を這い上がらせない)。
 // _Mode = 1 (噴き出し・滝): R = 水の濃さ (粒が通った量)・G = 泡 (空気を含んで白い)・B = 水の深さ (1 = 2 単位)・A = 1 - 水たまりの色の割合。
 //   水たまりの色の割合の所 (縁を越えたばかりの水) は B の深さの水たまりと同じ色の作りで塗り、割合が下がるほど噴き出しの透けた水色へ移る。その所は縁の線・筋・泡を引かない (水たまりとつながる)。
 //   落ちた後も地の色は B の深さの水たまりの色を主にする (水たまりと滝の色がそろう)。噴き出し (A = 1・B = 0) は割合 0。
@@ -78,6 +80,7 @@ Shader "MRP/Water"
         [PerRendererData] _BaseOn ("Floor line per column on (furniture)", Float) = 0
         _Rise ("Screen rise per unit of height (furniture)", Float) = 0.6
         [PerRendererData] _SilR ("Silhouette from R instead of A (furniture)", Float) = 0
+        [PerRendererData] _FlatTop ("Deep low table: whole art at the top height (furniture)", Float) = 0
         [PerRendererData] _RoomTex ("Room art under lifted furniture (furniture)", 2D) = "black" {}
         [PerRendererData] _RoomOn ("Draw only on furniture pixels of the room art (furniture)", Float) = 0
         [PerRendererData] _RoomSx ("Room uv to world: scale x", Float) = 1
@@ -134,7 +137,7 @@ Shader "MRP/Water"
             sampler2D _FlowTex;
             float4 _FlowTex_TexelSize;
             float _FlowMax, _FlowCycle, _FlowStreak, _FlowFoam;
-            float _Depth, _SubMax, _Lvl, _Cover, _SilR, _FaceH, _VPerUnit, _VBase, _Rise;
+            float _Depth, _SubMax, _Lvl, _Cover, _SilR, _FaceH, _VPerUnit, _VBase, _Rise, _FlatTop;
             float4 _Body, _Quad;
             sampler2D _RoomTex;   // 家具の水面: 持ち上げた家具を描き込んだ部屋の絵 (_RoomOn = 1 の時だけ)
             float _RoomOn, _RoomSx, _RoomSy, _RoomOx, _RoomOy, _RoomDx, _RoomDy;
@@ -451,6 +454,7 @@ Shader "MRP/Water"
                 float vb = _VBase;
                 if (_BaseOn > 0.5) vb = _BaseV0 + tex2Dlod(_BaseTex, float4(saturate((i.uv.x - _BaseU0) * _BaseUS), 0.5, 0, 0)).r * _BaseVS;
                 float h = clamp((i.uv.y - vb) / (_VPerUnit * _Rise), 0.0, _FaceH) * (1.0 - bare); // この画素の高さ (単位)
+                if (_FlatTop > 0.5 && bare < 0.5) h = _FaceH;
                 float t = _Time.y, sub = _Cover;
                 float onTop = step(_FaceH - 1e-4, h) * (1.0 - bare);
                 float px = max(fwidth(i.world.y), 1e-4);

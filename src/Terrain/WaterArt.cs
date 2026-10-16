@@ -348,7 +348,7 @@ internal static class WaterArt
             bool got = FloorMask.Active && FloorMask.FaceHeights(fx, fy, fs, n0, face);
             if (!got) Array.Fill(face, (byte)255);
             got |= WaterHeight.StampFace(face, n0, fx, fy, fs);
-            if (got) { WaterHeight.CutHoles(face, n0, fx, fy, fs); t.Face = face; }
+            if (got) { FurnitureLift.CutStillFaces(fx, fy, fs, n0, face); WaterHeight.CutHoles(face, n0, fx, fy, fs); t.Face = face; }
             FaceTicks += System.Diagnostics.Stopwatch.GetTimestamp() - ft;
         }
     }

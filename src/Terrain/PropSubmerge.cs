@@ -103,7 +103,7 @@ internal static partial class PropSim
         }
     }
     private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), LvlId = Shader.PropertyToID("_Lvl"), CoverId = Shader.PropertyToID("_Cover"), FaceHId = Shader.PropertyToID("_FaceH"),
-        RiseId = Shader.PropertyToID("_Rise"), VPerUnitId = Shader.PropertyToID("_VPerUnit"), VBaseId = Shader.PropertyToID("_VBase"), SilRId = Shader.PropertyToID("_SilR"),
+        RiseId = Shader.PropertyToID("_Rise"), FlatTopId = Shader.PropertyToID("_FlatTop"), VPerUnitId = Shader.PropertyToID("_VPerUnit"), VBaseId = Shader.PropertyToID("_VBase"), SilRId = Shader.PropertyToID("_SilR"),
         BaseTexId = Shader.PropertyToID("_BaseTex"), BaseU0Id = Shader.PropertyToID("_BaseU0"), BaseUsId = Shader.PropertyToID("_BaseUS"),
         BaseV0Id = Shader.PropertyToID("_BaseV0"), BaseVsId = Shader.PropertyToID("_BaseVS"), BaseOnId = Shader.PropertyToID("_BaseOn"),
         OccTexId = Shader.PropertyToID("_FrontMask"), OccOnId = Shader.PropertyToID("_FrontOn");
@@ -391,6 +391,7 @@ internal static partial class PropSim
         s.Block.SetFloat(SilRId, p.Lift != null ? 1f : 0f);
         s.Block.SetFloat(VPerUnitId, vPerUnit);
         if (p.Upright) s.Block.SetFloat(RiseId, 1f);
+        if (p.Deep) s.Block.SetFloat(FlatTopId, 1f);
         s.Block.SetFloat(VBaseId, vBase);
         if (baseCol != null)
         {

@@ -152,6 +152,7 @@ internal static partial class PropSim
         public int Sx0, Sy0, Sx1 = -1, Sy1 = -1, STop;
         public bool Legs;  // 脚のある家具 (水は下を通る)
         public bool Upright; // 真横から見た板 (絵の高さ = 本当の高さ)
+        public bool Deep;    // 奥行きのある低い机 (水面の板は天板を越えてから家具ごと沈める)
         public Sunk Sk;    // 水に浸かった時の水面の板
     }
 
@@ -676,6 +677,7 @@ internal static partial class PropSim
         q.Top = (int)(fe.Top * WaterSim.Full);
         q.Legs = fe.Fill == FurnitureFill.Legs;
         q.Upright = fe.Upright;
+        q.Deep = fe.Deep;
         Furnished.Add(q);
         if (!q.Legs) Solids.Add(q);
     }

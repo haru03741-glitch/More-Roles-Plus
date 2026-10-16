@@ -8,6 +8,7 @@ namespace MoreRolesPlus.Terrain;
 // Legs = 脚のある物 (水は下を通る。天板の高さは水に沈んだ見た目だけに使う)。
 // Floats = 深い水に浮いて流れに乗る。
 // Upright = 真横から見た板 (手すり): 絵の高さがそのまま本当の高さ (壁の面やクルーと同じ。家具は斜めに見下ろして縮んで描かれる)。
+// Deep = 奥行きのある低い机: 絵の縦の広がりはほとんど奥行きなので、水面の板は絵の下から水を這い上がらせず、天板の高さを越えた時に家具ごと沈める。
 // キー = 船の名前/動く物の名前 (末尾の " (番号)" と " copy 番号" を除く)。"*/名前" はどの船にもある物
 internal enum FurnitureFill : byte { Solid, Legs }
 
@@ -17,8 +18,8 @@ internal static class FurnitureHeights
     {
         public readonly float Top;
         public readonly FurnitureFill Fill;
-        public readonly bool Floats, Upright;
-        public Entry(float top, FurnitureFill fill, bool floats = false, bool upright = false) { Top = top; Fill = fill; Floats = floats; Upright = upright; }
+        public readonly bool Floats, Upright, Deep;
+        public Entry(float top, FurnitureFill fill, bool floats = false, bool upright = false, bool deep = false) { Top = top; Fill = fill; Floats = floats; Upright = upright; Deep = deep; }
     }
 
     private const FurnitureFill S = FurnitureFill.Solid, L = FurnitureFill.Legs;
@@ -34,7 +35,7 @@ internal static class FurnitureHeights
         ["*/candle"] = new(0.45f, L),
         ["*/candyBowl"] = new(0.10f, L),
         // Skeld
-        ["SkeldShip/Table"] = new(0.35f, L),                    // 食堂の丸い机
+        ["SkeldShip/Table"] = new(0.35f, L, deep: true),                    // 食堂の丸い机
         ["SkeldShip/medBay_bed1"] = new(0.30f, S),              // 医務室のベッド
         ["SkeldShip/storage_Boxes-left"] = new(0.35f, S, true), // 倉庫の左の箱
         ["SkeldShip/storage_Boxes-front"] = new(0.35f, S, true),// 倉庫の手前の箱
@@ -45,7 +46,7 @@ internal static class FurnitureHeights
         ["SkeldShip/nav_chairback"] = new(0.25f, L, true),
         ["SkeldShip/security_chair"] = new(0.25f, L, true),
         // Mira
-        ["MiraShip/caf_table"] = new(0.35f, L),                 // 食堂のテーブル
+        ["MiraShip/caf_table"] = new(0.35f, L, deep: true),                 // 食堂のテーブル
         ["MiraShip/cafe-vending2"] = new(1.10f, S),             // 自販機
         ["MiraShip/cafe-vending3"] = new(1.10f, S),
         ["MiraShip/cafe-sidebar"] = new(1.00f, S),              // 食堂の棚
@@ -78,9 +79,9 @@ internal static class FurnitureHeights
         // Polus
         ["PolusShip/barrier"] = new(0.40f, L),                  // 電気室の柵
         ["PolusShip/transformer0002"] = new(0.60f, S),          // 変圧器
-        ["PolusShip/caftable"] = new(0.35f, L),                 // 長机
+        ["PolusShip/caftable"] = new(0.35f, L, deep: true),                 // 長机
         ["PolusShip/projector"] = new(0.60f, L),                // プロジェクター
-        ["PolusShip/sciencetable"] = new(0.35f, L),             // 研究所の机
+        ["PolusShip/sciencetable"] = new(0.35f, L, deep: true),             // 研究所の机
         ["PolusShip/storagebox"] = new(0.35f, S, true),         // 倉庫の箱
         ["PolusShip/outsideboxes1-front"] = new(0.35f, S, true),// 屋外の箱
         ["PolusShip/outsideboxes1-right"] = new(0.35f, S, true),
@@ -133,7 +134,7 @@ internal static class FurnitureHeights
         ["MiraShip/admin-map"] = new(0.40f, S),                 // 管理室の地図の台
         ["MiraShip/reactor-center"] = new(0.40f, S),            // 原子炉の真ん中の台
         // Polus
-        ["PolusShip/commstable"] = new(0.35f, L),               // 通信室の机
+        ["PolusShip/commstable"] = new(0.35f, L, deep: true),               // 通信室の机
         ["PolusShip/admintable"] = new(0.40f, S),               // 管理室の地図の台
         ["PolusShip/fencebot"] = new(0.40f, L),                 // 電気室の手前の柵
         ["PolusShip/panel_security"] = new(0.40f, S),           // 電気室の監視の机
