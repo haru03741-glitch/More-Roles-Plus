@@ -67,6 +67,12 @@ internal static class TerrainWarm
     {
         if (!_shipStarted) return;
         _shipStarted = false;
+        try { LateTickCore(); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"[TerrainWarm] ship frame: {e.Message}"); }
+    }
+
+    private static void LateTickCore()
+    {
         if (!_jitDone || !Fx.MrpBundle.Ready) return;
         var ship = ShipStatus.Instance;
         if (!ship) return;
@@ -82,6 +88,12 @@ internal static class TerrainWarm
     {
         _introAt = Environment.TickCount64;
         _holdUntil = 0;
+        try { OnIntroCore(); } // 本編のイントロの入口なので、ここから例外を出さない
+        catch (Exception e) { Plugin.Logger.LogWarning($"[TerrainWarm] intro: {e.Message}"); }
+    }
+
+    private static void OnIntroCore()
+    {
         if (!_jitDone || !Fx.MrpBundle.Ready) return;
         var ship = ShipStatus.Instance;
         if (!ship) return;
@@ -92,7 +104,8 @@ internal static class TerrainWarm
 
     private static void RunAll()
     {
-        while (_stage < Stages) Step(double.MaxValue);
+        // 段が進まなくなっても止まらないように回数に上限 (減圧の粒の段は予算なしなら 1 回で終わる)
+        for (int guard = 0; _stage < Stages && guard < Stages * 4; guard++) Step(double.MaxValue);
     }
 
     private static void Begin(ShipStatus ship)

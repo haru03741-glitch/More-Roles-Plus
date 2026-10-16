@@ -578,6 +578,7 @@ internal static class TerrainFx
         {
             sr.color = Color.white;
             tr.rotation = RotZ(0f);
+            if (DamageMap.PropMaterial) sr.sharedMaterial = DamageMap.PropMaterial; // 作り置いた時にまだ無かった時のため
             sr.enabled = true;
         }
         else
