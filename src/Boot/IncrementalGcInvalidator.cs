@@ -103,18 +103,21 @@ public static unsafe class IncrementalGcInvalidator
 
     private static void Apply()
     {
+        // 場所の特定と保護の確認は kernel32 に頼るので Windows だけ
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            string state;
+            try { state = IsIncrementalNative().ToString(); }
+            catch (Exception e) { state = $"unknown ({e.GetType().Name})"; }
+            Log.LogInfo($"INCGC: incremental={state} barrierRuntime={HasBarrierRuntime()} (not changed; the flag lookup needs kernel32)");
+            return;
+        }
+
         bool before;
         try { before = IsIncrementalNative(); }
         catch (Exception e)
         {
             Log.LogWarning($"INCGC: il2cpp_gc_is_incremental unavailable ({e.Message}) — skipped");
-            return;
-        }
-
-        // 場所の特定と保護の確認は kernel32 に頼るので Windows だけ
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            Log.LogInfo($"INCGC: incremental={before} barrierRuntime={HasBarrierRuntime()} (not changed; the flag lookup needs kernel32)");
             return;
         }
 
