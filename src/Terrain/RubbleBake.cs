@@ -27,6 +27,8 @@ internal static class RubbleBake
 #if ANDROID
     private const double ExtraBudgetMs = 6.0;
     private const int ReadDelay = 3;
+    // 読み戻したフレームの次からは、そのフレームの送り込み (Apply) と描画を待つので 1 枚目が 15〜25ms になる (実機)。間を空けると 1 枚目は 1〜5ms
+    private const int ReadGap = 4;
     private const long LostGapMs = 1000; // Tick の間がこれより空いた (裏へ回っていた) ら、描き先の中身が消えたとみて描き直す
 #else
     private const double ExtraBudgetMs = 1.0;
@@ -66,7 +68,8 @@ internal static class RubbleBake
         public bool Lost;
     }
     private static readonly List<InFlight> Reading = new(); // 描いて読み戻し待ちのまとまり (描いた順)
-    private static int _frame;
+    private static readonly List<(InFlight F, Texture2D Tex)> Read = new(); // このフレームに読んで送り込み待ちの物
+    private static int _frame, _lastReadFrame = -100;
     private static long _lastTickMs;
 #endif
 
@@ -84,7 +87,7 @@ internal static class RubbleBake
         long now = Environment.TickCount64;
         if (now - _lastTickMs > LostGapMs) foreach (var f in Reading) f.Lost = true;
         _lastTickMs = now;
-        if (Reading.Count > 0) ReadBack(budget: true);
+        if (Reading.Count > 0 && _frame - _lastReadFrame >= ReadGap) ReadBack(budget: true);
 #endif
         if (Queue.Count == 0 || !Enabled) return;
         if (Queue.Count < MaxBatch && Environment.TickCount64 - _lastAddMs < SettleMs) return;
@@ -242,14 +245,15 @@ internal static class RubbleBake
     // ReadDelay フレーム経ったまとまりを読み戻して床の板にし、瓦礫を消す (budget = 1 枚目の後は ExtraBudgetMs まで)
     private static void ReadBack(bool budget)
     {
+        // 読むのを先に全部済ませてから送り込む (Apply)。送り込みを挟むと次の ReadPixels がその完了まで待たされ、2 枚目以降も重くなる
         long first = 0;
         int done = 0;
+        Read.Clear();
         for (; done < Reading.Count; done++)
         {
             var f = Reading[done];
             if (budget && _frame - f.Frame < ReadDelay) break; // 描いた順なので、ここから後もまだ
             if (budget && first != 0 && (System.Diagnostics.Stopwatch.GetTimestamp() - first) * 1000.0 / System.Diagnostics.Stopwatch.Frequency > ExtraBudgetMs) break;
-            if (first == 0) first = System.Diagnostics.Stopwatch.GetTimestamp();
             bool any = false;
             foreach (var p in f.G.Items) if (p.Go) { any = true; break; }
             if (!any) { RenderTexture.ReleaseTemporary(f.Rt); continue; } // 待つ間に瓦礫が全部片付けられた (板を置くと消えた瓦礫が残る)
@@ -261,10 +265,8 @@ internal static class RubbleBake
                 tex = new Texture2D(f.W, f.H, TextureFormat.RGBA32, false) { name = "MrpRubble", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
                 RenderTexture.active = f.Rt;
                 tex.ReadPixels(new Rect(0f, 0f, f.W, f.H), 0, 0, false);
-                tex.Apply(false, true); // CPU 側の写しは捨てる
                 RenderTexture.active = prev;
-                Place(tex, f.W, f.H, f.Cx, f.Cy, f.G.Z);
-                BakedCount += DestroyItems(f.G);
+                Read.Add((f, tex));
             }
             catch (Exception e)
             {
@@ -273,8 +275,25 @@ internal static class RubbleBake
                 if (tex) UnityEngine.Object.Destroy(tex);
             }
             finally { RenderTexture.ReleaseTemporary(f.Rt); }
+            if (first == 0) first = System.Diagnostics.Stopwatch.GetTimestamp(); // 予算は 1 枚目の後から (1 枚目は描画の同期待ちで重く、2 枚目からは軽い)
         }
         Reading.RemoveRange(0, done);
+        if (Read.Count > 0) _lastReadFrame = _frame;
+        foreach (var (f, tex) in Read)
+        {
+            try
+            {
+                tex.Apply(false, true); // CPU 側の写しは捨てる
+                Place(tex, f.W, f.H, f.Cx, f.Cy, f.G.Z);
+                BakedCount += DestroyItems(f.G);
+            }
+            catch (Exception e)
+            {
+                Plugin.Logger.LogWarning($"rubble bake {f.W}x{f.H} failed: {e.Message}");
+                UnityEngine.Object.Destroy(tex);
+            }
+        }
+        Read.Clear();
     }
 #endif
 
