@@ -15,6 +15,8 @@ internal static class BootClock
     private static bool _done;
     private static MainMenuManager _menu;
     private static bool _tickDone;
+    // メニューの起動処理 (ログイン・持ち物・ショップの準備) が終わったか、終わる前にメニューを離れた
+    internal static bool StartupOver => _tickDone;
 
     // メニューが出てから本編の起動処理 (ログイン・持ち物・ショップの準備) が終わるまでを見る。終われば以後は何もしない
     internal static void Tick()

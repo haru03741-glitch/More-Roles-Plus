@@ -9,46 +9,111 @@ namespace MoreRolesPlus.Terrain;
 
 // 試合 (船) が出たら、最初の破壊で払っていた準備 (PC 実測 365ms) を先に済ませる。
 // 地形のメソッドを先にコンパイルし (初回の呼び出しのコンパイルが準備の大半だった)、損傷マスク・瓦礫/ひび/船体の中の絵・種点の板・焼くカメラを作っておく。
-// 1 回の FixedUpdate に 1 段ずつ (コンパイルは 4ms ずつ) に分けて、1 フレームを長く止めない。
+// コンパイルはプロセスに 1 回で済むので、メニューに着いた後 (起動の処理が終わってから) に始める。メニューで終わらなければ
+// ロビーと試合でも続け、船ごとの準備 (段 1〜) はコンパイルが済んでから始める。
+// コンパイルは 1 回の FixedUpdate に 4ms ずつ (メニューでは MenuBudgetMs ずつ) に分けて、1 フレームを長く止めない。
+// 船ごとの準備は止まっても見えない瞬間にまとめる (LateTick / OnIntro)。
 internal static class TerrainWarm
 {
     private const double TickBudgetMs = 4.0;
+    private const double MenuBudgetMs = 6.0; // メニューでは動く物が少なく、少し長く止まっても目立たない
+    private const int Stages = 16;
     private static ShipStatus _ship;
     private static int _stage;
     private static int _at;
     private static readonly Stopwatch Clock = new();
-    private static readonly double[] StageMs = new double[16];
+    private static readonly double[] StageMs = new double[Stages];
     private static int _methods;
-    private static double _maxTick;
+    private static double _maxTick, _preMatchMs;
+    private static bool _jitDone;
     private static bool _fxWarm; // 段 9 の火と音の準備を済ませた
 
     public static string Report =>
-        $"stage={_stage} jit={StageMs[0]:F1}ms ({_methods} methods, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1}+{StageMs[6]:F1} props={StageMs[7]:F1} breakables+low={StageMs[8]:F1} decompfx={StageMs[9]:F1} water={StageMs[10]:F1} edges={StageMs[11]:F1} floor={StageMs[12]:F1} grid={StageMs[13]:F1}+{StageMs[14]:F1} gc={StageMs[15]:F1}";
+        $"stage={_stage} jit={StageMs[0]:F1}ms (before match {_preMatchMs:F1}ms, {_methods} methods{(_jitDone ? "" : " running")}, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1}+{StageMs[6]:F1} props={StageMs[7]:F1} breakables+low={StageMs[8]:F1} decompfx={StageMs[9]:F1} water={StageMs[10]:F1} edges={StageMs[11]:F1} floor={StageMs[12]:F1} grid={StageMs[13]:F1}+{StageMs[14]:F1} gc={StageMs[15]:F1}";
 
     public static void Tick()
     {
+        if (!Fx.MrpBundle.Ready) return;
+        var ship = ShipStatus.Instance;
+        if (!_jitDone)
+        {
+            if (!ship && !Boot.BootClock.StartupOver) return; // 起動の処理 (ログイン等) とは重ねない
+            Clock.Restart();
+            _jitDone = JitSome(ship || PlayerControl.LocalPlayer ? TickBudgetMs : MenuBudgetMs);
+            double ms = Clock.Elapsed.TotalMilliseconds;
+            if (ship) { StageMs[0] += ms; _maxTick = Math.Max(_maxTick, ms); }
+            else _preMatchMs += ms;
+            if (_jitDone) Plugin.Logger.LogInfo($"[TerrainWarm] jit done methods={_methods} beforeMatch={_preMatchMs:F1}ms inMatch={StageMs[0]:F1}ms");
+            return;
+        }
+        if (!ship) return;
+        if (_ship != ship) Begin(ship);
+        if (_stage < Stages && Environment.TickCount64 >= _holdUntil) Step(TickBudgetMs);
+    }
+
+    // 船ごとの準備は、止まっても見えない瞬間にまとめて済ませる:
+    // - 船の読み込みで既に長く止まったフレーム (フリープレイは船を同期で読み、Airship は PC で 1.2 秒止まる) → そのフレームの LateUpdate。
+    //   フリープレイはイントロが無いので、止まりが短くてもここで済ませる
+    // - 船を裏で読む試合 (オンライン・ローカルの部屋) → 船は「シーッ！」の動きの途中に出るので、イントロの頭 (本編の画面が切り替わる所・
+    //   GC の先回しと同じ瞬間) まで待つ。イントロが来なければ HoldMs で 1 段ずつに戻る
+    // 次のフレームから 1 段ずつ回すと、短い止まりが十数回続いた。コンパイルがまだ終わっていなければ従来どおり 1 段ずつ
+    private const double LongFrameSec = 0.25;
+    private const long HoldMs = 4000;
+    private static bool _shipStarted;
+    private static long _holdUntil, _introAt = long.MinValue / 2;
+    internal static void OnShipStart() => _shipStarted = true;
+
+    public static void LateTick()
+    {
+        if (!_shipStarted) return;
+        _shipStarted = false;
+        if (!_jitDone || !Fx.MrpBundle.Ready) return;
         var ship = ShipStatus.Instance;
         if (!ship) return;
-        if (_ship != ship) { _ship = ship; _stage = 0; _at = 0; _methods = 0; _maxTick = 0; _fxWarm = false; Array.Clear(StageMs, 0, StageMs.Length); }
-        if (_stage >= 16 || !Fx.MrpBundle.Ready) return;
+        GameClock.Tick(); // 船の世代を今の船にそろえてから作る (準備の作り置きは世代で見分ける)
+        if (_ship != ship) Begin(ship);
+        var client = AmongUsClient.Instance;
+        bool freePlay = client && client.NetworkMode == NetworkModes.FreePlay; // フリープレイはイントロが無い
+        if (freePlay || UnityEngine.Time.unscaledDeltaTime >= LongFrameSec) RunAll();
+    }
 
+    // イントロの頭 (IntroCutscene.CoBegin の前置き・GC の先回しの直前) から呼ぶ
+    internal static void OnIntro()
+    {
+        _introAt = Environment.TickCount64;
+        _holdUntil = 0;
+        if (!_jitDone || !Fx.MrpBundle.Ready) return;
+        var ship = ShipStatus.Instance;
+        if (!ship) return;
+        GameClock.Tick();
+        if (_ship != ship) Begin(ship);
+        RunAll();
+    }
+
+    private static void RunAll()
+    {
+        while (_stage < Stages) Step(double.MaxValue);
+    }
+
+    private static void Begin(ShipStatus ship)
+    {
+        long now = Environment.TickCount64;
+        _holdUntil = now - _introAt > 10000 ? now + HoldMs : 0; // イントロを待つ (始まった後に船が出たなら待たない)
+        _ship = ship;
+        _stage = 1;
+        _maxTick = 0;
+        _fxWarm = false;
+        Array.Clear(StageMs, 1, Stages - 1);
+    }
+
+    // 今の段を 1 つ進める (減圧の粒だけは budgetMs ごとに分けて、終わるまで同じ段に留まる)
+    private static void Step(double budgetMs)
+    {
         Clock.Restart();
         try
         {
             switch (_stage)
             {
-                case 0:
-                    if (!PrepareSome()) { StageMs[0] += Clock.Elapsed.TotalMilliseconds; _maxTick = Math.Max(_maxTick, Clock.Elapsed.TotalMilliseconds); return; }
-                    // 中身を読んだ回は、読んだごみの回収を次の段 (絵を作る重い段) に重ねないよう、ここで 1 tick 使って済ませる
-                    if (_scanGarbage)
-                    {
-                        if (_gcNext) { GC.Collect(); _scanGarbage = false; }
-                        _gcNext = !_gcNext;
-                        StageMs[0] += Clock.Elapsed.TotalMilliseconds;
-                        _maxTick = Math.Max(_maxTick, Clock.Elapsed.TotalMilliseconds);
-                        return;
-                    }
-                    break;
                 case 1: DamageMap.Ready(); break;
                 case 2:
                     DebrisArt.Chunk(0); DebrisArt.Plate(0); DebrisArt.Pipe(0); DebrisArt.Wire(0); DebrisArt.Core(0);
@@ -58,29 +123,29 @@ internal static class TerrainWarm
                     break;
                 case 3: FractureSites.Warm(); break;
                 case 4: RubbleBake.Warm(); ShadowPatch.Warm(); break;
-                case 5: SolidMap.Ensure(firstHalf: true); break; // 歩ける所の地図は 2 フレームに分ける (前半 = 壁の線と塗り・後半 = 船体と船の外)
+                case 5: SolidMap.Ensure(firstHalf: true); break; // 歩ける所の地図は 2 段に分ける (前半 = 壁の線と塗り・後半 = 船体と船の外)
                 case 6: SolidMap.Ensure(); break;
-                case 7: PropSim.Warm(); break; // 歩ける所の地図の次のフレーム (同じフレームに積むと 1 回の止まりが長い)
-                case 8: BreakableProps.Warm(); LowFurniture.Ensure(); break; // 低い家具は壊れる家具を集めてから数える (PropSim と同じフレームに積むと PC でも 20ms を超える)
+                case 7: PropSim.Warm(); break; // 歩ける所の地図の次の段
+                case 8: BreakableProps.Warm(); LowFurniture.Ensure(); break; // 低い家具は壊れる家具を集めてから数える
                 case 9:
                     if (!_fxWarm) { FireFx.Warm(); BreakNoise.Warm(); _fxWarm = true; }
-                    // 減圧の粒は 1 回に TickBudgetMs まで (残りは次の FixedUpdate)
-                    if (!DecompFx.WarmSome(Clock, TickBudgetMs)) { StageMs[9] += Clock.Elapsed.TotalMilliseconds; _maxTick = Math.Max(_maxTick, Clock.Elapsed.TotalMilliseconds); return; }
+                    if (!DecompFx.WarmSome(Clock, budgetMs)) { StageMs[9] += Clock.Elapsed.TotalMilliseconds; _maxTick = Math.Max(_maxTick, Clock.Elapsed.TotalMilliseconds); return; }
                     break;
                 case 10: WaterSim.Warm(); break;
                 case 11: WaterSim.WarmEdges(); break;
                 case 12: _ = FloorMask.Active; break; // 水の床の形 (最初の水のタイルを描く時に読むと端末で 50ms 級)
-                // 準備で出たごみを今まとめて回収し、最初の破壊や水の作り直しの途中で全体の回収が走らないようにする
                 case 13: WaterSim.WarmBase(firstHalf: true); break; // 水の升の土台 (最初の爆破の時に作ると 1 発目だけ重い)。升と高さ
                 case 14: WaterSim.WarmBase(); break; // 落ちる縁
-                case 15: GC.Collect(); break;
+                // 準備で出たごみを今まとめて回収し、最初の破壊や水の作り直しの途中で全体の回収が走らないようにする。
+                // 本編の側 (il2cpp) も回す: 船の読み込みのごみで、直後に本編の GC が 60ms 級で走っていた
+                case 15: if (Plugin.PreemptiveGc.Value) Boot.GcPrepass.Collect("ship", force: true); else GC.Collect(); break;
             }
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"[TerrainWarm] stage {_stage}: {e.Message}"); }
         StageMs[_stage] += Clock.Elapsed.TotalMilliseconds;
         _maxTick = Math.Max(_maxTick, Clock.Elapsed.TotalMilliseconds);
         _stage++;
-        if (_stage == 16) Plugin.Logger.LogInfo($"[TerrainWarm] {Report}");
+        if (_stage == Stages) Plugin.Logger.LogInfo($"[TerrainWarm] {Report}");
     }
 
     // 地形のメソッドを先にコンパイルする (1 回に TickBudgetMs まで・メソッド単位)。全部終わったら true。
@@ -91,10 +156,16 @@ internal static class TerrainWarm
     private const BindingFlags AllDeclared = BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
     private static List<(MethodBase M, int Depth)> _list;
     private static HashSet<MethodBase> _seen;
-    private static int _scanned; // 中身を読み終えた所まで (2 試合目からは読まない)
     private static bool _scanGarbage, _gcNext;
-    private static bool PrepareSome()
+    private static bool JitSome(double budgetMs)
     {
+        // 中身を読み終えた回は、読んだごみの回収を 1 tick 使って済ませる (次の重い段に重ねない)
+        if (_scanGarbage)
+        {
+            if (_gcNext) { GC.Collect(); _scanGarbage = false; _list = null; return true; }
+            _gcNext = true;
+            return false;
+        }
         if (_list == null)
         {
             _list = new List<(MethodBase, int)>();
@@ -108,21 +179,19 @@ internal static class TerrainWarm
         }
         for (; _at < _list.Count; _at++)
         {
-            if (Clock.Elapsed.TotalMilliseconds > TickBudgetMs) return false;
+            if (Clock.Elapsed.TotalMilliseconds > budgetMs) return false;
             var (m, depth) = _list[_at];
             try { Prepare(m); _methods++; }
             catch { /* 準備できないものは初回の呼び出しでコンパイルされる (従来どおり) */ }
-            if (_at < _scanned) continue;
-            _scanned = _at + 1;
             if (depth < MaxDepth && (depth == 0 || Deeper(m)))
             {
-                _scanGarbage = true;
                 try { AddCallees(m, depth + 1); }
                 catch { /* 読めない中身は辿らない */ }
             }
         }
-        _seen = null; // 読み終えた (2 試合目からは足さない)
-        return true;
+        _seen = null;
+        _scanGarbage = true; // 次の tick から回収して終わる
+        return false;
     }
 
     private static void Add(MethodBase m, int depth)
@@ -202,4 +271,10 @@ internal static class TerrainWarm
         }
         return op < _operands.Length ? _operands[op] : OperandType.InlineNone;
     }
+}
+
+[HarmonyLib.HarmonyPatch(typeof(ShipStatus), nameof(ShipStatus.Start))]
+internal static class TerrainWarmShipStartPatch
+{
+    public static void Postfix() => TerrainWarm.OnShipStart();
 }
