@@ -11,6 +11,7 @@ internal static class TerrainProbe
 {
     public static void Register()
     {
+        ViewCheck.Register();
         TestBridge.Register("walls", "<x> <y> <r> 円に掛かるコライダーを列挙", (args, reply) =>
         {
             if (!TryParse3(args, out float x, out float y, out float r)) { reply("ERR walls needs <x> <y> <r>"); return; }

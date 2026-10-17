@@ -99,6 +99,7 @@ public static class TestBridge
 
         if (_wait != null) EvaluateWait(now);
         else if (Pending.Count > 0) Execute(Pending.Dequeue());
+        Terrain.ViewCheck.Tick();
 
         if (now - _lastStateMs >= StateIntervalMs)
         {

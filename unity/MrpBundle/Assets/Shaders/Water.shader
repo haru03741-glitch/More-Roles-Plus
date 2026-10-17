@@ -130,6 +130,8 @@ Shader "MRP/Water"
             sampler2D _MrpShadowTex; // 影のカメラの描き先 (視界の所はアルファ 0)
             float _ShadowOnly, _ShadowGain;
             float _MrpShadowOn; // 影の板が出ている間だけ 1
+            // 確認用 (ブリッジの viewcheck だけが立てる): 1 = 描く画素を不透明の単色に・2 = 半透明の単色 (重ね塗りの数を読む)・3 = 描かない
+            float _MrpDebugFlat;
             float _Mode, _WetLevel, _OutlinePx, _RimPx, _SprayEdge, _FaceScale;
             float _RUnits, _ShallowDepth, _Fog, _Caustic, _LineWave, _FaceView, _FoamW, _Shaft;
             fixed4 _Shallow, _Deep, _Outline, _Rim, _Abyss;
@@ -497,6 +499,11 @@ Shader "MRP/Water"
                     // 家具の水面の板は絵の uv の範囲 (床の線と同じ) を型の 0..1 にしてある
                     float2 fuv = _Mode > 2.5 ? float2((i.uv.x - _BaseU0) * _BaseUS, (i.uv.y - _BaseV0) / _BaseVS) : i.uv;
                     if (_FrontOn > 0.5) c.a *= 1.0 - tex2D(_FrontMask, fuv).r;
+                }
+                if (_MrpDebugFlat > 0.5)
+                {
+                    if (_MrpDebugFlat > 2.5 || c.a < 0.03) return 0;
+                    return fixed4(1, 0, 1, _MrpDebugFlat > 1.5 ? 0.5 : 1.0);
                 }
                 return c;
             }
