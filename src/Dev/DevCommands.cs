@@ -204,6 +204,7 @@ internal static class DevCommands
         });
 
         TestBridge.Register("presetui", "[name <名前> | <ボタンの番号>] 設定画面のプリセットのタブ (0 保存・1 取り込む・2 フォルダ・3 前・4 次・100+行*4+{0 読む,1 書き出す,2 消す})", (args, reply) => reply(Options.PresetPage.Simulate(args.Trim())));
+        TestBridge.Register("whisper", "[<番号> | list] 耳打ちの相手を選ぶ (名札・一覧のボタンと同じ) / ロビーの一覧を開く / 状態", (args, reply) => { args = args.Trim(); if (args == "list") Commands.WhisperList.Toggle(); else if (byte.TryParse(args, out byte id)) Commands.Whisper.Choose(id); reply(Commands.Whisper.Describe()); });
         TestBridge.Register("rejoin", "自動で部屋へ戻る機能の状態 (終わりの画面の数え・入り直しの待ち)", (_, reply) => reply(Menu.AutoRejoin.Describe()));
         TestBridge.Register("f1", "試合中の設定の一覧 (F1) を出す / 消す", (_, reply) => { Menu.SettingsOverlay.Toggle(); reply($"OK f1 open={Menu.SettingsOverlay.IsOpen}"); });
         TestBridge.Register("afk", "放置の数え (設定・止まっている秒数・知らせたか)", (_, reply) => reply(Commands.AfkGuard.Describe()));

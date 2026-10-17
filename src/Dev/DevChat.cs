@@ -45,6 +45,13 @@ internal static class DevChat
         try { text = field.Text?.Trim() ?? ""; }
         catch { return true; }
         Commands.ChatInput.Remember(text);
+        // 耳打ちの相手を選んでいたら、次の送信は耳打ち (空で送ると取りやめ)
+        if (Commands.Whisper.TrySend(__instance, text))
+        {
+            field.Clear();
+            Commands.Whisper.AfterClear(field);
+            return false;
+        }
         if (text.Length < 2 || text[0] != '/') return true;
 
         string line = text[1..];

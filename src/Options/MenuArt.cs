@@ -12,7 +12,8 @@ internal static class MenuArt
     private const int Size = 64, Radius = 28;
     private static Texture2D _roundTex, _glassTex;
     private static readonly Dictionary<int, Sprite> Rounds = new();
-    private static Sprite _glass;
+    private static Sprite _glass, _bubble;
+    private static Texture2D _bubbleTex;
     private static Material _masked;
 
     // 角の半径が radius (世界の単位) の板。大きさは size で決める (2 × radius 以上)
@@ -45,6 +46,25 @@ internal static class MenuArt
         _glass = Sprite.Create(_glassTex, new Rect(0, 0, 32, 32), new Vector2(0.5f, 0.5f), 32f / 0.3f);
         _glass.hideFlags = HideFlags.DontUnloadUnusedAsset;
         return _glass;
+    }
+
+    // 吹き出し (幅 0.3 単位・白。色は SpriteRenderer で付ける)
+    public static Sprite Bubble()
+    {
+        if (_bubble) return _bubble;
+        _bubbleTex = Bake(32, (x, y) =>
+        {
+            // 楕円 (中心 (16,19)・半径 13×9) と、左下へ出る尻尾
+            float dx = (x - 16f) / 13f, dy = (y - 19f) / 9f;
+            float body = (MathF.Sqrt(dx * dx + dy * dy) - 1f) * 9f;
+            float t = Math.Clamp((19f - y) / 14f, 0f, 1f);
+            float cx = 12f - 6f * t, w = 3.5f * (1f - t);
+            float tail = y > 12f || y < 4f ? 99f : Math.Abs(x - cx) - w;
+            return Math.Min(body, tail);
+        });
+        _bubble = Sprite.Create(_bubbleTex, new Rect(0, 0, 32, 32), new Vector2(0.5f, 0.5f), 32f / 0.3f);
+        _bubble.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return _bubble;
     }
 
     // スクロールする欄の中に置く板のマテリアル。本編の行の背景 (層ごとに切り抜く) を 1 回だけ写して使い回す
