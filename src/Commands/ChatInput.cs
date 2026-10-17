@@ -128,6 +128,7 @@ internal static class ChatInput
     {
         if (!Input.anyKeyDown) return;
         AfkGuard.Touched = true;
+        if (Input.GetKeyDown(KeyCode.F1)) { Menu.SettingsOverlay.Toggle(); return; }
         var chat = Vanilla.Chat;
         if (!chat || !chat.IsOpenOrOpening) return;
         var area = chat.freeChatField ? chat.freeChatField.textArea : null;

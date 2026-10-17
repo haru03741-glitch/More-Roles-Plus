@@ -203,6 +203,7 @@ internal static class DevCommands
             reply("OK chatraw");
         });
 
+        TestBridge.Register("f1", "試合中の設定の一覧 (F1) を出す / 消す", (_, reply) => { Menu.SettingsOverlay.Toggle(); reply($"OK f1 open={Menu.SettingsOverlay.IsOpen}"); });
         TestBridge.Register("afk", "放置の数え (設定・止まっている秒数・知らせたか)", (_, reply) => reply(Commands.AfkGuard.Describe()));
         TestBridge.Register("colors", "自分で作った色 (#RRGGBB) の一覧 (自分の保存値と、届いている人の番号=色)", (_, reply) => reply(Menu.CustomColors.Describe()));
         TestBridge.Register("picker", "[open | apply | reset | type <文> | #RRGGBB] 色を作る板 (開く・色を置く・決める・本編の色に戻す・#hex 欄に打つ) と今の色", (args, reply) => reply(Menu.ColorPicker.Simulate(args.Trim())));
