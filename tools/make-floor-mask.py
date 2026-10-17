@@ -32,6 +32,7 @@ except ImportError:
 
 BACK_Z = 4.0          # これより奥 (z が大きい) の部屋の絵だけ重ねる (床に貼った飾りや手前の絵は床の判定に入れない)
 SKY_Z = 20.0          # これより奥は空の絵 (Fungle の星空・夕焼け)。床の判定に入れない
+FRONT_Z = 0.1         # これより手前の絵はどの床の水より手前 (ゲームの DamageMap.PlayerBandZ と同じ)
 BACK_Z_SHIP = {"PolusShip": 0.5, "FungleShip": 0.5}  # 床の絵が z 1〜4 にある船 (ゲームの FloorMask.BackZ と同じ表)
 ALWAYS_FLOOR = {"room_weapon", "room_broadcast"}  # z に関わらず床の層に入れる絵 (ゲームの FloorMask.AlwaysFloor と同じ表)
 OUTLINE = 0.22        # 明るさがこれ未満の画素は縁取り
@@ -169,6 +170,13 @@ def compose(j, tex, ppu):
         out[:, 3] = np.maximum(dst[:, 3], src[:, 3])
         canvas[ys, xs] = out
     return canvas
+
+
+def front_cover_mask(j, tex, ppu, shape):
+    """クルーの奥行きより手前 (z < FRONT_Z) の手前の絵 (機関・端末の台・壁の上面など) が描く画素。
+    床の水の絵はクルーより奥の部屋の絵のすぐ手前に置かれるので、この絵は視界の中ではどこでも水より手前に描かれて水を隠す。
+    影の中の写しは一番手前に出て床マスクで切るので、床から抜かないと絵の上に水が乗る"""
+    return cover_mask(dict(j, covers=[r for r in j.get("covers", []) if r["z"] < FRONT_Z]), tex, ppu, shape)
 
 
 def mesh_cover_mask(j, ppu, shape):
@@ -1020,7 +1028,8 @@ def main():
         cover = cover_mask(j, tex, ppu, canvas.shape[:2])
         art = load_art(a.art, a.art_ppu) if a.art else None
         floor, walk, furn, phys, plat = classify(j, canvas, ppu, cover, art)
-        floor &= ~(mesh_cover_mask(j, ppu, floor.shape) | crystal_mask(j, ppu, floor.shape, art))
+        front = front_cover_mask(j, tex, ppu, floor.shape)
+        floor &= ~(mesh_cover_mask(j, ppu, floor.shape) | crystal_mask(j, ppu, floor.shape, art) | front)
         wet = seal_walls(j, exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys))))
         if plat.any():
             base = seal_walls(j, exclude_wet(j, bridge_wet(j, wet_cells(j, ppu, phys & ~plat))))
@@ -1028,7 +1037,8 @@ def main():
         wsize = write_wet(os.path.join(a.wet, ship + ".bin"), j, wet)
         print(f"{ship}: wet cells={int(wet.sum())} -> {wsize} B")
         ship = j["ship"].replace("(Clone)", "")
-        face = wall_face(canvas, floor, ppu)
+        # 手前の絵の下の部屋の絵は床でなくなるが、壁ではない (視界でも絵に隠れて水は這い上がって見えない)
+        face = wall_face(canvas, floor, ppu) & ~front
         size = write_mask(os.path.join(a.out, ship + ".bin"), j["sig"], j["solid"]["origin"], ppu, floor, face)
         print(f"{ship}: {floor.shape[1]}x{floor.shape[0]} ppu={ppu} floor={floor.mean():.3f} face={face.mean():.3f} -> {size} B")
         miss = report(j, ppu, floor, walk, furn) if a.report else None
