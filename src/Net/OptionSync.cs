@@ -48,3 +48,10 @@ internal static class OptionSync
         HoldsHostValues = false;
     }
 }
+
+// 開始の数えが始まった時にもう一度全員へ送る。途中で来た客にも、船ができる前 (マップの左右反転などを船の作り始めに読む) に届く
+[HarmonyLib.HarmonyPatch(typeof(GameStartManager), nameof(GameStartManager.ReallyBegin))]
+internal static class OptionSyncOnBeginPatch
+{
+    public static void Postfix() => OptionSync.SendAll();
+}
