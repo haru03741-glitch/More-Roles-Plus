@@ -151,7 +151,11 @@ internal static class ClientOptions
     internal static string Describe(string key)
     {
         var hud = Vanilla.Hud;
-        if (key == "menu") { if (hud && hud.GameMenu) hud.GameMenu.Open(); }
+        if (key == "menu")
+        {
+            if (hud && hud.GameMenu) hud.GameMenu.Open();
+            else if (Object.FindObjectOfType<MainMenuManager>() is { } mm && mm.settingsButton) mm.settingsButton.OnClick.Invoke();
+        }
         else if (key == "open") _open?.Invoke();
         else if (key == "close") _close?.Invoke();
         else if (key.Length > 0)
