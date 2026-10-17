@@ -133,6 +133,7 @@ public class Ticker : MonoBehaviour
         Terrain.TerrainSync.Tick(); t = Bridge.Perf.Lane(26, t);
         Menu.CustomColors.Tick();
         Commands.AfkGuard.Tick();
+        Menu.AutoRejoin.Tick();
         Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
         Roles.KillAbility.Tick(); t = Bridge.Perf.Lane(28, t);
         Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);

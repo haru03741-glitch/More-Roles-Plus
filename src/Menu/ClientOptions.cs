@@ -32,12 +32,16 @@ internal static class ClientOptions
     public static ConfigEntry<bool> DarkTheme { get; private set; }
     public static ConfigEntry<bool> DarkMeeting { get; private set; }
     public static ConfigEntry<bool> EndSummary { get; private set; }
+    public static ConfigEntry<bool> AutoPlayAgain { get; private set; }
+    public static ConfigEntry<bool> Reconnect { get; private set; }
 
     public static void Bind(ConfigFile cfg)
     {
         _cfg = cfg;
         DarkTheme = Add("DarkTheme", false, new Text("チャットを暗い色にする", "Dark chat"), ChatTheme.Refresh);
         EndSummary = Add("EndSummary", true, new Text("試合の終わりに全員の役職を出す", "Show everyone's role at game end"), null);
+        AutoPlayAgain = Add("AutoPlayAgain", false, new Text("試合が終わったら自動でロビーへ戻る", "Return to the lobby after a game"), null);
+        Reconnect = Add("Reconnect", true, new Text("回線で切れたら同じ部屋へ入り直す", "Rejoin the room after a connection drop"), null);
         DarkMeeting = Add("DarkMeeting", false, new Text("会議の画面を暗い色にする", "Dark meeting screen"), null); // 次の会議から
         Items.Add(new Item { Key = "ColorPicker", Label = new Text("自分の色を作る", "Make your color"), Click = ColorPicker.Show });
     }
