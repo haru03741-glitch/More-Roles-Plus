@@ -20,7 +20,8 @@ public static class JoinSettings
     public static readonly IntOpt ConsecutiveGames = new("何試合前までを見るか", "How many past games to check", 1, 1, 5);
 }
 
-// ホストの手元にある BAN 一覧とホワイトリスト (BepInEx/config/MoreRolesPlus/ の BanList.txt・WhiteList.txt)。
+// ホストの手元にある BAN 一覧・ホワイトリスト・VIP 一覧 (BepInEx/config/MoreRolesPlus/ の BanList.txt・WhiteList.txt・VipList.txt)。
+// VIP はホワイトリストにいるのと同じ扱いで、そのうえ荒らし対策 (禁止語・開始の催促) で数えない。
 // 1 行 = 「フレンドコード,PUID の要約,名前」。照合はフレンドコードと PUID の要約のどちらかが一致すれば当たり。
 // Based on Gurge44/EndlessHostRoles (BanManager・WhitelistManager)、EnhancedNetwork/TownofHost-Enhanced (PUID の要約)、
 // Lotus-AU/LotusContinued (WhitelistManager)、satokazoku/TownOfHost-Pko (前の試合にいた人を続けて入れない仕組み)
@@ -86,6 +87,7 @@ internal static class JoinLists
     private static string Dir => Path.Combine(Paths.ConfigPath, "MoreRolesPlus");
     private static readonly ListFile Bans = new("BanList.txt");
     private static readonly ListFile White = new("WhiteList.txt");
+    private static readonly ListFile Vips = new("VipList.txt");
 
     private static string NormFc(string s) => s.Trim().Replace(':', '#').ToLowerInvariant();
 
@@ -130,14 +132,15 @@ internal static class JoinLists
             Notify(new Text($"{name} は BAN 一覧にいるので入れませんでした", $"{name} is on the ban list and was kept out"));
             return;
         }
-        if (JoinSettings.Whitelist && White.Find(fc, puid) == null)
+        bool trusted = White.Find(fc, puid) != null || Vips.Find(fc, puid) != null;
+        if (JoinSettings.Whitelist && !trusted)
         {
             AmongUsClient.Instance.KickPlayer(c.Id, false);
             Notify(new Text($"{name} はホワイトリストにいないので入れませんでした", $"{name} is not on the whitelist and was kept out"));
             return;
         }
-        // ホワイトリストの人は続けて入ってもよい
-        if (JoinSettings.Consecutive && puid.Length > 0 && White.Find(fc, puid) == null && PlayedRecently(puid))
+        // ホワイトリストと VIP の人は続けて入ってもよい
+        if (JoinSettings.Consecutive && puid.Length > 0 && !trusted && PlayedRecently(puid))
         {
             AmongUsClient.Instance.KickPlayer(c.Id, false);
             Notify(new Text($"{name} は前の試合にいたので入れませんでした", $"{name} played the previous game and was kept out"));
@@ -267,8 +270,22 @@ internal static class JoinLists
 
     public static string Unban(string args) => Remove(Bans, args, new Text("BAN を解きました", "Unbanned"));
 
+    // その人が VIP 一覧にいるか (ホストの端末で使う)
+    public static bool IsVip(int clientId)
+    {
+        var c = AmongUsClient.Instance ? AmongUsClient.Instance.GetRecentClient(clientId) : null;
+        if (c == null) return false;
+        var (fc, puid) = Keys(c);
+        return (fc.Length > 0 || puid.Length > 0) && Vips.Find(fc, puid) != null;
+    }
+
     // /wl = 一覧 / /wl add <番号> / /wl del <フレンドコードか一覧の番号>
-    public static string WhiteCmd(string args)
+    public static string WhiteCmd(string args) => ListCmd(White, "/wl", new Text("ホワイトリスト", "the whitelist"), args);
+
+    // /vip = 一覧 / /vip add <番号> / /vip del <フレンドコードか一覧の番号>
+    public static string VipCmd(string args) => ListCmd(Vips, "/vip", new Text("VIP 一覧", "the VIP list"), args);
+
+    private static string ListCmd(ListFile file, string cmd, Text what, string args)
     {
         var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         string sub = parts.Length > 0 ? parts[0].ToLowerInvariant() : "";
@@ -277,7 +294,7 @@ internal static class JoinLists
         {
             case "":
             case "list":
-                return ListText(White, new Text("ホワイトリストは空です", "The whitelist is empty"));
+                return ListText(file, new Text($"{what}は空です", $"{Cap(what)} is empty"));
             case "add":
             {
                 if (!OnlineRoom) return new Text("オンラインの部屋でだけ使えます (フレンドコードが要る)", "Only in an online room (needs friend codes)");
@@ -285,18 +302,20 @@ internal static class JoinLists
                 if (c == null) return err;
                 var (fc, puid) = Keys(c);
                 if (fc.Length == 0 && puid.Length == 0) return new Text($"{c.PlayerName} は身元が取れません", $"{c.PlayerName} has no ID");
-                if (White.Find(fc, puid) != null) return new Text($"{c.PlayerName} はもう入っています", $"{c.PlayerName} is already listed");
-                White.Get().Add(new Entry { Fc = fc, Puid = puid, Name = Clean(c.PlayerName) });
-                White.Save();
-                return new Text($"{c.PlayerName} をホワイトリストに入れました", $"Added {c.PlayerName} to the whitelist");
+                if (file.Find(fc, puid) != null) return new Text($"{c.PlayerName} はもう入っています", $"{c.PlayerName} is already listed");
+                file.Get().Add(new Entry { Fc = fc, Puid = puid, Name = Clean(c.PlayerName) });
+                file.Save();
+                return new Text($"{c.PlayerName} を{what}に入れました", $"Added {c.PlayerName} to {what}");
             }
             case "del":
             case "remove":
-                return Remove(White, rest, new Text("ホワイトリストから外しました", "Removed from the whitelist"));
+                return Remove(file, rest, new Text($"{what}から外しました", $"Removed from {what}"));
             default:
-                return new Text("/wl (一覧)・/wl add <番号>・/wl del <一覧の番号かフレンドコード>", "/wl (list), /wl add <number>, /wl del <list number or friend code>");
+                return new Text($"{cmd} (一覧)・{cmd} add <番号>・{cmd} del <一覧の番号かフレンドコード>", $"{cmd} (list), {cmd} add <number>, {cmd} del <list number or friend code>");
         }
     }
+
+    private static string Cap(string s) => s.Length > 0 ? char.ToUpperInvariant(s[0]) + s[1..] : s;
 
     private static string ListText(ListFile f, string empty)
     {

@@ -71,6 +71,7 @@ internal static class ChatGuard
     {
         var client = AmongUsClient.Instance;
         if (!client || !client.AmHost || !sender || sender.OwnerId == client.HostId || sender.AmOwner || string.IsNullOrEmpty(text)) return;
+        if (JoinLists.IsVip(sender.OwnerId)) return;
         string why = null;
         if (ChatGuardSettings.StartSpam && !ShipStatus.Instance && Vanilla.StartManager && StartWords.Contains(Normalize(text)))
             why = new Text("開始の催促", "asking to start");

@@ -44,6 +44,7 @@ internal static class DevChat
         string text;
         try { text = field.Text?.Trim() ?? ""; }
         catch { return true; }
+        Commands.ChatInput.Remember(text);
         if (text.Length < 2 || text[0] != '/') return true;
 
         string line = text[1..];

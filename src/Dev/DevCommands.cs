@@ -203,7 +203,8 @@ internal static class DevCommands
             reply("OK chatraw");
         });
 
-        TestBridge.Register("chatin", "[tab | type <文> | paste <文>] チャットの入力欄の状態 (文字の制限・上限・今の文字・補う候補)。tab / paste は Tab・Ctrl+V と同じ処理 (paste の \n は改行)・type は打ったのと同じ", (args, reply) => reply(Commands.ChatInput.Simulate(args.Trim())));
+        TestBridge.Register("client", "[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));
+        TestBridge.Register("chatin", "[tab | up | down | type <文> | paste <文>] チャットの入力欄の状態 (文字の制限・上限・今の文字・補う候補)。tab / paste は Tab・Ctrl+V と同じ処理 (paste の \n は改行)・type は打ったのと同じ", (args, reply) => reply(Commands.ChatInput.Simulate(args.Trim())));
 
         TestBridge.Register("chattoggle", "チャット欄の窓を開く / 閉じる (チャットのボタンを押したのと同じ)", (_, reply) =>
         {

@@ -2,6 +2,7 @@
 // Patches/TextBoxPatch.cs and Patches/ChatControlPatch.cs (command suggestion, paste), and
 // https://github.com/KARPED1EM/TownOfNext Patches/TextBoxPatch.cs (character limit) (GPL-3.0)
 using System;
+using System.Collections.Generic;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
@@ -13,6 +14,8 @@ namespace MoreRolesPlus.Commands;
 //   (公式サーバーは 1 通がおよそ 1000 バイトを超えると送った人を切断する)。本編の入力欄が持っている切り替えを立てるだけ。
 // - Ctrl+V で貼り付け (PC。本編の貼り付けの切り替えはチャット欄では効かない)。改行は空白にする (改行は送信になる)。
 // - / で始めると、合うコマンドを入力欄に薄く出し、Tab で補う。使い方 (引数) も薄く出す。
+// - ↑ / ↓ で前に送った文 (コマンドも) を入力欄へ呼び戻す (PC・新しい順に 30 件・部屋を出ても覚えている)。
+//   打ちかけの文は ↓ で一番下まで戻ると元に戻る。
 // 文字の入力の処理そのもの (TextBoxTMP の Update / SetText) は本編のまま。欄の文字を読むのは文字が変わった時とキーを押した時だけで、
 // 薄い文字の部品 (入力欄の文字の複製) の文字は読み返さない (補う文字は手元の文字列で持つ)。
 // 毎フレームの問い合わせは「何かキーが押されたか」の 1 つだけ
@@ -25,6 +28,24 @@ internal static class ChatInput
     private static IntPtr _ghostOwner;    // 複製を作った入力欄
     private static string _complete = ""; // Tab で入れる文字 (空 = 補うものなし)
     internal static IntPtr ChatArea;       // チャット欄の入力欄 (文字を全部通す相手)
+
+    private const int HistoryMax = 30;
+    private static readonly List<string> History = new(); // 送った文 (古い順)
+    private static int _historyAt;                         // 呼び戻している位置 (History.Count = 打ちかけの文)
+    private static string _draft = "";                     // 呼び戻す前に打っていた文
+
+    // 送った文を覚える (コマンドは送られないので送る処理の入口で呼ぶ)。同じ文を続けて送った時は 1 つにまとめる
+    internal static void Remember(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        if (History.Count == 0 || History[^1] != text)
+        {
+            History.Add(text);
+            if (History.Count > HistoryMax) History.RemoveAt(0);
+        }
+        _historyAt = History.Count;
+        _draft = "";
+    }
 
     public static void Apply(FreeChatInputField field)
     {
@@ -115,8 +136,22 @@ internal static class ChatInput
             if (_complete.Length > 0) SetText(area, _complete, _complete.Length);
             return;
         }
+        if (Input.GetKeyDown(KeyCode.UpArrow)) { Recall(area, -1); return; }
+        if (Input.GetKeyDown(KeyCode.DownArrow)) { Recall(area, 1); return; }
         if (Input.GetKeyDown(KeyCode.V) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
             Paste(area, GUIUtility.systemCopyBuffer);
+    }
+
+    private static void Recall(TextBoxTMP area, int delta)
+    {
+        if (History.Count == 0) return;
+        if (_historyAt > History.Count) _historyAt = History.Count;
+        int to = Math.Clamp(_historyAt + delta, 0, History.Count);
+        if (to == _historyAt) return;
+        if (_historyAt == History.Count) _draft = area.text ?? "";
+        _historyAt = to;
+        string s = to == History.Count ? _draft : History[to];
+        SetText(area, s, s.Length);
     }
 
     private static void Paste(TextBoxTMP area, string clip)
@@ -175,6 +210,8 @@ internal static class ChatInput
         if (!area) return "ERR chatin no chat field";
 #if !ANDROID
         if (args == "tab") { if (_complete.Length > 0) SetText(area, _complete, _complete.Length); }
+        else if (args == "up") Recall(area, -1);
+        else if (args == "down") Recall(area, 1);
         else if (args.StartsWith("caret ")) { area.caretPos = int.Parse(args[6..]); try { area.MoveCaret(); } catch { } }
         else if (args.StartsWith("type ")) area.SetText(args[5..], "");
         else if (args.StartsWith("compo ")) area.SetText(area.text ?? "", args[6..]);

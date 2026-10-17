@@ -40,6 +40,7 @@ public class Plugin : BasePlugin
         ReuseDelegateTypes = Config.Bind("Performance", "ReuseDelegateTypes", true, "パッチを当てる時の型を形ごとに使い回して起動を速くする (パッチが当たらない時は切る)");
         SleepAccountManager = Config.Bind("Performance", "SleepAccountManager", true, "メニューのアカウント表示を止めておき、ログイン待ちの間もメニューを使えるようにする");
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
+        Menu.ClientOptions.Bind(Config);
 
         Boot.IncrementalGcInvalidator.ApplyIfConfigured();
         Net.Remote.Init(); // 電文の名前は設定の指紋に入るので先に

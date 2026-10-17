@@ -44,6 +44,7 @@ internal static class ChatCommands
         Add(new[] { "win", "winner" }, Who.Everyone, "", new Text("前の試合の勝者", "Last game's winners"), InfoCommands.Winners);
 
         Add(new[] { "start" }, Who.Host, "", new Text("試合を始める (数え中なら数えを飛ばす)", "Start the game (skips the countdown if counting)"), _ => HostActions.Start());
+        Add(new[] { "cancel", "stop" }, Who.Host, "", new Text("開始の数えを取りやめる (Enter で始めた時はもう一度 Enter)", "Cancel the start countdown (or press Enter again)"), _ => HostActions.Cancel());
         Add(new[] { "end", "廃村" }, Who.Host, "", new Text("廃村: 勝者なしで試合を打ち切る (Shift+L+Enter)", "Abort the game with no winner (Shift+L+Enter)"), _ => HostActions.Abort());
         Add(new[] { "mt", "meet" }, Who.Host, "", new Text("会議を開く / 開いている会議を閉じる (Shift+M+Enter)", "Call a meeting / close the current one (Shift+M+Enter)"), _ => HostActions.ToggleMeeting());
         Add(new[] { "setrole" }, Who.Host, "<役職> [番号]", new Text("その人 (省略で自分) の役職を変える。ロビーで打つと次の試合の役職を予約する", "Change someone's role (yourself if omitted). In the lobby, reserves the role for the next game"), HostActions.SetRole);
@@ -56,6 +57,7 @@ internal static class ChatCommands
         Add(new[] { "cjclear" }, Who.Host, "", new Text("前の試合にいた人の記録を消す (続けて入れない設定用)", "Forget who played the previous games"), JoinLists.ClearRecent);
         Add(new[] { "say" }, Who.Host, "<文>", new Text("全員の画面にお知らせを出す", "Show a message to everyone"), LobbyTools.Say);
         Add(new[] { "preset" }, Who.Host, "[save|load|del <名前>]", new Text("設定を名前を付けて保存 / 読み込み", "Save / load settings by name"), LobbyTools.Preset);
+        Add(new[] { "vip" }, Who.Host, "[add <番号> | del <一覧の番号>]", new Text("VIP 一覧 / 追加 / 削除 (ホワイトリスト扱い・荒らし対策で数えない)", "VIP list: list / add / remove (counts as whitelisted, skipped by chat moderation)"), JoinLists.VipCmd);
         Add(new[] { "wl", "whitelist" }, Who.Host, "[add <番号> | del <一覧の番号>]", new Text("ホワイトリストの一覧 / 追加 / 削除 (使うかは設定で)", "Whitelist: list / add / remove (turn it on in settings)"), JoinLists.WhiteCmd);
 
         Add(new[] { "devhelp" }, Who.Dev, "[語]", new Text("開発者コマンドの一覧", "List the developer commands"), args =>

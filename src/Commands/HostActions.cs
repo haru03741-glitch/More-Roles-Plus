@@ -53,6 +53,16 @@ internal static class HostActions
         return true;
     }
 
+    // 開始の数えを取りやめてロビーへ戻す (本編の取りやめ。客の数えの表示も消える)
+    public static string Cancel()
+    {
+        var gsm = Vanilla.StartManager;
+        if (!gsm || ShipStatus.Instance) return new Text("ロビーでだけ使えます", "Only in the lobby");
+        if (gsm.startState != GameStartManager.StartingStates.Countdown) return new Text("数えていません", "Not counting down");
+        gsm.ResetStartState();
+        return new Text("開始を取りやめました", "Start cancelled");
+    }
+
     public static string Abort()
     {
         if (!InGame) return NotInGame;
