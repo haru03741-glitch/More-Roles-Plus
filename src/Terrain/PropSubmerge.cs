@@ -152,6 +152,7 @@ internal static partial class PropSim
             if (s.Shadow) s.Shadow.SetPropertyBlock(s.Block);
         }
         DoorSunk(now);
+        FrontSunk(now);
     }
 
     // 影の中: 板は影の板の裏になるので、影の板の手前に写しを置く (水の写しは家具の形を抜いてあるので、その上に沈み具合を描く)。
@@ -183,15 +184,21 @@ internal static partial class PropSim
 
     private static void SunkOcc(Prop p, Sunk s)
     {
-        s.OccDirty = false;
-        if (s.Occ) { UnityEngine.Object.Destroy(s.Occ); s.Occ = null; }
-        var sr = s.Sr;
-        var sp = sr.sprite;
-        var b = sr.bounds;
+        var b = s.Sr.bounds;
         Vector3 bmn = b.min, bmx = b.max;
         OccSrs.Clear();
         var owner = p.Lift != null ? p.Lift.Cut.transform : p.Tr;
         FrontSprites(Rect.MinMaxRect(bmn.x, bmn.y, bmx.x, bmx.y), owner.position.z, OccSrs);
+        SunkOccFill(s);
+    }
+
+    // OccSrs の絵の網目を板の型に塗る
+    private static void SunkOccFill(Sunk s)
+    {
+        s.OccDirty = false;
+        if (s.Occ) { UnityEngine.Object.Destroy(s.Occ); s.Occ = null; }
+        var sr = s.Sr;
+        var sp = sr.sprite;
         byte[] buf = null;
         if (OccSrs.Count > 0 && UvMap(sp, out float au, out float bu, out float av, out float bv))
         {
@@ -204,7 +211,9 @@ internal static partial class PropSim
             bool any = false;
             foreach (var f in OccSrs)
             {
-                var fsp = f.sprite;
+                // 手前の絵には絵を外して隠す物がある (コマ送りの途中・使っていない端末の画面)
+                var fsp = f ? f.sprite : null;
+                if (!fsp) continue;
                 var v = fsp.vertices;
                 var tri = fsp.triangles;
                 var m = toLocal * f.transform.localToWorldMatrix;
@@ -642,6 +651,7 @@ internal static partial class PropSim
         foreach (var p in Furnished)
             if (p.Sk != null && p.Sk.Shown) { if (p.Sk.Go) p.Sk.Go.SetActive(false); p.Sk.Shown = false; }
         DoorSunkHideAll();
+        FrontSunkHideAll();
         _sunkAny = false;
     }
 
@@ -658,6 +668,7 @@ internal static partial class PropSim
             p.Sk = null;
         }
         DoorSunkClear();
+        FrontSunkClear();
         _sunkAny = false;
     }
 }

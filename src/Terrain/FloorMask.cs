@@ -522,7 +522,51 @@ internal static class FloorMask
     private static float BackZ(string ship) => ship is "PolusShip" or "FungleShip" ? 0.5f : 4f;
 
     // z に関わらず床の層に入れる部屋の絵 (ポーラスの武器庫と通信室は床と壁が 1 枚の絵で、クルーと同じ奥行きにある)
-    private static bool AlwaysFloor(string sprite) => sprite is "room_weapon" or "room_broadcast";
+    internal static bool AlwaysFloor(string sprite) => sprite is "room_weapon" or "room_broadcast";
+
+    // 床の上に置かれた動かない絵 (家具・木・岩・屋外の茂みの塊・床より手前の部屋の絵) か。floorexport の covers (道具が床から抜く絵) と、
+    // 手前の絵の水面の板 (PropSim) が同じ選び方を使う (ずれると、床から抜いたのに板が無い絵の上に影の中の水が乗る)。
+    // 動く物 (流される小物・押される家具・扉) と通気口 (水の下へ沈める) は入れない。roomIds = 部屋の絵の一覧 (DamageMap.RoomArts) の InstanceID
+    internal static bool CoverArt(SpriteRenderer sr, string ship, HashSet<int> roomIds)
+    {
+        if (!sr || !sr.enabled || !sr.sprite || sr.color.a < 0.25f) return false;
+        float z = sr.transform.position.z;
+        if ((z >= BackZ(ship) && roomIds.Contains(sr.GetInstanceID())) || z >= SkyZ || sr.name.StartsWith("Mrp", StringComparison.Ordinal)) return false;
+        var bs = sr.bounds.size;
+        if (bs.x > 20f || bs.y > 20f) return false;
+        if (PropSim.MovableSprite(sr.sprite.name) || FurnitureKinds.TryGet(sr.transform, ship, out FurnitureKind _)) return false;
+        return !sr.GetComponentInParent<OpenableDoor>() && !sr.GetComponentInParent<Vent>();
+    }
+
+    // 列 x の、点 y に一番近い「下が床・上が床でない」境目の y (床の上に立つ物・壁の面が床から立ち上がる線)。
+    // y が床なら上へ up まで、床でなければ下へ down まで探す。マスクの外は床でない。見つからなければ NaN
+    internal static float FloorLine(float x, float y, float up, float down)
+    {
+        Ensure();
+        if (_bits == null) return float.NaN;
+        int mx = (int)MathF.Floor((x - _ox) * _ppu), my = (int)MathF.Floor((y - _oy) * _ppu);
+        if (mx < 0 || mx >= _w) return float.NaN;
+        if (IsFloor(mx, my))
+        {
+            int end = my + (int)MathF.Ceiling(up * _ppu);
+            for (int r = my + 1; r <= end; r++)
+                if (!IsFloor(mx, r)) return _oy + r / _ppu;
+        }
+        else
+        {
+            int end = my - (int)MathF.Ceiling(down * _ppu);
+            for (int r = my - 1; r >= end; r--)
+                if (IsFloor(mx, r)) return _oy + (r + 1) / _ppu;
+        }
+        return float.NaN;
+    }
+
+    private static bool IsFloor(int mx, int my)
+    {
+        if (my < 0 || my >= _h) return false;
+        int k = my * _w + mx;
+        return (_bits[k >> 3] & (1 << (k & 7))) != 0;
+    }
 
     internal static uint Signature(string ship)
     {
@@ -623,19 +667,9 @@ internal static class FloorMask
             // 動く物 (流される小物・押される家具・扉) と通気口 (水の下へ沈める) は入れない
             sb.Append("\n  ],\n  \"covers\": [\n");
             string shipName = ship.name.Replace("(Clone)", "");
-            float back = BackZ(shipName);
             int covers = 0;
             foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
-            {
-                if (!sr || !sr.enabled || !sr.sprite || sr.color.a < 0.25f) continue;
-                float z = sr.transform.position.z;
-                if ((z >= back && roomIds.Contains(sr.GetInstanceID())) || z >= SkyZ || sr.name.StartsWith("Mrp", StringComparison.Ordinal)) continue;
-                var bs = sr.bounds.size;
-                if (bs.x > 20f || bs.y > 20f) continue;
-                if (PropSim.MovableSprite(sr.sprite.name) || FurnitureKinds.TryGet(sr.transform, shipName, out FurnitureKind _)) continue;
-                if (sr.GetComponentInParent<OpenableDoor>() || sr.GetComponentInParent<Vent>()) continue;
-                if (WriteArt(sb, sr, covers == 0, false)) covers++;
-            }
+                if (CoverArt(sr, shipName, roomIds) && WriteArt(sb, sr, covers == 0, false)) covers++;
             // 網目で描く手前の絵 (Fungle の水晶・茂み・岩などは背景の網目にまとめて描かれている)。どれを手前の絵として使うかは道具が名前で選ぶ
             sb.Append("\n  ],\n  \"meshCovers\": [\n");
             int meshCovers = 0, meshUnread = 0;

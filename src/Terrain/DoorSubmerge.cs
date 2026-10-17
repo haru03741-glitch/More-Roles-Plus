@@ -134,9 +134,10 @@ internal static partial class PropSim
         foreach (var p in plates) PlateHide(p);
     }
 
-    private static void PlateHide(DoorPlate p)
+    private static void PlateHide(DoorPlate p) => SunkHide(p?.S);
+
+    private static void SunkHide(Sunk s)
     {
-        var s = p?.S;
         if (s == null || !s.Shown) return;
         if (s.Go) s.Go.SetActive(false);
         s.Shown = false;
@@ -146,6 +147,7 @@ internal static partial class PropSim
     {
         if (s.Go) UnityEngine.Object.Destroy(s.Go);
         if (s.Base) UnityEngine.Object.Destroy(s.Base);
+        if (s.Occ) UnityEngine.Object.Destroy(s.Occ);
     }
 
     private static void DoorSunkHideAll()
