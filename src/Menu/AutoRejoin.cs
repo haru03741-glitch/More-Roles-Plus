@@ -1,5 +1,5 @@
-// Based on the auto rejoin of https://github.com/AU-Avengers/TOU-Mira (Modules/AutoRejoin, after https://github.com/Maxi0fc/AutoRejoin)
-// and https://github.com/waffle-ful/Aeterna-End-K-not (Modules/AutoRejoin.cs) (GPL-3.0)
+// Based on the auto rejoin of https://github.com/Gurge44/EndlessHostRoles and https://github.com/AU-Avengers/TOU-Mira
+// (Modules/AutoRejoin) (GPL-3.0), both after https://github.com/Maxi0fc/AutoRejoin
 using System;
 using HarmonyLib;
 using InnerNet;
