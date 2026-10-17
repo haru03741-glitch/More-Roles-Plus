@@ -63,7 +63,25 @@ def fungle(img):
     return 'FungleShip', ox, oy, v
 
 
-MAPS = {'fungle': fungle}
+def polus(img):
+    # 平らな雪原の上に、ドロップシップの中 (床の高さ SHIP) と坂 (坂の絵の下の縁から上の縁まで) だけを置く。
+    # 坂の左右の縁は絵どおり少し内へ傾く (下 x 14.26..19.16 → 上 14.44..18.94)。表の外は高さ 0
+    ship, foot, top = 0.5, -7.95, -6.21
+    ox, oy, cw, ch = 13.5, -8.5, 28, 46
+    cx = ox + (np.arange(cw) + 0.5) * CELL_PX / PPU
+    cy = oy + (np.arange(ch) + 0.5) * CELL_PX / PPU
+    X, Y = np.meshgrid(cx, cy)
+    bed = np.zeros((ch, cw))
+    bed[(Y >= top) & (X >= 14.2) & (X <= 19.2)] = ship
+    t = np.clip((Y - foot) / (top - foot), 0, 1)
+    left, right = 14.26 + (14.44 - 14.26) * t, 19.16 + (18.94 - 19.16) * t
+    ramp = (Y >= foot) & (Y < top) & (X >= left) & (X <= right)
+    bed[ramp] = t[ramp] * ship
+    v = np.clip(np.round(bed * UNIT), -127, 127).astype(np.int8)
+    return 'PolusShip', ox, oy, v
+
+
+MAPS = {'fungle': fungle, 'polus': polus}  # polus は絵を使わない (絵の引数は省ける)
 
 
 def preview(img, v, path):
@@ -86,10 +104,10 @@ def preview(img, v, path):
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[1] not in MAPS:
-        print('usage: make-height-map.py <' + '|'.join(MAPS) + '> <paintbase.ppm> [--preview out.png]')
+    if len(sys.argv) < 2 or sys.argv[1] not in MAPS:
+        print('usage: make-height-map.py <' + '|'.join(MAPS) + '> [paintbase.ppm] [--preview out.png]')
         return 1
-    img = np.array(Image.open(sys.argv[2]).convert('RGB'))
+    img = np.array(Image.open(sys.argv[2]).convert('RGB')) if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else None
     name, ox, oy, v = MAPS[sys.argv[1]](img)
     ch, cw = v.shape
     path = os.path.join(ROOT, 'Resources', 'Heights', name + '.bin')
@@ -98,7 +116,7 @@ def main():
         f.write(v.tobytes())
     land = v[v != SEA]
     print(f'{name}: {cw}x{ch} sea={int((v == SEA).sum())} bed min={land.min() / UNIT:.2f} max={land.max() / UNIT:.2f} -> {path}')
-    if '--preview' in sys.argv:
+    if '--preview' in sys.argv and img is not None:
         preview(img, v, sys.argv[sys.argv.index('--preview') + 1])
     return 0
 

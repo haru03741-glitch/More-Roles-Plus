@@ -125,6 +125,7 @@ internal static partial class PropSim
         var ship = ShipStatus.Instance;
         if (!ship || !DamageMap.Ready() || !FloorMask.Active) return false;
         _frontGen = GameClock.ShipGen;
+        FloorCovers.Ensure();
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         string shipName = ship.name.Replace("(Clone)", "");
         var roomIds = new HashSet<int>();
@@ -142,7 +143,7 @@ internal static partial class PropSim
             var tr = sr.transform;
             if (furnished.Contains(tr.GetInstanceID())) continue;
             float z = tr.position.z;
-            if (z >= FrontBandZ || FloorMask.AlwaysFloor(sr.sprite.name)) continue;
+            if (z >= FrontBandZ || FloorMask.AlwaysFloor(shipName, sr.sprite.name)) continue;
             if (z <= -FrontBandZ)
             {
                 var ob = sr.bounds;
@@ -304,6 +305,105 @@ internal static partial class PropSim
             reply($"FRONT {(sr && sr.sprite ? sr.sprite.name : "?")} z={(sr ? sr.transform.position.z : 0f):0.####} box={q.x:0.##},{q.y:0.##}..{q.z:0.##},{q.w:0.##} gate={gate:0.###} cols={cols} plate={a.S != null} shown={a.S?.Shown} lvl={a.S?.Lvl:0.###} failed={a.Failed} off={a.Off} order={(sr ? sr.sortingOrder : 0)}");
         }
         reply($"OK props front arts={n} over={FrontOver.Count} shown={shown} failed={failed}");
+    }
+
+    // 確認用 (bridge `props tasks`): タスクなどの端末 (名前が Console で終わる部品) ごとに、絵が水にどう沈むか。
+    // plate = 手前の絵の板 / furn = 家具の板 / DRY = 床マスクで抜かれて水より手前なのに板が無い (沈まない) /
+    // FLAT = 水より奥で床マスクが床 (水が絵の上に平らに乗る) / under = 水より奥 / art = 自分の絵が無い (部屋の絵に描き込み)。
+    // 範囲の床と壁の面の割合も出す。all でなければ沈み方のおかしい物 (front-other まで) だけ。
+    // band = 端末に限らず、帯より奥なのに水のタイルより手前にある絵の一覧
+    private static readonly string[] TaskRank = { "DRY", "FLAT", "plate-failed", "plate-unmade", "front-other", "under", "furn", "plate", "art" };
+    private static void TaskReport(bool all, bool band, Action<string> reply)
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship || !DamageMap.Ready()) { reply("ERR props tasks no ship"); return; }
+        if (_frontGen != GameClock.ShipGen) FrontCollect();
+        string shipName = ship.name.Replace("(Clone)", "");
+        var roomIds = new HashSet<int>();
+        foreach (var r in DamageMap.RoomArts) if (r) roomIds.Add(r.GetInstanceID());
+        var front = new Dictionary<int, FrontArt>();
+        foreach (var a in FrontArts) if (a.Sr) front[a.Sr.GetInstanceID()] = a;
+        var furn = new HashSet<int>();
+        foreach (var p in Furnished) if (p.Tr) furn.Add(p.Tr.GetInstanceID());
+        if (band)
+        {
+            // 帯 (|z| < 0.1) より奥なのに水のタイルより手前にある絵 (床マスクの手前の絵にも板にも入らない)。Screens/taskband_<船>.txt へ。
+            // walk = 絵の範囲のうち歩ける所の割合 (床に貼った絵はほぼ 1・当たり判定のある物や壁の絵は低い)
+            int nb = 0;
+            var tb = new System.Text.StringBuilder();
+            SolidMap.Ensure();
+            foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
+            {
+                if (!FloorMask.CoverArt(sr, shipName, roomIds)) continue;
+                float z = sr.transform.position.z;
+                if (z < FrontBandZ || furn.Contains(sr.transform.GetInstanceID())) continue;
+                var b = sr.bounds;
+                Vector3 mn = b.min, mx = b.max;
+                float water = DamageMap.FrontZ(new Vector2((mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f));
+                water -= 0.0004f * DamageMap.ZScale(water);
+                if (z >= water) continue;
+                nb++;
+                var (fl, fa) = FloorMask.Share(mn.x, mn.y, mx.x, mx.y);
+                int walk = 0;
+                for (int i = 0; i < 8; i++)
+                    for (int j = 0; j < 8; j++)
+                        if (!SolidMap.Solid(new Vector2(mn.x + (i + 0.5f) / 8f * (mx.x - mn.x), mn.y + (j + 0.5f) / 8f * (mx.y - mn.y)))) walk++;
+                tb.Append($"BAND {sr.sprite.name} path={PathOf(sr.transform, ship.transform)} walk={walk / 64f:0.00} z={z:0.####} water={water:0.####} box={mn.x:0.##},{mn.y:0.##}..{mx.x:0.##},{mx.y:0.##} floor={fl:0.00} face={fa:0.00} console={(sr.GetComponentInParent<global::Console>() || sr.GetComponentInParent<SystemConsole>() ? 1 : 0)}\n");
+            }
+            string path = System.IO.Path.Combine(MoreRolesPlus.Bridge.TestBridge.ScreensDir, $"taskband_{shipName}.txt");
+            System.IO.File.WriteAllText(path, tb.ToString());
+            reply($"OK props tasks band n={nb} -> {path}");
+            return;
+        }
+        var seen = new HashSet<int>();
+        var counts = new Dictionary<string, int>();
+        foreach (var mb in ship.GetComponentsInChildren<MonoBehaviour>(true))
+        {
+            if (!mb) continue;
+            string type = mb.GetIl2CppType().Name;
+            if (!type.EndsWith("Console", StringComparison.Ordinal) || !seen.Add(mb.gameObject.GetInstanceID())) continue;
+            var pos = mb.transform.position;
+            var sb = new System.Text.StringBuilder();
+            sb.Append("TASK ").Append(type).Append(' ').Append(mb.name).Append(" at=").Append(pos.x.ToString("0.##")).Append(',').Append(pos.y.ToString("0.##"));
+            string worst = "art";
+            foreach (var sr in mb.GetComponentsInChildren<SpriteRenderer>(false))
+            {
+                if (!sr || !sr.enabled || !sr.sprite || sr.name.StartsWith("Mrp", StringComparison.Ordinal)) continue;
+                var b = sr.bounds;
+                Vector3 mn = b.min, mx = b.max;
+                float z = sr.transform.position.z;
+                // 水のタイルは部屋の絵の 0.0004 手前 (WaterArt のタイルの置き方と同じ)
+                float water = DamageMap.FrontZ(new Vector2((mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f));
+                water -= 0.0004f * DamageMap.ZScale(water);
+                var (fl, fa) = FloorMask.Share(mn.x, mn.y, mx.x, mx.y);
+                string st;
+                if (front.TryGetValue(sr.GetInstanceID(), out var a)) st = a.Failed ? "plate-failed" : a.ColY == null ? "plate-unmade" : "plate";
+                else if (furn.Contains(sr.transform.GetInstanceID())) st = "furn";
+                else if (z >= water) st = fl > 0.5f ? "FLAT" : "under";
+                else if (FloorMask.CoverArt(sr, shipName, roomIds)) st = "DRY";
+                else st = "front-other";
+                if (Array.IndexOf(TaskRank, st) < Array.IndexOf(TaskRank, worst)) worst = st;
+                sb.Append(" | ").Append(sr.sprite.name).Append(" z=").Append(z.ToString("0.####")).Append(" water=").Append(water.ToString("0.####"))
+                  .Append(' ').Append(st).Append(" floor=").Append(fl.ToString("0.00")).Append(" face=").Append(fa.ToString("0.00"));
+            }
+            if (worst == "art")
+            {
+                var (fl, fa) = FloorMask.Share(pos.x - 0.3f, pos.y - 0.3f, pos.x + 0.3f, pos.y + 0.3f);
+                sb.Append(" | (no own art) floor=").Append(fl.ToString("0.00")).Append(" face=").Append(fa.ToString("0.00"));
+            }
+            counts[worst] = counts.TryGetValue(worst, out int c) ? c + 1 : 1;
+            if (all || Array.IndexOf(TaskRank, worst) <= Array.IndexOf(TaskRank, "front-other")) reply(sb.Append(" => ").Append(worst).ToString());
+        }
+        var sum = new System.Text.StringBuilder("OK props tasks");
+        foreach (var kv in counts) sum.Append(' ').Append(kv.Key).Append('=').Append(kv.Value);
+        reply(sum.ToString());
+    }
+
+    private static string PathOf(Transform t, Transform root)
+    {
+        string p = t.name;
+        for (var q = t.parent; q && q != root; q = q.parent) p = q.name + "/" + p;
+        return p.Replace(' ', '_');
     }
 
     private static unsafe void FrontUpload(Texture2D tex, byte[] px)

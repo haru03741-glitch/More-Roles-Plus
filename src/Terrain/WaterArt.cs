@@ -1533,6 +1533,8 @@ internal static class WaterArt
         }
         // 動く床 (昇降機の台) は部屋の絵より手前にあるので、台に載った水が台の下に隠れないよう台より手前へ
         front = WaterSim.PlatformFront(wx, wy, size, front);
+        // 部屋の絵より手前にある歩ける床の絵 (ドロップシップの坂) は水のすぐ奥へ移してあるので、それより手前へ
+        front = FloorCovers.Front(wx, wy, size, front);
         EP(3);
         float zs = DamageMap.ZScale(front);
         // 床の上・足跡 (−0.001) と波紋より奥

@@ -521,8 +521,8 @@ internal static class FloorMask
     // 床の絵が z 1〜4 にある船 (tools/make-floor-mask.py の BACK_Z_SHIP と同じ表)。他は季節の飾り (z 1.07) を除くため 4
     private static float BackZ(string ship) => ship is "PolusShip" or "FungleShip" ? 0.5f : 4f;
 
-    // z に関わらず床の層に入れる部屋の絵 (ポーラスの武器庫と通信室は床と壁が 1 枚の絵で、クルーと同じ奥行きにある)
-    internal static bool AlwaysFloor(string sprite) => sprite is "room_weapon" or "room_broadcast";
+    // z に関わらず床の層に入れる絵 (ポーラスの武器庫と通信室は床と壁が 1 枚の絵で、クルーと同じ奥行きにある・ドロップシップの坂は FloorCovers)
+    internal static bool AlwaysFloor(string ship, string sprite) => sprite is "room_weapon" or "room_broadcast" || FloorCovers.Is(ship, sprite);
 
     // 床の上に置かれた動かない絵 (家具・木・岩・屋外の茂みの塊・床より手前の部屋の絵) か。floorexport の covers (道具が床から抜く絵) と、
     // 手前の絵の水面の板 (PropSim) が同じ選び方を使う (ずれると、床から抜いたのに板が無い絵の上に影の中の水が乗る)。
@@ -561,6 +561,25 @@ internal static class FloorMask
         return float.NaN;
     }
 
+    // 確認用: 範囲 (x0, y0)-(x1, y1) のうち床の画素と壁の面の画素の割合 (8×8 点)。マスクが無ければ NaN
+    internal static (float Floor, float Face) Share(float x0, float y0, float x1, float y1)
+    {
+        Ensure();
+        if (_bits == null) return (float.NaN, float.NaN);
+        int floor = 0, face = 0, n = 0;
+        for (int i = 0; i < 8; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                int mx = (int)MathF.Floor((x0 + (i + 0.5f) / 8f * (x1 - x0) - _ox) * _ppu), my = (int)MathF.Floor((y0 + (j + 0.5f) / 8f * (y1 - y0) - _oy) * _ppu);
+                if (mx < 0 || mx >= _w || my < 0 || my >= _h) continue;
+                int k = my * _w + mx;
+                n++;
+                if ((_bits[k >> 3] & (1 << (k & 7))) != 0) floor++;
+                else if (_face != null && (_face[k >> 3] & (1 << (k & 7))) != 0) face++;
+            }
+        return n == 0 ? (float.NaN, float.NaN) : ((float)floor / n, (float)face / n);
+    }
+
     private static bool IsFloor(int mx, int my)
     {
         if (my < 0 || my >= _h) return false;
@@ -577,7 +596,7 @@ internal static class FloorMask
             var sp = sr ? sr.sprite : null;
             if (!sp) continue;
             float z = sr.transform.position.z;
-            if ((z < back && !AlwaysFloor(sp.name)) || z >= SkyZ) continue;
+            if ((z < back && !AlwaysFloor(ship, sp.name)) || z >= SkyZ) continue;
             // コマ送りの絵はテクスチャ (シート) ごと替わることがある
             if (sr.GetComponent<PowerTools.SpriteAnim>() || sr.GetComponent<Animator>()) continue;
             var tex = sp.texture;
@@ -650,6 +669,7 @@ internal static class FloorMask
         {
             var ship = ShipStatus.Instance;
             if (!ship || !DamageMap.Ready() || !SolidMap.Ensure()) { reply("ERR floorexport not ready"); return; }
+            FloorCovers.Ensure();
             var sb = new StringBuilder("{\n  \"ship\": \"").Append(ship.name).Append("\",\n  \"sig\": ").Append(Signature(ship.name.Replace("(Clone)", ""))).Append(",\n  \"rooms\": [\n");
             int n = 0, skipped = 0;
             var arts = DamageMap.RoomArts;
