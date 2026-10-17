@@ -151,6 +151,7 @@ internal static partial class PropSim
             s.Sr.SetPropertyBlock(s.Block);
             if (s.Shadow) s.Shadow.SetPropertyBlock(s.Block);
         }
+        DoorSunk(now);
     }
 
     // 影の中: 板は影の板の裏になるので、影の板の手前に写しを置く (水の写しは家具の形を抜いてあるので、その上に沈み具合を描く)。
@@ -350,30 +351,49 @@ internal static partial class PropSim
             // 横に並べて描く絵 (手すりなど) は同じ並べ方で重ねる
             mode = src.drawMode;
             if (mode != SpriteDrawMode.Simple) size = src.size;
-            // 床の線 = 網目の一番下の頂点 (網目は絵の不透明な所に沿う)。上下反転の絵は v の上端が下
-            var tex = sp.texture;
-            float sy = p.Tr.lossyScale.y;
-            vPerUnit = sp.pixelsPerUnit / (Math.Max(MathF.Abs(sy), 1e-3f) * tex.height);
-            var vs = sp.vertices;
-            var uv = sp.uv;
-            float lowY = float.MaxValue, highY = float.MinValue, vLow = 0f, vHigh = 0f;
-            for (int i = 0; i < vs.Length && i < uv.Length; i++)
-            {
-                float y = vs[i].y;
-                if (y < lowY) { lowY = y; vLow = uv[i].y; }
-                if (y > highY) { highY = y; vHigh = uv[i].y; }
-            }
-            bool down = flipY != sy < 0f;
-            vBase = down ? vHigh : vLow;
-            if (down) vPerUnit = -vPerUnit;
-            baseCol = MeshBase(uv, sp.triangles, down, out baseUv);
+            baseCol = SpriteFloorLine(sp, flipY, p.Tr.lossyScale.y, out vPerUnit, out vBase, out baseUv);
         }
+        SunkPlate(s, parent, sp, local, scale, flipX, flipY, mode, size, vPerUnit, vBase, baseCol, baseUv);
+        s.Block.SetFloat(SilRId, p.Lift != null ? 1f : 0f);
+        if (p.Upright) s.Block.SetFloat(RiseId, 1f);
+        if (p.Deep) s.Block.SetFloat(FlatTopId, 1f);
+        if (art != null && art.Tex) SetRoomTest(s.Block, p.Lift, art);
+        s.Go.SetActive(false);
+        return s;
+    }
+
+    // 絵そのものを型にする板の床の線 = 網目の一番下の頂点 (網目は絵の不透明な所に沿う)。上下反転の絵は v の上端が下。sy = 絵の縦の拡大
+    private static byte[] SpriteFloorLine(Sprite sp, bool flipY, float sy, out float vPerUnit, out float vBase, out Vector4 baseUv)
+    {
+        var tex = sp.texture;
+        vPerUnit = sp.pixelsPerUnit / (Math.Max(MathF.Abs(sy), 1e-3f) * tex.height);
+        var vs = sp.vertices;
+        var uv = sp.uv;
+        float lowY = float.MaxValue, highY = float.MinValue, vLow = 0f, vHigh = 0f;
+        for (int i = 0; i < vs.Length && i < uv.Length; i++)
+        {
+            float y = vs[i].y;
+            if (y < lowY) { lowY = y; vLow = uv[i].y; }
+            if (y > highY) { highY = y; vHigh = uv[i].y; }
+        }
+        bool down = flipY != sy < 0f;
+        vBase = down ? vHigh : vLow;
+        if (down) vPerUnit = -vPerUnit;
+        return MeshBase(uv, sp.triangles, down, out baseUv);
+    }
+
+    // 板の GameObject と、型・床の線のブロックを作る (隠したまま)
+    private static void SunkPlate(Sunk s, Transform parent, Sprite sp, Vector3 local, Vector3 scale, bool flipX, bool flipY, SpriteDrawMode mode, Vector2 size,
+        float vPerUnit, float vBase, byte[] baseCol, Vector4 baseUv)
+    {
         if (!_sunkMat)
         {
             _sunkMat = new Material(MrpBundle.WadeMaterial) { name = "MrpSunk", hideFlags = HideFlags.DontUnloadUnusedAsset };
             _sunkMat.SetFloat("_Mode", 3f);
         }
         var go = new GameObject("MrpSunk") { layer = parent.gameObject.layer };
+        s.Go = go; // 途中で失敗しても片付けで消せるよう先に持つ
+        go.SetActive(false);
         go.transform.SetParent(parent, false);
         go.transform.localPosition = local;
         go.transform.localScale = scale;
@@ -383,15 +403,11 @@ internal static partial class PropSim
         sr.flipX = flipX;
         sr.flipY = flipY;
         sr.sharedMaterial = _sunkMat;
-        s.Go = go;
         s.Sr = sr;
         s.Block = new MaterialPropertyBlock();
         // SpriteRenderer にブロックを付けるとスプライトの絵が外れる (シェーダの既定の黒になり、型が無くて何も描かれない) ので、絵もブロックで渡す
         s.Block.SetTexture(MainTexId, sp.texture);
-        s.Block.SetFloat(SilRId, p.Lift != null ? 1f : 0f);
         s.Block.SetFloat(VPerUnitId, vPerUnit);
-        if (p.Upright) s.Block.SetFloat(RiseId, 1f);
-        if (p.Deep) s.Block.SetFloat(FlatTopId, 1f);
         s.Block.SetFloat(VBaseId, vBase);
         if (baseCol != null)
         {
@@ -405,9 +421,6 @@ internal static partial class PropSim
             s.Range = baseUv;
         }
         s.Block.SetFloat(BaseOnId, baseCol != null ? 1f : 0f);
-        if (art != null && art.Tex) SetRoomTest(s.Block, p.Lift, art);
-        go.SetActive(false);
-        return s;
     }
 
     // 持ち上げた家具の型は当たり判定を広げてあり、広げた所の多くは床の画素 (切り抜きの絵は描かない所)。そこに板を描くと
@@ -628,6 +641,7 @@ internal static partial class PropSim
     {
         foreach (var p in Furnished)
             if (p.Sk != null && p.Sk.Shown) { if (p.Sk.Go) p.Sk.Go.SetActive(false); p.Sk.Shown = false; }
+        DoorSunkHideAll();
         _sunkAny = false;
     }
 
@@ -643,6 +657,7 @@ internal static partial class PropSim
             if (s.Occ) UnityEngine.Object.Destroy(s.Occ);
             p.Sk = null;
         }
+        DoorSunkClear();
         _sunkAny = false;
     }
 }

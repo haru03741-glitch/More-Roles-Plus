@@ -1329,7 +1329,7 @@ internal static class WaterArt
 
     // 扉は視界の中で水より手前に描かれる (開いた扉も枠の両側が残る)。動く物なので床マスクに焼かず、抜き型に塗る。
     // 開け閉めはアニメーションの初めに記録されるので、絵が落ち着いた頃に掛かるタイルだけ作り直す
-    private const long DoorSettleMs = 700;
+    internal const long DoorSettleMs = 700;
     private static SpriteRenderer[][] _doorSrs = Array.Empty<SpriteRenderer[]>();
     private static int _doorSrGen = -1, _doorVer;
     private static ulong _doorSeen;
@@ -1353,6 +1353,13 @@ internal static class WaterArt
         _doorVer = Decompression.DoorVersion;
         _doorSeen = Decompression.LatestDoorBits;
         DoorRedo.Clear();
+    }
+
+    // 扉 i の絵 (船が替わったら作り直す)
+    internal static SpriteRenderer[] DoorRenderers(int i)
+    {
+        if (_doorSrGen != GameClock.ShipGen) ListDoorSrs();
+        return _doorSrGen == GameClock.ShipGen && i < _doorSrs.Length ? _doorSrs[i] : Array.Empty<SpriteRenderer>();
     }
 
     private static void DoorFronts(Rect r, float z, List<SpriteRenderer> into)
