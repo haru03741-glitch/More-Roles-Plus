@@ -287,8 +287,7 @@ internal static class BreakPieces
         float front = DamageMap.FrontZ(center);
         tr.position = new Vector3(center.x, center.y, front - PieceZ * DamageMap.ZScale(front));
         // 塊の 1 画素 = 部屋の絵の 1 画素 (反転は負の倍率で持つ)
-        float ps = DamageMap.ShipTransform ? DamageMap.ShipTransform.lossyScale.x : 1f;
-        tr.localScale = new Vector3(room.Dx * room.Ppu / ps, room.Dy * room.Ppu / ps, 1f);
+        tr.localScale = DamageMap.ShipLocalScale(room.Dx * room.Ppu, room.Dy * room.Ppu, 1f);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
         sr.sharedMaterial = mat;

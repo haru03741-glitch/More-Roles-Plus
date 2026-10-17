@@ -36,15 +36,19 @@ internal static partial class MapNotes
         _voidB = _lowB = _higherB = _highB = Array.Empty<float>();
         if (!ship) return;
         // 派生の型から先に調べる (どのマップも ShipStatus を継ぐ)
-        if (ship.TryCast<AirshipStatus>() != null) { Load(AirshipKeep, AirshipFree, AirshipLow, AirshipHigh, AirshipHigher, AirshipVoid); _air = ToRects(AirshipAir); }
-        else if (ship.TryCast<FungleShipStatus>() != null) { Load(FungleKeep, FungleFree, FungleLow, FungleHigh, FungleHigher, FungleVoid); _air = ToRects(FungleAir); }
-        else if (ship.TryCast<PolusShipStatus>() != null) { Load(PolusKeep, PolusFree, PolusLow, PolusHigh, PolusHigher, PolusVoid); _air = ToRects(PolusAir); }
-        else if (ship.TryCast<MiraShipStatus>() != null) { Load(MiraKeep, MiraFree, MiraLow, MiraHigh, MiraHigher, MiraVoid); _air = ToRects(MiraAir); }
-        else if (ship.Type == ShipStatus.MapType.Ship && ship.transform.lossyScale.x > 0f) { Load(SkeldKeep, SkeldFree, SkeldLow, SkeldHigh, SkeldHigher, SkeldVoid); _air = ToRects(SkeldAir); } // 左右反転のスケルドは座標が合わないので使わない
+        if (ship.TryCast<AirshipStatus>() != null) { Load(AirshipKeep, AirshipFree, AirshipLow, AirshipHigh, AirshipHigher, AirshipVoid); _air = ToRects(Side(AirshipAir)); }
+        else if (ship.TryCast<FungleShipStatus>() != null) { Load(FungleKeep, FungleFree, FungleLow, FungleHigh, FungleHigher, FungleVoid); _air = ToRects(Side(FungleAir)); }
+        else if (ship.TryCast<PolusShipStatus>() != null) { Load(PolusKeep, PolusFree, PolusLow, PolusHigh, PolusHigher, PolusVoid); _air = ToRects(Side(PolusAir)); }
+        else if (ship.TryCast<MiraShipStatus>() != null) { Load(MiraKeep, MiraFree, MiraLow, MiraHigh, MiraHigher, MiraVoid); _air = ToRects(Side(MiraAir)); }
+        else if (ship.Type == ShipStatus.MapType.Ship && (MapFlip.Flipped || ship.transform.lossyScale.x > 0f)) { Load(SkeldKeep, SkeldFree, SkeldLow, SkeldHigh, SkeldHigher, SkeldVoid); _air = ToRects(Side(SkeldAir)); } // 本編の左右反転のスケルド (dlekS) は座標が合わないので使わない
     }
+
+    // 表は反転前の船の座標。左右反転の船では鏡に映して使う
+    private static float[] Side(float[] v) => MapFlip.Flipped ? MapFlip.MirrorBoxes(v) : v;
 
     private static void Load(float[] keep, float[] free, float[] low, float[] high, float[] higher, float[] voids)
     {
+        keep = Side(keep); free = Side(free); low = Side(low); high = Side(high); higher = Side(higher); voids = Side(voids);
         _void = ToRects(voids);
         _keep = ToRects(keep);
         _free = ToRects(free);

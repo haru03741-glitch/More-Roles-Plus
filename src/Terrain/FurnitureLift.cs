@@ -37,10 +37,9 @@ internal static class FurnitureLift
     private static Floor? FloorFor(string room, string name)
     {
         string key = room + "/" + name;
-        if (FurnitureFloors.Manual.TryGetValue(key, out var f)) return f;
-        if (FurnitureFloors.Table.TryGetValue(key, out f)) return f;
-        if (FurnitureFloors.Table.TryGetValue(room, out f)) return f;
-        return null;
+        if (!FurnitureFloors.Manual.TryGetValue(key, out var f) && !FurnitureFloors.Table.TryGetValue(key, out f) && !FurnitureFloors.Table.TryGetValue(room, out f)) return null;
+        // 広げる幅は世界の左右。左右反転の船では入れ替える (床の測り方は部屋の絵の画素なので絵と一緒に裏返る)
+        return MapFlip.Flipped ? new Floor(f.X, f.Y, f.Tx, f.Ty, f.PadR, f.PadL, f.PadB, f.PadT) : f;
     }
 
     // 切り抜いた家具と跡の床 (影の中の焼き込みが上から描き込む)・作った絵と形 (船が替わる時に片付ける)
@@ -277,7 +276,9 @@ internal static class FurnitureLift
     // きれいな床の左下 (世界) と繰り返しの幅 (世界単位) = シェーダの _FloorPatch
     internal static Vector4 FloorPatch(Floor f, BreakPieces.Room room)
     {
-        float px = room.W0x + (room.TexRect.xMin + f.X) * room.Dx, py = room.W0y + (room.TexRect.yMin + f.Y) * room.Dy;
+        // 返すのは測る床の世界での左下。裏返った絵 (左右反転の船) は画素の並びが世界と逆向きなので、反対の端の画素の外側の縁が左下になる
+        float ex = room.Dx < 0f ? Math.Max(f.Tx, 1f) : 0f, ey = room.Dy < 0f ? Math.Max(f.Ty, 1f) : 0f;
+        float px = room.W0x + (room.TexRect.xMin + f.X + ex) * room.Dx, py = room.W0y + (room.TexRect.yMin + f.Y + ey) * room.Dy;
         return new Vector4(px, py, f.Tx * Math.Abs(room.Dx), f.Ty * Math.Abs(room.Dy));
     }
 

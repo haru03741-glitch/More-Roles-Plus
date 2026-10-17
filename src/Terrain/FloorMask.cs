@@ -75,7 +75,7 @@ internal static class FloorMask
             // 部屋の絵が作った時と違う (ゲームの更新で絵が変わった) なら使わない
             uint now = Signature(name);
             if (sig != now) { Stats = $"{name}: art changed {sig:x8}/{now:x8}"; return; }
-            if (!SolidMap.Ensure() || MathF.Abs(SolidMap.Origin.x - ox) > OriginTolerance || MathF.Abs(SolidMap.Origin.y - oy) > OriginTolerance)
+            if (!SolidMap.Ensure() || MathF.Abs(SolidMap.BakedOrigin.x - ox) > OriginTolerance || MathF.Abs(SolidMap.BakedOrigin.y - oy) > OriginTolerance)
             {
                 Stats = $"{name}: origin mismatch";
                 return;
@@ -84,6 +84,12 @@ internal static class FloorMask
             var bits = new byte[(w * h + 7) / 8];
             var face = new byte[bits.Length];
             if (!Inflate(br.ReadBytes(lenBits), bits) || !Inflate(br.ReadBytes(lenFace), face)) { Stats = $"{name}: short"; return; }
+            if (MapFlip.Flipped)
+            {
+                MapFlip.FlipBitRows(bits, w, h);
+                MapFlip.FlipBitRows(face, w, h);
+                ox = MapFlip.GridOrigin(ox, w, ppu);
+            }
             _bits = bits;
             _face = face;
             _w = w; _h = h; _ox = ox; _oy = oy; _ppu = ppu;

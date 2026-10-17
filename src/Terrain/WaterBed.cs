@@ -61,8 +61,10 @@ internal static partial class WaterSim
             for (int y = 0; y < _h; y++)
             for (int x = 0; x < _w; x++)
             {
-                // 升の真ん中 (1/16 単位の 2 倍で整数にする)
-                int px2 = (int)MathF.Round((_org.x + (x + 0.5f) * _cell) * 32f), py2 = (int)MathF.Round((_org.y + (y + 0.5f) * _cell) * 32f);
+                // 升の真ん中 (1/16 単位の 2 倍で整数にする)。表は反転前の船の物なので、左右反転の船では鏡の位置を引く
+                float cx = _org.x + (x + 0.5f) * _cell;
+                if (MapFlip.Flipped) cx = MapFlip.Mirror(cx);
+                int px2 = (int)MathF.Round(cx * 32f), py2 = (int)MathF.Round((_org.y + (y + 0.5f) * _cell) * 32f);
                 int bx = FloorDiv(px2 - ox16 * 2, c16 * 2), by = FloorDiv(py2 - oy16 * 2, c16 * 2);
                 if (bx < 0 || by < 0 || bx >= bw || by >= bh) continue;
                 sbyte b = (sbyte)v[by * bw + bx];

@@ -105,6 +105,26 @@ internal static class BuiltinCommands
             reply($"OK walk start -> {TestBridge.F(x)} {TestBridge.F(y)}");
         });
 
+        TestBridge.Register("flip", "[on|off|probe|map|platform] 次に作る船を左右反転するか (省略で今の状態)・probe = 昇降床とはしごの位置・map = 地図を開く・platform = 昇降床に乗る", (args, reply) =>
+        {
+            if (args == "on") MapFlip.Next = true;
+            else if (args == "off") MapFlip.Next = false;
+            else if (args == "probe")
+            {
+                foreach (var pf in UnityEngine.Object.FindObjectsOfType<MovingPlatformBehaviour>())
+                    reply($"PLATFORM pos={pf.transform.position} local={pf.transform.localPosition} L={pf.LeftPosition} R={pf.RightPosition} LU={pf.LeftUsePosition} RU={pf.RightUsePosition}");
+                foreach (var ld in UnityEngine.Object.FindObjectsOfType<Ladder>())
+                    reply($"LADDER {ld.Id} top={ld.IsTop} pos={ld.transform.position}");
+            }
+            else if (args == "map") Vanilla.Hud?.ToggleMapVisible(new MapOptions { Mode = MapOptions.Modes.Normal });
+            else if (args == "platform")
+            {
+                var pf = UnityEngine.Object.FindObjectOfType<MovingPlatformBehaviour>();
+                if (pf && PlayerControl.LocalPlayer) pf.Use(PlayerControl.LocalPlayer);
+            }
+            reply($"OK flip next={MapFlip.Next} now={MapFlip.Flipped}");
+        });
+
         TestBridge.Register("freeplay", "[マップ番号 0=Skeld 1=Mira 2=Polus 4=Airship 5=Fungle] メニューからフリープレイを始める", (args, reply) =>
         {
             byte map = byte.TryParse(args, out byte m) ? m : (byte)0;

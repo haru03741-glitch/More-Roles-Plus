@@ -318,7 +318,7 @@ internal static class ShadowPatch
                 var go = new GameObject("MrpShadowPatch") { layer = PatchLayer };
                 go.transform.SetParent(DamageMap.ShipTransform, true); // 焼き直すたびに作り直すので DamageMap の片付けの一覧には入れない
                 go.transform.position = new Vector3(center.x, center.y, near - 0.005f);
-                go.transform.localScale = Vector3.one / DamageMap.ShipTransform.lossyScale.x;
+                go.transform.localScale = DamageMap.ShipLocalScale(1f, 1f, 1f);
                 var sr = go.AddComponent<SpriteRenderer>();
                 sr.sprite = sp;
                 Tiles[key] = new Patch { Go = go, Tex = tex, Sp = sp, Order = _order++ };
@@ -328,7 +328,7 @@ internal static class ShadowPatch
                 st = Stage(4, st);
                 if (spare != null) patch.Go.SetActive(true);
                 patch.Go.transform.position = new Vector3(center.x, center.y, near - 0.005f);
-                patch.Go.transform.localScale = Vector3.one * (Tile / DamageMap.ShipTransform.lossyScale.x);
+                patch.Go.transform.localScale = DamageMap.ShipLocalScale(Tile, Tile, Tile);
                 patch.Order = _order++;
             }
             BakedTotal++;

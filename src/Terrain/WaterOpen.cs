@@ -20,6 +20,15 @@ internal static partial class WaterSim
     private static int _bitsOx16, _bitsOy16, _bitsW, _bitsH, _bitsPpu;
     private static string _bitsErr;
 
+    // 焼いた時の SolidMap の升の並び (原点・幅・高さ)。左右反転の船はこの並びを鏡に映して使う
+    internal static bool BakedGrid(string name, out float ox, out float oy, out int w, out int h, out int ppu)
+    {
+        LoadWetBits(name);
+        ox = _bitsOx16 / 16f; oy = _bitsOy16 / 16f;
+        w = _bitsW; h = _bitsH; ppu = _bitsPpu;
+        return _bits != null;
+    }
+
     private static void LoadWetBits(string name)
     {
         if (_bitsName == name) return;
@@ -61,18 +70,21 @@ internal static partial class WaterSim
         LoadWetBits(name);
         if (_bits == null) { WetStats = $"{name}: {_bitsErr}"; return; }
         // 升の並び (原点・大きさ・細かさ) が SolidMap と同じ時だけ使う
-        int mx16 = (int)MathF.Round(SolidMap.Origin.x * 16f), my16 = (int)MathF.Round(SolidMap.Origin.y * 16f);
+        int mx16 = (int)MathF.Round(SolidMap.BakedOrigin.x * 16f), my16 = (int)MathF.Round(SolidMap.BakedOrigin.y * 16f);
         if (_bitsW != SolidMap.W || _bitsH != SolidMap.H || _bitsPpu != (int)MathF.Round(SolidMap.Ppu) || _bitsOx16 != mx16 || _bitsOy16 != my16)
         { WetStats = $"{name}: grid {_bitsW}x{_bitsH}@{_bitsOx16},{_bitsOy16} != {SolidMap.W}x{SolidMap.H}@{mx16},{my16}"; return; }
         // 歩ける升と船の外は除く (水が動く前の爆破で歩ける所が変わっているので、升を作る時に濾す)
         int n = _bitsW * _bitsH;
         var wet = new byte[n];
-        int cnt = WetFilterNative(_bits, wet, n);
+        // 読んだ格子は船の名前ごとに持ち回すので、左右反転の船では写しを裏返す (列の対応は SolidMap.MirrorSpan)
+        var bits = _bits;
+        if (MapFlip.Flipped) bits = MapFlip.MirrorBitRows(_bits, _bitsW, _bitsH, SolidMap.MirrorSpan);
+        int cnt = WetFilterNative(bits, wet, n);
         if (Native.MrpNative.Verify)
         {
             var cs = new byte[n];
             VerifyLevels++;
-            if (WetFilterCs(_bits, cs, n) != cnt) VerifyLevelDiff++;
+            if (WetFilterCs(bits, cs, n) != cnt) VerifyLevelDiff++;
             for (int k = 0; k < n; k++) if (cs[k] != wet[k]) VerifyLevelDiff++;
         }
         _wet = wet;

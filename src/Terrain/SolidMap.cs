@@ -38,6 +38,10 @@ internal static class SolidMap
     private static int _w, _h;
     private static Vector2 _origin;
     internal static Vector2 Origin => _origin;
+    // 反転前の船で焼いた格子と比べる時の原点 (左右反転の船では反転前の船の原点)
+    internal static Vector2 BakedOrigin => MapFlip.Flipped ? new Vector2(MapFlip.Mirror(_origin.x) - MirrorSpan / _ppu, _origin.y) : _origin;
+    // 左右反転の船で、反転前の升の列 c (c < MirrorSpan) は列 MirrorSpan - 1 - c に来る (右端の端数の列は捨てる・余白の中)
+    internal static int MirrorSpan => _w - _w % WaterSim.Sub;
     internal static int W => _w;
     internal static int H => _h;
     internal static float Ppu => _ppu;
@@ -390,6 +394,14 @@ internal static class SolidMap
         _origin = new Vector2(MathF.Floor(minX - margin), MathF.Floor(minY - margin));
         _w = (int)MathF.Ceiling((maxX + margin - _origin.x) * _ppu);
         _h = (int)MathF.Ceiling((maxY + margin - _origin.y) * _ppu);
+        // 左右反転の船は、反転前の船で焼いた升の並びを鏡に映した並びにする (焼いた型を行を逆にして使えるように。
+        // 部屋の絵の範囲は損傷マスクの画素へ丸めてあって左右で対称でないので、ここで測った範囲からは作らない)。
+        // 水の升 (Sub 升ずつ) の区切りも鏡に合うよう、反転前の水の升に入る幅 (MirrorSpan) の右端を鏡の原点にする
+        if (MapFlip.Flipped && WaterSim.BakedGrid(shipName, out float bx, out float by, out int bw, out int bh, out int bppu) && bppu == (int)MathF.Round(_ppu))
+        {
+            _w = bw; _h = bh;
+            _origin = new Vector2(MapFlip.Mirror(bx + MirrorSpan / _ppu), by);
+        }
         int n = _w * _h;
         var barrier = new byte[n];
         for (int i = 0; i + 1 < all.Count; i += 2) Raster(barrier, _w, _h, 0, 0, all[i], all[i + 1]);

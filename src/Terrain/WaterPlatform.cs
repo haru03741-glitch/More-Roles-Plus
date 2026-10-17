@@ -63,12 +63,17 @@ internal static partial class WaterSim
         return air ? air.GapPlatform : null;
     }
 
+    // 台の位置は世界の左右で数える (左 = 0・右 = _pfD)。左右反転の船では本編の「左の位置」が世界の右になる
+    private static float WorldLeftX(MovingPlatformBehaviour pf) => MapFlip.Flipped ? pf.RightPosition.x : pf.LeftPosition.x;
+    private static float WorldRightX(MovingPlatformBehaviour pf) => MapFlip.Flipped ? pf.LeftPosition.x : pf.RightPosition.x;
+    private static bool AtWorldLeft(MovingPlatformBehaviour pf) => pf.IsLeft != MapFlip.Flipped;
+
     // 台の左右の位置を升の数で (本編の台の今の位置)。左 = 0・右 = _pfD
     private static int PlatformCellsNow(MovingPlatformBehaviour pf)
     {
-        float span = pf.RightPosition.x - pf.LeftPosition.x;
+        float left = WorldLeftX(pf), span = WorldRightX(pf) - left;
         if (span == 0f) return 0;
-        float f = (pf.transform.localPosition.x - pf.LeftPosition.x) / span;
+        float f = (pf.transform.localPosition.x - left) / span;
         return Math.Clamp((int)MathF.Round(f * _pfD), 0, _pfD);
     }
 
@@ -91,18 +96,18 @@ internal static partial class WaterSim
         var pf = _pfObj;
         if (!_platSeen)
         {
-            // 最初の位置: 記録が無ければ全員が左とみなす。右に居る時だけ、客の船が出そろうのを待って (PlatformSettle 刻み後) 記録する
-            // (客の船が出る前に届いた記録は、客が船の切り替わりで消してしまう)
+            // 最初の位置: 記録が無ければ全員が本編の「左の位置」(StartPos) とみなす。違う所に居る時だけ、客の船が出そろうのを待って
+            // (PlatformSettle 刻み後) 記録する (客の船が出る前に届いた記録は、客が船の切り替わりで消してしまう)
             if (_platSettle == 0) { _platSettle = now + PlatformSettle; return; }
             if (now < _platSettle) return;
             if (!pf) { _pfObj = null; _pfNone = true; return; }
             _platSeen = true;
-            _platLeftSeen = pf.IsLeft;
-            if (!_platLeftSeen) AddPlatform(now, 2, FarRight, true);
+            _platLeftSeen = AtWorldLeft(pf);
+            if (!pf.IsLeft) AddPlatform(now, 2, _platLeftSeen ? (byte)0 : FarRight, true);
             _platNextPoll = now + PlatformPoll;
             return;
         }
-        bool left = pf.IsLeft;
+        bool left = AtWorldLeft(pf);
         if (left != _platLeftSeen)
         {
             _platLeftSeen = left;
@@ -141,10 +146,13 @@ internal static partial class WaterSim
         return (pos + (v > 0 ? PosOne * 3 / 4 : v < 0 ? PosOne / 4 : PosOne / 2)) / PosOne;
     }
 
+    // 記録の無い時の台の位置 (本編の台は「左の位置」から始まる。左右反転の船ではそれが世界の右)
+    private static int StartPos => MapFlip.Flipped ? _pfD * PosOne : 0;
+
     // 刻み s の台の細かい位置 (1/PosOne 升)。記録を頭から辿る (動きの途中で次の記録が来たら、その時の位置から動き直す)
     private static int PosAt(int s)
     {
-        int pos = 0;
+        int pos = StartPos;
         for (int i = 0; i < PlatLog.Count && PlatLog[i].Tick <= s; i++)
         {
             var e = PlatLog[i];
@@ -173,8 +181,9 @@ internal static partial class WaterSim
         if (!sr || _w == 0) return false;
         var b = sr.bounds;
         float scale = pf.transform.lossyScale.x;
-        float shift = (pf.transform.localPosition.x - pf.LeftPosition.x) * scale;   // 今の位置から左の位置へ
-        float span = (pf.RightPosition.x - pf.LeftPosition.x) * scale;
+        float left = WorldLeftX(pf);
+        float shift = (pf.transform.localPosition.x - left) * scale;   // 今の位置から左の位置へ
+        float span = (WorldRightX(pf) - left) * scale;
         // 真ん中が絵の中にある升 (境は升の真ん中から 1/2 升離れているので端末の丸めで割れない)
         int x0 = (int)MathF.Ceiling((b.min.x - shift - _org.x) / _cell - 0.5f);
         int x1 = (int)MathF.Floor((b.max.x - shift - _org.x) / _cell - 0.5f);

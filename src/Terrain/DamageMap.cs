@@ -1176,8 +1176,9 @@ internal static class DamageMap
         var crack = new GameObject("MrpCracks") { layer = OwnArtLayer };
         crack.transform.SetParent(_ship.transform, true);
         crack.transform.position = new Vector3(c.x, c.y, nearZ - 0.002f * ZScale(nearZ));
-        crack.transform.rotation = Quaternion.Euler(0f, 0f, angleDeg);
-        crack.transform.localScale = Vector3.one * (reach * 2f / sprite.bounds.size.x) / _ship.transform.lossyScale.x;
+        crack.transform.rotation = ShipRotation(angleDeg);
+        float k = reach * 2f / sprite.bounds.size.x;
+        crack.transform.localScale = ShipLocalScale(k, k, k);
         var csr = crack.AddComponent<SpriteRenderer>();
         csr.sprite = sprite;
         csr.sharedMaterial = _decalMat;
@@ -1208,14 +1209,14 @@ internal static class DamageMap
         float angle = MathF.Round(MathF.Atan2(wallDir.y, wallDir.x) * Mathf.Rad2Deg / 45f) * 45f;
         float rad = angle * Mathf.Deg2Rad;
         Vector2 ax = new(MathF.Cos(rad), MathF.Sin(rad)), ay = new(-ax.y, ax.x);
-        var rot = Quaternion.Euler(0f, 0f, angle);
+        var rot = ShipRotation(angle);
 
         float tw = _hullTile.bounds.size.x, th = _hullTile.bounds.size.y;
         float reach = r * 1.4f;
         float u0 = Vector2.Dot(c, ax), v0 = Vector2.Dot(c, ay);
         int iu0 = Mathf.FloorToInt((u0 - reach) / tw), iu1 = Mathf.CeilToInt((u0 + reach) / tw);
         int iv0 = Mathf.FloorToInt((v0 - reach) / th), iv1 = Mathf.CeilToInt((v0 + reach) / th);
-        float parentScale = _ship.transform.lossyScale.x;
+        var unit = ShipLocalScale(1f, 1f, 1f);
         for (int iu = iu0; iu <= iu1; iu++)
         for (int iv = iv0; iv <= iv1; iv++)
         {
@@ -1227,7 +1228,7 @@ internal static class DamageMap
             go.transform.SetParent(_ship.transform, true);
             go.transform.position = new Vector3(p.x, p.y, z);
             go.transform.rotation = rot;
-            go.transform.localScale = Vector3.one / parentScale;
+            go.transform.localScale = unit;
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = _hullTile;
             sr.sharedMaterial = _underlayMat;
@@ -1262,6 +1263,19 @@ internal static class DamageMap
     internal static IReadOnlyList<SpriteRenderer> RoomArts => Rooms;
     internal static bool IsSwapped(SpriteRenderer sr) => Swapped.Contains(sr.GetInstanceID());
     internal static Transform ShipTransform => _ship ? _ship.transform : null;
+
+    // 船の子に付けた物の localScale: 世界での大きさ (sx, sy, sz) にする (船の倍率は軸ごと。左右反転の船は x が負)
+    internal static Vector3 ShipLocalScale(float sx, float sy, float sz)
+    {
+        var ls = _ship ? _ship.transform.lossyScale : Vector3.one;
+        return new Vector3(sx / ls.x, sy / ls.y, sz / ls.z);
+    }
+
+    // 船の子に付けた物の rotation: 世界で deg 度に見える向き。左右反転の船の子は回した向きが鏡に映るので逆に回す
+    internal static Quaternion ShipRotation(float deg) => Quaternion.Euler(0f, 0f, ShipMirrored ? -deg : deg);
+
+    // 船が左右反転しているか (本編の dlekS も含む)。子に付けた絵は鏡に映る
+    internal static bool ShipMirrored => _ship && _ship.transform.lossyScale.x < 0f;
 
     // 瓦礫・土煙などの部品用: 部屋と同じ描き方 (影が落ちる) で、損傷マスクは見ない
     public static Material PropMaterial => _propMat;

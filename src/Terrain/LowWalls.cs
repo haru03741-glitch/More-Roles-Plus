@@ -47,7 +47,20 @@ internal static class LowWalls
 
     internal static void Load(bool mira)
     {
-        All = mira ? Mira : None;
+        All = !mira ? None : MapFlip.Flipped ? Mirrored(Mira) : Mira;
+    }
+
+    // 表は反転前の船の座標。左右反転の船では範囲を鏡に映し、左右の縁を入れ替える
+    private static Entry[] Mirrored(Entry[] src)
+    {
+        var o = new Entry[src.Length];
+        for (int i = 0; i < src.Length; i++)
+        {
+            var e = src[i];
+            int dir = e.Dir == 0 ? 1 : e.Dir == 1 ? 0 : e.Dir;
+            o[i] = new Entry(MapFlip.Mirror(e.X1), e.Y0, MapFlip.Mirror(e.X0), e.Y1, dir, e.Height, e.Stamp, e.Base);
+        }
+        return o;
     }
 
     internal static void Clear()

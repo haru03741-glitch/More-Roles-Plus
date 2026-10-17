@@ -181,7 +181,7 @@ internal static class RoleCommands
         TestBridge.Register("rolemenu", "[q <語> | team <-1|0|1|2> | only | scroll <0〜1> | open <役職Id> | step <役職Id> <n> <+1|-1> | press <役職Id> <count|chance> <+1|-1>] 設定画面の役職タブを操作して、見えている行を返す", (args, reply) =>
             reply("OK rolemenu " + RoleMenu.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
-        TestBridge.Register("uitree", "<chat|menu|page|cam|GameObject のパス> [深さ=3] 画面の部品の階層 (位置・大きさ・部品の種類・有効か)", (args, reply) =>
+        TestBridge.Register("uitree", "<chat|menu|page|cam|map|GameObject のパス> [深さ=3] 画面の部品の階層 (位置・大きさ・部品の種類・有効か)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (a.Length == 0) { reply("ERR uitree target"); return; }
@@ -192,6 +192,7 @@ internal static class RoleCommands
                 "menu" => GameSettingMenu.Instance ? GameSettingMenu.Instance.transform : null,
                 "page" => SettingsMenu.OpenPage(),
                 "cam" => UnityEngine.Camera.main ? UnityEngine.Camera.main.transform : null,
+                "map" => MapBehaviour.Instance ? MapBehaviour.Instance.transform : null,
                 _ => UnityEngine.GameObject.Find(a[0])?.transform,
             };
             if (!root) { reply($"ERR uitree not found: {a[0]}"); return; }

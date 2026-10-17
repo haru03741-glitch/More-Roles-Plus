@@ -127,7 +127,7 @@ internal static class RubbleBlocks
             go.transform.position = new Vector3(l.Position.x, l.Position.y, 0f);
             var col = go.AddComponent<CircleCollider2D>();
             // 親 (船) の倍率を打ち消して世界での半径にする
-            float s = go.transform.lossyScale.x;
+            float s = MathF.Abs(go.transform.lossyScale.x);
             col.radius = l.Radius / (s > 1e-4f ? s : 1f);
             Blocks.Add(go);
         }

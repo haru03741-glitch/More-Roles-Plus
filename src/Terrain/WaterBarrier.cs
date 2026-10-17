@@ -57,7 +57,7 @@ internal static class WaterBarrier
             // (絵の指紋は部屋の絵の読み込みの早さや端末の版で変わり、それで読む読まないが割れると結果が割れる)
             uint sig = br.ReadUInt32();
             bool stale = DamageMap.Ready() && sig != FloorMask.Signature(name);
-            if (!SolidMap.Ensure() || MathF.Abs(SolidMap.Origin.x - ox) > OriginTolerance || MathF.Abs(SolidMap.Origin.y - oy) > OriginTolerance)
+            if (!SolidMap.Ensure() || MathF.Abs(SolidMap.BakedOrigin.x - ox) > OriginTolerance || MathF.Abs(SolidMap.BakedOrigin.y - oy) > OriginTolerance)
             {
                 Stats = $"{name}: origin mismatch";
                 return;
@@ -74,6 +74,11 @@ internal static class WaterBarrier
                     read += n;
                 }
                 if (read != bits.Length) { Stats = $"{name}: short"; return; }
+            }
+            if (MapFlip.Flipped)
+            {
+                MapFlip.FlipBitRows(bits, w, h);
+                ox = MapFlip.GridOrigin(ox, w, ppu);
             }
             _bits = bits;
             _w = w; _h = h; _ox = ox; _oy = oy; _ppu = ppu;

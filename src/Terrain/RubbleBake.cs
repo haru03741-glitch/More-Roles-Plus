@@ -219,6 +219,8 @@ internal static class RubbleBake
         var go = new GameObject("MrpRubble");
         DamageMap.Track(go);
         go.transform.position = new Vector3(cx, cy, z);
+        // 焼いた絵は世界の向きで撮ったので、左右反転の船の子でも裏返さない
+        if (DamageMap.ShipMirrored) go.transform.localScale = new Vector3(-1f, 1f, 1f);
         var sr = go.AddComponent<SpriteRenderer>();
         if (DamageMap.PlateMaterial) sr.sharedMaterial = DamageMap.PlateMaterial;
         sr.sprite = sp;
