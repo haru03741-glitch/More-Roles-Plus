@@ -203,6 +203,7 @@ internal static class DevCommands
             reply("OK chatraw");
         });
 
+        TestBridge.Register("afk", "放置の数え (設定・止まっている秒数・知らせたか)", (_, reply) => reply(Commands.AfkGuard.Describe()));
         TestBridge.Register("colors", "自分で作った色 (#RRGGBB) の一覧 (自分の保存値と、届いている人の番号=色)", (_, reply) => reply(Menu.CustomColors.Describe()));
         TestBridge.Register("picker", "[open | apply | reset | type <文> | #RRGGBB] 色を作る板 (開く・色を置く・決める・本編の色に戻す・#hex 欄に打つ) と今の色", (args, reply) => reply(Menu.ColorPicker.Simulate(args.Trim())));
         TestBridge.Register("client", "[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));
