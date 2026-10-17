@@ -127,7 +127,7 @@ internal static class WaterArt
         _clock += dt;
 
         if (Craters.Count > 0) TickCraters();
-        if (Tiles.Count > 0) ShadowView.Check(now);
+        if (Tiles.Count > 0) { ShadowView.Check(now); CheckDoors(now); }
         if (spike) s2 = System.Diagnostics.Stopwatch.GetTimestamp();
         RemakeQueuedFloors();
         if (spike) s3 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1188,7 +1188,9 @@ internal static class WaterArt
         t.Front = null;
         FrontSrs.Clear();
         long q0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        PropSim.FrontSprites(Rect.MinMaxRect(wx, wy, wx + size, wy + size), t.Z, FrontSrs);
+        var fr = Rect.MinMaxRect(wx, wy, wx + size, wy + size);
+        PropSim.FrontSprites(fr, t.Z, FrontSrs);
+        DoorFronts(fr, t.Z, FrontSrs);
         long q1 = System.Diagnostics.Stopwatch.GetTimestamp();
         EnsureParts[6] += q1 - q0;
         if (FrontSrs.Count > 0)
@@ -1323,6 +1325,78 @@ internal static class WaterArt
         var org = WaterSim.Origin;
         foreach (var t in Tiles.Values)
             if (t.Shadow) MakeFront(t, org.x + t.Tx * size, org.y + t.Ty * size, size);
+    }
+
+    // 扉は視界の中で水より手前に描かれる (開いた扉も枠の両側が残る)。動く物なので床マスクに焼かず、抜き型に塗る。
+    // 開け閉めはアニメーションの初めに記録されるので、絵が落ち着いた頃に掛かるタイルだけ作り直す
+    private const long DoorSettleMs = 700;
+    private static SpriteRenderer[][] _doorSrs = Array.Empty<SpriteRenderer[]>();
+    private static int _doorSrGen = -1, _doorVer;
+    private static ulong _doorSeen;
+    private static readonly List<(long At, int Door)> DoorRedo = new();
+
+    private static void ListDoorSrs()
+    {
+        int n = Decompression.DoorCount;
+        if (n == 0) return;
+        _doorSrGen = GameClock.ShipGen;
+        _doorSrs = new SpriteRenderer[n][];
+        for (int i = 0; i < n; i++)
+        {
+            var d = Decompression.DoorPartAtIndex(i);
+            var list = new List<SpriteRenderer>();
+            if (d)
+                foreach (var sr in d.GetComponentsInChildren<SpriteRenderer>(true))
+                    if (sr && !sr.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal)) list.Add(sr);
+            _doorSrs[i] = list.ToArray();
+        }
+        _doorVer = Decompression.DoorVersion;
+        _doorSeen = Decompression.LatestDoorBits;
+        DoorRedo.Clear();
+    }
+
+    private static void DoorFronts(Rect r, float z, List<SpriteRenderer> into)
+    {
+        if (_doorSrGen != GameClock.ShipGen) ListDoorSrs();
+        if (_doorSrGen != GameClock.ShipGen) return;
+        foreach (var srs in _doorSrs)
+            foreach (var sr in srs)
+            {
+                if (!sr || !sr.enabled || !sr.sprite || !sr.gameObject.activeInHierarchy) continue;
+                var b = sr.bounds;
+                if (b.max.x <= r.xMin || b.min.x >= r.xMax || b.max.y <= r.yMin || b.min.y >= r.yMax) continue;
+                if (sr.transform.position.z >= z) continue;
+                into.Add(sr);
+            }
+    }
+
+    // 扉の記録が増えた: 開きの変わった扉を、落ち着く頃に作り直す予約へ (比べるのは int と ulong だけ)
+    private static void CheckDoors(long now)
+    {
+        if (_doorSrGen != GameClock.ShipGen) return;
+        int ver = Decompression.DoorVersion;
+        if (ver != _doorVer)
+        {
+            _doorVer = ver;
+            ulong bits = Decompression.LatestDoorBits;
+            ulong changed = bits ^ _doorSeen;
+            _doorSeen = bits;
+            for (int i = 0; i < _doorSrs.Length && changed != 0; i++, changed >>= 1)
+                if ((changed & 1) != 0) DoorRedo.Add((now + DoorSettleMs, i));
+        }
+        for (int k = DoorRedo.Count - 1; k >= 0; k--)
+        {
+            if (now < DoorRedo[k].At) continue;
+            int i = DoorRedo[k].Door;
+            DoorRedo.RemoveAt(k);
+            foreach (var sr in _doorSrs[i])
+            {
+                if (!sr) continue;
+                var b = sr.bounds;
+                var c = FxMath.V2(b.center.x, b.center.y);
+                FrontMoved(c, c, b.extents.magnitude);
+            }
+        }
     }
 
     private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), FloorTexId = Shader.PropertyToID("_FloorMask"), FloorOnId = Shader.PropertyToID("_FloorOn");

@@ -222,6 +222,14 @@ internal static class Decompression
     internal static int DoorCount { get { ListDoors(); return Doors.Count; } }
     internal static (int X0, int Y0, int X1, int Y1) DoorRect(int i) => DoorCells[i];
     internal static OpenableDoor DoorAtIndex(int i) => Doors[i].Door;
+    // 扉の絵の持ち主 (本編の扉・ガラスの扉・除染室の扉のどれか)
+    internal static Component DoorPartAtIndex(int i)
+    {
+        var p = Doors[i];
+        if (p.Door) return p.Door;
+        if (p.Sensor) return p.Sensor;
+        return p.Manual;
+    }
     internal static int[] DoorFloor(int i) => DoorFloors[i];
     internal static ulong DoorBitsAt(int s) => BitsAt(s);
     internal static ulong AllDoorsOpen => AllOpen;
@@ -350,8 +358,14 @@ internal static class Decompression
         catch (Exception e) { Fail("doors", e); }
     }
 
+    // 扉の記録が増えるたびに増える (船が変わっても戻さない)。水の影の写しの扉の抜き型を作り直す合図
+    internal static int DoorVersion { get; private set; }
+    // 記録の最後の扉の開き (見た目の扉に近い。刻みを待たない)
+    internal static ulong LatestDoorBits => DoorLog.Count > 0 ? DoorLog[DoorLog.Count - 1].Bits : Initial;
+
     private static void AddDoorLog(int tick, ulong bits)
     {
+        DoorVersion++;
         int i = DoorLog.Count;
         while (i > 0 && DoorLog[i - 1].Tick > tick) i--;
         DoorLog.Insert(i, (tick, bits));
