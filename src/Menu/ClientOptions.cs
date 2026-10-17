@@ -29,11 +29,13 @@ internal static class ClientOptions
 
     public static ConfigEntry<bool> DarkTheme { get; private set; }
     public static ConfigEntry<bool> DarkMeeting { get; private set; }
+    public static ConfigEntry<bool> EndSummary { get; private set; }
 
     public static void Bind(ConfigFile cfg)
     {
         _cfg = cfg;
         DarkTheme = Add("DarkTheme", false, new Text("チャットを暗い色にする", "Dark chat"), ChatTheme.Refresh);
+        EndSummary = Add("EndSummary", true, new Text("試合の終わりに全員の役職を出す", "Show everyone's role at game end"), null);
         DarkMeeting = Add("DarkMeeting", false, new Text("会議の画面を暗い色にする", "Dark meeting screen"), null); // 次の会議から
     }
 

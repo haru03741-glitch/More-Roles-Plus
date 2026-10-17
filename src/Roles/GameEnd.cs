@@ -407,6 +407,8 @@ internal static class EndScreenPatch
     {
         try { GameEnd.ApplyText(__instance); }
         catch (Exception e) { Plugin.Logger.LogWarning($"end screen: {e.Message}"); }
+        try { Menu.EndSummary.Show(__instance); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"end summary: {e.Message}"); }
     }
 }
 
