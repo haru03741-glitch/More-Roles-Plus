@@ -41,6 +41,7 @@ public class Plugin : BasePlugin
         SleepAccountManager = Config.Bind("Performance", "SleepAccountManager", true, "メニューのアカウント表示を止めておき、ログイン待ちの間もメニューを使えるようにする");
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
         Menu.ClientOptions.Bind(Config);
+        Menu.CustomColors.Bind(Config);
 
         Boot.IncrementalGcInvalidator.ApplyIfConfigured();
         Net.Remote.Init(); // 電文の名前は設定の指紋に入るので先に
@@ -107,7 +108,8 @@ public class Ticker : MonoBehaviour
         Dev.DevConsole.Tick(); t = Bridge.Perf.Lane(20, t);
         Commands.Shortcuts.Tick(); t = Bridge.Perf.Lane(21, t);
         Zoom.Tick(); t = Bridge.Perf.Lane(22, t);
-        Commands.ChatInput.Tick(); t = Bridge.Perf.Lane(23, t);
+        Commands.ChatInput.Tick();
+        Menu.ColorPicker.Tick(); t = Bridge.Perf.Lane(23, t);
         Bridge.Perf.End(t0);
     }
 
@@ -129,6 +131,7 @@ public class Ticker : MonoBehaviour
         Fx.MrpBundle.Tick(); t = Bridge.Perf.Lane(24, t);
         Terrain.TerrainWarm.Tick(); t = Bridge.Perf.Lane(25, t);
         Terrain.TerrainSync.Tick(); t = Bridge.Perf.Lane(26, t);
+        Menu.CustomColors.Tick();
         Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
         Roles.KillAbility.Tick(); t = Bridge.Perf.Lane(28, t);
         Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);
