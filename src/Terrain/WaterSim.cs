@@ -2446,6 +2446,20 @@ internal static partial class WaterSim
         return v;
     }
 
+    // 点の升の番号 (格子の外・まだ無い時は -1) と、その升の深さ。同じ升を何度も引く所 (手前の絵の列) で升ごとに 1 回にする
+    internal static int CellOf(float x, float y)
+    {
+        if (!_ready) return -1;
+        int cx = (int)MathF.Floor((x - _org.x) / _cell), cy = (int)MathF.Floor((y - _org.y) / _cell);
+        return cx < 0 || cy < 0 || cx >= _w || cy >= _h ? -1 : cy * _w + cx;
+    }
+
+    internal static int DepthCell(int k)
+    {
+        EnsureIdle();
+        return !_ready || k < 0 ? 0 : _hgt[k];
+    }
+
     // その点の水の深さ (Full = 1 単位)
     internal static int DepthAt(Vector2 p)
     {

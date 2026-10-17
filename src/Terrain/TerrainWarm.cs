@@ -17,7 +17,7 @@ internal static class TerrainWarm
 {
     private const double TickBudgetMs = 4.0;
     private const double MenuBudgetMs = 6.0; // メニューでは動く物が少なく、少し長く止まっても目立たない
-    private const int Stages = 16;
+    private const int Stages = 17;
     private static ShipStatus _ship;
     private static int _stage;
     private static int _at;
@@ -29,7 +29,7 @@ internal static class TerrainWarm
     private static bool _fxWarm; // 段 9 の火と音の準備を済ませた
 
     public static string Report =>
-        $"stage={_stage} jit={StageMs[0]:F1}ms (before match {_preMatchMs:F1}ms, {_methods} methods{(_jitDone ? "" : " running")}, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1}+{StageMs[6]:F1} props={StageMs[7]:F1} breakables+low={StageMs[8]:F1} decompfx={StageMs[9]:F1} water={StageMs[10]:F1} edges={StageMs[11]:F1} floor={StageMs[12]:F1} grid={StageMs[13]:F1}+{StageMs[14]:F1} gc={StageMs[15]:F1}";
+        $"stage={_stage} jit={StageMs[0]:F1}ms (before match {_preMatchMs:F1}ms, {_methods} methods{(_jitDone ? "" : " running")}, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1}+{StageMs[6]:F1} props={StageMs[7]:F1} breakables+low={StageMs[8]:F1} decompfx={StageMs[9]:F1} water={StageMs[10]:F1} edges={StageMs[11]:F1} floor={StageMs[12]:F1} grid={StageMs[13]:F1}+{StageMs[14]:F1} front={StageMs[15]:F1} gc={StageMs[16]:F1}";
 
     public static void Tick()
     {
@@ -152,7 +152,8 @@ internal static class TerrainWarm
                 case 14: WaterSim.WarmBase(); break; // 落ちる縁
                 // 準備で出たごみを今まとめて回収し、最初の破壊や水の作り直しの途中で全体の回収が走らないようにする。
                 // 本編の側 (il2cpp) も回す: 船の読み込みのごみで、直後に本編の GC が 60ms 級で走っていた
-                case 15: if (Plugin.PreemptiveGc.Value) Boot.GcPrepass.Collect("ship", force: true); else GC.Collect(); break;
+                case 15: PropSim.WarmFront(); break; // 手前の絵の水面の板の対象 (最初に水が来た時に集めると Airship で 11ms)
+                case 16: if (Plugin.PreemptiveGc.Value) Boot.GcPrepass.Collect("ship", force: true); else GC.Collect(); break;
             }
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"[TerrainWarm] stage {_stage}: {e.Message}"); }

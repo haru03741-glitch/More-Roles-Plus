@@ -11,8 +11,8 @@ namespace MoreRolesPlus.Terrain;
 // 床マスクもこの絵を床の層として作る (tools/make-floor-mask.py の FLOOR_COVERS と同じ表)
 internal static class FloorCovers
 {
-    // 後ろの部屋の絵からの奥行きのずらし (水のタイルは部屋の絵から 0.0004 手前)。元の前後は OrderScale で保つ
-    private const float Behind = 0.0003f, OrderScale = 0.01f;
+    // 後ろの部屋の絵からの奥行きのずらし。掛かる水のタイルはここから 0.0004 手前 (Front)
+    private const float Behind = 0.0002f, Step = 0.00001f;
     private const int Probe = 5; // 後ろの部屋の絵を引く点の数 (縦横)
 
     private static int _gen = -1;
@@ -21,10 +21,15 @@ internal static class FloorCovers
     private static int _origShip;
     internal static string Stats { get; private set; } = "-";
 
+    // 床に置いた平たい物 (医務室のスキャン台・原子炉の床の光る枠・排水溝・床のタオル・浜の貝殻と枝) も同じく床として水の下に沈める。
+    // コマ送りの絵は名前の後ろに番号が付くので頭で見る
     internal static bool Is(string ship, string sprite) => ship switch
     {
-        "PolusShip" => sprite is "ramp",
-        "FungleShip" => sprite is "dropship_floorandramp" or "rampwithsand2_nobox",
+        "SkeldShip" => sprite is "MedPlatform" || sprite.StartsWith("reactorfloor", StringComparison.Ordinal),
+        "MiraShip" => sprite is "med-scanner",
+        "PolusShip" => sprite is "ramp" or "watergrate" || sprite.StartsWith("water1", StringComparison.Ordinal) || sprite.StartsWith("waterDrip", StringComparison.Ordinal),
+        "Airship" => sprite is "task_towelflat" or "task_towelwet" or "task_towelbunched" or "panel_flashdrive",
+        "FungleShip" => sprite is "dropship_floorandramp" or "rampwithsand2_nobox" or "console_collectSeashell" or "findstick_console" or "console_throwFrisbee",
         _ => false,
     };
 
@@ -42,16 +47,23 @@ internal static class FloorCovers
         if (shipId != _origShip) { Orig.Clear(); _origShip = shipId; }
         string name = ship.name.Replace("(Clone)", "");
         var sb = new StringBuilder();
-        Renderer[] all = null;
+        // 元の奥行きの奥から順に移し、移した先でも前後を保つ (順位ごとに Step ずつ手前)
+        var found = new List<(SpriteRenderer Sr, float Z)>();
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(true))
         {
             if (!sr || !sr.sprite || !Is(name, sr.sprite.name)) continue;
-            all ??= ship.GetComponentsInChildren<Renderer>(false);
+            int id = sr.GetInstanceID();
+            if (!Orig.TryGetValue(id, out float oz)) Orig[id] = oz = sr.transform.position.z;
+            found.Add((sr, oz));
+        }
+        found.Sort((a, b) => b.Z.CompareTo(a.Z));
+        Renderer[] all = found.Count > 0 ? ship.GetComponentsInChildren<Renderer>(false) : null;
+        for (int rank = 0; rank < found.Count; rank++)
+        {
+            var sr = found[rank].Sr;
             var tr = sr.transform;
             var p = tr.position;
-            int id = sr.GetInstanceID();
-            if (Orig.TryGetValue(id, out float oz)) p.z = oz;
-            else Orig[id] = p.z;
+            p.z = found[rank].Z;
             var b = sr.bounds;
             Vector3 mn = b.min, mx = b.max;
             float back = float.MaxValue;
@@ -75,7 +87,7 @@ internal static class FloorCovers
             }
             // 後ろの部屋の絵が自分より手前 (引けない) なら動かさない
             if (back <= p.z) { sb.Append(' ').Append(sr.sprite.name).Append(" kept z=").Append(p.z.ToString("0.###")); continue; }
-            float z = back - Behind + p.z * OrderScale;
+            float z = back - Behind - rank * Step;
             tr.position = new Vector3(p.x, p.y, z);
             Rects.Add((mn.x, mn.y, mx.x, mx.y, z));
             sb.Append(' ').Append(sr.sprite.name).Append(' ').Append(p.z.ToString("0.####")).Append("->").Append(z.ToString("0.####"));

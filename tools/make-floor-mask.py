@@ -36,7 +36,15 @@ FRONT_Z = 0.1         # これより手前の絵はどの床の水より手前 (
 BACK_Z_SHIP = {"PolusShip": 0.5, "FungleShip": 0.5}  # 床の絵が z 1〜4 にある船 (ゲームの FloorMask.BackZ と同じ表)
 ALWAYS_FLOOR = {"room_weapon", "room_broadcast"}  # z に関わらず床の層に入れる絵 (ゲームの FloorMask.AlwaysFloor と同じ表)
 # クルーと同じ奥行きに置かれた歩ける床の絵 (ドロップシップの坂・床)。手前の絵でなく床の層に入れ、歩ける所の画素は床にする (ゲームの FloorCovers.Is と同じ表)
-FLOOR_COVERS = {"PolusShip": {"ramp"}, "FungleShip": {"dropship_floorandramp", "rampwithsand2_nobox"}}
+# 床に置いた平たい物 (スキャン台・原子炉の床の枠・排水溝・タオル・貝殻と枝) も同じ。コマ送りの絵は名前の頭 (FLOOR_COVER_HEADS) で見る
+FLOOR_COVERS = {"SkeldShip": {"MedPlatform"}, "MiraShip": {"med-scanner"}, "PolusShip": {"ramp", "watergrate"},
+                "Airship": {"task_towelflat", "task_towelwet", "task_towelbunched", "panel_flashdrive"},
+                "FungleShip": {"dropship_floorandramp", "rampwithsand2_nobox", "console_collectSeashell", "findstick_console", "console_throwFrisbee"}}
+FLOOR_COVER_HEADS = {"SkeldShip": ("reactorfloor",), "PolusShip": ("water1", "waterDrip")}
+
+
+def floor_cover(ship, sprite):
+    return sprite in FLOOR_COVERS.get(ship, ()) or sprite.startswith(FLOOR_COVER_HEADS.get(ship, ()))
 OUTLINE = 0.22        # 明るさがこれ未満の画素は縁取り
 DRAWN = 0.25          # 不透明度がこれを超える画素は絵がある (ナビの床は半透明で 0.45 ほど)
 FLOOR_SHARE = 0.5     # まとまりのうち歩ける所の割合がこれ以上なら床
@@ -145,6 +153,8 @@ def compose(j, tex, ppu):
     cw, ch = int(np.ceil(s["w"] / s["ppu"] * ppu)), int(np.ceil(s["h"] / s["ppu"] * ppu))
     canvas = np.zeros((ch, cw, 4), np.float32)
     for r in sorted(j["rooms"], key=lambda r: -r["z"]):
+        if "texture" not in r:
+            continue  # アトラスに詰めて回した絵 (床に移した手前の絵にある) は画素を引けない。床にするのは歩ける所の近く (main)
         key = (r["texture"], r["texSize"][0], r["texSize"][1])
         if (r["z"] < j["backZ"] and r["sprite"] not in j["alwaysFloor"]) or r["z"] >= SKY_Z or key not in tex:
             continue
@@ -175,10 +185,11 @@ def compose(j, tex, ppu):
 
 
 def front_cover_mask(j, tex, ppu, shape):
-    """クルーの奥行きより手前 (z < FRONT_Z) の手前の絵 (機関・端末の台・壁の上面など) が描く画素。
+    """クルーの奥行きより手前 (z < FRONT_Z) の手前の絵 (機関・端末の台・壁の上面など) と、それより奥でも水より手前に描かれる絵
+    (ゲームが "front" を付けて書き出す・壁の端末や飾り・床に立つ機械) が描く画素。
     床の水の絵はクルーより奥の部屋の絵のすぐ手前に置かれるので、この絵は視界の中ではどこでも水より手前に描かれて水を隠す。
     影の中の写しは一番手前に出て床マスクで切るので、床から抜かないと絵の上に水が乗る"""
-    return cover_mask(dict(j, covers=[r for r in j.get("covers", []) if r["z"] < FRONT_Z]), tex, ppu, shape)
+    return cover_mask(dict(j, covers=[r for r in j.get("covers", []) if r["z"] < FRONT_Z or r.get("front")]), tex, ppu, shape)
 
 
 def mesh_cover_mask(j, ppu, shape):
@@ -436,7 +447,7 @@ def room_slices(j, ppu, shape):
     s = j["solid"]
     ox, oy = s["origin"]
     for r in j["rooms"]:
-        if (r["z"] < j["backZ"] and r["sprite"] not in j["alwaysFloor"]) or r["z"] >= SKY_Z:
+        if (r["z"] < j["backZ"] and r["sprite"] not in j["alwaysFloor"]) or r["z"] >= SKY_Z or "texRect" not in r:
             continue
         x0, y0, w, h = r["texRect"]
         xs = [r["w0"][0] + (x0 + a) * r["d"][0] for a in (0, w)]
@@ -1022,11 +1033,12 @@ def main():
     for path in a.json:
         j = json.load(open(path, encoding="utf-8"))
         j["backZ"] = BACK_Z_SHIP.get(j["ship"].replace("(Clone)", ""), BACK_Z)
-        fc = FLOOR_COVERS.get(j["ship"].replace("(Clone)", ""), set())
+        sname = j["ship"].replace("(Clone)", "")
+        fc = {r["sprite"] for r in j["rooms"] + j.get("covers", []) if floor_cover(sname, r["sprite"])}
         j["alwaysFloor"] = ALWAYS_FLOOR | fc
         j["rooms"] = j["rooms"] + [r for r in j.get("covers", []) if r["sprite"] in fc]
         j["covers"] = [r for r in j.get("covers", []) if r["sprite"] not in fc]
-        ds = sorted(abs(r["d"][0]) for r in j["rooms"])
+        ds = sorted(abs(r["d"][0]) for r in j["rooms"] if "d" in r)
         ppu = round(1.0 / ds[len(ds) // 2], 4)  # 部屋の絵でいちばん多い細かさ
         ship = j["ship"].replace("(Clone)", "")
         tex = load_textures(folder, j["rooms"] + j.get("covers", []))

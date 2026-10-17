@@ -1488,6 +1488,63 @@ internal static class WaterArt
 
     private const float DeckZ = -0.001f; // エアシップの警備室の下のデッキの床の絵の z (手すりは -0.1 で水より手前)
 
+    // タイル (tx, ty) の水の絵の奥行き。手前の絵 (PropSim.FrontCover) もこの値と比べる
+    private static readonly Dictionary<int, float> TileZs = new(); // 船ごと (部屋の絵・FloorCovers は試合中に変わらない)
+    private static int _tileZGen = -1;
+
+    internal static float TileZ(int tx, int ty)
+    {
+        FloorCovers.Ensure(); // 床の絵を移す前の値を覚えない
+        if (_tileZGen != GameClock.ShipGen) { TileZs.Clear(); _tileZGen = GameClock.ShipGen; }
+        int key = ty * 65536 + tx;
+        if (TileZs.TryGetValue(key, out float cached)) return cached;
+        float z = TileZCore(tx, ty);
+        // 水の格子 (動く台の帯) と部屋の絵の一覧ができる前の値は覚えない
+        if (WaterSim.Ready && DamageMap.Ready()) TileZs[key] = z;
+        return z;
+    }
+
+    private static float TileZCore(int tx, int ty)
+    {
+        float size = TileSize;
+        var org = SolidMap.Origin; // 水の格子の原点 (WaterSim.Origin) と同じ
+        float wx = org.x + tx * size, wy = org.y + ty * size, front = float.MaxValue;
+        // タイルは部屋の境をまたぐので、4 隅と真ん中で部屋の絵を引いて一番手前より前に置く
+        // (真ん中だけだと、隣の部屋の絵のほうが手前の所で水がその下に隠れて四角く欠けた)
+        for (int k = 0; k < 5; k++)
+        {
+            float fx = k == 4 ? 0.5f : (k & 1), fy = k == 4 ? 0.5f : (k >> 1);
+            float px = wx + size * (0.05f + 0.9f * fx), py = wy + size * (0.05f + 0.9f * fy);
+            front = Math.Min(front, DamageMap.FrontZ(new Vector2(px, py)));
+            // 屋外のデッキの床の絵はクルーと同じ奥行きにあり、部屋の絵の z では床の下に隠れる
+            if (WaterSim.OnDeck(px, py)) front = Math.Min(front, DeckZ);
+        }
+        // 動く床 (昇降機の台) は部屋の絵より手前にあるので、台に載った水が台の下に隠れないよう台より手前へ
+        front = WaterSim.PlatformFront(wx, wy, size, front);
+        // 部屋の絵より手前にある歩ける床の絵 (ドロップシップの坂) は水のすぐ奥へ移してあるので、それより手前へ
+        front = FloorCovers.Front(wx, wy, size, front);
+        // 床の上・足跡 (−0.001) と波紋より奥
+        return front - 0.0004f * DamageMap.ZScale(front);
+    }
+
+    // 範囲 (x0, y0)-(x1, y1) に掛かるタイルの水の絵の奥行きのうち一番奥
+    // 水の格子を作る前 (floorexport) にも使えるよう、升の大きさは水の格子を作る時と同じ式から出す
+    private static float TileSize => WaterSim.TileCells * (WaterSim.Sub / SolidMap.Ppu);
+
+    internal static float MaxTileZ(float x0, float y0, float x1, float y1)
+    {
+        if (!SolidMap.Ensure()) return float.NaN;
+        float size = TileSize;
+        var org = SolidMap.Origin;
+        int tx0 = (int)MathF.Floor((x0 - org.x) / size), tx1 = (int)MathF.Floor((x1 - org.x) / size);
+        int ty0 = (int)MathF.Floor((y0 - org.y) / size), ty1 = (int)MathF.Floor((y1 - org.y) / size);
+        float z = float.MinValue;
+        for (int ty = ty0; ty <= ty1; ty++)
+            for (int tx = tx0; tx <= tx1; tx++)
+                z = Math.Max(z, TileZ(tx, ty));
+        return z;
+    }
+
     private static unsafe void Ensure(Tile t)
     {
         if (t.Go) return;
@@ -1520,25 +1577,9 @@ internal static class WaterArt
         t.Flow = parts.Flow;
         EP(2);
         float wx = org.x + t.Tx * tc * cell, wy = org.y + t.Ty * tc * cell;
-        // タイルは部屋の境をまたぐので、4 隅と真ん中で部屋の絵を引いて一番手前より前に置く
-        // (真ん中だけだと、隣の部屋の絵のほうが手前の所で水がその下に隠れて四角く欠けた)
-        float size = tc * cell, front = float.MaxValue;
-        for (int k = 0; k < 5; k++)
-        {
-            float fx = k == 4 ? 0.5f : (k & 1), fy = k == 4 ? 0.5f : (k >> 1);
-            float px = wx + size * (0.05f + 0.9f * fx), py = wy + size * (0.05f + 0.9f * fy);
-            front = Math.Min(front, DamageMap.FrontZ(new Vector2(px, py)));
-            // 屋外のデッキの床の絵はクルーと同じ奥行きにあり、部屋の絵の z では床の下に隠れる
-            if (WaterSim.OnDeck(px, py)) front = Math.Min(front, DeckZ);
-        }
-        // 動く床 (昇降機の台) は部屋の絵より手前にあるので、台に載った水が台の下に隠れないよう台より手前へ
-        front = WaterSim.PlatformFront(wx, wy, size, front);
-        // 部屋の絵より手前にある歩ける床の絵 (ドロップシップの坂) は水のすぐ奥へ移してあるので、それより手前へ
-        front = FloorCovers.Front(wx, wy, size, front);
+        float size = tc * cell;
+        t.Z = TileZ(t.Tx, t.Ty);
         EP(3);
-        float zs = DamageMap.ZScale(front);
-        // 床の上・足跡 (−0.001) と波紋より奥
-        t.Z = front - 0.0004f * zs;
         t.Go.transform.position = FxMath.V3(wx, wy, t.Z);
         // 作り置きの写しは作った時の親の位置で置いてあるので、親を動かした後に置き直す
         if (parts.Shadow && ShadowView.Place(parts.Shadow, ShadowDz)) t.Shadow = parts.Shadow;

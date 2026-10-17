@@ -17,8 +17,10 @@ internal static partial class PropSim
     private const float FrontFaceMax = 4f;    // 絵の下から床の線を探す距離 (壁に掛かった物は壁の面の高さぶん下に床がある)
     private const float FrontProbeNear = 0.15f, FrontProbeFar = 0.4f; // 水位を見る点の床の線からの距離 (絵の足元の升は当たり判定で水が入らないことがある)
     private const int FrontGatePts = 5;       // 板の無い絵が浸かったかを見る点の数 (絵の幅に並べる)
+    private const int FrontPerTick = 64;      // 1 回 (100ms) に水位を見る絵の数
     private const int FrontMakePerTick = 2;   // 1 回に列を測る・板を作る絵の数 (一斉に水が来ても 1 回で作り切らない)
     private const long FrontCheckMs = 1000;   // 出している板の絵がまだ描かれているかを見る間隔
+    private const float FrontTiltMax = 0.2f;  // 回転の sin がこれ以下の絵は回していない物として板を作る (約 11°)
     private const float FrontDrawn = 0.25f;   // 板が描く絵の不透明度 (床マスクを作る道具が絵の画素を床から抜く閾値と同じ)
 
     private sealed class FrontArt
@@ -37,7 +39,7 @@ internal static partial class PropSim
 
     private static readonly List<FrontArt> FrontArts = new();
     private static readonly List<(SpriteRenderer Sr, Vector4 Box)> FrontOver = new(); // 帯より手前の重ね絵 (地図のアニメ・壁の上面)。影の写しで抜くだけ
-    private static int _frontGen = -1;
+    private static int _frontGen = -1, _frontNext;
     private static readonly int LvlColsId = Shader.PropertyToID("_LvlCols"), LvlMaxId = Shader.PropertyToID("_LvlMax"), SilCutId = Shader.PropertyToID("_SilCut");
 
     private static bool _frontOff; // 確認用 (bridge `props front off`): 板を出さない (前の見え方と見比べる)
@@ -48,8 +50,12 @@ internal static partial class PropSim
         if (_frontGen != GameClock.ShipGen && !FrontCollect()) return;
         int made = 0;
         float full = WaterSim.Full;
-        foreach (var a in FrontArts)
+        // 1 回に見る絵は FrontPerTick 枚まで (順番に回す)。絵は 1 マップに 100〜230 枚あり、全部を毎回見ると端末で 1ms を超える
+        int count = FrontArts.Count, budget = Math.Min(count, FrontPerTick);
+        if (count > 0) _frontNext %= count;
+        for (int j = 0; j < budget; j++)
         {
+            var a = FrontArts[(_frontNext + j) % count];
             if (a.Failed) continue;
             var s = a.S;
             if (s != null && now - a.Checked >= FrontCheckMs)
@@ -80,10 +86,20 @@ internal static partial class PropSim
             var px = a.Px;
             bool dirty = false;
             float top = 0f;
+            // 隣の列は同じ水の升を見ることが多い (升 0.25 単位に 64 列) ので、見る升が変わった時だけ引き直す
+            int pk1 = -2, pk2 = -2;
+            float pd = 0f;
             for (int c = 0; c < BaseCols; c++)
             {
                 float y = a.ColY[c];
-                float d = float.IsNaN(y) ? 0f : FrontDepth(a.ColX[c], y, full);
+                float d = 0f;
+                if (!float.IsNaN(y))
+                {
+                    float x = a.ColX[c];
+                    int k1 = WaterSim.CellOf(x, y - FrontProbeNear), k2 = WaterSim.CellOf(x, y - FrontProbeFar);
+                    if (k1 != pk1 || k2 != pk2) { pd = Math.Max(WaterSim.DepthCell(k1), WaterSim.DepthCell(k2)) / full; pk1 = k1; pk2 = k2; }
+                    d = pd;
+                }
                 top = Math.Max(top, d);
                 int g = Math.Clamp((int)MathF.Round(d / FrontLvlMax * 255f), 0, 255);
                 int old = px[c * 4 + 1];
@@ -112,11 +128,24 @@ internal static partial class PropSim
             s.Sr.SetPropertyBlock(s.Block);
             if (s.Shadow) s.Shadow.SetPropertyBlock(s.Block);
         }
+        _frontNext += budget;
     }
 
     // 床の線 (x, y) の手前の水の深さ (単位): 線のすぐ下と少し下の深い方
     private static float FrontDepth(float x, float y, float full) =>
         Math.Max(WaterSim.DepthAt(FxMath.V2(x, y - FrontProbeNear)), WaterSim.DepthAt(FxMath.V2(x, y - FrontProbeFar))) / full;
+
+    // 試合の始めの準備 (TerrainWarm) から: 水が来る前に集めておく
+    internal static void WarmFront()
+    {
+        try
+        {
+            // 板の更新が船の替わりで前の船の板を片付けるのと同じことを先に済ませる (後で片付けると集めた物も捨てて集め直す)
+            if (GameClock.ShipGen != _sunkGen) { SunkClear(); _sunkGen = GameClock.ShipGen; }
+            if (_frontGen != GameClock.ShipGen) FrontCollect();
+        }
+        catch (Exception e) { Plugin.Logger.LogWarning($"[PropSim] front warm: {e.Message}"); }
+    }
 
     // 船の手前の絵を集め、浸かったかを見る点を測る (板と列は浸かってから)。船ごとに 1 回
     private static bool FrontCollect()
@@ -128,33 +157,30 @@ internal static partial class PropSim
         FloorCovers.Ensure();
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         string shipName = ship.name.Replace("(Clone)", "");
-        var roomIds = new HashSet<int>();
-        foreach (var r in DamageMap.RoomArts) if (r) roomIds.Add(r.GetInstanceID());
-        // 高さの表に載った動かない家具 (Stills) は家具の水面の板が覆う
-        var furnished = new HashSet<int>();
-        foreach (var p in Furnished) if (p.Tr) furnished.Add(p.Tr.GetInstanceID());
-        // 扉の絵 (除染室の扉など本編の扉でない物も) は扉の板が閉じている間だけ覆う
-        for (int i = 0, n = Decompression.DoorCount; i < n; i++)
-            foreach (var d in WaterArt.DoorRenderers(i)) if (d) furnished.Add(d.transform.GetInstanceID());
+        var roomIds = RoomIds();
+        var skip = FrontSkip();
         int tiled = 0, turned = 0;
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
         {
-            if (!FloorMask.CoverArt(sr, shipName, roomIds)) continue;
+            if (!sr) continue;
             var tr = sr.transform;
-            if (furnished.Contains(tr.GetInstanceID())) continue;
             float z = tr.position.z;
-            if (z >= FrontBandZ || FloorMask.AlwaysFloor(shipName, sr.sprite.name)) continue;
             if (z <= -FrontBandZ)
             {
+                if (!FloorMask.CoverArt(sr, shipName, roomIds) || skip.Contains(tr.GetInstanceID())) continue;
                 var ob = sr.bounds;
                 Vector3 omn = ob.min, omx = ob.max;
                 FrontOver.Add((sr, V4(omn.x, omn.y, omx.x, omx.y)));
                 continue;
             }
-            // 並べて描く絵は網目と描く形が違い、回した絵は列が縦にならない (どちらも本編の手前の絵にはほぼ無い)
+            if (!FrontCover(sr, shipName, roomIds, skip)) continue;
+            // 並べて描く絵は網目と描く形が違い、大きく回した絵は列が縦にならない。少し傾けた絵 (ゴミ捨てのレバー 8°) は
+            // 回していない物として測る (列の位置のずれは高さ × sin で 0.1 単位ほど)
             if (sr.drawMode != SpriteDrawMode.Simple) { tiled++; continue; }
             var m = tr.localToWorldMatrix;
-            if (MathF.Abs(m.m01) > 1e-4f || MathF.Abs(m.m10) > 1e-4f) { turned++; continue; }
+            // 傾きの sin (拡大縮小を除く)
+            float sx = MathF.Sqrt(m.m00 * m.m00 + m.m10 * m.m10), sy = MathF.Sqrt(m.m01 * m.m01 + m.m11 * m.m11);
+            if (sx < 1e-6f || sy < 1e-6f || MathF.Abs(m.m10) > FrontTiltMax * sx || MathF.Abs(m.m01) > FrontTiltMax * sy) { turned++; continue; }
             var b = sr.bounds;
             Vector3 mn = b.min, mx = b.max;
             var a = new FrontArt { Sr = sr, Box = V4(mn.x, mn.y, mx.x, mx.y) };
@@ -169,6 +195,48 @@ internal static partial class PropSim
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         Plugin.Logger.LogInfo($"[PropSim] front arts={FrontArts.Count} over={FrontOver.Count} tiled={tiled} turned={turned} ({ms:F1}ms)");
         return true;
+    }
+
+    private static HashSet<int> RoomIds()
+    {
+        var ids = new HashSet<int>();
+        foreach (var r in DamageMap.RoomArts) if (r) ids.Add(r.GetInstanceID());
+        return ids;
+    }
+
+    // 手前の絵にしない物の Transform: 高さの表に載った動かない家具 (Stills・家具の水面の板が覆う) と
+    // 扉の絵 (除染室の扉など本編の扉でない物も・扉の板が閉じている間だけ覆う)
+    internal static HashSet<int> FrontSkip()
+    {
+        if (!_ready) Ensure();
+        var skip = new HashSet<int>();
+        foreach (var p in Furnished) if (p.Tr) skip.Add(p.Tr.GetInstanceID());
+        for (int i = 0, n = Decompression.DoorCount; i < n; i++)
+            foreach (var d in WaterArt.DoorRenderers(i)) if (d) skip.Add(d.transform.GetInstanceID());
+        return skip;
+    }
+
+    // 帯の外でも手前の絵にしない物 (頭上のケーブル・動く台・船外の印・扉の絵・中身の無い絵・Fungle のジャングルの壁の塊)。
+    // ジャングルの壁の塊は手前の茂みの網目に隠れるので、板を付けると影の中だけ水が這い上がって見える
+    private static bool FrontExcluded(string sprite) =>
+        sprite is "ZiplineCable" or "platform_bottom" or "platformpropeller" or "gearcomb" or "hull_mark1" or "hull_mark2" or "blank" or "balconyDoor" or "door_vert"
+        || sprite.StartsWith("ElectircalDoor", StringComparison.Ordinal) || sprite.StartsWith("doorside", StringComparison.Ordinal)
+        || sprite.StartsWith("mushchunk_", StringComparison.Ordinal);
+
+    // 手前の絵 (水面の板を付け、床マスクで床から抜く絵) か。クルーと同じ奥行きの帯 (|z| < FrontBandZ) の絵と、
+    // 帯より奥でも掛かる水のタイルより手前に描かれる絵 (壁の端末・壁の飾り・床に立つ機械。部屋の絵が z 1〜8 にあるので多い)。
+    // 頭上の重ね絵 (z <= -FrontBandZ) は入れない。床マスクを作る道具へ書き出す時 (floorexport) も同じ選び方
+    internal static bool FrontCover(SpriteRenderer sr, string ship, HashSet<int> roomIds, HashSet<int> skip)
+    {
+        if (!FloorMask.CoverArt(sr, ship, roomIds) || skip.Contains(sr.transform.GetInstanceID())) return false;
+        string name = sr.sprite.name;
+        if (FloorMask.AlwaysFloor(ship, name) || FrontExcluded(name)) return false;
+        float z = sr.transform.position.z;
+        if (z <= -FrontBandZ) return false;
+        if (z < FrontBandZ) return true;
+        var b = sr.bounds;
+        Vector3 mn = b.min, mx = b.max;
+        return z < WaterArt.MaxTileZ(mn.x, mn.y, mx.x, mx.y);
     }
 
     // 列ごとの床の線を測って板を作る (隠したまま)。型の uv の列 (MeshBase と同じ BaseCols 列) ごとに、絵の一番下から床マスクで床の線を探す
@@ -196,7 +264,7 @@ internal static partial class PropSim
         {
             float u = mr.x + (c + 0.5f) / BaseCols * du;
             float v = mr.z + bottom[c] / 255f * mr.w;
-            // 型の uv → 絵の中の位置 → 世界 (回していない絵だけなので軸ごと)
+            // 型の uv → 絵の中の位置 → 世界 (回していない絵と少し傾けた絵だけなので軸ごと)
             float wx = m.m03 + fx * ((u - bu) / au);
             float wy = m.m13 + fy * ((v - bv) / av);
             float fl = FloorMask.FloorLine(wx, wy, Math.Max(yTop - wy, 0f), FrontFaceMax);
@@ -372,9 +440,8 @@ internal static partial class PropSim
                 var b = sr.bounds;
                 Vector3 mn = b.min, mx = b.max;
                 float z = sr.transform.position.z;
-                // 水のタイルは部屋の絵の 0.0004 手前 (WaterArt のタイルの置き方と同じ)
-                float water = DamageMap.FrontZ(new Vector2((mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f));
-                water -= 0.0004f * DamageMap.ZScale(water);
+                // 掛かる水のタイルのうち一番奥 (FrontCover と同じ)
+                float water = WaterArt.MaxTileZ(mn.x, mn.y, mx.x, mx.y);
                 var (fl, fa) = FloorMask.Share(mn.x, mn.y, mx.x, mx.y);
                 string st;
                 if (front.TryGetValue(sr.GetInstanceID(), out var a)) st = a.Failed ? "plate-failed" : a.ColY == null ? "plate-unmade" : "plate";
@@ -385,6 +452,11 @@ internal static partial class PropSim
                 if (Array.IndexOf(TaskRank, st) < Array.IndexOf(TaskRank, worst)) worst = st;
                 sb.Append(" | ").Append(sr.sprite.name).Append(" z=").Append(z.ToString("0.####")).Append(" water=").Append(water.ToString("0.####"))
                   .Append(' ').Append(st).Append(" floor=").Append(fl.ToString("0.00")).Append(" face=").Append(fa.ToString("0.00"));
+                if (st == "DRY")
+                {
+                    var m = sr.transform.localToWorldMatrix;
+                    sb.Append(" m01=").Append(m.m01.ToString("0.#####")).Append(" m10=").Append(m.m10.ToString("0.#####")).Append(" mode=").Append(sr.drawMode.ToString());
+                }
             }
             if (worst == "art")
             {

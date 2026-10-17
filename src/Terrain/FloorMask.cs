@@ -687,9 +687,17 @@ internal static class FloorMask
             // 動く物 (流される小物・押される家具・扉) と通気口 (水の下へ沈める) は入れない
             sb.Append("\n  ],\n  \"covers\": [\n");
             string shipName = ship.name.Replace("(Clone)", "");
-            int covers = 0;
+            // front = 手前の絵 (水面の板を付ける絵・PropSim.FrontCover)。帯より奥でも水のタイルより手前の絵は道具が z で決められない
+            int covers = 0, fronts = 0;
+            var skip = PropSim.FrontSkip();
             foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
-                if (CoverArt(sr, shipName, roomIds) && WriteArt(sb, sr, covers == 0, false)) covers++;
+            {
+                if (!CoverArt(sr, shipName, roomIds)) continue;
+                bool front = PropSim.FrontCover(sr, shipName, roomIds, skip);
+                if (!WriteArt(sb, sr, covers == 0, false, front)) continue;
+                covers++;
+                if (front) fronts++;
+            }
             // 網目で描く手前の絵 (Fungle の水晶・茂み・岩などは背景の網目にまとめて描かれている)。どれを手前の絵として使うかは道具が名前で選ぶ
             sb.Append("\n  ],\n  \"meshCovers\": [\n");
             int meshCovers = 0, meshUnread = 0;
@@ -767,7 +775,7 @@ internal static class FloorMask
             sb.Append("\n  ]\n}\n");
             string outPath = System.IO.Path.Combine(TestBridge.ScreensDir, $"floor_{ship.name}.json");
             System.IO.File.WriteAllText(outPath, sb.ToString());
-            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} meshCovers={meshCovers} meshUnread={meshUnread} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} shadows={shadows} tops={tops} -> {outPath}");
+            reply($"OK floorexport mask={Stats} rooms={n} skipped={skipped} covers={covers} fronts={fronts} meshCovers={meshCovers} meshUnread={meshUnread} solid={SolidMap.W}x{SolidMap.H} furniture={cols.Count} shadows={shadows} tops={tops} -> {outPath}");
         });
     }
 
@@ -790,7 +798,7 @@ internal static class FloorMask
 
     // 絵 1 枚の配置 (テクスチャの四角・世界への写し方・絵が描かれる三角形)。部屋の絵は、詰め方が密・回転の物は画素を引けないので書かない。
     // 手前の絵は三角形だけでも形になるので、画素を引けない物はテクスチャ無しで書く
-    private static bool WriteArt(StringBuilder sb, SpriteRenderer sr, bool first, bool needTex)
+    private static bool WriteArt(StringBuilder sb, SpriteRenderer sr, bool first, bool needTex, bool front = false)
     {
         var sp = sr.sprite;
         var tex = sp ? sp.texture : null;
@@ -822,7 +830,7 @@ internal static class FloorMask
         }
         if (needTex && place == null) return false;
         sb.Append(first ? "" : ",\n").Append("    {\"sprite\": \"").Append(sp.name).Append('"').Append(place)
-          .Append(", \"z\": ").Append(F(t.position.z)).Append(", \"order\": ").Append(sr.sortingOrder).Append(", \"tris\": [");
+          .Append(", \"z\": ").Append(F(t.position.z)).Append(", \"order\": ").Append(sr.sortingOrder).Append(front ? ", \"front\": 1" : "").Append(", \"tris\": [");
         // 絵が実際に描かれる三角形 (世界座標)。テクスチャの四角の中でも三角形の外はアトラスの隣の絵なので描かない
         var vs = sp.vertices;
         var ts = sp.triangles;
