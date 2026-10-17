@@ -42,7 +42,8 @@ internal static class AfkGuard
         long now = Environment.TickCount64;
         if (now < _nextAt) return;
         _nextAt = now + 1000;
-        bool touched = Touched;
+        // PC はチャット欄の処理が見ているキーの押し下げ・Android はこの時に画面に指が触れているか
+        bool touched = Touched || (OperatingSystem.IsAndroid() && Input.touchCount > 0);
         Touched = false;
         if (AfkSettings.Action.Value == 0) { Reset(); return; }
         var me = PlayerControl.LocalPlayer;
@@ -87,7 +88,8 @@ internal static class AfkGuard
     // ホスト: 放置の知らせを受けた
     private static void OnReport(PlayerControl p)
     {
-        if (!p || p.Data == null || p.Data.IsDead || !ShipStatus.Instance || Roles.GameEnd.Decided) return;
+        // 1 秒ごとの知らせは会議が始まった後に届くことがある。会議と追放の場面では受けない
+        if (!p || p.Data == null || p.Data.IsDead || !ShipStatus.Instance || Roles.GameEnd.Decided || MeetingHud.Instance || ExileController.Instance) return;
         string name = p.Data.PlayerName;
         switch (AfkSettings.Action.Value)
         {
