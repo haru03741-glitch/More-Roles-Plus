@@ -45,6 +45,7 @@ internal static class ColorPicker
         }
         ClientOptions.ShowPanel(false);
         ClientOptions.HideTab(true);
+        MakeHex();
         _panel.gameObject.SetActive(true);
         _open = true;
         // 今の自分の色から始める (作った色が無ければ本編の色)
@@ -110,9 +111,6 @@ internal static class ColorPicker
         _status = Label(proto, layer, new Vector3(1.75f, -2.3f + 0.55f, -2f), "");
         _status.fontSize *= 0.8f;
 
-        _hex = SearchBox.Create(_panel.transform, new Vector3(1.75f, 0.2f, -2f), 2.4f, 0.45f, new Text("#RRGGBB を入れる", "Type #RRGGBB"), OnHex);
-        var glass = _hex?.Root ? _hex.Root.transform.Find("MrpSearchIcon") : null;
-        if (glass) glass.gameObject.SetActive(false);
 
         var apply = ClientOptions.MakeButton(proto, _panel.transform, "Apply", new Text("この色にする", "Use this color"), out var applyBack, out var applyRoll);
         apply.transform.localPosition = new Vector3(1.75f, -0.5f, -6f);
@@ -132,6 +130,15 @@ internal static class ColorPicker
             Hide();
             ClientOptions.ShowPanel(true);
         }));
+    }
+
+    // #hex の欄は開くたびに作り直す (入力欄の部品は 1 つしか文字の変化を受け取れず、設定画面の検索欄を開くとそちらへ移るため)
+    private static void MakeHex()
+    {
+        if (_hex != null && _hex.Root) Object.Destroy(_hex.Root);
+        _hex = SearchBox.Create(_panel.transform, new Vector3(1.75f, 0.2f, -2f), 2.4f, 0.45f, new Text("#RRGGBB を入れる", "Type #RRGGBB"), OnHex);
+        var glass = _hex != null && _hex.Root ? _hex.Root.transform.Find("MrpSearchIcon") : null;
+        if (glass) glass.gameObject.SetActive(false);
     }
 
     private static void Tint(SpriteRenderer back, ButtonRolloverHandler roll, Color c)
@@ -338,7 +345,8 @@ internal static class ColorPicker
         else if (args == "apply") Apply();
         else if (args == "reset") Reset();
         else if (CustomColors.TryParse(args, out var c)) { FromColor(c); if (IsOpen) Refresh(true); }
-        else if (args.Length > 0) return "ERR picker [open | apply | reset | #RRGGBB]";
+        else if (args.StartsWith("type ")) { if (_hex != null) _hex.Type(args[5..]); }
+        else if (args.Length > 0) return "ERR picker [open | apply | reset | type <文> | #RRGGBB]";
         return $"OK picker open={IsOpen} h={_h:F3} s={_s:F3} v={_v:F3} color=#{CustomColors.Hex(Current())} status=[{(_status ? _status.text : "")}]";
     }
 }
