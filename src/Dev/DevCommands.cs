@@ -203,6 +203,7 @@ internal static class DevCommands
             reply("OK chatraw");
         });
 
+        TestBridge.Register("presetui", "[name <名前> | <ボタンの番号>] 設定画面のプリセットのタブ (0 保存・1 取り込む・2 フォルダ・3 前・4 次・100+行*4+{0 読む,1 書き出す,2 消す})", (args, reply) => reply(Options.PresetPage.Simulate(args.Trim())));
         TestBridge.Register("f1", "試合中の設定の一覧 (F1) を出す / 消す", (_, reply) => { Menu.SettingsOverlay.Toggle(); reply($"OK f1 open={Menu.SettingsOverlay.IsOpen}"); });
         TestBridge.Register("afk", "放置の数え (設定・止まっている秒数・知らせたか)", (_, reply) => reply(Commands.AfkGuard.Describe()));
         TestBridge.Register("colors", "自分で作った色 (#RRGGBB) の一覧 (自分の保存値と、届いている人の番号=色)", (_, reply) => reply(Menu.CustomColors.Describe()));

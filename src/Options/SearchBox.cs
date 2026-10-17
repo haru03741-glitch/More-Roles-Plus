@@ -14,9 +14,12 @@ namespace MoreRolesPlus.Options;
 // - 文字が変わったことは TextBoxTMP.SetText の後置で受け取る (欄の OnChange に管理側のデリゲートを入れない)。
 //   受け取った文字は控えに持ち、本編の欄の text を読み返さない (破棄後の読み出しで落ちることがあるため)。
 // - 開くたびに作り、画面を閉じたら画面ごと破棄される。使い回さない。
+// - 同時にいくつあってもよい (設定画面の検索欄・プリセットの名前・色の #hex など)。欄を押した時の処理は置き場の番号ごとに 1 つだけ作る
 internal sealed class SearchBox
 {
-    private static SearchBox _current;
+    private const int MaxLive = 8;
+    private static readonly SearchBox[] Live = new SearchBox[MaxLive];
+    private static readonly UnityAction[] FocusActions = new UnityAction[MaxLive];
     private static readonly Color Field = new(0.07f, 0.075f, 0.095f, 1f), FieldOver = new(0.1f, 0.11f, 0.14f, 1f);
 
     private readonly TextBoxTMP _text;
@@ -41,6 +44,8 @@ internal sealed class SearchBox
         var source = chat.freeChatField;
         if (!source) return null;
 
+        int slot = FreeSlot();
+        if (slot < 0) return null;
         // 元が非表示のことがある (チャットの窓が閉じている)。複製も非表示のまま作り、部品を外してから表示する
         var root = Object.Instantiate(source.gameObject, parent);
         root.name = "MrpSearchBox";
@@ -82,7 +87,7 @@ internal sealed class SearchBox
                 if (pb)
                 {
                     pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
-                    pb.OnClick.AddListener(FocusAction);
+                    pb.OnClick.AddListener(FocusAction(slot));
                 }
             }
             // 見た目: 角の丸い暗い欄 (輪郭 + 地) と左の虫眼鏡。字は白
@@ -141,9 +146,10 @@ internal sealed class SearchBox
             }
 
             root.SetActive(true);
+            var box = new SearchBox(root, textArea, hintTmp, changed);
+            Live[slot] = box;
             textArea.SetText("", "");
-            _current = new SearchBox(root, textArea, hintTmp, changed);
-            return _current;
+            return box;
         }
         catch (Exception e)
         {
@@ -153,10 +159,19 @@ internal sealed class SearchBox
         }
     }
 
-    // 欄を押した時に入力を受け付ける (Android ではキーボードが開く)
-    private static readonly UnityAction FocusAction = (UnityAction)(() =>
+    // 空いている置き場 (欄が破棄された所も空きとみなす)
+    private static int FreeSlot()
     {
-        if (_current != null && _current._text) _current._text.GiveFocus();
+        for (int i = 0; i < MaxLive; i++)
+            if (Live[i] == null || !Live[i]._text) { Live[i] = null; return i; }
+        return -1;
+    }
+
+    // 欄を押した時に入力を受け付ける (Android ではキーボードが開く)
+    private static UnityAction FocusAction(int slot) => FocusActions[slot] ??= (UnityAction)(() =>
+    {
+        var b = Live[slot];
+        if (b != null && b._text) b._text.GiveFocus();
     });
 
     public void Clear()
@@ -172,13 +187,19 @@ internal sealed class SearchBox
 
     public static void Forget(SearchBox box)
     {
-        if (_current == box) _current = null;
+        for (int i = 0; i < MaxLive; i++)
+            if (Live[i] == box) Live[i] = null;
     }
 
     internal static void OnSetText(TextBoxTMP box, string input, string compo)
     {
-        var cur = _current;
-        if (cur == null || !cur._text || box.Pointer != cur._text.Pointer) return;
+        SearchBox cur = null;
+        for (int i = 0; i < MaxLive; i++)
+        {
+            var b = Live[i];
+            if (b != null && b._text != null && b._text.Pointer == box.Pointer && b._text) { cur = b; break; }
+        }
+        if (cur == null) return;
         string q = (input ?? "") + (compo ?? "");
         if (cur._hint) cur._hint.enabled = q.Length == 0;
         if (q == cur.Query) return;

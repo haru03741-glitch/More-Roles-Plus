@@ -30,6 +30,7 @@ internal static class SettingsMenu
     private sealed class Page
     {
         public bool Roles;  // false = 全般のタブ
+        public bool Presets; // プリセットのタブ
         public PassiveButton Button;
         public GameOptionsMenu Menu;
     }
@@ -37,6 +38,7 @@ internal static class SettingsMenu
     private static readonly List<Page> Pages = new();
     private static readonly Dictionary<IntPtr, int> MenuToPage = new();
     private static readonly Dictionary<IntPtr, Opt> Rows = new();
+    private static readonly List<OptionBehaviour> RowList = new(); // 値を外から変えた時に描き直す相手
     private static GameOptionsMenu _template;
     private static FloatGameSetting _numberData;
     private static CheckboxGameSetting _checkData;
@@ -99,7 +101,9 @@ internal static class SettingsMenu
         Pages.Clear();
         MenuToPage.Clear();
         Rows.Clear();
+        RowList.Clear();
         RoleMenu.Forget();
+        PresetPage.Forget();
         if (!_template) return;
 
         // 左の列を 2 列に詰める: 左 = 本編の 3 つ、右 = MRP のタブ。
@@ -111,11 +115,12 @@ internal static class SettingsMenu
         Vector3 At(float px, float py) => origin + new Vector3((px - GameButtonX) * unit, (GameButtonY - py) * unit, 0f);
         PassiveButton[] vanilla = { menu.GamePresetsButton, gameBtn, menu.RoleSettingsButton };
 
-        foreach (bool roles in new[] { false, true })
+        foreach (int kind in new[] { 0, 1, 2 })
         {
-            if (roles ? !RoleMenu.HasContent() : Registry.SectionsOf(Tab.General).Count == 0) continue;
+            bool roles = kind == 1, presets = kind == 2;
+            if (roles ? !RoleMenu.HasContent() : kind == 0 && Registry.SectionsOf(Tab.General).Count == 0) continue;
             int index = Pages.Count;
-            string tab = roles ? "Roles" : "General";
+            string tab = presets ? "Presets" : roles ? "Roles" : "General";
 
             var btn = Object.Instantiate(gameBtn, gameBtn.transform.parent);
             btn.name = "MrpTabButton_" + tab;
@@ -123,8 +128,8 @@ internal static class SettingsMenu
             var label = btn.GetComponentInChildren<TextMeshPro>();
             var tr = label.GetComponent<TextTranslatorTMP>();
             if (tr) Object.Destroy(tr);
-            label.text = TabName(roles);
-            Color c = TabColor(roles);
+            label.text = presets ? PresetPage.TabName : TabName(roles);
+            Color c = presets ? PresetPage.TabColor : TabColor(roles);
             btn.inactiveSprites.GetComponent<SpriteRenderer>().color = new Color(c.r * 0.6f, c.g * 0.6f, c.b * 0.6f, 1f);
             btn.activeSprites.GetComponent<SpriteRenderer>().color = c;
             btn.selectedSprites.GetComponent<SpriteRenderer>().color = c;
@@ -138,7 +143,7 @@ internal static class SettingsMenu
             page.name = "MrpTab_" + tab;
             page.gameObject.SetActive(false);
             MenuToPage[page.Pointer] = index;
-            Pages.Add(new Page { Roles = roles, Button = btn, Menu = page });
+            Pages.Add(new Page { Roles = roles, Presets = presets, Button = btn, Menu = page });
         }
         // MRP のボタンは本編のボタンを複製して作るので、本編の方を縮めるのは複製の後
         for (int i = 0; i < vanilla.Length; i++) Compact(vanilla[i], At(LeftColumnX, FirstRowY + i * RowStepY), scale);
@@ -203,7 +208,8 @@ internal static class SettingsMenu
             var desc = menu.MenuDescriptionText;
             var tr = desc.GetComponent<TextTranslatorTMP>();
             if (tr) Object.Destroy(tr);
-            desc.text = Pages[index].Roles
+            desc.text = Pages[index].Presets ? PresetPage.Description
+                : Pages[index].Roles
                 ? RoleMenu.DefaultDescription
                 : new Text("More Roles Plus の設定。閉じた時に全員へ送られます。", "More Roles Plus settings. Sent to everyone when you close this menu.");
         }
@@ -240,7 +246,8 @@ internal static class SettingsMenu
             m.Children = new Il2CppSystem.Collections.Generic.List<OptionBehaviour>();
             try
             {
-                if (Pages[index].Roles) RoleMenu.Build(m, GameSettingMenu.Instance);
+                if (Pages[index].Presets) PresetPage.Build(m, GameSettingMenu.Instance);
+                else if (Pages[index].Roles) RoleMenu.Build(m, GameSettingMenu.Instance);
                 else Build(m, Tab.General);
             }
             catch (Exception e) { Plugin.Logger.LogError($"settings tab build: {e}"); }
@@ -291,6 +298,7 @@ internal static class SettingsMenu
         row.SetClickMask(m.ButtonClickMask);
         row.SetUpFromData(opt.IsToggle ? _checkData : _numberData, 20);
         Rows[row.Pointer] = opt;
+        RowList.Add(row);
         Refresh(row, opt);
         return row;
     }
@@ -315,6 +323,14 @@ internal static class SettingsMenu
             _checkData.Type = OptionTypes.Checkbox;
             _checkData.Title = StringNames.Accept;
         }
+    }
+
+    // プリセットを読み込んだ後など、値を外から変えた時に開いている行を全部描き直す
+    public static void RefreshAll()
+    {
+        RowList.RemoveAll(r => !r); // 作り直しで消えた行
+        foreach (var row in RowList)
+            if (row && Rows.TryGetValue(row.Pointer, out var opt)) Refresh(row, opt);
     }
 
     public static void Refresh(OptionBehaviour row, Opt opt)
@@ -346,6 +362,8 @@ internal static class SettingsMenu
         }
         // 閉じた画面の行は破棄され、そのアドレスは別の物に使い回されうるので、ここで全部忘れる
         Rows.Clear();
+        RowList.Clear();
+        PresetPage.Forget();
         RoleMenu.Forget();
         MenuToPage.Clear();
         Pages.Clear();

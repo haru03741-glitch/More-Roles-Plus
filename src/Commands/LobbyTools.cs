@@ -145,62 +145,34 @@ internal static class LobbyTools
         return sb.ToString();
     }
 
-    // ---- /preset (ホストの設定を名前を付けて保存・読み込み) ----
-
-    private static string PresetDir => Path.Combine(Paths.ConfigPath, "MoreRolesPlus", "presets");
-
-    private static string PresetPath(string name) => Path.Combine(PresetDir, name + ".txt");
-
-    // 名前に使えるのは文字・数字・_ と - だけ (置き場の外を指せないように)
-    private static bool ValidName(string s) => s.Length is > 0 and <= 30 && Regex.IsMatch(s, @"^[\w\-]+$");
+    // ---- /preset (ホストの設定を名前を付けて保存・読み込み。中身は PresetStore) ----
 
     public static string Preset(string args)
     {
         var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         string sub = parts.Length > 0 ? parts[0].ToLowerInvariant() : "";
         string name = parts.Length > 1 ? parts[1].Trim() : "";
-        Text usage = new("/preset (一覧)・/preset save <名前>・/preset load <名前>・/preset del <名前>", "/preset (list), /preset save <name>, /preset load <name>, /preset del <name>");
+        Text usage = new("/preset (一覧)・/preset save|load|del|export <名前>・/preset import (設定画面の「プリセット」のタブでも同じことができる)",
+            "/preset (list), /preset save|load|del|export <name>, /preset import (also in the Presets tab of the settings menu)");
         if (sub is "" or "list") return List();
-        if (!ValidName(name)) return usage;
+        if (sub == "import") return PresetStore.Import();
+        if (!PresetStore.ValidName(name)) return usage;
         switch (sub)
         {
-            case "save":
-                OptionSync.RestoreOwn();
-                Registry.SaveTo(PresetPath(name));
-                return new Text($"今の設定を「{name}」に保存しました", $"Saved the current settings as \"{name}\"");
+            case "save": return PresetStore.Save(name);
             case "load":
                 if (!InLobby) return OnlyLobby;
-                if (GameSettingMenu.Instance) return new Text("設定画面を閉じてから使ってください", "Close the settings screen first");
-                if (!File.Exists(PresetPath(name))) return new Text($"「{name}」はありません", $"No preset \"{name}\"");
-                OptionSync.RestoreOwn();
-                if (!Registry.LoadFrom(PresetPath(name)))
-                {
-                    Registry.Load(); // 読めなかったら元の設定に戻す
-                    return new Text($"「{name}」を読めませんでした", $"Couldn't read \"{name}\"");
-                }
-                Registry.Save();
-                OptionSync.SendAll();
-                LobbyView.OnOptionsReceived();
-                return new Text($"設定を「{name}」にしました", $"Loaded \"{name}\"");
+                return PresetStore.Load(name);
             case "del":
-            case "delete":
-                if (!File.Exists(PresetPath(name))) return new Text($"「{name}」はありません", $"No preset \"{name}\"");
-                File.Delete(PresetPath(name));
-                return new Text($"「{name}」を消しました", $"Deleted \"{name}\"");
-            default:
-                return usage;
+            case "delete": return PresetStore.Delete(name);
+            case "export": return PresetStore.Export(name);
+            default: return usage;
         }
     }
 
     private static string List()
     {
-        if (!Directory.Exists(PresetDir)) return new Text("保存した設定はありません", "No saved presets");
-        var sb = new StringBuilder();
-        foreach (var f in Directory.GetFiles(PresetDir, "*.txt"))
-        {
-            if (sb.Length > 0) sb.Append(", ");
-            sb.Append(Path.GetFileNameWithoutExtension(f));
-        }
-        return sb.Length > 0 ? sb.ToString() : new Text("保存した設定はありません", "No saved presets");
+        var names = PresetStore.Names();
+        return names.Count > 0 ? string.Join(", ", names) : new Text("保存した設定はありません", "No saved presets");
     }
 }
