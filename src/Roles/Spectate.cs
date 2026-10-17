@@ -1,0 +1,279 @@
+// Based on the spectator / GM of https://github.com/Gurge44/EndlessHostRoles (GPL-3.0)
+using System;
+using System.Collections.Generic;
+using AmongUs.GameOptions;
+using HarmonyLib;
+using InnerNet;
+using MoreRolesPlus.Net;
+using MoreRolesPlus.Options;
+
+namespace MoreRolesPlus.Roles;
+
+[Settings(Tab.General, "観戦", "Spectating", order: -65)]
+public static class SpectateSettings
+{
+    public static readonly BoolOpt Allow = new("観戦を選んだ人を試合の始めから幽霊にする", "Players who choose to spectate start as ghosts", true);
+}
+
+// 観戦: ロビーで「次の試合を観戦する」を選んだ人は、試合の始めから幽霊として見るだけになる。
+// - 本人の端末がホストへ「観戦したい / しない」を送る (Esc の「MRP の設定」・/spectate)。
+// - ホストは本編が陣営を決めた直後に、観戦の人がインポスターに選ばれていたら他のクルーと入れ替え、MRP の役職も配らない。
+// - 始まりの場面が終わったら、ホストが観戦の人の一覧を全員へ送り、各端末がその人を死体なしで死なせてタスクを外す
+//   (本編の追放の処理を借りる。追放の出来事は起こさない)。勝ち負けの人数には生きている人しか数えないので影響しない。
+// - 観戦の人は会議で全員の役職が見える
+internal static class Spectate
+{
+    private static readonly HashSet<byte> Wants = new();     // ホスト: 観戦したい人
+    private static readonly HashSet<byte> Watching = new();  // 全員: この試合の観戦の人
+    private static bool _applied;
+    internal static bool IntroStarted;
+    private static long _shipSince;
+    internal static byte Applying = 255;                      // 今幽霊にしている人 (追放の出来事を起こさないための印)
+
+    private static readonly RemoteCall<bool> Want = new("Spectate.Want", Route.ToHost,
+        (w, v) => w.Write(v), r => r.ReadBoolean(), (sender, v) => OnWant(sender, v));
+
+    private static readonly RemoteCall<List<byte>> Apply = new("Spectate.Apply", Route.HostToAll,
+        (w, ids) => { w.Write((byte)ids.Count); foreach (var id in ids) w.Write(id); },
+        r => { int n = r.ReadByte(); var l = new List<byte>(n); for (int i = 0; i < n; i++) l.Add(r.ReadByte()); return l; },
+        (_, ids) => ApplyLocal(ids));
+
+    public static bool IsWatching(byte pid) => Watching.Contains(pid);
+
+    // ---- 本人 ----
+
+    public static void OnOptionChanged() => SendMine();
+
+    // ロビーに戻った時、観戦を選んでいれば送り直す (試合中に選んだ分を届ける)
+    private static void ResendInLobby()
+    {
+        if (!Menu.ClientOptions.Spectate.Value) return;
+        _sendPending = true;
+        _sendAt = Environment.TickCount64 + 1000;
+    }
+
+    private static void SendMine()
+    {
+        if (!PlayerControl.LocalPlayer || !AmongUsClient.Instance) return;
+        Want.Send(Menu.ClientOptions.Spectate.Value);
+    }
+
+    private static bool _sendPending;
+    private static long _sendAt;
+
+    // 自分のキャラが出てきた (部屋に入った): 観戦を選んでいれば少し待ってからホストへ伝える
+    public static void OnSpawned(PlayerControl p)
+    {
+        if (!p || !p.AmOwner || !Menu.ClientOptions.Spectate.Value) return;
+        _sendPending = true;
+        _sendAt = Environment.TickCount64 + 1500;
+    }
+
+    public static string Command(string _)
+    {
+        if (ShipStatus.Instance) return new Text("ロビーで選んでください", "Choose this in the lobby");
+        var e = Menu.ClientOptions.Spectate;
+        e.Value = !e.Value;
+        SendMine();
+        return e.Value ? new Text("次の試合を観戦します (幽霊で見るだけ)", "You'll spectate the next game (as a ghost)")
+                       : new Text("次の試合に参加します", "You'll play the next game");
+    }
+
+    // ---- ホスト ----
+
+    private static void OnWant(PlayerControl sender, bool v)
+    {
+        // やめるのはいつでも受ける。観戦したいは試合中には受けない (次のロビーで送り直す)
+        if (!sender || (v && ShipStatus.Instance)) return;
+        if (v) Wants.Add(sender.PlayerId);
+        else Wants.Remove(sender.PlayerId);
+        Plugin.Logger.LogInfo($"spectate: {sender.Data?.PlayerName} {(v ? "on" : "off")}");
+    }
+
+    public static void OnLeft(PlayerControl p)
+    {
+        if (p) Wants.Remove(p.PlayerId);
+    }
+
+    // この試合の観戦の人 (今いる人だけ)。ホストが本編の陣営を決めた直後に呼ぶ
+    private static readonly List<PlayerControl> Chosen = new();
+
+    public static bool IsChosen(byte pid)
+    {
+        foreach (var p in Chosen)
+            if (p && p.PlayerId == pid) return true;
+        return false;
+    }
+
+    // 観戦の人がインポスターに選ばれていたら、観戦でないクルーと入れ替える。入れ替える相手がいなければその人は観戦をやめる
+    public static void AfterVanillaSelection()
+    {
+        Chosen.Clear();
+        _applied = IntroStarted = false;
+        _shipSince = 0;
+        if (!SpectateSettings.Allow || Wants.Count == 0) return;
+        var all = PlayerControl.AllPlayerControls;
+        var crew = new List<PlayerControl>();
+        foreach (var p in all)
+        {
+            if (!p || p.notRealPlayer || p.Data == null || p.Data.Disconnected || !p.Data.Role) continue;
+            if (Wants.Contains(p.PlayerId)) Chosen.Add(p);
+            else if (!RoleManager.IsImpostorRole(p.Data.Role.Role)) crew.Add(p);
+        }
+        // 観戦の人を除いても「クルーがインポスターより多い」ように残す (足りない分は観戦をやめてもらう)。
+        // 観戦の人がインポスターなら入れ替えでクルーが 1 人減る
+        int impostors = 0, players = 0;
+        foreach (var p in all)
+        {
+            if (!p || p.notRealPlayer || p.Data == null || p.Data.Disconnected || !p.Data.Role) continue;
+            players++;
+            if (RoleManager.IsImpostorRole(p.Data.Role.Role)) impostors++;
+        }
+        while (Chosen.Count > 0 && players - Chosen.Count - impostors < impostors + 1) Chosen.RemoveAt(Chosen.Count - 1);
+        var rng = new System.Random();
+        for (int i = Chosen.Count - 1; i >= 0; i--)
+        {
+            var s = Chosen[i];
+            if (!RoleManager.IsImpostorRole(s.Data.Role.Role))
+            {
+                if (s.Data.Role.Role != RoleTypes.Crewmate) s.RpcSetRole(RoleTypes.Crewmate, true);
+                continue;
+            }
+            if (crew.Count == 0) { Chosen.RemoveAt(i); continue; }
+            int k = rng.Next(crew.Count);
+            var swap = crew[k];
+            crew.RemoveAt(k);
+            swap.RpcSetRole(RoleTypes.Impostor, true);
+            s.RpcSetRole(RoleTypes.Crewmate, true);
+        }
+        if (Chosen.Count > 0) Plugin.Logger.LogInfo($"spectate: {Chosen.Count} spectator(s)");
+    }
+
+    // 始まりの場面が終わったら観戦の人を幽霊にする (ホストが全員へ送る)。見るのは FixedUpdate で、試合中に 1 回だけ
+    public static void Tick()
+    {
+        if (_sendPending && Environment.TickCount64 >= _sendAt)
+        {
+            _sendPending = false;
+            SendMine();
+        }
+        if (_deferred != null)
+        {
+            var h = Vanilla.Hud;
+            if ((h && h.UseButton && h.UseButton.isActiveAndEnabled) || Environment.TickCount64 - _deferredAt > 20000)
+            {
+                var later = _deferred;
+                _deferred = null;
+                _forceLocal = true;
+                try { ApplyLocal(later); }
+                finally { _forceLocal = false; }
+            }
+        }
+        if (_applied || Chosen.Count == 0) return;
+        var client = AmongUsClient.Instance;
+        if (!client || !client.AmHost || !ShipStatus.Instance || !PlayerControl.LocalPlayer) return;
+        // 船は始まりの場面より先に出る。始まりの場面が始まり、その後に操作のボタンが戻ってから
+        // (どちらも来なければ 30 秒後に) 幽霊にする。始まりの場面の頭で死因の記録が消されるため
+        long now = Environment.TickCount64;
+        if (_shipSince == 0) _shipSince = now;
+        var hud = Vanilla.Hud;
+        bool introDone = IntroStarted && hud && hud.UseButton && hud.UseButton.isActiveAndEnabled;
+        if (!introDone && now - _shipSince < 30000) return;
+        _applied = true;
+        var ids = new List<byte>();
+        foreach (var p in Chosen)
+            if (p && p.Data != null && !p.Data.Disconnected) ids.Add(p.PlayerId);
+        Chosen.Clear();
+        if (ids.Count == 0) return;
+        Apply.Send(ids);
+        ApplyLocal(ids);
+    }
+
+    private static List<byte> _deferred;
+    private static bool _forceLocal;
+    private static ImportantTextTask _task; // 自分のタスク欄の「観戦中」
+    private static long _deferredAt;
+
+    private static void ApplyLocal(List<byte> ids)
+    {
+        // 自分の端末の始まりの場面がまだなら終わるまで待つ (始まりの場面の頭で死因の記録が消え、途中の死は見た目が崩れる)
+        var hud = Vanilla.Hud;
+        if (!_forceLocal && !(AmongUsClient.Instance && AmongUsClient.Instance.AmHost) && !(hud && hud.UseButton && hud.UseButton.isActiveAndEnabled))
+        {
+            _deferred = ids;
+            _deferredAt = Environment.TickCount64;
+            return;
+        }
+        _deferred = null;
+        Watching.Clear();
+        foreach (byte id in ids)
+        {
+            var info = GameData.Instance ? GameData.Instance.GetPlayerById(id) : null;
+            var p = info != null ? info.Object : null;
+            if (!p || info.IsDead) continue;
+            Watching.Add(id);
+            Applying = id;
+            try { p.Exiled(); }
+            finally { Applying = 255; }
+            MatchLog.OnSpectate(p); // 死因は「観戦」 (追放の後置が呼ばれない道があっても残す)
+            info.Tasks?.Clear();
+            if (p.AmOwner)
+            {
+                // タスク欄には「観戦中」だけを出す (空のままだと本編が None と出す)
+                p.ClearTasks();
+                var go = new UnityEngine.GameObject("MrpSpectateTask");
+                go.transform.SetParent(p.transform, false);
+                var t = _task = go.AddComponent<ImportantTextTask>();
+                t.Text = new Text("<color=#9FD8FF>観戦中: 幽霊として自由に見て回れます。会議では全員の役職が見えます</color>",
+                    "<color=#9FD8FF>Spectating: roam freely as a ghost. You see everyone's role in meetings</color>");
+                p.myTasks.Insert(0, t.Cast<PlayerTask>());
+            }
+        }
+        if (GameData.Instance) GameData.Instance.RecomputeTaskCounts();
+        var me = PlayerControl.LocalPlayer;
+        if (me && Watching.Contains(me.PlayerId) && Vanilla.Hud && Vanilla.Hud.Notifier)
+            Vanilla.Hud.Notifier.AddDisconnectMessage(new Text("観戦中です (幽霊で見るだけ)", "You're spectating (as a ghost)"));
+    }
+
+    // ロビーに戻った: この試合の観戦の印を消す (観戦したいかどうかは残す)
+    public static void OnLobby()
+    {
+        // 「観戦中」の行を外す (キャラは試合をまたいで残るので、子に作った物も残る)
+        if (_task)
+        {
+            var me = PlayerControl.LocalPlayer;
+            if (me && me.myTasks != null) me.myTasks.Remove(_task.Cast<PlayerTask>());
+            UnityEngine.Object.Destroy(_task.gameObject);
+        }
+        _task = null;
+        _deferred = null;
+        Watching.Clear();
+        Chosen.Clear();
+        _applied = IntroStarted = false;
+        _shipSince = 0;
+        ResendInLobby();
+    }
+
+    internal static string Describe() =>
+        $"OK spectate mine={Menu.ClientOptions.Spectate.Value} wants=[{string.Join(",", Wants)}] watching=[{string.Join(",", Watching)}] chosen={Chosen.Count} applied={_applied}";
+}
+
+[HarmonyPatch]
+internal static class SpectatePatches
+{
+    [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.Start)), HarmonyPostfix]
+    public static void Spawned(PlayerControl __instance) => Spectate.OnSpawned(__instance);
+
+    [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnPlayerLeft)), HarmonyPrefix]
+    public static void Left([HarmonyArgument(0)] ClientData data)
+    {
+        try { Spectate.OnLeft(data?.Character); }
+        catch (Exception e) { Plugin.Logger.LogError($"spectate: {e.Message}"); }
+    }
+
+    [HarmonyPatch(typeof(LobbyBehaviour), nameof(LobbyBehaviour.Start)), HarmonyPostfix]
+    public static void Lobby() => Spectate.OnLobby();
+
+    [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin)), HarmonyPrefix]
+    public static void IntroBegin() => Spectate.IntroStarted = true;
+}

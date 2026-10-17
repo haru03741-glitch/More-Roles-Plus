@@ -447,6 +447,7 @@ internal static class RoleAssigner
         foreach (var p in PlayerControl.AllPlayerControls)
         {
             if (!p || p.notRealPlayer || p.Data == null || p.Data.Disconnected || !p.Data.Role) continue;
+            if (Spectate.IsChosen(p.PlayerId)) continue; // 観戦の人には役職を配らない
             list.Add(new Slot { PlayerId = p.PlayerId, Impostor = RoleManager.IsImpostorRole(p.Data.Role.Role), BaseRole = p.Data.Role.Role });
         }
         return list;
@@ -558,6 +559,8 @@ internal static class SelectRolesPatch
     public static void Postfix()
     {
         if (!AmongUsClient.Instance.AmHost) return;
+        try { Spectate.AfterVanillaSelection(); }
+        catch (Exception e) { Plugin.Logger.LogError($"spectate: {e}"); }
         try { RoleAssigner.AssignAndSend(); }
         catch (Exception e) { Plugin.Logger.LogError($"role assignment failed: {e}"); }
     }

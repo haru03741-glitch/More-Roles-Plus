@@ -17,6 +17,7 @@ internal static class MatchLog
         Exiled,
         Left,
         Spaced,
+        Spectator,
     }
 
     public sealed class Death
@@ -53,6 +54,11 @@ internal static class MatchLog
         if (p) Deaths[p.PlayerId] = new Death { Kind = Kind.Exiled };
     }
 
+    public static void OnSpectate(PlayerControl p)
+    {
+        if (p) Deaths[p.PlayerId] = new Death { Kind = Kind.Spectator };
+    }
+
     public static void OnSpaced(PlayerControl p)
     {
         if (p) Deaths[p.PlayerId] = new Death { Kind = Kind.Spaced };
@@ -71,6 +77,7 @@ internal static class MatchLog
         Kind.Suicide => new Text("倒した人なしで死んだ", "Died with no killer"),
         Kind.Exiled => new Text("追放された", "Ejected"),
         Kind.Spaced => new Text("船外へ吸い出された", "Sucked out into space"),
+        Kind.Spectator => new Text("観戦", "Spectating"),
         _ => new Text("切断した", "Disconnected"),
     };
 

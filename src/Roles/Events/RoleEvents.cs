@@ -71,6 +71,12 @@ internal static class ExiledEventPatch
             MatchLog.OnSpaced(__instance);
             return;
         }
+        // 観戦の人を幽霊にする時も追放の処理を借りるだけ
+        if (__instance && __instance.PlayerId == Spectate.Applying)
+        {
+            MatchLog.OnSpectate(__instance);
+            return;
+        }
         MatchLog.OnExiled(__instance);
         if (RoleState.All.Count == 0) return;
         Events<PlayerExiledEvent>.Run(new PlayerExiledEvent { Player = __instance });

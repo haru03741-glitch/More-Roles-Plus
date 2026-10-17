@@ -41,6 +41,7 @@ internal static class ChatCommands
         Add(new[] { "color", "colour" }, Who.Everyone, "<番号|色の名前|#RRGGBB|reset>", new Text("自分の色を変える (ロビー)。#RRGGBB で好きな色", "Change your color (lobby). #RRGGBB for any color"), LobbyTools.Color);
         Add(new[] { "death" }, Who.Everyone, "[番号]", new Text("自分 (番号でその人) の死因 (死んでから)", "How you (or someone) died (after you die)"), InfoCommands.Death);
         Add(new[] { "l", "last" }, Who.Everyone, "", new Text("前の試合の結果 (全員の役職と死因)", "Last game's result (roles and causes of death)"), InfoCommands.LastResult);
+        Add(new[] { "spectate", "spec" }, Who.Everyone, "", new Text("次の試合を観戦する / やめる (ロビー)", "Toggle spectating the next game (lobby)"), Roles.Spectate.Command);
         Add(new[] { "dump" }, Who.Everyone, "", new Text("不具合の報告用にログをデスクトップの MRP_Logs へ保存する (PC)", "Save logs to MRP_Logs on the desktop for bug reports (PC)"), LogDump.Run);
         Add(new[] { "win", "winner" }, Who.Everyone, "", new Text("前の試合の勝者", "Last game's winners"), InfoCommands.Winners);
 
