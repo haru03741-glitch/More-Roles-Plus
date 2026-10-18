@@ -107,7 +107,7 @@ internal static class LobbyTools
     public static string Color(string args)
     {
         if (!InLobby) return OnlyLobby;
-        // #RRGGBB = 自分で作った色 (見た目だけ。本編の色番号はそのまま)・#RRGGBB #RRGGBB [向き 0〜3] = 2 色のグラデーション・reset = 本編の色へ戻す
+        // #RRGGBB = 自分で作った色 (見た目だけ。本編の色番号はそのまま)・#RRGGBB #RRGGBB [向き 0〜3 [ぼかし 0〜100 [位置 0〜100]]] = 2 色のグラデーション・reset = 本編の色へ戻す
         string a = args.Trim();
         if (a.StartsWith('#') || a.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
@@ -118,7 +118,10 @@ internal static class LobbyTools
             if (parts.Length >= 2 && Menu.CustomColors.TryParse(parts[1], out var second))
             {
                 byte dir = parts.Length >= 3 && byte.TryParse(parts[2], out byte d) && d < Menu.CustomColors.DirCount ? d : (byte)0;
-                Menu.CustomColors.SetLook(new Menu.CustomColors.Look(custom, second, true, dir));
+                // 4 つ目 = 境目のぼかし (0 = くっきり〜100)・5 つ目 = 境目の位置 (0〜100)
+                byte soft = parts.Length >= 4 && byte.TryParse(parts[3], out byte sf) ? Math.Min(sf, (byte)100) : Menu.CustomColors.DefaultSoft;
+                byte pos = parts.Length >= 5 && byte.TryParse(parts[4], out byte ps) ? Math.Min(ps, (byte)100) : Menu.CustomColors.DefaultPos;
+                Menu.CustomColors.SetLook(new Menu.CustomColors.Look(custom, second, true, dir, soft, pos));
                 return new Text($"色を #{Menu.CustomColors.Hex(custom)} → #{Menu.CustomColors.Hex(second)} のグラデーションにしました", $"Your color is now a gradient #{Menu.CustomColors.Hex(custom)} → #{Menu.CustomColors.Hex(second)}");
             }
             Menu.CustomColors.SetMine(custom);

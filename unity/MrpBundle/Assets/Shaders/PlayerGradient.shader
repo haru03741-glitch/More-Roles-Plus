@@ -4,7 +4,8 @@
 // 会議の名札などの枠で切り抜く人形 (Unlit/SimpleMaskedPlayer) にも使う: その時は _MrpMasked = 1 で
 // 輪郭線を描かず、ステンシルが _MaskLayer と同じ所だけ描く (本編のそのシェーダと同じ)。
 // 違うのは体の色と影の色を、人形の自分の座標の位置で 1 色目 → 2 色目へ移すことだけ。
-//   t = saturate(u * _GradWX + v * _GradWY + _GradW0)  (u, v = 人形の絵の左下 0 → 右上 1)
+//   r = u * _GradWX + v * _GradWY + _GradW0  (u, v = 人形の絵の左下 0 → 右上 1)
+//   t = saturate((r - _GradPos) / _GradSoft + 0.5)  (境目の位置と、ぼかしの幅。幅 0 でも 1 画素ぶんは滑らかにする)
 // 自分の座標を使うので、動きのコマが変わっても色の位置は体に付いたまま。まとめて描く (batching) と自分の座標が
 // 世界の座標に変わるので止める。
 // 左を向いた人形は絵の頂点ごと左右が入れ替わる (自分の座標の x と絵の u が逆に進む) ので、その時は u を裏返して
@@ -30,6 +31,8 @@ Shader "MRP/PlayerGradient"
         _GradWX ("Weight of u", Float) = 1
         _GradWY ("Weight of v", Float) = 0
         _GradW0 ("Offset", Float) = 0
+        _GradPos ("Boundary position", Float) = 0.5
+        _GradSoft ("Boundary softness", Float) = 1
         _MrpMasked ("Masked player (no outline)", Float) = 0
         [Enum(UnityEngine.Rendering.CompareFunction)] _MrpStencilComp ("Stencil comp", Float) = 7
     }
@@ -60,7 +63,7 @@ Shader "MRP/PlayerGradient"
             float4 _MainTex_TexelSize;
             fixed4 _BackColor, _BodyColor, _VisorColor, _OutlineColor, _BackColor2, _BodyColor2;
             float _Outline, _MrpMasked;
-            float _GradX0, _GradY0, _GradSX, _GradSY, _GradWX, _GradWY, _GradW0;
+            float _GradX0, _GradY0, _GradSX, _GradSY, _GradWX, _GradWY, _GradW0, _GradPos, _GradSoft;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; float2 body : TEXCOORD1; };
@@ -94,7 +97,9 @@ Shader "MRP/PlayerGradient"
                 float x = ddx(i.uv.x) * ddx(i.body.x) < 0 ? -i.body.x : i.body.x;
                 float u = (x - _GradX0) * _GradSX;
                 float v = (i.body.y - _GradY0) * _GradSY;
-                float t = saturate(u * _GradWX + v * _GradWY + _GradW0);
+                float r = u * _GradWX + v * _GradWY + _GradW0;
+                float soft = max(_GradSoft, fwidth(r) * 1.5);
+                float t = saturate((r - _GradPos) / soft + 0.5);
                 fixed3 body = lerp(_BodyColor.rgb, _BodyColor2.rgb, t);
                 fixed3 back = lerp(_BackColor.rgb, _BackColor2.rgb, t);
                 fixed3 col = c.r * body + c.g * _VisorColor.rgb + c.b * back;

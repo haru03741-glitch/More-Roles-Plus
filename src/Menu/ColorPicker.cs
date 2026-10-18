@@ -12,7 +12,8 @@ namespace MoreRolesPlus.Menu;
 //   彩度 (横) × 明るさ (縦) の四角と、その下の色相の帯。押したまま動かすと右の人形がその色になり、本編の「装備」で決まる
 //   #RRGGBB の入力欄は部屋の中だけ (チャットの入力欄を写して作る)。本編の色を押す / 装備すると作った色をやめる
 // 四角の絵は色相が変わった時だけ作り直す (動かしている間は 50ms に 1 回まで)。毎フレームの処理は色のタブを開いている間だけ
-// 四角の右の列 = 1 色目と 2 色目の見本 (押した方を四角と帯で変える) と、グラデーションの向きのボタン (1 色 → 横 → 縦 → 斜め ×2)
+// 四角の右の列 = 1 色目と 2 色目の見本 (押した方を四角と帯で変える) と、グラデーションの向きのボタン (1 色 → 横 → 縦 → 斜め ×2)、
+// その下に境目のぼかし (左 = くっきり) と境目の位置 (左 = 1 色目の端寄り) の帯 (押したまま動かす)
 internal static class ColorPicker
 {
     private const int SvPx = 64, HuePx = 128;
@@ -21,6 +22,10 @@ internal static class ColorPicker
     private const float ColX = 1.5f, SwatchSize = 0.42f, DirW = 0.62f, DirH = 0.36f;
     private static readonly float[] SwatchY = { 1.05f, 0.45f };
     private const float DirY = -0.15f;
+    private const float SlideW = 0.62f, SlideH = 0.07f, SlideHit = 0.16f;
+    private static readonly float[] SlideY = { -0.72f, -1.25f }; // 0 = ぼかし・1 = 位置
+    private static readonly string[] SlideNames = { "ぼかし", "位置" };
+    private static readonly string[] SlideNamesEn = { "Blur", "Edge" };
     private static readonly string[] DirNames = { "1色", "横", "縦", "斜め", "斜め2" };
     private static readonly string[] DirNamesEn = { "1 color", "Horizontal", "Vertical", "Diagonal", "Diagonal 2" };
 
@@ -32,6 +37,11 @@ internal static class ColorPicker
     private static byte _dir;
     private static int _edit; // 0 = 1 色目・1 = 2 色目
     private static int _shownDir = -1; // 向きのボタンに今出している文字 (変わった時だけ書く)
+    private static byte _soft = CustomColors.DefaultSoft, _pos = CustomColors.DefaultPos;
+    private static readonly SpriteRenderer[] _slideKnob = new SpriteRenderer[2];
+    private static readonly SpriteRenderer[] _slideTrack = new SpriteRenderer[2];
+    private static readonly TextMeshPro[] _slideLabel = new TextMeshPro[2];
+    private static readonly int[] _shownSlide = { -1, -1 };
 
     private static GameObject _root;
     private static PlayerTab _tab;
@@ -42,7 +52,7 @@ internal static class ColorPicker
     private static SearchBox _hex;
     private static float _h, _s = 1f, _v = 1f, _bakedH = -1f;
     private static long _bakedAt, _previewAt;
-    private static int _drag; // 0 = なし・1 = 四角・2 = 色相の帯
+    private static int _drag; // 0 = なし・1 = 四角・2 = 色相の帯・3 = ぼかしの帯・4 = 位置の帯
     private static int _lastChip = -1;
     private static bool _writingHex;
     private static bool _customSelected; // 本編の色でなく作った色を選んでいる
@@ -75,7 +85,7 @@ internal static class ColorPicker
         {
             _a = mine.A;
             _grad = mine.Grad;
-            if (mine.Grad) { _b = mine.B; _dir = mine.Dir; }
+            if (mine.Grad) { _b = mine.B; _dir = mine.Dir; _soft = mine.Soft; _pos = mine.Pos; }
             _bChosen = mine.Grad;
         }
         else
@@ -182,9 +192,26 @@ internal static class ColorPicker
             _shownDir = -1;
             _dirLabel.fontSize *= 0.3f;
         }
+        BuildSlides(t, proto ? proto.gameObject : null);
     }
 
     // 見本の色・選んでいる方のふち・向きの文字を今の状態に合わせる
+    // ぼかしと位置の帯 (細い溝・つまみ・上に名前と値)
+    private static void BuildSlides(Transform t, GameObject proto)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            _slideTrack[i] = MenuArt.Panel(t, "SlideTrack" + i, 0.03f, new Vector2(SlideW, SlideH), new Vector3(ColX, SlideY[i], 0f), new Color(0.45f, 0.45f, 0.5f, 1f), null);
+            _slideKnob[i] = MenuArt.Panel(t, "SlideKnob" + i, 0.04f, new Vector2(0.09f, 0.2f), new Vector3(ColX, SlideY[i], -0.02f), Color.white, null);
+            _shownSlide[i] = -1;
+            if (!proto) continue;
+            var label = Label(proto, t.gameObject.layer, new Vector3(ColX, SlideY[i] + 0.2f, 0f), "");
+            label.enableAutoSizing = false;
+            label.fontSize *= 0.3f;
+            _slideLabel[i] = label;
+        }
+    }
+
     private static void PaintRow()
     {
         for (int i = 0; i < 2; i++)
@@ -200,9 +227,22 @@ internal static class ColorPicker
             _shownDir = k;
             _dirLabel.text = new Text(DirNames[k], DirNamesEn[k]);
         }
+        for (int i = 0; i < 2; i++)
+        {
+            if (!_slideKnob[i]) continue;
+            int v = i == 0 ? _soft : _pos;
+            var dim = _grad ? Color.white : new Color(0.4f, 0.4f, 0.42f, 1f);
+            _slideKnob[i].color = dim;
+            _slideKnob[i].transform.localPosition = new Vector3(ColX - SlideW / 2f + SlideW * v / 100f, SlideY[i], -0.02f);
+            if (_slideLabel[i] && v != _shownSlide[i])
+            {
+                _shownSlide[i] = v;
+                _slideLabel[i].text = new Text(SlideNames[i], SlideNamesEn[i]) + " " + v;
+            }
+        }
     }
 
-    private static CustomColors.Look CurrentLook() => new(_a, _b, _grad, _dir);
+    private static CustomColors.Look CurrentLook() => new(_a, _b, _grad, _dir, _soft, _pos);
 
     // ふちを印の子にして少し奥へ置く (同じ奥行きだと描く順が決まらず、ふちが印を隠すことがある)
     private static void Behind(Transform edge, Transform mark)
@@ -453,6 +493,15 @@ internal static class ColorPicker
         Refresh(true);
     }
 
+    // 押した所がぼかし (0) か位置 (1) の帯か (-1 = どちらでもない)
+    private static int SlideAt(Vector3 local)
+    {
+        if (Math.Abs(local.x - ColX) > SlideW / 2f + 0.06f) return -1;
+        for (int i = 0; i < 2; i++)
+            if (Math.Abs(local.y - SlideY[i]) <= SlideHit) return i;
+        return -1;
+    }
+
     // 右の列を押した: true = 押した所があった
     private static bool ClickRow(Vector3 local)
     {
@@ -524,7 +573,16 @@ internal static class ColorPicker
             float w = (local.y - (SvAt.y - half)) / SvSize;
             if (u >= 0f && u <= 1f && w >= 0f && w <= 1f) _drag = 1;
             else if (u >= 0f && u <= 1f && Math.Abs(local.y - HueAt.y) <= HueH) _drag = 2;
+            else if (_grad && SlideAt(local) is int sl and >= 0) _drag = 3 + sl;
             else { ClickRow(local); return; }
+        }
+        if (_drag >= 3)
+        {
+            byte v = (byte)Math.Clamp((int)MathF.Round((local.x - (ColX - SlideW / 2f)) / SlideW * 100f), 0, 100);
+            if (_drag == 3) _soft = v;
+            else _pos = v;
+            Refresh(false, true);
+            return;
         }
         u = Math.Clamp(u, 0f, 1f);
         if (_drag == 1)
@@ -544,9 +602,15 @@ internal static class ColorPicker
         else if (args.StartsWith("type ")) { if (_hex != null) _hex.Type(args[5..]); }
         else if (args == "swatch1" || args == "swatch2") { if (IsOpen) ClickRow(new Vector3(ColX, SwatchY[args[6] - '1'], 0f)); }
         else if (args == "dir") { if (IsOpen) ClickRow(new Vector3(ColX, DirY, 0f)); }
-        else if (args.Length > 0) return "ERR picker [equip | type <文> | #RRGGBB | swatch1 | swatch2 | dir] (着せ替え画面の色のタブを開いておく)";
+        else if ((args.StartsWith("soft ") || args.StartsWith("pos ")) && byte.TryParse(args[(args.IndexOf(' ') + 1)..], out byte sv))
+        {
+            if (args[0] == 's') _soft = Math.Min(sv, (byte)100);
+            else _pos = Math.Min(sv, (byte)100);
+            if (IsOpen) Refresh(true, true);
+        }
+        else if (args.Length > 0) return "ERR picker [equip | type <文> | #RRGGBB | swatch1 | swatch2 | dir | soft <0-100> | pos <0-100>] (着せ替え画面の色のタブを開いておく)";
         var menu = PlayerCustomizationMenu.Instance;
-        return $"OK picker open={IsOpen} pending={Pending} chip={(_tab ? _tab.currentColor : -1)} h={_h:F3} s={_s:F3} v={_v:F3} color=#{CustomColors.Hex(Current())} a=#{CustomColors.Hex(_a)} b={(_grad ? "#" + CustomColors.Hex(_b) : "-")} dir={_dir} edit={_edit} custom={_customSelected} item=[{(menu && menu.itemName ? menu.itemName.text : "")}]";
+        return $"OK picker open={IsOpen} pending={Pending} chip={(_tab ? _tab.currentColor : -1)} h={_h:F3} s={_s:F3} v={_v:F3} color=#{CustomColors.Hex(Current())} a=#{CustomColors.Hex(_a)} b={(_grad ? "#" + CustomColors.Hex(_b) : "-")} dir={_dir} soft={_soft} pos={_pos} edit={_edit} custom={_customSelected} item=[{(menu && menu.itemName ? menu.itemName.text : "")}]";
     }
 }
 

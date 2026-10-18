@@ -21,25 +21,30 @@ namespace MoreRolesPlus.Menu;
 // 本編の色の表に入るのは 1 色目だけなので、帽子・会議の印・チャットの色など表から色を引く所は 1 色目になる
 internal static class CustomColors
 {
-    // 作った色。B = 2 色目 (Grad の時だけ)・Dir = グラデーションの向き
+    // 作った色。B = 2 色目 (Grad の時だけ)・Dir = グラデーションの向き・
+    // Soft = 境目のぼかしの幅 (0 = くっきり〜100 = 体の端から端までなだらか)・Pos = 境目の位置 (0 = 1 色目の端〜100 = 2 色目の端)
     internal readonly struct Look
     {
         public readonly Color32 A, B;
         public readonly bool Grad;
-        public readonly byte Dir;
+        public readonly byte Dir, Soft, Pos;
 
-        public Look(Color32 a, Color32 b, bool grad, byte dir)
+        public Look(Color32 a, Color32 b, bool grad, byte dir, byte soft = DefaultSoft, byte pos = DefaultPos)
         {
             A = a;
             B = grad ? b : default;
             Grad = grad;
             Dir = grad ? (byte)(dir % DirCount) : (byte)0;
+            Soft = grad ? Math.Min(soft, (byte)100) : DefaultSoft;
+            Pos = grad ? Math.Min(pos, (byte)100) : DefaultPos;
         }
 
         public static Look Solid(Color32 a) => new(a, default, false, 0);
 
-        public bool Same(Look o) => Eq(A, o.A) && Grad == o.Grad && (!Grad || (Eq(B, o.B) && Dir == o.Dir));
+        public bool Same(Look o) => Eq(A, o.A) && Grad == o.Grad && (!Grad || (Eq(B, o.B) && Dir == o.Dir && Soft == o.Soft && Pos == o.Pos));
     }
+
+    public const byte DefaultSoft = 100, DefaultPos = 50;
 
     public static bool Eq(Color32 x, Color32 y) => x.r == y.r && x.g == y.g && x.b == y.b;
 
@@ -48,7 +53,7 @@ internal static class CustomColors
 
     private static ConfigEntry<string> _mine;  // "" = 本編の色のまま / "RRGGBB"
     private static ConfigEntry<string> _mine2; // "" = 1 色だけ / "RRGGBB" = グラデーションの 2 色目
-    private static ConfigEntry<int> _mineDir;
+    private static ConfigEntry<int> _mineDir, _mineSoft, _minePos;
     private static Color32[] _body, _shadow;  // 本編の色の控え
     private static readonly Dictionary<int, Look> ByClient = new();
     private static int _room; // 表を作った部屋 (GameId)
@@ -60,15 +65,18 @@ internal static class CustomColors
     private static readonly Dictionary<string, int> NameCount = new();
 
     // A: 下位 24 ビット = 1 色目の RGB・25 ビット目 = 色あり (0 = 本編の色へ戻した)。
-    // B: 下位 24 ビット = 2 色目の RGB・25 ビット目 = グラデーションあり・26〜27 ビット目 = 向き
-    internal static readonly RemoteCall<(uint A, uint B)> Share = new("Color.Share", Route.Anyone,
-        (w, v) => { w.Write(v.A); w.Write(v.B); }, r => (r.ReadUInt32(), r.ReadUInt32()), (sender, v) => Receive(sender, v));
+    // B: 下位 24 ビット = 2 色目の RGB・25 ビット目 = グラデーションあり・26〜27 ビット目 = 向き。
+    // C: 下位 8 ビット = 境目のぼかし・次の 8 ビット = 境目の位置 (どちらも 0〜100)
+    internal static readonly RemoteCall<(uint A, uint B, uint C)> Share = new("Color.Share", Route.Anyone,
+        (w, v) => { w.Write(v.A); w.Write(v.B); w.Write(v.C); }, r => (r.ReadUInt32(), r.ReadUInt32(), r.ReadUInt32()), (sender, v) => Receive(sender, v));
 
     public static void Bind(ConfigFile cfg)
     {
         _mine = cfg.Bind("Client", "CustomColor", "", "Your own color as RRGGBB (empty = the game's color)");
         _mine2 = cfg.Bind("Client", "CustomColor2", "", "Second color of your gradient as RRGGBB (empty = one color)");
         _mineDir = cfg.Bind("Client", "CustomGradientDirection", 0, "Gradient direction: 0 = left to right, 1 = top to bottom, 2 = top left to bottom right, 3 = bottom left to top right");
+        _mineSoft = cfg.Bind("Client", "CustomGradientSoftness", (int)DefaultSoft, "Width of the blend between the two colors: 0 = sharp edge, 100 = smooth across the whole body");
+        _minePos = cfg.Bind("Client", "CustomGradientPosition", (int)DefaultPos, "Where the two colors meet: 0 = at the first color's end, 100 = at the second color's end");
     }
 
     public static bool TryParse(string s, out Color32 c)
@@ -84,7 +92,7 @@ internal static class CustomColors
 
     // 保存値を読み直すのは変わった時だけ (色のタブを開いている間は毎フレーム聞かれる)
     private static string _parsedFrom, _parsedFrom2;
-    private static int _parsedDir;
+    private static int _parsedDir, _parsedSoft, _parsedPos;
     private static bool _parsedOk;
     private static Look _parsed;
 
@@ -98,15 +106,17 @@ internal static class CustomColors
     public static bool HasMineLook(out Look l)
     {
         string v = _mine?.Value, v2 = _mine2?.Value;
-        int dir = _mineDir?.Value ?? 0;
-        if (!ReferenceEquals(v, _parsedFrom) || !ReferenceEquals(v2, _parsedFrom2) || dir != _parsedDir)
+        int dir = _mineDir?.Value ?? 0, soft = _mineSoft?.Value ?? DefaultSoft, pos = _minePos?.Value ?? DefaultPos;
+        if (!ReferenceEquals(v, _parsedFrom) || !ReferenceEquals(v2, _parsedFrom2) || dir != _parsedDir || soft != _parsedSoft || pos != _parsedPos)
         {
+            _parsedSoft = soft;
+            _parsedPos = pos;
             _parsedFrom = v;
             _parsedFrom2 = v2;
             _parsedDir = dir;
             _parsedOk = TryParse(v, out var a);
             bool grad = TryParse(v2, out var b);
-            _parsed = new Look(a, b, grad, (byte)Math.Clamp(dir, 0, DirCount - 1));
+            _parsed = new Look(a, b, grad, (byte)Math.Clamp(dir, 0, DirCount - 1), (byte)Math.Clamp(soft, 0, 100), (byte)Math.Clamp(pos, 0, 100));
         }
         l = _parsed;
         return _parsedOk;
@@ -120,7 +130,12 @@ internal static class CustomColors
         if (_mine == null) return;
         _mine.Value = l.HasValue ? Hex(l.Value.A) : "";
         _mine2.Value = l.HasValue && l.Value.Grad ? Hex(l.Value.B) : "";
-        if (l.HasValue) _mineDir.Value = l.Value.Dir;
+        if (l.HasValue)
+        {
+            _mineDir.Value = l.Value.Dir;
+            _mineSoft.Value = l.Value.Soft;
+            _minePos.Value = l.Value.Pos;
+        }
         var me = PlayerControl.LocalPlayer;
         if (!me) return;
         if (l.HasValue) ByClient[me.OwnerId] = l.Value;
@@ -133,19 +148,20 @@ internal static class CustomColors
 
     private static Color32 FromRgb(uint v) => new((byte)(v >> 16), (byte)(v >> 8), (byte)v, 255);
 
-    private static (uint, uint) Pack(Look? l)
+    private static (uint, uint, uint) Pack(Look? l)
     {
-        if (!l.HasValue) return (0u, 0u);
+        if (!l.HasValue) return (0u, 0u, 0u);
         var v = l.Value;
-        return (0x1000000u | Rgb(v.A), v.Grad ? 0x1000000u | ((uint)v.Dir << 25) | Rgb(v.B) : 0u);
+        if (!v.Grad) return (0x1000000u | Rgb(v.A), 0u, 0u);
+        return (0x1000000u | Rgb(v.A), 0x1000000u | ((uint)v.Dir << 25) | Rgb(v.B), v.Soft | ((uint)v.Pos << 8));
     }
 
-    private static void Receive(PlayerControl sender, (uint A, uint B) v)
+    private static void Receive(PlayerControl sender, (uint A, uint B, uint C) v)
     {
         if (!sender || sender.AmOwner) return;
         if ((v.A & 0x1000000u) != 0)
         {
-            var l = new Look(FromRgb(v.A), FromRgb(v.B), (v.B & 0x1000000u) != 0, (byte)((v.B >> 25) & 3));
+            var l = new Look(FromRgb(v.A), FromRgb(v.B), (v.B & 0x1000000u) != 0, (byte)((v.B >> 25) & 3), (byte)v.C, (byte)(v.C >> 8));
             if (ByClient.TryGetValue(sender.OwnerId, out var old) && old.Same(l)) return;
             ByClient[sender.OwnerId] = l;
         }
@@ -326,6 +342,9 @@ internal static class CustomColors
         mat.SetFloat("_GradWX", wx);
         mat.SetFloat("_GradWY", wy);
         mat.SetFloat("_GradW0", w0);
+        // 境目: 位置 0〜1 と、ぼかしの幅 (0 でもシェーダが 1 画素ぶんは滑らかにする)
+        mat.SetFloat("_GradPos", look.Pos / 100f);
+        mat.SetFloat("_GradSoft", look.Soft / 100f);
     }
 
     // 色の名前 (いちばん近い名前の付いた色。近さは人の見え方に近い Lab の距離で測る)
@@ -467,12 +486,14 @@ internal static class CustomColors
     internal static string Fake(string args)
     {
         var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2 || !byte.TryParse(parts[0], out byte id) || !TryParse(parts[1], out var c)) return "ERR colors fake <番号> <#RRGGBB> [#RRGGBB [向き 0-3]]";
+        if (parts.Length < 2 || !byte.TryParse(parts[0], out byte id) || !TryParse(parts[1], out var c)) return "ERR colors fake <番号> <#RRGGBB> [#RRGGBB [向き 0-3 [ぼかし 0-100 [位置 0-100]]]]";
         var info = GameData.Instance ? GameData.Instance.GetPlayerById(id) : null;
         if (info == null) return "ERR colors fake: no player " + id;
         bool grad = TryParse(parts.Length >= 3 ? parts[2] : "", out var b);
         byte dir = parts.Length >= 4 && byte.TryParse(parts[3], out byte d) ? d : (byte)0;
-        ByClient[info.ClientId] = new Look(c, b, grad, dir);
+        byte soft = parts.Length >= 5 && byte.TryParse(parts[4], out byte sf) ? sf : DefaultSoft;
+        byte pos = parts.Length >= 6 && byte.TryParse(parts[5], out byte ps) ? ps : DefaultPos;
+        ByClient[info.ClientId] = new Look(c, b, grad, dir, soft, pos);
         Rebuild();
         return Describe();
     }
@@ -482,12 +503,12 @@ internal static class CustomColors
     {
         var sb = new System.Text.StringBuilder("OK colors mine=");
         sb.Append(_mine != null && _mine.Value.Length > 0 ? _mine.Value : "-");
-        if (_mine2 != null && _mine2.Value.Length > 0) sb.Append('>').Append(_mine2.Value).Append('@').Append(_mineDir.Value);
+        if (_mine2 != null && _mine2.Value.Length > 0) sb.Append('>').Append(_mine2.Value).Append('@').Append(_mineDir.Value).Append('~').Append(_mineSoft.Value).Append(':').Append(_minePos.Value);
         sb.Append(" grad=").Append(Fx.MrpBundle.PlayerGradientShader ? "ready" : "-").Append(" rect=").Append(_lastRect);
         foreach (var kv in ByClient)
         {
             sb.Append(' ').Append(kv.Key).Append('=').Append(Hex(kv.Value.A));
-            if (kv.Value.Grad) sb.Append('>').Append(Hex(kv.Value.B)).Append('@').Append(kv.Value.Dir);
+            if (kv.Value.Grad) sb.Append('>').Append(Hex(kv.Value.B)).Append('@').Append(kv.Value.Dir).Append('~').Append(kv.Value.Soft).Append(':').Append(kv.Value.Pos);
         }
         foreach (var kv in NameBySlot) sb.Append(" [").Append(kv.Key).Append(':').Append(kv.Value).Append(']');
         return sb.ToString();
