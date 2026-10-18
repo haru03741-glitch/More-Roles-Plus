@@ -489,13 +489,17 @@ internal static class TerrainProbe
         {
             var rooms = DamageMap.RoomArts;
             int band = 0, fg = 0;
+            int ri = -1;
             foreach (var sr in rooms)
             {
+                ri++;
                 if (!sr) continue;
                 float z = sr.transform.position.z;
                 if (z < -0.1f) fg++; else if (z < 0.1f) band++;
                 var b = sr.bounds;
-                reply($"ROOMZ {sr.transform.parent?.name}/{sr.name} sprite={(sr.sprite ? sr.sprite.name : "-")} z={TestBridge.F(z)} bounds=({TestBridge.F(b.min.x)},{TestBridge.F(b.min.y)})-({TestBridge.F(b.max.x)},{TestBridge.F(b.max.y)})");
+                var room = sr.GetComponentInParent<PlainShipRoom>();
+                string area = room && room.roomArea ? $"{room.name} ({TestBridge.F(room.roomArea.bounds.min.x)},{TestBridge.F(room.roomArea.bounds.min.y)})-({TestBridge.F(room.roomArea.bounds.max.x)},{TestBridge.F(room.roomArea.bounds.max.y)})" : "-";
+                reply($"ROOMZ {sr.transform.parent?.name}/{sr.name} sprite={(sr.sprite ? sr.sprite.name : "-")} z={TestBridge.F(z)} bounds=({TestBridge.F(b.min.x)},{TestBridge.F(b.min.y)})-({TestBridge.F(b.max.x)},{TestBridge.F(b.max.y)}) area={area} kept={DamageMap.AreaText(ri)}");
             }
             reply($"OK roomz n={rooms.Count} band={band} foreground={fg}");
         });

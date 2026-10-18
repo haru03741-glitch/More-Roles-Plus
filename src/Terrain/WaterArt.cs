@@ -1515,7 +1515,7 @@ internal static class WaterArt
         {
             float fx = k == 4 ? 0.5f : (k & 1), fy = k == 4 ? 0.5f : (k >> 1);
             float px = wx + size * (0.05f + 0.9f * fx), py = wy + size * (0.05f + 0.9f * fy);
-            front = Math.Min(front, DamageMap.FrontZ(new Vector2(px, py)));
+            front = Math.Min(front, DamageMap.TileFrontZ(new Vector2(px, py), wx, wy, wx + size, wy + size));
             // 屋外のデッキの床の絵はクルーと同じ奥行きにあり、部屋の絵の z では床の下に隠れる
             if (WaterSim.OnDeck(px, py)) front = Math.Min(front, DeckZ);
         }

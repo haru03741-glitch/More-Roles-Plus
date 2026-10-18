@@ -51,6 +51,8 @@ internal static class DamageMap
     // 部屋の絵の z と範囲の写し (部屋の絵は動かない)。FrontZ は瓦礫 1 つごとに呼ばれるので、毎回 Unity に聞くと爆発 1 回で数千回の呼び出しになる
     private static bool[] RoomMask = Array.Empty<bool>(); // 部屋の絵が Unlit/MaskShader か (差し替え先を選ぶ。シェーダ名の読みは 1 回だけ)
     private static float[] RoomZ = Array.Empty<float>(), RoomX0 = Array.Empty<float>(), RoomY0 = Array.Empty<float>(), RoomX1 = Array.Empty<float>(), RoomY1 = Array.Empty<float>();
+    // 部屋の絵の持ち主の部屋の床の範囲 (roomArea の外枠)。部屋が無い絵は NaN
+    private static float[] AreaX0 = Array.Empty<float>(), AreaY0 = Array.Empty<float>(), AreaX1 = Array.Empty<float>(), AreaY1 = Array.Empty<float>();
     private static readonly List<GameObject> Underlays = new();
     // ひびの板と穴の向こうの船体の中。影のカメラ (層 9〜12) に映らない層に置く: 影のカメラは置き換えシェーダで
     // 切り抜きなしの四角に描くので、影の中で穴の外まで暗い四角が出る。影の中では ShadowPatch が穴の形で焼いた絵だけを見せる
@@ -205,6 +207,17 @@ internal static class DamageMap
             RoomZ[i] = Rooms[i].transform.position.z;
             RoomMask[i] = Rooms[i].sharedMaterial && Rooms[i].sharedMaterial.shader.name == "Unlit/MaskShader";
             RoomX0[i] = b.min.x; RoomY0[i] = b.min.y; RoomX1[i] = b.max.x; RoomY1[i] = b.max.y;
+        }
+        AreaX0 = new float[Rooms.Count]; AreaY0 = new float[Rooms.Count]; AreaX1 = new float[Rooms.Count]; AreaY1 = new float[Rooms.Count];
+        for (int i = 0; i < Rooms.Count; i++)
+        {
+            var room = Rooms[i].GetComponentInParent<PlainShipRoom>();
+            if (room && room.roomArea)
+            {
+                var ab = room.roomArea.bounds;
+                AreaX0[i] = ab.min.x; AreaY0[i] = ab.min.y; AreaX1[i] = ab.max.x; AreaY1[i] = ab.max.y;
+            }
+            else AreaX0[i] = AreaY0[i] = AreaX1[i] = AreaY1[i] = float.NaN;
         }
 
         double tScan = sw.Elapsed.TotalMilliseconds;
@@ -898,12 +911,31 @@ internal static class DamageMap
         return false;
     }
 
+    // 水のタイル (x0, y0)-(x1, y1) の点 c の一番手前の部屋の絵の z (FrontZ と同じ選び方)。タイルが床側の絵の部屋 (Polus の電気室) の
+    // 床に掛かる時は、持ち主の部屋の床がタイルに掛からないクルーと同じ奥行きの絵を数えない: 絵の外枠は床の外の高い物
+    // (Polus の通信室のアンテナ) まで含み、隣の部屋の中で水をクルーや家具より手前に出して丸ごと覆ってしまう
+    internal static float TileFrontZ(Vector2 c, float x0, float y0, float x1, float y1)
+    {
+        x0 -= AreaMargin; y0 -= AreaMargin; x1 += AreaMargin; y1 += AreaMargin;
+        bool indoor = false;
+        for (int i = 0; i < RoomZ.Length && !indoor; i++)
+            indoor = RoomZ[i] >= PlayerBandZ && !float.IsNaN(AreaX0[i]) && AreaX1[i] >= x0 && AreaX0[i] <= x1 && AreaY1[i] >= y0 && AreaY0[i] <= y1;
+        RoomZRange(c, out float near, out _, false, indoor, x0, y0, x1, y1);
+        return near;
+    }
+
+    // 確認用: 部屋の絵 i の床の範囲 (作った時に覚えた値)
+    internal static string AreaText(int i) => i < AreaX0.Length ? $"({AreaX0[i]:0.##},{AreaY0[i]:0.##})-({AreaX1[i]:0.##},{AreaY1[i]:0.##})" : "-";
+
+    private const float AreaMargin = 0.25f; // 床の範囲の縁の升 (広げすぎると隣の部屋の上のタイルまで拾う)
+
     // その点に重なる部屋の絵の z の範囲 (部屋ごとに z が違うので、手前・奥はその場で決める)。
     // 部屋の絵には床より手前に描かれる物も混ざっている: 壁の上面 (Skeld の weap_walltop・z=-3.64 等) はクルーより手前、
     // 棚や机 (Mira) はクルーと同じ奥行き (z ≈ y/1000)。それに合わせると瓦礫・ひび・穴の向こうの床がクルーの上に出るので、
     // 既定では 床側の絵 → クルーと同じ奥行きの絵 (Polus のウェポン・通信は部屋の絵そのものがここ) → 一番近い床側の絵
     // → 手前の絵 の順に、最初に見つかった段の絵だけで決める。includeForeground = 段を分けず全部 (影の中の焼いた絵用)
-    private static void RoomZRange(Vector2 c, out float near, out float far, bool includeForeground = false)
+    private static void RoomZRange(Vector2 c, out float near, out float far, bool includeForeground = false,
+        bool tile = false, float tx0 = 0f, float ty0 = 0f, float tx1 = 0f, float ty1 = 0f)
     {
         Span<float> n = stackalloc float[3], f = stackalloc float[3];
         for (int t = 0; t < 3; t++) { n[t] = float.MaxValue; f[t] = float.MinValue; }
@@ -912,6 +944,7 @@ internal static class DamageMap
         {
             float z = RoomZ[i];
             int tier = includeForeground ? 0 : z >= PlayerBandZ ? 0 : z >= -PlayerBandZ ? 1 : 2;
+            if (tile && tier == 1 && !float.IsNaN(AreaX0[i]) && (AreaX1[i] < tx0 || AreaX0[i] > tx1 || AreaY1[i] < ty0 || AreaY0[i] > ty1)) continue;
             float bx0 = RoomX0[i], by0 = RoomY0[i], bx1 = RoomX1[i], by1 = RoomY1[i];
             if (c.x < bx0 || c.x > bx1 || c.y < by0 || c.y > by1)
             {
@@ -1352,6 +1385,7 @@ internal static class DamageMap
         RubbleBlocks.Clear();
         Rooms.Clear();
         RoomZ = RoomX0 = RoomY0 = RoomX1 = RoomY1 = Array.Empty<float>();
+        AreaX0 = AreaY0 = AreaX1 = AreaY1 = Array.Empty<float>();
         RoomMask = Array.Empty<bool>();
         Swapped.Clear();
         Array.Clear(HiddenChannel, 0, HiddenChannel.Length);
