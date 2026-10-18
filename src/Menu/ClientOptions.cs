@@ -45,7 +45,6 @@ internal static class ClientOptions
         Reconnect = Add("Reconnect", true, new Text("回線で切れたら同じ部屋へ入り直す", "Rejoin the room after a connection drop"), null);
         Spectate = Add("Spectate", false, new Text("次の試合を観戦する (幽霊で見るだけ)", "Spectate the next game (as a ghost)"), Roles.Spectate.OnOptionChanged);
         DarkMeeting = Add("DarkMeeting", false, new Text("会議の画面を暗い色にする", "Dark meeting screen"), null); // 次の会議から
-        Items.Add(new Item { Key = "ColorPicker", Label = new Text("自分の色を作る", "Make your color"), Click = ColorPicker.Show });
     }
 
     private static ConfigEntry<bool> Add(string key, bool def, Text label, Action changed)
@@ -141,7 +140,6 @@ internal static class ClientOptions
     internal static void OnMenuClosed()
     {
         ShowPanel(false);
-        ColorPicker.Hide();
     }
 
     // 本編の ON/OFF ボタンを写して、見た目の部品だけ残す (本編のボタンの処理は自分の文字を言語の切り替えで書き直すので外す)

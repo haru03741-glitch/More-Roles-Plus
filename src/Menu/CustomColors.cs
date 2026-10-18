@@ -21,6 +21,7 @@ internal static class CustomColors
     private static Color32[] _body, _shadow;  // 本編の色の控え
     private static readonly Dictionary<byte, Color32> ByPlayer = new();
     private static bool _applied; // 本編の色の表を書き換えている
+    private static readonly Dictionary<int, Color32> BySlot = new(); // 色番号 → 作った色 (Rebuild で作る)
 
     // 下位 24 ビット = RGB・25 ビット目 = 色あり (0 = 本編の色へ戻した)
     internal static readonly RemoteCall<uint> Share = new("Color.Share", Route.Anyone,
@@ -39,7 +40,22 @@ internal static class CustomColors
 
     public static string Hex(Color32 c) => $"{c.r:X2}{c.g:X2}{c.b:X2}";
 
-    public static bool HasMine(out Color32 c) => TryParse(_mine?.Value, out c);
+    // 保存値を読み直すのは変わった時だけ (色のタブを開いている間は毎フレーム聞かれる)
+    private static string _parsedFrom;
+    private static bool _parsedOk;
+    private static Color32 _parsed;
+
+    public static bool HasMine(out Color32 c)
+    {
+        string v = _mine?.Value;
+        if (!ReferenceEquals(v, _parsedFrom))
+        {
+            _parsedFrom = v;
+            _parsedOk = TryParse(v, out _parsed);
+        }
+        c = _parsed;
+        return _parsedOk;
+    }
 
     // 自分の色を決める (null = 本編の色へ戻す)。保存して、部屋にいれば全員へ配る
     public static void SetMine(Color32? c)
@@ -95,6 +111,7 @@ internal static class CustomColors
         var sc = Palette.ShadowColors;
         for (int i = 0; i < _body.Length && i < pc.Length; i++) pc[i] = _body[i];
         for (int i = 0; i < _shadow.Length && i < sc.Length; i++) sc[i] = _shadow[i];
+        BySlot.Clear();
         var data = GameData.Instance;
         if (data && ByPlayer.Count > 0)
         {
@@ -107,9 +124,62 @@ internal static class CustomColors
                 if (id < 0 || id >= pc.Length || id >= sc.Length) continue;
                 pc[id] = c;
                 sc[id] = Shade(c);
+                BySlot[id] = c;
             }
         }
         Repaint();
+    }
+
+    // その色番号を誰かが作った色で上書きしているか
+    public static bool SlotColor(int id, out Color32 c) => BySlot.TryGetValue(id, out c);
+
+    // 本編の色 (書き換える前の控え)
+    public static Color32 VanillaBody(int id)
+    {
+        if (_body != null && id >= 0 && id < _body.Length) return _body[id];
+        var pc = Palette.PlayerColors;
+        return id >= 0 && id < pc.Length ? pc[id] : new Color32(0, 0, 0, 255);
+    }
+
+    // 決める前の見本: 色番号 id の所だけ表を書き換えて 1 体を塗る (戻すのは Rebuild)
+    public static void PreviewSlot(int id, Color32 c, CosmeticsLayer layer)
+    {
+        if (!Backup()) return;
+        var pc = Palette.PlayerColors;
+        var sc = Palette.ShadowColors;
+        if (id < 0 || id >= pc.Length || id >= sc.Length) return;
+        pc[id] = c;
+        sc[id] = Shade(c);
+        _applied = true;
+        if (layer) layer.SetColor(id);
+    }
+
+    // 色の名前 (いちばん近い名前の付いた色)
+    private static readonly (string Ja, string En, uint Rgb)[] Names =
+    {
+        ("赤", "Red", 0xE60012), ("朱色", "Vermilion", 0xEB6101), ("オレンジ", "Orange", 0xF39800), ("山吹色", "Amber", 0xF8B500),
+        ("黄色", "Yellow", 0xFFE100), ("黄緑", "Yellow Green", 0xB8D200), ("ライム", "Lime", 0x7BE000), ("緑", "Green", 0x00A040),
+        ("深緑", "Dark Green", 0x005A2E), ("青緑", "Teal", 0x00A497), ("水色", "Light Blue", 0x68C9F0), ("空色", "Sky Blue", 0x2CA9E1),
+        ("青", "Blue", 0x0068B7), ("藍色", "Indigo", 0x1F3A8C), ("紺", "Navy", 0x0F1F4A), ("紫", "Purple", 0x7A3EB1),
+        ("藤色", "Lavender", 0xB9A2E0), ("赤紫", "Magenta", 0xC2185B), ("桃色", "Pink", 0xF5A3C7), ("ローズ", "Rose", 0xE85298),
+        ("えんじ", "Maroon", 0x8B1A2E), ("茶色", "Brown", 0x7B4A12), ("黄土色", "Ochre", 0xC39143), ("ベージュ", "Beige", 0xE8D3A9),
+        ("白", "White", 0xF5F5F5), ("灰色", "Gray", 0x8C8C8C), ("濃い灰色", "Dark Gray", 0x4A4A4A), ("黒", "Black", 0x1A1A1A),
+    };
+
+    public static string NameOf(Color32 c)
+    {
+        int best = 0;
+        long bestD = long.MaxValue;
+        for (int i = 0; i < Names.Length; i++)
+        {
+            uint v = Names[i].Rgb;
+            int r = (int)(v >> 16), g = (int)(v >> 8) & 255, b = (int)v & 255;
+            // 赤の平均で重みを変える近似 (RGB のままより人の見え方に近い)
+            int rm = (c.r + r) / 2, dr = c.r - r, dg = c.g - g, db = c.b - b;
+            long d = (512L + rm) * dr * dr + 1024L * dg * dg + (767L - rm) * db * db;
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        return new Text(Names[best].Ja, Names[best].En);
     }
 
     // 出ている人形を全部塗り直す (歩いている人・ロビーのホストの顔・会議の名札など。人形ごとの色番号のまま塗る)。
@@ -185,6 +255,21 @@ internal static class CustomColorsPatches
     // 本編の色を選び直した (誰でも): 書き換える番号が変わるので作り直す
     [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.SetColor)), HarmonyPostfix]
     public static void SetColor() => CustomColors.MarkDirty();
+
+    // 色の名前 (色覚の補助の文字・着せ替え画面の名前) を作った色の名前にする
+    [HarmonyPatch(typeof(Palette), nameof(Palette.GetColorName)), HarmonyPostfix]
+    public static void ColorName([HarmonyArgument(0)] int colorId, ref string __result)
+    {
+        if (CustomColors.SlotColor(colorId, out var c)) __result = CustomColors.NameOf(c);
+    }
+
+    [HarmonyPatch(typeof(CosmeticsLayer), nameof(CosmeticsLayer.SetColor)), HarmonyPostfix]
+    public static void LayerColor(CosmeticsLayer __instance, [HarmonyArgument(0)] int color)
+    {
+        if (!CustomColors.SlotColor(color, out var c)) return;
+        var t = __instance.colorBlindText;
+        if (t) t.text = CustomColors.NameOf(c);
+    }
 
     [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.Start)), HarmonyPostfix]
     public static void Spawned() => CustomColors.ScheduleSend();

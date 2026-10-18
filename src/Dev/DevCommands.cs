@@ -210,8 +210,9 @@ internal static class DevCommands
         TestBridge.Register("f1", "試合中の設定の一覧 (F1) を出す / 消す", (_, reply) => { Menu.SettingsOverlay.Toggle(); reply($"OK f1 open={Menu.SettingsOverlay.IsOpen}"); });
         TestBridge.Register("afk", "放置の数え (設定・止まっている秒数・知らせたか)", (_, reply) => reply(Commands.AfkGuard.Describe()));
         TestBridge.Register("colors", "自分で作った色 (#RRGGBB) の一覧 (自分の保存値と、届いている人の番号=色)", (_, reply) => reply(Menu.CustomColors.Describe()));
-        TestBridge.Register("picker", "[open | apply | reset | type <文> | #RRGGBB] 色を作る板 (開く・色を置く・決める・本編の色に戻す・#hex 欄に打つ) と今の色", (args, reply) => reply(Menu.ColorPicker.Simulate(args.Trim())));
-        TestBridge.Register("client", "[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));
+        TestBridge.Register("picker", "[equip | type <文> | #RRGGBB] 着せ替え画面の色のタブの「色を作る」(色を置く・装備を押す・#hex 欄に打つ) と今の色", (args, reply) => reply(Menu.ColorPicker.Simulate(args.Trim())));
+        TestBridge.Register("custmenu", "[use | tab <番号> | chip <色番号> | close] 本編の着せ替え画面 (use = 右下の使うボタンを押す・先に tp でノートパソコンの横へ) を開く・タブを切り替える・本編の色を押す・閉じる / タブの一覧", (args, reply) => reply(Menu.ColorTab.Simulate(args.Trim())));
+        TestBridge.Register("client","[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));
         TestBridge.Register("chatin", "[tab | up | down | type <文> | paste <文>] チャットの入力欄の状態 (文字の制限・上限・今の文字・補う候補)。tab / paste は Tab・Ctrl+V と同じ処理 (paste の \n は改行)・type は打ったのと同じ", (args, reply) => reply(Commands.ChatInput.Simulate(args.Trim())));
 
         TestBridge.Register("chattoggle", "チャット欄の窓を開く / 閉じる (チャットのボタンを押したのと同じ)", (_, reply) =>
