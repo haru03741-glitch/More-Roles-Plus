@@ -105,7 +105,14 @@ internal static class BuiltinCommands
             reply($"OK walk start -> {TestBridge.F(x)} {TestBridge.F(y)}");
         });
 
-        TestBridge.Register("flip", "[on|off|probe|map|platform] 次に作る船を左右反転するか (省略で今の状態)・probe = 昇降床とはしごの位置・map = 地図を開く・platform = 昇降床に乗る", (args, reply) =>
+        TestBridge.Register("noclip", "[on|off] Ctrl を押しっぱなしにしたのと同じにする (壁抜け)・省略で今の状態", (args, reply) =>
+        {
+            if (args == "on") NoClip.Hold = true;
+            else if (args == "off") NoClip.Hold = false;
+            reply($"OK noclip hold={NoClip.Hold} on={NoClip.On}");
+        });
+
+        TestBridge.Register("flip","[on|off|probe|map|platform] 次に作る船を左右反転するか (省略で今の状態)・probe = 昇降床とはしごの位置・map = 地図を開く・platform = 昇降床に乗る", (args, reply) =>
         {
             if (args == "on") MapFlip.Next = true;
             else if (args == "off") MapFlip.Next = false;
