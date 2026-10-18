@@ -18,10 +18,11 @@ internal static class MrpBundle
     private const string WadeMatPath = "assets/generated/water_wade.mat";
     private const string FireFloorMatPath = "assets/generated/firefloor.mat";
     private const string FlameMatPath = "assets/generated/flame.mat";
+    private const string PlayerGradMatPath = "assets/generated/playergrad.mat";
 
     private static AssetBundle _bundle;
-    private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq;
-    private static bool _failed, _waterFailed, _fireFailed;
+    private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq, _gradReq;
+    private static bool _failed, _waterFailed, _fireFailed, _gradFailed;
 
     // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音 (BreakNoise と DecompSound が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
     private static readonly string[] ClipNames = MakeClipNames();
@@ -59,6 +60,8 @@ internal static class MrpBundle
     public static Material WadeMaterial { get; private set; }
     public static Material FireFloorMaterial { get; private set; }
     public static Material FlameMaterial { get; private set; }
+    // クルーの 2 色のグラデーション (MRP/PlayerGradient)。人形ごとのマテリアルのシェーダだけを差し替えて使う
+    public static Shader PlayerGradientShader { get; private set; }
 
     public static bool Ready => TerrainMaterial;
 
@@ -70,6 +73,7 @@ internal static class MrpBundle
         {
             if (!WaterMaterial && !_waterFailed) TickWater();
             else if (!FlameMaterial && !_fireFailed) TickFire();
+            else if (!PlayerGradientShader && !_gradFailed) TickGradient();
             if (_clipsLeft > 0) TickClips();
             return;
         }
@@ -134,6 +138,24 @@ internal static class MrpBundle
             Plugin.Logger.LogInfo($"bundle fire: shader={flame.shader.name} supported={flame.shader.isSupported}");
         }
         catch (Exception e) { Plugin.Logger.LogError($"bundle fire: {e}"); _fireFailed = true; }
+    }
+
+    private static void TickGradient()
+    {
+        try
+        {
+            _gradReq ??= _bundle.LoadAssetAsync(PlayerGradMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_gradReq.isDone) return;
+            var mat = _gradReq.asset ? _gradReq.asset.TryCast<Material>() : null;
+            if (!mat || !mat.shader) { Plugin.Logger.LogError($"bundle asset not found: {PlayerGradMatPath}"); _gradFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            var sh = mat.shader;
+            sh.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            PlayerGradientShader = sh;
+            Plugin.Logger.LogInfo($"bundle gradient: shader={sh.name} supported={sh.isSupported}");
+            Menu.CustomColors.MarkDirty(); // 先に塗った人をグラデーションで塗り直す
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle gradient: {e}"); _gradFailed = true; }
     }
 
     private static void TickClips()

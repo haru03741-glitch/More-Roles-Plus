@@ -17,22 +17,59 @@ namespace MoreRolesPlus.Menu;
 // 表は接続の番号 (ClientId) で持ち、誰かの色番号が変わった・抜けた・色が届いた時に本編の色から作り直す。
 // 試合が終わってロビーへ戻る時も同じ部屋なら表を残す (消すと配り直しが届くまで一瞬本編の色に戻る)。
 // 自分の色は自分の人形が出てきた時にすぐ塗る (全員へ配るのは少し待ってから)
+// 2 色目を決めた人は体を 1 色目 → 2 色目のグラデーションで塗る (人形の体のマテリアルのシェーダを MRP/PlayerGradient に差し替える)。
+// 本編の色の表に入るのは 1 色目だけなので、帽子・会議の印・チャットの色など表から色を引く所は 1 色目になる
 internal static class CustomColors
 {
-    private static ConfigEntry<string> _mine; // "" = 本編の色のまま / "RRGGBB"
+    // 作った色。B = 2 色目 (Grad の時だけ)・Dir = グラデーションの向き
+    internal readonly struct Look
+    {
+        public readonly Color32 A, B;
+        public readonly bool Grad;
+        public readonly byte Dir;
+
+        public Look(Color32 a, Color32 b, bool grad, byte dir)
+        {
+            A = a;
+            B = grad ? b : default;
+            Grad = grad;
+            Dir = grad ? (byte)(dir % DirCount) : (byte)0;
+        }
+
+        public static Look Solid(Color32 a) => new(a, default, false, 0);
+
+        public bool Same(Look o) => Eq(A, o.A) && Grad == o.Grad && (!Grad || (Eq(B, o.B) && Dir == o.Dir));
+    }
+
+    public static bool Eq(Color32 x, Color32 y) => x.r == y.r && x.g == y.g && x.b == y.b;
+
+    // グラデーションの向き: 0 = 左→右・1 = 上→下・2 = 左上→右下・3 = 左下→右上
+    public const int DirCount = 4;
+
+    private static ConfigEntry<string> _mine;  // "" = 本編の色のまま / "RRGGBB"
+    private static ConfigEntry<string> _mine2; // "" = 1 色だけ / "RRGGBB" = グラデーションの 2 色目
+    private static ConfigEntry<int> _mineDir;
     private static Color32[] _body, _shadow;  // 本編の色の控え
-    private static readonly Dictionary<int, Color32> ByClient = new();
+    private static readonly Dictionary<int, Look> ByClient = new();
     private static int _room; // 表を作った部屋 (GameId)
     private static bool _applied; // 本編の色の表を書き換えている
-    private static readonly Dictionary<int, Color32> BySlot = new(); // 色番号 → 作った色 (Rebuild で作る)
+    private static readonly Dictionary<int, Look> BySlot = new(); // 色番号 → 作った色 (Rebuild で作る)
+    private static int _previewSlot = -1; // 決める前の見本を塗っている色番号
+    private static Look _previewLook;
     private static readonly Dictionary<int, string> NameBySlot = new(); // 色番号 → 部屋の中で重ならない色の名前
     private static readonly Dictionary<string, int> NameCount = new();
 
-    // 下位 24 ビット = RGB・25 ビット目 = 色あり (0 = 本編の色へ戻した)
-    internal static readonly RemoteCall<uint> Share = new("Color.Share", Route.Anyone,
-        (w, v) => w.Write(v), r => r.ReadUInt32(), (sender, v) => Receive(sender, v));
+    // A: 下位 24 ビット = 1 色目の RGB・25 ビット目 = 色あり (0 = 本編の色へ戻した)。
+    // B: 下位 24 ビット = 2 色目の RGB・25 ビット目 = グラデーションあり・26〜27 ビット目 = 向き
+    internal static readonly RemoteCall<(uint A, uint B)> Share = new("Color.Share", Route.Anyone,
+        (w, v) => { w.Write(v.A); w.Write(v.B); }, r => (r.ReadUInt32(), r.ReadUInt32()), (sender, v) => Receive(sender, v));
 
-    public static void Bind(ConfigFile cfg) => _mine = cfg.Bind("Client", "CustomColor", "", "Your own color as RRGGBB (empty = the game's color)");
+    public static void Bind(ConfigFile cfg)
+    {
+        _mine = cfg.Bind("Client", "CustomColor", "", "Your own color as RRGGBB (empty = the game's color)");
+        _mine2 = cfg.Bind("Client", "CustomColor2", "", "Second color of your gradient as RRGGBB (empty = one color)");
+        _mineDir = cfg.Bind("Client", "CustomGradientDirection", 0, "Gradient direction: 0 = left to right, 1 = top to bottom, 2 = top left to bottom right, 3 = bottom left to top right");
+    }
 
     public static bool TryParse(string s, out Color32 c)
     {
@@ -46,45 +83,71 @@ internal static class CustomColors
     public static string Hex(Color32 c) => $"{c.r:X2}{c.g:X2}{c.b:X2}";
 
     // 保存値を読み直すのは変わった時だけ (色のタブを開いている間は毎フレーム聞かれる)
-    private static string _parsedFrom;
+    private static string _parsedFrom, _parsedFrom2;
+    private static int _parsedDir;
     private static bool _parsedOk;
-    private static Color32 _parsed;
+    private static Look _parsed;
 
     public static bool HasMine(out Color32 c)
     {
-        string v = _mine?.Value;
-        if (!ReferenceEquals(v, _parsedFrom))
+        bool ok = HasMineLook(out Look l);
+        c = l.A;
+        return ok;
+    }
+
+    public static bool HasMineLook(out Look l)
+    {
+        string v = _mine?.Value, v2 = _mine2?.Value;
+        int dir = _mineDir?.Value ?? 0;
+        if (!ReferenceEquals(v, _parsedFrom) || !ReferenceEquals(v2, _parsedFrom2) || dir != _parsedDir)
         {
             _parsedFrom = v;
-            _parsedOk = TryParse(v, out _parsed);
+            _parsedFrom2 = v2;
+            _parsedDir = dir;
+            _parsedOk = TryParse(v, out var a);
+            bool grad = TryParse(v2, out var b);
+            _parsed = new Look(a, b, grad, (byte)Math.Clamp(dir, 0, DirCount - 1));
         }
-        c = _parsed;
+        l = _parsed;
         return _parsedOk;
     }
 
     // 自分の色を決める (null = 本編の色へ戻す)。保存して、部屋にいれば全員へ配る
-    public static void SetMine(Color32? c)
+    public static void SetMine(Color32? c) => SetLook(c.HasValue ? Look.Solid(c.Value) : null);
+
+    public static void SetLook(Look? l)
     {
         if (_mine == null) return;
-        _mine.Value = c.HasValue ? Hex(c.Value) : "";
+        _mine.Value = l.HasValue ? Hex(l.Value.A) : "";
+        _mine2.Value = l.HasValue && l.Value.Grad ? Hex(l.Value.B) : "";
+        if (l.HasValue) _mineDir.Value = l.Value.Dir;
         var me = PlayerControl.LocalPlayer;
         if (!me) return;
-        if (c.HasValue) ByClient[me.OwnerId] = c.Value;
+        if (l.HasValue) ByClient[me.OwnerId] = l.Value;
         else ByClient.Remove(me.OwnerId);
         Rebuild();
-        Share.Send(Pack(c));
+        Share.Send(Pack(l));
     }
 
-    private static uint Pack(Color32? c) => c.HasValue ? 0x1000000u | ((uint)c.Value.r << 16) | ((uint)c.Value.g << 8) | c.Value.b : 0u;
+    private static uint Rgb(Color32 c) => ((uint)c.r << 16) | ((uint)c.g << 8) | c.b;
 
-    private static void Receive(PlayerControl sender, uint v)
+    private static Color32 FromRgb(uint v) => new((byte)(v >> 16), (byte)(v >> 8), (byte)v, 255);
+
+    private static (uint, uint) Pack(Look? l)
+    {
+        if (!l.HasValue) return (0u, 0u);
+        var v = l.Value;
+        return (0x1000000u | Rgb(v.A), v.Grad ? 0x1000000u | ((uint)v.Dir << 25) | Rgb(v.B) : 0u);
+    }
+
+    private static void Receive(PlayerControl sender, (uint A, uint B) v)
     {
         if (!sender || sender.AmOwner) return;
-        if ((v & 0x1000000u) != 0)
+        if ((v.A & 0x1000000u) != 0)
         {
-            var c = new Color32((byte)(v >> 16), (byte)(v >> 8), (byte)v, 255);
-            if (ByClient.TryGetValue(sender.OwnerId, out var old) && old.r == c.r && old.g == c.g && old.b == c.b) return;
-            ByClient[sender.OwnerId] = c;
+            var l = new Look(FromRgb(v.A), FromRgb(v.B), (v.B & 0x1000000u) != 0, (byte)((v.B >> 25) & 3));
+            if (ByClient.TryGetValue(sender.OwnerId, out var old) && old.Same(l)) return;
+            ByClient[sender.OwnerId] = l;
         }
         else if (!ByClient.Remove(sender.OwnerId)) return;
         _dirty = true;
@@ -117,6 +180,7 @@ internal static class CustomColors
         for (int i = 0; i < _body.Length && i < pc.Length; i++) pc[i] = _body[i];
         for (int i = 0; i < _shadow.Length && i < sc.Length; i++) sc[i] = _shadow[i];
         BySlot.Clear();
+        _previewSlot = -1;
         NameBySlot.Clear();
         NameCount.Clear();
         var data = GameData.Instance;
@@ -126,14 +190,14 @@ internal static class CustomColors
             for (int i = 0; i < all.Count; i++)
             {
                 var p = all[i];
-                if (p == null || p.Disconnected || !ByClient.TryGetValue(p.ClientId, out var c)) continue;
+                if (p == null || p.Disconnected || !ByClient.TryGetValue(p.ClientId, out var l)) continue;
                 int id = p.DefaultOutfit != null ? p.DefaultOutfit.ColorId : -1;
                 if (id < 0 || id >= pc.Length || id >= sc.Length) continue;
-                pc[id] = c;
-                sc[id] = Shade(c);
-                BySlot[id] = c;
+                pc[id] = l.A;
+                sc[id] = Shade(l.A);
+                BySlot[id] = l;
                 // 色覚の補助の文字として見分けられるよう、同じ名前の 2 人目からは番号を付ける (並びは全員の端末で同じ)
-                string name = NameOf(c);
+                string name = NameOf(l);
                 int n = NameCount.TryGetValue(name, out int k) ? k + 1 : 1;
                 NameCount[name] = n;
                 NameBySlot[id] = n == 1 ? name : name + n;
@@ -143,7 +207,12 @@ internal static class CustomColors
     }
 
     // その色番号を誰かが作った色で上書きしているか
-    public static bool SlotColor(int id, out Color32 c) => BySlot.TryGetValue(id, out c);
+    public static bool SlotColor(int id, out Color32 c)
+    {
+        bool ok = BySlot.TryGetValue(id, out var l);
+        c = l.A;
+        return ok;
+    }
 
     // その色番号の色の名前 (作った色でなければ false)
     public static bool SlotName(int id, out string name) => NameBySlot.TryGetValue(id, out name);
@@ -157,16 +226,106 @@ internal static class CustomColors
     }
 
     // 決める前の見本: 色番号 id の所だけ表を書き換えて 1 体を塗る (戻すのは Rebuild)
-    public static void PreviewSlot(int id, Color32 c, CosmeticsLayer layer)
+    public static void PreviewSlot(int id, Look l, CosmeticsLayer layer)
     {
         if (!Backup()) return;
         var pc = Palette.PlayerColors;
         var sc = Palette.ShadowColors;
         if (id < 0 || id >= pc.Length || id >= sc.Length) return;
-        pc[id] = c;
-        sc[id] = Shade(c);
+        pc[id] = l.A;
+        sc[id] = Shade(l.A);
+        _previewSlot = id;
+        _previewLook = l;
         _applied = true;
         if (layer) layer.SetColor(id);
+    }
+
+    // ---- グラデーション ----
+
+    // 差し替える前の本編のシェーダ: 歩いている人形など (Unlit/PlayerShader) と、会議の名札など枠で切り抜く人形 (Unlit/SimpleMaskedPlayer)
+    private static Shader _vanillaShader, _vanillaMasked;
+    private static string _lastRect = "-"; // 確認用: 最後に塗った体の絵の枠
+
+    // 体の絵が取れない時の枠 (人形の自分の座標・立っている時の絵)
+    private const float BodyX0 = -0.42f, BodyY0 = -0.52f, BodyW = 0.84f, BodyH = 1.04f;
+    private const float BodyShare = 0.5f; // 体の絵の範囲のうち人形が占める割合 (歩く時の絵で 1.64×2.09 の中に 0.84×1.04)
+
+    // 本編が人形 1 体を塗った後 (CosmeticsLayer.SetColor): その色番号がグラデーションなら体のシェーダを差し替える。
+    // 本編はこの時に体のマテリアルを人形ごとに複製済みなので、sharedMaterial を書き換えても他の人形には移らない
+    public static void ApplyGradient(CosmeticsLayer layer, int id)
+    {
+        var body = layer.currentBodySprite;
+        var sr = body != null ? body.BodySprite : null;
+        if (sr) ApplyGradient(sr, id);
+    }
+
+    public static void ApplyGradient(SpriteRenderer r, int id)
+    {
+        var grad = Fx.MrpBundle.PlayerGradientShader;
+        if (!grad) return;
+        Look look = default;
+        bool want = id == _previewSlot ? (look = _previewLook).Grad : BySlot.TryGetValue(id, out look) && look.Grad;
+        if (!want && !_vanillaShader && !_vanillaMasked) return; // まだ 1 度も差し替えていない
+        var mat = r.sharedMaterial;
+        if (!mat) return;
+        var sh = mat.shader;
+        bool isGrad = sh == grad;
+        if (!want)
+        {
+            if (!isGrad) return;
+            var back = mat.GetFloat("_MrpMasked") > 0.5f ? _vanillaMasked : _vanillaShader;
+            if (back) mat.shader = back;
+            return;
+        }
+        if (!isGrad)
+        {
+            // 本編の人形のシェーダの物だけ差し替える (着せ替えの店の見本などは別のシェーダ)
+            bool masked;
+            if (sh == _vanillaShader && _vanillaShader) masked = false;
+            else if (sh == _vanillaMasked && _vanillaMasked) masked = true;
+            else
+            {
+                string name = sh ? sh.name : "";
+                if (name == "Unlit/PlayerShader") { _vanillaShader = sh; masked = false; }
+                else if (name == "Unlit/SimpleMaskedPlayer") { _vanillaMasked = sh; masked = true; }
+                else return;
+                sh.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            }
+            mat.shader = grad;
+            mat.SetFloat("_MrpMasked", masked ? 1f : 0f);
+            mat.SetFloat("_MrpStencilComp", masked ? 3f : 7f); // Equal / GreaterEqual (本編の 2 つのシェーダと同じ)
+        }
+        // 色の向きの枠 = 今の体の絵の範囲 (人形の自分の座標) の真ん中の半分 (絵の周りには透明な余白がある)。
+        // 会議の名札の絵は歩く時の絵と大きさが違う
+        float x0 = BodyX0, y0 = BodyY0, w = BodyW, h = BodyH;
+        var sp = r.sprite;
+        if (sp)
+        {
+            var bd = sp.bounds;
+            var c = bd.center;
+            var sz = bd.size;
+            if (sz.x > 0.01f && sz.y > 0.01f) { w = sz.x * BodyShare; h = sz.y * BodyShare; x0 = c.x - w / 2f; y0 = c.y - h / 2f; }
+        }
+        _lastRect = $"{x0:F2},{y0:F2} {w:F2}x{h:F2}";
+        mat.SetColor("_BodyColor", look.A);
+        mat.SetColor("_BackColor", Shade(look.A));
+        mat.SetColor("_BodyColor2", look.B);
+        mat.SetColor("_BackColor2", Shade(look.B));
+        mat.SetFloat("_GradX0", x0);
+        mat.SetFloat("_GradY0", y0);
+        mat.SetFloat("_GradSX", 1f / w);
+        mat.SetFloat("_GradSY", 1f / h);
+        // t = u * wx + v * wy + w0 (u = 左 0 → 右 1・v = 下 0 → 上 1)
+        var (wx, wy, w0) = look.Dir switch
+        {
+            1 => (0f, -1f, 1f),
+            2 => (0.5f, -0.5f, 0.5f),
+            3 => (0.5f, 0.5f, 0f),
+            _ => (1f, 0f, 0f),
+        };
+        mat.SetFloat("_GradWX", wx);
+        mat.SetFloat("_GradWY", wy);
+        mat.SetFloat("_GradW0", w0);
     }
 
     // 色の名前 (いちばん近い名前の付いた色。近さは人の見え方に近い Lab の距離で測る)
@@ -198,6 +357,9 @@ internal static class CustomColors
         float fz = F((0.0193f * r + 0.1192f * g + 0.9505f * b) / 1.08883f);
         return (116f * fy - 16f, 500f * (fx - fy), 200f * (fy - fz));
     }
+
+    // グラデーションは 2 色の名前を並べる
+    public static string NameOf(Look l) => l.Grad ? NameOf(l.A) + "/" + NameOf(l.B) : NameOf(l.A);
 
     public static string NameOf(Color32 c)
     {
@@ -269,10 +431,10 @@ internal static class CustomColors
         }
         if (!_sendPending || Environment.TickCount64 < _sendAt) return;
         _sendPending = false;
-        if (!PlayerControl.LocalPlayer || !HasMine(out var c)) return;
-        ByClient[PlayerControl.LocalPlayer.OwnerId] = c;
+        if (!PlayerControl.LocalPlayer || !HasMineLook(out var l)) return;
+        ByClient[PlayerControl.LocalPlayer.OwnerId] = l;
         Rebuild();
-        Share.Send(Pack(c));
+        Share.Send(Pack(l));
     }
 
     public static void OnJoined()
@@ -290,9 +452,9 @@ internal static class CustomColors
     // 自分の人形が出てきた: 作った色をすぐ塗る
     public static void OnLocalSpawned(PlayerControl me)
     {
-        if (!HasMine(out var c)) return;
-        if (ByClient.TryGetValue(me.OwnerId, out var old) && old.r == c.r && old.g == c.g && old.b == c.b) return;
-        ByClient[me.OwnerId] = c;
+        if (!HasMineLook(out var l)) return;
+        if (ByClient.TryGetValue(me.OwnerId, out var old) && old.Same(l)) return;
+        ByClient[me.OwnerId] = l;
         Rebuild();
     }
 
@@ -305,10 +467,12 @@ internal static class CustomColors
     internal static string Fake(string args)
     {
         var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 2 || !byte.TryParse(parts[0], out byte id) || !TryParse(parts[1], out var c)) return "ERR colors fake <番号> <#RRGGBB>";
+        if (parts.Length < 2 || !byte.TryParse(parts[0], out byte id) || !TryParse(parts[1], out var c)) return "ERR colors fake <番号> <#RRGGBB> [#RRGGBB [向き 0-3]]";
         var info = GameData.Instance ? GameData.Instance.GetPlayerById(id) : null;
         if (info == null) return "ERR colors fake: no player " + id;
-        ByClient[info.ClientId] = c;
+        bool grad = TryParse(parts.Length >= 3 ? parts[2] : "", out var b);
+        byte dir = parts.Length >= 4 && byte.TryParse(parts[3], out byte d) ? d : (byte)0;
+        ByClient[info.ClientId] = new Look(c, b, grad, dir);
         Rebuild();
         return Describe();
     }
@@ -318,7 +482,13 @@ internal static class CustomColors
     {
         var sb = new System.Text.StringBuilder("OK colors mine=");
         sb.Append(_mine != null && _mine.Value.Length > 0 ? _mine.Value : "-");
-        foreach (var kv in ByClient) sb.Append(' ').Append(kv.Key).Append('=').Append(Hex(kv.Value));
+        if (_mine2 != null && _mine2.Value.Length > 0) sb.Append('>').Append(_mine2.Value).Append('@').Append(_mineDir.Value);
+        sb.Append(" grad=").Append(Fx.MrpBundle.PlayerGradientShader ? "ready" : "-").Append(" rect=").Append(_lastRect);
+        foreach (var kv in ByClient)
+        {
+            sb.Append(' ').Append(kv.Key).Append('=').Append(Hex(kv.Value.A));
+            if (kv.Value.Grad) sb.Append('>').Append(Hex(kv.Value.B)).Append('@').Append(kv.Value.Dir);
+        }
         foreach (var kv in NameBySlot) sb.Append(" [").Append(kv.Key).Append(':').Append(kv.Value).Append(']');
         return sb.ToString();
     }
@@ -341,9 +511,19 @@ internal static class CustomColorsPatches
     [HarmonyPatch(typeof(CosmeticsLayer), nameof(CosmeticsLayer.SetColor)), HarmonyPostfix]
     public static void LayerColor(CosmeticsLayer __instance, [HarmonyArgument(0)] int color)
     {
+        try { CustomColors.ApplyGradient(__instance, color); }
+        catch (Exception e) { Plugin.Logger.LogError($"custom colors gradient: {e.Message}"); }
         if (!CustomColors.SlotName(color, out var name)) return;
         var t = __instance.colorBlindText;
         if (t) t.text = name;
+    }
+
+    // 会議の名札などは色を塗った後で体のマテリアルを枠で切り抜く物に取り替える (本編の UpdateBodyMaterial)
+    [HarmonyPatch(typeof(CosmeticsLayer), nameof(CosmeticsLayer.UpdateBodyMaterial)), HarmonyPostfix]
+    public static void BodyMaterial(CosmeticsLayer __instance)
+    {
+        try { CustomColors.ApplyGradient(__instance, __instance.ColorId); }
+        catch (Exception e) { Plugin.Logger.LogError($"custom colors gradient: {e.Message}"); }
     }
 
     [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.Start)), HarmonyPostfix]

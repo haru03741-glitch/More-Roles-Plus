@@ -11,6 +11,7 @@ using UnityEngine;
 //   water.mat    … MRP/Water (床の水たまり・噴き出し。CPU が書いた水の量の絵から見た目を決める)
 //   water_wade.mat … MRP/Water の _Mode 2 (水に浸かったクルー・小物の手前に置く水面)
 //   firefloor.mat / flame.mat … MRP/Fire (床の照りと油の膜 / 立ち上がる炎。CPU が書いた升ごとの火の値から見た目を決める)
+//   playergrad.mat … MRP/PlayerGradient (2 色のグラデーションのクルー。シェーダだけを使う)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -86,6 +87,18 @@ public static class MrpBundleBuilder
             AssetDatabase.CreateAsset(fire, firePath);
             Tag(firePath);
         }
+
+        Shader gradShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/PlayerGradient.shader");
+        if (gradShader == null)
+        {
+            Debug.LogError("MrpBundleBuilder: PlayerGradient shader not found");
+            EditorApplication.Exit(2);
+            return;
+        }
+        string gradPath = Folder + "/playergrad.mat";
+        AssetDatabase.DeleteAsset(gradPath);
+        AssetDatabase.CreateAsset(new Material(gradShader) { name = "playergrad" }, gradPath);
+        Tag(gradPath);
 
         BreakSounds.ImportAll(Folder, BundleName);
 

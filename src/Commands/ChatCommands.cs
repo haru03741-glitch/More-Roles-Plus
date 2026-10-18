@@ -38,7 +38,7 @@ internal static class ChatCommands
         Add(new[] { "r", "roles" }, Who.Everyone, "[役職]", new Text("役職の一覧 / その役職の説明", "List roles / describe one"), InfoCommands.Roles);
         Add(new[] { "n", "now" }, Who.Everyone, "", new Text("今の MRP の設定", "Current More Roles Plus settings"), InfoCommands.Now);
         Add(new[] { "rename" }, Who.Everyone, "<名前>", new Text("自分の名前を変える (ロビー)", "Change your name (lobby)"), LobbyTools.Rename);
-        Add(new[] { "color", "colour" }, Who.Everyone, "<番号|色の名前|#RRGGBB|reset>", new Text("自分の色を変える (ロビー)。#RRGGBB で好きな色", "Change your color (lobby). #RRGGBB for any color"), LobbyTools.Color);
+        Add(new[] { "color", "colour" }, Who.Everyone, "<番号|色の名前|#RRGGBB [#RRGGBB [向き]]|reset>", new Text("自分の色を変える (ロビー)。#RRGGBB で好きな色・2 色でグラデーション (向き 0=横 1=縦 2,3=斜め)", "Change your color (lobby). #RRGGBB for any color, two colors for a gradient (direction 0=horizontal 1=vertical 2,3=diagonal)"), LobbyTools.Color);
         Add(new[] { "death" }, Who.Everyone, "[番号]", new Text("自分 (番号でその人) の死因 (死んでから)", "How you (or someone) died (after you die)"), InfoCommands.Death);
         Add(new[] { "l", "last" }, Who.Everyone, "", new Text("前の試合の結果 (全員の役職と死因)", "Last game's result (roles and causes of death)"), InfoCommands.LastResult);
         Add(new[] { "spectate", "spec" }, Who.Everyone, "", new Text("次の試合を観戦する / やめる (ロビー)", "Toggle spectating the next game (lobby)"), Roles.Spectate.Command);

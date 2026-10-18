@@ -12,11 +12,26 @@ namespace MoreRolesPlus.Menu;
 //   彩度 (横) × 明るさ (縦) の四角と、その下の色相の帯。押したまま動かすと右の人形がその色になり、本編の「装備」で決まる
 //   #RRGGBB の入力欄は部屋の中だけ (チャットの入力欄を写して作る)。本編の色を押す / 装備すると作った色をやめる
 // 四角の絵は色相が変わった時だけ作り直す (動かしている間は 50ms に 1 回まで)。毎フレームの処理は色のタブを開いている間だけ
+// 四角の右の列 = 1 色目と 2 色目の見本 (押した方を四角と帯で変える) と、グラデーションの向きのボタン (1 色 → 横 → 縦 → 斜め ×2)
 internal static class ColorPicker
 {
     private const int SvPx = 64, HuePx = 128;
     private const float SvSize = 2.2f, HueH = 0.26f;
     private static readonly Vector2 SvAt = new(0f, 0.3f), HueAt = new(0f, -1.15f);
+    private const float ColX = 1.5f, SwatchSize = 0.42f, DirW = 0.62f, DirH = 0.36f;
+    private static readonly float[] SwatchY = { 1.05f, 0.45f };
+    private const float DirY = -0.15f;
+    private static readonly string[] DirNames = { "1色", "横", "縦", "斜め", "斜め2" };
+    private static readonly string[] DirNamesEn = { "1 color", "Horizontal", "Vertical", "Diagonal", "Diagonal 2" };
+
+    private static SpriteRenderer[] _swatch = new SpriteRenderer[2];
+    private static SpriteRenderer[] _swatchEdge = new SpriteRenderer[2];
+    private static TextMeshPro _dirLabel;
+    private static Color32 _a, _b = new(255, 255, 255, 255); // 1 色目と 2 色目 (四角と帯は _edit の方を表す)
+    private static bool _grad, _bChosen; // _bChosen = この画面で 2 色目を 1 度でも決めた (1 色に戻してまたグラデーションにした時に使う)
+    private static byte _dir;
+    private static int _edit; // 0 = 1 色目・1 = 2 色目
+    private static int _shownDir = -1; // 向きのボタンに今出している文字 (変わった時だけ書く)
 
     private static GameObject _root;
     private static PlayerTab _tab;
@@ -54,8 +69,22 @@ internal static class ColorPicker
         _shownHex = "";
         PaintChips();
         // 作った色があればそれを選んだ状態から始める (無ければ本編が選んだ色)
-        _customSelected = CustomColors.HasMine(out var mine);
-        FromColor(_customSelected ? mine : CustomColors.VanillaBody(tab.currentColor));
+        _customSelected = CustomColors.HasMineLook(out var mine);
+        _edit = 0;
+        if (_customSelected)
+        {
+            _a = mine.A;
+            _grad = mine.Grad;
+            if (mine.Grad) { _b = mine.B; _dir = mine.Dir; }
+            _bChosen = mine.Grad;
+        }
+        else
+        {
+            _a = CustomColors.VanillaBody(tab.currentColor);
+            _grad = false;
+            _bChosen = false;
+        }
+        FromColor(_a);
         Refresh(true, _customSelected);
     }
 
@@ -134,7 +163,46 @@ internal static class ColorPicker
             var title = Label(proto.gameObject, layer, new Vector3(0f, SvAt.y + SvSize / 2f + 0.3f, 0f), new Text("色を作る", "Make a color"));
             title.fontSize *= 0.7f;
         }
+
+        // 1 色目・2 色目の見本 (選んでいる方に白いふち) と向きのボタン
+        for (int i = 0; i < 2; i++)
+        {
+            _swatchEdge[i] = MenuArt.Panel(t, "SwatchEdge" + i, 0.08f, new Vector2(SwatchSize + 0.08f, SwatchSize + 0.08f), new Vector3(ColX, SwatchY[i], 0f), Color.white, null);
+            _swatch[i] = MenuArt.Panel(t, "Swatch" + i, 0.06f, new Vector2(SwatchSize, SwatchSize), Vector3.zero, Color.white, null);
+            _swatch[i].transform.SetParent(_swatchEdge[i].transform, false);
+            _swatch[i].transform.localPosition = new Vector3(0f, 0f, -0.01f);
+        }
+        var dirBack = MenuArt.Panel(t, "DirButton", 0.08f, new Vector2(DirW, DirH), new Vector3(ColX, DirY, 0f), new Color(0.25f, 0.25f, 0.28f, 1f), null);
+        if (proto)
+        {
+            _dirLabel = Label(proto.gameObject, layer, Vector3.zero, "");
+            _dirLabel.transform.SetParent(dirBack.transform, false);
+            _dirLabel.transform.localPosition = new Vector3(0f, 0f, -0.01f);
+            _dirLabel.enableAutoSizing = false;
+            _shownDir = -1;
+            _dirLabel.fontSize *= 0.3f;
+        }
     }
+
+    // 見本の色・選んでいる方のふち・向きの文字を今の状態に合わせる
+    private static void PaintRow()
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            if (!_swatch[i]) continue;
+            bool on = i == 0 || _grad;
+            _swatch[i].color = on ? (Color)(i == 0 ? _a : _b) : new Color(0.35f, 0.35f, 0.38f, 1f);
+            _swatchEdge[i].color = i == _edit ? Color.white : new Color(0.1f, 0.1f, 0.1f, 1f);
+        }
+        int k = _grad ? _dir + 1 : 0;
+        if (_dirLabel && k != _shownDir)
+        {
+            _shownDir = k;
+            _dirLabel.text = new Text(DirNames[k], DirNamesEn[k]);
+        }
+    }
+
+    private static CustomColors.Look CurrentLook() => new(_a, _b, _grad, _dir);
 
     // ふちを印の子にして少し奥へ置く (同じ奥行きだと描く順が決まらず、ふちが印を隠すことがある)
     private static void Behind(Transform edge, Transform mark)
@@ -274,6 +342,12 @@ internal static class ColorPicker
         _svMark.transform.localPosition = new Vector3(SvAt.x - half + _s * SvSize, SvAt.y - half + _v * SvSize, -2f);
         _hueMark.transform.localPosition = new Vector3(HueAt.x - half + _h * SvSize, HueAt.y, -2f);
         var c = Current();
+        if (changed)
+        {
+            if (_edit == 0) _a = c;
+            else _b = c;
+        }
+        PaintRow();
         string hex = "#" + CustomColors.Hex(c);
         if (_hex != null && hex != _shownHex)
         {
@@ -284,16 +358,17 @@ internal static class ColorPicker
         }
         if (!changed) return;
         _customSelected = true;
-        Pending = !IsMine(c);
+        var look = CurrentLook();
+        Pending = !IsMine(look);
         if (!force && now - _previewAt < 50) return;
         _previewAt = now;
         var preview = _tab ? _tab.PlayerPreview : null;
-        CustomColors.PreviewSlot(MySlot(), c, preview ? preview.cosmetics : null);
+        CustomColors.PreviewSlot(MySlot(), look, preview ? preview.cosmetics : null);
         var menu = PlayerCustomizationMenu.Instance;
         if (menu) menu.SetItemName("");
     }
 
-    private static bool IsMine(Color32 c) => CustomColors.HasMine(out var m) && m.r == c.r && m.g == c.g && m.b == c.b;
+    private static bool IsMine(CustomColors.Look l) => CustomColors.HasMineLook(out var m) && m.Same(l);
 
     private static bool _saying;
 
@@ -310,7 +385,7 @@ internal static class ColorPicker
     public static void OnSetItemName(ref string text)
     {
         if (_saying || !IsOpen || !_customSelected) return;
-        text = CustomColors.NameOf(Current());
+        text = CustomColors.NameOf(CurrentLook());
     }
 
     private static void OnHex(string q)
@@ -341,12 +416,12 @@ internal static class ColorPicker
         if (!_customSelected)
         {
             // 本編の色を装備した: 作った色はやめる
-            if (CustomColors.HasMine(out _) && !Blocked()) CustomColors.SetMine(null);
+            if (CustomColors.HasMine(out Color32 _) && !Blocked()) CustomColors.SetMine((Color32?)null);
             return false;
         }
         if (!Pending || Blocked()) return true;
         Pending = false;
-        CustomColors.SetMine(Current());
+        CustomColors.SetLook(CurrentLook());
         return true;
     }
 
@@ -354,9 +429,9 @@ internal static class ColorPicker
     // 本編の色を選んでいて作った色を使っている = 同じ色番号でも「装備」を出す (装備すると作った色をやめる)
     public static bool Equipped(out bool equipped)
     {
-        if (_customSelected) { equipped = !Pending && IsMine(Current()); return true; }
+        if (_customSelected) { equipped = !Pending && IsMine(CurrentLook()); return true; }
         equipped = false;
-        return CustomColors.HasMine(out _);
+        return CustomColors.HasMine(out Color32 _);
     }
 
     // 本編の色を押した (タブの今の色番号が変わった): 動かしていた色をやめて、押した色から始める
@@ -372,8 +447,56 @@ internal static class ColorPicker
             Pending = false;
             CustomColors.Rebuild();
         }
-        FromColor(CustomColors.VanillaBody(cur));
+        _edit = 0;
+        _a = CustomColors.VanillaBody(cur);
+        FromColor(_a);
         Refresh(true);
+    }
+
+    // 右の列を押した: true = 押した所があった
+    private static bool ClickRow(Vector3 local)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            if (Math.Abs(local.x - ColX) > SwatchSize / 2f + 0.05f || Math.Abs(local.y - SwatchY[i]) > SwatchSize / 2f + 0.05f) continue;
+            if (i == 1 && !_grad) StartGradient(); // 2 色目を押すとグラデーションにする
+            SelectEdit(i);
+            Refresh(true, true);
+            return true;
+        }
+        if (Math.Abs(local.x - ColX) <= DirW / 2f && Math.Abs(local.y - DirY) <= DirH / 2f)
+        {
+            // 1 色 → 横 → 縦 → 斜め → 斜め2 → 1 色
+            if (!_grad) { StartGradient(); _dir = 0; }
+            else if (_dir + 1 < CustomColors.DirCount) _dir++;
+            else { _grad = false; SelectEdit(0); }
+            Refresh(true, true);
+            return true;
+        }
+        return false;
+    }
+
+    private static void StartGradient()
+    {
+        _grad = true;
+        if (!_bChosen) _b = SecondFor(_a);
+        _bChosen = true;
+    }
+
+    // グラデーションにした時の 2 色目の始め = 1 色目の色相を少し回した色 (すぐに違いが見える)
+    private static Color32 SecondFor(Color32 a)
+    {
+        float h = _h, sat = _s, v = _v;
+        FromColor(a);
+        var b = Hsv(_h + 0.15f, Math.Max(_s, 0.5f), Math.Max(_v, 0.5f));
+        _h = h; _s = sat; _v = v;
+        return b;
+    }
+
+    private static void SelectEdit(int i)
+    {
+        _edit = i;
+        FromColor(i == 0 ? _a : _b);
     }
 
     // ---- 押したまま動かす (色のタブを開いている間だけ) ----
@@ -401,7 +524,7 @@ internal static class ColorPicker
             float w = (local.y - (SvAt.y - half)) / SvSize;
             if (u >= 0f && u <= 1f && w >= 0f && w <= 1f) _drag = 1;
             else if (u >= 0f && u <= 1f && Math.Abs(local.y - HueAt.y) <= HueH) _drag = 2;
-            else return;
+            else { ClickRow(local); return; }
         }
         u = Math.Clamp(u, 0f, 1f);
         if (_drag == 1)
@@ -419,9 +542,11 @@ internal static class ColorPicker
         if (args == "equip") { if (_tab) _tab.ClickEquip(); }
         else if (CustomColors.TryParse(args, out var c)) { FromColor(c); if (IsOpen) Refresh(true, true); }
         else if (args.StartsWith("type ")) { if (_hex != null) _hex.Type(args[5..]); }
-        else if (args.Length > 0) return "ERR picker [equip | type <文> | #RRGGBB] (着せ替え画面の色のタブを開いておく)";
+        else if (args == "swatch1" || args == "swatch2") { if (IsOpen) ClickRow(new Vector3(ColX, SwatchY[args[6] - '1'], 0f)); }
+        else if (args == "dir") { if (IsOpen) ClickRow(new Vector3(ColX, DirY, 0f)); }
+        else if (args.Length > 0) return "ERR picker [equip | type <文> | #RRGGBB | swatch1 | swatch2 | dir] (着せ替え画面の色のタブを開いておく)";
         var menu = PlayerCustomizationMenu.Instance;
-        return $"OK picker open={IsOpen} pending={Pending} chip={(_tab ? _tab.currentColor : -1)} h={_h:F3} s={_s:F3} v={_v:F3} color=#{CustomColors.Hex(Current())} custom={_customSelected} item=[{(menu && menu.itemName ? menu.itemName.text : "")}]";
+        return $"OK picker open={IsOpen} pending={Pending} chip={(_tab ? _tab.currentColor : -1)} h={_h:F3} s={_s:F3} v={_v:F3} color=#{CustomColors.Hex(Current())} a=#{CustomColors.Hex(_a)} b={(_grad ? "#" + CustomColors.Hex(_b) : "-")} dir={_dir} edit={_edit} custom={_customSelected} item=[{(menu && menu.itemName ? menu.itemName.text : "")}]";
     }
 }
 

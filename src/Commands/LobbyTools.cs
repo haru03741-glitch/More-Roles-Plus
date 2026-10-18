@@ -107,13 +107,20 @@ internal static class LobbyTools
     public static string Color(string args)
     {
         if (!InLobby) return OnlyLobby;
-        // #RRGGBB = 自分で作った色 (見た目だけ。本編の色番号はそのまま)・reset = 本編の色へ戻す
+        // #RRGGBB = 自分で作った色 (見た目だけ。本編の色番号はそのまま)・#RRGGBB #RRGGBB [向き 0〜3] = 2 色のグラデーション・reset = 本編の色へ戻す
         string a = args.Trim();
         if (a.StartsWith('#') || a.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
             if (!AmHost && !HostSettings.PlayersCanRename) return new Text("この部屋ではホストが名前と色の変更を止めています", "The host has turned off name and color changes");
-            if (a[0] != '#') { Menu.CustomColors.SetMine(null); return new Text("本編の色に戻しました", "Back to the game's color"); }
-            if (!Menu.CustomColors.TryParse(a, out var custom)) return new Text("#RRGGBB の形で (例 #00B7FF)", "Use #RRGGBB (e.g. #00B7FF)");
+            if (a[0] != '#') { Menu.CustomColors.SetMine((UnityEngine.Color32?)null); return new Text("本編の色に戻しました", "Back to the game's color"); }
+            var parts = a.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (!Menu.CustomColors.TryParse(parts[0], out var custom)) return new Text("#RRGGBB の形で (例 #00B7FF)。2 色目を足すとグラデーション (例 #00B7FF #FF4FA0)", "Use #RRGGBB (e.g. #00B7FF). Add a second color for a gradient (e.g. #00B7FF #FF4FA0)");
+            if (parts.Length >= 2 && Menu.CustomColors.TryParse(parts[1], out var second))
+            {
+                byte dir = parts.Length >= 3 && byte.TryParse(parts[2], out byte d) && d < Menu.CustomColors.DirCount ? d : (byte)0;
+                Menu.CustomColors.SetLook(new Menu.CustomColors.Look(custom, second, true, dir));
+                return new Text($"色を #{Menu.CustomColors.Hex(custom)} → #{Menu.CustomColors.Hex(second)} のグラデーションにしました", $"Your color is now a gradient #{Menu.CustomColors.Hex(custom)} → #{Menu.CustomColors.Hex(second)}");
+            }
             Menu.CustomColors.SetMine(custom);
             return new Text($"色を #{Menu.CustomColors.Hex(custom)} にしました", $"Your color is now #{Menu.CustomColors.Hex(custom)}");
         }
