@@ -18,6 +18,8 @@ namespace MoreRolesPlus.Options;
 //   本編の行の OnValueChanged には何も入れない (管理側のデリゲートを il2cpp の欄に入れると、
 //   画面を閉じても行ごと解放されなくなるため)。
 // - 値は画面を閉じた時に保存し、全員へ送る。
+// - タブのボタンの下に検索欄を 1 つ置く。打つと全部のタブ (本編のゲーム設定・MRP 全般・役職) から探し、
+//   結果は役職のタブに見出しごとに並べる (RoleMenu)。空にすると検索の前に開いていたタブへ戻る。
 internal static class SettingsMenu
 {
     private const int FirstTab = 3; // 本編のタブは 0〜2
@@ -40,6 +42,11 @@ internal static class SettingsMenu
     private static readonly Dictionary<IntPtr, Opt> Rows = new();
     private static readonly List<OptionBehaviour> RowList = new(); // 値を外から変えた時に描き直す相手
     private static GameOptionsMenu _template;
+    private static SearchBox _search;
+    private static bool _searching, _leavingSearch;
+    private static int _currentTab = 1, _returnTab = 1;
+
+    public static string SearchQuery => _search != null ? _search.Query : "";
     private static FloatGameSetting _numberData;
     private static CheckboxGameSetting _checkData;
 
@@ -81,9 +88,9 @@ internal static class SettingsMenu
 
     public static bool IsOurMenu(GameOptionsMenu m, out int page) => MenuToPage.TryGetValue(m.Pointer, out page);
 
-    private static Text TabName(bool roles) => roles ? RoleMenu.TabName : new Text("MRP 全般", "MRP");
+    internal static Text TabName(bool roles) => roles ? RoleMenu.TabName : new Text("MRP 全般", "MRP");
 
-    private static Color TabColor(bool roles) => roles ? new Color(1f, 0.8f, 0.35f) : new Color(0.75f, 0.6f, 1f);
+    internal static Color TabColor(bool roles) => roles ? new Color(1f, 0.8f, 0.35f) : new Color(0.75f, 0.6f, 1f);
 
     // 本編がゲーム設定タブを組み立てる前の、空のタブを型として取っておく
     public static void OnMenuEnable(GameSettingMenu menu)
@@ -104,6 +111,10 @@ internal static class SettingsMenu
         RowList.Clear();
         RoleMenu.Forget();
         PresetPage.Forget();
+        if (_search != null) SearchBox.Forget(_search);
+        _search = null;
+        _searching = false;
+        _currentTab = _returnTab = 1;
         if (!_template) return;
 
         // 左の列を 2 列に詰める: 左 = 本編の 3 つ、右 = MRP のタブ。
@@ -151,6 +162,19 @@ internal static class SettingsMenu
         for (int i = 0; i < vanilla.Length; i++) Compact(vanilla[i], At(LeftColumnX, FirstRowY + i * RowStepY), scale);
         // 本編の役職は MRP の役職タブに並ぶので、本編の役職のタブは出さない
         if (Pages.Exists(p => p.Roles)) menu.RoleSettingsButton.gameObject.SetActive(false);
+        // 検索欄: タブのボタンの 2 列の幅で、いちばん下のボタンの下
+        if (Pages.Exists(p => p.Roles))
+        {
+            var col = gameBtn.GetComponent<BoxCollider2D>();
+            float half = (col ? col.size.x : 3.21f) * gameBtn.transform.localScale.x / 2f;
+            Vector3 l = At(LeftColumnX, FirstRowY), r = At(RightColumnX, FirstRowY + (Pages.Count - 1) * RowStepY);
+            float w = r.x - l.x + half * 2f;
+            // ボタンの絵はボタンの位置から左へずれて描かれているので、絵の中心にそろえる
+            var placer = gameBtn.transform.Find("FontPlacer");
+            float shift = placer ? placer.localPosition.x * gameBtn.transform.localScale.x : 0f;
+            _search = SearchBox.Create(gameBtn.transform.parent, new Vector3((l.x + r.x) / 2f + shift, r.y - RowStepY * unit * 1.05f, l.z), w, 0.4f,
+                new Text("全部のタブから探す", "Search all tabs"), OnSearch);
+        }
         // 本編は開いた時にプリセットのタブを出すので、ゲーム設定のタブから始める
         menu.ChangeTab(1, false);
         var desc = menu.MenuDescriptionText;
@@ -193,10 +217,90 @@ internal static class SettingsMenu
         if (GameSettingMenu.Instance) GameSettingMenu.Instance.ChangeTab(tabNum, false);
     }
 
+    // 検索欄の文字が変わった
+    private static void OnSearch(string q)
+    {
+        if (_leavingSearch) return;
+        var menu = GameSettingMenu.Instance;
+        int roles = Pages.FindIndex(p => p.Roles);
+        if (!menu || roles < 0) return;
+        if (RoleSearch.Tokens(q).Length == 0)
+        {
+            if (!_searching) return;
+            _searching = false;
+            RoleMenu.SetQuery("");
+            menu.ChangeTab(_returnTab, false);
+            return;
+        }
+        if (!_searching)
+        {
+            _searching = true;
+            _returnTab = _currentTab;
+            menu.PresetsTab.gameObject.SetActive(false);
+            menu.GameSettingsTab.gameObject.SetActive(false);
+            menu.RoleSettingsTab.gameObject.SetActive(false);
+            menu.GamePresetsButton.SelectButton(false);
+            menu.GameSettingsButton.SelectButton(false);
+            menu.RoleSettingsButton.SelectButton(false);
+            ShowPage(roles);
+            if (Pages[roles].Button) Pages[roles].Button.SelectButton(false);
+            menu.ToggleLeftSideDarkener(true);
+            menu.ToggleRightSideDarkener(false);
+            RefreshAll(); // 他のタブで変えた値を結果の行へ
+        }
+        RoleMenu.SetQuery(q);
+        var desc = menu.MenuDescriptionText;
+        if (!desc) return;
+        var tr = desc.GetComponent<TextTranslatorTMP>();
+        if (tr) Object.Destroy(tr);
+        desc.text = RoleMenu.SearchSummary(q.Trim());
+    }
+
+    // 本編のゲーム設定のタブの行を設定から読み直す (検索の結果の行で値を変えた後)
+    private static void RefreshGameTab(GameSettingMenu menu)
+    {
+        var tab = menu.GameSettingsTab;
+        var children = tab ? tab.Children : null;
+        if (children == null) return;
+        foreach (var c in children)
+        {
+            if (!c) continue;
+            var num = c.TryCast<NumberOption>();
+            if (num != null) { num.Initialize(); continue; }
+            var str = c.TryCast<StringOption>();
+            if (str != null) { str.Initialize(); continue; }
+            c.TryCast<ToggleOption>()?.Initialize();
+        }
+        MapVariants.Refresh();
+    }
+
+    // 試験用: 検索欄に打ち込んだのと同じことをする
+    internal static bool TypeSearch(string q)
+    {
+        if (_search == null) return false;
+        _search.Type(q);
+        return true;
+    }
+
     // true = 本編の処理も続ける
     public static bool OnChangeTab(GameSettingMenu menu, int tabNum, bool previewOnly)
     {
         bool commit = !previewOnly || Controller.currentTouchType == Controller.TouchType.Joystick;
+        if (commit)
+        {
+            // 検索の間にタブを押した: 検索をやめてそのタブへ
+            if (_searching)
+            {
+                _searching = false;
+                _leavingSearch = true;
+                try { _search?.Clear(); }
+                finally { _leavingSearch = false; }
+                RoleMenu.SetQuery("");
+            }
+            _currentTab = tabNum;
+            RefreshAll();
+            if (tabNum == 1) RefreshGameTab(menu);
+        }
         if (tabNum < FirstTab)
         {
             if (commit) ShowPage(-1);
@@ -273,6 +377,7 @@ internal static class SettingsMenu
         float y = 2f;
         foreach (var sec in Registry.SectionsOf(tab))
         {
+            if (!sec.Opts.Exists(o => !o.OffTab)) continue;
             var h = Object.Instantiate(m.categoryHeaderOrigin, m.settingsContainer);
             h.SetHeader(StringNames.RolesCategory, 20);
             h.Title.text = sec.Color != null ? $"<color={sec.Color}>{sec.Title}</color>" : sec.Title.ToString();
@@ -288,6 +393,7 @@ internal static class SettingsMenu
 
             foreach (var opt in sec.Opts)
             {
+                if (opt.OffTab) continue;
                 var row = MakeRow(m, opt);
                 row.transform.localPosition = new Vector3(rowX, y, z);
                 m.Children.Add(row);
@@ -374,6 +480,10 @@ internal static class SettingsMenu
         RowList.Clear();
         PresetPage.Forget();
         RoleMenu.Forget();
+        MapVariants.Forget();
+        if (_search != null) SearchBox.Forget(_search);
+        _search = null;
+        _searching = false;
         MenuToPage.Clear();
         Pages.Clear();
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
@@ -412,6 +522,15 @@ internal static class GameOptionsMenuPatch
 
     [HarmonyPatch("CreateSettings"), HarmonyPrefix]
     public static bool CreateSettings(GameOptionsMenu __instance) => !SettingsMenu.IsOurMenu(__instance, out _);
+
+    // 本編のゲーム設定のタブ: マップ選びの下にマップのバリエーションを足す
+    [HarmonyPatch("CreateSettings"), HarmonyPostfix]
+    public static void CreateSettingsPost(GameOptionsMenu __instance)
+    {
+        if (SettingsMenu.IsOurMenu(__instance, out _)) return;
+        try { MapVariants.Attach(__instance); }
+        catch (Exception e) { Plugin.Logger.LogError($"map variants: {e}"); }
+    }
 }
 
 // MRP の行は本編の値の処理を通さず、MRP の設定項目を直接書き換える

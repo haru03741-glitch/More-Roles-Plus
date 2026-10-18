@@ -133,16 +133,28 @@ internal sealed class VanillaOpt : Opt
     private readonly FloatGameSetting _float;
     private readonly IntGameSetting _int;
     private readonly CheckboxGameSetting _check;
+    private readonly StringGameSetting _string;
+    private readonly StringNames[] _values; // 文字の選択肢 (StringGameSetting)
     private readonly float _min, _step;
     private readonly int _count;
+    private readonly bool _impostors; // インポスターの人数: 上限は接続先と部屋の定員で変わる
 
-    private VanillaOpt(Text label, BaseGameSetting s, FloatGameSetting f, IntGameSetting i, CheckboxGameSetting c) : base(label, 0)
+    private VanillaOpt(Text label, BaseGameSetting s, FloatGameSetting f, IntGameSetting i, CheckboxGameSetting c, StringGameSetting str) : base(label, 0)
     {
         _setting = s;
         _float = f;
         _int = i;
         _check = c;
-        if (f != null)
+        _string = str;
+        _impostors = s.Title == StringNames.GameNumImpostors;
+        if (str != null)
+        {
+            var v = str.Values;
+            _values = new StringNames[v != null ? v.Length : 0];
+            for (int k = 0; k < _values.Length; k++) _values[k] = v[k];
+            _count = _values.Length;
+        }
+        else if (f != null)
         {
             _min = f.ValidRange.min;
             _step = f.Increment > 0f ? f.Increment : 1f;
@@ -158,19 +170,29 @@ internal sealed class VanillaOpt : Opt
         _count = Math.Max(_count, 1);
     }
 
-    // 本編の設定の定義から作る (数値・整数・ON/OFF 以外は出さない)
+    // 本編の設定の定義から作る (数値・整数・ON/OFF・文字の選択肢。それ以外は出さない)
     public static VanillaOpt From(BaseGameSetting s)
     {
         if (!s) return null;
         var f = s.TryCast<FloatGameSetting>();
         var i = f == null ? s.TryCast<IntGameSetting>() : null;
         var c = f == null && i == null ? s.TryCast<CheckboxGameSetting>() : null;
-        if (f == null && i == null && c == null) return null;
+        var str = f == null && i == null && c == null ? s.TryCast<StringGameSetting>() : null;
+        if (f == null && i == null && c == null && str == null) return null;
         string label = TranslationController.Instance ? TranslationController.Instance.GetString(s.Title) : s.Title.ToString();
-        return new VanillaOpt(new Text(label, label), s, f, i, c);
+        return new VanillaOpt(new Text(label, label), s, f, i, c, str);
     }
 
-    internal override int Count => _count;
+    internal override int Count
+    {
+        get
+        {
+            if (!_impostors) return _count;
+            int max = ImpostorCap.MaxFor(ImpostorCap.RoomSize(Options));
+            return Math.Max(1, (int)Math.Round((max - _min) / _step) + 1);
+        }
+    }
+
     internal override bool IsToggle => _check != null;
 
     private static IGameOptions Options => GameOptionsManager.Instance?.CurrentGameOptions;
@@ -182,6 +204,7 @@ internal sealed class VanillaOpt : Opt
         if (o == null) return 0f;
         if (_float != null) return o.GetFloat(_float.OptionName);
         if (_int != null) return o.GetInt(_int.OptionName);
+        if (_string != null) return o.GetInt(_string.OptionName);
         return o.GetBool(_check.OptionName) ? 1f : 0f;
     }
 #pragma warning restore CS0618
@@ -192,7 +215,9 @@ internal sealed class VanillaOpt : Opt
     public void Pull()
     {
         float v = Read();
-        Index = _check != null ? (v != 0f ? 1 : 0) : Math.Clamp((int)Math.Round((v - _min) / _step), 0, _count - 1);
+        Index = _check != null ? (v != 0f ? 1 : 0)
+            : _string != null ? Math.Clamp((int)v, 0, Math.Max(_count - 1, 0))
+            : Math.Clamp((int)Math.Round((v - _min) / _step), 0, Count - 1);
     }
 
     private float ValueOf(int index) => _min + index * _step;
@@ -201,6 +226,11 @@ internal sealed class VanillaOpt : Opt
     {
         Pull();
         if (_check != null) return Index != 0 ? "ON" : "OFF";
+        if (_string != null)
+        {
+            if (Index >= _values.Length) return "-";
+            return TranslationController.Instance ? TranslationController.Instance.GetString(_values[Index]) : _values[Index].ToString();
+        }
         return _setting.GetValueString(ValueOf(Index));
     }
 
@@ -213,6 +243,7 @@ internal sealed class VanillaOpt : Opt
         if (o == null) return;
         if (_float != null) o.SetFloat(_float.OptionName, ValueOf(Index));
         else if (_int != null) o.SetInt(_int.OptionName, (int)Math.Round(ValueOf(Index)));
+        else if (_string != null) o.SetInt(_string.OptionName, Index);
         else o.SetBool(_check.OptionName, Index != 0);
         VanillaRoles.Dirty = true;
     }

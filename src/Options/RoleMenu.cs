@@ -14,14 +14,15 @@ namespace MoreRolesPlus.Options;
 // 設定画面の「役職」タブ。全陣営の役職を 1 本の列に並べる。
 // - 役職の行 = 本編の役職設定の行 (人数 ± と出現率 ± が 1 行) の複製。その場で値を変えられる。
 // - 役職名を押すと、真下にその役職の細かい設定が開く (別のページへ移らない・スクロール位置はそのまま)。
-// - 上の固定の帯 = 検索欄 / 陣営で絞る / 出る役職だけ。検索は打つたびに絞り込み、
-//   役職名のほか細かい設定の名前にも当たる (当たった役職は開いて、当たった行を色で示す)。
+// - 上の固定の帯 = 陣営で絞る / 出る役職だけ。
+// - 設定画面の検索 (左の欄・SettingsMenu) の結果もこのタブに出す。検索の間は本編のゲーム設定と MRP 全般の項目も
+//   見出しごとに並べ、役職名のほか細かい設定の名前にも当たる (当たった役職は開いて、当たった行を色で示す)。
 // - 絞り込みや開け閉めでは行を作り直さず、表示と位置だけを変える。
 internal static class RoleMenu
 {
     // 1920x1080 の画面で 1 単位 = 180px。RoleLift = 本編の役職の行は数値の行より絵が 0.25 下に出るので、その分上げる
-    private const float BandHeight = 1.0f;      // 上の固定の帯の高さ
-    private const float SearchHeight = 0.42f, ChipHeight = 0.36f, Gap = 0.1f, Side = 0.15f, CloseClear = 0.3f;
+    private const float ChipHeight = 0.36f, Gap = 0.1f, Side = 0.15f;
+    private const float BandHeight = 0.06f + ChipHeight + 0.1f; // 上の固定の帯の高さ
     private const float HeaderX = -0.903f, OptX = -0.05f, RoleX = -0.53f, RoleLift = 0.25f, Z = -2f;
     private const float HeaderStep = 0.55f, RoleStep = 0.55f, OptStep = 0.45f, GroupGap = 0.12f;
     private const int MaskLayer = 20;
@@ -47,7 +48,8 @@ internal static class RoleMenu
     {
         public Opt Opt;
         public OptionBehaviour Row;
-        public string Hay;
+        public string Hay;  // 項目の名前 (当たった行の色に使う)
+        public string Find; // 探す対象 (検索だけの組では見出しの名前も入れる)
     }
 
     private sealed class RoleRow
@@ -63,7 +65,11 @@ internal static class RoleMenu
 
     private sealed class Group
     {
-        public int Kind;
+        public int Kind;          // 陣営の組: 0〜2 = Team、3 = アドオン。検索だけの組は -1
+        public Text Title;
+        public Color Color;
+        public int Area;          // 検索の件数のまとめ: 0 = ゲーム設定・1 = MRP 全般・2 = 役職
+        public bool SearchOnly;   // 検索している間だけ出す (本編のゲーム設定・MRP 全般)
         public CategoryHeaderMasked Header;
         public readonly List<OptRow> Plain = new();   // 役職でない設定のまとまり ([Settings] でこの陣営に置いたもの)
         public readonly List<RoleRow> Roles = new();
@@ -75,7 +81,6 @@ internal static class RoleMenu
     private static readonly List<(PassiveButton btn, int team, bool only, Color color)> Chips = new();
     private static GameOptionsMenu _page;
     private static CategoryHeaderMasked _empty;
-    private static SearchBox _search;
     private static string[] _tokens = Array.Empty<string>();
     private static float _topY;
     private static Assignable _described;  // 左の説明の欄に出している役職
@@ -130,8 +135,6 @@ internal static class RoleMenu
 
     public static void Forget()
     {
-        if (_search != null) SearchBox.Forget(_search);
-        _search = null;
         Groups.Clear();
         ByRow.Clear();
         ById.Clear();
@@ -155,13 +158,24 @@ internal static class RoleMenu
         var roleOptions = GameOptionsManager.Instance.CurrentGameOptions.RoleOptions;
         var anyRole = RoleManager.Instance.AllRoles[0];
 
+        // 検索の時だけ出る組: 本編のゲーム設定 (見出しごと)・マップのバリエーション・MRP 全般 (見出しごと)
+        VanillaGame.Rebuild();
+        foreach (var sec in VanillaGame.All) AddSearchGroup(m, Join(VanillaGame.TabName, sec.Title), GameColor, 0, sec.Opts);
+        AddSearchGroup(m, Join(VanillaGame.TabName, MapVariants.Title), GameColor, 0, new Opt[] { MapSettings.Mirror });
+        foreach (var sec in Registry.SectionsOf(Tab.General))
+        {
+            var opts = new List<Opt>();
+            foreach (var opt in sec.Opts) if (!opt.OffTab) opts.Add(opt);
+            AddSearchGroup(m, Join(SettingsMenu.TabName(false), sec.Title), SettingsMenu.TabColor(false), 1, opts);
+        }
+
         for (int kind = 0; kind <= AddonKind; kind++)
         {
-            var g = new Group { Kind = kind, Header = MakeHeader(m, KindColor(kind)) };
+            var g = new Group { Kind = kind, Title = KindName(kind), Color = KindColor(kind), Area = 2, Header = MakeHeader(m, KindColor(kind)) };
             foreach (var sec in Registry.SectionsOf(KindTab(kind)))
             {
                 if (sec.Role != null) continue;
-                foreach (var opt in sec.Opts) g.Plain.Add(MakeOpt(m, opt, KindColor(kind)));
+                foreach (var opt in sec.Opts) if (!opt.OffTab) g.Plain.Add(MakeOpt(m, opt, KindColor(kind)));
             }
             foreach (var sec in Registry.SectionsOf(KindTab(kind)))
             {
@@ -195,12 +209,11 @@ internal static class RoleMenu
         }
 
         _empty = MakeHeader(m, new Color(0.6f, 0.6f, 0.6f));
-        _empty.Title.text = new Text("当てはまる役職がありません", "No matching roles");
         // 並ぶ字を先にフォントへ入れておく (スクロールして初めて出た字を作る時の引っかかりを避ける)
         var chars = new System.Text.StringBuilder("0123456789/ ›");
         foreach (var g in Groups)
         {
-            chars.Append(KindName(g.Kind).ToString());
+            chars.Append(g.Title.ToString());
             foreach (var r in g.Roles) { chars.Append(r.Role.Name); foreach (var o in r.Opts) chars.Append(o.Opt.Label.ToString()); }
             foreach (var o in g.Plain) chars.Append(o.Opt.Label.ToString());
         }
@@ -208,12 +221,28 @@ internal static class RoleMenu
         Relayout(true);
     }
 
-    private static OptRow MakeOpt(GameOptionsMenu m, Opt opt, Color c)
+    private static OptRow MakeOpt(GameOptionsMenu m, Opt opt, Color c, string context = null)
     {
         var row = SettingsMenu.MakeRow(m, opt);
-        var o = new OptRow { Opt = opt, Row = row, Hay = RoleSearch.Haystack(opt.Label) };
+        var hay = RoleSearch.Haystack(opt.Label);
+        var o = new OptRow { Opt = opt, Row = row, Hay = hay, Find = context == null ? hay : hay + "\n" + context };
         StyleOpt(o, c);
         return o;
+    }
+
+    private static readonly Color GameColor = new(0.5f, 0.85f, 0.75f);
+
+    private static Text Join(Text a, Text b) => new($"{a.Ja} › {b.Ja}", $"{a.En} › {b.En}");
+
+    private static void AddSearchGroup(GameOptionsMenu m, Text title, Color c, int area, IEnumerable<Opt> opts)
+    {
+        var g = new Group { Kind = -1, Title = title, Color = c, Area = area, SearchOnly = true };
+        string context = RoleSearch.Haystack(title);
+        foreach (var opt in opts) g.Plain.Add(MakeOpt(m, opt, c, context));
+        if (g.Plain.Count == 0) return;
+        g.Header = MakeHeader(m, c);
+        foreach (var o in g.Plain) m.Children.Add(o.Row);
+        Groups.Add(g);
     }
 
     // 陣営の見出し = 陣営の色の太字 + 左の色の印 + 右へ伸びる線。本編の見出しの帯の絵は消す
@@ -379,9 +408,6 @@ internal static class RoleMenu
 
         float width = right - left - Side * 2f;
         float x0 = left + Side;
-        float searchW = width - CloseClear; // 右上の閉じるボタンに掛からないように
-        _search = SearchBox.Create(m.transform, new Vector3(x0 + searchW / 2f, top - 0.06f - SearchHeight / 2f, -5f), searchW, SearchHeight,
-            new Text("役職・設定の名前で検索", "Search roles and settings"), OnQuery);
 
         // 陣営で絞るボタン (全部・クルー・インポスター・第三陣営) と「出る役職だけ」
         var chipDefs = new List<(Text label, Color color, int team, bool only)>
@@ -392,7 +418,7 @@ internal static class RoleMenu
         if (Registry.Addons.Count > 0) chipDefs.Add((KindName(AddonKind), AddonColor, AddonKind, false));
         chipDefs.Add((new Text("出る役職だけ", "Enabled only"), new Color(0.6f, 0.9f, 0.55f), 0, true));
         float cw = (width - Gap * (chipDefs.Count - 1)) / chipDefs.Count;
-        float cy = top - 0.06f - SearchHeight - 0.08f - ChipHeight / 2f;
+        float cy = top - 0.06f - ChipHeight / 2f;
         for (int i = 0; i < chipDefs.Count; i++)
         {
             var d = chipDefs[i];
@@ -488,10 +514,43 @@ internal static class RoleMenu
 
     // ---- 操作 ----
 
-    private static void OnQuery(string q)
+    // 設定画面の検索欄の文字が変わった (空 = 検索をやめた)
+    public static void SetQuery(string q)
     {
         _tokens = RoleSearch.Tokens(q);
+        // 検索は全部のタブから探すので、陣営で絞る札は隠す
+        foreach (var (btn, _, _, _) in Chips)
+            if (btn && btn.gameObject.activeSelf == _tokens.Length > 0) btn.gameObject.SetActive(_tokens.Length == 0);
         Relayout(true);
+    }
+
+    // 検索の結果の件数 (左の説明の欄に出す)
+    public static Text SearchSummary(string q)
+    {
+        int[] n = new int[3];
+        foreach (var g in Groups)
+        {
+            if (!g.Header || !g.Header.gameObject.activeSelf) continue;
+            foreach (var o in g.Plain) if (o.Row && o.Row.gameObject.activeSelf) n[g.Area]++;
+            foreach (var r in g.Roles) if (r.Row && r.Row.gameObject.activeSelf) n[g.Area]++;
+        }
+        int total = n[0] + n[1] + n[2];
+        if (total == 0) return new Text($"「{q}」に当てはまる設定はありません。", $"Nothing matches \"{q}\".");
+        var ja = new System.Text.StringBuilder($"「{q}」: {total} 件");
+        var en = new System.Text.StringBuilder($"\"{q}\": {total}");
+        Text[] names = { VanillaGame.TabName, SettingsMenu.TabName(false), TabName };
+        string sepJa = "\n", sepEn = "\n";
+        for (int i = 0; i < 3; i++)
+        {
+            if (n[i] == 0) continue;
+            ja.Append(sepJa).Append(names[i].Ja).Append(' ').Append(n[i]);
+            en.Append(sepEn).Append(names[i].En).Append(' ').Append(n[i]);
+            sepJa = "・";
+            sepEn = " · ";
+        }
+        ja.Append("\n検索欄を空にすると元のタブへ戻ります");
+        en.Append("\nClear the search box to go back");
+        return new Text(ja.ToString(), en.ToString());
     }
 
     private static void OnChip(int team, bool only)
@@ -551,8 +610,8 @@ internal static class RoleMenu
         RefreshRole(r);
         // 「出る役職だけ」で 0% にした行は、その場では消さない (押し間違いをすぐ戻せるように)。次に並べ直す時に消える
         RefreshHeaders();
-        // 役職の説明を見ている間はそのまま (数値を変えるたびに説明が消えないように)
-        if (_described != null) return;
+        // 役職の説明・検索の件数を見ている間はそのまま (数値を変えるたびに説明が消えないように)
+        if (_described != null || _tokens.Length > 0) return;
         var menu = GameSettingMenu.Instance;
         if (menu && menu.MenuDescriptionText) menu.MenuDescriptionText.text = DefaultDescription;
     }
@@ -617,7 +676,7 @@ internal static class RoleMenu
             if (!g.Header) continue;
             int on = 0;
             foreach (var r in g.Roles) if (r.Role.Chance.Value > 0) on++;
-            string name = $"<color=#{ColorUtility.ToHtmlStringRGB(KindColor(g.Kind))}>{KindName(g.Kind)}</color>";
+            string name = $"<color=#{ColorUtility.ToHtmlStringRGB(g.Color)}>{g.Title}</color>";
             g.Header.Title.text = g.Roles.Count > 0 ? $"{name}  <size=70%>{on} / {g.Roles.Count}</size>" : name;
         }
     }
@@ -632,9 +691,9 @@ internal static class RoleMenu
 
         foreach (var g in Groups)
         {
-            bool teamShown = searching || _team < 0 || _team == g.Kind;
+            bool teamShown = g.SearchOnly ? searching : searching || _team < 0 || _team == g.Kind;
             int shown = 0;
-            foreach (var o in g.Plain) if (teamShown && (!searching || Matches(o.Hay))) shown++;
+            foreach (var o in g.Plain) if (teamShown && (!searching || Matches(o.Find))) shown++;
             foreach (var r in g.Roles) if (teamShown && RoleShown(r, searching)) shown++;
 
             bool groupOn = shown > 0;
@@ -649,7 +708,7 @@ internal static class RoleMenu
             }
             foreach (var o in g.Plain)
             {
-                bool on = groupOn && (!searching || Matches(o.Hay));
+                bool on = groupOn && (!searching || Matches(o.Find));
                 Place(o, on, ref y, searching);
             }
             foreach (var r in g.Roles)
@@ -670,6 +729,7 @@ internal static class RoleMenu
 
         if (_empty)
         {
+            _empty.Title.text = searching ? new Text("当てはまる設定がありません", "Nothing matches") : new Text("当てはまる役職がありません", "No matching roles");
             _empty.gameObject.SetActive(!any);
             if (!any) { _empty.transform.localPosition = new Vector3(HeaderX, y, Z); y -= HeaderStep; }
         }
@@ -700,12 +760,12 @@ internal static class RoleMenu
 
     internal static string Command(string[] a)
     {
+        // 検索は役職のタブが未だ作られていなくても打てる (打つと役職のタブが開いて作られる)
+        if (a.Length > 0 && a[0] == "q" && !SettingsMenu.TypeSearch(a.Length > 1 ? string.Join(" ", a, 1, a.Length - 1) : "")) return "no search box";
         if (!_page) return "role tab not built";
         switch (a.Length > 0 ? a[0] : "dump")
         {
             case "q":
-                if (_search == null) return "no search box";
-                _search.Type(a.Length > 1 ? string.Join(" ", a, 1, a.Length - 1) : "");
                 break;
             case "team":
                 OnChip(a.Length > 1 && int.TryParse(a[1], out int t) ? t : -1, false);
@@ -737,10 +797,10 @@ internal static class RoleMenu
                 break;
         }
         var sb = new System.Text.StringBuilder();
-        sb.Append($"search={(_search != null ? "'" + _search.Query + "'" : "none")} team={_team} only={_enabledOnly} rows:");
+        sb.Append($"search='{SettingsMenu.SearchQuery}' team={_team} only={_enabledOnly} rows:");
         foreach (var g in Groups)
         {
-            if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{(g.Kind == AddonKind ? "Addon" : ((Team)g.Kind).ToString())}]");
+            if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{(g.SearchOnly ? g.Title.En : g.Kind == AddonKind ? "Addon" : ((Team)g.Kind).ToString())}]");
             foreach (var o in g.Plain) if (o.Row && o.Row.gameObject.activeSelf) sb.Append($" {o.Opt.Key}");
             foreach (var r in g.Roles)
             {

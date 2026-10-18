@@ -7,7 +7,8 @@ namespace MoreRolesPlus;
 [Settings(Tab.General, "マップ", "Map", order: -60)]
 public static class MapSettings
 {
-    public static readonly BoolOpt Mirror = new("マップを左右反転する", "Mirror the map left to right", false);
+    // ゲーム設定のタブのマップ選びの下 (マップのバリエーション) で選ぶ
+    public static readonly BoolOpt Mirror = new("マップを左右反転する", "Mirror the map left to right", false) { OffTab = true };
 }
 
 // 船を左右反転する (Skeld の dlekS を全マップへ)。船の根の横の大きさを負にすると子の絵・当たり判定・部屋の範囲は
