@@ -104,7 +104,7 @@ internal sealed class ModButton
     // 待ち時間を始める (押した後でなく、ホストが通した時に始める能力から)
     public void StartCooldown()
     {
-        if (Cooldown <= 0f || !_button) return;
+        if (Cooldown <= 0f || !_button || Dev.DevCooldown.Zero) return;
         _left = Cooldown;
         _button.SetCoolDown(_left, Cooldown);
         _button.SetDisabled();
@@ -138,7 +138,7 @@ internal sealed class ModButton
             }
             if (canMove == false) return;
             if (_dt <= 0f) _dt = Time.fixedDeltaTime;
-            b._left -= _dt;
+            b._left = Dev.DevCooldown.Zero ? 0f : b._left - _dt;
             bool done = b._left <= 0f;
             if (!done && !redraw) continue;
             // 表示を書く時だけ生きているかを見る (HUD ごと消えたボタンは寿命が切れるまで一覧に残る)

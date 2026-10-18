@@ -181,7 +181,7 @@ internal static class KillAbility
             var addons = RoleState.AddonsOf(killer.PlayerId);
             for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref cd);
         }
-        if ((Environment.TickCount64 - LastKillMs[killer.PlayerId]) / 1000f < cd - CooldownSlack) return "cooldown";
+        if ((Environment.TickCount64 - LastKillMs[killer.PlayerId]) / 1000f < cd - CooldownSlack && !Dev.DevCooldown.Skips(killer)) return "cooldown";
         return null;
     }
 }

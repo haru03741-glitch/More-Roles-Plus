@@ -242,7 +242,7 @@ internal static class Abilities
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
         string far = Targeting.Unreachable(user, target, Reach(a) + DistanceSlack);
         if (far != null) return far;
-        if ((Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack) return "cooldown";
+        if ((Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user)) return "cooldown";
         return null;
     }
 

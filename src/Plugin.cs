@@ -48,6 +48,7 @@ public class Plugin : BasePlugin
         Net.Remote.Init(); // 電文の名前は設定の指紋に入るので先に
         Options.Registry.Init();
         Dev.DevCommands.Register();
+        Dev.DevCooldown.Register();
         Boot.BootClock.Mark("init");
 
         Harmony = new Harmony(Guid);
@@ -110,6 +111,7 @@ public class Ticker : MonoBehaviour
         Commands.Shortcuts.Tick(); t = Bridge.Perf.Lane(21, t);
         Zoom.Tick(); t = Bridge.Perf.Lane(22, t);
         NoClip.Tick();
+        Dev.DevCooldown.Tick();
         Commands.ChatInput.Tick();
         Menu.ColorPicker.Tick(); t = Bridge.Perf.Lane(23, t);
         Bridge.Perf.End(t0);
