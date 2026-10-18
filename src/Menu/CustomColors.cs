@@ -14,12 +14,15 @@ namespace MoreRolesPlus.Menu;
 // 自分で作った色 (#RRGGBB)。サーバーに見える色は本編の番号 (0〜17) のまま変えず、見た目の色だけを MRP の電文で全員に配る。
 // 受け取った端末は本編の色の表 (Palette.PlayerColors / ShadowColors) の「その人の今の色番号」の所を書き換えて塗り直す。
 // 本編の色番号は部屋の中で 1 人 1 つなので、番号の所を書き換えても他の人の色は変わらない。
-// 表は人の番号 (PlayerId) で持ち、誰かの色番号が変わった・抜けた・色が届いた時に本編の色から作り直す
+// 表は接続の番号 (ClientId) で持ち、誰かの色番号が変わった・抜けた・色が届いた時に本編の色から作り直す。
+// 試合が終わってロビーへ戻る時も同じ部屋なら表を残す (消すと配り直しが届くまで一瞬本編の色に戻る)。
+// 自分の色は自分の人形が出てきた時にすぐ塗る (全員へ配るのは少し待ってから)
 internal static class CustomColors
 {
     private static ConfigEntry<string> _mine; // "" = 本編の色のまま / "RRGGBB"
     private static Color32[] _body, _shadow;  // 本編の色の控え
-    private static readonly Dictionary<byte, Color32> ByPlayer = new();
+    private static readonly Dictionary<int, Color32> ByClient = new();
+    private static int _room; // 表を作った部屋 (GameId)
     private static bool _applied; // 本編の色の表を書き換えている
     private static readonly Dictionary<int, Color32> BySlot = new(); // 色番号 → 作った色 (Rebuild で作る)
     private static readonly Dictionary<int, string> NameBySlot = new(); // 色番号 → 部屋の中で重ならない色の名前
@@ -66,8 +69,8 @@ internal static class CustomColors
         _mine.Value = c.HasValue ? Hex(c.Value) : "";
         var me = PlayerControl.LocalPlayer;
         if (!me) return;
-        if (c.HasValue) ByPlayer[me.PlayerId] = c.Value;
-        else ByPlayer.Remove(me.PlayerId);
+        if (c.HasValue) ByClient[me.OwnerId] = c.Value;
+        else ByClient.Remove(me.OwnerId);
         Rebuild();
         Share.Send(Pack(c));
     }
@@ -80,10 +83,10 @@ internal static class CustomColors
         if ((v & 0x1000000u) != 0)
         {
             var c = new Color32((byte)(v >> 16), (byte)(v >> 8), (byte)v, 255);
-            if (ByPlayer.TryGetValue(sender.PlayerId, out var old) && old.r == c.r && old.g == c.g && old.b == c.b) return;
-            ByPlayer[sender.PlayerId] = c;
+            if (ByClient.TryGetValue(sender.OwnerId, out var old) && old.r == c.r && old.g == c.g && old.b == c.b) return;
+            ByClient[sender.OwnerId] = c;
         }
-        else if (!ByPlayer.Remove(sender.PlayerId)) return;
+        else if (!ByClient.Remove(sender.OwnerId)) return;
         _dirty = true;
     }
 
@@ -106,9 +109,9 @@ internal static class CustomColors
     // 本編の色に戻してから、色を持っている人の色番号の所だけ書き換え、全員を塗り直す
     public static void Rebuild()
     {
-        if (ByPlayer.Count == 0 && !_applied) return; // 誰も色を作っていない部屋では何もしない
+        if (ByClient.Count == 0 && !_applied) return; // 誰も色を作っていない部屋では何もしない
         if (!Backup()) return;
-        _applied = ByPlayer.Count > 0;
+        _applied = ByClient.Count > 0;
         var pc = Palette.PlayerColors;
         var sc = Palette.ShadowColors;
         for (int i = 0; i < _body.Length && i < pc.Length; i++) pc[i] = _body[i];
@@ -117,13 +120,13 @@ internal static class CustomColors
         NameBySlot.Clear();
         NameCount.Clear();
         var data = GameData.Instance;
-        if (data && ByPlayer.Count > 0)
+        if (data && ByClient.Count > 0)
         {
             var all = data.AllPlayers;
             for (int i = 0; i < all.Count; i++)
             {
                 var p = all[i];
-                if (p == null || p.Disconnected || !ByPlayer.TryGetValue(p.PlayerId, out var c)) continue;
+                if (p == null || p.Disconnected || !ByClient.TryGetValue(p.ClientId, out var c)) continue;
                 int id = p.DefaultOutfit != null ? p.DefaultOutfit.ColorId : -1;
                 if (id < 0 || id >= pc.Length || id >= sc.Length) continue;
                 pc[id] = c;
@@ -247,7 +250,7 @@ internal static class CustomColors
     // 作り直しの予約 (人が出てくる時などに続けて来るので、次の tick で 1 回にまとめる)
     public static void MarkDirty()
     {
-        if (ByPlayer.Count > 0 || _applied) _dirty = true;
+        if (ByClient.Count > 0 || _applied) _dirty = true;
     }
 
     // 誰か (自分も) が出てきた: 少し待ってから自分の色を全員へ配る (後から入った人に届けるため)
@@ -267,21 +270,35 @@ internal static class CustomColors
         if (!_sendPending || Environment.TickCount64 < _sendAt) return;
         _sendPending = false;
         if (!PlayerControl.LocalPlayer || !HasMine(out var c)) return;
-        ByPlayer[PlayerControl.LocalPlayer.PlayerId] = c;
+        ByClient[PlayerControl.LocalPlayer.OwnerId] = c;
         Rebuild();
         Share.Send(Pack(c));
     }
 
     public static void OnJoined()
     {
-        ByPlayer.Clear();
+        int room = AmongUsClient.Instance ? AmongUsClient.Instance.GameId : 0;
+        if (room == _room) return; // 試合からロビーへ戻った: 同じ人の色はそのまま
+        _room = room;
+        ByClient.Clear();
         if (_body != null) Rebuild();
+    }
+
+    // 部屋を出た: 次に入る部屋では表を作り直す (LAN の部屋は番号が同じことがある)
+    public static void OnExit() => _room = 0;
+
+    // 自分の人形が出てきた: 作った色をすぐ塗る
+    public static void OnLocalSpawned(PlayerControl me)
+    {
+        if (!HasMine(out var c)) return;
+        if (ByClient.TryGetValue(me.OwnerId, out var old) && old.r == c.r && old.g == c.g && old.b == c.b) return;
+        ByClient[me.OwnerId] = c;
+        Rebuild();
     }
 
     public static void OnLeft(ClientData c)
     {
-        var ch = c != null ? c.Character : null;
-        if (ch && ByPlayer.Remove(ch.PlayerId)) Rebuild();
+        if (c != null && ByClient.Remove(c.Id)) Rebuild();
     }
 
     // 確認用: 人の番号に色を届いた事にする (ダミーの見え方を見る)
@@ -289,7 +306,9 @@ internal static class CustomColors
     {
         var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2 || !byte.TryParse(parts[0], out byte id) || !TryParse(parts[1], out var c)) return "ERR colors fake <番号> <#RRGGBB>";
-        ByPlayer[id] = c;
+        var info = GameData.Instance ? GameData.Instance.GetPlayerById(id) : null;
+        if (info == null) return "ERR colors fake: no player " + id;
+        ByClient[info.ClientId] = c;
         Rebuild();
         return Describe();
     }
@@ -299,7 +318,7 @@ internal static class CustomColors
     {
         var sb = new System.Text.StringBuilder("OK colors mine=");
         sb.Append(_mine != null && _mine.Value.Length > 0 ? _mine.Value : "-");
-        foreach (var kv in ByPlayer) sb.Append(' ').Append(kv.Key).Append('=').Append(Hex(kv.Value));
+        foreach (var kv in ByClient) sb.Append(' ').Append(kv.Key).Append('=').Append(Hex(kv.Value));
         foreach (var kv in NameBySlot) sb.Append(" [").Append(kv.Key).Append(':').Append(kv.Value).Append(']');
         return sb.ToString();
     }
@@ -328,7 +347,12 @@ internal static class CustomColorsPatches
     }
 
     [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.Start)), HarmonyPostfix]
-    public static void Spawned() => CustomColors.ScheduleSend();
+    public static void Spawned(PlayerControl __instance)
+    {
+        try { if (__instance && __instance.AmOwner) CustomColors.OnLocalSpawned(__instance); }
+        catch (Exception e) { Plugin.Logger.LogError($"custom colors: {e.Message}"); }
+        CustomColors.ScheduleSend();
+    }
 
     [HarmonyPatch(typeof(AmongUsClient), "OnGameJoined"), HarmonyPrefix]
     public static void Joined()
@@ -336,6 +360,9 @@ internal static class CustomColorsPatches
         try { CustomColors.OnJoined(); }
         catch (Exception e) { Plugin.Logger.LogError($"custom colors: {e.Message}"); }
     }
+
+    [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.ExitGame)), HarmonyPrefix]
+    public static void Exit() => CustomColors.OnExit();
 
     [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnPlayerLeft)), HarmonyPrefix]
     public static void Left([HarmonyArgument(0)] ClientData data)
