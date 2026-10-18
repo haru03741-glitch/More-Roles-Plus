@@ -45,6 +45,7 @@ public abstract class Opt
     }
 
     protected virtual bool Wraps => false;
+    internal bool WrapsAround => Wraps;
 
     // 値を外 (本編の設定) に持つ項目が Index を読み直す。Index を画面に出す前に呼ぶ
     internal virtual void Sync() { }

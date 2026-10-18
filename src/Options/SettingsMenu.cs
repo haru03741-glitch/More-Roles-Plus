@@ -350,9 +350,9 @@ internal static class SettingsMenu
         {
             num.TitleText.text = opt.Label;
             num.ValueText.text = opt.Display();
-            // 数値は端で止まるので、それ以上動かない側のボタンを灰色にする
-            num.MinusBtn?.SetInteractable(opt.Index > 0);
-            num.PlusBtn?.SetInteractable(opt.Index < opt.Count - 1);
+            // 数値は端で止まるので、それ以上動かない側のボタンを灰色にする (選択肢は回るので両方押せる)
+            num.MinusBtn?.SetInteractable(opt.WrapsAround || opt.Index > 0);
+            num.PlusBtn?.SetInteractable(opt.WrapsAround || opt.Index < opt.Count - 1);
             return;
         }
         var tog = row.TryCast<ToggleOption>();
