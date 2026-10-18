@@ -126,7 +126,9 @@ internal static partial class PropSim
         public Vector2 F0, Pivot0;  // 元の足元・回す軸 (ワールド)
         public bool Tall, Solid;
         public bool Sway;           // 当たり判定があっても揺らす (表の Wobble)
-        public bool Perch;          // 机などの上に置かれている (元の場所にいる間は水に流されない・床の水に浸からない)
+        public bool Perch;          // 机などの上に置かれている (元の場所にいる間は水に流されない・床の水に浸からない・天板の上の水には浸かる)
+        public Prop Support;        // Perch の載っている家具
+        public bool SupportTried;
         public bool Planted;        // 自分の当たり判定で床に立っている (元の場所にいる間は水に流されない・床の水には浸かる)
         public int A0x, A0y;        // 始めの足元 (1/1024)
         public FurnitureLift.Lift Lift; // 重い物 (部屋の絵から持ち上げる家具)

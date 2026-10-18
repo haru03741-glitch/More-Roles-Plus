@@ -136,7 +136,7 @@ internal static partial class PropSim
             }
             if (s == null || (!s.Go && !s.Failed)) s = p.Sk = SunkMake(p);
             if (s.Failed) continue;
-            if (!s.Shown) { s.Go.SetActive(true); s.Shown = true; _sunkAny = true; SunkShadow(s); }
+            if (!s.Shown) { s.Go.SetActive(true); s.Shown = true; _sunkAny = true; if (!UnderSupportPlate(p)) SunkShadow(s); }
             if (s.OccDirty) SunkOcc(p, s);
             // 水位 (足元の床から): 天板に水が乗ったら天板 + 乗った厚さ。それまでは周りの深さ (中の詰まった家具は天板で止まる)
             float top = p.Top / (float)WaterSim.Full;
@@ -304,17 +304,80 @@ internal static partial class PropSim
     private static bool SunkDepth(Prop p, out float by, out float around, out float over)
     {
         by = around = over = 0f;
-        // 机の上に載ったままの物は床の水に浸からない (水は机の下を通る)
-        if (p.Perch && Math.Abs(p.D.Px - p.A0x) + Math.Abs(p.D.Py - p.A0y) < PerchMove) return false;
         if (!FootBox(p, p.D, out int cx, out int cy, out int hx, out int hy, out int top)) return false;
         float x = _org.x + cx / (float)Unit, y = _org.y + cy / (float)Unit, wx = hx / (float)Unit, wy = hy / (float)Unit;
         by = y - wy;
+        // 机の上に載ったままの物は床の水に浸からない (水は机の下を通る)。天板の上の水が物の高さを越えたら沈む
+        if (PerchedStill(p))
+        {
+            var sup = SupportOf(p);
+            if (sup == null) return false; // 載っている家具が分からない物は従来どおり沈めない
+            around = SupportOver(sup);
+            over = around - top / (float)WaterSim.Full;
+            return around >= SunkShow || over > SunkTopWet;
+        }
         around = Math.Max(WaterSim.CurrentAt(FxMath.V2(x, by - SunkProbe), out _, out _),
             Math.Max(WaterSim.CurrentAt(FxMath.V2(x - wx - SunkProbe, y), out _, out _), WaterSim.CurrentAt(FxMath.V2(x + wx + SunkProbe, y), out _, out _)));
         // 中の詰まった家具の上の升の水は天板の上の水。脚のある家具は下を通る水が天板を越えた分
         float mid = WaterSim.CurrentAt(FxMath.V2(x, y), out _, out _);
         over = p.Legs ? Math.Max(around, mid) - top / (float)WaterSim.Full : mid;
         return around >= SunkShow || over > SunkTopWet;
+    }
+
+    // 机の上に載ったまま動いていない物
+    private static bool PerchedStill(Prop p) => p.Perch && Math.Abs(p.D.Px - p.A0x) + Math.Abs(p.D.Py - p.A0y) < PerchMove;
+
+    // 影の中は載っている机の水面の板が物の上まで覆うので、物自身の写しは出さない (二重にかぶる)
+    private static bool UnderSupportPlate(Prop p)
+    {
+        if (!PerchedStill(p)) return false;
+        return SupportPlated(SupportOf(p));
+    }
+
+    // 載っている家具の板が出ている (または同じ刻みのこの後に出る: 載っている物の方が先に見られる)
+    private static bool SupportPlated(Prop sup)
+    {
+        if (sup == null) return false;
+        if (sup.Sk != null && sup.Sk.Failed) return false;
+        return sup.Sk != null && sup.Sk.Shown || SunkDepth(sup, out _, out _, out _);
+    }
+
+    // 載っている家具 (動かない物の足元に載っている間だけ。1 回探して持つ)
+    private static Prop SupportOf(Prop p)
+    {
+        if (!p.SupportTried)
+        {
+            p.SupportTried = true;
+            p.Support = SupportAt(_org.x + p.D.Px / (float)Unit, _org.y + p.D.Py / (float)Unit, p);
+        }
+        return p.Support;
+    }
+
+    // 点 (世界・ex = 横の半分の広がり) が足元の箱にすっぽり載る家具のうち、いちばん広い物 (机の上の別の小物と自分は除く)。
+    // 天板の上の物は斜めに見上げた分だけ画面の上へずれるので、箱の上の縁は天板の高さ × 斜めの倍率だけ広げる
+    private static Prop SupportAt(float px, float py, Prop self, float ex = 0f)
+    {
+        const float Margin = 0.1f, Rise = 0.6f;
+        Prop best = null;
+        float bestArea = 0f;
+        foreach (var q in Furnished)
+        {
+            if (q == self || q.Perch || q.Kind == Kind.Small) continue;
+            if (!FootBox(q, q.D, out int cx, out int cy, out int hx, out int hy, out _)) continue;
+            float qx = _org.x + cx / (float)Unit, qy = _org.y + cy / (float)Unit, wx = hx / (float)Unit, wy = hy / (float)Unit;
+            float up = q.Top / (float)WaterSim.Full * Rise;
+            if (MathF.Abs(px - qx) + ex > wx + Margin || py < qy - wy - Margin || py > qy + wy + up + Margin) continue;
+            float area = wx * wy;
+            if (area > bestArea) { bestArea = area; best = q; }
+        }
+        return best;
+    }
+
+    // 家具の天板の上の水の厚さ (単位・0 以上): 足元の箱の真ん中の升と周りから見る (SunkDepth の over と同じ)
+    private static float SupportOver(Prop sup)
+    {
+        SunkDepth(sup, out _, out _, out float over);
+        return Math.Max(0f, over);
     }
 
     private static Sunk SunkMake(Prop p)
@@ -640,7 +703,7 @@ internal static partial class PropSim
             var s = p.Sk;
             if (!wet && s == null) continue;
             n++;
-            reply($"SUNK {p.Name} legs={p.Legs} by={by:0.###} around={around:0.###} over={over:0.###} shown={s?.Shown} failed={s?.Failed} lvl={s?.Lvl:0.###} cover={s?.Cover:0.##}");
+            reply($"SUNK {p.Name} sup={(p.Perch ? SupportOf(p)?.Name ?? "none" : "-")} legs={p.Legs} by={by:0.###} around={around:0.###} over={over:0.###} shown={s?.Shown} failed={s?.Failed} lvl={s?.Lvl:0.###} cover={s?.Cover:0.##}");
             if (force && s != null && s.Sr) { s.Block.SetFloat(LvlId, 100f); s.Block.SetFloat(CoverId, 1f); s.Sr.SetPropertyBlock(s.Block); if (s.Shadow) s.Shadow.SetPropertyBlock(s.Block); s.Lvl = float.NaN; }
         }
         reply($"OK props sunk n={n} of {Furnished.Count}");

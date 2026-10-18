@@ -33,6 +33,7 @@ internal static partial class PropSim
         public Vector4 Range;      // 列の範囲 (u0, 1/du) と床の線の v の範囲 (v0, dv)
         public float VPerUnit;
         public Sunk S;
+        public Prop Support;     // 机などの上に載った絵 (端末・ノート PC): 床の線は絵の下の縁・水位は天板から測る
         public bool Failed, Off; // Off = 絵が今は描かれていない
         public long Checked;
     }
@@ -70,8 +71,9 @@ internal static partial class PropSim
             if (s == null || !s.Shown)
             {
                 float gate = 0f;
+                float supOver = a.Support != null ? SupportOver(a.Support) : 0f;
                 for (int i = 0; i < FrontGatePts; i++)
-                    if (!float.IsNaN(a.GateY[i])) gate = Math.Max(gate, FrontDepth(a.GateX[i], a.GateY[i], full));
+                    if (!float.IsNaN(a.GateY[i])) gate = Math.Max(gate, a.Support != null ? supOver : FrontDepth(a, a.GateX[i], a.GateY[i], full));
                 if (gate < SunkShow) continue;
                 if (s == null || !s.Go)
                 {
@@ -89,16 +91,22 @@ internal static partial class PropSim
             // 隣の列は同じ水の升を見ることが多い (升 0.25 単位に 64 列) ので、見る升が変わった時だけ引き直す
             int pk1 = -2, pk2 = -2;
             float pd = 0f;
+            // 机の上の絵は載っている家具の天板の上の水の厚さ (列によらず 1 つ)。床に立つ絵は床の線のすぐ下の升
+            float onTop = a.Support != null ? SupportOver(a.Support) : 0f;
             for (int c = 0; c < BaseCols; c++)
             {
                 float y = a.ColY[c];
                 float d = 0f;
                 if (!float.IsNaN(y))
                 {
-                    float x = a.ColX[c];
-                    int k1 = WaterSim.CellOf(x, y - FrontProbeNear), k2 = WaterSim.CellOf(x, y - FrontProbeFar);
-                    if (k1 != pk1 || k2 != pk2) { pd = Math.Max(WaterSim.DepthCell(k1), WaterSim.DepthCell(k2)) / full; pk1 = k1; pk2 = k2; }
-                    d = pd;
+                    if (a.Support != null) d = onTop;
+                    else
+                    {
+                        float x = a.ColX[c];
+                        int k1 = WaterSim.CellOf(x, y - FrontProbeNear), k2 = WaterSim.CellOf(x, y - FrontProbeFar);
+                        if (k1 != pk1 || k2 != pk2) { pd = Math.Max(WaterSim.DepthCell(k1), WaterSim.DepthCell(k2)) / full; pk1 = k1; pk2 = k2; }
+                        d = pd;
+                    }
                 }
                 top = Math.Max(top, d);
                 int g = Math.Clamp((int)MathF.Round(d / FrontLvlMax * 255f), 0, 255);
@@ -119,7 +127,8 @@ internal static partial class PropSim
                 s.Go.SetActive(true);
                 s.Shown = true;
                 _sunkAny = true;
-                SunkShadow(s);
+                // 影の中は載っている机の板が絵の上まで覆うので、絵自身の写しは出さない (二重にかぶる)
+                if (!SupportPlated(a.Support)) SunkShadow(s);
                 if (s.OccDirty) FrontOcc(a);
             }
             if (!move) continue;
@@ -132,8 +141,9 @@ internal static partial class PropSim
     }
 
     // 床の線 (x, y) の手前の水の深さ (単位): 線のすぐ下と少し下の深い方
-    private static float FrontDepth(float x, float y, float full) =>
-        Math.Max(WaterSim.DepthAt(FxMath.V2(x, y - FrontProbeNear)), WaterSim.DepthAt(FxMath.V2(x, y - FrontProbeFar))) / full;
+    private static float FrontDepth(FrontArt a, float x, float y, float full) => a.Support != null
+        ? SupportOver(a.Support)
+        : Math.Max(WaterSim.DepthAt(FxMath.V2(x, y - FrontProbeNear)), WaterSim.DepthAt(FxMath.V2(x, y - FrontProbeFar))) / full;
 
     // 試合の始めの準備 (TerrainWarm) から: 水が来る前に集めておく
     internal static void WarmFront()
@@ -159,6 +169,7 @@ internal static partial class PropSim
         string shipName = ship.name.Replace("(Clone)", "");
         var roomIds = RoomIds();
         var skip = FrontSkip();
+        var consoles = ConsoleArts(ship);
         int tiled = 0, turned = 0;
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
         {
@@ -184,17 +195,32 @@ internal static partial class PropSim
             var b = sr.bounds;
             Vector3 mn = b.min, mx = b.max;
             var a = new FrontArt { Sr = sr, Box = V4(mn.x, mn.y, mx.x, mx.y) };
+            // 机の上に載るのは端末 (Console の絵)。床の影・壁の飾り・床の汚れは家具の足元に重なっても載ってはいない
+            a.Support = consoles.Contains(tr.GetInstanceID()) ? SupportAt((mn.x + mx.x) * 0.5f, mn.y, null, (mx.x - mn.x) * 0.5f) : null;
             for (int i = 0; i < FrontGatePts; i++)
             {
                 float x = mn.x + (i + 0.5f) / FrontGatePts * (mx.x - mn.x);
                 a.GateX[i] = x;
-                a.GateY[i] = FloorMask.FloorLine(x, mn.y, mx.y - mn.y, FrontFaceMax);
+                a.GateY[i] = a.Support != null ? mn.y : FloorMask.FloorLine(x, mn.y, mx.y - mn.y, FrontFaceMax);
             }
             FrontArts.Add(a);
         }
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         Plugin.Logger.LogInfo($"[PropSim] front arts={FrontArts.Count} over={FrontOver.Count} tiled={tiled} turned={turned} ({ms:F1}ms)");
         return true;
+    }
+
+    // 端末 (型の名前が Console で終わる部品) の持つ絵の Transform
+    private static HashSet<int> ConsoleArts(ShipStatus ship)
+    {
+        var ids = new HashSet<int>();
+        foreach (var mb in ship.GetComponentsInChildren<MonoBehaviour>(true))
+        {
+            if (!mb || !mb.GetIl2CppType().Name.EndsWith("Console", StringComparison.Ordinal)) continue;
+            foreach (var sr in mb.GetComponentsInChildren<SpriteRenderer>(false))
+                if (sr && !sr.name.StartsWith("Mrp", StringComparison.Ordinal)) ids.Add(sr.transform.GetInstanceID());
+        }
+        return ids;
     }
 
     private static HashSet<int> RoomIds()
@@ -267,7 +293,7 @@ internal static partial class PropSim
             // 型の uv → 絵の中の位置 → 世界 (回していない絵と少し傾けた絵だけなので軸ごと)
             float wx = m.m03 + fx * ((u - bu) / au);
             float wy = m.m13 + fy * ((v - bv) / av);
-            float fl = FloorMask.FloorLine(wx, wy, Math.Max(yTop - wy, 0f), FrontFaceMax);
+            float fl = a.Support != null ? wy : FloorMask.FloorLine(wx, wy, Math.Max(yTop - wy, 0f), FrontFaceMax);
             a.ColX[c] = wx;
             a.ColY[c] = fl;
             vs[c] = float.NaN;
@@ -352,6 +378,18 @@ internal static partial class PropSim
     {
         var w = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (w.Length == 1 && (w[0] == "on" || w[0] == "off")) { _frontOff = w[0] == "off"; reply($"OK props front off={_frontOff}"); return; }
+        if (w.Length == 1 && w[0] == "sup")
+        {
+            int ns = 0;
+            foreach (var a in FrontArts)
+            {
+                if (a.Support == null) continue;
+                ns++;
+                reply($"FRONTSUP {(a.Sr && a.Sr.sprite ? a.Sr.sprite.name : "?")} box={a.Box.x:0.##},{a.Box.y:0.##}..{a.Box.z:0.##},{a.Box.w:0.##} sup={a.Support.Name}");
+            }
+            reply($"OK props front sup arts={ns} of {FrontArts.Count}");
+            return;
+        }
         bool near = w.Length >= 3;
         float x = near ? float.Parse(w[0], System.Globalization.CultureInfo.InvariantCulture) : 0f, y = near ? float.Parse(w[1], System.Globalization.CultureInfo.InvariantCulture) : 0f;
         float r = near ? float.Parse(w[2], System.Globalization.CultureInfo.InvariantCulture) : 0f;
@@ -366,11 +404,11 @@ internal static partial class PropSim
             if (!near || q.z < x - r || q.x > x + r || q.w < y - r || q.y > y + r) continue;
             float gate = 0f;
             for (int i = 0; i < FrontGatePts; i++)
-                if (!float.IsNaN(a.GateY[i])) gate = Math.Max(gate, FrontDepth(a.GateX[i], a.GateY[i], full));
+                if (!float.IsNaN(a.GateY[i])) gate = Math.Max(gate, FrontDepth(a, a.GateX[i], a.GateY[i], full));
             int cols = 0;
             if (a.ColY != null) foreach (var c in a.ColY) if (!float.IsNaN(c)) cols++;
             var sr = a.Sr;
-            reply($"FRONT {(sr && sr.sprite ? sr.sprite.name : "?")} z={(sr ? sr.transform.position.z : 0f):0.####} box={q.x:0.##},{q.y:0.##}..{q.z:0.##},{q.w:0.##} gate={gate:0.###} cols={cols} plate={a.S != null} shown={a.S?.Shown} lvl={a.S?.Lvl:0.###} failed={a.Failed} off={a.Off} order={(sr ? sr.sortingOrder : 0)}");
+            reply($"FRONT {(sr && sr.sprite ? sr.sprite.name : "?")} z={(sr ? sr.transform.position.z : 0f):0.####} box={q.x:0.##},{q.y:0.##}..{q.z:0.##},{q.w:0.##} gate={gate:0.###} cols={cols} plate={a.S != null} shown={a.S?.Shown} lvl={a.S?.Lvl:0.###} failed={a.Failed} off={a.Off} order={(sr ? sr.sortingOrder : 0)} sup={a.Support?.Name ?? "-"}");
         }
         reply($"OK props front arts={n} over={FrontOver.Count} shown={shown} failed={failed}");
     }

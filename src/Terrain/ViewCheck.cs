@@ -30,6 +30,7 @@ internal static class ViewCheck
             int minPx = a.Length > 0 && int.TryParse(a[0], out int m) ? Math.Max(1, m) : 40;
             bool crew = Array.IndexOf(a, "crew") >= 0;
             string path = Path.Combine(TestBridge.ScreensDir, $"viewcheck_{DateTime.Now:yyyyMMdd_HHmmss}.ppm");
+            _pair = Array.IndexOf(a, "pair") >= 0 ? path : null;
             try { Run(minPx, crew, reply, path, true); }
             catch (Exception e) { Shader.SetGlobalFloat(FlatId, 0f); reply($"ERR viewcheck {e.Message}"); }
         });
@@ -52,6 +53,7 @@ internal static class ViewCheck
     }
 
     // 見つかったまとまりの数を返す。always = 見つからなくても絵を書く
+    private static string _pair; // pair = 普段の絵を視界だけ・影だけで撮った 2 枚も書く (<path>.vision.ppm / .shadow.ppm)
     private static int Run(int minPx, bool crew, Action<string> reply, string path, bool always)
     {
         var main = Camera.main;
@@ -75,7 +77,9 @@ internal static class ViewCheck
             // 影の板を隠して影の写しを止めると、画面全体が視界の描き方になる
             quad.enabled = false;
             Shader.SetGlobalFloat(ShadowOnId, 0f);
+            if (_pair != null) WriteRaw(_pair + ".vision.ppm", Grab(main, rt, tex, 0f), w, h);
             v1 = Grab(main, rt, tex, 1f);
+            if (_pair != null) WriteRaw(_pair + ".vflat.ppm", v1, w, h);
             v2 = Grab(main, rt, tex, 2f);
             v3 = Grab(main, rt, tex, 3f);
             // 視界の形 (影の描き先のアルファを抜く網目) を隠すと、画面全体が影になる
@@ -84,7 +88,9 @@ internal static class ViewCheck
             light.enabled = false;
             Shader.SetGlobalFloat(FlatId, 0f);
             shadowCam.Render();
+            if (_pair != null) WriteRaw(_pair + ".shadow.ppm", Grab(main, rt, tex, 0f), w, h);
             s1 = Grab(main, rt, tex, 1f);
+            if (_pair != null) WriteRaw(_pair + ".sflat.ppm", s1, w, h);
             s2 = Grab(main, rt, tex, 2f);
             s3 = Grab(main, rt, tex, 3f);
         }
@@ -199,6 +205,7 @@ internal static class ViewCheck
         string path = Path.Combine(s.Dir, $"p{idx:000}.ppm");
         var lines = new List<string>();
         int n;
+        _pair = null;
         try { n = Run(s.MinPx, false, lines.Add, path, false); }
         catch (Exception e) { Shader.SetGlobalFloat(FlatId, 0f); n = -1; lines.Add($"ERR {e.Message}"); }
         if (n != 0)
@@ -322,6 +329,22 @@ internal static class ViewCheck
                     case Kind.OverlapShadow: r = 255; g = 140; b = 0; break;
                 }
                 body[o] = r; body[o + 1] = g; body[o + 2] = b;
+            }
+        using var fs = File.Create(path);
+        fs.Write(head, 0, head.Length);
+        fs.Write(body, 0, body.Length);
+    }
+
+    private static void WriteRaw(string path, Color32[] img, int w, int h)
+    {
+        var head = System.Text.Encoding.ASCII.GetBytes($"P6\n{w} {h}\n255\n");
+        var body = new byte[w * h * 3];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                var c = img[(h - 1 - y) * w + x];
+                int o = (y * w + x) * 3;
+                body[o] = c.r; body[o + 1] = c.g; body[o + 2] = c.b;
             }
         using var fs = File.Create(path);
         fs.Write(head, 0, head.Length);

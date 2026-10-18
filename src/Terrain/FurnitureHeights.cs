@@ -78,7 +78,7 @@ internal static class FurnitureHeights
         ["MiraShip/office-ball"] = new(0.35f, S, true),         // バランスボール
         // Polus
         ["PolusShip/barrier"] = new(0.40f, L),                  // 電気室の柵
-        ["PolusShip/transformer0002"] = new(0.60f, S),          // 変圧器
+        ["PolusShip/transformer"] = new(0.60f, S),              // 電気室の変圧器 (コマ送りの絵で名前の番号が変わるので番号は見ない)
         ["PolusShip/caftable"] = new(0.35f, L, deep: true),                 // 長机
         ["PolusShip/projector"] = new(0.60f, L),                // プロジェクター
         ["PolusShip/sciencetable"] = new(0.35f, L, deep: true),             // 研究所の机
@@ -178,6 +178,8 @@ internal static class FurnitureHeights
         if (i > 0) name = name.Substring(0, i);
         int paren = name.LastIndexOf(" (", StringComparison.Ordinal);
         if (paren > 0 && name.EndsWith(")")) name = name.Substring(0, paren);
+        // コマ送りで絵が替わる家具は、拾った時の絵の名前の番号が物ごとに違う
+        if (name.StartsWith("transformer", StringComparison.Ordinal)) return "transformer";
         return name;
     }
 }
