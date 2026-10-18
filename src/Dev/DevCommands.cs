@@ -211,6 +211,23 @@ internal static class DevCommands
         TestBridge.Register("afk", "放置の数え (設定・止まっている秒数・知らせたか)", (_, reply) => reply(Commands.AfkGuard.Describe()));
         TestBridge.Register("colors", "[fake <番号> <#RRGGBB>] 自分で作った色 (#RRGGBB) の一覧 (自分の保存値・届いている人の番号=色・[色番号:色の名前]) / fake = その人の色が届いた事にする (ダミー用)", (args, reply) => { args = args.Trim(); reply(args.StartsWith("fake ") ? Menu.CustomColors.Fake(args[5..]) : Menu.CustomColors.Describe()); });
         TestBridge.Register("picker", "[equip | type <文> | #RRGGBB] 着せ替え画面の色のタブの「色を作る」(色を置く・装備を押す・#hex 欄に打つ) と今の色", (args, reply) => reply(Menu.ColorPicker.Simulate(args.Trim())));
+        TestBridge.Register("fx", "<範囲 (self+team+target+nearby+dead / all)> [起こした人の番号=自分] [相手の番号=255] [meeting|comms] 演出の見える範囲を試す: 部屋の全員について見えるか (場所 = 自分の足元・半径 5)", (args, reply) =>
+        {
+            var parts = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) { reply("ERR fx <範囲> [actor] [target] [meeting|comms]"); return; }
+            var a = Roles.Audience.None;
+            foreach (var w in parts[0].Split('+'))
+            {
+                if (!Enum.TryParse<Roles.Audience>(w, true, out var bit)) { reply($"ERR fx unknown {w}"); return; }
+                a |= bit;
+            }
+            byte actor = PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.PlayerId : (byte)0, target = 255;
+            var hide = Roles.FxHide.None;
+            if (parts.Length > 1) byte.TryParse(parts[1], out actor);
+            if (parts.Length > 2) byte.TryParse(parts[2], out target);
+            if (parts.Length > 3) Enum.TryParse(parts[3], true, out hide);
+            reply(Roles.FxSignal.Matrix(a, hide, 5f, actor, target));
+        });
         TestBridge.Register("custmenu", "[use | tab <番号> | chip <色番号> | close] 本編の着せ替え画面 (use = 右下の使うボタンを押す・先に tp でノートパソコンの横へ) を開く・タブを切り替える・本編の色を押す・閉じる / タブの一覧", (args, reply) => reply(Menu.ColorTab.Simulate(args.Trim())));
         TestBridge.Register("client","[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));
         TestBridge.Register("chatin", "[tab | up | down | type <文> | paste <文>] チャットの入力欄の状態 (文字の制限・上限・今の文字・補う候補)。tab / paste は Tab・Ctrl+V と同じ処理 (paste の \n は改行)・type は打ったのと同じ", (args, reply) => reply(Commands.ChatInput.Simulate(args.Trim())));
