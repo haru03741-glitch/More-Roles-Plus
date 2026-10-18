@@ -253,7 +253,7 @@ internal static class SettingsMenu
         if (!desc) return;
         var tr = desc.GetComponent<TextTranslatorTMP>();
         if (tr) Object.Destroy(tr);
-        desc.text = RoleMenu.SearchSummary(q.Trim());
+        desc.text = RoleMenu.SearchSummary(RoleSearch.ForDisplay(q.Trim(), desc.font));
     }
 
     // 本編のゲーム設定のタブの行を設定から読み直す (検索の結果の行で値を変えた後)

@@ -31,6 +31,23 @@ internal static class RoleSearch
         return sb.ToString();
     }
 
+    // 検索語を画面に出す形にする。日本語入力の変換中は全角の英字 (「ｍ」など) が混ざり、
+    // 本編のフォントに無い字は □ になるので、全角英数は半角へ・それでも無い字は落とす
+    public static string ForDisplay(string s, TMPro.TMP_FontAsset font)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var sb = new StringBuilder(s.Length);
+        foreach (char c0 in s)
+        {
+            char c = c0 >= '！' && c0 <= '～' ? (char)(c0 - 0xFEE0) : c0;
+            bool ok = true;
+            if (font && c > '~')
+                try { ok = font.HasCharacter(c, true, true); } catch { ok = true; }
+            if (ok) sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
     private static bool HasKatakana(string s)
     {
         foreach (char c in s)
