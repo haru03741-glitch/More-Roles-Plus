@@ -1007,7 +1007,8 @@ internal static partial class WaterSim
         bool airship = ship && ship.TryCast<AirshipStatus>() != null;
         _decks = airship ? AirshipDecks : NoDecks;
         bool mira = ship && ship.TryCast<MiraShipStatus>() != null;
-        LowWalls.Load(mira);
+        bool polus = ship && ship.TryCast<FungleShipStatus>() == null && ship.TryCast<PolusShipStatus>() != null;
+        LowWalls.Load(mira, polus);
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
         // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので屋外の影の線を見ない

@@ -43,11 +43,36 @@ internal static class LowWalls
         new(20.25f, -3.75f, 20.5f, -2.75f, 0, MiraRail),
     };
 
+    // Polus の金属の柵 (絵の柱の高さ 0.2): 研究室の北の望遠鏡の台 (北の縁と左右の斜めの縁)、
+    // 地震計の塔へ渡る 2 本の通路の両脇と、塔の丸い台の周り。柵の向こうは奈落なので、越えた水は落ちて消える。
+    // 帯を壁の面として塗らない (柵の端で面が向こうの空と接し、細い筋が立って見える)。
+    // 研究室の斜めの柵は奥へ向いているので、升の段の横向きの縁は柵にせず (越えた水が手前の壁の前に落ちて見える)、奥向きの縁からだけ越えさせる
+    private const float PolusRail = 0.2f;
+    private static readonly Entry[] Polus =
+    {
+        new(33.3f, -5.2f, 34.95f, -5f, 2, PolusRail, false, -5.27f), // 絵の柵の根元は当たり判定の線
+        new(33f, -5.45f, 33.25f, -5.3f, 2, PolusRail),
+        new(35f, -5.45f, 35.25f, -5.3f, 2, PolusRail),
+        new(32.75f, -5.7f, 33f, -5.55f, 2, PolusRail),
+        new(35.25f, -5.7f, 35.5f, -5.55f, 2, PolusRail),
+        // 地震計 (西): 通路 x 4.3〜5.0・丸い台の上の縁 y -3.4
+        new(5.05f, -7.2f, 5.45f, -3.5f, 0, PolusRail),
+        new(3.8f, -7.2f, 4.45f, -3.5f, 1, PolusRail),
+        new(3.8f, -3.95f, 5.45f, -3.5f, 2, PolusRail),
+        new(3.8f, -4.45f, 5.45f, -4f, 3, PolusRail),
+        // 地震計 (東): 通路 x 23.8〜24.5・丸い台の上の縁 y -2.4
+        new(24.3f, -6.45f, 24.95f, -2.5f, 0, PolusRail),
+        new(23.3f, -6.45f, 23.95f, -2.5f, 1, PolusRail),
+        new(23.3f, -2.95f, 24.95f, -2.5f, 2, PolusRail),
+        new(23.3f, -3.45f, 24.95f, -3f, 3, PolusRail),
+    };
+
     internal static IReadOnlyList<Entry> All { get; private set; } = None;
 
-    internal static void Load(bool mira)
+    internal static void Load(bool mira, bool polus)
     {
-        All = !mira ? None : MapFlip.Flipped ? Mirrored(Mira) : Mira;
+        var src = mira ? Mira : polus ? Polus : None;
+        All = src.Length != 0 && MapFlip.Flipped ? Mirrored(src) : src;
     }
 
     // 表は反転前の船の座標。左右反転の船では範囲を鏡に映し、左右の縁を入れ替える
