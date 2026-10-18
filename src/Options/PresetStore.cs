@@ -48,6 +48,8 @@ internal static class PresetStore
         OptionSync.RestoreOwn();
         Registry.SaveTo(PathOf(name));
         SaveVanilla(PathOf(name));
+        PresetLabel.Remember(name);
+        if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) OptionSync.SendAll(); // 客の板の名前も変える
         return new Text($"今の設定を「{name}」に保存しました", $"Saved the current settings as \"{name}\"");
     }
 
@@ -63,6 +65,7 @@ internal static class PresetStore
         }
         Registry.Save();
         LoadVanilla(PathOf(name));
+        PresetLabel.Remember(name);
         if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) OptionSync.SendAll();
         LobbyView.OnOptionsReceived();
         SettingsMenu.RefreshAll();
@@ -112,6 +115,7 @@ internal static class PresetStore
     {
         if (!Exists(name)) return new Text($"「{name}」はありません", $"No preset \"{name}\"");
         File.Delete(PathOf(name));
+        PresetLabel.Recheck();
         return new Text($"「{name}」を消しました", $"Deleted \"{name}\"");
     }
 

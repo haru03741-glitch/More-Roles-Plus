@@ -488,6 +488,7 @@ internal static class SettingsMenu
         Pages.Clear();
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
         Registry.Save();
+        PresetLabel.Recheck();
         OptionSync.SendAll();
         Roles.Builtin.VanillaRoles.OnMenuClosed();
     }
