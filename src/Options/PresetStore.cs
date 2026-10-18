@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Options;
 
-// 設定のプリセット (ホストの MRP の設定値に名前を付けて保存した物)。
+// 設定のプリセット (ホストの MRP の設定値と本編のゲーム設定に名前を付けて保存した物)。
 // 保存先 = BepInEx/config/MoreRolesPlus/presets/<名前>.txt。
 // 人に渡す・人からもらう時は「受け渡しのフォルダ」(PC はデスクトップの MRP_Presets) を通す:
 // 書き出し = そのフォルダへ写す・取り込み = そのフォルダにある物を全部写してくる (同じ名前は上書きしない)
@@ -47,6 +47,7 @@ internal static class PresetStore
         if (!ValidName(name)) return new Text("名前は文字・数字・_ と - で 30 文字まで", "Names: letters, digits, _ and -, up to 30");
         OptionSync.RestoreOwn();
         Registry.SaveTo(PathOf(name));
+        SaveVanilla(PathOf(name));
         return new Text($"今の設定を「{name}」に保存しました", $"Saved the current settings as \"{name}\"");
     }
 
@@ -61,10 +62,50 @@ internal static class PresetStore
             return new Text($"「{name}」を読めませんでした", $"Couldn't read \"{name}\"");
         }
         Registry.Save();
+        LoadVanilla(PathOf(name));
         if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) OptionSync.SendAll();
         LobbyView.OnOptionsReceived();
         SettingsMenu.RefreshAll();
         return new Text($"設定を「{name}」にしました", $"Loaded \"{name}\"");
+    }
+
+    // 本編のゲーム設定 (インポスターの数・速さ・本編の役職ごとの設定など) は本編の形式のまま 1 行に入れる
+    private const string VanillaKey = "vanilla.options";
+
+    private static void SaveVanilla(string path)
+    {
+        try
+        {
+            var gm = GameOptionsManager.Instance;
+            var opts = gm?.CurrentGameOptions;
+            if (opts == null) return;
+            byte[] bytes = gm.gameOptionsFactory.ToBytes(opts, false);
+            File.AppendAllText(path, VanillaKey + "=" + Convert.ToBase64String(bytes) + "\n");
+        }
+        catch (Exception e) { Plugin.Logger.LogWarning($"preset vanilla save: {e.Message}"); }
+    }
+
+    // 部屋の外か自分がホストの時だけ本編の設定を置き換えて、本編の保存と同期を回す
+    private static void LoadVanilla(string path)
+    {
+        if (AmongUsClient.Instance && AmongUsClient.Instance.AmConnected && !AmongUsClient.Instance.AmHost) return;
+        try
+        {
+            string b64 = null;
+            foreach (string line in File.ReadAllLines(path))
+                if (line.StartsWith(VanillaKey + "=")) b64 = line[(VanillaKey.Length + 1)..].Trim();
+            if (string.IsNullOrEmpty(b64)) return;
+            var gm = GameOptionsManager.Instance;
+            if (gm == null) return;
+            var opts = gm.gameOptionsFactory.FromBytes(Convert.FromBase64String(b64));
+            if (opts == null || opts.GameMode != gm.CurrentGameOptions.GameMode) return;
+            // 保存されるのはホストの設定の方 (今の設定と別に持っている) なので両方を置き換える
+            gm.GameHostOptions = opts;
+            gm.CurrentGameOptions = opts;
+            Roles.Builtin.VanillaRoles.Dirty = true;
+            Roles.Builtin.VanillaRoles.OnMenuClosed();
+        }
+        catch (Exception e) { Plugin.Logger.LogWarning($"preset vanilla load: {e.Message}"); }
     }
 
     public static string Delete(string name)

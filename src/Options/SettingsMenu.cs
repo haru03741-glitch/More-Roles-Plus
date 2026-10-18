@@ -113,7 +113,9 @@ internal static class SettingsMenu
         float unit = Mathf.Abs(menu.RoleSettingsButton.transform.localPosition.y - origin.y) / 113f;
         Vector3 scale = gameBtn.transform.localScale;
         Vector3 At(float px, float py) => origin + new Vector3((px - GameButtonX) * unit, (GameButtonY - py) * unit, 0f);
-        PassiveButton[] vanilla = { menu.GamePresetsButton, gameBtn, menu.RoleSettingsButton };
+        // 本編のプリセットのタブは出さない (MRP のプリセットのタブが本編の設定も含めて保存する)
+        menu.GamePresetsButton.gameObject.SetActive(false);
+        PassiveButton[] vanilla = { gameBtn, menu.RoleSettingsButton };
 
         foreach (int kind in new[] { 0, 1, 2 })
         {
@@ -149,6 +151,13 @@ internal static class SettingsMenu
         for (int i = 0; i < vanilla.Length; i++) Compact(vanilla[i], At(LeftColumnX, FirstRowY + i * RowStepY), scale);
         // 本編の役職は MRP の役職タブに並ぶので、本編の役職のタブは出さない
         if (Pages.Exists(p => p.Roles)) menu.RoleSettingsButton.gameObject.SetActive(false);
+        // 本編は開いた時にプリセットのタブを出すので、ゲーム設定のタブから始める
+        menu.ChangeTab(1, false);
+        var desc = menu.MenuDescriptionText;
+        if (!desc) return;
+        var descTr = desc.GetComponent<TextTranslatorTMP>();
+        if (descTr) Object.Destroy(descTr);
+        desc.text = TranslationController.Instance.GetString(StringNames.GameSettingsDescription);
     }
 
     // ボタンを小さくする。文字は横だけ潰れないよう縦横の縮みを揃え、はみ出す分は自動で小さくする
