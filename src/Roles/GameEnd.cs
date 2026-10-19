@@ -362,9 +362,11 @@ public static class GameEnd
         egm.WinText.text = text;
         egm.WinText.color = color;
         egm.BackgroundBar.material.color = color;
-        AddSubText(egm, new Text("観戦", "Spectating"), Color.gray);
-        // 「勝利」の 2 文字より長いので、左上の結果の一覧にかからない大きさへ縮める
-        egm.WinText.transform.localScale *= 0.7f;
+        // 「勝利」の 2 文字より長いので、左上の結果の一覧 (右端 x≈-2.1) にかからない大きさへ縮める
+        var tr = egm.WinText.transform;
+        float half = egm.WinText.GetPreferredValues(text).x * 0.5f * tr.localScale.x;
+        tr.localScale *= half > 0f ? Math.Min(0.7f, 1.9f / half) : 0.7f;
+        AddSubText(egm, new Text("観戦", "Spectating"), Color.gray, 0.7f);
     }
 
     // 観戦の人には本編の勝ち / 負けの曲の代わりに、見届けた音を鳴らす
@@ -382,12 +384,12 @@ public static class GameEnd
     }
 
     // 勝ち負けの文字の下に小さく 1 行足す
-    private static void AddSubText(EndGameManager egm, string text, Color color)
+    private static void AddSubText(EndGameManager egm, string text, Color color, float scale = 0.45f)
     {
         var sub = UnityEngine.Object.Instantiate(egm.WinText.gameObject, egm.WinText.transform.parent);
         sub.name = "MrpWinner";
         sub.transform.localPosition = egm.WinText.transform.localPosition + new Vector3(0f, -0.9f, 0f);
-        sub.transform.localScale = egm.WinText.transform.localScale * 0.45f;
+        sub.transform.localScale = egm.WinText.transform.localScale * scale;
         var tmp = sub.GetComponent<TMPro.TextMeshPro>();
         tmp.text = text;
         tmp.color = color;
