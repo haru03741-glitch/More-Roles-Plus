@@ -343,6 +343,7 @@ internal static class TerrainSync
         if (e.Kind == DamageKind.Explosion && e.Size > MaxBlastRadius) return $"too large {e.Size:0.0}";
         if (e.Kind == DamageKind.Push && e.Size > MaxPushReach) return $"too long {e.Size:0.0}";
         if (e.Kind.IsFire() && e.Size > MaxFireRadius) return $"too large {e.Size:0.0}";
+        if (e.Kind == DamageKind.Wall && e.Size > TerrainPermit.MaxWallLength + 0.01f) return $"too long {e.Size:0.0}";
         if (e.Kind == DamageKind.Flood && e.Size <= 0f) return "world only"; // 止まらない浸水は仕掛け (ホスト) だけ
         return null;
     }

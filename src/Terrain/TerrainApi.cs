@@ -178,6 +178,33 @@ public static class TerrainApi
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
 
+    // 仕掛け壁を立てる: pos を真ん中に dir の向きへ長さ length の壁 (横 = dir が左右・縦 = dir が上下・斜めも可)。
+    // 端が壁に当たればそこで止まり、人・扉・通気口・端末に掛かる所には立たない。歩き・視界・水を止め、ハンマーと爆発で壊れる
+    public static TerrainResult Wall(Vector2 pos, Vector2 dir, float length = TrickWall.DefaultLength)
+    {
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        length = Math.Clamp(length, 0.1f, TerrainPermit.MaxWallLength);
+        if (!Local(TerrainUse.Wall, length, out var lp, out string why)) return TerrainResult.Fail(why);
+        Vector2 me = lp.GetTruePosition();
+        float dx = pos.x - me.x, dy = pos.y - me.y;
+        if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
+            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+        string res = TerrainSync.Request(new DamageEvent(DamageKind.Wall, pos, dir.normalized, length, 0f, Seed()), out bool ok);
+        if (!ok) return TerrainResult.Fail(res);
+        TerrainPermits.Mark(lp.PlayerId, TerrainUse.Wall);
+        return TerrainResult.Done(res);
+    }
+
+    // プレイヤーでない仕掛け壁 (ホストと一人の時だけ・マップの出来事など)
+    public static TerrainResult WorldWall(Vector2 pos, Vector2 dir, float length = TrickWall.DefaultLength)
+    {
+        if (TerrainSync.IsGuest()) return TerrainResult.Fail("host only");
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        length = Math.Clamp(length, 0.1f, TerrainPermit.MaxWallLength);
+        string res = TerrainSync.RequestAs(new DamageEvent(DamageKind.Wall, pos, dir.normalized, length, 0f, Seed()), World, out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
     private static TerrainResult Fire(DamageKind kind, Vector2 pos, float radius, float force)
     {
         radius = Math.Clamp(radius, 0.1f, TerrainSync.MaxFireRadius);

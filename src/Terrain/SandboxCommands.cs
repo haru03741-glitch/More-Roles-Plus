@@ -9,6 +9,7 @@ namespace MoreRolesPlus.Terrain;
 //   /fire [半径]         足元の床に火を付ける (燃え広がるかは床の材質次第)
 //   /water               足元から向いている方向へ水を噴き出す (しばらく出続ける)
 //   /flood [秒]          足元へ水を入れ続ける (部屋が水で満ちていく)
+//   /wall [角度]         向いている方向の先に仕掛け壁を立てる (省略 = 向きと直角・0 = 横・90 = 縦)
 // 役職の能力と同じ TerrainApi を通るので、同期とホストの検査もそのまま確かめられる
 internal static class SandboxCommands
 {
@@ -21,11 +22,13 @@ internal static class SandboxCommands
     private const float WaterCooldown = 2f;
     private const float FloodSeconds = 30f;
     private const float FloodCooldown = 5f;
+    private const float WallCooldown = 1f;
+    private const float WallGap = 0.45f; // 自分の足元から壁の手前の面までの間
     private static ShipStatus _hinted;
 
     public static readonly Text Hint = new(
-        "練習: 右下のボタンかチャット欄の /hammer で向いている方向の壁を叩く (3 回で崩れる)・爆破ボタンか /blast で足元に爆弾を置く・点火ボタンか /fire で足元に火を付ける・放水ボタンか /water で向いている方向へ水を噴き出す・浸水ボタンか /flood で足元へ水を入れ続ける",
-        "Practice: use the buttons or type /hammer to hit the wall you are facing (breaks on the 3rd hit), /blast to drop a bomb at your feet, /fire to set the floor at your feet on fire, /water to spray water the way you are facing, /flood to keep pouring water at your feet");
+        "練習: 右下のボタンかチャット欄の /hammer で向いている方向の壁を叩く (3 回で崩れる)・爆破ボタンか /blast で足元に爆弾を置く・点火ボタンか /fire で足元に火を付ける・放水ボタンか /water で向いている方向へ水を噴き出す・浸水ボタンか /flood で足元へ水を入れ続ける・壁ボタンか /wall で向いている方向の先に壁を立てる (/wall 0 = 横・/wall 90 = 縦)",
+        "Practice: use the buttons or type /hammer to hit the wall you are facing (breaks on the 3rd hit), /blast to drop a bomb at your feet, /fire to set the floor at your feet on fire, /water to spray water the way you are facing, /flood to keep pouring water at your feet, /wall to put up a wall in front of you (/wall 0 = horizontal, /wall 90 = vertical)");
 
     // 試合ごとに 1 回だけ、チャット欄に使い方を出す
     public static void ShowHint(ChatController chat)
@@ -40,7 +43,7 @@ internal static class SandboxCommands
     public static bool TryHandle(string name, string args, out string reply)
     {
         reply = null;
-        if (name != "hammer" && name != "blast" && name != "fire" && name != "water" && name != "flood") return false;
+        if (name != "hammer" && name != "blast" && name != "fire" && name != "water" && name != "flood" && name != "wall") return false;
         if (!Roles.PracticeMatch.Sandbox) return false;
         var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length > 1) return false;
@@ -54,6 +57,7 @@ internal static class SandboxCommands
             "fire" => IgniteAtFeet(num ?? FireRadius),
             "water" => SprayAtFeet(),
             "flood" => FloodAtFeet(num ?? FloodSeconds),
+            "wall" => WallAhead(num),
             _ => TerrainApi.Hammer(num ?? DefaultForce),
         }).Why;
         return true;
@@ -81,6 +85,19 @@ internal static class SandboxCommands
         return TerrainApi.Flood(lp.GetTruePosition(), seconds);
     }
 
+    // 向いている方向の先に壁を立てる。deg = 壁の向き (null = 向いている方向と直角)。壁の手前の面が足元から WallGap 先に来る
+    private static TerrainResult WallAhead(float? deg)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp) return TerrainResult.Fail(new Text("試合の中だけ使えます", "Only during a game"));
+        Vector2 aim = HammerSwing.Aim(lp, out _);
+        Vector2 t = deg is float d ? new Vector2(MathF.Cos(d * MathF.PI / 180f), MathF.Sin(d * MathF.PI / 180f)) : new Vector2(-aim.y, aim.x);
+        Vector2 n = new(-t.y, t.x);
+        // 向いている方向に沿った壁の半分の広がり
+        float extent = MathF.Abs(t.x * aim.x + t.y * aim.y) * TrickWall.DefaultLength * 0.5f + MathF.Abs(n.x * aim.x + n.y * aim.y) * TrickWall.Thickness * 0.5f;
+        return TerrainApi.Wall(lp.GetTruePosition() + aim * (extent + WallGap), t);
+    }
+
     // 練習とフリープレイの試合ごとに、ハンマー・爆破・点火・放水・浸水のボタンを出す (もう出ていれば何もしない)
     private static Lifespan _buttons;
 
@@ -98,8 +115,10 @@ internal static class SandboxCommands
             () => Report(SprayAtFeet()));
         var flood = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("water"), new Text("浸水", "Flood"), FloodCooldown,
             () => Report(FloodAtFeet(FloodSeconds)));
+        var wall = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("hammer"), new Text("壁", "Wall"), WallCooldown,
+            () => Report(WallAhead(null)));
         // HUD がまだ無くて作れなかった時は、次に HUD が出た時に作り直す
-        if (hammer == null || bomb == null || fire == null || water == null || flood == null) { _buttons.Release(); _buttons = null; }
+        if (hammer == null || bomb == null || fire == null || water == null || flood == null || wall == null) { _buttons.Release(); _buttons = null; }
     }
 
     // ボタンで使えなかった時だけ理由をチャット欄に出す (使えた時は画面の破壊で分かる)

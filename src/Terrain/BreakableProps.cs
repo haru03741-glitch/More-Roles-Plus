@@ -53,7 +53,14 @@ internal static class BreakableProps
         public float X0, Y0, X1, Y1; // 動きの層の当たり判定の範囲
         public int Hp;
         public bool Broken;
+        public CutShape Shape; // 壊れた時に歩ける所へ戻す形 (null = 範囲の四角)
     }
+
+    // 仕掛け壁 (TrickWall) の壊れ方: 強い振り 2 発・金属の板・板の継ぎ目に沿って割れる
+    private static readonly Spec WallSpec = new(2, false, 10, 8, 0.75f, 5);
+
+    // 直前の適用で壊れた物の、出来事の点からいちばん遠い所までの距離 (水の升を作り直す範囲に使う)。TerrainDamage.Apply が 0 に戻す
+    internal static float LastBrokenFar;
 
     private static readonly List<Prop> Props = new();
     private static readonly Dictionary<int, int> ByCollider = new(); // 当たり判定の InstanceID → Props の番号
@@ -87,6 +94,7 @@ internal static class BreakableProps
         foreach (var sr in ship.GetComponentsInChildren<SpriteRenderer>(false))
         {
             if (!sr.enabled || !sr.sprite || !sr.transform.parent) continue;
+            if (sr.name.StartsWith(TrickWall.Name, StringComparison.Ordinal)) continue; // 仕掛け壁は立てた時に AddWall で足す
             if (!Table.TryGetValue(FurnitureKinds.Key(sr.transform, shipName), out var spec)) continue;
             var p = new Prop { Name = sr.name, Spec = spec, Sr = sr, Hp = spec.Hits * DamageProfile.Blunt.StrongDamage };
             p.X0 = p.Y0 = float.MaxValue; p.X1 = p.Y1 = float.MinValue;
@@ -120,6 +128,7 @@ internal static class BreakableProps
         foreach (var r in ship.GetComponentsInChildren<SpriteRenderer>(false))
         {
             if (!r.enabled || !r.sprite || r.name.EndsWith("-patch", StringComparison.Ordinal) || r.GetComponentInParent<global::Console>()) continue;
+            if (r.name.StartsWith(TrickWall.Name, StringComparison.Ordinal)) continue;
             var b = r.bounds;
             Vector3 mn = b.min, mx = b.max;
             for (int i = 0; i < Props.Count; i++)
@@ -151,6 +160,29 @@ internal static class BreakableProps
         Owned.Clear();
         _gen = -1;
         _ship = IntPtr.Zero;
+    }
+
+    // 立てた仕掛け壁を物ごと壊れる物に足す。全員が同じ連番の順で呼ぶので番号は全員で同じになる
+    // tex と sprite は壊れた後の欠片も使うので、次の船で消す
+    internal static void AddWall(string name, SpriteRenderer sr, List<SpriteRenderer> renderers, List<Collider2D> cols,
+        float x0, float y0, float x1, float y1, CutShape shape, Texture2D tex, Sprite sprite)
+    {
+        if (!Ensure())
+        {
+            UnityEngine.Object.Destroy(sprite);
+            UnityEngine.Object.Destroy(tex);
+            return;
+        }
+        Owned.Add(sprite);
+        Owned.Add(tex);
+        var p = new Prop { Name = name, Spec = WallSpec, Sr = sr, Hp = WallSpec.Hits * DamageProfile.Blunt.StrongDamage, Shape = shape };
+        p.X0 = x0; p.Y0 = y0; p.X1 = x1; p.Y1 = y1;
+        p.Cols.AddRange(cols);
+        p.Renderers.AddRange(renderers);
+        int k = Props.Count;
+        Props.Add(p);
+        foreach (var c in cols) ByCollider[c.GetInstanceID()] = k;
+        TerrainDigest.Hp(-1 - k, p.Hp);
     }
 
     // 壁の道 (切り取り・ひび・奥の面) から外す当たり判定か
@@ -200,7 +232,7 @@ internal static class BreakableProps
         // 振った向きと面の奥の間へ飛ぶ (横から掠めても家具の向こうへ)
         Vector2 d = e.Direction + into;
         float m = d.magnitude;
-        int n = Break(p, m > 1e-3f ? d / m : into, e.Position + e.Normal * 0.1f, e.Seed);
+        int n = Break(p, m > 1e-3f ? d / m : into, e.Position + e.Normal * 0.1f, e.Seed, e.Position);
         return $"prop break {p.Name} pieces={n}";
     }
 
@@ -220,7 +252,7 @@ internal static class BreakableProps
             TerrainDigest.Hp(-1 - k, 0);
             float dx = (p.X0 + p.X1) * 0.5f - center.x, dy = (p.Y0 + p.Y1) * 0.5f - center.y, m = MathF.Sqrt(dx * dx + dy * dy);
             var dir = m > 1e-3f ? new Vector2(dx / m, dy / m) : Vector2.right;
-            TerrainDamage.LastPieces += Break(p, dir, center, (ushort)(seed + k * 7919));
+            TerrainDamage.LastPieces += Break(p, dir, center, (ushort)(seed + k * 7919), center);
             broke++;
         }
         return broke;
@@ -241,10 +273,14 @@ internal static class BreakableProps
         return best;
     }
 
-    // 当たり判定と絵を止めて欠片を飛ばす。home = 壊した側の歩ける点。欠片の数を返す
-    private static int Break(Prop p, Vector2 dir, Vector2 home, ushort seed)
+    // 当たり判定と絵を止めて欠片を飛ばす。home = 壊した側の歩ける点・from = 出来事の点。欠片の数を返す
+    private static int Break(Prop p, Vector2 dir, Vector2 home, ushort seed, Vector2 from)
     {
         p.Broken = true;
+        {
+            float fx = Math.Max(Math.Abs(from.x - p.X0), Math.Abs(from.x - p.X1)), fy = Math.Max(Math.Abs(from.y - p.Y0), Math.Abs(from.y - p.Y1));
+            LastBrokenFar = Math.Max(LastBrokenFar, MathF.Sqrt(fx * fx + fy * fy));
+        }
         if (!p.Sr) return 0;
         var tr = p.Sr.transform;
         Vector3 ls = tr.lossyScale;
@@ -255,7 +291,7 @@ internal static class BreakableProps
 
         float cx = (p.X0 + p.X1) * 0.5f, cy = (p.Y0 + p.Y1) * 0.5f, w = p.X1 - p.X0, h = p.Y1 - p.Y0;
         var center = new Vector2(cx, cy);
-        SolidMap.Carve(new RectShape(center, Vector2.right, w + CarveMargin * 2f, h + CarveMargin * 2f), null, home);
+        SolidMap.Carve(p.Shape ?? new RectShape(center, Vector2.right, w + CarveMargin * 2f, h + CarveMargin * 2f), null, home);
         if (parts.Count == 0) Fallback(p, parts, seed, ref sx, ref sy);
         float reach = MathF.Sqrt(w * w + h * h) * 0.5f + 3f;
         TerrainFx.Shatter(parts, sx, sy, center, dir, p.Spec.Wood, p.Spec.Sparks, WoodDust, seed, WallSegments.Snapshot(center, reach), home);

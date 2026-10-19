@@ -285,9 +285,11 @@ internal static partial class WaterSim
         if (r.Kind == DamageKind.Flood) { AddInflow(r); return; }
         if (r.Kind.IsFire() || r.Kind == DamageKind.Water) return; // 放水の口は WaterLeak から AddLeak で入る
         // 動き出す前: 升の土台があれば壊れた所をその場で作り直す (動き出してからと同じ範囲・水が無いので衝撃は無し)
-        if (!_running && !(_based && r.Kind.Shapes())) return;
+        bool shapes = r.Kind.Shapes() || r.Kind == DamageKind.Wall;
+        if (!_running && !(_based && shapes)) return;
         int tick = GameClock.Expand(r.Tick);
-        float rad = r.Kind == DamageKind.Explosion ? r.Size + 0.6f : 2f;
+        float rad = r.Kind switch { DamageKind.Explosion => r.Size + 0.6f, DamageKind.Wall => r.Size * 0.5f + 0.6f, _ => 2f };
+        rad = MathF.Max(rad, BreakableProps.LastBrokenFar + 0.6f); // 物ごと壊れた物 (仕掛け壁など) の端まで
         int cx = (int)MathF.Floor((r.Position.x - _org.x) / _cell), cy = (int)MathF.Floor((r.Position.y - _org.y) / _cell);
         var p = new Pending { Tick = tick, Cx = cx, Cy = cy, R = (int)(rad / _cell) + 2 };
         if (r.Kind == DamageKind.Push)
@@ -332,7 +334,7 @@ internal static partial class WaterSim
     // 土台はいつも壊れる前の地図から作り、その後の破壊は Reshape で足すので、準備の早さが人ごとに違っても升は同じになる
     public static void BeforeApply(in ResolvedDamage r)
     {
-        if (_based || _ready || !r.Kind.Shapes()) return;
+        if (_based || _ready || !(r.Kind.Shapes() || r.Kind == DamageKind.Wall)) return;
         try
         {
             // 作れない (歩ける所の地図が無い) と、この人だけ後で壊れた後の地図から升を作るので他の人とずれる

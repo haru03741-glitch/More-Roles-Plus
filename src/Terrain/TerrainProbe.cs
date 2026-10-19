@@ -60,6 +60,7 @@ internal static class TerrainProbe
         FoamArt.Register();
         DecompFx.Register();
         BreakableProps.Register();
+        TrickWall.Register();
         FurnitureLift.Register();
         FloorMask.Register();
         RegisterMapSurvey();

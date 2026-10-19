@@ -1311,6 +1311,28 @@ internal static class SolidMap
         if (diff != 0) Plugin.Logger.LogWarning($"[native] carve diff={diff} shape={shape.GetType().Name} box={bw}x{bh}");
     }
 
+    // 立てた壁 (仕掛け壁) の形の中の升を歩けない所にする。島の番号は残す (壊れた時に Carve が元の島で塗り直す)。
+    // 1 回の出来事で形の中を 1 度なめるだけなので C# だけで持つ
+    public static int Fill(CutShape shape)
+    {
+        if (!Valid) return 0;
+        Vector2 c = shape.Center;
+        float r = shape.BoundRadius + 0.1f;
+        int x0 = Math.Max(0, (int)MathF.Floor((c.x - r - _origin.x) * _ppu)), x1 = Math.Min(_w - 1, (int)MathF.Floor((c.x + r - _origin.x) * _ppu));
+        int y0 = Math.Max(0, (int)MathF.Floor((c.y - r - _origin.y) * _ppu)), y1 = Math.Min(_h - 1, (int)MathF.Floor((c.y + r - _origin.y) * _ppu));
+        int filled = 0;
+        for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+        {
+            int k = y * _w + x;
+            if (_open[k] == 0) continue;
+            if (shape.SignedDistance(_origin.x + (x + 0.5f) / _ppu, _origin.y + (y + 0.5f) / _ppu) > 0f) continue;
+            _open[k] = 0;
+            filled++;
+        }
+        return filled;
+    }
+
     // Carve の C++ 版 (同じ結果)。照合 (native verify) の時は C# 版でも塗って地図全体を比べ、C# の結果を残す
     internal static long VerifyCarves, VerifyCarveDiff;
     private static byte[] _carveScratch;
