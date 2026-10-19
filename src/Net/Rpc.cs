@@ -25,7 +25,13 @@ internal static class RpcPatch
 {
     public static bool Prefix(PlayerControl __instance, [HarmonyArgument(0)] byte callId, [HarmonyArgument(1)] MessageReader reader)
     {
-        if (callId != Rpc.Hello && callId != Rpc.Bus) return true;
+        if (callId != Rpc.Hello && callId != Rpc.Bus)
+        {
+            // 本編のホストは設定の同期 (2 番) も送るが、今の本編はこれを送り手の役職の処理へ回すだけ (役職があっても何もしない)。
+            // 部屋に入った直後や終わりの画面の後は送り手の役職がまだ無く、本編の中で例外になるので、その時は本編へ渡さない
+            if (callId == (byte)RpcCalls.SyncSettings && (__instance.Data == null || !__instance.Data.Role)) return false;
+            return true;
+        }
         try
         {
             if (callId == Rpc.Hello) VersionCheck.Receive(__instance, reader);
