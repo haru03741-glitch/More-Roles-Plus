@@ -22,7 +22,8 @@ internal static class TrickWall
     private const float ProbeStep = 0.15f;   // 立てる所を調べる円の間隔 (円の半径 = 厚みの半分より細かく)
     private const float FaceSlope = 0.5f;    // 向きの x がこれ以上 (横から 60° 以内) の壁は手前を向いた面を持つ
     private const float FrontReach = 30f;    // 視点を見分ける帯の広さ (視界の届く距離より十分広く)
-    private const float NearMargin = 0.1f;   // 外周の中に入る手前で足元の線へ切り替える余白
+    private const float NearMargin = 0.1f;
+    private const float FacingSlack = 0.05f; // 視点の向きとほぼ直角の辺 (壁の両端) も奥の縁に入れる   // 外周の中に入る手前で足元の線へ切り替える余白
     private const int ShipLayer = 9;
     private const int ShadowLayer = 10;
     private const int FurnitureLayer = 12;
@@ -132,10 +133,11 @@ internal static class TrickWall
         // 視界の線。影は見えている絵の上の縁から出す (マップの壁も、手前の面の上の縁と奥の側に視界の線がある)。
         // 視点の場所で使う線を替える (OneWayShadows は視点が帯の中の時にその線を無視する)。壁の法線の向きの位置 s で:
         // 横に近い壁 (手前の面がある):
-        //   手前 (s < 0): 上面の奥の縁の四角 (手前の縁だと上面が影に入って見えない)
+        //   手前 (s < 0): 外周のうち手前に背を向けた辺の折れ線 (上面の奥の縁と両端。手前の辺まで入れると絵が影に入り、
+        //                 上面の四角だけだと斜めの壁で端の面が四角の外に出て、壁と影の間に隙間ができる)
         //   奥の遠く: 箱を立ち上げた形の外周 (上面の角から影が出る)
         //   奥の近く (外周の中まで近い): 足元の四角 (外周の中に視点が入ると周りが全部影になる)
-        // 縦に近い壁 (上面の細い柱だけが見える): 両側とも外周を向こう側へずらした線 (柱は見えたまま、影は柱の上の角から出る)
+        // 縦に近い壁 (上面の細い柱だけが見える): 両側とも外周のうち視点に背を向けた辺の折れ線 (柱は見えたまま、影は柱の縁から出る)
         bool hasFront = MathF.Abs(t.x) >= FaceSlope;
         Vector2 d = n.y < 0f ? n : -n, back = -d;
         var hull = Hull(foot);
@@ -149,20 +151,14 @@ internal static class TrickWall
             OneWay(footLine, Band(root.transform, name + "-farzone", c, t, back, len, -FrontReach, 0f, extB, FrontReach));
             var hullLine = Shadow(root.transform, name + "-shadowhull", hull, cols);
             OneWay(hullLine, Band(root.transform, name + "-nearzone", c, t, back, len, -FrontReach, extB));
-            Vector2 lift = new Vector2(0f, Height) + back * Thickness;
-            for (int i = 0; i < 5; i++) loop[i] += lift;
-            var topLine = Shadow(root.transform, name + "-shadowtop", loop, cols);
+            var topLine = Shadow(root.transform, name + "-shadowtop", FarChain(hull, d), cols);
             OneWay(topLine, Band(root.transform, name + "-backzone", c, t, back, len, 0f, FrontReach));
         }
         else
             for (int side = 0; side < 2; side++)
             {
-                // 視点の側 v から見る線: 外周を v と逆へ「厚み + 外周が v の側へ張り出す分」ずらす (視点が線の中に入らない)
                 Vector2 v = side == 0 ? back : d;
-                Vector2 away = v * -(Thickness + Height * FxMath.Max(0f, v.y));
-                var moved = new Vector2[hull.Length];
-                for (int i = 0; i < hull.Length; i++) moved[i] = hull[i] + away;
-                var line = Shadow(root.transform, name + "-shadow" + side, moved, cols);
+                var line = Shadow(root.transform, name + "-shadow" + side, FarChain(hull, v), cols);
                 OneWay(line, Band(root.transform, name + "-zone" + side, c, t, v, len, -FrontReach, 0f));
             }
 
@@ -547,6 +543,31 @@ internal static class TrickWall
         }
         h.Add(h[0]);
         return h.ToArray();
+    }
+
+    // 閉じた凸包 (左回り) のうち、外向きの法線が view の側を向いていない辺をつないだ折れ線 (view の側から見て奥の縁と両端)
+    private static Vector2[] FarChain(Vector2[] hull, Vector2 view)
+    {
+        int n = hull.Length - 1; // 最後の点は最初の点の繰り返し
+        var far = new bool[n];
+        for (int i = 0; i < n; i++)
+        {
+            Vector2 a = hull[i], b = hull[i + 1];
+            float ex = b.x - a.x, ey = b.y - a.y, m = MathF.Sqrt(ex * ex + ey * ey);
+            far[i] = m < 1e-5f || (ey * view.x - ex * view.y) / m <= FacingSlack;
+        }
+        // 奥の辺の並びの始まり (前の辺が手前を向いている奥の辺) から 1 周たどる
+        int start = 0;
+        for (int i = 0; i < n; i++) if (far[i] && !far[(i + n - 1) % n]) { start = i; break; }
+        var chain = new List<Vector2>(n + 1);
+        for (int k = 0; k < n; k++)
+        {
+            int i = (start + k) % n;
+            if (!far[i]) break;
+            if (chain.Count == 0) chain.Add(hull[i]);
+            chain.Add(hull[i + 1]);
+        }
+        return chain.Count >= 2 ? chain.ToArray() : hull;
     }
 
     private static float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
