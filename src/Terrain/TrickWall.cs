@@ -25,6 +25,7 @@ internal static class TrickWall
     private const float NearMargin = 0.1f;   // 外周の中に入る手前で足元の線へ切り替える余白
     private const float FacingSlack = 0.05f; // 視点の向きとほぼ直角の辺 (壁の両端) も奥の縁に入れる
     private const float ShadowInset = 0.07f; // 視界の線を絵の縁から内側へ寄せる量 (影のぼけの幅ほど)
+    private const float BodyLift = 0.3636f;  // 人の奥行きは体の y/1000 で、体は足元 (当たり判定) よりこれだけ上
     private const int ShipLayer = 9;
     private const int ShadowLayer = 10;
     private const int FurnitureLayer = 12;
@@ -284,8 +285,10 @@ internal static class TrickWall
     private const float SeamW = 0.012f, SeamLightW = 0.01f;
     private const float BoltInset = 0.07f, BoltLow = 0.2f, BoltHigh = 0.28f, BoltR = 0.018f, BoltRim = 0.027f;
     private const int Outline = 3;          // 輪郭の太さ (画素)
-    private const float SliceH = 0.25f;
-    private const float SideMin = 0.01f;    // 面が見えるとみなす辺の横幅     // 縦・斜めの壁を人と前後させる帯の高さ
+    private const float SliceH = 0.25f;     // 縦・斜めの壁を人と前後させる帯の高さ
+    private const float SliceRise = 0.2f;   // 斜めの壁の縦の短冊 1 本の中で、手前の縁の足元が上下する幅
+    private const float SliceWMin = 0.08f;
+    private const float SideMin = 0.01f;    // 面が見えるとみなす辺の横幅
 
     private static string ArtMs = ""; // 確認用 (bridge `wall` の返事): 絵を作る内訳
 
@@ -415,9 +418,9 @@ internal static class TrickWall
         full.name = name;
         art.Owned.Add(full);
 
-        // 船が反転していても絵は反転させない (根の倍率を打ち消す)
+        // 船が反転していても絵は反転させない (根の倍率を打ち消す)。奥行きも船の倍率が掛かるので打ち消す (人の奥行きは倍率なしの y/1000)
         Vector3 ls = root.lossyScale;
-        float scx = 1f / ls.x, scy = 1f / ls.y;
+        float scx = 1f / ls.x, scy = 1f / ls.y, scz = 1f / ls.z;
 
         // 欠片を切り出す元: 絵の左下に置いて描かない (伸びる途中で壊れても欠片は伸び切った形から)
         var master = new GameObject(name + "-whole");
@@ -428,8 +431,9 @@ internal static class TrickWall
         art.Master.sprite = full;
         art.Master.enabled = false;
 
-        // 描く絵: 伸びる支点 (絵の下の縁) に根を置き、横に近い壁は 1 枚・縦や斜めの壁は横の帯に切って帯ごとに人と前後させる
-        // (奥行きは人と同じ決め方 = 足元の y。帯の中の上面の画素は、足元が帯の下の縁から面の高さだけ下にある)
+        // 描く絵: 伸びる支点 (絵の下の縁) に根を置き、切った欠片ごとに人と前後させる (奥行きは人と同じ決め方 = 足元の y に体の高さを足した y)。
+        // 横の壁は 1 枚。手前の面が見える斜めの壁は縦の短冊に切り、短冊の奥行きは手前の縁の足元 (面の画素の足元はその x の縁・上面はそれより奥)。
+        // 縦に近い壁は横の帯に切る (見えるのはほぼ上面だけで、帯の中の上面の画素は、足元が帯の下の縁から面の高さだけ下にある)
         var rise = new GameObject(name + "-art"); // 絵は層 0 (影のカメラは層 9 の物を自前の描き方で描き直す)
         rise.transform.SetParent(root, false);
         rise.transform.position = FxMath.V3(x0, y0, 0f);
@@ -437,23 +441,37 @@ internal static class TrickWall
         art.Root = rise.transform;
         art.ScaleX = scx;
         art.ScaleY = scy;
-        int rows = MathF.Abs(ty) < 0.05f ? h : Math.Max(1, (int)(SliceH * Ppu));
-        for (int r0 = 0; r0 < h; r0 += rows)
+        float ax = MathF.Abs(tx), ay = MathF.Abs(ty);
+        if (ay >= 0.05f && ax >= FaceSlope)
         {
-            int rh = Math.Min(rows, h - r0);
-            bool any = false;
-            for (int k = r0 * w, end = (r0 + rh) * w; k < end && !any; k++) any = face[k] != 0;
-            if (!any) continue;
-            var sp = Sprite.Create(tex, new Rect(0f, r0, w, rh), Vector2.zero, Ppu, 0, SpriteMeshType.Tight);
-            sp.name = name + "-" + r0;
-            art.Owned.Add(sp);
-            var go = new GameObject(sp.name);
-            go.transform.SetParent(rise.transform, false);
-            float footY = Math.Clamp(y0 + (float)r0 / Ppu - Height, footLo, footHi);
-            go.transform.localPosition = FxMath.V3(0f, r0 / Ppu, footY / 1000f);
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = sp;
-            art.Slices.Add(sr);
+            // 見えている長い辺 (0 か 2) の x の範囲で足元の y を出す (範囲の外は端の値)
+            int e = sideOn[0] ? 0 : 2, j = e + 1;
+            float ex0 = fx[e], ey0 = fy[e], edx = fx[j] - fx[e], edy = fy[j] - fy[e];
+            int cols = Math.Max(1, (int)(Math.Clamp(SliceRise * ax / ay, SliceWMin, SliceH) * Ppu));
+            for (int c0 = 0; c0 < w; c0 += cols)
+            {
+                int cw = Math.Min(cols, w - c0);
+                bool any = false;
+                for (int y = 0; y < h && !any; y++)
+                    for (int k = y * w + c0, end = k + cw; k < end && !any; k++) any = face[k] != 0;
+                if (!any) continue;
+                float xa = x0 + (float)c0 / Ppu, xb = x0 + (float)(c0 + cw) / Ppu;
+                float ya = ey0 + edy * Math.Clamp((xa - ex0) / edx, 0f, 1f), yb = ey0 + edy * Math.Clamp((xb - ex0) / edx, 0f, 1f);
+                AddSlice(art, tex, rise.transform, name + "-c" + c0, new Rect(c0, 0f, cw, h), c0 / Ppu, 0f, Math.Max(ya, yb), scz);
+            }
+        }
+        else
+        {
+            int rows = ay < 0.05f ? h : Math.Max(1, (int)(SliceH * Ppu));
+            for (int r0 = 0; r0 < h; r0 += rows)
+            {
+                int rh = Math.Min(rows, h - r0);
+                bool any = false;
+                for (int k = r0 * w, end = (r0 + rh) * w; k < end && !any; k++) any = face[k] != 0;
+                if (!any) continue;
+                float footY = Math.Clamp(y0 + (float)r0 / Ppu - Height, footLo, footHi);
+                AddSlice(art, tex, rise.transform, name + "-" + r0, new Rect(0f, r0, w, rh), 0f, r0 / Ppu, footY, scz);
+            }
         }
 
         double kk = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -471,6 +489,20 @@ internal static class TrickWall
             art.Seeds.Add(new Vector2((wx - x0) * Ppu, (wy - y0) * Ppu));
         }
         return art;
+    }
+
+    // 絵の一部を切り出した欠片を 1 枚足す (footY = 人と前後させる足元の y)
+    private static void AddSlice(WallArt art, Texture2D tex, Transform parent, string name, Rect rect, float lx, float ly, float footY, float scz)
+    {
+        var sp = Sprite.Create(tex, rect, Vector2.zero, Ppu, 0, SpriteMeshType.Tight);
+        sp.name = name;
+        art.Owned.Add(sp);
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = FxMath.V3(lx, ly, (footY + BodyLift) / 1000f * scz);
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = sp;
+        art.Slices.Add(sr);
     }
 
     // 手前の面の 1 画素の色 (u = 長さの向きの位置・v = 床からの高さ)
