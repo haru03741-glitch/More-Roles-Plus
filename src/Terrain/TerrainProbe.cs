@@ -168,6 +168,7 @@ internal static class TerrainProbe
                 var sb = new StringBuilder("SPR ").Append(Path(r.transform))
                     .Append(" type=").Append(r.GetIl2CppType().Name)
                     .Append(" z=").Append(r.transform.position.z.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)) // 人の奥行きは y/1000 なので細かく
+                    .Append(" pos=").Append(V((Vector2)r.transform.position))
                     .Append(" layer=").Append(r.gameObject.layer)
                     .Append(" sort=").Append(r.sortingLayerID).Append('/').Append(r.sortingOrder)
                     .Append(" bounds=").Append(V((Vector2)b.min)).Append('-').Append(V((Vector2)b.max));

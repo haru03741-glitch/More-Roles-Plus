@@ -20,11 +20,9 @@ internal static class TrickWall
     private const float CarveMargin = 0.15f; // 壊れた時に歩ける所へ戻す範囲の余白 (地図は壁を太らせて作るため)
     private const float Ppu = 100f;
     private const float ProbeStep = 0.15f;   // 立てる所を調べる円の間隔 (円の半径 = 厚みの半分より細かく)
-    private const float FaceSlope = 0.5f;    // 向きの x がこれ以上 (横から 60° 以内) の壁は手前を向いた面を持つ
-    private const float FrontReach = 30f;    // 視点を見分ける帯の広さ (視界の届く距離より十分広く)
-    private const float NearMargin = 0.1f;   // 外周の中に入る手前で足元の線へ切り替える余白
-    private const float FacingSlack = 0.05f; // 視点の向きとほぼ直角の辺 (壁の両端) も奥の縁に入れる
+    private const float FaceSlope = 0.5f;    // 向きの x がこれ以上 (横から 60° 以内) の斜めの壁は、絵を縦の短冊に切って人と前後させる
     private const float ShadowInset = 0.07f; // 視界の線を絵の縁から内側へ寄せる量 (影のぼけの幅ほど)
+    private const float FarSlack = 0.01f;    // 視点が辺の延長線上を滑る時に線が替わり続けない幅
     private const float BodyLift = 0.3636f;  // 人の奥行きは体の y/1000 で、体は足元 (当たり判定) よりこれだけ上
     private const int ShipLayer = 9;
     private const int ShadowLayer = 10;
@@ -132,37 +130,12 @@ internal static class TrickWall
         poly.points = Local(body.transform, foot);
         cols.Add(poly);
 
-        // 視界の線。影は見えている絵の上の縁から出す (マップの壁も、手前の面の上の縁と奥の側に視界の線がある)。
-        // 視点の場所で使う線を替える (OneWayShadows は視点が帯の中の時にその線を無視する)。壁の法線の向きの位置 s で:
-        // 横に近い壁 (手前の面がある):
-        //   手前 (s < 0): 外周のうち手前に背を向けた辺の折れ線 (上面の奥の縁と両端。手前の辺まで入れると絵が影に入り、
-        //                 上面の四角だけだと斜めの壁で端の面が四角の外に出て、壁と影の間に隙間ができる)
-        //   奥の遠く: 箱を立ち上げた形の外周 (上面の角から影が出る)
-        //   奥の近く (外周の中まで近い): 足元の四角 (外周の中に視点が入ると周りが全部影になる)
-        // 縦に近い壁 (上面の細い柱だけが見える): 両側とも外周のうち視点に背を向けた辺の折れ線 (柱は見えたまま、影は柱の縁から出る)
-        bool hasFront = MathF.Abs(t.x) >= FaceSlope;
+        // 視界の線は視点 (自分の光) の場所ごとに選んで 1 本だけ出す (Shade・毎フレーム ShadeTick)
         Vector2 d = n.y < 0f ? n : -n, back = -d;
-        var hull = Hull(foot);
-        if (hasFront)
-        {
-            float extB = Thickness * 0.5f + Height * FxMath.Max(0f, back.y) + NearMargin;
-            var loop = new Vector2[5];
-            for (int i = 0; i < 4; i++) loop[i] = foot[i];
-            loop[4] = loop[0];
-            var footLine = Shadow(root.transform, name + "-shadow", loop, cols);
-            OneWay(footLine, Band(root.transform, name + "-farzone", c, t, back, len, -FrontReach, 0f, extB, FrontReach));
-            var hullLine = Shadow(root.transform, name + "-shadowhull", hull, cols);
-            OneWay(hullLine, Band(root.transform, name + "-nearzone", c, t, back, len, -FrontReach, extB));
-            var topLine = Shadow(root.transform, name + "-shadowtop", FarChain(hull, d), cols);
-            OneWay(topLine, Band(root.transform, name + "-backzone", c, t, back, len, 0f, FrontReach));
-        }
-        else
-            for (int side = 0; side < 2; side++)
-            {
-                Vector2 v = side == 0 ? back : d;
-                var line = Shadow(root.transform, name + "-shadow" + side, FarChain(hull, v), cols);
-                OneWay(line, Band(root.transform, name + "-zone" + side, c, t, v, len, -FrontReach, 0f));
-            }
+        var loop = new Vector2[5];
+        for (int i = 0; i < 4; i++) loop[i] = foot[i];
+        loop[4] = loop[0];
+        AddShade(new Shade(name, root.transform, poly, Hull(foot), loop, MathF.Abs(t.x) >= FaceMin, c, back));
 
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var art = Art(root.transform, name, foot, c, t, len);
@@ -225,8 +198,175 @@ internal static class TrickWall
     private static readonly List<Rise> Rising = new();
     private static int _riseGen = -1;
 
+    // ---- 視界の線: 視点ごとに選ぶ ----
+    // 影は見えている絵の縁から出す (マップの壁も、手前の面の上の縁と奥の側に視界の線がある)。どれも視点 (自分の光) に背を向けた
+    // 辺だけをつないだ線で、手前を向いた辺まで入れるとその辺の影が絵に掛かる (壁の端の先から見ると壁が黒くなる)。
+    // 手前 (面が見える側) からは外周 (足元の四角を面の高さだけ立ち上げた形) の線。奥からは面が見えないので上面の四角の線
+    // (影は上の縁から出て面は影に入る)。視点が上面の上なら上面の手前の縁だけ、上面より手前 (光が絵の高さの中) なら足元の四角の線。
+    // 面がほぼ見えない縦の壁は両側とも外周の線。外周や足元の中に視点が入ると、どの辺も背を向けていて周りが全部影になるので選び直す。
+    // 線は辺の組ごとに初めて要った時に作り、1 本だけ有効にする
+    private const int TopBit = 1 << 8, FootBit = 1 << 9, KeyTopFront = 1 << 10;
+    private const float FaceMin = 0.05f; // 向きの x がこれ以上の壁は手前を向いた長い面を持つ
+
+    private sealed class Shade
+    {
+        private readonly string _name;
+        private readonly Transform _root;
+        private readonly Collider2D _body;
+        private readonly Vector2[] _hull, _top, _foot; // 閉じた左回りの輪
+        private readonly float[] _hull4, _top4, _foot4; // 線と同じだけ内側へ寄せた輪の辺ごとの (始点 x, y, 外向きの法線 x, y)
+        private readonly bool _hasFace;
+        private readonly int _topFront; // 上面の手前の縁の辺の番号
+        private readonly float _cx, _cy, _bx, _by;
+        private readonly Dictionary<int, EdgeCollider2D> _lines = new();
+        private EdgeCollider2D _on;
+        public int Key = -1;
+
+        public Shade(string name, Transform root, Collider2D body, Vector2[] hull, Vector2[] foot, bool hasFace, Vector2 c, Vector2 back)
+        {
+            _name = name; _root = root; _body = body; _hull = hull; _foot = foot; _hasFace = hasFace;
+            _cx = c.x; _cy = c.y; _bx = back.x; _by = back.y;
+            _top = new Vector2[foot.Length];
+            for (int i = 0; i < foot.Length; i++) _top[i] = new Vector2(foot[i].x, foot[i].y + Height);
+            _hull4 = Edges(Inset(hull, ShadowInset));
+            _top4 = Edges(Inset(_top, ShadowInset));
+            _foot4 = Edges(Inset(foot, ShadowInset));
+            float best = float.MaxValue;
+            for (int i = 0; i < _top4.Length / 4; i++)
+            {
+                float dot = _top4[i * 4 + 2] * back.x + _top4[i * 4 + 3] * back.y; // 手前の縁 = 外向きが奥と逆
+                if (dot < best) { best = dot; _topFront = i; }
+            }
+        }
+
+        private static float[] Edges(Vector2[] loop)
+        {
+            int n = loop.Length - 1;
+            var e = new float[n * 4];
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 a = loop[i], b = loop[i + 1];
+                float ex = b.x - a.x, ey = b.y - a.y, m = MathF.Sqrt(ex * ex + ey * ey);
+                e[i * 4] = a.x; e[i * 4 + 1] = a.y;
+                if (m > 1e-6f) { e[i * 4 + 2] = ey / m; e[i * 4 + 3] = -ex / m; }
+            }
+            return e;
+        }
+
+        // 視点に背を向けた辺 (視点が辺の外側にない) の組
+        private static int FarMask(float[] e, float vx, float vy)
+        {
+            int mask = 0;
+            for (int i = 0, n = e.Length / 4; i < n; i++)
+                if ((vx - e[i * 4]) * e[i * 4 + 2] + (vy - e[i * 4 + 1]) * e[i * 4 + 3] <= FarSlack) mask |= 1 << i;
+            return mask;
+        }
+
+        private static int All(float[] e) => (1 << (e.Length / 4)) - 1;
+
+        // 使う線の番号。-1 = 替えない (視点が足元の中)
+        public int KeyFor(float vx, float vy)
+        {
+            int m;
+            if (_hasFace && (vx - _cx) * _bx + (vy - _cy) * _by >= 0f)
+            {
+                m = FarMask(_top4, vx, vy);
+                if (m == All(_top4)) return KeyTopFront;
+                if ((m >> _topFront & 1) != 0) return TopBit | m;
+            }
+            else
+            {
+                m = FarMask(_hull4, vx, vy);
+                if (m != All(_hull4)) return m;
+            }
+            m = FarMask(_foot4, vx, vy);
+            return m != All(_foot4) ? FootBit | m : -1;
+        }
+
+        private Vector2[] World(int key)
+        {
+            if (key == KeyTopFront) return new[] { _top[_topFront], _top[_topFront + 1] };
+            if ((key & TopBit) != 0) return Chain(_top, key & 0xFF);
+            if ((key & FootBit) != 0) return Chain(_foot, key & 0xFF);
+            return Chain(_hull, key);
+        }
+
+        // 線を替える。壁が壊れていたら false (線を全部止める)
+        public bool Switch(int key)
+        {
+            if (!_body || !_body.enabled)
+            {
+                if (_on) _on.enabled = false;
+                return false;
+            }
+            if (!_lines.TryGetValue(key, out var line))
+            {
+                line = Shadow(_root, $"{_name}-shadow{key}", World(key));
+                _lines[key] = line;
+                if (!BreakableProps.AddWallCollider(_name, line)) { line.enabled = false; return false; }
+            }
+            if (_on) _on.enabled = false;
+            line.enabled = true;
+            _on = line;
+            Key = key;
+            return true;
+        }
+
+        // 閉じた輪のうち mask の辺をつないだ折れ線 (背を向けた辺は輪の上で 1 続き)
+        private static Vector2[] Chain(Vector2[] loop, int mask)
+        {
+            int n = loop.Length - 1;
+            if (mask == (1 << n) - 1) return loop;
+            int start = 0;
+            for (int i = 0; i < n; i++)
+                if ((mask >> i & 1) != 0 && (mask >> ((i + n - 1) % n) & 1) == 0) { start = i; break; }
+            var chain = new List<Vector2>(n + 1);
+            for (int k = 0; k < n; k++)
+            {
+                int i = (start + k) % n;
+                if ((mask >> i & 1) == 0) break;
+                if (chain.Count == 0) chain.Add(loop[i]);
+                chain.Add(loop[i + 1]);
+            }
+            return chain.ToArray();
+        }
+    }
+
+    private static readonly List<Shade> Shades = new();
+    private static int _shadeGen = -1;
+    private static Transform _light;
+
+    private static void AddShade(Shade s)
+    {
+        if (_shadeGen != GameClock.ShipGen) { Shades.Clear(); _light = null; _shadeGen = GameClock.ShipGen; }
+        Shades.Add(s);
+    }
+
+    // 自分の光の場所で各壁の線を選ぶ。小数の計算だけで、Unity を触るのは光の場所の読み取りと線を替える時だけ
+    private static void ShadeTick()
+    {
+        if (Shades.Count == 0) return;
+        if (_shadeGen != GameClock.ShipGen) { Shades.Clear(); _light = null; return; }
+        if (!_light)
+        {
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp || !lp.lightSource) return;
+            _light = lp.lightSource.transform; // 乗り移り中はダミーへ付け替えられる同じ Transform
+        }
+        var p = _light.position;
+        float vx = p.x, vy = p.y;
+        for (int i = Shades.Count - 1; i >= 0; i--)
+        {
+            var s = Shades[i];
+            int key = s.KeyFor(vx, vy);
+            if (key < 0 || key == s.Key) continue;
+            if (!s.Switch(key)) Shades.RemoveAt(i);
+        }
+    }
+
     public static void Tick()
     {
+        ShadeTick();
         if (Rising.Count == 0) return;
         if (_riseGen != GameClock.ShipGen) { Rising.Clear(); return; }
         long now = Environment.TickCount64;
@@ -536,26 +676,6 @@ internal static class TrickWall
         return false;
     }
 
-    // 壁に沿った広い帯 (視点がこの中かを OneWayShadows が見る)。法線 back の向きの位置 s0〜s1 (と s2〜s3) の範囲
-    private static PolygonCollider2D Band(Transform root, string name, Vector2 c, Vector2 t, Vector2 back, float len, float s0, float s1, float s2 = 0f, float s3 = 0f)
-    {
-        var go = new GameObject(name) { layer = 2 };
-        go.transform.SetParent(root, false);
-        var area = go.AddComponent<PolygonCollider2D>();
-        area.isTrigger = true;
-        bool two = s3 > s2;
-        area.pathCount = two ? 2 : 1;
-        area.SetPath(0, Local(go.transform, Quad(c, t, back, len, s0, s1)));
-        if (two) area.SetPath(1, Local(go.transform, Quad(c, t, back, len, s2, s3)));
-        return area;
-    }
-
-    private static Vector2[] Quad(Vector2 c, Vector2 t, Vector2 back, float len, float s0, float s1)
-    {
-        Vector2 side = t * (len * 0.5f + FrontReach), a = c + back * s0, b = c + back * s1;
-        return new[] { a - side, a + side, b + side, b - side };
-    }
-
     // 足元の四角と、それを面の高さだけ上げた四角を合わせた凸包 (閉じた輪)
     private static Vector2[] Hull(Vector2[] foot)
     {
@@ -578,43 +698,14 @@ internal static class TrickWall
         return h.ToArray();
     }
 
-    // 閉じた凸包 (左回り) のうち、外向きの法線が view の側を向いていない辺をつないだ折れ線 (view の側から見て奥の縁と両端)
-    private static Vector2[] FarChain(Vector2[] hull, Vector2 view)
-    {
-        int n = hull.Length - 1; // 最後の点は最初の点の繰り返し
-        var far = new bool[n];
-        for (int i = 0; i < n; i++)
-        {
-            Vector2 a = hull[i], b = hull[i + 1];
-            float ex = b.x - a.x, ey = b.y - a.y, m = MathF.Sqrt(ex * ex + ey * ey);
-            far[i] = m < 1e-5f || (ey * view.x - ex * view.y) / m <= FacingSlack;
-        }
-        // 奥の辺の並びの始まり (前の辺が手前を向いている奥の辺) から 1 周たどる
-        int start = 0;
-        for (int i = 0; i < n; i++) if (far[i] && !far[(i + n - 1) % n]) { start = i; break; }
-        var chain = new List<Vector2>(n + 1);
-        for (int k = 0; k < n; k++)
-        {
-            int i = (start + k) % n;
-            if (!far[i]) break;
-            if (chain.Count == 0) chain.Add(hull[i]);
-            chain.Add(hull[i + 1]);
-        }
-        return chain.Count >= 2 ? chain.ToArray() : hull;
-    }
-
     private static float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 
-    private static void OneWay(EdgeCollider2D line, Collider2D viewerSide) =>
-        line.gameObject.AddComponent<OneWayShadows>().RoomCollider = viewerSide;
-
-    private static EdgeCollider2D Shadow(Transform root, string name, Vector2[] world, List<Collider2D> cols)
+    private static EdgeCollider2D Shadow(Transform root, string name, Vector2[] world)
     {
         var go = new GameObject(name) { layer = ShadowLayer };
         go.transform.SetParent(root, false);
         var edge = go.AddComponent<EdgeCollider2D>();
         edge.points = Local(go.transform, Inset(world, ShadowInset));
-        cols.Add(edge);
         return edge;
     }
 

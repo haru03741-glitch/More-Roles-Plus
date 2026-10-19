@@ -184,6 +184,22 @@ internal static class BreakableProps
         TerrainDigest.Hp(-1 - k, p.Hp);
     }
 
+    // 立てた後から足す仕掛け壁の当たり判定 (視点で選ぶ視界の線)。壊れた時に一緒に止め、壁の道からも外す。もう壊れていれば false
+    internal static bool AddWallCollider(string name, Collider2D c)
+    {
+        if (!Ensure()) return true;
+        for (int k = Props.Count - 1; k >= 0; k--)
+        {
+            var p = Props[k];
+            if (p.Name != name) continue;
+            if (p.Broken) return false;
+            p.Cols.Add(c);
+            ByCollider[c.GetInstanceID()] = k;
+            return true;
+        }
+        return true;
+    }
+
     // 壁の道 (切り取り・ひび・奥の面) から外す当たり判定か
     internal static bool Owns(Component c) => Ensure() && ByCollider.ContainsKey(c.GetInstanceID());
 
