@@ -134,6 +134,35 @@ internal static class DevCommands
             reply($"OK dwalk {pid} -> {TestBridge.F(x)},{TestBridge.F(y)}");
         });
 
+        TestBridge.Register("dauto", "[on|off|default] ダミーの自動行動 (既定 = オンラインの部屋だけ動く)", (args, reply) =>
+        {
+            switch (args.Trim())
+            {
+                case "on": DummyBrain.Forced = true; break;
+                case "off": DummyBrain.Forced = false; break;
+                case "default": DummyBrain.Forced = null; break;
+            }
+            reply($"OK dauto forced={(DummyBrain.Forced?.ToString() ?? "default")} {DummyBrain.Describe()}");
+        });
+
+        TestBridge.Register("dpossess", "[番号|off|stick <x> <y>] ホストがダミーに乗り移る (省略 = 今の状態・stick = 実の入力の代わりの値 (引数なしで戻す)) (歩く入力・カメラ・視界がダミーへ。PC は F6 で次のダミー・F7 キル・F8 通報)", (args, reply) =>
+        {
+            var a = args.Trim();
+            if (a.Length == 0) { reply($"OK dpossess {DummyPilot.Describe()}"); return; }
+            if (a == "off") { DummyPilot.Release(); reply("OK dpossess off"); return; }
+            if (a.StartsWith("stick", StringComparison.Ordinal))
+            {
+                var sp = a.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                DummyPilot.FakeStick = sp.Length == 3 && float.TryParse(sp[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float sx)
+                    && float.TryParse(sp[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float sy) ? new Vector2(sx, sy) : null;
+                reply($"OK dpossess stick={(DummyPilot.FakeStick?.ToString() ?? "real")}");
+                return;
+            }
+            var p = byte.TryParse(a, out byte pid) ? Player(pid) : null;
+            string why = DummyPilot.Possess(p);
+            reply(why == null ? $"OK dpossess {pid}" : $"ERR dpossess {why}");
+        });
+
         TestBridge.Register("dact", "<番号> kill <相手> | report [死体の番号] | vote <相手|skip>  ダミーに行動させる (ホストのみ)", (args, reply) =>
         {
             var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);

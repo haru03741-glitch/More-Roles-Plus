@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using HarmonyLib;
+using MoreRolesPlus.Fx;
 using UnityEngine;
 
 namespace MoreRolesPlus.Dev;
@@ -35,23 +36,50 @@ internal static class Dummy
         AmongUsClient.Instance.Spawn(data, -2, InnerNet.SpawnFlags.None);
         AmongUsClient.Instance.Spawn(pc, -2, InnerNet.SpawnFlags.None);
         data.RpcSetTasks(new byte[0]);
-        // 本編の DummyBehaviour (フリープレイ用) は位置の同期を毎フレーム止めるので使わない
-        pc.GetComponent<DummyBehaviour>().enabled = false;
         // 位置の送り手をホストにする。サーバーと客には持ち主なし (-2) のまま見えているので、ホストの手元だけ書き換える
-        // (送り手がいないと、届かない位置の更新を待って原点へ戻される)。本編が -2 へ戻すことがあるので Tick で見張る
+        // (送り手がいないと、届かない位置の更新を待って原点へ戻される)。本編が -2 へ戻すことがあるので Tick で見張る。
+        // 本編の DummyBehaviour (フリープレイ用) は位置の同期を毎フレーム止めるので使わない (Adopt で止める)
         pc.NetTransform.OwnerId = AmongUsClient.Instance.ClientId;
-        Owned.Add(pc);
+        Adopt(pc);
         // 重ならないように自分の右へ並べる
         pc.NetTransform.SnapTo(new Vector2(lp.transform.position.x + 0.9f * (index + 1), lp.transform.position.y));
         return pc;
     }
 
-    // ホストが出したダミー
+    // ホストが位置を送っているダミー
     private static readonly List<PlayerControl> Owned = new();
-    // 歩かせている途中のダミー
-    private static readonly Dictionary<byte, (PlayerControl pc, float x, float y)> Walking = new();
+    internal static List<PlayerControl> All => Owned;
 
-    public static void WalkTo(PlayerControl pc, float x, float y) => Walking[pc.PlayerId] = (pc, x, y);
+    // 歩かせている途中のダミー (経路の点を順にたどる)
+    private sealed class Walk
+    {
+        public PlayerControl Pc;
+        public float[] Xs, Ys;
+        public int Next;
+        public long CheckMs;   // 詰まりを確かめる時刻
+        public float CheckD;   // その時の次の点までの距離
+    }
+    private static readonly Dictionary<byte, Walk> Walking = new();
+    private static readonly HashSet<byte> Stuck = new();
+    private const long StuckMs = 1500;
+
+    public static void WalkTo(PlayerControl pc, float x, float y) => WalkPath(pc, new[] { x }, new[] { y });
+
+    public static void WalkPath(PlayerControl pc, float[] xs, float[] ys)
+    {
+        Stuck.Remove(pc.PlayerId);
+        Walking[pc.PlayerId] = new Walk { Pc = pc, Xs = xs, Ys = ys, CheckMs = Environment.TickCount64 + StuckMs, CheckD = float.MaxValue };
+    }
+
+    public static void StopWalk(PlayerControl pc)
+    {
+        if (Walking.Remove(pc.PlayerId) && pc && pc.MyPhysics) pc.MyPhysics.body.velocity = FxMath.V2(0f, 0f);
+    }
+
+    public static bool IsWalking(byte id) => Walking.ContainsKey(id);
+
+    // 前の歩きが進まずに止まったか (読んだら消える)
+    public static bool TakeStuck(byte id) => Stuck.Remove(id);
 
     // ---- 本物のプレイヤーと同じ行動 (ホストの端末で本編/MRP の同じ判定を通す) ----
 
@@ -75,11 +103,25 @@ internal static class Dummy
         if (hud) hud.CmdCastVote(dummy.PlayerId, target);
     }
 
+    private static long _adoptMs;
+
     public static void Tick()
     {
-        if (Owned.Count == 0) return;
         var client = AmongUsClient.Instance;
-        if (!client || !client.AmHost) { Owned.Clear(); Walking.Clear(); return; }
+        if (!client || !client.AmHost)
+        {
+            if (Owned.Count > 0 || Walking.Count > 0) { DummyPilot.Release(); Owned.Clear(); Walking.Clear(); Stuck.Clear(); }
+            return;
+        }
+        long now = Environment.TickCount64;
+        // ホストが替わったら、前のホストが出したダミーの位置を引き継ぐ (フリープレイの本編のダミーは触らない)
+        if (now >= _adoptMs && GameData.Instance && client.NetworkMode == NetworkModes.OnlineGame)
+        {
+            _adoptMs = now + 2000;
+            foreach (var p in PlayerControl.AllPlayerControls)
+                if (p && p.isDummy && !Owned.Contains(p)) Adopt(p);
+        }
+        if (Owned.Count == 0) return;
         int me = client.ClientId;
         for (int i = Owned.Count - 1; i >= 0; i--)
         {
@@ -89,25 +131,52 @@ internal static class Dummy
             if (nt.OwnerId != me) nt.OwnerId = me;
             if (!nt.enabled) nt.enabled = true;
         }
+        DummyPilot.Tick();
         if (Walking.Count == 0) return;
         List<byte> done = null;
         foreach (var (id, w) in Walking)
         {
-            var pc = w.pc;
+            var pc = w.Pc;
             if (!pc || pc.Data == null || pc.Data.IsDead || !pc.MyPhysics) { (done ??= new()).Add(id); continue; }
             var body = pc.MyPhysics.body;
+            if (!pc.CanMove) { body.velocity = FxMath.V2(0f, 0f); continue; }
             var pos = pc.GetTruePosition();
-            float dx = w.x - pos.x, dy = w.y - pos.y, dist = MathF.Sqrt(dx * dx + dy * dy);
-            if (dist < 0.1f)
+            float dx = w.Xs[w.Next] - pos.x, dy = w.Ys[w.Next] - pos.y, dist = MathF.Sqrt(dx * dx + dy * dy);
+            if (dist < 0.15f)
             {
-                body.velocity = Vector2.zero;
-                (done ??= new()).Add(id);
-                continue;
+                if (++w.Next >= w.Xs.Length)
+                {
+                    body.velocity = FxMath.V2(0f, 0f);
+                    (done ??= new()).Add(id);
+                    continue;
+                }
+                w.CheckD = float.MaxValue;
+                dx = w.Xs[w.Next] - pos.x; dy = w.Ys[w.Next] - pos.y; dist = MathF.Sqrt(dx * dx + dy * dy);
             }
-            float speed = pc.MyPhysics.TrueSpeed / dist;
-            body.velocity = new Vector2(dx * speed, dy * speed);
+            if (now >= w.CheckMs)
+            {
+                // 1.5 秒で 0.2 も近づいていなければ詰まった (閉じた扉・人・壊れて変わった壁)
+                if (w.CheckD - dist < 0.2f)
+                {
+                    body.velocity = FxMath.V2(0f, 0f);
+                    Stuck.Add(id);
+                    (done ??= new()).Add(id);
+                    continue;
+                }
+                w.CheckMs = now + StuckMs;
+                w.CheckD = dist;
+            }
+            float speed = pc.MyPhysics.TrueSpeed / MathF.Max(dist, 0.001f);
+            body.velocity = FxMath.V2(dx * speed, dy * speed);
         }
         if (done != null) foreach (var id in done) Walking.Remove(id);
+    }
+
+    private static void Adopt(PlayerControl pc)
+    {
+        var db = pc.GetComponent<DummyBehaviour>();
+        if (db) db.enabled = false;
+        Owned.Add(pc);
     }
 }
 
