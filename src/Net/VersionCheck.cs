@@ -15,6 +15,10 @@ internal static class VersionCheck
     private static readonly Dictionary<int, bool> Seen = new();
     private static readonly Dictionary<int, string> SeenVersion = new();
     private static readonly Dictionary<int, int> SeenAbi = new();
+    // clientId → 入ってきた時刻。版の知らせは入ってから 1 秒あまり後に届くので、その前に始めようとした時は待つ
+    private static readonly Dictionary<int, long> JoinedAt = new();
+    private const long CheckingMs = 10000;
+    private static long _startPendingUntil; // 確認が済み次第始める (0 = 待っていない)
 
     // 自分のキャラが出た合図から少し待って送る (Start はコルーチンで、合図の時点ではまだ送れないことがある)
     private static bool _helloPending;
@@ -61,7 +65,49 @@ internal static class VersionCheck
         SeenAbi[sender.OwnerId] = abi;
         Plugin.Logger.LogInfo($"hello from client {sender.OwnerId}: {version} fp={fp:X8} abi={abi} same={same}");
         if (same) OptionSync.SendAll(sender.OwnerId);
+        if (_startPendingUntil != 0 && Blockers(out _).Count == 0 && _startPendingUntil != 0) // Blockers が期限切れを消す
+        {
+            _startPendingUntil = 0;
+            // 数えが終わって読み込み中にもう一度始めると、ロビーの部品が壊れて毎フレーム例外が出る
+            if (Vanilla.StartManager is { } gsm && !ShipStatus.Instance
+                && gsm.startState == GameStartManager.StartingStates.NotStarting
+                && AmongUsClient.Instance.GameState == InnerNet.InnerNetClient.GameStates.Joined)
+                gsm.BeginGame();
+        }
     }
+
+    public static void OnClientJoined(int clientId) => JoinedAt[clientId] = System.Environment.TickCount64;
+
+    // 客の側: 版の知らせはホストだけが覚えているので、ホストが抜けて替わったら新しいホストへ送り直す
+    private static int _host = -1;
+
+    public static void RememberHost() => _host = AmongUsClient.Instance.HostId;
+
+    public static void CheckHost(int leftId)
+    {
+        var client = AmongUsClient.Instance;
+        bool changed = _host != -1 && (leftId == _host || client.HostId != _host);
+        _host = client.HostId;
+        if (!changed || client.AmHost) return;
+        _helloSentFor = System.IntPtr.Zero;
+        ScheduleHello();
+    }
+
+    // 新しいホストの側: 前のホストが受けた知らせは引き継げないので、今いる人は入ってきたばかりと同じに待つ
+    public static void OnBecomeHost()
+    {
+        Seen.Clear();
+        SeenVersion.Clear();
+        SeenAbi.Clear();
+        _startPendingUntil = 0;
+        long now = System.Environment.TickCount64;
+        foreach (var p in PlayerControl.AllPlayerControls)
+            if (p) JoinedAt[p.OwnerId] = now;
+    }
+
+    // 始めようとした時に確認中の人しか残っていなければ、確認が済み次第始める
+    public static void HoldStart() => _startPendingUntil = System.Environment.TickCount64 + CheckingMs;
+    public static void CancelHeldStart() => _startPendingUntil = 0;
 
     public static bool IsSame(int clientId) => Seen.TryGetValue(clientId, out bool s) && s;
 
@@ -71,15 +117,21 @@ internal static class VersionCheck
         Seen.Clear();
         SeenVersion.Clear();
         SeenAbi.Clear();
+        JoinedAt.Clear();
+        _startPendingUntil = 0;
+        _host = -1;
         _helloSentFor = System.IntPtr.Zero;
     }
 
-    public static void ForgetClient(int clientId) { Seen.Remove(clientId); SeenVersion.Remove(clientId); SeenAbi.Remove(clientId); }
+    public static void ForgetClient(int clientId) { Seen.Remove(clientId); SeenVersion.Remove(clientId); SeenAbi.Remove(clientId); JoinedAt.Remove(clientId); }
 
-    // 始められない人の一覧 (空なら始めてよい)
-    public static List<string> Blockers()
+    // 始められない人の一覧 (空なら始めてよい)。checking = そのうち入ってきたばかりで版の知らせを待っている人の数
+    public static List<string> Blockers(out int checking)
     {
         var list = new List<string>();
+        checking = 0;
+        long now = System.Environment.TickCount64;
+        if (_startPendingUntil != 0 && now > _startPendingUntil) _startPendingUntil = 0;
         int host = AmongUsClient.Instance.HostId;
         foreach (var p in PlayerControl.AllPlayerControls)
         {
@@ -87,7 +139,14 @@ internal static class VersionCheck
             if (IsSame(p.OwnerId)) continue;
             string name = p.Data != null ? p.Data.PlayerName : $"#{p.PlayerId}";
             if (!SeenVersion.TryGetValue(p.OwnerId, out string v))
-                list.Add(new Text($"{name} (MRP が入っていない)", $"{name} (no MRP)"));
+            {
+                if (JoinedAt.TryGetValue(p.OwnerId, out long at) && now - at < CheckingMs)
+                {
+                    checking++;
+                    list.Add(new Text($"{name} (確認中)", $"{name} (checking)"));
+                }
+                else list.Add(new Text($"{name} (MRP が入っていない)", $"{name} (no MRP)"));
+            }
             else if (v == Plugin.Version && SeenAbi.TryGetValue(p.OwnerId, out int abi) && abi != Native.MrpNative.Abi)
                 list.Add(new Text($"{name} (C++ の部品の版が違う)", $"{name} (different native module)"));
             else
@@ -114,8 +173,15 @@ internal static class BlockStartPatch
     public static bool Prefix()
     {
         if (!AmongUsClient.Instance.AmHost) return true;
-        var blockers = VersionCheck.Blockers();
-        if (blockers.Count == 0) return true;
+        var blockers = VersionCheck.Blockers(out int checking);
+        if (blockers.Count == 0) { VersionCheck.CancelHeldStart(); return true; }
+        if (checking == blockers.Count)
+        {
+            VersionCheck.HoldStart();
+            if (Vanilla.Chat is { } c)
+                c.AddChat(PlayerControl.LocalPlayer, new Text("入ってきたばかりの人の版を確認しています。済み次第始めます", "Checking the version of players who just joined. Starting once done"), false);
+            return false;
+        }
         string msg = new Text("全員が同じ版の More Roles Plus を入れるまで始められません:\n", "Everyone needs the same More Roles Plus version:\n")
                      + string.Join("\n", blockers);
         if (Vanilla.Chat is { } chat) chat.AddChat(PlayerControl.LocalPlayer, msg, false);
@@ -132,6 +198,17 @@ internal static class ResetOnJoinPatch
         Roles.PracticeMatch.OnJoined();
         Commands.ChatGuard.Reset();
     }
+
+    public static void Postfix() => VersionCheck.RememberHost();
+}
+
+[HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnPlayerJoined))]
+internal static class JoinedAtPatch
+{
+    public static void Postfix([HarmonyArgument(0)] ClientData data)
+    {
+        if (data != null) VersionCheck.OnClientJoined(data.Id);
+    }
 }
 
 [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnPlayerLeft))]
@@ -140,5 +217,12 @@ internal static class ForgetLeftPatch
     public static void Postfix([HarmonyArgument(0)] ClientData data)
     {
         if (data != null) VersionCheck.ForgetClient(data.Id);
+        VersionCheck.CheckHost(data != null ? data.Id : -1);
     }
+}
+
+[HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.OnBecomeHost))]
+internal static class BecomeHostPatch
+{
+    public static void Postfix() => VersionCheck.OnBecomeHost();
 }
