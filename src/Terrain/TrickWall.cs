@@ -22,8 +22,9 @@ internal static class TrickWall
     private const float ProbeStep = 0.15f;   // 立てる所を調べる円の間隔 (円の半径 = 厚みの半分より細かく)
     private const float FaceSlope = 0.5f;    // 向きの x がこれ以上 (横から 60° 以内) の壁は手前を向いた面を持つ
     private const float FrontReach = 30f;    // 視点を見分ける帯の広さ (視界の届く距離より十分広く)
-    private const float NearMargin = 0.1f;
-    private const float FacingSlack = 0.05f; // 視点の向きとほぼ直角の辺 (壁の両端) も奥の縁に入れる   // 外周の中に入る手前で足元の線へ切り替える余白
+    private const float NearMargin = 0.1f;   // 外周の中に入る手前で足元の線へ切り替える余白
+    private const float FacingSlack = 0.05f; // 視点の向きとほぼ直角の辺 (壁の両端) も奥の縁に入れる
+    private const float ShadowInset = 0.07f; // 視界の線を絵の縁から内側へ寄せる量 (影のぼけの幅ほど)
     private const int ShipLayer = 9;
     private const int ShadowLayer = 10;
     private const int FurnitureLayer = 12;
@@ -580,9 +581,45 @@ internal static class TrickWall
         var go = new GameObject(name) { layer = ShadowLayer };
         go.transform.SetParent(root, false);
         var edge = go.AddComponent<EdgeCollider2D>();
-        edge.points = Local(go.transform, world);
+        edge.points = Local(go.transform, Inset(world, ShadowInset));
         cols.Add(edge);
         return edge;
+    }
+
+    // 左回りの線 (閉じた輪は最初の点を最後にも持つ) を内側へ by だけ寄せる。影の板はぼかして描かれるので、
+    // 線を絵の縁ぴったりに置くと縁の外に明るい帯が残る (マップの壁も視界の線は絵の少し内側にある)
+    private static Vector2[] Inset(Vector2[] pts, float by)
+    {
+        int n = pts.Length;
+        bool closed = n > 2 && pts[0] == pts[n - 1];
+        int m = closed ? n - 1 : n;
+        var o = new Vector2[n];
+        for (int i = 0; i < m; i++)
+        {
+            // 前後の辺の内向きの法線 (左回りなので辺の左)
+            bool hasPrev = closed || i > 0, hasNext = closed || i < m - 1;
+            Vector2 a = pts[(i - 1 + m) % m], p = pts[i], b = pts[(i + 1) % m];
+            float nx = 0f, ny = 0f, k = 0;
+            if (hasPrev) { LeftNormal(a, p, out float lx, out float ly); nx += lx; ny += ly; k++; }
+            if (hasNext) { LeftNormal(p, b, out float lx, out float ly); nx += lx; ny += ly; k++; }
+            if (k == 2)
+            {
+                // 角では二つの辺の両方から by 離れる点 (法線の和を 1 + 内積で割る)
+                float dot = nx * nx + ny * ny - 2f; // |n1 + n2|^2 - 2 = 2 n1・n2
+                float scale = by / FxMath.Max(1f + dot * 0.5f, 0.2f);
+                o[i] = new Vector2(p.x + nx * scale, p.y + ny * scale);
+            }
+            else o[i] = new Vector2(p.x + nx * by, p.y + ny * by);
+        }
+        if (closed) o[n - 1] = o[0];
+        return o;
+    }
+
+    private static void LeftNormal(Vector2 a, Vector2 b, out float x, out float y)
+    {
+        float ex = b.x - a.x, ey = b.y - a.y, len = MathF.Sqrt(ex * ex + ey * ey);
+        if (len < 1e-6f) { x = y = 0f; return; }
+        x = -ey / len; y = ex / len;
     }
 
     // ワールドの点の並び → その物の中の点 (船が左右反転していても形はワールドのまま)
