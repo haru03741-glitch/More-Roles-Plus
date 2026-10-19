@@ -18,7 +18,7 @@ internal static class DummyPilot
         if (!AmongUsClient.Instance.AmHost || !pc || !pc.isDummy || pc.Data == null || pc.Data.IsDead) return "not a living dummy (host only)";
         var lp = PlayerControl.LocalPlayer;
         var hud = Vanilla.Hud;
-        if (!lp || !hud) return "not in game";
+        if (!lp || !hud || !ShipStatus.Instance) return "not in game";
         Dummy.StopWalk(pc);
         Possessed = pc;
         hud.PlayerCam.Target = pc;
@@ -33,6 +33,7 @@ internal static class DummyPilot
 
     public static void Release()
     {
+        FakeStick = null;
         var pc = Possessed;
         if (pc == null) return;
         Possessed = null;
