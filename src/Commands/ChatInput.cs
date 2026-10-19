@@ -235,11 +235,71 @@ internal static class ChatInputPatches
 
     // 本編は allowAllCharacters を立てても < > や全角の数字などを落とす。落とすと本編の SetText はカーソルを
     // 落とした分も進めたまま位置を測って例外になるので、チャット欄では見える文字を全部通す。
-    // Backspace などの制御文字は本編の判定のまま (通すと □ として入る)
+    // Backspace などの制御文字は本編の判定のまま (通すと □ として入る)。
+    // この関数の char の引数は下位 1 バイトに切られて届く (一 U+4E00 → U+0000・会 U+4F1A → U+001A・
+    // 下位バイトが 0x80 以上なら U+FFFD。2026-10-19 実測)。届いた値だけで制御文字を見ると、一・三・上・会・言 などが落ちる。
+    // そこで本物の文字を別に持つ: SetText の中では渡された文字列、キー入力の処理 (PC) ではその時の Input.inputString。
+    // 本編は文字を先頭から順に 1 つずつ尋ねるので、届いた値と切った値を照らしながら位置を進める。合わない時は届いた値で判定する
+    private static string _pending;   // 本編が今 1 文字ずつ尋ねている文字列 (null = 分からない)
+    private static int _pendingAt;
+    private static bool _inSetText;
+#if !ANDROID
+    private static int _inputFrame = -1;
+#endif
+
+    [HarmonyPatch(typeof(TextBoxTMP), nameof(TextBoxTMP.SetText)), HarmonyPrefix]
+    public static void SetTextPrefix(TextBoxTMP __instance, [HarmonyArgument(0)] string input, [HarmonyArgument(1)] string inputCompo)
+    {
+        if (__instance.Pointer != ChatInput.ChatArea) return;
+        _inSetText = true;
+        _pending = string.IsNullOrEmpty(inputCompo) ? input : input + inputCompo;
+        _pendingAt = 0;
+    }
+
+    [HarmonyPatch(typeof(TextBoxTMP), nameof(TextBoxTMP.SetText)), HarmonyPostfix]
+    public static void SetTextPostfix()
+    {
+        _inSetText = false;
+        _pending = null;
+    }
+
     [HarmonyPatch(typeof(TextBoxTMP), nameof(TextBoxTMP.IsCharAllowed)), HarmonyPostfix]
     public static void IsCharAllowed(TextBoxTMP __instance, [HarmonyArgument(0)] char c, ref bool __result)
     {
-        if (!__result && !char.IsControl(c) && __instance.Pointer == ChatInput.ChatArea) __result = true;
+        if (__instance.Pointer != ChatInput.ChatArea) return;
+#if !ANDROID
+        // キー入力の処理から尋ねられた時は、本編が断った時だけその回の入力の文字列を読む (毎フレームは読まない)
+        if (!_inSetText && !__result && _inputFrame != Time.frameCount)
+        {
+            _inputFrame = Time.frameCount;
+            _pending = Input.inputString;
+            _pendingAt = 0;
+        }
+#endif
+        char real = Advance(c);
+        if (!__result && !char.IsControl(real)) __result = true;
+    }
+
+    // 届いた値 c に合う本物の文字を、尋ねている文字列の今の位置から探して返す (見つからなければ c のまま)
+    private static char Advance(char c)
+    {
+        var s = _pending;
+        if (s == null) return c;
+        for (int i = _pendingAt; i < s.Length; i++)
+        {
+            if (!Matches(s[i], c)) continue;
+            _pendingAt = i + 1;
+            return s[i];
+        }
+        return c;
+    }
+
+    // 本物の文字 real が、1 バイトに切られて c として届いたものか (切られずに届く環境ならそのまま一致する)
+    private static bool Matches(char real, char c)
+    {
+        if (real == c) return true;
+        int low = real & 0xFF;
+        return low < 0x80 ? c == low : c == (char)0xFFFD;
     }
 
     // 本編がチャットの種類の切り替えなどで入力欄を作り直した時のため、開くたびにも立て直す
