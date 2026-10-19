@@ -8,7 +8,9 @@ using Object = UnityEngine.Object;
 namespace MoreRolesPlus.Options;
 
 // ロビーの右の板の「プリセット」の欄に、MRP のプリセットの名前を出す。
-// - 読み込んだ / 保存したプリセットと今の設定が同じ間だけ名前を出す。違えば本編の表記 (カスタム) のまま。
+// - 読み込んだ / 保存したプリセットと今の設定が同じ間だけ名前を出す。違えば「カスタム」。
+//   本編の表記 (本編のプリセットの名前) は使わない: 本編のプリセットの画面は無く、部屋の作成画面が本編の設定を
+//   「コア設定」にするので、MRP の設定と関係なく「コア設定」と出てしまう。
 // - 同じかどうかは設定の指紋 (MRP の全項目・本編のゲーム設定・本編の役職の細かい設定・マップ) で見る。
 //   値を一度変えて元に戻した時も、同じ設定なら名前に戻る。
 // - 名前はホストが決めて、設定と一緒に全員へ送る (OptionSync)。客は届いた名前を出すだけ
@@ -19,8 +21,10 @@ internal static class PresetLabel
     private static string _written; // 写した字に最後に書いた名前 (同じなら書き直さない)
     private static int _writtenTo;
 
-    // 出している名前 (null = 本編の表記のまま)
+    // 出している名前 (null = 合うプリセットなし)
     public static string Shown { get; private set; }
+
+    private static readonly Text CustomName = new("カスタム", "Custom");
 
     public static void Bind(ConfigFile cfg) =>
         _last = cfg.Bind("Client", "LastPreset", "", "The preset last loaded or saved, and a fingerprint of its settings");
@@ -70,12 +74,7 @@ internal static class PresetLabel
         var tmp = t ? t.GetComponent<TextMeshPro>() : null;
         if (!tmp) return;
         var mine = t.parent.Find("MrpPresetText");
-        if (Shown == null)
-        {
-            if (mine) mine.gameObject.SetActive(false);
-            tmp.enabled = true;
-            return;
-        }
+        string label = Shown ?? CustomName;
         if (!mine)
         {
             var copy = Object.Instantiate(tmp, t.parent);
@@ -87,10 +86,10 @@ internal static class PresetLabel
             mine = copy.transform;
         }
         if (!mine.gameObject.activeSelf) mine.gameObject.SetActive(true);
-        if (!ReferenceEquals(_written, Shown) || mine.GetInstanceID() != _writtenTo)
+        if (!ReferenceEquals(_written, label) || mine.GetInstanceID() != _writtenTo)
         {
-            mine.GetComponent<TextMeshPro>().text = Shown;
-            _written = Shown;
+            mine.GetComponent<TextMeshPro>().text = label;
+            _written = label;
             _writtenTo = mine.GetInstanceID();
         }
         if (tmp.enabled) tmp.enabled = false;
