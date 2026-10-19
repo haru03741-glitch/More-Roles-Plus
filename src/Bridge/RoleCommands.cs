@@ -78,6 +78,19 @@ internal static class RoleCommands
             reply($"OK vote {target}");
         });
 
+        TestBridge.Register("meetvote", "<番号|skip> 会議画面の確定ボタンを押したのと同じ (乗り移り中ならダミーの票になる)", (args, reply) =>
+        {
+            var hud = MeetingHud.Instance;
+            if (!hud) { reply("ERR meetvote no meeting"); return; }
+            byte target = args.Trim() == "skip" ? (byte)253 : byte.Parse(args.Trim());
+            // 確定ボタンと同じ入口 (PlayerVoteArea.VoteForMe) から押す
+            PlayerVoteArea area = target == 253 ? hud.SkipVoteButton : null;
+            foreach (var pva in hud.playerStates) if (pva && pva.PlayerId.Value == target) area = pva;
+            if (!area) { reply("ERR meetvote no such area"); return; }
+            area.VoteForMe();
+            reply($"OK meetvote {target}");
+        });
+
         TestBridge.Register("proceed", "会議の投票結果の画面で「進む」を押す", (_, reply) =>
         {
             var hud = MeetingHud.Instance;

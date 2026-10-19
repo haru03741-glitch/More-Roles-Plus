@@ -187,7 +187,7 @@ internal static class DummyBrain
         for (int i = 0; i < all.Count; i++)
         {
             var pc = all[i];
-            if (!pc || pc.Data == null || pc.Data.IsDead) continue;
+            if (!pc || pc.Data == null || pc.Data.IsDead || pc == DummyPilot.Voter) continue;
             // 試合の始めすぐの会議だと、まだ考えたことのないダミーもいる
             if (!Minds.TryGetValue(pc.PlayerId, out var m)) Minds[pc.PlayerId] = m = new Mind { KillReadyMs = now + KillCooldownMs() };
             if (m.Voted) continue;

@@ -149,7 +149,7 @@ internal static class DevCommands
         {
             var a = args.Trim();
             if (a.Length == 0) { reply($"OK dpossess {DummyPilot.Describe()}"); return; }
-            if (a == "off") { DummyPilot.Release(); reply("OK dpossess off"); return; }
+            if (a == "off") { DummyPilot.Reset(); reply("OK dpossess off"); return; }
             if (a.StartsWith("stick", StringComparison.Ordinal))
             {
                 var sp = a.Split(' ', StringSplitOptions.RemoveEmptyEntries);

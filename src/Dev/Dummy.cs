@@ -110,7 +110,7 @@ internal static class Dummy
         var client = AmongUsClient.Instance;
         if (!client || !client.AmHost)
         {
-            if (Owned.Count > 0 || Walking.Count > 0) { DummyPilot.Release(); Owned.Clear(); Walking.Clear(); Stuck.Clear(); }
+            if (Owned.Count > 0 || Walking.Count > 0) { DummyPilot.Reset(); Owned.Clear(); Walking.Clear(); Stuck.Clear(); }
             return;
         }
         long now = Environment.TickCount64;
