@@ -121,6 +121,45 @@ internal static class DevCommands
             reply($"OK dummy spawned={made}");
         });
 
+        TestBridge.Register("dwalk", "<番号> <x> <y> ダミーをそこへ歩かせる (ホストのみ・まっすぐ進む)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            byte pid = 0;
+            var p = a.Length >= 3 && byte.TryParse(a[0], out pid) ? Player(pid) : null;
+            if (!AmongUsClient.Instance.AmHost || !p || !p.isDummy
+                || !float.TryParse(a[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float x)
+                || !float.TryParse(a[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float y))
+            { reply("ERR dwalk <dummy id> <x> <y> (host only)"); return; }
+            Dummy.WalkTo(p, x, y);
+            reply($"OK dwalk {pid} -> {TestBridge.F(x)},{TestBridge.F(y)}");
+        });
+
+        TestBridge.Register("dact", "<番号> kill <相手> | report [死体の番号] | vote <相手|skip>  ダミーに行動させる (ホストのみ)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var d = a.Length >= 2 && byte.TryParse(a[0], out byte did) ? Player(did) : null;
+            if (!AmongUsClient.Instance.AmHost || !d || !d.isDummy) { reply("ERR dact <dummy id> <kill|report|vote> ... (host only)"); return; }
+            switch (a[1])
+            {
+                case "kill":
+                    var t = a.Length >= 3 && byte.TryParse(a[2], out byte tid) ? Player(tid) : null;
+                    string why = t ? Dummy.Kill(d, t) : "target";
+                    reply(why == null ? "OK dact kill sent" : $"ERR dact kill {why}");
+                    return;
+                case "report":
+                    var body = a.Length >= 3 && byte.TryParse(a[2], out byte bid) ? GameData.Instance.GetPlayerById(bid) : null;
+                    Dummy.Report(d, body);
+                    reply("OK dact report");
+                    return;
+                case "vote":
+                    byte v = a.Length >= 3 && a[2] != "skip" && byte.TryParse(a[2], out byte vid) ? vid : (byte)253;
+                    Dummy.Vote(d, v);
+                    reply($"OK dact vote {v}");
+                    return;
+            }
+            reply("ERR dact unknown action");
+        });
+
         TestBridge.Register("god", "[0|1] 全員の役職を名前の上と会議で見る (自分の画面だけ)", (args, reply) =>
         {
             string a = args.Trim();

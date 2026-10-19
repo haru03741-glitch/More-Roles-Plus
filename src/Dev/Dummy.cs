@@ -1,11 +1,13 @@
 // Ported from https://github.com/Dolly1016/Nebula-Public NebulaPluginNova/Utilities/AmongUsUtil.cs (GPL-3.0)
 // and https://github.com/yukieiji/ExtremeRoles ExtremeRoles/Helper/GameSystem.cs SpawnDummyPlayer (GPL-3.0)
+using System;
+using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
 
 namespace MoreRolesPlus.Dev;
 
-// 本編のフリープレイと同じ作りのダミー (DummyBehaviour で立っているだけの人)。
+// 本編のフリープレイと同じ作りのダミー (中の人のいないプレイヤー)。
 // ホストが本編の Spawn で出すので、ローカルの部屋とカスタムサーバーの部屋では他の人にも見える。
 // 公式サーバーでは出さない。
 internal static class Dummy
@@ -13,12 +15,11 @@ internal static class Dummy
     public static PlayerControl Spawn(int index)
     {
         var lp = PlayerControl.LocalPlayer;
-        var pc = Object.Instantiate(AmongUsClient.Instance.PlayerPrefab);
+        var pc = UnityEngine.Object.Instantiate(AmongUsClient.Instance.PlayerPrefab);
         byte id = pc.PlayerId = (byte)GameData.Instance.GetAvailableId();
         pc.isDummy = true;
         var data = GameData.Instance.AddDummy(pc);
 
-        pc.GetComponent<DummyBehaviour>().enabled = true;
         // 見た目 (色だけ・帽子などは無し)
         int color = id % Palette.PlayerColors.Length;
         pc.SetName($"Dummy {id}");
@@ -34,10 +35,79 @@ internal static class Dummy
         AmongUsClient.Instance.Spawn(data, -2, InnerNet.SpawnFlags.None);
         AmongUsClient.Instance.Spawn(pc, -2, InnerNet.SpawnFlags.None);
         data.RpcSetTasks(new byte[0]);
-        // 位置の同期を止めないと、届かない位置の更新を待って原点へ戻される。重ならないように自分の右へ並べる
-        pc.NetTransform.enabled = false;
-        pc.transform.position = lp.transform.position + new Vector3(0.9f * (index + 1), 0f, 0f);
+        // 本編の DummyBehaviour (フリープレイ用) は位置の同期を毎フレーム止めるので使わない
+        pc.GetComponent<DummyBehaviour>().enabled = false;
+        // 位置の送り手をホストにする。サーバーと客には持ち主なし (-2) のまま見えているので、ホストの手元だけ書き換える
+        // (送り手がいないと、届かない位置の更新を待って原点へ戻される)。本編が -2 へ戻すことがあるので Tick で見張る
+        pc.NetTransform.OwnerId = AmongUsClient.Instance.ClientId;
+        Owned.Add(pc);
+        // 重ならないように自分の右へ並べる
+        pc.NetTransform.SnapTo(new Vector2(lp.transform.position.x + 0.9f * (index + 1), lp.transform.position.y));
         return pc;
+    }
+
+    // ホストが出したダミー
+    private static readonly List<PlayerControl> Owned = new();
+    // 歩かせている途中のダミー
+    private static readonly Dictionary<byte, (PlayerControl pc, float x, float y)> Walking = new();
+
+    public static void WalkTo(PlayerControl pc, float x, float y) => Walking[pc.PlayerId] = (pc, x, y);
+
+    // ---- 本物のプレイヤーと同じ行動 (ホストの端末で本編/MRP の同じ判定を通す) ----
+
+    // 断った理由を返す (本編のキルは判定の結果が返らないので、送ったら null)
+    public static string Kill(PlayerControl dummy, PlayerControl target)
+    {
+        if (!dummy || dummy.Data == null || dummy.Data.IsDead) return "dead";
+        if (Roles.KillAbility.UsesFor(dummy)) return Roles.KillAbility.TryKill(dummy, target);
+        if (!dummy.Data.Role || !dummy.Data.Role.IsImpostor) return "role";
+        dummy.CmdCheckMurder(target);
+        return null;
+    }
+
+    // 死体の通報 (body = null で緊急会議)
+    public static void Report(PlayerControl dummy, NetworkedPlayerInfo body) => dummy.CmdReportDeadBody(body);
+
+    // 投票 (253 = スキップ)
+    public static void Vote(PlayerControl dummy, byte target)
+    {
+        var hud = MeetingHud.Instance;
+        if (hud) hud.CmdCastVote(dummy.PlayerId, target);
+    }
+
+    public static void Tick()
+    {
+        if (Owned.Count == 0) return;
+        var client = AmongUsClient.Instance;
+        if (!client || !client.AmHost) { Owned.Clear(); Walking.Clear(); return; }
+        int me = client.ClientId;
+        for (int i = Owned.Count - 1; i >= 0; i--)
+        {
+            var pc = Owned[i];
+            if (!pc) { Owned.RemoveAt(i); continue; }
+            var nt = pc.NetTransform;
+            if (nt.OwnerId != me) nt.OwnerId = me;
+            if (!nt.enabled) nt.enabled = true;
+        }
+        if (Walking.Count == 0) return;
+        List<byte> done = null;
+        foreach (var (id, w) in Walking)
+        {
+            var pc = w.pc;
+            if (!pc || pc.Data == null || pc.Data.IsDead || !pc.MyPhysics) { (done ??= new()).Add(id); continue; }
+            var body = pc.MyPhysics.body;
+            var pos = pc.GetTruePosition();
+            float dx = w.x - pos.x, dy = w.y - pos.y, dist = MathF.Sqrt(dx * dx + dy * dy);
+            if (dist < 0.1f)
+            {
+                body.velocity = Vector2.zero;
+                (done ??= new()).Add(id);
+                continue;
+            }
+            float speed = pc.MyPhysics.TrueSpeed / dist;
+            body.velocity = new Vector2(dx * speed, dy * speed);
+        }
+        if (done != null) foreach (var id in done) Walking.Remove(id);
     }
 }
 

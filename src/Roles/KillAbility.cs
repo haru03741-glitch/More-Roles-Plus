@@ -148,17 +148,22 @@ internal static class KillAbility
             if (GameData.Instance) TryKill(killer, GameData.Instance.GetPlayerById(targetId)?.Object);
         });
 
-    private static void TryKill(PlayerControl killer, PlayerControl target)
+    // インポスター以外のキル役か (ホストがダミーを動かす時の振り分け用)
+    internal static bool UsesFor(PlayerControl p) => Uses(RoleState.Of(p));
+
+    // 断った理由を返す (通したら null)
+    internal static string TryKill(PlayerControl killer, PlayerControl target)
     {
         string why = Refuse(killer, target);
         if (why != null)
         {
             Plugin.Logger.LogWarning($"kill refused {(killer ? killer.PlayerId : -1)}->{(target ? target.PlayerId : -1)}: {why}");
-            return;
+            return why;
         }
         LastKillMs[killer.PlayerId] = Environment.TickCount64;
         _killed[killer.PlayerId] = true;
         killer.RpcMurderPlayer(target, true);
+        return null;
     }
 
     private static string Refuse(PlayerControl killer, PlayerControl target)
