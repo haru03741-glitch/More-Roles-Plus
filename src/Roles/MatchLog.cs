@@ -133,7 +133,7 @@ internal static class MatchLog
         for (int i = 0; i < all.Count; i++)
         {
             var p = all[i];
-            if (p == null) continue;
+            if (p == null || Spectate.IsWatching(p.PlayerId)) continue;
             if (sb.Length > 0) sb.Append('\n');
             sb.Append(Won(p) ? "★ " : "　 ");
             sb.Append(p.PlayerName).Append(": ").Append(RoleLabel(p));
@@ -142,6 +142,14 @@ internal static class MatchLog
             if (!p.IsDead && !p.Disconnected) sb.Append(" / ").Append(new Text("生存", "Alive").ToString());
             else if (d != null) sb.Append(" / ").Append(Describe(d));
             else if (p.Disconnected) sb.Append(" / ").Append(new Text("切断した", "Disconnected").ToString());
+        }
+        // 観戦の人は役職を持たないので「観戦」とだけ出し、最後にまとめる
+        for (int i = 0; i < all.Count; i++)
+        {
+            var p = all[i];
+            if (p == null || !Spectate.IsWatching(p.PlayerId)) continue;
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append("　 ").Append(p.PlayerName).Append(": <color=#9A9A9A>").Append(new Text("観戦", "Spectating").ToString()).Append("</color>");
         }
         LastResult = sb.ToString();
     }

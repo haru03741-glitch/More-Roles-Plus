@@ -22,6 +22,7 @@
 #   noise_burn_hit_<素材>   … 炎に焼かれた壁が傷む (炎が息をつく・素材がきしむ/はぜる)
 #   noise_burn_crumble_<素材> … 焼けた壁が崩れ落ちる (焦げて鈍い崩れ・炎がごうっと吹き込む・火の粉がはぜる)
 #   それぞれ <名前>_m       … 遠い・壁越しのこもった音 (16kHz)
+#   noise_end_spectate      … 観戦の人の終わりの画面 (勝ちでも負けでもない、見届けた音。こもった版は作らない)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
 #   python tools/make-break-sounds.py   (numpy と scipy が要る)
 import os
@@ -802,6 +803,29 @@ def arc():
     return 0.6 * buzz + 1.0 * snaps
 
 
+def end_spectate():
+    # 見届けた音 (3.4s): 低い 5 度の和音がふくらむ上で、鐘が 3 つ (D5・G5・A5 = 解決しない sus4) 鳴り、
+    # 高い E6 がかすかに残る。勝ちの明るさも負けの暗さも出さない
+    n, t = T(3.4)
+    pad = np.zeros(n)
+    for f, g in [(146.83, 1.0), (220.0, 0.7), (293.66, 0.35)]:
+        for d in (-0.003, 0.003):
+            pad += g * np.sin(2 * np.pi * f * (1 + d) * t + rng.uniform(0, 6.28))
+    pad = lp(pad, 900) * np.minimum(1, t / 0.45) * np.exp(-t / 1.6) * 0.35
+
+    def bell(f, dur=2.6):
+        # 鐘の倍音は整数倍からずらす
+        return modal([(f, 0.9, 1.0), (f * 2.0, 0.45, 0.35), (f * 2.76, 0.22, 0.18), (f * 5.4, 0.08, 0.06)], dur, strike=0.002)
+
+    x = pad.copy()
+    for at, f, g in [(0.05, 587.33, 0.55), (0.24, 783.99, 0.5), (0.43, 880.0, 0.6)]:
+        place(x, bell(f), at, g)
+    shimmer_n, st = T(2.4)
+    shimmer = np.sin(2 * np.pi * 1318.5 * st) * np.minimum(1, st / 0.3) * np.exp(-st / 0.9) * 0.12
+    place(x, shimmer, 0.7)
+    return room(x, 2.2, 3500, 0.55)
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     emit('noise_boom', boom, drive=2.4)
@@ -833,3 +857,5 @@ if __name__ == '__main__':
     emit('noise_steam', steam, peak=0.75, drive=1.6, ratio=0.3)
     emit('noise_flare', flare, peak=0.95, drive=2.0)
     emit('noise_arc', arc, peak=0.7, drive=1.6, ratio=0.3)
+    reseed('noise_end_spectate')
+    save('noise_end_spectate', fade(master(fade(end_spectate()), 1.3, 0.15), r=0.3), SR, 0.7)

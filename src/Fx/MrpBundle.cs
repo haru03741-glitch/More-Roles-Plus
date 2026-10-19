@@ -49,6 +49,7 @@ internal static class MrpBundle
         }
         int n = names.Count;
         for (int i = 0; i < n; i++) names.Add(names[i] + "_m");
+        names.Add("noise_end_spectate");
         return names.ToArray();
     }
 

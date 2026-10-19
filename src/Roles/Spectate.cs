@@ -194,6 +194,16 @@ internal static class Spectate
     private static ImportantTextTask _task; // 自分のタスク欄の「観戦中」
     private static long _deferredAt;
 
+    // テスト用: 一人の試合でも自分を観戦の人にする
+    internal static void WatchSelfForTest()
+    {
+        var me = PlayerControl.LocalPlayer;
+        if (!me) return;
+        _forceLocal = true;
+        try { ApplyLocal(new List<byte> { me.PlayerId }); }
+        finally { _forceLocal = false; }
+    }
+
     private static void ApplyLocal(List<byte> ids)
     {
         // 自分の端末の始まりの場面がまだなら終わるまで待つ (始まりの場面の頭で死因の記録が消え、途中の死は見た目が崩れる)
@@ -210,29 +220,34 @@ internal static class Spectate
         {
             var info = GameData.Instance ? GameData.Instance.GetPlayerById(id) : null;
             var p = info != null ? info.Object : null;
-            if (!p || info.IsDead) continue;
+            // 客では自分の始まりの場面を待つ間に、ホストで死んだこと (IsDead) が先に届いていることがある。
+            // 死んでいても観戦の印・タスク欄は付ける (飛ばすと終わりの画面と本人のタスク欄が普通の幽霊のままになる)
+            if (!p || info.Disconnected) continue;
             Watching.Add(id);
             Applying = id;
             try { p.Exiled(); }
             finally { Applying = 255; }
             MatchLog.OnSpectate(p); // 死因は「観戦」 (追放の後置が呼ばれない道があっても残す)
             info.Tasks?.Clear();
-            if (p.AmOwner)
-            {
-                // タスク欄には「観戦中」だけを出す (空のままだと本編が None と出す)
-                p.ClearTasks();
-                var go = new UnityEngine.GameObject("MrpSpectateTask");
-                go.transform.SetParent(p.transform, false);
-                var t = _task = go.AddComponent<ImportantTextTask>();
-                t.Text = new Text("<color=#9FD8FF>観戦中: 幽霊として自由に見て回れます。会議では全員の役職が見えます</color>",
-                    "<color=#9FD8FF>Spectating: roam freely as a ghost. You see everyone's role in meetings</color>");
-                p.myTasks.Insert(0, t.Cast<PlayerTask>());
-            }
+            if (p.AmOwner) ShowTask(p);
         }
         if (GameData.Instance) GameData.Instance.RecomputeTaskCounts();
         var me = PlayerControl.LocalPlayer;
         if (me && Watching.Contains(me.PlayerId) && Vanilla.Hud && Vanilla.Hud.Notifier)
             Vanilla.Hud.Notifier.AddDisconnectMessage(new Text("観戦中です (幽霊で見るだけ)", "You're spectating (as a ghost)"));
+    }
+
+    // タスク欄には「観戦中」だけを出す (空のままだと本編が None と出す)
+    private static void ShowTask(PlayerControl p)
+    {
+        p.ClearTasks();
+        if (_task) UnityEngine.Object.Destroy(_task.gameObject);
+        var go = new UnityEngine.GameObject("MrpSpectateTask");
+        go.transform.SetParent(p.transform, false);
+        var t = _task = go.AddComponent<ImportantTextTask>();
+        t.Text = new Text("<color=#9FD8FF>観戦中: 幽霊として自由に見て回れます。会議では全員の役職が見えます</color>",
+            "<color=#9FD8FF>Spectating: roam freely as a ghost. You see everyone's role in meetings</color>");
+        p.myTasks.Insert(0, t.Cast<PlayerTask>());
     }
 
     // ロビーに戻った: この試合の観戦の印を消す (観戦したいかどうかは残す)
@@ -276,4 +291,18 @@ internal static class SpectatePatches
 
     [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin)), HarmonyPrefix]
     public static void IntroBegin() => Spectate.IntroStarted = true;
+
+    // 幽霊の役職が付くと、本編はタスク欄の先頭の文字の行を「死亡した。タスクを完了して勝利しよう」に書き換える。
+    // 観戦の人の幽霊の役職は観戦を当てた後に届くことがあり、「観戦中」の行が書き換えられるので、観戦中の人には書かせない
+    [HarmonyPatch(typeof(CrewmateGhostRole), nameof(CrewmateGhostRole.SpawnTaskHeader)), HarmonyPrefix]
+    public static bool GhostTaskHeader([HarmonyArgument(0)] PlayerControl playerControl) =>
+        !(playerControl && Spectate.IsWatching(playerControl.PlayerId));
+
+    // 観戦の人は本編の追放の処理で幽霊にするので、本編が死んだ時の幽霊役職 (守護天使など) を抽選してしまう。
+    // 観戦の人には特別な幽霊役職を付けず、ただの幽霊にする
+    [HarmonyPatch(typeof(RoleManager), nameof(RoleManager.AssignRoleOnDeath)), HarmonyPrefix]
+    public static void AssignRoleOnDeath([HarmonyArgument(0)] PlayerControl player, [HarmonyArgument(1)] ref bool specialRolesAllowed)
+    {
+        if (player && Spectate.IsWatching(player.PlayerId)) specialRolesAllowed = false;
+    }
 }

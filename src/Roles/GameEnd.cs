@@ -35,6 +35,7 @@ public static class GameEnd
     internal static GameResult Last;       // 配られた結果 (終了画面で使う)
     internal static bool LocalWon;
     internal static bool LocalNeutral;
+    internal static bool LocalSpectating; // 終了画面ではキャラが消えているので、結果を受けた時に写す
     private static string _localColor;   // 終了画面では役職の情報が消えているので、結果を受けた時に写す
     private static long _nextCheckMs;
     private static IntPtr _ship;
@@ -58,7 +59,7 @@ public static class GameEnd
         _pending = null;
         _announced = false;
         Last = null;
-        LocalWon = LocalNeutral = false;
+        LocalWon = LocalNeutral = LocalSpectating = false;
         _ship = IntPtr.Zero;
         _lifeSupp = null;
         _critical = null;
@@ -240,6 +241,7 @@ public static class GameEnd
             }
             catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.AlsoWins: {e}"); }
         }
+        r.Winners.RemoveWhere(Spectate.IsWatching); // 観戦の人は勝敗に入らない
 
         Result.Send(r);
         Accept(r);
@@ -281,6 +283,7 @@ public static class GameEnd
         var lp = PlayerControl.LocalPlayer;
         LocalWon = lp && r.Winners.Contains(lp.PlayerId);
         LocalNeutral = RoleState.Local?.Team == Team.Neutral;
+        LocalSpectating = lp && Spectate.IsWatching(lp.PlayerId);
         _localColor = RoleState.Local?.Color;
         Plugin.Logger.LogInfo($"win: draw={r.Draw} team={r.Team?.ToString() ?? "-"} role={r.Role?.Id ?? "-"} winners=[{string.Join(",", r.Winners)}] localWon={LocalWon}");
     }
@@ -321,6 +324,7 @@ public static class GameEnd
             AddSubText(egm, new Text("ホストが試合を打ち切りました", "The host ended the game"), Color.gray);
             return;
         }
+        if (LocalSpectating) { ApplySpectatorText(egm); return; }
         if (Last.Role == null && !LocalNeutral) return; // 陣営の勝ちでクルー / インポスターから見る時は本編の表示が合っている
 
         var color = Last.Role != null ? RoleDisplay.ParseColor(Last.Role.Color)
@@ -331,6 +335,50 @@ public static class GameEnd
 
         egm.BackgroundBar.material.color = color;
         AddSubText(egm, Lang.IsJapanese ? $"{Last.Role.Name}の勝利" : $"{Last.Role.Name} Wins", color);
+    }
+
+    private static readonly Color NeutralYellow = new Color32(255, 214, 64, 255);
+
+    // 観戦の人には勝ち負けでなく、どちらが勝ったかを出す。色は陣営の色 (第三陣営はまとめて黄色)
+    private static void ApplySpectatorText(EndGameManager egm)
+    {
+        Color color;
+        string text;
+        if (Last.Role != null)
+        {
+            color = NeutralYellow;
+            text = Lang.IsJapanese ? $"{Last.Role.Name}の勝利" : $"{Last.Role.Name} Wins";
+        }
+        else if (Last.Team == Team.Impostor)
+        {
+            color = Palette.ImpostorRed;
+            text = new Text("インポスターの勝利", "Impostors Win");
+        }
+        else
+        {
+            color = Palette.CrewmateBlue;
+            text = new Text("クルーメイトの勝利", "Crewmates Win");
+        }
+        egm.WinText.text = text;
+        egm.WinText.color = color;
+        egm.BackgroundBar.material.color = color;
+        AddSubText(egm, new Text("観戦", "Spectating"), Color.gray);
+        // 「勝利」の 2 文字より長いので、左上の結果の一覧にかからない大きさへ縮める
+        egm.WinText.transform.localScale *= 0.7f;
+    }
+
+    // 観戦の人には本編の勝ち / 負けの曲の代わりに、見届けた音を鳴らす
+    internal static void ApplySpectatorSound(EndGameManager egm)
+    {
+        if (!LocalSpectating || Last == null || Last.Draw || !egm) return;
+        var sm = SoundManager.Instance;
+        if (!sm) return;
+        if (egm.CrewStinger) sm.StopSound(egm.CrewStinger);
+        if (egm.ImpostorStinger) sm.StopSound(egm.ImpostorStinger);
+        if (egm.DisconnectStinger) sm.StopSound(egm.DisconnectStinger);
+        var clip = Fx.MrpBundle.Clip("noise_end_spectate");
+        if (clip) sm.PlaySound(clip, false, 1f, sm.SfxChannel);
+        Plugin.Logger.LogInfo($"end sound: spectator clip={(bool)clip}");
     }
 
     // 勝ち負けの文字の下に小さく 1 行足す
@@ -396,6 +444,17 @@ internal static class RpcEndGamePatch
 internal static class OnGameEndPatch
 {
     public static void Postfix() => GameEnd.CaptureWinners();
+}
+
+// 本編の勝ち / 負けの曲は SetEverythingUp の後、Start の中で鳴り始めるので、差し替えは Start の後で
+[HarmonyPatch(typeof(EndGameManager), nameof(EndGameManager.Start))]
+internal static class EndSoundPatch
+{
+    public static void Postfix(EndGameManager __instance)
+    {
+        try { GameEnd.ApplySpectatorSound(__instance); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"end sound: {e.Message}"); }
+    }
 }
 
 [HarmonyPatch(typeof(EndGameManager), "SetEverythingUp")]
