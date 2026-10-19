@@ -9,8 +9,10 @@ namespace MoreRolesPlus.Terrain;
 // 焼き方: 止まった物を焼く用の層へ移し、その層だけを写す止めたカメラで、瓦礫の範囲ぴったりの描き先へ描いて
 // (Camera.Render)、Texture2D へ読み戻す。読み戻した絵は CPU 側の写しを捨てる。
 // RenderTexture のまま持たないのは、Android でアプリが裏へ回ると中身が消えるため。
-// 端末は描き先からの写し (CopyTexture) が無く読み戻すしかない。描いてすぐ読むと GPU が描き終えるまで待つので (1 枚 4〜5ms の大半)、
-// 描くのと読むのを分け、ReadDelay フレーム後に読む (その間は瓦礫を元の層へ戻して見せておく・焼きへ渡した瓦礫はもう動かない)。
+// 端末は描き先からの写し (CopyTexture) が無く読み戻すしかない。読み戻しは 1 回ごとに描画の完了待ち (重い場面で数 ms) と
+// 画素数に比例する重さ (約 3ms/MB) と呼ぶ回数ごとの重さがある (実測)。そこで端末では、まとまりを 1 枚の描き先に並べて描き、
+// 描いてから ReadDelay フレーム後に、1 フレームに BandPx 画素ずつ帯で読む (その間は瓦礫を元の層へ戻して見せておく・焼きへ渡した瓦礫はもう動かない)。
+// 床の板はまとまりごとに、読んだ絵の中の自分の四角を指す (並べた時の隙間も絵に残るが、呼ぶ回数を減らす方を取る)。
 // 細かさは標準の寄り具合の画面とほぼ同じ (粗いと焼いた途端にぼやけ、輪郭線が溶ける)。
 // 絵は z ごとに分ける (部屋ごとに z が違う。塊は自分の部屋の z で描かれている)
 internal static class RubbleBake
@@ -21,14 +23,14 @@ internal static class RubbleBake
     private const int MaxPx = 2048;         // 1 枚の縦横の上限 (升より大きくはみ出した時の歯止め)
     private const long SettleMs = 500;      // 最後に止まってからこれだけ待ってまとめて焼く (読み戻しは GPU を待つので回数を減らす)
     private const int MaxBatch = 96;        // これだけ溜まったら待たずに焼く
-    // 1 フレームに焼く量: 1 枚焼いた後、さらにこの時間まで続けて焼く (残りは次のフレームへ)。端末の読み戻しは GPU がそれまでの描画を
-    // 終えるまで待つので 1 枚目が重く (重い場面で 5〜35ms)、同じフレームの 2 枚目からは 1ms 前後 (実測)。枚数で区切ると重いフレームが増える。
-    // PC は GPU の中で写すので待ちが無く、1 枚ずつの重さだけ
+    // 1 フレームに描く量: 1 枚描いた後、さらにこの時間まで続けて描く (残りは次のフレームへ)。1 枚ごとの Camera.Render が端末で約 0.3ms。
+    // PC は GPU の中で写すので読み戻しの待ちが無く、1 枚ずつの重さだけ
 #if ANDROID
-    private const double ExtraBudgetMs = 6.0;
+    private const double ExtraBudgetMs = 3.0;
     private const int ReadDelay = 3;
-    // 読み戻したフレームの次からは、そのフレームの送り込み (Apply) と描画を待つので 1 枚目が 15〜25ms になる (実機)。間を空けると 1 枚目は 1〜5ms
+    // 読み戻しと送り込み (Apply) は ReadGap フレームおき。送り込んだ直後に読むとその完了まで待たされる (実機で 15〜25ms)
     private const int ReadGap = 4;
+    private const int BandPx = 256 * 1024; // 1 フレームに読む画素 (約 1MB・端末で約 3ms)
     private const long LostGapMs = 1000; // Tick の間がこれより空いた (裏へ回っていた) ら、描き先の中身が消えたとみて描き直す
 #else
     private const double ExtraBudgetMs = 1.0;
@@ -59,16 +61,28 @@ internal static class RubbleBake
     private static long _lastAddMs;
     private static Camera _cam;
 #if ANDROID
+    // 描き先 1 枚と、そこへ並べて描いたまとまり。埋まるか列が空になるまで、Flush をまたいで同じ描き先へ描き足す
     private sealed class InFlight
     {
-        public Group G;
         public RenderTexture Rt;
-        public int W, H, Frame;
-        public float Cx, Cy;
+        public int RtW, RtH, Frame;               // Frame = 最後に描いたフレーム
+        public readonly List<int[]> Free = new(); // 空いた四角 { x, y, w, h }
+        public readonly List<Slot> Slots = new();
         public bool Lost;
+        public Texture2D Tex;                     // 読み戻し中の絵 (帯ごとに読み足す)
+        public int W, H, Row;                     // 読む範囲 (並べた範囲の右上まで) と、次に読む行
+        public bool Done;                         // 全部読んだ (次の回に送り込む)
     }
-    private static readonly List<InFlight> Reading = new(); // 描いて読み戻し待ちのまとまり (描いた順)
-    private static readonly List<(InFlight F, Texture2D Tex)> Read = new(); // このフレームに読んで送り込み待ちの物
+    private sealed class Slot
+    {
+        public Group G;
+        public int X, Y, W, H;
+        public float Cx, Cy;
+    }
+    private const int AtlasPx = 1024; // 並べる描き先の縦横 (これより大きいまとまりは 1 枚で描く)
+    private const int AtlasPad = 2;   // 隣のまとまりと離す画素 (絵の縁の補間で隣がにじまないように)
+    private static readonly List<InFlight> Reading = new(); // 読み戻し待ちの描き先 (作った順)
+    private static InFlight _open; // 描き足している途中の描き先 (まだ読まない)
     private static int _frame, _lastReadFrame = -100;
     private static long _lastTickMs;
 #endif
@@ -88,6 +102,8 @@ internal static class RubbleBake
         if (now - _lastTickMs > LostGapMs) foreach (var f in Reading) f.Lost = true;
         _lastTickMs = now;
         if (Reading.Count > 0 && _frame - _lastReadFrame >= ReadGap) ReadBack(budget: true);
+        if (_lastReadFrame == _frame) return; // 読み戻したフレームには描かない (どちらも数 ms あり、重なると倍になる)
+        if (!Enabled) _open = null; // 焼きを止めた間も、描いた分は読み終える
 #endif
         if (Queue.Count == 0 || !Enabled) return;
         if (Queue.Count < MaxBatch && Environment.TickCount64 - _lastAddMs < SettleMs) return;
@@ -106,7 +122,14 @@ internal static class RubbleBake
     public static string Flush(bool budget = false)
     {
         if (Queue.Count == 0) return "nothing";
-        if (!EnsureCamera()) { Queue.Clear(); return "no camera"; }
+        if (!EnsureCamera())
+        {
+            Queue.Clear();
+#if ANDROID
+            _open = null;
+#endif
+            return "no camera";
+        }
         var groups = new Dictionary<(int, int, int), Group>();
         foreach (var p in Queue)
         {
@@ -123,7 +146,9 @@ internal static class RubbleBake
 
         int sheets = 0, items = 0;
         long firstDone = 0;
-        foreach (var g in groups.Values)
+        var order = new List<Group>(groups.Values);
+        order.Sort((a, b) => (b.Y1 - b.Y0).CompareTo(a.Y1 - a.Y0)); // 高い順 (描き先に並べた時の空きを減らす)
+        foreach (var g in order)
         {
             if (budget && firstDone != 0 && (System.Diagnostics.Stopwatch.GetTimestamp() - firstDone) * 1000.0 / System.Diagnostics.Stopwatch.Frequency > ExtraBudgetMs)
             {
@@ -133,14 +158,12 @@ internal static class RubbleBake
             g.Layers = new int[g.Items.Count];
             for (int i = 0; i < g.Items.Count; i++) g.Layers[i] = g.Items[i].Go.layer;
 #if ANDROID
-            var f = Begin(g);
-            if (f == null) continue;
-            if (!budget) f.Frame = int.MinValue / 2; // その場で全部焼く (bake now)
-            Reading.Add(f);
+            if (!Begin(g)) continue;
             sheets++;
             items += g.Items.Count;
             if (firstDone == 0) firstDone = System.Diagnostics.Stopwatch.GetTimestamp();
         }
+        if (Queue.Count == 0 || !budget) _open = null; // 描き終えたので読める (残りがあれば次のフレームも同じ描き先へ描く)
         if (!budget) ReadBack(budget: false);
         return $"rendered items={items} sheets={sheets} reading={Reading.Count} total={Sheets.Count} kb={SheetBytes / 1024}";
 #else
@@ -181,29 +204,34 @@ internal static class RubbleBake
         cx = x0 + w * 0.5f / Ppu; cy = y0 + h * 0.5f / Ppu;
     }
 
-    // まとまりを描き先へ描く (瓦礫は描く間だけ焼く層へ移す)
-    private static void Draw(Group g, RenderTexture rt, int w, int h, float cx, float cy)
+    // まとまりを描き先の (x, y, w, h) へ描く (瓦礫は描く間だけ焼く層へ移す。描き先の消去は呼んだ側)
+    private static void Draw(Group g, RenderTexture rt, int x, int y, int w, int h, float cx, float cy)
     {
         foreach (var p in g.Items) if (p.Go) p.Go.layer = BakeLayer;
-        var prev = RenderTexture.active;
         try
         {
-            RenderTexture.active = rt;
-            GL.Clear(false, true, new Color(0f, 0f, 0f, 0f));
             _cam.transform.position = new Vector3(cx, cy, g.Z - 5f);
+            _cam.targetTexture = rt;
+            _cam.pixelRect = new Rect(x, y, w, h);
             _cam.orthographicSize = h * 0.5f / Ppu;
             _cam.aspect = w / (float)h;
-            _cam.targetTexture = rt;
             _cam.Render();
         }
         finally
         {
             _cam.targetTexture = null;
-            RenderTexture.active = prev;
 #if ANDROID
             RestoreLayers(g); // 読み戻すまで見せておく
 #endif
         }
+    }
+
+    private static void ClearTarget(RenderTexture rt)
+    {
+        var prev = RenderTexture.active;
+        RenderTexture.active = rt;
+        GL.Clear(false, true, new Color(0f, 0f, 0f, 0f));
+        RenderTexture.active = prev;
     }
 
     private static void RestoreLayers(Group g)
@@ -211,10 +239,10 @@ internal static class RubbleBake
         for (int i = 0; i < g.Items.Count; i++) if (g.Items[i].Go) g.Items[i].Go.layer = g.Layers[i];
     }
 
-    // 焼いた絵を床の板として置く
-    private static void Place(Texture2D tex, int w, int h, float cx, float cy, float z)
+    // 焼いた絵 (の x, y, w, h の四角) を床の板として置く。ownTex = この板が絵を持つ (片付けで 1 回だけ消す)
+    private static void Place(Texture2D tex, int x, int y, int w, int h, float cx, float cy, float z, bool ownTex)
     {
-        var sp = Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), Ppu, 0, SpriteMeshType.FullRect);
+        var sp = Sprite.Create(tex, new Rect(x, y, w, h), new Vector2(0.5f, 0.5f), Ppu, 0, SpriteMeshType.FullRect);
         sp.name = "MrpRubble";
         var go = new GameObject("MrpRubble");
         DamageMap.Track(go);
@@ -224,78 +252,190 @@ internal static class RubbleBake
         var sr = go.AddComponent<SpriteRenderer>();
         if (DamageMap.PlateMaterial) sr.sharedMaterial = DamageMap.PlateMaterial;
         sr.sprite = sp;
-        Sheets.Add((tex, sp));
+        Sheets.Add((ownTex ? tex : null, sp));
         Plates.Add(go);
-        SheetBytes += (long)w * h * 4;
     }
 
 #if ANDROID
-    private static InFlight Begin(Group g)
+    private static InFlight NewTarget(int w, int h)
+    {
+        var f = new InFlight { Rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32), RtW = w, RtH = h, Frame = _frame };
+        f.Free.Add(new[] { 0, 0, w + AtlasPad, h + AtlasPad }); // 右と上の端は隙間が要らない
+        ClearTarget(f.Rt);
+        Reading.Add(f);
+        return f;
+    }
+
+    // 空いた四角のうち、置いた上端が一番低く (同じなら余りが一番少ない) 所の左下へ置き、残りを 2 つの四角に分ける
+    private static bool TryPlace(List<int[]> free, int w, int h, out int x, out int y)
+    {
+        int pw = w + AtlasPad, ph = h + AtlasPad;
+        int best = -1, bestTop = int.MaxValue;
+        long bestSpare = long.MaxValue;
+        for (int i = 0; i < free.Count; i++)
+        {
+            var r = free[i];
+            if (r[2] < pw || r[3] < ph) continue;
+            int top = r[1] + ph;
+            long spare = (long)r[2] * r[3] - (long)pw * ph;
+            if (top < bestTop || (top == bestTop && spare < bestSpare)) { best = i; bestTop = top; bestSpare = spare; }
+        }
+        x = y = 0;
+        if (best < 0) return false;
+        var b = free[best];
+        free.RemoveAt(best);
+        x = b[0]; y = b[1];
+        // 余りの短い方の向きで切る (細長い切れ端を作らない)
+        if (b[2] - pw < b[3] - ph)
+        {
+            if (b[2] > pw) free.Add(new[] { b[0] + pw, b[1], b[2] - pw, ph });
+            if (b[3] > ph) free.Add(new[] { b[0], b[1] + ph, b[2], b[3] - ph });
+        }
+        else
+        {
+            if (b[2] > pw) free.Add(new[] { b[0] + pw, b[1], b[2] - pw, b[3] });
+            if (b[3] > ph) free.Add(new[] { b[0], b[1] + ph, pw, b[3] - ph });
+        }
+        return true;
+    }
+
+    // まとまりを描く。普通の大きさは描き足している描き先に並べ、大きい物は 1 枚で描く
+    private static bool Begin(Group g)
     {
         Frame(g, out int w, out int h, out float cx, out float cy);
-        var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
-        try { Draw(g, rt, w, h, cx, cy); }
+        int x = 0, y = 0;
+        try
+        {
+            InFlight f;
+            if (w > AtlasPx || h > AtlasPx) f = NewTarget(w, h);
+            else
+            {
+                if (_open == null || !TryPlace(_open.Free, w, h, out x, out y))
+                {
+                    _open = NewTarget(AtlasPx, AtlasPx);
+                    TryPlace(_open.Free, w, h, out x, out y);
+                }
+                f = _open;
+            }
+            Draw(g, f.Rt, x, y, w, h, cx, cy);
+            f.Frame = _frame;
+            f.Slots.Add(new Slot { G = g, X = x, Y = y, W = w, H = h, Cx = cx, Cy = cy });
+            return true;
+        }
         catch (Exception e)
         {
             Plugin.Logger.LogWarning($"rubble bake {w}x{h} failed: {e.Message}");
-            RenderTexture.ReleaseTemporary(rt);
-            return null; // 焼けなかった瓦礫は消さずに残す (元の層へは Draw が戻している)
+            return false; // 焼けなかった瓦礫は消さずに残す (元の層へは Draw が戻している)
         }
-        return new InFlight { G = g, Rt = rt, W = w, H = h, Cx = cx, Cy = cy, Frame = _frame };
     }
 
-    // ReadDelay フレーム経ったまとまりを読み戻して床の板にし、瓦礫を消す (budget = 1 枚目の後は ExtraBudgetMs まで)
+    private static bool Alive(Group g)
+    {
+        foreach (var p in g.Items) if (p.Go) return true;
+        return false;
+    }
+
+    // ReadDelay フレーム経った描き先を帯ごとに読み戻し、全部読んだら次の回に送り込んで (Apply) 床の板にし、瓦礫を消す。
+    // budget = 1 フレームに帯 1 本か送り込み 1 回。false = 全部その場で
     private static void ReadBack(bool budget)
     {
-        // 読むのを先に全部済ませてから送り込む (Apply)。送り込みを挟むと次の ReadPixels がその完了まで待たされ、2 枚目以降も重くなる
-        long first = 0;
-        int done = 0;
-        Read.Clear();
-        for (; done < Reading.Count; done++)
+        while (Reading.Count > 0)
         {
-            var f = Reading[done];
-            if (budget && _frame - f.Frame < ReadDelay) break; // 描いた順なので、ここから後もまだ
-            if (budget && first != 0 && (System.Diagnostics.Stopwatch.GetTimestamp() - first) * 1000.0 / System.Diagnostics.Stopwatch.Frequency > ExtraBudgetMs) break;
-            bool any = false;
-            foreach (var p in f.G.Items) if (p.Go) { any = true; break; }
-            if (!any) { RenderTexture.ReleaseTemporary(f.Rt); continue; } // 待つ間に瓦礫が全部片付けられた (板を置くと消えた瓦礫が残る)
-            Texture2D tex = null;
+            var f = Reading[0];
+            if (f == _open) return; // まだ描き足している途中
+            if (budget && _frame - f.Frame < ReadDelay) return;
+            if (f.Done)
+            {
+                Reading.RemoveAt(0);
+                Finish(f);
+                _lastReadFrame = _frame;
+                if (budget) return;
+                continue;
+            }
+            if (f.Tex == null)
+            {
+                bool any = false;
+                foreach (var s in f.Slots)
+                {
+                    any |= Alive(s.G);
+                    f.W = Math.Max(f.W, s.X + s.W); f.H = Math.Max(f.H, s.Y + s.H);
+                }
+                if (!any) // 待つ間に瓦礫が全部片付けられた (板を置くと消えた瓦礫が残る)
+                {
+                    Reading.RemoveAt(0);
+                    RenderTexture.ReleaseTemporary(f.Rt);
+                    continue;
+                }
+                f.Tex = new Texture2D(f.W, f.H, TextureFormat.RGBA32, false) { name = "MrpRubble", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            }
+            int rows = budget ? Math.Clamp(BandPx / f.W, 1, f.H - f.Row) : f.H - f.Row;
             var prev = RenderTexture.active;
             try
             {
-                if (f.Lost) Draw(f.G, f.Rt, f.W, f.H, f.Cx, f.Cy);
-                tex = new Texture2D(f.W, f.H, TextureFormat.RGBA32, false) { name = "MrpRubble", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+                if (f.Lost)
+                {
+                    ClearTarget(f.Rt);
+                    foreach (var s in f.Slots) Draw(s.G, f.Rt, s.X, s.Y, s.W, s.H, s.Cx, s.Cy);
+                    f.Lost = false;
+                }
                 RenderTexture.active = f.Rt;
-                tex.ReadPixels(new Rect(0f, 0f, f.W, f.H), 0, 0, false);
+                f.Tex.ReadPixels(new Rect(0f, f.Row, f.W, rows), 0, f.Row, false);
                 RenderTexture.active = prev;
-                Read.Add((f, tex));
+                f.Row += rows;
             }
             catch (Exception e)
             {
                 RenderTexture.active = prev;
                 Plugin.Logger.LogWarning($"rubble bake {f.W}x{f.H} failed: {e.Message}");
-                if (tex) UnityEngine.Object.Destroy(tex);
+                Reading.RemoveAt(0);
+                Drop(f);
+                continue; // 焼けなかった瓦礫は消さずに残す
             }
-            finally { RenderTexture.ReleaseTemporary(f.Rt); }
-            if (first == 0) first = System.Diagnostics.Stopwatch.GetTimestamp(); // 予算は 1 枚目の後から (1 枚目は描画の同期待ちで重く、2 枚目からは軽い)
+            _lastReadFrame = _frame;
+            if (f.Row >= f.H)
+            {
+                RenderTexture.ReleaseTemporary(f.Rt);
+                f.Rt = null;
+                f.Done = true;
+            }
+            if (budget) return; // 送り込みは次の回
         }
-        Reading.RemoveRange(0, done);
-        if (Read.Count > 0) _lastReadFrame = _frame;
-        foreach (var (f, tex) in Read)
+    }
+
+    // 読み終えた絵を送り込んで、まとまりごとに床の板を置く
+    private static void Finish(InFlight f)
+    {
+        var tex = f.Tex;
+        f.Tex = null;
+        try { tex.Apply(false, true); } // CPU 側の写しは捨てる
+        catch (Exception e)
         {
+            Plugin.Logger.LogWarning($"rubble bake {f.W}x{f.H} failed: {e.Message}");
+            UnityEngine.Object.Destroy(tex);
+            return;
+        }
+        bool own = true;
+        foreach (var s in f.Slots)
+        {
+            if (!Alive(s.G)) continue;
             try
             {
-                tex.Apply(false, true); // CPU 側の写しは捨てる
-                Place(tex, f.W, f.H, f.Cx, f.Cy, f.G.Z);
-                BakedCount += DestroyItems(f.G);
+                Place(tex, s.X, s.Y, s.W, s.H, s.Cx, s.Cy, s.G.Z, own);
+                own = false;
+                BakedCount += DestroyItems(s.G);
             }
-            catch (Exception e)
-            {
-                Plugin.Logger.LogWarning($"rubble bake {f.W}x{f.H} failed: {e.Message}");
-                UnityEngine.Object.Destroy(tex);
-            }
+            catch (Exception e) { Plugin.Logger.LogWarning($"rubble bake {s.W}x{s.H} failed: {e.Message}"); }
         }
-        Read.Clear();
+        if (own) UnityEngine.Object.Destroy(tex);
+        else SheetBytes += (long)f.W * f.H * 4;
+    }
+
+    private static void Drop(InFlight f)
+    {
+        if (f.Rt) RenderTexture.ReleaseTemporary(f.Rt);
+        if (f.Tex) UnityEngine.Object.Destroy(f.Tex);
+        f.Rt = null;
+        f.Tex = null;
     }
 #endif
 
@@ -308,12 +448,14 @@ internal static class RubbleBake
         Texture2D tex = null;
         try
         {
-            Draw(g, rt, w, h, cx, cy);
+            ClearTarget(rt);
+            Draw(g, rt, 0, 0, w, h, cx, cy);
             tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { name = "MrpRubble", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
             // 読み戻し (GPU を待って 1 枚 3〜4ms) をせず、GPU の中で描き先から写す。先に空の絵を送って CPU 側の写しを捨てておく (後で Apply すると写した絵が空で上書きされる)
             tex.Apply(false, true);
             Graphics.CopyTexture(rt, 0, 0, tex, 0, 0);
-            Place(tex, w, h, cx, cy, g.Z);
+            Place(tex, 0, 0, w, h, cx, cy, g.Z, ownTex: true);
+            SheetBytes += (long)w * h * 4;
             return true;
         }
         catch (Exception e)
@@ -350,7 +492,7 @@ internal static class RubbleBake
     {
         foreach (var p in Queue) if (p.Go) into.Add(p.Go);
 #if ANDROID
-        foreach (var f in Reading) foreach (var p in f.G.Items) if (p.Go) into.Add(p.Go);
+        foreach (var f in Reading) foreach (var s in f.Slots) foreach (var p in s.G.Items) if (p.Go) into.Add(p.Go);
 #endif
         foreach (var go in Plates) if (go) into.Add(go);
     }
@@ -369,8 +511,9 @@ internal static class RubbleBake
         Plates.Clear();
         Queue.Clear();
 #if ANDROID
-        foreach (var f in Reading) RenderTexture.ReleaseTemporary(f.Rt);
+        foreach (var f in Reading) Drop(f);
         Reading.Clear();
+        _open = null;
 #endif
         BakedCount = 0;
         SheetBytes = 0;
