@@ -113,7 +113,8 @@ public class Ticker : MonoBehaviour
         NoClip.Tick();
         Dev.DevCooldown.Tick();
         Commands.ChatInput.Tick();
-        Menu.ColorPicker.Tick(); t = Bridge.Perf.Lane(23, t);
+        Menu.ColorPicker.Tick();
+        Options.RoleMenu.Tick(); t = Bridge.Perf.Lane(23, t);
         Bridge.Perf.End(t0);
     }
 

@@ -22,7 +22,10 @@ internal static class RoleMenu
 {
     // 1920x1080 の画面で 1 単位 = 180px。RoleLift = 本編の役職の行は数値の行より絵が 0.25 下に出るので、その分上げる
     private const float ChipHeight = 0.36f, Gap = 0.1f, Side = 0.15f;
-    private const float BandHeight = 0.06f + ChipHeight + 0.1f; // 上の固定の帯の高さ
+    private const float RowGap = 0.08f;
+    private const float BandHeight = 0.06f + ChipHeight * 2f + RowGap + 0.1f; // 上の固定の帯の高さ (絞り込みの段 + まとめて変える段)
+    private const float RepeatEvery = 0.07f; // ± を押したままにした時に繰り返す間隔 (秒)
+    private const long HoldDelayMs = 400;    // 押してから繰り返し始めるまで
     private const float HeaderX = -0.903f, OptX = -0.05f, RoleX = -0.53f, RoleLift = 0.25f, Z = -2f;
     private const float HeaderStep = 0.55f, RoleStep = 0.55f, OptStep = 0.45f, GroupGap = 0.12f;
     private const int MaskLayer = 20;
@@ -43,6 +46,16 @@ internal static class RoleMenu
     private static int _team = -1;  // -1 = 全部
     private static bool _enabledOnly;
     private static readonly HashSet<string> Expanded = new();
+
+    // まとめて変える前の出現率 (「元に戻す」で 1 回分だけ戻す)。画面を閉じたら捨てる
+    private static List<(Assignable role, int chance)> _undo;
+
+    // ホイール・右クリックの相手 = 指が乗っている役職の行と所 (0 = 名前・1 = 人数の ±・2 = 出現率の ±)
+    private static RoleRow _hoverRow;
+    private static int _hoverZone;
+    private static float _wheelSpeed = -1f;  // 乗っている間は一覧のホイールを止める (元の速さ)
+    private static long _pressAt;            // ± を押した時刻 (ms)
+    private static readonly bool Touch = OperatingSystem.IsAndroid();
 
     private sealed class OptRow
     {
@@ -79,6 +92,7 @@ internal static class RoleMenu
     private static readonly Dictionary<IntPtr, RoleRow> ByRow = new();
     private static readonly Dictionary<string, RoleRow> ById = new();
     private static readonly List<(PassiveButton btn, int team, bool only, Color color)> Chips = new();
+    private static readonly List<(PassiveButton btn, int action, Color color)> Actions = new();  // まとめて変える札 (0 = 0%・1 = 100%・2 = 元に戻す)
     private static GameOptionsMenu _page;
     private static CategoryHeaderMasked _empty;
     private static string[] _tokens = Array.Empty<string>();
@@ -95,8 +109,8 @@ internal static class RoleMenu
     public static Text TabName => new("役職", "Roles");
 
     public static Text DefaultDescription =>
-        new($"役職の人数と出現率。名前を押すと細かい設定が開きます。\n出る役職: {EnabledCount()} / {Registry.Roles.Count}",
-            $"Role count and chance. Press a name to open its settings.\nEnabled: {EnabledCount()} / {Registry.Roles.Count}");
+        new($"役職の人数と出現率。名前を押すと細かい設定が開きます。\n± は長押しで連続 (ホイールも可・右クリックで 0%/100%)。\n出る役職: {EnabledCount()} / {Registry.Roles.Count}",
+            $"Role count and chance. Press a name to open its settings.\nHold ± to keep changing (or use the wheel; right-click toggles 0% / 100%).\nEnabled: {EnabledCount()} / {Registry.Roles.Count}");
 
     private static int EnabledCount()
     {
@@ -139,6 +153,12 @@ internal static class RoleMenu
         ByRow.Clear();
         ById.Clear();
         Chips.Clear();
+        Actions.Clear();
+        _undo = null;
+        _hoverRow = null;
+        // 同じ画面で作り直す時に、止めたホイールを戻す
+        if (_wheelSpeed >= 0f && _page && _page.scrollBar) _page.scrollBar.ScrollWheelSpeed = _wheelSpeed;
+        _wheelSpeed = -1f;
         _page = null;
         _empty = null;
         _described = null;
@@ -186,6 +206,7 @@ internal static class RoleMenu
                 r.Row.SetRole(roleOptions, anyRole, MaskLayer);
                 r.Row.SetClickMask(m.ButtonClickMask);
                 AddNameButton(r, m);
+                SetupSteppers(r);
                 StyleRole(r, m);
                 var all = new System.Text.StringBuilder(r.Hay);
                 foreach (var opt in sec.Opts)
@@ -376,6 +397,25 @@ internal static class RoleMenu
         pb.OnMouseOut.AddListener(Cached(NameOuts, r.Role.Id, id => () => OnNameHover(id, false)));
     }
 
+    // 人数・出現率の ±: 押したままで繰り返す (本編のボタンの繰り返しを使う)・指が乗っている所を覚える (ホイールと右クリック用)
+    private static void SetupSteppers(RoleRow r)
+    {
+        var row = r.Row;
+        var btns = new[] { row.CountMinusBtn, row.CountPlusBtn, row.ChanceMinusBtn, row.ChancePlusBtn };
+        for (int i = 0; i < btns.Length; i++)
+        {
+            var b = btns[i];
+            if (!b) continue;
+            b.OnRepeat = true;
+            b.RepeatDuration = RepeatEvery;
+            string key = r.Role.Id + "|" + (i < 2 ? 1 : 2);
+            b.OnMouseOver ??= new UnityEvent();
+            b.OnMouseOver.AddListener(Cached(NameOvers, key, k => () => OnZoneHover(k, true)));
+            b.OnMouseOut ??= new UnityEvent();
+            b.OnMouseOut.AddListener(Cached(NameOuts, key, k => () => OnZoneHover(k, false)));
+        }
+    }
+
     // 上の固定の帯。スクロールする範囲 (マスク・つかむ所) を帯の高さだけ下から詰める
     private static void BuildBand(GameOptionsMenu m, GameSettingMenu menu)
     {
@@ -429,6 +469,26 @@ internal static class RoleMenu
             bool only = d.only;
             chip.OnClick.AddListener(Cached(ChipClicks, key, _ => () => OnChip(team, only)));
             Chips.Add((chip, d.team, d.only, d.color));
+        }
+
+        // 2 段目 = 絞り込みで選んでいる陣営 (全部なら全役職とアドオン) の出現率をまとめて変える。右寄せで札 3 つ分
+        var actDefs = new (int action, Color color)[]
+        {
+            (0, new Color(0.62f, 0.64f, 0.7f)),
+            (1, new Color(1f, 0.85f, 0.35f)),
+            (2, new Color(0.55f, 0.8f, 1f)),
+        };
+        float aw = cw * 1.5f;
+        float ay = cy - ChipHeight - RowGap;
+        float ax = x0 + width - aw / 2f;
+        for (int i = actDefs.Length - 1; i >= 0; i--, ax -= aw + Gap)
+        {
+            var d = actDefs[i];
+            var chip = MakeChip(menu.GameSettingsButton, m.transform, new Vector3(ax, ay, -5f), aw, ChipHeight, ActionName(d.action), d.color);
+            if (!chip) continue;
+            int action = d.action;
+            chip.OnClick.AddListener(Cached(ChipClicks, "act" + action, _ => () => OnAction(action)));
+            Actions.Add((chip, d.action, d.color));
         }
         RefreshChips();
     }
@@ -521,6 +581,8 @@ internal static class RoleMenu
         // 検索は全部のタブから探すので、陣営で絞る札は隠す
         foreach (var (btn, _, _, _) in Chips)
             if (btn && btn.gameObject.activeSelf == _tokens.Length > 0) btn.gameObject.SetActive(_tokens.Length == 0);
+        foreach (var (btn, _, _) in Actions)
+            if (btn && btn.gameObject.activeSelf == _tokens.Length > 0) btn.gameObject.SetActive(_tokens.Length == 0);
         Relayout(true);
     }
 
@@ -574,6 +636,100 @@ internal static class RoleMenu
             var sr = edge ? edge.GetComponent<SpriteRenderer>() : null;
             if (sr) sr.color = on ? Mix(c, Color.white, 0.45f) : new Color(c.r * 0.75f, c.g * 0.75f, c.b * 0.75f, 1f);
         }
+        foreach (var (btn, action, c) in Actions)
+        {
+            if (!btn) continue;
+            bool usable = action != 2 || _undo != null;
+            var label = btn.GetComponentInChildren<TextMeshPro>(true);
+            if (label)
+            {
+                label.text = ActionName(action);
+                label.color = usable ? Mix(c, Color.white, 0.2f) : new Color(0.42f, 0.43f, 0.47f, 1f);
+            }
+            var edge = btn.transform.Find("MrpChipEdge");
+            var sr = edge ? edge.GetComponent<SpriteRenderer>() : null;
+            if (sr) sr.color = usable ? new Color(c.r * 0.75f, c.g * 0.75f, c.b * 0.75f, 1f) : new Color(0.3f, 0.31f, 0.34f, 1f);
+        }
+    }
+
+    private static Text ActionName(int action)
+    {
+        if (action == 2) return new Text("元に戻す", "Undo");
+        string pct = action == 0 ? "0%" : "100%";
+        if (_team < 0) return new Text("全部 " + pct, "All " + pct);
+        var k = KindName(_team);
+        return new Text(k.Ja + " " + pct, k.En + " " + pct);
+    }
+
+    // まとめて変える: 0 / 1 = 選んでいる陣営の出現率を全部 0% / 100% (変える前を 1 回分覚える)・2 = 覚えた値へ戻す
+    private static void OnAction(int action)
+    {
+        if (action == 2)
+        {
+            if (_undo == null) return;
+            foreach (var (role, chance) in _undo) role.Chance.SetIndex(chance);
+            _undo = null;
+        }
+        else
+        {
+            var before = new List<(Assignable, int)>();
+            int index = action == 0 ? 0 : int.MaxValue;
+            foreach (var g in Groups)
+            {
+                if (g.SearchOnly || (_team >= 0 && g.Kind != _team)) continue;
+                foreach (var r in g.Roles)
+                {
+                    var c = r.Role.Chance;
+                    int to = Math.Min(index, c.Count - 1);
+                    if (c.Index == to) continue;
+                    before.Add((r.Role, c.Index));
+                    c.SetIndex(to);
+                }
+            }
+            if (before.Count == 0) return;  // 変わる物が無い時は前の「元に戻す」を残す
+            _undo = before;
+        }
+        RefreshChips();
+        Relayout(false);
+        ShowDefault();
+    }
+
+    // 指が乗った所 (key = 役職の Id|所)。外れた時は同じ所の時だけ忘れる (隣のボタンへ移った時の順番の入れ替わりに備える)
+    private static void OnZoneHover(string key, bool over)
+    {
+        int bar = key.LastIndexOf('|');
+        if (!ById.TryGetValue(key.Substring(0, bar), out var r)) return;
+        int zone = key[bar + 1] - '0';
+        if (over) { _hoverRow = r; _hoverZone = zone; }
+        else if (_hoverRow == r && _hoverZone == zone) _hoverRow = null;
+    }
+
+    // 設定画面が開いている間だけ (閉じると _page が null)。指が役職の行に乗っている間、
+    // ホイール = 人数か出現率を 1 刻み (名前の上は出現率)・右クリック = 出現率を 0% と 100% で切り替える
+    public static void Tick()
+    {
+        // スマホにはホイールも右クリックも無い (指を離しても「乗っている」が外れないので、一覧のホイールを止めたままにしない)
+        if (Touch || _page is null || !_page) return;
+        var scroller = _page.scrollBar;
+        bool over = _hoverRow != null && _hoverRow.Row && _hoverRow.Row.gameObject.activeInHierarchy;
+        if (scroller && over != _wheelSpeed >= 0f)
+        {
+            if (over) { _wheelSpeed = scroller.ScrollWheelSpeed; scroller.ScrollWheelSpeed = 0f; }
+            else { scroller.ScrollWheelSpeed = _wheelSpeed; _wheelSpeed = -1f; }
+        }
+        if (!over) return;
+        var r = _hoverRow;
+        if (Input.GetMouseButtonDown(1))
+        {
+            var c = r.Role.Chance;
+            c.SetIndex(c.Index > 0 ? 0 : c.Count - 1);
+            AfterStep(r);
+            return;
+        }
+        float wheel = Input.mouseScrollDelta.y;
+        if (wheel == 0f) return;
+        (_hoverZone == 1 ? r.Role.Count : r.Role.Chance).Step(wheel > 0f ? 1 : -1);
+        AfterStep(r);
     }
 
     private static void OnNameClick(string id)
@@ -592,6 +748,8 @@ internal static class RoleMenu
         if (!ById.TryGetValue(id, out var r)) return;
         r.Hover = over;
         if (r.Fill) r.Fill.color = CardColor(r);
+        if (over) { _hoverRow = r; _hoverZone = 0; }
+        else if (_hoverRow == r && _hoverZone == 0) _hoverRow = null;
     }
 
     private static void Describe(Assignable role)
@@ -606,10 +764,24 @@ internal static class RoleMenu
     public static void Step(RoleOptionSetting row, bool chance, int delta)
     {
         if (!ByRow.TryGetValue(row.Pointer, out var r)) return;
+        // 本編の繰り返しは押した直後から始まるので、押してからしばらくの繰り返しは捨てる (1 回押しで 1 つだけ進むように)
+        long now = Environment.TickCount64;
+        if (Input.GetMouseButtonDown(0)) _pressAt = now;
+        else if (Input.GetMouseButton(0) && now - _pressAt < HoldDelayMs) return;
         (chance ? r.Role.Chance : r.Role.Count).Step(delta);
+        AfterStep(r);
+    }
+
+    private static void AfterStep(RoleRow r)
+    {
         RefreshRole(r);
         // 「出る役職だけ」で 0% にした行は、その場では消さない (押し間違いをすぐ戻せるように)。次に並べ直す時に消える
         RefreshHeaders();
+        ShowDefault();
+    }
+
+    private static void ShowDefault()
+    {
         // 役職の説明・検索の件数を見ている間はそのまま (数値を変えるたびに説明が消えないように)
         if (_described != null || _tokens.Length > 0) return;
         var menu = GameSettingMenu.Instance;
@@ -789,6 +961,10 @@ internal static class RoleMenu
                 if (snum != null) { if (sd > 0) snum.Increase(); else snum.Decrease(); }
                 else srow.TryCast<ToggleOption>()?.Toggle();
                 break;
+            case "act":
+                // act <0|1|2> (まとめて変える札を押すのと同じ: 0% / 100% / 元に戻す)
+                if (a.Length > 1 && int.TryParse(a[1], out int act)) OnAction(act);
+                break;
             case "press":
                 // press <Id> <count|chance> <+1|-1>
                 if (a.Length < 4 || !ById.TryGetValue(a[1], out var pr) || !int.TryParse(a[3], out int d)) return "press <Id> <count|chance> <+1|-1>";
@@ -797,7 +973,7 @@ internal static class RoleMenu
                 break;
         }
         var sb = new System.Text.StringBuilder();
-        sb.Append($"search='{SettingsMenu.SearchQuery}' team={_team} only={_enabledOnly} rows:");
+        sb.Append($"search='{SettingsMenu.SearchQuery}' team={_team} only={_enabledOnly} undo={_undo?.Count ?? -1} hover={(_hoverRow != null ? _hoverRow.Role.Id + "|" + _hoverZone : "-")} rows:");
         foreach (var g in Groups)
         {
             if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{(g.SearchOnly ? g.Title.En : g.Kind == AddonKind ? "Addon" : ((Team)g.Kind).ToString())}]");
