@@ -83,6 +83,7 @@ public class Ticker : MonoBehaviour
         long t0 = Bridge.Perf.Begin(), t = t0;
         Terrain.GameClock.Tick(); t = Bridge.Perf.Lane(0, t);
         Terrain.TerrainFx.Tick(); t = Bridge.Perf.Lane(1, t);
+        Terrain.TrickWall.Tick();
         Terrain.BreakNoise.Tick(); t = Bridge.Perf.Lane(2, t);
         Terrain.HammerSwing.Tick(); t = Bridge.Perf.Lane(3, t);
         Terrain.BombFuse.Tick(); t = Bridge.Perf.Lane(4, t);

@@ -18,10 +18,11 @@ internal static class TrickWall
     private const float EndOverlap = 0.1f;   // 端が壁に当たった時、その壁へ食い込ませる長さ (隙間を残さない)
     private const float PlayerClear = 0.3f;  // 人の足元からこれより近くには立てない
     private const float CarveMargin = 0.15f; // 壊れた時に歩ける所へ戻す範囲の余白 (地図は壁を太らせて作るため)
-    private const float Ppu = 64f;
+    private const float Ppu = 100f;
     private const float ProbeStep = 0.15f;   // 立てる所を調べる円の間隔 (円の半径 = 厚みの半分より細かく)
     private const float FaceSlope = 0.5f;    // 向きの x がこれ以上 (横から 60° 以内) の壁は手前を向いた面を持つ
-    private const float FrontReach = 30f;    // 手前の側の帯の広さ (視界の届く距離より十分広く)
+    private const float FrontReach = 30f;    // 視点を見分ける帯の広さ (視界の届く距離より十分広く)
+    private const float NearMargin = 0.1f;   // 外周の中に入る手前で足元の線へ切り替える余白
     private const int ShipLayer = 9;
     private const int ShadowLayer = 10;
     private const int FurnitureLayer = 12;
@@ -128,47 +129,427 @@ internal static class TrickWall
         poly.points = Local(body.transform, foot);
         cols.Add(poly);
 
-        // 視界の線。足元の四角は向こう側からの視界を切る。横に近い壁は手前 (画面の下) を向いた面が見えるので、
-        // 手前から見る時は足元の線を無視し (OneWayShadows)、面の上の縁 (足元を面の高さだけ上げた四角) で切る。
-        // マップの壁も、手前の面の上の縁と奥の側の足元に視界の線がある
-        var loop = new Vector2[5];
-        for (int i = 0; i < 4; i++) loop[i] = foot[i];
-        loop[4] = loop[0];
-        var footLine = Shadow(root.transform, name + "-shadow", loop, cols);
-        if (MathF.Abs(t.x) >= FaceSlope)
+        // 視界の線。影は見えている絵の上の縁から出す (マップの壁も、手前の面の上の縁と奥の側に視界の線がある)。
+        // 視点の場所で使う線を替える (OneWayShadows は視点が帯の中の時にその線を無視する)。壁の法線の向きの位置 s で:
+        // 横に近い壁 (手前の面がある):
+        //   手前 (s < 0): 上面の奥の縁の四角 (手前の縁だと上面が影に入って見えない)
+        //   奥の遠く: 箱を立ち上げた形の外周 (上面の角から影が出る)
+        //   奥の近く (外周の中まで近い): 足元の四角 (外周の中に視点が入ると周りが全部影になる)
+        // 縦に近い壁 (上面の細い柱だけが見える): 両側とも外周を向こう側へずらした線 (柱は見えたまま、影は柱の上の角から出る)
+        bool hasFront = MathF.Abs(t.x) >= FaceSlope;
+        Vector2 d = n.y < 0f ? n : -n, back = -d;
+        var hull = Hull(foot);
+        if (hasFront)
         {
-            for (int i = 0; i < 5; i++) loop[i] += new Vector2(0f, Height);
+            float extB = Thickness * 0.5f + Height * FxMath.Max(0f, back.y) + NearMargin;
+            var loop = new Vector2[5];
+            for (int i = 0; i < 4; i++) loop[i] = foot[i];
+            loop[4] = loop[0];
+            var footLine = Shadow(root.transform, name + "-shadow", loop, cols);
+            OneWay(footLine, Band(root.transform, name + "-farzone", c, t, back, len, -FrontReach, 0f, extB, FrontReach));
+            var hullLine = Shadow(root.transform, name + "-shadowhull", hull, cols);
+            OneWay(hullLine, Band(root.transform, name + "-nearzone", c, t, back, len, -FrontReach, extB));
+            Vector2 lift = new Vector2(0f, Height) + back * Thickness;
+            for (int i = 0; i < 5; i++) loop[i] += lift;
             var topLine = Shadow(root.transform, name + "-shadowtop", loop, cols);
-            // 手前の側 (法線のうち下を向いた側) から見る時は足元の線を、奥の側から見る時は面の上の縁の線を無視する
-            // (上の縁の線は奥の床へ張り出すので、奥に立つ人がその中に入ると周りが全部影になる)
-            Vector2 d = n.y < 0f ? n : -n;
-            OneWay(footLine, Side(root.transform, name + "-front", c, t, d, len));
-            OneWay(topLine, Side(root.transform, name + "-back", c, t, -d, len));
+            OneWay(topLine, Band(root.transform, name + "-backzone", c, t, back, len, 0f, FrontReach));
         }
+        else
+            for (int side = 0; side < 2; side++)
+            {
+                // 視点の側 v から見る線: 外周を v と逆へ「厚み + 外周が v の側へ張り出す分」ずらす (視点が線の中に入らない)
+                Vector2 v = side == 0 ? back : d;
+                Vector2 away = v * -(Thickness + Height * FxMath.Max(0f, v.y));
+                var moved = new Vector2[hull.Length];
+                for (int i = 0; i < hull.Length; i++) moved[i] = hull[i] + away;
+                var line = Shadow(root.transform, name + "-shadow" + side, moved, cols);
+                OneWay(line, Band(root.transform, name + "-zone" + side, c, t, v, len, -FrontReach, 0f));
+            }
 
-        var sr = Art(root.transform, name, foot, c, out var tex, out var sprite);
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        var art = Art(root.transform, name, foot, c, t, len);
+        long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
         float bx0 = Math.Min(Math.Min(foot[0].x, foot[1].x), Math.Min(foot[2].x, foot[3].x));
         float by0 = Math.Min(Math.Min(foot[0].y, foot[1].y), Math.Min(foot[2].y, foot[3].y));
         float bx1 = Math.Max(Math.Max(foot[0].x, foot[1].x), Math.Max(foot[2].x, foot[3].x));
         float by1 = Math.Max(Math.Max(foot[0].y, foot[1].y), Math.Max(foot[2].y, foot[3].y));
 
         int filled = SolidMap.Fill(new RectShape(c, t, len, Thickness));
-        BreakableProps.AddWall(name, sr, new List<SpriteRenderer> { sr }, cols, bx0, by0, bx1, by1,
-            new RectShape(c, t, len + CarveMargin * 2f, Thickness + CarveMargin * 2f), tex, sprite);
-        return $"wall placed {name} at=({c.x:0.00},{c.y:0.00}) dir=({t.x:0.00},{t.y:0.00}) len={len:0.00} cells={filled}";
+        BreakableProps.AddWall(name, art.Master, art.Slices, cols, bx0, by0, bx1, by1,
+            new RectShape(c, t, len + CarveMargin * 2f, Thickness + CarveMargin * 2f), art.Owned, art.Seeds);
+        _riseGen = GameClock.ShipGen;
+        Rising.Add(new Rise { Root = art.Root, ScaleX = art.ScaleX, ScaleY = art.ScaleY, Start = Environment.TickCount64, X = c.x, Y = c.y, Slices = art.Slices });
+        BreakNoise.PlayAt("noise_rubble_metal", c.x, c.y, SoundRange, SoundMuffle, 0.55f, 0.75f);
+        DustCloud.Kick(c + n * (Thickness * 0.5f + 0.3f), DustRadius, r.Seed);
+        DustCloud.Kick(c - n * (Thickness * 0.5f + 0.3f), DustRadius, (ushort)(r.Seed + 1));
+        string pushed = PushOut(c, t, n, len);
+        double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        return $"wall placed {name} at=({c.x:0.00},{c.y:0.00}) dir=({t.x:0.00},{t.y:0.00}) len={len:0.00} cells={filled} slices={art.Slices.Count}{pushed} art={(t1 - t0) * k:0.0}ms {ArtMs} rest={(System.Diagnostics.Stopwatch.GetTimestamp() - t1) * k:0.0}ms";
     }
 
-    // 壁の片側の広い帯 (視点がこの中かを OneWayShadows が見る)
-    private static PolygonCollider2D Side(Transform root, string name, Vector2 c, Vector2 t, Vector2 d, float len)
+    // 立った所に自分が掛かっていたら (届くまでの間に歩いて入った)、近い側の床へ出す。動かすのは自分の体だけ
+    private static string PushOut(Vector2 c, Vector2 t, Vector2 n, float len)
     {
-        Vector2 far = t * (len * 0.5f + FrontReach), near = c + d * (Thickness * 0.5f);
+        var lp = PlayerControl.LocalPlayer;
+        // はしご・昇降機・ジップラインの途中と会議中は本編が体を動かしているので触らない
+        if (!lp || lp.Data == null || lp.Data.IsDead || lp.inVent || lp.inMovingPlat || lp.onLadder || MeetingHud.Instance) return "";
+        Vector2 me = lp.GetTruePosition();
+        float dx = me.x - c.x, dy = me.y - c.y;
+        float along = dx * t.x + dy * t.y, across = dx * n.x + dy * n.y;
+        if (MathF.Abs(along) > len * 0.5f + PushClear || MathF.Abs(across) > Thickness * 0.5f + PushClear) return "";
+        float side = across >= 0f ? 1f : -1f;
+        float want = side * (Thickness * 0.5f + PushClear + 0.05f) - across;
+        float tx = me.x + n.x * want, ty = me.y + n.y * want;
+        if (SolidMap.Solid(tx, ty))
+        {
+            if (!SolidMap.NearestFloor(tx, ty, 1.5f, 0.2f, out var floor)) return " push=none";
+            tx = floor.x; ty = floor.y;
+        }
+        var rootPos = lp.transform.position;
+        var to = FxMath.V2(tx - (me.x - rootPos.x), ty - (me.y - rootPos.y));
+        var nt = lp.NetTransform;
+        if (AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay)
+            nt.SnapTo(to, (ushort)(nt.lastSequenceId + 328)); // 同じ sequence id だと古い位置として捨てられる
+        else
+            nt.RpcSnapTo(to);
+        return $" push=({tx:0.00},{ty:0.00})";
+    }
+
+    // 床からせり上がる: 絵の根を下の縁を支点に縦へ伸ばし、少し行き過ぎて戻る。当たり判定は最初から全部ある
+    private sealed class Rise
+    {
+        public Transform Root;
+        public float ScaleX, ScaleY, X, Y;
+        public long Start;
+        public List<SpriteRenderer> Slices;
+    }
+
+    private static readonly List<Rise> Rising = new();
+    private static int _riseGen = -1;
+
+    public static void Tick()
+    {
+        if (Rising.Count == 0) return;
+        if (_riseGen != GameClock.ShipGen) { Rising.Clear(); return; }
+        long now = Environment.TickCount64;
+        for (int i = Rising.Count - 1; i >= 0; i--)
+        {
+            var w = Rising[i];
+            try { Step(w, now); }
+            catch (Exception e)
+            {
+                // 失敗した壁は伸ばすのをやめる (毎フレーム同じ所で落ちて後ろの処理を止めない)
+                Plugin.Logger.LogError($"[TrickWall] rise: {e}");
+                Rising.Remove(w);
+            }
+        }
+    }
+
+    private static void Step(Rise w, long now)
+    {
+        if (!w.Root) { Rising.Remove(w); return; }
+        float p = (now - w.Start) / RiseMs;
+        if (p >= 1f)
+        {
+            w.Root.localScale = FxMath.V3(w.ScaleX, w.ScaleY, 1f);
+            BreakNoise.PlayAt("noise_hit_metal", w.X, w.Y, SoundRange, SoundMuffle, 0.8f, 0.6f);
+            Rising.Remove(w);
+            foreach (var sr in w.Slices) PropSim.AddFront(sr); // 水面の板は伸び切った形で測る
+            return;
+        }
+        // 後ろへ戻る曲線 (行き過ぎの山 ≈ 6%)
+        float u = p - 1f, s = 1f + (RiseBack + 1f) * u * u * u + RiseBack * u * u;
+        w.Root.localScale = FxMath.V3(w.ScaleX, w.ScaleY * FxMath.Max(s, 0.02f), 1f);
+    }
+
+    private const float RiseMs = 450f;
+    private const float RiseBack = 1.3f;
+    private const float SoundRange = 14f, SoundMuffle = 6f;
+    private const float DustRadius = 0.9f;
+    private const float PushClear = 0.25f; // 人の足元の半径ほど
+
+    // ---- 見た目: 金属のパネルの仕切り ----
+    // 足元の四角を面の高さだけ立ち上げた箱。太い輪郭・ベタ塗り・一段の影 (本編の壁の描き方)。
+    // 手前の面は 0.6 ごとのパネル (継ぎ目の暗い線 + 明るい線・継ぎ目の両脇の上下にボルト)、上の縁の下に一段暗い帯、足元に暗い帯
+    private static readonly byte[] LineColor = { 30, 32, 41 };
+    private static readonly byte[] TopColor = { 169, 180, 198 };
+    private static readonly byte[] TopSeam = { 128, 138, 156 };
+    private static readonly byte[] FaceColor = { 110, 122, 144 };
+    private static readonly byte[] FaceLip = { 140, 152, 172 };
+    private static readonly byte[] FaceBand = { 96, 107, 128 };
+    private static readonly byte[] FaceFoot = { 74, 82, 100 };
+    private static readonly byte[] SeamDark = { 46, 52, 66 };
+    private static readonly byte[] SeamLight = { 150, 160, 180 };
+    private static readonly byte[] BoltColor = { 176, 186, 202 };
+    private static readonly byte[] CapColor = { 84, 94, 112 };
+    private const float PanelWidth = 0.6f;
+    private const float LipH = 0.05f, BandH = 0.12f, FootH = 0.08f;
+    private const float SeamW = 0.012f, SeamLightW = 0.01f;
+    private const float BoltInset = 0.07f, BoltLow = 0.2f, BoltHigh = 0.28f, BoltR = 0.018f, BoltRim = 0.027f;
+    private const int Outline = 3;          // 輪郭の太さ (画素)
+    private const float SliceH = 0.25f;
+    private const float SideMin = 0.01f;    // 面が見えるとみなす辺の横幅     // 縦・斜めの壁を人と前後させる帯の高さ
+
+    private static string ArtMs = ""; // 確認用 (bridge `wall` の返事): 絵を作る内訳
+
+    private sealed class WallArt
+    {
+        public Transform Root;
+        public float ScaleX, ScaleY;
+        public SpriteRenderer Master;       // 欠片を切り出す元 (描かない)
+        public readonly List<SpriteRenderer> Slices = new();
+        public readonly List<UnityEngine.Object> Owned = new();
+        public readonly List<Vector2> Seeds = new(); // 欠片の細胞の種 (絵の画素)
+    }
+
+    private static unsafe WallArt Art(Transform root, string name, Vector2[] foot, Vector2 c, Vector2 t, float len)
+    {
+        long tp0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
+        foreach (var p in foot) { x0 = Math.Min(x0, p.x); y0 = Math.Min(y0, p.y); x1 = Math.Max(x1, p.x); y1 = Math.Max(y1, p.y); }
+        float footLo = y0, footHi = y1;
+        y1 += Height;
+        float pad = (Outline + 1f) / Ppu;
+        x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+        int w = (int)MathF.Ceiling((x1 - x0) * Ppu), h = (int)MathF.Ceiling((y1 - y0) * Ppu);
+
+        // 画素の回りは Unity の算術を通さず float だけで回す (Vector2 の生成・演算子は 1 回ごとに interop)
+        float tx = t.x, ty = t.y, nx = -t.y, ny = t.x;
+        float sx0 = c.x - tx * len * 0.5f, sy0 = c.y - ty * len * 0.5f; // 長さの始まり (u = 0)
+        var fx = new float[4];
+        var fy = new float[4];
+        for (int i = 0; i < 4; i++) { fx[i] = foot[i].x; fy[i] = foot[i].y; }
+        // 側面: 外向きの法線が下 (手前) を向いた辺 (x が増える向きの辺) だけが見える。辺 → 立ち上げた四角。辺 1・3 は厚みの辺 (端の面)
+        var qx4 = new float[16];
+        var qy4 = new float[16];
+        var sideOn = new bool[4];
+        for (int e = 0; e < 4; e++)
+        {
+            int j = (e + 1) & 3;
+            sideOn[e] = fx[j] - fx[e] > SideMin; // ほぼ縦の辺は見えない扱い (端末ごとの丸めで符号が割れない)
+            qx4[e * 4] = fx[e]; qy4[e * 4] = fy[e];
+            qx4[e * 4 + 1] = fx[j]; qy4[e * 4 + 1] = fy[j];
+            qx4[e * 4 + 2] = fx[j]; qy4[e * 4 + 2] = fy[j] + Height;
+            qx4[e * 4 + 3] = fx[e]; qy4[e * 4 + 3] = fy[e] + Height;
+        }
+        int panels = Math.Max(1, (int)MathF.Round(len / PanelWidth));
+        float panel = len / panels;
+
+        // 画素ごとの面: 0 = 無し / 1 = 上面 / 2.. = 手前を向いた側面 (足元の辺の番号 + 2)。行ごとに四角の区間を出して塗る
+        // (側面を先に塗り、上面で上書きする)。色は面の中の位置 (u = 長さの向き・v = 床からの高さ) から
+        var face = new byte[w * h];
+        var px = new byte[w * h * 4];
+        for (int y = 0; y < h; y++)
+        {
+            float qy = y0 + (y + 0.5f) / Ppu;
+            int row = y * w;
+            for (int e = 0; e < 4; e++)
+                if (sideOn[e]) FillSpan(face, row, w, x0, qy, qx4, qy4, e * 4, (byte)(e + 2));
+            FillSpan(face, row, w, x0, qy - Height, fx, fy, 0, 1);
+            for (int x = 0; x < w; x++)
+            {
+                byte f = face[row + x];
+                if (f == 0) continue;
+                float qx = x0 + (x + 0.5f) / Ppu;
+                byte[] col;
+                if (f == 1)
+                {
+                    float u = (qx - sx0) * tx + (qy - Height - sy0) * ty;
+                    col = NearSeam(u, panel, panels, SeamW * 0.7f) ? TopSeam : TopColor;
+                }
+                else
+                {
+                    int e = f - 2, j = (e + 1) & 3;
+                    float k = (qx - fx[e]) / (fx[j] - fx[e]);
+                    float ey = fy[e] + (fy[j] - fy[e]) * k, v = qy - ey;
+                    if ((e & 1) == 1) col = v < FootH ? FaceFoot : CapColor;
+                    else col = FacePixel((fx[e] + (fx[j] - fx[e]) * k - sx0) * tx + (ey - sy0) * ty, v, panel, panels);
+                }
+                int i4 = (row + x) * 4;
+                px[i4] = col[0]; px[i4 + 1] = col[1]; px[i4 + 2] = col[2]; px[i4 + 3] = 255;
+            }
+        }
+        // 輪郭 (形の外まで Outline 画素以内) と面の境 (隣の画素が別の面)。横の向きの「形の外までの距離」を先に出し、縦は ±Outline 行だけ見る
+        const int far = Outline + 1;
+        var hd = new byte[w * h];
+        for (int y = 0; y < h; y++)
+        {
+            int row = y * w, d = far;
+            for (int x = 0; x < w; x++) { d = face[row + x] == 0 ? 0 : Math.Min(d + 1, far); hd[row + x] = (byte)d; }
+            d = far;
+            for (int x = w - 1; x >= 0; x--) { d = face[row + x] == 0 ? 0 : Math.Min(d + 1, far); if (d < hd[row + x]) hd[row + x] = (byte)d; }
+        }
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            int k = y * w + x;
+            byte f = face[k];
+            if (f == 0) continue;
+            bool line = false;
+            for (int dy = -Outline; dy <= Outline && !line; dy++)
+            {
+                int yy = y + dy;
+                // 絵の端の外は形の外 (縦の向き)
+                int dx = yy < 0 || yy >= h ? 0 : hd[yy * w + x];
+                if (dx * dx + dy * dy <= Outline * Outline + 1) line = true;
+            }
+            for (int dy = -1; dy <= 1 && !line; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int xx = x + dx, yy = y + dy;
+                if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+                byte g = face[yy * w + xx];
+                if (g != 0 && g != f) { line = true; break; }
+            }
+            if (!line) continue;
+            int i4 = k * 4;
+            px[i4] = LineColor[0]; px[i4 + 1] = LineColor[1]; px[i4 + 2] = LineColor[2];
+        }
+
+        long ta = System.Diagnostics.Stopwatch.GetTimestamp();
+        var art = new WallArt();
+        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { name = name };
+        tex.filterMode = FilterMode.Bilinear;
+        tex.wrapMode = TextureWrapMode.Clamp;
+        fixed (byte* p = px) tex.LoadRawTextureData((IntPtr)p, px.Length);
+        tex.Apply(false, false); // 壊れた時に欠片を切り出すので読めるまま
+        art.Owned.Add(tex);
+        var full = Sprite.Create(tex, new Rect(0f, 0f, w, h), Vector2.zero, Ppu, 0, SpriteMeshType.FullRect);
+        full.name = name;
+        art.Owned.Add(full);
+
+        // 船が反転していても絵は反転させない (根の倍率を打ち消す)
+        Vector3 ls = root.lossyScale;
+        float scx = 1f / ls.x, scy = 1f / ls.y;
+
+        // 欠片を切り出す元: 絵の左下に置いて描かない (伸びる途中で壊れても欠片は伸び切った形から)
+        var master = new GameObject(name + "-whole");
+        master.transform.SetParent(root, false);
+        master.transform.position = FxMath.V3(x0, y0, footLo / 1000f);
+        master.transform.localScale = FxMath.V3(scx, scy, 1f);
+        art.Master = master.AddComponent<SpriteRenderer>();
+        art.Master.sprite = full;
+        art.Master.enabled = false;
+
+        // 描く絵: 伸びる支点 (絵の下の縁) に根を置き、横に近い壁は 1 枚・縦や斜めの壁は横の帯に切って帯ごとに人と前後させる
+        // (奥行きは人と同じ決め方 = 足元の y。帯の中の上面の画素は、足元が帯の下の縁から面の高さだけ下にある)
+        var rise = new GameObject(name + "-art"); // 絵は層 0 (影のカメラは層 9 の物を自前の描き方で描き直す)
+        rise.transform.SetParent(root, false);
+        rise.transform.position = FxMath.V3(x0, y0, 0f);
+        rise.transform.localScale = FxMath.V3(scx, scy * 0.02f, 1f);
+        art.Root = rise.transform;
+        art.ScaleX = scx;
+        art.ScaleY = scy;
+        int rows = MathF.Abs(ty) < 0.05f ? h : Math.Max(1, (int)(SliceH * Ppu));
+        for (int r0 = 0; r0 < h; r0 += rows)
+        {
+            int rh = Math.Min(rows, h - r0);
+            bool any = false;
+            for (int k = r0 * w, end = (r0 + rh) * w; k < end && !any; k++) any = face[k] != 0;
+            if (!any) continue;
+            var sp = Sprite.Create(tex, new Rect(0f, r0, w, rh), Vector2.zero, Ppu, 0, SpriteMeshType.Tight);
+            sp.name = name + "-" + r0;
+            art.Owned.Add(sp);
+            var go = new GameObject(sp.name);
+            go.transform.SetParent(rise.transform, false);
+            float footY = Math.Clamp(y0 + (float)r0 / Ppu - Height, footLo, footHi);
+            go.transform.localPosition = FxMath.V3(0f, r0 / Ppu, footY / 1000f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sp;
+            art.Slices.Add(sr);
+        }
+
+        double kk = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        ArtMs = $"(px={(ta - tp0) * kk:0.0} sprites={(System.Diagnostics.Stopwatch.GetTimestamp() - ta) * kk:0.0} {w}x{h})";
+        // 欠片の種: 見えている面の上に並べる (絵の四角の透明な所を割らない)。手前の面が無い縦の壁は上面に
+        int pieces = Math.Max(4, panels * 2 + 2);
+        bool front = sideOn[0] || sideOn[2];
+        float half = Thickness * 0.5f, fs = sideOn[0] ? -1f : 1f;
+        for (int i = 0; i < pieces; i++)
+        {
+            float u = (i + 0.5f) / pieces * len, hi = (i & 1) == 0 ? 0.3f : 0.7f;
+            float wx = sx0 + tx * u, wy = sy0 + ty * u;
+            if (front) { wx += nx * half * fs; wy += ny * half * fs + Height * hi; }
+            else { wx += nx * half * (hi - 0.5f); wy += ny * half * (hi - 0.5f) + Height; }
+            art.Seeds.Add(new Vector2((wx - x0) * Ppu, (wy - y0) * Ppu));
+        }
+        return art;
+    }
+
+    // 手前の面の 1 画素の色 (u = 長さの向きの位置・v = 床からの高さ)
+    private static byte[] FacePixel(float u, float v, float panel, int panels)
+    {
+        if (v < FootH) return FaceFoot;
+        if (v > Height - LipH) return FaceLip;
+        // ボルト: 各パネルの両端の内側の上下
+        int pi = Math.Clamp((int)(u / panel), 0, panels - 1);
+        float pa = pi * panel, pb = pa + panel;
+        float du = u - (u - pa < pb - u ? pa + BoltInset : pb - BoltInset);
+        for (int b = 0; b < 2; b++)
+        {
+            float dv = v - (b == 0 ? BoltLow : Height - BoltHigh), d2 = du * du + dv * dv;
+            if (d2 < BoltR * BoltR) return BoltColor;
+            if (d2 < BoltRim * BoltRim) return SeamDark;
+        }
+        // 継ぎ目 (暗い線と、その右の明るい線)
+        for (int k = 1; k < panels; k++)
+        {
+            float d = u - k * panel;
+            if (MathF.Abs(d) < SeamW) return SeamDark;
+            if (d >= SeamW && d < SeamW + SeamLightW) return SeamLight;
+        }
+        return v > Height - LipH - BandH ? FaceBand : FaceColor;
+    }
+
+    private static bool NearSeam(float u, float panel, int panels, float half)
+    {
+        for (int k = 1; k < panels; k++) if (MathF.Abs(u - k * panel) < half) return true;
+        return false;
+    }
+
+    // 壁に沿った広い帯 (視点がこの中かを OneWayShadows が見る)。法線 back の向きの位置 s0〜s1 (と s2〜s3) の範囲
+    private static PolygonCollider2D Band(Transform root, string name, Vector2 c, Vector2 t, Vector2 back, float len, float s0, float s1, float s2 = 0f, float s3 = 0f)
+    {
         var go = new GameObject(name) { layer = 2 };
         go.transform.SetParent(root, false);
         var area = go.AddComponent<PolygonCollider2D>();
         area.isTrigger = true;
-        area.points = Local(go.transform, new[] { near - far, near + far, near + far + d * FrontReach, near - far + d * FrontReach });
+        bool two = s3 > s2;
+        area.pathCount = two ? 2 : 1;
+        area.SetPath(0, Local(go.transform, Quad(c, t, back, len, s0, s1)));
+        if (two) area.SetPath(1, Local(go.transform, Quad(c, t, back, len, s2, s3)));
         return area;
     }
+
+    private static Vector2[] Quad(Vector2 c, Vector2 t, Vector2 back, float len, float s0, float s1)
+    {
+        Vector2 side = t * (len * 0.5f + FrontReach), a = c + back * s0, b = c + back * s1;
+        return new[] { a - side, a + side, b + side, b - side };
+    }
+
+    // 足元の四角と、それを面の高さだけ上げた四角を合わせた凸包 (閉じた輪)
+    private static Vector2[] Hull(Vector2[] foot)
+    {
+        var pts = new List<Vector2>(8);
+        foreach (var f in foot) { pts.Add(f); pts.Add(new Vector2(f.x, f.y + Height)); }
+        pts.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+        var h = new List<Vector2>(16);
+        for (int pass = 0; pass < 2; pass++)
+        {
+            int start = h.Count;
+            for (int k = 0; k < pts.Count; k++)
+            {
+                var p = pts[pass == 0 ? k : pts.Count - 1 - k];
+                while (h.Count >= start + 2 && Cross(h[h.Count - 2], h[h.Count - 1], p) <= 0f) h.RemoveAt(h.Count - 1);
+                h.Add(p);
+            }
+            h.RemoveAt(h.Count - 1);
+        }
+        h.Add(h[0]);
+        return h.ToArray();
+    }
+
+    private static float Cross(Vector2 o, Vector2 a, Vector2 b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 
     private static void OneWay(EdgeCollider2D line, Collider2D viewerSide) =>
         line.gameObject.AddComponent<OneWayShadows>().RoomCollider = viewerSide;
@@ -191,111 +572,36 @@ internal static class TrickWall
         return o;
     }
 
-    // 見た目: 足元の四角を面の高さだけ立ち上げた箱。上面は明るく、手前を向いた面は暗く、輪郭は太く濃く (本編の壁の描き方)
-    private static readonly byte[] TopColor = { 150, 160, 176 };
-    private static readonly byte[] SideColor = { 98, 106, 124 };
-    private static readonly byte[] SideDark = { 74, 80, 96 };
-    private static readonly byte[] LineColor = { 30, 32, 42 };
-
-    private static unsafe SpriteRenderer Art(Transform root, string name, Vector2[] foot, Vector2 c, out Texture2D tex, out Sprite sprite)
+    // 凸の四角 (xs/ys の o から 4 点) と高さ qy の横線が重なる区間の画素を v で塗る (画素の真ん中が区間に入る物)
+    private static void FillSpan(byte[] face, int row, int w, float x0, float qy, float[] xs, float[] ys, int o, byte v)
     {
-        float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
-        foreach (var p in foot) { x0 = Math.Min(x0, p.x); y0 = Math.Min(y0, p.y); x1 = Math.Max(x1, p.x); y1 = Math.Max(y1, p.y); }
-        y1 += Height;
-        const float pad = 2f / Ppu;
-        x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
-        int w = (int)MathF.Ceiling((x1 - x0) * Ppu), h = (int)MathF.Ceiling((y1 - y0) * Ppu);
-
-        // 画素ごとの面: 0 = 無し / 1 = 上面 / 2.. = 手前を向いた側面 (足元の辺の番号 + 2)
-        // 画素の回りは Unity の算術を通さず float だけで回す (Vector2 の生成・演算子は 1 回ごとに interop)
-        var face = new byte[w * h];
-        var fx = new float[4];
-        var fy = new float[4];
-        for (int i = 0; i < 4; i++) { fx[i] = foot[i].x; fy[i] = foot[i].y; }
-        // 側面: 外向きの法線が下 (手前) を向いた辺 (x が増える向きの辺) だけが見える。辺 → 立ち上げた四角
-        var sx = new float[16];
-        var sy = new float[16];
-        var sideOn = new bool[4];
-        for (int e = 0; e < 4; e++)
-        {
-            int j = (e + 1) & 3;
-            sideOn[e] = fx[j] - fx[e] > 0f;
-            sx[e * 4] = fx[e]; sy[e * 4] = fy[e];
-            sx[e * 4 + 1] = fx[j]; sy[e * 4 + 1] = fy[j];
-            sx[e * 4 + 2] = fx[j]; sy[e * 4 + 2] = fy[j] + Height;
-            sx[e * 4 + 3] = fx[e]; sy[e * 4 + 3] = fy[e] + Height;
-        }
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-        {
-            float qx = x0 + (x + 0.5f) / Ppu, qy = y0 + (y + 0.5f) / Ppu;
-            byte f = 0;
-            if (InQuad(qx, qy - Height, fx, fy, 0)) f = 1;
-            else
-                for (int e = 0; e < 4 && f == 0; e++)
-                    if (sideOn[e] && InQuad(qx, qy, sx, sy, e * 4)) f = (byte)(e + 2);
-            face[y * w + x] = f;
-        }
-
-        var px = new byte[w * h * 4];
-        const int line = 2; // 輪郭の太さ (画素)
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-        {
-            int k = y * w + x;
-            byte f = face[k];
-            if (f == 0) continue;
-            bool outline = false, seam = false;
-            for (int dy = -line; dy <= line && !outline; dy++)
-            for (int dx = -line; dx <= line; dx++)
-            {
-                int xx = x + dx, yy = y + dy;
-                byte g = xx < 0 || yy < 0 || xx >= w || yy >= h ? (byte)0 : face[yy * w + xx];
-                if (g == 0) { outline = true; break; }
-                if (g != f && Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1) seam = true;
-            }
-            byte[] col = outline || seam ? LineColor : f == 1 ? TopColor : (f & 1) == 0 ? SideColor : SideDark;
-            int i = k * 4;
-            px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255;
-        }
-
-        tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { name = name };
-        tex.filterMode = FilterMode.Bilinear;
-        tex.wrapMode = TextureWrapMode.Clamp;
-        fixed (byte* p = px) tex.LoadRawTextureData((IntPtr)p, px.Length);
-        tex.Apply(false, false); // 壊れた時に欠片を切り出すので読めるまま
-        sprite = Sprite.Create(tex, new Rect(0f, 0f, w, h), Vector2.zero, Ppu, 0, SpriteMeshType.FullRect);
-        sprite.name = name;
-
-        var go = new GameObject(name + "-art"); // 絵は層 0 (影のカメラは層 9 の物を自前の描き方で描き直す)
-        go.transform.SetParent(root, false);
-        // 人と同じ奥行きの決め方 (足元の y)。船が反転していても絵は反転させない
-        go.transform.position = FxMath.V3(x0, y0, c.y / 1000f);
-        Vector3 ls = root.lossyScale;
-        go.transform.localScale = FxMath.V3(1f / ls.x, 1f / ls.y, 1f);
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = sprite;
-        return sr;
-    }
-
-    // 点が四角 (xs/ys の o から 4 点) の中か
-    private static bool InQuad(float px, float py, float[] xs, float[] ys, int o)
-    {
-        bool inside = false;
+        float lo = float.MaxValue, hi = float.MinValue;
         for (int i = 0, j = 3; i < 4; j = i++)
         {
             float ax = xs[o + i], ay = ys[o + i], bx = xs[o + j], by = ys[o + j];
-            if ((ay > py) != (by > py) && px < (bx - ax) * (py - ay) / (by - ay) + ax) inside = !inside;
+            if ((ay > qy) == (by > qy)) continue;
+            float x = ax + (bx - ax) * (qy - ay) / (by - ay);
+            if (x < lo) lo = x;
+            if (x > hi) hi = x;
         }
-        return inside;
+        if (hi < lo) return;
+        int a = Math.Max(0, (int)MathF.Ceiling((lo - x0) * Ppu - 0.5f)), b = Math.Min(w - 1, (int)MathF.Floor((hi - x0) * Ppu - 0.5f));
+        for (int x = a; x <= b; x++) face[row + x] = v;
     }
 
     internal static void Register()
     {
-        TestBridge.Register("wall", "<x> <y> <角度°> [長さ] 仕掛け壁を立てる (ホストか一人の時・0° = 横・90° = 縦)", (args, reply) =>
+        TestBridge.Register("wall", "<x> <y> <角度°> [長さ] | me [角度°]  仕掛け壁を立てる (x y = プレイヤーでない壁・ホストか一人の時 / me = 自分の依頼として向いている方向の先に・客も可。0° = 横・90° = 縦)", (args, reply) =>
         {
             var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (a.Length >= 1 && a[0] == "me")
+            {
+                float? d = a.Length >= 2 && float.TryParse(a[1], System.Globalization.NumberStyles.Float, inv, out float dv) ? dv : null;
+                var mine = SandboxCommands.WallAhead(d);
+                reply($"{(mine.Ok ? "OK" : "ERR")} wall me {mine.Why}");
+                return;
+            }
             if (a.Length < 3 || !float.TryParse(a[0], System.Globalization.NumberStyles.Float, inv, out float x)
                 || !float.TryParse(a[1], System.Globalization.NumberStyles.Float, inv, out float y)
                 || !float.TryParse(a[2], System.Globalization.NumberStyles.Float, inv, out float deg))

@@ -86,7 +86,7 @@ internal static class SandboxCommands
     }
 
     // 向いている方向の先に壁を立てる。deg = 壁の向き (null = 向いている方向と直角)。壁の手前の面が足元から WallGap 先に来る
-    private static TerrainResult WallAhead(float? deg)
+    internal static TerrainResult WallAhead(float? deg)
     {
         var lp = PlayerControl.LocalPlayer;
         if (!lp) return TerrainResult.Fail(new Text("試合の中だけ使えます", "Only during a game"));

@@ -103,6 +103,31 @@ internal static class DustCloud
     internal static int Made;
     internal static string Last = "-";
 
+    // 壊れていない時の小さな土煙 (仕掛け壁が立った足元など)。叩いた時の煙と同じ形で、半径だけ渡す
+    internal static void Kick(Vector2 at, float radius, ushort seed)
+    {
+        try
+        {
+            if (!ShipStatus.Instance || MeetingHud.Instance) return;
+            long now = Environment.TickCount64;
+            while (Recent.Count > 0 && now - Recent.Peek() > BurstWindowMs) Recent.Dequeue();
+            if (Recent.Count >= MaxClouds) { Last = "dropped (burst)"; return; }
+            Recent.Enqueue(now);
+            var c = FloorFlood.Fill<Cloud>(at, radius, ReachCap, SeedSearch, true);
+            if (c == null) { Last = $"kick @{at.x:0.0},{at.y:0.0} no floor"; return; }
+            c.Kind = Kind.Hit;
+            c.Spec = Specs[(int)Kind.Hit];
+            EnsureTint();
+            try { MakePuffs(c, radius, seed); }
+            catch { Destroy(c); throw; }
+            while (Clouds.Count >= MaxClouds) { Destroy(Clouds[0]); Clouds.RemoveAt(0); }
+            Clouds.Add(c);
+            Made++;
+            Last = $"kick @{at.x:0.0},{at.y:0.0} r={radius:0.0} cells={c.Cells} puffs={c.Puffs.Count}";
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"[DustCloud] {e}"); }
+    }
+
     // 破壊を適用した直後に呼ぶ (ホスト・客・一人の全員)
     public static void OnApplied(in ResolvedDamage r)
     {

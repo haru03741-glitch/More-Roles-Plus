@@ -34,6 +34,7 @@ internal static partial class PropSim
         public float VPerUnit;
         public Sunk S;
         public Prop Support;     // 机などの上に載った絵 (端末・ノート PC): 床の線は絵の下の縁・水位は天板から測る
+        public bool Placed;      // 後から床に立てた物 (仕掛け壁): 床マスクに載っていないので床の線は絵の下の縁
         public bool Failed, Off; // Off = 絵が今は描かれていない
         public long Checked;
     }
@@ -205,9 +206,36 @@ internal static partial class PropSim
             }
             FrontArts.Add(a);
         }
+        if (_placedGen != GameClock.ShipGen) Placed.Clear();
+        foreach (var sr in Placed) AddPlaced(sr);
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         Plugin.Logger.LogInfo($"[PropSim] front arts={FrontArts.Count} over={FrontOver.Count} tiled={tiled} turned={turned} ({ms:F1}ms)");
         return true;
+    }
+
+    // 後から床に立てた物の絵 (仕掛け壁)。手前の絵と同じく前面に水が這い上がる。船が替わったら忘れる
+    private static readonly List<SpriteRenderer> Placed = new();
+    private static int _placedGen = -1;
+
+    internal static void AddFront(SpriteRenderer sr)
+    {
+        if (_placedGen != GameClock.ShipGen) { _placedGen = GameClock.ShipGen; Placed.Clear(); }
+        Placed.Add(sr);
+        if (_frontGen == GameClock.ShipGen) AddPlaced(sr); // 集め終えた後に立った物はその場で足す (集める前なら FrontCollect が足す)
+    }
+
+    private static void AddPlaced(SpriteRenderer sr)
+    {
+        if (!sr || !sr.sprite) return;
+        var b = sr.bounds;
+        Vector3 mn = b.min, mx = b.max;
+        var a = new FrontArt { Sr = sr, Box = V4(mn.x, mn.y, mx.x, mx.y), Placed = true };
+        for (int i = 0; i < FrontGatePts; i++)
+        {
+            a.GateX[i] = mn.x + (i + 0.5f) / FrontGatePts * (mx.x - mn.x);
+            a.GateY[i] = mn.y;
+        }
+        FrontArts.Add(a);
     }
 
     // 端末 (型の名前が Console で終わる部品) の持つ絵の Transform
@@ -293,7 +321,7 @@ internal static partial class PropSim
             // 型の uv → 絵の中の位置 → 世界 (回していない絵と少し傾けた絵だけなので軸ごと)
             float wx = m.m03 + fx * ((u - bu) / au);
             float wy = m.m13 + fy * ((v - bv) / av);
-            float fl = a.Support != null ? wy : FloorMask.FloorLine(wx, wy, Math.Max(yTop - wy, 0f), FrontFaceMax);
+            float fl = a.Support != null || a.Placed ? wy : FloorMask.FloorLine(wx, wy, Math.Max(yTop - wy, 0f), FrontFaceMax);
             a.ColX[c] = wx;
             a.ColY[c] = fl;
             vs[c] = float.NaN;
