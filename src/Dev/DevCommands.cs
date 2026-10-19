@@ -105,11 +105,11 @@ internal static class DevCommands
             reply($"OK forcewin {a}");
         });
 
-        TestBridge.Register("dummy", "[人数=1] 自分の所にダミーを出す (フリープレイかローカルの部屋のホストのみ)", (args, reply) =>
+        TestBridge.Register("dummy", "[人数=1] 自分の所にダミーを出す (ホストのみ・公式サーバーでは不可)", (args, reply) =>
         {
             var client = AmongUsClient.Instance;
-            if (client.NetworkMode == NetworkModes.OnlineGame || !client.AmHost || !GameData.Instance || !PlayerControl.LocalPlayer)
-            { reply("ERR dummy needs host of a freeplay/local game"); return; }
+            if (ServerKind.IsOfficial() || !client.AmHost || !GameData.Instance || !PlayerControl.LocalPlayer)
+            { reply("ERR dummy needs host of a non-official game"); return; }
             int n = int.TryParse(args.Trim(), out int c) ? Math.Clamp(c, 1, 14) : 1;
             int made = 0;
             for (int i = 0; i < n; i++)
@@ -135,7 +135,24 @@ internal static class DevCommands
             if (!p) { reply($"ERR pinfo no player {args}"); return; }
             var body = p.cosmetics ? p.cosmetics.currentBodySprite : null;
             var pos = p.transform.position;
-            reply($"OK pinfo {pid} active={p.gameObject.activeInHierarchy} visible={p.Visible} body={(body != null && body.BodySprite ? body.BodySprite.enabled.ToString() : "-")} pos={TestBridge.F(pos.x)},{TestBridge.F(pos.y)},{TestBridge.F(pos.z)} layer={p.gameObject.layer} dummy={p.isDummy} netT={p.NetTransform.enabled} incomplete={(p.Data != null ? p.Data.IsIncomplete.ToString() : "nodata")} client={(p.Data != null ? p.Data.ClientId : -9)}");
+            reply($"OK pinfo {pid} active={p.gameObject.activeInHierarchy} visible={p.Visible} body={(body != null && body.BodySprite ? body.BodySprite.enabled.ToString() : "-")} pos={TestBridge.F(pos.x)},{TestBridge.F(pos.y)},{TestBridge.F(pos.z)} layer={p.gameObject.layer} dummy={p.isDummy} netT={p.NetTransform.enabled} incomplete={(p.Data != null ? p.Data.IsIncomplete.ToString() : "nodata")} client={(p.Data != null ? p.Data.ClientId : -9)} name='{(p.cosmetics ? p.cosmetics.nameText.text : "-")}'");
+        });
+
+        TestBridge.Register("netobjs", "通信で同期している物の一覧 (種類・NetId・持ち主・人の番号)", (args, reply) =>
+        {
+            var sb = new System.Text.StringBuilder();
+            int n = 0;
+            foreach (var o in AmongUsClient.Instance.allObjects.allObjects)
+            {
+                if (!o) continue;
+                n++;
+                var info = o.TryCast<NetworkedPlayerInfo>();
+                var pc = o.TryCast<PlayerControl>();
+                sb.Append($" {o.GetIl2CppType().Name}#{o.NetId}/o{o.OwnerId}");
+                if (info) sb.Append($"/p{info.PlayerId}/c{info.ClientId}");
+                if (pc) sb.Append($"/p{pc.PlayerId}");
+            }
+            reply($"OK netobjs n={n} players={(GameData.Instance ? GameData.Instance.AllPlayers.Count : -1)}{sb}");
         });
 
         TestBridge.Register("poutfit", "<番号> その人の見た目のデータ", (args, reply) =>
