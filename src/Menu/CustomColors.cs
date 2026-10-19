@@ -232,6 +232,7 @@ internal static class CustomColors
 
     // その色番号の色の名前 (作った色でなければ false)
     public static bool SlotName(int id, out string name) => NameBySlot.TryGetValue(id, out name);
+    public static bool AnySlotName => NameBySlot.Count > 0;
 
     // 本編の色 (書き換える前の控え)
     public static Color32 VanillaBody(int id)
@@ -537,6 +538,47 @@ internal static class CustomColorsPatches
         if (!CustomColors.SlotName(color, out var name)) return;
         var t = __instance.colorBlindText;
         if (t) t.text = name;
+    }
+
+    // チャットの吹き出しと会議の名札は人形と別に色の名前の文字を持つ。PC の版によっては本編が
+    // GetColorName を呼び出し元へ埋め込んでいて上の後置が呼ばれないので、ここで直接書き換える。
+    // 吹き出しの文字は吹き出しが画面に出る時 (チャット欄を開いた時・開いている間に足された時) に入るので、
+    // その後で出ている吹き出しを全部見る
+    [HarmonyPatch(typeof(ChatController), nameof(ChatController.AddChat)), HarmonyPostfix]
+    public static void BubbleColorNamesOnAdd(ChatController __instance) => BubbleColorNames(__instance);
+
+    [HarmonyPatch(typeof(ChatController), nameof(ChatController.Toggle)), HarmonyPostfix]
+    public static void BubbleColorNamesOnOpen(ChatController __instance) => BubbleColorNames(__instance);
+
+    private static void BubbleColorNames(ChatController __instance)
+    {
+        if (!CustomColors.AnySlotName) return;
+        try
+        {
+            var pool = __instance.chatBubblePool;
+            if (!pool) return;
+            var active = pool.activeChildren;
+            for (int i = 0; i < active.Count; i++)
+            {
+                var b = active[i] ? active[i].TryCast<ChatBubble>() : null;
+                if (b) SetColorBlindName(b.ColorBlindName, b.playerInfo);
+            }
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"custom colors bubble: {e.Message}"); }
+    }
+
+    [HarmonyPatch(typeof(PlayerVoteArea), nameof(PlayerVoteArea.SetCosmetics)), HarmonyPostfix]
+    public static void VoteAreaColorName(PlayerVoteArea __instance, [HarmonyArgument(0)] NetworkedPlayerInfo playerInfo)
+    {
+        try { SetColorBlindName(__instance.ColorBlindName, playerInfo); }
+        catch (Exception e) { Plugin.Logger.LogError($"custom colors vote area: {e.Message}"); }
+    }
+
+    // 同じ文字を書き直さない (TMP は書くたびに作り直す)
+    private static void SetColorBlindName(TMPro.TextMeshPro t, NetworkedPlayerInfo info)
+    {
+        if (!t || !info || !CustomColors.SlotName(info.DefaultOutfit.ColorId, out var name)) return;
+        if (t.text != name) t.text = name;
     }
 
     // 会議の名札などは色を塗った後で体のマテリアルを枠で切り抜く物に取り替える (本編の UpdateBodyMaterial)
