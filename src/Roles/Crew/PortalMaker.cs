@@ -63,6 +63,7 @@ public sealed class PortalMaker : RoleBase
         Lifespan.OnRelease(() =>
         {
             for (int i = 0; i < 2; i++) { PortalArt.Remove(_art[i]); _art[i] = null; }
+            if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
             _count = 0;
         });
     }
@@ -106,13 +107,18 @@ public sealed class PortalMaker : RoleBase
         _y[_count] = y;
         _art[_count] = PortalArt.Open(x, y);
         _count++;
-        if (_count == 2) PortalArt.Link(_art[0], _art[1]);
+        if (_count == 2)
+        {
+            PortalArt.Link(_art[0], _art[1]);
+            PortalLinks.HostSet(PlayerId, true, _x[0], _y[0], _x[1], _y[1]);
+        }
         return true;
     }
 
     private void ClearMarks()
     {
         for (int i = 0; i < 2; i++) { PortalArt.Close(_art[i]); _art[i] = null; }
+        if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
         _count = 0;
     }
 
@@ -251,6 +257,28 @@ public sealed class PortalMaker : RoleBase
             else lead = false;
         }
         return !lead;
+    }
+
+    // 爆発が装置に掛かると壊れて 2 つとも閉じる (置き直せる)。地形の結果と同じ順に全員の端末へ届くので、全員が同じ所で壊す
+    private void OnTerrainBroken(TerrainBrokenEvent e)
+    {
+        if (_count == 0 || e.Kind != DamageKind.Explosion || e.Radius <= 0f) return;
+        Vector2 c = e.Position;
+        float r = e.Radius + PortalArt.MachineW * 0.5f;
+        for (int i = 0; i < _count; i++)
+        {
+            float dx = _x[i] - c.x, dy = _y[i] - PortalArt.MachineDrop - c.y;
+            if (dx * dx + dy * dy > r * r) continue;
+            Break();
+            return;
+        }
+    }
+
+    private void Break()
+    {
+        for (int i = 0; i < 2; i++) { PortalArt.Break(_art[i]); _art[i] = null; }
+        if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
+        _count = 0;
     }
 
     // 誰かが倒された: 窓に倒れた直後の死体を映さないよう、絵の側で死体を拾い直す

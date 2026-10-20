@@ -26,6 +26,7 @@ internal static class TerrainSync
     private static readonly byte[] BombBuf = new byte[2 + TerrainWire.BombBytes];
     private static readonly byte[] DoorBuf = new byte[TerrainWire.DoorsBytes];
     private static readonly byte[] PlatformBuf = new byte[TerrainWire.PlatformBytes];
+    private static readonly byte[] PortalBuf = new byte[TerrainWire.PortalBytes];
 
     // ホストは次に振る連番、客は次に適用する連番。ホストが替わったら新ホストはここから振り続ける
     private static ushort _nextSeq;
@@ -311,6 +312,18 @@ internal static class TerrainSync
                 WaterSim.OnPlatform(GameClock.Expand(tick), kind, off);
                 break;
             }
+            case TerrainWire.OpPortal:
+            {
+                if (client.AmHost || sender.OwnerId != client.HostId || b.Length < TerrainWire.PortalBytes) return;
+                ushort tick = TerrainWire.ReadU16(b, ref o);
+                var l = new PortalLinks.Link { Owner = b[o++], On = b[o++] != 0 };
+                l.Ax = (int)TerrainWire.ReadU32(b, ref o); l.Ay = (int)TerrainWire.ReadU32(b, ref o);
+                l.Bx = (int)TerrainWire.ReadU32(b, ref o); l.By = (int)TerrainWire.ReadU32(b, ref o);
+                GameClock.Observe(tick);
+                l.Tick = GameClock.Expand(tick);
+                PortalLinks.OnPortal(l);
+                break;
+            }
             case TerrainWire.OpDigest:
             {
                 if (!client.AmHost || b.Length < 7) return;
@@ -410,6 +423,21 @@ internal static class TerrainSync
         o = TerrainWire.WriteU32(DoorBuf, o, (uint)bits);
         o = TerrainWire.WriteU32(DoorBuf, o, (uint)(bits >> 32));
         Wire.Send(new ArraySegment<byte>(DoorBuf, 0, o), -1);
+    }
+
+    // ホスト → 全員: ポータルの組が開いた・閉じた刻み
+    internal static void BroadcastPortal(ushort tick, in PortalLinks.Link l)
+    {
+        if (!Online() || !AmongUsClient.Instance.AmHost) return;
+        PortalBuf[0] = TerrainWire.OpPortal;
+        int o = TerrainWire.WriteU16(PortalBuf, 1, tick);
+        PortalBuf[o++] = l.Owner;
+        PortalBuf[o++] = (byte)(l.On ? 1 : 0);
+        o = TerrainWire.WriteU32(PortalBuf, o, (uint)l.Ax);
+        o = TerrainWire.WriteU32(PortalBuf, o, (uint)l.Ay);
+        o = TerrainWire.WriteU32(PortalBuf, o, (uint)l.Bx);
+        o = TerrainWire.WriteU32(PortalBuf, o, (uint)l.By);
+        Wire.Send(new ArraySegment<byte>(PortalBuf, 0, o), -1);
     }
 
     // ホスト → 全員: 動く床が動き始めた刻み (変わった時だけ)

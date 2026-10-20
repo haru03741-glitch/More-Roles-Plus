@@ -17,8 +17,8 @@ internal static class PortalArt
 {
     private const float W = 0.9f, H = 1.3f;        // 楕円の幅と高さ
     private const float Lift = 0.6f;               // 足元から楕円の中心まで (下の端は装置のレンズの少し上)
-    private const float MachineDrop = 0.3f;        // 足元から装置の真ん中まで (下へ)
-    private const float MachineW = 1.2f;
+    internal const float MachineDrop = 0.3f;       // 足元から装置の真ん中まで (下へ)
+    internal const float MachineW = 1.2f;
     private const float MachineBack = 0.9f;        // 装置は床に置いた物として、足元がこの y より下の人の後ろに描く
     private const float BodyLift = 0.3636f;        // 人の奥行きは体の y/1000 で、体は足元よりこれだけ上
     private const float LayerStep = 0.00001f;      // 重ねる絵どうしの奥行きの差 (人との前後は変えない程度)
@@ -138,6 +138,16 @@ internal static class PortalArt
         h.Closing = Time.time;
         Pulse(h.X, h.Y, 0.6f);
         BreakNoise.PlayAt("noise_portal_close", h.X, h.Y, 9f, 5f, 0.8f, FxMath.Range(0.95f, 1.05f));
+    }
+
+    // 装置が壊れた: 光が弾けて、装置ごと縮んで閉じる
+    public static void Break(Handle h)
+    {
+        if (h == null || h.Closing >= 0f) return;
+        h.Closing = Time.time;
+        Pulse(h.X, h.Y, 1.5f);
+        BreakNoise.PlayAt("noise_hit_metal", h.X, h.Y, 9f, 5f, 1f, FxMath.Range(0.85f, 0.95f));
+        BreakNoise.PlayAt("noise_portal_close", h.X, h.Y, 9f, 5f, 0.9f, FxMath.Range(0.75f, 0.85f));
     }
 
     // 演出なしですぐ消す (役職が外れた時)

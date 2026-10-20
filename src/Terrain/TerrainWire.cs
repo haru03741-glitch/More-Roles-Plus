@@ -23,6 +23,9 @@ internal static class TerrainWire
     // ホスト → 全員: [op][刻み u16][種類 u8 (0 = 左へ動き始めた・1 = 右へ・2 = 位置を移した)][位置 u8 (升の数・255 = 右の端)] 動く床 (昇降機の台)
     public const byte OpPlatform = 10;
     public const int PlatformBytes = 5;
+    // ホスト → 全員: [op][刻み u16][持ち主 u8][開いた 1 / 閉じた 0][足元 A の x, y・B の x, y (i32・1/1024 単位)] ポータルの組 (物を全員同じ刻みで通す)
+    public const byte OpPortal = 11;
+    public const int PortalBytes = 21;
 
     public const int MaxRequestBytes = 11;
     public const int MaxResolvedBytes = 17 + 1 + RubbleBlocks.MaxPerEvent * 6;

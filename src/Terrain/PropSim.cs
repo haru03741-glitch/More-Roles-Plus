@@ -106,13 +106,14 @@ internal static partial class PropSim
         public bool Pulled;         // この刻みで流れに引かれている (摩擦なし)
         public bool Rattle;         // 流れに引かれて動いている (重い物を震わせる・見た目だけで刻みの計算には使わない)
         public bool Gone, Stuck;    // 口から宇宙へ消えた / 口に着いて止まった (大きい物はふさいでいる)
+        public int PortalIn;        // 通ったポータルの出口 (持ち主 × 2 + 側 + 1)。その輪の外へ出るまで次は通らない
         public uint Rng;
 
         public void CopyFrom(St o)
         {
             Px = o.Px; Py = o.Py; Vx = o.Vx; Vy = o.Vy; Spin = o.Spin; Ang = o.Ang; Tip = o.Tip;
             WobStart = o.WobStart; WobAmp = o.WobAmp; Active = o.Active; Moved = o.Moved; Rng = o.Rng;
-            Pulled = o.Pulled; Rattle = o.Rattle; Gone = o.Gone; Stuck = o.Stuck;
+            Pulled = o.Pulled; Rattle = o.Rattle; Gone = o.Gone; Stuck = o.Stuck; PortalIn = o.PortalIn;
         }
     }
 
@@ -799,12 +800,14 @@ internal static partial class PropSim
         }
         if (Decompression.Pulling) Pull(w);
         else if (WaterSim.Running) Sweep(w);
+        int links = PortalLinks.Count == 0 ? 0 : PortalLinks.OpenAt(w.Step, Links);
         for (int i = w.Act.Count - 1; i >= 0; i--)
         {
             var p = w.Act[i];
             var st = w.S(p);
             if (w.Display) { p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; Trace(p, st); }
             Move(p, st, w);
+            if (links > 0) Portal(p, st, w, links);
             if (w.Display) Trace(p, st);
             bool done = st.Vx == 0 && st.Vy == 0 && st.Spin == 0 && st.Ang == st.Tip;
             // 前後の z は部屋の絵を全部見るので 4 刻みに 1 回と止まった時だけ (見た目だけ)
@@ -1178,6 +1181,61 @@ internal static partial class PropSim
         if (b < 0 || (long)p.SizeU * 256 <= (long)w256 * Unit) return false;
         int hx = p.Kind == Kind.Heavy ? p.Hx : p.SizeU / 2, hy = p.Kind == Kind.Heavy ? p.Hy : p.SizeU / 2;
         return !Decompression.Covers(b, _org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit, hx / (float)Unit, hy / (float)Unit);
+    }
+
+    // ── ポータル ──
+    // 足元がポータルの輪に入った物は、相手のポータルの同じ所へ出て同じ速さで進み続ける。楕円の幅に収まる物だけ (家具は通らない)。
+    // 出た輪の外へ出るまでは次を通らない。行き先が埋まっていれば通らない
+    private const int PortalReach = 460;          // 輪の半径 (1/1024 単位 ≈ 0.45)
+    private const int PortalFit = 900;            // これより大きい物は通らない (楕円の幅 0.9)
+    private static readonly PortalLinks.Link[] Links = new PortalLinks.Link[16];
+    private static int _portalFxThrough = int.MinValue;
+    internal static int PortalPasses;
+
+    private static void Portal(Prop p, St st, World w, int links)
+    {
+        if (p.Kind == Kind.Heavy || p.Solid || p.SizeU > PortalFit || st.Gone || st.Stuck) return;
+        int ox = PortalLinks.Q(_org.x), oy = PortalLinks.Q(_org.y);
+        long wx = (long)st.Px + ox, wy = (long)st.Py + oy;
+        int inside = 0, fromX = 0, fromY = 0, toX = 0, toY = 0, toId = 0;
+        for (int i = 0; i < links && inside == 0; i++)
+        {
+            var l = Links[i];
+            if (In(wx, wy, l.Ax, l.Ay)) { inside = l.Owner * 2 + 1; fromX = l.Ax; fromY = l.Ay; toX = l.Bx; toY = l.By; toId = l.Owner * 2 + 2; }
+            else if (In(wx, wy, l.Bx, l.By)) { inside = l.Owner * 2 + 2; fromX = l.Bx; fromY = l.By; toX = l.Ax; toY = l.Ay; toId = l.Owner * 2 + 1; }
+        }
+        if (st.PortalIn != 0)
+        {
+            if (inside != st.PortalIn) st.PortalIn = 0;
+            return;
+        }
+        if (inside == 0) return;
+        int nx = (int)(st.Px + (toX - fromX)), ny = (int)(st.Py + (toY - fromY));
+        if (Blocked(p, st, w, nx, ny)) return;
+        if (w.Display)
+        {
+            Rebake(p); // ここまでの道の焼いた絵を作り直す (地図をまたぐ大きな四角にしない)
+            if (w.Step > _portalFxThrough)
+            {
+                _portalFxThrough = w.Step;
+                Roles.PortalArt.Pass(fromX / (float)PortalLinks.Unit, fromY / (float)PortalLinks.Unit);
+                Roles.PortalArt.Pass(toX / (float)PortalLinks.Unit, toY / (float)PortalLinks.Unit);
+            }
+        }
+        else PortalPasses++;
+        st.Px = nx; st.Py = ny;
+        st.PortalIn = toId;
+        if (w.Display)
+        {
+            p.Ox = nx; p.Oy = ny; // 補間で画面を横切らない
+            p.Z = SortZ(_org.x + nx / (float)Unit, _org.y + ny / (float)Unit);
+        }
+
+        static bool In(long x, long y, int cx, int cy)
+        {
+            long dx = x - cx, dy = y - cy;
+            return dx * dx + dy * dy <= (long)PortalReach * PortalReach;
+        }
     }
 
     // 口に着いた物: 口より小さい物は宇宙へ消え、大きい物は止まって口をふさぐ (重い物で口より小さい物は止まるだけ)
