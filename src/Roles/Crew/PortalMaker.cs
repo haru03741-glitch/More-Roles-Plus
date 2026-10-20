@@ -98,6 +98,7 @@ public sealed class PortalMaker : RoleBase
         _y[_count] = y;
         _art[_count] = PortalArt.Open(x, y);
         _count++;
+        if (_count == 2) PortalArt.Link(_art[0], _art[1]);
         return true;
     }
 
