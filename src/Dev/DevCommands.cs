@@ -20,6 +20,15 @@ internal static class DevCommands
 
     public static void Register()
     {
+        RegisterPlayerOps();
+        RegisterDummy();
+        RegisterInspect();
+        RegisterChatAndUi();
+    }
+
+    // 人の操作 (移動・役職・生死・勝ち)
+    private static void RegisterPlayerOps()
+    {
         TestBridge.Register("tp", "<x> <y> | <番号> 自分を座標かその人の所へ移動 (オンラインでは全員に届く)", (args, reply) =>
         {
             var lp = PlayerControl.LocalPlayer;
@@ -104,7 +113,11 @@ internal static class DevCommands
             }
             reply($"OK forcewin {a}");
         });
+    }
 
+    // ダミー (出す・歩かせる・自動行動・乗り移り・行動)
+    private static void RegisterDummy()
+    {
         TestBridge.Register("dummy", "[人数=1] 自分の所にダミーを出す (ホストのみ・公式サーバーでは不可)", (args, reply) =>
         {
             var client = AmongUsClient.Instance;
@@ -188,7 +201,11 @@ internal static class DevCommands
             }
             reply("ERR dact unknown action");
         });
+    }
 
+    // 人と同期物の中身を見る
+    private static void RegisterInspect()
+    {
         TestBridge.Register("god", "[0|1] 全員の役職を名前の上と会議で見る (自分の画面だけ)", (args, reply) =>
         {
             string a = args.Trim();
@@ -252,7 +269,11 @@ internal static class DevCommands
             reply($"DATA{sd}");
             reply($"OK poutfit {pid} incomplete={d.IsIncomplete}");
         });
+    }
 
+    // チャット・画面・機能の状態
+    private static void RegisterChatAndUi()
+    {
         TestBridge.Register("console", "<0|1|行> 開発者コンソールを開け閉めする / 行を打ち込む (画面の確認用)", (args, reply) =>
         {
             string a = args.Trim();
@@ -296,12 +317,30 @@ internal static class DevCommands
                 if (src && src.isPlaying && src.clip) sb.Append(' ').Append(src.clip.name).Append('@').Append(src.volume.ToString("0.00"));
             reply($"OK endsound playing:{sb}");
         });
-        TestBridge.Register("spectate", "[self] 観戦の状態 (自分の選択・ホストが受けた人・この試合の観戦の人) / self = 試合中の自分を観戦の人にする", (args, reply) => { if (args.Trim() == "self") Roles.Spectate.WatchSelfForTest(); reply(Roles.Spectate.Describe()); });
-        TestBridge.Register("whisper", "[<番号> | list] 耳打ちの相手を選ぶ (名札・一覧のボタンと同じ) / ロビーの一覧を開く / 状態", (args, reply) => { args = args.Trim(); if (args == "list") Commands.WhisperList.Toggle(); else if (byte.TryParse(args, out byte id)) Commands.Whisper.Choose(id); reply(Commands.Whisper.Describe()); });
+        TestBridge.Register("spectate", "[self] 観戦の状態 (自分の選択・ホストが受けた人・この試合の観戦の人) / self = 試合中の自分を観戦の人にする", (args, reply) =>
+        {
+            if (args.Trim() == "self") Roles.Spectate.WatchSelfForTest();
+            reply(Roles.Spectate.Describe());
+        });
+        TestBridge.Register("whisper", "[<番号> | list] 耳打ちの相手を選ぶ (名札・一覧のボタンと同じ) / ロビーの一覧を開く / 状態", (args, reply) =>
+        {
+            args = args.Trim();
+            if (args == "list") Commands.WhisperList.Toggle();
+            else if (byte.TryParse(args, out byte id)) Commands.Whisper.Choose(id);
+            reply(Commands.Whisper.Describe());
+        });
         TestBridge.Register("rejoin", "自動で部屋へ戻る機能の状態 (終わりの画面の数え・入り直しの待ち)", (_, reply) => reply(Menu.AutoRejoin.Describe()));
-        TestBridge.Register("f1", "試合中の設定の一覧 (F1) を出す / 消す", (_, reply) => { Menu.SettingsOverlay.Toggle(); reply($"OK f1 open={Menu.SettingsOverlay.IsOpen}"); });
+        TestBridge.Register("f1", "試合中の設定の一覧 (F1) を出す / 消す", (_, reply) =>
+        {
+            Menu.SettingsOverlay.Toggle();
+            reply($"OK f1 open={Menu.SettingsOverlay.IsOpen}");
+        });
         TestBridge.Register("afk", "放置の数え (設定・止まっている秒数・知らせたか)", (_, reply) => reply(Commands.AfkGuard.Describe()));
-        TestBridge.Register("colors", "[fake <番号> <#RRGGBB> [#RRGGBB [向き 0-3 [ぼかし 0-100 [位置 0-100]]]]] 自分で作った色 (#RRGGBB) の一覧 (自分の保存値・届いている人の番号=色・[色番号:色の名前]) / fake = その人の色が届いた事にする (ダミー用)", (args, reply) => { args = args.Trim(); reply(args.StartsWith("fake ") ? Menu.CustomColors.Fake(args[5..]) : Menu.CustomColors.Describe()); });
+        TestBridge.Register("colors", "[fake <番号> <#RRGGBB> [#RRGGBB [向き 0-3 [ぼかし 0-100 [位置 0-100]]]]] 自分で作った色 (#RRGGBB) の一覧 (自分の保存値・届いている人の番号=色・[色番号:色の名前]) / fake = その人の色が届いた事にする (ダミー用)", (args, reply) =>
+        {
+            args = args.Trim();
+            reply(args.StartsWith("fake ") ? Menu.CustomColors.Fake(args[5..]) : Menu.CustomColors.Describe());
+        });
         TestBridge.Register("picker", "[equip | type <文> | #RRGGBB | swatch1 | swatch2 | dir | soft <0-100> | pos <0-100>] 着せ替え画面の色のタブの「色を作る」(色を置く・装備を押す・#hex 欄に打つ) と今の色", (args, reply) => reply(Menu.ColorPicker.Simulate(args.Trim())));
         TestBridge.Register("fx", "<範囲 (self+team+target+nearby+dead / all)> [起こした人の番号=自分] [相手の番号=255] [meeting|comms] 演出の見える範囲を試す: 部屋の全員について見えるか (場所 = 自分の足元・半径 5)", (args, reply) =>
         {
