@@ -75,6 +75,7 @@ public static class TestBridge
             PatchProf.Register();
             StructCheck.Register();
             Dev.TpBurst.Register();
+            Dev.PosTrace.Register();
             LobbyCommands.Register();
             RoleCommands.Register();
             Terrain.TerrainProbe.Register();

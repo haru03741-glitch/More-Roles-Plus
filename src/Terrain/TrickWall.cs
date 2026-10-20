@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using MoreRolesPlus.Bridge;
 using MoreRolesPlus.Fx;
+using MoreRolesPlus.Net;
 using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
@@ -193,11 +194,7 @@ internal static class TrickWall
         }
         var rootPos = lp.transform.position;
         var to = FxMath.V2(tx - (me.x - rootPos.x), ty - (me.y - rootPos.y));
-        var nt = lp.NetTransform;
-        if (AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay)
-            nt.SnapTo(to, (ushort)(nt.lastSequenceId + 328)); // 同じ sequence id だと古い位置として捨てられる
-        else
-            nt.RpcSnapTo(to);
+        Teleport.Self(to);
         return $" push=({tx:0.00},{ty:0.00})";
     }
 

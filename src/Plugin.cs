@@ -153,6 +153,7 @@ public class Ticker : MonoBehaviour
         Roles.MeetingEndWatch.Tick(); t = Bridge.Perf.Lane(31, t);
         Bridge.TestBridge.Tick(); t = Bridge.Perf.Lane(32, t);
         Dev.TpBurst.Tick();
+        Dev.PosTrace.Tick();
         Net.Teleport.Tick();
         Net.Remote.Tick(); t = Bridge.Perf.Lane(33, t); // 上の Tick が積んだ電文を同じ tick で出す
         Bridge.Perf.EndFixed(t0);

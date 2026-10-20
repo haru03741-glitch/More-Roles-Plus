@@ -249,12 +249,7 @@ public sealed class PortalMaker : RoleBase
     {
         Vector2 me = lp.GetTruePosition();
         var root = lp.transform.position;
-        var dest = FxMath.V2(tx + (root.x - me.x), ty + (root.y - me.y));
-        var nt = lp.NetTransform;
-        if (AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay)
-            nt.SnapTo(dest, (ushort)(nt.lastSequenceId + 328)); // 同じ sequence id だと古い位置として捨てられる
-        else
-            nt.RpcSnapTo(dest);
+        Teleport.Self(FxMath.V2(tx + (root.x - me.x), ty + (root.y - me.y)));
     }
 
     // ベント・端末・扉・はしごの上には置かない (着いた人がそれに重なり、ベントは出入りのたびに飛ばされる)

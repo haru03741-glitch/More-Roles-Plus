@@ -493,11 +493,7 @@ internal static class CrewGrip
         var root = pc.transform.position;
         var to = FxMath.V2(floor.x - (pos.x - root.x), floor.y - (pos.y - root.y));
         Plugin.Logger.LogInfo($"[CrewGrip] stranded at {pos.x:0.00},{pos.y:0.00} -> back to {floor.x:0.00},{floor.y:0.00}");
-        var nt = pc.NetTransform;
-        if (AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay)
-            nt.SnapTo(to, (ushort)(nt.lastSequenceId + 328)); // 手元だけ動かす。同じ sequence id だと古い位置として捨てられる
-        else
-            nt.RpcSnapTo(to);
+        Teleport.Self(to);
     }
 
     // ── 吸い出し ───────────────────────────────────────────────────────
