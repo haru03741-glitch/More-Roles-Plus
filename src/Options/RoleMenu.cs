@@ -33,6 +33,7 @@ internal static class RoleMenu
     // 行の板 (役職の行の座標で)。左端 -2.02・右端 3.86 = 名前の帯の左端から ± の右端まで
     private const float CardL = -2.02f, CardR = 3.86f, CardH = 0.46f, CardY = -0.296f, Edge = 0.025f, Drop = 0.04f;
     private const float SubL = -1.72f, SubH = 0.38f;  // 細かい設定の行の板 (左端を一段下げる・右端は役職の板と揃える)
+    private const float OptTitleW = 1.8f;              // 細かい設定の名前の幅 (名前の左端から値の欄の左端まで)
 
     private static readonly Color Highlight = new(1f, 0.88f, 0.4f, 1f);
     private static readonly Color Ink = new(0.04f, 0.04f, 0.06f, 1f);        // 輪郭
@@ -356,12 +357,14 @@ internal static class RoleMenu
         MenuFont.Apply(title, MaskLayer);
         title.alignment = TextAlignmentOptions.Left;
         title.enableWordWrapping = false;
-        title.enableAutoSizing = false;
-        title.fontSize = 2.4f;
+        // 長い名前は値の欄 (− やチェック) の手前に収まるまで文字を小さくする
+        title.enableAutoSizing = true;
+        title.fontSizeMin = 1.4f;
+        title.fontSizeMax = 2.4f;
         title.color = OptText;
         var rt = title.rectTransform;
         rt.pivot = new Vector2(0f, 0.5f);
-        rt.sizeDelta = new Vector2(2.6f * k, SubH * k);
+        rt.sizeDelta = new Vector2(OptTitleW * k, SubH * k);
         title.transform.localPosition = new Vector3((SubL + 0.2f - OptX) * k, y + 0.01f * k, title.transform.localPosition.z);
     }
 
