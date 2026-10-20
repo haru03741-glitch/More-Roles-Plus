@@ -63,7 +63,9 @@ public sealed class PortalMaker : RoleBase
     private readonly PortalArt.Handle[] _art = new PortalArt.Handle[2];
     private int _count;
     private static bool _useLit;    // この端末の使用ボタンをポータルのために点けているか
-    private static bool _lightAfter;
+    private static bool _lightAfter, _unlightAfter;
+    private static float _percentBefore = 1f; // 点ける前のボタンの待ち時間の暗幕 (消す時に戻す)
+    private static readonly int PercentId = Shader.PropertyToID("_Percent");
     private static long _passedAt;  // この端末の自分が最後に通った時刻
     private static string _lastUse = "-"; // 最後に押した結果 (確かめ用)
     private static int _relit;            // 使用ボタンを点けた回数 (確かめ用)
@@ -149,10 +151,15 @@ public sealed class PortalMaker : RoleBase
     // 本編は狙いが無いと毎回ボタンを消すので、点いている間は本編の処理を飛ばす (毎フレーム点け直さない)
     internal static bool BeforeUseTarget(IUsable target)
     {
-        _lightAfter = false;
+        _lightAfter = _unlightAfter = false;
         if (Active.Count == 0 && !_useLit) return true;
         bool on = target == null && FindUse(out _, out _);
-        if (!on) { _useLit = false; return true; }
+        if (!on)
+        {
+            _unlightAfter = _useLit;
+            _useLit = false;
+            return true;
+        }
         if (_useLit) return false;
         _lightAfter = true; // 本編に一度「狙いなし」の絵へ戻させてから点ける
         return true;
@@ -160,9 +167,23 @@ public sealed class PortalMaker : RoleBase
 
     internal static void AfterUseTarget(UseButton b)
     {
+        if (_unlightAfter)
+        {
+            _unlightAfter = false;
+            // 本編の狙いに替わった時は本編が自分で暗幕を決めている
+            if (b.currentTarget == null && b.graphic) b.graphic.material.SetFloat(PercentId, _percentBefore);
+            return;
+        }
         if (!_lightAfter) return;
         _lightAfter = false;
         b.SetEnabled();
+        // 本編は端末を狙う時に暗幕を端末の待ち時間 (ふつう 0) にする。狙いなしのままだと 1 で、色が戻っても暗く見える
+        if (b.graphic)
+        {
+            var mat = b.graphic.material;
+            _percentBefore = mat.GetFloat(PercentId);
+            mat.SetFloat(PercentId, 0f);
+        }
         _useLit = true;
         _relit++;
     }
