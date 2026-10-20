@@ -25,7 +25,8 @@ public sealed class PortalMaker : RoleBase
     public static readonly BoolOpt CanRemove = new("置いた後にもう一度押すと消せる", "Press Again to Remove Portals", true);
 
     private const float MinGap = 4f;     // 2 つ目は 1 つ目からこれだけ離して置く
-    private const float UseReach = 0.85f; // 足元が装置の真ん中からこの距離に入ると使用ボタンで通れる (装置の幅の半分 + 少し)
+    // 足元が台座の真ん中からこの楕円 (横・縦の半径) に入ると使用ボタンで通れる (台座の上に乗っている間)
+    private const float UseRx = 0.75f, UseRy = 0.45f;
     private const float FixtureClear = 0.7f; // ベント・端末・扉・はしごからこれだけ離して置く (装置の幅の半分 + 少し)
     private const float Body = 0.2f;     // 着く所に要る体の半径
     private const float ArriveMax = 1.5f; // 行き先がふさがれていたら、ここまで離れた床を探す
@@ -75,6 +76,7 @@ public sealed class PortalMaker : RoleBase
     public override void OnAssigned()
     {
         Active.Add(this);
+        PortalMachineArt.Prewarm();
         AddAbility(new Ability(new Text("ポータル", "Portal"), "portal")
         {
             Cooldown = () => PlaceCooldown,
@@ -206,13 +208,13 @@ public sealed class PortalMaker : RoleBase
         var lp = PlayerControl.LocalPlayer;
         if (!lp) return false;
         Vector2 me = lp.GetTruePosition();
-        float best = UseReach * UseReach;
+        float best = 1f;
         foreach (var p in Active)
         {
             if (p._count < 2) continue;
             for (int i = 0; i < 2; i++)
             {
-                float dx = me.x - p._x[i], dy = me.y - (p._y[i] - PortalArt.MachineDrop), d = dx * dx + dy * dy;
+                float dx = (me.x - p._x[i]) / UseRx, dy = (me.y - p._y[i] - PortalArt.MachineRise) / UseRy, d = dx * dx + dy * dy;
                 if (d > best) continue;
                 best = d; pm = p; near = i;
             }
@@ -358,7 +360,7 @@ public sealed class PortalMaker : RoleBase
         float r = e.Radius + PortalArt.MachineW * 0.5f;
         for (int i = 0; i < _count; i++)
         {
-            float dx = _x[i] - c.x, dy = _y[i] - PortalArt.MachineDrop - c.y;
+            float dx = _x[i] - c.x, dy = _y[i] + PortalArt.MachineRise - c.y;
             if (dx * dx + dy * dy > r * r) continue;
             Break();
             return;
@@ -374,7 +376,7 @@ public sealed class PortalMaker : RoleBase
         {
             for (int i = 0; i < pm._count; i++)
             {
-                float dx = pm._x[i] - at.x, dy = pm._y[i] - PortalArt.MachineDrop - at.y;
+                float dx = pm._x[i] - at.x, dy = pm._y[i] + PortalArt.MachineRise - at.y;
                 float len = MathF.Sqrt(dx * dx + dy * dy);
                 if (len < 1e-3f) continue;
                 float gap = len - MachineR;
@@ -401,7 +403,7 @@ public sealed class PortalMaker : RoleBase
         float reach = DamageProfile.Of(DamageKind.Blunt).Reach + MachineR + HammerSlack;
         float d = NearestMachine(p.x, p.y, out int k);
         if (d > reach) return;
-        float dx = _x[k] - p.x, dy = _y[k] - PortalArt.MachineDrop - p.y, edge = MathF.Max(0f, d - MachineR) / MathF.Max(1e-3f, d);
+        float dx = _x[k] - p.x, dy = _y[k] + PortalArt.MachineRise - p.y, edge = MathF.Max(0f, d - MachineR) / MathF.Max(1e-3f, d);
         if (!LineOpen(p.x, p.y, p.x + dx * edge, p.y + dy * edge, false)) return;
         // ハンマーを持っている人だけ・ハンマーの待ち時間ごとに 1 回 (続けて送られても数えない)
         if (TerrainPermits.TryUse(sender.PlayerId, TerrainUse.Hammer, 0f, host: true) != null) return;
@@ -425,7 +427,7 @@ public sealed class PortalMaker : RoleBase
             var lp = PlayerControl.LocalPlayer;
             if (!lp || lp.PlayerId != hitter)
             {
-                float dx = _x[k] - p.x, dy = _y[k] - PortalArt.MachineDrop - p.y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
+                float dx = _x[k] - p.x, dy = _y[k] + PortalArt.MachineRise - p.y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
                 float edge = MathF.Max(0f, len - MachineR);
                 HammerSwing.PlayOther(FxMath.V2(p.x + dx / len * edge, p.y + dy / len * edge), FxMath.V2(dx / len, dy / len), pc.DefaultOutfit.ColorId);
             }
@@ -440,7 +442,7 @@ public sealed class PortalMaker : RoleBase
         float best = float.MaxValue;
         for (int i = 0; i < _count; i++)
         {
-            float dx = _x[i] - px, dy = _y[i] - PortalArt.MachineDrop - py, d = MathF.Sqrt(dx * dx + dy * dy);
+            float dx = _x[i] - px, dy = _y[i] + PortalArt.MachineRise - py, d = MathF.Sqrt(dx * dx + dy * dy);
             if (d < best) { best = d; which = i; }
         }
         return best;

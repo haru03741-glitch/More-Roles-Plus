@@ -9,20 +9,22 @@ namespace MoreRolesPlus.Roles;
 
 // ポータルの絵: 足元に立つ縦長の渦。暗い下地 → 青緑のにじみ → 逆向きに回る渦 2 枚 → 白い芯 → 吸い込まれる光の粒。
 // 開く時は縦の線から横へ広がり、閉じる時は縦の線に縮む。人が通った時は光が膨らんで縦に抜ける。
-// 絵は人と同じ奥行きの決め方 (足元の y に体の高さを足して /1000) なので、手前を通る人と上に立った人はポータルの前に出る。
+// ポータルは床に置いた装置の奥側に門のように立ち、人は装置の手前側 (置いた人の足元) に乗る。
+// 絵の奥行きは人と同じ決め方 (足元の y に体の高さを足して /1000) で、門の根元の床の y を使う。手前に乗った人は門の前、奥を歩く人は後ろ。
 // 2 つ揃うと、楕円の中に相手のポータルの周りの景色が映る (行き先ごとに小さなカメラで写す)。
-// ポータルは床に置いた装置 (紫の円盤に脚 3 本・真ん中に水色のレンズ) の上に浮かび、レンズから光が立ちのぼる。
+// 装置は厚みのある紫の台座 (左右と手前にひれ・奥に水色のレンズのくぼみ)。門はレンズの上に浮かび、レンズから光が立ちのぼる。
 // 毎フレーム触るのは近くにあるポータルだけ (遠い物と視界の外は影に隠れるので動かさない)
 internal static class PortalArt
 {
     private const float W = 0.9f, H = 1.3f;        // 楕円の幅と高さ
-    private const float Lift = 0.6f;               // 足元から楕円の中心まで (下の端は装置のレンズの少し上)
-    internal const float MachineDrop = 0.3f;       // 足元から装置の真ん中まで (下へ)
-    internal const float MachineW = 1.2f;
-    private const float MachineBack = 0.9f;        // 装置は床に置いた物として、足元がこの y より下の人の後ろに描く
+    internal const float MachineRise = 0.12f;      // 足元 (置いた所・着く所) から台座の真ん中の床の点まで (上へ)。足元は台座の手前側
+    internal const float MachineW = PortalMachineArt.PadR * 2f;
+    // 門の根元 (レンズの真ん中) の床の y。人との前後はこの y で決める
+    private const float GateGround = MachineRise + PortalMachineArt.WellZ * PortalMachineArt.Squash;
+    private const float GateLip = 0.15f;           // 台座の上面から楕円の下の端まで (レンズの光が見える隙間)
+    private const float Lift = GateGround + PortalMachineArt.Thick + GateLip + H * 0.5f; // 足元から楕円の中心まで
     private const float BodyLift = 0.3636f;        // 人の奥行きは体の y/1000 で、体は足元よりこれだけ上
     private const float LayerStep = 0.00001f;      // 重ねる絵どうしの奥行きの差 (人との前後は変えない程度)
-    private const float SinkBehind = 0.25f;        // ポータルの上に立った人 (着いた人) が絵に隠れないよう、この y の分だけ奥に置く
     private const float OpenTime = 0.35f, CloseTime = 0.3f, PassTime = 0.4f;
     private const float AnimRange = 14f;           // これより遠いポータルは毎フレーム動かさない
     private const int Motes = 4;
@@ -30,17 +32,13 @@ internal static class PortalArt
     // ポータル自身の絵の層。窓のカメラはこの層を写さない (窓の中にポータルが映り込まない)。メインカメラは写す
     private const int PortalLayer = 1;
     private const float MachineStep = 0.00001f;    // 装置の部品どうしの奥行きの差 (床と水の板の間 0.0004 に 10 枚が収まる)
-    private const float LipHeight = 0.08f;         // 楕円の下の縁の床からの高さ (水位がこれを越えると縁に泡が立つ)
+    private const float LipHeight = PortalMachineArt.Thick + GateLip; // 楕円の下の縁の床からの高さ (水位がこれを越えると縁に泡が立つ)
 
     private static readonly Color Deep = FxMath.Rgba(0.02f, 0.05f, 0.16f, 0.95f);
     private static readonly Color Teal = FxMath.Rgba(0.2f, 0.95f, 0.85f, 1f);
     private static readonly Color Blue = FxMath.Rgba(0.15f, 0.45f, 1f, 1f);
     private static readonly Color Violet = FxMath.Rgba(0.62f, 0.48f, 1f, 1f);
     private static readonly Color White = FxMath.Rgba(0.9f, 1f, 1f, 1f);
-    private static readonly Color MachineOutline = FxMath.Rgba(0.25f, 0.13f, 0.42f, 1f);
-    private static readonly Color MachineBody = FxMath.Rgba(0.68f, 0.52f, 0.9f, 1f);
-    private static readonly Color MachineTop = FxMath.Rgba(0.82f, 0.7f, 0.98f, 1f);
-    private static readonly Color MachineBand = FxMath.Rgba(0.42f, 0.27f, 0.68f, 1f);
     private static readonly Color MachineLens = FxMath.Rgba(0.7f, 0.9f, 1f, 1f);
 
     // 窓: 描き先の大きさ・写す範囲 (楕円の半分の高さの何倍か。1 より大きいと少し引いた景色)・内側の楕円の大きさ
@@ -63,6 +61,7 @@ internal static class PortalArt
         internal bool WinOn;
         internal float Water, WaterShown; // 足元の水の深さ (単位) と、見せている深さ (なめらかに追う)
         internal bool FoamOn;
+        internal bool OpenDone; // 開く動きを最後の大きさで止めた (重いフレームを挟んでも途中の大きさで残さない)
         internal readonly Transform[] Mote = new Transform[Motes];
         internal readonly SpriteRenderer[] MoteSr = new SpriteRenderer[Motes];
         internal float X, Y, Born, Closing = -1f, Spin;
@@ -80,7 +79,7 @@ internal static class PortalArt
     private static readonly List<Burst> Bursts = new();
     private static GameObject _container;
     private static int _gen = -1;
-    private static Sprite _glow, _swirl, _disc, _mBody, _mTop, _mBand, _mLens, _mStar;
+    private static Sprite _glow, _swirl, _disc, _mBaked, _mLens, _mStar;
     private static Mesh _windowMesh;
     private static int _meetingPoll;
     private static bool _meeting;
@@ -101,7 +100,7 @@ internal static class PortalArt
         var h = new Handle { X = x, Y = y, Born = Time.time, Spin = FxMath.Range(0f, 360f) };
         h.Root = new GameObject("MrpPortal") { layer = PortalLayer };
         h.Root.transform.SetParent(parent.transform, false);
-        h.Root.transform.position = FxMath.V3(x, y + Lift, (y + SinkBehind + BodyLift) / 1000f);
+        h.Root.transform.position = FxMath.V3(x, y + Lift, (y + GateGround + BodyLift) / 1000f);
 
         BuildMachine(h, parent.transform, x, y);
 
@@ -155,7 +154,7 @@ internal static class PortalArt
     {
         if (h == null || h.Closing >= 0f) return;
         Pulse(h.X, h.Y, 0.8f);
-        BreakNoise.PlayAt("noise_hit_metal", h.X, h.Y - MachineDrop, 9f, 5f, 0.8f, FxMath.Range(1.05f, 1.15f));
+        BreakNoise.PlayAt("noise_hit_metal", h.X, h.Y + MachineRise, 9f, 5f, 0.8f, FxMath.Range(1.05f, 1.15f));
     }
 
     // 演出なしですぐ消す (役職が外れた時)
@@ -238,9 +237,9 @@ internal static class PortalArt
             float dx = h.X - mx, dy = h.Y - my;
             bool near = !haveMe || dx * dx + dy * dy <= AnimRange * AnimRange;
             ShowWindow(h, near && !_meeting);
-            if (!near && age > OpenTime) continue;
+            if (!near && h.OpenDone) continue;
 
-            if (age < OpenTime + 0.05f)
+            if (!h.OpenDone)
             {
                 // 縦の線から横へ広がり、少し行き過ぎて戻る
                 float k = FxMath.Clamp01(age / OpenTime);
@@ -248,6 +247,11 @@ internal static class PortalArt
                 h.Body.localScale = FxMath.V3(W * FxMath.Max(e * (1f + 0.06f * FxMath.Sin(FxMath.PI * k)), 0.02f), H, 1f);
                 float m = 0.6f + 0.4f * e;
                 h.Machine.localScale = FxMath.V3(m, m, 1f);
+                if (k >= 1f)
+                {
+                    h.OpenDone = true;
+                    h.Body.localScale = FxMath.V3(W, H, 1f);
+                }
             }
 
             h.Spin += dt;
@@ -262,7 +266,7 @@ internal static class PortalArt
             h.Core.color = FxMath.Rgba(White.r, White.g, White.b, core);
             h.Beam.color = FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.45f + 0.25f * breathe);
             h.LensGlow.color = FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.35f + 0.25f * breathe);
-            if (readWater) h.Water = water ? WaterSim.DepthAt(FxMath.V2(h.X, h.Y)) / 1024f : 0f;
+            if (readWater) h.Water = water ? WaterSim.DepthAt(FxMath.V2(h.X, h.Y + GateGround)) / 1024f : 0f;
             ShowFoam(h, s, dt);
 
             // 光の粒: 縁から渦を巻いて芯へ吸い込まれる
@@ -331,9 +335,7 @@ internal static class PortalArt
         _glow ??= Make(64, Glow);
         _swirl ??= Make(128, Swirl);
         _disc ??= Make(64, Disc);
-        _mBody ??= MakeXY(256, 192, MachineBodyAlpha);
-        _mTop ??= MakeXY(256, 192, MachineTopAlpha);
-        _mBand ??= MakeXY(128, 128, RoundAlpha);
+        _mBaked ??= MakeBaked();
         _mLens ??= MakeXY(128, 128, LensAlpha);
         _mStar ??= MakeXY(128, 128, StarAlpha);
     }
@@ -353,34 +355,54 @@ internal static class PortalArt
         Bursts.Clear();
     }
 
-    // ── 床の装置 (斜め上から見た円盤と脚 3 本・レンズを囲む濃い帯・水色のレンズに白い星) ──
+    // ── 床の装置 (厚みのある台座の焼いた絵・奥のくぼみに水色のレンズと白い星・レンズから門へ立ちのぼる光) ──
 
     private static void BuildMachine(Handle h, Transform parent, float x, float y)
     {
         var root = new GameObject("MrpPortalMachine") { layer = PortalLayer };
         root.transform.SetParent(parent, false);
         // 装置は床に置いた低い物なので、本編のベントと同じく床と水の板の間に置く (水が来ると沈み、人は必ずその上に立つ)
-        float my = y - MachineDrop;
+        float my = y + MachineRise;
         float front = DamageMap.FrontZ(FxMath.V2(x, my));
         float zs = DamageMap.ZScale(front);
         root.transform.position = FxMath.V3(x, my, front - 0.0002f * zs);
         h.Machine = root.transform;
         var t = root.transform;
-        float w = MachineW, d = MachineW * 0.75f, st = MachineStep * zs;
-        // 床の照り返しと影は部品の奥
-        h.Floor = Layer(t, "floor", _glow, FxMath.V3(0f, 0f, st * 2f), FxMath.V3(1.9f, 0.6f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.3f));
-        Layer(t, "shade", _glow, FxMath.V3(0f, -0.1f, st), FxMath.V3(w * 1.5f, d * 0.9f, 1f), FxMath.Rgba(0f, 0f, 0f, 0.45f));
-        Part(t, _mBody, 0f, -0.01f, w * 1.1f, d * 1.12f, MachineOutline, st, 1);
-        Part(t, _mBody, 0f, 0f, w, d, MachineBody, st, 2);
-        Part(t, _mTop, 0f, 0.01f, w, d, MachineTop, st, 3);
-        Part(t, _mBand, 0f, 0.05f, w * 0.5f, d * 0.45f, MachineOutline, st, 4);
-        Part(t, _mBand, 0f, 0.05f, w * 0.46f, d * 0.41f, MachineBand, st, 5);
-        Part(t, _mLens, 0f, 0.05f, w * 0.36f, d * 0.31f, MachineLens, st, 6);
-        Part(t, _mStar, 0f, 0.05f, w * 0.34f, d * 0.3f, White, st, 7);
-        // レンズの照りと、レンズから楕円の下の端へ立ちのぼる光
-        h.LensGlow = Layer(t, "lensGlow", _glow, FxMath.V3(0f, 0.06f, -st * 8f), FxMath.V3(0.7f, 0.35f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.5f));
-        float beamLen = MachineDrop + Lift - H * 0.5f + 0.15f;
-        h.Beam = Layer(t, "beam", _glow, FxMath.V3(0f, 0.05f + beamLen * 0.5f, -st * 9f), FxMath.V3(0.3f, beamLen * 2.4f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.55f));
+        float st = MachineStep * zs, pad = PortalMachineArt.PadR;
+        // 床の照り返しと接地の影は台座の奥
+        h.Floor = Layer(t, "floor", _glow, FxMath.V3(0f, 0f, st * 2f), FxMath.V3(2.3f, 1.0f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.3f));
+        Layer(t, "shade", _glow, FxMath.V3(0f, -0.03f, st), FxMath.V3(pad * 3.2f, pad * 1.6f, 1f), FxMath.Rgba(0f, 0f, 0f, 0.5f));
+        Layer(t, "pad", _mBaked, FxMath.V3(0f, 0f, 0f), FxMath.V3(1f, 1f, 1f), FxMath.Rgba(1f, 1f, 1f, 1f));
+        // レンズはくぼみの底 (上面より少し下に見える)
+        float lw = 0.4f, ly = PortalMachineArt.Thick + PortalMachineArt.WellZ * PortalMachineArt.Squash - 0.015f;
+        Part(t, _mLens, 0f, ly, lw, lw * PortalMachineArt.Squash, MachineLens, st, 1);
+        Part(t, _mStar, 0f, ly, lw * 0.92f, lw * 0.92f * PortalMachineArt.Squash, White, st, 2);
+        h.LensGlow = Layer(t, "lensGlow", _glow, FxMath.V3(0f, ly + 0.01f, -st * 8f), FxMath.V3(0.7f, 0.35f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.5f));
+        // レンズから楕円の下の端へ立ちのぼる光 (楕円に少し食い込ませる)
+        float beamLen = GateLip + 0.2f;
+        h.Beam = Layer(t, "beam", _glow, FxMath.V3(0f, ly + beamLen * 0.5f, -st * 9f), FxMath.V3(0.3f, beamLen * 2.4f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.55f));
+    }
+
+    private static unsafe Sprite MakeBaked()
+    {
+        byte[] px;
+        try { px = PortalMachineArt.Pixels(); }
+        catch (Exception e)
+        {
+            // 台座の絵なしで開き、次に置く時に作り直す
+            Plugin.Logger.LogError($"[PortalArt] machine bake: {e}");
+            return null;
+        }
+        int w = PortalMachineArt.TexW, hh = PortalMachineArt.TexH;
+        var tex = new Texture2D(w, hh, TextureFormat.RGBA32, false) { name = "MrpPortalMachine", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        fixed (byte* b = px) tex.LoadRawTextureData((IntPtr)b, px.Length);
+        tex.Apply(false, true);
+        tex.hideFlags |= HideFlags.HideAndDontSave;
+        // 原点 = 台座の真ん中の床の点
+        var pivot = FxMath.V2(-PortalMachineArt.Left / (PortalMachineArt.Right - PortalMachineArt.Left), -PortalMachineArt.Bottom / (PortalMachineArt.Top - PortalMachineArt.Bottom));
+        var sp = UnityEngine.Sprite.Create(tex, new Rect(0, 0, w, hh), pivot, PortalMachineArt.Ppu, 0, SpriteMeshType.FullRect);
+        sp.hideFlags |= HideFlags.HideAndDontSave;
+        return sp;
     }
 
     // 絵の縦横比は MakeXY の ppu (= 幅) で縦が h/w 倍になっているので、縦の倍率で戻す
@@ -421,31 +443,6 @@ internal static class PortalArt
         float dx = (x - cx) / rx, dy = (y - cy) / ry;
         return FxMath.Clamp01((1f - FxMath.Sqrt(dx * dx + dy * dy)) * FxMath.Min(rx, ry) / soft);
     }
-
-    // 円盤 + 左・右・手前の脚 (外へ向かって細くなる丸い楔)。y は奥行きで縮んでいる
-    private static float MachineBodyAlpha(float x, float y)
-    {
-        float a = Ell(x, y, 0f, 0.05f, 0.64f, 0.5f, 0.03f);
-        a = FxMath.Max(a, Foot(x, y, -1f, -0.05f));
-        a = FxMath.Max(a, Foot(x, y, 1f, -0.05f));
-        return FxMath.Max(a, Foot(x, y, 0f, -1f));
-    }
-
-    private static float Foot(float x, float y, float dx, float dy)
-    {
-        float len = FxMath.Sqrt(dx * dx + dy * dy);
-        dx /= len; dy /= len;
-        float yy = y / 0.75f;
-        float along = x * dx + yy * dy, perp = FxMath.Abs(-x * dy + yy * dx);
-        if (along < 0.3f || along > 0.88f) return 0f;
-        float half = 0.36f - 0.16f * (along - 0.3f) / 0.58f;
-        float tip = FxMath.Clamp01((0.88f - along) / 0.06f);
-        return FxMath.Clamp01((half - perp) / 0.03f) * tip;
-    }
-
-    private static float MachineTopAlpha(float x, float y) => Ell(x, y, 0f, 0.12f, 0.56f, 0.4f, 0.03f);
-
-    private static float RoundAlpha(float x, float y) => Ell(x, y, 0f, 0f, 0.98f, 0.98f, 0.03f);
 
     private static float LensAlpha(float x, float y) => Ell(x, y, 0f, 0f, 0.98f, 0.98f, 0.04f);
 
