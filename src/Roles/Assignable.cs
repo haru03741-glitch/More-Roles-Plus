@@ -22,7 +22,7 @@ public abstract class Assignable
     public abstract Text Description { get; }
 
     // 設定画面の「人数」の上限
-    public virtual int MaxCount => 15;
+    public virtual int MaxCount => Options.Crowded.MaxPlayers;
 
     // 設定画面のどのタブに並ぶか
     internal abstract Tab Tab { get; }

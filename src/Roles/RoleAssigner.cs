@@ -128,7 +128,7 @@ public static class RoleSettings
 [Settings(Tab.General, "AssignSettings.Title", order: -99)]
 public static class AssignSettings
 {
-    private static readonly Text[] Counts = Enumerable.Range(0, 16).Select(i => i == 0 ? new Text("AssignSettings.None") : Text.Raw(i.ToString())).ToArray();
+    private static readonly Text[] Counts = Enumerable.Range(0, Options.Crowded.MaxPlayers + 1).Select(i => i == 0 ? new Text("AssignSettings.None") : Text.Raw(i.ToString())).ToArray();
 
     public static readonly ChoiceOpt MaxNeutral = new("AssignSettings.MaxNeutral", 0, Counts);
     public static readonly ChoiceOpt MaxNeutralKillers = new("AssignSettings.MaxNeutralKillers", 0, Counts);

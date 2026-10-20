@@ -82,6 +82,18 @@ internal static class LobbyCommands
             reply("OK findgame requested (follow: state で scene=FindAGame)");
         });
 
+        TestBridge.Register("createcap", "[+N|-N] 開いた部屋作成画面の「最大人数」を ± で N 回押す (省略で今の値と幅)", (args, reply) =>
+        {
+            var cgo = Object.FindObjectOfType<CreateGameOptions>();
+            var opt = cgo ? cgo.capacityOption : null;
+            if (!opt || !cgo.isActiveAndEnabled) { reply("ERR createcap dialog not open"); return; }
+            if (int.TryParse(args.Trim(), out int n))
+                for (int i = 0; i < System.Math.Abs(n); i++)
+                    if (n > 0) opt.Increase(); else opt.Decrease();
+            var host = GameOptionsManager.Instance?.GameHostOptions;
+            reply($"OK createcap value={opt.GetInt()} range={opt.ValidRange.min}-{opt.ValidRange.max} host={(host != null ? host.MaxPlayers : -1)} official={Net.ServerKind.IsOfficial()}");
+        });
+
         TestBridge.Register("confirmcreate", "開いた部屋作成画面で作成を押す (follow: wait phase=Lobby 90)", (_, reply) =>
         {
             var cgo = Object.FindObjectOfType<CreateGameOptions>();

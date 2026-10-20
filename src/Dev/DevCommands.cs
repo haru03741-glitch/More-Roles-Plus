@@ -75,7 +75,7 @@ internal static class DevCommands
                 if (ri < 0 || !byte.TryParse(kv[0], out byte rp)) { reply("ERR assignsim reserve needs <番号>:<役職Id>"); return; }
                 reserved = new System.Collections.Generic.Dictionary<byte, int> { [rp] = ri };
             }
-            foreach (var line in AssignPlan.Simulate(Math.Clamp(players, 1, 15), Math.Clamp(imps, 0, players), runs, seed, reserved).Split('\n')) reply("SIM " + line);
+            foreach (var line in AssignPlan.Simulate(Math.Clamp(players, 1, Crowded.MaxPlayers), Math.Clamp(imps, 0, players), runs, seed, reserved).Split('\n')) reply("SIM " + line);
             reply("OK assignsim");
         });
 
@@ -123,7 +123,7 @@ internal static class DevCommands
             var client = AmongUsClient.Instance;
             if (ServerKind.IsOfficial() || !client.AmHost || !GameData.Instance || !PlayerControl.LocalPlayer)
             { reply("ERR dummy needs host of a non-official game"); return; }
-            int n = int.TryParse(args.Trim(), out int c) ? Math.Clamp(c, 1, 14) : 1;
+            int n = int.TryParse(args.Trim(), out int c) ? Math.Clamp(c, 1, Crowded.MaxPlayers - 1) : 1;
             int made = 0;
             for (int i = 0; i < n; i++)
             {
@@ -221,6 +221,47 @@ internal static class DevCommands
             var body = p.cosmetics ? p.cosmetics.currentBodySprite : null;
             var pos = p.transform.position;
             reply($"OK pinfo {pid} active={p.gameObject.activeInHierarchy} visible={p.Visible} body={(body != null && body.BodySprite ? body.BodySprite.enabled.ToString() : "-")} pos={TestBridge.F(pos.x)},{TestBridge.F(pos.y)},{TestBridge.F(pos.z)} layer={p.gameObject.layer} dummy={p.isDummy} netT={p.NetTransform.enabled} incomplete={(p.Data != null ? p.Data.IsIncomplete.ToString() : "nodata")} client={(p.Data != null ? p.Data.ClientId : -9)} name='{(p.cosmetics ? p.cosmetics.nameText.text : "-")}'");
+        });
+
+        TestBridge.Register("votecodes", "本編の投票の印の番号 (この番号の人は投票の的にできない) と会議などのページ送りの状態", (_, reply) =>
+            reply($"OK votecodes hasNotVoted={PlayerVoteArea.HasNotVoted} missed={PlayerVoteArea.MissedVote} skipped={PlayerVoteArea.SkippedVote} dead={PlayerVoteArea.DeadVote} page={CrowdPages.Page + 1}/{CrowdPages.Pages}{(MeetingHud.Instance ? $" timer={MeetingHud.Instance.TimerText.transform.localPosition} skip={MeetingHud.Instance.SkipVoteButton.transform.localPosition} origin={MeetingHud.Instance.VoteOrigin} offs={MeetingHud.Instance.VoteButtonOffsets}" : "")}"));
+
+        TestBridge.Register("openmg", "<vitals|shift|close> バイタルの画面を開く (船にある時) / 本編の能力ボタンを押す (変身役なら相手選びが開く)", (args, reply) =>
+        {
+            var a = args.Trim();
+            if (a == "close")
+            {
+                if (Minigame.Instance) Minigame.Instance.Close();
+                reply("OK openmg close");
+                return;
+            }
+            if (a == "shift")
+            {
+                var hud = Vanilla.Hud;
+                if (!hud || !hud.AbilityButton) { reply("ERR openmg no ability button"); return; }
+                hud.AbilityButton.DoClick();
+                reply("OK openmg shift");
+                return;
+            }
+            foreach (var c in UnityEngine.Object.FindObjectsOfType<SystemConsole>())
+            {
+                if (!c.MinigamePrefab || !c.MinigamePrefab.TryCast<VitalsMinigame>()) continue;
+                var mg = UnityEngine.Object.Instantiate(c.MinigamePrefab, Camera.main.transform, false);
+                mg.transform.localPosition = new Vector3(0f, 0f, -50f);
+                mg.Begin(null);
+                reply("OK openmg vitals");
+                return;
+            }
+            reply("ERR openmg no vitals console on this map");
+        });
+
+        TestBridge.Register("pageturn", "<+1|-1> [whisper] 会議の名札などのページを送る (whisper = ロビーの耳打ちの一覧)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            int d = a.Length > 0 && int.TryParse(a[0], out int v) ? v : 1;
+            if (a.Length > 1 && a[1] == "whisper") { Commands.WhisperList.Turn(d); reply("OK pageturn whisper"); return; }
+            CrowdPages.Turn(d);
+            reply($"OK pageturn page={CrowdPages.Page + 1}/{CrowdPages.Pages}");
         });
 
         TestBridge.Register("netobjs", "通信で同期している物の一覧 (種類・NetId・持ち主・人の番号)", (args, reply) =>

@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Options;
 internal static class ImpostorCap
 {
     public const int VanillaMax = 3;
-    private const int TableSize = 128;
+    private const int TableSize = 256; // 定員 (最大 Crowded.MaxPlayers) を添字に引く
 
     private static int[] _vanillaMax, _vanillaMinPlayers;
     private static bool _widened;
@@ -29,6 +29,7 @@ internal static class ImpostorCap
     {
         try
         {
+            Crowded.PadTables(); // 本編の表を先に伸ばしておく (15 人分のままだと 16 人以上で表の外を引く)
             bool widen = !ServerKind.IsOfficial();
             if (_vanillaMax == null)
             {

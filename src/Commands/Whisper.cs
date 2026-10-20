@@ -179,7 +179,11 @@ internal static class WhisperList
     private static PassiveButton _open;
     private static UnityAction _toggle;
     private static readonly Dictionary<int, UnityAction> Picks = new();
-    private static readonly byte[] SlotIds = new byte[15];
+    private const int PerPage = 14; // 2 列 × 7 行。いちばん下の段はページ送り
+    private static readonly byte[] SlotIds = new byte[PerPage];
+    private static readonly List<byte> Others = new();
+    private static int _page;
+    private static UnityAction _prev, _next;
 
     public static void Hide()
     {
@@ -227,6 +231,21 @@ internal static class WhisperList
     internal static void Toggle()
     {
         if (_root) { Hide(); return; }
+        _page = 0;
+        Build();
+    }
+
+    internal static void Turn(int d)
+    {
+        int pages = (Others.Count + PerPage - 1) / PerPage;
+        if (pages <= 1) return;
+        _page = ((_page + d) % pages + pages) % pages;
+        Hide();
+        Build();
+    }
+
+    private static void Build()
+    {
         var chat = Vanilla.Chat;
         if (!chat || !chat.backgroundImage) return;
         var me = PlayerControl.LocalPlayer;
@@ -237,13 +256,22 @@ internal static class WhisperList
         var back = MenuArt.Panel(_root.transform, "Back", 0.15f, new Vector2(4.2f, 3.6f), Vector3.zero, new Color(0.08f, 0.06f, 0.12f, 0.96f), null);
         back.sortingOrder = 500;
 
-        int n = 0;
+        Others.Clear();
         var all = PlayerControl.AllPlayerControls;
-        var proto = chat.freeChatField ? chat.freeChatField.charCountText : null;
-        for (int i = 0; i < all.Count && n < SlotIds.Length; i++)
+        for (int i = 0; i < all.Count; i++)
         {
             var p = all[i];
-            if (!p || p.Data == null || (me && p.PlayerId == me.PlayerId)) continue;
+            if (p && p.Data != null && (!me || p.PlayerId != me.PlayerId)) Others.Add(p.PlayerId);
+        }
+        int pages = (Others.Count + PerPage - 1) / PerPage;
+        if (_page >= pages) _page = Math.Max(0, pages - 1);
+
+        int n = 0;
+        var proto = chat.freeChatField ? chat.freeChatField.charCountText : null;
+        for (int k = _page * PerPage; k < Others.Count && n < SlotIds.Length; k++)
+        {
+            var p = Find(Others[k]);
+            if (!p) continue;
             SlotIds[n] = p.PlayerId;
             float x = n % 2 == 0 ? -1.0f : 1.0f, y = 1.45f - (n / 2) * 0.42f;
             var row = MenuArt.Panel(_root.transform, "Row" + n, 0.08f, new Vector2(1.9f, 0.36f), new Vector3(x, y, -1f), new Color(0.3f, 0.2f, 0.45f, 1f), null);
@@ -257,26 +285,62 @@ internal static class WhisperList
             int slot = n;
             if (!Picks.TryGetValue(slot, out var a)) Picks[slot] = a = (UnityAction)(() => Whisper.Choose(SlotIds[slot]));
             pb.OnClick.AddListener(a);
-            if (proto)
-            {
-                var t = Object.Instantiate(proto, row.transform);
-                t.transform.localPosition = new Vector3(0f, 0f, -0.1f);
-                t.transform.localScale = Vector3.one;
-                t.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-                t.rectTransform.anchorMin = t.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-                t.rectTransform.anchoredPosition = Vector2.zero;
-                t.rectTransform.sizeDelta = new Vector2(1.8f, 0.34f);
-                t.alignment = TextAlignmentOptions.Center;
-                t.enableAutoSizing = true;
-                t.fontSizeMin = 0.8f;
-                t.fontSizeMax = 1.6f;
-                t.color = Color.white;
-                t.text = p.Data.PlayerName;
-                t.sortingOrder = 502;
-            }
+            if (proto) Label(proto, row.transform, p.Data.PlayerName);
             n++;
         }
-        if (n == 0) Hide();
+        if (n == 0) { Hide(); return; }
+        if (pages > 1) Pager(proto, pages);
+    }
+
+    // 一覧のいちばん下の段: 「<  1/2  >」
+    private static void Pager(TextMeshPro proto, int pages)
+    {
+        const float y = 1.45f - PerPage / 2 * 0.42f;
+        _prev ??= (UnityAction)(() => Turn(-1));
+        _next ??= (UnityAction)(() => Turn(1));
+        PagerButton(proto, -1.0f, y, "<", _prev);
+        PagerButton(proto, 1.0f, y, ">", _next);
+        if (proto) Label(proto, MenuArt.Panel(_root.transform, "Page", 0.08f, new Vector2(0.9f, 0.36f), new Vector3(0f, y, -1f), new Color(0, 0, 0, 0), null).transform, $"{_page + 1}/{pages}");
+    }
+
+    private static void PagerButton(TextMeshPro proto, float x, float y, string glyph, UnityAction act)
+    {
+        var row = MenuArt.Panel(_root.transform, "Page" + glyph, 0.08f, new Vector2(0.6f, 0.36f), new Vector3(x, y, -1f), new Color(0.3f, 0.2f, 0.45f, 1f), null);
+        row.sortingOrder = 501;
+        var col = row.gameObject.AddComponent<BoxCollider2D>();
+        col.size = new Vector2(0.6f, 0.36f);
+        var pb = row.gameObject.AddComponent<PassiveButton>();
+        pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+        pb.OnMouseOver = new UnityEvent();
+        pb.OnMouseOut = new UnityEvent();
+        pb.OnClick.AddListener(act);
+        if (proto) Label(proto, row.transform, glyph);
+    }
+
+    private static TextMeshPro Label(TextMeshPro proto, Transform row, string text)
+    {
+        var t = Object.Instantiate(proto, row);
+        t.transform.localPosition = new Vector3(0f, 0f, -0.1f);
+        t.transform.localScale = Vector3.one;
+        t.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        t.rectTransform.anchorMin = t.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        t.rectTransform.anchoredPosition = Vector2.zero;
+        t.rectTransform.sizeDelta = new Vector2(1.8f, 0.34f);
+        t.alignment = TextAlignmentOptions.Center;
+        t.enableAutoSizing = true;
+        t.fontSizeMin = 0.8f;
+        t.fontSizeMax = 1.6f;
+        t.color = Color.white;
+        t.text = text;
+        t.sortingOrder = 502;
+        return t;
+    }
+
+    private static PlayerControl Find(byte id)
+    {
+        foreach (var p in PlayerControl.AllPlayerControls)
+            if (p && p.PlayerId == id) return p;
+        return null;
     }
 }
 

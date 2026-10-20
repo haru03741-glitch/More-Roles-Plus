@@ -1189,7 +1189,7 @@ internal static partial class PropSim
     // 出た輪の外へ出るまでは次を通らない。行き先が埋まっていれば通らない
     private const int PortalReach = 460;          // 輪の半径 (1/1024 単位 ≈ 0.45)
     private const int PortalFit = 900;            // これより大きい物は通らない (楕円の幅 0.9)
-    private static readonly PortalLinks.Link[] Links = new PortalLinks.Link[16];
+    private static readonly PortalLinks.Link[] Links = new PortalLinks.Link[256]; // 持ち主 (人の番号) ごとに 1 つ
     private static int _portalFxThrough = int.MinValue;
     internal static int PortalPasses;
 
