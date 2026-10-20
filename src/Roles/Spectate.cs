@@ -71,12 +71,12 @@ internal static class Spectate
 
     public static string Command(string _)
     {
-        if (ShipStatus.Instance) return new Text("Spectate.ChooseThisInTheLobby");
+        if (ShipStatus.Instance) return new Text("Spectate.OnlyInLobby");
         var e = Menu.ClientOptions.Spectate;
         e.Value = !e.Value;
         SendMine();
-        return e.Value ? new Text("Spectate.YoullSpectateTheNextGame")
-                       : new Text("Spectate.YoullPlayTheNextGame");
+        return e.Value ? new Text("Spectate.WillSpectate")
+                       : new Text("Spectate.WillPlay");
     }
 
     // ---- ホスト ----
@@ -234,7 +234,7 @@ internal static class Spectate
         if (GameData.Instance) GameData.Instance.RecomputeTaskCounts();
         var me = PlayerControl.LocalPlayer;
         if (me && Watching.Contains(me.PlayerId) && Vanilla.Hud && Vanilla.Hud.Notifier)
-            Vanilla.Hud.Notifier.AddDisconnectMessage(new Text("Spectate.YoureSpectatingAsAGhost"));
+            Vanilla.Hud.Notifier.AddDisconnectMessage(new Text("Spectate.Spectating"));
     }
 
     // タスク欄には「観戦中」だけを出す (空のままだと本編が None と出す)
@@ -245,7 +245,7 @@ internal static class Spectate
         var go = new UnityEngine.GameObject("MrpSpectateTask");
         go.transform.SetParent(p.transform, false);
         var t = _task = go.AddComponent<ImportantTextTask>();
-        t.Text = new Text("Spectate.SpectatingRoamFreelyAsA");
+        t.Text = new Text("Spectate.Hud");
         p.myTasks.Insert(0, t.Cast<PlayerTask>());
     }
 

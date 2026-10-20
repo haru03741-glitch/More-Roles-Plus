@@ -40,10 +40,10 @@ internal static class ClientOptions
     {
         _cfg = cfg;
         DarkTheme = Add("DarkTheme", false, new Text("ClientOptions.DarkChat"), ChatTheme.Refresh);
-        EndSummary = Add("EndSummary", true, new Text("ClientOptions.ShowEveryonesRoleAtGame"), null);
-        AutoPlayAgain = Add("AutoPlayAgain", false, new Text("ClientOptions.ReturnToTheLobbyAfter"), null);
-        Reconnect = Add("Reconnect", true, new Text("ClientOptions.RejoinTheRoomAfterA"), null);
-        Spectate = Add("Spectate", false, new Text("ClientOptions.SpectateTheNextGameAs"), Roles.Spectate.OnOptionChanged);
+        EndSummary = Add("EndSummary", true, new Text("ClientOptions.ShowRolesAtEnd"), null);
+        AutoPlayAgain = Add("AutoPlayAgain", false, new Text("ClientOptions.AutoReturn"), null);
+        Reconnect = Add("Reconnect", true, new Text("ClientOptions.AutoRejoin"), null);
+        Spectate = Add("Spectate", false, new Text("ClientOptions.Spectate"), Roles.Spectate.OnOptionChanged);
         DarkMeeting = Add("DarkMeeting", false, new Text("ClientOptions.DarkMeetingScreen"), null); // 次の会議から
     }
 

@@ -30,7 +30,7 @@ public enum FxHide : byte
 
 // 演出 1 つの見える範囲。役職クラスの static readonly に置くと、設定画面にその役職の行として 1 行出て、
 // ホストが「選んでよい範囲」の中から選ぶ (値は全員に同期される)。
-//   public static readonly FxVisibility Flash = new("光が見える人", "Who sees the flash", Audience.Self, FxVisibility.Personal);
+//   public static readonly FxVisibility Flash = new("Sensitive.Flash", Audience.Self, FxVisibility.Personal);
 // 推理を壊す演出 (占いの結果・自分だけの印) は Personal / Involved を渡して「全員」を選べないようにする。
 // 見せる時は FxSignal.Show で全員へ 1 本送り、受け取った端末がこの範囲で自分に出すかを決める
 // Show は出来事 1 つにつき 1 回 (毎フレーム送ると通信の本数の予算を食う)。出し続ける物 (矢印など) は受け取った端末が自分で出し続け、

@@ -20,11 +20,11 @@ public sealed class Lighter : RoleBase
 {
     public override Team Team => Team.Crew;          // Crew / Impostor / Neutral
     public override string Color => "#EEE5BE";       // 役職の色
-    public override Text Name => new("ライター", "Lighter");
-    public override Text Blurb => new("広い視界で船を見張ろう", "See further than the rest");
+    public override Text Name => new("Lighter.Name");     // 文は Resources/Lang の表に書く (下の「画面に出す文」)
+    public override Text Blurb => new("Lighter.Blurb");
 
     // 設定項目 (全員共通の値なので static readonly)。設定画面に宣言の順で並ぶ
-    public static readonly FloatOpt VisionMultiplier = new("視界の倍率", "Vision Multiplier", 1.5f, 1f, 3f, 0.25f, "x");
+    public static readonly FloatOpt VisionMultiplier = new("Lighter.VisionMultiplier", 1.5f, 1f, 3f, 0.25f, "x");
 
     // 試合中の処理
     public override void ModifyVision(ref float radius) => radius *= VisionMultiplier;
@@ -39,7 +39,7 @@ public sealed class Lighter : RoleBase
 |---|---|
 | `Team` | 陣営。割り当てる相手と、設定画面でどの陣営の見出しの下に並ぶかが決まる |
 | `Color` | 役職の色 (`"#RRGGBB"`) |
-| `Name` / `Blurb` | 役職名とイントロの一行説明。`new("日本語", "English")` |
+| `Name` / `Blurb` | 役職名とイントロの一行説明。`new("クラス名.Name")` のように文の鍵で書く |
 | `Description` | タスク欄の先頭に出す説明 (既定は `Blurb`) |
 | `Reading` | 名前の読み (ひらがな)。名前に漢字がある時に書くと、設定画面の検索でかなでも見つかる |
 | `IsKiller` | 第三陣営でキルする役職なら `true` (下の「第三陣営の勝ち方」) |
@@ -115,25 +115,43 @@ private void OnExiled(PlayerExiledEvent e) => GameEnd.Win(this);
 
 | 型 | 書き方 | 値 |
 |---|---|---|
-| `BoolOpt` | `new("名前", "Name", true)` | `bool` |
-| `IntOpt` | `new("名前", "Name", 既定, 最小, 最大, 刻み = 1, "単位")` | `int` |
-| `FloatOpt` | `new("名前", "Name", 既定, 最小, 最大, 刻み, "単位")` | `float` |
-| `ChoiceOpt` | `new("名前", "Name", 既定の番号, new("選択肢A", "A"), new("選択肢B", "B"))` | 選ばれた番号 |
+| `BoolOpt` | `new("鍵", true)` | `bool` |
+| `IntOpt` | `new("鍵", 既定, 最小, 最大, 刻み = 1, "単位")` | `int` |
+| `FloatOpt` | `new("鍵", 既定, 最小, 最大, 刻み, "単位")` | `float` |
+| `ChoiceOpt` | `new("鍵", 既定の番号, new Text("鍵A"), new Text("鍵B"))` | 選ばれた番号 |
 
 どれもそのまま値として使えます (`if (CanVent)` / `radius *= VisionMultiplier`)。
-番号を振る必要はありません。名前は「役職の Id.フィールド名」で付きます。
+番号を振る必要はありません。保存と同期の名前は「役職の Id.フィールド名」で付きます。画面に出る名前の鍵も同じ形 (`Lighter.VisionMultiplier`) にそろえてください。
 
 ## 役職以外の設定を足す
 
 `static class` に `[Settings]` を付けると、その中の設定項目が並びます。`Tab.General` なら「MRP 全般」タブに見出し付きで、`Tab.Crew` / `Tab.Impostor` / `Tab.Neutral` なら「役職」タブのその陣営の見出しのすぐ下に並びます。
 
 ```csharp
-[Settings(Tab.General, "役職", "Roles")]
+[Settings(Tab.General, "RoleSettings.Title")]
 public static class RoleSettings
 {
-    public static readonly BoolOpt Enabled = new("More Roles Plus の役職を使う", "Use More Roles Plus roles", true);
+    public static readonly BoolOpt Enabled = new("RoleSettings.Enabled", true);
 }
 ```
+
+## 画面に出す文
+
+画面に出す文はコードに直接書かず、`Resources/Lang/Japanese.dat` と `Resources/Lang/English.dat` に「鍵: 文」で書きます。コードは鍵だけを持ちます。
+
+```
+# ── ライター (Lighter) ──
+Lighter.Name: ライター
+Lighter.Blurb: 広い視界で船を見張ろう
+Lighter.VisionMultiplier: 視界の倍率
+```
+
+- 鍵は「クラス名.メンバー名」(`Lighter.Name`・`Lighter.VisionMultiplier`)。メソッドの中の文は「クラス名.英語の要約」(`HostActions.MeetingCalled`)。
+- **新しい鍵は 2 つのファイルの両方に、同じ鍵で足します**。片方に無い鍵は英語の文が出て、両方に無い鍵は画面に鍵がそのまま出ます。
+- 名前や数字を入れる所は `{name}` のように書き、コードで `new Text("AfkGuard.IsAFK").With("name", name)` と値を渡します。値に `Text` を渡すと、その時の言語の文になります。
+- 本編から取った名前など、表を通さずにそのまま出す文は `Text.Raw(文字列)`。
+- 改行は `\n`。
+- 遊ぶ人は `BepInEx/config/MoreRolesPlus/Language/` の同じ形のファイルで、どの文でも書き換えられます (本編の文は `Vanilla/` の中)。鍵を変えると、その文を書き換えていた人の書き換えが効かなくなるので、一度出した鍵は変えないでください。
 
 ## 設定値の保存と同期
 
@@ -174,7 +192,7 @@ Mark.Send(target.PlayerId);   // 送る (自分の端末では実行されない
 TownOfHost 系はホストだけが入れる mod なので、ホストが全員の画面を作って送るための仕組みがたくさんあります。More Roles Plus は全員が入れる mod なので、それぞれの端末が自分の画面を作ります。そのため、次の物は要りません。
 
 - 役職の登録 (`CustomRoles` への追加・`SimpleRoleInfo.Create`・設定の ID の帯)。クラスを置くだけで登録されます
-- 翻訳ファイルと `GetString`。文字はその場で `new Text("日本語", "English")` と書きます
+- 翻訳の仕組みを自分で用意すること。文は `Resources/Lang` の表に書き、コードでは `new Text("鍵")` と書きます (上の「画面に出す文」)
 - 一人ずつ違うゲーム設定を送る `ApplyGameOptions` と、名前の書き換え (`NotifyRoles`)
 - 本編のボタン (シェイプシフトやファントム) を能力ボタンとして借りる工夫。独自のボタンを出せます
 
@@ -187,7 +205,7 @@ TownOfHost 系はホストだけが入れる mod なので、ホストが全員�
 | RoleInfo の色 | `Color` |
 | `() => RoleTypes.Engineer` | `BaseRole => RoleTypes.Engineer` |
 | `SetupOptionItem` と `OptionItem` | `static readonly` の `BoolOpt` / `IntOpt` / `FloatOpt` / `ChoiceOpt` |
-| `GetString("...")` | `new Text("日本語", "English")` |
+| `GetString("...")` | `new Text("鍵")` (文は `Resources/Lang/*.dat`) |
 | `ApplyGameOptions` (視界・キルの待ち時間) | `ModifyVision` / `ModifyKillCooldown` |
 | `CreateSender` / `ReceiveRPC` | `RemoteCall<T>` (上の「端末どうしで情報を送る」) |
 | `OnFixedUpdate(PlayerControl)` | `OnFixedUpdate()` (要るなら `[HostOnly]` / `[LocalOnly]`) |

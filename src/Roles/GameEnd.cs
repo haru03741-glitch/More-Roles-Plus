@@ -334,7 +334,7 @@ public static class GameEnd
         if (Last.Role == null) return;
 
         egm.BackgroundBar.material.color = color;
-        AddSubText(egm, new Text("GameEnd.Wins").With("name", Last.Role.Name).ToString(), color);
+        AddSubText(egm, new Text("GameEnd.RoleWins").With("name", Last.Role.Name).ToString(), color);
     }
 
     private static readonly Color NeutralYellow = new Color32(255, 214, 64, 255);
@@ -347,7 +347,7 @@ public static class GameEnd
         if (Last.Role != null)
         {
             color = NeutralYellow;
-            text = new Text("GameEnd.Wins").With("name", Last.Role.Name).ToString();
+            text = new Text("GameEnd.RoleWins").With("name", Last.Role.Name).ToString();
         }
         else if (Last.Team == Team.Impostor)
         {

@@ -69,7 +69,7 @@ internal static class AfkGuard
         if (!_warned && _idle >= limit - 20)
         {
             _warned = true;
-            Notify(new Text("AfkGuard.YoullBeMarkedAFKIn"));
+            Notify(new Text("AfkGuard.Warning"));
         }
         if (!_reported && _idle >= limit)
         {

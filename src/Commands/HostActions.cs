@@ -79,11 +79,11 @@ internal static class HostActions
             meeting.RpcClose();
             return new Text("HostActions.MeetingClosed");
         }
-        if (ExileController.Instance) return new Text("HostActions.WaitUntilTheEjectionIs");
+        if (ExileController.Instance) return new Text("HostActions.WaitForEjection");
         // 始まりの場面やエアシップの出現場所選びの最中に開くと、会議がその下に隠れたまま進む
         var mg = Minigame.Instance;
         if (IntroCutscene.Instance || (mg && mg.TryCast<SpawnInMinigame>() != null))
-            return new Text("HostActions.WaitUntilTheGameHas");
+            return new Text("HostActions.WaitForStart");
         var lp = PlayerControl.LocalPlayer;
         MeetingRoomManager.Instance.AssignSelf(lp, null);
         var hud = Vanilla.Hud;
@@ -108,14 +108,14 @@ internal static class HostActions
             }
             else proto ??= FindRole(a);
         }
-        if (proto == null) return new Text("HostActions.UnknownRoleRoles").With("roleNames", RoleNames());
+        if (proto == null) return new Text("HostActions.UnknownRole").With("roleNames", RoleNames());
         if (lobby)
         {
             RoleAssigner.Reserved[target.PlayerId] = Registry.Roles.IndexOf(proto);
-            return new Text("HostActions.WillBeInTheNext").With("name", target.Data.PlayerName).With("role", proto.Name);
+            return new Text("HostActions.RoleReserved").With("name", target.Data.PlayerName).With("role", proto.Name);
         }
         RoleAssigner.Give(target, proto);
-        return new Text("HostActions.IsNow").With("name", target.Data.PlayerName).With("role", proto.Name);
+        return new Text("HostActions.RoleChanged").With("name", target.Data.PlayerName).With("role", proto.Name);
     }
 
     public static string Kill(string args)

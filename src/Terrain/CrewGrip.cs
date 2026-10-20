@@ -770,25 +770,25 @@ internal static class CrewGrip
             // つかむ時は名前の上・連打の間はゲージ (頭の上 1.35) のさらに上
             _keyTf.localPosition = FxMath.V3(0f, kind == 1 ? 1.5f : 1.8f, -800f);
             string key = Touch
-                ? (kind == 1 ? Tr.Get("CrewGrip.TAPUpperRight") : Tr.Get("CrewGrip.MASHUpperRight"))
-                : (kind == 1 ? "SPACE" : Tr.Get("CrewGrip.MASHSPACE"));
+                ? (kind == 1 ? Tr.Get("CrewGrip.TapKeyTouch") : Tr.Get("CrewGrip.MashKeyTouch"))
+                : (kind == 1 ? "SPACE" : Tr.Get("CrewGrip.MashKeyPc"));
             float w = Touch ? 3.0f : kind == 1 ? 1.7f : 2.6f;
             _keyText.text = key;
             _keyText.rectTransform.sizeDelta = FxMath.V2(w, 0.6f);
             _keyFill.size = FxMath.V2(w, 0.6f);
             _keyRim.size = FxMath.V2(w + 0.12f, 0.72f);
         }
-        if (_tapText) _tapText.text = kind == 1 ? Tr.Get("CrewGrip.GRAB") : Tr.Get("CrewGrip.MASH");
+        if (_tapText) _tapText.text = kind == 1 ? Tr.Get("CrewGrip.Grab") : Tr.Get("CrewGrip.Mash");
         if (rim)
         {
             _prompt.text = kind == 1
-                ? (Touch ? Tr.Get("CrewGrip.LastWallTapTheUpper") : Tr.Get("CrewGrip.LastWallSpaceClickWhen"))
-                : (Touch ? Tr.Get("CrewGrip.TheWindIsFierceMash") : Tr.Get("CrewGrip.TheWindIsFierceMash2"));
+                ? (Touch ? Tr.Get("CrewGrip.LastWallTouch") : Tr.Get("CrewGrip.LastWallPc"))
+                : (Touch ? Tr.Get("CrewGrip.WindTouch") : Tr.Get("CrewGrip.WindPc"));
             return;
         }
         _prompt.text = kind == 1
-            ? (Touch ? Tr.Get("CrewGrip.TapTheUpperRightWhen") : Tr.Get("CrewGrip.SpaceClickWhenTheRing"))
-            : (Touch ? Tr.Get("CrewGrip.MashTheUpperRightTo") : Tr.Get("CrewGrip.MashSpaceClickToClimb"));
+            ? (Touch ? Tr.Get("CrewGrip.RingTouch") : Tr.Get("CrewGrip.RingPc"))
+            : (Touch ? Tr.Get("CrewGrip.ClimbTouch") : Tr.Get("CrewGrip.ClimbPc"));
     }
 
     private static bool EnsureArt(PlayerControl lp)

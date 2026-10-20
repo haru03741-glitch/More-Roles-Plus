@@ -13,7 +13,7 @@ internal static class InfoCommands
     // 死んだ人だけが使える (生きている人に死因を見せない)。番号を付けるとその人の死因
     public static string Death(string args)
     {
-        if (!InGame) return new Text("InfoCommands.OnlyDuringAGameSee");
+        if (!InGame) return new Text("InfoCommands.OnlyDuringAGameSeeLast");
         var me = PlayerControl.LocalPlayer;
         if (me.Data == null || !me.Data.IsDead) return new Text("InfoCommands.OnlyAfterYouDie");
         byte pid = me.PlayerId;
@@ -76,7 +76,7 @@ internal static class InfoCommands
             }
             sb.Append('\n').Append(new Text("InfoCommands.Addons").ToString()).Append(": ").Append(line);
         }
-        sb.Append('\n').Append(new Text("InfoCommands.RForDetails").ToString());
+        sb.Append('\n').Append(new Text("InfoCommands.DetailsHint").ToString());
         return sb.ToString();
     }
 

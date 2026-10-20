@@ -179,10 +179,10 @@ internal static class BlockStartPatch
         {
             VersionCheck.HoldStart();
             if (Vanilla.Chat is { } c)
-                c.AddChat(PlayerControl.LocalPlayer, new Text("BlockStartPatch.CheckingTheVersionOfPlayers"), false);
+                c.AddChat(PlayerControl.LocalPlayer, new Text("VersionCheck.WaitingForNewPlayers"), false);
             return false;
         }
-        string msg = new Text("BlockStartPatch.msg")
+        string msg = new Text("VersionCheck.Mismatch")
                      + string.Join("\n", blockers);
         if (Vanilla.Chat is { } chat) chat.AddChat(PlayerControl.LocalPlayer, msg, false);
         return false;

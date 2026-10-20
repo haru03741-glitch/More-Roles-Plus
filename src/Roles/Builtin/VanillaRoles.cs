@@ -39,7 +39,7 @@ public abstract class VanillaRole : RoleBase
         get
         {
             var b = Behaviour();
-            if (!b) return new Text("VanillaRole.VanillaRole");
+            if (!b) return new Text("VanillaRole.DefaultBlurb");
             return Text.Raw(b.Blurb);
         }
     }
@@ -61,67 +61,67 @@ public abstract class VanillaRole : RoleBase
 public sealed class VanillaScientist : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Scientist;
-    protected override Text FallbackName => new("VanillaScientist.FallbackName");
+    protected override Text FallbackName => new("VanillaScientist.Name");
 }
 
 public sealed class VanillaEngineer : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Engineer;
-    protected override Text FallbackName => new("VanillaEngineer.FallbackName");
+    protected override Text FallbackName => new("VanillaEngineer.Name");
 }
 
 public sealed class VanillaNoisemaker : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Noisemaker;
-    protected override Text FallbackName => new("VanillaNoisemaker.FallbackName");
+    protected override Text FallbackName => new("VanillaNoisemaker.Name");
 }
 
 public sealed class VanillaTracker : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Tracker;
-    protected override Text FallbackName => new("VanillaTracker.FallbackName");
+    protected override Text FallbackName => new("VanillaTracker.Name");
 }
 
 public sealed class VanillaDetective : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Detective;
-    protected override Text FallbackName => new("VanillaDetective.FallbackName");
+    protected override Text FallbackName => new("VanillaDetective.Name");
 }
 
 public sealed class VanillaJudge : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Judge;
-    protected override Text FallbackName => new("VanillaJudge.FallbackName");
+    protected override Text FallbackName => new("VanillaJudge.Name");
 }
 
 public sealed class VanillaGuardianAngel : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.GuardianAngel;
-    protected override Text FallbackName => new("VanillaGuardianAngel.FallbackName");
+    protected override Text FallbackName => new("VanillaGuardianAngel.Name");
 }
 
 public sealed class VanillaSpiritGuide : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.SpiritGuide;
-    protected override Text FallbackName => new("VanillaSpiritGuide.FallbackName");
+    protected override Text FallbackName => new("VanillaSpiritGuide.Name");
 }
 
 public sealed class VanillaShapeshifter : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Shapeshifter;
-    protected override Text FallbackName => new("VanillaShapeshifter.FallbackName");
+    protected override Text FallbackName => new("VanillaShapeshifter.Name");
 }
 
 public sealed class VanillaPhantom : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Phantom;
-    protected override Text FallbackName => new("VanillaPhantom.FallbackName");
+    protected override Text FallbackName => new("VanillaPhantom.Name");
 }
 
 public sealed class VanillaViper : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Viper;
-    protected override Text FallbackName => new("VanillaViper.FallbackName");
+    protected override Text FallbackName => new("VanillaViper.Name");
 }
 
 // 本編の設定 1 つを読み書きする行。値は本編の設定にあり、MRP の保存・同期には入れない

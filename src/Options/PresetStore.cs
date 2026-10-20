@@ -44,7 +44,7 @@ internal static class PresetStore
 
     public static string Save(string name)
     {
-        if (!ValidName(name)) return new Text("PresetStore.NamesLettersDigitsAndUp");
+        if (!ValidName(name)) return new Text("PresetStore.BadName");
         OptionSync.RestoreOwn();
         Registry.SaveTo(PathOf(name));
         SaveVanilla(PathOf(name));

@@ -90,9 +90,9 @@ internal static class ChatGuard
         if (n >= limit)
         {
             client.KickPlayer(sender.OwnerId, false);
-            msg = new Text("ChatGuard.KickedTimes").With("name", name).With("why", why).With("n", n);
+            msg = new Text("ChatGuard.Kicked").With("name", name).With("why", why).With("n", n);
         }
-        else msg = new Text("ChatGuard.KickedAt").With("name", name).With("why", why).With("n", n).With("limit", limit);
+        else msg = new Text("ChatGuard.Strike").With("name", name).With("why", why).With("n", n).With("limit", limit);
         Plugin.Logger.LogInfo($"chat guard: {msg}");
         DevChat.Notice(Vanilla.Chat, msg);
     }

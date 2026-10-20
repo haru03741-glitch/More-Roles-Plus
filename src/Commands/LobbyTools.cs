@@ -27,7 +27,7 @@ internal static class LobbyTools
 
     private static void ShowSay(string text)
     {
-        DevChat.Notice(Vanilla.Chat, new Text("LobbyTools.FromTheHost").With("text", text));
+        DevChat.Notice(Vanilla.Chat, new Text("LobbyTools.HostMessage").With("text", text));
     }
 
     public static string Say(string args)
@@ -98,10 +98,10 @@ internal static class LobbyTools
     {
         if (!InLobby) return OnlyLobby;
         string name = CleanName(args);
-        if (name.Length is < 1 or > MaxName) return new Text("LobbyTools.NamesMustBe1Characters").With("maxName", MaxName);
-        if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.TheHostHasTurnedOff");
+        if (name.Length is < 1 or > MaxName) return new Text("LobbyTools.BadNameLength").With("maxName", MaxName);
+        if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.RenameOff");
         RenameCall.Send(name);
-        return AmHost ? new Text("LobbyTools.RenamedTo").With("name", name) : new Text("LobbyTools.AskedTheHostToRename").With("name", name);
+        return AmHost ? new Text("LobbyTools.RenamedTo").With("name", name) : new Text("LobbyTools.RenameRequested").With("name", name);
     }
 
     public static string Color(string args)
@@ -111,10 +111,10 @@ internal static class LobbyTools
         string a = args.Trim();
         if (a.StartsWith('#') || a.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
-            if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.TheHostHasTurnedOff");
-            if (a[0] != '#') { Menu.CustomColors.SetMine((UnityEngine.Color32?)null); return new Text("LobbyTools.BackToTheGamesColor"); }
+            if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.RenameOff");
+            if (a[0] != '#') { Menu.CustomColors.SetMine((UnityEngine.Color32?)null); return new Text("LobbyTools.ColorReset"); }
             var parts = a.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (!Menu.CustomColors.TryParse(parts[0], out var custom)) return new Text("LobbyTools.UseRRGGBBEG00B7FF");
+            if (!Menu.CustomColors.TryParse(parts[0], out var custom)) return new Text("LobbyTools.ColorHexHowTo");
             if (parts.Length >= 2 && Menu.CustomColors.TryParse(parts[1], out var second))
             {
                 byte dir = parts.Length >= 3 && byte.TryParse(parts[2], out byte d) && d < Menu.CustomColors.DirCount ? d : (byte)0;
@@ -129,7 +129,7 @@ internal static class LobbyTools
         }
         int color = FindColor(args);
         if (color < 0) return new Text("LobbyTools.ColorHowTo").With("max", Palette.PlayerColors.Length - 1).With("names", ColorNames());
-        if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.TheHostHasTurnedOff");
+        if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.RenameOff");
         ColorCall.Send((byte)color);
         return new Text("LobbyTools.ColorChanging").With("color", ColorName(color));
     }
@@ -162,7 +162,7 @@ internal static class LobbyTools
         var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         string sub = parts.Length > 0 ? parts[0].ToLowerInvariant() : "";
         string name = parts.Length > 1 ? parts[1].Trim() : "";
-        Text usage = new("LobbyTools.usage");
+        Text usage = new("LobbyTools.PresetUsage");
         if (sub is "" or "list") return List();
         if (sub == "import") return PresetStore.Import();
         if (!PresetStore.ValidName(name)) return usage;

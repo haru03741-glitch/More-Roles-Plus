@@ -308,7 +308,7 @@ internal static class TerrainProbe
             {
                 var role = Roles.RoleState.Local;
                 if (role == null) { reply("ERR ability no role (setrole first)"); return; }
-                role.AddAbility(new Roles.Ability(new Text("TerrainProbe.Test"), "bomb")
+                role.AddAbility(new Roles.Ability(new Text("TerrainProbe.TestAbility"), "bomb")
                 {
                     Target = Roles.AbilityTarget.Player,
                     Cooldown = () => 5f,

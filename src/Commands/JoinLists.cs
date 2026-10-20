@@ -123,7 +123,7 @@ internal static class JoinLists
         string name = c.PlayerName;
         if (fc.Length == 0 && puid.Length == 0)
         {
-            if (JoinSettings.Whitelist) Notify(new Text("JoinLists.HasNoIDSoThe").With("name", name));
+            if (JoinSettings.Whitelist) Notify(new Text("JoinLists.NoIdForWhitelist").With("name", name));
             return;
         }
         if (JoinSettings.UseBanList && Bans.Find(fc, puid) != null)
@@ -143,7 +143,7 @@ internal static class JoinLists
         if (JoinSettings.Consecutive && puid.Length > 0 && !trusted && PlayedRecently(puid))
         {
             AmongUsClient.Instance.KickPlayer(c.Id, false);
-            Notify(new Text("JoinLists.PlayedThePreviousGameAnd").With("name", name));
+            Notify(new Text("JoinLists.KeptOutRecent").With("name", name));
         }
     }
 
@@ -220,7 +220,7 @@ internal static class JoinLists
     {
         History().Clear();
         SaveHistory();
-        return new Text("JoinLists.ForgotWhoPlayedThePrevious");
+        return new Text("JoinLists.RecentCleared");
     }
 
     // 本編の BAN (人の一覧の BAN ボタン) も含め、BAN した人は一覧に書く
@@ -257,12 +257,12 @@ internal static class JoinLists
     private static string KickOrBan(string args, bool ban)
     {
         if (!OnlineRoom) return new Text("JoinLists.OnlyInAnOnlineRoom");
-        if (args.Length == 0) return new Text("JoinLists.AddAPlayerNumberSee");
+        if (args.Length == 0) return new Text("JoinLists.NeedPlayerNumber");
         var c = ClientOf(args, out string err);
         if (c == null) return err;
         string name = c.PlayerName;
         AmongUsClient.Instance.KickPlayer(c.Id, ban);
-        return ban ? new Text("JoinLists.BannedAddedToTheList").With("name", name)
+        return ban ? new Text("JoinLists.Banned").With("name", name)
                    : new Text("JoinLists.Kicked").With("name", name);
     }
 
@@ -297,7 +297,7 @@ internal static class JoinLists
                 return ListText(file, new Text("JoinLists.ListIsEmpty").With("list", Cap(what)));
             case "add":
             {
-                if (!OnlineRoom) return new Text("JoinLists.OnlyInAnOnlineRoom2");
+                if (!OnlineRoom) return new Text("JoinLists.OnlyInAnOnlineRoomFc");
                 var c = ClientOf(rest, out string err);
                 if (c == null) return err;
                 var (fc, puid) = Keys(c);
@@ -311,7 +311,7 @@ internal static class JoinLists
             case "remove":
                 return Remove(file, rest, new Text("JoinLists.RemovedFrom").With("what", what));
             default:
-                return new Text("JoinLists.ListAddDel").With("cmd", cmd);
+                return new Text("JoinLists.ListUsage").With("cmd", cmd);
         }
     }
 
@@ -334,7 +334,7 @@ internal static class JoinLists
     private static string Remove(ListFile f, string arg, string done)
     {
         var list = f.Get();
-        if (arg.Length == 0) return new Text("JoinLists.AddAListNumberOr");
+        if (arg.Length == 0) return new Text("JoinLists.NeedListNumber");
         Entry hit = null;
         if (int.TryParse(arg, out int n) && n >= 1 && n <= list.Count) hit = list[n - 1];
         else

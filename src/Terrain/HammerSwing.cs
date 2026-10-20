@@ -59,7 +59,7 @@ internal static class HammerSwing
             Play(face, toward, facingLeft, color, own: true, air: false);
             _portalOwner = owner;
             _portalAt = Time.time + HitAt;
-            return new Text("HammerSwing.HammeredThePortalDevice");
+            return new Text("HammerSwing.HitPortal");
         }
         if (!wall)
         {

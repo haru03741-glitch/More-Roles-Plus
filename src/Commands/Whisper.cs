@@ -68,7 +68,7 @@ internal static class Whisper
         var chat = Vanilla.Chat;
         if (!Allowed(me, to))
         {
-            if (chat) DevChat.Notice(chat, new Text("Whisper.YouCantWhisperToThem"));
+            if (chat) DevChat.Notice(chat, new Text("Whisper.CantWhisper"));
             return;
         }
         Target = id;
@@ -94,7 +94,7 @@ internal static class Whisper
         }
         if (!Allowed(me, to) || to.OwnerId < 0)
         {
-            DevChat.Notice(chat, new Text("Whisper.YouCantWhisperToThem2"));
+            DevChat.Notice(chat, new Text("Whisper.CantWhisperTextKept"));
             _restore = text;
             return true;
         }
@@ -120,7 +120,7 @@ internal static class Whisper
         if (!me || me.PlayerId != to || !Allowed(from, me) || string.IsNullOrEmpty(text)) return;
         if (text.Length > ChatInput.Limit) text = text[..ChatInput.Limit];
         var chat = Vanilla.Chat;
-        if (chat) chat.AddChat(from, $"<color=#C79BFF>[{new Text("Whisper.Whisper")}]</color> {Plain(text)}", false);
+        if (chat) chat.AddChat(from, $"<color=#C79BFF>[{new Text("Whisper.Label")}]</color> {Plain(text)}", false);
     }
 
     private static void ReceiveTold(PlayerControl from, byte to)

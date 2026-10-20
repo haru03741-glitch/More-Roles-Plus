@@ -110,7 +110,7 @@ internal static class RoleMenu
     public static Text TabName => new("RoleMenu.TabName");
 
     public static Text DefaultDescription =>
-        new Text("RoleMenu.RoleCountAndChancePress").With("enabledCount", EnabledCount()).With("count", Registry.Roles.Count);
+        new Text("RoleMenu.Description").With("enabledCount", EnabledCount()).With("count", Registry.Roles.Count);
 
     private static int EnabledCount()
     {
@@ -898,7 +898,7 @@ internal static class RoleMenu
 
         if (_empty)
         {
-            _empty.Title.text = searching ? new Text("RoleMenu.NothingMatches2") : new Text("RoleMenu.NoMatchingRoles");
+            _empty.Title.text = searching ? new Text("RoleMenu.NothingMatchesShort") : new Text("RoleMenu.NoMatchingRoles");
             _empty.gameObject.SetActive(!any);
             if (!any) { _empty.transform.localPosition = new Vector3(HeaderX, y, Z); y -= HeaderStep; }
         }

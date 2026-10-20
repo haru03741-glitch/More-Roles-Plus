@@ -324,7 +324,7 @@ internal static class SettingsMenu
             desc.text = Pages[index].Presets ? PresetPage.Description
                 : Pages[index].Roles
                 ? RoleMenu.DefaultDescription
-                : new Text("SettingsMenu.MoreRolesPlusSettingsSent");
+                : new Text("SettingsMenu.Description");
         }
         if (previewOnly)
         {

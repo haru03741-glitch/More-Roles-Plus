@@ -84,11 +84,16 @@ internal static class LangFiles
             WriteIfChanged(snapFile, Join(defaults.Lines));
 
             var final = DatFile.FromLines(lines);
+            List<string> unknown = null;
             foreach (string key in final.Order)
             {
                 string v = final.Values[key];
-                if (!defaults.Values.TryGetValue(key, out string d) || d != v) edited[key] = v;
+                if (!defaults.Values.TryGetValue(key, out string d)) (unknown ??= new List<string>()).Add(key);
+                if (d == null || d != v) edited[key] = v;
             }
+            // 鍵の打ち間違いや、更新で無くなった鍵 (その行は効かない)
+            if (unknown != null)
+                Plugin.Logger.LogWarning($"lang: {Path.GetFileName(file)}: unknown keys ({unknown.Count}) = {string.Join(", ", unknown.GetRange(0, Math.Min(10, unknown.Count)))}");
         }
         catch (Exception e) { Plugin.Logger.LogError($"lang: {file}: {e}"); }
         return edited;
@@ -313,7 +318,8 @@ internal static class VanillaText
             var orig = new Dictionary<string, string>();
             Units[unit.Pointer] = (lang, orig);
 
-            string version = $"# Among Us {Constants.Year}.{Constants.Month}.{Constants.Day}.{Constants.Revision}";
+            // 写しが今の本編の物かの印 (版の数字が更新で変わらないこともあるので文の数も並べる)
+            string version = $"# Among Us {Constants.Year}.{Constants.Month}.{Constants.Day}.{Constants.Revision} ({all.Count} texts)";
             var edited = LangFiles.ApplyVanilla(lang.ToString(), version, () => ReadGame(all, version));
             foreach (var kv in edited)
             {

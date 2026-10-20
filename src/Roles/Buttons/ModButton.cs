@@ -6,7 +6,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles;
 
 // 能力ボタン。本編の能力ボタンを複製して右下の並びに足す (並べるのは本編の GridArrange)。
-//   var b = ModButton.Create(Lifespan, ButtonIcons.Get("hammer"), new Text("ハンマー", "Hammer"), 3f, () => ...);
+//   var b = ModButton.Create(Lifespan, ButtonIcons.Get("hammer"), new Text("Demolisher.Hammer"), 3f, () => ...);
 // 寿命が切れると消える。押した時の処理は AbilityButton.DoClick の前置で受ける (UnityEvent に管理側の
 // ラムダを登録すると、ゲーム側と mod 側をまたいで参照が回り回収されないため登録しない)。
 // 待ち時間は FixedUpdate で数え (HUD が隠れている間・動けない間は止める)、表示は冷めている間だけ 0.1 秒ごとに書き直す

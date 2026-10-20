@@ -14,7 +14,7 @@ internal static class LogDump
     public static string Run(string _)
     {
         if (OperatingSystem.IsAndroid())
-            return new Text("LogDump.OnAndroidUseShareLogs");
+            return new Text("LogDump.AndroidUseShare");
         try
         {
             string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "MRP_Logs");
@@ -31,12 +31,12 @@ internal static class LogDump
                 n += Add(zip, Path.Combine(Paths.ConfigPath, "MoreRolesPlus.options.txt"), "MoreRolesPlus.options.txt");
             }
             Plugin.Logger.LogInfo($"log dump: {path} ({n} files)");
-            return new Text("LogDump.SavedTheLogsFiles").With("n", n).With("path", path);
+            return new Text("LogDump.Saved").With("n", n).With("path", path);
         }
         catch (Exception e)
         {
             Plugin.Logger.LogError($"log dump: {e}");
-            return new Text("LogDump.CouldntSaveTheLogs").With("message", e.Message);
+            return new Text("LogDump.Failed").With("message", e.Message);
         }
     }
 

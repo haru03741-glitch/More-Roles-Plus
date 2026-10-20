@@ -13,7 +13,7 @@ public enum AbilityTarget : byte
 }
 
 // 能力 1 つ (ボタン 1 つ)。役職の OnAssigned の中で作る:
-//   AddAbility(new Ability(new Text("叩く", "Smash"), "hammer")
+//   AddAbility(new Ability(new Text("Demolisher.Hammer"), "hammer")
 //   {
 //       Cooldown = () => SmashCooldown,
 //       MaxUses = () => SmashUses,

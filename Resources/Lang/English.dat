@@ -51,40 +51,40 @@ Sensitive.Blurb: Sense it when someone falls
 Sensitive.Strength: Flash Strength
 
 # ── VanillaRole ──
-VanillaRole.VanillaRole: Vanilla role
+VanillaRole.DefaultBlurb: Vanilla role
 
 # ── VanillaScientist ──
-VanillaScientist.FallbackName: Scientist
+VanillaScientist.Name: Scientist
 
 # ── VanillaEngineer ──
-VanillaEngineer.FallbackName: Engineer
+VanillaEngineer.Name: Engineer
 
 # ── VanillaNoisemaker ──
-VanillaNoisemaker.FallbackName: Noisemaker
+VanillaNoisemaker.Name: Noisemaker
 
 # ── VanillaTracker ──
-VanillaTracker.FallbackName: Tracker
+VanillaTracker.Name: Tracker
 
 # ── VanillaDetective ──
-VanillaDetective.FallbackName: Detective
+VanillaDetective.Name: Detective
 
 # ── VanillaJudge ──
-VanillaJudge.FallbackName: Judge
+VanillaJudge.Name: Judge
 
 # ── VanillaGuardianAngel ──
-VanillaGuardianAngel.FallbackName: Guardian Angel
+VanillaGuardianAngel.Name: Guardian Angel
 
 # ── VanillaSpiritGuide ──
-VanillaSpiritGuide.FallbackName: Spirit Guide
+VanillaSpiritGuide.Name: Spirit Guide
 
 # ── VanillaShapeshifter ──
-VanillaShapeshifter.FallbackName: Shapeshifter
+VanillaShapeshifter.Name: Shapeshifter
 
 # ── VanillaPhantom ──
-VanillaPhantom.FallbackName: Phantom
+VanillaPhantom.Name: Phantom
 
 # ── VanillaViper ──
-VanillaViper.FallbackName: Viper
+VanillaViper.Name: Viper
 
 # ── FxVisibility ──
 FxVisibility.Everyone: Everyone
@@ -103,7 +103,7 @@ GameEnd.Defeat: Defeat
 GameEnd.ImpostorsWin: Impostors Win
 GameEnd.CrewmatesWin: Crewmates Win
 GameEnd.Spectating: Spectating
-GameEnd.Wins: {name} Wins
+GameEnd.RoleWins: {name} Wins
 
 # ── MatchLog ──
 MatchLog.KilledBy: Killed by {killer} ({killerRole})
@@ -142,11 +142,11 @@ SpectateSettings.Title: Spectating
 SpectateSettings.Allow: Players who choose to spectate start as ghosts
 
 # ── Spectate ──
-Spectate.ChooseThisInTheLobby: Choose this in the lobby
-Spectate.YoullSpectateTheNextGame: You'll spectate the next game (as a ghost)
-Spectate.YoullPlayTheNextGame: You'll play the next game
-Spectate.YoureSpectatingAsAGhost: You're spectating (as a ghost)
-Spectate.SpectatingRoamFreelyAsA: <color=#9FD8FF>Spectating: roam freely as a ghost. You see everyone's role in meetings</color>
+Spectate.OnlyInLobby: Choose this in the lobby
+Spectate.WillSpectate: You'll spectate the next game (as a ghost)
+Spectate.WillPlay: You'll play the next game
+Spectate.Spectating: You're spectating (as a ghost)
+Spectate.Hud: <color=#9FD8FF>Spectating: roam freely as a ghost. You see everyone's role in meetings</color>
 
 # ── LobbyView ──
 LobbyView.HostSettingsHaveNotArrived: Host settings have not arrived yet
@@ -177,7 +177,7 @@ PresetPage.OnlyTheHostCanLoad: Only the host can load presets
 PresetPage.PressAgainToDelete: Press again to delete "{name}"
 
 # ── PresetStore ──
-PresetStore.NamesLettersDigitsAndUp: Names: letters, digits, _ and -, up to 30
+PresetStore.BadName: Names: letters, digits, _ and -, up to 30
 PresetStore.SavedTheCurrentSettingsAs: Saved the current settings as "{name}"
 PresetStore.NoPreset: No preset "{name}"
 PresetStore.CouldntRead: Couldn't read "{name}"
@@ -197,7 +197,7 @@ Registry.NeutralsCanHaveIt: Neutrals can have it
 
 # ── RoleMenu ──
 RoleMenu.TabName: Roles
-RoleMenu.RoleCountAndChancePress: Role count and chance. Press a name to open its settings.\nHold ± to keep changing (or use the wheel; right-click toggles 0% / 100%).\nEnabled: {enabledCount} / {count}
+RoleMenu.Description: Role count and chance. Press a name to open its settings.\nHold ± to keep changing (or use the wheel; right-click toggles 0% / 100%).\nEnabled: {enabledCount} / {count}
 RoleMenu.Impostor: Impostor
 RoleMenu.Neutral: Neutral
 RoleMenu.Crewmate: Crewmate
@@ -206,7 +206,7 @@ RoleMenu.All: All
 RoleMenu.EnabledOnly: Enabled only
 RoleMenu.NothingMatches: Nothing matches "{q}".
 RoleMenu.Undo: Undo
-RoleMenu.NothingMatches2: Nothing matches
+RoleMenu.NothingMatchesShort: Nothing matches
 RoleMenu.NoMatchingRoles: No matching roles
 RoleMenu.Breadcrumb: {a} › {b}
 RoleMenu.SearchCount: "{q}": {total}
@@ -219,7 +219,7 @@ RoleMenu.TeamPercent: {team} {pct}
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP
 SettingsMenu.SearchAllTabs: Search all tabs
-SettingsMenu.MoreRolesPlusSettingsSent: More Roles Plus settings. Sent to everyone when you close this menu.
+SettingsMenu.Description: More Roles Plus settings. Sent to everyone when you close this menu.
 
 # ── VanillaGame ──
 VanillaGame.TabName: Game
@@ -235,7 +235,7 @@ AfkSettings.Seconds: Seconds until AFK
 
 # ── AfkGuard ──
 AfkGuard.YoureBack: You're back
-AfkGuard.YoullBeMarkedAFKIn: You'll be marked AFK in 20 seconds unless you move
+AfkGuard.Warning: You'll be marked AFK in 20 seconds unless you move
 AfkGuard.IsAFK: {name} is AFK
 AfkGuard.WasKilledForBeingAFK: {name} was killed for being AFK
 AfkGuard.TheHostCantBeKicked: The host can't be kicked
@@ -306,8 +306,8 @@ ChatGuardSettings.Times: Kick on the Nth time
 # ── ChatGuard ──
 ChatGuard.AskingToStart: asking to start
 ChatGuard.BannedWord: banned word
-ChatGuard.KickedTimes: Kicked {name} ({why}, {n} times)
-ChatGuard.KickedAt: {name}: {why} ({n}/{limit}, kicked at {limit})
+ChatGuard.Kicked: Kicked {name} ({why}, {n} times)
+ChatGuard.Strike: {name}: {why} ({n}/{limit}, kicked at {limit})
 
 # ── HostActions ──
 HostActions.NotInGame: Only during a game
@@ -322,12 +322,12 @@ HostActions.StartCancelled: Start cancelled
 HostActions.GameAborted: Game aborted
 HostActions.TheGameIsAlreadyEnding: The game is already ending
 HostActions.MeetingClosed: Meeting closed
-HostActions.WaitUntilTheEjectionIs: Wait until the ejection is over
-HostActions.WaitUntilTheGameHas: Wait until the game has begun
+HostActions.WaitForEjection: Wait until the ejection is over
+HostActions.WaitForStart: Wait until the game has begun
 HostActions.MeetingCalled: Meeting called
-HostActions.UnknownRoleRoles: Unknown role. Roles: {roleNames}
-HostActions.WillBeInTheNext: {name} will be {role} in the next game
-HostActions.IsNow: {name} is now {role}
+HostActions.UnknownRole: Unknown role. Roles: {roleNames}
+HostActions.RoleReserved: {name} will be {role} in the next game
+HostActions.RoleChanged: {name} is now {role}
 HostActions.AlreadyDead: Already dead
 HostActions.Killed: Killed {name}
 HostActions.NotDead: Not dead
@@ -335,7 +335,7 @@ HostActions.Revived: Revived {name}
 HostActions.NoPlayerSeeId: No player {arg} (see /id)
 
 # ── InfoCommands ──
-InfoCommands.OnlyDuringAGameSee: Only during a game (see /l for the last game)
+InfoCommands.OnlyDuringAGameSeeLast: Only during a game (see /l for the last game)
 InfoCommands.OnlyAfterYouDie: Only after you die
 InfoCommands.NoPlayerSeeId: No player {arg} (see /id)
 InfoCommands.IsAlive: {name} is alive
@@ -346,7 +346,7 @@ InfoCommands.NoRole: No role
 InfoCommands.Addon: Addon
 InfoCommands.NoRoleCalled: No role called {arg}
 InfoCommands.Addons: Addons
-InfoCommands.RForDetails: (/r <role or addon> for details)
+InfoCommands.DetailsHint: (/r <role or addon> for details)
 InfoCommands.Crew: Crew
 InfoCommands.Impostor: Impostor
 InfoCommands.Neutral: Neutral
@@ -359,43 +359,43 @@ JoinSettings.Consecutive: Keep out players from the previous game
 JoinSettings.ConsecutiveGames: How many past games to check
 
 # ── JoinLists ──
-JoinLists.HasNoIDSoThe: {name} has no ID, so the whitelist can't check them
+JoinLists.NoIdForWhitelist: {name} has no ID, so the whitelist can't check them
 JoinLists.IsOnTheBanList: {name} is on the ban list and was kept out
 JoinLists.IsNotOnTheWhitelist: {name} is not on the whitelist and was kept out
-JoinLists.PlayedThePreviousGameAnd: {name} played the previous game and was kept out
-JoinLists.ForgotWhoPlayedThePrevious: Forgot who played the previous games
+JoinLists.KeptOutRecent: {name} played the previous game and was kept out
+JoinLists.RecentCleared: Forgot who played the previous games
 JoinLists.NoPlayerSeeId: No player {arg} (see /id)
 JoinLists.YouCantPickYourself: You can't pick yourself
 JoinLists.OnlyInAnOnlineRoom: Only in an online room
-JoinLists.AddAPlayerNumberSee: Add a player number (see /id)
-JoinLists.BannedAddedToTheList: Banned {name} (added to the list)
+JoinLists.NeedPlayerNumber: Add a player number (see /id)
+JoinLists.Banned: Banned {name} (added to the list)
 JoinLists.Kicked: Kicked {name}
 JoinLists.TheBanListIsEmpty: The ban list is empty
 JoinLists.Unbanned: Unbanned
 JoinLists.TheWhitelist: the whitelist
 JoinLists.TheVIPList: the VIP list
-JoinLists.OnlyInAnOnlineRoom2: Only in an online room (needs friend codes)
+JoinLists.OnlyInAnOnlineRoomFc: Only in an online room (needs friend codes)
 JoinLists.HasNoID: {name} has no ID
 JoinLists.IsAlreadyListed: {name} is already listed
 JoinLists.AddedTo: Added {name} to {what}
 JoinLists.RemovedFrom: Removed from {what}
-JoinLists.ListAddDel: {cmd} (list), {cmd} add <number>, {cmd} del <list number or friend code>
-JoinLists.AddAListNumberOr: Add a list number or friend code
+JoinLists.ListUsage: {cmd} (list), {cmd} add <number>, {cmd} del <list number or friend code>
+JoinLists.NeedListNumber: Add a list number or friend code
 JoinLists.IsNotOnTheList: {arg} is not on the list
 JoinLists.ListIsEmpty: {list} is empty
 
 # ── LobbyTools ──
 LobbyTools.OnlyLobby: Only in the lobby
-LobbyTools.FromTheHost: <color=#FF5050>From the host</color>: {text}
+LobbyTools.HostMessage: <color=#FF5050>From the host</color>: {text}
 LobbyTools.AddAMessage: Add a message
 LobbyTools.NotInARoom: Not in a room
-LobbyTools.NamesMustBe1Characters: Names must be 1-{maxName} characters
-LobbyTools.TheHostHasTurnedOff: The host has turned off name and color changes
+LobbyTools.BadNameLength: Names must be 1-{maxName} characters
+LobbyTools.RenameOff: The host has turned off name and color changes
 LobbyTools.RenamedTo: Renamed to {name}
-LobbyTools.AskedTheHostToRename: Asked the host to rename you to {name}
-LobbyTools.BackToTheGamesColor: Back to the game's color
-LobbyTools.UseRRGGBBEG00B7FF: Use #RRGGBB (e.g. #00B7FF). Add a second color for a gradient (e.g. #00B7FF #FF4FA0)
-LobbyTools.usage: /preset (list), /preset save|load|del|export <name>, /preset import (also in the Presets tab of the settings menu)
+LobbyTools.RenameRequested: Asked the host to rename you to {name}
+LobbyTools.ColorReset: Back to the game's color
+LobbyTools.ColorHexHowTo: Use #RRGGBB (e.g. #00B7FF). Add a second color for a gradient (e.g. #00B7FF #FF4FA0)
+LobbyTools.PresetUsage: /preset (list), /preset save|load|del|export <name>, /preset import (also in the Presets tab of the settings menu)
 LobbyTools.NoSavedPresets: No saved presets
 LobbyTools.ColorGradient: Your color is now a gradient #{color} → #{color2}
 LobbyTools.ColorSet: Your color is now #{color}
@@ -403,9 +403,9 @@ LobbyTools.ColorHowTo: Use a number (0-{max}) or a color name: {names}
 LobbyTools.ColorChanging: Changing your color to {color} (or a free one if taken)
 
 # ── LogDump ──
-LogDump.OnAndroidUseShareLogs: On Android, use "Share logs" in the launcher
-LogDump.SavedTheLogsFiles: Saved the logs ({n} files): {path}
-LogDump.CouldntSaveTheLogs: Couldn't save the logs: {message}
+LogDump.AndroidUseShare: On Android, use "Share logs" in the launcher
+LogDump.Saved: Saved the logs ({n} files): {path}
+LogDump.Failed: Couldn't save the logs: {message}
 
 # ── HostSettings ──
 HostSettings.Title: Host controls
@@ -420,10 +420,10 @@ WhisperSettings.Enabled: Allow whispers in the lobby and meetings
 WhisperSettings.Announce: Tell everyone when someone whispers (not what)
 
 # ── Whisper ──
-Whisper.YouCantWhisperToThem: You can't whisper to them now
+Whisper.CantWhisper: You can't whisper to them now
 Whisper.WhisperCancelled: Whisper cancelled
-Whisper.YouCantWhisperToThem2: You can't whisper to them now (your text is back in the box)
-Whisper.Whisper: Whisper
+Whisper.CantWhisperTextKept: You can't whisper to them now (your text is back in the box)
+Whisper.Label: Whisper
 Whisper.WhisperingTo: Whispering to {name}. Type and send (send empty to cancel)
 Whisper.Announce: {from} whispered to {to}
 
@@ -432,10 +432,10 @@ AutoRejoin.BackToTheLobbyIn: Back to the lobby in {sec}s
 
 # ── ClientOptions ──
 ClientOptions.DarkChat: Dark chat
-ClientOptions.ShowEveryonesRoleAtGame: Show everyone's role at game end
-ClientOptions.ReturnToTheLobbyAfter: Return to the lobby after a game
-ClientOptions.RejoinTheRoomAfterA: Rejoin the room after a connection drop
-ClientOptions.SpectateTheNextGameAs: Spectate the next game (as a ghost)
+ClientOptions.ShowRolesAtEnd: Show everyone's role at game end
+ClientOptions.AutoReturn: Return to the lobby after a game
+ClientOptions.AutoRejoin: Rejoin the room after a connection drop
+ClientOptions.Spectate: Spectate the next game (as a ghost)
 ClientOptions.DarkMeetingScreen: Dark meeting screen
 ClientOptions.Back: Back
 ClientOptions.MRPOptions: MRP Options
@@ -503,24 +503,24 @@ BombFuse.TooManyBombs: Too many bombs
 BombFuse.Placed: Bomb placed (radius {radius}, explodes in {seconds}s)
 
 # ── CrewGrip ──
-CrewGrip.TAPUpperRight: TAP upper right
-CrewGrip.MASHUpperRight: MASH upper right
-CrewGrip.MASHSPACE: MASH SPACE
-CrewGrip.GRAB: GRAB
-CrewGrip.MASH: MASH
-CrewGrip.LastWallTapTheUpper: Last wall! Tap the upper right when the ring meets it!
-CrewGrip.LastWallSpaceClickWhen: Last wall! Space/Click when the ring meets it!
-CrewGrip.TheWindIsFierceMash: The wind is fierce! Mash the upper right hard!
-CrewGrip.TheWindIsFierceMash2: The wind is fierce! Mash Space/Click hard!
-CrewGrip.TapTheUpperRightWhen: Tap the upper right when the ring meets the corner!
-CrewGrip.SpaceClickWhenTheRing: Space/Click when the ring meets the corner!
-CrewGrip.MashTheUpperRightTo: Mash the upper right to climb back!
-CrewGrip.MashSpaceClickToClimb: Mash Space/Click to climb back!
+CrewGrip.TapKeyTouch: TAP upper right
+CrewGrip.MashKeyTouch: MASH upper right
+CrewGrip.MashKeyPc: MASH SPACE
+CrewGrip.Grab: GRAB
+CrewGrip.Mash: MASH
+CrewGrip.LastWallTouch: Last wall! Tap the upper right when the ring meets it!
+CrewGrip.LastWallPc: Last wall! Space/Click when the ring meets it!
+CrewGrip.WindTouch: The wind is fierce! Mash the upper right hard!
+CrewGrip.WindPc: The wind is fierce! Mash Space/Click hard!
+CrewGrip.RingTouch: Tap the upper right when the ring meets the corner!
+CrewGrip.RingPc: Space/Click when the ring meets the corner!
+CrewGrip.ClimbTouch: Mash the upper right to climb back!
+CrewGrip.ClimbPc: Mash Space/Click to climb back!
 
 # ── HammerSwing ──
 HammerSwing.OnlyWhileAlive: Only while alive
 HammerSwing.AlreadySwinging: Already swinging
-HammerSwing.HammeredThePortalDevice: Hammered the portal device
+HammerSwing.HitPortal: Hammered the portal device
 HammerSwing.NoWallThatWay: No wall that way
 HammerSwing.HammerHit: Hammer hit
 
@@ -542,17 +542,15 @@ TerrainApi.NotReadyYet: Not ready yet
 TerrainApi.YourRoleCantDoThat: Your role can't do that
 
 # ── TerrainProbe ──
-TerrainProbe.Test: Test
+TerrainProbe.TestAbility: Test
 
 # ── VersionCheck ──
 VersionCheck.Checking: {name} (checking)
 VersionCheck.NoMRP: {name} (no MRP)
 VersionCheck.DifferentNativeModule: {name} (different native module)
 VersionCheck.DifferentVersion: {name} (different version: {version})
-
-# ── BlockStartPatch ──
-BlockStartPatch.CheckingTheVersionOfPlayers: Checking the version of players who just joined. Starting once done
-BlockStartPatch.msg: Everyone needs the same More Roles Plus version:\n
+VersionCheck.WaitingForNewPlayers: Checking the version of players who just joined. Starting once done
+VersionCheck.Mismatch: Everyone needs the same More Roles Plus version:\n
 
 # ── MapSettings ──
 MapSettings.Title: Map
