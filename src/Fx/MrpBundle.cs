@@ -40,6 +40,7 @@ internal static class MrpBundle
             "noise_bump_small_1", "noise_bump_small_2", "noise_bump_small_3",
             "noise_bump_heavy_1", "noise_bump_heavy_2", "noise_bump_clash_1", "noise_bump_clash_2",
             "noise_fire_loop", "noise_fire_ignite", "noise_steam", "noise_flare", "noise_arc",
+            "noise_portal_open", "noise_portal_pass", "noise_portal_close",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {

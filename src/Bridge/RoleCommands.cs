@@ -23,6 +23,18 @@ internal static class RoleCommands
             reply($"OK roles reg=[{reg}] assigned=[{now}] addons=[{addons}] addonsNow=[{addonNow}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
         });
 
+        TestBridge.Register("portal", "[x y] 自分のポータルメーカーの状態 / (x, y) に置く (ボタンの待ち時間は使わない)", (args, reply) =>
+        {
+            if (RoleState.Local is not Roles.Crew.PortalMaker pm) { reply("ERR portal not PortalMaker"); return; }
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 2 && float.TryParse(p[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float x)
+                              && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float y))
+            {
+                if (!pm.PlaceForTest(x, y)) { reply($"ERR portal refused {pm.Describe()}"); return; }
+            }
+            reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
+        });
+
         TestBridge.Register("endcheck", "[番号...] 生き残りの数で勝者が決まるかを見るだけ (終わらせない)。番号の人をキル役として数える", (args, reply) =>
         {
             if (!GameData.Instance) { reply("ERR endcheck not in game"); return; }

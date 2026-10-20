@@ -22,6 +22,9 @@
 #   noise_burn_hit_<素材>   … 炎に焼かれた壁が傷む (炎が息をつく・素材がきしむ/はぜる)
 #   noise_burn_crumble_<素材> … 焼けた壁が崩れ落ちる (焦げて鈍い崩れ・炎がごうっと吹き込む・火の粉がはぜる)
 #   それぞれ <名前>_m       … 遠い・壁越しのこもった音 (16kHz)
+#   noise_portal_open       … ポータルが開く (吸い込む風が上がり、うなりが高まって澄んだ響きが残る)
+#   noise_portal_pass       … ポータルを通った (しゅっと抜ける風とうなりの落ち)
+#   noise_portal_close      … ポータルが閉じる (うなりが下がってぽすっと消える)
 #   noise_end_spectate      … 観戦の人の終わりの画面 (勝ちでも負けでもない、見届けた音。こもった版は作らない)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
 #   python tools/make-break-sounds.py   (numpy と scipy が要る)
@@ -826,6 +829,54 @@ def end_spectate():
     return room(x, 2.2, 3500, 0.55)
 
 
+def hum(t, f0, f1, tau, detune=0.004):
+    # 少しずらした 2 本の正弦のうなり (高さは f0 から f1 へ指数的に寄る)
+    ph = sweep(t, f0, f1, tau)
+    return np.sin(ph * (1 - detune)) + np.sin(ph * (1 + detune) + 1.3) + 0.35 * np.sin(2 * ph + 0.4)
+
+
+def portal_open():
+    # 開く (1.1s): 吸い込む風が上がり → 上がるうなり → 開き切りの澄んだ響き
+    n, t = T(1.1)
+    out = 0.8 * riser(0.45, 300, 5000, 2.0)
+    out = np.concatenate([out, np.zeros(n - len(out))])
+    swell = hum(t, 160, 420, 0.25) * np.minimum(1, t / 0.3) * np.exp(-np.maximum(t - 0.35, 0) / 0.35)
+    out += 0.5 * lp(swell, 2500)
+    chime = modal([(1320, 0.5, 1.0), (1980, 0.35, 0.5), (2640 * 1.01, 0.2, 0.25)], 0.7, strike=0.003)
+    place(out, chime, 0.36, 0.35)
+    place(out, bp(noise(int(SR * 0.3)), 3000, 9000) * np.exp(-np.arange(int(SR * 0.3)) / SR / 0.08), 0.36, 0.4)
+    return room(out, 0.6, 5000, 0.25)
+
+
+def portal_pass():
+    # 通った (0.7s): 高い所から下がって抜ける風 + 落ちるうなり + 光の粒のきらめき
+    n, t = T(0.7)
+    x = noise(n)
+    out = np.zeros(n)
+    seg = 8
+    w = np.zeros(n)
+    for i in range(seg):
+        fc = 7000 * (500 / 7000) ** (i / (seg - 1))
+        c = (i + 0.5) / seg * n * 0.55
+        win = np.exp(-0.5 * ((np.arange(n) - c) / (n / seg * 0.5)) ** 2)
+        out += bp(x, fc * 0.6, fc * 1.6) * win
+        w += win
+    out = out / np.maximum(w, 1e-6) * np.minimum(1, t / 0.01) * np.exp(-t / 0.22)
+    out += 0.45 * lp(hum(t, 520, 130, 0.12), 1800) * np.exp(-t / 0.25)
+    out += 0.6 * grains(n, 70, 4000, 10000, 0.004, 0.001, 0.0, 0.35, lambda u: 1 - u)
+    return room(out, 0.5, 5000, 0.2)
+
+
+def portal_close():
+    # 閉じる (0.6s): うなりが下がって細り、最後に低いぽすっ
+    n, t = T(0.6)
+    out = 0.55 * lp(hum(t, 420, 90, 0.15), 2000) * np.exp(-t / 0.2) * np.minimum(1, t / 0.01)
+    out += 0.4 * bp(noise(n), 800, 4000) * np.exp(-t / 0.08)
+    m, tm = T(0.15)
+    place(out, np.sin(sweep(tm, 140, 50, 0.03)) * np.exp(-tm / 0.05), 0.22, 0.8)
+    return room(out, 0.4, 4000, 0.2)
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     emit('noise_boom', boom, drive=2.4)
@@ -857,5 +908,8 @@ if __name__ == '__main__':
     emit('noise_steam', steam, peak=0.75, drive=1.6, ratio=0.3)
     emit('noise_flare', flare, peak=0.95, drive=2.0)
     emit('noise_arc', arc, peak=0.7, drive=1.6, ratio=0.3)
+    emit('noise_portal_open', portal_open, peak=0.8, drive=1.6, ratio=0.3)
+    emit('noise_portal_pass', portal_pass, peak=0.85, drive=1.8, ratio=0.35)
+    emit('noise_portal_close', portal_close, peak=0.75, drive=1.6, ratio=0.3)
     reseed('noise_end_spectate')
     save('noise_end_spectate', fade(master(fade(end_spectate()), 1.3, 0.15), r=0.3), SR, 0.7)

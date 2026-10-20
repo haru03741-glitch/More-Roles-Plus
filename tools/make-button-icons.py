@@ -271,6 +271,30 @@ def water():
     ic.save("water")
 
 
+def portal():
+    # 立った楕円のポータル: 青緑の縁 → 暗い奥 → 渦の腕 2 本 → 白い芯。右下に小さなもう 1 つ (2 つで 1 組)
+    ic = Icon()
+    ic.part(ellipse(150, 120, 204, 204), (46, 230, 214, 255), [(ellipse(160, 132, 196, 194), (16, 40, 92, 255))])
+    ic.part(ellipse(30, 14, 150, 206), (46, 230, 214, 255), [
+        (ellipse(44, 30, 136, 190), (10, 22, 60, 255)),
+        (ellipse(36, 18, 146, 124), (120, 255, 236, 255)),
+    ])
+    ic.part(ellipse(48, 36, 132, 184), (14, 26, 70, 255))
+    arms = blank()
+    d = ImageDraw.Draw(arms)
+    for k in range(2):
+        pts = []
+        for i in range(40):
+            u = i / 39
+            a = k * math.pi + u * math.pi * 1.6
+            r = 6 + u * 34
+            pts.append(((90 + r * math.cos(a)) * SS, (110 + r * math.sin(a) * 1.55) * SS))
+        d.line(pts, fill=255, width=9 * SS, joint="curve")
+    ic.part(arms, (159, 123, 255, 255))
+    ic.part(ellipse(76, 88, 104, 132), (236, 252, 255, 255))
+    ic.save("portal")
+
+
 if __name__ == "__main__":
     hammer()
     hammer_held()
@@ -282,4 +306,5 @@ if __name__ == "__main__":
     noise_break()
     fire()
     water()
+    portal()
     print("wrote", os.path.abspath(OUT))

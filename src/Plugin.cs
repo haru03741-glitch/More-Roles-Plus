@@ -107,6 +107,7 @@ public class Ticker : MonoBehaviour
         Terrain.FireArt.Tick(); t = Bridge.Perf.Lane(36, t);
         Terrain.FireFx.Tick(); t = Bridge.Perf.Lane(37, t);
         Fx.FxHands.Tick(); t = Bridge.Perf.Lane(16, t);
+        Roles.PortalArt.Tick();
         Terrain.RubbleBake.Tick(); t = Bridge.Perf.Lane(17, t);
         Terrain.ShadowPatch.Tick(); t = Bridge.Perf.Lane(18, t);
         Bridge.Burst.Tick(); t = Bridge.Perf.Lane(19, t);
