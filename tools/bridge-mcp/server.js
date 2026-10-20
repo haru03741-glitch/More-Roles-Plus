@@ -137,7 +137,9 @@ const server = new McpServer(
 server.registerTool("bridge_send", {
     title: "ディレクティブ送信",
     description: "ブリッジにディレクティブを送り、応答を返す。lines は 1 要素 = 1 行 (20 行超は自動分割)。" +
-        "okPattern/errPattern を指定すると一致行を待って判定、省略時は最終行の応答 (OK/ERR) まで待つ。",
+        "okPattern/errPattern を指定すると一致行を待って判定、省略時は最終行の応答 (OK/ERR) まで待つ。" +
+        "lines には 'wait phase=InGame 60' / 'wait marker <正規表現> 30' を混ぜてよい (wait 中は後の行が止まり、済むと進む) ので、" +
+        "台本 1 本 (freeplay → wait → tp → hammer → shot) を 1 回の呼び出しで流せる。その時は timeoutSec を wait の合計以上 (上限 110)・1 回 20 行以内・okPattern は最後の行の応答に当てる。",
     inputSchema: {
         lines: z.array(z.string()).min(1).max(100),
         okPattern: z.string().optional(),
