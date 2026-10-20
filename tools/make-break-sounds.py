@@ -257,19 +257,23 @@ def boom():
     out = np.zeros(n)
     place(out, riser(0.06, 800, 6000, 2.0), 0.0, 0.5)
     h = 0.06
-    place(out, impact(1.6, 1.9), h, 2.4)
+    # 長く尾を引く部品は終わりまで伸ばして最後にまとめて絞る (途中で切ると減り切らない残りがぶつっと途切れる)
+    place(out, impact(dur - h, 1.9), h, 2.4)
     m, tm = T(0.2)
     place(out, hp(noise(m), 1800) * np.exp(-tm / 0.025), h, 1.7)
     place(out, sub_hit(1.2, 120, 30, 0.08, 0.45), h, 1.4)
     place(out, braam(41.2, 1.4, 0.45), h, 1.0)
     place(out, braam(61.7, 0.9, 0.3), h, 0.5)
-    fb = jet(fire_bed(1.6, 0.5), 0.0006, 0.005, 1.6, 0.0, 0.8)
-    place(out, fb * np.minimum(1, T(1.6)[1] / 0.05), h + 0.03, 0.9)
+    fd = dur - h - 0.03
+    fb = jet(fire_bed(fd, 0.5), 0.0006, 0.005, 1.6, 0.0, 0.8)
+    place(out, fb * np.minimum(1, T(fd)[1] / 0.05), h + 0.03, 0.9)
     place(out, crack(0.3), h + 0.02, 0.8)
     for at, g in [(0.3, 0.8), (0.52, 0.6)]:
         place(out, impact(0.6, 0.6), at, g)
     out += roll(dur, 6, 0.7, t0=0.2) * 0.8
     out += 0.2 * debris(n, 0.25, 1.4)  # 爆風で舞った細かい物
+    tail = 0.5
+    out *= np.where(t > dur - tail, 0.5 + 0.5 * np.cos(np.pi * (t - (dur - tail)) / tail), 1.0)
     return out
 
 
