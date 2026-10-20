@@ -31,6 +31,7 @@ internal static class MrpBundle
     private static readonly Dictionary<string, AudioClip> Clips = new();
     private static int _clipsLeft = ClipNames.Length;
 
+    // ここに無い名前の音はバンドルに入っていても読まれず、鳴らしても無音になる (音を足したらここにも足す)
     private static string[] MakeClipNames()
     {
         var names = new List<string>
