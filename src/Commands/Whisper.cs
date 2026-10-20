@@ -203,12 +203,12 @@ internal static class WhisperList
             var icon = new GameObject("MrpWhisperIcon") { layer = _open.gameObject.layer };
             icon.transform.SetParent(_open.transform, false);
             icon.transform.localPosition = new Vector3(0f, 0f, -0.1f);
-            float ls = Math.Abs(_open.transform.lossyScale.x);
-            float u = ls > 0.0001f ? 0.55f / ls : 1f; // 画面の大きさをボタンの中の大きさへ (隣のボタンの見た目の大きさに合わせた係数)
-            // 他のボタンと同じ「黒いふちの白い角丸」の地 (画面で 0.62 単位角)
+            // 大きさはボタンの中の単位で決める。チャット窓は開く時に小さい所から広がるので、作った時の画面の縮尺は開き具合で変わる
+            const float u = 1.17f; // 隣のボタンの見た目の大きさに合わせた係数
+            // 他のボタンと同じ「黒いふちの白い角丸」の地
             var edge = MenuArt.Panel(_open.transform, "MrpWhisperEdge", 0.12f * u, new Vector2(0.62f * u, 0.62f * u), new Vector3(0f, 0f, -0.05f), Color.black, null);
             var bg = MenuArt.Panel(_open.transform, "MrpWhisperBg", 0.1f * u, new Vector2(0.54f * u, 0.54f * u), new Vector3(0f, 0f, -0.07f), new Color(0.93f, 0.93f, 0.95f, 1f), null);
-            float k = 0.36f / 0.3f * u; // 吹き出しは画面で幅 0.36 単位
+            float k = 0.36f / 0.3f * u; // 吹き出しはボタンの中で幅 0.36 × 係数
             icon.transform.localPosition = new Vector3(0f, 0f, -0.1f);
             icon.transform.localScale = new Vector3(k, k, 1f);
             var isr = icon.AddComponent<SpriteRenderer>();
