@@ -435,7 +435,9 @@ internal static class RoleAssigner
         OptionSync.RestoreOwn();
         // 本編の役職も MRP が配る (MRP の役職を切っていても本編の役職は配る)
         int seed = Rng.Next();
-        var plan = AssignPlan.Decide(Roster(), new Random(seed), Reserved);
+        var roster = Roster();
+        MatchReservedTeams(roster);
+        var plan = AssignPlan.Decide(roster, new Random(seed), Reserved);
         Plugin.Logger.LogInfo($"roles: seed {seed}");
         Reserved.Clear();
 
@@ -457,6 +459,36 @@ internal static class RoleAssigner
             list.Add(new Slot { PlayerId = p.PlayerId, Impostor = RoleManager.IsImpostorRole(p.Data.Role.Role), BaseRole = p.Data.Role.Role });
         }
         return list;
+    }
+
+    // 予約した役職と本編が決めた陣営が違う人は、予約の無い反対側の人と陣営を入れ替える (始まりの場面から予約どおりにする)。
+    // 入れ替える相手がいなければその人の陣営だけ変える
+    private static void MatchReservedTeams(List<Slot> roster)
+    {
+        if (Reserved.Count == 0) return;
+        var rng = new Random();
+        for (int i = 0; i < roster.Count; i++)
+        {
+            if (!Reserved.TryGetValue(roster[i].PlayerId, out int idx) || idx < 0 || idx >= Registry.Roles.Count) continue;
+            bool impostor = Registry.Roles[idx].Team == Team.Impostor;
+            if (roster[i].Impostor == impostor) continue;
+            var partners = new List<int>();
+            for (int k = 0; k < roster.Count; k++)
+                if (roster[k].Impostor == impostor && !Reserved.ContainsKey(roster[k].PlayerId)) partners.Add(k);
+            if (partners.Count > 0) SetTeam(roster, partners[rng.Next(partners.Count)], !impostor);
+            SetTeam(roster, i, impostor);
+            Plugin.Logger.LogInfo($"roles: reservation {roster[i].PlayerId}={Registry.Roles[idx].Id} moved team ({(partners.Count > 0 ? "swapped" : "no partner")})");
+        }
+    }
+
+    private static void SetTeam(List<Slot> roster, int at, bool impostor)
+    {
+        var s = roster[at];
+        s.Impostor = impostor;
+        s.BaseRole = impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
+        roster[at] = s;
+        var p = Player(s.PlayerId);
+        if (p) p.RpcSetRole(s.BaseRole, true);
     }
 
     private static readonly RemoteCall<List<Pick>> Assign = new("Roles.Assign", Route.HostToAll,
