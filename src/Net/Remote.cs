@@ -189,13 +189,22 @@ internal static class Remote
         return lane;
     }
 
+    // Open〜Close の間の電文が 1 通のどこから始まったか。先に入っている電文があれば、はみ出した時や
+    // 書き損ねた時にこの電文だけを切り離せる (前の電文を道連れにしない)
+    private static int _msgStart;
+    private static bool _msgShared;
+    private static Lane _msgLane;
+
     internal static MessageWriter Open(RemoteCall call, int target)
     {
         MessageWriter w;
         _closeQueued = false;
+        _msgShared = false;
+        _msgLane = null;
         if (_batchDepth > 0)
         {
             if (_batch != null && (_batchTarget != target || _batch.Length >= SoftLimit)) FlushBatch();
+            _msgShared = _batch != null;
             if (_batch == null)
             {
                 _batch = Start(target);
@@ -211,11 +220,14 @@ internal static class Remote
                 lane.Ready.Add(lane.Open);
                 lane.Open = null;
             }
+            _msgShared = lane.Open != null;
             lane.Open ??= Start(target);
             w = lane.Open;
+            _msgLane = lane;
             _closeQueued = true;
         }
         else w = Start(target);
+        _msgStart = w.Length;
         w.StartMessage(call.Id);
         call.Sent++;
         return w;
@@ -224,19 +236,59 @@ internal static class Remote
     internal static void Close(MessageWriter w)
     {
         w.EndMessage();
+        // 入れる前は SoftLimit 未満でも、この電文を足して HardLimit を超えたら、この電文だけを次の 1 通へ移す
+        if (_msgShared && w.Length > HardLimit) w = SplitOff(w);
         if (_batchDepth == 0 && !_closeQueued) Finish(w);
         _closeQueued = false;
     }
 
-    // Open したあと中身を書けなかった時: その 1 通 (まとめ・待ち行列の開いている物も含む) を丸ごと捨てる
+    // Open したあと中身を書けなかった時: この電文だけを取り消す。1 通にこの電文しか無ければ 1 通ごと捨てる
     internal static void Abort(MessageWriter w)
     {
+        _closeQueued = false;
+        Dropped++;
+        if (_msgShared)
+        {
+            // 書きかけの入れ子 (この電文と、その中で開いた物) の始まりを外してから、電文の手前まで戻す
+            var starts = w.messageStarts;
+            while (starts.Count > 0 && starts.Peek() >= _msgStart) starts.Pop();
+            Truncate(w, _msgStart);
+            return;
+        }
         if (ReferenceEquals(w, _batch)) _batch = null;
         for (int i = 0; i < Lanes.Count; i++)
             if (ReferenceEquals(Lanes[i].Open, w)) Lanes[i].Open = null;
-        _closeQueued = false;
-        Dropped++;
         w.Recycle();
+    }
+
+    // 書き終えた最後の電文を w から抜き、同じ宛先の新しい 1 通へ移して返す。前の電文だけになった w は送り出す側へ渡す
+    private static MessageWriter SplitOff(MessageWriter w)
+    {
+        int n = w.Length - _msgStart;
+        var src = w.Buffer;
+        var tail = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte>((long)n); // int を渡すと Android で壊れた配列になる
+        for (int i = 0; i < n; i++) tail[i] = src[_msgStart + i]; // はみ出した時だけの経路
+        Truncate(w, _msgStart);
+        MessageWriter next;
+        if (_msgLane != null)
+        {
+            _msgLane.Ready.Add(w);
+            next = _msgLane.Open = Start(_msgLane.Target);
+        }
+        else
+        {
+            FlushBatch();
+            next = _batch = Start(_batchTarget);
+        }
+        next.Write(tail);
+        _msgShared = false;
+        return next;
+    }
+
+    private static void Truncate(MessageWriter w, int length)
+    {
+        w.Length = length;
+        w.Position = length;
     }
 
     private static void FlushBatch()
@@ -335,6 +387,7 @@ internal static class Remote
             w.Recycle();
             return;
         }
+        if (Loopback) LoopbackRead(w, len);
         client.FinishRpcImmediately(w);
         SentAt[_sentIdx] = Environment.TickCount64;
         _sentIdx = (_sentIdx + 1) % RateLimit;
@@ -388,13 +441,68 @@ internal static class Remote
 
     // ---- 計器 (ブリッジ `net`) ----
     // 確かめ用の電文: `net flood N` で N 個積み、通数が RateLimit/秒で頭打ちになるのを見る
+    // size = 中身のバイト数。負の時は -size バイト書いたところで書き損ねる (その電文だけ取り消されるかを見る)
     public static int ProbeReceived;
-    private static readonly RemoteCall<byte> Probe = new("Net.Probe", Route.Anyone,
-        (w, v) => w.Write(v), r => r.ReadByte(), (_, _) => ProbeReceived++, Delivery.Queued);
+    private static readonly RemoteCall<int> Probe = new("Net.Probe", Route.Anyone,
+        (w, size) =>
+        {
+            int n = Math.Abs(size);
+            w.Write((ushort)n);
+            for (int i = 0; i < n; i++) w.Write((byte)i);
+            if (size < 0) throw new InvalidOperationException("probe write failure");
+        },
+        r =>
+        {
+            int n = r.ReadUInt16();
+            for (int i = 0; i < n; i++) r.ReadByte();
+            return n;
+        },
+        (_, _) => ProbeReceived++, Delivery.Queued);
 
-    public static void Flood(int count)
+    public static void Flood(int count, int size = 1, bool batch = false)
     {
-        for (int i = 0; i < count; i++) Probe.Send((byte)i);
+        if (!batch)
+        {
+            for (int i = 0; i < count; i++) Probe.Send(size);
+            return;
+        }
+        using (Batch())
+            for (int i = 0; i < count; i++) Probe.Send(size);
+    }
+
+    // 確かめ用 (ブリッジ `net loopback`): 出す 1 通を手元で読み直し、電文の区切りが崩れていないかを見る。
+    // 確かめ用の電文だけ中身を読み、ほかの電文は区切りだけ数える (手元で 2 回効かせない)
+    public static bool Loopback;
+    public static int LoopbackPackets, LoopbackMessages, LoopbackErrors;
+
+    private static void LoopbackRead(MessageWriter w, int len)
+    {
+        try
+        {
+            var src = w.Buffer;
+            byte[] fp = BitConverter.GetBytes(Registry.Fingerprint);
+            int at = -1;
+            for (int k = 0; k + 4 <= len && k < 32 && at < 0; k++)
+                if (src[k] == fp[0] && src[k + 1] == fp[1] && src[k + 2] == fp[2] && src[k + 3] == fp[3]) at = k;
+            if (at < 0) { LoopbackErrors++; return; }
+            var body = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte>((long)(len - at - 4));
+            for (int i = 0; i < body.Length; i++) body[i] = src[at + 4 + i];
+            var r = MessageReader.Get(body);
+            while (r.BytesRemaining > 0)
+            {
+                var sub = r.ReadMessage();
+                LoopbackMessages++;
+                if (sub.Tag != Probe.Id) continue;
+                Probe.Receive(PlayerControl.LocalPlayer, sub);
+                if (sub.BytesRemaining != 0) LoopbackErrors++;
+            }
+            LoopbackPackets++;
+        }
+        catch (Exception e)
+        {
+            LoopbackErrors++;
+            Plugin.Logger.LogError($"remote loopback: {e.Message}");
+        }
     }
 
     public static string Describe()
@@ -421,6 +529,7 @@ internal static class Remote
             sb.Append('\n');
         }
         if (ProbeReceived > 0) sb.Append("probe recv=").Append(ProbeReceived).Append('\n');
+        if (Loopback) sb.Append("loopback packets=").Append(LoopbackPackets).Append(" messages=").Append(LoopbackMessages).Append(" errors=").Append(LoopbackErrors).Append('\n');
         return sb.ToString().TrimEnd('\n');
     }
 }

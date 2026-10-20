@@ -170,14 +170,22 @@ internal static class BuiltinCommands
             reply("OK health");
         });
 
-        TestBridge.Register("net", "[flood <個数>] 通信の計器: 出した通数/バイト・直近 1 秒の本数/予算・待ち行列・持ち越し・大きすぎて止めた数・ping/未応答、電文ごとの数 (flood = 確かめ用の電文を積んで予算の頭打ちを見る)", (args, reply) =>
+        TestBridge.Register("net", "[flood <個数> [大きさ] [batch]] [loopback on|off] 通信の計器: 出した通数/バイト・直近 1 秒の本数/予算・待ち行列・持ち越し・大きすぎて止めた数・ping/未応答、電文ごとの数 (flood = 確かめ用の電文を積んで予算の頭打ちを見る・大きさ = 1 つの中身のバイト数 (0〜1100)・負なら書き損ねる・batch = まとめ送りで積む・loopback = 出す 1 通を手元で読み直して区切りを確かめる)", (args, reply) =>
         {
             var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length >= 2 && a[0] == "loopback")
+            {
+                Net.Remote.Loopback = a[1] == "on";
+                reply($"OK net loopback {Net.Remote.Loopback}");
+                return;
+            }
             if (a.Length >= 1 && a[0] == "flood")
             {
                 int n = a.Length >= 2 && int.TryParse(a[1], out int f) ? Math.Clamp(f, 1, 10000) : 60;
-                Net.Remote.Flood(n);
-                reply($"OK net flood {n}");
+                int size = a.Length >= 3 && int.TryParse(a[2], out int z) ? Math.Clamp(z, -1100, 1100) : 1;
+                bool batch = a.Length >= 4 && a[3] == "batch";
+                Net.Remote.Flood(n, size, batch);
+                reply($"OK net flood {n} size={size} batch={batch}");
                 return;
             }
             foreach (var line in Net.Remote.Describe().Split('\n')) reply("NET " + line);
