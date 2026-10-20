@@ -2,6 +2,7 @@
 // Based on https://github.com/Gurge44/EndlessHostRoles@ce23f0d Roles/Standard/Crewmate/Miscellaneous/PortalMaker.cs (2 つ置くと近づいた人が行き来する動き・GPL-3.0)
 using System;
 using System.Collections.Generic;
+using HarmonyLib;
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
@@ -10,7 +11,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Crew;
 
-// クルー: ボタンでポータルを 2 か所に置くと、生きている人なら誰でもその間を行き来できる。
+// クルー: ボタンでポータルを 2 か所に置くと、生きている人なら誰でも装置の上で使用ボタンを押してその間を行き来できる。
 // 置き終わった後にもう一度押すと 2 つとも消え、置き直せる (設定で切れる)
 public sealed class PortalMaker : RoleBase
 {
@@ -24,13 +25,13 @@ public sealed class PortalMaker : RoleBase
     public static readonly BoolOpt CanRemove = new("置いた後にもう一度押すと消せる", "Press Again to Remove Portals", true);
 
     private const float MinGap = 4f;     // 2 つ目は 1 つ目からこれだけ離して置く
-    private const float Reach = 1f;      // 足元がポータルからこの距離に入ると通る
+    private const float UseReach = 0.85f; // 足元が装置の真ん中からこの距離に入ると使用ボタンで通れる (装置の幅の半分 + 少し)
     private const float FixtureClear = 0.7f; // ベント・端末・扉・はしごからこれだけ離して置く (装置の幅の半分 + 少し)
     private const float Body = 0.2f;     // 着く所に要る体の半径
     private const float ArriveMax = 1.5f; // 行き先がふさがれていたら、ここまで離れた床を探す
     private const int ShipLayer = 9, FurnitureLayer = 12;
     private const int ArrivePhysics = 24; // 着く所を探す 1 回で物理に問い合わせる上限 (1 フレームに固めない)
-    private const float Rearm = 1.5f;    // 通った後、足元がどちらのポータルからもこれより離れると次に通れる (縁で行き来し続けない)
+    private const long PassGapMs = 400;  // 通った直後に押しが重なっても (クリックとキーが同じ時など) 2 回飛ばない
 
     // 置いた (持ち主 → 全員)。受け手は送り主がポータルメーカーか・数と間隔の決まりを自分で確かめる
     private static readonly RemoteCall<Vector2> MarkCall = new("PortalMaker.Mark", Route.Anyone,
@@ -61,10 +62,11 @@ public sealed class PortalMaker : RoleBase
     private readonly float[] _x = new float[2], _y = new float[2];
     private readonly PortalArt.Handle[] _art = new PortalArt.Handle[2];
     private int _count;
-    private bool _armed = true;    // 一度ポータルの外へ出るまで通らない (着いた側ですぐ戻らない)
-    private long _recheck;         // 壁越し・行き先なしで断った後、次に調べ直す時刻 (立ち止まっている間に毎回物理を引かない)
-    private static int _passGen;   // この端末の自分が通るたびに増える。別のポータルメーカーのポータルが着いた先に重なっていても続けて飛ばない
-    private int _seenGen;
+    private static bool _useLit;    // この端末の使用ボタンをポータルのために点けているか
+    private static bool _lightAfter;
+    private static long _passedAt;  // この端末の自分が最後に通った時刻
+    private static string _lastUse = "-"; // 最後に押した結果 (確かめ用)
+    private static int _relit;            // 使用ボタンを点けた回数 (確かめ用)
 
     internal int MarkCount => _count;
 
@@ -104,11 +106,6 @@ public sealed class PortalMaker : RoleBase
         if (NearFixture(at)) return false;
         if (!TryAdd(at.x, at.y)) return false;
         MarkCall.Send(at);
-        if (_count == 2)
-        {
-            // 置いた本人は 2 つ目の上に立っているので、そのまま飛ばない
-            _armed = false;
-        }
         return true;
     }
 
@@ -148,28 +145,86 @@ public sealed class PortalMaker : RoleBase
         PortalArt.Pass(_x[1], _y[1]);
     }
 
-    // 全員の端末で、その端末の自分だけを見る (自分の位置は自分で動かす)
-    public override void OnFixedUpdate()
+    // 本編が使用ボタンの狙いを決める時 (自分の端末の FixedUpdate ごと)。本編の狙いが無く自分が装置の上にいればボタンを点ける。
+    // 本編は狙いが無いと毎回ボタンを消すので、点いている間は本編の処理を飛ばす (毎フレーム点け直さない)
+    internal static bool BeforeUseTarget(IUsable target)
     {
-        if (_count < 2) return;
-        var lp = PlayerControl.LocalPlayer;
-        if (!lp) return;
-        if (_seenGen != _passGen) { _seenGen = _passGen; _armed = false; }
-        Vector2 me = lp.GetTruePosition();
-        if (!_armed) { if (Near(me.x, me.y, Rearm) < 0) _armed = true; return; }
-        int near = Near(me.x, me.y, Reach);
-        if (near < 0) return;
-        if (lp.Data == null || lp.Data.IsDead || !lp.CanMove || lp.inVent || lp.inMovingPlat || lp.onLadder) return;
-        long now = Environment.TickCount64;
-        if (now < _recheck) return;
+        _lightAfter = false;
+        if (Active.Count == 0 && !_useLit) return true;
+        bool on = target == null && FindUse(out _, out _);
+        if (!on) { _useLit = false; return true; }
+        if (_useLit) return false;
+        _lightAfter = true; // 本編に一度「狙いなし」の絵へ戻させてから点ける
+        return true;
+    }
 
+    internal static void AfterUseTarget(UseButton b)
+    {
+        if (!_lightAfter) return;
+        _lightAfter = false;
+        b.SetEnabled();
+        _useLit = true;
+        _relit++;
+    }
+
+    // 使用ボタンが押された (クリックでもキーでも)。装置の上なら反対側へ飛んで本編の処理は止める
+    internal static bool HandleUse(UseButton b)
+    {
+        if (!_useLit || !b || !b.isActiveAndEnabled || b.currentTarget != null) return false;
+        if (!FindUse(out var pm, out int near)) return false;
+        long now = Environment.TickCount64;
+        if (now - _passedAt < PassGapMs) return true;
+        pm.Pass(near, now);
+        return true;
+    }
+
+    // 自分が乗っている装置 (いちばん近い 1 つ)。死んでいる・動けない・ベントやはしごの中なら無し
+    private static bool FindUse(out PortalMaker pm, out int near)
+    {
+        pm = null; near = -1;
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp) return false;
+        Vector2 me = lp.GetTruePosition();
+        float best = UseReach * UseReach;
+        foreach (var p in Active)
+        {
+            if (p._count < 2) continue;
+            for (int i = 0; i < 2; i++)
+            {
+                float dx = me.x - p._x[i], dy = me.y - (p._y[i] - PortalArt.MachineDrop), d = dx * dx + dy * dy;
+                if (d > best) continue;
+                best = d; pm = p; near = i;
+            }
+        }
+        if (pm == null) return false;
+        return lp.Data != null && !lp.Data.IsDead && lp.CanMove && !lp.inVent && !lp.inMovingPlat && !lp.onLadder;
+    }
+
+    private void Pass(int near, long now)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        Vector2 me = lp.GetTruePosition();
         int to = 1 - near;
         // 壁 (後から立った仕掛け壁・閉じた扉も) の向こうからは入れない。行き先が埋まっていれば飛ばない
-        if (!CanEnter(me.x, me.y, _x[near], _y[near]) || !FindArrival(_x[to], _y[to], out float tx, out float ty))
-        {
-            _recheck = now + 200;
-            return;
-        }
+        if (!CanEnter(me.x, me.y, _x[near], _y[near])) { Refuse("wall", near); return; }
+        if (!FindArrival(_x[to], _y[to], out float tx, out float ty)) { Refuse("blocked", near); return; }
+        Warp(lp, tx, ty);
+        _passedAt = now;
+        _lastUse = $"pass {near}->{to} at=({tx:0.00},{ty:0.00})";
+        ShowPass();
+        PassCall.Send(PlayerId);
+    }
+
+    private void Refuse(string why, int near)
+    {
+        _lastUse = $"refused {why} from={near}";
+        Plugin.Logger.LogInfo($"[PortalMaker] use refused: {why} from p{near}");
+    }
+
+    // 自分の足元を (tx, ty) へ移す (自分の位置は自分で動かす)
+    private static void Warp(PlayerControl lp, float tx, float ty)
+    {
+        Vector2 me = lp.GetTruePosition();
         var root = lp.transform.position;
         var dest = FxMath.V2(tx + (root.x - me.x), ty + (root.y - me.y));
         var nt = lp.NetTransform;
@@ -177,10 +232,6 @@ public sealed class PortalMaker : RoleBase
             nt.SnapTo(dest, (ushort)(nt.lastSequenceId + 328)); // 同じ sequence id だと古い位置として捨てられる
         else
             nt.RpcSnapTo(dest);
-        _armed = false;
-        _seenGen = ++_passGen;
-        ShowPass();
-        PassCall.Send(PlayerId);
     }
 
     // ベント・端末・扉・はしごの上には置かない (着いた人がそれに重なり、ベントは出入りのたびに飛ばされる)
@@ -385,19 +436,9 @@ public sealed class PortalMaker : RoleBase
     // 誰かが倒された: 窓に倒れた直後の死体を映さないよう、絵の側で死体を拾い直す
     private void OnMurdered(PlayerMurderedEvent e) => PortalArt.WatchBodies();
 
-    private int Near(float x, float y, float r)
-    {
-        for (int i = 0; i < 2; i++)
-        {
-            float dx = x - _x[i], dy = y - _y[i];
-            if (dx * dx + dy * dy <= r * r) return i;
-        }
-        return -1;
-    }
-
     internal string Describe()
     {
-        var sb = new System.Text.StringBuilder($"count={_count} armed={_armed}");
+        var sb = new System.Text.StringBuilder($"count={_count} lit={_useLit} relit={_relit} last={_lastUse}");
         for (int i = 0; i < _count; i++) sb.Append($" p{i}=({_x[i]:0.00},{_y[i]:0.00})");
         return sb.ToString();
     }
@@ -409,4 +450,26 @@ public sealed class PortalMaker : RoleBase
         MarkCall.Send(FxMath.V2(x, y));
         return true;
     }
+
+    // テスト用: 自分の足元を装置 i の上 (置いた所) へ移す
+    internal bool GoForTest(int i)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || i < 0 || i >= _count) return false;
+        Warp(lp, _x[i], _y[i]);
+        return true;
+    }
+}
+
+[HarmonyPatch(typeof(UseButton), nameof(UseButton.SetTarget))]
+internal static class PortalUseTargetPatch
+{
+    public static bool Prefix(IUsable target) => PortalMaker.BeforeUseTarget(target);
+    public static void Postfix(UseButton __instance) => PortalMaker.AfterUseTarget(__instance);
+}
+
+[HarmonyPatch(typeof(UseButton), nameof(UseButton.DoClick))]
+internal static class PortalUseClickPatch
+{
+    public static bool Prefix(UseButton __instance) => !PortalMaker.HandleUse(__instance);
 }

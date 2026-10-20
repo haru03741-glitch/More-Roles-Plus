@@ -23,11 +23,21 @@ internal static class RoleCommands
             reply($"OK roles reg=[{reg}] assigned=[{now}] addons=[{addons}] addonsNow=[{addonNow}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
         });
 
-        TestBridge.Register("portal", "[x y] 自分のポータルメーカーの状態 / (x, y) に置く (ボタンの待ち時間は使わない)", (args, reply) =>
+        TestBridge.Register("portal", "[x y | go <0|1> | use] 自分のポータルメーカーの状態 / (x, y) に置く (ボタンの待ち時間は使わない) / 装置の上へ移る / 本編の使用ボタンを押す", (args, reply) =>
         {
             if (RoleState.Local is not Roles.Crew.PortalMaker pm) { reply("ERR portal not PortalMaker"); return; }
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
-            if (p.Length >= 2 && float.TryParse(p[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float x)
+            if (p.Length >= 2 && p[0] == "go" && int.TryParse(p[1], out int gi))
+            {
+                if (!pm.GoForTest(gi)) { reply($"ERR portal go {pm.Describe()}"); return; }
+            }
+            else if (p.Length >= 1 && p[0] == "use")
+            {
+                var hud = Vanilla.Hud;
+                if (!hud || !hud.UseButton) { reply("ERR portal no use button"); return; }
+                hud.UseButton.DoClick();
+            }
+            else if (p.Length >= 2 && float.TryParse(p[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float x)
                               && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float y))
             {
                 if (!pm.PlaceForTest(x, y)) { reply($"ERR portal refused {pm.Describe()}"); return; }
