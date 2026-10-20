@@ -42,6 +42,16 @@ public abstract class Assignable
     // 視界の広さ (radius は本編が計算した値)。自分の画面の計算でだけ呼ばれる
     public virtual void ModifyVision(ref float radius) { }
 
+    // 本編の FixedUpdate ごと (1 回の間隔は Time.fixedDeltaTime)。上書きした役職だけが呼ばれる (会議中も・死んだ後も呼ばれるので要るなら自分で見る)。
+    // 既定は全員の端末で呼ぶ。[LocalOnly] を付けると持ち主の端末だけ、[HostOnly] を付けるとホストの端末だけ。
+    // 中で Unity の計算 (Vector2 の演算・Mathf など) を毎回するとゴミが出て重くなるので、要る時だけにする
+    public virtual void OnFixedUpdate() { }
+
+    // 自分の画面で、seen の名前のすぐ後ろに足す文字 (null か空 = 足さない)。試合中と会議の名札の両方に出る。
+    // 上書きした役職の持ち主の端末でだけ 0.25 秒ごとに呼ばれ、文字が変わった時だけ書き直す
+    //   public override string NameMark(PlayerControl seen) => seen.PlayerId == _marked ? "<color=#FF0000>★</color>" : null;
+    public virtual string NameMark(PlayerControl seen) => null;
+
     // キルの待ち時間 (seconds は部屋の設定の秒数)。自分の端末のほか、ホストがキルの依頼を確かめる時にも呼ぶので、
     // 設定値だけから決める (その端末の状態を見ない)
     public virtual void ModifyKillCooldown(ref float seconds) { }

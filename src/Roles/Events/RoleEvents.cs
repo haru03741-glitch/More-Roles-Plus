@@ -34,6 +34,40 @@ public sealed class GameEndEvent : GameEvent
     public GameResult Result { get; internal set; }
 }
 
+// 会議が呼ばれた (死体の通報か緊急ボタン・会議の画面が出る前)。Reporter = 呼んだ人。
+// Body = 通報された死体の人 (緊急ボタンなら null)。PlayerId = 呼んだ人
+public sealed class MeetingCalledEvent : GameEvent, IPlayerEvent
+{
+    public PlayerControl Reporter { get; internal set; }
+    public NetworkedPlayerInfo Body { get; internal set; }
+    public bool IsEmergency => Body == null;
+    public byte PlayerId => Reporter.PlayerId;
+}
+
+// タスクを 1 つ終えた。TaskId = 終えたタスクの番号 (Player.myTasks の PlayerTask.Id)
+public sealed class TaskCompletedEvent : GameEvent, IPlayerEvent
+{
+    public PlayerControl Player { get; internal set; }
+    public uint TaskId { get; internal set; }
+    public byte PlayerId => Player.PlayerId;
+}
+
+// ベントに入った (入る動きの始まり)。VentId = 入ったベントの番号
+public sealed class VentEnteredEvent : GameEvent, IPlayerEvent
+{
+    public PlayerControl Player { get; internal set; }
+    public int VentId { get; internal set; }
+    public byte PlayerId => Player.PlayerId;
+}
+
+// ベントから出た (出る動きの始まり)。VentId = 出たベントの番号
+public sealed class VentExitedEvent : GameEvent, IPlayerEvent
+{
+    public PlayerControl Player { get; internal set; }
+    public int VentId { get; internal set; }
+    public byte PlayerId => Player.PlayerId;
+}
+
 // 地形が壊れた (結果を適用した直後)。PlayerId = 壊した人 (マップの出来事などは Terrain.TerrainApi.World = 255)。
 // Kind = 爆発 / 打撃。Position = 爆心 / 叩いた点。Radius = 爆発の半径 (打撃は 0)。WallsCut = 切り取った壁の線の数 (0 = 何も抜けなかった)
 public sealed class TerrainBrokenEvent : GameEvent, IPlayerEvent
@@ -80,6 +114,53 @@ internal static class ExiledEventPatch
         MatchLog.OnExiled(__instance);
         if (RoleState.All.Count == 0) return;
         Events<PlayerExiledEvent>.Run(new PlayerExiledEvent { Player = __instance });
+    }
+}
+
+// 本編は通報も緊急ボタンもホストが StartMeeting を全員の端末で呼ばせる
+[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.StartMeeting))]
+internal static class MeetingCalledEventPatch
+{
+    public static void Prefix(PlayerControl __instance, [HarmonyArgument(0)] NetworkedPlayerInfo target)
+    {
+        if (!RoleState.Any || !__instance) return;
+        Events<MeetingCalledEvent>.Run(new MeetingCalledEvent { Reporter = __instance, Body = target });
+    }
+}
+
+// 本人の端末でも、電文を受けた他の端末でも CompleteTask が呼ばれる
+[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CompleteTask))]
+internal static class TaskCompletedEventPatch
+{
+    public static void Postfix(PlayerControl __instance, [HarmonyArgument(0)] uint idx)
+    {
+        if (!RoleState.Any || !__instance) return;
+        Events<TaskCompletedEvent>.Run(new TaskCompletedEvent { Player = __instance, TaskId = idx });
+    }
+}
+
+// ベントの出入りの動きは全員の端末で CoEnterVent / CoExitVent から始まる
+[HarmonyPatch(typeof(PlayerPhysics), nameof(PlayerPhysics.CoEnterVent))]
+internal static class VentEnteredEventPatch
+{
+    public static void Prefix(PlayerPhysics __instance, [HarmonyArgument(0)] int id)
+    {
+        if (!RoleState.Any || !__instance) return;
+        var p = __instance.myPlayer;
+        if (!p) return;
+        Events<VentEnteredEvent>.Run(new VentEnteredEvent { Player = p, VentId = id });
+    }
+}
+
+[HarmonyPatch(typeof(PlayerPhysics), nameof(PlayerPhysics.CoExitVent))]
+internal static class VentExitedEventPatch
+{
+    public static void Prefix(PlayerPhysics __instance, [HarmonyArgument(0)] int id)
+    {
+        if (!RoleState.Any || !__instance) return;
+        var p = __instance.myPlayer;
+        if (!p) return;
+        Events<VentExitedEvent>.Run(new VentExitedEvent { Player = p, VentId = id });
     }
 }
 

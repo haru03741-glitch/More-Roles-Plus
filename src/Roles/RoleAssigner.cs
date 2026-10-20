@@ -30,6 +30,9 @@ public static class RoleState
     public static IReadOnlyList<RoleBase> All => Active;
     public static IReadOnlyList<AddonBase> AllAddons => ActiveAddons;
 
+    // 役職かアドオンが誰かに付いているか (どちらも無い試合は本編のまま)
+    public static bool Any => Active.Count > 0 || ActiveAddons.Count > 0;
+
     // 今の試合の寿命 (役職の寿命の親)。役職の外で試合中だけ何かを購読する時に使う
     public static Lifespan Match => _match ??= new Lifespan();
     private static Lifespan _match;
@@ -54,6 +57,7 @@ public static class RoleState
         try { role.OnAssigned(); }
         catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.OnAssigned: {e}"); }
         Abilities.OnAssigned(role);
+        RoleFrame.OnAssigned(role);
         // アドオンは役職の後 (役職の OnAssigned で作った物を前提にできるように)
         AttachAddons(p, addonProtos, role.Lifespan);
         if (role.IsVanilla) RoleDisplay.OnAddonsOnly(p);
@@ -87,6 +91,7 @@ public static class RoleState
             EventBinder.Bind(addon);
             try { addon.OnAssigned(); }
             catch (Exception e) { Plugin.Logger.LogError($"{addon.Id}.OnAssigned: {e}"); }
+            RoleFrame.OnAssigned(addon);
         }
     }
 
@@ -104,6 +109,7 @@ public static class RoleState
         Local = null;
         KillAbility.Clear();
         Abilities.Clear();
+        RoleFrame.Clear();
         AnyNeutral = false;
         RoleDisplay.Clear();
         Dev.DevGod.Clear();

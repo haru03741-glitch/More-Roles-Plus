@@ -56,6 +56,15 @@ public sealed class Lighter : RoleBase
 | `AlsoWins(GameResult result)` | 誰かの勝ちで試合が終わる時に、自分も一緒に勝つなら `true` を返す (ホストの端末) |
 | `ModifyVision(ref float radius)` | 視界の広さを計算する時 |
 | `ModifyKillCooldown(ref float seconds)` | キルの待ち時間を決める時 (自分の端末と、キルの依頼を確かめるホストの端末。設定値だけから決める) |
+| `OnFixedUpdate()` | 本編の FixedUpdate ごと (全員の端末・1 回の間隔は `Time.fixedDeltaTime`)。`[LocalOnly]` を付けると持ち主の端末だけ、`[HostOnly]` を付けるとホストの端末だけで呼ばれる。会議中も死んだ後も呼ばれる |
+| `NameMark(PlayerControl seen)` | 自分の画面で、`seen` の名前のすぐ後ろに足す文字を返す (`null` で何も足さない)。試合中の名前と会議の名札の両方に出る。持ち主の端末で 0.25 秒ごとに呼ばれ、文字が変わった時だけ書き直す |
+
+`OnFixedUpdate` と `NameMark` は上書きした役職の分だけ呼ばれるので、書いていない役職が重くなることはありません。`OnFixedUpdate` の中で毎回 `Vector2` の計算や `Mathf` を使うとゴミが出て重くなるので、要る時だけにしてください。
+
+```csharp
+// 印を付けた相手の名前の後ろに ★ を出す
+public override string NameMark(PlayerControl seen) => seen.PlayerId == _marked ? "<color=#FF4040>★</color>" : null;
+```
 
 ### 試合で起きた事に反応する
 
@@ -74,8 +83,11 @@ private void OnExiled(PlayerExiledEvent e) => GameEnd.Win(this);
 | `MeetingStartEvent` | 会議が始まった |
 | `MeetingEndEvent` | 会議が終わって歩けるようになった (`Exiled` = 追放された人、いなければ `null`) |
 | `GameEndEvent` | 試合が終わった (`Result`) |
+| `MeetingCalledEvent` | 死体の通報か緊急ボタンで会議が呼ばれた (`Reporter` = 呼んだ人 / `Body` = 通報された人、緊急ボタンなら `null`)。会議の画面が出る前 |
+| `TaskCompletedEvent` | 誰かがタスクを 1 つ終えた (`Player` / `TaskId`) |
+| `VentEnteredEvent` / `VentExitedEvent` | 誰かがベントに入った / 出た (`Player` / `VentId`) |
 
-- `[OnlyMine]`: 自分についての出来事の時だけ (倒されたのが自分・追放されたのが自分)
+- `[OnlyMine]`: 自分についての出来事の時だけ (倒されたのが自分・追放されたのが自分・会議を呼んだのが自分・タスクを終えたのが自分・ベントに出入りしたのが自分)
 - `[LocalOnly]`: 役職の持ち主の端末でだけ (画面の表示など)
 - `[HostOnly]`: ホストの端末でだけ (判定など)
 - `[Priority(n)]`: 同じイベントの中で先に呼ぶ (大きいほど先)
@@ -156,6 +168,43 @@ Mark.Send(target.PlayerId);   // 送る (自分の端末では実行されない
 - `endcheck [番号...]`: 今の生き残りで勝者が決まるかを見るだけ (番号の人をキル役として数える)
 - `roles`: 登録された役職・今の割り当て・自分の視界とキルの待ち時間
 - `opt [Id.項目 [番号]]`: 設定項目を見る / 変える
+
+## TownOfHost 系で役職を書いていた人へ
+
+TownOfHost 系はホストだけが入れる mod なので、ホストが全員の画面を作って送るための仕組みがたくさんあります。More Roles Plus は全員が入れる mod なので、それぞれの端末が自分の画面を作ります。そのため、次の物は要りません。
+
+- 役職の登録 (`CustomRoles` への追加・`SimpleRoleInfo.Create`・設定の ID の帯)。クラスを置くだけで登録されます
+- 翻訳ファイルと `GetString`。文字はその場で `new Text("日本語", "English")` と書きます
+- 一人ずつ違うゲーム設定を送る `ApplyGameOptions` と、名前の書き換え (`NotifyRoles`)
+- 本編のボタン (シェイプシフトやファントム) を能力ボタンとして借りる工夫。独自のボタンを出せます
+
+いちばん大きな違いは、**処理が全員の端末で動く**ことです。TownOfHost 系の役職の処理はホストの端末でだけ動きますが、More Roles Plus のイベントは全員の端末で起きます。勝ちやキルのような判定は `[HostOnly]`、自分の画面だけの表示は `[LocalOnly]` を付けて分けてください。
+
+| TownOfHost 系 | More Roles Plus |
+|---|---|
+| `SimpleRoleInfo.Create(...)` / `CustomRoles` / 設定の ID | 要りません (`RoleBase` を継いだクラスを置くだけ) |
+| `CustomRoleTypes` | `Team` |
+| RoleInfo の色 | `Color` |
+| `() => RoleTypes.Engineer` | `BaseRole => RoleTypes.Engineer` |
+| `SetupOptionItem` と `OptionItem` | `static readonly` の `BoolOpt` / `IntOpt` / `FloatOpt` / `ChoiceOpt` |
+| `GetString("...")` | `new Text("日本語", "English")` |
+| `ApplyGameOptions` (視界・キルの待ち時間) | `ModifyVision` / `ModifyKillCooldown` |
+| `CreateSender` / `ReceiveRPC` | `RemoteCall<T>` (上の「端末どうしで情報を送る」) |
+| `OnFixedUpdate(PlayerControl)` | `OnFixedUpdate()` (要るなら `[HostOnly]` / `[LocalOnly]`) |
+| `OnStartMeeting` | `MeetingStartEvent` |
+| `AfterMeetingTasks` | `MeetingEndEvent` |
+| `OnReportDeadBody(reporter, target)` | `MeetingCalledEvent` (`Reporter` / `Body`) |
+| `OnCompleteTask` | `TaskCompletedEvent` (自分の分だけなら `[OnlyMine]`) |
+| `OnEnterVent` | `VentEnteredEvent` (入るのを止めることはできません) |
+| `OnMurderPlayerAsTarget` / `OnMurderPlayerAsKiller` | `PlayerMurderedEvent` (`[OnlyMine]` で倒されたのが自分の時だけ) |
+| `OnExileWrapUp` | `PlayerExiledEvent` / `MeetingEndEvent` (`Exiled`) |
+| `GetMark` / `GetLowerText` / `GetProgressText` / `GetSuffix` | `NameMark(seen)` (自分の画面で `seen` の名前の後ろに出す文字だけを返す) |
+| `OverrideAbilityButton` / `GetAbilityButtonText` / `IUsePhantomButton` | `OnAssigned` の中で `AddAbility(new Ability(...))` |
+| `IKiller` / `CanUseKillButton` | `CanKill` (第三陣営でキルするなら `IsKiller`) |
+| `CheckWinner` / `IAdditionalWinner` | `GameEnd.Win(this)` / `AlsoWins` |
+| `Is(player)` | `player.PlayerId == PlayerId` (ほかの人の役職は `RoleState.Of(player)`) |
+
+キルを防ぐ (`OnCheckMurderAsTarget`) と、票を差し替える (`CheckVoteAsVoter`) にあたる物はまだありません。要る役職を作る時に、`RoleBase` の問い合わせとして足してください (上の「足りないイベントが要る時は」)。
 
 ## 他の mod から移植する時
 

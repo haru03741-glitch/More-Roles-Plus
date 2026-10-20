@@ -155,6 +155,7 @@ internal static class RoleDisplay
         var name = pva.NameText;
         var go = UnityEngine.Object.Instantiate(name.gameObject, name.transform.parent);
         go.name = "MrpMeetingRole";
+        RemoveClonedTags(go);
         // 名前の下には本編の色の名前があるので、名前の上に小さく出す
         go.transform.localPosition = name.transform.localPosition + new Vector3(0f, 0.17f, 0f);
         go.transform.localScale = name.transform.localScale * 0.6f;
@@ -167,21 +168,26 @@ internal static class RoleDisplay
         var name = player.cosmetics.nameText;
         var go = UnityEngine.Object.Instantiate(name.gameObject, name.transform);
         go.name = "MrpRoleTag";
-        // 前の役職名 (Destroy はフレームの終わりまで残る) まで複製されているので外す
-        for (int i = go.transform.childCount - 1; i >= 0; i--)
-        {
-            var child = go.transform.GetChild(i).gameObject;
-            if (child.name == "MrpRoleTag")
-            {
-                child.SetActive(false);
-                UnityEngine.Object.Destroy(child);
-            }
-        }
+        RemoveClonedTags(go);
         go.transform.localPosition = new Vector3(0f, 0.22f, 0f);
         go.transform.localScale = new Vector3(0.75f, 0.75f, 1f);
         var tmp = go.GetComponent<TextMeshPro>();
         tmp.text = label;
         Tags.Add(go);
+    }
+
+    // 名前の文字を複製すると、前の役職名と名前の後ろの印 (Destroy はフレームの終わりまで残る) まで付いてくるので外す
+    private static void RemoveClonedTags(GameObject go)
+    {
+        for (int i = go.transform.childCount - 1; i >= 0; i--)
+        {
+            var child = go.transform.GetChild(i).gameObject;
+            if (child.name is "MrpRoleTag" or RoleFrame.MarkName)
+            {
+                child.SetActive(false);
+                UnityEngine.Object.Destroy(child);
+            }
+        }
     }
 
     public static void ApplyIntro(IntroCutscene intro)
