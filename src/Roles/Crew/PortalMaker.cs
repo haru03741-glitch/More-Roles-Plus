@@ -1,5 +1,6 @@
 // Based on https://github.com/TheOtherRolesAU/TheOtherRoles@b782da4 TheOtherRoles/Objects/Portal.cs (ポータルメーカーの役職・GPL-3.0)
 // Based on https://github.com/Gurge44/EndlessHostRoles@ce23f0d Roles/Standard/Crewmate/Miscellaneous/PortalMaker.cs (2 つ置くと近づいた人が行き来する動き・GPL-3.0)
+using System;
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
@@ -23,6 +24,11 @@ public sealed class PortalMaker : RoleBase
 
     private const float MinGap = 4f;     // 2 つ目は 1 つ目からこれだけ離して置く
     private const float Reach = 1f;      // 足元がポータルからこの距離に入ると通る
+    private const float FixtureClear = 0.7f; // ベント・端末・扉・はしごからこれだけ離して置く (装置の幅の半分 + 少し)
+    private const float Body = 0.2f;     // 着く所に要る体の半径
+    private const float ArriveMax = 1.5f; // 行き先がふさがれていたら、ここまで離れた床を探す
+    private const int ShipLayer = 9, FurnitureLayer = 12;
+    private const int ArrivePhysics = 24; // 着く所を探す 1 回で物理に問い合わせる上限 (1 フレームに固めない)
     private const float Rearm = 1.5f;    // 通った後、足元がどちらのポータルからもこれより離れると次に通れる (縁で行き来し続けない)
 
     // 置いた (持ち主 → 全員)。受け手は送り主がポータルメーカーか・数と間隔の決まりを自分で確かめる
@@ -41,6 +47,7 @@ public sealed class PortalMaker : RoleBase
     private readonly PortalArt.Handle[] _art = new PortalArt.Handle[2];
     private int _count;
     private bool _armed = true;    // 一度ポータルの外へ出るまで通らない (着いた側ですぐ戻らない)
+    private long _recheck;         // 壁越し・行き先なしで断った後、次に調べ直す時刻 (立ち止まっている間に毎回物理を引かない)
     private static int _passGen;   // この端末の自分が通るたびに増える。別のポータルメーカーのポータルが着いた先に重なっていても続けて飛ばない
     private int _seenGen;
 
@@ -76,6 +83,7 @@ public sealed class PortalMaker : RoleBase
         // はしご・昇降床・ベントの中は、着いた人がそこから動けなくなるので置かない
         if (lp.inVent || lp.onLadder || lp.inMovingPlat) return false;
         Vector2 at = lp.GetTruePosition();
+        if (NearFixture(at)) return false;
         if (!TryAdd(at.x, at.y)) return false;
         MarkCall.Send(at);
         if (_count == 2)
@@ -127,14 +135,15 @@ public sealed class PortalMaker : RoleBase
         int near = Near(me.x, me.y, Reach);
         if (near < 0) return;
         if (lp.Data == null || lp.Data.IsDead || !lp.CanMove || lp.inVent || lp.inMovingPlat || lp.onLadder) return;
+        long now = Environment.TickCount64;
+        if (now < _recheck) return;
 
         int to = 1 - near;
-        float tx = _x[to], ty = _y[to];
-        // 置いた後に仕掛け壁などで行き先がふさがれていたら、近くの床へ (無ければ飛ばない)
-        if (SolidMap.Valid && SolidMap.Solid(tx, ty))
+        // 壁 (後から立った仕掛け壁・閉じた扉も) の向こうからは入れない。行き先が埋まっていれば飛ばない
+        if (!CanEnter(me.x, me.y, _x[near], _y[near]) || !FindArrival(_x[to], _y[to], out float tx, out float ty))
         {
-            if (!SolidMap.NearestFloor(tx, ty, 1.5f, 0.2f, out var floor)) return;
-            tx = floor.x; ty = floor.y;
+            _recheck = now + 200;
+            return;
         }
         var root = lp.transform.position;
         var dest = FxMath.V2(tx + (root.x - me.x), ty + (root.y - me.y));
@@ -148,6 +157,104 @@ public sealed class PortalMaker : RoleBase
         ShowPass();
         PassCall.Send(PlayerId);
     }
+
+    // ベント・端末・扉・はしごの上には置かない (着いた人がそれに重なり、ベントは出入りのたびに飛ばされる)
+    private static bool NearFixture(Vector2 at)
+    {
+        if (SolidMap.Valid && SolidMap.Solid(at.x, at.y)) return true;
+        foreach (var col in Physics2D.OverlapCircleAll(at, FixtureClear, ~0))
+        {
+            if (!col) continue;
+            if (col.GetComponentInParent<OpenableDoor>() || col.GetComponentInParent<Vent>() || col.GetComponentInParent<global::Console>() || col.GetComponentInParent<Ladder>()) return true;
+        }
+        return false;
+    }
+
+    // 足元からポータルまでの間に、歩けない所 (壁・仕掛け壁) も船の層の当たり判定 (閉じた扉) も無いか
+    private static bool CanEnter(float fx, float fy, float px, float py)
+    {
+        if (!LineOpen(fx, fy, px, py, false)) return false;
+        float dx = px - fx, dy = py - fy, len = MathF.Sqrt(dx * dx + dy * dy);
+        if (len < 0.05f) return true;
+        // 線の判定は短い区間だと壁の継ぎ目を素通りするので、細い円を滑らせる
+        foreach (var hit in Physics2D.CircleCastAll(FxMath.V2(fx, fy), 0.1f, FxMath.V2(dx / len, dy / len), len, 1 << ShipLayer))
+            if (hit.collider && !hit.collider.isTrigger) return false;
+        return true;
+    }
+
+    // 行き先のポータルの近くで、体が収まり、ポータルから壁を越えずに届く所 (ポータルに近い順)。
+    // 置いた後に仕掛け壁・瓦礫・扉などで埋まっていたら、同じ側の空いた床へずらす
+    private static bool FindArrival(float mx, float my, out float ax, out float ay)
+    {
+        ax = mx; ay = my;
+        if (!SolidMap.Valid) return true;
+        _physicsLeft = ArrivePhysics;
+        if (Arrivable(mx, my, mx, my)) return true;
+        for (int ring = 1; ring * ArriveStep <= ArriveMax; ring++)
+        {
+            float r = ring * ArriveStep;
+            for (int k = 0; k < ArriveDirs; k++)
+            {
+                float cx = mx + r * DirX[k], cy = my + r * DirY[k];
+                if (!Arrivable(mx, my, cx, cy)) continue;
+                ax = cx; ay = cy;
+                return true;
+            }
+            if (_physicsLeft <= 0) return false;
+        }
+        return false;
+    }
+
+    private static int _physicsLeft;
+    private const float ArriveStep = 0.125f;
+    private const int ArriveDirs = 16;
+    private static readonly float[] DirX = MakeDirs(true), DirY = MakeDirs(false);
+
+    private static float[] MakeDirs(bool cos)
+    {
+        var a = new float[ArriveDirs];
+        for (int k = 0; k < ArriveDirs; k++) a[k] = cos ? MathF.Cos(k * MathF.PI * 2f / ArriveDirs) : MathF.Sin(k * MathF.PI * 2f / ArriveDirs);
+        return a;
+    }
+
+    private static bool Arrivable(float mx, float my, float cx, float cy)
+    {
+        if (SolidMap.Solid(cx, cy) || SolidMap.SealedAt(cx, cy)) return false;
+        if (SolidMap.Solid(cx - Body, cy) || SolidMap.Solid(cx + Body, cy) || SolidMap.Solid(cx, cy - Body) || SolidMap.Solid(cx, cy + Body)) return false;
+        // ポータルが壁に埋まっていても、その壁を抜けた先の床なら着いてよい (出た後にまた壁を越えるのはだめ)
+        if (!LineOpen(mx, my, cx, cy, true)) return false;
+        // 地図に載らない物 (大きな瓦礫・閉じた扉・家具) にめり込まないか・ポータルからそこまでの間に閉じた扉が無いか
+        if (_physicsLeft-- <= 0) return false;
+        foreach (var col in Physics2D.OverlapCircleAll(FxMath.V2(cx, cy), Body, (1 << ShipLayer) | (1 << FurnitureLayer)))
+            if (col && !col.isTrigger) return false;
+        float dx = cx - mx, dy = cy - my, len = MathF.Sqrt(dx * dx + dy * dy);
+        if (len < 0.05f) return true;
+        foreach (var hit in Physics2D.CircleCastAll(FxMath.V2(mx, my), 0.1f, FxMath.V2(dx / len, dy / len), len, 1 << ShipLayer))
+            if (hit.collider && !hit.collider.isTrigger && !hit.collider.OverlapPoint(FxMath.V2(mx, my))) return false;
+        return true;
+    }
+
+    // a から b まで歩ける所が続くか (1/32 刻み)。skipLead = 始めの歩けない所は数えない (壁に埋まったポータルから出る時)
+    private static bool LineOpen(float ax, float ay, float bx, float by, bool skipLead)
+    {
+        if (!SolidMap.Valid) return true;
+        float dx = bx - ax, dy = by - ay;
+        int n = (int)(MathF.Sqrt(dx * dx + dy * dy) * 32f) + 1;
+        bool lead = skipLead;
+        for (int i = 0; i <= n; i++)
+        {
+            float t = i / (float)n;
+            if (SolidMap.Solid(ax + dx * t, ay + dy * t))
+            {
+                if (!lead) return false;
+            }
+            else lead = false;
+        }
+        return !lead;
+    }
+
+    // 誰かが倒された: 窓に倒れた直後の死体を映さないよう、絵の側で死体を拾い直す
+    private void OnMurdered(PlayerMurderedEvent e) => PortalArt.WatchBodies();
 
     private int Near(float x, float y, float r)
     {

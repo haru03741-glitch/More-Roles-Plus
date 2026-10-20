@@ -27,6 +27,10 @@ internal static class PortalArt
     private const float AnimRange = 14f;           // これより遠いポータルは毎フレーム動かさない
     private const int Motes = 4;
     private const int MaxBursts = 12;              // 通った光が同時にこれより多ければ足さない
+    // ポータル自身の絵の層。窓のカメラはこの層を写さない (窓の中にポータルが映り込まない)。メインカメラは写す
+    private const int PortalLayer = 1;
+    private const float MachineStep = 0.00001f;    // 装置の部品どうしの奥行きの差 (床と水の板の間 0.0004 に 10 枚が収まる)
+    private const float LipHeight = 0.08f;         // 楕円の下の縁の床からの高さ (水位がこれを越えると縁に泡が立つ)
 
     private static readonly Color Deep = FxMath.Rgba(0.02f, 0.05f, 0.16f, 0.95f);
     private static readonly Color Teal = FxMath.Rgba(0.2f, 0.95f, 0.85f, 1f);
@@ -43,19 +47,22 @@ internal static class PortalArt
     private const int WindowTexW = 160, WindowTexH = 240;
     private const float WindowZoom = 1.35f;
     private const float WindowInner = 0.88f;
-    // 窓に写さない層: 0 = 演出・死体 / 5 = UI / 8 = 人 / 10 = 影 / 14 = 幽霊。視界の外の人が窓越しに見えないように
-    private const int WindowHiddenLayers = (1 << 0) | (1 << 5) | (1 << 8) | (1 << 10) | (1 << 14);
+    // 窓に写さない層: 5 = UI / 8 = 人 / 10 = 影 / 14 = 幽霊 / ポータル自身。視界の外の人が窓越しに見えないように。
+    // 水・火・壊れた所などの絵 (層 0) は写す。死体も層 0 なので、写す間だけ消す
+    private const int WindowHiddenLayers = (1 << 5) | (1 << 8) | (1 << 10) | (1 << 14) | (1 << PortalLayer);
 
     internal sealed class Handle
     {
         internal GameObject Root;
         internal Transform Body, SwirlA, SwirlB, Machine;
-        internal SpriteRenderer Halo, Core, Floor, SwirlASr, SwirlBSr, Beam, LensGlow;
+        internal SpriteRenderer Halo, Core, Floor, SwirlASr, SwirlBSr, Beam, LensGlow, Foam, Ripple;
         internal Camera Cam;
         internal RenderTexture Rt;
         internal Material WinMat;
         internal MeshRenderer Win;
         internal bool WinOn;
+        internal float Water, WaterShown; // 足元の水の深さ (単位) と、見せている深さ (なめらかに追う)
+        internal bool FoamOn;
         internal readonly Transform[] Mote = new Transform[Motes];
         internal readonly SpriteRenderer[] MoteSr = new SpriteRenderer[Motes];
         internal float X, Y, Born, Closing = -1f, Spin;
@@ -77,6 +84,12 @@ internal static class PortalArt
     private static Mesh _windowMesh;
     private static int _meetingPoll;
     private static bool _meeting;
+    private static int _waterPoll;
+    private static int _renderTurn;
+    private static int _bodyPoll;
+    private static float _bodyWatchUntil; // 誰かが倒された後しばらくは、窓を描くたびに死体を拾い直す (倒れた直後の死体を映さない)
+    private static readonly List<SpriteRenderer> BodyArt = new();
+    private static readonly List<SpriteRenderer> BodyHidden = new();
 
     internal static int LiveCount => Live.Count;
 
@@ -86,15 +99,13 @@ internal static class PortalArt
         var parent = Container();
         if (!parent) return null;
         var h = new Handle { X = x, Y = y, Born = Time.time, Spin = FxMath.Range(0f, 360f) };
-        h.Root = new GameObject("MrpPortal");
+        h.Root = new GameObject("MrpPortal") { layer = PortalLayer };
         h.Root.transform.SetParent(parent.transform, false);
         h.Root.transform.position = FxMath.V3(x, y + Lift, (y + SinkBehind + BodyLift) / 1000f);
 
-        // 床の照り返しは装置の後ろ (奥) に置く
-        h.Floor = Layer(h.Root.transform, "floor", _glow, FxMath.V3(0f, -Lift - MachineDrop, 0.001f), FxMath.V3(1.9f, 0.6f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.3f));
         BuildMachine(h, parent.transform, x, y);
 
-        var body = new GameObject("body");
+        var body = new GameObject("body") { layer = PortalLayer };
         body.transform.SetParent(h.Root.transform, false);
         body.transform.localScale = FxMath.V3(0.02f, H, 1f);
         h.Body = body.transform;
@@ -106,6 +117,9 @@ internal static class PortalArt
         h.SwirlBSr = Layer(h.Body, "swirlB", _swirl, FxMath.V3(0f, 0f, -LayerStep * 3f), FxMath.V3(0.78f, 0.78f, 1f), FxMath.Rgba(Violet.r, Violet.g, Violet.b, 0.7f));
         h.SwirlB = h.SwirlBSr.transform;
         h.Core = Layer(h.Body, "core", _glow, FxMath.V3(0f, 0f, -LayerStep * 4f), FxMath.V3(0.42f, 0.36f, 1f), FxMath.Rgba(White.r, White.g, White.b, 0.85f));
+        // 水位の線の泡と、そこから広がる波 (楕円より手前・水が無い間は透明)
+        h.Foam = Layer(h.Root.transform, "foam", _glow, FxMath.V3(0f, -Lift, -LayerStep * 6f), FxMath.V3(0.6f, 0.1f, 1f), FxMath.Rgba(White.r, White.g, White.b, 0f));
+        h.Ripple = Layer(h.Root.transform, "ripple", _glow, FxMath.V3(0f, -Lift, -LayerStep * 5.5f), FxMath.V3(0.6f, 0.1f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0f));
         for (int i = 0; i < Motes; i++)
         {
             h.MoteSr[i] = Layer(h.Body, "mote", _glow, FxMath.V3(0f, 0f, -LayerStep * 5f), FxMath.V3(0.09f, 0.065f, 1f), FxMath.Rgba(White.r, White.g, White.b, 0f));
@@ -155,7 +169,7 @@ internal static class PortalArt
         var parent = Container();
         if (!parent) return;
         var b = new Burst { Born = Time.time };
-        b.Root = new GameObject("MrpPortalBurst");
+        b.Root = new GameObject("MrpPortalBurst") { layer = PortalLayer };
         b.Root.transform.SetParent(parent.transform, false);
         // 人より少し手前に出す (光が人にかぶさる)
         b.Root.transform.position = FxMath.V3(x, y + Lift, (y + BodyLift) / 1000f - 0.002f);
@@ -174,6 +188,10 @@ internal static class PortalArt
         float now = Time.time, dt = Time.deltaTime;
         // 会議中は窓を写さない (10 回に 1 回だけ見る)
         if (--_meetingPoll <= 0) { _meetingPoll = 10; _meeting = MeetingHud.Instance; }
+        // 足元の水は 6 回に 1 回だけ読む (泡はなめらかに追うので粗くてよい)
+        bool readWater = --_waterPoll <= 0;
+        if (readWater) _waterPoll = 6;
+        bool water = readWater && WaterSim.Running && WaterSim.Ready;
         float mx = 0f, my = 0f;
         bool haveMe = false;
         var lp = PlayerControl.LocalPlayer;
@@ -226,6 +244,8 @@ internal static class PortalArt
             h.Core.color = FxMath.Rgba(White.r, White.g, White.b, core);
             h.Beam.color = FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.45f + 0.25f * breathe);
             h.LensGlow.color = FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.35f + 0.25f * breathe);
+            if (readWater) h.Water = water ? WaterSim.DepthAt(FxMath.V2(h.X, h.Y)) / 1024f : 0f;
+            ShowFoam(h, s, dt);
 
             // 光の粒: 縁から渦を巻いて芯へ吸い込まれる
             for (int m = 0; m < Motes; m++)
@@ -277,7 +297,7 @@ internal static class PortalArt
 
     private static SpriteRenderer Layer(Transform parent, string name, Sprite sp, Vector3 pos, Vector3 scale, Color color)
     {
-        var go = new GameObject(name);
+        var go = new GameObject(name) { layer = PortalLayer };
         go.transform.SetParent(parent, false);
         go.transform.localPosition = pos;
         go.transform.localScale = scale;
@@ -319,31 +339,63 @@ internal static class PortalArt
 
     private static void BuildMachine(Handle h, Transform parent, float x, float y)
     {
-        var root = new GameObject("MrpPortalMachine");
+        var root = new GameObject("MrpPortalMachine") { layer = PortalLayer };
         root.transform.SetParent(parent, false);
-        root.transform.position = FxMath.V3(x, y - MachineDrop, (y + MachineBack) / 1000f);
+        // 装置は床に置いた低い物なので、本編のベントと同じく床と水の板の間に置く (水が来ると沈み、人は必ずその上に立つ)
+        float my = y - MachineDrop;
+        float front = DamageMap.FrontZ(FxMath.V2(x, my));
+        float zs = DamageMap.ZScale(front);
+        root.transform.position = FxMath.V3(x, my, front - 0.0002f * zs);
         h.Machine = root.transform;
         var t = root.transform;
-        float w = MachineW, d = MachineW * 0.75f;
-        Layer(t, "shade", _glow, FxMath.V3(0f, -0.1f, 0f), FxMath.V3(w * 1.5f, d * 0.9f, 1f), FxMath.Rgba(0f, 0f, 0f, 0.45f));
-        Part(t, _mBody, 0f, -0.01f, w * 1.1f, d * 1.12f, MachineOutline, 1);
-        Part(t, _mBody, 0f, 0f, w, d, MachineBody, 2);
-        Part(t, _mTop, 0f, 0.01f, w, d, MachineTop, 3);
-        Part(t, _mBand, 0f, 0.05f, w * 0.5f, d * 0.45f, MachineOutline, 4);
-        Part(t, _mBand, 0f, 0.05f, w * 0.46f, d * 0.41f, MachineBand, 5);
-        Part(t, _mLens, 0f, 0.05f, w * 0.36f, d * 0.31f, MachineLens, 6);
-        Part(t, _mStar, 0f, 0.05f, w * 0.34f, d * 0.3f, White, 7);
+        float w = MachineW, d = MachineW * 0.75f, st = MachineStep * zs;
+        // 床の照り返しと影は部品の奥
+        h.Floor = Layer(t, "floor", _glow, FxMath.V3(0f, 0f, st * 2f), FxMath.V3(1.9f, 0.6f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.3f));
+        Layer(t, "shade", _glow, FxMath.V3(0f, -0.1f, st), FxMath.V3(w * 1.5f, d * 0.9f, 1f), FxMath.Rgba(0f, 0f, 0f, 0.45f));
+        Part(t, _mBody, 0f, -0.01f, w * 1.1f, d * 1.12f, MachineOutline, st, 1);
+        Part(t, _mBody, 0f, 0f, w, d, MachineBody, st, 2);
+        Part(t, _mTop, 0f, 0.01f, w, d, MachineTop, st, 3);
+        Part(t, _mBand, 0f, 0.05f, w * 0.5f, d * 0.45f, MachineOutline, st, 4);
+        Part(t, _mBand, 0f, 0.05f, w * 0.46f, d * 0.41f, MachineBand, st, 5);
+        Part(t, _mLens, 0f, 0.05f, w * 0.36f, d * 0.31f, MachineLens, st, 6);
+        Part(t, _mStar, 0f, 0.05f, w * 0.34f, d * 0.3f, White, st, 7);
         // レンズの照りと、レンズから楕円の下の端へ立ちのぼる光
-        h.LensGlow = Layer(t, "lensGlow", _glow, FxMath.V3(0f, 0.06f, -LayerStep * 8f), FxMath.V3(0.7f, 0.35f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.5f));
+        h.LensGlow = Layer(t, "lensGlow", _glow, FxMath.V3(0f, 0.06f, -st * 8f), FxMath.V3(0.7f, 0.35f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.5f));
         float beamLen = MachineDrop + Lift - H * 0.5f + 0.15f;
-        h.Beam = Layer(t, "beam", _glow, FxMath.V3(0f, 0.05f + beamLen * 0.5f, -LayerStep * 9f), FxMath.V3(0.3f, beamLen * 2.4f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.55f));
+        h.Beam = Layer(t, "beam", _glow, FxMath.V3(0f, 0.05f + beamLen * 0.5f, -st * 9f), FxMath.V3(0.3f, beamLen * 2.4f, 1f), FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.55f));
     }
 
     // 絵の縦横比は MakeXY の ppu (= 幅) で縦が h/w 倍になっているので、縦の倍率で戻す
-    private static void Part(Transform parent, Sprite sp, float ox, float oy, float sx, float sy, Color color, int order)
+    private static void Part(Transform parent, Sprite sp, float ox, float oy, float sx, float sy, Color color, float step, int order)
     {
         Rect r = sp.rect;
-        Layer(parent, "part", sp, FxMath.V3(ox, oy, -LayerStep * order), FxMath.V3(sx, sy * r.width / r.height, 1f), color);
+        Layer(parent, "part", sp, FxMath.V3(ox, oy, -step * order), FxMath.V3(sx, sy * r.width / r.height, 1f), color);
+    }
+
+    // 楕円の下の縁より水位が高い時、水位の線に泡を立て、波を外へ広げる (水はポータルを通らない)
+    private static void ShowFoam(Handle h, float s, float dt)
+    {
+        h.WaterShown += (h.Water - h.WaterShown) * FxMath.Min(1f, dt * 4f);
+        float sub = h.WaterShown - LipHeight;
+        if (sub <= 0.01f || sub >= H)
+        {
+            if (h.FoamOn) { h.FoamOn = false; h.Foam.color = FxMath.Rgba(White.r, White.g, White.b, 0f); h.Ripple.color = FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0f); }
+            return;
+        }
+        h.FoamOn = true;
+        // 楕円の中心からの高さと、その高さでの楕円の幅
+        float ly = -H * 0.5f + sub;
+        float q = ly / (H * 0.5f);
+        float chord = W * FxMath.Sqrt(FxMath.Max(0f, 1f - q * q));
+        float wob = 0.5f + 0.5f * FxMath.Sin(s * 5.3f) * FxMath.Sin(s * 2.1f + 0.7f);
+        h.Foam.transform.localPosition = FxMath.V3(0f, ly + 0.01f * FxMath.Sin(s * 3.1f), -LayerStep * 6f);
+        h.Foam.transform.localScale = FxMath.V3(chord * (1.15f + 0.08f * wob), 0.09f + 0.03f * wob, 1f);
+        h.Foam.color = FxMath.Rgba(White.r, White.g, White.b, 0.55f + 0.25f * wob);
+        // 波: 1.4 秒ごとに縁から外へ広がって薄れる
+        float k = FxMath.Repeat(s / 1.4f, 1f);
+        h.Ripple.transform.localPosition = FxMath.V3(0f, ly, -LayerStep * 5.5f);
+        h.Ripple.transform.localScale = FxMath.V3(chord * (1.1f + 1.4f * k), 0.12f + 0.22f * k, 1f);
+        h.Ripple.color = FxMath.Rgba(Teal.r, Teal.g, Teal.b, 0.45f * (1f - k));
     }
 
     private static float Ell(float x, float y, float cx, float cy, float rx, float ry, float soft)
@@ -429,9 +481,11 @@ internal static class PortalArt
         h.Cam.aspect = W / H;
         h.Cam.depth = main.depth - 2f;
         h.Cam.targetTexture = h.Rt;
+        // 自分の手で描く (2 つの窓を 1 フレームずつ交代で・死体を消してから)
+        h.Cam.enabled = false;
         camGo.transform.position = FxMath.V3(vx, vy, main.transform.position.z);
 
-        var win = new GameObject("window");
+        var win = new GameObject("window") { layer = PortalLayer };
         win.transform.SetParent(h.Body, false);
         win.transform.localPosition = FxMath.V3(0f, 0f, -LayerStep);
         win.transform.localScale = FxMath.V3(0.5f * WindowInner, 0.5f * WindowInner, 1f);
@@ -453,8 +507,64 @@ internal static class PortalArt
     {
         if (h.Cam == null || h.WinOn == on) return;
         h.WinOn = on;
-        h.Cam.enabled = on;
         h.Win.enabled = on;
+    }
+
+    // 見えている窓を 1 フレームに 1 つだけ描く (2 つあれば交代で・それぞれ 2 フレームに 1 回)。
+    // 死体はこの mod の地形の絵と同じ層にあるので、描く間だけ消す (窓越しに視界の外の死体を見つけられないように)
+    public static void LateTick()
+    {
+        if (Live.Count == 0 || GameClock.ShipGen != _gen) return;
+        RenderWindow();
+    }
+
+    // 誰かが倒された: 死体はキルの動きの後に出るので、しばらく毎回拾い直す
+    public static void WatchBodies() => _bodyWatchUntil = Time.time + 3f;
+
+    private static void RenderWindow()
+    {
+        int n = Live.Count;
+        if (n == 0) return;
+        Handle pick = null;
+        for (int i = 0; i < n; i++)
+        {
+            var h = Live[(_renderTurn + i) % n];
+            if (h.Cam == null || !h.WinOn || h.Closing >= 0f) continue;
+            pick = h;
+            _renderTurn = (_renderTurn + i + 1) % n;
+            break;
+        }
+        if (pick == null || !pick.Cam) return;
+        if (--_bodyPoll <= 0 || Time.time < _bodyWatchUntil) { _bodyPoll = 15; FindBodies(); }
+        BodyHidden.Clear();
+        try
+        {
+            for (int i = 0; i < BodyArt.Count; i++)
+            {
+                var r = BodyArt[i];
+                if (!r || !r.enabled) continue;
+                r.enabled = false;
+                BodyHidden.Add(r);
+            }
+            pick.Cam.Render();
+        }
+        finally
+        {
+            // 描くのに失敗しても死体は必ず戻す (戻し損ねると、元から消えていた絵と見分けられず二度と出ない)
+            for (int i = 0; i < BodyHidden.Count; i++) if (BodyHidden[i]) BodyHidden[i].enabled = true;
+            BodyHidden.Clear();
+        }
+    }
+
+    // 死体の絵を拾い直す (死体は増えるのも消えるのもまれなので、窓を描く 15 回に 1 回だけ)
+    private static void FindBodies()
+    {
+        BodyArt.Clear();
+        foreach (var body in UnityEngine.Object.FindObjectsOfType<DeadBody>())
+        {
+            if (!body) continue;
+            foreach (var r in body.GetComponentsInChildren<SpriteRenderer>(true)) if (r) BodyArt.Add(r);
+        }
     }
 
     private static void ReleaseWindow(Handle h)
