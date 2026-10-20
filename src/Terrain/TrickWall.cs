@@ -132,6 +132,19 @@ internal static class TrickWall
 
         // 視界の線は視点 (自分の光) の場所ごとに選んで 1 本だけ出す (Shade・毎フレーム ShadeTick)
         Vector2 d = n.y < 0f ? n : -n, back = -d;
+
+        // 奥から来た人は絵の上の縁あたりで止める (マップの壁と同じ)。足元の四角まで寄れると光が面の絵の高さの中に入り、
+        // 上の縁から影を出せなくなる (縁が光より上だと影が自分の側へ伸びる)
+        float backExtra = BackExtra(back);
+        if (backExtra > 0f)
+        {
+            var stop = new GameObject(name + "-back") { layer = ShipLayer };
+            stop.transform.SetParent(root.transform, false);
+            Vector2 b0 = back * (Thickness * 0.5f - 0.01f), b1 = back * (Thickness * 0.5f + backExtra);
+            var sp = stop.AddComponent<PolygonCollider2D>();
+            sp.points = Local(stop.transform, new[] { c - ht + b0, c + ht + b0, c + ht + b1, c - ht + b1 });
+            cols.Add(sp);
+        }
         var loop = new Vector2[5];
         for (int i = 0; i < 4; i++) loop[i] = foot[i];
         loop[4] = loop[0];
@@ -153,13 +166,14 @@ internal static class TrickWall
         BreakNoise.PlayAt("noise_rubble_metal", c.x, c.y, SoundRange, SoundMuffle, 0.55f, 0.75f);
         DustCloud.Kick(c + n * (Thickness * 0.5f + 0.3f), DustRadius, r.Seed);
         DustCloud.Kick(c - n * (Thickness * 0.5f + 0.3f), DustRadius, (ushort)(r.Seed + 1));
-        string pushed = PushOut(c, t, n, len);
+        string pushed = PushOut(c, t, n, len, n.y * back.y + n.x * back.x > 0f ? 1f : -1f, backExtra);
         double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         return $"wall placed {name} at=({c.x:0.00},{c.y:0.00}) dir=({t.x:0.00},{t.y:0.00}) len={len:0.00} cells={filled} slices={art.Slices.Count}{pushed} art={(t1 - t0) * k:0.0}ms {ArtMs} rest={(System.Diagnostics.Stopwatch.GetTimestamp() - t1) * k:0.0}ms";
     }
 
     // 立った所に自分が掛かっていたら (届くまでの間に歩いて入った)、近い側の床へ出す。動かすのは自分の体だけ
-    private static string PushOut(Vector2 c, Vector2 t, Vector2 n, float len)
+    // backSide = 奥が n の向きなら 1・逆なら -1。奥の側は歩き止めの分 (backExtra) だけ厚い
+    private static string PushOut(Vector2 c, Vector2 t, Vector2 n, float len, float backSide, float backExtra)
     {
         var lp = PlayerControl.LocalPlayer;
         // はしご・昇降機・ジップラインの途中と会議中は本編が体を動かしているので触らない
@@ -167,9 +181,10 @@ internal static class TrickWall
         Vector2 me = lp.GetTruePosition();
         float dx = me.x - c.x, dy = me.y - c.y;
         float along = dx * t.x + dy * t.y, across = dx * n.x + dy * n.y;
-        if (MathF.Abs(along) > len * 0.5f + PushClear || MathF.Abs(across) > Thickness * 0.5f + PushClear) return "";
         float side = across >= 0f ? 1f : -1f;
-        float want = side * (Thickness * 0.5f + PushClear + 0.05f) - across;
+        float half = Thickness * 0.5f + (side == backSide ? backExtra : 0f);
+        if (MathF.Abs(along) > len * 0.5f + PushClear || MathF.Abs(across) > half + PushClear) return "";
+        float want = side * (half + PushClear + 0.05f) - across;
         float tx = me.x + n.x * want, ty = me.y + n.y * want;
         if (SolidMap.Solid(tx, ty))
         {
@@ -405,6 +420,17 @@ internal static class TrickWall
     private const float SoundRange = 14f, SoundMuffle = 6f;
     private const float DustRadius = 0.9f;
     private const float PushClear = 0.25f; // 人の足元の半径ほど
+    private const float LightLift = 0.237f; // 人の光の元は足元 (当たり判定の円の中心) よりこれだけ上
+    private const float FootRadius = 0.05f; // 歩いて触れた時の足元から当たり判定の縁までの距離 (横の壁で実測 0.052)
+    private const float BackMargin = 0.03f;
+
+    // 奥の歩き止めを足元の四角から奥へ出す長さ。奥に触れた人の光が、上面の手前の縁の視界の線 (内側へ寄せた分込み) より
+    // 奥に来るだけ出す。面の見える高さは向きの y の分だけなので、縦に近い壁ほど短く、面の無い縦の壁は 0
+    private static float BackExtra(Vector2 back)
+    {
+        float need = (Height - LightLift) * MathF.Abs(back.y) - Thickness + ShadowInset + FarSlack + BackMargin - FootRadius;
+        return need > 0f ? need : 0f;
+    }
 
     // ---- 見た目: 金属のパネルの仕切り ----
     // 足元の四角を面の高さだけ立ち上げた箱。太い輪郭・ベタ塗り・一段の影 (本編の壁の描き方)。
