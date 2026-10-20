@@ -53,19 +53,46 @@ internal static class TerrainReview
         // 1. 背景: 船の絵 (暗くする)
         var rgb = Background(w, h, ppu, o, 45); // 下から上の行の順 (書く時に反転)
 
-        // 2. 床: 島ごとの色を薄く重ねる (漏れて捨てた塗りは青)
+        // 2. 床: 島ごとの色を薄く重ねる
+        var islandSizes = PaintFloors(rgb, w, h, ppu, o);
+
+        // 3. 壁の線: 判定ごとの色で塗り、判定ごとの長さと隣り合う部屋の組ごとの長さを数える
+        var wallLength = new Dictionary<string, float>();
+        var roomPairs = new Dictionary<string, float>();
+        PaintWalls(ship, rgb, w, h, wallLength, roomPairs);
+
+        // 4. はしごと部屋の範囲
+        int ladders = MarkLadders(ship, rgb, w, h, o, ppu);
+
+        WritePpm(path, rgb, w, h);
+
+        foreach (var kv in roomPairs) Notes.Add($"PAIR {kv.Key} {kv.Value:0.0}");
+        legend = Legend(wallLength, islandSizes, ladders, ppu, o);
+        return $"{w}x{h}";
+    }
+
+    // 床: 島ごとの色を薄く重ねる (漏れて捨てた塗りは青・奈落の注釈は赤)。戻り = 島ごとの升の数
+    private static Dictionary<int, int> PaintFloors(byte[] rgb, int w, int h, float ppu, Vector2 o)
+    {
         var sizes = new Dictionary<int, int>();
         for (int k = 0; k < w * h; k++)
         {
             int id = SolidMap.IslandCell(k);
-            if (id != 0) { sizes.TryGetValue(id, out int s); sizes[id] = s + 1; Tint(rgb, k, IslandColor(id), 35); }
+            if (id != 0)
+            {
+                sizes.TryGetValue(id, out int s);
+                sizes[id] = s + 1;
+                Tint(rgb, k, IslandColor(id), 35);
+            }
             else if (SolidMap.LeakedCell(k)) Tint(rgb, k, Outer, 35);
             if (MapNotes.InVoid(new Vector2(o.x + (k % w + 0.5f) / ppu, o.y + (k / w + 0.5f) / ppu))) Tint(rgb, k, Void, 40);
         }
+        return sizes;
+    }
 
-        // 3. 壁の線の判定
-        var counts = new Dictionary<string, float>();
-        var pairs = new Dictionary<string, float>();
+    // 壁 (層 9) の線を Piece ずつに分け、区間ごとの判定の色で塗る
+    private static void PaintWalls(ShipStatus ship, byte[] rgb, int w, int h, Dictionary<string, float> wallLength, Dictionary<string, float> roomPairs)
+    {
         var segs = new List<Vector2>();
         var line = new byte[w * h];
         foreach (var col in ship.GetComponentsInChildren<Collider2D>(false))
@@ -80,60 +107,104 @@ internal static class TerrainReview
                 if (len < 1e-4f) continue;
                 Vector2 dir = d / len, n = new(-dir.y, dir.x);
                 int parts = Math.Max(1, (int)MathF.Ceiling(len / Piece));
+                float pieceLen = len / parts;
                 for (int p = 0; p < parts; p++)
                 {
                     Vector2 p0 = a + dir * (len * p / parts), p1 = a + dir * (len * (p + 1) / parts), m = (p0 + p1) * 0.5f;
-                    string kind;
-                    byte[] color;
-                    if (TerrainDamage.IsProtected(col, m)) { kind = "guarded"; color = Guarded; }
-                    else if (InFurniture(m)) { kind = "furniture"; color = Furniture; }
-                    else
-                    {
-                        int ia = Beyond(m, n), ib = Beyond(m, -n);
-                        if (ia == 0 && ib == 0) { kind = "lone"; color = Lone; }
-                        else if (HeightLevels.Differs(m, n)) { kind = "ledge"; color = Ledge; }
-                        else if (ia == 0 || ib == 0 || SolidMap.FacesOutside(m, n) || SkyBump(m, n))
-                        {
-                            Vector2 back = ia == 0 ? n : -n;
-                            bool thick = SolidMap.HasHull && SolidMap.InHull(m + back * 0.3f);
-                            kind = thick ? "thick" : "outer"; color = thick ? Thick : Outer;
-                            if (!thick && SolidMap.BreachableHull && SolidMap.SkyAhead(m, back, TerrainDamage.HullReach)) { kind = "hull"; color = Hull; }
-                            if (SolidMap.BreachableHull)
-                            {
-                                // 外 (宇宙・空) までの厚みの内訳 (抜ける範囲を決める用)
-                                float dd = SolidMap.HullDepth(m, back, 12f);
-                                string bucket = (thick ? "thick-" : "") + (dd <= 0f ? "depthFar" : dd <= 2.5f ? "depth2.5" : dd <= 4f ? "depth4" : dd <= 6f ? "depth6" : dd <= 8f ? "depth8" : "depth12");
-                                counts.TryGetValue(bucket, out float bs); counts[bucket] = bs + len / parts;
-                            }
-                            if (ia != 0 && ib != 0 && !SolidMap.FacesOutside(m, n)) Notes.Add($"SKYBUMP {m.x:0.00} {m.y:0.00}");
-                        }
-                        else { kind = "breakable"; color = Breakable; }
-                        if (ia != 0 && ib != 0)
-                        {
-                            string ra = RoomAlong(m, n), rb = RoomAlong(m, -n);
-                            if (ra != rb)
-                            {
-                                string key = string.CompareOrdinal(ra, rb) < 0 ? $"{ra}|{rb}" : $"{rb}|{ra}";
-                                pairs.TryGetValue(key, out float pl); pairs[key] = pl + len / parts;
-                                Notes.Add($"PIECE {key} {m.x:0.00} {m.y:0.00}");
-                            }
-                        }
-                    }
+                    string kind = Classify(col, m, n, pieceLen, wallLength, roomPairs);
                     if (ShadowAudit && kind != "guarded" && kind != "furniture" &&
                         Physics2D.OverlapCircleAll(m, 0.15f, Constants.ShadowMask).Length == 0)
                     {
-                        kind = "noshadow"; color = NoShadow;
+                        kind = "noshadow";
                         Notes.Add($"NOSHADOW {m.x:0.00} {m.y:0.00} {col.name}");
                     }
-                    counts.TryGetValue(kind, out float sum); counts[kind] = sum + len / parts;
+                    AddLength(wallLength, kind, pieceLen);
                     Array.Clear(line, 0, line.Length);
                     SolidMap.Raster(line, w, h, 0, 0, p0, p1);
-                    Paint(rgb, line, w, h, color);
+                    Paint(rgb, line, w, h, ColorOf(kind));
                 }
             }
         }
+    }
 
-        // 4. はしご (両端を桃色の点と線で)
+    // 壁の線の 1 区間 (真ん中 m・法線 n) の判定の名前。守る物と家具が先、残りは両側の床の島で決める
+    private static string Classify(Collider2D col, Vector2 m, Vector2 n, float pieceLen, Dictionary<string, float> wallLength, Dictionary<string, float> roomPairs)
+    {
+        if (TerrainDamage.IsProtected(col, m)) return "guarded";
+        if (InFurniture(m)) return "furniture";
+
+        int islandFront = Beyond(m, n), islandBack = Beyond(m, -n);
+        string kind;
+        if (islandFront == 0 && islandBack == 0) kind = "lone";
+        else if (HeightLevels.Differs(m, n)) kind = "ledge";
+        else if (islandFront == 0 || islandBack == 0 || SolidMap.FacesOutside(m, n) || SkyBump(m, n))
+            kind = ClassifyOuter(m, n, islandFront, islandBack, pieceLen, wallLength);
+        else kind = "breakable";
+
+        if (islandFront != 0 && islandBack != 0) NoteRoomPair(m, n, pieceLen, roomPairs);
+        return kind;
+    }
+
+    // 片側に床が無い (か外・空に面した) 面: 外壁 / 厚い壁 / 爆発で宇宙へ抜ける外壁。
+    // 抜ける範囲を決める用に、外 (宇宙・空) までの厚みの内訳も wallLength に足す
+    private static string ClassifyOuter(Vector2 m, Vector2 n, int islandFront, int islandBack, float pieceLen, Dictionary<string, float> wallLength)
+    {
+        Vector2 back = islandFront == 0 ? n : -n;
+        bool thick = SolidMap.HasHull && SolidMap.InHull(m + back * 0.3f);
+        string kind = thick ? "thick" : "outer";
+        if (!thick && SolidMap.BreachableHull && SolidMap.SkyAhead(m, back, TerrainDamage.HullReach)) kind = "hull";
+        if (SolidMap.BreachableHull)
+        {
+            float hullDepth = SolidMap.HullDepth(m, back, 12f);
+            AddLength(wallLength, (thick ? "thick-" : "") + DepthBucket(hullDepth), pieceLen);
+        }
+        if (islandFront != 0 && islandBack != 0 && !SolidMap.FacesOutside(m, n)) Notes.Add($"SKYBUMP {m.x:0.00} {m.y:0.00}");
+        return kind;
+    }
+
+    // 外までの厚みの区分 (0 以下 = 届かない)
+    private static string DepthBucket(float depth)
+    {
+        if (depth <= 0f) return "depthFar";
+        if (depth <= 2.5f) return "depth2.5";
+        if (depth <= 4f) return "depth4";
+        if (depth <= 6f) return "depth6";
+        if (depth <= 8f) return "depth8";
+        return "depth12";
+    }
+
+    // 両側に床がある面: 隣り合う部屋の組ごとに壁の長さを数える
+    private static void NoteRoomPair(Vector2 m, Vector2 n, float pieceLen, Dictionary<string, float> roomPairs)
+    {
+        string front = RoomAlong(m, n), back = RoomAlong(m, -n);
+        if (front == back) return;
+        string key = string.CompareOrdinal(front, back) < 0 ? $"{front}|{back}" : $"{back}|{front}";
+        AddLength(roomPairs, key, pieceLen);
+        Notes.Add($"PIECE {key} {m.x:0.00} {m.y:0.00}");
+    }
+
+    private static void AddLength(Dictionary<string, float> sums, string key, float len)
+    {
+        sums.TryGetValue(key, out float sum);
+        sums[key] = sum + len;
+    }
+
+    private static byte[] ColorOf(string kind) => kind switch
+    {
+        "guarded" => Guarded,
+        "furniture" => Furniture,
+        "lone" => Lone,
+        "ledge" => Ledge,
+        "thick" => Thick,
+        "outer" => Outer,
+        "hull" => Hull,
+        "noshadow" => NoShadow,
+        _ => Breakable,
+    };
+
+    // はしご (両端を桃色の点と線で) と部屋の範囲。戻り = はしごの数
+    private static int MarkLadders(ShipStatus ship, byte[] rgb, int w, int h, Vector2 o, float ppu)
+    {
         var mark = new byte[w * h];
         int ladders = 0;
         foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
@@ -152,22 +223,16 @@ internal static class TerrainReview
             Notes.Add($"ROOM {r.RoomId} {b.min.x:0.00} {b.min.y:0.00} {b.max.x:0.00} {b.max.y:0.00}");
         }
         Paint(rgb, mark, w, h, new byte[] { 255, 80, 200 });
+        return ladders;
+    }
 
-        // 書く (PPM・上の行から)
-        using (var fs = System.IO.File.Create(path))
-        {
-            var head = System.Text.Encoding.ASCII.GetBytes($"P6\n{w} {h}\n255\n");
-            fs.Write(head, 0, head.Length);
-            for (int y = h - 1; y >= 0; y--) fs.Write(rgb, y * w * 3, w * 3);
-        }
-
-        foreach (var kv in pairs) Notes.Add($"PAIR {kv.Key} {kv.Value:0.0}");
-        var parts2 = new List<string>();
-        foreach (var kv in counts) parts2.Add($"{kv.Key}={kv.Value:0.0}");
-        var isl = new List<string>();
-        foreach (var kv in sizes) isl.Add($"#{kv.Key}:{kv.Value / (ppu * ppu):0}");
-        legend = $"walls(len) {string.Join(" ", parts2)} | islands(area) {string.Join(" ", isl)} | ladders={ladders} {HeightLevels.Describe()} {MapNotes.Stats} | origin=({o.x:0.##},{o.y:0.##}) ppu={ppu}";
-        return $"{w}x{h}";
+    private static string Legend(Dictionary<string, float> wallLength, Dictionary<int, int> islandSizes, int ladders, float ppu, Vector2 o)
+    {
+        var walls = new List<string>();
+        foreach (var kv in wallLength) walls.Add($"{kv.Key}={kv.Value:0.0}");
+        var islands = new List<string>();
+        foreach (var kv in islandSizes) islands.Add($"#{kv.Key}:{kv.Value / (ppu * ppu):0}");
+        return $"walls(len) {string.Join(" ", walls)} | islands(area) {string.Join(" ", islands)} | ladders={ladders} {HeightLevels.Describe()} {MapNotes.Stats} | origin=({o.x:0.##},{o.y:0.##}) ppu={ppu}";
     }
 
     // 点から 0.6 以内のいちばん近い島 (はしごの端は壁際にある)
@@ -251,15 +316,15 @@ internal static class TerrainReview
 
     // 爆破の前の絵 (scale 倍の細かさ・下の行から) と、地図の範囲
     public static byte[] RenderShip(int scale, out int w, out int h, out float ppu, out Vector2 o)
-    {
-        ppu = SolidMap.Ppu * scale; w = SolidMap.W * scale; h = SolidMap.H * scale; o = SolidMap.Origin;
-        return Background(w, h, ppu, o, 100);
-    }
+        => RenderShip(scale, 0, out w, out h, out ppu, out o);
 
     // 船の絵に layers の層も重ねて撮る (水の板は層 0)
     public static byte[] RenderShip(int scale, int layers, out int w, out int h, out float ppu, out Vector2 o)
     {
-        ppu = SolidMap.Ppu * scale; w = SolidMap.W * scale; h = SolidMap.H * scale; o = SolidMap.Origin;
+        ppu = SolidMap.Ppu * scale;
+        w = SolidMap.W * scale;
+        h = SolidMap.H * scale;
+        o = SolidMap.Origin;
         return Background(w, h, ppu, o, 100, ShipLayers | layers);
     }
 
