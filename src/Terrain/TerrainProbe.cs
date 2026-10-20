@@ -64,7 +64,14 @@ internal static class TerrainProbe
         FurnitureLift.Register();
         FloorMask.Register();
         RegisterMapSurvey();
-        RegisterNearWall();
+        RegisterMaskProbe();
+        RegisterLookToggles();
+        RegisterFurnitureAudit();
+        RegisterRubbleAndWarm();
+        RegisterShadowCamera();
+        RegisterMapDumps();
+        RegisterCameraView();
+        RegisterPointProbe();
     }
 
     private static void RegisterCutting()
@@ -507,7 +514,8 @@ internal static class TerrainProbe
         });
     }
 
-    internal static void RegisterNearWall()
+    // 損傷マスクの確認 (GPU との照合・抜け漏れ・書き出し)
+    private static void RegisterMaskProbe()
     {
         TestBridge.Register("damagegpu", "損傷マスクを GPU から読み戻して CPU 側と比べる (bad=0 なら変わった範囲の転送が正しい)", (args, reply) => reply("OK damagegpu " + DamageMap.GpuCheck()));
         TestBridge.Register("holecheck", "直前の破壊で切り取った壁の線の上で、壁の絵が抜けていない所 (当たり判定だけ抜けた所) を出す", (args, reply) =>
@@ -536,7 +544,11 @@ internal static class TerrainProbe
             string path = System.IO.Path.Combine(TestBridge.ScreensDir, "mask.ppm");
             reply($"OK maskdump {DamageMap.DumpMask(new Vector2(x, y), r, path)} {path}");
         });
+    }
 
+    // 見た目の切り替え (切り分け用)
+    private static void RegisterLookToggles()
+    {
         TestBridge.Register("fxpause", "<0|1> 壊れる演出 (塊・破片・土煙) の動きを止める / 再開する (見た目の確認用)", (args, reply) =>
         {
             TerrainFx.Paused = args.Trim() == "1";
@@ -571,7 +583,11 @@ internal static class TerrainProbe
                 default: reply("ERR layer <char|rim|underlay|junk|water> <0|1>"); break;
             }
         });
+    }
 
+    // 家具と壁の線の棚卸し (守る範囲・一覧の書き出し・全部爆破)
+    private static void RegisterFurnitureAudit()
+    {
         TestBridge.Register("furniture", "<x> <y> <r> 守る家具の範囲 (家具の当たり判定・壁の線の出っ張り)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
@@ -683,7 +699,11 @@ internal static class TerrainProbe
             System.IO.File.WriteAllLines(file, lines);
             reply($"OK lowfurn kept={kept} surveyed={LowFurniture.Survey.Count} {file}");
         });
+    }
 
+    // 準備段と瓦礫 (先回りの時間・コンパイル・焼き・塊)
+    private static void RegisterRubbleAndWarm()
+    {
         TestBridge.Register("warm", "試合の始めの先回りの準備 (損傷マスク・絵・種点・焼くカメラ・コンパイル) にかかった時間", (_, reply) => reply($"OK warm {TerrainWarm.Report}"));
 
         TestBridge.Register("jitlog", "<start | stop [件数=200]> その場でコンパイルされたメソッドを集める (準備段のコンパイル漏れ探し)", (args, reply) =>
@@ -722,7 +742,11 @@ internal static class TerrainProbe
             if (args.Trim().Length > 0) BreakPieces.Enabled = args.Trim() != "0";
             reply($"OK pieces {(BreakPieces.Enabled ? 1 : 0)} {BreakPieces.LastStats}");
         });
+    }
 
+    // カメラと影の中の焼いた絵
+    private static void RegisterShadowCamera()
+    {
         TestBridge.Register("cameras", "全カメラ (写す層・描き先・順番・置き換えシェーダの有無)", (_, reply) =>
         {
             foreach (var cam in Camera.allCameras)
@@ -746,34 +770,7 @@ internal static class TerrainProbe
                 }
                 else if (parts[i] == "dump")
                 {
-                    var rt = cam.targetTexture;
-                    if (!rt) { reply("ERR no target"); return; }
-                    var prev = RenderTexture.active;
-                    var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
-                    RenderTexture.active = rt;
-                    tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
-                    RenderTexture.active = prev;
-                    var px = tex.GetPixels32();
-                    Object.Destroy(tex);
-                    // RGB と A を横に並べて書く (左 = 色・右 = アルファ)
-                    int w = rt.width, h = rt.height;
-                    var body = new byte[w * 2 * h * 3];
-                    for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++)
-                    {
-                        var c = px[(h - 1 - y) * w + x];
-                        int o = (y * w * 2 + x) * 3, oa = (y * w * 2 + w + x) * 3;
-                        body[o] = c.r; body[o + 1] = c.g; body[o + 2] = c.b;
-                        body[oa] = body[oa + 1] = body[oa + 2] = c.a;
-                    }
-                    string path = System.IO.Path.Combine(TestBridge.ScreensDir, "shadow.ppm");
-                    using (var fs = System.IO.File.Create(path))
-                    {
-                        var head = Encoding.ASCII.GetBytes($"P6\n{w * 2} {h}\n255\n");
-                        fs.Write(head, 0, head.Length);
-                        fs.Write(body, 0, body.Length);
-                    }
-                    reply($"DUMP {path} {w}x{h}");
+                    if (!DumpShadowCamera(cam, reply)) return;
                 }
             }
             reply($"OK shadowcam shadozer={(sc && sc.Shadozer ? sc.Shadozer.name : "-")} clear={cam.clearFlags} bg={cam.backgroundColor} target={(cam.targetTexture ? cam.targetTexture.name : "-")}");
@@ -788,7 +785,44 @@ internal static class TerrainProbe
             if (a.Length > 0) { ShadowPatch.Enabled = a != "0"; if (!ShadowPatch.Enabled) ShadowPatch.Clear(); } // 0 は焼いてある升も消す (直す前の見え方と比べる)
             reply($"OK shadowpatch {(ShadowPatch.Enabled ? 1 : 0)} tiles={ShadowPatch.TileCount} baked={ShadowPatch.BakedTotal} pending={ShadowPatch.PendingCount} rebakes={ShadowPatch.Rebakes} {ShadowPatch.Breakdown()}");
         });
+    }
 
+    // 影のカメラの描き先を Screens/shadow.ppm へ (RGB と A を横に並べる: 左 = 色・右 = アルファ)。描き先が無ければ false
+    private static bool DumpShadowCamera(Camera cam, System.Action<string> reply)
+    {
+        var rt = cam.targetTexture;
+        if (!rt) { reply("ERR no target"); return false; }
+        var prev = RenderTexture.active;
+        var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+        RenderTexture.active = rt;
+        tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
+        RenderTexture.active = prev;
+        var px = tex.GetPixels32();
+        Object.Destroy(tex);
+        int w = rt.width, h = rt.height;
+        var body = new byte[w * 2 * h * 3];
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            var c = px[(h - 1 - y) * w + x];
+            int o = (y * w * 2 + x) * 3, oa = (y * w * 2 + w + x) * 3;
+            body[o] = c.r; body[o + 1] = c.g; body[o + 2] = c.b;
+            body[oa] = body[oa + 1] = body[oa + 2] = c.a;
+        }
+        string path = System.IO.Path.Combine(TestBridge.ScreensDir, "shadow.ppm");
+        using (var fs = System.IO.File.Create(path))
+        {
+            var head = Encoding.ASCII.GetBytes($"P6\n{w * 2} {h}\n255\n");
+            fs.Write(head, 0, head.Length);
+            fs.Write(body, 0, body.Length);
+        }
+        reply($"DUMP {path} {w}x{h}");
+        return true;
+    }
+
+    // 歩ける所の地図とマップ全体の絵の書き出し
+    private static void RegisterMapDumps()
+    {
         TestBridge.Register("solidmap", "[x y r] 歩ける所の地図の状態。範囲を渡すと Screens/solid.ppm に書く (白 = 歩ける・灰 = 船体の塊・紺 = 船の外・黒 = それ以外)", (args, reply) =>
         {
             SolidMap.Ensure();
@@ -845,7 +879,11 @@ internal static class TerrainProbe
             else { reply("ERR leakcheck needs x y"); return; }
             reply($"OK leakcheck {SolidMap.LeakCheck(from)}");
         });
+    }
 
+    // カメラの寄りと止め・HUD (撮影用)
+    private static void RegisterCameraView()
+    {
         TestBridge.Register("zoom", "[大きさ=3] カメラの写す範囲 (縦の半分・世界単位)。小さいほど寄る", (args, reply) =>
         {
             var cam = Camera.main;
@@ -874,7 +912,11 @@ internal static class TerrainProbe
             hud.gameObject.SetActive(args.Trim() != "0");
             reply($"OK hud {(hud.gameObject.activeSelf ? 1 : 0)}");
         });
+    }
 
+    // 点と線の確認 (損傷マスク・部屋・近い壁)
+    private static void RegisterPointProbe()
+    {
         TestBridge.Register("maskat", "<x> <y> その点の損傷マスク (R=穴 G=焦げ B=熾火 A=家具)", (args, reply) =>
         {
             if (!TryParseFloats(args, out var v) || v.Length != 2) { reply("ERR maskat needs <x> <y>"); return; }
