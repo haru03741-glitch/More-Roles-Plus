@@ -9,12 +9,12 @@ using MoreRolesPlus.Options;
 
 namespace MoreRolesPlus.Commands;
 
-[Settings(Tab.General, "荒らし対策", "Chat moderation", order: -85)]
+[Settings(Tab.General, "ChatGuardSettings.Title", order: -85)]
 public static class ChatGuardSettings
 {
-    public static readonly BoolOpt BanWords = new("禁止語を言った人を部屋から出す (BanWords.txt)", "Kick players who say a banned word (BanWords.txt)", false);
-    public static readonly BoolOpt StartSpam = new("ロビーで開始を急かす人を部屋から出す", "Kick players who keep asking to start in the lobby", false);
-    public static readonly IntOpt Times = new("何回目で出すか", "Kick on the Nth time", 3, 1, 10);
+    public static readonly BoolOpt BanWords = new("ChatGuardSettings.BanWords", false);
+    public static readonly BoolOpt StartSpam = new("ChatGuardSettings.StartSpam", false);
+    public static readonly IntOpt Times = new("ChatGuardSettings.Times", 3, 1, 10);
 }
 
 // ホストの端末で、届いたチャットを見て荒らしを部屋から出す。禁止語は手元の BanWords.txt (1 行 1 語・# で始まる行は飛ばす)。
@@ -74,11 +74,11 @@ internal static class ChatGuard
         if (JoinLists.IsVip(sender.OwnerId)) return;
         string why = null;
         if (ChatGuardSettings.StartSpam && !ShipStatus.Instance && Vanilla.StartManager && StartWords.Contains(Normalize(text)))
-            why = new Text("開始の催促", "asking to start");
+            why = new Text("ChatGuard.AskingToStart");
         else if (ChatGuardSettings.BanWords)
         {
             foreach (var w in Words())
-                if (text.Contains(w, StringComparison.OrdinalIgnoreCase)) { why = new Text("禁止語", "banned word"); break; }
+                if (text.Contains(w, StringComparison.OrdinalIgnoreCase)) { why = new Text("ChatGuard.BannedWord"); break; }
         }
         if (why == null) return;
 
@@ -90,9 +90,9 @@ internal static class ChatGuard
         if (n >= limit)
         {
             client.KickPlayer(sender.OwnerId, false);
-            msg = new Text($"{name} を部屋から出しました ({why} {n} 回目)", $"Kicked {name} ({why}, {n} times)");
+            msg = new Text("ChatGuard.KickedTimes").With("name", name).With("why", why).With("n", n);
         }
-        else msg = new Text($"{name}: {why} {n} 回目 ({limit} 回目で部屋から出します)", $"{name}: {why} ({n}/{limit}, kicked at {limit})");
+        else msg = new Text("ChatGuard.KickedAt").With("name", name).With("why", why).With("n", n).With("limit", limit);
         Plugin.Logger.LogInfo($"chat guard: {msg}");
         DevChat.Notice(Vanilla.Chat, msg);
     }

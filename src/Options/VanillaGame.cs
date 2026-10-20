@@ -14,7 +14,7 @@ internal static class VanillaGame
         public readonly List<VanillaOpt> Opts = new();
     }
 
-    public static readonly Text TabName = new("ゲーム設定", "Game");
+    public static readonly Text TabName = new("VanillaGame.TabName");
 
     private static readonly List<Section> Sections = new();
 
@@ -32,7 +32,7 @@ internal static class VanillaGame
         {
             if (cat == null || cat.AllGameSettings == null) continue;
             string title = tc ? tc.GetString(cat.CategoryName) : cat.CategoryName.ToString();
-            var sec = new Section { Title = new Text(title, title) };
+            var sec = new Section { Title = Text.Raw(title) };
             foreach (var s in cat.AllGameSettings)
             {
                 var opt = VanillaOpt.From(s);

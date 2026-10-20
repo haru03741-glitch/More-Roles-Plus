@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Options;
 // 札は行と一緒にスクロールするので、絵と字は本編の行の切り抜きのマテリアルを使い、押す所も本編の行と同じ範囲で切る
 internal static class MapVariants
 {
-    public static readonly Text Title = new("マップのバリエーション", "Map variant");
+    public static readonly Text Title = new("MapVariants.Title");
 
     private const float RowH = 0.5f, ChipW = 1.25f, ChipH = 0.36f, ChipGap = 0.12f, Edge = 0.025f;
     private const int MaskLayer = 20;
@@ -20,8 +20,8 @@ internal static class MapVariants
 
     private static readonly (Text Name, int Index)[] Variants =
     {
-        (new Text("通常", "Normal"), 0),
-        (new Text("左右反転", "Mirrored"), 1),
+        (new Text("MapVariants.Normal"), 0),
+        (new Text("MapVariants.Mirrored"), 1),
     };
 
     private sealed class Chip
@@ -86,7 +86,7 @@ internal static class MapVariants
                 tmp.enableAutoSizing = true;
                 tmp.fontSizeMin = 1f;
                 tmp.fontSizeMax = tmp.fontSize;
-                tmp.text = new Text("バリエーション", "Variant");
+                tmp.text = new Text("MapVariants.Variant");
             }
         }
 

@@ -26,9 +26,7 @@ internal static class SandboxCommands
     private const float WallGap = 0.45f; // 自分の足元から壁の手前の面までの間
     private static ShipStatus _hinted;
 
-    public static readonly Text Hint = new(
-        "練習: 右下のボタンかチャット欄の /hammer で向いている方向の壁を叩く (3 回で崩れる)・爆破ボタンか /blast で足元に爆弾を置く・点火ボタンか /fire で足元に火を付ける・放水ボタンか /water で向いている方向へ水を噴き出す・浸水ボタンか /flood で足元へ水を入れ続ける・壁ボタンか /wall で向いている方向の先に壁を立てる (/wall 0 = 横・/wall 90 = 縦)",
-        "Practice: use the buttons or type /hammer to hit the wall you are facing (breaks on the 3rd hit), /blast to drop a bomb at your feet, /fire to set the floor at your feet on fire, /water to spray water the way you are facing, /flood to keep pouring water at your feet, /wall to put up a wall in front of you (/wall 0 = horizontal, /wall 90 = vertical)");
+    public static readonly Text Hint = new("SandboxCommands.Hint");
 
     // 試合ごとに 1 回だけ、チャット欄に使い方を出す
     public static void ShowHint(ChatController chat)
@@ -66,7 +64,7 @@ internal static class SandboxCommands
     private static TerrainResult IgniteAtFeet(float radius)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp) return TerrainResult.Fail(new Text("試合の中だけ使えます", "Only during a game"));
+        if (!lp) return TerrainResult.Fail(new Text("SandboxCommands.OnlyDuringAGame"));
         return TerrainApi.Ignite(lp.GetTruePosition(), radius);
     }
 
@@ -74,14 +72,14 @@ internal static class SandboxCommands
     private static TerrainResult SprayAtFeet()
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp) return TerrainResult.Fail(new Text("試合の中だけ使えます", "Only during a game"));
+        if (!lp) return TerrainResult.Fail(new Text("SandboxCommands.OnlyDuringAGame"));
         return TerrainApi.Water(lp.GetTruePosition(), HammerSwing.Aim(lp, out _));
     }
 
     private static TerrainResult FloodAtFeet(float seconds)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp) return TerrainResult.Fail(new Text("試合の中だけ使えます", "Only during a game"));
+        if (!lp) return TerrainResult.Fail(new Text("SandboxCommands.OnlyDuringAGame"));
         return TerrainApi.Flood(lp.GetTruePosition(), seconds);
     }
 
@@ -89,7 +87,7 @@ internal static class SandboxCommands
     internal static TerrainResult WallAhead(float? deg)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp) return TerrainResult.Fail(new Text("試合の中だけ使えます", "Only during a game"));
+        if (!lp) return TerrainResult.Fail(new Text("SandboxCommands.OnlyDuringAGame"));
         Vector2 aim = HammerSwing.Aim(lp, out _);
         Vector2 t = deg is float d ? new Vector2(MathF.Cos(d * MathF.PI / 180f), MathF.Sin(d * MathF.PI / 180f)) : new Vector2(-aim.y, aim.x);
         Vector2 n = new(-t.y, t.x);
@@ -105,17 +103,17 @@ internal static class SandboxCommands
     {
         if (_buttons is { IsDead: false } || !Roles.PracticeMatch.Sandbox) return;
         _buttons = Roles.RoleState.Match.Child();
-        var hammer = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("hammer"), new Text("ハンマー", "Hammer"), HammerCooldown,
+        var hammer = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("hammer"), new Text("SandboxCommands.Hammer"), HammerCooldown,
             () => Report(TerrainApi.Hammer(DefaultForce)));
-        var bomb = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("bomb"), new Text("爆破", "Blast"), BlastCooldown,
+        var bomb = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("bomb"), new Text("SandboxCommands.Blast"), BlastCooldown,
             () => Report(TerrainApi.Bomb(DefaultRadius)));
-        var fire = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("fire"), new Text("点火", "Ignite"), FireCooldown,
+        var fire = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("fire"), new Text("SandboxCommands.Ignite"), FireCooldown,
             () => Report(IgniteAtFeet(FireRadius)));
-        var water = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("water"), new Text("放水", "Water"), WaterCooldown,
+        var water = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("water"), new Text("SandboxCommands.Water"), WaterCooldown,
             () => Report(SprayAtFeet()));
-        var flood = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("water"), new Text("浸水", "Flood"), FloodCooldown,
+        var flood = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("water"), new Text("SandboxCommands.Flood"), FloodCooldown,
             () => Report(FloodAtFeet(FloodSeconds)));
-        var wall = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("hammer"), new Text("壁", "Wall"), WallCooldown,
+        var wall = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("hammer"), new Text("SandboxCommands.Wall"), WallCooldown,
             () => Report(WallAhead(null)));
         // HUD がまだ無くて作れなかった時は、次に HUD が出た時に作り直す
         if (hammer == null || bomb == null || fire == null || water == null || flood == null || wall == null) { _buttons.Release(); _buttons = null; }

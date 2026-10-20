@@ -31,6 +31,6 @@ internal static class EndSummary
         tmp.fontSize = 1.6f;
         tmp.color = Color.white;
         tmp.richText = true;
-        tmp.text = (Lang.IsJapanese ? "<b>試合の結果</b>\n" : "<b>Results</b>\n") + text;
+        tmp.text = Tr.Get("EndSummary.Results") + text;
     }
 }

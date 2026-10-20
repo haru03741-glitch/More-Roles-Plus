@@ -14,7 +14,7 @@ internal static class LogDump
     public static string Run(string _)
     {
         if (OperatingSystem.IsAndroid())
-            return new Text("スマホ版は起動画面の「ログを共有」を使ってください", "On Android, use \"Share logs\" in the launcher");
+            return new Text("LogDump.OnAndroidUseShareLogs");
         try
         {
             string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "MRP_Logs");
@@ -31,12 +31,12 @@ internal static class LogDump
                 n += Add(zip, Path.Combine(Paths.ConfigPath, "MoreRolesPlus.options.txt"), "MoreRolesPlus.options.txt");
             }
             Plugin.Logger.LogInfo($"log dump: {path} ({n} files)");
-            return new Text($"ログを保存しました ({n} 個): {path}", $"Saved the logs ({n} files): {path}");
+            return new Text("LogDump.SavedTheLogsFiles").With("n", n).With("path", path);
         }
         catch (Exception e)
         {
             Plugin.Logger.LogError($"log dump: {e}");
-            return new Text($"ログを保存できませんでした: {e.Message}", $"Couldn't save the logs: {e.Message}");
+            return new Text("LogDump.CouldntSaveTheLogs").With("message", e.Message);
         }
     }
 

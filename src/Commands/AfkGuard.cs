@@ -6,12 +6,12 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Commands;
 
-[Settings(Tab.General, "放置", "AFK", order: -75)]
+[Settings(Tab.General, "AfkSettings.Title", order: -75)]
 public static class AfkSettings
 {
-    public static readonly ChoiceOpt Action = new("試合中に放置した人を", "Players who go AFK in a game", 0,
-        new Text("そのまま", "Leave them"), new Text("ホストに知らせる", "Tell the host"), new Text("倒す", "Kill them"), new Text("部屋から出す", "Kick them"));
-    public static readonly IntOpt Seconds = new("何秒で放置とみなすか", "Seconds until AFK", 120, 60, 600, 30, "s");
+    public static readonly ChoiceOpt Action = new("AfkSettings.Action", 0,
+        new Text("AfkSettings.LeaveThem"), new Text("AfkSettings.TellTheHost"), new Text("AfkSettings.KillThem"), new Text("AfkSettings.KickThem"));
+    public static readonly IntOpt Seconds = new("AfkSettings.Seconds", 120, 60, 600, 30, "s");
 }
 
 // 試合中の放置。位置だけで見ると、作業中や監視カメラを見ている人まで放置になるので、各自の端末が自分を見て決める:
@@ -59,7 +59,7 @@ internal static class AfkGuard
         _hasPos = true;
         if (touched || moved || Minigame.Instance)
         {
-            if (_reported) Notify(new Text("放置ではなくなりました", "You're back"));
+            if (_reported) Notify(new Text("AfkGuard.YoureBack"));
             Reset();
             _hasPos = true;
             return;
@@ -69,7 +69,7 @@ internal static class AfkGuard
         if (!_warned && _idle >= limit - 20)
         {
             _warned = true;
-            Notify(new Text("動かないままだと、あと 20 秒で放置とみなされます", "You'll be marked AFK in 20 seconds unless you move"));
+            Notify(new Text("AfkGuard.YoullBeMarkedAFKIn"));
         }
         if (!_reported && _idle >= limit)
         {
@@ -94,16 +94,16 @@ internal static class AfkGuard
         switch (AfkSettings.Action.Value)
         {
             case 1:
-                Notify(new Text($"{name} が放置しています", $"{name} is AFK"));
+                Notify(new Text("AfkGuard.IsAFK").With("name", name));
                 break;
             case 2:
                 p.RpcMurderPlayer(p, true);
-                Notify(new Text($"{name} を放置で倒しました", $"{name} was killed for being AFK"));
+                Notify(new Text("AfkGuard.WasKilledForBeingAFK").With("name", name));
                 break;
             case 3:
-                if (p.AmOwner) { Notify(new Text("ホストは部屋から出せません", "The host can't be kicked")); break; }
+                if (p.AmOwner) { Notify(new Text("AfkGuard.TheHostCantBeKicked")); break; }
                 AmongUsClient.Instance.KickPlayer(p.OwnerId, false);
-                Notify(new Text($"{name} を放置で部屋から出しました", $"{name} was kicked for being AFK"));
+                Notify(new Text("AfkGuard.WasKickedForBeingAFK").With("name", name));
                 break;
         }
     }

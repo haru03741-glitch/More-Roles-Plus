@@ -120,7 +120,7 @@ internal static class RoleDisplay
         if (role != null)
         {
             text = $"<color={role.Color}>{role.Name}: {role.Description}";
-            if (role.Team == Team.Neutral) text += "\n" + new Text("タスクは勝敗に関係ありません", "Your tasks do not count");
+            if (role.Team == Team.Neutral) text += "\n" + new Text("RoleDisplay.YourTasksDoNotCount");
             text += "</color>";
         }
         _header.Text = (text + AddonLines(p.PlayerId)).TrimStart('\n');

@@ -22,7 +22,8 @@ internal static class ChatCommands
     {
         public string[] Names;
         public Who Who;
-        public string Usage;
+        public Text UsageText;
+        public string Usage => UsageText;
         public Text Help;
         public Func<string, string> Run;
     }
@@ -32,37 +33,38 @@ internal static class ChatCommands
 
     static ChatCommands()
     {
-        Add(new[] { "help", "h" }, Who.Everyone, "", new Text("使えるコマンドの一覧", "List the commands you can use"), _ => HelpText());
-        Add(new[] { "id" }, Who.Everyone, "", new Text("全員の番号と名前", "Everyone's number and name"), _ => HostActions.PlayerList());
-        Add(new[] { "m", "myrole" }, Who.Everyone, "", new Text("自分の役職と説明 (試合中)", "Your role and what it does (in game)"), InfoCommands.MyRole);
-        Add(new[] { "r", "roles" }, Who.Everyone, "[役職]", new Text("役職の一覧 / その役職の説明", "List roles / describe one"), InfoCommands.Roles);
-        Add(new[] { "n", "now" }, Who.Everyone, "", new Text("今の MRP の設定", "Current More Roles Plus settings"), InfoCommands.Now);
-        Add(new[] { "rename" }, Who.Everyone, "<名前>", new Text("自分の名前を変える (ロビー)", "Change your name (lobby)"), LobbyTools.Rename);
-        Add(new[] { "color", "colour" }, Who.Everyone, "<番号|色の名前|#RRGGBB [#RRGGBB [向き [ぼかし [位置]]]]|reset>", new Text("自分の色を変える (ロビー)。#RRGGBB で好きな色・2 色でグラデーション (向き 0=横 1=縦 2,3=斜め・ぼかし 0=くっきり〜100・境目の位置 0〜100)", "Change your color (lobby). #RRGGBB for any color, two colors for a gradient (direction 0=horizontal 1=vertical 2,3=diagonal, blur 0=sharp to 100, edge position 0-100)"), LobbyTools.Color);
-        Add(new[] { "death" }, Who.Everyone, "[番号]", new Text("自分 (番号でその人) の死因 (死んでから)", "How you (or someone) died (after you die)"), InfoCommands.Death);
-        Add(new[] { "l", "last" }, Who.Everyone, "", new Text("前の試合の結果 (全員の役職と死因)", "Last game's result (roles and causes of death)"), InfoCommands.LastResult);
-        Add(new[] { "spectate", "spec" }, Who.Everyone, "", new Text("次の試合を観戦する / やめる (ロビー)", "Toggle spectating the next game (lobby)"), Roles.Spectate.Command);
-        Add(new[] { "dump" }, Who.Everyone, "", new Text("不具合の報告用にログをデスクトップの MRP_Logs へ保存する (PC)", "Save logs to MRP_Logs on the desktop for bug reports (PC)"), LogDump.Run);
-        Add(new[] { "win", "winner" }, Who.Everyone, "", new Text("前の試合の勝者", "Last game's winners"), InfoCommands.Winners);
+        Add(new[] { "help", "h" }, Who.Everyone, default, new Text("Command.help"), _ => HelpText());
+        Add(new[] { "id" }, Who.Everyone, default, new Text("Command.id"), _ => HostActions.PlayerList());
+        Add(new[] { "m", "myrole" }, Who.Everyone, default, new Text("Command.myrole"), InfoCommands.MyRole);
+        Add(new[] { "r", "roles" }, Who.Everyone, new Text("Command.roles.Usage"), new Text("Command.roles"), InfoCommands.Roles);
+        Add(new[] { "n", "now" }, Who.Everyone, default, new Text("Command.now"), InfoCommands.Now);
+        Add(new[] { "rename" }, Who.Everyone, new Text("Command.rename.Usage"), new Text("Command.rename"), LobbyTools.Rename);
+        Add(new[] { "color", "colour" }, Who.Everyone, new Text("Command.color.Usage"), new Text("Command.color"), LobbyTools.Color);
+        Add(new[] { "death" }, Who.Everyone, new Text("Command.death.Usage"), new Text("Command.death"), InfoCommands.Death);
+        Add(new[] { "l", "last" }, Who.Everyone, default, new Text("Command.last"), InfoCommands.LastResult);
+        Add(new[] { "spectate", "spec" }, Who.Everyone, default, new Text("Command.spectate"), Roles.Spectate.Command);
+        Add(new[] { "dump" }, Who.Everyone, default, new Text("Command.dump"), LogDump.Run);
+        Add(new[] { "win", "winner" }, Who.Everyone, default, new Text("Command.winner"), InfoCommands.Winners);
+        Add(new[] { "lang" }, Who.Everyone, new Text("Command.lang.Usage"), new Text("Command.lang"), LangFiles.Command);
 
-        Add(new[] { "start" }, Who.Host, "", new Text("試合を始める (数え中なら数えを飛ばす)", "Start the game (skips the countdown if counting)"), _ => HostActions.Start());
-        Add(new[] { "cancel" }, Who.Host, "", new Text("開始の数えを取りやめる (Enter で始めた時はもう一度 Enter)", "Cancel the start countdown (or press Enter again)"), _ => HostActions.Cancel());
-        Add(new[] { "end", "廃村" }, Who.Host, "", new Text("廃村: 勝者なしで試合を打ち切る (Shift+L+Enter)", "Abort the game with no winner (Shift+L+Enter)"), _ => HostActions.Abort());
-        Add(new[] { "mt", "meet" }, Who.Host, "", new Text("会議を開く / 開いている会議を閉じる (Shift+M+Enter)", "Call a meeting / close the current one (Shift+M+Enter)"), _ => HostActions.ToggleMeeting());
-        Add(new[] { "setrole" }, Who.Host, "<役職> [番号]", new Text("その人 (省略で自分) の役職を変える。ロビーで打つと次の試合の役職を予約する", "Change someone's role (yourself if omitted). In the lobby, reserves the role for the next game"), HostActions.SetRole);
-        Add(new[] { "kill" }, Who.Host, "[番号]", new Text("その人 (省略で自分) を倒す (自分は Shift+E+Enter)", "Kill someone (yourself if omitted, Shift+E+Enter)"), HostActions.Kill);
-        Add(new[] { "revive" }, Who.Host, "[番号]", new Text("その人 (省略で自分) を生き返らせる", "Revive someone (yourself if omitted)"), HostActions.Revive);
-        Add(new[] { "kick" }, Who.Host, "<番号>", new Text("その人を部屋から出す", "Kick someone out of the room"), JoinLists.Kick);
-        Add(new[] { "ban" }, Who.Host, "<番号>", new Text("その人を BAN して一覧に書く (次から入れない)", "Ban someone and add them to the ban list"), JoinLists.Ban);
-        Add(new[] { "banlist" }, Who.Host, "", new Text("BAN 一覧", "Show the ban list"), JoinLists.BanList);
-        Add(new[] { "unban" }, Who.Host, "<一覧の番号|フレンドコード>", new Text("BAN を解く", "Remove someone from the ban list"), JoinLists.Unban);
-        Add(new[] { "cjclear" }, Who.Host, "", new Text("前の試合にいた人の記録を消す (続けて入れない設定用)", "Forget who played the previous games"), JoinLists.ClearRecent);
-        Add(new[] { "say" }, Who.Host, "<文>", new Text("全員の画面にお知らせを出す", "Show a message to everyone"), LobbyTools.Say);
-        Add(new[] { "preset" }, Who.Host, "[save|load|del <名前>]", new Text("設定を名前を付けて保存 / 読み込み", "Save / load settings by name"), LobbyTools.Preset);
-        Add(new[] { "vip" }, Who.Host, "[add <番号> | del <一覧の番号>]", new Text("VIP 一覧 / 追加 / 削除 (ホワイトリスト扱い・荒らし対策で数えない)", "VIP list: list / add / remove (counts as whitelisted, skipped by chat moderation)"), JoinLists.VipCmd);
-        Add(new[] { "wl", "whitelist" }, Who.Host, "[add <番号> | del <一覧の番号>]", new Text("ホワイトリストの一覧 / 追加 / 削除 (使うかは設定で)", "Whitelist: list / add / remove (turn it on in settings)"), JoinLists.WhiteCmd);
+        Add(new[] { "start" }, Who.Host, default, new Text("Command.start"), _ => HostActions.Start());
+        Add(new[] { "cancel" }, Who.Host, default, new Text("Command.cancel"), _ => HostActions.Cancel());
+        Add(new[] { "end", "廃村" }, Who.Host, default, new Text("Command.end"), _ => HostActions.Abort());
+        Add(new[] { "mt", "meet" }, Who.Host, default, new Text("Command.meet"), _ => HostActions.ToggleMeeting());
+        Add(new[] { "setrole" }, Who.Host, new Text("Command.setrole.Usage"), new Text("Command.setrole"), HostActions.SetRole);
+        Add(new[] { "kill" }, Who.Host, new Text("Command.kill.Usage"), new Text("Command.kill"), HostActions.Kill);
+        Add(new[] { "revive" }, Who.Host, new Text("Command.revive.Usage"), new Text("Command.revive"), HostActions.Revive);
+        Add(new[] { "kick" }, Who.Host, new Text("Command.kick.Usage"), new Text("Command.kick"), JoinLists.Kick);
+        Add(new[] { "ban" }, Who.Host, new Text("Command.ban.Usage"), new Text("Command.ban"), JoinLists.Ban);
+        Add(new[] { "banlist" }, Who.Host, default, new Text("Command.banlist"), JoinLists.BanList);
+        Add(new[] { "unban" }, Who.Host, new Text("Command.unban.Usage"), new Text("Command.unban"), JoinLists.Unban);
+        Add(new[] { "cjclear" }, Who.Host, default, new Text("Command.cjclear"), JoinLists.ClearRecent);
+        Add(new[] { "say" }, Who.Host, new Text("Command.say.Usage"), new Text("Command.say"), LobbyTools.Say);
+        Add(new[] { "preset" }, Who.Host, new Text("Command.preset.Usage"), new Text("Command.preset"), LobbyTools.Preset);
+        Add(new[] { "vip" }, Who.Host, new Text("Command.vip.Usage"), new Text("Command.vip"), JoinLists.VipCmd);
+        Add(new[] { "wl", "whitelist" }, Who.Host, new Text("Command.whitelist.Usage"), new Text("Command.whitelist"), JoinLists.WhiteCmd);
 
-        Add(new[] { "devhelp" }, Who.Dev, "[語]", new Text("開発者コマンドの一覧", "List the developer commands"), args =>
+        Add(new[] { "devhelp" }, Who.Dev, new Text("Command.devhelp.Usage"), new Text("Command.devhelp"), args =>
         {
             var sb = new StringBuilder();
             Bridge.TestBridge.Run("help " + args, s => { if (sb.Length > 0) sb.Append('\n'); sb.Append(s); });
@@ -70,9 +72,9 @@ internal static class ChatCommands
         });
     }
 
-    private static void Add(string[] names, Who who, string usage, Text help, Func<string, string> run)
+    private static void Add(string[] names, Who who, Text usage, Text help, Func<string, string> run)
     {
-        var c = new Cmd { Names = names, Who = who, Usage = usage, Help = help, Run = run };
+        var c = new Cmd { Names = names, Who = who, UsageText = usage, Help = help, Run = run };
         List.Add(c);
         foreach (var n in names) ByName[n] = c;
     }
@@ -93,14 +95,14 @@ internal static class ChatCommands
         {
             // 開発者のコマンドは名簿に無い人には無いのと同じにする (本編へそのまま流す)
             if (c.Who == Who.Dev) return false;
-            reply = new Text("ホストだけが使えます", "Only the host can use this");
+            reply = new Text("ChatCommands.OnlyTheHostCanUse");
             return true;
         }
         try { reply = c.Run(args.Trim()); }
         catch (Exception e)
         {
             Plugin.Logger.LogError($"chat command /{name}: {e}");
-            reply = new Text($"失敗しました ({e.GetType().Name})", $"Failed ({e.GetType().Name})");
+            reply = new Text("ChatCommands.Failed").With("error", e.GetType().Name);
         }
         Plugin.Logger.LogInfo($"chat command /{name} {args} -> {reply?.Replace('\n', ' ')}");
         return true;
@@ -138,16 +140,16 @@ internal static class ChatCommands
                 if (sb.Length > 0) sb.Append('\n');
                 sb.Append(c.Who switch
                 {
-                    Who.Host => new Text("― ホスト ―", "- Host -"),
-                    Who.Dev => new Text("― 開発者 ―", "- Developer -"),
-                    _ => new Text("― 全員 ―", "- Everyone -"),
+                    Who.Host => new Text("ChatCommands.Host"),
+                    Who.Dev => new Text("ChatCommands.Developer"),
+                    _ => new Text("ChatCommands.Everyone"),
                 });
             }
             sb.Append("\n/").Append(string.Join(" /", c.Names));
             if (c.Usage.Length > 0) sb.Append(' ').Append(c.Usage);
             sb.Append("  ").Append(c.Help.ToString());
         }
-        if (!Allowed(Who.Host)) sb.Append('\n').Append(new Text("(ホスト用のコマンドもあります)", "(The host has more commands)").ToString());
+        if (!Allowed(Who.Host)) sb.Append('\n').Append(new Text("ChatCommands.TheHostHasMoreCommands").ToString());
         return sb.ToString();
     }
 }

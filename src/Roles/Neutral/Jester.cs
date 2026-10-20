@@ -5,9 +5,9 @@ public sealed class Jester : RoleBase
 {
     public override Team Team => Team.Neutral;
     public override string Color => "#EC62A5";
-    public override Text Name => new("道化", "Jester");
+    public override Text Name => new("Jester.Name");
     public override string Reading => "どうけ";
-    public override Text Blurb => new("みんなをだまして追放されよう", "Get yourself voted out");
+    public override Text Blurb => new("Jester.Blurb");
 
     public override System.Type[] NotWith => new[] { typeof(Survivor) };
 

@@ -88,7 +88,7 @@ internal static class AutoRejoin
                 if (_countdown && sec != _shownSec && sec >= 0)
                 {
                     _shownSec = sec;
-                    _countdown.text = Lang.IsJapanese ? $"{sec} 秒後にロビーへ戻ります" : $"Back to the lobby in {sec}s";
+                    _countdown.text = new Text("AutoRejoin.BackToTheLobbyIn").With("sec", sec).ToString();
                 }
                 if (now >= _playAgainAt)
                 {

@@ -24,7 +24,7 @@ internal static class PresetLabel
     // 出している名前 (null = 合うプリセットなし)
     public static string Shown { get; private set; }
 
-    private static readonly Text CustomName = new("カスタム", "Custom");
+    private static readonly Text CustomName = new("PresetLabel.CustomName");
 
     public static void Bind(ConfigFile cfg) =>
         _last = cfg.Bind("Client", "LastPreset", "", "The preset last loaded or saved, and a fingerprint of its settings");

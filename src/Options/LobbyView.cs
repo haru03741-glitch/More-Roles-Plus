@@ -79,7 +79,7 @@ internal static class LobbyView
         var client = AmongUsClient.Instance;
         if (client && !client.AmHost && !OptionSync.HoldsHostValues)
         {
-            Header(pane, ref y, new Text("ホストの設定をまだ受け取っていません", "Host settings have not arrived yet"), null);
+            Header(pane, ref y, new Text("LobbyView.HostSettingsHaveNotArrived"), null);
             Finish(pane, y);
             return;
         }

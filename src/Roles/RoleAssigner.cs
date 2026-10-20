@@ -116,31 +116,31 @@ public static class RoleState
     }
 }
 
-[Settings(Tab.General, "役職", "Roles", order: -100)]
+[Settings(Tab.General, "RoleSettings.Title", order: -100)]
 public static class RoleSettings
 {
-    public static readonly BoolOpt Enabled = new("More Roles Plus の役職を使う", "Use More Roles Plus roles", true);
-    public static readonly BoolOpt GhostsSeeRoles = new("死んだら全員の役職が見える (会議)", "Ghosts see all roles in meetings", true);
-    public static readonly BoolOpt ImpostorsSeeRoles = new("インポスター同士は役職が見える (会議)", "Impostors see each other's roles in meetings", true);
+    public static readonly BoolOpt Enabled = new("RoleSettings.Enabled", true);
+    public static readonly BoolOpt GhostsSeeRoles = new("RoleSettings.GhostsSeeRoles", true);
+    public static readonly BoolOpt ImpostorsSeeRoles = new("RoleSettings.ImpostorsSeeRoles", true);
 }
 
 // 配り方の上限。「なし」は制限なし
-[Settings(Tab.General, "配り方", "Assignment", order: -99)]
+[Settings(Tab.General, "AssignSettings.Title", order: -99)]
 public static class AssignSettings
 {
-    private static readonly Text[] Counts = Enumerable.Range(0, 16).Select(i => i == 0 ? new Text("なし", "None") : new Text(i.ToString(), i.ToString())).ToArray();
+    private static readonly Text[] Counts = Enumerable.Range(0, 16).Select(i => i == 0 ? new Text("AssignSettings.None") : Text.Raw(i.ToString())).ToArray();
 
-    public static readonly ChoiceOpt MaxNeutral = new("第三陣営の役職の最大人数", "Max neutral roles", 0, Counts);
-    public static readonly ChoiceOpt MaxNeutralKillers = new("キルする第三陣営の最大人数", "Max killing neutral roles", 0, Counts);
-    public static readonly ChoiceOpt MaxRoled = new("役職が付く人の最大人数", "Max players with a role", 0, Counts);
-    public static readonly IntOpt MaxAddonsPerPlayer = new("1 人に付くアドオンの最大数", "Max addons per player", 1, 0, 3);
+    public static readonly ChoiceOpt MaxNeutral = new("AssignSettings.MaxNeutral", 0, Counts);
+    public static readonly ChoiceOpt MaxNeutralKillers = new("AssignSettings.MaxNeutralKillers", 0, Counts);
+    public static readonly ChoiceOpt MaxRoled = new("AssignSettings.MaxRoled", 0, Counts);
+    public static readonly IntOpt MaxAddonsPerPlayer = new("AssignSettings.MaxAddonsPerPlayer", 1, 0, 3);
 
     // 出現率の抽選で役職が付かなかった人の扱い。「埋める」は出現率を重みにして、人数の残っている役職から配る
     // (出現率を低くしても、役職を入れた分だけ誰かに付く)。第三陣営を埋めに使うとクルーが減りすぎるので既定は同じ陣営だけ
-    public static readonly ChoiceOpt Fill = new("役職が付かなかった人", "Players left without a role", 1,
-        new Text("本編のまま", "Keep vanilla"),
-        new Text("同じ陣営の役職で埋める", "Fill from same-team roles"),
-        new Text("第三陣営も含めて埋める", "Fill, neutrals included"));
+    public static readonly ChoiceOpt Fill = new("AssignSettings.Fill", 1,
+        new Text("AssignSettings.KeepVanilla"),
+        new Text("AssignSettings.FillFromSameTeamRoles"),
+        new Text("AssignSettings.FillNeutralsIncluded"));
 }
 
 // 配る前の名簿の 1 人 (本編が決めた陣営と土台の役職)

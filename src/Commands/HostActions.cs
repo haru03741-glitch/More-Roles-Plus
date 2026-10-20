@@ -12,12 +12,12 @@ internal static class HostActions
     private static bool AmHost => AmongUsClient.Instance && AmongUsClient.Instance.AmHost;
     private static bool InGame => ShipStatus.Instance && GameData.Instance && PlayerControl.LocalPlayer;
 
-    private static readonly Text NotInGame = new("試合中だけ使えます", "Only during a game");
+    private static readonly Text NotInGame = new("HostActions.NotInGame");
 
     public static string PlayerList()
     {
         var data = GameData.Instance;
-        if (!data) return new Text("部屋に入っていません", "Not in a room");
+        if (!data) return new Text("HostActions.NotInARoom");
         var sb = new StringBuilder();
         var all = data.AllPlayers;
         for (int i = 0; i < all.Count; i++)
@@ -26,7 +26,7 @@ internal static class HostActions
             if (p == null || p.Disconnected) continue;
             if (sb.Length > 0) sb.Append('\n');
             sb.Append(p.PlayerId).Append(": ").Append(p.PlayerName);
-            if (p.IsDead) sb.Append(new Text(" (死亡)", " (dead)").ToString());
+            if (p.IsDead) sb.Append(new Text("HostActions.Dead").ToString());
         }
         return sb.ToString();
     }
@@ -34,14 +34,14 @@ internal static class HostActions
     public static string Start()
     {
         var gsm = Vanilla.StartManager;
-        if (!gsm || ShipStatus.Instance) return new Text("ロビーでだけ使えます", "Only in the lobby");
-        if (SkipCountdown()) return new Text("数えを飛ばしました", "Countdown skipped");
+        if (!gsm || ShipStatus.Instance) return new Text("HostActions.OnlyInTheLobby");
+        if (SkipCountdown()) return new Text("HostActions.CountdownSkipped");
         // 数えが終わって読み込み中にもう一度始めると、ロビーの部品が壊れて毎フレーム例外が出る
         if (gsm.startState != GameStartManager.StartingStates.NotStarting
             || AmongUsClient.Instance.GameState != InnerNet.InnerNetClient.GameStates.Joined)
-            return new Text("もう始まっています", "Already starting");
+            return new Text("HostActions.AlreadyStarting");
         gsm.BeginGame();
-        return new Text("試合を始めます", "Starting the game");
+        return new Text("HostActions.StartingTheGame");
     }
 
     // 開始の数えの途中なら 0 にする
@@ -57,16 +57,16 @@ internal static class HostActions
     public static string Cancel()
     {
         var gsm = Vanilla.StartManager;
-        if (!gsm || ShipStatus.Instance) return new Text("ロビーでだけ使えます", "Only in the lobby");
-        if (gsm.startState != GameStartManager.StartingStates.Countdown) return new Text("数えていません", "Not counting down");
+        if (!gsm || ShipStatus.Instance) return new Text("HostActions.OnlyInTheLobby");
+        if (gsm.startState != GameStartManager.StartingStates.Countdown) return new Text("HostActions.NotCountingDown");
         gsm.ResetStartState();
-        return new Text("開始を取りやめました", "Start cancelled");
+        return new Text("HostActions.StartCancelled");
     }
 
     public static string Abort()
     {
         if (!InGame) return NotInGame;
-        return GameEnd.Abort() ? new Text("廃村にしました", "Game aborted") : new Text("もう試合が終わるところです", "The game is already ending");
+        return GameEnd.Abort() ? new Text("HostActions.GameAborted") : new Text("HostActions.TheGameIsAlreadyEnding");
     }
 
     // 会議中なら閉じる (誰も追放しない)。会議の外なら自分が会議を開く (ボタンの回数・待ち時間・妨害中かを問わない)
@@ -77,19 +77,19 @@ internal static class HostActions
         if (meeting)
         {
             meeting.RpcClose();
-            return new Text("会議を閉じました", "Meeting closed");
+            return new Text("HostActions.MeetingClosed");
         }
-        if (ExileController.Instance) return new Text("追放の場面が終わってから使えます", "Wait until the ejection is over");
+        if (ExileController.Instance) return new Text("HostActions.WaitUntilTheEjectionIs");
         // 始まりの場面やエアシップの出現場所選びの最中に開くと、会議がその下に隠れたまま進む
         var mg = Minigame.Instance;
         if (IntroCutscene.Instance || (mg && mg.TryCast<SpawnInMinigame>() != null))
-            return new Text("始まりの場面が終わってから使えます", "Wait until the game has begun");
+            return new Text("HostActions.WaitUntilTheGameHas");
         var lp = PlayerControl.LocalPlayer;
         MeetingRoomManager.Instance.AssignSelf(lp, null);
         var hud = Vanilla.Hud;
         if (hud) hud.OpenMeetingRoom(lp);
         lp.RpcStartMeeting(null);
-        return new Text("会議を開きました", "Meeting called");
+        return new Text("HostActions.MeetingCalled");
     }
 
     public static string SetRole(string args)
@@ -108,14 +108,14 @@ internal static class HostActions
             }
             else proto ??= FindRole(a);
         }
-        if (proto == null) return new Text($"役職が見つかりません。使える役職: {RoleNames()}", $"Unknown role. Roles: {RoleNames()}");
+        if (proto == null) return new Text("HostActions.UnknownRoleRoles").With("roleNames", RoleNames());
         if (lobby)
         {
             RoleAssigner.Reserved[target.PlayerId] = Registry.Roles.IndexOf(proto);
-            return new Text($"次の試合で {target.Data.PlayerName} を {proto.Name.Ja} にします", $"{target.Data.PlayerName} will be {proto.Name.En} in the next game");
+            return new Text("HostActions.WillBeInTheNext").With("name", target.Data.PlayerName).With("role", proto.Name);
         }
         RoleAssigner.Give(target, proto);
-        return new Text($"{target.Data.PlayerName} を {proto.Name.Ja} にしました", $"{target.Data.PlayerName} is now {proto.Name.En}");
+        return new Text("HostActions.IsNow").With("name", target.Data.PlayerName).With("role", proto.Name);
     }
 
     public static string Kill(string args)
@@ -123,9 +123,9 @@ internal static class HostActions
         if (!InGame) return NotInGame;
         var p = Target(args, out string err);
         if (!p) return err;
-        if (p.Data.IsDead) return new Text("もう死んでいます", "Already dead");
+        if (p.Data.IsDead) return new Text("HostActions.AlreadyDead");
         p.RpcMurderPlayer(p, true);
-        return new Text($"{p.Data.PlayerName} を倒しました", $"Killed {p.Data.PlayerName}");
+        return new Text("HostActions.Killed").With("name", p.Data.PlayerName);
     }
 
     public static string Revive(string args)
@@ -133,9 +133,9 @@ internal static class HostActions
         if (!InGame) return NotInGame;
         var p = Target(args, out string err);
         if (!p) return err;
-        if (!p.Data.IsDead) return new Text("生きています", "Not dead");
+        if (!p.Data.IsDead) return new Text("HostActions.NotDead");
         DevCommands.Revive(p.PlayerId);
-        return new Text($"{p.Data.PlayerName} を生き返らせました", $"Revived {p.Data.PlayerName}");
+        return new Text("HostActions.Revived").With("name", p.Data.PlayerName);
     }
 
     // 引数の番号の人 (省略で自分)
@@ -148,7 +148,7 @@ internal static class HostActions
         return p;
     }
 
-    private static string NoPlayer(string arg) => new Text($"{arg} 番の人はいません (/id で番号を確認)", $"No player {arg} (see /id)");
+    private static string NoPlayer(string arg) => new Text("HostActions.NoPlayerSeeId").With("arg", arg);
 
     private static PlayerControl Player(byte pid)
         => GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
@@ -158,9 +158,7 @@ internal static class HostActions
     {
         foreach (var r in Registry.Roles)
         {
-            if (string.Equals(r.Id, s, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(r.Name.Ja, s, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(r.Name.En, s, StringComparison.OrdinalIgnoreCase))
+            if (r.Name.Matches(s, r.Id))
                 return r;
         }
         return null;

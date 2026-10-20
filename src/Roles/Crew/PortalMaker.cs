@@ -17,12 +17,12 @@ public sealed class PortalMaker : RoleBase
 {
     public override Team Team => Team.Crew;
     public override string Color => "#45D9C9";
-    public override Text Name => new("ポータルメーカー", "Portal Maker");
+    public override Text Name => new("PortalMaker.Name");
     public override string Reading => "ぽーたるめーかー";
-    public override Text Blurb => new("2 つのポータルで船の中をつなげ", "Link two places with portals");
+    public override Text Blurb => new("PortalMaker.Blurb");
 
-    public static readonly FloatOpt PlaceCooldown = new("ポータルを置く待ち時間", "Portal Cooldown", 5f, 1f, 60f, 1f, "s");
-    public static readonly BoolOpt CanRemove = new("置いた後にもう一度押すと消せる", "Press Again to Remove Portals", true);
+    public static readonly FloatOpt PlaceCooldown = new("PortalMaker.PlaceCooldown", 5f, 1f, 60f, 1f, "s");
+    public static readonly BoolOpt CanRemove = new("PortalMaker.CanRemove", true);
 
     private const float MinGap = 4f;     // 2 つ目は 1 つ目からこれだけ離して置く
     // 足元が台座の真ん中からこの楕円 (横・縦の半径) に入ると使用ボタンで通れる (台座の上に乗っている間)
@@ -77,7 +77,7 @@ public sealed class PortalMaker : RoleBase
     {
         Active.Add(this);
         PortalMachineArt.Prewarm();
-        AddAbility(new Ability(new Text("ポータル", "Portal"), "portal")
+        AddAbility(new Ability(new Text("PortalMaker.Portal"), "portal")
         {
             Cooldown = () => PlaceCooldown,
             OnUse = Use,

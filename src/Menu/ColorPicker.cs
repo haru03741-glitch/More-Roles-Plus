@@ -24,10 +24,8 @@ internal static class ColorPicker
     private const float DirY = -0.15f;
     private const float SlideW = 0.62f, SlideH = 0.07f, SlideHit = 0.16f;
     private static readonly float[] SlideY = { -0.72f, -1.25f }; // 0 = ぼかし・1 = 位置
-    private static readonly string[] SlideNames = { "ぼかし", "位置" };
-    private static readonly string[] SlideNamesEn = { "Blur", "Edge" };
-    private static readonly string[] DirNames = { "1色", "横", "縦", "斜め", "斜め2" };
-    private static readonly string[] DirNamesEn = { "1 color", "Horizontal", "Vertical", "Diagonal", "Diagonal 2" };
+    private static readonly string[] SlideNames = { "ColorPicker.Blur", "ColorPicker.Edge" };
+    private static readonly string[] DirNames = { "ColorPicker.OneColor", "ColorPicker.Horizontal", "ColorPicker.Vertical", "ColorPicker.Diagonal", "ColorPicker.Diagonal2" };
 
     private static SpriteRenderer[] _swatch = new SpriteRenderer[2];
     private static SpriteRenderer[] _swatchEdge = new SpriteRenderer[2];
@@ -170,7 +168,7 @@ internal static class ColorPicker
         var proto = tab.transform.Find("Text");
         if (proto)
         {
-            var title = Label(proto.gameObject, layer, new Vector3(0f, SvAt.y + SvSize / 2f + 0.3f, 0f), new Text("色を作る", "Make a color"));
+            var title = Label(proto.gameObject, layer, new Vector3(0f, SvAt.y + SvSize / 2f + 0.3f, 0f), new Text("ColorPicker.MakeAColor"));
             title.fontSize *= 0.7f;
         }
 
@@ -225,7 +223,7 @@ internal static class ColorPicker
         if (_dirLabel && k != _shownDir)
         {
             _shownDir = k;
-            _dirLabel.text = new Text(DirNames[k], DirNamesEn[k]);
+            _dirLabel.text = new Text(DirNames[k]);
         }
         for (int i = 0; i < 2; i++)
         {
@@ -237,7 +235,7 @@ internal static class ColorPicker
             if (_slideLabel[i] && v != _shownSlide[i])
             {
                 _shownSlide[i] = v;
-                _slideLabel[i].text = new Text(SlideNames[i], SlideNamesEn[i]) + " " + v;
+                _slideLabel[i].text = new Text(SlideNames[i]) + " " + v;
             }
         }
     }
@@ -256,7 +254,7 @@ internal static class ColorPicker
     private static void MakeHex()
     {
         if (_hex != null && _hex.Root) Object.Destroy(_hex.Root);
-        _hex = SearchBox.Create(_root.transform, new Vector3(0f, HueAt.y - 0.55f, 0f), SvSize, 0.4f, new Text("#RRGGBB を入れる", "Type #RRGGBB"), OnHex);
+        _hex = SearchBox.Create(_root.transform, new Vector3(0f, HueAt.y - 0.55f, 0f), SvSize, 0.4f, new Text("ColorPicker.TypeRRGGBB"), OnHex);
         var glass = _hex != null && _hex.Root ? _hex.Root.transform.Find("MrpSearchIcon") : null;
         if (glass) glass.gameObject.SetActive(false);
     }
@@ -441,9 +439,9 @@ internal static class ColorPicker
     private static bool Blocked()
     {
         string msg = null;
-        if (ShipStatus.Instance) msg = new Text("色は試合の外 (ロビー) で変えてください", "Change your color outside a game (in the lobby)");
+        if (ShipStatus.Instance) msg = new Text("ColorPicker.ChangeYourColorOutsideA");
         else if (AmongUsClient.Instance && AmongUsClient.Instance.AmConnected && !AmongUsClient.Instance.AmHost && !Commands.HostSettings.PlayersCanRename)
-            msg = new Text("この部屋ではホストが名前と色の変更を止めています", "The host has turned off name and color changes");
+            msg = new Text("ColorPicker.TheHostHasTurnedOff");
         if (msg == null) return false;
         Say(msg);
         return true;

@@ -318,10 +318,10 @@ public static class GameEnd
         if (Last == null || !egm) return;
         if (Last.Draw)
         {
-            egm.WinText.text = new Text("廃村", "Game Aborted");
+            egm.WinText.text = new Text("GameEnd.GameAborted");
             egm.WinText.color = Color.white;
             egm.BackgroundBar.material.color = Color.gray;
-            AddSubText(egm, new Text("ホストが試合を打ち切りました", "The host ended the game"), Color.gray);
+            AddSubText(egm, new Text("GameEnd.TheHostEndedTheGame"), Color.gray);
             return;
         }
         if (LocalSpectating) { ApplySpectatorText(egm); return; }
@@ -329,12 +329,12 @@ public static class GameEnd
 
         var color = Last.Role != null ? RoleDisplay.ParseColor(Last.Role.Color)
             : LocalWon && _localColor != null ? RoleDisplay.ParseColor(_localColor) : Palette.ImpostorRed;
-        egm.WinText.text = LocalWon ? new Text("勝利", "Victory") : new Text("敗北", "Defeat");
+        egm.WinText.text = LocalWon ? new Text("GameEnd.Victory") : new Text("GameEnd.Defeat");
         egm.WinText.color = LocalWon || Last.Role != null ? color : Palette.ImpostorRed;
         if (Last.Role == null) return;
 
         egm.BackgroundBar.material.color = color;
-        AddSubText(egm, Lang.IsJapanese ? $"{Last.Role.Name}の勝利" : $"{Last.Role.Name} Wins", color);
+        AddSubText(egm, new Text("GameEnd.Wins").With("name", Last.Role.Name).ToString(), color);
     }
 
     private static readonly Color NeutralYellow = new Color32(255, 214, 64, 255);
@@ -347,17 +347,17 @@ public static class GameEnd
         if (Last.Role != null)
         {
             color = NeutralYellow;
-            text = Lang.IsJapanese ? $"{Last.Role.Name}の勝利" : $"{Last.Role.Name} Wins";
+            text = new Text("GameEnd.Wins").With("name", Last.Role.Name).ToString();
         }
         else if (Last.Team == Team.Impostor)
         {
             color = Palette.ImpostorRed;
-            text = new Text("インポスターの勝利", "Impostors Win");
+            text = new Text("GameEnd.ImpostorsWin");
         }
         else
         {
             color = Palette.CrewmateBlue;
-            text = new Text("クルーメイトの勝利", "Crewmates Win");
+            text = new Text("GameEnd.CrewmatesWin");
         }
         egm.WinText.text = text;
         egm.WinText.color = color;
@@ -366,7 +366,7 @@ public static class GameEnd
         var tr = egm.WinText.transform;
         float half = egm.WinText.GetPreferredValues(text).x * 0.5f * tr.localScale.x;
         tr.localScale *= half > 0f ? Math.Min(0.7f, 1.9f / half) : 0.7f;
-        AddSubText(egm, new Text("観戦", "Spectating"), Color.gray, 0.7f);
+        AddSubText(egm, new Text("GameEnd.Spectating"), Color.gray, 0.7f);
     }
 
     // 観戦の人には本編の勝ち / 負けの曲の代わりに、見届けた音を鳴らす

@@ -7,11 +7,11 @@ namespace MoreRolesPlus.Roles.Addons;
 public sealed class Sensitive : AddonBase
 {
     public override string Color => "#E85D75";
-    public override Text Name => new("敏感", "Sensitive");
+    public override Text Name => new("Sensitive.Name");
     public override string Reading => "びんかん";
-    public override Text Blurb => new("誰かが倒されると気配を感じる", "Sense it when someone falls");
+    public override Text Blurb => new("Sensitive.Blurb");
 
-    public static readonly IntOpt Strength = new("光の強さ", "Flash Strength", 30, 10, 80, 10, "%");
+    public static readonly IntOpt Strength = new("Sensitive.Strength", 30, 10, 80, 10, "%");
 
     // 自分の端末の表示だけ。倒されたのが自分なら本編の演出があるので何もしない
     [LocalOnly]

@@ -65,7 +65,7 @@ public static class TerrainApi
         Vector2 me = lp.GetTruePosition();
         float dx = pos.x - me.x, dy = pos.y - me.y;
         if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
-            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+            return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
         string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, pos, dir, radius, Math.Clamp(force, 0f, 1f), Seed()), out bool ok);
         if (!ok) return TerrainResult.Fail(res);
         TerrainPermits.Mark(lp.PlayerId, TerrainUse.Blast);
@@ -104,13 +104,13 @@ public static class TerrainApi
     public static TerrainResult Push(Vector2 pos, Vector2 dir, float length, float force = 1f)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || lp.Data == null || lp.Data.IsDead) return TerrainResult.Fail(new Text("生きている時だけ使えます", "Only while alive"));
-        if (!GameClock.ShipAlive) return TerrainResult.Fail(new Text("試合の中だけ使えます", "Only during a game"));
+        if (!lp || lp.Data == null || lp.Data.IsDead) return TerrainResult.Fail(new Text("TerrainApi.OnlyWhileAlive"));
+        if (!GameClock.ShipAlive) return TerrainResult.Fail(new Text("TerrainApi.OnlyDuringAGame"));
         if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
         Vector2 me = lp.GetTruePosition();
         float dx = pos.x - me.x, dy = pos.y - me.y;
         if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
-            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+            return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
         length = Math.Clamp(length, 0.1f, TerrainSync.MaxPushReach);
         string res = TerrainSync.Request(new DamageEvent(DamageKind.Push, pos, dir.normalized, length, Math.Clamp(force, 0f, 1f), Seed()), out bool ok);
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
@@ -141,7 +141,7 @@ public static class TerrainApi
         Vector2 me = lp.GetTruePosition();
         float dx = pos.x - me.x, dy = pos.y - me.y;
         if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
-            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+            return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
         string res = TerrainSync.Request(new DamageEvent(DamageKind.Water, pos, dir.normalized, 0f, 0f, Seed()), out bool ok);
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
@@ -163,7 +163,7 @@ public static class TerrainApi
         Vector2 me = lp.GetTruePosition();
         float dx = pos.x - me.x, dy = pos.y - me.y;
         if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
-            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+            return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
         float size = Math.Clamp(seconds / 10f, 0.1f, TerrainSync.MaxFloodSize);
         string res = TerrainSync.Request(new DamageEvent(DamageKind.Flood, pos, Vector2.right, size, Math.Clamp(rate, 0f, 1f), Seed()), out bool ok);
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
@@ -188,7 +188,7 @@ public static class TerrainApi
         Vector2 me = lp.GetTruePosition();
         float dx = pos.x - me.x, dy = pos.y - me.y;
         if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
-            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+            return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
         string res = TerrainSync.Request(new DamageEvent(DamageKind.Wall, pos, dir.normalized, length, 0f, Seed()), out bool ok);
         if (!ok) return TerrainResult.Fail(res);
         TerrainPermits.Mark(lp.PlayerId, TerrainUse.Wall);
@@ -212,7 +212,7 @@ public static class TerrainApi
         Vector2 me = lp.GetTruePosition();
         float dx = pos.x - me.x, dy = pos.y - me.y;
         if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
-            return TerrainResult.Fail(new Text("遠すぎます", "Too far away"));
+            return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
         string res = TerrainSync.Request(new DamageEvent(kind, pos, Vector2.zero, radius, Math.Clamp(force, 0f, 1f), Seed()), out bool ok);
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
@@ -233,11 +233,11 @@ public static class TerrainApi
     {
         lp = PlayerControl.LocalPlayer;
         why = null;
-        if (!lp || lp.Data == null || lp.Data.IsDead) { why = new Text("生きている時だけ使えます", "Only while alive"); return false; }
-        if (!GameClock.ShipAlive) { why = new Text("試合の中だけ使えます", "Only during a game"); return false; }
+        if (!lp || lp.Data == null || lp.Data.IsDead) { why = new Text("TerrainApi.OnlyWhileAlive"); return false; }
+        if (!GameClock.ShipAlive) { why = new Text("TerrainApi.OnlyDuringAGame"); return false; }
         string bad = TerrainPermits.Check(lp.PlayerId, use, radius, host: false);
         if (bad == null) return true;
-        why = bad == "cooling down" ? new Text("まだ使えません", "Not ready yet") : new Text("この役職では使えません", "Your role can't do that");
+        why = bad == "cooling down" ? new Text("TerrainApi.NotReadyYet") : new Text("TerrainApi.YourRoleCantDoThat");
         Plugin.Logger.LogDebug($"terrain {use} refused locally: {bad}");
         return false;
     }

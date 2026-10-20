@@ -74,7 +74,7 @@ public abstract class Opt
 
 public sealed class BoolOpt : Opt
 {
-    public BoolOpt(string ja, string en, bool defaultValue) : base(new Text(ja, en), defaultValue ? 1 : 0) { }
+    public BoolOpt(string key, bool defaultValue) : base(new Text(key), defaultValue ? 1 : 0) { }
 
     public bool Value => Index != 0;
     internal override int Count => 2;
@@ -90,8 +90,8 @@ public sealed class IntOpt : Opt
     public readonly int Min, Max, StepSize;
     public readonly string Suffix;
 
-    public IntOpt(string ja, string en, int defaultValue, int min, int max, int step = 1, string suffix = "")
-        : base(new Text(ja, en), Math.Clamp((defaultValue - min) / Math.Max(step, 1), 0, (max - min) / Math.Max(step, 1)))
+    public IntOpt(string key, int defaultValue, int min, int max, int step = 1, string suffix = "")
+        : base(new Text(key), Math.Clamp((defaultValue - min) / Math.Max(step, 1), 0, (max - min) / Math.Max(step, 1)))
     {
         Min = min;
         Max = max;
@@ -118,8 +118,8 @@ public sealed class FloatOpt : Opt
     public readonly float Min, Max, StepSize;
     public readonly string Suffix;
 
-    public FloatOpt(string ja, string en, float defaultValue, float min, float max, float step, string suffix = "")
-        : base(new Text(ja, en), Math.Clamp((int)Math.Round((defaultValue - min) / step), 0, (int)Math.Round((max - min) / step)))
+    public FloatOpt(string key, float defaultValue, float min, float max, float step, string suffix = "")
+        : base(new Text(key), Math.Clamp((int)Math.Round((defaultValue - min) / step), 0, (int)Math.Round((max - min) / step)))
     {
         Min = min;
         Max = max;
@@ -146,10 +146,10 @@ public sealed class ChoiceOpt : Opt
 {
     private readonly Text[] _choices;
 
-    public ChoiceOpt(string ja, string en, int defaultIndex, params Text[] choices)
-        : base(new Text(ja, en), Math.Clamp(defaultIndex, 0, Math.Max(choices.Length - 1, 0)))
+    public ChoiceOpt(string key, int defaultIndex, params Text[] choices)
+        : base(new Text(key), Math.Clamp(defaultIndex, 0, Math.Max(choices.Length - 1, 0)))
     {
-        _choices = choices.Length > 0 ? choices : [new Text("-", "-")];
+        _choices = choices.Length > 0 ? choices : [Text.Raw("-")];
     }
 
     public int Value => Index;

@@ -42,8 +42,8 @@ internal static class HammerSwing
     {
         ok = false;
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || lp.Data == null || lp.Data.IsDead) return new Text("生きている時だけ使えます", "Only while alive");
-        if (_pendingAt > 0f || _portalAt > 0f) return new Text("振っている途中です", "Already swinging");
+        if (!lp || lp.Data == null || lp.Data.IsDead) return new Text("HammerSwing.OnlyWhileAlive");
+        if (_pendingAt > 0f || _portalAt > 0f) return new Text("HammerSwing.AlreadySwinging");
         Vector2 at = lp.GetTruePosition();
         Vector2 dirAim = Aim(lp, out bool facingLeft);
         if (aim is { } forced && forced.sqrMagnitude > 1e-6f) { dirAim = forced.normalized; facingLeft = forced.x < 0f; }
@@ -59,12 +59,12 @@ internal static class HammerSwing
             Play(face, toward, facingLeft, color, own: true, air: false);
             _portalOwner = owner;
             _portalAt = Time.time + HitAt;
-            return new Text("ハンマーでポータルの装置を叩いた", "Hammered the portal device");
+            return new Text("HammerSwing.HammeredThePortalDevice");
         }
         if (!wall)
         {
             Play(at + dirAim * AirReach, dirAim, facingLeft, color, own: true, air: true);
-            return new Text("その方向に壁がありません", "No wall that way");
+            return new Text("HammerSwing.NoWallThatWay");
         }
 
         ok = true;
@@ -80,7 +80,7 @@ internal static class HammerSwing
             _pending = e;
             _pendingAt = Time.time + HitAt;
         }
-        return new Text("ハンマーで叩いた", "Hammer hit");
+        return new Text("HammerSwing.HammerHit");
     }
 
     // 地形に結果を適用した直後 (全員の手元)。人の打撃なら、その人の色で当たった姿から見せる

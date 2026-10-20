@@ -62,8 +62,8 @@ internal static class Registry
             {
                 sec = new Section { Title = role.Name, Color = role.Color, Role = role };
                 var opts = CollectFields(t);
-                role.Chance = new IntOpt("出現率", "Chance", 0, 0, 100, 10, "%");
-                role.Count = new IntOpt("人数", "Count", 1, 1, Math.Max(role.MaxCount, 1));
+                role.Chance = new IntOpt("Registry.Chance", 0, 0, 100, 10, "%");
+                role.Count = new IntOpt("Registry.Count", 1, 1, Math.Max(role.MaxCount, 1));
                 Add(sec, role.Chance, role.Id + ".Chance");
                 Add(sec, role.Count, role.Id + ".Count");
                 foreach (var (name, opt) in opts) Add(sec, opt, role.Id + "." + name);
@@ -99,11 +99,11 @@ internal static class Registry
             {
                 sec = new Section { Title = addon.Name, Color = addon.Color, Role = addon };
                 var opts = CollectFields(t);
-                addon.Chance = new IntOpt("出現率", "Chance", 0, 0, 100, 10, "%");
-                addon.Count = new IntOpt("人数", "Count", 1, 1, Math.Max(addon.MaxCount, 1));
-                addon.OnCrew = new BoolOpt("クルーに付く", "Crewmates can have it", true);
-                addon.OnImpostor = new BoolOpt("インポスターに付く", "Impostors can have it", true);
-                addon.OnNeutral = new BoolOpt("第三陣営に付く", "Neutrals can have it", true);
+                addon.Chance = new IntOpt("Registry.Chance", 0, 0, 100, 10, "%");
+                addon.Count = new IntOpt("Registry.Count", 1, 1, Math.Max(addon.MaxCount, 1));
+                addon.OnCrew = new BoolOpt("Registry.CrewmatesCanHaveIt", true);
+                addon.OnImpostor = new BoolOpt("Registry.ImpostorsCanHaveIt", true);
+                addon.OnNeutral = new BoolOpt("Registry.NeutralsCanHaveIt", true);
                 Add(sec, addon.Chance, addon.Id + ".Chance");
                 Add(sec, addon.Count, addon.Id + ".Count");
                 Add(sec, addon.OnCrew, addon.Id + ".OnCrew");
@@ -127,7 +127,7 @@ internal static class Registry
                      .Where(x => x.attr != null)
                      .OrderBy(x => x.attr.Order).ThenBy(x => x.t.Name, StringComparer.Ordinal))
         {
-            var sec = new Section { Title = new Text(attr.Ja, attr.En) };
+            var sec = new Section { Title = new Text(attr.Key) };
             try
             {
                 foreach (var (name, opt) in CollectFields(t)) Add(sec, opt, t.Name + "." + name);

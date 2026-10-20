@@ -44,24 +44,24 @@ internal static class PresetStore
 
     public static string Save(string name)
     {
-        if (!ValidName(name)) return new Text("名前は文字・数字・_ と - で 30 文字まで", "Names: letters, digits, _ and -, up to 30");
+        if (!ValidName(name)) return new Text("PresetStore.NamesLettersDigitsAndUp");
         OptionSync.RestoreOwn();
         Registry.SaveTo(PathOf(name));
         SaveVanilla(PathOf(name));
         PresetLabel.Remember(name);
         if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) OptionSync.SendAll(); // 客の板の名前も変える
-        return new Text($"今の設定を「{name}」に保存しました", $"Saved the current settings as \"{name}\"");
+        return new Text("PresetStore.SavedTheCurrentSettingsAs").With("name", name);
     }
 
     // 読み込んで全員へ送る。読めなかったら元の設定に戻す
     public static string Load(string name)
     {
-        if (!Exists(name)) return new Text($"「{name}」はありません", $"No preset \"{name}\"");
+        if (!Exists(name)) return new Text("PresetStore.NoPreset").With("name", name);
         OptionSync.RestoreOwn();
         if (!Registry.LoadFrom(PathOf(name)))
         {
             Registry.Load();
-            return new Text($"「{name}」を読めませんでした", $"Couldn't read \"{name}\"");
+            return new Text("PresetStore.CouldntRead").With("name", name);
         }
         Registry.Save();
         LoadVanilla(PathOf(name));
@@ -69,7 +69,7 @@ internal static class PresetStore
         if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) OptionSync.SendAll();
         LobbyView.OnOptionsReceived();
         SettingsMenu.RefreshAll();
-        return new Text($"設定を「{name}」にしました", $"Loaded \"{name}\"");
+        return new Text("PresetStore.Loaded").With("name", name);
     }
 
     // 本編のゲーム設定 (インポスターの数・速さ・本編の役職ごとの設定など) は本編の形式のまま 1 行に入れる
@@ -113,22 +113,22 @@ internal static class PresetStore
 
     public static string Delete(string name)
     {
-        if (!Exists(name)) return new Text($"「{name}」はありません", $"No preset \"{name}\"");
+        if (!Exists(name)) return new Text("PresetStore.NoPreset").With("name", name);
         File.Delete(PathOf(name));
         PresetLabel.Recheck();
-        return new Text($"「{name}」を消しました", $"Deleted \"{name}\"");
+        return new Text("PresetStore.Deleted").With("name", name);
     }
 
     public static string Export(string name)
     {
-        if (!Exists(name)) return new Text($"「{name}」はありません", $"No preset \"{name}\"");
+        if (!Exists(name)) return new Text("PresetStore.NoPreset").With("name", name);
         try
         {
             Directory.CreateDirectory(ShareDir);
             File.Copy(PathOf(name), Path.Combine(ShareDir, name + ".txt"), true);
-            return new Text($"「{name}」を書き出しました: {ShareDir}", $"Exported \"{name}\" to {ShareDir}");
+            return new Text("PresetStore.ExportedTo").With("name", name).With("shareDir", ShareDir);
         }
-        catch (Exception e) { return new Text($"書き出せませんでした: {e.Message}", $"Couldn't export: {e.Message}"); }
+        catch (Exception e) { return new Text("PresetStore.CouldntExport").With("message", e.Message); }
     }
 
     // 受け渡しのフォルダにある物を全部取り込む (同じ名前が既にある物は飛ばす)
@@ -146,9 +146,9 @@ internal static class PresetStore
                 File.Copy(f, PathOf(name), false);
                 added++;
             }
-            return new Text($"{added} 個取り込みました (飛ばした物 {skipped} 個)。置き場: {ShareDir}", $"Imported {added} (skipped {skipped}) from {ShareDir}");
+            return new Text("PresetStore.ImportedSkippedFrom").With("added", added).With("skipped", skipped).With("shareDir", ShareDir);
         }
-        catch (Exception e) { return new Text($"取り込めませんでした: {e.Message}", $"Couldn't import: {e.Message}"); }
+        catch (Exception e) { return new Text("PresetStore.CouldntImport").With("message", e.Message); }
     }
 
     // 受け渡しのフォルダをエクスプローラーで開く (PC)

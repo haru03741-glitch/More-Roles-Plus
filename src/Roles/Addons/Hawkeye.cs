@@ -6,11 +6,11 @@ namespace MoreRolesPlus.Roles.Addons;
 public sealed class Hawkeye : AddonBase
 {
     public override string Color => "#E8B84A";
-    public override Text Name => new("鷹の目", "Hawkeye");
+    public override Text Name => new("Hawkeye.Name");
     public override string Reading => "たかのめ";
-    public override Text Blurb => new("遠くまで見通せる", "See further than the rest");
+    public override Text Blurb => new("Hawkeye.Blurb");
 
-    public static readonly IntOpt VisionPercent = new("視界の広さ", "Vision", 125, 110, 200, 5, "%");
+    public static readonly IntOpt VisionPercent = new("Hawkeye.VisionPercent", 125, 110, 200, 5, "%");
 
     public override void ModifyVision(ref float radius) => radius *= VisionPercent.Value / 100f;
 }

@@ -107,11 +107,10 @@ internal static class RoleMenu
         return false;
     }
 
-    public static Text TabName => new("役職", "Roles");
+    public static Text TabName => new("RoleMenu.TabName");
 
     public static Text DefaultDescription =>
-        new($"役職の人数と出現率。名前を押すと細かい設定が開きます。\n± は長押しで連続 (ホイールも可・右クリックで 0%/100%)。\n出る役職: {EnabledCount()} / {Registry.Roles.Count}",
-            $"Role count and chance. Press a name to open its settings.\nHold ± to keep changing (or use the wheel; right-click toggles 0% / 100%).\nEnabled: {EnabledCount()} / {Registry.Roles.Count}");
+        new Text("RoleMenu.RoleCountAndChancePress").With("enabledCount", EnabledCount()).With("count", Registry.Roles.Count);
 
     private static int EnabledCount()
     {
@@ -132,9 +131,9 @@ internal static class RoleMenu
 
     private static Text TeamName(Team t) => t switch
     {
-        Team.Impostor => new Text("インポスター", "Impostor"),
-        Team.Neutral => new Text("第三陣営", "Neutral"),
-        _ => new Text("クルー", "Crewmate"),
+        Team.Impostor => new Text("RoleMenu.Impostor"),
+        Team.Neutral => new Text("RoleMenu.Neutral"),
+        _ => new Text("RoleMenu.Crewmate"),
     };
 
     private static Color TeamColor(Team t) => t switch
@@ -145,7 +144,7 @@ internal static class RoleMenu
     };
 
     private static Tab KindTab(int k) => k == AddonKind ? Tab.Addon : TabOf((Team)k);
-    private static Text KindName(int k) => k == AddonKind ? new Text("アドオン", "Addons") : TeamName((Team)k);
+    private static Text KindName(int k) => k == AddonKind ? new Text("RoleMenu.Addons") : TeamName((Team)k);
     private static Color KindColor(int k) => k == AddonKind ? AddonColor : TeamColor((Team)k);
 
     public static void Forget()
@@ -254,7 +253,7 @@ internal static class RoleMenu
 
     private static readonly Color GameColor = new(0.5f, 0.85f, 0.75f);
 
-    private static Text Join(Text a, Text b) => new($"{a.Ja} › {b.Ja}", $"{a.En} › {b.En}");
+    private static Text Join(Text a, Text b) => new Text("RoleMenu.Breadcrumb").With("a", a).With("b", b);
 
     private static void AddSearchGroup(GameOptionsMenu m, Text title, Color c, int area, IEnumerable<Opt> opts)
     {
@@ -455,11 +454,11 @@ internal static class RoleMenu
         // 陣営で絞るボタン (全部・クルー・インポスター・第三陣営) と「出る役職だけ」
         var chipDefs = new List<(Text label, Color color, int team, bool only)>
         {
-            (new Text("全部", "All"), new Color(0.75f, 0.6f, 1f), -1, false),
+            (new Text("RoleMenu.All"), new Color(0.75f, 0.6f, 1f), -1, false),
         };
         foreach (var t in Teams) chipDefs.Add((TeamName(t), TeamColor(t), (int)t, false));
         if (Registry.Addons.Count > 0) chipDefs.Add((KindName(AddonKind), AddonColor, AddonKind, false));
-        chipDefs.Add((new Text("出る役職だけ", "Enabled only"), new Color(0.6f, 0.9f, 0.55f), 0, true));
+        chipDefs.Add((new Text("RoleMenu.EnabledOnly"), new Color(0.6f, 0.9f, 0.55f), 0, true));
         float cw = (width - Gap * (chipDefs.Count - 1)) / chipDefs.Count;
         float cy = top - 0.06f - ChipHeight / 2f;
         for (int i = 0; i < chipDefs.Count; i++)
@@ -600,22 +599,18 @@ internal static class RoleMenu
             foreach (var r in g.Roles) if (r.Row && r.Row.gameObject.activeSelf) n[g.Area]++;
         }
         int total = n[0] + n[1] + n[2];
-        if (total == 0) return new Text($"「{q}」に当てはまる設定はありません。", $"Nothing matches \"{q}\".");
-        var ja = new System.Text.StringBuilder($"「{q}」: {total} 件");
-        var en = new System.Text.StringBuilder($"\"{q}\": {total}");
+        if (total == 0) return new Text("RoleMenu.NothingMatches").With("q", q);
+        var sb = new System.Text.StringBuilder(new Text("RoleMenu.SearchCount").With("q", q).With("total", total));
         Text[] names = { VanillaGame.TabName, SettingsMenu.TabName(false), TabName };
-        string sepJa = "\n", sepEn = "\n";
+        string sep = "\n";
         for (int i = 0; i < 3; i++)
         {
             if (n[i] == 0) continue;
-            ja.Append(sepJa).Append(names[i].Ja).Append(' ').Append(n[i]);
-            en.Append(sepEn).Append(names[i].En).Append(' ').Append(n[i]);
-            sepJa = "・";
-            sepEn = " · ";
+            sb.Append(sep).Append(new Text("RoleMenu.SearchTabCount").With("tab", names[i]).With("n", n[i]));
+            sep = Tr.Get("RoleMenu.SearchSeparator");
         }
-        ja.Append("\n検索欄を空にすると元のタブへ戻ります");
-        en.Append("\nClear the search box to go back");
-        return new Text(ja.ToString(), en.ToString());
+        sb.Append('\n').Append(Tr.Get("RoleMenu.SearchClearHint"));
+        return Text.Raw(sb.ToString());
     }
 
     private static void OnChip(int team, bool only)
@@ -657,11 +652,10 @@ internal static class RoleMenu
 
     private static Text ActionName(int action)
     {
-        if (action == 2) return new Text("元に戻す", "Undo");
+        if (action == 2) return new Text("RoleMenu.Undo");
         string pct = action == 0 ? "0%" : "100%";
-        if (_team < 0) return new Text("全部 " + pct, "All " + pct);
-        var k = KindName(_team);
-        return new Text(k.Ja + " " + pct, k.En + " " + pct);
+        if (_team < 0) return new Text("RoleMenu.AllPercent").With("pct", pct);
+        return new Text("RoleMenu.TeamPercent").With("team", KindName(_team)).With("pct", pct);
     }
 
     // まとめて変える: 0 / 1 = 選んでいる陣営の出現率を全部 0% / 100% (変える前を 1 回分覚える)・2 = 覚えた値へ戻す
@@ -904,7 +898,7 @@ internal static class RoleMenu
 
         if (_empty)
         {
-            _empty.Title.text = searching ? new Text("当てはまる設定がありません", "Nothing matches") : new Text("当てはまる役職がありません", "No matching roles");
+            _empty.Title.text = searching ? new Text("RoleMenu.NothingMatches2") : new Text("RoleMenu.NoMatchingRoles");
             _empty.gameObject.SetActive(!any);
             if (!any) { _empty.transform.localPosition = new Vector3(HeaderX, y, Z); y -= HeaderStep; }
         }
@@ -979,7 +973,7 @@ internal static class RoleMenu
         sb.Append($"search='{SettingsMenu.SearchQuery}' team={_team} only={_enabledOnly} undo={_undo?.Count ?? -1} hover={(_hoverRow != null ? _hoverRow.Role.Id + "|" + _hoverZone : "-")} rows:");
         foreach (var g in Groups)
         {
-            if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{(g.SearchOnly ? g.Title.En : g.Kind == AddonKind ? "Addon" : ((Team)g.Kind).ToString())}]");
+            if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{(g.SearchOnly ? g.Title.Builtin(false) : g.Kind == AddonKind ? "Addon" : ((Team)g.Kind).ToString())}]");
             foreach (var o in g.Plain) if (o.Row && o.Row.gameObject.activeSelf) sb.Append($" {o.Opt.Key}");
             foreach (var r in g.Roles)
             {

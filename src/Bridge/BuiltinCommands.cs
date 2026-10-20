@@ -12,6 +12,7 @@ internal static class BuiltinCommands
     public static void RegisterAll()
     {
         TestBridge.Register("ping", "生存確認", (_, reply) => reply("OK ping"));
+        LangFiles.RegisterBridge();
 
         TestBridge.Register("state", "bridge-state.json を今すぐ書き直す", (_, reply) =>
         {

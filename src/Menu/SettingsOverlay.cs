@@ -50,13 +50,13 @@ internal static class SettingsOverlay
         var cols = new string[Columns];
         var opts = GameOptionsManager.Instance != null ? GameOptionsManager.Instance.CurrentGameOptions : null;
         int players = GameData.Instance ? GameData.Instance.PlayerCount : 0;
-        cols[0] = (Lang.IsJapanese ? "<b>本編の設定</b>\n" : "<b>Game settings</b>\n") + (opts != null ? opts.ToHudString(players) : "");
+        cols[0] = Tr.Get("SettingsOverlay.GameSettings") + (opts != null ? opts.ToHudString(players) : "");
         var mrp = Commands.InfoCommands.Now("").Split('\n');
         int per = (mrp.Length + Columns - 2) / (Columns - 1);
         for (int c = 1; c < Columns; c++)
         {
             var sb = new StringBuilder();
-            if (c == 1) sb.Append(Lang.IsJapanese ? "<b>MRP の設定</b>\n" : "<b>More Roles Plus</b>\n");
+            if (c == 1) sb.Append(Tr.Get("SettingsOverlay.MoreRolesPlus"));
             int from = (c - 1) * per;
             for (int i = from; i < Math.Min(mrp.Length, from + per); i++) sb.Append(mrp[i]).Append('\n');
             cols[c] = sb.ToString();

@@ -30,8 +30,7 @@ public abstract class VanillaRole : RoleBase
         {
             var b = Behaviour();
             if (!b) return FallbackName;
-            string s = b.NiceName;
-            return new Text(s, s);
+            return Text.Raw(b.NiceName);
         }
     }
 
@@ -40,13 +39,12 @@ public abstract class VanillaRole : RoleBase
         get
         {
             var b = Behaviour();
-            if (!b) return new Text("本編の役職", "Vanilla role");
-            string s = b.Blurb;
-            return new Text(s, s);
+            if (!b) return new Text("VanillaRole.VanillaRole");
+            return Text.Raw(b.Blurb);
         }
     }
 
-    public override string Reading => FallbackName.Ja;
+    public override string Reading => FallbackName.Builtin(true);
 
     internal RoleBehaviour Behaviour()
     {
@@ -63,67 +61,67 @@ public abstract class VanillaRole : RoleBase
 public sealed class VanillaScientist : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Scientist;
-    protected override Text FallbackName => new("かがくしゃ", "Scientist");
+    protected override Text FallbackName => new("VanillaScientist.FallbackName");
 }
 
 public sealed class VanillaEngineer : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Engineer;
-    protected override Text FallbackName => new("えんじにあ", "Engineer");
+    protected override Text FallbackName => new("VanillaEngineer.FallbackName");
 }
 
 public sealed class VanillaNoisemaker : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Noisemaker;
-    protected override Text FallbackName => new("のいずめーかー", "Noisemaker");
+    protected override Text FallbackName => new("VanillaNoisemaker.FallbackName");
 }
 
 public sealed class VanillaTracker : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Tracker;
-    protected override Text FallbackName => new("とらっかー", "Tracker");
+    protected override Text FallbackName => new("VanillaTracker.FallbackName");
 }
 
 public sealed class VanillaDetective : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Detective;
-    protected override Text FallbackName => new("たんてい", "Detective");
+    protected override Text FallbackName => new("VanillaDetective.FallbackName");
 }
 
 public sealed class VanillaJudge : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Judge;
-    protected override Text FallbackName => new("じゃっじ", "Judge");
+    protected override Text FallbackName => new("VanillaJudge.FallbackName");
 }
 
 public sealed class VanillaGuardianAngel : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.GuardianAngel;
-    protected override Text FallbackName => new("しゅごてんし", "Guardian Angel");
+    protected override Text FallbackName => new("VanillaGuardianAngel.FallbackName");
 }
 
 public sealed class VanillaSpiritGuide : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.SpiritGuide;
-    protected override Text FallbackName => new("すぴりっとがいど", "Spirit Guide");
+    protected override Text FallbackName => new("VanillaSpiritGuide.FallbackName");
 }
 
 public sealed class VanillaShapeshifter : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Shapeshifter;
-    protected override Text FallbackName => new("しぇいぷしふたー", "Shapeshifter");
+    protected override Text FallbackName => new("VanillaShapeshifter.FallbackName");
 }
 
 public sealed class VanillaPhantom : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Phantom;
-    protected override Text FallbackName => new("ふぁんとむ", "Phantom");
+    protected override Text FallbackName => new("VanillaPhantom.FallbackName");
 }
 
 public sealed class VanillaViper : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Viper;
-    protected override Text FallbackName => new("ばいぱー", "Viper");
+    protected override Text FallbackName => new("VanillaViper.FallbackName");
 }
 
 // 本編の設定 1 つを読み書きする行。値は本編の設定にあり、MRP の保存・同期には入れない
@@ -180,7 +178,7 @@ internal sealed class VanillaOpt : Opt
         var str = f == null && i == null && c == null ? s.TryCast<StringGameSetting>() : null;
         if (f == null && i == null && c == null && str == null) return null;
         string label = TranslationController.Instance ? TranslationController.Instance.GetString(s.Title) : s.Title.ToString();
-        return new VanillaOpt(new Text(label, label), s, f, i, c, str);
+        return new VanillaOpt(Text.Raw(label), s, f, i, c, str);
     }
 
     internal override int Count

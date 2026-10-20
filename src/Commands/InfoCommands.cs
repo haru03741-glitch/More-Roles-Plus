@@ -13,29 +13,29 @@ internal static class InfoCommands
     // 死んだ人だけが使える (生きている人に死因を見せない)。番号を付けるとその人の死因
     public static string Death(string args)
     {
-        if (!InGame) return new Text("試合中だけ使えます (前の試合の死因は /l)", "Only during a game (see /l for the last game)");
+        if (!InGame) return new Text("InfoCommands.OnlyDuringAGameSee");
         var me = PlayerControl.LocalPlayer;
-        if (me.Data == null || !me.Data.IsDead) return new Text("死んでから使えます", "Only after you die");
+        if (me.Data == null || !me.Data.IsDead) return new Text("InfoCommands.OnlyAfterYouDie");
         byte pid = me.PlayerId;
-        if (args.Length > 0 && !byte.TryParse(args, out pid)) return new Text($"{args} 番の人はいません (/id で番号を確認)", $"No player {args} (see /id)");
+        if (args.Length > 0 && !byte.TryParse(args, out pid)) return new Text("InfoCommands.NoPlayerSeeId").With("arg", args);
         var info = GameData.Instance.GetPlayerById(pid);
-        if (info == null) return new Text($"{args} 番の人はいません (/id で番号を確認)", $"No player {args} (see /id)");
-        if (!info.IsDead) return new Text($"{info.PlayerName} は生きています", $"{info.PlayerName} is alive");
+        if (info == null) return new Text("InfoCommands.NoPlayerSeeId").With("arg", args);
+        if (!info.IsDead) return new Text("InfoCommands.IsAlive").With("name", info.PlayerName);
         var d = MatchLog.Of(pid);
-        return d == null ? new Text($"{info.PlayerName}: 死因が分かりません", $"{info.PlayerName}: cause unknown")
+        return d == null ? new Text("InfoCommands.CauseUnknown").With("name", info.PlayerName)
                          : $"{info.PlayerName}: {MatchLog.Describe(d)}";
     }
 
-    public static string LastResult(string _) => MatchLog.LastResult ?? new Text("まだ試合の記録がありません", "No game played yet");
+    public static string LastResult(string _) => MatchLog.LastResult ?? new Text("InfoCommands.NoGamePlayedYet");
 
-    public static string Winners(string _) => MatchLog.LastWinners ?? new Text("まだ試合の記録がありません", "No game played yet");
+    public static string Winners(string _) => MatchLog.LastWinners ?? new Text("InfoCommands.NoGamePlayedYet");
 
     public static string MyRole(string _)
     {
-        if (!InGame) return new Text("試合中だけ使えます", "Only during a game");
+        if (!InGame) return new Text("InfoCommands.OnlyDuringAGame");
         var role = RoleState.Local;
         if (role != null) return $"{RoleDisplay.LabelOf(role)}\n{role.Description}{RoleDisplay.AddonLines(role.PlayerId)}";
-        return Dev.DevGod.Label(PlayerControl.LocalPlayer.PlayerId) ?? new Text("役職がありません", "No role");
+        return Dev.DevGod.Label(PlayerControl.LocalPlayer.PlayerId) ?? new Text("InfoCommands.NoRole");
     }
 
     // 引数なし = MRP の役職の一覧 / 役職名 = その役職の説明
@@ -47,8 +47,8 @@ internal static class InfoCommands
             if (r == null)
             {
                 var a = FindAddon(args);
-                if (a != null) return $"{a.ColoredName} ({new Text("アドオン", "Addon")})\n{a.Description}";
-                return new Text($"{args} という役職はありません", $"No role called {args}");
+                if (a != null) return $"{a.ColoredName} ({new Text("InfoCommands.Addon")})\n{a.Description}";
+                return new Text("InfoCommands.NoRoleCalled").With("arg", args);
             }
             return $"{r.ColoredName} ({TeamName(r.Team)})\n{r.Description}";
         }
@@ -74,9 +74,9 @@ internal static class InfoCommands
                 if (line.Length > 0) line.Append(", ");
                 line.Append(a.ColoredName);
             }
-            sb.Append('\n').Append(new Text("アドオン", "Addons").ToString()).Append(": ").Append(line);
+            sb.Append('\n').Append(new Text("InfoCommands.Addons").ToString()).Append(": ").Append(line);
         }
-        sb.Append('\n').Append(new Text("(/r <役職名・アドオン名> で説明)", "(/r <role or addon> for details)").ToString());
+        sb.Append('\n').Append(new Text("InfoCommands.RForDetails").ToString());
         return sb.ToString();
     }
 
@@ -84,9 +84,7 @@ internal static class InfoCommands
     {
         foreach (var a in Registry.Addons)
         {
-            if (string.Equals(a.Id, s, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(a.Name.Ja, s, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(a.Name.En, s, StringComparison.OrdinalIgnoreCase))
+            if (a.Name.Matches(s, a.Id))
                 return a;
         }
         return null;
@@ -94,9 +92,9 @@ internal static class InfoCommands
 
     private static string TeamName(Team t) => t switch
     {
-        Team.Crew => new Text("クルー", "Crew"),
-        Team.Impostor => new Text("インポスター", "Impostor"),
-        _ => new Text("第三陣営", "Neutral"),
+        Team.Crew => new Text("InfoCommands.Crew"),
+        Team.Impostor => new Text("InfoCommands.Impostor"),
+        _ => new Text("InfoCommands.Neutral"),
     };
 
     // 今の MRP の設定: 役職以外の設定と、出る役職 (出現率 > 0) だけ

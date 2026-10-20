@@ -73,12 +73,12 @@ internal static class MatchLog
 
     public static string Describe(Death d) => d.Kind switch
     {
-        Kind.Killed => new Text($"{d.Killer} ({d.KillerRole}) に倒された", $"Killed by {d.Killer} ({d.KillerRole})"),
-        Kind.Suicide => new Text("倒した人なしで死んだ", "Died with no killer"),
-        Kind.Exiled => new Text("追放された", "Ejected"),
-        Kind.Spaced => new Text("船外へ吸い出された", "Sucked out into space"),
-        Kind.Spectator => new Text("観戦", "Spectating"),
-        _ => new Text("切断した", "Disconnected"),
+        Kind.Killed => new Text("MatchLog.KilledBy").With("killer", d.Killer).With("killerRole", d.KillerRole),
+        Kind.Suicide => new Text("MatchLog.DiedWithNoKiller"),
+        Kind.Exiled => new Text("MatchLog.Ejected"),
+        Kind.Spaced => new Text("MatchLog.SuckedOutIntoSpace"),
+        Kind.Spectator => new Text("MatchLog.Spectating"),
+        _ => new Text("MatchLog.Disconnected"),
     };
 
     // 役職の名前 (色付き)。死んだ人の本編の役職は幽霊の役職に替わっているので、生きていた時の役職を出す
@@ -109,7 +109,7 @@ internal static class MatchLog
         var last = GameEnd.Last;
         var winnerNames = new HashSet<string>();
         var wsb = new StringBuilder();
-        if (last != null && last.Draw) wsb.Append(new Text("廃村 (勝者なし)", "Aborted (no winners)").ToString());
+        if (last != null && last.Draw) wsb.Append(new Text("MatchLog.AbortedNoWinners").ToString());
         else if (last == null && EndGameResult.CachedWinners is { } cached)
         {
             for (int i = 0; i < cached.Count; i++) winnerNames.Add(cached[i].PlayerName);
@@ -127,7 +127,7 @@ internal static class MatchLog
                 wsb.Append(p.PlayerName);
             }
         }
-        LastWinners = wsb.Length > 0 ? wsb.ToString() : new Text("勝者なし", "No winners");
+        LastWinners = wsb.Length > 0 ? wsb.ToString() : new Text("MatchLog.NoWinners");
 
         var sb = new StringBuilder();
         for (int i = 0; i < all.Count; i++)
@@ -139,9 +139,9 @@ internal static class MatchLog
             sb.Append(p.PlayerName).Append(": ").Append(RoleLabel(p));
             // 蘇生された人の死因は残っているので、今の生死を先に見る
             var d = Of(p.PlayerId);
-            if (!p.IsDead && !p.Disconnected) sb.Append(" / ").Append(new Text("生存", "Alive").ToString());
+            if (!p.IsDead && !p.Disconnected) sb.Append(" / ").Append(new Text("MatchLog.Alive").ToString());
             else if (d != null) sb.Append(" / ").Append(Describe(d));
-            else if (p.Disconnected) sb.Append(" / ").Append(new Text("切断した", "Disconnected").ToString());
+            else if (p.Disconnected) sb.Append(" / ").Append(new Text("MatchLog.Disconnected").ToString());
         }
         // 観戦の人は役職を持たないので「観戦」とだけ出し、最後にまとめる
         for (int i = 0; i < all.Count; i++)
@@ -149,7 +149,7 @@ internal static class MatchLog
             var p = all[i];
             if (p == null || !Spectate.IsWatching(p.PlayerId)) continue;
             if (sb.Length > 0) sb.Append('\n');
-            sb.Append("　 ").Append(p.PlayerName).Append(": <color=#9A9A9A>").Append(new Text("観戦", "Spectating").ToString()).Append("</color>");
+            sb.Append("　 ").Append(p.PlayerName).Append(": <color=#9A9A9A>").Append(new Text("MatchLog.Spectating").ToString()).Append("</color>");
         }
         LastResult = sb.ToString();
     }

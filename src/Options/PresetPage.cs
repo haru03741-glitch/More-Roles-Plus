@@ -13,10 +13,9 @@ namespace MoreRolesPlus.Options;
 // 消すは 2 回押した時だけ消す。ボタンの処理は番号ごとに 1 つだけ作って使い回す (何も捕まえない)
 internal static class PresetPage
 {
-    public static readonly Text TabName = new("プリセット", "Presets");
+    public static readonly Text TabName = new("PresetPage.TabName");
     public static readonly Color TabColor = new(0.45f, 0.85f, 0.6f);
-    public static readonly Text Description = new("設定に名前を付けて保存・読み込み。書き出し・取り込みは受け渡しのフォルダ (デスクトップの MRP_Presets) を使います。",
-        "Save and load settings by name. Export / import goes through the MRP_Presets folder on the desktop.");
+    public static readonly Text Description = new("PresetPage.Description");
 
     private const int PerPage = 5;
     private const float Top = 2f, RowStep = 0.45f, Z = -2f;
@@ -59,29 +58,29 @@ internal static class PresetPage
         h.transform.localScale = new Vector3(0.63f, 0.63f, 1f);
         h.transform.localPosition = new Vector3(-0.903f, Top, Z);
 
-        _name = SearchBox.Create(parent, new Vector3(0f, Top - 0.6f, Z), 3.4f, 0.42f, new Text("新しいプリセットの名前", "Name for a new preset"), _ => { });
-        Button(proto, parent, new Vector3(2.65f, Top - 0.6f, Z), new Text("今の設定を保存", "Save current"), 0, new Color(0.2f, 0.6f, 0.9f));
+        _name = SearchBox.Create(parent, new Vector3(0f, Top - 0.6f, Z), 3.4f, 0.42f, new Text("PresetPage.NameForANewPreset"), _ => { });
+        Button(proto, parent, new Vector3(2.65f, Top - 0.6f, Z), new Text("PresetPage.SaveCurrent"), 0, new Color(0.2f, 0.6f, 0.9f));
 
         _status = Label(menu.MenuDescriptionText, parent, new Vector3(-1.9f, Top - 1.12f, Z), 2.9f, 1.0f);
         _status.text = "";
-        Button(proto, parent, new Vector3(1.8f, Top - 1.12f, Z), new Text("取り込む", "Import"), 1, new Color(0.2f, 0.6f, 0.9f));
-        Button(proto, parent, new Vector3(3.05f, Top - 1.12f, Z), new Text("フォルダを開く", "Open folder"), 2, new Color(0.45f, 0.45f, 0.5f));
+        Button(proto, parent, new Vector3(1.8f, Top - 1.12f, Z), new Text("PresetPage.Import"), 1, new Color(0.2f, 0.6f, 0.9f));
+        Button(proto, parent, new Vector3(3.05f, Top - 1.12f, Z), new Text("PresetPage.OpenFolder"), 2, new Color(0.45f, 0.45f, 0.5f));
 
         for (int i = 0; i < PerPage; i++)
         {
             float y = Top - 1.7f - i * RowStep;
             var r = new Row { Name = Label(menu.MenuDescriptionText, parent, new Vector3(-1.9f, y, Z), 2.9f, 1.4f) };
-            r.Load = Button(proto, parent, new Vector3(1.25f, y, Z), new Text("読み込む", "Load"), 100 + i * 4, new Color(0.2f, 0.7f, 0.4f));
-            r.Export = Button(proto, parent, new Vector3(2.3f, y, Z), new Text("書き出す", "Export"), 101 + i * 4, new Color(0.45f, 0.45f, 0.5f));
-            r.Delete = Button(proto, parent, new Vector3(3.35f, y, Z), new Text("消す", "Delete"), 102 + i * 4, new Color(0.7f, 0.25f, 0.25f));
+            r.Load = Button(proto, parent, new Vector3(1.25f, y, Z), new Text("PresetPage.Load"), 100 + i * 4, new Color(0.2f, 0.7f, 0.4f));
+            r.Export = Button(proto, parent, new Vector3(2.3f, y, Z), new Text("PresetPage.Export"), 101 + i * 4, new Color(0.45f, 0.45f, 0.5f));
+            r.Delete = Button(proto, parent, new Vector3(3.35f, y, Z), new Text("PresetPage.Delete"), 102 + i * 4, new Color(0.7f, 0.25f, 0.25f));
             r.DeleteLabel = r.Delete ? r.Delete.GetComponentInChildren<TextMeshPro>() : null;
             Rows[i] = r;
         }
 
         float by = Top - 1.7f - PerPage * RowStep + 0.05f;
-        _prev = Button(proto, parent, new Vector3(-1.4f, by, Z), new Text("◀", "◀"), 3, new Color(0.35f, 0.35f, 0.4f));
+        _prev = Button(proto, parent, new Vector3(-1.4f, by, Z), Text.Raw("◀"), 3, new Color(0.35f, 0.35f, 0.4f));
         _pageLabel = Label(menu.MenuDescriptionText, parent, new Vector3(-0.85f, by, Z), 0.8f, 1.3f);
-        _next = Button(proto, parent, new Vector3(0.2f, by, Z), new Text("▶", "▶"), 4, new Color(0.35f, 0.35f, 0.4f));
+        _next = Button(proto, parent, new Vector3(0.2f, by, Z), Text.Raw("▶"), 4, new Color(0.35f, 0.35f, 0.4f));
 
         m.scrollBar.SetYBoundsMax(0f);
         Refresh();
@@ -157,11 +156,11 @@ internal static class PresetPage
             if (r == null) continue;
             int n = _page * PerPage + i;
             bool has = n < _names.Count;
-            if (r.Name) r.Name.text = has ? _names[n] : (i == 0 && _names.Count == 0 ? (string)new Text("保存したプリセットはありません", "No saved presets") : "");
+            if (r.Name) r.Name.text = has ? _names[n] : (i == 0 && _names.Count == 0 ? (string)new Text("PresetPage.NoSavedPresets") : "");
             if (r.Load) r.Load.gameObject.SetActive(has);
             if (r.Export) r.Export.gameObject.SetActive(has);
             if (r.Delete) r.Delete.gameObject.SetActive(has);
-            if (r.DeleteLabel) r.DeleteLabel.text = _armed == i ? new Text("本当に消す", "Really?") : new Text("消す", "Delete");
+            if (r.DeleteLabel) r.DeleteLabel.text = _armed == i ? new Text("PresetPage.Really") : new Text("PresetPage.Delete");
         }
     }
 
@@ -194,7 +193,7 @@ internal static class PresetPage
             case 2:
             {
                 string dir = PresetStore.OpenShare();
-                Say(new Text($"受け渡しのフォルダ: {dir}", $"Share folder: {dir}"));
+                Say(new Text("PresetPage.ShareFolder").With("dir", dir));
             }
                 break;
             case 3: _page--; break;
@@ -205,11 +204,11 @@ internal static class PresetPage
                 int n = _page * PerPage + slot;
                 if (slot < 0 || slot >= PerPage || n >= _names.Count) break;
                 string name = _names[n];
-                if (kind == 0) Say(AmHost ? PresetStore.Load(name) : new Text("読み込めるのはホストだけです", "Only the host can load presets"));
+                if (kind == 0) Say(AmHost ? PresetStore.Load(name) : new Text("PresetPage.OnlyTheHostCanLoad"));
                 else if (kind == 1) Say(PresetStore.Export(name));
                 else if (kind == 2)
                 {
-                    if (armed != slot) { _armed = slot; Say(new Text($"もう一度押すと「{name}」を消します", $"Press again to delete \"{name}\"")); }
+                    if (armed != slot) { _armed = slot; Say(new Text("PresetPage.PressAgainToDelete").With("name", name)); }
                     else Say(PresetStore.Delete(name));
                 }
                 break;

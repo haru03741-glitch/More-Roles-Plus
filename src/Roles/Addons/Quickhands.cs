@@ -6,11 +6,11 @@ namespace MoreRolesPlus.Roles.Addons;
 public sealed class Quickhands : AddonBase
 {
     public override string Color => "#FF7A59";
-    public override Text Name => new("早業", "Quickhands");
+    public override Text Name => new("Quickhands.Name");
     public override string Reading => "はやわざ";
-    public override Text Blurb => new("次のキルまでの時間が短い", "Strike again sooner");
+    public override Text Blurb => new("Quickhands.Blurb");
 
-    public static readonly IntOpt Reduction = new("短くする割合", "Cooldown Reduction", 25, 5, 50, 5, "%");
+    public static readonly IntOpt Reduction = new("Quickhands.Reduction", 25, 5, 50, 5, "%");
 
     // インポスターか、キルボタンを使える役職の人だけ (本編の役職のままの人はインポスターの時だけ)
     public override bool CanAttach(Team team, RoleBase role) =>

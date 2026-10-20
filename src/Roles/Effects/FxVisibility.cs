@@ -60,8 +60,8 @@ public sealed class FxVisibility : Opt
     private readonly FloatOpt _radiusOpt;
 
     // radius = 近くの人の半径 (世界の単位)。ホストに変えさせる時は FloatOpt を別の行に置いて radiusOpt に渡す
-    public FxVisibility(string ja, string en, Audience defaultAudience, Audience[] allowed, FxHide hide = FxHide.None, float radius = 5f, FloatOpt radiusOpt = null)
-        : base(new Text(ja, en), IndexIn(allowed, defaultAudience))
+    public FxVisibility(string key, Audience defaultAudience, Audience[] allowed, FxHide hide = FxHide.None, float radius = 5f, FloatOpt radiusOpt = null)
+        : base(new Text(key), IndexIn(allowed, defaultAudience))
     {
         _choices = allowed;
         Hide = hide;
@@ -95,8 +95,8 @@ public sealed class FxVisibility : Opt
 
     public static string Describe(Audience a)
     {
-        if ((a & Audience.All) != 0) return new Text("全員", "Everyone");
-        if (a == Audience.None) return new Text("誰にも出さない", "No one");
+        if ((a & Audience.All) != 0) return new Text("FxVisibility.Everyone");
+        if (a == Audience.None) return new Text("FxVisibility.NoOne");
         var sb = new StringBuilder();
         void Part(Audience bit, Text t)
         {
@@ -104,11 +104,11 @@ public sealed class FxVisibility : Opt
             if (sb.Length > 0) sb.Append('+');
             sb.Append((string)t);
         }
-        Part(Audience.Self, new Text("本人", "Self"));
-        Part(Audience.Team, new Text("仲間", "Team"));
-        Part(Audience.Target, new Text("相手", "Target"));
-        Part(Audience.Nearby, new Text("近くの人", "Nearby"));
-        Part(Audience.Dead, new Text("幽霊", "Ghosts"));
+        Part(Audience.Self, new Text("FxVisibility.Self"));
+        Part(Audience.Team, new Text("FxVisibility.Team"));
+        Part(Audience.Target, new Text("FxVisibility.Target"));
+        Part(Audience.Nearby, new Text("FxVisibility.Nearby"));
+        Part(Audience.Dead, new Text("FxVisibility.Ghosts"));
         return sb.ToString();
     }
 

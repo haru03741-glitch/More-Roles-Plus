@@ -88,7 +88,7 @@ internal static class SettingsMenu
 
     public static bool IsOurMenu(GameOptionsMenu m, out int page) => MenuToPage.TryGetValue(m.Pointer, out page);
 
-    internal static Text TabName(bool roles) => roles ? RoleMenu.TabName : new Text("MRP 全般", "MRP");
+    internal static Text TabName(bool roles) => roles ? RoleMenu.TabName : new Text("SettingsMenu.MRP");
 
     internal static Color TabColor(bool roles) => roles ? new Color(1f, 0.8f, 0.35f) : new Color(0.75f, 0.6f, 1f);
 
@@ -173,7 +173,7 @@ internal static class SettingsMenu
             var placer = gameBtn.transform.Find("FontPlacer");
             float shift = placer ? placer.localPosition.x * gameBtn.transform.localScale.x : 0f;
             _search = SearchBox.Create(gameBtn.transform.parent, new Vector3((l.x + r.x) / 2f + shift, r.y - RowStepY * unit * 1.05f, l.z), w, 0.4f,
-                new Text("全部のタブから探す", "Search all tabs"), OnSearch);
+                new Text("SettingsMenu.SearchAllTabs"), OnSearch);
         }
         // 本編は開いた時にプリセットのタブを出すので、ゲーム設定のタブから始める
         menu.ChangeTab(1, false);
@@ -324,7 +324,7 @@ internal static class SettingsMenu
             desc.text = Pages[index].Presets ? PresetPage.Description
                 : Pages[index].Roles
                 ? RoleMenu.DefaultDescription
-                : new Text("More Roles Plus の設定。閉じた時に全員へ送られます。", "More Roles Plus settings. Sent to everyone when you close this menu.");
+                : new Text("SettingsMenu.MoreRolesPlusSettingsSent");
         }
         if (previewOnly)
         {

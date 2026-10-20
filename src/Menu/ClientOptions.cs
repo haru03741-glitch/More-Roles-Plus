@@ -39,17 +39,17 @@ internal static class ClientOptions
     public static void Bind(ConfigFile cfg)
     {
         _cfg = cfg;
-        DarkTheme = Add("DarkTheme", false, new Text("チャットを暗い色にする", "Dark chat"), ChatTheme.Refresh);
-        EndSummary = Add("EndSummary", true, new Text("試合の終わりに全員の役職を出す", "Show everyone's role at game end"), null);
-        AutoPlayAgain = Add("AutoPlayAgain", false, new Text("試合が終わったら自動でロビーへ戻る", "Return to the lobby after a game"), null);
-        Reconnect = Add("Reconnect", true, new Text("回線で切れたら同じ部屋へ入り直す", "Rejoin the room after a connection drop"), null);
-        Spectate = Add("Spectate", false, new Text("次の試合を観戦する (幽霊で見るだけ)", "Spectate the next game (as a ghost)"), Roles.Spectate.OnOptionChanged);
-        DarkMeeting = Add("DarkMeeting", false, new Text("会議の画面を暗い色にする", "Dark meeting screen"), null); // 次の会議から
+        DarkTheme = Add("DarkTheme", false, new Text("ClientOptions.DarkChat"), ChatTheme.Refresh);
+        EndSummary = Add("EndSummary", true, new Text("ClientOptions.ShowEveryonesRoleAtGame"), null);
+        AutoPlayAgain = Add("AutoPlayAgain", false, new Text("ClientOptions.ReturnToTheLobbyAfter"), null);
+        Reconnect = Add("Reconnect", true, new Text("ClientOptions.RejoinTheRoomAfterA"), null);
+        Spectate = Add("Spectate", false, new Text("ClientOptions.SpectateTheNextGameAs"), Roles.Spectate.OnOptionChanged);
+        DarkMeeting = Add("DarkMeeting", false, new Text("ClientOptions.DarkMeetingScreen"), null); // 次の会議から
     }
 
     private static ConfigEntry<bool> Add(string key, bool def, Text label, Action changed)
     {
-        var e = _cfg.Bind("Client", key, def, label.En);
+        var e = _cfg.Bind("Client", key, def, label.Builtin(false));
         Items.Add(new Item { Key = key, Entry = e, Label = label, Changed = changed });
         return e;
     }
@@ -75,7 +75,7 @@ internal static class ClientOptions
 
         _panel = NewPanel(menu, "MrpClientOptions");
 
-        var close = MakeButton(proto, _panel.transform, "Back", new Text("戻る", "Back"), out var closeBack, out _);
+        var close = MakeButton(proto, _panel.transform, "Back", new Text("ClientOptions.Back"), out var closeBack, out _);
         close.transform.localPosition = new Vector3(2.6f, -2.3f, -6f);
         closeBack.color = Palette.DisabledGrey;
         SetClick(close, _close ??= (UnityAction)(() => ShowPanel(false)));
@@ -90,7 +90,7 @@ internal static class ClientOptions
         }
         var tab = proto.transform.parent.parent.parent;
         _tab = tab;
-        var open = MakeButton(proto, tab, "MrpClientOptionsButton", new Text("MRP の設定", "MRP Options"), out var openBack, out _);
+        var open = MakeButton(proto, tab, "MrpClientOptionsButton", new Text("ClientOptions.MRPOptions"), out var openBack, out _);
         open.transform.localPosition = leave ? leave.transform.localPosition : new Vector3(0f, -2.4f, 1f);
         openBack.color = On;
         SetClick(open, _open ??= (UnityAction)(() => ShowPanel(true)));

@@ -13,11 +13,11 @@ using Object = UnityEngine.Object;
 
 namespace MoreRolesPlus.Commands;
 
-[Settings(Tab.General, "耳打ち", "Whispers", order: -70)]
+[Settings(Tab.General, "WhisperSettings.Title", order: -70)]
 public static class WhisperSettings
 {
-    public static readonly BoolOpt Enabled = new("ロビーと会議で耳打ちできる", "Allow whispers in the lobby and meetings", true);
-    public static readonly BoolOpt Announce = new("耳打ちしたことを全員に知らせる (中身は見せない)", "Tell everyone when someone whispers (not what)", true);
+    public static readonly BoolOpt Enabled = new("WhisperSettings.Enabled", true);
+    public static readonly BoolOpt Announce = new("WhisperSettings.Announce", true);
 }
 
 // 耳打ち: 相手の端末にだけ文を送る。使えるのはロビーと会議中 (会議では生きている人同士だけ)。
@@ -68,13 +68,13 @@ internal static class Whisper
         var chat = Vanilla.Chat;
         if (!Allowed(me, to))
         {
-            if (chat) DevChat.Notice(chat, new Text("今はその人に耳打ちできません", "You can't whisper to them now"));
+            if (chat) DevChat.Notice(chat, new Text("Whisper.YouCantWhisperToThem"));
             return;
         }
         Target = id;
         if (!chat) return;
         if (!chat.IsOpenOrOpening) chat.Toggle();
-        DevChat.Notice(chat, new Text($"→ {Name(to)} に耳打ちします。文を入れて送信 (空で送ると取りやめ)", $"Whispering to {Name(to)}. Type and send (send empty to cancel)"));
+        DevChat.Notice(chat, new Text("Whisper.WhisperingTo").With("name", Name(to)));
         WhisperList.Hide();
     }
 
@@ -89,12 +89,12 @@ internal static class Whisper
         var me = PlayerControl.LocalPlayer;
         if (text.Length == 0)
         {
-            DevChat.Notice(chat, new Text("耳打ちを取りやめました", "Whisper cancelled"));
+            DevChat.Notice(chat, new Text("Whisper.WhisperCancelled"));
             return true;
         }
         if (!Allowed(me, to) || to.OwnerId < 0)
         {
-            DevChat.Notice(chat, new Text("今はその人に耳打ちできません (文は入力欄に戻しました)", "You can't whisper to them now (your text is back in the box)"));
+            DevChat.Notice(chat, new Text("Whisper.YouCantWhisperToThem2"));
             _restore = text;
             return true;
         }
@@ -120,7 +120,7 @@ internal static class Whisper
         if (!me || me.PlayerId != to || !Allowed(from, me) || string.IsNullOrEmpty(text)) return;
         if (text.Length > ChatInput.Limit) text = text[..ChatInput.Limit];
         var chat = Vanilla.Chat;
-        if (chat) chat.AddChat(from, $"<color=#C79BFF>[{new Text("耳打ち", "Whisper")}]</color> {Plain(text)}", false);
+        if (chat) chat.AddChat(from, $"<color=#C79BFF>[{new Text("Whisper.Whisper")}]</color> {Plain(text)}", false);
     }
 
     private static void ReceiveTold(PlayerControl from, byte to)
@@ -130,7 +130,7 @@ internal static class Whisper
         var target = Player(to);
         if (!Allowed(from, target)) return;
         var chat = Vanilla.Chat;
-        if (chat) DevChat.Notice(chat, new Text($"{Name(from)} が {Name(target)} に耳打ちしました", $"{Name(from)} whispered to {Name(target)}"));
+        if (chat) DevChat.Notice(chat, new Text("Whisper.Announce").With("from", Name(from)).With("to", Name(target)));
     }
 
     // 会議が終わったら選んだ相手を忘れる

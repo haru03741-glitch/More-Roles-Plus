@@ -53,13 +53,13 @@ internal static class Shortcuts
     }
 }
 
-[Settings(Tab.General, "ホストの操作", "Host controls", order: -80)]
+[Settings(Tab.General, "HostSettings.Title", order: -80)]
 public static class HostSettings
 {
-    public static readonly BoolOpt EnterToStart = new("ロビーで Enter を押すと試合を始める (PC)", "Press Enter in the lobby to start (PC)", false);
-    public static readonly BoolOpt PlayersCanRename = new("参加者が /rename /color で名前と色を変えられる", "Players can change name and color with /rename /color", true);
-    public static readonly IntOpt StartSeconds = new("開始の数えの秒数", "Start countdown", 5, 0, 30, 1, "s");
-    public static readonly BoolOpt NoGameEnd = new("試合を自動で終わらせない (/end で終える)", "Never end the game automatically (end it with /end)", false);
+    public static readonly BoolOpt EnterToStart = new("HostSettings.EnterToStart", false);
+    public static readonly BoolOpt PlayersCanRename = new("HostSettings.PlayersCanRename", true);
+    public static readonly IntOpt StartSeconds = new("HostSettings.StartSeconds", 5, 0, 30, 1, "s");
+    public static readonly BoolOpt NoGameEnd = new("HostSettings.NoGameEnd", false);
 }
 
 // 開始の数えの長さを設定の秒数にする (本編は 5 秒)。数えはホストの端末が進めて客へ残りの秒を送るので、ホストだけで足りる

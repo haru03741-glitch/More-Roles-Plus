@@ -9,10 +9,10 @@ using MoreRolesPlus.Options;
 
 namespace MoreRolesPlus.Roles;
 
-[Settings(Tab.General, "観戦", "Spectating", order: -65)]
+[Settings(Tab.General, "SpectateSettings.Title", order: -65)]
 public static class SpectateSettings
 {
-    public static readonly BoolOpt Allow = new("観戦を選んだ人を試合の始めから幽霊にする", "Players who choose to spectate start as ghosts", true);
+    public static readonly BoolOpt Allow = new("SpectateSettings.Allow", true);
 }
 
 // 観戦: ロビーで「次の試合を観戦する」を選んだ人は、試合の始めから幽霊として見るだけになる。
@@ -71,12 +71,12 @@ internal static class Spectate
 
     public static string Command(string _)
     {
-        if (ShipStatus.Instance) return new Text("ロビーで選んでください", "Choose this in the lobby");
+        if (ShipStatus.Instance) return new Text("Spectate.ChooseThisInTheLobby");
         var e = Menu.ClientOptions.Spectate;
         e.Value = !e.Value;
         SendMine();
-        return e.Value ? new Text("次の試合を観戦します (幽霊で見るだけ)", "You'll spectate the next game (as a ghost)")
-                       : new Text("次の試合に参加します", "You'll play the next game");
+        return e.Value ? new Text("Spectate.YoullSpectateTheNextGame")
+                       : new Text("Spectate.YoullPlayTheNextGame");
     }
 
     // ---- ホスト ----
@@ -234,7 +234,7 @@ internal static class Spectate
         if (GameData.Instance) GameData.Instance.RecomputeTaskCounts();
         var me = PlayerControl.LocalPlayer;
         if (me && Watching.Contains(me.PlayerId) && Vanilla.Hud && Vanilla.Hud.Notifier)
-            Vanilla.Hud.Notifier.AddDisconnectMessage(new Text("観戦中です (幽霊で見るだけ)", "You're spectating (as a ghost)"));
+            Vanilla.Hud.Notifier.AddDisconnectMessage(new Text("Spectate.YoureSpectatingAsAGhost"));
     }
 
     // タスク欄には「観戦中」だけを出す (空のままだと本編が None と出す)
@@ -245,8 +245,7 @@ internal static class Spectate
         var go = new UnityEngine.GameObject("MrpSpectateTask");
         go.transform.SetParent(p.transform, false);
         var t = _task = go.AddComponent<ImportantTextTask>();
-        t.Text = new Text("<color=#9FD8FF>観戦中: 幽霊として自由に見て回れます。会議では全員の役職が見えます</color>",
-            "<color=#9FD8FF>Spectating: roam freely as a ghost. You see everyone's role in meetings</color>");
+        t.Text = new Text("Spectate.SpectatingRoamFreelyAsA");
         p.myTasks.Insert(0, t.Cast<PlayerTask>());
     }
 

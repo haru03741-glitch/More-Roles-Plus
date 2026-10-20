@@ -143,14 +143,14 @@ internal static class VersionCheck
                 if (JoinedAt.TryGetValue(p.OwnerId, out long at) && now - at < CheckingMs)
                 {
                     checking++;
-                    list.Add(new Text($"{name} (確認中)", $"{name} (checking)"));
+                    list.Add(new Text("VersionCheck.Checking").With("name", name));
                 }
-                else list.Add(new Text($"{name} (MRP が入っていない)", $"{name} (no MRP)"));
+                else list.Add(new Text("VersionCheck.NoMRP").With("name", name));
             }
             else if (v == Plugin.Version && SeenAbi.TryGetValue(p.OwnerId, out int abi) && abi != Native.MrpNative.Abi)
-                list.Add(new Text($"{name} (C++ の部品の版が違う)", $"{name} (different native module)"));
+                list.Add(new Text("VersionCheck.DifferentNativeModule").With("name", name));
             else
-                list.Add(new Text($"{name} (版が違う: {v})", $"{name} (different version: {v})"));
+                list.Add(new Text("VersionCheck.DifferentVersion").With("name", name).With("version", v));
         }
         return list;
     }
@@ -179,10 +179,10 @@ internal static class BlockStartPatch
         {
             VersionCheck.HoldStart();
             if (Vanilla.Chat is { } c)
-                c.AddChat(PlayerControl.LocalPlayer, new Text("入ってきたばかりの人の版を確認しています。済み次第始めます", "Checking the version of players who just joined. Starting once done"), false);
+                c.AddChat(PlayerControl.LocalPlayer, new Text("BlockStartPatch.CheckingTheVersionOfPlayers"), false);
             return false;
         }
-        string msg = new Text("全員が同じ版の More Roles Plus を入れるまで始められません:\n", "Everyone needs the same More Roles Plus version:\n")
+        string msg = new Text("BlockStartPatch.msg")
                      + string.Join("\n", blockers);
         if (Vanilla.Chat is { } chat) chat.AddChat(PlayerControl.LocalPlayer, msg, false);
         return false;

@@ -8,12 +8,12 @@ public sealed class Demolisher : RoleBase
 {
     public override Team Team => Team.Crew;
     public override string Color => "#C9873A";
-    public override Text Name => new("解体屋", "Demolisher");
+    public override Text Name => new("Demolisher.Name");
     public override string Reading => "かいたいや";
-    public override Text Blurb => new("ハンマーで壁を壊して道を作れ", "Smash walls to open new paths");
+    public override Text Blurb => new("Demolisher.Blurb");
 
-    public static readonly FloatOpt SmashCooldown = new("ハンマーの待ち時間", "Hammer Cooldown", 20f, 2.5f, 60f, 2.5f, "s");
-    public static readonly IntOpt SmashUses = new("ハンマーの回数 (0 = 何回でも)", "Hammer Uses (0 = unlimited)", 5, 0, 20);
+    public static readonly FloatOpt SmashCooldown = new("Demolisher.SmashCooldown", 20f, 2.5f, 60f, 2.5f, "s");
+    public static readonly IntOpt SmashUses = new("Demolisher.SmashUses", 5, 0, 20);
 
     private const float Force = 0.5f;
 
@@ -22,7 +22,7 @@ public sealed class Demolisher : RoleBase
 
     public override void OnAssigned()
     {
-        AddAbility(new Ability(new Text("ハンマー", "Hammer"), "hammer")
+        AddAbility(new Ability(new Text("Demolisher.Hammer"), "hammer")
         {
             Cooldown = () => SmashCooldown,
             MaxUses = () => SmashUses,

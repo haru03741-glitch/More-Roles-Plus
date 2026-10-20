@@ -18,7 +18,7 @@ internal static class LobbyTools
     private static bool AmHost => AmongUsClient.Instance && AmongUsClient.Instance.AmHost;
     private static bool InLobby => Vanilla.StartManager && !ShipStatus.Instance && PlayerControl.LocalPlayer;
 
-    private static readonly Text OnlyLobby = new("ロビーでだけ使えます", "Only in the lobby");
+    private static readonly Text OnlyLobby = new("LobbyTools.OnlyLobby");
 
     // ---- /say ----
 
@@ -27,14 +27,14 @@ internal static class LobbyTools
 
     private static void ShowSay(string text)
     {
-        DevChat.Notice(Vanilla.Chat, new Text($"<color=#FF5050>ホストから</color>: {text}", $"<color=#FF5050>From the host</color>: {text}"));
+        DevChat.Notice(Vanilla.Chat, new Text("LobbyTools.FromTheHost").With("text", text));
     }
 
     public static string Say(string args)
     {
-        if (args.Length == 0) return new Text("言うことを付けてください", "Add a message");
+        if (args.Length == 0) return new Text("LobbyTools.AddAMessage");
         if (!AmongUsClient.Instance || AmongUsClient.Instance.GameState is not (InnerNet.InnerNetClient.GameStates.Joined or InnerNet.InnerNetClient.GameStates.Started))
-            return new Text("部屋に入っていません", "Not in a room");
+            return new Text("LobbyTools.NotInARoom");
         string text = args.Length > MaxSay ? args[..MaxSay] : args;
         SayCall.Send(text);
         ShowSay(text);
@@ -98,10 +98,10 @@ internal static class LobbyTools
     {
         if (!InLobby) return OnlyLobby;
         string name = CleanName(args);
-        if (name.Length is < 1 or > MaxName) return new Text($"名前は 1〜{MaxName} 文字にしてください", $"Names must be 1-{MaxName} characters");
-        if (!AmHost && !HostSettings.PlayersCanRename) return new Text("この部屋ではホストが名前と色の変更を止めています", "The host has turned off name and color changes");
+        if (name.Length is < 1 or > MaxName) return new Text("LobbyTools.NamesMustBe1Characters").With("maxName", MaxName);
+        if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.TheHostHasTurnedOff");
         RenameCall.Send(name);
-        return AmHost ? new Text($"名前を {name} にしました", $"Renamed to {name}") : new Text($"名前を {name} にするようホストに頼みました", $"Asked the host to rename you to {name}");
+        return AmHost ? new Text("LobbyTools.RenamedTo").With("name", name) : new Text("LobbyTools.AskedTheHostToRename").With("name", name);
     }
 
     public static string Color(string args)
@@ -111,10 +111,10 @@ internal static class LobbyTools
         string a = args.Trim();
         if (a.StartsWith('#') || a.Equals("reset", StringComparison.OrdinalIgnoreCase))
         {
-            if (!AmHost && !HostSettings.PlayersCanRename) return new Text("この部屋ではホストが名前と色の変更を止めています", "The host has turned off name and color changes");
-            if (a[0] != '#') { Menu.CustomColors.SetMine((UnityEngine.Color32?)null); return new Text("本編の色に戻しました", "Back to the game's color"); }
+            if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.TheHostHasTurnedOff");
+            if (a[0] != '#') { Menu.CustomColors.SetMine((UnityEngine.Color32?)null); return new Text("LobbyTools.BackToTheGamesColor"); }
             var parts = a.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (!Menu.CustomColors.TryParse(parts[0], out var custom)) return new Text("#RRGGBB の形で (例 #00B7FF)。2 色目を足すとグラデーション (例 #00B7FF #FF4FA0)", "Use #RRGGBB (e.g. #00B7FF). Add a second color for a gradient (e.g. #00B7FF #FF4FA0)");
+            if (!Menu.CustomColors.TryParse(parts[0], out var custom)) return new Text("LobbyTools.UseRRGGBBEG00B7FF");
             if (parts.Length >= 2 && Menu.CustomColors.TryParse(parts[1], out var second))
             {
                 byte dir = parts.Length >= 3 && byte.TryParse(parts[2], out byte d) && d < Menu.CustomColors.DirCount ? d : (byte)0;
@@ -122,16 +122,16 @@ internal static class LobbyTools
                 byte soft = parts.Length >= 4 && byte.TryParse(parts[3], out byte sf) ? Math.Min(sf, (byte)100) : Menu.CustomColors.DefaultSoft;
                 byte pos = parts.Length >= 5 && byte.TryParse(parts[4], out byte ps) ? Math.Min(ps, (byte)100) : Menu.CustomColors.DefaultPos;
                 Menu.CustomColors.SetLook(new Menu.CustomColors.Look(custom, second, true, dir, soft, pos));
-                return new Text($"色を #{Menu.CustomColors.Hex(custom)} → #{Menu.CustomColors.Hex(second)} のグラデーションにしました", $"Your color is now a gradient #{Menu.CustomColors.Hex(custom)} → #{Menu.CustomColors.Hex(second)}");
+                return new Text("LobbyTools.ColorGradient").With("color", Menu.CustomColors.Hex(custom)).With("color2", Menu.CustomColors.Hex(second));
             }
             Menu.CustomColors.SetMine(custom);
-            return new Text($"色を #{Menu.CustomColors.Hex(custom)} にしました", $"Your color is now #{Menu.CustomColors.Hex(custom)}");
+            return new Text("LobbyTools.ColorSet").With("color", Menu.CustomColors.Hex(custom));
         }
         int color = FindColor(args);
-        if (color < 0) return new Text($"色は番号 (0〜{Palette.PlayerColors.Length - 1}) か色の名前で: {ColorNames()}", $"Use a number (0-{Palette.PlayerColors.Length - 1}) or a color name: {ColorNames()}");
-        if (!AmHost && !HostSettings.PlayersCanRename) return new Text("この部屋ではホストが名前と色の変更を止めています", "The host has turned off name and color changes");
+        if (color < 0) return new Text("LobbyTools.ColorHowTo").With("max", Palette.PlayerColors.Length - 1).With("names", ColorNames());
+        if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.TheHostHasTurnedOff");
         ColorCall.Send((byte)color);
-        return new Text($"色を {ColorName(color)} に変えます (使われていたら空いている色)", $"Changing your color to {ColorName(color)} (or a free one if taken)");
+        return new Text("LobbyTools.ColorChanging").With("color", ColorName(color));
     }
 
     private static string ColorName(int i) => TranslationController.Instance.GetString(Palette.ColorNames[i]);
@@ -162,8 +162,7 @@ internal static class LobbyTools
         var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         string sub = parts.Length > 0 ? parts[0].ToLowerInvariant() : "";
         string name = parts.Length > 1 ? parts[1].Trim() : "";
-        Text usage = new("/preset (一覧)・/preset save|load|del|export <名前>・/preset import (設定画面の「プリセット」のタブでも同じことができる)",
-            "/preset (list), /preset save|load|del|export <name>, /preset import (also in the Presets tab of the settings menu)");
+        Text usage = new("LobbyTools.usage");
         if (sub is "" or "list") return List();
         if (sub == "import") return PresetStore.Import();
         if (!PresetStore.ValidName(name)) return usage;
@@ -183,6 +182,6 @@ internal static class LobbyTools
     private static string List()
     {
         var names = PresetStore.Names();
-        return names.Count > 0 ? string.Join(", ", names) : new Text("保存した設定はありません", "No saved presets");
+        return names.Count > 0 ? string.Join(", ", names) : new Text("LobbyTools.NoSavedPresets");
     }
 }

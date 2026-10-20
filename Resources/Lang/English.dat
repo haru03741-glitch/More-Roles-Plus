@@ -1,0 +1,564 @@
+# ── Demolisher ──
+Demolisher.Name: Demolisher
+Demolisher.Blurb: Smash walls to open new paths
+Demolisher.SmashCooldown: Hammer Cooldown
+Demolisher.SmashUses: Hammer Uses (0 = unlimited)
+Demolisher.Hammer: Hammer
+
+# ── Lighter ──
+Lighter.Name: Lighter
+Lighter.Blurb: See further than the rest
+Lighter.VisionMultiplier: Vision Multiplier
+
+# ── Portal Maker (PortalMaker) ──
+PortalMaker.Name: Portal Maker
+PortalMaker.Blurb: Link two places with portals
+PortalMaker.PlaceCooldown: Portal Cooldown
+PortalMaker.CanRemove: Press Again to Remove Portals
+PortalMaker.Portal: Portal
+
+# ── Quickdraw ──
+Quickdraw.Name: Quickdraw
+Quickdraw.Blurb: Strike again before anyone else
+Quickdraw.KillCooldown: Kill Cooldown
+
+# ── Jester ──
+Jester.Name: Jester
+Jester.Blurb: Get yourself voted out
+
+# ── Outlaw ──
+Outlaw.Name: Outlaw
+Outlaw.Blurb: Be the last one standing
+Outlaw.KillCooldown: Kill Cooldown
+
+# ── Survivor ──
+Survivor.Name: Survivor
+Survivor.Blurb: Stay alive until the end
+
+# ── Hawkeye ──
+Hawkeye.Name: Hawkeye
+Hawkeye.Blurb: See further than the rest
+Hawkeye.VisionPercent: Vision
+
+# ── Quickhands ──
+Quickhands.Name: Quickhands
+Quickhands.Blurb: Strike again sooner
+Quickhands.Reduction: Cooldown Reduction
+
+# ── Sensitive ──
+Sensitive.Name: Sensitive
+Sensitive.Blurb: Sense it when someone falls
+Sensitive.Strength: Flash Strength
+
+# ── VanillaRole ──
+VanillaRole.VanillaRole: Vanilla role
+
+# ── VanillaScientist ──
+VanillaScientist.FallbackName: Scientist
+
+# ── VanillaEngineer ──
+VanillaEngineer.FallbackName: Engineer
+
+# ── VanillaNoisemaker ──
+VanillaNoisemaker.FallbackName: Noisemaker
+
+# ── VanillaTracker ──
+VanillaTracker.FallbackName: Tracker
+
+# ── VanillaDetective ──
+VanillaDetective.FallbackName: Detective
+
+# ── VanillaJudge ──
+VanillaJudge.FallbackName: Judge
+
+# ── VanillaGuardianAngel ──
+VanillaGuardianAngel.FallbackName: Guardian Angel
+
+# ── VanillaSpiritGuide ──
+VanillaSpiritGuide.FallbackName: Spirit Guide
+
+# ── VanillaShapeshifter ──
+VanillaShapeshifter.FallbackName: Shapeshifter
+
+# ── VanillaPhantom ──
+VanillaPhantom.FallbackName: Phantom
+
+# ── VanillaViper ──
+VanillaViper.FallbackName: Viper
+
+# ── FxVisibility ──
+FxVisibility.Everyone: Everyone
+FxVisibility.NoOne: No one
+FxVisibility.Self: Self
+FxVisibility.Team: Team
+FxVisibility.Target: Target
+FxVisibility.Nearby: Nearby
+FxVisibility.Ghosts: Ghosts
+
+# ── GameEnd ──
+GameEnd.GameAborted: Game Aborted
+GameEnd.TheHostEndedTheGame: The host ended the game
+GameEnd.Victory: Victory
+GameEnd.Defeat: Defeat
+GameEnd.ImpostorsWin: Impostors Win
+GameEnd.CrewmatesWin: Crewmates Win
+GameEnd.Spectating: Spectating
+GameEnd.Wins: {name} Wins
+
+# ── MatchLog ──
+MatchLog.KilledBy: Killed by {killer} ({killerRole})
+MatchLog.DiedWithNoKiller: Died with no killer
+MatchLog.Ejected: Ejected
+MatchLog.SuckedOutIntoSpace: Sucked out into space
+MatchLog.Spectating: Spectating
+MatchLog.Disconnected: Disconnected
+MatchLog.AbortedNoWinners: Aborted (no winners)
+MatchLog.NoWinners: No winners
+MatchLog.Alive: Alive
+
+# ── RoleSettings ──
+RoleSettings.Title: Roles
+RoleSettings.Enabled: Use More Roles Plus roles
+RoleSettings.GhostsSeeRoles: Ghosts see all roles in meetings
+RoleSettings.ImpostorsSeeRoles: Impostors see each other's roles in meetings
+
+# ── AssignSettings ──
+AssignSettings.Title: Assignment
+AssignSettings.None: None
+AssignSettings.MaxNeutral: Max neutral roles
+AssignSettings.MaxNeutralKillers: Max killing neutral roles
+AssignSettings.MaxRoled: Max players with a role
+AssignSettings.MaxAddonsPerPlayer: Max addons per player
+AssignSettings.Fill: Players left without a role
+AssignSettings.KeepVanilla: Keep vanilla
+AssignSettings.FillFromSameTeamRoles: Fill from same-team roles
+AssignSettings.FillNeutralsIncluded: Fill, neutrals included
+
+# ── RoleDisplay ──
+RoleDisplay.YourTasksDoNotCount: Your tasks do not count
+
+# ── SpectateSettings ──
+SpectateSettings.Title: Spectating
+SpectateSettings.Allow: Players who choose to spectate start as ghosts
+
+# ── Spectate ──
+Spectate.ChooseThisInTheLobby: Choose this in the lobby
+Spectate.YoullSpectateTheNextGame: You'll spectate the next game (as a ghost)
+Spectate.YoullPlayTheNextGame: You'll play the next game
+Spectate.YoureSpectatingAsAGhost: You're spectating (as a ghost)
+Spectate.SpectatingRoamFreelyAsA: <color=#9FD8FF>Spectating: roam freely as a ghost. You see everyone's role in meetings</color>
+
+# ── LobbyView ──
+LobbyView.HostSettingsHaveNotArrived: Host settings have not arrived yet
+
+# ── MapVariants ──
+MapVariants.Title: Map variant
+MapVariants.Normal: Normal
+MapVariants.Mirrored: Mirrored
+MapVariants.Variant: Variant
+
+# ── PresetLabel ──
+PresetLabel.CustomName: Custom
+
+# ── PresetPage ──
+PresetPage.TabName: Presets
+PresetPage.Description: Save and load settings by name. Export / import goes through the MRP_Presets folder on the desktop.
+PresetPage.NameForANewPreset: Name for a new preset
+PresetPage.SaveCurrent: Save current
+PresetPage.Import: Import
+PresetPage.OpenFolder: Open folder
+PresetPage.Load: Load
+PresetPage.Export: Export
+PresetPage.Delete: Delete
+PresetPage.NoSavedPresets: No saved presets
+PresetPage.Really: Really?
+PresetPage.ShareFolder: Share folder: {dir}
+PresetPage.OnlyTheHostCanLoad: Only the host can load presets
+PresetPage.PressAgainToDelete: Press again to delete "{name}"
+
+# ── PresetStore ──
+PresetStore.NamesLettersDigitsAndUp: Names: letters, digits, _ and -, up to 30
+PresetStore.SavedTheCurrentSettingsAs: Saved the current settings as "{name}"
+PresetStore.NoPreset: No preset "{name}"
+PresetStore.CouldntRead: Couldn't read "{name}"
+PresetStore.Loaded: Loaded "{name}"
+PresetStore.Deleted: Deleted "{name}"
+PresetStore.ExportedTo: Exported "{name}" to {shareDir}
+PresetStore.CouldntExport: Couldn't export: {message}
+PresetStore.ImportedSkippedFrom: Imported {added} (skipped {skipped}) from {shareDir}
+PresetStore.CouldntImport: Couldn't import: {message}
+
+# ── Registry ──
+Registry.Chance: Chance
+Registry.Count: Count
+Registry.CrewmatesCanHaveIt: Crewmates can have it
+Registry.ImpostorsCanHaveIt: Impostors can have it
+Registry.NeutralsCanHaveIt: Neutrals can have it
+
+# ── RoleMenu ──
+RoleMenu.TabName: Roles
+RoleMenu.RoleCountAndChancePress: Role count and chance. Press a name to open its settings.\nHold ± to keep changing (or use the wheel; right-click toggles 0% / 100%).\nEnabled: {enabledCount} / {count}
+RoleMenu.Impostor: Impostor
+RoleMenu.Neutral: Neutral
+RoleMenu.Crewmate: Crewmate
+RoleMenu.Addons: Addons
+RoleMenu.All: All
+RoleMenu.EnabledOnly: Enabled only
+RoleMenu.NothingMatches: Nothing matches "{q}".
+RoleMenu.Undo: Undo
+RoleMenu.NothingMatches2: Nothing matches
+RoleMenu.NoMatchingRoles: No matching roles
+RoleMenu.Breadcrumb: {a} › {b}
+RoleMenu.SearchCount: "{q}": {total}
+RoleMenu.SearchTabCount: {tab} {n}
+RoleMenu.SearchSeparator:  · 
+RoleMenu.SearchClearHint: Clear the search box to go back
+RoleMenu.AllPercent: All {pct}
+RoleMenu.TeamPercent: {team} {pct}
+
+# ── SettingsMenu ──
+SettingsMenu.MRP: MRP
+SettingsMenu.SearchAllTabs: Search all tabs
+SettingsMenu.MoreRolesPlusSettingsSent: More Roles Plus settings. Sent to everyone when you close this menu.
+
+# ── VanillaGame ──
+VanillaGame.TabName: Game
+
+# ── AfkSettings ──
+AfkSettings.Title: AFK
+AfkSettings.Action: Players who go AFK in a game
+AfkSettings.LeaveThem: Leave them
+AfkSettings.TellTheHost: Tell the host
+AfkSettings.KillThem: Kill them
+AfkSettings.KickThem: Kick them
+AfkSettings.Seconds: Seconds until AFK
+
+# ── AfkGuard ──
+AfkGuard.YoureBack: You're back
+AfkGuard.YoullBeMarkedAFKIn: You'll be marked AFK in 20 seconds unless you move
+AfkGuard.IsAFK: {name} is AFK
+AfkGuard.WasKilledForBeingAFK: {name} was killed for being AFK
+AfkGuard.TheHostCantBeKicked: The host can't be kicked
+AfkGuard.WasKickedForBeingAFK: {name} was kicked for being AFK
+
+# ── Command ──
+Command.help: List the commands you can use
+Command.id: Everyone's number and name
+Command.myrole: Your role and what it does (in game)
+Command.roles: List roles / describe one
+Command.roles.Usage: [role]
+Command.now: Current More Roles Plus settings
+Command.rename: Change your name (lobby)
+Command.rename.Usage: <name>
+Command.color: Change your color (lobby). #RRGGBB for any color, two colors for a gradient (direction 0=horizontal 1=vertical 2,3=diagonal, blur 0=sharp to 100, edge position 0-100)
+Command.color.Usage: <number|color name|#RRGGBB [#RRGGBB [direction [blur [edge]]]]|reset>
+Command.death: How you (or someone) died (after you die)
+Command.death.Usage: [number]
+Command.last: Last game's result (roles and causes of death)
+Command.spectate: Toggle spectating the next game (lobby)
+Command.dump: Save logs to MRP_Logs on the desktop for bug reports (PC)
+Command.winner: Last game's winners
+Command.lang: Reload the text files (Language folder). "open" opens the folder (PC)
+Command.lang.Usage: [open]
+Command.start: Start the game (skips the countdown if counting)
+Command.cancel: Cancel the start countdown (or press Enter again)
+Command.end: Abort the game with no winner (Shift+L+Enter)
+Command.meet: Call a meeting / close the current one (Shift+M+Enter)
+Command.setrole: Change someone's role (yourself if omitted). In the lobby, reserves the role for the next game
+Command.setrole.Usage: <role> [number]
+Command.kill: Kill someone (yourself if omitted, Shift+E+Enter)
+Command.kill.Usage: [number]
+Command.revive: Revive someone (yourself if omitted)
+Command.revive.Usage: [number]
+Command.kick: Kick someone out of the room
+Command.kick.Usage: <number>
+Command.ban: Ban someone and add them to the ban list
+Command.ban.Usage: <number>
+Command.banlist: Show the ban list
+Command.unban: Remove someone from the ban list
+Command.unban.Usage: <list number|friend code>
+Command.cjclear: Forget who played the previous games
+Command.say: Show a message to everyone
+Command.say.Usage: <message>
+Command.preset: Save / load settings by name
+Command.preset.Usage: [save|load|del <name>]
+Command.vip: VIP list: list / add / remove (counts as whitelisted, skipped by chat moderation)
+Command.vip.Usage: [add <number> | del <list number>]
+Command.whitelist: Whitelist: list / add / remove (turn it on in settings)
+Command.whitelist.Usage: [add <number> | del <list number>]
+Command.devhelp: List the developer commands
+Command.devhelp.Usage: [word]
+
+# ── ChatCommands ──
+ChatCommands.OnlyTheHostCanUse: Only the host can use this
+ChatCommands.Host: - Host -
+ChatCommands.Developer: - Developer -
+ChatCommands.Everyone: - Everyone -
+ChatCommands.TheHostHasMoreCommands: (The host has more commands)
+ChatCommands.Failed: Failed ({error})
+
+# ── ChatGuardSettings ──
+ChatGuardSettings.Title: Chat moderation
+ChatGuardSettings.BanWords: Kick players who say a banned word (BanWords.txt)
+ChatGuardSettings.StartSpam: Kick players who keep asking to start in the lobby
+ChatGuardSettings.Times: Kick on the Nth time
+
+# ── ChatGuard ──
+ChatGuard.AskingToStart: asking to start
+ChatGuard.BannedWord: banned word
+ChatGuard.KickedTimes: Kicked {name} ({why}, {n} times)
+ChatGuard.KickedAt: {name}: {why} ({n}/{limit}, kicked at {limit})
+
+# ── HostActions ──
+HostActions.NotInGame: Only during a game
+HostActions.NotInARoom: Not in a room
+HostActions.Dead:  (dead)
+HostActions.OnlyInTheLobby: Only in the lobby
+HostActions.CountdownSkipped: Countdown skipped
+HostActions.AlreadyStarting: Already starting
+HostActions.StartingTheGame: Starting the game
+HostActions.NotCountingDown: Not counting down
+HostActions.StartCancelled: Start cancelled
+HostActions.GameAborted: Game aborted
+HostActions.TheGameIsAlreadyEnding: The game is already ending
+HostActions.MeetingClosed: Meeting closed
+HostActions.WaitUntilTheEjectionIs: Wait until the ejection is over
+HostActions.WaitUntilTheGameHas: Wait until the game has begun
+HostActions.MeetingCalled: Meeting called
+HostActions.UnknownRoleRoles: Unknown role. Roles: {roleNames}
+HostActions.WillBeInTheNext: {name} will be {role} in the next game
+HostActions.IsNow: {name} is now {role}
+HostActions.AlreadyDead: Already dead
+HostActions.Killed: Killed {name}
+HostActions.NotDead: Not dead
+HostActions.Revived: Revived {name}
+HostActions.NoPlayerSeeId: No player {arg} (see /id)
+
+# ── InfoCommands ──
+InfoCommands.OnlyDuringAGameSee: Only during a game (see /l for the last game)
+InfoCommands.OnlyAfterYouDie: Only after you die
+InfoCommands.NoPlayerSeeId: No player {arg} (see /id)
+InfoCommands.IsAlive: {name} is alive
+InfoCommands.CauseUnknown: {name}: cause unknown
+InfoCommands.NoGamePlayedYet: No game played yet
+InfoCommands.OnlyDuringAGame: Only during a game
+InfoCommands.NoRole: No role
+InfoCommands.Addon: Addon
+InfoCommands.NoRoleCalled: No role called {arg}
+InfoCommands.Addons: Addons
+InfoCommands.RForDetails: (/r <role or addon> for details)
+InfoCommands.Crew: Crew
+InfoCommands.Impostor: Impostor
+InfoCommands.Neutral: Neutral
+
+# ── JoinSettings ──
+JoinSettings.Title: Joining
+JoinSettings.UseBanList: Keep banned players out
+JoinSettings.Whitelist: Only let whitelisted players in
+JoinSettings.Consecutive: Keep out players from the previous game
+JoinSettings.ConsecutiveGames: How many past games to check
+
+# ── JoinLists ──
+JoinLists.HasNoIDSoThe: {name} has no ID, so the whitelist can't check them
+JoinLists.IsOnTheBanList: {name} is on the ban list and was kept out
+JoinLists.IsNotOnTheWhitelist: {name} is not on the whitelist and was kept out
+JoinLists.PlayedThePreviousGameAnd: {name} played the previous game and was kept out
+JoinLists.ForgotWhoPlayedThePrevious: Forgot who played the previous games
+JoinLists.NoPlayerSeeId: No player {arg} (see /id)
+JoinLists.YouCantPickYourself: You can't pick yourself
+JoinLists.OnlyInAnOnlineRoom: Only in an online room
+JoinLists.AddAPlayerNumberSee: Add a player number (see /id)
+JoinLists.BannedAddedToTheList: Banned {name} (added to the list)
+JoinLists.Kicked: Kicked {name}
+JoinLists.TheBanListIsEmpty: The ban list is empty
+JoinLists.Unbanned: Unbanned
+JoinLists.TheWhitelist: the whitelist
+JoinLists.TheVIPList: the VIP list
+JoinLists.OnlyInAnOnlineRoom2: Only in an online room (needs friend codes)
+JoinLists.HasNoID: {name} has no ID
+JoinLists.IsAlreadyListed: {name} is already listed
+JoinLists.AddedTo: Added {name} to {what}
+JoinLists.RemovedFrom: Removed from {what}
+JoinLists.ListAddDel: {cmd} (list), {cmd} add <number>, {cmd} del <list number or friend code>
+JoinLists.AddAListNumberOr: Add a list number or friend code
+JoinLists.IsNotOnTheList: {arg} is not on the list
+JoinLists.ListIsEmpty: {list} is empty
+
+# ── LobbyTools ──
+LobbyTools.OnlyLobby: Only in the lobby
+LobbyTools.FromTheHost: <color=#FF5050>From the host</color>: {text}
+LobbyTools.AddAMessage: Add a message
+LobbyTools.NotInARoom: Not in a room
+LobbyTools.NamesMustBe1Characters: Names must be 1-{maxName} characters
+LobbyTools.TheHostHasTurnedOff: The host has turned off name and color changes
+LobbyTools.RenamedTo: Renamed to {name}
+LobbyTools.AskedTheHostToRename: Asked the host to rename you to {name}
+LobbyTools.BackToTheGamesColor: Back to the game's color
+LobbyTools.UseRRGGBBEG00B7FF: Use #RRGGBB (e.g. #00B7FF). Add a second color for a gradient (e.g. #00B7FF #FF4FA0)
+LobbyTools.usage: /preset (list), /preset save|load|del|export <name>, /preset import (also in the Presets tab of the settings menu)
+LobbyTools.NoSavedPresets: No saved presets
+LobbyTools.ColorGradient: Your color is now a gradient #{color} → #{color2}
+LobbyTools.ColorSet: Your color is now #{color}
+LobbyTools.ColorHowTo: Use a number (0-{max}) or a color name: {names}
+LobbyTools.ColorChanging: Changing your color to {color} (or a free one if taken)
+
+# ── LogDump ──
+LogDump.OnAndroidUseShareLogs: On Android, use "Share logs" in the launcher
+LogDump.SavedTheLogsFiles: Saved the logs ({n} files): {path}
+LogDump.CouldntSaveTheLogs: Couldn't save the logs: {message}
+
+# ── HostSettings ──
+HostSettings.Title: Host controls
+HostSettings.EnterToStart: Press Enter in the lobby to start (PC)
+HostSettings.PlayersCanRename: Players can change name and color with /rename /color
+HostSettings.StartSeconds: Start countdown
+HostSettings.NoGameEnd: Never end the game automatically (end it with /end)
+
+# ── WhisperSettings ──
+WhisperSettings.Title: Whispers
+WhisperSettings.Enabled: Allow whispers in the lobby and meetings
+WhisperSettings.Announce: Tell everyone when someone whispers (not what)
+
+# ── Whisper ──
+Whisper.YouCantWhisperToThem: You can't whisper to them now
+Whisper.WhisperCancelled: Whisper cancelled
+Whisper.YouCantWhisperToThem2: You can't whisper to them now (your text is back in the box)
+Whisper.Whisper: Whisper
+Whisper.WhisperingTo: Whispering to {name}. Type and send (send empty to cancel)
+Whisper.Announce: {from} whispered to {to}
+
+# ── AutoRejoin ──
+AutoRejoin.BackToTheLobbyIn: Back to the lobby in {sec}s
+
+# ── ClientOptions ──
+ClientOptions.DarkChat: Dark chat
+ClientOptions.ShowEveryonesRoleAtGame: Show everyone's role at game end
+ClientOptions.ReturnToTheLobbyAfter: Return to the lobby after a game
+ClientOptions.RejoinTheRoomAfterA: Rejoin the room after a connection drop
+ClientOptions.SpectateTheNextGameAs: Spectate the next game (as a ghost)
+ClientOptions.DarkMeetingScreen: Dark meeting screen
+ClientOptions.Back: Back
+ClientOptions.MRPOptions: MRP Options
+
+# ── ColorPicker ──
+ColorPicker.MakeAColor: Make a color
+ColorPicker.TypeRRGGBB: Type #RRGGBB
+ColorPicker.ChangeYourColorOutsideA: Change your color outside a game (in the lobby)
+ColorPicker.TheHostHasTurnedOff: The host has turned off name and color changes
+ColorPicker.Blur: Blur
+ColorPicker.Edge: Edge
+ColorPicker.OneColor: 1 color
+ColorPicker.Horizontal: Horizontal
+ColorPicker.Vertical: Vertical
+ColorPicker.Diagonal: Diagonal
+ColorPicker.Diagonal2: Diagonal 2
+
+# ── CustomColors ──
+CustomColors.Red: Red
+CustomColors.Vermilion: Vermilion
+CustomColors.Orange: Orange
+CustomColors.Amber: Amber
+CustomColors.Yellow: Yellow
+CustomColors.YellowGreen: Yellow Green
+CustomColors.Lime: Lime
+CustomColors.PaleGreen: Pale Green
+CustomColors.Green: Green
+CustomColors.DarkGreen: Dark Green
+CustomColors.Mint: Mint
+CustomColors.Teal: Teal
+CustomColors.Cyan: Cyan
+CustomColors.LightBlue: Light Blue
+CustomColors.SkyBlue: Sky Blue
+CustomColors.Blue: Blue
+CustomColors.Indigo: Indigo
+CustomColors.Navy: Navy
+CustomColors.Violet: Violet
+CustomColors.Purple: Purple
+CustomColors.Lavender: Lavender
+CustomColors.Magenta: Magenta
+CustomColors.Crimson: Crimson
+CustomColors.Pink: Pink
+CustomColors.Rose: Rose
+CustomColors.Maroon: Maroon
+CustomColors.Brown: Brown
+CustomColors.Ochre: Ochre
+CustomColors.Beige: Beige
+CustomColors.White: White
+CustomColors.Gray: Gray
+CustomColors.DarkGray: Dark Gray
+CustomColors.Black: Black
+CustomColors.LightColor: Light {color}
+CustomColors.DarkColor: Dark {color}
+
+# ── EndSummary ──
+EndSummary.Results: <b>Results</b>\n
+
+# ── SettingsOverlay ──
+SettingsOverlay.GameSettings: <b>Game settings</b>\n
+SettingsOverlay.MoreRolesPlus: <b>More Roles Plus</b>\n
+
+# ── BombFuse ──
+BombFuse.OnlyWhileAlive: Only while alive
+BombFuse.TooManyBombs: Too many bombs
+BombFuse.Placed: Bomb placed (radius {radius}, explodes in {seconds}s)
+
+# ── CrewGrip ──
+CrewGrip.TAPUpperRight: TAP upper right
+CrewGrip.MASHUpperRight: MASH upper right
+CrewGrip.MASHSPACE: MASH SPACE
+CrewGrip.GRAB: GRAB
+CrewGrip.MASH: MASH
+CrewGrip.LastWallTapTheUpper: Last wall! Tap the upper right when the ring meets it!
+CrewGrip.LastWallSpaceClickWhen: Last wall! Space/Click when the ring meets it!
+CrewGrip.TheWindIsFierceMash: The wind is fierce! Mash the upper right hard!
+CrewGrip.TheWindIsFierceMash2: The wind is fierce! Mash Space/Click hard!
+CrewGrip.TapTheUpperRightWhen: Tap the upper right when the ring meets the corner!
+CrewGrip.SpaceClickWhenTheRing: Space/Click when the ring meets the corner!
+CrewGrip.MashTheUpperRightTo: Mash the upper right to climb back!
+CrewGrip.MashSpaceClickToClimb: Mash Space/Click to climb back!
+
+# ── HammerSwing ──
+HammerSwing.OnlyWhileAlive: Only while alive
+HammerSwing.AlreadySwinging: Already swinging
+HammerSwing.HammeredThePortalDevice: Hammered the portal device
+HammerSwing.NoWallThatWay: No wall that way
+HammerSwing.HammerHit: Hammer hit
+
+# ── SandboxCommands ──
+SandboxCommands.Hint: Practice: use the buttons or type /hammer to hit the wall you are facing (breaks on the 3rd hit), /blast to drop a bomb at your feet, /fire to set the floor at your feet on fire, /water to spray water the way you are facing, /flood to keep pouring water at your feet, /wall to put up a wall in front of you (/wall 0 = horizontal, /wall 90 = vertical)
+SandboxCommands.OnlyDuringAGame: Only during a game
+SandboxCommands.Hammer: Hammer
+SandboxCommands.Blast: Blast
+SandboxCommands.Ignite: Ignite
+SandboxCommands.Water: Water
+SandboxCommands.Flood: Flood
+SandboxCommands.Wall: Wall
+
+# ── TerrainApi ──
+TerrainApi.TooFarAway: Too far away
+TerrainApi.OnlyWhileAlive: Only while alive
+TerrainApi.OnlyDuringAGame: Only during a game
+TerrainApi.NotReadyYet: Not ready yet
+TerrainApi.YourRoleCantDoThat: Your role can't do that
+
+# ── TerrainProbe ──
+TerrainProbe.Test: Test
+
+# ── VersionCheck ──
+VersionCheck.Checking: {name} (checking)
+VersionCheck.NoMRP: {name} (no MRP)
+VersionCheck.DifferentNativeModule: {name} (different native module)
+VersionCheck.DifferentVersion: {name} (different version: {version})
+
+# ── BlockStartPatch ──
+BlockStartPatch.CheckingTheVersionOfPlayers: Checking the version of players who just joined. Starting once done
+BlockStartPatch.msg: Everyone needs the same More Roles Plus version:\n
+
+# ── MapSettings ──
+MapSettings.Title: Map
+MapSettings.Mirror: Mirror the map left to right
+
+# ── LangFiles ──
+LangFiles.Reloaded: Reloaded the texts (edited: {mod} mod, {vanilla} vanilla)\nReopen any open menu to see the change\n{path}
+LangFiles.Opened: Opened the folder: {path}
+LangFiles.OpenOnlyPc: Can't open the folder on this device: {path}

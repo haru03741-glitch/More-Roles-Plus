@@ -350,17 +350,17 @@ internal static class CustomColors
     }
 
     // 色の名前 (いちばん近い名前の付いた色。近さは人の見え方に近い Lab の距離で測る)
-    private static readonly (string Ja, string En, uint Rgb)[] Names =
+    private static readonly (string Key, uint Rgb)[] Names =
     {
-        ("赤", "Red", 0xE60012), ("朱色", "Vermilion", 0xEB6101), ("オレンジ", "Orange", 0xF39800), ("山吹色", "Amber", 0xF8B500),
-        ("黄色", "Yellow", 0xF5EB3C), ("黄緑", "Yellow Green", 0xB8D200), ("ライム", "Lime", 0x7BE000), ("薄緑", "Pale Green", 0x98D98E),
-        ("緑", "Green", 0x00A040), ("深緑", "Dark Green", 0x005A2E), ("ミント", "Mint", 0x7FE0C0), ("青緑", "Teal", 0x00A497),
-        ("シアン", "Cyan", 0x20E0E8), ("水色", "Light Blue", 0x68C9F0), ("空色", "Sky Blue", 0x2CA9E1), ("青", "Blue", 0x1F4FE0),
-        ("藍色", "Indigo", 0x1F3A8C), ("紺", "Navy", 0x0F1F4A), ("菫色", "Violet", 0x8A3CF0), ("紫", "Purple", 0x7A3EB1),
-        ("藤色", "Lavender", 0xB9A2E0), ("マゼンタ", "Magenta", 0xE020D0), ("赤紫", "Crimson", 0xC2185B), ("桃色", "Pink", 0xF5A3C7),
-        ("ローズ", "Rose", 0xE85298), ("えんじ", "Maroon", 0x8B1A2E), ("茶色", "Brown", 0x7B4A12), ("黄土色", "Ochre", 0xC39143),
-        ("ベージュ", "Beige", 0xE8D3A9), ("白", "White", 0xF5F5F5), ("灰色", "Gray", 0x8C8C8C), ("濃い灰色", "Dark Gray", 0x4A4A4A),
-        ("黒", "Black", 0x1A1A1A),
+        ("CustomColors.Red", 0xE60012), ("CustomColors.Vermilion", 0xEB6101), ("CustomColors.Orange", 0xF39800), ("CustomColors.Amber", 0xF8B500),
+        ("CustomColors.Yellow", 0xF5EB3C), ("CustomColors.YellowGreen", 0xB8D200), ("CustomColors.Lime", 0x7BE000), ("CustomColors.PaleGreen", 0x98D98E),
+        ("CustomColors.Green", 0x00A040), ("CustomColors.DarkGreen", 0x005A2E), ("CustomColors.Mint", 0x7FE0C0), ("CustomColors.Teal", 0x00A497),
+        ("CustomColors.Cyan", 0x20E0E8), ("CustomColors.LightBlue", 0x68C9F0), ("CustomColors.SkyBlue", 0x2CA9E1), ("CustomColors.Blue", 0x1F4FE0),
+        ("CustomColors.Indigo", 0x1F3A8C), ("CustomColors.Navy", 0x0F1F4A), ("CustomColors.Violet", 0x8A3CF0), ("CustomColors.Purple", 0x7A3EB1),
+        ("CustomColors.Lavender", 0xB9A2E0), ("CustomColors.Magenta", 0xE020D0), ("CustomColors.Crimson", 0xC2185B), ("CustomColors.Pink", 0xF5A3C7),
+        ("CustomColors.Rose", 0xE85298), ("CustomColors.Maroon", 0x8B1A2E), ("CustomColors.Brown", 0x7B4A12), ("CustomColors.Ochre", 0xC39143),
+        ("CustomColors.Beige", 0xE8D3A9), ("CustomColors.White", 0xF5F5F5), ("CustomColors.Gray", 0x8C8C8C), ("CustomColors.DarkGray", 0x4A4A4A),
+        ("CustomColors.Black", 0x1A1A1A),
     };
     private static (float L, float A, float B)[] _namesLab;
 
@@ -402,15 +402,15 @@ internal static class CustomColors
             float dl = l - n.L, da = a - n.A, db = b - n.B, d = dl * dl + da * da + db * db;
             if (d < bestD) { bestD = d; best = i; }
         }
-        var (ja, en, _) = Names[best];
+        var name = new Text(Names[best].Key);
         var nb = _namesLab[best];
         // 色みのある名前には、名前の色より目立って明るい / 暗い時に言葉を足す (白・灰色・黒には足さない)
         if (nb.A * nb.A + nb.B * nb.B >= 225f)
         {
-            if (l - nb.L >= 15f) return new Text("明るい" + ja, "Light " + en);
-            if (l - nb.L <= -15f) return new Text("暗い" + ja, "Dark " + en);
+            if (l - nb.L >= 15f) return new Text("CustomColors.LightColor").With("color", name);
+            if (l - nb.L <= -15f) return new Text("CustomColors.DarkColor").With("color", name);
         }
-        return new Text(ja, en);
+        return name;
     }
 
     // 出ている人形を全部塗り直す (歩いている人・ロビーのホストの顔・会議の名札など。人形ごとの色番号のまま塗る)。

@@ -762,7 +762,6 @@ internal static class CrewGrip
         if (_tapBtn) _tapBtn.gameObject.SetActive(kind != 0);
         if (_keyTf) _keyTf.gameObject.SetActive(kind != 0);
         if (kind == 0 || !_prompt) return;
-        bool ja = Lang.IsJapanese;
         // 3 = 口の際の輪・4 = 口の際の連打 (札は 1/2 と同じ・案内文だけ変える)
         bool rim = kind >= 3;
         if (rim) kind -= 2;
@@ -771,25 +770,25 @@ internal static class CrewGrip
             // つかむ時は名前の上・連打の間はゲージ (頭の上 1.35) のさらに上
             _keyTf.localPosition = FxMath.V3(0f, kind == 1 ? 1.5f : 1.8f, -800f);
             string key = Touch
-                ? (kind == 1 ? (ja ? "右上をタップ" : "TAP upper right") : (ja ? "右上を連打" : "MASH upper right"))
-                : (kind == 1 ? "SPACE" : (ja ? "SPACE 連打" : "MASH SPACE"));
+                ? (kind == 1 ? Tr.Get("CrewGrip.TAPUpperRight") : Tr.Get("CrewGrip.MASHUpperRight"))
+                : (kind == 1 ? "SPACE" : Tr.Get("CrewGrip.MASHSPACE"));
             float w = Touch ? 3.0f : kind == 1 ? 1.7f : 2.6f;
             _keyText.text = key;
             _keyText.rectTransform.sizeDelta = FxMath.V2(w, 0.6f);
             _keyFill.size = FxMath.V2(w, 0.6f);
             _keyRim.size = FxMath.V2(w + 0.12f, 0.72f);
         }
-        if (_tapText) _tapText.text = kind == 1 ? (ja ? "つかむ" : "GRAB") : (ja ? "連打" : "MASH");
+        if (_tapText) _tapText.text = kind == 1 ? Tr.Get("CrewGrip.GRAB") : Tr.Get("CrewGrip.MASH");
         if (rim)
         {
             _prompt.text = kind == 1
-                ? (Touch ? (ja ? "最後の壁! 輪が重なったら右上をタップ!" : "Last wall! Tap the upper right when the ring meets it!") : (ja ? "最後の壁! 輪が重なったら スペース/クリック!" : "Last wall! Space/Click when the ring meets it!"))
-                : (Touch ? (ja ? "風が強い! 右上を全力で連打!" : "The wind is fierce! Mash the upper right hard!") : (ja ? "風が強い! スペース/クリックを全力で連打!" : "The wind is fierce! Mash Space/Click hard!"));
+                ? (Touch ? Tr.Get("CrewGrip.LastWallTapTheUpper") : Tr.Get("CrewGrip.LastWallSpaceClickWhen"))
+                : (Touch ? Tr.Get("CrewGrip.TheWindIsFierceMash") : Tr.Get("CrewGrip.TheWindIsFierceMash2"));
             return;
         }
         _prompt.text = kind == 1
-            ? (Touch ? (ja ? "輪が角に重なったら画面の右上をタップ!" : "Tap the upper right when the ring meets the corner!") : (ja ? "輪が角に重なったら スペース/クリック!" : "Space/Click when the ring meets the corner!"))
-            : (Touch ? (ja ? "画面の右上を連打して戻れ!" : "Mash the upper right to climb back!") : (ja ? "スペース/クリック連打で戻れ!" : "Mash Space/Click to climb back!"));
+            ? (Touch ? Tr.Get("CrewGrip.TapTheUpperRightWhen") : Tr.Get("CrewGrip.SpaceClickWhenTheRing"))
+            : (Touch ? Tr.Get("CrewGrip.MashTheUpperRightTo") : Tr.Get("CrewGrip.MashSpaceClickToClimb"));
     }
 
     private static bool EnsureArt(PlayerControl lp)

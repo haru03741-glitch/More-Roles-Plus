@@ -11,13 +11,13 @@ using MoreRolesPlus.Options;
 
 namespace MoreRolesPlus.Commands;
 
-[Settings(Tab.General, "入室", "Joining", order: -90)]
+[Settings(Tab.General, "JoinSettings.Title", order: -90)]
 public static class JoinSettings
 {
-    public static readonly BoolOpt UseBanList = new("BAN した人を入れない", "Keep banned players out", true);
-    public static readonly BoolOpt Whitelist = new("ホワイトリストの人だけ入れる", "Only let whitelisted players in", false);
-    public static readonly BoolOpt Consecutive = new("前の試合にいた人を続けて入れない", "Keep out players from the previous game", false);
-    public static readonly IntOpt ConsecutiveGames = new("何試合前までを見るか", "How many past games to check", 1, 1, 5);
+    public static readonly BoolOpt UseBanList = new("JoinSettings.UseBanList", true);
+    public static readonly BoolOpt Whitelist = new("JoinSettings.Whitelist", false);
+    public static readonly BoolOpt Consecutive = new("JoinSettings.Consecutive", false);
+    public static readonly IntOpt ConsecutiveGames = new("JoinSettings.ConsecutiveGames", 1, 1, 5);
 }
 
 // ホストの手元にある BAN 一覧・ホワイトリスト・VIP 一覧 (BepInEx/config/MoreRolesPlus/ の BanList.txt・WhiteList.txt・VipList.txt)。
@@ -123,27 +123,27 @@ internal static class JoinLists
         string name = c.PlayerName;
         if (fc.Length == 0 && puid.Length == 0)
         {
-            if (JoinSettings.Whitelist) Notify(new Text($"{name} は身元が取れないので、ホワイトリストで判断できません", $"{name} has no ID, so the whitelist can't check them"));
+            if (JoinSettings.Whitelist) Notify(new Text("JoinLists.HasNoIDSoThe").With("name", name));
             return;
         }
         if (JoinSettings.UseBanList && Bans.Find(fc, puid) != null)
         {
             AmongUsClient.Instance.KickPlayer(c.Id, true);
-            Notify(new Text($"{name} は BAN 一覧にいるので入れませんでした", $"{name} is on the ban list and was kept out"));
+            Notify(new Text("JoinLists.IsOnTheBanList").With("name", name));
             return;
         }
         bool trusted = White.Find(fc, puid) != null || Vips.Find(fc, puid) != null;
         if (JoinSettings.Whitelist && !trusted)
         {
             AmongUsClient.Instance.KickPlayer(c.Id, false);
-            Notify(new Text($"{name} はホワイトリストにいないので入れませんでした", $"{name} is not on the whitelist and was kept out"));
+            Notify(new Text("JoinLists.IsNotOnTheWhitelist").With("name", name));
             return;
         }
         // ホワイトリストと VIP の人は続けて入ってもよい
         if (JoinSettings.Consecutive && puid.Length > 0 && !trusted && PlayedRecently(puid))
         {
             AmongUsClient.Instance.KickPlayer(c.Id, false);
-            Notify(new Text($"{name} は前の試合にいたので入れませんでした", $"{name} played the previous game and was kept out"));
+            Notify(new Text("JoinLists.PlayedThePreviousGameAnd").With("name", name));
         }
     }
 
@@ -220,7 +220,7 @@ internal static class JoinLists
     {
         History().Clear();
         SaveHistory();
-        return new Text("前の試合にいた人の記録を消しました", "Forgot who played the previous games");
+        return new Text("JoinLists.ForgotWhoPlayedThePrevious");
     }
 
     // 本編の BAN (人の一覧の BAN ボタン) も含め、BAN した人は一覧に書く
@@ -246,8 +246,8 @@ internal static class JoinLists
         var info = data && byte.TryParse(arg, out byte pid) ? data.GetPlayerById(pid) : null;
         var pc = info != null ? info.Object : null;
         var c = pc ? AmongUsClient.Instance.GetClientFromCharacter(pc) : null;
-        if (c == null) err = new Text($"{arg} 番の人はいません (/id で番号を確認)", $"No player {arg} (see /id)");
-        else if (c.Id == AmongUsClient.Instance.ClientId) { err = new Text("自分は選べません", "You can't pick yourself"); c = null; }
+        if (c == null) err = new Text("JoinLists.NoPlayerSeeId").With("arg", arg);
+        else if (c.Id == AmongUsClient.Instance.ClientId) { err = new Text("JoinLists.YouCantPickYourself"); c = null; }
         return c;
     }
 
@@ -256,19 +256,19 @@ internal static class JoinLists
 
     private static string KickOrBan(string args, bool ban)
     {
-        if (!OnlineRoom) return new Text("オンラインの部屋でだけ使えます", "Only in an online room");
-        if (args.Length == 0) return new Text("番号を付けてください (/id で確認)", "Add a player number (see /id)");
+        if (!OnlineRoom) return new Text("JoinLists.OnlyInAnOnlineRoom");
+        if (args.Length == 0) return new Text("JoinLists.AddAPlayerNumberSee");
         var c = ClientOf(args, out string err);
         if (c == null) return err;
         string name = c.PlayerName;
         AmongUsClient.Instance.KickPlayer(c.Id, ban);
-        return ban ? new Text($"{name} を BAN しました (一覧に書きました)", $"Banned {name} (added to the list)")
-                   : new Text($"{name} を部屋から出しました", $"Kicked {name}");
+        return ban ? new Text("JoinLists.BannedAddedToTheList").With("name", name)
+                   : new Text("JoinLists.Kicked").With("name", name);
     }
 
-    public static string BanList(string _) => ListText(Bans, new Text("BAN 一覧は空です", "The ban list is empty"));
+    public static string BanList(string _) => ListText(Bans, new Text("JoinLists.TheBanListIsEmpty"));
 
-    public static string Unban(string args) => Remove(Bans, args, new Text("BAN を解きました", "Unbanned"));
+    public static string Unban(string args) => Remove(Bans, args, new Text("JoinLists.Unbanned"));
 
     // その人が VIP 一覧にいるか (ホストの端末で使う)
     public static bool IsVip(int clientId)
@@ -280,10 +280,10 @@ internal static class JoinLists
     }
 
     // /wl = 一覧 / /wl add <番号> / /wl del <フレンドコードか一覧の番号>
-    public static string WhiteCmd(string args) => ListCmd(White, "/wl", new Text("ホワイトリスト", "the whitelist"), args);
+    public static string WhiteCmd(string args) => ListCmd(White, "/wl", new Text("JoinLists.TheWhitelist"), args);
 
     // /vip = 一覧 / /vip add <番号> / /vip del <フレンドコードか一覧の番号>
-    public static string VipCmd(string args) => ListCmd(Vips, "/vip", new Text("VIP 一覧", "the VIP list"), args);
+    public static string VipCmd(string args) => ListCmd(Vips, "/vip", new Text("JoinLists.TheVIPList"), args);
 
     private static string ListCmd(ListFile file, string cmd, Text what, string args)
     {
@@ -294,24 +294,24 @@ internal static class JoinLists
         {
             case "":
             case "list":
-                return ListText(file, new Text($"{what}は空です", $"{Cap(what)} is empty"));
+                return ListText(file, new Text("JoinLists.ListIsEmpty").With("list", Cap(what)));
             case "add":
             {
-                if (!OnlineRoom) return new Text("オンラインの部屋でだけ使えます (フレンドコードが要る)", "Only in an online room (needs friend codes)");
+                if (!OnlineRoom) return new Text("JoinLists.OnlyInAnOnlineRoom2");
                 var c = ClientOf(rest, out string err);
                 if (c == null) return err;
                 var (fc, puid) = Keys(c);
-                if (fc.Length == 0 && puid.Length == 0) return new Text($"{c.PlayerName} は身元が取れません", $"{c.PlayerName} has no ID");
-                if (file.Find(fc, puid) != null) return new Text($"{c.PlayerName} はもう入っています", $"{c.PlayerName} is already listed");
+                if (fc.Length == 0 && puid.Length == 0) return new Text("JoinLists.HasNoID").With("name", c.PlayerName);
+                if (file.Find(fc, puid) != null) return new Text("JoinLists.IsAlreadyListed").With("name", c.PlayerName);
                 file.Get().Add(new Entry { Fc = fc, Puid = puid, Name = Clean(c.PlayerName) });
                 file.Save();
-                return new Text($"{c.PlayerName} を{what}に入れました", $"Added {c.PlayerName} to {what}");
+                return new Text("JoinLists.AddedTo").With("name", c.PlayerName).With("what", what);
             }
             case "del":
             case "remove":
-                return Remove(file, rest, new Text($"{what}から外しました", $"Removed from {what}"));
+                return Remove(file, rest, new Text("JoinLists.RemovedFrom").With("what", what));
             default:
-                return new Text($"{cmd} (一覧)・{cmd} add <番号>・{cmd} del <一覧の番号かフレンドコード>", $"{cmd} (list), {cmd} add <number>, {cmd} del <list number or friend code>");
+                return new Text("JoinLists.ListAddDel").With("cmd", cmd);
         }
     }
 
@@ -334,7 +334,7 @@ internal static class JoinLists
     private static string Remove(ListFile f, string arg, string done)
     {
         var list = f.Get();
-        if (arg.Length == 0) return new Text("一覧の番号かフレンドコードを付けてください", "Add a list number or friend code");
+        if (arg.Length == 0) return new Text("JoinLists.AddAListNumberOr");
         Entry hit = null;
         if (int.TryParse(arg, out int n) && n >= 1 && n <= list.Count) hit = list[n - 1];
         else
@@ -343,7 +343,7 @@ internal static class JoinLists
             foreach (var e in list)
                 if (e.Fc == key || e.Puid == key) { hit = e; break; }
         }
-        if (hit == null) return new Text($"{arg} は一覧にありません", $"{arg} is not on the list");
+        if (hit == null) return new Text("JoinLists.IsNotOnTheList").With("arg", arg);
         list.Remove(hit);
         f.Save();
         return $"{done}: {(hit.Name.Length > 0 ? hit.Name : Label(hit))}";

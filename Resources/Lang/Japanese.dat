@@ -1,0 +1,564 @@
+# ── 解体屋 (Demolisher) ──
+Demolisher.Name: 解体屋
+Demolisher.Blurb: ハンマーで壁を壊して道を作れ
+Demolisher.SmashCooldown: ハンマーの待ち時間
+Demolisher.SmashUses: ハンマーの回数 (0 = 何回でも)
+Demolisher.Hammer: ハンマー
+
+# ── ライター (Lighter) ──
+Lighter.Name: ライター
+Lighter.Blurb: 広い視界で船を見張ろう
+Lighter.VisionMultiplier: 視界の倍率
+
+# ── ポータルメーカー (PortalMaker) ──
+PortalMaker.Name: ポータルメーカー
+PortalMaker.Blurb: 2 つのポータルで船の中をつなげ
+PortalMaker.PlaceCooldown: ポータルを置く待ち時間
+PortalMaker.CanRemove: 置いた後にもう一度押すと消せる
+PortalMaker.Portal: ポータル
+
+# ── 早撃ち (Quickdraw) ──
+Quickdraw.Name: 早撃ち
+Quickdraw.Blurb: 誰よりも早く次を仕留めろ
+Quickdraw.KillCooldown: キルの待ち時間
+
+# ── 道化 (Jester) ──
+Jester.Name: 道化
+Jester.Blurb: みんなをだまして追放されよう
+
+# ── 無法者 (Outlaw) ──
+Outlaw.Name: 無法者
+Outlaw.Blurb: 全員を倒して最後に残れ
+Outlaw.KillCooldown: キルの待ち時間
+
+# ── 生存者 (Survivor) ──
+Survivor.Name: 生存者
+Survivor.Blurb: 最後まで生き延びよう
+
+# ── 鷹の目 (Hawkeye) ──
+Hawkeye.Name: 鷹の目
+Hawkeye.Blurb: 遠くまで見通せる
+Hawkeye.VisionPercent: 視界の広さ
+
+# ── 早業 (Quickhands) ──
+Quickhands.Name: 早業
+Quickhands.Blurb: 次のキルまでの時間が短い
+Quickhands.Reduction: 短くする割合
+
+# ── 敏感 (Sensitive) ──
+Sensitive.Name: 敏感
+Sensitive.Blurb: 誰かが倒されると気配を感じる
+Sensitive.Strength: 光の強さ
+
+# ── VanillaRole ──
+VanillaRole.VanillaRole: 本編の役職
+
+# ── VanillaScientist ──
+VanillaScientist.FallbackName: かがくしゃ
+
+# ── VanillaEngineer ──
+VanillaEngineer.FallbackName: えんじにあ
+
+# ── VanillaNoisemaker ──
+VanillaNoisemaker.FallbackName: のいずめーかー
+
+# ── VanillaTracker ──
+VanillaTracker.FallbackName: とらっかー
+
+# ── VanillaDetective ──
+VanillaDetective.FallbackName: たんてい
+
+# ── VanillaJudge ──
+VanillaJudge.FallbackName: じゃっじ
+
+# ── VanillaGuardianAngel ──
+VanillaGuardianAngel.FallbackName: しゅごてんし
+
+# ── VanillaSpiritGuide ──
+VanillaSpiritGuide.FallbackName: すぴりっとがいど
+
+# ── VanillaShapeshifter ──
+VanillaShapeshifter.FallbackName: しぇいぷしふたー
+
+# ── VanillaPhantom ──
+VanillaPhantom.FallbackName: ふぁんとむ
+
+# ── VanillaViper ──
+VanillaViper.FallbackName: ばいぱー
+
+# ── FxVisibility ──
+FxVisibility.Everyone: 全員
+FxVisibility.NoOne: 誰にも出さない
+FxVisibility.Self: 本人
+FxVisibility.Team: 仲間
+FxVisibility.Target: 相手
+FxVisibility.Nearby: 近くの人
+FxVisibility.Ghosts: 幽霊
+
+# ── GameEnd ──
+GameEnd.GameAborted: 廃村
+GameEnd.TheHostEndedTheGame: ホストが試合を打ち切りました
+GameEnd.Victory: 勝利
+GameEnd.Defeat: 敗北
+GameEnd.ImpostorsWin: インポスターの勝利
+GameEnd.CrewmatesWin: クルーメイトの勝利
+GameEnd.Spectating: 観戦
+GameEnd.Wins: {name}の勝利
+
+# ── MatchLog ──
+MatchLog.KilledBy: {killer} ({killerRole}) に倒された
+MatchLog.DiedWithNoKiller: 倒した人なしで死んだ
+MatchLog.Ejected: 追放された
+MatchLog.SuckedOutIntoSpace: 船外へ吸い出された
+MatchLog.Spectating: 観戦
+MatchLog.Disconnected: 切断した
+MatchLog.AbortedNoWinners: 廃村 (勝者なし)
+MatchLog.NoWinners: 勝者なし
+MatchLog.Alive: 生存
+
+# ── RoleSettings ──
+RoleSettings.Title: 役職
+RoleSettings.Enabled: More Roles Plus の役職を使う
+RoleSettings.GhostsSeeRoles: 死んだら全員の役職が見える (会議)
+RoleSettings.ImpostorsSeeRoles: インポスター同士は役職が見える (会議)
+
+# ── AssignSettings ──
+AssignSettings.Title: 配り方
+AssignSettings.None: なし
+AssignSettings.MaxNeutral: 第三陣営の役職の最大人数
+AssignSettings.MaxNeutralKillers: キルする第三陣営の最大人数
+AssignSettings.MaxRoled: 役職が付く人の最大人数
+AssignSettings.MaxAddonsPerPlayer: 1 人に付くアドオンの最大数
+AssignSettings.Fill: 役職が付かなかった人
+AssignSettings.KeepVanilla: 本編のまま
+AssignSettings.FillFromSameTeamRoles: 同じ陣営の役職で埋める
+AssignSettings.FillNeutralsIncluded: 第三陣営も含めて埋める
+
+# ── RoleDisplay ──
+RoleDisplay.YourTasksDoNotCount: タスクは勝敗に関係ありません
+
+# ── SpectateSettings ──
+SpectateSettings.Title: 観戦
+SpectateSettings.Allow: 観戦を選んだ人を試合の始めから幽霊にする
+
+# ── Spectate ──
+Spectate.ChooseThisInTheLobby: ロビーで選んでください
+Spectate.YoullSpectateTheNextGame: 次の試合を観戦します (幽霊で見るだけ)
+Spectate.YoullPlayTheNextGame: 次の試合に参加します
+Spectate.YoureSpectatingAsAGhost: 観戦中です (幽霊で見るだけ)
+Spectate.SpectatingRoamFreelyAsA: <color=#9FD8FF>観戦中: 幽霊として自由に見て回れます。会議では全員の役職が見えます</color>
+
+# ── LobbyView ──
+LobbyView.HostSettingsHaveNotArrived: ホストの設定をまだ受け取っていません
+
+# ── MapVariants ──
+MapVariants.Title: マップのバリエーション
+MapVariants.Normal: 通常
+MapVariants.Mirrored: 左右反転
+MapVariants.Variant: バリエーション
+
+# ── PresetLabel ──
+PresetLabel.CustomName: カスタム
+
+# ── PresetPage ──
+PresetPage.TabName: プリセット
+PresetPage.Description: 設定に名前を付けて保存・読み込み。書き出し・取り込みは受け渡しのフォルダ (デスクトップの MRP_Presets) を使います。
+PresetPage.NameForANewPreset: 新しいプリセットの名前
+PresetPage.SaveCurrent: 今の設定を保存
+PresetPage.Import: 取り込む
+PresetPage.OpenFolder: フォルダを開く
+PresetPage.Load: 読み込む
+PresetPage.Export: 書き出す
+PresetPage.Delete: 消す
+PresetPage.NoSavedPresets: 保存したプリセットはありません
+PresetPage.Really: 本当に消す
+PresetPage.ShareFolder: 受け渡しのフォルダ: {dir}
+PresetPage.OnlyTheHostCanLoad: 読み込めるのはホストだけです
+PresetPage.PressAgainToDelete: もう一度押すと「{name}」を消します
+
+# ── PresetStore ──
+PresetStore.NamesLettersDigitsAndUp: 名前は文字・数字・_ と - で 30 文字まで
+PresetStore.SavedTheCurrentSettingsAs: 今の設定を「{name}」に保存しました
+PresetStore.NoPreset: 「{name}」はありません
+PresetStore.CouldntRead: 「{name}」を読めませんでした
+PresetStore.Loaded: 設定を「{name}」にしました
+PresetStore.Deleted: 「{name}」を消しました
+PresetStore.ExportedTo: 「{name}」を書き出しました: {shareDir}
+PresetStore.CouldntExport: 書き出せませんでした: {message}
+PresetStore.ImportedSkippedFrom: {added} 個取り込みました (飛ばした物 {skipped} 個)。置き場: {shareDir}
+PresetStore.CouldntImport: 取り込めませんでした: {message}
+
+# ── Registry ──
+Registry.Chance: 出現率
+Registry.Count: 人数
+Registry.CrewmatesCanHaveIt: クルーに付く
+Registry.ImpostorsCanHaveIt: インポスターに付く
+Registry.NeutralsCanHaveIt: 第三陣営に付く
+
+# ── RoleMenu ──
+RoleMenu.TabName: 役職
+RoleMenu.RoleCountAndChancePress: 役職の人数と出現率。名前を押すと細かい設定が開きます。\n± は長押しで連続 (ホイールも可・右クリックで 0%/100%)。\n出る役職: {enabledCount} / {count}
+RoleMenu.Impostor: インポスター
+RoleMenu.Neutral: 第三陣営
+RoleMenu.Crewmate: クルー
+RoleMenu.Addons: アドオン
+RoleMenu.All: 全部
+RoleMenu.EnabledOnly: 出る役職だけ
+RoleMenu.NothingMatches: 「{q}」に当てはまる設定はありません。
+RoleMenu.Undo: 元に戻す
+RoleMenu.NothingMatches2: 当てはまる設定がありません
+RoleMenu.NoMatchingRoles: 当てはまる役職がありません
+RoleMenu.Breadcrumb: {a} › {b}
+RoleMenu.SearchCount: 「{q}」: {total} 件
+RoleMenu.SearchTabCount: {tab} {n}
+RoleMenu.SearchSeparator: ・
+RoleMenu.SearchClearHint: 検索欄を空にすると元のタブへ戻ります
+RoleMenu.AllPercent: 全部 {pct}
+RoleMenu.TeamPercent: {team} {pct}
+
+# ── SettingsMenu ──
+SettingsMenu.MRP: MRP 全般
+SettingsMenu.SearchAllTabs: 全部のタブから探す
+SettingsMenu.MoreRolesPlusSettingsSent: More Roles Plus の設定。閉じた時に全員へ送られます。
+
+# ── VanillaGame ──
+VanillaGame.TabName: ゲーム設定
+
+# ── AfkSettings ──
+AfkSettings.Title: 放置
+AfkSettings.Action: 試合中に放置した人を
+AfkSettings.LeaveThem: そのまま
+AfkSettings.TellTheHost: ホストに知らせる
+AfkSettings.KillThem: 倒す
+AfkSettings.KickThem: 部屋から出す
+AfkSettings.Seconds: 何秒で放置とみなすか
+
+# ── AfkGuard ──
+AfkGuard.YoureBack: 放置ではなくなりました
+AfkGuard.YoullBeMarkedAFKIn: 動かないままだと、あと 20 秒で放置とみなされます
+AfkGuard.IsAFK: {name} が放置しています
+AfkGuard.WasKilledForBeingAFK: {name} を放置で倒しました
+AfkGuard.TheHostCantBeKicked: ホストは部屋から出せません
+AfkGuard.WasKickedForBeingAFK: {name} を放置で部屋から出しました
+
+# ── Command ──
+Command.help: 使えるコマンドの一覧
+Command.id: 全員の番号と名前
+Command.myrole: 自分の役職と説明 (試合中)
+Command.roles: 役職の一覧 / その役職の説明
+Command.roles.Usage: [役職]
+Command.now: 今の MRP の設定
+Command.rename: 自分の名前を変える (ロビー)
+Command.rename.Usage: <名前>
+Command.color: 自分の色を変える (ロビー)。#RRGGBB で好きな色・2 色でグラデーション (向き 0=横 1=縦 2,3=斜め・ぼかし 0=くっきり〜100・境目の位置 0〜100)
+Command.color.Usage: <番号|色の名前|#RRGGBB [#RRGGBB [向き [ぼかし [位置]]]]|reset>
+Command.death: 自分 (番号でその人) の死因 (死んでから)
+Command.death.Usage: [番号]
+Command.last: 前の試合の結果 (全員の役職と死因)
+Command.spectate: 次の試合を観戦する / やめる (ロビー)
+Command.dump: 不具合の報告用にログをデスクトップの MRP_Logs へ保存する (PC)
+Command.winner: 前の試合の勝者
+Command.lang: 文のファイル (Language フォルダ) を読み直す。open でフォルダを開く (PC)
+Command.lang.Usage: [open]
+Command.start: 試合を始める (数え中なら数えを飛ばす)
+Command.cancel: 開始の数えを取りやめる (Enter で始めた時はもう一度 Enter)
+Command.end: 廃村: 勝者なしで試合を打ち切る (Shift+L+Enter)
+Command.meet: 会議を開く / 開いている会議を閉じる (Shift+M+Enter)
+Command.setrole: その人 (省略で自分) の役職を変える。ロビーで打つと次の試合の役職を予約する
+Command.setrole.Usage: <役職> [番号]
+Command.kill: その人 (省略で自分) を倒す (自分は Shift+E+Enter)
+Command.kill.Usage: [番号]
+Command.revive: その人 (省略で自分) を生き返らせる
+Command.revive.Usage: [番号]
+Command.kick: その人を部屋から出す
+Command.kick.Usage: <番号>
+Command.ban: その人を BAN して一覧に書く (次から入れない)
+Command.ban.Usage: <番号>
+Command.banlist: BAN 一覧
+Command.unban: BAN を解く
+Command.unban.Usage: <一覧の番号|フレンドコード>
+Command.cjclear: 前の試合にいた人の記録を消す (続けて入れない設定用)
+Command.say: 全員の画面にお知らせを出す
+Command.say.Usage: <文>
+Command.preset: 設定を名前を付けて保存 / 読み込み
+Command.preset.Usage: [save|load|del <名前>]
+Command.vip: VIP 一覧 / 追加 / 削除 (ホワイトリスト扱い・荒らし対策で数えない)
+Command.vip.Usage: [add <番号> | del <一覧の番号>]
+Command.whitelist: ホワイトリストの一覧 / 追加 / 削除 (使うかは設定で)
+Command.whitelist.Usage: [add <番号> | del <一覧の番号>]
+Command.devhelp: 開発者コマンドの一覧
+Command.devhelp.Usage: [語]
+
+# ── ChatCommands ──
+ChatCommands.OnlyTheHostCanUse: ホストだけが使えます
+ChatCommands.Host: ― ホスト ―
+ChatCommands.Developer: ― 開発者 ―
+ChatCommands.Everyone: ― 全員 ―
+ChatCommands.TheHostHasMoreCommands: (ホスト用のコマンドもあります)
+ChatCommands.Failed: 失敗しました ({error})
+
+# ── ChatGuardSettings ──
+ChatGuardSettings.Title: 荒らし対策
+ChatGuardSettings.BanWords: 禁止語を言った人を部屋から出す (BanWords.txt)
+ChatGuardSettings.StartSpam: ロビーで開始を急かす人を部屋から出す
+ChatGuardSettings.Times: 何回目で出すか
+
+# ── ChatGuard ──
+ChatGuard.AskingToStart: 開始の催促
+ChatGuard.BannedWord: 禁止語
+ChatGuard.KickedTimes: {name} を部屋から出しました ({why} {n} 回目)
+ChatGuard.KickedAt: {name}: {why} {n} 回目 ({limit} 回目で部屋から出します)
+
+# ── HostActions ──
+HostActions.NotInGame: 試合中だけ使えます
+HostActions.NotInARoom: 部屋に入っていません
+HostActions.Dead:  (死亡)
+HostActions.OnlyInTheLobby: ロビーでだけ使えます
+HostActions.CountdownSkipped: 数えを飛ばしました
+HostActions.AlreadyStarting: もう始まっています
+HostActions.StartingTheGame: 試合を始めます
+HostActions.NotCountingDown: 数えていません
+HostActions.StartCancelled: 開始を取りやめました
+HostActions.GameAborted: 廃村にしました
+HostActions.TheGameIsAlreadyEnding: もう試合が終わるところです
+HostActions.MeetingClosed: 会議を閉じました
+HostActions.WaitUntilTheEjectionIs: 追放の場面が終わってから使えます
+HostActions.WaitUntilTheGameHas: 始まりの場面が終わってから使えます
+HostActions.MeetingCalled: 会議を開きました
+HostActions.UnknownRoleRoles: 役職が見つかりません。使える役職: {roleNames}
+HostActions.WillBeInTheNext: 次の試合で {name} を {role} にします
+HostActions.IsNow: {name} を {role} にしました
+HostActions.AlreadyDead: もう死んでいます
+HostActions.Killed: {name} を倒しました
+HostActions.NotDead: 生きています
+HostActions.Revived: {name} を生き返らせました
+HostActions.NoPlayerSeeId: {arg} 番の人はいません (/id で番号を確認)
+
+# ── InfoCommands ──
+InfoCommands.OnlyDuringAGameSee: 試合中だけ使えます (前の試合の死因は /l)
+InfoCommands.OnlyAfterYouDie: 死んでから使えます
+InfoCommands.NoPlayerSeeId: {arg} 番の人はいません (/id で番号を確認)
+InfoCommands.IsAlive: {name} は生きています
+InfoCommands.CauseUnknown: {name}: 死因が分かりません
+InfoCommands.NoGamePlayedYet: まだ試合の記録がありません
+InfoCommands.OnlyDuringAGame: 試合中だけ使えます
+InfoCommands.NoRole: 役職がありません
+InfoCommands.Addon: アドオン
+InfoCommands.NoRoleCalled: {arg} という役職はありません
+InfoCommands.Addons: アドオン
+InfoCommands.RForDetails: (/r <役職名・アドオン名> で説明)
+InfoCommands.Crew: クルー
+InfoCommands.Impostor: インポスター
+InfoCommands.Neutral: 第三陣営
+
+# ── JoinSettings ──
+JoinSettings.Title: 入室
+JoinSettings.UseBanList: BAN した人を入れない
+JoinSettings.Whitelist: ホワイトリストの人だけ入れる
+JoinSettings.Consecutive: 前の試合にいた人を続けて入れない
+JoinSettings.ConsecutiveGames: 何試合前までを見るか
+
+# ── JoinLists ──
+JoinLists.HasNoIDSoThe: {name} は身元が取れないので、ホワイトリストで判断できません
+JoinLists.IsOnTheBanList: {name} は BAN 一覧にいるので入れませんでした
+JoinLists.IsNotOnTheWhitelist: {name} はホワイトリストにいないので入れませんでした
+JoinLists.PlayedThePreviousGameAnd: {name} は前の試合にいたので入れませんでした
+JoinLists.ForgotWhoPlayedThePrevious: 前の試合にいた人の記録を消しました
+JoinLists.NoPlayerSeeId: {arg} 番の人はいません (/id で番号を確認)
+JoinLists.YouCantPickYourself: 自分は選べません
+JoinLists.OnlyInAnOnlineRoom: オンラインの部屋でだけ使えます
+JoinLists.AddAPlayerNumberSee: 番号を付けてください (/id で確認)
+JoinLists.BannedAddedToTheList: {name} を BAN しました (一覧に書きました)
+JoinLists.Kicked: {name} を部屋から出しました
+JoinLists.TheBanListIsEmpty: BAN 一覧は空です
+JoinLists.Unbanned: BAN を解きました
+JoinLists.TheWhitelist: ホワイトリスト
+JoinLists.TheVIPList: VIP 一覧
+JoinLists.OnlyInAnOnlineRoom2: オンラインの部屋でだけ使えます (フレンドコードが要る)
+JoinLists.HasNoID: {name} は身元が取れません
+JoinLists.IsAlreadyListed: {name} はもう入っています
+JoinLists.AddedTo: {name} を{what}に入れました
+JoinLists.RemovedFrom: {what}から外しました
+JoinLists.ListAddDel: {cmd} (一覧)・{cmd} add <番号>・{cmd} del <一覧の番号かフレンドコード>
+JoinLists.AddAListNumberOr: 一覧の番号かフレンドコードを付けてください
+JoinLists.IsNotOnTheList: {arg} は一覧にありません
+JoinLists.ListIsEmpty: {list}は空です
+
+# ── LobbyTools ──
+LobbyTools.OnlyLobby: ロビーでだけ使えます
+LobbyTools.FromTheHost: <color=#FF5050>ホストから</color>: {text}
+LobbyTools.AddAMessage: 言うことを付けてください
+LobbyTools.NotInARoom: 部屋に入っていません
+LobbyTools.NamesMustBe1Characters: 名前は 1〜{maxName} 文字にしてください
+LobbyTools.TheHostHasTurnedOff: この部屋ではホストが名前と色の変更を止めています
+LobbyTools.RenamedTo: 名前を {name} にしました
+LobbyTools.AskedTheHostToRename: 名前を {name} にするようホストに頼みました
+LobbyTools.BackToTheGamesColor: 本編の色に戻しました
+LobbyTools.UseRRGGBBEG00B7FF: #RRGGBB の形で (例 #00B7FF)。2 色目を足すとグラデーション (例 #00B7FF #FF4FA0)
+LobbyTools.usage: /preset (一覧)・/preset save|load|del|export <名前>・/preset import (設定画面の「プリセット」のタブでも同じことができる)
+LobbyTools.NoSavedPresets: 保存した設定はありません
+LobbyTools.ColorGradient: 色を #{color} → #{color2} のグラデーションにしました
+LobbyTools.ColorSet: 色を #{color} にしました
+LobbyTools.ColorHowTo: 色は番号 (0〜{max}) か色の名前で: {names}
+LobbyTools.ColorChanging: 色を {color} に変えます (使われていたら空いている色)
+
+# ── LogDump ──
+LogDump.OnAndroidUseShareLogs: スマホ版は起動画面の「ログを共有」を使ってください
+LogDump.SavedTheLogsFiles: ログを保存しました ({n} 個): {path}
+LogDump.CouldntSaveTheLogs: ログを保存できませんでした: {message}
+
+# ── HostSettings ──
+HostSettings.Title: ホストの操作
+HostSettings.EnterToStart: ロビーで Enter を押すと試合を始める (PC)
+HostSettings.PlayersCanRename: 参加者が /rename /color で名前と色を変えられる
+HostSettings.StartSeconds: 開始の数えの秒数
+HostSettings.NoGameEnd: 試合を自動で終わらせない (/end で終える)
+
+# ── WhisperSettings ──
+WhisperSettings.Title: 耳打ち
+WhisperSettings.Enabled: ロビーと会議で耳打ちできる
+WhisperSettings.Announce: 耳打ちしたことを全員に知らせる (中身は見せない)
+
+# ── Whisper ──
+Whisper.YouCantWhisperToThem: 今はその人に耳打ちできません
+Whisper.WhisperCancelled: 耳打ちを取りやめました
+Whisper.YouCantWhisperToThem2: 今はその人に耳打ちできません (文は入力欄に戻しました)
+Whisper.Whisper: 耳打ち
+Whisper.WhisperingTo: → {name} に耳打ちします。文を入れて送信 (空で送ると取りやめ)
+Whisper.Announce: {from} が {to} に耳打ちしました
+
+# ── AutoRejoin ──
+AutoRejoin.BackToTheLobbyIn: {sec} 秒後にロビーへ戻ります
+
+# ── ClientOptions ──
+ClientOptions.DarkChat: チャットを暗い色にする
+ClientOptions.ShowEveryonesRoleAtGame: 試合の終わりに全員の役職を出す
+ClientOptions.ReturnToTheLobbyAfter: 試合が終わったら自動でロビーへ戻る
+ClientOptions.RejoinTheRoomAfterA: 回線で切れたら同じ部屋へ入り直す
+ClientOptions.SpectateTheNextGameAs: 次の試合を観戦する (幽霊で見るだけ)
+ClientOptions.DarkMeetingScreen: 会議の画面を暗い色にする
+ClientOptions.Back: 戻る
+ClientOptions.MRPOptions: MRP の設定
+
+# ── ColorPicker ──
+ColorPicker.MakeAColor: 色を作る
+ColorPicker.TypeRRGGBB: #RRGGBB を入れる
+ColorPicker.ChangeYourColorOutsideA: 色は試合の外 (ロビー) で変えてください
+ColorPicker.TheHostHasTurnedOff: この部屋ではホストが名前と色の変更を止めています
+ColorPicker.Blur: ぼかし
+ColorPicker.Edge: 位置
+ColorPicker.OneColor: 1色
+ColorPicker.Horizontal: 横
+ColorPicker.Vertical: 縦
+ColorPicker.Diagonal: 斜め
+ColorPicker.Diagonal2: 斜め2
+
+# ── CustomColors ──
+CustomColors.Red: 赤
+CustomColors.Vermilion: 朱色
+CustomColors.Orange: オレンジ
+CustomColors.Amber: 山吹色
+CustomColors.Yellow: 黄色
+CustomColors.YellowGreen: 黄緑
+CustomColors.Lime: ライム
+CustomColors.PaleGreen: 薄緑
+CustomColors.Green: 緑
+CustomColors.DarkGreen: 深緑
+CustomColors.Mint: ミント
+CustomColors.Teal: 青緑
+CustomColors.Cyan: シアン
+CustomColors.LightBlue: 水色
+CustomColors.SkyBlue: 空色
+CustomColors.Blue: 青
+CustomColors.Indigo: 藍色
+CustomColors.Navy: 紺
+CustomColors.Violet: 菫色
+CustomColors.Purple: 紫
+CustomColors.Lavender: 藤色
+CustomColors.Magenta: マゼンタ
+CustomColors.Crimson: 赤紫
+CustomColors.Pink: 桃色
+CustomColors.Rose: ローズ
+CustomColors.Maroon: えんじ
+CustomColors.Brown: 茶色
+CustomColors.Ochre: 黄土色
+CustomColors.Beige: ベージュ
+CustomColors.White: 白
+CustomColors.Gray: 灰色
+CustomColors.DarkGray: 濃い灰色
+CustomColors.Black: 黒
+CustomColors.LightColor: 明るい{color}
+CustomColors.DarkColor: 暗い{color}
+
+# ── EndSummary ──
+EndSummary.Results: <b>試合の結果</b>\n
+
+# ── SettingsOverlay ──
+SettingsOverlay.GameSettings: <b>本編の設定</b>\n
+SettingsOverlay.MoreRolesPlus: <b>MRP の設定</b>\n
+
+# ── BombFuse ──
+BombFuse.OnlyWhileAlive: 生きている時だけ使えます
+BombFuse.TooManyBombs: 置ける数の上限です
+BombFuse.Placed: 爆弾を置いた (半径 {radius}・{seconds} 秒後に爆発)
+
+# ── CrewGrip ──
+CrewGrip.TAPUpperRight: 右上をタップ
+CrewGrip.MASHUpperRight: 右上を連打
+CrewGrip.MASHSPACE: SPACE 連打
+CrewGrip.GRAB: つかむ
+CrewGrip.MASH: 連打
+CrewGrip.LastWallTapTheUpper: 最後の壁! 輪が重なったら右上をタップ!
+CrewGrip.LastWallSpaceClickWhen: 最後の壁! 輪が重なったら スペース/クリック!
+CrewGrip.TheWindIsFierceMash: 風が強い! 右上を全力で連打!
+CrewGrip.TheWindIsFierceMash2: 風が強い! スペース/クリックを全力で連打!
+CrewGrip.TapTheUpperRightWhen: 輪が角に重なったら画面の右上をタップ!
+CrewGrip.SpaceClickWhenTheRing: 輪が角に重なったら スペース/クリック!
+CrewGrip.MashTheUpperRightTo: 画面の右上を連打して戻れ!
+CrewGrip.MashSpaceClickToClimb: スペース/クリック連打で戻れ!
+
+# ── HammerSwing ──
+HammerSwing.OnlyWhileAlive: 生きている時だけ使えます
+HammerSwing.AlreadySwinging: 振っている途中です
+HammerSwing.HammeredThePortalDevice: ハンマーでポータルの装置を叩いた
+HammerSwing.NoWallThatWay: その方向に壁がありません
+HammerSwing.HammerHit: ハンマーで叩いた
+
+# ── SandboxCommands ──
+SandboxCommands.Hint: 練習: 右下のボタンかチャット欄の /hammer で向いている方向の壁を叩く (3 回で崩れる)・爆破ボタンか /blast で足元に爆弾を置く・点火ボタンか /fire で足元に火を付ける・放水ボタンか /water で向いている方向へ水を噴き出す・浸水ボタンか /flood で足元へ水を入れ続ける・壁ボタンか /wall で向いている方向の先に壁を立てる (/wall 0 = 横・/wall 90 = 縦)
+SandboxCommands.OnlyDuringAGame: 試合の中だけ使えます
+SandboxCommands.Hammer: ハンマー
+SandboxCommands.Blast: 爆破
+SandboxCommands.Ignite: 点火
+SandboxCommands.Water: 放水
+SandboxCommands.Flood: 浸水
+SandboxCommands.Wall: 壁
+
+# ── TerrainApi ──
+TerrainApi.TooFarAway: 遠すぎます
+TerrainApi.OnlyWhileAlive: 生きている時だけ使えます
+TerrainApi.OnlyDuringAGame: 試合の中だけ使えます
+TerrainApi.NotReadyYet: まだ使えません
+TerrainApi.YourRoleCantDoThat: この役職では使えません
+
+# ── TerrainProbe ──
+TerrainProbe.Test: 確かめ
+
+# ── VersionCheck ──
+VersionCheck.Checking: {name} (確認中)
+VersionCheck.NoMRP: {name} (MRP が入っていない)
+VersionCheck.DifferentNativeModule: {name} (C++ の部品の版が違う)
+VersionCheck.DifferentVersion: {name} (版が違う: {version})
+
+# ── BlockStartPatch ──
+BlockStartPatch.CheckingTheVersionOfPlayers: 入ってきたばかりの人の版を確認しています。済み次第始めます
+BlockStartPatch.msg: 全員が同じ版の More Roles Plus を入れるまで始められません:\n
+
+# ── MapSettings ──
+MapSettings.Title: マップ
+MapSettings.Mirror: マップを左右反転する
+
+# ── LangFiles ──
+LangFiles.Reloaded: 文を読み直しました (書き換え: MRP {mod} 件・本編 {vanilla} 件)\n開いているメニューは開き直すと変わります\n{path}
+LangFiles.Opened: フォルダを開きました: {path}
+LangFiles.OpenOnlyPc: フォルダはこの端末では開けません: {path}

@@ -70,7 +70,8 @@ internal static class RoleSearch
     }
 
     // 日本語名と英語名をまとめて 1 つの探す対象にする
-    public static string Haystack(Text t) => Normalize(t.Ja) + "\n" + Normalize(t.En) + "\n" + Normalize(t.Ja, false);
+    public static string Haystack(Text t) =>
+        Normalize(t.Builtin(true)) + "\n" + Normalize(t.Builtin(false)) + "\n" + Normalize(t.Builtin(true), false) + "\n" + Normalize(t.ToString());
 
     public static bool AnyIn(string[] tokens, string hay)
     {

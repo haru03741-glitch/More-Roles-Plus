@@ -53,8 +53,8 @@ internal static class BombFuse
     {
         ok = false;
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || lp.Data == null || lp.Data.IsDead) return new Text("生きている時だけ使えます", "Only while alive");
-        if (Bombs.Count + Timers.Count >= MaxBombs) return new Text("置ける数の上限です", "Too many bombs");
+        if (!lp || lp.Data == null || lp.Data.IsDead) return new Text("BombFuse.OnlyWhileAlive");
+        if (Bombs.Count + Timers.Count >= MaxBombs) return new Text("BombFuse.TooManyBombs");
         Vector2 at = lp.GetTruePosition();
         var front = new Vector2(at.x + (lp.cosmetics && lp.cosmetics.FlipX ? -FrontOffset : FrontOffset), at.y);
         if (!PhysicsHelpers.AnythingBetween(at, front, Constants.ShipAndObjectsMask, false)) at = front;
@@ -68,7 +68,7 @@ internal static class BombFuse
             TerrainSync.SendPlace(at, r);
         }
         else Accept(lp.PlayerId, at, r);
-        return new Text($"爆弾を置いた (半径 {r:0.0}・{PlaceTime + Fuse:0.0} 秒後に爆発)", $"Bomb placed (radius {r:0.0}, explodes in {PlaceTime + Fuse:0.0}s)");
+        return new Text("BombFuse.Placed").With("radius", r.ToString("0.0")).With("seconds", (PlaceTime + Fuse).ToString("0.0"));
     }
 
     // ホスト: 客の置く依頼を受けない理由 (受けるなら null)
