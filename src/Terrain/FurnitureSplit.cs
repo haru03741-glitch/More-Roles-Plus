@@ -284,39 +284,9 @@ internal static class FurnitureSplit
             psr.sprite = psp;
             CopyLook(sr, psr);
 
-            // 裏地: この家具の少し奥に置く。家具の絵が透けている所 (手前の家具が切り取られた跡) だけに見える
-            if (piece.Patches != null)
-                for (int i = 0; i + 5 < piece.Patches.Length; i += 6)
-                {
-                    int sx = piece.Patches[i], sy = piece.Patches[i + 1], pw = piece.Patches[i + 2], ph = piece.Patches[i + 3];
-                    var bsp = Sprite.Create(tex, new Rect(origin.x + sx, origin.y + (h - sy - ph), pw, ph), new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
-                    bsp.name = psp.name + "-patch";
-                    Owned.Add(bsp);
-                    var bgo = new GameObject(go.name + "-patch") { layer = go.layer };
-                    var btr = bgo.transform;
-                    btr.SetParent(ptr, false);
-                    btr.position = PixelToWorld(tr, pivot, ppu, h, piece.Patches[i + 4] + pw * 0.5f, piece.Patches[i + 5] + ph * 0.5f) + new Vector3(0f, 0f, piece.Dz + 0.001f);
-                    var bsr = bgo.AddComponent<SpriteRenderer>();
-                    bsr.sprite = bsp;
-                    CopyLook(sr, bsr);
-                }
+            AddPatches(piece, tex, origin, h, ppu, sr, tr, pivot, go, psp.name);
 
-            // 兄弟の裏地: この家具の少し奥 (自分の絵より奥・後ろの家具より手前)。自分の絵が透けている所 (手前の家具が隠していた所) だけに見える
-            if (piece.Twins != null)
-                for (int i = 0; i + 2 < piece.Twins.Length; i += 3)
-                {
-                    var src = pieces[piece.Twins[i]];
-                    int dx = piece.Twins[i + 1], dy = piece.Twins[i + 2];
-                    var tsp = Shape(tex, origin, w, h, ppu, src.Poly, meshV, meshT, true, pivot, out Vector2 tc, psp.name + "-twin");
-                    if (!tsp) continue;
-                    var tgo = new GameObject(go.name + "-twin") { layer = go.layer };
-                    var ttr = tgo.transform;
-                    ttr.SetParent(ptr, false);
-                    ttr.position = tr.TransformPoint(new Vector3((tc.x + dx - pivot.x) / ppu, (tc.y - dy - pivot.y) / ppu, 0f)) + new Vector3(0f, 0f, piece.Dz + 0.0005f);
-                    var tsr = tgo.AddComponent<SpriteRenderer>();
-                    tsr.sprite = tsp;
-                    CopyLook(sr, tsr);
-                }
+            AddTwins(piece, pieces, tex, origin, w, h, ppu, meshV, meshT, sr, tr, pivot, go, psp.name);
 
             var area = new List<Vector2>(piece.Poly.Length / 2);
             for (int i = 0; i + 1 < piece.Poly.Length; i += 2) area.Add(PixelToWorld(tr, pivot, ppu, h, piece.Poly[i], piece.Poly[i + 1]));
@@ -324,30 +294,7 @@ internal static class FurnitureSplit
             areas[k] = area;
         }
 
-        // 地面の影の絵を家具ごとの範囲に分け、各家具の子にする
-        Transform shade = entry.ShadeChild != null ? tr.Find(entry.ShadeChild) : null;
-        var shadeSr = shade ? shade.GetComponent<SpriteRenderer>() : null;
-        if (shadeSr && shadeSr.sprite)
-        {
-            var ssp = shadeSr.sprite;
-            MeshOf(ssp, out var sv, out var st);
-            Vector2 sorigin = ssp.textureRect.position - ssp.textureRectOffset;
-            for (int k = 0; k < pieces.Length; k++)
-            {
-                if (pieces[k].Shade == null || !made[k]) continue;
-                var ksp = Shape(ssp.texture, sorigin, ssp.rect.width, ssp.rect.height, ssp.pixelsPerUnit, pieces[k].Shade, sv, st, true, ssp.pivot, out Vector2 sc, ssp.name + "-" + pieces[k].Name);
-                if (!ksp) continue;
-                var sgo = new GameObject(shade.name + "-" + pieces[k].Name) { layer = shade.gameObject.layer };
-                var stf = sgo.transform;
-                stf.SetParent(made[k], false);
-                stf.localScale = shade.localScale;
-                stf.position = shade.TransformPoint(new Vector3((sc.x - ssp.pivot.x) / ssp.pixelsPerUnit, (sc.y - ssp.pivot.y) / ssp.pixelsPerUnit, 0f));
-                var ssr = sgo.AddComponent<SpriteRenderer>();
-                ssr.sprite = ksp;
-                CopyLook(shadeSr, ssr);
-            }
-            shadeSr.enabled = false;
-        }
+        Transform shade = SplitShade(entry, tr, pieces, made);
 
         Made.Clear(); // ここから先は端末などを付け替えるので、落ちても作った家具は消さない
 
@@ -396,6 +343,76 @@ internal static class FurnitureSplit
         sr.enabled = false;
         foreach (var c in sr.GetComponents<Collider2D>()) if (!c.isTrigger) c.enabled = false;
         Plugin.Logger.LogInfo($"furniture split {tr.name}: {pieces.Length} pieces");
+    }
+
+    // 裏地: この家具の少し奥に置く。家具の絵が透けている所 (手前の家具が切り取られた跡) だけに見える
+    private static void AddPatches(Piece piece, Texture2D tex, Vector2 origin, float h, float ppu, SpriteRenderer sr, Transform tr, Vector2 pivot, GameObject go, string spriteName)
+    {
+        if (piece.Patches == null) return;
+        var ptr = go.transform;
+        for (int i = 0; i + 5 < piece.Patches.Length; i += 6)
+        {
+            int sx = piece.Patches[i], sy = piece.Patches[i + 1], pw = piece.Patches[i + 2], ph = piece.Patches[i + 3];
+            var bsp = Sprite.Create(tex, new Rect(origin.x + sx, origin.y + (h - sy - ph), pw, ph), new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
+            bsp.name = spriteName + "-patch";
+            Owned.Add(bsp);
+            var bgo = new GameObject(go.name + "-patch") { layer = go.layer };
+            var btr = bgo.transform;
+            btr.SetParent(ptr, false);
+            btr.position = PixelToWorld(tr, pivot, ppu, h, piece.Patches[i + 4] + pw * 0.5f, piece.Patches[i + 5] + ph * 0.5f) + new Vector3(0f, 0f, piece.Dz + 0.001f);
+            var bsr = bgo.AddComponent<SpriteRenderer>();
+            bsr.sprite = bsp;
+            CopyLook(sr, bsr);
+        }
+    }
+
+    // 兄弟の裏地: この家具の少し奥 (自分の絵より奥・後ろの家具より手前)。自分の絵が透けている所 (手前の家具が隠していた所) だけに見える
+    private static void AddTwins(Piece piece, Piece[] pieces, Texture2D tex, Vector2 origin, float w, float h, float ppu, Vector2[] meshV, ushort[] meshT,
+                                 SpriteRenderer sr, Transform tr, Vector2 pivot, GameObject go, string spriteName)
+    {
+        if (piece.Twins == null) return;
+        var ptr = go.transform;
+        for (int i = 0; i + 2 < piece.Twins.Length; i += 3)
+        {
+            var src = pieces[piece.Twins[i]];
+            int dx = piece.Twins[i + 1], dy = piece.Twins[i + 2];
+            var tsp = Shape(tex, origin, w, h, ppu, src.Poly, meshV, meshT, true, pivot, out Vector2 tc, spriteName + "-twin");
+            if (!tsp) continue;
+            var tgo = new GameObject(go.name + "-twin") { layer = go.layer };
+            var ttr = tgo.transform;
+            ttr.SetParent(ptr, false);
+            ttr.position = tr.TransformPoint(new Vector3((tc.x + dx - pivot.x) / ppu, (tc.y - dy - pivot.y) / ppu, 0f)) + new Vector3(0f, 0f, piece.Dz + 0.0005f);
+            var tsr = tgo.AddComponent<SpriteRenderer>();
+            tsr.sprite = tsp;
+            CopyLook(sr, tsr);
+        }
+    }
+
+    // 地面の影の絵 (Entry.ShadeChild) を家具ごとの範囲に分け、各家具の子にする。戻り = 影の絵の子 (無ければ null)
+    private static Transform SplitShade(Entry entry, Transform tr, Piece[] pieces, Transform[] made)
+    {
+        Transform shade = entry.ShadeChild != null ? tr.Find(entry.ShadeChild) : null;
+        var shadeSr = shade ? shade.GetComponent<SpriteRenderer>() : null;
+        if (!shadeSr || !shadeSr.sprite) return shade;
+        var ssp = shadeSr.sprite;
+        MeshOf(ssp, out var sv, out var st);
+        Vector2 sorigin = ssp.textureRect.position - ssp.textureRectOffset;
+        for (int k = 0; k < pieces.Length; k++)
+        {
+            if (pieces[k].Shade == null || !made[k]) continue;
+            var ksp = Shape(ssp.texture, sorigin, ssp.rect.width, ssp.rect.height, ssp.pixelsPerUnit, pieces[k].Shade, sv, st, true, ssp.pivot, out Vector2 sc, ssp.name + "-" + pieces[k].Name);
+            if (!ksp) continue;
+            var sgo = new GameObject(shade.name + "-" + pieces[k].Name) { layer = shade.gameObject.layer };
+            var stf = sgo.transform;
+            stf.SetParent(made[k], false);
+            stf.localScale = shade.localScale;
+            stf.position = shade.TransformPoint(new Vector3((sc.x - ssp.pivot.x) / ssp.pixelsPerUnit, (sc.y - ssp.pivot.y) / ssp.pixelsPerUnit, 0f));
+            var ssr = sgo.AddComponent<SpriteRenderer>();
+            ssr.sprite = ksp;
+            CopyLook(shadeSr, ssr);
+        }
+        shadeSr.enabled = false;
+        return shade;
     }
 
     // 絵 sp の範囲 poly (絵の画素・左上が原点) を切り出す。center = 切り出した範囲の真ん中 (絵の画素・左下が原点)。
