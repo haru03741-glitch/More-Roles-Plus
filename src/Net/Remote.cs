@@ -356,6 +356,9 @@ internal static class Remote
         Lanes.Clear();
     }
 
+    // 今の tick に 1 通出せるか (送る前に予算を見て後へ回したい物向け)
+    internal static bool HasBudget() => WithinBudget();
+
     // 直近 1 秒に RateLimit 通出していなければ true
     private static bool WithinBudget() => Environment.TickCount64 - SentAt[_sentIdx] >= RateWindowMs;
 
