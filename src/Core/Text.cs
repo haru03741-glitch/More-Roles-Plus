@@ -4,7 +4,7 @@ using AmongUs.Data;
 namespace MoreRolesPlus;
 
 // 画面に出す文字。文そのものは Resources/Lang/<言語>.dat に「鍵: 文」で書き、コードは鍵だけを持つ。
-// 遊ぶ人は BepInEx/config/MoreRolesPlus/Language/<言語>.dat を書き換えて好きな文にできる (LangFiles)。
+// 遊ぶ人はゲームのフォルダの MRP_Language/<言語>.dat を書き換えて好きな文にできる (LangFiles)。
 //   new Text("Hawkeye.Name")
 //   new Text("AfkGuard.IsAFK").With("name", name)   // 文の中の {name} に入る
 public readonly struct Text

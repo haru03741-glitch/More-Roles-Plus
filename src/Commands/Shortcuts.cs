@@ -8,14 +8,22 @@ namespace MoreRolesPlus.Commands;
 // ホストの PC のキー操作 (EndKnot と同じ押し方)。同じことはチャットのコマンドでもできる。
 //   Shift+L+Enter 廃村 / Shift+M+Enter 会議を開く・閉じる / Shift+E+Enter 自分を倒す / 開始の数えの間に Shift 数えを飛ばす
 //   ロビーで Enter だけ = 試合を始める・数えの間にもう一度 Enter で取りやめる (設定で入り切り)
-// 毎フレームの問い合わせは Enter と Shift の押し下げの 2 つだけで、どちらかが押された時だけ先を見る
+//   F5+T = 文のファイルを読み直す (誰でも・どの画面でも)
+// 毎フレームの問い合わせは「何かのキーが押されたか」の 1 つだけで、押された時だけ先を見る
 internal static class Shortcuts
 {
     private static readonly bool Enabled = !OperatingSystem.IsAndroid();
 
     public static void Tick()
     {
-        if (!Enabled) return;
+        if (!Enabled || !Input.anyKeyDown) return;
+        if (Input.GetKey(KeyCode.F5) && Input.GetKey(KeyCode.T))
+        {
+            string reloaded = LangFiles.Command("");
+            Plugin.Logger.LogInfo($"shortcut: {reloaded}");
+            if (Vanilla.Hud is { } h && h.Chat) Dev.DevChat.Notice(h.Chat, reloaded);
+            return;
+        }
         bool enter = Input.GetKeyDown(KeyCode.Return);
         bool shiftDown = Input.GetKeyDown(KeyCode.LeftShift);
         if (!enter && !shiftDown) return;

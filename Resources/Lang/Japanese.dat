@@ -258,7 +258,7 @@ Command.last: 前の試合の結果 (全員の役職と死因)
 Command.spectate: 次の試合を観戦する / やめる (ロビー)
 Command.dump: 不具合の報告用にログをデスクトップの MRP_Logs へ保存する (PC)
 Command.winner: 前の試合の勝者
-Command.lang: 文のファイル (Language フォルダ) を読み直す。open でフォルダを開く (PC)
+Command.lang: 文のファイル (ゲームのフォルダの MRP_Language) を読み直す (PC は F5+T でも)。open でフォルダを開く (PC)
 Command.lang.Usage: [open]
 Command.start: 試合を始める (数え中なら数えを飛ばす)
 Command.cancel: 開始の数えを取りやめる (Enter で始めた時はもう一度 Enter)

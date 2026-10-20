@@ -7,14 +7,15 @@ using HarmonyLib;
 
 namespace MoreRolesPlus;
 
-// 遊ぶ人が書き換える文のファイル (BepInEx/config/MoreRolesPlus/Language)。
+// 遊ぶ人が書き換える文のファイル (PC はゲームのフォルダの MRP_Language・Android は BepInEx のフォルダの MRP_Language)。
 //   <言語>.dat          MRP の文 (今の文が全部入っている。書き換えた行だけが効く)
 //   Vanilla/<言語>.dat  本編 (Among Us そのもの) の文
 //   _defaults/          書き換えたかどうかを見分けるための元の文の写し
 // MOD や本編の更新で文が変わった時は、書き換えていない行だけ新しい文に直し、増えた鍵は近くの行へ足す
 internal static class LangFiles
 {
-    public static string Dir => Path.Combine(Paths.ConfigPath, "MoreRolesPlus", "Language");
+    // 見つけやすいようにゲームのフォルダのすぐ下に置く。Android はゲームのフォルダに書けないので BepInEx のフォルダの下
+    public static string Dir => Path.Combine(OperatingSystem.IsAndroid() ? Paths.BepInExRootPath : Paths.GameRootPath, "MRP_Language");
     private static string DefaultsDir => Path.Combine(Dir, "_defaults");
 
     // MRP の文を読む。書き換えた鍵を cur に入れ、その数を返す
@@ -209,7 +210,7 @@ internal static class LangFiles
         vanilla ? $"#  Among Us (本編) の文 / Among Us texts — {name}" : $"#  More Roles Plus の文 / More Roles Plus texts — {name}",
         "# ================================================================",
         "#  「鍵: 文」の : より右を書き換えて保存すると、ゲームの文が変わります。",
-        "#  反映: ゲームを起動し直す / チャットで /lang と打つ / ゲームの言語を切り替える",
+        "#  反映: F5+T を押す / チャットで /lang と打つ / ゲームを起動し直す / ゲームの言語を切り替える",
         vanilla
             ? "#  {0} {1} のような所には、遊んでいる時に名前や数字が入ります。"
             : "#  {name} のような { } の所には、遊んでいる時に名前や数字が入ります。",
@@ -218,7 +219,7 @@ internal static class LangFiles
         "#  元に戻す: その行を消す (次に読み込んだ時に元の文で書き直されます)。ファイルごと消すと全部元に戻ります。",
         "#",
         "#  Change the text after \"key:\" and save.",
-        "#  To apply: restart the game / type /lang in chat / switch the game language.",
+        "#  To apply: press F5+T / type /lang in chat / restart the game / switch the game language.",
         vanilla
             ? "#  {0} {1} etc. are filled in with names or numbers while playing."
             : "#  {name} etc. are filled in with names or numbers while playing.",
@@ -244,7 +245,7 @@ internal static class LangFiles
         "",
         "書き方: 「鍵: 文」の : より右を書き換えて保存するだけです。",
         "  例)  Hawkeye.Name: 鷹の目   →   Hawkeye.Name: スナイパーの目",
-        "反映: ゲームを起動し直す / チャットで /lang と打つ / ゲームの言語を切り替える",
+        "反映: F5+T を押す (PC・どの画面でも) / チャットで /lang と打つ / ゲームを起動し直す / ゲームの言語を切り替える",
         "  {name} や {0} の所には名前や数字が入ります。消すとその値は出なくなります。",
         "  改行は \\n 、色は <color=#FF4040>赤</color> 、太字は <b>太字</b> のように書けます。",
         "  # で始まる行はメモです。",
@@ -263,7 +264,7 @@ internal static class LangFiles
         "",
         "Change the text after \"key:\" and save.",
         "  e.g.  Hawkeye.Name: Hawkeye   ->   Hawkeye.Name: Eagle Eye",
-        "To apply: restart the game / type /lang in chat / switch the game language.",
+        "To apply: press F5+T (PC, on any screen) / type /lang in chat / restart the game / switch the game language.",
         "  {name} and {0} are filled in with names or numbers.",
         "  New line = \\n. Rich text works: <color=#FF4040>red</color>, <b>bold</b>.",
         "  Lines starting with # are notes.",

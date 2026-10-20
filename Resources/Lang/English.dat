@@ -258,7 +258,7 @@ Command.last: Last game's result (roles and causes of death)
 Command.spectate: Toggle spectating the next game (lobby)
 Command.dump: Save logs to MRP_Logs on the desktop for bug reports (PC)
 Command.winner: Last game's winners
-Command.lang: Reload the text files (Language folder). "open" opens the folder (PC)
+Command.lang: Reload the text files (MRP_Language in the game folder; F5+T also works on PC). "open" opens the folder (PC)
 Command.lang.Usage: [open]
 Command.start: Start the game (skips the countdown if counting)
 Command.cancel: Cancel the start countdown (or press Enter again)
