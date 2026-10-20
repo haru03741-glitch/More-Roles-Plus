@@ -263,8 +263,9 @@ internal static class CustomColors
     private static Shader _vanillaShader, _vanillaMasked;
     private static string _lastRect = "-"; // 確認用: 最後に塗った体の絵の枠
 
-    // 体の絵が取れない時の枠 (人形の自分の座標・立っている時の絵)
-    private const float BodyX0 = -0.42f, BodyY0 = -0.52f, BodyW = 0.84f, BodyH = 1.04f;
+    // 歩く人形の枠 (人形の自分の座標・立っている時の絵の範囲の真ん中の半分)。
+    // 塗った時の絵から測ると、ロビーに出てくる時の動きのコマなど範囲のずれた絵で固まり、体全体が 2 色目になる
+    private const float BodyX0 = -0.48f, BodyY0 = -0.55f, BodyW = 0.82f, BodyH = 1.04f;
     private const float BodyShare = 0.5f; // 体の絵の範囲のうち人形が占める割合 (歩く時の絵で 1.64×2.09 の中に 0.84×1.04)
 
     // 本編が人形 1 体を塗った後 (CosmeticsLayer.SetColor): その色番号がグラデーションなら体のシェーダを差し替える。
@@ -312,10 +313,10 @@ internal static class CustomColors
             mat.SetFloat("_MrpMasked", masked ? 1f : 0f);
             mat.SetFloat("_MrpStencilComp", masked ? 3f : 7f); // Equal / GreaterEqual (本編の 2 つのシェーダと同じ)
         }
-        // 色の向きの枠 = 今の体の絵の範囲 (人形の自分の座標) の真ん中の半分 (絵の周りには透明な余白がある)。
-        // 会議の名札の絵は歩く時の絵と大きさが違う
+        // 色の向きの枠。会議の名札など枠で切り抜く人形は絵が動かず、大きさが歩く時の絵と違うので、
+        // 今の体の絵の範囲 (人形の自分の座標) の真ん中の半分にする (絵の周りには透明な余白がある)
         float x0 = BodyX0, y0 = BodyY0, w = BodyW, h = BodyH;
-        var sp = r.sprite;
+        var sp = mat.GetFloat("_MrpMasked") > 0.5f ? r.sprite : null;
         if (sp)
         {
             var bd = sp.bounds;
