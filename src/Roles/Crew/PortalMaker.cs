@@ -1,6 +1,5 @@
 // Based on https://github.com/TheOtherRolesAU/TheOtherRoles@b782da4 TheOtherRoles/Objects/Portal.cs (ポータルメーカーの役職・GPL-3.0)
 // Based on https://github.com/Gurge44/EndlessHostRoles@ce23f0d Roles/Standard/Crewmate/Miscellaneous/PortalMaker.cs (2 つ置くと近づいた人が行き来する動き・GPL-3.0)
-using System;
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
@@ -24,7 +23,7 @@ public sealed class PortalMaker : RoleBase
 
     private const float MinGap = 4f;     // 2 つ目は 1 つ目からこれだけ離して置く
     private const float Reach = 1f;      // 足元がポータルからこの距離に入ると通る
-    private const long ReuseMs = 5000;   // 通った人がもう一度通れるまで
+    private const float Rearm = 1.5f;    // 通った後、足元がどちらのポータルからもこれより離れると次に通れる (縁で行き来し続けない)
 
     // 置いた (持ち主 → 全員)。受け手は送り主がポータルメーカーか・数と間隔の決まりを自分で確かめる
     private static readonly RemoteCall<Vector2> MarkCall = new("PortalMaker.Mark", Route.Anyone,
@@ -41,8 +40,9 @@ public sealed class PortalMaker : RoleBase
     private readonly float[] _x = new float[2], _y = new float[2];
     private readonly PortalArt.Handle[] _art = new PortalArt.Handle[2];
     private int _count;
-    private static long _nextPass; // この端末の自分が次に通れる時刻 (ポータルメーカーが何人いても 1 人 5 秒に 1 回)
     private bool _armed = true;    // 一度ポータルの外へ出るまで通らない (着いた側ですぐ戻らない)
+    private static int _passGen;   // この端末の自分が通るたびに増える。別のポータルメーカーのポータルが着いた先に重なっていても続けて飛ばない
+    private int _seenGen;
 
     internal int MarkCount => _count;
 
@@ -82,7 +82,6 @@ public sealed class PortalMaker : RoleBase
         {
             // 置いた本人は 2 つ目の上に立っているので、そのまま飛ばない
             _armed = false;
-            _nextPass = Environment.TickCount64 + ReuseMs;
         }
         return true;
     }
@@ -121,10 +120,11 @@ public sealed class PortalMaker : RoleBase
         if (_count < 2) return;
         var lp = PlayerControl.LocalPlayer;
         if (!lp) return;
+        if (_seenGen != _passGen) { _seenGen = _passGen; _armed = false; }
         Vector2 me = lp.GetTruePosition();
-        int near = Near(me.x, me.y);
-        if (near < 0) { _armed = true; return; }
-        if (!_armed || Environment.TickCount64 < _nextPass) return;
+        if (!_armed) { if (Near(me.x, me.y, Rearm) < 0) _armed = true; return; }
+        int near = Near(me.x, me.y, Reach);
+        if (near < 0) return;
         if (lp.Data == null || lp.Data.IsDead || !lp.CanMove || lp.inVent || lp.inMovingPlat || lp.onLadder) return;
 
         int to = 1 - near;
@@ -143,24 +143,24 @@ public sealed class PortalMaker : RoleBase
         else
             nt.RpcSnapTo(dest);
         _armed = false;
-        _nextPass = Environment.TickCount64 + ReuseMs;
+        _seenGen = ++_passGen;
         ShowPass();
         PassCall.Send(PlayerId);
     }
 
-    private int Near(float x, float y)
+    private int Near(float x, float y, float r)
     {
         for (int i = 0; i < 2; i++)
         {
             float dx = x - _x[i], dy = y - _y[i];
-            if (dx * dx + dy * dy <= Reach * Reach) return i;
+            if (dx * dx + dy * dy <= r * r) return i;
         }
         return -1;
     }
 
     internal string Describe()
     {
-        var sb = new System.Text.StringBuilder($"count={_count} armed={_armed} wait={Math.Max(0L, _nextPass - Environment.TickCount64)}ms");
+        var sb = new System.Text.StringBuilder($"count={_count} armed={_armed}");
         for (int i = 0; i < _count; i++) sb.Append($" p{i}=({_x[i]:0.00},{_y[i]:0.00})");
         return sb.ToString();
     }
