@@ -31,6 +31,8 @@ internal static class HammerSwing
 
     private static DamageEvent _pending;
     private static float _pendingAt;       // ホスト・一人: この時刻に依頼する (0 = 無し)
+    private static byte _portalOwner;
+    private static float _portalAt;        // ポータルの装置を叩いた: この時刻にホストへ伝える (0 = 無し)
     private static int _shipGen;           // 試合の切り替わり (GameClock.ShipGen)
     private static string _last = "-";     // 確認用: 最後に見せた振り
 
@@ -41,14 +43,25 @@ internal static class HammerSwing
         ok = false;
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.Data == null || lp.Data.IsDead) return new Text("生きている時だけ使えます", "Only while alive");
-        if (_pendingAt > 0f) return new Text("振っている途中です", "Already swinging");
+        if (_pendingAt > 0f || _portalAt > 0f) return new Text("振っている途中です", "Already swinging");
         Vector2 at = lp.GetTruePosition();
         Vector2 dirAim = Aim(lp, out bool facingLeft);
         if (aim is { } forced && forced.sqrMagnitude > 1e-6f) { dirAim = forced.normalized; facingLeft = forced.x < 0f; }
         float reach = DamageProfile.Of(DamageKind.Blunt).Reach;
         int color = lp.Data.DefaultOutfit.ColorId;
 
-        if (!FindTarget(at, dirAim, reach, out Vector2 dir, out Vector2 hit, out Vector2 normal))
+        bool wall = FindTarget(at, dirAim, reach, out Vector2 dir, out Vector2 hit, out Vector2 normal);
+        float wallDist = wall ? MathF.Sqrt((hit.x - at.x) * (hit.x - at.x) + (hit.y - at.y) * (hit.y - at.y)) : reach;
+        // 壁より手前にポータルの装置があれば装置を叩く (回数はホストが数える)
+        if (Roles.Crew.PortalMaker.HammerTarget(at, dirAim, wallDist, out byte owner, out Vector2 face, out Vector2 toward))
+        {
+            ok = true;
+            Play(face, toward, facingLeft, color, own: true, air: false);
+            _portalOwner = owner;
+            _portalAt = Time.time + HitAt;
+            return new Text("ハンマーでポータルの装置を叩いた", "Hammered the portal device");
+        }
+        if (!wall)
         {
             Play(at + dirAim * AirReach, dirAim, facingLeft, color, own: true, air: true);
             return new Text("その方向に壁がありません", "No wall that way");
@@ -95,7 +108,14 @@ internal static class HammerSwing
         {
             _shipGen = GameClock.ShipGen;
             _pendingAt = 0f;
+            _portalAt = 0f;
             FxHands.ClearAll();
+        }
+        if (_portalAt > 0f && Time.time >= _portalAt)
+        {
+            _portalAt = 0f;
+            var me = PlayerControl.LocalPlayer;
+            if (GameClock.ShipAlive && me && me.Data != null && !me.Data.IsDead && !MeetingHud.Instance) Roles.Crew.PortalMaker.SendHammer(_portalOwner);
         }
         if (_pendingAt <= 0f || Time.time < _pendingAt) return;
         _pendingAt = 0f;
@@ -103,6 +123,9 @@ internal static class HammerSwing
         if (!GameClock.ShipAlive || !lp || lp.Data == null || lp.Data.IsDead || MeetingHud.Instance) return;
         TerrainSync.Request(_pending);
     }
+
+    // 他の人がポータルの装置を叩いた姿 (その人の色で当たった姿から)
+    internal static void PlayOther(Vector2 face, Vector2 toward, int color) => Play(face, toward, toward.x < 0f, color, own: false, air: false);
 
     // 狙う向き: 歩いていればその向き、止まっていればクルーが向いている左右
     internal static Vector2 Aim(PlayerControl lp, out bool facingLeft)

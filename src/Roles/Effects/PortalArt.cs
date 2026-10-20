@@ -150,6 +150,14 @@ internal static class PortalArt
         BreakNoise.PlayAt("noise_portal_close", h.X, h.Y, 9f, 5f, 0.9f, FxMath.Range(0.75f, 0.85f));
     }
 
+    // 装置がハンマーで叩かれた (まだ壊れていない): 光が揺らぎ、金属の音
+    public static void Crack(Handle h)
+    {
+        if (h == null || h.Closing >= 0f) return;
+        Pulse(h.X, h.Y, 0.8f);
+        BreakNoise.PlayAt("noise_hit_metal", h.X, h.Y - MachineDrop, 9f, 5f, 0.8f, FxMath.Range(1.05f, 1.15f));
+    }
+
     // 演出なしですぐ消す (役職が外れた時)
     public static void Remove(Handle h)
     {

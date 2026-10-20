@@ -126,6 +126,7 @@ internal static partial class PropSim
         public float Rot0;          // 元の z の回転
         public Vector2 F0, Pivot0;  // 元の足元・回す軸 (ワールド)
         public bool Tall, Solid;
+        public int PortalStep = int.MinValue; // 見せる用: この刻みで通った分の焼き直しは済み (計算し直しで同じ所を焼き直さない)
         public bool Sway;           // 当たり判定があっても揺らす (表の Wobble)
         public bool Perch;          // 机などの上に置かれている (元の場所にいる間は水に流されない・床の水に浸からない・天板の上の水には浸かる)
         public Prop Support;        // Perch の載っている家具
@@ -1214,7 +1215,9 @@ internal static partial class PropSim
         if (Blocked(p, st, w, nx, ny)) return;
         if (w.Display)
         {
-            Rebake(p); // ここまでの道の焼いた絵を作り直す (地図をまたぐ大きな四角にしない)
+            // ここまでの道の焼いた絵を作り直す (地図をまたぐ大きな四角にしない)。計算し直しで同じ刻みを通る時は道を切るだけ
+            if (w.Step > p.PortalStep) { p.PortalStep = w.Step; Rebake(p); }
+            else p.Path = false;
             if (w.Step > _portalFxThrough)
             {
                 _portalFxThrough = w.Step;
@@ -1239,6 +1242,15 @@ internal static partial class PropSim
     }
 
     // 口に着いた物: 口より小さい物は宇宙へ消え、大きい物は止まって口をふさぐ (重い物で口より小さい物は止まるだけ)
+    // ポータルの組が届いた: 見せる用は先回りしているので、届いた組を入れて計算し直す。確定がもう過ぎた刻みなら遅れとして数える
+    internal static void OnPortalLinks(int tick)
+    {
+        _resync = true;
+        if (tick < Auth.Step) LateLinks++;
+    }
+
+    internal static int LateLinks;
+
     private static void Arrive(World w, Prop p, St st, int sx, int sy)
     {
         int b = Decompression.MouthOf(sx, sy, out int w256);
@@ -1498,6 +1510,7 @@ internal static partial class PropSim
         Settled.Clear();
         Auth.Act.Clear(); Auth.Wob.Clear(); Auth.Step = 0;
         _heardThrough = int.MinValue;
+        _portalFxThrough = int.MinValue;
         _lastBump = default;
         Disp.Act.Clear(); Disp.Wob.Clear(); Disp.Step = 0;
         Shown.Clear();

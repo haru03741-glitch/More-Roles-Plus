@@ -43,6 +43,7 @@ internal static class PortalLinks
     {
         ResetIfNewShip();
         Add(l);
+        PropSim.OnPortalLinks(l.Tick);
     }
 
     private static void ResetIfNewShip()

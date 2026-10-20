@@ -1,6 +1,7 @@
 // Based on https://github.com/TheOtherRolesAU/TheOtherRoles@b782da4 TheOtherRoles/Objects/Portal.cs (ポータルメーカーの役職・GPL-3.0)
 // Based on https://github.com/Gurge44/EndlessHostRoles@ce23f0d Roles/Standard/Crewmate/Miscellaneous/PortalMaker.cs (2 つ置くと近づいた人が行き来する動き・GPL-3.0)
 using System;
+using System.Collections.Generic;
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
@@ -43,6 +44,20 @@ public sealed class PortalMaker : RoleBase
     private static readonly RemoteCall<byte> PassCall = new("PortalMaker.Pass", Route.Anyone,
         (w, id) => w.Write(id), r => r.ReadByte(), (_, id) => (RoleState.Of(id) as PortalMaker)?.ShowPass());
 
+    // 装置をハンマーで叩いた (叩いた人 → ホスト)。値 = どのポータルメーカーの装置か。回数はホストだけが数える
+    private static readonly RemoteCall<byte> HitCall = new("PortalMaker.Hit", Route.ToHost,
+        (w, id) => w.Write(id), r => r.ReadByte(), (sender, id) => (RoleState.Of(id) as PortalMaker)?.HostHit(sender));
+
+    // 叩かれた回数 (ホスト → 全員)。値 = ポータルメーカー | 叩いた人 << 8 | 回数 << 16。3 回目で壊れる
+    private static readonly RemoteCall<int> HitsCall = new("PortalMaker.Hits", Route.HostToAll,
+        (w, v) => w.Write(v), r => r.ReadInt32(), (_, v) => (RoleState.Of((byte)v) as PortalMaker)?.ShowHit((byte)(v >> 8), v >> 16));
+
+    private const int HammerHits = 3;
+    private const float MachineR = 0.5f;       // ハンマーが当たる装置の大きさ (円)
+    private const float HammerSlack = 1f;      // ホストが叩いた人の位置を確かめる時の遅れの分
+    private static readonly List<PortalMaker> Active = new();
+    private int _hits;                         // ホストだけ: 今の組が叩かれた回数
+
     private readonly float[] _x = new float[2], _y = new float[2];
     private readonly PortalArt.Handle[] _art = new PortalArt.Handle[2];
     private int _count;
@@ -55,6 +70,7 @@ public sealed class PortalMaker : RoleBase
 
     public override void OnAssigned()
     {
+        Active.Add(this);
         AddAbility(new Ability(new Text("ポータル", "Portal"), "portal")
         {
             Cooldown = () => PlaceCooldown,
@@ -62,6 +78,7 @@ public sealed class PortalMaker : RoleBase
         });
         Lifespan.OnRelease(() =>
         {
+            Active.Remove(this);
             for (int i = 0; i < 2; i++) { PortalArt.Remove(_art[i]); _art[i] = null; }
             if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
             _count = 0;
@@ -109,6 +126,7 @@ public sealed class PortalMaker : RoleBase
         _count++;
         if (_count == 2)
         {
+            _hits = 0;
             PortalArt.Link(_art[0], _art[1]);
             PortalLinks.HostSet(PlayerId, true, _x[0], _y[0], _x[1], _y[1]);
         }
@@ -117,6 +135,7 @@ public sealed class PortalMaker : RoleBase
 
     private void ClearMarks()
     {
+        _hits = 0;
         for (int i = 0; i < 2; i++) { PortalArt.Close(_art[i]); _art[i] = null; }
         if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
         _count = 0;
@@ -274,8 +293,90 @@ public sealed class PortalMaker : RoleBase
         }
     }
 
+    // 足元 at から aim の左右 60° 以内で、maxDist までに届く装置のいちばん近い当たり (face = 当たる点・toward = 打つ面の向き)
+    internal static bool HammerTarget(Vector2 at, Vector2 aim, float maxDist, out byte owner, out Vector2 face, out Vector2 toward)
+    {
+        owner = 0; face = toward = default;
+        float best = float.MaxValue;
+        foreach (var pm in Active)
+        {
+            for (int i = 0; i < pm._count; i++)
+            {
+                float dx = pm._x[i] - at.x, dy = pm._y[i] - PortalArt.MachineDrop - at.y;
+                float len = MathF.Sqrt(dx * dx + dy * dy);
+                if (len < 1e-3f) continue;
+                float gap = len - MachineR;
+                if (gap > maxDist || gap >= best || (dx * aim.x + dy * aim.y) < 0.5f * len) continue;
+                // 斜めの壁の向こうの装置は叩けない
+                if (!LineOpen(at.x, at.y, at.x + dx / len * MathF.Max(0f, gap), at.y + dy / len * MathF.Max(0f, gap), false)) continue;
+                best = gap;
+                owner = pm.PlayerId;
+                float nx = dx / len, ny = dy / len, edge = MathF.Max(0f, gap);
+                face = FxMath.V2(at.x + nx * edge, at.y + ny * edge);
+                toward = FxMath.V2(nx, ny);
+            }
+        }
+        return best < float.MaxValue;
+    }
+
+    internal static void SendHammer(byte owner) => HitCall.Send(owner);
+
+    // ホスト: 叩いた人が本当に装置のそばにいれば 1 回と数えて全員へ配る
+    private void HostHit(PlayerControl sender)
+    {
+        if (_count == 0 || !sender || sender.Data == null || sender.Data.IsDead || !GameClock.ShipAlive || MeetingHud.Instance) return;
+        Vector2 p = sender.GetTruePosition();
+        float reach = DamageProfile.Of(DamageKind.Blunt).Reach + MachineR + HammerSlack;
+        float d = NearestMachine(p.x, p.y, out int k);
+        if (d > reach) return;
+        float dx = _x[k] - p.x, dy = _y[k] - PortalArt.MachineDrop - p.y, edge = MathF.Max(0f, d - MachineR) / MathF.Max(1e-3f, d);
+        if (!LineOpen(p.x, p.y, p.x + dx * edge, p.y + dy * edge, false)) return;
+        // ハンマーを持っている人だけ・ハンマーの待ち時間ごとに 1 回 (続けて送られても数えない)
+        if (TerrainPermits.TryUse(sender.PlayerId, TerrainUse.Hammer, 0f, host: true) != null) return;
+        _hits++;
+        int v = PlayerId | sender.PlayerId << 8 | _hits << 16;
+        HitsCall.Send(v);
+        ShowHit(sender.PlayerId, _hits);
+    }
+
+    // 全員: 叩かれた (他の人の振りはここで見せる)。3 回目で壊れる
+    private void ShowHit(byte hitter, int hits)
+    {
+        if (_count == 0) return;
+        var pc = GameData.Instance ? GameData.Instance.GetPlayerById(hitter) : null;
+        var obj = pc != null ? pc.Object : null;
+        int k = 0;
+        if (obj)
+        {
+            Vector2 p = obj.GetTruePosition();
+            float d = NearestMachine(p.x, p.y, out k);
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp || lp.PlayerId != hitter)
+            {
+                float dx = _x[k] - p.x, dy = _y[k] - PortalArt.MachineDrop - p.y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
+                float edge = MathF.Max(0f, len - MachineR);
+                HammerSwing.PlayOther(FxMath.V2(p.x + dx / len * edge, p.y + dy / len * edge), FxMath.V2(dx / len, dy / len), pc.DefaultOutfit.ColorId);
+            }
+        }
+        if (hits >= HammerHits) { Break(); return; }
+        PortalArt.Crack(_art[k]);
+    }
+
+    private float NearestMachine(float px, float py, out int which)
+    {
+        which = 0;
+        float best = float.MaxValue;
+        for (int i = 0; i < _count; i++)
+        {
+            float dx = _x[i] - px, dy = _y[i] - PortalArt.MachineDrop - py, d = MathF.Sqrt(dx * dx + dy * dy);
+            if (d < best) { best = d; which = i; }
+        }
+        return best;
+    }
+
     private void Break()
     {
+        _hits = 0;
         for (int i = 0; i < 2; i++) { PortalArt.Break(_art[i]); _art[i] = null; }
         if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
         _count = 0;
