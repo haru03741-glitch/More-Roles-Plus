@@ -13,6 +13,7 @@ internal static class TerrainWire
     // 試合の刻みを足した時に 5 → 8 へ (古い版と混ざった時に、黙ってずれて読まず「知らない op」として捨てるため)
     public const byte OpBatch = 8;
     public const byte OpDigest = 4; // 客 → ホスト: [op][適用し終えた連番 u16][地形の指紋 u32]
+    public const byte OpResend = 5; // 客 → ホスト: [op][次に欲しい連番 u16] 欠番をもう一度送ってもらう (返事は OpBatch)
     public const byte OpPlace = 6;  // 客 → ホスト: [op][位置 4B][半径 1B] 爆弾を置く依頼
     // ホスト → 全員: [op][置いた人][位置 4B][半径 1B] 爆弾が置かれた。爆発は導火線の後にホストが普通の結果として配る
     public const byte OpBomb = 7;

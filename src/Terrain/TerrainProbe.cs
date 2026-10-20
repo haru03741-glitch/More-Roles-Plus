@@ -320,10 +320,24 @@ internal static class TerrainProbe
             reply("OK ability " + Roles.Abilities.Probe(int.TryParse(args.Trim(), out int k) ? k : -1));
         });
 
-        TestBridge.Register("terrainsync", "地形の同期の状態 (適用数・受けなかった依頼・指紋・客ごとの照合)", (args, reply) =>
+        TestBridge.Register("terrainsync", "[drop <束の数> | hold <秒>] 地形の同期の状態 (適用数・受けなかった依頼・指紋・客ごとの照合・欠番を頼んだ/送り直した数)。drop = 客で次の束をわざと捨てる (欠番の頼み直しを見る)・hold = 客で船ができていないふりをする (先に届いた物の取り置きを見る)", (args, reply) =>
         {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length >= 2 && a[0] == "drop" && int.TryParse(a[1], out int drop))
+            {
+                TerrainSync.TestDropBatches = System.Math.Max(0, drop);
+                reply($"OK terrainsync drop {TerrainSync.TestDropBatches}");
+                return;
+            }
+            if (a.Length >= 2 && a[0] == "hold" && float.TryParse(a[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float hold))
+            {
+                TerrainSync.TestHoldShipUntil = Time.time + hold;
+                reply($"OK terrainsync hold {TestBridge.F(hold)}");
+                return;
+            }
             var sb = new System.Text.StringBuilder("OK terrainsync");
             sb.Append($" applied={TerrainSync.Applied} refused={TerrainSync.Refused} mismatches={TerrainSync.Mismatches}");
+            sb.Append($" asked={TerrainSync.ResendAsked} resent={TerrainSync.ResendServed} early={TerrainSync.EarlyCount}");
             sb.Append($" seq={TerrainDigest.LastSeq} digest={TerrainDigest.Running:x8}");
             foreach (var kv in TerrainSync.Checks) sb.Append($" p{kv.Key}=#{kv.Value.seq}:{(kv.Value.same ? "same" : "DIFF")}");
             reply(sb.ToString());

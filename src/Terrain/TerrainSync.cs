@@ -21,6 +21,12 @@ internal static class TerrainSync
     private static readonly List<ResolvedDamage> Outbox = new(); // ホスト: 未送信の結果 (連番は _nextSeq - Count から)
     private static readonly List<DamageEvent> Requests = new();  // 客: ホストへ未送信の依頼
     private static readonly Dictionary<ushort, ResolvedDamage> Pending = new(); // 客: 順番待ち (前の連番が未着)
+    // 全員: この船で適用した結果 (連番 → 結果)。欠番を頼まれた時にもう一度送る。ホストが替わっても新ホストが答えられるよう客も持つ
+    private static readonly Dictionary<ushort, ResolvedDamage> History = new();
+    private const int MaxHistory = 8192;
+    // 客: 船ができる前に届いたホストからの電文。船ができたら届いた順に読み直す (捨てると後から埋まらない)
+    private static readonly List<(PlayerControl sender, byte[] data)> Early = new();
+    private const int MaxEarly = 256;
     private static readonly Dictionary<byte, (int window, int count)> RequestRate = new();
     private static readonly byte[] Buf = new byte[TerrainWire.BatchHeader + MaxEventsPerRpc * TerrainWire.MaxResolvedBytes];
     private static readonly byte[] BombBuf = new byte[2 + TerrainWire.BombBytes];
@@ -32,7 +38,16 @@ internal static class TerrainSync
     private static ushort _nextSeq;
     private static ShipStatus _ship;
     private static int _tick, _lastFlush = -FlushTicks, _stuckSince;
-    private const int GapTimeoutTicks = 150; // 欠番を待つのは 3 秒まで
+    private const int GapTimeoutTicks = 500;  // 欠番を待つのは 10 秒まで (その間に何度かホストへ頼む)
+    private const int ResendAskTicks = 50;    // 欠番を 1 秒待ったらホストへ頼む・頼むのも 1 秒に 1 回まで
+    private const int MaxResendBatches = 3;   // 1 回の頼みに返す束の数
+    private static int _lastAsk = -ResendAskTicks;
+    // 確かめ用 (ブリッジ terrainsync drop/hold): 客で次の束を捨てる数・船ができていないふりをする時刻 (Time.time)
+    internal static int TestDropBatches;
+    internal static float TestHoldShipUntil;
+    internal static int EarlyCount => Early.Count;
+    public static int ResendAsked { get; private set; }  // 客: 欠番を頼んだ回数
+    public static int ResendServed { get; private set; } // ホスト: 頼まれて送り直した件数
     private const int NoHost = int.MinValue;
     private const int ReportTicks = 50;          // 客が指紋を返すのは 1 秒に 1 通まで
     private const float LagMargin = 1.5f;        // 打撃: ホストに見えている位置の遅れの分
@@ -80,7 +95,9 @@ internal static class TerrainSync
         r = TerrainWire.RoundTrip(r.WithActor(actor).WithTick(GameClock.Stamp));
         // 大きな瓦礫の止まる所は、ホストが自分で適用した結果から決めて同じ電文に載せる
         string res = ApplyNow(_nextSeq++, r, decide: true, out var landings);
-        Outbox.Add(r.WithLandings(landings));
+        var sent = r.WithLandings(landings);
+        Outbox.Add(sent);
+        Remember((ushort)(_nextSeq - 1), sent);
         FireBroken();
         return res;
     }
@@ -155,7 +172,13 @@ internal static class TerrainSync
             _ownHitAt = 0f;
             if (Pending.Count != 0) Drain();
         }
-        if (Pending.Count != 0 && _tick - _stuckSince > GapTimeoutTicks) SkipGap();
+        if (Early.Count != 0) ReplayEarly();
+        if (Pending.Count != 0)
+        {
+            int stuck = _tick - _stuckSince;
+            if (stuck > GapTimeoutTicks) SkipGap();
+            else if (stuck > ResendAskTicks && _tick - _lastAsk >= ResendAskTicks) AskResend();
+        }
         if (TerrainDigest.Any && TerrainDigest.LastSeq != _reportedSeq && _tick - _lastReport >= ReportTicks) Report();
         if (Outbox.Count == 0 && Requests.Count == 0) return;
         if (_tick - _lastFlush < FlushTicks) return;
@@ -233,6 +256,12 @@ internal static class TerrainSync
         var client = AmongUsClient.Instance;
         if (!client || !sender) return;
         if (b == null || b.Length < 2) return;
+        if (!client.AmHost && FromHostToAll(b[0]) && !ShipReady())
+        {
+            if (Early.Count < MaxEarly) Early.Add((sender, b));
+            else Plugin.Logger.LogWarning("[TerrainSync] too many messages before map loaded, dropped");
+            return;
+        }
         int o = 1;
         switch (b[0])
         {
@@ -254,18 +283,28 @@ internal static class TerrainSync
             {
                 // 結果はホストからだけ受ける
                 if (client.AmHost || sender.OwnerId != client.HostId || b.Length < TerrainWire.BatchHeader) return;
-                if (!ShipStatus.Instance) { Plugin.Logger.LogWarning("[TerrainSync] batch before map loaded, dropped"); return; }
+                if (TestDropBatches > 0)
+                {
+                    TestDropBatches--;
+                    Plugin.Logger.LogInfo($"[TerrainSync] test: dropped a batch from #{b[1] | b[2] << 8}");
+                    return;
+                }
                 SyncShip();
                 ushort first = TerrainWire.ReadU16(b, ref o);
                 int n = b[o++];
-                // 試合で最初の束・ホストが替わった後の最初の束は、その連番に合わせる (新ホストの数え方に従う)
+                // 船ごとに連番は 0 から始まり、ホストが替わっても新ホストは同じ数え方で続ける。
+                // なので最初の束の番号には合わせない (束は入れ替わって届くことがあり、合わせると前の番号を捨ててしまう)。
+                // 抜けた番号は順番待ちのまま欠番としてホストへ頼む。
+                // 新ホストが自分より遅れている時だけは新ホストの数え方へ合わせ直す (先に適用した分は新ホストに無い)
                 if (_batchHost != client.HostId)
                 {
-                    if (_batchHost != NoHost && first != _nextSeq)
-                        Plugin.Logger.LogWarning($"[TerrainSync] host changed, resync seq {_nextSeq} -> {first} (pending {Pending.Count} dropped)");
+                    if (_batchHost != NoHost && (short)(first - _nextSeq) < 0)
+                    {
+                        Plugin.Logger.LogWarning($"[TerrainSync] new host is behind, resync seq {_nextSeq} -> {first} (pending {Pending.Count} dropped)");
+                        _nextSeq = first;
+                        Pending.Clear();
+                    }
                     _batchHost = client.HostId;
-                    _nextSeq = first;
-                    Pending.Clear();
                 }
                 for (int i = 0; i < n && o < b.Length; i++)
                 {
@@ -324,6 +363,13 @@ internal static class TerrainSync
                 PortalLinks.OnPortal(l);
                 break;
             }
+            case TerrainWire.OpResend:
+            {
+                if (!client.AmHost || b.Length < 3 || !AllowRequest(sender.PlayerId)) return;
+                ushort from = TerrainWire.ReadU16(b, ref o);
+                Resend(from, sender.OwnerId);
+                break;
+            }
             case TerrainWire.OpDigest:
             {
                 if (!client.AmHost || b.Length < 7) return;
@@ -376,6 +422,7 @@ internal static class TerrainSync
         {
             if (_ownHitAt > 0f && next.Kind == DamageKind.Blunt && next.Actor == LocalId() && Time.time < _ownHitAt) break;
             Pending.Remove(_nextSeq);
+            Remember(_nextSeq, next);
             string res = ApplyNow(_nextSeq++, next, decide: false, out _);
             Plugin.Logger.LogDebug($"[TerrainSync] #{(ushort)(_nextSeq - 1)} {res}");
         }
@@ -394,6 +441,77 @@ internal static class TerrainSync
         Plugin.Logger.LogWarning($"[TerrainSync] gap {_nextSeq}..{(ushort)(lowest - 1)} never arrived, skipped");
         _nextSeq = lowest;
         Drain();
+    }
+
+    private static void Remember(ushort seq, in ResolvedDamage r)
+    {
+        if (History.Count < MaxHistory) History[seq] = r;
+    }
+
+    // 客: 欠番 (_nextSeq から) をホストへ頼む
+    private static void AskResend()
+    {
+        _lastAsk = _tick;
+        if (!IsGuest()) return;
+        ResendAsked++;
+        int o = 0;
+        Buf[o++] = TerrainWire.OpResend;
+        o = TerrainWire.WriteU16(Buf, o, _nextSeq);
+        Plugin.Logger.LogInfo($"[TerrainSync] asking host to resend from #{_nextSeq} (pending {Pending.Count})");
+        Send(o, AmongUsClient.Instance.HostId);
+    }
+
+    // ホスト: from から持っている分を、その人へだけ束にして送り直す (受け手は適用済みの番号を捨てるので重なっても害は無い)
+    private static void Resend(ushort from, int target)
+    {
+        ushort seq = from;
+        for (int batch = 0; batch < MaxResendBatches; batch++)
+        {
+            int n = 0, o = TerrainWire.BatchHeader;
+            while (n < MaxEventsPerRpc && (short)(seq - _nextSeq) < 0 && History.TryGetValue(seq, out var r))
+            {
+                o = TerrainWire.WriteResolved(Buf, o, r);
+                n++;
+                seq++;
+            }
+            if (n == 0) break;
+            Buf[0] = TerrainWire.OpBatch;
+            TerrainWire.WriteU16(Buf, 1, (ushort)(seq - n));
+            Buf[3] = (byte)n;
+            ResendServed += n;
+            Send(o, target);
+        }
+        Plugin.Logger.LogInfo($"[TerrainSync] resent #{from}..#{(ushort)(seq - 1)} to client {target}");
+    }
+
+    // ホストから全員へ配られ、船の上の状態に効く電文か (船ができる前に届いたら取っておく物)
+    private static bool FromHostToAll(byte op) =>
+        op is TerrainWire.OpBatch or TerrainWire.OpBomb or TerrainWire.OpDoors or TerrainWire.OpPlatform or TerrainWire.OpPortal;
+
+    private static bool ShipReady()
+    {
+        if (TestHoldShipUntil > 0f)
+        {
+            if (Time.time < TestHoldShipUntil) return false;
+            TestHoldShipUntil = 0f;
+        }
+        GameClock.Tick();
+        return GameClock.ShipAlive;
+    }
+
+    // 船ができる前に届いた物を、届いた順に読み直す。船ができないまま試合を抜けたら捨てる
+    private static void ReplayEarly()
+    {
+        if (!Online()) { Early.Clear(); return; }
+        if (!ShipReady()) return;
+        var list = Early.ToArray();
+        Early.Clear();
+        Plugin.Logger.LogInfo($"[TerrainSync] replaying {list.Length} messages received before map loaded");
+        foreach (var (sender, data) in list)
+        {
+            try { Receive(sender, data); }
+            catch (Exception ex) { Plugin.Logger.LogError($"[TerrainSync] replay: {ex}"); }
+        }
     }
 
     // 爆弾: 客 → ホストへ置く依頼 / ホスト → 全員へ置かれた知らせ (どちらもすぐ送る・数は少ない)
@@ -512,9 +630,12 @@ internal static class TerrainSync
         _reportedSeq = ushort.MaxValue;
         TerrainDigest.Reset();
         Pending.Clear();
+        History.Clear();
         Outbox.Clear();
         Requests.Clear();
         RequestRate.Clear();
+        ResendAsked = 0;
+        ResendServed = 0;
     }
 
     // テスト用: 結果を電文に書いて読み直し、受け手の順番待ちを通して適用する (一人で同期の経路を確かめる)。
