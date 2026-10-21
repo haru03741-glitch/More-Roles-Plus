@@ -138,6 +138,9 @@ public static class AssignSettings
         new Text("AssignSettings.KeepVanilla"),
         new Text("AssignSettings.FillFromSameTeamRoles"),
         new Text("AssignSettings.FillNeutralsIncluded")) { OffTab = true };
+
+    // 前の試合で外れた人ほどインポスター・第三陣営・役職に当たりやすくする (AssignHistory)
+    public static readonly BoolOpt Fairness = new("AssignSettings.Fairness", true) { OffTab = true };
 }
 
 // 配る前の名簿の 1 人 (本編が決めた陣営と土台の役職)
@@ -146,6 +149,7 @@ public struct Slot
     public byte PlayerId;
     public bool Impostor;
     public RoleTypes BaseRole;
+    public int Key; // 公平化の履歴の鍵 (ClientId・ダミーは -1)
 }
 
 // 配布案の 1 人分 (役職の番号 = Registry.Roles の添字・アドオンの番号 = Registry.Addons の添字)
@@ -165,8 +169,9 @@ public static class AssignPlan
         public int LimitSkips, ConflictSkips, NoSlotSkips, Reserved, FillPicks, NeutralTopUps;
     }
 
-    // reserved = 固定指定 (PlayerId → 役職の番号)。枠の数・上限より先に付ける
-    public static List<Pick> Decide(IReadOnlyList<Slot> roster, Random rng, IReadOnlyDictionary<byte, int> reserved = null, PlanStats stats = null)
+    // reserved = 固定指定 (PlayerId → 役職の番号)。枠の数・上限より先に付ける。
+    // history があれば、役職を付ける人を公平化の重みで選ぶ (無ければ混ぜた名簿の先頭から = 一様)
+    public static List<Pick> Decide(IReadOnlyList<Slot> roster, Random rng, IReadOnlyDictionary<byte, int> reserved = null, PlanStats stats = null, AssignHistory history = null)
     {
         // 出現率 100% の枠を先に、残りは抽選で通った枠を混ぜてから並べる
         var sure = new List<int>();
@@ -256,11 +261,34 @@ public static class AssignPlan
         int CrewSeats() => free.Count(f => !f.Impostor);
 
         // 本編の役職がちょうど土台の役職と同じ人を優先し、いなければ同じ陣営の誰か
-        int SlotFor(RoleBase role)
+        int SlotFor(int roleIndex)
         {
-            int pick = free.FindIndex(s => s.BaseRole == role.BaseRole);
-            if (pick < 0) pick = free.FindIndex(s => s.Impostor == (role.Team == Team.Impostor));
-            return pick;
+            var role = Registry.Roles[roleIndex];
+            bool exact = free.Exists(s => s.BaseRole == role.BaseRole);
+            bool Fits(Slot s) => exact ? s.BaseRole == role.BaseRole : s.Impostor == (role.Team == Team.Impostor);
+            if (history == null) return free.FindIndex(Fits);
+            // 公平化: 役職は重みの大きい人へ、素のクルーとインポスターは最近役職に当たった人 (重みの小さい人) へ寄せる
+            bool plain = AssignHistory.IsPlain(roleIndex);
+            var kind = role.Team == Team.Neutral ? AssignHistory.Kind.Neutral : AssignHistory.Kind.Role;
+            double total = 0;
+            var weights = new double[free.Count];
+            for (int i = 0; i < free.Count; i++)
+            {
+                if (!Fits(free[i])) continue;
+                double w = history.Weight(free[i].Key, kind, roleIndex);
+                weights[i] = plain ? 1.0 / w : w;
+                total += weights[i];
+            }
+            if (total <= 0) return -1;
+            double roll = rng.NextDouble() * total;
+            int last = -1;
+            for (int i = 0; i < free.Count; i++)
+            {
+                if (weights[i] <= 0) continue;
+                last = i;
+                if ((roll -= weights[i]) < 0) return i;
+            }
+            return last;
         }
 
         // 固定指定。本編で決まった陣営と合わない指定は飛ばす
@@ -295,7 +323,7 @@ public static class AssignPlan
                 if (stats != null) stats.ConflictSkips++;
                 continue;
             }
-            int pick = SlotFor(role);
+            int pick = SlotFor(idx);
             if (pick < 0)
             {
                 if (stats != null) stats.NoSlotSkips++;
@@ -318,7 +346,7 @@ public static class AssignPlan
             pool.RemoveAll(noSeat.Contains);
             int idx = WeightedPick(pool, rng);
             if (idx < 0) break;
-            int pick = SlotFor(Registry.Roles[idx]);
+            int pick = SlotFor(idx);
             if (pick < 0)
             {
                 noSeat.Add(idx);
@@ -350,7 +378,7 @@ public static class AssignPlan
                 while (at < pool.Count - 1 && (roll -= Registry.Roles[pool[at]].Chance.Value) >= 0) at++;
                 int idx = pool[at];
                 var role = Registry.Roles[idx];
-                int pick = OverLimit(role) || Conflicts(role, chosen) ? -1 : SlotFor(role);
+                int pick = OverLimit(role) || Conflicts(role, chosen) ? -1 : SlotFor(idx);
                 if (pick < 0) { pool.RemoveAt(at); continue; }
                 Take(pick, idx);
                 if (stats != null) stats.FillPicks++;
@@ -429,6 +457,39 @@ public static class AssignPlan
         }
     }
 
+    // 公平化: インポスターを重みで選び直す (人数は本編が決めた数のまま)。固定指定の人は今の陣営のまま数に入れる。
+    // 陣営を替えるべき人の添字を返す (名簿は書き換えない)
+    public static List<int> ChooseImpostors(IReadOnlyList<Slot> roster, Random rng, AssignHistory history, IReadOnlyDictionary<byte, int> reserved = null)
+    {
+        int seats = 0;
+        var open = new List<int>();
+        for (int i = 0; i < roster.Count; i++)
+        {
+            bool fixedTeam = reserved != null && reserved.ContainsKey(roster[i].PlayerId);
+            if (roster[i].Impostor && !fixedTeam) seats++;
+            if (!fixedTeam) open.Add(i);
+        }
+        var want = new bool[roster.Count];
+        while (seats > 0 && open.Count > 0)
+        {
+            double total = 0;
+            foreach (int i in open) total += history.Weight(roster[i].Key, AssignHistory.Kind.Impostor);
+            double roll = rng.NextDouble() * total;
+            int at = 0;
+            while (at < open.Count - 1 && (roll -= history.Weight(roster[open[at]].Key, AssignHistory.Kind.Impostor)) >= 0) at++;
+            want[open[at]] = true;
+            open.RemoveAt(at);
+            seats--;
+        }
+        var flip = new List<int>();
+        for (int i = 0; i < roster.Count; i++)
+        {
+            if (reserved != null && reserved.ContainsKey(roster[i].PlayerId)) continue;
+            if (want[i] != roster[i].Impostor) flip.Add(i);
+        }
+        return flip;
+    }
+
     // 出現率を重みに 1 つ引く (空なら -1)
     private static int WeightedPick(List<int> pool, Random rng)
     {
@@ -450,32 +511,68 @@ public static class AssignPlan
         }
     }
 
-    // 確かめ用: 名簿を作って何度も配り、役職ごとに付いた回数を数える
+    // 確かめ用: 名簿を作って何度も配り、役職ごとに付いた回数を数える。
+    // 同じ顔ぶれで続けて遊んだことにして、人ごとの当たりの偏りも数える (公平化が ON なら履歴を引き継ぐ・OFF ならインポスターは一様に選ぶ)
     public static string Simulate(int players, int impostors, int runs, int seed, IReadOnlyDictionary<byte, int> reserved = null)
     {
         var roster = new List<Slot>();
         for (int i = 0; i < players; i++)
-            roster.Add(new Slot { PlayerId = (byte)i, Impostor = i < impostors, BaseRole = i < impostors ? RoleTypes.Impostor : RoleTypes.Crewmate });
+            roster.Add(new Slot { PlayerId = (byte)i, Key = i });
         var rng = new Random(seed);
+        var history = AssignSettings.Fairness ? new AssignHistory() : null;
         var roleHits = new int[Registry.Roles.Count];
         var addonHits = new int[Registry.Addons.Count];
         int withRole = 0, withAddon = 0, doubled = 0, neutralMax = 0, neutralMin = int.MaxValue;
         var stats = new PlanStats();
+        // 人ごとの インポスター / 第三陣営 / 役職 の回数と、役職の付かない試合が続いた最長
+        var impHits = new int[players];
+        var neuHits = new int[players];
+        var specHits = new int[players];
+        var dry = new int[players];
+        var dryMax = new int[players];
+        var order = Enumerable.Range(0, players).ToList();
         for (int n = 0; n < runs; n++)
         {
-            var plan = Decide(roster, rng, reserved, stats);
+            // 本編のインポスター選び (一様) の代わりに陣営を振り直してから配る
+            Shuffle(order, rng);
+            for (int k = 0; k < players; k++) SetSide(roster, order[k], k < impostors);
+            // 固定指定の人は役職の陣営へ寄せる (本番の MatchReservedTeams と同じく、予約の無い反対側の人と入れ替える)
+            if (reserved != null)
+            {
+                foreach (var kv in reserved)
+                {
+                    if (kv.Key >= players || kv.Value < 0 || kv.Value >= Registry.Roles.Count) continue;
+                    bool want = Registry.Roles[kv.Value].Team == Team.Impostor;
+                    if (roster[kv.Key].Impostor == want) continue;
+                    int partner = roster.FindIndex(s => s.Impostor == want && !reserved.ContainsKey(s.PlayerId));
+                    if (partner >= 0) SetSide(roster, partner, !want);
+                    SetSide(roster, kv.Key, want);
+                }
+            }
+            if (history != null)
+                foreach (int i in ChooseImpostors(roster, rng, history, reserved)) SetSide(roster, i, !roster[i].Impostor);
+            var plan = Decide(roster, rng, reserved, stats, history);
+            history?.Record(roster, plan);
             int neutrals = 0;
+            var special = new bool[players];
             foreach (var p in plan)
             {
                 if (p.RoleIndex >= 0)
                 {
                     withRole++;
                     roleHits[p.RoleIndex]++;
-                    if (Registry.Roles[p.RoleIndex].Team == Team.Neutral) neutrals++;
+                    if (Registry.Roles[p.RoleIndex].Team == Team.Neutral) { neutrals++; neuHits[p.PlayerId]++; }
                 }
+                if (!AssignHistory.IsPlain(p.RoleIndex)) special[p.PlayerId] = true;
                 withAddon += p.Addons.Count;
                 if (p.Addons.Count != p.Addons.Distinct().Count()) doubled++;
                 foreach (int a in p.Addons) addonHits[a]++;
+            }
+            for (int i = 0; i < players; i++)
+            {
+                if (roster[i].Impostor) impHits[i]++;
+                if (special[i]) { specHits[i]++; dry[i] = 0; }
+                else dryMax[i] = Math.Max(dryMax[i], ++dry[i]);
             }
             neutralMax = Math.Max(neutralMax, neutrals);
             neutralMin = Math.Min(neutralMin, neutrals);
@@ -487,7 +584,24 @@ public static class AssignPlan
             if (roleHits[i] > 0) sb.Append($"\n{Registry.Roles[i].Id} {roleHits[i]} ({100.0 * roleHits[i] / runs:0.#}%/run)");
         for (int i = 0; i < addonHits.Length; i++)
             if (addonHits[i] > 0) sb.Append($"\n+{Registry.Addons[i].Id} {addonHits[i]} ({100.0 * addonHits[i] / runs:0.#}%/run)");
+        sb.Append($"\nfairness={(history != null ? "on" : "off")} perPlayer impostor={Spread(impHits)} neutral={Spread(neuHits)} role={Spread(specHits)} longestNoRole={dryMax.Min()}..{dryMax.Max()} avg={dryMax.Average():0.0}");
         return sb.ToString();
+    }
+
+    internal static void SetSide(List<Slot> roster, int at, bool impostor)
+    {
+        var s = roster[at];
+        s.Impostor = impostor;
+        s.BaseRole = impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
+        roster[at] = s;
+    }
+
+    // 人ごとの回数の 最少..最多 と標準偏差
+    private static string Spread(int[] v)
+    {
+        double avg = v.Average();
+        double sd = Math.Sqrt(v.Average(x => (x - avg) * (x - avg)));
+        return $"{v.Min()}..{v.Max()} sd={sd:0.0}";
     }
 }
 
@@ -505,9 +619,21 @@ internal static class RoleAssigner
         OptionSync.RestoreOwn();
         // 本編の役職も MRP が配る (MRP の役職を切っていても本編の役職は配る)
         int seed = Rng.Next();
-        var roster = Roster();
+        var rng = new Random(seed);
+        var vanilla = Roster();
+        var roster = new List<Slot>(vanilla);
         MatchReservedTeams(roster);
-        var plan = AssignPlan.Decide(roster, new Random(seed), Reserved);
+        // 切った間の古い履歴を入れ直した時に持ち出さない
+        if (!AssignSettings.Fairness) _history = null;
+        var history = AssignSettings.Fairness ? CurrentHistory() : null;
+        if (history != null)
+        {
+            Plugin.Logger.LogInfo($"roles: fairness weights (pid:imp/neutral/role){history.Describe(roster)}");
+            foreach (int i in AssignPlan.ChooseImpostors(roster, rng, history, Reserved)) AssignPlan.SetSide(roster, i, !roster[i].Impostor);
+        }
+        SendTeamChanges(vanilla, roster);
+        var plan = AssignPlan.Decide(roster, rng, Reserved, null, history);
+        history?.Record(roster, plan);
         Plugin.Logger.LogInfo($"roles: seed {seed}");
         Reserved.Clear();
 
@@ -519,6 +645,23 @@ internal static class RoleAssigner
         }
     }
 
+    // 公平化の履歴は同じ部屋の同じホストの間だけ持つ (部屋かホストが替われば最初から)
+    private static AssignHistory _history;
+    private static int _historyGame;
+
+    public static void OnHostChanged() => _history = null;
+
+    private static AssignHistory CurrentHistory()
+    {
+        int game = AmongUsClient.Instance ? AmongUsClient.Instance.GameId : 0;
+        if (_history == null || _historyGame != game)
+        {
+            _history = new AssignHistory();
+            _historyGame = game;
+        }
+        return _history;
+    }
+
     private static List<Slot> Roster()
     {
         var list = new List<Slot>();
@@ -526,7 +669,7 @@ internal static class RoleAssigner
         {
             if (!p || p.notRealPlayer || p.Data == null || p.Data.Disconnected || !p.Data.Role) continue;
             if (Spectate.IsChosen(p.PlayerId)) continue; // 観戦の人には役職を配らない
-            list.Add(new Slot { PlayerId = p.PlayerId, Impostor = RoleManager.IsImpostorRole(p.Data.Role.Role), BaseRole = p.Data.Role.Role });
+            list.Add(new Slot { PlayerId = p.PlayerId, Impostor = RoleManager.IsImpostorRole(p.Data.Role.Role), BaseRole = p.Data.Role.Role, Key = p.isDummy ? -1 : p.Data.ClientId });
         }
         return list;
     }
@@ -545,20 +688,26 @@ internal static class RoleAssigner
             var partners = new List<int>();
             for (int k = 0; k < roster.Count; k++)
                 if (roster[k].Impostor == impostor && !Reserved.ContainsKey(roster[k].PlayerId)) partners.Add(k);
-            if (partners.Count > 0) SetTeam(roster, partners[rng.Next(partners.Count)], !impostor);
-            SetTeam(roster, i, impostor);
+            if (partners.Count > 0) AssignPlan.SetSide(roster, partners[rng.Next(partners.Count)], !impostor);
+            AssignPlan.SetSide(roster, i, impostor);
             Plugin.Logger.LogInfo($"roles: reservation {roster[i].PlayerId}={Registry.Roles[idx].Id} moved team ({(partners.Count > 0 ? "swapped" : "no partner")})");
         }
     }
 
-    private static void SetTeam(List<Slot> roster, int at, bool impostor)
+    // 本編が決めた陣営から最終的に変わった人だけに 1 回ずつ本編の役職を送る (予約合わせと公平化で同じ人を 2 回動かしても 1 本)。
+    // 陣営が元に戻った人は本編の役職のまま
+    private static void SendTeamChanges(List<Slot> vanilla, List<Slot> roster)
     {
-        var s = roster[at];
-        s.Impostor = impostor;
-        s.BaseRole = impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
-        roster[at] = s;
-        var p = Player(s.PlayerId);
-        if (p) p.RpcSetRole(s.BaseRole, true);
+        for (int i = 0; i < roster.Count; i++)
+        {
+            if (roster[i].Impostor == vanilla[i].Impostor)
+            {
+                roster[i] = vanilla[i];
+                continue;
+            }
+            var p = Player(roster[i].PlayerId);
+            if (p) p.RpcSetRole(roster[i].BaseRole, true);
+        }
     }
 
     private static readonly RemoteCall<List<Pick>> Assign = new("Roles.Assign", Route.HostToAll,

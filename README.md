@@ -23,7 +23,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 
 - [Nebula on the Ship](https://github.com/Dolly1016/Nebula-Public) (Dolly1016、GPL-3.0): incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方、mod の通信を 1 つの番号にまとめて名前で振り分ける仕組み、試合の出来事を寿命付きで受け取る仕組み、ダミープレイヤーを出す手順、自分で作った色を人ごとの色の表で全員に見せる考え方、会議中の地図に自分だけのメモ (人の印と線) を書く機能
 - [ExtremeRoles](https://github.com/yukieiji/ExtremeRoles) (yukieiji、GPL-3.0): ダミープレイヤーを出す手順、設定の項目の名前が変わっても前の値を引き継ぐ仕組み
-- [Super New Roles](https://github.com/ykundesu/SuperNewRoles) (ykundesu、GPL-3.0): 試合の出来事を配る仕組み (配っている最中の受け手の追加・削除の扱い)、公式サーバーに全員導入の mod として部屋を登録する方法、機器 (アドミン・カメラ・バイタル) を使えなくする方法
+- [Super New Roles](https://github.com/ykundesu/SuperNewRoles) (ykundesu、GPL-3.0): 試合の出来事を配る仕組み (配っている最中の受け手の追加・削除の扱い)、公式サーバーに全員導入の mod として部屋を登録する方法、機器 (アドミン・カメラ・バイタル) を使えなくする方法、前の試合で外れた人ほど役職やインポスターに当たりやすくする配り方
 - [Reactor](https://github.com/NuclearPowered/Reactor) (NuclearPowered、LGPL-3.0): 公式サーバーかどうかの判定 (接続先のアドレスで見る)
 - [Town of Us Mira](https://github.com/AU-Avengers/TOU-Mira) (AU-Avengers、GPL-3.0): 試合の途中で本編の役職を付け直す方法、試合の終わりから自動でロビーへ戻る機能 ([AutoRejoin](https://github.com/Maxi0fc/AutoRejoin) 由来)
 - [End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful、GPL-3.0): 起動の高速化 (`patcher/`・パッチ適用の高速化)、GC の先回しの実装 (ゲーム側の GC も演出中に回す)、設定画面のフォントと検索の一致判定、起動直後のアカウント表示の停止、開発用の道具 (実機テストの操作口・重さの測り方・起動の時間ログ・AssetBundle の焼き方・Android で使えない API の照合)、Android の起動アプリへの改良 (mod と interop の同梱・落ちた時と固まった時の記録・ログの共有・itch.io でのログイン)、ポータルの見た目 (行き先の景色を映す窓と床の装置)

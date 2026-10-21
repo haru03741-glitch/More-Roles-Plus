@@ -144,6 +144,7 @@ AssignSettings.Fill: Players left without a role
 AssignSettings.KeepVanilla: Keep vanilla
 AssignSettings.FillFromSameTeamRoles: Fill from same-team roles
 AssignSettings.FillNeutralsIncluded: Fill, neutrals included
+AssignSettings.Fairness: Favor players who missed out
 
 # ── TeamSizes ──
 TeamSizes.Title: Player Bands

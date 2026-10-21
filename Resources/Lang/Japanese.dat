@@ -144,6 +144,7 @@ AssignSettings.Fill: 役職が付かなかった人
 AssignSettings.KeepVanilla: 本編のまま
 AssignSettings.FillFromSameTeamRoles: 同じ陣営の役職で埋める
 AssignSettings.FillNeutralsIncluded: 第三陣営も含めて埋める
+AssignSettings.Fairness: 外れが続いた人を当たりやすく
 
 # ── TeamSizes ──
 TeamSizes.Title: 人数の帯
