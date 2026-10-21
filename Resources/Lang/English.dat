@@ -595,3 +595,8 @@ MapSettings.Mirror: Mirror the map left to right
 LangFiles.Reloaded: Reloaded the texts (edited: {mod} mod, {vanilla} vanilla)\nReopen any open menu to see the change\n{path}
 LangFiles.Opened: Opened the folder: {path}
 LangFiles.OpenOnlyPc: Can't open the folder on this device: {path}
+
+# ── SettingNotice ──
+SettingNotice.Changed: {name} → <b>{value}</b>
+SettingNotice.Others: {count} more settings changed
+SettingNotice.Preset: Switched to the preset "{name}" ({count} settings changed)

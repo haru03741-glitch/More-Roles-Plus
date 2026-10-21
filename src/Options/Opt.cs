@@ -24,6 +24,9 @@ public abstract class Opt
     internal int Index;
     internal readonly int DefaultIndex;
 
+    // 並ぶ見出し (役職名・設定のまとまり)。変更の通知で項目の前に付ける
+    internal Registry.Section Section;
+
     // タブには並べない (別の場所で操作する項目)。保存・同期・検索・ロビーの一覧には入る
     internal bool OffTab;
     internal abstract int Count { get; }

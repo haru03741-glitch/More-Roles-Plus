@@ -595,3 +595,8 @@ MapSettings.Mirror: マップを左右反転する
 LangFiles.Reloaded: 文を読み直しました (書き換え: MRP {mod} 件・本編 {vanilla} 件)\n開いているメニューは開き直すと変わります\n{path}
 LangFiles.Opened: フォルダを開きました: {path}
 LangFiles.OpenOnlyPc: フォルダはこの端末では開けません: {path}
+
+# ── SettingNotice ──
+SettingNotice.Changed: {name} → <b>{value}</b>
+SettingNotice.Others: ほか {count} 個の設定が変わりました
+SettingNotice.Preset: プリセット「{name}」を読み込みました ({count} 個の変更)

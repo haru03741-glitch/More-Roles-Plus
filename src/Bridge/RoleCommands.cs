@@ -162,7 +162,7 @@ internal static class RoleCommands
             reply($"OK tasks n={lp.myTasks.Count} total={GameData.Instance?.TotalTasks} done={GameData.Instance?.CompletedTasks} {sb}");
         });
 
-        TestBridge.Register("opt", "<key> [番号] 設定項目を見る / 番号で変える (例 opt Lighter.Chance 10)", (args, reply) =>
+        TestBridge.Register("opt", "<key> [番号] [sync] 設定項目を見る / 番号で変える (sync = 全員へ送る・例 opt Lighter.Chance 10 sync)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (a.Length == 0)
@@ -172,6 +172,11 @@ internal static class RoleCommands
             }
             if (!Registry.TryGet(a[0], out var opt)) { reply($"ERR opt unknown key {a[0]}"); return; }
             if (a.Length > 1 && int.TryParse(a[1], out int i)) opt.SetIndex(i);
+            if (a.Length > 2 && a[2] == "sync")
+            {
+                PresetLabel.Recheck(); // 設定画面を閉じた時と同じく、プリセットのままかを見直してから送る
+                Net.OptionSync.SendAll();
+            }
             reply($"OK opt {opt.Key} index={opt.Index}/{opt.Count} value={opt.Display()}");
         });
 

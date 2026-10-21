@@ -177,6 +177,7 @@ internal static class Registry
             return;
         }
         opt.Key = key;
+        opt.Section = sec;
         ByKey[key] = opt;
         All.Add(opt);
         sec.Opts.Add(opt);
