@@ -2673,9 +2673,11 @@ internal static partial class WaterSim
 
     internal static double MaxStepMs { get; private set; }
 
-    // 確認用: 開いている升を全部深さ depth の水で満たす (自分の手元だけ・同期しない)
+    // 確認用: 開いている升を全部深さ depth の水で満たす (自分の手元だけ・同期しない)。
+    // 刻みの番号付きの出来事でなく配列へ直に書くので、裏で回っている刻みと絵 (同じ配列と描き直しの印を触る) の終わりを先に待つ
     private static int Flood(int depth)
     {
+        EnsureIdle();
         if (!EnsureGrid()) return -1;
         if (!_running) { _running = true; _step = StartStep(GameClock.Now - Delay); }
         PropSim.WakeForWater(GameClock.Now - Delay);
@@ -2694,9 +2696,10 @@ internal static partial class WaterSim
         return n;
     }
 
-    // 確認用: 円の中の升だけに水を置く (自分の手元だけ・水の縁の見た目を見る)
+    // 確認用: 円の中の升だけに水を置く (自分の手元だけ・水の縁の見た目を見る)。Flood と同じく裏の刻みの終わりを先に待つ
     private static int Pour(float px, float py, float r, int depth)
     {
+        EnsureIdle();
         if (!EnsureGrid()) return -1;
         if (!_running) { _running = true; _step = StartStep(GameClock.Now - Delay); }
         PropSim.WakeForWater(GameClock.Now - Delay);

@@ -1730,12 +1730,16 @@ internal static class WaterArt
             j.T = null;
             t.FloorJob = false;
             // 片付けたタイル (船が替わった・Clear) は捨てる
-            if (!t.Sr || !Tiles.TryGetValue(t.Ty * WaterSim.TilesW + t.Tx, out var cur) || cur != t) continue;
-            bool wait = t.FloorWait;
+            int key = t.Ty * WaterSim.TilesW + t.Tx;
+            if (!t.Sr || !Tiles.TryGetValue(key, out var cur) || cur != t) continue;
+            bool wait = t.FloorWait, wasOn = t.FloorOn;
             if (t.Floor) UnityEngine.Object.Destroy(t.Floor);
             UploadFloor(t, j.Buf, j.M, j.X, j.Y, j.Size);
             FloorFromThread++;
             if (wait && !t.Empty) Enable(t, !Hidden);
+            // 切り抜きが付く前に描いた画素は「見せてよいか」(G) を切り抜き無しの出し方で作ってあり、壁の画素が 0 で壁の面の水が隠れる。
+            // 水が動かないとタイルは描き直されないので、すぐ描き直す
+            if (!wasOn && t.FloorOn) { t.LastDraw = -10f; Queue(key); }
         }
         foreach (var j in FloorJobs) FloorJobPool.Push(j);
         FloorJobs.Clear();
@@ -1758,6 +1762,45 @@ internal static class WaterArt
         ulong h = 14695981039346656037UL;
         foreach (byte v in b) h = (h ^ v) * 1099511628211UL;
         return h;
+    }
+
+    // 確認用 (water tile x y): その点を含むタイルの床の切り抜き・壁の面・描き待ちの状態と、点に一番近い画素の値 (RGBA)
+    internal static unsafe string TileInfo(float x, float y, bool upload = false)
+    {
+        int tc = WaterSim.TileCells;
+        float size = tc * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        int tx = (int)MathF.Floor((x - org.x) / size), ty = (int)MathF.Floor((y - org.y) / size), key = ty * WaterSim.TilesW + tx;
+        if (!Tiles.TryGetValue(key, out var t)) return $"tile=({tx},{ty}) none";
+        // up = 描き直さずに今の画素をテクスチャへ送り直す (画素と画面が食い違う時に、転送が抜けたのかを見る)
+        if (upload && t.Px != null && t.Tex)
+        {
+            fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
+            t.Tex.Apply(false, false);
+        }
+        string px = "-";
+        if (t.Px != null)
+        {
+            int n = tc * Px;
+            int ix = Math.Clamp((int)MathF.Round((x - org.x - tx * size) / size * (n - 1)), 0, n - 1);
+            int iy = Math.Clamp((int)MathF.Round((y - org.y - ty * size) / size * (n - 1)), 0, n - 1);
+            int i = (iy * n + ix) * 4;
+            px = $"{t.Px[i]},{t.Px[i + 1]},{t.Px[i + 2]},{t.Px[i + 3]} face={(t.Face != null ? t.Face[iy * n + ix] : -1)}";
+        }
+        // 床の切り抜きをその場の作り方 (Fill) と作業スレッドの作り方 (FillFrom・moving なし) で作り直し、点の値と食い違いの数
+        int fm = (int)MathF.Round(size * FloorMask.Ppu);
+        float fx0 = org.x + tx * size, fy0 = org.y + ty * size;
+        var f1 = new byte[fm * fm];
+        var f2 = new byte[fm * fm];
+        FloorMask.Fill(fx0, fy0, size, fm, f1);
+        FloorMask.FillFrom(FloorMask.Take(), fx0, fy0, size, fm, f2, new FloorMask.Scratch(), false);
+        int fdiff = 0;
+        for (int i = 0; i < f1.Length; i++) if (f1[i] != f2[i]) fdiff++;
+        int fi = Math.Clamp((int)MathF.Round((y - fy0) / size * (fm - 1)), 0, fm - 1) * fm + Math.Clamp((int)MathF.Round((x - fx0) / size * (fm - 1)), 0, fm - 1);
+        var f3 = (byte[])f1.Clone();
+        WaterHeight.StampFloor(f3, fm, fx0, fy0, size);
+        string fl = $" cut={f1[fi]}/{f2[fi]} cutDiff={fdiff} moving={FloorMask.MovingAt(fx0, fy0, size, fm)}" + (t.FloorHash != 0 ? $" hashSame={Fnv(f3) == t.FloorHash}" : "");
+        return $"tile=({tx},{ty}){fl} floor={(bool)t.Floor} floorOn={t.FloorOn} floorJob={t.FloorJob} floorWait={t.FloorWait} floorDirty={t.FloorDirty} queued={FloorQueued.Contains(key)} faceDone={t.FaceDone} face={t.Face != null} empty={t.Empty} waiting={t.Waiting} lastDraw={_clock - t.LastDraw:0.00}s ago srOn={(t.Sr ? t.Sr.enabled : false)} px={px}";
     }
 
     // 照合: 指紋のあるタイルの床マスクを今の状態で作り直して比べる (作り直し待ちのタイルは数えない)。

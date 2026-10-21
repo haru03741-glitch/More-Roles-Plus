@@ -14,7 +14,7 @@ internal static partial class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | fallsat x y [r] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | tile x y [up] | fallsat x y [r] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             // 預けた刻みを終わらせてから (確認用の操作は水の配列を直に読み書きする)
@@ -33,6 +33,7 @@ internal static partial class WaterSim
         if (a.StartsWith("prebase")) { Prebase(a, reply); return true; }
         if (a.StartsWith("zflow")) { ZFlowToggle(a, reply); return true; }
         if (a.StartsWith("floorcheck")) { reply($"OK water floorcheck {WaterArt.FloorCheck()}"); return true; }
+        if (a.StartsWith("tile")) { TileAt(a, reply); return true; }
         if (a.StartsWith("spikes")) { Spikes(a, reply); return true; }
         if (a.StartsWith("prof")) { Profile(a, reply); return true; }
         if (a.StartsWith("flood")) { FloodAll(a, reply); return true; }
@@ -123,6 +124,14 @@ internal static partial class WaterSim
         int depth = a.Length > 5 && int.TryParse(a.Substring(5).Trim(), out int given) ? given : Full / 4;
         int n = Flood(depth);
         reply(n < 0 ? $"ERR water flood: {NoGrid()}" : $"OK water flood cells={n} depth={depth}");
+    }
+
+    // 確認用: その点を含む水の絵のタイルの状態
+    private static void TileAt(string a, Action<string> reply)
+    {
+        var q = Rest(a, 4);
+        if (q.Length < 2 || !float.TryParse(q[0], Num, Inv, out float x) || !float.TryParse(q[1], Num, Inv, out float y)) { reply("ERR water tile x y"); return; }
+        reply($"OK water {WaterArt.TileInfo(x, y, q.Length > 2 && q[2] == "up")}");
     }
 
     // 確認用: 横一列 (step 升おき) の深さと流れの速さ (単位/秒・縁を越える分を含む・絵と同じ値)
