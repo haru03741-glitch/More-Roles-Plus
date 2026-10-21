@@ -35,6 +35,8 @@ internal static class ClientOptions
     public static ConfigEntry<bool> AutoPlayAgain { get; private set; }
     public static ConfigEntry<bool> Reconnect { get; private set; }
     public static ConfigEntry<bool> Spectate { get; private set; }
+    public static ConfigEntry<bool> SabotageFlash { get; private set; }
+    public static ConfigEntry<bool> SabotageAlarm { get; private set; }
 
     public static void Bind(ConfigFile cfg)
     {
@@ -45,6 +47,8 @@ internal static class ClientOptions
         Reconnect = Add("Reconnect", true, new Text("ClientOptions.AutoRejoin"), null);
         Spectate = Add("Spectate", false, new Text("ClientOptions.Spectate"), Roles.Spectate.OnOptionChanged);
         DarkMeeting = Add("DarkMeeting", false, new Text("ClientOptions.DarkMeetingScreen"), null); // 次の会議から
+        SabotageFlash = Add("SabotageFlash", true, new Text("ClientOptions.SabotageFlash"), null); // 次のサボタージュから
+        SabotageAlarm = Add("SabotageAlarm", true, new Text("ClientOptions.SabotageAlarm"), null);
     }
 
     private static ConfigEntry<bool> Add(string key, bool def, Text label, Action changed)

@@ -152,6 +152,7 @@ public class Ticker : MonoBehaviour
         Net.HostChange.Tick();
         Roles.TeamSizes.Tick();
         Menu.MatchInfoExtension.Tick();
+        Menu.SabotageAlert.Tick();
         Roles.KillAbility.Tick(); t = Bridge.Perf.Lane(28, t);
         Roles.RoleFrame.Tick();
         Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);

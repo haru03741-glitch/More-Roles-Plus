@@ -491,6 +491,8 @@ ClientOptions.AutoReturn: 試合が終わったら自動でロビーへ戻る
 ClientOptions.AutoRejoin: 回線で切れたら同じ部屋へ入り直す
 ClientOptions.Spectate: 次の試合を観戦する (幽霊で見るだけ)
 ClientOptions.DarkMeetingScreen: 会議の画面を暗い色にする
+ClientOptions.SabotageFlash: サボタージュの画面の点滅
+ClientOptions.SabotageAlarm: サボタージュの警報音
 ClientOptions.Back: 戻る
 ClientOptions.MRPOptions: MRP の設定
 

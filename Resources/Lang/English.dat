@@ -491,6 +491,8 @@ ClientOptions.AutoReturn: Return to the lobby after a game
 ClientOptions.AutoRejoin: Rejoin the room after a connection drop
 ClientOptions.Spectate: Spectate the next game (as a ghost)
 ClientOptions.DarkMeetingScreen: Dark meeting screen
+ClientOptions.SabotageFlash: Sabotage screen flash
+ClientOptions.SabotageAlarm: Sabotage alarm sound
 ClientOptions.Back: Back
 ClientOptions.MRPOptions: MRP Options
 
