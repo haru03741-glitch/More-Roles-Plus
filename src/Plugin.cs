@@ -120,6 +120,7 @@ public class Ticker : MonoBehaviour
         Dev.DevCooldown.Tick();
         Commands.ChatInput.Tick();
         Menu.ColorPicker.Tick();
+        Menu.MeetingMemo.Tick();
         Options.RoleMenu.Tick(); t = Bridge.Perf.Lane(23, t);
         Options.CrowdPages.Tick();
         Bridge.Perf.End(t0);

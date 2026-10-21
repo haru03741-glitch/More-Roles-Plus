@@ -113,7 +113,7 @@ internal static class MapFlipMapShowPatch
         for (int i = 0; i < root.childCount; i++)
         {
             var c = root.GetChild(i);
-            if (c.name is "CloseButton" or Mark) continue;
+            if (c.name is "CloseButton" or Mark or Menu.MeetingMemo.LayerName) continue;
             // 背景の絵は flipX で裏返す (地図の大きさ合わせ (AspectSize) が絵の幅を読むので、負の倍率にすると全体が逆さになる)。その子は鏡に映す
             var sr = c.GetComponent<SpriteRenderer>();
             if (!sr) { Mirror(c); continue; }
