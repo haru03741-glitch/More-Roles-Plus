@@ -260,7 +260,9 @@ internal static class BreakPieces
         var mat = new Material(room.Mat) { name = "MrpLift" };
         mat.SetFloat("_UseDamage", mode);
         if (!configure(mat, room)) { UnityEngine.Object.Destroy(mat); return null; }
-        return Make(room, world, mat, Color.white, 0, alive: false);
+        var piece = Make(room, world, mat, Color.white, 0, alive: false);
+        if (piece == null) UnityEngine.Object.Destroy(mat); // 範囲が絵の外で作れなかった
+        return piece;
     }
 
     private static BreakPiece Make(Room room, Rect world, Material mat, Color color, byte gen, bool alive = true)

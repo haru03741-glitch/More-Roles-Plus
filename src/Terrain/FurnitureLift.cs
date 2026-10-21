@@ -20,6 +20,7 @@ internal static class FurnitureLift
     internal const float Pad = 0.3f;         // 形を当たり判定から広げる幅の上限 (当たり判定は絵より小さい所がある。広げた所の床は模様で外す)
     private const float CutZ = 0.0006f;      // 部屋の絵より手前・水 (0.0004) より手前
     private const float FillZ = 0.0002f;     // 部屋の絵より手前・水より奥
+    internal const int ClassPx = 256;        // 画素の見分けを読み戻す格子の 1 辺 (広げた四角の上)
 
     // 床の測り方: きれいな床の左下 (部屋の絵の画素・左下原点)・繰り返しの幅 (画素・0 = その向きは同じ列/行をそのまま引く)・
     // 形を当たり判定から広げる幅 (世界単位・左右下上。隣に柄の違う床や壁・ほかの家具の影がある側は狭い)
@@ -110,6 +111,7 @@ internal static class FurnitureLift
         public Rect ShapeWorld;
         public Vector2 ShapeOff, ShapeScale;
         public bool[] ColIn;    // 広げる前の当たり判定の中 (Shape と同じ格子)
+        public bool[] FurnPx;   // 家具の画素 (広げた四角 ShapeWorld の上の ClassPx 四方・GPU の見分けを読み戻した物・無ければ null)
         // 家具を描き込んだ部屋の絵 (床を測った家具だけ)。水面の板が切り抜きと同じ見分け方で、型の中の家具の画素だけに描くのに使う
         public BreakPieces.Room Art;
         public bool Tried, Failed;
@@ -171,15 +173,7 @@ internal static class FurnitureLift
             var world = PaddedRect(l);
             Vector2 at = world.center;
             l.CutOffset = FxMath.V2(world.center.x - l.Bounds.center.x, world.center.y - l.Bounds.center.y);
-            Func<Material, BreakPieces.Room, bool> configure = (mat, room) =>
-            {
-                if (room.Name != l.Room) return false;
-                mat.SetTexture("_ShapeTex", shape);
-                mat.SetVector("_ShapeRect", new Vector4(world.xMin, world.yMin, 1f / world.width, 1f / world.height));
-                mat.SetVector("_FloorPatch", FloorPatch(l.Floor, room));
-                l.Art = room;
-                return true;
-            };
+            var configure = Configure(l, shape, world);
             var fill = BreakPieces.MakeLift(at, world, 8f, configure);
             var cut = fill == null ? null : BreakPieces.MakeLift(at, world, 7f, configure);
             foreach (var piece in new[] { fill, cut })
@@ -200,6 +194,7 @@ internal static class FurnitureLift
             Lifted.Add(fill.Tr.gameObject);
             Lifted.Add(cut.Tr.gameObject);
             l.Cut = cut.Tr;
+            l.FurnPx = Classify(world, configure);
             var cp = cut.Tr.position;
             var cs = cut.Tr.lossyScale;
             l.Shape = shape;
@@ -250,7 +245,13 @@ internal static class FurnitureLift
             if (l.Measured)
             {
                 var room = BreakPieces.RoomAt(world.center, world);
-                if (room != null && room.Name == l.Room) l.Art = room;
+                if (room != null && room.Name == l.Room)
+                {
+                    l.Art = room;
+                    // 型の中の床と家具が落とす影は床の水が描く (板は家具の画素だけ)。部屋の絵の家具はそのまま (床マスクの壁の面)
+                    var cls = Classify(world, Configure(l, shape, world), inShapeNotFurniture: true);
+                    if (cls != null) FloorMask.AddFloor(world, cls, ClassPx, null);
+                }
             }
             // 板を出すのは水が来てからなので、掛かるタイルの壁の面の高さは作り直す
             if (_stillGen != GameClock.ShipGen) { StillShapes.Clear(); _stillGen = GameClock.ShipGen; }
@@ -374,6 +375,113 @@ internal static class FurnitureLift
                 int i = (y * ShapePx + x) * 4;
                 px[i] = 255; px[i + 1] = 255; px[i + 2] = 255; px[i + 3] = 255;
             }
+    }
+
+    // 切り抜きの絵・跡の床・見分けの書き出しのマテリアルに、型と床の模様を渡す (家具の部屋の絵でなければ false)
+    private static Func<Material, BreakPieces.Room, bool> Configure(Lift l, Texture2D shape, Rect world) => (mat, room) =>
+    {
+        if (room.Name != l.Room) return false;
+        mat.SetTexture("_ShapeTex", shape);
+        mat.SetVector("_ShapeRect", new Vector4(world.xMin, world.yMin, 1f / world.width, 1f / world.height));
+        mat.SetVector("_FloorPatch", FloorPatch(l.Floor, room));
+        l.Art = room;
+        return true;
+    };
+
+    // 画素の見分けを GPU で 1 回描いて読み戻す (切り抜きと水面の板が描き分けるのと同じ式・TerrainSprite の _UseDamage = 10)。
+    // 返すのは広げた四角 world の上の ClassPx 四方: 家具の画素 (inShapeNotFurniture = 型の中の家具でない画素)。
+    // 床マスクは事前に作った絵の見分けで、家具の縁と落とす影の扱いが画素の見分けと食い違うので、水の抜きはこちらで決める。
+    // 描くのは見分けの塊 1 枚だけを写す使い捨てのカメラ (Android の libunity には Graphics.Blit が無い)
+    private const int ClassifyLayer = 31; // 本編が使っていない層 (瓦礫の焼き込みと同じ・描く間だけ)
+    private static bool[] Classify(Rect world, Func<Material, BreakPieces.Room, bool> configure, bool inShapeNotFurniture = false)
+    {
+        var piece = BreakPieces.MakeLift(world.center, world, 10f, configure);
+        if (piece == null) return null;
+        var rt = RenderTexture.GetTemporary(ClassPx, ClassPx, 0, RenderTextureFormat.ARGB32);
+        var prev = RenderTexture.active;
+        GameObject camGo = null;
+        Texture2D t = null;
+        try
+        {
+            piece.Tr.gameObject.layer = ClassifyLayer;
+            camGo = new GameObject("MrpClassifyCam");
+            var cam = camGo.AddComponent<Camera>();
+            cam.enabled = false;
+            cam.orthographic = true;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            cam.cullingMask = 1 << ClassifyLayer;
+            cam.nearClipPlane = 0.01f;
+            cam.farClipPlane = 10f;
+            cam.allowHDR = false;
+            cam.allowMSAA = false;
+            camGo.transform.position = FxMath.V3(world.center.x, world.center.y, piece.Tr.position.z - 5f);
+            cam.orthographicSize = world.height * 0.5f;
+            cam.aspect = world.width / world.height;
+            cam.targetTexture = rt;
+            cam.Render();
+            cam.targetTexture = null;
+            RenderTexture.active = rt;
+            t = new Texture2D(ClassPx, ClassPx, TextureFormat.RGBA32, false, true);
+            t.ReadPixels(new Rect(0, 0, ClassPx, ClassPx), 0, 0, false);
+            var raw = t.GetRawTextureData();
+            var res = new bool[ClassPx * ClassPx];
+            for (int i = 0; i < res.Length; i++)
+            {
+                bool furn = raw[i * 4] > 127, inShape = raw[i * 4 + 1] > 127;
+                res[i] = inShapeNotFurniture ? inShape && !furn : furn;
+            }
+            return res;
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogWarning($"[FurnitureLift] classify: {e.Message}");
+            return null;
+        }
+        finally
+        {
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            if (t) UnityEngine.Object.Destroy(t);
+            if (camGo) UnityEngine.Object.Destroy(camGo);
+            var sp = piece.Sr ? piece.Sr.sprite : null;
+            var mat = piece.Sr ? piece.Sr.sharedMaterial : null;
+            UnityEngine.Object.Destroy(piece.Tr.gameObject);
+            if (sp) UnityEngine.Object.Destroy(sp);
+            if (mat) UnityEngine.Object.Destroy(mat);
+        }
+    }
+
+    // 確かめ用: 持ち上げた家具の画素の見分けをもう一度読み戻して PPM へ (R = 家具・G = 形の中・B = 当たり判定の中)
+    internal static string DumpClass(Lift l, string path)
+    {
+        if (l?.Cut == null || l.Art == null || !l.Shape) return "no lift";
+        var configure = Configure(l, l.Shape, l.ShapeWorld);
+        var furn = Classify(l.ShapeWorld, configure);
+        var inShape = Classify(l.ShapeWorld, configure, inShapeNotFurniture: true);
+        if (furn == null || inShape == null) return "classify failed";
+        int n = ClassPx, f = 0, s = 0;
+        var px = new byte[n * n * 3];
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                int i = y * n + x, o = ((n - 1 - y) * n + x) * 3;
+                bool fu = furn[i], sh = inShape[i] || fu;
+                int cx = x * ShapePx / n, cy = y * ShapePx / n;
+                bool col = l.ColIn != null && l.ColIn[cy * ShapePx + cx];
+                px[o] = fu ? (byte)255 : (byte)0; px[o + 1] = sh ? (byte)160 : (byte)0; px[o + 2] = col ? (byte)200 : (byte)0;
+                if (fu) f++;
+                if (sh) s++;
+            }
+        using (var fs = System.IO.File.Create(path))
+        {
+            var head = Encoding.ASCII.GetBytes($"P6\n{n} {n}\n255\n");
+            fs.Write(head, 0, head.Length);
+            fs.Write(px, 0, px.Length);
+        }
+        int stored = 0;
+        if (l.FurnPx != null) foreach (bool b in l.FurnPx) if (b) stored++;
+        return $"{l.Name} furn={f} shape={s} stored={(l.FurnPx == null ? "null" : stored.ToString())} -> {path}";
     }
 
     // 家具の絵と当たり判定を、元の足元 (pivot) を軸に ang 度回して中心を (cx, cy) へ

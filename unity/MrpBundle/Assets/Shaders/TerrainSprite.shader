@@ -8,7 +8,9 @@
 // 合成の係数はマテリアルで変えられる (既定 = 通常の半透明合成。影の写しの型抜きだけが別の係数を使う)。
 // _MrpPieceSites (行 0..255 = 破壊の番号・256..511 = 剥げかけの枠・列 = 種点) = 割れ目の種点 (放射状)。割れた塊は自分の種点がいちばん近い所だけ描く。
 // 7 = 持ち上げた家具 / 8 = その跡の床: 部屋の絵に描き込まれた家具を、形 (_ShapeTex) と、その場所に本来ある床の模様
-//   (_FloorPatch のきれいな床を繰り返した色) との違いで切り分ける。
+//   (_FloorPatch のきれいな床を繰り返した色) との違いで切り分ける。画素は 床 / 影 (当たり判定の外で、床の色を一様に暗くした色) / 家具 の 3 つ。
+//   家具だけを水より手前 (7) に描き、跡の床 (8) も家具の画素だけを塗る。影は部屋の絵のまま水の下に残る。
+// 10 = 見分けの書き出し (使い捨てのカメラで描いて読み戻す): 家具の画素 = R 1・形の中 = G 1。
 Shader "MRP/TerrainSprite"
 {
     Properties
@@ -186,6 +188,34 @@ Shader "MRP/TerrainSprite"
                 return all(s > 0) && all(s < 1) && tex2D(_ShapeTex, s).r > 0.5;
             }
 
+            // 広げる前の当たり判定の中か (形の G)
+            bool InCollider(float2 ow)
+            {
+                float2 s = (ow - _ShapeRect.xy) * _ShapeRect.zw;
+                return all(s > 0) && all(s < 1) && tex2D(_ShapeTex, s).g > 0.5;
+            }
+
+            // 家具が床に落とす影か: その場所の床の色を一様に暗くした色 (床の色との比が 3 色でそろっている)。
+            // 当たり判定の中は家具の暗い面 (縁の線など) と見分けられないので影にしない (水の板の RoomIsShadow と同じ式)
+            bool IsShadowAt(float2 uv, float2 ow)
+            {
+                if (InCollider(ow)) return false;
+                float3 c = tex2D(_MainTex, uv).rgb, f = FloorAt(ow);
+                float k = dot(c, f) / max(dot(f, f), 1e-4);
+                float3 d = abs(c - f * k);
+                return k > 0.25 && k < 0.97 && max(d.r, max(d.g, d.b)) < _FloorTol;
+            }
+
+            // 家具の画素か (形の中で床の模様と違い、影でもない)。床の模様の手描きのずれ (ひし形の境の細い線) は家具でない:
+            // 上下左右の 3 つ以上も床でない画素だけ
+            bool IsFurnitureAt(float2 uv, float2 ow, float2 t)
+            {
+                if (tex2D(_MainTex, uv).a < 0.5 || !InShape(ow) || IsFloorAt(uv)) return false;
+                int n = (IsFloorAt(uv + float2(t.x, 0)) ? 0 : 1) + (IsFloorAt(uv - float2(t.x, 0)) ? 0 : 1)
+                      + (IsFloorAt(uv + float2(0, t.y)) ? 0 : 1) + (IsFloorAt(uv - float2(0, t.y)) ? 0 : 1);
+                return n >= 3 && !IsShadowAt(uv, ow);
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 // 6 = 損傷の範囲の型抜き (影の写しを焼く時): 損傷マスクに何か書かれた所はアルファ 1・それ以外は 0。
@@ -198,33 +228,35 @@ Shader "MRP/TerrainSprite"
                     return fixed4(0, 0, 0, max(dm.r, dm.g) > 0.01 ? 1 : 0);
                 }
 
+                // 10 = 見分けの書き出し: 家具の画素を R = 1・形の中を G = 1
+                if (_UseDamage > 9.5)
+                {
+                    float2 ow = i.uv * _PieceMap.xy + _PieceMap.zw;
+                    return fixed4(IsFurnitureAt(i.uv, ow, _MainTex_TexelSize.xy) ? 1 : 0, InShape(ow) ? 1 : 0, 0, 1);
+                }
+
                 fixed4 c = tex2D(_MainTex, i.uv);
             #if ETC1_EXTERNAL_ALPHA
                 fixed4 a = tex2D(_AlphaTex, i.uv);
                 c.a = lerp(c.a, a.r, _EnableExternalAlpha);
             #endif
-                // 8 = 持ち上げた家具の跡の床: 元の場所で、家具 (床の色でない画素) の所にだけ、
-                // 同じ部屋の絵のきれいな床を模様の繰り返しの幅ごとに写して描く
-                // 家具の縁の中間色が輪に残らないように、1 画素隣が家具でも塗る
+                // 8 = 持ち上げた家具の跡の床: 元の場所で、家具の画素の所にだけ、同じ部屋の絵のきれいな床を模様の繰り返しの幅ごとに写して描く。
+                // 家具の縁の中間色が輪に残らないように、1 画素隣が家具でも塗る。家具が床に落とす影は塗らない (部屋の絵の影が水の下に残る)
                 if (_UseDamage > 7.5)
                 {
                     float2 ow = i.uv * _PieceMap.xy + _PieceMap.zw;
                     if (c.a < 0.5 || !InShape(ow)) discard;
+                    // 毎フレーム描く絵なので見分けは軽く: 床の画素 (隣も床) と影の画素だけ外す (家具の見分けを隣ごとに引くと 1 画素 60 回読む)
                     float2 t = _MainTex_TexelSize.xy;
                     if (IsFloorAt(i.uv) && IsFloorAt(i.uv + float2(t.x, 0)) && IsFloorAt(i.uv - float2(t.x, 0))
                         && IsFloorAt(i.uv + float2(0, t.y)) && IsFloorAt(i.uv - float2(0, t.y))) discard;
+                    if (IsShadowAt(i.uv, ow)) discard;
                     return fixed4(FloorAt(ow), 1);
                 }
-                // 7 = 持ち上げた家具: 部屋の絵を元の場所で引き、形の中で床の模様と違う画素だけ描く (落とす影ごと動く)
+                // 7 = 持ち上げた家具: 部屋の絵を元の場所で引き、形の中の家具の画素だけ描く (落とす影は 9 が水より奥に描く)
                 if (_UseDamage > 6.5)
                 {
-                    float2 ow = i.uv * _PieceMap.xy + _PieceMap.zw;
-                    if (c.a < 0.5 || !InShape(ow) || IsFloorAt(i.uv)) discard;
-                    // 床の模様の手描きのずれ (ひし形の境の細い線) は家具でない: 上下左右の 3 つ以上も床でない画素だけ
-                    float2 t = _MainTex_TexelSize.xy;
-                    int n = (IsFloorAt(i.uv + float2(t.x, 0)) ? 0 : 1) + (IsFloorAt(i.uv - float2(t.x, 0)) ? 0 : 1)
-                          + (IsFloorAt(i.uv + float2(0, t.y)) ? 0 : 1) + (IsFloorAt(i.uv - float2(0, t.y)) ? 0 : 1);
-                    if (n < 3) discard;
+                    if (!IsFurnitureAt(i.uv, i.uv * _PieceMap.xy + _PieceMap.zw, _MainTex_TexelSize.xy)) discard;
                     return c;
                 }
                 // 5 = 剥げかけ (崩れる前の打撃)。頂点色 r = 細胞 (255 = ひびの線だけ)・g = 剥げかけの枠・

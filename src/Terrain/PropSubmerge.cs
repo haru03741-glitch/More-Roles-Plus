@@ -111,6 +111,7 @@ internal static partial class PropSim
     private static long _sunkNext;
     private static int _sunkGen = -1;
     private static bool _sunkAny, _sunkForce; // _sunkForce = 確認用に全部の板を沈めたまま止める (bridge `props sunk force`)
+    internal static bool SunkOff; // 確認用に家具の水面の板を出さない (bridge `props sunk off`)
 
     internal static void SunkTick()
     {
@@ -120,6 +121,7 @@ internal static partial class PropSim
 
     private static void SunkCore()
     {
+        if (SunkOff) { SunkHideAll(); return; }
         if (_sunkForce || !_sunkAny && !WaterSim.Running) return;
         long now = Environment.TickCount64;
         if (now < _sunkNext) return;

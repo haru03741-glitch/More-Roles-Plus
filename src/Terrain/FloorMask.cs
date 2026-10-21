@@ -494,6 +494,30 @@ internal static class FloorMask
             VerifyPatches++;
             VerifyPatchDiff += diff;
         }
+        if (p.Lift?.FurnPx != null) DryFromPixels(p, x0, y0);
+    }
+
+    // 持ち上げた家具の跡で今いる所を抜く画素 (Dry) を、事前の床マスクでなく GPU の画素の見分け (家具の画素だけ) で決める。
+    // 事前のマスクは家具の縁や落とす影を床に入れたり外したりして、切り抜きの絵・水面の板と食い違う (影の中で水が二重になる)
+    private static void DryFromPixels(Patch p, int x0, int y0)
+    {
+        var r = p.World;
+        var furn = p.Lift.FurnPx;
+        int n = FurnitureLift.ClassPx;
+        float sx = n / r.width, sy = n / r.height;
+        Array.Clear(p.Dry, 0, p.Dry.Length);
+        for (int dy = 0; dy < p.DH; dy++)
+        {
+            int cy = (int)MathF.Floor(((y0 + dy + 0.5f) / _ppu + _oy - r.yMin) * sy);
+            if (cy < 0 || cy >= n) continue;
+            for (int dx = 0; dx < p.DW; dx++)
+            {
+                int cx = (int)MathF.Floor(((x0 + dx + 0.5f) / _ppu + _ox - r.xMin) * sx);
+                if (cx < 0 || cx >= n || !furn[cy * n + cx]) continue;
+                int d = dy * p.DW + dx;
+                p.Dry[d >> 3] |= (byte)(1 << (d & 7));
+            }
+        }
     }
 
     // C# 版 (照合用)

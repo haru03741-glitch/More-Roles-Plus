@@ -17,9 +17,8 @@
 //   _Lvl = 床から測った水位で、h < _Lvl の画素を水の厚さ (_Lvl - h) の色で覆う。
 //   床の線は列ごと (_BaseTex・_BaseOn) で、無い時は絵全体の一番下 (_VBase)。
 //   _Cover = 天板に乗った水がまだらに広がる具合 (0..1)。_VPerUnit = 世界の 1 単位が型の v でいくつか (上下反転なら負)。
-//   _RoomOn = 1: 持ち上げた家具の型 (当たり判定を広げた形) のうち、部屋の絵 (_RoomTex) がきれいな床の色のままの画素には描かない
-//   (切り抜きの絵と同じ見分け方。型の uv = 元の場所の四角 _ShX.._ShH・床の模様 = _FlX.._FlTy)。
-//   ただし型の G = 1 (広げる前の当たり判定の中) の床の画素は、床の水の絵が家具として抜いているので床の高さの水として描く。
+//   _RoomOn = 1: 持ち上げた家具の型 (当たり判定を広げた形) のうち、家具の画素だけに描く。床の画素と、当たり判定 (型の G) の外で
+//   家具が床に落とす影の画素は床の水が描く (切り抜きの絵と同じ見分け方。型の uv = 元の場所の四角 _ShX.._ShH・床の模様 = _FlX.._FlTy)。
 //   _FlatTop = 1: 奥行きのある低い机。絵の縦の広がりは高さでなく奥行きなので、床の画素以外は全部天板の高さ (_FaceH) とし、
 //   水が天板を越えるまで描かず、越えたら家具ごとまだらに沈める (下から水面の線を這い上がらせない)。
 //   _SilCut > 0: 型をその不透明度で 0/1 に切る (床マスクが床の水を抜いた画素と同じ所だけに描く)。
@@ -445,18 +444,11 @@ Shader "MRP/Water"
                 float sil = Silhouette(shape);
                 if (sil <= 0.003) return 0;
                 if (_SilCut > 0.0) sil = step(_SilCut, sil); // 床マスクと同じ閾値で「絵がある」画素だけ (半透明の金網の隙間は床の水が描く)
-                // 型の中の床の画素: 広げた余白 (G = 0) は床の水の絵が描くので板は描かない。
-                // 当たり判定の中 (G = 1) は床の水の絵が家具として抜いているので、板が床の高さ (h = 0) の水として描く。
-                // 当たり判定の外の家具の落とす影は、切り抜きが床の水より手前に描くので板が描くが、床の上なので床の高さの水にする
-                float bare = 0.0;
+                // 型の中の床の画素と、当たり判定の外で家具が床に落とす影の画素は床の水が描く (切り抜きも描かない) ので板は描かない
                 if (_RoomOn > 0.5)
                 {
-                    if (!OnFurniture(i.uv))
-                    {
-                        if (shape.g < 0.5) return 0;
-                        bare = 1.0;
-                    }
-                    else if (shape.g < 0.5 && RoomIsShadow(float2(_ShX, _ShY) + i.uv * float2(_ShW, _ShH))) bare = 1.0;
+                    if (!OnFurniture(i.uv)) return 0;
+                    if (shape.g < 0.5 && RoomIsShadow(float2(_ShX, _ShY) + i.uv * float2(_ShW, _ShH))) return 0;
                 }
                 // 床の線: 列ごと (斜めに置いた箱や形の崩れた家具は、列ごとに絵の下の縁が違う)。無ければ絵全体の一番下
                 float vb = _VBase;
@@ -472,19 +464,19 @@ Shader "MRP/Water"
                         if (lvl < 0.004) return 0;
                     }
                 }
-                float h = clamp((i.uv.y - vb) / (_VPerUnit * _Rise), 0.0, _FaceH) * (1.0 - bare); // この画素の高さ (単位)
-                if (_FlatTop > 0.5 && bare < 0.5) h = _FaceH;
+                float h = clamp((i.uv.y - vb) / (_VPerUnit * _Rise), 0.0, _FaceH); // この画素の高さ (単位)
+                if (_FlatTop > 0.5) h = _FaceH;
                 float t = _Time.y, sub = _Cover;
-                float onTop = step(_FaceH - 1e-4, h) * (1.0 - bare);
+                float onTop = step(_FaceH - 1e-4, h);
                 float px = max(fwidth(i.world.y), 1e-4);
                 float wave = (tex2D(_Noise, float2(i.world.x * 0.9 + t * 0.05, t * 0.03)).r - 0.5) * _LineWave * 2.0;
                 float ex = lvl + wave * (1.0 - onTop) - h;   // この画素の上の水の厚さ
                 float under = saturate(ex / px + 0.5);
                 float murk;
-                // 前面は斜めに見るので壁の面と同じく厚みを足す。天板は真上から見るので水の厚さだけ。床の画素は床の水と同じく厚みも泡も足さない
-                float face = (1.0 - onTop) * (1.0 - bare);
+                // 前面は斜めに見るので壁の面と同じく厚みを足す。天板は真上から見るので水の厚さだけ
+                float face = 1.0 - onTop;
                 fixed4 c = Tint(i.world, max(ex, 0.0) + _FaceView * face, murk);
-                c.a = min(c.a, lerp(_SubMax, 1.0, bare));
+                c.a = min(c.a, _SubMax);
                 // 前面に当たる水面の線の明るい縁と、その下のちぎれた泡の帯
                 float lip = saturate(1.0 - abs(ex) / (px * _RimPx)) * face;
                 float fn = tex2D(_Noise, float2(i.world.x * 2.2 + t * 0.12, ex * 6.0 - t * 0.05)).r;
