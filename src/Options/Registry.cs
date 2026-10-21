@@ -206,19 +206,31 @@ internal static class Registry
 
     public static void Load() => LoadFrom(SavePath);
 
-    // path の値を読む (無い項目は既定値)。読めたら true
+    // path の値を読む (無い項目は既定値)。前の版の鍵は今の鍵へ引き継ぐ。読めたら true
     public static bool LoadFrom(string path)
     {
         foreach (var o in All) o.Index = o.DefaultIndex;
         try
         {
             if (!File.Exists(path)) return false;
+            int version = 0;
+            var values = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (string line in File.ReadAllLines(path))
             {
+                if (OptionMigrations.TryReadVersion(line, out int v)) { version = v; continue; }
                 int eq = line.IndexOf('=');
                 if (eq <= 0 || line.StartsWith('#')) continue;
-                if (ByKey.TryGetValue(line[..eq].Trim(), out var opt)) opt.Load(line[(eq + 1)..].Trim());
+                values[line[..eq].Trim()] = line[(eq + 1)..].Trim();
             }
+            int moved = OptionMigrations.Apply(values, version);
+            int unknown = 0;
+            foreach (var (key, value) in values)
+            {
+                if (ByKey.TryGetValue(key, out var opt)) opt.Load(value);
+                else if (!key.StartsWith("vanilla.", StringComparison.Ordinal)) unknown++;
+            }
+            if (moved > 0 || unknown > 0)
+                Plugin.Logger.LogInfo($"options {Path.GetFileName(path)}: version {version}->{OptionMigrations.Current} moved={moved} unknown={unknown}");
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"options load failed: {e.Message}"); return false; }
         return true;
@@ -231,6 +243,7 @@ internal static class Registry
         try
         {
             var sb = new StringBuilder("# More Roles Plus の設定値 (ゲーム内の設定画面で変えると上書きされる)\n");
+            sb.Append(OptionMigrations.VersionKey).Append('=').Append(OptionMigrations.Current).Append('\n');
             foreach (var o in All) sb.Append(o.Key).Append('=').Append(o.Save()).Append('\n');
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, sb.ToString());
