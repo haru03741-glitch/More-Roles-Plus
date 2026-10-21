@@ -42,7 +42,6 @@ internal static class RoleMenu
     private static readonly Team[] Teams = { Team.Crew, Team.Impostor, Team.Neutral };
     private const int AddonKind = 3;  // Group.Kind と絞り込みの番号: 0〜2 = Team、3 = アドオン
     private static readonly Color AddonColor = new(0.72f, 0.5f, 0.95f);
-    private static readonly Color BookColor = new(1f, 0.72f, 0.45f);
 
     // 開き直しても残す状態 (検索語だけは開くたびに空から)
     private static int _team = -1;  // -1 = 全部
@@ -493,9 +492,6 @@ internal static class RoleMenu
             chip.OnClick.AddListener(Cached(ChipClicks, "act" + action, _ => () => OnAction(action)));
             Actions.Add((chip, d.action, d.color));
         }
-        // 2 段目の左 = 役職辞典 (最後に名前を押した役職のページで開く)
-        var book = MakeChip(menu.GameSettingsButton, m.transform, new Vector3(x0 + aw / 2f, ay, -5f), aw, ChipHeight, new Text("RoleBook.Title"), BookColor);
-        if (book) book.OnClick.AddListener(Cached(ChipClicks, "book", _ => () => Menu.RoleBook.Open(_described)));
         RefreshChips();
     }
 

@@ -150,6 +150,7 @@ public class Ticker : MonoBehaviour
         Roles.Spectate.Tick();
         Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
         Net.HostChange.Tick();
+        Menu.MatchInfoExtension.Tick();
         Roles.KillAbility.Tick(); t = Bridge.Perf.Lane(28, t);
         Roles.RoleFrame.Tick();
         Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);

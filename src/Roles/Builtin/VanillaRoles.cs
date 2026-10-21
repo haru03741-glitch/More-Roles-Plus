@@ -44,7 +44,7 @@ public abstract class VanillaRole : RoleBase
         }
     }
 
-    // 役職辞典には本編の長い説明
+    // 試合の情報には本編の長い説明
     public override Text Help
     {
         get

@@ -257,8 +257,6 @@ Command.id: 全員の番号と名前
 Command.myrole: 自分の役職と説明 (試合中)
 Command.roles: 役職の一覧 / その役職の説明
 Command.roles.Usage: [役職]
-Command.book: 役職辞典を開く (役職の名前を付けるとそのページ)
-Command.book.Usage: [役職]
 Command.now: 今の MRP の設定
 Command.rename: 自分の名前を変える (ロビー)
 Command.rename.Usage: <名前>
@@ -455,14 +453,6 @@ TeamChat.Off: 全員へ送ります
 TeamChat.TasksOnly: タスク中は仲間にだけ送れます
 TeamChat.NoMates: 今は送れる仲間がいません (文は入力欄に戻しました)
 
-# ── RoleBook ──
-RoleBook.Title: 役職辞典
-RoleBook.InRoom: 今の部屋で出る: {chance}% × {count} 人
-RoleBook.NotInRoom: 今の部屋では出ません
-RoleBook.Settings: 設定
-RoleBook.Mine: あなたの役職
-RoleBook.NotFound: 「{arg}」という役職はありません
-RoleBook.Hint: 左の名前を押すとその役職のページ。● = 今の部屋で出る
 
 # ── AutoRejoin ──
 AutoRejoin.BackToTheLobbyIn: {sec} 秒後にロビーへ戻ります
@@ -602,3 +592,7 @@ LangFiles.OpenOnlyPc: フォルダはこの端末では開けません: {path}
 SettingNotice.Changed: {name} → <b>{value}</b>
 SettingNotice.Others: ほか {count} 個の設定が変わりました
 SettingNotice.Preset: プリセット「{name}」を読み込みました ({count} 個の変更)
+# ── MatchInfo ──
+MatchInfo.Mine: あなた
+MatchInfo.Count: {count} 人・{chance}%
+MatchInfo.NotInRoom: 今の部屋では出ません

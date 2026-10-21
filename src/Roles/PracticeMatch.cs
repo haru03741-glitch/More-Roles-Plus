@@ -81,12 +81,11 @@ internal static class SandboxChatPatch
     // チャットの後ろの板は右隣のボタンへつながる形なので、チャットを動かさず、試合中にチャット欄を出している間だけ
     // 普段の位置をよけた位置にする (静的な値を 1 回書くだけで、毎フレームの処理は足さない)
     private static bool _shifted;
-    private static UnityEngine.Vector3 _default;
 
     private static void Shift()
     {
         if (_shifted) return;
-        _default = MatchInfoHudButton.defaultDistanceFromEdge;
+        _ = Menu.MatchInfoExtension.VanillaButtonDefault; // ロビーでも同じ値を書き換えるので、元の値は共有の控えから
         MatchInfoHudButton.defaultDistanceFromEdge = MatchInfoHudButton.adjustedDistanceFromEdge;
         _shifted = true;
     }
@@ -94,7 +93,7 @@ internal static class SandboxChatPatch
     private static void Unshift()
     {
         if (!_shifted) return;
-        MatchInfoHudButton.defaultDistanceFromEdge = _default;
+        MatchInfoHudButton.defaultDistanceFromEdge = Menu.MatchInfoExtension.VanillaButtonDefault;
         _shifted = false;
     }
 }

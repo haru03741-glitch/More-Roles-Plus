@@ -21,7 +21,7 @@ public abstract class Assignable
     // 設定画面の説明 (タスク欄の先頭にも出る)
     public abstract Text Description { get; }
 
-    // 役職辞典の説明。文のファイルに「<Id>.Help」があればそれ、無ければ設定画面の説明
+    // 試合の情報 (右上の「?」) の役職の説明。文のファイルに「<Id>.Help」があればそれ、無ければ設定画面の説明
     public virtual Text Help => Tr.Has(Id + ".Help") ? new Text(Id + ".Help") : Description;
 
     // 設定画面の「人数」の上限
