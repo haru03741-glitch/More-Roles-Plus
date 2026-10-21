@@ -89,6 +89,8 @@ internal static class Emotes
             byte kind = k;
             var b = ModButton.Create(_life, null, new Text(Names[kind]), 0f, () => Choose(kind), _ring.transform);
             if (b == null || !b.Transform) continue;
+            // 扇のボタンは扇 (_ring) の出し入れで隠すので、自分は出したままにする
+            b.Transform.gameObject.SetActive(true);
             HandIcon(b, kind);
             float a = RingAngles[kind] * FxMath.Deg2Rad;
             b.Transform.localPosition = new Vector3(FxMath.Cos(a) * RingRadius, FxMath.Sin(a) * RingRadius, -0.5f);

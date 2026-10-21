@@ -731,3 +731,14 @@ Emote.Wave: 手を振る
 Emote.Jump: 跳ねる
 Emote.Clap: 拍手
 Emote.Beckon: 手招き
+
+# ── Stamp ──
+Stamp.Button: スタンプ
+Stamp.Sus: 怪しい
+Stamp.Safe: 白
+Stamp.Question: ?
+Stamp.Exclaim: !
+Stamp.Agree: 賛成
+Stamp.Disagree: 反対
+Stamp.Wait: 待って
+Stamp.Sorry: ごめん

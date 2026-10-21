@@ -428,6 +428,7 @@ internal static class DevCommands
         });
         TestBridge.Register("custmenu", "[use | tab <番号> | chip <色番号> | close] 本編の着せ替え画面 (use = 右下の使うボタンを押す・先に tp でノートパソコンの横へ) を開く・タブを切り替える・本編の色を押す・閉じる / タブの一覧", (args, reply) => reply(Menu.ColorTab.Simulate(args.Trim())));
         TestBridge.Register("emote", "[ring | pick <0-3> | stats | <0-3> [番号]] 試合中のエモート (0=手を振る 1=跳ねる 2=拍手 3=手招き): 番号を付けるとその人から届いたのと同じ受け手の道・pick = 扇のボタンを本編の押下の道で押す", (args, reply) => reply(Menu.Emotes.Command(args.Trim())));
+        TestBridge.Register("stamp", "[menu | pick <0-7> | stats | <0-7> [番号]] 会議のスタンプ (0=怪しい 1=白 2=? 3=! 4=賛成 5=反対 6=待って 7=ごめん): 番号を付けるとその人から届いたのと同じ受け手の道・pick = 札のボタンを本編の押下の道で押す", (args, reply) => reply(Menu.MeetingStamps.Command(args.Trim())));
         TestBridge.Register("memo", "[meeting | open | line x1 y1 x2 y2 | mark <番号> x y | undo | clear] 会議の地図のメモ (自分だけ): 書いた線と印の数 / meeting = ホストの道で会議を始める・open = 会議中に地図を開く・座標はメモの層の中", (args, reply) => reply(Menu.MeetingMemo.Describe(args.Trim())));
         TestBridge.Register("sabalert", "サボタージュの点滅と警報音 (端末ごとの設定) の状態・自前で回している数", (args, reply) => reply(Menu.SabotageAlert.Describe()));
         TestBridge.Register("client","[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));

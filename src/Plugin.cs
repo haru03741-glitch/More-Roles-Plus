@@ -111,6 +111,7 @@ public class Ticker : MonoBehaviour
         Fx.FxHands.Tick(); t = Bridge.Perf.Lane(16, t);
         Fx.EmoteArt.Tick();
         Menu.Emotes.Tick();
+        Menu.MeetingStamps.Tick();
         Roles.PortalArt.Tick();
         Terrain.RubbleBake.Tick(); t = Bridge.Perf.Lane(17, t);
         Terrain.ShadowPatch.Tick(); t = Bridge.Perf.Lane(18, t);

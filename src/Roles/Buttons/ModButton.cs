@@ -22,6 +22,7 @@ internal sealed class ModButton
     private readonly AbilityButton _button;
     private readonly Func<bool> _onClick;
     private readonly IntPtr _ptr;
+    private bool _inGrid = true; // 右下の並びに居るか (並びの外のボタンは置いた先の画面と一緒に出入りする)
     private float _left;
     private bool _usable = true;
 
@@ -53,7 +54,8 @@ internal sealed class ModButton
         var hud = Vanilla.Hud;
         if (!hud || !hud.AbilityButton || life.IsDead) return null;
         var src = hud.AbilityButton;
-        var b = UnityEngine.Object.Instantiate(src, parent ? parent : src.transform.parent);
+        bool inGrid = !parent; // 消える時には parent が先に消えていることがあるので、作った時に決める
+        var b = UnityEngine.Object.Instantiate(src, inGrid ? src.transform.parent : parent);
         b.name = "MrpButton";
         // ラベルを本編の言語表で書き戻す部品を外す
         var translator = b.buttonLabelText.GetComponent<TextTranslatorTMP>();
@@ -70,7 +72,7 @@ internal sealed class ModButton
         b.SetEnabled();
         b.gameObject.SetActive(_hudShown);
 
-        var mb = new ModButton(b, cooldown, onClick);
+        var mb = new ModButton(b, cooldown, onClick) { _inGrid = inGrid };
         All.Add(mb);
         life.OnRelease(() =>
         {
@@ -78,9 +80,10 @@ internal sealed class ModButton
             // 待ち時間の表示で複製されたマテリアルは GameObject と一緒には消えない
             if (b && b.graphic) UnityEngine.Object.Destroy(b.graphic.material);
             if (b) UnityEngine.Object.Destroy(b.gameObject);
-            Arrange();
+            // 並びの外のボタンは並びに居ないので並べ直さない (HUD が隠れている間の並べ直しは本編の中で落ちる)
+            if (inGrid) Arrange();
         });
-        Arrange();
+        if (inGrid) Arrange();
         return mb;
     }
 
@@ -170,7 +173,7 @@ internal sealed class ModButton
         // HUD ごと消えた後 (シーンが変わった) のボタンは寿命が切れるまで残るので飛ばす
         foreach (var b in All)
         {
-            if (!b._button) continue;
+            if (!b._inGrid || !b._button) continue;
             b._button.gameObject.SetActive(shown);
             if (reshown && b.ResetOnShow) b.StartCooldown();
         }

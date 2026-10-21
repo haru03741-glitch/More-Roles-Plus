@@ -731,3 +731,14 @@ Emote.Wave: Wave
 Emote.Jump: Jump
 Emote.Clap: Clap
 Emote.Beckon: Beckon
+
+# ── Stamp ──
+Stamp.Button: Stamp
+Stamp.Sus: Sus
+Stamp.Safe: Safe
+Stamp.Question: ?
+Stamp.Exclaim: !
+Stamp.Agree: Agree
+Stamp.Disagree: Disagree
+Stamp.Wait: Wait
+Stamp.Sorry: Sorry
