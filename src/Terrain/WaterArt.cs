@@ -1524,6 +1524,36 @@ internal static class WaterArt
         return z;
     }
 
+    // 確認用 (water tilez): 床の層の部屋の絵 (床マスクに入っている絵) のうち、タイルの水の絵より手前にあって水を隠している物
+    internal static string TileZReport(Action<string> reply)
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship || !SolidMap.Ensure()) return "no ship";
+        float back = FloorMask.BackZ(FurnitureKinds.ShipName(ship)), size = TileSize;
+        var org = SolidMap.Origin;
+        int n = 0;
+        foreach (var sr in DamageMap.RoomArts)
+        {
+            if (!sr || !sr.enabled || !sr.sprite) continue;
+            float z = sr.transform.position.z;
+            if (z < back || z >= 20f) continue;
+            var b = sr.bounds;
+            int tx0 = (int)MathF.Floor((b.min.x - org.x) / size), tx1 = (int)MathF.Floor((b.max.x - org.x) / size);
+            int ty0 = (int)MathF.Floor((b.min.y - org.y) / size), ty1 = (int)MathF.Floor((b.max.y - org.y) / size);
+            var sb = new System.Text.StringBuilder();
+            for (int ty = ty0; ty <= ty1; ty++)
+                for (int tx = tx0; tx <= tx1; tx++)
+                {
+                    float tz = TileZ(tx, ty);
+                    if (z < tz) sb.Append($" ({tx},{ty}) tz={tz:0.###}");
+                }
+            if (sb.Length == 0) continue;
+            n++;
+            reply($"TILEZ {sr.name} z={z:0.###} bounds=({b.min.x:0.##},{b.min.y:0.##})-({b.max.x:0.##},{b.max.y:0.##}){sb}");
+        }
+        return $"hidden={n} back={back}";
+    }
+
     private static float TileZCore(int tx, int ty)
     {
         float size = TileSize;
@@ -1539,6 +1569,9 @@ internal static class WaterArt
             // 屋外のデッキの床の絵はクルーと同じ奥行きにあり、部屋の絵の z では床の下に隠れる
             if (WaterSim.OnDeck(px, py)) front = Math.Min(front, DeckZ);
         }
+        // 床マスクに入っている床の層の絵が 5 点から外れていても、タイルに掛かるならその手前へ (Skeld のシールドの壁の側面など)
+        var ship = ShipStatus.Instance;
+        if (ship) front = Math.Min(front, DamageMap.BackLayerFrontZ(wx, wy, wx + size, wy + size, FloorMask.BackZ(FurnitureKinds.ShipName(ship))));
         // 動く床 (昇降機の台) は部屋の絵より手前にあるので、台に載った水が台の下に隠れないよう台より手前へ
         front = WaterSim.PlatformFront(wx, wy, size, front);
         // 部屋の絵より手前にある歩ける床の絵 (ドロップシップの坂) は水のすぐ奥へ移してあるので、それより手前へ

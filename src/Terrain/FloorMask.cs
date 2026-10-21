@@ -549,7 +549,7 @@ internal static class FloorMask
     private const float SkyZ = 20f;
     private const int ShadowLayers = (1 << 10) | (1 << 11) | (1 << 13); // 視界を遮る層 (本編の Constants.ShadowMask と同じ)
     // 床の絵が z 1〜4 にある船 (tools/make-floor-mask.py の BACK_Z_SHIP と同じ表)。他は季節の飾り (z 1.07) を除くため 4
-    private static float BackZ(string ship) => ship is "PolusShip" or "FungleShip" ? 0.5f : 4f;
+    internal static float BackZ(string ship) => ship is "PolusShip" or "FungleShip" ? 0.5f : 4f;
 
     // z に関わらず床の層に入れる絵 (ポーラスの武器庫と通信室は床と壁が 1 枚の絵で、クルーと同じ奥行きにある・ドロップシップの坂は FloorCovers)
     internal static bool AlwaysFloor(string ship, string sprite) => sprite is "room_weapon" or "room_broadcast" || FloorCovers.Is(ship, sprite);

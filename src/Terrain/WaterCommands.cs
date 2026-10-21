@@ -14,7 +14,7 @@ internal static partial class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | tile x y [up|dump] | fallsat x y [r] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | tile x y [up|dump] | tilez | fallsat x y [r] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             // 預けた刻みを終わらせてから (確認用の操作は水の配列を直に読み書きする)
@@ -33,6 +33,7 @@ internal static partial class WaterSim
         if (a.StartsWith("prebase")) { Prebase(a, reply); return true; }
         if (a.StartsWith("zflow")) { ZFlowToggle(a, reply); return true; }
         if (a.StartsWith("floorcheck")) { reply($"OK water floorcheck {WaterArt.FloorCheck()}"); return true; }
+        if (a.StartsWith("tilez")) { reply($"OK water tilez {WaterArt.TileZReport(reply)}"); return true; }
         if (a.StartsWith("tile")) { TileAt(a, reply); return true; }
         if (a.StartsWith("spikes")) { Spikes(a, reply); return true; }
         if (a.StartsWith("prof")) { Profile(a, reply); return true; }

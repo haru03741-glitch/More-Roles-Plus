@@ -924,6 +924,22 @@ internal static class DamageMap
         return near;
     }
 
+    // 範囲に掛かる床の層の部屋の絵 (z が back 以上・空の絵より手前 = 床マスクに入っている絵) のいちばん手前の z。無ければ MaxValue。
+    // 床マスクはこれらの絵の画素で水を切るので、水の絵はこれらより手前に置く (奥に置くと視界の中だけ壁の面の水が絵に隠れる)
+    internal static float BackLayerFrontZ(float x0, float y0, float x1, float y1, float back)
+    {
+        const float Inset = 0.05f, Sky = 20f;
+        float z = float.MaxValue;
+        for (int i = 0; i < RoomZ.Length; i++)
+        {
+            float rz = RoomZ[i];
+            if (rz < back || rz >= Sky || rz >= z) continue;
+            if (RoomX1[i] - Inset <= x0 || RoomX0[i] + Inset >= x1 || RoomY1[i] - Inset <= y0 || RoomY0[i] + Inset >= y1) continue;
+            z = rz;
+        }
+        return z;
+    }
+
     // 確認用: 部屋の絵 i の床の範囲 (作った時に覚えた値)
     internal static string AreaText(int i) => i < AreaX0.Length ? $"({AreaX0[i]:0.##},{AreaY0[i]:0.##})-({AreaX1[i]:0.##},{AreaY1[i]:0.##})" : "-";
 
