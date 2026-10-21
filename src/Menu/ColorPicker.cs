@@ -64,6 +64,7 @@ internal static class ColorPicker
     // 色のタブが開いた (本編の OnEnable の後)
     public static void OnTabEnable(PlayerTab tab)
     {
+        TrimChips(tab);
         if (!_root || _tab == null || _tab.Pointer != tab.Pointer) Build(tab);
         if (!_root) return;
         _tab = tab;
@@ -94,6 +95,17 @@ internal static class ColorPicker
         }
         FromColor(_a);
         Refresh(true, _customSelected);
+    }
+
+    // 本編は色の表の長さだけ見本を並べるので、伸ばした色 (16 人以上の部屋の自動の色) の見本を消して本編の色だけにする
+    private static void TrimChips(PlayerTab tab)
+    {
+        var chips = tab.ColorChips;
+        int keep = CustomColors.Pickable;
+        if (chips == null || chips.Count <= keep) return;
+        for (int i = keep; i < chips.Count; i++)
+            if (chips[i]) Object.Destroy(chips[i].gameObject);
+        chips.RemoveRange(keep, chips.Count - keep);
     }
 
     private static void Close()
@@ -300,7 +312,7 @@ internal static class ColorPicker
 
     private static Color32 Current() => Hsv(_h, _s, _v);
 
-    private static Color32 Hsv(float h, float s, float v)
+    internal static Color32 Hsv(float h, float s, float v)
     {
         h = (h - MathF.Floor(h)) * 6f;
         int i = (int)h;

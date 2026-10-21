@@ -15,6 +15,7 @@ internal static class Tr
 
     public static bool Loaded { get; private set; }
     public static int Edited { get; private set; } // 遊ぶ人のファイルで書き換えた鍵の数
+    public static int Generation { get; private set; } // 読み込むたびに 1 増える (文から作った物の作り直しの印)
 
     // 鍵の文。今の言語に無ければ英語、それも無ければ鍵そのもの (書き忘れが画面で分かるように)
     public static string Get(string key)
@@ -41,6 +42,7 @@ internal static class Tr
         Edited = LangFiles.ApplyMod(name, defaults, cur);
         _cur = cur;
         Loaded = true;
+        Generation++;
         Plugin.Logger.LogInfo($"lang: {name} keys={cur.Count} edited={Edited}");
     }
 

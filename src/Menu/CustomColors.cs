@@ -1,4 +1,5 @@
 // Based on the per-player palette of https://github.com/Dolly1016/Nebula-Public NebulaPluginNova/Modules/Cosmetics/DynamicPalette.cs (GPL-3.0)
+// Extending the vanilla color tables past 18 colors and the host-side color assignment follow https://github.com/TheOtherRolesAU/TheOtherRoles TheOtherRoles/Modules/CustomColors.cs (GPL-3.0)
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -230,9 +231,135 @@ internal static class CustomColors
         return ok;
     }
 
-    // その色番号の色の名前 (作った色でなければ false)
-    public static bool SlotName(int id, out string name) => NameBySlot.TryGetValue(id, out name);
-    public static bool AnySlotName => NameBySlot.Count > 0;
+    // その色番号の色の名前 (作った色でも伸ばした色でもなければ false)
+    public static bool SlotName(int id, out string name) => NameBySlot.TryGetValue(id, out name) || ExtraName(id, out name);
+    public static bool AnySlotName => NameBySlot.Count > 0 || _extraNames != null;
+
+    // ---- 16 人以上の部屋の色番号 ----
+    // 本編の色は 18 色で、色番号は部屋の中で 1 人 1 つ。19 人目からは空きが無く本編の色選びが失敗するので、
+    // 本編の色の表 (体・影・文字・文字のふち・名前) を人の番号の数まで伸ばし、伸ばした所を自動で作った色で埋める。
+    // 着せ替え画面で選べるのは本編の色だけで、伸ばした色はホストが空きを配る時 (CheckColor) だけ使う。公式サーバーでは配らない
+    public static int VanillaCount { get; private set; }
+    // 選べる色の数 (本編の色)
+    public static int Pickable => VanillaCount > 0 ? VanillaCount : Palette.PlayerColors.Length;
+    private static Color32[] _extra;      // 伸ばした色 (番号 VanillaCount から)
+    private static string[] _extraNames;  // 伸ばした色の名前 (最初に引いた時に作る)
+    private static int _extraNamesGen;
+
+    // 色相を黄金角ずつ回し、鮮やかさと明るさを段ごとに替える (近い番号どうしが似た色にならない)
+    private static readonly (float S, float V)[] AutoTiers = { (0.85f, 0.95f), (0.45f, 1f), (0.95f, 0.6f), (0.3f, 0.8f), (0.75f, 0.42f), (0.6f, 0.78f) };
+
+    // 起動時に 1 回 (本編の色の表を誰かが読む前)
+    public static void ExtendPalette()
+    {
+        if (VanillaCount > 0) return;
+        var pc = Palette.PlayerColors;
+        var sc = Palette.ShadowColors;
+        var tc = Palette.TextColors;
+        var oc = Palette.TextOutlineColors;
+        var cn = Palette.ColorNames;
+        if (pc == null || sc == null || tc == null || oc == null || cn == null || pc.Length == 0) return;
+        int n = pc.Length, max = Options.Crowded.MaxPlayers;
+        VanillaCount = n;
+        if (n >= max) return;
+        var labs = new (float L, float A, float B)[n];
+        for (int i = 0; i < n; i++) labs[i] = Lab(pc[i].r, pc[i].g, pc[i].b);
+        var body = new Color32[max];
+        var shadow = new Color32[max];
+        var text = new Color32[max];
+        var outline = new Color32[max];
+        var names = new StringNames[max];
+        _extra = new Color32[max - n];
+        for (int i = 0; i < max; i++)
+        {
+            if (i < n)
+            {
+                body[i] = pc[i];
+                shadow[i] = i < sc.Length ? sc[i] : Shade(pc[i]);
+                text[i] = i < tc.Length ? tc[i] : pc[i];
+                outline[i] = i < oc.Length ? oc[i] : shadow[i];
+                names[i] = i < cn.Length ? cn[i] : cn[0];
+                continue;
+            }
+            var t = AutoTiers[(i - n) % AutoTiers.Length];
+            var c = ColorPicker.Hsv(0.13f + (i - n) * 0.618034f, t.S, t.V);
+            _extra[i - n] = c;
+            body[i] = c;
+            shadow[i] = Shade(c);
+            text[i] = c;
+            outline[i] = shadow[i];
+            // 名前の表には近い本編の色の名前を入れておく (画面に出す名前は SlotName で番号付きに替える)
+            var (l, a, b) = Lab(c.r, c.g, c.b);
+            int best = 0;
+            float bestD = float.MaxValue;
+            for (int k = 0; k < n; k++)
+            {
+                float dl = l - labs[k].L, da = a - labs[k].A, db = b - labs[k].B, d = dl * dl + da * da + db * db;
+                if (d < bestD) { bestD = d; best = k; }
+            }
+            names[i] = best < cn.Length ? cn[best] : cn[0];
+        }
+        Palette.PlayerColors = body;
+        Palette.ShadowColors = shadow;
+        Palette.TextColors = text;
+        Palette.TextOutlineColors = outline;
+        Palette.ColorNames = names;
+        Plugin.Logger.LogInfo($"colors: palette {n} -> {max}");
+    }
+
+    // 伸ばした色の名前 = いちばん近い名前の付いた色 + 番号 (本編の色や前の番号の色と見分けられるよう、2 から振る)
+    private static bool ExtraName(int id, out string name)
+    {
+        name = null;
+        if (_extra == null || id < VanillaCount || id >= VanillaCount + _extra.Length) return false;
+        if (_extraNames == null || _extraNamesGen != Tr.Generation)
+        {
+            var names = new string[_extra.Length];
+            var count = new Dictionary<string, int>();
+            for (int i = 0; i < names.Length; i++)
+            {
+                string b = NameOf(_extra[i]);
+                int k = count.TryGetValue(b, out int c) ? c + 1 : 2;
+                count[b] = k;
+                names[i] = b + k;
+            }
+            _extraNames = names;
+            _extraNamesGen = Tr.Generation;
+        }
+        name = _extraNames[id - VanillaCount];
+        return true;
+    }
+
+    // ホストが色を配る: 頼まれた色が空いていればそれ、使われていれば次の空きを本編の色から探し、
+    // 本編の色が全部埋まっている時だけ伸ばした色から探す。公式サーバーでは本編の色だけ
+    public static byte FreeColor(PlayerControl pc, byte want)
+    {
+        int vanilla = Pickable;
+        int limit = ServerKind.IsOfficial() ? vanilla : Palette.PlayerColors.Length;
+        var used = new bool[256];
+        var data = GameData.Instance;
+        if (data)
+        {
+            var all = data.AllPlayers;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var p = all[i];
+                if (p == null || p.Disconnected || p.PlayerId == pc.PlayerId || p.DefaultOutfit == null) continue;
+                int id = p.DefaultOutfit.ColorId;
+                if (id >= 0 && id < used.Length) used[id] = true;
+            }
+        }
+        if (want < limit && !used[want]) return want;
+        int start = want < vanilla ? want : 0;
+        for (int k = 0; k < vanilla; k++)
+        {
+            int c = (start + k) % vanilla;
+            if (!used[c]) return (byte)c;
+        }
+        for (int c = vanilla; c < limit; c++)
+            if (!used[c]) return (byte)c;
+        return want < limit ? want : (byte)0; // 全部埋まっている (本編も使われている色のまま配る)
+    }
 
     // 本編の色 (書き換える前の控え)
     public static Color32 VanillaBody(int id)
@@ -513,6 +640,20 @@ internal static class CustomColors
             if (kv.Value.Grad) sb.Append('>').Append(Hex(kv.Value.B)).Append('@').Append(kv.Value.Dir).Append('~').Append(kv.Value.Soft).Append(':').Append(kv.Value.Pos);
         }
         foreach (var kv in NameBySlot) sb.Append(" [").Append(kv.Key).Append(':').Append(kv.Value).Append(']');
+        // 人ごとの色番号と画面に出る色の名前 (伸ばした色の確かめ用)
+        sb.Append(" palette=").Append(Palette.PlayerColors.Length).Append('/').Append(Pickable);
+        var data = GameData.Instance;
+        if (data)
+        {
+            var all = data.AllPlayers;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var p = all[i];
+                if (p == null || p.DefaultOutfit == null) continue;
+                int id = p.DefaultOutfit.ColorId;
+                sb.Append(" p").Append(p.PlayerId).Append('=').Append(id).Append(':').Append(Palette.GetColorName(id));
+            }
+        }
         return sb.ToString();
     }
 }
@@ -523,6 +664,24 @@ internal static class CustomColorsPatches
     // 本編の色を選び直した (誰でも): 書き換える番号が変わるので作り直す
     [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.SetColor)), HarmonyPostfix]
     public static void SetColor() => CustomColors.MarkDirty();
+
+    // ホストが色を配る所。本編は使われている色なら番号を 1 つずつ進めて空きを探すので、表を伸ばしたままだと
+    // 本編の色が空いていても伸ばした色を配ってしまう (公式サーバーでは伸ばした色を配らない)
+    [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CheckColor)), HarmonyPrefix]
+    public static bool CheckColor(PlayerControl __instance, [HarmonyArgument(0)] byte bodyColor)
+    {
+        if (CustomColors.VanillaCount == 0 || !__instance) return true;
+        try
+        {
+            __instance.RpcSetColor(CustomColors.FreeColor(__instance, bodyColor));
+            return false;
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"custom colors check: {e.Message}");
+            return true;
+        }
+    }
 
     // 色の名前 (色覚の補助の文字・着せ替え画面の名前) を作った色の名前にする
     [HarmonyPatch(typeof(Palette), nameof(Palette.GetColorName)), HarmonyPostfix]

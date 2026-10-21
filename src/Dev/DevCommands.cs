@@ -377,9 +377,26 @@ internal static class DevCommands
             reply($"OK f1 open={Menu.SettingsOverlay.IsOpen}");
         });
         TestBridge.Register("afk", "放置の数え (設定・止まっている秒数・知らせたか)", (_, reply) => reply(Commands.AfkGuard.Describe()));
-        TestBridge.Register("colors", "[fake <番号> <#RRGGBB> [#RRGGBB [向き 0-3 [ぼかし 0-100 [位置 0-100]]]]] 自分で作った色 (#RRGGBB) の一覧 (自分の保存値・届いている人の番号=色・[色番号:色の名前]) / fake = その人の色が届いた事にする (ダミー用)", (args, reply) =>
+        TestBridge.Register("colors", "[fake <番号> <#RRGGBB> [#RRGGBB [向き 0-3 [ぼかし 0-100 [位置 0-100]]]]] 自分で作った色 (#RRGGBB) の一覧 (自分の保存値・届いている人の番号=色・[色番号:色の名前]) / fake = その人の色が届いた事にする (ダミー用) / check <色番号> [人の番号] = 自分の色をその番号で頼む (ホストは番号の人に、その色を名乗らせてから頼ませる = 入ってきたばかりの人と同じ) (本編の色選びと同じ・空いていなければホストが替える)・人ごとの色番号と名前", (args, reply) =>
         {
             args = args.Trim();
+            if (args.StartsWith("check "))
+            {
+                var cp = args[6..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var me = PlayerControl.LocalPlayer;
+                if (!me || cp.Length == 0 || !byte.TryParse(cp[0], out byte want)) { reply("ERR colors check <色番号> [人の番号 (ホストの時・ダミー用)]"); return; }
+                if (cp.Length >= 2 && byte.TryParse(cp[1], out byte pid) && AmongUsClient.Instance.AmHost)
+                {
+                    var who = GameData.Instance ? GameData.Instance.GetPlayerById(pid) : null;
+                    if (who == null || !who.Object) { reply($"ERR colors check: no player {pid}"); return; }
+                    // 入ってきたばかりの人と同じく、自分の色の空きを持たない状態から頼ませる
+                    who.Object.SetColor(want);
+                    who.Object.CheckColor(want);
+                }
+                else me.CmdCheckColor(want);
+                reply($"OK colors check {want}");
+                return;
+            }
             reply(args.StartsWith("fake ") ? Menu.CustomColors.Fake(args[5..]) : Menu.CustomColors.Describe());
         });
         TestBridge.Register("picker", "[equip | type <文> | #RRGGBB | swatch1 | swatch2 | dir | soft <0-100> | pos <0-100>] 着せ替え画面の色のタブの「色を作る」(色を置く・装備を押す・#hex 欄に打つ) と今の色", (args, reply) => reply(Menu.ColorPicker.Simulate(args.Trim())));

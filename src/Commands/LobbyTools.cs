@@ -88,7 +88,7 @@ internal static class LobbyTools
 
     private static void ApplyColor(PlayerControl sender, byte color)
     {
-        if (!sender || !InLobby || color >= Palette.PlayerColors.Length || !HostAllows(sender)) return;
+        if (!sender || !InLobby || color >= Menu.CustomColors.Pickable || !HostAllows(sender)) return;
         if (sender.Data == null || sender.Data.DefaultOutfit.ColorId == color || TooSoon(sender)) return;
         // 本編のホストの手順 (使われている色なら空いている色に替える)
         sender.CheckColor(color);
@@ -128,7 +128,7 @@ internal static class LobbyTools
             return new Text("LobbyTools.ColorSet").With("color", Menu.CustomColors.Hex(custom));
         }
         int color = FindColor(args);
-        if (color < 0) return new Text("LobbyTools.ColorHowTo").With("max", Palette.PlayerColors.Length - 1).With("names", ColorNames());
+        if (color < 0) return new Text("LobbyTools.ColorHowTo").With("max", Menu.CustomColors.Pickable - 1).With("names", ColorNames());
         if (!AmHost && !HostSettings.PlayersCanRename) return new Text("LobbyTools.RenameOff");
         ColorCall.Send((byte)color);
         return new Text("LobbyTools.ColorChanging").With("color", ColorName(color));
@@ -138,8 +138,8 @@ internal static class LobbyTools
 
     private static int FindColor(string s)
     {
-        if (int.TryParse(s, out int n)) return n >= 0 && n < Palette.PlayerColors.Length ? n : -1;
-        for (int i = 0; i < Palette.ColorNames.Length && i < Palette.PlayerColors.Length; i++)
+        if (int.TryParse(s, out int n)) return n >= 0 && n < Menu.CustomColors.Pickable ? n : -1;
+        for (int i = 0; i < Palette.ColorNames.Length && i < Menu.CustomColors.Pickable; i++)
             if (string.Equals(ColorName(i), s, StringComparison.OrdinalIgnoreCase)) return i;
         return -1;
     }
@@ -147,7 +147,7 @@ internal static class LobbyTools
     private static string ColorNames()
     {
         var sb = new StringBuilder();
-        for (int i = 0; i < Palette.ColorNames.Length && i < Palette.PlayerColors.Length; i++)
+        for (int i = 0; i < Palette.ColorNames.Length && i < Menu.CustomColors.Pickable; i++)
         {
             if (sb.Length > 0) sb.Append(", ");
             sb.Append(i).Append('=').Append(ColorName(i));
