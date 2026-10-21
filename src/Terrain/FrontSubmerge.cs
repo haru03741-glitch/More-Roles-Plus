@@ -22,6 +22,8 @@ internal static partial class PropSim
     private const long FrontCheckMs = 1000;   // 出している板の絵がまだ描かれているかを見る間隔
     private const float FrontTiltMax = 0.2f;  // 回転の sin がこれ以下の絵は回していない物として板を作る (約 11°)
     private const float FrontDrawn = 0.25f;   // 板が描く絵の不透明度 (床マスクを作る道具が絵の画素を床から抜く閾値と同じ)
+    private const float RimH = 0.22f;         // 床の縁の手すりの横棒の上から柱の足 (床) までの高さ (武器庫・シールドの手すりの絵で約 22 画素)
+    private const float RimReach = 0.3f;      // 床の縁の手すりの水位を見る範囲 (絵の範囲から広げる幅)
 
     private sealed class FrontArt
     {
@@ -35,6 +37,7 @@ internal static partial class PropSim
         public Sunk S;
         public Prop Support;     // 机などの上に載った絵 (端末・ノート PC): 床の線は絵の下の縁・水位は天板から測る
         public bool Placed;      // 後から床に立てた物 (仕掛け壁): 床マスクに載っていないので床の線は絵の下の縁
+        public bool Rim;         // 床の縁に立つ手すり (RimArt): 床の線は横棒の上から手すりの高さ下・水位は手すりの周りの床の升
         public bool Failed, Off; // Off = 絵が今は描かれていない
         public long Checked;
     }
@@ -73,8 +76,10 @@ internal static partial class PropSim
             {
                 float gate = 0f;
                 float supOver = a.Support != null ? SupportOver(a.Support) : 0f;
-                for (int i = 0; i < FrontGatePts; i++)
-                    if (!float.IsNaN(a.GateY[i])) gate = Math.Max(gate, a.Support != null ? supOver : FrontDepth(a, a.GateX[i], a.GateY[i], full));
+                if (a.Rim) gate = RimDepth(a, full);
+                else
+                    for (int i = 0; i < FrontGatePts; i++)
+                        if (!float.IsNaN(a.GateY[i])) gate = Math.Max(gate, a.Support != null ? supOver : FrontDepth(a, a.GateX[i], a.GateY[i], full));
                 if (gate < SunkShow) continue;
                 if (s == null || !s.Go)
                 {
@@ -93,14 +98,14 @@ internal static partial class PropSim
             int pk1 = -2, pk2 = -2;
             float pd = 0f;
             // 机の上の絵は載っている家具の天板の上の水の厚さ (列によらず 1 つ)。床に立つ絵は床の線のすぐ下の升
-            float onTop = a.Support != null ? SupportOver(a.Support) : 0f;
+            float onTop = a.Support != null ? SupportOver(a.Support) : a.Rim ? RimDepth(a, full) : 0f;
             for (int c = 0; c < BaseCols; c++)
             {
                 float y = a.ColY[c];
                 float d = 0f;
                 if (!float.IsNaN(y))
                 {
-                    if (a.Support != null) d = onTop;
+                    if (a.Support != null || a.Rim) d = onTop;
                     else
                     {
                         float x = a.ColX[c];
@@ -144,7 +149,26 @@ internal static partial class PropSim
     // 床の線 (x, y) の手前の水の深さ (単位): 線のすぐ下と少し下の深い方
     private static float FrontDepth(FrontArt a, float x, float y, float full) => a.Support != null
         ? SupportOver(a.Support)
+        : a.Rim ? RimDepth(a, full)
         : Math.Max(WaterSim.DepthAt(FxMath.V2(x, y - FrontProbeNear)), WaterSim.DepthAt(FxMath.V2(x, y - FrontProbeFar))) / full;
+
+    // 床の縁の手すりの周りの水の深さ (単位): 絵の範囲を RimReach 広げた中の升の一番深い所。
+    // 手すりの手前 (画面の下) は床下の穴で水の升が無く、水は手すりの後ろと横の床にある (穴へ落ちる水は描かない)
+    private static float RimDepth(FrontArt a, float full)
+    {
+        var b = a.Box;
+        float cell = WaterSim.Cell;
+        int best = 0;
+        for (float y = b.y - RimReach; y <= b.w + RimReach; y += cell)
+            for (float x = b.x - RimReach; x <= b.z + RimReach; x += cell)
+                best = Math.Max(best, WaterSim.DepthCell(WaterSim.CellOf(x, y)));
+        return best / full;
+    }
+
+    // 床下の穴の縁に立つ手すり (Skeld の武器庫とシールド)。床マスクの床の線は穴の底を指すので使わない。
+    // 人より手前の奥行き (頭上の重ね絵と同じ z) に置かれた物も、下の縁は床なので水面の板を付ける
+    private static bool RimArt(string sprite) => sprite is "weap_rail1" or "weap_rail2" or "weap_rail3"
+        or "shields_rail1" or "shields_rail2" or "shields_rail3" or "shields_railtop";
 
     // 試合の始めの準備 (TerrainWarm) から: 水が来る前に集めておく
     internal static void WarmFront()
@@ -183,6 +207,9 @@ internal static partial class PropSim
                 var ob = sr.bounds;
                 Vector3 omn = ob.min, omx = ob.max;
                 FrontOver.Add((sr, V4(omn.x, omn.y, omx.x, omx.y)));
+                // 床の縁の手すりは頭上の重ね絵として影の写しを抜いたまま、自分の板も付ける
+                if (RimArt(sr.sprite.name) && sr.drawMode == SpriteDrawMode.Simple)
+                    FrontArts.Add(new FrontArt { Sr = sr, Box = V4(omn.x, omn.y, omx.x, omx.y), Rim = true });
                 continue;
             }
             if (!FrontCover(sr, shipName, roomIds, skip)) continue;
@@ -195,7 +222,7 @@ internal static partial class PropSim
             if (sx < 1e-6f || sy < 1e-6f || MathF.Abs(m.m10) > FrontTiltMax * sx || MathF.Abs(m.m01) > FrontTiltMax * sy) { turned++; continue; }
             var b = sr.bounds;
             Vector3 mn = b.min, mx = b.max;
-            var a = new FrontArt { Sr = sr, Box = V4(mn.x, mn.y, mx.x, mx.y) };
+            var a = new FrontArt { Sr = sr, Box = V4(mn.x, mn.y, mx.x, mx.y), Rim = RimArt(sr.sprite.name) };
             // 机の上に載るのは端末 (Console の絵)。床の影・壁の飾り・床の汚れは家具の足元に重なっても載ってはいない
             a.Support = consoles.Contains(tr.GetInstanceID()) ? SupportAt((mn.x + mx.x) * 0.5f, mn.y, null, (mx.x - mn.x) * 0.5f) : null;
             for (int i = 0; i < FrontGatePts; i++)
@@ -307,6 +334,10 @@ internal static partial class PropSim
         bool down = fy < 0f;
         var bottom = MeshBase(sp.uv, sp.triangles, down, out var mr);
         if (bottom == null) return false;
+        // 床の縁の手すりは横棒がどこでも床から同じ高さにある。床の線は列の上の縁から手すりの高さだけ下 (東西に走る所は柱の足・
+        // 南北に走る所は横棒の真下の床)。列の下の縁は柱の間では横棒の下、南北の所では手すりの南の端で、床の線にならない
+        var top = a.Rim ? MeshBase(sp.uv, sp.triangles, !down, out _) : null;
+        if (a.Rim && top == null) return false;
         var b = sr.bounds;
         float yTop = b.max.y;
         a.ColX = new float[BaseCols];
@@ -321,7 +352,9 @@ internal static partial class PropSim
             // 型の uv → 絵の中の位置 → 世界 (回していない絵と少し傾けた絵だけなので軸ごと)
             float wx = m.m03 + fx * ((u - bu) / au);
             float wy = m.m13 + fy * ((v - bv) / av);
-            float fl = a.Support != null || a.Placed ? wy : FloorMask.FloorLine(wx, wy, Math.Max(yTop - wy, 0f), FrontFaceMax);
+            // 床マスクに載っていない物 (机の上・後から立てた物・頭上の扱いで作った床の縁の手すり) は床の線を探さない
+            float fl = a.Rim ? m.m13 + fy * ((mr.z + top[c] / 255f * mr.w - bv) / av) - RimH
+                : a.Support != null || a.Placed ? wy : FloorMask.FloorLine(wx, wy, Math.Max(yTop - wy, 0f), FrontFaceMax);
             a.ColX[c] = wx;
             a.ColY[c] = fl;
             vs[c] = float.NaN;
@@ -396,7 +429,7 @@ internal static partial class PropSim
             OccSrs.Add(sr);
         }
         foreach (var (sr, q) in FrontOver)
-            if (sr && sr.enabled && q.z > r.x && q.x < r.z && q.w > r.y && q.y < r.w && sr.gameObject.activeInHierarchy) OccSrs.Add(sr);
+            if (!ReferenceEquals(sr, a.Sr) && sr && sr.enabled && q.z > r.x && q.x < r.z && q.w > r.y && q.y < r.w && sr.gameObject.activeInHierarchy) OccSrs.Add(sr);
         FrontSprites(Rect.MinMaxRect(r.x, r.y, r.z, r.w), z, OccSrs);
         SunkOccFill(s);
     }
@@ -406,6 +439,13 @@ internal static partial class PropSim
     {
         var w = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (w.Length == 1 && (w[0] == "on" || w[0] == "off")) { _frontOff = w[0] == "off"; reply($"OK props front off={_frontOff}"); return; }
+        if (w.Length == 1 && w[0] == "over")
+        {
+            foreach (var (sr, q) in FrontOver)
+                reply($"FRONTOVER {(sr && sr.sprite ? sr.sprite.name : "?")} z={(sr ? sr.transform.position.z : 0f):0.####} box={q.x:0.##},{q.y:0.##}..{q.z:0.##},{q.w:0.##} rim={(sr && sr.sprite && RimArt(sr.sprite.name))}");
+            reply($"OK props front over n={FrontOver.Count}");
+            return;
+        }
         if (w.Length == 1 && w[0] == "sup")
         {
             int ns = 0;

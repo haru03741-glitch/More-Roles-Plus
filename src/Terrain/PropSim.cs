@@ -1578,7 +1578,7 @@ internal static partial class PropSim
 
     internal static void Register()
     {
-        TestBridge.Register("props", "[list | heights | audit | sunk [force|off|on] | front [x y r | on | off] | tasks [all|band]] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / audit = 家具の層の当たり判定・高さの表・水面の板・水より手前の絵の対応を Screens/propaudit_<船>.txt へ / sunk = 水に浸かった家具の水面の線と板に渡した値・force = 確認用に全部の板を家具ごと沈めたまま止める (sunk だけで戻る)・off = 板を出さない (on で戻す) / front = 手前の絵の水面の板 (x y から r 以内の絵の名前・z・板・水位・off = 板を出さない) / tasks = タスクなどの端末ごとに絵が水にどう沈むか)", (args, reply) =>
+        TestBridge.Register("props", "[list | heights | audit | sunk [force|off|on] | front [x y r | on | off | over] | tasks [all|band]] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / audit = 家具の層の当たり判定・高さの表・水面の板・水より手前の絵の対応を Screens/propaudit_<船>.txt へ / sunk = 水に浸かった家具の水面の線と板に渡した値・force = 確認用に全部の板を家具ごと沈めたまま止める (sunk だけで戻る)・off = 板を出さない (on で戻す) / front = 手前の絵の水面の板 (x y から r 以内の絵の名前・z・板・水位・off = 板を出さない・over = 頭上の重ね絵の一覧と床の縁の手すりか) / tasks = タスクなどの端末ごとに絵が水にどう沈むか)", (args, reply) =>
         {
             if (!_ready && !Ensure()) { reply("ERR props no ship"); return; }
             if (args.Trim() == "heights") { reply(WriteHeights()); return; }
