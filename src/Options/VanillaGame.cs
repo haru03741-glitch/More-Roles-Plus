@@ -20,6 +20,21 @@ internal static class VanillaGame
 
     public static IReadOnlyList<Section> All => Sections;
 
+    // 本編の設定 title の書き方で値を書く (「45.0秒」「1.5x」)。本編の設定が見つからなければ null
+    public static string Format(StringNames title, float value)
+    {
+        var gm = GameManager.Instance;
+        var cats = gm && gm.GameSettingsList ? gm.GameSettingsList.AllCategories : null;
+        if (cats == null) return null;
+        foreach (var cat in cats)
+        {
+            if (cat == null || cat.AllGameSettings == null) continue;
+            foreach (var s in cat.AllGameSettings)
+                if (s && s.Title == title) return s.GetValueString(value);
+        }
+        return null;
+    }
+
     public static void Rebuild()
     {
         Sections.Clear();

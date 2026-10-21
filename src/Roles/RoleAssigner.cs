@@ -124,24 +124,22 @@ public static class RoleSettings
     public static readonly BoolOpt ImpostorsSeeRoles = new("RoleSettings.ImpostorsSeeRoles", true);
 }
 
-// 配り方の上限。「なし」は制限なし
-[Settings(Tab.General, "AssignSettings.Title", order: -99)]
+// 配り方の上限。「なし」は制限なし。行は本編の「ゲーム設定」タブに並べる (GameTabRows)。
+// 第三陣営の数は第三陣営の設定 (NeutralKillSettings)・インポスターの数は ImpostorRange と本編の設定にある
+[Settings(Tab.General, "AssignSettings.Title", order: -97)]
 public static class AssignSettings
 {
     private static readonly Text[] Counts = Enumerable.Range(0, Options.Crowded.MaxPlayers + 1).Select(i => i == 0 ? new Text("AssignSettings.None") : Text.Raw(i.ToString())).ToArray();
 
-    public static readonly IntOpt MinNeutral = new("AssignSettings.MinNeutral", 0, 0, Options.Crowded.MaxPlayers);
-    public static readonly ChoiceOpt MaxNeutral = new("AssignSettings.MaxNeutral", 0, Counts);
-    public static readonly ChoiceOpt MaxNeutralKillers = new("AssignSettings.MaxNeutralKillers", 0, Counts);
-    public static readonly ChoiceOpt MaxRoled = new("AssignSettings.MaxRoled", 0, Counts);
-    public static readonly IntOpt MaxAddonsPerPlayer = new("AssignSettings.MaxAddonsPerPlayer", 1, 0, 3);
+    public static readonly ChoiceOpt MaxRoled = new("AssignSettings.MaxRoled", 0, Counts) { OffTab = true };
+    public static readonly IntOpt MaxAddonsPerPlayer = new("AssignSettings.MaxAddonsPerPlayer", 1, 0, 3) { OffTab = true };
 
     // 出現率の抽選で役職が付かなかった人の扱い。「埋める」は出現率を重みにして、人数の残っている役職から配る
     // (出現率を低くしても、役職を入れた分だけ誰かに付く)。第三陣営を埋めに使うとクルーが減りすぎるので既定は同じ陣営だけ
     public static readonly ChoiceOpt Fill = new("AssignSettings.Fill", 1,
         new Text("AssignSettings.KeepVanilla"),
         new Text("AssignSettings.FillFromSameTeamRoles"),
-        new Text("AssignSettings.FillNeutralsIncluded"));
+        new Text("AssignSettings.FillNeutralsIncluded")) { OffTab = true };
 }
 
 // 配る前の名簿の 1 人 (本編が決めた陣営と土台の役職)
@@ -197,8 +195,8 @@ public static class AssignPlan
         var taken = new int[Registry.Roles.Count];
         int neutrals = 0, killers = 0;
         // 陣営ごとの最少〜最多は https://github.com/Gurge44/EndlessHostRoles Modules/CustomRoleSelector.cs に倣う (GPL-3.0)。
-        // 第三陣営の最少〜最多と、そのうちキル役の最多。人数の帯 (TeamSizes) があればそれ (0 = 出さない)、
-        // 無ければ「配り方」の設定 (最多の 0 = 制限なし)
+        // 第三陣営の最少〜最多と、そのうちキル役の最多 (0 = 出さない)。人数の帯 (TeamSizes) があればその人数の帯
+        // (ロビーでは帯の値がゲーム設定の行へ写っているので同じ値。人数を変えて回す時も帯どおりになるように)、無ければゲーム設定の値
         int minNeutral, maxNeutral, maxKillers;
         if (TeamSizes.For(roster.Count) is { } band)
         {
@@ -208,9 +206,9 @@ public static class AssignPlan
         }
         else
         {
-            maxNeutral = AssignSettings.MaxNeutral.Value > 0 ? AssignSettings.MaxNeutral.Value : int.MaxValue;
-            maxKillers = AssignSettings.MaxNeutralKillers.Value > 0 ? AssignSettings.MaxNeutralKillers.Value : int.MaxValue;
-            minNeutral = Math.Min(AssignSettings.MinNeutral.Value, maxNeutral);
+            maxNeutral = NeutralKillSettings.MaxNeutrals.Value;
+            maxKillers = Math.Min(NeutralKillSettings.MaxKillers.Value, maxNeutral);
+            minNeutral = Math.Min(NeutralKillSettings.MinNeutrals.Value, maxNeutral);
         }
         int maxRoled = AssignSettings.MaxRoled.Value;
 

@@ -147,6 +147,7 @@ internal sealed class VanillaOpt : Opt
     private readonly float _min, _step;
     private readonly int _count;
     private readonly bool _impostors; // インポスターの人数: 上限は接続先と部屋の定員で変わる
+    internal bool IsImpostorCount => _impostors;
 
     private VanillaOpt(Text label, BaseGameSetting s, FloatGameSetting f, IntGameSetting i, CheckboxGameSetting c, StringGameSetting str) : base(label, 0)
     {
@@ -188,6 +189,8 @@ internal sealed class VanillaOpt : Opt
         var c = f == null && i == null ? s.TryCast<CheckboxGameSetting>() : null;
         var str = f == null && i == null && c == null ? s.TryCast<StringGameSetting>() : null;
         if (f == null && i == null && c == null && str == null) return null;
+        // インポスターの数は最少 (ImpostorRange.Min) と組で最多として使う
+        if (s.Title == StringNames.GameNumImpostors) return new VanillaOpt(ImpostorRange.MaxLabel, s, f, i, c, str);
         string label = TranslationController.Instance ? TranslationController.Instance.GetString(s.Title) : s.Title.ToString();
         return new VanillaOpt(Text.Raw(label), s, f, i, c, str);
     }

@@ -113,6 +113,15 @@ public sealed class IntOpt : Opt
             Index = Math.Clamp((int)Math.Round((v - Min) / (double)StepSize), 0, Count - 1);
     }
 
+    // 値で書く (範囲の外は端へ寄せる)。変わったら true
+    internal bool SetValue(int v)
+    {
+        int i = Math.Clamp((v - Min) / StepSize, 0, Count - 1);
+        if (i == Index) return false;
+        Index = i;
+        return true;
+    }
+
     public static implicit operator int(IntOpt o) => o.Value;
 }
 
@@ -130,9 +139,12 @@ public sealed class FloatOpt : Opt
         Suffix = suffix;
     }
 
+    // 値の書き方を替える (本編の行と並べる項目は本編の書き方に揃える。null を返すと既定の書き方)
+    public Func<float, string> Format { get; init; }
+
     public float Value => Min + Index * StepSize;
     internal override int Count => (int)Math.Round((Max - Min) / StepSize) + 1;
-    internal override string Display() => Value.ToString("0.##", CultureInfo.InvariantCulture) + Suffix;
+    internal override string Display() => Format?.Invoke(Value) ?? Value.ToString("0.##", CultureInfo.InvariantCulture) + Suffix;
 
     internal override string Save() => Value.ToString("R", CultureInfo.InvariantCulture);
     internal override void Load(string s)

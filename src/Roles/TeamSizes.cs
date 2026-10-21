@@ -3,21 +3,30 @@
 using System;
 using AmongUs.GameOptions;
 using HarmonyLib;
-using MoreRolesPlus.Dev;
+using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
 
 namespace MoreRolesPlus.Roles;
 
+// インポスターの数の最少。最多は本編のインポスター数 (NumImpostors) をそのまま使い、開始の時にこの範囲から引く。
+// 行は本編の「ゲーム設定」タブのインポスター数の行の上に並べる (GameTabRows)
+[Settings(Tab.General, "ImpostorRange.Title", order: -99)]
+public static class ImpostorRange
+{
+    public static readonly IntOpt Min = new("ImpostorRange.Min", 1, 1, ImpostorCap.CapFor(Crowded.MaxPlayers)) { OffTab = true };
+    public static readonly Text MaxLabel = new("ImpostorRange.Max");
+}
+
 // 部屋の人数で陣営の数を決める。人数の帯 (「N 人から」・0 = 使わない) ごとにインポスターの最少〜最多・
 // 第三陣営の最少〜最多・そのうちキル役の最多を持ち、今の人数以下でいちばん大きい帯を使う。
-// どの帯にも届かない時と切ってある時は、本編のインポスター数と「配り方」の設定のまま。
-// - インポスター: 開始の数えが始まった時にホストが帯の範囲から引いて本編の設定へ書き、全員へ同期する
-// - 第三陣営: 配り方 (AssignPlan) が帯の最少〜最多を使う (0 = 出さない)
-// - ロビーで人数が増減して帯が替わったら、ホストの手元に今の帯を出す
-[Settings(Tab.General, "TeamSizes.Title", order: -97)]
+// 使っている帯の値はゲーム設定の行 (インポスターの最少・本編のインポスター数・第三陣営の数) へ写し、
+// ゲーム設定の行を変えた時は使っている帯へ書き戻す (どこを見ても同じ数になるように)。
+// - インポスター: 開始の数えが始まった時にホストが最少〜最多から引いて本編の設定へ書き、全員へ同期する
+// - 第三陣営: 配り方 (AssignPlan) が最少〜最多を使う (0 = 出さない)
+[Settings(Tab.General, "TeamSizes.Title", order: -96)]
 public static class TeamSizes
 {
-    public static readonly BoolOpt Enabled = new("TeamSizes.Enabled", false);
+    public static readonly BoolOpt Enabled = new("TeamSizes.Enabled", false) { OffTab = true };
 
     public readonly struct Band
     {
@@ -37,7 +46,7 @@ public static class TeamSizes
     private static TeamSizeBandOpts[] _bands;
 
     // 帯の設定項目 (帯ごとの static class の項目を 1 つの表に。static の初期化が互いを待たないように最初に使う時に作る)
-    private static TeamSizeBandOpts[] Bands => _bands ??= new[]
+    internal static TeamSizeBandOpts[] Bands => _bands ??= new[]
     {
         new TeamSizeBandOpts(TeamSizeBand1.Players, TeamSizeBand1.MinImpostors, TeamSizeBand1.MaxImpostors, TeamSizeBand1.MinNeutrals, TeamSizeBand1.MaxNeutrals, TeamSizeBand1.MaxNeutralKillers),
         new TeamSizeBandOpts(TeamSizeBand2.Players, TeamSizeBand2.MinImpostors, TeamSizeBand2.MaxImpostors, TeamSizeBand2.MinNeutrals, TeamSizeBand2.MaxNeutrals, TeamSizeBand2.MaxNeutralKillers),
@@ -46,8 +55,8 @@ public static class TeamSizes
         new TeamSizeBandOpts(TeamSizeBand5.Players, TeamSizeBand5.MinImpostors, TeamSizeBand5.MaxImpostors, TeamSizeBand5.MinNeutrals, TeamSizeBand5.MaxNeutrals, TeamSizeBand5.MaxNeutralKillers),
     };
 
-    // 人数 players で使う帯 (切ってある・どの帯にも届かない時は null)
-    public static Band? For(int players)
+    // 人数 players で使う帯の項目 (切ってある・どの帯にも届かない時は null)
+    private static TeamSizeBandOpts Active(int players)
     {
         if (!Enabled) return null;
         TeamSizeBandOpts best = null;
@@ -56,8 +65,10 @@ public static class TeamSizes
             int p = b.Players.Value;
             if (p > 0 && p <= players && (best == null || p > best.Players.Value)) best = b;
         }
-        return best?.ToBand();
+        return best;
     }
+
+    public static Band? For(int players) => Active(players)?.ToBand();
 
     // 役職を配る人数 (観戦の人と抜けた人を除く)
     public static int PlayerCount()
@@ -70,43 +81,166 @@ public static class TeamSizes
         return n;
     }
 
-    // ---- インポスター (ホスト・開始の数えが始まった時) ----
+    private static bool AmHost => AmongUsClient.Instance && AmongUsClient.Instance.AmHost;
+    private static IGameOptions Options => GameOptionsManager.Instance?.CurrentGameOptions;
+    private static int ImpostorCapOf(IGameOptions o) => Math.Max(1, ImpostorCap.MaxFor(ImpostorCap.RoomSize(o)));
 
-    private static readonly Random Rng = new();
-    private static int _savedImpostors = -1; // 帯で書き換える前のインポスター数 (次のロビーで戻す)
+    // ---- 帯 ⇔ ゲーム設定の行 (ホスト) ----
 
-    internal static void OnBegin()
+    private static bool IsCountRow(Opt opt) =>
+        opt == ImpostorRange.Min || opt == NeutralKillSettings.MinNeutrals || opt == NeutralKillSettings.MaxNeutrals || opt == NeutralKillSettings.MaxKillers
+        || opt is Builtin.VanillaOpt { IsImpostorCount: true };
+
+    private static bool IsBandOpt(Opt opt)
     {
-        var client = AmongUsClient.Instance;
-        if (!client || !client.AmHost) return;
-        int players = PlayerCount();
-        if (For(players) is not { } band) return;
-        var opts = GameOptionsManager.Instance?.CurrentGameOptions;
-        if (opts == null) return;
-        int max = Math.Max(1, ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts)));
-        int n = Math.Clamp(Rng.Next(band.MinImpostors, band.MaxImpostors + 1), 1, max);
-        Plugin.Logger.LogInfo($"team sizes: players={players} band={band.Players} impostors {band.MinImpostors}-{band.MaxImpostors} => {n}");
-        if (opts.NumImpostors == n) return;
-        if (_savedImpostors < 0) _savedImpostors = opts.NumImpostors;
-        opts.SetInt(Int32OptionNames.NumImpostors, n);
+        if (opt == null) return false;
+        foreach (var b in Bands)
+            if (opt == b.Players || opt == b.MinImpostors || opt == b.MaxImpostors || opt == b.MinNeutrals || opt == b.MaxNeutrals || opt == b.MaxNeutralKillers)
+                return true;
+        return false;
+    }
+
+    // 帯の値をゲーム設定の行へ写す。変わったら true・本編のインポスター数を変えたら vanilla = true
+    private static bool Reflect(TeamSizeBandOpts bo, out bool vanilla)
+    {
+        vanilla = false;
+        var o = Options;
+        if (o == null) return false;
+        var band = bo.ToBand();
+        int max = Math.Clamp(band.MaxImpostors, 1, ImpostorCapOf(o));
+        if (o.NumImpostors != max)
+        {
+            o.SetInt(Int32OptionNames.NumImpostors, max);
+            vanilla = true;
+        }
+        bool changed = ImpostorRange.Min.SetValue(Math.Min(band.MinImpostors, max));
+        changed |= NeutralKillSettings.MinNeutrals.SetValue(band.MinNeutrals);
+        changed |= NeutralKillSettings.MaxNeutrals.SetValue(band.MaxNeutrals);
+        changed |= NeutralKillSettings.MaxKillers.SetValue(band.MaxNeutralKillers);
+        return changed || vanilla;
+    }
+
+    // ゲーム設定の行の値を帯へ書き戻す
+    private static void WriteBack(TeamSizeBandOpts bo, IGameOptions o)
+    {
+        bo.MinImpostors.SetValue(ImpostorRange.Min.Value);
+        bo.MaxImpostors.SetValue(o.NumImpostors);
+        bo.MinNeutrals.SetValue(NeutralKillSettings.MinNeutrals.Value);
+        bo.MaxNeutrals.SetValue(NeutralKillSettings.MaxNeutrals.Value);
+        bo.MaxNeutralKillers.SetValue(NeutralKillSettings.MaxKillers.Value);
+    }
+
+    // 最少が最多を超えないように、変えた方に合わせてもう片方を動かす (edited = null は本編のインポスター数)。
+    // 本編のインポスター数を変えたら true
+    private static bool Normalize(Opt edited, IGameOptions o)
+    {
+        bool vanilla = false;
+        var min = ImpostorRange.Min;
+        if (min.Value > o.NumImpostors)
+        {
+            if (edited == min)
+            {
+                int max = Math.Min(min.Value, ImpostorCapOf(o));
+                o.SetInt(Int32OptionNames.NumImpostors, max);
+                min.SetValue(max);
+                vanilla = true;
+            }
+            else min.SetValue(o.NumImpostors);
+        }
+        var minN = NeutralKillSettings.MinNeutrals;
+        var maxN = NeutralKillSettings.MaxNeutrals;
+        var kill = NeutralKillSettings.MaxKillers;
+        if (edited == maxN)
+        {
+            if (minN.Value > maxN.Value) minN.SetValue(maxN.Value);
+            if (kill.Value > maxN.Value) kill.SetValue(maxN.Value);
+        }
+        else if (edited == minN && minN.Value > maxN.Value) maxN.SetValue(minN.Value);
+        else if (edited == kill && kill.Value > maxN.Value) maxN.SetValue(kill.Value);
+        return vanilla;
+    }
+
+    // 設定画面で項目が押された後 (MRP の行・検索の結果の行)。vanillaImpostors = 本編のインポスター数の行が押された
+    internal static void OnEdited(Opt opt, bool vanillaImpostors = false)
+    {
+        if (!AmHost || !LobbyBehaviour.Instance) return;
+        var o = Options;
+        if (o == null) return;
+        bool row = vanillaImpostors || IsCountRow(opt);
+        if (!row && opt != Enabled && !IsBandOpt(opt)) return;
+        bool vanilla = row && Normalize(vanillaImpostors ? null : opt, o);
+        var bo = Active(PlayerCount());
+        if (bo != null)
+        {
+            if (row) WriteBack(bo, o);
+            else
+            {
+                Reflect(bo, out bool v);
+                vanilla |= v;
+            }
+        }
+        if (vanilla) SyncVanilla();
+        RefreshMenu();
+    }
+
+    private static void SyncVanilla()
+    {
         if (GameManager.Instance) GameManager.Instance.LogicOptions.SyncOptions();
     }
 
-    // ---- ロビーの知らせ (ホスト) ----
+    // 開いている設定画面の行を値に合わせて描き直す (MRP の行と本編のインポスター数の行)
+    private static void RefreshMenu()
+    {
+        var menu = GameSettingMenu.Instance;
+        if (!menu) return;
+        SettingsMenu.RefreshAll();
+        GameTabRows.RefreshVanillaImpostors(menu.GameSettingsTab);
+    }
+
+    // ---- インポスター (ホスト・開始の数えが始まった時) ----
+
+    private static readonly Random Rng = new();
+    private static int _savedImpostors = -1; // 引いた数を書く前のインポスター数 (= 最多。数えを取りやめた時と次のロビーで戻す)
+
+    internal static void OnBegin()
+    {
+        if (!AmHost) return;
+        var opts = Options;
+        if (opts == null) return;
+        int players = PlayerCount();
+        if (Active(players) is { } bo && Reflect(bo, out _)) OptionSync.SendAll();
+        // 前に引いた数が戻らないまま数えがもう一度始まった時も、最多は引く前の数
+        int max = Math.Clamp(_savedImpostors >= 0 ? _savedImpostors : opts.NumImpostors, 1, ImpostorCapOf(opts));
+        int min = Math.Clamp(ImpostorRange.Min.Value, 1, max);
+        int n = Rng.Next(min, max + 1);
+        Plugin.Logger.LogInfo($"team sizes: players={players} impostors {min}-{max} => {n}");
+        if (opts.NumImpostors != n)
+        {
+            if (_savedImpostors < 0) _savedImpostors = opts.NumImpostors;
+            opts.SetInt(Int32OptionNames.NumImpostors, n);
+        }
+        SyncVanilla();
+    }
+
+    // 開始の数えを取りやめた (ロビーのまま・船がまだ無い)
+    internal static void OnCancel()
+    {
+        if (_savedImpostors < 0 || !AmHost || !LobbyBehaviour.Instance || ShipStatus.Instance) return;
+        if (AmongUsClient.Instance.GameState != InnerNet.InnerNetClient.GameStates.Joined) return;
+        RestoreImpostors();
+        RefreshMenu();
+    }
+
+    // ---- ロビー (ホスト): 人数が変わったら帯を写す ----
 
     private const long SettleMs = 2000; // 入った直後は人の情報が揃わないので少し待つ
     private static long _checkAt;
-    private static int _shownBand = -1;
     private static bool _newLobby;
 
     // 人数か帯の設定が変わったかもしれない (ロビーに着いた・誰かが入った / 出た・設定画面を閉じた・ホストが替わった)
     internal static void Recheck(bool newLobby = false)
     {
-        if (newLobby)
-        {
-            _shownBand = -1;
-            _newLobby = true;
-        }
+        if (newLobby) _newLobby = true;
         _checkAt = Environment.TickCount64 + SettleMs;
     }
 
@@ -114,45 +248,32 @@ public static class TeamSizes
     {
         if (_checkAt == 0 || Environment.TickCount64 < _checkAt) return;
         _checkAt = 0;
-        var client = AmongUsClient.Instance;
-        if (!client || !client.AmHost || !LobbyBehaviour.Instance) return;
-        // 試合から戻ったロビーでは、帯で書き換えたインポスター数を部屋の設定へ戻す (帯を切った後に残らないように)
+        if (!AmHost || !LobbyBehaviour.Instance) return;
+        // 試合から戻ったロビーでは、引いたインポスター数を最多へ戻す
         if (_newLobby)
         {
             _newLobby = false;
             RestoreImpostors();
         }
-        if (!Enabled)
-        {
-            _shownBand = -1; // 入れ直したら出す
-            return;
-        }
         int players = PlayerCount();
-        var band = For(players);
-        // 帯が替わった時と、同じ帯の数を設定画面で変えた時に出す
-        int key = band is { } k ? HashCode.Combine(k.Players, k.MinImpostors, k.MaxImpostors, k.MinNeutrals, k.MaxNeutrals, k.MaxNeutralKillers) : 0;
-        if (key == _shownBand) return;
-        _shownBand = key;
-        string text = band is { } b
-            ? new Text("TeamSizes.Applied").With("players", players).With("band", b.Players)
-                .With("imp", Range(b.MinImpostors, b.MaxImpostors)).With("neu", Range(b.MinNeutrals, b.MaxNeutrals)).With("kill", b.MaxNeutralKillers)
-            : new Text("TeamSizes.NoBand").With("players", players);
-        DevChat.Notice(Vanilla.Chat, text);
-        Plugin.Logger.LogInfo($"team sizes: {text}");
+        var bo = Active(players);
+        if (bo == null || !Reflect(bo, out bool vanilla)) return;
+        Plugin.Logger.LogInfo($"team sizes: players={players} band={bo.Players.Value} reflected");
+        if (vanilla) SyncVanilla();
+        OptionSync.SendAll();
+        RefreshMenu();
     }
 
     private static void RestoreImpostors()
     {
         int saved = _savedImpostors;
         _savedImpostors = -1;
-        var opts = GameOptionsManager.Instance?.CurrentGameOptions;
+        var opts = Options;
         if (saved < 0 || opts == null || opts.NumImpostors == saved) return;
-        opts.SetInt(Int32OptionNames.NumImpostors, Math.Clamp(saved, 1, Math.Max(1, ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts)))));
-        if (GameManager.Instance) GameManager.Instance.LogicOptions.SyncOptions();
+        opts.SetInt(Int32OptionNames.NumImpostors, Math.Clamp(saved, 1, ImpostorCapOf(opts)));
+        SyncVanilla();
         Plugin.Logger.LogInfo($"team sizes: impostors back to {opts.NumImpostors}");
     }
-
-    private static string Range(int min, int max) => min == max ? min.ToString() : $"{min}-{max}";
 }
 
 internal sealed class TeamSizeBandOpts
@@ -172,13 +293,13 @@ internal sealed class TeamSizeBandOpts
     public TeamSizes.Band ToBand() => new(Players, MinImpostors, MaxImpostors, MinNeutrals, MaxNeutrals, MaxNeutralKillers);
 
     // 帯の項目の作り方 (5 つの帯で同じ幅)
-    public static IntOpt PlayersOpt(int def) => new("TeamSizes.Players", def, 0, Crowded.MaxPlayers);
-    public static IntOpt ImpostorOpt(string key, int def) => new(key, def, 1, ImpostorCap.CapFor(Crowded.MaxPlayers));
-    public static IntOpt NeutralOpt(string key, int def) => new(key, def, 0, Crowded.MaxPlayers);
+    public static IntOpt PlayersOpt(int def) => new("TeamSizes.Players", def, 0, Crowded.MaxPlayers) { OffTab = true };
+    public static IntOpt ImpostorOpt(string key, int def) => new(key, def, 1, ImpostorCap.CapFor(Crowded.MaxPlayers)) { OffTab = true };
+    public static IntOpt NeutralOpt(string key, int def) => new(key, def, 0, Crowded.MaxPlayers) { OffTab = true };
 }
 
-// 人数の帯。既定は 4 / 7 / 10 / 13 / 16 人から (全体の ON/OFF は既定で切ってある)
-[Settings(Tab.General, "TeamSizes.Band1", order: -96)]
+// 人数の帯。既定は 4 / 7 / 10 / 13 / 16 人から (全体の ON/OFF は既定で切ってある)。行はゲーム設定のタブの終わりに並べる
+[Settings(Tab.General, "TeamSizes.Band1", order: -95)]
 public static class TeamSizeBand1
 {
     public static readonly IntOpt Players = TeamSizeBandOpts.PlayersOpt(4);
@@ -189,7 +310,7 @@ public static class TeamSizeBand1
     public static readonly IntOpt MaxNeutralKillers = TeamSizeBandOpts.NeutralOpt("TeamSizes.MaxNeutralKillers", 0);
 }
 
-[Settings(Tab.General, "TeamSizes.Band2", order: -95)]
+[Settings(Tab.General, "TeamSizes.Band2", order: -94)]
 public static class TeamSizeBand2
 {
     public static readonly IntOpt Players = TeamSizeBandOpts.PlayersOpt(7);
@@ -200,7 +321,7 @@ public static class TeamSizeBand2
     public static readonly IntOpt MaxNeutralKillers = TeamSizeBandOpts.NeutralOpt("TeamSizes.MaxNeutralKillers", 1);
 }
 
-[Settings(Tab.General, "TeamSizes.Band3", order: -94)]
+[Settings(Tab.General, "TeamSizes.Band3", order: -93)]
 public static class TeamSizeBand3
 {
     public static readonly IntOpt Players = TeamSizeBandOpts.PlayersOpt(10);
@@ -211,7 +332,7 @@ public static class TeamSizeBand3
     public static readonly IntOpt MaxNeutralKillers = TeamSizeBandOpts.NeutralOpt("TeamSizes.MaxNeutralKillers", 1);
 }
 
-[Settings(Tab.General, "TeamSizes.Band4", order: -93)]
+[Settings(Tab.General, "TeamSizes.Band4", order: -92)]
 public static class TeamSizeBand4
 {
     public static readonly IntOpt Players = TeamSizeBandOpts.PlayersOpt(13);
@@ -222,7 +343,7 @@ public static class TeamSizeBand4
     public static readonly IntOpt MaxNeutralKillers = TeamSizeBandOpts.NeutralOpt("TeamSizes.MaxNeutralKillers", 1);
 }
 
-[Settings(Tab.General, "TeamSizes.Band5", order: -92)]
+[Settings(Tab.General, "TeamSizes.Band5", order: -91)]
 public static class TeamSizeBand5
 {
     public static readonly IntOpt Players = TeamSizeBandOpts.PlayersOpt(16);
@@ -241,6 +362,22 @@ internal static class TeamSizesBeginPatch
     public static void Prefix()
     {
         try { TeamSizes.OnBegin(); }
+        catch (Exception e) { Plugin.Logger.LogError($"team sizes: {e}"); }
+    }
+}
+
+// 開始の数えを取りやめた時は、引いたインポスター数を最多へ戻す (ゲーム設定の最多の行が引いた数のまま残らないように)。
+// 数えている途中から戻した時だけ (呼ばれた後は状態が戻っていて見分けられないので、前に控える)
+[HarmonyPatch(typeof(GameStartManager), nameof(GameStartManager.ResetStartState))]
+internal static class TeamSizesCancelPatch
+{
+    public static void Prefix(GameStartManager __instance, out bool __state) =>
+        __state = __instance.startState == GameStartManager.StartingStates.Countdown;
+
+    public static void Postfix(bool __state)
+    {
+        if (!__state) return;
+        try { TeamSizes.OnCancel(); }
         catch (Exception e) { Plugin.Logger.LogError($"team sizes: {e}"); }
     }
 }

@@ -7,13 +7,20 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 第三陣営のキル役の、本編のインポスターと同じ並びの設定 (キルのクールダウン・視界・キルの距離)。
-// 行は本編の「ゲーム設定」タブのインポスターの項目の下に並べる (NeutralKillRows)。MRP のタブには並べない
+// 第三陣営の数 (最少〜最多・そのうちキル役の最多) と、キル役の本編のインポスターと同じ並びの設定 (キルのクールダウン・視界・キルの距離)。
+// 行は本編の「ゲーム設定」タブのインポスターの項目の下に並べる (GameTabRows)。MRP のタブには並べない。
+// 数は人数の帯 (TeamSizes) を使っている時、帯の値が写る
 [Settings(Tab.General, "NeutralKillSettings.Title", order: -98)]
 public static class NeutralKillSettings
 {
-    public static readonly FloatOpt KillCooldown = new("NeutralKillSettings.KillCooldown", 25f, 2.5f, 60f, 2.5f, "s") { OffTab = true };
-    public static readonly FloatOpt Vision = new("NeutralKillSettings.Vision", 1.5f, 0.25f, 5f, 0.25f, "x") { OffTab = true };
+    public static readonly IntOpt MinNeutrals = new("NeutralKillSettings.MinNeutrals", 0, 0, Crowded.MaxPlayers) { OffTab = true };
+    public static readonly IntOpt MaxNeutrals = new("NeutralKillSettings.MaxNeutrals", 2, 0, Crowded.MaxPlayers) { OffTab = true };
+    public static readonly IntOpt MaxKillers = new("NeutralKillSettings.MaxKillers", 1, 0, Crowded.MaxPlayers) { OffTab = true };
+    // 本編のインポスターの行と並ぶので、値は本編の書き方 (「25.0秒」)
+    public static readonly FloatOpt KillCooldown = new("NeutralKillSettings.KillCooldown", 25f, 2.5f, 60f, 2.5f, "s")
+        { OffTab = true, Format = v => VanillaGame.Format(StringNames.GameKillCooldown, v) };
+    public static readonly FloatOpt Vision = new("NeutralKillSettings.Vision", 1.5f, 0.25f, 5f, 0.25f, "x")
+        { OffTab = true, Format = v => VanillaGame.Format(StringNames.GameImpostorLight, v) };
     public static readonly ChoiceOpt KillDistance = new("NeutralKillSettings.KillDistance", 1,
         new Text("NeutralKillSettings.Short"), new Text("NeutralKillSettings.Medium"), new Text("NeutralKillSettings.Long")) { OffTab = true };
 

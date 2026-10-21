@@ -133,6 +133,7 @@ internal static class ImpostorCapRowPatch
     public static void Postfix(NumberOption __instance)
     {
         if (__instance.Title != StringNames.GameNumImpostors) return;
+        GameTabRows.Relabel(__instance);
         ImpostorCap.Refresh();
         var opts = GameOptionsManager.Instance.CurrentGameOptions;
         int max = ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts));

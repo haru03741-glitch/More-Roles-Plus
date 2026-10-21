@@ -178,11 +178,22 @@ internal static class RoleMenu
         var roleOptions = GameOptionsManager.Instance.CurrentGameOptions.RoleOptions;
         var anyRole = RoleManager.Instance.AllRoles[0];
 
-        // 検索の時だけ出る組: 本編のゲーム設定 (見出しごと)・マップのバリエーション・第三陣営のキル役・MRP 全般 (見出しごと)
+        // 検索の時だけ出る組: 本編のゲーム設定 (見出しごと)・マップのバリエーション・ゲーム設定に足した組・MRP 全般 (見出しごと)
         VanillaGame.Rebuild();
-        foreach (var sec in VanillaGame.All) AddSearchGroup(m, Join(VanillaGame.TabName, sec.Title), GameColor, 0, sec.Opts);
+        foreach (var sec in VanillaGame.All)
+        {
+            // インポスター数 (= 最多人数) の前に最少人数
+            var opts = new List<Opt>();
+            foreach (var opt in sec.Opts)
+            {
+                if (opt.IsImpostorCount) opts.Add(ImpostorRange.Min);
+                opts.Add(opt);
+            }
+            AddSearchGroup(m, Join(VanillaGame.TabName, sec.Title), GameColor, 0, opts);
+        }
         AddSearchGroup(m, Join(VanillaGame.TabName, MapVariants.Title), GameColor, 0, new Opt[] { MapSettings.Mirror });
-        AddSearchGroup(m, Join(VanillaGame.TabName, NeutralKillRows.Title), GameColor, 0, NeutralKillRows.Opts);
+        AddSearchGroup(m, Join(VanillaGame.TabName, GameTabRows.Neutral.Title), GameColor, 0, GameTabRows.Neutral.Opts);
+        foreach (var g in GameTabRows.Tail()) AddSearchGroup(m, Join(VanillaGame.TabName, g.Title), GameColor, 0, g.Opts);
         foreach (var sec in Registry.SectionsOf(Tab.General))
         {
             var opts = new List<Opt>();

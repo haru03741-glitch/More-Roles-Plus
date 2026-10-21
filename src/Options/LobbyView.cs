@@ -56,6 +56,23 @@ internal static class LobbyView
         if (pane) pane.ChangeTab(MrpTab);
     }
 
+    internal static void ShowImpostorRange(LobbyViewSettingsPane pane)
+    {
+        if (pane.currentTab == MrpTab || !TranslationController.InstanceExists) return;
+        var o = GameOptionsManager.Instance?.CurrentGameOptions;
+        if (o == null) return;
+        int max = o.NumImpostors, min = Math.Min(Roles.ImpostorRange.Min.Value, max);
+        if (min == max) return;
+        string title = TranslationController.Instance.GetString(StringNames.GameNumImpostors);
+        foreach (var go in pane.settingsInfo)
+        {
+            var p = go ? go.GetComponent<ViewSettingsInfoPanel>() : null;
+            if (p == null || !p.titleText || p.titleText.text != title) continue;
+            p.settingText.text = $"{min} - {max}";
+            return;
+        }
+    }
+
     internal static LobbyViewSettingsPane Pane() =>
         Vanilla.LobbyInfo is { } info ? info.LobbyViewSettingsPane : null;
 
@@ -196,6 +213,14 @@ internal static class LobbyViewSettingsPanePatch
     // MRP のタブの時は本編の一覧を描かない
     [HarmonyPatch("DrawNormalTab"), HarmonyPrefix]
     public static bool DrawNormalTab(LobbyViewSettingsPane __instance) => __instance.currentTab != LobbyView.MrpTab;
+
+    // 本編の一覧のインポスター数は最少〜最多で見せる (本編の値は最多)
+    [HarmonyPatch("DrawNormalTab"), HarmonyPostfix]
+    public static void DrawNormalTabPost(LobbyViewSettingsPane __instance)
+    {
+        try { LobbyView.ShowImpostorRange(__instance); }
+        catch (Exception e) { Plugin.Logger.LogError($"lobby view impostors: {e}"); }
+    }
 
     [HarmonyPatch(nameof(LobbyViewSettingsPane.ChangeTab)), HarmonyPostfix]
     public static void ChangeTab(LobbyViewSettingsPane __instance) => LobbyView.AfterRefresh(__instance);

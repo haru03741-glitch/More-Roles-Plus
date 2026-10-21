@@ -224,24 +224,15 @@ internal static class RoleCommands
         TestBridge.Register("variant", "<札の番号 0=通常 1=左右反転> ゲーム設定のタブのマップのバリエーションの札を押す", (args, reply) =>
             reply("OK variant " + MapVariants.Press(int.TryParse(args.Trim(), out int vi) ? vi : -1)));
 
-        TestBridge.Register("nkrows", "[scroll <0〜1> | press <行> <+1|-1>] ゲーム設定のタブの第三陣営のキル役の行 (見出し・行の位置と値) / タブを縦に送る / 行の ± を押す", (args, reply) =>
-            reply(NeutralKillRows.Probe(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
+        TestBridge.Register("gamerows", "[scroll <0〜1> | press <行> <+1|-1>] [q] ゲーム設定のタブに足した行と本編のインポスター数の行 (見出し・行の位置と値) / タブを縦に送る / 行の ± (ON/OFF は切り替え) を押す", (args, reply) =>
+            reply(GameTabRows.Probe(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
         TestBridge.Register("uitree", "<chat|menu|page|gametab|cam|map|GameObject のパス> [深さ=3] 画面の部品の階層 (位置・大きさ・部品の種類・有効か)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (a.Length == 0) { reply("ERR uitree target"); return; }
             int depth = a.Length > 1 && int.TryParse(a[1], out int d) ? d : 3;
-            UnityEngine.Transform root = a[0] switch
-            {
-                "chat" => Vanilla.Chat is { } chat ? chat.freeChatField?.transform : null,
-                "menu" => GameSettingMenu.Instance ? GameSettingMenu.Instance.transform : null,
-                "page" => SettingsMenu.OpenPage(),
-                "gametab" => GameSettingMenu.Instance && GameSettingMenu.Instance.GameSettingsTab ? GameSettingMenu.Instance.GameSettingsTab.transform : null,
-                "cam" => UnityEngine.Camera.main ? UnityEngine.Camera.main.transform : null,
-                "map" => MapBehaviour.Instance ? MapBehaviour.Instance.transform : null,
-                _ => UnityEngine.GameObject.Find(a[0])?.transform,
-            };
+            var root = UiTarget(a[0]);
             if (!root) { reply($"ERR uitree not found: {a[0]}"); return; }
             var sb = new System.Text.StringBuilder();
             void Walk(UnityEngine.Transform t, int level)
@@ -267,11 +258,61 @@ internal static class RoleCommands
             reply("OK uitree" + sb);
         });
 
+        TestBridge.Register("uilook", "<A> <B> [深さ=3] 2 つの部品の見た目の違い (色・絵・字の大きさ/色/書体・大きさ・有効か。位置と文字は比べない)。A/B は uitree と同じ名前か gametab:header:<N> / gametab:row:<N> / <名前>:<子の名前>", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length < 2) { reply("ERR uilook <A> <B>"); return; }
+            var ta = UiTarget(a[0]);
+            var tb = UiTarget(a[1]);
+            if (!ta || !tb) { reply($"ERR uilook not found: {(!ta ? a[0] : a[1])}"); return; }
+            int depth = a.Length > 2 && int.TryParse(a[2], out int d) ? d : 3;
+            var diffs = new System.Collections.Generic.List<string>();
+            UiLook.Compare(ta, tb, "", depth, diffs);
+            reply($"OK uilook diffs={diffs.Count}" + (diffs.Count > 0 ? "\n" + string.Join("\n", diffs) : ""));
+        });
+
         TestBridge.Register("closesettings", "設定画面を閉じる", (_, reply) =>
         {
             if (!GameSettingMenu.Instance) { reply("ERR closesettings menu not open"); return; }
             GameSettingMenu.Instance.Close();
             reply("OK closesettings");
         });
+    }
+
+    // 画面の部品の名前 (uitree / uilook)。「名前:子の名前」は子を名前で、gametab:header:N / gametab:row:N はゲーム設定のタブの N 番目の見出し / 行
+    private static UnityEngine.Transform UiTarget(string name)
+    {
+        int colon = name.IndexOf(':');
+        if (colon > 0)
+        {
+            var parent = UiTarget(name[..colon]);
+            if (!parent) return null;
+            string rest = name[(colon + 1)..];
+            if (name.StartsWith("gametab:header:") || name.StartsWith("gametab:row:"))
+            {
+                bool header = name.StartsWith("gametab:header:");
+                var tab = GameSettingMenu.Instance.GameSettingsTab;
+                if (!int.TryParse(rest[(rest.IndexOf(':') + 1)..], out int n) || !tab.settingsContainer) return null;
+                var c = tab.settingsContainer;
+                for (int i = 0; i < c.childCount; i++)
+                {
+                    var t = c.GetChild(i);
+                    bool hit = header ? t.GetComponent<CategoryHeaderMasked>() != null : t.GetComponent<OptionBehaviour>() != null;
+                    if (hit && n-- == 0) return t;
+                }
+                return null;
+            }
+            return UiLook.FindDeep(parent, rest);
+        }
+        return name switch
+        {
+            "chat" => Vanilla.Chat is { } chat ? chat.freeChatField?.transform : null,
+            "menu" => GameSettingMenu.Instance ? GameSettingMenu.Instance.transform : null,
+            "page" => SettingsMenu.OpenPage(),
+            "gametab" => GameSettingMenu.Instance && GameSettingMenu.Instance.GameSettingsTab ? GameSettingMenu.Instance.GameSettingsTab.transform : null,
+            "cam" => UnityEngine.Camera.main ? UnityEngine.Camera.main.transform : null,
+            "map" => MapBehaviour.Instance ? MapBehaviour.Instance.transform : null,
+            _ => UnityEngine.GameObject.Find(name)?.transform,
+        };
     }
 }

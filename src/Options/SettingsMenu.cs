@@ -525,15 +525,15 @@ internal static class GameOptionsMenuPatch
     [HarmonyPatch("CreateSettings"), HarmonyPrefix]
     public static bool CreateSettings(GameOptionsMenu __instance) => !SettingsMenu.IsOurMenu(__instance, out _);
 
-    // 本編のゲーム設定のタブ: マップ選びの下にマップのバリエーション、インポスターの項目の下に第三陣営のキル役を足す
+    // 本編のゲーム設定のタブ: マップ選びの下にマップのバリエーション、陣営の数と配り方 (GameTabRows) を足す
     [HarmonyPatch("CreateSettings"), HarmonyPostfix]
     public static void CreateSettingsPost(GameOptionsMenu __instance)
     {
         if (SettingsMenu.IsOurMenu(__instance, out _)) return;
         try { MapVariants.Attach(__instance); }
         catch (Exception e) { Plugin.Logger.LogError($"map variants: {e}"); }
-        try { NeutralKillRows.Attach(__instance); }
-        catch (Exception e) { Plugin.Logger.LogError($"neutral kill rows: {e}"); }
+        try { GameTabRows.Attach(__instance); }
+        catch (Exception e) { Plugin.Logger.LogError($"game tab rows: {e}"); }
     }
 }
 
@@ -558,7 +558,22 @@ internal static class NumberOptionPatch
         if (!SettingsMenu.TryRow(row, out var opt)) return true;
         opt.Step(delta);
         SettingsMenu.Refresh(row, opt);
+        Roles.TeamSizes.OnEdited(opt);
         return false;
+    }
+
+    // 本編のインポスター数の行 (= 最多人数) を押した後: 最少人数と人数の帯を合わせる
+    [HarmonyPatch(nameof(NumberOption.Increase)), HarmonyPostfix]
+    public static void IncreasePost(NumberOption __instance) => VanillaStepped(__instance);
+
+    [HarmonyPatch(nameof(NumberOption.Decrease)), HarmonyPostfix]
+    public static void DecreasePost(NumberOption __instance) => VanillaStepped(__instance);
+
+    private static void VanillaStepped(NumberOption row)
+    {
+        if (row.Title != StringNames.GameNumImpostors || SettingsMenu.TryRow(row, out _)) return;
+        try { Roles.TeamSizes.OnEdited(null, vanillaImpostors: true); }
+        catch (Exception e) { Plugin.Logger.LogError($"team sizes: {e}"); }
     }
 }
 
@@ -577,6 +592,7 @@ internal static class ToggleOptionPatch
         if (!SettingsMenu.TryRow(__instance, out var opt)) return true;
         opt.Step(1);
         __instance.CheckMark.enabled = opt.Index != 0;
+        Roles.TeamSizes.OnEdited(opt);
         return false;
     }
 }

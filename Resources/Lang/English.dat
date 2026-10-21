@@ -134,9 +134,6 @@ RoleSettings.ImpostorsSeeRoles: Impostors see each other's roles in meetings
 # ── AssignSettings ──
 AssignSettings.Title: Assignment
 AssignSettings.None: None
-AssignSettings.MinNeutral: Min neutral roles
-AssignSettings.MaxNeutral: Max neutral roles
-AssignSettings.MaxNeutralKillers: Max killing neutral roles
 AssignSettings.MaxRoled: Max players with a role
 AssignSettings.MaxAddonsPerPlayer: Max addons per player
 AssignSettings.Fill: Players left without a role
@@ -145,8 +142,8 @@ AssignSettings.FillFromSameTeamRoles: Fill from same-team roles
 AssignSettings.FillNeutralsIncluded: Fill, neutrals included
 
 # ── TeamSizes ──
-TeamSizes.Title: Team Sizes by Player Count
-TeamSizes.Enabled: Enabled
+TeamSizes.Title: Player Bands
+TeamSizes.Enabled: Set impostor and neutral counts by player count
 TeamSizes.Band1: Player Band 1
 TeamSizes.Band2: Player Band 2
 TeamSizes.Band3: Player Band 3
@@ -158,11 +155,15 @@ TeamSizes.MaxImpostors: Maximum Impostors
 TeamSizes.MinNeutrals: Minimum Neutrals
 TeamSizes.MaxNeutrals: Maximum Neutrals
 TeamSizes.MaxNeutralKillers: Of those, Maximum Neutral Killers
-TeamSizes.Applied: [Team Sizes] {players} players (band from {band}): impostors {imp}, neutrals {neu} (up to {kill} killers)
-TeamSizes.NoBand: [Team Sizes] {players} players: no band applies, so the impostor count and assignment settings are used as they are
+ImpostorRange.Title: Impostors
+ImpostorRange.Min: Minimum Impostors
+ImpostorRange.Max: Maximum Impostors
 
 # ── NeutralKillSettings ──
-NeutralKillSettings.Title: Neutral Killers
+NeutralKillSettings.Title: Neutrals
+NeutralKillSettings.MinNeutrals: Minimum Neutrals
+NeutralKillSettings.MaxNeutrals: Maximum Neutrals
+NeutralKillSettings.MaxKillers: Of those, Maximum Killers
 NeutralKillSettings.KillCooldown: Kill Cooldown
 NeutralKillSettings.Vision: Vision
 NeutralKillSettings.KillDistance: Kill Distance
