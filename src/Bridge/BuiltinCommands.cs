@@ -145,16 +145,10 @@ internal static class BuiltinCommands
             for (var t = btn.transform; t; t = t.parent)
                 if (!t.gameObject.activeSelf) t.gameObject.SetActive(true);
 
-            // フリープレイは手元で部屋を立てて GamePlayPort で待ち受ける。同じ PC で別の AU が先に掴んでいると
-            // "Address already in use" で Joining のまま止まるので、空いている番号へ移してから始める
-            ushort port = Constants.GamePlayPort;
-            if (UdpPortFree(port)) LocalServerPortPatch.Port = 0;
-            else LocalServerPortPatch.Port = port = FreeUdpPort();
-
             AmongUsClient.Instance.TutorialMapId = map;
             btn.NetworkMode = NetworkModes.FreePlay;
             btn.OnClick();
-            reply($"OK freeplay map={map} port={port} requested (follow with: wait phase=InGame 60)");
+            reply($"OK freeplay map={map} port={MoreRolesPlus.Net.LocalPorts.LastFreePlayPort} requested (follow with: wait phase=InGame 60)");
         });
 
         TestBridge.Register("health", "[storm <フレーム数>] 常駐の健康診断: 試合中の引っかかり・エラーの出どころごとの件数 (storm = 毎フレーム試しのエラーを書く)", (args, reply) =>
@@ -222,55 +216,6 @@ internal static class BuiltinCommands
             AmongUsClient.Instance.ExitGame(DisconnectReasons.ExitGame);
             reply("OK quitgame requested (follow with: wait phase=Menu 30)");
         });
-    }
-
-    // 本編は 127.0.0.1 で待ち受けるので、全体と 127.0.0.1 の両方で掴めるかを見る
-    private static bool UdpPortFree(ushort port) =>
-        UdpBindable(System.Net.IPAddress.Loopback, port) && UdpBindable(System.Net.IPAddress.Any, port);
-
-    private static bool UdpBindable(System.Net.IPAddress addr, ushort port)
-    {
-        try
-        {
-            using var s = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork,
-                System.Net.Sockets.SocketType.Dgram, System.Net.Sockets.ProtocolType.Udp);
-            s.ExclusiveAddressUse = true;
-            s.Bind(new System.Net.IPEndPoint(addr, port));
-            return true;
-        }
-        catch (System.Net.Sockets.SocketException) { return false; }
-    }
-
-    // OS に空き番号を選ばせる (閉じてから本編が掴むまでの間に取られる事は手元のテストでは考えない)
-    private static ushort FreeUdpPort()
-    {
-        using var s = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork,
-            System.Net.Sockets.SocketType.Dgram, System.Net.Sockets.ProtocolType.Udp);
-        s.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.Any, 0));
-        return (ushort)((System.Net.IPEndPoint)s.LocalEndPoint!).Port;
-    }
-}
-
-// フリープレイの部屋を立てる時だけ、ブリッジが選んだ番号で待ち受けさせる (0 = 本編のまま)
-[HarmonyLib.HarmonyPatch(typeof(InnerNet.InnerNetServer), nameof(InnerNet.InnerNetServer.StartAsLocalServer))]
-internal static class LocalServerPortPatch
-{
-    internal static ushort Port;
-
-    public static void Prefix(InnerNet.InnerNetServer __instance)
-    {
-        if (Port != 0) __instance.Port = Port;
-    }
-}
-
-// 自分の部屋へつなぎに行く側も同じ番号へ向ける (フリープレイの時だけ)
-[HarmonyLib.HarmonyPatch(typeof(InnerNet.InnerNetClient), nameof(InnerNet.InnerNetClient.SetEndpoint))]
-internal static class LocalClientPortPatch
-{
-    public static void Prefix(InnerNet.InnerNetClient __instance, ref ushort port)
-    {
-        if (LocalServerPortPatch.Port != 0 && __instance.NetworkMode == NetworkModes.FreePlay && port == Constants.GamePlayPort)
-            port = LocalServerPortPatch.Port;
     }
 }
 
