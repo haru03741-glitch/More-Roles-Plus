@@ -62,6 +62,12 @@ Sensitive.Strength: Flash Strength
 # ── VanillaRole ──
 VanillaRole.DefaultBlurb: Vanilla role
 
+# ── VanillaCrewmate ──
+VanillaCrewmate.Name: Crewmate
+
+# ── VanillaImpostor ──
+VanillaImpostor.Name: Impostor
+
 # ── VanillaScientist ──
 VanillaScientist.Name: Scientist
 
@@ -133,8 +139,6 @@ RoleSettings.ImpostorsSeeRoles: Impostors see each other's roles in meetings
 
 # ── AssignSettings ──
 AssignSettings.Title: Assignment
-AssignSettings.None: None
-AssignSettings.MaxRoled: Max players with a role
 AssignSettings.MaxAddonsPerPlayer: Max addons per player
 AssignSettings.Fill: Players left without a role
 AssignSettings.KeepVanilla: Keep vanilla

@@ -124,14 +124,12 @@ public static class RoleSettings
     public static readonly BoolOpt ImpostorsSeeRoles = new("RoleSettings.ImpostorsSeeRoles", true);
 }
 
-// 配り方の上限。「なし」は制限なし。行は本編の「ゲーム設定」タブに並べる (GameTabRows)。
+// 配り方。行は本編の「ゲーム設定」タブに並べる (GameTabRows)。
+// 素のクルーとインポスターも役職の 1 つなので、役職の付く人の数は出現率と人数で決まる (VanillaCrewmate / VanillaImpostor)。
 // 第三陣営の数は第三陣営の設定 (NeutralKillSettings)・インポスターの数は ImpostorRange と本編の設定にある
 [Settings(Tab.General, "AssignSettings.Title", order: -97)]
 public static class AssignSettings
 {
-    private static readonly Text[] Counts = Enumerable.Range(0, Options.Crowded.MaxPlayers + 1).Select(i => i == 0 ? new Text("AssignSettings.None") : Text.Raw(i.ToString())).ToArray();
-
-    public static readonly ChoiceOpt MaxRoled = new("AssignSettings.MaxRoled", 0, Counts) { OffTab = true };
     public static readonly IntOpt MaxAddonsPerPlayer = new("AssignSettings.MaxAddonsPerPlayer", 1, 0, 3) { OffTab = true };
 
     // 出現率の抽選で役職が付かなかった人の扱い。「埋める」は出現率を重みにして、人数の残っている役職から配る
@@ -210,8 +208,6 @@ public static class AssignPlan
             maxKillers = Math.Min(NeutralKillSettings.MaxKillers.Value, maxNeutral);
             minNeutral = Math.Min(NeutralKillSettings.MinNeutrals.Value, maxNeutral);
         }
-        int maxRoled = AssignSettings.MaxRoled.Value;
-
         void Take(int slotIndex, int roleIndex)
         {
             var role = Registry.Roles[roleIndex];
@@ -229,8 +225,7 @@ public static class AssignPlan
         bool OverLimit(RoleBase role)
         {
             bool neutral = role.Team == Team.Neutral;
-            return (maxRoled > 0 && plan.Count >= maxRoled)
-                || (neutral && neutrals >= maxNeutral)
+            return (neutral && neutrals >= maxNeutral)
                 || (neutral && role.IsKiller && killers >= maxKillers);
         }
 
@@ -360,7 +355,6 @@ public static class AssignPlan
                 Take(pick, idx);
                 if (stats != null) stats.FillPicks++;
                 if (taken[idx] >= role.Count.Value) pool.RemoveAt(at);
-                if (maxRoled > 0 && plan.Count >= maxRoled) break;
             }
         }
 

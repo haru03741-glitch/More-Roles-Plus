@@ -4,7 +4,7 @@ using MoreRolesPlus.Options;
 
 namespace MoreRolesPlus.Roles.Builtin;
 
-// 本編の役職 (エンジニア・シェイプシフターなど) を MRP の役職と同じ並びで扱う。
+// 本編の役職 (素のクルーとインポスター・エンジニア・シェイプシフターなど) を MRP の役職と同じ並びで扱う。
 // - 出現率と人数は MRP の設定 (役職タブ・保存・同期も MRP の役職と同じ)。配るのも MRP の配り方
 //   (上限・同時に出ない組・「役職が付かなかった人」の埋め方が本編の役職にも効く)。
 // - 役職ごとの細かい設定 (クールダウンなど) は本編の設定のまま。本編の役職の処理は各端末で本編の設定から読むので、
@@ -66,7 +66,22 @@ public abstract class VanillaRole : RoleBase
         return null;
     }
 
-    private static bool IsImpostorType(RoleTypes t) => t is RoleTypes.Shapeshifter or RoleTypes.Phantom or RoleTypes.Viper;
+    private static bool IsImpostorType(RoleTypes t) => t is RoleTypes.Impostor or RoleTypes.Shapeshifter or RoleTypes.Phantom or RoleTypes.Viper;
+
+    // 素のクルーとインポスター。本編の配り方を通らないので出現率と人数を本編の設定へ写さない
+    internal bool IsPlain => Type is RoleTypes.Crewmate or RoleTypes.Impostor;
+}
+
+public sealed class VanillaCrewmate : VanillaRole
+{
+    public override RoleTypes Type => RoleTypes.Crewmate;
+    protected override Text FallbackName => new("VanillaCrewmate.Name");
+}
+
+public sealed class VanillaImpostor : VanillaRole
+{
+    public override RoleTypes Type => RoleTypes.Impostor;
+    protected override Text FallbackName => new("VanillaImpostor.Name");
 }
 
 public sealed class VanillaScientist : VanillaRole
@@ -299,7 +314,7 @@ internal static class VanillaRoles
         var roleOptions = opts.RoleOptions;
         foreach (var r in Registry.Roles)
         {
-            if (r is not VanillaRole v) continue;
+            if (r is not VanillaRole v || v.IsPlain) continue;
             if (v.AssignedOnDeath) roleOptions.SetRoleRate(v.Type, v.Count.Value, v.Chance.Value);
             else roleOptions.SetRoleRate(v.Type, 0, 0);
         }

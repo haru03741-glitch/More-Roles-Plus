@@ -62,6 +62,12 @@ Sensitive.Strength: 光の強さ
 # ── VanillaRole ──
 VanillaRole.DefaultBlurb: 本編の役職
 
+# ── VanillaCrewmate ──
+VanillaCrewmate.Name: くるーめいと
+
+# ── VanillaImpostor ──
+VanillaImpostor.Name: いんぽすたー
+
 # ── VanillaScientist ──
 VanillaScientist.Name: かがくしゃ
 
@@ -133,8 +139,6 @@ RoleSettings.ImpostorsSeeRoles: インポスター同士は役職が見える (�
 
 # ── AssignSettings ──
 AssignSettings.Title: 配り方
-AssignSettings.None: なし
-AssignSettings.MaxRoled: 役職が付く人の最大人数
 AssignSettings.MaxAddonsPerPlayer: 1 人に付くアドオンの最大数
 AssignSettings.Fill: 役職が付かなかった人
 AssignSettings.KeepVanilla: 本編のまま

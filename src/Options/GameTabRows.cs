@@ -45,7 +45,7 @@ internal static class GameTabRows
         yield return new Group(new Text("TaskFilter.Title"), TaskFilter.Rows);
         yield return new Group(new Text("Devices.Title"), Devices.Rows);
         yield return new Group(new Text("SabotageRules.Title"), SabotageRules.Rows);
-        yield return new Group(new Text("AssignSettings.Title"), AssignSettings.MaxRoled, AssignSettings.MaxAddonsPerPlayer, AssignSettings.Fill);
+        yield return new Group(new Text("AssignSettings.Title"), AssignSettings.MaxAddonsPerPlayer, AssignSettings.Fill);
         yield return new Group(new Text("TeamSizes.Title"), TeamSizes.Enabled);
         var bands = TeamSizes.Bands;
         for (int i = 0; i < bands.Length; i++)
