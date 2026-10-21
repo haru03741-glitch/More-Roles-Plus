@@ -623,3 +623,102 @@ SettingNotice.Preset: Switched to the preset "{name}" ({count} settings changed)
 MatchInfo.Mine: You
 MatchInfo.Count: {count} at {chance}%
 MatchInfo.NotInRoom: Not in this room
+# ── Match rules (game settings tab) ──
+MapRules.Title: Map rules
+MapRules.RandomMap: Random map
+MapRules.SkeldChance: The Skeld chance
+MapRules.MiraChance: MIRA HQ chance
+MapRules.PolusChance: Polus chance
+MapRules.AirshipChance: The Airship chance
+MapRules.FungleChance: The Fungle chance
+MapRules.AirshipMinPlayers: Min players for The Airship (0 = any)
+MapRules.FungleMinPlayers: Min players for The Fungle (0 = any)
+MapRules.MapSpeed: Player speed per map
+MapRules.SkeldSpeed: The Skeld player speed
+MapRules.MiraSpeed: MIRA HQ player speed
+MapRules.PolusSpeed: Polus player speed
+MapRules.AirshipSpeed: The Airship player speed
+MapRules.FungleSpeed: The Fungle player speed
+MapRules.RandomSpawn: Random spawn
+MapRules.AirshipAllRooms: The Airship: pick from every room
+MapRules.ExtraKillCooldown: Extra kill cooldown per map
+MapRules.PolusKillCooldown: Extra on Polus
+MapRules.AirshipKillCooldown: Extra on The Airship
+MapRules.FungleKillCooldown: Extra on The Fungle
+MapRules.Decon: Change decontamination time
+MapRules.MiraDeconTime: MIRA HQ decontamination time
+MapRules.MiraDeconDoorTime: MIRA HQ decon door open time
+MapRules.PolusDeconTime: Polus decontamination time
+MapRules.PolusDeconDoorTime: Polus decon door open time
+MapRules.ResetDoors: Reset doors after each meeting
+MapRules.ResetDoorsMode: How to reset doors
+MapRules.DoorsAllOpen: All open
+MapRules.DoorsAllClosed: All closed
+MapRules.DoorsRandom: Random per door
+MapRules.AirshipVariableElectrical: The Airship electrical walls change every meeting
+MapRules.AirshipNoPlatform: Stop The Airship moving platform
+MapRules.FungleNoSpores: Stop The Fungle mushroom spores
+MapRules.ZiplineRules: Limit The Fungle zipline
+MapRules.ZiplineNoDown: No riding down from the top
+MapRules.ZiplineNoUp: No riding up from the bottom
+MapRules.ZiplineNoCrew: Crewmates cannot use it
+MapRules.ZiplineNoImpostors: Impostors cannot use it
+MapRules.ZiplineNoNeutrals: Neutrals cannot use it
+MapRules.LadderDeath: Players can fall off ladders and die
+MapRules.LadderDeathChance: Chance to fall when climbing down
+TaskFilter.Title: Disable tasks
+TaskFilter.Skeld: Remove tasks on The Skeld
+TaskFilter.Mira: Remove tasks on MIRA HQ
+TaskFilter.Polus: Remove tasks on Polus
+TaskFilter.Airship: Remove tasks on The Airship
+TaskFilter.Fungle: Remove tasks on The Fungle
+Devices.Title: Disable devices
+Devices.Skeld: Disable devices on The Skeld
+Devices.Mira: Disable devices on MIRA HQ
+Devices.Polus: Disable devices on Polus
+Devices.Airship: Disable devices on The Airship
+Devices.Fungle: Disable devices on The Fungle
+Devices.Admin: Admin
+Devices.Camera: Cameras
+Devices.Vitals: Vitals
+Devices.DoorLog: Door log
+Devices.CockpitAdmin: Cockpit admin
+Devices.RecordsAdmin: Records admin
+Devices.Exceptions: Who can still use them
+Devices.ExceptImpostors: Impostors can
+Devices.ExceptNeutrals: Neutrals can
+Devices.ExceptCrew: Crewmates can
+Devices.ExceptAfterDeath: Everyone can once someone dies
+SabotageRules.Title: Sabotage
+SabotageRules.Disable: Disable sabotages by type
+SabotageRules.NoReactor: Reactor (Skeld, MIRA HQ, Fungle)
+SabotageRules.NoSeismic: Seismic stabilizers (Polus)
+SabotageRules.NoHeli: Crash course (Airship)
+SabotageRules.NoOxygen: Oxygen
+SabotageRules.NoComms: Comms
+SabotageRules.NoLights: Lights
+SabotageRules.NoMixup: Mushroom mixup
+SabotageRules.NoDoors: Close doors
+SabotageRules.Cooldown: Change sabotage cooldown
+SabotageRules.CooldownSeconds: Until the next sabotage
+SabotageRules.TimeLimit: Change sabotage time limits
+SabotageRules.SkeldReactor: The Skeld reactor
+SabotageRules.SkeldOxygen: The Skeld oxygen
+SabotageRules.MiraReactor: MIRA HQ reactor
+SabotageRules.MiraOxygen: MIRA HQ oxygen
+SabotageRules.PolusSeismic: Polus seismic stabilizers
+SabotageRules.AirshipHeli: The Airship crash course
+SabotageRules.FungleReactor: The Fungle reactor
+SabotageRules.FungleMixup: Mushroom mixup duration
+SabotageRules.Lights: Lights sabotage details
+SabotageRules.LightsNoUndo: Switches already right cannot be flipped
+SabotageRules.LightsNoViewingDeck: The Airship viewing deck panel is off
+SabotageRules.LightsNoGapRoom: The Airship gap room panel is off
+SabotageRules.LightsNoCargo: The Airship cargo bay panel is off
+GameRules.Title: Other rules
+GameRules.EveryoneVents: Everyone can vent
+GameRules.NoMeetings: No meetings
+GameRules.TaskWin: Win by tasks
+GameRules.TaskWinOn: Yes
+GameRules.TaskWinNever: No
+GameRules.TaskWinNotIfCrewDead: Not if all crewmates are dead

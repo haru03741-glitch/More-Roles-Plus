@@ -160,11 +160,14 @@ internal static class Registry
     {
         var list = new List<(string, Opt)>();
         var fields = t.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-            .Where(f => typeof(Opt).IsAssignableFrom(f.FieldType))
+            .Where(f => typeof(Opt).IsAssignableFrom(f.FieldType) || f.FieldType == typeof(OptList))
             .OrderBy(f => f.MetadataToken);
         foreach (var f in fields)
         {
-            if (f.GetValue(null) is Opt opt) list.Add((f.Name, opt));
+            var v = f.GetValue(null);
+            if (v is Opt opt) list.Add((f.Name, opt));
+            else if (v is OptList many)
+                foreach (var (name, o) in many) list.Add((f.Name + "." + name, o));
         }
         return list;
     }

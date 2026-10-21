@@ -60,6 +60,7 @@ internal static class KillCooldownPatch
         var lp = PlayerControl.LocalPlayer;
         if (!lp) return;
         if (NeutralKillSettings.Applies(RoleState.Local)) __result = NeutralKillSettings.KillCooldown;
+        __result += Rules.MapRules.ExtraKillSeconds();
         RoleState.Local?.ModifyKillCooldown(ref __result);
         var addons = RoleState.AddonsOf(lp.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref __result);

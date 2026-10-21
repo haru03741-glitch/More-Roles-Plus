@@ -12,23 +12,29 @@ public readonly struct Text
     public readonly string Key;
     private readonly object[] _fill; // 名前, 値, 名前, 値 …
     private readonly string _raw;    // 鍵の無い出来上がりの文 (本編から取った名前など)
+    private readonly System.Func<string> _live; // 出すたびに引く文 (本編の今の言語の名前)
 
     public Text(string key)
     {
         Key = key;
         _fill = null;
         _raw = null;
+        _live = null;
     }
 
-    private Text(string key, object[] fill, string raw)
+    private Text(string key, object[] fill, string raw, System.Func<string> live = null)
     {
         Key = key;
         _fill = fill;
         _raw = raw;
+        _live = live;
     }
 
     // 文のファイルを通さずにそのまま出す文
     public static Text Raw(string s) => new(null, null, s ?? "");
+
+    // 出すたびに引く文 (本編の翻訳の名前など。言語を変えても付いてくる)
+    public static Text Live(System.Func<string> f) => new(null, null, null, f);
 
     // 文の中の {name} に入れる値。値が Text ならその時の言語の文になる
     public Text With(string name, object value)
@@ -38,13 +44,13 @@ public readonly struct Text
         if (n > 0) System.Array.Copy(_fill, fill, n);
         fill[n] = name;
         fill[n + 1] = value;
-        return new Text(Key, fill, _raw);
+        return new Text(Key, fill, _raw, _live);
     }
 
-    public override string ToString() => _raw ?? Fill(Tr.Get(Key));
+    public override string ToString() => _live != null ? Fill(_live() ?? "") : _raw ?? Fill(Tr.Get(Key));
 
     // 組み込みの日本語 / 英語の文 (検索や名前で引く時に、上書きした文と並べて使う)
-    public string Builtin(bool japanese) => _raw ?? Fill(Tr.Builtin(Key, japanese));
+    public string Builtin(bool japanese) => _live != null ? ToString() : _raw ?? Fill(Tr.Builtin(Key, japanese));
 
     // 名前で引く時の一致 (Id・組み込みの日本語と英語・書き換えた今の文のどれか)
     public bool Matches(string s, string id = null)

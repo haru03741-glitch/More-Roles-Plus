@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Collections.Generic;
 
 namespace MoreRolesPlus.Options;
 
@@ -29,6 +30,11 @@ public abstract class Opt
 
     // タブには並べない (別の場所で操作する項目)。保存・同期・検索・ロビーの一覧には入る
     internal bool OffTab;
+
+    // 親の ON/OFF の項目。親が OFF の間は画面にも一覧にも出さない (値はそのまま持つ)
+    internal BoolOpt Parent;
+    internal bool Shown => Parent == null || (Parent.Value && Parent.Shown);
+
     internal abstract int Count { get; }
 
     protected Opt(Text label, int defaultIndex)
@@ -78,6 +84,7 @@ public abstract class Opt
 public sealed class BoolOpt : Opt
 {
     public BoolOpt(string key, bool defaultValue) : base(new Text(key), defaultValue ? 1 : 0) { }
+    public BoolOpt(Text label, bool defaultValue) : base(label, defaultValue ? 1 : 0) { }
 
     public bool Value => Index != 0;
     internal override int Count => 2;
@@ -154,6 +161,17 @@ public sealed class FloatOpt : Opt
     }
 
     public static implicit operator float(FloatOpt o) => o.Value;
+}
+
+// 同じ形の項目を表から作る時の並び。[Settings] クラスの static readonly フィールドに置くと、
+// 中の項目は「クラス名.フィールド名.名前」の鍵で並ぶ
+public sealed class OptList : List<(string Name, Opt Opt)>
+{
+    public T Add<T>(string name, T opt) where T : Opt
+    {
+        Add((name, opt));
+        return opt;
+    }
 }
 
 // 文字の選択肢から 1 つ選ぶ。Value は選ばれた選択肢の番号 (0 から)

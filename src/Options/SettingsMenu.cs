@@ -446,6 +446,7 @@ internal static class SettingsMenu
         RowList.RemoveAll(r => !r); // 作り直しで消えた行
         foreach (var row in RowList)
             if (row && Rows.TryGetValue(row.Pointer, out var opt)) Refresh(row, opt);
+        GameTabRows.Relayout();
     }
 
     public static void Refresh(OptionBehaviour row, Opt opt)
@@ -481,6 +482,7 @@ internal static class SettingsMenu
         PresetPage.Forget();
         RoleMenu.Forget();
         MapVariants.Forget();
+        GameTabRows.Forget();
         if (_search != null) SearchBox.Forget(_search);
         _search = null;
         _searching = false;
@@ -559,6 +561,7 @@ internal static class NumberOptionPatch
         opt.Step(delta);
         SettingsMenu.Refresh(row, opt);
         Roles.TeamSizes.OnEdited(opt);
+        GameTabRows.OnEdited(opt);
         return false;
     }
 
@@ -593,6 +596,7 @@ internal static class ToggleOptionPatch
         opt.Step(1);
         __instance.CheckMark.enabled = opt.Index != 0;
         Roles.TeamSizes.OnEdited(opt);
+        GameTabRows.OnEdited(opt);
         return false;
     }
 }

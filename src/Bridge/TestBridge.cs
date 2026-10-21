@@ -78,6 +78,7 @@ public static class TestBridge
             Dev.PosTrace.Register();
             LobbyCommands.Register();
             RoleCommands.Register();
+            Rules.RulesProbe.Register();
             Terrain.TerrainProbe.Register();
             WriteOut($"BRIDGE up {Plugin.Version}");
         }

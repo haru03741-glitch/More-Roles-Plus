@@ -623,3 +623,102 @@ SettingNotice.Preset: プリセット「{name}」を読み込みました ({coun
 MatchInfo.Mine: あなた
 MatchInfo.Count: {count} 人・{chance}%
 MatchInfo.NotInRoom: 今の部屋では出ません
+# ── 試合のルール (ゲーム設定のタブ) ──
+MapRules.Title: マップのルール
+MapRules.RandomMap: ランダムマップ
+MapRules.SkeldChance: The Skeld の出やすさ
+MapRules.MiraChance: MIRA HQ の出やすさ
+MapRules.PolusChance: Polus の出やすさ
+MapRules.AirshipChance: The Airship の出やすさ
+MapRules.FungleChance: The Fungle の出やすさ
+MapRules.AirshipMinPlayers: The Airship が出る最少人数 (0 = 制限なし)
+MapRules.FungleMinPlayers: The Fungle が出る最少人数 (0 = 制限なし)
+MapRules.MapSpeed: マップごとに移動速度を変える
+MapRules.SkeldSpeed: The Skeld の移動速度
+MapRules.MiraSpeed: MIRA HQ の移動速度
+MapRules.PolusSpeed: Polus の移動速度
+MapRules.AirshipSpeed: The Airship の移動速度
+MapRules.FungleSpeed: The Fungle の移動速度
+MapRules.RandomSpawn: ランダムスポーン
+MapRules.AirshipAllRooms: The Airship は全部の部屋から選ぶ
+MapRules.ExtraKillCooldown: マップごとにキルのクールダウンを足す
+MapRules.PolusKillCooldown: Polus で足す時間
+MapRules.AirshipKillCooldown: The Airship で足す時間
+MapRules.FungleKillCooldown: The Fungle で足す時間
+MapRules.Decon: 除染室の時間を変える
+MapRules.MiraDeconTime: MIRA HQ の除染の時間
+MapRules.MiraDeconDoorTime: MIRA HQ の除染室のドアが開いている時間
+MapRules.PolusDeconTime: Polus の除染の時間
+MapRules.PolusDeconDoorTime: Polus の除染室のドアが開いている時間
+MapRules.ResetDoors: 会議のたびにドアを戻す
+MapRules.ResetDoorsMode: ドアの戻し方
+MapRules.DoorsAllOpen: 全部開ける
+MapRules.DoorsAllClosed: 全部閉める
+MapRules.DoorsRandom: 1 枚ずつランダム
+MapRules.AirshipVariableElectrical: The Airship の電気室の壁が会議のたびに変わる
+MapRules.AirshipNoPlatform: The Airship の動く床を止める
+MapRules.FungleNoSpores: The Fungle のキノコの胞子を止める
+MapRules.ZiplineRules: The Fungle のジップラインを制限する
+MapRules.ZiplineNoDown: 上から下りられない
+MapRules.ZiplineNoUp: 下から上れない
+MapRules.ZiplineNoCrew: クルーは使えない
+MapRules.ZiplineNoImpostors: インポスターは使えない
+MapRules.ZiplineNoNeutrals: 第三陣営は使えない
+MapRules.LadderDeath: はしごから落ちて死ぬことがある
+MapRules.LadderDeathChance: 降りた時に落ちる確率
+TaskFilter.Title: タスクの無効化
+TaskFilter.Skeld: The Skeld のタスクを減らす
+TaskFilter.Mira: MIRA HQ のタスクを減らす
+TaskFilter.Polus: Polus のタスクを減らす
+TaskFilter.Airship: The Airship のタスクを減らす
+TaskFilter.Fungle: The Fungle のタスクを減らす
+Devices.Title: 機器の無効化
+Devices.Skeld: The Skeld の機器を止める
+Devices.Mira: MIRA HQ の機器を止める
+Devices.Polus: Polus の機器を止める
+Devices.Airship: The Airship の機器を止める
+Devices.Fungle: The Fungle の機器を止める
+Devices.Admin: アドミン
+Devices.Camera: カメラ
+Devices.Vitals: バイタル
+Devices.DoorLog: ドアログ
+Devices.CockpitAdmin: コックピットのアドミン
+Devices.RecordsAdmin: 記録室のアドミン
+Devices.Exceptions: 止めた機器を使える人
+Devices.ExceptImpostors: インポスターは使える
+Devices.ExceptNeutrals: 第三陣営は使える
+Devices.ExceptCrew: クルーは使える
+Devices.ExceptAfterDeath: 誰かが死んだら全員使える
+SabotageRules.Title: サボタージュ
+SabotageRules.Disable: サボタージュを種類ごとに無くす
+SabotageRules.NoReactor: 原子炉 (Skeld・MIRA HQ・Fungle)
+SabotageRules.NoSeismic: 耐震スタビライザー (Polus)
+SabotageRules.NoHeli: 墜落 (Airship)
+SabotageRules.NoOxygen: 酸素
+SabotageRules.NoComms: 通信
+SabotageRules.NoLights: 停電
+SabotageRules.NoMixup: キノコミックスアップ
+SabotageRules.NoDoors: ドアを閉める
+SabotageRules.Cooldown: サボタージュのクールダウンを変える
+SabotageRules.CooldownSeconds: 次のサボタージュまで
+SabotageRules.TimeLimit: サボタージュの制限時間を変える
+SabotageRules.SkeldReactor: The Skeld の原子炉
+SabotageRules.SkeldOxygen: The Skeld の酸素
+SabotageRules.MiraReactor: MIRA HQ の原子炉
+SabotageRules.MiraOxygen: MIRA HQ の酸素
+SabotageRules.PolusSeismic: Polus の耐震スタビライザー
+SabotageRules.AirshipHeli: The Airship の墜落
+SabotageRules.FungleReactor: The Fungle の原子炉
+SabotageRules.FungleMixup: キノコミックスアップが続く時間
+SabotageRules.Lights: 停電の細かい設定
+SabotageRules.LightsNoUndo: 合っているスイッチは動かせない
+SabotageRules.LightsNoViewingDeck: The Airship の展望デッキの配電盤を使えない
+SabotageRules.LightsNoGapRoom: The Airship の吹き抜けの配電盤を使えない
+SabotageRules.LightsNoCargo: The Airship の貨物室の配電盤を使えない
+GameRules.Title: そのほかのルール
+GameRules.EveryoneVents: 全員がベントを使える
+GameRules.NoMeetings: 会議を無くす
+GameRules.TaskWin: タスクで勝つ
+GameRules.TaskWinOn: 勝てる
+GameRules.TaskWinNever: 勝てない
+GameRules.TaskWinNotIfCrewDead: クルー全滅なら勝てない

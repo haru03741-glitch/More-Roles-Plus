@@ -293,9 +293,9 @@ internal sealed class TeamSizeBandOpts
     public TeamSizes.Band ToBand() => new(Players, MinImpostors, MaxImpostors, MinNeutrals, MaxNeutrals, MaxNeutralKillers);
 
     // 帯の項目の作り方 (5 つの帯で同じ幅)
-    public static IntOpt PlayersOpt(int def) => new("TeamSizes.Players", def, 0, Crowded.MaxPlayers) { OffTab = true };
-    public static IntOpt ImpostorOpt(string key, int def) => new(key, def, 1, ImpostorCap.CapFor(Crowded.MaxPlayers)) { OffTab = true };
-    public static IntOpt NeutralOpt(string key, int def) => new(key, def, 0, Crowded.MaxPlayers) { OffTab = true };
+    public static IntOpt PlayersOpt(int def) => new("TeamSizes.Players", def, 0, Crowded.MaxPlayers) { OffTab = true, Parent = TeamSizes.Enabled };
+    public static IntOpt ImpostorOpt(string key, int def) => new(key, def, 1, ImpostorCap.CapFor(Crowded.MaxPlayers)) { OffTab = true, Parent = TeamSizes.Enabled };
+    public static IntOpt NeutralOpt(string key, int def) => new(key, def, 0, Crowded.MaxPlayers) { OffTab = true, Parent = TeamSizes.Enabled };
 }
 
 // 人数の帯。既定は 4 / 7 / 10 / 13 / 16 人から (全体の ON/OFF は既定で切ってある)。行はゲーム設定のタブの終わりに並べる

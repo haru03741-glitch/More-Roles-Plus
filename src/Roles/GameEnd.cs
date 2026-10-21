@@ -97,7 +97,7 @@ public static class GameEnd
             End(TeamResult(Team.Impostor), GameOverReason.ImpostorsBySabotage);
             return;
         }
-        if (GameManager.Instance.CheckTaskCompletion())
+        if (!Rules.GameRules.TaskWinBlocked() && GameManager.Instance.CheckTaskCompletion())
         {
             End(TeamResult(Team.Crew), GameOverReason.CrewmatesByTask);
             return;
@@ -402,7 +402,8 @@ internal static class CheckEndCriteriaPatch
     public static bool Prefix()
     {
         if (GameEnd.Held) return false;
-        if (!RoleState.AnyNeutral) return true;
+        // タスクで勝てなくするルールの試合も MRP の判定で見る (本編の判定はタスクの勝ちを止められない)
+        if (!RoleState.AnyNeutral && !Rules.GameRules.TaskWinRuleOn) return true;
         GameEnd.Check();
         return false;
     }

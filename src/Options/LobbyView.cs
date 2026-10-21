@@ -106,13 +106,15 @@ internal static class LobbyView
         {
             foreach (var sec in Registry.SectionsOf(tab))
             {
+                // 親が OFF の項目は出さない (中身が全部隠れた見出しも出さない)
+                if (!sec.Opts.Exists(o => o.Shown)) continue;
                 Header(pane, ref y, sec.Title, sec.Color);
                 // 出ない役職は出現率だけ見せる (役職が増えても一覧が長くなりすぎないように)
                 bool off = sec.Role != null && sec.Role.Chance.Value == 0;
                 int col = 0;
                 foreach (var opt in sec.Opts)
                 {
-                    if (off && opt != sec.Role.Chance) continue;
+                    if (off && opt != sec.Role.Chance || !opt.Shown) continue;
                     if (col == 2) { y -= RowStepY; col = 0; }
                     Row(pane, opt, col == 0 ? LeftX : RightX, y);
                     col++;

@@ -114,9 +114,11 @@ internal static class InfoCommands
                     foreach (var o in sec.Opts) sb.Append(" / ").Append(o.Label.ToString()).Append(' ').Append(o.Display());
                     continue;
                 }
+                if (!sec.Opts.Exists(o => o.Shown)) continue;
                 if (sb.Length > 0) sb.Append('\n');
                 sb.Append("― ").Append(sec.Title.ToString()).Append(" ―");
-                foreach (var o in sec.Opts) sb.Append('\n').Append(o.Label.ToString()).Append(": ").Append(o.Display());
+                foreach (var o in sec.Opts)
+                    if (o.Shown) sb.Append('\n').Append(o.Label.ToString()).Append(": ").Append(o.Display());
             }
         }
         return sb.ToString();

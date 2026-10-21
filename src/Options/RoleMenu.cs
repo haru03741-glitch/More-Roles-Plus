@@ -192,8 +192,7 @@ internal static class RoleMenu
             AddSearchGroup(m, Join(VanillaGame.TabName, sec.Title), GameColor, 0, opts);
         }
         AddSearchGroup(m, Join(VanillaGame.TabName, MapVariants.Title), GameColor, 0, new Opt[] { MapSettings.Mirror });
-        AddSearchGroup(m, Join(VanillaGame.TabName, GameTabRows.Neutral.Title), GameColor, 0, GameTabRows.Neutral.Opts);
-        foreach (var g in GameTabRows.Tail()) AddSearchGroup(m, Join(VanillaGame.TabName, g.Title), GameColor, 0, g.Opts);
+        foreach (var g in GameTabRows.All()) AddSearchGroup(m, Join(VanillaGame.TabName, g.Title), GameColor, 0, g.Opts);
         foreach (var sec in Registry.SectionsOf(Tab.General))
         {
             var opts = new List<Opt>();

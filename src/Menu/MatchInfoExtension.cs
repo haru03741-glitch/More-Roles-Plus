@@ -293,6 +293,7 @@ internal static class MatchInfoExtension
                 bool any = false;
                 foreach (var o in sec.Opts)
                 {
+                    if (!o.Shown) continue; // 親が OFF の項目は出さない
                     if (!any) { Header(g, ref n, sec.Title, sec.Color); any = true; }
                     Entry(g, ref n, o.Label.ToString(), Value(o));
                 }
