@@ -491,6 +491,7 @@ internal static class SettingsMenu
         PresetLabel.Recheck();
         OptionSync.SendAll();
         Roles.Builtin.VanillaRoles.OnMenuClosed();
+        Roles.TeamSizes.Recheck();
     }
 }
 

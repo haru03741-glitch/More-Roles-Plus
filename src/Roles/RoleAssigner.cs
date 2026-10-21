@@ -130,6 +130,7 @@ public static class AssignSettings
 {
     private static readonly Text[] Counts = Enumerable.Range(0, Options.Crowded.MaxPlayers + 1).Select(i => i == 0 ? new Text("AssignSettings.None") : Text.Raw(i.ToString())).ToArray();
 
+    public static readonly IntOpt MinNeutral = new("AssignSettings.MinNeutral", 0, 0, Options.Crowded.MaxPlayers);
     public static readonly ChoiceOpt MaxNeutral = new("AssignSettings.MaxNeutral", 0, Counts);
     public static readonly ChoiceOpt MaxNeutralKillers = new("AssignSettings.MaxNeutralKillers", 0, Counts);
     public static readonly ChoiceOpt MaxRoled = new("AssignSettings.MaxRoled", 0, Counts);
@@ -165,7 +166,7 @@ public static class AssignPlan
     // 配り方の内訳 (確かめ用)
     public sealed class PlanStats
     {
-        public int LimitSkips, ConflictSkips, NoSlotSkips, Reserved, FillPicks;
+        public int LimitSkips, ConflictSkips, NoSlotSkips, Reserved, FillPicks, NeutralTopUps;
     }
 
     // reserved = 固定指定 (PlayerId → 役職の番号)。枠の数・上限より先に付ける
@@ -195,8 +196,22 @@ public static class AssignPlan
         var chosen = new List<RoleBase>();
         var taken = new int[Registry.Roles.Count];
         int neutrals = 0, killers = 0;
-        int maxNeutral = AssignSettings.MaxNeutral.Value;
-        int maxKillers = AssignSettings.MaxNeutralKillers.Value;
+        // 陣営ごとの最少〜最多は https://github.com/Gurge44/EndlessHostRoles Modules/CustomRoleSelector.cs に倣う (GPL-3.0)。
+        // 第三陣営の最少〜最多と、そのうちキル役の最多。人数の帯 (TeamSizes) があればそれ (0 = 出さない)、
+        // 無ければ「配り方」の設定 (最多の 0 = 制限なし)
+        int minNeutral, maxNeutral, maxKillers;
+        if (TeamSizes.For(roster.Count) is { } band)
+        {
+            minNeutral = band.MinNeutrals;
+            maxNeutral = band.MaxNeutrals;
+            maxKillers = band.MaxNeutralKillers;
+        }
+        else
+        {
+            maxNeutral = AssignSettings.MaxNeutral.Value > 0 ? AssignSettings.MaxNeutral.Value : int.MaxValue;
+            maxKillers = AssignSettings.MaxNeutralKillers.Value > 0 ? AssignSettings.MaxNeutralKillers.Value : int.MaxValue;
+            minNeutral = Math.Min(AssignSettings.MinNeutral.Value, maxNeutral);
+        }
         int maxRoled = AssignSettings.MaxRoled.Value;
 
         void Take(int slotIndex, int roleIndex)
@@ -217,9 +232,35 @@ public static class AssignPlan
         {
             bool neutral = role.Team == Team.Neutral;
             return (maxRoled > 0 && plan.Count >= maxRoled)
-                || (neutral && maxNeutral > 0 && neutrals >= maxNeutral)
-                || (neutral && role.IsKiller && maxKillers > 0 && killers >= maxKillers);
+                || (neutral && neutrals >= maxNeutral)
+                || (neutral && role.IsKiller && killers >= maxKillers);
         }
+
+        // 第三陣営の最少に足りない分を付けられる役職 (出現率 > 0・人数が残っている・上限と同時に出ない組に掛からない)
+        List<int> NeutralPool()
+        {
+            var pool = new List<int>();
+            for (int i = 0; i < Registry.Roles.Count; i++)
+            {
+                var r = Registry.Roles[i];
+                if (r.Team != Team.Neutral || r.Chance <= 0 || taken[i] >= r.Count.Value || !Usable(r)) continue;
+                if (OverLimit(r) || Conflicts(r, chosen)) continue;
+                pool.Add(i);
+            }
+            return pool;
+        }
+
+        // 第三陣営の最少のために空けておくクルーの席の数 (付けられる第三陣営の役職の残りの数まで)
+        int Reserve()
+        {
+            int need = minNeutral - neutrals;
+            if (need <= 0) return 0;
+            int room = 0;
+            foreach (int i in NeutralPool()) room += Registry.Roles[i].Count.Value - taken[i];
+            return Math.Min(need, room);
+        }
+
+        int CrewSeats() => free.Count(f => !f.Impostor);
 
         // 本編の役職がちょうど土台の役職と同じ人を優先し、いなければ同じ陣営の誰か
         int SlotFor(RoleBase role)
@@ -267,7 +308,31 @@ public static class AssignPlan
                 if (stats != null) stats.NoSlotSkips++;
                 continue;
             }
+            // クルーの役職が第三陣営の最少のための席を埋めない
+            if (role.Team == Team.Crew && !free[pick].Impostor && CrewSeats() <= Reserve())
+            {
+                if (stats != null) stats.LimitSkips++;
+                continue;
+            }
             Take(pick, idx);
+        }
+
+        // 第三陣営が最少に届かなければ、出現率を重みに第三陣営の役職から足す
+        var noSeat = new List<int>(); // 席が無かった役職 (次の候補から外す)
+        while (neutrals < minNeutral)
+        {
+            var pool = NeutralPool();
+            pool.RemoveAll(noSeat.Contains);
+            int idx = WeightedPick(pool, rng);
+            if (idx < 0) break;
+            int pick = SlotFor(Registry.Roles[idx]);
+            if (pick < 0)
+            {
+                noSeat.Add(idx);
+                continue;
+            }
+            Take(pick, idx);
+            if (stats != null) stats.NeutralTopUps++;
         }
 
         // 余った人を埋める。出現率を重みに、人数の残っている役職から 1 つずつ引く。
@@ -372,6 +437,18 @@ public static class AssignPlan
         }
     }
 
+    // 出現率を重みに 1 つ引く (空なら -1)
+    private static int WeightedPick(List<int> pool, Random rng)
+    {
+        if (pool.Count == 0) return -1;
+        int total = 0;
+        foreach (int i in pool) total += Registry.Roles[i].Chance.Value;
+        int roll = rng.Next(total);
+        int at = 0;
+        while (at < pool.Count - 1 && (roll -= Registry.Roles[pool[at]].Chance.Value) >= 0) at++;
+        return pool[at];
+    }
+
     private static void Shuffle<T>(List<T> l, Random rng)
     {
         for (int i = l.Count - 1; i > 0; i--)
@@ -390,7 +467,7 @@ public static class AssignPlan
         var rng = new Random(seed);
         var roleHits = new int[Registry.Roles.Count];
         var addonHits = new int[Registry.Addons.Count];
-        int withRole = 0, withAddon = 0, doubled = 0, neutralMax = 0;
+        int withRole = 0, withAddon = 0, doubled = 0, neutralMax = 0, neutralMin = int.MaxValue;
         var stats = new PlanStats();
         for (int n = 0; n < runs; n++)
         {
@@ -409,10 +486,11 @@ public static class AssignPlan
                 foreach (int a in p.Addons) addonHits[a]++;
             }
             neutralMax = Math.Max(neutralMax, neutrals);
+            neutralMin = Math.Min(neutralMin, neutrals);
         }
         var sb = new System.Text.StringBuilder();
         sb.Append($"players={players} impostors={impostors} runs={runs} seed={seed} roles/run={(double)withRole / runs:0.00} addons/run={(double)withAddon / runs:0.00}");
-        sb.Append($"\nlimitSkips/run={(double)stats.LimitSkips / runs:0.00} conflictSkips/run={(double)stats.ConflictSkips / runs:0.00} noSlotSkips/run={(double)stats.NoSlotSkips / runs:0.00} reserved/run={(double)stats.Reserved / runs:0.00} fill/run={(double)stats.FillPicks / runs:0.00} maxNeutral={neutralMax} duplicateAddonRuns={doubled}");
+        sb.Append($"\nlimitSkips/run={(double)stats.LimitSkips / runs:0.00} conflictSkips/run={(double)stats.ConflictSkips / runs:0.00} noSlotSkips/run={(double)stats.NoSlotSkips / runs:0.00} reserved/run={(double)stats.Reserved / runs:0.00} fill/run={(double)stats.FillPicks / runs:0.00} neutralTopUps/run={(double)stats.NeutralTopUps / runs:0.00} neutrals={neutralMin}..{neutralMax} band={(TeamSizes.For(players) is { } b ? b.Players.ToString() : "-")} duplicateAddonRuns={doubled}");
         for (int i = 0; i < roleHits.Length; i++)
             if (roleHits[i] > 0) sb.Append($"\n{Registry.Roles[i].Id} {roleHits[i]} ({100.0 * roleHits[i] / runs:0.#}%/run)");
         for (int i = 0; i < addonHits.Length; i++)

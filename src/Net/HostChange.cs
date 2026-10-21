@@ -27,6 +27,7 @@ internal static class HostChange
         if (Vanilla.Hud is { } hud && hud.Notifier) hud.Notifier.AddDisconnectMessage(new Text("HostChange.NewHost").With("name", name));
         AfkGuard.OnHostChanged();
         Spectate.OnHostChanged();
+        TeamSizes.Recheck();
     }
 
     // 新しいホストの側

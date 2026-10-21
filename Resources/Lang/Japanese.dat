@@ -134,6 +134,7 @@ RoleSettings.ImpostorsSeeRoles: インポスター同士は役職が見える (�
 # ── AssignSettings ──
 AssignSettings.Title: 配り方
 AssignSettings.None: なし
+AssignSettings.MinNeutral: 第三陣営の役職の最少人数
 AssignSettings.MaxNeutral: 第三陣営の役職の最大人数
 AssignSettings.MaxNeutralKillers: キルする第三陣営の最大人数
 AssignSettings.MaxRoled: 役職が付く人の最大人数
@@ -142,6 +143,23 @@ AssignSettings.Fill: 役職が付かなかった人
 AssignSettings.KeepVanilla: 本編のまま
 AssignSettings.FillFromSameTeamRoles: 同じ陣営の役職で埋める
 AssignSettings.FillNeutralsIncluded: 第三陣営も含めて埋める
+
+# ── TeamSizes ──
+TeamSizes.Title: 人数で陣営の数を決める
+TeamSizes.Enabled: 使う
+TeamSizes.Band1: 人数の帯 1
+TeamSizes.Band2: 人数の帯 2
+TeamSizes.Band3: 人数の帯 3
+TeamSizes.Band4: 人数の帯 4
+TeamSizes.Band5: 人数の帯 5
+TeamSizes.Players: この人数から (0 = 使わない)
+TeamSizes.MinImpostors: インポスターの最少
+TeamSizes.MaxImpostors: インポスターの最多
+TeamSizes.MinNeutrals: 第三陣営の最少
+TeamSizes.MaxNeutrals: 第三陣営の最多
+TeamSizes.MaxNeutralKillers: そのうちキル役の最多
+TeamSizes.Applied: [陣営の数] {players} 人 ({band} 人からの帯): インポスター {imp} 人・第三陣営 {neu} 人 (キル役は {kill} 人まで)
+TeamSizes.NoBand: [陣営の数] {players} 人: どの帯にも届かないので、インポスター数と配り方の設定のまま
 
 # ── NeutralKillSettings ──
 NeutralKillSettings.Title: 第三陣営のキル役
