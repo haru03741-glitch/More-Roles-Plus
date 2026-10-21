@@ -80,7 +80,7 @@ internal static class InfoCommands
         return sb.ToString();
     }
 
-    private static AddonBase FindAddon(string s)
+    internal static AddonBase FindAddon(string s)
     {
         foreach (var a in Registry.Addons)
         {

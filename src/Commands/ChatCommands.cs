@@ -37,6 +37,7 @@ internal static class ChatCommands
         Add(new[] { "id" }, Who.Everyone, default, new Text("Command.id"), _ => HostActions.PlayerList());
         Add(new[] { "m", "myrole" }, Who.Everyone, default, new Text("Command.myrole"), InfoCommands.MyRole);
         Add(new[] { "r", "roles" }, Who.Everyone, new Text("Command.roles.Usage"), new Text("Command.roles"), InfoCommands.Roles);
+        Add(new[] { "book", "guide" }, Who.Everyone, new Text("Command.book.Usage"), new Text("Command.book"), Menu.RoleBook.Command);
         Add(new[] { "n", "now" }, Who.Everyone, default, new Text("Command.now"), InfoCommands.Now);
         Add(new[] { "rename" }, Who.Everyone, new Text("Command.rename.Usage"), new Text("Command.rename"), LobbyTools.Rename);
         Add(new[] { "color", "colour" }, Who.Everyone, new Text("Command.color.Usage"), new Text("Command.color"), LobbyTools.Color);

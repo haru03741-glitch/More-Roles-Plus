@@ -12,8 +12,8 @@ internal static class MenuArt
     private const int Size = 64, Radius = 28;
     private static Texture2D _roundTex, _glassTex;
     private static readonly Dictionary<int, Sprite> Rounds = new();
-    private static Sprite _glass, _bubble;
-    private static Texture2D _bubbleTex;
+    private static Sprite _glass, _bubble, _book;
+    private static Texture2D _bubbleTex, _bookTex;
     private static Material _masked;
 
     // 角の半径が radius (世界の単位) の板。大きさは size で決める (2 × radius 以上)
@@ -65,6 +65,29 @@ internal static class MenuArt
         _bubble = Sprite.Create(_bubbleTex, new Rect(0, 0, 32, 32), new Vector2(0.5f, 0.5f), 32f / 0.3f);
         _bubble.hideFlags = HideFlags.DontUnloadUnusedAsset;
         return _bubble;
+    }
+
+    // 開いた本 (幅 0.3 単位・白)。左右のページの間に背の溝、ページに 2 本ずつ行の溝
+    public static Sprite Book()
+    {
+        if (_book) return _book;
+        _bookTex = Bake(32, (x, y) =>
+        {
+            // 外側の角は少し下がる (開いたページの反り)
+            float side = Math.Abs(x - 16f);
+            float top = 25f - side * 0.12f, bottom = 8f - side * 0.12f;
+            float page = Math.Max(Math.Max(side - 14f, 1.2f - side), Math.Max(y - top, bottom - y));
+            float line = 99f;
+            foreach (float ly in new[] { 19f, 14f })
+            {
+                float yy = ly - side * 0.12f;
+                if (side > 4f && side < 11.5f) line = Math.Min(line, Math.Abs(y - yy) - 0.7f);
+            }
+            return Math.Max(page, -line);
+        });
+        _book = Sprite.Create(_bookTex, new Rect(0, 0, 32, 32), new Vector2(0.5f, 0.5f), 32f / 0.3f);
+        _book.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return _book;
     }
 
     // スクロールする欄の中に置く板のマテリアル。本編の行の背景 (層ごとに切り抜く) を 1 回だけ写して使い回す

@@ -363,6 +363,8 @@ internal static class DevCommands
             if (args.Trim() == "self") Roles.Spectate.WatchSelfForTest();
             reply(Roles.Spectate.Describe());
         });
+        TestBridge.Register("book", "[open | <役職> | pick <n> | page <±1> | close] 役職辞典を開く・一覧の n 番目を押す・一覧のページ送り・閉じる / 状態", (args, reply) => reply(Menu.RoleBook.Simulate(args.Trim())));
+
         TestBridge.Register("teamchat", "[0|1] 陣営チャットのボタンを押したのと同じ (0/1 で会議中の切り替えを直に決める) / 状態", (args, reply) =>
         {
             string a = args.Trim();

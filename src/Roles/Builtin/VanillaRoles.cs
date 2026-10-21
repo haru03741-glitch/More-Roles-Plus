@@ -44,6 +44,17 @@ public abstract class VanillaRole : RoleBase
         }
     }
 
+    // 役職辞典には本編の長い説明
+    public override Text Help
+    {
+        get
+        {
+            var b = Behaviour();
+            if (!b || !TranslationController.InstanceExists) return Blurb;
+            return Text.Raw(TranslationController.Instance.GetString(b.BlurbNameLong));
+        }
+    }
+
     public override string Reading => FallbackName.Builtin(true);
 
     internal RoleBehaviour Behaviour()

@@ -1,6 +1,7 @@
 # ── 解体屋 (Demolisher) ──
 Demolisher.Name: 解体屋
 Demolisher.Blurb: ハンマーで壁を壊して道を作れ
+Demolisher.Help: ハンマーのボタンで、向いている方向の壁を叩いて壊せます。壊れた壁は全員の画面で崩れて、通れる道になります。待ち時間と回数は下の設定のとおりです。
 Demolisher.SmashCooldown: ハンマーの待ち時間
 Demolisher.SmashUses: ハンマーの回数 (0 = 何回でも)
 Demolisher.Hammer: ハンマー
@@ -8,11 +9,13 @@ Demolisher.Hammer: ハンマー
 # ── ライター (Lighter) ──
 Lighter.Name: ライター
 Lighter.Blurb: 広い視界で船を見張ろう
+Lighter.Help: 普通のクルーより視界が広いクルーです (倍率は下の設定)。遠くの動きを見張って、見たことを会議で伝えましょう。
 Lighter.VisionMultiplier: 視界の倍率
 
 # ── ポータルメーカー (PortalMaker) ──
 PortalMaker.Name: ポータルメーカー
 PortalMaker.Blurb: 2 つのポータルで船の中をつなげ
+PortalMaker.Help: ボタンを押すと足元にポータルを置きます。2 つ置くと、生きている人なら誰でもポータルの上で使用ボタンを押して、もう一方へ移れます。置き終わった後にもう一度押すと 2 つとも消えて、置き直せます (設定で切れます)。ポータルは解体屋のハンマーで 3 回叩かれると壊れます。
 PortalMaker.PlaceCooldown: ポータルを置く待ち時間
 PortalMaker.CanRemove: 置いた後にもう一度押すと消せる
 PortalMaker.Portal: ポータル
@@ -20,34 +23,41 @@ PortalMaker.Portal: ポータル
 # ── 早撃ち (Quickdraw) ──
 Quickdraw.Name: 早撃ち
 Quickdraw.Blurb: 誰よりも早く次を仕留めろ
+Quickdraw.Help: キルの待ち時間が部屋の設定より短いインポスターです (秒数は下の設定)。
 Quickdraw.KillCooldown: キルの待ち時間
 
 # ── 道化 (Jester) ──
 Jester.Name: 道化
 Jester.Blurb: みんなをだまして追放されよう
+Jester.Help: 第三陣営です。会議で追放されると一人勝ちになります。キルはできません。わざと怪しく振る舞って票を集めましょう。
 
 # ── 無法者 (Outlaw) ──
 Outlaw.Name: 無法者
 Outlaw.Blurb: 全員を倒して最後に残れ
+Outlaw.Help: 第三陣営のキル役です。クルーの姿のままキルボタンを持ちます (待ち時間は下の設定)。インポスターがいなくなり、残りの生存者が無法者の人数以下になれば勝ちです。インポスターとも敵同士です。
 Outlaw.KillCooldown: キルの待ち時間
 
 # ── 生存者 (Survivor) ──
 Survivor.Name: 生存者
 Survivor.Blurb: 最後まで生き延びよう
+Survivor.Help: 第三陣営です。どの陣営が勝っても、試合の終わりまで生きていれば一緒に勝ちになります。
 
 # ── 鷹の目 (Hawkeye) ──
 Hawkeye.Name: 鷹の目
 Hawkeye.Blurb: 遠くまで見通せる
+Hawkeye.Help: 視界が広くなるアドオンです (倍率は下の設定)。どの陣営の人に付くかは設定で決まります。
 Hawkeye.VisionPercent: 視界の広さ
 
 # ── 早業 (Quickhands) ──
 Quickhands.Name: 早業
 Quickhands.Blurb: 次のキルまでの時間が短い
+Quickhands.Help: キルの待ち時間が短くなるアドオンです。キルできる人 (インポスターと、キルボタンを持つ役職) にだけ付きます。
 Quickhands.Reduction: 短くする割合
 
 # ── 敏感 (Sensitive) ──
 Sensitive.Name: 敏感
 Sensitive.Blurb: 誰かが倒されると気配を感じる
+Sensitive.Help: 誰かが倒されると、自分の画面だけが一瞬赤く光ります。誰がどこで倒されたかまでは分かりません。
 Sensitive.Strength: 光の強さ
 
 # ── VanillaRole ──
@@ -247,6 +257,8 @@ Command.id: 全員の番号と名前
 Command.myrole: 自分の役職と説明 (試合中)
 Command.roles: 役職の一覧 / その役職の説明
 Command.roles.Usage: [役職]
+Command.book: 役職辞典を開く (役職の名前を付けるとそのページ)
+Command.book.Usage: [役職]
 Command.now: 今の MRP の設定
 Command.rename: 自分の名前を変える (ロビー)
 Command.rename.Usage: <名前>
@@ -440,6 +452,15 @@ TeamChat.On: 仲間にだけ送ります (もう一度押すと全員へ)
 TeamChat.Off: 全員へ送ります
 TeamChat.TasksOnly: タスク中は仲間にだけ送れます
 TeamChat.NoMates: 今は送れる仲間がいません (文は入力欄に戻しました)
+
+# ── RoleBook ──
+RoleBook.Title: 役職辞典
+RoleBook.InRoom: 今の部屋で出る: {chance}% × {count} 人
+RoleBook.NotInRoom: 今の部屋では出ません
+RoleBook.Settings: 設定
+RoleBook.Mine: あなたの役職
+RoleBook.NotFound: 「{arg}」という役職はありません
+RoleBook.Hint: 左の名前を押すとその役職のページ。● = 今の部屋で出る
 
 # ── AutoRejoin ──
 AutoRejoin.BackToTheLobbyIn: {sec} 秒後にロビーへ戻ります

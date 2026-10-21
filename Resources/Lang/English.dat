@@ -1,6 +1,7 @@
 # ── Demolisher ──
 Demolisher.Name: Demolisher
 Demolisher.Blurb: Smash walls to open new paths
+Demolisher.Help: Use the hammer button to smash the wall in front of you. The wall breaks on everyone's screen and becomes a path. The cooldown and number of uses are in the settings below.
 Demolisher.SmashCooldown: Hammer Cooldown
 Demolisher.SmashUses: Hammer Uses (0 = unlimited)
 Demolisher.Hammer: Hammer
@@ -8,11 +9,13 @@ Demolisher.Hammer: Hammer
 # ── Lighter ──
 Lighter.Name: Lighter
 Lighter.Blurb: See further than the rest
+Lighter.Help: A crewmate who sees farther than others (the multiplier is in the settings below). Keep watch from afar and report what you saw in meetings.
 Lighter.VisionMultiplier: Vision Multiplier
 
 # ── Portal Maker (PortalMaker) ──
 PortalMaker.Name: Portal Maker
 PortalMaker.Blurb: Link two places with portals
+PortalMaker.Help: Press the button to place a portal at your feet. Once two are placed, any living player can stand on one and press Use to travel to the other. Press again after placing both to remove them and place again (can be turned off). A portal breaks after three hits from the Demolisher's hammer.
 PortalMaker.PlaceCooldown: Portal Cooldown
 PortalMaker.CanRemove: Press Again to Remove Portals
 PortalMaker.Portal: Portal
@@ -20,34 +23,41 @@ PortalMaker.Portal: Portal
 # ── Quickdraw ──
 Quickdraw.Name: Quickdraw
 Quickdraw.Blurb: Strike again before anyone else
+Quickdraw.Help: An impostor whose kill cooldown is shorter than the room setting (the seconds are in the settings below).
 Quickdraw.KillCooldown: Kill Cooldown
 
 # ── Jester ──
 Jester.Name: Jester
 Jester.Blurb: Get yourself voted out
+Jester.Help: A neutral role. Get voted out in a meeting to win alone. You cannot kill, so act suspicious and draw votes.
 
 # ── Outlaw ──
 Outlaw.Name: Outlaw
 Outlaw.Blurb: Be the last one standing
+Outlaw.Help: A neutral killer. You keep your crewmate look but have a kill button (the cooldown is in the settings below). You win when no impostors are left and the remaining survivors are no more than the Outlaws. Impostors are your enemies too.
 Outlaw.KillCooldown: Kill Cooldown
 
 # ── Survivor ──
 Survivor.Name: Survivor
 Survivor.Blurb: Stay alive until the end
+Survivor.Help: A neutral role. Whoever wins, you win with them if you are still alive at the end of the game.
 
 # ── Hawkeye ──
 Hawkeye.Name: Hawkeye
 Hawkeye.Blurb: See further than the rest
+Hawkeye.Help: An add-on that widens your vision (the multiplier is in the settings below). The settings decide which teams can get it.
 Hawkeye.VisionPercent: Vision
 
 # ── Quickhands ──
 Quickhands.Name: Quickhands
 Quickhands.Blurb: Strike again sooner
+Quickhands.Help: An add-on that shortens your kill cooldown. Only players who can kill (impostors and roles with a kill button) can get it.
 Quickhands.Reduction: Cooldown Reduction
 
 # ── Sensitive ──
 Sensitive.Name: Sensitive
 Sensitive.Blurb: Sense it when someone falls
+Sensitive.Help: When someone is killed, your screen alone flashes red for a moment. It does not tell you who or where.
 Sensitive.Strength: Flash Strength
 
 # ── VanillaRole ──
@@ -247,6 +257,8 @@ Command.id: Everyone's number and name
 Command.myrole: Your role and what it does (in game)
 Command.roles: List roles / describe one
 Command.roles.Usage: [role]
+Command.book: Open the role guide (add a role name to open its page)
+Command.book.Usage: [role]
 Command.now: Current More Roles Plus settings
 Command.rename: Change your name (lobby)
 Command.rename.Usage: <name>
@@ -440,6 +452,15 @@ TeamChat.On: Sending to your team only (press again for everyone)
 TeamChat.Off: Sending to everyone
 TeamChat.TasksOnly: During tasks you can only message your team
 TeamChat.NoMates: No teammate can get it now (your text is back in the box)
+
+# ── RoleBook ──
+RoleBook.Title: Role guide
+RoleBook.InRoom: In this room: {chance}% × {count}
+RoleBook.NotInRoom: Not in this room
+RoleBook.Settings: Settings
+RoleBook.Mine: Your role
+RoleBook.NotFound: There is no role called "{arg}"
+RoleBook.Hint: Press a name on the left to open its page. ● = can appear in this room
 
 # ── AutoRejoin ──
 AutoRejoin.BackToTheLobbyIn: Back to the lobby in {sec}s
