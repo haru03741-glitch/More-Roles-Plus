@@ -706,18 +706,20 @@ internal static partial class PropSim
     {
         if (p.Kind == Kind.Small || p.Lift != null || !p.Tr || p.Front == null) return;
         var at = p.Tr.position;
-        WaterArt.FrontMoved(FxMath.V2(p.FrontAt.x, p.FrontAt.y), FxMath.V2(at.x, at.y), p.FrontR);
+        var was = p.FrontAt;
+        // 作り直しの間引き (FrontOfList) は FrontAt で引くので、先に止まった所へ移す
+        p.FrontAt = at;
+        WaterArt.FrontMoved(FxMath.V2(was.x, was.y), FxMath.V2(at.x, at.y), p.FrontR);
         // 近くの家具の水面の写しの抜き型 (手前の家具の形) も作り直す
         foreach (var q in Furnished)
         {
             if (q.Sk == null || q.Front == null) continue;
             var c = q.FrontAt;
             float rr = p.FrontR + q.FrontR;
-            if (Near(p.FrontAt) || Near(at)) q.Sk.OccDirty = true;
+            if (Near(was) || Near(at)) q.Sk.OccDirty = true;
 
             bool Near(Vector3 o) => (o.x - c.x) * (o.x - c.x) + (o.y - c.y) * (o.y - c.y) < rr * rr;
         }
-        p.FrontAt = at;
     }
 
     private static void SunkReport(bool force, Action<string> reply)

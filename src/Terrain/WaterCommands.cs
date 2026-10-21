@@ -14,7 +14,7 @@ internal static partial class WaterSim
 
     internal static void Register()
     {
-        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | tile x y [up] | fallsat x y [r] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
+        TestBridge.Register("water", "[reset | prebase on|off | sweep start|check | spikes [ms|off] | flood [depth] | pour x y r [depth] | inflow x y [秒 (0=止まらない)] [速さ 0..1] | cell x0 x1 y | tile x y [up|dump] | fallsat x y [r] | show [r] | hide] 水の計算 (show = 自分の周りに判定を色で重ねる: 赤 = 水の升が閉じている・橙 = 歩けない所・黄 = 家具で水を見せない所): 刻み・遅れ・指紋・量 (reset = 水を全部消す)", (args, reply) =>
         {
             string a = args.Trim();
             // 預けた刻みを終わらせてから (確認用の操作は水の配列を直に読み書きする)
@@ -131,6 +131,7 @@ internal static partial class WaterSim
     {
         var q = Rest(a, 4);
         if (q.Length < 2 || !float.TryParse(q[0], Num, Inv, out float x) || !float.TryParse(q[1], Num, Inv, out float y)) { reply("ERR water tile x y"); return; }
+        if (q.Length > 2 && q[2] == "dump") { reply($"OK water {WaterArt.TileDump(x, y)}"); return; }
         reply($"OK water {WaterArt.TileInfo(x, y, q.Length > 2 && q[2] == "up")}");
     }
 

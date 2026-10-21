@@ -1784,6 +1784,35 @@ internal static class WaterArt
         return h;
     }
 
+    // 確認用: タイルの画素を PPM へ (R = A (壁の面の上の水の厚さ)・G = 見せてよいか・B = 壁の面の高さ (床 = 128・面でない = 0)・上の行から)
+    internal static string TileDump(float x, float y)
+    {
+        int tc = WaterSim.TileCells;
+        float size = tc * WaterSim.Cell;
+        var org = WaterSim.Origin;
+        int tx = (int)MathF.Floor((x - org.x) / size), ty = (int)MathF.Floor((y - org.y) / size), key = ty * WaterSim.TilesW + tx;
+        if (!Tiles.TryGetValue(key, out var t) || t.Px == null) return $"tile=({tx},{ty}) none";
+        int n = tc * Px;
+        var o = new byte[n * n * 3];
+        for (int py = 0; py < n; py++)
+            for (int px = 0; px < n; px++)
+            {
+                int j = py * n + px, d = ((n - 1 - py) * n + px) * 3;
+                byte f = t.Face != null ? t.Face[j] : (byte)255;
+                o[d] = t.Px[j * 4 + 3];
+                o[d + 1] = t.Px[j * 4 + 1];
+                o[d + 2] = f <= FloorMask.FaceTop ? (byte)(255 - f / 2) : f == FloorMask.FaceFloor ? (byte)128 : (byte)0;
+            }
+        string path = System.IO.Path.Combine(Bridge.TestBridge.ScreensDir, $"tile_{tx}_{ty}.ppm");
+        using (var fs = System.IO.File.Create(path))
+        {
+            var head = System.Text.Encoding.ASCII.GetBytes($"P6\n{n} {n}\n255\n");
+            fs.Write(head, 0, head.Length);
+            fs.Write(o, 0, o.Length);
+        }
+        return $"tile=({tx},{ty}) origin={org.x + tx * size:0.###},{org.y + ty * size:0.###} size={size} n={n} -> {path}";
+    }
+
     // 確認用 (water tile x y): その点を含むタイルの床の切り抜き・壁の面・描き待ちの状態と、点に一番近い画素の値 (RGBA)
     internal static unsafe string TileInfo(float x, float y, bool upload = false)
     {

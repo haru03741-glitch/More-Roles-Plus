@@ -364,8 +364,8 @@ internal static class FurnitureLift
                     {
                         int xx = x + dx;
                         if (xx < 0 || xx >= ShapePx || !inside[yy * ShapePx + xx]) continue;
-                        // 中の画素から見たこの画素の向きの広げる幅 (dx > 0 = 右へ広げた所)
-                        float px0 = dx > 0 ? f.PadR : f.PadL, py0 = dy > 0 ? f.PadT : f.PadB;
+                        // この画素が家具のどちら側か (中の画素が右 = dx > 0 なら、この画素は左へ広げた所)
+                        float px0 = dx > 0 ? f.PadL : f.PadR, py0 = dy > 0 ? f.PadB : f.PadT;
                         float ex = dx == 0 ? 0f : dx * sx / Math.Max(px0, 1e-4f), ey = dy == 0 ? 0f : dy * sy / Math.Max(py0, 1e-4f);
                         if (ex * ex + ey * ey <= 1f) { hit = true; break; }
                     }
@@ -425,12 +425,12 @@ internal static class FurnitureLift
             t = new Texture2D(ClassPx, ClassPx, TextureFormat.RGBA32, false, true);
             t.ReadPixels(new Rect(0, 0, ClassPx, ClassPx), 0, 0, false);
             var raw = t.GetRawTextureData();
-            var res = new bool[ClassPx * ClassPx];
-            for (int i = 0; i < res.Length; i++)
-            {
-                bool furn = raw[i * 4] > 127, inShape = raw[i * 4 + 1] > 127;
-                res[i] = inShapeNotFurniture ? inShape && !furn : furn;
-            }
+            var furn = new bool[ClassPx * ClassPx];
+            for (int i = 0; i < furn.Length; i++) furn[i] = raw[i * 4] > 127;
+            FillHoles(furn, ClassPx);
+            if (!inShapeNotFurniture) return furn;
+            var res = new bool[furn.Length];
+            for (int i = 0; i < res.Length; i++) res[i] = raw[i * 4 + 1] > 127 && !furn[i];
             return res;
         }
         catch (Exception e)
@@ -449,6 +449,59 @@ internal static class FurnitureLift
             UnityEngine.Object.Destroy(piece.Tr.gameObject);
             if (sp) UnityEngine.Object.Destroy(sp);
             if (mat) UnityEngine.Object.Destroy(mat);
+        }
+    }
+
+    // 家具の画素に囲まれた小さな「家具でない」所 (枕の輪郭線など、たまたま床の模様と同じ色の画素) を家具にする。
+    // 残すと跡の床として床マスクに入り、その上の家具の画素の壁の面の高さが低く測られて、水が家具の途中まで四角く這い上がる。
+    // 四角の外の縁から家具でない画素をたどり、届かなかったまとまりのうち小さい物だけ埋める (家具の間の本当の床は外へつながっている)
+    private const int HoleMaxDiv = 50; // 埋めるまとまりの上限 = 四角の画素数の 1/50
+    private static void FillHoles(bool[] furn, int n)
+    {
+        var mark = new byte[n * n]; // 1 = 外へつながる・2 = 調べ済みの穴
+        var q = new int[n * n];
+        int head = 0, tail = 0;
+        for (int i = 0; i < n; i++)
+        {
+            Seed(i); Seed((n - 1) * n + i); Seed(i * n); Seed(i * n + n - 1);
+        }
+        Spread(1);
+        int max = n * n / HoleMaxDiv;
+        for (int s = 0; s < furn.Length; s++)
+        {
+            if (furn[s] || mark[s] != 0) continue;
+            head = tail = 0;
+            mark[s] = 2;
+            q[tail++] = s;
+            Spread(2);
+            if (tail > max) continue;
+            for (int k = 0; k < tail; k++) furn[q[k]] = true;
+        }
+
+        void Seed(int i)
+        {
+            if (furn[i] || mark[i] != 0) return;
+            mark[i] = 1;
+            q[tail++] = i;
+        }
+
+        void Spread(byte m)
+        {
+            while (head < tail)
+            {
+                int i = q[head++], x = i % n;
+                if (x > 0) Visit(i - 1, m);
+                if (x < n - 1) Visit(i + 1, m);
+                if (i >= n) Visit(i - n, m);
+                if (i < n * n - n) Visit(i + n, m);
+            }
+        }
+
+        void Visit(int i, byte m)
+        {
+            if (furn[i] || mark[i] != 0) return;
+            mark[i] = m;
+            q[tail++] = i;
         }
     }
 

@@ -28,8 +28,8 @@ MRP_API void mrp_lift_shape(LiftShapeArgs* a)
             {
                 int xx = x + dx;
                 if (xx < 0 || xx >= n || a->inside[yy * n + xx] == 0) continue;
-                // 中の画素から見たこの画素の向きの広げる幅 (dx > 0 = 右へ広げた所)
-                float px0 = dx > 0 ? a->padR : a->padL, py0 = dy > 0 ? a->padT : a->padB;
+                // この画素が家具のどちら側か (中の画素が右 = dx > 0 なら、この画素は左へ広げた所)
+                float px0 = dx > 0 ? a->padL : a->padR, py0 = dy > 0 ? a->padB : a->padT;
                 float ex = dx == 0 ? 0.0f : (float)dx * a->sx / (px0 > 1e-4f ? px0 : 1e-4f);
                 float ey = dy == 0 ? 0.0f : (float)dy * a->sy / (py0 > 1e-4f ? py0 : 1e-4f);
                 if (ex * ex + ey * ey <= 1.0f) { hit = true; break; }
