@@ -1578,7 +1578,7 @@ internal static partial class PropSim
 
     internal static void Register()
     {
-        TestBridge.Register("props", "[list | heights | audit | sunk [force|off|on] | front [x y r | on | off | over] | tasks [all|band]] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / audit = 家具の層の当たり判定・高さの表・水面の板・水より手前の絵の対応を Screens/propaudit_<船>.txt へ / sunk = 水に浸かった家具の水面の線と板に渡した値・force = 確認用に全部の板を家具ごと沈めたまま止める (sunk だけで戻る)・off = 板を出さない (on で戻す) / front = 手前の絵の水面の板 (x y から r 以内の絵の名前・z・板・水位・off = 板を出さない・over = 頭上の重ね絵の一覧と床の縁の手すりか) / tasks = タスクなどの端末ごとに絵が水にどう沈むか)", (args, reply) =>
+        TestBridge.Register("props", "[list | heights | audit | sunk [force|off|on] | alpha off|on | front [x y r | on | off | over] | tasks [all|band]] 動く小物と家具: 数・動いている数・指紋 (list = 拾った物の名前・種類・足元 / heights = 絵と当たり判定の範囲と高さの見積もりを Screens/propheights_<船>.txt へ / audit = 家具の層の当たり判定・高さの表・水面の板・水より手前の絵の対応を Screens/propaudit_<船>.txt へ / sunk = 水に浸かった家具の水面の線と板に渡した値・force = 確認用に全部の板を家具ごと沈めたまま止める (sunk だけで戻る)・off = 板を出さない (on で戻す) / alpha = 水の影の写しの抜き型を絵の網目のまま (off) / 絵の不透明な所だけ (on) で作り直す / front = 手前の絵の水面の板 (x y から r 以内の絵の名前・z・板・水位・off = 板を出さない・over = 頭上の重ね絵の一覧と床の縁の手すりか) / tasks = タスクなどの端末ごとに絵が水にどう沈むか)", (args, reply) =>
         {
             if (!_ready && !Ensure()) { reply("ERR props no ship"); return; }
             if (args.Trim() == "heights") { reply(WriteHeights()); return; }
@@ -1590,6 +1590,15 @@ internal static partial class PropSim
                     if (p.Lift?.Cut != null)
                         sbc.Append("\n ").Append(FurnitureLift.DumpClass(p.Lift, System.IO.Path.Combine(TestBridge.ScreensDir, $"class_{p.Lift.Name.Replace(' ', '_')}.ppm")));
                 reply(sbc.ToString());
+                return;
+            }
+            if (args.Trim() == "alpha off" || args.Trim() == "alpha on")
+            {
+                // 確かめ用: 抜き型を絵の網目のまま (off) / 絵の不透明な所だけ (on) で作り直す
+                SpriteAlphaMask.Off = args.Trim() == "alpha off";
+                WaterArt.FrontAll();
+                foreach (var q in Furnished) if (q.Sk != null) q.Sk.OccDirty = true;
+                reply($"OK props alpha off={SpriteAlphaMask.Off}");
                 return;
             }
             if (args.Trim() == "sunk off" || args.Trim() == "sunk on") { SunkOff = args.Trim() == "sunk off"; reply($"OK props sunk off={SunkOff}"); return; }

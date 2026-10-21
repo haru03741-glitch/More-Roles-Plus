@@ -1174,7 +1174,7 @@ internal static class WaterArt
     // 影の中の写しは影の板のすぐ手前 (家具より手前) にあるので、そのままだと影の中では水が家具の上に乗って見える。
     // 視界の中で水より手前に描かれる家具 (PropSim の物・部屋の絵から持ち上げた物は床マスクが抜く) の絵の網目をタイルの抜き型に塗り、写しはそこを描かない。
     // 絵のテクスチャは読めないので形は網目の多角形 (透明な縁が少し入る)。作るのはタイルを作った時と家具が動いて止まった時だけ
-    private const float FrontPpu = 32f;
+    internal const float FrontPpu = 32f;
     private static readonly List<SpriteRenderer> FrontSrs = new();
     private static byte[] _frontBuf = Array.Empty<byte>();
     // 家具が退いて要らなくなった抜き型 (大きさはマップごとに同じ)。次に家具の掛かるタイルで使う
@@ -1225,7 +1225,7 @@ internal static class WaterArt
     }
 
     // 絵の網目の三角形を、画素の真ん中が入る所だけ 255 で塗る (k = 1 単位の画素数)。塗るのは C++
-    private static float[] _fpx = new float[64], _fpy = new float[64];
+    private static float[] _fpx = new float[64], _fpy = new float[64], _fmu = new float[64], _fmv = new float[64];
     private static ushort[] _ftri = new ushort[192];
     internal static long VerifyFronts, VerifyFrontDiff;
 
@@ -1237,27 +1237,32 @@ internal static class WaterArt
         var mx = sr.transform.localToWorldMatrix;
         float fx = sr.flipX ? -1f : 1f, fy = sr.flipY ? -1f : 1f;
         int nv = v.Length, nt = tri.Length;
-        if (_fpx.Length < nv) { _fpx = new float[nv]; _fpy = new float[nv]; }
+        if (_fpx.Length < nv) { _fpx = new float[nv]; _fpy = new float[nv]; _fmu = new float[nv]; _fmv = new float[nv]; }
         if (_ftri.Length < nt) _ftri = new ushort[nt];
+        // 絵の不透明な所の型があれば、頂点の型の上の座標も渡す (反転の前の絵の中の座標で引く)
+        var mask = SpriteAlphaMask.Get(sp);
+        float ku = mask != null ? mask.W / mask.Size.x : 0f, kv = mask != null ? mask.H / mask.Size.y : 0f;
         for (int i = 0; i < nv; i++)
         {
             var q = v[i];
             float lx = q.x * fx, ly = q.y * fy;
             _fpx[i] = (mx.m00 * lx + mx.m01 * ly + mx.m03 - wx) * k - 0.5f;
             _fpy[i] = (mx.m10 * lx + mx.m11 * ly + mx.m13 - wy) * k - 0.5f;
+            if (mask != null) { _fmu[i] = (q.x - mask.Min.x) * ku; _fmv[i] = (q.y - mask.Min.y) * kv; }
         }
         for (int i = 0; i < nt; i++) _ftri[i] = tri[i];
         byte[] check = Native.MrpNative.Verify ? (byte[])buf.Clone() : null;
         bool any;
-        fixed (float* pxp = _fpx) fixed (float* pyp = _fpy) fixed (ushort* tp = _ftri) fixed (byte* bp = buf)
+        fixed (float* pxp = _fpx) fixed (float* pyp = _fpy) fixed (float* mup = _fmu) fixed (float* mvp = _fmv) fixed (ushort* tp = _ftri) fixed (byte* bp = buf)
+        fixed (byte* mp = mask?.Px)
         {
-            var a = new FrontFillArgs { Px = pxp, Py = pyp, Tri = tp, TriN = nt, M = m, Buf = bp };
+            var a = new FrontFillArgs { Px = pxp, Py = pyp, Tri = tp, TriN = nt, M = m, Buf = bp, Mu = mup, Mv = mvp, Mask = mp, Mw = mask?.W ?? 0, Mh = mask?.H ?? 0 };
             Native.MrpNative.FrontFill(&a);
             any = a.Any != 0;
         }
         if (check != null)
         {
-            bool anyCs = FillTrisCs(_fpx, _fpy, _ftri, nt, m, check);
+            bool anyCs = FillTrisCs(_fpx, _fpy, _ftri, nt, m, check, mask);
             long diff = anyCs != any ? 1 : 0;
             for (int i = 0; i < buf.Length; i++) if (buf[i] != check[i]) diff++;
             VerifyFronts++;
@@ -1274,10 +1279,13 @@ internal static class WaterArt
         public int M;
         public byte* Buf;
         public int Any;
+        public float* Mu, Mv;
+        public byte* Mask;
+        public int Mw, Mh;
     }
 
     // C# 版 (照合用)
-    private static bool FillTrisCs(float[] px, float[] py, ushort[] tri, int nt, int m, byte[] buf)
+    private static bool FillTrisCs(float[] px, float[] py, ushort[] tri, int nt, int m, byte[] buf, SpriteAlphaMask.Mask mask)
     {
         bool any = false;
         for (int n = 0; n + 2 < nt; n += 3)
@@ -1295,6 +1303,14 @@ internal static class WaterArt
                 float w0 = ((bx - x) * (cy - y) - (by - y) * (cx - x)) * inv;
                 float w1 = ((cx - x) * (ay - y) - (cy - y) * (ax - x)) * inv;
                 if (w0 < 0f || w1 < 0f || w0 + w1 > 1f) continue;
+                if (mask != null)
+                {
+                    float w2 = 1f - w0 - w1;
+                    float u = w0 * _fmu[a] + w1 * _fmu[b] + w2 * _fmu[c];
+                    float v = w0 * _fmv[a] + w1 * _fmv[b] + w2 * _fmv[c];
+                    int iu = Math.Min(mask.W - 1, Math.Max(0, (int)MathF.Floor(u))), iv = Math.Min(mask.H - 1, Math.Max(0, (int)MathF.Floor(v)));
+                    if (mask.Px[iv * mask.W + iu] == 0) continue;
+                }
                 buf[y * m + x] = 255;
                 any = true;
             }
@@ -1321,6 +1337,10 @@ internal static class WaterArt
     // 家具の一覧ができた (タイルが先にできていたら抜き型が空のまま)
     internal static void FrontAll()
     {
+        FrontSrs.Clear();
+        PropSim.AllFrontSprites(FrontSrs);
+        SpriteAlphaMask.Prepare(FrontSrs);
+        FrontSrs.Clear();
         float size = WaterSim.TileCells * WaterSim.Cell;
         var org = WaterSim.Origin;
         foreach (var t in Tiles.Values)

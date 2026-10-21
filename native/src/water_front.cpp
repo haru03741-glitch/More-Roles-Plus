@@ -3,6 +3,7 @@
 
 // 水の影の写しの抜き型: 家具の絵の網目の三角形を、画素の真ん中が入る所だけ 255 で塗る
 // (src/Terrain/WaterArt.cs の FillTrisCs と同じ結果)。頂点は抜き型の画素の座標へ直してから渡す。
+// 絵の不透明な所の型 (mask) があれば、三角形の中でも型の上で透明な画素は塗らない (網目が四角の絵は透明な所まで網目に入る)。
 // 小数の式の順番は C# と同じ
 
 struct FrontFillArgs
@@ -12,6 +13,9 @@ struct FrontFillArgs
     int32_t m;                          // 抜き型の一辺の画素数
     uint8_t* buf;                       // 塗る先 (m × m)
     int32_t any;                        // 出力: 1 画素でも塗ったか
+    const float* mu; const float* mv;   // 頂点の型の上の座標 (型の画素単位・左下が 0)。mask が無ければ使わない
+    const uint8_t* mask;                // 絵の不透明な所の型 (mw × mh・下の行から・0 = 透明)。nullptr = 型なし
+    int32_t mw, mh;
 };
 
 static inline int imin(int a, int b) { return a < b ? a : b; }
@@ -22,6 +26,8 @@ MRP_API void mrp_front_fill(FrontFillArgs* a)
     const float* px = a->px; const float* py = a->py;
     int m = a->m;
     uint8_t* buf = a->buf;
+    const uint8_t* mask = a->mask;
+    int mw = a->mw, mh = a->mh;
     int any = 0;
     for (int n = 0; n + 2 < a->triN; n += 3)
     {
@@ -39,6 +45,14 @@ MRP_API void mrp_front_fill(FrontFillArgs* a)
             float w0 = ((bx - fx) * (cy - fy) - (by - fy) * (cx - fx)) * inv;
             float w1 = ((cx - fx) * (ay - fy) - (cy - fy) * (ax - fx)) * inv;
             if (w0 < 0.0f || w1 < 0.0f || w0 + w1 > 1.0f) continue;
+            if (mask)
+            {
+                float w2 = 1.0f - w0 - w1;
+                float u = w0 * a->mu[ia] + w1 * a->mu[ib] + w2 * a->mu[ic];
+                float v = w0 * a->mv[ia] + w1 * a->mv[ib] + w2 * a->mv[ic];
+                int iu = imin(mw - 1, imax(0, (int)floorf(u))), iv = imin(mh - 1, imax(0, (int)floorf(v)));
+                if (!mask[iv * mw + iu]) continue;
+            }
             buf[y * m + x] = 255;
             any = 1;
         }

@@ -222,6 +222,10 @@ internal static partial class PropSim
                 float gx = f.flipX ? -1f : 1f, gy = f.flipY ? -1f : 1f;
                 var px = new float[v.Length];
                 var py = new float[v.Length];
+                // 手前の絵の不透明な所の型があれば、網目の中でも透明な所は抜かない (網目が四角の絵)
+                var mask = SpriteAlphaMask.Get(fsp);
+                var mu = mask != null ? new float[v.Length] : null;
+                var mv = mask != null ? new float[v.Length] : null;
                 for (int i = 0; i < v.Length; i++)
                 {
                     float lx = v[i].x * gx, ly = v[i].y * gy;
@@ -229,8 +233,9 @@ internal static partial class PropSim
                     float ox = (m.m00 * lx + m.m01 * ly + m.m03) * fx, oy = (m.m10 * lx + m.m11 * ly + m.m13) * fy;
                     px[i] = (au * ox + bu - u0) * us * OccPx - 0.5f;
                     py[i] = (av * oy + bv - v0) / vs * OccPx - 0.5f;
+                    if (mask != null) { mu[i] = (v[i].x - mask.Min.x) * mask.W / mask.Size.x; mv[i] = (v[i].y - mask.Min.y) * mask.H / mask.Size.y; }
                 }
-                any |= FillTris(px, py, tri, buf);
+                any |= FillTris(px, py, tri, buf, mask, mu, mv);
             }
             if (!any) buf = null;
         }
@@ -268,7 +273,7 @@ internal static partial class PropSim
     }
 
     // 三角形を、画素の真ん中が入る所だけ 255 で塗る
-    private static bool FillTris(float[] px, float[] py, ushort[] tri, byte[] buf)
+    private static bool FillTris(float[] px, float[] py, ushort[] tri, byte[] buf, SpriteAlphaMask.Mask mask, float[] mu, float[] mv)
     {
         const int m = OccPx;
         bool any = false;
@@ -287,6 +292,13 @@ internal static partial class PropSim
                 float w0 = ((bx - x) * (cy - y) - (by - y) * (cx - x)) * inv;
                 float w1 = ((cx - x) * (ay - y) - (cy - y) * (ax - x)) * inv;
                 if (w0 < 0f || w1 < 0f || w0 + w1 > 1f) continue;
+                if (mask != null)
+                {
+                    float w2 = 1f - w0 - w1;
+                    int iu = Math.Min(mask.W - 1, Math.Max(0, (int)MathF.Floor(w0 * mu[a] + w1 * mu[b] + w2 * mu[c])));
+                    int iv = Math.Min(mask.H - 1, Math.Max(0, (int)MathF.Floor(w0 * mv[a] + w1 * mv[b] + w2 * mv[c])));
+                    if (mask.Px[iv * mask.W + iu] == 0) continue;
+                }
                 buf[y * m + x] = 255;
                 any = true;
             }
@@ -637,6 +649,19 @@ internal static partial class PropSim
         if (!_ready) return;
         FrontOfList(Props, r, z, into);
         FrontOfList(Stills, r, z, into);
+    }
+
+    // 抜き型に塗る家具の絵を全部 (絵の不透明な所の型を船ができた時にまとめて作る用)
+    internal static void AllFrontSprites(List<SpriteRenderer> into)
+    {
+        if (!_ready) return;
+        foreach (var list in new[] { Props, Stills })
+            foreach (var p in list)
+            {
+                if (p.Kind == Kind.Small || p.Lift != null || !p.Tr) continue;
+                if (p.Front == null) FrontOf(p);
+                foreach (var sr in p.Front) if (sr && sr.sprite) into.Add(sr);
+            }
     }
 
     private static void FrontOfList(List<Prop> list, Rect r, float z, List<SpriteRenderer> into)
