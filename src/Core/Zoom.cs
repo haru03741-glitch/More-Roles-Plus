@@ -1,6 +1,8 @@
 // Based on https://github.com/Gurge44/EndlessHostRoles and https://github.com/waffle-ful/Aeterna-End-K-not Modules/Zoom.cs,
 // which credit https://github.com/tugaru1975/TownOfPlus (TOPmods/Zoom.cs) and https://github.com/Yumenopai/TownOfHost_Y (GPL-3.0)
 using System;
+using System.Runtime.InteropServices;
+using System.Text;
 using UnityEngine;
 
 namespace MoreRolesPlus;
@@ -10,6 +12,8 @@ namespace MoreRolesPlus;
 // HUD の端に寄せる部品 (AspectPosition) は世界のカメラの大きさで位置を決めるので、HUD のカメラ (Hud/UI Camera) も同じだけ引いて
 // 位置を計算し直させる (HUD は引いた分だけ小さく見える)。視界の影 (ShadowQuad) は 3 単位の画面に合わせた板なので、
 // 引いている間は隠して、戻したら元の表示に戻す。
+// ホイールが UI (ボタン・一覧・開いたパネル) の上で回った時と、AU の窓が前面でない時 (Windows は裏の窓にもホイールを送る) は引かない。
+// パネルは開いている間、外側を押して閉じる当たり判定が画面全体を覆うので、開いている間はどこで回しても引かない。
 // 毎フレームの問い合わせはホイール (スマホは指の数) の 1 つだけ。引いている間は 0.25 秒ごとに使える場面かを見直す
 internal static class Zoom
 {
@@ -27,6 +31,7 @@ internal static class Zoom
     public static void Tick()
     {
         float d = Touch ? Pinch() : Input.mouseScrollDelta.y;
+        if (d != 0f && Blocked() != null) d = 0f;
         if (d == 0f && !Zoomed) return;
         if (d != 0f || Time.unscaledTime >= _nextCheck)
         {
@@ -57,6 +62,45 @@ internal static class Zoom
         if (diff > -need && diff < need) { _pinch = prev; return 0f; }
         return diff;
     }
+
+    // ホイール (ピンチ) をズームに使わない理由 (null = 使う)。動いたフレームだけ呼ぶ
+    private static string Blocked()
+    {
+        if (!Touch && !GameWindowInFront()) return "unfocused";
+        // 本編がボタンの反応に使う「指/マウスの下のいちばん手前の UI」。一覧の欄もパネルの背景もここに出る
+        if (PassiveButtonManager.InstanceExists && PassiveButtonManager.Instance.currentOver) return PassiveButtonManager.Instance.currentOver.name;
+        return null;
+    }
+
+    // 前面の窓がこのプロセスのゲームの窓か。Application.isFocused は別の窓 (ターミナルなど) が前面でも true のままのことがある (実測)。
+    // BepInEx のコンソールも同じプロセスの窓なので、窓の種類 (UnityWndClass) まで見る
+#if ANDROID
+    private static bool GameWindowInFront() => true;
+#else
+    private static readonly StringBuilder ClassName = new(32);
+
+    private static bool GameWindowInFront()
+    {
+        IntPtr h = GetForegroundWindow();
+        if (h == IntPtr.Zero) return false;
+        GetWindowThreadProcessId(h, out uint pid);
+        if (pid != (uint)Environment.ProcessId) return false;
+        ClassName.Clear();
+        return GetClassNameW(h, ClassName, ClassName.Capacity) > 0 && ClassName.ToString() == "UnityWndClass";
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassNameW(IntPtr hWnd, StringBuilder name, int max);
+#endif
+
+    // dev: 今ホイールを回したらズームに使うか (使わないなら理由)
+    internal static string Describe() => $"OK zoomgate size={_size:0.##} blocked={Blocked() ?? "-"} allowed={Allowed()}";
 
     private static bool Allowed()
     {

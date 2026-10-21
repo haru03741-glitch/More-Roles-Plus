@@ -906,6 +906,8 @@ internal static class TerrainProbe
             reply($"OK zoom {cam.orthographicSize}");
         });
 
+        TestBridge.Register("zoomgate", "マウスのホイールを今回したらズームに使うか (使わないなら理由 = 窓が裏 / 下にある UI の名前)", (_, reply) => reply(Zoom.Describe()));
+
         TestBridge.Register("look", "<x> <y> | off カメラをその点に止める (自分を追わない・見た目の確認用)", (args, reply) =>
         {
             var cam = Camera.main;
