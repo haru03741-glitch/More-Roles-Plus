@@ -13,17 +13,20 @@ internal static class VisionPatch
     // 粉塵の視界は役職と関係なく掛かるので、役職が誰にも付いていない時の早抜けより先に見る
     internal static int AirshipDepth;
 
-    public static void Postfix([HarmonyArgument(0)] NetworkedPlayerInfo player, ref float __result)
+    public static void Postfix(ShipStatus __instance, [HarmonyArgument(0)] NetworkedPlayerInfo player, ref float __result)
     {
         if (AirshipDepth > 0 || player is null) return;
-        Apply(player, ref __result);
+        Apply(__instance, player, ref __result);
     }
 
-    internal static void Apply(NetworkedPlayerInfo player, ref float result)
+    internal static void Apply(ShipStatus ship, NetworkedPlayerInfo player, ref float result)
     {
+        // 第三陣営のキル役はインポスターと同じ形 (停電で狭まらない・船の最大の明るさ × 第三陣営の視界)。幽霊は本編のまま
+        var role = RoleState.All.Count > 0 ? RoleState.Of(player.PlayerId) : null;
+        if (NeutralKillSettings.Applies(role) && !player.IsDead) result = ship.MaxLightRadius * NeutralKillSettings.Vision;
         if (Terrain.DustCloud.VisionMul < 1f && player.PlayerId == Terrain.DustCloud.LocalId) result *= Terrain.DustCloud.VisionMul;
         if (RoleState.All.Count == 0 && RoleState.AllAddons.Count == 0) return;
-        RoleState.Of(player.PlayerId)?.ModifyVision(ref result);
+        role?.ModifyVision(ref result);
         var addons = RoleState.AddonsOf(player.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyVision(ref result);
     }
@@ -34,10 +37,10 @@ internal static class AirshipVisionPatch
 {
     public static void Prefix() => VisionPatch.AirshipDepth++;
 
-    public static void Postfix([HarmonyArgument(0)] NetworkedPlayerInfo player, ref float __result)
+    public static void Postfix(AirshipStatus __instance, [HarmonyArgument(0)] NetworkedPlayerInfo player, ref float __result)
     {
         if (player is null) return;
-        VisionPatch.Apply(player, ref __result);
+        VisionPatch.Apply(__instance, player, ref __result);
     }
 
     public static System.Exception Finalizer(System.Exception __exception)
@@ -56,6 +59,7 @@ internal static class KillCooldownPatch
         // 役職の無い人 (本編のまま) にもアドオンは付くので、役職の有無に関わらず自分のアドオンまで見る
         var lp = PlayerControl.LocalPlayer;
         if (!lp) return;
+        if (NeutralKillSettings.Applies(RoleState.Local)) __result = NeutralKillSettings.KillCooldown;
         RoleState.Local?.ModifyKillCooldown(ref __result);
         var addons = RoleState.AddonsOf(lp.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref __result);

@@ -214,7 +214,7 @@ internal static class DummyBrain
 
     private static PlayerControl KillTarget(PlayerControl self, float x, float y)
     {
-        float reach = GameManager.Instance.LogicOptions.GetKillDistance();
+        float reach = Roles.KillAbility.Reach(self);
         bool imp = self.Data.Role && self.Data.Role.IsImpostor;
         PlayerControl best = null;
         float bestD = float.MaxValue;

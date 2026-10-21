@@ -34,8 +34,7 @@ Jester.Help: A neutral role. Get voted out in a meeting to win alone. You cannot
 # ── Outlaw ──
 Outlaw.Name: Outlaw
 Outlaw.Blurb: Be the last one standing
-Outlaw.Help: A neutral killer. You keep your crewmate look but have a kill button (the cooldown is in the settings below). You win when no impostors are left and the remaining survivors are no more than the Outlaws. Impostors are your enemies too.
-Outlaw.KillCooldown: Kill Cooldown
+Outlaw.Help: A neutral killer. You keep your crewmate look but have a kill button (kill cooldown, vision and kill distance are under "Neutral Killers" in the Game Settings tab). You win when no impostors are left and the remaining survivors are no more than the Outlaws. Impostors are your enemies too.
 
 # ── Survivor ──
 Survivor.Name: Survivor
@@ -143,6 +142,15 @@ AssignSettings.Fill: Players left without a role
 AssignSettings.KeepVanilla: Keep vanilla
 AssignSettings.FillFromSameTeamRoles: Fill from same-team roles
 AssignSettings.FillNeutralsIncluded: Fill, neutrals included
+
+# ── NeutralKillSettings ──
+NeutralKillSettings.Title: Neutral Killers
+NeutralKillSettings.KillCooldown: Kill Cooldown
+NeutralKillSettings.Vision: Vision
+NeutralKillSettings.KillDistance: Kill Distance
+NeutralKillSettings.Short: Short
+NeutralKillSettings.Medium: Medium
+NeutralKillSettings.Long: Long
 
 # ── RoleDisplay ──
 RoleDisplay.YourTasksDoNotCount: Your tasks do not count

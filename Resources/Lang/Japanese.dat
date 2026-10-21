@@ -34,8 +34,7 @@ Jester.Help: 第三陣営です。会議で追放されると一人勝ちにな�
 # ── 無法者 (Outlaw) ──
 Outlaw.Name: 無法者
 Outlaw.Blurb: 全員を倒して最後に残れ
-Outlaw.Help: 第三陣営のキル役です。クルーの姿のままキルボタンを持ちます (待ち時間は下の設定)。インポスターがいなくなり、残りの生存者が無法者の人数以下になれば勝ちです。インポスターとも敵同士です。
-Outlaw.KillCooldown: キルの待ち時間
+Outlaw.Help: 第三陣営のキル役です。クルーの姿のままキルボタンを持ちます (キルのクールダウン時間・ビジョン・キル可能距離は「ゲーム設定」タブの「第三陣営のキル役」)。インポスターがいなくなり、残りの生存者が無法者の人数以下になれば勝ちです。インポスターとも敵同士です。
 
 # ── 生存者 (Survivor) ──
 Survivor.Name: 生存者
@@ -143,6 +142,15 @@ AssignSettings.Fill: 役職が付かなかった人
 AssignSettings.KeepVanilla: 本編のまま
 AssignSettings.FillFromSameTeamRoles: 同じ陣営の役職で埋める
 AssignSettings.FillNeutralsIncluded: 第三陣営も含めて埋める
+
+# ── NeutralKillSettings ──
+NeutralKillSettings.Title: 第三陣営のキル役
+NeutralKillSettings.KillCooldown: キルのクールダウン時間
+NeutralKillSettings.Vision: ビジョン
+NeutralKillSettings.KillDistance: キル可能距離
+NeutralKillSettings.Short: ショート
+NeutralKillSettings.Medium: ミドル
+NeutralKillSettings.Long: ロング
 
 # ── RoleDisplay ──
 RoleDisplay.YourTasksDoNotCount: タスクは勝敗に関係ありません

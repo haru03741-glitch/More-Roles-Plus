@@ -203,7 +203,7 @@ internal static class DummyPilot
 
     private static void KillNearest(PlayerControl pc)
     {
-        float reach = GameManager.Instance.LogicOptions.GetKillDistance();
+        float reach = Roles.KillAbility.Reach(pc);
         var me = pc.GetTruePosition();
         PlayerControl best = null;
         float bestD = reach * reach;

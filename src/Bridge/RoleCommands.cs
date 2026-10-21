@@ -224,6 +224,9 @@ internal static class RoleCommands
         TestBridge.Register("variant", "<札の番号 0=通常 1=左右反転> ゲーム設定のタブのマップのバリエーションの札を押す", (args, reply) =>
             reply("OK variant " + MapVariants.Press(int.TryParse(args.Trim(), out int vi) ? vi : -1)));
 
+        TestBridge.Register("nkrows", "[scroll <0〜1> | press <行> <+1|-1>] ゲーム設定のタブの第三陣営のキル役の行 (見出し・行の位置と値) / タブを縦に送る / 行の ± を押す", (args, reply) =>
+            reply(NeutralKillRows.Probe(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
+
         TestBridge.Register("uitree", "<chat|menu|page|gametab|cam|map|GameObject のパス> [深さ=3] 画面の部品の階層 (位置・大きさ・部品の種類・有効か)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

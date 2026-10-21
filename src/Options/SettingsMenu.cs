@@ -524,13 +524,15 @@ internal static class GameOptionsMenuPatch
     [HarmonyPatch("CreateSettings"), HarmonyPrefix]
     public static bool CreateSettings(GameOptionsMenu __instance) => !SettingsMenu.IsOurMenu(__instance, out _);
 
-    // 本編のゲーム設定のタブ: マップ選びの下にマップのバリエーションを足す
+    // 本編のゲーム設定のタブ: マップ選びの下にマップのバリエーション、インポスターの項目の下に第三陣営のキル役を足す
     [HarmonyPatch("CreateSettings"), HarmonyPostfix]
     public static void CreateSettingsPost(GameOptionsMenu __instance)
     {
         if (SettingsMenu.IsOurMenu(__instance, out _)) return;
         try { MapVariants.Attach(__instance); }
         catch (Exception e) { Plugin.Logger.LogError($"map variants: {e}"); }
+        try { NeutralKillRows.Attach(__instance); }
+        catch (Exception e) { Plugin.Logger.LogError($"neutral kill rows: {e}"); }
     }
 }
 

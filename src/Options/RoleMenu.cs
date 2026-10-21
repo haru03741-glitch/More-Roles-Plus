@@ -178,10 +178,11 @@ internal static class RoleMenu
         var roleOptions = GameOptionsManager.Instance.CurrentGameOptions.RoleOptions;
         var anyRole = RoleManager.Instance.AllRoles[0];
 
-        // 検索の時だけ出る組: 本編のゲーム設定 (見出しごと)・マップのバリエーション・MRP 全般 (見出しごと)
+        // 検索の時だけ出る組: 本編のゲーム設定 (見出しごと)・マップのバリエーション・第三陣営のキル役・MRP 全般 (見出しごと)
         VanillaGame.Rebuild();
         foreach (var sec in VanillaGame.All) AddSearchGroup(m, Join(VanillaGame.TabName, sec.Title), GameColor, 0, sec.Opts);
         AddSearchGroup(m, Join(VanillaGame.TabName, MapVariants.Title), GameColor, 0, new Opt[] { MapSettings.Mirror });
+        AddSearchGroup(m, Join(VanillaGame.TabName, NeutralKillRows.Title), GameColor, 0, NeutralKillRows.Opts);
         foreach (var sec in Registry.SectionsOf(Tab.General))
         {
             var opts = new List<Opt>();

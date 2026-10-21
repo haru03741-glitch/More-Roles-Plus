@@ -2,9 +2,41 @@ using System;
 using HarmonyLib;
 using Hazel;
 using MoreRolesPlus.Net;
+using MoreRolesPlus.Options;
 using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
+
+// 第三陣営のキル役の、本編のインポスターと同じ並びの設定 (キルのクールダウン・視界・キルの距離)。
+// 行は本編の「ゲーム設定」タブのインポスターの項目の下に並べる (NeutralKillRows)。MRP のタブには並べない
+[Settings(Tab.General, "NeutralKillSettings.Title", order: -98)]
+public static class NeutralKillSettings
+{
+    public static readonly FloatOpt KillCooldown = new("NeutralKillSettings.KillCooldown", 25f, 2.5f, 60f, 2.5f, "s") { OffTab = true };
+    public static readonly FloatOpt Vision = new("NeutralKillSettings.Vision", 1.5f, 0.25f, 5f, 0.25f, "x") { OffTab = true };
+    public static readonly ChoiceOpt KillDistance = new("NeutralKillSettings.KillDistance", 1,
+        new Text("NeutralKillSettings.Short"), new Text("NeutralKillSettings.Medium"), new Text("NeutralKillSettings.Long")) { OffTab = true };
+
+    public static bool Applies(RoleBase role) => role is { Team: Team.Neutral, CanKill: true };
+
+    // 本編のキルの距離の表 (短い / 普通 / 長い)。毎回 il2cpp の配列を読まないように最初の 1 回で写す
+    private static float[] _distances;
+
+    public static float Distance()
+    {
+        if (_distances == null)
+        {
+            var t = AmongUs.GameOptions.NormalGameOptionsV12.KillDistances;
+            if (t == null || t.Length == 0) _distances = new[] { 1f, 1.8f, 2.5f };
+            else
+            {
+                _distances = new float[t.Length];
+                for (int i = 0; i < t.Length; i++) _distances[i] = t[i];
+            }
+        }
+        return _distances[Math.Clamp(KillDistance.Value, 0, _distances.Length - 1)];
+    }
+}
 
 // インポスター以外の役職 (RoleBase.CanKill) に本編のキルボタンを使わせる。
 // ボタンの表示・狙う相手の選び方・待ち時間の減り方は本編のまま (本編の役職に CanUseKillButton を立てる)。
@@ -85,7 +117,7 @@ internal static class KillAbility
         if (++_scan >= ScanEvery)
         {
             _scan = 0;
-            _target = lp.CanMove ? Targeting.ClosestPlayer(lp, GameManager.Instance.LogicOptions.GetKillDistance()) : null;
+            _target = lp.CanMove ? Targeting.ClosestPlayer(lp, Reach(role)) : null;
         }
         float t = lp.killTimer;
         if (t > 0f && lp.CanMove)
@@ -148,6 +180,12 @@ internal static class KillAbility
             if (GameData.Instance) TryKill(killer, GameData.Instance.GetPlayerById(targetId)?.Object);
         });
 
+    // キルの届く距離。第三陣営のキル役は第三陣営の設定、それ以外は本編の設定
+    internal static float Reach(RoleBase role) =>
+        NeutralKillSettings.Applies(role) ? NeutralKillSettings.Distance() : GameManager.Instance.LogicOptions.GetKillDistance();
+
+    internal static float Reach(PlayerControl p) => Reach(RoleState.Of(p));
+
     // インポスター以外のキル役か (ホストがダミーを動かす時の振り分け用)
     internal static bool UsesFor(PlayerControl p) => Uses(RoleState.Of(p));
 
@@ -175,13 +213,13 @@ internal static class KillAbility
         if (!Uses(role)) return "role";
         if (!target || target == killer || target.Data == null || target.Data.IsDead || target.Data.Disconnected) return "target";
         if (target.inVent || target.inMovingPlat) return "target busy";
-        string far = Targeting.Unreachable(killer, target, GameManager.Instance.LogicOptions.GetKillDistance() + DistanceSlack);
+        string far = Targeting.Unreachable(killer, target, Reach(role) + DistanceSlack);
         if (far != null) return far;
         // 前のキル (無ければ割り当て) からの経過。最初は試合の始めの待ち時間
         float cd = FirstCooldown;
         if (_killed[killer.PlayerId])
         {
-            cd = GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown);
+            cd = NeutralKillSettings.Applies(role) ? NeutralKillSettings.KillCooldown : GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown);
             role.ModifyKillCooldown(ref cd);
             var addons = RoleState.AddonsOf(killer.PlayerId);
             for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref cd);
