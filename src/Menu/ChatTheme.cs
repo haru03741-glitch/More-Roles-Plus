@@ -14,7 +14,11 @@ internal static class ChatTheme
     private static readonly Color FieldDark = new(0.16f, 0.16f, 0.16f, 1f);
     private static readonly Color BubbleDark = new(0.1f, 0.1f, 0.1f, 1f);
 
-    // 本編の色 (暗くする前に控えて、切った時に戻す)
+    // 陣営チャットで送る間の入力欄の色
+    private static readonly Color FieldTeam = new(1f, 0.8f, 0.8f, 1f);
+    private static readonly Color FieldTeamDark = new(0.3f, 0.1f, 0.1f, 1f);
+
+    // 本編の色 (塗る前に控えて、切った時に戻す)
     private static Color _panel = Color.white, _field = Color.white, _quick = Color.white;
     private static bool _painted;
 
@@ -37,20 +41,21 @@ internal static class ChatTheme
     public static void Apply(ChatController chat)
     {
         bool dark = ClientOptions.DarkTheme.Value;
+        bool team = Commands.TeamChat.Tinted;
         var free = chat.freeChatField;
         var quick = chat.quickChatField;
-        if (dark && !_painted)
+        if ((dark || team) && !_painted)
         {
             if (chat.backgroundImage) _panel = chat.backgroundImage.color;
             if (free && free.background) _field = free.background.color;
             if (quick && quick.background) _quick = quick.background.color;
         }
-        if (!dark && !_painted) return;
-        _painted = dark;
+        if (!dark && !team && !_painted) return;
+        _painted = dark || team;
         if (chat.backgroundImage) chat.backgroundImage.color = dark ? PanelDark : _panel;
         if (free)
         {
-            if (free.background) free.background.color = dark ? FieldDark : _field;
+            if (free.background) free.background.color = team ? (dark ? FieldTeamDark : FieldTeam) : dark ? FieldDark : _field;
             if (free.textArea && free.textArea.outputText) free.textArea.outputText.color = dark ? Color.white : Color.black;
             if (free.charCountText) free.charCountText.color = dark ? Color.white : Color.black;
         }

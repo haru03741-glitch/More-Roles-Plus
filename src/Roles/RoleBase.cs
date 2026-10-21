@@ -39,6 +39,9 @@ public abstract class RoleBase : Assignable
     // 本編のどの役職の上に乗るか (ベントを使うなら Engineer など)。既定はクルー / インポスター
     public virtual RoleTypes BaseRole => Team == Team.Impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
 
+    // 陣営チャットを使えるか。同じ陣営で true の人同士がつながる (既定はインポスターだけ)
+    public virtual bool HasTeamChat => Team == Team.Impostor;
+
     // 本編の役職そのもの (Roles/Builtin)。表示は本編に任せる
     internal virtual bool IsVanilla => false;
 

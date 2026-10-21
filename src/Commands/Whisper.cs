@@ -56,7 +56,7 @@ internal static class Whisper
     private static string Name(PlayerControl p) => Plain(p && p.Data != null ? p.Data.PlayerName : "?");
 
     // 文や名前の < > は全角にする (色や見出しの装飾を混ぜて偽の耳打ちの表示を作れないように)
-    private static string Plain(string s) => (s ?? "").Replace('<', '＜').Replace('>', '＞');
+    internal static string Plain(string s) => (s ?? "").Replace('<', '＜').Replace('>', '＞');
 
     private static string _restore; // 送れなかった文 (入力欄へ戻す)
 

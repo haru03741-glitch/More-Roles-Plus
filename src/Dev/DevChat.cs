@@ -52,6 +52,13 @@ internal static class DevChat
             Commands.Whisper.AfterClear(field);
             return false;
         }
+        // 陣営チャット (会議中に「仲間へ」を選んでいる時と、タスク中に出したチャット欄)
+        if (Commands.TeamChat.TrySend(__instance, text))
+        {
+            field.Clear();
+            Commands.TeamChat.AfterClear(field);
+            return false;
+        }
         if (text.Length < 2 || text[0] != '/') return true;
 
         string line = text[1..];

@@ -427,6 +427,20 @@ Whisper.Label: Whisper
 Whisper.WhisperingTo: Whispering to {name}. Type and send (send empty to cancel)
 Whisper.Announce: {from} whispered to {to}
 
+# ── TeamChatSettings ──
+TeamChatSettings.Title: Team chat
+TeamChatSettings.Mode: Impostor team chat
+TeamChatSettings.Off: Off
+TeamChatSettings.Meetings: In meetings
+TeamChatSettings.MeetingsAndTasks: In meetings and during tasks
+
+# ── TeamChat ──
+TeamChat.Label: Team
+TeamChat.On: Sending to your team only (press again for everyone)
+TeamChat.Off: Sending to everyone
+TeamChat.TasksOnly: During tasks you can only message your team
+TeamChat.NoMates: No teammate can get it now (your text is back in the box)
+
 # ── AutoRejoin ──
 AutoRejoin.BackToTheLobbyIn: Back to the lobby in {sec}s
 

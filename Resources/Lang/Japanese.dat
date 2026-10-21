@@ -427,6 +427,20 @@ Whisper.Label: 耳打ち
 Whisper.WhisperingTo: → {name} に耳打ちします。文を入れて送信 (空で送ると取りやめ)
 Whisper.Announce: {from} が {to} に耳打ちしました
 
+# ── TeamChatSettings ──
+TeamChatSettings.Title: 陣営チャット
+TeamChatSettings.Mode: インポスター同士のチャット
+TeamChatSettings.Off: 使わない
+TeamChatSettings.Meetings: 会議中
+TeamChatSettings.MeetingsAndTasks: 会議中とタスク中
+
+# ── TeamChat ──
+TeamChat.Label: 仲間
+TeamChat.On: 仲間にだけ送ります (もう一度押すと全員へ)
+TeamChat.Off: 全員へ送ります
+TeamChat.TasksOnly: タスク中は仲間にだけ送れます
+TeamChat.NoMates: 今は送れる仲間がいません (文は入力欄に戻しました)
+
 # ── AutoRejoin ──
 AutoRejoin.BackToTheLobbyIn: {sec} 秒後にロビーへ戻ります
 

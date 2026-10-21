@@ -42,12 +42,16 @@ internal static class PracticeIntroPatch
     }
 }
 
-// 練習とフリープレイでは試合中もチャット欄と破壊のボタンを出す。
+// 練習とフリープレイでは試合中もチャット欄と破壊のボタンを出す。陣営チャットをタスク中に使える設定なら、仲間のいる人にも出す。
 // 本編は HUD を出し直す時 (会議の後・死んだ時・フリープレイの始め) と、オンラインの試合ではイントロの後にチャット欄を隠すので、その両方の後に出す
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.OnGameStart))]
 internal static class SandboxChatOnStartPatch
 {
-    public static void Postfix(HudManager __instance) => SandboxChatPatch.Show(__instance);
+    public static void Postfix(HudManager __instance)
+    {
+        Commands.TeamChat.OnGameStart();
+        SandboxChatPatch.Show(__instance);
+    }
 }
 
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.SetHudActive), typeof(PlayerControl), typeof(RoleBehaviour), typeof(bool))]
@@ -60,16 +64,21 @@ internal static class SandboxChatPatch
 
     public static void Show(HudManager hud)
     {
-        if (!PracticeMatch.Sandbox) { Unshift(); return; }
+        bool sandbox = PracticeMatch.Sandbox;
+        if (!sandbox && !Commands.TeamChat.ShowsInTasks) { Unshift(); return; }
         if (!hud.Chat) return;
         hud.Chat.SetVisible(true);
         Shift();
-        Terrain.SandboxCommands.ShowHint(hud.Chat);
-        Terrain.SandboxCommands.EnsureButtons();
+        if (sandbox)
+        {
+            Terrain.SandboxCommands.ShowHint(hud.Chat);
+            Terrain.SandboxCommands.EnsureButtons();
+        }
+        Commands.TeamChat.Refresh(hud.Chat);
     }
 
     // 試合の情報 (?) のボタンは毎フレーム「普段の位置」か「チャットをよけた位置」(会議中) のどちらかに自分を置く。
-    // チャットの後ろの板は右隣のボタンへつながる形なので、チャットを動かさず、練習とフリープレイの間だけ
+    // チャットの後ろの板は右隣のボタンへつながる形なので、チャットを動かさず、試合中にチャット欄を出している間だけ
     // 普段の位置をよけた位置にする (静的な値を 1 回書くだけで、毎フレームの処理は足さない)
     private static bool _shifted;
     private static UnityEngine.Vector3 _default;

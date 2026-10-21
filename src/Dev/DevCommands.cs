@@ -363,6 +363,13 @@ internal static class DevCommands
             if (args.Trim() == "self") Roles.Spectate.WatchSelfForTest();
             reply(Roles.Spectate.Describe());
         });
+        TestBridge.Register("teamchat", "[0|1] 陣営チャットのボタンを押したのと同じ (0/1 で会議中の切り替えを直に決める) / 状態", (args, reply) =>
+        {
+            string a = args.Trim();
+            if (a.Length > 0) Commands.TeamChat.BridgeSet(a == "1" ? true : a == "0" ? false : null);
+            reply(Commands.TeamChat.Describe());
+        });
+
         TestBridge.Register("whisper", "[<番号> | list] 耳打ちの相手を選ぶ (名札・一覧のボタンと同じ) / ロビーの一覧を開く / 状態", (args, reply) =>
         {
             args = args.Trim();
