@@ -813,7 +813,11 @@ internal static partial class PropSim
             bool done = st.Vx == 0 && st.Vy == 0 && st.Spin == 0 && st.Ang == st.Tip;
             // 前後の z は部屋の絵を全部見るので 4 刻みに 1 回と止まった時だけ (見た目だけ)
             if (w.Display && p.Kind != Kind.Heavy && (done || (w.Step & 3) == 0)) p.Z = SortZ(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
-            if (!done) continue;
+            if (!done)
+            {
+                if (w.Display && ((w.Step + p.Index) & 15) == 0) FrontFollow(p, st.Spin != 0); // 物ごとに刻みをずらして 1 フレームに集めない
+                continue;
+            }
             st.Active = false;
             st.Rattle = false;
             w.Act.RemoveAt(i);
@@ -1615,7 +1619,7 @@ internal static partial class PropSim
             if (args.Trim() == "list")
                 foreach (var p in Props)
                     reply($"PROP {p.Name} {p.Kind} foot={TestBridge.F(_org.x + p.A.Px / (float)Unit)},{TestBridge.F(_org.y + p.A.Py / (float)Unit)} ang={p.A.Ang / 16} moved={p.A.Moved} size={p.SizeU / (float)Unit:0.00}{(p.A.Gone ? " gone" : "")}{(p.A.Stuck ? " stuck" : "")}{(p.Perch ? " perch" : "")}{(p.Planted ? " planted" : "")}");
-            reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} swept={Swept} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} lost={Lost} plugs={Plugs} digest={Digest():x8} bumps={Bumps} lastBump={LastBump}");
+            reply($"OK props n={Props.Count} small={s} medium={m} fixed={f} moved={moved} active={Auth.Act.Count}/{Disp.Act.Count} wobbling={Disp.Wob.Count} kicks={Kicks} swept={Swept} step={Auth.Step}/{Disp.Step} late={Late} shownDiff={diff} lost={Lost} plugs={Plugs} digest={Digest():x8} bumps={Bumps} lastBump={LastBump} follow={FollowN}/{FollowTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.0}ms");
         });
     }
 }

@@ -190,7 +190,7 @@ internal static partial class PropSim
         Vector3 bmn = b.min, bmx = b.max;
         OccSrs.Clear();
         var owner = p.Lift != null ? p.Lift.Cut.transform : p.Tr;
-        FrontSprites(Rect.MinMaxRect(bmn.x, bmn.y, bmx.x, bmx.y), owner.position.z, OccSrs);
+        FrontSprites(Rect.MinMaxRect(bmn.x, bmn.y, bmx.x, bmx.y), owner.position.z, OccSrs, p);
         SunkOccFill(s);
     }
 
@@ -642,13 +642,15 @@ internal static partial class PropSim
         return tex;
     }
 
-    // 水の影の写しで抜く絵 (r と重なり、水 z より手前の物)。小物は水に流されて動き続けるので入れない。
-    // 部屋の絵から持ち上げた家具は床マスクが抜くので入れない
-    internal static void FrontSprites(Rect r, float z, List<SpriteRenderer> into)
+    // 水の影の写しで抜く絵 (r と重なり、水 z より手前の物)。部屋の絵から持ち上げた家具は床マスクが抜くので入れない。
+    // owner = この家具の水面の板の写しを抜く時: 上に載っていて自分の写しを持たない物 (載っている家具の板が沈み具合を描く) は抜かない
+    internal static void FrontSprites(Rect r, float z, List<SpriteRenderer> into) => FrontSprites(r, z, into, null);
+
+    private static void FrontSprites(Rect r, float z, List<SpriteRenderer> into, Prop owner)
     {
         if (!_ready) return;
-        FrontOfList(Props, r, z, into);
-        FrontOfList(Stills, r, z, into);
+        FrontOfList(Props, r, z, into, owner);
+        FrontOfList(Stills, r, z, into, owner);
     }
 
     // 抜き型に塗る家具の絵を全部 (絵の不透明な所の型を船ができた時にまとめて作る用)
@@ -658,17 +660,18 @@ internal static partial class PropSim
         foreach (var list in new[] { Props, Stills })
             foreach (var p in list)
             {
-                if (p.Kind == Kind.Small || p.Lift != null || !p.Tr) continue;
+                if (p.Lift != null || !p.Tr) continue;
                 if (p.Front == null) FrontOf(p);
                 foreach (var sr in p.Front) if (sr && sr.sprite) into.Add(sr);
             }
     }
 
-    private static void FrontOfList(List<Prop> list, Rect r, float z, List<SpriteRenderer> into)
+    private static void FrontOfList(List<Prop> list, Rect r, float z, List<SpriteRenderer> into, Prop owner)
     {
         foreach (var p in list)
         {
-            if (p.Kind == Kind.Small || p.Lift != null || p.Hidden || !p.Tr) continue;
+            if (p.Lift != null || p.Hidden || !p.Tr) continue;
+            if (owner != null && p.Perch && PerchedStill(p) && SupportOf(p) == owner && SupportPlated(owner)) continue;
             if (p.Front == null) FrontOf(p);
             // 足元から絵の端まで (FrontR) で先に間引く (絵の範囲を引くのは本編の呼び出しなので、掛かりそうな物だけ)
             var c = p.FrontAt;
@@ -701,10 +704,25 @@ internal static partial class PropSim
         p.FrontR = r + 0.1f;
     }
 
+    // 動いている途中の家具: 抜き型を約 0.5 秒ごとに今の所へ作り直す (ゆっくり流され続ける物の抜き型が前の所に残り続けない)
+    private const float FollowMin = 0.04f;
+    internal static long FollowN, FollowTicks; // 確認用 (props の行): 作り直した回数と合計の時間
+    private static void FrontFollow(Prop p, bool spinning)
+    {
+        if (p.Lift != null || !p.Tr || p.Front == null) return;
+        var at = p.Tr.position;
+        float dx = at.x - p.FrontAt.x, dy = at.y - p.FrontAt.y;
+        if (!spinning && dx * dx + dy * dy < FollowMin * FollowMin) return;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        FrontSettled(p);
+        FollowN++;
+        FollowTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+    }
+
     // 動いた家具が止まった: 元いた所と止まった所の抜き型を作り直す
     private static void FrontSettled(Prop p)
     {
-        if (p.Kind == Kind.Small || p.Lift != null || !p.Tr || p.Front == null) return;
+        if (p.Lift != null || !p.Tr || p.Front == null) return;
         var at = p.Tr.position;
         var was = p.FrontAt;
         // 作り直しの間引き (FrontOfList) は FrontAt で引くので、先に止まった所へ移す
