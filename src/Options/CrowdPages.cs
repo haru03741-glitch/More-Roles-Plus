@@ -17,7 +17,7 @@ internal static class CrowdPages
     private const int PerPage = 15, Cols = 3;
     private const int CheckFrames = 15; // バイタルの通信妨害・会議中の死を見る間隔
 
-    private enum Kind { None, Meeting, Shapeshift, Vitals }
+    private enum Kind { None, Meeting, Shapeshift, Vitals, Text }
 
     private static Kind _kind;
     private static MonoBehaviour _owner; // 開いている画面。閉じると Unity の null になる
@@ -31,6 +31,7 @@ internal static class CrowdPages
     private static readonly List<Transform> Dead = new();
     private static TextMeshPro _label;
     private static UnityAction _prev, _next;
+    private static System.Action<int> _show; // 文のページ送りの中身を差し替える
 
     internal static int Page => _page;
     internal static int Pages => _pages;
@@ -82,6 +83,21 @@ internal static class CrowdPages
         _sab = Sabotaged(__instance);
         Open(Kind.Vitals, __instance, new Vector3(__instance.XStart, __instance.YStart, 0f),
             new Vector2(__instance.XOffset, __instance.YOffset), Proto(), new Vector3(1.6f, -2f, -1f)); // 真ん中の電池と右下の飾りの文字の間
+    }
+
+    // 文の一覧のページ送り (終わりの画面の結果など)。show がページの番号を受けて中身を差し替える
+    internal static void OpenText(MonoBehaviour owner, int pages, System.Action<int> show, TextMeshPro proto, Vector3 uiPos)
+    {
+        Items.Clear();
+        _meeting = null;
+        _vitals = null;
+        _kind = Kind.Text;
+        _owner = owner;
+        _show = show;
+        _pages = pages;
+        _page = 0;
+        BuildUi(owner.transform, proto, uiPos);
+        Layout();
     }
 
     private static TextMeshPro Proto()
@@ -152,12 +168,14 @@ internal static class CrowdPages
         _owner = null;
         _meeting = null;
         _vitals = null;
+        _show = null;
         _label = null; // 画面の子なので画面と一緒に消えている
         Items.Clear();
     }
 
     private static void Layout()
     {
+        if (_kind == Kind.Text) _show?.Invoke(_page);
         bool hide = _kind == Kind.Vitals && _sab; // 通信妨害中のバイタルは本編が全部隠す
         for (int i = 0; i < Items.Count; i++)
         {
@@ -226,6 +244,7 @@ internal static class CrowdPages
         t.transform.localScale = Vector3.one;
         t.enableWordWrapping = false;
         t.enableAutoSizing = false;
+        t.rectTransform.pivot = new Vector2(0.5f, 0.5f); // 元の文の枠の基準点が真ん中とは限らない (終わりの画面の文は上寄り)
         t.alignment = TextAlignmentOptions.Center;
         t.fontSize = size;
         t.color = Color.white;
