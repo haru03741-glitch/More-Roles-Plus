@@ -704,15 +704,20 @@ internal static partial class PropSim
         p.FrontR = r + 0.1f;
     }
 
-    // 動いている途中の家具: 抜き型を約 0.5 秒ごとに今の所へ作り直す (ゆっくり流され続ける物の抜き型が前の所に残り続けない)
+    // 動いている途中の家具: 抜き型を約 0.5 秒 (16 刻み) ごとに今の所へ作り直す (ゆっくり流され続ける物の抜き型が前の所に残り続けない)。
+    // 1 刻みに作り直すのは 1 つだけ (流される物が多い時に 1 フレームへ費用が積まない・順番待ちは作り直した物が後ろへ回る)
     private const float FollowMin = 0.04f;
+    private const int FollowGap = 16;
     internal static long FollowN, FollowTicks; // 確認用 (props の行): 作り直した回数と合計の時間
-    private static void FrontFollow(Prop p, bool spinning)
+    private static int _followStep = -1;
+    private static void FrontFollow(Prop p, bool spinning, int step)
     {
-        if (p.Lift != null || !p.Tr || p.Front == null) return;
+        if (step == _followStep || (long)step - p.FollowStep < FollowGap || p.Lift != null || !p.Tr || p.Front == null) return;
+        p.FollowStep = step; // 動きが小さくて作り直さなくても、次に見るのは 16 刻み後 (位置を引くのも間引く)
         var at = p.Tr.position;
         float dx = at.x - p.FrontAt.x, dy = at.y - p.FrontAt.y;
         if (!spinning && dx * dx + dy * dy < FollowMin * FollowMin) return;
+        _followStep = step;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         FrontSettled(p);
         FollowN++;

@@ -142,6 +142,7 @@ internal static partial class PropSim
         public SpriteRenderer[] Front;  // 水の影の写しで抜く絵 (この物と子の絵)
         public Vector3 FrontAt;         // 抜き型に塗った時の Transform の位置
         public float FrontR;            // Transform の位置から絵の端までの最大の距離
+        public int FollowStep = int.MinValue; // 動いている途中に抜き型を最後に作り直した刻み
         public int SizeU;               // 長い辺 (1/1024)。口の幅より大きいと口をふさぐ
         public bool Hidden;             // 消えた絵を隠している
         public readonly St A = new(), D = new();
@@ -815,7 +816,7 @@ internal static partial class PropSim
             if (w.Display && p.Kind != Kind.Heavy && (done || (w.Step & 3) == 0)) p.Z = SortZ(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
             if (!done)
             {
-                if (w.Display && ((w.Step + p.Index) & 15) == 0) FrontFollow(p, st.Spin != 0); // 物ごとに刻みをずらして 1 フレームに集めない
+                if (w.Display) FrontFollow(p, st.Spin != 0, w.Step);
                 continue;
             }
             st.Active = false;
