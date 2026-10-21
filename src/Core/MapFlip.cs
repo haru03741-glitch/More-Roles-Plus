@@ -134,6 +134,16 @@ internal static class MapFlipMapShowPatch
             var ts = tx.transform.localScale;
             tx.transform.localScale = new Vector3(-ts.x, ts.y, ts.z);
         }
+        // 裏向き (倍率の積が負) の絵は裏面を描かない材質 (サボタージュのボタンなど) で消えるので表へ戻す。
+        // 親から順に来るので、子は親を直した後の向きで判定する
+        foreach (var sr in t.GetComponentsInChildren<SpriteRenderer>(true))
+        {
+            var st = sr.transform;
+            var l = st.lossyScale;
+            if (l.x * l.y >= 0f) continue;
+            var ss = st.localScale;
+            st.localScale = new Vector3(-ss.x, ss.y, ss.z);
+        }
     }
 }
 

@@ -113,7 +113,7 @@ internal static class BuiltinCommands
             reply($"OK noclip hold={NoClip.Hold} on={NoClip.On}");
         });
 
-        TestBridge.Register("flip","[on|off|probe|map|platform] 次に作る船を左右反転するか (省略で今の状態)・probe = 昇降床とはしごの位置・map = 地図を開く・platform = 昇降床に乗る", (args, reply) =>
+        TestBridge.Register("flip","[on|off|probe|map [count]|platform] 次に作る船を左右反転するか (省略で今の状態)・probe = 昇降床とはしごの位置・map = 地図を開く (count = 管理室の人数の地図)・platform = 昇降床に乗る", (args, reply) =>
         {
             if (args == "on") MapFlip.Next = true;
             else if (args == "off") MapFlip.Next = false;
@@ -124,7 +124,7 @@ internal static class BuiltinCommands
                 foreach (var ld in UnityEngine.Object.FindObjectsOfType<Ladder>())
                     reply($"LADDER {ld.Id} top={ld.IsTop} pos={ld.transform.position}");
             }
-            else if (args == "map") Vanilla.Hud?.ToggleMapVisible(new MapOptions { Mode = MapOptions.Modes.Normal });
+            else if (args is "map" or "map count") Vanilla.Hud?.ToggleMapVisible(new MapOptions { Mode = args == "map" ? MapOptions.Modes.Normal : MapOptions.Modes.CountOverlay });
             else if (args == "platform")
             {
                 var pf = UnityEngine.Object.FindObjectOfType<MovingPlatformBehaviour>();
