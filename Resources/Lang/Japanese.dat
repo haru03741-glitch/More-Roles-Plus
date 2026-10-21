@@ -425,6 +425,8 @@ HostSettings.EnterToStart: ロビーで Enter を押すと試合を始める (PC
 HostSettings.PlayersCanRename: 参加者が /rename /color で名前と色を変えられる
 HostSettings.StartSeconds: 開始の数えの秒数
 HostSettings.NoGameEnd: 試合を自動で終わらせない (/end で終える)
+HostSettings.AbortWhenHostLeaves: 試合中にホストが抜けたら廃村にする
+HostChange.NewHost: ホストが抜けたので {name} がホストになりました
 
 # ── WhisperSettings ──
 WhisperSettings.Title: 耳打ち

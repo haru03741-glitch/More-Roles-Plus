@@ -88,7 +88,10 @@ internal static class VersionCheck
         var client = AmongUsClient.Instance;
         bool changed = _host != -1 && (leftId == _host || client.HostId != _host);
         _host = client.HostId;
-        if (!changed || client.AmHost) return;
+        if (!changed) return;
+        if (client.HostId != leftId) HostChange.OnChanged(); // 番号がまだ抜けた人のままなら、替わった知らせは後で来る方に任せる
+        // 本編が自分をホストにするのは抜けた人の知らせの前のことも後のこともあるので、先に来た方で引き継ぐ
+        if (client.AmHost) { HostChange.OnBecomeHost(); return; }
         _helloSentFor = System.IntPtr.Zero;
         ScheduleHello();
     }
@@ -96,6 +99,14 @@ internal static class VersionCheck
     // 新しいホストの側: 前のホストが受けた知らせは引き継げないので、今いる人は入ってきたばかりと同じに待つ
     public static void OnBecomeHost()
     {
+        var client = AmongUsClient.Instance;
+        bool changed = _host != -1 && _host != client.ClientId;
+        _host = client.ClientId;
+        if (changed)
+        {
+            HostChange.OnChanged();
+            HostChange.OnBecomeHost();
+        }
         Seen.Clear();
         SeenVersion.Clear();
         SeenAbi.Clear();
@@ -121,6 +132,7 @@ internal static class VersionCheck
         _startPendingUntil = 0;
         _host = -1;
         _helloSentFor = System.IntPtr.Zero;
+        HostChange.Clear();
     }
 
     public static void ForgetClient(int clientId) { Seen.Remove(clientId); SeenVersion.Remove(clientId); SeenAbi.Remove(clientId); JoinedAt.Remove(clientId); }

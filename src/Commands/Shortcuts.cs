@@ -68,6 +68,7 @@ public static class HostSettings
     public static readonly BoolOpt PlayersCanRename = new("HostSettings.PlayersCanRename", true);
     public static readonly IntOpt StartSeconds = new("HostSettings.StartSeconds", 5, 0, 30, 1, "s");
     public static readonly BoolOpt NoGameEnd = new("HostSettings.NoGameEnd", false);
+    public static readonly BoolOpt AbortWhenHostLeaves = new("HostSettings.AbortWhenHostLeaves", false);
 }
 
 // 開始の数えの長さを設定の秒数にする (本編は 5 秒)。数えはホストの端末が進めて客へ残りの秒を送るので、ホストだけで足りる

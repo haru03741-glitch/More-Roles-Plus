@@ -58,7 +58,7 @@ public sealed class PortalMaker : RoleBase
     private const float MachineR = 0.5f;       // ハンマーが当たる装置の大きさ (円)
     private const float HammerSlack = 1f;      // ホストが叩いた人の位置を確かめる時の遅れの分
     private static readonly List<PortalMaker> Active = new();
-    private int _hits;                         // ホストだけ: 今の組が叩かれた回数
+    private int _hits;                         // 今の組が叩かれた回数 (数えるのはホスト・全員が控えて、ホストが替わっても続きから数える)
 
     private readonly float[] _x = new float[2], _y = new float[2];
     private readonly PortalArt.Handle[] _art = new PortalArt.Handle[2];
@@ -412,6 +412,7 @@ public sealed class PortalMaker : RoleBase
     private void ShowHit(byte hitter, int hits)
     {
         if (_count == 0) return;
+        _hits = hits;
         var pc = GameData.Instance ? GameData.Instance.GetPlayerById(hitter) : null;
         var obj = pc != null ? pc.Object : null;
         int k = 0;

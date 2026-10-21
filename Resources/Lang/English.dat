@@ -425,6 +425,8 @@ HostSettings.EnterToStart: Press Enter in the lobby to start (PC)
 HostSettings.PlayersCanRename: Players can change name and color with /rename /color
 HostSettings.StartSeconds: Start countdown
 HostSettings.NoGameEnd: Never end the game automatically (end it with /end)
+HostSettings.AbortWhenHostLeaves: End the game with no winner if the host leaves mid-game
+HostChange.NewHost: The host left. {name} is the new host
 
 # ── WhisperSettings ──
 WhisperSettings.Title: Whispers

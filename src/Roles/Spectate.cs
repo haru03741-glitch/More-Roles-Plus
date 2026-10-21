@@ -52,6 +52,12 @@ internal static class Spectate
         _sendAt = Environment.TickCount64 + 1000;
     }
 
+    // ホストが替わった: 観戦の希望は前のホストのメモリにしか無いので、ロビーなら送り直す (試合中ならロビーに戻った時に送る)
+    public static void OnHostChanged()
+    {
+        if (!ShipStatus.Instance) ResendInLobby();
+    }
+
     private static void SendMine()
     {
         if (!PlayerControl.LocalPlayer || !AmongUsClient.Instance) return;

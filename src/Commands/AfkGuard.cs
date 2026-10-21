@@ -78,6 +78,12 @@ internal static class AfkGuard
         }
     }
 
+    // ホストが替わった: 放置の知らせは前のホストだけが受けたので、まだ放置のままなら今のホストへ送り直す
+    public static void OnHostChanged()
+    {
+        if (_reported) Report.Send(0);
+    }
+
     private static void Notify(string text)
     {
         var hud = Vanilla.Hud;

@@ -93,11 +93,18 @@ internal static class OptionSync
     public static void RestoreOwn()
     {
         if (!HoldsHostValues) return;
+        var held = new int[Registry.All.Count];
+        for (int i = 0; i < held.Length; i++) held[i] = Registry.All[i].Index;
+        string heldPreset = PresetLabel.Shown;
         Registry.Load();
         HoldsHostValues = false;
         PresetLabel.Recheck();
         _sent = null;
-        RememberSent(); // ホストの手元で知らせるのは、ここから画面で変えた分だけ
+        RememberSent();
+        // ホストを引き継いだ時は、部屋で使っていた値から戻して変わった所も次に送る時に知らせる
+        if (_sent == null) return;
+        _sent = held;
+        _sentPreset = heldPreset;
     }
 }
 
