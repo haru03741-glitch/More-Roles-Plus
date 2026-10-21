@@ -724,3 +724,10 @@ GameRules.TaskWin: タスクで勝つ
 GameRules.TaskWinOn: 勝てる
 GameRules.TaskWinNever: 勝てない
 GameRules.TaskWinNotIfCrewDead: クルー全滅なら勝てない
+
+# ── Emote ──
+Emote.Button: エモート
+Emote.Wave: 手を振る
+Emote.Jump: 跳ねる
+Emote.Clap: 拍手
+Emote.Beckon: 手招き

@@ -724,3 +724,10 @@ GameRules.TaskWin: Win by tasks
 GameRules.TaskWinOn: Yes
 GameRules.TaskWinNever: No
 GameRules.TaskWinNotIfCrewDead: Not if all crewmates are dead
+
+# ── Emote ──
+Emote.Button: Emote
+Emote.Wave: Wave
+Emote.Jump: Jump
+Emote.Clap: Clap
+Emote.Beckon: Beckon

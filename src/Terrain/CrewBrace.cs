@@ -68,6 +68,9 @@ internal static class CrewBrace
     }
 
     private static readonly Dictionary<byte, Crew> Crews = new();
+
+    // その人の体の絵を踏ん張りで動かしている最中か (体の根の位置を書く他の演出はその間は始めない)
+    internal static bool Posed(byte id) => Crews.TryGetValue(id, out var c) && c.Posed;
     private static readonly List<byte> Gone = new();
     private static Sprite _drop, _splash;
     private static readonly Sprite[] WaveArt = new Sprite[16]; // 8 方向 × 手前/奥

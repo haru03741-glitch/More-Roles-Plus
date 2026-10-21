@@ -32,6 +32,12 @@ internal sealed class ModButton
 
     public bool CoolingDown => _left > 0f;
 
+    // 並びの外に置いたボタンを動かす・出し入れする時に (HUD ごと消えた後は null)
+    public Transform Transform => _button ? _button.transform : null;
+
+    // アイコンの絵 (本編の能力ボタンの graphic)
+    public SpriteRenderer Graphic => _button ? _button.graphic : null;
+
     private ModButton(AbilityButton button, float cooldown, Func<bool> onClick)
     {
         _button = button;
@@ -40,13 +46,14 @@ internal sealed class ModButton
         _onClick = onClick;
     }
 
-    // onClick の返り値 = 使えたか (false なら待ち時間を始めない)
-    public static ModButton Create(Lifespan life, Sprite icon, string label, float cooldown, Func<bool> onClick)
+    // onClick の返り値 = 使えたか (false なら待ち時間を始めない)。
+    // parent を渡すと右下の並びの外 (その子) に置く (位置は呼び手が決める・HUD と一緒に出入りするのは同じ)
+    public static ModButton Create(Lifespan life, Sprite icon, string label, float cooldown, Func<bool> onClick, Transform parent = null)
     {
         var hud = Vanilla.Hud;
         if (!hud || !hud.AbilityButton || life.IsDead) return null;
         var src = hud.AbilityButton;
-        var b = UnityEngine.Object.Instantiate(src, src.transform.parent);
+        var b = UnityEngine.Object.Instantiate(src, parent ? parent : src.transform.parent);
         b.name = "MrpButton";
         // ラベルを本編の言語表で書き戻す部品を外す
         var translator = b.buttonLabelText.GetComponent<TextTranslatorTMP>();
