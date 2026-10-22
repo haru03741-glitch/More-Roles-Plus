@@ -68,6 +68,7 @@ internal static class ArchitectPlan
     private static int _shown, _tick, _opens;
     private static Transform _droneMark;
     private static bool _droneShown;
+    private static float _droneMx, _droneMy; // 最後に書いた印の位置 (地図の長さ・テスト用の表示に。印は船替えで消えていることがあるので読まない)
 
     private static Impostor.Architect _owner;
     private static PassiveButton _layerButton;
@@ -200,6 +201,7 @@ internal static class ArchitectPlan
         {
             if (_layer) Object.Destroy(_layer);
             Shades.Clear();
+            _shown = 0; // 前の層で出していた影の数 (残すと次に開いた時に空の一覧を読む)
             _droneMark = null;
             _droneShown = false;
             _layer = new GameObject(LayerName) { layer = map.gameObject.layer };
@@ -438,7 +440,9 @@ internal static class ArchitectPlan
             NewSprite(_droneMark, "body", sp, DroneColor);
             _droneShown = true;
         }
-        _droneMark.localPosition = FxMath.V3(d.X * _sign / _scale, d.Y / _scale, DroneZ);
+        _droneMx = d.X * _sign / _scale;
+        _droneMy = d.Y / _scale;
+        _droneMark.localPosition = FxMath.V3(_droneMx, _droneMy, DroneZ);
         if (!_droneShown) { _droneMark.gameObject.SetActive(true); _droneShown = true; }
     }
 
@@ -652,7 +656,7 @@ internal static class ArchitectPlan
     }
 
     internal static string Describe() =>
-        $"open={_open} opens={_opens} tex={_texW}x{_texH} ppu={_ppu} scale={_scale:0.###} sign={_sign} shades={_shown} drone={(_droneShown ? $"{_droneMark.localPosition.x:0.00},{_droneMark.localPosition.y:0.00}" : "-")} bakes={_bakes} bakeMs={_bakeMs:0.0} water={_hadWater} waterMs={_waterMs:0.00} drawing={_drawing} pts={Line.Count} spent={_spent:0.0} lines={_lines}";
+        $"open={_open} opens={_opens} tex={_texW}x{_texH} ppu={_ppu} scale={_scale:0.###} sign={_sign} shades={_shown} drone={(_droneShown ? $"{_droneMx:0.00},{_droneMy:0.00}" : "-")} bakes={_bakes} bakeMs={_bakeMs:0.0} water={_hadWater} waterMs={_waterMs:0.00} drawing={_drawing} pts={Line.Count} spent={_spent:0.0} lines={_lines}";
 }
 
 [HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.Show))]
