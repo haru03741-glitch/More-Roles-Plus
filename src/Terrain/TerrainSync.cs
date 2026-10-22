@@ -108,37 +108,24 @@ internal static class TerrainSync
         Applied++;
         if (r.Kind == DamageKind.Rewind)
         {
-            // 壁は変えないので指紋は前の件のまま積む。戻すのは刻みが来た時 (TerrainRewind)
+            // 壁は今ここで取り消す (指紋は取り消した件の前の値へ戻り、戻した線と耐久を積む)。水・火などは刻みが来た時 (TerrainRewind)
             landings = Array.Empty<RubbleLanding>();
+            TerrainFx.RunDeferred();
             TerrainDigest.Begin();
-            TerrainDigest.End(seq);
-            TerrainRewind.OnApplied(r);
-            return "rewind";
+            try { TerrainRewind.OnApplied(r); }
+            finally { TerrainDigest.End(seq); }
+            return $"rewind walls={TerrainRewind.Walls}";
         }
         TerrainFx.RunDeferred(); // 前の破壊の見た目を先に出す (出る順を適用の順に保つ)
         WaterSim.BeforeApply(r);
+        TerrainUndo.Begin(seq, r);
         TerrainDigest.Begin();
         string res;
         try { res = TerrainDamage.Apply(r, decide, out landings); }
         finally
         {
-            TerrainDigest.End(seq);
-            TerrainDamage.Mark("digest");
-            var rc = r;
-            TerrainFx.Defer(() => { BreakNoise.Emit(rc); DustCloud.OnApplied(rc); }); // 音と煙は見た目だけ: 次のフレームで
-            HammerSwing.OnApplied(r);
-            BombFuse.OnApplied(r);
-            TerrainDamage.Mark("dust");
-            WaterLeak.OnApplied(r);
-            TerrainDamage.Mark("leak");
-            WaterSim.OnApplied(r);
-            TerrainDamage.Mark("water");
-            FireSim.OnApplied(r);
-            TerrainDamage.Mark("fire");
-            PropSim.OnApplied(r);
-            TerrainDamage.Mark("props");
-            Decompression.OnApplied(r);
-            TerrainDamage.Mark("decomp");
+            try { AfterApply(seq, r); }
+            finally { TerrainUndo.End(); } // 漏れの口・減圧の口も件の持ち物にするので、受け手の後で閉じる (受け手が投げても必ず閉じる)
         }
         // 役職への知らせは呼び出し元が連番と配る列を書き終えてから (FireBroken)。受け手がさらに壊しても順番がずれない
         if (!r.Kind.Shapes()) return res;
@@ -151,6 +138,28 @@ internal static class TerrainSync
             WallsCut = TerrainDamage.LastCut,
         });
         return res;
+    }
+
+    // 適用の後 (指紋を閉じ、音と煙・各計算の受け手へ渡す)
+    private static void AfterApply(ushort seq, in ResolvedDamage r)
+    {
+        TerrainDigest.End(seq);
+        TerrainDamage.Mark("digest");
+        var rc = r;
+        TerrainFx.Defer(() => { BreakNoise.Emit(rc); DustCloud.OnApplied(rc); }); // 音と煙は見た目だけ: 次のフレームで
+        HammerSwing.OnApplied(r);
+        BombFuse.OnApplied(r);
+        TerrainDamage.Mark("dust");
+        WaterLeak.OnApplied(r);
+        TerrainDamage.Mark("leak");
+        WaterSim.OnApplied(r);
+        TerrainDamage.Mark("water");
+        FireSim.OnApplied(r);
+        TerrainDamage.Mark("fire");
+        PropSim.OnApplied(r);
+        TerrainDamage.Mark("props");
+        Decompression.OnApplied(r);
+        TerrainDamage.Mark("decomp");
     }
 
     private static readonly List<Roles.TerrainBrokenEvent> Broken = new();

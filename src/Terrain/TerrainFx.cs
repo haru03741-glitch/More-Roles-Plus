@@ -39,6 +39,7 @@ internal static class TerrainFx
         public float Roll;        // パイプ: 床を転がる (半径。0 = 転がらない)
         public int Bounces;
         public float HomeX, HomeY; // 爆心 / 叩いた側の床。壁の線の上から動き出す時は、この点と同じ側へだけ線を越えてよい
+        public object Owner;       // 出した件 (時戻しで取り消されたら一緒に消す・TerrainUndo.Token)
     }
 
     private static readonly List<Item> Items = new();
@@ -379,7 +380,8 @@ internal static class TerrainFx
     {
         if (Deferred.Count == 0) _deferGen = GameClock.ShipGen;
         else if (_deferGen != GameClock.ShipGen) { Deferred.Clear(); _deferGen = GameClock.ShipGen; }
-        Deferred.Add(a);
+        var owner = TerrainUndo.Token;
+        Deferred.Add(owner == null ? a : () => TerrainUndo.RunAs(owner, a));
     }
 
     internal static bool HasDeferred => Deferred.Count > 0;
@@ -516,6 +518,7 @@ internal static class TerrainFx
             Z = p.Tr.position.z, ZS = DamageMap.ZScale(p.Tr.position.z), Life = 1f, Sx = sc.x, Sy = sc.y, Sz = sc.z, Walls = walls,
         };
         it.HomeX = home.x; it.HomeY = home.y;
+        it.Owner = TerrainUndo.Token;
         Items.Add(it);
         return it;
     }
@@ -661,6 +664,7 @@ internal static class TerrainFx
         if (keep) DamageMap.Track(tr.gameObject);
         var it = new Item { Kind = kind, Tr = tr, Sr = sr, Px = pos.x, Py = pos.y, S0 = sx, S1 = sx, Sy = sy, Z = z, ZS = zs, Life = 1f, SpriteW = sw };
         it.HomeX = it.Px; it.HomeY = it.Py;
+        it.Owner = TerrainUndo.Token;
         Items.Add(it);
         return it;
     }
@@ -773,7 +777,7 @@ internal static class TerrainFx
                     // 山の上に乗った物ほど手前 (上に積もって見える)
                     if (it.Rest > 0f) { it.Z -= it.Rest * 0.02f * it.ZS; it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z); }
                     if (!RubbleBlocks.KeepPiece(it.Block, it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece))
-                        RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
+                        RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece, owner: it.Owner); // 止まった瓦礫は床の板へ焼く
                     ShadowPatch.MarkSettled(it.Px, it.Py + it.Rest); // 影の中の焼いた絵にも止まった瓦礫を描き込む
                     if (StrayProbe != null) { Settled++; if (StrayProbe(it.Px, it.Py)) Stray++; }
                 }
@@ -1000,4 +1004,22 @@ internal static class TerrainFx
     private static int Hash(Vector2 p) => (int)(p.x * 73856.093f) ^ (int)(p.y * 19349.663f);
 
     public static void Clear() { Items.Clear(); Deferred.Clear(); }
+
+    // 時戻しで取り消した件が出した物 (まだ動いている塊・破片・煙) を消す
+    internal static void DropOwned(object owner)
+    {
+        for (int i = Items.Count - 1; i >= 0; i--)
+        {
+            var it = Items[i];
+            if (it.Owner != owner) continue;
+            Items.RemoveAt(i);
+            if (!it.Tr) continue;
+            if (it.Kind is Kind.Puff or Kind.Spark or Kind.Flash) { Release(it.Tr, it.Sr); continue; }
+            if (it.Block != null) RubbleBlocks.Undo(it.Block); // 当たり判定も (飛んでいる塊の絵は下で消す)
+            if (!it.Tr) continue;
+            if (it.Kind == Kind.Piece && it.Sr && it.Sr.sprite) UnityEngine.Object.Destroy(it.Sr.sprite); // 部屋の絵から切り出した絵
+            it.Tr.gameObject.SetActive(false);
+            UnityEngine.Object.Destroy(it.Tr.gameObject);
+        }
+    }
 }

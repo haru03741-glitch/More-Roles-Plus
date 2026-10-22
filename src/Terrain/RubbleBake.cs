@@ -54,7 +54,11 @@ internal static class RubbleBake
         public float Z;
         public bool OwnSprite; // 割れた塊の絵は塊ごとに作ったもの (消す時に一緒に消す)
         public Action<GameObject> OnPlate; // 1 つだけで焼き、できた板を渡す (拾える瓦礫。板ごと消せるように他と混ぜない)
+        public object Owner;               // 出した件 (時戻しで取り消せる間は焼かずに置く・TerrainUndo.Token)
     }
+
+    // 時戻しで取り消せる件の瓦礫 (焼くと件ごとに消せないので、件が輪の外へ出るまで GameObject のまま置く)
+    private static readonly List<Pending> Held = new();
 
     private static readonly List<(Texture2D Tex, Sprite Sp)> Sheets = new();
     private static readonly List<Pending> Queue = new();
@@ -89,14 +93,46 @@ internal static class RubbleBake
 #endif
 
     // TerrainFx から: 動きが止まった瓦礫
-    public static void Add(Transform tr, SpriteRenderer sr, float z, bool ownSprite, Action<GameObject> onPlate = null)
+    public static void Add(Transform tr, SpriteRenderer sr, float z, bool ownSprite, Action<GameObject> onPlate = null, object owner = null)
     {
-        Queue.Add(new Pending { Go = tr.gameObject, Sr = sr, Z = z, OwnSprite = ownSprite, OnPlate = onPlate });
+        var p = new Pending { Go = tr.gameObject, Sr = sr, Z = z, OwnSprite = ownSprite, OnPlate = onPlate, Owner = owner };
+        if (TerrainUndo.Live(owner)) { Held.Add(p); return; }
+        Queue.Add(p);
         _lastAddMs = Environment.TickCount64;
+    }
+
+    // 輪の外へ出た件の瓦礫を焼く列へ移す
+    private static void ReleaseHeld()
+    {
+        TerrainUndo.Expire();
+        bool moved = false;
+        for (int i = Held.Count - 1; i >= 0; i--)
+        {
+            if (TerrainUndo.Live(Held[i].Owner)) continue;
+            if (Held[i].Go) { Queue.Add(Held[i]); moved = true; }
+            Held.RemoveAt(i);
+        }
+        if (moved) _lastAddMs = Environment.TickCount64;
+    }
+
+    // 時戻しで取り消した件の、焼かずに置いていた瓦礫を消す
+    internal static void DropOwned(object owner)
+    {
+        for (int i = Held.Count - 1; i >= 0; i--)
+        {
+            var p = Held[i];
+            if (p.Owner != owner) continue;
+            Held.RemoveAt(i);
+            if (!p.Go) continue;
+            if (p.OwnSprite && p.Sr && p.Sr.sprite) UnityEngine.Object.Destroy(p.Sr.sprite);
+            p.Go.SetActive(false);
+            UnityEngine.Object.Destroy(p.Go);
+        }
     }
 
     public static void Tick()
     {
+        if (Held.Count > 0) ReleaseHeld();
 #if ANDROID
         _frame++;
         long now = Environment.TickCount64;
@@ -498,6 +534,7 @@ internal static class RubbleBake
     internal static void CollectSettled(List<GameObject> into)
     {
         foreach (var p in Queue) if (p.Go) into.Add(p.Go);
+        foreach (var p in Held) if (p.Go) into.Add(p.Go);
 #if ANDROID
         foreach (var f in Reading) foreach (var s in f.Slots) foreach (var p in s.G.Items) if (p.Go) into.Add(p.Go);
 #endif
@@ -517,6 +554,7 @@ internal static class RubbleBake
         Sheets.Clear();
         Plates.Clear();
         Queue.Clear();
+        Held.Clear();
 #if ANDROID
         foreach (var f in Reading) Drop(f);
         Reading.Clear();

@@ -23,10 +23,11 @@ internal static class RoleCommands
             reply($"OK roles reg=[{reg}] assigned=[{now}] addons=[{addons}] addonsNow=[{addonNow}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
         });
 
-        TestBridge.Register("rewind", "[ask | force <秒> | doors <部屋 (SystemTypes)> | check <0|1>] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ)", (args, reply) =>
+        TestBridge.Register("rewind", "[ask | force <秒> | doors <部屋 (SystemTypes)> | check <0|1> | print] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ) / 壁の今の姿の指紋", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (p.Length >= 2 && p[0] == "check") Terrain.TerrainRewind.SelfCheck = p[1] == "1";
+            if (p.Length >= 1 && p[0] == "print") { reply($"OK rewind print {Terrain.TerrainUndo.Print()}"); return; }
             if (p.Length >= 2 && p[0] == "doors")
             {
                 if (!ShipStatus.Instance || !System.Enum.TryParse<SystemTypes>(p[1], out var room)) { reply("ERR rewind doors"); return; }
@@ -41,7 +42,7 @@ internal static class RoleCommands
             if (ShipStatus.Instance)
                 foreach (var d in ShipStatus.Instance.AllDoors)
                     if (d && !d.IsOpen) closed++;
-            reply($"OK rewind {TimeRewind.Probe()} closedDoors={closed} | terrain {Terrain.TerrainRewind.Probe()}");
+            reply($"OK rewind {TimeRewind.Probe()} closedDoors={closed} | terrain {Terrain.TerrainRewind.Probe()} | walls {Terrain.TerrainUndo.Probe()} digest={Terrain.TerrainDigest.Running:x8}");
         });
 
         TestBridge.Register("portal", "[x y | go <0|1> | use] 自分のポータルメーカーの状態 / (x, y) に置く (ボタンの待ち時間は使わない) / 装置の上へ移る / 本編の使用ボタンを押す", (args, reply) =>

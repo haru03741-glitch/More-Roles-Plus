@@ -64,6 +64,7 @@ internal static partial class Decompression
     {
         public int Tick;
         public bool Rebuild;      // 爆発で歩ける所が変わった (升を作り直す)
+        public bool Unmouth;      // 時戻しで取り消した口 Lines を外す
         public List<(Vector2 A, Vector2 B)> Lines; // 開通した口 (Rebuild でない時・曲がった壁では数本)
         public Vector2 Away;
     }
@@ -171,7 +172,17 @@ internal static partial class Decompression
             Build();
         }
         Enqueue(new Pending { Tick = tick, Lines = lines, Away = away });
+        TerrainUndo.OnUndo(() => { if (_running) Enqueue(new Pending { Tick = TerrainUndo.UndoTick, Unmouth = true, Lines = lines }); });
     }
+
+    // 時戻しで壁を取り消した: 戻す刻みに升を作り直す
+    internal static void RewindRebuild(int tick)
+    {
+        if (_running) Enqueue(new Pending { Tick = tick, Rebuild = true });
+    }
+
+    // 時戻し: 戻す刻み target 以後の出来事で、まだ処理していない物を捨てる
+    internal static void RewindPurge(int target) => Queue.RemoveAll(p => p.Tick >= target);
 
     private static void Enqueue(Pending p)
     {
@@ -840,7 +851,8 @@ internal static partial class Decompression
         {
             var p = Queue[0];
             Queue.RemoveAt(0);
-            if (!p.Rebuild) AddMouth(p.Lines, p.Away);
+            if (p.Unmouth) RemoveMouth(p.Lines);
+            else if (!p.Rebuild) AddMouth(p.Lines, p.Away);
             rebuild = true;
         }
         ulong bits = BitsAt(_step);
@@ -913,6 +925,21 @@ internal static partial class Decompression
         var nb = new Breach { Start = _step, W256 = Math.Min(MaxWidth256, w), Away = away };
         nb.Lines.AddRange(lines);
         Breaches.Add(nb);
+    }
+
+    // 時戻しで取り消した口の線を外す (同じ穴を広げた分なら残りの線で幅を測り直し、線が無くなった穴は消す)
+    private static void RemoveMouth(List<(Vector2 A, Vector2 B)> lines)
+    {
+        if (lines == null || lines.Count == 0) return;
+        for (int i = Breaches.Count - 1; i >= 0; i--)
+        {
+            var br = Breaches[i];
+            int before = br.Lines.Count;
+            foreach (var l in lines) br.Lines.Remove(l);
+            if (br.Lines.Count == before) continue;
+            if (br.Lines.Count == 0) Breaches.RemoveAt(i);
+            else br.W256 = Math.Min(MaxWidth256, (int)(Span(br.Lines) * 256f));
+        }
     }
 
     // 口の線の端どうしのいちばん遠い 2 点の距離

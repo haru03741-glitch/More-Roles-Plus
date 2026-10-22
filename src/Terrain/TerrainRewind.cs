@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace MoreRolesPlus.Terrain;
 
-// 時戻し (地形の側): 水・火・減圧・物を数秒前の記録へ戻す。壁の形は戻さない。
+// 時戻し (地形の側): 水・火・減圧・物を数秒前の記録へ戻す。壁の形は TerrainUndo が件ごとに取り消す。
 // 刻みは戻さない。戻す合図 (DamageKind.Rewind) は壊した結果と同じ連番の列で届き、刻み Tick に押されている。
 // 各計算は自分の刻みの頭 (その刻みを進める前) で
 //   - 刻みが Every の倍数なら今の中身を記録の輪へ写す
@@ -36,6 +36,7 @@ internal static class TerrainRewind
     // 写すのにかかった時間 (計算ごと・最後と最大 ms)
     private static readonly double[] SaveMs = new double[(int)Sim.Count], SaveMaxMs = new double[(int)Sim.Count];
     internal static string LastNote = "-";
+    internal static int Walls; // 直前の合図で取り消した壁の件の数
 
     // 確認用: 記録の時の指紋を取っておき、読み戻した直後と比べる (自分の手元だけ・記録が重くなる)
     internal static bool SelfCheck;
@@ -51,7 +52,8 @@ internal static class TerrainRewind
         if (_on) return;
         _on = true;
         Reset();
-        life.OnRelease(() => { _on = false; Reset(); });
+        TerrainUndo.Clear(); // 壁の記録は船ごとに自分で捨てる (ここの船の見張りは計算が動いてから初めて回るので、壊した後に記録を消してしまう)
+        life.OnRelease(() => { _on = false; Reset(); TerrainUndo.Clear(); });
     }
 
     private static void Reset()
@@ -75,13 +77,19 @@ internal static class TerrainRewind
         Reset();
     }
 
-    // 戻す合図 (全員の手元・連番の順)。動いていない計算は戻す中身が無い
+    // 戻す合図 (全員の手元・連番の順)。動いていない計算は戻す中身が無い。
+    // 戻す刻み以後のまだ処理していない出来事を捨ててから、その後に壊した壁を取り消す (取り消しは各計算へ作り直しを入れる)
     internal static void OnApplied(in ResolvedDamage r)
     {
         if (!_on) return;
         CheckShip();
         int tick = GameClock.Expand(r.Tick);
         var o = new Order { Tick = tick, Target = FloorDiv(tick - r.Seed, Every) * Every };
+        WaterSim.RewindPurge(o.Target);
+        FireSim.RewindPurge(o.Target);
+        Decompression.RewindPurge(o.Target);
+        PropSim.RewindPurge(o.Target);
+        Walls = TerrainUndo.Rewind(o.Target, tick);
         o.Done[(int)Sim.Decomp] = !Decompression.Running;
         o.Done[(int)Sim.Prop] = !PropSim.Drives;
         o.Done[(int)Sim.Water] = !WaterSim.Running;

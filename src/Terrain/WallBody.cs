@@ -289,6 +289,7 @@ internal sealed class WallBody
         {
             var go = new GameObject(CapName) { layer = layer };
             go.transform.SetParent(ship.transform, true);
+            TerrainUndo.Made(go);
             var t = go.transform;
             foreach (var raw in caps)
             {
@@ -313,6 +314,7 @@ internal sealed class WallBody
         if (!ship) return;
         var go = new GameObject(MouthName) { layer = 9 };
         go.transform.SetParent(ship.transform, true);
+        TerrainUndo.Made(go);
         var t = go.transform;
         var line = Snap(new List<Vector2> { a, b });
         if (line[0] == line[1]) return;
@@ -331,6 +333,7 @@ internal sealed class WallBody
         if (line[0] == line[3]) return;
         var go = new GameObject(SealName) { layer = 10 };
         go.transform.SetParent(ship.transform, true);
+        TerrainUndo.Made(go);
         var t = go.transform;
         var col = go.AddComponent<EdgeCollider2D>();
         var pts = new Vector2[line.Count];

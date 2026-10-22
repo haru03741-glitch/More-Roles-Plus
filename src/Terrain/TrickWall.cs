@@ -182,6 +182,14 @@ internal static class TrickWall
         int filled = SolidMap.Fill(new RectShape(c, t, len, Thickness));
         BreakableProps.AddWall(name, art.Master, art.Slices, cols, bx0, by0, bx1, by1,
             new RectShape(c, t, len + CarveMargin * 2f, Thickness + CarveMargin * 2f), art.Owned, art.Seeds);
+        TerrainUndo.OnUndo(() =>
+        {
+            // 時戻しで立てる前へ戻す: 壊れた物の扱いにして壁の道から外し、絵と当たり判定ごと消す (視界の線と立ち上がりは根が消えると外れる)
+            BreakableProps.RemoveWall(name);
+            if (!root) return;
+            root.SetActive(false);
+            UnityEngine.Object.Destroy(root);
+        });
         _riseGen = GameClock.ShipGen;
         Rising.Add(new Rise { Root = art.Root, ScaleX = art.ScaleX, ScaleY = art.ScaleY, Start = Environment.TickCount64, X = c.x, Y = c.y, Slices = art.Slices });
         BreakNoise.PlayAt("noise_rubble_metal", c.x, c.y, SoundRange, SoundMuffle, 0.55f, 0.75f);

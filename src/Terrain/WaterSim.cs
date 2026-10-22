@@ -157,6 +157,7 @@ internal static partial class WaterSim
         public int Sx, Sy, Sr;      // 衝撃の中心 (升 ×256) と半径 (升 ×256)
         public int Sp, Bx, By;      // 強さ (0..256) と偏り (長さ ≈256 × 力)
         public bool Push;           // 押し: 地形は変わらないので作り直さない。(Bx, By) = 向き (長さ 256)・Sr = 届く長さ
+        public bool Unleak;         // 時戻しで取り消した漏れの口 Src を外す
         public ushort Seed;
     }
 
@@ -322,6 +323,28 @@ internal static partial class WaterSim
         Enqueue(p);
     }
 
+    // 時戻しで壁を取り消した件: 壊した時と同じ範囲の升を、戻す刻みに今の (戻した) 壁で作り直す (衝撃は無し)。
+    // far = 壊した時の物ごと壊れた物の端までの距離
+    internal static void RewindReshape(in ResolvedDamage r, int tick, float far)
+    {
+        try
+        {
+            bool shapes = r.Kind.Shapes() || r.Kind == DamageKind.Wall;
+            if (!shapes || !(_running || _based)) return;
+            float rad = r.Kind switch { DamageKind.Explosion => r.Size * ShockReach + ShockExtra, DamageKind.Wall => r.Size * 0.5f + 0.6f, _ => 2f };
+            if (r.Kind == DamageKind.Explosion) rad = MathF.Max(rad, r.Size + 0.6f);
+            rad = MathF.Max(rad, far + 0.6f);
+            int cx = (int)MathF.Floor((r.Position.x - _org.x) / _cell), cy = (int)MathF.Floor((r.Position.y - _org.y) / _cell);
+            var p = new Pending { Tick = tick, Cx = cx, Cy = cy, R = (int)(rad / _cell) + 2 };
+            if (!_running) { Reshape(p.Cx, p.Cy, p.R); return; }
+            Enqueue(p);
+        }
+        catch (Exception e) { Fail("rewind reshape", e); }
+    }
+
+    // 時戻し: 戻す刻み target 以後の出来事で、まだ処理していない物を捨てる (読み戻した中身に二度効かせない・取り消した壁の出来事を出さない)
+    internal static void RewindPurge(int target) => Queue.RemoveAll(p => p.Tick >= target);
+
     // 壊れた所の升と落ちる縁を作り直す (StepOnce の出来事と同じ範囲)
     private static void Reshape(int cx, int cy, int r)
     {
@@ -400,6 +423,7 @@ internal static partial class WaterSim
         int my = (int)MathF.Floor((at.y - _org.y) / _cell * 256f) + dy * MouthQ / 4;
         var src = new Source { Start = tick, Mx = mx, My = my, Dx = dx, Dy = dy, Both = both, At = at, N = n, Seed = seed, Rng = 0x9E3779B9u ^ seed * 2654435761u };
         Enqueue(new Pending { Tick = tick, Leak = true, Src = src });
+        TerrainUndo.OnUndo(() => { if (_running) Enqueue(new Pending { Tick = TerrainUndo.UndoTick, Unleak = true, Src = src }); });
     }
 
     private static void AddInflow(in ResolvedDamage r)
@@ -1622,6 +1646,7 @@ internal static partial class WaterSim
             var p = Queue[0];
             Queue.RemoveAt(0);
             if (p.Leak) { Sources.Add(p.Src); continue; }
+            if (p.Unleak) { Sources.Remove(p.Src); continue; }
             if (p.Inflow) { Inflows.Add(new Inflow { K = p.Cy * _w + p.Cx, End = p.Sr > 0 ? p.Tick + p.Sr : 0, Rate = p.Sp }); continue; }
             if (p.Push) { Push(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed); continue; }
             int reach = p.R + FallScan[3] + 1;

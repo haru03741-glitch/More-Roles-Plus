@@ -51,6 +51,7 @@ internal static class SolidMap
     internal static byte[] IslandCells => _island; // 島の番号 (読むだけ・無ければ null)
     internal static bool OutsideAt(int k) => _outside != null && _outside[k] == 1;
     internal static byte[] OutsideCells => _outside; // BareSky の元 (読むだけ・無ければ null)
+    internal static byte[] SealedCells => _sealed; // 時戻しが書き戻す (無ければ null)
     internal const int BareSkyReach = OutsideReach;
     internal static Vector2 Org => _origin;
     internal static bool LeakedCell(int k) => _leaked != null && _leaked[k] != 0;

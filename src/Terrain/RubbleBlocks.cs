@@ -150,7 +150,9 @@ internal static class RubbleBlocks
             // 親 (船) の倍率を打ち消して世界での半径にする
             float s = MathF.Abs(go.transform.lossyScale.x);
             col.radius = l.Radius / (s > 1e-4f ? s : 1f);
-            Blocks.Add(placed[i] = new Block { Go = go, X = l.Position.x, Y = l.Position.y });
+            var b = placed[i] = new Block { Go = go, X = l.Position.x, Y = l.Position.y };
+            Blocks.Add(b);
+            TerrainUndo.OnUndo(() => Undo(b)); // 時戻しで取り消した件の瓦礫は当たり判定ごと消す
         }
         return placed;
     }
@@ -224,6 +226,14 @@ internal static class RubbleBlocks
         UnityEngine.Object.Destroy(b.Piece.gameObject);
         b.Piece = null;
         ShadowPatch.MarkSettled(b.X, b.Y); // 影の中の焼いた絵からも消す
+    }
+
+    // 時戻し: 当たり判定を先に止めてから消す (Destroy は同じフレームでは残り、次の破壊の問い合わせに出る)
+    internal static void Undo(Block b)
+    {
+        if (b.Go) b.Go.SetActive(false);
+        Remove(b);
+        Blocks.Remove(b);
     }
 
     // マップが変わった時 (GameObject は DamageMap が片付ける)

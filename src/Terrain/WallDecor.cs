@@ -46,6 +46,8 @@ internal static class WallDecor
             // 部品を見るのは抜けた所の物だけ (船じゅうの絵で部品を引くと重い)
             if (!sr || !sr.enabled || !PropSim.IsDecor(sr)) continue;
             sr.enabled = false;
+            var item = (sr, mn, sz);
+            TerrainUndo.OnUndo(() => { if (sr) sr.enabled = true; Decor.Add(item); }); // 時戻しで壁が戻ったら飾りも戻す
             n++;
         }
         return n;

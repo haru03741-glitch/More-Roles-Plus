@@ -20,7 +20,9 @@ internal static class WallDurability
     {
         Sync();
         long key = Key(p);
-        int hp = Hp.TryGetValue(key, out int v) ? v : MaxHp;
+        bool had = Hp.TryGetValue(key, out int v);
+        TerrainUndo.Hp(key, had, v);
+        int hp = had ? v : MaxHp;
         hp -= damage;
         Hp[key] = hp;
         TerrainDigest.Hp(key, hp);
@@ -32,6 +34,16 @@ internal static class WallDurability
     {
         Sync();
         long key = Key(p);
+        TerrainUndo.Hp(key, Hp.TryGetValue(key, out int v), v);
+        Hp[key] = hp;
+        TerrainDigest.Hp(key, hp);
+    }
+
+    // 時戻し: 件の前の値へ戻す (int.MinValue = 前は叩かれていなかった)。戻した値は指紋に積む
+    internal static void Restore(long key, int hp)
+    {
+        Sync();
+        if (hp == int.MinValue) { Hp.Remove(key); TerrainDigest.Hp(key, MaxHp); return; }
         Hp[key] = hp;
         TerrainDigest.Hp(key, hp);
     }

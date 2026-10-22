@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace MoreRolesPlus.Terrain;
 
 // 時戻しの記録 (水)。写すのは水の量と流れ・動いている升の一覧・粒・落ちている水・浸水の口。
-// 漏れの口 (Sources)・扉の噴き出し (Jets) は壊れた壁と扉に付いた物なので今のまま (壁は戻さない)
+// 漏れの口 (Sources)・扉の噴き出し (Jets) は壊れた壁と扉に付いた物なので写さない (壁を取り消した漏れの口は TerrainUndo が外す)
 internal static partial class WaterSim
 {
     internal sealed class RewindRec

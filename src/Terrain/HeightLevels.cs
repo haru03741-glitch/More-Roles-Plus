@@ -146,6 +146,7 @@ internal static class HeightLevels
     {
         var go = new GameObject(LedgeName) { layer = ShipLayer };
         go.transform.SetParent(ship.transform, true);
+        TerrainUndo.Made(go);
         return go;
     }
 

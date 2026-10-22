@@ -39,6 +39,18 @@ internal static class WaterSpray
     private static long _lastMs;
     internal static double LastDrawMs { get; private set; }
 
+    // 時戻しで取り消した漏れの噴き出しを消す
+    internal static void StopAt(Vector2 at)
+    {
+        for (int i = Sprays.Count - 1; i >= 0; i--)
+        {
+            var s = Sprays[i];
+            if (MathF.Abs(s.Cx - at.x) >= 0.01f || MathF.Abs(s.Cy - at.y) >= 0.01f) continue;
+            Destroy(s);
+            Sprays.RemoveAt(i);
+        }
+    }
+
     // 噴き出しを見せ始める (WaterLeak から)。dir = 主に噴く向き (流れの筋の向き)
     public static void Start(Vector2 at, Vector2 dir, float z)
     {

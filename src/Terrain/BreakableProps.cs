@@ -184,6 +184,18 @@ internal static class BreakableProps
         TerrainDigest.Hp(-1 - k, p.Hp);
     }
 
+    // 時戻しで取り消した仕掛け壁: 壊れた物として扱い、当たり判定を壁の道から外す (並びの番号は他の物が使うので消さない)
+    internal static void RemoveWall(string name)
+    {
+        if (!Ensure()) return;
+        foreach (var p in Props)
+        {
+            if (p.Name != name) continue;
+            p.Broken = true;
+            foreach (var c in p.Cols) if (c) ByCollider.Remove(c.GetInstanceID());
+        }
+    }
+
     // 立てた後から足す仕掛け壁の当たり判定 (視点で選ぶ視界の線)。壊れた時に一緒に止め、壁の道からも外す。もう壊れていれば false
     internal static bool AddWallCollider(string name, Collider2D c)
     {
@@ -234,6 +246,7 @@ internal static class BreakableProps
         int k = At(e.Position);
         if (k < 0) return "prop not found";
         var p = Props[k];
+        UndoHp(p, k);
         p.Hp = e.Hp;
         TerrainDigest.Hp(-1 - k, p.Hp);
         TerrainDamage.LastMaterial = p.Spec.Wood ? "wood" : "metal";
@@ -286,6 +299,7 @@ internal static class BreakableProps
         int k = At(e.Position);
         if (k < 0) return "crumble not found";
         var p = Props[k];
+        UndoHp(p, k);
         p.Hp = 0;
         TerrainDigest.Hp(-1 - k, 0);
         TerrainDamage.LastMaterial = p.Spec.Wood ? "wood" : "metal";
@@ -313,6 +327,7 @@ internal static class BreakableProps
             // 範囲の中で爆心にいちばん近い点が形の中なら壊れる
             float qx = Math.Clamp(center.x, p.X0, p.X1), qy = Math.Clamp(center.y, p.Y0, p.Y1);
             if (core.SignedDistance(qx, qy) >= 0f) continue;
+            UndoHp(p, k);
             p.Hp = 0;
             TerrainDigest.Hp(-1 - k, 0);
             float dx = (p.X0 + p.X1) * 0.5f - center.x, dy = (p.Y0 + p.Y1) * 0.5f - center.y, m = MathF.Sqrt(dx * dx + dy * dy);
@@ -349,6 +364,7 @@ internal static class BreakableProps
     private static int Break(Prop p, Vector2 dir, Vector2 home, ushort seed, Vector2 from, bool decide, RubbleLanding[] given, ref RubbleLanding[] landings)
     {
         p.Broken = true;
+        UndoBreak(p);
         {
             float fx = Math.Max(Math.Abs(from.x - p.X0), Math.Abs(from.x - p.X1)), fy = Math.Max(Math.Abs(from.y - p.Y0), Math.Abs(from.y - p.Y1));
             LastBrokenFar = Math.Max(LastBrokenFar, MathF.Sqrt(fx * fx + fy * fy));
@@ -370,6 +386,30 @@ internal static class BreakableProps
             decide, decide ? null : given);
         Plugin.Logger.LogInfo($"prop break {p.Name}: pieces={parts.Count} at=({cx:0.00},{cy:0.00})");
         return parts.Count;
+    }
+
+    // 時戻しで取り消した件の前の耐久へ戻す (戻した値は指紋に積む)
+    private static void UndoHp(Prop p, int k)
+    {
+        if (!TerrainUndo.Recording) return;
+        int hp = p.Hp;
+        TerrainUndo.OnUndo(() => { p.Hp = hp; TerrainDigest.Hp(-1 - k, hp); });
+    }
+
+    // 時戻しで取り消した件で壊れた物を元に戻す (当たり判定と絵の有効・壊れた印。欠片は TerrainFx が件ごと消す)
+    private static void UndoBreak(Prop p)
+    {
+        if (!TerrainUndo.Recording) return;
+        var cols = new bool[p.Cols.Count];
+        for (int i = 0; i < cols.Length; i++) cols[i] = p.Cols[i] && p.Cols[i].enabled;
+        var rens = new bool[p.Renderers.Count];
+        for (int i = 0; i < rens.Length; i++) rens[i] = p.Renderers[i] && p.Renderers[i].enabled;
+        TerrainUndo.OnUndo(() =>
+        {
+            p.Broken = false;
+            for (int i = 0; i < cols.Length; i++) if (p.Cols[i]) p.Cols[i].enabled = cols[i];
+            for (int i = 0; i < rens.Length; i++) if (p.Renderers[i]) p.Renderers[i].enabled = rens[i];
+        });
     }
 
     // 絵を割った欠片: 絵の四角に散らした点ごとの細胞 (近い点の側だけを残した凸の多角形) で元の絵を切り出す

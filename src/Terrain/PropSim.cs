@@ -250,6 +250,9 @@ internal static partial class PropSim
         catch (Exception e) { Fail("apply", e); }
     }
 
+    // 時戻し: 戻す刻み target 以後の出来事で、まだ処理していない物を捨てる
+    internal static void RewindPurge(int target) => Queue.RemoveAll(p => p.Tick >= target);
+
     private static void Fail(string where, Exception e)
     {
         Plugin.Logger.LogError($"[PropSim] {where}: {e}");

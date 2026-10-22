@@ -1027,6 +1027,14 @@ internal static class DamageMap
 
     private static void MarkDirtyAll() { _dirtyAll = true; _dirty = true; }
 
+    // 書き戻した添字の範囲 (start から n バイト・画素あたり stride バイト) の行を送り直す
+    internal static void MarkDirtyBytes(int start, int n, int stride)
+    {
+        if (_pixels == null || _w <= 0) return;
+        int p0 = start / stride, p1 = (start + n - 1) / stride;
+        MarkDirtyPx(0, p0 / _w, _w - 1, p1 / _w);
+    }
+
     private static RenderTexture MakeRt(string name, RenderTextureFormat format, FilterMode filter)
     {
         var rt = new RenderTexture(_w, _h, 0, format, RenderTextureReadWrite.Linear)
@@ -1233,6 +1241,7 @@ internal static class DamageMap
         csr.sharedMaterial = _decalMat;
         Underlays.Add(crack);
         CrackArt.Add(crack);
+        TerrainUndo.Made(crack);
     }
 
     // 穴の中 (部屋と部屋の隙間) は床でなく船体の中: 暗い奥に梁と配管が見える (手続きの絵を世界に固定した格子で敷き詰める)。
@@ -1272,7 +1281,9 @@ internal static class DamageMap
             Vector2 p = ax * ((iu + 0.5f) * tw) + ay * ((iv + 0.5f) * th);
             if ((p - c).sqrMagnitude > (reach + tw) * (reach + tw)) continue;
             // 同じ格子の升は 1 枚だけ (重ねて敷くと板の数だけ描く)
-            if (!HullCells.Add((iu, iv, (int)angle))) continue;
+            var cell = (iu, iv, (int)angle);
+            if (!HullCells.Add(cell)) continue;
+            TerrainUndo.OnUndo(() => HullCells.Remove(cell));
             var go = new GameObject("MrpHullInterior") { layer = OwnArtLayer };
             go.transform.SetParent(_ship.transform, true);
             go.transform.position = new Vector3(p.x, p.y, z);
@@ -1283,6 +1294,7 @@ internal static class DamageMap
             sr.sharedMaterial = _underlayMat;
             Underlays.Add(go);
             OwnArt.Add(go);
+            TerrainUndo.Made(go);
         }
     }
 

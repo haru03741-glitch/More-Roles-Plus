@@ -99,6 +99,7 @@ internal static class EdgeCutter
 
         chains.RemoveAll(ch => ch.Count < 2 || (ch.Count == 2 && (ch[0] - ch[1]).sqrMagnitude < 1e-6f));
 
+        TerrainUndo.Line(col);
         if (chains.Count == 0)
         {
             TerrainDigest.Removed(world[0], world[n - 1]);
@@ -110,6 +111,7 @@ internal static class EdgeCutter
         for (int k = 1; k < chains.Count; k++)
         {
             var extra = col.gameObject.AddComponent<EdgeCollider2D>();
+            TerrainUndo.Made(extra);
             extra.edgeRadius = col.edgeRadius;
             extra.isTrigger = col.isTrigger;
             Apply(extra, chains[k], t, offset);

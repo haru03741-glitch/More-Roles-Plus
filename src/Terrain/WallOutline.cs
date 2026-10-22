@@ -48,7 +48,11 @@ internal static class WallOutline
             AddLoop(go, col, circle.offset, pts, result);
         }
 
-        if (result.Count > 0) col.enabled = false;
+        if (result.Count > 0)
+        {
+            TerrainUndo.Enabled(col);
+            col.enabled = false;
+        }
         return result;
     }
 
@@ -59,6 +63,7 @@ internal static class WallOutline
         Array.Copy(pts, loop, pts.Length);
         loop[pts.Length] = pts[0];
         var e = go.AddComponent<EdgeCollider2D>();
+        TerrainUndo.Made(e);
         e.offset = offset;
         e.points = loop;
         e.isTrigger = src.isTrigger;

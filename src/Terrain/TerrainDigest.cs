@@ -50,6 +50,9 @@ internal static class TerrainDigest
 
     public static bool TryGet(ushort seq, out uint hash) => History.TryGetValue(seq, out hash);
 
+    // 時戻し: 取り消した件の前の値へ戻す (次の End がこの値から積む)
+    public static void Restore(uint running) => Running = running;
+
     // 書き換えた壁の線 (世界座標)
     public static void Chain(List<Vector2> pts)
     {

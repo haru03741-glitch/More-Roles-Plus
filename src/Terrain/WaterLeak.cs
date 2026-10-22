@@ -362,6 +362,7 @@ internal static class WaterLeak
         if (pipes) AddPipes(at.x, at.y, floor - 0.003f * zs + 0.0005f, n, segLen, seed);
         var dir = pos ? n : -n;
         WaterSim.AddLeak(tick, at, dir, pos && neg, seed);
+        TerrainUndo.OnUndo(() => StopAt(at)); // 時戻しで壁が戻ったら噴き出しの絵も止める (水は WaterSim が口を外す)
         Made++;
         Last = $"{room} @{at.x:0.0},{at.y:0.0} sides={(pos && neg ? 2 : 1)} tick={tick}";
     }
@@ -383,6 +384,14 @@ internal static class WaterLeak
             Jets.Add(jet);
         }
         catch (Exception e) { Plugin.Logger.LogError($"[WaterLeak] jet: {e}"); }
+    }
+
+    // 時戻しで取り消した漏れの噴き出しと霧を止める (飛んでいる粒はそのまま落ちる)
+    private static void StopAt(Vector2 at)
+    {
+        for (int i = Jets.Count - 1; i >= 0; i--)
+            if (MathF.Abs(Jets[i].X - at.x) < 0.01f && MathF.Abs(Jets[i].Y - at.y) < 0.01f) Jets.RemoveAt(i);
+        WaterSpray.StopAt(at);
     }
 
     // ShadowPatch から: 影の中の焼いた絵に描き込む物
@@ -466,6 +475,7 @@ internal static class WaterLeak
         pipe.transform.localScale = FxMath.V3(flip * len / Math.Max(0.0001f, b.x), thick / Math.Max(0.0001f, b.y), 1f);
         while (Pipes.Count >= MaxPipes) { if (Pipes[0]) UnityEngine.Object.Destroy(Pipes[0]); Pipes.RemoveAt(0); }
         Pipes.Add(pipe);
+        TerrainUndo.Made(pipe);
         ShadowPatch.MarkDirtyLater(FxMath.V2(x, y), len * 0.5f + 0.2f); // 影の中の焼いた絵にも描き込む
     }
 
