@@ -58,9 +58,10 @@ internal static class RoleMenu
     private const int ActZero = 0, ActFull = 1, ActUndo = 2, ActChanceTo = 3, ActCountTo = 4,
         ActChanceDown = 5, ActChanceUp = 6, ActCountDown = 7, ActCountUp = 8;
 
-    // 一緒に出ない役職の札 (開いた役職の下に並ぶ)
+    // 一緒に出ない役職の札 (開いた役職の下に並ぶ)。見出しの行 (細かい設定の行と同じ高さ) を押すと札が開く
     private const int ExclColumns = 4;
-    private const float ExclChipH = 0.3f, ExclGap = 0.07f, ExclPad = 0.12f, ExclTitleH = 0.34f;
+    private const float ExclChipH = 0.3f, ExclGap = 0.07f, ExclPad = 0.12f, ExclHeadH = SubH;
+    private static readonly HashSet<string> ExclOpen = new();  // 札を開いている役職 (開き直しても残す)
 
     // ホイール・右クリックの相手 = 指が乗っている役職の行と所 (0 = 名前・1 = 人数の ±・2 = 出現率の ±)
     private static RoleRow _hoverRow;
@@ -96,7 +97,12 @@ internal static class RoleMenu
     private sealed class ExclPanel
     {
         public GameObject Root;
-        public float Height;
+        public float FullHeight;  // 札を開いた時の高さ (閉じている時は ExclHeadH)
+        public SpriteRenderer Fill, Edge;
+        public Color FillColor;
+        public TextMeshPro Title, Chevron;
+        public string TitleText;  // 書いた見出しの文 (変わった時だけ書く)
+        public bool Open, Hover;
         public readonly List<ExclChip> Chips = new();
     }
 
@@ -1060,15 +1066,40 @@ internal static class RoleMenu
         if (!on)
         {
             if (r.Excl != null && r.Excl.Root && r.Excl.Root.activeSelf) r.Excl.Root.SetActive(false);
+            // 隠すと指が離れた知らせが来ないので、次に出す時は明るい地を残さない
+            if (r.Excl != null) r.Excl.Hover = false;
             return;
         }
         r.Excl ??= BuildExcl(r);
-        if (r.Excl == null || !r.Excl.Root) return;
-        if (!r.Excl.Root.activeSelf) r.Excl.Root.SetActive(true);
+        var p = r.Excl;
+        if (p == null || !p.Root) return;
+        if (!p.Root.activeSelf) p.Root.SetActive(true);
+        bool open = ExclOpen.Contains(r.Role.Id);
+        if (open != p.Open) SetExclShape(p, open);
         // 板の上端を細かい設定の行の板の上端と同じ所に
-        r.Excl.Root.transform.localPosition = new Vector3(0f, y + SubH / 2f, Z);
-        y -= r.Excl.Height + (OptStep - SubH);
+        p.Root.transform.localPosition = new Vector3(0f, y + SubH / 2f, Z);
+        y -= (p.Open ? p.FullHeight : ExclHeadH) + (OptStep - SubH);
         RefreshExcl(r);
+    }
+
+    // 札の開け閉め: 板の高さを変え、札を出し入れし、印を回す (作り直さない)
+    private static void SetExclShape(ExclPanel p, bool open)
+    {
+        p.Open = open;
+        float h = open ? p.FullHeight : ExclHeadH;
+        if (p.Edge)
+        {
+            p.Edge.size = new Vector2(p.Edge.size.x, h + Edge * 2f);
+            p.Edge.transform.localPosition = new Vector3(p.Edge.transform.localPosition.x, -h / 2f, p.Edge.transform.localPosition.z);
+        }
+        if (p.Fill)
+        {
+            p.Fill.size = new Vector2(p.Fill.size.x, h);
+            p.Fill.transform.localPosition = new Vector3(p.Fill.transform.localPosition.x, -h / 2f, p.Fill.transform.localPosition.z);
+        }
+        foreach (var chip in p.Chips)
+            if (chip.Button) chip.Button.gameObject.SetActive(open);
+        if (p.Chevron) p.Chevron.transform.localEulerAngles = new Vector3(0f, 0f, open ? -90f : 0f);
     }
 
     // 細かい設定の行と同じ板 (輪郭 + 役職の色を少し混ぜた地) に、見出しと他の役職の札を 4 列で並べる。
@@ -1092,20 +1123,47 @@ internal static class RoleMenu
         var t = root.transform;
         var p = new ExclPanel { Root = root };
         int rows = (others.Count + ExclColumns - 1) / ExclColumns;
-        p.Height = ExclPad * 2f + ExclTitleH + rows * ExclChipH + Math.Max(rows - 1, 0) * ExclGap;
+        p.FullHeight = ExclHeadH + rows * ExclChipH + Math.Max(rows - 1, 0) * ExclGap + ExclPad;
 
+        // 板は開いた時の高さで作り、SetExclShape で今の高さに合わせる
         var mat = MenuArt.Masked(r.Row.labelSprite);
         float w = CardR - SubL, cx = (SubL + CardR) / 2f;
-        MenuArt.Panel(t, "MrpOptEdge", 0.09f, new Vector2(w + Edge * 2f, p.Height + Edge * 2f), new Vector3(cx, -p.Height / 2f, 3.2f), Ink, mat);
-        MenuArt.Panel(t, "MrpOpt", 0.08f, new Vector2(w, p.Height), new Vector3(cx, -p.Height / 2f, 3f), Mix(CardOff, RoleDisplay.ParseColor(me.Color), 0.1f), mat);
+        p.FillColor = Mix(CardOff, RoleDisplay.ParseColor(me.Color), 0.1f);
+        p.Edge = MenuArt.Panel(t, "MrpOptEdge", 0.09f, new Vector2(w + Edge * 2f, p.FullHeight + Edge * 2f), new Vector3(cx, -p.FullHeight / 2f, 3.2f), Ink, mat);
+        p.Fill = MenuArt.Panel(t, "MrpOpt", 0.08f, new Vector2(w, p.FullHeight), new Vector3(cx, -p.FullHeight / 2f, 3f), p.FillColor, mat);
 
-        var title = MakeLabel(proto, t, "MrpNotWithTitle", new Vector3(SubL + 0.2f, -ExclPad - ExclTitleH / 2f, 0f), w - 0.4f, ExclTitleH);
+        // 見出しの行 = 開け閉めの印 + 名前 + (閉じている時は選んだ役職・開いている時は説明)。行の全体が押せる
+        var chev = MakeLabel(proto, t, "MrpChevron", new Vector3(SubL + 0.17f, -ExclHeadH / 2f + 0.01f, 0f), 0.2f, 0.3f);
+        chev.alignment = TextAlignmentOptions.Center;
+        chev.enableAutoSizing = false;
+        chev.fontSize = 1.6f;
+        chev.color = OptText;
+        chev.text = "›";
+        p.Chevron = chev;
+        var title = MakeLabel(proto, t, "MrpNotWithTitle", new Vector3(SubL + 0.32f, -ExclHeadH / 2f, 0f), w - 0.5f, ExclHeadH);
         title.alignment = TextAlignmentOptions.Left;
         title.rectTransform.pivot = new Vector2(0f, 0.5f);
         title.enableAutoSizing = false;
         title.fontSize = 1.3f;
         title.color = OptText;
-        title.text = $"{new Text("Registry.NotWith")}  <size=75%><color=#8E94A3>{new Text("RoleMenu.NotWithHint")}</color></size>";
+        p.Title = title;
+
+        var head = new GameObject("MrpNotWithHead");
+        head.layer = root.layer;
+        head.transform.SetParent(t, false);
+        head.transform.localPosition = new Vector3(cx, -ExclHeadH / 2f, 0f);
+        var headHit = head.AddComponent<BoxCollider2D>();
+        headHit.size = new Vector2(w, ExclHeadH);
+        var headBtn = head.AddComponent<PassiveButton>();
+        headBtn.Colliders = new Collider2D[] { headHit };
+        headBtn.ClickMask = _page.ButtonClickMask;
+        string headKey = "xh|" + me.Id;
+        headBtn.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+        headBtn.OnClick.AddListener(Cached(NameClicks, headKey, _ => () => OnExclHead(me.Id)));
+        headBtn.OnMouseOver = new UnityEvent();
+        headBtn.OnMouseOver.AddListener(Cached(NameOvers, headKey, _ => () => OnExclHeadHover(me.Id, true)));
+        headBtn.OnMouseOut = new UnityEvent();
+        headBtn.OnMouseOut.AddListener(Cached(NameOuts, headKey, _ => () => OnExclHeadHover(me.Id, false)));
 
         float chipW = (w - ExclPad * 2f - ExclGap * (ExclColumns - 1)) / ExclColumns;
         for (int i = 0; i < others.Count; i++)
@@ -1116,7 +1174,7 @@ internal static class RoleMenu
             go.layer = root.layer;
             go.transform.SetParent(t, false);
             go.transform.localPosition = new Vector3(SubL + ExclPad + chipW / 2f + col * (chipW + ExclGap),
-                -ExclPad - ExclTitleH - ExclChipH / 2f - row * (ExclChipH + ExclGap), 0f);
+                -ExclHeadH - ExclChipH / 2f - row * (ExclChipH + ExclGap), 0f);
             var chip = new ExclChip { Other = other };
             chip.Edge = MenuArt.Panel(go.transform, "MrpChipEdge", ExclChipH / 2f, new Vector2(chipW, ExclChipH), new Vector3(0f, 0f, 2.6f), Color.white, mat);
             chip.Fill = MenuArt.Panel(go.transform, "MrpChip", ExclChipH / 2f - Edge, new Vector2(chipW - Edge * 2f, ExclChipH - Edge * 2f), new Vector3(0f, 0f, 2.4f), ChipDark, mat);
@@ -1142,7 +1200,7 @@ internal static class RoleMenu
             chip.Button = pb;
             p.Chips.Add(chip);
         }
-        MenuFont.Prepare(title.text);
+        SetExclShape(p, ExclOpen.Contains(me.Id));
         return p;
     }
 
@@ -1162,8 +1220,49 @@ internal static class RoleMenu
     private static void RefreshExcl(RoleRow r)
     {
         var me = r.Picker;
-        if (me == null || r.Excl == null) return;
-        foreach (var chip in r.Excl.Chips) RefreshChip(me, chip);
+        var p = r.Excl;
+        if (me == null || p == null) return;
+        if (p.Fill) p.Fill.color = p.Hover ? Mix(p.FillColor, RoleDisplay.ParseColor(me.Color), 0.12f) : p.FillColor;
+        if (p.Title)
+        {
+            string text = $"{new Text("Registry.NotWith")}  <size=75%><color=#8E94A3>{(p.Open ? new Text("RoleMenu.NotWithHint").ToString() : ExclSummary(me, p))}</color></size>";
+            if (p.TitleText != text)
+            {
+                MenuFont.Prepare(text);
+                p.Title.text = p.TitleText = text;
+            }
+        }
+        if (!p.Open) return;
+        foreach (var chip in p.Chips) RefreshChip(me, chip);
+    }
+
+    // 閉じている時の見出しの続き: 選んだ役職 (役職の作りで決まった組も) をロビーの一覧と同じ書き方で
+    private static string ExclSummary(RoleBase me, ExclPanel p)
+    {
+        string first = null;
+        int n = 0;
+        foreach (var chip in p.Chips)
+        {
+            if (!AssignPlan.FixedPair(me, chip.Other) && !AssignPlan.PickedPair(me, chip.Other)) continue;
+            first ??= chip.Other.Name.ToString();
+            n++;
+        }
+        if (n == 0) return Tr.Get("RoleSetOpt.None");
+        return n > 1 ? new Text("RoleSetOpt.More").With("name", first).With("n", n - 1) : first;
+    }
+
+    private static void OnExclHead(string id)
+    {
+        if (!ById.TryGetValue(id, out var r) || r.Excl == null) return;
+        if (!ExclOpen.Remove(id)) ExclOpen.Add(id);
+        Relayout(false);
+    }
+
+    private static void OnExclHeadHover(string id, bool over)
+    {
+        if (!ById.TryGetValue(id, out var r) || r.Excl == null) return;
+        r.Excl.Hover = over;
+        RefreshExcl(r);
     }
 
     private static void RefreshChip(RoleBase me, ExclChip chip)
@@ -1252,10 +1351,20 @@ internal static class RoleMenu
                 // excl <Id> <相手の Id> (役職を開いて、一緒に出ない役職の札を押すのと同じ)
                 if (a.Length < 3 || !ById.TryGetValue(a[1], out var er) || er.Picker == null) return "excl <Id> <相手の Id>";
                 if (!Expanded.Contains(er.Role.Id)) OnNameClick(er.Role.Id);
+                if (!ExclOpen.Contains(er.Role.Id)) OnExclHead(er.Role.Id);
                 ExclChip ec = null;
                 if (er.Excl != null) foreach (var c in er.Excl.Chips) if (c.Other.Id == a[2]) ec = c;
                 if (ec == null) return "no chip " + a[2];
                 ec.Button.OnClick.Invoke();
+                break;
+            case "exclhead":
+                // exclhead <Id> (開いた役職の「一緒に出ない役職」の見出しを押すのと同じ)
+                if (a.Length < 2 || !ById.TryGetValue(a[1], out var hr) || hr.Picker == null) return "exclhead <Id>";
+                if (!Expanded.Contains(hr.Role.Id)) OnNameClick(hr.Role.Id);
+                if (hr.Excl == null) return "no panel";
+                var head = hr.Excl.Root.transform.Find("MrpNotWithHead");
+                var hb = head ? head.GetComponent<PassiveButton>() : null;
+                if (hb) hb.OnClick.Invoke();
                 break;
             case "press":
                 // press <Id> <count|chance> <+1|-1>
@@ -1277,7 +1386,7 @@ internal static class RoleMenu
                 foreach (var o in r.Opts) if (o.Row && o.Row.gameObject.activeSelf) sb.Append($" >{o.Opt.Key.Substring(o.Opt.Key.IndexOf('.') + 1)}={o.Opt.Display()}");
                 if (r.Excl != null && r.Excl.Root && r.Excl.Root.activeSelf)
                 {
-                    sb.Append(" x=[");
+                    sb.Append(r.Excl.Open ? " x+=[" : " x-=[");
                     foreach (var c in r.Excl.Chips)
                     {
                         bool fixedPair = AssignPlan.FixedPair(r.Picker, c.Other);
