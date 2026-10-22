@@ -237,6 +237,20 @@ public sealed class Architect : RoleBase
     {
         if (IsLocal) ArchitectPlan.MarkDirty();
         if (e.PlayerId == PlayerId && e.Kind == DamageKind.Water) DroneTo(e.Position.x, e.Position.y);
+        // 爆発が台に掛かると壊れる。地形の結果と同じ順に全員の端末へ届くので、全員が同じ台を壊す
+        if (e.Kind != DamageKind.Explosion || e.Radius <= 0f) return;
+        Vector2 c = e.Position;
+        for (int i = 0; i < _desks.Count; i++)
+        {
+            var d = _desks[i];
+            if (d.Broken) continue;
+            Vector2 q = ClosestOnFoot(d, c.x, c.y);
+            float dx = q.x - c.x, dy = q.y - c.y;
+            if (dx * dx + dy * dy > e.Radius * e.Radius) continue;
+            float ox = d.X - c.x, oy = d.Y + 0.4f - c.y, len = MathF.Sqrt(ox * ox + oy * oy);
+            Vector2 away = len > 1e-3f ? FxMath.V2(ox / len, oy / len) : FxMath.V2(0f, 1f);
+            BreakDesk((byte)i, away, c, (ushort)(PlayerId * 31 + i * 7 + 101));
+        }
     }
 
     // 壁・配管の所へドローンを飛ばす。真上だと影が壁の絵に隠れるので、手前 (画面の下) の床の上で止まる
@@ -534,8 +548,13 @@ public sealed class Architect : RoleBase
         if (obj && hitter != LocalId) HammerSwing.PlayOther(face, toward, info.DefaultOutfit.ColorId);
         ushort seed = (ushort)(PlayerId * 31 + desk * 7 + hits);
         if (hits < DeskHits) { ArchitectDeskArt.Crack(d, face, toward, seed); return; }
+        BreakDesk(desk, toward, at, seed);
+    }
 
-        ArchitectDeskArt.Break(d, toward, at, seed);
+    // 全員: 台が壊れた。使っていた人は降ろされる (dir = 欠片が飛ぶ向き・home = 壊した側の床の点)
+    private void BreakDesk(byte desk, Vector2 dir, Vector2 home, ushort seed)
+    {
+        ArchitectDeskArt.Break(_desks[desk], dir, home, seed);
         if (_openDesk == desk)
         {
             if (IsLocal && ArchitectPlan.Owner == this) ArchitectPlan.Close(); // 閉じた知らせは SyncPlan が配る
