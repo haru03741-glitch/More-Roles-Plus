@@ -9,13 +9,16 @@ namespace MoreRolesPlus.Rules;
 
 // 本編の「ゲーム設定」タブの項目の終わりに 1 行ずつ足すルール (GameTabRows)。
 // - クルー: 全員がベントを使える (各端末が自分の本編の役職にベントを許す)
-// - 会議: 会議を無くす (緊急ボタンも死体の通報も。押す側で止め、ホストも断る)
+// - 会議: 会議を無くす (緊急ボタンも死体の通報も。押す側で止め、ホストも断る)・スキップできない・
+//   投票しなかった人は自分に入れた扱い (MeetingVotes)
 // - タスク: タスクで勝てなくする (いつも / クルーが全員死んだ時だけ)
 [Settings(Tab.General, "GameRules.Title", order: -55)]
 public static class GameRules
 {
     public static readonly BoolOpt EveryoneVents = new("GameRules.EveryoneVents", false) { OffTab = true };
     public static readonly BoolOpt NoMeetings = new("GameRules.NoMeetings", false) { OffTab = true };
+    public static readonly BoolOpt NoSkip = new("GameRules.NoSkip", false) { OffTab = true };
+    public static readonly BoolOpt SelfVoteIfNone = new("GameRules.SelfVoteIfNone", false) { OffTab = true };
     public static readonly ChoiceOpt TaskWin = new("GameRules.TaskWin", 0,
         new Text("GameRules.TaskWinOn"), new Text("GameRules.TaskWinNever"), new Text("GameRules.TaskWinNotIfCrewDead")) { OffTab = true };
 

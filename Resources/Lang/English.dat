@@ -502,6 +502,7 @@ ClientOptions.DarkMeetingScreen: Dark meeting screen
 ClientOptions.SabotageFlash: Sabotage screen flash
 ClientOptions.SabotageAlarm: Sabotage alarm sound
 ClientOptions.SummaryToChat: Post the results to the lobby chat after a game
+ClientOptions.TaskOnName: Show task progress next to names
 ClientOptions.Back: Back
 ClientOptions.MRPOptions: MRP Options
 
@@ -737,6 +738,8 @@ SabotageRules.LightsNoCargo: The Airship cargo bay panel is off
 GameRules.Title: Other rules
 GameRules.EveryoneVents: Everyone can vent
 GameRules.NoMeetings: No meetings
+GameRules.NoSkip: No skipping in meetings
+GameRules.SelfVoteIfNone: Players who don't vote vote for themselves
 GameRules.TaskWin: Win by tasks
 GameRules.TaskWinOn: Yes
 GameRules.TaskWinNever: No

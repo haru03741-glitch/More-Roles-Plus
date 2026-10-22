@@ -177,12 +177,12 @@ internal static class RoleDisplay
     }
 
     // 名前の文字を複製すると、前の役職名と名前の後ろの印 (Destroy はフレームの終わりまで残る) まで付いてくるので外す
-    private static void RemoveClonedTags(GameObject go)
+    internal static void RemoveClonedTags(GameObject go)
     {
         for (int i = go.transform.childCount - 1; i >= 0; i--)
         {
             var child = go.transform.GetChild(i).gameObject;
-            if (child.name is "MrpRoleTag" or RoleFrame.MarkName)
+            if (child.name is "MrpRoleTag" or Menu.NameTaskTag.TagName or RoleFrame.MarkName)
             {
                 child.SetActive(false);
                 UnityEngine.Object.Destroy(child);
@@ -270,9 +270,11 @@ internal static class SetTasksPatch
 
     public static void Postfix(object __instance, bool __result)
     {
-        if (__result || !RoleDisplay.HasLocal() || _owner == null) return;
+        if (__result || _owner == null) return;
         var p = _owner.GetValue(__instance) as PlayerControl;
-        if (!p || !p.AmOwner) return;
+        if (!p) return;
+        Menu.NameTaskTag.Refresh(p);
+        if (!p.AmOwner || !RoleDisplay.HasLocal()) return;
         try { RoleDisplay.EnsureTaskHeader(p); }
         catch (Exception e) { Plugin.Logger.LogWarning($"task header: {e.Message}"); }
     }

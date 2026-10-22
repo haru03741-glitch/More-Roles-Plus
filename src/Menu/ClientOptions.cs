@@ -33,6 +33,7 @@ internal static class ClientOptions
     public static ConfigEntry<bool> DarkMeeting { get; private set; }
     public static ConfigEntry<bool> EndSummary { get; private set; }
     public static ConfigEntry<bool> SummaryToChat { get; private set; }
+    public static ConfigEntry<bool> TaskOnName { get; private set; }
     public static ConfigEntry<bool> AutoPlayAgain { get; private set; }
     public static ConfigEntry<bool> Reconnect { get; private set; }
     public static ConfigEntry<bool> Spectate { get; private set; }
@@ -45,6 +46,7 @@ internal static class ClientOptions
         DarkTheme = Add("DarkTheme", false, new Text("ClientOptions.DarkChat"), ChatTheme.Refresh);
         EndSummary = Add("EndSummary", true, new Text("ClientOptions.ShowRolesAtEnd"), null);
         SummaryToChat = Add("SummaryToChat", true, new Text("ClientOptions.SummaryToChat"), null);
+        TaskOnName = Add("TaskOnName", true, new Text("ClientOptions.TaskOnName"), NameTaskTag.RefreshAll);
         AutoPlayAgain = Add("AutoPlayAgain", false, new Text("ClientOptions.AutoReturn"), null);
         Reconnect = Add("Reconnect", true, new Text("ClientOptions.AutoRejoin"), null);
         Spectate = Add("Spectate", false, new Text("ClientOptions.Spectate"), Roles.Spectate.OnOptionChanged);

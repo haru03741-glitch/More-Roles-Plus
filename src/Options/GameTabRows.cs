@@ -56,11 +56,11 @@ internal static class GameTabRows
     }
 
     // 本編の項目の終わりに足す行 (その項目の目印の行・足す行)
-    private static readonly (StringNames Marker, Opt Opt)[] SectionRows =
+    private static readonly (StringNames Marker, Opt[] Opts)[] SectionRows =
     {
-        (StringNames.GameCrewLight, GameRules.EveryoneVents),
-        (StringNames.GameNumMeetings, GameRules.NoMeetings),
-        (StringNames.GameCommonTasks, GameRules.TaskWin),
+        (StringNames.GameCrewLight, new Opt[] { GameRules.EveryoneVents }),
+        (StringNames.GameNumMeetings, new Opt[] { GameRules.NoMeetings, GameRules.NoSkip, GameRules.SelfVoteIfNone }),
+        (StringNames.GameCommonTasks, new Opt[] { GameRules.TaskWin }),
     };
 
     // 検索の組 (タブに並べる物全部)
@@ -68,7 +68,7 @@ internal static class GameTabRows
     {
         foreach (var g in Top()) yield return g;
         yield return Neutral;
-        yield return new Group(new Text("GameRules.Title"), GameRules.EveryoneVents, GameRules.NoMeetings, GameRules.TaskWin);
+        yield return new Group(new Text("GameRules.Title"), GameRules.EveryoneVents, GameRules.NoMeetings, GameRules.NoSkip, GameRules.SelfVoteIfNone, GameRules.TaskWin);
         foreach (var g in Tail()) yield return g;
     }
 
@@ -183,10 +183,10 @@ internal static class GameTabRows
         // 第三陣営: インポスターの項目の下
         Blocks.Add(make.Groups(new[] { Neutral }, lastY - 0.01f, lastY - rowToHeader));
         // 本編の項目の終わりの行
-        foreach (var (marker, opt) in SectionRows)
+        foreach (var (marker, opts) in SectionRows)
         {
             float end = SectionEnd(m, headers, marker);
-            if (!float.IsNaN(end)) Blocks.Add(make.Rows(end - 0.01f, end - RowStep, opt));
+            if (!float.IsNaN(end)) Blocks.Add(make.Rows(end - 0.01f, end - RowStep, opts));
         }
         // タブの終わり (タスクの項目の終わりの行より後ろ)
         Blocks.Add(make.Groups(Tail(), bottom - 0.02f, bottom - rowToHeader));

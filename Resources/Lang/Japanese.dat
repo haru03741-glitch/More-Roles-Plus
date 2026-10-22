@@ -502,6 +502,7 @@ ClientOptions.DarkMeetingScreen: 会議の画面を暗い色にする
 ClientOptions.SabotageFlash: サボタージュの画面の点滅
 ClientOptions.SabotageAlarm: サボタージュの警報音
 ClientOptions.SummaryToChat: 試合の後、ロビーのチャットに結果を出す
+ClientOptions.TaskOnName: 名前の横にタスクの進み具合を出す
 ClientOptions.Back: 戻る
 ClientOptions.MRPOptions: MRP の設定
 
@@ -737,6 +738,8 @@ SabotageRules.LightsNoCargo: The Airship の貨物室の配電盤を使えない
 GameRules.Title: そのほかのルール
 GameRules.EveryoneVents: 全員がベントを使える
 GameRules.NoMeetings: 会議を無くす
+GameRules.NoSkip: 会議でスキップできない
+GameRules.SelfVoteIfNone: 投票しなかった人は自分に投票
 GameRules.TaskWin: タスクで勝つ
 GameRules.TaskWinOn: 勝てる
 GameRules.TaskWinNever: 勝てない

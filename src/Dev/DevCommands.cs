@@ -473,6 +473,29 @@ internal static class DevCommands
             reply("OK modcheck " + Net.VersionCheck.ModsText("").Replace("\n", " | "));
         });
 
+        TestBridge.Register("taskdone", "[数=1] 自分の終わっていないタスクを前から終わらせる (全員に送る)", (args, reply) =>
+        {
+            var me = PlayerControl.LocalPlayer;
+            if (!me || me.myTasks == null) { reply("ERR taskdone no tasks"); return; }
+            int want = int.TryParse(args.Trim(), out int n) ? n : 1, done = 0;
+            foreach (var t in me.myTasks)
+            {
+                if (done >= want) break;
+                if (!t || t.IsComplete || t.TryCast<NormalPlayerTask>() == null) continue;
+                me.RpcCompleteTask(t.Id);
+                done++;
+            }
+            reply($"OK taskdone {done}");
+        });
+
+        TestBridge.Register("votetimeout", "会議の投票の時間切れと同じこと (本編の ForceSkipAll) をする (ホストのみ)", (_, reply) =>
+        {
+            var hud = MeetingHud.Instance;
+            if (!hud || !AmongUsClient.Instance.AmHost) { reply("ERR votetimeout host in meeting only"); return; }
+            hud.ForceSkipAll();
+            reply("OK votetimeout");
+        });
+
         TestBridge.Register("players", "全員の番号・名前・生死・役職", (_, reply) =>
         {
             if (!GameData.Instance) { reply("ERR players no game"); return; }
