@@ -826,3 +826,6 @@ Update.Done: {ver} に入れ替えました。\nゲームを再起動すると�
 Update.Quit: ゲームを終了
 Update.Failed: 更新できませんでした。\nリリースのページから MoreRolesPlus.dll をダウンロードして入れ替えてください。
 Update.OpenPage: ページを開く
+StatusEffects.Seconds: 残り {sec} 秒
+StatusEffects.Shield: 盾
+StatusEffects.UntilMeeting: 最初の会議まで倒されない

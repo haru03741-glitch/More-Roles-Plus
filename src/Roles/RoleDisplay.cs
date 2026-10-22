@@ -108,7 +108,19 @@ internal static class RoleDisplay
     {
         var role = Shown;
         if (!p || !p.AmOwner || p.myTasks == null) return;
-        if (role == null && RoleState.AddonsOf(p.PlayerId).Count == 0) return;
+        if (role == null && RoleState.AddonsOf(p.PlayerId).Count == 0 && !StatusEffects.Any)
+        {
+            DetachTaskHeader(p);
+            return;
+        }
+        string text = "";
+        if (role != null)
+        {
+            text = $"<color={role.Color}>{role.Name}: {role.Description}";
+            if (role.Team == Team.Neutral) text += "\n" + new Text("RoleDisplay.YourTasksDoNotCount");
+            text += "</color>";
+        }
+        text = (text + AddonLines(p.PlayerId) + StatusEffects.Lines()).TrimStart('\n');
         if (!_header)
         {
             var go = new GameObject("MrpRoleTask");
@@ -117,14 +129,7 @@ internal static class RoleDisplay
         }
         var task = _header.Cast<PlayerTask>();
         if (!p.myTasks.Contains(task)) p.myTasks.Insert(0, task);
-        string text = "";
-        if (role != null)
-        {
-            text = $"<color={role.Color}>{role.Name}: {role.Description}";
-            if (role.Team == Team.Neutral) text += "\n" + new Text("RoleDisplay.YourTasksDoNotCount");
-            text += "</color>";
-        }
-        _header.Text = (text + AddonLines(p.PlayerId)).TrimStart('\n');
+        _header.Text = text;
     }
 
     public static void DetachTaskHeader(PlayerControl p)

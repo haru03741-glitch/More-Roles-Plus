@@ -338,6 +338,8 @@ internal static class TerrainProbe
                 {
                     Target = Roles.AbilityTarget.Pick,
                     Cooldown = () => 5f,
+                    Duration = () => 6f,
+                    OnEnd = () => Plugin.Logger.LogInfo("ability test (pick) effect ended"),
                     MaxUses = () => 3,
                     OnUsed = (u, t) => Plugin.Logger.LogInfo($"ability test (pick) used {u.PlayerId}->{t.PlayerId}"),
                 });

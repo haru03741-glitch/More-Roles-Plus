@@ -1,3 +1,4 @@
+// Showing the remaining effect time on the button based on https://github.com/All-Of-Us-Mods/MiraAPI (CustomActionButton, LGPL-2.1)
 using System;
 using System.Collections.Generic;
 using HarmonyLib;
@@ -24,9 +25,19 @@ internal sealed class ModButton
     private readonly IntPtr _ptr;
     private bool _inGrid = true; // 右下の並びに居るか (並びの外のボタンは置いた先の画面と一緒に出入りする)
     private float _left;
+    private float _effect, _effectMax; // 効果の残り (本編の技術者のベントと同じく、ボタンを満たす形と残りの秒で出す)
+    private int _effectShown = -1;     // 最後に書いた残りの秒
     private bool _usable = true;
 
     public float Cooldown { get; set; }
+
+    // 使った後の効果の長さ (秒・0 = 無し)。効果の間はボタンに残りを出し、切れてから待ち時間を始める
+    public Func<float> Effect { get; set; }
+
+    // 効果が切れた時 (この端末で)
+    public Action OnEffectEnd { get; set; }
+
+    public bool InEffect => _effect > 0f;
 
     // HUD が出直した時 (試合の始め・会議の後) に待ち時間を最初から数え直す
     public bool ResetOnShow { get; set; }
@@ -97,7 +108,7 @@ internal sealed class ModButton
     {
         if (_usable == usable) return;
         _usable = usable;
-        if (_left > 0f || !_button) return;
+        if (_left > 0f || _effect > 0f || !_button) return;
         if (usable) _button.SetEnabled();
         else _button.SetDisabled();
     }
@@ -116,6 +127,34 @@ internal sealed class ModButton
         _button.SetUsesRemaining(left);
     }
 
+    // 使った: 効果があれば効果から、無ければ待ち時間から
+    public void StartUsed()
+    {
+        float d = Effect?.Invoke() ?? 0f;
+        if (d <= 0f || !_button || Dev.DevCooldown.Zero)
+        {
+            StartCooldown();
+            return;
+        }
+        _effect = _effectMax = d;
+        _left = 0f;
+        _effectShown = -1;
+        _button.SetDisabled();
+        DrawEffect();
+    }
+
+    // 本編の SetFillUp は満たす形だけで残りの数は出さないので、数の欄は秒が変わった時だけ書く
+    private void DrawEffect()
+    {
+        _button.SetFillUp(_effect, _effectMax);
+        int sec = (int)Math.Ceiling(_effect);
+        var text = _button.cooldownTimerText;
+        if (!text || sec == _effectShown) return;
+        _effectShown = sec;
+        text.text = sec.ToString();
+        if (!text.gameObject.activeSelf) text.gameObject.SetActive(true);
+    }
+
     // 待ち時間を始める (押した後でなく、ホストが通した時に始める能力から)
     public void StartCooldown()
     {
@@ -128,11 +167,28 @@ internal sealed class ModButton
     // 押された (待ち時間中・押せない時は何もしない)
     private void Click()
     {
-        if (_left > 0f || !_usable) return;
+        if (_left > 0f || _effect > 0f || !_usable) return;
         bool used;
         try { used = _onClick(); }
         catch (Exception e) { Plugin.Logger.LogError($"button {_button.buttonLabelText.text}: {e}"); return; }
-        if (used) StartCooldown();
+        if (used) StartUsed();
+    }
+
+    private void EndEffect()
+    {
+        _effect = 0f;
+        try { OnEffectEnd?.Invoke(); }
+        catch (Exception e) { Plugin.Logger.LogError($"button effect end: {e}"); }
+        if (!_button) return;
+        _button.SetFillUp(0f, _effectMax);
+        if (_button.cooldownTimerText) _button.cooldownTimerText.gameObject.SetActive(false); // 待ち時間があれば SetCoolDown が出し直す
+        _effectShown = -1;
+        StartCooldown();
+        if (_left <= 0f)
+        {
+            if (_usable) _button.SetEnabled();
+            else _button.SetDisabled();
+        }
     }
 
     // 毎 FixedUpdate。ボタンが無い時・冷めている時は数の比較だけで帰る
@@ -141,6 +197,16 @@ internal sealed class ModButton
         if (All.Count == 0 || !_hudShown) return;
         _tick++;
         bool redraw = _tick % RedrawTicks == 0;
+        if (_dt <= 0f) _dt = Time.fixedDeltaTime;
+        // 効果は動けない間も減る (本編の効果と同じ)
+        for (int i = 0; i < All.Count; i++)
+        {
+            var b = All[i];
+            if (b._effect <= 0f) continue;
+            b._effect -= _dt;
+            if (b._effect <= 0f) b.EndEffect();
+            else if (redraw && b._button) b.DrawEffect();
+        }
         bool? canMove = null; // 冷めていないボタンがある時だけ 1 回読む
         for (int i = 0; i < All.Count; i++)
         {
@@ -175,9 +241,11 @@ internal sealed class ModButton
         bool reshown = shown && !_hudShown;
         _hudShown = shown;
         if (All.Count == 0) return;
-        // HUD ごと消えた後 (シーンが変わった) のボタンは寿命が切れるまで残るので飛ばす
-        foreach (var b in All)
+        // HUD ごと消えた後 (シーンが変わった) のボタンは寿命が切れるまで残るので飛ばす。
+        // 効果の終わりの処理が寿命を切って一覧から外すことがあるので写しを回す
+        foreach (var b in All.ToArray())
         {
+            if (!shown && b._effect > 0f) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ)
             if (!b._inGrid || !b._button) continue;
             b._button.gameObject.SetActive(shown);
             if (reshown && b.ResetOnShow) b.StartCooldown();

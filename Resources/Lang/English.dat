@@ -826,3 +826,6 @@ Update.Done: Updated to {ver}.\nRestart the game to use the new version.
 Update.Quit: Quit game
 Update.Failed: The update failed.\nPlease download MoreRolesPlus.dll from the releases page and replace it.
 Update.OpenPage: Open page
+StatusEffects.Seconds: {sec}s left
+StatusEffects.Shield: Shield
+StatusEffects.UntilMeeting: cannot be killed until the first meeting

@@ -172,6 +172,11 @@ public static class VanillaTweaks
         Outline(_shield, false);
         _shield = id;
         _outlineTick = 0;
+        // 盾が付いた本人のタスク欄に出す
+        var lp = PlayerControl.LocalPlayer;
+        if (lp && id == lp.PlayerId)
+            Roles.StatusEffects.ShowUntil("FirstKillShield", new Text("StatusEffects.Shield"), "#66CCFF", new Text("StatusEffects.UntilMeeting"));
+        else Roles.StatusEffects.Hide("FirstKillShield");
     }
 
     // 本編のキルの狙いの輪郭が上書きするので、盾の輪郭は 0.2 秒ごとに付け直す

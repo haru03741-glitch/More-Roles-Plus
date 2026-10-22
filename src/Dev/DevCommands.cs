@@ -689,7 +689,16 @@ internal static class DevCommands
             reply($"OK vtally rules={_tallyRules.Count}");
         });
 
-        TestBridge.Register("vset","<Int32OptionNames の名前> <値> 本編の数値の設定を変えて全員へ送る (ホストのみ・例 vset VotingTime 15)", (args, reply) =>
+        TestBridge.Register("effects", "[test <秒> | hide] 自分に付いている効果の一覧 (タスク欄に出す物)・test = 確かめ用の効果を秒で付ける", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 2 && a[0] == "test" && float.TryParse(a[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float sec))
+                StatusEffects.ShowFor("DevTest", Text.Raw("Test"), "#FFCC00", sec);
+            else if (a.Length == 1 && a[0] == "hide") StatusEffects.Hide("DevTest");
+            reply($"OK effects {StatusEffects.Describe()}");
+        });
+
+        TestBridge.Register("vset", "<Int32OptionNames の名前> <値> 本編の数値の設定を変えて全員へ送る (ホストのみ・例 vset VotingTime 15)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (a.Length != 2 || !Enum.TryParse(a[0], out Int32OptionNames key) || !int.TryParse(a[1], out int v)) { reply("ERR vset <name> <int>"); return; }

@@ -33,6 +33,12 @@ public sealed class Ability
     // 待ち時間 (秒・null = 無し)
     public Func<float> Cooldown { get; init; }
 
+    // 効果の長さ (秒・null = 無し)。使ってから効果の間はボタンに残りを出し、切れてから待ち時間を始める (会議で切れる)
+    public Func<float> Duration { get; init; }
+
+    // 効果が切れた時 (使った人の端末で)
+    public Action OnEnd { get; init; }
+
     // 使える回数 (null か 0 以下 = 何回でも)
     public Func<int> MaxUses { get; init; }
 
@@ -153,6 +159,8 @@ internal static class Abilities
             a.Button = ModButton.Create(role.Lifespan, ButtonIcons.Get(a.Icon), a.Label, a.CooldownSeconds, () => Click(ab));
             if (a.Button == null) continue;
             a.Button.ResetOnShow = a.CooldownAtStart;
+            a.Button.Effect = a.Duration;
+            a.Button.OnEffectEnd = a.OnEnd;
             a.Button.SetUses(a.UsesLeft);
             a.Button.SetUsable(a.Target != AbilityTarget.Player && a.UsesLeft != 0);
             if (a.CooldownAtStart) a.Button.StartCooldown();
@@ -321,7 +329,7 @@ internal static class Abilities
         if (role.IsLocal && a.Button != null)
         {
             a.PendingUntil = 0;
-            a.Button.StartCooldown();
+            a.Button.StartUsed();
             if (a.UsesLeft == 0) a.Button.SetUsable(false);
         }
         var target = GameData.Instance ? GameData.Instance.GetPlayerById(targetId)?.Object : null;
