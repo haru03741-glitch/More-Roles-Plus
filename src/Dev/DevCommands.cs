@@ -596,6 +596,24 @@ internal static class DevCommands
             reply("OK spawnpick");
         });
 
+        TestBridge.Register("meetinginfo", "会議の状態と時間 (投票の残り・結果の表示時間・進むボタン)", (_, reply) =>
+        {
+            var hud = MeetingHud.Instance;
+            if (!hud) { reply("ERR meetinginfo no meeting"); return; }
+            var opts = GameOptionsManager.Instance.CurrentGameOptions;
+            reply($"OK meetinginfo state={hud.state} timer={hud.discussionTimer:0.0} discussion={opts.GetInt(Int32OptionNames.DiscussionTime)} voting={opts.GetInt(Int32OptionNames.VotingTime)} resultsTime={MeetingHud.ResultsTime:0.0} resultsStartedAt={hud.resultsStartedAt:0.0} now={Time.time:0.0} proceed={(hud.ProceedButton ? hud.ProceedButton.gameObject.activeInHierarchy.ToString() : "-")} overrules={hud.judgeOverrulesQueue?.Count ?? -1}");
+        });
+
+        TestBridge.Register("vset", "<Int32OptionNames の名前> <値> 本編の数値の設定を変えて全員へ送る (ホストのみ・例 vset VotingTime 15)", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length != 2 || !Enum.TryParse(a[0], out Int32OptionNames key) || !int.TryParse(a[1], out int v)) { reply("ERR vset <name> <int>"); return; }
+            if (!AmongUsClient.Instance.AmHost) { reply("ERR vset host only"); return; }
+            GameOptionsManager.Instance.CurrentGameOptions.SetInt(key, v);
+            if (GameManager.Instance) GameManager.Instance.LogicOptions.SyncOptions();
+            reply($"OK vset {key}={GameOptionsManager.Instance.CurrentGameOptions.GetInt(key)}");
+        });
+
         TestBridge.Register("votetimeout", "会議の投票の時間切れと同じこと (本編の ForceSkipAll) をする (ホストのみ)", (_, reply) =>
         {
             var hud = MeetingHud.Instance;
