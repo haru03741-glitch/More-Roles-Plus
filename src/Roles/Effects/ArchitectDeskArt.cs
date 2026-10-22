@@ -16,6 +16,8 @@ internal static class ArchitectDeskArt
     {
         public float X, Y;     // 床の点 (台の真ん中の真下)
         public GameObject Root;
+        public int Hits;       // ハンマーで叩かれた回数 (全員が控える)
+        public bool Broken;    // 壊れた (番号は電文が指すので一覧からは外さない)
     }
 
     // 絵の範囲 (床の点が原点・単位は世界の長さ)
@@ -100,6 +102,70 @@ internal static class ArchitectDeskArt
         if (h == null) return;
         Live.Remove(h);
         if (h.Root) UnityEngine.Object.Destroy(h.Root);
+    }
+
+    // ハンマーで叩かれた (まだ壊れない): 叩かれた向きへ傾き (回数ごとに深く)、金属の音と火花
+    internal static void Crack(Handle h, Vector2 face, Vector2 toward, ushort seed)
+    {
+        if (h == null || h.Broken || !h.Root) return;
+        float lean = (toward.x >= 0f ? -1f : 1f) * TiltPerHit * h.Hits;
+        h.Root.transform.rotation = Quaternion.Euler(0f, 0f, lean);
+        BreakNoise.PlayAt("noise_hit_metal", h.X, h.Y + 0.5f, 9f, 5f, 0.8f, FxMath.Range(1.05f, 1.15f));
+        TerrainFx.PropChip(face, toward, false, seed);
+    }
+
+    // 壊れた: 絵を升に割った欠片が叩かれた向きへ飛んで床に散らばり (当たり判定なし)、土煙と崩れる音。当たり判定は消える
+    internal static void Break(Handle h, Vector2 dir, Vector2 home, ushort seed)
+    {
+        if (h == null || h.Broken) return;
+        h.Broken = true;
+        Live.Remove(h);
+        if (!h.Root) return;
+        UnityEngine.Object.Destroy(h.Root);
+        h.Root = null;
+        var parts = new List<(Sprite Sp, Vector2 At, float FloorY)>(Cols * Rows);
+        var pieces = Pieces();
+        for (int i = 0; i < pieces.Length; i++)
+        {
+            var (sp, lx, ly) = pieces[i];
+            if (sp) parts.Add((sp, FxMath.V2(h.X + lx, h.Y + ly), h.Y));
+        }
+        var center = FxMath.V2(h.X, h.Y + 0.4f);
+        TerrainFx.Shatter(parts, 1f, 1f, center, dir, false, BreakSparks, Color.white, seed, WallSegments.Snapshot(center, 4f), home);
+        DustCloud.Kick(FxMath.V2(h.X, h.Y + 0.1f), 0.8f, seed);
+        BreakNoise.PlayAt("noise_crumble_metal", h.X, h.Y + 0.4f, 9f, 5f, 1f, FxMath.Range(0.95f, 1.05f));
+        BreakNoise.PlayAt("noise_hit_metal", h.X, h.Y + 0.4f, 9f, 5f, 0.9f, FxMath.Range(0.8f, 0.9f));
+    }
+
+    private const float TiltPerHit = 2.5f;    // 叩かれた回数ごとに傾く角度
+    private const int Cols = 3, Rows = 3, BreakSparks = 8;
+    private const float MinFill = 0.12f;      // 升の不透明な画素がこれより少なければ欠片にしない (脚の間の隙間など)
+    private static (Sprite Sp, float Lx, float Ly)[] _pieces;
+
+    // 絵を Cols×Rows の升に切った欠片 (升の真ん中の床の点からの位置)。1 回だけ作る
+    private static (Sprite, float, float)[] Pieces()
+    {
+        if (_pieces != null) return _pieces;
+        var sp = EnsureSprite();
+        var pieces = new (Sprite, float, float)[Cols * Rows];
+        if (!sp || _bake is not { IsCompletedSuccessfully: true }) return pieces; // 焼き終わっていなければ今回は欠片なし (次に壊れた時に作り直す)
+        byte[] px = _bake.Result;
+        int w = TexW, hgt = TexH;
+        for (int r = 0; r < Rows; r++)
+            for (int c = 0; c < Cols; c++)
+            {
+                int x0 = c * w / Cols, x1 = (c + 1) * w / Cols, y0 = r * hgt / Rows, y1 = (r + 1) * hgt / Rows;
+                int solid = 0;
+                for (int y = y0; y < y1; y++)
+                    for (int x = x0; x < x1; x++)
+                        if (px[(y * w + x) * 4 + 3] > 128) solid++;
+                if (solid < MinFill * (x1 - x0) * (y1 - y0)) continue;
+                var piece = Sprite.Create(sp.texture, new Rect(x0, y0, x1 - x0, y1 - y0), FxMath.V2(0.5f, 0.5f), Ppu, 0, SpriteMeshType.FullRect);
+                piece.name = $"MrpArchitectDesk{r}{c}";
+                piece.hideFlags |= HideFlags.HideAndDontSave;
+                pieces[r * Cols + c] = (piece, Left + (x0 + x1) * 0.5f / Ppu, Bottom + (y0 + y1) * 0.5f / Ppu);
+            }
+        return _pieces = pieces;
     }
 
     // 船ごとに 1 つの入れ物 (船と一緒に消える)。船の倍率と反転は打ち消して世界の座標で置く

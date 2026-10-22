@@ -78,7 +78,19 @@ public sealed class Architect : RoleBase
     private static readonly RemoteCall<byte> GaugeCall = new("Architect.Gauge", Route.Anyone,
         (w, v) => w.Write(v), r => r.ReadByte(), (sender, v) => Of(sender)?.OnGauge(v));
 
+    // 設計台をハンマーで叩いた (叩いた人 → ホスト)。回数はホストだけが数える
+    private static readonly RemoteCall<(byte Owner, byte Desk)> HitCall = new("Architect.Hit", Route.ToHost,
+        (w, v) => { w.Write(v.Owner); w.Write(v.Desk); }, r => (r.ReadByte(), r.ReadByte()),
+        (sender, v) => (RoleState.Of(v.Owner) as Architect)?.HostHit(sender, v.Desk));
+
+    // 叩かれた回数 (ホスト → 全員)。DeskHits 回目で壊れる
+    private static readonly RemoteCall<(byte Owner, byte Desk, byte Hitter, byte Hits)> HitsCall = new("Architect.Hits", Route.HostToAll,
+        (w, v) => { w.Write(v.Owner); w.Write(v.Desk); w.Write(v.Hitter); w.Write(v.Hits); }, r => (r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte()),
+        (_, v) => (RoleState.Of(v.Owner) as Architect)?.ShowHit(v.Desk, v.Hitter, v.Hits));
+
     private const byte ClosedDesk = 255;
+    private const int DeskHits = 3;
+    private const float HammerSlack = 1f;     // ホストが叩いた人の位置を確かめる時の遅れの分
     private const byte NoUser = 255;
     private const float GaugeQuant = 5f;
     private const float RubbleGain = 2f;      // 瓦礫 1 個で戻るゲージ
@@ -247,7 +259,7 @@ public sealed class Architect : RoleBase
             RefreshDrone();
             return;
         }
-        if (desk >= _desks.Count) return;
+        if (desk >= _desks.Count || _desks[desk].Broken) return;
         _openDesk = desk;
         // 構築士が開き直したら、台を使っていた人は降ろされる
         if (_user != NoUser) EndUse();
@@ -264,7 +276,7 @@ public sealed class Architect : RoleBase
             if (_user == id) { ForgetUser(); RefreshDrone(); }
             return;
         }
-        if (desk >= _desks.Count || sender.Data == null || sender.Data.IsDead || sender.Data.Disconnected || MeetingHud.Instance) return;
+        if (desk >= _desks.Count || _desks[desk].Broken || sender.Data == null || sender.Data.IsDead || sender.Data.Disconnected || MeetingHud.Instance) return;
         if (_user != NoUser && _user != id) EndUse();
         _user = id;
         _userDesk = desk;
@@ -307,7 +319,7 @@ public sealed class Architect : RoleBase
     private void RefreshDrone()
     {
         int want = _openDesk >= 0 ? _openDesk : _userDesk;
-        if (want < 0 || want >= _desks.Count) { _drone?.Close(); _droneDesk = -1; return; }
+        if (want < 0 || want >= _desks.Count || _desks[want].Broken) { _drone?.Close(); _droneDesk = -1; return; }
         if (_drone != null && _drone.Airborne && _droneDesk == want) return;
         _drone?.Destroy();
         var d = _desks[want];
@@ -400,7 +412,7 @@ public sealed class Architect : RoleBase
     // 自分: 設計図を開いている間、届く円の中の止まった瓦礫を 1 つずつ拾う頼みを出す (ゲージが満タンなら拾わない)
     private void TickPick()
     {
-        if (_openDesk < 0 || _openDesk >= _desks.Count || (_pickT -= _dt) > 0f) return;
+        if (_openDesk < 0 || _openDesk >= _desks.Count || _desks[_openDesk].Broken || (_pickT -= _dt) > 0f) return;
         _pickT = PickEvery;
         if (_pendingAt >= 0f && Time.time - _pendingAt < PickTimeout) return;
         _pendingAt = -1f;
@@ -416,7 +428,7 @@ public sealed class Architect : RoleBase
     private void HostPick(Vector2 at)
     {
         var pc = Player;
-        if (!pc || pc.Data == null || pc.Data.IsDead || _openDesk < 0 || _openDesk >= _desks.Count || MeetingHud.Instance) return;
+        if (!pc || pc.Data == null || pc.Data.IsDead || _openDesk < 0 || _openDesk >= _desks.Count || _desks[_openDesk].Broken || MeetingHud.Instance) return;
         if (Time.time - _hostPickAt < HostPickGap || RubbleBlocks.FreeAt(at.x, at.y) == null) return;
         var d = _desks[_openDesk];
         float dx = at.x - d.X, dy = at.y - d.Y;
@@ -442,6 +454,98 @@ public sealed class Architect : RoleBase
         else RubbleBlocks.Remove(b);
     }
 
+    // ---- ハンマーで設計台を壊す ----
+
+    // 足元 at から aim の左右 60° 以内で、maxDist までに届く設計台のいちばん近い当たり (face = 当たる点・toward = 打つ向き)
+    internal static bool HammerTarget(Vector2 at, Vector2 aim, float maxDist, out byte owner, out byte desk, out Vector2 face, out Vector2 toward)
+    {
+        owner = 0; desk = 0; face = toward = default;
+        float best = float.MaxValue;
+        foreach (var a in All)
+        {
+            for (int i = 0; i < a._desks.Count; i++)
+            {
+                var d = a._desks[i];
+                if (d.Broken) continue;
+                Vector2 q = ClosestOnFoot(d, at.x, at.y);
+                float dx = q.x - at.x, dy = q.y - at.y, len = MathF.Sqrt(dx * dx + dy * dy);
+                if (len < 1e-3f || len > maxDist || len >= best || (dx * aim.x + dy * aim.y) < 0.5f * len) continue;
+                if (!OpenBetween(at.x, at.y, q.x, q.y)) continue;
+                best = len;
+                owner = a.PlayerId;
+                desk = (byte)i;
+                face = q;
+                toward = FxMath.V2(dx / len, dy / len);
+            }
+        }
+        return best < float.MaxValue;
+    }
+
+    internal static void SendHammer(byte owner, byte desk) => HitCall.Send((owner, desk));
+
+    // 台の当たり判定の四角で (px, py) にいちばん近い点
+    private static Vector2 ClosestOnFoot(ArchitectDeskArt.Handle d, float px, float py) =>
+        FxMath.V2(Math.Clamp(px, d.X - ArchitectDeskArt.FootHalfW, d.X + ArchitectDeskArt.FootHalfW),
+            Math.Clamp(py, d.Y + ArchitectDeskArt.FootFront, d.Y + ArchitectDeskArt.FootBack));
+
+    // 二点の間に壁が無いか (歩ける所の地図で・終わりの点は台の縁なので見ない)
+    private static bool OpenBetween(float ax, float ay, float bx, float by)
+    {
+        if (!SolidMap.Valid) return true;
+        float dx = bx - ax, dy = by - ay;
+        int n = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(dx * dx + dy * dy) / FloorProbe));
+        for (int i = 1; i < n; i++)
+        {
+            float t = i / (float)n;
+            if (SolidMap.Solid(ax + dx * t, ay + dy * t)) return false;
+        }
+        return true;
+    }
+
+    // ホスト: 叩いた人が本当に台のそばにいてハンマーを持っていれば 1 回と数えて全員へ配る
+    private void HostHit(PlayerControl sender, byte desk)
+    {
+        if (desk >= _desks.Count || _desks[desk].Broken || !sender || sender.Data == null || sender.Data.IsDead || !GameClock.ShipAlive || MeetingHud.Instance) return;
+        var d = _desks[desk];
+        Vector2 p = sender.GetTruePosition();
+        Vector2 q = ClosestOnFoot(d, p.x, p.y);
+        float dx = q.x - p.x, dy = q.y - p.y;
+        float reach = DamageProfile.Of(DamageKind.Blunt).Reach + HammerSlack;
+        if (dx * dx + dy * dy > reach * reach || !OpenBetween(p.x, p.y, q.x, q.y)) return;
+        // ハンマーを持っている人だけ・ハンマーの待ち時間ごとに 1 回 (続けて送られても数えない)
+        if (TerrainPermits.TryUse(sender.PlayerId, TerrainUse.Hammer, 0f, host: true) != null) return;
+        byte hits = (byte)Math.Min(DeskHits, d.Hits + 1);
+        HitsCall.Send((PlayerId, desk, sender.PlayerId, hits));
+        ShowHit(desk, sender.PlayerId, hits);
+    }
+
+    // 全員: 叩かれた (他の人の振りはここで見せる)。DeskHits 回目で壊れ、使っていた人は降ろされる
+    private void ShowHit(byte desk, byte hitter, byte hits)
+    {
+        if (desk >= _desks.Count || _desks[desk].Broken) return;
+        var d = _desks[desk];
+        d.Hits = hits;
+        var info = GameData.Instance ? GameData.Instance.GetPlayerById(hitter) : null;
+        var obj = info != null ? info.Object : null;
+        Vector2 at = obj ? obj.GetTruePosition() : FxMath.V2(d.X, d.Y - 1f);
+        Vector2 face = ClosestOnFoot(d, at.x, at.y);
+        float dx = face.x - at.x, dy = face.y - at.y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
+        Vector2 toward = FxMath.V2(dx / len, dy / len);
+        if (obj && hitter != LocalId) HammerSwing.PlayOther(face, toward, info.DefaultOutfit.ColorId);
+        ushort seed = (ushort)(PlayerId * 31 + desk * 7 + hits);
+        if (hits < DeskHits) { ArchitectDeskArt.Crack(d, face, toward, seed); return; }
+
+        ArchitectDeskArt.Break(d, toward, at, seed);
+        if (_openDesk == desk)
+        {
+            if (IsLocal && ArchitectPlan.Owner == this) ArchitectPlan.Close(); // 閉じた知らせは SyncPlan が配る
+            _openDesk = -1;
+        }
+        if (_userDesk == desk) EndUse();
+        RefreshDrone();
+        if (IsLocal) ArchitectPlan.MarkDirty();
+    }
+
     private bool PlaceHere()
     {
         var lp = PlayerControl.LocalPlayer;
@@ -462,6 +566,7 @@ public sealed class Architect : RoleBase
         if (_desks.Count >= DeskCount || !float.IsFinite(x) || !float.IsFinite(y)) return false;
         foreach (var d in _desks)
         {
+            if (d.Broken) continue;
             float dx = x - d.X, dy = y - d.Y;
             if (dx * dx + dy * dy < MinGap * MinGap) return false;
         }
@@ -539,6 +644,7 @@ public sealed class Architect : RoleBase
         float bestD = float.MaxValue;
         foreach (var d in _desks)
         {
+            if (d.Broken) continue;
             float dx = px - d.X, dy = py - d.Y;
             if (MathF.Abs(dx) > UseHalfW || dy > UseBack || dy < -UseFront) continue;
             float dd = dx * dx + dy * dy;
@@ -753,7 +859,7 @@ public sealed class Architect : RoleBase
     internal string Describe()
     {
         var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} picked={_picked} user={(_user == NoUser ? "-" : _user.ToString())}@{_userDesk} lent={_lent} drone={(_drone == null ? "-" : _drone.Describe())} plan={ArchitectPlan.Describe()}");
-        foreach (var d in _desks) sb.Append($" ({d.X:0.00},{d.Y:0.00})");
+        foreach (var d in _desks) sb.Append($" ({d.X:0.00},{d.Y:0.00}{(d.Broken ? " broken" : d.Hits > 0 ? $" hits={d.Hits}" : "")})");
         return sb.ToString();
     }
 
@@ -814,6 +920,14 @@ public sealed class Architect : RoleBase
         var pc = GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null;
         if (!pc) return false;
         OnUse(pc, desk);
+        return true;
+    }
+
+    // テスト用: 台 desk が hits 回目を叩かれたと届いた扱いにする (この端末だけ・hitter = 叩いた人)
+    internal bool SmashForTest(byte desk, byte hitter, byte hits)
+    {
+        if (desk >= _desks.Count || _desks[desk].Broken) return false;
+        ShowHit(desk, hitter, hits);
         return true;
     }
 
