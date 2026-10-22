@@ -59,6 +59,10 @@ public abstract class Assignable
     // 設定値だけから決める (その端末の状態を見ない)
     public virtual void ModifyKillCooldown(ref float seconds) { }
 
+    // 会議で入れた票が何票分になるか (weight は 1 から始まる・0 で数えない)。ホストが票を数える時に呼ぶ。
+    // 投票先を変える・票を足す時は VoteTallyEvent で
+    public virtual void ModifyVoteWeight(ref int weight) { }
+
     // 出現率と人数。設定画面の欄の先頭に自動で付く
     internal IntOpt Chance;
     internal IntOpt Count;

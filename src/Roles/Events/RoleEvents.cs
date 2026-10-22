@@ -1,8 +1,10 @@
+using System;
+using System.Collections.Generic;
 using HarmonyLib;
 
 namespace MoreRolesPlus.Roles;
 
-// ---- 起きる前 (ホストの端末でだけ起きる・Cancel で止める) ----
+// ---- 起きる前 (ホストの端末でだけ起きる・受け手が止めたり書き換えたりできる) ----
 
 // ホストがキルを通す前 (本編のインポスターのキルも、インポスター以外のキル役のキルも)。PlayerId = 狙われた人。
 // Cancel するとキルは起きず、キルした人の待ち時間もそのまま
@@ -17,6 +19,60 @@ public sealed class BeforeMurderEvent : CancelableEvent, IPlayerEvent
     {
         if (!Events<BeforeMurderEvent>.Any) return null;
         return Events<BeforeMurderEvent>.Run(new BeforeMurderEvent { Killer = killer, Target = target }).Reason;
+    }
+}
+
+// 会議の票 1 つ。Target = 入れた先の番号 (スキップは VoteTallyEvent.Skip)
+public readonly struct Vote
+{
+    public readonly byte Voter, Target;
+    public Vote(byte voter, byte target) { Voter = voter; Target = target; }
+    public override string ToString() => $"{Voter}>{(Target == VoteTallyEvent.Skip ? "skip" : Target.ToString())}";
+}
+
+// ホストが会議の票を数える時 (追放する人を決める前)。Votes = 数える票 1 つずつで、重み (ModifyVoteWeight) は
+// 同じ票を並べた数で入っている。書き換えると追放される人と、結果の画面の票の印がそれに従う。ホストの端末でだけ起きる
+public sealed class VoteTallyEvent : GameEvent
+{
+    public const byte Skip = 253;
+
+    public readonly List<Vote> Votes;
+    internal VoteTallyEvent(List<Vote> votes) => Votes = votes;
+
+    // その人の投票先 (入れていなければ 255)
+    public byte TargetOf(byte voter)
+    {
+        foreach (var v in Votes) if (v.Voter == voter) return v.Target;
+        return 255;
+    }
+
+    // その人の票の数
+    public int WeightOf(byte voter)
+    {
+        int n = 0;
+        foreach (var v in Votes) if (v.Voter == voter) n++;
+        return n;
+    }
+
+    public void Add(byte voter, byte target) => Votes.Add(new Vote(voter, target));
+
+    // その人の票を全部消す。消した数を返す
+    public int Remove(byte voter) => Votes.RemoveAll(v => v.Voter == voter);
+
+    // その人の票を全部 target へ向け直す (代わりに入れる)。入れていなかった人は 1 票足す
+    public void Redirect(byte voter, byte target)
+    {
+        int n = Remove(voter);
+        for (int i = Math.Max(n, 1); i > 0; i--) Add(voter, target);
+    }
+
+    // その人の票の数を weight にする (投票先はそのまま・入れていない人には何もしない)
+    public void SetWeight(byte voter, int weight)
+    {
+        byte target = TargetOf(voter);
+        if (target == 255) return;
+        Remove(voter);
+        for (int i = 0; i < weight; i++) Add(voter, target);
     }
 }
 

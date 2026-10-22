@@ -15,6 +15,8 @@ namespace MoreRolesPlus.Dev;
 // (他の人の手元のビルドには開発者の名簿が無いので、送り主が開発者かを受け手は確かめられない)。
 internal static class DevCommands
 {
+    private static readonly System.Collections.Generic.List<(string Kind, byte Id, int Value)> _tallyRules = new();
+    private static Lifespan _tallyLife;
     private static readonly RemoteCall<byte> ReviveCall = new("Dev.Revive", Route.HostToAll,
         (w, pid) => w.Write(pid), r => r.ReadByte(), (_, pid) => ReviveLocal(pid));
 
@@ -649,7 +651,45 @@ internal static class DevCommands
             reply($"OK meetinginfo state={hud.state} timer={hud.discussionTimer:0.0} discussion={opts.GetInt(Int32OptionNames.DiscussionTime)} voting={opts.GetInt(Int32OptionNames.VotingTime)} resultsTime={MeetingHud.ResultsTime:0.0} resultsStartedAt={hud.resultsStartedAt:0.0} now={Time.time:0.0} proceed={(hud.ProceedButton ? hud.ProceedButton.gameObject.activeInHierarchy.ToString() : "-")} overrules={hud.judgeOverrulesQueue?.Count ?? -1}");
         });
 
-        TestBridge.Register("vset", "<Int32OptionNames の名前> <値> 本編の数値の設定を変えて全員へ送る (ホストのみ・例 vset VotingTime 15)", (args, reply) =>
+        TestBridge.Register("vtally", "[weight <番号> <票数> | proxy <番号> <相手|skip> | add <番号> <相手|skip> | clear] 次に票を数える時の書き換えを足す (ホストのみ)・省略で最後に数えた様子", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 0) { reply($"OK vtally rules={_tallyRules.Count} last={Rules.VoteTally.Last}"); return; }
+            if (a[0] == "clear")
+            {
+                _tallyRules.Clear();
+                _tallyLife?.Release();
+                _tallyLife = null;
+                reply("OK vtally clear");
+                return;
+            }
+            static byte Target(string s) => s == "skip" ? VoteTallyEvent.Skip : byte.TryParse(s, out byte b) ? b : (byte)255;
+            if (a.Length != 3 || a[0] is not ("weight" or "proxy" or "add") || !byte.TryParse(a[1], out byte voter)
+                || (a[0] == "weight" ? !int.TryParse(a[2], out _) : Target(a[2]) == 255))
+            {
+                reply("ERR vtally weight <id> <n> | proxy <id> <target|skip> | add <id> <target|skip> | clear");
+                return;
+            }
+            if (!AmongUsClient.Instance.AmHost) { reply("ERR vtally host only"); return; }
+            _tallyRules.Add((a[0], voter, a[0] == "weight" ? int.Parse(a[2]) : Target(a[2])));
+            if (_tallyLife == null)
+            {
+                _tallyLife = new Lifespan();
+                Events<VoteTallyEvent>.Subscribe(e =>
+                {
+                    foreach (var (kind, id, value) in _tallyRules)
+                        switch (kind)
+                        {
+                            case "weight": e.SetWeight(id, value); break;
+                            case "proxy": e.Redirect(id, (byte)value); break;
+                            case "add": e.Add(id, (byte)value); break;
+                        }
+                }, _tallyLife, owner: "Dev.vtally");
+            }
+            reply($"OK vtally rules={_tallyRules.Count}");
+        });
+
+        TestBridge.Register("vset","<Int32OptionNames の名前> <値> 本編の数値の設定を変えて全員へ送る (ホストのみ・例 vset VotingTime 15)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (a.Length != 2 || !Enum.TryParse(a[0], out Int32OptionNames key) || !int.TryParse(a[1], out int v)) { reply("ERR vset <name> <int>"); return; }

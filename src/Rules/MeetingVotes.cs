@@ -30,6 +30,7 @@ internal static class MeetingVotes
     internal static void OnMeetingStart(MeetingHud hud)
     {
         _selfVoted = false;
+        VoteTally.OnMeetingStart();
         if (!GameRules.NoSkip || !hud || !hud.SkipVoteButton) return;
         hud.SkipVoteButton.transform.localScale = Vector3.zero;
         // 結果の画面の「投票をスキップした」の見出しも (誰もスキップできないので)
