@@ -249,6 +249,9 @@ PresetStore.CouldntImport: 取り込めませんでした: {message}
 # ── Registry ──
 Registry.Chance: 出現率
 Registry.Count: 人数
+Registry.NotWith: 一緒に出ない役職
+RoleSetOpt.None: なし
+RoleSetOpt.More: {name} ほか {n}
 Registry.CrewmatesCanHaveIt: クルーに付く
 Registry.ImpostorsCanHaveIt: インポスターに付く
 Registry.NeutralsCanHaveIt: 第三陣営に付く
@@ -273,6 +276,12 @@ RoleMenu.SearchSeparator: ・
 RoleMenu.SearchClearHint: 検索欄を空にすると元のタブへ戻ります
 RoleMenu.AllPercent: 全部 {pct}
 RoleMenu.TeamPercent: {team} {pct}
+RoleMenu.AllChanceTo: 全部の出現率を {pct} に
+RoleMenu.TeamChanceTo: {team}の出現率を {pct} に
+RoleMenu.AllCountTo: 全部の人数を {n} 人に
+RoleMenu.TeamCountTo: {team}の人数を {n} 人に
+RoleMenu.NotWithHint: 押して選んだ役職はこの役職と同じ試合に出なくなります (相手の役職の側にも付きます)
+RoleMenu.FixedPair: {name} <size=70%>固定</size>
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP 全般

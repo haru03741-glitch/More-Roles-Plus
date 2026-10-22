@@ -399,16 +399,23 @@ public static class AssignPlan
     // 同時に出ない組 (どちらの側に書いてあっても)
     private static bool Conflicts(RoleBase role, List<RoleBase> chosen)
     {
-        var mine = role.NotWith;
-        var type = role.GetType();
         foreach (var c in chosen)
-        {
-            if (mine != null && Array.IndexOf(mine, c.GetType()) >= 0) return true;
-            var theirs = c.NotWith;
-            if (theirs != null && Array.IndexOf(theirs, type) >= 0) return true;
-        }
+            if (FixedPair(role, c) || PickedPair(role, c)) return true;
         return false;
     }
+
+    // 役職の作り (NotWith) で決まった組
+    internal static bool FixedPair(RoleBase a, RoleBase b)
+    {
+        var x = a.NotWith;
+        if (x != null && Array.IndexOf(x, b.GetType()) >= 0) return true;
+        var y = b.NotWith;
+        return y != null && Array.IndexOf(y, a.GetType()) >= 0;
+    }
+
+    // 設定で選んだ組 (自分自身は選べない。保存ファイルを手で書いて入っても、同じ役職の 2 人目を止めない)
+    internal static bool PickedPair(RoleBase a, RoleBase b) =>
+        a != b && ((a.Excluded != null && a.Excluded.Has(b.Order)) || (b.Excluded != null && b.Excluded.Has(a.Order)));
 
     // アドオン。役職と同じく出現率と人数で枠を作り、付けられる人の中から無作為に 1 人へ
     private static void AssignAddons(IReadOnlyList<Slot> roster, List<Pick> plan, Random rng)

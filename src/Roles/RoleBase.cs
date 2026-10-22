@@ -54,6 +54,10 @@ public abstract class RoleBase : Assignable
     // この役職が出た試合には出ない役職 (どちらの側に書いてあっても効く)
     public virtual System.Type[] NotWith => null;
 
+    // 設定で選んだ「一緒に出ない役職」(幽霊になってから付く役職は持たない)・Registry.Roles の中の番号
+    internal RoleSetOpt Excluded;
+    internal int Order = -1;
+
     // 誰かの勝ちで試合が終わる時に、自分も一緒に勝つか (第三陣営の相乗り)。ホストの端末でだけ呼ばれる。
     // 自分だけで勝って試合を終わらせる時は GameEnd.Win(this) を呼ぶ
     public virtual bool AlsoWins(GameResult result) => false;

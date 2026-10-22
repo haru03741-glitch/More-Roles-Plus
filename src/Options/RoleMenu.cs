@@ -23,7 +23,7 @@ internal static class RoleMenu
     // 1920x1080 の画面で 1 単位 = 180px。RoleLift = 本編の役職の行は数値の行より絵が 0.25 下に出るので、その分上げる
     private const float ChipHeight = 0.36f, Gap = 0.1f, Side = 0.15f;
     private const float RowGap = 0.08f;
-    private const float BandHeight = 0.06f + ChipHeight * 2f + RowGap + 0.1f; // 上の固定の帯の高さ (絞り込みの段 + まとめて変える段)
+    private const float BandHeight = 0.06f + ChipHeight * 3f + RowGap * 2f + 0.1f; // 上の固定の帯の高さ (絞り込みの段 + まとめて変える段 2 つ)
     private const float RepeatEvery = 0.07f; // ± を押したままにした時に繰り返す間隔 (秒)
     private const long HoldDelayMs = 400;    // 押してから繰り返し始めるまで
     private const float HeaderX = -0.903f, OptX = -0.05f, RoleX = -0.53f, RoleLift = 0.25f, Z = -2f;
@@ -48,8 +48,19 @@ internal static class RoleMenu
     private static bool _enabledOnly;
     private static readonly HashSet<string> Expanded = new();
 
-    // まとめて変える前の出現率 (「元に戻す」で 1 回分だけ戻す)。画面を閉じたら捨てる
-    private static List<(Assignable role, int chance)> _undo;
+    // まとめて変える前の出現率と人数 (「元に戻す」で 1 回分だけ戻す)。画面を閉じたら捨てる
+    private static List<(Assignable role, int chance, int count)> _undo;
+
+    // まとめて変える値 (± で選ぶ)。開き直しても残す
+    private static int _bulkChance = 50, _bulkCount = 1;
+
+    // まとめて変える札の番号
+    private const int ActZero = 0, ActFull = 1, ActUndo = 2, ActChanceTo = 3, ActCountTo = 4,
+        ActChanceDown = 5, ActChanceUp = 6, ActCountDown = 7, ActCountUp = 8;
+
+    // 一緒に出ない役職の札 (開いた役職の下に並ぶ)
+    private const int ExclColumns = 4;
+    private const float ExclChipH = 0.3f, ExclGap = 0.07f, ExclPad = 0.12f, ExclTitleH = 0.34f;
 
     // ホイール・右クリックの相手 = 指が乗っている役職の行と所 (0 = 名前・1 = 人数の ±・2 = 出現率の ±)
     private static RoleRow _hoverRow;
@@ -74,6 +85,27 @@ internal static class RoleMenu
         public readonly List<OptRow> Opts = new();
         public SpriteRenderer Fill, Accent;  // 行の板・左の色の印
         public TextMeshPro Chevron;
+        public bool Hover;
+        public ExclPanel Excl;  // 最初に開いた時に作る
+
+        // 一緒に出ない役職を選べる (幽霊になってから付く役職とアドオンは選べない)
+        public RoleBase Picker => Role is RoleBase rb && rb.Excluded != null ? rb : null;
+        public bool HasDetail => Opts.Count > 0 || Picker != null;
+    }
+
+    private sealed class ExclPanel
+    {
+        public GameObject Root;
+        public float Height;
+        public readonly List<ExclChip> Chips = new();
+    }
+
+    private sealed class ExclChip
+    {
+        public RoleBase Other;
+        public PassiveButton Button;
+        public SpriteRenderer Fill, Edge;
+        public TextMeshPro Label;
         public bool Hover;
     }
 
@@ -222,7 +254,7 @@ internal static class RoleMenu
                 var all = new System.Text.StringBuilder(r.Hay);
                 foreach (var opt in sec.Opts)
                 {
-                    if (opt == sec.Role.Chance || opt == sec.Role.Count) continue;
+                    if (opt == sec.Role.Chance || opt == sec.Role.Count || opt.OffTab) continue;
                     var o = MakeOpt(m, opt, RoleDisplay.ParseColor(sec.Role.Color));
                     r.Opts.Add(o);
                     all.Append('\n').Append(o.Hay);
@@ -459,6 +491,32 @@ internal static class RoleMenu
         }
         _topY = 2f - BandHeight;
 
+        // 縦のスクロールバー (つまみが動く範囲と溝) が帯に掛かる分だけ下げる
+        float barTop = top - BandHeight - 0.04f;
+        var bar = scroller.ScrollbarY;
+        if (bar && bar.graphic)
+        {
+            var yb = scroller.ScrollbarYBounds;
+            float half = m.transform.InverseTransformPoint(bar.graphic.bounds.max).y - bar.transform.localPosition.y;
+            float d = yb.max + half - barTop;
+            if (d > 0f)
+            {
+                scroller.ScrollbarYBounds = new FloatRange(yb.min, yb.max - d);
+                bar.transform.localPosition -= new Vector3(0f, Math.Max(0f, bar.transform.localPosition.y + half - barTop), 0f);
+            }
+            var track = bar.trackGraphic ? bar.trackGraphic.transform : null;
+            if (track)
+            {
+                var s = track.localScale;
+                float over = track.localPosition.y + s.y / 2f - barTop;
+                if (over > 0f && over < s.y)
+                {
+                    track.localScale = new Vector3(s.x, s.y - over, s.z);
+                    track.localPosition -= new Vector3(0f, over / 2f, 0f);
+                }
+            }
+        }
+
         float width = right - left - Side * 2f;
         float x0 = left + Side;
 
@@ -484,25 +542,31 @@ internal static class RoleMenu
             Chips.Add((chip, d.team, d.only, d.color));
         }
 
-        // 2 段目 = 絞り込みで選んでいる陣営 (全部なら全役職とアドオン) の出現率をまとめて変える。右寄せで札 3 つ分
-        var actDefs = new (int action, Color color)[]
+        // 2 段目 = 絞り込みで選んでいる陣営 (全部なら全役職とアドオン) の出現率をまとめて変える (± で選んだ値 / 0% / 100%)。
+        // 3 段目 = 人数をまとめて変える (± で選んだ値) と、まとめて変える前へ戻す
+        void Act(int action, float x, float y, float w, Color c)
         {
-            (0, new Color(0.62f, 0.64f, 0.7f)),
-            (1, new Color(1f, 0.85f, 0.35f)),
-            (2, new Color(0.55f, 0.8f, 1f)),
-        };
-        float aw = cw * 1.5f;
-        float ay = cy - ChipHeight - RowGap;
-        float ax = x0 + width - aw / 2f;
-        for (int i = actDefs.Length - 1; i >= 0; i--, ax -= aw + Gap)
-        {
-            var d = actDefs[i];
-            var chip = MakeChip(menu.GameSettingsButton, m.transform, new Vector3(ax, ay, -5f), aw, ChipHeight, ActionName(d.action), d.color);
-            if (!chip) continue;
-            int action = d.action;
+            var chip = MakeChip(menu.GameSettingsButton, m.transform, new Vector3(x, y, -5f), w, ChipHeight, ActionName(action), c);
+            if (!chip) return;
             chip.OnClick.AddListener(Cached(ChipClicks, "act" + action, _ => () => OnAction(action)));
-            Actions.Add((chip, d.action, d.color));
+            Actions.Add((chip, action, c));
         }
+        float aw = cw * 1.5f, sw = ChipHeight, edgeR = x0 + width;
+        float y2 = cy - ChipHeight - RowGap, y3 = y2 - ChipHeight - RowGap;
+        float pickR = edgeR - aw * 2f - Gap * 2f;               // ± で選ぶ札の右端 (右に 0% / 100% の 2 枚)
+        float pickW = pickR - x0 - (sw + Gap * 0.5f) * 2f;      // 値の札の幅 (左右に ± の丸)
+        float pickX = x0 + sw + Gap * 0.5f + pickW / 2f;
+        var chanceColor = new Color(1f, 0.85f, 0.35f);
+        var countColor = new Color(0.45f, 0.9f, 0.8f);
+        Act(ActChanceDown, x0 + sw / 2f, y2, sw, chanceColor);
+        Act(ActChanceTo, pickX, y2, pickW, chanceColor);
+        Act(ActChanceUp, pickR - sw / 2f, y2, sw, chanceColor);
+        Act(ActZero, edgeR - aw * 1.5f - Gap, y2, aw, new Color(0.62f, 0.64f, 0.7f));
+        Act(ActFull, edgeR - aw / 2f, y2, aw, chanceColor);
+        Act(ActCountDown, x0 + sw / 2f, y3, sw, countColor);
+        Act(ActCountTo, pickX, y3, pickW, countColor);
+        Act(ActCountUp, pickR - sw / 2f, y3, sw, countColor);
+        Act(ActUndo, edgeR - aw - Gap / 2f, y3, aw * 2f + Gap, new Color(0.55f, 0.8f, 1f));
         RefreshChips();
     }
 
@@ -648,7 +712,15 @@ internal static class RoleMenu
         foreach (var (btn, action, c) in Actions)
         {
             if (!btn) continue;
-            bool usable = action != 2 || _undo != null;
+            bool usable = action switch
+            {
+                ActUndo => _undo != null,
+                ActChanceDown => _bulkChance > 0,
+                ActChanceUp => _bulkChance < 100,
+                ActCountDown => _bulkCount > 1,
+                ActCountUp => _bulkCount < MaxBulkCount(),
+                _ => true,
+            };
             var label = btn.GetComponentInChildren<TextMeshPro>(true);
             if (label)
             {
@@ -663,39 +735,78 @@ internal static class RoleMenu
 
     private static Text ActionName(int action)
     {
-        if (action == 2) return new Text("RoleMenu.Undo");
-        string pct = action == 0 ? "0%" : "100%";
+        switch (action)
+        {
+            case ActUndo: return new Text("RoleMenu.Undo");
+            case ActChanceDown or ActCountDown: return Text.Raw("-");
+            case ActChanceUp or ActCountUp: return Text.Raw("+");
+            case ActChanceTo:
+                return (_team < 0 ? new Text("RoleMenu.AllChanceTo") : new Text("RoleMenu.TeamChanceTo").With("team", KindName(_team)))
+                    .With("pct", _bulkChance + "%");
+            case ActCountTo:
+                return (_team < 0 ? new Text("RoleMenu.AllCountTo") : new Text("RoleMenu.TeamCountTo").With("team", KindName(_team)))
+                    .With("n", _bulkCount);
+        }
+        string pct = action == ActZero ? "0%" : "100%";
         if (_team < 0) return new Text("RoleMenu.AllPercent").With("pct", pct);
         return new Text("RoleMenu.TeamPercent").With("team", KindName(_team)).With("pct", pct);
     }
 
-    // まとめて変える: 0 / 1 = 選んでいる陣営の出現率を全部 0% / 100% (変える前を 1 回分覚える)・2 = 覚えた値へ戻す
+    // 人数の ± の上限 (選んでいる陣営の役職の人数の上限のうち最大)
+    private static int MaxBulkCount()
+    {
+        int max = 1;
+        foreach (var g in Groups)
+        {
+            if (g.SearchOnly || (_team >= 0 && g.Kind != _team)) continue;
+            foreach (var r in g.Roles) max = Math.Max(max, r.Role.Count.Max);
+        }
+        return max;
+    }
+
+    // まとめて変える札: 0% / 100% / ± で選んだ出現率 / ± で選んだ人数 = 選んでいる陣営の役職を全部その値に
+    // (役職ごとの範囲に収める・変える前を 1 回分覚える)・元に戻す = 覚えた値へ戻す・± = まとめて変える値を選ぶ
     private static void OnAction(int action)
     {
-        if (action == 2)
+        switch (action)
         {
-            if (_undo == null) return;
-            foreach (var (role, chance) in _undo) role.Chance.SetIndex(chance);
-            _undo = null;
-        }
-        else
-        {
-            var before = new List<(Assignable, int)>();
-            int index = action == 0 ? 0 : int.MaxValue;
-            foreach (var g in Groups)
-            {
-                if (g.SearchOnly || (_team >= 0 && g.Kind != _team)) continue;
-                foreach (var r in g.Roles)
+            case ActUndo:
+                if (_undo == null) return;
+                foreach (var (role, chance, count) in _undo)
                 {
-                    var c = r.Role.Chance;
-                    int to = Math.Min(index, c.Count - 1);
-                    if (c.Index == to) continue;
-                    before.Add((r.Role, c.Index));
-                    c.SetIndex(to);
+                    role.Chance.SetIndex(chance);
+                    role.Count.SetIndex(count);
                 }
-            }
-            if (before.Count == 0) return;  // 変わる物が無い時は前の「元に戻す」を残す
-            _undo = before;
+                _undo = null;
+                break;
+            case ActChanceDown or ActChanceUp:
+                _bulkChance = Math.Clamp(_bulkChance + (action == ActChanceUp ? 10 : -10), 0, 100);
+                break;
+            case ActCountDown or ActCountUp:
+                _bulkCount = Math.Clamp(_bulkCount + (action == ActCountUp ? 1 : -1), 1, MaxBulkCount());
+                break;
+            default:
+                var before = new List<(Assignable, int, int)>();
+                foreach (var g in Groups)
+                {
+                    if (g.SearchOnly || (_team >= 0 && g.Kind != _team)) continue;
+                    foreach (var r in g.Roles)
+                    {
+                        var role = r.Role;
+                        int chance = role.Chance.Index, count = role.Count.Index;
+                        bool changed = action switch
+                        {
+                            ActZero => role.Chance.SetValue(0),
+                            ActFull => role.Chance.SetValue(100),
+                            ActChanceTo => role.Chance.SetValue(_bulkChance),
+                            _ => role.Count.SetValue(_bulkCount),
+                        };
+                        if (changed) before.Add((role, chance, count));
+                    }
+                }
+                if (before.Count == 0) return;  // 変わる物が無い時は前の「元に戻す」を残す
+                _undo = before;
+                break;
         }
         RefreshChips();
         Relayout(false);
@@ -743,7 +854,7 @@ internal static class RoleMenu
     private static void OnNameClick(string id)
     {
         if (!ById.TryGetValue(id, out var r)) return;
-        if (r.Opts.Count > 0 && _tokens.Length == 0)
+        if (r.HasDetail && _tokens.Length == 0)
         {
             if (!Expanded.Remove(id)) Expanded.Add(id);
             Relayout(false);
@@ -819,7 +930,7 @@ internal static class RoleMenu
         if (r.Accent) r.Accent.color = off ? new Color(c.r * 0.45f, c.g * 0.45f, c.b * 0.45f, 1f) : c;
         if (r.Chevron)
         {
-            bool has = r.Opts.Count > 0;
+            bool has = r.HasDetail;
             if (r.Chevron.gameObject.activeSelf != has) r.Chevron.gameObject.SetActive(has);
             r.Chevron.transform.localEulerAngles = new Vector3(0f, 0f, IsOpen(r) ? -90f : 0f);
             r.Chevron.color = row.titleText.color;
@@ -835,7 +946,7 @@ internal static class RoleMenu
 
     private static bool IsOpen(RoleRow r)
     {
-        if (r.Opts.Count == 0) return false;
+        if (!r.HasDetail) return false;
         if (_tokens.Length == 0) return Expanded.Contains(r.Role.Id);
         foreach (var o in r.Opts)
             if (RoleSearch.AnyIn(_tokens, o.Hay)) return true;
@@ -902,6 +1013,7 @@ internal static class RoleMenu
                 }
                 bool open = on && IsOpen(r);
                 foreach (var o in r.Opts) Place(o, open, ref y, searching);
+                PlaceExcl(r, open && !searching, ref y);
                 RefreshRole(r);
             }
             if (groupOn) { y -= GroupGap; any = true; }
@@ -934,6 +1046,167 @@ internal static class RoleMenu
         bool hit = searching && RoleSearch.AnyIn(_tokens, o.Hay);
         var title = OptTitle(o);
         if (title) title.color = hit ? Highlight : OptText;
+    }
+
+    // ---- 一緒に出ない役職 ----
+
+    private static readonly Color ChipDark = new(0.11f, 0.12f, 0.15f, 1f);
+    private static readonly Color ChipInk = new(0.08f, 0.08f, 0.1f, 1f);
+
+    // 開いた役職の細かい設定の下に置く (検索の間は出さない)。初めて開いた時に作り、以後は出し入れと位置だけ
+    private static void PlaceExcl(RoleRow r, bool on, ref float y)
+    {
+        if (r.Picker == null) return;
+        if (!on)
+        {
+            if (r.Excl != null && r.Excl.Root && r.Excl.Root.activeSelf) r.Excl.Root.SetActive(false);
+            return;
+        }
+        r.Excl ??= BuildExcl(r);
+        if (r.Excl == null || !r.Excl.Root) return;
+        if (!r.Excl.Root.activeSelf) r.Excl.Root.SetActive(true);
+        // 板の上端を細かい設定の行の板の上端と同じ所に
+        r.Excl.Root.transform.localPosition = new Vector3(0f, y + SubH / 2f, Z);
+        y -= r.Excl.Height + (OptStep - SubH);
+        RefreshExcl(r);
+    }
+
+    // 細かい設定の行と同じ板 (輪郭 + 役職の色を少し混ぜた地) に、見出しと他の役職の札を 4 列で並べる。
+    // 座標は役職の行と同じ (板の左端 SubL・右端 CardR)。板と字は一覧の切り抜きに合わせる
+    private static ExclPanel BuildExcl(RoleRow r)
+    {
+        var me = r.Picker;
+        var proto = r.Row ? r.Row.titleText : null;
+        if (!_page || !proto) return null;
+        var others = new List<RoleBase>();
+        foreach (var g in Groups)
+        {
+            if (g.SearchOnly || g.Kind == AddonKind) continue;
+            foreach (var o in g.Roles)
+                if (o.Picker is { } rb && rb != me) others.Add(rb);
+        }
+
+        var root = new GameObject("MrpNotWith_" + me.Id);
+        root.layer = _page.settingsContainer.gameObject.layer;
+        root.transform.SetParent(_page.settingsContainer, false);
+        var t = root.transform;
+        var p = new ExclPanel { Root = root };
+        int rows = (others.Count + ExclColumns - 1) / ExclColumns;
+        p.Height = ExclPad * 2f + ExclTitleH + rows * ExclChipH + Math.Max(rows - 1, 0) * ExclGap;
+
+        var mat = MenuArt.Masked(r.Row.labelSprite);
+        float w = CardR - SubL, cx = (SubL + CardR) / 2f;
+        MenuArt.Panel(t, "MrpOptEdge", 0.09f, new Vector2(w + Edge * 2f, p.Height + Edge * 2f), new Vector3(cx, -p.Height / 2f, 3.2f), Ink, mat);
+        MenuArt.Panel(t, "MrpOpt", 0.08f, new Vector2(w, p.Height), new Vector3(cx, -p.Height / 2f, 3f), Mix(CardOff, RoleDisplay.ParseColor(me.Color), 0.1f), mat);
+
+        var title = MakeLabel(proto, t, "MrpNotWithTitle", new Vector3(SubL + 0.2f, -ExclPad - ExclTitleH / 2f, 0f), w - 0.4f, ExclTitleH);
+        title.alignment = TextAlignmentOptions.Left;
+        title.rectTransform.pivot = new Vector2(0f, 0.5f);
+        title.enableAutoSizing = false;
+        title.fontSize = 1.3f;
+        title.color = OptText;
+        title.text = $"{new Text("Registry.NotWith")}  <size=75%><color=#8E94A3>{new Text("RoleMenu.NotWithHint")}</color></size>";
+
+        float chipW = (w - ExclPad * 2f - ExclGap * (ExclColumns - 1)) / ExclColumns;
+        for (int i = 0; i < others.Count; i++)
+        {
+            var other = others[i];
+            int col = i % ExclColumns, row = i / ExclColumns;
+            var go = new GameObject("MrpNotWithChip");
+            go.layer = root.layer;
+            go.transform.SetParent(t, false);
+            go.transform.localPosition = new Vector3(SubL + ExclPad + chipW / 2f + col * (chipW + ExclGap),
+                -ExclPad - ExclTitleH - ExclChipH / 2f - row * (ExclChipH + ExclGap), 0f);
+            var chip = new ExclChip { Other = other };
+            chip.Edge = MenuArt.Panel(go.transform, "MrpChipEdge", ExclChipH / 2f, new Vector2(chipW, ExclChipH), new Vector3(0f, 0f, 2.6f), Color.white, mat);
+            chip.Fill = MenuArt.Panel(go.transform, "MrpChip", ExclChipH / 2f - Edge, new Vector2(chipW - Edge * 2f, ExclChipH - Edge * 2f), new Vector3(0f, 0f, 2.4f), ChipDark, mat);
+            chip.Label = MakeLabel(proto, go.transform, "MrpChipText", new Vector3(0f, 0.005f, 0f), chipW - 0.14f, ExclChipH);
+            chip.Label.alignment = TextAlignmentOptions.Center;
+            chip.Label.enableAutoSizing = true;
+            chip.Label.fontSizeMin = 0.8f;
+            chip.Label.fontSizeMax = 1.25f;
+            chip.Label.text = AssignPlan.FixedPair(me, other) ? new Text("RoleMenu.FixedPair").With("name", other.Name) : other.Name;
+
+            var hit = go.AddComponent<BoxCollider2D>();
+            hit.size = new Vector2(chipW, ExclChipH);
+            var pb = go.AddComponent<PassiveButton>();
+            pb.Colliders = new Collider2D[] { hit };
+            pb.ClickMask = _page.ButtonClickMask;
+            string key = "x|" + me.Id + "|" + other.Id;
+            pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+            pb.OnClick.AddListener(Cached(NameClicks, key, k => () => OnExclClick(k)));
+            pb.OnMouseOver = new UnityEvent();
+            pb.OnMouseOver.AddListener(Cached(NameOvers, key, k => () => OnExclHover(k, true)));
+            pb.OnMouseOut = new UnityEvent();
+            pb.OnMouseOut.AddListener(Cached(NameOuts, key, k => () => OnExclHover(k, false)));
+            chip.Button = pb;
+            p.Chips.Add(chip);
+        }
+        MenuFont.Prepare(title.text);
+        return p;
+    }
+
+    // 役職名の字の部品を複製して使う (一覧の切り抜きのマテリアルごと引き継ぐ)
+    private static TextMeshPro MakeLabel(TextMeshPro proto, Transform parent, string name, Vector3 pos, float w, float h)
+    {
+        var label = Object.Instantiate(proto, parent);
+        label.name = name;
+        label.enableWordWrapping = false;
+        label.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        label.rectTransform.sizeDelta = new Vector2(w, h);
+        label.transform.localPosition = pos;
+        return label;
+    }
+
+    // 札の見た目: 選んでいない = 暗い地 + 色の輪郭 + 色の字 / 選んでいる = 色の地 + 暗い字 / 役職の作りで決まった組 = 少し暗い色の地 (押しても変わらない)
+    private static void RefreshExcl(RoleRow r)
+    {
+        var me = r.Picker;
+        if (me == null || r.Excl == null) return;
+        foreach (var chip in r.Excl.Chips) RefreshChip(me, chip);
+    }
+
+    private static void RefreshChip(RoleBase me, ExclChip chip)
+    {
+        if (!chip.Fill) return;
+        var c = RoleDisplay.ParseColor(chip.Other.Color);
+        bool locked = AssignPlan.FixedPair(me, chip.Other);
+        bool on = locked || AssignPlan.PickedPair(me, chip.Other);
+        chip.Fill.color = on ? (locked ? Mix(ChipDark, c, 0.55f) : c) : chip.Hover ? Mix(ChipDark, c, 0.3f) : ChipDark;
+        chip.Edge.color = on ? Mix(c, Color.white, 0.45f) : new Color(c.r * 0.75f, c.g * 0.75f, c.b * 0.75f, 1f);
+        chip.Label.color = on ? ChipInk : Mix(c, Color.white, 0.2f);
+    }
+
+    private static bool TryChip(string key, out RoleRow row, out ExclChip chip)
+    {
+        chip = null;
+        int a = key.IndexOf('|'), b = key.LastIndexOf('|');
+        if (!ById.TryGetValue(key.Substring(a + 1, b - a - 1), out row) || row.Excl == null) return false;
+        string other = key.Substring(b + 1);
+        foreach (var c in row.Excl.Chips)
+            if (c.Other.Id == other) { chip = c; return true; }
+        return false;
+    }
+
+    // 札を押した: 両方の役職の選びを揃えて切り替える (片方だけ残ると、外したのに選んだままに見えるため)
+    private static void OnExclClick(string key)
+    {
+        if (!TryChip(key, out var row, out var chip)) return;
+        var me = row.Picker;
+        var other = chip.Other;
+        if (me == null || other.Excluded == null || AssignPlan.FixedPair(me, other)) return;
+        bool on = !AssignPlan.PickedPair(me, other);
+        me.Excluded.Set(other.Order, on);
+        other.Excluded.Set(me.Order, on);
+        RefreshExcl(row);
+        if (ById.TryGetValue(other.Id, out var theirs)) RefreshExcl(theirs);
+    }
+
+    private static void OnExclHover(string key, bool over)
+    {
+        if (!TryChip(key, out var row, out var chip)) return;
+        chip.Hover = over;
+        if (row.Picker != null) RefreshChip(row.Picker, chip);
     }
 
     // ---- 試験用 ----
@@ -970,8 +1243,19 @@ internal static class RoleMenu
                 else srow.TryCast<ToggleOption>()?.Toggle();
                 break;
             case "act":
-                // act <0|1|2> (まとめて変える札を押すのと同じ: 0% / 100% / 元に戻す)
-                if (a.Length > 1 && int.TryParse(a[1], out int act)) OnAction(act);
+                // act <番号> (まとめて変える札を押すのと同じ: 0 = 0% / 1 = 100% / 2 = 元に戻す / 3 = 選んだ出現率 / 4 = 選んだ人数 / 5,6 = 出現率の -,+ / 7,8 = 人数の -,+)
+                if (a.Length > 1 && int.TryParse(a[1], out int act))
+                    foreach (var (btn, n, _) in Actions)
+                        if (n == act && btn) btn.OnClick.Invoke();
+                break;
+            case "excl":
+                // excl <Id> <相手の Id> (役職を開いて、一緒に出ない役職の札を押すのと同じ)
+                if (a.Length < 3 || !ById.TryGetValue(a[1], out var er) || er.Picker == null) return "excl <Id> <相手の Id>";
+                if (!Expanded.Contains(er.Role.Id)) OnNameClick(er.Role.Id);
+                ExclChip ec = null;
+                if (er.Excl != null) foreach (var c in er.Excl.Chips) if (c.Other.Id == a[2]) ec = c;
+                if (ec == null) return "no chip " + a[2];
+                ec.Button.OnClick.Invoke();
                 break;
             case "press":
                 // press <Id> <count|chance> <+1|-1>
@@ -981,7 +1265,7 @@ internal static class RoleMenu
                 break;
         }
         var sb = new System.Text.StringBuilder();
-        sb.Append($"search='{SettingsMenu.SearchQuery}' team={_team} only={_enabledOnly} undo={_undo?.Count ?? -1} hover={(_hoverRow != null ? _hoverRow.Role.Id + "|" + _hoverZone : "-")} rows:");
+        sb.Append($"search='{SettingsMenu.SearchQuery}' team={_team} only={_enabledOnly} undo={_undo?.Count ?? -1} bulk={_bulkChance}%/{_bulkCount} hover={(_hoverRow != null ? _hoverRow.Role.Id + "|" + _hoverZone : "-")} rows:");
         foreach (var g in Groups)
         {
             if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{(g.SearchOnly ? g.Title.Builtin(false) : g.Kind == AddonKind ? "Addon" : ((Team)g.Kind).ToString())}]");
@@ -991,6 +1275,16 @@ internal static class RoleMenu
                 if (!r.Row || !r.Row.gameObject.activeSelf) continue;
                 sb.Append($" {r.Role.Id}({r.Row.countText.text},{r.Row.chanceText.text}{(IsOpen(r) ? ",open" : "")})");
                 foreach (var o in r.Opts) if (o.Row && o.Row.gameObject.activeSelf) sb.Append($" >{o.Opt.Key.Substring(o.Opt.Key.IndexOf('.') + 1)}={o.Opt.Display()}");
+                if (r.Excl != null && r.Excl.Root && r.Excl.Root.activeSelf)
+                {
+                    sb.Append(" x=[");
+                    foreach (var c in r.Excl.Chips)
+                    {
+                        bool fixedPair = AssignPlan.FixedPair(r.Picker, c.Other);
+                        if (fixedPair || AssignPlan.PickedPair(r.Picker, c.Other)) sb.Append(c.Other.Id).Append(fixedPair ? "* " : " ");
+                    }
+                    sb.Append(']');
+                }
             }
         }
         if (_empty && _empty.gameObject.activeSelf) sb.Append(" (empty)");

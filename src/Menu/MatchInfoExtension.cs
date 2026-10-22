@@ -249,7 +249,7 @@ internal static class MatchInfoExtension
             if (sec.Role != a) continue;
             foreach (var o in sec.Opts)
             {
-                if (o == a.Chance || o == a.Count) continue;
+                if (o == a.Chance || o == a.Count || o.Blank) continue;
                 if (sb.Length > 0) sb.Append('\n');
                 sb.Append(o.Label.ToString()).Append(": ").Append(Value(o));
             }

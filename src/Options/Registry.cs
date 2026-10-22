@@ -80,6 +80,20 @@ internal static class Registry
         }
         Roles.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
 
+        // 一緒に出ない役職の選び。番号は並べ終えた後の Roles の番号
+        if (Roles.Count > RoleSetOpt.MaxRoles)
+            Plugin.Logger.LogError($"roles: {Roles.Count} > {RoleSetOpt.MaxRoles} — 'not with' cannot hold the roles after the {RoleSetOpt.MaxRoles}th");
+        for (int i = 0; i < Roles.Count; i++)
+        {
+            var role = Roles[i];
+            role.Order = i;
+            if (role.AssignedOnDeath || i >= RoleSetOpt.MaxRoles) continue;
+            var sec = SectionList(role.Tab).Find(s => s.Role == role);
+            if (sec == null) continue;
+            role.Excluded = new RoleSetOpt("Registry.NotWith");
+            Add(sec, role.Excluded, role.Id + ".NotWith");
+        }
+
         foreach (var t in types.Where(t => t.IsSubclassOf(typeof(AddonBase)) && !t.IsAbstract).OrderBy(t => t.Name, StringComparer.Ordinal))
         {
             AddonBase addon;

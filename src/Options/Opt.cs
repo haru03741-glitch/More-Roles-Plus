@@ -33,7 +33,10 @@ public abstract class Opt
 
     // 親の ON/OFF の項目。親が OFF の間は画面にも一覧にも出さない (値はそのまま持つ)
     internal BoolOpt Parent;
-    internal bool Shown => Parent == null || (Parent.Value && Parent.Shown);
+    internal bool Shown => !Blank && (Parent == null || (Parent.Value && Parent.Shown));
+
+    // 値が空で、一覧に並べても意味の無い間 (空の役職の集まりなど)
+    internal virtual bool Blank => false;
 
     internal abstract int Count { get; }
 

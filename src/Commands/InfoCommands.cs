@@ -111,7 +111,8 @@ internal static class InfoCommands
                     if (r.Chance == null || r.Chance.Value <= 0) continue;
                     if (sb.Length > 0) sb.Append('\n');
                     sb.Append(r.ColoredName);
-                    foreach (var o in sec.Opts) sb.Append(" / ").Append(o.Label.ToString()).Append(' ').Append(o.Display());
+                    foreach (var o in sec.Opts)
+                        if (!o.Blank) sb.Append(" / ").Append(o.Label.ToString()).Append(' ').Append(o.Display());
                     continue;
                 }
                 if (!sec.Opts.Exists(o => o.Shown)) continue;
