@@ -747,3 +747,17 @@ Stamp.Agree: Agree
 Stamp.Disagree: Disagree
 Stamp.Wait: Wait
 Stamp.Sorry: Sorry
+
+# ── Update ──
+Update.Button: Update to {ver}
+Update.ButtonDownloading: Updating…
+Update.ButtonRestart: Restart to apply
+Update.Found: A new version of More Roles Plus ({ver}) is available (you have {cur}).\nUpdate now?
+Update.Now: Update
+Update.Later: Later
+Update.Close: Close
+Update.Downloading: Downloading the new version…
+Update.Done: Updated to {ver}.\nRestart the game to use the new version.
+Update.Quit: Quit game
+Update.Failed: The update failed.\nPlease download MoreRolesPlus.dll from the releases page and replace it.
+Update.OpenPage: Open page

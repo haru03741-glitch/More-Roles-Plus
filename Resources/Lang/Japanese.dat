@@ -747,3 +747,17 @@ Stamp.Agree: 賛成
 Stamp.Disagree: 反対
 Stamp.Wait: 待って
 Stamp.Sorry: ごめん
+
+# ── Update ──
+Update.Button: {ver} に更新
+Update.ButtonDownloading: 更新しています…
+Update.ButtonRestart: 再起動で反映
+Update.Found: More Roles Plus の新しいバージョン {ver} があります (今は {cur})。\n更新しますか？
+Update.Now: 更新する
+Update.Later: あとで
+Update.Close: 閉じる
+Update.Downloading: 新しいバージョンをダウンロードしています…
+Update.Done: {ver} に入れ替えました。\nゲームを再起動すると新しいバージョンで動きます。
+Update.Quit: ゲームを終了
+Update.Failed: 更新できませんでした。\nリリースのページから MoreRolesPlus.dll をダウンロードして入れ替えてください。
+Update.OpenPage: ページを開く

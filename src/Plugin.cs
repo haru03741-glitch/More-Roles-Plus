@@ -42,6 +42,7 @@ public class Plugin : BasePlugin
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
         Menu.ClientOptions.Bind(Config);
         Menu.CustomColors.Bind(Config);
+        Menu.ModUpdate.Bind(Config);
         try { Menu.CustomColors.ExtendPalette(); }
         catch (System.Exception e) { Log.LogError($"colors: palette not extended: {e.Message}"); }
         Options.PresetLabel.Bind(Config);
@@ -151,6 +152,7 @@ public class Ticker : MonoBehaviour
         Menu.CustomColors.Tick();
         Commands.AfkGuard.Tick();
         Menu.AutoRejoin.Tick();
+        Menu.ModUpdate.Tick();
         Roles.Spectate.Tick();
         Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
         Net.HostChange.Tick();
