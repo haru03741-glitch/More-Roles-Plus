@@ -5,8 +5,8 @@ using System.Runtime.InteropServices;
 
 namespace MoreRolesPlus.Terrain;
 
-// 時戻しの記録 (水)。写すのは水の量と流れ・動いている升の一覧・粒・落ちている水・浸水の口。
-// 漏れの口 (Sources)・扉の噴き出し (Jets) は壊れた壁と扉に付いた物なので写さない (壁を取り消した漏れの口は TerrainUndo が外す)
+// 時戻しの記録 (水)。写すのは水の量と流れ・動いている升の一覧・粒・落ちている水・浸水の口・開いた扉の噴き出し (扉の開け閉めも戻るので)。
+// 漏れの口 (Sources) は壊れた壁に付いた物なので写さない (壁を取り消した漏れの口は TerrainUndo が外す)
 internal static partial class WaterSim
 {
     internal sealed class RewindRec
@@ -19,6 +19,7 @@ internal static partial class WaterSim
         public int[] Part = Array.Empty<int>();     // 粒ごとに Px Py Ph Ox Oy Oh Vx Vy Vh Stuck Pm
         public readonly List<(int Due, int To, int Amount)> Flying = new();
         public readonly List<(int K, int End, int Rate)> Inflows = new();
+        public readonly List<Jet> Jets = new(); // 開いた扉の噴き出し (始まりの刻みを持つ)
         public bool Blowing;
         public uint Digest;
     }
@@ -101,6 +102,8 @@ internal static partial class WaterSim
         s.Flying.AddRange(Flying);
         s.Inflows.Clear();
         foreach (var f in Inflows) s.Inflows.Add((f.K, f.End, f.Rate));
+        s.Jets.Clear();
+        foreach (var j in Jets) s.Jets.Add(j.Copy());
         s.Blowing = _blowing;
         if (TerrainRewind.SelfCheck) s.Digest = Digest(_step);
     }
@@ -134,6 +137,7 @@ internal static partial class WaterSim
         Particles = 0;
         Flying.Clear();
         Inflows.Clear();
+        Jets.Clear();
         _blowing = false;
         if (s == null) return;
 
@@ -173,6 +177,12 @@ internal static partial class WaterSim
         if (TerrainRewind.SelfCheck) TerrainRewind.Check(TerrainRewind.Sim.Water, s.Digest, Digest(at));
         for (int i = 0; i < Flying.Count; i++) Flying[i] = (Flying[i].Due + shift, Flying[i].To, Flying[i].Amount);
         foreach (var f in s.Inflows) Inflows.Add(new Inflow { K = f.K, End = f.End == 0 ? 0 : f.End + shift, Rate = f.Rate });
+        foreach (var j in s.Jets)
+        {
+            var c = j.Copy();
+            c.Start += shift;
+            Jets.Add(c);
+        }
         _blowing = s.Blowing;
     }
 }

@@ -31,6 +31,7 @@ internal static class TerrainUndo
         public ResolvedDamage R;
         public uint DigestBefore;
         public float Far; // 物ごと壊れた物の端までの距離 (水の升を作り直す範囲)
+        public long Scorch; // 件の始まりの焦げの控えの通し番号 (件より後の焦げを先に戻す)
         public readonly List<Action> Undo = new();
         public readonly HashSet<int> Lines = new();
         public readonly Dictionary<long, int> Hp = new();
@@ -124,7 +125,7 @@ internal static class TerrainUndo
         DamageMap.Ready();
         WaterSim.EnsureIdle(); // 作業スレッドが地図を読んでいる間に写さない
         foreach (var t in Tracks) Sync(t);
-        _cur = new Entry { Seq = seq, Tick = tick, R = r, DigestBefore = TerrainDigest.Running };
+        _cur = new Entry { Seq = seq, Tick = tick, R = r, DigestBefore = TerrainDigest.Running, Scorch = DamageMap.ScorchMark };
         LastBeginMs = Ms(t0);
     }
 
@@ -221,6 +222,9 @@ internal static class TerrainUndo
         for (int i = Entries.Count - 1; i >= 0 && Entries[i].Tick >= target; i--)
         {
             var e = Entries[i];
+            // 火の焦げは件の外で書くので、この件より後に付いた分を先に戻す (同じ画素を件と焦げの両方が書いた時に古い値へ揃える)
+            try { DamageMap.Unscorch(e.Scorch); }
+            catch (Exception ex) { Plugin.Logger.LogError($"[TerrainUndo] unscorch seq={e.Seq}: {ex}"); }
             // 1 つが失敗しても残りと件の片付けは必ず通す (この端末だけ途中で止まると指紋と壁が割れる)
             for (int k = e.Undo.Count - 1; k >= 0; k--)
             {
@@ -248,8 +252,11 @@ internal static class TerrainUndo
             Entries.RemoveAt(i);
             n++;
         }
+        try { DamageMap.UnscorchFrom(target); }
+        catch (Exception ex) { Plugin.Logger.LogError($"[TerrainUndo] unscorch: {ex}"); }
         if (n > 0)
         {
+            SolidMap.TrimSealed();
             TerrainDigest.Restore(digest);
             Undone += n;
         }
@@ -305,7 +312,9 @@ internal static class TerrainUndo
     {
         var t = Tracks[ti];
         var a = t.Get();
-        if (a == null || t.Copy == null || t.Copy.Length != a.Length) { Sync(t); return; }
+        // 件の中で初めて作られた配列 (口の向こうの升) は、無かった = 全部 0 として差分を取る
+        if (a != null && t.Copy == null) t.Copy = new byte[a.Length];
+        if (a == null || t.Copy.Length != a.Length) { Sync(t); return; }
         for (int s = 0; s < a.Length; s += Chunk)
         {
             int len = Math.Min(Chunk, a.Length - s);
@@ -350,18 +359,38 @@ internal static class TerrainUndo
 
     private static double Ms(long t0) => (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
 
+    private static readonly byte[][] PrintCopies = new byte[Tracks.Length][];
+
     // 確認用: 壁の今の姿の指紋 (配列ごと + 船の中の有効な線の和)。壊す前と取り消した後で比べる
     internal static string Print()
     {
         WaterSim.EnsureIdle();
         var sb = new System.Text.StringBuilder("arrays=");
-        foreach (var t in Tracks)
+        var diffs = new System.Text.StringBuilder();
+        for (int ti = 0; ti < Tracks.Length; ti++)
         {
-            var a = t.Get();
+            var a = Tracks[ti].Get();
             ulong h = 1469598103934665603UL;
             if (a != null) foreach (byte b in a) h = (h ^ b) * 1099511628211UL;
             sb.Append($"{(uint)(h ^ (h >> 32)):x8},");
+            // 前の print との差 (数と添字の範囲)
+            var was = PrintCopies[ti];
+            if (a != null && was != null && was.Length == a.Length)
+            {
+                int dn = 0, lo = -1, hi = -1;
+                for (int i = 0; i < a.Length; i++)
+                {
+                    if (a[i] == was[i]) continue;
+                    dn++;
+                    if (lo < 0) lo = i;
+                    hi = i;
+                }
+                if (dn > 0) diffs.Append($" d{ti}={dn}@{lo}..{hi}");
+            }
+            else if ((a == null) != (was == null)) diffs.Append($" d{ti}={(a == null ? "null" : "new")}");
+            PrintCopies[ti] = (byte[])a?.Clone();
         }
+        sb.Append(diffs);
         ulong lines = 0;
         int n = 0;
         var ship = ShipStatus.Instance;

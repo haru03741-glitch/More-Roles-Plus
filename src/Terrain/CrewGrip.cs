@@ -539,6 +539,21 @@ internal static class CrewGrip
 
     private static bool Interrupted => AmongUsClient.Instance.IsGameOver || MeetingHud.Instance || ExileController.Instance;
 
+    internal static bool Flying(byte pid)
+    {
+        foreach (var f in Flights) if (f.Pc && f.Pc.PlayerId == pid) return true;
+        return false;
+    }
+
+    // 時戻し: 飛んでいる途中の人は死なせずに見た目を戻し、自分のつかまりも離す
+    internal static void Rewound()
+    {
+        foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
+        Flights.Clear();
+        _strandTried = false;
+        Cancel();
+    }
+
     private static void StartFlight(byte pid)
     {
         if (Interrupted) return;

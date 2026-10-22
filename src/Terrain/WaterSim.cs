@@ -205,7 +205,12 @@ internal static partial class WaterSim
     internal static int InflowCount => Inflows.Count;
     internal static long InflowTotal { get; private set; }
     internal static int Gushes { get; private set; }
-    private sealed class Jet { public int A0, A1, Lo, Hi, D, V, Len, Start; public bool Wide; }
+    internal sealed class Jet
+    {
+        public int A0, A1, Lo, Hi, D, V, Len, Start;
+        public bool Wide;
+        public Jet Copy() => (Jet)MemberwiseClone();
+    }
     private static readonly List<Jet> Jets = new();
     // 扉の噴き出し (絵だけ・見せる側が毎フレーム読んで TerrainStep が消す): 扉の真ん中・噴く向き・扉の幅 (単位)・水位の差 (Full = 1 単位)
     internal static readonly List<(Vector2 At, int Dx, int Dy, float Width, int Diff)> GushFx = new();

@@ -292,6 +292,13 @@ internal static class SolidMap
     // 口の向こうとして船の外にした升の上か (口が引かれた時にその外側に取り残された人を見つける用)
     internal static bool AnySealed => _sealed != null;
 
+    // 時戻しで口の向こうの升が全部 0 に戻ったら、口が開く前と同じく配列ごと無しに戻す
+    internal static void TrimSealed()
+    {
+        if (_sealed == null || Array.IndexOf(_sealed, (byte)1) >= 0) return;
+        _sealed = null;
+    }
+
     internal static bool SealedAt(float px, float py)
     {
         if (_sealed == null || !Valid) return false;

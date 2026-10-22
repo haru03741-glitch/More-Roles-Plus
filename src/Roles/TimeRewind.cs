@@ -465,7 +465,8 @@ internal static class TimeRewind
         return true;
     }
 
-    // 戻す時刻に生きていて今は死んでいる人 (抜けた人は除く)
+    // 戻す時刻に生きていて今は死んでいる人 (抜けた人は除く)。吸い出されて飛んでいる途中の人も入れる
+    // (飛び終わりの死は各端末で起きるので、合図より先に飛び終わった端末では生き返らせる)
     private static byte[] HostReviveList(long targetMs)
     {
         int s = Find(targetMs);
@@ -475,7 +476,8 @@ internal static class TimeRewind
         int d = s * 4;
         foreach (var p in gd.AllPlayers)
         {
-            if (p == null || !p.IsDead || p.Disconnected || !p.Object) continue;
+            if (p == null || p.Disconnected || !p.Object) continue;
+            if (!p.IsDead && !Terrain.CrewGrip.Flying(p.PlayerId)) continue;
             int id = p.PlayerId;
             if ((DeadBits[d + (id >> 6)] & (1UL << (id & 63))) == 0) list.Add(p.PlayerId);
         }
@@ -504,6 +506,7 @@ internal static class TimeRewind
             catch (Exception e) { Plugin.Logger.LogError($"TimeRewind revive {pid}: {e}"); }
         }
         LastRevived = g.Revive.Length;
+        Step("flights", Terrain.CrewGrip.Rewound);
         int s = Find(now - g.BackMs);
         if (s < 0) return;
         LastSlotAgeMs = (int)(now - SlotMs[s]);

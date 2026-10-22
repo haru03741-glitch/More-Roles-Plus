@@ -67,6 +67,8 @@ internal static class TerrainRewind
         FireSim.RewindClear();
         Decompression.RewindClear();
         PropSim.RewindClear();
+        DamageMap.ClearScorchLog();
+        FireFx.DropScorch();
     }
 
     // 各計算が刻みの頭で呼ぶ: 船が替わったら前の船の記録を捨てる
@@ -89,6 +91,7 @@ internal static class TerrainRewind
         FireSim.RewindPurge(o.Target);
         Decompression.RewindPurge(o.Target);
         PropSim.RewindPurge(o.Target);
+        FireFx.DropScorch(); // まだ地図へ書いていない焦げ (ほぼ戻す刻みより後に燃えた分)
         Walls = TerrainUndo.Rewind(o.Target, tick);
         o.Done[(int)Sim.Decomp] = !Decompression.Running;
         o.Done[(int)Sim.Prop] = !PropSim.Drives;

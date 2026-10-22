@@ -3,7 +3,8 @@ using System;
 namespace MoreRolesPlus.Terrain;
 
 // 時戻しの記録 (火)。熱・燃料・材質 (油)・炎・焦げは、材質を決めたタイルの中で部屋から決めた姿と違う升だけ写す
-// (火と油の出来事は材質を決めてから書くので、違う升は必ず決めたタイルの中にある)。待っている出来事と壁の焼けは今のまま
+// (火と油の出来事は材質を決めてから書くので、違う升は必ず決めたタイルの中にある)。待っている出来事は今のまま。
+// 壁に貯めた熱 (Scalds・ホストだけ) も写す: 焼けて抜けた壁は時戻しで元に戻るので、熱と段も戻さないと同じ壁が早く抜けたり二度と焼けなくなったりする
 internal static partial class FireSim
 {
     internal sealed class RewindRec
@@ -11,6 +12,9 @@ internal static partial class FireSim
         public int CellN, ActN;
         public int[] Cell = Array.Empty<int>(); // 升・熱・熱の差・燃料・(材質 | 炎の印 << 8 | 炎 << 16 | 一覧 << 24)・(噴き上がり | 火花 << 8)・焦げ
         public int[] Act = Array.Empty<int>();
+        public int ScaldN;
+        public long[] ScaldKey = Array.Empty<long>();
+        public int[] Scald = Array.Empty<int>(); // 熱・段・升・向き・終わり (5 個ずつ)
         public uint Digest;
     }
 
@@ -70,6 +74,17 @@ internal static partial class FireSim
         if (s.Act.Length < _actN) s.Act = new int[Math.Max(_actN, s.Act.Length * 2)];
         Array.Copy(_act, s.Act, _actN);
         s.ActN = _actN;
+        int sn = Scalds.Count;
+        if (s.ScaldKey.Length < sn) { s.ScaldKey = new long[Math.Max(sn, s.ScaldKey.Length * 2)]; s.Scald = new int[s.ScaldKey.Length * 5]; }
+        int si = 0;
+        foreach (var (key, w) in Scalds)
+        {
+            s.ScaldKey[si] = key;
+            int o = si * 5;
+            s.Scald[o] = w.Heat; s.Scald[o + 1] = w.Stage; s.Scald[o + 2] = w.K; s.Scald[o + 3] = w.D; s.Scald[o + 4] = w.Done ? 1 : 0;
+            si++;
+        }
+        s.ScaldN = sn;
         if (TerrainRewind.SelfCheck) s.Digest = Digest();
     }
 
@@ -96,7 +111,14 @@ internal static partial class FireSim
         }
         _actN = 0;
         BurningCount = 0;
+        Scalds.Clear();
+        BurnQueue.Clear();
         if (s == null) return;
+        for (int i = 0; i < s.ScaldN; i++)
+        {
+            int o = i * 5;
+            Scalds[s.ScaldKey[i]] = new Scald { Heat = s.Scald[o], Stage = s.Scald[o + 1], K = s.Scald[o + 2], D = s.Scald[o + 3], Done = s.Scald[o + 4] != 0 };
+        }
         for (int i = 0; i < s.CellN; i++)
         {
             int o = i * CellInts, c = s.Cell[o];

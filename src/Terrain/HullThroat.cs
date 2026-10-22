@@ -207,9 +207,10 @@ internal static class HullThroat
         for (int i = 0; i < holes.Count; i++) holes[i] = Ccw(holes[i]);
 
         int before = 0, after = 0;
+        if (SolidMap.BreachableHull && Cuts.Count == 0 && !Prepare()) { _failed = true; return; }
+        Remember();
         if (SolidMap.BreachableHull)
         {
-            if (Cuts.Count == 0 && !Prepare()) { _failed = true; return; }
             foreach (var c in Cuts)
             {
                 before += c.TN / 3;
@@ -234,6 +235,35 @@ internal static class HullThroat
         int hidden = WallDecor.Hide(new Vector2(bx0 + hw, by0 + hh), MathF.Sqrt(hw * hw + hh * hh) + 0.01f, p => Contains(p));
         hidden += WaterLeak.HidePipesInThroat();
         Plugin.Logger.LogInfo($"[HullThroat] mouth {ax:0.00},{ay:0.00}-{bx:0.00},{by:0.00} depth={depth:0.00} pieces={holes.Count} tris {before}->{after} hidden={hidden}");
+    }
+
+    // 時戻しで取り消せる件の中なら、切る前の船体の形と開けた喉の数を件に控える (件ごとに 1 回)
+    private static object _savedFor;
+
+    private static void Remember()
+    {
+        var owner = TerrainUndo.Token;
+        if (owner == null || ReferenceEquals(owner, _savedFor)) return;
+        _savedFor = owner;
+        int gen = _shipGen, opened = Opened.Count;
+        float crater = _craterZ;
+        var saved = new Cut[Cuts.Count];
+        for (int i = 0; i < saved.Length; i++) saved[i] = Cuts[i].Copy();
+        TerrainUndo.OnUndo(() =>
+        {
+            _savedFor = null;
+            if (gen != _shipGen || _failed) return;
+            if (Opened.Count > opened) Opened.RemoveRange(opened, Opened.Count - opened);
+            _craterZ = crater;
+            for (int i = 0; i < saved.Length && i < Cuts.Count; i++)
+            {
+                var c = Cuts[i];
+                var w = saved[i];
+                c.V = w.V; c.C = w.C; c.U = w.U; c.VN = w.VN; c.T = w.T; c.TN = w.TN;
+                c.Dirty = true;
+            }
+            Flush();
+        });
     }
 
     // 点が開けた喉の中か (壁に付いていた物を穴の中に残さない用)

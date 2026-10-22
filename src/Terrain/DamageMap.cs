@@ -119,6 +119,61 @@ internal static class DamageMap
         return null;
     }
 
+    // 時戻し: 火の焦げは壊した件の外で少しずつ書くので、書いた画素の前の値を刻み付きで控える (戻せる試合だけ)
+    private struct ScorchWas
+    {
+        public int Tick, Index;
+        public byte Old;
+    }
+
+    private static readonly List<ScorchWas> ScorchLog = new();
+    private static long _scorchBase;     // ScorchLog[0] の通し番号
+    private static byte[] _scorchPixels; // 控えた時の地図 (作り直されたら控えは使えない)
+
+    // 今の控えの通し番号 (壊した件の始まりに取っておき、その件より後の焦げだけを先に戻す)
+    internal static long ScorchMark => _scorchBase + ScorchLog.Count;
+
+    private static bool BeginScorchLog(out int now)
+    {
+        now = GameClock.Now;
+        if (!TerrainRewind.On) { ClearScorchLog(); return false; }
+        if (_scorchPixels != _pixels) { ClearScorchLog(); _scorchPixels = _pixels; }
+        // 戻せる秒数より古い控えを捨てる
+        int keep = now - (TerrainRewind.Slots + 2) * TerrainRewind.Every, k = 0;
+        while (k < ScorchLog.Count && ScorchLog[k].Tick < keep) k++;
+        if (k > 0) { ScorchLog.RemoveRange(0, k); _scorchBase += k; }
+        return true;
+    }
+
+    internal static void ClearScorchLog()
+    {
+        _scorchBase += ScorchLog.Count;
+        ScorchLog.Clear();
+        _scorchPixels = null;
+    }
+
+    // 通し番号 mark 以後の焦げを新しい順に戻す
+    internal static void Unscorch(long mark) => UnscorchWhile(w => true, mark);
+
+    // 刻み target 以後に付いた焦げを新しい順に戻す
+    internal static void UnscorchFrom(int target) => UnscorchWhile(w => w.Tick >= target, _scorchBase);
+
+    private static void UnscorchWhile(Func<ScorchWas, bool> take, long mark)
+    {
+        if (ScorchLog.Count == 0) return;
+        if (_pixels == null || _scorchPixels != _pixels) { ClearScorchLog(); return; }
+        int lo = int.MaxValue, hi = -1, i = ScorchLog.Count - 1;
+        for (; i >= 0 && _scorchBase + i >= mark && take(ScorchLog[i]); i--)
+        {
+            var w = ScorchLog[i];
+            _pixels[w.Index] = w.Old;
+            if (w.Index < lo) lo = w.Index;
+            if (w.Index > hi) hi = w.Index;
+        }
+        ScorchLog.RemoveRange(i + 1, ScorchLog.Count - i - 1);
+        if (hi >= 0) MarkDirtyBytes(lo, hi - lo + 1, 4);
+    }
+
     // 燃えた床と壁の面の焦げ (穴は開けない)。点ごとに半径 r の円で焦げを濃くする (濃さ A 0..1・前より薄くはしない)。
     // 家具の上と船の外には付けない (爆発の焦げと同じ決まり)
     public static string Scorch(List<(float X, float Y, float A)> points, float r)
@@ -144,6 +199,7 @@ internal static class DamageMap
         int y1 = Math.Min(_h - 1, (int)((maxY + r - _origin.y) * PixelsPerUnit) + 1);
         MarkDirtyPx(x0, y0, x1, y1);
         float inv = 1f / r;
+        bool log = BeginScorchLog(out int now);
         foreach (var p in points)
         {
             int px0 = Math.Max(0, (int)((p.X - r - _origin.x) * PixelsPerUnit)), px1 = Math.Min(_w - 1, (int)((p.X + r - _origin.x) * PixelsPerUnit) + 1);
@@ -161,7 +217,9 @@ internal static class DamageMap
                     if (SolidMap.NearOutside(wx, wy)) continue;
                     int i = (py * _w + px) * 4 + 1;
                     byte b = (byte)(v * 255f);
-                    if (b > _pixels[i]) _pixels[i] = b;
+                    if (b <= _pixels[i]) continue;
+                    if (log) ScorchLog.Add(new ScorchWas { Tick = now, Index = i, Old = _pixels[i] });
+                    _pixels[i] = b;
                 }
             }
         }

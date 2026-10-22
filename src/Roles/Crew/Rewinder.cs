@@ -14,7 +14,7 @@ public sealed class Rewinder : RoleBase
     public override Text Blurb => new("Rewinder.Blurb");
     public override string[] HelpSections => new[] { "Rewinder.Rewind" };
 
-    public static readonly FloatOpt Seconds = new("Rewinder.Seconds", 5f, 2f, 15f, 1f, "s");
+    public static readonly FloatOpt Seconds = new("Rewinder.Seconds", 5f, 3f, 15f, 1f, "s");
     public static readonly FloatOpt RewindCooldown = new("Rewinder.Cooldown", 40f, 10f, 120f, 5f, "s");
     public static readonly IntOpt RewindUses = new("Rewinder.Uses", 1, 0, 10);
 

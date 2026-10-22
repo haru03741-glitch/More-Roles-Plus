@@ -496,6 +496,8 @@ internal static class FireFx
         if (_loopPlaying) { try { if (_loop) _loop.Stop(); } catch { } _loopPlaying = false; }
     }
 
+    internal static void DropScorch() => Scorch.Clear();
+
     internal static string Describe() => $"puffs={_live}/{MaxPuffs} made={Made} loop={(_loopPlaying ? (_loopMuffled ? "on(m)" : "on") : "off")} vol={_loopVol:0.00} scorchQ={Scorch.Count} scorch={_scorchWhy}";
 
     // ── 確認用 ─────────────────────────────────────────────────────────

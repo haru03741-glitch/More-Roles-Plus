@@ -75,6 +75,29 @@ public sealed class PortalMaker : RoleBase
 
     internal int MarkCount => _count;
 
+    // 時戻し: 置いたポータル (数・位置) と叩かれた回数。置く・外すは全員の端末に届いているので全員が自分の記録から戻す
+    internal override int RewindFloats => 6;
+    internal override void SaveRewind(Span<float> into)
+    {
+        into[0] = _count;
+        into[1] = _x[0]; into[2] = _y[0];
+        into[3] = _x[1]; into[4] = _y[1];
+        into[5] = _hits;
+    }
+
+    internal override void LoadRewind(ReadOnlySpan<float> from)
+    {
+        int n = Math.Clamp((int)from[0], 0, 2);
+        bool same = n == _count;
+        for (int i = 0; same && i < n; i++) same = _x[i] == from[1 + i * 2] && _y[i] == from[2 + i * 2];
+        if (!same)
+        {
+            ClearMarks();
+            for (int i = 0; i < n; i++) TryAdd(from[1 + i * 2], from[2 + i * 2]);
+        }
+        _hits = (int)from[5];
+    }
+
     public override void OnAssigned()
     {
         Active.Add(this);
