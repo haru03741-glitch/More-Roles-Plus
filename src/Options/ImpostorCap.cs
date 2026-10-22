@@ -102,7 +102,7 @@ internal static class AdjustedImpostorsPatch
 {
     public static bool Prefix(IGameOptions gameOptions, int playerCount, ref int __result)
     {
-        if (gameOptions == null || ServerKind.IsOfficial()) return true;
+        if (gameOptions == null || ServerKind.IsOfficial() || gameOptions.GameMode != GameModes.Normal) return true;
         __result = ImpostorCap.Adjusted(gameOptions, playerCount);
         return false;
     }
@@ -114,6 +114,7 @@ internal static class ImpostorCapSelectPatch
     [HarmonyPriority(Priority.First)]
     public static void Prefix()
     {
+        if (!GameModeSwitch.IsNormal) return;
         ImpostorCap.Refresh();
         var opts = GameOptionsManager.Instance.CurrentGameOptions;
         Plugin.Logger.LogInfo($"impostor cap: setting={opts.NumImpostors} players={GameData.Instance.PlayerCount} adjusted={opts.GetAdjustedNumImpostors(GameData.Instance.PlayerCount)}");
@@ -123,7 +124,10 @@ internal static class ImpostorCapSelectPatch
 [HarmonyPatch(typeof(LobbyBehaviour), nameof(LobbyBehaviour.Start))]
 internal static class ImpostorCapLobbyPatch
 {
-    public static void Postfix() => ImpostorCap.Refresh();
+    public static void Postfix()
+    {
+        if (GameModeSwitch.IsNormal) ImpostorCap.Refresh();
+    }
 }
 
 // ゲーム設定の「インポスター」の行の幅を接続先に合わせる
@@ -132,7 +136,7 @@ internal static class ImpostorCapRowPatch
 {
     public static void Postfix(NumberOption __instance)
     {
-        if (__instance.Title != StringNames.GameNumImpostors) return;
+        if (__instance.Title != StringNames.GameNumImpostors || !GameModeSwitch.IsNormal) return;
         GameTabRows.Relabel(__instance);
         ImpostorCap.Refresh();
         var opts = GameOptionsManager.Instance.CurrentGameOptions;

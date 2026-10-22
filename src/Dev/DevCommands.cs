@@ -443,6 +443,19 @@ internal static class DevCommands
             reply("OK chattoggle");
         });
 
+        TestBridge.Register("gamemode", "[normal | hns] 本編のモードを替える (ホストのロビーのみ)・引数なしで今のモードと GameManager", (args, reply) =>
+        {
+            var gm = GameManager.Instance;
+            string state = $"mode={Options.GameModeSwitch.Current} gm={(gm ? $"{gm.GetIl2CppType().Name}#{gm.NetId}" : "none")}";
+            switch (args.Trim())
+            {
+                case "": reply($"OK gamemode {state}"); return;
+                case "normal": reply($"OK gamemode {Options.GameModeSwitch.Switch(AmongUs.GameOptions.GameModes.Normal)}"); return;
+                case "hns": reply($"OK gamemode {Options.GameModeSwitch.Switch(AmongUs.GameOptions.GameModes.HideNSeek)}"); return;
+                default: reply("ERR gamemode [normal|hns]"); return;
+            }
+        });
+
         TestBridge.Register("players", "全員の番号・名前・生死・役職", (_, reply) =>
         {
             if (!GameData.Instance) { reply("ERR players no game"); return; }

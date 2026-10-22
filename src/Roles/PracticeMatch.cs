@@ -17,7 +17,8 @@ internal static class PracticeMatch
     internal static void OnIntro()
     {
         var data = GameData.Instance;
-        Active = data && data.PlayerCount < VanillaMinPlayers;
+        // かくれんぼは本編の勝ち負けで回す (人数が少なくても練習にしない)
+        Active = data && data.PlayerCount < VanillaMinPlayers && Options.GameModeSwitch.IsNormal;
         if (Active) Plugin.Logger.LogInfo($"practice match: {data.PlayerCount} player(s), automatic game end off");
     }
 
@@ -28,7 +29,7 @@ internal static class PracticeMatch
 [HarmonyPatch(typeof(GameStartManager), nameof(GameStartManager.Start))]
 internal static class MinPlayersPatch
 {
-    public static void Postfix(GameStartManager __instance) => __instance.MinPlayers = 1;
+    public static void Postfix(GameStartManager __instance) => __instance.MinPlayers = Options.GameModeSwitch.MinPlayers;
 }
 
 [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin))]

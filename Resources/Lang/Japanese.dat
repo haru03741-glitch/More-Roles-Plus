@@ -198,6 +198,7 @@ MapVariants.Title: マップのバリエーション
 MapVariants.Normal: 通常
 MapVariants.Mirrored: 左右反転
 MapVariants.Variant: バリエーション
+GameMode.Label: モード
 
 # ── PresetLabel ──
 PresetLabel.CustomName: カスタム

@@ -808,14 +808,14 @@ internal static class SelectRolesPatch
     // 本編には陣営 (クルー / インポスター) だけを決めさせる
     public static void Prefix()
     {
-        if (!AmongUsClient.Instance.AmHost) return;
+        if (!AmongUsClient.Instance.AmHost || !Options.GameModeSwitch.IsNormal) return;
         try { Builtin.VanillaRoles.PrepareVanillaSelection(); }
         catch (Exception e) { Plugin.Logger.LogError($"vanilla role rates: {e}"); }
     }
 
     public static void Postfix()
     {
-        if (!AmongUsClient.Instance.AmHost) return;
+        if (!AmongUsClient.Instance.AmHost || !Options.GameModeSwitch.IsNormal) return;
         try { Spectate.AfterVanillaSelection(); }
         catch (Exception e) { Plugin.Logger.LogError($"spectate: {e}"); }
         try { RoleAssigner.AssignAndSend(); }

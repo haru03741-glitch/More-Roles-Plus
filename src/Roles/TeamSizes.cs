@@ -82,7 +82,8 @@ public static class TeamSizes
     }
 
     private static bool AmHost => AmongUsClient.Instance && AmongUsClient.Instance.AmHost;
-    private static IGameOptions Options => GameOptionsManager.Instance?.CurrentGameOptions;
+    // 人数の帯は通常モードの設定だけに掛ける (かくれんぼの間は何もしない)
+    private static IGameOptions Options => GameModeSwitch.IsNormal ? GameOptionsManager.Instance?.CurrentGameOptions : null;
     private static int ImpostorCapOf(IGameOptions o) => Math.Max(1, ImpostorCap.MaxFor(ImpostorCap.RoomSize(o)));
 
     // ---- 帯 ⇔ ゲーム設定の行 (ホスト) ----
@@ -361,6 +362,7 @@ internal static class TeamSizesBeginPatch
     [HarmonyPriority(Priority.First)]
     public static void Prefix()
     {
+        if (!Options.GameModeSwitch.IsNormal) return;
         try { TeamSizes.OnBegin(); }
         catch (Exception e) { Plugin.Logger.LogError($"team sizes: {e}"); }
     }

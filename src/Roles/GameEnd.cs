@@ -429,7 +429,7 @@ internal static class RpcEndGamePatch
 {
     public static bool Prefix([HarmonyArgument(0)] GameOverReason endReason)
     {
-        if (!AmongUsClient.Instance.AmHost) return true;
+        if (!AmongUsClient.Instance.AmHost || !Options.GameModeSwitch.IsNormal) return true;
         if (!GameEnd.Allows(endReason))
         {
             if (GameEnd.Blocked++ == 0) Plugin.Logger.LogInfo($"end blocked: {endReason}");
@@ -446,7 +446,10 @@ internal static class RpcEndGamePatch
 [HarmonyPatch(typeof(AmongUsClient), "OnGameEnd")]
 internal static class OnGameEndPatch
 {
-    public static void Postfix() => GameEnd.CaptureWinners();
+    public static void Postfix()
+    {
+        if (Options.GameModeSwitch.IsNormal) GameEnd.CaptureWinners();
+    }
 }
 
 // 本編の勝ち / 負けの曲は SetEverythingUp の後、Start の中で鳴り始めるので、差し替えは Start の後で

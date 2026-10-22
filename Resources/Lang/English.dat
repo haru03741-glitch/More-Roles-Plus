@@ -198,6 +198,7 @@ MapVariants.Title: Map variant
 MapVariants.Normal: Normal
 MapVariants.Mirrored: Mirrored
 MapVariants.Variant: Variant
+GameMode.Label: Mode
 
 # ── PresetLabel ──
 PresetLabel.CustomName: Custom
