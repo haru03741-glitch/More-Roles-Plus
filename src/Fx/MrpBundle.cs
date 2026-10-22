@@ -24,7 +24,7 @@ internal static class MrpBundle
     private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq, _gradReq;
     private static bool _failed, _waterFailed, _fireFailed, _gradFailed;
 
-    // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音 (BreakNoise と DecompSound が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
+    // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音・エモートの音 (BreakNoise と DecompSound が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
     private static readonly string[] ClipNames = MakeClipNames();
     private static readonly AssetBundleRequest[] ClipReqs = new AssetBundleRequest[ClipNames.Length];
     private static readonly bool[] ClipDone = new bool[ClipNames.Length];
@@ -42,6 +42,8 @@ internal static class MrpBundle
             "noise_bump_heavy_1", "noise_bump_heavy_2", "noise_bump_clash_1", "noise_bump_clash_2",
             "noise_fire_loop", "noise_fire_ignite", "noise_steam", "noise_flare", "noise_arc",
             "noise_portal_open", "noise_portal_pass", "noise_portal_close",
+            "noise_emote_clap_1", "noise_emote_clap_2", "noise_emote_clap_3", "noise_emote_land_1", "noise_emote_land_2",
+            "noise_emote_push", "noise_emote_swish_1", "noise_emote_swish_2", "noise_emote_rustle",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {

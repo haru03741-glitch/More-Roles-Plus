@@ -50,6 +50,7 @@ internal static class BreakNoise
     private const int BurstLimit = 4;        // 0.3 秒にこれより多くは鳴らさない (追いつきの一斉適用)
     private const long BurstWindowMs = 300;
     private const int Voices = 6;           // 爆発は爆発の音と崩れ落ちる音の 2 つを使う
+    private const int GestureVoices = 4;    // 身ぶり (エモート) の音は別の声で鳴らす (拍手が続いても壁の音を途中で切らない)
     private const float RubbleDelay = 0.18f; // 爆発の音から崩れ落ちる音までの遅れ (種で 0.12 秒まで揺らす)
     private const float RubbleVolume = 0.85f;
     private const float PiecesFull = 70f, BlocksFull = 4f; // ここまで割れたら一番大きい崩れ方として扱う
@@ -68,8 +69,8 @@ internal static class BreakNoise
     private static readonly List<Mark> Spare = new();
     private static readonly Queue<long> Recent = new();
     private static GameObject _voiceHost;
-    private static AudioSource[] _voices;
-    private static int _nextVoice;
+    private static AudioSource[] _voices, _gestureVoices;
+    private static int _nextVoice, _nextGesture;
     private static long _lastMs;
     private static IntPtr _matShip;
     private static GameObject _prefab;
@@ -152,7 +153,10 @@ internal static class BreakNoise
     // 地形の破壊以外の音 (置いた爆弾の導火線など) を、その場所からの距離で鳴らす。muffle より遠いとこもった音
     internal static void PlayAt(string clip, Vector2 at, float range, float muffle, float volume) => PlayAt(clip, at.x, at.y, range, muffle, volume, 1f);
 
-    internal static void PlayAt(string clip, float x, float y, float range, float muffle, float volume, float pitch)
+    internal static void PlayAt(string clip, float x, float y, float range, float muffle, float volume, float pitch) =>
+        PlayAt(clip, x, y, range, muffle, volume, pitch, false);
+
+    internal static void PlayAt(string clip, float x, float y, float range, float muffle, float volume, float pitch, bool gesture)
     {
         var lp = PlayerControl.LocalPlayer;
         if (!lp || MeetingHud.Instance) return;
@@ -161,7 +165,7 @@ internal static class BreakNoise
         float d = MathF.Sqrt(dx * dx + dy * dy);
         if (d >= range) return;
         float near = d <= FullVolumeDist ? 1f : 1f - (d - FullVolumeDist) / (range - FullVolumeDist);
-        Play(d > muffle ? clip + "_m" : clip, volume * MathF.Pow(near, 1.5f), Math.Clamp(dx / PanDist, -PanMax, PanMax), pitch, 0f);
+        Play(d > muffle ? clip + "_m" : clip, volume * MathF.Pow(near, 1.5f), Math.Clamp(dx / PanDist, -PanMax, PanMax), pitch, 0f, gesture);
     }
 
     // 幽霊は壁を抜けるのでこもらない。すぐそばは短い区間の壁判定が当てにならないので直接聞こえる扱い
@@ -200,12 +204,21 @@ internal static class BreakNoise
         return kind == Sound.Boom ? "noise_boom" : kind == Sound.Hit ? _hitClip : _crumbleClip;
     }
 
-    private static void Play(string name, float vol, float pan, float pitch, float delay)
+    private static void Play(string name, float vol, float pan, float pitch, float delay, bool gesture = false)
     {
         var clip = Fx.MrpBundle.Clip(name);
         if (!clip || !EnsureVoices()) return;
-        var src = _voices[_nextVoice];
-        _nextVoice = (_nextVoice + 1) % Voices;
+        AudioSource src;
+        if (gesture)
+        {
+            src = _gestureVoices[_nextGesture];
+            _nextGesture = (_nextGesture + 1) % GestureVoices;
+        }
+        else
+        {
+            src = _voices[_nextVoice];
+            _nextVoice = (_nextVoice + 1) % Voices;
+        }
         src.Stop();
         src.clip = clip;
         src.volume = vol;
@@ -252,17 +265,24 @@ internal static class BreakNoise
         if (!sm) return false;
         _voiceHost = new GameObject("MrpBreakNoise");
         UnityEngine.Object.DontDestroyOnLoad(_voiceHost);
-        _voices = new AudioSource[Voices];
-        for (int i = 0; i < Voices; i++)
+        _voices = MakeVoices(sm, Voices);
+        _gestureVoices = MakeVoices(sm, GestureVoices);
+        return true;
+    }
+
+    private static AudioSource[] MakeVoices(SoundManager sm, int count)
+    {
+        var voices = new AudioSource[count];
+        for (int i = 0; i < count; i++)
         {
             var s = _voiceHost.AddComponent<AudioSource>();
             s.playOnAwake = false;
             s.loop = false;
             s.spatialBlend = 0f;
             s.outputAudioMixerGroup = sm.SfxChannel;
-            _voices[i] = s;
+            voices[i] = s;
         }
-        return true;
+        return voices;
     }
 
     private static void AddMark(Sound kind, float x, float y, float far, float mx, float my)

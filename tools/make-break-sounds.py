@@ -25,6 +25,11 @@
 #   noise_portal_open       … ポータルが開く (風と電気の唸りでためて、開き切りに低い一撃と放電・揺れるうなりと倍音が残る)
 #   noise_portal_pass       … ポータルを通った (しゅっと抜ける風と短い放電・軽い低音)
 #   noise_portal_close      … ポータルが閉じる (うなりが吸い込まれ、内側へつぶれる低い一撃と火花)
+#   noise_emote_clap_1..3   … 拍手の 1 打 (手のひらの間の空気の鳴りを打つたびに変える)
+#   noise_emote_land_1..2   … 跳ねて着地した (宇宙服の靴の底が床を打つ・両足は少しずれて着く)
+#   noise_emote_push        … 跳ねる前の踏み切り (靴底が床を擦る・服が揺れる)
+#   noise_emote_swish_1..2  … 手を振った時の袖の擦れ (しゅっ)
+#   noise_emote_rustle      … 手招きで指を曲げた時の手袋の擦れ (ごく小さい)
 #   noise_end_spectate      … 観戦の人の終わりの画面 (勝ちでも負けでもない、見届けた音。こもった版は作らない)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
 #   python tools/make-break-sounds.py   (numpy と scipy が要る)
@@ -950,6 +955,70 @@ def portal_close():
     return room_tail(out, 0.7, 4500, 0.3)
 
 
+# ── エモート (身ぶりの音・本物の音に寄せる) ─────────────────────
+
+def emote_clap(res, spread):
+    # 拍手の 1 打: 手のひらの当たり始めから閉じきるまでに小さな破裂が 2〜3 回 (spread 秒ずつ) 起き、
+    # 手のひらの間の空気が res 付近で短く鳴る。皮膚の高い擦れと掌の低い当たりを少し足して小さな部屋で響かせる
+    n, t = T(0.3)
+    x = np.zeros(n)
+    m, tm = T(0.06)
+    for dt, g, tau in [(0.0, 0.5, 0.003), (spread, 1.0, 0.004), (spread * 2.2, 0.35, 0.006)]:
+        place(x, noise(m) * np.exp(-tm / tau), 0.004 + dt, g)
+    air = bp(noise(n), res * 0.75, res * 1.35, order=3) * np.exp(-np.maximum(t - 0.004 - spread, 0) / 0.011)
+    air[: int((0.004 + spread) * SR)] = 0
+    body = bp(x, res * 0.6, res * 1.6) * 1.4 + hp(x, 4000) * 0.3 + bp(x, 200, 500) * 0.6 + air * 0.5
+    return room_tail(smooth_end(body, 0.3), 0.22, 5000, 0.16)
+
+
+def emote_land(gap, ring):
+    # 着地: 両足が gap 秒ずれて床を打つ。1 歩ごとに低い当たり + 靴底の鈍い打音 + 床の金属の短い鳴り + 靴底の擦れ
+    n, t = T(0.4)
+    out = np.zeros(n)
+    for at, g in [(0.004, 1.0), (0.004 + gap, 0.7)]:
+        k, tk = T(0.25)
+        low = np.sin(sweep(tk, 120, 55, 0.025)) * np.exp(-tk / 0.035)
+        knock = bp(noise(k), 280, 1400) * np.exp(-tk / 0.012)
+        deck = modal([(ring, 0.03, 0.25), (ring * 2.37, 0.02, 0.12)], 0.25, strike=0.002) * 0.3
+        scuff = bp(noise(k), 1200, 6000) * np.exp(-tk / 0.02) * np.minimum(1, tk / 0.004) * 0.25
+        place(out, smooth_end(1.2 * low + knock + deck + scuff, 0.3), at, g)
+    return room_tail(out, 0.25, 3500, 0.15)
+
+
+def emote_push():
+    # 踏み切り: 靴底が床を後ろへ擦る (立ち上がりの遅い高い擦れ) + 軽い当たり + 服の揺れ
+    n, t = T(0.25)
+    env = np.minimum(1, t / 0.025) * np.exp(-t / 0.045)
+    scuff = bp(noise(n), 900, 5000) * env
+    k, tk = T(0.12)
+    tap = np.sin(sweep(tk, 140, 80, 0.02)) * np.exp(-tk / 0.025) * 0.5
+    cloth = bp(noise(n), 2000, 7000) * np.minimum(1, t / 0.04) * np.exp(-t / 0.06) * 0.35
+    out = scuff + cloth
+    place(out, tap, 0.0)
+    return room_tail(smooth_end(out, 0.3), 0.2, 4000, 0.12)
+
+
+def emote_swish(dur, lo, hi):
+    # 袖の擦れ: 布の高い雑音がふくらんで消える (振る速さの山で一番大きく・帯が少し上がる) + 布のかさつき + 空気の低い流れ
+    n, t = T(dur)
+    u = t / dur
+    env = np.sin(np.pi * np.minimum(1, u * 1.25)) ** 2
+    a = bp(noise(n), lo, hi * 0.6) * (1 - u)
+    b = bp(noise(n), lo * 1.6, hi) * u
+    crinkle = grains(n, 140, 2500, 9000, dur=0.004, tau=0.001, shape=lambda v: np.sin(np.pi * v)) * 0.3
+    air = bp(noise(n), 250, 900) * env * 0.2
+    return smooth_end((a + b) * env + crinkle * env + air, 0.2)
+
+
+def emote_rustle():
+    # 手袋の指が曲がる時の擦れ: 短く小さい布のかさつき
+    n, t = T(0.14)
+    env = np.sin(np.pi * np.minimum(1, t / 0.12)) ** 2
+    rub = bp(noise(n), 1800, 7000) * env * 0.6
+    crinkle = grains(n, 180, 3000, 10000, dur=0.003, tau=0.0008, shape=lambda v: np.sin(np.pi * v)) * 0.4
+    return smooth_end(rub + crinkle * env, 0.2)
+
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     emit('noise_boom', boom, drive=2.4)
@@ -984,5 +1053,14 @@ if __name__ == '__main__':
     emit('noise_portal_open', portal_open, peak=0.8, drive=1.6, ratio=0.3, trim=True)
     emit('noise_portal_pass', portal_pass, peak=0.85, drive=1.8, ratio=0.35, trim=True)
     emit('noise_portal_close', portal_close, peak=0.8, drive=1.6, ratio=0.3, trim=True)
+    # 身ぶりの音は打った瞬間の形を残すため圧縮をごく弱く
+    for i, (res, spread) in enumerate([(1250, 0.0022), (1650, 0.0016), (1050, 0.0028)], 1):
+        emit(f'noise_emote_clap_{i}', lambda r=res, sp=spread: emote_clap(r, sp), peak=0.9, drive=1.2, ratio=0.1, trim=True)
+    for i, (gap, ring) in enumerate([(0.014, 410), (0.022, 360)], 1):
+        emit(f'noise_emote_land_{i}', lambda g=gap, r=ring: emote_land(g, r), peak=0.9, drive=1.3, ratio=0.12, trim=True)
+    emit('noise_emote_push', emote_push, peak=0.8, drive=1.2, ratio=0.1, trim=True)
+    emit('noise_emote_swish_1', lambda: emote_swish(0.2, 1200, 6500), peak=0.8, drive=1.2, ratio=0.1)
+    emit('noise_emote_swish_2', lambda: emote_swish(0.17, 1500, 7500), peak=0.8, drive=1.2, ratio=0.1)
+    emit('noise_emote_rustle', emote_rustle, peak=0.7, drive=1.2, ratio=0.1)
     reseed('noise_end_spectate')
     save('noise_end_spectate', fade(master(fade(end_spectate()), 1.3, 0.15), r=0.3), SR, 0.7)
