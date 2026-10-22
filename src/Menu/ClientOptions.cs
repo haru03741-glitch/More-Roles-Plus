@@ -34,6 +34,8 @@ internal static class ClientOptions
     public static ConfigEntry<bool> EndSummary { get; private set; }
     public static ConfigEntry<bool> SummaryToChat { get; private set; }
     public static ConfigEntry<bool> TaskOnName { get; private set; }
+    public static ConfigEntry<bool> CopyRoomCode { get; private set; }
+    public static ConfigEntry<bool> HintsShown { get; private set; } // 初回のヒントを出したか (一覧には並べない)
     public static ConfigEntry<bool> AutoPlayAgain { get; private set; }
     public static ConfigEntry<bool> Reconnect { get; private set; }
     public static ConfigEntry<bool> Spectate { get; private set; }
@@ -47,6 +49,8 @@ internal static class ClientOptions
         EndSummary = Add("EndSummary", true, new Text("ClientOptions.ShowRolesAtEnd"), null);
         SummaryToChat = Add("SummaryToChat", true, new Text("ClientOptions.SummaryToChat"), null);
         TaskOnName = Add("TaskOnName", true, new Text("ClientOptions.TaskOnName"), NameTaskTag.RefreshAll);
+        CopyRoomCode = Add("CopyRoomCode", true, new Text("ClientOptions.CopyRoomCode"), null);
+        HintsShown = cfg.Bind("Client", "HintsShown", false, "初回の操作のヒントを出したか");
         AutoPlayAgain = Add("AutoPlayAgain", false, new Text("ClientOptions.AutoReturn"), null);
         Reconnect = Add("Reconnect", true, new Text("ClientOptions.AutoRejoin"), null);
         Spectate = Add("Spectate", false, new Text("ClientOptions.Spectate"), Roles.Spectate.OnOptionChanged);

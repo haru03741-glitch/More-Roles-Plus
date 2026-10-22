@@ -516,6 +516,7 @@ ClientOptions.SabotageFlash: サボタージュの画面の点滅
 ClientOptions.SabotageAlarm: サボタージュの警報音
 ClientOptions.SummaryToChat: 試合の後、ロビーのチャットに結果を出す
 ClientOptions.TaskOnName: 名前の横にタスクの進み具合を出す
+ClientOptions.CopyRoomCode: 部屋を立てたらコードをコピーする
 ClientOptions.Back: 戻る
 ClientOptions.MRPOptions: MRP の設定
 
@@ -572,6 +573,8 @@ CustomColors.DarkColor: 暗い{color}
 # ── EndSummary ──
 EndSummary.Results: <b>試合の結果</b>\n
 EndSummary.ChatHeader: <b>前の試合の結果</b>  勝者: {winners}
+Convenience.CodeCopied: 部屋のコード {code} をコピーしました
+Convenience.Hints: <b>More Roles Plus の使い方</b>\nF1: 今の設定を見る\nB: エモート (会議中はスタンプ)\nEsc →「MRP の設定」: 表示の切り替え\n/help: チャットのコマンドの一覧\n↑↓: 前に送った文を呼び戻す\nマウスのホイール: ロビーと死んだ後に広く見る
 
 # ── SettingsOverlay ──
 SettingsOverlay.GameSettings: <b>本編の設定</b>\n

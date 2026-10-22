@@ -516,6 +516,7 @@ ClientOptions.SabotageFlash: Sabotage screen flash
 ClientOptions.SabotageAlarm: Sabotage alarm sound
 ClientOptions.SummaryToChat: Post the results to the lobby chat after a game
 ClientOptions.TaskOnName: Show task progress next to names
+ClientOptions.CopyRoomCode: Copy the room code when hosting
 ClientOptions.Back: Back
 ClientOptions.MRPOptions: MRP Options
 
@@ -572,6 +573,8 @@ CustomColors.DarkColor: Dark {color}
 # ── EndSummary ──
 EndSummary.Results: <b>Results</b>\n
 EndSummary.ChatHeader: <b>Last game</b>  Winners: {winners}
+Convenience.CodeCopied: Copied the room code {code}
+Convenience.Hints: <b>More Roles Plus tips</b>\nF1: view the current settings\nB: emotes (stamps during meetings)\nEsc → "MRP Options": display options\n/help: list of chat commands\n↑↓: recall messages you sent\nMouse wheel: zoom out in the lobby and after death
 
 # ── SettingsOverlay ──
 SettingsOverlay.GameSettings: <b>Game settings</b>\n
