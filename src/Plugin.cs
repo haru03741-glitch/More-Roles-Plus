@@ -129,6 +129,7 @@ public class Ticker : MonoBehaviour
         Options.RoleMenu.Tick(); t = Bridge.Perf.Lane(23, t);
         Options.CrowdPages.Tick();
         Options.GameModeSwitch.Tick();
+        Menu.ChatSummary.Tick();
         Bridge.Perf.End(t0);
     }
 

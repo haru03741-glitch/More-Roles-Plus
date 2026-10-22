@@ -32,6 +32,7 @@ internal static class MatchLog
     // 前の試合 (無ければ null)
     public static string LastResult { get; private set; }
     public static string LastWinners { get; private set; }
+    public static int ResultGen { get; private set; } // 結果を作るたびに 1 増える
 
     public static Death Of(byte pid) => Deaths.TryGetValue(pid, out var d) ? d : null;
 
@@ -100,6 +101,29 @@ internal static class MatchLog
         return alive.Value.ToString();
     }
 
+    // 死んだ後に付いた特別な幽霊の役職 (守護天使など)。ただの幽霊なら null
+    private static string GhostRoleLabel(NetworkedPlayerInfo p)
+    {
+        var r = p.Role;
+        if (!p.IsDead || !r || !RoleManager.IsGhostRole(r.Role)) return null;
+        if (r.Role is RoleTypes.CrewmateGhost or RoleTypes.ImpostorGhost) return null;
+        return $"<color=#{UnityEngine.ColorUtility.ToHtmlStringRGB(r.TeamColor)}>{r.NiceName}</color>";
+    }
+
+    // クルー側のタスクの進み具合 (インポスターと第三陣営の偽のタスクは数えない)
+    private static string TaskLabel(NetworkedPlayerInfo p)
+    {
+        var tasks = p.Tasks;
+        if (tasks == null || tasks.Count == 0) return null;
+        var mrp = RoleState.Of(p.PlayerId);
+        bool crew = mrp != null ? mrp.Team == Team.Crew : p.Role && p.Role.TeamType == RoleTeamTypes.Crewmate;
+        if (!crew) return null;
+        int done = 0;
+        for (int i = 0; i < tasks.Count; i++)
+            if (tasks[i] != null && tasks[i].Complete) done++;
+        return new Text("MatchLog.Tasks").With("done", done).With("total", tasks.Count);
+    }
+
     // 試合が終わった瞬間 (役職と勝者がまだ残っている間) に結果の文を作る
     public static void CaptureResult()
     {
@@ -137,11 +161,15 @@ internal static class MatchLog
             if (sb.Length > 0) sb.Append('\n');
             sb.Append(Won(p) ? "★ " : "　 ");
             sb.Append(p.PlayerName).Append(": ").Append(RoleLabel(p));
+            string ghost = GhostRoleLabel(p);
+            if (ghost != null) sb.Append(" → ").Append(ghost);
             // 蘇生された人の死因は残っているので、今の生死を先に見る
             var d = Of(p.PlayerId);
             if (!p.IsDead && !p.Disconnected) sb.Append(" / ").Append(new Text("MatchLog.Alive").ToString());
             else if (d != null) sb.Append(" / ").Append(Describe(d));
             else if (p.Disconnected) sb.Append(" / ").Append(new Text("MatchLog.Disconnected").ToString());
+            string tasks = TaskLabel(p);
+            if (tasks != null) sb.Append(" / ").Append(tasks);
         }
         // 観戦の人は役職を持たないので「観戦」とだけ出し、最後にまとめる
         for (int i = 0; i < all.Count; i++)
@@ -152,6 +180,7 @@ internal static class MatchLog
             sb.Append("　 ").Append(p.PlayerName).Append(": <color=#9A9A9A>").Append(new Text("MatchLog.Spectating").ToString()).Append("</color>");
         }
         LastResult = sb.ToString();
+        ResultGen++;
     }
 }
 

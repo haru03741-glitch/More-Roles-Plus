@@ -130,6 +130,7 @@ MatchLog.Disconnected: 切断した
 MatchLog.AbortedNoWinners: 廃村 (勝者なし)
 MatchLog.NoWinners: 勝者なし
 MatchLog.Alive: 生存
+MatchLog.Tasks: タスク {done}/{total}
 
 # ── RoleSettings ──
 RoleSettings.Title: 役職
@@ -499,6 +500,7 @@ ClientOptions.Spectate: 次の試合を観戦する (幽霊で見るだけ)
 ClientOptions.DarkMeetingScreen: 会議の画面を暗い色にする
 ClientOptions.SabotageFlash: サボタージュの画面の点滅
 ClientOptions.SabotageAlarm: サボタージュの警報音
+ClientOptions.SummaryToChat: 試合の後、ロビーのチャットに結果を出す
 ClientOptions.Back: 戻る
 ClientOptions.MRPOptions: MRP の設定
 
@@ -554,6 +556,7 @@ CustomColors.DarkColor: 暗い{color}
 
 # ── EndSummary ──
 EndSummary.Results: <b>試合の結果</b>\n
+EndSummary.ChatHeader: <b>前の試合の結果</b>  勝者: {winners}
 
 # ── SettingsOverlay ──
 SettingsOverlay.GameSettings: <b>本編の設定</b>\n

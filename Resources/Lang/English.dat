@@ -130,6 +130,7 @@ MatchLog.Disconnected: Disconnected
 MatchLog.AbortedNoWinners: Aborted (no winners)
 MatchLog.NoWinners: No winners
 MatchLog.Alive: Alive
+MatchLog.Tasks: Tasks {done}/{total}
 
 # ── RoleSettings ──
 RoleSettings.Title: Roles
@@ -499,6 +500,7 @@ ClientOptions.Spectate: Spectate the next game (as a ghost)
 ClientOptions.DarkMeetingScreen: Dark meeting screen
 ClientOptions.SabotageFlash: Sabotage screen flash
 ClientOptions.SabotageAlarm: Sabotage alarm sound
+ClientOptions.SummaryToChat: Post the results to the lobby chat after a game
 ClientOptions.Back: Back
 ClientOptions.MRPOptions: MRP Options
 
@@ -554,6 +556,7 @@ CustomColors.DarkColor: Dark {color}
 
 # ── EndSummary ──
 EndSummary.Results: <b>Results</b>\n
+EndSummary.ChatHeader: <b>Last game</b>  Winners: {winners}
 
 # ── SettingsOverlay ──
 SettingsOverlay.GameSettings: <b>Game settings</b>\n
