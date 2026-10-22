@@ -848,6 +848,7 @@ internal static class RoleAssigner
             if (p.RoleIndex < 0) RoleState.AssignAddonsOnly(player, addons);
             else RoleState.Assign(player, Registry.Roles[p.RoleIndex], addons);
         }
+        foreach (var p in plan) MatchLog.NoteRole(p.PlayerId); // 試合中の付け直し (始まりの配りはイントロの後に起点を取るので数えない)
         Plugin.Logger.LogInfo($"roles: {string.Join(", ", plan.Select(x => $"{x.PlayerId}={(x.RoleIndex < 0 ? "-" : Registry.Roles[x.RoleIndex].Id)}{string.Concat(x.Addons.Select(a => "+" + Registry.Addons[a].Id))}"))}");
     }
 }

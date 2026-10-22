@@ -36,7 +36,49 @@ internal static class MatchLog
 
     public static Death Of(byte pid) => Deaths.TryGetValue(pid, out var d) ? d : null;
 
-    public static void Reset() => Deaths.Clear();
+    public static void Reset()
+    {
+        Deaths.Clear();
+        RoleTrail.Clear();
+        _trailOn = false;
+    }
+
+    // 試合中に役職が変わった人の移り変わり (色付きの役職名・古い順)。配り始めの途中の変化を数えないよう、
+    // イントロの後の役職を起点にする。幽霊になったことは別の欄 (GhostRoleLabel) に出すので数えない
+    private const int TrailMax = 8;
+    private static readonly Dictionary<byte, List<string>> RoleTrail = new();
+    private static bool _trailOn;
+
+    public static void StartTrail()
+    {
+        RoleTrail.Clear();
+        _trailOn = true;
+        var data = GameData.Instance;
+        if (!data) return;
+        foreach (var p in data.AllPlayers)
+            if (p != null) NoteRole(p.PlayerId);
+    }
+
+    public static void NoteRole(byte pid)
+    {
+        if (!_trailOn) return;
+        var d = GameData.Instance ? GameData.Instance.GetPlayerById(pid) : null;
+        // MRP の役職の無い人は死ぬと本編の役職が幽霊に替わるので、死んだ後は見ない
+        if (d == null || (d.IsDead && RoleState.Of(pid) == null)) return;
+        string label = Dev.DevGod.Label(pid);
+        if (label == null) return;
+        if (!RoleTrail.TryGetValue(pid, out var trail)) RoleTrail[pid] = trail = new List<string>();
+        if ((trail.Count == 0 || trail[^1] != label) && trail.Count < TrailMax) trail.Add(label);
+    }
+
+    // 今の役職より前の役職を「A → B → 」の形で (変わっていなければ空)
+    private static string TrailPrefix(byte pid)
+    {
+        if (!RoleTrail.TryGetValue(pid, out var trail) || trail.Count < 2) return "";
+        var sb = new StringBuilder();
+        for (int i = 0; i < trail.Count - 1; i++) sb.Append(trail[i]).Append(" → ");
+        return sb.ToString();
+    }
 
     public static void OnMurder(PlayerControl killer, PlayerControl target)
     {
@@ -160,7 +202,7 @@ internal static class MatchLog
             if (p == null || Spectate.IsWatching(p.PlayerId)) continue;
             if (sb.Length > 0) sb.Append('\n');
             sb.Append(Won(p) ? "★ " : "　 ");
-            sb.Append(p.PlayerName).Append(": ").Append(RoleLabel(p));
+            sb.Append(p.PlayerName).Append(": ").Append(TrailPrefix(p.PlayerId)).Append(RoleLabel(p));
             string ghost = GhostRoleLabel(p);
             if (ghost != null) sb.Append(" → ").Append(ghost);
             // 蘇生された人の死因は残っているので、今の生死を先に見る
@@ -193,6 +235,28 @@ internal static class MatchLogEndPatch
         catch (System.Exception e) { Plugin.Logger.LogError($"match log: {e}"); }
         try { Commands.JoinLists.OnMatchEnd(GameEnd.Last != null && GameEnd.Last.Draw); }
         catch (System.Exception e) { Plugin.Logger.LogError($"recent games: {e}"); }
+    }
+}
+
+// イントロの後の役職を移り変わりの起点にする
+[HarmonyPatch(typeof(HudManager), nameof(HudManager.OnGameStart))]
+internal static class MatchLogTrailStartPatch
+{
+    public static void Postfix() => MatchLog.StartTrail();
+}
+
+// 本編の役職の付け直し (MRP の役職の土台を替えた時も通る)
+[HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SetRole))]
+internal static class MatchLogTrailRolePatch
+{
+    public static void Postfix([HarmonyArgument(0)] PlayerControl targetPlayer)
+    {
+        try
+        {
+            var role = targetPlayer ? targetPlayer.Data?.Role : null;
+            if (role && !RoleManager.IsGhostRole(role.Role)) MatchLog.NoteRole(targetPlayer.PlayerId);
+        }
+        catch (System.Exception e) { Plugin.Logger.LogError($"role trail: {e}"); }
     }
 }
 
