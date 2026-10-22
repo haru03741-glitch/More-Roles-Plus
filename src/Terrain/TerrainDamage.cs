@@ -30,6 +30,7 @@ internal static class TerrainDamage
         SolidMap.Ensure(); // 壁を切る前に歩ける所の地図を作っておく
         var p = DamageProfile.Of(e.Kind);
         if (e.Kind == DamageKind.Wall) return TrickWall.TryResolve(e, out r, out why);
+        if (e.Kind == DamageKind.Crumble) return BreakableProps.TryResolveCrumble(e, out r, out why);
         if (e.Kind == DamageKind.Explosion || e.Kind == DamageKind.Push || e.Kind == DamageKind.Water || e.Kind == DamageKind.Flood || e.Kind.IsFire())
         {
             r = new ResolvedDamage(e.Kind, TerrainWire.Q(e.Position), Vector2.zero, TerrainWire.QNormal(e.Direction),
@@ -143,6 +144,7 @@ internal static class TerrainDamage
             DamageKind.Water => "water", // 地形は変えない (水は WaterLeak の受け手が出す)
             DamageKind.Flood => "flood", // 地形は変えない (水は WaterSim の受け手が入れる)
             DamageKind.Wall => TrickWall.Place(r),
+            DamageKind.Crumble => BreakableProps.Crumble(r),
             _ => "unknown kind",
         };
     }

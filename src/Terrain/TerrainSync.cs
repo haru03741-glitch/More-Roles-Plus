@@ -395,6 +395,7 @@ internal static class TerrainSync
         var data = sender.Data;
         if (data == null || data.IsDead || data.Disconnected) return "not alive";
         if (e.Kind == DamageKind.Burn) return "world only"; // 焼け落ちはホストの火の計算だけが決める
+        if (e.Kind == DamageKind.Crumble) return "world only"; // 時間切れの壁を崩すのはホストだけ
         Vector2 at = sender.GetTruePosition();
         float dx = e.Position.x - at.x, dy = e.Position.y - at.y;
         float max = e.Kind == DamageKind.Blunt ? DamageProfile.Of(e.Kind).Reach + LagMargin : MaxBlastDistance;
@@ -403,6 +404,7 @@ internal static class TerrainSync
         if (e.Kind == DamageKind.Push && e.Size > MaxPushReach) return $"too long {e.Size:0.0}";
         if (e.Kind.IsFire() && e.Size > MaxFireRadius) return $"too large {e.Size:0.0}";
         if (e.Kind == DamageKind.Wall && e.Size > TerrainPermit.MaxWallLength + 0.01f) return $"too long {e.Size:0.0}";
+        if (e.Kind == DamageKind.Wall && e.Force > 0.5f && !TerrainPermits.Of(sender.PlayerId).WallPush) return "no push wall";
         if (e.Kind == DamageKind.Flood && e.Size <= 0f) return "world only"; // 止まらない浸水は仕掛け (ホスト) だけ
         return null;
     }

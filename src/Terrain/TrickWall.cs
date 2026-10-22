@@ -32,6 +32,9 @@ internal static class TrickWall
 
     private static int _count; // 立てた数 (名前の番号・試合をまたいで増えるだけ)
 
+    // 立った (全員の端末で・連番の順)。名前 (この端末の中で壁ごとに違う)・真ん中・長さ・立てた人 (ResolvedDamage.NoActor = 人でない)
+    internal static event Action<string, Vector2, float, byte> Placed;
+
     // ホスト: 置く依頼を置ける形に決める
     public static bool TryResolve(in DamageEvent e, out ResolvedDamage r, out string why)
     {
@@ -49,7 +52,9 @@ internal static class TrickWall
         c = TerrainWire.Q(c);
         t = TerrainWire.QNormal(t);
         len = TerrainWire.QSize(len);
-        string bad = Blocked(c, t, len);
+        // 力 1 = 人に掛かっても立てる (掛かった人は立った時に自分で押し出される・許可はホストが依頼の時に確かめた)。
+        // なぞった線を区間ごとに続けて立てるので、先に立った仕掛け壁との継ぎ目の重なりも許す
+        string bad = Blocked(c, t, len, e.Force > 0.5f);
         if (bad != null) { why = "wall " + bad; return false; }
         r = new ResolvedDamage(DamageKind.Wall, c, Vector2.zero, t, 0f, len, 0, e.Seed);
         return true;
@@ -71,11 +76,11 @@ internal static class TrickWall
     }
 
     // 立てる所に掛かる物 (人・扉・通気口・端末・はしご・死体)。無ければ null
-    private static string Blocked(Vector2 c, Vector2 t, float len)
+    private static string Blocked(Vector2 c, Vector2 t, float len, bool push)
     {
         var shape = new RectShape(c, t, len, Thickness);
         var all = PlayerControl.AllPlayerControls;
-        for (int i = 0; i < all.Count; i++)
+        for (int i = 0; !push && i < all.Count; i++)
         {
             var pc = all[i];
             if (!pc) continue;
@@ -91,21 +96,36 @@ internal static class TrickWall
         for (int i = -steps; i <= steps; i++)
         {
             float s = Math.Clamp(i * ProbeStep, -len * 0.5f, len * 0.5f);
-            Vector2 at = c + t * s;
-            if (MathF.Abs(s) <= inner)
-                foreach (var col in Physics2D.OverlapCircleAll(at, Thickness * 0.5f, (1 << ShipLayer) | (1 << FurnitureLayer)))
-                    if (col && !col.isTrigger) return "something in the way";
-            foreach (var col in Physics2D.OverlapCircleAll(at, Thickness * 0.5f + 0.05f, ~0))
-            {
-                if (!col) continue;
-                if (col.GetComponentInParent<OpenableDoor>()) return "door in the way";
-                if (col.GetComponentInParent<Vent>()) return "vent in the way";
-                if (col.GetComponentInParent<global::Console>()) return "console in the way";
-                if (col.GetComponentInParent<Ladder>()) return "ladder in the way";
-                if (col.GetComponentInParent<DeadBody>()) return "body in the way";
-            }
+            string why = ProbeAt(c + t * s, MathF.Abs(s) <= inner, push);
+            if (why != null) return why;
         }
         return null;
+    }
+
+    // 壁の芯の上の 1 点に、壁を立てられない物があるか (理由・無ければ null)。core = 端の食い込みを除いた所 (船・家具の層の物も見る)。
+    // push = 先に立った仕掛け壁との重なりは許す
+    private static string ProbeAt(Vector2 at, bool core, bool push)
+    {
+        if (core)
+            foreach (var col in Physics2D.OverlapCircleAll(at, Thickness * 0.5f, (1 << ShipLayer) | (1 << FurnitureLayer)))
+                if (col && !col.isTrigger && !(push && col.name.StartsWith(Name, StringComparison.Ordinal))) return $"something in the way ({col.name})";
+        foreach (var col in Physics2D.OverlapCircleAll(at, Thickness * 0.5f + 0.05f, ~0))
+        {
+            if (!col) continue;
+            if (col.GetComponentInParent<OpenableDoor>()) return "door in the way";
+            if (col.GetComponentInParent<Vent>()) return "vent in the way";
+            if (col.GetComponentInParent<global::Console>()) return "console in the way";
+            if (col.GetComponentInParent<Ladder>()) return "ladder in the way";
+            if (col.GetComponentInParent<DeadBody>()) return "body in the way";
+        }
+        return null;
+    }
+
+    // 離れた所から立てる壁 (人に掛かってもよい) をこの点に通してよいか。立てる前に線を床と物で切るのに使う
+    internal static bool FreeForPushWall(Vector2 at)
+    {
+        if (!SolidMap.Valid || SolidMap.Solid(at.x, at.y)) return false;
+        return ProbeAt(at, true, true) == null;
     }
 
     // 全員: 決まった形で立てる
@@ -165,6 +185,7 @@ internal static class TrickWall
         _riseGen = GameClock.ShipGen;
         Rising.Add(new Rise { Root = art.Root, ScaleX = art.ScaleX, ScaleY = art.ScaleY, Start = Environment.TickCount64, X = c.x, Y = c.y, Slices = art.Slices });
         BreakNoise.PlayAt("noise_rubble_metal", c.x, c.y, SoundRange, SoundMuffle, 0.55f, 0.75f);
+        Placed?.Invoke(name, c, len, r.Actor);
         DustCloud.Kick(c + n * (Thickness * 0.5f + 0.3f), DustRadius, r.Seed);
         DustCloud.Kick(c - n * (Thickness * 0.5f + 0.3f), DustRadius, (ushort)(r.Seed + 1));
         string pushed = PushOut(c, t, n, len, n.y * back.y + n.x * back.x > 0f ? 1f : -1f, backExtra);

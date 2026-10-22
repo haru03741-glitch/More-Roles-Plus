@@ -24,8 +24,9 @@ public readonly struct TerrainPermit
     public readonly float WaterCooldown;
     public readonly float WallLength;  // 0 = 置けない (仕掛け壁の長さの上限)
     public readonly float WallCooldown;
+    public readonly bool WallPush;     // 人に掛かる所にも立て、掛かった人は押し出される (離れた所から立てる役職)
 
-    private TerrainPermit(bool hammer, float hammerCd, float blast, float blastCd, float bomb, float bombCd, float fire = 0f, float fireCd = 0f, bool water = false, float waterCd = 0f, float wall = 0f, float wallCd = 0f)
+    private TerrainPermit(bool hammer, float hammerCd, float blast, float blastCd, float bomb, float bombCd, float fire = 0f, float fireCd = 0f, bool water = false, float waterCd = 0f, float wall = 0f, float wallCd = 0f, bool wallPush = false)
     {
         Hammer = hammer;
         HammerCooldown = hammerCd;
@@ -39,6 +40,7 @@ public readonly struct TerrainPermit
         WaterCooldown = waterCd;
         WallLength = Math.Clamp(wall, 0f, MaxWallLength);
         WallCooldown = wallCd;
+        WallPush = wallPush;
     }
 
     public const float MaxFireRadius = 2f;
@@ -47,15 +49,15 @@ public readonly struct TerrainPermit
     public static readonly TerrainPermit None = default;
 
     // 練習・フリープレイ: 何でも使える (待ち時間はボタンと各武器の決まりに任せる)
-    public static readonly TerrainPermit All = new(true, 0f, MaxRadius, 0f, MaxRadius, 0f, MaxFireRadius, 0f, true, 0f, MaxWallLength, 0f);
+    public static readonly TerrainPermit All = new(true, 0f, MaxRadius, 0f, MaxRadius, 0f, MaxFireRadius, 0f, true, 0f, MaxWallLength, 0f, true);
 
-    public TerrainPermit WithHammer(float cooldown = 0f) => new(true, cooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, Water, WaterCooldown, WallLength, WallCooldown);
-    public TerrainPermit WithBlast(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, radius, cooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, Water, WaterCooldown, WallLength, WallCooldown);
-    public TerrainPermit WithBomb(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, radius, cooldown, FireRadius, FireCooldown, Water, WaterCooldown, WallLength, WallCooldown);
-    public TerrainPermit WithFire(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, radius, cooldown, Water, WaterCooldown, WallLength, WallCooldown);
-    public TerrainPermit WithWater(float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, true, cooldown, WallLength, WallCooldown);
+    public TerrainPermit WithHammer(float cooldown = 0f) => new(true, cooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, Water, WaterCooldown, WallLength, WallCooldown, WallPush);
+    public TerrainPermit WithBlast(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, radius, cooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, Water, WaterCooldown, WallLength, WallCooldown, WallPush);
+    public TerrainPermit WithBomb(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, radius, cooldown, FireRadius, FireCooldown, Water, WaterCooldown, WallLength, WallCooldown, WallPush);
+    public TerrainPermit WithFire(float radius, float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, radius, cooldown, Water, WaterCooldown, WallLength, WallCooldown, WallPush);
+    public TerrainPermit WithWater(float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, true, cooldown, WallLength, WallCooldown, WallPush);
 
-    public TerrainPermit WithWall(float length, float cooldown = 0f) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, Water, WaterCooldown, length, cooldown);
+    public TerrainPermit WithWall(float length, float cooldown = 0f, bool push = false) => new(Hammer, HammerCooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, Water, WaterCooldown, length, cooldown, push);
 
     public bool Any => Hammer || BlastRadius > 0f || BombRadius > 0f || FireRadius > 0f || Water || WallLength > 0f;
 }

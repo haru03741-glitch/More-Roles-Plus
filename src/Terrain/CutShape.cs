@@ -97,6 +97,8 @@ internal sealed class RectShape : CutShape
 
     public override Vector2 Center => _c;
     public override float BoundRadius => MathF.Sqrt(_hl * _hl + _hd * _hd);
+    internal Vector2 Normal => _n;
+    internal float HalfDepth => _hd;
 
     internal override float[] Native(out int kind, out int n) { kind = 1; n = 0; return new[] { _c.x, _c.y, _t.x, _t.y, _n.x, _n.y, _hl, _hd }; }
 

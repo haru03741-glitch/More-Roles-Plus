@@ -254,7 +254,8 @@ internal static class KillTargetPatch
 [HarmonyPatch(typeof(KillButton), nameof(KillButton.DoClick))]
 internal static class KillButtonClickPatch
 {
-    public static bool Prefix(KillButton __instance) => KillAbility.OnClick(__instance);
+    // 構築士が設計図を開いている間 (体は設計台の前で止まっている) はキルしない (キーの Q でも押せるため)
+    public static bool Prefix(KillButton __instance) => !ArchitectPlan.IsOpen && KillAbility.OnClick(__instance);
 }
 
 // 本編はインポスターにだけキルボタンを出すので、キルできる役職にも出す (試合の始め・会議の後・死んだ時に来る)

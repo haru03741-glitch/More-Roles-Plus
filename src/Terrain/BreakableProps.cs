@@ -251,6 +251,54 @@ internal static class BreakableProps
         return $"prop break {p.Name} pieces={n}";
     }
 
+    // ホスト: 崩れの依頼。起点に壊れていない仕掛け壁があれば決める (先に壊れていれば何もしない)
+    internal static bool TryResolveCrumble(in DamageEvent e, out ResolvedDamage r, out string why)
+    {
+        r = default;
+        why = null;
+        int k = Ensure() ? At(e.Position) : -1;
+        if (k < 0 || !Props[k].Name.StartsWith(TrickWall.Name, StringComparison.Ordinal)) { why = "crumble no wall"; return false; }
+        r = new ResolvedDamage(DamageKind.Crumble, TerrainWire.Q(e.Position), Vector2.zero, Vector2.up, 0f, TerrainWire.QSize(e.Size), 0, e.Seed);
+        return true;
+    }
+
+    // 点に掛かる壊れていない物の名前 (崩れの依頼がどの壁に当たるかを前もって見る)。無ければ null
+    internal static string IntactNameAt(Vector2 at)
+    {
+        if (!Ensure()) return null;
+        int k = At(at);
+        return k < 0 ? null : Props[k].Name;
+    }
+
+    // その名前の物が残っているか (壊れていない)
+    internal static bool Intact(string name)
+    {
+        if (!Ensure()) return false;
+        foreach (var p in Props) if (p.Name == name) return !p.Broken;
+        return false;
+    }
+
+    // 全員: 時間切れの仕掛け壁を物ごと崩す。欠片は上へ散り、歩ける所へ戻した側の床の番号は壁の脇の床から取る
+    internal static string Crumble(in ResolvedDamage e)
+    {
+        if (!Ensure()) return "crumble no ship";
+        int k = At(e.Position);
+        if (k < 0) return "crumble not found";
+        var p = Props[k];
+        p.Hp = 0;
+        TerrainDigest.Hp(-1 - k, 0);
+        TerrainDamage.LastMaterial = p.Spec.Wood ? "wood" : "metal";
+        TerrainDamage.LastPitch = p.Spec.Pitch;
+        Vector2 home = e.Position;
+        if (p.Shape is RectShape rs)
+        {
+            Vector2 side = rs.Normal * (rs.HalfDepth + 0.15f);
+            home = SolidMap.Solid(e.Position + side) ? e.Position - side : e.Position + side;
+        }
+        int n = Break(p, Vector2.up, home, e.Seed, e.Position);
+        return $"prop crumble {p.Name} pieces={n}";
+    }
+
     // 全員: 爆発の形に掛かる家具を壊す。壊した数
     internal static int Blast(CutShape core, Vector2 center, ushort seed)
     {

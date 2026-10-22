@@ -295,6 +295,61 @@ def portal():
     ic.save("portal")
 
 
+def grid_lines(x0, y0, x1, y1, step, width):
+    m = blank()
+    d = ImageDraw.Draw(m)
+    x = x0 + step
+    while x < x1 - 1:
+        d.line([(x * SS, y0 * SS), (x * SS, y1 * SS)], fill=255, width=width * SS)
+        x += step
+    y = y0 + step
+    while y < y1 - 1:
+        d.line([(x0 * SS, y * SS), (x1 * SS, y * SS)], fill=255, width=width * SS)
+        y += step
+    return m
+
+
+def plan_lines(points_list, width):
+    m = blank()
+    d = ImageDraw.Draw(m)
+    for pts in points_list:
+        d.line([(x * SS, y * SS) for x, y in pts], fill=255, width=width * SS, joint="curve")
+    return m
+
+
+def desk():
+    # 製図台: 手前に傾いた青い図面の板 → 濃い鉄の枠 → 脚 2 本と横木
+    ic = Icon()
+    ic.part(poly([(52, 132), (64, 132), (64, 206), (52, 206)]), (70, 76, 88, 255), [(poly([(52, 132), (57, 132), (57, 206), (52, 206)]), (120, 128, 142, 255))])
+    ic.part(poly([(156, 132), (168, 132), (168, 206), (156, 206)]), (70, 76, 88, 255), [(poly([(156, 132), (161, 132), (161, 206), (156, 206)]), (120, 128, 142, 255))])
+    ic.part(poly([(60, 176), (160, 176), (160, 186), (60, 186)]), (58, 64, 76, 255))
+    board = poly([(30, 136), (190, 136), (172, 30), (48, 30)])
+    sheet = poly([(44, 126), (176, 126), (162, 40), (58, 40)])
+    ic.part(board, (92, 100, 116, 255), [(poly([(30, 126), (190, 126), (190, 140), (30, 140)]), (54, 60, 72, 255)), (poly([(40, 30), (180, 30), (178, 40), (42, 40)]), (150, 158, 172, 255))])
+    ic.img.paste((34, 92, 170, 255), (0, 0), sheet)
+    ic.img.paste((86, 150, 222, 255), (0, 0), ImageChops.multiply(grid_lines(40, 36, 180, 130, 14, 2), sheet))
+    walls = plan_lines([[(70, 112), (70, 56), (128, 56)], [(100, 112), (150, 112), (150, 80)]], 6)
+    ic.img.paste((236, 246, 255, 255), (0, 0), ImageChops.multiply(walls, sheet))
+    ic.save("desk")
+
+
+def blueprint():
+    # 広げた設計図: 上の巻き → 青い紙と方眼 → 白い壁の線。右下に鉛筆
+    ic = Icon()
+    sheet = poly([(28, 44), (192, 44), (192, 190), (28, 190)])
+    ic.part(sheet, (34, 92, 170, 255), [(poly([(28, 176), (192, 176), (192, 190), (28, 190)]), (24, 70, 138, 255))])
+    ic.img.paste((86, 150, 222, 255), (0, 0), ImageChops.multiply(grid_lines(28, 44, 192, 190, 16, 2), sheet))
+    walls = plan_lines([[(50, 160), (50, 70), (110, 70)], [(80, 120), (140, 120)], [(170, 70), (170, 160), (110, 160)]], 7)
+    ic.img.paste((236, 246, 255, 255), (0, 0), ImageChops.multiply(walls, sheet))
+    ic.part(ellipse(16, 26, 46, 64), (24, 70, 138, 255), [(ellipse(22, 32, 40, 58), (60, 124, 204, 255))])
+    ic.part(poly([(30, 26), (190, 26), (190, 64), (30, 64)]), (48, 112, 196, 255), [(poly([(30, 30), (190, 30), (190, 38), (30, 38)]), (120, 176, 240, 255))])
+    ic.part(ellipse(174, 26, 204, 64), (48, 112, 196, 255), [(ellipse(182, 34, 198, 56), (24, 70, 138, 255))])
+    pencil = poly([(150, 214), (138, 202), (196, 144), (208, 156)])
+    ic.part(pencil, (244, 196, 60, 255), [(poly([(144, 208), (138, 202), (196, 144), (202, 150)]), (255, 228, 128, 255))])
+    ic.part(poly([(150, 214), (138, 202), (128, 222)]), (238, 212, 170, 255), [(poly([(134, 214), (130, 222), (138, 218)]), (40, 40, 44, 255))])
+    ic.save("blueprint")
+
+
 if __name__ == "__main__":
     hammer()
     hammer_held()
@@ -307,4 +362,6 @@ if __name__ == "__main__":
     fire()
     water()
     portal()
+    desk()
+    blueprint()
     print("wrote", os.path.abspath(OUT))

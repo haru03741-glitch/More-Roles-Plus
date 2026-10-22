@@ -253,7 +253,7 @@ public sealed class PortalMaker : RoleBase
     }
 
     // ベント・端末・扉・はしごの上には置かない (着いた人がそれに重なり、ベントは出入りのたびに飛ばされる)
-    private static bool NearFixture(Vector2 at)
+    internal static bool NearFixture(Vector2 at)
     {
         if (SolidMap.Valid && SolidMap.Solid(at.x, at.y)) return true;
         foreach (var col in Physics2D.OverlapCircleAll(at, FixtureClear, ~0))

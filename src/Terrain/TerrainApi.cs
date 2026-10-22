@@ -146,6 +146,19 @@ public static class TerrainApi
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
 
+    // 壁の中の配管を裂く: 壁の面の pos から dir (部屋の側) へ、水漏れと同じ量の水をしばらく噴き出す。壁は壊さない (配管の絵が出る)
+    public static TerrainResult BurstPipe(Vector2 pos, Vector2 dir)
+    {
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        if (!Local(TerrainUse.Water, 0f, out var lp, out string why)) return TerrainResult.Fail(why);
+        Vector2 me = lp.GetTruePosition();
+        float dx = pos.x - me.x, dy = pos.y - me.y;
+        if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
+            return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
+        string res = TerrainSync.Request(new DamageEvent(DamageKind.Water, pos, dir.normalized, 0f, 1f, Seed()), out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
+    }
+
     // プレイヤーでない放水 (ホストと一人の時だけ・水の仕掛けなど)
     public static TerrainResult WorldWater(Vector2 pos, Vector2 dir)
     {
@@ -193,6 +206,31 @@ public static class TerrainApi
         if (!ok) return TerrainResult.Fail(res);
         TerrainPermits.Mark(lp.PlayerId, TerrainUse.Wall);
         return TerrainResult.Done(res);
+    }
+
+    // 人に掛かる所にも立てる仕掛け壁 (許可の WallPush が要る)。掛かった人は立った時に横へ押し出される
+    public static TerrainResult PushWall(Vector2 pos, Vector2 dir, float length)
+    {
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        length = Math.Clamp(length, 0.1f, TerrainPermit.MaxWallLength);
+        if (!Local(TerrainUse.Wall, length, out var lp, out string why)) return TerrainResult.Fail(why);
+        if (!TerrainPermits.Of(lp.PlayerId).WallPush) return TerrainResult.Fail(new Text("TerrainApi.YourRoleCantDoThat"));
+        Vector2 me = lp.GetTruePosition();
+        float dx = pos.x - me.x, dy = pos.y - me.y;
+        if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
+            return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
+        string res = TerrainSync.Request(new DamageEvent(DamageKind.Wall, pos, dir.normalized, length, 1f, Seed()), out bool ok);
+        if (!ok) return TerrainResult.Fail(res);
+        TerrainPermits.Mark(lp.PlayerId, TerrainUse.Wall);
+        return TerrainResult.Done(res);
+    }
+
+    // pos にある仕掛け壁を物ごと崩す (ホストと一人の時だけ・時間切れなど)。length = 壁の長さ (煙の広がり)
+    public static TerrainResult WorldCrumble(Vector2 pos, float length)
+    {
+        if (TerrainSync.IsGuest()) return TerrainResult.Fail("host only");
+        string res = TerrainSync.RequestAs(new DamageEvent(DamageKind.Crumble, pos, Vector2.up, length, 0f, Seed()), World, out bool ok);
+        return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
 
     // プレイヤーでない仕掛け壁 (ホストと一人の時だけ・マップの出来事など)

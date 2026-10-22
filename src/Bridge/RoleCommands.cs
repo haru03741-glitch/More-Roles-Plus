@@ -45,6 +45,42 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
+        TestBridge.Register("architect", "[x y | go <番号> | open | close | draw x1 y1 x2 y2 ... | pipe x y] 自分の構築士の状態 / (x, y) に設計台を置く (待ち時間は使わない) / 設計台の手前へ移る / 設計図を開く・閉じる / 点の列をなぞった扱いにする (ゲージを使い壁を立てる) / (x, y) を軽く押した扱いにする (近くの壁の配管を裂く)", (args, reply) =>
+        {
+            if (RoleState.Local is not Roles.Impostor.Architect ar) { reply("ERR architect not Architect"); return; }
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 2 && p[0] == "go" && int.TryParse(p[1], out int gi))
+            {
+                if (!ar.GoForTest(gi)) { reply($"ERR architect go {ar.Describe()}"); return; }
+            }
+            else if (p.Length >= 1 && p[0] == "open")
+            {
+                if (!ar.OpenForTest()) { reply($"ERR architect open {ar.Describe()}"); return; }
+            }
+            else if (p.Length >= 1 && p[0] == "close") ArchitectPlan.Close();
+            else if (p.Length >= 3 && p[0] == "pipe")
+            {
+                bool ok = ar.Burst(new UnityEngine.Vector2(float.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture), float.Parse(p[2], System.Globalization.CultureInfo.InvariantCulture)));
+                reply($"{(ok ? "OK" : "ERR")} architect pipe {ar.Describe()}");
+                return;
+            }
+            else if (p.Length >= 5 && p[0] == "draw")
+            {
+                var pts = new System.Collections.Generic.List<UnityEngine.Vector2>();
+                for (int i = 1; i + 1 < p.Length; i += 2)
+                    pts.Add(new UnityEngine.Vector2(float.Parse(p[i], System.Globalization.CultureInfo.InvariantCulture), float.Parse(p[i + 1], System.Globalization.CultureInfo.InvariantCulture)));
+                float used = ar.DrawForTest(pts);
+                reply($"OK architect drew {used:0.00} {ar.Describe()}");
+                return;
+            }
+            else if (p.Length >= 2 && float.TryParse(p[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float x)
+                              && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float y))
+            {
+                if (!ar.PlaceForTest(x, y)) { reply($"ERR architect refused {ar.Describe()}"); return; }
+            }
+            reply($"OK architect {ar.Describe()} art={ArchitectDeskArt.LiveCount} desk0=[{ArchitectDeskArt.Probe()}]");
+        });
+
         TestBridge.Register("endcheck", "[番号...] 生き残りの数で勝者が決まるかを見るだけ (終わらせない)。番号の人をキル役として数える", (args, reply) =>
         {
             if (!GameData.Instance) { reply("ERR endcheck not in game"); return; }

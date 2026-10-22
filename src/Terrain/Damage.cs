@@ -13,12 +13,13 @@ public enum DamageKind : byte
     Water = 7,     // 放水: 壁は壊さない。起点から向きの側へ水漏れと同じ量の水をしばらく噴き出す (配管の絵は出さない)
     Flood = 8,     // 浸水: 壁は壊さない。起点の床へ水を入れ続ける (Size = 続く時間 ×10 秒・0 = 試合の終わりまで / Force = 入れる速さ)
     Wall = 9,      // 仕掛け壁: 起点を真ん中に Direction の向きへ長さ Size の壁を立てる。壊れるまで歩きも視界も水も止める (壊れ方は物ごと壊れる家具と同じ)
+    Crumble = 10,  // 崩れ: 起点にある仕掛け壁を物ごと崩す (立ててから時間が経った壁を崩す・ホストだけが出す)
 }
 
 internal static class DamageKinds
 {
     // 地形 (壁) を変える種類か。押し・点火・油は水と火と小物だけに効く
-    public static bool Shapes(this DamageKind k) => k == DamageKind.Explosion || k.IsStrike();
+    public static bool Shapes(this DamageKind k) => k == DamageKind.Explosion || k == DamageKind.Crumble || k.IsStrike();
     // 壁 1 枚の耐久を削る種類か (叩いた面の向きと残りの耐久を持つ)
     public static bool IsStrike(this DamageKind k) => k == DamageKind.Blunt || k == DamageKind.Burn;
     public static bool IsFire(this DamageKind k) => k == DamageKind.Ignite || k == DamageKind.Spill;

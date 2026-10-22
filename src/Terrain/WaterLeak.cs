@@ -152,7 +152,8 @@ internal static class WaterLeak
     {
         if (r.Kind == DamageKind.Explosion) Splash(r);
         if (r.Kind == DamageKind.Push) { PushSplash(r); return; }
-        if (r.Kind == DamageKind.Water) { Start(r.Position, r.Direction, r.Seed, "water", 0.8f, r.Tick, pipes: false); return; }
+        // 力 1 = 壁の中の配管を裂いた (配管の絵を出す)。0 = 手元からの放水
+        if (r.Kind == DamageKind.Water) { Start(r.Position, r.Direction, r.Seed, "water", 0.8f, r.Tick, pipes: r.Force > 0.5f); return; }
         if (!ShipStatus.Instance || TerrainDamage.LastCut <= 0) return;
         if (r.Kind != DamageKind.Explosion && r.Hp > 0) return;
         if (!FindLeak(r.Position, out Vector2 at, out Vector2 n, out float segLen, out string room)) return;
@@ -339,6 +340,9 @@ internal static class WaterLeak
         room = null;
         return false;
     }
+
+    internal static bool IsWaterRoom(Vector2 p) => WaterRoom(p) != null;
+    internal static bool IsWaterRoomName(string roomId) => WaterRooms.Contains(roomId);
 
     private static string WaterRoom(Vector2 p)
     {
