@@ -50,27 +50,34 @@ internal static class RandomSpawn
     };
 
     // 自分を部屋の 1 つへ飛ばす
+    // マップの部屋の真ん中あたり (本編の向き)。無いマップは null
+    internal static Vector2[] SpotsFor(int map) => map switch
+    {
+        0 or 3 => Skeld,
+        1 => Mira,
+        2 => Polus,
+        4 => Airship,
+        5 => Fungle,
+        _ => null,
+    };
+
+    // 本編の向きの座標を今の船の座標へ。dlekS は Skeld を左右に返した船・MRP の反転はさらに左右に返す
+    internal static Vector2 ToShip(int map, Vector2 p)
+    {
+        bool flip = (map == 3) != MapFlip.Flipped;
+        return new Vector2(flip ? -p.x : p.x, p.y);
+    }
+
     internal static void Go(string why)
     {
-        if (!MapRules.RandomSpawn) return;
+        if (!MapRules.RandomSpawn || SelectSpawn.Active) return; // 選ぶ画面を出す時はそちらで
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.Data == null || lp.Data.IsDead || !ShipStatus.Instance) return;
         int map = MapRules.MapId;
-        var spots = map switch
-        {
-            0 or 3 => Skeld,
-            1 => Mira,
-            2 => Polus,
-            4 => Airship,
-            5 => Fungle,
-            _ => null,
-        };
+        var spots = SpotsFor(map);
         if (spots == null) return;
         int n = map == 4 && !MapRules.AirshipAllRooms ? AirshipVanillaSpots : spots.Length;
-        var p = spots[Rng.Next(n)];
-        // dlekS は Skeld を左右に返した船・MRP の反転はさらに左右に返す
-        bool flip = (map == 3) != MapFlip.Flipped;
-        var to = new Vector2(flip ? -p.x : p.x, p.y);
+        var to = ToShip(map, spots[Rng.Next(n)]);
         Teleport.Self(to);
         Plugin.Logger.LogInfo($"random spawn ({why}): ({to.x:0.#}, {to.y:0.#})");
     }

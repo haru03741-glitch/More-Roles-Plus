@@ -674,6 +674,7 @@ MapRules.AirshipSpeed: The Airship の移動速度
 MapRules.FungleSpeed: The Fungle の移動速度
 MapRules.RandomSpawn: ランダムスポーン
 MapRules.AirshipAllRooms: The Airship は全部の部屋から選ぶ
+MapRules.SelectSpawn: 湧く場所を選ぶ (Airship と同じ画面・Airship 以外)
 MapRules.ExtraKillCooldown: マップごとにキルのクールダウンを足す
 MapRules.PolusKillCooldown: Polus で足す時間
 MapRules.AirshipKillCooldown: The Airship で足す時間

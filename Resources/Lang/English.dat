@@ -674,6 +674,7 @@ MapRules.AirshipSpeed: The Airship player speed
 MapRules.FungleSpeed: The Fungle player speed
 MapRules.RandomSpawn: Random spawn
 MapRules.AirshipAllRooms: The Airship: pick from every room
+MapRules.SelectSpawn: Choose where to spawn (the Airship picker on other maps)
 MapRules.ExtraKillCooldown: Extra kill cooldown per map
 MapRules.PolusKillCooldown: Extra on Polus
 MapRules.AirshipKillCooldown: Extra on The Airship

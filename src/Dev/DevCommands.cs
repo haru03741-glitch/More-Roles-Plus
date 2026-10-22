@@ -488,6 +488,114 @@ internal static class DevCommands
             reply($"OK taskdone {done}");
         });
 
+        TestBridge.Register("airshipprobe", "[load | release] Airship の船を読み込んで湧き場所選びの画面の部品があるか・メモリがどれだけ増えるかを測る (確かめ用)", (args, reply) =>
+        {
+            static string Mem()
+            {
+                var pr = System.Diagnostics.Process.GetCurrentProcess();
+                pr.Refresh();
+                string s = $"ws={pr.WorkingSet64 >> 20}MB private={pr.PrivateMemorySize64 >> 20}MB boehm={Health.BoehmUsed() >> 20}MB";
+#if !ANDROID
+                s += $" unityAlloc={UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() >> 20}MB unityReserved={UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong() >> 20}MB tex={Texture.currentTextureMemory >> 20}MB";
+                var bundles = AssetBundle.GetAllLoadedAssetBundles_Native();
+                int n = 0;
+                var names = new System.Text.StringBuilder();
+                foreach (var b in bundles)
+                {
+                    n++;
+                    if (b && b.name.IndexOf("airship", StringComparison.OrdinalIgnoreCase) >= 0) names.Append(' ').Append(b.name);
+                }
+                s += $" bundles={n}{(names.Length > 0 ? " airship:" + names : "")}";
+#endif
+                return s;
+            }
+            var prefabs = AmongUsClient.Instance ? AmongUsClient.Instance.ShipPrefabs : null;
+            if (prefabs == null || prefabs.Count <= 4) { reply("ERR airshipprobe no ship prefabs"); return; }
+            var aref = prefabs[4];
+            string before = Mem();
+            if (args.Trim() == "bundles")
+            {
+#if !ANDROID
+                foreach (var b in AssetBundle.GetAllLoadedAssetBundles_Native()) if (b) reply($"BUNDLE {b.name}");
+#endif
+                reply("OK airshipprobe bundles");
+                return;
+            }
+            if (args.Trim() == "loadraw")
+            {
+                // 部品の包みを作らずに読み込んで、すぐ手放す (掴んでいるのが包みかどうかの切り分け)
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var op = aref.LoadAssetAsync<GameObject>();
+                op.WaitForCompletion();
+                long ms = sw.ElapsedMilliseconds;
+                aref.ReleaseAsset();
+                reply($"OK airshipprobe loadraw {ms}ms before[{before}] after[{Mem()}]");
+                return;
+            }
+            if (args.Trim() == "unloadgc")
+            {
+                // ゲーム側 (il2cpp) の GC も回してから掃除させる
+                System.GC.Collect();
+                System.GC.WaitForPendingFinalizers();
+                Il2CppSystem.GC.Collect();
+                UnityEngine.Resources.UnloadUnusedAssets();
+                reply($"OK airshipprobe unloadgc requested before[{before}]");
+                return;
+            }
+            if (args.Trim() == "unload")
+            {
+                // C# の包みの GC ハンドルを先に外してから、参照の無い物を掃除させる
+                System.GC.Collect();
+                System.GC.WaitForPendingFinalizers();
+                System.GC.Collect();
+                UnityEngine.Resources.UnloadUnusedAssets();
+                reply($"OK airshipprobe unload requested before[{before}]");
+                return;
+            }
+            if (args.Trim() == "release")
+            {
+                aref.ReleaseAsset();
+                System.GC.Collect();
+                UnityEngine.Resources.UnloadUnusedAssets();
+                reply($"OK airshipprobe released before[{before}] after[{Mem()}]");
+                return;
+            }
+            if (args.Trim() == "load")
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                GameObject go = aref.Asset ? aref.Asset.TryCast<GameObject>() : null;
+                if (!go)
+                {
+                    var op = aref.LoadAssetAsync<GameObject>();
+                    go = op.WaitForCompletion();
+                }
+                var ship = go ? go.GetComponent<AirshipStatus>() : null;
+                var mg = ship ? ship.SpawnInGame : null;
+                reply($"OK airshipprobe loaded in {sw.ElapsedMilliseconds}ms ship={(ship ? "yes" : "no")} minigame={(mg ? $"yes locations={mg.Locations.Length}" : "no")} before[{before}] after[{Mem()}]");
+                return;
+            }
+            reply($"OK airshipprobe {Mem()} loaded={(aref.Asset ? "yes" : "no")}");
+        });
+
+        TestBridge.Register("spawnpick", "[press <左からの番号>] 湧く場所を選ぶ画面を今すぐ開く (湧く場所を選ぶ設定が入っていて Airship を読み込み済みの時) / 開いている画面のボタンを押す", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 2 && a[0] == "press" && int.TryParse(a[1], out int idx))
+            {
+                var mg = Minigame.Instance ? Minigame.Instance.TryCast<SpawnInMinigame>() : null;
+                if (!mg) { reply("ERR spawnpick press: picker not open"); return; }
+                var buttons = mg.LocationButtons.ToArray().Where(b => b).OrderBy(b => b.transform.localPosition.x).ToArray();
+                if (idx < 0 || idx >= buttons.Length) { reply($"ERR spawnpick press: {buttons.Length} buttons"); return; }
+                var t = buttons[idx].GetComponentInChildren<TMPro.TextMeshPro>();
+                buttons[idx].OnClick.Invoke();
+                reply($"OK spawnpick pressed '{(t ? t.text : "?")}'");
+                return;
+            }
+            if (!Rules.SelectSpawn.Active) { reply("ERR spawnpick not active"); return; }
+            Rules.SelectSpawn.Open();
+            reply("OK spawnpick");
+        });
+
         TestBridge.Register("votetimeout", "会議の投票の時間切れと同じこと (本編の ForceSkipAll) をする (ホストのみ)", (_, reply) =>
         {
             var hud = MeetingHud.Instance;

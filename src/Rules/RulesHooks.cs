@@ -17,6 +17,7 @@ internal static class RulesHooks
         Run("devices", Devices.OnShipStart);
         Run("sabotage rules", SabotageRules.OnShipStart);
         Run("map gimmicks", MapGimmicks.OnShipStart);
+        Run("select spawn", SelectSpawn.OnShipStart);
     }
 
     internal static void OnMeeting()
@@ -30,6 +31,7 @@ internal static class RulesHooks
     {
         RandomSpawn.Tick();
         RandomSpawn.TickAirship();
+        SelectSpawn.Tick();
         MapGimmicks.Tick();
         if (!_meeting) return;
         if (MeetingHud.Instance || ExileController.Instance) { _quiet = 0; return; }
@@ -37,6 +39,7 @@ internal static class RulesHooks
         _meeting = false;
         if (!ShipStatus.Instance) return;
         Run("random spawn", RandomSpawn.AfterMeeting);
+        Run("select spawn", SelectSpawn.AfterMeeting);
         Run("map gimmicks", MapGimmicks.AfterMeeting);
     }
 

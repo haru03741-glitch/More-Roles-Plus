@@ -34,6 +34,8 @@ public static class MapRules
     // 湧く場所をばらばらにする (試合の始めと会議の後)
     public static readonly BoolOpt RandomSpawn = new("MapRules.RandomSpawn", false) { OffTab = true };
     public static readonly BoolOpt AirshipAllRooms = new("MapRules.AirshipAllRooms", false) { OffTab = true, Parent = RandomSpawn };
+    // Airship 以外でも試合の始めと会議の後に湧く場所を選ぶ (Airship と同じ画面・SelectSpawn)
+    public static readonly BoolOpt SelectSpawn = new("MapRules.SelectSpawn", false) { OffTab = true };
 
     // マップごとにキルのクールダウン時間を足す
     public static readonly BoolOpt ExtraKillCooldown = new("MapRules.ExtraKillCooldown", false) { OffTab = true };
@@ -75,7 +77,7 @@ public static class MapRules
     {
         RandomMap, SkeldChance, MiraChance, PolusChance, AirshipChance, FungleChance, AirshipMinPlayers, FungleMinPlayers,
         MapSpeed, SkeldSpeed, MiraSpeed, PolusSpeed, AirshipSpeed, FungleSpeed,
-        RandomSpawn, AirshipAllRooms,
+        RandomSpawn, AirshipAllRooms, SelectSpawn,
         ExtraKillCooldown, PolusKillCooldown, AirshipKillCooldown, FungleKillCooldown,
         Decon, MiraDeconTime, MiraDeconDoorTime, PolusDeconTime, PolusDeconDoorTime,
         ResetDoors, ResetDoorsMode,
