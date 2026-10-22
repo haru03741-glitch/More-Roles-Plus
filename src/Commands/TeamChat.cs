@@ -31,7 +31,7 @@ internal static class TeamChat
     private const int PendingMax = 30;
 
     private static readonly RemoteCall<string> Msg = new("TeamChat.Msg", Route.Anyone,
-        (w, text) => w.Write(text), r => r.ReadString(), Receive, Delivery.Queued);
+        (w, text) => w.Write(text), r => r.ReadString(), Receive, Delivery.Queued, perSecond: 5);
 
     private static bool _on; // 会議中に「仲間へ」を選んでいるか
     private static string _restore; // 送れなかった文 (入力欄へ戻す)

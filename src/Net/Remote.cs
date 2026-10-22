@@ -33,6 +33,8 @@ internal enum Delivery
 //       (w, target) => w.Write(target), r => r.ReadByte(), (sender, target) => ...);
 //   KillRequest.Send(target.PlayerId);
 // 送っても自分の手元では実行しない (ToHost をホストが送った時だけ例外)。手元に効かせる処理は送る側で呼ぶ。
+// 受け手はホスト以外の 1 人から 1 秒に DefaultPerSecond 本まで受け取る (ホストからの物は数えない)。
+// 正当に速く送る物は perSecond: で上げ、連打されると困る物は下げる。
 // 名前は版の中で一意に。名前順に番号が決まるので、名前を変える・足すと版の指紋も変わる。
 internal abstract class RemoteCall
 {
@@ -40,14 +42,47 @@ internal abstract class RemoteCall
     public readonly Route Route;
     public readonly Delivery Delivery;
     public byte Id { get; internal set; }
-    public int Sent, Received, Dropped; // 確認用の数
+    public int Sent, Received, Dropped, Limited; // 確認用の数 (Limited = 送り手ごとの本数の上限で捨てた数)
 
-    protected RemoteCall(string name, Route route, Delivery delivery)
+    // ホスト以外の 1 人から 1 秒に受け取る上限 (0 = 上限なし)。改造した客が同じ電文を連打しても、
+    // 受け手の処理とホストの配り直しが詰まらないようにする。ホストからの物は数えない (ホストは何でも送れるので守りにならない)
+    public readonly int PerSecond;
+    public const int DefaultPerSecond = 30; // 正当な最大 (TP の 10 回/秒・爆発の同時の演出) の 2〜3 倍
+    private int[] _count, _windowAt; // 送り手 (PlayerId) ごとの今の窓の本数と始まり (初めて数える時に作る)
+    private int[] _warnedAt; // 送り手ごとに最後に警告した窓 (連打中にログで重くしない)
+
+    protected RemoteCall(string name, Route route, Delivery delivery, int perSecond)
     {
         Name = name;
         Route = route;
         Delivery = delivery;
+        PerSecond = perSecond >= 0 ? perSecond : route == Route.HostToAll ? 0 : DefaultPerSecond;
         Remote.Add(this);
+    }
+
+    // 受け取ってよいか。窓は 1 秒ごとに 0 へ戻す固定窓で、窓の境目では上限の 2 倍まで通る
+    // (数百本/秒の連打を止めるための物なので、その揺れは困らない)
+    internal bool Allow(PlayerControl sender)
+    {
+        if (PerSecond <= 0 || Rpc.FromHost(sender)) return true;
+        int id = sender.PlayerId;
+        int now = (int)Environment.TickCount64;
+        _count ??= new int[256];
+        _windowAt ??= new int[256];
+        if (now - _windowAt[id] >= 1000 || _count[id] == 0)
+        {
+            _windowAt[id] = now;
+            _count[id] = 0;
+        }
+        if (++_count[id] <= PerSecond) return true;
+        Limited++;
+        _warnedAt ??= new int[256];
+        if (_warnedAt[id] != _windowAt[id])
+        {
+            _warnedAt[id] = _windowAt[id];
+            Plugin.Logger.LogWarning($"remote {Name} from {id}: over {PerSecond}/s, dropped");
+        }
+        return false;
     }
 
     internal abstract void Receive(PlayerControl sender, MessageReader r);
@@ -59,9 +94,10 @@ internal sealed class RemoteCall<T> : RemoteCall
     private readonly Func<MessageReader, T> _read;
     private readonly Action<PlayerControl, T> _body;
 
+    // perSecond = ホスト以外の 1 人から 1 秒に受け取る上限 (-1 = 既定: ホスト宛て・誰でもの物は DefaultPerSecond・ホストからの物は無し)
     public RemoteCall(string name, Route route, Action<MessageWriter, T> write, Func<MessageReader, T> read, Action<PlayerControl, T> body,
-        Delivery delivery = Delivery.Now)
-        : base(name, route, delivery)
+        Delivery delivery = Delivery.Now, int perSecond = -1)
+        : base(name, route, delivery, perSecond)
     {
         _write = write;
         _read = read;
@@ -178,6 +214,31 @@ internal static class Remote
     }
 
     private static readonly List<Lane> Lanes = new();
+    private static int _laneStart; // Tick で最初に回す列 (ホスト宛て以外)
+
+    private static Lane HostLane(int host)
+    {
+        for (int i = 0; i < Lanes.Count; i++)
+            if (Lanes[i].Target == host) return Lanes[i];
+        return null;
+    }
+
+    private static int _laneHost = -1; // 前の Tick のホスト
+
+    // ホストが替わった: 前のホスト宛ての列は 1 通ごとに宛先が焼いてあって向け直せないので捨てる
+    // (放置・観戦の知らせなど、前のホストにしか届かなかった物は替わった後に今のホストへ送り直している)
+    private static void DropLane(int target)
+    {
+        for (int i = 0; i < Lanes.Count; i++)
+        {
+            var lane = Lanes[i];
+            if (lane.Target != target) continue;
+            if (lane.Open != null) { lane.Open.Recycle(); Dropped++; }
+            foreach (var w in lane.Ready) { w.Recycle(); Dropped++; }
+            Lanes.RemoveAt(i);
+            return;
+        }
+    }
     private static bool _closeQueued; // Open〜Close の間: 今の電文が待ち行列の 1 通に入っているか
 
     private static Lane LaneFor(int target)
@@ -312,10 +373,27 @@ internal static class Remote
             DropAll();
             return;
         }
+        // 予算を先の列が使い切るとほかの列が待ち続けるので、ホスト宛て (地形の依頼・指紋) を先に回し、
+        // 残りは回り始める列を tick ごとにずらす
         bool waited = false;
-        for (int i = 0; i < Lanes.Count; i++)
+        int host = AmongUsClient.Instance.HostId;
+        if (host != _laneHost)
         {
-            var lane = Lanes[i];
+            if (_laneHost >= 0) DropLane(_laneHost); // -1 は全員宛ての列なので捨てない (繋がる前の HostId)
+            _laneHost = host;
+        }
+        int n = Lanes.Count;
+        _laneStart = n > 0 ? (_laneStart + 1) % n : 0;
+        for (int k = -1; k < n; k++)
+        {
+            Lane lane;
+            if (k < 0) lane = HostLane(host);
+            else
+            {
+                lane = Lanes[(_laneStart + k) % n];
+                if (lane.Target == host) continue;
+            }
+            if (lane == null) continue;
             while (lane.Ready.Count > 0 && WithinBudget())
             {
                 var w = lane.Ready[0];
@@ -436,6 +514,7 @@ internal static class Remote
                 Plugin.Logger.LogWarning($"remote {call.Name} from {(sender ? sender.PlayerId : -1)} dropped (route {call.Route})");
                 continue;
             }
+            if (!sender || !call.Allow(sender)) continue;
             call.Received++;
             try { call.Receive(sender, sub); }
             catch (Exception ex) { Plugin.Logger.LogError($"remote {call.Name}: {ex}"); }
@@ -525,10 +604,11 @@ internal static class Remote
         sb.Append('\n');
         foreach (var c in _byId)
         {
-            if (c.Sent == 0 && c.Received == 0 && c.Dropped == 0) continue;
+            if (c.Sent == 0 && c.Received == 0 && c.Dropped == 0 && c.Limited == 0) continue;
             sb.Append(c.Name).Append(' ').Append(c.Delivery == Delivery.Queued ? "queued" : "now")
               .Append(" sent=").Append(c.Sent).Append(" recv=").Append(c.Received);
             if (c.Dropped > 0) sb.Append(" dropped=").Append(c.Dropped);
+            if (c.Limited > 0) sb.Append(" limited=").Append(c.Limited);
             sb.Append('\n');
         }
         if (ProbeReceived > 0) sb.Append("probe recv=").Append(ProbeReceived).Append('\n');

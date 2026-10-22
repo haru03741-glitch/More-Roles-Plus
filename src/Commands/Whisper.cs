@@ -30,10 +30,10 @@ internal static class Whisper
     internal static byte Target = None;
 
     private static readonly RemoteCall<(byte to, string text)> Msg = new("Whisper.Msg", Route.Anyone,
-        (w, v) => { w.Write(v.to); w.Write(v.text); }, r => (r.ReadByte(), r.ReadString()), (sender, v) => Receive(sender, v.to, v.text));
+        (w, v) => { w.Write(v.to); w.Write(v.text); }, r => (r.ReadByte(), r.ReadString()), (sender, v) => Receive(sender, v.to, v.text), perSecond: 5);
 
     private static readonly RemoteCall<byte> Told = new("Whisper.Told", Route.Anyone,
-        (w, to) => w.Write(to), r => r.ReadByte(), (sender, to) => ReceiveTold(sender, to));
+        (w, to) => w.Write(to), r => r.ReadByte(), (sender, to) => ReceiveTold(sender, to), perSecond: 5);
 
     private static bool InLobby => !ShipStatus.Instance && Vanilla.StartManager;
 

@@ -30,7 +30,7 @@ internal static class Teleport
             if (!sender || !float.IsFinite(m.X) || !float.IsFinite(m.Y) || Math.Abs(m.X) > 1000f || Math.Abs(m.Y) > 1000f) return;
             var nt = sender.NetTransform;
             if (nt) nt.SnapTo(new Vector2(m.X, m.Y), m.Sid);
-        });
+        }, perSecond: 60); // 送り手は 10 回/秒まで。回線が詰まった後にまとめて届いても捨てない幅
 
     private static bool _pending;
     private static Vector2 _pendingTo;

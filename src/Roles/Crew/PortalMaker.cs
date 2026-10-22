@@ -38,14 +38,15 @@ public sealed class PortalMaker : RoleBase
     // 置いた (持ち主 → 全員)。受け手は送り主がポータルメーカーか・数と間隔の決まりを自分で確かめる
     private static readonly RemoteCall<Vector2> MarkCall = new("PortalMaker.Mark", Route.Anyone,
         (w, v) => { w.Write(v.x); w.Write(v.y); }, r => FxMath.V2(r.ReadSingle(), r.ReadSingle()),
-        (sender, v) => Of(sender)?.TryAdd(v.x, v.y));
+        (sender, v) => Of(sender)?.TryAdd(v.x, v.y), perSecond: 4);
 
     private static readonly RemoteCall<byte> ClearCall = new("PortalMaker.Clear", Route.Anyone,
-        (w, _) => w.Write((byte)0), r => r.ReadByte(), (sender, _) => Of(sender)?.ClearMarks());
+        (w, _) => w.Write((byte)0), r => r.ReadByte(),
+        (sender, _) => { if (CanRemove) Of(sender)?.ClearMarks(); }, perSecond: 4);
 
     // 誰かが通った (通った人 → 全員)。値 = どのポータルメーカーのポータルか。光と音だけ (位置は本編の同期で届く)
     private static readonly RemoteCall<byte> PassCall = new("PortalMaker.Pass", Route.Anyone,
-        (w, id) => w.Write(id), r => r.ReadByte(), (_, id) => (RoleState.Of(id) as PortalMaker)?.ShowPass());
+        (w, id) => w.Write(id), r => r.ReadByte(), (_, id) => (RoleState.Of(id) as PortalMaker)?.ShowPass(), perSecond: 8);
 
     // 装置をハンマーで叩いた (叩いた人 → ホスト)。値 = どのポータルメーカーの装置か。回数はホストだけが数える
     private static readonly RemoteCall<byte> HitCall = new("PortalMaker.Hit", Route.ToHost,

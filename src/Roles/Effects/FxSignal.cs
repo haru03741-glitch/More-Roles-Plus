@@ -76,6 +76,7 @@ public static class FxSignal
     private static void Receive(PlayerControl sender, Msg m)
     {
         if (!sender || sender.AmOwner || m.Fx >= List.Count) return;
+        if (!float.IsFinite(m.Ev.At.x) || !float.IsFinite(m.Ev.At.y)) return;
         // 起こした人は送った人だけ (他人の名前で演出を出させない)
         if (m.Ev.Actor != sender.PlayerId) return;
         Dispatch(List[m.Fx], m.Ev);

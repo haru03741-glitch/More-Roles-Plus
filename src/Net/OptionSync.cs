@@ -28,7 +28,10 @@ internal static class OptionSync
         },
         r =>
         {
-            var values = new int[r.ReadPackedInt32()];
+            // 同じ版なら件数は項目の数と同じ。違う数は確保する前に捨てる (大きな数で受け手のメモリを食わせない)
+            int n = r.ReadPackedInt32();
+            if (n != Registry.All.Count) throw new System.IO.InvalidDataException($"options count {n} != {Registry.All.Count}");
+            var values = new int[n];
             for (int i = 0; i < values.Length; i++) values[i] = r.ReadPackedInt32();
             return (values, r.ReadString());
         },
