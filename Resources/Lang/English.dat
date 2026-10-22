@@ -531,6 +531,13 @@ VanillaTweaks.ScanNoWalk: Do not walk to the scanner
 VanillaTweaks.TickInTasks: Cooldowns tick during tasks
 VanillaTweaks.HideVentOutOfSight: Hide vent animations out of sight
 VanillaTweaks.DeadImpNoSabotage: Dead impostors cannot sabotage
+VanillaTweaks.FirstKillShield: Shield the last match's first victim
+VanillaTweaks.NightCams: Cameras switch to night vision during lights out
+VanillaTweaks.PetsShown: Other players' pets
+VanillaTweaks.PetsAlways: Always
+VanillaTweaks.PetsAlive: Alive players only
+VanillaTweaks.PetsOwn: Hidden
+VanillaTweaks.PetGoesWithBody: Hide pets when the body is gone
 
 # ── HudTweaks ──
 HudTweaks.Screenshot: Screenshot saved ({path})

@@ -221,6 +221,7 @@ internal static class KillAbility
         if (!Uses(role)) return "role";
         if (!target || target == killer || target.Data == null || target.Data.IsDead || target.Data.Disconnected) return "target";
         if (target.inVent || target.inMovingPlat) return "target busy";
+        if (Rules.VanillaTweaks.Shielded(target)) return "shield";
         string far = Targeting.Unreachable(killer, target, Reach(role) + DistanceSlack);
         if (far != null) return far;
         // 前のキル (無ければ割り当て) からの経過。最初は試合の始めの待ち時間
@@ -256,7 +257,8 @@ internal static class KillTargetPatch
 internal static class KillButtonClickPatch
 {
     // 構築士が設計図を開いている間 (体は設計台の前で止まっている) はキルしない (キーの Q でも押せるため)
-    public static bool Prefix(KillButton __instance) => !ArchitectPlan.IsOpen && KillAbility.OnClick(__instance);
+    public static bool Prefix(KillButton __instance) =>
+        !ArchitectPlan.IsOpen && !Rules.VanillaTweaks.Shielded(__instance.currentTarget) && KillAbility.OnClick(__instance);
 }
 
 // 本編はインポスターにだけキルボタンを出すので、キルできる役職にも出す (試合の始め・会議の後・死んだ時に来る)

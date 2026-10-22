@@ -18,12 +18,14 @@ internal static class RulesHooks
         Run("sabotage rules", SabotageRules.OnShipStart);
         Run("map gimmicks", MapGimmicks.OnShipStart);
         Run("select spawn", SelectSpawn.OnShipStart);
+        Run("first kill shield", VanillaTweaks.OnShipStart);
     }
 
     internal static void OnMeeting()
     {
         _meeting = true;
         _quiet = 0;
+        Run("first kill shield", VanillaTweaks.OnMeeting);
     }
 
     // FixedUpdate

@@ -531,6 +531,13 @@ VanillaTweaks.ScanNoWalk: スキャンの前に台へ歩かない
 VanillaTweaks.TickInTasks: 作業中もクールダウンが進む
 VanillaTweaks.HideVentOutOfSight: 見えない所のベントの出入りを隠す
 VanillaTweaks.DeadImpNoSabotage: 死んだインポスターはサボタージュできない
+VanillaTweaks.FirstKillShield: 前の試合の最初の犠牲者に盾
+VanillaTweaks.NightCams: 停電中は監視カメラが暗視になる
+VanillaTweaks.PetsShown: ほかの人のペット
+VanillaTweaks.PetsAlways: いつも出す
+VanillaTweaks.PetsAlive: 生きている人だけ
+VanillaTweaks.PetsOwn: 出さない
+VanillaTweaks.PetGoesWithBody: 死体が消えたらペットも消す
 
 # ── HudTweaks ──
 HudTweaks.Screenshot: スクリーンショットを保存しました ({path})

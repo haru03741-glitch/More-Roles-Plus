@@ -217,7 +217,7 @@ internal static class EmoteArt
             }
             if (check)
             {
-                SetHidden(s, !s.Pc.Visible);
+                SetHidden(s, !s.Pc.Visible || Rules.NightVisionCams.Active); // 停電中のカメラの暗視では誰か分かる手も隠す
                 s.Flip = s.Pc.cosmetics && s.Pc.cosmetics.FlipX;
                 // 跳ねている途中で踏ん張り・吸い出しが体の根を動かし始めたら、こちらの上げ下げをやめて譲る
                 if (s.Hop && (Terrain.CrewBrace.Posed(s.Id) || Terrain.CrewGrip.Active)) Unhop(s);

@@ -433,13 +433,23 @@ internal static class DevCommands
         TestBridge.Register("update", "[state | check | fake <版> [url|file:<パス>] | press | popup | reset] メインメニューの更新ボタン: check = GitHub を見直す・fake = その版が出たことにする (file: なら手元の DLL で入れ替える)・press = ボタンを本編の押下の道で押す・reset = 知らせた版を忘れる", (args, reply) => reply(Menu.ModUpdate.Command(args.Trim())));
         TestBridge.Register("sabalert", "サボタージュの点滅と警報音 (端末ごとの設定) の状態・自前で回している数", (args, reply) => reply(Menu.SabotageAlert.Describe()));
         TestBridge.Register("client","[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));
-        TestBridge.Register("minigame", "[sys] 自分の終わっていない最初のタスクの端末へ移って作業画面を開く / sys = 最初の機器の端末 (カメラなど) を開く (待ち時間が作業中に進むかの確かめ用)", (args, reply) =>
+        TestBridge.Register("minigame", "[sys [名前の一部] | close] 自分の終わっていない最初のタスクの端末へ移って作業画面を開く / sys = 機器の端末 (カメラなど) を開く / close = 開いている作業画面を閉じる (待ち時間が作業中に進むかの確かめ用)", (args, reply) =>
         {
             var lp = PlayerControl.LocalPlayer;
             if (!lp || !ShipStatus.Instance) { reply("ERR minigame not in game"); return; }
-            if (args.Trim() == "sys")
+            string a = args.Trim();
+            if (a == "close")
             {
-                var sc = UnityEngine.Object.FindObjectOfType<SystemConsole>();
+                if (Minigame.Instance) Minigame.Instance.Close();
+                reply("OK minigame closed");
+                return;
+            }
+            if (a == "sys" || a.StartsWith("sys "))
+            {
+                string want = a.Length > 4 ? a[4..] : "";
+                SystemConsole sc = null;
+                foreach (var c in UnityEngine.Object.FindObjectsOfType<SystemConsole>())
+                    if (c && c.name.Contains(want, StringComparison.OrdinalIgnoreCase)) { sc = c; break; }
                 if (!sc) { reply("ERR minigame no system console"); return; }
                 lp.NetTransform.SnapTo(sc.transform.position);
                 sc.Use();
@@ -459,6 +469,8 @@ internal static class DevCommands
             }
             reply("ERR minigame no task with a console");
         });
+        TestBridge.Register("shield", "[番号|255] 前の試合の最初の犠牲者の盾の状態 / その人に今すぐ盾を付ける (255 = 外す・ホストのみ全員へ)", (args, reply) => reply(Rules.VanillaTweaks.DevShield(args.Trim())));
+        TestBridge.Register("nightcams", "停電中のカメラの暗視の状態", (_, reply) => reply(Rules.NightVisionCams.Describe()));
         TestBridge.Register("hudtweaks", "[scale | shot] 端末ごとの HUD の調整の状態。scale = ボタンの大きさを次へ・shot = スクリーンショットのキーと同じ", (args, reply) =>
         {
             string a = args.Trim();

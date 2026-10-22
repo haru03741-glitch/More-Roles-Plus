@@ -397,6 +397,15 @@ internal static class CustomColors
 
     // 本編が人形 1 体を塗った後 (CosmeticsLayer.SetColor): その色番号がグラデーションなら体のシェーダを差し替える。
     // 本編はこの時に体のマテリアルを人形ごとに複製済みなので、sharedMaterial を書き換えても他の人形には移らない
+    // 作った色が入っていない本編の色番号か (全員を同じ色に塗る時に使う)
+    public static bool IsPlainSlot(int id) => !BySlot.ContainsKey(id);
+
+    public static int FirstPlainSlot()
+    {
+        for (int i = 0; i < Palette.PlayerColors.Length; i++) if (!BySlot.ContainsKey(i)) return i;
+        return 0;
+    }
+
     public static void ApplyGradient(CosmeticsLayer layer, int id)
     {
         var body = layer.currentBodySprite;
