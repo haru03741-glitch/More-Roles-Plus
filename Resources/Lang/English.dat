@@ -524,6 +524,14 @@ ClientOptions.ButtonScale: Button size
 ClientOptions.Back: Back
 ClientOptions.MRPOptions: MRP Options
 
+# ── VanillaTweaks ──
+VanillaTweaks.Title: Vanilla tweaks
+VanillaTweaks.ParallelScan: Medbay scans at the same time
+VanillaTweaks.ScanNoWalk: Do not walk to the scanner
+VanillaTweaks.TickInTasks: Cooldowns tick during tasks
+VanillaTweaks.HideVentOutOfSight: Hide vent animations out of sight
+VanillaTweaks.DeadImpNoSabotage: Dead impostors cannot sabotage
+
 # ── HudTweaks ──
 HudTweaks.Screenshot: Screenshot saved ({path})
 

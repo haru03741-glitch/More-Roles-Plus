@@ -433,6 +433,32 @@ internal static class DevCommands
         TestBridge.Register("update", "[state | check | fake <版> [url|file:<パス>] | press | popup | reset] メインメニューの更新ボタン: check = GitHub を見直す・fake = その版が出たことにする (file: なら手元の DLL で入れ替える)・press = ボタンを本編の押下の道で押す・reset = 知らせた版を忘れる", (args, reply) => reply(Menu.ModUpdate.Command(args.Trim())));
         TestBridge.Register("sabalert", "サボタージュの点滅と警報音 (端末ごとの設定) の状態・自前で回している数", (args, reply) => reply(Menu.SabotageAlert.Describe()));
         TestBridge.Register("client","[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));
+        TestBridge.Register("minigame", "[sys] 自分の終わっていない最初のタスクの端末へ移って作業画面を開く / sys = 最初の機器の端末 (カメラなど) を開く (待ち時間が作業中に進むかの確かめ用)", (args, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp || !ShipStatus.Instance) { reply("ERR minigame not in game"); return; }
+            if (args.Trim() == "sys")
+            {
+                var sc = UnityEngine.Object.FindObjectOfType<SystemConsole>();
+                if (!sc) { reply("ERR minigame no system console"); return; }
+                lp.NetTransform.SnapTo(sc.transform.position);
+                sc.Use();
+                reply($"OK minigame console={sc.name}");
+                return;
+            }
+            foreach (var task in lp.myTasks)
+            {
+                if (task == null || task.IsComplete) continue;
+                var consoles = task.FindConsoles();
+                if (consoles == null || consoles.Count == 0) continue;
+                var c = consoles[0];
+                lp.NetTransform.SnapTo(c.transform.position);
+                c.Use();
+                reply($"OK minigame task={task.TaskType} console={c.name} open={(Minigame.Instance ? Minigame.Instance.name : "-")}");
+                return;
+            }
+            reply("ERR minigame no task with a console");
+        });
         TestBridge.Register("hudtweaks", "[scale | shot] 端末ごとの HUD の調整の状態。scale = ボタンの大きさを次へ・shot = スクリーンショットのキーと同じ", (args, reply) =>
         {
             string a = args.Trim();

@@ -524,6 +524,14 @@ ClientOptions.ButtonScale: ボタンの大きさ
 ClientOptions.Back: 戻る
 ClientOptions.MRPOptions: MRP の設定
 
+# ── VanillaTweaks ──
+VanillaTweaks.Title: 本編の調整
+VanillaTweaks.ParallelScan: 医務室のスキャンを同時にできる
+VanillaTweaks.ScanNoWalk: スキャンの前に台へ歩かない
+VanillaTweaks.TickInTasks: 作業中もクールダウンが進む
+VanillaTweaks.HideVentOutOfSight: 見えない所のベントの出入りを隠す
+VanillaTweaks.DeadImpNoSabotage: 死んだインポスターはサボタージュできない
+
 # ── HudTweaks ──
 HudTweaks.Screenshot: スクリーンショットを保存しました ({path})
 

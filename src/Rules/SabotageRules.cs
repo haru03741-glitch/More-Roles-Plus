@@ -163,13 +163,20 @@ public static class SabotageRules
     }
 }
 
-// ホスト: 無くした種類のサボタージュは起こさない。起こした後はクールダウンを設定の秒にする
+// ホスト: 無くした種類のサボタージュと、死んだ人のサボタージュ (VanillaTweaks.DeadImpNoSabotage) は起こさない。
+// 起こした後はクールダウンを設定の秒にする
 [HarmonyPatch(typeof(SabotageSystemType), nameof(SabotageSystemType.UpdateSystem))]
 internal static class SabotageRulesUpdatePatch
 {
-    public static bool Prefix(SabotageSystemType __instance, [HarmonyArgument(1)] MessageReader msgReader)
+    public static bool Prefix(SabotageSystemType __instance, [HarmonyArgument(0)] PlayerControl player, [HarmonyArgument(1)] MessageReader msgReader)
     {
-        if (!SabotageRules.Disable || !AmongUsClient.Instance.AmHost) return true;
+        if (!AmongUsClient.Instance.AmHost) return true;
+        if (VanillaTweaks.BlocksSabotage(player))
+        {
+            Plugin.Logger.LogInfo($"sabotage rules: refused from dead {player.PlayerId}");
+            return false;
+        }
+        if (!SabotageRules.Disable) return true;
         var r = MessageReader.Get(msgReader);
         var t = (SystemTypes)r.ReadByte();
         r.Recycle();

@@ -60,6 +60,7 @@ internal static class KillAbility
 
     // 自分がキル役の時だけ入る。本編はインポスター以外のキルボタンの待ち時間と狙いを動かさないので、ここで動かす
     private static RoleBase _local;
+    internal static bool Owns => _local != null; // 自分のキルの待ち時間を Tick が数えている
     private static float _dt;
     private static float _max = FirstCooldown;
     private static float _shownT = -1f, _shownMax;   // 最後にボタンへ書いた値 (同じなら書かない)
@@ -127,7 +128,7 @@ internal static class KillAbility
             _target = lp.CanMove ? Targeting.ClosestPlayer(lp, Reach(role)) : null;
         }
         float t = lp.killTimer;
-        if (t > 0f && lp.CanMove)
+        if (t > 0f && Rules.VanillaTweaks.CooldownTicks(lp))
         {
             t = Math.Max(0f, t - _dt);
             lp.killTimer = t;

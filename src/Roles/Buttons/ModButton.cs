@@ -149,7 +149,7 @@ internal sealed class ModButton
             if (canMove == null)
             {
                 var lp = PlayerControl.LocalPlayer;
-                canMove = lp && lp.CanMove;
+                canMove = lp && Rules.VanillaTweaks.CooldownTicks(lp);
             }
             if (canMove == false) return;
             if (_dt <= 0f) _dt = Time.fixedDeltaTime;

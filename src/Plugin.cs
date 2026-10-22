@@ -165,6 +165,7 @@ public class Ticker : MonoBehaviour
         Menu.MatchInfoExtension.Tick();
         Menu.SabotageAlert.Tick();
         Roles.KillAbility.Tick(); t = Bridge.Perf.Lane(28, t);
+        Rules.VanillaTweaks.Tick();
         Roles.RoleFrame.Tick();
         Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);
         Roles.ModButton.TickAll(); t = Bridge.Perf.Lane(30, t);
