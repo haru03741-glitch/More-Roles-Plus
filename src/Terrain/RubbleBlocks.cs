@@ -32,9 +32,26 @@ internal static class RubbleBlocks
     private const float MaxNudge = 0.35f;      // 隙間が足りない時に壁から離す距離の上限 (それでも足りなければ置かない)
     public const string Name = "MrpRubbleBlock"; // TerrainDamage.ProtectedName が名前ちょうどで拾う (壁として切られない・奥の面と見なされない)
 
-    private static readonly List<GameObject> Blocks = new();
+    // 拾える瓦礫 (構築士のドローンが持ち帰る)。拾える試合では塊の絵を床の板へ焼かずに残し、当たり判定と一緒に消せるようにする
+    internal sealed class Block
+    {
+        public GameObject Go;
+        public float X, Y;
+        public Transform Piece;  // 止まった塊の絵 (止まるまで / 焼いた試合では null)
+        public bool OwnSprite;
+        public bool Taken;       // 拾うと決まった (絵と当たり判定はドローンが着いた時に消す)
+    }
+
+    private static readonly List<Block> Blocks = new();
     internal static int Count => Blocks.Count;
-    internal static IEnumerable<GameObject> All => Blocks;
+    internal static IEnumerable<GameObject> All
+    {
+        get { foreach (var b in Blocks) yield return b.Go; }
+    }
+
+    // 拾える試合か (構築士がいる)。false の試合では塊の絵は従来どおり床の板へ焼く
+    internal static Func<bool> Pickable = () => false;
+    private const float TakeMatch = 0.1f; // 拾う知らせの位置と当たり判定の位置の食い違いの許し (電文の丸め)
 
     // ホスト: 予測した止まる所 (rest[i] = 並び i の塊。null は塊が無い) から、置ける物を最大 MaxPerEvent 個選ぶ。
     // 値は電文と同じ丸めを掛けて返す (ホストも丸めた値で置く)
@@ -117,11 +134,13 @@ internal static class RubbleBlocks
         return cx * cx + cy * cy;
     }
 
-    // 全員: 決まった所に当たり判定を置く
-    public static void Place(RubbleLanding[] landings)
+    // 全員: 決まった所に当たり判定を置く。並びは landings と同じ
+    public static Block[] Place(RubbleLanding[] landings)
     {
-        foreach (var l in landings)
+        var placed = new Block[landings.Length];
+        for (int i = 0; i < landings.Length; i++)
         {
+            var l = landings[i];
             var go = new GameObject(Name) { layer = ShipLayer };
             DamageMap.Track(go);
             go.transform.position = new Vector3(l.Position.x, l.Position.y, 0f);
@@ -129,8 +148,60 @@ internal static class RubbleBlocks
             // 親 (船) の倍率を打ち消して世界での半径にする
             float s = MathF.Abs(go.transform.lossyScale.x);
             col.radius = l.Radius / (s > 1e-4f ? s : 1f);
-            Blocks.Add(go);
+            Blocks.Add(placed[i] = new Block { Go = go, X = l.Position.x, Y = l.Position.y });
         }
+        return placed;
+    }
+
+    // 全員: 塊の絵が止まった。拾える試合なら焼かずに持っておく (true)。もう拾われていれば消す
+    internal static bool KeepPiece(Block b, Transform piece, bool ownSprite)
+    {
+        if (b == null || (!b.Taken && !Pickable())) return false;
+        b.Piece = piece;
+        b.OwnSprite = ownSprite;
+        if (b.Taken) Remove(b);
+        return true;
+    }
+
+    // 拾える瓦礫で、(x, y) からいちばん近い物 (止まった絵があり、まだ拾われていない・r 以内)。無ければ null
+    internal static Block NearestFree(float x, float y, float r)
+    {
+        Block best = null;
+        float bestD = r * r;
+        foreach (var b in Blocks)
+        {
+            if (b.Taken || !b.Piece || !b.Go) continue;
+            float dx = b.X - x, dy = b.Y - y, d = dx * dx + dy * dy;
+            if (d <= bestD) { bestD = d; best = b; }
+        }
+        return best;
+    }
+
+    // (x, y) の拾われていない瓦礫 (ホストの確かめと、拾う知らせの受け手)
+    internal static Block FreeAt(float x, float y)
+    {
+        foreach (var b in Blocks)
+        {
+            if (b.Taken || !b.Go) continue;
+            if (MathF.Abs(b.X - x) <= TakeMatch && MathF.Abs(b.Y - y) <= TakeMatch) return b;
+        }
+        return null;
+    }
+
+    // 全員: 絵と当たり判定を消す (ドローンが着いた時)。止まる前なら止まった時に消す
+    internal static void Remove(Block b)
+    {
+        b.Taken = true;
+        if (b.Go) { UnityEngine.Object.Destroy(b.Go); b.Go = null; }
+        if (!b.Piece) return;
+        if (b.OwnSprite)
+        {
+            var sr = b.Piece.GetComponent<SpriteRenderer>();
+            if (sr && sr.sprite) UnityEngine.Object.Destroy(sr.sprite);
+        }
+        UnityEngine.Object.Destroy(b.Piece.gameObject);
+        b.Piece = null;
+        ShadowPatch.MarkSettled(b.X, b.Y); // 影の中の焼いた絵からも消す
     }
 
     // マップが変わった時 (GameObject は DamageMap が片付ける)

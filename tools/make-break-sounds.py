@@ -30,6 +30,7 @@
 #   noise_emote_push        … 跳ねる前の踏み切り (靴底が床を擦る・服が揺れる)
 #   noise_emote_swish_1..2  … 手を振った時の袖の擦れ (しゅっ)
 #   noise_emote_rustle      … 手招きで指を曲げた時の手袋の擦れ (ごく小さい)
+#   noise_drone_loop        … 構築士のドローンの羽音 (継ぎ目なしのループ・4 つのモーターの羽根の刻みが少しずつずれてうねる)
 #   noise_end_spectate      … 観戦の人の終わりの画面 (勝ちでも負けでもない、見届けた音。こもった版は作らない)
 # 32kHz / 16bit / mono。1 本ごとに乱数を種から引き直すので、生成の順に依らず同じ音になる。
 #   python tools/make-break-sounds.py   (numpy と scipy が要る)
@@ -720,6 +721,25 @@ def fire_loop():
     return 1.0 * roar + 0.3 * flutter + 1.2 * pops + 0.5 * crackle
 
 
+def drone_loop():
+    # 4 枚羽根の小さなドローン (4.0s ループ): 4 つのモーターの羽根の刻み (少しずつ違う高さで唸りがうねる)
+    # + 刻みで揺れる風切り + モーターの細い鳴り。どの高さもループの長さにちょうど収まる (0.25Hz 刻み)
+    dur = 4.0
+    n, t = T(dur)
+    buzz = np.zeros(n)
+    for f0, ph, g in [(186.0, 0.0, 1.0), (191.25, 1.1, 0.9), (195.5, 2.3, 0.85), (200.75, 0.7, 0.8)]:
+        # 刻みは鋸の歯に近い形 (倍音が 1/h より少し速く落ちる)
+        for h in range(1, 9):
+            buzz += g * (1.0 / h ** 1.2) * np.sin(2 * np.pi * f0 * h * t + ph * h)
+    buzz /= np.max(np.abs(buzz)) + 1e-9
+    buzz *= 1 + 0.1 * plfo(t, dur, 1, 0.3) + 0.05 * plfo(t, dur, 3, 1.7)
+    wind = pnoise(n, lambda f: band(f, 300, 4500, 0.8) / (1 + f / 2500))
+    wind *= 0.65 + 0.35 * (0.5 + 0.5 * np.sin(2 * np.pi * 186.0 * t))
+    whine = 0.6 * np.sin(2 * np.pi * 1488.0 * t) + 0.4 * np.sin(2 * np.pi * 1530.25 * t)
+    whine *= 0.7 + 0.3 * plfo(t, dur, 2, 0.9)
+    return 1.0 * buzz + 0.22 * wind / 3 + 0.06 * whine
+
+
 def burn_strain(mat, dur, gain):
     # 熱で素材が傷む音: 木 = 繊維のきしみと節のはぜ / 金属 = 熱で反る板の唸りとちりちり鳴る継ぎ目 / 岩 = 表面が弾けて剥がれる
     n, t = T(dur)
@@ -1046,6 +1066,7 @@ if __name__ == '__main__':
         emit(f'noise_bump_heavy_{i}', bump_heavy, peak=0.9, drive=1.8, ratio=0.35)
         emit(f'noise_bump_clash_{i}', bump_clash, peak=0.9, drive=1.8, ratio=0.35)
     emit_loop('noise_fire_loop', fire_loop, peak=0.75)
+    emit_loop('noise_drone_loop', drone_loop, peak=0.7)
     emit('noise_fire_ignite', fire_ignite, peak=0.85, drive=1.8, ratio=0.35)
     emit('noise_steam', steam, peak=0.75, drive=1.6, ratio=0.3)
     emit('noise_flare', flare, peak=0.95, drive=2.0)

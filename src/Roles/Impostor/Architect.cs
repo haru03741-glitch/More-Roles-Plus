@@ -54,6 +54,28 @@ public sealed class Architect : RoleBase
         (w, v) => { w.Write(v.x); w.Write(v.y); }, r => FxMath.V2(r.ReadSingle(), r.ReadSingle()),
         (sender, v) => Of(sender)?.TryAdd(v.x, v.y));
 
+    // 設計図を開いた・閉じた (持ち主 → 全員)。値 = 開いた設計台の番号 (閉じた = ClosedDesk)。全員の端末でドローンを飛ばす
+    private static readonly RemoteCall<byte> PlanCall = new("Architect.Plan", Route.Anyone,
+        (w, v) => w.Write(v), r => r.ReadByte(), (sender, v) => Of(sender)?.OnPlan(v));
+
+    // 瓦礫を拾いたい (持ち主 → ホスト)。ホストが確かめて、拾うと決めたら全員へ配る
+    private static readonly RemoteCall<Vector2> PickCall = new("Architect.Pick", Route.ToHost,
+        (w, v) => { w.Write(v.x); w.Write(v.y); }, r => FxMath.V2(r.ReadSingle(), r.ReadSingle()),
+        (sender, v) => Of(sender)?.HostPick(v));
+
+    private static readonly RemoteCall<(byte Actor, Vector2 At)> PickedCall = new("Architect.Picked", Route.HostToAll,
+        (w, v) => { w.Write(v.Actor); w.Write(v.At.x); w.Write(v.At.y); }, r => (r.ReadByte(), FxMath.V2(r.ReadSingle(), r.ReadSingle())),
+        (_, v) => (RoleState.Of(v.Actor) as Architect)?.OnPicked(v.At));
+
+    private const byte ClosedDesk = 255;
+    private const float RubbleGain = 2f;      // 瓦礫 1 個で戻るゲージ
+    private const float PickEvery = 0.5f;     // 次に拾う瓦礫を探す間隔
+    private const float PickTimeout = 2.5f;   // 拾う頼みに返事が来なければ忘れる
+    private const float HostPickGap = 0.4f;   // ホストが 1 人の構築士に拾わせる間隔の下限
+
+    // 構築士がいる数 (いる試合だけ大きな瓦礫を焼かずに残して拾えるようにする)
+    private static int _live;
+
     // 立った壁 (全員の端末で記録・崩すのはホスト)。ホストが替わっても新しいホストが続きから崩す
     private sealed class Built
     {
@@ -76,6 +98,12 @@ public sealed class Architect : RoleBase
     private float _nextBuild;
     private int _built, _refused, _pipes;
     private string _lastPipe = "-", _lastDesk = "-";
+    // 設計図とドローン (全員の端末で持つ)。_sentOpen = 自分の設計図の開け閉めを最後に配った状態
+    private ArchitectDrone _drone;
+    private int _openDesk = -1;
+    private bool _sentOpen;
+    private float _pickT, _pendingAt = -1f, _hostPickAt = -10f;
+    private int _picked;
 
     internal int DeskTotal => _desks.Count;
     internal float Gauge => _gauge;
@@ -84,7 +112,10 @@ public sealed class Architect : RoleBase
     public override void OnAssigned()
     {
         ArchitectDeskArt.Prewarm();
+        ArchitectDrone.Prewarm();
         if (!_listening) { TrickWall.Placed += OnWallPlaced; _listening = true; }
+        _live++;
+        RubbleBlocks.Pickable = () => _live > 0;
         _gauge = GaugeLength;
         _dt = Time.fixedDeltaTime;
         AddAbility(new Ability(new Text("Architect.Desk"), "desk")
@@ -100,6 +131,9 @@ public sealed class Architect : RoleBase
         });
         Lifespan.OnRelease(() =>
         {
+            _live--;
+            _drone?.Destroy();
+            _drone = null;
             foreach (var d in _desks) ArchitectDeskArt.Remove(d);
             _desks.Clear();
             _queue.Clear();
@@ -113,7 +147,8 @@ public sealed class Architect : RoleBase
     {
         ArchitectPlan.MarkDirty();
         if (_wallsGen != GameClock.ShipGen) { Walls.Clear(); _wallsGen = GameClock.ShipGen; }
-        if (RoleState.Of(actor) is not Architect) return;
+        if (RoleState.Of(actor) is not Architect a) return;
+        a.DroneTo(at.x, at.y);
         Walls.Add(new Built { Name = name, At = at, Length = length, Since = Time.time, Owner = actor });
     }
 
@@ -121,6 +156,90 @@ public sealed class Architect : RoleBase
     private void OnTerrainBroken(TerrainBrokenEvent e)
     {
         if (IsLocal) ArchitectPlan.MarkDirty();
+        if (e.PlayerId == PlayerId && e.Kind == DamageKind.Water) DroneTo(e.Position.x, e.Position.y);
+    }
+
+    // 壁・配管の所へドローンを飛ばす。真上だと影が壁の絵に隠れるので、手前 (画面の下) の床の上で止まる
+    private const float DroneFront = 0.6f;
+    private void DroneTo(float x, float y)
+    {
+        if (_drone == null || _drone.Done) return;
+        float tx = x, ty = y - DroneFront;
+        if (SolidMap.Valid && SolidMap.Solid(tx, ty) && SolidMap.NearestFloor(x, y, 1.5f, 0.3f, out var floor)) { tx = floor.x; ty = floor.y; }
+        _drone.Visit(tx, ty);
+    }
+
+    // ---- 設計図の開け閉めとドローン (全員の端末) ----
+
+    private void OnPlan(byte desk)
+    {
+        if (desk == ClosedDesk)
+        {
+            _openDesk = -1;
+            _drone?.Close();
+            return;
+        }
+        if (desk >= _desks.Count) return;
+        _openDesk = desk;
+        _drone?.Destroy();
+        var d = _desks[desk];
+        _drone = ArchitectDrone.Launch(d.X, d.Y);
+    }
+
+    // 自分の設計図の開け閉めが変わったら配る (閉じる道は会議・死亡・ボタンなど色々あるので状態を見る)
+    private void SyncPlan()
+    {
+        bool open = ArchitectPlan.IsOpen;
+        if (open == _sentOpen) return;
+        _sentOpen = open;
+        byte v = open && _openDesk >= 0 ? (byte)_openDesk : ClosedDesk;
+        OnPlan(v);
+        PlanCall.Send(v);
+    }
+
+    // 自分: 設計図を開いている間、届く円の中の止まった瓦礫を 1 つずつ拾う頼みを出す (ゲージが満タンなら拾わない)
+    private void TickPick()
+    {
+        if (_openDesk < 0 || _openDesk >= _desks.Count || (_pickT -= _dt) > 0f) return;
+        _pickT = PickEvery;
+        if (_pendingAt >= 0f && Time.time - _pendingAt < PickTimeout) return;
+        _pendingAt = -1f;
+        if (_gauge >= GaugeLength - 0.01f) return;
+        var d = _desks[_openDesk];
+        var b = RubbleBlocks.NearestFree(d.X, d.Y, Reach);
+        if (b == null) return;
+        _pendingAt = Time.time;
+        PickCall.Send(FxMath.V2(b.X, b.Y));
+    }
+
+    // ホスト: 開いている設計台から届く所の、まだ拾われていない瓦礫か確かめて全員へ配る
+    private void HostPick(Vector2 at)
+    {
+        var pc = Player;
+        if (!pc || pc.Data == null || pc.Data.IsDead || _openDesk < 0 || _openDesk >= _desks.Count || MeetingHud.Instance) return;
+        if (Time.time - _hostPickAt < HostPickGap || RubbleBlocks.FreeAt(at.x, at.y) == null) return;
+        var d = _desks[_openDesk];
+        float dx = at.x - d.X, dy = at.y - d.Y;
+        if (dx * dx + dy * dy > Reach * Reach) return;
+        _hostPickAt = Time.time;
+        OnPicked(at);
+        PickedCall.Send((PlayerId, at));
+    }
+
+    // 全員: 拾うと決まった。ドローンが着いた時に瓦礫を消す (飛んでいなければすぐ)。持ち主はゲージを戻す
+    private void OnPicked(Vector2 at)
+    {
+        var b = RubbleBlocks.FreeAt(at.x, at.y);
+        if (b == null) return;
+        b.Taken = true;
+        if (IsLocal)
+        {
+            _gauge = Math.Min(GaugeLength, _gauge + RubbleGain);
+            _picked++;
+            _pendingAt = -1f;
+        }
+        if (_drone != null && !_drone.Done) _drone.Visit(b.X, b.Y, () => RubbleBlocks.Remove(b));
+        else RubbleBlocks.Remove(b);
     }
 
     private bool PlaceHere()
@@ -240,7 +359,11 @@ public sealed class Architect : RoleBase
     {
         var lp = PlayerControl.LocalPlayer;
         if (!CanPlan(lp)) return false;
-        return ArchitectPlan.Open(this);
+        Vector2 me = lp.GetTruePosition();
+        int desk = _desks.IndexOf(DeskInReach(me.x, me.y));
+        if (desk < 0 || !ArchitectPlan.Open(this)) return false;
+        _openDesk = desk;
+        return true;
     }
 
     // ---- ゲージと壁 (自分の端末) ----
@@ -368,12 +491,20 @@ public sealed class Architect : RoleBase
         {
             _hostCheck = 0;
             if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) CrumbleOld();
+            // 持ち主が抜けると閉じた知らせが来ないので、他の端末は自分でドローンを降ろす
+            if (!IsLocal && _openDesk >= 0)
+            {
+                var pc = Player;
+                if (!pc || pc.Data == null || pc.Data.IsDead || pc.Data.Disconnected) OnPlan(ClosedDesk);
+            }
         }
     }
 
     private void LocalTick()
     {
         ArchitectPlan.Tick();
+        SyncPlan();
+        TickPick();
         BuildNext();
         float max = GaugeLength;
         if (_gauge < max) _gauge = MathF.Min(max, _gauge + max / MathF.Max(1f, GaugeRefill) * _dt);
@@ -406,7 +537,7 @@ public sealed class Architect : RoleBase
 
     internal string Describe()
     {
-        var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} plan={ArchitectPlan.Describe()}");
+        var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} picked={_picked} drone={(_drone == null ? "-" : _drone.Describe())} plan={ArchitectPlan.Describe()}");
         foreach (var d in _desks) sb.Append($" ({d.X:0.00},{d.Y:0.00})");
         return sb.ToString();
     }
@@ -421,6 +552,23 @@ public sealed class Architect : RoleBase
 
     // テスト用: 能力ボタンと同じ道で自分の足元に置く (待ち時間と回数は使わない)
     internal bool HereForTest() => PlaceHere();
+
+    // テスト用: 設計図を開かずに自分の端末だけでドローンを飛ばす (見た目の確認用) / 行き先を足す / 降ろす
+    internal bool FlyForTest()
+    {
+        if (_desks.Count == 0) return false;
+        OnPlan(0);
+        return _drone != null;
+    }
+
+    internal bool VisitForTest(float x, float y)
+    {
+        if (_drone == null || _drone.Done) return false;
+        _drone.Visit(x, y);
+        return true;
+    }
+
+    internal void LandForTest() => OnPlan(ClosedDesk);
 
     // テスト用: 床の点 (x, y) に置けるか (理由・よければ null)
     internal static string CheckForTest(float x, float y) => Blocked(x, y);

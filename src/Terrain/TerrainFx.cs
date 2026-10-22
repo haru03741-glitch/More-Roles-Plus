@@ -32,6 +32,7 @@ internal static class TerrainFx
         public bool Hidden;       // 動き出すまで隠している (表示の切り替えは変わった時だけ書く)
         public bool Steer;        // 大きな瓦礫: ホストが決めた所 (Tx, Ty) へ放物線で飛んでそこで止まる (壁は見ない)
         public float Tx, Ty;
+        public RubbleBlocks.Block Block; // 大きな瓦礫: 止まる所の当たり判定 (拾える試合では止まった絵を焼かずに渡す)
         public float Rest;        // 止まる高さ (瓦礫の山の上に乗る。0 = 床)
         public float PileX, PileY, PileRx, PileRy, PileH; // 落ちた所の山 (PileH = 0 なら山なし)
         public float Flip, VFlip; // 金属板: 空中で裏返る (横幅を cos で縮める)
@@ -390,9 +391,14 @@ internal static class TerrainFx
             }
             landings = RubbleBlocks.Decide(rest, sizes, walls);
         }
-        foreach (var l in landings)
-            if (l.Rank < byRank.Length && byRank[l.Rank] != null) Steer(byRank[l.Rank], l.Position);
-        RubbleBlocks.Place(landings);
+        var blocks = RubbleBlocks.Place(landings);
+        for (int i = 0; i < landings.Length; i++)
+        {
+            var l = landings[i];
+            if (l.Rank >= byRank.Length || byRank[l.Rank] == null) continue;
+            Steer(byRank[l.Rank], l.Position);
+            byRank[l.Rank].Block = blocks[i];
+        }
         return landings;
     }
 
@@ -736,7 +742,8 @@ internal static class TerrainFx
                 {
                     // 山の上に乗った物ほど手前 (上に積もって見える)
                     if (it.Rest > 0f) { it.Z -= it.Rest * 0.02f * it.ZS; it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z); }
-                    RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
+                    if (!RubbleBlocks.KeepPiece(it.Block, it.Tr, it.Kind == Kind.Piece))
+                        RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
                     ShadowPatch.MarkSettled(it.Px, it.Py + it.Rest); // 影の中の焼いた絵にも止まった瓦礫を描き込む
                     if (StrayProbe != null) { Settled++; if (StrayProbe(it.Px, it.Py)) Stray++; }
                 }
