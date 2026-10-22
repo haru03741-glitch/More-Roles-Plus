@@ -160,7 +160,8 @@ internal static class MatchInfoExtension
 
         var body = new StringBuilder(a.Help.ToString());
         string opts = OptionLine(a);
-        if (opts.Length > 0) body.Append("\n<color=#A8A8B4>").Append(opts).Append("</color>");
+        // 長い説明は灰色の決め台詞で終わるので、空の行を挟んで設定の値と分ける
+        if (opts.Length > 0) body.Append(RoleDoc.Has(a) ? "\n\n" : "\n").Append("<color=#A8A8B4>").Append(opts).Append("</color>");
         card.roleDescription.text = body.ToString();
 
         // 本編の役職は本編のアイコン。MRP の物は役職の色の丸 (本編のクルーには白いアイコンが無い)。

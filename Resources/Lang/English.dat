@@ -2,7 +2,7 @@
 #   <Role>.Blurb        One line shown in the intro
 #   <Role>.Summary      One sentence: "A <team> who can ..."
 #   <Role>.WinCond      Only when the role wins in an unusual way (neutrals and such)
-#   <Section>.Help      One to three sentences per button. <Section> is the button's name key (order = HelpSections in the role class)
+#   <Section>.Help      One to three sentences per button. <Section> is the button's name key (order = HelpSections in the role class). Parts that aren't buttons can be sections too
 #   <Role>.Tips         How to play it, or how it interacts with other roles (optional)
 #   <Role>.Quote        A closing line shown last
 # Setting values are listed under the description automatically, so don't repeat them in the text. Add-ons only need a short <Role>.Help.
