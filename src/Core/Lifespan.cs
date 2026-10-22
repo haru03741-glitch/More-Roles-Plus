@@ -10,6 +10,9 @@ namespace MoreRolesPlus;
 // 本編の物は Vanilla から読み、無ければ何もしない。
 public sealed class Lifespan
 {
+    // 切れない寿命 (役職でない本編の調整などが、起動から終わりまでイベントを受ける時)
+    public static readonly Lifespan Forever = new();
+
     public bool IsDead { get; private set; }
 
     private List<Lifespan> _children;

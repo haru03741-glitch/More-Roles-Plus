@@ -86,6 +86,10 @@ public static class VanillaTweaks
 
     internal static bool Shielded(PlayerControl target) => _shield != 255 && target && target.PlayerId == _shield;
 
+    internal static void Init() =>
+        Roles.Events<Roles.BeforeMurderEvent>.Subscribe(e => { if (Shielded(e.Target)) e.Cancel("shield"); },
+            Lifespan.Forever, owner: "VanillaTweaks.Shield");
+
     // ホスト: 船ができた (試合の始め)
     internal static void OnShipStart()
     {
@@ -275,18 +279,7 @@ internal static class DeadSabotageMapPatch
     }
 }
 
-// 盾の付いた人へのキル: 押す側でも止め (本編のキルボタン)、ホストも本編のキルの確かめで断る
-[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CheckMurder))]
-internal static class ShieldCheckMurderPatch
-{
-    public static bool Prefix(PlayerControl __instance, [HarmonyArgument(0)] PlayerControl target)
-    {
-        if (!VanillaTweaks.Shielded(target) || !AmongUsClient.Instance.AmHost) return true;
-        Plugin.Logger.LogInfo($"first kill shield: {__instance.PlayerId}->{target.PlayerId} refused");
-        return false;
-    }
-}
-
+// 盾の付いた人へのキルは押す側でも止め (KillButtonClickPatch)、ホストは BeforeMurderEvent で断る (Init)
 [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.MurderPlayer))]
 internal static class ShieldMurderPatch
 {

@@ -11,6 +11,18 @@ namespace MoreRolesPlus.Roles;
 // 値を返す問い合わせ (視界・キルの待ち時間・相乗り) はイベントでなく RoleBase の override で書く。
 public abstract class GameEvent { }
 
+// 起きる前に呼ばれ、受け手が Cancel すると起きない出来事。Cancel した受け手より後の受け手は呼ばない
+// (先に見たい受け手は [Priority] を大きく)。どれもホストの端末でだけ起きる (判定はホストが 1 回だけする)。
+//   void Guard(BeforeMurderEvent e) { if (e.Target.PlayerId == _protected) e.Cancel("guarded"); }
+public abstract class CancelableEvent : GameEvent
+{
+    // 断った理由 (ログに出す)。null = 断られていない
+    public string Reason { get; private set; }
+    public bool Canceled => Reason != null;
+
+    public void Cancel(string reason) => Reason ??= string.IsNullOrEmpty(reason) ? "canceled" : reason;
+}
+
 // 誰か 1 人についての出来事 ([OnlyMine] で自分の時だけ受けられる)
 public interface IPlayerEvent
 {
@@ -63,6 +75,9 @@ public static class Events<T> where T : GameEvent
 
     static Events() => EventStats.Add(new Stats());
 
+    // 受け手が 1 つでもあるか (寿命の切れた物も数える・イベントを作るかの目安)
+    public static bool Any => _list.Length != 0;
+
     public static void Subscribe(Action<T> fn, Lifespan life, int priority = 0, string owner = null)
     {
         if (life.IsDead) return;
@@ -85,6 +100,7 @@ public static class Events<T> where T : GameEvent
         _fired++;
         var list = _list;
         if (list.Length == 0) return ev;
+        var cancelable = ev as CancelableEvent;
         _depth++;
         try
         {
@@ -94,6 +110,7 @@ public static class Events<T> where T : GameEvent
                 if (e.Life.IsDead) { _dirty = true; continue; }
                 try { e.Fn(ev); }
                 catch (Exception ex) { Plugin.Logger.LogError($"{e.Owner}({typeof(T).Name}): {ex}"); }
+                if (cancelable != null && cancelable.Canceled) break;
             }
         }
         finally

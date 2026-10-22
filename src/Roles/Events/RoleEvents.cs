@@ -2,6 +2,24 @@ using HarmonyLib;
 
 namespace MoreRolesPlus.Roles;
 
+// ---- 起きる前 (ホストの端末でだけ起きる・Cancel で止める) ----
+
+// ホストがキルを通す前 (本編のインポスターのキルも、インポスター以外のキル役のキルも)。PlayerId = 狙われた人。
+// Cancel するとキルは起きず、キルした人の待ち時間もそのまま
+public sealed class BeforeMurderEvent : CancelableEvent, IPlayerEvent
+{
+    public PlayerControl Killer { get; internal set; }
+    public PlayerControl Target { get; internal set; }
+    public byte PlayerId => Target.PlayerId;
+
+    // 誰も受けていなければ作らずに済ませる。断った理由を返す (通したら null)
+    internal static string Ask(PlayerControl killer, PlayerControl target)
+    {
+        if (!Events<BeforeMurderEvent>.Any) return null;
+        return Events<BeforeMurderEvent>.Run(new BeforeMurderEvent { Killer = killer, Target = target }).Reason;
+    }
+}
+
 // ---- 試合で起きた事 (どれも全員の端末で起きる) ----
 
 // 誰かが倒された。PlayerId = 倒された人 ([OnlyMine] なら自分が倒された時)
@@ -80,6 +98,21 @@ public sealed class TerrainBrokenEvent : GameEvent, IPlayerEvent
 }
 
 // ---- 本編の入口 ----
+
+// 本編のキルの確かめ (ホストだけが呼ぶ)。本編の距離・待ち時間の確かめより前なので、受け手は「本当には起きなかった
+// キル」でも呼ばれうる (断るだけにして、回数を減らす等はキルが通った後の PlayerMurderedEvent で)
+[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CheckMurder))]
+internal static class BeforeMurderVanillaPatch
+{
+    public static bool Prefix(PlayerControl __instance, [HarmonyArgument(0)] PlayerControl target)
+    {
+        if (!__instance || !target || !AmongUsClient.Instance.AmHost) return true;
+        string why = BeforeMurderEvent.Ask(__instance, target);
+        if (why == null) return true;
+        Plugin.Logger.LogInfo($"kill refused {__instance.PlayerId}->{target.PlayerId}: {why}");
+        return false;
+    }
+}
 
 [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.MurderPlayer))]
 internal static class MurderEventPatch

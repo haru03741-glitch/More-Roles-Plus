@@ -221,7 +221,6 @@ internal static class KillAbility
         if (!Uses(role)) return "role";
         if (!target || target == killer || target.Data == null || target.Data.IsDead || target.Data.Disconnected) return "target";
         if (target.inVent || target.inMovingPlat) return "target busy";
-        if (Rules.VanillaTweaks.Shielded(target)) return "shield";
         string far = Targeting.Unreachable(killer, target, Reach(role) + DistanceSlack);
         if (far != null) return far;
         // 前のキル (無ければ割り当て) からの経過。最初は試合の始めの待ち時間
@@ -234,7 +233,7 @@ internal static class KillAbility
             for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref cd);
         }
         if ((Environment.TickCount64 - LastKillMs[killer.PlayerId]) / 1000f < cd - CooldownSlack && !Dev.DevCooldown.Skips(killer)) return "cooldown";
-        return null;
+        return BeforeMurderEvent.Ask(killer, target); // 他の確かめを全部通った後に、役職や本編の調整が断る
     }
 }
 

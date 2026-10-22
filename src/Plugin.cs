@@ -51,6 +51,7 @@ public class Plugin : BasePlugin
         Boot.IncrementalGcInvalidator.ApplyIfConfigured();
         Net.Remote.Init(); // 電文の名前は設定の指紋に入るので先に
         Options.Registry.Init();
+        Rules.VanillaTweaks.Init();
         Dev.DevCommands.Register();
         Dev.DevCooldown.Register();
         Boot.BootClock.Mark("init");
