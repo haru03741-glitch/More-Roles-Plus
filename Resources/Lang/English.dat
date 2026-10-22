@@ -23,7 +23,7 @@ PortalMaker.Portal: Portal
 # ── Architect ──
 Architect.Name: Architect
 Architect.Blurb: Reshape the ship from your blueprint
-Architect.Help: Press the desk button to place a drafting desk just behind your feet (the number is set below). Everyone can see the desks, and anyone can use them. Press the blueprint button in front of a desk to open a top-down blueprint of where the ship can be walked. On the blueprint, other players appear as colorless shadows. Hold and drag on the blueprint to draw a line; release to raise walls from the floor along it. You can draw as far as your gauge allows, and the gauge refills over time. You can only draw inside the circle your desk reaches. Anyone standing where a wall rises is pushed aside. Walls crumble after a while and can also be broken by hammers and explosions. Tap near a wall of a water room (teal on the blueprint) to spend more gauge and burst the pipe inside the wall, spraying water. Water on the floor also shows on the blueprint. While the blueprint is open you cannot move or kill. When someone else uses one of your desks, your blueprint closes and they can draw walls with your gauge.
+Architect.Help: Press the desk button to place a drafting desk just behind your feet (the number is set below). Everyone can see the desks, and anyone can use them. A desk breaks after three hits from the Demolisher's hammer, and the broken one does not come back. Press the blueprint button in front of a desk to open a top-down blueprint of where the ship can be walked. On the blueprint, other players appear as colorless shadows. Hold and drag on the blueprint to draw a line; release to raise walls from the floor along it. You can draw as far as your gauge allows, and the gauge refills over time. You can only draw inside the circle your desk reaches. Anyone standing where a wall rises is pushed aside. Walls crumble after a while and can also be broken by hammers and explosions. Tap near a wall of a water room (teal on the blueprint) to spend more gauge and burst the pipe inside the wall, spraying water. Water on the floor also shows on the blueprint. While the blueprint is open you cannot move or kill. When someone else uses one of your desks, your blueprint closes and they can draw walls with your gauge.
 Architect.DeskCount: Desks
 Architect.DeskCooldown: Desk Cooldown
 Architect.GaugeLength: Wall Gauge (Length)
@@ -518,8 +518,14 @@ ClientOptions.SabotageAlarm: Sabotage alarm sound
 ClientOptions.SummaryToChat: Post the results to the lobby chat after a game
 ClientOptions.TaskOnName: Show task progress next to names
 ClientOptions.CopyRoomCode: Copy the room code when hosting
+ClientOptions.PreciseCooldown: Show decimals in the last 10s of cooldowns
+ClientOptions.GhostSeeRoles: See others' roles and tasks as a ghost
+ClientOptions.ButtonScale: Button size
 ClientOptions.Back: Back
 ClientOptions.MRPOptions: MRP Options
+
+# ── HudTweaks ──
+HudTweaks.Screenshot: Screenshot saved ({path})
 
 # ── ColorPicker ──
 ColorPicker.MakeAColor: Make a color
@@ -605,6 +611,7 @@ CrewGrip.ClimbPc: Mash Space/Click to climb back!
 HammerSwing.OnlyWhileAlive: Only while alive
 HammerSwing.AlreadySwinging: Already swinging
 HammerSwing.HitPortal: Hammered the portal device
+HammerSwing.HitDesk: Hammered the drafting desk
 HammerSwing.NoWallThatWay: No wall that way
 HammerSwing.HammerHit: Hammer hit
 

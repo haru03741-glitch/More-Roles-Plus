@@ -21,6 +21,7 @@ internal static class RoleDisplay
     public static void OnAssigned(RoleBase role)
     {
         if (!role.IsLocal) return;
+        Menu.NameTaskTag.Refresh(role.Player);
         try { AddNameTag(role.Player, LabelOf(role)); }
         catch (Exception e) { Plugin.Logger.LogWarning($"name tag: {e.Message}"); }
         try { EnsureTaskHeader(role.Player); }
@@ -146,7 +147,7 @@ internal static class RoleDisplay
             var addons = RoleState.AddonsOf(pid);
             if (role == null && addons.Count == 0) return;
             bool show = pid == lp.PlayerId
-                        || (lp.Data.IsDead && (RoleSettings.GhostsSeeRoles || Spectate.IsWatching(lp.PlayerId)))
+                        || (lp.Data.IsDead && (RoleSettings.GhostSees || Spectate.IsWatching(lp.PlayerId)))
                         || (role != null && role.Team == Team.Impostor && RoleSettings.ImpostorsSeeRoles && lp.Data.Role && lp.Data.Role.IsImpostor);
             label = !show ? null : role != null ? LabelOf(role) : AddonSuffix(pid).TrimStart();
         }

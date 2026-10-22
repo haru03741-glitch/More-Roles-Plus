@@ -433,6 +433,13 @@ internal static class DevCommands
         TestBridge.Register("update", "[state | check | fake <版> [url|file:<パス>] | press | popup | reset] メインメニューの更新ボタン: check = GitHub を見直す・fake = その版が出たことにする (file: なら手元の DLL で入れ替える)・press = ボタンを本編の押下の道で押す・reset = 知らせた版を忘れる", (args, reply) => reply(Menu.ModUpdate.Command(args.Trim())));
         TestBridge.Register("sabalert", "サボタージュの点滅と警報音 (端末ごとの設定) の状態・自前で回している数", (args, reply) => reply(Menu.SabotageAlert.Describe()));
         TestBridge.Register("client","[設定の名前 | menu | open | close] 端末ごとの設定 (Esc の「MRP の設定」) の一覧。名前を付けるとそれを切り替える・menu = 本編の設定画面を開く・open / close = MRP の設定の板を開く / 閉じる", (args, reply) => reply(Menu.ClientOptions.Describe(args.Trim())));
+        TestBridge.Register("hudtweaks", "[scale | shot] 端末ごとの HUD の調整の状態。scale = ボタンの大きさを次へ・shot = スクリーンショットのキーと同じ", (args, reply) =>
+        {
+            string a = args.Trim();
+            if (a == "scale") Menu.HudTweaks.NextScale();
+            else if (a == "shot") { reply("OK hudtweaks shot " + Menu.HudTweaks.Screenshot()); return; }
+            reply(Menu.HudTweaks.Describe());
+        });
         TestBridge.Register("chatin", "[tab | up | down | type <文> | paste <文>] チャットの入力欄の状態 (文字の制限・上限・今の文字・補う候補)。tab / paste は Tab・Ctrl+V と同じ処理 (paste の \n は改行)・type は打ったのと同じ", (args, reply) => reply(Commands.ChatInput.Simulate(args.Trim())));
 
         TestBridge.Register("chattoggle", "チャット欄の窓を開く / 閉じる (チャットのボタンを押したのと同じ)", (_, reply) =>

@@ -65,7 +65,7 @@ internal static class NameTaskTag
         var data = p.Data;
         if (!me || data == null || data.Disconnected) return null;
         bool meDead = me.Data != null && me.Data.IsDead;
-        if (!p.AmOwner && !(meDead && Roles.RoleSettings.GhostsSeeRoles)) return null;
+        if (!p.AmOwner && !(meDead && Roles.RoleSettings.GhostSees)) return null;
         if (!IsCrewSide(data)) return null;
         var tasks = data.Tasks;
         if (tasks == null || tasks.Count == 0) return null;
@@ -103,6 +103,13 @@ internal static class NameTaskTagDiePatch
         }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"task tag: {e.Message}"); }
     }
+}
+
+// 役職が替わったら出すかどうかが変わる (フリープレイの役職選び・試合中の付け直し)
+[HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SetRole))]
+internal static class NameTaskTagRolePatch
+{
+    public static void Postfix([HarmonyArgument(0)] PlayerControl targetPlayer) => NameTaskTag.Refresh(targetPlayer);
 }
 
 // ロビーに戻ったら前の試合の数字を消す (人は残るので名前の横に残ってしまう)

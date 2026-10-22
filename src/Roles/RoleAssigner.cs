@@ -122,6 +122,9 @@ public static class RoleSettings
     public static readonly BoolOpt Enabled = new("RoleSettings.Enabled", true);
     public static readonly BoolOpt GhostsSeeRoles = new("RoleSettings.GhostsSeeRoles", true);
     public static readonly BoolOpt ImpostorsSeeRoles = new("RoleSettings.ImpostorsSeeRoles", true);
+
+    // 幽霊の自分に他の人の役職を見せるか (ホストが許していて、自分の端末でも切っていない時)
+    public static bool GhostSees => GhostsSeeRoles && Menu.ClientOptions.GhostSeeRoles.Value;
 }
 
 // 配り方。行は本編の「ゲーム設定」タブに並べる (GameTabRows)。

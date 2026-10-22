@@ -17,6 +17,12 @@ internal static class Shortcuts
     public static void Tick()
     {
         if (!Enabled || !Input.anyKeyDown) return;
+        if (Input.GetKeyDown(KeyCode.F2))
+        {
+            try { Menu.HudTweaks.Screenshot(); }
+            catch (System.Exception e) { Plugin.Logger.LogError($"screenshot: {e.Message}"); }
+            return;
+        }
         if (Input.GetKey(KeyCode.F5) && Input.GetKey(KeyCode.T))
         {
             string reloaded = LangFiles.Command("");

@@ -250,11 +250,16 @@ internal static class Emotes
         var grid = _main.Transform.parent;
         Vector3 me = _main.Transform.localPosition;
         var arrange = grid.GetComponent<GridArrange>();
-        float step = arrange ? FxMath.Max(arrange.CellSize.x, arrange.CellSize.y) : 0f;
+        // ボタンの大きさの設定で並びごと拡縮している (gs 倍)。扇は本編の大きさのまま開くので、並びの座標を gs 倍した物差しで測る。
+        // 本編の並べ直しは升を並びの倍率で割って置くので、升も gs で割ると本編の升になる
+        float gs = grid.localScale.x;
+        if (gs < 0.01f) gs = 1f;
+        _ring.transform.localScale = new Vector3(1f / gs, 1f / gs, 1f);
+        float step = arrange ? FxMath.Max(arrange.CellSize.x, arrange.CellSize.y) / gs : 0f;
         if (step < 0.3f) step = 1.1f;
         var cam = Camera.main;
         float top = cam ? grid.InverseTransformPoint(cam.ViewportToWorldPoint(new Vector3(0.5f, 1f, 0f))).y : float.MaxValue;
-        float room = top - me.y - step * (TopBar + 0.45f);
+        float room = (top - me.y) * gs - step * (TopBar + 0.45f);
         float r = step * FanRadius, spread = FanSpread;
         float start = FanStart(room, r);
         for (int pass = 0; pass < 3 && start > 90f; pass++)
@@ -268,7 +273,7 @@ internal static class Emotes
         {
             var b = _ring.transform.GetChild(k);
             float a = (start + spread * k) * FxMath.Deg2Rad;
-            b.position = grid.TransformPoint(new Vector3(me.x + FxMath.Cos(a) * r, me.y + FxMath.Sin(a) * r, me.z));
+            b.position = grid.TransformPoint(new Vector3(me.x + FxMath.Cos(a) * r / gs, me.y + FxMath.Sin(a) * r / gs, me.z));
             Vector3 lp = b.localPosition;
             b.localPosition = new Vector3(lp.x, lp.y, -0.5f);
         }

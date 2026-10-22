@@ -22,6 +22,8 @@ internal static class ClientOptions
         public Action Click;
         public Text Label;
         public Action Changed;
+        public Func<string> Value; // 押すたびに値が替わるボタン (字の後ろに今の値を出す)
+        public TextMeshPro Tmp;
         public SpriteRenderer Back;
         public ButtonRolloverHandler Rollover;
     }
@@ -41,6 +43,9 @@ internal static class ClientOptions
     public static ConfigEntry<bool> Spectate { get; private set; }
     public static ConfigEntry<bool> SabotageFlash { get; private set; }
     public static ConfigEntry<bool> SabotageAlarm { get; private set; }
+    public static ConfigEntry<bool> PreciseCooldown { get; private set; }
+    public static ConfigEntry<bool> GhostSeeRoles { get; private set; }
+    public static ConfigEntry<int> ButtonScale { get; private set; }
 
     public static void Bind(ConfigFile cfg)
     {
@@ -57,6 +62,11 @@ internal static class ClientOptions
         DarkMeeting = Add("DarkMeeting", false, new Text("ClientOptions.DarkMeetingScreen"), null); // 次の会議から
         SabotageFlash = Add("SabotageFlash", true, new Text("ClientOptions.SabotageFlash"), null); // 次のサボタージュから
         SabotageAlarm = Add("SabotageAlarm", true, new Text("ClientOptions.SabotageAlarm"), null);
+        PreciseCooldown = Add("PreciseCooldown", true, new Text("ClientOptions.PreciseCooldown"), null);
+        GhostSeeRoles = Add("GhostSeeRoles", true, new Text("ClientOptions.GhostSeeRoles"), NameTaskTag.RefreshAll); // ホストが許した時だけ効く (会議の名札は次の会議から)
+        var scaleLabel = new Text("ClientOptions.ButtonScale");
+        ButtonScale = cfg.Bind("Client", "ButtonScale", 100, scaleLabel.Builtin(false));
+        Items.Add(new Item { Key = "ButtonScale", Label = scaleLabel, Click = HudTweaks.NextScale, Value = HudTweaks.ScaleLabel });
     }
 
     private static ConfigEntry<bool> Add(string key, bool def, Text label, Action changed)
@@ -121,6 +131,7 @@ internal static class ClientOptions
                 Clicks[i] = a = (UnityAction)(() => Toggle(idx));
             }
             SetClick(b, a);
+            if (it.Value != null) it.Tmp = b.GetComponentInChildren<TextMeshPro>(true);
             Paint(it);
         }
     }
@@ -187,6 +198,7 @@ internal static class ClientOptions
         {
             try { it.Click?.Invoke(); }
             catch (Exception e) { Plugin.Logger.LogError($"client option {it.Key}: {e}"); }
+            Paint(it);
             return;
         }
         it.Entry.Value = !it.Entry.Value;
@@ -200,6 +212,7 @@ internal static class ClientOptions
         var c = it.Entry == null ? Action : it.Entry.Value ? On : Off;
         if (it.Back) it.Back.color = c;
         if (it.Rollover) it.Rollover.ChangeOutColor(c);
+        if (it.Value != null && it.Tmp) it.Tmp.text = $"{it.Label}: {it.Value()}";
     }
 
     // 確認用: 一覧 / 名前で切り替え
@@ -222,6 +235,7 @@ internal static class ClientOptions
         var sb = new System.Text.StringBuilder("OK client");
         foreach (var it in Items)
             if (it.Entry != null) sb.Append(' ').Append(it.Key).Append('=').Append(it.Entry.Value ? "on" : "off");
+            else if (it.Value != null) sb.Append(' ').Append(it.Key).Append('=').Append(it.Value());
         sb.Append(" panel=").Append(_panel ? (_panel.gameObject.activeSelf ? "open" : "closed") : "none");
         return sb.ToString();
     }
