@@ -10,6 +10,7 @@ public enum AbilityTarget : byte
 {
     Self,   // 狙い無し。押した人の端末ですぐ効く (他の人に知らせる時は役職が自分で電文を送る)
     Player, // 近くの人を狙う。ホストが確かめてから全員の端末で OnUsed が呼ばれる
+    Meeting, // 会議中に名札を押すと ✓/✗ の隣に出るボタンで人を選ぶ。ホストが確かめてから全員の端末で OnUsed が呼ばれる
 }
 
 // 能力 1 つ (ボタン 1 つ)。役職の OnAssigned の中で作る:
@@ -34,16 +35,19 @@ public sealed class Ability
     // 使える回数 (null か 0 以下 = 何回でも)
     public Func<int> MaxUses { get; init; }
 
+    // Meeting: 1 回の会議で使える回数 (0 = 何回でも)
+    public int UsesPerMeeting { get; init; }
+
     // Player の届く距離 (0 = 部屋の設定のキルの距離)
     public float Range { get; init; }
 
-    // Player: 狙ってよい相手か (使う人, 相手)。null = 生きている誰でも
+    // Player / Meeting: 狙ってよい相手か (使う人, 相手)。null = 生きている誰でも
     public Func<PlayerControl, PlayerControl, bool> CanTarget { get; init; }
 
     // Self: 押した時 (自分の端末)。true = 使えた (待ち時間と回数を使う)
     public Func<bool> OnUse { get; init; }
 
-    // Player: ホストが通した後に全員の端末で (使う人, 相手)
+    // Player / Meeting: ホストが通した後に全員の端末で (使う人, 相手)
     public Action<PlayerControl, PlayerControl> OnUsed { get; init; }
 
     // 試合の始めと会議の後は待ち時間から始める
@@ -60,6 +64,18 @@ public sealed class Ability
     internal long PendingUntil;   // ホストの返事待ち (この時刻まで押し直さない)
     internal long HostLastMs;     // ホストが最後に通した時刻 (ホストの判定だけが使う)
     internal Il2CppSystem.Nullable<Color> OutlineOn; // 縁取りの色 (最初に狙った時に 1 回だけ作る)
+    internal int MeetingUses, MeetingUsesGen;     // この会議で使った回数 (MeetingUsesGen が今の会議の番号の時だけ有効)
+
+    // この会議であと何回使えるか (-1 = 何回でも)
+    internal int MeetingLeft
+    {
+        get
+        {
+            if (UsesPerMeeting <= 0) return -1;
+            int used = MeetingUsesGen == MeetingAbilities.Gen ? MeetingUses : 0;
+            return Math.Max(UsesPerMeeting - used, 0);
+        }
+    }
 
     public Ability(Text label, string icon)
     {
@@ -82,6 +98,11 @@ public sealed class Ability
     internal void Spend()
     {
         if (UsesLeft > 0) UsesLeft--;
+        if (Target == AbilityTarget.Meeting)
+        {
+            if (MeetingUsesGen != MeetingAbilities.Gen) { MeetingUsesGen = MeetingAbilities.Gen; MeetingUses = 0; }
+            MeetingUses++;
+        }
         Button?.SetUses(UsesLeft);
     }
 }
@@ -126,7 +147,7 @@ internal static class Abilities
         if (role == null || role.Lifespan == null || role.Lifespan.IsDead) return;
         foreach (var a in role.Abilities)
         {
-            if (a.Button != null) continue;
+            if (a.Button != null || a.Target == AbilityTarget.Meeting) continue; // 会議の能力は名札に出す (MeetingAbilities)
             var ab = a;
             a.Button = ModButton.Create(role.Lifespan, ButtonIcons.Get(a.Icon), a.Label, a.CooldownSeconds, () => Click(ab));
             if (a.Button == null) continue;
@@ -175,6 +196,17 @@ internal static class Abilities
             SetAim(a, aim);
             a.Button.SetUsable(aim is not null && a.UsesLeft != 0 && now >= a.PendingUntil);
         }
+    }
+
+    // 会議の名札のボタンを押した (自分の端末)
+    internal static void MeetingClick(Ability a, byte targetId)
+    {
+        long now = Environment.TickCount64;
+        if (a.UsesLeft == 0 || a.MeetingLeft == 0 || now < a.PendingUntil) return;
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || lp.Data == null || lp.Data.IsDead) return;
+        a.PendingUntil = now + PendingMs;
+        Request.Send(((byte)a.Index, targetId));
     }
 
     private static float Reach(Ability a) => a.Range > 0f ? a.Range : GameManager.Instance.LogicOptions.GetKillDistance();
@@ -232,14 +264,20 @@ internal static class Abilities
 
     private static string Refuse(PlayerControl user, Ability a, PlayerControl target)
     {
-        if (AmongUsClient.Instance.IsGameOver || !ShipStatus.Instance || MeetingHud.Instance || ExileController.Instance) return "not now";
+        if (a == null || a.Target == AbilityTarget.Self) return "ability";
+        bool meeting = a.Target == AbilityTarget.Meeting;
+        if (AmongUsClient.Instance.IsGameOver || !ShipStatus.Instance) return "not now";
+        var hud = MeetingHud.Instance;
+        if (meeting ? !hud || hud.state is MeetingHud.MeetingStates.Results or MeetingHud.MeetingStates.Proceeding
+                    : hud || ExileController.Instance) return "not now";
         if (!user || user.Data == null || user.Data.IsDead || user.Data.Disconnected) return "user";
-        if (user.inVent || user.inMovingPlat) return "user busy";
-        if (a == null || a.Target != AbilityTarget.Player) return "ability";
+        if (!meeting && (user.inVent || user.inMovingPlat)) return "user busy";
         if (a.UsesLeft == 0) return "no uses";
+        if (a.MeetingLeft == 0) return "no uses this meeting";
         if (!target || target == user || target.Data == null || target.Data.IsDead || target.Data.Disconnected) return "target";
-        if (target.inVent || target.inMovingPlat) return "target busy";
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
+        if (meeting) return null; // 会議の能力は距離と待ち時間を見ない
+        if (target.inVent || target.inMovingPlat) return "target busy";
         string far = Targeting.Unreachable(user, target, Reach(a) + DistanceSlack);
         if (far != null) return far;
         if ((Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user)) return "cooldown";
@@ -253,6 +291,11 @@ internal static class Abilities
         if (role == null || index >= role.Abilities.Count) return;
         var a = role.Abilities[index];
         a.Spend();
+        if (role.IsLocal && a.Target == AbilityTarget.Meeting)
+        {
+            a.PendingUntil = 0;
+            MeetingAbilities.Refresh();
+        }
         if (role.IsLocal && a.Button != null)
         {
             a.PendingUntil = 0;
