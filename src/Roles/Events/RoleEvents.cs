@@ -162,8 +162,14 @@ internal static class BeforeMurderVanillaPatch
 {
     public static bool Prefix(PlayerControl __instance, [HarmonyArgument(0)] PlayerControl target)
     {
-        if (!__instance || !target || !AmongUsClient.Instance.AmHost) return true;
-        string why = BeforeMurderEvent.Ask(__instance, target);
+        if (!AmongUsClient.Instance.AmHost || !__instance || !target) return true;
+        string why;
+        try { why = BeforeMurderEvent.Ask(__instance, target); }
+        catch (System.Exception e)
+        {
+            Plugin.Logger.LogError($"before murder: {e}");
+            return true;
+        }
         if (why == null) return true;
         Plugin.Logger.LogInfo($"kill refused {__instance.PlayerId}->{target.PlayerId}: {why}");
         return false;

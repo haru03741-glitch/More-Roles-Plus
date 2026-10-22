@@ -102,6 +102,12 @@ internal static class MeetingAbilities
 
     private static void Click(int index, byte targetId)
     {
+        try { DoClick(index, targetId); }
+        catch (Exception e) { Plugin.Logger.LogError($"meeting abilities: {e}"); }
+    }
+
+    private static void DoClick(int index, byte targetId)
+    {
         var hud = MeetingHud.Instance;
         if (hud)
             foreach (var pva in hud.playerStates)

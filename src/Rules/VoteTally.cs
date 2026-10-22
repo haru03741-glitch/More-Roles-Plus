@@ -18,6 +18,7 @@ internal static class VoteTally
     // 数える票か (未投票 252・投票し損ね 254・死んでいる 255 は数えない)
     private static bool Counted(byte target) => target < 252 || target == VoteTallyEvent.Skip;
 
+    private const int MaxRows = 300;
     private static List<Vote> _before, _after;  // ジャッジの会議で本編に締めさせる時の書き換え (CalculateVotes で使う)
     internal static string Last = "-";          // 確かめ用: 最後に締めた時の様子
 
@@ -52,7 +53,12 @@ internal static class VoteTally
             Last = $"vanilla votes={Join(before)}";
             return false;
         }
-        if (Events<VoteTallyEvent>.Any) Events<VoteTallyEvent>.Run(new VoteTallyEvent(after));
+        if (Events<VoteTallyEvent>.Any)
+        {
+            Events<VoteTallyEvent>.Run(new VoteTallyEvent(after));
+            // 受け手が足した票のうち、いない人の票・数えない先 (252 など)・死んだ人への票は捨てる
+            after.RemoveAll(v => !Valid(v));
+        }
         if (Same(before, after))
         {
             Last = $"unchanged votes={Join(before)}";
@@ -100,6 +106,13 @@ internal static class VoteTally
             rows.Add(new MeetingHud.VoterState { VoterId = id, VotedForId = pva.VotedForId.Value });
         }
         foreach (var v in after) rows.Add(new MeetingHud.VoterState { VoterId = v.Voter, VotedForId = v.Target });
+        // 公式サーバーは 1 通が約 1000 バイトを超えると切る (1 行 2 バイト)。多すぎる時は同じ人の同じ先への行を 1 行にまとめる
+        // (追放と同票は数え直した票で決めたまま・結果の画面の印の数だけ減る)
+        if (rows.Count > MaxRows)
+        {
+            var seen = new HashSet<int>();
+            rows.RemoveAll(r => !seen.Add(r.VoterId << 8 | r.VotedForId));
+        }
         var sent = new Il2CppStructArray<MeetingHud.VoterState>((long)rows.Count);
         for (int i = 0; i < rows.Count; i++) sent[i] = rows[i];
 
@@ -147,6 +160,16 @@ internal static class VoteTally
         int n = (counts.ContainsKey(key) ? counts[key] : 0) + delta;
         if (n > 0) counts[key] = n;
         else counts.Remove(key);
+    }
+
+    private static bool Valid(Vote v)
+    {
+        if (!Counted(v.Target)) return false;
+        var voter = GameData.Instance.GetPlayerById(v.Voter);
+        if (voter == null || voter.Disconnected) return false;
+        if (v.Target == VoteTallyEvent.Skip) return true;
+        var target = GameData.Instance.GetPlayerById(v.Target);
+        return target != null && !target.IsDead && !target.Disconnected;
     }
 
     private static bool Same(List<Vote> a, List<Vote> b)
