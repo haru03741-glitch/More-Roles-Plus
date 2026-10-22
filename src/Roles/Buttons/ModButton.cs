@@ -79,7 +79,12 @@ internal sealed class ModButton
             All.Remove(mb);
             // 待ち時間の表示で複製されたマテリアルは GameObject と一緒には消えない
             if (b && b.graphic) UnityEngine.Object.Destroy(b.graphic.material);
-            if (b) UnityEngine.Object.Destroy(b.gameObject);
+            // Destroy は遅れて効くので、先に並びから外す (同じフレームの並べ直しが消えかけのボタンを読んで落ちる)
+            if (b)
+            {
+                b.transform.SetParent(null, false);
+                UnityEngine.Object.Destroy(b.gameObject);
+            }
             // 並びの外のボタンは並びに居ないので並べ直さない (HUD が隠れている間の並べ直しは本編の中で落ちる)
             if (inGrid) Arrange();
         });

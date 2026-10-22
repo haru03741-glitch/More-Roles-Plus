@@ -11,7 +11,8 @@ namespace MoreRolesPlus.Roles.Impostor;
 // インポスター: 設計台を置き、その前で設計図 (歩ける所を上から見た地図) を開く。設計図をなぞると、なぞった線に沿って
 // 床から壁がせり上がる (人に掛かれば横へ押し出す)。壁はゲージを使い、一定時間で崩れる。
 // 水回りの部屋の壁の近くを軽く押すと、ゲージを多めに使って壁の中の配管を裂き、水を噴き出させる。
-// 設計台は全員に見える。設計図を開いている間、本体は設計台の前で立ち止まる
+// 設計台は全員に見える。設計図を開いている間、本体は設計台の前で立ち止まる。
+// 設計台はほかの人も使える。使った人は構築士のゲージで壁を引け (無駄うちさせる・自分の役に立てる)、構築士の設計図は閉じる
 public sealed class Architect : RoleBase
 {
     public override Team Team => Team.Impostor;
@@ -67,7 +68,19 @@ public sealed class Architect : RoleBase
         (w, v) => { w.Write(v.Actor); w.Write(v.At.x); w.Write(v.At.y); }, r => (r.ReadByte(), FxMath.V2(r.ReadSingle(), r.ReadSingle())),
         (_, v) => (RoleState.Of(v.Actor) as Architect)?.OnPicked(v.At));
 
+    // ほかの人が設計台を使い始めた・やめた (使う人 → 全員)。値 = (構築士, 台の番号・やめた = ClosedDesk)。
+    // 使っている間はその人に壁の許可を貸す。構築士が開いていれば構築士の設計図は閉じる (後から開いた方が使う)
+    private static readonly RemoteCall<(byte Owner, byte Desk)> UseCall = new("Architect.Use", Route.Anyone,
+        (w, v) => { w.Write(v.Owner); w.Write(v.Desk); }, r => (r.ReadByte(), r.ReadByte()),
+        (sender, v) => (RoleState.Of(v.Owner) as Architect)?.OnUse(sender, v.Desk));
+
+    // 構築士の今のゲージ (持ち主 → 全員・台を使われた時)。値 = ゲージ × GaugeQuant。使っている人の端末が写しを持つ
+    private static readonly RemoteCall<byte> GaugeCall = new("Architect.Gauge", Route.Anyone,
+        (w, v) => w.Write(v), r => r.ReadByte(), (sender, v) => Of(sender)?.OnGauge(v));
+
     private const byte ClosedDesk = 255;
+    private const byte NoUser = 255;
+    private const float GaugeQuant = 5f;
     private const float RubbleGain = 2f;      // 瓦礫 1 個で戻るゲージ
     private const float PickEvery = 0.5f;     // 次に拾う瓦礫を探す間隔
     private const float PickTimeout = 2.5f;   // 拾う頼みに返事が来なければ忘れる
@@ -104,6 +117,20 @@ public sealed class Architect : RoleBase
     private bool _sentOpen;
     private float _pickT, _pendingAt = -1f, _hostPickAt = -10f;
     private int _picked;
+    // 設計台を使っているほかの人 (全員の端末で持つ・NoUser = いない)。ドローンはどちらかが使っている台から飛ぶ
+    private byte _user = NoUser;
+    private int _userDesk = -1, _droneDesk = -1;
+    private int _lent;
+    // やめた直後の人の壁 (閉じた知らせが壁より先に届く) もこの構築士の壁として数える
+    private const float UserGrace = 3f;
+    private byte _lastUser = NoUser;
+    private float _lastUserAt = -10f;
+
+    // いる構築士 (台を使うボタンと、壁の許可を貸す判定に)
+    private static readonly List<Architect> All = new();
+    private static Lifespan _useLife;
+    private static ModButton _useButton;
+    private static int _useCheck;
 
     internal int DeskTotal => _desks.Count;
     internal float Gauge => _gauge;
@@ -116,6 +143,8 @@ public sealed class Architect : RoleBase
         if (!_listening) { TrickWall.Placed += OnWallPlaced; _listening = true; }
         _live++;
         RubbleBlocks.Pickable = () => _live > 0;
+        All.Add(this);
+        TerrainPermits.Lent = Lends;
         _gauge = GaugeLength;
         _dt = Time.fixedDeltaTime;
         AddAbility(new Ability(new Text("Architect.Desk"), "desk")
@@ -132,24 +161,63 @@ public sealed class Architect : RoleBase
         Lifespan.OnRelease(() =>
         {
             _live--;
+            All.Remove(this);
             _drone?.Destroy();
             _drone = null;
             foreach (var d in _desks) ArchitectDeskArt.Remove(d);
             _desks.Clear();
             _queue.Clear();
-            if (IsLocal) ArchitectPlan.Close();
+            _user = NoUser;
+            if (ArchitectPlan.Owner == this) ArchitectPlan.Close();
         });
     }
 
     private static Architect Of(PlayerControl sender) => sender == null ? null : RoleState.Of(sender.PlayerId) as Architect;
 
+    // 自分の番号 (役職が無い人もいるので本編の自分の人から)
+    private static byte LocalId
+    {
+        get
+        {
+            var lp = PlayerControl.LocalPlayer;
+            return lp ? lp.PlayerId : NoUser;
+        }
+    }
+
+    // この人がいずれかの構築士の設計台を使っているか (全員の端末で同じ電文から決まる)
+    private static bool Lends(byte playerId) => UsedBy(playerId) != null;
+
+    private static Architect UsedBy(byte playerId)
+    {
+        foreach (var a in All)
+            if (a._user == playerId) return a;
+        return null;
+    }
+
+    private static Architect UsedRecentlyBy(byte playerId)
+    {
+        var a = UsedBy(playerId);
+        if (a != null) return a;
+        float now = Time.time;
+        foreach (var b in All)
+            if (b._lastUser == playerId && now - b._lastUserAt < UserGrace) return b;
+        return null;
+    }
+
     private static void OnWallPlaced(string name, Vector2 at, float length, byte actor)
     {
         ArchitectPlan.MarkDirty();
         if (_wallsGen != GameClock.ShipGen) { Walls.Clear(); _wallsGen = GameClock.ShipGen; }
-        if (RoleState.Of(actor) is not Architect a) return;
+        // 台を使った人の壁は、その台の構築士の壁として崩す。構築士の端末はその分のゲージを減らす (継ぎ目の重なりは払わない)
+        var a = RoleState.Of(actor) as Architect ?? UsedRecentlyBy(actor);
+        if (a == null) return;
+        if (a.PlayerId != actor)
+        {
+            a._lent++;
+            if (a.IsLocal) a._gauge = MathF.Max(0f, a._gauge - MathF.Max(0f, length - Joint));
+        }
         a.DroneTo(at.x, at.y);
-        Walls.Add(new Built { Name = name, At = at, Length = length, Since = Time.time, Owner = actor });
+        Walls.Add(new Built { Name = name, At = at, Length = length, Since = Time.time, Owner = a.PlayerId });
     }
 
     // 壊れた・崩れた (全員の端末で)。設計図を開いていれば焼き直す
@@ -176,14 +244,146 @@ public sealed class Architect : RoleBase
         if (desk == ClosedDesk)
         {
             _openDesk = -1;
-            _drone?.Close();
+            RefreshDrone();
             return;
         }
         if (desk >= _desks.Count) return;
         _openDesk = desk;
+        // 構築士が開き直したら、台を使っていた人は降ろされる
+        if (_user != NoUser) EndUse();
+        RefreshDrone();
+    }
+
+    // 全員: ほかの人が設計台を使い始めた・やめた。構築士が開いていれば閉じる (閉じた知らせは持ち主の SyncPlan が配る)
+    private void OnUse(PlayerControl sender, byte desk)
+    {
+        if (!sender || sender.PlayerId == PlayerId) return;
+        byte id = sender.PlayerId;
+        if (desk == ClosedDesk)
+        {
+            if (_user == id) { ForgetUser(); RefreshDrone(); }
+            return;
+        }
+        if (desk >= _desks.Count || sender.Data == null || sender.Data.IsDead || sender.Data.Disconnected || MeetingHud.Instance) return;
+        if (_user != NoUser && _user != id) EndUse();
+        _user = id;
+        _userDesk = desk;
+        _openDesk = -1;
+        if (IsLocal)
+        {
+            if (ArchitectPlan.Owner == this) ArchitectPlan.Close();
+            GaugeCall.Send((byte)Math.Clamp((int)(_gauge * GaugeQuant), 0, 255));
+        }
+        RefreshDrone();
+    }
+
+    // 台を使っていた人を降ろす (その人の端末なら設計図を閉じ、立てる前の線は捨てる)。
+    // 降ろされた本人もやめたと配る (使い始めと開き直しがすれ違うと、ほかの端末に使用中のまま残るため)
+    private void EndUse()
+    {
+        bool mine = _user == LocalId;
+        ForgetUser();
+        if (!mine) return;
+        _queue.Clear();
+        if (ArchitectPlan.Owner == this) ArchitectPlan.Close();
+        UseCall.Send((PlayerId, ClosedDesk));
+    }
+
+    private void ForgetUser()
+    {
+        if (_user != NoUser) { _lastUser = _user; _lastUserAt = Time.time; }
+        _user = NoUser;
+        _userDesk = -1;
+    }
+
+    // 台を使っている人の端末: 構築士から届いた今のゲージを写す
+    private void OnGauge(byte q)
+    {
+        if (IsLocal || _user != LocalId) return;
+        _gauge = MathF.Min(GaugeLength, q / GaugeQuant);
+    }
+
+    // ドローンは設計台が使われている間 (構築士でもほかの人でも) その台から飛ぶ
+    private void RefreshDrone()
+    {
+        int want = _openDesk >= 0 ? _openDesk : _userDesk;
+        if (want < 0 || want >= _desks.Count) { _drone?.Close(); _droneDesk = -1; return; }
+        if (_drone != null && _drone.Airborne && _droneDesk == want) return;
         _drone?.Destroy();
-        var d = _desks[desk];
+        var d = _desks[want];
         _drone = ArchitectDrone.Launch(d.X, d.Y);
+        _droneDesk = want;
+    }
+
+    // ほかの人の端末: 足元から使える設計台 (いちばん近い構築士の台)。無ければ false
+    private static bool FindUsable(out Architect owner, out int desk)
+    {
+        owner = null;
+        desk = -1;
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || lp.Data == null || lp.Data.IsDead || !lp.CanMove || lp.inVent || lp.onLadder || lp.inMovingPlat) return false;
+        if (MeetingHud.Instance || ArchitectPlan.IsOpen) return false;
+        Vector2 me = lp.GetTruePosition();
+        float bestD = float.MaxValue;
+        foreach (var a in All)
+        {
+            if (a.PlayerId == lp.PlayerId) continue;
+            var h = a.DeskInReach(me.x, me.y);
+            if (h == null) continue;
+            float dx = me.x - h.X, dy = me.y - h.Y, dd = dx * dx + dy * dy;
+            if (dd >= bestD) continue;
+            bestD = dd;
+            owner = a;
+            desk = a._desks.IndexOf(h);
+        }
+        return owner != null && desk >= 0;
+    }
+
+    private static bool UseNearest() => FindUsable(out var a, out int desk) && a.BeginUse(desk);
+
+    // ほかの人の端末: 設計台で設計図を開く。ゲージは構築士から届くまで 0 (引けない)
+    private bool BeginUse(int desk)
+    {
+        _gauge = 0f;
+        _queue.Clear();
+        if (!ArchitectPlan.Open(this)) return false;
+        OnUse(PlayerControl.LocalPlayer, (byte)desk);
+        UseCall.Send((PlayerId, (byte)desk));
+        return true;
+    }
+
+    // 台を使っている人の端末: なぞった線を壁にする。閉じたら、立てる途中の壁を立て終えてからやめたと配る
+    private void BorrowTick()
+    {
+        bool open = ArchitectPlan.Owner == this;
+        if (open) ArchitectPlan.Tick();
+        BuildNext();
+        float max = GaugeLength;
+        if (_gauge < max) _gauge = MathF.Min(max, _gauge + max / MathF.Max(1f, GaugeRefill) * _dt);
+        if (open || _queue.Count > 0) return;
+        OnUse(PlayerControl.LocalPlayer, ClosedDesk);
+        UseCall.Send((PlayerId, ClosedDesk));
+    }
+
+    // 構築士でない人の端末: 設計台を使うボタン (誰かの台の手前に立った時だけ押せる)。いる構築士の 1 人目が回す
+    private void TickUseButton()
+    {
+        if (++_useCheck < CheckEvery) return;
+        _useCheck = 0;
+        if (RoleState.Local is Architect)
+        {
+            _useLife?.Release();
+            _useLife = null;
+            _useButton = null;
+            return;
+        }
+        if (_useLife == null || _useLife.IsDead)
+        {
+            if (!Vanilla.Hud) return;
+            _useLife = Lifespan.Child();
+            _useButton = ModButton.Create(_useLife, ButtonIcons.Get("blueprint"), new Text("Architect.UseDesk"), 0f, UseNearest);
+        }
+        _useButton?.SetUsable(FindUsable(out _, out _));
     }
 
     // 自分の設計図の開け閉めが変わったら配る (閉じる道は会議・死亡・ボタンなど色々あるので状態を見る)
@@ -448,6 +648,8 @@ public sealed class Architect : RoleBase
     internal bool Burst(Vector2 at)
     {
         float cost = PipeCost;
+        // 台を借りた人は配管を裂けない (壁だけ)
+        if (!IsLocal) { _lastPipe = "not owner"; return false; }
         if (_gauge < cost || !SolidMap.Valid || SolidMap.Solid(at.x, at.y) || !WaterLeak.IsWaterRoom(at)) { _lastPipe = "not here"; return false; }
         // いちばん近い壁の面 (歩ける所の地図の縁) を 16 方向に探す
         float best = float.MaxValue, bx = 0f, by = 0f;
@@ -487,6 +689,8 @@ public sealed class Architect : RoleBase
     public override void OnFixedUpdate()
     {
         if (IsLocal) LocalTick();
+        else if (_user != NoUser && _user == LocalId) BorrowTick();
+        if (All.Count > 0 && All[0] == this) TickUseButton();
         if (++_hostCheck >= HostEvery)
         {
             _hostCheck = 0;
@@ -496,6 +700,12 @@ public sealed class Architect : RoleBase
             {
                 var pc = Player;
                 if (!pc || pc.Data == null || pc.Data.IsDead || pc.Data.Disconnected) OnPlan(ClosedDesk);
+            }
+            // 台を使っていた人が抜けた・死んだ時も同じ (自分なら設計図が閉じて BorrowTick が配る)
+            if (_user != NoUser && _user != LocalId)
+            {
+                var u = GameData.Instance ? GameData.Instance.GetPlayerById(_user) : null;
+                if (u == null || u.IsDead || u.Disconnected) { EndUse(); RefreshDrone(); }
             }
         }
     }
@@ -537,7 +747,7 @@ public sealed class Architect : RoleBase
 
     internal string Describe()
     {
-        var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} picked={_picked} drone={(_drone == null ? "-" : _drone.Describe())} plan={ArchitectPlan.Describe()}");
+        var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} picked={_picked} user={(_user == NoUser ? "-" : _user.ToString())}@{_userDesk} lent={_lent} drone={(_drone == null ? "-" : _drone.Describe())} plan={ArchitectPlan.Describe()}");
         foreach (var d in _desks) sb.Append($" ({d.X:0.00},{d.Y:0.00})");
         return sb.ToString();
     }
@@ -586,6 +796,21 @@ public sealed class Architect : RoleBase
     }
 
     internal bool OpenForTest() => OpenPlan();
+
+    // テスト用: 自分 (構築士でない人) が足元の設計台を使う (ボタンと同じ道)
+    internal static bool UseForTest() => UseNearest();
+
+    // テスト用: この端末だけで、ほかの人の構築士の設計台を (x, y) に置いた扱いにする
+    internal bool PlaceLocalForTest(float x, float y) => TryAdd(x, y);
+
+    // テスト用: 番号の人が設計台 desk を使い始めた (ClosedDesk = やめた) と届いた扱いにする (この端末だけ)
+    internal bool SimUseForTest(byte id, byte desk)
+    {
+        var pc = GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null;
+        if (!pc) return false;
+        OnUse(pc, desk);
+        return true;
+    }
 
     // テスト用: 世界の座標の点の列をなぞった扱いにする (ゲージも使う)。使えた長さ
     internal float DrawForTest(List<Vector2> pts)

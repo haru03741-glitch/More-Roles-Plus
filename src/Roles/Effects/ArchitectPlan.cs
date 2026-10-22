@@ -97,6 +97,8 @@ internal static class ArchitectPlan
     private static double _waterMs;
 
     internal static bool IsOpen => _open;
+    // 開いている設計図の構築士 (閉じていれば null)
+    internal static Impostor.Architect Owner => _open ? _owner : null;
 
     // 地図を設計図として開く。開けたら true
     internal static bool Open(Impostor.Architect owner)
@@ -384,8 +386,11 @@ internal static class ArchitectPlan
         var map = MapBehaviour.Instance;
         var lp = PlayerControl.LocalPlayer;
         int n = 0;
+        // ほかの人の影が見えるのは構築士本人だけ (台を借りた人には居場所を教えない)
+        bool show = _owner != null && _owner.IsLocal;
         foreach (var pc in PlayerControl.AllPlayerControls)
         {
+            if (!show) break;
             if (!pc || pc == lp || pc.Data == null || pc.Data.IsDead || pc.Data.Disconnected || pc.inVent) continue;
             var sr = Shade(n, map);
             if (!sr) break;

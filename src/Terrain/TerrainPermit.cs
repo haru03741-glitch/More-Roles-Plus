@@ -91,8 +91,14 @@ internal static class TerrainPermits
     {
         if (SandboxOverride ?? Roles.PracticeMatch.Sandbox) return TerrainPermit.All;
         var role = Roles.RoleState.Of(playerId);
-        return role != null ? role.TerrainPermit : TerrainPermit.None;
+        var p = role != null ? role.TerrainPermit : TerrainPermit.None;
+        // 構築士の設計台を使っている人は、その間だけ人を押し出す壁を立てられる (全員の端末で同じ判定)
+        if (!p.WallPush && Lent != null && Lent(playerId)) p = p.WithWall(TerrainPermit.MaxWallLength, push: true);
+        return p;
     }
+
+    // 役職の外から一時的に壁の許可を貸すか (構築士の設計台)
+    internal static Func<byte, bool> Lent;
 
     // 確かめて、使えるならその場で使ったと記録する (ホストが客の依頼を受ける時)。使えない理由 (使えるなら null)
     public static string TryUse(byte playerId, TerrainUse use, float radius, bool host)
