@@ -671,7 +671,7 @@ internal static partial class FireSim
 
     private static void IssueWallBurn()
     {
-        if (BurnQueue.Count == 0 || !_ready) return;
+        if (BurnQueue.Count == 0 || !_ready || TerrainRewind.Playing) return; // 逆再生の間は焼かない (段に取り消されるかが割れる)
         if (!_decides)
         {
             foreach (var q in BurnQueue) q.Queued = false;

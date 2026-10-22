@@ -120,7 +120,12 @@ internal static class TimeRewind
         LastNote = "-";
         Events<MeetingStartEvent>.Subscribe(_ => Clear(), life, owner: "TimeRewind");
         Terrain.TerrainRewind.Enable(life, Crew.Rewinder.Seconds);
-        life.OnRelease(() => { _on = false; Clear(); });
+        life.OnRelease(() =>
+        {
+            _on = false;
+            if (_playing) Finish();
+            Clear();
+        });
     }
 
     internal static void Clear()
@@ -150,6 +155,7 @@ internal static class TimeRewind
     {
         if (!_on) return;
         long now = Environment.TickCount64;
+        if (_playing) PlayStep(now);
         if (now < _nextMs) return;
         _nextMs = now + StepMs;
         if (!Recording()) return;
@@ -442,7 +448,7 @@ internal static class TimeRewind
         if (RoleState.Of(sender) is not Crew.Rewinder rw) return;
         long now = Environment.TickCount64;
         // 回数と待ち時間を数えるのは、戻すと決まった時だけ
-        if (now - _hostLastGo < MinGapMs || MeetingHud.Instance || _count == 0 || !rw.HostAllows()) return;
+        if (now - _hostLastGo < MinGapMs || _playing || MeetingHud.Instance || _count == 0 || !rw.HostAllows()) return;
         _hostLastGo = now;
         HostGo(Crew.Rewinder.Seconds);
     }
@@ -461,7 +467,7 @@ internal static class TimeRewind
     // 確かめ用 (ブリッジ rewind force): ホストが役職と待ち時間を見ずに戻す
     internal static bool HostForce(float seconds)
     {
-        if (!_on || _count == 0 || !AmongUsClient.Instance.AmHost) return false;
+        if (!_on || _count == 0 || _playing || !AmongUsClient.Instance.AmHost) return false;
         HostGo(seconds);
         return true;
     }
@@ -497,9 +503,90 @@ internal static class TimeRewind
         return Oldest;
     }
 
+    // 逆再生の間 (合図を受けてから、自分の位置を記録に沿って逆にたどり終えるまで)。全員が止まり、終わりに今の戻しを当てる
+    private static bool _playing, _froze;
+    private static Go _play;
+    private static long _playStart, _playEnd, _playSlotMs;
+    private static int _playSlot;
+    private static float _fromX, _fromY;
+
+    internal static bool Playing => _playing;
+
     private static void Apply(Go g)
     {
         if (!_on || MeetingHud.Instance) return;
+        if (_playing) Finish();
+        long now = Environment.TickCount64;
+        // 吸い出されて飛んでいる途中は、逆再生の間に飛び終わって死なないよう先に取り消す
+        Step("flights", Terrain.CrewGrip.Rewound);
+        _play = g;
+        _playStart = now;
+        int playMs = Terrain.TerrainRewind.PlayMs(g.BackMs);
+        _playEnd = now + playMs;
+        _playSlot = Find(now - g.BackMs);
+        _playSlotMs = _playSlot >= 0 ? SlotMs[_playSlot] : 0;
+        _playing = true;
+        var lp = PlayerControl.LocalPlayer;
+        if (lp)
+        {
+            var p = lp.transform.position;
+            _fromX = p.x;
+            _fromY = p.y;
+            if (Minigame.Instance) Minigame.Instance.Close();
+            // 本編の「動ける」を切ると、移動・キル・使う・通報・能力のボタンがまとめて止まる
+            if (lp.moveable) { lp.moveable = false; _froze = true; }
+        }
+        RewindWorldFx.Play(false, playMs / 1000f);
+    }
+
+    // 毎 FixedUpdate (逆再生の間): 自分の体を記録の位置へ置く。位置は本編の同期で他の人にも逆に歩いて見える
+    private static void PlayStep(long now)
+    {
+        if (now >= _playEnd || MeetingHud.Instance || !Terrain.GameClock.ShipAlive) { Finish(); return; }
+        var lp = PlayerControl.LocalPlayer;
+        if (_playSlot < 0 || !lp || lp.Data == null || lp.Data.IsDead || lp.onLadder || lp.inMovingPlat || lp.inVent) return;
+        float u = (now - _playStart) / (float)(_playEnd - _playStart);
+        u = u * u * (3f - 2f * u);
+        long t = _playStart - (long)(u * (_playStart - _playSlotMs));
+        PosAt(t, out float x, out float y);
+        var body = lp.MyPhysics.body;
+        body.velocity = Fx.FxMath.V2(0f, 0f);
+        body.position = Fx.FxMath.V2(x, y);
+    }
+
+    // 記録の時刻 t の自分の位置 (前後の記録の間を線で結ぶ。合図より新しい記録は使わない)
+    private static void PosAt(long t, out float x, out float y)
+    {
+        long nextMs = _playStart;
+        float nx = _fromX, ny = _fromY;
+        for (int k = 1; k <= _count; k++)
+        {
+            int s = (_head - k + Slots) % Slots;
+            if (SlotMs[s] > _playStart) continue;
+            if (SlotMs[s] <= t)
+            {
+                float f = nextMs > SlotMs[s] ? (t - SlotMs[s]) / (float)(nextMs - SlotMs[s]) : 0f;
+                x = PosX[s] + (nx - PosX[s]) * f;
+                y = PosY[s] + (ny - PosY[s]) * f;
+                return;
+            }
+            nextMs = SlotMs[s];
+            nx = PosX[s];
+            ny = PosY[s];
+        }
+        x = nx;
+        y = ny;
+    }
+
+    // 逆再生の終わり: 止めていたのを戻し、生き返り・位置・タスク・待ち時間・役職の値を戻す時刻へ揃える
+    private static void Finish()
+    {
+        _playing = false;
+        var lp = PlayerControl.LocalPlayer;
+        if (_froze) { _froze = false; if (lp) lp.moveable = true; }
+        // 会議が始まった (記録は会議の始まりで捨てる)・試合が終わった時は人の側は戻さない
+        if (!_on || MeetingHud.Instance) return;
+        var g = _play;
         long now = Environment.TickCount64;
         foreach (var pid in g.Revive)
         {
@@ -507,10 +594,10 @@ internal static class TimeRewind
             catch (Exception e) { Plugin.Logger.LogError($"TimeRewind revive {pid}: {e}"); }
         }
         LastRevived = g.Revive.Length;
-        Step("flights", Terrain.CrewGrip.Rewound);
-        int s = Find(now - g.BackMs);
+        int s = _playSlot;
+        if (s < 0 || SlotMs[s] != _playSlotMs) s = Find(_playStart - g.BackMs); // 逆再生の間の記録に枠を使われた
         if (s < 0) return;
-        LastSlotAgeMs = (int)(now - SlotMs[s]);
+        LastSlotAgeMs = (int)(_playStart - SlotMs[s]);
         Rewinds++;
         Step("self", () => RestoreSelf(s));
         Step("roles", () => RestoreRoles(s, now - SlotMs[s]));
@@ -519,7 +606,6 @@ internal static class TimeRewind
         _count -= (_head - s - 1 + Slots) % Slots;
         _head = (s + 1) % Slots;
         _nextMs = now + StepMs;
-        RewindWorldFx.Play(false);
         Plugin.Logger.LogInfo($"TimeRewind: back {g.BackMs}ms -> slot age {LastSlotAgeMs}ms revive={g.Revive.Length} tasks={LastTasksUndone} systems={LastSystems} {LastNote}");
     }
 
@@ -748,6 +834,6 @@ internal static class TimeRewind
     internal static string Probe()
     {
         long now = Environment.TickCount64;
-        return $"on={_on} slots={_count} span={Span:0.00}s rewinds={Rewinds} lastAge={LastSlotAgeMs}ms revived={LastRevived} tasksUndone={LastTasksUndone} systems={LastSystems}/{_sysN} note={LastNote} next={_nextMs - now}ms";
+        return $"on={_on} playing={_playing} slots={_count} span={Span:0.00}s rewinds={Rewinds} lastAge={LastSlotAgeMs}ms revived={LastRevived} tasksUndone={LastTasksUndone} systems={LastSystems}/{_sysN} note={LastNote} next={_nextMs - now}ms";
     }
 }

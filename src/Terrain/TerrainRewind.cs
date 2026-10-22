@@ -13,7 +13,10 @@ namespace MoreRolesPlus.Terrain;
 internal static class TerrainRewind
 {
     public const int Every = 15;          // 記録の間 (刻み) = 0.5 秒
-    private const float SpareSeconds = 2f; // 戻す秒数に足して持つ分
+    private const float SpareSeconds = 4f; // 戻す秒数に足して持つ分 (逆再生の最後の段は合図から最大 2 秒後に来る)
+    private const int MaxSteps = 8;        // 逆再生の段の数の上限 (1 段 = 壁の取り消し + 各計算の読み戻し)
+    private const int MinStepGap = 5;      // 段と段の間の刻み (前の段の作り直しの出来事を計算が先に済ませるだけ空ける)
+    private const int Lead = 2;            // 段の刻みのこれだけ前に壁を取り消す (計算がその刻みを過ぎる前に出来事を積む)
 
     internal enum Sim { Decomp, Prop, Water, Fire, Count }
 
@@ -24,6 +27,7 @@ internal static class TerrainRewind
     }
 
     private static readonly List<Order> Orders = new();
+    private static readonly List<(int Tick, int Target)> Plan = new(); // これから当てる逆再生の段 (刻みの順)
     private static bool _on;
     private static int _slots = 1, _shipGen = -1;
 
@@ -43,6 +47,11 @@ internal static class TerrainRewind
 
     // 記録するか (各計算が刻みの頭で読む)
     internal static bool On => _on;
+    // 逆再生の途中 (まだ当てていない段がある)。ホストはこの間の新しい破壊を受け付けない
+    internal static bool Playing => Plan.Count > 0;
+
+    // 逆再生の長さ (ms)。人の側 (TimeRewind) と同じ式で決める (電文に載せずに全員が揃う)
+    internal static int PlayMs(int backMs) => Math.Clamp(800 + backMs / 10, 1200, 2000);
     internal static int Slots => _slots;
 
     // 時戻しがいる試合で、寿命が切れるまで記録する。seconds = 戻す秒数 (輪の長さを決める)
@@ -59,6 +68,7 @@ internal static class TerrainRewind
     private static void Reset()
     {
         Orders.Clear();
+        Plan.Clear();
         Rewinds = Late = Missing = Checked = Bad = 0;
         Array.Clear(SaveMs);
         Array.Clear(SaveMaxMs);
@@ -79,27 +89,69 @@ internal static class TerrainRewind
         Reset();
     }
 
-    // 戻す合図 (全員の手元・連番の順)。動いていない計算は戻す中身が無い。
-    // 戻す刻み以後のまだ処理していない出来事を捨ててから、その後に壊した壁を取り消す (取り消しは各計算へ作り直しを入れる)
+    // 戻す合図 (全員の手元・連番の順)。一度に戻さず、逆再生として段に分ける: 合図の刻み T から長さ P の間に N 段、
+    // 段 k (刻み T + P·k/N) で「T − back·k/N より後」を取り消す。壁は新しい件から組み戻り、水・火などは記録を過去へ順に読み戻す。
+    // 段の刻みと戻す所は合図の刻みと秒数だけから決まるので、全員が同じ刻みで同じ段を当てる
     internal static void OnApplied(in ResolvedDamage r)
     {
         if (!_on) return;
         CheckShip();
-        int tick = GameClock.Expand(r.Tick);
-        var o = new Order { Tick = tick, Target = FloorDiv(tick - r.Seed, Every) * Every };
-        WaterSim.RewindPurge(o.Target);
-        FireSim.RewindPurge(o.Target);
-        Decompression.RewindPurge(o.Target);
-        PropSim.RewindPurge(o.Target);
-        FireFx.DropScorch(); // まだ地図へ書いていない焦げ (ほぼ戻す刻みより後に燃えた分)
-        Walls = TerrainUndo.Rewind(o.Target, tick);
+        FlushPlan(); // 前の逆再生の残り (続けて戻した時)
+        int tick = GameClock.Expand(r.Tick), back = r.Seed;
+        int play = PlayMs(back * 1000 / GameClock.Hz) * GameClock.Hz / 1000;
+        int n = Math.Max(1, Math.Min(Math.Min((back + Every - 1) / Every, MaxSteps), play / MinStepGap));
+        for (int k = 1; k <= n; k++)
+            Plan.Add((tick + play * k / n, FloorDiv(tick - back * k / n, Every) * Every));
+        // 戻す刻み以後のまだ処理していない出来事は、合図の時に 1 回だけ捨てる。段ごとに捨てると、計算は時計より遅れて進むので
+        // 前の段の取り消しが積んだ作り直し (漏れの口を外すなど) を処理する前に捨ててしまう
+        int last = Plan[Plan.Count - 1].Target;
+        WaterSim.RewindPurge(last);
+        FireSim.RewindPurge(last);
+        Decompression.RewindPurge(last);
+        PropSim.RewindPurge(last);
+        Walls = 0;
+        Rewinds++;
+        RunDue();
+    }
+
+    // 毎フレーム (計算が刻みを進める前): 刻みが来た段を当てる
+    internal static void RunDue()
+    {
+        if (Plan.Count == 0) return;
+        try
+        {
+            int now = GameClock.Now;
+            while (Plan.Count > 0 && Plan[0].Tick - Lead <= now) StepNext();
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"[TerrainRewind] step: {e}"); }
+    }
+
+    // 残りの段を今すぐ全部当てる。逆再生の途中で別の破壊が届いた時は、その前に当て切る (取り消す件の順を端末ごとに割らない)
+    internal static void FlushPlan()
+    {
+        if (Plan.Count == 0) return;
+        try { while (Plan.Count > 0) StepNext(); }
+        catch (Exception e) { Plugin.Logger.LogError($"[TerrainRewind] flush: {e}"); }
+    }
+
+    // 段 1 つ: その後に壊した壁を取り消し (取り消しは各計算へ段の刻みの作り直しを入れる)、各計算に記録の読み戻しを頼む
+    private static void StepNext()
+    {
+        var (tick, target) = Plan[0];
+        Plan.RemoveAt(0);
+        var o = new Order { Tick = tick, Target = target };
+        FireFx.DropScorch();
+        DustCloud.RewindNewer((GameClock.Now - target) / (float)GameClock.Hz); // まだ地図へ書いていない焦げ (ほぼ戻す刻みより後に燃えた分)
+        Walls += TerrainUndo.Rewind(target, tick);
         o.Done[(int)Sim.Decomp] = !Decompression.Running;
         o.Done[(int)Sim.Prop] = !PropSim.Drives;
         o.Done[(int)Sim.Water] = !WaterSim.Running;
         o.Done[(int)Sim.Fire] = !FireSim.Running;
         Orders.Add(o);
-        Rewinds++;
         Prune();
+        if (Plan.Count > 0) return;
+        FireFx.HidePuffs();
+        WaterLeak.HideSpray();
     }
 
     private static int FloorDiv(int a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);
@@ -160,7 +212,7 @@ internal static class TerrainRewind
         }
     }
 
-    internal static string Probe() => $"on={_on} slots={_slots} every={Every} orders={Orders.Count} rewinds={Rewinds} late={Late} missing={Missing} check={(SelfCheck ? 1 : 0)} checked={Checked} bad={Bad} " +
+    internal static string Probe() => $"on={_on} slots={_slots} every={Every} orders={Orders.Count} plan={Plan.Count} rewinds={Rewinds} late={Late} missing={Missing} check={(SelfCheck ? 1 : 0)} checked={Checked} bad={Bad} " +
         $"saved=w{WaterSim.RewindCount}/f{FireSim.RewindCount}/d{Decompression.RewindCount}/p{PropSim.RewindCount} saveMs=w{SaveMs[2]:0.000}/{SaveMaxMs[2]:0.000} f{SaveMs[3]:0.000}/{SaveMaxMs[3]:0.000} d{SaveMs[0]:0.000}/{SaveMaxMs[0]:0.000} p{SaveMs[1]:0.000}/{SaveMaxMs[1]:0.000} note={LastNote}";
 }
 

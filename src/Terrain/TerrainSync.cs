@@ -88,6 +88,8 @@ internal static class TerrainSync
     private static string HostAccept(in DamageEvent e, byte actor, out bool ok)
     {
         SyncShip();
+        // 逆再生の途中の破壊は、まだ当てていない段に取り消されるかが端末ごとに割れるので受け付けない (全員止まっている間)
+        if (TerrainRewind.Playing) { ok = false; return "rewinding"; }
         long rt = System.Diagnostics.Stopwatch.GetTimestamp();
         ok = TerrainDamage.TryResolve(e, out var r, out string why);
         TerrainDamage.LastResolveMs = (System.Diagnostics.Stopwatch.GetTimestamp() - rt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -116,6 +118,7 @@ internal static class TerrainSync
             finally { TerrainDigest.End(seq); }
             return $"rewind walls={TerrainRewind.Walls}";
         }
+        TerrainRewind.FlushPlan(); // 逆再生の残りの段は、この件より前に当て切る (全員が同じ順で取り消す)
         TerrainFx.RunDeferred(); // 前の破壊の見た目を先に出す (出る順を適用の順に保つ)
         WaterSim.BeforeApply(r);
         TerrainUndo.Begin(seq, r);
@@ -619,6 +622,7 @@ internal static class TerrainSync
     {
         long rt = System.Diagnostics.Stopwatch.GetTimestamp();
         SyncShip();
+        if (TerrainRewind.Playing) { ok = false; return "rewinding"; }
         ok = TerrainDamage.TryResolve(e, out var r, out string why);
         TerrainDamage.LastResolveMs = (System.Diagnostics.Stopwatch.GetTimestamp() - rt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         if (!ok) return why;

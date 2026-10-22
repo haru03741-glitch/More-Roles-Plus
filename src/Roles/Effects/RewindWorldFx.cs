@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 時が戻った時に全員の画面に出す演出 (誰が戻したかは出さない)。画面に貼り付けて 1.5 秒:
+// 時が戻る間 (逆再生) に全員の画面に重ねる演出 (誰が戻したかは出さない)。世界が逆に戻る様子が透けて見える薄さで:
 // 紺の幕 → 画面の真ん中に金の細い線の大きな時計盤 (暗い下地 → にじみ → 盤 → 針) の針が反時計回りに速く回る →
 // ビデオの巻き戻しのような横の走査帯が上へ流れ、金と水色の細い光の筋が下から上へ逆さに降る → 上に ◀◀ が点滅。
 // 頭は水色の短い閃光。全画面の発動の演出を見た本人は真っ白の画面から始まって引いていく (閃光を二重にしない)。
@@ -84,7 +84,7 @@ internal static class RewindWorldFx
             BandSpeed[i] = FxMath.Range(6f, 14f);
             bool thick = i < NoiseBands;
             BandH[i] = thick ? FxMath.Range(0.35f, 0.6f) : FxMath.Range(0.03f, 0.22f);
-            BandA[i] = thick ? FxMath.Range(0.25f, 0.4f) : FxMath.Range(0.12f, 0.4f);
+            BandA[i] = thick ? FxMath.Range(0.15f, 0.25f) : FxMath.Range(0.08f, 0.25f);
             BandTf[i].localScale = FxMath.V3((_w + 1f) * (thick ? 1f / 8f : 1f), BandH[i], 1f);
         }
         for (int i = 0; i < Rain; i++)
@@ -144,7 +144,7 @@ internal static class RewindWorldFx
     {
         float t = _t;
         float env = Env(t, 0.12f, _dur - 0.65f, 0.65f);
-        SetA(_tint, Navy, 0.32f * env);
+        SetA(_tint, Navy, 0.22f * env);
         if (_white)
         {
             float u = FxMath.Clamp01(t / 0.4f);
@@ -156,11 +156,11 @@ internal static class RewindWorldFx
         float grow = 0.96f + 0.04f * FxMath.Clamp01(t / 0.3f);
         float d = _h * ClockFrac * grow;
         _clockTf.localScale = FxMath.V3(d, d, 1f);
-        SetA(_discSr, Navy, 0.45f * ce);
-        SetA(_haloSr, Gold, 0.35f * ce);
-        SetA(_faceSr, Gold, 0.6f * ce);
-        SetA(_hourSr, HandCol, 0.85f * ce);
-        SetA(_minSr, HandCol, 0.9f * ce);
+        SetA(_discSr, Navy, 0.2f * ce);
+        SetA(_haloSr, Gold, 0.22f * ce);
+        SetA(_faceSr, Gold, 0.38f * ce);
+        SetA(_hourSr, HandCol, 0.55f * ce);
+        SetA(_minSr, HandCol, 0.6f * ce);
         _faceSr.transform.localRotation = FxMath.RotZ(FaceSpeed * t);
         _hourTf.localRotation = FxMath.RotZ(40f + HourSpeed * t);
         _minTf.localRotation = FxMath.RotZ(MinuteSpeed * t);
@@ -182,7 +182,7 @@ internal static class RewindWorldFx
             float y = -_h * 0.5f - RainLen[i] * 0.5f + lt * RainSpeed[i];
             bool live = lt >= 0f && y - RainLen[i] * 0.5f < _h * 0.5f;
             var c = RainSr[i].color;
-            float a = live ? env : 0f;
+            float a = live ? 0.8f * env : 0f;
             if (c.a == a && !live) continue;
             RainTf[i].localPosition = FxMath.V3(RainX[i], y, -0.06f);
             c.a = a;

@@ -918,6 +918,9 @@ internal static class WaterLeak
         }
     }
 
+    // 時戻しの終わり: 飛んでいる滴・霧・波紋を消す (戻した時刻より後の噴き出しから出た物)
+    internal static void HideSpray() => HideDrops();
+
     private static void HideDrops()
     {
         foreach (var d in Drops)

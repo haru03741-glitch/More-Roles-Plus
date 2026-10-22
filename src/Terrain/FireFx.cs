@@ -482,6 +482,20 @@ internal static class FireFx
         return sp;
     }
 
+    // 時戻しの終わり: 出ている煙と湯気の粒を消す (戻した時刻より後の火と水から出た物)
+    internal static void HidePuffs()
+    {
+        if (_live == 0) return;
+        for (int i = 0; i < MaxPuffs; i++)
+        {
+            ref var p = ref Puffs[i];
+            if (!p.Alive) continue;
+            p.Alive = false;
+            if (p.Sr) p.Sr.enabled = false;
+        }
+        _live = 0;
+    }
+
     internal static void Clear()
     {
         for (int i = 0; i < MaxPuffs; i++) Puffs[i] = default;

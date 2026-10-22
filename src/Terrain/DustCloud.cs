@@ -306,6 +306,18 @@ internal static class DustCloud
         }
     }
 
+    // 時戻し: 出てから seconds 秒より新しい煙を消す (戻した時刻より後に立った煙)。逆再生の段ごとに呼ぶと新しい煙から消えていく
+    internal static void RewindNewer(float seconds)
+    {
+        for (int i = Clouds.Count - 1; i >= 0; i--)
+        {
+            var c = Clouds[i];
+            if (c.T >= seconds) continue;
+            Destroy(c);
+            Clouds.RemoveAt(i);
+        }
+    }
+
     private static void Destroy(Cloud c)
     {
         foreach (var p in c.Puffs)
