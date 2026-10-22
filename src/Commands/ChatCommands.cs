@@ -57,6 +57,7 @@ internal static class ChatCommands
         Add(new[] { "kick" }, Who.Host, new Text("Command.kick.Usage"), new Text("Command.kick"), JoinLists.Kick);
         Add(new[] { "ban" }, Who.Host, new Text("Command.ban.Usage"), new Text("Command.ban"), JoinLists.Ban);
         Add(new[] { "banlist" }, Who.Host, default, new Text("Command.banlist"), JoinLists.BanList);
+        Add(new[] { "mods" }, Who.Host, default, new Text("Command.mods"), Net.VersionCheck.ModsText);
         Add(new[] { "unban" }, Who.Host, new Text("Command.unban.Usage"), new Text("Command.unban"), JoinLists.Unban);
         Add(new[] { "cjclear" }, Who.Host, default, new Text("Command.cjclear"), JoinLists.ClearRecent);
         Add(new[] { "say" }, Who.Host, new Text("Command.say.Usage"), new Text("Command.say"), LobbyTools.Say);

@@ -456,6 +456,23 @@ internal static class DevCommands
             }
         });
 
+        TestBridge.Register("modcheck", "[fakehost <版>] ホストから別の版の知らせが来た時と同じことをする (客のみ・版違いの文の確認用)・引数なしで /mods と同じ一覧", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length >= 2 && a[0] == "fakehost")
+            {
+                var client = AmongUsClient.Instance;
+                PlayerControl host = null;
+                foreach (var p in PlayerControl.AllPlayerControls)
+                    if (p && client && p.OwnerId == client.HostId) host = p;
+                if (!host || client.AmHost) { reply("ERR modcheck fakehost: guest only"); return; }
+                Net.VersionCheck.OnHostHello(host, a[1], Options.Registry.Fingerprint, Native.MrpNative.Abi);
+                reply("OK modcheck fakehost");
+                return;
+            }
+            reply("OK modcheck " + Net.VersionCheck.ModsText("").Replace("\n", " | "));
+        });
+
         TestBridge.Register("players", "全員の番号・名前・生死・役職", (_, reply) =>
         {
             if (!GameData.Instance) { reply("ERR players no game"); return; }

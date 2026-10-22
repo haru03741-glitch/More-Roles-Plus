@@ -319,6 +319,7 @@ Command.kick.Usage: <番号>
 Command.ban: その人を BAN して一覧に書く (次から入れない)
 Command.ban.Usage: <番号>
 Command.banlist: BAN 一覧
+Command.mods: 部屋の人が入れている mod の一覧
 Command.unban: BAN を解く
 Command.unban.Usage: <一覧の番号|フレンドコード>
 Command.cjclear: 前の試合にいた人の記録を消す (続けて入れない設定用)
@@ -616,6 +617,13 @@ VersionCheck.DifferentNativeModule: {name} (C++ の部品の版が違う)
 VersionCheck.DifferentVersion: {name} (版が違う: {version})
 VersionCheck.WaitingForNewPlayers: 入ってきたばかりの人の版を確認しています。済み次第始めます
 VersionCheck.Mismatch: 全員が同じ版の More Roles Plus を入れるまで始められません:\n
+ModCheck.Bad: {name} が危ない mod を入れています: {mod}
+ModCheck.BadMark: (危ない mod)
+ModCheck.Unknown: (不明)
+ModCheck.None: (なし)
+ModCheck.YouDifferVersion: ホストの More Roles Plus は {host}、あなたは {mine} です。バージョンがそろうまで試合を始められません (メインメニューの更新ボタンから更新できます)
+ModCheck.YouDifferNative: ホストと C++ の部品のバージョンが違うため、試合を始められません。More Roles Plus を入れ直してください
+ModCheck.YouDifferBuild: ホストと同じバージョンですが中身 (役職や設定) が違うため、試合を始められません。同じ配布物を入れ直してください
 
 # ── MapSettings ──
 MapSettings.Title: マップ

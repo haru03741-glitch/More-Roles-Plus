@@ -7,14 +7,22 @@ using MoreRolesPlus.Options;
 namespace MoreRolesPlus.Net;
 
 // 全員が同じ版の MRP を入れているかの確認。
-// 各自が自分のキャラが出た時に版と指紋を送り、ホストが覚えておく。
+// 各自が自分のキャラが出た時に版と指紋 (と一緒に入れている BepInEx の mod の名前) を送り、ホストが覚えておく。
 // 同じ版の人には設定値を送り、入っていない人・版が違う人がいる間はゲームを始めさせない。
+// ホストは同じ形でその人へ自分の版を返し、版が違う人の画面にはその理由を出す (ホストの画面に出るだけでは本人が気づけない)。
+// 危ない mod (他人を動かす・部屋を覗くなど) を入れた人が来たら、ホストの画面に知らせる
 internal static class VersionCheck
 {
     // clientId → 同じ版か
     private static readonly Dictionary<int, bool> Seen = new();
     private static readonly Dictionary<int, string> SeenVersion = new();
     private static readonly Dictionary<int, int> SeenAbi = new();
+    private static readonly Dictionary<int, List<string>> SeenMods = new();
+    private static int _notedHost = -1; // 版の違いを知らせたホスト (同じホストには 1 回だけ)
+    private const int MaxMods = 24, MaxModName = 48;
+
+    // Based on the client mod blacklist in https://github.com/AU-Avengers/TOU-Mira TownOfUs/Networking/SendModInfoRpc.cs (GPL-3.0)
+    private static readonly string[] BadMods = { "MalumMenu", "SickoMenu", "SigmaMenu", "MoveMod", "Move Mod", "Get All Lobbies", "Mod Menu" };
     // clientId → 入ってきた時刻。版の知らせは入ってから 1 秒あまり後に届くので、その前に始めようとした時は待つ
     private static readonly Dictionary<int, long> JoinedAt = new();
     private const long CheckingMs = 10000;
@@ -42,15 +50,51 @@ internal static class VersionCheck
         SendHello();
     }
 
-    public static void SendHello()
+    public static void SendHello() => WriteHello(-1, true);
+
+    // target = -1 で全員 (読むのはホストだけ)・番号でその人だけ (ホストの返事)
+    private static void WriteHello(int target, bool withMods)
     {
         int abi = Native.MrpNative.Abi;
-        Plugin.Logger.LogInfo($"hello -> host: {Plugin.Version} fp={Registry.Fingerprint:X8} abi={abi}");
-        var w = Rpc.Start(Rpc.Hello);
+        var mods = withMods ? OtherMods() : null;
+        Plugin.Logger.LogInfo($"hello -> {(target < 0 ? "host" : $"client {target}")}: {Plugin.Version} fp={Registry.Fingerprint:X8} abi={abi} mods={mods?.Count ?? 0}");
+        var w = Rpc.Start(Rpc.Hello, target);
         w.Write(Plugin.Version);
         w.Write(Registry.Fingerprint);
         w.Write(abi);
+        if (mods != null)
+        {
+            w.Write((byte)mods.Count);
+            foreach (var m in mods) w.Write(m);
+        }
         Rpc.Finish(w);
+    }
+
+    // この mod 以外に読み込まれている BepInEx の mod (名前と版)
+    private static List<string> OtherMods()
+    {
+        var list = new List<string>();
+        try
+        {
+            foreach (var kv in BepInEx.Unity.IL2CPP.IL2CPPChainloader.Instance.Plugins)
+            {
+                var meta = kv.Value?.Metadata;
+                if (meta == null || meta.GUID == Plugin.Guid) continue;
+                string name = $"{meta.Name} {meta.Version}";
+                list.Add(name.Length > MaxModName ? name[..MaxModName] : name);
+                if (list.Count >= MaxMods) break;
+            }
+        }
+        catch (System.Exception e) { Plugin.Logger.LogWarning($"mod list: {e.Message}"); }
+        return list;
+    }
+
+    private static string BadModIn(List<string> mods)
+    {
+        foreach (var m in mods)
+            foreach (var bad in BadMods)
+                if (m.IndexOf(bad, System.StringComparison.OrdinalIgnoreCase) >= 0) return m;
+        return null;
     }
 
     public static void Receive(PlayerControl sender, MessageReader r)
@@ -58,12 +102,27 @@ internal static class VersionCheck
         string version = r.ReadString();
         uint fp = r.ReadUInt32();
         int abi = r.BytesRemaining >= 4 ? r.ReadInt32() : -1; // 古い版は送ってこない
-        if (!AmongUsClient.Instance.AmHost) return;
+        if (!AmongUsClient.Instance.AmHost)
+        {
+            if (Rpc.FromHost(sender)) OnHostHello(sender, version, fp, abi);
+            return;
+        }
+        var mods = new List<string>();
+        if (r.BytesRemaining >= 1)
+        {
+            int n = System.Math.Min((int)r.ReadByte(), MaxMods);
+            for (int i = 0; i < n && r.BytesRemaining > 0; i++) mods.Add(r.ReadString());
+        }
         bool same = version == Plugin.Version && fp == Registry.Fingerprint && abi == Native.MrpNative.Abi;
         Seen[sender.OwnerId] = same;
         SeenVersion[sender.OwnerId] = version;
         SeenAbi[sender.OwnerId] = abi;
-        Plugin.Logger.LogInfo($"hello from client {sender.OwnerId}: {version} fp={fp:X8} abi={abi} same={same}");
+        SeenMods[sender.OwnerId] = mods;
+        Plugin.Logger.LogInfo($"hello from client {sender.OwnerId}: {version} fp={fp:X8} abi={abi} same={same} mods=[{string.Join(", ", mods)}]");
+        string bad = BadModIn(mods);
+        if (bad != null)
+            Menu.ChatNotes.Post(new Text("ModCheck.Bad").With("name", sender.Data != null ? sender.Data.PlayerName : $"#{sender.PlayerId}").With("mod", bad));
+        WriteHello(sender.OwnerId, false);
         if (same) OptionSync.SendAll(sender.OwnerId);
         if (_startPendingUntil != 0 && Blockers(out _).Count == 0 && _startPendingUntil != 0) // Blockers が期限切れを消す
         {
@@ -74,6 +133,43 @@ internal static class VersionCheck
                 && AmongUsClient.Instance.GameState == InnerNet.InnerNetClient.GameStates.Joined)
                 gsm.BeginGame();
         }
+    }
+
+    // 客の側: ホストの版と比べて、違えば理由を自分の画面に出す
+    internal static void OnHostHello(PlayerControl host, string version, uint fp, int abi)
+    {
+        Plugin.Logger.LogInfo($"hello from host: {version} fp={fp:X8} abi={abi}");
+        if (_notedHost == host.OwnerId) return;
+        string reason = null;
+        if (version != Plugin.Version) reason = new Text("ModCheck.YouDifferVersion").With("host", version).With("mine", Plugin.Version);
+        else if (abi != Native.MrpNative.Abi) reason = new Text("ModCheck.YouDifferNative");
+        else if (fp != Registry.Fingerprint) reason = new Text("ModCheck.YouDifferBuild");
+        if (reason == null) return;
+        _notedHost = host.OwnerId;
+        Menu.ChatNotes.Post(reason);
+    }
+
+    // /mods: 部屋の人が入れている mod (ホストだけが知っている)
+    public static string ModsText(string _)
+    {
+        var sb = new System.Text.StringBuilder();
+        int host = AmongUsClient.Instance.HostId;
+        foreach (var p in PlayerControl.AllPlayerControls)
+        {
+            if (!p || p.notRealPlayer || p.isDummy) continue;
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append(p.Data != null ? p.Data.PlayerName : $"#{p.PlayerId}").Append(": ");
+            List<string> mods = p.OwnerId == host ? OtherMods() : SeenMods.TryGetValue(p.OwnerId, out var m) ? m : null;
+            if (mods == null) sb.Append(new Text("ModCheck.Unknown").ToString());
+            else if (mods.Count == 0) sb.Append(new Text("ModCheck.None").ToString());
+            else
+            {
+                string bad = BadModIn(mods);
+                sb.Append(string.Join(", ", mods));
+                if (bad != null) sb.Append(" <color=#FF5050>").Append(new Text("ModCheck.BadMark").ToString()).Append("</color>");
+            }
+        }
+        return sb.ToString();
     }
 
     public static void OnClientJoined(int clientId) => JoinedAt[clientId] = System.Environment.TickCount64;
@@ -110,6 +206,7 @@ internal static class VersionCheck
         Seen.Clear();
         SeenVersion.Clear();
         SeenAbi.Clear();
+        SeenMods.Clear();
         _startPendingUntil = 0;
         long now = System.Environment.TickCount64;
         foreach (var p in PlayerControl.AllPlayerControls)
@@ -128,14 +225,17 @@ internal static class VersionCheck
         Seen.Clear();
         SeenVersion.Clear();
         SeenAbi.Clear();
+        SeenMods.Clear();
         JoinedAt.Clear();
         _startPendingUntil = 0;
         _host = -1;
+        _notedHost = -1;
+        Menu.ChatNotes.Clear();
         _helloSentFor = System.IntPtr.Zero;
         HostChange.Clear();
     }
 
-    public static void ForgetClient(int clientId) { Seen.Remove(clientId); SeenVersion.Remove(clientId); SeenAbi.Remove(clientId); JoinedAt.Remove(clientId); }
+    public static void ForgetClient(int clientId) { Seen.Remove(clientId); SeenVersion.Remove(clientId); SeenAbi.Remove(clientId); SeenMods.Remove(clientId); JoinedAt.Remove(clientId); }
 
     // 始められない人の一覧 (空なら始めてよい)。checking = そのうち入ってきたばかりで版の知らせを待っている人の数
     public static List<string> Blockers(out int checking)

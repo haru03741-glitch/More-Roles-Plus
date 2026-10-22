@@ -319,6 +319,7 @@ Command.kick.Usage: <number>
 Command.ban: Ban someone and add them to the ban list
 Command.ban.Usage: <number>
 Command.banlist: Show the ban list
+Command.mods: List the mods each player has installed
 Command.unban: Remove someone from the ban list
 Command.unban.Usage: <list number|friend code>
 Command.cjclear: Forget who played the previous games
@@ -616,6 +617,13 @@ VersionCheck.DifferentNativeModule: {name} (different native module)
 VersionCheck.DifferentVersion: {name} (different version: {version})
 VersionCheck.WaitingForNewPlayers: Checking the version of players who just joined. Starting once done
 VersionCheck.Mismatch: Everyone needs the same More Roles Plus version:\n
+ModCheck.Bad: {name} has a dangerous mod installed: {mod}
+ModCheck.BadMark: (dangerous mod)
+ModCheck.Unknown: (unknown)
+ModCheck.None: (none)
+ModCheck.YouDifferVersion: The host has More Roles Plus {host} and you have {mine}. Games can't start until the versions match (you can update from the update button on the main menu)
+ModCheck.YouDifferNative: Your C++ module version differs from the host's, so games can't start. Please reinstall More Roles Plus
+ModCheck.YouDifferBuild: You have the same version as the host but different contents (roles or settings), so games can't start. Please reinstall the same release
 
 # ── MapSettings ──
 MapSettings.Title: Map

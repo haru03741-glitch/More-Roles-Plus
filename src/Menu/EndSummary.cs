@@ -100,29 +100,18 @@ internal static class EndSummary
     }
 }
 
-// 試合から戻ったロビーのチャットに、前の試合の結果 (/l と同じ文) を自分にだけ出す。
-// ロビーに着いた直後はチャット欄が隠れていることがあり、隠れた欄に足すと本編の表示が止まるので、欄が出てから 1 回だけ
+// 試合から戻ったロビーのチャットに、前の試合の結果 (/l と同じ文) を自分にだけ 1 回出す
 internal static class ChatSummary
 {
-    private static int _pendingGen, _postedGen;
+    private static int _postedGen;
 
     public static void OnLobby()
     {
         int gen = Roles.MatchLog.ResultGen;
         if (!ClientOptions.SummaryToChat.Value || gen == 0 || gen == _postedGen) return;
-        _pendingGen = gen;
-    }
-
-    public static void Tick()
-    {
-        if (_pendingGen == 0) return;
-        if (!LobbyBehaviour.Instance) { _pendingGen = 0; return; }
-        var hud = Vanilla.Hud;
-        if (!hud || !hud.Chat || !hud.Chat.gameObject.activeInHierarchy || !PlayerControl.LocalPlayer) return;
-        _postedGen = _pendingGen;
-        _pendingGen = 0;
+        _postedGen = gen;
         string header = new Text("EndSummary.ChatHeader").With("winners", Roles.MatchLog.LastWinners);
-        hud.Chat.AddChatWarning(header + "\n" + Roles.MatchLog.LastResult);
+        ChatNotes.Post(header + "\n" + Roles.MatchLog.LastResult);
     }
 }
 
