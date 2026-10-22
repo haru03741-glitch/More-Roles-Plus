@@ -1039,6 +1039,40 @@ def emote_rustle():
     return smooth_end(rub + crinkle * env, 0.2)
 
 
+
+def rewind_world():
+    # 時が戻る (約 2.1s・全員に同じ音・位置なし): 逆再生のシンバルと上がるうなりで吸い込む (0〜0.55s) →
+    # テープを巻き戻す鳴き (上げ下げ 2 回・細かく震える) と速まっていく時計の刻み (0.12〜1.25s) →
+    # 巻き取りが止まる低い一撃と澄んだ鐘 (1.28s) が尾を引いて消える
+    stop = 1.28
+    n, t = T(2.1)
+    out = np.zeros(n)
+    k, tk = T(0.55)
+    swell = hp(noise(k), 2500) * np.exp((tk - 0.55) / 0.12)
+    place(out, smooth_end(swell, 0.01), 0.0, 0.55)
+    place(out, 0.45 * riser(0.55, 300, 5000, 2.4), 0.0)
+    ph = 2 * np.pi * np.cumsum(55 + 85 * (tk / 0.55) ** 2) / SR
+    place(out, np.sin(ph) * (tk / 0.55) ** 1.5, 0.0, 0.45)
+    m, tm = T(1.1)
+    f = (900 + 2500 * (0.5 - 0.5 * np.cos(2 * np.pi * tm / 0.55))) * (1 + 0.035 * np.sin(2 * np.pi * 14 * tm))
+    tph = 2 * np.pi * np.cumsum(f) / SR
+    tape = (np.sin(tph) + 0.35 * np.sin(2 * tph) + 0.15 * np.sin(3 * tph)) * np.sin(np.pi * tm / 1.1) ** 0.7
+    tape += 0.25 * bp(noise(m), 1500, 6000) * np.sin(np.pi * tm / 1.1) ** 1.5
+    place(out, smooth_end(tape, 0.05), 0.15, 0.16)
+    at, gap, i = 0.12, 0.13, 0
+    while at < stop - 0.03:
+        c, tc = T(0.05)
+        tick = bp(noise(c), 2500, 9000) * np.exp(-tc / 0.0025) + 0.5 * np.sin(2 * np.pi * (3100 + 300 * (i % 2)) * tc) * np.exp(-tc / 0.012)
+        place(out, tick, at, 0.35 + 0.35 * min(1.0, at / stop))
+        at += gap
+        gap = max(0.026, gap * 0.86)
+        i += 1
+    place(out, smooth_end(sub_hit(0.8, 120, 40, tau=0.06, decay=0.25)), stop, 0.6)
+    place(out, clank(620, 0.25, 0.05), stop, 0.25)
+    bell = modal([(1318.5, 0.55, 1.0), (1975.5, 0.4, 0.55), (2637 * 1.004, 0.28, 0.35), (3951, 0.15, 0.2)], 0.8, strike=0.002)
+    place(out, smooth_end(bell, 0.2), stop + 0.005, 0.3)
+    return out
+
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     emit('noise_boom', boom, drive=2.4)
@@ -1074,6 +1108,7 @@ if __name__ == '__main__':
     emit('noise_portal_open', portal_open, peak=0.8, drive=1.6, ratio=0.3, trim=True)
     emit('noise_portal_pass', portal_pass, peak=0.85, drive=1.8, ratio=0.35, trim=True)
     emit('noise_portal_close', portal_close, peak=0.8, drive=1.6, ratio=0.3, trim=True)
+    emit('noise_rewind_world', rewind_world, peak=0.85, drive=1.6, ratio=0.3, trim=True)
     # 身ぶりの音は打った瞬間の形を残すため圧縮をごく弱く
     for i, (res, spread) in enumerate([(1250, 0.0022), (1650, 0.0016), (1050, 0.0028)], 1):
         emit(f'noise_emote_clap_{i}', lambda r=res, sp=spread: emote_clap(r, sp), peak=0.9, drive=1.2, ratio=0.1, trim=True)

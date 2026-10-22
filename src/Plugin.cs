@@ -120,6 +120,7 @@ public class Ticker : MonoBehaviour
         Menu.Emotes.Tick();
         Menu.MeetingStamps.Tick();
         Roles.PortalArt.Tick();
+        Roles.RewindWorldFx.Tick();
         Terrain.RubbleBake.Tick(); t = Bridge.Perf.Lane(17, t);
         Terrain.ShadowPatch.Tick(); t = Bridge.Perf.Lane(18, t);
         Bridge.Burst.Tick(); t = Bridge.Perf.Lane(19, t);
@@ -171,7 +172,6 @@ public class Ticker : MonoBehaviour
         Rules.VanillaTweaks.Tick();
         Roles.RoleFrame.Tick();
         Roles.TimeRewind.Tick();
-        Roles.RewindFlash.Tick();
         Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);
         Roles.ModButton.TickAll(); t = Bridge.Perf.Lane(30, t);
         Rules.RulesHooks.Tick();

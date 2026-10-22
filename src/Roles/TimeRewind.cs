@@ -112,6 +112,7 @@ internal static class TimeRewind
     // 時戻しがいる試合で、役職の寿命が切れるまで記録する (全員の端末で)
     internal static void Enable(Lifespan life)
     {
+        RewindWorldFx.Prewarm();
         if (_on) return;
         _on = true;
         Clear();
@@ -518,7 +519,7 @@ internal static class TimeRewind
         _count -= (_head - s - 1 + Slots) % Slots;
         _head = (s + 1) % Slots;
         _nextMs = now + StepMs;
-        RewindFlash.Play();
+        RewindWorldFx.Play(false);
         Plugin.Logger.LogInfo($"TimeRewind: back {g.BackMs}ms -> slot age {LastSlotAgeMs}ms revive={g.Revive.Length} tasks={LastTasksUndone} systems={LastSystems} {LastNote}");
     }
 
@@ -748,49 +749,5 @@ internal static class TimeRewind
     {
         long now = Environment.TickCount64;
         return $"on={_on} slots={_count} span={Span:0.00}s rewinds={Rewinds} lastAge={LastSlotAgeMs}ms revived={LastRevived} tasksUndone={LastTasksUndone} systems={LastSystems}/{_sysN} note={LastNote} next={_nextMs - now}ms";
-    }
-}
-
-// 時が戻った合図 (全員の画面が一瞬だけ淡く光る)
-internal static class RewindFlash
-{
-    private const float Seconds = 0.6f;
-    private static readonly Color Tint = new(0.55f, 0.85f, 1f, 0.55f);
-    private static float _left;
-    private static SpriteRenderer _fs;
-    private static Color _shown; // 最後に書いた色 (他の暗転に取られたら消さない)
-
-    internal static void Play()
-    {
-        var hud = Vanilla.Hud;
-        if (!hud || !hud.FullScreen || hud.FullScreen.gameObject.activeSelf) return; // 他の暗転と重ねない
-        _fs = hud.FullScreen;
-        _left = Seconds;
-        _fs.color = _shown = Tint;
-        _fs.gameObject.SetActive(true);
-    }
-
-    // 毎 FixedUpdate
-    internal static void Tick()
-    {
-        if (_left <= 0f) return;
-        _left -= Time.fixedDeltaTime;
-        if (!_fs) { _left = 0f; return; }
-        var now = _fs.color;
-        if (now.r != _shown.r || now.g != _shown.g || now.b != _shown.b || now.a != _shown.a)
-        {
-            _left = 0f; // 他の暗転が上書きした
-            _fs = null;
-            return;
-        }
-        if (_left <= 0f)
-        {
-            _fs.gameObject.SetActive(false);
-            _fs = null;
-            return;
-        }
-        var c = Tint;
-        c.a *= _left / Seconds;
-        _fs.color = _shown = c;
     }
 }

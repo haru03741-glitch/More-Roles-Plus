@@ -153,6 +153,13 @@ internal static class BreakNoise
     // 地形の破壊以外の音 (置いた爆弾の導火線など) を、その場所からの距離で鳴らす。muffle より遠いとこもった音
     internal static void PlayAt(string clip, Vector2 at, float range, float muffle, float volume) => PlayAt(clip, at.x, at.y, range, muffle, volume, 1f);
 
+    // 位置の無い音 (全員に同じ大きさ)。壁の音を途中で切らないよう身ぶりの声で鳴らす
+    internal static void PlayFlat(string clip, float volume)
+    {
+        if (MeetingHud.Instance) return;
+        Play(clip, volume, 0f, 1f, 0f, true);
+    }
+
     internal static void PlayAt(string clip, float x, float y, float range, float muffle, float volume, float pitch) =>
         PlayAt(clip, x, y, range, muffle, volume, pitch, false);
 

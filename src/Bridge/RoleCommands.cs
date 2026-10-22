@@ -23,6 +23,18 @@ internal static class RoleCommands
             reply($"OK roles reg=[{reg}] assigned=[{now}] addons=[{addons}] addonsNow=[{addonNow}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
         });
 
+        TestBridge.Register("rewindfx", "[white | z <奥行き>] 時が戻った時の全員の画面の演出だけを出す (white = 全画面の発動の演出の直後の形) / 画面の板の奥行きを変える (HUD の中・既定 10)", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 2 && p[0] == "z")
+                RewindWorldFx.RootZ = float.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture);
+            else RewindWorldFx.Play(p.Length >= 1 && p[0] == "white");
+            var hud = Vanilla.Hud;
+            string z = hud && hud.FullScreen ? hud.FullScreen.transform.localPosition.z.ToString("0.###") : "-";
+            string kill = hud && hud.KillButton ? hud.KillButton.transform.localPosition.z.ToString("0.###") : "-";
+            string use = hud && hud.UseButton ? hud.UseButton.transform.position.z.ToString("0.###") : "-";
+            reply($"OK rewindfx playing={RewindWorldFx.Playing} rootZ={RewindWorldFx.RootZ} fullScreenZ={z} killZ={kill} useWorldZ={use}");
+        });
         TestBridge.Register("rewind", "[ask | force <秒> | doors <部屋 (SystemTypes)> | check <0|1> | print] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ) / 壁の今の姿の指紋", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
