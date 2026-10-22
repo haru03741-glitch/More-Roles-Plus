@@ -13,6 +13,17 @@ namespace MoreRolesPlus.Rules;
 //   引数の無い ForceSkipAll と、ホストがダミーの票に使っている CmdCastVote(byte, byte) を使う
 internal static class MeetingVotes
 {
+    // CmdCastVote の 2 つ目は投票先の番号でなく名札の並び (playerStates) の添字。番号に欠けがある部屋では一致しない。
+    // スキップ (253) などの印はそのまま返す
+    internal static byte SuspectIndex(MeetingHud hud, byte playerId)
+    {
+        if (!hud || playerId >= 252) return playerId;
+        var states = hud.playerStates;
+        for (int i = 0; i < states.Length; i++)
+            if (states[i] && states[i].PlayerId.Value == playerId) return (byte)i;
+        return playerId;
+    }
+
     internal static void OnMeetingStart(MeetingHud hud)
     {
         if (!GameRules.NoSkip || !hud || !hud.SkipVoteButton) return;
@@ -25,11 +36,12 @@ internal static class MeetingVotes
     {
         if (!GameRules.SelfVoteIfNone || !AmongUsClient.Instance.AmHost || !hud) return;
         int n = 0;
-        foreach (var pva in hud.playerStates)
+        var states = hud.playerStates;
+        for (int i = 0; i < states.Length; i++)
         {
+            var pva = states[i];
             if (!pva || pva.AmDead || pva.DidVote) continue;
-            byte id = pva.PlayerId.Value;
-            hud.CmdCastVote(id, id);
+            hud.CmdCastVote(pva.PlayerId.Value, (byte)i);
             n++;
         }
         if (n > 0) Plugin.Logger.LogInfo($"meeting: {n} player(s) without a vote voted for themselves");
@@ -39,11 +51,20 @@ internal static class MeetingVotes
 [HarmonyPatch(typeof(MeetingHud), nameof(MeetingHud.Start))]
 internal static class MeetingVotesStartPatch
 {
-    public static void Postfix(MeetingHud __instance) => MeetingVotes.OnMeetingStart(__instance);
+    public static void Postfix(MeetingHud __instance)
+    {
+        try { MeetingVotes.OnMeetingStart(__instance); }
+        catch (System.Exception e) { Plugin.Logger.LogError($"meeting votes: {e}"); }
+    }
 }
 
 [HarmonyPatch(typeof(MeetingHud), nameof(MeetingHud.ForceSkipAll))]
 internal static class MeetingVotesForceSkipPatch
 {
-    public static void Prefix(MeetingHud __instance) => MeetingVotes.BeforeForceSkip(__instance);
+    public static void Prefix(MeetingHud __instance)
+    {
+        // ここで落ちると時間切れの処理ごと止まって会議が終わらない
+        try { MeetingVotes.BeforeForceSkip(__instance); }
+        catch (System.Exception e) { Plugin.Logger.LogError($"meeting self vote: {e}"); }
+    }
 }

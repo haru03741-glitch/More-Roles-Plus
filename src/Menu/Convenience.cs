@@ -35,7 +35,7 @@ internal static class RoomCodeCopy
 internal static class SaveFileSplit
 {
     private const string Suffix = "_MRP";
-    private static readonly HashSet<string> Checked = new();
+    private static readonly Dictionary<string, string> Names = new(); // 本編の名前 → MRP の名前 (写しを確かめた物)
 
     [HarmonyPatch(typeof(PlayerData), nameof(PlayerData.FileName), MethodType.Getter)]
     [HarmonyPatch(typeof(SettingsData), nameof(SettingsData.FileName), MethodType.Getter)]
@@ -43,20 +43,22 @@ internal static class SaveFileSplit
     public static void Postfix(ref string __result)
     {
         string vanilla = __result;
-        if (string.IsNullOrEmpty(vanilla) || vanilla.Contains(Suffix)) return;
+        if (string.IsNullOrEmpty(vanilla)) return;
+        if (Names.TryGetValue(vanilla, out string known)) { __result = known; return; }
+        if (vanilla.Contains(Suffix)) return;
         // 本編の名前は拡張子まで入っている (player.amogus)。印は拡張子の前に入れる
-        string ext = Path.GetExtension(vanilla);
-        __result = Path.GetFileNameWithoutExtension(vanilla) + Suffix + ext;
-        if (!Checked.Add(vanilla)) return;
+        string mine = Path.GetFileNameWithoutExtension(vanilla) + Suffix + Path.GetExtension(vanilla);
+        __result = mine;
         try
         {
             string dir = Application.persistentDataPath;
-            string src = Path.Combine(dir, vanilla), dst = Path.Combine(dir, __result);
+            string src = Path.Combine(dir, vanilla), dst = Path.Combine(dir, mine);
             if (File.Exists(src) && !File.Exists(dst))
             {
                 File.Copy(src, dst);
-                Plugin.Logger.LogInfo($"save files: copied {vanilla} -> {__result}");
+                Plugin.Logger.LogInfo($"save files: copied {vanilla} -> {mine}");
             }
+            Names[vanilla] = mine; // 写せた (または写す必要が無かった) 時だけ覚える。失敗したら次に呼ばれた時にもう一度
         }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"save files: {e.Message}"); }
     }

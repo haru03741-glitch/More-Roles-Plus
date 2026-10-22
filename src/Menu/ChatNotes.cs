@@ -7,10 +7,13 @@ namespace MoreRolesPlus.Menu;
 internal static class ChatNotes
 {
     private static readonly List<string> Pending = new();
+    private const int MaxPending = 20;
 
     public static void Post(string text)
     {
-        if (!string.IsNullOrEmpty(text)) Pending.Add(text);
+        if (string.IsNullOrEmpty(text)) return;
+        if (Pending.Count >= MaxPending) Pending.RemoveAt(0);
+        Pending.Add(text);
     }
 
     public static void Clear() => Pending.Clear();
@@ -20,7 +23,13 @@ internal static class ChatNotes
         if (Pending.Count == 0) return;
         var hud = Vanilla.Hud;
         if (!hud || !hud.Chat || !hud.Chat.gameObject.activeInHierarchy || !PlayerControl.LocalPlayer) return;
-        foreach (var t in Pending) hud.Chat.AddChatWarning(t);
+        // 先に取り出して空にする (書く途中で落ちても毎フレーム同じ物を書き直さない)
+        var notes = Pending.ToArray();
         Pending.Clear();
+        foreach (var t in notes)
+        {
+            try { hud.Chat.AddChatWarning(t); }
+            catch (System.Exception e) { Plugin.Logger.LogWarning($"chat note: {e.Message}"); }
+        }
     }
 }

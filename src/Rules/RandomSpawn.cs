@@ -68,9 +68,10 @@ internal static class RandomSpawn
         return new Vector2(flip ? -p.x : p.x, p.y);
     }
 
-    internal static void Go(string why)
+    // force = 選ぶ画面を出せなかった時の代わり
+    internal static void Go(string why, bool force = false)
     {
-        if (!MapRules.RandomSpawn || SelectSpawn.Active) return; // 選ぶ画面を出す時はそちらで
+        if (!MapRules.RandomSpawn || (SelectSpawn.Active && !force)) return; // 選ぶ画面を出す時はそちらで
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.Data == null || lp.Data.IsDead || !ShipStatus.Instance) return;
         int map = MapRules.MapId;

@@ -142,7 +142,7 @@ internal static class RoleCommands
             var hud = MeetingHud.Instance;
             if (!hud) { reply("ERR vote no meeting"); return; }
             byte target = args.Trim() == "skip" ? (byte)253 : byte.Parse(args.Trim());
-            hud.CmdCastVote(PlayerControl.LocalPlayer.PlayerId, target);
+            hud.CmdCastVote(PlayerControl.LocalPlayer.PlayerId, Rules.MeetingVotes.SuspectIndex(hud, target));
             reply($"OK vote {target}");
         });
 

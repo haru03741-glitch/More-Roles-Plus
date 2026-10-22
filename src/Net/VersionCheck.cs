@@ -50,7 +50,8 @@ internal static class VersionCheck
         SendHello();
     }
 
-    public static void SendHello() => WriteHello(-1, true);
+    // 一覧は他の客に見せないようホストにだけ送る
+    public static void SendHello() => WriteHello(AmongUsClient.Instance.HostId, true);
 
     // target = -1 で全員 (読むのはホストだけ)・番号でその人だけ (ホストの返事)
     private static void WriteHello(int target, bool withMods)
@@ -89,6 +90,20 @@ internal static class VersionCheck
         return list;
     }
 
+    // 客から届いた名前は画面に出すので、字の飾り (TMP の <...>) と改行を外して長さを切る
+    private static string CleanModName(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "?";
+        var sb = new System.Text.StringBuilder(System.Math.Min(s.Length, MaxModName));
+        foreach (char c in s)
+        {
+            if (c is '<' or '>' or '\r' or '\n') continue;
+            sb.Append(c);
+            if (sb.Length >= MaxModName) break;
+        }
+        return sb.Length > 0 ? sb.ToString() : "?";
+    }
+
     private static string BadModIn(List<string> mods)
     {
         foreach (var m in mods)
@@ -107,19 +122,21 @@ internal static class VersionCheck
             if (Rpc.FromHost(sender)) OnHostHello(sender, version, fp, abi);
             return;
         }
-        var mods = new List<string>();
+        // 古い版は一覧を送ってこない (その人は「不明」のまま)
+        List<string> mods = null;
         if (r.BytesRemaining >= 1)
         {
+            mods = new List<string>();
             int n = System.Math.Min((int)r.ReadByte(), MaxMods);
-            for (int i = 0; i < n && r.BytesRemaining > 0; i++) mods.Add(r.ReadString());
+            for (int i = 0; i < n && r.BytesRemaining > 0; i++) mods.Add(CleanModName(r.ReadString()));
         }
         bool same = version == Plugin.Version && fp == Registry.Fingerprint && abi == Native.MrpNative.Abi;
         Seen[sender.OwnerId] = same;
         SeenVersion[sender.OwnerId] = version;
         SeenAbi[sender.OwnerId] = abi;
-        SeenMods[sender.OwnerId] = mods;
-        Plugin.Logger.LogInfo($"hello from client {sender.OwnerId}: {version} fp={fp:X8} abi={abi} same={same} mods=[{string.Join(", ", mods)}]");
-        string bad = BadModIn(mods);
+        if (mods != null) SeenMods[sender.OwnerId] = mods;
+        Plugin.Logger.LogInfo($"hello from client {sender.OwnerId}: {version} fp={fp:X8} abi={abi} same={same} mods=[{(mods != null ? string.Join(", ", mods) : "-")}]");
+        string bad = mods != null ? BadModIn(mods) : null;
         if (bad != null)
             Menu.ChatNotes.Post(new Text("ModCheck.Bad").With("name", sender.Data != null ? sender.Data.PlayerName : $"#{sender.PlayerId}").With("mod", bad));
         WriteHello(sender.OwnerId, false);

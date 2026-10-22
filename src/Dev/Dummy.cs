@@ -100,7 +100,7 @@ internal static class Dummy
     public static void Vote(PlayerControl dummy, byte target)
     {
         var hud = MeetingHud.Instance;
-        if (hud) hud.CmdCastVote(dummy.PlayerId, target);
+        if (hud) hud.CmdCastVote(dummy.PlayerId, Rules.MeetingVotes.SuspectIndex(hud, target));
     }
 
     private static long _adoptMs;

@@ -74,7 +74,13 @@ internal static class SelectSpawn
         var cam = Camera.main;
         int map = MapRules.MapId;
         var spots = RandomSpawn.SpotsFor(map);
-        if (!prefab || !cam || spots == null || ShipStatus.Instance == null) { Plugin.Logger.LogWarning("select spawn: picker not available"); return; }
+        if (!prefab || !cam || spots == null || ShipStatus.Instance == null)
+        {
+            // 画面を出せない時はランダムスポーンの設定どおりに湧く
+            Plugin.Logger.LogWarning("select spawn: picker not available");
+            RandomSpawn.Go("select spawn fallback", force: true);
+            return;
+        }
         ClearMade();
         _hiddenLayers = HiddenLayers | PlayerLayers();
 
@@ -195,7 +201,7 @@ internal static class SelectSpawn
             RenderTexture.active = prev;
             Made.Add(tex);
             // 本編のボタンの絵は下端が原点 (名前の字の上に絵が乗る)
-            var sprite = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0f), w / size.x);
+            var sprite = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0f), w / size.x, 0, SpriteMeshType.FullRect);
             Made.Add(sprite);
             return sprite;
         }
@@ -230,7 +236,8 @@ internal static class SelectSpawn
         _afterMeeting = false;
         _shipGen = -1;
         var prefabs = AmongUsClient.Instance ? AmongUsClient.Instance.ShipPrefabs : null;
-        if (prefabs != null && prefabs.Count > AirshipMap && prefabs[AirshipMap].Asset) prefabs[AirshipMap].ReleaseAsset();
+        // 読み込みの途中で試合が終わった時も手放す (Asset はまだ空でも読み込みは持っている)
+        if (prefabs != null && prefabs.Count > AirshipMap && prefabs[AirshipMap].IsValid()) prefabs[AirshipMap].ReleaseAsset();
         Plugin.Logger.LogInfo("select spawn: released the Airship");
     }
 }
