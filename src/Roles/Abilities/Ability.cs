@@ -10,6 +10,7 @@ public enum AbilityTarget : byte
 {
     Self,   // 狙い無し。押した人の端末ですぐ効く (他の人に知らせる時は役職が自分で電文を送る)
     Player, // 近くの人を狙う。ホストが確かめてから全員の端末で OnUsed が呼ばれる
+    Pick,   // 押すと人を選ぶ画面 (PlayerPicker) が開き、選んだ人を狙う (距離は見ない)。ホストが確かめてから全員の端末で OnUsed が呼ばれる
     Meeting, // 会議中に名札を押すと ✓/✗ の隣に出るボタンで人を選ぶ。ホストが確かめてから全員の端末で OnUsed が呼ばれる
 }
 
@@ -41,13 +42,13 @@ public sealed class Ability
     // Player の届く距離 (0 = 部屋の設定のキルの距離)
     public float Range { get; init; }
 
-    // Player / Meeting: 狙ってよい相手か (使う人, 相手)。null = 生きている誰でも
+    // Player / Pick / Meeting: 狙ってよい相手か (使う人, 相手)。null = 生きている誰でも
     public Func<PlayerControl, PlayerControl, bool> CanTarget { get; init; }
 
     // Self: 押した時 (自分の端末)。true = 使えた (待ち時間と回数を使う)
     public Func<bool> OnUse { get; init; }
 
-    // Player / Meeting: ホストが通した後に全員の端末で (使う人, 相手)
+    // Player / Pick / Meeting: ホストが通した後に全員の端末で (使う人, 相手)
     public Action<PlayerControl, PlayerControl> OnUsed { get; init; }
 
     // 試合の始めと会議の後は待ち時間から始める
@@ -153,7 +154,7 @@ internal static class Abilities
             if (a.Button == null) continue;
             a.Button.ResetOnShow = a.CooldownAtStart;
             a.Button.SetUses(a.UsesLeft);
-            a.Button.SetUsable(a.Target == AbilityTarget.Self && a.UsesLeft != 0);
+            a.Button.SetUsable(a.Target != AbilityTarget.Player && a.UsesLeft != 0);
             if (a.CooldownAtStart) a.Button.StartCooldown();
         }
     }
@@ -170,8 +171,15 @@ internal static class Abilities
             if (a.UsesLeft == 0) a.Button?.SetUsable(false);
             return true;
         }
-        var target = a.Aim;
         long now = Environment.TickCount64;
+        if (a.Target == AbilityTarget.Pick)
+        {
+            if (now < a.PendingUntil) return false;
+            PlayerPicker.Open(info => !info.IsDead && info.PlayerId != lp.PlayerId && info.Object && (a.CanTarget == null || a.CanTarget(lp, info.Object)),
+                id => PickChosen(a, id));
+            return false;
+        }
+        var target = a.Aim;
         if (target is null || !target || now < a.PendingUntil) return false;
         a.PendingUntil = now + PendingMs;
         a.Button?.SetUsable(false);
@@ -191,11 +199,23 @@ internal static class Abilities
         long now = Environment.TickCount64;
         foreach (var a in role.Abilities)
         {
+            if (a.Target == AbilityTarget.Pick && a.Button != null)
+                a.Button.SetUsable(live && a.UsesLeft != 0 && now >= a.PendingUntil);
             if (a.Target != AbilityTarget.Player || a.Button == null) continue;
             var aim = live && lp.CanMove ? Targeting.ClosestPlayer(lp, Reach(a), a.CanTarget) : null;
             SetAim(a, aim);
             a.Button.SetUsable(aim is not null && a.UsesLeft != 0 && now >= a.PendingUntil);
         }
+    }
+
+    // 人を選ぶ画面で選んだ (自分の端末)。待ち時間はホストが通した時 (Apply) に始める
+    private static void PickChosen(Ability a, byte targetId)
+    {
+        long now = Environment.TickCount64;
+        if (a.UsesLeft == 0 || now < a.PendingUntil) return;
+        a.PendingUntil = now + PendingMs;
+        a.Button?.SetUsable(false);
+        Request.Send(((byte)a.Index, targetId));
     }
 
     // 会議の名札のボタンを押した (自分の端末)
@@ -277,6 +297,8 @@ internal static class Abilities
         if (!target || target == user || target.Data == null || target.Data.IsDead || target.Data.Disconnected) return "target";
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
         if (meeting) return null; // 会議の能力は距離と待ち時間を見ない
+        if (a.Target == AbilityTarget.Pick)
+            return (Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user) ? "cooldown" : null;
         if (target.inVent || target.inMovingPlat) return "target busy";
         string far = Targeting.Unreachable(user, target, Reach(a) + DistanceSlack);
         if (far != null) return far;

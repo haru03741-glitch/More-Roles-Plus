@@ -302,7 +302,7 @@ internal static class TerrainProbe
 
         TestBridge.Register("modbutton", "[番号] MRP の能力ボタンの一覧 (名前・待ち時間・表示) / 番号のボタンを押す (人が押したのと同じ道)", (args, reply) =>
             reply("OK modbutton " + Roles.ModButton.Probe(int.TryParse(args.Trim(), out int k) ? k : -1)));
-        TestBridge.Register("ability", "[番号 | test | testmeeting | meet [能力の番号 相手 | open 相手]] 自分の役職の能力の一覧 (回数・待ち時間・狙い・ホストが最後に断った理由) / 番号の能力のボタンを押す / test = 近くの人を狙う確かめ用の能力を自分の役職に足す (ホストの端末で)", (args, reply) =>
+        TestBridge.Register("ability", "[番号 | test | testpick | testmeeting | pick [相手] | meet [能力の番号 相手 | open 相手]] 自分の役職の能力の一覧 (回数・待ち時間・狙い・ホストが最後に断った理由) / 番号の能力のボタンを押す / test = 近くの人を狙う確かめ用の能力を自分の役職に足す (ホストの端末で)", (args, reply) =>
         {
             if (args.Trim() == "test")
             {
@@ -330,7 +330,25 @@ internal static class TerrainProbe
                 });
                 Roles.Abilities.OnAssigned(role);
             }
+            if (args.Trim() == "testpick")
+            {
+                var role = Roles.RoleState.Local;
+                if (role == null) { reply("ERR ability no role (setrole first)"); return; }
+                role.AddAbility(new Roles.Ability(new Text("TerrainProbe.TestAbility"), "bomb")
+                {
+                    Target = Roles.AbilityTarget.Pick,
+                    Cooldown = () => 5f,
+                    MaxUses = () => 3,
+                    OnUsed = (u, t) => Plugin.Logger.LogInfo($"ability test (pick) used {u.PlayerId}->{t.PlayerId}"),
+                });
+                Roles.Abilities.OnAssigned(role);
+            }
             var am = args.Trim().Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (am.Length >= 1 && am[0] == "pick")
+            {
+                reply("OK ability pick " + Roles.PlayerPicker.Probe(am.Length >= 2 && int.TryParse(am[1], out int pp) ? pp : -1) + $" hostRefused=[{Roles.Abilities.LastRefusal}]");
+                return;
+            }
             if (am.Length == 3 && am[0] == "meet" && am[1] == "open" && byte.TryParse(am[2], out byte op))
             {
                 reply("OK ability meet " + Roles.MeetingAbilities.Open(op));
