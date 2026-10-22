@@ -132,6 +132,9 @@ internal static class RoleDisplay
         _header.Text = text;
     }
 
+    // タスク欄のこの行が役職の説明の行か (本編が死んだ時に文字を書き換えることがある)
+    internal static bool IsTaskHeader(PlayerTask t) => _header && t && t.Pointer == _header.Pointer;
+
     public static void DetachTaskHeader(PlayerControl p)
     {
         if (_header && p.myTasks != null) p.myTasks.Remove(_header.Cast<PlayerTask>());

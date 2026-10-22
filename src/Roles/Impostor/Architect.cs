@@ -148,6 +148,14 @@ public sealed class Architect : RoleBase
 
     internal int DeskTotal => _desks.Count;
     internal float Gauge => _gauge;
+
+    // 時戻し: ゲージは持ち主の端末だけが数えている
+    internal override int RewindFloats => 1;
+    internal override void SaveRewind(Span<float> into) => into[0] = _gauge;
+    internal override void LoadRewind(ReadOnlySpan<float> from)
+    {
+        if (IsLocal) _gauge = MathF.Min(GaugeLength, MathF.Max(0f, from[0]));
+    }
     internal float GaugeMax => GaugeLength;
     internal ArchitectDrone Drone => _drone;
 

@@ -798,22 +798,25 @@ internal static class DevCommands
     }
 
     // 死んだ時に本編がタスク欄の先頭に足す「死亡した。…」の行を外す
-    private static void RemoveGhostHint(PlayerControl p)
+    private static int RemoveGhostHint(PlayerControl p)
     {
-        if (p.myTasks == null) return;
+        if (p.myTasks == null) return 0;
+        int removed = 0;
         var tc = TranslationController.Instance;
         string a = tc.GetString(StringNames.GhostDoTasks), b = tc.GetString(StringNames.GhostIgnoreTasks), c = tc.GetString(StringNames.GhostImpostor);
         for (int i = p.myTasks.Count - 1; i >= 0; i--)
         {
             var t = p.myTasks[i];
             var it = t ? t.TryCast<ImportantTextTask>() : null;
-            if (it == null || it.Text == null) continue;
+            if (it == null || it.Text == null || RoleDisplay.IsTaskHeader(t)) continue; // 役職の行は消さずに書き直す
             if (it.Text.Contains(a) || it.Text.Contains(b) || it.Text.Contains(c))
             {
                 p.myTasks.RemoveAt(i);
                 UnityEngine.Object.Destroy(it.gameObject);
+                removed++;
             }
         }
+        return removed;
     }
 
     private static PlayerControl Player(byte pid)
@@ -854,7 +857,7 @@ internal static class DevCommands
     }
 
     // 本編の Revive は手元の状態だけ戻すので、全員がそれぞれ呼ぶ
-    private static void ReviveLocal(byte pid)
+    internal static void ReviveLocal(byte pid)
     {
         var p = Player(pid);
         if (!p || p.Data == null || !p.Data.IsDead) return;
@@ -865,8 +868,14 @@ internal static class DevCommands
         if (!alive.HasValue || RoleManager.IsGhostRole(alive.Value))
             alive = p.Data.Role && p.Data.Role.TeamType == RoleTeamTypes.Impostor ? RoleTypes.Impostor : RoleTypes.Crewmate;
         RoleManager.Instance.SetRole(p, alive.Value);
-        Plugin.Logger.LogInfo($"revive {pid}: alive role={alive?.ToString() ?? "-"} now={p.Data.Role?.Role}");
-        if (p.AmOwner) RemoveGhostHint(p);
+        int hints = 0;
+        if (p.AmOwner)
+        {
+            hints = RemoveGhostHint(p);
+            // 本編は死んだ時に役職の説明の行の文字を「死亡した…」へ書き換えることがあるので書き直す
+            if (RoleDisplay.HasLocal()) RoleDisplay.EnsureTaskHeader(p);
+        }
+        Plugin.Logger.LogInfo($"revive {pid}: alive role={alive?.ToString() ?? "-"} now={p.Data.Role?.Role} hints={hints}");
         // 倒れた体が残ると通報できてしまうので片付ける
         foreach (var body in UnityEngine.Object.FindObjectsOfType<DeadBody>())
             if (body && body.ParentId == pid) UnityEngine.Object.Destroy(body.gameObject);

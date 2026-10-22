@@ -350,6 +350,35 @@ def blueprint():
     ic.save("blueprint")
 
 
+def rewind():
+    # 時を戻す: 青い縁の時計 (白い文字盤・紺の針 2 本) を、左回りの矢印 (橙) が 3/4 周取り巻く
+    ic = Icon()
+    cx, cy, r = 110, 114, 84
+    arc = blank()
+    d = ImageDraw.Draw(arc)
+    pts = []
+    for i in range(48):
+        a = math.radians(-60 - i * 250 / 47)   # 右上から左回りに 250 度
+        pts.append(((cx + r * math.cos(a)) * SS, (cy + r * math.sin(a)) * SS))
+    d.line(pts, fill=255, width=16 * SS, joint="curve")
+    # 矢の先 (終わりの所で回る向きに尖らせる)
+    ea = math.radians(-60 - 250)
+    ex, ey = cx + r * math.cos(ea), cy + r * math.sin(ea)
+    tx, ty = math.sin(ea), -math.cos(ea)       # 左回りの進む向き
+    nx, ny = math.cos(ea), math.sin(ea)
+    head = poly([(ex + tx * 30, ey + ty * 30), (ex + nx * 24 - tx * 6, ey + ny * 24 - ty * 6), (ex - nx * 24 - tx * 6, ey - ny * 24 - ty * 6)])
+    ic.part(ImageChops.lighter(arc, head), (244, 150, 40, 255))
+    ic.part(ellipse(cx - 58, cy - 58, cx + 58, cy + 58), (90, 150, 240, 255),
+            [(ellipse(cx - 46, cy - 46, cx + 46, cy + 46), (246, 248, 252, 255))])
+    hands = blank()
+    hd = ImageDraw.Draw(hands)
+    hd.line([(cx * SS, cy * SS), (cx * SS, (cy - 34) * SS)], fill=255, width=9 * SS)
+    hd.line([(cx * SS, cy * SS), ((cx - 26) * SS, (cy + 10) * SS)], fill=255, width=9 * SS)
+    ic.img.paste((28, 44, 92, 255), (0, 0), hands)
+    ic.part(ellipse(cx - 8, cy - 8, cx + 8, cy + 8), (28, 44, 92, 255))
+    ic.save("rewind")
+
+
 if __name__ == "__main__":
     hammer()
     hammer_held()
@@ -364,4 +393,5 @@ if __name__ == "__main__":
     portal()
     desk()
     blueprint()
+    rewind()
     print("wrote", os.path.abspath(OUT))

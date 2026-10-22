@@ -44,6 +44,39 @@ internal sealed class ModButton
 
     public bool CoolingDown => _left > 0f;
 
+    // 待ち時間・効果の残り (秒)
+    internal float Left => _left;
+    internal float EffectLeft => _effect;
+
+    // 時戻し: 待ち時間を記録の時の値へ戻す。効果の途中へは戻せないので、今の効果は終わらせ、
+    // 記録の時に効果中だった時は残りの効果の分も待たせる
+    internal void RewindTo(float left, float effect)
+    {
+        if (_effect > 0f)
+        {
+            _effect = 0f;
+            try { OnEffectEnd?.Invoke(); }
+            catch (Exception e) { Plugin.Logger.LogError($"button effect end: {e}"); }
+            if (_button)
+            {
+                _button.SetFillUp(0f, _effectMax);
+                if (_button.cooldownTimerText) _button.cooldownTimerText.gameObject.SetActive(false);
+            }
+            _effectShown = -1;
+        }
+        _left = Math.Max(0f, left + Math.Max(0f, effect));
+        if (!_button) return;
+        if (_left > 0f)
+        {
+            _button.SetCoolDown(_left, Math.Max(Cooldown, _left));
+            _button.SetDisabled();
+            return;
+        }
+        _button.SetCoolDown(0f, Cooldown);
+        if (_usable) _button.SetEnabled();
+        else _button.SetDisabled();
+    }
+
     // 並びの外に置いたボタンを動かす・出し入れする時に (HUD ごと消えた後は null)
     public Transform Transform => _button ? _button.transform : null;
 

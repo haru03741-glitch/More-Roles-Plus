@@ -61,6 +61,9 @@ public sealed class Ability
     // 試合の始めと会議の後は待ち時間から始める
     public bool CooldownAtStart { get; init; } = true;
 
+    // 時戻しで回数と待ち時間を戻さない (時戻しの能力そのもの)
+    public bool KeepOnRewind { get; init; }
+
     public RoleBase Role { get; private set; }
     public int Index { get; private set; }
 
@@ -111,6 +114,14 @@ public sealed class Ability
             if (MeetingUsesGen != MeetingAbilities.Gen) { MeetingUsesGen = MeetingAbilities.Gen; MeetingUses = 0; }
             MeetingUses++;
         }
+        Button?.SetUses(UsesLeft);
+    }
+
+    // 時戻し: 残りの回数を記録の時の値へ
+    internal void RestoreUses(int left)
+    {
+        if (UsesLeft == left) return;
+        UsesLeft = left;
         Button?.SetUses(UsesLeft);
     }
 }

@@ -37,6 +37,18 @@ PortalMaker.PlaceCooldown: ポータルを置く待ち時間
 PortalMaker.CanRemove: 置いた後にもう一度押すと消せる
 PortalMaker.Portal: ポータル
 
+# ── 時戻し (Rewinder) ──
+Rewinder.Name: 時戻し
+Rewinder.Blurb: 時を戻して、起きたことをなかったことにしろ
+Rewinder.Summary: 船の時間を数秒前まで巻き戻せるクルーです。
+Rewinder.Rewind.Help: 全員の位置・生き死に・タスクの進み・クールダウン・サボタージュを数秒前の状態に戻します。戻した数秒の間に倒された人は生き返ります。自分も一緒に戻り、変わらないのはこのボタンの回数とクールダウンだけです。
+Rewinder.Tips: 直前の会議より前の時点には戻せません。時が戻ると全員の画面が一瞬光りますが、誰が戻したかは分かりません。
+Rewinder.Quote: その一瞬は、なかったことにする。
+Rewinder.Seconds: 戻す秒数
+Rewinder.Cooldown: 時戻しの待ち時間
+Rewinder.Uses: 時戻しの回数 (0 = 何回でも)
+Rewinder.Rewind: 時戻し
+
 # ── 構築士 (Architect) ──
 Architect.Name: 構築士
 Architect.Blurb: 設計図から船を作り変えろ

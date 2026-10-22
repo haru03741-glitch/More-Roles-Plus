@@ -91,6 +91,13 @@ internal static class KillAbility
         }
     }
 
+    // 時戻し (ホスト): 最後にキルを通した時刻の写しを取る (write = false) / 書き戻す (write = true)
+    internal static void CopyHostKillMs(Span<long> buf, bool write)
+    {
+        if (write) buf.CopyTo(LastKillMs);
+        else LastKillMs.AsSpan().CopyTo(buf);
+    }
+
     internal static void Clear()
     {
         _local = null;

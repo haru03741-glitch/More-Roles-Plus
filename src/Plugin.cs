@@ -170,6 +170,8 @@ public class Ticker : MonoBehaviour
         Roles.KillAbility.Tick(); t = Bridge.Perf.Lane(28, t);
         Rules.VanillaTweaks.Tick();
         Roles.RoleFrame.Tick();
+        Roles.TimeRewind.Tick();
+        Roles.RewindFlash.Tick();
         Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);
         Roles.ModButton.TickAll(); t = Bridge.Perf.Lane(30, t);
         Rules.RulesHooks.Tick();

@@ -37,6 +37,18 @@ PortalMaker.PlaceCooldown: Portal Cooldown
 PortalMaker.CanRemove: Press Again to Remove Portals
 PortalMaker.Portal: Portal
 
+# ── Rewinder ──
+Rewinder.Name: Rewinder
+Rewinder.Blurb: Turn back time and undo what happened
+Rewinder.Summary: A crewmate who can turn the ship's time back a few seconds.
+Rewinder.Rewind.Help: Returns everyone's position, life or death, task progress, cooldowns and sabotages to how they were a few seconds ago. Anyone killed in that time comes back to life. You go back too; only this button's uses and cooldown stay as they are.
+Rewinder.Tips: You cannot go back to before the last meeting. When time turns back, everyone's screen flashes for a moment, but no one can tell who did it.
+Rewinder.Quote: That moment never happened.
+Rewinder.Seconds: Seconds to Turn Back
+Rewinder.Cooldown: Rewind Cooldown
+Rewinder.Uses: Rewind Uses (0 = unlimited)
+Rewinder.Rewind: Rewind
+
 # ── Architect ──
 Architect.Name: Architect
 Architect.Blurb: Reshape the ship from your blueprint

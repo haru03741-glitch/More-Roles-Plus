@@ -69,6 +69,12 @@ public abstract class Assignable
     // 投票先を変える・票を足す時は VoteTallyEvent で
     public virtual void ModifyVoteWeight(ref int weight) { }
 
+    // 時戻しで戻す手元の値 (ゲージなど) の数。全員の端末で 0.25 秒ごとに SaveRewind で書き、戻す時に同じ数の欄で LoadRewind が呼ばれる。
+    // 能力の回数・待ち時間・位置は時戻しが自分で戻すので、それ以外の役職だけが持つ値を書く。数は試合の間変えない
+    internal virtual int RewindFloats => 0;
+    internal virtual void SaveRewind(System.Span<float> into) { }
+    internal virtual void LoadRewind(System.ReadOnlySpan<float> from) { }
+
     // 出現率と人数。設定画面の欄の先頭に自動で付く
     internal IntOpt Chance;
     internal IntOpt Count;

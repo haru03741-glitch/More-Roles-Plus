@@ -23,6 +23,26 @@ internal static class RoleCommands
             reply($"OK roles reg=[{reg}] assigned=[{now}] addons=[{addons}] addonsNow=[{addonNow}] local={RoleState.Local?.Id ?? "-"} fp={Registry.Fingerprint:X8}{extra}");
         });
 
+        TestBridge.Register("rewind", "[ask | force <秒> | doors <部屋 (SystemTypes)>] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト)", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 2 && p[0] == "doors")
+            {
+                if (!ShipStatus.Instance || !System.Enum.TryParse<SystemTypes>(p[1], out var room)) { reply("ERR rewind doors"); return; }
+                ShipStatus.Instance.RpcCloseDoorsOfType(room);
+            }
+            if (p.Length >= 1 && p[0] == "ask" && !TimeRewind.Ask()) { reply($"ERR rewind ask {TimeRewind.Probe()}"); return; }
+            if (p.Length >= 2 && p[0] == "force" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec))
+            {
+                if (!TimeRewind.HostForce(sec)) { reply($"ERR rewind force {TimeRewind.Probe()}"); return; }
+            }
+            int closed = 0;
+            if (ShipStatus.Instance)
+                foreach (var d in ShipStatus.Instance.AllDoors)
+                    if (d && !d.IsOpen) closed++;
+            reply($"OK rewind {TimeRewind.Probe()} closedDoors={closed}");
+        });
+
         TestBridge.Register("portal", "[x y | go <0|1> | use] 自分のポータルメーカーの状態 / (x, y) に置く (ボタンの待ち時間は使わない) / 装置の上へ移る / 本編の使用ボタンを押す", (args, reply) =>
         {
             if (RoleState.Local is not Roles.Crew.PortalMaker pm) { reply("ERR portal not PortalMaker"); return; }
