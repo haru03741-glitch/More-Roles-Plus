@@ -470,7 +470,11 @@ internal static class FurnitureSplit
                 minX = Math.Min(minX, v.x); maxX = Math.Max(maxX, v.x);
                 minY = Math.Min(minY, v.y); maxY = Math.Max(maxY, v.y);
             }
-            minX = MathF.Floor(minX); minY = MathF.Floor(minY); maxX = MathF.Ceiling(maxX); maxY = MathF.Ceiling(maxY);
+            // 網目の縁の頂点は画素→世界→画素の往復で 54.00001 のように絵の外へわずかに出るので、切り上げた後に絵の四角へ収める
+            // (はみ出すと Sprite.Create が投げる)
+            minX = MathF.Max(0f, MathF.Floor(minX)); minY = MathF.Max(0f, MathF.Floor(minY));
+            maxX = MathF.Min(w, MathF.Ceiling(maxX)); maxY = MathF.Min(h, MathF.Ceiling(maxY));
+            if (maxX - minX < 1f || maxY - minY < 1f) return null;
         }
         float rw = maxX - minX, rh = maxY - minY;
         center = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);

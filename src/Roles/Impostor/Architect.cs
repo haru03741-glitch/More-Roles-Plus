@@ -740,8 +740,13 @@ public sealed class Architect : RoleBase
             if (!BreakableProps.Intact(w.Name)) { Walls.RemoveAt(i); continue; }
             if (BreakableProps.IntactNameAt(w.At) != w.Name) continue;
             Walls.RemoveAt(i);
-            var res = TerrainApi.WorldCrumble(w.At, w.Length);
-            if (!res.Ok) Plugin.Logger.LogInfo($"Architect: crumble skipped {res.Why}");
+            // 崩す途中で投げても、この役職の毎刻の処理 (設計図を閉じた知らせ・ドローンを降ろす・ボタン) は止めない。その壁は崩さずに忘れる
+            try
+            {
+                var res = TerrainApi.WorldCrumble(w.At, w.Length);
+                if (!res.Ok) Plugin.Logger.LogInfo($"Architect: crumble skipped {res.Why}");
+            }
+            catch (Exception e) { Plugin.Logger.LogError($"Architect: crumble {w.Name}: {e}"); }
         }
     }
 
