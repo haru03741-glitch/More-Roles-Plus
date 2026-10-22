@@ -476,6 +476,8 @@ InfoCommands.Crew: クルー
 InfoCommands.Impostor: インポスター
 InfoCommands.Neutral: 第三陣営
 InfoCommands.SimLobbyOnly: 配役の試走はロビーでだけ使えます
+InfoCommands.SimNormalOnly: 配役の試走は通常のモードでだけ使えます
+InfoCommands.SimRange: {min}〜{max}
 InfoCommands.SimHead: {players} 人・{runs} 回の試走 (インポスター {impostors} 人)
 InfoCommands.SimAvg: (出た試合で平均 {n} 人)
 InfoCommands.SimAddons: アドオン (1 試合の平均人数)

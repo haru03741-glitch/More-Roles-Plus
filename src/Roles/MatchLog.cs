@@ -44,13 +44,17 @@ internal static class MatchLog
     }
 
     // 試合中に役職が変わった人の移り変わり (色付きの役職名・古い順)。配り始めの途中の変化を数えないよう、
-    // イントロの後の役職を起点にする。幽霊になったことは別の欄 (GhostRoleLabel) に出すので数えない
+    // イントロの後の役職を起点にする。記録するのは MRP の付け直し (RoleAssigner.Apply) の後だけ:
+    // 陣営をまたぐ付け直しは本編の役職が先に替わり、客では別の電文で届くので、本編の付け直しで記録すると
+    // 途中の「インポスター」などが挟まる。幽霊になったことは別の欄 (GhostRoleLabel) に出すので数えない
     private const int TrailMax = 8;
     private static readonly Dictionary<byte, List<string>> RoleTrail = new();
     private static bool _trailOn;
 
+    // 試合の終わり (CaptureResult) か次の試合のイントロ (Reset) まで、起点は取り直さない
     public static void StartTrail()
     {
+        if (_trailOn) return;
         RoleTrail.Clear();
         _trailOn = true;
         var data = GameData.Instance;
@@ -223,6 +227,7 @@ internal static class MatchLog
         }
         LastResult = sb.ToString();
         ResultGen++;
+        _trailOn = false;
     }
 }
 
@@ -242,20 +247,9 @@ internal static class MatchLogEndPatch
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.OnGameStart))]
 internal static class MatchLogTrailStartPatch
 {
-    public static void Postfix() => MatchLog.StartTrail();
-}
-
-// 本編の役職の付け直し (MRP の役職の土台を替えた時も通る)
-[HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SetRole))]
-internal static class MatchLogTrailRolePatch
-{
-    public static void Postfix([HarmonyArgument(0)] PlayerControl targetPlayer)
+    public static void Postfix()
     {
-        try
-        {
-            var role = targetPlayer ? targetPlayer.Data?.Role : null;
-            if (role && !RoleManager.IsGhostRole(role.Role)) MatchLog.NoteRole(targetPlayer.PlayerId);
-        }
+        try { MatchLog.StartTrail(); }
         catch (System.Exception e) { Plugin.Logger.LogError($"role trail: {e}"); }
     }
 }

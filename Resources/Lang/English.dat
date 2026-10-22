@@ -476,6 +476,8 @@ InfoCommands.Crew: Crew
 InfoCommands.Impostor: Impostor
 InfoCommands.Neutral: Neutral
 InfoCommands.SimLobbyOnly: The assignment trial is only available in the lobby
+InfoCommands.SimNormalOnly: The assignment trial is only available in the normal game mode
+InfoCommands.SimRange: {min}-{max}
 InfoCommands.SimHead: Trial of {runs} games with {players} players ({impostors} impostors)
 InfoCommands.SimAvg: ({n} on average when it appears)
 InfoCommands.SimAddons: Addons (average per game)

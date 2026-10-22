@@ -97,30 +97,34 @@ internal static class InfoCommands
         _ => new Text("InfoCommands.Neutral"),
     };
 
-    // 今の MRP の設定: 役職以外の設定と、出る役職 (出現率 > 0) だけ
     // 今の設定で配役を何度も試し、役職ごとの出る割合と 1 回分の例を出す。人数を省くと今の部屋の人数。
     // 本番と同じ配り方を手元で回すだけ (乱数は毎回変わる)。数千回を 1 フレームで回すのでロビーでだけ
+    private const int SimBudget = 150000; // 人数 × 回数の上限 (15 人 10000 回で 1 フレーム約 75ms)
+
     public static string Sim(string args)
     {
         if (ShipStatus.Instance) return new Text("InfoCommands.SimLobbyOnly");
+        if (!GameModeSwitch.IsNormal) return new Text("InfoCommands.SimNormalOnly");
         var opts = GameOptionsManager.Instance?.CurrentGameOptions;
         if (opts == null) return new Text("InfoCommands.SimLobbyOnly");
         var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         int players = a.Length > 0 && int.TryParse(a[0], out int p) ? p : TeamSizes.PlayerCount();
         int runs = a.Length > 1 && int.TryParse(a[1], out int r) ? r : 1000;
         players = Math.Clamp(players, 4, Crowded.MaxPlayers);
-        runs = Math.Clamp(runs, 100, 10000);
-        // インポスターの数は本番の数え始めと同じ: 人数の帯があればその幅、無ければ「最少」〜本編の設定の数
-        int cap = ImpostorCap.CapAt(players);
+        runs = Math.Clamp(runs, 100, Math.Max(100, Math.Min(10000, SimBudget / players)));
+        // インポスターの数は本番の数え始め (TeamSizes.OnBegin) と同じ: 人数の帯があればその幅、無ければ「最少」〜本編の設定の数を
+        // 部屋の上限で切って引き、引いた数を本編がその人数の上限で切る
         int max, min;
         if (TeamSizes.For(players) is { } band) { max = band.MaxImpostors; min = band.MinImpostors; }
         else { max = opts.NumImpostors; min = ImpostorRange.Min.Value; }
-        max = Math.Clamp(max, 1, cap);
+        max = Math.Clamp(max, 1, Math.Max(1, ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts))));
         min = Math.Clamp(min, 1, max);
-        var res = AssignPlan.Run(players, min, max, runs, Environment.TickCount);
+        int cap = ImpostorCap.CapAt(players);
+        var res = AssignPlan.Run(players, min, max, runs, Environment.TickCount, impostorCap: cap);
 
         var sb = new StringBuilder();
-        string imps = min == max ? min.ToString() : $"{min}〜{max}";
+        int shownMin = Math.Min(min, cap), shownMax = Math.Min(max, cap);
+        string imps = shownMin == shownMax ? shownMin.ToString() : new Text("InfoCommands.SimRange").With("min", shownMin).With("max", shownMax).ToString();
         sb.Append(new Text("InfoCommands.SimHead").With("players", players).With("runs", runs).With("impostors", imps).ToString());
         var order = new int[res.RoleRuns.Length];
         for (int i = 0; i < order.Length; i++) order[i] = i;
@@ -164,6 +168,7 @@ internal static class InfoCommands
         return (v >= 10 || v == 0 ? v.ToString("0") : v.ToString("0.#")) + "%";
     }
 
+    // 今の MRP の設定: 役職以外の設定と、出る役職 (出現率 > 0) だけ
     public static string Now(string _)
     {
         var sb = new StringBuilder();

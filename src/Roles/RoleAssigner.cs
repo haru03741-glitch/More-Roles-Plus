@@ -539,8 +539,9 @@ public static class AssignPlan
         public bool[] ExampleImpostor; // その回の陣営 (人の番号順)
     }
 
-    // インポスターの数は試合ごとに minImpostors〜maxImpostors から引く (本番の数え始めと同じ)
-    public static SimResult Run(int players, int minImpostors, int maxImpostors, int runs, int seed, IReadOnlyDictionary<byte, int> reserved = null)
+    // インポスターの数は試合ごとに minImpostors〜maxImpostors から引き、impostorCap で切る (本番の数え始めと本編の人数の上限と同じ)
+    public static SimResult Run(int players, int minImpostors, int maxImpostors, int runs, int seed, IReadOnlyDictionary<byte, int> reserved = null,
+        int impostorCap = int.MaxValue)
     {
         var roster = new List<Slot>();
         for (int i = 0; i < players; i++)
@@ -564,7 +565,7 @@ public static class AssignPlan
         for (int n = 0; n < runs; n++)
         {
             // 本編のインポスター選び (一様) の代わりに陣営を振り直してから配る
-            int impostors = minImpostors == maxImpostors ? minImpostors : rng.Next(minImpostors, maxImpostors + 1);
+            int impostors = Math.Min(impostorCap, minImpostors == maxImpostors ? minImpostors : rng.Next(minImpostors, maxImpostors + 1));
             Shuffle(order, rng);
             for (int k = 0; k < players; k++) SetSide(roster, order[k], k < impostors);
             // 固定指定の人は役職の陣営へ寄せる (本番の MatchReservedTeams と同じく、予約の無い反対側の人と入れ替える)
