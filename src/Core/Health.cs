@@ -134,6 +134,7 @@ internal static class Health
 
         long heap = BoehmUsed();
         if (heap >= 0) _lastBoehm = heap;
+        ConsoleGuard.Report();
 
         // 画面への知らせはループの後 (知らせる処理がエラーを出すと、数えている表が増えてループが壊れる)
         string notice = null;

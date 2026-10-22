@@ -26,6 +26,7 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
+        Log.LogInfo($"console: {ConsoleGuard.Install()}");
         Boot.BootClock.Mark("load");
         // C++ の部品が読めない時は mod ごと起動しない (地形を部品抜きで動かさない)。本編はそのまま遊べる
         if (!Native.MrpNative.Loaded)
