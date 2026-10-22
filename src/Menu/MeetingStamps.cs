@@ -163,7 +163,7 @@ internal static class MeetingStamps
             _dim = cool;
             _mainBg.color = cool ? new Color(0.55f, 0.55f, 0.55f, 1f) : Color.white;
         }
-        if (Input.GetKeyDown(KeyCode.B))
+        if (Keybinds.Down(Keybinds.Slot.Emote))
         {
             var chat = Vanilla.Chat;
             if (!(chat && chat.IsOpenOrOpening)) SetMenu(!MenuOpen);

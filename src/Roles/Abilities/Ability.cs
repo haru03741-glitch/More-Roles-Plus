@@ -216,6 +216,18 @@ internal static class Abilities
         }
     }
 
+    // キー (Menu.Keybinds) で i 番目のボタンを押す (右下に並んでいる能力のボタンの順)
+    internal static void PressSlot(int i)
+    {
+        var role = _local;
+        if (role == null) return;
+        foreach (var a in role.Abilities)
+        {
+            if (a.Button == null) continue;
+            if (i-- == 0) { a.Button.Press(); return; }
+        }
+    }
+
     // 人を選ぶ画面で選んだ (自分の端末)。待ち時間はホストが通した時 (Apply) に始める
     private static void PickChosen(Ability a, byte targetId)
     {

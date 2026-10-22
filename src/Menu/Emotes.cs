@@ -324,7 +324,7 @@ internal static class Emotes
             _mainIcon.color = _iconDim ? new Color(0.45f, 0.45f, 0.45f, 1f) : Color.white;
         }
         if (!ModButton.HudShown) return;
-        if (Input.GetKeyDown(KeyCode.B))
+        if (Keybinds.Down(Keybinds.Slot.Emote))
         {
             // 上に画面が出ている間 (文字を打つチャット・設定画面の検索欄も) は B を奪わない
             if (!Covered()) SetRing(!RingOpen);
@@ -346,7 +346,7 @@ internal static class Emotes
     }
 
     // 扇の上に重なる画面が出ているか (開幕・歯車の設定・ロビーの設定画面・着せ替え・チャット・作業・地図・会議・追放)
-    private static bool Covered()
+    internal static bool Covered()
     {
         if (IntroCutscene.Instance || MeetingHud.Instance || ExileController.Instance || Minigame.Instance
             || GameSettingMenu.Instance || PlayerCustomizationMenu.Instance) return true;

@@ -698,6 +698,35 @@ internal static class DevCommands
             reply($"OK effects {StatusEffects.Describe()}");
         });
 
+        TestBridge.Register("keybinds", "[press <0〜2>] MRP の操作のキー (本編の設定の「操作」で割り当て直せる物) と、今控えているキー・press = 能力のキーを押したのと同じ", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 2 && a[0] == "press" && int.TryParse(a[1], out int slot)) Menu.Keybinds.PressForTest(slot);
+            reply($"OK keybinds {Menu.Keybinds.Describe()}");
+        });
+
+        TestBridge.Register("uiclick", "<GameObject のパス> その部品のボタンを押す (PassiveButton か uGUI の Button。人が押したのと同じ OnClick)", (args, reply) =>
+        {
+            var go = GameObject.Find(args.Trim());
+            if (!go) { reply("ERR uiclick not found"); return; }
+            var pb = go.GetComponent<PassiveButton>();
+            if (pb) { pb.OnClick.Invoke(); reply("OK uiclick passive"); return; }
+            var ub = go.GetComponent<UnityEngine.UI.Button>();
+            if (ub) { ub.onClick.Invoke(); reply("OK uiclick ugui"); return; }
+            reply("ERR uiclick no button");
+        });
+
+        TestBridge.Register("uiscroll", "<GameObject のパス> <0〜1> その部品の中の uGUI のスクロール欄を縦の位置へ (0 = 下端)", (args, reply) =>
+        {
+            int sp = args.TrimEnd().LastIndexOf(' ');
+            if (sp < 0 || !float.TryParse(args.Substring(sp + 1), NumberStyles.Float, CultureInfo.InvariantCulture, out float pos)) { reply("ERR uiscroll <path> <0..1>"); return; }
+            var go = GameObject.Find(args.Substring(0, sp).Trim());
+            var sr = go ? go.GetComponentInChildren<UnityEngine.UI.ScrollRect>() : null;
+            if (!sr) { reply("ERR uiscroll no scroll"); return; }
+            sr.verticalNormalizedPosition = pos;
+            reply($"OK uiscroll {sr.name} {pos}");
+        });
+
         TestBridge.Register("vset", "<Int32OptionNames の名前> <値> 本編の数値の設定を変えて全員へ送る (ホストのみ・例 vset VotingTime 15)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);

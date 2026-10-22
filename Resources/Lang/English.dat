@@ -829,3 +829,7 @@ Update.OpenPage: Open page
 StatusEffects.Seconds: {sec}s left
 StatusEffects.Shield: Shield
 StatusEffects.UntilMeeting: cannot be killed until the first meeting
+Keybinds.Ability1: MRP ability 1
+Keybinds.Ability2: MRP ability 2
+Keybinds.Ability3: MRP ability 3
+Keybinds.Emote: MRP emote / stamp

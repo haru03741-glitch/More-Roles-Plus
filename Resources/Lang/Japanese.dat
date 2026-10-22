@@ -829,3 +829,7 @@ Update.OpenPage: ページを開く
 StatusEffects.Seconds: 残り {sec} 秒
 StatusEffects.Shield: 盾
 StatusEffects.UntilMeeting: 最初の会議まで倒されない
+Keybinds.Ability1: MRP の能力 1
+Keybinds.Ability2: MRP の能力 2
+Keybinds.Ability3: MRP の能力 3
+Keybinds.Emote: MRP のエモート・スタンプ
