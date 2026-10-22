@@ -1,7 +1,19 @@
+# How role descriptions are written (the long description in Match Info and /r is built from these parts)
+#   <Role>.Blurb        One line shown in the intro
+#   <Role>.Summary      One sentence: "A <team> who can ..."
+#   <Role>.WinCond      Only when the role wins in an unusual way (neutrals and such)
+#   <Section>.Help      One to three sentences per button. <Section> is the button's name key (order = HelpSections in the role class)
+#   <Role>.Tips         How to play it, or how it interacts with other roles (optional)
+#   <Role>.Quote        A closing line shown last
+# Setting values are listed under the description automatically, so don't repeat them in the text. Add-ons only need a short <Role>.Help.
+
 # ── Demolisher ──
 Demolisher.Name: Demolisher
 Demolisher.Blurb: Smash walls to open new paths
-Demolisher.Help: Use the hammer button to smash the wall in front of you. The wall breaks on everyone's screen and becomes a path. The cooldown and number of uses are in the settings below.
+Demolisher.Summary: A crewmate who can smash walls to open new paths through the ship.
+Demolisher.Hammer.Help: Smash the wall in front of you. The wall crumbles on everyone's screen and becomes a path. Portals and drafting desks break after three hits too.
+Demolisher.Tips: Every new path is both an escape route and a shortcut, for impostors as well.
+Demolisher.Quote: If there's a wall, break it.
 Demolisher.SmashCooldown: Hammer Cooldown
 Demolisher.SmashUses: Hammer Uses (0 = unlimited)
 Demolisher.Hammer: Hammer
@@ -9,13 +21,18 @@ Demolisher.Hammer: Hammer
 # ── Lighter ──
 Lighter.Name: Lighter
 Lighter.Blurb: See further than the rest
-Lighter.Help: A crewmate who sees farther than others (the multiplier is in the settings below). Keep watch from afar and report what you saw in meetings.
+Lighter.Summary: A crewmate who sees farther than others.
+Lighter.Tips: Keep watch from afar and report what you saw in meetings.
+Lighter.Quote: Nothing hides in the dark from me.
 Lighter.VisionMultiplier: Vision Multiplier
 
 # ── Portal Maker (PortalMaker) ──
 PortalMaker.Name: Portal Maker
 PortalMaker.Blurb: Link two places with portals
-PortalMaker.Help: Press the button to place a portal at your feet. Once two are placed, any living player can stand on one and press Use to travel to the other. Press again after placing both to remove them and place again (can be turned off). A portal breaks after three hits from the Demolisher's hammer.
+PortalMaker.Summary: A crewmate who can link two distant places with portals.
+PortalMaker.Portal.Help: Place a portal at your feet. Once two are placed, any living player can stand on one and press Use to travel to the other. Press again after placing both to remove them and place again. The settings decide whether they can be removed.
+PortalMaker.Tips: Impostors can use the portals too. A portal breaks after three hits from the Demolisher's hammer.
+PortalMaker.Quote: No more long way around.
 PortalMaker.PlaceCooldown: Portal Cooldown
 PortalMaker.CanRemove: Press Again to Remove Portals
 PortalMaker.Portal: Portal
@@ -23,7 +40,15 @@ PortalMaker.Portal: Portal
 # ── Architect ──
 Architect.Name: Architect
 Architect.Blurb: Reshape the ship from your blueprint
-Architect.Help: Press the desk button to place a drafting desk just behind your feet (the number is set below). Everyone can see the desks, and anyone can use them. A desk breaks after three hits from the Demolisher's hammer or when caught in an explosion, and the broken one does not come back. Press the blueprint button in front of a desk to open a top-down blueprint of where the ship can be walked. On the blueprint, other players appear as colorless shadows. Hold and drag on the blueprint to draw a line; release to raise walls from the floor along it. You can draw as far as your gauge allows, and the gauge refills over time. While the blueprint is open, a drone flies out from the desk, picks up large rubble inside the circle and brings it back to refill the gauge. The drone also shows on the blueprint. You can only draw inside the circle your desk reaches. Anyone standing where a wall rises is pushed aside. Walls crumble after a while and can also be broken by hammers and explosions. Tap near a wall of a water room (teal on the blueprint) to spend more gauge and burst the pipe inside the wall, spraying water. Water on the floor also shows on the blueprint. While the blueprint is open you cannot move or kill. When someone else uses one of your desks, your blueprint closes and they can draw walls with your gauge.
+Architect.Summary: An impostor who can draw lines on a blueprint to raise walls in the ship.
+Architect.Desk.Help: Place a drafting desk just behind your feet. Everyone can see the desks, and anyone can use them. A desk breaks after three hits from the Demolisher's hammer or when caught in an explosion, and a broken one cannot be placed again.
+Architect.Plan.Help: Press it in front of a desk to open a top-down blueprint of where the ship can be walked. Other players appear as colorless shadows. Hold and drag to draw a line; release to raise walls from the floor along it. You can only draw inside the circle your desk reaches, and only as far as your gauge allows. The gauge refills over time. Anyone standing where a wall rises is pushed aside. Walls crumble after a while and can also be broken by hammers and explosions. While the blueprint is open you cannot move or kill.
+Architect.Pipe: Pipes
+Architect.Pipe.Help: Tap near a wall of a water room (teal on the blueprint) to spend more gauge and burst the pipe inside the wall, spraying water. Water on the floor also shows on the blueprint.
+Architect.Drone: Drone
+Architect.Drone.Help: While the blueprint is open, a drone flies out from the desk, picks up large rubble inside the circle and brings it back to refill the gauge. The drone also shows on the blueprint.
+Architect.Tips: When someone else uses one of your desks, your blueprint closes and they can draw walls with your gauge.
+Architect.Quote: I decide what shape this ship takes.
 Architect.DeskCount: Desks
 Architect.DeskCooldown: Desk Cooldown
 Architect.GaugeLength: Wall Gauge (Length)
@@ -38,28 +63,41 @@ Architect.UseDesk: Use Desk
 # ── Quickdraw ──
 Quickdraw.Name: Quickdraw
 Quickdraw.Blurb: Strike again before anyone else
-Quickdraw.Help: An impostor whose kill cooldown is shorter than the room setting (the seconds are in the settings below).
+Quickdraw.Summary: An impostor whose kill cooldown is shorter than the room setting.
+Quickdraw.Tips: After a kill, go for the next one before anyone gets suspicious.
+Quickdraw.Quote: Quickest on the draw, quickest to finish.
 Quickdraw.KillCooldown: Kill Cooldown
 
 # ── Jester ──
 Jester.Name: Jester
 Jester.Blurb: Get yourself voted out
-Jester.Help: A neutral role. Get voted out in a meeting to win alone. You cannot kill, so act suspicious and draw votes.
+Jester.Summary: A neutral who wins by getting voted out in a meeting.
+Jester.WinCond: Get voted out in a meeting to win alone
+Jester.Tips: You cannot kill. Act suspicious and draw the votes.
+Jester.Quote: A jester's finest hour is on the gallows.
 
 # ── Outlaw ──
 Outlaw.Name: Outlaw
 Outlaw.Blurb: Be the last one standing
-Outlaw.Help: A neutral killer. You keep your crewmate look but have a kill button (kill cooldown, vision and kill distance are under "Neutral Killers" in the Game Settings tab). You win when no impostors are left and the remaining survivors are no more than the Outlaws. Impostors are your enemies too.
+Outlaw.Summary: A neutral who can kill while looking like a crewmate.
+Outlaw.WinCond: Win when no impostors are left and the remaining survivors are no more than the Outlaws
+Outlaw.Kill: Kill
+Outlaw.Kill.Help: You have the regular kill button. Kill cooldown, vision and kill distance are set under "Neutrals" in the Game Settings tab.
+Outlaw.Tips: Impostors are your enemies too.
+Outlaw.Quote: No law, no friends, no need.
 
 # ── Survivor ──
 Survivor.Name: Survivor
 Survivor.Blurb: Stay alive until the end
-Survivor.Help: A neutral role. Whoever wins, you win with them if you are still alive at the end of the game.
+Survivor.Summary: A neutral who wins by staying alive until the end.
+Survivor.WinCond: Win with whoever wins, as long as you are alive at the end of the game
+Survivor.Tips: You cannot kill. Stay out of every team's way.
+Survivor.Quote: Whoever wins, staying alive is my victory.
 
 # ── Hawkeye ──
 Hawkeye.Name: Hawkeye
 Hawkeye.Blurb: See further than the rest
-Hawkeye.Help: An add-on that widens your vision (the multiplier is in the settings below). The settings decide which teams can get it.
+Hawkeye.Help: An add-on that widens your vision. The settings decide which teams can get it.
 Hawkeye.VisionPercent: Vision
 
 # ── Quickhands ──
@@ -73,6 +111,10 @@ Sensitive.Name: Sensitive
 Sensitive.Blurb: Sense it when someone falls
 Sensitive.Help: When someone is killed, your screen alone flashes red for a moment. It does not tell you who or where.
 Sensitive.Strength: Flash Strength
+
+# ── RoleDoc ──
+RoleDoc.WinCond: Win condition
+RoleDoc.Tips: Tips
 
 # ── VanillaRole ──
 VanillaRole.DefaultBlurb: Vanilla role

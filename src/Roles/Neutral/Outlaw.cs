@@ -9,5 +9,6 @@ public sealed class Outlaw : RoleBase
     public override Text Name => new("Outlaw.Name");
     public override string Reading => "むほうもの";
     public override Text Blurb => new("Outlaw.Blurb");
+    public override string[] HelpSections => new[] { "Outlaw.Kill" };
     public override bool IsKiller => true;
 }

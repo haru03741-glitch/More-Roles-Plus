@@ -11,6 +11,7 @@ public sealed class Demolisher : RoleBase
     public override Text Name => new("Demolisher.Name");
     public override string Reading => "かいたいや";
     public override Text Blurb => new("Demolisher.Blurb");
+    public override string[] HelpSections => new[] { "Demolisher.Hammer" };
 
     public static readonly FloatOpt SmashCooldown = new("Demolisher.SmashCooldown", 20f, 2.5f, 60f, 2.5f, "s");
     public static readonly IntOpt SmashUses = new("Demolisher.SmashUses", 5, 0, 20);

@@ -21,8 +21,14 @@ public abstract class Assignable
     // 設定画面の説明 (タスク欄の先頭にも出る)
     public abstract Text Description { get; }
 
-    // 試合の情報 (右上の「?」) の役職の説明。文のファイルに「<Id>.Help」があればそれ、無ければ設定画面の説明
-    public virtual Text Help => Tr.Has(Id + ".Help") ? new Text(Id + ".Help") : Description;
+    // 試合の情報 (右上の「?」) と /r に出す長い説明。文のファイルに「<Id>.Summary」があれば部品から組み立て (RoleDoc)、
+    // 無ければ「<Id>.Help」、それも無ければ設定画面の説明
+    public virtual Text Help => RoleDoc.Has(this) ? Text.Raw(RoleDoc.Compose(this))
+        : Tr.Has(Id + ".Help") ? new Text(Id + ".Help") : Description;
+
+    // 長い説明の節の見出しの鍵 (本文は鍵 + ".Help")。ボタンの名前の鍵を押す順に並べる。ボタンでない仕組みも節にしてよい
+    //   public override string[] HelpSections => new[] { "Demolisher.Hammer" };
+    public virtual string[] HelpSections => null;
 
     // 設定画面の「人数」の上限
     public virtual int MaxCount => Options.Crowded.MaxPlayers;

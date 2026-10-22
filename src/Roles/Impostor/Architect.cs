@@ -20,6 +20,7 @@ public sealed class Architect : RoleBase
     public override Text Name => new("Architect.Name");
     public override string Reading => "こうちくし";
     public override Text Blurb => new("Architect.Blurb");
+    public override string[] HelpSections => new[] { "Architect.Desk", "Architect.Plan", "Architect.Pipe", "Architect.Drone" };
 
     public static readonly IntOpt DeskCount = new("Architect.DeskCount", 2, 1, 5);
     public static readonly FloatOpt DeskCooldown = new("Architect.DeskCooldown", 10f, 0f, 60f, 2.5f, "s");
