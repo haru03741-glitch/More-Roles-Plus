@@ -24,6 +24,9 @@ internal static class ArchitectPlan
     private const float WallBand = 2f;        // 歩ける所の周りの壁をこの幅だけ紺で塗る (部屋の間の厚い壁も埋まる。その外は本編の地図の絵のまま)
     private const int ShadeEvery = 2;         // 影の位置を書き直す間隔 (FixedUpdate の回数)
     private const float InkZ = -0.95f;        // なぞった線 (影の手前・自分の印の奥)
+    private const float DroneZ = -0.97f;      // ドローンの印 (空を飛んでいるので人の影と線の手前・自分の印の奥)
+    private const float DroneW = 0.48f;       // ドローンの印の幅 (地図の長さ)
+    private const float DroneRim = 1.25f;     // 印の縁取り (紺の同じ絵) の大きさの比 (明るい床の上でも形が読めるように)
     private const float RingZ = -0.07f;       // 届く範囲の円 (水の手前)
     private const float PointStep = 0.25f;    // なぞった線はこれだけ動くごとに点を足す (世界の長さ)
     private const float PenWidth = 0.035f;    // 線の太さ (地図の長さ)
@@ -48,6 +51,8 @@ internal static class ArchitectPlan
     private static readonly Color RingColor = new(0.85f, 0.93f, 1f, 0.55f);
     private static readonly Color BarBack = new(0.03f, 0.08f, 0.18f, 0.9f);
     private static readonly Color BarFill = new(0.55f, 0.82f, 1f, 1f);
+    private static readonly Color DroneColor = new(0.9f, 0.96f, 1f, 1f);
+    private static readonly Color DroneRimColor = new(0.03f, 0.1f, 0.24f, 0.9f);
 
     private static bool _want, _open;
     private static GameObject _layer;
@@ -61,6 +66,8 @@ internal static class ArchitectPlan
     private static float _scale = 1f, _sign = 1f;
     private static readonly List<SpriteRenderer> Shades = new();
     private static int _shown, _tick, _opens;
+    private static Transform _droneMark;
+    private static bool _droneShown;
 
     private static Impostor.Architect _owner;
     private static PassiveButton _layerButton;
@@ -152,6 +159,7 @@ internal static class ArchitectPlan
         BakeWater();
         ShowGauge();
         PlaceShades();
+        PlaceDrone();
     }
 
     // 自分の端末の FixedUpdate ごと (構築士の時だけ呼ばれる)
@@ -177,6 +185,7 @@ internal static class ArchitectPlan
             _nextBake = Time.time + BakeGap;
             BakeFloor();
         }
+        PlaceDrone(); // ドローンは秒速 9 で飛ぶので影より細かく (FixedUpdate ごと)
         if (++_tick < ShadeEvery) return;
         _tick = 0;
         PlaceShades();
@@ -191,6 +200,8 @@ internal static class ArchitectPlan
         {
             if (_layer) Object.Destroy(_layer);
             Shades.Clear();
+            _droneMark = null;
+            _droneShown = false;
             _layer = new GameObject(LayerName) { layer = map.gameObject.layer };
             _layer.transform.SetParent(parent, false);
             var fgo = new GameObject("floor") { layer = _layer.layer };
@@ -403,6 +414,34 @@ internal static class ArchitectPlan
         _shown = n;
     }
 
+    // 構築士のドローンを、飛んでいる間 (台へ戻って降りるまで) 印で出す。
+    // ドローンは世界で全員に見えているので、台を借りた人の設計図にも出す
+    private static void PlaceDrone()
+    {
+        var d = _owner?.Drone;
+        if (d == null || d.Done)
+        {
+            if (_droneShown) { _droneMark.gameObject.SetActive(false); _droneShown = false; }
+            return;
+        }
+        if (_droneMark is null) // 層を作り直すと null に戻る (毎回 Unity の生存確認はしない)
+        {
+            var sp = ArchitectDrone.BodySprite;
+            if (!sp) return;
+            _droneMark = new GameObject("drone") { layer = _layer.layer }.transform;
+            _droneMark.SetParent(_layer.transform, false);
+            // 機体の影の絵は幅 1 (世界の長さ) なので、そのまま地図の長さの倍率にする
+            _droneMark.localScale = FxMath.V3(DroneW, DroneW, 1f);
+            var rim = NewSprite(_droneMark, "rim", sp, DroneRimColor).transform;
+            rim.localScale = FxMath.V3(DroneRim, DroneRim, 1f);
+            rim.localPosition = FxMath.V3(0f, 0f, 0.001f);
+            NewSprite(_droneMark, "body", sp, DroneColor);
+            _droneShown = true;
+        }
+        _droneMark.localPosition = FxMath.V3(d.X * _sign / _scale, d.Y / _scale, DroneZ);
+        if (!_droneShown) { _droneMark.gameObject.SetActive(true); _droneShown = true; }
+    }
+
     private static SpriteRenderer Shade(int i, MapBehaviour map)
     {
         if (i < Shades.Count) return Shades[i];
@@ -613,7 +652,7 @@ internal static class ArchitectPlan
     }
 
     internal static string Describe() =>
-        $"open={_open} opens={_opens} tex={_texW}x{_texH} ppu={_ppu} scale={_scale:0.###} sign={_sign} shades={_shown} bakes={_bakes} bakeMs={_bakeMs:0.0} water={_hadWater} waterMs={_waterMs:0.00} drawing={_drawing} pts={Line.Count} spent={_spent:0.0} lines={_lines}";
+        $"open={_open} opens={_opens} tex={_texW}x{_texH} ppu={_ppu} scale={_scale:0.###} sign={_sign} shades={_shown} drone={(_droneShown ? $"{_droneMark.localPosition.x:0.00},{_droneMark.localPosition.y:0.00}" : "-")} bakes={_bakes} bakeMs={_bakeMs:0.0} water={_hadWater} waterMs={_waterMs:0.00} drawing={_drawing} pts={Line.Count} spent={_spent:0.0} lines={_lines}";
 }
 
 [HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.Show))]

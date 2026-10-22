@@ -278,8 +278,9 @@ internal static class BreakableProps
         return false;
     }
 
-    // 全員: 時間切れの仕掛け壁を物ごと崩す。欠片は上へ散り、歩ける所へ戻した側の床の番号は壁の脇の床から取る
-    internal static string Crumble(in ResolvedDamage e)
+    // 全員: 時間切れの仕掛け壁を物ごと崩す。欠片は上へ散り、歩ける所へ戻した側の床の番号は壁の脇の床から取る。
+    // given = 拾える塊の止まる所 (客: ホストから届いた物 / null = ここで決める)。返す landings = 置いた塊
+    internal static string Crumble(in ResolvedDamage e, RubbleLanding[] given, ref RubbleLanding[] landings)
     {
         if (!Ensure()) return "crumble no ship";
         int k = At(e.Position);
@@ -295,8 +296,9 @@ internal static class BreakableProps
             Vector2 side = rs.Normal * (rs.HalfDepth + 0.15f);
             home = SolidMap.Solid(e.Position + side) ? e.Position - side : e.Position + side;
         }
-        int n = Break(p, Vector2.up, home, e.Seed, e.Position);
-        return $"prop crumble {p.Name} pieces={n}";
+        bool decide = given == null && RubbleBlocks.CrumblePickable();
+        int n = Break(p, Vector2.up, home, e.Seed, e.Position, decide, given, ref landings);
+        return $"prop crumble {p.Name} pieces={n} blocks={landings.Length}";
     }
 
     // 全員: 爆発の形に掛かる家具を壊す。壊した数
@@ -339,6 +341,13 @@ internal static class BreakableProps
     // 当たり判定と絵を止めて欠片を飛ばす。home = 壊した側の歩ける点・from = 出来事の点。欠片の数を返す
     private static int Break(Prop p, Vector2 dir, Vector2 home, ushort seed, Vector2 from)
     {
+        var none = Array.Empty<RubbleLanding>();
+        return Break(p, dir, home, seed, from, false, none, ref none);
+    }
+
+    // decide = 拾える塊の止まる所をここで決める (ホスト)。given = 届いた止まる所 (客・空なら置かない)
+    private static int Break(Prop p, Vector2 dir, Vector2 home, ushort seed, Vector2 from, bool decide, RubbleLanding[] given, ref RubbleLanding[] landings)
+    {
         p.Broken = true;
         {
             float fx = Math.Max(Math.Abs(from.x - p.X0), Math.Abs(from.x - p.X1)), fy = Math.Max(Math.Abs(from.y - p.Y0), Math.Abs(from.y - p.Y1));
@@ -357,7 +366,8 @@ internal static class BreakableProps
         SolidMap.Carve(p.Shape ?? new RectShape(center, Vector2.right, w + CarveMargin * 2f, h + CarveMargin * 2f), null, home);
         if (parts.Count == 0) Fallback(p, parts, seed, ref sx, ref sy);
         float reach = MathF.Sqrt(w * w + h * h) * 0.5f + 3f;
-        TerrainFx.Shatter(parts, sx, sy, center, dir, p.Spec.Wood, p.Spec.Sparks, WoodDust, seed, WallSegments.Snapshot(center, reach), home);
+        landings = TerrainFx.Shatter(parts, sx, sy, center, dir, p.Spec.Wood, p.Spec.Sparks, WoodDust, seed, WallSegments.Snapshot(center, reach), home,
+            decide, decide ? null : given);
         Plugin.Logger.LogInfo($"prop break {p.Name}: pieces={parts.Count} at=({cx:0.00},{cy:0.00})");
         return parts.Count;
     }

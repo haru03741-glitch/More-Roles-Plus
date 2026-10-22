@@ -27,6 +27,7 @@ public sealed class Architect : RoleBase
     public static readonly FloatOpt GaugeRefill = new("Architect.GaugeRefill", 30f, 5f, 120f, 5f, "s");
     public static readonly FloatOpt WallLife = new("Architect.WallLife", 15f, 5f, 60f, 2.5f, "s");
     public static readonly FloatOpt PipeCost = new("Architect.PipeCost", 4f, 1f, 12f, 1f);
+    public static readonly BoolOpt OwnRubble = new("Architect.OwnRubble", false);
 
     public override TerrainPermit TerrainPermit => TerrainPermit.None.WithWall(TerrainPermit.MaxWallLength, push: true).WithWater();
 
@@ -147,6 +148,7 @@ public sealed class Architect : RoleBase
     internal int DeskTotal => _desks.Count;
     internal float Gauge => _gauge;
     internal float GaugeMax => GaugeLength;
+    internal ArchitectDrone Drone => _drone;
 
     public override void OnAssigned()
     {
@@ -155,6 +157,7 @@ public sealed class Architect : RoleBase
         if (!_listening) { TrickWall.Placed += OnWallPlaced; _listening = true; }
         _live++;
         RubbleBlocks.Pickable = () => _live > 0;
+        RubbleBlocks.CrumblePickable = () => _live > 0 && OwnRubble;
         All.Add(this);
         TerrainPermits.Lent = Lends;
         _gauge = GaugeLength;

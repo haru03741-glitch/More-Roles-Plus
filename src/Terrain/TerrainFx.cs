@@ -189,14 +189,20 @@ internal static class TerrainFx
     // parts = 欠片の絵・元の真ん中 (ワールド)・床の高さ (その下の床の y)。sx, sy = 元の家具の倍率 (向きの反転を含む)。
     // 金属は欠片が空中で裏返り、火花が散る。木は木くずと、中の粉の煙 (dustTint) が出る。
     // 欠片は止まった所に残る (当たり判定なし)。home = 叩いた側の床 (壁の線の上から動き出す欠片が越えてよい側)
-    public static void Shatter(List<(Sprite Sp, Vector2 At, float FloorY)> parts, float sx, float sy, Vector2 center, Vector2 dir,
-        bool wood, int sparks, Color dustTint, ushort seed, float[] walls, Vector2 home)
+    // decide = 大きな欠片の止まる所をここで決めて拾える塊にする (ホスト)。given = 届いた止まる所 (客・null か空なら置かない)。
+    // 返り値 = 置いた塊
+    public static RubbleLanding[] Shatter(List<(Sprite Sp, Vector2 At, float FloorY)> parts, float sx, float sy, Vector2 center, Vector2 dir,
+        bool wood, int sparks, Color dustTint, ushort seed, float[] walls, Vector2 home, bool decide = false, RubbleLanding[] given = null)
     {
         var rnd = new System.Random(seed ^ Hash(center));
+        var items = decide || given is { Length: > 0 } ? new Item[parts.Count] : null;
+        int idx = 0;
         foreach (var (sp, at, floorY) in parts)
         {
             float h = Math.Max(0f, at.y - floorY);
             var it = SpawnScaled(Kind.Junk, sp, new Vector2(at.x, floorY), sx, sy);
+            if (items != null) items[idx] = it;
+            idx++;
             it.Height = h;
             it.Walls = walls;
             it.HomeX = home.x; it.HomeY = home.y;
@@ -241,6 +247,27 @@ internal static class TerrainFx
             it.VH = 1f + (float)rnd.NextDouble() * 1.5f;
             it.Life = 0.25f;
         }
+        return items == null ? Array.Empty<RubbleLanding>() : SettleParts(items, parts, sx, sy, walls, decide ? null : given);
+    }
+
+    // 絵を割った欠片を大きい順に並べて止まる所を決める (並びは全員で同じ: 欠片は種から決まり、同じ大きさなら元の順)
+    private static RubbleLanding[] SettleParts(Item[] items, List<(Sprite Sp, Vector2 At, float FloorY)> parts, float sx, float sy, float[] walls, RubbleLanding[] given)
+    {
+        int n = items.Length;
+        var size = new float[n];
+        var order = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            var r = parts[i].Sp.rect;
+            float ppu = parts[i].Sp.pixelsPerUnit;
+            size[i] = Math.Max(Math.Abs(r.width / ppu * sx), Math.Abs(r.height / ppu * sy));
+            order[i] = i;
+        }
+        Array.Sort(order, (a, b) => size[a] != size[b] ? size[b].CompareTo(size[a]) : a.CompareTo(b));
+        var byRank = new Item[n];
+        var sizes = new float[n];
+        for (int k = 0; k < n; k++) { byRank[k] = items[order[k]]; sizes[k] = size[order[k]]; }
+        return Settle(byRank, sizes, walls, given);
     }
 
     // 剥げかけの表面が欠け落ちる: 細胞の絵 (元の場所に重なっている) が根元 (baseY) へ落ちて手前へ転がる
@@ -376,19 +403,22 @@ internal static class TerrainFx
 
     private static RubbleLanding[] Settle(Item[] byRank, List<BreakPiece> pieces, float[] walls, RubbleLanding[] given)
     {
+        var sizes = new float[Math.Min(byRank.Length, PredictRanks)];
+        for (int i = 0; i < sizes.Length; i++) sizes[i] = pieces[i].Size;
+        return Settle(byRank, sizes, walls, given);
+    }
+
+    // sizes = 並びごとの塊の大きさ (決める時だけ使う)
+    private static RubbleLanding[] Settle(Item[] byRank, float[] sizes, float[] walls, RubbleLanding[] given)
+    {
         var landings = given;
         if (landings == null)
         {
             if (walls == null || byRank.Length == 0) return Array.Empty<RubbleLanding>();
             int n = Math.Min(byRank.Length, PredictRanks);
             var rest = new Vector2?[n];
-            var sizes = new float[n];
             for (int i = 0; i < n; i++)
-            {
-                if (byRank[i] == null) continue;
-                rest[i] = PredictRest(byRank[i]);
-                sizes[i] = pieces[i].Size;
-            }
+                if (byRank[i] != null) rest[i] = PredictRest(byRank[i]);
             landings = RubbleBlocks.Decide(rest, sizes, walls);
         }
         var blocks = RubbleBlocks.Place(landings);
@@ -813,13 +843,22 @@ internal static class TerrainFx
 
     // 船の中の瓦礫: 何度か跳ねて (跳ね返り 0.38)、床をこすって止まる。金属板は空中で裏返り、パイプは床を転がる。
     // 落ちた所に山があれば、その高さで止まる
+    // 裏返りながら飛んでいた物は表か裏で寝る
+    private static void LieFlip(Item it)
+    {
+        if (it.VFlip == 0f) return;
+        it.VFlip = 0f;
+        it.Flip = MathF.Round(it.Flip / MathF.PI) * MathF.PI;
+        it.Tr.localScale = V3(it.S0 * MathF.Cos(it.Flip), it.Sy, 1f);
+    }
+
     private static bool StepJunk(Item it, float dt)
     {
         it.Px += it.Vx * dt; it.Py += it.Vy * dt;
         it.VH -= Gravity * dt;
         it.Height += it.VH * dt;
         it.Rot += it.VRot * dt;
-        it.Rest = PileHeight(it);
+        if (!it.Steer) it.Rest = PileHeight(it);
         if (it.VFlip != 0f)
         {
             it.Flip += it.VFlip * dt;
@@ -829,6 +868,14 @@ internal static class TerrainFx
         }
         if (it.Height > it.Rest) return false;
         it.Height = it.Rest;
+        if (it.Steer)
+        {
+            // 決まった所にぴたりと止める (当たり判定の位置と見た目を揃える)
+            it.Px = it.Tx; it.Py = it.Ty;
+            it.Vx = 0f; it.Vy = 0f; it.VH = 0f; it.VRot = 0f;
+            LieFlip(it);
+            return true;
+        }
         if (it.VH < -0.8f && it.Bounces < 4)
         {
             it.Bounces++;
@@ -839,13 +886,7 @@ internal static class TerrainFx
             return false;
         }
         it.VH = 0f;
-        if (it.VFlip != 0f)
-        {
-            // 表か裏で寝る
-            it.VFlip = 0f;
-            it.Flip = MathF.Round(it.Flip / MathF.PI) * MathF.PI;
-            it.Tr.localScale = V3(it.S0 * MathF.Cos(it.Flip), it.Sy, 1f);
-        }
+        LieFlip(it);
         float f = MathF.Max(0f, 1f - (it.Roll > 0f ? 1.6f : 5f) * dt);
         it.Vx *= f; it.Vy *= f;
         // 転がる物は進んだ分だけ回る。他は床でこすれて回りが止まる

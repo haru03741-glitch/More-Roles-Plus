@@ -51,6 +51,8 @@ internal static class RubbleBlocks
 
     // 拾える試合か (構築士がいる)。false の試合では塊の絵は従来どおり床の板へ焼く
     internal static Func<bool> Pickable = () => false;
+    // 時間で崩れた仕掛け壁からも拾える塊を残すか (ホストだけが見て止まる所を決める。客は届いた止まる所に従う)
+    internal static Func<bool> CrumblePickable = () => false;
     private const float TakeMatch = 0.1f; // 拾う知らせの位置と当たり判定の位置の食い違いの許し (電文の丸め)
 
     // ホスト: 予測した止まる所 (rest[i] = 並び i の塊。null は塊が無い) から、置ける物を最大 MaxPerEvent 個選ぶ。

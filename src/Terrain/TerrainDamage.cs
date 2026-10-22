@@ -144,7 +144,7 @@ internal static class TerrainDamage
             DamageKind.Water => "water", // 地形は変えない (水は WaterLeak の受け手が出す)
             DamageKind.Flood => "flood", // 地形は変えない (水は WaterSim の受け手が入れる)
             DamageKind.Wall => TrickWall.Place(r),
-            DamageKind.Crumble => BreakableProps.Crumble(r),
+            DamageKind.Crumble => BreakableProps.Crumble(r, given, ref landings),
             _ => "unknown kind",
         };
     }

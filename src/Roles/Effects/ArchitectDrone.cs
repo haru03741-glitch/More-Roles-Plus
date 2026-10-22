@@ -62,6 +62,10 @@ internal sealed class ArchitectDrone
     private readonly int _gen;
 
     internal bool Done => _state == State.Done;
+    internal float X => _x;
+    internal float Y => _y;
+    // 機体の影の絵 (飛んでいるドローンがあれば焼き終わっている)。設計図の印にも使う
+    internal static Sprite BodySprite => _bodySprite;
     // 飛んでいて、まだ降り始めていない
     internal bool Airborne => !_closing && _state is not (State.Land or State.Done);
     internal string Describe() => $"{_state} at=({_x:0.00},{_y:0.00}) queue={_targets.Count} sound={(_src ? _src.volume : 0f):0.00}{(_clip != null && _clip.EndsWith("_m") ? "m" : "")}";
