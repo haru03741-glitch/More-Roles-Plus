@@ -31,6 +31,21 @@ internal static class TerrainDigest
         History.Clear();
     }
 
+    internal static bool Open => _open;
+
+    // 時戻しの逆再生の段: 件の外で取り消した線と耐久を、連番を進めずに積む (Begin の後に呼ぶ)
+    public static void Fold()
+    {
+        _open = false;
+        Running = (uint)Mix(Running ^ _event ^ 0x5851F42D4C957F2DUL);
+    }
+
+    // 逆再生を当て終えた時: 最後の件の指紋を今の値に置き直す (ホストと客が段を当て終えた後の値で比べる)
+    public static void Rebase()
+    {
+        if (Any) History[LastSeq] = Running;
+    }
+
     public static void Begin()
     {
         _event = 0;

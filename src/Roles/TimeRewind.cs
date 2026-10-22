@@ -542,6 +542,16 @@ internal static class TimeRewind
     // 毎 FixedUpdate (逆再生の間): 自分の体を記録の位置へ置く。位置は本編の同期で他の人にも逆に歩いて見える
     private static void PlayStep(long now)
     {
+        try { PlayStepCore(now); }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"TimeRewind play: {e}");
+            Finish();
+        }
+    }
+
+    private static void PlayStepCore(long now)
+    {
         if (now >= _playEnd || MeetingHud.Instance || !Terrain.GameClock.ShipAlive) { Finish(); return; }
         var lp = PlayerControl.LocalPlayer;
         if (_playSlot < 0 || !lp || lp.Data == null || lp.Data.IsDead || lp.onLadder || lp.inMovingPlat || lp.inVent) return;
@@ -585,7 +595,7 @@ internal static class TimeRewind
         var lp = PlayerControl.LocalPlayer;
         if (_froze) { _froze = false; if (lp) lp.moveable = true; }
         // 会議が始まった (記録は会議の始まりで捨てる)・試合が終わった時は人の側は戻さない
-        if (!_on || MeetingHud.Instance) return;
+        if (!_on || MeetingHud.Instance || !Terrain.GameClock.ShipAlive) return;
         var g = _play;
         long now = Environment.TickCount64;
         foreach (var pid in g.Revive)

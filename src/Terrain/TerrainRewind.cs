@@ -48,7 +48,7 @@ internal static class TerrainRewind
     // 記録するか (各計算が刻みの頭で読む)
     internal static bool On => _on;
     // 逆再生の途中 (まだ当てていない段がある)。ホストはこの間の新しい破壊を受け付けない
-    internal static bool Playing => Plan.Count > 0;
+    internal static bool Playing => Plan.Count > 0 && _shipGen == GameClock.ShipGen;
 
     // 逆再生の長さ (ms)。人の側 (TimeRewind) と同じ式で決める (電文に載せずに全員が揃う)
     internal static int PlayMs(int backMs) => Math.Clamp(800 + backMs / 10, 1200, 2000);
@@ -120,6 +120,7 @@ internal static class TerrainRewind
         if (Plan.Count == 0) return;
         try
         {
+            CheckShip(); // 船が替わったら残りの段は捨てる (次の試合の破壊を拒み続けない)
             int now = GameClock.Now;
             while (Plan.Count > 0 && Plan[0].Tick - Lead <= now) StepNext();
         }
@@ -140,9 +141,13 @@ internal static class TerrainRewind
         var (tick, target) = Plan[0];
         Plan.RemoveAt(0);
         var o = new Order { Tick = tick, Target = target };
-        FireFx.DropScorch();
-        DustCloud.RewindNewer((GameClock.Now - target) / (float)GameClock.Hz); // まだ地図へ書いていない焦げ (ほぼ戻す刻みより後に燃えた分)
-        Walls += TerrainUndo.Rewind(target, tick);
+        FireFx.DropScorch(); // まだ地図へ書いていない焦げ (ほぼ戻す刻みより後に燃えた分)
+        DustCloud.RewindNewer((GameClock.Now - target) / (float)GameClock.Hz);
+        // 取り消した線と耐久を指紋に積む (合図の件の中で当てる時はその件に入る)
+        bool fold = !TerrainDigest.Open;
+        if (fold) TerrainDigest.Begin();
+        try { Walls += TerrainUndo.Rewind(target, tick); }
+        finally { if (fold) TerrainDigest.Fold(); }
         o.Done[(int)Sim.Decomp] = !Decompression.Running;
         o.Done[(int)Sim.Prop] = !PropSim.Drives;
         o.Done[(int)Sim.Water] = !WaterSim.Running;
@@ -150,6 +155,7 @@ internal static class TerrainRewind
         Orders.Add(o);
         Prune();
         if (Plan.Count > 0) return;
+        if (fold) TerrainDigest.Rebase();
         FireFx.HidePuffs();
         WaterLeak.HideSpray();
     }

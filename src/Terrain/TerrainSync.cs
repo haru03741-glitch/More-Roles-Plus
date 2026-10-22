@@ -200,7 +200,8 @@ internal static class TerrainSync
             if (stuck > GapTimeoutTicks) SkipGap();
             else if (stuck > ResendAskTicks && _tick - _lastAsk >= ResendAskTicks) AskResend();
         }
-        if (TerrainDigest.Any && TerrainDigest.LastSeq != _reportedSeq && _tick - _lastReport >= ReportTicks) Report();
+        // 逆再生の途中は指紋が段ごとに動くので、当て終えてから報告する
+        if (TerrainDigest.Any && TerrainDigest.LastSeq != _reportedSeq && _tick - _lastReport >= ReportTicks && !TerrainRewind.Playing) Report();
         if (Outbox.Count == 0 && Requests.Count == 0) return;
         if (_tick - _lastFlush < FlushTicks) return;
         _lastFlush = _tick;
@@ -398,6 +399,7 @@ internal static class TerrainSync
                 uint hash = TerrainWire.ReadU32(b, ref o);
                 // 自分の指紋が無い番号 (古すぎる・ホスト交代の前) は比べない
                 if (!TerrainDigest.TryGet(seq, out uint mine)) return;
+                if (TerrainRewind.Playing) return; // 自分がまだ逆再生を当て終えていない (比べる値が最後の段の後の値でない)
                 bool same = mine == hash;
                 Checks[sender.PlayerId] = (seq, same);
                 if (!same)
