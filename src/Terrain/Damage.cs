@@ -14,6 +14,7 @@ public enum DamageKind : byte
     Flood = 8,     // 浸水: 壁は壊さない。起点の床へ水を入れ続ける (Size = 続く時間 ×10 秒・0 = 試合の終わりまで / Force = 入れる速さ)
     Wall = 9,      // 仕掛け壁: 起点を真ん中に Direction の向きへ長さ Size の壁を立てる。壊れるまで歩きも視界も水も止める (壊れ方は物ごと壊れる家具と同じ)
     Crumble = 10,  // 崩れ: 起点にある仕掛け壁を物ごと崩す (立ててから時間が経った壁を崩す・ホストだけが出す)
+    Rewind = 11,   // 時戻し: 刻み Tick に、水・火・減圧・物を Seed 刻み前の記録へ戻す (壁は変えない・ホストだけが出す)
 }
 
 internal static class DamageKinds

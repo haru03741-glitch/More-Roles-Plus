@@ -118,6 +118,7 @@ internal static class TimeRewind
         Rewinds = LastSlotAgeMs = LastRevived = LastTasksUndone = LastSystems = 0;
         LastNote = "-";
         Events<MeetingStartEvent>.Subscribe(_ => Clear(), life, owner: "TimeRewind");
+        Terrain.TerrainRewind.Enable(life, Crew.Rewinder.Seconds);
         life.OnRelease(() => { _on = false; Clear(); });
     }
 
@@ -452,6 +453,8 @@ internal static class TimeRewind
         var go = new Go(back, revive);
         GoCall.Send(go);
         Apply(go); // 配る電文は送った本人 (ホスト) の手元では動かない
+        // 水・火・減圧・物は壊した結果と同じ列で配り、全員が同じ刻みで戻す
+        Terrain.TerrainSync.HostRewind(back * Terrain.GameClock.Hz / 1000);
     }
 
     // 確かめ用 (ブリッジ rewind force): ホストが役職と待ち時間を見ずに戻す

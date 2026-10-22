@@ -16,7 +16,7 @@ namespace MoreRolesPlus.Terrain;
 //
 // 全員の手元でぴったり同じ結果にするため、水と同じく整数だけで計算し、ゆらぎは升の番号のハッシュから作る。
 // 出来事 (点火・油をまく・爆発の熱) はホストが刻みを押して配った物を、その刻みで入れる
-internal static class FireSim
+internal static partial class FireSim
 {
     public const int MaxT = 2047;
     private const int Cond = 40;              // 隣へ移る熱 = 差 × これ/1024
@@ -313,6 +313,7 @@ internal static class FireSim
         {
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             _step = s;
+            if (TerrainRewind.On) RewindHead();
             StepOnce();
             _step = s + 1;
             LastStepMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;

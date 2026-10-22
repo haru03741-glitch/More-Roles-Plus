@@ -227,6 +227,7 @@ internal static partial class PropSim
     {
         try
         {
+            if (TerrainRewind.On) RewindHead();
             StepOnce(Auth);
             Auth.Step++;
             // 見せる用は今の流れで先回りしているので、引いている間は確定から時々計算し直す
@@ -822,25 +823,28 @@ internal static partial class PropSim
             st.Active = false;
             st.Rattle = false;
             w.Act.RemoveAt(i);
-            if (w.Display)
-            {
-                p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; Draw(p, 1f);
-                FrontSettled(p);
-                if (p.Kind == Kind.Heavy)
-                {
-                    // 水の型抜きと、影の中の焼いた絵 (元の場所と止まった所) を作り直す (自分の絵を持つ家具は水の型抜きに入らないが同じ扱い)。
-                    // 型抜きは当たり判定を引くので、動かした Transform が物理に写ってから (FurnitureSettleMs 後)
-                    var b0 = p.Bounds0;
-                    var now = FxMath.V2(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
-                    float r = Math.Max(b0.width, b0.height) * 0.5f + FurnitureLift.Pad;
-                    Settled.Add((b0.center, now, r, Environment.TickCount64 + FurnitureSettleMs));
-                    ShadowPatch.NoteMoved(p.Tr);
-                    ShadowPatch.MarkDirtyLater(b0.center, r);
-                    ShadowPatch.MarkDirtyLater(now, r);
-                }
-                else Rebake(p);
-            }
+            if (w.Display) ShowStopped(p, st);
         }
+    }
+
+    // 見せる用で止まった物を止まった所に描き、型抜きと焼いた絵を作り直す
+    private static void ShowStopped(Prop p, St st)
+    {
+        p.Ox = st.Px; p.Oy = st.Py; p.OAng = st.Ang; Draw(p, 1f);
+        FrontSettled(p);
+        if (p.Kind == Kind.Heavy)
+        {
+            // 水の型抜きと、影の中の焼いた絵 (元の場所と止まった所) を作り直す (自分の絵を持つ家具は水の型抜きに入らないが同じ扱い)。
+            // 型抜きは当たり判定を引くので、動かした Transform が物理に写ってから (FurnitureSettleMs 後)
+            var b0 = p.Bounds0;
+            var now = FxMath.V2(_org.x + st.Px / (float)Unit, _org.y + st.Py / (float)Unit);
+            float r = Math.Max(b0.width, b0.height) * 0.5f + FurnitureLift.Pad;
+            Settled.Add((b0.center, now, r, Environment.TickCount64 + FurnitureSettleMs));
+            ShadowPatch.NoteMoved(p.Tr);
+            ShadowPatch.MarkDirtyLater(b0.center, r);
+            ShadowPatch.MarkDirtyLater(now, r);
+        }
+        else Rebake(p);
     }
 
     // 見せる用を確定の状態から今の刻みまで計算し直す (破壊の結果が届いた時)

@@ -106,6 +106,15 @@ internal static class TerrainSync
     private static string ApplyNow(ushort seq, in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
         Applied++;
+        if (r.Kind == DamageKind.Rewind)
+        {
+            // 壁は変えないので指紋は前の件のまま積む。戻すのは刻みが来た時 (TerrainRewind)
+            landings = Array.Empty<RubbleLanding>();
+            TerrainDigest.Begin();
+            TerrainDigest.End(seq);
+            TerrainRewind.OnApplied(r);
+            return "rewind";
+        }
         TerrainFx.RunDeferred(); // 前の破壊の見た目を先に出す (出る順を適用の順に保つ)
         WaterSim.BeforeApply(r);
         TerrainDigest.Begin();
@@ -579,6 +588,21 @@ internal static class TerrainSync
         if (!Online()) return ApplyAlone(e, actor, out ok);
         if (AmongUsClient.Instance.AmHost) return HostAccept(e, actor, out ok);
         return Request(e, out ok);
+    }
+
+    // ホスト・一人: 水・火・減圧・物を back 刻み前の記録へ戻す合図を、壊した結果と同じ列に積む (届く途中の破壊と順番を入れ替えない)
+    internal static string HostRewind(int back)
+    {
+        if (Online() && !AmongUsClient.Instance.AmHost) return "not host";
+        SyncShip();
+        var r = new ResolvedDamage(DamageKind.Rewind, Vector2.zero, Vector2.zero, Vector2.zero, 0f, 0f, 0, (ushort)Math.Clamp(back, 0, ushort.MaxValue),
+            Array.Empty<RubbleLanding>(), ResolvedDamage.NoActor, GameClock.Stamp);
+        r = TerrainWire.RoundTrip(r);
+        string res = ApplyNow(_nextSeq++, r, decide: true, out _);
+        if (!Online()) return res;
+        Outbox.Add(r);
+        Remember((ushort)(_nextSeq - 1), r);
+        return res;
     }
 
     // 一人の時 (フリープレイ・オフライン): その場で決めて適用する

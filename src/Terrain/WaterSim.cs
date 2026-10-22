@@ -1480,14 +1480,20 @@ internal static partial class WaterSim
     private static void Mark(int k)
     {
         int x = k % _w, y = k / _w;
+        MarkTiles(k);
+        // 高さが変わった升の隣は流れが変わりうるので、眠っていれば起こす
+        if (x >= 1 && y >= 1 && x < _w - 1 && y < _h - 1) WakeAround(k);
+    }
+
+    private static void MarkTiles(int k)
+    {
+        int x = k % _w, y = k / _w;
         MarkTile(x / TileCells, y / TileCells);
         int lx = x % TileCells, ly = y % TileCells;
         if (lx == 0) MarkTile(x / TileCells - 1, y / TileCells);
         else if (lx == TileCells - 1) MarkTile(x / TileCells + 1, y / TileCells);
         if (ly == 0) MarkTile(x / TileCells, y / TileCells - 1);
         else if (ly == TileCells - 1) MarkTile(x / TileCells, y / TileCells + 1);
-        // 高さが変わった升の隣は流れが変わりうるので、眠っていれば起こす
-        if (x >= 1 && y >= 1 && x < _w - 1 && y < _h - 1) WakeAround(k);
     }
 
     // 乾いた隣は流れ出さない (水が入る所で起こされる) ので、起こすのは濡れた隣だけ
@@ -2662,6 +2668,7 @@ internal static partial class WaterSim
         try
         {
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (TerrainRewind.On) RewindHead();
             deferred = StepOnce(defer);
             _step++;
             LastStepMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;

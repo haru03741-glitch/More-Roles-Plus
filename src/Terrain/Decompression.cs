@@ -19,7 +19,7 @@ namespace MoreRolesPlus.Terrain;
 // 変わった刻みと開きを地形の電文で配る (TerrainSync.BroadcastDoors)。全員その記録 (DoorLog) の刻みで反映する。
 // 物 (PropSim) は確定の刻みをこちらと 1 刻みずつ揃えて進め (StepThrough)、整数の流れ (FlowAt) を読む。
 // クルーは PlayerPhysics.FixedUpdate の後で自分の体の速さに流れを足す (位置は普通の移動の同期で他人へ届く)
-internal static class Decompression
+internal static partial class Decompression
 {
     private const int Delay = WaterSim.Delay;
     private const int Sub = 4;
@@ -540,6 +540,7 @@ internal static class Decompression
     // 範囲を塗り直し、前の範囲の気圧を升の数で混ぜて移す。oldComp/oldPress = 作り直す前 (無ければ全部満タン)
     private static void Regions(int[] oldComp, int[] oldPress)
     {
+        _compGen++;
         if (!Native.MrpNative.Verify) RegionsNative(_comp, oldComp, oldPress, out _compCells, out _press);
         else
         {
@@ -1072,6 +1073,7 @@ internal static class Decompression
         int n = 0;
         while (_step < target && n < MaxStepsPerFrame)
         {
+            if (TerrainRewind.On) RewindHead();
             StepOnce();
             _step++;
             n++;
@@ -1086,6 +1088,7 @@ internal static class Decompression
         {
             while (_running && _step <= s)
             {
+                if (TerrainRewind.On) RewindHead();
                 StepOnce();
                 _step++;
             }
