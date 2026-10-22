@@ -82,11 +82,10 @@ internal static class ImpostorCap
     }
 
     // 試合の人数で実際に置く数 (本編の計算と同じ形: 設定値を 1〜上限に収める)
-    public static int Adjusted(IGameOptions opts, int players)
-    {
-        int cap = ServerKind.IsOfficial() ? Math.Min(VanillaMax, VanillaTable(players)) : CapFor(players);
-        return Math.Clamp(opts.NumImpostors, 1, Math.Max(1, cap));
-    }
+    public static int Adjusted(IGameOptions opts, int players) => Math.Clamp(opts.NumImpostors, 1, CapAt(players));
+
+    // 試合の人数で置ける最多 (公式サーバーは本編の表と 3 人まで)
+    public static int CapAt(int players) => Math.Max(1, ServerKind.IsOfficial() ? Math.Min(VanillaMax, VanillaTable(players)) : CapFor(players));
 
     private static int VanillaTable(int players)
     {

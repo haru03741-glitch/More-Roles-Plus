@@ -524,6 +524,23 @@ public static class AssignPlan
     // 確かめ用: 名簿を作って何度も配り、役職ごとに付いた回数を数える。
     // 同じ顔ぶれで続けて遊んだことにして、人ごとの当たりの偏りも数える (公平化が ON なら履歴を引き継ぐ・OFF ならインポスターは一様に選ぶ)
     public static string Simulate(int players, int impostors, int runs, int seed, IReadOnlyDictionary<byte, int> reserved = null)
+        => Describe(Run(players, impostors, impostors, runs, seed, reserved));
+
+    // 試走の集計。RoleRuns = その役職が 1 人以上出た試合の数・RoleHits = 付いた人数の合計
+    public sealed class SimResult
+    {
+        public int Players, MinImpostors, MaxImpostors, Runs, Seed;
+        public int[] RoleHits, RoleRuns, AddonHits;
+        public int WithRole, WithAddon, Doubled, NeutralMin, NeutralMax;
+        public PlanStats Stats;
+        public bool Fair;
+        public int[] ImpHits, NeuHits, SpecHits, DryMax;
+        public List<Pick> Example;     // 最後の 1 回の配役
+        public bool[] ExampleImpostor; // その回の陣営 (人の番号順)
+    }
+
+    // インポスターの数は試合ごとに minImpostors〜maxImpostors から引く (本番の数え始めと同じ)
+    public static SimResult Run(int players, int minImpostors, int maxImpostors, int runs, int seed, IReadOnlyDictionary<byte, int> reserved = null)
     {
         var roster = new List<Slot>();
         for (int i = 0; i < players; i++)
@@ -531,6 +548,9 @@ public static class AssignPlan
         var rng = new Random(seed);
         var history = AssignSettings.Fairness ? new AssignHistory() : null;
         var roleHits = new int[Registry.Roles.Count];
+        var roleRuns = new int[Registry.Roles.Count];
+        var seen = new bool[Registry.Roles.Count];
+        List<Pick> plan = null;
         var addonHits = new int[Registry.Addons.Count];
         int withRole = 0, withAddon = 0, doubled = 0, neutralMax = 0, neutralMin = int.MaxValue;
         var stats = new PlanStats();
@@ -544,6 +564,7 @@ public static class AssignPlan
         for (int n = 0; n < runs; n++)
         {
             // 本編のインポスター選び (一様) の代わりに陣営を振り直してから配る
+            int impostors = minImpostors == maxImpostors ? minImpostors : rng.Next(minImpostors, maxImpostors + 1);
             Shuffle(order, rng);
             for (int k = 0; k < players; k++) SetSide(roster, order[k], k < impostors);
             // 固定指定の人は役職の陣営へ寄せる (本番の MatchReservedTeams と同じく、予約の無い反対側の人と入れ替える)
@@ -561,9 +582,10 @@ public static class AssignPlan
             }
             if (history != null)
                 foreach (int i in ChooseImpostors(roster, rng, history, reserved)) SetSide(roster, i, !roster[i].Impostor);
-            var plan = Decide(roster, rng, reserved, stats, history);
+            plan = Decide(roster, rng, reserved, stats, history);
             history?.Record(roster, plan);
             int neutrals = 0;
+            Array.Clear(seen, 0, seen.Length);
             var special = new bool[players];
             foreach (var p in plan)
             {
@@ -571,6 +593,7 @@ public static class AssignPlan
                 {
                     withRole++;
                     roleHits[p.RoleIndex]++;
+                    if (!seen[p.RoleIndex]) { seen[p.RoleIndex] = true; roleRuns[p.RoleIndex]++; }
                     if (Registry.Roles[p.RoleIndex].Team == Team.Neutral) { neutrals++; neuHits[p.PlayerId]++; }
                 }
                 if (!AssignHistory.IsPlain(p.RoleIndex)) special[p.PlayerId] = true;
@@ -587,14 +610,31 @@ public static class AssignPlan
             neutralMax = Math.Max(neutralMax, neutrals);
             neutralMin = Math.Min(neutralMin, neutrals);
         }
+        var example = new bool[players];
+        for (int i = 0; i < players; i++) example[i] = roster[i].Impostor;
+        return new SimResult
+        {
+            Players = players, MinImpostors = minImpostors, MaxImpostors = maxImpostors, Runs = runs, Seed = seed,
+            RoleHits = roleHits, RoleRuns = roleRuns, AddonHits = addonHits,
+            WithRole = withRole, WithAddon = withAddon, Doubled = doubled, NeutralMin = neutralMin, NeutralMax = neutralMax,
+            Stats = stats, Fair = history != null, ImpHits = impHits, NeuHits = neuHits, SpecHits = specHits, DryMax = dryMax,
+            Example = plan, ExampleImpostor = example,
+        };
+    }
+
+    private static string Describe(SimResult r)
+    {
+        int runs = r.Runs;
+        var stats = r.Stats;
+        string imps = r.MinImpostors == r.MaxImpostors ? r.MinImpostors.ToString() : $"{r.MinImpostors}..{r.MaxImpostors}";
         var sb = new System.Text.StringBuilder();
-        sb.Append($"players={players} impostors={impostors} runs={runs} seed={seed} roles/run={(double)withRole / runs:0.00} addons/run={(double)withAddon / runs:0.00}");
-        sb.Append($"\nlimitSkips/run={(double)stats.LimitSkips / runs:0.00} conflictSkips/run={(double)stats.ConflictSkips / runs:0.00} noSlotSkips/run={(double)stats.NoSlotSkips / runs:0.00} reserved/run={(double)stats.Reserved / runs:0.00} fill/run={(double)stats.FillPicks / runs:0.00} neutralTopUps/run={(double)stats.NeutralTopUps / runs:0.00} neutrals={neutralMin}..{neutralMax} band={(TeamSizes.For(players) is { } b ? b.Players.ToString() : "-")} duplicateAddonRuns={doubled}");
-        for (int i = 0; i < roleHits.Length; i++)
-            if (roleHits[i] > 0) sb.Append($"\n{Registry.Roles[i].Id} {roleHits[i]} ({100.0 * roleHits[i] / runs:0.#}%/run)");
-        for (int i = 0; i < addonHits.Length; i++)
-            if (addonHits[i] > 0) sb.Append($"\n+{Registry.Addons[i].Id} {addonHits[i]} ({100.0 * addonHits[i] / runs:0.#}%/run)");
-        sb.Append($"\nfairness={(history != null ? "on" : "off")} perPlayer impostor={Spread(impHits)} neutral={Spread(neuHits)} role={Spread(specHits)} longestNoRole={dryMax.Min()}..{dryMax.Max()} avg={dryMax.Average():0.0}");
+        sb.Append($"players={r.Players} impostors={imps} runs={runs} seed={r.Seed} roles/run={(double)r.WithRole / runs:0.00} addons/run={(double)r.WithAddon / runs:0.00}");
+        sb.Append($"\nlimitSkips/run={(double)stats.LimitSkips / runs:0.00} conflictSkips/run={(double)stats.ConflictSkips / runs:0.00} noSlotSkips/run={(double)stats.NoSlotSkips / runs:0.00} reserved/run={(double)stats.Reserved / runs:0.00} fill/run={(double)stats.FillPicks / runs:0.00} neutralTopUps/run={(double)stats.NeutralTopUps / runs:0.00} neutrals={r.NeutralMin}..{r.NeutralMax} band={(TeamSizes.For(r.Players) is { } b ? b.Players.ToString() : "-")} duplicateAddonRuns={r.Doubled}");
+        for (int i = 0; i < r.RoleHits.Length; i++)
+            if (r.RoleHits[i] > 0) sb.Append($"\n{Registry.Roles[i].Id} {r.RoleHits[i]} ({100.0 * r.RoleHits[i] / runs:0.#}%/run)");
+        for (int i = 0; i < r.AddonHits.Length; i++)
+            if (r.AddonHits[i] > 0) sb.Append($"\n+{Registry.Addons[i].Id} {r.AddonHits[i]} ({100.0 * r.AddonHits[i] / runs:0.#}%/run)");
+        sb.Append($"\nfairness={(r.Fair ? "on" : "off")} perPlayer impostor={Spread(r.ImpHits)} neutral={Spread(r.NeuHits)} role={Spread(r.SpecHits)} longestNoRole={r.DryMax.Min()}..{r.DryMax.Max()} avg={r.DryMax.Average():0.0}");
         return sb.ToString();
     }
 

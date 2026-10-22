@@ -98,6 +98,72 @@ internal static class InfoCommands
     };
 
     // 今の MRP の設定: 役職以外の設定と、出る役職 (出現率 > 0) だけ
+    // 今の設定で配役を何度も試し、役職ごとの出る割合と 1 回分の例を出す。人数を省くと今の部屋の人数。
+    // 本番と同じ配り方を手元で回すだけ (乱数は毎回変わる)。数千回を 1 フレームで回すのでロビーでだけ
+    public static string Sim(string args)
+    {
+        if (ShipStatus.Instance) return new Text("InfoCommands.SimLobbyOnly");
+        var opts = GameOptionsManager.Instance?.CurrentGameOptions;
+        if (opts == null) return new Text("InfoCommands.SimLobbyOnly");
+        var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int players = a.Length > 0 && int.TryParse(a[0], out int p) ? p : TeamSizes.PlayerCount();
+        int runs = a.Length > 1 && int.TryParse(a[1], out int r) ? r : 1000;
+        players = Math.Clamp(players, 4, Crowded.MaxPlayers);
+        runs = Math.Clamp(runs, 100, 10000);
+        // インポスターの数は本番の数え始めと同じ: 人数の帯があればその幅、無ければ「最少」〜本編の設定の数
+        int cap = ImpostorCap.CapAt(players);
+        int max, min;
+        if (TeamSizes.For(players) is { } band) { max = band.MaxImpostors; min = band.MinImpostors; }
+        else { max = opts.NumImpostors; min = ImpostorRange.Min.Value; }
+        max = Math.Clamp(max, 1, cap);
+        min = Math.Clamp(min, 1, max);
+        var res = AssignPlan.Run(players, min, max, runs, Environment.TickCount);
+
+        var sb = new StringBuilder();
+        string imps = min == max ? min.ToString() : $"{min}〜{max}";
+        sb.Append(new Text("InfoCommands.SimHead").With("players", players).With("runs", runs).With("impostors", imps).ToString());
+        var order = new int[res.RoleRuns.Length];
+        for (int i = 0; i < order.Length; i++) order[i] = i;
+        Array.Sort(order, (x, y) => res.RoleRuns[y].CompareTo(res.RoleRuns[x]));
+        foreach (int i in order)
+        {
+            if (res.RoleRuns[i] == 0) break;
+            sb.Append('\n').Append(Registry.Roles[i].ColoredName).Append(' ').Append(Percent(res.RoleRuns[i], runs));
+            // 1 試合に 2 人以上出ることがある役職は、出た試合での平均の人数も
+            if (res.RoleHits[i] > res.RoleRuns[i])
+                sb.Append(' ').Append(new Text("InfoCommands.SimAvg").With("n", ((double)res.RoleHits[i] / res.RoleRuns[i]).ToString("0.0")).ToString());
+        }
+        var addons = new StringBuilder();
+        for (int i = 0; i < res.AddonHits.Length; i++)
+        {
+            if (res.AddonHits[i] == 0) continue;
+            if (addons.Length > 0) addons.Append(", ");
+            addons.Append(Registry.Addons[i].ColoredName).Append(' ').Append(((double)res.AddonHits[i] / runs).ToString("0.0"));
+        }
+        if (addons.Length > 0) sb.Append('\n').Append(new Text("InfoCommands.SimAddons").ToString()).Append(": ").Append(addons);
+        sb.Append('\n').Append(new Text("InfoCommands.SimTotals")
+            .With("min", res.NeutralMin).With("max", res.NeutralMax).With("roles", ((double)res.WithRole / runs).ToString("0.0")).ToString());
+
+        // 例 = 最後の 1 回 (番号は試走の中だけの席の番号で、部屋の人とは関係ない)
+        sb.Append('\n').Append(new Text("InfoCommands.SimExample").ToString());
+        for (int i = 0; i < players; i++)
+        {
+            var pick = res.Example?.Find(x => x.PlayerId == i);
+            string role = pick != null && pick.RoleIndex >= 0 ? Registry.Roles[pick.RoleIndex].ColoredName
+                : TeamName(res.ExampleImpostor[i] ? Team.Impostor : Team.Crew);
+            sb.Append(i == 0 ? " " : " / ").Append(i + 1).Append(": ").Append(role);
+            if (pick != null)
+                foreach (int ad in pick.Addons) sb.Append(" +").Append(Registry.Addons[ad].ColoredName);
+        }
+        return sb.ToString();
+    }
+
+    private static string Percent(int n, int of)
+    {
+        double v = 100.0 * n / of;
+        return (v >= 10 || v == 0 ? v.ToString("0") : v.ToString("0.#")) + "%";
+    }
+
     public static string Now(string _)
     {
         var sb = new StringBuilder();

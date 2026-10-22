@@ -358,6 +358,8 @@ Command.myrole: 自分の役職と説明 (試合中)
 Command.roles: 役職の一覧 / その役職の説明
 Command.roles.Usage: [役職]
 Command.now: 今の MRP の設定
+Command.sim: 今の設定で配役を試す (役職ごとの出る割合と 1 回分の例)
+Command.sim.Usage: [人数] [回数]
 Command.rename: 自分の名前を変える (ロビー)
 Command.rename.Usage: <名前>
 Command.color: 自分の色を変える (ロビー)。#RRGGBB で好きな色・2 色でグラデーション (向き 0=横 1=縦 2,3=斜め・ぼかし 0=くっきり〜100・境目の位置 0〜100)
@@ -461,6 +463,12 @@ InfoCommands.DetailsHint: (/r <役職名・アドオン名> で説明)
 InfoCommands.Crew: クルー
 InfoCommands.Impostor: インポスター
 InfoCommands.Neutral: 第三陣営
+InfoCommands.SimLobbyOnly: 配役の試走はロビーでだけ使えます
+InfoCommands.SimHead: {players} 人・{runs} 回の試走 (インポスター {impostors} 人)
+InfoCommands.SimAvg: (出た試合で平均 {n} 人)
+InfoCommands.SimAddons: アドオン (1 試合の平均人数)
+InfoCommands.SimTotals: 第三陣営 {min}〜{max} 人・役職の付く人 平均 {roles} 人
+InfoCommands.SimExample: 例:
 
 # ── JoinSettings ──
 JoinSettings.Title: 入室

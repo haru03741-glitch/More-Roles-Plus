@@ -358,6 +358,8 @@ Command.myrole: Your role and what it does (in game)
 Command.roles: List roles / describe one
 Command.roles.Usage: [role]
 Command.now: Current More Roles Plus settings
+Command.sim: Try the role assignment with the current settings (how often each role appears and one example)
+Command.sim.Usage: [players] [runs]
 Command.rename: Change your name (lobby)
 Command.rename.Usage: <name>
 Command.color: Change your color (lobby). #RRGGBB for any color, two colors for a gradient (direction 0=horizontal 1=vertical 2,3=diagonal, blur 0=sharp to 100, edge position 0-100)
@@ -461,6 +463,12 @@ InfoCommands.DetailsHint: (/r <role or addon> for details)
 InfoCommands.Crew: Crew
 InfoCommands.Impostor: Impostor
 InfoCommands.Neutral: Neutral
+InfoCommands.SimLobbyOnly: The assignment trial is only available in the lobby
+InfoCommands.SimHead: Trial of {runs} games with {players} players ({impostors} impostors)
+InfoCommands.SimAvg: ({n} on average when it appears)
+InfoCommands.SimAddons: Addons (average per game)
+InfoCommands.SimTotals: Neutrals {min}-{max} / players with a role {roles} on average
+InfoCommands.SimExample: Example:
 
 # ── JoinSettings ──
 JoinSettings.Title: Joining
