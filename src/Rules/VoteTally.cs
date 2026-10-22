@@ -106,6 +106,9 @@ internal static class VoteTally
             rows.Add(new MeetingHud.VoterState { VoterId = id, VotedForId = pva.VotedForId.Value });
         }
         foreach (var v in after) rows.Add(new MeetingHud.VoterState { VoterId = v.Voter, VotedForId = v.Target });
+        // 票を全部消された人も、本編と同じく「入れなかった人」の 1 行で残す
+        foreach (var v in after) voters.Remove(v.Voter);
+        foreach (byte id in voters) rows.Add(new MeetingHud.VoterState { VoterId = id, VotedForId = 254 });
         // 公式サーバーは 1 通が約 1000 バイトを超えると切る (1 行 2 バイト)。多すぎる時は同じ人の同じ先への行を 1 行にまとめる
         // (追放と同票は数え直した票で決めたまま・結果の画面の印の数だけ減る)
         if (rows.Count > MaxRows)

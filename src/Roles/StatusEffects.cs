@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Text;
-using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
@@ -17,7 +16,7 @@ public static class StatusEffects
         public string Key;
         public Text Label;
         public string Color;
-        public float End;   // Time.time で切れる時刻 (Until の時は使わない)
+        public long End;    // 切れる時刻 (Environment.TickCount64・Until の時は使わない)
         public Text Until;  // 条件で切れる効果の残りの書き方 (HasUntil の時だけ)
         public bool HasUntil;
         public int Shown;   // 最後に書いた残りの秒
@@ -25,13 +24,13 @@ public static class StatusEffects
 
     private static readonly List<Entry> _list = new();
     private static int _shipGen = -1;
-    private static float _next;
+    private static long _next;
 
     public static bool Any => _list.Count != 0;
 
     // 秒で切れる効果を出す (同じ key は置き換え)
     public static void ShowFor(string key, Text label, string color, float seconds) =>
-        Put(new Entry { Key = key, Label = label, Color = color, End = Time.time + seconds });
+        Put(new Entry { Key = key, Label = label, Color = color, End = System.Environment.TickCount64 + (long)(seconds * 1000f) });
 
     // 条件で切れる効果を出す (Hide で消す)。until = 残りの代わりに出す文 (例「最初の会議まで」)
     public static void ShowUntil(string key, Text label, string color, Text until) =>
@@ -51,15 +50,23 @@ public static class StatusEffects
         Redraw();
     }
 
-    private static int Left(Entry e) => e.HasUntil ? -1 : (int)System.Math.Ceiling(System.Math.Max(e.End - Time.time, 0f));
+    private static int Left(Entry e) =>
+        e.HasUntil ? -1 : (int)System.Math.Ceiling(System.Math.Max(e.End - System.Environment.TickCount64, 0L) / 1000.0);
 
-    // 毎フレーム。効果が無ければ数の比較だけ、あれば 0.25 秒ごとに残りの秒を見る
+    // 毎フレーム。効果が無ければ数の比較だけ、あれば 0.25 秒ごとに残りの秒を見る (ゲームの時計は読まない)。
+    // ここで投げると同じ Update の後ろの処理まで止まるので囲む
     internal static void Tick()
     {
         if (_list.Count == 0) return;
-        float now = Time.time;
+        long now = System.Environment.TickCount64;
         if (now < _next) return;
-        _next = now + 0.25f;
+        _next = now + 250;
+        try { Step(); }
+        catch (System.Exception ex) { Plugin.Logger.LogError($"status effects: {ex}"); }
+    }
+
+    private static void Step()
+    {
         if (SyncShip()) return;
         bool dirty = false;
         for (int i = _list.Count - 1; i >= 0; i--)
@@ -76,6 +83,7 @@ public static class StatusEffects
     // 船が替わったら (試合の終わり・フリープレイを抜けた) 全部消す。消したら true
     private static bool SyncShip()
     {
+        _ = Terrain.GameClock.Ship; // 船ができた直後 (盾は船の Start で付く) にも世代番号を今の船に揃えてから読む
         int gen = Terrain.GameClock.ShipGen;
         if (gen == _shipGen) return false;
         _shipGen = gen;

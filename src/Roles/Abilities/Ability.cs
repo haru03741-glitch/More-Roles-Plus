@@ -36,7 +36,8 @@ public sealed class Ability
     // 効果の長さ (秒・null = 無し)。使ってから効果の間はボタンに残りを出し、切れてから待ち時間を始める (会議で切れる)
     public Func<float> Duration { get; init; }
 
-    // 効果が切れた時 (使った人の端末で)
+    // 効果が切れた時 (使った人の端末で)。会議・死亡でも呼ぶが、役職が外れる・試合が終わる時は呼ばないので、
+    // 効果で変えた物は役職の寿命 (Lifespan) にも片付けを付けておく
     public Action OnEnd { get; init; }
 
     // 使える回数 (null か 0 以下 = 何回でも)

@@ -50,7 +50,8 @@ public static class PlayerPicker
     {
         var cb = _onPick;
         Close();
-        cb?.Invoke(id);
+        try { cb?.Invoke(id); }
+        catch (Exception e) { Plugin.Logger.LogError($"player picker: {e}"); }
     }
 
     // 本編の Begin の後 (ページ送りより先)。本編の札を消して、選べる人の札を本編と同じ並びで作り直す

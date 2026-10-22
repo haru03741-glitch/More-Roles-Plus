@@ -204,7 +204,11 @@ internal sealed class ModButton
             var b = All[i];
             if (b._effect <= 0f) continue;
             b._effect -= _dt;
-            if (b._effect <= 0f) b.EndEffect();
+            if (b._effect <= 0f)
+            {
+                b.EndEffect();
+                if (i < All.Count && All[i] != b) i--; // 効果の終わりの処理で寿命が切れて一覧から外れた
+            }
             else if (redraw && b._button) b.DrawEffect();
         }
         bool? canMove = null; // 冷めていないボタンがある時だけ 1 回読む

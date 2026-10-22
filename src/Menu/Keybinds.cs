@@ -76,17 +76,26 @@ internal static class Keybinds
 
     internal static KeyCode Key(Slot slot) => Keys[(int)slot];
 
-    // 毎フレーム。割り当ての控えを 2 秒ごとに読み直し、能力のキーでボタンを押す
+    // 毎フレーム。割り当ての控えを 2 秒ごとに読み直し、能力のキーでボタンを押す。
+    // ここで投げると同じ Update の後ろの処理まで止まるので囲む
     internal static void Tick()
+    {
+        try { Step(); }
+        catch (Exception e) { Plugin.Logger.LogError($"keybinds: {e}"); }
+    }
+
+    private static void Step()
     {
         if (++_frame >= RefreshFrames)
         {
+            // 読み直しに失敗したら次は 30 秒後に (同じ失敗のログを 2 秒ごとに出さない)
             _frame = 0;
             try { Refresh(); }
-            catch (Exception e) { Plugin.Logger.LogError($"keybinds: {e}"); _frame = int.MinValue; }
+            catch (Exception e) { Plugin.Logger.LogError($"keybinds: {e}"); _frame = -RefreshFrames * 14; }
         }
-        if (!Roles.ModButton.HudShown || Roles.Abilities.Local.Count == 0) return;
-        for (int i = 0; i < 3; i++)
+        int n = Math.Min(3, Roles.Abilities.Local.Count); // 能力の数だけ読む
+        if (n == 0 || !Roles.ModButton.HudShown) return;
+        for (int i = 0; i < n; i++)
         {
             if (!Down((Slot)i)) continue;
             // 上に画面が出ている時 (チャットに打っている・作業・会議など) は押さない。周りの画面を見るのは押された時だけ
@@ -95,15 +104,24 @@ internal static class Keybinds
         }
     }
 
+    private static bool _warned;
+
     private static void Refresh()
     {
-        if (!_manager || !ReInput.isReady) return;
+        if (!_manager)
+        {
+            // 入力の仕組みがプラグインより先に起きていた (本編の割り当ての画面に出ない・キーは既定のまま効く)
+            if (!_warned) { _warned = true; Plugin.Logger.LogWarning("keybinds: not registered (input manager woke before the plugin)"); }
+            return;
+        }
+        if (!ReInput.isReady) return;
         var player = ReInput.players.GetPlayer(0);
         for (int i = 0; i < Defs.Length; i++)
         {
             if (ActionIds[i] < 0) continue;
             var map = player.controllers.maps.GetFirstElementMapWithAction(ControllerType.Keyboard, ActionIds[i], false);
-            Keys[i] = map != null ? (KeyCode)(int)map.keyboardKeyCode : KeyCode.None;
+            // 前に保存した割り当て (MRP の行が無い) を本編が読み込んだ時は既定のキーで
+            Keys[i] = map != null ? (KeyCode)(int)map.keyboardKeyCode : (KeyCode)(int)Defs[i].Key;
             // 画面の名前は言語の文から (起きた時はまだ言語の文が読めないので後から書く)
             string name = new Text(Defs[i].Text).ToString(); // 本編の行と同じく 1 行
             if (name == Names[i]) continue;
