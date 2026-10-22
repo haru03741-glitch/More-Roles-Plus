@@ -45,6 +45,9 @@ public sealed class Architect : RoleBase
     private const float PipeStep = 0.0625f;
     private const int PipeDirs = 16;
     private const float PipeInto = 0.06f;     // 歩ける所の地図は壁を太らせてあるので、面の点を壁の線の側へ寄せる
+    // 設計台の当たり判定のまわり: 人の当たり判定の半径 (+少し)・脇を通れる隙間 (クルーの直径 ≈ 0.45 + 余白)・隙間を調べる間隔
+    private const float BodyClear = 0.25f, PassGap = 0.5f, GapStep = 0.0625f;
+    private const int BlockMask = (1 << 9) | (1 << 12); // 船の層・家具の層
 
     // 置いた (持ち主 → 全員)。受け手は送り主が構築士か・数と間隔の決まりを自分で確かめる
     private static readonly RemoteCall<Vector2> DeskCall = new("Architect.Desk", Route.Anyone,
@@ -72,7 +75,7 @@ public sealed class Architect : RoleBase
     private readonly Queue<(Vector2 At, Vector2 Dir, float Len)> _queue = new();
     private float _nextBuild;
     private int _built, _refused, _pipes;
-    private string _lastPipe = "-";
+    private string _lastPipe = "-", _lastDesk = "-";
 
     internal int DeskTotal => _desks.Count;
     internal float Gauge => _gauge;
@@ -127,6 +130,9 @@ public sealed class Architect : RoleBase
         Vector2 me = lp.GetTruePosition();
         float x = me.x, y = me.y + DeskBack;
         if (Crew.PortalMaker.NearFixture(FxMath.V2(x, y)) || (SolidMap.Valid && SolidMap.Solid(me.x, me.y))) return false;
+        string why = Blocked(x, y);
+        _lastDesk = why ?? "placed";
+        if (why != null) { Plugin.Logger.LogInfo($"Architect: desk refused {why}"); return false; }
         if (!TryAdd(x, y)) return false;
         DeskCall.Send(FxMath.V2(x, y));
         return true;
@@ -143,7 +149,68 @@ public sealed class Architect : RoleBase
         var h = ArchitectDeskArt.Place(x, y);
         if (h == null) return false;
         _desks.Add(h);
+        PushOut(x, y);
         return true;
+    }
+
+    // 置く人の端末だけ: 脚の下の四角が床の上で、人が立っておらず、脇を通れるか (理由・よければ null)。
+    // 人の位置は端末ごとに違うので受け手は見ない (受け手は掛かっていた自分の体を出すだけ)
+    private static string Blocked(float x, float y)
+    {
+        const float hw = ArchitectDeskArt.FootHalfW, f = ArchitectDeskArt.FootFront, bk = ArchitectDeskArt.FootBack;
+        if (!SolidMap.Ensure() || !SolidMap.Valid) return "no map";
+        for (int i = -1; i <= 1; i++)
+            for (int j = 0; j <= 2; j++)
+                if (!TrickWall.FreeForPushWall(FxMath.V2(x + hw * i, y + f + (bk - f) * 0.5f * j))) return "not on floor";
+        var all = PlayerControl.AllPlayerControls;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var pc = all[i];
+            if (!pc || pc.Data == null || pc.Data.IsDead) continue;
+            Vector2 q = pc.GetTruePosition();
+            if (MathF.Abs(q.x - x) < hw + BodyClear && q.y > y + f - BodyClear && q.y < y + bk + BodyClear) return "someone in the way";
+        }
+        // 左右の両方、または上下の両方が狭いと通り道を塞ぐ
+        float mid = y + (f + bk) * 0.5f;
+        if (Gap(x - hw, mid, -1f, 0f) < PassGap && Gap(x + hw, mid, 1f, 0f) < PassGap) return "blocks the way";
+        if (Gap(x, y + bk, 0f, 1f) < PassGap && Gap(x, y + f, 0f, -1f) < PassGap) return "blocks the way";
+        return null;
+    }
+
+    // (x, y) から (dx, dy) の向きに、壁か物に当たる手前まで空いている床の長さ (PassGap まで空いていれば PassGap)
+    private static float Gap(float x, float y, float dx, float dy)
+    {
+        for (float d = GapStep; d <= PassGap + 1e-4f; d += GapStep)
+        {
+            float px = x + dx * d, py = y + dy * d;
+            if (SolidMap.Solid(px, py)) return d - GapStep;
+            foreach (var col in Physics2D.OverlapCircleAll(FxMath.V2(px, py), 0.02f, BlockMask))
+                if (col && !col.isTrigger) return d - GapStep;
+        }
+        return PassGap;
+    }
+
+    // 置かれた設計台に自分の体が掛かっていたら (届くまでの間に歩いて入った)、出る距離のいちばん短い辺の外へ出す。
+    // 動かすのは自分の体だけ。はしご・昇降機・ジップラインの途中と会議中は本編が体を動かしているので触らない
+    private static void PushOut(float x, float y)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || lp.Data == null || lp.Data.IsDead || lp.inVent || lp.inMovingPlat || lp.onLadder || MeetingHud.Instance) return;
+        Vector2 me = lp.GetTruePosition();
+        float l = x - ArchitectDeskArt.FootHalfW - BodyClear, r = x + ArchitectDeskArt.FootHalfW + BodyClear;
+        float b = y + ArchitectDeskArt.FootFront - BodyClear, t = y + ArchitectDeskArt.FootBack + BodyClear;
+        if (me.x <= l || me.x >= r || me.y <= b || me.y >= t) return;
+        float tx = l - 0.05f, ty = me.y, best = me.x - l;
+        if (r - me.x < best) { best = r - me.x; tx = r + 0.05f; }
+        if (me.y - b < best) { best = me.y - b; tx = me.x; ty = b - 0.05f; }
+        if (t - me.y < best) { tx = me.x; ty = t + 0.05f; }
+        if (SolidMap.Ensure() && SolidMap.Valid && SolidMap.Solid(tx, ty))
+        {
+            if (!SolidMap.NearestFloor(tx, ty, 1.5f, 0.2f, out var floor)) return;
+            tx = floor.x; ty = floor.y;
+        }
+        var root = lp.transform.position;
+        Teleport.Self(FxMath.V2(tx - (me.x - root.x), ty - (me.y - root.y)));
     }
 
     // 自分の足元から使える設計台 (いちばん近い 1 つ)。無ければ null
@@ -339,7 +406,7 @@ public sealed class Architect : RoleBase
 
     internal string Describe()
     {
-        var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} plan={ArchitectPlan.Describe()}");
+        var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} plan={ArchitectPlan.Describe()}");
         foreach (var d in _desks) sb.Append($" ({d.X:0.00},{d.Y:0.00})");
         return sb.ToString();
     }
@@ -351,6 +418,12 @@ public sealed class Architect : RoleBase
         DeskCall.Send(FxMath.V2(x, y));
         return true;
     }
+
+    // テスト用: 能力ボタンと同じ道で自分の足元に置く (待ち時間と回数は使わない)
+    internal bool HereForTest() => PlaceHere();
+
+    // テスト用: 床の点 (x, y) に置けるか (理由・よければ null)
+    internal static string CheckForTest(float x, float y) => Blocked(x, y);
 
     // テスト用: 自分の足元を設計台 i の手前へ移す
     internal bool GoForTest(int i)

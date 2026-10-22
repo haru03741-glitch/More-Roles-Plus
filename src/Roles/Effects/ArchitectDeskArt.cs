@@ -25,6 +25,10 @@ internal static class ArchitectDeskArt
     private const float Outline = 0.032f;
     private const int DeskLayer = 0;          // 仕掛け壁の絵と同じ層 (人と z で前後し、視界の外は家具と同じく暗く見える)
     private const float BodyLift = 0.3636f;   // 人の奥行きは体の y/1000 で、体は足元よりこれだけ上
+    private const int ShipLayer = 9;
+    // 当たり判定 (床の点からの四角)。人だけを止める (視界は遮らない・壁として削られない・歩ける所の地図に描かない)。
+    // 手前は脚の下・奥は板の下の縁まで (脚の下で止めると奥から来た人が板に隠れて足しか見えない)
+    internal const float FootHalfW = 0.52f, FootFront = -0.06f, FootBack = 0.42f;
 
     private static readonly float[] OutRgb = { 0.07f, 0.06f, 0.10f };
     private static readonly float[] Steel = { 0.36f, 0.39f, 0.45f };
@@ -54,7 +58,15 @@ internal static class ArchitectDeskArt
         if (_bake is { IsCompletedSuccessfully: true })
             for (int i = 3; i < _bake.Result.Length; i += 4) if (_bake.Result[i] > 128) solid++;
         Vector3 p = t.position, s = t.lossyScale;
-        return $"en={sr.enabled} active={Live[0].Root.activeInHierarchy} layer={Live[0].Root.layer} pos=({p.x:0.000},{p.y:0.000},{p.z:0.00000}) scale=({s.x:0.00},{s.y:0.00},{s.z:0.00}) solid={solid}";
+        string col = "-";
+        var poly = Live[0].Root.GetComponentInChildren<PolygonCollider2D>();
+        if (poly)
+        {
+            var pts = poly.points;
+            Vector3 a = poly.transform.TransformPoint(pts[0]), b = poly.transform.TransformPoint(pts[2]);
+            col = $"({a.x:0.00},{a.y:0.00})-({b.x:0.00},{b.y:0.00}) layer={poly.gameObject.layer} en={poly.enabled}";
+        }
+        return $"en={sr.enabled} active={Live[0].Root.activeInHierarchy} layer={Live[0].Root.layer} pos=({p.x:0.000},{p.y:0.000},{p.z:0.00000}) scale=({s.x:0.00},{s.y:0.00},{s.z:0.00}) solid={solid} col={col}";
     }
 
     internal static void Prewarm() => _bake ??= Task.Run(Bake);
@@ -69,6 +81,15 @@ internal static class ArchitectDeskArt
         root.transform.position = FxMath.V3(x, y, (y + BodyLift) / 1000f); // 船の根は z が 0 でない (Skeld は 8) ので世界の座標で置く
         var sr = root.AddComponent<SpriteRenderer>();
         sr.sprite = sp;
+        // 入れ物は船の倍率を打ち消してあるので、局所の点は世界の差のまま
+        var block = new GameObject(SolidMap.DeskBlockName) { layer = ShipLayer };
+        block.transform.SetParent(root.transform, false);
+        var poly = block.AddComponent<PolygonCollider2D>();
+        poly.points = new[]
+        {
+            FxMath.V2(-FootHalfW, FootFront), FxMath.V2(FootHalfW, FootFront),
+            FxMath.V2(FootHalfW, FootBack), FxMath.V2(-FootHalfW, FootBack),
+        };
         var h = new Handle { X = x, Y = y, Root = root };
         Live.Add(h);
         return h;

@@ -45,13 +45,23 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("architect", "[x y | go <番号> | open | close | draw x1 y1 x2 y2 ... | pipe x y] 自分の構築士の状態 / (x, y) に設計台を置く (待ち時間は使わない) / 設計台の手前へ移る / 設計図を開く・閉じる / 点の列をなぞった扱いにする (ゲージを使い壁を立てる) / (x, y) を軽く押した扱いにする (近くの壁の配管を裂く)", (args, reply) =>
+        TestBridge.Register("architect", "[x y | here | check x y | go <番号> | open | close | draw x1 y1 x2 y2 ... | pipe x y] 自分の構築士の状態 / (x, y) に設計台を置く (待ち時間は使わない) / 足元に能力ボタンと同じ決まりで置く / 床の点 (x, y) に置けるか / 設計台の手前へ移る / 設計図を開く・閉じる / 点の列をなぞった扱いにする (ゲージを使い壁を立てる) / (x, y) を軽く押した扱いにする (近くの壁の配管を裂く)", (args, reply) =>
         {
             if (RoleState.Local is not Roles.Impostor.Architect ar) { reply("ERR architect not Architect"); return; }
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (p.Length >= 2 && p[0] == "go" && int.TryParse(p[1], out int gi))
             {
                 if (!ar.GoForTest(gi)) { reply($"ERR architect go {ar.Describe()}"); return; }
+            }
+            else if (p.Length >= 3 && p[0] == "check")
+            {
+                string why = Roles.Impostor.Architect.CheckForTest(float.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture), float.Parse(p[2], System.Globalization.CultureInfo.InvariantCulture));
+                reply($"OK architect check {why ?? "ok"}");
+                return;
+            }
+            else if (p.Length >= 1 && p[0] == "here")
+            {
+                if (!ar.HereForTest()) { reply($"ERR architect here {ar.Describe()}"); return; }
             }
             else if (p.Length >= 1 && p[0] == "open")
             {

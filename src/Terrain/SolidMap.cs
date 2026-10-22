@@ -918,8 +918,12 @@ internal static class SolidMap
         var go = c.gameObject;
         if (go.layer != ShipLayer) return false;
         string name = go.name;
-        return name != WallBody.CapName && name != WallBody.MouthName && name != HullEdgeName && name != HeightLevels.LedgeName && name != "MrpRubbleBlock";
+        return name != WallBody.CapName && name != WallBody.MouthName && name != HullEdgeName && name != HeightLevels.LedgeName && !BlocksOnly(name);
     }
+
+    // 人だけを止める置き物 (瓦礫の塊・設計台) の当たり判定。壁の線として地図に描かない (近くを壊した時の塗り足しで壁にしない)
+    internal const string DeskBlockName = "MrpDeskBlock";
+    internal static bool BlocksOnly(string name) => name == RubbleBlocks.Name || name == DeskBlockName;
 
     // 床の上の点。確か = 通気口とダミーの出現位置 (床に置かれる物)。扉は扉の板の両脇 (通り道の両側) の点を後から足し、
     // それだけが新しく塗った塊の数を数えておく (壁の中に落ちていないかを地図の書き出しで確かめる用)。
@@ -1266,7 +1270,7 @@ internal static class SolidMap
         var list = new List<Vector2>();
         foreach (var col in Physics2D.OverlapCircleAll(c, r, 1 << ShipLayer))
         {
-            if (!col || !col.enabled || col.isTrigger || col.gameObject.name == "MrpRubbleBlock") continue;
+            if (!col || !col.enabled || col.isTrigger || BlocksOnly(col.gameObject.name)) continue;
             Segments(col, list);
         }
         return list;
