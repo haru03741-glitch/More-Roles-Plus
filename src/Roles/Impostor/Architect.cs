@@ -880,6 +880,7 @@ public sealed class Architect : RoleBase
     {
         var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} picked={_picked} user={(_user == NoUser ? "-" : _user.ToString())}@{_userDesk} lent={_lent} drone={(_drone == null ? "-" : _drone.Describe())} plan={ArchitectPlan.Describe()}");
         foreach (var d in _desks) sb.Append($" ({d.X:0.00},{d.Y:0.00}{(d.Broken ? " broken" : d.Hits > 0 ? $" hits={d.Hits}" : "")})");
+        sb.Append(" rubble=").Append(RubbleBlocks.DescribeKept());
         return sb.ToString();
     }
 

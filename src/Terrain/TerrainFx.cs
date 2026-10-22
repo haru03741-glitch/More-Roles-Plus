@@ -742,7 +742,7 @@ internal static class TerrainFx
                 {
                     // 山の上に乗った物ほど手前 (上に積もって見える)
                     if (it.Rest > 0f) { it.Z -= it.Rest * 0.02f * it.ZS; it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z); }
-                    if (!RubbleBlocks.KeepPiece(it.Block, it.Tr, it.Kind == Kind.Piece))
+                    if (!RubbleBlocks.KeepPiece(it.Block, it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece))
                         RubbleBake.Add(it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece); // 止まった瓦礫は床の板へ焼く
                     ShadowPatch.MarkSettled(it.Px, it.Py + it.Rest); // 影の中の焼いた絵にも止まった瓦礫を描き込む
                     if (StrayProbe != null) { Settled++; if (StrayProbe(it.Px, it.Py)) Stray++; }

@@ -53,6 +53,7 @@ internal static class RubbleBake
         public SpriteRenderer Sr;
         public float Z;
         public bool OwnSprite; // 割れた塊の絵は塊ごとに作ったもの (消す時に一緒に消す)
+        public Action<GameObject> OnPlate; // 1 つだけで焼き、できた板を渡す (拾える瓦礫。板ごと消せるように他と混ぜない)
     }
 
     private static readonly List<(Texture2D Tex, Sprite Sp)> Sheets = new();
@@ -88,9 +89,9 @@ internal static class RubbleBake
 #endif
 
     // TerrainFx から: 動きが止まった瓦礫
-    public static void Add(Transform tr, SpriteRenderer sr, float z, bool ownSprite)
+    public static void Add(Transform tr, SpriteRenderer sr, float z, bool ownSprite, Action<GameObject> onPlate = null)
     {
-        Queue.Add(new Pending { Go = tr.gameObject, Sr = sr, Z = z, OwnSprite = ownSprite });
+        Queue.Add(new Pending { Go = tr.gameObject, Sr = sr, Z = z, OwnSprite = ownSprite, OnPlate = onPlate });
         _lastAddMs = Environment.TickCount64;
     }
 
@@ -116,6 +117,7 @@ internal static class RubbleBake
         public int[] Layers; // 瓦礫ごとの焼く前の層 (描く間だけ焼く層へ移す)
         public float X0 = float.MaxValue, Y0 = float.MaxValue, X1 = float.MinValue, Y1 = float.MinValue;
         public readonly List<Pending> Items = new();
+        public Action<GameObject> OnPlate;
     }
 
     // 溜まっている瓦礫を焼く (budget = 1 フレームの予算まで。残りは列に戻して次に回す)
@@ -131,13 +133,15 @@ internal static class RubbleBake
             return "no camera";
         }
         var groups = new Dictionary<(int, int, int), Group>();
+        int solo = 0;
         foreach (var p in Queue)
         {
             if (!p.Go) continue;
             var b = p.Sr.bounds;
             Vector3 lo = b.min, hi = b.max;
-            var key = (ZKey(p.Z), (int)MathF.Floor((lo.x + hi.x) * 0.5f / Cell), (int)MathF.Floor((lo.y + hi.y) * 0.5f / Cell));
-            if (!groups.TryGetValue(key, out var g)) groups[key] = g = new Group { Z = p.Z };
+            var key = p.OnPlate != null ? (ZKey(p.Z), int.MinValue, ++solo)
+                : (ZKey(p.Z), (int)MathF.Floor((lo.x + hi.x) * 0.5f / Cell), (int)MathF.Floor((lo.y + hi.y) * 0.5f / Cell));
+            if (!groups.TryGetValue(key, out var g)) groups[key] = g = new Group { Z = p.Z, OnPlate = p.OnPlate };
             g.Items.Add(p);
             g.X0 = Math.Min(g.X0, lo.x); g.Y0 = Math.Min(g.Y0, lo.y);
             g.X1 = Math.Max(g.X1, hi.x); g.Y1 = Math.Max(g.Y1, hi.y);
@@ -240,7 +244,7 @@ internal static class RubbleBake
     }
 
     // 焼いた絵 (の x, y, w, h の四角) を床の板として置く。ownTex = この板が絵を持つ (片付けで 1 回だけ消す)
-    private static void Place(Texture2D tex, int x, int y, int w, int h, float cx, float cy, float z, bool ownTex)
+    private static GameObject Place(Texture2D tex, int x, int y, int w, int h, float cx, float cy, float z, bool ownTex)
     {
         var sp = Sprite.Create(tex, new Rect(x, y, w, h), new Vector2(0.5f, 0.5f), Ppu, 0, SpriteMeshType.FullRect);
         sp.name = "MrpRubble";
@@ -254,6 +258,7 @@ internal static class RubbleBake
         sr.sprite = sp;
         Sheets.Add((ownTex ? tex : null, sp));
         Plates.Add(go);
+        return go;
     }
 
 #if ANDROID
@@ -420,8 +425,9 @@ internal static class RubbleBake
             if (!Alive(s.G)) continue;
             try
             {
-                Place(tex, s.X, s.Y, s.W, s.H, s.Cx, s.Cy, s.G.Z, own);
+                var plate = Place(tex, s.X, s.Y, s.W, s.H, s.Cx, s.Cy, s.G.Z, own);
                 own = false;
+                s.G.OnPlate?.Invoke(plate);
                 BakedCount += DestroyItems(s.G);
             }
             catch (Exception e) { Plugin.Logger.LogWarning($"rubble bake {s.W}x{s.H} failed: {e.Message}"); }
@@ -454,8 +460,9 @@ internal static class RubbleBake
             // 読み戻し (GPU を待って 1 枚 3〜4ms) をせず、GPU の中で描き先から写す。先に空の絵を送って CPU 側の写しを捨てておく (後で Apply すると写した絵が空で上書きされる)
             tex.Apply(false, true);
             Graphics.CopyTexture(rt, 0, 0, tex, 0, 0);
-            Place(tex, 0, 0, w, h, cx, cy, g.Z, ownTex: true);
+            var plate = Place(tex, 0, 0, w, h, cx, cy, g.Z, ownTex: true);
             SheetBytes += (long)w * h * 4;
+            g.OnPlate?.Invoke(plate);
             return true;
         }
         catch (Exception e)

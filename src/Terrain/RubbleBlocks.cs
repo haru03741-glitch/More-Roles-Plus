@@ -153,14 +153,34 @@ internal static class RubbleBlocks
         return placed;
     }
 
-    // 全員: 塊の絵が止まった。拾える試合なら焼かずに持っておく (true)。もう拾われていれば消す
-    internal static bool KeepPiece(Block b, Transform piece, bool ownSprite)
+    // 全員: 塊の絵が止まった。拾える試合なら他の瓦礫と混ぜずに 1 つだけで焼き、その板を持っておく (true)。もう拾われていれば消す。
+    // 生の塊のままにしないのは、割れた塊の絵は元の場所の「その画素を最後に抜いた破壊」を毎フレーム見て描くので、
+    // 後の破壊が元の場所を抜き直すと塊の大半が消える (当たり判定だけが残る) ため。焼くまでの間は生の塊を見せる
+    internal static bool KeepPiece(Block b, Transform piece, SpriteRenderer sr, float z, bool ownSprite)
     {
         if (b == null || (!b.Taken && !Pickable())) return false;
         b.Piece = piece;
         b.OwnSprite = ownSprite;
         if (b.Taken) Remove(b);
+        else RubbleBake.Add(piece, sr, z, ownSprite, plate => OnBaked(b, plate));
         return true;
+    }
+
+    // 焼いた板が届いた (生の塊は RubbleBake が消す)。板の絵は焼いた絵の持ち物なので、拾った時は GameObject だけ消す
+    private static void OnBaked(Block b, GameObject plate)
+    {
+        if (b.Taken) { UnityEngine.Object.Destroy(plate); return; }
+        b.Piece = plate.transform;
+        b.OwnSprite = false;
+    }
+
+    // テスト用: 当たり判定のある瓦礫の数と、拾える塊の位置 (baked = 板に焼いた後)
+    internal static string DescribeKept()
+    {
+        var sb = new System.Text.StringBuilder(Blocks.Count.ToString());
+        foreach (var b in Blocks)
+            if (!b.Taken && b.Piece) sb.Append($" ({b.X:0.00},{b.Y:0.00}{(b.Piece.name == "MrpRubble" ? " baked" : "")})");
+        return sb.ToString();
     }
 
     // 拾える瓦礫で、(x, y) からいちばん近い物 (止まった絵があり、まだ拾われていない・r 以内)。無ければ null
