@@ -560,7 +560,8 @@ public sealed class Architect : RoleBase
             if (IsLocal && ArchitectPlan.Owner == this) ArchitectPlan.Close(); // 閉じた知らせは SyncPlan が配る
             _openDesk = -1;
         }
-        if (_userDesk == desk) EndUse();
+        // 借りた人は設計図を閉じるだけ。離し終えた線の壁は立て終えてから BorrowTick がやめたと配る (それまで壁の許可は貸したまま)
+        if (_userDesk == desk && _user == LocalId && ArchitectPlan.Owner == this) ArchitectPlan.Close();
         RefreshDrone();
         if (IsLocal) ArchitectPlan.MarkDirty();
     }
