@@ -85,9 +85,14 @@ internal static class Keybinds
             try { Refresh(); }
             catch (Exception e) { Plugin.Logger.LogError($"keybinds: {e}"); _frame = int.MinValue; }
         }
-        if (!Roles.ModButton.HudShown || Roles.Abilities.Local.Count == 0 || Emotes.Covered()) return;
+        if (!Roles.ModButton.HudShown || Roles.Abilities.Local.Count == 0) return;
         for (int i = 0; i < 3; i++)
-            if (Down((Slot)i)) { Roles.Abilities.PressSlot(i); return; }
+        {
+            if (!Down((Slot)i)) continue;
+            // 上に画面が出ている時 (チャットに打っている・作業・会議など) は押さない。周りの画面を見るのは押された時だけ
+            if (!Emotes.Covered()) Roles.Abilities.PressSlot(i);
+            return;
+        }
     }
 
     private static void Refresh()
