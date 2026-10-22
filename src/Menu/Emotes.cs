@@ -141,8 +141,9 @@ internal static class Emotes
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sharedMaterial = mat;
         sr.sprite = sprite;
+        // 描く順はボタンの絵と同じにして z だけで手前へ (順を上げると開幕・設定画面・キルの演出など、上に重なる画面を突き抜ける)
         sr.sortingLayerID = g.sortingLayerID;
-        sr.sortingOrder = g.sortingOrder + 1;
+        sr.sortingOrder = g.sortingOrder;
         PlayerMaterial.SetColors(lp.Data.DefaultOutfit.ColorId, sr);
         return sr;
     }
@@ -325,18 +326,35 @@ internal static class Emotes
         if (!ModButton.HudShown) return;
         if (Input.GetKeyDown(KeyCode.B))
         {
-            // 文字を打っている間 (チャット・ロビーの設定画面の検索欄) は B を奪わない
-            var chat = Vanilla.Chat;
-            if (!(chat && chat.IsOpenOrOpening) && !GameSettingMenu.Instance) SetRing(!RingOpen);
+            // 上に画面が出ている間 (文字を打つチャット・設定画面の検索欄も) は B を奪わない
+            if (!Covered()) SetRing(!RingOpen);
             return;
         }
         if (!RingOpen) return;
+        // 開いたまま上に画面が出たら閉じる (扇のために隠した周りの UI も戻す)
+        if (Covered())
+        {
+            SetRing(false);
+            return;
+        }
         for (byte k = 0; k < EmoteArt.Count; k++)
             if (Input.GetKeyDown(KeyCode.Alpha1 + k))
             {
                 Choose(k);
                 return;
             }
+    }
+
+    // 扇の上に重なる画面が出ているか (開幕・歯車の設定・ロビーの設定画面・着せ替え・チャット・作業・地図・会議・追放)
+    private static bool Covered()
+    {
+        if (IntroCutscene.Instance || MeetingHud.Instance || ExileController.Instance || Minigame.Instance
+            || GameSettingMenu.Instance || PlayerCustomizationMenu.Instance) return true;
+        var hud = Vanilla.Hud;
+        if (hud && hud.GameMenu && hud.GameMenu.IsOpen) return true;
+        if (MapBehaviour.Instance && MapBehaviour.Instance.IsOpen) return true;
+        var chat = Vanilla.Chat;
+        return chat && chat.IsOpenOrOpening;
     }
 
     internal static void CloseRing() => SetRing(false);
