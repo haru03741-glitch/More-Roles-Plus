@@ -10,7 +10,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 時戻しを押した本人の画面だけに出す全画面の演出 (約 4.6 秒・30 コマ/秒)。
+// 時戻しを押した本人の画面だけに出す全画面の演出 (約 4.6 秒・60 コマ/秒)。
 // 事前に描いたコマ (rewind_ult.cine) を流す: 背景の絵 (クルーの体と影を黒で描いた物) に体と影の重み × 本人の色を足して本人の色にし
 // (クルーは平らな塗りなので、光の足し算も含めて色について線形)、本人の着せ替えは立ち絵の空間の格子をコマごとに画面へ写して貼る。
 // 入りと出は試合の画面のまま: カメラを本人へ寄せ、事前に描いた光だけを重ね、出では着せ替えとペットが本物のまま飛んで戻る。
@@ -20,8 +20,7 @@ internal static unsafe class RewindCinematic
 {
     private const string Res = "MoreRolesPlus.Resources.Cinema.rewind_ult.cine";
     private const string SoundRes = "MoreRolesPlus.Resources.Cinema.rewind_ult.pcm";
-    private const int Rec = 64, Fps = 30, Slots = 4, Grid = 4;
-    private const int WhiteFrame = 119;    // 出の頭 (真っ白)。ここで時戻しの依頼を出す
+    private const int Rec = 64, Slots = 6, Workers = 2, Grid = 4;
     private const int Order = 32000;       // 本編の HUD より手前に描く
     private const float ShatterSeconds = 0.75f;
 
@@ -32,7 +31,8 @@ internal static unsafe class RewindCinematic
     private static byte* _data;
     private static byte[] _copy;
     private static GCHandle _copyPin;
-    private static int _w, _h, _n, _sgw, _sgh, _hgw, _hgh;
+    private static int _w, _h, _n, _fps, _sgw, _sgh, _hgw, _hgh;
+    private static int _white;             // 出の頭 (真っ白)。ここで時戻しの依頼を出す
     private static float _sx0, _sy0, _hx0, _hy0, _step, _bpx, _bpy, _hax, _hay, _nearUp;
     private static long _blob;
 
@@ -40,7 +40,7 @@ internal static unsafe class RewindCinematic
     private static float F(int f, int k) => ((float*)(_data + 68))[f * Rec + k];
 
     // ---- 先読み ----
-    private static Thread _worker;
+    private static readonly Thread[] _workers = new Thread[Workers];
     private static volatile bool _stop;
     private static int _decodeNext, _shown = -1;
     private static readonly int[] SlotFrame = new int[Slots];
@@ -84,28 +84,36 @@ internal static unsafe class RewindCinematic
         var lp = PlayerControl.LocalPlayer;
         if (!hud || !hud.UICamera || !lp || lp.Data == null || lp.Data.IsDead || MeetingHud.Instance || !GameClock.ShipAlive) return false;
         if (Volatile.Read(ref _workerRunning)) return false; // 前の回の展開がまだ終わっていない
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         if (!MrpNative.Loaded || MrpNative.CineFrame == null || !Open()) return false;
         _lp = lp;
         _onWhite = onWhite;
         _pressed = Environment.TickCount64;
         _shipGen = GameClock.ShipGen;
+        long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
         SetColors(lp.Data.DefaultOutfit.ColorId);
         BuildView(hud);
+        long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
         HideOverlayCams(hud.UICamera);
         BuildItems(lp);
         LiveBegin(lp);
+        long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
         _shown = -1;
         StartWorker();
+        long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
         StartSound();
+        long t5 = System.Diagnostics.Stopwatch.GetTimestamp();
+        double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        Plugin.Logger.LogInfo($"[RewindCinematic] start ms open={(t1 - t0) * k:0.0} view={(t2 - t1) * k:0.0} items={(t3 - t2) * k:0.0} worker={(t4 - t3) * k:0.0} sound={(t5 - t4) * k:0.0}");
         _wasMoveable = lp.moveable;
         lp.moveable = false;
         _frozen = true;
         _asked = false;
         _shattering = false;
-        _missed = _skipped = _shownCount = 0;
+        _missed = _skipped = _shownCount = _ticks = _maxJump = 0;
         _lastMiss = -1;
         _worstMs = _sumMs = 0;
-        _start = Environment.TickCount64;
+        _start = System.Diagnostics.Stopwatch.GetTimestamp();
         _on = true;
         return true;
     }
@@ -129,10 +137,16 @@ internal static unsafe class RewindCinematic
                 // 依頼を出した後の会議: 時戻しは起きているので、画面とカメラだけ片付ける
                 if (MeetingHud.Instance) { Teardown(); return; }
             }
-            int f = (int)((Environment.TickCount64 - _start) * Fps / 1000);
+            // TickCount64 は約 15.6ms 刻みで 60 コマだと飛ぶ。始めたフレームは開始の処理で長く、時刻がフレームの途中になるので、
+            // 次のフレーム (同じ位置で呼ばれる) で 1 コマ前に合わせ直す → 以後のフレームはコマの境目の上に来るので半コマ足して境目から離す
+            // (揺れで同じコマが 2 回・次が飛ぶのを防ぐ)
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (++_ticks == 2) _start = now - System.Diagnostics.Stopwatch.Frequency / _fps;
+            long t = (now - _start) * _fps * 1000 / System.Diagnostics.Stopwatch.Frequency + 500;
+            int f = Math.Max((int)(t / 1000), _shown); // 合わせ直しでコマを戻さない
             if (f >= _n) { Teardown(); return; }
             Volatile.Write(ref _decodeNext, Math.Max(Volatile.Read(ref _decodeNext), f));
-            if (!_asked && f >= WhiteFrame)
+            if (!_asked && f >= _white)
             {
                 _asked = true;
                 RestoreMove(); // ここから先は世界の逆再生が本人も止める
@@ -141,6 +155,8 @@ internal static unsafe class RewindCinematic
                 catch (Exception e) { Plugin.Logger.LogError($"[RewindCinematic] onWhite: {e}"); }
             }
             if (f != _shown) Show(f);
+            // 入りと出のカメラと着せ替えは描画のフレームごとに次のコマとの間を埋める (光の絵だけがコマ単位)
+            if (_shown >= 0 && U(_shown, 0) == 0 && U(f, 0) == 0) LiveFrame(f, (t % 1000) * 0.001f);
         }
         catch (Exception e)
         {
@@ -184,10 +200,15 @@ internal static unsafe class RewindCinematic
         }
         if (_data[0] != (byte)'M' || _data[3] != (byte)'C' || *(uint*)(_data + 4) != 1) { Close(); return false; }
         var h = (ushort*)(_data + 8);
-        _w = h[0]; _h = h[1]; _n = h[2]; _sgw = h[4]; _sgh = h[5]; _hgw = h[6]; _hgh = h[7];
+        _w = h[0]; _h = h[1]; _n = h[2]; _fps = h[3]; _sgw = h[4]; _sgh = h[5]; _hgw = h[6]; _hgh = h[7];
         var g = (float*)(_data + 24);
         _sx0 = g[0]; _sy0 = g[1]; _hx0 = g[2]; _hy0 = g[3]; _step = g[4]; _bpx = g[5]; _bpy = g[6]; _hax = g[7]; _hay = g[8]; _nearUp = g[9];
         _blob = *(uint*)(_data + 64);
+        _white = _n;
+        for (int f = 1; f < _n; f++)
+            if (U(f - 1, 0) == 1 && U(f, 0) == 0) { _white = f; break; }
+        if (_white == _n) Plugin.Logger.LogWarning("[RewindCinematic] no white frame (時戻しの依頼が出ない素材)");
+        if (_fps <= 0) { Close(); return false; }
         return true;
     }
 
@@ -225,32 +246,46 @@ internal static unsafe class RewindCinematic
     // ---- 作業スレッド: 表示より先のコマを展開して色を足す ----
     private static void StartWorker()
     {
-        for (int i = 0; i < Slots; i++)
-        {
-            SlotFrame[i] = -1;
-            if (SlotBuf[i] == null || SlotBuf[i].Length < _w * _h * 4)
-            {
-                if (SlotPin[i].IsAllocated) SlotPin[i].Free();
-                SlotBuf[i] = new byte[_w * _h * 4];
-                SlotPin[i] = GCHandle.Alloc(SlotBuf[i], GCHandleType.Pinned);
-            }
-        }
-        _decodeNext = 0;
+        for (int i = 0; i < Slots; i++) SlotFrame[i] = -1;
+        _decodeNext = _claimNext = 0;
+        _decTicks = _decWorst = _decCount = 0;
+        _lutWarm = false;
         _stop = false;
         _workerRunning = true;
-        _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "MrpCinema" };
-        _worker.Start();
+        _workersAlive = Workers;
+        for (int i = 0; i < Workers; i++)
+        {
+            int id = i;
+            try
+            {
+                _workers[i] = new Thread(() => WorkerLoop(id)) { IsBackground = true, Name = "MrpCinema" + i };
+                _workers[i].Start();
+            }
+            catch (Exception e)
+            {
+                // 起動できなかった分は抜けた扱いにする (数が残ると次の回が始まらない)
+                _workers[i] = null;
+                Plugin.Logger.LogError($"[RewindCinematic] worker start: {e}");
+                lock (WorkerLock) if (--_workersAlive == 0) _workerRunning = false;
+                if (i == 0) _lutWarm = true;
+            }
+        }
     }
 
-    private static readonly object WorkerLock = new();
+    private static readonly object WorkerLock = new(), ClaimLock = new();
     private static bool _releaseOnExit, _workerRunning;
+    private static int _workersAlive, _claimNext;
+    private static volatile bool _lutWarm;
 
     // 展開の途中で止めると C++ が素材を読んでいる最中なので、作業スレッドが抜けるまで素材と置き場を手放さない
     private static void StopWorker()
     {
         _stop = true;
-        var w = _worker;
-        if (w != null && w.Join(1000)) _worker = null;
+        for (int i = 0; i < Workers; i++)
+        {
+            var w = _workers[i];
+            if (w != null && w.Join(1000)) _workers[i] = null;
+        }
     }
 
     private static void ReleaseData()
@@ -258,7 +293,6 @@ internal static unsafe class RewindCinematic
         lock (WorkerLock)
         {
             if (_workerRunning) { _releaseOnExit = true; return; }
-            _worker = null;
             Close();
             for (int i = 0; i < Slots; i++)
             {
@@ -268,44 +302,80 @@ internal static unsafe class RewindCinematic
         }
     }
 
-    private static void WorkerLoop()
+    private static void AllocSlots()
+    {
+        for (int i = 0; i < Slots; i++)
+        {
+            if (SlotBuf[i] != null && SlotBuf[i].Length >= _w * _h * 4) continue;
+            if (SlotPin[i].IsAllocated) SlotPin[i].Free();
+            SlotBuf[i] = new byte[_w * _h * 4];
+            SlotPin[i] = GCHandle.Alloc(SlotBuf[i], GCHandleType.Pinned);
+        }
+    }
+
+    // 2 本で先のコマを分け合う。番号は ClaimLock の中で 1 つずつ取る (表示に遅れたら表示中のコマまで飛ばす)。
+    // 置き場の値: -1 = 空き・-2 = 展開中・0 以上 = 展開済みのコマ (表示より前なら空きと同じ)
+    private static void WorkerLoop(int id)
     {
         try
         {
+            // 置き場 (計 12MB) の確保は主スレッドで 2ms ほど止まるのでこちらで。C++ の色の変換表は最初の展開で作られる
+            // → 2 本目は 1 本目が置き場を用意して 1 コマ終えてから
+            if (id == 0) AllocSlots();
+            while (id > 0 && !_lutWarm && !_stop) Thread.Sleep(1);
             while (!_stop)
             {
-                int f = Volatile.Read(ref _decodeNext);
-                if (f >= _n) { Thread.Sleep(5); continue; }
-                int slot = -1;
-                for (int i = 0; i < Slots; i++)
+                int f, slot = -1;
+                lock (ClaimLock)
                 {
-                    int sf = Volatile.Read(ref SlotFrame[i]);
-                    if (sf == f) { slot = -2; break; }
-                    if (sf < 0 || sf < Volatile.Read(ref _shown)) { slot = i; break; }
+                    f = Math.Max(Volatile.Read(ref _decodeNext), _claimNext);
+                    if (f < _n)
+                    {
+                        int shown = Volatile.Read(ref _shown);
+                        for (int i = 0; i < Slots; i++)
+                        {
+                            int sf = Volatile.Read(ref SlotFrame[i]);
+                            if (sf == -1 || (sf >= 0 && sf < shown)) { slot = i; break; }
+                        }
+                        if (slot >= 0)
+                        {
+                            Volatile.Write(ref SlotFrame[slot], -2);
+                            _claimNext = f + 1;
+                        }
+                    }
                 }
-                if (slot == -2) { Interlocked.CompareExchange(ref _decodeNext, f + 1, f); continue; }
+                if (f >= _n) { Thread.Sleep(5); continue; }
                 if (slot < 0) { Thread.Sleep(2); continue; }
-                Volatile.Write(ref SlotFrame[slot], -1);
                 // 展開に失敗したコマは出さない (前のコマのまま)
-                if (Decode(f, (byte*)SlotPin[slot].AddrOfPinnedObject())) Volatile.Write(ref SlotFrame[slot], f);
-                Interlocked.CompareExchange(ref _decodeNext, f + 1, f);
+                long d0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                bool ok = Decode(f, (byte*)SlotPin[slot].AddrOfPinnedObject());
+                long dt = System.Diagnostics.Stopwatch.GetTimestamp() - d0;
+                Volatile.Write(ref SlotFrame[slot], ok ? f : -1);
+                _lutWarm = true;
+                Interlocked.Add(ref _decTicks, dt);
+                Interlocked.Increment(ref _decCount);
+                long w;
+                while (dt > (w = Interlocked.Read(ref _decWorst)) && Interlocked.CompareExchange(ref _decWorst, dt, w) != w) { }
             }
         }
         catch (Exception e) { Plugin.Logger.LogError($"[RewindCinematic] worker: {e}"); }
         finally
         {
+            _lutWarm = true; // 1 本目が置き場の確保で落ちても 2 本目を待たせ続けない
             lock (WorkerLock)
             {
-                _workerRunning = false;
-                if (_releaseOnExit)
+                if (--_workersAlive == 0)
                 {
-                    _releaseOnExit = false;
-                    _worker = null;
-                    Close();
-                    for (int i = 0; i < Slots; i++)
+                    _workerRunning = false;
+                    if (_releaseOnExit)
                     {
-                        if (SlotPin[i].IsAllocated) SlotPin[i].Free();
-                        SlotBuf[i] = null;
+                        _releaseOnExit = false;
+                        Close();
+                        for (int i = 0; i < Slots; i++)
+                        {
+                            if (SlotPin[i].IsAllocated) SlotPin[i].Free();
+                            SlotBuf[i] = null;
+                        }
                     }
                 }
             }
@@ -403,11 +473,12 @@ internal static unsafe class RewindCinematic
             fixed (byte* p = px) _solidTex.LoadRawTextureData((IntPtr)p, 16);
             _solidTex.Apply(false);
         }
-        _darkSr = Part("Dark", Sprite.Create(_solidTex, new Rect(0, 0, 2, 2), FxMath.V2(0.5f, 0.5f), 2f), layer, 0f, Order);
+        // 全画面の板は四角のまま (既定の Tight は絵の画素から輪郭の網を作り、960x540 で 1 枚約 10ms 止まる)
+        _darkSr = Part("Dark", Sprite.Create(_solidTex, new Rect(0, 0, 2, 2), FxMath.V2(0.5f, 0.5f), 2f, 0, SpriteMeshType.FullRect), layer, 0f, Order);
         _darkSr.transform.localScale = FxMath.V3(sw + 1f, sh + 1f, 1f);
-        _lightSr = Part("Light", Sprite.Create(_lightTex, new Rect(0, 0, _w, _h), FxMath.V2(0.5f, 0.5f), 100f), layer, -0.01f, Order + 1);
+        _lightSr = Part("Light", Sprite.Create(_lightTex, new Rect(0, 0, _w, _h), FxMath.V2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect), layer, -0.01f, Order + 1);
         _lightSr.transform.localScale = FxMath.V3(k, k, 1f);
-        _fullSr = Part("Full", Sprite.Create(_fullTex, new Rect(0, 0, _w, _h), FxMath.V2(0.5f, 0.5f), 100f), layer, -0.02f, Order + 2);
+        _fullSr = Part("Full", Sprite.Create(_fullTex, new Rect(0, 0, _w, _h), FxMath.V2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect), layer, -0.02f, Order + 2);
         _fullSr.transform.localScale = FxMath.V3(k, k, 1f);
         _darkSr.color = FxMath.Rgba(0.102f, 0.047f, 0.008f, 0f);
         _fullSr.enabled = false;
@@ -444,7 +515,7 @@ internal static unsafe class RewindCinematic
             if (Volatile.Read(ref SlotFrame[i]) == f) { slot = i; break; }
         if (slot < 0) { if (f != _lastMiss) { _lastMiss = f; _missed++; } return; } // 展開が間に合っていない: 前のコマのまま (時計は進めるので音とはずれない)
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        if (_shown >= 0 && f > _shown + 1) _skipped += f - _shown - 1;
+        if (_shown >= 0 && f > _shown + 1) { _skipped += f - _shown - 1; if (f - _shown > _maxJump) _maxJump = f - _shown; }
         _shownCount++;
         Volatile.Write(ref _shown, f);
         var buf = (IntPtr)SlotPin[slot].AddrOfPinnedObject();
@@ -464,13 +535,15 @@ internal static unsafe class RewindCinematic
         _lightSr.enabled = !full;
         _darkSr.enabled = !full;
         if (full) ItemsFrame(f);
-        else { ItemsHide(); LiveFrame(f); }
+        else ItemsHide();
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         if (ms > _worstMs) _worstMs = ms;
         _sumMs += ms;
     }
 
     private static int _missed, _skipped, _shownCount, _lastMiss = -1;
+    private static long _decTicks, _decWorst, _decCount; // 作業スレッドが足す (終わりのログで読むだけ)
+    private static int _ticks, _maxJump;
     private static double _worstMs, _sumMs;
 
     // ---- 演出の中の着せ替え (格子で体へ貼る) ----
@@ -670,9 +743,16 @@ internal static unsafe class RewindCinematic
         };
     }
 
-    private static void LiveFrame(int f)
+    // 記録 k をコマ f と次のコマの間 t (0〜1) で。次が全画面のコマか終わりなら f のまま
+    private static float Lerp(int f, int k, float t)
     {
-        float width = F(f, 20), toward = F(f, 21), dark = F(f, 22), petA = F(f, 23), petS = F(f, 24);
+        float a = F(f, k);
+        return f + 1 < _n && U(f + 1, 0) == 0 ? a + (F(f + 1, k) - a) * t : a;
+    }
+
+    private static void LiveFrame(int f, float t)
+    {
+        float width = Lerp(f, 20, t), toward = Lerp(f, 21, t), dark = Lerp(f, 22, t), petA = Lerp(f, 23, t), petS = Lerp(f, 24, t);
         if (_cam) _cam.orthographicSize = _baseSize * width;
         if (_follow) _follow.Offset = FxMath.V2(_baseOffset.x, _baseOffset.y + _upUnits * toward);
         var c = _darkSr.color;
@@ -686,7 +766,7 @@ internal static unsafe class RewindCinematic
             pet.SetAlpha(petA);
             pet.transform.localScale = FxMath.V3(petS, petS, 1f);
         }
-        if (f < WhiteFrame) return;
+        if (f < _white) return;
         // 出: 着せ替えが逆再生で飛んで戻る (人形は左向きで描いてある → 右向きなら左右を返す)
         if (!_liveTouched)
         {
@@ -716,7 +796,7 @@ internal static unsafe class RewindCinematic
         {
             var tf = ItemTf(k);
             if (!tf) continue;
-            float dx = F(f, 25 + k * 4) * 0.01f * mirror, dy = F(f, 26 + k * 4) * 0.01f, rot = F(f, 27 + k * 4) * mirror, a = F(f, 28 + k * 4);
+            float dx = Lerp(f, 25 + k * 4, t) * 0.01f * mirror, dy = Lerp(f, 26 + k * 4, t) * 0.01f, rot = Lerp(f, 27 + k * 4, t) * mirror, a = Lerp(f, 28 + k * 4, t);
             var hp = HomePos[k];
             float th = -rot * (MathF.PI / 180f), co = MathF.Cos(th), si = MathF.Sin(th);
             float cx = CenterX[k], cy = CenterY[k];
@@ -983,7 +1063,7 @@ internal static unsafe class RewindCinematic
     // ---- 片付け ----
     private static void Teardown()
     {
-        if (_on) Plugin.Logger.LogInfo($"[RewindCinematic] end shown={_shownCount} skipped={_skipped} missed={_missed} main ms avg={(_shownCount > 0 ? _sumMs / _shownCount : 0):0.00} worst={_worstMs:0.00}");
+        if (_on) Plugin.Logger.LogInfo($"[RewindCinematic] end shown={_shownCount} skipped={_skipped} ticks={_ticks} jump={_maxJump} missed={_missed} main ms avg={(_shownCount > 0 ? _sumMs / _shownCount : 0):0.00} worst={_worstMs:0.00} decode n={_decCount} ms avg={(_decCount > 0 ? _decTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / _decCount : 0):0.00} worst={_decWorst * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.00}");
         _on = false;
         _shattering = false;
         StopWorker();
