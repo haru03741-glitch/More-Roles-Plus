@@ -133,6 +133,7 @@ internal static class TimeRewind
         if (_on) return;
         _on = true;
         Clear();
+        RewindVanilla.Clear();
         Rewinds = LastSlotAgeMs = LastRevived = LastTasksUndone = LastSystems = LastGone = 0;
         LastNote = "-";
         Events<MeetingStartEvent>.Subscribe(_ => Clear(), life, owner: "TimeRewind");
@@ -246,14 +247,20 @@ internal static class TimeRewind
         switch (rb.Role)
         {
             case AmongUs.GameOptions.RoleTypes.Shapeshifter:
-                VRole[o] = Typed<ShapeshifterRole>(rb).cooldownSecondsRemaining; break;
+                var ss = Typed<ShapeshifterRole>(rb);
+                VRole[o] = ss.cooldownSecondsRemaining;
+                VRole[o + 1] = ss.durationSecondsRemaining;
+                break;
             case AmongUs.GameOptions.RoleTypes.Engineer:
                 var en = Typed<EngineerRole>(rb);
                 VRole[o] = en.cooldownSecondsRemaining;
                 VRole[o + 1] = en.inVentTimeRemaining;
                 break;
             case AmongUs.GameOptions.RoleTypes.Phantom:
-                VRole[o] = Typed<PhantomRole>(rb).cooldownSecondsRemaining; break;
+                var ph = Typed<PhantomRole>(rb);
+                VRole[o] = ph.cooldownSecondsRemaining;
+                VRole[o + 1] = ph.durationSecondsRemaining;
+                break;
             case AmongUs.GameOptions.RoleTypes.Scientist:
                 var sc = Typed<ScientistRole>(rb);
                 VRole[o] = sc.currentCooldown;
@@ -288,14 +295,26 @@ internal static class TimeRewind
         switch (rb.Role)
         {
             case AmongUs.GameOptions.RoleTypes.Shapeshifter:
-                Typed<ShapeshifterRole>(rb).cooldownSecondsRemaining = VRole[o]; break;
+                var ss = Typed<ShapeshifterRole>(rb);
+                ss.cooldownSecondsRemaining = VRole[o];
+                ss.durationSecondsRemaining = VRole[o + 1];
+                break;
             case AmongUs.GameOptions.RoleTypes.Engineer:
                 var en = Typed<EngineerRole>(rb);
                 en.cooldownSecondsRemaining = VRole[o];
                 en.inVentTimeRemaining = VRole[o + 1];
                 break;
             case AmongUs.GameOptions.RoleTypes.Phantom:
-                Typed<PhantomRole>(rb).cooldownSecondsRemaining = VRole[o]; break;
+                // 姿 (透明か) は取り消しの記録が戻す。役職の欄は押した時に立ち、姿は消える演出の後に替わるので、記録の時の欄でなく今の姿に揃える
+                var ph = Typed<PhantomRole>(rb);
+                ph.cooldownSecondsRemaining = VRole[o];
+                ph.durationSecondsRemaining = VRole[o + 1];
+                ph.isInvisible = RewindVanilla.IsInvisible(lp.PlayerId);
+                // 消えた直後は残り時間がまだ入っていない (本編は演出の後に入れる)。0 のままだと本編が姿を現さないので長さいっぱいから数え直す
+                if (ph.isInvisible && ph.durationSecondsRemaining <= 0f)
+                    ph.durationSecondsRemaining = GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.PhantomDuration);
+                ph.fading = false;
+                break;
             case AmongUs.GameOptions.RoleTypes.Scientist:
                 var sc = Typed<ScientistRole>(rb);
                 sc.currentCooldown = VRole[o];

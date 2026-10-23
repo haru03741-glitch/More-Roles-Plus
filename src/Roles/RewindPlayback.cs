@@ -7,12 +7,12 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles;
 
 // 時戻しの逆再生で、全員の体を見ていたとおりに逆へ動かす。
-// 各端末が自分の画面に映った全員の姿 (位置・向き・体と着せ替えのアニメの絵と時間・生き死に) を 0.1 秒ごとに輪へ控え、
-// 逆再生の間は本編の歩きのアニメ (PlayerPhysics.HandleAnimation) と位置の同期 (CustomNetworkTransform) を止めて、控えを新しい順にたどって置く。
+// 各端末が自分の画面に映った全員の姿 (位置・向き・体と着せ替えのアニメの絵と時間・生き死に・ペット) を 0.1 秒ごとに輪へ控え、
+// 逆再生の間は本編の歩きのアニメ (PlayerPhysics.HandleAnimation)・位置の同期 (CustomNetworkTransform)・ペットの追いかけ (PetBehaviour.Update) を止めて、控えを新しい順にたどって置く。
 // 向きは控えた時のまま (後ろ向きに歩いて戻る)・アニメの時間は減る向きに進むので、歩いた映像を逆に流したように見える。
 // 位置は各端末が自分の控えから置くので電文は使わない。終わりに持ち主が自分の位置を配り直して揃える (TimeRewind.Finish)。
 // 控えるのは時戻しのいる試合だけ。輪の配列は人ごとに最初の 1 回だけ確保する
-internal static class RewindPlayback
+internal static partial class RewindPlayback
 {
     internal const int StepMs = 100;
     private const int Slots = 260; // 26 秒分 (戻す秒数の上限 15 + 押してから依頼までの上限 8 + 余白)
@@ -21,7 +21,7 @@ internal static class RewindPlayback
 
     private enum Kind : byte { None, Run, Idle, Ghost, EnterVent, ExitVent, Spawn, ClimbUp, ClimbDown, Angel }
 
-    private sealed class Track
+    private sealed partial class Track
     {
         public byte Id;
         public IntPtr PcPtr;
@@ -35,10 +35,18 @@ internal static class RewindPlayback
         public readonly float[] X = new float[Slots], Y = new float[Slots], T = new float[Slots];
         public readonly IntPtr[] Clip = new IntPtr[Slots];
         public readonly byte[] F = new byte[Slots];
+        // ペット (着せ替えで別の物に替わるので体と一緒に引き直す)
+        public PetBehaviour Pet;
+        public Rigidbody2D PetBody;
+        public SpriteAnim PetAnim;
+        public IntPtr PetPtr;
+        public readonly float[] PX = new float[Slots], PY = new float[Slots], PT = new float[Slots];
+        public readonly IntPtr[] PClip = new IntPtr[Slots];
+        public readonly byte[] PF = new byte[Slots];
         // 逆再生の間
-        public bool Driving, Flip;
+        public bool Driving, Flip, PetFlip, PetPlaying;
         public Kind Playing;
-        public IntPtr PlayingClip;
+        public IntPtr PlayingClip, PetPlayingClip;
     }
 
     private static readonly Track[] Tracks = new Track[256];
@@ -57,6 +65,7 @@ internal static class RewindPlayback
     {
         if (_active) Stop();
         _head = _count = 0;
+        ClearGhosts();
         foreach (var t in Tracks)
         {
             if (t == null) continue;
@@ -66,6 +75,10 @@ internal static class RewindPlayback
             t.Cos = null;
             t.Anims = null;
             t.Anim = t.Skin = null;
+            t.Pet = null;
+            t.PetBody = null;
+            t.PetAnim = null;
+            t.PetPtr = IntPtr.Zero;
         }
     }
 
@@ -77,7 +90,7 @@ internal static class RewindPlayback
         SlotMs[s] = now;
         var all = PlayerControl.AllPlayerControls;
         for (int i = 0; i < Tracks.Length; i++)
-            if (Tracks[i] != null) Tracks[i].F[s] = 0;
+            if (Tracks[i] != null) Tracks[i].F[s] = Tracks[i].PF[s] = 0;
         for (int i = 0; i < all.Count; i++)
         {
             var pc = all[i];
@@ -94,6 +107,7 @@ internal static class RewindPlayback
         }
         _head = (_head + 1) % Slots;
         if (_count < Slots) _count++;
+        ExpireGhosts(now);
     }
 
     private static Track TrackOf(PlayerControl pc)
@@ -104,6 +118,8 @@ internal static class RewindPlayback
         {
             // 別の人がこの番号に入った: 前の人の控えは使わない
             Array.Clear(t.F, 0, Slots);
+            Array.Clear(t.PF, 0, Slots);
+            DropGhost(t);
             t.PcPtr = pc.Pointer;
             t.Pc = pc;
             t.Refresh = 0;
@@ -129,7 +145,25 @@ internal static class RewindPlayback
         t.Anim = bsr ? bsr.GetComponent<SpriteAnim>() : null;
         var skin = t.Cos ? t.Cos.skin : null;
         t.Skin = skin ? skin.animator : null;
+        var pet = t.Cos ? t.Cos.CurrentPet : null;
+        t.Pet = pet;
+        t.PetBody = pet ? pet.rigidbody : null;
+        t.PetAnim = pet ? pet.animator : null;
+        t.PetPtr = pet && t.PetBody && t.PetAnim ? pet.Pointer : IntPtr.Zero;
         return t.Body && t.Anim;
+    }
+
+    // 着せ替えが替わった (変身の取り消しなど): 体とペットを引き直し、逆再生の間なら止め直して絵を流し直す
+    internal static void Refresh(byte id)
+    {
+        var t = Tracks[id];
+        if (t == null || !t.Pc) return;
+        if (!Resolve(t)) { t.Refresh = 0; return; }
+        if (!t.Driving) return;
+        t.Anim.Paused = true;
+        if (t.Skin) t.Skin.Paused = true;
+        t.PlayingClip = IntPtr.Zero;
+        HoldPet(t);
     }
 
     private static void CaptureOne(Track t, int s)
@@ -146,6 +180,13 @@ internal static class RewindPlayback
         if (data != null && data.IsDead) f |= FDead;
         if (pc.inVent || pc.onLadder || pc.inMovingPlat) f |= FHold;
         t.F[s] = f;
+        if (t.PetPtr == IntPtr.Zero || !t.Pet) return;
+        var pp = t.PetBody.position;
+        t.PX[s] = pp.x;
+        t.PY[s] = pp.y;
+        t.PClip[s] = CurrClip(t.PetAnim);
+        t.PT[s] = t.PetAnim.GetNormalisedTime();
+        t.PF[s] = (byte)(FSeen | (t.Pet.FlipX ? FFlip : 0));
     }
 
     // 体のアニメが今流している絵 (SpriteAnim の m_currAnim)。包みを作らずに欄を直に読む
@@ -181,14 +222,28 @@ internal static class RewindPlayback
             var t = Tracks[pc.PlayerId];
             if (t == null || t.PcPtr != pc.Pointer || !t.Body || !t.Anim) continue;
             if (pc.inVent || pc.onLadder || pc.inMovingPlat) continue;
+            // ペットは着せ替えの読み込みの後に別の物へ替わるので、引き直しの間隔を待たずに合わせる
+            var pet = t.Cos ? t.Cos.CurrentPet : null;
+            if ((pet ? pet.Pointer : IntPtr.Zero) != t.PetPtr && !Resolve(t)) continue;
             t.Driving = true;
             t.Flip = t.Cos && t.Cos.FlipX;
             t.PlayingClip = IntPtr.Zero; // 最初の控えの絵を流し直してから時間を置く
             t.Playing = Kind.None;
             t.Anim.Paused = true;
             if (t.Skin) t.Skin.Paused = true;
+            HoldPet(t);
             _driven++;
         }
+        BeginGhosts();
+    }
+
+    private static void HoldPet(Track t)
+    {
+        t.PetPlaying = false;
+        t.PetPlayingClip = IntPtr.Zero;
+        if (t.PetPtr == IntPtr.Zero || !t.Pet) { t.PetPtr = IntPtr.Zero; return; }
+        t.PetFlip = t.Pet.FlipX;
+        t.PetAnim.Paused = true;
     }
 
     // 毎 FixedUpdate: 記録の時刻 at の姿へ全員を置く
@@ -199,7 +254,17 @@ internal static class RewindPlayback
         if (a < 0) return;
         foreach (var t in Tracks)
         {
-            if (t == null || !t.Driving) continue;
+            if (t == null) continue;
+            if (t.GhostOn)
+            {
+                try { DriveGhost(t, a, b, u); }
+                catch (Exception e)
+                {
+                    t.GhostOn = false;
+                    Plugin.Logger.LogWarning($"RewindPlayback ghost {t.Id}: {e.Message}");
+                }
+            }
+            if (!t.Driving) continue;
             try { DriveOne(t, a, b, u); }
             catch (Exception e)
             {
@@ -238,20 +303,65 @@ internal static class RewindPlayback
         IntPtr clip = t.Clip[n];
         if (clip != t.PlayingClip) Switch(t, clip, flip);
         if (t.Playing == Kind.None) return;
-        float time = AnimTime(t, a, b, u);
+        float time = AnimTime(t.Clip, t.T, a, b, u);
         t.Anim.SetNormalizedTime(time);
         if (t.Skin) t.Skin.SetNormalizedTime(time);
+        if (t.PetPtr != IntPtr.Zero) DrivePet(t, a, b, u);
     }
 
     // 2 つの控えの間のアニメの時間 (同じ絵の間だけ補う。輪になる絵は 1 を越えて巻き戻った分を足して進める)
-    private static float AnimTime(Track t, int a, int b, float u)
+    private static float AnimTime(IntPtr[] clips, float[] times, int a, int b, float u)
     {
-        float ta = t.T[a], tb = t.T[b];
-        if (t.Clip[a] != t.Clip[b]) return u < 0.5f ? ta - MathF.Floor(ta) : tb - MathF.Floor(tb);
+        float ta = times[a], tb = times[b];
+        if (clips[a] != clips[b]) return u < 0.5f ? ta - MathF.Floor(ta) : tb - MathF.Floor(tb);
         float d = tb - ta;
         if (d < 0f) d -= MathF.Floor(d);
         float v = ta + d * u;
         return v > 1f ? v - MathF.Floor(v) : v;
+    }
+
+    // ペットも控えのとおりに置く (ペットの控えが無い所では止まったまま)
+    private static void DrivePet(Track t, int a, int b, float u)
+    {
+        if (!t.Pet || !t.PetBody || !t.PetAnim) { t.PetPtr = IntPtr.Zero; return; }
+        if ((t.PF[a] & FSeen) == 0 || (t.PF[b] & FSeen) == 0) return;
+        t.PetBody.velocity = Fx.FxMath.V2(0f, 0f);
+        t.PetBody.position = Fx.FxMath.V2(t.PX[a] + (t.PX[b] - t.PX[a]) * u, t.PY[a] + (t.PY[b] - t.PY[a]) * u);
+        int n = u < 0.5f ? a : b;
+        bool flip = (t.PF[n] & FFlip) != 0;
+        if (flip != t.PetFlip)
+        {
+            t.PetFlip = flip;
+            t.Pet.FlipX = flip;
+        }
+        IntPtr clip = t.PClip[n];
+        if (clip != t.PetPlayingClip) SwitchPet(t, clip);
+        if (t.PetPlaying) t.PetAnim.SetNormalizedTime(AnimTime(t.PClip, t.PT, a, b, u));
+    }
+
+    // 控えたペットの絵へ切り替える (今のペットの絵に当たる時だけ)
+    private static void SwitchPet(Track t, IntPtr clip)
+    {
+        t.PetPlayingClip = clip;
+        t.PetPlaying = false;
+        if (clip == IntPtr.Zero) return;
+        var p = t.Pet;
+        AnimationClip hit = null;
+        Match(p.walkClip, Kind.Run, clip, ref hit);
+        Match(p.idleClip, Kind.Idle, clip, ref hit);
+        Match(p.sadClip, Kind.Idle, clip, ref hit);
+        Match(p.scaredClip, Kind.Idle, clip, ref hit);
+        Match(p.petClip, Kind.Idle, clip, ref hit);
+        if (hit == null) return;
+        t.PetAnim.Play(hit, 1f);
+        t.PetAnim.Paused = true;
+        t.PetPlaying = true;
+    }
+
+    private static void Match(AnimationClip c, Kind k, IntPtr want, ref AnimationClip hit)
+    {
+        Kind ignored = Kind.None;
+        Match(c, k, want, ref hit, ref ignored);
     }
 
     // 控えた絵へ切り替える。本人の今の体の型の絵のどれかに当たる時だけ流す (当たらない絵は消えた物かもしれないので触らない)
@@ -339,6 +449,7 @@ internal static class RewindPlayback
         _active = false;
         foreach (var t in Tracks)
             if (t != null && t.Driving) Release(t);
+        HideGhosts();
     }
 
     private static void Release(Track t)
@@ -348,6 +459,7 @@ internal static class RewindPlayback
         {
             if (t.Anim) t.Anim.Paused = false;
             if (t.Skin) t.Skin.Paused = false;
+            if (t.PetPtr != IntPtr.Zero && t.PetAnim) t.PetAnim.Paused = false;
             // 止めていた間に届いた位置を捨てる (届いた順に歩き直さない)
             if (t.Pc && !t.Pc.AmOwner && t.Pc.NetTransform) t.Pc.NetTransform.ClearPositionQueues();
         }
@@ -367,24 +479,42 @@ internal static class RewindPlayback
     }
 
     // その体を今こちらが動かしているか (本編の処理を止める判定)
-    internal static int AnimHits, NetHits; // 確かめ用: 本編の処理を止めた回数
+    internal static int AnimHits, NetHits, PetHits; // 確かめ用: 本編の処理を止めた回数
 
-    internal static bool Holds(IntPtr ptr, bool physics)
+    internal enum Part : byte { Physics, Net, Pet }
+
+    internal static bool Holds(IntPtr ptr, Part part)
     {
         foreach (var t in Tracks)
-            if (t != null && t.Driving && (physics ? t.PhysPtr : t.NtPtr) == ptr) return true;
+        {
+            if (t == null || !t.Driving) continue;
+            IntPtr p = part == Part.Physics ? t.PhysPtr : part == Part.Net ? t.NtPtr : t.PetPtr;
+            if (p == ptr) return true;
+        }
         return false;
     }
 
     internal static string Probe()
     {
-        var sb = new System.Text.StringBuilder($"active={_active} samples={_count} driven={_driven} animSkips={AnimHits} netSkips={NetHits}");
+        var sb = new System.Text.StringBuilder($"active={_active} samples={_count} driven={_driven} animSkips={AnimHits} netSkips={NetHits} petSkips={PetHits} shiftUndo={RewindVanilla.Shifts} vanishUndo={RewindVanilla.Vanishes} ghostsMade={Ghosts}");
         foreach (var t in Tracks)
         {
+            if (t != null && t.Ghost)
+            {
+                var gp = t.GhostT.position;
+                int seen = 0;
+                for (int i = 0; i < Slots; i++) if ((t.F[i] & FSeen) != 0) seen++;
+                sb.Append($" | ghost{t.Id} on={t.GhostOn} shown={t.GhostShown} active={t.Ghost.activeInHierarchy} kind={t.GhostKind} pos={gp.x:0.00},{gp.y:0.00},{gp.z:0.000} seen={seen} leftAgo={Environment.TickCount64 - t.LeftMs}ms");
+            }
             if (t == null || !t.Pc) continue;
             sb.Append($" | {t.Id} drive={t.Driving} kind={t.Playing} flip={t.Flip} now={(t.Cos ? t.Cos.FlipX : false)}");
             if (t.Body) sb.Append($" v={t.Body.velocity.x:0.00},{t.Body.velocity.y:0.00}");
             if (t.Anim) sb.Append($" t={t.Anim.GetNormalisedTime():0.00} paused={t.Anim.Paused}");
+            if (t.Pet)
+            {
+                sb.Append($" pet={t.PetPtr != IntPtr.Zero} petFlip={t.Pet.FlipX} petPlaying={t.PetPlaying}");
+                if (t.PetAnim) sb.Append($" petClip={CurrClip(t.PetAnim):X} walk={(t.Pet.walkClip ? t.Pet.walkClip.Pointer : IntPtr.Zero):X} idle={(t.Pet.idleClip ? t.Pet.idleClip.Pointer : IntPtr.Zero):X}");
+            }
         }
         return sb.ToString();
     }
@@ -396,7 +526,7 @@ internal static class RewindPlaybackAnim
 {
     public static bool Prefix(PlayerPhysics __instance)
     {
-        if (!RewindPlayback.Active || !RewindPlayback.Holds(__instance.Pointer, true)) return true;
+        if (!RewindPlayback.Active || !RewindPlayback.Holds(__instance.Pointer, RewindPlayback.Part.Physics)) return true;
         RewindPlayback.AnimHits++;
         return false;
     }
@@ -408,8 +538,20 @@ internal static class RewindPlaybackNet
 {
     public static bool Prefix(CustomNetworkTransform __instance)
     {
-        if (!RewindPlayback.Active || !RewindPlayback.Holds(__instance.Pointer, false)) return true;
+        if (!RewindPlayback.Active || !RewindPlayback.Holds(__instance.Pointer, RewindPlayback.Part.Net)) return true;
         RewindPlayback.NetHits++;
+        return false;
+    }
+}
+
+// 逆再生の間はペットが体を追いかけて前へ歩かないようにする (控えのとおりに置く)
+[HarmonyPatch(typeof(PetBehaviour), "Update")]
+internal static class RewindPlaybackPet
+{
+    public static bool Prefix(PetBehaviour __instance)
+    {
+        if (!RewindPlayback.Active || !RewindPlayback.Holds(__instance.Pointer, RewindPlayback.Part.Pet)) return true;
+        RewindPlayback.PetHits++;
         return false;
     }
 }

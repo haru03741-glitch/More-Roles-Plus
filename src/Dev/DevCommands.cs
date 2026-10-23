@@ -115,6 +115,55 @@ internal static class DevCommands
             reply($"OK kill {pid}");
         });
 
+        TestBridge.Register("vrole", "[role <番号> <RoleTypes> | shift <番号> <相手> | unshift <番号> | vanish <番号> | appear <番号> | use | pet <番号> <ペットの並びの番号>] 本編の役職を付ける / 変身・解除・透明・出現を全員へ (ホスト) / 自分の本編の能力を使う / ペットを替える。引数なし = 全員の姿の状態と自分の本編の役職の残り", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var p = a.Length >= 2 && byte.TryParse(a[1], out byte pid) ? Player(pid) : null;
+            if (a.Length >= 1 && a[0] != "use" && !p) { reply($"ERR vrole no player"); return; }
+            switch (a.Length >= 1 ? a[0] : "")
+            {
+                case "role":
+                    if (a.Length < 3 || !System.Enum.TryParse<AmongUs.GameOptions.RoleTypes>(a[2], out var rt)) { reply("ERR vrole role <番号> <RoleTypes>"); return; }
+                    p.RpcSetRole(rt, true);
+                    break;
+                case "shift":
+                    var to = a.Length >= 3 && byte.TryParse(a[2], out byte tid) ? Player(tid) : null;
+                    if (!to) { reply("ERR vrole shift <番号> <相手>"); return; }
+                    p.RpcShapeshift(to, true);
+                    break;
+                case "unshift": p.RpcShapeshift(p, true); break;
+                case "vanish": p.RpcVanish(); break;
+                case "appear": p.RpcAppear(true); break;
+                case "use": PlayerControl.LocalPlayer.Data.Role.UseAbility(); break;
+                case "leave":
+                    // フリープレイのダミーで「抜けた」を真似る (時戻しの残像を作ってから体を消す)
+                    if (AmongUsClient.Instance.NetworkMode != NetworkModes.FreePlay || p.AmOwner) { reply("ERR vrole leave = フリープレイのダミーだけ"); return; }
+                    RewindPlayback.Leave(p);
+                    UnityEngine.Object.Destroy(p.gameObject);
+                    break;
+                case "pet":
+                    var pets = HatManager.Instance.allPets;
+                    if (a.Length < 3 || !int.TryParse(a[2], out int pi) || pi < 0 || pi >= pets.Length) { reply($"ERR vrole pet <番号> <0..{pets.Length - 1}>"); return; }
+                    p.RpcSetPet(pets[pi].ProdId);
+                    break;
+            }
+            var sb = new System.Text.StringBuilder();
+            foreach (var pc in PlayerControl.AllPlayerControls)
+            {
+                if (!pc || pc.Data == null) continue;
+                var role = pc.Data.Role;
+                var ph = role ? role.TryCast<PhantomRole>() : null;
+                var pet = pc.cosmetics ? pc.cosmetics.CurrentPet : null;
+                sb.Append($" | {pc.PlayerId} {(role ? role.Role.ToString() : "-")} outfit={pc.CurrentOutfitType} target={pc.shapeshiftTargetPlayerId} invisible={(ph ? ph.isInvisible : false)} visible={pc.Visible} pet={(pet ? pet.name : "-")}");
+            }
+            var lr = PlayerControl.LocalPlayer.Data.Role;
+            var ss = lr ? lr.TryCast<ShapeshifterRole>() : null;
+            var lph = lr ? lr.TryCast<PhantomRole>() : null;
+            string mine = ss ? $"cd={ss.cooldownSecondsRemaining:0.0} dur={ss.durationSecondsRemaining:0.0}"
+                : lph ? $"cd={lph.cooldownSecondsRemaining:0.0} dur={lph.durationSecondsRemaining:0.0} fading={lph.fading} approved={lph.serverApproved}" : "-";
+            reply($"OK vrole mine=[{mine}]{sb}");
+        });
+
         TestBridge.Register("revive", "[番号] その人 (省略で自分) を生き返らせる (ホストのみ)", (args, reply) =>
         {
             if (!AmongUsClient.Instance.AmHost || !GameData.Instance) { reply("ERR revive needs host in game"); return; }
