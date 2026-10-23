@@ -90,7 +90,7 @@ internal static class TerrainRewind
     }
 
     // 戻す合図 (全員の手元・連番の順)。一度に戻さず、逆再生として段に分ける: 合図の刻み T から長さ P の間に N 段、
-    // 段 k (刻み T + P·k/N) で「T − back·k/N より後」を取り消す。壁は新しい件から組み戻り、水・火などは記録を過去へ順に読み戻す。
+    // 段 k (刻み T + P·r_k・r_k は人の逆再生と同じ緩急で世界の進みが k/N に届く所) で「T − back·k/N より後」を取り消す。壁は新しい件から組み戻り、水・火などは記録を過去へ順に読み戻す。
     // 段の刻みと戻す所は合図の刻みと秒数だけから決まるので、全員が同じ刻みで同じ段を当てる
     internal static void OnApplied(in ResolvedDamage r)
     {
@@ -100,8 +100,13 @@ internal static class TerrainRewind
         int tick = GameClock.Expand(r.Tick), back = r.Seed;
         int play = PlayMs(back * 1000 / GameClock.Hz) * GameClock.Hz / 1000;
         int n = Math.Max(1, Math.Min(Math.Min((back + Every - 1) / Every, MaxSteps), play / MinStepGap));
+        int at = tick;
         for (int k = 1; k <= n; k++)
-            Plan.Add((tick + play * k / n, FloorDiv(tick - back * k / n, Every) * Every));
+        {
+            // 緩急で真ん中の段は詰まるので、段と段の間は MinStepGap を下回らないようにする
+            at = Math.Max(tick + play * Roles.RewindClock.RealSteps(k, n) / Roles.RewindClock.StepsTotal, at + MinStepGap);
+            Plan.Add((at, FloorDiv(tick - back * k / n, Every) * Every));
+        }
         // 戻す刻み以後のまだ処理していない出来事は、合図の時に 1 回だけ捨てる。段ごとに捨てると、計算は時計より遅れて進むので
         // 前の段の取り消しが積んだ作り直し (漏れの口を外すなど) を処理する前に捨ててしまう
         int last = Plan[Plan.Count - 1].Target;

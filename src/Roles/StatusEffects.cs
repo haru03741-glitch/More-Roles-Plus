@@ -8,7 +8,9 @@ namespace MoreRolesPlus.Roles;
 // 本編はタスク欄の文字を毎フレーム段の文字から組み立てるので、段の文字を書き換えるのは秒の数が変わった時と増減の時だけ。
 //   StatusEffects.ShowUntil("Shield", new Text("StatusEffects.Shield"), "#66CCFF", new Text("StatusEffects.UntilMeeting"));
 //   StatusEffects.ShowFor("Haste", new Text("Haste.Effect"), "#FFCC00", 10f);
-// 船が替わると全部消える。自分の端末の表示だけで、他の人には届かない
+// 船が替わると全部消える。自分の端末の表示だけで、他の人には届かない。
+// 出す・消す・切れるは時戻しの取り消しに積むので、戻すと戻し先の時刻に出ていた効果が同じ残りで出直す
+// (逆再生の間は切らさず、戻し終わりに全部の切れる時刻を戻した時間だけ後ろへずらす)
 public static class StatusEffects
 {
     private sealed class Entry
@@ -38,15 +40,39 @@ public static class StatusEffects
 
     public static void Hide(string key)
     {
-        if (_list.RemoveAll(e => e.Key == key) > 0) Redraw();
+        int i = _list.FindIndex(e => e.Key == key);
+        if (i < 0) return;
+        var old = _list[i];
+        _list.RemoveAt(i);
+        Rewind.Undo(_ => Restore(old));
+        Redraw();
     }
 
     private static void Put(Entry e)
     {
         SyncShip();
-        _list.RemoveAll(x => x.Key == e.Key);
+        int i = _list.FindIndex(x => x.Key == e.Key);
+        var old = i >= 0 ? _list[i] : null;
+        if (i >= 0) _list.RemoveAt(i);
         e.Shown = Left(e);
         _list.Add(e);
+        Rewind.Undo(_ =>
+        {
+            // 後の取り消しが出し直した写しも外すので、物でなく名前で外す
+            _list.RemoveAll(x => x.Key == e.Key);
+            if (old != null) Restore(old);
+            else Redraw();
+        });
+        Redraw();
+    }
+
+    // 時戻し: 消えた効果を出し直す (切れる時刻は戻し終わりの Rewound でまとめてずらす)
+    private static void Restore(Entry e)
+    {
+        _list.RemoveAll(x => x.Key == e.Key);
+        var r = new Entry { Key = e.Key, Label = e.Label, Color = e.Color, End = e.End, Until = e.Until, HasUntil = e.HasUntil };
+        r.Shown = Left(r);
+        _list.Add(r);
         Redraw();
     }
 
@@ -65,16 +91,31 @@ public static class StatusEffects
         catch (System.Exception ex) { Plugin.Logger.LogError($"status effects: {ex}"); }
     }
 
+    // 時戻しの戻し終わり: 戻した時間 (戻し終わり − 戻し先の時刻) だけ切れる時刻を後ろへ。残りが戻し先の時と同じになる
+    internal static void Rewound(long shiftMs)
+    {
+        if (_list.Count == 0) return;
+        foreach (var e in _list)
+            if (!e.HasUntil) { e.End += shiftMs; e.Shown = Left(e); }
+        Redraw();
+    }
+
     private static void Step()
     {
         if (SyncShip()) return;
+        if (TimeRewind.Playing) return; // 逆再生の間は切らさない (切れる時刻は戻し終わりにずらす)
         bool dirty = false;
         for (int i = _list.Count - 1; i >= 0; i--)
         {
             var e = _list[i];
             if (e.HasUntil) continue;
             int left = Left(e);
-            if (left <= 0) { _list.RemoveAt(i); dirty = true; }
+            if (left <= 0)
+            {
+                _list.RemoveAt(i);
+                Rewind.Undo(_ => Restore(e));
+                dirty = true;
+            }
             else if (left != e.Shown) { e.Shown = left; dirty = true; }
         }
         if (dirty) Redraw();

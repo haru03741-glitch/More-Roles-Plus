@@ -75,6 +75,12 @@ public abstract class Assignable
     internal virtual void SaveRewind(System.Span<float> into) { }
     internal virtual void LoadRewind(System.ReadOnlySpan<float> from) { }
 
+    // 時戻しで戻し終わった後 (全員の端末で)。Tracked の値はもう戻っているので、それに合わせて見た目を作り直す
+    public virtual void OnRewound() { }
+
+    private ITracked[] _tracked;
+    internal ITracked[] TrackedValues => _tracked ??= TrackedFields.Of(this);
+
     // 出現率と人数。設定画面の欄の先頭に自動で付く
     internal IntOpt Chance;
     internal IntOpt Count;

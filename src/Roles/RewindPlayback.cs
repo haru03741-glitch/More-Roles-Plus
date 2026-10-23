@@ -15,7 +15,7 @@ namespace MoreRolesPlus.Roles;
 internal static class RewindPlayback
 {
     internal const int StepMs = 100;
-    private const int Slots = 200; // 20 秒分 (戻す秒数の上限 15 + 余白)
+    private const int Slots = 260; // 26 秒分 (戻す秒数の上限 15 + 押してから依頼までの上限 8 + 余白)
 
     private const byte FSeen = 1, FFlip = 2, FDead = 4, FHold = 8;
 

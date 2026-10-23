@@ -35,6 +35,14 @@ public sealed class Rewinder : RoleBase
         });
     }
 
+    // 押した後に依頼を出さずにやめた時 (発動者の演出の途中で会議になったなど): 手元で使った回数を返す。
+    // ホストは依頼を通した時にだけ数えるので、手元の回数をホストに合わせる
+    internal void Refund()
+    {
+        if (_rewind == null || _rewind.UsesLeft < 0) return;
+        _rewind.RestoreUses(_rewind.UsesLeft + 1);
+    }
+
     // ホスト: この人の依頼を通してよいか (回数と待ち時間)。通したら数える
     internal bool HostAllows()
     {

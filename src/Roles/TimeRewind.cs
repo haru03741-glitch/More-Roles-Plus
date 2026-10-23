@@ -18,9 +18,10 @@ namespace MoreRolesPlus.Roles;
 internal static class TimeRewind
 {
     internal const int StepMs = 250;
-    private const int Slots = 72;          // 18 秒分 (戻す秒数の上限 + 余裕)
+    private const int Slots = 100;         // 25 秒分 (戻す秒数の上限 15 + 押してから依頼までの上限 8 + 余裕)
+    internal const int MaxElapsedMs = 8000; // 押してから依頼を出すまで (発動者の演出の間) として数える上限
     private const int MaxTasks = 24, MaxData = 48;
-    private const int MaxAbilities = 64, MaxRoleFloats = 64;
+    private const int MaxAbilities = 64, MaxRoleFloats = 64, MaxTracked = 128;
     private const int MaxSystems = 16, SysBytes = 1024;
     private const int RoleFloatsPer = 3;   // 本編の役職の待ち時間などの欄
 
@@ -51,8 +52,10 @@ internal static class TimeRewind
     private static readonly float[] AbLeft = new float[Slots * MaxAbilities], AbEffect = new float[Slots * MaxAbilities];
     private static readonly long[] AbHostMs = new long[Slots * MaxAbilities];
     private static readonly float[] RoleFloats = new float[Slots * MaxRoleFloats];
-    // ---- ホスト ----
+    private static readonly long[] TrackedBits = new long[Slots * MaxTracked];
+    // 生き死に (ホストが抜けても次のホストが戻せるよう全員の端末で)
     private static readonly ulong[] DeadBits = new ulong[Slots * 4];
+    // ---- ホスト ----
     private static readonly long[] KillMs = new long[Slots * 256];
     private static readonly SystemTypes[] SysTypes = new SystemTypes[MaxSystems];
     private static readonly ISystemType[] Systems = new ISystemType[MaxSystems];
@@ -76,27 +79,39 @@ internal static class TimeRewind
     private static readonly List<uint> Undone = new();
 
     // 確かめ用
-    internal static int Rewinds, LastSlotAgeMs, LastRevived, LastTasksUndone, LastSystems;
+    internal static int Rewinds, LastSlotAgeMs, LastRevived, LastTasksUndone, LastSystems, LastGone;
     internal static string LastNote = "-";
 
-    // 合図 (ホスト → 全員): 戻す秒数 (ms) と生き返らせる人
+    // 合図 (ホスト → 全員): 戻す秒数 (ms)・生き返らせる人・倒れた体を片付ける抜けた人 (戻し先では生きていた)
     private readonly struct Go
     {
         public readonly ushort BackMs;
-        public readonly byte[] Revive;
-        public Go(ushort backMs, byte[] revive) { BackMs = backMs; Revive = revive; }
+        public readonly byte[] Revive, Gone;
+        public Go(ushort backMs, byte[] revive, byte[] gone) { BackMs = backMs; Revive = revive; Gone = gone; }
     }
 
-    private static readonly RemoteCall<Go> GoCall = new("TimeRewind.Go", Route.HostToAll,
-        (w, g) => { w.Write(g.BackMs); w.Write((byte)g.Revive.Length); foreach (var b in g.Revive) w.Write(b); },
-        r =>
+    private static readonly RemoteCall<Go> GoCall = new("TimeRewind.Go2", Route.HostToAll,
+        (w, g) =>
         {
-            ushort ms = r.ReadUInt16();
-            var rv = new byte[r.ReadByte()];
-            for (int i = 0; i < rv.Length; i++) rv[i] = r.ReadByte();
-            return new Go(ms, rv);
+            w.Write(g.BackMs);
+            WriteIds(w, g.Revive);
+            WriteIds(w, g.Gone);
         },
+        r => new Go(r.ReadUInt16(), ReadIds(r), ReadIds(r)),
         (_, g) => Apply(g));
+
+    private static void WriteIds(MessageWriter w, byte[] ids)
+    {
+        w.Write((byte)ids.Length);
+        foreach (var b in ids) w.Write(b);
+    }
+
+    private static byte[] ReadIds(MessageReader r)
+    {
+        var ids = new byte[r.ReadByte()];
+        for (int i = 0; i < ids.Length; i++) ids[i] = r.ReadByte();
+        return ids;
+    }
 
     // 戻したタスクの完了の印を外す (持ち主 → 全員)
     private static readonly RemoteCall<uint[]> UndoCall = new("TimeRewind.TaskUndo", Route.Anyone,
@@ -116,10 +131,10 @@ internal static class TimeRewind
         if (_on) return;
         _on = true;
         Clear();
-        Rewinds = LastSlotAgeMs = LastRevived = LastTasksUndone = LastSystems = 0;
+        Rewinds = LastSlotAgeMs = LastRevived = LastTasksUndone = LastSystems = LastGone = 0;
         LastNote = "-";
         Events<MeetingStartEvent>.Subscribe(_ => Clear(), life, owner: "TimeRewind");
-        Terrain.TerrainRewind.Enable(life, Crew.Rewinder.Seconds);
+        Terrain.TerrainRewind.Enable(life, Crew.Rewinder.Seconds + MaxElapsedMs / 1000f);
         life.OnRelease(() =>
         {
             _on = false;
@@ -131,6 +146,7 @@ internal static class TimeRewind
     internal static void Clear()
     {
         RewindPlayback.Clear();
+        RewindJournal.Clear();
         _head = _count = 0;
         _poseNextMs = 0;
         _nextMs = 0;
@@ -206,6 +222,7 @@ internal static class TimeRewind
         CaptureVanillaRole(s, lp);
         CaptureTasks(s, lp);
         CaptureRoles(s);
+        CaptureDead(s);
         if (AmongUsClient.Instance.AmHost) CaptureHost(s);
     }
 
@@ -342,9 +359,14 @@ internal static class TimeRewind
     private static void CaptureRoles(int s)
     {
         var all = RoleState.All;
-        if (all.Count != _layoutCount)
+        var addons = RoleState.AllAddons;
+        // 並びが変わったら (人数だけでなく役職の型も) 古い記録の欄は使わない
+        int key = all.Count + addons.Count;
+        foreach (var x in all) key = key * 31 + x.GetType().GetHashCode();
+        foreach (var x in addons) key = key * 31 + x.GetType().GetHashCode();
+        if (key != _layoutCount)
         {
-            _layoutCount = all.Count;
+            _layoutCount = key;
             _layout++;
         }
         Layout[s] = _layout;
@@ -368,9 +390,44 @@ internal static class TimeRewind
             role.SaveRewind(RoleFloats.AsSpan(s * MaxRoleFloats + f, n));
             f += n;
         }
+        int k = 0;
+        foreach (var role in all) SaveTracked(role, s, ref k);
+        foreach (var addon in addons) SaveTracked(addon, s, ref k);
     }
 
-    private static void CaptureHost(int s)
+    private static void SaveTracked(Assignable a, int s, ref int k)
+    {
+        foreach (var v in a.TrackedValues)
+        {
+            if (k >= MaxTracked) return;
+            TrackedBits[s * MaxTracked + k++] = v.Save();
+        }
+    }
+
+    private static void LoadTracked(Assignable a, int s, ref int k)
+    {
+        foreach (var v in a.TrackedValues)
+        {
+            if (k >= MaxTracked) return;
+            long bits = TrackedBits[s * MaxTracked + k++];
+            if (!v.Keep) v.Load(bits);
+        }
+    }
+
+    // 戻し終わった後に役職とアドオンへ知らせる
+    private static void NotifyRewound()
+    {
+        foreach (var role in RoleState.All) Notify(role);
+        foreach (var addon in RoleState.AllAddons) Notify(addon);
+    }
+
+    private static void Notify(Assignable a)
+    {
+        try { a.OnRewound(); }
+        catch (Exception e) { Plugin.Logger.LogError($"{a.Id}.OnRewound: {e}"); }
+    }
+
+    private static void CaptureDead(int s)
     {
         var gd = GameData.Instance;
         int d = s * 4;
@@ -386,6 +443,10 @@ internal static class TimeRewind
                 DeadBits[d + (id >> 6)] |= 1UL << (id & 63);
             }
         }
+    }
+
+    private static void CaptureHost(int s)
+    {
         KillAbility.CopyHostKillMs(KillMs.AsSpan(s * 256, 256), false);
         CaptureSystems(s);
     }
@@ -439,21 +500,24 @@ internal static class TimeRewind
     // ---- 戻す ----
 
     // 時戻しが押した (押した人の端末)。true = 依頼を出した
-    internal static bool Ask()
+    internal static bool Ask() => Ask(0);
+
+    // elapsedMs = 押してから今までの時間 (発動者の演出の間)。戻す区間は押した時刻から数える (上限 MaxElapsedMs)
+    internal static bool Ask(int elapsedMs)
     {
         if (!_on || _count == 0) return false;
-        AskCall.Send(0);
+        AskCall.Send((ushort)Math.Clamp(elapsedMs, 0, MaxElapsedMs));
         return true;
     }
 
     // 依頼 (押した人 → ホスト)。押した人が生きた時戻しかはホストが確かめる
-    private static readonly RemoteCall<byte> AskCall = new("TimeRewind.Ask", Route.ToHost,
-        (w, v) => w.Write(v), r => r.ReadByte(), (sender, _) => HostAsk(sender));
+    private static readonly RemoteCall<ushort> AskCall = new("TimeRewind.Ask2", Route.ToHost,
+        (w, v) => w.Write(v), r => r.ReadUInt16(), (sender, elapsed) => HostAsk(sender, elapsed));
 
     private static long _hostLastGo = long.MinValue / 2;
     private const long MinGapMs = 1500; // 続けて届いた依頼を 2 回効かせない
 
-    private static void HostAsk(PlayerControl sender)
+    private static void HostAsk(PlayerControl sender, ushort elapsedMs)
     {
         if (!sender || sender.Data == null || sender.Data.IsDead) return;
         if (RoleState.Of(sender) is not Crew.Rewinder rw) return;
@@ -461,14 +525,14 @@ internal static class TimeRewind
         // 回数と待ち時間を数えるのは、戻すと決まった時だけ
         if (now - _hostLastGo < MinGapMs || _playing || MeetingHud.Instance || _count == 0 || !rw.HostAllows()) return;
         _hostLastGo = now;
-        HostGo(Crew.Rewinder.Seconds);
+        HostGo(Crew.Rewinder.Seconds + Math.Min((int)elapsedMs, MaxElapsedMs) / 1000f);
     }
 
     private static void HostGo(float seconds)
     {
         ushort back = (ushort)Math.Clamp((int)(seconds * 1000f), 0, 60000);
-        var revive = HostReviveList(Environment.TickCount64 - back);
-        var go = new Go(back, revive);
+        HostLists(Environment.TickCount64 - back, out var revive, out var gone);
+        var go = new Go(back, revive, gone);
         GoCall.Send(go);
         Apply(go); // 配る電文は送った本人 (ホスト) の手元では動かない
         // 水・火・減圧・物は壊した結果と同じ列で配り、全員が同じ刻みで戻す
@@ -483,23 +547,37 @@ internal static class TimeRewind
         return true;
     }
 
-    // 戻す時刻に生きていて今は死んでいる人 (抜けた人は除く)。吸い出されて飛んでいる途中の人も入れる
-    // (飛び終わりの死は各端末で起きるので、合図より先に飛び終わった端末では生き返らせる)
-    private static byte[] HostReviveList(long targetMs)
+    // revive = 戻す時刻に生きていて今は死んでいる人。吸い出されて飛んでいる途中の人も入れる
+    //   (飛び終わりの死は各端末で起きるので、合図より先に飛び終わった端末では生き返らせる)
+    // gone = 戻す時刻に生きていたのに倒れた体が残っていて、生き返らせられない人 (抜けた人は本編の人の一覧から消える)。
+    //   体は戻せない (本編は試合中に人を足せない) ので、倒れた体だけを片付ける
+    private static void HostLists(long targetMs, out byte[] revive, out byte[] gone)
     {
+        revive = gone = Array.Empty<byte>();
         int s = Find(targetMs);
         var gd = GameData.Instance;
-        if (s < 0 || !gd) return Array.Empty<byte>();
-        var list = new List<byte>();
+        if (s < 0 || !gd) return;
+        List<byte> rv = null, gn = null;
         int d = s * 4;
         foreach (var p in gd.AllPlayers)
         {
             if (p == null || p.Disconnected || !p.Object) continue;
-            if (!p.IsDead && !Terrain.CrewGrip.Flying(p.PlayerId)) continue;
             int id = p.PlayerId;
-            if ((DeadBits[d + (id >> 6)] & (1UL << (id & 63))) == 0) list.Add(p.PlayerId);
+            if ((DeadBits[d + (id >> 6)] & (1UL << (id & 63))) != 0) continue;
+            if (p.IsDead || Terrain.CrewGrip.Flying(p.PlayerId)) (rv ??= new List<byte>()).Add(p.PlayerId);
         }
-        return list.ToArray();
+        foreach (var body in UnityEngine.Object.FindObjectsOfType<DeadBody>())
+        {
+            if (!body) continue;
+            byte id = body.ParentId;
+            if ((DeadBits[d + (id >> 6)] & (1UL << (id & 63))) != 0 || (rv != null && rv.Contains(id))) continue;
+            var p = gd.GetPlayerById(id);
+            if (p != null && !p.Disconnected && p.Object) continue;
+            gn ??= new List<byte>();
+            if (!gn.Contains(id)) gn.Add(id);
+        }
+        if (rv != null) revive = rv.ToArray();
+        if (gn != null) gone = gn.ToArray();
     }
 
     // targetMs 以前で一番新しい記録 (無ければ一番古い記録・何も無ければ -1)
@@ -520,6 +598,7 @@ internal static class TimeRewind
     private static long _playStart, _playEnd, _playSlotMs;
     private static int _playSlot;
     private static readonly ulong[] Revived = new ulong[4]; // 逆再生の途中で生き返らせた人
+    private static readonly ulong[] Cleared = new ulong[4]; // 逆再生の途中で倒れた体を片付けた抜けた人
 
     internal static bool Playing => _playing;
 
@@ -538,7 +617,9 @@ internal static class TimeRewind
         _playSlotMs = _playSlot >= 0 ? SlotMs[_playSlot] : 0;
         _playing = true;
         Revived[0] = Revived[1] = Revived[2] = Revived[3] = 0;
+        Cleared[0] = Cleared[1] = Cleared[2] = Cleared[3] = 0;
         Step("pose", () => RewindPlayback.Begin(now));
+        RewindJournal.Begin(_playEnd - (_playSlot >= 0 ? _playSlotMs : now - g.BackMs));
         var lp = PlayerControl.LocalPlayer;
         if (lp)
         {
@@ -565,9 +646,17 @@ internal static class TimeRewind
         if (now >= _playEnd || MeetingHud.Instance || !Terrain.GameClock.ShipAlive) { Finish(); return; }
         if (_playSlot < 0) return;
         float u = (now - _playStart) / (float)(_playEnd - _playStart);
-        u = u * u * (3f - 2f * u);
+        u = RewindClock.World(u);
         long t = _playStart - (long)(u * (_playStart - _playSlotMs));
         RewindPlayback.Drive(t);
+        RewindJournal.UndoAfter(t);
+        foreach (var pid in _play.Gone)
+        {
+            ulong bit = 1UL << (pid & 63);
+            if ((Cleared[pid >> 6] & bit) != 0 || RewindPlayback.DeadAt(pid, t) != false) continue;
+            Cleared[pid >> 6] |= bit;
+            ClearBody(pid);
+        }
         foreach (var pid in _play.Revive)
         {
             ulong bit = 1UL << (pid & 63);
@@ -595,20 +684,36 @@ internal static class TimeRewind
             catch (Exception e) { Plugin.Logger.LogError($"TimeRewind revive {pid}: {e}"); }
         }
         LastRevived = g.Revive.Length;
+        foreach (var pid in g.Gone) ClearBody(pid);
+        LastGone = g.Gone.Length;
         int s = _playSlot;
         if (s < 0 || SlotMs[s] != _playSlotMs) s = Find(_playStart - g.BackMs); // 逆再生の間の記録に枠を使われた
         if (s < 0) return;
         LastSlotAgeMs = (int)(_playStart - SlotMs[s]);
         Rewinds++;
+        RewindJournal.UndoAfter(SlotMs[s]);
+        Step("effects", () => StatusEffects.Rewound(now - SlotMs[s]));
         Step("self", () => RestoreSelf(s));
         Step("roles", () => RestoreRoles(s, now - SlotMs[s]));
         if (AmongUsClient.Instance.AmHost) Step("host", () => RestoreHost(s, now - SlotMs[s]));
+        NotifyRewound();
         // 戻した所より後の記録は無かったことになる
         RewindPlayback.Forget(SlotMs[s]);
         _count -= (_head - s - 1 + Slots) % Slots;
         _head = (s + 1) % Slots;
         _nextMs = now + StepMs;
         Plugin.Logger.LogInfo($"TimeRewind: back {g.BackMs}ms -> slot age {LastSlotAgeMs}ms revive={g.Revive.Length} tasks={LastTasksUndone} systems={LastSystems} {LastNote}");
+    }
+
+    // 抜けた人の倒れた体を片付ける (戻し先ではまだ生きていたので、体が残っていると通報できてしまう)
+    private static void ClearBody(byte pid)
+    {
+        try
+        {
+            foreach (var body in UnityEngine.Object.FindObjectsOfType<DeadBody>())
+                if (body && body.ParentId == pid) UnityEngine.Object.Destroy(body.gameObject);
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"TimeRewind gone {pid}: {e}"); }
     }
 
     private static void Step(string what, Action fn)
@@ -707,6 +812,9 @@ internal static class TimeRewind
             role.LoadRewind(RoleFloats.AsSpan(s * MaxRoleFloats + f, n));
             f += n;
         }
+        int k = 0;
+        foreach (var role in RoleState.All) LoadTracked(role, s, ref k);
+        foreach (var addon in RoleState.AllAddons) LoadTracked(addon, s, ref k);
     }
 
     private static void RestoreHost(int s, long shiftMs)
@@ -836,6 +944,6 @@ internal static class TimeRewind
     internal static string Probe()
     {
         long now = Environment.TickCount64;
-        return $"on={_on} playing={_playing} slots={_count} span={Span:0.00}s rewinds={Rewinds} lastAge={LastSlotAgeMs}ms revived={LastRevived} tasksUndone={LastTasksUndone} systems={LastSystems}/{_sysN} note={LastNote} next={_nextMs - now}ms";
+        return $"on={_on} playing={_playing} slots={_count} span={Span:0.00}s rewinds={Rewinds} lastAge={LastSlotAgeMs}ms revived={LastRevived} gone={LastGone} journal={RewindJournal.Count}/{RewindJournal.Undone} tasksUndone={LastTasksUndone} systems={LastSystems}/{_sysN} note={LastNote} next={_nextMs - now}ms";
     }
 }

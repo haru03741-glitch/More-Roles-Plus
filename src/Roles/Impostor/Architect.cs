@@ -118,7 +118,8 @@ public sealed class Architect : RoleBase
     private readonly List<ArchitectDeskArt.Handle> _desks = new();
     private Ability _plan;
     private int _check, _hostCheck;
-    private float _gauge, _dt;
+    private float _dt;
+    private readonly Tracked<float> _gauge = new(0f); // 時戻しで戻る (各端末が自分の手元の値)
     private int _shownGauge = -1;
     // なぞり終えた線を立てる順番待ち (真ん中・向き・長さ)
     private readonly Queue<(Vector2 At, Vector2 Dir, float Len)> _queue = new();
@@ -147,15 +148,8 @@ public sealed class Architect : RoleBase
     private static int _useCheck;
 
     internal int DeskTotal => _desks.Count;
-    internal float Gauge => _gauge;
+    internal float Gauge => _gauge.Value;
 
-    // 時戻し: ゲージは持ち主の端末だけが数えている
-    internal override int RewindFloats => 1;
-    internal override void SaveRewind(Span<float> into) => into[0] = _gauge;
-    internal override void LoadRewind(ReadOnlySpan<float> from)
-    {
-        if (IsLocal) _gauge = MathF.Min(GaugeLength, MathF.Max(0f, from[0]));
-    }
     internal float GaugeMax => GaugeLength;
     internal ArchitectDrone Drone => _drone;
 
@@ -169,7 +163,7 @@ public sealed class Architect : RoleBase
         RubbleBlocks.CrumblePickable = () => _live > 0 && OwnRubble;
         All.Add(this);
         TerrainPermits.Lent = Lends;
-        _gauge = GaugeLength;
+        _gauge.Value = GaugeLength;
         _dt = Time.fixedDeltaTime;
         AddAbility(new Ability(new Text("Architect.Desk"), "desk")
         {
@@ -238,7 +232,7 @@ public sealed class Architect : RoleBase
         if (a.PlayerId != actor)
         {
             a._lent++;
-            if (a.IsLocal) a._gauge = MathF.Max(0f, a._gauge - MathF.Max(0f, length - Joint));
+            if (a.IsLocal) a._gauge.Value = MathF.Max(0f, a._gauge.Value - MathF.Max(0f, length - Joint));
         }
         a.DroneTo(at.x, at.y);
         Walls.Add(new Built { Name = name, At = at, Length = length, Since = Time.time, Owner = a.PlayerId });
@@ -310,7 +304,7 @@ public sealed class Architect : RoleBase
         if (IsLocal)
         {
             if (ArchitectPlan.Owner == this) ArchitectPlan.Close();
-            GaugeCall.Send((byte)Math.Clamp((int)(_gauge * GaugeQuant), 0, 255));
+            GaugeCall.Send((byte)Math.Clamp((int)(_gauge.Value * GaugeQuant), 0, 255));
         }
         RefreshDrone();
     }
@@ -338,7 +332,7 @@ public sealed class Architect : RoleBase
     private void OnGauge(byte q)
     {
         if (IsLocal || _user != LocalId) return;
-        _gauge = MathF.Min(GaugeLength, q / GaugeQuant);
+        _gauge.Value = MathF.Min(GaugeLength, q / GaugeQuant);
     }
 
     // ドローンは設計台が使われている間 (構築士でもほかの人でも) その台から飛ぶ
@@ -382,7 +376,7 @@ public sealed class Architect : RoleBase
     // ほかの人の端末: 設計台で設計図を開く。ゲージは構築士から届くまで 0 (引けない)
     private bool BeginUse(int desk)
     {
-        _gauge = 0f;
+        _gauge.Value = 0f;
         _queue.Clear();
         if (!ArchitectPlan.Open(this)) return false;
         OnUse(PlayerControl.LocalPlayer, (byte)desk);
@@ -397,7 +391,7 @@ public sealed class Architect : RoleBase
         if (open) ArchitectPlan.Tick();
         BuildNext();
         float max = GaugeLength;
-        if (_gauge < max) _gauge = MathF.Min(max, _gauge + max / MathF.Max(1f, GaugeRefill) * _dt);
+        if (_gauge.Value < max) _gauge.Value = MathF.Min(max, _gauge.Value + max / MathF.Max(1f, GaugeRefill) * _dt);
         if (open || _queue.Count > 0) return;
         OnUse(PlayerControl.LocalPlayer, ClosedDesk);
         UseCall.Send((PlayerId, ClosedDesk));
@@ -442,7 +436,7 @@ public sealed class Architect : RoleBase
         _pickT = PickEvery;
         if (_pendingAt >= 0f && Time.time - _pendingAt < PickTimeout) return;
         _pendingAt = -1f;
-        if (_gauge >= GaugeLength - 0.01f) return;
+        if (_gauge.Value >= GaugeLength - 0.01f) return;
         var d = _desks[_openDesk];
         var b = RubbleBlocks.NearestFree(d.X, d.Y, Reach);
         if (b == null) return;
@@ -472,7 +466,7 @@ public sealed class Architect : RoleBase
         b.Taken = true;
         if (IsLocal)
         {
-            _gauge = Math.Min(GaugeLength, _gauge + RubbleGain);
+            _gauge.Value = Math.Min(GaugeLength, _gauge.Value + RubbleGain);
             _picked++;
             _pendingAt = -1f;
         }
@@ -709,8 +703,8 @@ public sealed class Architect : RoleBase
     // なぞった長さの分だけゲージを使う。足りなければ使わずに false
     internal bool TrySpend(float length)
     {
-        if (_gauge < length) return false;
-        _gauge -= length;
+        if (_gauge.Value < length) return false;
+        _gauge.Value -= length;
         return true;
     }
 
@@ -736,7 +730,7 @@ public sealed class Architect : RoleBase
         used += Chunk(run);
         // 端の重なりと最短の長さの分は払わない。払いすぎた分は戻す
         float back = spent - Math.Min(spent, used);
-        _gauge = Math.Min(GaugeLength, _gauge + back);
+        _gauge.Value = Math.Min(GaugeLength, _gauge.Value + back);
     }
 
     // 床の上の 1 続きの点の列を、直線に近い区間ごとの壁に切る。切った長さの合計
@@ -788,7 +782,7 @@ public sealed class Architect : RoleBase
         float cost = PipeCost;
         // 台を借りた人は配管を裂けない (壁だけ)
         if (!IsLocal) { _lastPipe = "not owner"; return false; }
-        if (_gauge < cost || !SolidMap.Valid || SolidMap.Solid(at.x, at.y) || !WaterLeak.IsWaterRoom(at)) { _lastPipe = "not here"; return false; }
+        if (_gauge.Value < cost || !SolidMap.Valid || SolidMap.Solid(at.x, at.y) || !WaterLeak.IsWaterRoom(at)) { _lastPipe = "not here"; return false; }
         // いちばん近い壁の面 (歩ける所の地図の縁) を 16 方向に探す
         float best = float.MaxValue, bx = 0f, by = 0f;
         for (int k = 0; k < PipeDirs; k++)
@@ -806,7 +800,7 @@ public sealed class Architect : RoleBase
         var res = TerrainApi.BurstPipe(face, FxMath.V2(-bx, -by));
         _lastPipe = res.Ok ? $"burst ({face.x:0.00},{face.y:0.00})" : $"refused {res.Why}";
         if (!res.Ok) return false;
-        _gauge -= cost;
+        _gauge.Value -= cost;
         _pipes++;
         ArchitectPlan.MarkDirty();
         return true;
@@ -820,7 +814,7 @@ public sealed class Architect : RoleBase
         var res = TerrainApi.PushWall(w.At, w.Dir, w.Len);
         if (res.Ok) { _built++; return; }
         _refused++;
-        _gauge = Math.Min(GaugeLength, _gauge + Math.Max(0f, w.Len - Joint));
+        _gauge.Value = Math.Min(GaugeLength, _gauge.Value + Math.Max(0f, w.Len - Joint));
         Plugin.Logger.LogInfo($"Architect: wall refused {res.Why}");
     }
 
@@ -855,13 +849,13 @@ public sealed class Architect : RoleBase
         TickPick();
         BuildNext();
         float max = GaugeLength;
-        if (_gauge < max) _gauge = MathF.Min(max, _gauge + max / MathF.Max(1f, GaugeRefill) * _dt);
+        if (_gauge.Value < max) _gauge.Value = MathF.Min(max, _gauge.Value + max / MathF.Max(1f, GaugeRefill) * _dt);
         if (++_check < CheckEvery) return;
         _check = 0;
         var b = _plan?.Button;
         if (b == null) return;
         b.SetUsable(CanPlan(PlayerControl.LocalPlayer));
-        int shown = (int)_gauge;
+        int shown = (int)_gauge.Value;
         if (shown != _shownGauge) { _shownGauge = shown; b.SetUses(shown); }
     }
 
@@ -890,7 +884,7 @@ public sealed class Architect : RoleBase
 
     internal string Describe()
     {
-        var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} picked={_picked} user={(_user == NoUser ? "-" : _user.ToString())}@{_userDesk} lent={_lent} drone={(_drone == null ? "-" : _drone.Describe())} plan={ArchitectPlan.Describe()}");
+        var sb = new System.Text.StringBuilder($"desks={_desks.Count}/{(int)DeskCount} gauge={_gauge.Value:0.0}/{(float)GaugeLength:0} queue={_queue.Count} built={_built} refused={_refused} walls={Walls.Count} pipes={_pipes} pipe={_lastPipe} desk={_lastDesk} picked={_picked} user={(_user == NoUser ? "-" : _user.ToString())}@{_userDesk} lent={_lent} drone={(_drone == null ? "-" : _drone.Describe())} plan={ArchitectPlan.Describe()}");
         foreach (var d in _desks) sb.Append($" ({d.X:0.00},{d.Y:0.00}{(d.Broken ? " broken" : d.Hits > 0 ? $" hits={d.Hits}" : "")})");
         sb.Append(" rubble=").Append(RubbleBlocks.DescribeKept());
         return sb.ToString();
