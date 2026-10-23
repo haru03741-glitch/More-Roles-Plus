@@ -78,6 +78,7 @@ public static class TestBridge
             Dev.PosTrace.Register();
             LobbyCommands.Register();
             RoleCommands.Register();
+            Roles.RewindCinematic.Register();
             Rules.RulesProbe.Register();
             Terrain.TerrainProbe.Register();
             WriteOut($"BRIDGE up {Plugin.Version}");
@@ -158,7 +159,7 @@ public static class TestBridge
 
         Run(directive, WriteOut);
         if (name.Equals("help", StringComparison.OrdinalIgnoreCase))
-            WriteOut("HELP wait phase=<Boot|Menu|Lobby|InGame|Meeting> [秒] | wait marker <正規表現> [秒] | wait cancel");
+            WriteOut("HELP wait phase=<Boot|Menu|Lobby|InGame|Meeting> [秒] | wait marker <正規表現> [秒] | wait sec <秒> | wait cancel");
     }
 
     // 1 行のコマンドを実行する (ブリッジと開発者コンソールで共用。wait はブリッジだけ)
@@ -217,7 +218,8 @@ public static class TestBridge
             catch (Exception e) { WriteOut($"ERR wait bad regex: {e.Message}"); return; }
             secIndex = 2;
         }
-        else { WriteOut("ERR wait needs phase=<X> or marker <regex>"); return; }
+        else if (parts[0].Equals("sec", StringComparison.OrdinalIgnoreCase)) secIndex = 1; // 条件なし = 秒が過ぎたら OK
+        else { WriteOut("ERR wait needs phase=<X>, marker <regex> or sec <n>"); return; }
 
         int sec = parts.Length > secIndex && int.TryParse(parts[secIndex], out int s) ? Math.Clamp(s, 1, 600) : 30;
         w.DeadlineMs = Environment.TickCount64 + sec * 1000L;
@@ -226,9 +228,9 @@ public static class TestBridge
 
     private static void EvaluateWait(long now)
     {
-        bool hit = _wait.Phase != null
-            ? string.Equals(Phase(), _wait.Phase, StringComparison.OrdinalIgnoreCase)
-            : BridgeLog.AnyMatchSince(_wait.Since, _wait.Marker);
+        bool hit = _wait.Phase != null ? string.Equals(Phase(), _wait.Phase, StringComparison.OrdinalIgnoreCase)
+            : _wait.Marker != null ? BridgeLog.AnyMatchSince(_wait.Since, _wait.Marker)
+            : now >= _wait.DeadlineMs;
 
         if (hit) { WriteOut($"OK wait {_wait.Text}"); _wait = null; return; }
         if (now >= _wait.DeadlineMs) { WriteOut($"ERR wait timeout {_wait.Text} (phase={Phase()})"); _wait = null; }

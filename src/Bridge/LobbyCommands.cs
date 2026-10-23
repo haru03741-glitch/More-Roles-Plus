@@ -47,16 +47,26 @@ internal static class LobbyCommands
         });
 
         // 版の違う端末どうし (PC と Android でビルド番号が違う) は LAN の部屋一覧に出ないので、公式サーバーの部屋で試す
-        TestBridge.Register("region", "[番号] 接続先の地域を一覧 / 切り替える", (args, reply) =>
+        // 番号は端末ごとに変わるので名前でも選べる。custom = 自前鯖の UDP 直結の地域・official = 公式のアジア
+        TestBridge.Register("region", "[番号|名前の一部|custom|official] 接続先の地域を一覧 / 切り替える (選んだ地域は Epic/Steam で共用のファイルに残る)", (args, reply) =>
         {
             var sm = ServerManager.Instance;
             var regions = sm.AvailableRegions;
-            if (int.TryParse(args.Trim(), out int idx) && idx >= 0 && idx < regions.Length) sm.SetRegion(regions[idx]);
+            string want = args.Trim();
+            if (!int.TryParse(want, out int idx)) idx = -1;
+            if (idx < 0 && want.Length > 0)
+            {
+                string key = want.ToLowerInvariant() switch { "custom" => "Impostor Test UDP", "official" => "Asia", _ => want };
+                for (int i = 0; i < regions.Length && idx < 0; i++)
+                    if (regions[i].Name.Contains(key, System.StringComparison.OrdinalIgnoreCase)) idx = i;
+                if (idx < 0) reply($"ERR region '{want}' not found");
+            }
+            if (idx >= 0 && idx < regions.Length) sm.SetRegion(regions[idx]);
             for (int i = 0; i < regions.Length; i++) reply($"REGION {i} {regions[i].Name}{(regions[i].Name == sm.CurrentRegion.Name ? " *" : "")}");
-            reply($"OK region now={sm.CurrentRegion.Name}");
+            reply($"OK region now={sm.CurrentRegion.Name} official={Net.ServerKind.IsOfficial(ignoreNetworkMode: true)}");
         });
 
-        TestBridge.Register("hostonline", "メニューから公式サーバーの部屋作成画面を開く (数秒置いて confirmcreate)", (args, reply) =>
+        TestBridge.Register("hostonline", "メニューから今の地域のサーバーで部屋作成画面を開く (follow: wait sec 3 → confirmcreate)", (args, reply) =>
         {
             var mm = Object.FindObjectOfType<MainMenuManager>();
             if (!mm || TestBridge.Phase() != "Menu") { reply($"ERR hostonline not at main menu (phase={TestBridge.Phase()})"); return; }
@@ -102,7 +112,7 @@ internal static class LobbyCommands
             reply("OK confirmcreate requested");
         });
 
-        TestBridge.Register("joincode", "<部屋コード> 公式サーバーの部屋にコードで入る (follow: wait phase=Lobby 60)", (args, reply) =>
+        TestBridge.Register("joincode", "<部屋コード> 今の地域のサーバーの部屋にコードで入る (follow: wait phase=Lobby 60)", (args, reply) =>
         {
             if (TestBridge.Phase() != "Menu") { reply($"ERR joincode not at menu (phase={TestBridge.Phase()})"); return; }
             int id = GameCode.GameNameToInt(args.Trim().ToUpperInvariant());
