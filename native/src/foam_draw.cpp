@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 補修フォームの栓 1 枚の絵 (src/Terrain/FoamArt.cs の Draw と同じ結果)。
@@ -160,4 +161,18 @@ MRP_API void mrp_foam_draw(FoamArgs* a)
         px[o + 2] = (uint8_t)clampi((int)b, 0, 255);
         px[o + 3] = (uint8_t)(int)(alpha * 255.0f);
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_foam_draw(FoamArgs* a)
+{
+    Dg d(DgFoamDraw);
+    int64_t n = (int64_t)a->w * a->h;
+    d.InV(a->w); d.InV(a->h); d.InV(a->u0); d.InV(a->v0); d.InV(a->reach); d.InV(a->vmin); d.InV(a->vmax); d.InV(a->bleed); d.InV(a->umax);
+    d.InV(a->softInner); d.InV(a->p); d.InV(a->ballN);
+    d.In(a->vis, a->vis ? n : 0); d.In(a->pores, n); d.In(a->balls, (int64_t)a->ballN * 16);
+    d.In(a->px, n * 4);
+    mrp_foam_draw(a);
+    d.Out(a->px, n * 4);
+    d.Commit();
 }

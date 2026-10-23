@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 水の升の写し元を決め直す (src/Terrain/WaterArt.cs の Fill と同じ結果)。
@@ -101,4 +102,19 @@ MRP_API void mrp_water_fill(WaterFillArgs* a)
             if (ttx - ftx == TileDx[i] && tty - fty == TileDy[i]) a->targets[fty * tw + ftx] |= (uint8_t)(1 << i);
     }
     a->cells = cells;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_water_fill(WaterFillArgs* a)
+{
+    Dg d(DgWaterFill);
+    int64_t n = (int64_t)a->w * a->h, tb = (int64_t)a->tw * ((a->h + a->tc - 1) / a->tc);
+    d.InV(a->sw); d.InV(a->w); d.InV(a->h); d.InV(a->sub); d.InV(a->mw); d.InV(a->mh); d.InV(a->mox); d.InV(a->moy); d.InV(a->mppu);
+    d.InV(a->sox); d.InV(a->soy); d.InV(a->cell); d.InV(a->max); d.InV(a->x0); d.InV(a->y0); d.InV(a->x1); d.InV(a->y1);
+    d.InV(a->rx0); d.InV(a->ry0); d.InV(a->rw); d.InV(a->rh); d.InV(a->tw); d.InV(a->tc);
+    d.In2D(a->solidOpen, a->sw, a->ry0 + a->rh, 1, a->rx0, a->ry0, a->rx0 + a->rw - 1, a->ry0 + a->rh - 1);
+    d.In(a->waterOpen, n); d.In(a->fillFrom, n * 4); d.In(a->targets, tb);
+    mrp_water_fill(a);
+    d.Out(a->fillFrom, n * 4); d.Out(a->targets, tb); d.OutV(a->cells);
+    d.Commit();
 }

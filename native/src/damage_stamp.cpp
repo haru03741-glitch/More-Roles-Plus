@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 #include <float.h>
 #include "cut_shape.h"
@@ -234,4 +235,23 @@ MRP_API void mrp_damage_stamp(StampArgs* a)
         }
     }
     a->tx0 = tx0; a->ty0 = ty0; a->tx1 = tx1; a->ty1 = ty1;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_damage_stamp(StampArgs* a)
+{
+    Dg d(DgDamageStamp);
+    d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->x0); d.InV(a->y0); d.InV(a->x1); d.InV(a->y1);
+    d.InV(a->gen); d.InV(a->shapeKind); d.InV(a->r); d.InV(a->scorch); d.InV(a->banded); d.InV(a->hasBody); d.InV(a->floorY); d.InV(a->reach);
+    d.In(a->shape, (int64_t)(a->shapeKind == 0 ? 3 : a->shapeKind == 1 ? 8 : a->shapeN * 4) * 4);
+    if (a->banded) d.In(a->band, (int64_t)a->bandN * 8);
+    if (a->hasBody) { d.In(a->bseg, (int64_t)a->bsegN * 8); d.In(a->bopen, (int64_t)a->bopenN * 8); }
+    d.In(a->keep, (int64_t)a->keepN * 16);
+    d.In2D(a->px, a->w, a->h, 4, a->x0, a->y0, a->x1, a->y1);
+    d.In2D(a->gens, a->w, a->h, 1, a->x0, a->y0, a->x1, a->y1);
+    mrp_damage_stamp(a);
+    d.Out2D(a->px, a->w, a->h, 4, a->x0, a->y0, a->x1, a->y1);
+    d.Out2D(a->gens, a->w, a->h, 1, a->x0, a->y0, a->x1, a->y1);
+    d.OutV(a->tx0); d.OutV(a->ty0); d.OutV(a->tx1); d.OutV(a->ty1);
+    d.Commit();
 }

@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 
 // 家具の当たり判定の形を左右下上の幅だけ太らせる (src/Terrain/FurnitureLift.cs の MakeShape の後半と同じ結果)。
 // 画素は、中の画素から見た向きごとの半径の楕円の中に入っていれば中。小数の式の順番は C# と同じにする
@@ -40,4 +41,16 @@ MRP_API void mrp_lift_shape(LiftShapeArgs* a)
         int i = (y * n + x) * 4;
         a->px[i] = 255; a->px[i + 1] = 255; a->px[i + 2] = 255; a->px[i + 3] = 255;
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_lift_shape(LiftShapeArgs* a)
+{
+    Dg d(DgLiftShape);
+    int64_t n = (int64_t)a->n * a->n;
+    d.InV(a->n); d.InV(a->rx); d.InV(a->ry); d.InV(a->padL); d.InV(a->padR); d.InV(a->padB); d.InV(a->padT); d.InV(a->sx); d.InV(a->sy);
+    d.In(a->inside, n);
+    mrp_lift_shape(a);
+    d.Out(a->px, n * 4); d.Out(a->shapeIn, n);
+    d.Commit();
 }

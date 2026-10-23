@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <bit>
 
 // 水の升を作る時の下ごしらえ (src/Terrain/WaterOpen.cs の LoadWet の濾し・WaterSim.IslandLevels の升ごとの島・
@@ -104,4 +105,26 @@ MRP_API void mrp_island_cells(IslandCellsArgs* a)
         }
     }
     a->left = left;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_wet_filter(WetFilterArgs* a)
+{
+    Dg d(DgWetFilter);
+    d.InV(a->n);
+    d.In(a->bits, ((int64_t)a->n + 7) / 8); d.In(a->solid, a->n); d.In(a->outside, a->outside ? a->n : 0);
+    mrp_wet_filter(a);
+    d.Out(a->wet, a->n); d.OutV(a->count);
+    d.Commit();
+}
+
+MRP_API void mrp_dg_island_cells(IslandCellsArgs* a)
+{
+    Dg d(DgIslandCells);
+    int64_t n = (int64_t)a->w * a->h, sn = (int64_t)a->sw * a->h * a->subN;
+    d.InV(a->w); d.InV(a->h); d.InV(a->subN); d.InV(a->sw); d.InV(a->areaN); d.InV(a->spread);
+    d.In(a->sub, n * 2); d.In(a->solid, sn); d.In(a->island, a->island ? sn : 0);
+    mrp_island_cells(a);
+    d.Out(a->isl, n); d.Out(a->wetOnly, n); d.Out(a->area, (int64_t)a->areaN * 4); d.OutV(a->left);
+    d.Commit();
 }

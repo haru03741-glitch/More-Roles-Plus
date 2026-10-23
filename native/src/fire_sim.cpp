@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 
 // 床の上の火の 1 刻み (src/Terrain/FireSim.cs の StepCs と同じ結果)。整数だけで計算する。
 // mode 0 = 熱の移動と升ごとの計算。熱が新しく届く升のタイルの材質がまだ決まっていなければ、何も書かずにそのタイルを返す
@@ -292,4 +293,26 @@ MRP_API void mrp_fire_step(FireStepArgs* a)
     a->missN = FindMissing(a);
     if (a->missN > 0) return;
     Step(a);
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_fire_step(FireStepArgs* a)
+{
+    Dg d(DgFireStep);
+    int64_t n = (int64_t)a->w * a->h, tn = (int64_t)a->tw * a->th, pn = (int64_t)a->pw * a->ph;
+    d.InV(a->w); d.InV(a->h); d.InV(a->tw); d.InV(a->th); d.InV(a->actN); d.InV(a->step); d.InV(a->pull); d.InV(a->decides); d.InV(a->wind);
+    d.InV(a->pw); d.InV(a->ph); d.InV(a->pressN); d.InV(a->evCap); d.InV(a->dirtyCap); d.InV(a->missCap); d.InV(a->mode); d.InV(a->searMin);
+    d.In(a->t, n * 4); d.In(a->fuel, n * 4); d.In(a->mat, n); d.In(a->flag, n); d.In(a->burn, n); d.In(a->inList, n);
+    d.In(a->flareAt, n); d.In(a->arcAt, n); d.In(a->chr, n * 2); d.In(a->tileMat, tn); d.In(a->tileDirty, tn);
+    d.In(a->act, (int64_t)a->actN * 4); d.In(a->open, n); d.In(a->edge, n); d.In(a->hgt, n * 4);
+    if (a->pull) { d.In(a->pdist, pn * 2); d.In(a->pcomp, pn * 4); d.In(a->ppar, pn * 4); d.In(a->ppress, (int64_t)a->pressN * 4); }
+    mrp_fire_step(a);
+    d.Out(a->t, n * 4); d.Out(a->fuel, n * 4); d.Out(a->flag, n); d.Out(a->burn, n); d.Out(a->inList, n);
+    d.Out(a->flareAt, n); d.Out(a->arcAt, n); d.Out(a->chr, n * 2); d.Out(a->tileDirty, tn);
+    d.OutV(a->actN); d.Out(a->act, (int64_t)a->actN * 4);
+    d.OutV(a->evN); d.Out(a->ev, (int64_t)a->evN * 4);
+    d.OutV(a->dirtyN); d.Out(a->dirty, (int64_t)a->dirtyN * 4);
+    d.OutV(a->missN); d.Out(a->missing, (int64_t)a->missN * 4);
+    d.OutV(a->burning);
+    d.Commit();
 }

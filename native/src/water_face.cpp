@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 壁の面の上の水の厚さを画素の A に書く (src/Terrain/WaterArt.cs の WriteFace / BaseDepth / CellBase と
@@ -122,4 +123,17 @@ MRP_API void mrp_water_face(FaceArgs* a)
             else carry = 0;
         }
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_water_face(FaceArgs* a)
+{
+    Dg d(DgWaterFace);
+    int64_t nn = (int64_t)a->n * a->n;
+    // 水の地図は船全体なので入力には入れない
+    d.InV(a->n); d.InV(a->x0); d.InV(a->y0); d.InV(a->edge); d.InV(a->ox); d.InV(a->oy); d.InV(a->cell); d.InV(a->w); d.InV(a->h);
+    d.In(a->face, nn); d.In(a->px, nn * 4);
+    mrp_water_face(a);
+    d.Out(a->px, nn * 4);
+    d.Commit();
 }

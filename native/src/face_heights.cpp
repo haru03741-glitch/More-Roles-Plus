@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 
 // 水のタイルの画素ごとの壁の面の高さ (src/Terrain/FloorMask.cs の FaceHeights と同じ結果) と、
 // 壁の絵が抜けた所を面から外す (src/Terrain/WaterHeight.cs の CutHoles と同じ結果)。小数の式の順番は C# と同じにする
@@ -89,4 +90,26 @@ MRP_API void mrp_face_cut_holes(FaceHolesArgs* a)
             if (a->px[(hy * a->w + hx) * 4] >= a->holeMin) a->face[j] = 255;
         }
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_face_heights(FaceHeightsArgs* a)
+{
+    Dg d(DgFaceHeights);
+    // 床と面のマスクは船全体で大きいので入力には入れない
+    d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->x); d.InV(a->y); d.InV(a->size); d.InV(a->n);
+    mrp_face_heights(a);
+    d.Out(a->into, (int64_t)a->n * a->n); d.OutV(a->any);
+    d.Commit();
+}
+
+MRP_API void mrp_dg_face_cut_holes(FaceHolesArgs* a)
+{
+    Dg d(DgFaceCutHoles);
+    int64_t n = (int64_t)a->n * a->n;
+    d.InV(a->n); d.InV(a->x); d.InV(a->y); d.InV(a->size); d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->holeMin);
+    d.In(a->face, n);
+    mrp_face_cut_holes(a);
+    d.Out(a->face, n);
+    d.Commit();
 }

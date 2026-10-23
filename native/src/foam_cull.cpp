@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -88,4 +89,17 @@ MRP_API void mrp_foam_cull(FoamCullArgs* a)
     }
     a->hiddenN = hidden;
     free(hole); free(tmp); free(run); free(sum);
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_foam_cull(FoamCullArgs* a)
+{
+    Dg d(DgFoamCull);
+    // 損傷マスクは船全体で大きいので入力には入れない
+    d.InV(a->mw); d.InV(a->mh); d.InV(a->ox); d.InV(a->oy); d.InV(a->mppu); d.InV(a->w); d.InV(a->h); d.InV(a->u0); d.InV(a->v0);
+    d.InV(a->ax); d.InV(a->ay); d.InV(a->ux); d.InV(a->uy); d.InV(a->vx); d.InV(a->vy); d.InV(a->ballN); d.InV(a->reach);
+    d.In(a->balls, (int64_t)a->ballN * 12);
+    mrp_foam_cull(a);
+    d.Out(a->vis, (int64_t)a->w * a->h); d.Out(a->hidden, a->ballN); d.OutV(a->hiddenN);
+    d.Commit();
 }

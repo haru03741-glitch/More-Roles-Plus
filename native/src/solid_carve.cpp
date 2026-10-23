@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include "cut_shape.h"
 
 // 壊した所を歩ける所の地図に塗り足す (src/Terrain/SolidMap.cs の Carve の、壁の線を描いた後の部分と同じ結果)。
@@ -133,4 +134,24 @@ MRP_API void mrp_solid_carve(CarveArgs* a)
         if (a->island && a->island[g] == 0) a->island[g] = lab[k];
     }
     a->opened = grown;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_solid_carve(CarveArgs* a)
+{
+    Dg d(DgSolidCarve);
+    int x1 = a->x0 + a->bw - 1, y1 = a->y0 + a->bh - 1;
+    d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->reach); d.InV(a->x0); d.InV(a->y0); d.InV(a->bw); d.InV(a->bh);
+    d.InV(a->shapeKind); d.InV(a->refK); d.InV(a->refLab);
+    d.In(a->shape, (int64_t)(a->shapeKind == 0 ? 3 : a->shapeKind == 1 ? 8 : a->shapeN * 4) * 4);
+    d.In(a->keep, (int64_t)a->keepN * 16);
+    d.In(a->barrier, (int64_t)a->bw * a->bh);
+    d.In2D(a->open, a->w, a->h, 1, a->x0, a->y0, x1, y1);
+    d.In2D(a->island, a->w, a->h, 1, a->x0, a->y0, x1, y1);
+    d.In2D(a->outside, a->w, a->h, 1, a->x0, a->y0, x1, y1);
+    mrp_solid_carve(a);
+    d.Out2D(a->open, a->w, a->h, 1, a->x0, a->y0, x1, y1);
+    d.Out2D(a->island, a->w, a->h, 1, a->x0, a->y0, x1, y1);
+    d.OutV(a->opened);
+    d.Commit();
 }

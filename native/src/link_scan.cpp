@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 
 // 水の縁の走査 (src/Terrain/WaterSim.cs の LinkPass の前半と同じ結果)。
 // 範囲の升の前の縁の印を消し、開いている升の向きのうち隣へ流れない向きを光線の待ち行列へ升の番号順に並べる。
@@ -58,4 +59,29 @@ MRP_API void mrp_link_scan(LinkScanArgs* a)
     a->qN = qN;
     a->clearedN = cN;
     a->seaDirty = sea;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_link_scan(LinkScanArgs* a)
+{
+    Dg d(DgLinkScan);
+    // 地図の高さは渡ってこないので範囲の行だけ (範囲は地図の中)
+    int rows = a->y1 + 1;
+    d.InV(a->w); d.InV(a->x0); d.InV(a->y0); d.InV(a->x1); d.InV(a->y1); d.InV(a->dry); d.InV(a->qCap); d.InV(a->clearedCap);
+    d.In2D(a->open, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.In2D(a->lvl, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.In2D(a->edge, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.In2D(a->rim, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.In2D(a->fallMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.In2D(a->stepMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.In2D(a->seaMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    mrp_link_scan(a);
+    d.Out2D(a->fallMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.Out2D(a->stepMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.Out2D(a->seaMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.Out2D(a->lipMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    d.OutV(a->qN); d.Out(a->q, (int64_t)(a->qN < a->qCap ? a->qN : a->qCap) * 4);
+    d.OutV(a->clearedN); d.Out(a->cleared, (int64_t)(a->clearedN < a->clearedCap ? a->clearedN : a->clearedCap) * 4);
+    d.OutV(a->seaDirty);
+    d.Commit();
 }

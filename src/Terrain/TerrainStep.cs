@@ -53,27 +53,13 @@ internal static class TerrainStep
             // 前のフレームで預けた水の刻みの後始末と、その刻みの火 (演出の記録は上で空にした後に積む)
             Settle();
             Prof(3);
-            int target = GameClock.Now - WaterSim.Delay;
-            // 物と水の刻みが違う間は 1 回に片方しか進まないので、回数は 2 倍まで (どれも 1 フレーム 20 刻みまで)
-            for (int n = 0; n < MaxStepsPerFrame * 2; n++)
+            // 部品の指紋を取る間は時刻で進めない (進める刻みの数がフレームの間隔で変わる)。Advance で数を決めて進める
+            if (!Native.MrpNative.Digest)
             {
-                bool prop = PropSim.Drives, water = WaterSim.Running;
-                int s = int.MaxValue;
-                if (prop) s = PropSim.AuthStep;
-                if (water && WaterSim.Step < s) s = WaterSim.Step;
-                if (s >= target) break;
-                Decompression.StepThrough(s);
-                Prof(1);
-                if (prop && PropSim.AuthStep == s) PropSim.AdvanceAuth();
-                Prof(2);
-                if (water && WaterSim.Step == s)
-                {
-                    // このフレームの最後の刻みは水の小刻みを預けて描画の裏で回す (火は次のフレームの頭で)
-                    if (!WaterSim.AdvanceOne(s + 1 >= target && Native.MrpNative.Async)) { Prof(3); break; }
-                    Prof(3);
-                    FireSim.AdvanceOne(s);
-                }
-                Prof(4);
+                int target = GameClock.Now - WaterSim.Delay;
+                // 物と水の刻みが違う間は 1 回に片方しか進まないので、回数は 2 倍まで (どれも 1 フレーム 20 刻みまで)
+                for (int n = 0; n < MaxStepsPerFrame * 2; n++)
+                    if (!StepOnce(target, Native.MrpNative.Async)) break;
             }
             FireSim.IssueWallBurns();
             Prof(5);
@@ -85,6 +71,40 @@ internal static class TerrainStep
             Plugin.Logger.LogError($"[TerrainStep] {e}");
         }
         if (SpikeMs > 0) SpikeEnd(t0, steps0);
+    }
+
+    // 刻みを 1 つ進める (target の手前まで)。進めなかったら偽
+    private static bool StepOnce(int target, bool async)
+    {
+        bool prop = PropSim.Drives, water = WaterSim.Running;
+        int s = int.MaxValue;
+        if (prop) s = PropSim.AuthStep;
+        if (water && WaterSim.Step < s) s = WaterSim.Step;
+        if (s >= target) return false;
+        Decompression.StepThrough(s);
+        Prof(1);
+        if (prop && PropSim.AuthStep == s) PropSim.AdvanceAuth();
+        Prof(2);
+        if (water && WaterSim.Step == s)
+        {
+            // このフレームの最後の刻みは水の小刻みを預けて描画の裏で回す (火は次のフレームの頭で)
+            if (!WaterSim.AdvanceOne(s + 1 >= target && async)) { Prof(3); return false; }
+            Prof(3);
+            FireSim.AdvanceOne(s);
+        }
+        Prof(4);
+        return true;
+    }
+
+    // 確認用: 時刻に関係なく刻みを n 回その場で進める (部品の指紋の台本・同期で回す)。戻り = 進めた数
+    internal static int Advance(int n)
+    {
+        _profT = System.Diagnostics.Stopwatch.GetTimestamp();
+        Settle();
+        int done = 0;
+        while (done < n && StepOnce(int.MaxValue, false)) done++;
+        FireSim.IssueWallBurns();
+        return done;
     }
 
     // 焼けが壁まで届いて適用された (届かなかった打は Apply の記録が前の打の物のまま)

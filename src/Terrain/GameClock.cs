@@ -61,11 +61,13 @@ internal static class GameClock
         }
     }
 
-    // 今の試合の刻み (見積もり)
-    public static int Now => Local + _offset;
+    // 今の試合の刻み (見積もり)。部品の指紋を取る間は止める (刻みの番号と出来事の刻みを起動のたびに同じにする。
+    // 刻みは TerrainStep.Advance で数を決めて進める・指紋を止めた後は時刻が戻るので船を読み直す)
+    public static int Now => Native.MrpNative.Digest ? DigestNow : Local + _offset;
+    private const int DigestNow = 1 << 20;
 
     // 今の刻みの中の進み (0〜1)。刻みで動く物の絵を 1 刻み前と今の間で補間する
-    public static float Frac => (int)((Environment.TickCount64 - _startMs) * Hz % 1000) / 1000f;
+    public static float Frac => Native.MrpNative.Digest ? 0f : (int)((Environment.TickCount64 - _startMs) * Hz % 1000) / 1000f;
 
     // ホスト・一人: 結果に押す刻み
     public static ushort Stamp => unchecked((ushort)Now);

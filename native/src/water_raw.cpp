@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 水の絵のタイル 1 枚を描く前の高さの写し (src/Terrain/WaterArt.cs の RawCells と WaterSim.ShownDepth / CraterScale と
@@ -116,4 +117,24 @@ MRP_API void mrp_water_raw(RawArgs* a)
         a->wet[y * dw + x] = wet;
     }
     a->any = any;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_water_raw(RawArgs* a)
+{
+    Dg d(DgWaterRaw);
+    int tc = a->tc, rw = tc + 6, dw = tc + 4;
+    int x0 = a->x0 - 3, y0 = a->y0 - 3, x1 = a->x0 + tc + 2, y1 = a->y0 + tc + 2;
+    d.InV(a->w); d.InV(a->h); d.InV(a->x0); d.InV(a->y0); d.InV(tc); d.InV(a->ox); d.InV(a->oy); d.InV(a->cs); d.InV(a->craterN);
+    d.In(a->crater, (int64_t)a->craterN * 16);
+    // 1 升外の隣も読むので 1 升広げる
+    d.In2D(a->hgt, a->w, a->h, 4, x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+    d.In2D(a->furn, a->w, a->h, 2, x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+    d.In2D(a->open, a->w, a->h, 1, x0 - 1, y0 - 1, x1 + 1, y1 + 1);
+    d.In2D(a->fill, a->w, a->h, 4, x0, y0, x1, y1);
+    mrp_water_raw(a);
+    d.Out(a->raw, (int64_t)rw * rw * 4); d.Out(a->closed, (int64_t)rw * rw);
+    d.Out(a->depth, (int64_t)dw * dw * 4); d.Out(a->wet, (int64_t)dw * dw * 4);
+    d.OutV(a->any);
+    d.Commit();
 }

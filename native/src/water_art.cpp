@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 水の絵のタイルの画素 (src/Terrain/WaterArt.cs の Draw の画素ループ / SpreadFace と同じ結果)。
@@ -190,4 +191,32 @@ MRP_API void mrp_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, 
             if (face[j] == 255) px[i + 1] = 0;
         }
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_water_pixels(
+    const int32_t* depth, const int32_t* wet, int32_t dw, int32_t n, int32_t x0, int32_t y0,
+    float orgx, float orgy, float cell, float edge,
+    const uint8_t* open, int32_t sw, int32_t sh, float sox, float soy, float sppu,
+    int32_t floorOn, const uint8_t* furn, const uint8_t* outside, int32_t reach,
+    float deepScale, float wetInv, uint8_t* px)
+{
+    Dg d(DgWaterPixels);
+    // 歩ける所と船の外の地図は船全体なので入力には入れない
+    d.InV(dw); d.InV(n); d.InV(x0); d.InV(y0); d.InV(orgx); d.InV(orgy); d.InV(cell); d.InV(edge); d.InV(sw); d.InV(sh);
+    d.InV(sox); d.InV(soy); d.InV(sppu); d.InV(floorOn); d.InV(reach); d.InV(deepScale); d.InV(wetInv);
+    d.In(depth, (int64_t)dw * dw * 4); d.In(wet, (int64_t)dw * dw * 4); d.In(furn, furn ? (int64_t)n * n : 0);
+    mrp_water_pixels(depth, wet, dw, n, x0, y0, orgx, orgy, cell, edge, open, sw, sh, sox, soy, sppu, floorOn, furn, outside, reach, deepScale, wetInv, px);
+    d.Out(px, (int64_t)n * n * 4);
+    d.Commit();
+}
+
+MRP_API void mrp_dg_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, int32_t spread, uint8_t* tmp)
+{
+    Dg d(DgWaterSpreadFace);
+    int64_t nn = (int64_t)n * n;
+    d.InV(n); d.InV(spread); d.In(face, nn); d.In(px, nn * 4);
+    mrp_water_spread_face(px, face, n, spread, tmp);
+    d.Out(px, nn * 4);
+    d.Commit();
 }

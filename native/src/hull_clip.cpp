@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 船体のメッシュの三角形から喉の塊を引く (src/Terrain/HullThroat.cs の Apply と同じ結果)。
@@ -261,4 +262,30 @@ MRP_API void mrp_hull_clip(HullClipArgs* p)
     p->vn = a.vn;
     p->triOutN = a.triOutN;
     p->over = 0;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_hull_clip(HullClipArgs* p)
+{
+    Dg d(DgHullClip);
+    int64_t holes = 0, grown = 0;
+    if (p->holeCount <= 256)
+        for (int i = 0; i < p->holeCount; i++) { holes += p->holeN[i]; grown += p->grownN[i]; }
+    d.InV(p->vn); d.InV(p->vcap); d.InV(p->triInN); d.InV(p->triOutCap); d.InV(p->holeCount);
+    d.InV(p->minX); d.InV(p->minY); d.InV(p->maxX); d.InV(p->maxY); d.InV(p->outR); d.InV(p->outG); d.InV(p->outB);
+    d.In(p->v, (int64_t)p->vn * 12); d.In(p->c, (int64_t)p->vn * 4); d.In(p->u, (int64_t)p->vn * 8);
+    d.In(p->triIn, (int64_t)p->triInN * 4);
+    if (p->holeCount <= 256)
+    {
+        d.In(p->holeN, (int64_t)p->holeCount * 4); d.In(p->holes, holes * 8);
+        d.In(p->grownN, (int64_t)p->holeCount * 4); d.In(p->grown, grown * 8);
+    }
+    mrp_hull_clip(p);
+    d.OutV(p->over);
+    if (p->over == 0)
+    {
+        d.OutV(p->vn); d.Out(p->v, (int64_t)p->vn * 12); d.Out(p->c, (int64_t)p->vn * 4); d.Out(p->u, (int64_t)p->vn * 8);
+        d.OutV(p->triOutN); d.Out(p->triOut, (int64_t)p->triOutN * 4);
+    }
+    d.Commit();
 }

@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 水の床マスクの画素を作る (src/Terrain/FloorMask.cs の FillRaw / Fill と同じ結果)。
@@ -157,4 +158,41 @@ MRP_API void mrp_floor_blur(const uint8_t* raw, int32_t n, uint16_t* row, uint8_
             d[px] = (uint8_t)((v + 128) >> 8);
         }
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_floor_raw(
+    const uint8_t* bits, int32_t mw, int32_t mh, float mox, float moy, float mppu,
+    float x, float y, float wstep, int32_t n, uint8_t* into,
+    const uint8_t* holes, int32_t hw, int32_t hh, float hox, float hoy, float hppu, int32_t holeFloor)
+{
+    Dg d(DgFloorRaw);
+    // 床マスクと穴の地図は船全体なので入力には入れない
+    d.InV(mw); d.InV(mh); d.InV(mox); d.InV(moy); d.InV(mppu); d.InV(x); d.InV(y); d.InV(wstep); d.InV(n);
+    d.InV(hw); d.InV(hh); d.InV(hox); d.InV(hoy); d.InV(hppu); d.InV(holeFloor); d.InV(holes != nullptr);
+    mrp_floor_raw(bits, mw, mh, mox, moy, mppu, x, y, wstep, n, into, holes, hw, hh, hox, hoy, hppu, holeFloor);
+    d.Out(into, n > 0 ? (int64_t)n * n : 0);
+    d.Commit();
+}
+
+MRP_API void mrp_dg_floor_lips(const uint8_t* fall, const uint8_t* lip, int32_t w, int32_t h, float ox, float oy, float cell,
+    float x, float y, float step, int32_t n, uint8_t* into,
+    const uint8_t* mb, int32_t mw, int32_t mh, float mox, float moy, float mppu)
+{
+    Dg d(DgFloorLips);
+    int64_t nn = n > 0 ? (int64_t)n * n : 0;
+    d.InV(w); d.InV(h); d.InV(ox); d.InV(oy); d.InV(cell); d.InV(x); d.InV(y); d.InV(step); d.InV(n);
+    d.InV(mw); d.InV(mh); d.InV(mox); d.InV(moy); d.InV(mppu); d.In(into, nn);
+    mrp_floor_lips(fall, lip, w, h, ox, oy, cell, x, y, step, n, into, mb, mw, mh, mox, moy, mppu);
+    d.Out(into, nn);
+    d.Commit();
+}
+
+MRP_API void mrp_dg_floor_blur(const uint8_t* raw, int32_t n, uint16_t* row, uint8_t* into)
+{
+    Dg d(DgFloorBlur);
+    d.InV(n); d.In(raw, (int64_t)(n + 4) * (n + 4));
+    mrp_floor_blur(raw, n, row, into);
+    d.Out(into, (int64_t)n * n);
+    d.Commit();
 }

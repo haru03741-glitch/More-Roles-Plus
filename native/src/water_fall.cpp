@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 #include <string.h>
 
@@ -437,4 +438,28 @@ MRP_API void mrp_fall_draw(FallArgs* a)
         }
         c->x0p = c->bx0; c->y0p = c->by0; c->x1p = c->bx1; c->y1p = c->by1;
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_fall_draw(FallArgs* a)
+{
+    Dg d(DgFallDraw);
+    int64_t tp = (int64_t)a->tilePx * a->tilePx;
+    d.InV(a->tileN); d.InV(a->tilePx); d.InV(a->edgeN); d.InV(a->ppu); d.InV(a->clock); d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->cell);
+    d.InV(a->lowN); d.InV(a->bw); d.InV(a->bh); d.InV(a->box); d.InV(a->boy); d.InV(a->bppu); d.InV(a->mw); d.InV(a->mh); d.InV(a->mox); d.InV(a->moy); d.InV(a->mppu);
+    d.In(a->edges, (int64_t)a->edgeN * (int64_t)sizeof(FallEdge)); d.In(a->low, (int64_t)a->lowN * 24);
+    for (int i = 0; i < a->tileN; i++)
+    {
+        const FallTile& t = a->tiles[i];
+        d.InV(t.tx); d.InV(t.ty); d.InV(t.isVoid); d.InV(t.x0p); d.InV(t.y0p); d.InV(t.x1p); d.InV(t.y1p);
+    }
+    mrp_fall_draw(a);
+    for (int i = 0; i < a->tileN; i++)
+    {
+        const FallTile& t = a->tiles[i];
+        d.OutV(t.changed); d.OutV(t.x0p); d.OutV(t.y0p); d.OutV(t.x1p); d.OutV(t.y1p);
+        d.Out(t.px, tp * 4); d.Out(t.dens, tp * 4); d.Out(t.foam, tp * 4); d.Out(t.dep, tp * 4); d.Out(t.pool, tp * 4);
+    }
+    d.OutV(a->puts); d.OutV(a->clipped);
+    d.Commit();
 }

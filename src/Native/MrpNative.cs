@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 39;
+    internal const int Abi = 40;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -20,6 +20,7 @@ internal static unsafe class MrpNative
 
     private static bool _tried;
     private static bool _loaded;
+    private static IntPtr _lib;
     internal static string Status { get; private set; } = "not loaded";
     internal static bool Verify;
     internal static bool Async = true; // 水の小刻みを作業スレッドで回す (切り替えは答え合わせ用)
@@ -102,43 +103,8 @@ internal static unsafe class MrpNative
             var abi = (delegate* unmanaged[Cdecl]<int>)NativeLibrary.GetExport(lib, "mrp_abi");
             int got = abi();
             if (got != Abi) { Status = $"abi {got} != {Abi} {path}"; return; }
-            FloorRaw = (delegate* unmanaged[Cdecl]<byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, int, void>)NativeLibrary.GetExport(lib, "mrp_floor_raw");
-            FloorBlur = (delegate* unmanaged[Cdecl]<byte*, int, ushort*, byte*, void>)NativeLibrary.GetExport(lib, "mrp_floor_blur");
-            FloorLips = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, void>)NativeLibrary.GetExport(lib, "mrp_floor_lips");
-            WaterPixels = (delegate* unmanaged[Cdecl]<int*, int*, int, int, int, int, float, float, float, float, byte*, int, int, float, float, float, int, byte*, byte*, int, float, float, byte*, void>)NativeLibrary.GetExport(lib, "mrp_water_pixels");
-            WaterSpreadFace = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, byte*, void>)NativeLibrary.GetExport(lib, "mrp_water_spread_face");
-            WaterStep = (delegate* unmanaged[Cdecl]<void*, int>)NativeLibrary.GetExport(lib, "mrp_water_step");
-            DamageStamp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_damage_stamp");
-            SolidCarve = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_solid_carve");
-            WaterFace = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_face");
-            PieceCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_piece_cells");
-            FallRay = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_fall_ray");
-            WaterCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_cells");
-            LinkScan = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_link_scan");
-            WaterRaw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_raw");
-            HullClip = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_hull_clip");
-            FoamDraw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_foam_draw");
-            FoamCull = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_foam_cull");
-            DecompRegions = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_decomp_regions");
-            DecompField = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_decomp_field");
-            FloorFlood = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_floor_flood");
-            FloorPatch = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_floor_patch");
-            FloorCutMoved = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_floor_cut_moved");
-            LiftShape = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_lift_shape");
-            WaterFill = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_fill");
-            FaceHeights = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_face_heights");
-            FaceCutHoles = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_face_cut_holes");
-            FrontFill = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_front_fill");
-            FallDraw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_fall_draw");
-            FireStep = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_fire_step");
-            SolidFlood = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_solid_flood");
-            SolidOutside = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_solid_outside");
-            WetFilter = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_wet_filter");
-            IslandCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_island_cells");
-            WaterSpray = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_spray");
-            CineFrame = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_cine_frame");
-            CineLight = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_cine_light");
-            CineWarp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_cine_warp");
+            _lib = lib;
+            Bind(false);
             _loaded = true;
             Status = $"ok abi={got} {path}";
         }
@@ -150,6 +116,85 @@ internal static unsafe class MrpNative
         {
             Plugin.Logger.LogInfo($"[native] {Status}");
         }
+    }
+
+    // 部品ごとの指紋 (native/src/digest.h の DigestId と同じ並び)
+    internal static readonly string[] DigestNames =
+    {
+        "floorRaw", "floorBlur", "floorLips", "waterPixels", "waterSpreadFace", "waterStep",
+        "damageStamp", "solidCarve", "waterFace", "pieceCells", "fallRay", "waterCells", "linkScan",
+        "waterRaw", "hullClip", "foamDraw", "foamCull", "decompRegions", "decompField", "floorFlood",
+        "floorPatch", "floorCutMoved", "liftShape", "waterFill", "faceHeights", "faceCutHoles",
+        "frontFill", "fallDraw", "fireStep", "solidFlood", "solidOutside", "wetFilter", "islandCells",
+        "waterSpray",
+    };
+    internal static bool Digest { get; private set; }
+    private static bool _asyncBeforeDigest;
+
+    // 指紋を取る間は同期で回す (作業スレッドに預けると 1 フレームに描く枚数がずれて呼ばれ方が変わる)
+    internal static void SetDigest(bool on)
+    {
+        if (!Loaded || on == Digest) return;
+        if (on) { _asyncBeforeDigest = Async; Async = false; }
+        else Async = _asyncBeforeDigest;
+        Digest = on;
+        Bind(on);
+    }
+
+    internal static void DigestReset() => ((delegate* unmanaged[Cdecl]<void>)NativeLibrary.GetExport(_lib, "mrp_dg_reset"))();
+
+    // 部品ごとに 回数・入力・出力
+    internal static ulong[] DigestRead()
+    {
+        var into = new ulong[DigestNames.Length * 3];
+        fixed (ulong* p = into)
+        {
+            int n = ((delegate* unmanaged[Cdecl]<ulong*, int, int>)NativeLibrary.GetExport(_lib, "mrp_dg_read"))(p, DigestNames.Length);
+            if (n != DigestNames.Length) throw new InvalidOperationException($"digest parts {n} != {DigestNames.Length}");
+        }
+        return into;
+    }
+
+    // 関数の番地を引く。dg = 指紋を取る版 (digest.h の mrp_dg_*・演出の部品は指紋を取らない)
+    private static void Bind(bool dg)
+    {
+        FloorRaw = (delegate* unmanaged[Cdecl]<byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, int, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "floor_raw");
+        FloorBlur = (delegate* unmanaged[Cdecl]<byte*, int, ushort*, byte*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "floor_blur");
+        FloorLips = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "floor_lips");
+        WaterPixels = (delegate* unmanaged[Cdecl]<int*, int*, int, int, int, int, float, float, float, float, byte*, int, int, float, float, float, int, byte*, byte*, int, float, float, byte*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "water_pixels");
+        WaterSpreadFace = (delegate* unmanaged[Cdecl]<byte*, byte*, int, int, byte*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "water_spread_face");
+        WaterStep = (delegate* unmanaged[Cdecl]<void*, int>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "water_step");
+        DamageStamp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "damage_stamp");
+        SolidCarve = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "solid_carve");
+        WaterFace = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "water_face");
+        PieceCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "piece_cells");
+        FallRay = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "fall_ray");
+        WaterCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "water_cells");
+        LinkScan = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "link_scan");
+        WaterRaw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "water_raw");
+        HullClip = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "hull_clip");
+        FoamDraw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "foam_draw");
+        FoamCull = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "foam_cull");
+        DecompRegions = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "decomp_regions");
+        DecompField = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "decomp_field");
+        FloorFlood = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "floor_flood");
+        FloorPatch = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "floor_patch");
+        FloorCutMoved = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "floor_cut_moved");
+        LiftShape = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "lift_shape");
+        WaterFill = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "water_fill");
+        FaceHeights = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "face_heights");
+        FaceCutHoles = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "face_cut_holes");
+        FrontFill = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "front_fill");
+        FallDraw = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "fall_draw");
+        FireStep = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "fire_step");
+        SolidFlood = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "solid_flood");
+        SolidOutside = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "solid_outside");
+        WetFilter = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "wet_filter");
+        IslandCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "island_cells");
+        WaterSpray = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, (dg ? "mrp_dg_" : "mrp_") + "water_spray");
+        CineFrame = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_frame");
+        CineLight = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_light");
+        CineWarp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_warp");
     }
 
 #if !ANDROID

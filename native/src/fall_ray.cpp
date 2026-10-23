@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 
 // 縁を越えた水の行き先を探す光線 (src/Terrain/WaterReach.cs の Target / SideAir と同じ結果)。
 // useZ = 0 は島の段の順位で「低い床」を決める (C# と 1 バイト比較できる)。useZ = 1 は床の本当の高さ
@@ -134,4 +135,18 @@ MRP_API void mrp_fall_ray(FallRayArgs* a)
         int32_t* o = a->out + i * 5;
         o[0] = why; o[1] = to; o[2] = dist; o[3] = tx; o[4] = ty;
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_fall_ray(FallRayArgs* a)
+{
+    Dg d(DgFallRay);
+    int64_t n = (int64_t)a->w * a->h;
+    d.InV(a->n); d.InV(a->w); d.InV(a->h); d.InV(a->islN); d.InV(a->useZ); d.In(a->fallScan, 16); d.InV(a->sideScan); d.InV(a->airLip);
+    d.In(a->q, (int64_t)a->n * 4);
+    d.In(a->open, n); d.In(a->door, n); d.In(a->prop, n); d.In(a->air, n); d.In(a->lvl, n);
+    if (a->useZ) { d.In(a->isl, n); d.In(a->islBase, (int64_t)a->islN * 4); }
+    mrp_fall_ray(a);
+    d.Out(a->out, (int64_t)a->n * 20);
+    d.Commit();
 }

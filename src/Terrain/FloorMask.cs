@@ -655,7 +655,7 @@ internal static class FloorMask
             }
             reply($"OK floormask active={Active} off={Off} {Stats}");
         });
-        TestBridge.Register("native", "[check [x y] | verify [on|off] | async [on|off]] C++ の部品の状態 / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
+        TestBridge.Register("native", "[check [x y] | verify [on|off] | async [on|off] | digest [on|off|reset]] C++ の部品の状態 / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             bool on = Native.MrpNative.Loaded;
@@ -664,6 +664,28 @@ internal static class FloorMask
                 TerrainStep.Settle();
                 if (a.Length > 1) Native.MrpNative.Async = a[1] == "on";
                 reply($"OK native async={Native.MrpNative.Async}");
+                return;
+            }
+            if (a.Length > 0 && a[0] == "digest")
+            {
+                if (!on) { reply("ERR native digest: not loaded"); return; }
+                if (a.Length > 1 && a[1] == "step")
+                {
+                    if (!Native.MrpNative.Digest || a.Length < 3 || !int.TryParse(a[2], out int steps)) { reply("ERR native digest step n (digest on first)"); return; }
+                    reply($"OK native digest step={TerrainStep.Advance(steps)} water={WaterSim.Step}");
+                    return;
+                }
+                if (a.Length > 1 && a[1] != "reset" && (a[1] == "on") != Native.MrpNative.Digest)
+                {
+                    TerrainStep.Settle();
+                    Native.MrpNative.SetDigest(a[1] == "on");
+                }
+                if (a.Length > 1 && a[1] != "off" && Native.MrpNative.Digest) { TerrainStep.Settle(); Native.MrpNative.DigestReset(); }
+                var d = Native.MrpNative.DigestRead();
+                var sb = new System.Text.StringBuilder($"OK native digest={Native.MrpNative.Digest} async={Native.MrpNative.Async}");
+                for (int i = 0; i < Native.MrpNative.DigestNames.Length; i++)
+                    if (d[i * 3] != 0) sb.Append($" | {Native.MrpNative.DigestNames[i]} n={d[i * 3]} in={d[i * 3 + 1]:x16} out={d[i * 3 + 2]:x16}");
+                reply(sb.ToString());
                 return;
             }
             if (a.Length > 0 && a[0] == "verify")

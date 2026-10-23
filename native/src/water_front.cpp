@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 水の影の写しの抜き型: 家具の絵の網目の三角形を、画素の真ん中が入る所だけ 255 で塗る
@@ -58,4 +59,20 @@ MRP_API void mrp_front_fill(FrontFillArgs* a)
         }
     }
     a->any = any;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_front_fill(FrontFillArgs* a)
+{
+    Dg d(DgFrontFill);
+    int verts = 0;
+    for (int i = 0; i < a->triN; i++) if (a->tri[i] + 1 > verts) verts = a->tri[i] + 1;
+    int64_t mm = (int64_t)a->m * a->m;
+    d.InV(a->triN); d.InV(a->m); d.InV(a->mw); d.InV(a->mh);
+    d.In(a->tri, (int64_t)a->triN * 2); d.In(a->px, (int64_t)verts * 4); d.In(a->py, (int64_t)verts * 4);
+    if (a->mask) { d.In(a->mu, (int64_t)verts * 4); d.In(a->mv, (int64_t)verts * 4); d.In(a->mask, (int64_t)a->mw * a->mh); }
+    d.In(a->buf, mm);
+    mrp_front_fill(a);
+    d.Out(a->buf, mm); d.OutV(a->any);
+    d.Commit();
 }

@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 
 // 抜いた画素を割れ目の細胞ごとに数える (src/Terrain/BreakPieces.cs の Spawn の画素の数え上げと同じ結果)。
 // この破壊の番号を書いた画素のうち、周りの 3×3 に見える穴がある物を、いちばん近い種点の細胞へ足す
@@ -54,4 +55,24 @@ MRP_API void mrp_piece_cells(PieceArgs* a)
             c->sumX += px; c->sumY += py;
         }
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_piece_cells(PieceArgs* a)
+{
+    Dg d(DgPieceCells);
+    d.InV(a->w); d.InV(a->h); d.InV(a->gen); d.InV(a->visibleFloor); d.InV(a->rx0); d.InV(a->ry0); d.InV(a->rx1); d.InV(a->ry1);
+    d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->n);
+    d.In2D(a->px, a->w, a->h, 4, a->rx0, a->ry0, a->rx1 - 1, a->ry1 - 1);
+    d.In2D(a->gens, a->w, a->h, 1, a->rx0, a->ry0, a->rx1 - 1, a->ry1 - 1);
+    d.In(a->xs, (int64_t)a->n * 4); d.In(a->ys, (int64_t)a->n * 4);
+    mrp_piece_cells(a);
+    // count = 0 の細胞は他の値が古いまま・pad は書かれないので入れない
+    for (int i = 0; i < 256; i++)
+    {
+        const PieceAcc& c = a->acc[i];
+        if (c.count == 0) continue;
+        d.OutV(i); d.OutV(c.x0); d.OutV(c.y0); d.OutV(c.x1); d.OutV(c.y1); d.OutV(c.count); d.OutV(c.sumX); d.OutV(c.sumY);
+    }
+    d.Commit();
 }

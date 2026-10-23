@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 小刻みの関数は全部 mrp_water_step の中へ展開する (引数の構造体を手元に写した物の値をレジスタに置いたままにするため)
@@ -415,4 +416,37 @@ MRP_API int32_t mrp_water_step(WaterStepArgs* p)
     }
     *p = s;
     return 1;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API int32_t mrp_dg_water_step(WaterStepArgs* p)
+{
+    Dg d(DgWaterStep);
+    WaterFlowArgs* f = &p->f;
+    int64_t n = (int64_t)f->w * f->h, tn = (int64_t)f->tw * f->th;
+    // 縁の枠の数は渡ってこないので slot の最大から
+    int64_t slots = 0;
+    if (f->slot) for (int64_t k = 0; k < n; k++) if (f->slot[k] > slots) slots = f->slot[k];
+    d.InV(f->actN); d.InV(f->dirtyN); d.InV(f->w); d.InV(f->h); d.InV(f->tw); d.InV(f->th); d.InV(f->tileCells); d.InV(f->sub); d.InV(f->subN);
+    d.InV(f->dry); d.InV(f->seaLevel); d.InV(f->checkSleep); d.InV(f->islN); d.InV(f->useZ); d.InV(f->foCap); d.InV(f->blow); d.InV(f->blowPressN);
+    d.InV(p->infN); d.InV(p->dryStep); d.InV(p->fsN); d.InV(p->fsCap);
+    d.In(f->hgt, n * 4); d.In(f->flux, n * 16); d.In(f->move, n * 16);
+    d.In(f->open, n); d.In(f->edge, n); d.In(f->lvl, n); d.In(f->bed, n * 2); d.In(f->furn, n * 2);
+    d.In(f->stepMask, n); d.In(f->fallMask, n); d.In(f->seaMask, n); d.In(f->lipMask, n); d.In(f->slot, n * 4);
+    d.In(f->lipH, slots * 8); d.In(f->barB, slots * 4); d.In(f->barH, slots * 8); d.In(f->stepTo, slots * 16);
+    d.In(f->act, (int64_t)f->actN * 4); d.In(f->inList, n); d.In(f->stir, n); d.In(f->tileDirty, tn);
+    if (f->useZ) { d.In(f->isl, n); d.In(f->islBase, (int64_t)f->islN * 4); }
+    if (f->blow) { d.In(f->blowS, n * 2); d.In(f->blowComp, n * 2); d.In(f->blowDir, n); d.In(f->blowPress, (int64_t)f->blowPressN * 4); }
+    d.In(p->infK, (int64_t)p->infN * 4); d.In(p->infRate, (int64_t)p->infN * 4);
+    d.In(p->fallStep, (int64_t)p->fsN * 12); d.In(p->fallAt, slots * 16);
+    int32_t r = mrp_water_step(p);
+    d.OutV(r);
+    d.Out(f->hgt, n * 4); d.Out(f->flux, n * 16); d.Out(f->move, n * 16);
+    d.OutV(f->actN); d.Out(f->act, (int64_t)f->actN * 4); d.Out(f->inList, n); d.Out(f->stir, n); d.Out(f->tileDirty, tn);
+    d.OutV(f->dirtyN); d.Out(f->dirtyOut, (int64_t)f->dirtyN * 4);
+    d.OutV(f->foOver); d.OutV(f->sleepViol); d.OutV(f->voidAdd);
+    d.OutV(p->fsN); d.OutV(p->fsOver); d.Out(p->fallStep, (int64_t)p->fsN * 12); d.Out(p->fallAt, slots * 16);
+    d.OutV(p->inflowAdd); d.OutV(p->seaOutAdd);
+    d.Commit();
+    return r;
 }

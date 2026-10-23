@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 
 // 外壁が抜けた時の気圧の範囲と口からの道のり (src/Terrain/Decompression.cs の Regions・Field・FindGrips と同じ結果)。
 // 置き場は全部 C# が渡す (ここではメモリを取らない)
@@ -187,4 +188,30 @@ MRP_API void mrp_decomp_field(FieldArgs* a)
     }
     sortI64(a->grips, gn);
     a->gripN = gn;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_decomp_regions(RegionArgs* a)
+{
+    Dg d(DgDecompRegions);
+    int64_t n = (int64_t)a->w * a->h;
+    d.InV(a->w); d.InV(a->h); d.InV(a->full);
+    d.In(a->sub, n * 2); d.In(a->edge, n); d.In(a->oldComp, a->oldComp ? n * 4 : 0);
+    mrp_decomp_regions(a);
+    d.Out(a->comp, n * 4); d.OutV(a->compN);
+    d.Out(a->cells, (int64_t)a->compN * 4); d.Out(a->press, (int64_t)a->compN * 4);
+    d.Commit();
+}
+
+MRP_API void mrp_dg_decomp_field(FieldArgs* a)
+{
+    Dg d(DgDecompField);
+    int64_t n = (int64_t)a->w * a->h;
+    d.InV(a->w); d.InV(a->h); d.InV(a->cap); d.InV(a->seedN); d.InV(a->gripR); d.InV(a->gripMax);
+    d.In(a->sub, n * 2); d.In(a->edge, n); d.In(a->furn, n); d.In(a->seeds, (int64_t)a->seedN * 4);
+    d.In(a->dist, n * 2); d.In(a->par, n * 4);
+    mrp_decomp_field(a);
+    d.Out(a->dist, n * 2); d.Out(a->par, n * 4);
+    d.OutV(a->gripN); d.Out(a->grips, (int64_t)a->gripN * 8);
+    d.Commit();
 }

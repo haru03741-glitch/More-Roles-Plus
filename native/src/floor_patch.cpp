@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 持ち上げた家具の跡を床マスクの床にする (src/Terrain/FloorMask.cs の Apply と同じ結果) と、
@@ -66,4 +67,33 @@ MRP_API void mrp_floor_cut_moved(FloorCutArgs* a)
             if ((a->dry[d >> 3] & (1 << (d & 7))) != 0) a->into[i] = 0;
         }
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_floor_patch(FloorPatchArgs* a)
+{
+    Dg d(DgFloorPatch);
+    int64_t dryBytes = ((int64_t)a->dw * (a->y1 - a->y0 + 1) + 7) / 8;
+    d.InV(a->w); d.InV(a->x0); d.InV(a->y0); d.InV(a->x1); d.InV(a->y1); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu);
+    d.InV(a->rxMin); d.InV(a->ryMin); d.InV(a->sx); d.InV(a->sy); d.InV(a->n); d.InV(a->dw);
+    d.In(a->shape, (int64_t)a->n * a->n);
+    d.InBits(a->bits, a->w, a->x0, a->y0, a->x1, a->y1);
+    d.In(a->dry, dryBytes);
+    mrp_floor_patch(a);
+    d.OutBits(a->bits, a->w, a->x0, a->y0, a->x1, a->y1);
+    d.Out(a->dry, dryBytes);
+    d.Commit();
+}
+
+MRP_API void mrp_dg_floor_cut_moved(FloorCutArgs* a)
+{
+    Dg d(DgFloorCutMoved);
+    int64_t n = (int64_t)a->n * a->n;
+    d.InV(a->n); d.InV(a->x); d.InV(a->y); d.InV(a->step); d.InV(a->px0); d.InV(a->py0); d.InV(a->cx); d.InV(a->cy); d.InV(a->cs); d.InV(a->sn);
+    d.InV(a->mcx); d.InV(a->mcy); d.InV(a->half); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->dx0); d.InV(a->dy0); d.InV(a->dw); d.InV(a->dh);
+    d.In(a->dry, ((int64_t)a->dw * a->dh + 7) / 8);
+    d.In(a->into, n);
+    mrp_floor_cut_moved(a);
+    d.Out(a->into, n);
+    d.Commit();
 }

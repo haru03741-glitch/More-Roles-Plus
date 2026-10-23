@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 #include <string.h>
 
@@ -99,4 +100,17 @@ MRP_API void mrp_water_spray(SprayArgs* a)
         else { o[0] = 0; o[1] = 0; }
     }
     box[0] = bb[0]; box[1] = bb[1]; box[2] = bb[2]; box[3] = bb[3];
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_water_spray(SprayArgs* a)
+{
+    Dg d(DgWaterSpray);
+    int64_t c = a->count, nn = (int64_t)a->n * a->n;
+    d.InV(a->count); d.InV(a->n); d.InV(a->orgx); d.InV(a->orgy); d.InV(a->x0); d.InV(a->y0);
+    d.In(a->ox, c * 4); d.In(a->oy, c * 4); d.In(a->oh, c * 4); d.In(a->px, c * 4); d.In(a->py, c * 4); d.In(a->ph, c * 4); d.In(a->stuck, c);
+    d.In(a->box, 16); d.In(a->dens, nn * 4); d.In(a->foam, nn * 4); d.In(a->out, nn * 4);
+    mrp_water_spray(a);
+    d.Out(a->box, 16); d.Out(a->dens, nn * 4); d.Out(a->foam, nn * 4); d.Out(a->out, nn * 4);
+    d.Commit();
 }

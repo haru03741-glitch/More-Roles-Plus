@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -361,4 +362,30 @@ MRP_API void mrp_solid_outside(SolidOutsideArgs* a)
         uint8_t z = (uint8_t)((grown[k] | blocked[k] | open[k]) == 0), na = (uint8_t)(art[k] == 0);
         out[k] = (uint8_t)(z | ((na & (z ^ 1)) << 1));
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_solid_flood(SolidFloodArgs* a)
+{
+    Dg d(DgSolidFlood);
+    int64_t n = (int64_t)a->w * a->h;
+    d.InV(a->w); d.InV(a->h); d.InV(a->dilate); d.InV(a->seedN);
+    d.In(a->barrier, n); d.In(a->seedX, (int64_t)a->seedN * 4); d.In(a->seedY, (int64_t)a->seedN * 4);
+    mrp_solid_flood(a);
+    d.Out(a->blocked, n); d.Out(a->open, n); d.Out(a->leaked, n);
+    d.OutV(a->valid); if (a->valid) d.Out(a->island, n);
+    d.Out(a->seedRes, a->seedN);
+    d.OutV(a->openCells); d.OutV(a->islands); d.OutV(a->accepted); d.OutV(a->leakedN);
+    d.Commit();
+}
+
+MRP_API void mrp_dg_solid_outside(SolidOutsideArgs* a)
+{
+    Dg d(DgSolidOutside);
+    int64_t n = (int64_t)a->w * a->h;
+    d.InV(a->triN); d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->dilate);
+    d.In(a->art, n); d.In(a->tris, (int64_t)a->triN * 24); d.In(a->blocked, n); d.In(a->open, n);
+    mrp_solid_outside(a);
+    d.Out(a->art, n); d.Out(a->outside, n);
+    d.Commit();
 }

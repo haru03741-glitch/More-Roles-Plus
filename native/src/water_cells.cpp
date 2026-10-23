@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <bit>
 #include <string.h>
 
@@ -143,4 +144,19 @@ MRP_API void mrp_water_cells(CellsArgs* a)
         }
         a->edgeOut[k] = (uint8_t)e;
     }
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_water_cells(CellsArgs* a)
+{
+    Dg d(DgWaterCells);
+    int64_t n = (int64_t)a->w * a->h, sn = (int64_t)a->sw * a->h * a->sub;
+    d.InV(a->sw); d.InV(a->w); d.InV(a->h); d.InV(a->sub); d.InV(a->x0); d.InV(a->y0); d.InV(a->x1); d.InV(a->y1);
+    d.In(a->solid, sn); d.In(a->wet, a->wet ? sn : 0);
+    d.In(a->doorFloor, n); d.In(a->platFloor, a->platFloor ? n : 0); d.In(a->shut, n); d.In(a->open, a->open ? n : 0);
+    d.In(a->subOut, n * 2);
+    mrp_water_cells(a);
+    d.Out(a->subOut, n * 2); d.Out(a->edgeOut, n);
+    d.OutV(a->changedN); d.Out(a->changed, (int64_t)a->changedN * 4);
+    d.Commit();
 }

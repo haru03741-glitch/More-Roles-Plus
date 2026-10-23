@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "digest.h"
 #include <math.h>
 
 // 歩ける所の地図の上を種から距離の近い順に塗り広げる (src/Terrain/FloorFlood.cs の Fill と同じ結果)。
@@ -159,4 +160,17 @@ MRP_API void mrp_floor_flood(FloorFloodArgs* a)
     a->bx = bx0; a->by = by0; a->bw = bw; a->bh = bh;
     a->popped = popped;
     a->far = far;
+}
+
+// 指紋を取る版 (digest.h)
+MRP_API void mrp_dg_floor_flood(FloorFloodArgs* a)
+{
+    Dg d(DgFloorFlood);
+    d.InV(a->mapW); d.InV(a->x0); d.InV(a->y0); d.InV(a->w); d.InV(a->h); d.InV(a->lx); d.InV(a->ly); d.InV(a->search); d.InV(a->nearestOnly);
+    d.InV(a->target); d.InV(a->maxCost);
+    d.In2D(a->open, a->mapW, a->y0 + a->h, 1, a->x0, a->y0, a->x0 + a->w - 1, a->y0 + a->h - 1);
+    mrp_floor_flood(a);
+    d.OutV(a->bx); d.OutV(a->by); d.OutV(a->bw); d.OutV(a->bh); d.OutV(a->popped); d.OutV(a->far); d.OutV(a->found);
+    d.Out(a->out, (int64_t)a->bw * a->bh * 2);
+    d.Commit();
 }
