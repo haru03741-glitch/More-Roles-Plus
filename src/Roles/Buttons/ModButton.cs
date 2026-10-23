@@ -29,6 +29,17 @@ internal sealed class ModButton
     private int _effectShown = -1;     // 最後に書いた残りの秒
     private bool _usable = true;
 
+    // 長押し (SetHold): 押している間だけ溜め、離した時に _onHold (溜めた値)。押したのがキーならそのキー・画面ならマウス/タッチを見る
+    private Func<float> _holdMin, _holdMax;
+    private Func<float, bool> _onHold;
+    private bool _holding;
+    private float _hold;
+    private int _holdShown = -1;
+    private KeyCode _holdKey, _pressKey;
+    private int _holdFinger = -1;
+    private long _holdTestUntil; // テスト用: この時刻まで押している扱い (0 = 使わない)
+    private PassiveButton _pb;
+
     public float Cooldown { get; set; }
 
     // 使った後の効果の長さ (秒・0 = 無し)。効果の間はボタンに残りを出し、切れてから待ち時間を始める
@@ -197,14 +208,104 @@ internal sealed class ModButton
         _button.SetDisabled();
     }
 
+    // 長押しで溜めるボタンにする。押した瞬間に OnClick が来るように本編のボタンを押し下げで反応させる
+    // (離した時の OnClick では押している間が分からない)。onClick は押せるかだけを返す
+    public void SetHold(Func<float> min, Func<float> max, Func<float, bool> onRelease)
+    {
+        _holdMin = min;
+        _holdMax = max;
+        _onHold = onRelease;
+        if (!_button) return;
+        _pb = _button.GetComponent<PassiveButton>();
+        if (_pb) { _pb.OnDown = true; _pb.OnUp = false; }
+    }
+
+    internal bool Holding => _holding;
+    internal float HoldValue => _hold;
+
     // 押された (待ち時間中・押せない時は何もしない)
     private void Click()
     {
-        if (_left > 0f || _effect > 0f || !_usable) return;
+        if (_left > 0f || _effect > 0f || !_usable || _holding) return;
         bool used;
         try { used = _onClick(); }
         catch (Exception e) { Plugin.Logger.LogError($"button {_button.buttonLabelText.text}: {e}"); return; }
+        if (!used) return;
+        if (_onHold == null) { StartUsed(); return; }
+        _hold = _holdMin();
+        _holdKey = _pressKey;
+        _holdFinger = _holdKey == KeyCode.None ? PressedFinger() : -1;
+        _holdShown = -1;
+        _holding = true;
+        DrawHold();
+    }
+
+    // 画面を触って押した時: このボタンを押した指 (今触れ始めた指・無ければ最後の指)。触れていなければ -1 (マウス)
+    private static int PressedFinger()
+    {
+        int n = Input.touchCount;
+        if (n == 0) return -1;
+        for (int i = 0; i < n; i++)
+        {
+            var t = Input.GetTouch(i);
+            if (t.phase == TouchPhase.Began) return t.fingerId;
+        }
+        return Input.GetTouch(n - 1).fingerId;
+    }
+
+    // スマホでは押した指だけを見る (もう片方の指で歩いている間も、ボタンの指を離せば離したことになる)
+    private bool HeldDown()
+    {
+        if (_holdTestUntil != 0) return Environment.TickCount64 < _holdTestUntil;
+        if (_holdKey != KeyCode.None) return Input.GetKey(_holdKey);
+        if (_holdFinger < 0) return Input.GetMouseButton(0);
+        int n = Input.touchCount;
+        for (int i = 0; i < n; i++)
+        {
+            var t = Input.GetTouch(i);
+            if (t.fingerId == _holdFinger) return t.phase != TouchPhase.Ended && t.phase != TouchPhase.Canceled;
+        }
+        return false;
+    }
+
+    // 溜めた値を本編の効果の残りと同じ形で出す (満たす形 + 数の欄)。数の欄は値が変わった時だけ書く
+    private void DrawHold()
+    {
+        if (!_button) return;
+        float max = _holdMax();
+        _button.SetFillUp(_hold, max);
+        int shown = (int)_hold;
+        var text = _button.cooldownTimerText;
+        if (!text || shown == _holdShown) return;
+        _holdShown = shown;
+        text.text = shown.ToString();
+        if (!text.gameObject.activeSelf) text.gameObject.SetActive(true);
+    }
+
+    private void EndHold(bool use)
+    {
+        _holding = false;
+        _holdTestUntil = 0;
+        _holdShown = -1;
+        if (_button)
+        {
+            _button.SetFillUp(0f, 1f);
+            if (_button.cooldownTimerText) _button.cooldownTimerText.gameObject.SetActive(false);
+        }
+        if (!use) return;
+        bool used;
+        try { used = _onHold(_hold); }
+        catch (Exception e) { Plugin.Logger.LogError($"button hold: {e}"); return; }
         if (used) StartUsed();
+    }
+
+    // 溜めている間 (毎 FixedUpdate): 押し続けていれば溜め、離したら使う
+    private void TickHold()
+    {
+        if (!_button) { _holding = false; return; }
+        if (!HeldDown()) { EndHold(true); return; }
+        _hold = Math.Min(_hold + _dt, _holdMax());
+        DrawHold();
     }
 
     private void EndEffect()
@@ -231,6 +332,13 @@ internal sealed class ModButton
         _tick++;
         bool redraw = _tick % RedrawTicks == 0;
         if (_dt <= 0f) _dt = Time.fixedDeltaTime;
+        for (int i = 0; i < All.Count; i++)
+        {
+            var b = All[i];
+            if (!b._holding) continue;
+            b.TickHold();
+            if (i < All.Count && All[i] != b) i--; // 使った処理で寿命が切れて一覧から外れた
+        }
         // 効果は動けない間も減る (本編の効果と同じ)
         for (int i = 0; i < All.Count; i++)
         {
@@ -283,6 +391,7 @@ internal sealed class ModButton
         foreach (var b in All.ToArray())
         {
             if (!shown && b._effect > 0f) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ)
+            if (!shown && b._holding) b.EndHold(false);  // 溜めている途中の会議・死亡は使わずに捨てる
             if (!b._inGrid || !b._button) continue;
             b._button.gameObject.SetActive(shown);
             if (reshown && b.ResetOnShow) b.StartCooldown();
@@ -320,13 +429,30 @@ internal sealed class ModButton
     internal static bool HudShown => _hudShown;
 
     // 本編の PassiveButton から押す (人が押したのと同じく DoClick の前置を通る)
-    internal void Press()
+    // key = キーで押した時のそのキー (長押しのボタンはキーを離すまで溜める)
+    internal void Press(KeyCode key = KeyCode.None)
     {
-        if (_button) _button.GetComponent<PassiveButton>().OnClick.Invoke();
+        if (!_button) return;
+        _pressKey = key;
+        try { _button.GetComponent<PassiveButton>().OnClick.Invoke(); }
+        finally { _pressKey = KeyCode.None; }
+    }
+
+    // テスト用: i 番のボタンを ms の間押し続けた扱いで押す (長押しのボタンだけ)
+    internal static bool PressHeldForTest(int i, int ms)
+    {
+        if (i < 0 || i >= All.Count || All[i]._onHold == null || !All[i]._button) return false;
+        var b = All[i];
+        b._holdTestUntil = Environment.TickCount64 + ms; // 押した瞬間の溜め始めより先に立てる (始めの判定で離した扱いにしない)
+        b.Press();
+        if (!b._holding) b._holdTestUntil = 0;
+        return true;
     }
 
     internal string Describe() =>
-        _button ? $"{_button.buttonLabelText.text} left={_left:0.00} usable={_usable} on={_button.gameObject.activeInHierarchy}" : "dead";
+        _button ? $"{_button.buttonLabelText.text} left={_left:0.00} usable={_usable} on={_button.gameObject.activeInHierarchy}"
+            + (_onHold != null ? $" hold={(_holding ? _hold.ToString("0.00") : "-")}" + (_pb ? $" down={_pb.OnDown} up={_pb.OnUp} held={_pb.beingHeldDown}" : "") : "")
+            : "dead";
 
     // テスト用: 一覧 (press = 押すボタンの番号・-1 で押さない)。押すのは本編の PassiveButton から (DoClick の前置を通る)
     internal static string Probe(int press)

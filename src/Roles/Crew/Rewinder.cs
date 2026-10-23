@@ -14,7 +14,9 @@ public sealed class Rewinder : RoleBase
     public override Text Blurb => new("Rewinder.Blurb");
     public override string[] HelpSections => new[] { "Rewinder.Rewind" };
 
+    // 戻せる秒数の上限。押した人はボタンを長押しして MinSeconds からここまで 1 秒ずつ溜める
     public static readonly FloatOpt Seconds = new("Rewinder.Seconds", 5f, 3f, 15f, 1f, "s");
+    internal const int MinSeconds = 3;
     public static readonly FloatOpt RewindCooldown = new("Rewinder.Cooldown", 40f, 10f, 120f, 5f, "s");
     public static readonly IntOpt RewindUses = new("Rewinder.Uses", 1, 0, 10);
 
@@ -31,8 +33,15 @@ public sealed class Rewinder : RoleBase
             Cooldown = () => RewindCooldown,
             MaxUses = () => RewindUses,
             KeepOnRewind = true,
-            // 押した本人の画面に全画面の演出を流し、真っ白になった所で依頼を出す (戻す区間は押した時から)。出せない時はすぐ戻す
-            OnUse = () => RewindCinematic.Play(ms => TimeRewind.Ask(ms)) || TimeRewind.Ask(),
+            // 長押しで戻す秒数を溜め、離した時に発動する。押していた間は戻す区間に足さない (離した時から数える)
+            HoldMin = () => MinSeconds,
+            HoldMax = () => Math.Max(MinSeconds, (float)Seconds),
+            // 離した本人の画面に全画面の演出を流し、真っ白になった所で依頼を出す。出せない時はすぐ戻す
+            OnHold = v =>
+            {
+                int s = (int)v;
+                return RewindCinematic.Play(ms => TimeRewind.Ask(ms, s)) || TimeRewind.Ask(0, s);
+            },
         });
     }
 

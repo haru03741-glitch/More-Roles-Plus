@@ -39,7 +39,7 @@ internal static class RoleCommands
             reply($"OK rewindpose {RewindPlayback.Probe()}"));
         TestBridge.Register("rewindsnd", "時戻しの逆再生で鳴らす音の状態 (控えた数・並べた数・鳴っている声の pitch と再生位置。位置が呼ぶたびに減っていれば逆に鳴っている)", (args, reply) =>
             reply($"OK rewindsnd recorded={RewindSounds.Recorded} {RewindSounds.Last} voices=[{RewindSounds.Probe()}]"));
-        TestBridge.Register("rewind", "[ask [押してからの ms] | force <秒> | doors <部屋 (SystemTypes)> | check <0|1> | print] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ) / 壁の今の姿の指紋", (args, reply) =>
+        TestBridge.Register("rewind", "[ask [押してからの ms] [戻す秒数 (0 = 設定の上限)] | force <秒> | doors <部屋 (SystemTypes)> | check <0|1> | print] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ) / 壁の今の姿の指紋", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (p.Length >= 2 && p[0] == "check") Terrain.TerrainRewind.SelfCheck = p[1] == "1";
@@ -49,7 +49,7 @@ internal static class RoleCommands
                 if (!ShipStatus.Instance || !System.Enum.TryParse<SystemTypes>(p[1], out var room)) { reply("ERR rewind doors"); return; }
                 ShipStatus.Instance.RpcCloseDoorsOfType(room);
             }
-            if (p.Length >= 1 && p[0] == "ask" && !TimeRewind.Ask(p.Length >= 2 && int.TryParse(p[1], out int el) ? el : 0)) { reply($"ERR rewind ask {TimeRewind.Probe()}"); return; }
+            if (p.Length >= 1 && p[0] == "ask" && !TimeRewind.Ask(p.Length >= 2 && int.TryParse(p[1], out int el) ? el : 0, p.Length >= 3 && int.TryParse(p[2], out int askSec) ? askSec : 0)) { reply($"ERR rewind ask {TimeRewind.Probe()}"); return; }
             if (p.Length >= 2 && p[0] == "force" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec))
             {
                 if (!TimeRewind.HostForce(sec)) { reply($"ERR rewind force {TimeRewind.Probe()}"); return; }

@@ -99,7 +99,7 @@ internal static class Keybinds
         {
             if (!Down((Slot)i)) continue;
             // 上に画面が出ている時 (チャットに打っている・作業・会議など) は押さない。周りの画面を見るのは押された時だけ
-            if (!Emotes.Covered()) Roles.Abilities.PressSlot(i);
+            if (!Emotes.Covered()) Roles.Abilities.PressSlot(i, Keys[i]);
             return;
         }
     }

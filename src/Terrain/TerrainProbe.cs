@@ -300,8 +300,17 @@ internal static class TerrainProbe
             reply($"OK netloop {TerrainSync.Loopback(events.ToArray(), rev)}");
         });
 
-        TestBridge.Register("modbutton", "[番号] MRP の能力ボタンの一覧 (名前・待ち時間・表示) / 番号のボタンを押す (人が押したのと同じ道)", (args, reply) =>
-            reply("OK modbutton " + Roles.ModButton.Probe(int.TryParse(args.Trim(), out int k) ? k : -1)));
+        TestBridge.Register("modbutton", "[番号 | hold <番号> <ms>] MRP の能力ボタンの一覧 (名前・待ち時間・表示・長押しの溜め) / 番号のボタンを押す (人が押したのと同じ道) / 長押しのボタンを ms の間押し続けた扱いで押す", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length == 3 && p[0] == "hold" && int.TryParse(p[1], out int h) && int.TryParse(p[2], out int ms))
+            {
+                if (!Roles.ModButton.PressHeldForTest(h, ms)) { reply("ERR modbutton hold (not a hold button)"); return; }
+                reply("OK modbutton " + Roles.ModButton.Probe(-1));
+                return;
+            }
+            reply("OK modbutton " + Roles.ModButton.Probe(int.TryParse(args.Trim(), out int k) ? k : -1));
+        });
         TestBridge.Register("ability", "[番号 | test | testpick | testmeeting | pick [相手] | meet [能力の番号 相手 | open 相手]] 自分の役職の能力の一覧 (回数・待ち時間・狙い・ホストが最後に断った理由) / 番号の能力のボタンを押す / test = 近くの人を狙う確かめ用の能力を自分の役職に足す (ホストの端末で)", (args, reply) =>
         {
             if (args.Trim() == "test")

@@ -532,22 +532,24 @@ internal static class TimeRewind
     // 時戻しが押した (押した人の端末)。true = 依頼を出した
     internal static bool Ask() => Ask(0);
 
-    // elapsedMs = 押してから今までの時間 (発動者の演出の間)。戻す区間は押した時刻から数える (上限 MaxElapsedMs)
-    internal static bool Ask(int elapsedMs)
+    // elapsedMs = 押してから今までの時間 (発動者の演出の間)。戻す区間は押した時刻から数える (上限 MaxElapsedMs)。
+    // seconds = 押した人が溜めた戻す秒数 (0 = 設定の上限)。ホストが下限と設定の上限に収める
+    internal static bool Ask(int elapsedMs, int seconds = 0)
     {
         if (!_on || _count == 0) return false;
-        AskCall.Send((ushort)Math.Clamp(elapsedMs, 0, MaxElapsedMs));
+        AskCall.Send(((ushort)Math.Clamp(elapsedMs, 0, MaxElapsedMs), (byte)Math.Clamp(seconds, 0, 255)));
         return true;
     }
 
     // 依頼 (押した人 → ホスト)。押した人が生きた時戻しかはホストが確かめる
-    private static readonly RemoteCall<ushort> AskCall = new("TimeRewind.Ask2", Route.ToHost,
-        (w, v) => w.Write(v), r => r.ReadUInt16(), (sender, elapsed) => HostAsk(sender, elapsed));
+    private static readonly RemoteCall<(ushort Elapsed, byte Seconds)> AskCall = new("TimeRewind.Ask3", Route.ToHost,
+        (w, v) => { w.Write(v.Elapsed); w.Write(v.Seconds); }, r => (r.ReadUInt16(), r.ReadByte()),
+        (sender, v) => HostAsk(sender, v.Elapsed, v.Seconds));
 
     private static long _hostLastGo = long.MinValue / 2;
     private const long MinGapMs = 1500; // 続けて届いた依頼を 2 回効かせない
 
-    private static void HostAsk(PlayerControl sender, ushort elapsedMs)
+    private static void HostAsk(PlayerControl sender, ushort elapsedMs, byte seconds)
     {
         if (!sender || sender.Data == null || sender.Data.IsDead) return;
         if (RoleState.Of(sender) is not Crew.Rewinder rw) return;
@@ -555,7 +557,9 @@ internal static class TimeRewind
         // 回数と待ち時間を数えるのは、戻すと決まった時だけ
         if (now - _hostLastGo < MinGapMs || _playing || MeetingHud.Instance || _count == 0 || !rw.HostAllows()) return;
         _hostLastGo = now;
-        HostGo(Crew.Rewinder.Seconds + Math.Min((int)elapsedMs, MaxElapsedMs) / 1000f);
+        float max = Crew.Rewinder.Seconds;
+        float back = seconds == 0 ? max : Math.Clamp(seconds, Crew.Rewinder.MinSeconds, max);
+        HostGo(back + Math.Min((int)elapsedMs, MaxElapsedMs) / 1000f);
     }
 
     private static void HostGo(float seconds)

@@ -55,6 +55,12 @@ public sealed class Ability
     // Self: 押した時 (自分の端末)。true = 使えた (待ち時間と回数を使う)
     public Func<bool> OnUse { get; init; }
 
+    // Self の長押し: 押している間は HoldMin から 1 秒に 1 ずつ溜まって HoldMax で止まり、離した時に OnHold (溜めた値)。
+    // true = 使えた。OnHold がある能力は OnUse を使わない。ボタンの数の欄に溜めた値を出す
+    public Func<float> HoldMin { get; init; }
+    public Func<float> HoldMax { get; init; }
+    public Func<float, bool> OnHold { get; init; }
+
     // Player / Pick / Meeting: ホストが通した後に全員の端末で (使う人, 相手)
     public Action<PlayerControl, PlayerControl> OnUsed { get; init; }
 
@@ -170,6 +176,7 @@ internal static class Abilities
             var ab = a;
             a.Button = ModButton.Create(role.Lifespan, ButtonIcons.Get(a.Icon), a.Label, a.CooldownSeconds, () => Click(ab));
             if (a.Button == null) continue;
+            if (a.OnHold != null) a.Button.SetHold(a.HoldMin, a.HoldMax, v => Released(ab, v));
             a.Button.ResetOnShow = a.CooldownAtStart;
             a.Button.Effect = a.Duration;
             a.Button.OnEffectEnd = a.OnEnd;
@@ -186,6 +193,7 @@ internal static class Abilities
         if (!lp || lp.Data == null || lp.Data.IsDead || !lp.CanMove) return false;
         if (a.Target == AbilityTarget.Self)
         {
+            if (a.OnHold != null) return true; // 長押しの能力は押せるかだけを返す (ボタンが溜め始め、離した時に Released)
             if (a.OnUse == null || !a.OnUse()) return false;
             a.Spend();
             if (a.UsesLeft == 0) a.Button?.SetUsable(false);
@@ -206,6 +214,18 @@ internal static class Abilities
         // 待ち時間はホストが通した時 (Apply) に始める。ホスト自身なら Send の中で手元で判定する
         Request.Send(((byte)a.Index, target.PlayerId));
         return false;
+    }
+
+    // 長押しの能力のボタンを離した (自分の端末)。溜めている間に死んだ・動けなくなった時は使わない
+    private static bool Released(Ability a, float value)
+    {
+        if (a.UsesLeft == 0) return false;
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || lp.Data == null || lp.Data.IsDead || !lp.CanMove || MeetingHud.Instance) return false;
+        if (!a.OnHold(value)) return false;
+        a.Spend();
+        if (a.UsesLeft == 0) a.Button?.SetUsable(false);
+        return true;
     }
 
     // 毎 FixedUpdate。Player の能力がある時だけ、0.1 秒ごとに狙う相手を選び直す
@@ -229,14 +249,14 @@ internal static class Abilities
     }
 
     // キー (Menu.Keybinds) で i 番目のボタンを押す (右下に並んでいる能力のボタンの順)
-    internal static void PressSlot(int i)
+    internal static void PressSlot(int i, KeyCode key = KeyCode.None)
     {
         var role = _local;
         if (role == null) return;
         foreach (var a in role.Abilities)
         {
             if (a.Button == null) continue;
-            if (i-- == 0) { a.Button.Press(); return; }
+            if (i-- == 0) { a.Button.Press(key); return; }
         }
     }
 
