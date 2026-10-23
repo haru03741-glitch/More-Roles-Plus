@@ -1117,8 +1117,7 @@ internal static class SolidMap
 
     private static Vector2 World(Transform t, float x, float y)
     {
-        var v = t.TransformPoint(FxMath.V3(x, y));
-        return FxMath.V2(v.x, v.y);
+        return EdgeCutter.Read(t.TransformPoint(FxMath.V3(x, y)));
     }
 
     private static Vector2[] _loopBuf = new Vector2[64];
@@ -1656,7 +1655,8 @@ internal static class SolidMap
                     if (runN >= 2 && MathF.Sqrt(rx * rx + ry * ry) >= 0.2f)
                     {
                         var col = go.AddComponent<EdgeCollider2D>();
-                        col.points = new[] { (Vector2)t.InverseTransformPoint(new Vector3(sx, sy, 0)), (Vector2)t.InverseTransformPoint(new Vector3(lx, ly, 0)) };
+                        // 読み戻しが端末で割れないよう格子に乗せて書く (EdgeCutter.Read)
+                        col.points = new[] { (Vector2)t.InverseTransformPoint(new Vector3(EdgeCutter.OnGrid(sx), EdgeCutter.OnGrid(sy), 0)), (Vector2)t.InverseTransformPoint(new Vector3(EdgeCutter.OnGrid(lx), EdgeCutter.OnGrid(ly), 0)) };
                         k++;
                     }
                     runN = 0;

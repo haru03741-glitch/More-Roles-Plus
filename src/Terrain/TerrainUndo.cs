@@ -353,7 +353,7 @@ internal static class TerrainUndo
         var off = col.offset;
         var pts = col.points;
         var world = new List<Vector2>(pts.Length);
-        foreach (var p in pts) world.Add(tr.TransformPoint(FxMath.V2(p.x + off.x, p.y + off.y)));
+        foreach (var p in pts) world.Add(EdgeCutter.Read(tr.TransformPoint(FxMath.V2(p.x + off.x, p.y + off.y))));
         TerrainDigest.Chain(world);
     }
 
@@ -407,7 +407,7 @@ internal static class TerrainUndo
                 ulong h = 0x9E3779B97F4A7C15UL;
                 foreach (var p in e.points)
                 {
-                    Vector2 w = tr.TransformPoint(FxMath.V2(p.x + off.x, p.y + off.y));
+                    Vector2 w = EdgeCutter.Read(tr.TransformPoint(FxMath.V2(p.x + off.x, p.y + off.y)));
                     h = (h ^ (ulong)(uint)(int)MathF.Round(w.x * 64f) ^ ((ulong)(uint)(int)MathF.Round(w.y * 64f) << 32)) * 0xBF58476D1CE4E5B9UL;
                 }
                 lines += h ^ (ulong)layer;

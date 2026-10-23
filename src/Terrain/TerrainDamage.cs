@@ -792,7 +792,7 @@ internal static class TerrainDamage
             var raw = col.points;
             for (int i = 0; i + 1 < raw.Length; i++)
             {
-                Vector2 a = t.TransformPoint(raw[i] + col.offset), b = t.TransformPoint(raw[i + 1] + col.offset), d = b - a;
+                Vector2 a = EdgeCutter.Read(t.TransformPoint(raw[i] + col.offset)), b = EdgeCutter.Read(t.TransformPoint(raw[i + 1] + col.offset)), d = b - a;
                 float l2 = d.x * d.x + d.y * d.y;
                 float s = l2 > 0 ? Math.Clamp(((hit.x - a.x) * d.x + (hit.y - a.y) * d.y) / l2, 0f, 1f) : 0f;
                 float ex = a.x + d.x * s - hit.x, ey = a.y + d.y * s - hit.y;
@@ -802,7 +802,7 @@ internal static class TerrainDamage
         if (!best) return false;
         {
             var t = best.transform;
-            foreach (var p in best.points) pts.Add(t.TransformPoint(p + best.offset));
+            foreach (var p in best.points) pts.Add(EdgeCutter.Read(t.TransformPoint(p + best.offset)));
         }
         // 面の続き = ほぼ水平 (傾き 0.2 以下) で、両端が叩いた高さから 0.1 以内の区間
         bool Face(int i)
@@ -828,10 +828,10 @@ internal static class TerrainDamage
         var pts = col.points;
         if (pts.Length < 2) return false;
         float best = float.MaxValue;
-        Vector2 prev = t.TransformPoint(pts[0] + col.offset);
+        Vector2 prev = EdgeCutter.Read(t.TransformPoint(pts[0] + col.offset));
         for (int i = 1; i < pts.Length; i++)
         {
-            Vector2 cur = t.TransformPoint(pts[i] + col.offset);
+            Vector2 cur = EdgeCutter.Read(t.TransformPoint(pts[i] + col.offset));
             Vector2 d = cur - prev;
             float l2 = d.sqrMagnitude;
             float s = l2 > 0 ? Math.Clamp(Vector2.Dot(p - prev, d) / l2, 0f, 1f) : 0f;

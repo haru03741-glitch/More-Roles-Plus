@@ -843,7 +843,7 @@ internal static class DamageMap
         var t = edge.transform;
         Vector2 off = edge.offset;
         var p = new Vector2[n];
-        for (int k = 0; k < n; k++) p[k] = t.TransformPoint(src[k] + off);
+        for (int k = 0; k < n; k++) p[k] = EdgeCutter.Read(t.TransformPoint(src[k] + off));
         // 以下は頂点数 × 出っ張りの頂点数だけ回るので、Vector2 の演算 (interop) を使わず小数で計算する (Vector2 の演算と同じ式)
         var px = new float[n];
         var py = new float[n];

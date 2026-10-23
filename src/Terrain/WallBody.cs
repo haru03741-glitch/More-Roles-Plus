@@ -34,10 +34,10 @@ internal sealed class WallBody
             var pts = col.points;
             if (pts.Length < 2) continue;
             Vector2 off = col.offset;
-            Vector2 prev = t.TransformPoint(pts[0] + off);
+            Vector2 prev = EdgeCutter.Read(t.TransformPoint(pts[0] + off));
             for (int i = 1; i < pts.Length; i++)
             {
-                Vector2 cur = t.TransformPoint(pts[i] + off);
+                Vector2 cur = EdgeCutter.Read(t.TransformPoint(pts[i] + off));
                 _seg.Add(prev); _seg.Add(cur);
                 prev = cur;
             }

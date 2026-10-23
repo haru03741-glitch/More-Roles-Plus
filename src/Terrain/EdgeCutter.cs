@@ -28,7 +28,7 @@ internal static class EdgeCutter
 
         // 頂点と区間ごとに回る所は Vector2 の演算 (interop) を使わない (同じ式を小数で)
         var world = new Vector2[n];
-        for (int i = 0; i < n; i++) world[i] = t.TransformPoint(FxMath.V2(local[i].x + offset.x, local[i].y + offset.y));
+        for (int i = 0; i < n; i++) world[i] = Read(t.TransformPoint(FxMath.V2(local[i].x + offset.x, local[i].y + offset.y)));
 
         var chains = new List<List<Vector2>>();
         List<Vector2> cur = null;
@@ -147,8 +147,32 @@ internal static class EdgeCutter
         return k0 < k1;
     }
 
+    // 書いた壁の点は 1/512 の格子に乗せる。世界座標 → 壁の座標 → 世界座標 の往復は端末で末尾が変わり (arm64 だけ格子から 1e-6 ほど外れる)、
+    // 次に同じ壁を切った時の切り方とひびが PC と Android で割れる。読んだ点は格子のすぐ近くなら格子へ戻し、どの端末でも同じ値から切る
+    private const float Grid = 512f;
+    private const float ReadSnap = 2e-5f; // 往復の丸め (数 ulp) より広く、格子の間隔 (0.002) よりずっと狭い
+
+    internal static float OnGrid(float v) => MathF.Round(v * Grid) / Grid;
+
+    private static float ReadAxis(float v)
+    {
+        float g = OnGrid(v);
+        return MathF.Abs(v - g) < ReadSnap ? g : v;
+    }
+
+    // 壁の点を世界座標で読む時はこれを通す (格子の点は往復の丸めを戻し、それ以外 = 本編の壁の点はそのまま)
+    internal static Vector2 Read(Vector3 world) => FxMath.V2(ReadAxis(world.x), ReadAxis(world.y));
+
     private static void Apply(EdgeCollider2D col, List<Vector2> worldChain, Transform t, Vector2 colliderOffset)
     {
+        var snapped = new List<Vector2>(worldChain.Count);
+        foreach (var p in worldChain)
+        {
+            var g = FxMath.V2(OnGrid(p.x), OnGrid(p.y));
+            if (snapped.Count > 0 && snapped[^1].x == g.x && snapped[^1].y == g.y) continue; // 揃えて重なった点
+            snapped.Add(g);
+        }
+        if (snapped.Count >= 2) worldChain = snapped;
         TerrainDigest.Chain(worldChain);
         var pts = new Vector2[worldChain.Count];
         for (int i = 0; i < pts.Length; i++) pts[i] = (Vector2)t.InverseTransformPoint(worldChain[i]) - colliderOffset;
