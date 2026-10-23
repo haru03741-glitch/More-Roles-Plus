@@ -81,6 +81,31 @@ internal static class DevCommands
             reply("OK assignsim");
         });
 
+        TestBridge.Register("vent", "[in [番号] | out] 自分のベントの状態 / いちばん近い (か番号の) ベントへ移って入る / 今のベントから出る", (args, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            var ship = ShipStatus.Instance;
+            if (!lp || !ship) { reply("ERR vent not in game"); return; }
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            Vent near = null;
+            float best = float.MaxValue;
+            Vector2 me = lp.GetTruePosition();
+            foreach (var v in ship.AllVents)
+            {
+                if (!v) continue;
+                if (a.Length > 1 && int.TryParse(a[1], out int want)) { if (v.Id == want) near = v; continue; }
+                float d = Vector2.Distance(me, v.transform.position);
+                if (d < best) { best = d; near = v; }
+            }
+            if (a.Length > 0 && a[0] == "in" && near)
+            {
+                Teleport.Self(near.transform.position);
+                lp.MyPhysics.RpcEnterVent(near.Id);
+            }
+            else if (a.Length > 0 && a[0] == "out" && TimeRewind.VentOf(lp) >= 0) lp.MyPhysics.RpcExitVent(TimeRewind.VentOf(lp));
+            reply($"OK vent inVent={lp.inVent} current={TimeRewind.VentOf(lp)} near={(near ? near.Id : -1)} pos={me.x:0.00},{me.y:0.00} ladder={lp.onLadder} plat={lp.inMovingPlat}");
+        });
+
         TestBridge.Register("kill", "<番号> その人を倒す (ホストのみ)", (args, reply) =>
         {
             if (!AmongUsClient.Instance.AmHost || !byte.TryParse(args.Trim(), out byte pid)) { reply("ERR kill needs host and number"); return; }

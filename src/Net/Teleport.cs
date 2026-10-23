@@ -35,6 +35,7 @@ internal static class Teleport
     private static bool _pending;
     private static Vector2 _pendingTo;
 
+    internal static bool Pending => _pending; // 予算待ちでまだ飛んでいない
     public static int Moves, Deferred; // 計器: 飛んだ回数・予算待ちで後へ回した回数
 
     // 自分の体の根 (transform.position) を to へ飛ばす

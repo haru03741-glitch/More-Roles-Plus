@@ -34,6 +34,8 @@ internal static class TimeRewind
     // ---- 自分 ----
     private static readonly float[] PosX = new float[Slots], PosY = new float[Slots], Kill = new float[Slots];
     private static readonly bool[] Alive = new bool[Slots];
+    private static readonly bool[] Hold = new bool[Slots];      // はしご・ジップライン・昇降機の途中 (位置が床ではない)
+    private static readonly int[] InVent = new int[Slots];      // 入っていたベントの番号 (-1 = 外)
     private static readonly float[] VRole = new float[Slots * RoleFloatsPer];
     private static readonly IntPtr[] VRolePtr = new IntPtr[Slots];
     private static readonly int[] TaskN = new int[Slots];
@@ -145,6 +147,7 @@ internal static class TimeRewind
 
     internal static void Clear()
     {
+        _pend = PendNone;
         RewindPlayback.Clear();
         RewindJournal.Clear();
         _head = _count = 0;
@@ -183,6 +186,11 @@ internal static class TimeRewind
                 catch (Exception e) { Plugin.Logger.LogError($"TimeRewind pose: {e}"); }
             }
         }
+        if (_pend != PendNone && !_playing)
+        {
+            try { PendStep(now); }
+            catch (Exception e) { _pend = PendNone; Plugin.Logger.LogError($"TimeRewind pending: {e}"); }
+        }
         if (now < _nextMs) return;
         _nextMs = now + StepMs;
         if (!Recording()) return;
@@ -219,6 +227,8 @@ internal static class TimeRewind
         PosY[s] = pos.y;
         Kill[s] = lp.killTimer;
         Alive[s] = lp.Data != null && !lp.Data.IsDead;
+        Hold[s] = lp.onLadder || lp.inMovingPlat;
+        InVent[s] = VentOf(lp);
         CaptureVanillaRole(s, lp);
         CaptureTasks(s, lp);
         CaptureRoles(s);
@@ -671,6 +681,7 @@ internal static class TimeRewind
     private static void Finish()
     {
         _playing = false;
+        _pend = PendNone;
         Step("pose", RewindPlayback.Stop);
         var lp = PlayerControl.LocalPlayer;
         if (_froze) { _froze = false; if (lp) lp.moveable = true; }
@@ -728,18 +739,104 @@ internal static class TimeRewind
         if (!lp || lp.Data == null) return;
         LastNote = "-";
         if (Minigame.Instance) Minigame.Instance.Close();
-        // はしご・ジップライン・昇降機の途中は本編の動きが位置を持っているので飛ばさない
+        // はしご・昇降機の途中の控えは床の上ではないので、乗る前に降りていた控えの位置へ戻す
+        int g = Grounded(s);
+        // 死んでいた時刻の体へは戻さない (幽霊のまま)。生きていた人は生きていた時の位置へ
+        _pendX = PosX[g];
+        _pendY = PosY[g];
+        _pendMove = Alive[s] || lp.Data.IsDead;
+        _pendVent = Alive[s] && !lp.Data.IsDead ? InVent[g] : -1;
+        _pendUntil = Environment.TickCount64 + PendMaxMs;
+        _pendShip = Terrain.GameClock.ShipGen;
+        // はしご・ジップライン・昇降機の途中は本編の動きが位置を持っているので、降りてから置く
+        _pend = PendLand;
         if (lp.onLadder || lp.inMovingPlat) LastNote = "moving";
-        else
-        {
-            if (lp.inVent && Vent.currentVent) lp.MyPhysics.RpcExitVent(Vent.currentVent.Id);
-            // 死んでいた時刻の体へは戻さない (幽霊のまま)。生きていた人は生きていた時の位置へ
-            if (Alive[s] || lp.Data.IsDead) Net.Teleport.Self(new Vector2(PosX[s], PosY[s]));
-        }
+        else PendStep(Environment.TickCount64);
         if (lp.Data.Role && lp.Data.Role.IsImpostor) lp.SetKillTimer(Kill[s]);
         else lp.killTimer = Kill[s];
         RestoreVanillaRole(s, lp);
         RestoreTasks(s, lp);
+    }
+
+    // 入っているベントの番号 (-1 = 外)。入った直後は Vent.currentVent がまだ空のことがあるので、足元のベントで引く
+    internal static int VentOf(PlayerControl pc)
+    {
+        if (!pc.inVent) return -1;
+        if (pc.AmOwner && Vent.currentVent) return Vent.currentVent.Id;
+        var ship = ShipStatus.Instance;
+        if (!ship) return -1;
+        var p = pc.transform.position;
+        int best = -1;
+        float bd = 1f; // ベントの中の体はベントの上にある (0.4 程度ずれる)
+        foreach (var v in ship.AllVents)
+        {
+            if (!v) continue;
+            var q = v.transform.position;
+            float dx = p.x - q.x, dy = p.y - q.y, d = dx * dx + dy * dy;
+            if (d < bd) { bd = d; best = v.Id; }
+        }
+        return best;
+    }
+
+    // s がはしご・昇降機の途中なら、それより前で一番近い降りていた控え (無ければ後ろ側で一番近い物)
+    private static int Grounded(int s)
+    {
+        if (!Hold[s]) return s;
+        int oldest = (_head - _count + Slots) % Slots;
+        for (int i = s; i != oldest;)
+        {
+            i = (i - 1 + Slots) % Slots;
+            if (!Hold[i]) return i;
+        }
+        int newest = (_head - 1 + Slots) % Slots;
+        for (int i = s; i != newest;)
+        {
+            i = (i + 1) % Slots;
+            if (!Hold[i]) return i;
+        }
+        return s;
+    }
+
+    // 戻した後の自分の置き直し (降りるのを待つ → 位置 → ベントの出入りを順に)
+    private const byte PendNone = 0, PendLand = 1, PendEnter = 2;
+    private const long PendMaxMs = 20000;   // ジップラインの端から端より長く
+    private const long VentExitMs = 700;    // ベントから出る絵が終わるまで (入り直すのはその後)
+    private static byte _pend;
+    private static float _pendX, _pendY;
+    private static bool _pendMove;
+    private static int _pendVent;
+    private static long _pendUntil, _pendEnterAt;
+    private static int _pendShip;
+
+    private static void PendStep(long now)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || lp.Data == null || MeetingHud.Instance || !Terrain.GameClock.ShipAlive || Terrain.GameClock.ShipGen != _pendShip || now > _pendUntil)
+        {
+            _pend = PendNone;
+            return;
+        }
+        if (_pend == PendLand)
+        {
+            if (lp.onLadder || lp.inMovingPlat) return;
+            int cur = VentOf(lp);
+            if (cur >= 0 && cur == _pendVent) { _pend = PendNone; return; } // 同じベントの中にいる
+            if (cur >= 0) lp.MyPhysics.RpcExitVent(cur);
+            if (_pendMove) Net.Teleport.Self(new Vector2(_pendX, _pendY));
+            if (_pendVent < 0) { _pend = PendNone; return; }
+            _pend = PendEnter;
+            _pendEnterAt = now + (cur >= 0 ? VentExitMs : 0);
+            return;
+        }
+        if (_pend == PendEnter)
+        {
+            // 位置が予算待ちで飛んでいない間は入らない (入る位置がずれる)
+            if (now < _pendEnterAt || Net.Teleport.Pending) return;
+            _pend = PendNone;
+            if (lp.inVent || lp.Data.IsDead) return;
+            lp.MyPhysics.RpcEnterVent(_pendVent);
+            LastNote = $"vent{_pendVent}";
+        }
     }
 
     private static void RestoreTasks(int s, PlayerControl lp)
