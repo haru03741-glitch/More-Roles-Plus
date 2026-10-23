@@ -405,7 +405,7 @@ internal static class DamageMap
     private static void StampAny(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
     {
         WaterSim.EnsureIdle(); // 作業スレッドが穴の地図を読んでいる間は書き換えない
-        if (!Native.MrpNative.Verify) { StampNative(shape, segs, withScorch, floorY, keep, body, out touched); return; }
+        if (!Native.MrpNative.VerifyIn("DamageMap")) { StampNative(shape, segs, withScorch, floorY, keep, body, out touched); return; }
         var px0 = (byte[])_pixels.Clone();
         var gens0 = (byte[])_gens.Clone();
         StampNative(shape, segs, withScorch, floorY, keep, body, out var tn);

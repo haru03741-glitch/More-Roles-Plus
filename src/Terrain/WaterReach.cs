@@ -77,12 +77,12 @@ internal static partial class WaterSim
             {
                 Open = open, Door = door, Prop = prop, Air = air, Lvl = lvl, Isl = isl, IslBase = islBase,
                 Q = q, Out = o, N = _rayN, W = _w, H = _h, IslN = _islBase.Length,
-                UseZ = useZ && !Native.MrpNative.Verify && isl != null ? 1 : 0, SideScan = SideScan, AirLip = AirLip,
+                UseZ = useZ && !Native.MrpNative.VerifyIn("WaterReach") && isl != null ? 1 : 0, SideScan = SideScan, AirLip = AirLip,
             };
             for (int d = 0; d < 4; d++) a.FallScan[d] = FallScan[d];
             Native.MrpNative.FallRay(&a);
         }
-        if (!Native.MrpNative.Verify) return;
+        if (!Native.MrpNative.VerifyIn("WaterReach")) return;
         for (int i = 0; i < _rayN; i++)
         {
             int k = _rayQ[i] >> 2, d = _rayQ[i] & 3;

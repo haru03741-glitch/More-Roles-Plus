@@ -66,7 +66,7 @@ internal static class BreakPieces
         FractureSites.Build(cracks, gen);
 
         var cells = CellsNative(touched, gen);
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("BreakPieces"))
         {
             var cs = CountCells(touched, gen, w, h);
             long diff = cs.Count != cells.Count ? 1000 : 0;

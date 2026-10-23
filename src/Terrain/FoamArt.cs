@@ -234,7 +234,7 @@ internal static class FoamArt
             Native.MrpNative.FoamCull(&c);
             hidden = c.HiddenN;
         }
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("FoamArt"))
         {
             int cs = CullCs(pl, a, ux, uy, vx, vy, out var vis2, out var hide2);
             long diff = cs != hidden ? 1 : 0;
@@ -428,7 +428,7 @@ internal static class FoamArt
     private static void Draw(Plug pl, float p, bool last)
     {
         if (pl.Px == null || pl.F == null || pl.Pores == null) return; // 固まり終わって手放した絵 (C++ に空の置き場を渡さない)
-        if (Native.MrpNative.Async && !Native.MrpNative.Verify && _jobState != 2)
+        if (Native.MrpNative.Async && !Native.MrpNative.VerifyIn("FoamArt") && _jobState != 2)
         {
             if (_jobN == Jobs.Length) Array.Resize(ref Jobs, _jobN * 2); // 同じ栓を積んだ描きと同期の描きに分けない (転送の順が入れ替わる)
             Jobs[_jobN++] = new Job { Pl = pl, P = p, Last = last };
@@ -517,7 +517,7 @@ internal static class FoamArt
     // 照合の時は C# でも描いて比べる
     private static void Verify(Plug pl, float p)
     {
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("FoamArt"))
         {
             int w = pl.W, h = pl.H;
             var px = (byte[])pl.Px.Clone();

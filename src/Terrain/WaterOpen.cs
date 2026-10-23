@@ -80,7 +80,7 @@ internal static partial class WaterSim
         var bits = _bits;
         if (MapFlip.Flipped) bits = MapFlip.MirrorBitRows(_bits, _bitsW, _bitsH, SolidMap.MirrorSpan);
         int cnt = WetFilterNative(bits, wet, n);
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("WaterOpen"))
         {
             var cs = new byte[n];
             VerifyLevels++;

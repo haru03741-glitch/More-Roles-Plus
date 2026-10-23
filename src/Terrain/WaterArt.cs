@@ -282,7 +282,7 @@ internal static class WaterArt
         EnsureScratch();
         var fill = EnsureFill();
         bool any = RawNative(x0, y0, fill, CraterArgs());
-        if (Native.MrpNative.Verify) VerifyRaw(x0, y0, fill, any);
+        if (Native.MrpNative.VerifyIn("WaterArt.Raw")) VerifyRaw(x0, y0, fill, any);
         t.LastDraw = _clock;
         Prof(0);
         int n0 = tc * Px;
@@ -301,7 +301,7 @@ internal static class WaterArt
         PrepFloor(t);
         Prof(2);
         DrawPixels(t, x0, y0, n, true);
-        if (Native.MrpNative.Verify) VerifyPixels(t, x0, y0, n);
+        if (Native.MrpNative.VerifyIn("WaterArt.Pixels")) VerifyPixels(t, x0, y0, n);
         Prof(3);
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
@@ -386,7 +386,7 @@ internal static class WaterArt
 
     // 隠れているタイル (乾いていた) は水があると分かってから家具の型抜きを払うよう、その場で描く
     private static bool CanDefer(Tile t) =>
-        t.Px != null && !t.Empty && _jobN < Jobs.Length && Native.MrpNative.Async && !Native.MrpNative.Verify;
+        t.Px != null && !t.Empty && _jobN < Jobs.Length && Native.MrpNative.Async && !Native.MrpNative.VerifyIn("WaterArt.Pixels");
 
     private static void Defer(Tile t)
     {
@@ -757,7 +757,7 @@ internal static class WaterArt
         int rw = rx1 - rx0, rh = ry1 - ry0, n = rw * rh;
         if (_fillSrc.Length < n) { _fillSrc = new int[n]; _fillDist = new byte[n]; _fillQueue = new int[n]; }
         int[] csFrom = null; byte[] csTargets = null;
-        if (Native.MrpNative.Verify) { csFrom = (int[])_fillFrom.Clone(); csTargets = (byte[])_fillTargets.Clone(); }
+        if (Native.MrpNative.VerifyIn("WaterArt.Fill")) { csFrom = (int[])_fillFrom.Clone(); csTargets = (byte[])_fillTargets.Clone(); }
         FillCells += FillNative(x0, y0, x1, y1, max, rx0, ry0, rw, rh);
         if (csFrom != null)
         {
@@ -1251,7 +1251,7 @@ internal static class WaterArt
             if (mask != null) { _fmu[i] = (q.x - mask.Min.x) * ku; _fmv[i] = (q.y - mask.Min.y) * kv; }
         }
         for (int i = 0; i < nt; i++) _ftri[i] = tri[i];
-        byte[] check = Native.MrpNative.Verify ? (byte[])buf.Clone() : null;
+        byte[] check = Native.MrpNative.VerifyIn("WaterArt.Front") ? (byte[])buf.Clone() : null;
         bool any;
         fixed (float* pxp = _fpx) fixed (float* pyp = _fpy) fixed (float* mup = _fmu) fixed (float* mvp = _fmv) fixed (ushort* tp = _ftri) fixed (byte* bp = buf)
         fixed (byte* mp = mask?.Px)
@@ -1700,7 +1700,7 @@ internal static class WaterArt
         int m = (int)MathF.Round(size * FloorMask.Ppu);
         if (_floorBuf.Length != m * m) _floorBuf = new byte[m * m];
         FloorMask.Fill(wx, wy, size, m, _floorBuf);
-        if (Native.MrpNative.Verify) VerifyThreadFloor(wx, wy, size, m);
+        if (Native.MrpNative.VerifyIn("WaterArt.Floor")) VerifyThreadFloor(wx, wy, size, m);
         UploadFloor(t, _floorBuf, m, wx, wy, size);
         FloorTicks += System.Diagnostics.Stopwatch.GetTimestamp() - f0;
     }
@@ -1731,7 +1731,7 @@ internal static class WaterArt
     private static unsafe void UploadFloor(Tile t, byte[] buf, int m, float wx, float wy, float size)
     {
         WaterHeight.StampFloor(buf, m, wx, wy, size);
-        t.FloorHash = Native.MrpNative.Verify ? Fnv(buf) : 0;
+        t.FloorHash = Native.MrpNative.VerifyIn("WaterArt.Floor") ? Fnv(buf) : 0;
         t.Floor = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFloor", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         fixed (byte* b = buf) t.Floor.LoadRawTextureData((IntPtr)b, buf.Length);
         t.Floor.Apply(false, true);
@@ -1755,7 +1755,7 @@ internal static class WaterArt
         if (t.FloorJob) return true; // 積んだ物はまだ作られていない (作る時に今の地図を読む)
         WaterSim.EnsureIdle();
         int m = (int)MathF.Round(size * FloorMask.Ppu);
-        bool defer = Native.MrpNative.Async && !Native.MrpNative.Verify && _jobState != 2 && !FloorMask.MovingAt(wx, wy, size, m);
+        bool defer = Native.MrpNative.Async && !Native.MrpNative.VerifyIn("WaterArt.Floor") && _jobState != 2 && !FloorMask.MovingAt(wx, wy, size, m);
         if (defer && FloorJobs.Count < FloorJobsPerFrame)
         {
             var j = FloorJobPool.Count > 0 ? FloorJobPool.Pop() : new FloorJob();

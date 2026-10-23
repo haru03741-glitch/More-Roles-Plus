@@ -448,7 +448,7 @@ internal static partial class Decompression
         Array.Clear(_floor);
         for (int i = 0; i < DoorFloors.Count; i++)
             if ((_doorBits >> i & 1) != 0) foreach (int k in DoorFloors[i]) _floor[k] = 1;
-        if (!Native.MrpNative.Verify) { GridNative(_sub, _edge); return; }
+        if (!Native.MrpNative.VerifyIn("Decompression")) { GridNative(_sub, _edge); return; }
         var vSub = (ushort[])_sub.Clone();
         var vEdge = (byte[])_edge.Clone();
         GridNative(vSub, vEdge);
@@ -552,7 +552,7 @@ internal static partial class Decompression
     private static void Regions(int[] oldComp, int[] oldPress)
     {
         _compGen++;
-        if (!Native.MrpNative.Verify) RegionsNative(_comp, oldComp, oldPress, out _compCells, out _press);
+        if (!Native.MrpNative.VerifyIn("Decompression")) RegionsNative(_comp, oldComp, oldPress, out _compCells, out _press);
         else
         {
             var vComp = new int[_comp.Length];
@@ -693,7 +693,7 @@ internal static partial class Decompression
         bool any = Seeds.Count > 0;
         Grips.Clear();
         int gn;
-        if (!Native.MrpNative.Verify) gn = FieldNative(_dist, _par);
+        if (!Native.MrpNative.VerifyIn("Decompression")) gn = FieldNative(_dist, _par);
         else
         {
             var vDist = (ushort[])_dist.Clone();

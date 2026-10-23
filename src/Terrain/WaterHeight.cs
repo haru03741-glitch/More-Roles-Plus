@@ -84,7 +84,7 @@ internal static class WaterHeight
     internal static unsafe void CutHoles(byte[] face, int n, float x, float y, float size)
     {
         if (!DamageMap.HoleMap(out var hp, out int hw, out int hh, out float hox, out float hoy, out float hppu)) return;
-        byte[] cs = Native.MrpNative.Verify ? (byte[])face.Clone() : null;
+        byte[] cs = Native.MrpNative.VerifyIn("WaterHeight") ? (byte[])face.Clone() : null;
         fixed (byte* f = face) fixed (byte* h = hp)
         {
             var a = new HolesArgs { Face = f, N = n, X = x, Y = y, Size = size, Px = h, W = hw, H = hh, Ox = hox, Oy = hoy, Ppu = hppu, HoleMin = HoleMin };

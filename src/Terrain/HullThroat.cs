@@ -381,7 +381,7 @@ internal static class HullThroat
             grown.Add(g);
             foreach (var p in g) { minX = MathF.Min(minX, p.X); minY = MathF.Min(minY, p.Y); maxX = MathF.Max(maxX, p.X); maxY = MathF.Max(maxY, p.Y); }
         }
-        Cut cs = Native.MrpNative.Verify ? c.Copy() : null;
+        Cut cs = Native.MrpNative.VerifyIn("HullThroat") ? c.Copy() : null;
         ClipNative(c, local, grown, minX, minY, maxX, maxY);
         if (cs != null)
         {

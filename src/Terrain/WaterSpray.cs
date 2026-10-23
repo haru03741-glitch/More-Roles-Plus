@@ -133,7 +133,7 @@ internal static class WaterSpray
             };
             Native.MrpNative.WaterSpray(&a);
         }
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("WaterSpray"))
         {
             var px2 = new byte[s.Px.Length];
             DrawCs(s, px2, new float[s.Dens.Length], new float[s.Foam.Length]);

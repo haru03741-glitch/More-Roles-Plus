@@ -365,14 +365,14 @@ internal static partial class FireSim
         int need = Math.Min(_actN * 5, _w * _h) * 6 * 3;
         if (_ev.Length < need) _ev = new int[Math.Max(need, _ev.Length * 2)];
         if (_dirtyOut.Length < _tw * _th) { _dirtyOut = new int[_tw * _th]; _missing = new int[_tw * _th]; }
-        Snapshot before = Native.MrpNative.Verify ? Snapshot.Take() : null;
+        Snapshot before = Native.MrpNative.VerifyIn("FireSim") ? Snapshot.Take() : null;
         int evN, dirtyN;
         for (;;)
         {
             int miss = RunNative(0, pull, pdist, pcomp, ppar, pw, ph, out evN, out dirtyN);
             if (miss == 0) break;
             for (int i = 0; i < miss; i++) EnsureTileIndex(_missing[i]);
-            before = Native.MrpNative.Verify ? Snapshot.Take() : null;
+            before = Native.MrpNative.VerifyIn("FireSim") ? Snapshot.Take() : null;
         }
         if (before != null) VerifyStep(before, pull, evN, dirtyN);
 

@@ -42,7 +42,7 @@ internal static class FloorFlood
 
         // 答えは届いた升を囲む矩形 (bx by bw bh) に切り出した表
         var dist = FillNative(walls, x0, y0, w, h, lx, ly, search, nearestOnly, target, maxCost, out int bx, out int by, out int bw, out int bh, out int popped, out int far);
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("FloorFlood"))
         {
             var cs = new ushort[w * h];
             bool ok = FillCs(walls, x0, y0, w, h, lx, ly, search, nearestOnly, target, maxCost, cs, out int csPopped, out int csFar);

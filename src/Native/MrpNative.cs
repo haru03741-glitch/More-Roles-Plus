@@ -23,6 +23,32 @@ internal static unsafe class MrpNative
     private static IntPtr _lib;
     internal static string Status { get; private set; } = "not loaded";
     internal static bool Verify;
+    // 答え合わせをファイル単位で入れ切りする (verify の時だけ起きる不具合の部品を絞る道具)。null = 全部。
+    // 一部だけ入れると C# と C++ で古い/新しいルールが食い違う組 (WaterReach の UseZ と WaterSim.Zray) ができるので、差 0 の判定は全部で回す
+    private static string[] _verifyOnly, _verifySkip;
+    internal static string VerifyScope => _verifyOnly != null ? " only=" + string.Join(",", _verifyOnly) : _verifySkip != null ? " skip=" + string.Join(",", _verifySkip) : "";
+    internal static void SetVerifyScope(string arg)
+    {
+        _verifyOnly = _verifySkip = null;
+        if (arg == null) return;
+        if (arg.StartsWith("only=", StringComparison.Ordinal)) _verifyOnly = arg[5..].Split(',');
+        else if (arg.StartsWith("skip=", StringComparison.Ordinal)) _verifySkip = arg[5..].Split(',');
+    }
+    // file = "ファイル名" か "ファイル名.箇所"。指定はどちらの名前でも当たる
+    internal static bool VerifyIn(string file) => Verify && (_verifyOnly == null || InScope(_verifyOnly, file)) && (_verifySkip == null || !InScope(_verifySkip, file));
+    private static bool InScope(string[] list, string file)
+    {
+        if (Array.IndexOf(list, file) >= 0) return true;
+        int dot = file.IndexOf('.');
+        return dot > 0 && Array.IndexOf(list, file[..dot]) >= 0;
+    }
+    // verify の間だけ背景 GC を止める (Android エミュは verify の大量の割り当て中に背景 GC で落ちることがある)。verify off で元に戻す
+    private static System.Runtime.GCLatencyMode? _latencyBefore;
+    internal static void SetVerifyNoBgc(bool on)
+    {
+        if (on && _latencyBefore == null) { _latencyBefore = System.Runtime.GCSettings.LatencyMode; System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.Batch; }
+        else if (!on && _latencyBefore != null) { System.Runtime.GCSettings.LatencyMode = _latencyBefore.Value; _latencyBefore = null; }
+    }
     internal static bool Async = true; // 水の小刻みを作業スレッドで回す (切り替えは答え合わせ用)
 
     internal static delegate* unmanaged[Cdecl]<byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, int, void> FloorRaw;

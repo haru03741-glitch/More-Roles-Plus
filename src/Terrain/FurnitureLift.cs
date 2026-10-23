@@ -316,7 +316,7 @@ internal static class FurnitureLift
             };
             Native.MrpNative.LiftShape(&a);
         }
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("FurnitureLift"))
         {
             var csPx = new byte[px.Length];
             var csIn = new bool[shapeIn.Length];

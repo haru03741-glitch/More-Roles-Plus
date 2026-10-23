@@ -599,14 +599,14 @@ internal static class WaterFall
     private static void Draw()
     {
         Pack();
-        if (Native.MrpNative.Async && !Native.MrpNative.Verify)
+        if (Native.MrpNative.Async && !Native.MrpNative.VerifyIn("WaterFall"))
         {
             _jobState = 1;
             _jobGen = _shipGen;
             return;
         }
         WaterSim.EnsureIdle(); // 作業スレッドと同じ水の配列を読む
-        if (Native.MrpNative.Verify) Verify();
+        if (Native.MrpNative.VerifyIn("WaterFall")) Verify();
         else DrawNative();
         Finish();
     }

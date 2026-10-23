@@ -555,7 +555,7 @@ internal static partial class WaterSim
     {
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
-        if (!Native.MrpNative.Verify) { RebuildNative(x0, y0, x1, y1); return; }
+        if (!Native.MrpNative.VerifyIn("WaterSim.Rebuild")) { RebuildNative(x0, y0, x1, y1); return; }
         VerifyCellsBefore(x0, y0, x1, y1);
         int sw = SolidMap.W;
         var solid = SolidMap.OpenCells;
@@ -917,7 +917,7 @@ internal static partial class WaterSim
         var area = new int[SolidMap.IslandCount + 1];
         var wetOnly = new byte[n];
         IslandCellsNative(isl, wetOnly, area);
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("WaterSim.Island"))
         {
             var cIsl = new byte[n];
             var cArea = new int[area.Length];
@@ -1047,7 +1047,7 @@ internal static partial class WaterSim
         bool cliffs = !MapNotes.HasLevels;
         // 床の本当の高さで縁を決めるのは C++ の部品がある時だけ (照合の時は C# と同じ段の順位)。
         // 作った時は先に段の順位で崖の面を測って島の高さを決め、その高さで引き直す
-        bool zray = ZFlow && !Native.MrpNative.Verify;
+        bool zray = ZFlow && !Native.MrpNative.VerifyIn("WaterSim.Zray");
         if (full)
         {
             ListLadders(ship);
@@ -1727,7 +1727,7 @@ internal static partial class WaterSim
         SeaInflow();
         Prof(3);
 
-        if (defer && !Native.MrpNative.Verify) { Defer(_step, blow); return true; }
+        if (defer && !Native.MrpNative.VerifyIn("WaterSim.Step")) { Defer(_step, blow); return true; }
         RunSubsteps(blow, _step);
         PostStep(_step, blow);
         return false;
@@ -1737,7 +1737,7 @@ internal static partial class WaterSim
     private static void RunSubsteps(bool blow, int step)
     {
         if (_fs.Length < _fallAt.Length * 3) _fs = new int[_fallAt.Length * 3];
-        if (Native.MrpNative.Verify) VerifyStep(step, blow);
+        if (Native.MrpNative.VerifyIn("WaterSim.Step")) VerifyStep(step, blow);
         else if (!StepNative(false, step, blow)) NativeRefused();
         Prof(4);
     }
@@ -1823,7 +1823,7 @@ internal static partial class WaterSim
         // 前の刻みの終わりに並べた分は外しても番号順のままなので、後から起こした分だけ並べて後ろから混ぜる
         SortTail(kept);
         _sortedN = _actN;
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("WaterSim.Sort"))
             for (int a = 1; a < _actN; a++) if (_act[a - 1] >= _act[a]) VerifyDiff++;
         Prof(7);
 

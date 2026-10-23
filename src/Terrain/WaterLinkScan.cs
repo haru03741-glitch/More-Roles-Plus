@@ -83,7 +83,7 @@ internal static partial class WaterSim
         RimMarks(x0, y0, x1, y1);
         // 前の縁の升は落ちる縁と段差の表の件数より多くない
         int cap = FallTo.Count + StepTo.Count + 1;
-        if (!Native.MrpNative.Verify)
+        if (!Native.MrpNative.VerifyIn("WaterLinkScan"))
         {
             if (_scanCleared.Length < cap) _scanCleared = new int[Math.Max(cap, 256)];
             int n = ScanNative(x0, y0, x1, y1, false, _rayQ, _scanCleared, out int cn);

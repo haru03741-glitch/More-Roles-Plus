@@ -450,7 +450,7 @@ internal static class SolidMap
         var fl = new Flood(n, sn);
         FloodNative(barrier, sx, sy, sn, fl);
         long verifyDiff = -1;
-        if (Native.MrpNative.Verify)
+        if (Native.MrpNative.VerifyIn("SolidMap"))
         {
             var cs = new Flood(n, sn);
             FloodCs(barrier, sx, sy, sn, cs, new int[n]);
@@ -675,7 +675,7 @@ internal static class SolidMap
         // エアシップの船体の塊 (部屋と部屋の間の赤い板) も船の中
         var art = new byte[n];
         FillHullRects(art);
-        if (!Native.MrpNative.Verify) return OutsideNative(art, triData, blocked);
+        if (!Native.MrpNative.VerifyIn("SolidMap")) return OutsideNative(art, triData, blocked);
 
         var artCs = (byte[])art.Clone();
         var outN = OutsideNative(art, triData, blocked);
@@ -1328,7 +1328,7 @@ internal static class SolidMap
             if (rx >= 0 && ry >= 0 && rx < bw && ry < bh) refK = ry * bw + rx;
         }
         byte refLab = (byte)IslandAt(walkableRef);
-        if (!Native.MrpNative.Verify) { CarveNative(shape, keep, x0, y0, bw, bh, barrier, refK, refLab); return; }
+        if (!Native.MrpNative.VerifyIn("SolidMap")) { CarveNative(shape, keep, x0, y0, bw, bh, barrier, refK, refLab); return; }
         var open0 = (byte[])_open.Clone();
         var island0 = (byte[])_island?.Clone();
         CarveNative(shape, keep, x0, y0, bw, bh, barrier, refK, refLab);
