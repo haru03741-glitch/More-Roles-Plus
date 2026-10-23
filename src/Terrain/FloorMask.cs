@@ -643,6 +643,97 @@ internal static class FloorMask
 
     // マスクを作る道具 (tools/make-floor-mask.py) へ: 部屋の絵ごとの名前・絵の画素と世界座標の対応・前後 (z)、
     // 歩ける所の地図 (SolidMap)、家具の当たり判定を Screens/floor_<船>.json へ
+    // 確認用: 試合ごとにくじで変わる船の作りを揃える (部品の指紋の台本で地図を作る前に呼ぶ)。
+    // Airship = 電気室の壁の組み合わせを種 1 で引き直す (本編の乱数で引くので種を決めれば同じ形になる)
+    private static string DigestFixMap()
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship) return "ERR native fixmap: no ship";
+        var sb = new StringBuilder("OK native fixmap");
+        if (ship.Systems.ContainsKey(SystemTypes.Decontamination))
+        {
+            var doors = ship.Systems[SystemTypes.Decontamination].TryCast<ElectricalDoors>();
+            if (doors != null)
+            {
+                UnityEngine.Random.InitState(1);
+                doors.Initialize();
+                sb.Append(" electrical=reseeded");
+            }
+        }
+        return sb.ToString();
+    }
+
+    // 確認用: 部品の指紋の台本に使う船ごとの点 (どれも船の作りだけで決まる)。
+    // pour/fire = 番号の小さい順の通気口・wall = pour から 8 方向でいちばん近い壁・hull = 歩ける所から船外まで壁 1 枚で抜ける所のうち pour にいちばん近い所・breach = そこに開ける船外への口
+    private static string DigestPoints()
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship) return "ERR native points: no ship";
+        var vents = new List<Vent>();
+        foreach (var v in ship.AllVents) if (v) vents.Add(v);
+        vents.Sort((x, y) => x.Id.CompareTo(y.Id));
+        if (vents.Count < 2) return "ERR native points: vents";
+        Vector2 pour = vents[0].transform.position, fire = vents[vents.Count / 2].transform.position;
+        var sb = new StringBuilder($"OK native points pour={TestBridge.F(pour.x)} {TestBridge.F(pour.y)} fire={TestBridge.F(fire.x)} {TestBridge.F(fire.y)}");
+
+        float best = float.MaxValue; Vector2 wall = default;
+        for (int d = 0; d < 8; d++)
+        {
+            float ang = d * MathF.PI / 4f;
+            var dir = new Vector2(MathF.Cos(ang), MathF.Sin(ang));
+            foreach (var h in Physics2D.CircleCastAll(pour, 0.1f, dir, 6f, 1 << 9))
+            {
+                if (!h.collider || h.collider.isTrigger || h.distance >= best) continue;
+                if (TerrainDamage.IsProtected(h.collider, h.point)) continue;
+                best = h.distance; wall = h.point + dir * 0.1f;
+            }
+        }
+        sb.Append(best == float.MaxValue ? " wall=none" : $" wall={TestBridge.F(wall.x)} {TestBridge.F(wall.y)}");
+
+        if (!SolidMap.Valid || SolidMap.OutsideCells == null) return sb.Append(" hull=nomap").ToString();
+        byte[] open = SolidMap.OpenCells, outside = SolidMap.OutsideCells;
+        int w = SolidMap.W, h2 = SolidMap.H, reach = (int)(2f * SolidMap.Ppu);
+        float ppu = SolidMap.Ppu;
+        Vector2 org = SolidMap.Origin;
+        int px = (int)((pour.x - org.x) * ppu), py = (int)((pour.y - org.y) * ppu);
+        long bestD = long.MaxValue;
+        float wallX = 0f, wallY = 0f;
+        int wallD = 0;
+        int[] dx = { 1, -1, 0, 0 }, dy = { 0, 0, 1, -1 };
+        for (int y = 1; y < h2 - 1; y++)
+        for (int x = 1; x < w - 1; x++)
+        {
+            if (open[y * w + x] == 0) continue;
+            long dd = (long)(x - px) * (x - px) + (long)(y - py) * (y - py);
+            if (dd >= bestD) continue;
+            for (int d = 0; d < 4; d++)
+            {
+                // 歩ける所から壁を抜けて船外に着く (途中に別の歩ける所が無い) なら、壁の真ん中が候補
+                int s = 1, first = -1;
+                for (; s <= reach; s++)
+                {
+                    int cx = x + dx[d] * s, cy = y + dy[d] * s;
+                    if (cx < 0 || cy < 0 || cx >= w || cy >= h2) { s = reach + 1; break; }
+                    int k = cy * w + cx;
+                    if (open[k] != 0) { s = reach + 1; break; }
+                    if (outside[k] == 1) break;
+                    if (first < 0) first = s;
+                }
+                if (s > reach || first < 0) continue;
+                bestD = dd;
+                float mid = (first + s - 1) * 0.5f;
+                wallX = org.x + (x + 0.5f + dx[d] * mid) / ppu;
+                wallY = org.y + (y + 0.5f + dy[d] * mid) / ppu;
+                wallD = d;
+                break;
+            }
+        }
+        if (bestD == long.MaxValue) return sb.Append(" hull=none").ToString();
+        // 船外への口 (decomp breach に渡す): 壁の真ん中を通り、抜ける向きに直交する長さ 0.7 の線
+        float ex = wallD < 2 ? 0f : 0.35f, ey = wallD < 2 ? 0.35f : 0f;
+        return sb.Append($" hull={TestBridge.F(wallX)} {TestBridge.F(wallY)} breach={TestBridge.F(wallX - ex)} {TestBridge.F(wallY - ey)} {TestBridge.F(wallX + ex)} {TestBridge.F(wallY + ey)}").ToString();
+    }
+
     internal static void Register()
     {
         TestBridge.Register("floormask", "[on|off] 水の床マスク (部屋の絵の床の画素で水を切る) の状態 / テスト用に切り替える (次に描き直したタイルから)", (args, reply) =>
@@ -655,7 +746,7 @@ internal static class FloorMask
             }
             reply($"OK floormask active={Active} off={Off} {Stats}");
         });
-        TestBridge.Register("native", "[check [x y] | verify [on|off] | async [on|off] | digest [on|off|reset]] C++ の部品の状態 / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
+        TestBridge.Register("native", "[check [x y] | verify [on|off] | async [on|off] | digest [on|off|reset|step n] | points | walls | fixmap] C++ の部品の状態 / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             bool on = Native.MrpNative.Loaded;
@@ -666,6 +757,9 @@ internal static class FloorMask
                 reply($"OK native async={Native.MrpNative.Async}");
                 return;
             }
+            if (a.Length > 0 && a[0] == "points") { reply(DigestPoints()); return; }
+            if (a.Length > 0 && a[0] == "walls") { reply(SolidMap.DescribeWalls()); return; }
+            if (a.Length > 0 && a[0] == "fixmap") { reply(DigestFixMap()); return; }
             if (a.Length > 0 && a[0] == "digest")
             {
                 if (!on) { reply("ERR native digest: not loaded"); return; }

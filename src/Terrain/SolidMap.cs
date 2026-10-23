@@ -363,6 +363,26 @@ internal static class SolidMap
     }
     private static Half _half;
 
+    // 確認用: 地図に入る壁の当たり判定を、有効か・名前つきで並べる (起動ごとに入る壁が変わる船の切り分け用)
+    internal static string DescribeWalls()
+    {
+        var ship = ShipStatus.Instance;
+        if (!ship) return "ERR native walls: no ship";
+        string shipName = FurnitureKinds.ShipName(ship);
+        var names = new List<string>();
+        foreach (var c in ship.GetComponentsInChildren<Collider2D>(false))
+        {
+            if (!IsWallShape(c) || c.GetComponentInParent<OpenableDoor>()) continue;
+            if (FurnitureKinds.TryGet(c.transform, shipName, out _)) continue;
+            var t = c.transform;
+            string path = t.name;
+            for (var q = t.parent; q && q != ship.transform; q = q.parent) path = q.name + "/" + path;
+            names.Add((c.enabled ? "+" : "-") + path);
+        }
+        names.Sort(StringComparer.Ordinal);
+        return $"OK native walls n={names.Count} " + string.Join(" ", names);
+    }
+
     private static void BuildFirst(ShipStatus ship)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

@@ -52,7 +52,7 @@ internal static partial class WaterSim
         if (a.StartsWith("sea")) { Sea(a, reply); return true; }
         if (a == "links") { LinksDump(reply); return true; }
         if (a.StartsWith("sweep")) { Sweep(a.Substring(5).Trim(), reply); return true; }
-        if (a == "platuse") { PlatformUse(reply); return true; }
+        if (a == "platuse" || a.StartsWith("platuse ")) { PlatformUse(a, reply); return true; }
         if (a.StartsWith("why")) { WhyNoFallAt(a, reply); return true; }
         if (a.StartsWith("furn")) { WaterDebug.ListFurniture(a.Length > 4 ? a.Substring(4).Trim() : "", reply); return true; }
         return false;
@@ -314,12 +314,15 @@ internal static partial class WaterSim
     }
 
     // 確認用: 昇降機を動かす (自分が乗る)
-    private static void PlatformUse(Action<string> reply)
+    // 昇降台を動かす。left / right を付けると、その側にいない時だけ動かす (試合ごとに始まる側が変わるので確認の前に揃える)
+    private static void PlatformUse(string a, Action<string> reply)
     {
         var pf = FindPlatform();
         if (!pf) { reply("ERR no platform"); return; }
-        pf.Use();
-        reply($"OK water platuse left={pf.IsLeft}");
+        string side = a.Length > 8 ? a.Substring(8).Trim() : "";
+        bool moved = side switch { "left" => !pf.IsLeft, "right" => pf.IsLeft, _ => true };
+        if (moved) pf.Use();
+        reply($"OK water platuse moved={moved} left={pf.IsLeft}");
     }
 
     // 確認用: 範囲の縁の升が落ちない理由を向きごとに数える (4 つ目に "-y:scan" などを渡すとその升の位置を並べる。
