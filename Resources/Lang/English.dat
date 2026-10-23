@@ -616,6 +616,9 @@ VanillaTweaks.PetGoesWithBody: Hide pets when the body is gone
 # ── HudTweaks ──
 HudTweaks.Screenshot: Screenshot saved ({path})
 
+# ── Ability buttons ──
+Ability.Hold: HOLD
+
 # ── ColorPicker ──
 ColorPicker.MakeAColor: Make a color
 ColorPicker.TypeRRGGBB: Type #RRGGBB

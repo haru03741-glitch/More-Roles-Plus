@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using HarmonyLib;
+using MoreRolesPlus.Fx;
 using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
@@ -39,6 +40,16 @@ internal sealed class ModButton
     private int _holdFinger = -1;
     private long _holdTestUntil; // テスト用: この時刻まで押している扱い (0 = 使わない)
     private PassiveButton _pb;
+    // 長押しできることを知らせる札 (押せる間だけ右上の角に出す)。一度溜めて使えば、その起動の間は出さない
+    private TMPro.TextMeshPro _hint;
+    private bool _hintShown;
+    internal static bool HoldLearned;
+    // 溜めた秒を 1 秒に 1 つ点す粒 (ボタンの縁の弧・溜めている間だけ)
+    private GameObject _pipRoot;
+    private SpriteRenderer[] _pips;
+    private int _pipsLit;
+    private float _pipPop, _pipPulse;
+    private static Sprite _pipSprite;
 
     public float Cooldown { get; set; }
 
@@ -77,6 +88,7 @@ internal sealed class ModButton
         }
         _left = Math.Max(0f, left + Math.Max(0f, effect));
         if (!_button) return;
+        UpdateHint();
         if (_left > 0f)
         {
             _button.SetCoolDown(_left, Math.Max(Cooldown, _left));
@@ -153,6 +165,7 @@ internal sealed class ModButton
         if (_usable == usable) return;
         _usable = usable;
         if (_left > 0f || _effect > 0f || !_button) return;
+        UpdateHint();
         if (usable) _button.SetEnabled();
         else _button.SetDisabled();
     }
@@ -184,6 +197,7 @@ internal sealed class ModButton
         _left = 0f;
         _effectShown = -1;
         _button.SetDisabled();
+        UpdateHint();
         DrawEffect();
     }
 
@@ -206,11 +220,12 @@ internal sealed class ModButton
         _left = Cooldown;
         _button.SetCoolDown(_left, Cooldown);
         _button.SetDisabled();
+        UpdateHint();
     }
 
     // 長押しで溜めるボタンにする。押した瞬間に OnClick が来るように本編のボタンを押し下げで反応させる
     // (離した時の OnClick では押している間が分からない)。onClick は押せるかだけを返す
-    public void SetHold(Func<float> min, Func<float> max, Func<float, bool> onRelease)
+    public void SetHold(Func<float> min, Func<float> max, Func<float, bool> onRelease, string hint)
     {
         _holdMin = min;
         _holdMax = max;
@@ -218,6 +233,38 @@ internal sealed class ModButton
         if (!_button) return;
         _pb = _button.GetComponent<PassiveButton>();
         if (_pb) { _pb.OnDown = true; _pb.OnUp = false; }
+        MakeHint(hint);
+        UpdateHint();
+    }
+
+    // 札はボタンの名前の字を複製して作る (書体・色・縁取りを本編の字と同じにする)
+    private void MakeHint(string hint)
+    {
+        var label = _button.buttonLabelText;
+        if (!label || string.IsNullOrEmpty(hint)) return;
+        var go = UnityEngine.Object.Instantiate(label.gameObject, label.transform.parent);
+        go.name = "MrpHoldHint";
+        // 名前の字の言語表の部品は Create で外したが、Destroy は遅れて効くので複製にも付いてくる
+        var translator = go.GetComponent<TextTranslatorTMP>();
+        if (translator) UnityEngine.Object.Destroy(translator);
+        _hint = go.GetComponent<TMPro.TextMeshPro>();
+        _hint.enableAutoSizing = false;
+        _hint.fontSize = HintFontSize;
+        _hint.text = hint;
+        go.transform.localPosition = FxMath.V3(HintX, HintY, label.transform.localPosition.z);
+        _hintShown = true;
+    }
+
+    private const float HintFontSize = 2.4f, HintX = 0.3f, HintY = 0.5f;
+
+    // 札を出すのは押せる時だけ (待ち時間・効果・溜めている間・押せない間は隠す)。状態が変わる所から呼ぶ
+    private void UpdateHint()
+    {
+        if (_hint == null) return;
+        bool want = !HoldLearned && !_holding && _left <= 0f && _effect <= 0f && _usable;
+        if (want == _hintShown || !_hint) return;
+        _hintShown = want;
+        _hint.gameObject.SetActive(want);
     }
 
     internal bool Holding => _holding;
@@ -237,7 +284,79 @@ internal sealed class ModButton
         _holdFinger = _holdKey == KeyCode.None ? PressedFinger() : -1;
         _holdShown = -1;
         _holding = true;
+        UpdateHint();
+        ShowPips();
         DrawHold();
+    }
+
+    // 粒の数 = 溜められる秒の段の数 (下限の秒で 1 つ目が点る)。上限の設定が変わっていたら作り直す
+    private void ShowPips()
+    {
+        int n = Math.Clamp((int)_holdMax() - (int)_holdMin() + 1, 1, MaxPips);
+        if (_pips == null || _pips.Length != n || !_pipRoot)
+        {
+            if (_pipRoot) UnityEngine.Object.Destroy(_pipRoot);
+            _pipSprite ??= FxSprites.Rect(32, 32, FxSprites.Dot, "MrpHoldPip");
+            int layer = _button.gameObject.layer;
+            _pipRoot = new GameObject("MrpHoldPips") { layer = layer };
+            _pipRoot.transform.SetParent(_button.transform, false);
+            _pips = new SpriteRenderer[n];
+            for (int i = 0; i < n; i++)
+            {
+                var go = new GameObject("Pip") { layer = layer };
+                go.transform.SetParent(_pipRoot.transform, false);
+                // 真上から時計回りに右肩へ (左上の角は回数の丸がある)。1 つだけの時は真上
+                float ang = n == 1 ? 90f : PipArcFrom - (PipArcFrom - PipArcTo) * i / (n - 1);
+                float rad = ang * FxMath.Deg2Rad;
+                go.transform.localPosition = FxMath.V3(PipRadius * FxMath.Cos(rad), PipRadius * FxMath.Sin(rad), PipZ);
+                go.transform.localScale = FxMath.V3(PipSize, PipSize, 1f);
+                _pips[i] = go.AddComponent<SpriteRenderer>();
+                _pips[i].sprite = _pipSprite;
+            }
+        }
+        for (int i = 0; i < _pips.Length; i++) _pips[i].color = PipOff;
+        _pipsLit = 0;
+        _pipPop = _pipPulse = 0f;
+        _pipRoot.SetActive(true);
+    }
+
+    private const int MaxPips = 16;
+    private const float PipArcFrom = 100f, PipArcTo = -35f, PipRadius = 0.72f, PipSize = 0.15f, PipZ = -0.12f, PipPopTime = 0.25f;
+    private static readonly Color PipOff = FxMath.Rgba(1f, 1f, 1f, 0.28f);
+    private static readonly Color PipOn = FxMath.Rgba(0.55f, 0.95f, 1f, 1f);
+
+    // 点った粒の数を溜めた秒に合わせる。新しく点った粒は大きく出て戻り、上限まで溜まったら全部が脈打つ
+    private void DrawPips()
+    {
+        if (_pips == null || !_pipRoot) return;
+        int lit = Math.Clamp((int)(_hold - _holdMin()) + 1, 0, _pips.Length);
+        if (lit != _pipsLit)
+        {
+            for (int i = _pipsLit; i < lit; i++) _pips[i].color = PipOn;
+            for (int i = lit; i < _pipsLit; i++) _pips[i].color = PipOff;
+            _pipsLit = lit;
+            _pipPop = PipPopTime;
+        }
+        if (_pipPop > 0f && lit > 0)
+        {
+            _pipPop = Math.Max(0f, _pipPop - _dt);
+            float k = PipSize * (1f + 0.9f * _pipPop / PipPopTime);
+            _pips[lit - 1].transform.localScale = FxMath.V3(k, k, 1f);
+        }
+        if (lit == _pips.Length && _pipPop <= 0f)
+        {
+            _pipPulse += _dt;
+            var c = PipOn;
+            c.a = 0.65f + 0.35f * FxMath.Cos(_pipPulse * 12.6f); // 2 回/秒
+            for (int i = 0; i < lit; i++) _pips[i].color = c;
+        }
+    }
+
+    private void HidePips()
+    {
+        if (_pips == null || !_pipRoot) return;
+        _pipRoot.SetActive(false);
+        for (int i = 0; i < _pips.Length; i++) _pips[i].transform.localScale = FxMath.V3(PipSize, PipSize, 1f);
     }
 
     // 画面を触って押した時: このボタンを押した指 (今触れ始めた指・無ければ最後の指)。触れていなければ -1 (マウス)
@@ -274,6 +393,7 @@ internal sealed class ModButton
         if (!_button) return;
         float max = _holdMax();
         _button.SetFillUp(_hold, max);
+        DrawPips();
         int shown = (int)_hold;
         var text = _button.cooldownTimerText;
         if (!text || shown == _holdShown) return;
@@ -287,16 +407,20 @@ internal sealed class ModButton
         _holding = false;
         _holdTestUntil = 0;
         _holdShown = -1;
+        if (use && _hold >= _holdMin() + 1f) HoldLearned = true;
         if (_button)
         {
+            HidePips();
             _button.SetFillUp(0f, 1f);
             if (_button.cooldownTimerText) _button.cooldownTimerText.gameObject.SetActive(false);
         }
-        if (!use) return;
+        if (!use) { UpdateHint(); return; }
         bool used;
         try { used = _onHold(_hold); }
-        catch (Exception e) { Plugin.Logger.LogError($"button hold: {e}"); return; }
+        catch (Exception e) { Plugin.Logger.LogError($"button hold: {e}"); UpdateHint(); return; }
         if (used) StartUsed();
+        if (HoldLearned) foreach (var b in All) b.UpdateHint();
+        else UpdateHint();
     }
 
     // 溜めている間 (毎 FixedUpdate): 押し続けていれば溜め、離したら使う
@@ -322,6 +446,7 @@ internal sealed class ModButton
         {
             if (_usable) _button.SetEnabled();
             else _button.SetDisabled();
+            UpdateHint();
         }
     }
 
@@ -375,6 +500,7 @@ internal sealed class ModButton
                 b._button.SetCoolDown(0f, b.Cooldown);
                 if (b._usable) b._button.SetEnabled();
                 else b._button.SetDisabled();
+                b.UpdateHint();
             }
             else b._button.SetCoolDown(b._left, b.Cooldown);
         }

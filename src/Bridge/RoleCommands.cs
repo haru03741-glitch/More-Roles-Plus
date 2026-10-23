@@ -39,9 +39,15 @@ internal static class RoleCommands
             reply($"OK rewindpose {RewindPlayback.Probe()}"));
         TestBridge.Register("rewindsnd", "時戻しの逆再生で鳴らす音の状態 (控えた数・並べた数・鳴っている声の pitch と再生位置。位置が呼ぶたびに減っていれば逆に鳴っている)", (args, reply) =>
             reply($"OK rewindsnd recorded={RewindSounds.Recorded} {RewindSounds.Last} voices=[{RewindSounds.Probe()}]"));
-        TestBridge.Register("rewind", "[ask [押してからの ms] [戻す秒数 (0 = 設定の上限)] | force <秒> | doors <部屋 (SystemTypes)> | check <0|1> | print] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ) / 壁の今の姿の指紋", (args, reply) =>
+        TestBridge.Register("rewind", "[ask [押してからの ms] [戻す秒数 (0 = 設定の上限)] | force <秒> | doors <部屋 (SystemTypes)> | check <0|1> | print | charge <0〜1|off>] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ) / 壁の今の姿の指紋 / 溜めの演出を値を決めて出す", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 2 && p[0] == "charge")
+            {
+                RewindChargeFx.TestCharge = float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float cv) ? cv : -1f;
+                reply($"OK rewind charge {RewindChargeFx.TestCharge:0.00} showing={RewindChargeFx.Showing}");
+                return;
+            }
             if (p.Length >= 2 && p[0] == "check") Terrain.TerrainRewind.SelfCheck = p[1] == "1";
             if (p.Length >= 1 && p[0] == "print") { reply($"OK rewind print {Terrain.TerrainUndo.Print()}"); return; }
             if (p.Length >= 2 && p[0] == "doors")

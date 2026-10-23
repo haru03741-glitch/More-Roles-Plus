@@ -52,6 +52,11 @@ internal static class RewindWorldFx
         catch (Exception e) { Plugin.Logger.LogError($"[RewindWorldFx] prewarm: {e}"); }
     }
 
+    // 溜めの演出 (RewindChargeFx) が同じ盤・にじみ・光の筋を使う
+    internal static Sprite FaceSprite { get { Bake(); return _face; } }
+    internal static Sprite HaloSprite { get { Bake(); return _halo; } }
+    internal static Sprite StreakSprite { get { Bake(); return _streak; } }
+
     // white = 全画面の発動の演出の直後 (真っ白から引く)・seconds = 演出の長さ (巻き戻しを見せる長さに合わせる)
     internal static void Play(bool white, float seconds = DefaultSeconds)
     {
@@ -360,26 +365,5 @@ internal static class RewindWorldFx
         return a;
     }
 
-    // 白い絵 (w×h・高さ 1 単位)。f(x, y) は中心からの位置 (x は -0.5〜0.5 を幅で・y は -0.5〜0.5) → 不透明度
-    private static unsafe Sprite BakeRect(int w, int h, Func<float, float, float> f, string name)
-    {
-        var px = new byte[w * h * 4];
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-        {
-            float a = FxMath.Clamp01(f((x + 0.5f) / w - 0.5f, (y + 0.5f) / h - 0.5f));
-            int i = (y * w + x) * 4;
-            px[i] = px[i + 1] = px[i + 2] = 255;
-            px[i + 3] = (byte)(a * 255f + 0.5f);
-        }
-        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { name = name };
-        tex.filterMode = FilterMode.Bilinear;
-        tex.wrapMode = TextureWrapMode.Clamp;
-        fixed (byte* p = px) tex.LoadRawTextureData((IntPtr)p, px.Length);
-        tex.Apply(false, true);
-        tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
-        var sp = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), h);
-        sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
-        return sp;
-    }
+    private static Sprite BakeRect(int w, int h, Func<float, float, float> f, string name) => FxSprites.Rect(w, h, f, name);
 }

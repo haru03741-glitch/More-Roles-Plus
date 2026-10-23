@@ -616,6 +616,9 @@ VanillaTweaks.PetGoesWithBody: 死体が消えたらペットも消す
 # ── HudTweaks ──
 HudTweaks.Screenshot: スクリーンショットを保存しました ({path})
 
+# ── 能力ボタン ──
+Ability.Hold: 長押し
+
 # ── ColorPicker ──
 ColorPicker.MakeAColor: 色を作る
 ColorPicker.TypeRRGGBB: #RRGGBB を入れる

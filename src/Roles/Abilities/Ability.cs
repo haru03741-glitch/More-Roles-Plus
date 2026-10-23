@@ -176,7 +176,7 @@ internal static class Abilities
             var ab = a;
             a.Button = ModButton.Create(role.Lifespan, ButtonIcons.Get(a.Icon), a.Label, a.CooldownSeconds, () => Click(ab));
             if (a.Button == null) continue;
-            if (a.OnHold != null) a.Button.SetHold(a.HoldMin, a.HoldMax, v => Released(ab, v));
+            if (a.OnHold != null) a.Button.SetHold(a.HoldMin, a.HoldMax, v => Released(ab, v), new Text("Ability.Hold"));
             a.Button.ResetOnShow = a.CooldownAtStart;
             a.Button.Effect = a.Duration;
             a.Button.OnEffectEnd = a.OnEnd;

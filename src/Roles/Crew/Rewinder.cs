@@ -45,6 +45,9 @@ public sealed class Rewinder : RoleBase
         });
     }
 
+    // 自分の時戻しのボタン (溜めの演出が見る)
+    internal ModButton ChargeButton => _rewind?.Button;
+
     // 押した後に依頼を出さずにやめた時 (発動者の演出の途中で会議になったなど): 手元で使った回数を返す。
     // ホストは依頼を通した時にだけ数えるので、手元の回数をホストに合わせる
     internal void Refund()
