@@ -35,6 +35,8 @@ internal static class RoleCommands
             string use = hud && hud.UseButton ? hud.UseButton.transform.position.z.ToString("0.###") : "-";
             reply($"OK rewindfx playing={RewindWorldFx.Playing} rootZ={RewindWorldFx.RootZ} fullScreenZ={z} killZ={kill} useWorldZ={use}");
         });
+        TestBridge.Register("rewindpose", "時戻しの逆再生で動かす全員の姿の状態 (控えの数・動かしている人・流している絵の種類・向き・アニメの時間)", (args, reply) =>
+            reply($"OK rewindpose {RewindPlayback.Probe()}"));
         TestBridge.Register("rewind", "[ask | force <秒> | doors <部屋 (SystemTypes)> | check <0|1> | print] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ) / 壁の今の姿の指紋", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

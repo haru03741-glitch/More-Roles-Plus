@@ -26,7 +26,7 @@ internal static class TimeRewind
 
     private static bool _on;
     private static int _head, _count;      // 次に書く所・書いてある数
-    private static long _nextMs;
+    private static long _nextMs, _poseNextMs;
     private static int _shipGen = -1;
 
     private static readonly long[] SlotMs = new long[Slots];
@@ -130,7 +130,9 @@ internal static class TimeRewind
 
     internal static void Clear()
     {
+        RewindPlayback.Clear();
         _head = _count = 0;
+        _poseNextMs = 0;
         _nextMs = 0;
         _tasksCount = -1;
         _layoutCount = -1;
@@ -156,6 +158,15 @@ internal static class TimeRewind
         if (!_on) return;
         long now = Environment.TickCount64;
         if (_playing) PlayStep(now);
+        else if (now >= _poseNextMs)
+        {
+            _poseNextMs = now + RewindPlayback.StepMs;
+            if (Recording())
+            {
+                try { RewindPlayback.Capture(now); }
+                catch (Exception e) { Plugin.Logger.LogError($"TimeRewind pose: {e}"); }
+            }
+        }
         if (now < _nextMs) return;
         _nextMs = now + StepMs;
         if (!Recording()) return;
@@ -503,12 +514,12 @@ internal static class TimeRewind
         return Oldest;
     }
 
-    // 逆再生の間 (合図を受けてから、自分の位置を記録に沿って逆にたどり終えるまで)。全員が止まり、終わりに今の戻しを当てる
+    // 逆再生の間 (合図を受けてから、全員の姿を控えに沿って逆にたどり終えるまで)。全員が止まり、終わりに今の戻しを当てる
     private static bool _playing, _froze;
     private static Go _play;
     private static long _playStart, _playEnd, _playSlotMs;
     private static int _playSlot;
-    private static float _fromX, _fromY;
+    private static readonly ulong[] Revived = new ulong[4]; // 逆再生の途中で生き返らせた人
 
     internal static bool Playing => _playing;
 
@@ -526,12 +537,11 @@ internal static class TimeRewind
         _playSlot = Find(now - g.BackMs);
         _playSlotMs = _playSlot >= 0 ? SlotMs[_playSlot] : 0;
         _playing = true;
+        Revived[0] = Revived[1] = Revived[2] = Revived[3] = 0;
+        Step("pose", () => RewindPlayback.Begin(now));
         var lp = PlayerControl.LocalPlayer;
         if (lp)
         {
-            var p = lp.transform.position;
-            _fromX = p.x;
-            _fromY = p.y;
             if (Minigame.Instance) Minigame.Instance.Close();
             // 本編の「動ける」を切ると、移動・キル・使う・通報・能力のボタンがまとめて止まる
             if (lp.moveable) { lp.moveable = false; _froze = true; }
@@ -539,7 +549,7 @@ internal static class TimeRewind
         RewindWorldFx.Play(false, playMs / 1000f);
     }
 
-    // 毎 FixedUpdate (逆再生の間): 自分の体を記録の位置へ置く。位置は本編の同期で他の人にも逆に歩いて見える
+    // 毎 FixedUpdate (逆再生の間): 全員の体を控えの姿へ置き、死んだ時刻を越えた人をその場で生き返らせる
     private static void PlayStep(long now)
     {
         try { PlayStepCore(now); }
@@ -553,45 +563,26 @@ internal static class TimeRewind
     private static void PlayStepCore(long now)
     {
         if (now >= _playEnd || MeetingHud.Instance || !Terrain.GameClock.ShipAlive) { Finish(); return; }
-        var lp = PlayerControl.LocalPlayer;
-        if (_playSlot < 0 || !lp || lp.Data == null || lp.Data.IsDead || lp.onLadder || lp.inMovingPlat || lp.inVent) return;
+        if (_playSlot < 0) return;
         float u = (now - _playStart) / (float)(_playEnd - _playStart);
         u = u * u * (3f - 2f * u);
         long t = _playStart - (long)(u * (_playStart - _playSlotMs));
-        PosAt(t, out float x, out float y);
-        var body = lp.MyPhysics.body;
-        body.velocity = Fx.FxMath.V2(0f, 0f);
-        body.position = Fx.FxMath.V2(x, y);
-    }
-
-    // 記録の時刻 t の自分の位置 (前後の記録の間を線で結ぶ。合図より新しい記録は使わない)
-    private static void PosAt(long t, out float x, out float y)
-    {
-        long nextMs = _playStart;
-        float nx = _fromX, ny = _fromY;
-        for (int k = 1; k <= _count; k++)
+        RewindPlayback.Drive(t);
+        foreach (var pid in _play.Revive)
         {
-            int s = (_head - k + Slots) % Slots;
-            if (SlotMs[s] > _playStart) continue;
-            if (SlotMs[s] <= t)
-            {
-                float f = nextMs > SlotMs[s] ? (t - SlotMs[s]) / (float)(nextMs - SlotMs[s]) : 0f;
-                x = PosX[s] + (nx - PosX[s]) * f;
-                y = PosY[s] + (ny - PosY[s]) * f;
-                return;
-            }
-            nextMs = SlotMs[s];
-            nx = PosX[s];
-            ny = PosY[s];
+            ulong bit = 1UL << (pid & 63);
+            if ((Revived[pid >> 6] & bit) != 0 || RewindPlayback.DeadAt(pid, t) != false) continue;
+            Revived[pid >> 6] |= bit;
+            try { Dev.DevCommands.ReviveLocal(pid); }
+            catch (Exception e) { Plugin.Logger.LogError($"TimeRewind revive {pid}: {e}"); }
         }
-        x = nx;
-        y = ny;
     }
 
     // 逆再生の終わり: 止めていたのを戻し、生き返り・位置・タスク・待ち時間・役職の値を戻す時刻へ揃える
     private static void Finish()
     {
         _playing = false;
+        Step("pose", RewindPlayback.Stop);
         var lp = PlayerControl.LocalPlayer;
         if (_froze) { _froze = false; if (lp) lp.moveable = true; }
         // 会議が始まった (記録は会議の始まりで捨てる)・試合が終わった時は人の側は戻さない
@@ -613,6 +604,7 @@ internal static class TimeRewind
         Step("roles", () => RestoreRoles(s, now - SlotMs[s]));
         if (AmongUsClient.Instance.AmHost) Step("host", () => RestoreHost(s, now - SlotMs[s]));
         // 戻した所より後の記録は無かったことになる
+        RewindPlayback.Forget(SlotMs[s]);
         _count -= (_head - s - 1 + Slots) % Slots;
         _head = (s + 1) % Slots;
         _nextMs = now + StepMs;
