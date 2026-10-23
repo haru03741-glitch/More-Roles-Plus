@@ -85,6 +85,7 @@
     <!-- 能力ボタンの絵 (tools/make-button-icons.py で描く) -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
+        <EmbeddedResource Include="Resources\Cinema\*.*" LogicalName="MoreRolesPlus.Resources.Cinema.%(Filename)%(Extension)" />
         <!-- 画面に出す文 (言語ごと・遊ぶ人は BepInEx/config/MoreRolesPlus/Language で書き換えられる) -->
         <EmbeddedResource Include="Resources\Lang\*.dat" LogicalName="MoreRolesPlus.Resources.Lang.%(Filename)%(Extension)" />
         <!-- 床マスクはゲームの絵から tools/make-floor-mask.py で作る (リポジトリには入れない・無ければ当たり判定で切る) -->

@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 38;
+    internal const int Abi = 39;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -58,6 +58,9 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> WetFilter;
     internal static delegate* unmanaged[Cdecl]<void*, void> IslandCells;
     internal static delegate* unmanaged[Cdecl]<void*, void> WaterSpray;
+    internal static delegate* unmanaged[Cdecl]<void*, void> CineFrame;
+    internal static delegate* unmanaged[Cdecl]<void*, void> CineLight;
+    internal static delegate* unmanaged[Cdecl]<void*, void> CineWarp;
 
     // 部品が読めたか。偽なら Plugin.Load が mod ごと起動しない
     internal static bool Loaded
@@ -133,6 +136,9 @@ internal static unsafe class MrpNative
             WetFilter = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_wet_filter");
             IslandCells = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_island_cells");
             WaterSpray = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_water_spray");
+            CineFrame = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_cine_frame");
+            CineLight = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_cine_light");
+            CineWarp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(lib, "mrp_cine_warp");
             _loaded = true;
             Status = $"ok abi={got} {path}";
         }

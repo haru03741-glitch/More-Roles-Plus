@@ -1,0 +1,1017 @@
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using MoreRolesPlus.Fx;
+using MoreRolesPlus.Native;
+using MoreRolesPlus.Terrain;
+using UnityEngine;
+
+namespace MoreRolesPlus.Roles;
+
+// 時戻しを押した本人の画面だけに出す全画面の演出 (約 4.6 秒・30 コマ/秒)。
+// 事前に描いたコマ (rewind_ult.cine) を流す: 背景の絵 (クルーの体と影を黒で描いた物) に体と影の重み × 本人の色を足して本人の色にし
+// (クルーは平らな塗りなので、光の足し算も含めて色について線形)、本人の着せ替えは立ち絵の空間の格子をコマごとに画面へ写して貼る。
+// 入りと出は試合の画面のまま: カメラを本人へ寄せ、事前に描いた光だけを重ね、出では着せ替えとペットが本物のまま飛んで戻る。
+// 絵の展開と色の足し算・格子の写しは C++ の部品 (作業スレッドで先読み)。主スレッドはテクスチャへの書き込みと置くだけ。
+// 途中で死んだ・会議になった時は画面にヒビが入って砕け、時戻しは起きない
+internal static unsafe class RewindCinematic
+{
+    private const string Res = "MoreRolesPlus.Resources.Cinema.rewind_ult.cine";
+    private const string SoundRes = "MoreRolesPlus.Resources.Cinema.rewind_ult.pcm";
+    private const int Rec = 64, Fps = 30, Slots = 4, Grid = 4;
+    private const int WhiteFrame = 119;    // 出の頭 (真っ白)。ここで時戻しの依頼を出す
+    private const int Order = 32000;       // 本編の HUD より手前に描く
+    private const float ShatterSeconds = 0.75f;
+
+    private enum Item { Skin, Visor, Hat }
+
+    // ---- 素材 ----
+    private static Stream _stream;
+    private static byte* _data;
+    private static byte[] _copy;
+    private static GCHandle _copyPin;
+    private static int _w, _h, _n, _sgw, _sgh, _hgw, _hgh;
+    private static float _sx0, _sy0, _hx0, _hy0, _step, _bpx, _bpy, _hax, _hay, _nearUp;
+    private static long _blob;
+
+    private static uint U(int f, int k) => ((uint*)(_data + 68))[f * Rec + k];
+    private static float F(int f, int k) => ((float*)(_data + 68))[f * Rec + k];
+
+    // ---- 先読み ----
+    private static Thread _worker;
+    private static volatile bool _stop;
+    private static int _decodeNext, _shown = -1;
+    private static readonly int[] SlotFrame = new int[Slots];
+    private static readonly byte[][] SlotBuf = new byte[Slots][];
+    private static readonly GCHandle[] SlotPin = new GCHandle[Slots];
+    private static float _bodyR, _bodyG, _bodyB, _shR, _shG, _shB;
+
+    // ---- 再生 ----
+    private static bool _on, _shattering, _asked;
+    private static long _start, _pressed;
+    private static Action<int> _onWhite;
+    private static int _shipGen;
+    private static PlayerControl _lp;
+    private static bool _wasMoveable;
+
+    private static GameObject _root;
+    private static Texture2D _fullTex, _lightTex, _solidTex;
+    private static SpriteRenderer _fullSr, _lightSr, _darkSr;
+    private static float _frameW, _frameH;
+    private static AudioSource _voice;
+    private static AudioClip _clip;
+    private static AudioSource[] _muted = Array.Empty<AudioSource>();
+
+    internal static bool Playing => _on;
+
+    // 押した本人の端末で呼ぶ。onWhite (押してからの ms) = 画面が真っ白になった時。演出が出せない時は false (呼んだ側がすぐ戻す)
+    internal static bool Play(Action<int> onWhite)
+    {
+        if (_on) return false;
+        try { return PlayCore(onWhite); }
+        catch (Exception e) { Plugin.Logger.LogError($"[RewindCinematic] play: {e}"); Teardown(); return false; }
+    }
+
+    private static bool PlayCore(Action<int> onWhite)
+    {
+        var hud = Vanilla.Hud;
+        var lp = PlayerControl.LocalPlayer;
+        if (!hud || !hud.UICamera || !lp || lp.Data == null || lp.Data.IsDead || MeetingHud.Instance || !GameClock.ShipAlive) return false;
+        if (Volatile.Read(ref _workerRunning)) return false; // 前の回の展開がまだ終わっていない
+        if (!MrpNative.Loaded || MrpNative.CineFrame == null || !Open()) return false;
+        _lp = lp;
+        _onWhite = onWhite;
+        _pressed = Environment.TickCount64;
+        _shipGen = GameClock.ShipGen;
+        SetColors(lp.Data.DefaultOutfit.ColorId);
+        BuildView(hud);
+        BuildItems(lp);
+        LiveBegin(lp);
+        _shown = -1;
+        StartWorker();
+        StartSound();
+        _wasMoveable = lp.moveable;
+        lp.moveable = false;
+        _frozen = true;
+        _asked = false;
+        _shattering = false;
+        _missed = _skipped = _shownCount = 0;
+        _lastMiss = -1;
+        _worstMs = _sumMs = 0;
+        _start = Environment.TickCount64;
+        _on = true;
+        return true;
+    }
+
+    internal static void Tick()
+    {
+        if (!_on) return;
+        try
+        {
+            if (_shattering) { ShatterTick(); return; }
+            if (GameClock.ShipGen != _shipGen || !GameClock.ShipAlive || !_lp) { Refund(); Teardown(); return; }
+            bool dead = _lp.Data == null || _lp.Data.IsDead;
+            if (dead || MeetingHud.Instance)
+            {
+                if (!_asked)
+                {
+                    if (!dead) Refund();
+                    StartShatter();
+                    return;
+                }
+                // 依頼を出した後の会議: 時戻しは起きているので、画面とカメラだけ片付ける
+                if (MeetingHud.Instance) { Teardown(); return; }
+            }
+            int f = (int)((Environment.TickCount64 - _start) * Fps / 1000);
+            if (f >= _n) { Teardown(); return; }
+            Volatile.Write(ref _decodeNext, Math.Max(Volatile.Read(ref _decodeNext), f));
+            if (!_asked && f >= WhiteFrame)
+            {
+                _asked = true;
+                RestoreMove(); // ここから先は世界の逆再生が本人も止める
+                int elapsed = (int)Math.Min(int.MaxValue, Environment.TickCount64 - _pressed);
+                try { _onWhite?.Invoke(elapsed); }
+                catch (Exception e) { Plugin.Logger.LogError($"[RewindCinematic] onWhite: {e}"); }
+            }
+            if (f != _shown) Show(f);
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"[RewindCinematic] tick: {e}");
+            if (!_asked && !_shattering) Refund();
+            Teardown();
+        }
+    }
+
+    private static bool _frozen;
+    private static readonly System.Collections.Generic.List<Sprite> _sprites = new();
+
+    // 演出の間は本人を止める (会議は本編が動きを決めるので触らない)
+    private static void RestoreMove()
+    {
+        if (!_frozen) return;
+        _frozen = false;
+        if (_lp && !MeetingHud.Instance) _lp.moveable = _wasMoveable;
+    }
+
+    private static void Refund() => (RoleState.Local as Crew.Rewinder)?.Refund();
+
+    // ---- 素材を開く (DLL の中を指すだけで写さない。写せない時だけ配列へ) ----
+    private static bool Open()
+    {
+        if (_data != null) return true;
+        _stream = typeof(RewindCinematic).Assembly.GetManifestResourceStream(Res);
+        if (_stream == null) { Plugin.Logger.LogWarning("[RewindCinematic] no data"); return false; }
+        if (_stream is UnmanagedMemoryStream ums) _data = ums.PositionPointer;
+        else
+        {
+            _copy = new byte[_stream.Length];
+            for (int n = 0; n < _copy.Length;)
+            {
+                int r = _stream.Read(_copy, n, _copy.Length - n);
+                if (r <= 0) { _copy = null; return false; }
+                n += r;
+            }
+            _copyPin = GCHandle.Alloc(_copy, GCHandleType.Pinned);
+            _data = (byte*)_copyPin.AddrOfPinnedObject();
+        }
+        if (_data[0] != (byte)'M' || _data[3] != (byte)'C' || *(uint*)(_data + 4) != 1) { Close(); return false; }
+        var h = (ushort*)(_data + 8);
+        _w = h[0]; _h = h[1]; _n = h[2]; _sgw = h[4]; _sgh = h[5]; _hgw = h[6]; _hgh = h[7];
+        var g = (float*)(_data + 24);
+        _sx0 = g[0]; _sy0 = g[1]; _hx0 = g[2]; _hy0 = g[3]; _step = g[4]; _bpx = g[5]; _bpy = g[6]; _hax = g[7]; _hay = g[8]; _nearUp = g[9];
+        _blob = *(uint*)(_data + 64);
+        return true;
+    }
+
+    private static void Close()
+    {
+        _data = null;
+        _stream?.Dispose();
+        _stream = null;
+        if (_copyPin.IsAllocated) _copyPin.Free();
+        _copy = null;
+    }
+
+    private static void SetColors(int colorId)
+    {
+        var pc = Palette.PlayerColors;
+        var sc = Palette.ShadowColors;
+        int id = colorId >= 0 && colorId < pc.Length ? colorId : 0;
+        Color32 b = pc[id], s = sc[id];
+        _bodyR = Lin(b.r); _bodyG = Lin(b.g); _bodyB = Lin(b.b);
+        _shR = Lin(s.r); _shG = Lin(s.g); _shB = Lin(s.b);
+    }
+
+    private static float Lin(byte v)
+    {
+        float c = v / 255f;
+        return c <= 0.04045f ? c / 12.92f : FxMath.Pow((c + 0.055f) / 1.055f, 2.4f);
+    }
+
+    // ---- 作業スレッド: 表示より先のコマを展開して色を足す ----
+    private static void StartWorker()
+    {
+        for (int i = 0; i < Slots; i++)
+        {
+            SlotFrame[i] = -1;
+            if (SlotBuf[i] == null || SlotBuf[i].Length < _w * _h * 4)
+            {
+                if (SlotPin[i].IsAllocated) SlotPin[i].Free();
+                SlotBuf[i] = new byte[_w * _h * 4];
+                SlotPin[i] = GCHandle.Alloc(SlotBuf[i], GCHandleType.Pinned);
+            }
+        }
+        _decodeNext = 0;
+        _stop = false;
+        _workerRunning = true;
+        _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "MrpCinema" };
+        _worker.Start();
+    }
+
+    private static readonly object WorkerLock = new();
+    private static bool _releaseOnExit, _workerRunning;
+
+    // 展開の途中で止めると C++ が素材を読んでいる最中なので、作業スレッドが抜けるまで素材と置き場を手放さない
+    private static void StopWorker()
+    {
+        _stop = true;
+        var w = _worker;
+        if (w != null && w.Join(1000)) _worker = null;
+    }
+
+    private static void ReleaseData()
+    {
+        lock (WorkerLock)
+        {
+            if (_workerRunning) { _releaseOnExit = true; return; }
+            _worker = null;
+            Close();
+            for (int i = 0; i < Slots; i++)
+            {
+                if (SlotPin[i].IsAllocated) SlotPin[i].Free();
+                SlotBuf[i] = null;
+            }
+        }
+    }
+
+    private static void WorkerLoop()
+    {
+        try
+        {
+            while (!_stop)
+            {
+                int f = Volatile.Read(ref _decodeNext);
+                if (f >= _n) { Thread.Sleep(5); continue; }
+                int slot = -1;
+                for (int i = 0; i < Slots; i++)
+                {
+                    int sf = Volatile.Read(ref SlotFrame[i]);
+                    if (sf == f) { slot = -2; break; }
+                    if (sf < 0 || sf < Volatile.Read(ref _shown)) { slot = i; break; }
+                }
+                if (slot == -2) { Interlocked.CompareExchange(ref _decodeNext, f + 1, f); continue; }
+                if (slot < 0) { Thread.Sleep(2); continue; }
+                Volatile.Write(ref SlotFrame[slot], -1);
+                // 展開に失敗したコマは出さない (前のコマのまま)
+                if (Decode(f, (byte*)SlotPin[slot].AddrOfPinnedObject())) Volatile.Write(ref SlotFrame[slot], f);
+                Interlocked.CompareExchange(ref _decodeNext, f + 1, f);
+            }
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"[RewindCinematic] worker: {e}"); }
+        finally
+        {
+            lock (WorkerLock)
+            {
+                _workerRunning = false;
+                if (_releaseOnExit)
+                {
+                    _releaseOnExit = false;
+                    _worker = null;
+                    Close();
+                    for (int i = 0; i < Slots; i++)
+                    {
+                        if (SlotPin[i].IsAllocated) SlotPin[i].Free();
+                        SlotBuf[i] = null;
+                    }
+                }
+            }
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FrameArgs
+    {
+        public byte* Base; public int BaseLen;
+        public byte* Weight; public int WeightLen;
+        public int CropX, CropY;
+        public fixed float Body[3]; public fixed float Shadow[3];
+        public fixed float Body2[3]; public fixed float Shadow2[3];
+        public float Gx0, Gy0, Gsx, Gsy;
+        public float Gwx, Gwy, Gw0, Gpos, Gsoft;
+        public int Negate;
+        public byte* Out; public int OutCap;
+        public int W, H, Ok;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LightArgs
+    {
+        public byte* Img; public int ImgLen;
+        public byte* Out; public int OutCap;
+        public int W, H, Ok;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WarpArgs
+    {
+        public short* Grid; public int Gw, Gh;
+        public float Gx0, Gy0, Gstep;
+        public float* In; public int N;
+        public fixed float Fly[6];
+        public float Sx, Sy, Ox, Oy;
+        public float* Out; public int Stride;
+    }
+
+    private static bool Decode(int f, byte* dst)
+    {
+        byte* blob = _data + _blob;
+        if (U(f, 0) == 0)
+        {
+            var a = new LightArgs { Img = blob + U(f, 2), ImgLen = (int)U(f, 3), Out = dst, OutCap = _w * _h * 4 };
+            MrpNative.CineLight(&a);
+            return a.Ok != 0;
+        }
+        var b = new FrameArgs { Base = blob + U(f, 2), BaseLen = (int)U(f, 3), Out = dst, OutCap = _w * _h * 4 };
+        if (U(f, 5) > 0)
+        {
+            b.Weight = blob + U(f, 4);
+            b.WeightLen = (int)U(f, 5);
+            b.CropX = (int)U(f, 6);
+            b.CropY = (int)U(f, 7);
+            b.Negate = (int)U(f, 13);
+        }
+        b.Body[0] = b.Body2[0] = _bodyR; b.Body[1] = b.Body2[1] = _bodyG; b.Body[2] = b.Body2[2] = _bodyB;
+        b.Shadow[0] = b.Shadow2[0] = _shR; b.Shadow[1] = b.Shadow2[1] = _shG; b.Shadow[2] = b.Shadow2[2] = _shB;
+        MrpNative.CineFrame(&b);
+        return b.Ok != 0;
+    }
+
+    // ---- 表示 ----
+    private static void BuildView(HudManager hud)
+    {
+        var cam = hud.UICamera;
+        int layer = hud.gameObject.layer;
+        _root = new GameObject("MrpRewindCinema") { layer = layer };
+        _root.transform.SetParent(hud.transform, false);
+        float fsZ = hud.FullScreen ? hud.FullScreen.transform.localPosition.z : -500f;
+        _root.transform.localPosition = FxMath.V3(0f, 0f, fsZ + 0.5f);
+        float sh = cam.orthographicSize * 2f, sw = sh * cam.aspect;
+        // 16:9 の絵で画面を覆う (はみ出しは切れる)
+        float k = FxMath.Max(sw / (_w / 100f), sh / (_h / 100f));
+        _frameW = _w / 100f * k;
+        _frameH = _h / 100f * k;
+        if (!_fullTex)
+        {
+            _fullTex = new Texture2D(_w, _h, TextureFormat.RGB24, false) { wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.HideAndDontSave };
+            _lightTex = new Texture2D(_w, _h, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.HideAndDontSave };
+            _solidTex = new Texture2D(2, 2, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
+            var px = new byte[16];
+            for (int i = 0; i < 16; i++) px[i] = 255;
+            fixed (byte* p = px) _solidTex.LoadRawTextureData((IntPtr)p, 16);
+            _solidTex.Apply(false);
+        }
+        _darkSr = Part("Dark", Sprite.Create(_solidTex, new Rect(0, 0, 2, 2), FxMath.V2(0.5f, 0.5f), 2f), layer, 0f, Order);
+        _darkSr.transform.localScale = FxMath.V3(sw + 1f, sh + 1f, 1f);
+        _lightSr = Part("Light", Sprite.Create(_lightTex, new Rect(0, 0, _w, _h), FxMath.V2(0.5f, 0.5f), 100f), layer, -0.01f, Order + 1);
+        _lightSr.transform.localScale = FxMath.V3(k, k, 1f);
+        _fullSr = Part("Full", Sprite.Create(_fullTex, new Rect(0, 0, _w, _h), FxMath.V2(0.5f, 0.5f), 100f), layer, -0.02f, Order + 2);
+        _fullSr.transform.localScale = FxMath.V3(k, k, 1f);
+        _darkSr.color = FxMath.Rgba(0.102f, 0.047f, 0.008f, 0f);
+        _fullSr.enabled = false;
+        _lightSr.enabled = false;
+    }
+
+    private static SpriteRenderer Part(string name, Sprite sp, int layer, float z, int order)
+    {
+        var go = new GameObject(name) { layer = layer };
+        go.transform.SetParent(_root.transform, false);
+        go.transform.localPosition = FxMath.V3(0f, 0f, z);
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = sp;
+        sr.sortingOrder = order;
+        _sprites.Add(sp);
+        return sr;
+    }
+
+    private static void Show(int f)
+    {
+        int slot = -1;
+        for (int i = 0; i < Slots; i++)
+            if (Volatile.Read(ref SlotFrame[i]) == f) { slot = i; break; }
+        if (slot < 0) { if (f != _lastMiss) { _lastMiss = f; _missed++; } return; } // 展開が間に合っていない: 前のコマのまま (時計は進めるので音とはずれない)
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_shown >= 0 && f > _shown + 1) _skipped += f - _shown - 1;
+        _shownCount++;
+        Volatile.Write(ref _shown, f);
+        var buf = (IntPtr)SlotPin[slot].AddrOfPinnedObject();
+        bool full = U(f, 0) == 1;
+        if (full)
+        {
+            _fullTex.LoadRawTextureData(buf, _w * _h * 3);
+            _fullTex.Apply(false);
+        }
+        else
+        {
+            _lightTex.LoadRawTextureData(buf, _w * _h * 4);
+            _lightTex.Apply(false);
+        }
+        Volatile.Write(ref SlotFrame[slot], -1);
+        _fullSr.enabled = full;
+        _lightSr.enabled = !full;
+        _darkSr.enabled = !full;
+        if (full) ItemsFrame(f);
+        else { ItemsHide(); LiveFrame(f); }
+        double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        if (ms > _worstMs) _worstMs = ms;
+        _sumMs += ms;
+    }
+
+    private static int _missed, _skipped, _shownCount, _lastMiss = -1;
+    private static double _worstMs, _sumMs;
+
+    // ---- 演出の中の着せ替え (格子で体へ貼る) ----
+    private sealed class ItemMesh
+    {
+        public GameObject Go;
+        public Mesh Mesh;
+        public Material Mat;
+        public Il2CppStructArray<Vector3> Verts;
+        public float[] Idle;
+        public GCHandle IdlePin;
+        public int N;
+        public bool Head;
+        public float Alpha = -1f;
+    }
+
+    private static readonly ItemMesh[] Items = new ItemMesh[3];
+
+    private static void BuildItems(PlayerControl lp)
+    {
+        var cos = lp.cosmetics;
+        if (!cos) return;
+        int color = lp.Data.DefaultOutfit.ColorId;
+        try
+        {
+            var skin = cos.skin;
+            if (skin && skin.skin != null && skin.skin.IdleFrame)
+                Items[0] = MakeItem("Skin", skin.skin.IdleFrame, skin.layer, false, skin.skin.MatchPlayerColor, color, Order + 3);
+            var visor = cos.visor;
+            var vv = visor ? visor.viewAsset?.GetAsset() : null;
+            if (vv != null && vv.IdleFrame)
+                Items[1] = MakeItem("Visor", vv.IdleFrame, visor.Image, true, vv.MatchPlayerColor, color, Order + 4);
+            var hat = cos.hat;
+            var hv = hat ? hat.viewAsset?.GetAsset() : null;
+            if (hv != null && hv.MainImage)
+                Items[2] = MakeItem("Hat", hv.MainImage, hat.FrontLayer, true, hv.MatchPlayerColor, color, Order + 5);
+        }
+        catch (Exception e) { Plugin.Logger.LogWarning($"[RewindCinematic] items: {e.Message}"); }
+    }
+
+    private static ItemMesh MakeItem(string name, Sprite sp, SpriteRenderer src, bool head, bool match, int color, int order)
+    {
+        var tex = sp.texture;
+        if (!tex) return null;
+        var rect = sp.rect;
+        var piv = sp.pivot;
+        float rw = rect.width, rh = rect.height;
+        int cols = Math.Max(1, (int)Math.Ceiling(rw / Grid)), rows = Math.Max(1, (int)Math.Ceiling(rh / Grid));
+        int n = (cols + 1) * (rows + 1);
+        var it = new ItemMesh { Head = head, N = n, Idle = new float[n * 2] };
+        it.IdlePin = GCHandle.Alloc(it.Idle, GCHandleType.Pinned);
+        try { return FillItem(it, name, sp, tex, src, match, color, order, rect, piv, rw, rh, cols, rows, n); }
+        catch
+        {
+            if (it.IdlePin.IsAllocated) it.IdlePin.Free();
+            if (it.Mesh) UnityEngine.Object.Destroy(it.Mesh);
+            if (it.Mat) UnityEngine.Object.Destroy(it.Mat);
+            throw;
+        }
+    }
+
+    private static ItemMesh FillItem(ItemMesh it, string name, Sprite sp, Texture2D tex, SpriteRenderer src, bool match, int color, int order,
+        Rect rect, Vector2 piv, float rw, float rh, int cols, int rows, int n)
+    {
+        bool head = it.Head;
+        var uv = new Il2CppStructArray<Vector2>((long)n);
+        float ox = (head ? _hax : _bpx) - piv.x, oy = (head ? _hay : _bpy) - (rh - piv.y);
+        float tw = tex.width, th = tex.height;
+        for (int r = 0; r <= rows; r++)
+            for (int c = 0; c <= cols; c++)
+            {
+                int i = r * (cols + 1) + c;
+                float x = FxMath.Min(c * Grid, rw), y = FxMath.Min(r * Grid, rh);   // 絵の左上から (下向き)
+                it.Idle[i * 2] = x + ox;
+                it.Idle[i * 2 + 1] = y + oy;
+                uv[i] = FxMath.V2((rect.x + x) / tw, (rect.y + rh - y) / th);
+            }
+        var tri = new Il2CppStructArray<int>((long)(cols * rows * 6));
+        int t = 0;
+        for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
+            {
+                int a = r * (cols + 1) + c, b = a + 1, d = a + cols + 1, e = d + 1;
+                tri[t++] = a; tri[t++] = d; tri[t++] = b;
+                tri[t++] = b; tri[t++] = d; tri[t++] = e;
+            }
+        it.Verts = new Il2CppStructArray<Vector3>((long)n);
+        it.Go = new GameObject(name) { layer = _root.layer };
+        it.Go.transform.SetParent(_root.transform, false);
+        it.Go.transform.localPosition = FxMath.V3(0f, 0f, -0.03f);
+        it.Mesh = new Mesh { name = "MrpCinema" + name };
+        it.Mesh.vertices = it.Verts;
+        it.Mesh.uv = uv;
+        it.Mesh.triangles = tri;
+        it.Mesh.bounds = new Bounds(Vector3.zero, FxMath.V3(1000f, 1000f, 10f));
+        it.Go.AddComponent<MeshFilter>().mesh = it.Mesh;
+        var mr = it.Go.AddComponent<MeshRenderer>();
+        var baseMat = src ? src.sharedMaterial : null;
+        it.Mat = baseMat ? new Material(baseMat) : new Material(Shader.Find("Sprites/Default"));
+        it.Mat.mainTexture = tex;
+        mr.sharedMaterial = it.Mat;
+        mr.sortingOrder = order;
+        if (match) PlayerMaterial.SetColors(color, mr);
+        it.Go.SetActive(false);
+        return it;
+    }
+
+    private static void ItemsHide()
+    {
+        foreach (var it in Items) if (it != null && it.Go.activeSelf) it.Go.SetActive(false);
+    }
+
+    private static void ItemsFrame(int f)
+    {
+        if (U(f, 1) == 0) { ItemsHide(); return; }
+        var grid = (short*)(_data + _blob + U(f, 12));
+        for (int k = 0; k < 3; k++)
+        {
+            var it = Items[k];
+            if (it == null) continue;
+            float alpha = F(f, 58 + k);
+            if (alpha <= 0.003f) { if (it.Go.activeSelf) it.Go.SetActive(false); continue; }
+            var w = new WarpArgs
+            {
+                Grid = it.Head ? grid + _sgw * _sgh * 2 : grid,
+                Gw = it.Head ? _hgw : _sgw, Gh = it.Head ? _hgh : _sgh,
+                Gx0 = it.Head ? _hx0 : _sx0, Gy0 = it.Head ? _hy0 : _sy0, Gstep = _step,
+                In = (float*)it.IdlePin.AddrOfPinnedObject(), N = it.N,
+                Sx = _frameW, Ox = -0.5f * _frameW, Sy = -_frameH, Oy = 0.5f * _frameH,
+                Out = (float*)((byte*)it.Verts.Pointer + 4 * IntPtr.Size), Stride = 3,
+            };
+            for (int j = 0; j < 6; j++) w.Fly[j] = F(f, 40 + k * 6 + j);
+            MrpNative.CineWarp(&w);
+            it.Mesh.vertices = it.Verts;
+            if (FxMath.Abs(alpha - it.Alpha) > 0.01f)
+            {
+                it.Alpha = alpha;
+                it.Mat.color = FxMath.Rgba(1f, 1f, 1f, alpha);
+            }
+            if (!it.Go.activeSelf) it.Go.SetActive(true);
+        }
+    }
+
+    private static void ItemsDestroy()
+    {
+        for (int k = 0; k < 3; k++)
+        {
+            var it = Items[k];
+            if (it == null) continue;
+            if (it.Mesh) UnityEngine.Object.Destroy(it.Mesh);
+            if (it.Mat) UnityEngine.Object.Destroy(it.Mat);
+            if (it.IdlePin.IsAllocated) it.IdlePin.Free();
+            Items[k] = null;
+        }
+    }
+
+    // ---- 入りと出 (試合の画面のまま) ----
+    private static FollowerCamera _follow;
+    private static Camera _cam;
+    private static float _baseSize, _upUnits;
+    private static Vector2 _baseOffset;
+    private static bool _faceLeft, _liveTouched;
+    private static readonly Vector3[] HomePos = new Vector3[3];
+    private static readonly Quaternion[] HomeRot = new Quaternion[3];
+    private static readonly float[] CenterX = new float[3], CenterY = new float[3];
+
+    private static Renderer ItemRenderer(CosmeticsLayer cos, int k) => k switch
+    {
+        0 => cos.skin ? cos.skin.layer : null,
+        1 => cos.visor ? cos.visor.Image : null,
+        _ => cos.hat ? cos.hat.FrontLayer : null,
+    };
+    private static Color _hatColor, _skinColor;
+
+    private static void LiveBegin(PlayerControl lp)
+    {
+        var hud = Vanilla.Hud;
+        _follow = hud ? hud.PlayerCam : null;
+        _cam = _follow ? _follow.GetComponent<Camera>() : Camera.main;
+        _baseSize = _cam ? _cam.orthographicSize : 3f;
+        _baseOffset = _follow ? _follow.Offset : default;
+        var cos = lp.cosmetics;
+        _faceLeft = cos && cos.FlipX;
+        _upUnits = _nearUp * 0.01f * (cos ? cos.transform.lossyScale.y : 1f);
+        _liveTouched = false;
+    }
+
+    private static Transform ItemTf(int k)
+    {
+        var cos = _lp ? _lp.cosmetics : null;
+        if (!cos) return null;
+        return k switch
+        {
+            0 => cos.skin ? cos.skin.transform : null,
+            1 => cos.visor ? cos.visor.transform : null,
+            _ => cos.hat ? cos.hat.transform : null,
+        };
+    }
+
+    private static void LiveFrame(int f)
+    {
+        float width = F(f, 20), toward = F(f, 21), dark = F(f, 22), petA = F(f, 23), petS = F(f, 24);
+        if (_cam) _cam.orthographicSize = _baseSize * width;
+        if (_follow) _follow.Offset = FxMath.V2(_baseOffset.x, _baseOffset.y + _upUnits * toward);
+        var c = _darkSr.color;
+        c.a = dark;
+        _darkSr.color = c;
+        var cos = _lp ? _lp.cosmetics : null;
+        if (!cos) return;
+        var pet = cos.CurrentPet;
+        if (pet)
+        {
+            pet.SetAlpha(petA);
+            pet.transform.localScale = FxMath.V3(petS, petS, 1f);
+        }
+        if (f < WhiteFrame) return;
+        // 出: 着せ替えが逆再生で飛んで戻る (人形は左向きで描いてある → 右向きなら左右を返す)
+        if (!_liveTouched)
+        {
+            _liveTouched = true;
+            for (int k = 0; k < 3; k++)
+            {
+                var tf = ItemTf(k);
+                if (!tf) continue;
+                HomePos[k] = tf.localPosition;
+                HomeRot[k] = tf.localRotation;
+                // 回す中心 = 絵の真ん中 (層の原点は体の中心にあり、そこで回すと絵が大きく振り回される)
+                var r = ItemRenderer(cos, k);
+                var par = tf.parent;
+                if (r && par)
+                {
+                    var ctr = par.InverseTransformPoint(r.bounds.center);
+                    CenterX[k] = ctr.x - HomePos[k].x;
+                    CenterY[k] = ctr.y - HomePos[k].y;
+                }
+                else CenterX[k] = CenterY[k] = 0f;
+            }
+            if (cos.hat && cos.hat.FrontLayer) _hatColor = cos.hat.FrontLayer.color;
+            if (cos.skin && cos.skin.layer) _skinColor = cos.skin.layer.color;
+        }
+        float mirror = _faceLeft ? 1f : -1f;
+        for (int k = 0; k < 3; k++)
+        {
+            var tf = ItemTf(k);
+            if (!tf) continue;
+            float dx = F(f, 25 + k * 4) * 0.01f * mirror, dy = F(f, 26 + k * 4) * 0.01f, rot = F(f, 27 + k * 4) * mirror, a = F(f, 28 + k * 4);
+            var hp = HomePos[k];
+            float th = -rot * (MathF.PI / 180f), co = MathF.Cos(th), si = MathF.Sin(th);
+            float cx = CenterX[k], cy = CenterY[k];
+            tf.localPosition = FxMath.V3(hp.x + dx + cx - (co * cx - si * cy), hp.y + dy + cy - (si * cx + co * cy), hp.z);
+            tf.localRotation = FxMath.RotZ(-rot);
+            SetItemAlpha(cos, k, a);
+        }
+    }
+
+    private static void SetItemAlpha(CosmeticsLayer cos, int k, float a)
+    {
+        switch (k)
+        {
+            case 0:
+                if (cos.skin && cos.skin.layer) { var c = _skinColor; c.a *= a; cos.skin.layer.color = c; }
+                break;
+            case 1:
+                if (cos.visor) cos.visor.Alpha = a;
+                break;
+            default:
+                if (cos.hat) { var c = _hatColor; c.a *= a; cos.hat.SpriteColor = c; }
+                break;
+        }
+    }
+
+    private static void LiveRestore()
+    {
+        if (_cam) _cam.orthographicSize = _baseSize;
+        if (_follow) _follow.Offset = _baseOffset;
+        var cos = _lp ? _lp.cosmetics : null;
+        if (!cos) return;
+        var pet = cos.CurrentPet;
+        if (pet)
+        {
+            pet.SetAlpha(1f);
+            pet.transform.localScale = FxMath.V3(1f, 1f, 1f);
+        }
+        if (!_liveTouched) return;
+        for (int k = 0; k < 3; k++)
+        {
+            var tf = ItemTf(k);
+            if (!tf) continue;
+            tf.localPosition = HomePos[k];
+            tf.localRotation = HomeRot[k];
+            SetItemAlpha(cos, k, 1f);
+        }
+        _liveTouched = false;
+    }
+
+    // ---- 音: 演出の音を鳴らし、その間は本編の環境音と音楽を止める (静寂から一気に、が効くように) ----
+    private static void StartSound()
+    {
+        var sm = SoundManager.Instance;
+        if (!sm) return;
+        if (!_clip) _clip = LoadClip();
+        if (!_clip) return;
+        var all = UnityEngine.Object.FindObjectsOfType<AudioSource>();
+        var list = new System.Collections.Generic.List<AudioSource>();
+        IntPtr amb = sm.AmbienceChannel ? sm.AmbienceChannel.Pointer : IntPtr.Zero, mus = sm.MusicChannel ? sm.MusicChannel.Pointer : IntPtr.Zero;
+        foreach (var s in all)
+        {
+            if (!s || s.mute) continue;
+            var g = s.outputAudioMixerGroup;
+            IntPtr gp = g ? g.Pointer : IntPtr.Zero;
+            if ((gp != IntPtr.Zero && (gp == amb || gp == mus)) || (s.loop && s.isPlaying))
+            {
+                s.mute = true;
+                list.Add(s);
+            }
+        }
+        _muted = list.ToArray();
+        if (!_voice)
+        {
+            var go = new GameObject("MrpRewindCinemaVoice");
+            UnityEngine.Object.DontDestroyOnLoad(go);
+            _voice = go.AddComponent<AudioSource>();
+            _voice.playOnAwake = false;
+            _voice.loop = false;
+            _voice.spatialBlend = 0f;
+            _voice.outputAudioMixerGroup = sm.SfxChannel;
+        }
+        _voice.clip = _clip;
+        _voice.volume = 1f;
+        _voice.Play();
+    }
+
+    private static void StopSound(bool fade)
+    {
+        if (_voice && !fade) _voice.Stop();
+        foreach (var s in _muted) if (s) s.mute = false;
+        _muted = Array.Empty<AudioSource>();
+    }
+
+    private static AudioClip LoadClip()
+    {
+        using var st = typeof(RewindCinematic).Assembly.GetManifestResourceStream(SoundRes);
+        if (st == null) return null;
+        var raw = new byte[st.Length];
+        for (int n = 0; n < raw.Length;)
+        {
+            int r = st.Read(raw, n, raw.Length - n);
+            if (r <= 0) return null;
+            n += r;
+        }
+        // 頭 4 バイト = 1 秒あたりの数・あとは 16bit の 1ch
+        int rate = BitConverter.ToInt32(raw, 0);
+        int count = (raw.Length - 4) / 2;
+        var data = new Il2CppStructArray<float>((long)count);
+        float* dp = (float*)((byte*)data.Pointer + 4 * IntPtr.Size);
+        fixed (byte* p = raw)
+        {
+            short* s = (short*)(p + 4);
+            for (int i = 0; i < count; i++) dp[i] = s[i] / 32768f;
+        }
+        var clip = AudioClip.Create("MrpRewindUlt", count, 1, rate, false);
+        clip.SetData(data, 0);
+        clip.hideFlags = HideFlags.HideAndDontSave;
+        return clip;
+    }
+
+    // ---- 打ち切り: ヒビが入って砕ける ----
+    private const int ShardCols = 7, ShardRows = 4;
+    private static GameObject _shardGo;
+    private static Mesh _shardMesh;
+    private static Material _shardMat;
+    private static Il2CppStructArray<Vector3> _shardVerts;
+    private static Il2CppStructArray<Color32> _shardCols;
+    private static float[] _shardBase, _shardVel, _shardSpin;
+    private static long _shatterStart;
+
+    private static void StartShatter()
+    {
+        _shattering = true;
+        _shatterStart = Environment.TickCount64;
+        StopWorker();
+        StopSound(false);
+        ItemsHide();
+        LiveRestore();
+        RestoreMove();
+        bool full = _fullSr && _fullSr.enabled;
+        var tex = full ? (Texture)_fullTex : _lightTex;
+        if (_fullSr) _fullSr.enabled = false;
+        if (_lightSr) _lightSr.enabled = false;
+        if (_darkSr) _darkSr.enabled = false;
+        BuildShards(tex);
+        BreakNoise.PlayFlat("noise_bump_clash_1", 0.9f);
+    }
+
+    // 画面を三角の破片に割る (格子の点を揺らして 1 升 2 枚)。破片ごとに頂点を持ち、中心から外へ飛ばす
+    private static void BuildShards(Texture tex)
+    {
+        int gx = ShardCols + 1, gy = ShardRows + 1;
+        var px = new float[gx * gy * 2];
+        var rnd = new System.Random(Environment.TickCount);
+        for (int y = 0; y < gy; y++)
+            for (int x = 0; x < gx; x++)
+            {
+                float u = (float)x / ShardCols, v = (float)y / ShardRows;
+                if (x > 0 && x < ShardCols) u += ((float)rnd.NextDouble() - 0.5f) * 0.6f / ShardCols;
+                if (y > 0 && y < ShardRows) v += ((float)rnd.NextDouble() - 0.5f) * 0.6f / ShardRows;
+                px[(y * gx + x) * 2] = u;
+                px[(y * gx + x) * 2 + 1] = v;
+            }
+        int tris = ShardCols * ShardRows * 2;
+        _shardVerts = new Il2CppStructArray<Vector3>((long)(tris * 3));
+        _shardCols = new Il2CppStructArray<Color32>((long)(tris * 3));
+        var uv = new Il2CppStructArray<Vector2>((long)(tris * 3));
+        var idx = new Il2CppStructArray<int>((long)(tris * 3));
+        _shardBase = new float[tris * 3 * 2];
+        _shardVel = new float[tris * 2];
+        _shardSpin = new float[tris];
+        int t = 0;
+        for (int y = 0; y < ShardRows; y++)
+            for (int x = 0; x < ShardCols; x++)
+            {
+                int a = y * gx + x, b = a + 1, c = a + gx, d = c + 1;
+                bool flip = ((x + y) & 1) == 0;
+                int[][] pair = flip ? new[] { new[] { a, c, b }, new[] { b, c, d } } : new[] { new[] { a, c, d }, new[] { a, d, b } };
+                foreach (var tri in pair)
+                {
+                    float cx = 0f, cy = 0f;
+                    for (int j = 0; j < 3; j++)
+                    {
+                        float u = px[tri[j] * 2], v = px[tri[j] * 2 + 1];
+                        int vi = t * 3 + j;
+                        _shardBase[vi * 2] = (u - 0.5f) * _frameW;
+                        _shardBase[vi * 2 + 1] = (v - 0.5f) * _frameH;
+                        uv[vi] = FxMath.V2(u, v);
+                        idx[vi] = vi;
+                        cx += _shardBase[vi * 2] / 3f;
+                        cy += _shardBase[vi * 2 + 1] / 3f;
+                    }
+                    float len = FxMath.Max(0.3f, FxMath.Sqrt(cx * cx + cy * cy));
+                    float sp = 4f + (float)rnd.NextDouble() * 5f;
+                    _shardVel[t * 2] = cx / len * sp;
+                    _shardVel[t * 2 + 1] = cy / len * sp + 2f;
+                    _shardSpin[t] = ((float)rnd.NextDouble() - 0.5f) * 720f;
+                    t++;
+                }
+            }
+        _shardGo = new GameObject("MrpRewindShatter") { layer = _root.layer };
+        _shardGo.transform.SetParent(_root.transform, false);
+        _shardGo.transform.localPosition = FxMath.V3(0f, 0f, -0.04f);
+        _shardMesh = new Mesh { name = "MrpRewindShatter" };
+        _shardMesh.vertices = _shardVerts;
+        _shardMesh.uv = uv;
+        _shardMesh.colors32 = _shardCols;
+        _shardMesh.triangles = idx;
+        _shardMesh.bounds = new Bounds(Vector3.zero, FxMath.V3(1000f, 1000f, 10f));
+        _shardGo.AddComponent<MeshFilter>().mesh = _shardMesh;
+        var mr = _shardGo.AddComponent<MeshRenderer>();
+        _shardMat = new Material(Shader.Find("Sprites/Default")) { mainTexture = tex };
+        mr.sharedMaterial = _shardMat;
+        mr.sortingOrder = Order + 6;
+        ShatterTick();
+    }
+
+    // 0〜0.12 秒 = ヒビ (破片が少しずれて白い割れ目が光る)・その後は外へ飛び、回り、落ち、薄れる
+    private static void ShatterTick()
+    {
+        float s = (Environment.TickCount64 - _shatterStart) / 1000f;
+        if (s >= ShatterSeconds || !_shardMesh) { Teardown(); return; }
+        const float crack = 0.12f;
+        float fly = FxMath.Max(0f, s - crack);
+        float gap = s < crack ? 0.02f * s / crack : 0.02f;
+        byte alpha = (byte)(255f * FxMath.Clamp01(1f - fly / (ShatterSeconds - crack)));
+        float* vp = (float*)((byte*)_shardVerts.Pointer + 4 * IntPtr.Size);
+        byte* cp = (byte*)_shardCols.Pointer + 4 * IntPtr.Size;
+        int tris = _shardSpin.Length;
+        for (int t = 0; t < tris; t++)
+        {
+            float cx = 0f, cy = 0f;
+            for (int j = 0; j < 3; j++) { cx += _shardBase[(t * 3 + j) * 2] / 3f; cy += _shardBase[(t * 3 + j) * 2 + 1] / 3f; }
+            float len = FxMath.Max(0.3f, FxMath.Sqrt(cx * cx + cy * cy));
+            float ox = cx / len * gap * _frameH + _shardVel[t * 2] * fly;
+            float oy = cy / len * gap * _frameH + _shardVel[t * 2 + 1] * fly - 9f * fly * fly;
+            float ang = _shardSpin[t] * fly * (MathF.PI / 180f);
+            float co = FxMath.Cos(ang), si = FxMath.Sin(ang);
+            float sc = 1f - 0.3f * fly;
+            for (int j = 0; j < 3; j++)
+            {
+                int vi = t * 3 + j;
+                float dx = (_shardBase[vi * 2] - cx) * sc, dy = (_shardBase[vi * 2 + 1] - cy) * sc;
+                vp[vi * 3] = cx + ox + dx * co - dy * si;
+                vp[vi * 3 + 1] = cy + oy + dx * si + dy * co;
+                vp[vi * 3 + 2] = 0f;
+                byte* c = cp + vi * 4;
+                // ヒビの間は破片の縁が白く光る (頂点の色で全体を明るく)
+                c[0] = c[1] = c[2] = 255;
+                c[3] = alpha;
+            }
+        }
+        _shardMesh.vertices = _shardVerts;
+        _shardMesh.colors32 = _shardCols;
+        if (_darkSr && s < crack)
+        {
+            _darkSr.enabled = true;
+            _darkSr.color = FxMath.Rgba(1f, 1f, 1f, 0.9f * (1f - s / crack));
+            _darkSr.sortingOrder = Order + 5;
+        }
+        else if (_darkSr) _darkSr.enabled = false;
+    }
+
+    // ---- 片付け ----
+    private static void Teardown()
+    {
+        if (_on) Plugin.Logger.LogInfo($"[RewindCinematic] end shown={_shownCount} skipped={_skipped} missed={_missed} main ms avg={(_shownCount > 0 ? _sumMs / _shownCount : 0):0.00} worst={_worstMs:0.00}");
+        _on = false;
+        _shattering = false;
+        StopWorker();
+        StopSound(false);
+        LiveRestore();
+        _follow = null;
+        _cam = null;
+        RestoreMove();
+        ItemsDestroy();
+        foreach (var sp in _sprites) if (sp) UnityEngine.Object.Destroy(sp);
+        _sprites.Clear();
+        if (_shardMesh) UnityEngine.Object.Destroy(_shardMesh);
+        if (_shardMat) UnityEngine.Object.Destroy(_shardMat);
+        _shardMesh = null;
+        _shardMat = null;
+        if (_root) UnityEngine.Object.Destroy(_root);
+        _root = null;
+        _lp = null;
+        _onWhite = null;
+        // 次に押すまで使わないので、テクスチャ・音・展開の置き場も手放す (押した時に作り直す)
+        foreach (var o in new UnityEngine.Object[] { _fullTex, _lightTex, _solidTex, _clip }) if (o) UnityEngine.Object.Destroy(o);
+        _fullTex = _lightTex = _solidTex = null;
+        _clip = null;
+        ReleaseData();
+    }
+
+    // 確かめ用 (ブリッジ)
+    internal static void Register()
+    {
+        Bridge.TestBridge.Register("rewindult", "[ask | kill | probe] 時戻しの発動者の全画面演出を流す (既定 = 時戻しの依頼は出さない・ask = 押した時と同じ・kill = 0.8 秒後に打ち切りの砕けを見る)", (args, reply) =>
+        {
+            string a = (args ?? "").Trim();
+            if (a == "probe") { reply($"OK rewindult {Probe()}"); return; }
+            if (a.StartsWith("wear ")) { reply($"OK rewindult {Wear(a.Substring(5).Split(' ', StringSplitOptions.RemoveEmptyEntries))}"); return; }
+            if (a == "kill") { if (_on && !_shattering) StartShatter(); reply($"OK rewindult {Probe()}"); return; }
+            bool ok = Play(a == "ask" ? ms => TimeRewind.Ask(ms) : _ => { });
+            reply($"OK rewindult playing={ok} frames={_n} size={_w}x{_h} items={(Items[0] != null ? 1 : 0)}{(Items[1] != null ? 1 : 0)}{(Items[2] != null ? 1 : 0)}");
+        });
+    }
+
+    // 自分に着せ替えを付ける (名前の一部・- は外す)。スキン バイザー 帽子 の順
+    private static string Wear(string[] p)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        var hm = HatManager.Instance;
+        if (!lp || !hm || p.Length < 3) return $"need <skin> <visor> <hat> lp={(bool)lp} hm={(bool)hm} n={p.Length}";
+        int color = lp.Data.DefaultOutfit.ColorId;
+        string Find<T>(Il2CppReferenceArray<T> all, string key) where T : CosmeticData
+        {
+            if (key == "-") return "";
+            foreach (var c in all) if (c != null && c.ProdId.Contains(key, StringComparison.OrdinalIgnoreCase)) return c.ProdId;
+            return null;
+        }
+        string sk = Find(hm.allSkins, p[0]), vi = Find(hm.allVisors, p[1]), ha = Find(hm.allHats, p[2]);
+        if (sk != null) lp.SetSkin(sk, color);
+        if (vi != null) lp.SetVisor(vi, color);
+        if (ha != null) lp.SetHat(ha, color);
+        return $"skin={sk ?? "?"} visor={vi ?? "?"} hat={ha ?? "?"}";
+    }
+
+    internal static string Probe() => $"on={_on} shown={_shown} decodeNext={_decodeNext} shattering={_shattering} asked={_asked} voice={(_voice ? _voice.isPlaying : false)} clip={(_clip ? _clip.length : 0f):0.00}s muted={_muted.Length} count={_shownCount} skipped={_skipped} missed={_missed} worst={_worstMs:0.00}ms";
+}

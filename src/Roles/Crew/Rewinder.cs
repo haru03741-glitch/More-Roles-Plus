@@ -31,7 +31,8 @@ public sealed class Rewinder : RoleBase
             Cooldown = () => RewindCooldown,
             MaxUses = () => RewindUses,
             KeepOnRewind = true,
-            OnUse = TimeRewind.Ask,
+            // 押した本人の画面に全画面の演出を流し、真っ白になった所で依頼を出す (戻す区間は押した時から)。出せない時はすぐ戻す
+            OnUse = () => RewindCinematic.Play(ms => TimeRewind.Ask(ms)) || TimeRewind.Ask(),
         });
     }
 
