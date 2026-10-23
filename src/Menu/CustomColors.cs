@@ -470,19 +470,34 @@ internal static class CustomColors
         mat.SetFloat("_GradSX", 1f / w);
         mat.SetFloat("_GradSY", 1f / h);
         // t = u * wx + v * wy + w0 (u = 左 0 → 右 1・v = 下 0 → 上 1)
-        var (wx, wy, w0) = look.Dir switch
-        {
-            1 => (0f, -1f, 1f),
-            2 => (0.5f, -0.5f, 0.5f),
-            3 => (0.5f, 0.5f, 0f),
-            _ => (1f, 0f, 0f),
-        };
+        var (wx, wy, w0) = DirWeights(look.Dir);
         mat.SetFloat("_GradWX", wx);
         mat.SetFloat("_GradWY", wy);
         mat.SetFloat("_GradW0", w0);
         // 境目: 位置 0〜1 と、ぼかしの幅 (0 でもシェーダが 1 画素ぶんは滑らかにする)
         mat.SetFloat("_GradPos", look.Pos / 100f);
         mat.SetFloat("_GradSoft", look.Soft / 100f);
+    }
+
+    private static (float, float, float) DirWeights(byte dir) => dir switch
+    {
+        1 => (0f, -1f, 1f),
+        2 => (0.5f, -0.5f, 0.5f),
+        3 => (0.5f, 0.5f, 0f),
+        _ => (1f, 0f, 0f),
+    };
+
+    // 人形以外 (時戻しの演出の絵など) を同じ式で塗る時: 2 色目とその影・向き (t = u * wx + v * wy + w0)・境目 0〜1
+    internal static bool TryGradient(int id, out Color32 b, out Color32 bShadow, out (float Wx, float Wy, float W0) dir, out float pos, out float soft)
+    {
+        Look look = default;
+        bool want = id == _previewSlot ? (look = _previewLook).Grad : BySlot.TryGetValue(id, out look) && look.Grad;
+        b = look.B;
+        bShadow = Shade(look.B);
+        dir = DirWeights(look.Dir);
+        pos = look.Pos / 100f;
+        soft = look.Soft / 100f;
+        return want;
     }
 
     // 色の名前 (いちばん近い名前の付いた色。近さは人の見え方に近い Lab の距離で測る)

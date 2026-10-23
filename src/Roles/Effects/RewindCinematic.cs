@@ -47,6 +47,9 @@ internal static unsafe class RewindCinematic
     private static readonly byte[][] SlotBuf = new byte[Slots][];
     private static readonly GCHandle[] SlotPin = new GCHandle[Slots];
     private static float _bodyR, _bodyG, _bodyB, _shR, _shG, _shB;
+    private static float _body2R, _body2G, _body2B, _sh2R, _sh2G, _sh2B;
+    private static bool _grad;
+    private static float _gwx, _gwy, _gw0, _gpos, _gsoft;
 
     // ---- 再生 ----
     private static bool _on, _shattering, _asked;
@@ -63,6 +66,7 @@ internal static unsafe class RewindCinematic
     private static AudioSource _voice;
     private static AudioClip _clip;
     private static AudioSource[] _muted = Array.Empty<AudioSource>();
+    private static readonly System.Collections.Generic.List<Camera> _hiddenCams = new();
 
     internal static bool Playing => _on;
 
@@ -87,6 +91,7 @@ internal static unsafe class RewindCinematic
         _shipGen = GameClock.ShipGen;
         SetColors(lp.Data.DefaultOutfit.ColorId);
         BuildView(hud);
+        HideOverlayCams(hud.UICamera);
         BuildItems(lp);
         LiveBegin(lp);
         _shown = -1;
@@ -203,6 +208,12 @@ internal static unsafe class RewindCinematic
         Color32 b = pc[id], s = sc[id];
         _bodyR = Lin(b.r); _bodyG = Lin(b.g); _bodyB = Lin(b.b);
         _shR = Lin(s.r); _shG = Lin(s.g); _shB = Lin(s.b);
+        // グラデーションの色: 作業スレッドは色の表を読まないので、ここで写しておく
+        _grad = Menu.CustomColors.TryGradient(id, out var b2, out var s2, out var dir, out _gpos, out _gsoft);
+        if (!_grad) { b2 = b; s2 = s; }
+        _body2R = Lin(b2.r); _body2G = Lin(b2.g); _body2B = Lin(b2.b);
+        _sh2R = Lin(s2.r); _sh2G = Lin(s2.g); _sh2B = Lin(s2.b);
+        (_gwx, _gwy, _gw0) = _grad ? dir : (0f, 0f, 0f);
     }
 
     private static float Lin(byte v)
@@ -352,9 +363,18 @@ internal static unsafe class RewindCinematic
             b.CropX = (int)U(f, 6);
             b.CropY = (int)U(f, 7);
             b.Negate = (int)U(f, 13);
+            // 体の枠 (画素・上から) = 色の向きの u, v の 0〜1
+            uint bw = U(f, 10), bh = U(f, 11);
+            if (_grad && bw > 0 && bh > 0)
+            {
+                b.Gx0 = U(f, 8); b.Gy0 = U(f, 9); b.Gsx = 1f / bw; b.Gsy = 1f / bh;
+                b.Gwx = _gwx; b.Gwy = _gwy; b.Gw0 = _gw0; b.Gpos = _gpos; b.Gsoft = _gsoft;
+            }
         }
-        b.Body[0] = b.Body2[0] = _bodyR; b.Body[1] = b.Body2[1] = _bodyG; b.Body[2] = b.Body2[2] = _bodyB;
-        b.Shadow[0] = b.Shadow2[0] = _shR; b.Shadow[1] = b.Shadow2[1] = _shG; b.Shadow[2] = b.Shadow2[2] = _shB;
+        b.Body[0] = _bodyR; b.Body[1] = _bodyG; b.Body[2] = _bodyB;
+        b.Shadow[0] = _shR; b.Shadow[1] = _shG; b.Shadow[2] = _shB;
+        b.Body2[0] = _body2R; b.Body2[1] = _body2G; b.Body2[2] = _body2B;
+        b.Shadow2[0] = _sh2R; b.Shadow2[1] = _sh2G; b.Shadow2[2] = _sh2B;
         MrpNative.CineFrame(&b);
         return b.Ok != 0;
     }
@@ -392,6 +412,17 @@ internal static unsafe class RewindCinematic
         _darkSr.color = FxMath.Rgba(0.102f, 0.047f, 0.008f, 0f);
         _fullSr.enabled = false;
         _lightSr.enabled = false;
+    }
+
+    // HUD のカメラより後に描くカメラ (フレンドのトースト = 層 19 の専用カメラ) は並び順では隠せないので、演出の間だけ止める
+    private static void HideOverlayCams(Camera ui)
+    {
+        foreach (var c in Camera.allCameras)
+        {
+            if (!c || c == ui || !c.enabled || c.depth <= ui.depth) continue;
+            c.enabled = false;
+            _hiddenCams.Add(c);
+        }
     }
 
     private static SpriteRenderer Part(string name, Sprite sp, int layer, float z, int order)
@@ -961,6 +992,8 @@ internal static unsafe class RewindCinematic
         _follow = null;
         _cam = null;
         RestoreMove();
+        foreach (var c in _hiddenCams) if (c) c.enabled = true;
+        _hiddenCams.Clear();
         ItemsDestroy();
         foreach (var sp in _sprites) if (sp) UnityEngine.Object.Destroy(sp);
         _sprites.Clear();
@@ -988,6 +1021,7 @@ internal static unsafe class RewindCinematic
             if (a == "probe") { reply($"OK rewindult {Probe()}"); return; }
             if (a.StartsWith("wear ")) { reply($"OK rewindult {Wear(a.Substring(5).Split(' ', StringSplitOptions.RemoveEmptyEntries))}"); return; }
             if (a == "kill") { if (_on && !_shattering) StartShatter(); reply($"OK rewindult {Probe()}"); return; }
+            if (a == "notif") { reply($"OK rewindult {NotifProbe()}"); return; }
             bool ok = Play(a == "ask" ? ms => TimeRewind.Ask(ms) : _ => { });
             reply($"OK rewindult playing={ok} frames={_n} size={_w}x{_h} items={(Items[0] != null ? 1 : 0)}{(Items[1] != null ? 1 : 0)}{(Items[2] != null ? 1 : 0)}");
         });
@@ -1011,6 +1045,33 @@ internal static unsafe class RewindCinematic
         if (vi != null) lp.SetVisor(vi, color);
         if (ha != null) lp.SetHat(ha, color);
         return $"skin={sk ?? "?"} visor={vi ?? "?"} hat={ha ?? "?"}";
+    }
+
+    // 上に出る通知 (フレンドのトースト・HUD の通知) を 1 つずつ出し、どの層とカメラで描かれるかを返す
+    private static string NotifProbe()
+    {
+        var sb = new System.Text.StringBuilder();
+        void Desc(string tag, Component c)
+        {
+            if (!c) { sb.Append($" {tag}=none"); return; }
+            var t = c.transform;
+            string path = t.name;
+            for (var q = t.parent; q; q = q.parent) path = q.name + "/" + path;
+            var p = t.position;
+            sb.Append($" {tag}=[{path} layer={c.gameObject.layer} active={c.gameObject.activeInHierarchy} z={p.z:0.###}");
+            foreach (var r in c.GetComponentsInChildren<Renderer>(true)) sb.Append($" {r.name}:o{r.sortingOrder}/z{r.transform.position.z:0.##}");
+            sb.Append(']');
+        }
+        var fl = FriendsListManager.InstanceExists ? FriendsListManager.Instance : null;
+        var fn = fl ? fl.FriendListNotification : null;
+        if (fn) fn.SetUp("rewind notif test", FriendListNotification.IconType.Friend);
+        Desc("friend", fn);
+        var hud = Vanilla.Hud;
+        if (hud && hud.Notifier) hud.Notifier.AddDisconnectMessage("rewind notif test");
+        Desc("notifier", hud ? hud.Notifier : null);
+        foreach (var cam in Camera.allCameras) sb.Append($" cam:{cam.name} depth={cam.depth} mask={cam.cullingMask:X}");
+        if (_root) sb.Append($" cinema z={_root.transform.position.z:0.###} layer={_root.layer}");
+        return sb.ToString();
     }
 
     internal static string Probe() => $"on={_on} shown={_shown} decodeNext={_decodeNext} shattering={_shattering} asked={_asked} voice={(_voice ? _voice.isPlaying : false)} clip={(_clip ? _clip.length : 0f):0.00}s muted={_muted.Length} count={_shownCount} skipped={_skipped} missed={_missed} worst={_worstMs:0.00}ms";
