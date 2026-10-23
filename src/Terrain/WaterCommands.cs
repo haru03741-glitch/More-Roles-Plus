@@ -173,7 +173,7 @@ internal static partial class WaterSim
             if (_open[k] == 0) sb.Append(" F").Append(WaterArt.FillOf(k));
             if (_open[k] != 0)
                 for (int d = 0; d < 4; d++)
-                    if (!Passable(k, d)) sb.Append(' ').Append(d).Append('=').Append(Target(xx, yy, d, _lvl[k], out int to, out _, out _, out _)).Append(to == -1 ? "!" : "");
+                    if (!Passable(k, d)) sb.Append(' ').Append(d).Append('=').Append(Target(xx, yy, d, out int to, out _, out _, out _)).Append(to == -1 ? "!" : "");
         }
         reply(sb.ToString());
     }

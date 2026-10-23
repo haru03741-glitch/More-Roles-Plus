@@ -23,8 +23,7 @@ internal static unsafe class MrpNative
     private static IntPtr _lib;
     internal static string Status { get; private set; } = "not loaded";
     internal static bool Verify;
-    // 答え合わせをファイル単位で入れ切りする (verify の時だけ起きる不具合の部品を絞る道具)。null = 全部。
-    // 一部だけ入れると C# と C++ で古い/新しいルールが食い違う組 (WaterReach の UseZ と WaterSim.Zray) ができるので、差 0 の判定は全部で回す
+    // 答え合わせをファイル単位で入れ切りする (verify の時だけ起きる不具合の部品を絞る道具)。null = 全部
     private static string[] _verifyOnly, _verifySkip;
     internal static string VerifyScope => _verifyOnly != null ? " only=" + string.Join(",", _verifyOnly) : _verifySkip != null ? " skip=" + string.Join(",", _verifySkip) : "";
     internal static void SetVerifyScope(string arg)

@@ -1,8 +1,8 @@
 #include "mrp_native.h"
 #include "digest.h"
 
-// 縁を越えた水の行き先を探す光線 (src/Terrain/WaterReach.cs の Target / SideAir と同じ結果)。
-// useZ = 0 は島の段の順位で「低い床」を決める (C# と 1 バイト比較できる)。useZ = 1 は床の本当の高さ
+// 縁を越えた水の行き先を探す光線 (水の計算と確認のコマンドの両方がここを引く)。
+// useZ = 0 は島の段の順位で「低い床」を決める (作った時の 1 回目で崖の面を測る)。useZ = 1 は床の本当の高さ
 // (島の基準の高さ + 段 × 段差) で比べ、高さが決まらない升だけ段の順位で比べる
 
 struct FallRayArgs

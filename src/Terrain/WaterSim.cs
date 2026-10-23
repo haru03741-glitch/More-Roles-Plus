@@ -1045,9 +1045,8 @@ internal static partial class WaterSim
         // 高さをはしごの島で決めたマップ (注釈なし) では、高さの違う島の間は必ず崖なので屋外の影の線を見ない
         // (崖の上の縁に視界の影の線が引いてあり、それで切ると崖の大半から落ちなくなる)。部屋の影の線 (展望台の箱と柵の縁) は見る
         bool cliffs = !MapNotes.HasLevels;
-        // 床の本当の高さで縁を決めるのは C++ の部品がある時だけ (照合の時は C# と同じ段の順位)。
-        // 作った時は先に段の順位で崖の面を測って島の高さを決め、その高さで引き直す
-        bool zray = ZFlow && !Native.MrpNative.VerifyIn("WaterSim.Zray");
+        // 縁は床の本当の高さで決める。作った時は先に段の順位で崖の面を測って島の高さを決め、その高さで引き直す
+        bool zray = ZFlow;
         if (full)
         {
             ListLadders(ship);
@@ -1441,7 +1440,7 @@ internal static partial class WaterSim
                 if (_open[j] != 0 && Passable(k, d)) continue;
                 int to = int.MinValue;
                 int tx = x, ty = y;
-                string why = Nx[d] != 0 && OnLadder(x, y) ? "ladder" : Target(x, y, d, lk, out to, out _, out tx, out ty);
+                string why = Nx[d] != 0 && OnLadder(x, y) ? "ladder" : Target(x, y, d, out to, out _, out tx, out ty);
                 if (to == -1 && OnLadder(x, y)) { to = int.MinValue; why = "ladder"; }
                 if (to != int.MinValue && (_shadowCut[k] >> d & 1) != 0) why = "shadow";
                 if (why == "shadow" && !sample.ContainsKey("+x-x+y-y".Substring(d * 2, 2) + ":" + why)) why += "[" + ShadowName(x, y, tx, ty) + "]";
