@@ -37,6 +37,8 @@ internal static class RoleCommands
         });
         TestBridge.Register("rewindpose", "時戻しの逆再生で動かす全員の姿の状態 (控えの数・動かしている人・流している絵の種類・向き・アニメの時間)", (args, reply) =>
             reply($"OK rewindpose {RewindPlayback.Probe()}"));
+        TestBridge.Register("rewindsnd", "時戻しの逆再生で鳴らす音の状態 (控えた数・並べた数・鳴っている声の pitch と再生位置。位置が呼ぶたびに減っていれば逆に鳴っている)", (args, reply) =>
+            reply($"OK rewindsnd recorded={RewindSounds.Recorded} {RewindSounds.Last} voices=[{RewindSounds.Probe()}]"));
         TestBridge.Register("rewind", "[ask [押してからの ms] | force <秒> | doors <部屋 (SystemTypes)> | check <0|1> | print] 時戻しの記録の状態 / 時戻しのボタンと同じ依頼を出す / ホストが役職を見ずに秒数だけ戻す / 部屋の扉を閉める (ホスト) / 地形の記録に指紋を付けて読み戻しの直後に比べる (自分の手元だけ) / 壁の今の姿の指紋", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

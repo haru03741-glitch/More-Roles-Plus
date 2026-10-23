@@ -104,7 +104,6 @@ internal static class RewindWorldFx
         _on = true;
         _root.SetActive(true);
         Apply();
-        BreakNoise.PlayFlat("noise_rewind_world", 0.9f);
     }
 
     internal static void Tick()

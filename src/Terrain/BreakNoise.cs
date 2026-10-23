@@ -233,6 +233,15 @@ internal static class BreakNoise
         src.pitch = pitch;
         if (delay > 0f) src.PlayDelayed(delay);
         else src.Play();
+        Roles.RewindSounds.Record(clip, vol, pan, pitch, delay);
+    }
+
+    // 時が逆に流れ始めた時: 鳴っている途中の音を止める (逆再生の間は戻した区間の音だけを逆向きに鳴らす)
+    internal static void StopAll()
+    {
+        if (_voices == null) return;
+        foreach (var v in _voices) if (v && v.isPlaying) v.Stop();
+        foreach (var v in _gestureVoices) if (v && v.isPlaying) v.Stop();
     }
 
     // 試合が出たら鳴らす係と印 1 つを先に作っておく

@@ -149,6 +149,7 @@ internal static class TimeRewind
     internal static void Clear()
     {
         _pend = PendNone;
+        RewindSounds.Clear();
         RewindPlayback.Clear();
         RewindJournal.Clear();
         _head = _count = 0;
@@ -657,11 +658,15 @@ internal static class TimeRewind
             if (lp.moveable) { lp.moveable = false; _froze = true; }
         }
         RewindWorldFx.Play(false, playMs / 1000f);
+        Terrain.BreakNoise.StopAll();
+        RewindSounds.Begin(now, _playEnd, _playSlot >= 0 ? _playSlotMs : 0);
     }
 
     // 毎 FixedUpdate (逆再生の間): 全員の体を控えの姿へ置き、死んだ時刻を越えた人をその場で生き返らせる
     private static void PlayStep(long now)
     {
+        try { RewindSounds.Step(now); }
+        catch (Exception e) { Plugin.Logger.LogError($"TimeRewind sounds: {e}"); }
         try { PlayStepCore(now); }
         catch (Exception e)
         {
@@ -702,6 +707,7 @@ internal static class TimeRewind
         _playing = false;
         _pend = PendNone;
         Step("pose", RewindPlayback.Stop);
+        Step("sounds", RewindSounds.Stop);
         var lp = PlayerControl.LocalPlayer;
         if (_froze) { _froze = false; if (lp) lp.moveable = true; }
         // 会議が始まった (記録は会議の始まりで捨てる)・試合が終わった時は人の側は戻さない
@@ -728,6 +734,7 @@ internal static class TimeRewind
         if (AmongUsClient.Instance.AmHost) Step("host", () => RestoreHost(s, now - SlotMs[s]));
         NotifyRewound();
         // 戻した所より後の記録は無かったことになる
+        RewindSounds.Forget(SlotMs[s]);
         RewindPlayback.Forget(SlotMs[s]);
         _count -= (_head - s - 1 + Slots) % Slots;
         _head = (s + 1) % Slots;

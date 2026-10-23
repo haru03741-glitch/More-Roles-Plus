@@ -42,7 +42,7 @@ internal static class MrpBundle
             "noise_bump_heavy_1", "noise_bump_heavy_2", "noise_bump_clash_1", "noise_bump_clash_2",
             "noise_fire_loop", "noise_fire_ignite", "noise_steam", "noise_flare", "noise_arc",
             "noise_portal_open", "noise_portal_pass", "noise_portal_close",
-            "noise_drone_loop", "noise_rewind_world",
+            "noise_drone_loop",
             "noise_emote_clap_1", "noise_emote_clap_2", "noise_emote_clap_3", "noise_emote_land_1", "noise_emote_land_2",
             "noise_emote_push", "noise_emote_swish_1", "noise_emote_swish_2", "noise_emote_rustle",
         };
