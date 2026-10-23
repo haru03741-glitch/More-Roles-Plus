@@ -235,7 +235,21 @@ public sealed class Architect : RoleBase
             if (a.IsLocal) a._gauge.Value = MathF.Max(0f, a._gauge.Value - MathF.Max(0f, length - Joint));
         }
         a.DroneTo(at.x, at.y);
-        Walls.Add(new Built { Name = name, At = at, Length = length, Since = Time.time, Owner = a.PlayerId });
+        var built = new Built { Name = name, At = at, Length = length, Since = Time.time, Owner = a.PlayerId };
+        Walls.Add(built);
+        Rewind.Undo(_ => Walls.Remove(built)); // 立つ前へ戻ると壁は消える
+    }
+
+    // 一覧から外した壁は、時戻しで壁が戻った時に一覧へ戻す (立ってからの時間は外した時のまま)
+    private static void Forget(int i)
+    {
+        var w = Walls[i];
+        Walls.RemoveAt(i);
+        Rewind.Undo(shift =>
+        {
+            w.Since += shift / 1000f;
+            if (!Walls.Contains(w)) Walls.Add(w);
+        });
     }
 
     // 壊れた・崩れた (全員の端末で)。設計図を開いていれば焼き直す
@@ -869,9 +883,9 @@ public sealed class Architect : RoleBase
             var w = Walls[i];
             if (w.Owner != PlayerId || now - w.Since < life) continue;
             // 先に壊れた壁は忘れる。崩れの依頼は真ん中の点の物に当たるので、別の壁が真ん中に重なっている間は次の周期に回す
-            if (!BreakableProps.Intact(w.Name)) { Walls.RemoveAt(i); continue; }
+            if (!BreakableProps.Intact(w.Name)) { Forget(i); continue; }
             if (BreakableProps.IntactNameAt(w.At) != w.Name) continue;
-            Walls.RemoveAt(i);
+            Forget(i);
             // 崩す途中で投げても、この役職の毎刻の処理 (設計図を閉じた知らせ・ドローンを降ろす・ボタン) は止めない。その壁は崩さずに忘れる
             try
             {
