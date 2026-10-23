@@ -9,6 +9,7 @@ internal static class TerrainStep
 {
     private const int MaxStepsPerFrame = 20;
     private static int _failedGen = -1;
+    private static bool _advanced; // Advance で刻みを進めてから、まだ Tick が来ていない
 
     // 区間ごとの時間 (water prof): 前置き・減圧・物・水・火・壁の焼け
     internal static readonly long[] ProfTicks = new long[6];
@@ -42,7 +43,9 @@ internal static class TerrainStep
             WaterSim.Tick();
             FireSim.Tick();
             WaterSim.Spilled.Clear();
-            WaterSim.Falls.Clear();
+            // Advance で外から進めた刻みの滝は、この後の滝の絵が読むまで残す (消すと指紋の台本で滝が一度も描かれない)
+            if (!_advanced) WaterSim.Falls.Clear();
+            _advanced = false;
             WaterSim.GushFx.Clear();
             FireSim.Steam.Clear();
             FireSim.FlareFx.Clear();
@@ -104,6 +107,7 @@ internal static class TerrainStep
         int done = 0;
         while (done < n && StepOnce(int.MaxValue, false)) done++;
         FireSim.IssueWallBurns();
+        _advanced = done > 0;
         return done;
     }
 
