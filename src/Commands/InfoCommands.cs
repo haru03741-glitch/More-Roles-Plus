@@ -34,7 +34,8 @@ internal static class InfoCommands
     {
         if (!InGame) return new Text("InfoCommands.OnlyDuringAGame");
         var role = RoleState.Local;
-        if (role != null) return $"{RoleDisplay.LabelOf(role)}\n{role.Help}{RoleDisplay.AddonLines(role.PlayerId)}";
+        if (role != null)
+            return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(role, null)}{RoleDisplay.LabelOf(role)[role.ColoredName.Length..]}\n{RoleDoc.Chat(role)}{RoleDisplay.AddonLines(role.PlayerId)}");
         return Dev.DevGod.Label(PlayerControl.LocalPlayer.PlayerId) ?? new Text("InfoCommands.NoRole");
     }
 
@@ -47,10 +48,10 @@ internal static class InfoCommands
             if (r == null)
             {
                 var a = FindAddon(args);
-                if (a != null) return $"{a.ColoredName} ({new Text("InfoCommands.Addon")})\n{a.Help}";
+                if (a != null) return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(a, new Text("InfoCommands.Addon"))}\n{RoleDoc.Chat(a)}");
                 return new Text("InfoCommands.NoRoleCalled").With("arg", args);
             }
-            return $"{r.ColoredName} ({TeamName(r.Team)})\n{r.Help}";
+            return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(r, TeamName(r.Team))}\n{RoleDoc.Chat(r)}");
         }
         var sb = new StringBuilder();
         foreach (Team team in Enum.GetValues(typeof(Team)))

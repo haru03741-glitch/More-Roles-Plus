@@ -10,6 +10,47 @@ internal static class RoleCommands
 {
     public static void Register()
     {
+        TestBridge.Register("vroles", "本編の役職の名前・説明・能力ボタンの文と絵 (今の言語で)", (_, reply) =>
+        {
+            var rm = RoleManager.Instance;
+            if (!rm || rm.AllRoles == null || !TranslationController.InstanceExists) { reply("ERR vroles not ready"); return; }
+            var tc = TranslationController.Instance;
+            var sb = new System.Text.StringBuilder("OK vroles");
+            foreach (var r in rm.AllRoles)
+            {
+                if (!r) continue;
+                var ab = r.Ability;
+                sb.Append($"\n[{r.Role}] team={r.TeamType} vent={r.CanVent} kill={r.CanUseKillButton} name={r.NiceName} | med={tc.GetString(r.BlurbNameMed)} | long={tc.GetString(r.BlurbNameLong)}");
+                if (ab != null) sb.Append($" | ability={tc.GetString(ab.Text)} img={(ab.Image ? ab.Image.name : "-")} img2={(ab.SecondImage ? ab.SecondImage.name : "-")}");
+            }
+            reply(sb.ToString());
+        });
+
+        TestBridge.Register("vstr", "<鍵の一部> 本編の文のうち鍵にその語を含む物を、今の言語と控えの言語 (英語) で", (args, reply) =>
+        {
+            if (!TranslationController.InstanceExists) { reply("ERR vstr not ready"); return; }
+            var tc = TranslationController.Instance;
+            string q = args.Trim();
+            var sb = new System.Text.StringBuilder("OK vstr");
+            foreach (var lang in new[] { tc.currentLanguage, tc.fallbackLanguage })
+            {
+                if (lang == null || lang.AllStrings == null) continue;
+                sb.Append($"\n== {lang.languageID}");
+                foreach (var kv in lang.AllStrings)
+                    if (kv.Key.Contains(q, System.StringComparison.OrdinalIgnoreCase))
+                        sb.Append('\n').Append(kv.Key).Append(" = ").Append(kv.Value.Replace("\n", "\\n"));
+            }
+            reply(sb.ToString());
+        });
+
+        TestBridge.Register("tmpsprite", "TMP の絵の既定の素材とシェーダがあるか", (_, reply) =>
+        {
+            var def = TMPro.TMP_Settings.defaultSpriteAsset;
+            var sh = UnityEngine.Shader.Find("TextMeshPro/Sprite");
+            string defInfo = def ? $"{def.name} mat={(def.material ? def.material.name + "/" + def.material.shader.name : "-")} tex={(def.spriteSheet ? def.spriteSheet.name : "-")}" : "-";
+            reply($"OK tmpsprite default={defInfo} find={(sh ? sh.name : "-")}");
+        });
+
         TestBridge.Register("roles", "登録された役職と、今の割り当て", (_, reply) =>
         {
             string reg = string.Join(" ", Registry.Roles.Select(r => $"{r.Id}({r.Team},{r.Chance.Value}%x{r.Count.Value})"));

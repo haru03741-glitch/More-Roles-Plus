@@ -179,6 +179,95 @@ VanillaPhantom.Name: Phantom
 # ── VanillaViper ──
 VanillaViper.Name: Viper
 
+# ── Vanilla role descriptions (keys use the vanilla role name; same layout as described at the top) ──
+Crewmate.Summary: A Crewmate who does tasks and finds the Impostors in meetings.
+Crewmate.Task: Tasks
+Crewmate.Task.Help: Do the tasks around the ship. When every Crewmate's tasks are done, the Crewmates win.
+Crewmate.Task.Short: Finish them all to win
+Crewmate.Report: Report
+Crewmate.Report.Help: Press it near a body to call a meeting. In the meeting, chat and vote on who to eject.
+Crewmate.Report.Short: Found a body? Call a meeting
+Crewmate.Quote: So who's sus?
+Impostor.Summary: An Impostor who hides among the crew and kills them off one by one.
+Impostor.Kill: Kill
+Impostor.Kill.Help: Kill a nearby Crewmate. After a kill, you must wait for the cooldown before killing again.
+Impostor.Kill.Short: Kill a nearby Crewmate
+Impostor.Sabotage: Sabotage
+Impostor.Sabotage.Help: Break the ship's systems to keep the crew busy. Some, like the reactor and oxygen, win the game for the Impostors if they are not fixed in time.
+Impostor.Sabotage.Short: Break the ship's systems
+Impostor.Vent: Vent
+Impostor.Vent.Help: Hide in a vent and move to the vents connected to it. Being seen going in or out gives you away.
+Impostor.Vent.Short: Hide and travel through vents
+Impostor.Tips: Impostors see each other's names in red and cannot kill each other.
+Impostor.Quote: By the time you notice, it's too late.
+Scientist.Summary: A Crewmate who can check vitals from anywhere.
+Scientist.Vitals: Vitals
+Scientist.Vitals.Help: Open a portable vitals panel to see who is alive. The battery drains while it is open and charges as you finish tasks.
+Scientist.Vitals.Short: Check vitals anywhere
+Scientist.Tips: You notice deaths right away. Watch your surroundings while the panel is open.
+Scientist.Quote: A heartbeat never lies.
+Engineer.Summary: A Crewmate who can use vents.
+Engineer.Vent: Vent
+Engineer.Vent.Help: Hide in a vent and move to the vents connected to it. You can only stay inside for a limited time; when it runs out, you come back out.
+Engineer.Vent.Short: Travel through vents as crew
+Engineer.Tips: Being seen using a vent will make others suspect you are an Impostor.
+Engineer.Quote: The shortcut is right under your feet.
+Noisemaker.Summary: A Crewmate who sets off an alert showing where they fell when killed.
+Noisemaker.Alert: Alert
+Noisemaker.Alert.Help: There is no button to press. When an Impostor kills you, an alert goes off automatically and shows the other Crewmates where you fell.
+Noisemaker.Alert.Short: Sounds an alert when killed
+Noisemaker.Quote: I won't go quietly.
+Tracker.Summary: A Crewmate who plants a tracker on someone and follows them on the map.
+Tracker.Track: Track
+Tracker.Track.Help: Plant a tracker on someone next to you, and their position shows on your map for a while.
+Tracker.Track.Short: Follow someone on the map
+Tracker.Tips: You can't see your surroundings while looking at the map. Don't look suspicious when getting close.
+Tracker.Quote: Run wherever you like. I can see you.
+Detective.Summary: A Crewmate who collects clues in Notes and finds the killer by interrogating.
+Detective.Notes: Notes
+Detective.Notes.Help: When a kill happens, clues such as the victim are added to your Notes. Open them to mark suspects and locations.
+Detective.Notes.Short: Records clues about each kill
+Detective.Interrogate: Interrogate
+Detective.Interrogate.Help: Interrogate a Crewmate to learn where they were when the kill happened.
+Detective.Interrogate.Short: Learn where someone was
+Detective.Tips: Connect the clues and point out the killer in the meeting.
+Detective.Quote: The truth is in the Notes.
+Judge.Summary: A Crewmate who can overrule a meeting to eject an Impostor.
+Judge.Overrule: Overrule
+Judge.Overrule.Help: Use it in a meeting to cast a special vote on the one you think is an Impostor; only that vote counts. If you are right, they are ejected. If you are wrong, you are. It unlocks after you finish a set share of your tasks.
+Judge.Overrule.Short: Decide the meeting with one vote
+Judge.Quote: The court has spoken.
+GuardianAngel.Summary: A Crewmate ghost who can protect the living.
+GuardianAngel.Protect: Protect
+GuardianAngel.Protect.Help: Put a shield on one living player for a while. While shielded, they survive being killed.
+GuardianAngel.Protect.Short: Shield someone from kills
+GuardianAngel.Tips: Shield the ones the Impostors are likely to go after, at the right moment.
+GuardianAngel.Quote: Not on my watch.
+SpiritGuide.Summary: A Crewmate ghost who can send picture messages to living Crewmates.
+SpiritGuide.Message: Message
+SpiritGuide.Message.Help: Pick one of the prepared images and send it to a living player.
+SpiritGuide.Message.Short: Send a picture to the living
+SpiritGuide.Tips: Tell them who killed you or where the killer ran.
+SpiritGuide.Quote: No words needed.
+Shapeshifter.Summary: An Impostor who can take on someone else's look.
+Shapeshifter.Shift: Shift
+Shapeshifter.Shift.Help: Turn into the player you pick. The disguise wears off after a while.
+Shapeshifter.Shift.Short: Disguise as someone else
+Shapeshifter.Tips: Kill in someone else's form to frame them. Being seen shifting or unshifting gives you away.
+Shapeshifter.Quote: Mind if I borrow your face?
+Phantom.Summary: An Impostor who can turn invisible.
+Phantom.Vanish: Vanish
+Phantom.Vanish.Help: Turn invisible for a while. You cannot kill while invisible, but you can still use ladders and ziplines. Vanishing and appearing make a big cloud of smoke.
+Phantom.Vanish.Short: Turn invisible
+Phantom.Tips: Invisibility doesn't last long. Use it where no one will see the smoke.
+Phantom.Quote: You can't catch what you can't see.
+Viper.Summary: An Impostor whose acid dissolves the bodies of their victims.
+Viper.Acid: Acid
+Viper.Acid.Help: Bodies of the players you kill slowly dissolve in three stages, then disappear.
+Viper.Acid.Short: Victims' bodies dissolve away
+Viper.Tips: Draw people away with sabotages, and the body can dissolve before anyone finds it.
+Viper.Quote: Not a trace left behind.
+
 # ── FxVisibility ──
 FxVisibility.Everyone: Everyone
 FxVisibility.NoOne: No one

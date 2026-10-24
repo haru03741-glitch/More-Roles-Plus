@@ -179,6 +179,95 @@ VanillaPhantom.Name: ふぁんとむ
 # ── VanillaViper ──
 VanillaViper.Name: ばいぱー
 
+# ── 本編の役職の説明 (鍵は本編の役職の名前・書き方は先頭の説明と同じ) ──
+Crewmate.Summary: タスクをこなし、会議でインポスターを見つけ出すクルーです。
+Crewmate.Task: タスク
+Crewmate.Task.Help: 船のあちこちにあるタスクをこなします。クルー全員のタスクが終わると、クルーの勝ちです。
+Crewmate.Task.Short: 全員で終えるとクルーの勝ち
+Crewmate.Report: 通報
+Crewmate.Report.Help: 死体の近くで押すと会議が始まります。会議ではチャットと投票で、誰を追放するかを決めます。
+Crewmate.Report.Short: 死体を見つけたら会議を開く
+Crewmate.Quote: 怪しいのは、誰だ。
+Impostor.Summary: 正体を隠したまま、クルーをキルして数を減らすインポスターです。
+Impostor.Kill: キル
+Impostor.Kill.Help: 近くのクルーをキルします。キルの後は、クールダウンが終わるまで次のキルはできません。
+Impostor.Kill.Short: 近くのクルーをキルする
+Impostor.Sabotage: サボタージュ
+Impostor.Sabotage.Help: 船の設備を壊して、クルーの手を止めさせます。原子炉や酸素などは、時間内に直されないとインポスターの勝ちになります。
+Impostor.Sabotage.Short: 船の設備を壊して乱す
+Impostor.Vent: 通気孔
+Impostor.Vent.Help: 通気孔に入って隠れ、つながったほかの通気孔へ移ります。出入りを見られると正体がばれます。
+Impostor.Vent.Short: 通気孔に隠れて移動する
+Impostor.Tips: インポスターどうしは名前が赤く見え、互いにキルできません。
+Impostor.Quote: 気づいた時には、もう遅い。
+Scientist.Summary: どこにいてもバイタルを見られるクルーです。
+Scientist.Vitals: バイタル
+Scientist.Vitals.Help: 持ち歩けるバイタルの画面を開いて、全員の生死を確かめます。開いている間はバッテリーが減り、タスクを終えると充電されます。
+Scientist.Vitals.Short: どこでもバイタルで生死を見る
+Scientist.Tips: 誰かが死ぬと、すぐに気づけます。画面を見ている間は周りに気をつけましょう。
+Scientist.Quote: 心拍は嘘をつかない。
+Engineer.Summary: クルーでありながら、通気孔を使えるクルーです。
+Engineer.Vent: 通気孔
+Engineer.Vent.Help: 通気孔に入って隠れ、つながったほかの通気孔へ移ります。中にいられる時間には限りがあり、時間が切れると外へ出ます。
+Engineer.Vent.Short: クルーでも通気孔で移動する
+Engineer.Tips: 通気孔に出入りするところを見られると、インポスターだと疑われます。
+Engineer.Quote: 近道は、足の下にある。
+Noisemaker.Summary: キルされると、自分の居場所を知らせる警報を鳴らすクルーです。
+Noisemaker.Alert: 警報
+Noisemaker.Alert.Help: 押すボタンはありません。インポスターにキルされると自動で警報が鳴り、ほかのクルーに倒れた場所が知らされます。
+Noisemaker.Alert.Short: キルされると自動で警報が鳴る
+Noisemaker.Quote: 黙って死ぬつもりはない。
+Tracker.Summary: 1 人に追跡装置を付けて、居場所を地図で追えるクルーです。
+Tracker.Track: 追跡
+Tracker.Track.Help: そばにいる人に追跡装置を付けると、しばらくの間その人の居場所が地図に出ます。
+Tracker.Track.Short: 近くの人の居場所を地図で追う
+Tracker.Tips: 地図を見ている間は周りが見えません。近づく時は怪しまれないようにしましょう。
+Tracker.Quote: どこへ逃げても、見えている。
+Detective.Summary: キルの手がかりをメモに集め、尋問で犯人を突き止めるクルーです。
+Detective.Notes: メモ
+Detective.Notes.Help: キルが起きると、被害者などの手がかりがメモに残ります。メモを開いて、容疑者や居場所を書き込めます。
+Detective.Notes.Short: キルの手がかりを記録する
+Detective.Interrogate: 尋問
+Detective.Interrogate.Help: クルーを尋問すると、キルが起きた時にその人がどこにいたかが分かります。
+Detective.Interrogate.Short: キルの時の居場所を聞き出す
+Detective.Tips: 集めた手がかりをつなぎ合わせて、会議で犯人を示しましょう。
+Detective.Quote: 真実は、メモの中にある。
+Judge.Summary: 会議の決定を覆して、インポスターを追放できるクルーです。
+Judge.Overrule: 却下
+Judge.Overrule.Help: 会議中に使うと、インポスターだと思う 1 人に特別な票を入れ、その票だけが有効になります。当たればその人が、外れれば自分が追放されます。使えるのは、決められた割合のタスクを終えてからです。
+Judge.Overrule.Short: 自分の 1 票で会議を決める
+Judge.Quote: 判決を言い渡す。
+GuardianAngel.Summary: 死んだ後に、生きている人を守れる幽霊のクルーです。
+GuardianAngel.Protect: 護衛
+GuardianAngel.Protect.Help: 生きている人 1 人に、しばらくの間シールドを張ります。シールドがある間は、キルされても死にません。
+GuardianAngel.Protect.Short: キルを防ぐシールドを張る
+GuardianAngel.Tips: インポスターに狙われそうな人に、ちょうどよい時に張りましょう。
+GuardianAngel.Quote: あなたは、まだ死なせない。
+SpiritGuide.Summary: 死んだ後に、生きているクルーへ画像でメッセージを送れる幽霊のクルーです。
+SpiritGuide.Message: メッセージ
+SpiritGuide.Message.Help: 用意された画像から選んで、生きている人に送ります。
+SpiritGuide.Message.Short: 生きている人に画像を送る
+SpiritGuide.Tips: 自分をキルした人や、犯人が逃げた先を伝えましょう。
+SpiritGuide.Quote: 言葉が無くても、伝えられる。
+Shapeshifter.Summary: ほかの人の姿に変身できるインポスターです。
+Shapeshifter.Shift: 変身
+Shapeshifter.Shift.Help: 選んだ人の姿になります。変身はしばらくすると解けます。
+Shapeshifter.Shift.Short: ほかの人の姿に化ける
+Shapeshifter.Tips: 誰かの姿でキルすれば、その人に罪を着せられます。変身や変身解除の様子を見られると気づかれます。
+Shapeshifter.Quote: その顔、借りるよ。
+Phantom.Summary: 透明になって姿を消せるインポスターです。
+Phantom.Vanish: 消える
+Phantom.Vanish.Help: しばらくの間、透明になります。透明な間はキルできませんが、はしごやジップラインは使えます。消える時と戻る時には大きな煙が出ます。
+Phantom.Vanish.Short: 透明になって姿を消す
+Phantom.Tips: 透明でいられる時間は長くありません。煙を見られない所で使いましょう。
+Phantom.Quote: 見えない者は、捕まらない。
+Viper.Summary: キルした死体を酸で溶かせるインポスターです。
+Viper.Acid: 酸
+Viper.Acid.Help: バイパーにキルされた人の死体は、3 段階でゆっくり溶けて、やがて消えます。
+Viper.Acid.Short: キルした死体が溶けて消える
+Viper.Tips: サボタージュで人を遠ざけておけば、見つかる前に死体を溶かし切れます。
+Viper.Quote: 跡形も、残さない。
+
 # ── FxVisibility ──
 FxVisibility.Everyone: 全員
 FxVisibility.NoOne: 誰にも出さない

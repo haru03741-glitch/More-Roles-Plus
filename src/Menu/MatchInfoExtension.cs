@@ -167,7 +167,7 @@ internal static class MatchInfoExtension
             string shortText = Tr.Has(s.Key + ".Short") ? new Text(s.Key + ".Short").ToString() : null;
             string longText = Tr.Has(s.Key + ".Help") ? new Text(s.Key + ".Help").ToString() : null;
             y -= RowGap;
-            y -= Row(card, a.Id + "/" + s.Key, s.Icon, name, shortText, longText, left, right, y, mask);
+            y -= Row(card, a.Id + "/" + s.Key, a.SectionIcon(s), name, shortText, longText, left, right, y, mask);
         }
         if (Tr.Has(a.Id + ".Tips"))
         {
@@ -192,7 +192,7 @@ internal static class MatchInfoExtension
     }
 
     // 1 行。左に絵 (無ければ空き)、右に「名前 +」と短い文。開いている時は短い文の代わりに詳しい文。行の高さを返す
-    private static float Row(MatchInfoRolePanel card, string state, string icon, string name, string shortText, string longText,
+    private static float Row(MatchInfoRolePanel card, string state, Sprite icon, string name, string shortText, string longText,
         float left, float right, float top, Collider2D mask)
     {
         bool open = longText != null && Expanded.Contains(state);
@@ -203,16 +203,16 @@ internal static class MatchInfoExtension
 
         float tx = left + RowIcon + RowIndent;
         var t = Clone(card.roleDescription, card, "MrpRow", sb.ToString(), tx, right - tx, top);
-        float h = Math.Max(icon != null ? RowIcon : 0f, t.rectTransform.sizeDelta.y);
+        float h = Math.Max(icon ? RowIcon : 0f, t.rectTransform.sizeDelta.y);
 
-        if (icon != null && card.roleIcon && ButtonIcons.Get(icon) is { } sp)
+        if (icon && card.roleIcon)
         {
             var ic = Object.Instantiate(card.roleIcon, card.transform);
             ic.name = "MrpRowIcon";
-            ic.sprite = sp;
+            ic.sprite = icon;
             ic.drawMode = SpriteDrawMode.Simple;
             ic.color = Color.white;
-            float sc = RowIcon / sp.bounds.size.x;
+            float sc = RowIcon / Math.Max(icon.bounds.size.x, icon.bounds.size.y);
             ic.transform.localScale = new Vector3(sc, sc, 1f);
             var ip = card.roleIcon.transform.localPosition;
             ic.transform.localPosition = new Vector3(left + RowIcon / 2f, top - RowIcon / 2f, ip.z);
@@ -408,7 +408,7 @@ internal static class MatchInfoExtension
         : new Text("InfoCommands.Addon");
 
     // その役職の設定 (出現率と人数を除く) を「名前: 値」で 1 行ずつ
-    private static string OptionLine(Assignable a)
+    internal static string OptionLine(Assignable a)
     {
         var sb = new StringBuilder();
         foreach (var sec in Registry.SectionsOf(a.Tab))

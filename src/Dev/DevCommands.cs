@@ -418,6 +418,8 @@ internal static class DevCommands
             reply($"OK chatsend left=[{hud.Chat.freeChatField.Text}]");
         });
 
+        TestBridge.Register("chatdoc", "<節の鍵 | Tips> いちばん新しい /r・/m の説明の吹き出しで、その節の行を押したのと同じにする (開く / 閉じる)", (args, reply) => reply(Menu.ChatRoleDoc.Simulate(args.Trim())));
+
         TestBridge.Register("chatraw", "<文> 自分の発言として全員へ普通のチャットを送る (コマンドとして拾わない・荒らし対策の確認用)", (args, reply) =>
         {
             var lp = PlayerControl.LocalPlayer;

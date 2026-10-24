@@ -1,6 +1,7 @@
 using System;
 using AmongUs.GameOptions;
 using MoreRolesPlus.Options;
+using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Builtin;
 
@@ -44,11 +45,12 @@ public abstract class VanillaRole : RoleBase
         }
     }
 
-    // 試合の情報には本編の長い説明
+    // 文のファイルに部品 (<Id>.Summary) があれば MRP の役職と同じ組み立て、無ければ本編の長い説明
     public override Text Help
     {
         get
         {
+            if (RoleDoc.Has(this)) return base.Help;
             var b = Behaviour();
             if (!b || !TranslationController.InstanceExists) return Blurb;
             return Text.Raw(TranslationController.Instance.GetString(b.BlurbNameLong));
@@ -56,6 +58,35 @@ public abstract class VanillaRole : RoleBase
     }
 
     public override string Reading => FallbackName.Builtin(true);
+
+    // 節の絵は本編の物: "@ability" = 役職の能力ボタン・"@viper" = バイパーのキルの絵・"@kill" / "@sabotage" / "@vent" / "@report" / "@use" = HUD のボタン
+    public override Sprite SectionIcon(HelpSection s)
+    {
+        switch (s.Icon)
+        {
+            case "@ability":
+                var ab = Behaviour()?.Ability;
+                return ab != null ? ab.Image : null;
+            case "@viper":
+                var vb = Behaviour();
+                var viper = vb ? vb.TryCast<ViperRole>() : null;
+                return viper && viper.killSprite ? viper.killSprite : Hud(h => h.KillButton);
+            case "@kill": return Hud(h => h.KillButton);
+            case "@sabotage": return Hud(h => h.SabotageButton);
+            case "@vent": return Hud(h => h.ImpostorVentButton);
+            case "@report": return Hud(h => h.ReportButton);
+            case "@use": return Hud(h => h.UseButton);
+            default: return base.SectionIcon(s);
+        }
+    }
+
+    private static Sprite Hud(Func<HudManager, ActionButton> pick)
+    {
+        var hud = Vanilla.Hud;
+        if (!hud) return null;
+        var b = pick(hud);
+        return b && b.graphic ? b.graphic.sprite : null;
+    }
 
     internal RoleBehaviour Behaviour()
     {
@@ -76,78 +107,91 @@ public sealed class VanillaCrewmate : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Crewmate;
     protected override Text FallbackName => new("VanillaCrewmate.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Crewmate.Task", "@use"), new("Crewmate.Report", "@report") };
 }
 
 public sealed class VanillaImpostor : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Impostor;
     protected override Text FallbackName => new("VanillaImpostor.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Impostor.Kill", "@kill"), new("Impostor.Sabotage", "@sabotage"), new("Impostor.Vent", "@vent") };
 }
 
 public sealed class VanillaScientist : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Scientist;
     protected override Text FallbackName => new("VanillaScientist.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Scientist.Vitals", "@ability") };
 }
 
 public sealed class VanillaEngineer : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Engineer;
     protected override Text FallbackName => new("VanillaEngineer.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Engineer.Vent", "@ability") };
 }
 
 public sealed class VanillaNoisemaker : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Noisemaker;
     protected override Text FallbackName => new("VanillaNoisemaker.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Noisemaker.Alert") };
 }
 
 public sealed class VanillaTracker : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Tracker;
     protected override Text FallbackName => new("VanillaTracker.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Tracker.Track", "@ability") };
 }
 
 public sealed class VanillaDetective : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Detective;
     protected override Text FallbackName => new("VanillaDetective.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Detective.Notes", "@ability"), new("Detective.Interrogate") };
 }
 
 public sealed class VanillaJudge : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Judge;
     protected override Text FallbackName => new("VanillaJudge.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Judge.Overrule") };
 }
 
 public sealed class VanillaGuardianAngel : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.GuardianAngel;
     protected override Text FallbackName => new("VanillaGuardianAngel.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("GuardianAngel.Protect", "@ability") };
 }
 
 public sealed class VanillaSpiritGuide : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.SpiritGuide;
     protected override Text FallbackName => new("VanillaSpiritGuide.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("SpiritGuide.Message", "@ability") };
 }
 
 public sealed class VanillaShapeshifter : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Shapeshifter;
     protected override Text FallbackName => new("VanillaShapeshifter.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Shapeshifter.Shift", "@ability") };
 }
 
 public sealed class VanillaPhantom : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Phantom;
     protected override Text FallbackName => new("VanillaPhantom.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Phantom.Vanish", "@ability") };
 }
 
 public sealed class VanillaViper : VanillaRole
 {
     public override RoleTypes Type => RoleTypes.Viper;
     protected override Text FallbackName => new("VanillaViper.Name");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Viper.Acid", "@viper") };
 }
 
 // 本編の設定 1 つを読み書きする行。値は本編の設定にあり、MRP の保存・同期には入れない

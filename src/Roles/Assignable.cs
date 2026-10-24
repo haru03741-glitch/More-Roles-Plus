@@ -35,6 +35,9 @@ public abstract class Assignable
     //   public override HelpSection[] HelpSections => new HelpSection[] { new("Demolisher.Hammer", "hammer") };
     public virtual HelpSection[] HelpSections => null;
 
+    // 節のボタンの絵。既定は ButtonIcons の名前から (本編の役職は本編の絵を返す)
+    public virtual UnityEngine.Sprite SectionIcon(HelpSection s) => s.Icon != null ? ButtonIcons.Get(s.Icon) : null;
+
     // 設定画面の「人数」の上限
     public virtual int MaxCount => Options.Crowded.MaxPlayers;
 

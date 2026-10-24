@@ -21,7 +21,22 @@ internal static class DevChat
     // 本編の表示の処理が途中で止まってロビーの部品が毎フレーム例外を出し続けるので、その時はログだけにする
     public static void Notice(ChatController chat, string text)
     {
-        if (chat && chat.gameObject.activeInHierarchy) chat.AddChatWarning(text);
+        if (chat && chat.gameObject.activeInHierarchy)
+        {
+            // ボタンの絵の入った文 (/r など) は、吹き出しの字に絵の素材を付けてから出す (吹き出しは使い回しなので全部に)
+            if (text.Contains("<sprite") && chat.chatBubblePool)
+            {
+                foreach (var list in new[] { chat.chatBubblePool.activeChildren, chat.chatBubblePool.inactiveChildren })
+                    if (list != null)
+                        foreach (var c in list)
+                        {
+                            var b = c ? c.TryCast<ChatBubble>() : null;
+                            if (b) Menu.ChatIcons.Apply(b.TextArea);
+                        }
+            }
+            chat.AddChatWarning(text);
+            Menu.ChatRoleDoc.Attach(chat);
+        }
         else Plugin.Logger.LogInfo($"chat notice (hidden): {text}");
     }
 
