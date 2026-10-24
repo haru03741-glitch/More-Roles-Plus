@@ -126,9 +126,10 @@ const server = new McpServer(
     {
         instructions: [
             "More Roles Plus の実機テスト運転ツール。",
-            "段取り: game_launch (BepInEx-MRP ツリーで AU を起動) → bridge_wait phase=Menu → bridge_send 'freeplay 0' → bridge_wait phase=InGame → 検証 → game_quit。",
+            "段取り: game_launch (BepInEx-MRP ツリーで AU を起動) → bridge_wait phase=Menu → 部屋を立てる bridge_send ['region custom','hostonline','wait sec 3','confirmcreate','wait phase=Lobby 90'] → 試合 ['noend on','startgame 0','wait phase=InGame 60', ...検証] → bridge_send ['region official'] (地域は Epic/Steam 共用なので戻す) → game_quit。",
+            "既定はカスタム鯖 (region custom・dummy 可)。公式鯖 (region official) は受け入れ確認だけ (dummy 不可・本アカウントなので壊しコマンドを連打しない・蹴られたら不具合)。フリープレイ ('freeplay 0') は通信に関係のない見た目の総当たりだけ。",
             "他の mod で AU が起動中なら game_launch は何もしない (切り替え事故の防止)。",
-            "game_launch の edition (epic|steam) で操作する版を選ぶ (以後の bridge_* と game_quit はその版だけを相手にする)。別の人が片方を使っている時はもう片方を使う。フリープレイは同時に動かせる (2 つ目は空いた番号で待ち受ける)。",
+            "game_launch の edition (epic|steam) で操作する版を選ぶ (以後の bridge_* と game_quit はその版だけを相手にする)。別の人が片方を使っている時はもう片方を使う。フリープレイは同時に動かせる (2 つ目は空いた番号で待ち受ける)。2 窓で同じ部屋に入る時は lobbycode → もう片方で region custom → joincode <コード>。",
             "コマンド一覧は bridge_send ['help']。機能側の検証コマンドもそこに出る。",
         ].join("\n"),
     }
@@ -139,7 +140,7 @@ server.registerTool("bridge_send", {
     description: "ブリッジにディレクティブを送り、応答を返す。lines は 1 要素 = 1 行 (20 行超は自動分割)。" +
         "okPattern/errPattern を指定すると一致行を待って判定、省略時は最終行の応答 (OK/ERR) まで待つ。" +
         "lines には 'wait phase=InGame 60' / 'wait marker <正規表現> 30' を混ぜてよい (wait 中は後の行が止まり、済むと進む) ので、" +
-        "台本 1 本 (freeplay → wait → tp → hammer → shot) を 1 回の呼び出しで流せる。その時は timeoutSec を wait の合計以上 (上限 110)・1 回 20 行以内・okPattern は最後の行の応答に当てる。",
+        "台本 1 本 (startgame → wait → tp → hammer → shot) を 1 回の呼び出しで流せる。その時は timeoutSec を wait の合計以上 (上限 110)・1 回 20 行以内・okPattern は最後の行の応答に当てる。",
     inputSchema: {
         lines: z.array(z.string()).min(1).max(100),
         okPattern: z.string().optional(),
