@@ -25,9 +25,9 @@ internal static class MeetingStamps
     private const float PadX = 0.2f, BubbleH = 0.36f, MinW = 0.42f;
     private const float ButtonScale = 0.55f;
     private const float MenuW = 0.62f;        // 札の見本の幅を揃える (字の長さで並びがばらつかないように)
-    private static readonly Vector3 ButtonAt = new(-2.55f, -1.95f, -2f);     // 会議の画面の中 (投票スキップの右)
+    private const float ButtonZ = -2f;
     private static readonly Vector3 OnCard = new(1.0f, 0.28f, -3.5f);       // 名札の右上の縁に掛かる位置 (名前と投票の印に被らない)
-    private const float MenuDx = 1.35f, MenuY0 = 1.0f, MenuDy = 0.62f;      // 札の並び (ボタンの単位・2 段 4 列)
+    private const float MenuDx = 1.35f, MenuY0 = 1.0f, MenuDy = 0.62f;      // 札の並び (ボタンの単位・2 段 4 列・ボタンの上に右端を揃える)
 
     private static readonly string[] Keys =
         { "Stamp.Sus", "Stamp.Safe", "Stamp.Question", "Stamp.Exclaim", "Stamp.Agree", "Stamp.Disagree", "Stamp.Wait", "Stamp.Sorry" };
@@ -130,6 +130,8 @@ internal static class MeetingStamps
         t.transform.localPosition = FxMath.V3(0f, 0f, -0.01f);
         t.transform.localScale = FxMath.V3(1f, 1f, 1f);
         t.enableAutoSizing = false;
+        // 名札の字は見る人の陣営で色が変わる (インポスター同士は赤) ので色は写さない
+        t.color = Color.black;
         t.fontSize = FontSize;
         t.margin = Vector4.zero;
         t.alignment = TextAlignmentOptions.Center;
@@ -234,7 +236,7 @@ internal static class MeetingStamps
         // 会議の間は HUD が隠れているので、ボタンの出し入れは会議の画面に任せる
         var tf = _main.Transform;
         tf.gameObject.SetActive(true);
-        tf.localPosition = ButtonAt;
+        ToCorner(tf);
         tf.localScale = FxMath.V3(ButtonScale, ButtonScale, 1f);
         _mainBg = Icon(_main, proto.NameText, "!");
 
@@ -247,7 +249,7 @@ internal static class MeetingStamps
             var b = ModButton.Create(_life, null, "", 0f, () => Choose(kind), _menu.transform);
             if (b == null || !b.Transform) continue;
             b.Transform.gameObject.SetActive(true);
-            b.Transform.localPosition = FxMath.V3((kind % 4) * MenuDx, MenuY0 + (kind / 4) * MenuDy, -0.5f);
+            b.Transform.localPosition = FxMath.V3((kind % 4 - 3) * MenuDx, MenuY0 + (kind / 4) * MenuDy, -0.5f);
             Icon(b, proto.NameText, new Text(Keys[kind]).ToString());
         }
     }
@@ -271,7 +273,21 @@ internal static class MeetingStamps
     {
         if (!_menu) return;
         if (open && Environment.TickCount64 < _nextMs) return;
+        if (open && _main != null && _main.Transform) ToCorner(_main.Transform);
         _menu.SetActive(open);
+    }
+
+    // ボタンは画面の右下の角 (試合中にキルボタン等が並ぶ所) に置く。HUD は隠れていても並びの場所は残っている。
+    // 角の位置は画面の真ん中 (HUD の根) からのずれで測り、会議のボタンの置き場の原点から同じだけずらす
+    // (会議の画面は横から滑り込むので世界座標では合わせない)。縦横比は会議の間に変わりうるので開く時にも測り直す
+    private static void ToCorner(Transform tf)
+    {
+        var hud = Vanilla.Hud;
+        if (!hud || !hud.AbilityButton) return;
+        var corner = hud.AbilityButton.transform.parent.position;
+        var center = hud.transform.position;
+        float s = tf.parent ? tf.parent.lossyScale.x : 1f;
+        tf.localPosition = FxMath.V3((corner.x - center.x) / s, (corner.y - center.y) / s, ButtonZ);
     }
 
     private static bool Choose(byte kind)
