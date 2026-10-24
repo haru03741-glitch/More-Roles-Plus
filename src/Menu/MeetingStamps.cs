@@ -26,7 +26,7 @@ internal static class MeetingStamps
     private const float ButtonScale = 0.55f;
     private const float MenuW = 0.62f;        // 札の見本の幅を揃える (字の長さで並びがばらつかないように)
     private const float ButtonZ = -2f;
-    private static readonly Vector3 OnCard = new(1.0f, 0.28f, -3.5f);       // 名札の右上の縁に掛かる位置 (名前と投票の印に被らない)
+    private static readonly Vector3 OnCard = new(0.5f, 0.31f, -3.5f);       // 名札の上の縁に掛かる位置 (名前・投票の印・右上の耳打ちのボタンに被らない)
     private const float MenuDx = 1.35f, MenuY0 = 1.0f, MenuDy = 0.62f;      // 札の並び (ボタンの単位・2 段 4 列・ボタンの上に右端を揃える)
 
     private static readonly string[] Keys =
@@ -51,6 +51,8 @@ internal static class MeetingStamps
     private static Lifespan _life;
     private static ModButton _main;
     private static GameObject _menu;
+    private static TransitionOpen _menuAnim;
+    private static bool _menuOpen, _menuClosing;
     private static SpriteRenderer _mainBg;
     private static long _nextMs;
     private static bool _dim;
@@ -158,6 +160,12 @@ internal static class MeetingStamps
     internal static void Tick()
     {
         if (Shown.Count > 0) Animate();
+        // 本編の Close は 0 倍まで縮めるだけで消さないので、縮み終わったら止める (隠れたボタンの毎フレームの処理を残さない)
+        if (_menuClosing && _menu && _menu.transform.localScale.x <= 0.001f)
+        {
+            _menuClosing = false;
+            _menu.SetActive(false);
+        }
         if (_main == null) return;
         bool cool = Environment.TickCount64 < _nextMs;
         if (cool != _dim && _mainBg)
@@ -243,6 +251,8 @@ internal static class MeetingStamps
         _menu = new GameObject("MrpStampMenu") { layer = tf.gameObject.layer };
         _menu.transform.SetParent(tf, false);
         _menu.SetActive(false);
+        // 開閉は本編の窓と同じ部品で動かす (有効にすると 0 倍から広がり、Close で縮んで消える)
+        _menuAnim = _menu.AddComponent<TransitionOpen>();
         for (byte k = 0; k < Count; k++)
         {
             byte kind = k;
@@ -267,14 +277,28 @@ internal static class MeetingStamps
         return bubble.Bg;
     }
 
-    private static bool MenuOpen => _menu && _menu.activeSelf;
+    private static bool MenuOpen => _menu && _menuOpen;
 
     private static void SetMenu(bool open)
     {
         if (!_menu) return;
         if (open && Environment.TickCount64 < _nextMs) return;
-        if (open && _main != null && _main.Transform) ToCorner(_main.Transform);
-        _menu.SetActive(open);
+        if (open == _menuOpen) return;
+        _menuOpen = open;
+        if (open)
+        {
+            if (_main != null && _main.Transform) ToCorner(_main.Transform);
+            // 閉じる途中で開き直した時も広がる動きを最初からやり直す
+            _menuClosing = false;
+            _menu.SetActive(false);
+            _menu.SetActive(true);
+        }
+        else if (_menuAnim)
+        {
+            _menuAnim.Close();
+            _menuClosing = true;
+        }
+        else _menu.SetActive(false);
     }
 
     // ボタンは画面の右下の角 (試合中にキルボタン等が並ぶ所) に置く。HUD は隠れていても並びの場所は残っている。
@@ -303,6 +327,8 @@ internal static class MeetingStamps
         _life = null;
         _main = null;
         _menu = null;
+        _menuAnim = null;
+        _menuOpen = _menuClosing = false;
         _mainBg = null;
         _dim = false;
         foreach (var b in Shown)
@@ -344,7 +370,7 @@ internal static class MeetingStamps
     }
 
     private static string Stats() =>
-        $"shown={Shown.Count} dropped={Dropped} sent={ShowCall.Sent} recv={ShowCall.Received} button={(_main != null && _main.Transform ? "on" : "none")} menu={(MenuOpen ? "open" : "closed")} cool={Math.Max(0, _nextMs - Environment.TickCount64)}ms bubble={(BubbleProto() ? "ok" : "none")}";
+        $"shown={Shown.Count} dropped={Dropped} sent={ShowCall.Sent} recv={ShowCall.Received} button={(_main != null && _main.Transform ? "on" : "none")} menu={(MenuOpen ? "open" : "closed")} cool={Math.Max(0, _nextMs - Environment.TickCount64)}ms bubble={(BubbleProto() ? "ok" : "none")} anim={(_menuAnim ? $"{_menuAnim.duration}/{_menuAnim.targetSize}" : "-")} active={(_menu && _menu.activeSelf)} scale={(_menu ? _menu.transform.localScale.x : -1f):0.00}";
 }
 
 [HarmonyPatch(typeof(MeetingHud), nameof(MeetingHud.Start))]
