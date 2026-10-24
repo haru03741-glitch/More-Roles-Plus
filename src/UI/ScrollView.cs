@@ -73,10 +73,15 @@ internal sealed class ScrollView : Widget
         barSr.sortingOrder = 2;
         bar.AddComponent<BoxCollider2D>().size = new Vector2(BarW * 2f, barH);
         var sb = bar.AddComponent<Scrollbar>();
+        // 本編のボタンの管理役は当てた物すべての OnMouseOver/Out を呼ぶので、空でも作っておく
+        sb.OnMouseOver = new UnityEngine.Events.UnityEvent();
+        sb.OnMouseOut = new UnityEngine.Events.UnityEvent();
         sb.graphic = barSr;
         sb.trackGraphic = trackSr;
 
         var scroller = scrollGo.AddComponent<Scroller>();
+        scroller.OnMouseOver = new UnityEngine.Events.UnityEvent();
+        scroller.OnMouseOut = new UnityEngine.Events.UnityEvent();
         scroller.Inner = innerGo.transform;
         scroller.allowX = false;
         scroller.allowY = true;

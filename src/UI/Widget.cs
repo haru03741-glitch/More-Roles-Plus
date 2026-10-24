@@ -43,15 +43,15 @@ internal abstract class Widget
 }
 
 // 空き
-internal sealed class Space : Widget
+internal sealed class Spacer : Widget
 {
     private readonly Vector2 _size;
-    public Space(float w, float h) { _size = new Vector2(w, h); }
+    public Spacer(float w, float h) { _size = new Vector2(w, h); }
 
     public override GameObject Build(Transform parent, BuildCtx ctx, float maxWidth, out Vector2 size)
     {
         size = _size;
-        return Node("Space", parent, ctx.Layer);
+        return Node("Spacer", parent, ctx.Layer);
     }
 }
 
@@ -66,6 +66,9 @@ internal sealed class Label : Widget
     public TextAlignmentOptions TextAlign = TextAlignmentOptions.Left;
     public bool MenuFont;     // 見出し・役職名のフォント (無い字は本編のフォント)
     public float Outline;
+
+    // 作った字 (作り直さずに字だけ書き換える時に使う)
+    public TextMeshPro Built { get; private set; }
 
     public Label(string content, float fontSize = 1.6f)
     {
@@ -100,6 +103,7 @@ internal sealed class Label : Widget
         float h = t.GetPreferredValues(t.text, w, 0f).y;
         rt.sizeDelta = new Vector2(w, h);
         size = new Vector2(w, h);
+        Built = t;
         return t.gameObject;
     }
 }
@@ -204,10 +208,13 @@ internal class Box : Widget
     public Vector2 MinSize;
     public Vector2 Size;
     public Color Color = Color.white;
+    public Color? Fill;   // 中を塗る色 (null = 本編の箱のまま黒)
 
     public Box(Widget content) { Content = content; }
 
     protected SpriteRenderer Back;
+    public SpriteRenderer BackRenderer => Back;
+    public SpriteRenderer FillRenderer { get; private set; }
 
     public override GameObject Build(Transform parent, BuildCtx ctx, float maxWidth, out Vector2 size)
     {
@@ -238,6 +245,18 @@ internal class Box : Widget
         Back.drawMode = SpriteDrawMode.Sliced;
         Back.size = s;
         Back.color = Color;
+        if (Fill is Color fill)
+        {
+            var f = Node(UiScreen.FillName, bg.transform, ctx.Layer);
+            f.transform.localPosition = new Vector3(0f, 0f, -0.01f);
+            var fr = f.AddComponent<SpriteRenderer>();
+            fr.sprite = UiAssets.Blank;
+            // 白い縁の内側だけを塗る (縁の太さと角の丸みのぶん小さく)
+            var b = fr.sprite ? fr.sprite.bounds.size : Vector3.one;
+            f.transform.localScale = new Vector3(Math.Max(s.x - 0.12f, 0.01f) / Math.Max(b.x, 0.0001f), Math.Max(s.y - 0.12f, 0.01f) / Math.Max(b.y, 0.0001f), 1f);
+            fr.color = fill;
+            FillRenderer = fr;
+        }
         size = s;
         OnBuilt(go, ctx, s);
         return go;
@@ -271,21 +290,56 @@ internal sealed class Button : Box
         pb.OnMouseOver = new UnityEvent();
         pb.OnMouseOut = new UnityEvent();
         if (ctx.ClickMask) pb.ClickMask = ctx.ClickMask;
-        var back = Back;
-        var normal = Color;
         var hover = OnHover;
         var unhover = OnUnhover;
         if (OnClick != null) pb.OnClick.AddListener(UiActions.Take(OnClick, ctx.Slots));
         pb.OnMouseOver.AddListener(UiActions.Take(() =>
         {
-            if (back) back.color = HoverColor;
+            _over = true;
+            if (Back) Back.color = HoverColor;
             hover?.Invoke();
         }, ctx.Slots));
         pb.OnMouseOut.AddListener(UiActions.Take(() =>
         {
-            if (back) back.color = normal;
+            _over = false;
+            if (Back) Back.color = Color;
             unhover?.Invoke();
         }, ctx.Slots));
+    }
+
+    private bool _over;
+
+    // 縁の色を変える (当てている間は当てた色のまま、外れた時にこの色へ)
+    public void SetColor(Color c)
+    {
+        Color = c;
+        if (Back && !_over) Back.color = c;
+    }
+}
+
+// 決まった大きさの置き場。中身は Screen で後から何度でも作り直せる (左上が起点)
+internal sealed class Holder : Widget
+{
+    public Vector2 Size;
+    public Widget Initial;
+    public UiScreen Screen { get; private set; }
+
+    public Holder(Vector2 size, Widget initial = null)
+    {
+        Size = size;
+        Initial = initial;
+    }
+
+    public override GameObject Build(Transform parent, BuildCtx ctx, float maxWidth, out Vector2 size)
+    {
+        var go = Node("Holder", parent, ctx.Layer);
+        var inner = Node("Inner", go.transform, ctx.Layer);
+        inner.transform.localPosition = new Vector3(-Size.x / 2f, Size.y / 2f, -0.01f);
+        Screen = new UiScreen(inner.transform) { Anchor = Align.Start, MaxWidth = Size.x, ClickMask = ctx.ClickMask, BaseOrder = 20 };
+        ctx.Screens.Add(Screen);
+        if (Initial != null) Screen.Set(Initial);
+        size = Size;
+        return go;
     }
 }
 
@@ -318,7 +372,7 @@ internal sealed class UiScreen
         return go;
     }
 
-    internal const string BackName = "Back";
+    internal const string BackName = "Back", FillName = "Fill";
 
     // 描く順の起点。部品は深いほど後に描く
     public int BaseOrder;
@@ -334,8 +388,8 @@ internal sealed class UiScreen
             var c = t.GetChild(i);
             // 入れ子の SortingGroup (スクロール欄) の中の順は、その欄が自分で決める
             if (c.GetComponent<UnityEngine.Rendering.SortingGroup>()) continue;
-            // 箱の地 (Back) は中身と同じ深さだが、中身より先に描く
-            Order(c, c.name == BackName ? order : order + 1);
+            // 箱の地 (Back) は中身と同じ深さだが中身より先に描き、地の塗り (Back の子) はその間に描く
+            Order(c, c.name == BackName ? order : c.name == FillName ? order + 1 : order + 2);
         }
     }
 
@@ -347,6 +401,13 @@ internal sealed class UiScreen
         _inner.Clear();
         UiActions.Release(_slots);
         if (!Root) return;
+        // 指が乗っているボタンを捨てると、本編のボタンの管理役が捨てたボタンへ毎フレーム「外れた」を送って落ち続ける
+        if (PassiveButtonManager.InstanceExists)
+        {
+            var pm = PassiveButtonManager.Instance;
+            var over = pm.currentOver;
+            if (over && over.transform.IsChildOf(Root)) pm.currentOver = null;
+        }
         for (int i = Root.childCount - 1; i >= 0; i--)
         {
             var c = Root.GetChild(i).gameObject;

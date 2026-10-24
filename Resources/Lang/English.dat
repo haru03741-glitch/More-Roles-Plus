@@ -411,7 +411,7 @@ Registry.NeutralsCanHaveIt: Neutrals can have it
 
 # ── RoleMenu ──
 RoleMenu.TabName: Roles
-RoleMenu.Description: Role count and chance. Press a name to open its settings.\nHold ± to keep changing (or use the wheel; right-click toggles 0% / 100%).\nEnabled: {enabledCount} / {count}
+RoleMenu.Description: Hover a role card to see its settings on the right; press it to open them.\nBorder: gray = off, white = by chance, yellow = always. Right-click toggles 0% / 100%.\nEnabled: {enabledCount} / {count}
 RoleMenu.Impostor: Impostor
 RoleMenu.Neutral: Neutral
 RoleMenu.Crewmate: Crewmate
@@ -435,6 +435,13 @@ RoleMenu.AllCountTo: Set all counts to {n}
 RoleMenu.TeamCountTo: Set {team} counts to {n}
 RoleMenu.NotWithHint: Picked roles never appear in the same game as this one (set on both roles)
 RoleMenu.FixedPair: {name} <size=70%>fixed</size>
+RolePage.OpenSettings: Open settings
+RolePage.BackToBulk: Back to bulk edit
+RolePage.BulkAll: Change all roles
+RolePage.BulkTeam: Change all {team}
+RolePage.Enabled: Enabled: {n} / {count}
+RolePage.ChanceTo: Chance to {pct}
+RolePage.CountTo: Count to {n}
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP

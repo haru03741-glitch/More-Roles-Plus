@@ -411,7 +411,7 @@ Registry.NeutralsCanHaveIt: 第三陣営に付く
 
 # ── RoleMenu ──
 RoleMenu.TabName: 役職
-RoleMenu.Description: 役職の人数と出現率。名前を押すと細かい設定が開きます。\n± は長押しで連続 (ホイールも可・右クリックで 0%/100%)。\n出る役職: {enabledCount} / {count}
+RoleMenu.Description: 役職のカードに当てると右に設定の要約、押すと細かい設定が開きます。\n縁の色: 灰 = 出ない・白 = 確率で出る・黄 = 必ず出る。右クリックで 0%/100%。\n出る役職: {enabledCount} / {count}
 RoleMenu.Impostor: インポスター
 RoleMenu.Neutral: 第三陣営
 RoleMenu.Crewmate: クルー
@@ -435,6 +435,13 @@ RoleMenu.AllCountTo: 全部の人数を {n} 人に
 RoleMenu.TeamCountTo: {team}の人数を {n} 人に
 RoleMenu.NotWithHint: 押して選んだ役職はこの役職と同じ試合に出なくなります (相手の役職の側にも付きます)
 RoleMenu.FixedPair: {name} <size=70%>固定</size>
+RolePage.OpenSettings: 細かい設定を開く
+RolePage.BackToBulk: まとめて変える札に戻る
+RolePage.BulkAll: 全部の役職をまとめて変える
+RolePage.BulkTeam: {team}をまとめて変える
+RolePage.Enabled: 出る役職: {n} / {count}
+RolePage.ChanceTo: 出現率を {pct} に
+RolePage.CountTo: 人数を {n} 人に
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP 全般

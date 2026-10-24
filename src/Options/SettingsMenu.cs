@@ -110,6 +110,7 @@ internal static class SettingsMenu
         Rows.Clear();
         RowList.Clear();
         RoleMenu.Forget();
+        RolePage.Forget();
         PresetPage.Forget();
         if (_search != null) SearchBox.Forget(_search);
         _search = null;
@@ -229,6 +230,7 @@ internal static class SettingsMenu
             if (!_searching) return;
             _searching = false;
             RoleMenu.SetQuery("");
+            RolePage.SetSearching(false);
             menu.ChangeTab(_returnTab, false);
             return;
         }
@@ -243,6 +245,7 @@ internal static class SettingsMenu
             menu.GameSettingsButton.SelectButton(false);
             menu.RoleSettingsButton.SelectButton(false);
             ShowPage(roles);
+            RolePage.SetSearching(true);
             if (Pages[roles].Button) Pages[roles].Button.SelectButton(false);
             menu.ToggleLeftSideDarkener(true);
             menu.ToggleRightSideDarkener(false);
@@ -296,6 +299,7 @@ internal static class SettingsMenu
                 try { _search?.Clear(); }
                 finally { _leavingSearch = false; }
                 RoleMenu.SetQuery("");
+                RolePage.SetSearching(false);
             }
             _currentTab = tabNum;
             RefreshAll();
@@ -360,7 +364,11 @@ internal static class SettingsMenu
             try
             {
                 if (Pages[index].Presets) PresetPage.Build(m, GameSettingMenu.Instance);
-                else if (Pages[index].Roles) RoleMenu.Build(m, GameSettingMenu.Instance);
+                else if (Pages[index].Roles)
+                {
+                    RoleMenu.Build(m, GameSettingMenu.Instance);
+                    RolePage.Build(m);
+                }
                 else Build(m, Tab.General);
             }
             catch (Exception e) { Plugin.Logger.LogError($"settings tab build: {e}"); }
@@ -481,6 +489,7 @@ internal static class SettingsMenu
         RowList.Clear();
         PresetPage.Forget();
         RoleMenu.Forget();
+        RolePage.Forget();
         MapVariants.Forget();
         GameTabRows.Forget();
         if (_search != null) SearchBox.Forget(_search);

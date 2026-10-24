@@ -40,7 +40,7 @@ internal static class RoleMenu
     private static readonly Color CardBase = new(0.125f, 0.137f, 0.176f, 1f); // 板の地
     private static readonly Color CardOff = new(0.098f, 0.106f, 0.13f, 1f);   // 出ない役職の板
     private static readonly Team[] Teams = { Team.Crew, Team.Impostor, Team.Neutral };
-    private const int AddonKind = 3;  // Group.Kind と絞り込みの番号: 0〜2 = Team、3 = アドオン
+    internal const int AddonKind = 3;  // Group.Kind と絞り込みの番号: 0〜2 = Team、3 = アドオン
     private static readonly Color AddonColor = new(0.72f, 0.5f, 0.95f);
 
     // 開き直しても残す状態 (検索語だけは開くたびに空から)
@@ -181,9 +181,9 @@ internal static class RoleMenu
         _ => new Color(0.55f, 0.85f, 1f),
     };
 
-    private static Tab KindTab(int k) => k == AddonKind ? Tab.Addon : TabOf((Team)k);
-    private static Text KindName(int k) => k == AddonKind ? new Text("RoleMenu.Addons") : TeamName((Team)k);
-    private static Color KindColor(int k) => k == AddonKind ? AddonColor : TeamColor((Team)k);
+    internal static Tab KindTab(int k) => k == AddonKind ? Tab.Addon : TabOf((Team)k);
+    internal static Text KindName(int k) => k == AddonKind ? new Text("RoleMenu.Addons") : TeamName((Team)k);
+    internal static Color KindColor(int k) => k == AddonKind ? AddonColor : TeamColor((Team)k);
 
     public static void Forget()
     {

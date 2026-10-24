@@ -34,6 +34,11 @@ internal static class UiActions
     {
         foreach (int i in owner)
         {
+            if (Handlers[i] == null)
+            {
+                Plugin.Logger.LogWarning($"ui action: slot {i} released twice");
+                continue;
+            }
             Handlers[i] = null;
             Free.Push(i);
         }
