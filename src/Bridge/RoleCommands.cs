@@ -387,10 +387,8 @@ internal static class RoleCommands
             reply($"OK viewsettings {LobbyView.Open(tab, max)}");
         });
 
-        TestBridge.Register("rolemenu", "[q <語> | team <-1|0|1|2> | only | scroll <0〜1> | hover <役職Id> <0|1|2>|off | open <役職Id> | step <役職Id> <n> <+1|-1> | press <役職Id> <count|chance> <+1|-1>] 設定画面の役職タブを操作して、見えている行を返す", (args, reply) =>
-            reply("OK rolemenu " + RoleMenu.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
-        TestBridge.Register("rolepage", "[team <-1〜3> | only | hover <Id> | open <Id> | scroll <0〜1> | bulk <0|1|2> | rebuild] 設定画面の役職タブ (カードの頁) を操作して、並んでいるカードを返す", (args, reply) =>
+        TestBridge.Register("rolepage", "[q <語> | team <-1〜3> | only | hover <Id> | open <Id> | scroll <0〜1> | bulk <0|1|2> | rebuild] 設定画面の役職タブ (カードの頁) を操作して、並んでいるカードを返す", (args, reply) =>
             reply("OK rolepage " + RolePage.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
         TestBridge.Register("variant", "<札の番号 0=通常 1=左右反転> ゲーム設定のタブのマップのバリエーションの札を押す", (args, reply) =>

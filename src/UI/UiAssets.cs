@@ -19,6 +19,7 @@ internal static class UiAssets
 
     private static Sprite _box, _blank;
     private static TextMeshPro _textProto;
+    private static bool _loaded;
     private static readonly Dictionary<System.IntPtr, Material> Masked = new();
 
     public static Sprite Box => Load() ? _box : null;
@@ -27,7 +28,8 @@ internal static class UiAssets
 
     public static bool Load()
     {
-        if (_box && _blank && _textProto) return true;
+        // 抜き終えた後は Unity の生存確認をしない (部品を作るたびに何度も呼ばれる)
+        if (_loaded) return true;
         // Instance は無い時に読むと空の物を作るので、置かれている物を名前で探す
         var tm = GameObject.Find("TwitchManager");
         var popup = tm && tm.transform.childCount > 0 ? tm.transform.GetChild(0) : null;
@@ -53,7 +55,8 @@ internal static class UiAssets
         }
         if (_box) _box.hideFlags |= HideFlags.DontUnloadUnusedAsset;
         if (_blank) _blank.hideFlags |= HideFlags.DontUnloadUnusedAsset;
-        return _box && _blank && _textProto;
+        _loaded = _box && _blank && _textProto;
+        return _loaded;
     }
 
     // 確かめ用: 抜けた物

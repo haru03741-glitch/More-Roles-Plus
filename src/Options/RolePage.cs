@@ -12,7 +12,8 @@ namespace MoreRolesPlus.Options;
 // 1 枚目 = 上に陣営の札・左に役職のカード (縁の色で出方が分かる: 灰 = 出ない・白 = 確率で出る・黄 = 必ず出る)・
 //          右にカードへ当てた役職の要約 (当てていない時はまとめて変える札)。カードを押すと 2 枚目へ。
 // 2 枚目 = その役職の人数・出現率・細かい設定の行と、一緒に出ない役職の札。
-// 検索の間は検索の結果 (RoleMenu) を出し、この頁は隠す。
+// 検索の間 = 左の検索欄の語に当たる設定 (本編のゲーム設定・MRP 全般・陣営の設定) を見出しごとに行で、
+//          当たる役職をカードと当たった行で並べる。行はその場で値を変えられる。
 internal static class RolePage
 {
     // タブの中の置き場 (タブの GameOptionsMenu の座標で)
@@ -24,6 +25,8 @@ internal static class RolePage
     private static readonly Color Gray = new(0.42f, 0.42f, 0.45f, 1f);
     private static readonly Color Gold = new(1f, 0.82f, 0.2f, 1f);
     private static readonly Color SubText = new(0.78f, 0.8f, 0.86f, 1f);
+    private static readonly Color Highlight = new(1f, 0.88f, 0.4f, 1f);
+    private static readonly Color GameColor = new(0.5f, 0.85f, 0.75f);
     private static readonly bool Touch = OperatingSystem.IsAndroid();
 
     // 開き直しても残す
@@ -32,8 +35,8 @@ internal static class RolePage
     private static int _bulkChance = 50, _bulkCount = 1;
 
     private static GameObject _root;
+    private static bool _built;  // 毎フレームの確かめを Unity の生存確認より先に済ませるため
     private static UiScreen _screen;
-    private static GameObject _menuRoot;   // 検索の結果 (RoleMenu) を出す時に戻す、タブの元の子
     private static Registry.Section _open;   // 2 枚目に開いている物 (null = 1 枚目)
     private static Registry.Section _hover;  // 右に要約を出している物
     private static Registry.Section _picked; // スマホで 1 回押した物 (もう 1 回で開く)
@@ -41,28 +44,34 @@ internal static class RolePage
     private static ScrollView _list;
     private static List<(Assignable role, int chance, int count)> _undo;
     private static readonly List<(Registry.Section sec, Button card, Label values, Label name)> Cards = new();
-    private static readonly OptEditor Editor = new(() => Rebuild(), _ => { });
-    private static bool _searching;
-
-    public static bool Active => _root;
+    private static readonly OptEditor Editor = new(() => Rebuild(), _ => RefreshCards());
+    private static string[] _tokens = Array.Empty<string>();
+    private static readonly int[] Hits = new int[3];  // 検索の件数: 0 = ゲーム設定・1 = MRP 全般・2 = 役職
 
     public static void Build(GameOptionsMenu m)
     {
         Forget();
         if (!m || !UiAssets.Box) return;
+        Roles.Builtin.VanillaRoles.EnsureSettings();
+        // タブの元の中身 (本編の行の一覧・スクロール) は使わない。コントローラーで閉じるボタンだけ残す
+        for (int i = 0; i < m.transform.childCount; i++)
+        {
+            var c = m.transform.GetChild(i);
+            if (c.name != "CloseButton") c.gameObject.SetActive(false);
+        }
         _root = Widget.Node("MrpRolePage", m.transform, m.gameObject.layer);
         _root.transform.localPosition = Center;
         // 頁ごと本編の設定画面の上に描く (中のスクロール欄は自分の切り抜きを持つ)
         var group = _root.AddComponent<UnityEngine.Rendering.SortingGroup>();
         group.sortingOrder = 5;
         _screen = new UiScreen(_root.transform) { MaxWidth = W, BaseOrder = 1 };
+        _built = true;
         _open = null;
         _hover = null;
         _picked = null;
         _undo = null;
         Prepare();
         Rebuild();
-        SetSearching(false);
     }
 
     public static void Forget()
@@ -70,28 +79,22 @@ internal static class RolePage
         _screen?.Clear();
         _screen = null;
         _root = null;
+        _built = false;
         _side = null;
         _list = null;
         Cards.Clear();
         Editor.Clear();
-        _searching = false;
+        _tokens = Array.Empty<string>();
     }
 
-    // 検索の間は RoleMenu の行を出し、この頁を隠す (検索を始める前と終わった後に呼ぶ)
-    public static void SetSearching(bool on)
+    // 検索欄の語が変わった (空 = 検索をやめた)。タブがまだ作られていなければ、作る時に使う
+    public static void SetQuery(string q)
     {
-        _searching = on;
-        if (!_root) return;
-        var t = _root.transform.parent;
-        for (int i = 0; i < t.childCount; i++)
-        {
-            var c = t.GetChild(i);
-            if (c == _root.transform) continue;
-            // コントローラーで閉じるボタンは画面の外にあり、どちらでも要る
-            if (c.name == "CloseButton") continue;
-            if (c.gameObject.activeSelf != on) c.gameObject.SetActive(on);
-        }
-        _root.SetActive(!on);
+        var tokens = RoleSearch.Tokens(q);
+        bool was = _tokens.Length > 0;
+        _tokens = tokens;
+        if (tokens.Length > 0 != was) { _open = null; _hover = null; }
+        Rebuild();
     }
 
     private static void Prepare()
@@ -112,7 +115,7 @@ internal static class RolePage
         Editor.Clear();
         _side = null;
         _list = null;
-        _screen.Set(_open != null ? DetailPage(_open) : ListPage());
+        _screen.Set(_open != null ? DetailPage(_open) : _tokens.Length > 0 ? SearchPage() : ListPage());
     }
 
     private static Widget ListPage()
@@ -193,23 +196,23 @@ internal static class RolePage
         return RoleDoc.Has(a) ? new Text(a.Id + ".Summary").ToString() : a.Description.ToString();
     }
 
-    private static Widget Card(Registry.Section sec)
+    private static Widget Card(Registry.Section sec, float width = CardW)
     {
         var a = sec.Role;
         bool on = a == null || Enabled(a);
         var title = TitleColor(sec);
         var name = new Label(sec.Title, 1.9f) { MenuFont = true, Color = on ? title : Color.Lerp(title, Gray, 0.55f) };
-        var desc = new Label(ShortText(sec), 1.15f) { Width = CardW - 1.0f, Color = on ? SubText : Gray };
+        var desc = new Label(ShortText(sec), 1.15f) { Width = width - 1.0f, Color = on ? SubText : Gray };
         var values = new Label(CardValues(a), 1.35f) { Width = 0.6f, TextAlign = TextAlignmentOptions.Right, Bold = true, Color = on ? Color.white : Gray };
-        var text = new Stack(false, name) { Gap = 0.01f, Width = CardW - 0.95f };
+        var text = new Stack(false, name) { Gap = 0.01f, Width = width - 0.95f };
         if (desc.Content.Length > 0) text.Add(desc);
         name.Align = Align.Start;
         desc.Align = Align.Start;
         var body = new Stack(true, text, values) { Gap = 0.1f };
         var card = new Button(body, () => OnCard(sec))
         {
-            Size = new Vector2(CardW, 0f),
-            MinSize = new Vector2(CardW, 0.55f),
+            Size = new Vector2(width, 0f),
+            MinSize = new Vector2(width, 0.55f),
             Padding = new Vector2(0.14f, 0.07f),
             Color = CardColor(sec),
             OnHover = () => { if (!Touch) ShowSide(sec); },
@@ -376,9 +379,11 @@ internal static class RolePage
         ShowSide(null);
     }
 
-    // カードの値と縁の色だけを今の値に (作り直さない)
+    // カードの値と縁の色だけを今の値に (作り直さない)。左の説明の欄の「出る役職」の数も
     private static void RefreshCards()
     {
+        var menu = GameSettingMenu.Instance;
+        if (_tokens.Length == 0 && menu && menu.MenuDescriptionText) menu.MenuDescriptionText.text = RoleMenu.DefaultDescription;
         foreach (var (sec, card, values, name) in Cards)
         {
             var a = sec.Role;
@@ -495,12 +500,128 @@ internal static class RolePage
         return n > 1 ? new Text("RoleSetOpt.More").With("name", first).With("n", n - 1) : first;
     }
 
+    // ---- 検索 ----
+
+    private static Text Join(Text a, Text b) => new Text("RoleMenu.Breadcrumb").With("a", a).With("b", b);
+
+    // 役職でない設定のまとまり (見出し・色・件数の数え先・項目)
+    private static IEnumerable<(Text title, Color color, int area, IEnumerable<Opt> opts)> PlainGroups()
+    {
+        VanillaGame.Rebuild();
+        foreach (var sec in VanillaGame.All)
+        {
+            // インポスター数 (= 最多人数) の前に最少人数
+            var opts = new List<Opt>();
+            foreach (var opt in sec.Opts)
+            {
+                if (opt.IsImpostorCount) opts.Add(ImpostorRange.Min);
+                opts.Add(opt);
+            }
+            yield return (Join(VanillaGame.TabName, sec.Title), GameColor, 0, opts);
+        }
+        yield return (Join(VanillaGame.TabName, MapVariants.Title), GameColor, 0, new Opt[] { MapSettings.Mirror });
+        foreach (var g in GameTabRows.All()) yield return (Join(VanillaGame.TabName, g.Title), GameColor, 0, g.Opts);
+        foreach (var sec in Registry.SectionsOf(Tab.General))
+            yield return (Join(SettingsMenu.TabName(false), sec.Title), SettingsMenu.TabColor(false), 1, OnTab(sec.Opts));
+        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+            foreach (var sec in Registry.SectionsOf(RoleMenu.KindTab(k)))
+                if (sec.Role == null) yield return (Join(RoleMenu.KindName(k), sec.Title), RoleMenu.KindColor(k), 2, OnTab(sec.Opts));
+    }
+
+    private static IEnumerable<Opt> OnTab(IEnumerable<Opt> opts)
+    {
+        foreach (var o in opts) if (!o.OffTab) yield return o;
+    }
+
+    // 語が全部入っているか
+    private static bool Matches(string hay)
+    {
+        foreach (var t in _tokens)
+            if (!hay.Contains(t, StringComparison.Ordinal)) return false;
+        return true;
+    }
+
+    private static Widget SearchPage()
+    {
+        Array.Clear(Hits, 0, Hits.Length);
+        var col = new Stack(false) { Gap = 0.08f, Width = W - 0.3f };
+        var all = new List<Opt>();
+        foreach (var (title, color, area, opts) in PlainGroups())
+        {
+            string context = RoleSearch.Haystack(title);
+            Stack rows = null;
+            foreach (var opt in opts)
+            {
+                string hay = RoleSearch.Haystack(opt.Label);
+                if (!opt.Shown || !Matches(hay + "\n" + context)) continue;
+                if (rows == null)
+                {
+                    rows = new Stack(false) { Gap = 0.06f, Width = W - 0.3f, Align = Align.Start };
+                    rows.Add(new Label(title, 1.7f) { Color = color, Bold = true, MenuFont = true, Width = W - 0.4f, Align = Align.Start });
+                }
+                all.Add(opt);
+                var r = Editor.Row(opt, true, 0.25f, RoleSearch.AnyIn(_tokens, hay) ? Highlight : Color.white);
+                r.Align = Align.Start;
+                rows.Add(r);
+                Hits[area]++;
+            }
+            if (rows != null) col.Add(rows);
+        }
+        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+        {
+            foreach (var sec in Registry.SectionsOf(RoleMenu.KindTab(k)))
+            {
+                var a = sec.Role;
+                if (a == null) continue;
+                var hay = new System.Text.StringBuilder(RoleSearch.Haystack(a.Name)).Append('\n').Append(RoleSearch.Normalize(a.Reading));
+                foreach (var opt in SectionOpts(sec)) hay.Append('\n').Append(RoleSearch.Haystack(opt.Label));
+                if (!Matches(hay.ToString())) continue;
+                Hits[2]++;
+                var card = Card(sec, W - 0.3f);
+                card.Align = Align.Start;
+                col.Add(card);
+                foreach (var opt in SectionOpts(sec))
+                {
+                    if (!opt.Shown || !RoleSearch.AnyIn(_tokens, RoleSearch.Haystack(opt.Label))) continue;
+                    all.Add(opt);
+                    var r = Editor.Row(opt, true, 0.4f, Highlight);
+                    r.Align = Align.Start;
+                    col.Add(r);
+                }
+            }
+        }
+        if (Hits[0] + Hits[1] + Hits[2] == 0)
+            col.Add(new Label(new Text("RoleMenu.NothingMatchesShort"), 1.6f) { Color = SubText, Width = W - 0.4f, TextAlign = TextAlignmentOptions.Center });
+        Editor.Watch(all);
+        Editor.Refresh();
+        _list = new ScrollView(new Vector2(W, H), col);
+        return _list;
+    }
+
+    // 検索の件数 (左の説明の欄に出す)
+    public static Text SearchSummary(string q)
+    {
+        int total = Hits[0] + Hits[1] + Hits[2];
+        if (total == 0) return new Text("RoleMenu.NothingMatches").With("q", q);
+        var sb = new System.Text.StringBuilder(new Text("RoleMenu.SearchCount").With("q", q).With("total", total));
+        Text[] names = { VanillaGame.TabName, SettingsMenu.TabName(false), RoleMenu.TabName };
+        string sep = "\n";
+        for (int i = 0; i < 3; i++)
+        {
+            if (Hits[i] == 0) continue;
+            sb.Append(sep).Append(new Text("RoleMenu.SearchTabCount").With("tab", names[i]).With("n", Hits[i]));
+            sep = Tr.Get("RoleMenu.SearchSeparator");
+        }
+        sb.Append('\n').Append(Tr.Get("RoleMenu.SearchClearHint"));
+        return Text.Raw(sb.ToString());
+    }
+
     // ---- 毎フレーム (設定画面が開いている間だけ) ----
 
     // カードに当てている間の右クリック = 出現率を 0% と 100% で切り替える
     public static void Tick()
     {
-        if (Touch || !_root || _searching || _open != null || _hover?.Role == null) return;
+        if (Touch || !_built || _tokens.Length > 0 || _open != null || _hover?.Role == null || !_root) return;
         if (!Input.GetMouseButtonDown(1)) return;
         var c = _hover.Role.Chance;
         c.SetIndex(c.Index > 0 ? 0 : c.Count - 1);
@@ -513,9 +634,13 @@ internal static class RolePage
 
     internal static string Command(string[] a)
     {
+        // 検索は役職のタブが未だ作られていなくても打てる (打つと役職のタブが開いて作られる)
+        if (a.Length > 0 && a[0] == "q" && !SettingsMenu.TypeSearch(a.Length > 1 ? string.Join(" ", a, 1, a.Length - 1) : "")) return "no search box";
         if (!_root) return "role page not built";
         switch (a.Length > 0 ? a[0] : "dump")
         {
+            case "q":
+                return $"hits={Hits[0]}/{Hits[1]}/{Hits[2]} tokens={_tokens.Length} slots={UiActions.Census()}";
             case "team":
                 _team = a.Length > 1 && int.TryParse(a[1], out int t) ? t : -1;
                 _hover = null;

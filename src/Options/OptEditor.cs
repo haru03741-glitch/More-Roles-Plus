@@ -48,10 +48,10 @@ internal sealed class OptEditor
         GameTabRows.OnEdited(opt);
     }
 
-    public Widget Row(Opt opt, bool editable, float indent = 0f)
+    public Widget Row(Opt opt, bool editable, float indent = 0f, Color? nameColor = null)
     {
         opt.Sync();
-        var name = new Label(opt.Label, FontSize) { Width = NameW - indent, Bold = true };
+        var name = new Label(opt.Label, FontSize) { Width = NameW - indent, Bold = true, Color = nameColor ?? Color.white };
         var colon = new Label(":", FontSize) { Width = 0.2f, TextAlign = TextAlignmentOptions.Center };
         var row = new Stack(true) { Gap = 0.08f, Align = Align.Start };
         if (indent > 0f) row.Add(new Spacer(indent, 0.1f));

@@ -412,6 +412,7 @@ Registry.NeutralsCanHaveIt: Neutrals can have it
 # ── RoleMenu ──
 RoleMenu.TabName: Roles
 RoleMenu.Description: Hover a role card to see its settings on the right; press it to open them.\nBorder: gray = off, white = by chance, yellow = always. Right-click toggles 0% / 100%.\nEnabled: {enabledCount} / {count}
+RoleMenu.DescriptionTouch: Tap a role card to see its settings on the right; tap it again to open them.\nBorder: gray = off, white = by chance, yellow = always.\nEnabled: {enabledCount} / {count}
 RoleMenu.Impostor: Impostor
 RoleMenu.Neutral: Neutral
 RoleMenu.Crewmate: Crewmate

@@ -98,9 +98,10 @@ internal sealed class Label : Widget
         t.enableWordWrapping = true;
         t.richText = true;
         if (MenuFont) Options.MenuFont.Apply(t, 0, Outline);
-        t.text = Content ?? "";
-        float w = Width > 0f ? Width : Math.Min(t.GetPreferredValues(t.text).x + 0.02f, maxWidth);
-        float h = t.GetPreferredValues(t.text, w, 0f).y;
+        string text = Content ?? "";
+        t.text = text;
+        float w = Width > 0f ? Width : Math.Min(t.GetPreferredValues(text).x + 0.02f, maxWidth);
+        float h = t.GetPreferredValues(text, w, 0f).y;
         rt.sizeDelta = new Vector2(w, h);
         size = new Vector2(w, h);
         Built = t;

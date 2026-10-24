@@ -109,7 +109,6 @@ internal static class SettingsMenu
         MenuToPage.Clear();
         Rows.Clear();
         RowList.Clear();
-        RoleMenu.Forget();
         RolePage.Forget();
         PresetPage.Forget();
         if (_search != null) SearchBox.Forget(_search);
@@ -229,8 +228,7 @@ internal static class SettingsMenu
         {
             if (!_searching) return;
             _searching = false;
-            RoleMenu.SetQuery("");
-            RolePage.SetSearching(false);
+            RolePage.SetQuery("");
             menu.ChangeTab(_returnTab, false);
             return;
         }
@@ -245,18 +243,17 @@ internal static class SettingsMenu
             menu.GameSettingsButton.SelectButton(false);
             menu.RoleSettingsButton.SelectButton(false);
             ShowPage(roles);
-            RolePage.SetSearching(true);
             if (Pages[roles].Button) Pages[roles].Button.SelectButton(false);
             menu.ToggleLeftSideDarkener(true);
             menu.ToggleRightSideDarkener(false);
             RefreshAll(); // 他のタブで変えた値を結果の行へ
         }
-        RoleMenu.SetQuery(q);
+        RolePage.SetQuery(q);
         var desc = menu.MenuDescriptionText;
         if (!desc) return;
         var tr = desc.GetComponent<TextTranslatorTMP>();
         if (tr) Object.Destroy(tr);
-        desc.text = RoleMenu.SearchSummary(RoleSearch.ForDisplay(q.Trim(), desc.font));
+        desc.text = RolePage.SearchSummary(RoleSearch.ForDisplay(q.Trim(), desc.font));
     }
 
     // 本編のゲーム設定のタブの行を設定から読み直す (検索の結果の行で値を変えた後)
@@ -298,8 +295,7 @@ internal static class SettingsMenu
                 _leavingSearch = true;
                 try { _search?.Clear(); }
                 finally { _leavingSearch = false; }
-                RoleMenu.SetQuery("");
-                RolePage.SetSearching(false);
+                RolePage.SetQuery("");
             }
             _currentTab = tabNum;
             RefreshAll();
@@ -364,11 +360,7 @@ internal static class SettingsMenu
             try
             {
                 if (Pages[index].Presets) PresetPage.Build(m, GameSettingMenu.Instance);
-                else if (Pages[index].Roles)
-                {
-                    RoleMenu.Build(m, GameSettingMenu.Instance);
-                    RolePage.Build(m);
-                }
+                else if (Pages[index].Roles) RolePage.Build(m);
                 else Build(m, Tab.General);
             }
             catch (Exception e) { Plugin.Logger.LogError($"settings tab build: {e}"); }
@@ -488,7 +480,6 @@ internal static class SettingsMenu
         Rows.Clear();
         RowList.Clear();
         PresetPage.Forget();
-        RoleMenu.Forget();
         RolePage.Forget();
         MapVariants.Forget();
         GameTabRows.Forget();
