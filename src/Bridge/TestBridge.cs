@@ -70,6 +70,7 @@ public static partial class TestBridge
             Dev.PosTrace.Register();
             LobbyCommands.Register();
             RoleCommands.Register();
+            UiCommands.Register();
             Roles.RewindCinematic.Register();
             Rules.RulesProbe.Register();
             Terrain.TerrainProbe.Register();

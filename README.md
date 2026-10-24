@@ -21,7 +21,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 
 ## クレジット
 
-- [Nebula on the Ship](https://github.com/Dolly1016/Nebula-Public) (Dolly1016、GPL-3.0): incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方、mod の通信を 1 つの番号にまとめて名前で振り分ける仕組み、試合の出来事を寿命付きで受け取る仕組み、ダミープレイヤーを出す手順、自分で作った色を人ごとの色の表で全員に見せる考え方、会議中の地図に自分だけのメモ (人の印と線) を書く機能、本編の地図の上に層を作って押し・なぞりを受ける仕組み (構築士の設計図)、スクリーンショットのキー
+- [Nebula on the Ship](https://github.com/Dolly1016/Nebula-Public) (Dolly1016、GPL-3.0): incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方、mod の通信を 1 つの番号にまとめて名前で振り分ける仕組み、試合の出来事を寿命付きで受け取る仕組み、ダミープレイヤーを出す手順、自分で作った色を人ごとの色の表で全員に見せる考え方、会議中の地図に自分だけのメモ (人の印と線) を書く機能、本編の地図の上に層を作って押し・なぞりを受ける仕組み (構築士の設計図)、スクリーンショットのキー、本編の絵で組む自前の画面の部品 (窓・スクロールする欄・ボタン)
 - [ExtremeRoles](https://github.com/yukieiji/ExtremeRoles) (yukieiji、GPL-3.0): ダミープレイヤーを出す手順、設定の項目の名前が変わっても前の値を引き継ぐ仕組み
 - [Super New Roles](https://github.com/ykundesu/SuperNewRoles) (ykundesu、GPL-3.0): 試合の出来事を配る仕組み (配っている最中の受け手の追加・削除の扱い)、公式サーバーに全員導入の mod として部屋を登録する方法、機器 (アドミン・カメラ・バイタル) を使えなくする方法、前の試合で外れた人ほど役職やインポスターに当たりやすくする配り方、Airship 以外のマップでも Airship の湧き場所選びの画面を出す方法、部屋を立てたらコードをコピーする機能、役職ごとに一緒に出ない役職を選ぶ設定
 - [Reactor](https://github.com/NuclearPowered/Reactor) (NuclearPowered、LGPL-3.0): 公式サーバーかどうかの判定 (接続先のアドレスで見る)
