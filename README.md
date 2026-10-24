@@ -42,6 +42,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 - [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) (All-Of-Us-Mods、GPL-3.0): Android の起動アプリの土台 (`Android/Launcher/`)。同梱しているライブラリは [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) に載せています
 - [AndroidUtilities / AuthFix](https://github.com/All-Of-Us-Mods/AndroidUtilities) (All-Of-Us-Mods、Starlight 用): Android 版で itch.io のキーを使って EOS にログインする方法、広告の初期化を止める方法
 - [Mochiy Pop One](https://github.com/fontdasu/Mochiypop) (The MochiyPop Project Authors、SIL Open Font License 1.1): 設定画面の文字のフォント。使う字だけに削って同梱しています (ライセンス文は [Resources/Fonts/OFL.txt](Resources/Fonts/OFL.txt))
+- [OtoLogic](https://otologic.jp/) (CC BY 4.0): 時戻しの演出で鳴る時計の秒針の音。「Clock-Second_Hand04」から 1 打ずつ切り出し、少し低くして低音と響きを重ねています (切り出した音は [tools/sounds/clock_tick_otologic.wav](tools/sounds/clock_tick_otologic.wav))
 - [Freesound](https://freesound.org/) の録音 (CC0): 時戻しの演出で鳴る音。JakobGille・Jeln Pueskas (教会と塔の時計の機械)、Clagnar・weyhingj (歯車・ラチェット)、Crinkem・NachtmahrTV・slag777・PrrLl・bendavisdrumguy (金属のきしみ・唸り・弓で擦ったシンバル)、camel7695・JensZygar・ZoshP (タムタム・ゴング・鐘)、Breviceps (機械の足音)、daalvinz (合唱)、olver (ハープ)、Justjooning (羽ばたき) の録音を切り出して重ねています
 - [TownOfHost-hamo](https://github.com/rar006/TownOfHost-hamo) (rar006、GPL-3.0): 共同制作者の haru の mod
 

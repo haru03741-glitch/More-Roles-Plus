@@ -1039,39 +1039,576 @@ def emote_rustle():
     return smooth_end(rub + crinkle * env, 0.2)
 
 
+# ── 時戻しの部品 (映画の予告編の型: 巨大な機構・低い大鐘・金管の唸り・低い弦と男声・長い暗い響き) ──
+# 高い澄んだ鐘・明るい和音・きらめき・電子のはぜは使わない (小さく可愛く聞こえる)。和音は空五度と短調、音域は低く
 
-def rewind_world():
-    # 時が戻る (約 2.1s・全員に同じ音・位置なし): 逆再生のシンバルと上がるうなりで吸い込む (0〜0.55s) →
-    # テープを巻き戻す鳴き (上げ下げ 2 回・細かく震える) と速まっていく時計の刻み (0.12〜1.25s) →
-    # 巻き取りが止まる低い一撃と澄んだ鐘 (1.28s) が尾を引いて消える
-    stop = 1.28
-    n, t = T(2.1)
+def thick_bass(t, f, drive=2.5):
+    # 歪ませた低音: 正弦だけだとスマホでは聞こえないので、倍音 (150〜500Hz) まで出して「重さ」を聞かせる。f は標本ごと
+    ph = 2 * np.pi * np.cumsum(np.broadcast_to(f, t.shape)) / SR
+    x = np.tanh(drive * (np.sin(ph) + 0.45 * np.sin(2 * ph + 0.7) + 0.2 * np.sin(3 * ph + 1.9)))
+    return lp(x, 650, order=3)
+
+
+def duck(n, hits, depth=0.6, attack=0.004, release=0.12):
+    # 打つたびに下の層を一瞬沈める (打音の頭を立たせ、層どうしが脈打つ)。hits = (時刻, 強さ 0..1) の並び
+    g = np.ones(n)
+    m = int((attack + release * 5) * SR)
+    tm = np.arange(m) / SR
+    dip = depth * np.minimum(1, tm / attack) * np.exp(-np.maximum(0, tm - attack) / release)
+    for at, d in hits:
+        i = int(at * SR)
+        if i >= n:
+            continue
+        k = min(m, n - i)
+        g[i:i + k] = np.minimum(g[i:i + k], 1 - dip[:k] * d)
+    return g
+
+
+def hall(x, rt, tone=2500, mix=0.5, pre=0.025):
+    # 大きな石の広間の響き: 低い所ほど長く残り、高い所は早く消える (明るい響きは小部屋に聞こえる)。尾が減り切るまで伸ばす
+    x = np.concatenate([x, np.zeros(int(rt * SR))])
+    n, t = T(rt * 1.3)
+    low = lp(noise(n), 600) * np.exp(-t * 6.9 / rt)
+    mid = bp(noise(n), 600, tone) * np.exp(-t * 6.9 / (rt * 0.55))
+    ir = low + 0.6 * mid
+    ir[:int(pre * SR)] = 0
+    wet = fftconvolve(x, ir)[:len(x)]
+    wet *= np.max(np.abs(x)) / (np.max(np.abs(wet)) + 1e-9)
+    return x + mix * wet
+
+
+def big_bell(f, dur=4.0, decay=1.0, strike=1.0):
+    # 塔の大鐘 (f = 基音)。倍音は本物の鐘の比 (ハム 0.5・短三度 1.19・五度 1.5・…) で、わずかにずれた 2 本で唸らせる。
+    # 叩いた瞬間は鋼の打撃と低い胴鳴り
+    n, t = T(dur)
+    x = np.zeros(n)
+    for r, tau, g in ((0.5, 3.0, 0.9), (1.0, 2.0, 1.0), (1.19, 1.6, 0.75), (1.5, 1.1, 0.45), (2.0, 1.2, 0.6),
+                      (2.5, 0.6, 0.3), (2.66, 0.55, 0.28), (3.01, 0.45, 0.22), (4.0, 0.3, 0.14), (5.33, 0.18, 0.08)):
+        for d in (-0.0012, 0.0012):
+            x += g * np.sin(2 * np.pi * f * r * (1 + d) * t + rng.uniform(0, 6.28)) * np.exp(-t / (tau * decay))
+    hitn = bp(noise(n), f * 2, f * 12) * np.exp(-t / 0.006) + 0.8 * lp(noise(n), f * 1.5) * np.exp(-t / 0.03)
+    return np.tanh(0.5 * x + strike * 1.5 * hitn)
+
+
+CLOCK_TICKS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sounds', 'clock_tick_otologic.wav')
+_clock = []
+
+
+def clock_tick(weight=1.0, pitch=1.0):
+    # 時計の秒針の 1 打 (録音した本物の音 4 種から選ぶ・CC BY 4.0 OtoLogic) を少し低く読み、
+    # 箱の胴鳴りを weight の分だけ下に足す (時計の音のまま、大きな機構の重さを出す)。
+    # 音程が落ちる低い正弦は刻むたびに小さな「ドッ」になるので入れない
+    if not _clock:
+        with wave.open(CLOCK_TICKS) as w:
+            raw = np.frombuffer(w.readframes(w.getnframes()), np.int16) / 32768
+        k = len(raw) // 4
+        _clock.extend(raw[i * k:(i + 1) * k] for i in range(4))
+    src = _clock[int(rng.integers(0, 4))]
+    v = 0.92 * pitch * rng.uniform(0.98, 1.02)
+    pos = np.arange(0, len(src) - 1, v)
+    i0 = pos.astype(int)
+    fr = pos - i0
+    tick = src[i0] * (1 - fr) + src[i0 + 1] * fr
+    n, t = T(0.3)
+    x = np.zeros(n)
+    x[:len(tick)] += tick
+    case = bp(noise(n), 260, 900) * np.exp(-t / 0.018)
+    x += weight * 0.3 * case
+    return np.tanh(1.2 * x)
+
+
+def groan(dur, r0, r1, modes, jitter=0.3):
+    # 巨大な金属がきしんで唸る (擦れて引っかかる連打を鋼の低い鳴りに通す)。連打の速さ r0 → r1 回/秒が唸りの高さになる
+    kn, kt = T(0.6)
+    kernel = sum(g * np.sin(2 * np.pi * f * kt) * np.exp(-kt / tau) for f, tau, g in modes)
+    return stick_slip(dur, r0, r1, kernel, jitter, 0.6)
+
+
+def braam2(f, dur, attack=0.02, decay=1.2, open_tau=0.3):
+    # 予告編の金管の唸り: 根音・五度・オクターブを 3 本ずつずらしたのこぎり波。頭で音色が開いてから閉じ (ぶわぁ…)、強く歪ませる
+    n, t = T(dur)
+    x = np.zeros(n)
+    for mult, g in ((1.0, 1.0), (1.5, 0.6), (2.0, 0.55), (0.5, 0.5)):
+        for d in (-0.006, 0.0, 0.006):
+            x += g * sawtooth(2 * np.pi * f * mult * (1 + d) * t + rng.uniform(0, 6.28))
+    bright = lp(x, 2600, order=3)
+    dark = lp(x, 520, order=3)
+    o = np.exp(-t / open_tau)
+    y = np.tanh(2.2 * (o * bright + (1 - o) * dark) / 4)
+    env = np.minimum(1, t / attack) * np.exp(-np.maximum(0, t - attack) / decay)
+    return y * env
+
+
+def strings(dur, notes, attack, release=0.05, trem=0.35):
+    # 低い弦の刻み (トレモロ): 1 音を 5 本の少しずれたのこぎり波で、本ごとにばらばらの速さで揺らす
+    n, t = T(dur)
+    x = np.zeros(n)
+    for f in notes:
+        for d in np.linspace(-0.004, 0.004, 5):
+            vib = 1 + 0.003 * np.sin(2 * np.pi * rng.uniform(4.8, 5.8) * t + rng.uniform(0, 6.28))
+            am = 1 - trem * (0.5 + 0.5 * np.sin(2 * np.pi * rng.uniform(11, 15) * t + rng.uniform(0, 6.28)))
+            x += am * sawtooth(2 * np.pi * np.cumsum(f * (1 + d) * vib) / SR + rng.uniform(0, 6.28))
+    x = lp(x, 1800, order=3) + 0.3 * bp(x, 2000, 4000)
+    env = (np.minimum(1, t / attack) ** 2) * np.minimum(1, (dur - t) / release).clip(0, 1)
+    return x / (5 * len(notes)) * env
+
+
+def male_choir(dur, notes, attack, release=0.1):
+    # 低い男声の「おー」: 400 / 800Hz の山で削ったのこぎり波 (明るい「あ」の山は使わない)
+    n, t = T(dur)
+    x = np.zeros(n)
+    for f in notes:
+        for d in (-0.005, 0.0, 0.005):
+            vib = 1 + 0.004 * np.sin(2 * np.pi * rng.uniform(4.5, 5.5) * t + rng.uniform(0, 6.28))
+            x += sawtooth(2 * np.pi * np.cumsum(f * (1 + d) * vib) / SR + rng.uniform(0, 6.28))
+    v = bp(x, 330, 480) + 0.55 * bp(x, 700, 900) + 0.12 * bp(x, 2400, 2800) + 0.4 * lp(x, 300)
+    env = np.minimum(1, t / attack) * np.minimum(1, (dur - t) / release).clip(0, 1)
+    return v / (3 * len(notes)) * env
+
+
+def crash(dur=2.5):
+    # シンバルの大きな一撃: 粗い金属の雑音 (高い所ほど早く消える)
+    n, t = T(dur)
+    x = bp(noise(n), 3000, 11000) * np.exp(-t / (dur * 0.25)) + bp(noise(n), 900, 3000) * np.exp(-t / (dur * 0.12))
+    return x + 1.5 * bp(noise(n), 500, 4000) * np.exp(-t / 0.01)
+
+
+def pre_echo(x, rt=0.5, tone=4000):
+    # 一撃の響きだけを逆に鳴らす (一撃へ向かって吸い込まれる)。返り値の終わりを一撃の頭に合わせて置く
+    ir_n, t = T(rt)
+    ir = lp(noise(ir_n), tone) * np.exp(-t * 6.9 / rt)
+    wet = fftconvolve(x[:int(0.3 * SR)], ir)[:ir_n]
+    return wet[::-1] / (np.max(np.abs(wet)) + 1e-9)
+
+
+def feather_slide(dur, size=1.0):
+    # 羽根の束が擦れながら開く 1 回分: 羽根どうしの細かい摩擦の粒 (2〜9kHz・動きの速さで密度が増減) +
+    # 羽根の塊が滑る中域の雑音 (不規則に引っかかる) + 羽軸と関節のきしみ
+    # 動きは素早く開いて (全体の 2 割で最大)、ゆっくり収まる
+    n, t = T(dur)
+    u = t / dur
+    motion = np.where(u < 0.2, (u / 0.2) ** 1.5, ((1 - u) / 0.8) ** 1.3)
+    fr = grains(n, 900 * size, 1800, 7000, dur=0.004, tau=0.0009, t0=0.0, t1=dur,
+                shape=lambda v: (v / 0.2) ** 1.5 if v < 0.2 else ((1 - v) / 0.8) ** 1.3)
+    catch = (lp(noise(n), 35) * 9 + 0.3).clip(0, None) ** 1.4
+    mass = bp(noise(n), 280, 1500) * catch * motion
+    soft = bp(noise(n), 1200, 4000) * catch ** 0.7 * motion
+    quill = groan(dur, 70, 140, ((480.0, 0.012, 1.0), (830.0, 0.01, 0.6), (1370.0, 0.006, 0.35)), 0.4)
+    return 0.6 * fr + 1.0 * mass + 0.45 * soft + 0.25 * size * quill / (np.max(np.abs(quill)) + 1e-9)
+
+
+def wing_spread(dur, size=1.0, events=4):
+    # 翼が広がる: 根元から先へ羽根の束が順に開き (間が詰まりながら強まる)、開き切りで帆が張るように空気を押し出す
+    # 開き切った後も羽根が数回ばらばらと収まる (1 つの雑音の塊に聞こえないよう、束ごとの頭を立てて間を空ける)
+    n, t = T(dur + 1.2)
     out = np.zeros(n)
-    k, tk = T(0.55)
-    swell = hp(noise(k), 2500) * np.exp((tk - 0.55) / 0.12)
-    place(out, smooth_end(swell, 0.01), 0.0, 0.55)
-    place(out, 0.45 * riser(0.55, 300, 5000, 2.4), 0.0)
-    ph = 2 * np.pi * np.cumsum(55 + 85 * (tk / 0.55) ** 2) / SR
-    place(out, np.sin(ph) * (tk / 0.55) ** 1.5, 0.0, 0.45)
-    m, tm = T(1.1)
-    f = (900 + 2500 * (0.5 - 0.5 * np.cos(2 * np.pi * tm / 0.55))) * (1 + 0.035 * np.sin(2 * np.pi * 14 * tm))
-    tph = 2 * np.pi * np.cumsum(f) / SR
-    tape = (np.sin(tph) + 0.35 * np.sin(2 * tph) + 0.15 * np.sin(3 * tph)) * np.sin(np.pi * tm / 1.1) ** 0.7
-    tape += 0.25 * bp(noise(m), 1500, 6000) * np.sin(np.pi * tm / 1.1) ** 1.5
-    place(out, smooth_end(tape, 0.05), 0.15, 0.16)
-    at, gap, i = 0.12, 0.13, 0
-    while at < stop - 0.03:
-        c, tc = T(0.05)
-        tick = bp(noise(c), 2500, 9000) * np.exp(-tc / 0.0025) + 0.5 * np.sin(2 * np.pi * (3100 + 300 * (i % 2)) * tc) * np.exp(-tc / 0.012)
-        place(out, tick, at, 0.35 + 0.35 * min(1.0, at / stop))
-        at += gap
-        gap = max(0.026, gap * 0.86)
-        i += 1
-    place(out, smooth_end(sub_hit(0.8, 120, 40, tau=0.06, decay=0.25)), stop, 0.6)
-    place(out, clank(620, 0.25, 0.05), stop, 0.25)
-    bell = modal([(1318.5, 0.55, 1.0), (1975.5, 0.4, 0.55), (2637 * 1.004, 0.28, 0.35), (3951, 0.15, 0.2)], 0.8, strike=0.002)
-    place(out, smooth_end(bell, 0.2), stop + 0.005, 0.3)
+    for k in range(events):
+        u = k / max(1, events - 1)
+        at = dur * 0.8 * u ** 0.8 * rng.uniform(0.9, 1.0)
+        d = max(0.07, dur * rng.uniform(0.35, 0.5))
+        place(out, feather_slide(d, size), at, (0.5 + 0.5 * u) * rng.uniform(0.85, 1.0))
+    end = dur
+    at, gn = end + 0.1, 0.35
+    for _ in range(3):
+        place(out, feather_slide(rng.uniform(0.08, 0.14), size * 0.6), at, gn)
+        at += rng.uniform(0.09, 0.16)
+        gn *= 0.6
+    # 開き切り: 張った羽根がばさっと鳴る (強い立ち上がりの中域) + 押し出された空気の低い「ぶわっ」+ 通り過ぎる風
+    m, tm = T(0.6)
+    taut = bp(noise(m), 120, 1400) * np.exp(-tm / 0.05) * np.minimum(1, tm / 0.004)
+    place(out, taut, end - 0.01, 0.9 * size)
+    place(out, grains(m, 2500, 2500, 9000, dur=0.003, tau=0.0007, t0=0.0, t1=0.12, shape=lambda v: (1 - v) ** 2),
+          end - 0.01, 0.5 * size)
+    m, tm = T(0.9)
+    air = lp(noise(m), 160, order=3) * (tm / 0.06).clip(0, 1) * np.exp(-tm / 0.22)
+    place(out, 3.0 * air, end - 0.04, size)
+    place(out, whoosh(0.5, 140, 1100, 0.25), end - 0.12, 0.7 * size)
     return out
+
+
+def whoosh(dur, lo, hi, peak=0.5):
+    # 物が横切る風: 帯域が上がって下がる雑音。peak = 最も強い所 (長さに対する割合)
+    n, t = T(dur)
+    u = t / dur
+    env = np.where(u < peak, (u / peak) ** 2, ((1 - u) / (1 - peak)) ** 1.5)
+    x = noise(n)
+    f = lo + (hi - lo) * env
+    out = np.zeros(n)
+    for i in range(6):
+        fc = lo * (hi / lo) ** (i / 5)
+        out += bp(x, fc * 0.7, fc * 1.4) * np.exp(-0.5 * ((f - fc) / (fc * 0.5)) ** 2)
+    return out * env
+
+
+def cloth_off(lo):
+    # 着せ替えが引き剥がされて飛ぶ: 布の裂け + 風 + 小さな一押し
+    n, t = T(0.3)
+    x = tear(0.18, lo, lo * 4, 60)
+    x = np.concatenate([x, np.zeros(n - len(x))])
+    x += whoosh(0.3, lo * 0.5, lo * 3, 0.2)
+    return x + 0.6 * lp(noise(n), 250) * np.exp(-t / 0.03) + 0.8 * bp(noise(n), lo, lo * 6) * np.exp(-t / 0.004)
+
+
+def freeze(dur=0.6):
+    # 時が凍る (青く反転してひびが走るコマ): 一気に走るひびの破裂 + 氷のように細かく鳴り続けるきしみ + ガラスの短い鳴り
+    n, t = T(dur)
+    x = np.zeros(n)
+    place(x, crack(0.12, 1800, 9000), 0.0, 1.0)
+    x += 0.5 * grains(n, 380, 2500, 9000, dur=0.004, tau=0.001, t0=0.0, t1=dur * 0.7, shape=lambda u: (1 - u) ** 2)
+    x += 0.35 * modal(((2730.0, 0.05, 1.0), (3910.0, 0.04, 0.7), (5480.0, 0.03, 0.5)), dur, 0.002)
+    return x
+
+
+def burst(dur=0.7, warm=1.0):
+    # 光が放射状に広がる: 鋭く開いた明るい風が外へ抜けながら暗くなり (高い所ほど早く消える)、外へ飛ぶ光の筋が横切る。
+    # 押し出された空気の低い所は 40ms かけて立ち上げる (叩いた音にしない)。warm を上げると中域が厚く柔らかくなる
+    n, t = T(dur)
+    att = np.minimum(1, t / 0.006)
+    x = hp(noise(n), 4000) * np.exp(-t / 0.05) + bp(noise(n), 1000, 4000) * np.exp(-t / 0.12)
+    x += warm * bp(noise(n), 300, 1200) * np.exp(-t / 0.25)
+    x *= att
+    for _ in range(5):
+        place(x, whoosh(rng.uniform(0.12, 0.25), 1500, 7000, 0.25), rng.uniform(0.0, 0.12), rng.uniform(0.2, 0.4))
+    x += 3.0 * lp(noise(n), 200, order=3) * np.minimum(1, t / 0.04) * np.exp(-t / 0.25)
+    return smooth_end(x, 0.3)
+
+
+def shards(dur, rate=40):
+    # ガラスの破片が散る: 1 つずつ高さの違う短い鳴りがまばらに続いて減る
+    n, _ = T(dur)
+    out = np.zeros(n)
+    at = 0.0
+    while at < dur * 0.8:
+        f = rng.uniform(1500, 4500)
+        place(out, modal(((f, 0.025, 1.0), (f * 1.53, 0.015, 0.5)), 0.08, 0.001), at,
+              (1 - at / dur) ** 1.5 * rng.uniform(0.4, 1.0))
+        at += rng.exponential(1.0 / rate)
+    return out
+
+
+# ── 時戻しの音 ─────────────────────────────────────────
+# 発動者の演出を 1 つの調と 1 つの動機でつなぐ。持続音 (擦ったガラスの和音と息の多い高い声) は場面が
+# 変わっても鳴り続け、時計の刻みは全編で同じ 1 打 (順向きに刻む → 凍って止まる → 逆に読んで戻る)。
+# 和音は解決しない響き: 'A' = リディア (A E G# D#・明るい神秘)・'B' = 短調に長七度 (A C E G#・暗い神秘)。
+# 動機は 4 音で、入りでは順向きに 3 音目まで鳴って時が凍り、巻き戻しで逆順に上り、最後の根音は REWIND の一撃で鳴る
+REWIND_KEYS = {
+    'A': dict(chord=(110.0, 164.81, 207.65, 311.13), high=(440.0, 659.26, 830.61, 1244.51),
+              motif=(329.63, 311.13, 246.94, 220.0)),
+    'B': dict(chord=(110.0, 130.81, 164.81, 207.65), high=(440.0, 523.25, 659.26, 830.61),
+              motif=(329.63, 261.63, 207.65, 220.0)),
+}
+REWIND_KEY = 'A'
+def glass_pad(dur, notes, shimmer=0.2):
+    # 擦ったガラスの持続音: ほぼ正弦の基音を少しずれた 2 本でゆっくり唸らせ、弱い倍音と擦る息を足す。
+    # 1 オクターブと 5 度上の薄い写しが上に浮く (金管や低い男声の重さとは別の、浮いた響き)
+    n, t = T(dur)
+    x = np.zeros(n)
+    for f in notes:
+        beat = rng.uniform(0.25, 0.7)
+        amp = 0.75 + 0.25 * np.sin(2 * np.pi * rng.uniform(0.15, 0.4) * t + rng.uniform(0, 6.28))
+        for d, g in ((-beat / 2, 1.0), (beat / 2, 0.8)):
+            ph = rng.uniform(0, 6.28)
+            fd = f + d
+            x += amp * g * (np.sin(2 * np.pi * fd * t + ph) + 0.15 * np.sin(4 * np.pi * fd * t + ph))
+            x += amp * g * shimmer * np.sin(2 * np.pi * 3 * fd * 1.0007 * t + rng.uniform(0, 6.28))
+        x += 0.05 * amp * bp(noise(n), f * 0.92, f * 1.1)
+    return x / len(notes)
+
+
+def air_choir(dur, notes, attack, release=0.1):
+    # 息の多い高い声の「うー」: 細いのこぎり波の上を削って柔らかくし、同じ高さの息を混ぜる。
+    # 明るい「あ」の山は使わない (かわいく聞こえる)
+    n, t = T(dur)
+    x = np.zeros(n)
+    for f in notes:
+        for d in (-0.004, 0.0, 0.004):
+            vib = 1 + 0.005 * np.sin(2 * np.pi * rng.uniform(4.5, 5.5) * t + rng.uniform(0, 6.28)) * np.minimum(1, t / 0.5)
+            x += sawtooth(2 * np.pi * np.cumsum(f * (1 + d) * vib) / SR + rng.uniform(0, 6.28))
+        x += 2.5 * bp(noise(n), f * 0.97, f * 1.03)
+    v = lp(x, 1300, order=3) + 0.06 * bp(x, 2500, 3200)
+    env = np.minimum(1, t / attack) * np.minimum(1, (dur - t) / release).clip(0, 1)
+    return v / (3 * len(notes)) * env
+
+
+def crystal(f, dur=2.5, decay=1.0):
+    # 水晶の鈴: 倍音が整数比でない (1 : 2.76 : 5.40 : 8.93) ので高さが浮いて聞こえる。わずかにずれた 2 本で唸る
+    n, t = T(dur)
+    x = np.zeros(n)
+    for r, tau, g in ((1.0, 1.6, 1.0), (2.76, 0.7, 0.45), (5.40, 0.35, 0.25), (8.93, 0.18, 0.12)):
+        for d in (-0.0008, 0.0008):
+            x += g * np.sin(2 * np.pi * f * r * (1 + d) * t + rng.uniform(0, 6.28)) * np.exp(-t / (tau * decay))
+    return x + 0.3 * bp(noise(n), f * 2, min(f * 10, 14000)) * np.exp(-t / 0.003)
+
+
+def reverse_bell(notes, dur=1.0, decay=0.6):
+    # 鈴の響きの逆再生: ふくらんで、打った瞬間でぷつりと止まる (時が逆に流れる印)。返り値の終わりを合図に合わせて置く
+    x = sum(crystal(f, dur, decay) for f in notes)
+    x = hall(x, 1.4, 6000, 0.6)[:int(dur * SR)][::-1].copy()
+    k = int(0.004 * SR)
+    x[-k:] *= np.linspace(1, 0, k)
+    return x
+
+
+def tick_back(weight=0.8, pitch=1.0):
+    # 逆に読んだ時計の 1 打 (胴鳴りが先にふくらみ、かちで終わる)。返り値の終わりを合図に合わせて置く
+    x = clock_tick(weight, pitch)[:int(0.12 * SR)][::-1].copy()
+    k = int(0.002 * SR)
+    x[-k:] *= np.linspace(1, 0, k)
+    return x
+
+
+def grain_freeze(x, at, dur, win=0.12, grain=0.09):
+    # 時が止まる: at の直前 win 秒のかけらを窓を掛けた粒で読み直し続け、鳴っていた音をその形のまま止めて鳴らし続ける
+    src = x[max(0, int((at - win) * SR)):int(at * SR)]
+    n, g = int(dur * SR), int(grain * SR)
+    w = np.hanning(g)
+    y = np.zeros(n + g)
+    for i in range(0, n, g // 4):
+        s = int(rng.integers(0, len(src) - g))
+        y[i:i + g] += src[s:s + g] * w
+    return y[:n] / 2.0
+
+
+def scrub_by(x, v):
+    # x を後ろから逆向きに読む。v = 標本ごとの読む速さ (速いほど高く鳴く)
+    pos = len(x) - 1 - np.cumsum(v)
+    assert pos[-1] > 0, '元の音が足りない (頭を越えると継ぎ目で鳴る)'
+    i0 = pos.astype(int)
+    fr = pos - i0
+    return x[i0] * (1 - fr) + x[np.minimum(i0 + 1, len(x) - 1)] * fr
+
+
+def hit_stack(key, weight=1.0, root=55.0, dur=4.0):
+    # 決めの一撃を総奏で: 金管・低い男声・弦が調の和音で同時に鳴り出し、その上に息の多い高い声とガラスの和音が浮き、
+    # 大鐘と動機の最後の根音の鈴とシンバルが光る。太鼓・衝撃・音程が落ちる低音 (短く鈍い「ドッ」) は入れない。
+    # 重さは直前の無音との差と、鳴り続ける胴で出す
+    n, t = T(dur)
+    x = 1.0 * braam2(root, dur, 0.006, 0.9 * weight, 0.25)[:n]
+    x += 0.4 * braam2(root * 2, dur, 0.006, 0.7 * weight, 0.2)[:n]
+    x += 1.3 * male_choir(dur, list(key['chord']), 0.012, 0.05)[:n] * np.exp(-t / (1.1 * weight))
+    x += 1.0 * strings(dur, [root, root * 2, key['chord'][1], key['chord'][2]], 0.008, 0.05, 0.5)[:n] * np.exp(-t / (0.9 * weight))
+    x += 0.5 * thick_bass(t, root, 2.2) * np.minimum(1, t / 0.018) * np.exp(-t / (0.8 * weight))
+    # 驚きを起こす広い帯域の立ち上がり (2ms で開いて 0.15 秒で抜ける空気)
+    x += 0.5 * bp(noise(n), 300, 9000) * np.minimum(1, t / 0.002) * np.exp(-t / 0.15)
+    x += 1.6 * air_choir(dur, list(key['high']), 0.01, 0.05)[:n] * np.exp(-t / (1.8 * weight))
+    x += 0.7 * glass_pad(dur, list(key['high']), 0.3) * np.minimum(1, t / 0.01) * np.exp(-t / (2.2 * weight))
+    place(x, big_bell(root * 2, dur, decay=weight, strike=0.4), 0.0, 0.45)
+    place(x, crystal(key['motif'][3] * 2, dur, 1.2), 0.0, 0.5)
+    place(x, crash(dur), 0.0, 0.25)
+    return smooth_end(x, 0.4)
+
+
+# 時戻しの発動者だけに出す全画面の演出 (30fps・137 コマ) の音。合図はコマ番号で持つ (絵を描き直したらここを揃える)
+ULT_FPS = 30
+ULT_FRAMES = 137
+# 通しの絵のコマごとの明るさ (0..1) と動き (前のコマとの差)。音の量をこれで動かす (光ると響きがきらめき、動くと風が鳴る)
+ULT_LUM = (
+    .20, .20, .19, .18, .17, .16, .16, .19, .43, .56, .74, 1.0, 1.0, 1.0, .43, .45, .46, .48, .47, .47,
+    .47, .46, .45, .45, .45, .45, .37, .38, .41, .43, .44, .44, .49, .49, .80, .97, .69, .58, .57, .51,
+    .43, .42, .45, .47, .48, .50, .50, .51, .52, .51, .50, .49, .49, .50, .52, .50, .51, .50, .47, .50,
+    .54, .54, .51, .42, .45, .47, .48, .48, .49, .50, .51, .54, .54, .56, .59, .58, .59, .80, .69, .65,
+    .67, .68, .70, .70, .68, .68, .66, .66, .64, .62, .62, .60, .59, 1.0, .67, .37, .46, .57, .97, .79,
+    .71, .66, .71, .66, .65, .64, .64, .63, .63, .62, .81, .74, .72, .44, .76, .74, 1.0, 1.0, 1.0, 1.0,
+    .45, .42, .39, .40, .37, .36, .32, .32, .27, .24, .20, .20, .20, .20, 1.0, 1.0, 1.0)
+ULT_MOT = (
+    .00, .00, .02, .05, .07, .08, .06, .04, .24, .13, .19, .26, .00, .00, .57, .07, .08, .08, .08, .07,
+    .07, .07, .06, .06, .05, .05, .23, .04, .07, .07, .07, .05, .13, .15, .41, .20, .28, .15, .10, .11,
+    .11, .19, .05, .06, .07, .08, .08, .08, .08, .08, .08, .08, .08, .08, .09, .09, .07, .09, .12, .11,
+    .12, .10, .14, .24, .04, .06, .07, .07, .07, .08, .07, .09, .08, .09, .16, .12, .10, .23, .13, .09,
+    .08, .08, .08, .08, .07, .07, .07, .07, .08, .07, .07, .07, .07, .41, .32, .30, .14, .16, .40, .18,
+    .13, .13, .12, .11, .08, .08, .08, .08, .08, .08, .31, .12, .09, .50, .50, .11, .26, .00, .00, .00,
+    .55, .05, .04, .05, .03, .04, .05, .03, .05, .07, .07, .06, .06, .05, .80, .00, .00)
+
+
+def ult_at(frame):
+    return (frame - 1) / ULT_FPS
+
+
+def ult_curve(values, n, smooth=0.06):
+    # コマごとの値を標本ごとに引き伸ばし、コマの継ぎ目で段差が鳴らないよう smooth 秒でならす
+    x = np.interp(np.arange(n) / SR * ULT_FPS, np.arange(len(values)), values)
+    k = int(smooth * SR)
+    return np.convolve(x, np.ones(k) / k, mode='same')
+
+
+def clock_hand(f0=42, f1=63, step=30.0):
+    # 時計の逆回転のカットの分針 (絵と同じ式: 1 コマの角度 = 8 + 70t² 度) が step 度回るごとの時刻
+    times, ang, mark = [], 0.0, step
+    for f in range(f0, f1 + 1):
+        u = (f - f0) / (f1 - f0)
+        sp = 8 + 70 * u * u
+        while ang + sp >= mark:
+            times.append(ult_at(f) + (mark - ang) / sp / ULT_FPS)
+            mark += step
+        ang += sp
+    return times
+
+
+def rewind_ult():
+    # 入り (自分へ寄って時計が刻み、動機が順に 3 音 → 光へ吸い込まれて白) → 金の世界でガラスの和音と高い声が鳴り続ける →
+    # 指を振り下ろすと世界が凍る (鳴っていた和音がその形のまま止まって鳴り続け、刻みは途中で止まる) → 時計の逆回転
+    # (凍った和音を針の速さで逆に読み、刻みは針が 30 度回るごとに逆の 1 打・3 倍で回る小針が 1 周するごとに動機を逆順に上る) →
+    # 変身 (着せ替えが 1 つ剥がれるごとに声が 1 つ増える・光の量で響きがきらめく・光の輪で鈴・翼が小さく開く) →
+    # 翼の全開 → 動機の逆順と逆の刻みが速まって無音 → REWIND の総奏の一撃で動機の最後の根音が鳴る →
+    # 着せ替えが逆再生で戻る → 最後の光が消える (131) と音も消える (その後の白と試合の巻き戻しには音を付けない)。
+    # 太鼓のような短く鈍い一撃と指を鳴らす音は使わない。山場は REWIND の 1 回だけで、直前の無音との差で大きく聞かせる
+    K = REWIND_KEYS[REWIND_KEY]
+    F = ult_at
+    snap, c0, c1 = F(35), F(42), F(64)
+    n, t = T(F(ULT_FRAMES) + 0.6)
+    lum = ult_curve(ULT_LUM, n)
+    mot = ult_curve(ULT_MOT, n)
+    glow = ((lum - 0.15) / 0.35).clip(0, 1) ** 1.2      # 和音の量
+    sparkle = ((lum - 0.55) / 0.45).clip(0, 1) ** 2     # 白くなるほど上に浮く高い和音
+    bed = np.zeros(n)
+    ticks = np.zeros(n)
+    out = np.zeros(n)
+    tick_hits = []
+
+    # 持続の和音 (全編で同じ物を 1 本・凍る所から逆回転の終わりまでだけ止めて、凍った音と逆読みに代わる)。
+    # 和音は 1 オクターブ上で鳴らし、低い所は REWIND の一撃まで空けておく (一撃で初めて低音が戻る)
+    pad = glass_pad(n / SR, [f * 2 for f in K['chord']])[:n]
+    shim = glass_pad(n / SR, K['high'], 0.4)[:n]
+    bed += pad * (0.05 + 0.3 * glow) + 0.35 * shim * sparkle
+    # 金の世界で高い声が入る (15)。変身では着せ替えが 1 つ剥がれるごとに声が 1 つ増える (70・73・75)
+    for fr, notes, gain in ((15, K['high'][:2], 0.4), (64, K['high'][:1], 0.35), (70, K['high'][1:2], 0.35),
+                            (73, K['high'][2:3], 0.35), (75, K['high'][3:4], 0.3)):
+        place(bed, air_choir(F(ULT_FRAMES) - F(fr), list(notes), 0.25, 0.2), F(fr), gain)
+
+    # 入り・金の世界: 0.2 秒ごとの時計の刻み。動機を 1 打おきに順に鳴らし、3 音目で止まる (4 音目は凍って鳴らない)
+    at, k = 0.0, 0
+    while at < snap - 0.05:
+        place(ticks, clock_tick(0.6 if at < F(12) else 0.9), at, 0.6 if at < F(12) else 0.8)
+        tick_hits.append((at, 0.5))
+        if k % 2 == 0 and k // 2 < 3:
+            place(out, crystal(K['motif'][k // 2], 2.0, 0.9), at, 0.3)
+        at += 0.2
+        k += 1
+    # 光が満ちて白 (8〜12): 和音の鈴の響きが逆にふくらんで白の瞬間で止まり、光の風
+    rb = reverse_bell(K['high'][1:], F(12), 0.2)
+    place(out, rb, 0.0, 0.35)
+    place(out, burst(0.5, 0.6), F(8), 0.15)
+    # 手を振り上げる袖の風
+    place(out, whoosh(F(34) - F(27), 300, 2200, 0.8), F(27), 0.3)
+
+    # 世界が凍る (35 で青く反転してひびが走る → 36 白 → 37〜40 光が放射状): 凍る前の世界を響きごと仕上げて凍った瞬間に
+    # 止め、止まる直前の響きを粒で読み直し続けて、鳴っていた音をその形のまま鳴らし続ける (刻みと鈴の響きも途中で止まる)。
+    # ひびと光は高い所だけで小さく鳴る。止まった音は 42 からの逆回転の元になる
+    a, k = int(snap * SR), int(0.004 * SR)
+    pre_bed = bed.copy()
+    pre_bed[a:] = 0
+    pre = out + pre_bed * duck(n, tick_hits, 0.5, 0.003, 0.07) + 1.5 * hall(ticks, 1.2, 2500, 0.35)[:n]
+    pre = hall(pre, 2.2, 3500, 0.45)[:n]
+    frozen = grain_freeze(pre, snap, 8.0)
+    pre[a - k:a] *= np.linspace(1, 0, k)
+    pre[a:] = 0
+    out[:] = 0
+    ticks[:] = 0
+    tick_hits = []
+    frz = np.zeros(n)
+    m = int((c0 - snap) * SR)
+    place(frz, frozen[:m] * np.linspace(0.9, 0.6, m), snap, 0.55)
+    place(frz, freeze(0.6), snap, 0.3)
+    place(frz, hp(burst(0.7, 0.3), 1200), F(36), 0.2)
+    m2, tm = T(F(44) - F(36))
+    ring = np.sin(2 * np.pi * 6200 * tm) + 0.5 * np.sin(2 * np.pi * 6230 * tm)
+    place(frz, ring * np.minimum(1, tm / 0.05) * (1 - tm / tm[-1]) ** 2, F(36), 0.012)
+
+    # 時計の逆回転 (42〜63): 凍った和音を針の速さで逆に読む (読む速さは針の 1 コマの角度に合わせて 1 → 4.5 倍)・
+    # 刻みは針が 30 度回るごとに逆の 1 打 (終わりは 1 秒に 78 打で唸りになる)・小針が 1 周するごとに動機を逆順に上る
+    m, tm = T(c1 - c0)
+    u = (tm / (F(63) - c0)).clip(0, 1)
+    sc = scrub_by(frozen, 1.0 + 3.5 * u * u)
+    place(frz, smooth_end(hp(sc, 150), 0.04) * (0.35 + 0.65 * u), c0, 0.7)
+    for at in clock_hand():
+        u = (at - c0) / (F(63) - c0)
+        tb = tick_back(0.6 + 0.4 * u, 1.0 + 0.06 * u)
+        place(ticks, tb, at - len(tb) / SR, 0.75 - 0.35 * u)
+        tick_hits.append((at, 0.4))
+    notes = list(K['motif'][::-1]) + [K['motif'][3] * 2]
+    for k, at in enumerate(clock_hand(step=120.0)):
+        rb = reverse_bell([notes[k % len(notes)]], 0.5, 0.5)
+        place(out, rb, at - len(rb) / SR, 0.4)
+    # 稲妻と砕け: 空気が裂ける細い破裂 → ガラスの砕け → 中心へ吸い込む風 (渦の動きの量で強める)
+    for k, fr in enumerate((55, 57)):
+        place(out, crack(0.12, 1500, 9000), F(fr), 0.3 + 0.1 * k)
+    place(out, crack(0.35, 2000, 9000), F(59), 0.45)
+    place(out, shards(0.6), F(59), 0.35)
+    r = riser(c1 - F(57), 200, 6000, 3.0)
+    a = int(F(57) * SR)
+    place(out, r * (0.3 + 3 * mot[a:a + len(r)]), F(57), 0.35)
+
+    # 変身 (64〜93): 渦の中心から抜けると同じ和音が戻っている (上の bed)。着せ替えが剥がれて飛ぶ
+    for fr, gn, lo in ((70, 0.3, 700), (73, 0.3, 900), (75, 0.45, 400)):
+        place(out, cloth_off(lo), F(fr), gn)
+    place(out, burst(0.9, 1.6), F(78), 0.3)
+    # 光の輪が灯る (鈴) と翼が小さく開く
+    place(out, crystal(K['high'][3] / 2, 2.5, 1.0), F(84), 0.25)
+    place(out, wing_spread(F(88) - F(84), 0.55, 3), F(84), 0.4)
+
+    # カット 4 (94〜99): 白の閃きへ和音の鈴の逆再生が吸い込まれて止まる → 渦の風 (動きの量) → 99 の白で翼の全開
+    rb = reverse_bell(K['high'][:3], 0.6, 0.6)
+    place(out, rb, F(94) - len(rb) / SR, 0.2)
+    w = whoosh(F(99) - F(95), 200, 2500, 0.95)
+    a = int(F(95) * SR)
+    place(out, w * (0.5 + 2 * mot[a:a + len(w)]), F(95), 0.3)
+    place(out, wing_spread(F(99) - F(94), 1.0, 5), F(94), 0.4)
+    place(bed, air_choir(F(111) - F(99), list(K['high'][:2]) + [K['high'][0] * 2], 0.4, 0.05), F(99), 0.3)
+
+    # REWIND へ (100〜107): 和音が満ち、逆さのシンバルがふくらみ、動機の逆順が逆の刻みと一緒に速まって上る。
+    # ふくらみは一撃の 4 コマ前 (gap) でぷつりと切れ、無音を挟んでから一撃 (直前の無音があると一撃がずっと大きく聞こえる)
+    rw = F(111)
+    gap = rw - 4 / ULT_FPS
+    m, tm = T(gap - F(100))
+    place(out, crash(m / SR)[::-1] * (tm / tm[-1]) ** 2, F(100), 0.3)
+    place(bed, glass_pad(m / SR, K['high'], 0.5) * (tm / tm[-1]) ** 1.5, F(100), 0.25)
+    for before, f in zip((0.45, 0.28, 0.16, 0.07), K['motif'][::-1]):
+        rb = reverse_bell([f], 0.4, 0.4)
+        place(out, rb, gap - before - len(rb) / SR, 0.35)
+        tb = tick_back(0.9, 1.0)
+        place(ticks, tb, gap - before - len(tb) / SR, 0.6)
+        tick_hits.append((gap - before, 0.6))
+
+    # REWIND の決め: 一撃そのものの響きを逆に鳴らして無音の頭まで吸い込み → 無音 → 総奏の一撃で動機の根音が鳴る。
+    # 114 は 35 と同じ青く反転するコマなので同じ凍るひびで追い打つ
+    hit = hit_stack(K, 1.2, 55.0, 1.8)
+    pe = pre_echo(hit, 0.6)
+    place(out, pe, gap - len(pe) / SR, 0.55)
+    place(out, hit, rw, 1.5)
+    place(out, freeze(0.5), F(114), 0.5)
+
+    # 出 (121〜): 着せ替えが逆再生で戻る (逆さの風が着く所で終わり、逆の刻みで留まる)
+    for fr, lo in ((124, 700), (126, 900), (128, 450)):
+        w = cloth_off(lo)[::-1]
+        place(out, w, F(fr) - len(w) / SR, 0.3)
+        tb = tick_back(0.4, 1.2)
+        place(ticks, tb, F(fr) - len(tb) / SR, 0.45)
+
+    # 和音は凍る前の分を上で仕上げたので、ここからは逆回転の終わり (64) で戻る所から鳴らす。縁は 30ms でつなぐ。
+    # REWIND の一撃の後は一撃の響きを前に出し、和音と声は 3 割まで下げて残す
+    e = np.zeros(n)
+    b, k = int(c1 * SR), int(0.03 * SR)
+    e[b:] = 1
+    e[b:b + k] = np.linspace(0, 1, k)
+    e[int(rw * SR):] = 0.3
+    bed *= e
+    # 刻みは時計とはっきり分かる大きさで前に出し、刻むたびに下の和音を沈める
+    out = out + bed * duck(n, tick_hits, 0.5, 0.003, 0.07) + 1.5 * hall(ticks, 1.2, 2500, 0.35)[:n]
+    out = pre + hall(out, 2.2, 3500, 0.45)[:n] + hall(frz, 1.5, 6000, 0.3)[:n]
+    # REWIND の一撃の直前 4 コマは本当の無音 (響きの尾も残さない)。縁は 12ms の余弦で切る (ぷつ音を出さない)
+    e = np.ones(n)
+    a, b = int(gap * SR), int(rw * SR)
+    k = int(0.012 * SR)
+    e[a:a + k] = 0.5 + 0.5 * np.cos(np.linspace(0, np.pi, k))
+    e[a + k:b] = 0
+    out *= e
+    # 最後の光が薄れる 126 から消え切る 131 までで音も消す
+    e = np.ones(n)
+    a, b = int(F(126) * SR), int(F(131) * SR)
+    e[a:b] = 0.5 + 0.5 * np.cos(np.linspace(0, np.pi, b - a))
+    e[b:] = 0
+    return out * e
+
 
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
@@ -1108,7 +1645,6 @@ if __name__ == '__main__':
     emit('noise_portal_open', portal_open, peak=0.8, drive=1.6, ratio=0.3, trim=True)
     emit('noise_portal_pass', portal_pass, peak=0.85, drive=1.8, ratio=0.35, trim=True)
     emit('noise_portal_close', portal_close, peak=0.8, drive=1.6, ratio=0.3, trim=True)
-    emit('noise_rewind_world', rewind_world, peak=0.85, drive=1.6, ratio=0.3, trim=True)
     # 身ぶりの音は打った瞬間の形を残すため圧縮をごく弱く
     for i, (res, spread) in enumerate([(1250, 0.0022), (1650, 0.0016), (1050, 0.0028)], 1):
         emit(f'noise_emote_clap_{i}', lambda r=res, sp=spread: emote_clap(r, sp), peak=0.9, drive=1.2, ratio=0.1, trim=True)
