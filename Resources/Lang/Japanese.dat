@@ -411,8 +411,8 @@ Registry.NeutralsCanHaveIt: 第三陣営に付く
 
 # ── RoleMenu ──
 RoleMenu.TabName: 役職
-RoleMenu.Description: 役職のカードに当てると右に設定の要約、押すと細かい設定が開きます。\n縁の色: 灰 = 出ない・白 = 確率で出る・黄 = 必ず出る。右クリックで 0%/100%。\n出る役職: {enabledCount} / {count}
-RoleMenu.DescriptionTouch: 役職のカードを押すと右に設定の要約、もう一度押すと細かい設定が開きます。\n縁の色: 灰 = 出ない・白 = 確率で出る・黄 = 必ず出る。\n出る役職: {enabledCount} / {count}
+RoleMenu.Description: 役職のカードに当てると右に設定の要約が出て、押すと細かい設定が開きます。\n縁の色: 灰 = 出ない・白 = 確率で出る・黄 = 必ず出る。右クリックで出現率を 0% と 100% に切り替えます。\n出る役職: {enabledCount} / {count}
+RoleMenu.DescriptionTouch: 役職のカードを押すと右に設定の要約が出て、もう一度押すと細かい設定が開きます。\n縁の色: 灰 = 出ない・白 = 確率で出る・黄 = 必ず出る。\n出る役職: {enabledCount} / {count}
 RoleMenu.Impostor: インポスター
 RoleMenu.Neutral: 第三陣営
 RoleMenu.Crewmate: クルー
@@ -452,6 +452,13 @@ RoleDictionary.Settings: 今の設定
 RoleDictionary.SettingsEditable: 設定 (ロビーではホストがここで変えられます)
 RoleDictionary.ShowInDictionary: 説明を見る
 RoleDictionary.SearchHint: 役職を探す
+RoleDictionary.TabRoles: 役職
+RoleDictionary.TabOdds: 配役の見込み
+RoleDictionary.Players: {n} 人
+RoleDictionary.OddsHead: 今の設定で {runs} 回配った結果です (インポスター {impostors} 人・第三陣営 {min}〜{max} 人・役職の付く人は平均 {roles} 人)。
+RoleDictionary.Example: 1 回の例
+RoleDictionary.OddsRoles: 役職が出る割合
+RoleDictionary.Avg: 平均 {n} 人
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP 全般

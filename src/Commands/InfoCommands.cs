@@ -91,7 +91,7 @@ internal static class InfoCommands
         return null;
     }
 
-    private static string TeamName(Team t) => t switch
+    internal static string TeamName(Team t) => t switch
     {
         Team.Crew => new Text("InfoCommands.Crew"),
         Team.Impostor => new Text("InfoCommands.Impostor"),
@@ -102,15 +102,15 @@ internal static class InfoCommands
     // 本番と同じ配り方を手元で回すだけ (乱数は毎回変わる)。数千回を 1 フレームで回すのでロビーでだけ
     private const int SimBudget = 150000; // 人数 × 回数の上限 (15 人 10000 回で 1 フレーム約 75ms)
 
-    public static string Sim(string args)
+    // 今の設定で players 人の配役を runs 回試す (人数と回数は上限で切る)。ロビーで通常のモードの時だけ。できない時は null と理由
+    internal static AssignPlan.SimResult RunSim(ref int players, ref int runs, out int shownMin, out int shownMax, out Text error)
     {
-        if (ShipStatus.Instance) return new Text("InfoCommands.SimLobbyOnly");
-        if (!GameModeSwitch.IsNormal) return new Text("InfoCommands.SimNormalOnly");
+        shownMin = shownMax = 0;
+        error = default;
+        if (ShipStatus.Instance) { error = new Text("InfoCommands.SimLobbyOnly"); return null; }
+        if (!GameModeSwitch.IsNormal) { error = new Text("InfoCommands.SimNormalOnly"); return null; }
         var opts = GameOptionsManager.Instance?.CurrentGameOptions;
-        if (opts == null) return new Text("InfoCommands.SimLobbyOnly");
-        var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        int players = a.Length > 0 && int.TryParse(a[0], out int p) ? p : TeamSizes.PlayerCount();
-        int runs = a.Length > 1 && int.TryParse(a[1], out int r) ? r : 1000;
+        if (opts == null) { error = new Text("InfoCommands.SimLobbyOnly"); return null; }
         players = Math.Clamp(players, 4, Crowded.MaxPlayers);
         runs = Math.Clamp(runs, 100, Math.Max(100, Math.Min(10000, SimBudget / players)));
         // インポスターの数は本番の数え始め (TeamSizes.OnBegin) と同じ: 人数の帯があればその幅、無ければ「最少」〜本編の設定の数を
@@ -121,10 +121,20 @@ internal static class InfoCommands
         max = Math.Clamp(max, 1, Math.Max(1, ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts))));
         min = Math.Clamp(min, 1, max);
         int cap = ImpostorCap.CapAt(players);
-        var res = AssignPlan.Run(players, min, max, runs, Environment.TickCount, impostorCap: cap);
+        shownMin = Math.Min(min, cap);
+        shownMax = Math.Min(max, cap);
+        return AssignPlan.Run(players, min, max, runs, Environment.TickCount, impostorCap: cap);
+    }
+
+    public static string Sim(string args)
+    {
+        var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int players = a.Length > 0 && int.TryParse(a[0], out int p) ? p : TeamSizes.PlayerCount();
+        int runs = a.Length > 1 && int.TryParse(a[1], out int r) ? r : 1000;
+        var res = RunSim(ref players, ref runs, out int shownMin, out int shownMax, out var error);
+        if (res == null) return error;
 
         var sb = new StringBuilder();
-        int shownMin = Math.Min(min, cap), shownMax = Math.Min(max, cap);
         string imps = shownMin == shownMax ? shownMin.ToString() : new Text("InfoCommands.SimRange").With("min", shownMin).With("max", shownMax).ToString();
         sb.Append(new Text("InfoCommands.SimHead").With("players", players).With("runs", runs).With("impostors", imps).ToString());
         var order = new int[res.RoleRuns.Length];
@@ -163,7 +173,7 @@ internal static class InfoCommands
         return sb.ToString();
     }
 
-    private static string Percent(int n, int of)
+    internal static string Percent(int n, int of)
     {
         double v = 100.0 * n / of;
         return (v >= 10 || v == 0 ? v.ToString("0") : v.ToString("0.#")) + "%";

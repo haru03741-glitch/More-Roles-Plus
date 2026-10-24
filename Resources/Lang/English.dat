@@ -452,6 +452,13 @@ RoleDictionary.Settings: Current settings
 RoleDictionary.SettingsEditable: Settings (the host can change them here in the lobby)
 RoleDictionary.ShowInDictionary: Description
 RoleDictionary.SearchHint: Search roles
+RoleDictionary.TabRoles: Roles
+RoleDictionary.TabOdds: Assignment odds
+RoleDictionary.Players: {n} players
+RoleDictionary.OddsHead: Result of dealing {runs} times with the current settings (impostors {impostors}, neutrals {min}-{max}, {roles} players with a role on average).
+RoleDictionary.Example: One example
+RoleDictionary.OddsRoles: Chance each role appears
+RoleDictionary.Avg: avg {n}
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP
