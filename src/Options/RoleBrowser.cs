@@ -62,7 +62,7 @@ internal sealed class RoleBrowser
         _settings = settings;
         _canEdit = canEdit;
         _tag = tag;
-        _editor = new OptEditor(Rebuild, _ => AfterEdit());
+        _editor = new OptEditor(Rebuild, _ => AfterEdit(), canEdit);
     }
 
     public bool Searching => _tokens.Length > 0;
@@ -409,6 +409,13 @@ internal sealed class RoleBrowser
     }
 
     // カードの値と縁の色だけを今の値に (作り直さない)
+    // 窓の外 (役職辞典など) で値を変えた後: 細かい頁と検索の結果は行ごと作り直し、一覧ならカードだけ書き換える
+    public void RefreshFromOutside()
+    {
+        if (_open != null || _tokens.Length > 0) Rebuild();
+        else RefreshCards();
+    }
+
     public void RefreshCards()
     {
         foreach (var (sec, card, values, name) in _cards)

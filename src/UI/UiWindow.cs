@@ -116,7 +116,17 @@ internal sealed class UiWindow
         Body.Clear();
         _chrome.Clear();
         if (_closeSlots != null) UiActions.Release(_closeSlots);
-        if (Root) Object.Destroy(Root);
+        if (Root)
+        {
+            // 窓の中に置いた本編の部品 (検索欄など) に指が乗ったまま捨てると、本編のボタンの管理役が捨てた物へ「外れた」を送り続ける
+            if (PassiveButtonManager.InstanceExists)
+            {
+                var pm = PassiveButtonManager.Instance;
+                var over = pm.currentOver;
+                if (over && over.transform.IsChildOf(Root.transform)) pm.currentOver = null;
+            }
+            Object.Destroy(Root);
+        }
         var cb = _onClose;
         _onClose = null;
         cb?.Invoke();

@@ -23,10 +23,14 @@ internal sealed class OptEditor
     private readonly Action _onShownChanged;
     private readonly Action<Opt> _onChanged;
 
-    public OptEditor(Action onShownChanged, Action<Opt> onChanged = null)
+    // canEdit = 押した時に、まだ値を変えてよいか (開いた後に試合が始まった時など)
+    private readonly Func<bool> _canEdit;
+
+    public OptEditor(Action onShownChanged, Action<Opt> onChanged = null, Func<bool> canEdit = null)
     {
         _onShownChanged = onShownChanged;
         _onChanged = onChanged;
+        _canEdit = canEdit;
     }
 
     // 出る行が変わったかを見張る項目 (並べる候補を全部)。Rows を組む前に渡す
@@ -89,6 +93,7 @@ internal sealed class OptEditor
 
     private void Changed(Opt opt, int delta)
     {
+        if (_canEdit != null && !_canEdit()) return;
         Step(opt, delta);
         _onChanged?.Invoke(opt);
         if (ShownChanged()) { _onShownChanged?.Invoke(); return; }

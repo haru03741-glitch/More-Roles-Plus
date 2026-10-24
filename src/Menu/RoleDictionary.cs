@@ -232,6 +232,7 @@ internal static class RoleDictionary
         _dirty = false;
         SettingsMenu.CommitHostEdits();
         SettingsMenu.RefreshAll();
+        RolePage.RefreshCards();
     }
 
     // ---- 試験用 ----

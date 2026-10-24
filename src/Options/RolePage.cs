@@ -92,6 +92,14 @@ internal static class RolePage
         return Text.Raw(sb.ToString());
     }
 
+    // 設定画面の外 (役職辞典の窓) で値を変えた後に、開いたままのタブのカードの値と縁の色を今の値へ
+    public static void RefreshCards()
+    {
+        if (!_built || !_root) return;
+        Browser.RefreshFromOutside();
+        UpdateDescription();
+    }
+
     public static void Tick()
     {
         if (!_built || !_root) return;
