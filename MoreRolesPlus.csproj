@@ -82,6 +82,10 @@
     <ItemGroup>
         <Compile Remove="tools\**;unity\**;patcher\**" />
     </ItemGroup>
+    <!-- 配る DLL (MrpPublicBuild=true) は公開しているソースだけで組む -->
+    <ItemGroup Condition="'$(MrpPublicBuild)' == 'true'">
+        <Compile Remove="src\Bridge\TestBridge.Host.cs" />
+    </ItemGroup>
     <!-- 能力ボタンの絵 -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
