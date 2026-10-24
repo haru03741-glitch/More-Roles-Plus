@@ -2,8 +2,8 @@
 #include "digest.h"
 #include "capture.h"
 
-// 水のタイルの画素ごとの壁の面の高さ (src/Terrain/FloorMask.cs の FaceHeights と同じ結果) と、
-// 壁の絵が抜けた所を面から外す (src/Terrain/WaterHeight.cs の CutHoles と同じ結果)。小数の式の順番は C# と同じにする
+// 水のタイルの画素ごとの壁の面の高さと、
+// 壁の絵が抜けた所を面から外す。小数の式は書いた順に計算する
 
 struct FaceHeightsArgs
 {

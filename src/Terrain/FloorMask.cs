@@ -120,10 +120,6 @@ internal static class FloorMask
     // 斜め上から見た絵では、床から高さ z の壁の画素は床の縁より画面で z だけ上にある。真下の床の画素までの距離がその高さ
     internal const float FaceUnit = 64f;
     internal const byte FaceTop = 253, FaceFloor = 254;
-    private const float FaceMax = FaceTop / FaceUnit;
-
-    // 答え合わせ (native verify): 面の高さを C# でも作って比べる
-    internal static long VerifyFaces, VerifyFaceDiff;
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private unsafe struct FaceArgs
@@ -135,7 +131,6 @@ internal static class FloorMask
         public int Any;
     }
 
-    // C++ (FaceHeightsCs と同じ結果)
     internal static unsafe bool FaceHeights(float x, float y, float size, int n, byte[] into)
     {
         Ensure();
@@ -147,55 +142,6 @@ internal static class FloorMask
             Native.MrpNative.FaceHeights(&a);
             any = a.Any != 0;
         }
-        if (Native.MrpNative.VerifyIn("FloorMask"))
-        {
-            var cs = new byte[into.Length];
-            bool csAny = FaceHeightsCs(x, y, size, n, cs);
-            long diff = csAny != any ? 1000000 : 0;
-            for (int i = 0; i < n * n; i++) if (cs[i] != into[i]) diff++;
-            VerifyFaces++;
-            VerifyFaceDiff += diff;
-        }
-        return any;
-    }
-
-    // C# 版 (照合用)
-    private static bool FaceHeightsCs(float x, float y, float size, int n, byte[] into)
-    {
-        float step = size / (n - 1);
-        int scan = (int)(FaceMax * _ppu) + 1;
-        int top = (int)((y + size - _oy) * _ppu);
-        bool any = false;
-        for (int px = 0; px < n; px++)
-        {
-            int mx = (int)((x + px * step - _ox) * _ppu);
-            int py = 0;
-            if (mx < 0 || mx >= _w)
-            {
-                for (; py < n; py++) into[py * n + px] = 255;
-                continue;
-            }
-            // 下から上へ 1 行ずつ、いちばん近い床の行を覚えながら、タイルの画素の行に来たら高さを書く
-            int last = int.MinValue;
-            int my = Math.Max(0, (int)((y - _oy) * _ppu) - scan);
-            int next = (int)((y - _oy) * _ppu);
-            for (; my <= top && my < _h && py < n; my++)
-            {
-                int k = my * _w + mx;
-                if ((_bits[k >> 3] & (1 << (k & 7))) != 0) last = my;
-                while (py < n && my == next)
-                {
-                    int z = my - last;
-                    byte v = last == my ? FaceFloor
-                        : (_face[k >> 3] & (1 << (k & 7))) != 0 && last != int.MinValue && z < scan ? (byte)Math.Min(FaceTop, z / _ppu * FaceUnit) : (byte)255;
-                    into[py * n + px] = v;
-                    any |= v <= FaceTop;
-                    py++;
-                    next = (int)((y + py * step - _oy) * _ppu);
-                }
-            }
-            for (; py < n; py++) into[py * n + px] = 255;
-        }
         return any;
     }
 
@@ -205,20 +151,6 @@ internal static class FloorMask
         Ensure();
         bits = _bits; w = _w; h = _h; ox = _ox; oy = _oy; ppu = _ppu;
         return _bits != null;
-    }
-
-    // 世界の四角 (x, y から size 四方) の画素が全部床か (マスクの外は床でない)
-    internal static bool AllFloor(float x, float y, float size)
-    {
-        Ensure();
-        if (_bits == null) return false;
-        int x0 = (int)MathF.Floor((x - _ox) * _ppu), y0 = (int)MathF.Floor((y - _oy) * _ppu);
-        int x1 = (int)MathF.Ceiling((x + size - _ox) * _ppu), y1 = (int)MathF.Ceiling((y + size - _oy) * _ppu);
-        if (x0 < 0 || y0 < 0 || x1 > _w || y1 > _h) return false;
-        for (int my = y0; my < y1; my++)
-        for (int mx = x0, k = my * _w + x0; mx < x1; mx++, k++)
-            if ((_bits[k >> 3] & (1 << (k & 7))) == 0) return false;
-        return true;
     }
 
     // 世界の四角 (x, y から size 四方) を n×n 画素で into へ (左下原点・床 = 255・マスクの外は床でない)。
@@ -287,44 +219,10 @@ internal static class FloorMask
         return false;
     }
 
-    // C# 版 (native check の答え合わせ用)
-    private static void FillCs(float x, float y, float size, int n, byte[] into)
-    {
-        int m = n + Blur * 2;
-        var sc = MainScratch;
-        if (sc.Raw.Length < m * m) sc.Raw = new byte[m * m];
-        if (sc.Row.Length < m * n) sc.Row = new ushort[m * n];
-        byte[] raw = sc.Raw;
-        ushort[] rows = sc.Row;
-        float step = size / (n - 1);
-        FillRaw(x - step * Blur, y - step * Blur, step, m, raw);
-        // 横にならす (m 行 × n 列)
-        for (int py = 0; py < m; py++)
-        {
-            int src = py * m, dst = py * n;
-            for (int px = 0; px < n; px++)
-            {
-                int k = src + px;
-                rows[dst + px] = (ushort)(raw[k] + raw[k + 4] + ((raw[k + 1] + raw[k + 3]) << 2) + raw[k + 2] * 6);
-            }
-        }
-        // 縦にならす (n 行 × n 列)。重みの和は 16 × 16
-        for (int py = 0; py < n; py++)
-        {
-            int dst = py * n;
-            for (int px = 0; px < n; px++)
-            {
-                int k = py * n + px;
-                int v = rows[k] + rows[k + n * 4] + ((rows[k + n] + rows[k + n * 3]) << 2) + rows[k + n * 2] * 6;
-                into[dst + px] = (byte)((v + 128) >> 8);
-            }
-        }
-    }
-
     // 壁の絵が抜けた所 (穴の値がこれ以上) は床にする。シェーダは穴の値を割れ口のずらし込みで 128 前後で切って絵を抜く
     private const int HoleFloor = 128;
 
-    // FillRaw の床の地図と穴を C++ で (同じ結果)。動く床・手すり・持ち上げた家具はそのあと C# で
+    // 床の地図と穴と縁は C++ で。動く床と持ち上げた家具はそのあと C# で
     private static unsafe void FillRawNative(in Source s, float x, float y, float wstep, int n, byte[] into, bool moving)
     {
         fixed (byte* bits = s.Bits) fixed (byte* o = into) fixed (byte* h = s.Holes)
@@ -335,51 +233,13 @@ internal static class FloorMask
         if (!moving) return;
         // 床にするだけの書き込み (縁・動く床) は順番に依らない。床でなくする持ち上げた家具は最後
         WaterSim.StampPlatform(x, y, wstep, n, into);
-        CutAllMoved(x, y, wstep, n, into, native: true);
-    }
-
-    // 画素 k の真ん中 = (x + k × step, y + …)
-    private static void FillRaw(float x, float y, float wstep, int n, byte[] into)
-    {
-        float step = wstep * _ppu;
-        float bx = (x - _ox) * _ppu, by = (y - _oy) * _ppu;
-        for (int py = 0; py < n; py++)
-        {
-            int my = (int)(by + py * step);
-            int row = py * n;
-            if (my < 0 || my >= _h)
-            {
-                Array.Clear(into, row, n);
-                continue;
-            }
-            int baseK = my * _w;
-            for (int px = 0; px < n; px++)
-            {
-                int mx = (int)(bx + px * step);
-                into[row + px] = mx >= 0 && mx < _w && (_bits[(baseK + mx) >> 3] & (1 << ((baseK + mx) & 7))) != 0 ? (byte)255 : (byte)0;
-            }
-        }
-        // 壊した壁の穴: 水の升は開いて水が流れ込むので、絵が抜けた所も床にする (この試合でまだ何も壊していなければ飛ばす)
-        if (DamageMap.CurrentGen != 0)
-        {
-            for (int py = 0; py < n; py++)
-            {
-                float wy = y + py * wstep;
-                int row = py * n;
-                for (int px = 0; px < n; px++)
-                    if (into[row + px] == 0 && DamageMap.HoleSmoothAt(x + px * wstep, wy) >= HoleFloor) into[row + px] = 255;
-            }
-        }
-        // 動く床 (昇降機の台) の今の所
-        WaterSim.StampPlatform(x, y, wstep, n, into);
-        WaterSim.StampLips(x, y, wstep, n, into, _bits, _w, _h, _ox, _oy, _ppu);
         CutAllMoved(x, y, wstep, n, into);
     }
 
-    private static void CutAllMoved(float x, float y, float wstep, int n, byte[] into, bool native = false)
+    private static void CutAllMoved(float x, float y, float wstep, int n, byte[] into)
     {
         if (_patchGen != GameClock.ShipGen) return;
-        foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, wstep, n, into, native);
+        foreach (var p in Patches) if (p.Lift != null && p.Dry != null) CutMoved(p, x, y, wstep, n, into);
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -394,7 +254,7 @@ internal static class FloorMask
     }
 
     // 持ち上げた家具の今いる所 (元の所から回して動かした所) を床でなくする。画素 k の真ん中 = x + k × step
-    private static unsafe void CutMoved(Patch p, float x, float y, float step, int n, byte[] into, bool native)
+    private static unsafe void CutMoved(Patch p, float x, float y, float step, int n, byte[] into)
     {
         var l = p.Lift;
         float px0 = l.PivotX, py0 = l.PivotY, cx = l.PoseX, cy = l.PoseY;
@@ -406,36 +266,14 @@ internal static class FloorMask
         float mcx = cx + rcx * MathF.Cos(-rad) - rcy * MathF.Sin(-rad), mcy = cy + rcx * MathF.Sin(-rad) + rcy * MathF.Cos(-rad);
         float size = step * (n - 1);
         if (mcx + half <= x || mcx - half >= x + size || mcy + half <= y || mcy - half >= y + size) return;
-        if (native)
+        fixed (byte* o = into) fixed (byte* d = p.Dry)
         {
-            // C++ (C# で床の型を作る道は下の C# のまま = 照合の答え)
-            fixed (byte* o = into) fixed (byte* d = p.Dry)
+            var a = new CutArgs
             {
-                var a = new CutArgs
-                {
-                    Into = o, N = n, X = x, Y = y, Step = step, Px0 = px0, Py0 = py0, Cx = cx, Cy = cy, Cs = cs, Sn = sn,
-                    Mcx = mcx, Mcy = mcy, Half = half, Ox = _ox, Oy = _oy, Ppu = _ppu, Dry = d, Dx0 = p.DX0, Dy0 = p.DY0, Dw = p.DW, Dh = p.DH,
-                };
-                Native.MrpNative.FloorCutMoved(&a);
-            }
-            return;
-        }
-        for (int py = 0; py < n; py++)
-        {
-            float wy = y + py * step - cy;
-            if (wy < mcy - cy - half || wy > mcy - cy + half) continue;
-            for (int px = 0; px < n; px++)
-            {
-                int i = py * n + px;
-                if (into[i] == 0) continue;
-                float wx = x + px * step - cx;
-                // 今の所から元の所へ戻す
-                float ox = px0 + wx * cs - wy * sn, oy = py0 + wx * sn + wy * cs;
-                int dx = (int)MathF.Floor((ox - _ox) * _ppu) - p.DX0, dy = (int)MathF.Floor((oy - _oy) * _ppu) - p.DY0;
-                if (dx < 0 || dy < 0 || dx >= p.DW || dy >= p.DH) continue;
-                int d = dy * p.DW + dx;
-                if ((p.Dry[d >> 3] & (1 << (d & 7))) != 0) into[i] = 0;
-            }
+                Into = o, N = n, X = x, Y = y, Step = step, Px0 = px0, Py0 = py0, Cx = cx, Cy = cy, Cs = cs, Sn = sn,
+                Mcx = mcx, Mcy = mcy, Half = half, Ox = _ox, Oy = _oy, Ppu = _ppu, Dry = d, Dx0 = p.DX0, Dy0 = p.DY0, Dw = p.DW, Dh = p.DH,
+            };
+            Native.MrpNative.FloorCutMoved(&a);
         }
     }
 
@@ -450,9 +288,6 @@ internal static class FloorMask
         Patches.Add(p);
         if (_bits != null && _gen == gen) Apply(p);
     }
-
-    // 答え合わせ (native verify): 跡を床にするのを C# でも写しのマスクにやって比べる
-    internal static long VerifyPatches, VerifyPatchDiff;
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private unsafe struct PatchArgs
@@ -474,8 +309,6 @@ internal static class FloorMask
         float sx = p.N / r.width, sy = p.N / r.height;
         p.DX0 = x0; p.DY0 = y0; p.DW = Math.Max(0, x1 - x0 + 1); p.DH = Math.Max(0, y1 - y0 + 1);
         p.Dry = new byte[(p.DW * p.DH + 7) / 8];
-        byte[] csBits = null, csDry = null;
-        if (Native.MrpNative.VerifyIn("FloorMask")) { csBits = (byte[])_bits.Clone(); csDry = new byte[p.Dry.Length]; }
         fixed (byte* b = _bits) fixed (bool* sh = p.Shape) fixed (byte* d = p.Dry)
         {
             var a = new PatchArgs
@@ -484,15 +317,6 @@ internal static class FloorMask
                 RxMin = r.xMin, RyMin = r.yMin, Sx = sx, Sy = sy, Shape = (byte*)sh, N = p.N, Dry = d, Dw = p.DW,
             };
             Native.MrpNative.FloorPatch(&a);
-        }
-        if (csBits != null)
-        {
-            ApplyCs(p, csBits, csDry, x0, y0, x1, y1, sx, sy);
-            long diff = 0;
-            for (int i = 0; i < csBits.Length; i++) if (csBits[i] != _bits[i]) diff++;
-            for (int i = 0; i < csDry.Length; i++) if (csDry[i] != p.Dry[i]) diff++;
-            VerifyPatches++;
-            VerifyPatchDiff += diff;
         }
         if (p.Lift?.FurnPx != null) DryFromPixels(p, x0, y0);
     }
@@ -516,29 +340,6 @@ internal static class FloorMask
                 if (cx < 0 || cx >= n || !furn[cy * n + cx]) continue;
                 int d = dy * p.DW + dx;
                 p.Dry[d >> 3] |= (byte)(1 << (d & 7));
-            }
-        }
-    }
-
-    // C# 版 (照合用)
-    private static void ApplyCs(Patch p, byte[] bits, byte[] dry, int x0, int y0, int x1, int y1, float sx, float sy)
-    {
-        var r = p.World;
-        for (int my = y0; my <= y1; my++)
-        {
-            int sy0 = (int)MathF.Floor(((my + 0.5f) / _ppu + _oy - r.yMin) * sy);
-            if (sy0 < 0 || sy0 >= p.N) continue;
-            for (int mx = x0; mx <= x1; mx++)
-            {
-                int sx0 = (int)MathF.Floor(((mx + 0.5f) / _ppu + _ox - r.xMin) * sx);
-                if (sx0 < 0 || sx0 >= p.N || !p.Shape[sy0 * p.N + sx0]) continue;
-                int k = my * _w + mx;
-                if ((bits[k >> 3] & (1 << (k & 7))) == 0)
-                {
-                    int d = (my - y0) * p.DW + (mx - x0);
-                    dry[d >> 3] |= (byte)(1 << (d & 7));
-                }
-                bits[k >> 3] |= (byte)(1 << (k & 7));
             }
         }
     }
@@ -746,7 +547,7 @@ internal static class FloorMask
             }
             reply($"OK floormask active={Active} off={Off} {Stats}");
         });
-        TestBridge.Register("native", "[check [x y] | verify [on [only=A,B|skip=A,B] [nobgc]|off] | async [on|off] | digest [on|off|reset|step n] | capture [on name [perPart] [every]|off] | points | walls | fixmap] C++ の部品の状態 / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
+        TestBridge.Register("native", "[async [on|off] | digest [on|off|reset|step n] | capture [on name [perPart] [every]|off] | points | walls | fixmap] C++ の部品の状態 / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             bool on = Native.MrpNative.Loaded;
@@ -802,34 +603,7 @@ internal static class FloorMask
                 reply("ERR native capture on <name> [perPart] [every] | off");
                 return;
             }
-            if (a.Length > 0 && a[0] == "verify")
-            {
-                if (a.Length > 1) { Native.MrpNative.Verify = a[1] == "on"; Native.MrpNative.SetVerifyScope(Array.Find(a, s => s.StartsWith("only=") || s.StartsWith("skip="))); Native.MrpNative.SetVerifyNoBgc(Native.MrpNative.Verify && Array.IndexOf(a, "nobgc") >= 0); WaterArt.VerifyTiles = WaterArt.VerifyDiff = 0; WaterArt.VerifyRaws = WaterArt.VerifyRawDiff = 0; WaterSim.VerifySteps = WaterSim.VerifyDiff = 0; DamageMap.VerifyStamps = DamageMap.VerifyStampDiff = 0; WaterSim.VerifyCells = WaterSim.VerifyCellDiff = 0; WaterSim.VerifyScans = WaterSim.VerifyScanDiff = 0; HullThroat.VerifyClips = HullThroat.VerifyClipDiff = 0; FoamArt.VerifyDraws = FoamArt.VerifyDrawDiff = 0; FoamArt.VerifyCulls = FoamArt.VerifyCullDiff = 0; Decompression.VerifyBuilds = Decompression.VerifyDiff = 0; FloorFlood.VerifyFills = FloorFlood.VerifyDiff = 0; VerifyPatches = VerifyPatchDiff = 0; VerifyFaces = VerifyFaceDiff = 0; WaterHeight.VerifyHoles = WaterHeight.VerifyHoleDiff = 0; WaterArt.VerifyFills = WaterArt.VerifyFillDiff = 0; FurnitureLift.VerifyShapes = FurnitureLift.VerifyShapeDiff = 0; WaterArt.VerifyFronts = WaterArt.VerifyFrontDiff = 0; WaterFall.VerifyDraws = WaterFall.VerifyDrawDiff = 0; WaterSim.VerifyLevels = WaterSim.VerifyLevelDiff = 0; WaterSpray.VerifyDraws = WaterSpray.VerifyDrawDiff = 0; }
-                reply($"OK native verify={Native.MrpNative.Verify}{Native.MrpNative.VerifyScope} waterTiles={WaterArt.VerifyTiles} waterDiffBytes={WaterArt.VerifyDiff} raws={WaterArt.VerifyRaws} rawDiff={WaterArt.VerifyRawDiff} simSteps={WaterSim.VerifySteps} simDiff={WaterSim.VerifyDiff} sleepViol={WaterSim.VerifySleepViol} stamps={DamageMap.VerifyStamps} stampDiff={DamageMap.VerifyStampDiff} carves={SolidMap.VerifyCarves} carveDiff={SolidMap.VerifyCarveDiff} pieces={BreakPieces.VerifySpawns} pieceDiff={BreakPieces.VerifyDiff} cells={WaterSim.VerifyCells} cellDiff={WaterSim.VerifyCellDiff} scans={WaterSim.VerifyScans} scanDiff={WaterSim.VerifyScanDiff} clips={HullThroat.VerifyClips} clipDiff={HullThroat.VerifyClipDiff} foams={FoamArt.VerifyDraws} foamDiff={FoamArt.VerifyDrawDiff} culls={FoamArt.VerifyCulls} cullDiff={FoamArt.VerifyCullDiff} decomps={Decompression.VerifyBuilds} decompDiff={Decompression.VerifyDiff} fills={FloorFlood.VerifyFills} fillDiff={FloorFlood.VerifyDiff} patches={VerifyPatches} patchDiff={VerifyPatchDiff} shapes={FurnitureLift.VerifyShapes} shapeDiff={FurnitureLift.VerifyShapeDiff} artFills={WaterArt.VerifyFills} artFillDiff={WaterArt.VerifyFillDiff} faces={VerifyFaces} faceDiff={VerifyFaceDiff} holes={WaterHeight.VerifyHoles} holeDiff={WaterHeight.VerifyHoleDiff} fronts={WaterArt.VerifyFronts} frontDiff={WaterArt.VerifyFrontDiff} falls={WaterFall.VerifyDraws} fallDiff={WaterFall.VerifyDrawDiff} levels={WaterSim.VerifyLevels} levelDiff={WaterSim.VerifyLevelDiff} sprays={WaterSpray.VerifyDraws} sprayDiff={WaterSpray.VerifyDrawDiff}");
-                return;
-            }
-            if (a.Length == 0 || a[0] != "check") { reply($"OK native on={on} {Native.MrpNative.Status}"); return; }
-            if (!Active) { reply("ERR native check: floor mask not active"); return; }
-            float cx, cy;
-            if (a.Length >= 3) { cx = float.Parse(a[1], System.Globalization.CultureInfo.InvariantCulture); cy = float.Parse(a[2], System.Globalization.CultureInfo.InvariantCulture); }
-            else { var lp = PlayerControl.LocalPlayer; if (!lp) { reply("ERR native check: no local player"); return; } var p = lp.GetTruePosition(); cx = p.x; cy = p.y; }
-            float size = WaterSim.TileCells * WaterSim.Cell;
-            int n = (int)MathF.Round(size * _ppu);
-            var cs = new byte[n * n];
-            var nat = new byte[n * n];
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            FillCs(cx - size / 2, cy - size / 2, size, n, cs);
-            double msCs = sw.Elapsed.TotalMilliseconds;
-            sw.Restart();
-            Fill(cx - size / 2, cy - size / 2, size, n, nat);
-            double msNat = sw.Elapsed.TotalMilliseconds;
-            int diff = 0, first = -1, floor = 0;
-            for (int i = 0; i < cs.Length; i++)
-            {
-                if (cs[i] != nat[i]) { diff++; if (first < 0) first = i; }
-                if (cs[i] >= 128) floor++;
-            }
-            reply($"OK native check native={on} n={n} diff={diff} first={first} floorPx={floor} cs={msCs:F2}ms native={msNat:F2}ms holes={DamageMap.CurrentGen != 0}");
+            reply($"OK native on={on} {Native.MrpNative.Status}");
         });
         TestBridge.Register("floorexport", "水の床マスクを作る道具用に、部屋の絵の配置と歩ける所の地図を Screens/floor_<船>.json へ書き出す", (_, reply) =>
         {

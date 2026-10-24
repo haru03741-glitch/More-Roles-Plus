@@ -3,8 +3,7 @@
 #include "capture.h"
 #include <math.h>
 
-// 水の絵のタイル 1 枚を描く前の高さの写し (src/Terrain/WaterArt.cs の RawCells と WaterSim.ShownDepth / CraterScale と
-// 同じ式と順序)。タイルを縁 3 升ぶん広げて描く高さを写し、3×3 でならした深さと濡れ具合を作る
+// 水の絵のタイル 1 枚を描く前の高さの写し。タイルを縁 3 升ぶん広げて描く高さを写し、3×3 でならした深さと濡れ具合を作る
 
 struct RawArgs
 {

@@ -2,8 +2,8 @@
 #include "digest.h"
 #include "capture.h"
 
-// 家具の当たり判定の形を左右下上の幅だけ太らせる (src/Terrain/FurnitureLift.cs の MakeShape の後半と同じ結果)。
-// 画素は、中の画素から見た向きごとの半径の楕円の中に入っていれば中。小数の式の順番は C# と同じにする
+// 家具の当たり判定の形を左右下上の幅だけ太らせる。
+// 画素は、中の画素から見た向きごとの半径の楕円の中に入っていれば中。小数の式は書いた順に計算する
 
 struct LiftShapeArgs
 {

@@ -316,17 +316,6 @@ internal static class FurnitureLift
             };
             Native.MrpNative.LiftShape(&a);
         }
-        if (Native.MrpNative.VerifyIn("FurnitureLift"))
-        {
-            var csPx = new byte[px.Length];
-            var csIn = new bool[shapeIn.Length];
-            GrowCs(inside, rx, ry, f, sx, sy, csPx, csIn);
-            long diff = 0;
-            for (int i = 0; i < px.Length; i++) if (px[i] != csPx[i]) diff++;
-            for (int i = 0; i < csIn.Length; i++) if (shapeIn[i] != csIn[i]) diff++;
-            VerifyShapes++;
-            VerifyShapeDiff += diff;
-        }
         // G = 広げる前の当たり判定の中 (水面の板が、当たり判定の中の床の画素を床の水として描くのに使う。切り抜きは R だけを見る)
         for (int i = 0; i < inside.Length; i++) px[i * 4 + 1] = inside[i] ? (byte)255 : (byte)0;
         var tex = new Texture2D(ShapePx, ShapePx, TextureFormat.RGBA32, false) { name = "MrpLiftShape", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
@@ -334,9 +323,6 @@ internal static class FurnitureLift
         tex.Apply(false, false);
         return tex;
     }
-
-    // 答え合わせ (native verify): 太らせを C# でもやって比べる
-    internal static long VerifyShapes, VerifyShapeDiff;
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private unsafe struct ShapeArgs
@@ -347,34 +333,6 @@ internal static class FurnitureLift
         public float Sx, Sy;
         public byte* Px;
         public byte* ShapeIn;
-    }
-
-    // C# 版 (照合用)
-    private static void GrowCs(bool[] inside, int rx, int ry, Floor f, float sx, float sy, byte[] px, bool[] shapeIn)
-    {
-        for (int y = 0; y < ShapePx; y++)
-            for (int x = 0; x < ShapePx; x++)
-            {
-                bool hit = false;
-                for (int dy = -ry; dy <= ry && !hit; dy++)
-                {
-                    int yy = y + dy;
-                    if (yy < 0 || yy >= ShapePx) continue;
-                    for (int dx = -rx; dx <= rx; dx++)
-                    {
-                        int xx = x + dx;
-                        if (xx < 0 || xx >= ShapePx || !inside[yy * ShapePx + xx]) continue;
-                        // この画素が家具のどちら側か (中の画素が右 = dx > 0 なら、この画素は左へ広げた所)
-                        float px0 = dx > 0 ? f.PadL : f.PadR, py0 = dy > 0 ? f.PadB : f.PadT;
-                        float ex = dx == 0 ? 0f : dx * sx / Math.Max(px0, 1e-4f), ey = dy == 0 ? 0f : dy * sy / Math.Max(py0, 1e-4f);
-                        if (ex * ex + ey * ey <= 1f) { hit = true; break; }
-                    }
-                }
-                if (!hit) continue;
-                shapeIn[y * ShapePx + x] = true;
-                int i = (y * ShapePx + x) * 4;
-                px[i] = 255; px[i + 1] = 255; px[i + 2] = 255; px[i + 3] = 255;
-            }
     }
 
     // 切り抜きの絵・跡の床・見分けの書き出しのマテリアルに、型と床の模様を渡す (家具の部屋の絵でなければ false)

@@ -3,8 +3,8 @@
 #include "capture.h"
 #include <math.h>
 
-// 水の絵のタイルの画素 (src/Terrain/WaterArt.cs の Draw の画素ループ / SpreadFace と同じ結果)。
-// 小数の式は C# と同じ順に float で計算する (縮約 (FMA) を切ってビルドする)
+// 水の絵のタイルの画素。
+// 小数の式は書いた順に float で計算する (縮約 (FMA) を切ってビルドする)
 
 // 3 次の B スプラインの重み (WaterArt.Weights)
 static inline void weights(float t, float& w0, float& w1, float& w2, float& w3)
@@ -61,7 +61,7 @@ static inline bool outside_cell(const uint8_t* out, int x, int y, int w, int h)
 
 // n×n 画素の RGBA (R = 深さ・G = 見せてよいか・B = 濡れ・A = 0) を px へ。
 // depth / wet = dw×dw の升の値、タイルの左下の升 = (x0, y0)。floorOn なら壁際の判定 (near_open と furn) を飛ばす。
-// B スプラインの横の和 (row4) と位置の変換は列か行だけで決まるので先に表にする (式と順序は C# と同じなので結果も同じ)
+// B スプラインの横の和 (row4) と位置の変換は列か行だけで決まるので先に表にする
 static const int MaxPx = 256, MaxDw = 64;
 
 MRP_API void mrp_water_pixels(

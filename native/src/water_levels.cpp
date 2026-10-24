@@ -3,8 +3,7 @@
 #include "capture.h"
 #include <bit>
 
-// 水の升を作る時の下ごしらえ (src/Terrain/WaterOpen.cs の LoadWet の濾し・WaterSim.IslandLevels の升ごとの島・
-// SpreadWetIslands と同じ結果)
+// 水の升を作る時の下ごしらえ (水の表の濾し・升ごとの島・水だけが届く升の島)
 
 // 表の「水が届く升」のビット列から、歩ける升と船の外を除いた升を wet に 1 にする (wet は 0 で渡す)
 struct WetFilterArgs

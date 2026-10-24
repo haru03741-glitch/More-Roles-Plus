@@ -59,24 +59,12 @@ internal static class BreakPieces
         byte gen = DamageMap.CurrentGen;
         // 番号が一周した時: 同じ番号の古い塊は消す (残すと新しい穴の同じ細胞に重なって描かれる)
         if (DamageMap.GenWrapped) Evict(gen);
-        int w = DamageMap.MapW, h = DamageMap.MapH;
         Vector2 tlo = DamageMap.TexelCenter(touched.xMin, touched.yMin), thi = DamageMap.TexelCenter(touched.xMax, touched.yMax);
         int last = cracks.Count - 1;
         cracks[last] = cracks[last].WithArea(Rect.MinMaxRect(tlo.x, tlo.y, thi.x, thi.y), FractureSites.Margin, FractureSites.Max);
         FractureSites.Build(cracks, gen);
 
         var cells = CellsNative(touched, gen);
-        if (Native.MrpNative.VerifyIn("BreakPieces"))
-        {
-            var cs = CountCells(touched, gen, w, h);
-            long diff = cs.Count != cells.Count ? 1000 : 0;
-            foreach (var kv in cs)
-                if (!cells.TryGetValue(kv.Key, out var o) || o.X0 != kv.Value.X0 || o.Y0 != kv.Value.Y0 || o.X1 != kv.Value.X1 || o.Y1 != kv.Value.Y1 ||
-                    o.Count != kv.Value.Count || o.SumX != kv.Value.SumX || o.SumY != kv.Value.SumY) diff++;
-            VerifySpawns++;
-            VerifyDiff += diff;
-            cells = cs;
-        }
 
         // 大きい塊から (同じ数なら細胞の番号順 = 全員で同じ順)
         var keys = new List<byte>();
@@ -85,30 +73,7 @@ internal static class BreakPieces
         MakePieces(output, cells, keys, gen, tlo, thi);
     }
 
-    // 抜いた画素 (この破壊の番号で、周りに見える穴がある物) を、いちばん近い種点の細胞ごとに数える
-    private static Dictionary<byte, Acc> CountCells(RectInt touched, byte gen, int w, int h)
-    {
-        var cells = new Dictionary<byte, Acc>();
-        for (int py = touched.yMin; py < touched.yMax; py++)
-        for (int px = touched.xMin; px < touched.xMax; px++)
-        {
-            if (DamageMap.GenAt(px, py) != gen || !Visible(px, py, w, h)) continue;
-            Vector2 c = DamageMap.TexelCenter(px, py);
-            byte key = FractureSites.KeyAt(c.x, c.y);
-            if (!cells.TryGetValue(key, out var a)) a = new Acc { X0 = px, Y0 = py, X1 = px, Y1 = py };
-            if (px < a.X0) a.X0 = px;
-            if (px > a.X1) a.X1 = px;
-            if (py < a.Y0) a.Y0 = py;
-            if (py > a.Y1) a.Y1 = py;
-            a.Count++;
-            a.SumX += px; a.SumY += py;
-            cells[key] = a;
-        }
-        return cells;
-    }
-
-    // CountCells の C++ 版 (同じ結果)。照合 (native verify) の時は両方で数えて比べ、C# の結果を使う
-    internal static long VerifySpawns, VerifyDiff;
+    // 抜いた画素 (この破壊の番号で、周りに見える穴がある物) を、いちばん近い種点の細胞ごとに数える (C++)
     private static readonly long[] _accBuf = new long[256 * 5];
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -210,19 +175,6 @@ internal static class BreakPieces
             list.Add(new Candidate { Sr = sr, Bounds = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y), Z = sr.transform.position.z });
         }
         return list;
-    }
-
-    // その画素か周りの画素が、割れ口のずらしを足せば抜ける値を持つか (シェーダは R を周りと線形補間して引く)
-    private static bool Visible(int px, int py, int w, int h)
-    {
-        for (int dy = -1; dy <= 1; dy++)
-        for (int dx = -1; dx <= 1; dx++)
-        {
-            int x = px + dx, y = py + dy;
-            if (x < 0 || y < 0 || x >= w || y >= h) continue;
-            if (DamageMap.HoleByte(x, y) >= VisibleFloor) return true;
-        }
-        return false;
     }
 
     // 剥げかけの部品: 点 at でいちばん手前の部屋の絵から world の範囲を切り出し、剥げかけの描き方 (_UseDamage = 5) で置く。

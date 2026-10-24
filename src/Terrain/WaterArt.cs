@@ -56,7 +56,6 @@ internal static class WaterArt
         public int FurnVersion;
         public MaterialPropertyBlock Block;
         public Texture2D Floor; // 床マスク (部屋の絵の画素ごとの床) をこのタイルの範囲で切り出した物
-        public ulong FloorHash; // 照合 (native verify) の時だけ: 作った時の床マスクの指紋
         public Texture2D Front; // 影の中の写しで抜く、水より手前の家具の絵の形 (家具の無いタイルは null)
         public Texture2D Flow;  // 升ごとの流れの速さ (R, G = x, y)。シェーダが水面の筋をこの向きと速さで流す
         public byte[] FlowPx;
@@ -73,7 +72,7 @@ internal static class WaterArt
     // 爆発のくぼみ (絵だけ)。水の計算は全員の結果を揃えるため Delay 刻み遅れて爆心をえぐるので、
     // それまでの間は描く高さから差し引いて同じ形を先に見せ、計算の水が追いついたら消す
     private const float CraterIn = 0.08f, CraterOut = 0.25f;
-    private const float CraterDepth = 1.15f, RimBulge = 0.5f;
+    private const float RimBulge = 0.5f;
     private struct Crater { public float X, Y, R, T0; }
     private static readonly List<Crater> Craters = new();
 
@@ -242,25 +241,6 @@ internal static class WaterArt
         return age < CraterIn ? age / CraterIn : age < hold ? 1f : 1f - (age - hold) / CraterOut;
     }
 
-    // 升の真ん中 (wx, wy) の描く高さに掛ける倍率 (くぼみ = 0 に近い・縁 = 1 を超える)
-    private static float CraterScale(float wx, float wy)
-    {
-        float k = 1f;
-        foreach (var c in Craters)
-        {
-            float amt = CraterAmount(c);
-            if (amt <= 0f) continue;
-            float dx = wx - c.X, dy = wy - c.Y, d2 = (dx * dx + dy * dy) / (c.R * c.R);
-            if (d2 < 1f) k *= 1f - amt * FxMath.Min(1f, CraterDepth * (1f - d2));   // 真ん中 (半径の半分弱) は乾いた床まで (計算の水のくぼみと同じ広さ)
-            else
-            {
-                float d = FxMath.Sqrt(d2), rim = 1f - FxMath.Abs(d - 1.15f) / 0.3f;
-                if (rim > 0f) k *= 1f + RimBulge * amt * rim;
-            }
-        }
-        return k;
-    }
-
     // 描き直し 1 枚の区間ごとの時間 (water prof): 高さの写し・面・準備・画素・転送・流れの絵・壁の面の水・にじませ
     internal static readonly long[] ProfTicks = new long[8];
     internal static long ProfTiles;
@@ -282,7 +262,6 @@ internal static class WaterArt
         EnsureScratch();
         var fill = EnsureFill();
         bool any = RawNative(x0, y0, fill, CraterArgs());
-        if (Native.MrpNative.VerifyIn("WaterArt.Raw")) VerifyRaw(x0, y0, fill, any);
         t.LastDraw = _clock;
         Prof(0);
         int n0 = tc * Px;
@@ -300,8 +279,7 @@ internal static class WaterArt
         int n = tc * Px;
         PrepFloor(t);
         Prof(2);
-        DrawPixels(t, x0, y0, n, true);
-        if (Native.MrpNative.VerifyIn("WaterArt.Pixels")) VerifyPixels(t, x0, y0, n);
+        DrawPixels(t, x0, y0, n);
         Prof(3);
         fixed (byte* b = t.Px) t.Tex.LoadRawTextureData((IntPtr)b, t.Px.Length);
         t.Tex.Apply(false, false);
@@ -374,7 +352,7 @@ internal static class WaterArt
 
     // ── 作業スレッドで描く ──────────────────────────────────────────
     // 描き直すタイルの準備 (Unity に触る所) だけをメインで済ませて積み、LateUpdate で水の刻みと一緒に作業スレッドへ投げる
-    // (刻みの後の水を描く)。次のフレームの Tick の頭で受け取って転送する。新しいタイル・隠れているタイル・照合の時はその場で描く
+    // (刻みの後の水を描く)。次のフレームの Tick の頭で受け取って転送する。新しいタイル・隠れているタイルはその場で描く
     private sealed class Job { public Tile T; public bool Any, Wet, Flow; }
     private static readonly Job[] Jobs = { new(), new(), new() };
     private static int _jobN, _jobState; // 0 = 無し / 1 = 積んだ / 2 = 描いた
@@ -386,7 +364,7 @@ internal static class WaterArt
 
     // 隠れているタイル (乾いていた) は水があると分かってから家具の型抜きを払うよう、その場で描く
     private static bool CanDefer(Tile t) =>
-        t.Px != null && !t.Empty && _jobN < Jobs.Length && Native.MrpNative.Async && !Native.MrpNative.VerifyIn("WaterArt.Pixels");
+        t.Px != null && !t.Empty && _jobN < Jobs.Length && Native.MrpNative.Async;
 
     private static void Defer(Tile t)
     {
@@ -477,56 +455,6 @@ internal static class WaterArt
         FinishFloors();
     }
 
-    // 描く間の高さ _raw / _closed をタイル + 縁 3 升で写し、ならした深さ _depth と濡れ具合 _wet を作る。タイルの中に水があるか
-    private static bool RawCells(int x0, int y0, int[] fill)
-    {
-        int tc = WaterSim.TileCells, w = WaterSim.W, h = WaterSim.H;
-        int dw = tc + 4, rw = tc + 6;
-        bool any = false;
-        bool crater = Craters.Count > 0;
-        float cs = WaterSim.Cell, ox = WaterSim.Origin.x, oy = WaterSim.Origin.y;
-        for (int y = 0; y < rw; y++)
-        for (int x = 0; x < rw; x++)
-        {
-            int cx = x0 + x - 3, cy = y0 + y - 3;
-            bool inGrid = cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1;
-            int v = inGrid ? WaterSim.ShownDepth(cy * w + cx) : 0;
-            _closed[y * rw + x] = inGrid && !WaterSim.Open(cy * w + cx);
-            // 閉じた升 (壁の際) には、開いた隣が 1 つだけの時にその水を描き込む。壁の中は画素ごとの SolidMap で切るので、
-            // 水が壁の際まで届いて見える。開いた隣が 2 つ以上 (升の中を細い壁が通っている) だと、乾いた側まで水を描いてしまうので描かない
-            if (inGrid && fill != null && fill[cy * w + cx] >= 0 && !WaterSim.Open(cy * w + cx))
-            {
-                // 当たり判定の中でも絵の上では床の所: 近くの水をそのまま描き、縁は床マスク (絵の形) で切る
-                v = WaterSim.ShownDepth(fill[cy * w + cx]);
-                _closed[y * rw + x] = false;
-            }
-            else if (v == 0 && cx >= 1 && cy >= 1 && cx < w - 1 && cy < h - 1 && !WaterSim.Open(cy * w + cx))
-            {
-                int k = cy * w + cx, open = 0, from = 0;
-                if (WaterSim.Open(k + 1)) { open++; from = k + 1; }
-                if (WaterSim.Open(k - 1)) { open++; from = k - 1; }
-                if (WaterSim.Open(k + w)) { open++; from = k + w; }
-                if (WaterSim.Open(k - w)) { open++; from = k - w; }
-                if (open == 1) v = WaterSim.ShownDepth(from);
-            }
-            if (v > 0 && crater) v = (int)(v * CraterScale(ox + (cx + 0.5f) * cs, oy + (cy + 0.5f) * cs));
-            _raw[y * rw + x] = v;
-            if (v > 0 && x >= 2 && y >= 2 && x < rw - 2 && y < rw - 2) any = true;
-        }
-        for (int y = 0; y < dw; y++)
-        for (int x = 0; x < dw; x++)
-        {
-            int c = (y + 1) * rw + x + 1;
-            int sum = _raw[c] * 4 + (_raw[c - 1] + _raw[c + 1] + _raw[c - rw] + _raw[c + rw]) * 2
-                + _raw[c - rw - 1] + _raw[c - rw + 1] + _raw[c + rw - 1] + _raw[c + rw + 1];
-            _depth[y * dw + x] = sum / 16;
-            int wet = Wet(_raw[c]);
-            if (_closed[c]) wet = Math.Max(wet, WallWet(c, rw));
-            _wet[y * dw + x] = wet;
-        }
-        return any;
-    }
-
     private static float[] _craterArgs = new float[16];
     // くぼみの効きはタイルの間で変わらないので先に出す (効きが 0 以下のくぼみは倍率を変えないので渡さない)。渡す数
     private static int CraterArgs()
@@ -574,44 +502,15 @@ internal static class WaterArt
         public int Any;
     }
 
-    // C++ の部品の答え合わせ (native verify): 同じ写しを C# でも作って違う升を数える (描くのは C# の結果)
-    internal static long VerifyRaws, VerifyRawDiff;
-    private static int[] _vRaw, _vDepth, _vWet;
-    private static bool[] _vClosed;
-    private static void VerifyRaw(int x0, int y0, int[] fill, bool any)
-    {
-        _vRaw = (int[])_raw.Clone(); _vDepth = (int[])_depth.Clone(); _vWet = (int[])_wet.Clone(); _vClosed = (bool[])_closed.Clone();
-        bool anyCs = RawCells(x0, y0, fill);
-        VerifyRaws++;
-        if (anyCs != any) VerifyRawDiff++;
-        for (int i = 0; i < _raw.Length; i++) if (_raw[i] != _vRaw[i] || _closed[i] != _vClosed[i]) VerifyRawDiff++;
-        for (int i = 0; i < _depth.Length; i++) if (_depth[i] != _vDepth[i] || _wet[i] != _vWet[i]) VerifyRawDiff++;
-    }
-
-    // C++ の部品の答え合わせ (native verify): 同じタイルを C# でも作って画素の違いを数える
-    internal static long VerifyTiles, VerifyDiff;
-    private static byte[] _verifyPx;
-    private static void VerifyPixels(Tile t, int x0, int y0, int n)
-    {
-        if (_verifyPx == null || _verifyPx.Length != t.Px.Length) _verifyPx = new byte[t.Px.Length];
-        Buffer.BlockCopy(t.Px, 0, _verifyPx, 0, t.Px.Length);
-        DrawPixels(t, x0, y0, n, false);
-        VerifyTiles++;
-        for (int i = 0; i < _verifyPx.Length; i++) if (_verifyPx[i] != t.Px[i]) VerifyDiff++;
-    }
-
     // 画素 (深さ・見せてよいか・濡れ) と壁の面の水
-    private static void DrawPixels(Tile t, int x0, int y0, int n, bool native)
+    private static void DrawPixels(Tile t, int x0, int y0, int n)
     {
-        if (native) PixelsNative(t, x0, y0, n, t.Px);
-        else Pixels(t, x0, y0, n, t.Px);
+        PixelsNative(t, x0, y0, n, t.Px);
         if (t.Face == null) return;
         Prof(3);
-        if (native) FaceNative(t, x0, y0, n);
-        else WriteFace(t, x0, y0, n);
+        FaceNative(t, x0, y0, n);
         Prof(6);
-        if (native) SpreadFaceNative(t, n);
-        else SpreadFace(t, n);
+        SpreadFaceNative(t, n);
         Prof(7);
     }
 
@@ -657,35 +556,6 @@ internal static class WaterArt
         if (_spread == null || _spread.Length < n * n) _spread = new byte[n * n];
         fixed (byte* px = t.Px) fixed (byte* face = t.Face) fixed (byte* tmp = _spread)
             Native.MrpNative.WaterSpreadFace(px, face, n, SpreadPx, tmp);
-    }
-
-    private static void Pixels(Tile t, int x0, int y0, int n, byte[] dst)
-    {
-        int tc = WaterSim.TileCells;
-        float cell = WaterSim.Cell;
-        int sw = SolidMap.W;
-        float sppu = SolidMap.Ppu;
-        var sorg = SolidMap.Origin;
-        var org = WaterSim.Origin;
-        float edge = (float)tc / (n - 1);
-        for (int py = 0; py < n; py++)
-        for (int px = 0; px < n; px++)
-        {
-            int i = (py * n + px) * 4;
-            // 画素 0 と n - 1 はタイルの境目ちょうど (隣のタイルの端の画素と同じ所)。シェーダは端の画素の真ん中から引く
-            float u = px * edge, v = py * edge;
-            float d = Sample(_depth, u, v);
-            float wet = Sample(_wet, u, v) * (1f / WetRamp);
-            float wx = org.x + (x0 + u) * cell, wy = org.y + (y0 + v) * cell;
-            int sx = (int)((wx - sorg.x) * sppu), sy = (int)((wy - sorg.y) * sppu);
-            // 壁の際の溝を埋めるために広げた分も、絵の無い空の上には描かない。
-            // 床マスクで切る時は壁と家具をマスクが絵の形で切るので、歩ける所の升 (1/16) では切らない (縁に升の段が出る)
-            bool vis = (t.FloorOn || NearOpen(sx, sy, sw) && (t.Furn == null || !t.Furn[py * n + px])) && !SolidMap.BareSky(wx, wy);
-            dst[i] = (byte)Math.Min(255f, d * (255f / DeepScale));
-            dst[i + 1] = vis ? (byte)255 : (byte)0;
-            dst[i + 2] = (byte)Math.Min(255f, wet * 255f + 0.5f);
-            dst[i + 3] = 0;
-        }
     }
 
     // 当たり判定は家具や壁の絵より大きく取ってある (家具の手前・壁の根元に、絵では床なのに水の升が閉じた帯ができる)。
@@ -756,23 +626,8 @@ internal static class WaterArt
         int rx1 = Math.Min(sw, (x1 + margin) * sub), ry1 = Math.Min(sh, (y1 + margin) * sub);
         int rw = rx1 - rx0, rh = ry1 - ry0, n = rw * rh;
         if (_fillSrc.Length < n) { _fillSrc = new int[n]; _fillDist = new byte[n]; _fillQueue = new int[n]; }
-        int[] csFrom = null; byte[] csTargets = null;
-        if (Native.MrpNative.VerifyIn("WaterArt.Fill")) { csFrom = (int[])_fillFrom.Clone(); csTargets = (byte[])_fillTargets.Clone(); }
         FillCells += FillNative(x0, y0, x1, y1, max, rx0, ry0, rw, rh);
-        if (csFrom != null)
-        {
-            int csCells = 0;
-            FillCs(x0, y0, x1, y1, max, rx0, ry0, rw, rh, csFrom, csTargets, ref csCells);
-            long diff = 0;
-            for (int i = 0; i < csFrom.Length; i++) if (csFrom[i] != _fillFrom[i]) diff++;
-            for (int i = 0; i < csTargets.Length; i++) if (csTargets[i] != _fillTargets[i]) diff++;
-            VerifyFills++;
-            VerifyFillDiff += diff;
-        }
     }
-
-    // 答え合わせ (native verify): 写し元の決め直しを C# でも写しの表にやって比べる
-    internal static long VerifyFills, VerifyFillDiff;
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private unsafe struct FillArgs
@@ -810,75 +665,6 @@ internal static class WaterArt
             };
             Native.MrpNative.WaterFill(&a);
             return a.Cells;
-        }
-    }
-
-    // C# 版 (照合用)
-    private static void FillCs(int x0, int y0, int x1, int y1, int max, int rx0, int ry0, int rw, int rh, int[] fillFrom, byte[] fillTargets, ref int fillCells)
-    {
-        int w = WaterSim.W, h = WaterSim.H, sub = WaterSim.Sub, sw = SolidMap.W, n = rw * rh;
-        var src = _fillSrc;
-        var dist = _fillDist;
-        var queue = _fillQueue;
-        Array.Fill(src, -1, 0, n);
-        Array.Clear(dist, 0, n);
-        int head = 0, tail = 0;
-        for (int y = 0; y < rh; y++)
-        for (int x = 0; x < rw; x++)
-        {
-            int k = (ry0 + y) * sw + rx0 + x;
-            if (!SolidMap.OpenCell(k)) continue;
-            int wx = (rx0 + x) / sub, wy = (ry0 + y) / sub;
-            if (wx >= w || wy >= h || !WaterSim.Open(wy * w + wx)) continue;
-            src[y * rw + x] = wy * w + wx;
-            queue[tail++] = y * rw + x;
-        }
-        float cell = 1f / SolidMap.Ppu;
-        var org = SolidMap.Origin;
-        while (head < tail)
-        {
-            int k = queue[head++];
-            int d = dist[k] + 1;
-            if (d > max) continue;
-            int x = k % rw, y = k / rw;
-            if (x > 0) Step(k - 1, k, d);
-            if (x < rw - 1) Step(k + 1, k, d);
-            if (y > 0) Step(k - rw, k, d);
-            if (y < rh - 1) Step(k + rw, k, d);
-        }
-
-        int tw = WaterSim.TilesW, tc = WaterSim.TileCells;
-        for (int wy = y0; wy < y1; wy++)
-        for (int wx = x0; wx < x1; wx++)
-        {
-            int wk = wy * w + wx;
-            if (fillFrom[wk] >= 0) fillCells--;
-            fillFrom[wk] = -1;
-            if (WaterSim.Open(wk)) continue;
-            int best = -1, bestD = int.MaxValue;
-            for (int sy = wy * sub - ry0; sy < wy * sub + sub - ry0 && sy < rh; sy++)
-            for (int sx = wx * sub - rx0; sx < wx * sub + sub - rx0 && sx < rw; sx++)
-            {
-                if (sx < 0 || sy < 0) continue;
-                int k = sy * rw + sx;
-                if (src[k] >= 0 && dist[k] < bestD) { bestD = dist[k]; best = src[k]; }
-            }
-            if (best < 0) continue;
-            fillFrom[wk] = best;
-            fillCells++;
-            int ftx = best % w / tc, fty = best / w / tc, ttx = wx / tc, tty = wy / tc;
-            if (ftx == ttx && fty == tty) continue;
-            for (int i = 0; i < 8; i++)
-                if (ttx - ftx == TileDx[i] && tty - fty == TileDy[i]) fillTargets[fty * tw + ftx] |= (byte)(1 << i);
-        }
-
-        void Step(int j, int from, int d)
-        {
-            if (src[j] != -1) return;
-            if (!FloorMask.AllFloor(org.x + (rx0 + j % rw) * cell, org.y + (ry0 + j / rw) * cell, cell)) { src[j] = -2; return; }
-            src[j] = src[from];
-            dist[j] = (byte)d;
-            queue[tail++] = j;
         }
     }
 
@@ -957,43 +743,6 @@ internal static class WaterArt
         return false;
     }
 
-    // A に壁の面の上の水の厚さを書く。
-    // 水が面の上端より高い列 (低い家具・低い壁を越えた) では、面の上の画素にも同じ A を続け、床でなければ G (見せてよいか) を 0 にする。
-    // A を 0 にすると面の終わりで A が 128 を横切り、シェーダが乾いた縁を水面の線 (明るい縁と泡) と取り違える
-    private const int OvertopPx = 3;
-
-    private static void WriteFace(Tile t, int x0, int y0, int n)
-    {
-        float cell = WaterSim.Cell, edge = (float)WaterSim.TileCells / (n - 1);
-        var org = WaterSim.Origin;
-        for (int px = 0; px < n; px++)
-        {
-            byte topA = 0;
-            int carry = 0;
-            for (int py = 0; py < n; py++)
-            {
-                int j = py * n + px, i = j * 4;
-                byte z = t.Face[j];
-                if (z <= FloorMask.FaceTop)
-                {
-                    float wx = org.x + (x0 + px * edge) * cell, wy = org.y + (y0 + py * edge) * cell, h = z * (1f / FloorMask.FaceUnit);
-                    byte a = (byte)FxMath.Clamp(128f + (BaseDepth(wx, wy - h - BaseIn) - h) * FaceScale, 0f, 255f);
-                    t.Px[i + 3] = a;
-                    topA = a;
-                    carry = a > 128 ? OvertopPx : 0;
-                }
-                else if (carry > 0)
-                {
-                    // 面のすぐ上が床 (ベッドの奥の床) なら床の水はそのまま見せる (A は床では使わない)
-                    if (z == 255) t.Px[i + 1] = 0;
-                    t.Px[i + 3] = topA;
-                    carry--;
-                }
-                else carry = 0;
-            }
-        }
-    }
-
     // A を面の外へ SpreadPx 画素にじませる (横 → 縦の 2 回で四角く広げる・値は近くの面の大きい方)。
     // 面のすぐ外の画素の A が 0 だと、双線形で引いた A が面の縁で必ず 128 を横切り、沈んだベッドや壁の輪郭が
     // 水面の線 (明るい縁と泡) としてなぞられる。床の画素は A を持っても床として描くので見た目は変わらない。
@@ -1001,43 +750,6 @@ internal static class WaterArt
     // 面の画素は自分の水の厚さを持っているので上書きしない (乾いた面へにじませると、床の端の横の壁に水の四角が出る)
     private const int SpreadPx = 3;
     private static byte[] _spread;
-
-    private static void SpreadFace(Tile t, int n)
-    {
-        var px = t.Px;
-        var face = t.Face;
-        if (_spread == null || _spread.Length < n * n) _spread = new byte[n * n];
-        var tmp = _spread;
-        for (int y = 0; y < n; y++)
-        {
-            int row = y * n;
-            for (int x = 0; x < n; x++)
-            {
-                byte a = px[(row + x) * 4 + 3];
-                if (a == 0)
-                {
-                    int lo = Math.Max(0, x - SpreadPx), hi = Math.Min(n - 1, x + SpreadPx);
-                    for (int k = lo; k <= hi; k++) { byte b = px[(row + k) * 4 + 3]; if (b > a) a = b; }
-                }
-                tmp[row + x] = a;
-            }
-        }
-        for (int y = 0; y < n; y++)
-        {
-            int row = y * n;
-            for (int x = 0; x < n; x++)
-            {
-                int j = row + x, i = j * 4;
-                if (px[i + 3] != 0 || face[j] <= FloorMask.FaceTop) continue;
-                byte a = tmp[j];
-                int lo = Math.Max(0, y - SpreadPx), hi = Math.Min(n - 1, y + SpreadPx);
-                for (int k = lo; k <= hi; k++) { byte b = tmp[k * n + x]; if (b > a) a = b; }
-                if (a == 0) continue;
-                px[i + 3] = a;
-                if (face[j] == 255) px[i + 1] = 0;
-            }
-        }
-    }
 
     // 水を見せてよい画素か: 歩ける所か、左右 Undilate 升・下 UndilateDown 升・上 UndilateUp 升以内に歩ける所がある所。
     // SolidMap は継ぎ目を塞ぐために壁の線を両側へ太らせてあり、そのままだと壁の手前に乾いた帯 (溝) が残る。
@@ -1064,19 +776,6 @@ internal static class WaterArt
                 if (SolidMap.OpenCell(k + d * sw)) return true;
         return false;
     }
-
-    // 閉じた升 (壁の中) の濡れ具合を隣の開いた升から借りる (いちばん濡れた隣)。壁の中は見せない画素なので、
-    // 縁の線を壁の奥へ追いやって、見える床の上に壁に沿った縁 (濃い輪郭) を出さない。
-    // 細い壁で向こうが乾いた部屋でも、ならした縁が届くのは壁の升の真ん中から 0.6 升までで、絵の壁の黒い帯 (床マスクの外) に収まる
-    private static int WallWet(int c, int rw)
-    {
-        int a = Math.Max(Math.Max(WetOpen(c - 1), WetOpen(c + 1)), Math.Max(WetOpen(c - rw), WetOpen(c + rw)));
-        int b = Math.Max(Math.Max(WetOpen(c - rw - 1), WetOpen(c - rw + 1)), Math.Max(WetOpen(c + rw - 1), WetOpen(c + rw + 1)));
-        return Math.Max(a, b);
-    }
-
-    private static int Wet(int h) => h <= WetMin ? 0 : Math.Min(h - WetMin, WetRamp);
-    private static int WetOpen(int i) => _closed[i] ? 0 : Wet(_raw[i]);
 
     // タイルの中の位置 (cu, cv: 升の単位・タイルの左下 = 0) での高さ (升の真ん中の値を 3 次の B スプラインで)。
     // 双線形だと升の境目で傾きが折れ、水の縁の線が升の形の階段になる。B スプラインは境目でも曲がり方まで続くので縁が丸い線になる
@@ -1227,7 +926,6 @@ internal static class WaterArt
     // 絵の網目の三角形を、画素の真ん中が入る所だけ 255 で塗る (k = 1 単位の画素数)。塗るのは C++
     private static float[] _fpx = new float[64], _fpy = new float[64], _fmu = new float[64], _fmv = new float[64];
     private static ushort[] _ftri = new ushort[192];
-    internal static long VerifyFronts, VerifyFrontDiff;
 
     private static unsafe bool FillSprite(SpriteRenderer sr, float wx, float wy, float k, int m, byte[] buf)
     {
@@ -1251,7 +949,6 @@ internal static class WaterArt
             if (mask != null) { _fmu[i] = (q.x - mask.Min.x) * ku; _fmv[i] = (q.y - mask.Min.y) * kv; }
         }
         for (int i = 0; i < nt; i++) _ftri[i] = tri[i];
-        byte[] check = Native.MrpNative.VerifyIn("WaterArt.Front") ? (byte[])buf.Clone() : null;
         bool any;
         fixed (float* pxp = _fpx) fixed (float* pyp = _fpy) fixed (float* mup = _fmu) fixed (float* mvp = _fmv) fixed (ushort* tp = _ftri) fixed (byte* bp = buf)
         fixed (byte* mp = mask?.Px)
@@ -1259,14 +956,6 @@ internal static class WaterArt
             var a = new FrontFillArgs { Px = pxp, Py = pyp, Tri = tp, TriN = nt, M = m, Buf = bp, Mu = mup, Mv = mvp, Mask = mp, Mw = mask?.W ?? 0, Mh = mask?.H ?? 0 };
             Native.MrpNative.FrontFill(&a);
             any = a.Any != 0;
-        }
-        if (check != null)
-        {
-            bool anyCs = FillTrisCs(_fpx, _fpy, _ftri, nt, m, check, mask);
-            long diff = anyCs != any ? 1 : 0;
-            for (int i = 0; i < buf.Length; i++) if (buf[i] != check[i]) diff++;
-            VerifyFronts++;
-            VerifyFrontDiff += diff;
         }
         return any;
     }
@@ -1282,40 +971,6 @@ internal static class WaterArt
         public float* Mu, Mv;
         public byte* Mask;
         public int Mw, Mh;
-    }
-
-    // C# 版 (照合用)
-    private static bool FillTrisCs(float[] px, float[] py, ushort[] tri, int nt, int m, byte[] buf, SpriteAlphaMask.Mask mask)
-    {
-        bool any = false;
-        for (int n = 0; n + 2 < nt; n += 3)
-        {
-            int a = tri[n], b = tri[n + 1], c = tri[n + 2];
-            float ax = px[a], ay = py[a], bx = px[b], by = py[b], cx = px[c], cy = py[c];
-            float area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-            if (MathF.Abs(area) < 1e-6f) continue;
-            int x0 = Math.Max(0, (int)MathF.Ceiling(MathF.Min(ax, MathF.Min(bx, cx)))), x1 = Math.Min(m - 1, (int)MathF.Floor(MathF.Max(ax, MathF.Max(bx, cx))));
-            int y0 = Math.Max(0, (int)MathF.Ceiling(MathF.Min(ay, MathF.Min(by, cy)))), y1 = Math.Min(m - 1, (int)MathF.Floor(MathF.Max(ay, MathF.Max(by, cy))));
-            float inv = 1f / area;
-            for (int y = y0; y <= y1; y++)
-            for (int x = x0; x <= x1; x++)
-            {
-                float w0 = ((bx - x) * (cy - y) - (by - y) * (cx - x)) * inv;
-                float w1 = ((cx - x) * (ay - y) - (cy - y) * (ax - x)) * inv;
-                if (w0 < 0f || w1 < 0f || w0 + w1 > 1f) continue;
-                if (mask != null)
-                {
-                    float w2 = 1f - w0 - w1;
-                    float u = w0 * _fmu[a] + w1 * _fmu[b] + w2 * _fmu[c];
-                    float v = w0 * _fmv[a] + w1 * _fmv[b] + w2 * _fmv[c];
-                    int iu = Math.Min(mask.W - 1, Math.Max(0, (int)MathF.Floor(u))), iv = Math.Min(mask.H - 1, Math.Max(0, (int)MathF.Floor(v)));
-                    if (mask.Px[iv * mask.W + iu] == 0) continue;
-                }
-                buf[y * m + x] = 255;
-                any = true;
-            }
-        }
-        return any;
     }
 
     // 家具が a から b へ動いて止まった (r = 足元からの絵の広がり): 掛かるタイルの抜き型を作り直す
@@ -1700,38 +1355,14 @@ internal static class WaterArt
         int m = (int)MathF.Round(size * FloorMask.Ppu);
         if (_floorBuf.Length != m * m) _floorBuf = new byte[m * m];
         FloorMask.Fill(wx, wy, size, m, _floorBuf);
-        if (Native.MrpNative.VerifyIn("WaterArt.Floor")) VerifyThreadFloor(wx, wy, size, m);
         UploadFloor(t, _floorBuf, m, wx, wy, size);
         FloorTicks += System.Diagnostics.Stopwatch.GetTimestamp() - f0;
-    }
-
-    // 照合 (native verify): 動く床・持ち上げた家具が掛からないタイルでは、作業スレッドの作り方 (それらを書かない・積んだ時の地図の写し) が同じ床になるか
-    // 掛かるタイル (その場で作る) も数え、作業スレッドの作り方なら違う床になった枚数を出す (掛かる判定が効いている証拠)
-    internal static long VerifyFloorThreads, VerifyFloorThreadDiff, VerifyFloorMoving, VerifyFloorMovingDiff;
-    private static byte[] _verifyFloor = Array.Empty<byte>();
-
-    private static void VerifyThreadFloor(float wx, float wy, float size, int m)
-    {
-        bool moving = FloorMask.MovingAt(wx, wy, size, m);
-        if (_verifyFloor.Length != m * m) _verifyFloor = new byte[m * m];
-        FloorMask.FillFrom(FloorMask.Take(), wx, wy, size, m, _verifyFloor, FloorScratch, false);
-        long diff = 0;
-        for (int i = 0; i < _verifyFloor.Length; i++) if (_verifyFloor[i] != _floorBuf[i]) diff++;
-        if (moving)
-        {
-            VerifyFloorMoving++;
-            if (diff > 0) VerifyFloorMovingDiff++;
-            return;
-        }
-        VerifyFloorThreads++;
-        VerifyFloorThreadDiff += diff;
     }
 
     // 作った床の切り抜きに低い壁を書いてテクスチャにする (メイン)
     private static unsafe void UploadFloor(Tile t, byte[] buf, int m, float wx, float wy, float size)
     {
         WaterHeight.StampFloor(buf, m, wx, wy, size);
-        t.FloorHash = Native.MrpNative.VerifyIn("WaterArt.Floor") ? Fnv(buf) : 0;
         t.Floor = new Texture2D(m, m, TextureFormat.R8, false) { name = "MrpWaterFloor", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
         fixed (byte* b = buf) t.Floor.LoadRawTextureData((IntPtr)b, buf.Length);
         t.Floor.Apply(false, true);
@@ -1741,7 +1372,7 @@ internal static class WaterArt
 
     // ── 床の切り抜きを作業スレッドで作る ──────────────────────────────
     // 作り直しと新しいタイルの床 (1 枚 1.5ms 前後・中身は C++) を水の絵と一緒に作業スレッドへ積み、次のフレームの頭でテクスチャにする。
-    // 動く床・持ち上げた家具が掛かるタイル (メインの状態を読む)・照合の時・同期で回す時はその場で作る
+    // 動く床・持ち上げた家具が掛かるタイル (メインの状態を読む)・同期で回す時はその場で作る
     private sealed class FloorJob { public Tile T; public float X, Y, Size; public int M; public byte[] Buf; public FloorMask.Source Src; }
     private static readonly List<FloorJob> FloorJobs = new();
     private static readonly Stack<FloorJob> FloorJobPool = new();
@@ -1755,7 +1386,7 @@ internal static class WaterArt
         if (t.FloorJob) return true; // 積んだ物はまだ作られていない (作る時に今の地図を読む)
         WaterSim.EnsureIdle();
         int m = (int)MathF.Round(size * FloorMask.Ppu);
-        bool defer = Native.MrpNative.Async && !Native.MrpNative.VerifyIn("WaterArt.Floor") && _jobState != 2 && !FloorMask.MovingAt(wx, wy, size, m);
+        bool defer = Native.MrpNative.Async && _jobState != 2 && !FloorMask.MovingAt(wx, wy, size, m);
         if (defer && FloorJobs.Count < FloorJobsPerFrame)
         {
             var j = FloorJobPool.Count > 0 ? FloorJobPool.Pop() : new FloorJob();
@@ -1808,13 +1439,6 @@ internal static class WaterArt
             FloorJobPool.Push(j);
         }
         FloorJobs.Clear();
-    }
-
-    private static ulong Fnv(byte[] b)
-    {
-        ulong h = 14695981039346656037UL;
-        foreach (byte v in b) h = (h ^ v) * 1099511628211UL;
-        return h;
     }
 
     // 確認用: タイルの画素を PPM へ (R = A (壁の面の上の水の厚さ)・G = 見せてよいか・B = 壁の面の高さ (床 = 128・面でない = 0)・上の行から)
@@ -1879,36 +1503,8 @@ internal static class WaterArt
         int fdiff = 0;
         for (int i = 0; i < f1.Length; i++) if (f1[i] != f2[i]) fdiff++;
         int fi = Math.Clamp((int)MathF.Round((y - fy0) / size * (fm - 1)), 0, fm - 1) * fm + Math.Clamp((int)MathF.Round((x - fx0) / size * (fm - 1)), 0, fm - 1);
-        var f3 = (byte[])f1.Clone();
-        WaterHeight.StampFloor(f3, fm, fx0, fy0, size);
-        string fl = $" cut={f1[fi]}/{f2[fi]} cutDiff={fdiff} moving={FloorMask.MovingAt(fx0, fy0, size, fm)}" + (t.FloorHash != 0 ? $" hashSame={Fnv(f3) == t.FloorHash}" : "");
+        string fl = $" cut={f1[fi]}/{f2[fi]} cutDiff={fdiff} moving={FloorMask.MovingAt(fx0, fy0, size, fm)}";
         return $"tile=({tx},{ty}){fl} floor={(bool)t.Floor} floorOn={t.FloorOn} floorJob={t.FloorJob} floorWait={t.FloorWait} floorDirty={t.FloorDirty} queued={FloorQueued.Contains(key)} faceDone={t.FaceDone} face={t.Face != null} empty={t.Empty} waiting={t.Waiting} lastDraw={_clock - t.LastDraw:0.00}s ago srOn={(t.Sr ? t.Sr.enabled : false)} px={px}";
-    }
-
-    // 照合: 指紋のあるタイルの床マスクを今の状態で作り直して比べる (作り直し待ちのタイルは数えない)。
-    // 違う = 床の形が変わったのに作り直していない
-    internal static string FloorCheck()
-    {
-        float size = WaterSim.TileCells * WaterSim.Cell;
-        var org = WaterSim.Origin;
-        int n = 0, diff = 0, pending = 0;
-        var sb = new System.Text.StringBuilder();
-        foreach (var kv in Tiles)
-        {
-            var t = kv.Value;
-            if (!t.Floor || !t.Sr || t.FloorHash == 0) continue;
-            if (t.FloorDirty || t.FloorJob || FloorQueued.Contains(kv.Key)) { pending++; continue; }
-            float wx = org.x + t.Tx * size, wy = org.y + t.Ty * size;
-            int m = (int)MathF.Round(size * FloorMask.Ppu);
-            var buf = new byte[m * m];
-            FloorMask.Fill(wx, wy, size, m, buf);
-            WaterHeight.StampFloor(buf, m, wx, wy, size);
-            n++;
-            if (Fnv(buf) == t.FloorHash) continue;
-            diff++;
-            if (diff <= 6) sb.Append($" ({t.Tx},{t.Ty})");
-        }
-        return $"tiles={n} floorDiff={diff} pending={pending} thread={VerifyFloorThreads} threadDiff={VerifyFloorThreadDiff} moving={VerifyFloorMoving}/{VerifyFloorMovingDiff} platform={WaterSim.PlatformRect()}{sb}";
     }
 
     // 床マスクを作り直すタイル (1 タイル数 ms かかるので 1 フレームに FloorBudgetMs まで。作り終わるまでは前の床のまま)

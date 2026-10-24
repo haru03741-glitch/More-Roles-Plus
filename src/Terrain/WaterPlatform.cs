@@ -259,11 +259,6 @@ internal static partial class WaterSim
         return Math.Min(front, _pfZ);
     }
 
-    // 床のマスクに台の今の所 (水の升の位置) を床として足す。画素 k の真ん中 = x + k × step
-    // 確認用: 動く床の今の範囲 (無ければ空)
-    internal static string PlatformRect() => !_plat || _pfOff < 0 ? "none"
-        : $"{_org.x + (_pfX0 + _pfOff) * _cell:0.00},{_org.y + _pfY0 * _cell:0.00} {_pfW * _cell:0.00}x{_pfH * _cell:0.00}";
-
     // 動く床の今の範囲が x, y から size 四方に掛かるか (StampPlatform が何か書くか)
     internal static bool PlatformTouches(float x, float y, float size)
     {

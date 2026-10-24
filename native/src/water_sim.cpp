@@ -10,8 +10,8 @@
 #define MRP_INLINE inline __attribute__((always_inline))
 #endif
 
-// 床の上の水の計算の 1 小刻み (src/Terrain/WaterSim.cs の DropVoid → Flow → Heights と同じ結果)。
-// 整数だけで計算する。升を回す順番も C# と同じ (Flow の途中で起こした升は同じ回のうちに回る)
+// 床の上の水の計算の 1 小刻み。
+// 整数だけで計算する。升を回す順番は決めた順のまま (Flow の途中で起こした升は同じ回のうちに回る)
 
 struct WaterFlowArgs
 {
@@ -111,7 +111,7 @@ static MRP_INLINE void mark(WaterFlowArgs* a, int k, int x, int y)
     else if (lx == tc - 1) mark_tile(a, x / tc + 1, y / tc);
     if (ly == 0) mark_tile(a, x / tc, y / tc - 1);
     else if (ly == tc - 1) mark_tile(a, x / tc, y / tc + 1);
-    // 高さが変わった升の隣は流れが変わりうるので、眠っていれば起こす (C# の Mark と同じ順)
+    // 高さが変わった升の隣は流れが変わりうるので、眠っていれば起こす
     if (x >= 1 && y >= 1 && x < a->w - 1 && y < a->h - 1)
     {
         wake_at(a, k, x, y);
@@ -165,7 +165,7 @@ static MRP_INLINE void drop_void(WaterFlowArgs* a)
     }
 }
 
-// 吸い出しで升 k (深さ h) から 4 向きへ足す流れ (src/Terrain/WaterSim.cs の Blow と同じ)
+// 吸い出しで升 k (深さ h) から 4 向きへ足す流れ
 static MRP_INLINE void blow_of(const WaterFlowArgs* a, int k, int h, int* b)
 {
     int s1 = a->blowS[k];
@@ -326,7 +326,6 @@ static MRP_INLINE void heights(WaterFlowArgs* a)
 }
 
 // 1 刻みの小刻み SubN 回 (浸水の口へ注ぐ → 小刻み → 縁を越えた量を縁ごとに集める) をまとめて回す
-// (src/Terrain/WaterSim.cs の StepOnce の小刻みのループ・Pour3・SubFalls と同じ結果)
 struct WaterStepArgs
 {
     WaterFlowArgs f;
@@ -395,7 +394,7 @@ static MRP_INLINE void sub_falls(WaterStepArgs* s)
     }
 }
 
-// 定数が C# と違えば何もせず 0 (C# 版で回す)
+// 定数が C# と違えば何もせず 0 (その刻みは水を動かさない)
 MRP_API int32_t mrp_water_step(WaterStepArgs* p)
 {
     if (p->f.subN != SubN || p->f.tileCells != TileCells) return 0;

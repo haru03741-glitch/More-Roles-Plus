@@ -2,7 +2,7 @@
 #include "digest.h"
 #include "capture.h"
 
-// 外壁が抜けた時の気圧の範囲と口からの道のり (src/Terrain/Decompression.cs の Regions・Field・FindGrips と同じ結果)。
+// 外壁が抜けた時の気圧の範囲と口からの道のり。
 // 置き場は全部 C# が渡す (ここではメモリを取らない)
 
 static const int Nx[8] = { 1, -1, 0, 0, 1, -1, 1, -1 };

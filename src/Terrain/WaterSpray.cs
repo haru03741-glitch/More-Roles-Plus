@@ -14,8 +14,6 @@ internal static class WaterSpray
 {
     private const float Ppu = 24f;            // 画素/単位
     private const float Half = 2.4f;          // 口からの範囲 (届く距離 1.5 × 破裂 1.3 より広く)
-    private const float Hit = 0.6f;           // 粒の線の真ん中の濃さ (1 本でも細い筋として見える)
-    private const float Side = 0.2f, Corner = 0.06f;
     private const float Life = 16f;           // 噴き出し (15 秒) + 落ち切るまで
     private const int MaxSprays = 3;          // 毎刻み全面を描き直すので数を絞る (超えたら古い物から消す)
 
@@ -115,8 +113,6 @@ internal static class WaterSpray
         public int* Box;
     }
 
-    internal static long VerifyDraws, VerifyDrawDiff; // 答え合わせ (native verify): C# でも描いて画素を 1 バイトずつ比べる
-
     // 絵は C++ で描く (粒 1024 × 噴き出し 3 枚を刻みごとに描き直す・消すのと詰めるのは粒が触った範囲だけ)
     private static unsafe void Draw(Spray s)
     {
@@ -133,68 +129,8 @@ internal static class WaterSpray
             };
             Native.MrpNative.WaterSpray(&a);
         }
-        if (Native.MrpNative.VerifyIn("WaterSpray"))
-        {
-            var px2 = new byte[s.Px.Length];
-            DrawCs(s, px2, new float[s.Dens.Length], new float[s.Foam.Length]);
-            long diff = 0;
-            for (int i = 0; i < px2.Length; i++) if (px2[i] != s.Px[i]) diff++;
-            VerifyDraws++;
-            VerifyDrawDiff += diff;
-        }
         fixed (byte* b = s.Px) s.Tex.LoadRawTextureData((IntPtr)b, s.Px.Length);
         s.Tex.Apply(false, false);
-    }
-
-    // C# 版 (照合用)。px・dens・foam に描く
-    private static void DrawCs(Spray s, byte[] outPx, float[] dens, float[] foamBuf)
-    {
-        int n = s.N;
-        var org = WaterSim.Origin;
-        float x0 = s.Cx - Half, y0 = s.Cy - Half;
-        const float inv = 1f / WaterSim.Unit;
-        int count = WaterSim.Particles;
-        for (int p = 0; p < count; p++)
-        {
-            // 世界 → 絵の画素。高さは上へずらす (真上から斜めに見ている)
-            float ax = (org.x + WaterSim.Ox[p] * inv - x0) * Ppu, ay = (org.y + (WaterSim.Oy[p] + WaterSim.Oh[p]) * inv - y0) * Ppu;
-            float bx = (org.x + WaterSim.Px[p] * inv - x0) * Ppu, by = (org.y + (WaterSim.Py[p] + Math.Max(0, WaterSim.Ph[p])) * inv - y0) * Ppu;
-            if ((ax < 0 && bx < 0) || (ay < 0 && by < 0) || (ax >= n && bx >= n) || (ay >= n && by >= n)) continue;
-            float h = WaterSim.Ph[p] * (1f / WaterSim.MouthH);
-            float foam = WaterSim.Stuck[p] ? 0.9f : h > 0.9f ? 0.45f : h < 0.15f ? 0.3f : 0.03f;
-            float dx = bx - ax, dy = by - ay;
-            int steps = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(dx * dx + dy * dy)));
-            float w = 1f / steps * Math.Min(steps, 3); // 長い線ほど 1 画素あたりは薄く (速い所は細い筋)
-            for (int k = 0; k <= steps; k++)
-            {
-                float f = (float)k / steps;
-                Splat(dens, foamBuf, n, (int)(ax + dx * f), (int)(ay + dy * f), w, foam);
-            }
-        }
-        for (int i = 0; i < n * n; i++)
-        {
-            float d = dens[i];
-            int o = i * 4;
-            outPx[o] = (byte)Math.Min(255f, d * 255f);
-            outPx[o + 1] = d > 0f ? (byte)Math.Min(255f, foamBuf[i] / d * 255f) : (byte)0;
-            outPx[o + 2] = 0;
-            outPx[o + 3] = 255;
-        }
-    }
-
-    private static void Splat(float[] dens, float[] foamBuf, int n, int x, int y, float w, float foam)
-    {
-        if (x < 1 || y < 1 || x >= n - 1 || y >= n - 1) return;
-        int c = y * n + x;
-        Add(dens, foamBuf, c, Hit * w, foam);
-        Add(dens, foamBuf, c - 1, Side * w, foam); Add(dens, foamBuf, c + 1, Side * w, foam); Add(dens, foamBuf, c - n, Side * w, foam); Add(dens, foamBuf, c + n, Side * w, foam);
-        Add(dens, foamBuf, c - n - 1, Corner * w, foam); Add(dens, foamBuf, c - n + 1, Corner * w, foam); Add(dens, foamBuf, c + n - 1, Corner * w, foam); Add(dens, foamBuf, c + n + 1, Corner * w, foam);
-    }
-
-    private static void Add(float[] dens, float[] foamBuf, int i, float v, float foam)
-    {
-        dens[i] += v;
-        foamBuf[i] += v * foam;
     }
 
     private static void Destroy(Spray s)

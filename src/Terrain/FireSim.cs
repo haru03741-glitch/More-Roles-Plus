@@ -19,21 +19,10 @@ namespace MoreRolesPlus.Terrain;
 internal static partial class FireSim
 {
     public const int MaxT = 2047;
-    private const int Cond = 40;              // 隣へ移る熱 = 差 × これ/1024
-    private const int Cool = 30;              // 冷え = 熱 × これ/1024 + 1
-    private const int Rise = 48;              // 燃えている升が炎の熱へ寄る割合 (/256)
-    private const int FadeFuel = 60;          // 燃料がこれを切ると炎が小さくなっていく
-    private const int BurnUp = 40, BurnDown = 14; // 絵の炎の大きさの増え方・減り方 (1 刻み /255)
     // 水: 熱 100 を越えた升の水を (熱 − 100)/QuenchDiv + QuenchBase だけ湯気にし、湯気にした量 × QuenchHeat だけ冷える
-    private const int SteamT = 100;
     private const int QuenchDiv = 6, QuenchBase = 20, QuenchHeat = 6;
     // 油の噴き上がり: 半径 FlareR 升へ熱 MaxT と浮いた油。同じ升はしばらく (FlareCool 刻み) 噴かない
     private const int FlareR = 3, FlareCool = 45;
-    private const int ArcCool = 15;           // 電気の火花の間隔 (刻み)
-    // 吸い出し: 口へ引く強さ (/1024) がこれを越える升は炎が吹き消される・気圧がこれより低い升は燃え始めない
-    private const int BlowOut = 900;
-    private const int ThinAir = Decompression.Full / 2;
-    private const int Lean = 48;              // 口の方へ熱が余分に移る (引く強さ 1024 あたり /1024)
     // 爆発の熱: 爆心で BlastHeat + BlastBase・縁で BlastBase
     private const int BlastHeat = 1100, BlastBase = 300;
     private const int MaxFuel = 4000;
@@ -328,7 +317,7 @@ internal static partial class FireSim
     private static readonly int[] Nx = { 1, -1, 0, 0 };
     private static readonly int[] Ny = { 0, 0, 1, -1 };
 
-    // 升の計算の出来事 (C++ の部品と C# の答え合わせ版が同じ順で積み、計算の後に C# が流す)。種類・升・値の 3 個ずつ
+    // 升の計算の出来事 (C++ の部品が積み、計算の後に C# が流す)。種類・升・値の 3 個ずつ
     private const int EvSteam = 1, EvFlare = 2, EvArc = 3, EvChar = 4, EvSear = 5;
 
     // C++ の部品 (native/src/fire_sim.cpp) と同じ並び
@@ -344,8 +333,6 @@ internal static partial class FireSim
     }
 
     private static int[] _ev = Array.Empty<int>(), _dirtyOut = Array.Empty<int>(), _missing = Array.Empty<int>(), _press;
-    private static readonly List<int> EvCs = new(), DirtyCs = new();
-    internal static long VerifySteps, VerifyDiff;
 
     private static void StepOnce()
     {
@@ -365,16 +352,13 @@ internal static partial class FireSim
         int need = Math.Min(_actN * 5, _w * _h) * 6 * 3;
         if (_ev.Length < need) _ev = new int[Math.Max(need, _ev.Length * 2)];
         if (_dirtyOut.Length < _tw * _th) { _dirtyOut = new int[_tw * _th]; _missing = new int[_tw * _th]; }
-        Snapshot before = Native.MrpNative.VerifyIn("FireSim") ? Snapshot.Take() : null;
         int evN, dirtyN;
         for (;;)
         {
             int miss = RunNative(0, pull, pdist, pcomp, ppar, pw, ph, out evN, out dirtyN);
             if (miss == 0) break;
             for (int i = 0; i < miss; i++) EnsureTileIndex(_missing[i]);
-            before = Native.MrpNative.VerifyIn("FireSim") ? Snapshot.Take() : null;
         }
-        if (before != null) VerifyStep(before, pull, evN, dirtyN);
 
         for (int i = 0; i < dirtyN; i++) DirtyTiles.Add(_dirtyOut[i]);
         Replay(_ev, evN);
@@ -438,190 +422,8 @@ internal static partial class FireSim
         }
     }
 
-    // ── C# の答え合わせ版 (native verify on の時だけ・C++ と同じ結果になるか比べる) ──
-
-    private sealed class Snapshot
-    {
-        public int[] T, Dt, Fuel, Act, Hgt; public byte[] Flag, Burn, InList, FlareAt, ArcAt, TileDirty; public ushort[] Char; public int ActN;
-        public static Snapshot Take() => new()
-        {
-            T = (int[])_t.Clone(), Dt = (int[])_dt.Clone(), Fuel = (int[])_fuel.Clone(), Act = (int[])_act.Clone(), Hgt = (int[])WaterSim.HeightCells.Clone(),
-            Flag = (byte[])_flag.Clone(), Burn = (byte[])_burn.Clone(), InList = (byte[])_inList.Clone(), FlareAt = (byte[])_flareAt.Clone(),
-            ArcAt = (byte[])_arcAt.Clone(), TileDirty = (byte[])_tileDirty.Clone(), Char = (ushort[])_char.Clone(), ActN = _actN,
-        };
-        public void Restore()
-        {
-            T.CopyTo(_t, 0); Dt.CopyTo(_dt, 0); Fuel.CopyTo(_fuel, 0); Act.CopyTo(_act, 0); Flag.CopyTo(_flag, 0); Burn.CopyTo(_burn, 0);
-            InList.CopyTo(_inList, 0); FlareAt.CopyTo(_flareAt, 0); ArcAt.CopyTo(_arcAt, 0); TileDirty.CopyTo(_tileDirty, 0); Char.CopyTo(_char, 0);
-            _actN = ActN;
-        }
-    }
-
-    // C++ の結果を取っておき、前の状態へ戻して C# 版を回し、全部の升と出来事を比べてから C++ の結果へ戻す
-    private static void VerifyStep(Snapshot before, bool pull, int evN, int dirtyN)
-    {
-        var after = Snapshot.Take();
-        int burnN = BurningCount;
-        before.Restore();
-        EvCs.Clear(); DirtyCs.Clear();
-        StepCs(pull, before.Hgt);
-        long diff = 0;
-        diff += Diff(_t, after.T) + Diff(_dt, after.Dt) + Diff(_fuel, after.Fuel) + Diff(_flag, after.Flag) + Diff(_burn, after.Burn)
-            + Diff(_inList, after.InList) + Diff(_flareAt, after.FlareAt) + Diff(_arcAt, after.ArcAt) + Diff(_tileDirty, after.TileDirty);
-        for (int k = 0; k < _char.Length; k++) if (_char[k] != after.Char[k]) diff++;
-        if (_actN != after.ActN) diff++;
-        for (int i = 0; i < Math.Min(_actN, after.ActN); i++) if (_act[i] != after.Act[i]) diff++;
-        if (BurningCount != burnN) diff++;
-        if (EvCs.Count != evN) diff++;
-        for (int i = 0; i < Math.Min(evN, EvCs.Count); i++) if (EvCs[i] != _ev[i]) diff++;
-        if (DirtyCs.Count != dirtyN) diff++;
-        for (int i = 0; i < Math.Min(dirtyN, DirtyCs.Count); i++) if (DirtyCs[i] != _dirtyOut[i]) diff++;
-        VerifySteps++;
-        VerifyDiff += diff;
-        if (diff > 0) Plugin.Logger.LogWarning($"[FireSim] native diff={diff} step={_step} act={after.ActN}/{_actN} ev={evN}/{EvCs.Count} dirty={dirtyN}/{DirtyCs.Count}");
-        after.Restore();
-        BurningCount = burnN;
-    }
-
-    private static int Diff(int[] a, int[] b) { int n = 0; for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) n++; return n; }
-    private static int Diff(byte[] a, byte[] b) { int n = 0; for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) n++; return n; }
-
-    // C++ の mode 0 と同じ計算 (水の深さは計算の前の物を読む・水を減らすのは出来事を流す時)
-    private static void StepCs(bool pull, int[] hgt)
-    {
-        // 熱の移動: 熱い側の升が差に比例して隣へ渡す (読むのは前の熱だけ・足し算なので升の順番に依らない)
-        int count = _actN;
-        for (int a = 0; a < count; a++)
-        {
-            int k = _act[a];
-            int tk = _t[k];
-            if (tk <= 0) continue;
-            int leanD = -1, leanS = 0;
-            if (pull && Burning(k)) Leaning(k, out leanD, out leanS);
-            for (int d = 0; d < 4; d++)
-            {
-                int j = k + Nx[d] + Ny[d] * _w;
-                if (!WaterSim.Open(j) || !WaterSim.Passable(k, d)) continue;
-                int diff = tk - _t[j];
-                if (diff <= 0) continue;
-                int c = d == leanD ? Cond + leanS * Lean / 1024 : Cond;
-                int f = diff * c / 1024;
-                if (f <= 0) continue;
-                _dt[k] -= f;
-                _dt[j] += f;
-                Wake(j);
-            }
-        }
-
-        // 升ごと: 燃える・冷える・水・空気
-        int burning = 0;
-        for (int a = 0; a < _actN; a++)
-        {
-            int k = _act[a];
-            int t = _t[k] + _dt[k];
-            _dt[k] = 0;
-            int m = _mat[k];
-            byte flag = _flag[k];
-            bool on = (flag & FBurning) != 0;
-            if (!WaterSim.Open(k)) { on = false; t = 0; }
-            int jit = Jitter(k);
-            if (on)
-            {
-                _fuel[k] -= MBurn[m];
-                int ch = _char[k];
-                _char[k] = (ushort)Math.Min(ushort.MaxValue, ch + MBurn[m]);
-                t += (MFlame[m] + jit * 2 - t) * Rise / 256;
-                for (int i = 0; i < CharStep.Length; i++)
-                    if (ch < CharStep[i] && _char[k] >= CharStep[i]) { MarkCs(k); Ev(EvChar, k, i); }
-                if (_decides && Math.Min(t, MFlame[m] + 128) > SearMin() && HasWall(k)) Ev(EvSear, k, t);
-                if (_fuel[k] <= 0)
-                {
-                    _fuel[k] = 0;
-                    on = false;
-                }
-            }
-            else if (_fuel[k] > 0 && t >= MIgnite[m] + jit) on = true;
-            t -= t * Cool / 1024 + 1;
-
-            // 水: 熱で湯気になり冷える。油の火は水で消えずに噴き上がる。電気の火は消えにくい
-            int depth = hgt[k];
-            if (depth > 0 && t > SteamT)
-            {
-                if (on && m == (int)Mat.Fuel)
-                {
-                    Ev(EvSteam, k, depth);
-                    if ((byte)(_step - _flareAt[k]) >= FlareCool || _flareAt[k] == 0) { _flareAt[k] = (byte)Math.Max(1, _step & 255); Ev(EvFlare, k, 0); }
-                }
-                else
-                {
-                    int want = (t - SteamT) / QuenchDiv + QuenchBase;
-                    int e = Math.Min(depth, want);
-                    Ev(EvSteam, k, e);
-                    t -= e * QuenchHeat / (m == (int)Mat.Electric && on ? 2 : 1);
-                    if (on && m == (int)Mat.Electric && (byte)(_step - _arcAt[k]) >= ArcCool) { _arcAt[k] = (byte)_step; Ev(EvArc, k, 0); }
-                }
-            }
-
-            // 空気: 口の際は吹き消され、薄い所では燃え始めない
-            if (pull && (on || t > 0))
-            {
-                int x = k % _w, y = k / _w;
-                if (Decompression.FlowAt(x * WaterSim.Sub, y * WaterSim.Sub, out int dist, out int press, out _, out _))
-                {
-                    int s = (int)((long)Decompression.Strength1024(dist) * press / Decompression.Full);
-                    if (s > BlowOut) { on = false; t -= t / 4; }
-                    else if (press < ThinAir && !((flag & FBurning) != 0)) on = false;
-                }
-            }
-
-            if (t < 0) t = 0;
-            if (t > MaxT) t = MaxT;
-            int oldGlow = _t[k] >> 6;
-            _t[k] = t;
-            _flag[k] = on ? (byte)(flag | FBurning) : (byte)(flag & ~FBurning);
-            int target = !on ? 0 : _fuel[k] >= FadeFuel ? 255 : 64 + 191 * _fuel[k] / FadeFuel;
-            int b = _burn[k];
-            int nb = b < target ? Math.Min(target, b + BurnUp) : Math.Max(target, b - BurnDown);
-            if (nb != b || oldGlow != t >> 6) MarkCs(k);
-            _burn[k] = (byte)nb;
-            if (on) burning++;
-        }
-        BurningCount = burning;
-    }
-
     // 壁に熱を貯めるのは、どの材質の壁の下限も越えない升と壁に接していない升を除く (Sear が何もしない升)
     private static int SearMin() => Math.Min(WallMin[0], Math.Min(WallMin[1], WallMin[2]));
-
-    private static bool HasWall(int k)
-    {
-        for (int d = 0; d < 4; d++)
-            if (!WaterSim.Open(k + Nx[d] + Ny[d] * _w) || !WaterSim.Passable(k, d)) return true;
-        return false;
-    }
-
-    private static void Ev(int kind, int k, int v) { EvCs.Add(kind); EvCs.Add(k); EvCs.Add(v); }
-
-    // Mark と同じタイルを、DirtyTiles の代わりに答え合わせの一覧へ
-    private static void MarkCs(int k)
-    {
-        int x = k % _w, y = k / _w;
-        int tx = x / TileCells, ty = y / TileCells;
-        MarkTileCs(tx, ty);
-        int lx = x % TileCells, ly = y % TileCells;
-        if (lx == 0) MarkTileCs(tx - 1, ty);
-        else if (lx == TileCells - 1) MarkTileCs(tx + 1, ty);
-        if (ly == 0) MarkTileCs(tx, ty - 1);
-        else if (ly >= TileCells - 2) MarkTileCs(tx, ty + 1);
-    }
-
-    private static void MarkTileCs(int tx, int ty)
-    {
-        if (tx < 0 || ty < 0 || tx >= _tw || ty >= _th) return;
-        int t = ty * _tw + tx;
-        if (_tileDirty[t] != 0) return;
-        _tileDirty[t] = 1;
-        DirtyCs.Add(t);
-    }
 
     // 升に接した壁の面を焦がす。北の壁は面が線の上に立って描かれるので、面の上の方まで焦がす (升の絵の描き直しは計算の側で印を付けてある)
     private static void CharFx(int k, float a)
@@ -693,17 +495,6 @@ internal static partial class FireSim
         if (!res.Ok && res.Why == "host only") return;
         if (!res.Ok || res.Why != null && res.Why.Contains("breach")) w.Done = true;
         else if (++w.Stage >= WallDurability.MaxHp) w.Done = true;
-    }
-
-    // 燃えている升の熱が口の方へなびく向き (Nx/Ny の並び) と引く強さ
-    private static void Leaning(int k, out int dir, out int s)
-    {
-        dir = -1; s = 0;
-        int x = k % _w, y = k / _w;
-        if (!Decompression.FlowAt(x * WaterSim.Sub, y * WaterSim.Sub, out int dist, out int press, out int fx, out int fy)) return;
-        s = (int)((long)Decompression.Strength1024(dist) * press / Decompression.Full);
-        if (s <= 0 || fx == 0 && fy == 0) return;
-        dir = Math.Abs(fx) >= Math.Abs(fy) ? (fx > 0 ? 0 : 1) : (fy > 0 ? 2 : 3);
     }
 
     // 油の火に水: 周りへ熱を飛ばし、その升の油の半分を周りの水の上へ浮かせて散らす (4 分の 1 は噴き上がりで燃え尽きる)。
@@ -785,14 +576,6 @@ internal static partial class FireSim
         return r;
     }
 
-    // 升ごとの固定のゆらぎ (0..127)
-    private static int Jitter(int k)
-    {
-        uint h = (uint)k * 2654435761u;
-        h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12;
-        return (int)(h >> 25);
-    }
-
     private static (float X, float Y) Center(int k) => (_org.x + (k % _w + 0.5f) * _cell, _org.y + (k / _w + 0.5f) * _cell);
 
     private static void Wake(int k)
@@ -855,18 +638,6 @@ internal static partial class FireSim
         catch (Exception e) { Fail("tick", e); }
     }
 
-    // その点の熱と燃えているか (役職・確認用)
-    internal static int HeatAt(Vector2 p, out bool burning)
-    {
-        burning = false;
-        if (!_ready) return 0;
-        int x = (int)MathF.Floor((p.x - _org.x) / _cell), y = (int)MathF.Floor((p.y - _org.y) / _cell);
-        if (x < 0 || y < 0 || x >= _w || y >= _h) return 0;
-        int k = y * _w + x;
-        burning = Burning(k);
-        return _t[k];
-    }
-
     internal static void Reset()
     {
         _ready = false;
@@ -883,12 +654,12 @@ internal static partial class FireSim
         Rooms.Clear();
         Steam.Clear(); FlareFx.Clear(); Arcs.Clear(); Chars.Clear();
         _step = 0;
-        Steps = 0; Late = 0; BurningCount = 0; SteamTotal = 0; FlareTotal = 0; MaxStepMs = 0; VerifySteps = VerifyDiff = 0;
+        Steps = 0; Late = 0; BurningCount = 0; SteamTotal = 0; FlareTotal = 0; MaxStepMs = 0;
     }
 
     internal static string Describe() =>
         !_ready ? $"OK fire off {GameClock.Describe()}"
-        : $"OK fire step={_step} water={WaterSim.Step} late={Late} queue={Queue.Count} active={Active.Count} burning={BurningCount} steam={SteamTotal} flares={FlareTotal} walls={Scalds.Count} wallHits={WallHits} lastWall={LastWallHit} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} verify={VerifySteps}/{VerifyDiff} {GameClock.Describe()}";
+        : $"OK fire step={_step} water={WaterSim.Step} late={Late} queue={Queue.Count} active={Active.Count} burning={BurningCount} steam={SteamTotal} flares={FlareTotal} walls={Scalds.Count} wallHits={WallHits} lastWall={LastWallHit} digest={Digest():x8} stepMs={LastStepMs:0.000} maxStepMs={MaxStepMs:0.000} {GameClock.Describe()}";
 
     internal static string CellInfo(Vector2 p)
     {

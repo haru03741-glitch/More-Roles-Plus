@@ -38,7 +38,7 @@ internal static class TerrainUndo
         public readonly List<Run> Runs = new();
     }
 
-    // 比べる配列 (今の配列を毎回読む: 地図は作り直しや照合で入れ替わる)
+    // 比べる配列 (今の配列を毎回読む: 地図は作り直しで入れ替わる)
     private sealed class Track
     {
         public Func<byte[]> Get;

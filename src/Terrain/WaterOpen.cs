@@ -80,13 +80,6 @@ internal static partial class WaterSim
         var bits = _bits;
         if (MapFlip.Flipped) bits = MapFlip.MirrorBitRows(_bits, _bitsW, _bitsH, SolidMap.MirrorSpan);
         int cnt = WetFilterNative(bits, wet, n);
-        if (Native.MrpNative.VerifyIn("WaterOpen"))
-        {
-            var cs = new byte[n];
-            VerifyLevels++;
-            if (WetFilterCs(bits, cs, n) != cnt) VerifyLevelDiff++;
-            for (int k = 0; k < n; k++) if (cs[k] != wet[k]) VerifyLevelDiff++;
-        }
         _wet = wet;
         WetStats = $"{name}: {cnt}";
     }
@@ -109,47 +102,4 @@ internal static partial class WaterSim
         }
     }
 
-    private static int WetFilterCs(byte[] bits, byte[] wet, int n)
-    {
-        var solid = SolidMap.OpenCells;
-        int cnt = 0;
-        for (int k = 0; k < n; k++)
-        {
-            if ((bits[k >> 3] >> (k & 7) & 1) == 0 || solid[k] != 0 || SolidMap.OutsideAt(k)) continue;
-            wet[k] = 1;
-            cnt++;
-        }
-        return cnt;
-    }
-
-    // 照合 (native verify): 表の濾しと升ごとの島の C++ と C# の違い
-    internal static long VerifyLevels, VerifyLevelDiff;
-
-    // 歩ける升を含まない (水だけが届く) 升は、開いている隣から島をもらう (幅優先・升の番号の順で決まる)
-    private static int SpreadWetIslands(byte[] isl, byte[] wetOnly)
-    {
-        if (_wet == null) return 0;
-        int n = _w * _h;
-        var q = new int[n];
-        int head = 0, tail = 0, left = 0;
-        for (int k = 0; k < n; k++)
-        {
-            if (_sub[k] == 0) continue;
-            if (isl[k] != 0) q[tail++] = k;
-            else if (wetOnly[k] != 0) left++;
-        }
-        while (head < tail && left > 0)
-        {
-            int k = q[head++];
-            for (int d = 0; d < 4; d++)
-            {
-                int j = k + Nx[d] + Ny[d] * _w;
-                if (j < 0 || j >= n || wetOnly[j] == 0 || isl[j] != 0) continue;
-                isl[j] = isl[k];
-                left--;
-                q[tail++] = j;
-            }
-        }
-        return left;
-    }
 }

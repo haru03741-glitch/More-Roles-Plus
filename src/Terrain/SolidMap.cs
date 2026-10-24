@@ -358,7 +358,6 @@ internal static class SolidMap
         public Flood Fl;
         public List<(Vector2 P, bool Sure)> Seeds;
         public int Cols, Movable, N;
-        public long VerifyDiff;
         public double TSeg, TRaster, TSeeds;
     }
     private static Half _half;
@@ -449,16 +448,8 @@ internal static class SolidMap
         }
         var fl = new Flood(n, sn);
         FloodNative(barrier, sx, sy, sn, fl);
-        long verifyDiff = -1;
-        if (Native.MrpNative.VerifyIn("SolidMap"))
-        {
-            var cs = new Flood(n, sn);
-            FloodCs(barrier, sx, sy, sn, cs, new int[n]);
-            verifyDiff = cs.Diff(fl);
-            fl = cs;
-        }
         sw.Stop();
-        _half = new Half { Ship = ship, Sw = sw, Fl = fl, Seeds = seeds, Cols = cols, Movable = movable, N = n, VerifyDiff = verifyDiff, TSeg = tSeg, TRaster = tRaster, TSeeds = tSeeds };
+        _half = new Half { Ship = ship, Sw = sw, Fl = fl, Seeds = seeds, Cols = cols, Movable = movable, N = n, TSeg = tSeg, TRaster = tRaster, TSeeds = tSeeds };
     }
 
     private static void BuildRest()
@@ -471,7 +462,6 @@ internal static class SolidMap
         var fl = h.Fl;
         var seeds = h.Seeds;
         int sn = seeds.Count, n = h.N, cols = h.Cols, movable = h.Movable;
-        long verifyDiff = h.VerifyDiff, xfDiff = -1;
         double tSeg = h.TSeg, tRaster = h.TRaster, tSeeds = h.TSeeds;
         var blocked = fl.Blocked;
         _open = fl.Open;
@@ -497,14 +487,13 @@ internal static class SolidMap
         bool sky = ship.TryCast<MiraShipStatus>() != null || ship.TryCast<AirshipStatus>() != null;
         var hullMeshes = !sky && ship.Type == ShipStatus.MapType.Ship ? HullMeshes(ship) : null;
         int tris = 0;
-        _outside = sky || hullMeshes is { Count: > 0 } ? Outside(blocked, hullMeshes, ref verifyDiff, ref xfDiff, out tris) : null;
+        _outside = sky || hullMeshes is { Count: > 0 } ? Outside(blocked, hullMeshes, out tris) : null;
         BreachableHull = Valid && hullMeshes is { Count: > 0 };
         double tOut = sw.Elapsed.TotalMilliseconds;
         _orig = (byte[])_open.Clone();
         SkyHull = Valid && HullRects.Count > 0 && ship.TryCast<AirshipStatus>() != null;
 
-        string verify = verifyDiff >= 0 ? $" verify diff={verifyDiff} xfDiff={xfDiff}" : "";
-        Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} tris={tris} ms={sw.Elapsed.TotalMilliseconds:F1} (segs={tSeg:F1} raster={tRaster - tSeg:F1} seeds={tSeeds - tRaster:F1} flood={tFlood - tSeeds:F1} hull={tHull - tFlood:F1} out={tOut - tHull:F1}){verify}";
+        Stats = $"valid={Valid} {_w}x{_h} walls={cols} movable={movable} seeds={seeds.Count} accepted={accepted} extra={extra} leaked={leaked} open={openCells * 100L / n}% islands={IslandCount} hull={HullRects.Count} hullEdges={edges} tris={tris} ms={sw.Elapsed.TotalMilliseconds:F1} (segs={tSeg:F1} raster={tRaster - tSeg:F1} seeds={tSeeds - tRaster:F1} flood={tFlood - tSeeds:F1} hull={tHull - tFlood:F1} out={tOut - tHull:F1})";
         Plugin.Logger.LogInfo($"solid map: {Stats}");
     }
 
@@ -519,21 +508,6 @@ internal static class SolidMap
         {
             Blocked = new byte[n]; Open = new byte[n]; Leaked = new byte[n]; Island = new byte[n];
             SeedRes = new byte[Math.Max(1, sn)];
-        }
-
-        public long Diff(Flood o)
-        {
-            long d = 0;
-            for (int i = 0; i < Open.Length; i++)
-            {
-                if (Blocked[i] != o.Blocked[i]) d++;
-                if (Open[i] != o.Open[i]) d++;
-                if (Leaked[i] != o.Leaked[i]) d++;
-                if (Valid && Island[i] != o.Island[i]) d++;
-            }
-            for (int i = 0; i < SeedRes.Length; i++) if (SeedRes[i] != o.SeedRes[i]) d++;
-            if (OpenCells != o.OpenCells || Islands != o.Islands || Accepted != o.Accepted || LeakedN != o.LeakedN || Valid != o.Valid) d++;
-            return d;
         }
     }
 
@@ -566,83 +540,9 @@ internal static class SolidMap
         }
     }
 
-    // FloodNative の C# 版 (照合の答え)
-    private static void FloodCs(byte[] barrier, int[] sx, int[] sy, int sn, Flood f, int[] queue)
-    {
-        int n = _w * _h;
-        // 2. 太らせる (縦横それぞれ Dilate 升)
-        var blocked = DilateGrid(barrier, _w, _h, Dilate);
-        Array.Copy(blocked, f.Blocked, n);
-
-        // 3. 床の上と分かっている点から塗る (地図の端に届いた塗りは壁の外へ漏れたので捨てる)
-        var open = f.Open;
-        int accepted = 0, leaked = 0;
-        for (int s = 0; s < sn; s++)
-        {
-            int start = NearestFree(blocked, sx[s], sy[s]);
-            if (start < 0 || open[start] != 0) continue;
-            int head = 0, tail = 0;
-            bool border = false;
-            open[start] = 1;
-            queue[tail++] = start;
-            while (head < tail)
-            {
-                int k = queue[head++];
-                int x = k % _w, y = k / _w;
-                if (x == 0 || y == 0 || x == _w - 1 || y == _h - 1) border = true;
-                if (x > 0) Push(k - 1);
-                if (x < _w - 1) Push(k + 1);
-                if (y > 0) Push(k - _w);
-                if (y < _h - 1) Push(k + _w);
-            }
-            if (border)
-            {
-                for (int i = 0; i < tail; i++) open[queue[i]] = 2; // 漏れた塗り (もう塗らない印)
-                leaked++;
-                f.SeedRes[s] = 2;
-            }
-            else
-            {
-                accepted++;
-                f.SeedRes[s] = 1;
-            }
-
-            void Push(int k2)
-            {
-                if (open[k2] != 0 || blocked[k2] != 0) return;
-                open[k2] = 1;
-                queue[tail++] = k2;
-            }
-        }
-        for (int k = 0; k < n; k++) if (open[k] == 2) { open[k] = 0; f.Leaked[k] = 1; }
-
-        // 4. 太らせた分を戻す (壁の線そのものの升は閉じたまま)。角の升は斜めにしか届かないので 1 段多く
-        for (int step = 0; step <= Dilate; step++)
-        {
-            int grown = 0;
-            for (int k = 0; k < n; k++)
-            {
-                if (open[k] != 0 || barrier[k] != 0 || blocked[k] == 0) continue;
-                int x = k % _w, y = k / _w;
-                if ((x > 0 && open[k - 1] == 1) || (x < _w - 1 && open[k + 1] == 1) ||
-                    (y > 0 && open[k - _w] == 1) || (y < _h - 1 && open[k + _w] == 1))
-                { queue[grown++] = k; }
-            }
-            for (int i = 0; i < grown; i++) open[queue[i]] = 1; // 段ごとにまとめて開ける (同じ段で連鎖させない)
-        }
-
-        int openCells = 0;
-        for (int k = 0; k < n; k++) if (open[k] != 0) openCells++;
-        f.OpenCells = openCells;
-        f.Accepted = accepted;
-        f.LeakedN = leaked;
-        f.Valid = accepted > 0 && openCells > n / 50;
-        if (f.Valid) f.Islands = LabelIslands(open, f.Island, queue);
-    }
-
     // 船の外 (_outside の説明)。絵と船体の塊は Dilate 升太らせて、際の 1 画素ずれで外が食い込まないようにする。
     // 絵の三角形はワールド座標に直してから (変換の行列は物ごとに 1 回だけ読む) C++ で塗る
-    private static byte[] Outside(byte[] blocked, List<MeshFilter> hullMeshes, ref long verifyDiff, ref long xfDiff, out int triN)
+    private static byte[] Outside(byte[] blocked, List<MeshFilter> hullMeshes, out int triN)
     {
         int n = _w * _h;
         // 頂点と三角形は il2cpp の配列の中身を直に読む (添字で 1 要素ずつ読むと interop を通って遅い)
@@ -675,16 +575,7 @@ internal static class SolidMap
         // エアシップの船体の塊 (部屋と部屋の間の赤い板) も船の中
         var art = new byte[n];
         FillHullRects(art);
-        if (!Native.MrpNative.VerifyIn("SolidMap")) return OutsideNative(art, triData, blocked);
-
-        var artCs = (byte[])art.Clone();
-        var outN = OutsideNative(art, triData, blocked);
-        var outCs = OutsideCs(artCs, triData, blocked);
-        long d = 0;
-        for (int k = 0; k < n; k++) if (outN[k] != outCs[k]) d++;
-        verifyDiff = Math.Max(0, verifyDiff) + d;
-        xfDiff = TransformDiff(hullMeshes, artCs);
-        return outCs;
+        return OutsideNative(art, triData, blocked);
     }
 
     private static void FillHullRects(byte[] art)
@@ -767,128 +658,6 @@ internal static class SolidMap
         return outside;
     }
 
-    // OutsideNative の C# 版 (照合の答え)。art に三角形を足す
-    private static byte[] OutsideCs(byte[] art, float[] triData, byte[] blocked)
-    {
-        int n = _w * _h;
-        var tri = new List<Vector2>(6);
-        for (int i = 0; i + 5 < triData.Length; i += 6)
-        {
-            Vector2 a = new(triData[i], triData[i + 1]), b = new(triData[i + 2], triData[i + 3]), c = new(triData[i + 4], triData[i + 5]);
-            tri.Clear();
-            tri.Add(a); tri.Add(b); tri.Add(b); tri.Add(c); tri.Add(c); tri.Add(a);
-            FillPolygon(art, tri);
-        }
-        var grown = DilateGrid(art, _w, _h, Dilate);
-        var outside = new byte[n];
-        for (int k = 0; k < n; k++)
-            if (grown[k] == 0 && blocked[k] == 0 && _open[k] == 0) outside[k] = 1;
-            else if (art[k] == 0) outside[k] = 2; // 絵は無いが外にも数えない升 (太らせた分の縁・壁の線の上など)
-        return outside;
-    }
-
-    // 照合用: 頂点を 1 個ずつ Transform.TransformPoint で直した時と、行列で直した時 (artCs) の絵の升の違い
-    private static long TransformDiff(List<MeshFilter> hullMeshes, byte[] artCs)
-    {
-        int n = _w * _h;
-        var art = new byte[n];
-        var tri = new List<Vector2>(6);
-        if (hullMeshes != null)
-            foreach (var mf in hullMeshes)
-            {
-                var t = mf.transform;
-                var mesh = mf.sharedMesh;
-                var vs = mesh.vertices;
-                var ts = mesh.triangles;
-                for (int i = 0; i + 2 < ts.Length; i += 3)
-                {
-                    Vector2 a = t.TransformPoint(vs[ts[i]]), b = t.TransformPoint(vs[ts[i + 1]]), c = t.TransformPoint(vs[ts[i + 2]]);
-                    tri.Clear();
-                    tri.Add(a); tri.Add(b); tri.Add(b); tri.Add(c); tri.Add(c); tri.Add(a);
-                    FillPolygon(art, tri);
-                }
-            }
-        foreach (var sr in DamageMap.RoomArts)
-        {
-            if (!sr || !sr.sprite) continue;
-            var t = sr.transform;
-            var vs = sr.sprite.vertices;
-            var ts = sr.sprite.triangles;
-            for (int i = 0; i + 2 < ts.Length; i += 3)
-            {
-                Vector2 a = t.TransformPoint(vs[ts[i]]), b = t.TransformPoint(vs[ts[i + 1]]), c = t.TransformPoint(vs[ts[i + 2]]);
-                tri.Clear();
-                tri.Add(a); tri.Add(b); tri.Add(b); tri.Add(c); tri.Add(c); tri.Add(a);
-                FillPolygon(art, tri);
-            }
-        }
-        FillHullRects(art);
-        long d = 0;
-        for (int k = 0; k < n; k++) if (art[k] != artCs[k]) d++;
-        return d;
-    }
-
-    // 閉じた輪郭 (線分の組) の中の升を塗る (升の中心で偶奇)
-    private static void FillPolygon(byte[] grid, List<Vector2> segs)
-    {
-        if (segs.Count < 6) return;
-        float minY = float.MaxValue, maxY = float.MinValue;
-        foreach (var p in segs) { if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
-        int y0 = Math.Max(0, (int)MathF.Floor((minY - _origin.y) * _ppu)), y1 = Math.Min(_h - 1, (int)MathF.Floor((maxY - _origin.y) * _ppu));
-        var xs = new List<float>();
-        for (int y = y0; y <= y1; y++)
-        {
-            float wy = _origin.y + (y + 0.5f) / _ppu;
-            xs.Clear();
-            for (int i = 0; i + 1 < segs.Count; i += 2)
-            {
-                Vector2 a = segs[i], b = segs[i + 1];
-                if ((a.y > wy) == (b.y > wy)) continue;
-                xs.Add(a.x + (wy - a.y) / (b.y - a.y) * (b.x - a.x));
-            }
-            xs.Sort();
-            for (int k = 0; k + 1 < xs.Count; k += 2)
-            {
-                int x0 = Math.Max(0, (int)MathF.Ceiling((xs[k] - _origin.x) * _ppu - 0.5f));
-                int x1 = Math.Min(_w - 1, (int)MathF.Floor((xs[k + 1] - _origin.x) * _ppu - 0.5f));
-                for (int x = x0; x <= x1; x++) grid[y * _w + x] = 1;
-            }
-        }
-    }
-
-    // 歩ける所を 4 近傍のつながりで塗り分ける。番号は升の並び順で最初に出会った順 (どの端末でも同じ)。島の数を返す
-    private static int LabelIslands(byte[] open, byte[] island, int[] queue)
-    {
-        int n = _w * _h;
-        int count = 0;
-        for (int s = 0; s < n; s++)
-        {
-            if (open[s] == 0 || island[s] != 0) continue;
-            byte id = count < 254 ? (byte)(count + 1) : (byte)255;
-            count++;
-            int head = 0, tail = 0;
-            island[s] = id;
-            queue[tail++] = s;
-            while (head < tail)
-            {
-                int k = queue[head++];
-                int x = k % _w;
-                if (x > 0) Visit(k - 1);
-                if (x < _w - 1) Visit(k + 1);
-                if (k >= _w) Visit(k - _w);
-                if (k + _w < n) Visit(k + _w);
-            }
-
-            void Visit(int k2)
-            {
-                if (open[k2] == 0 || island[k2] != 0) return;
-                island[k2] = id;
-                queue[tail++] = k2;
-            }
-        }
-        return count;
-    }
-
     // 床に置かれた小さな閉じた当たり判定 (岩・結晶・机・切ってある物も)。水が縁の先の物を飛び越えないための升作り (WaterSim) が使う。
     // 船の全部の当たり判定を回すのはここだけにして、水が最初に出た時に同じ船を回し直さない
     internal const float SmallShapeMax = 4f;
@@ -936,8 +705,6 @@ internal static class SolidMap
         if (FurnitureKinds.TryGet(c.transform, FurnitureKinds.ShipName(ship), out _)) return;
         LateShapes.Add(c);
     }
-
-    internal static bool IsWall(Collider2D c) => c && c.enabled && IsWallShape(c);
 
     // 壁の当たり判定の形か (今切ってあるかは見ない)
     private static bool IsWallShape(Collider2D c)
@@ -1327,19 +1094,7 @@ internal static class SolidMap
             if (rx >= 0 && ry >= 0 && rx < bw && ry < bh) refK = ry * bw + rx;
         }
         byte refLab = (byte)IslandAt(walkableRef);
-        if (!Native.MrpNative.VerifyIn("SolidMap")) { CarveNative(shape, keep, x0, y0, bw, bh, barrier, refK, refLab); return; }
-        var open0 = (byte[])_open.Clone();
-        var island0 = (byte[])_island?.Clone();
         CarveNative(shape, keep, x0, y0, bw, bh, barrier, refK, refLab);
-        var openN = _open; var islandN = _island;
-        _open = open0; _island = island0;
-        CarveGrid(shape, keep, x0, y0, bw, bh, barrier, refK, refLab);
-        long diff = 0;
-        for (int i = 0; i < _open.Length; i++) if (_open[i] != openN[i]) diff++;
-        if (_island != null) for (int i = 0; i < _island.Length; i++) if (_island[i] != islandN[i]) diff++;
-        VerifyCarves++;
-        VerifyCarveDiff += diff;
-        if (diff != 0) Plugin.Logger.LogWarning($"[native] carve diff={diff} shape={shape.GetType().Name} box={bw}x{bh}");
     }
 
     // 立てた壁 (仕掛け壁) の形の中の升を歩けない所にする。島の番号は残す (壊れた時に Carve が元の島で塗り直す)。
@@ -1364,8 +1119,6 @@ internal static class SolidMap
         return filled;
     }
 
-    // Carve の C++ 版 (同じ結果)。照合 (native verify) の時は C# 版でも塗って地図全体を比べ、C# の結果を残す
-    internal static long VerifyCarves, VerifyCarveDiff;
     private static byte[] _carveScratch;
     private static int[] _carveQueue;
 
@@ -1411,83 +1164,6 @@ internal static class SolidMap
                 RefK = refK, RefLab = refLab, Barrier = bar, Scratch = scr, Queue = q,
             };
             Native.MrpNative.SolidCarve(&a);
-        }
-    }
-
-    private static void CarveGrid(CutShape shape, List<Rect> keep, int x0, int y0, int bw, int bh, byte[] barrier, int refK, byte refLab)
-    {
-        int bn = bw * bh;
-        // 壁の線を 1 升太らせる
-        var blocked = DilateGrid(barrier, bw, bh, 1);
-
-        // 形の中 (家具の範囲を除く)
-        var inside = new byte[bn];
-        for (int y = 0; y < bh; y++)
-        for (int x = 0; x < bw; x++)
-        {
-            float wx = _origin.x + (x0 + x + 0.5f) / _ppu, wy = _origin.y + (y0 + y + 0.5f) / _ppu;
-            if (shape.SignedDistance(wx, wy) >= 0f) continue;
-            if (keep != null && InsideAny(keep, wx, wy)) continue;
-            if (_outside != null && BareSkyCell(x0 + x, y0 + y)) continue; // 船の外 (空・宇宙) と際の絵の無い縁は歩ける所にしない (空の上に水が広がる)
-            inside[y * bw + x] = 1;
-        }
-
-        // もう歩ける升と基準点から塗る
-        var queue = new int[bn];
-        var seen = new byte[bn];
-        var lab = new byte[bn]; // 塗り広げた元の島の番号 (掘って開けた升に引き継ぐ)
-        int tail = 0;
-        for (int k = 0; k < bn; k++)
-        {
-            if (inside[k] == 0 || blocked[k] != 0) continue;
-            int gx = x0 + k % bw, gy = y0 + k / bw;
-            if (_open[gy * _w + gx] == 0) continue;
-            seen[k] = 1; queue[tail++] = k;
-            lab[k] = _island != null ? _island[gy * _w + gx] : (byte)0;
-        }
-        if (refK >= 0 && seen[refK] == 0 && blocked[refK] == 0) { seen[refK] = 1; queue[tail++] = refK; lab[refK] = refLab; }
-        int head = 0;
-        while (head < tail)
-        {
-            int k = queue[head++];
-            int x = k % bw, y = k / bw;
-            if (x > 0) Visit(k - 1, k);
-            if (x < bw - 1) Visit(k + 1, k);
-            if (y > 0) Visit(k - bw, k);
-            if (y < bh - 1) Visit(k + bw, k);
-        }
-        // 太らせた分を戻す (形の中の、壁の線そのものでない升)。角の升は斜めにしか届かないので 2 段
-        int grown = tail;
-        for (int step = 0; step < 2; step++)
-        {
-            int from = grown;
-            for (int k = 0; k < bn; k++)
-            {
-                if (seen[k] != 0 || inside[k] == 0 || barrier[k] != 0 || blocked[k] == 0) continue;
-                int x = k % bw, y = k / bw;
-                int from2 = x > 0 && seen[k - 1] == 1 ? k - 1 : x < bw - 1 && seen[k + 1] == 1 ? k + 1 :
-                            y > 0 && seen[k - bw] == 1 ? k - bw : y < bh - 1 && seen[k + bw] == 1 ? k + bw : -1;
-                if (from2 < 0) continue;
-                lab[k] = lab[from2];
-                queue[grown++] = k;
-            }
-            for (int i = from; i < grown; i++) seen[queue[i]] = 1;
-        }
-        for (int i = 0; i < grown; i++)
-        {
-            int k = queue[i];
-            int g = (y0 + k / bw) * _w + x0 + k % bw;
-            _open[g] = 1;
-            // 掘って開けた升は、つながった側の島の番号を持つ (穴の奥から掘り進んでも元の床の高さで比べられるように)
-            if (_island != null && _island[g] == 0) _island[g] = lab[k];
-        }
-
-        void Visit(int k2, int parent)
-        {
-            if (seen[k2] != 0 || inside[k2] == 0 || blocked[k2] != 0) return;
-            seen[k2] = 1;
-            lab[k2] = lab[parent];
-            queue[tail++] = k2;
         }
     }
 

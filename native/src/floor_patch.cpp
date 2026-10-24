@@ -3,8 +3,8 @@
 #include "capture.h"
 #include <math.h>
 
-// 持ち上げた家具の跡を床マスクの床にする (src/Terrain/FloorMask.cs の Apply と同じ結果) と、
-// 家具の今いる所を水の床の型から抜く (CutMoved と同じ結果)。小数の式の順番は C# と同じにする
+// 持ち上げた家具の跡を床マスクの床にすると、
+// 家具の今いる所を水の床の型から抜く。小数の式は書いた順に計算する
 
 struct FloorPatchArgs
 {

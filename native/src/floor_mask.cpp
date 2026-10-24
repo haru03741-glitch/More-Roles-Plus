@@ -3,8 +3,8 @@
 #include "capture.h"
 #include <math.h>
 
-// 水の床マスクの画素を作る (src/Terrain/FloorMask.cs の FillRaw / Fill と同じ結果)。
-// 小数の式は C# と同じ順に float で計算する (縮約 (FMA) を切ってビルドする) ので、端末ごとの結果も C# 版と 1 バイトまで同じ
+// 水の床マスクの画素を作る。
+// 小数の式は書いた順に float で計算する (縮約 (FMA) を切ってビルドする) ので、端末ごとの結果が 1 バイトまで同じ
 
 MRP_API int32_t mrp_abi() { return MRP_NATIVE_ABI; }
 
@@ -13,7 +13,7 @@ static const int MaxN = 2048;
 
 // 床の 1 ビット地図から n×n 画素 (画素 k の真ん中 = x + k × wstep)。床 = 255。
 // holes が null でなければ、床でない画素のうち穴の値 (損傷マスク RGBA の R を双線形で) が holeFloor 以上の所も床にする。
-// 列の位置は行によらないので表にしておく (式は C# の FillRaw / DamageMap.HoleSmoothAt と同じ)
+// 列の位置は行によらないので表にしておく
 MRP_API void mrp_floor_raw(
     const uint8_t* bits, int32_t mw, int32_t mh, float mox, float moy, float mppu,
     float x, float y, float wstep, int32_t n, uint8_t* into,

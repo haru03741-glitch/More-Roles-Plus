@@ -3,8 +3,7 @@
 #include "capture.h"
 #include <math.h>
 
-// 壁の面の上の水の厚さを画素の A に書く (src/Terrain/WaterArt.cs の WriteFace / BaseDepth / CellBase と
-// WaterSim.ShownDepth と同じ式と順序)
+// 壁の面の上の水の厚さを画素の A に書く
 
 struct FaceArgs
 {

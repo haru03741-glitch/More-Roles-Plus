@@ -57,9 +57,6 @@ internal static class HullThroat
         };
     }
 
-    // 答え合わせ (native verify): 喉の切り抜きを C# でもやって頂点・色・uv・三角形を比べる
-    internal static long VerifyClips, VerifyClipDiff;
-
     private static readonly List<Cut> Cuts = new();
     private static readonly List<P[]> Opened = new(); // 開けた喉の塊 (世界座標・反時計回り)
     private static int _shipGen = -1;
@@ -367,7 +364,7 @@ internal static class HullThroat
         return Cuts.Count > 0;
     }
 
-    // 三角形ごとに喉の塊を引き、喉を輪郭の太さだけ広げた塊に掛かる所は輪郭の色で残す (C++。照合の時は C# でもやって比べる)
+    // 三角形ごとに喉の塊を引き、喉を輪郭の太さだけ広げた塊に掛かる所は輪郭の色で残す (C++)
     private static void Apply(Cut c, List<P[]> holes)
     {
         var tf = c.Tf;
@@ -381,20 +378,7 @@ internal static class HullThroat
             grown.Add(g);
             foreach (var p in g) { minX = MathF.Min(minX, p.X); minY = MathF.Min(minY, p.Y); maxX = MathF.Max(maxX, p.X); maxY = MathF.Max(maxY, p.Y); }
         }
-        Cut cs = Native.MrpNative.VerifyIn("HullThroat") ? c.Copy() : null;
         ClipNative(c, local, grown, minX, minY, maxX, maxY);
-        if (cs != null)
-        {
-            ClipCs(cs, local, grown, minX, minY, maxX, maxY);
-            long diff = cs.VN != c.VN || cs.TN != c.TN ? 1000000 : 0;
-            int vn = Math.Min(cs.VN, c.VN);
-            for (int i = 0; i < vn * 3; i++) if (BitConverter.SingleToInt32Bits(cs.V[i]) != BitConverter.SingleToInt32Bits(c.V[i])) diff++;
-            for (int i = 0; i < vn * 2; i++) if (BitConverter.SingleToInt32Bits(cs.U[i]) != BitConverter.SingleToInt32Bits(c.U[i])) diff++;
-            for (int i = 0; i < vn * 4; i++) if (cs.C[i] != c.C[i]) diff++;
-            for (int i = 0; i < Math.Min(cs.TN, c.TN); i++) if (cs.T[i] != c.T[i]) diff++;
-            VerifyClips++;
-            VerifyClipDiff += diff;
-        }
         c.Dirty = true;
     }
 
@@ -455,140 +439,6 @@ internal static class HullThroat
         c.TN = triIn.Length;
         Plugin.Logger.LogError($"[HullThroat] clip overflow tris={c.TN / 3} holes={local.Count}");
     }
-
-    // C# 版 (照合用)
-    private static void ClipCs(Cut c, List<P[]> local, List<P[]> grown, float minX, float minY, float maxX, float maxY)
-    {
-        var oldT = new int[c.TN];
-        Array.Copy(c.T, oldT, c.TN);
-        var outT = new List<int>(c.TN + 64);
-        var keep = new List<P[]>();
-        var ring = new List<P[]>();
-        var tmp = new List<P[]>();
-        var hBox = new float[local.Count * 4];
-        var gBox = new float[grown.Count * 4];
-        for (int i = 0; i < local.Count; i++) { Bounds(local[i], hBox, i * 4); Bounds(grown[i], gBox, i * 4); }
-        for (int k = 0; k + 2 < oldT.Length; k += 3)
-        {
-            int i0 = oldT[k], i1 = oldT[k + 1], i2 = oldT[k + 2];
-            float x0 = c.V[i0 * 3], y0 = c.V[i0 * 3 + 1], x1 = c.V[i1 * 3], y1 = c.V[i1 * 3 + 1], x2 = c.V[i2 * 3], y2 = c.V[i2 * 3 + 1];
-            float tx0 = MathF.Min(x0, MathF.Min(x1, x2)), tx1 = MathF.Max(x0, MathF.Max(x1, x2));
-            float ty0 = MathF.Min(y0, MathF.Min(y1, y2)), ty1 = MathF.Max(y0, MathF.Max(y1, y2));
-            if (tx1 < minX || tx0 > maxX || ty1 < minY || ty0 > maxY)
-            {
-                outT.Add(i0); outT.Add(i1); outT.Add(i2);
-                continue;
-            }
-            var tri = Ccw(new[] { new P(x0, y0), new P(x1, y1), new P(x2, y2) });
-            if (MathF.Abs(Area(tri)) < 1e-9f) continue;
-
-            // 広げた喉の外 = そのまま / 中 = 喉そのものを引いた残りが輪郭。三角形と範囲が重ならない塊は見ない (余計に割らない)
-            keep.Clear(); keep.Add(tri);
-            ring.Clear();
-            for (int gi = 0; gi < grown.Count; gi++)
-            {
-                if (Apart(gBox, gi * 4, tx0, ty0, tx1, ty1)) continue;
-                var g = grown[gi];
-                tmp.Clear();
-                foreach (var piece in keep)
-                {
-                    if (Separated(piece, g)) { tmp.Add(piece); continue; }
-                    var inside = Intersect(piece, g);
-                    if (inside != null) ring.Add(inside);
-                    Subtract(piece, g, tmp);
-                }
-                (keep, tmp) = (tmp, keep);
-            }
-            if (ring.Count == 0) { outT.Add(i0); outT.Add(i1); outT.Add(i2); continue; }
-            for (int hi = 0; hi < local.Count; hi++)
-            {
-                if (Apart(hBox, hi * 4, tx0, ty0, tx1, ty1)) continue;
-                var h = local[hi];
-                tmp.Clear();
-                foreach (var piece in ring)
-                {
-                    if (Separated(piece, h)) tmp.Add(piece);
-                    else Subtract(piece, h, tmp);
-                }
-                (ring, tmp) = (tmp, ring);
-            }
-            foreach (var piece in keep) Emit(c, outT, piece, i0, i1, i2, false);
-            foreach (var piece in ring) Emit(c, outT, piece, i0, i1, i2, true);
-        }
-        if (c.T.Length < outT.Count) c.T = new int[outT.Count];
-        outT.CopyTo(c.T);
-        c.TN = outT.Count;
-    }
-
-    private static void Bounds(P[] p, float[] b, int o)
-    {
-        b[o] = b[o + 2] = p[0].X; b[o + 1] = b[o + 3] = p[0].Y;
-        for (int i = 1; i < p.Length; i++)
-        {
-            b[o] = MathF.Min(b[o], p[i].X); b[o + 1] = MathF.Min(b[o + 1], p[i].Y);
-            b[o + 2] = MathF.Max(b[o + 2], p[i].X); b[o + 3] = MathF.Max(b[o + 3], p[i].Y);
-        }
-    }
-
-    // h か s のどれかの辺の外側 (右) に相手が全部ある = 重ならない (s は割らずにそのまま残す)。両方が反時計回りの凸の時だけ正しい
-    private static bool Separated(P[] s, P[] h)
-    {
-        for (int i = 0; i < h.Length; i++)
-        {
-            P a = h[i], b = h[(i + 1) % h.Length];
-            int k = 0;
-            while (k < s.Length && Side(a, b, s[k]) <= 0f) k++;
-            if (k == s.Length) return true;
-        }
-        for (int i = 0; i < s.Length; i++)
-        {
-            P a = s[i], b = s[(i + 1) % s.Length];
-            int k = 0;
-            while (k < h.Length && Side(a, b, h[k]) <= 0f) k++;
-            if (k == h.Length) return true;
-        }
-        return false;
-    }
-
-    private static bool Apart(float[] b, int o, float x0, float y0, float x1, float y1)
-        => x1 < b[o] || x0 > b[o + 2] || y1 < b[o + 1] || y0 > b[o + 3];
-
-    private static void Emit(Cut c, List<int> outT, P[] poly, int i0, int i1, int i2, bool outline)
-    {
-        if (poly.Length < 3 || Area(poly) < 1e-7f) return;
-        float[] V = c.V;
-        float v0x = V[i0 * 3], v0y = V[i0 * 3 + 1], v0z = V[i0 * 3 + 2];
-        float v1x = V[i1 * 3], v1y = V[i1 * 3 + 1], v1z = V[i1 * 3 + 2];
-        float v2x = V[i2 * 3], v2y = V[i2 * 3 + 1], v2z = V[i2 * 3 + 2];
-        float det = (v1y - v2y) * (v0x - v2x) + (v2x - v1x) * (v0y - v2y);
-        if (MathF.Abs(det) < 1e-12f) return;
-        c.EnsureVerts(c.VN + poly.Length);
-        V = c.V;
-        float[] U = c.U;
-        byte[] C = c.C;
-        int baseIdx = c.VN;
-        foreach (var p in poly)
-        {
-            float w0 = ((v1y - v2y) * (p.X - v2x) + (v2x - v1x) * (p.Y - v2y)) / det;
-            float w1 = ((v2y - v0y) * (p.X - v2x) + (v0x - v2x) * (p.Y - v2y)) / det;
-            float w2 = 1f - w0 - w1;
-            int n = c.VN;
-            V[n * 3] = p.X; V[n * 3 + 1] = p.Y; V[n * 3 + 2] = v0z * w0 + v1z * w1 + v2z * w2;
-            if (outline) { C[n * 4] = OutlineColor.r; C[n * 4 + 1] = OutlineColor.g; C[n * 4 + 2] = OutlineColor.b; C[n * 4 + 3] = C[i0 * 4 + 3]; }
-            else
-                for (int ch = 0; ch < 4; ch++) C[n * 4 + ch] = Mix(C[i0 * 4 + ch], C[i1 * 4 + ch], C[i2 * 4 + ch], w0, w1, w2);
-            U[n * 2] = U[i0 * 2] * w0 + U[i1 * 2] * w1 + U[i2 * 2] * w2;
-            U[n * 2 + 1] = U[i0 * 2 + 1] * w0 + U[i1 * 2 + 1] * w1 + U[i2 * 2 + 1] * w2;
-            c.VN++;
-        }
-        for (int i = 1; i + 1 < poly.Length; i++)
-        {
-            outT.Add(baseIdx); outT.Add(baseIdx + i); outT.Add(baseIdx + i + 1);
-        }
-    }
-
-    private static byte Mix(byte a, byte b, byte c, float wa, float wb, float wc)
-        => (byte)Math.Clamp((int)MathF.Round(a * wa + b * wb + c * wc), 0, 255);
 
     private static unsafe void Upload(Cut c)
     {
@@ -671,43 +521,4 @@ internal static class HullThroat
 
     // 辺 a→b の左側 (反時計回りの内側) なら正
     private static float Side(P a, P b, P q) => (b.X - a.X) * (q.Y - a.Y) - (b.Y - a.Y) * (q.X - a.X);
-
-    // s を半平面 (a→b の左側 = keepLeft・右側 = !keepLeft) で切る
-    private static P[] HalfPlane(P[] s, P a, P b, bool keepLeft)
-    {
-        var o = new List<P>(s.Length + 2);
-        for (int i = 0; i < s.Length; i++)
-        {
-            P cur = s[i], nxt = s[(i + 1) % s.Length];
-            float dc = Side(a, b, cur), dn = Side(a, b, nxt);
-            if (!keepLeft) { dc = -dc; dn = -dn; }
-            if (dc >= 0f) o.Add(cur);
-            if ((dc > 0f && dn < 0f) || (dc < 0f && dn > 0f))
-            {
-                float t = dc / (dc - dn);
-                o.Add(new P(cur.X + (nxt.X - cur.X) * t, cur.Y + (nxt.Y - cur.Y) * t));
-            }
-        }
-        return o.Count >= 3 ? o.ToArray() : null;
-    }
-
-    private static P[] Intersect(P[] s, P[] h)
-    {
-        P[] cur = s;
-        for (int i = 0; i < h.Length && cur != null; i++) cur = HalfPlane(cur, h[i], h[(i + 1) % h.Length], true);
-        return cur != null && Area(cur) > 1e-9f ? cur : null;
-    }
-
-    // s − h を凸の塊に分けて into へ足す
-    private static void Subtract(P[] s, P[] h, List<P[]> into)
-    {
-        P[] rest = s;
-        for (int i = 0; i < h.Length && rest != null; i++)
-        {
-            P a = h[i], b = h[(i + 1) % h.Length];
-            var outside = HalfPlane(rest, a, b, false);
-            if (outside != null && Area(outside) > 1e-9f) into.Add(outside);
-            rest = HalfPlane(rest, a, b, true);
-        }
-    }
 }

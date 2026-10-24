@@ -8,7 +8,7 @@ namespace MoreRolesPlus.Native;
 // C++ の部品 (native/src) の読み込み口。部品は本体の DLL に埋め込んであり (別ファイルで配ると入れ忘れや片方だけの更新が起きる)、
 // 最初に使う時に 1 回だけ cache へ書き出して読み、関数の番地を引いておく (DllImport の名前解決は端末で失敗すると呼ぶたびに例外になるので使わない)。
 // 書き出す名前に中身のハッシュを入れるので、別の版の AU が同じ場所の部品を掴んでいても上書きで揉めない。
-// 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)。C# 版は Verify の答え合わせ役だけで、部品の代わりには動かない
+// 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)
 internal static unsafe class MrpNative
 {
     internal const int Abi = 40;
@@ -22,33 +22,7 @@ internal static unsafe class MrpNative
     private static bool _loaded;
     private static IntPtr _lib;
     internal static string Status { get; private set; } = "not loaded";
-    internal static bool Verify;
-    // 答え合わせをファイル単位で入れ切りする (verify の時だけ起きる不具合の部品を絞る道具)。null = 全部
-    private static string[] _verifyOnly, _verifySkip;
-    internal static string VerifyScope => _verifyOnly != null ? " only=" + string.Join(",", _verifyOnly) : _verifySkip != null ? " skip=" + string.Join(",", _verifySkip) : "";
-    internal static void SetVerifyScope(string arg)
-    {
-        _verifyOnly = _verifySkip = null;
-        if (arg == null) return;
-        if (arg.StartsWith("only=", StringComparison.Ordinal)) _verifyOnly = arg[5..].Split(',');
-        else if (arg.StartsWith("skip=", StringComparison.Ordinal)) _verifySkip = arg[5..].Split(',');
-    }
-    // file = "ファイル名" か "ファイル名.箇所"。指定はどちらの名前でも当たる
-    internal static bool VerifyIn(string file) => Verify && (_verifyOnly == null || InScope(_verifyOnly, file)) && (_verifySkip == null || !InScope(_verifySkip, file));
-    private static bool InScope(string[] list, string file)
-    {
-        if (Array.IndexOf(list, file) >= 0) return true;
-        int dot = file.IndexOf('.');
-        return dot > 0 && Array.IndexOf(list, file[..dot]) >= 0;
-    }
-    // verify の間だけ背景 GC を止める (Android エミュは verify の大量の割り当て中に背景 GC で落ちることがある)。verify off で元に戻す
-    private static System.Runtime.GCLatencyMode? _latencyBefore;
-    internal static void SetVerifyNoBgc(bool on)
-    {
-        if (on && _latencyBefore == null) { _latencyBefore = System.Runtime.GCSettings.LatencyMode; System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.Batch; }
-        else if (!on && _latencyBefore != null) { System.Runtime.GCSettings.LatencyMode = _latencyBefore.Value; _latencyBefore = null; }
-    }
-    internal static bool Async = true; // 水の小刻みを作業スレッドで回す (切り替えは答え合わせ用)
+    internal static bool Async = true; // 水の小刻みを作業スレッドで回す (指紋を取る間だけ止める)
 
     internal static delegate* unmanaged[Cdecl]<byte*, int, int, float, float, float, float, float, float, int, byte*, byte*, int, int, float, float, float, int, void> FloorRaw;
     internal static delegate* unmanaged[Cdecl]<byte*, int, ushort*, byte*, void> FloorBlur;

@@ -448,15 +448,7 @@ internal static partial class Decompression
         Array.Clear(_floor);
         for (int i = 0; i < DoorFloors.Count; i++)
             if ((_doorBits >> i & 1) != 0) foreach (int k in DoorFloors[i]) _floor[k] = 1;
-        if (!Native.MrpNative.VerifyIn("Decompression")) { GridNative(_sub, _edge); return; }
-        var vSub = (ushort[])_sub.Clone();
-        var vEdge = (byte[])_edge.Clone();
-        GridNative(vSub, vEdge);
-        GridCs();
-        long diff = 0;
-        for (int k = 0; k < _sub.Length; k++) if (vSub[k] != _sub[k] || vEdge[k] != _edge[k]) diff++;
-        VerifyBuilds++;
-        VerifyDiff += diff;
+        GridNative(_sub, _edge);
     }
 
     // Grid の C++ 版 (水の升と同じ部品。外周の升は書かない = 作った時の 0 のまま)
@@ -471,39 +463,6 @@ internal static partial class Decompression
                 DoorFloor = fl, PlatFloor = null, Shut = bl, Open = null, SubOut = so, EdgeOut = eo, Changed = null,
             };
             Native.MrpNative.WaterCells(&a);
-        }
-    }
-
-    // Grid の C# 版 (照合用)
-    private static void GridCs()
-    {
-        int sw = SolidMap.W;
-        for (int y = 0; y < _h; y++)
-        for (int x = 0; x < _w; x++)
-        {
-            int k = y * _w + x, bits = 0;
-            if (x > 0 && y > 0 && x < _w - 1 && y < _h - 1 && _blocked[k] == 0)
-            {
-                for (int sy = 0; sy < Sub; sy++)
-                for (int sx = 0; sx < Sub; sx++)
-                    if (SolidMap.OpenCell((y * Sub + sy) * sw + x * Sub + sx)) bits |= 1 << (sy * Sub + sx);
-                if (_floor[k] != 0) bits = 0xFFFF;
-                if (WaterSim.PopCount(bits) < 4 || !WaterSim.Connected(bits)) bits = 0;
-            }
-            _sub[k] = (ushort)bits;
-        }
-        for (int y = 1; y < _h - 1; y++)
-        for (int x = 1; x < _w - 1; x++)
-        {
-            int k = y * _w + x, a = _sub[k], e = 0;
-            if (a != 0)
-            {
-                if (WaterSim.Facing(a, _sub[k + 1], 3, 0, true) >= 2) e |= 1;
-                if (WaterSim.Facing(a, _sub[k - 1], 0, 3, true) >= 2) e |= 2;
-                if (WaterSim.Facing(a, _sub[k + _w], 3, 0, false) >= 2) e |= 4;
-                if (WaterSim.Facing(a, _sub[k - _w], 0, 3, false) >= 2) e |= 8;
-            }
-            _edge[k] = (byte)e;
         }
     }
 
@@ -541,34 +500,14 @@ internal static partial class Decompression
         return (_edge[k] >> d & 1) != 0 && (_edge[j] >> back & 1) != 0;
     }
 
-    // 斜め: どちらかの回り道が縦横で通れる時だけ
-    private static bool PassDiag(int k, int dx, int dy)
-    {
-        int ix = dx > 0 ? 0 : 1, iy = dy > 0 ? 2 : 3;
-        return (Pass(k, ix) && Pass(k + dx, iy)) || (Pass(k, iy) && Pass(k + dy * _w, ix));
-    }
-
     // 範囲を塗り直し、前の範囲の気圧を升の数で混ぜて移す。oldComp/oldPress = 作り直す前 (無ければ全部満タン)
     private static void Regions(int[] oldComp, int[] oldPress)
     {
         _compGen++;
-        if (!Native.MrpNative.VerifyIn("Decompression")) RegionsNative(_comp, oldComp, oldPress, out _compCells, out _press);
-        else
-        {
-            var vComp = new int[_comp.Length];
-            RegionsNative(vComp, oldComp, oldPress, out var vCells, out var vPress);
-            RegionsCs(oldComp, oldPress);
-            long diff = vCells.Length != _compCells.Length || vPress.Length != _press.Length ? 1 : 0;
-            for (int k = 0; k < vComp.Length; k++) if (vComp[k] != _comp[k]) diff++;
-            for (int c = 0; c < Math.Min(vCells.Length, _compCells.Length); c++) if (vCells[c] != _compCells[c] || vPress[c] != _press[c]) diff++;
-            VerifyBuilds++;
-            VerifyDiff += diff;
-        }
+        RegionsNative(_comp, oldComp, oldPress, out _compCells, out _press);
         Field();
     }
 
-    // 照合 (native verify): 升・範囲・道のり・つかめる所を C# でも作って比べた回数と食い違った数
-    internal static long VerifyBuilds, VerifyDiff;
     // C++ に渡す置き場 (升の数ぶん。外壁が抜けてから船が変わるまで持つ)
     private static int[] _nStack, _nCells, _nPress, _nCnt, _nQk, _nQnext, _nSeeds;
     private static long[] _nSum, _nGrips;
@@ -612,53 +551,6 @@ internal static partial class Decompression
         press = pr.AsSpan(0, nc).ToArray();
     }
 
-    // Regions の C# 版 (照合用)
-    private static void RegionsCs(int[] oldComp, int[] oldPress)
-    {
-        int n = _w * _h;
-        Array.Fill(_comp, -1);
-        var cells = new List<int>();
-        var stack = new Stack<int>();
-        for (int s = 0; s < n; s++)
-        {
-            if (_sub[s] == 0 || _comp[s] >= 0) continue;
-            int id = cells.Count, count = 0;
-            _comp[s] = id;
-            stack.Push(s);
-            while (stack.Count > 0)
-            {
-                int k = stack.Pop();
-                count++;
-                for (int d = 0; d < 4; d++)
-                {
-                    if (!Pass(k, d)) continue;
-                    int j = k + Nx[d] + Ny[d] * _w;
-                    if (_comp[j] >= 0) continue;
-                    _comp[j] = id;
-                    stack.Push(j);
-                }
-            }
-            cells.Add(count);
-        }
-        _compCells = cells.ToArray();
-        var press = new int[_compCells.Length];
-        if (oldComp == null) Array.Fill(press, Full);
-        else
-        {
-            var sum = new long[press.Length];
-            var cnt = new int[press.Length];
-            for (int k = 0; k < n; k++)
-            {
-                int c = _comp[k], o = oldComp[k];
-                if (c < 0 || o < 0) continue;
-                sum[c] += oldPress[o];
-                cnt[c]++;
-            }
-            for (int c = 0; c < press.Length; c++) press[c] = cnt[c] > 0 ? (int)(sum[c] / cnt[c]) : Full;
-        }
-        _press = press;
-    }
-
     // 開いている口からの道のり (縦横 2・斜め 3 の最短路を道のりの値ごとの桶で)。Cap より先は塗らない
     private static void Field()
     {
@@ -692,21 +584,7 @@ internal static partial class Decompression
         }
         bool any = Seeds.Count > 0;
         Grips.Clear();
-        int gn;
-        if (!Native.MrpNative.VerifyIn("Decompression")) gn = FieldNative(_dist, _par);
-        else
-        {
-            var vDist = (ushort[])_dist.Clone();
-            var vPar = (int[])_par.Clone();
-            gn = FieldNative(vDist, vPar);
-            FieldCs();
-            var cand = any ? GripCandsCs() : new List<long>();
-            long diff = cand.Count != gn ? 1 : 0;
-            for (int k = 0; k < _dist.Length; k++) if (vDist[k] != _dist[k] || vPar[k] != _par[k]) diff++;
-            for (int i = 0; i < Math.Min(gn, cand.Count); i++) if (cand[i] != _nGrips[i]) diff++;
-            VerifyBuilds++;
-            VerifyDiff += diff;
-        }
+        int gn = FieldNative(_dist, _par);
         if (any) PickGrips(gn);
         Fields++;
         FieldGen++;
@@ -749,37 +627,6 @@ internal static partial class Decompression
         }
     }
 
-    // Field の道のりの C# 版 (照合用)
-    private static void FieldCs()
-    {
-        var buckets = new List<int>[Cap + 4];
-        for (int i = 0; i < buckets.Length; i++) buckets[i] = new List<int>();
-        buckets[0].AddRange(Seeds);
-        if (Seeds.Count > 0)
-            for (int v = 0; v <= Cap; v++)
-            {
-                var list = buckets[v];
-                for (int i = 0; i < list.Count; i++)
-                {
-                    int k = list[i];
-                    if (_dist[k] != v) continue;
-                    // 家具の上: 空気は通るので家具の升へは伸ばす (載っている物を引く) が、家具を抜けて床へは伸ばさない (クルーは回り込む)
-                    bool onFurn = _furn[k] != 0 && v > 0;
-                    for (int d = 0; d < 8; d++)
-                    {
-                        int dx = Nx[d], dy = Ny[d];
-                        bool diag = d >= 4;
-                        if (diag ? !PassDiag(k, dx, dy) : !Pass(k, d)) continue;
-                        int j = k + dx + dy * _w, nv = v + (diag ? 3 : 2);
-                        if (nv > Cap || nv >= _dist[j] || (onFurn && _furn[j] == 0)) continue;
-                        _dist[j] = (ushort)nv;
-                        _par[j] = k;
-                        buckets[nv].Add(j);
-                    }
-                }
-            }
-    }
-
     private static bool Solid(int x, int y)
     {
         if (x < 0 || y < 0 || x >= _w || y >= _h) return true;
@@ -790,31 +637,6 @@ internal static partial class Decompression
     // 出っ張った角: 流れの届く升に面した塞がった升のうち、周り 7×7 升の塞がりが少ない物 (まっすぐな壁は約 57%・直角の角は約 33%)。
     // 爆発で縁がギザギザ・斜めでも拾えるように面の形でなく塞がりの割合で見る。尖った物から順に GripSpacing 以上離して取る
     private const int GripR = 3, GripMaxSolid = 20;
-
-    // 候補の C# 版 (照合用)。(塞がりの数 << 32 | 升) の小さい順
-    private static List<long> GripCandsCs()
-    {
-        var cand = new List<long>();
-        for (int y = GripR; y < _h - GripR; y++)
-        for (int x = GripR; x < _w - GripR; x++)
-        {
-            if (!Solid(x, y)) continue;
-            bool face = false;
-            for (int d = 0; d < 4 && !face; d++)
-            {
-                int j = (y + Ny[d]) * _w + x + Nx[d];
-                face = !Solid(x + Nx[d], y + Ny[d]) && _dist[j] != Far;
-            }
-            if (!face) continue;
-            int n = 0;
-            for (int dy = -GripR; dy <= GripR; dy++)
-            for (int dx = -GripR; dx <= GripR; dx++)
-                if (Solid(x + dx, y + dy)) n++;
-            if (n >= 4 && n <= GripMaxSolid) cand.Add((long)n << 32 | (uint)(y * _w + x)); // 4 升未満は爆発の後の塵
-        }
-        cand.Sort();
-        return cand;
-    }
 
     // 候補 (_nGrips の先頭 gn 個) を尖った物から順に GripSpacing 以上離して取る
     private static void PickGrips(int gn)

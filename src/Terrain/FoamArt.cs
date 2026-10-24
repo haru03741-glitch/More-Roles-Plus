@@ -30,8 +30,7 @@ internal static class FoamArt
     private const float FaceHeight = 0.72f;    // 北向きの壁の正面の高さ (スケルド食堂の上で実測)
     private const float Spacing = 0.13f;       // 玉の間隔
     private const float SprayShare = 0.55f;    // 端から中央に吹き付けが届くまで (FoamTime に対する割合)
-    private const float GrowShare = 0.3f;      // 1 つの玉が膨らみ切るまで
-    private const float CureFrom = 0.75f, CureTo = 1.6f; // 乾き始めと固まり終わり
+    private const float CureTo = 1.6f;         // 固まり終わり
     private const int MaxLen = 8;              // 絵の長さの上限 (単位)
 
     private sealed class Ball
@@ -211,8 +210,6 @@ internal static class FoamArt
         public int HiddenN;
     }
 
-    internal static long VerifyCulls, VerifyCullDiff;
-
     // 損傷マスクで穴の開いた所 (と縁の少し外) だけを見える画素にし (喉の外でも爆発で船体の板が抜けた所は空が見える)、見える画素に影響しない玉を外す。作る時に 1 回だけ (C++)
     private static unsafe void Cull(Plug pl, Vector2 a, float ux, float uy, bool flip)
     {
@@ -234,76 +231,9 @@ internal static class FoamArt
             Native.MrpNative.FoamCull(&c);
             hidden = c.HiddenN;
         }
-        if (Native.MrpNative.VerifyIn("FoamArt"))
-        {
-            int cs = CullCs(pl, a, ux, uy, vx, vy, out var vis2, out var hide2);
-            long diff = cs != hidden ? 1 : 0;
-            for (int i = 0; i < vis.Length; i++) if (vis[i] != vis2[i]) diff++;
-            for (int i = 0; i < n; i++) if (hide[i] != hide2[i]) diff++;
-            VerifyCulls++;
-            VerifyCullDiff += diff;
-        }
         pl.Vis = vis;
         for (int i = 0; i < n; i++) pl.Balls[i].Hidden = hide[i] != 0;
         Plugin.Logger.LogInfo($"[FoamArt] cull {w}x{h} balls={n} hidden={hidden}");
-    }
-
-    // C# 版 (照合用)
-    private static int CullCs(Plug pl, Vector2 a, float ux, float uy, float vx, float vy, out byte[] vis, out byte[] hide)
-    {
-        int w = pl.W, h = pl.H;
-        const float inv = 1f / Ppu;
-        float ax = a.x, ay = a.y;
-        var hole = new byte[w * h];
-        for (int y = 0; y < h; y++)
-        {
-            float v = pl.V0 + (y + 0.5f) * inv;
-            for (int x = 0; x < w; x++)
-            {
-                float u = pl.U0 + (x + 0.5f) * inv;
-                if (DamageMap.HoleByteAt(ax + ux * u + vx * v, ay + uy * u + vy * v) > 5) hole[y * w + x] = 1;
-            }
-        }
-        // 部屋の絵の穴の縁はマスクの外までギザギザに抜ける (1 升 = 1/16 + 縁の揺らぎ) ので、その分と輪郭線・落ち影の分だけ広げる (縦横に分けた最大値)
-        const int Grow = 16;
-        var tmp = new byte[w * h];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-            {
-                if (hole[y * w + x] == 0) continue;
-                for (int k = Math.Max(0, x - Grow); k <= Math.Min(w - 1, x + Grow); k++) tmp[y * w + k] = 1;
-            }
-        vis = new byte[w * h];
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-            {
-                if (tmp[y * w + x] == 0) continue;
-                for (int k = Math.Max(0, y - Grow); k <= Math.Min(h - 1, y + Grow); k++) vis[k * w + x] = 1;
-            }
-        // 見える画素の累積和で、玉の届く四角に見える画素が 1 つも無ければ外す
-        var sum = new int[(w + 1) * (h + 1)];
-        for (int y = 0; y < h; y++)
-        {
-            int row = 0;
-            for (int x = 0; x < w; x++)
-            {
-                row += vis[y * w + x];
-                sum[(y + 1) * (w + 1) + x + 1] = sum[y * (w + 1) + x + 1] + row;
-            }
-        }
-        int hidden = 0;
-        hide = new byte[pl.Balls.Count];
-        for (int i = 0; i < pl.Balls.Count; i++)
-        {
-            var bl = pl.Balls[i];
-            float reach = bl.R * 1.15f * pl.Reach;
-            int x0 = Math.Max(0, (int)((bl.U - reach - pl.U0) * Ppu)), x1 = Math.Min(w, (int)((bl.U + reach - pl.U0) * Ppu) + 2);
-            int y0 = Math.Max(0, (int)((bl.V - reach - pl.V0) * Ppu)), y1 = Math.Min(h, (int)((bl.V + reach - pl.V0) * Ppu) + 2);
-            if (x1 <= x0 || y1 <= y0
-                || sum[y1 * (w + 1) + x1] - sum[y0 * (w + 1) + x1] - sum[y1 * (w + 1) + x0] + sum[y0 * (w + 1) + x0] == 0)
-            { hide[i] = 1; hidden++; }
-        }
-        return hidden;
     }
 
     // 口の線 a-b の端 end が、同じ口の別の線の端とつながっているか
@@ -401,9 +331,6 @@ internal static class FoamArt
         }
     }
 
-    // 答え合わせ (native verify): 栓の絵を C# でも描いて 1 バイトずつ比べる
-    internal static long VerifyDraws, VerifyDrawDiff;
-
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private unsafe struct DrawArgs
     {
@@ -428,7 +355,7 @@ internal static class FoamArt
     private static void Draw(Plug pl, float p, bool last)
     {
         if (pl.Px == null || pl.F == null || pl.Pores == null) return; // 固まり終わって手放した絵 (C++ に空の置き場を渡さない)
-        if (Native.MrpNative.Async && !Native.MrpNative.VerifyIn("FoamArt") && _jobState != 2)
+        if (Native.MrpNative.Async && _jobState != 2)
         {
             if (_jobN == Jobs.Length) Array.Resize(ref Jobs, _jobN * 2); // 同じ栓を積んだ描きと同期の描きに分けない (転送の順が入れ替わる)
             Jobs[_jobN++] = new Job { Pl = pl, P = p, Last = last };
@@ -438,7 +365,6 @@ internal static class FoamArt
         }
         WaterSim.EnsureIdle(); // 作業スレッドと同じ置き場 (_grid/_height) を使う
         DrawNative(pl, p);
-        Verify(pl, p);
         Finish(pl, last);
     }
 
@@ -512,163 +438,6 @@ internal static class FoamArt
     {
         Upload(pl, last);
         if (last) { pl.Px = null; pl.F = null; pl.Pores = null; } // 跡はもう描き直さない
-    }
-
-    // 照合の時は C# でも描いて比べる
-    private static void Verify(Plug pl, float p)
-    {
-        if (Native.MrpNative.VerifyIn("FoamArt"))
-        {
-            int w = pl.W, h = pl.H;
-            var px = (byte[])pl.Px.Clone();
-            DrawCs(pl, p, px, new float[w * h]);
-            long diff = 0;
-            for (int i = 0; i < px.Length; i++) if (px[i] != pl.Px[i]) diff++;
-            VerifyDraws++;
-            VerifyDrawDiff += diff;
-        }
-    }
-
-    // C# 版 (照合用)。px と F に描く
-    private static void DrawCs(Plug pl, float p, byte[] px, float[] F)
-    {
-        int w = pl.W, h = pl.H;
-        const float inv = 1f / Ppu;
-        // 場はなめらかなので 2 画素おきの格子で足し込み、画素へは線形に補間する (足し込みの手間が 1/4)
-        int gw = (w + 2) >> 1, gh = (h + 2) >> 1;
-        var G = Scratch(ref _grid, gw * gh);
-        Array.Clear(G, 0, gw * gh);
-        const float ginv = 2f / Ppu;
-        // 場 = Σ (1 - d²/(2r)²)³ (玉の影響は半径の 2 倍で 0)。Thresh 以上が泡の中 (玉 1 つなら半径 r の丸)
-        var vis = pl.Vis;
-        foreach (var bl in pl.Balls)
-        {
-            if (bl.Hidden) continue;
-            float k = (p - bl.Start) / GrowShare;
-            if (k <= 0f) continue;
-            float s;
-            if (k >= 1f) s = 1f + 0.1f * Math.Clamp((p - bl.Start - GrowShare) / 0.6f, 0f, 1f); // 届いた後もゆっくりふくらむ
-            else
-            {
-                // 少し行き過ぎて戻る膨らみ
-                float c1 = 1.2f, c3 = c1 + 1f, q = k - 1f;
-                s = 1f + c3 * q * q * q + c1 * q * q;
-            }
-            float r = bl.R * s;
-            if (r <= 0.005f) continue;
-            float reach = r * pl.Reach, inv4 = 1f / (4f * r * r);
-            // 格子点 (gx, gy) = 画素 (2gx, 2gy) の中心
-            float cu = bl.U - pl.U0 - 0.5f * inv, cv = bl.V - pl.V0 - 0.5f * inv;
-            int x0 = Math.Max(0, (int)((cu - reach) * (Ppu / 2f))), x1 = Math.Min(gw - 1, (int)((cu + reach) * (Ppu / 2f)) + 1);
-            int y0 = Math.Max(0, (int)((cv - reach) * (Ppu / 2f))), y1 = Math.Min(gh - 1, (int)((cv + reach) * (Ppu / 2f)) + 1);
-            for (int y = y0; y <= y1; y++)
-            {
-                float dv = y * ginv - cv;
-                float rest = 1f - dv * dv * inv4;
-                if (rest <= 0f) continue;
-                int row = y * gw;
-                for (int x = x0; x <= x1; x++)
-                {
-                    float du = x * ginv - cu;
-                    float q = rest - du * du * inv4;
-                    if (q > 0f) G[row + x] += q * q * q;
-                }
-            }
-        }
-        for (int y = 0; y < h; y++)
-        {
-            int gy = y >> 1, row = y * w;
-            int g0 = gy * gw, g1 = Math.Min(gy + 1, gh - 1) * gw;
-            if ((y & 1) == 0)
-                for (int x = 0; x < w; x++)
-                {
-                    int gx = x >> 1;
-                    F[row + x] = (x & 1) == 0 ? G[g0 + gx] : 0.5f * (G[g0 + gx] + G[g0 + Math.Min(gx + 1, gw - 1)]);
-                }
-            else
-                for (int x = 0; x < w; x++)
-                {
-                    int gx = x >> 1, gx1 = Math.Min(gx + 1, gw - 1);
-                    F[row + x] = (x & 1) == 0 ? 0.5f * (G[g0 + gx] + G[g1 + gx])
-                        : 0.25f * (G[g0 + gx] + G[g0 + gx1] + G[g1 + gx] + G[g1 + gx1]);
-                }
-        }
-
-        // 喉の形で切る: 切り口に近いほど場を Thresh の手前まで下げ、縁の丸みと輪郭線を切り口にも付ける
-        const float Rim = 1.5f / Ppu;
-        float vmin = pl.VMin, vmax = pl.VMax, bleed = pl.Bleed0, umax = pl.Len + pl.Bleed1;
-        for (int y = 0; y < h; y++)
-        {
-            float v = pl.V0 + (y + 0.5f) * inv;
-            float ev = pl.SoftInner ? vmax - v : MathF.Min(v - vmin, vmax - v);
-            int row = y * w;
-            for (int x = 0; x < w; x++)
-            {
-                if (vis != null && vis[row + x] == 0) continue;
-                float u = pl.U0 + (x + 0.5f) * inv;
-                float e = MathF.Min(ev, MathF.Min(u + bleed, umax - u));
-                // 切り口から 1.5 画素は輪郭線 (Thresh のすぐ上)・その奥 0.1 単位で丸く盛り上がる
-                float cap = e <= 0f ? 0f : e < Rim ? Thresh + 0.001f : Thresh + (e - Rim) * 6f;
-                if (F[row + x] > cap) F[row + x] = cap;
-            }
-        }
-
-        float cure = Math.Clamp((p - CureFrom) / (CureTo - CureFrom), 0f, 1f);
-        float wet = 1f - cure;
-        // 濡れたクリーム色 → 乾いた黄土色
-        float br = 238f + (205f - 238f) * cure, bg = 222f + (178f - 222f) * cure, bb = 168f + (118f - 168f) * cure;
-        // 光 (左上・手前) と半分ベクトル (見る向きは真上)
-        const float lx = -0.45f, ly = 0.55f, lz = 0.70f;
-        float hl = MathF.Sqrt(lx * lx + ly * ly + (lz + 1f) * (lz + 1f));
-        float hx = lx / hl, hy = ly / hl, hz = (lz + 1f) / hl;
-        // 高さは隣の画素からも読むので先に 1 画素 1 回だけ計算しておく
-        var Hs = Scratch(ref _height, w * h);
-        for (int i = 0; i < w * h; i++) Hs[i] = Height(F[i]);
-        for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
-        {
-            int i = y * w + x, o = i * 4;
-            float f = F[i];
-            if (vis != null && vis[i] == 0) { px[o + 3] = 0; continue; }
-            if (f < Thresh * 0.9f)
-            {
-                // 落ち影: 左上から光が来るので右下に
-                int sx = x - 2, sy = y + 3;
-                float fs = sx >= 0 && sy < h ? F[sy * w + sx] : 0f;
-                px[o] = 20; px[o + 1] = 16; px[o + 2] = 10;
-                px[o + 3] = fs >= Thresh ? (byte)90 : (byte)0;
-                continue;
-            }
-            float alpha = Math.Clamp((f - Thresh * 0.9f) / (Thresh * 0.1f), 0f, 1f);
-            // 隣の画素との高さの差から法線
-            float hc = Hs[i];
-            float hxp = x + 1 < w ? Hs[i + 1] : hc, hxm = x > 0 ? Hs[i - 1] : hc;
-            float hyp = y + 1 < h ? Hs[i + w] : hc, hym = y > 0 ? Hs[i - w] : hc;
-            float gx = (hxm - hxp) * 9f, gy = (hym - hyp) * 9f, gl = MathF.Sqrt(gx * gx + gy * gy + 1f);
-            float nx = gx / gl, ny = gy / gl, nz = 1f / gl;
-            float diff = Math.Clamp(nx * lx + ny * ly + nz * lz, 0f, 1f);
-            // 玉と玉の谷・縁ほど暗く (盛り上がりの陰)
-            float shade = (0.5f + 0.6f * diff) * (0.72f + 0.28f * hc);
-            // 気泡の穴: 固まるほど暗く見える (濡れている間は艶に埋もれる)
-            byte pore = pl.Pores[i];
-            if (pore != 0 && hc > 0.1f) shade *= 1f - (0.1f + 0.35f * cure) * (pore / 255f);
-            float r = br * shade, g = bg * shade, b = bb * shade;
-            // 濡れた艶 (鋭い白い照り)
-            float sp = Math.Clamp(nx * hx + ny * hy + nz * hz, 0f, 1f);
-            sp *= sp; sp *= sp; sp *= sp; sp *= sp; // 16 乗
-            sp *= sp;                                // 32 乗
-            float sheen = sp; // 32 乗 = 鋭い照り
-            float broad = Math.Clamp(nx * hx + ny * hy + nz * hz, 0f, 1f);
-            broad *= broad; broad *= broad; broad *= broad; // 8 乗 = 濡れた面の広い照り
-            float gloss = (0.9f * wet + 0.08f) * sheen + 0.3f * wet * broad;
-            r += (255f - r) * gloss; g += (255f - g) * gloss; b += (255f - b) * gloss;
-            // 縁の輪郭線 (本編の絵柄)
-            if (hc < 0.07f) { r = 70f; g = 54f; b = 32f; }
-            px[o] = (byte)Math.Clamp((int)r, 0, 255);
-            px[o + 1] = (byte)Math.Clamp((int)g, 0, 255);
-            px[o + 2] = (byte)Math.Clamp((int)b, 0, 255);
-            px[o + 3] = (byte)(alpha * 255f);
-        }
     }
 
     // 描き直しの作業用 (描くのは 1 枚ずつなので使い回す)

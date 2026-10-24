@@ -10,7 +10,7 @@ namespace MoreRolesPlus.Terrain;
 // 見た目はシェーダ MRP/Water (_Mode = 1・流れは画面の下向き)。
 // 膜は縁に沿って 1 画素ごとの列で、列の位置は世界の画素の格子に揃える (隣の縁・隣の絵と隙間も重なりも無くつながる)。
 // 列ごとの濃さは隣の縁との間で量をなめらかにつなぎ、縁に立つ物 (柵の柱・網) の絵がある列だけ物を越える量に減らす。
-// 量が少ない縁だけ列ごとの揺らぎで筋にちぎれる。水たまりの絵は落ちる縁の升まで床として見せる (WaterSim.StampLips) ので、膜は縁から描き始めれば水たまりとつながる。
+// 量が少ない縁だけ列ごとの揺らぎで筋にちぎれる。水たまりの絵は落ちる縁の升まで床として見せる (床マスクの FloorLips) ので、膜は縁から描き始めれば水たまりとつながる。
 // 流れ始めの膜の先は計算の落ちる遅れと同じ時間で着くので、着いた頃に下の水たまりが増える。着地点には泡を描いて水たまりへつなぐ。
 // 計算には戻らない (全員の結果に関わらない)。会議中は隠す
 internal static class WaterFall
@@ -25,12 +25,6 @@ internal static class WaterFall
     private const float Redraw = 1f / 30f;
     private const int MaxCanvases = 32;
 #endif
-    private const float SheetFull = 240f;      // 列の濃さが 1 になる縁の流量 (WaterSim の量の単位/秒)
-    private const float DensMax = 1.3f;
-    private const float ThinD = 0.35f;         // これより薄い膜は列ごとに筋へちぎれる
-    private const float PoolFade = 0.36f;     // 水たまりの色が噴き出しの色へ移り切るまでに落ちる距離の、落ちる高さに対する割合 (落ちた距離に比例して移す・縁のすぐ下で急に変わらない)
-    private const float SideBody = 0.75f;      // 横の縁の膜の厚さ (縁から投げ出された先までのうち、先の側から何割を埋めるか)
-    private const float Thin = 0.5f;           // 落ちるほど速くなって膜が薄くなる割合 (着地で 1 / (1 + Thin))
     // 絵は世界の格子に揃えた一辺 TileW の升 (隣の升と重ならず、縁はかかる升の全部へ描く)。一辺の画素数が整数になる長さ
     private const float TileW = 4f;
     private const int TilePx = (int)(TileW * Ppu);
@@ -40,7 +34,7 @@ internal static class WaterFall
     private const float FlowTau = 0.25f;       // 流量のならし (秒)。刻みの無いフレームでも点滅しない
     private const float ThrowMax = 0.35f;     // 外へ投げ出す距離の上限
     private const float ImpactR0 = 0.12f, ImpactR1 = 0.12f, ImpactFlow = 600f;
-    private const float LipHalf = 0.13f, LipDrop = 0.3f, LipFlow = 300f, LipDens = 0.9f; // 手すりを越える膜: 縁に沿った幅の半分・垂れる長さ・濃さが最大になる流量・濃さ
+    private const float LipHalf = 0.13f, LipFlow = 300f; // 手すりを越える膜: 縁に沿った幅の半分・濃さが最大になる流量
     private const float SprayEdge = 0.13f;     // 薄い筋も見えるように噴き出しより低く
     private const float IdleLife = 2.5f;       // 流れが止まってから縁と絵を片づけるまで
     private const float StealEvery = 0.5f;     // 画面の範囲を測り直し、絵の上限で描けない縁が画面の近くにあるか見る間隔
@@ -73,7 +67,7 @@ internal static class WaterFall
         public bool Hidden;
         public bool Void;           // 奈落へ落ちる縁の絵 (置く奥行きが違うので床へ落ちる縁とは分ける)
         // 描いた範囲 (画素)。前回の範囲だけ消し、前回と今回を合わせた範囲だけ変換する
-        public int X0p, Y0p, X1p = -1, Y1p = -1, Bx0, By0, Bx1, By1;
+        public int X0p, Y0p, X1p = -1, Y1p = -1;
         public GameObject Go;
         public SpriteRenderer Sr;
         public Texture2D Tex;
@@ -103,15 +97,6 @@ internal static class WaterFall
         uint h = (uint)a * 374761393u + (uint)b * 668265263u;
         h = (h ^ (h >> 13)) * 1274126177u;
         return ((h ^ (h >> 16)) & 0xFFFF) / 65535f;
-    }
-
-    private static float Noise(int col, float t)
-    {
-        int i = (int)MathF.Floor(t);
-        float f = t - i;
-        f = f * f * (3f - 2f * f);
-        float a = Hash(col, i);
-        return a + (Hash(col, i + 1) - a) * f;
     }
 
     public static void Tick()
@@ -235,15 +220,8 @@ internal static class WaterFall
     private static float LandDx(Edge e) => e.Nx != 0f ? 0f : e.X1 - e.X0;
     private static float LandDy(Edge e) => e.Y1 - e.Y0;
 
-    private const float Spread = 0.4f;
-    private const float LipIn = 0.1f;          // 膜を縁から内へさかのぼらせる長さ (水たまりの縁の線にかぶせる)
-    private const float ApronMin = 0.12f, ApronGain = 0.06f, ApronMax = 0.45f, ApronDens = 0.8f; // 着地の白い水の長さ (落ちた高さ 1 単位あたり) と濃さ
     private const float EndSpread = 0.12f;     // 隣に流れる縁が無い側へ膜を薄れながら延ばす幅 (世界単位)         // 柱の間を抜けた水が横へ広がって 1 枚に戻るまでの落ちた割合
 
-    // 縁から着地までの膜。縁に沿った世界の画素の格子の列ごとに、縁 (水たまりの縁の内側) から落ちた先までを 1 本の線で描く。
-    // 落ちる道: 地面の上を (縁 - 落ちる高さ) → 着く所へまっすぐ、高さは落ちる高さから 2 次で 0 へ。
-    // 量と着く所のずれは隣の縁との間で縁に沿ってなめらかにつなぐ (縁ごとに道が違っても膜が割れない)。
-    // ずれが列の間隔より大きく変わる所は列を細かく分けて隙間を埋める
     // 縁 (水の升の境) から床マスクの崖の縁 (床が終わる所) までの、外向きを正とする距離 (C++ の Brink と同じ)。
     // 縁の上が床なら外へ、床でなければ内へ BrinkSteps まで探す。見つからない (下の床まで続いている・升の中に床が無い) なら 0
     private const float BrinkStep = 0.02f;
@@ -255,139 +233,6 @@ internal static class WaterFall
         if (mx < 0 || my < 0 || mx >= _mw || my >= _mh) return -1;
         int i = my * _mw + mx;
         return (_mask[i >> 3] & (1 << (i & 7))) != 0 ? 1 : 0;
-    }
-
-    private static float Brink(float x, float y, float nx, float ny)
-    {
-        if (_mask == null) return 0f;
-        int at = MaskAt(x, y);
-        if (at < 0) return 0f;
-        float sgn = at != 0 ? 1f : -1f;
-        for (int k = 1; k <= BrinkSteps; k++)
-        {
-            float d = k * BrinkStep * sgn;
-            int m = MaskAt(x + nx * d, y + ny * d);
-            if (m < 0) return 0f;
-            if (m != at) return at != 0 ? d : d + BrinkStep;
-        }
-        return 0f;
-    }
-
-    private static void SheetCs(in FallEdge e, float now)
-    {
-        float fall = e.Fall;
-        float tau0 = Math.Min(1f, e.Tail / fall), tau1 = Math.Min(1f, e.Head / fall);
-        float tx = -e.Ny, ty = e.Nx, half = WaterSim.Cell * 0.5f;
-        float s0 = e.X0 * tx + e.Y0 * ty;
-        int k0 = (int)MathF.Ceiling((s0 - half - e.Ea) * Ppu), k1 = (int)MathF.Ceiling((s0 + half + e.Eb) * Ppu) - 1;
-        if (k1 < k0) return;
-        float dx = e.Dx, dy = e.Dy;
-        float qa = e.Qa, qb = e.Qb, xa = e.Xa, xb = e.Xb, ya = e.Ya, yb = e.Yb;
-        int cols = k1 - k0 + 1;
-        float jump = MathF.Max(MathF.Abs(xb - xa), MathF.Abs(yb - ya)) * Ppu;
-        int sub = Math.Clamp((int)MathF.Ceiling(jump / cols), 1, 6);
-        // 縁に立つ物の無い列と物の上を越える列の流量の比 (越えた高さの 1.5 乗)。縁全体の平均で割って量を保つ
-        float wo = 1f, wb = 1f;
-        if (e.Lip == 0 && e.BarF > 0f)
-        {
-            float eb = MathF.Max(0f, e.Depth - e.BarH);
-            wo = e.Depth * MathF.Sqrt(e.Depth);
-            wb = eb * MathF.Sqrt(eb);
-            float mean = (1f - e.BarF) * wo + e.BarF * wb;
-            if (mean > 0f) { wo /= mean; wb /= mean; } else { wo = 1f; wb = 0f; }
-        }
-        for (int col = k0; col <= k1; col++)
-        {
-            float u0 = col / Ppu - s0;
-            // 列の深さと膜の先端・後ろの端は隣の縁との間でつなぎ (升ごとの段を作らない)、縁の外へ延ばした列は端の値のまま薄れる
-            float fc = MathF.Min(1f, (u0 < 0f ? -u0 : u0) / half);
-            float fade = u0 < -half && e.Ea > 0f ? 1f - (-u0 - half) / e.Ea : u0 > half && e.Eb > 0f ? 1f - (u0 - half) / e.Eb : 1f;
-            if (fade <= 0f) continue;
-            float dep = u0 < 0f ? e.Depth + (e.Da - e.Depth) * fc : e.Depth + (e.Db - e.Depth) * fc;
-            float t0 = u0 < 0f ? tau0 + (e.Ta - tau0) * fc : tau0 + (e.Tb - tau0) * fc;
-            float t1 = u0 < 0f ? tau1 + (e.Ha - tau1) * fc : tau1 + (e.Hb - tau1) * fc;
-            if (t1 <= t0) continue;
-            bool top = e.Lip == 0 && e.BarF > 0f && Blocked(e, u0);
-            // 物の上を越える水がある列だけ物の上から落ちる。越えない列 (水面が物より低い) は隣の列から回り込んだ水なので水面から落ちる
-            float z0 = top && e.Depth > e.BarH ? e.BarH : 0f;
-            float thin = 1f;
-            float thr = MathF.Min(ThrowMax, ThrowGain * MathF.Sqrt(MathF.Max(0f, dep - z0))) * (0.9f + 0.2f * Noise(col + 7919, now * 0.6f));
-            for (int si = 0; si < sub; si++)
-            {
-                float u = u0 + si / (Ppu * sub);
-                float f = MathF.Min(1f, u < 0f ? -u / half : u / half);
-                float q = u < 0f ? e.Q + (qa - e.Q) * f : e.Q + (qb - e.Q) * f;
-                float ldx = u < 0f ? dx + (xa - dx) * f : dx + (xb - dx) * f;
-                float ldy = u < 0f ? dy + (ya - dy) * f : dy + (yb - dy) * f;
-                float dm = q * fade / SheetFull;
-                if (dm < ThinD) { if (si == 0) thin = 1f + (Noise(col, now * 1.3f) * 1.6f - 0.8f) * (1f - dm / ThinD) * 1.25f; dm *= thin; }
-                if (dm > DensMax) dm = DensMax;
-                float dc = dm * (top ? wb : wo);
-                if (dc > DensMax) dc = DensMax;
-                if (dm <= 0.01f) continue;
-                dm /= sub; dc /= sub;
-                float sx = e.X0 + tx * u, sy = e.Y0 + ty * u;
-                float h0 = MathF.Max(0.3f, -ldy);
-                float ex = sx + ldx + e.Nx * thr, ey = sy + ldy + e.Ny * thr;
-                // 膜は絵の崖の縁から始める (縁と崖の縁の間の水は床の水の絵が描く)。着く所は変えない
-                float br = Brink(sx, sy, e.Nx, e.Ny);
-                // 手前の床は縁の外側の升の列で探す (横の縁は縁の線ちょうどだと縁の内側の升 = 落ちる元の床を拾い、膜が丸ごと隠れる)。
-                // 崖の縁まで内へずらす前の縁で探す (ずらした所で探すと、横の縁は自分の水たまりの升の列に入って膜が消える)
-                float cut = e.Void != 0 ? WaterSim.FrontCut(sx + e.Nx * WaterSim.Cell * 0.25f, e.CutFrom, ey) : float.MinValue;
-                sx += e.Nx * br; sy += e.Ny * br;
-                float gx = sx, gy = sy - h0, hh = h0 + z0;
-                if (sy + z0 <= cut) continue;
-                // 奥の縁を越えた水は床の向こう側へ落ちて見えない (手前に幕を描くと奥の柵の前に滝が立って見える)
-                if (e.Ny > 0f && e.Lip == 0) continue;
-                float len = (MathF.Abs(ex - sx) + MathF.Abs(ey - sy) + 2f * hh) * Ppu * (t1 - t0);
-                int steps = Math.Clamp((int)MathF.Ceiling(len), 1, 600);
-                float w = MathF.Min(1f, len / steps) * 0.85f;
-                // 膜の後ろの端が縁を離れるまでは、縁から内へさかのぼって水たまりの色のまま濃くしていく (水たまりの縁の線と膜の間を見せない)
-                if (t0 <= 0f && e.Lip == 0)
-                {
-                    int ni = (int)MathF.Ceiling(LipIn * Ppu);
-                    for (int b = 1; b <= ni; b++)
-                    {
-                        float s = (float)b / ni;
-                        Splat(e.Void != 0, sx - e.Nx * LipIn * s, sy - e.Ny * LipIn * s, dc * 0.85f * (1f - s), 0.05f, dep, 1f);
-                    }
-                }
-                // 着いた水は着地の手前 (水たまりの上) へ白く泡立って広がり、薄れて水たまりに戻る (奈落へ落ちる水は除く)
-                if (e.Void == 0 && t1 >= 1f)
-                {
-                    float lap = MathF.Min(ApronMax, ApronMin + ApronGain * hh);
-                    int na = (int)MathF.Ceiling(lap * Ppu);
-                    float bas = dm * w / (1f + Thin) * ApronDens;
-                    for (int b = 1; b <= na; b++)
-                    {
-                        float s = (float)b / na, k = 1f - s;
-                        Splat(false, ex, ey - lap * s, bas * k * MathF.Sqrt(k), 0.9f - 0.4f * s, dep, 0f);
-                    }
-                }
-                for (int j = 0; j <= steps; j++)
-                {
-                    float tau = t0 + (t1 - t0) * j / steps;
-                    float x = gx + (ex - gx) * tau, y = gy + (ey - gy) * tau + hh * (1f - tau * tau);
-                    if (y < cut) break; // ここから先は手前の床の裏
-                    float foam = tau > 0.92f ? 0.8f : tau < 0.03f ? 0.4f : 0.05f + 0.3f * tau * tau;
-                    float a = e.Void != 0 && tau > 0.7f ? (1f - tau) / 0.3f : 1f;
-                    // 柱の間を抜けた水は落ちながら横へ広がり、柱の下も埋まって 1 枚に戻る
-                    float sp = tau >= Spread ? 1f : tau / Spread;
-                    float d = dc + (dm - dc) * sp * sp * (3f - 2f * sp);
-                    if (d <= 0.005f) continue;
-                    float v = d * w * a / (1f + Thin * tau);
-                    // 色は縁の水たまりの深さのまま、水たまりの色から噴き出しの色へ移る割合だけを落ちた割合で変える
-                    // (縁に立つ物の有無で深さを変えると、物の形どおりに色が割れる)
-                    float pf = 1f - MathF.Min(1f, MathF.Max(0f, sy - y) / (PoolFade * hh));
-                    float pool = pf * pf * (3f - 2f * pf);
-                    if (e.Nx == 0f) { Splat(e.Void != 0, x, y, v, foam, dep, pool); continue; }
-                    // 横の縁の膜は縁に沿った面なので画面では縦の帯になる。投げ出された先から縁の側へ厚さを付けて、縁と膜の間を空けない
-                    float span = (x - sx) * SideBody;
-                    int n = Math.Max(1, (int)MathF.Ceiling(MathF.Abs(span) * Ppu));
-                    for (int b = 0; b < n; b++) Splat(e.Void != 0, x - span * b / n, y, v, foam, dep, pool);
-                }
-            }
-        }
     }
 
     // 画面の範囲を測り直して画面から離れた絵を片づける (上限を画面の中の滝に回す)
@@ -590,7 +435,6 @@ internal static class WaterFall
     private static float _gox, _goy, _box, _boy, _bppu, _mox, _moy, _mppu;
     internal static bool HasJobs => _jobState == 1;
     internal static Exception JobError;
-    internal static long VerifyDraws, VerifyDrawDiff; // 答え合わせ (native verify): C# でも描いて画素を 1 バイトずつ比べる
 
     // 画面の近くで流れている縁だけ描く (升は画面の近くにしか無い)
     private static bool Drawn(Edge e) => e.Live && InView(e.Bx0, e.By0, e.Bx1, e.By1, ViewIn);
@@ -599,15 +443,14 @@ internal static class WaterFall
     private static void Draw()
     {
         Pack();
-        if (Native.MrpNative.Async && !Native.MrpNative.VerifyIn("WaterFall"))
+        if (Native.MrpNative.Async)
         {
             _jobState = 1;
             _jobGen = _shipGen;
             return;
         }
         WaterSim.EnsureIdle(); // 作業スレッドと同じ水の配列を読む
-        if (Native.MrpNative.VerifyIn("WaterFall")) Verify();
-        else DrawNative();
+        DrawNative();
         Finish();
     }
 
@@ -750,200 +593,6 @@ internal static class WaterFall
             if (t.Changed == 0) continue;
             c.Tex.LoadRawTextureData((IntPtr)t.Px, c.Px.Length);
             c.Tex.Apply(false, false);
-        }
-    }
-
-    // 照合: C++ で描いた後、描く前の升に戻して C# でも描き、画素と範囲を比べる (残すのは C# の結果)
-    private static void Verify()
-    {
-        var keep = new (float[] d, float[] f, float[] dp, float[] pl, byte[] px)[_tileN];
-        var rect0 = new FallTile[_tileN];
-        for (int i = 0; i < _tileN; i++)
-        {
-            var c = JobTiles[i];
-            keep[i] = ((float[])c.Dens.Clone(), (float[])c.Foam.Clone(), (float[])c.Dep.Clone(), (float[])c.Pool.Clone(), (byte[])c.Px.Clone());
-            rect0[i] = TileArgs[i];
-        }
-        DrawNative();
-        var native = new byte[_tileN][];
-        var rect1 = new FallTile[_tileN];
-        for (int i = 0; i < _tileN; i++)
-        {
-            var c = JobTiles[i];
-            native[i] = (byte[])c.Px.Clone();
-            rect1[i] = TileArgs[i];
-            TileArgs[i] = rect0[i];
-            Array.Copy(keep[i].d, c.Dens, c.Dens.Length);
-            Array.Copy(keep[i].f, c.Foam, c.Foam.Length);
-            Array.Copy(keep[i].dp, c.Dep, c.Dep.Length);
-            Array.Copy(keep[i].pl, c.Pool, c.Pool.Length);
-            Array.Copy(keep[i].px, c.Px, c.Px.Length);
-        }
-        DrawCs();
-        long diff = 0;
-        for (int i = 0; i < _tileN; i++)
-        {
-            ref var t = ref TileArgs[i];
-            var px = JobTiles[i].Px;
-            for (int j = 0; j < px.Length; j++) if (px[j] != native[i][j]) diff++;
-            var r = rect1[i];
-            if (r.X0p != t.X0p || r.Y0p != t.Y0p || r.X1p != t.X1p || r.Y1p != t.Y1p || r.Changed != t.Changed) diff++;
-        }
-        VerifyDraws++;
-        VerifyDrawDiff += diff;
-    }
-
-    // C# 版 (照合用)。C++ と同じ縁と升に描いて画素へ直す
-    private static unsafe void DrawCs()
-    {
-        for (int k = 0; k < _tileN; k++)
-        {
-            var c = JobTiles[k];
-            ref var t = ref TileArgs[k];
-            int w = c.W;
-            // 前回描いた範囲だけを消す (それ以外は 0 のまま)
-            for (int y = t.Y0p; y <= t.Y1p; y++)
-            {
-                int o = y * w + t.X0p, len = t.X1p - t.X0p + 1;
-                Array.Clear(c.Dens, o, len);
-                Array.Clear(c.Foam, o, len);
-                Array.Clear(c.Dep, o, len);
-                Array.Clear(c.Pool, o, len);
-            }
-            c.Bx0 = w; c.By0 = c.H; c.Bx1 = -1; c.By1 = -1;
-        }
-        _hit = null; _hitTx = int.MinValue;
-        for (int i = 0; i < _edgeN; i++) SheetCs(in _edges[i], _clock);
-        for (int i = 0; i < _edgeN; i++)
-        {
-            ref var e = ref _edges[i];
-            if (e.Disc != 0) Disc(e.Void != 0, e.DiscX, e.DiscY, e.DiscR, e.DiscS);
-        }
-        for (int i = 0; i < _edgeN; i++)
-        {
-            ref var e = ref _edges[i];
-            if (e.LipMode == 2) LipCrest(in e);
-            else if (e.LipMode == 1) LipSheet(in e);
-        }
-        for (int k = 0; k < _tileN; k++)
-        {
-            var c = JobTiles[k];
-            ref var t = ref TileArgs[k];
-            int w = c.W;
-            bool now = c.Bx1 >= 0, before = t.X1p >= 0;
-            t.Changed = now || before ? 1 : 0;
-            if (t.Changed == 0) continue;
-            int ux0 = Math.Min(now ? c.Bx0 : w, before ? t.X0p : w), uy0 = Math.Min(now ? c.By0 : c.H, before ? t.Y0p : c.H);
-            int ux1 = Math.Max(c.Bx1, t.X1p), uy1 = Math.Max(c.By1, t.Y1p);
-            fixed (byte* b = c.Px)
-            {
-                uint* px = (uint*)b;
-                for (int y = uy0; y <= uy1; y++)
-                for (int i = y * w + ux0, end = y * w + ux1; i <= end; i++)
-                {
-                    float d = c.Dens[i];
-                    if (d <= 0f) { px[i] = 0xFF000000u; continue; }
-                    uint r = d >= 1f ? 255u : (uint)(d * 255f);
-                    float f = c.Foam[i] / d;
-                    uint g = f >= 1f ? 255u : (uint)(f * 255f);
-                    float dp = c.Dep[i] * 0.5f;
-                    uint bl = dp >= 1f ? 255u : (uint)(dp * 255f);
-                    float pl = c.Pool[i];
-                    uint al = 255u - (pl >= 1f ? 255u : (uint)(pl * 255f));
-                    px[i] = (al << 24) | (bl << 16) | (g << 8) | r; // RGBA32 を little endian で (R = 濃さ・G = 泡・B = 深さ / 2・A = 1 - 水たまりの色の割合)
-                }
-            }
-            t.X0p = c.Bx0; t.Y0p = c.By0; t.X1p = c.Bx1; t.Y1p = c.By1;
-        }
-    }
-
-    // 手すりの上の縁 (Y0) から手すりの面を LipDrop だけ垂れる膜。縁に沿って 1 画素ごとに縦の線を置き、長さを少し揺らす
-    private static unsafe void LipSheet(in FallEdge e)
-    {
-        float tx = -e.Ny, ty = e.Nx; // 縁に沿った向き
-        int n = (int)MathF.Ceiling(LipHalf * 2f * Ppu);
-        for (int k = 0; k <= n && k < 12; k++)
-        {
-            float u = -LipHalf + k / Ppu;
-            float x = e.X0 + tx * u, y = e.Y0 + ty * u;
-            float wob = e.Wob[k];
-            int ax = (int)MathF.Floor(x * Ppu), ay = (int)MathF.Floor(y * Ppu);
-            float drop = LipDrop * (0.7f + 0.3f * wob);
-            if (e.Void != 0) drop = MathF.Min(drop, y - e.Cut);
-            int len = (int)(drop * Ppu);
-            for (int j = 0; j <= len; j++)
-                Put(e.Void != 0, ax, ay - j, LipDens * e.LipS, j == 0 ? 0.9f : 0.15f, 0f, 0f);
-        }
-    }
-
-    // 奥の手すりを越えて向こうへこぼれる水: 水面 (手すりの上の縁か、その上に盛り上がった水面) から CrestUp だけ盛り上がって奥へ消える膜。上ほど薄く、先端は泡で白い
-    private const float CrestUp = 0.06f, CrestDens = 0.6f;
-    private static unsafe void LipCrest(in FallEdge e)
-    {
-        float tx = -e.Ny, ty = e.Nx;
-        float top = MathF.Max(e.Y0, e.Cut);
-        int n = (int)MathF.Ceiling(LipHalf * 2f * Ppu);
-        for (int k = 0; k <= n && k < 12; k++)
-        {
-            float u = -LipHalf + k / Ppu;
-            float x = e.X0 + tx * u, y = top + ty * u;
-            float wob = e.Wob[k];
-            int ax = (int)MathF.Floor(x * Ppu), ay = (int)MathF.Floor(y * Ppu);
-            int len = Math.Max(1, (int)((CrestUp * (0.6f + 0.4f * wob)) * Ppu));
-            for (int j = 0; j <= len; j++)
-                Put(e.Void != 0, ax, ay + j, LipDens * CrestDens * e.LipS * (1f - 0.6f * j / (len + 1f)), j == len ? 0.9f : 0.2f, 0f, 0f);
-        }
-    }
-
-    // 世界の点へ濃さ w を周りの 4 画素に割り振って置く (隣の列・隣の点と継ぎ目なく重なる)。画素は世界の画素の格子で数え、升の境目にかかる点は両方の升へ置く
-    private static void Splat(bool v, float wx, float wy, float w, float foam, float dep = 0f, float pool = 0f)
-    {
-        float fx = wx * Ppu - 0.5f, fy = wy * Ppu - 0.5f;
-        int x = (int)MathF.Floor(fx), y = (int)MathF.Floor(fy);
-        float ax = fx - x, ay = fy - y;
-        Put(v, x, y, (1f - ax) * (1f - ay) * w, foam, dep, pool);
-        Put(v, x + 1, y, ax * (1f - ay) * w, foam, dep, pool);
-        Put(v, x, y + 1, (1f - ax) * ay * w, foam, dep, pool);
-        Put(v, x + 1, y + 1, ax * ay * w, foam, dep, pool);
-    }
-
-    // 1 つ前に置いた升 (膜の点は続けて同じ升に落ちるので引き直さない)
-    private static Canvas _hit;
-    private static int _hitTx = int.MinValue, _hitTy;
-    private static bool _hitVoid;
-
-    // 世界の画素 (gx, gy) へ置く。その升の絵が無ければ置かない
-    private static void Put(bool v, int gx, int gy, float w, float foam, float dep, float pool)
-    {
-        int tx = (gx < 0 ? gx - (TilePx - 1) : gx) / TilePx, ty = (gy < 0 ? gy - (TilePx - 1) : gy) / TilePx;
-        if (tx != _hitTx || ty != _hitTy || v != _hitVoid)
-        {
-            Tiles.TryGetValue(TileKey(tx, ty, v), out _hit);
-            _hitTx = tx; _hitTy = ty; _hitVoid = v;
-        }
-        var c = _hit;
-        if (c == null) return;
-        int x = gx - tx * TilePx, y = gy - ty * TilePx, i = y * TilePx + x;
-        if (x < c.Bx0) c.Bx0 = x;
-        if (y < c.By0) c.By0 = y;
-        if (x > c.Bx1) c.Bx1 = x;
-        if (y > c.By1) c.By1 = y;
-        c.Dens[i] += w;
-        c.Foam[i] += w * foam;
-        if (dep > 0f && c.Dep[i] < dep) c.Dep[i] = dep;
-        if (pool > 0f && c.Pool[i] < pool) c.Pool[i] = pool;
-    }
-
-    // 着地の泡の円 (真ん中ほど濃く・奥行きで縦につぶす)
-    private static void Disc(bool v, float wx, float wy, float r, float s)
-    {
-        int cx = (int)MathF.Floor(wx * Ppu), cy = (int)MathF.Floor(wy * Ppu), rx = (int)(r * Ppu), ry = Math.Max(1, (int)(r * 0.6f * Ppu));
-        for (int y = -ry; y <= ry; y++)
-        for (int x = -rx; x <= rx; x++)
-        {
-            float q = (float)x * x / (rx * rx) + (float)y * y / (ry * ry);
-            if (q >= 1f) continue;
-            Put(v, cx + x, cy + y, (1f - q) * 0.6f * s, 0.85f, 0f, 0f);
         }
     }
 

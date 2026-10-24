@@ -32,13 +32,10 @@ internal static partial class WaterSim
     // SubDamp は勢いの残り方が 1 刻みあたり Damp と同じになる値
     // SubGain = Gain × SubN が小刻みあたりの安定の目安。この 2 倍では升ごとに水面がぎざぎざに揺れた (実測)
     private const int SubN = 4, SubGain = Gain * SubN, SubDamp = 256 - (256 - Damp) / SubN;
-    private const int DryHold = 48;           // 乾いた升へは、これより高い時だけ流れ出す (水たまりの縁が止まる)
     private const int WetHold = 3;            // 濡れた升の間で流れない小さな差
     private const int MinDepth = 6;           // これより浅い升は少しずつ乾く
     // 吸い出し: 減圧の流れ (引く強さ /1024 × 気圧) に比例して口へ向かう管に流れを足す (勢いが残るので足すのは少しずつ)。
     // 口の際 (道のり DrainDist 以内) の升の水は宇宙へ出て消える
-    private const int BlowGain = 6;           // 引く強さ 1024 あたり 1 刻みに足す流れ (/256)
-    private const int BlowMax = 12;
     private const int DrainDist = Decompression.UnitDist / 2;
     private const int DrainGain = 64;         // 引く強さ 1024 あたり 1 刻みに消える割合 (/256)
     // 落ちる: 縁の升の水のうちこれより上の分が、1 刻みに FallGain/256 ずつ縁を越える
@@ -555,45 +552,7 @@ internal static partial class WaterSim
     {
         x0 = Math.Max(1, x0); y0 = Math.Max(1, y0);
         x1 = Math.Min(_w - 2, x1); y1 = Math.Min(_h - 2, y1);
-        if (!Native.MrpNative.VerifyIn("WaterSim.Rebuild")) { RebuildNative(x0, y0, x1, y1); return; }
-        VerifyCellsBefore(x0, y0, x1, y1);
-        int sw = SolidMap.W;
-        var solid = SolidMap.OpenCells;
-        var wet = _wet;
-        int changes = 0;
-        for (int y = y0; y <= y1; y++)
-        for (int x = x0; x <= x1; x++)
-        {
-            int bits = 0;
-            for (int sy = 0, row = y * Sub * sw + x * Sub; sy < Sub; sy++, row += sw)
-            for (int sx = 0; sx < Sub; sx++)
-                if (solid[row + sx] != 0 || wet != null && wet[row + sx] != 0) bits |= 1 << (sy * Sub + sx);
-            int k = y * _w + x;
-            if (_doorFloor[k] != 0 || _platFloor[k] != 0) bits = 0xFFFF;
-            if (PopCount(bits) < 4 || !Connected(bits) || _shut[k] != 0) bits = 0;
-            _sub[k] = (ushort)bits;
-            byte open = bits != 0 ? (byte)1 : (byte)0;
-            if (open == _open[k]) continue;
-            changes++;
-            OpenChanged(k, open);
-        }
-        // 境の通れる向き (作り直した範囲と、その外周 1 升)
-        for (int y = Math.Max(1, y0 - 1); y <= Math.Min(_h - 2, y1 + 1); y++)
-        for (int x = Math.Max(1, x0 - 1); x <= Math.Min(_w - 2, x1 + 1); x++)
-        {
-            int k = y * _w + x;
-            int e = 0;
-            int a = _sub[k];
-            if (a != 0)
-            {
-                if (Facing(a, _sub[k + 1], 3, 0, true) >= 2) e |= 1;        // +x
-                if (Facing(a, _sub[k - 1], 0, 3, true) >= 2) e |= 2;        // −x
-                if (Facing(a, _sub[k + _w], 3, 0, false) >= 2) e |= 4;      // +y
-                if (Facing(a, _sub[k - _w], 0, 3, false) >= 2) e |= 8;      // −y
-            }
-            _edge[k] = (byte)e;
-        }
-        VerifyCellsAfter(x0, y0, x1, y1, changes);
+        RebuildNative(x0, y0, x1, y1);
     }
 
     // 升の開閉が変わった時の後始末。範囲の升の番号順に呼ぶ (閉じた升の水の寄せ先は、先に変わった升の開閉を見る)
@@ -655,33 +614,6 @@ internal static partial class WaterSim
             int k = _cellChanged[i];
             OpenChanged(k, _sub[k] != 0 ? (byte)1 : (byte)0);
         }
-    }
-
-    // 照合 (native verify): C++ の答えを写しの配列へ作り、C# で作り直した後の配列と範囲 (境の向きは外周 1 升も) を比べる
-    internal static long VerifyCells, VerifyCellDiff;
-    private static ushort[] _vSub;
-    private static byte[] _vEdge;
-    private static int _vChanged;
-
-    private static void VerifyCellsBefore(int x0, int y0, int x1, int y1)
-    {
-        if (_vSub == null || _vSub.Length != _sub.Length) { _vSub = new ushort[_sub.Length]; _vEdge = new byte[_edge.Length]; }
-        Array.Copy(_sub, _vSub, _sub.Length);
-        Array.Copy(_edge, _vEdge, _edge.Length);
-        _vChanged = CellsNative(x0, y0, x1, y1, _vSub, _vEdge);
-    }
-
-    private static void VerifyCellsAfter(int x0, int y0, int x1, int y1, int changes)
-    {
-        VerifyCells++;
-        long diff = _vChanged != changes ? 1 : 0;
-        for (int y = Math.Max(1, y0 - 1); y <= Math.Min(_h - 2, y1 + 1); y++)
-        for (int x = Math.Max(1, x0 - 1); x <= Math.Min(_w - 2, x1 + 1); x++)
-        {
-            int k = y * _w + x;
-            if (_vSub[k] != _sub[k] || _vEdge[k] != _edge[k]) diff++;
-        }
-        VerifyCellDiff += diff;
     }
 
     // ── 扉 ─────────────────────────────────────────────────────────────
@@ -917,16 +849,6 @@ internal static partial class WaterSim
         var area = new int[SolidMap.IslandCount + 1];
         var wetOnly = new byte[n];
         IslandCellsNative(isl, wetOnly, area);
-        if (Native.MrpNative.VerifyIn("WaterSim.Island"))
-        {
-            var cIsl = new byte[n];
-            var cArea = new int[area.Length];
-            var cWet = new byte[n];
-            IslandCellsCs(cIsl, cWet, cArea);
-            VerifyLevels++;
-            for (int k = 0; k < n; k++) if (cIsl[k] != isl[k] || cWet[k] != wetOnly[k]) VerifyLevelDiff++;
-            for (int i = 0; i < area.Length; i++) if (cArea[i] != area[i]) VerifyLevelDiff++;
-        }
         var rank = HeightLevels.IslandRanks(i => area[i]);
         DoorRanks(isl, rank);
         _cellIsl = isl; _islRank = rank; _islArea = area; // 島ごとの高さ (WaterElevation) 用
@@ -966,34 +888,6 @@ internal static partial class WaterSim
             };
             Native.MrpNative.IslandCells(&a);
         }
-    }
-
-    // 照合用の C# 版 (IslandCellsNative と同じ結果)
-    private static void IslandCellsCs(byte[] isl, byte[] wetOnly, int[] area)
-    {
-        int n = _w * _h;
-        int sw = SolidMap.W;
-        var solid = SolidMap.OpenCells;
-        for (int k = 0; k < n; k++)
-        {
-            int bits = _sub[k];
-            if (bits == 0) continue;
-            int x = k % _w, y = k / _w, s = -1;
-            // 最初の歩ける升 (水だけが届く升は島を持たない)
-            while (bits != 0)
-            {
-                int b = System.Numerics.BitOperations.TrailingZeroCount(bits);
-                bits &= bits - 1;
-                int c = (y * Sub + b / Sub) * sw + x * Sub + b % Sub;
-                if (solid[c] != 0) { s = c; break; }
-            }
-            if (s < 0) { wetOnly[k] = 1; continue; }
-            int id = SolidMap.IslandCell(s);
-            if (id <= 0 || id >= area.Length) continue;
-            isl[k] = (byte)id;
-            area[id]++;
-        }
-        SpreadWetIslands(isl, wetOnly);
     }
 
     // はしごでつながらない島は、扉を挟んで隣り合う順位の決まった島と同じ段にする (扉の奥の部屋)。
@@ -1457,48 +1351,11 @@ internal static partial class WaterSim
         return sb.ToString();
     }
 
-    // 2 つの升の境で向かい合う歩ける升の組の数。column = true なら a の列 ia と b の列 ib、false なら行
-    internal static int Facing(int a, int b, int ia, int ib, bool column)
-    {
-        int n = 0;
-        for (int i = 0; i < Sub; i++)
-        {
-            int pa = column ? i * Sub + ia : ia * Sub + i;
-            int pb = column ? i * Sub + ib : ib * Sub + i;
-            if ((a >> pa & 1) != 0 && (b >> pb & 1) != 0) n++;
-        }
-        return n;
-    }
-
     internal static int PopCount(int v)
     {
         int c = 0;
         while (v != 0) { v &= v - 1; c++; }
         return c;
-    }
-
-    // 4×4 の歩ける升が上下左右で 1 つにつながっているか
-    internal static bool Connected(int bits)
-    {
-        int first = bits & -bits;
-        int seen = first, frontier = first;
-        while (frontier != 0)
-        {
-            int grow = 0;
-            for (int i = 0; i < Sub * Sub; i++)
-            {
-                if ((frontier >> i & 1) == 0) continue;
-                int x = i % Sub, y = i / Sub;
-                if (x > 0) grow |= 1 << (i - 1);
-                if (x < Sub - 1) grow |= 1 << (i + 1);
-                if (y > 0) grow |= 1 << (i - Sub);
-                if (y < Sub - 1) grow |= 1 << (i + Sub);
-            }
-            grow &= bits & ~seen;
-            seen |= grow;
-            frontier = grow;
-        }
-        return seen == bits;
     }
 
     // k から向き d (Nx/Ny の並び) の隣へ流れてよいか
@@ -1584,7 +1441,7 @@ internal static partial class WaterSim
         }
     }
 
-    // 床マスクに出る落ちる縁 (StampLips と同じ判定) の、出来事の前の写し。範囲は両端を含む
+    // 床マスクに出る落ちる縁 (FloorLips と同じ判定) の、出来事の前の写し。範囲は両端を含む
     private static byte[] _lipSnap = Array.Empty<byte>();
     private static int _snapX0, _snapY0, _snapX1, _snapY1;
 
@@ -1661,7 +1518,7 @@ internal static partial class WaterSim
             // 穴が床マスクに出る分は壁の絵の側 (HeightChanged) がタイルの床を作り直す
             WaterArt.FillChanged(Rect.MinMaxRect(_org.x + (p.Cx - p.R) * _cell, _org.y + (p.Cy - p.R) * _cell,
                 _org.x + (p.Cx + p.R + 1) * _cell, _org.y + (p.Cy + p.R + 1) * _cell));
-            // 落ちる縁は床の形にも出る (StampLips) ので、縁が本当に変わった升の範囲だけタイルの床を作り直す
+            // 落ちる縁は床の形にも出る (FloorLips) ので、縁が本当に変わった升の範囲だけタイルの床を作り直す
             LipsChanged(ref fx0, ref fy0, ref fx1, ref fy1);
             if (p.Shock) Shock(p.Sx, p.Sy, p.Sr, p.Sp, p.Bx, p.By, p.Seed);
         }
@@ -1726,7 +1583,7 @@ internal static partial class WaterSim
         SeaInflow();
         Prof(3);
 
-        if (defer && !Native.MrpNative.VerifyIn("WaterSim.Step")) { Defer(_step, blow); return true; }
+        if (defer) { Defer(_step, blow); return true; }
         RunSubsteps(blow, _step);
         PostStep(_step, blow);
         return false;
@@ -1736,8 +1593,7 @@ internal static partial class WaterSim
     private static void RunSubsteps(bool blow, int step)
     {
         if (_fs.Length < _fallAt.Length * 3) _fs = new int[_fallAt.Length * 3];
-        if (Native.MrpNative.VerifyIn("WaterSim.Step")) VerifyStep(step, blow);
-        else if (!StepNative(false, step, blow)) NativeRefused();
+        if (!StepNative(step, blow)) NativeRefused();
         Prof(4);
     }
 
@@ -1818,36 +1674,14 @@ internal static partial class WaterSim
             if (a < _sortedN) kept++;
         }
         _actN = o;
-        // 升の番号順に並べておく (隣の升を続けて読むので速い。C# 版と C++ 版で同じ順)。
+        // 升の番号順に並べておく (隣の升を続けて読むので速い)。
         // 前の刻みの終わりに並べた分は外しても番号順のままなので、後から起こした分だけ並べて後ろから混ぜる
         SortTail(kept);
         _sortedN = _actN;
-        if (Native.MrpNative.VerifyIn("WaterSim.Sort"))
-            for (int a = 1; a < _actN; a++) if (_act[a - 1] >= _act[a]) VerifyDiff++;
         Prof(7);
 
         Steps++;
         if (step % 300 == 0) { LastDigest = Digest(step); Plugin.Logger.LogInfo($"[WaterSim] step={step} digest={LastDigest:x8} active={_actN} volume={Volume()}"); }
-    }
-
-    // C# 版の小刻み SubN 回 (浸水の口へ注ぐ → DropVoid → Flow → Heights → 縁を越えた量)。吸い出しは最初の小刻みだけ
-    private static void StepManaged(bool blow, int step)
-    {
-        for (int s = 0; s < SubN; s++)
-        {
-            // 浸水: 口の周りの開いている升へ等分して入れる (1 刻みの量を小刻みに分ける)
-            for (int i = 0; i < Inflows.Count; i++)
-            {
-                int amt = Share(Inflows[i].Rate, s);
-                if (amt > 0) Pour3(Inflows[i].K, amt);
-            }
-            DropVoid();
-            Flow(s, blow && s == 0);
-            Heights(s == SubN - 1 && (step & 3) == 0);
-            Prof(4);
-            SubFalls();
-            Prof(5);
-        }
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -1887,11 +1721,11 @@ internal static partial class WaterSim
     private static int[] _dirtyBuf = Array.Empty<int>();
     private static int[] _infK = Array.Empty<int>(), _infRate = Array.Empty<int>();
 
-    // C++ 版の小刻み SubN 回 (その場で)。check = 照合 (C# と同じ古いルールで回し、眠っている升の起こし忘れも数える)
-    private static unsafe bool StepNative(bool check, int step, bool blow)
+    // C++ 版の小刻み SubN 回 (その場で)
+    private static unsafe bool StepNative(int step, bool blow)
     {
         var a = Args();
-        Fill(a, check, step, blow);
+        Fill(a, step, blow);
         int r;
         try { r = Native.MrpNative.WaterStep(a); }
         finally { Unpin(); }
@@ -1900,213 +1734,8 @@ internal static partial class WaterSim
         return true;
     }
 
-    // 答え合わせ (native verify): 同じ刻みの小刻みを C++ と C# の両方で回して、升の水・流れ・回す升・縁を越える量・描き直すタイルを比べる。続きは C# の結果で
-    internal static long VerifySteps, VerifyDiff;
-    internal static long VerifySleepViol; // 眠っている升が流れ出すはずだった・浅かった数 (起こし忘れ)
-
-    private static void VerifyStep(int step, bool blow)
-    {
-        int n = _hgt.Length;
-        // 前の状態を取っておく
-        var hgt0 = (int[])_hgt.Clone(); var flux0 = (int[])_flux.Clone(); var move0 = (int[])_move.Clone();
-        var act0 = (int[])_act.Clone(); var in0 = (byte[])_inList.Clone(); var dirty0 = (byte[])_tileDirty.Clone(); var stir0 = (byte[])_stir.Clone();
-        var fo0 = (int[])_fo.Clone(); var fs0 = (int[])_fs.Clone(); var fallAt0 = (int[])_fallAt.Clone();
-        int actN0 = _actN, foN0 = _foN, fsN0 = _fsN, dirtyN0 = DirtyTiles.Count;
-        long void0 = VoidTotal, inflow0 = InflowTotal, seaOut0 = SeaOutTotal;
-        if (!StepNative(true, step, blow)) { NativeRefused(); return; }
-        var vHgt = (int[])_hgt.Clone(); var vFlux = (int[])_flux.Clone(); var vMove = (int[])_move.Clone();
-        var vAct = (int[])_act.Clone(); var vIn = (byte[])_inList.Clone(); var vStir = (byte[])_stir.Clone();
-        var vFo = (int[])_fo.Clone(); var vFs = (int[])_fs.Clone(); var vFallAt = (int[])_fallAt.Clone();
-        var vDirty = DirtyTiles.GetRange(dirtyN0, DirtyTiles.Count - dirtyN0);
-        int nActN = _actN, nFoN = _foN, nFsN = _fsN;
-        long nVoid = VoidTotal, nInflow = InflowTotal, nSeaOut = SeaOutTotal;
-        // 戻して C# で
-        Array.Copy(hgt0, _hgt, n); Array.Copy(flux0, _flux, n * 4); Array.Copy(move0, _move, n * 4);
-        Array.Copy(act0, _act, n); Array.Copy(in0, _inList, n); Array.Copy(dirty0, _tileDirty, dirty0.Length); Array.Copy(stir0, _stir, n);
-        Array.Copy(fo0, _fo, fo0.Length); Array.Copy(fs0, _fs, fs0.Length); Array.Copy(fallAt0, _fallAt, fallAt0.Length);
-        _actN = actN0; _foN = foN0; _fsN = fsN0; VoidTotal = void0; InflowTotal = inflow0; SeaOutTotal = seaOut0;
-        DirtyTiles.RemoveRange(dirtyN0, DirtyTiles.Count - dirtyN0);
-        StepManaged(blow, step);
-        VerifySteps++;
-        long diff = 0;
-        if (nActN != _actN) diff += 1000000;
-        if (nFoN != _foN) diff += 1000000;
-        if (nFsN != _fsN) diff += 1000000;
-        if (nVoid != VoidTotal || nInflow != InflowTotal || nSeaOut != SeaOutTotal) diff += 1000000;
-        if (vDirty.Count != DirtyTiles.Count - dirtyN0) diff += 1000000;
-        else for (int i = 0; i < vDirty.Count; i++) if (vDirty[i] != DirtyTiles[dirtyN0 + i]) diff++;
-        for (int i = 0; i < n; i++) { if (vHgt[i] != _hgt[i]) diff++; if (vIn[i] != _inList[i]) diff++; if (vStir[i] != _stir[i]) diff++; }
-        for (int i = 0; i < n * 4; i++) { if (vFlux[i] != _flux[i]) diff++; if (vMove[i] != _move[i]) diff++; }
-        for (int i = 0; i < Math.Min(nActN, _actN); i++) if (vAct[i] != _act[i]) diff++;
-        for (int i = 0; i < Math.Min(nFoN, _foN) * 3; i++) if (vFo[i] != _fo[i]) diff++;
-        for (int i = 0; i < Math.Min(nFsN, _fsN) * 3; i++) if (vFs[i] != _fs[i]) diff++;
-        for (int i = 0; i < _fallAt.Length; i++) if (vFallAt[i] != _fallAt[i]) diff++;
-        VerifyDiff += diff;
-    }
-
     // 1 刻みの量 f のうち小刻み s に運ぶ分 (SubN 回の合計がちょうど f)
     private static int Share(int f, int s) => (int)((long)f * (s + 1) / SubN - (long)f * s / SubN);
-
-    // 奈落の升の水は消える (落ちていく)
-    private static void DropVoid()
-    {
-        for (int a = 0; a < _actN; a++)
-        {
-            int k = _act[a];
-            if (_lvl[k] != VoidLevel || _hgt[k] <= 0) continue;
-            VoidTotal += _hgt[k];
-            _hgt[k] = 0;
-            Mark(k);
-        }
-    }
-
-    // 流れ: 各升が自分の 4 本の管の流れ出しを決める (読むのは前の小刻みの高さだけ・順番に依らない)。
-    // 低い床の隣へは向こうの水に押し返されずに流れ、高い床の隣へは流れない。縁を越えて落ちる分は FallOut へ。
-    // 勢いの無い流れ (段差・堰・海) の量は 1 刻みあたりで決めて小刻みに分ける
-    private static void Flow(int s, bool blow)
-    {
-        _foN = 0;
-        for (int a = 0; a < _actN; a++)
-        {
-            int k = _act[a];
-            int h = _hgt[k];
-            int sum = 0;
-            int b0 = 0, b1 = 0, b2 = 0, b3 = 0;
-            if (blow && h > 0) Blow(k, h, out b0, out b1, out b2, out b3);
-            int lk = _lvl[k];
-            int falls = _foN;
-            for (int d = 0; d < 4; d++)
-            {
-                int j = k + Nx[d] + Ny[d] * _w;
-                int f = 0;
-                if (h > 0 && _open[j] != 0 && Passable(k, d))
-                {
-                    int lj = _lvl[j];
-                    bool known = lk != NoLevel && lj != NoLevel;
-                    if (!known || lj <= lk)
-                    {
-                        // 同じ段は水面 (床の高さ + 深さ) の差で流れる。低い段へは向こうの水に押し返されない
-                        int hj = _hgt[j];
-                        int diff = known && lj < lk ? h - DryHold : h + _bed[k] + _furn[k] - hj - _bed[j] - _furn[j] - (hj == 0 ? DryHold : WetHold);
-                        f = _flux[k * 4 + d] * SubDamp / 256 + (diff > 0 ? diff * SubGain / 256 : 0);
-                        if (f < 0) f = 0;
-                        f += d == 0 ? b0 : d == 1 ? b1 : d == 2 ? b2 : b3;
-                    }
-                }
-                else if (h > 0 && (_stepMask[k] >> d & 1) != 0)
-                {
-                    // 小さな段差: 下の床の水面は段の高さぶん低い。上からは下の水面 (段より上に出た分) との差で、
-                    // 下からは段を越えた分と上の水との差で流れる
-                    int t = _stepTo[EdgeKey(k, d)], ht = _hgt[t];
-                    int diff = _lvl[t] < lk
-                        ? h - Math.Max(0, ht - StepHeight) - (ht <= StepHeight ? DryHold : WetHold)
-                        : h - StepHeight - ht - (ht == 0 ? DryHold : WetHold);
-                    if (diff > 0) sum += SubOut(k, d, diff * Gain / 256, s);
-                }
-                else if ((_fallMask[k] >> d & 1) != 0 && h > FallLip)
-                {
-                    int g = FallRate(k, d, h);
-                    if (g > 0) sum += SubOut(k, d, g, s);
-                }
-                else if (h > 0 && (_seaMask[k] >> d & 1) != 0)
-                {
-                    // 海へ: 水面が海面より高い分だけ出ていく
-                    int diff = h + _bed[k] + _furn[k] - SeaLevel - WetHold;
-                    if (diff > 0) sum += SubOut(k, d, diff * Gain / 256, s);
-                }
-                _flux[k * 4 + d] = f;
-                int q = Share(f, s);
-                _move[k * 4 + d] = q;
-                sum += q;
-                if (f > 0) Wake(j);
-            }
-            if (sum > h)
-            {
-                for (int d = 0; d < 4; d++)
-                {
-                    _flux[k * 4 + d] = (int)((long)_flux[k * 4 + d] * h / sum);
-                    _move[k * 4 + d] = (int)((long)_move[k * 4 + d] * h / sum);
-                }
-                for (int i = falls; i < _foN; i++) _fo[i * 3 + 2] = (int)((long)_fo[i * 3 + 2] * h / sum);
-            }
-        }
-    }
-
-    // 勢いの無い流れ出し g (1 刻みあたり・最低 1) のうちこの小刻みの分を FallOut へ
-    private static int SubOut(int k, int d, int g, int s)
-    {
-        if (g <= 0) g = 1;
-        int q = Share(g, s);
-        if (q > 0) { _fo[_foN * 3] = k; _fo[_foN * 3 + 1] = d; _fo[_foN * 3 + 2] = q; _foN++; }
-        return q;
-    }
-
-    // 高さ: 入ってくる流れ − 出ていく流れ
-    private static void Heights(bool dry)
-    {
-        int n = _actN; // 途中で起こした升は流れ込みが無い (流れ込みは Flow で起こす) ので、この回では回さない
-        for (int a = 0; a < n; a++)
-        {
-            int k = _act[a];
-            int dh = 0;
-            for (int d = 0; d < 4; d++)
-            {
-                dh -= _move[k * 4 + d];
-                int j = k + Nx[d] + Ny[d] * _w;
-                dh += _move[j * 4 + Opp[d]];
-            }
-            if (dh != 0) { _hgt[k] += dh; Mark(k); }
-            // 浅すぎる升は 4 刻みに 1 ずつ乾く
-            if (dry && _hgt[k] > 0 && _hgt[k] < MinDepth) { _hgt[k]--; Mark(k); }
-        }
-    }
-
-    // 縁を越えた水を縁の升から引く。段差と海へはすぐ移し、落ちる分は 1 刻みの合計 (_fs) へ足す
-    private static void SubFalls()
-    {
-        for (int i = 0; i < _foN; i++)
-        {
-            int k = _fo[i * 3], d = _fo[i * 3 + 1], a0 = _fo[i * 3 + 2];
-            // 量は高さを決める前の水で決めてあり、間に浅い升が乾いて 1 減ることがある
-            int amt = Math.Min(a0, _hgt[k]);
-            if (amt <= 0) continue;
-            _hgt[k] -= amt;
-            Mark(k);
-            if ((_seaMask[k] >> d & 1) != 0) { SeaOutTotal += amt; continue; }
-            if ((_stepMask[k] >> d & 1) != 0)
-            {
-                int t = _stepTo[EdgeKey(k, d)];
-                _hgt[t] += amt;
-                Mark(t);
-                Wake(t);
-                continue;
-            }
-            int key = EdgeKey(k, d), at = _fallAt[key];
-            if (at == 0) { _fs[_fsN * 3] = k; _fs[_fsN * 3 + 1] = d; _fs[_fsN * 3 + 2] = amt; _fallAt[key] = ++_fsN; }
-            else _fs[(at - 1) * 3 + 2] += amt;
-        }
-    }
-
-    private static void Pour3(int k, int amt)
-    {
-        int n = 0;
-        for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++) if (_open[k + dx + dy * _w] != 0) n++;
-        if (n == 0) return;
-        int each = amt / n, rest = amt - each * n;
-        for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                int j = k + dx + dy * _w;
-                if (_open[j] == 0) continue;
-                int a = each + (rest > 0 ? 1 : 0);
-                if (rest > 0) rest--;
-                _hgt[j] += a;
-                Wake(j);
-                Mark(j);
-            }
-        InflowTotal += amt;
-    }
 
     // 落ちている水を着く刻みの順に入れる (同じ刻みは入れた順)
     private static void AddFlying(int due, int to, int amt)
@@ -2160,29 +1789,6 @@ internal static partial class WaterSim
         Mark(k);
         SpilledTotal += gone;
         Spill(x, y, gone);
-    }
-
-    // 升 k (水 h) を口へ向かって押す流れ (向き 0..3 = Nx/Ny の並び)。
-    // 減圧の「口へ向かう向き」(升の数) を縦横に分け、通れない向きの分はもう一方へ回す
-    private static void Blow(int k, int h, out int b0, out int b1, out int b2, out int b3)
-    {
-        b0 = b1 = b2 = b3 = 0;
-        int x = k % _w, y = k / _w;
-        if (!Decompression.FlowAt(x * Sub, y * Sub, out int dist, out int press, out int fx, out int fy)) return;
-        int s = (int)((long)Decompression.Strength1024(dist) * press / Decompression.Full);
-        if (s <= 0) return;
-        int ax = Math.Abs(fx), ay = Math.Abs(fy);
-        if (ax + ay == 0) return;
-        int dX = fx > 0 ? 0 : 1, dY = fy > 0 ? 2 : 3;
-        bool okX = ax > 0 && _open[k + Nx[dX]] != 0 && Passable(k, dX);
-        bool okY = ay > 0 && _open[k + Ny[dY] * _w] != 0 && Passable(k, dY);
-        if (!okX && !okY) return;
-        int all = (int)((long)h * Math.Min(BlowMax, s * BlowGain / 1024) / 256);
-        if (all <= 0) return;
-        int bx = okX && okY ? all * ax / (ax + ay) : okX ? all : 0;
-        int by = all - bx;
-        if (dX == 0) b0 = bx; else b1 = bx;
-        if (dY == 2) b2 = by; else b3 = by;
     }
 
     // 衝撃: 中心 (sx, sy)・半径 sr (どれも升 ×256) の中の水に、外へ向かう流れを足す (強さ sp = 0..256・中心ほど強い)。
@@ -2539,58 +2145,11 @@ internal static partial class WaterSim
         return _ready && _open != null && _hgt != null;
     }
 
-    // C++ の部品へ渡す落ちる縁の地図 (StampLips と同じ物)。まだ升が無ければ false
+    // C++ の部品へ渡す落ちる縁の地図。まだ升が無ければ false
     internal static bool LipMaps(out byte[] fall, out byte[] lip, out int w, out int h, out float ox, out float oy, out float cell)
     {
         fall = _fallMask; lip = _lipMask; w = _w; h = _h; ox = _org.x; oy = _org.y; cell = _cell;
         return _ready && _fallMask != null;
-    }
-
-    // 落ちる縁の升の床でない画素を床にする (水が縁の線まで届く)。ただし落ちる縁のどれかで、その画素から内へ縁から LipReach
-    // (滝の膜が崖の縁を探す幅と同じ) までに床マスクの床があれば塗らない: 水の絵は床マスクの形で崖の縁まで届き、膜はそこから始まる。
-    // 画素ごとに決める (升ごとに真ん中の列だけで決めると、2 方向へ落ちる角の升で、床の絵の外の列が升ごと床に塗られる) (C++ の mrp_floor_lips と同じ)
-    private const float LipStep = 0.02f, LipReach = 0.3f;
-
-    private static bool LipBeyond(int bits, int cx, int cy, float wx, float wy, byte[] mb, int mw, int mh, float mox, float moy, float mppu)
-    {
-        if (mb == null) return false;
-        for (int d = 0; d < 4; d++)
-        {
-            if ((bits >> d & 1) == 0) continue;
-            float ex = _org.x + (cx + 0.5f) * _cell + Nx[d] * (0.5f * _cell);
-            float ey = _org.y + (cy + 0.5f) * _cell + Ny[d] * (0.5f * _cell);
-            float p = Nx[d] != 0 ? (ex - wx) * Nx[d] : (ey - wy) * Ny[d];
-            for (int s = 1; p + s * LipStep <= LipReach; s++)
-            {
-                float qx = wx - Nx[d] * (s * LipStep), qy = wy - Ny[d] * (s * LipStep);
-                int mx = (int)MathF.Floor((qx - mox) * mppu), my = (int)MathF.Floor((qy - moy) * mppu);
-                if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
-                int i = my * mw + mx;
-                if ((mb[i >> 3] & (1 << (i & 7))) != 0) return true;
-            }
-        }
-        return false;
-    }
-
-    internal static void StampLips(float x, float y, float step, int n, byte[] into, byte[] mb, int mw, int mh, float mox, float moy, float mppu)
-    {
-        if (!_ready || _fallMask == null) return;
-        float inv = 1f / _cell;
-        for (int py = 0; py < n; py++)
-        {
-            int cy = (int)MathF.Floor((y + py * step - _org.y) * inv);
-            if (cy < 0 || cy >= _h) continue;
-            int row = py * n, baseK = cy * _w;
-            for (int px = 0; px < n; px++)
-            {
-                if (into[row + px] != 0) continue;
-                int cx = (int)MathF.Floor((x + px * step - _org.x) * inv);
-                if (cx < 0 || cx >= _w) continue;
-                int k = baseK + cx;
-                int b = _fallMask[k] & ~_lipMask[k];
-                if (b != 0 && !LipBeyond(b, cx, cy, x + px * step, y + py * step, mb, mw, mh, mox, moy, mppu)) into[row + px] = 255;
-            }
-        }
     }
 
     // 水の升の範囲 (両端を含む) に扉の升があるか

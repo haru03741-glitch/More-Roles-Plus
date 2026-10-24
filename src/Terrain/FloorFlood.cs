@@ -42,24 +42,6 @@ internal static class FloorFlood
 
         // 答えは届いた升を囲む矩形 (bx by bw bh) に切り出した表
         var dist = FillNative(walls, x0, y0, w, h, lx, ly, search, nearestOnly, target, maxCost, out int bx, out int by, out int bw, out int bh, out int popped, out int far);
-        if (Native.MrpNative.VerifyIn("FloorFlood"))
-        {
-            var cs = new ushort[w * h];
-            bool ok = FillCs(walls, x0, y0, w, h, lx, ly, search, nearestOnly, target, maxCost, cs, out int csPopped, out int csFar);
-            long diff = ok != (dist != null) ? 1000000 : 0;
-            if (dist != null && ok)
-            {
-                if (csPopped != popped || csFar != far) diff += 1000000;
-                for (int y = 0; y < h; y++)
-                for (int x = 0; x < w; x++)
-                {
-                    bool inBox = x >= bx && x < bx + bw && y >= by && y < by + bh;
-                    if (cs[y * w + x] != (inBox ? dist[(y - by) * bw + x - bx] : ushort.MaxValue)) diff++;
-                }
-            }
-            VerifyFills++;
-            VerifyDiff += diff;
-        }
         if (dist == null) return null;
 
         float reach = MathF.Max(far / (float)CostStraight / ppu, 0.3f);
@@ -70,8 +52,6 @@ internal static class FloorFlood
         };
     }
 
-    // 答え合わせ (native verify): C++ と同じ塗り広げを C# でもやって距離の表を比べる
-    internal static long VerifyFills, VerifyDiff;
     // C++ の置き場 (メインスレッドだけ)。距離と通れるかは呼ぶ前も後もまっさら (届いていない・まだ)
     private static int[] _nxt = Array.Empty<int>(), _prv = Array.Empty<int>(), _touched = Array.Empty<int>();
     private static byte[] _pass = Array.Empty<byte>();
@@ -121,75 +101,5 @@ internal static class FloorFlood
         var dist = new ushort[bw * bh];
         Array.Copy(_out, dist, dist.Length);
         return dist;
-    }
-
-    // C# 版 (照合用)
-    private static bool FillCs(bool walls, int x0, int y0, int w, int h, int lx, int ly, int search, bool nearestOnly,
-        int target, int maxCost, ushort[] dist, out int popped, out int far)
-    {
-        popped = 0; far = 0;
-        // 通れる升 = 歩ける升で、周り 8 升も歩ける (壁の線の継ぎ目の細い隙間から漏れないように 1 升削る)。
-        // 塗りが触る升は範囲の一部なので、触った時に調べて覚える (0 = まだ・1 = 通れる・2 = 通れない)
-        var pass = new byte[w * h];
-        bool Pass(int k)
-        {
-            if (pass[k] == 0) pass[k] = !walls || Eroded(x0 + k % w, y0 + k / w) ? (byte)1 : (byte)2;
-            return pass[k] == 1;
-        }
-
-        // 種: 範囲の中の通れる升を、種の点からの直線距離で始める (打撃は一番近い 1 升だけ = 叩いた側)
-        Array.Fill(dist, ushort.MaxValue);
-        var queue = new PriorityQueue<int, int>();
-        int best = int.MaxValue, nearest = -1;
-        for (int dy = -search; dy <= search; dy++)
-        for (int dx = -search; dx <= search; dx++)
-        {
-            int x = lx + dx, y = ly + dy;
-            int d2 = dx * dx + dy * dy;
-            if (d2 > search * search || x < 0 || y < 0 || x >= w || y >= h || !Pass(y * w + x)) continue;
-            if (d2 < best) { best = d2; nearest = y * w + x; }
-            if (nearestOnly) continue;
-            int k = y * w + x;
-            dist[k] = (ushort)(MathF.Sqrt(d2) * CostStraight);
-            queue.Enqueue(k, dist[k]);
-        }
-        if (nearest < 0) return false;
-        if (nearestOnly) { dist[nearest] = 0; queue.Enqueue(nearest, 0); }
-
-        while (queue.TryDequeue(out int k, out int d))
-        {
-            if (d != dist[k]) continue;
-            popped++;
-            far = d;
-            if (popped >= target) break;
-            int x = k % w, y = k / w;
-            for (int n = 0; n < 8; n++)
-            {
-                int nx = x + Dx[n], ny = y + Dy[n];
-                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-                int nk = ny * w + nx;
-                if (!Pass(nk)) continue;
-                int nd = d + (n < 4 ? CostStraight : CostDiagonal);
-                if (nd > maxCost || nd >= dist[nk]) continue;
-                dist[nk] = (ushort)nd;
-                queue.Enqueue(nk, nd);
-            }
-        }
-        // 打ち切った後も表に残った (まだ確定していない) 升は、届いた一番遠い所より先なら消す
-        for (int i = 0; i < dist.Length; i++)
-            if (dist[i] != ushort.MaxValue && dist[i] > far) dist[i] = ushort.MaxValue;
-        return true;
-    }
-
-    private static readonly int[] Dx = { 1, -1, 0, 0, 1, 1, -1, -1 };
-    private static readonly int[] Dy = { 0, 0, 1, -1, 1, -1, 1, -1 };
-
-    private static bool Eroded(int x, int y)
-    {
-        int w = SolidMap.W;
-        for (int dy = -1; dy <= 1; dy++)
-        for (int dx = -1; dx <= 1; dx++)
-            if (!SolidMap.OpenCell((y + dy) * w + x + dx)) return false;
-        return true;
     }
 }

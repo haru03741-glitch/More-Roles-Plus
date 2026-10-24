@@ -67,9 +67,6 @@ internal static class WaterHeight
     }
 
     // 壊れた壁の画素 (穴) は面でなくなる。穴の地図と面の画素は同じ密度 (16 画素/単位) なので画素ごとに引く
-    // 答え合わせ (native verify): 穴を外すのを C# でも写しにやって比べる
-    internal static long VerifyHoles, VerifyHoleDiff;
-
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private unsafe struct HolesArgs
     {
@@ -80,40 +77,13 @@ internal static class WaterHeight
         public int HoleMin;
     }
 
-    // C++ (CutHolesCs と同じ結果)
     internal static unsafe void CutHoles(byte[] face, int n, float x, float y, float size)
     {
         if (!DamageMap.HoleMap(out var hp, out int hw, out int hh, out float hox, out float hoy, out float hppu)) return;
-        byte[] cs = Native.MrpNative.VerifyIn("WaterHeight") ? (byte[])face.Clone() : null;
         fixed (byte* f = face) fixed (byte* h = hp)
         {
             var a = new HolesArgs { Face = f, N = n, X = x, Y = y, Size = size, Px = h, W = hw, H = hh, Ox = hox, Oy = hoy, Ppu = hppu, HoleMin = HoleMin };
             Native.MrpNative.FaceCutHoles(&a);
-        }
-        if (cs != null)
-        {
-            CutHolesCs(cs, n, x, y, size);
-            long diff = 0;
-            for (int i = 0; i < cs.Length; i++) if (cs[i] != face[i]) diff++;
-            VerifyHoles++;
-            VerifyHoleDiff += diff;
-        }
-    }
-
-    // C# 版 (照合用)
-    private static void CutHolesCs(byte[] face, int n, float x, float y, float size)
-    {
-        if (!DamageMap.HasHoles) return;
-        float step = size / (n - 1);
-        for (int py = 0; py < n; py++)
-        {
-            float wy = y + py * step;
-            for (int px = 0; px < n; px++)
-            {
-                int j = py * n + px;
-                if (face[j] > FloorMask.FaceTop) continue;
-                if (DamageMap.HoleByteAt(x + px * step, wy) >= HoleMin) face[j] = 255;
-            }
         }
     }
 }

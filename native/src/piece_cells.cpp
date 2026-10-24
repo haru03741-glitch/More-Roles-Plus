@@ -2,7 +2,7 @@
 #include "digest.h"
 #include "capture.h"
 
-// 抜いた画素を割れ目の細胞ごとに数える (src/Terrain/BreakPieces.cs の Spawn の画素の数え上げと同じ結果)。
+// 抜いた画素を割れ目の細胞ごとに数える。
 // この破壊の番号を書いた画素のうち、周りの 3×3 に見える穴がある物を、いちばん近い種点の細胞へ足す
 
 struct PieceAcc { int32_t x0, y0, x1, y1, count; int32_t pad; int64_t sumX, sumY; };

@@ -3,7 +3,7 @@ using System;
 namespace MoreRolesPlus.Terrain;
 
 // 縁の走査 (LinkPass の前半): 範囲の前の縁の印を消し、隣へ流れない向きを光線の待ち行列へ並べる。
-// C++ の部品があればそちら (native/src/link_scan.cpp)。照合の時は C++ を印を消さずに走らせ、C# の答えと比べる
+// 中身は C++ の部品 (native/src/link_scan.cpp)
 internal static partial class WaterSim
 {
     // 升ごとの縁の印: 0〜3 ビット = その向きにガラスの手すり (LowWalls)・4 ビット = はしごの上 (Ladders)
@@ -22,9 +22,7 @@ internal static partial class WaterSim
         public int SeaDirty;
     }
 
-    private static int[] _scanCleared = Array.Empty<int>(), _vScanQ = Array.Empty<int>(), _vScanCleared = Array.Empty<int>();
-    private static readonly System.Collections.Generic.List<int> CsCleared = new();
-    internal static long VerifyScans, VerifyScanDiff;
+    private static int[] _scanCleared = Array.Empty<int>();
 
     // 範囲の升の縁の印を作り直す (はしごの表は作った時に読んだ物・低い壁の表は Links の始めに読んだ物)
     private static void RimMarks(int x0, int y0, int x1, int y1)
@@ -83,84 +81,32 @@ internal static partial class WaterSim
         RimMarks(x0, y0, x1, y1);
         // 前の縁の升は落ちる縁と段差の表の件数より多くない
         int cap = FallTo.Count + StepTo.Count + 1;
-        if (!Native.MrpNative.VerifyIn("WaterLinkScan"))
+        if (_scanCleared.Length < cap) _scanCleared = new int[Math.Max(cap, 256)];
+        int n = ScanNative(x0, y0, x1, y1, false, _rayQ, _scanCleared, out int cn);
+        if (cn > _scanCleared.Length)
         {
-            if (_scanCleared.Length < cap) _scanCleared = new int[Math.Max(cap, 256)];
-            int n = ScanNative(x0, y0, x1, y1, false, _rayQ, _scanCleared, out int cn);
-            if (cn > _scanCleared.Length)
+            // 表と印がずれていた時の保険: 範囲の升の向きを表から全部消す
+            Plugin.Logger.LogError($"[WaterSim] scan cleared {cn} > {_scanCleared.Length}");
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
             {
-                // 表と印がずれていた時の保険: 範囲の升の向きを表から全部消す
-                Plugin.Logger.LogError($"[WaterSim] scan cleared {cn} > {_scanCleared.Length}");
-                for (int y = y0; y <= y1; y++)
-                for (int x = x0; x <= x1; x++)
-                {
-                    for (int d = 0; d < 4; d++) { FallTo.Remove((y * _w + x) * 4 + d); StepTo.Remove((y * _w + x) * 4 + d); }
-                    FreeSlot(y * _w + x);
-                }
+                for (int d = 0; d < 4; d++) { FallTo.Remove((y * _w + x) * 4 + d); StepTo.Remove((y * _w + x) * 4 + d); }
+                FreeSlot(y * _w + x);
             }
-            for (int i = 0, m = Math.Min(cn, _scanCleared.Length); i < m; i++)
-            {
-                int k = _scanCleared[i] >> 4;
-                if ((_scanCleared[i] & 1) != 0) for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
-                if ((_scanCleared[i] & 2) != 0) for (int d = 0; d < 4; d++) StepTo.Remove(k * 4 + d);
-                FreeSlot(k);
-            }
-            if (n > _rayQ.Length)
-            {
-                // 待ち行列が足りなければ広げて引き直す (印は消えているので答えだけ)
-                _rayQ = new int[Math.Max(n, _rayQ.Length * 2)];
-                ScanNative(x0, y0, x1, y1, true, _rayQ, _scanCleared, out _);
-            }
-            _rayN = n;
-            return;
         }
-        if (_vScanCleared.Length < cap) _vScanCleared = new int[Math.Max(cap, 256)];
-        int vn = ScanNative(x0, y0, x1, y1, true, _vScanQ, _vScanCleared, out int vcn);
-        if (vn > _vScanQ.Length)
+        for (int i = 0, m = Math.Min(cn, _scanCleared.Length); i < m; i++)
         {
-            _vScanQ = new int[vn];
-            ScanNative(x0, y0, x1, y1, true, _vScanQ, _vScanCleared, out vcn);
-        }
-        CsCleared.Clear();
-        ScanCs(x0, y0, x1, y1, true);
-        VerifyScans++;
-        long diff = vn != _rayN ? 1 : 0;
-        if (vcn != CsCleared.Count) diff++;
-        for (int i = 0; i < Math.Min(vn, _rayN); i++) if (_vScanQ[i] != _rayQ[i]) diff++;
-        for (int i = 0; i < Math.Min(vcn, CsCleared.Count); i++) if (_vScanCleared[i] != CsCleared[i]) diff++;
-        VerifyScanDiff += diff;
-    }
-
-    private static void ScanCs(int x0, int y0, int x1, int y1, bool record)
-    {
-        for (int y = y0; y <= y1; y++)
-        for (int x = x0; x <= x1; x++)
-        {
-            int k = y * _w + x;
-            if (record && (_fallMask[k] != 0 || _stepMask[k] != 0)) CsCleared.Add(k * 16 + (_fallMask[k] != 0 ? 1 : 0) + (_stepMask[k] != 0 ? 2 : 0));
-            if (_fallMask[k] != 0)
-            {
-                for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
-                _fallMask[k] = 0;
-                _lipMask[k] = 0;
-            }
-            if (_stepMask[k] != 0)
-            {
-                for (int d = 0; d < 4; d++) StepTo.Remove(k * 4 + d);
-                _stepMask[k] = 0;
-            }
+            int k = _scanCleared[i] >> 4;
+            if ((_scanCleared[i] & 1) != 0) for (int d = 0; d < 4; d++) FallTo.Remove(k * 4 + d);
+            if ((_scanCleared[i] & 2) != 0) for (int d = 0; d < 4; d++) StepTo.Remove(k * 4 + d);
             FreeSlot(k);
-            if (_seaMask[k] != 0) { _seaMask[k] = 0; _seaListDirty = true; }
-            int lk = _lvl[k];
-            if (_open[k] == 0 || lk == NoLevel || lk == VoidLevel) continue;
-            for (int d = 0; d < 4; d++)
-            {
-                int j = k + Nx[d] + Ny[d] * _w;
-                if (_open[j] != 0 && Passable(k, d)) continue;
-                if (Nx[d] != 0 && OnLadder(x, y)) continue;
-                // ガラスの手すりは光線を引かない (C++ の答えの -1 と同じ印で後で見分ける)
-                RayAdd(OnGlassRail(x, y, d) ? -1 - (k * 4 + d) : k * 4 + d);
-            }
         }
+        if (n > _rayQ.Length)
+        {
+            // 待ち行列が足りなければ広げて引き直す (印は消えているので答えだけ)
+            _rayQ = new int[Math.Max(n, _rayQ.Length * 2)];
+            ScanNative(x0, y0, x1, y1, true, _rayQ, _scanCleared, out _);
+        }
+        _rayN = n;
     }
 }

@@ -56,7 +56,7 @@ internal static unsafe partial class WaterSim
     }
 
     // 小刻みの引数を詰める (配列は Unpin まで固定)。step = 回す刻み
-    private static void Fill(StepArgs* a, bool check, int step, bool blow)
+    private static void Fill(StepArgs* a, int step, bool blow)
     {
         if (_dirtyBuf.Length < _tw * _th) _dirtyBuf = new int[_tw * _th];
         if (_infK.Length < Inflows.Count) { _infK = new int[Inflows.Count * 2]; _infRate = new int[Inflows.Count * 2]; }
@@ -74,9 +74,8 @@ internal static unsafe partial class WaterSim
                 Act = (int*)Pin(_act), InList = (byte*)Pin(_inList), Fo = (int*)Pin(_fo), TileDirty = (byte*)Pin(_tileDirty), DirtyOut = (int*)Pin(_dirtyBuf),
                 ActN = _actN, FoN = _foN, W = _w, H = _h, Tw = _tw, Th = _th, TileCells = TileCells,
                 SubN = SubN, SeaLevel = SeaLevel,
-                Stir = (byte*)Pin(_stir), CheckSleep = check ? 1 : 0,
-                // 照合の時は C# と同じ古いルールで回して 1 バイトずつ比べる
-                Isl = isl, IslBase = (int*)Pin(_islBase), IslN = _islBase.Length, UseZ = ZFlow && !check && isl != null ? 1 : 0,
+                Stir = (byte*)Pin(_stir), CheckSleep = 0,
+                Isl = isl, IslBase = (int*)Pin(_islBase), IslN = _islBase.Length, UseZ = ZFlow && isl != null ? 1 : 0,
                 FoCap = _fo.Length / 3,
                 Blow = blow ? 1 : 0,
                 BlowS = blow ? (ushort*)Pin(_blowS) : null, BlowComp = blow ? (short*)Pin(_blowComp) : null,
@@ -100,7 +99,6 @@ internal static unsafe partial class WaterSim
         VoidTotal += a->F.VoidAdd;
         InflowTotal += a->InflowAdd;
         SeaOutTotal += a->SeaOutAdd;
-        VerifySleepViol += a->F.SleepViol;
         for (int i = 0; i < a->F.DirtyN; i++) DirtyTiles.Add(_dirtyBuf[i]);
     }
 
@@ -125,7 +123,7 @@ internal static unsafe partial class WaterSim
         // 詰める途中で落ちたら固定を外して預けたままにする (次の Settle がその場で回す。絵は次の WaterArt.Tick がその場で描く)
         if (sim)
         {
-            try { Fill(Args(), false, _defStep, _defBlow); }
+            try { Fill(Args(), _defStep, _defBlow); }
             catch (Exception e) { Unpin(); Plugin.Logger.LogError($"[WaterSim] kick: {e}"); return; }
         }
         _simJob = sim;
@@ -141,7 +139,7 @@ internal static unsafe partial class WaterSim
         {
             Go.Wait();
             long t = System.Diagnostics.Stopwatch.GetTimestamp();
-            // 落ちても必ず終わりを知らせる (待つ側が止まらないように。0 なら C# 版で回し直す)
+            // 落ちても必ず終わりを知らせる (待つ側が止まらないように。0 ならその刻みは水を動かさない)
             try
             {
                 if (_simJob)
@@ -151,7 +149,7 @@ internal static unsafe partial class WaterSim
                 }
                 long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
                 _wTicks = t1 - t;
-                // 刻みが C# 版へ回る時は絵も受け取り側で描き直す (その刻みの後の水を描くように)
+                // 刻みが断られた時は絵も受け取り側で描き直す (その刻みの後の水を描くように)
                 if (!_simJob || _wr != 0) WaterArt.RunJobs();
                 long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
                 ArtThreadTicks += t2 - t1;

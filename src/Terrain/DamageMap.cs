@@ -15,15 +15,8 @@ internal static class DamageMap
     private const int PixelsPerUnit = 16;
     private const float HoleEdge = 0.25f;   // 穴の縁のなだらかさ (世界単位)。ノイズで崩す幅の土台
     private const float ScorchWidth = 0.45f;
-    private const float EmberCold = 0.45f;  // 打撃の切り口の B の上限 (シェーダは 0.55 以上を熱い切り口として橙を乗せる) // 穴の外側へ焦げが伸びる幅 (半径に対する比)
     private const float UnderlayDepth = 0.3f; // 部屋の絵より奥に置く瓦礫の床の z のずらし
     private const float PlayerBandZ = 0.1f;   // |z| がこれ未満の部屋の絵はクルーと同じ奥行き (クルーの z ≈ y/1000)
-    // 抜くのは「円」と「切り取った壁の線の近く (帯)」の重なりだけ (部屋の床まで抜くと床に穴が空いたように見える)
-    private const float BandHalf = 0.2f;      // 壁の線から横・下へ届く幅 (世界単位)
-    private const float LineBandEdge = 0.08f; // その帯の縁のなだらかさ
-    private const float LineBandHalf = 0.05f; // 壁の中の判定がある時の帯: 歩ける側へはほぼ出さない (壁の中身は Exposed で抜く。割れ口のギザギザで少しは食い込む)
-    private const float BandUpStretch = 2.2f; // 3/4 視点の壁は線より上に高さがあるので、上へはこの倍だけ届かせる
-    private const float BandDownSquash = 2f;  // 壁の線より下 (手前の床) へはこの分の 1 しか届かせない
 
     private static ShipStatus _ship;
     private static Texture2D _tex;             // 変わった範囲だけ送れない環境 (CopyTexture 無し) での全面送信用
@@ -382,9 +375,6 @@ internal static class DamageMap
         return true;
     }
 
-    // Stamp の C++ 版 (同じ結果)。照合 (native verify) の時は C# 版でも書いて範囲の画素を比べ、C# の結果を残す
-    internal static long VerifyStamps, VerifyStampDiff;
-
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private unsafe struct StampArgs
     {
@@ -402,23 +392,11 @@ internal static class DamageMap
         public int Tx0, Ty0, Tx1, Ty1;
     }
 
+    // touched = この破壊が抜いた画素 (番号を書いた所) の範囲
     private static void StampAny(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
     {
         WaterSim.EnsureIdle(); // 作業スレッドが穴の地図を読んでいる間は書き換えない
-        if (!Native.MrpNative.VerifyIn("DamageMap")) { StampNative(shape, segs, withScorch, floorY, keep, body, out touched); return; }
-        var px0 = (byte[])_pixels.Clone();
-        var gens0 = (byte[])_gens.Clone();
-        StampNative(shape, segs, withScorch, floorY, keep, body, out var tn);
-        var pxN = _pixels; var gensN = _gens;
-        _pixels = px0; _gens = gens0;
-        Stamp(shape, segs, withScorch, floorY, keep, body, out touched);
-        long diff = 0;
-        for (int i = 0; i < _pixels.Length; i++) if (_pixels[i] != pxN[i]) diff++;
-        for (int i = 0; i < _gens.Length; i++) if (_gens[i] != gensN[i]) diff++;
-        if (!tn.Equals(touched)) diff += 1000000;
-        VerifyStamps++;
-        VerifyStampDiff += diff;
-        if (diff != 0) Plugin.Logger.LogWarning($"[native] stamp diff={diff} shape={shape.GetType().Name} body={body != null}");
+        StampNative(shape, segs, withScorch, floorY, keep, body, out touched);
     }
 
     private static unsafe void StampNative(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
@@ -471,134 +449,6 @@ internal static class DamageMap
             Native.MrpNative.DamageStamp(&a);
             touched = a.Tx1 < 0 ? default : new RectInt(a.Tx0, a.Ty0, a.Tx1 - a.Tx0 + 1, a.Ty1 - a.Ty0 + 1);
         }
-    }
-
-    // touched = この破壊が抜いた画素 (番号を書いた所) の範囲
-    private static void Stamp(CutShape shape, List<Vector2> segs, bool withScorch, float floorY, List<Rect> keep, WallBody body, out RectInt touched)
-    {
-        int tx0 = int.MaxValue, ty0 = int.MaxValue, tx1 = -1, ty1 = -1;
-        Vector2 c = shape.Center;
-        float r = shape.BoundRadius;
-        bool banded = segs != null && segs.Count >= 2;
-        var hull = banded ? ConvexHull(segs) : null;
-        float reach = r * (1f + ScorchWidth) + HoleEdge;
-        int x0 = Math.Max(0, (int)((c.x - reach - _origin.x) * PixelsPerUnit));
-        int x1 = Math.Min(_w - 1, (int)((c.x + reach - _origin.x) * PixelsPerUnit) + 1);
-        int y0 = Math.Max(0, (int)((c.y - reach - _origin.y) * PixelsPerUnit));
-        int y1 = Math.Min(_h - 1, (int)((c.y + reach - _origin.y) * PixelsPerUnit) + 1);
-        MarkDirtyPx(x0, y0, x1, y1);
-
-        for (int py = y0; py <= y1; py++)
-        {
-            float wy = _origin.y + (py + 0.5f) / PixelsPerUnit;
-            for (int px = x0; px <= x1; px++)
-            {
-                float wx = _origin.x + (px + 0.5f) / PixelsPerUnit;
-                float sd = shape.SignedDistance(wx, wy);
-
-                float hole = Clamp01(0.5f - sd / HoleEdge * 0.5f);
-                float scorch = withScorch ? Clamp01(1f - sd / (r * ScorchWidth)) : 0f;
-                // 切り口 (残った壁の端) の印 B: 形の外側の縁だけに書く。形の内側で帯に止められた縁 (歩ける床との境) には付けない
-                // (付けると床の穴の形を一周する線になり、貼ったように見える)。爆発 = 熱い切り口 (シェーダが橙を少し乗せる)・打撃 = 断面だけ
-                float ember = sd > -0.03f ? Clamp01(1f - sd / (HoleEdge * 2f)) * (withScorch ? 1f : EmberCold) : 0f;
-
-                if (banded)
-                {
-                    // 壁の中の判定がある時は、帯を切った区間それぞれの近くに限る (凸包だと、離れた 2 枚の壁を切った時に
-                    // 間の歩ける床まで抜けてしまう)。壁の中身はその下の Exposed で抜く
-                    float bd = body != null ? SegmentBandDistance(segs, wx, wy) : BandDistance(hull, wx, wy);
-                    // 壁の中の判定がある時は、歩ける側へ値がなだらかに残らないよう縁を急にする (割れ口のギザギザ ±0.175 で床へ食い込むため)
-                    float band = body != null
-                        ? Clamp01(0.5f + (LineBandHalf - bd) / LineBandEdge * 0.5f)
-                        : Clamp01(0.5f + (BandHalf - bd) / HoleEdge * 0.5f);
-                    // 帯の外でも、穴から露出した壁の中 (蓋の内側) は抜く。抜かないと絵が残るのに歩ける袋になる
-                    if (band < 1f && hole > 0f && body != null && body.Exposed(wx, wy)) band = 1f;
-                    hole = Math.Min(hole, band);
-                    scorch = Math.Min(scorch, Clamp01(1f - (bd - BandHalf) / (r * ScorchWidth)));
-                }
-
-                // 家具 (ベッド・机など) は抜かない
-                // 家具の上には焦げも熾火も描かない (穴の内側の値のままだと家具の上だけ真っ黒な影のように見える)
-                if ((hole > 0f || ember > 0f || scorch > FurnitureScorch) && InsideAny(keep, wx, wy))
-                {
-                    hole = 0f;
-                    ember = 0f;
-                    scorch = Math.Min(scorch, FurnitureScorch);
-                }
-                if (wy < floorY) hole = Math.Min(hole, Clamp01(0.5f - (floorY - wy) / HoleEdge * 0.5f));
-                // 船の外 (空・宇宙) には焦げも熾火も書かない (壊れない壁の向こうへ焦げが伸びると、影の中で空の上に黒く出る)
-                if ((scorch > 0f || ember > 0f) && SolidMap.NearOutside(wx, wy)) { scorch = 0f; ember = 0f; }
-                // 絵の無い空の上には穴も書かない (穴の所に敷く船体の中の板が空の上に黒く出る)
-                if (hole > 0f && SolidMap.BareSky(wx, wy)) hole = 0f;
-
-                int i = (py * _w + px) * 4;
-                byte hb = (byte)(hole * 255f), sb = (byte)(scorch * 255f);
-                if (hb > _pixels[i])
-                {
-                    _pixels[i] = hb;
-                    // 抜け方が深くなった画素はこの破壊のもの (前の破壊の塊からは消え、今回の塊に移る)
-                    _gens[py * _w + px] = _gen;
-                    if (px < tx0) tx0 = px;
-                    if (px > tx1) tx1 = px;
-                    if (py < ty0) ty0 = py;
-                    if (py > ty1) ty1 = py;
-                }
-                if (sb > _pixels[i + 1]) _pixels[i + 1] = sb;
-                byte eb = (byte)(ember * 255f);
-                if (eb > _pixels[i + 2]) _pixels[i + 2] = eb;
-            }
-        }
-        touched = tx1 < 0 ? default : new RectInt(tx0, ty0, tx1 - tx0 + 1, ty1 - ty0 + 1);
-    }
-
-    // 切り取った壁の端点を囲む凸多角形までの距離 (内側は 0)。2 枚の壁の間の隙間も通路として含める。
-    // 多角形より上は BandUpStretch 倍だけ近いとみなす (3/4 視点の壁の高さの分)
-    private static float BandDistance(List<Vector2> hull, float x, float y)
-    {
-        if (hull.Count >= 3 && InsideConvex(hull, x, y)) return 0f;
-        float best = float.MaxValue;
-        int n = hull.Count;
-        for (int k = 0; k < n; k++)
-        {
-            Vector2 a = hull[k], b = hull[(k + 1) % n];
-            float sx = b.x - a.x, sy = b.y - a.y, l2 = sx * sx + sy * sy;
-            float t = l2 > 0 ? Math.Clamp(((x - a.x) * sx + (y - a.y) * sy) / l2, 0f, 1f) : 0f;
-            float ex = x - (a.x + sx * t), ey = y - (a.y + sy * t);
-            if (ey > 0) ey /= BandUpStretch;
-            else ey *= BandDownSquash;
-            float d = ex * ex + ey * ey;
-            if (d < best) best = d;
-            if (n == 2) break;
-        }
-        return MathF.Sqrt(best);
-    }
-
-    // 切った区間 (線分の両端を 2 つずつ) のどれかまでの距離。上下は同じ扱い: 壁の絵がどちら側にあるかは面ごとに違う
-    // (部屋の南の壁は部屋側の面が絵の上端) ので、線の上の輪郭線だけを消し、壁の中身は Exposed (壁の中の判定) で抜く
-    private static float SegmentBandDistance(List<Vector2> segs, float x, float y)
-    {
-        float best = float.MaxValue;
-        for (int k = 0; k + 1 < segs.Count; k += 2)
-        {
-            Vector2 a = segs[k], b = segs[k + 1];
-            float sx = b.x - a.x, sy = b.y - a.y, l2 = sx * sx + sy * sy;
-            float t = l2 > 0 ? Math.Clamp(((x - a.x) * sx + (y - a.y) * sy) / l2, 0f, 1f) : 0f;
-            float ex = x - (a.x + sx * t), ey = y - (a.y + sy * t);
-            float d = ex * ex + ey * ey;
-            if (d < best) best = d;
-        }
-        return MathF.Sqrt(best);
-    }
-
-    private static bool InsideConvex(List<Vector2> hull, float x, float y)
-    {
-        // 反時計回りの凸包: 全ての辺の左側なら内側
-        for (int k = 0; k < hull.Count; k++)
-        {
-            Vector2 a = hull[k], b = hull[(k + 1) % hull.Count];
-            if ((b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x) < 0) return false;
-        }
-        return true;
     }
 
     // 点群の凸包 (Andrew の単調連鎖・反時計回り)
@@ -700,34 +550,11 @@ internal static class DamageMap
         return _pixels[(py * _w + px) * 4] / 255f;
     }
 
-    // その点の穴の値 (0..255)。地図の外・地図が無ければ 0
-    internal static byte HoleByteAt(float x, float y)
-    {
-        if (_pixels == null) return 0;
-        int px = (int)((x - _origin.x) * PixelsPerUnit), py = (int)((y - _origin.y) * PixelsPerUnit);
-        if (px < 0 || py < 0 || px >= _w || py >= _h) return 0;
-        return _pixels[(py * _w + px) * 4];
-    }
-
     // C++ の部品へ渡す穴の地図 (RGBA・R = 穴)。無ければ false
     internal static bool HoleMap(out byte[] px, out int w, out int h, out float ox, out float oy, out float ppu)
     {
         px = _pixels; w = _w; h = _h; ox = _origin.x; oy = _origin.y; ppu = PixelsPerUnit;
         return px != null;
-    }
-
-    // その点の穴の値 (0..255) を周りの 4 画素から双線形で (シェーダが絵を抜く線と同じ読み方)。地図の外・地図が無ければ 0
-    internal static int HoleSmoothAt(float x, float y)
-    {
-        if (_pixels == null) return 0;
-        float fx = (x - _origin.x) * PixelsPerUnit - 0.5f, fy = (y - _origin.y) * PixelsPerUnit - 0.5f;
-        int x0 = (int)MathF.Floor(fx), y0 = (int)MathF.Floor(fy);
-        if (x0 < 0 || y0 < 0 || x0 + 1 >= _w || y0 + 1 >= _h) return 0;
-        float tx = fx - x0, ty = fy - y0;
-        int i = (y0 * _w + x0) * 4, j = i + _w * 4;
-        float a = _pixels[i] + (_pixels[i + 4] - _pixels[i]) * tx;
-        float b = _pixels[j] + (_pixels[j + 4] - _pixels[j]) * tx;
-        return (int)(a + (b - a) * ty);
     }
 
     // テスト用: その点の損傷マスクの RGBA (0..255)
@@ -1371,7 +1198,6 @@ internal static class DamageMap
     internal static Vector2 Origin => _origin;
     internal static int MapH => _h;
     internal static byte HoleByte(int px, int py) => _pixels[(py * _w + px) * 4];
-    internal static byte GenAt(int px, int py) => _gens[py * _w + px];
     internal static byte[] PixelBytes => _pixels; // C++ の部品へ渡す用 (読むだけ)
     internal static byte[] GenBytes => _gens;
     internal const float Ppu = PixelsPerUnit;

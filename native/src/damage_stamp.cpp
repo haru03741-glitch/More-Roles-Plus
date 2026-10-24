@@ -5,8 +5,8 @@
 #include <float.h>
 #include "cut_shape.h"
 
-// 壊した形を損傷マスク (RGBA: R = 穴・G = 焦げ・B = 切り口) に書く (src/Terrain/DamageMap.cs の Stamp と同じ結果)。
-// 形 (CutShape)・帯 (切った壁の線の近く)・壁の中の判定 (WallBody.Exposed)・家具よけ・船の外の判定も C# と同じ式と順序
+// 壊した形を損傷マスク (RGBA: R = 穴・G = 焦げ・B = 切り口) に書く。
+// 形 (CutShape)・帯 (切った壁の線の近く)・壁の中の判定 (WallBody.Exposed)・家具よけ・船の外の判定も書いた順の式で計算する
 
 struct StampArgs
 {

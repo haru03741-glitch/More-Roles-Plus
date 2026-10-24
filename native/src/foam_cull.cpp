@@ -4,9 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-// 補修フォームの栓 1 枚の見える画素と隠れる玉 (src/Terrain/FoamArt.cs の Cull と同じ結果)。
+// 補修フォームの栓 1 枚の見える画素と隠れる玉。
 // 損傷マスクの穴の画素を縦横に Grow 画素ずつ広げた所を見える画素にし、届く四角に見える画素が無い玉を隠す。
-// 小数の式の順番は C# と同じ
+// 小数の式は書いた順に計算する
 
 struct FoamCullArgs
 {

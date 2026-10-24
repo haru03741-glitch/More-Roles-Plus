@@ -26,13 +26,13 @@ internal static partial class WaterSim
         });
     }
 
-    // 小コマンドを 1 つ実行したら true。名前は前方一致なので、長い名前を先に見る (floorcheck → flood → flow)
+    // 小コマンドを 1 つ実行したら true。名前は前方一致なので、長い名前を先に見る (flood → flow)
     private static bool RunSubcommand(string a, Action<string> reply)
     {
         if (a.StartsWith("sleep")) { Sleep(a, reply); return true; }
         if (a.StartsWith("prebase")) { Prebase(a, reply); return true; }
         if (a.StartsWith("zflow")) { ZFlowToggle(a, reply); return true; }
-        if (a.StartsWith("floorcheck")) { reply($"OK water floorcheck {WaterArt.FloorCheck()}"); return true; }
+
         if (a.StartsWith("tilez")) { reply($"OK water tilez {WaterArt.TileZReport(reply)}"); return true; }
         if (a.StartsWith("tile")) { TileAt(a, reply); return true; }
         if (a.StartsWith("spikes")) { Spikes(a, reply); return true; }

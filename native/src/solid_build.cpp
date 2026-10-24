@@ -5,12 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-// 歩ける所の地図を作る時の升の計算 (src/Terrain/SolidMap.cs の Build と同じ結果)。
+// 歩ける所の地図を作る時の升の計算。
 // 1. 壁の線の升を縦横それぞれ dilate 升太らせる (blocked)
 // 2. 種の升から一番近い通れる升を探し、そこから 4 近傍で塗る。地図の端に届いた塗りは壁の外へ漏れたので捨てる
 // 3. 太らせた分を戻す (壁の線そのものの升は閉じたまま)。段ごとにまとめて開ける
 // 4. 歩ける所を 4 近傍のつながりで番号分けする (番号は升の並び順で最初に出会った順)
-// 升の並びと塗る順は C# と同じにする (島の番号が全員の手元で同じになるように)
+// 升の並びと塗る順は決めた順のまま変えない (島の番号が全員の手元で同じになるように)
 
 // 升 8 つを 1 語として読み書きする (升は 1 バイト)
 static inline uint64_t ld8(const uint8_t* p) { uint64_t v; memcpy(&v, p, 8); return v; }
@@ -292,7 +292,7 @@ static inline int first_row_at(const float* wy, int lo, int hi, float v)
     return y;
 }
 
-// 閉じた輪郭 (3 辺) の中の升を塗る (升の中心で偶奇)。C# の FillPolygon と同じ式の順。
+// 閉じた輪郭 (3 辺) の中の升を塗る (升の中心で偶奇)。
 // 升の中心の行と交わる辺は行ごとに 0 か 2 本なので、行を「交わる 2 辺が同じ区間」に分けて区間ごとにまとめて塗る。
 // wy = 行の升の中心の y (oy + (y + 0.5) / ppu を行ごとに 1 回だけ)
 static void fill_tri(uint8_t* grid, int w, int h, float ox, float oy, float ppu, const float* wy, const float* t)

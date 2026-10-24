@@ -4,9 +4,9 @@
 #include <math.h>
 #include <string.h>
 
-// 噴き出し 1 枚の絵 (src/Terrain/WaterSpray.cs の DrawCs と同じ結果)。
+// 噴き出し 1 枚の絵。
 // 粒が 1 刻みで動いた線を、濃さ (Dens) と泡 (Foam) の足し込みとして描き、R = 濃さ・G = 泡の割合の RGBA へ詰める。
-// 小数の式の順番は C# と同じ。
+// 小数の式は書いた順に計算する。
 // 消す・詰めるのは粒が触った範囲 (box) と前の刻みの範囲だけ (外の Dens/Foam は 0・out は r=g=b=0 a=255 のまま保たれている)
 
 struct SprayArgs

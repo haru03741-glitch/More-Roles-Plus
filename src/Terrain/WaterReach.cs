@@ -58,12 +58,6 @@ internal static partial class WaterSim
         return _lvl[c] == _lvl[k] + up;
     }
 
-    private static void RayAdd(int key)
-    {
-        if (_rayN == _rayQ.Length) Array.Resize(ref _rayQ, Math.Max(1024, _rayN * 2));
-        _rayQ[_rayN++] = key;
-    }
-
     // 集めた縁の光線をまとめて C++ で引く
     private static unsafe void RayRun(bool useZ)
     {
