@@ -830,16 +830,18 @@ internal static class RoleMenu
     }
 
     // 設定画面が開いている間だけ (閉じると _page が null)。指が役職の行に乗っている間、
-    // ホイール = 人数か出現率を 1 刻み (名前の上は出現率)・右クリック = 出現率を 0% と 100% で切り替える
+    // ホイール = ± の上だけ人数か出現率を 1 刻み・右クリック = 出現率を 0% と 100% で切り替える (名前の上でも)
+    // 名前の帯は広く、スクロールで下から来た行に乗ると一覧が止まってしまうので、ホイールは取らない
     public static void Tick()
     {
         // スマホにはホイールも右クリックも無い (指を離しても「乗っている」が外れないので、一覧のホイールを止めたままにしない)
         if (Touch || _page is null || !_page) return;
         var scroller = _page.scrollBar;
         bool over = _hoverRow != null && _hoverRow.Row && _hoverRow.Row.gameObject.activeInHierarchy;
-        if (scroller && over != _wheelSpeed >= 0f)
+        bool wheelOver = over && _hoverZone != 0;
+        if (scroller && wheelOver != _wheelSpeed >= 0f)
         {
-            if (over) { _wheelSpeed = scroller.ScrollWheelSpeed; scroller.ScrollWheelSpeed = 0f; }
+            if (wheelOver) { _wheelSpeed = scroller.ScrollWheelSpeed; scroller.ScrollWheelSpeed = 0f; }
             else { scroller.ScrollWheelSpeed = _wheelSpeed; _wheelSpeed = -1f; }
         }
         if (!over) return;
@@ -851,6 +853,7 @@ internal static class RoleMenu
             AfterStep(r);
             return;
         }
+        if (!wheelOver) return;
         float wheel = Input.mouseScrollDelta.y;
         if (wheel == 0f) return;
         (_hoverZone == 1 ? r.Role.Count : r.Role.Chance).Step(wheel > 0f ? 1 : -1);
@@ -1372,9 +1375,16 @@ internal static class RoleMenu
                 if (a[2] == "count") { if (d > 0) pr.Row.IncreaseCount(); else pr.Row.DecreaseCount(); }
                 else { if (d > 0) pr.Row.IncreaseChance(); else pr.Row.DecreaseChance(); }
                 break;
+            case "hover":
+                // hover <Id> <0|1|2> / hover off (指が名前・人数の ±・出現率の ± に乗ったのと同じ。一覧のホイールの速さは次のフレームで変わる)
+                if (a.Length > 1 && a[1] == "off") { _hoverRow = null; break; }
+                if (a.Length < 3 || !ById.TryGetValue(a[1], out var vr) || !int.TryParse(a[2], out int vz)) return "hover <Id> <0|1|2> | hover off";
+                if (vz == 0) OnNameHover(vr.Role.Id, true);
+                else OnZoneHover(vr.Role.Id + "|" + vz, true);
+                break;
         }
         var sb = new System.Text.StringBuilder();
-        sb.Append($"search='{SettingsMenu.SearchQuery}' team={_team} only={_enabledOnly} undo={_undo?.Count ?? -1} bulk={_bulkChance}%/{_bulkCount} hover={(_hoverRow != null ? _hoverRow.Role.Id + "|" + _hoverZone : "-")} rows:");
+        sb.Append($"search='{SettingsMenu.SearchQuery}' team={_team} only={_enabledOnly} undo={_undo?.Count ?? -1} bulk={_bulkChance}%/{_bulkCount} hover={(_hoverRow != null ? _hoverRow.Role.Id + "|" + _hoverZone : "-")} wheel={(_page.scrollBar ? _page.scrollBar.ScrollWheelSpeed : -1f):0.##} rows:");
         foreach (var g in Groups)
         {
             if (g.Header && g.Header.gameObject.activeSelf) sb.Append($" [{(g.SearchOnly ? g.Title.Builtin(false) : g.Kind == AddonKind ? "Addon" : ((Team)g.Kind).ToString())}]");
