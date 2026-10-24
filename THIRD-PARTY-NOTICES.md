@@ -11,12 +11,13 @@ More Roles Plus 本体は GPL-3.0 です ([`LICENSE`](./LICENSE))。以下は別
 |---|---|---|---|
 | FusionCore | All-Of-Us-Mods — [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) | GPL-3.0 | source, `Android/Launcher/` (git subtree, rebranded Android launcher) |
 | BepInEx Fusion | All-Of-Us-Mods — [BepInExFusion](https://github.com/All-Of-Us-Mods/BepInExFusion) | LGPL-2.1 | bundled in the launcher APK (`Android/Launcher/fusionApp/src/main/assets/BepInEx-arm64.zip`) |
-| Il2CppInterop Fusion | All-Of-Us-Mods — [Il2CppInteropFusion](https://github.com/All-Of-Us-Mods/Il2CppInteropFusion) | LGPL-3.0 | bundled in the launcher APK (same `BepInEx-arm64.zip`) |
+| Il2CppInterop Fusion | All-Of-Us-Mods — [Il2CppInteropFusion](https://github.com/All-Of-Us-Mods/Il2CppInteropFusion) | LGPL-3.0 | bundled in the launcher APK (same `BepInEx-arm64.zip`; `Il2CppInterop.Runtime.dll` modified) |
 | BepInEx core libraries (HarmonyX, MonoMod, Mono.Cecil, Cpp2IL / LibCpp2IL / StableNameDotNet / WasmDisassembler, Disarm, AsmResolver, AssetRipper.CIL / AssetRipper.Primitives, Iced, Capstone.NET, SemanticVersioning, Microsoft.Extensions.*) | BepInEx & Andreas Pardeike — [HarmonyX](https://github.com/BepInEx/HarmonyX); 0x0ade — [MonoMod](https://github.com/MonoMod/MonoMod); Jb Evain — [Cecil](https://github.com/jbevain/cecil); Sam Byass — [Cpp2IL](https://github.com/SamboyCoding/Cpp2IL), [Disarm](https://github.com/SamboyCoding/Disarm); Washi — [AsmResolver](https://github.com/Washi1337/AsmResolver); ds5678 — [AssetRipper.CIL](https://github.com/AssetRipper/AssetRipper.CIL), [AssetRipper.Primitives](https://github.com/AssetRipper/AssetRipper.Primitives); [iced](https://github.com/icedland/iced); Ahmed Garhy — [Capstone.NET](https://github.com/9ee1/Capstone.NET); Adam Reeve — [semver.net](https://github.com/adamreeve/semver.net); Microsoft — [dotnet/runtime](https://github.com/dotnet/runtime) | MIT | bundled in the launcher APK (`core/` inside `BepInEx-arm64.zip`) |
-| .NET runtime | Microsoft & .NET Foundation — [dotnet/runtime](https://github.com/dotnet/runtime) | MIT | bundled in the launcher APK (`assets/dotnet-arm64.zip`, `jniLibs/arm64-v8a/`) |
+| .NET runtime | Microsoft & .NET Foundation — [dotnet/runtime](https://github.com/dotnet/runtime) | MIT | bundled in the launcher APK (`assets/dotnet-arm64.zip`, `jniLibs/arm64-v8a/`; `System.Diagnostics.Process.dll` patched) |
 | Dobby (modified) | jmpews — [Dobby](https://github.com/jmpews/Dobby) | Apache-2.0 | bundled in the launcher APK (`jniLibs/arm64-v8a/libdobby.so`); changes in [`Android/Launcher/third_party/dobby/`](./Android/Launcher/third_party/dobby/) |
 | stb_image | Sean Barrett — [stb](https://github.com/nothings/stb) | MIT or Public Domain (Unlicense) | compiled into the mod's native component (`native/src/third_party/stb_image.h`; the license text is at the end of that file) |
 | OpenSSL | The OpenSSL Project Authors — [OpenSSL](https://github.com/openssl/openssl) | Apache-2.0 | bundled in the launcher APK (`jniLibs/arm64-v8a/libcrypto.so`, `libssl.so`) |
+| LLVM libunwind | The LLVM Project — [llvm-project](https://github.com/llvm/llvm-project) | Apache-2.0 WITH LLVM-exception | bundled in the launcher APK (`libfusionunwind.so`, built from the Android NDK's `libunwind.a`) |
 | AndroidX (annotation, appcompat, browser, coordinatorlayout, core) / Material Components | The Android Open Source Project / Google — [AndroidX](https://github.com/androidx/androidx), [material-components-android](https://github.com/material-components/material-components-android) | Apache-2.0 | bundled in the launcher APK |
 | Kotlin standard library | JetBrains — [Kotlin](https://github.com/JetBrains/kotlin) | Apache-2.0 | bundled in the launcher APK |
 | Protocol Buffers (protobuf-javalite) | Google — [protobuf](https://github.com/protocolbuffers/protobuf) | BSD-3-Clause | bundled in the launcher APK |
@@ -37,16 +38,23 @@ git subtree として取り込み、End K not で加えられた変更を重ね�
 
 [BepInExFusion](https://github.com/All-Of-Us-Mods/BepInExFusion) and
 [Il2CppInteropFusion](https://github.com/All-Of-Us-Mods/Il2CppInteropFusion) (All-Of-Us-Mods) are bundled
-unmodified inside `BepInEx-arm64.zip` in the launcher APK (only `BepInEx.cfg` settings are adjusted) and
-extracted on the device at first start. The full license texts are available at
+inside `BepInEx-arm64.zip` in the launcher APK (`BepInEx.cfg` settings are adjusted) and
+extracted on the device at first start. `core/Il2CppInterop.Runtime.dll` is modified so that its reference
+stores go through the game's GC write barrier (`IL2CPP.FieldWriteWbarrierStub`,
+`Il2CppReferenceArray<T>.StoreValue`, the `Il2CppStringArray` indexer setter and the `Set` methods of
+`Il2CppReferenceField<T>` / `Il2CppStringField`; adds `IL2CPP.WbStore`). The modification is reproduced from the
+unmodified file by [`tools/InteropWbPatch`](./tools/InteropWbPatch/). The other files are unmodified.
+The MonoMod libraries in the same zip are covered below. The full license texts are available at
 <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html> and <https://www.gnu.org/licenses/lgpl-3.0.html>.
 
-ランチャーの APK に無改変で同梱し、初回起動時に端末へ展開しています。
+ランチャーの APK に同梱し、初回起動時に端末へ展開しています。`Il2CppInterop.Runtime.dll` だけは参照の書き込みが GC の書き込みバリアを通るように書き換えています (元のファイルから `tools/InteropWbPatch` で作り直せます)。ほかは無改変です (同じ zip の MonoMod は下の MIT 節を参照)。
 
 ## MIT components (.NET runtime, BepInEx core libraries)
 
-The .NET runtime and the BepInEx core libraries listed above are bundled unmodified inside the launcher APK
-under the MIT License, with these copyright notices:
+The .NET runtime and the BepInEx core libraries listed above are bundled inside the launcher APK under the
+MIT License, with these copyright notices. They are unmodified except that `System.Diagnostics.Process.dll`
+is patched, and `MonoMod.Core`, `MonoMod.Utils`, `MonoMod.RuntimeDetour` and `MonoMod.Iced` are the builds
+shipped in FusionCore with `MonoMod.Core` patched (see [`Android/Launcher/UPSTREAM.md`](./Android/Launcher/UPSTREAM.md)).
 
 ```
 .NET runtime / Microsoft.Extensions
@@ -92,13 +100,16 @@ SOFTWARE.
 
 ## Apache-2.0 components (Dobby, OpenSSL, Android libraries)
 
-`libdobby.so`, `libcrypto.so`, `libssl.so`, AndroidX, Material Components and the Kotlin standard library
+`libdobby.so`, `libcrypto.so`, `libssl.so`, `libfusionunwind.so`, AndroidX, Material Components and the Kotlin standard library
 are licensed under the Apache License 2.0. The full text is in [`licenses/Apache-2.0.txt`](./licenses/Apache-2.0.txt).
 
 - Dobby — Copyright jmpews. `libdobby.so` is built from commit `f4643b8d` with
   [`code-patch-end-page.patch`](./Android/Launcher/third_party/dobby/code-patch-end-page.patch) applied;
   build steps are in [`Android/Launcher/third_party/dobby/README.md`](./Android/Launcher/third_party/dobby/README.md).
 - OpenSSL — Copyright (c) 1998-2025 The OpenSSL Project Authors.
+- LLVM libunwind (`libfusionunwind.so`) — Copyright (c) LLVM Project contributors, Apache-2.0 with LLVM
+  Exceptions. Built from the unwinder archive in the Android NDK (r28) with its `_Unwind_*` symbols exported
+  (`Android/Launcher/fusionApp/src/main/jni/unwind/`).
 - AndroidX / Material Components — Copyright The Android Open Source Project / Google LLC.
 - Kotlin — Copyright JetBrains s.r.o. and Kotlin Programming Language contributors.
 
