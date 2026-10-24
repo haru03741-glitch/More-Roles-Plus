@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 壁の面の上の水の厚さを画素の A に書く (src/Terrain/WaterArt.cs の WriteFace / BaseDepth / CellBase と
@@ -133,7 +134,42 @@ MRP_API void mrp_dg_water_face(FaceArgs* a)
     // 水の地図は船全体なので入力には入れない
     d.InV(a->n); d.InV(a->x0); d.InV(a->y0); d.InV(a->edge); d.InV(a->ox); d.InV(a->oy); d.InV(a->cell); d.InV(a->w); d.InV(a->h);
     d.In(a->face, nn); d.In(a->px, nn * 4);
+    Cap c(DgWaterFace);
+    int64_t mapN = (int64_t)a->w * a->h;
+    c.RawV(*a);
+    c.Blob(a->face, nn);
+    c.Blob(a->open, mapN);
+    c.Blob(a->furn, mapN * 2);
+    c.Blob(a->hgt, mapN * 4);
+    c.Blob(a->px, nn * 4);
     mrp_water_face(a);
     d.Out(a->px, nn * 4);
     d.Commit();
+    c.Blob(a->px, nn * 4);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_water_face と同じ)
+void rp_water_face(Rp& r)
+{
+    FaceArgs a;
+    r.RawV(a);
+    int64_t nn = (int64_t)a.n * a.n, mapN = (int64_t)a.w * a.h;
+    int64_t lf, lo, lu, lh, lp;
+    a.face = (const uint8_t*)r.Blob(&lf);
+    a.open = (const uint8_t*)r.Blob(&lo);
+    a.furn = (const int16_t*)r.Blob(&lu);
+    a.hgt = (const int32_t*)r.Blob(&lh);
+    a.px = (uint8_t*)r.Blob(&lp);
+    if (!r.ok) return;
+    if (lf != nn || lo != mapN || (a.furn && lu != mapN * 2) || lh != mapN * 4 || lp != nn * 4) { r.Fail("water_face: input blob sizes differ"); return; }
+    mrp_water_face(&a);
+    int64_t wp;
+    const void* p = r.Blob(&wp);
+    if (!r.ok) return;
+    if (wp != nn * 4) { r.Fail("water_face: output blob size differs"); return; }
+    r.Same("px", a.px, p, nn * 4);
+}
+static RpReg reg_water_face(DgWaterFace, rp_water_face);
+#endif

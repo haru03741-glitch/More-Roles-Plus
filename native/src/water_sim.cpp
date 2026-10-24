@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 小刻みの関数は全部 mrp_water_step の中へ展開する (引数の構造体を手元に写した物の値をレジスタに置いたままにするため)
@@ -439,6 +440,19 @@ MRP_API int32_t mrp_dg_water_step(WaterStepArgs* p)
     if (f->blow) { d.In(f->blowS, n * 2); d.In(f->blowComp, n * 2); d.In(f->blowDir, n); d.In(f->blowPress, (int64_t)f->blowPressN * 4); }
     d.In(p->infK, (int64_t)p->infN * 4); d.In(p->infRate, (int64_t)p->infN * 4);
     d.In(p->fallStep, (int64_t)p->fsN * 12); d.In(p->fallAt, slots * 16);
+    Cap c(DgWaterStep);
+    int64_t foBytes = (int64_t)f->foCap * 12, fsBytes = (int64_t)p->fsCap * 12;
+    c.RawV(*p);
+    c.Blob(f->hgt, n * 4); c.Blob(f->flux, n * 16); c.Blob(f->move, n * 16);
+    c.Blob(f->open, n); c.Blob(f->edge, n); c.Blob(f->lvl, n); c.Blob(f->bed, n * 2); c.Blob(f->furn, n * 2);
+    c.Blob(f->stepMask, n); c.Blob(f->fallMask, n); c.Blob(f->seaMask, n); c.Blob(f->lipMask, n); c.Blob(f->slot, n * 4);
+    c.Blob(f->lipH, slots * 8); c.Blob(f->barB, slots * 4); c.Blob(f->barH, slots * 8); c.Blob(f->stepTo, slots * 16);
+    c.Blob(f->act, n * 4); c.Blob(f->inList, n); c.Blob(f->fo, foBytes); c.Blob(f->tileDirty, tn); c.Blob(f->dirtyOut, tn * 4); c.Blob(f->stir, n);
+    c.Blob(f->useZ ? f->isl : nullptr, n); c.Blob(f->useZ ? f->islBase : nullptr, (int64_t)f->islN * 4);
+    c.Blob(f->blow ? f->blowS : nullptr, n * 2); c.Blob(f->blow ? f->blowComp : nullptr, n * 2);
+    c.Blob(f->blow ? f->blowDir : nullptr, n); c.Blob(f->blow ? f->blowPress : nullptr, (int64_t)f->blowPressN * 4);
+    c.Blob(p->infK, (int64_t)p->infN * 4); c.Blob(p->infRate, (int64_t)p->infN * 4);
+    c.Blob(p->fallStep, fsBytes); c.Blob(p->fallAt, slots * 16);
     int32_t r = mrp_water_step(p);
     d.OutV(r);
     d.Out(f->hgt, n * 4); d.Out(f->flux, n * 16); d.Out(f->move, n * 16);
@@ -448,5 +462,76 @@ MRP_API int32_t mrp_dg_water_step(WaterStepArgs* p)
     d.OutV(p->fsN); d.OutV(p->fsOver); d.Out(p->fallStep, (int64_t)p->fsN * 12); d.Out(p->fallAt, slots * 16);
     d.OutV(p->inflowAdd); d.OutV(p->seaOutAdd);
     d.Commit();
+    c.Blob(f->hgt, n * 4); c.Blob(f->flux, n * 16); c.Blob(f->move, n * 16);
+    c.Blob(f->act, n * 4); c.Blob(f->inList, n); c.Blob(f->fo, foBytes); c.Blob(f->tileDirty, tn); c.Blob(f->dirtyOut, tn * 4); c.Blob(f->stir, n);
+    c.Blob(p->fallStep, fsBytes); c.Blob(p->fallAt, slots * 16);
+    c.RawV(*p); c.RawV(r);
+    c.End();
     return r;
 }
+
+#if defined(MRP_REPLAY)
+// 長さを確かめて入力の塊を取る (書き換えてよい写し)
+static void* rp_in(Rp& r, const char* what, int64_t want)
+{
+    int64_t len = 0;
+    const void* b = r.Blob(&len);
+    if (!r.ok) return nullptr;
+    if (b ? len != want : want > 0) { r.Fail("%s is %lld bytes, want %lld", what, (long long)len, (long long)want); return nullptr; }
+    return (void*)b;
+}
+// 出力の塊と今の中身を比べる
+static void rp_post(Rp& r, const char* what, const void* got, int64_t bytes)
+{
+    int64_t len = 0;
+    const void* b = r.Blob(&len);
+    if (!r.ok || bytes <= 0 || !got) return;
+    if (!b || len != bytes) { r.Fail("%s post is %lld bytes, want %lld", what, (long long)len, (long long)bytes); return; }
+    r.Same(what, got, b, bytes);
+}
+
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_water_step と同じ)
+void rp_water_step(Rp& r)
+{
+    WaterStepArgs a, want;
+    int32_t wantRet = 0;
+    r.RawV(a);
+    if (!r.ok) return;
+    WaterFlowArgs* f = &a.f;
+    int64_t n = (int64_t)f->w * f->h, tn = (int64_t)f->tw * f->th;
+    f->hgt = (int32_t*)rp_in(r, "hgt", n * 4); f->flux = (int32_t*)rp_in(r, "flux", n * 16); f->move = (int32_t*)rp_in(r, "move", n * 16);
+    f->open = (const uint8_t*)rp_in(r, "open", n); f->edge = (const uint8_t*)rp_in(r, "edge", n); f->lvl = (const int8_t*)rp_in(r, "lvl", n);
+    f->bed = (const int16_t*)rp_in(r, "bed", n * 2); f->furn = (const int16_t*)rp_in(r, "furn", n * 2);
+    f->stepMask = (const uint8_t*)rp_in(r, "stepMask", n); f->fallMask = (const uint8_t*)rp_in(r, "fallMask", n);
+    f->seaMask = (const uint8_t*)rp_in(r, "seaMask", n); f->lipMask = (const uint8_t*)rp_in(r, "lipMask", n);
+    f->slot = (const int32_t*)rp_in(r, "slot", n * 4);
+    if (!r.ok) return;
+    int64_t slots = 0;
+    if (f->slot) for (int64_t k = 0; k < n; k++) if (f->slot[k] > slots) slots = f->slot[k];
+    f->lipH = (const int16_t*)rp_in(r, "lipH", slots * 8); f->barB = (const uint8_t*)rp_in(r, "barB", slots * 4);
+    f->barH = (const int16_t*)rp_in(r, "barH", slots * 8); f->stepTo = (const int32_t*)rp_in(r, "stepTo", slots * 16);
+    f->act = (int32_t*)rp_in(r, "act", n * 4); f->inList = (uint8_t*)rp_in(r, "inList", n);
+    f->fo = (int32_t*)rp_in(r, "fo", (int64_t)f->foCap * 12);
+    f->tileDirty = (uint8_t*)rp_in(r, "tileDirty", tn); f->dirtyOut = (int32_t*)rp_in(r, "dirtyOut", tn * 4); f->stir = (uint8_t*)rp_in(r, "stir", n);
+    f->isl = (const uint8_t*)rp_in(r, "isl", f->useZ ? n : 0); f->islBase = (const int32_t*)rp_in(r, "islBase", f->useZ ? (int64_t)f->islN * 4 : 0);
+    f->blowS = (const uint16_t*)rp_in(r, "blowS", f->blow ? n * 2 : 0); f->blowComp = (const int16_t*)rp_in(r, "blowComp", f->blow ? n * 2 : 0);
+    f->blowDir = (const uint8_t*)rp_in(r, "blowDir", f->blow ? n : 0); f->blowPress = (const int32_t*)rp_in(r, "blowPress", f->blow ? (int64_t)f->blowPressN * 4 : 0);
+    a.infK = (const int32_t*)rp_in(r, "infK", (int64_t)a.infN * 4); a.infRate = (const int32_t*)rp_in(r, "infRate", (int64_t)a.infN * 4);
+    a.fallStep = (int32_t*)rp_in(r, "fallStep", (int64_t)a.fsCap * 12); a.fallAt = (int32_t*)rp_in(r, "fallAt", slots * 16);
+    if (!r.ok) return;
+    int32_t ret = mrp_water_step(&a);
+    rp_post(r, "hgt", f->hgt, n * 4); rp_post(r, "flux", f->flux, n * 16); rp_post(r, "move", f->move, n * 16);
+    rp_post(r, "act", f->act, n * 4); rp_post(r, "inList", f->inList, n); rp_post(r, "fo", f->fo, (int64_t)f->foCap * 12);
+    rp_post(r, "tileDirty", f->tileDirty, tn); rp_post(r, "dirtyOut", f->dirtyOut, tn * 4); rp_post(r, "stir", f->stir, n);
+    rp_post(r, "fallStep", a.fallStep, (int64_t)a.fsCap * 12); rp_post(r, "fallAt", a.fallAt, slots * 16);
+    r.RawV(want);
+    r.RawV(wantRet);
+    r.Same("return", &ret, &wantRet, 4);
+    r.Same("actN", &f->actN, &want.f.actN, 4); r.Same("foN", &f->foN, &want.f.foN, 4); r.Same("dirtyN", &f->dirtyN, &want.f.dirtyN, 4);
+    r.Same("sub", &f->sub, &want.f.sub, 4); r.Same("dry", &f->dry, &want.f.dry, 4);
+    r.Same("voidAdd", &f->voidAdd, &want.f.voidAdd, 8); r.Same("sleepViol", &f->sleepViol, &want.f.sleepViol, 4); r.Same("foOver", &f->foOver, &want.f.foOver, 4);
+    r.Same("fsN", &a.fsN, &want.fsN, 4); r.Same("fsOver", &a.fsOver, &want.fsOver, 4);
+    r.Same("inflowAdd", &a.inflowAdd, &want.inflowAdd, 8); r.Same("seaOutAdd", &a.seaOutAdd, &want.seaOutAdd, 8);
+}
+static RpReg reg_water_step(DgWaterStep, rp_water_step);
+#endif

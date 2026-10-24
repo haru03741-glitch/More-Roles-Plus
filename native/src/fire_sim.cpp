@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 
 // 床の上の火の 1 刻み (src/Terrain/FireSim.cs の StepCs と同じ結果)。整数だけで計算する。
 // mode 0 = 熱の移動と升ごとの計算。熱が新しく届く升のタイルの材質がまだ決まっていなければ、何も書かずにそのタイルを返す
@@ -306,6 +307,17 @@ MRP_API void mrp_dg_fire_step(FireStepArgs* a)
     d.In(a->flareAt, n); d.In(a->arcAt, n); d.In(a->chr, n * 2); d.In(a->tileMat, tn); d.In(a->tileDirty, tn);
     d.In(a->act, (int64_t)a->actN * 4); d.In(a->open, n); d.In(a->edge, n); d.In(a->hgt, n * 4);
     if (a->pull) { d.In(a->pdist, pn * 2); d.In(a->pcomp, pn * 4); d.In(a->ppar, pn * 4); d.In(a->ppress, (int64_t)a->pressN * 4); }
+    Cap c(DgFireStep);
+    int64_t evB = (int64_t)a->evCap * 4, dirtyB = (int64_t)a->dirtyCap * 4, missB = (int64_t)a->missCap * 4;
+    c.RawV(*a);
+    c.Blob(a->t, n * 4); c.Blob(a->dt, n * 4); c.Blob(a->fuel, n * 4);
+    c.Blob(a->mat, n); c.Blob(a->flag, n); c.Blob(a->burn, n); c.Blob(a->inList, n);
+    c.Blob(a->flareAt, n); c.Blob(a->arcAt, n); c.Blob(a->chr, n * 2);
+    c.Blob(a->tileMat, tn); c.Blob(a->tileDirty, tn);
+    c.Blob(a->act, n * 4); c.Blob(a->open, n); c.Blob(a->edge, n); c.Blob(a->hgt, n * 4);
+    c.Blob(a->pull ? a->pdist : nullptr, pn * 2); c.Blob(a->pull ? a->pcomp : nullptr, pn * 4);
+    c.Blob(a->pull ? a->ppar : nullptr, pn * 4); c.Blob(a->pull ? a->ppress : nullptr, (int64_t)a->pressN * 4);
+    c.Blob(a->ev, evB); c.Blob(a->dirty, dirtyB); c.Blob(a->missing, missB);
     mrp_fire_step(a);
     d.Out(a->t, n * 4); d.Out(a->fuel, n * 4); d.Out(a->flag, n); d.Out(a->burn, n); d.Out(a->inList, n);
     d.Out(a->flareAt, n); d.Out(a->arcAt, n); d.Out(a->chr, n * 2); d.Out(a->tileDirty, tn);
@@ -315,4 +327,57 @@ MRP_API void mrp_dg_fire_step(FireStepArgs* a)
     d.OutV(a->missN); d.Out(a->missing, (int64_t)a->missN * 4);
     d.OutV(a->burning);
     d.Commit();
+    c.Blob(a->t, n * 4); c.Blob(a->dt, n * 4); c.Blob(a->fuel, n * 4);
+    c.Blob(a->flag, n); c.Blob(a->burn, n); c.Blob(a->inList, n);
+    c.Blob(a->flareAt, n); c.Blob(a->arcAt, n); c.Blob(a->chr, n * 2);
+    c.Blob(a->tileDirty, tn);
+    c.Blob(a->act, n * 4);
+    c.Blob(a->ev, evB); c.Blob(a->dirty, dirtyB); c.Blob(a->missing, missB);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_fire_step と同じ)
+void rp_fire_step(Rp& r)
+{
+    FireStepArgs a, want;
+    r.RawV(a);
+    int64_t n = (int64_t)a.w * a.h, tn = (int64_t)a.tw * a.th, pn = (int64_t)a.pw * a.ph;
+    int64_t evB = (int64_t)a.evCap * 4, dirtyB = (int64_t)a.dirtyCap * 4, missB = (int64_t)a.missCap * 4;
+    int64_t ln[24];
+    int i = 0;
+    a.t = (int32_t*)r.Blob(&ln[i++]); a.dt = (int32_t*)r.Blob(&ln[i++]); a.fuel = (int32_t*)r.Blob(&ln[i++]);
+    a.mat = (uint8_t*)r.Blob(&ln[i++]); a.flag = (uint8_t*)r.Blob(&ln[i++]); a.burn = (uint8_t*)r.Blob(&ln[i++]); a.inList = (uint8_t*)r.Blob(&ln[i++]);
+    a.flareAt = (uint8_t*)r.Blob(&ln[i++]); a.arcAt = (uint8_t*)r.Blob(&ln[i++]); a.chr = (uint16_t*)r.Blob(&ln[i++]);
+    a.tileMat = (uint8_t*)r.Blob(&ln[i++]); a.tileDirty = (uint8_t*)r.Blob(&ln[i++]);
+    a.act = (int32_t*)r.Blob(&ln[i++]); a.open = (const uint8_t*)r.Blob(&ln[i++]); a.edge = (const uint8_t*)r.Blob(&ln[i++]); a.hgt = (const int32_t*)r.Blob(&ln[i++]);
+    a.pdist = (const uint16_t*)r.Blob(&ln[i++]); a.pcomp = (const int32_t*)r.Blob(&ln[i++]);
+    a.ppar = (const int32_t*)r.Blob(&ln[i++]); a.ppress = (const int32_t*)r.Blob(&ln[i++]);
+    a.ev = (int32_t*)r.Blob(&ln[i++]); a.dirty = (int32_t*)r.Blob(&ln[i++]); a.missing = (int32_t*)r.Blob(&ln[i++]);
+    if (!r.ok) return;
+    const int64_t want_[24] = { n * 4, n * 4, n * 4, n, n, n, n, n, n, n * 2, tn, tn, n * 4, n, n, n * 4,
+        a.pull ? pn * 2 : 0, a.pull ? pn * 4 : 0, a.pull ? pn * 4 : 0, a.pull ? (int64_t)a.pressN * 4 : 0, evB, dirtyB, missB, 0 };
+    for (int k = 0; k < 23; k++)
+        if (ln[k] != want_[k]) { r.Fail("fire_step: input blob %d is %lld bytes, want %lld", k, (long long)ln[k], (long long)want_[k]); return; }
+    mrp_fire_step(&a);
+    // 書かれる塊 (入力の並びのうち t dt fuel flag burn inList flareAt arcAt chr tileDirty act ev dirty missing)
+    const char* names[14] = { "t", "dt", "fuel", "flag", "burn", "inList", "flareAt", "arcAt", "chr", "tileDirty", "act", "ev", "dirty", "missing" };
+    const void* got[14] = { a.t, a.dt, a.fuel, a.flag, a.burn, a.inList, a.flareAt, a.arcAt, a.chr, a.tileDirty, a.act, a.ev, a.dirty, a.missing };
+    const int64_t size[14] = { n * 4, n * 4, n * 4, n, n, n, n, n, n * 2, tn, n * 4, evB, dirtyB, missB };
+    const void* post[14];
+    int64_t pl[14];
+    for (int k = 0; k < 14; k++) post[k] = r.Blob(&pl[k]);
+    r.RawV(want);
+    if (!r.ok) return;
+    for (int k = 0; k < 14; k++)
+        if (pl[k] != size[k]) { r.Fail("fire_step: output blob %s is %lld bytes, want %lld", names[k], (long long)pl[k], (long long)size[k]); return; }
+    for (int k = 0; k < 14 && r.ok; k++) r.Same(names[k], got[k], post[k], size[k]);
+    r.Same("counts", &a.actN, &want.actN, 4);
+    r.Same("evN", &a.evN, &want.evN, 4);
+    r.Same("dirtyN", &a.dirtyN, &want.dirtyN, 4);
+    r.Same("missN", &a.missN, &want.missN, 4);
+    r.Same("burning", &a.burning, &want.burning, 4);
+}
+static RpReg reg_fire_step(DgFireStep, rp_fire_step);
+#endif

@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -371,13 +372,62 @@ MRP_API void mrp_dg_solid_flood(SolidFloodArgs* a)
     int64_t n = (int64_t)a->w * a->h;
     d.InV(a->w); d.InV(a->h); d.InV(a->dilate); d.InV(a->seedN);
     d.In(a->barrier, n); d.In(a->seedX, (int64_t)a->seedN * 4); d.In(a->seedY, (int64_t)a->seedN * 4);
+    Cap c(DgSolidFlood);
+    c.RawV(*a);
+    c.Blob(a->barrier, n); c.Blob(a->seedX, (int64_t)a->seedN * 4); c.Blob(a->seedY, (int64_t)a->seedN * 4);
+    c.Blob(a->blocked, n); c.Blob(a->tmp, n); c.Blob(a->open, n); c.Blob(a->leaked, n); c.Blob(a->island, n);
+    c.Blob(a->seedRes, a->seedN);
     mrp_solid_flood(a);
     d.Out(a->blocked, n); d.Out(a->open, n); d.Out(a->leaked, n);
     d.OutV(a->valid); if (a->valid) d.Out(a->island, n);
     d.Out(a->seedRes, a->seedN);
     d.OutV(a->openCells); d.OutV(a->islands); d.OutV(a->accepted); d.OutV(a->leakedN);
     d.Commit();
+    c.Blob(a->blocked, n); c.Blob(a->tmp, n); c.Blob(a->open, n); c.Blob(a->leaked, n); c.Blob(a->island, n);
+    c.Blob(a->seedRes, a->seedN);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_solid_flood と同じ)
+static void rp_solid_flood(Rp& r)
+{
+    SolidFloodArgs a, want;
+    r.RawV(a);
+    a.barrier = (const uint8_t*)r.Blob();
+    a.seedX = (const int32_t*)r.Blob();
+    a.seedY = (const int32_t*)r.Blob();
+    int64_t n = (int64_t)a.w * a.h;
+    int64_t lb, lt, lo, ll, li, ls;
+    a.blocked = (uint8_t*)r.Blob(&lb);
+    a.tmp = (uint8_t*)r.Blob(&lt);
+    a.open = (uint8_t*)r.Blob(&lo);
+    a.leaked = (uint8_t*)r.Blob(&ll);
+    a.island = (uint8_t*)r.Blob(&li);
+    a.seedRes = (uint8_t*)r.Blob(&ls);
+    a.queue = nullptr;
+    if (!r.ok) return;
+    if (lb != n || lt != n || lo != n || ll != n || li != n || ls != a.seedN) { r.Fail("solid_flood: blob size mismatch"); return; }
+    mrp_solid_flood(&a);
+    const uint8_t* wb = (const uint8_t*)r.Blob();
+    const uint8_t* wt = (const uint8_t*)r.Blob();
+    const uint8_t* wo = (const uint8_t*)r.Blob();
+    const uint8_t* wl = (const uint8_t*)r.Blob();
+    const uint8_t* wi = (const uint8_t*)r.Blob();
+    const uint8_t* wr = (const uint8_t*)r.Blob();
+    r.RawV(want);
+    if (!r.ok) return;
+    r.Same("blocked", a.blocked, wb, n);
+    r.Same("tmp", a.tmp, wt, n);
+    r.Same("open", a.open, wo, n);
+    r.Same("leaked", a.leaked, wl, n);
+    r.Same("island", a.island, wi, n);
+    r.Same("seedRes", a.seedRes, wr, a.seedN);
+    r.Same("scalars", &a.openCells, &want.openCells, 20);
+}
+static RpReg reg_solid_flood(DgSolidFlood, rp_solid_flood);
+#endif
 
 MRP_API void mrp_dg_solid_outside(SolidOutsideArgs* a)
 {
@@ -385,7 +435,44 @@ MRP_API void mrp_dg_solid_outside(SolidOutsideArgs* a)
     int64_t n = (int64_t)a->w * a->h;
     d.InV(a->triN); d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->dilate);
     d.In(a->art, n); d.In(a->tris, (int64_t)a->triN * 24); d.In(a->blocked, n); d.In(a->open, n);
+    Cap c(DgSolidOutside);
+    c.RawV(*a);
+    c.Blob(a->art, n); c.Blob(a->tris, (int64_t)a->triN * 24); c.Blob(a->blocked, n); c.Blob(a->open, n);
+    c.Blob(a->tmp, n); c.Blob(a->grown, n); c.Blob(a->outside, n);
     mrp_solid_outside(a);
     d.Out(a->art, n); d.Out(a->outside, n);
     d.Commit();
+    c.Blob(a->art, n); c.Blob(a->tmp, n); c.Blob(a->grown, n); c.Blob(a->outside, n);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_solid_outside と同じ)
+static void rp_solid_outside(Rp& r)
+{
+    SolidOutsideArgs a;
+    r.RawV(a);
+    int64_t n = (int64_t)a.w * a.h;
+    int64_t la, lt, lb, lo, ltm, lg, lu;
+    a.art = (uint8_t*)r.Blob(&la);
+    a.tris = (const float*)r.Blob(&lt);
+    a.blocked = (const uint8_t*)r.Blob(&lb);
+    a.open = (const uint8_t*)r.Blob(&lo);
+    a.tmp = (uint8_t*)r.Blob(&ltm);
+    a.grown = (uint8_t*)r.Blob(&lg);
+    a.outside = (uint8_t*)r.Blob(&lu);
+    if (!r.ok) return;
+    if (la != n || lb != n || lo != n || ltm != n || lg != n || lu != n || lt != (int64_t)a.triN * 24) { r.Fail("solid_outside: blob size mismatch"); return; }
+    mrp_solid_outside(&a);
+    const uint8_t* wa = (const uint8_t*)r.Blob();
+    const uint8_t* wt = (const uint8_t*)r.Blob();
+    const uint8_t* wg = (const uint8_t*)r.Blob();
+    const uint8_t* wu = (const uint8_t*)r.Blob();
+    if (!r.ok) return;
+    r.Same("art", a.art, wa, n);
+    r.Same("tmp", a.tmp, wt, n);
+    r.Same("grown", a.grown, wg, n);
+    r.Same("outside", a.outside, wu, n);
+}
+static RpReg reg_solid_outside(DgSolidOutside, rp_solid_outside);
+#endif

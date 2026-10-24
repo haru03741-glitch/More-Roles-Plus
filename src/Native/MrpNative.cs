@@ -168,6 +168,24 @@ internal static unsafe class MrpNative
 
     internal static void DigestReset() => ((delegate* unmanaged[Cdecl]<void>)NativeLibrary.GetExport(_lib, "mrp_dg_reset"))();
 
+    // 部品の呼び出しの記録 (native/src/capture.h)。指紋を取る版の中で書くので、開く前に SetDigest(true)。
+    // perPart = 部品ごとに残す回数・every = 何回に 1 回残すか (0 = 最初の 4 回と 2 の累乗回目・水の刻みのように何千回も呼ばれる部品を間引く)
+    internal static bool CaptureOpen(string path, int perPart, int every)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(path + "\0");
+        fixed (byte* p = bytes)
+            return ((delegate* unmanaged[Cdecl]<byte*, int, int, int>)NativeLibrary.GetExport(_lib, "mrp_cap_open"))(p, perPart, every) != 0;
+    }
+
+    // 閉じる。戻り = 書いた呼び出しの数 (開いていなければ -1・途中で閉じていれば -2)。dropped = 書けずに捨てた呼び出しの数
+    internal static long CaptureClose(out long dropped)
+    {
+        long d = 0;
+        long n = ((delegate* unmanaged[Cdecl]<long*, long>)NativeLibrary.GetExport(_lib, "mrp_cap_close"))(&d);
+        dropped = d;
+        return n;
+    }
+
     // 部品ごとに 回数・入力・出力
     internal static ulong[] DigestRead()
     {

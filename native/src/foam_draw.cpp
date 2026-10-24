@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 補修フォームの栓 1 枚の絵 (src/Terrain/FoamArt.cs の Draw と同じ結果)。
@@ -172,7 +173,55 @@ MRP_API void mrp_dg_foam_draw(FoamArgs* a)
     d.InV(a->softInner); d.InV(a->p); d.InV(a->ballN);
     d.In(a->vis, a->vis ? n : 0); d.In(a->pores, n); d.In(a->balls, (int64_t)a->ballN * 16);
     d.In(a->px, n * 4);
+    Cap c(DgFoamDraw);
+    int64_t gn = (int64_t)((a->w + 2) >> 1) * ((a->h + 2) >> 1);
+    c.RawV(*a);
+    c.Blob(a->vis, a->vis ? n : 0);
+    c.Blob(a->pores, n);
+    c.Blob(a->balls, (int64_t)a->ballN * 16);
+    c.Blob(a->f, n * 4);
+    c.Blob(a->g, gn * 4);
+    c.Blob(a->hs, n * 4);
+    c.Blob(a->px, n * 4);
     mrp_foam_draw(a);
     d.Out(a->px, n * 4);
     d.Commit();
+    c.Blob(a->f, n * 4);
+    c.Blob(a->g, gn * 4);
+    c.Blob(a->hs, n * 4);
+    c.Blob(a->px, n * 4);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_foam_draw と同じ)
+void rp_foam_draw(Rp& r)
+{
+    FoamArgs a;
+    r.RawV(a);
+    int64_t n = (int64_t)a.w * a.h, gn = (int64_t)((a.w + 2) >> 1) * ((a.h + 2) >> 1);
+    int64_t lv, lp, lb, lf, lg, lh, lx;
+    a.vis = (const uint8_t*)r.Blob(&lv);
+    a.pores = (const uint8_t*)r.Blob(&lp);
+    a.balls = (const float*)r.Blob(&lb);
+    a.f = (float*)r.Blob(&lf);
+    a.g = (float*)r.Blob(&lg);
+    a.hs = (float*)r.Blob(&lh);
+    a.px = (uint8_t*)r.Blob(&lx);
+    if (!r.ok) return;
+    if (lp != n || lb != (int64_t)a.ballN * 16 || lf != n * 4 || lg != gn * 4 || lh != n * 4 || lx != n * 4) { r.Fail("foam_draw: input blob sizes differ"); return; }
+    mrp_foam_draw(&a);
+    int64_t wf, wg, wh, wx;
+    const void* f = r.Blob(&wf);
+    const void* g = r.Blob(&wg);
+    const void* h = r.Blob(&wh);
+    const void* x = r.Blob(&wx);
+    if (!r.ok) return;
+    if (wf != n * 4 || wg != gn * 4 || wh != n * 4 || wx != n * 4) { r.Fail("foam_draw: output blob sizes differ"); return; }
+    r.Same("f", a.f, f, n * 4);
+    r.Same("g", a.g, g, gn * 4);
+    r.Same("hs", a.hs, h, n * 4);
+    r.Same("px", a.px, x, n * 4);
+}
+static RpReg reg_foam_draw(DgFoamDraw, rp_foam_draw);
+#endif

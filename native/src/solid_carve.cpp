@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include "cut_shape.h"
 
 // 壊した所を歩ける所の地図に塗り足す (src/Terrain/SolidMap.cs の Carve の、壁の線を描いた後の部分と同じ結果)。
@@ -149,9 +150,63 @@ MRP_API void mrp_dg_solid_carve(CarveArgs* a)
     d.In2D(a->open, a->w, a->h, 1, a->x0, a->y0, x1, y1);
     d.In2D(a->island, a->w, a->h, 1, a->x0, a->y0, x1, y1);
     d.In2D(a->outside, a->w, a->h, 1, a->x0, a->y0, x1, y1);
+    Cap c(DgSolidCarve);
+    int64_t mapBytes = (int64_t)a->w * a->h, bn = (int64_t)a->bw * a->bh;
+    c.RawV(*a);
+    c.Blob(a->shape, (int64_t)(a->shapeKind == 0 ? 3 : a->shapeKind == 1 ? 8 : a->shapeN * 4) * 4);
+    c.Blob(a->keep, (int64_t)a->keepN * 16);
+    c.Blob(a->barrier, bn);
+    c.Blob(a->open, mapBytes);
+    c.Blob(a->island, a->island ? mapBytes : 0);
+    c.Blob(a->outside, a->outside ? mapBytes : 0);
+    c.Blob(a->scratch, bn * 5);
+    c.Blob(a->queue, bn * 4);
     mrp_solid_carve(a);
     d.Out2D(a->open, a->w, a->h, 1, a->x0, a->y0, x1, y1);
     d.Out2D(a->island, a->w, a->h, 1, a->x0, a->y0, x1, y1);
     d.OutV(a->opened);
     d.Commit();
+    c.Blob(a->open, mapBytes);
+    c.Blob(a->island, a->island ? mapBytes : 0);
+    c.Blob(a->scratch, bn * 5);
+    c.Blob(a->queue, bn * 4);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_solid_carve と同じ)
+static void rp_solid_carve(Rp& r)
+{
+    CarveArgs a, want;
+    r.RawV(a);
+    int64_t mapBytes = (int64_t)a.w * a.h, bn = (int64_t)a.bw * a.bh;
+    int64_t lo, li, lu, ls, lq;
+    a.shape = (const float*)r.Blob();
+    a.keep = (const float*)r.Blob();
+    a.barrier = (const uint8_t*)r.Blob();
+    a.open = (uint8_t*)r.Blob(&lo);
+    a.island = (uint8_t*)r.Blob(&li);
+    a.outside = (const uint8_t*)r.Blob(&lu);
+    a.scratch = (uint8_t*)r.Blob(&ls);
+    a.queue = (int32_t*)r.Blob(&lq);
+    if (!r.ok) return;
+    if (lo != mapBytes || ls != bn * 5 || lq != bn * 4) { r.Fail("solid_carve: blob size mismatch"); return; }
+    if ((a.island != nullptr && li != mapBytes) || (a.outside != nullptr && lu != mapBytes)) { r.Fail("solid_carve: map blob size mismatch"); return; }
+    mrp_solid_carve(&a);
+    int64_t wo, wi, ws, wq;
+    const uint8_t* wopen = (const uint8_t*)r.Blob(&wo);
+    const uint8_t* wisl = (const uint8_t*)r.Blob(&wi);
+    const uint8_t* wscr = (const uint8_t*)r.Blob(&ws);
+    const uint8_t* wque = (const uint8_t*)r.Blob(&wq);
+    r.RawV(want);
+    if (!r.ok) return;
+    if (wo != mapBytes || ws != bn * 5 || wq != bn * 4 || wi != (a.island ? mapBytes : 0)) { r.Fail("solid_carve: result blob size mismatch"); return; }
+    r.Same("open", a.open, wopen, mapBytes);
+    if (a.island) r.Same("island", a.island, wisl, mapBytes);
+    r.Same("scratch", a.scratch, wscr, bn * 5);
+    r.Same("queue", a.queue, wque, bn * 4);
+    r.Same("opened", &a.opened, &want.opened, 4);
+}
+static RpReg reg_solid_carve(DgSolidCarve, rp_solid_carve);
+#endif

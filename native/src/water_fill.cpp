@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 水の升の写し元を決め直す (src/Terrain/WaterArt.cs の Fill と同じ結果)。
@@ -114,7 +115,64 @@ MRP_API void mrp_dg_water_fill(WaterFillArgs* a)
     d.InV(a->rx0); d.InV(a->ry0); d.InV(a->rw); d.InV(a->rh); d.InV(a->tw); d.InV(a->tc);
     d.In2D(a->solidOpen, a->sw, a->ry0 + a->rh, 1, a->rx0, a->ry0, a->rx0 + a->rw - 1, a->ry0 + a->rh - 1);
     d.In(a->waterOpen, n); d.In(a->fillFrom, n * 4); d.In(a->targets, tb);
+    Cap c(DgWaterFill);
+    int64_t rn = (int64_t)a->rw * a->rh, maskB = a->mask ? ((int64_t)a->mw * a->mh + 7) >> 3 : 0;
+    c.RawV(*a);
+    c.Rect(a->solidOpen, a->sw, a->ry0 + a->rh, 1, a->rx0, a->ry0, a->rx0 + a->rw - 1, a->ry0 + a->rh - 1);
+    c.Blob(a->waterOpen, n);
+    c.Blob(a->mask, maskB);
+    c.Blob(a->fillFrom, n * 4);
+    c.Blob(a->targets, tb);
+    c.Blob(a->src, rn * 4);
+    c.Blob(a->dist, rn);
+    c.Blob(a->queue, rn * 4);
     mrp_water_fill(a);
     d.Out(a->fillFrom, n * 4); d.Out(a->targets, tb); d.OutV(a->cells);
     d.Commit();
+    c.Blob(a->fillFrom, n * 4);
+    c.Blob(a->targets, tb);
+    c.Blob(a->src, rn * 4);
+    c.Blob(a->dist, rn);
+    c.Blob(a->queue, rn * 4);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_water_fill と同じ)
+void rp_water_fill(Rp& r)
+{
+    WaterFillArgs a, want;
+    r.RawV(a);
+    int64_t n = (int64_t)a.w * a.h, tb = (int64_t)a.tw * ((a.h + a.tc - 1) / a.tc), rn = (int64_t)a.rw * a.rh;
+    int64_t lw, lm, lf, lt, ls, ld, lq;
+    a.solidOpen = (const uint8_t*)r.RectInto(a.sw, a.ry0 + a.rh, 1, a.rx0, a.ry0, a.rx0 + a.rw - 1, a.ry0 + a.rh - 1, 0xA5);
+    a.waterOpen = (const uint8_t*)r.Blob(&lw);
+    a.mask = (const uint8_t*)r.Blob(&lm);
+    a.fillFrom = (int32_t*)r.Blob(&lf);
+    a.targets = (uint8_t*)r.Blob(&lt);
+    a.src = (int32_t*)r.Blob(&ls);
+    a.dist = (uint8_t*)r.Blob(&ld);
+    a.queue = (int32_t*)r.Blob(&lq);
+    if (!r.ok) return;
+    if (lw != n || lm != (a.mask ? ((int64_t)a.mw * a.mh + 7) >> 3 : 0) || lf != n * 4 || lt != tb || ls != rn * 4 || ld != rn || lq != rn * 4)
+    { r.Fail("water_fill: input blob sizes differ"); return; }
+    mrp_water_fill(&a);
+    int64_t wf, wt, ws, wd, wq;
+    const void* f = r.Blob(&wf);
+    const void* t = r.Blob(&wt);
+    const void* s = r.Blob(&ws);
+    const void* dd = r.Blob(&wd);
+    const void* q = r.Blob(&wq);
+    r.RawV(want);
+    if (!r.ok) return;
+    if (wf != n * 4 || wt != tb || ws != rn * 4 || wd != rn || wq != rn * 4) { r.Fail("water_fill: output blob sizes differ"); return; }
+    r.Same("fillFrom", a.fillFrom, f, n * 4);
+    r.Same("targets", a.targets, t, tb);
+    r.Same("src", a.src, s, rn * 4);
+    r.Same("dist", a.dist, dd, rn);
+    r.Same("queue", a.queue, q, rn * 4);
+    r.Same("cells", &a.cells, &want.cells, 4);
+}
+static RpReg reg_water_fill(DgWaterFill, rp_water_fill);
+#endif

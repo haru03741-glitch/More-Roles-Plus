@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 水の絵のタイルの画素 (src/Terrain/WaterArt.cs の Draw の画素ループ / SpreadFace と同じ結果)。
@@ -194,6 +195,20 @@ MRP_API void mrp_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, 
 }
 
 // 指紋を取る版 (digest.h)
+// 記録用に、引数の数値だけを詰める (番地は含めない)
+struct WaterPixelsCap
+{
+    int32_t dw, n, x0, y0;
+    float orgx, orgy, cell, edge;
+    int32_t sw, sh;
+    float sox, soy, sppu;
+    int32_t floorOn, reach;
+    float deepScale, wetInv;
+};
+struct SpreadFaceCap { int32_t n, spread; };
+
+static int64_t pos_bytes(int64_t v) { return v > 0 ? v : 0; }
+
 MRP_API void mrp_dg_water_pixels(
     const int32_t* depth, const int32_t* wet, int32_t dw, int32_t n, int32_t x0, int32_t y0,
     float orgx, float orgy, float cell, float edge,
@@ -206,9 +221,21 @@ MRP_API void mrp_dg_water_pixels(
     d.InV(dw); d.InV(n); d.InV(x0); d.InV(y0); d.InV(orgx); d.InV(orgy); d.InV(cell); d.InV(edge); d.InV(sw); d.InV(sh);
     d.InV(sox); d.InV(soy); d.InV(sppu); d.InV(floorOn); d.InV(reach); d.InV(deepScale); d.InV(wetInv);
     d.In(depth, (int64_t)dw * dw * 4); d.In(wet, (int64_t)dw * dw * 4); d.In(furn, furn ? (int64_t)n * n : 0);
+    Cap c(DgWaterPixels);
+    WaterPixelsCap k = { dw, n, x0, y0, orgx, orgy, cell, edge, sw, sh, sox, soy, sppu, floorOn, reach, deepScale, wetInv };
+    int64_t mapBytes = pos_bytes((int64_t)sw * sh), pxBytes = pos_bytes((int64_t)n * n * 4);
+    c.RawV(k);
+    c.Blob(depth, pos_bytes((int64_t)dw * dw * 4));
+    c.Blob(wet, pos_bytes((int64_t)dw * dw * 4));
+    c.Blob(floorOn ? nullptr : open, mapBytes);                          // 壁際の判定を飛ばす時は読まない
+    c.Blob(!floorOn && furn ? furn : nullptr, pos_bytes((int64_t)n * n));
+    c.Blob(outside, mapBytes);
+    c.Blob(px, pxBytes);
     mrp_water_pixels(depth, wet, dw, n, x0, y0, orgx, orgy, cell, edge, open, sw, sh, sox, soy, sppu, floorOn, furn, outside, reach, deepScale, wetInv, px);
     d.Out(px, (int64_t)n * n * 4);
     d.Commit();
+    c.Blob(px, pxBytes);
+    c.End();
 }
 
 MRP_API void mrp_dg_water_spread_face(uint8_t* px, const uint8_t* face, int32_t n, int32_t spread, uint8_t* tmp)
@@ -216,7 +243,59 @@ MRP_API void mrp_dg_water_spread_face(uint8_t* px, const uint8_t* face, int32_t 
     Dg d(DgWaterSpreadFace);
     int64_t nn = (int64_t)n * n;
     d.InV(n); d.InV(spread); d.In(face, nn); d.In(px, nn * 4);
+    Cap c(DgWaterSpreadFace);
+    SpreadFaceCap k = { n, spread };
+    c.RawV(k);
+    c.Blob(face, pos_bytes(nn));
+    c.Blob(px, pos_bytes(nn * 4));
+    c.Blob(tmp, pos_bytes(nn));
     mrp_water_spread_face(px, face, n, spread, tmp);
     d.Out(px, nn * 4);
     d.Commit();
+    c.Blob(px, pos_bytes(nn * 4));
+    c.Blob(tmp, pos_bytes(nn));
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_* と同じ)。塊は呼び出しごとの複製なので書き換えてよい
+void rp_water_pixels(Rp& r)
+{
+    WaterPixelsCap k;
+    r.RawV(k);
+    const int32_t* depth = (const int32_t*)r.Blob();
+    const int32_t* wet = (const int32_t*)r.Blob();
+    const uint8_t* open = (const uint8_t*)r.Blob();
+    const uint8_t* furn = (const uint8_t*)r.Blob();
+    const uint8_t* outside = (const uint8_t*)r.Blob();
+    int64_t len = 0, wantLen = 0;
+    uint8_t* px = (uint8_t*)r.Blob(&len);
+    const uint8_t* want = (const uint8_t*)r.Blob(&wantLen);
+    if (!r.ok) return;
+    int64_t pxBytes = pos_bytes((int64_t)k.n * k.n * 4);
+    if (len != pxBytes || wantLen != pxBytes) { r.Fail("px %lld/%lld bytes, want %lld", (long long)len, (long long)wantLen, (long long)pxBytes); return; }
+    mrp_water_pixels(depth, wet, k.dw, k.n, k.x0, k.y0, k.orgx, k.orgy, k.cell, k.edge, open, k.sw, k.sh, k.sox, k.soy, k.sppu,
+        k.floorOn, furn, outside, k.reach, k.deepScale, k.wetInv, px);
+    r.Same("px", px, want, pxBytes);
+}
+static RpReg reg_water_pixels(DgWaterPixels, rp_water_pixels);
+
+void rp_water_spread_face(Rp& r)
+{
+    SpreadFaceCap k;
+    r.RawV(k);
+    const uint8_t* face = (const uint8_t*)r.Blob();
+    int64_t pxLen = 0, tmpLen = 0, wantPxLen = 0, wantTmpLen = 0;
+    uint8_t* px = (uint8_t*)r.Blob(&pxLen);
+    uint8_t* tmp = (uint8_t*)r.Blob(&tmpLen);
+    const uint8_t* wantPx = (const uint8_t*)r.Blob(&wantPxLen);
+    const uint8_t* wantTmp = (const uint8_t*)r.Blob(&wantTmpLen);
+    if (!r.ok) return;
+    int64_t nn = pos_bytes((int64_t)k.n * k.n);
+    if (pxLen != nn * 4 || wantPxLen != pxLen || tmpLen != nn || wantTmpLen != nn) { r.Fail("buffers %lld/%lld %lld/%lld bytes", (long long)pxLen, (long long)wantPxLen, (long long)tmpLen, (long long)wantTmpLen); return; }
+    mrp_water_spread_face(px, face, k.n, k.spread, tmp);
+    r.Same("px", px, wantPx, pxLen);
+    r.Same("tmp", tmp, wantTmp, tmpLen);
+}
+static RpReg reg_water_spread_face(DgWaterSpreadFace, rp_water_spread_face);
+#endif

@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 船体のメッシュの三角形から喉の塊を引く (src/Terrain/HullThroat.cs の Apply と同じ結果)。
@@ -280,6 +281,17 @@ MRP_API void mrp_dg_hull_clip(HullClipArgs* p)
         d.In(p->holeN, (int64_t)p->holeCount * 4); d.In(p->holes, holes * 8);
         d.In(p->grownN, (int64_t)p->holeCount * 4); d.In(p->grown, grown * 8);
     }
+    Cap c(DgHullClip);
+    bool lists = p->holeCount <= 256;
+    int64_t vcap = p->vcap, tcap = p->triOutCap;
+    c.RawV(*p);
+    c.Blob(p->v, vcap * 12); c.Blob(p->c, vcap * 4); c.Blob(p->u, vcap * 8);
+    c.Blob(p->triIn, (int64_t)p->triInN * 4);
+    c.Blob(p->triOut, tcap * 4);
+    c.Blob(lists ? p->holeN : nullptr, lists ? (int64_t)p->holeCount * 4 : 0);
+    c.Blob(lists ? p->holes : nullptr, lists ? holes * 8 : 0);
+    c.Blob(lists ? p->grownN : nullptr, lists ? (int64_t)p->holeCount * 4 : 0);
+    c.Blob(lists ? p->grown : nullptr, lists ? grown * 8 : 0);
     mrp_hull_clip(p);
     d.OutV(p->over);
     if (p->over == 0)
@@ -288,4 +300,45 @@ MRP_API void mrp_dg_hull_clip(HullClipArgs* p)
         d.OutV(p->triOutN); d.Out(p->triOut, (int64_t)p->triOutN * 4);
     }
     d.Commit();
+    c.Blob(p->v, vcap * 12); c.Blob(p->c, vcap * 4); c.Blob(p->u, vcap * 8);
+    c.Blob(p->triOut, tcap * 4);
+    c.RawV(*p);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_hull_clip と同じ)
+static void rp_hull_clip(Rp& r)
+{
+    HullClipArgs a, want;
+    r.RawV(a);
+    int64_t vcap = a.vcap, tcap = a.triOutCap;
+    int64_t lv, lc, lu, lt;
+    a.v = (float*)r.Blob(&lv);
+    a.c = (uint8_t*)r.Blob(&lc);
+    a.u = (float*)r.Blob(&lu);
+    a.triIn = (const int32_t*)r.Blob();
+    a.triOut = (int32_t*)r.Blob(&lt);
+    a.holeN = (const int32_t*)r.Blob();
+    a.holes = (const float*)r.Blob();
+    a.grownN = (const int32_t*)r.Blob();
+    a.grown = (const float*)r.Blob();
+    if (!r.ok) return;
+    if (lv != vcap * 12 || lc != vcap * 4 || lu != vcap * 8 || lt != tcap * 4) { r.Fail("hull_clip: buffer blob size mismatch"); return; }
+    mrp_hull_clip(&a);
+    const uint8_t* wv = (const uint8_t*)r.Blob();
+    const uint8_t* wc = (const uint8_t*)r.Blob();
+    const uint8_t* wu = (const uint8_t*)r.Blob();
+    const uint8_t* wt = (const uint8_t*)r.Blob();
+    r.RawV(want);
+    if (!r.ok) return;
+    r.Same("v", a.v, wv, vcap * 12);
+    r.Same("c", a.c, wc, vcap * 4);
+    r.Same("u", a.u, wu, vcap * 8);
+    r.Same("triOut", a.triOut, wt, tcap * 4);
+    r.Same("vn", &a.vn, &want.vn, 4);
+    r.Same("triOutN", &a.triOutN, &want.triOutN, 4);
+    r.Same("over", &a.over, &want.over, 4);
+}
+static RpReg reg_hull_clip(DgHullClip, rp_hull_clip);
+#endif

@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 水の床マスクの画素を作る (src/Terrain/FloorMask.cs の FillRaw / Fill と同じ結果)。
@@ -161,6 +162,24 @@ MRP_API void mrp_floor_blur(const uint8_t* raw, int32_t n, uint16_t* row, uint8_
 }
 
 // 指紋を取る版 (digest.h)
+// 記録用に、引数の数値だけを 1 つの構造体へ詰める (番地は含めない)
+struct FloorRawCap
+{
+    int32_t mw, mh; float mox, moy, mppu;
+    float x, y, wstep; int32_t n;
+    int32_t hw, hh; float hox, hoy, hppu; int32_t holeFloor;
+};
+struct FloorLipsCap
+{
+    int32_t w, h; float ox, oy, cell;
+    float x, y, step; int32_t n;
+    int32_t mw, mh; float mox, moy, mppu;
+};
+
+// 1 ビット地図 (w×h) の大きさ (バイト)・n×n の大きさ
+static int64_t bit_bytes(int32_t w, int32_t h) { int64_t k = (int64_t)w * h; return k > 0 ? (k + 7) / 8 : 0; }
+static int64_t sq_bytes(int64_t n) { return n > 0 ? n * n : 0; }
+
 MRP_API void mrp_dg_floor_raw(
     const uint8_t* bits, int32_t mw, int32_t mh, float mox, float moy, float mppu,
     float x, float y, float wstep, int32_t n, uint8_t* into,
@@ -170,9 +189,18 @@ MRP_API void mrp_dg_floor_raw(
     // 床マスクと穴の地図は船全体なので入力には入れない
     d.InV(mw); d.InV(mh); d.InV(mox); d.InV(moy); d.InV(mppu); d.InV(x); d.InV(y); d.InV(wstep); d.InV(n);
     d.InV(hw); d.InV(hh); d.InV(hox); d.InV(hoy); d.InV(hppu); d.InV(holeFloor); d.InV(holes != nullptr);
+    Cap c(DgFloorRaw);
+    FloorRawCap k = { mw, mh, mox, moy, mppu, x, y, wstep, n, hw, hh, hox, hoy, hppu, holeFloor };
+    int64_t nn = sq_bytes(n);
+    c.RawV(k);
+    c.Blob(bits, bit_bytes(mw, mh));
+    c.Blob(holes, holes ? (int64_t)hw * hh * 4 : 0);
+    c.Blob(into, nn);
     mrp_floor_raw(bits, mw, mh, mox, moy, mppu, x, y, wstep, n, into, holes, hw, hh, hox, hoy, hppu, holeFloor);
     d.Out(into, n > 0 ? (int64_t)n * n : 0);
     d.Commit();
+    c.Blob(into, nn);
+    c.End();
 }
 
 MRP_API void mrp_dg_floor_lips(const uint8_t* fall, const uint8_t* lip, int32_t w, int32_t h, float ox, float oy, float cell,
@@ -183,16 +211,93 @@ MRP_API void mrp_dg_floor_lips(const uint8_t* fall, const uint8_t* lip, int32_t 
     int64_t nn = n > 0 ? (int64_t)n * n : 0;
     d.InV(w); d.InV(h); d.InV(ox); d.InV(oy); d.InV(cell); d.InV(x); d.InV(y); d.InV(step); d.InV(n);
     d.InV(mw); d.InV(mh); d.InV(mox); d.InV(moy); d.InV(mppu); d.In(into, nn);
+    Cap c(DgFloorLips);
+    FloorLipsCap k = { w, h, ox, oy, cell, x, y, step, n, mw, mh, mox, moy, mppu };
+    int64_t cells = (int64_t)w * h > 0 ? (int64_t)w * h : 0;
+    c.RawV(k);
+    c.Blob(fall, cells);
+    c.Blob(lip, cells);
+    c.Blob(mb, mb ? bit_bytes(mw, mh) : 0);
+    c.Blob(into, nn);
     mrp_floor_lips(fall, lip, w, h, ox, oy, cell, x, y, step, n, into, mb, mw, mh, mox, moy, mppu);
     d.Out(into, nn);
     d.Commit();
+    c.Blob(into, nn);
+    c.End();
 }
 
 MRP_API void mrp_dg_floor_blur(const uint8_t* raw, int32_t n, uint16_t* row, uint8_t* into)
 {
     Dg d(DgFloorBlur);
     d.InV(n); d.In(raw, (int64_t)(n + 4) * (n + 4));
+    Cap c(DgFloorBlur);
+    int64_t m = (int64_t)n + 4;
+    int64_t rawBytes = sq_bytes(m), rowBytes = n > 0 ? m * n * 2 : 0, nn = sq_bytes(n);
+    c.RawV(n);
+    c.Blob(raw, rawBytes);
+    c.Blob(row, rowBytes);
+    c.Blob(into, nn);
     mrp_floor_blur(raw, n, row, into);
     d.Out(into, (int64_t)n * n);
     d.Commit();
+    c.Blob(row, rowBytes);
+    c.Blob(into, nn);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_* と同じ)。塊は呼び出しごとの複製なので書き換えてよい
+void rp_floor_raw(Rp& r)
+{
+    FloorRawCap k;
+    r.RawV(k);
+    const uint8_t* bits = (const uint8_t*)r.Blob();
+    const uint8_t* holes = (const uint8_t*)r.Blob();
+    int64_t len = 0, wantLen = 0;
+    uint8_t* into = (uint8_t*)r.Blob(&len);
+    const uint8_t* want = (const uint8_t*)r.Blob(&wantLen);
+    if (!r.ok) return;
+    int64_t nn = sq_bytes(k.n);
+    if (len != nn || wantLen != nn) { r.Fail("into %lld/%lld bytes, want %lld", (long long)len, (long long)wantLen, (long long)nn); return; }
+    mrp_floor_raw(bits, k.mw, k.mh, k.mox, k.moy, k.mppu, k.x, k.y, k.wstep, k.n, into, holes, k.hw, k.hh, k.hox, k.hoy, k.hppu, k.holeFloor);
+    r.Same("into", into, want, nn);
+}
+static RpReg reg_floor_raw(DgFloorRaw, rp_floor_raw);
+
+void rp_floor_lips(Rp& r)
+{
+    FloorLipsCap k;
+    r.RawV(k);
+    const uint8_t* fall = (const uint8_t*)r.Blob();
+    const uint8_t* lip = (const uint8_t*)r.Blob();
+    const uint8_t* mb = (const uint8_t*)r.Blob();
+    int64_t len = 0, wantLen = 0;
+    uint8_t* into = (uint8_t*)r.Blob(&len);
+    const uint8_t* want = (const uint8_t*)r.Blob(&wantLen);
+    if (!r.ok) return;
+    int64_t nn = sq_bytes(k.n);
+    if (len != nn || wantLen != nn) { r.Fail("into %lld/%lld bytes, want %lld", (long long)len, (long long)wantLen, (long long)nn); return; }
+    mrp_floor_lips(fall, lip, k.w, k.h, k.ox, k.oy, k.cell, k.x, k.y, k.step, k.n, into, mb, k.mw, k.mh, k.mox, k.moy, k.mppu);
+    r.Same("into", into, want, nn);
+}
+static RpReg reg_floor_lips(DgFloorLips, rp_floor_lips);
+
+void rp_floor_blur(Rp& r)
+{
+    int32_t n;
+    r.RawV(n);
+    const uint8_t* raw = (const uint8_t*)r.Blob();
+    int64_t rowLen = 0, intoLen = 0, wantRowLen = 0, wantLen = 0;
+    uint16_t* row = (uint16_t*)r.Blob(&rowLen);
+    uint8_t* into = (uint8_t*)r.Blob(&intoLen);
+    const uint8_t* wantRow = (const uint8_t*)r.Blob(&wantRowLen);
+    const uint8_t* want = (const uint8_t*)r.Blob(&wantLen);
+    if (!r.ok) return;
+    int64_t m = (int64_t)n + 4, rowBytes = n > 0 ? m * n * 2 : 0, nn = sq_bytes(n);
+    if (rowLen != rowBytes || wantRowLen != rowBytes || intoLen != nn || wantLen != nn) { r.Fail("blur buffers %lld/%lld/%lld/%lld bytes", (long long)rowLen, (long long)wantRowLen, (long long)intoLen, (long long)wantLen); return; }
+    mrp_floor_blur(raw, n, row, into);
+    r.Same("row", row, wantRow, rowBytes);
+    r.Same("into", into, want, nn);
+}
+static RpReg reg_floor_blur(DgFloorBlur, rp_floor_blur);
+#endif

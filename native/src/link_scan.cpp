@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 
 // 水の縁の走査 (src/Terrain/WaterSim.cs の LinkPass の前半と同じ結果)。
 // 範囲の升の前の縁の印を消し、開いている升の向きのうち隣へ流れない向きを光線の待ち行列へ升の番号順に並べる。
@@ -75,6 +76,20 @@ MRP_API void mrp_dg_link_scan(LinkScanArgs* a)
     d.In2D(a->fallMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
     d.In2D(a->stepMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
     d.In2D(a->seaMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    Cap c(DgLinkScan);
+    // open と edge は範囲の外周 1 升も読む (範囲は C# が地図の内側 1 升に切ってある)
+    int rows2 = a->y1 + 2;
+    c.RawV(*a);
+    c.Rect(a->open, a->w, rows2, 1, a->x0 - 1, a->y0 - 1, a->x1 + 1, a->y1 + 1);
+    c.Rect(a->lvl, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->edge, a->w, rows2, 1, a->x0 - 1, a->y0 - 1, a->x1 + 1, a->y1 + 1);
+    c.Rect(a->rim, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->fallMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->stepMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->seaMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->lipMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Blob(a->q, (int64_t)a->qCap * 4);
+    c.Blob(a->cleared, (int64_t)a->clearedCap * 4);
     mrp_link_scan(a);
     d.Out2D(a->fallMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
     d.Out2D(a->stepMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
@@ -84,4 +99,53 @@ MRP_API void mrp_dg_link_scan(LinkScanArgs* a)
     d.OutV(a->clearedN); d.Out(a->cleared, (int64_t)(a->clearedN < a->clearedCap ? a->clearedN : a->clearedCap) * 4);
     d.OutV(a->seaDirty);
     d.Commit();
+    c.Rect(a->fallMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->stepMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->seaMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->lipMask, a->w, rows, 1, a->x0, a->y0, a->x1, a->y1);
+    c.Blob(a->q, (int64_t)a->qCap * 4);
+    c.Blob(a->cleared, (int64_t)a->clearedCap * 4);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_link_scan と同じ)
+void rp_link_scan(Rp& r)
+{
+    LinkScanArgs a, want;
+    r.RawV(a);
+    if (!r.ok) return;
+    int rows = a.y1 + 1, rows2 = a.y1 + 2;
+    a.open = (const uint8_t*)r.RectInto(a.w, rows2, 1, a.x0 - 1, a.y0 - 1, a.x1 + 1, a.y1 + 1, 0xA5);
+    a.lvl = (const int8_t*)r.RectInto(a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    a.edge = (const uint8_t*)r.RectInto(a.w, rows2, 1, a.x0 - 1, a.y0 - 1, a.x1 + 1, a.y1 + 1, 0xA5);
+    a.rim = (const uint8_t*)r.RectInto(a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    a.fallMask = (uint8_t*)r.RectInto(a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    a.stepMask = (uint8_t*)r.RectInto(a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    a.seaMask = (uint8_t*)r.RectInto(a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    a.lipMask = (uint8_t*)r.RectInto(a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    int64_t qLen = 0, cLen = 0;
+    a.q = (int32_t*)r.Blob(&qLen);
+    a.cleared = (int32_t*)r.Blob(&cLen);
+    if (!r.ok) return;
+    if (qLen != (int64_t)a.qCap * 4 || cLen != (int64_t)a.clearedCap * 4) { r.Fail("q/cleared size %lld/%lld", (long long)qLen, (long long)cLen); return; }
+    mrp_link_scan(&a);
+    r.RectSame("fallMask", a.fallMask, a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    r.RectSame("stepMask", a.stepMask, a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    r.RectSame("seaMask", a.seaMask, a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    r.RectSame("lipMask", a.lipMask, a.w, rows, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    int64_t wq = 0, wc = 0;
+    const void* postQ = r.Blob(&wq);
+    const void* postC = r.Blob(&wc);
+    if (!r.ok) return;
+    if (wq != qLen || wc != cLen) { r.Fail("post q/cleared size %lld/%lld", (long long)wq, (long long)wc); return; }
+    if (qLen > 0) r.Same("q", a.q, postQ, qLen);
+    if (cLen > 0) r.Same("cleared", a.cleared, postC, cLen);
+    r.RawV(want);
+    r.Same("qN", &a.qN, &want.qN, 4);
+    r.Same("clearedN", &a.clearedN, &want.clearedN, 4);
+    r.Same("seaDirty", &a.seaDirty, &want.seaDirty, 4);
+}
+static RpReg reg_link_scan(DgLinkScan, rp_link_scan);
+#endif

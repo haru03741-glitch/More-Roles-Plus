@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <bit>
 
 // 水の升を作る時の下ごしらえ (src/Terrain/WaterOpen.cs の LoadWet の濾し・WaterSim.IslandLevels の升ごとの島・
@@ -113,10 +114,56 @@ MRP_API void mrp_dg_wet_filter(WetFilterArgs* a)
     Dg d(DgWetFilter);
     d.InV(a->n);
     d.In(a->bits, ((int64_t)a->n + 7) / 8); d.In(a->solid, a->n); d.In(a->outside, a->outside ? a->n : 0);
+    Cap c(DgWetFilter);
+    c.RawV(*a);
+    c.Blob(a->bits, ((int64_t)a->n + 7) / 8); c.Blob(a->solid, a->n); c.Blob(a->outside, a->outside ? a->n : 0); c.Blob(a->wet, a->n);
     mrp_wet_filter(a);
     d.Out(a->wet, a->n); d.OutV(a->count);
     d.Commit();
+    c.Blob(a->wet, a->n);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 長さを確かめて入力の塊を取る (書き換えてよい写し)
+static void* rp_in(Rp& r, const char* what, int64_t want)
+{
+    int64_t len = 0;
+    const void* b = r.Blob(&len);
+    if (!r.ok) return nullptr;
+    if (b ? len != want : want > 0) { r.Fail("%s is %lld bytes, want %lld", what, (long long)len, (long long)want); return nullptr; }
+    return (void*)b;
+}
+// 出力の塊と今の中身を比べる
+static void rp_post(Rp& r, const char* what, const void* got, int64_t bytes)
+{
+    int64_t len = 0;
+    const void* b = r.Blob(&len);
+    if (!r.ok || bytes <= 0 || !got) return;
+    if (!b || len != bytes) { r.Fail("%s post is %lld bytes, want %lld", what, (long long)len, (long long)bytes); return; }
+    r.Same(what, got, b, bytes);
+}
+
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_wet_filter と同じ)
+void rp_wet_filter(Rp& r)
+{
+    WetFilterArgs a, want;
+    r.RawV(a);
+    if (!r.ok) return;
+    int64_t n = a.n;
+    a.bits = (const uint8_t*)rp_in(r, "bits", (n + 7) / 8);
+    a.solid = (const uint8_t*)rp_in(r, "solid", n);
+    a.outside = (const uint8_t*)rp_in(r, "outside", a.outside ? n : 0);
+    a.wet = (uint8_t*)rp_in(r, "wet", n);
+    if (!r.ok) return;
+    mrp_wet_filter(&a);
+    rp_post(r, "wet", a.wet, n);
+    r.RawV(want);
+    r.Same("count", &a.count, &want.count, 4);
+}
+static RpReg reg_wet_filter(DgWetFilter, rp_wet_filter);
+#endif
 
 MRP_API void mrp_dg_island_cells(IslandCellsArgs* a)
 {
@@ -124,7 +171,43 @@ MRP_API void mrp_dg_island_cells(IslandCellsArgs* a)
     int64_t n = (int64_t)a->w * a->h, sn = (int64_t)a->sw * a->h * a->subN;
     d.InV(a->w); d.InV(a->h); d.InV(a->subN); d.InV(a->sw); d.InV(a->areaN); d.InV(a->spread);
     d.In(a->sub, n * 2); d.In(a->solid, sn); d.In(a->island, a->island ? sn : 0);
+    Cap c(DgIslandCells);
+    c.RawV(*a);
+    c.Blob(a->sub, n * 2); c.Blob(a->solid, sn); c.Blob(a->island, a->island ? sn : 0);
+    c.Blob(a->isl, n); c.Blob(a->wetOnly, n); c.Blob(a->area, (int64_t)a->areaN * 4);
+    c.Blob(a->spread ? a->queue : nullptr, n * 4);
     mrp_island_cells(a);
     d.Out(a->isl, n); d.Out(a->wetOnly, n); d.Out(a->area, (int64_t)a->areaN * 4); d.OutV(a->left);
     d.Commit();
+    c.Blob(a->isl, n); c.Blob(a->wetOnly, n); c.Blob(a->area, (int64_t)a->areaN * 4);
+    c.Blob(a->spread ? a->queue : nullptr, n * 4);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_island_cells と同じ)
+void rp_island_cells(Rp& r)
+{
+    IslandCellsArgs a, want;
+    r.RawV(a);
+    if (!r.ok) return;
+    int64_t n = (int64_t)a.w * a.h, sn = (int64_t)a.sw * a.h * a.subN;
+    a.sub = (const uint16_t*)rp_in(r, "sub", n * 2);
+    a.solid = (const uint8_t*)rp_in(r, "solid", sn);
+    a.island = (const uint8_t*)rp_in(r, "island", a.island ? sn : 0);
+    a.isl = (uint8_t*)rp_in(r, "isl", n);
+    a.wetOnly = (uint8_t*)rp_in(r, "wetOnly", n);
+    a.area = (int32_t*)rp_in(r, "area", (int64_t)a.areaN * 4);
+    a.queue = (int32_t*)rp_in(r, "queue", a.spread ? n * 4 : 0);
+    if (!r.ok) return;
+    mrp_island_cells(&a);
+    rp_post(r, "isl", a.isl, n);
+    rp_post(r, "wetOnly", a.wetOnly, n);
+    rp_post(r, "area", a.area, (int64_t)a.areaN * 4);
+    rp_post(r, "queue", a.queue, a.spread ? n * 4 : 0);
+    r.RawV(want);
+    r.Same("left", &a.left, &want.left, 4);
+}
+static RpReg reg_island_cells(DgIslandCells, rp_island_cells);
+#endif

@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 水の影の写しの抜き型: 家具の絵の網目の三角形を、画素の真ん中が入る所だけ 255 で塗る
@@ -72,7 +73,50 @@ MRP_API void mrp_dg_front_fill(FrontFillArgs* a)
     d.In(a->tri, (int64_t)a->triN * 2); d.In(a->px, (int64_t)verts * 4); d.In(a->py, (int64_t)verts * 4);
     if (a->mask) { d.In(a->mu, (int64_t)verts * 4); d.In(a->mv, (int64_t)verts * 4); d.In(a->mask, (int64_t)a->mw * a->mh); }
     d.In(a->buf, mm);
+    Cap c(DgFrontFill);
+    int64_t vb = (int64_t)verts * 4, maskB = (int64_t)a->mw * a->mh;
+    c.RawV(*a);
+    c.Blob(a->tri, (int64_t)a->triN * 2);
+    c.Blob(a->px, vb);
+    c.Blob(a->py, vb);
+    c.Blob(a->mask ? a->mu : nullptr, vb);
+    c.Blob(a->mask ? a->mv : nullptr, vb);
+    c.Blob(a->mask, maskB);
+    c.Blob(a->buf, mm);
     mrp_front_fill(a);
     d.Out(a->buf, mm); d.OutV(a->any);
     d.Commit();
+    c.Blob(a->buf, mm);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_front_fill と同じ)
+void rp_front_fill(Rp& r)
+{
+    FrontFillArgs a, want;
+    r.RawV(a);
+    int64_t lt, lx, ly, lu, lv, lm, lb;
+    a.tri = (const uint16_t*)r.Blob(&lt);
+    a.px = (const float*)r.Blob(&lx);
+    a.py = (const float*)r.Blob(&ly);
+    a.mu = (const float*)r.Blob(&lu);
+    a.mv = (const float*)r.Blob(&lv);
+    a.mask = (const uint8_t*)r.Blob(&lm);
+    a.buf = (uint8_t*)r.Blob(&lb);
+    if (!r.ok) return;
+    int64_t mm = (int64_t)a.m * a.m;
+    if (lt != (int64_t)a.triN * 2 || lx != ly || lb != mm || (a.mask && (lu != lx || lv != lx || lm != (int64_t)a.mw * a.mh)))
+    { r.Fail("front_fill: input blob sizes differ"); return; }
+    mrp_front_fill(&a);
+    int64_t wb;
+    const void* b = r.Blob(&wb);
+    r.RawV(want);
+    if (!r.ok) return;
+    if (wb != mm) { r.Fail("front_fill: output blob size differs"); return; }
+    r.Same("buf", a.buf, b, mm);
+    r.Same("any", &a.any, &want.any, 4);
+}
+static RpReg reg_front_fill(DgFrontFill, rp_front_fill);
+#endif

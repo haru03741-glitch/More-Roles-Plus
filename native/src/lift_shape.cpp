@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 
 // 家具の当たり判定の形を左右下上の幅だけ太らせる (src/Terrain/FurnitureLift.cs の MakeShape の後半と同じ結果)。
 // 画素は、中の画素から見た向きごとの半径の楕円の中に入っていれば中。小数の式の順番は C# と同じにする
@@ -50,7 +51,34 @@ MRP_API void mrp_dg_lift_shape(LiftShapeArgs* a)
     int64_t n = (int64_t)a->n * a->n;
     d.InV(a->n); d.InV(a->rx); d.InV(a->ry); d.InV(a->padL); d.InV(a->padR); d.InV(a->padB); d.InV(a->padT); d.InV(a->sx); d.InV(a->sy);
     d.In(a->inside, n);
+    Cap c(DgLiftShape);
+    c.RawV(*a);
+    c.Blob(a->inside, n); c.Blob(a->px, n * 4); c.Blob(a->shapeIn, n);
     mrp_lift_shape(a);
     d.Out(a->px, n * 4); d.Out(a->shapeIn, n);
     d.Commit();
+    c.Blob(a->px, n * 4); c.Blob(a->shapeIn, n);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_lift_shape と同じ)
+static void rp_lift_shape(Rp& r)
+{
+    LiftShapeArgs a;
+    r.RawV(a);
+    int64_t n = (int64_t)a.n * a.n, li, lp, ls;
+    a.inside = (const uint8_t*)r.Blob(&li);
+    a.px = (uint8_t*)r.Blob(&lp);
+    a.shapeIn = (uint8_t*)r.Blob(&ls);
+    if (!r.ok) return;
+    if (li != n || lp != n * 4 || ls != n) { r.Fail("lift_shape: blob size mismatch"); return; }
+    mrp_lift_shape(&a);
+    const uint8_t* wp = (const uint8_t*)r.Blob();
+    const uint8_t* ws = (const uint8_t*)r.Blob();
+    if (!r.ok) return;
+    r.Same("px", a.px, wp, n * 4);
+    r.Same("shapeIn", a.shapeIn, ws, n);
+}
+static RpReg reg_lift_shape(DgLiftShape, rp_lift_shape);
+#endif

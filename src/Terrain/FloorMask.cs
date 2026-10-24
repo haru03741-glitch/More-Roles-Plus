@@ -746,7 +746,7 @@ internal static class FloorMask
             }
             reply($"OK floormask active={Active} off={Off} {Stats}");
         });
-        TestBridge.Register("native", "[check [x y] | verify [on [only=A,B|skip=A,B] [nobgc]|off] | async [on|off] | digest [on|off|reset|step n] | points | walls | fixmap] C++ の部品の状態 / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
+        TestBridge.Register("native", "[check [x y] | verify [on [only=A,B|skip=A,B] [nobgc]|off] | async [on|off] | digest [on|off|reset|step n] | capture [on name [perPart] [every]|off] | points | walls | fixmap] C++ の部品の状態 / 床マスク 1 タイルを C# と C++ で作って 1 バイトずつ比べる (既定は自分の所) / verify on = 水の絵を描くたびに C# でも作って違いを数える / async off = 水の小刻みをその場で回す (既定は作業スレッド)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             bool on = Native.MrpNative.Loaded;
@@ -780,6 +780,26 @@ internal static class FloorMask
                 for (int i = 0; i < Native.MrpNative.DigestNames.Length; i++)
                     if (d[i * 3] != 0) sb.Append($" | {Native.MrpNative.DigestNames[i]} n={d[i * 3]} in={d[i * 3 + 1]:x16} out={d[i * 3 + 2]:x16}");
                 reply(sb.ToString());
+                return;
+            }
+            if (a.Length > 0 && a[0] == "capture")
+            {
+                // native capture on <name> [perPart] [every] / off: 指紋を取りながら部品の呼び出しを BepInEx/capture/<name>.cap へ書き出す (every 0 = 最初の 4 回と 2 の累乗回目)
+                if (!on) { reply("ERR native capture: not loaded"); return; }
+                TerrainStep.Settle();
+                if (a.Length > 2 && a[1] == "on")
+                {
+                    string dir = System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "capture");
+                    System.IO.Directory.CreateDirectory(dir);
+                    string path = System.IO.Path.Combine(dir, a[2] + ".cap");
+                    int perPart = a.Length > 3 && int.TryParse(a[3], out int pp) ? pp : 64;
+                    int every = a.Length > 4 && int.TryParse(a[4], out int ev) ? ev : 0;
+                    Native.MrpNative.SetDigest(true);
+                    reply(Native.MrpNative.CaptureOpen(path, perPart, every) ? $"OK native capture on path={path} perPart={perPart} every={every}" : $"ERR native capture: cannot open {path}");
+                    return;
+                }
+                if (a.Length > 1 && a[1] == "off") { long rec = Native.MrpNative.CaptureClose(out long dropped); reply($"OK native capture off records={rec} dropped={dropped} digest={Native.MrpNative.Digest}"); return; }
+                reply("ERR native capture on <name> [perPart] [every] | off");
                 return;
             }
             if (a.Length > 0 && a[0] == "verify")

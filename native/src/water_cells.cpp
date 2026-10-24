@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <bit>
 #include <string.h>
 
@@ -155,8 +156,67 @@ MRP_API void mrp_dg_water_cells(CellsArgs* a)
     d.In(a->solid, sn); d.In(a->wet, a->wet ? sn : 0);
     d.In(a->doorFloor, n); d.In(a->platFloor, a->platFloor ? n : 0); d.In(a->shut, n); d.In(a->open, a->open ? n : 0);
     d.In(a->subOut, n * 2);
+    Cap c(DgWaterCells);
+    int64_t rangeN = (int64_t)(a->x1 - a->x0 + 1) * (a->y1 - a->y0 + 1);
+    int64_t chBytes = a->open && a->changed && rangeN > 0 ? rangeN * 4 : 0;
+    c.RawV(*a);
+    c.Blob(a->solid, sn); c.Blob(a->wet, a->wet ? sn : 0);
+    c.Blob(a->doorFloor, n); c.Blob(a->platFloor, a->platFloor ? n : 0); c.Blob(a->shut, n); c.Blob(a->open, a->open ? n : 0);
+    c.Blob(a->subOut, n * 2); c.Blob(a->edgeOut, n); c.Blob(chBytes ? a->changed : nullptr, chBytes);
     mrp_water_cells(a);
     d.Out(a->subOut, n * 2); d.Out(a->edgeOut, n);
     d.OutV(a->changedN); d.Out(a->changed, (int64_t)a->changedN * 4);
     d.Commit();
+    c.Blob(a->subOut, n * 2); c.Blob(a->edgeOut, n); c.Blob(chBytes ? a->changed : nullptr, chBytes);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 長さを確かめて入力の塊を取る (書き換えてよい写し)
+static void* rp_in(Rp& r, const char* what, int64_t want)
+{
+    int64_t len = 0;
+    const void* b = r.Blob(&len);
+    if (!r.ok) return nullptr;
+    if (b ? len != want : want > 0) { r.Fail("%s is %lld bytes, want %lld", what, (long long)len, (long long)want); return nullptr; }
+    return (void*)b;
+}
+// 出力の塊と今の中身を比べる
+static void rp_post(Rp& r, const char* what, const void* got, int64_t bytes)
+{
+    int64_t len = 0;
+    const void* b = r.Blob(&len);
+    if (!r.ok || bytes <= 0 || !got) return;
+    if (!b || len != bytes) { r.Fail("%s post is %lld bytes, want %lld", what, (long long)len, (long long)bytes); return; }
+    r.Same(what, got, b, bytes);
+}
+
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_water_cells と同じ)
+void rp_water_cells(Rp& r)
+{
+    CellsArgs a, want;
+    r.RawV(a);
+    if (!r.ok) return;
+    int64_t n = (int64_t)a.w * a.h, sn = (int64_t)a.sw * a.h * a.sub;
+    int64_t rangeN = (int64_t)(a.x1 - a.x0 + 1) * (a.y1 - a.y0 + 1);
+    a.solid = (const uint8_t*)rp_in(r, "solid", sn);
+    a.wet = (const uint8_t*)rp_in(r, "wet", a.wet ? sn : 0);
+    a.doorFloor = (const uint8_t*)rp_in(r, "doorFloor", n);
+    a.platFloor = (const uint8_t*)rp_in(r, "platFloor", a.platFloor ? n : 0);
+    a.shut = (const uint8_t*)rp_in(r, "shut", n);
+    a.open = (const uint8_t*)rp_in(r, "open", a.open ? n : 0);
+    a.subOut = (uint16_t*)rp_in(r, "subOut", n * 2);
+    a.edgeOut = (uint8_t*)rp_in(r, "edgeOut", n);
+    int64_t chBytes = a.open && rangeN > 0 ? rangeN * 4 : 0;
+    a.changed = (int32_t*)rp_in(r, "changed", chBytes);
+    if (!r.ok) return;
+    mrp_water_cells(&a);
+    rp_post(r, "subOut", a.subOut, n * 2);
+    rp_post(r, "edgeOut", a.edgeOut, n);
+    rp_post(r, "changed", a.changed, chBytes);
+    r.RawV(want);
+    r.Same("changedN", &a.changedN, &want.changedN, 4);
+}
+static RpReg reg_water_cells(DgWaterCells, rp_water_cells);
+#endif

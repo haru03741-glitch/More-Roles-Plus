@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 
 // 縁を越えた水の行き先を探す光線 (水の計算と確認のコマンドの両方がここを引く)。
 // useZ = 0 は島の段の順位で「低い床」を決める (作った時の 1 回目で崖の面を測る)。useZ = 1 は床の本当の高さ
@@ -146,7 +147,56 @@ MRP_API void mrp_dg_fall_ray(FallRayArgs* a)
     d.In(a->q, (int64_t)a->n * 4);
     d.In(a->open, n); d.In(a->door, n); d.In(a->prop, n); d.In(a->air, n); d.In(a->lvl, n);
     if (a->useZ) { d.In(a->isl, n); d.In(a->islBase, (int64_t)a->islN * 4); }
+    Cap c(DgFallRay);
+    c.RawV(*a);
+    c.Blob(a->q, (int64_t)a->n * 4);
+    c.Blob(a->open, n); c.Blob(a->door, n); c.Blob(a->prop, n); c.Blob(a->air, n); c.Blob(a->lvl, n);
+    c.Blob(a->useZ ? a->isl : nullptr, n); c.Blob(a->useZ ? a->islBase : nullptr, (int64_t)a->islN * 4);
+    c.Blob(a->out, (int64_t)a->n * 20);
     mrp_fall_ray(a);
     d.Out(a->out, (int64_t)a->n * 20);
     d.Commit();
+    c.Blob(a->out, (int64_t)a->n * 20);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 長さを確かめて入力の塊を取る (書き換えてよい写し)
+static void* rp_in(Rp& r, const char* what, int64_t want)
+{
+    int64_t len = 0;
+    const void* b = r.Blob(&len);
+    if (!r.ok) return nullptr;
+    if (b ? len != want : want > 0) { r.Fail("%s is %lld bytes, want %lld", what, (long long)len, (long long)want); return nullptr; }
+    return (void*)b;
+}
+// 出力の塊と今の中身を比べる
+static void rp_post(Rp& r, const char* what, const void* got, int64_t bytes)
+{
+    int64_t len = 0;
+    const void* b = r.Blob(&len);
+    if (!r.ok || bytes <= 0 || !got) return;
+    if (!b || len != bytes) { r.Fail("%s post is %lld bytes, want %lld", what, (long long)len, (long long)bytes); return; }
+    r.Same(what, got, b, bytes);
+}
+
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_fall_ray と同じ)
+void rp_fall_ray(Rp& r)
+{
+    FallRayArgs a;
+    r.RawV(a);
+    if (!r.ok) return;
+    int64_t n = (int64_t)a.w * a.h;
+    a.q = (const int32_t*)rp_in(r, "q", (int64_t)a.n * 4);
+    a.open = (const uint8_t*)rp_in(r, "open", n); a.door = (const uint8_t*)rp_in(r, "door", n);
+    a.prop = (const uint8_t*)rp_in(r, "prop", n); a.air = (const uint8_t*)rp_in(r, "air", n);
+    a.lvl = (const int8_t*)rp_in(r, "lvl", n);
+    a.isl = (const uint8_t*)rp_in(r, "isl", a.useZ ? n : 0);
+    a.islBase = (const int32_t*)rp_in(r, "islBase", a.useZ ? (int64_t)a.islN * 4 : 0);
+    a.out = (int32_t*)rp_in(r, "out", (int64_t)a.n * 20);
+    if (!r.ok) return;
+    mrp_fall_ray(&a);
+    rp_post(r, "out", a.out, (int64_t)a.n * 20);
+}
+static RpReg reg_fall_ray(DgFallRay, rp_fall_ray);
+#endif

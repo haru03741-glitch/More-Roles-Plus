@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 水の絵のタイル 1 枚を描く前の高さの写し (src/Terrain/WaterArt.cs の RawCells と WaterSim.ShownDepth / CraterScale と
@@ -132,9 +133,59 @@ MRP_API void mrp_dg_water_raw(RawArgs* a)
     d.In2D(a->furn, a->w, a->h, 2, x0 - 1, y0 - 1, x1 + 1, y1 + 1);
     d.In2D(a->open, a->w, a->h, 1, x0 - 1, y0 - 1, x1 + 1, y1 + 1);
     d.In2D(a->fill, a->w, a->h, 4, x0, y0, x1, y1);
+    Cap c(DgWaterRaw);
+    // 高さ・家具・歩ける所・埋め先は全体の地図 (w*h)。家具の走査や埋め先の升は範囲の外も読むので切らない
+    int64_t cells = (int64_t)a->w * a->h > 0 ? (int64_t)a->w * a->h : 0;
+    int64_t rawN = (int64_t)rw * rw, depN = (int64_t)dw * dw;
+    c.RawV(*a);
+    c.Blob(a->hgt, cells * 4);
+    c.Blob(a->furn, a->furn ? cells * 2 : 0);
+    c.Blob(a->open, cells);
+    c.Blob(a->fill, a->fill ? cells * 4 : 0);
+    c.Blob(a->crater, a->craterN > 0 ? (int64_t)a->craterN * 16 : 0);
+    c.Blob(a->raw, rawN * 4);
+    c.Blob(a->closed, rawN);
+    c.Blob(a->depth, depN * 4);
+    c.Blob(a->wet, depN * 4);
     mrp_water_raw(a);
     d.Out(a->raw, (int64_t)rw * rw * 4); d.Out(a->closed, (int64_t)rw * rw);
     d.Out(a->depth, (int64_t)dw * dw * 4); d.Out(a->wet, (int64_t)dw * dw * 4);
     d.OutV(a->any);
     d.Commit();
+    c.Blob(a->raw, rawN * 4);
+    c.Blob(a->closed, rawN);
+    c.Blob(a->depth, depN * 4);
+    c.Blob(a->wet, depN * 4);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_water_raw と同じ)
+void rp_water_raw(Rp& r)
+{
+    RawArgs a, want;
+    r.RawV(a);
+    a.hgt = (const int32_t*)r.Blob();
+    a.furn = (const int16_t*)r.Blob();
+    a.open = (const uint8_t*)r.Blob();
+    a.fill = (const int32_t*)r.Blob();
+    a.crater = (const float*)r.Blob();
+    int64_t len[4], wlen[4];
+    void* buf[4]; const void* wbuf[4];
+    for (int i = 0; i < 4; i++) buf[i] = (void*)r.Blob(&len[i]);
+    for (int i = 0; i < 4; i++) wbuf[i] = r.Blob(&wlen[i]);
+    r.RawV(want);
+    if (!r.ok) return;
+    static const char* const names[4] = { "raw", "closed", "depth", "wet" };
+    int64_t rw = (int64_t)a.tc + 6, dw = (int64_t)a.tc + 4;
+    int64_t need[4] = { rw * rw * 4, rw * rw, dw * dw * 4, dw * dw * 4 };
+    for (int i = 0; i < 4; i++)
+        if (len[i] != need[i] || wlen[i] != len[i]) { r.Fail("%s blob %lld/%lld bytes, want %lld", names[i], (long long)len[i], (long long)wlen[i], (long long)need[i]); return; }
+    a.raw = (int32_t*)buf[0]; a.closed = (uint8_t*)buf[1]; a.depth = (int32_t*)buf[2]; a.wet = (int32_t*)buf[3];
+    mrp_water_raw(&a);
+    for (int i = 0; i < 4; i++) r.Same(names[i], buf[i], wbuf[i], len[i]);
+    r.Same("any", &a.any, &want.any, 4);
+}
+static RpReg reg_water_raw(DgWaterRaw, rp_water_raw);
+#endif

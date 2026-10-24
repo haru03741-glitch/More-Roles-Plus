@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 
 // 外壁が抜けた時の気圧の範囲と口からの道のり (src/Terrain/Decompression.cs の Regions・Field・FindGrips と同じ結果)。
 // 置き場は全部 C# が渡す (ここではメモリを取らない)
@@ -197,11 +198,65 @@ MRP_API void mrp_dg_decomp_regions(RegionArgs* a)
     int64_t n = (int64_t)a->w * a->h;
     d.InV(a->w); d.InV(a->h); d.InV(a->full);
     d.In(a->sub, n * 2); d.In(a->edge, n); d.In(a->oldComp, a->oldComp ? n * 4 : 0);
+    Cap c(DgDecompRegions);
+    // 前の気圧の表は、前の範囲の番号の最大 + 1 個ぶん読まれる
+    int64_t oldN = 0;
+    if (c.on && a->oldComp)
+        for (int64_t k = 0; k < n; k++) if (a->oldComp[k] >= oldN) oldN = (int64_t)a->oldComp[k] + 1;
+    c.RawV(*a);
+    c.Blob(a->sub, n * 2); c.Blob(a->edge, n);
+    c.Blob(a->oldComp, a->oldComp ? n * 4 : 0); c.Blob(a->oldPress, a->oldComp ? oldN * 4 : 0);
+    c.Blob(a->comp, n * 4); c.Blob(a->stack, n * 4); c.Blob(a->cells, n * 4); c.Blob(a->press, n * 4);
+    c.Blob(a->sum, n * 8); c.Blob(a->cnt, n * 4);
     mrp_decomp_regions(a);
     d.Out(a->comp, n * 4); d.OutV(a->compN);
     d.Out(a->cells, (int64_t)a->compN * 4); d.Out(a->press, (int64_t)a->compN * 4);
     d.Commit();
+    c.Blob(a->comp, n * 4); c.Blob(a->stack, n * 4); c.Blob(a->cells, n * 4); c.Blob(a->press, n * 4);
+    c.Blob(a->sum, n * 8); c.Blob(a->cnt, n * 4);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_decomp_regions と同じ)
+static void rp_decomp_regions(Rp& r)
+{
+    RegionArgs a, want;
+    r.RawV(a);
+    int64_t n = (int64_t)a.w * a.h;
+    int64_t lc, ls, le, lp, lm, lt;
+    a.sub = (const uint16_t*)r.Blob();
+    a.edge = (const uint8_t*)r.Blob();
+    a.oldComp = (const int32_t*)r.Blob();
+    a.oldPress = (const int32_t*)r.Blob();
+    a.comp = (int32_t*)r.Blob(&lc);
+    a.stack = (int32_t*)r.Blob(&ls);
+    a.cells = (int32_t*)r.Blob(&le);
+    a.press = (int32_t*)r.Blob(&lp);
+    a.sum = (int64_t*)r.Blob(&lm);
+    a.cnt = (int32_t*)r.Blob(&lt);
+    if (!r.ok) return;
+    if (lc != n * 4 || ls != n * 4 || le != n * 4 || lp != n * 4 || lm != n * 8 || lt != n * 4) { r.Fail("decomp_regions: blob size mismatch"); return; }
+    mrp_decomp_regions(&a);
+    const uint8_t* wc = (const uint8_t*)r.Blob();
+    const uint8_t* ws = (const uint8_t*)r.Blob();
+    const uint8_t* we = (const uint8_t*)r.Blob();
+    const uint8_t* wp = (const uint8_t*)r.Blob();
+    const uint8_t* wm = (const uint8_t*)r.Blob();
+    const uint8_t* wt = (const uint8_t*)r.Blob();
+    r.RawV(want);
+    if (!r.ok) return;
+    r.Same("comp", a.comp, wc, n * 4);
+    r.Same("stack", a.stack, ws, n * 4);
+    r.Same("cells", a.cells, we, n * 4);
+    r.Same("press", a.press, wp, n * 4);
+    r.Same("sum", a.sum, wm, n * 8);
+    r.Same("cnt", a.cnt, wt, n * 4);
+    r.Same("compN", &a.compN, &want.compN, 4);
+}
+static RpReg reg_decomp_regions(DgDecompRegions, rp_decomp_regions);
+#endif
 
 MRP_API void mrp_dg_decomp_field(FieldArgs* a)
 {
@@ -210,8 +265,55 @@ MRP_API void mrp_dg_decomp_field(FieldArgs* a)
     d.InV(a->w); d.InV(a->h); d.InV(a->cap); d.InV(a->seedN); d.InV(a->gripR); d.InV(a->gripMax);
     d.In(a->sub, n * 2); d.In(a->edge, n); d.In(a->furn, n); d.In(a->seeds, (int64_t)a->seedN * 4);
     d.In(a->dist, n * 2); d.In(a->par, n * 4);
+    Cap c(DgDecompField);
+    int64_t qn = ((int64_t)a->seedN + 8 * n) * 4;
+    c.RawV(*a);
+    c.Blob(a->sub, n * 2); c.Blob(a->edge, n); c.Blob(a->furn, n); c.Blob(a->seeds, (int64_t)a->seedN * 4);
+    c.Blob(a->dist, n * 2); c.Blob(a->par, n * 4);
+    c.Blob(a->qk, qn); c.Blob(a->qnext, qn); c.Blob(a->grips, n * 8);
     mrp_decomp_field(a);
     d.Out(a->dist, n * 2); d.Out(a->par, n * 4);
     d.OutV(a->gripN); d.Out(a->grips, (int64_t)a->gripN * 8);
     d.Commit();
+    c.Blob(a->dist, n * 2); c.Blob(a->par, n * 4);
+    c.Blob(a->qk, qn); c.Blob(a->qnext, qn); c.Blob(a->grips, n * 8);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_decomp_field と同じ)
+static void rp_decomp_field(Rp& r)
+{
+    FieldArgs a, want;
+    r.RawV(a);
+    int64_t n = (int64_t)a.w * a.h, qn = ((int64_t)a.seedN + 8 * n) * 4;
+    int64_t ld, lp, lk, lq, lg;
+    a.sub = (const uint16_t*)r.Blob();
+    a.edge = (const uint8_t*)r.Blob();
+    a.furn = (const uint8_t*)r.Blob();
+    a.seeds = (const int32_t*)r.Blob();
+    a.dist = (uint16_t*)r.Blob(&ld);
+    a.par = (int32_t*)r.Blob(&lp);
+    a.qk = (int32_t*)r.Blob(&lk);
+    a.qnext = (int32_t*)r.Blob(&lq);
+    a.grips = (int64_t*)r.Blob(&lg);
+    if (!r.ok) return;
+    if (ld != n * 2 || lp != n * 4 || lk != qn || lq != qn || lg != n * 8) { r.Fail("decomp_field: blob size mismatch"); return; }
+    mrp_decomp_field(&a);
+    const uint8_t* wd = (const uint8_t*)r.Blob();
+    const uint8_t* wp = (const uint8_t*)r.Blob();
+    const uint8_t* wk = (const uint8_t*)r.Blob();
+    const uint8_t* wq = (const uint8_t*)r.Blob();
+    const uint8_t* wg = (const uint8_t*)r.Blob();
+    r.RawV(want);
+    if (!r.ok) return;
+    r.Same("dist", a.dist, wd, n * 2);
+    r.Same("par", a.par, wp, n * 4);
+    r.Same("qk", a.qk, wk, qn);
+    r.Same("qnext", a.qnext, wq, qn);
+    r.Same("grips", a.grips, wg, n * 8);
+    r.Same("gripN", &a.gripN, &want.gripN, 4);
+}
+static RpReg reg_decomp_field(DgDecompField, rp_decomp_field);
+#endif

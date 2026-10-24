@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -99,7 +100,45 @@ MRP_API void mrp_dg_foam_cull(FoamCullArgs* a)
     d.InV(a->mw); d.InV(a->mh); d.InV(a->ox); d.InV(a->oy); d.InV(a->mppu); d.InV(a->w); d.InV(a->h); d.InV(a->u0); d.InV(a->v0);
     d.InV(a->ax); d.InV(a->ay); d.InV(a->ux); d.InV(a->uy); d.InV(a->vx); d.InV(a->vy); d.InV(a->ballN); d.InV(a->reach);
     d.In(a->balls, (int64_t)a->ballN * 12);
+    Cap c(DgFoamCull);
+    int64_t vn = (int64_t)a->w * a->h;
+    c.RawV(*a);
+    c.Blob(a->mask, (int64_t)a->mw * a->mh * 4);
+    c.Blob(a->balls, (int64_t)a->ballN * 12);
+    c.Blob(a->vis, vn);
+    c.Blob(a->hidden, a->ballN);
     mrp_foam_cull(a);
-    d.Out(a->vis, (int64_t)a->w * a->h); d.Out(a->hidden, a->ballN); d.OutV(a->hiddenN);
+    d.Out(a->vis, vn); d.Out(a->hidden, a->ballN); d.OutV(a->hiddenN);
     d.Commit();
+    c.Blob(a->vis, vn);
+    c.Blob(a->hidden, a->ballN);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_foam_cull と同じ)
+void rp_foam_cull(Rp& r)
+{
+    FoamCullArgs a, want;
+    r.RawV(a);
+    int64_t vn = (int64_t)a.w * a.h, lm, lb, lv, lh;
+    a.mask = (const uint8_t*)r.Blob(&lm);
+    a.balls = (const float*)r.Blob(&lb);
+    a.vis = (uint8_t*)r.Blob(&lv);
+    a.hidden = (uint8_t*)r.Blob(&lh);
+    if (!r.ok) return;
+    if (lm != (int64_t)a.mw * a.mh * 4 || lb != (int64_t)a.ballN * 12 || lv != vn || lh != a.ballN) { r.Fail("foam_cull: input blob sizes differ"); return; }
+    mrp_foam_cull(&a);
+    int64_t wv, wh;
+    const void* v = r.Blob(&wv);
+    const void* h = r.Blob(&wh);
+    r.RawV(want);
+    if (!r.ok) return;
+    if (wv != vn || wh != a.ballN) { r.Fail("foam_cull: output blob sizes differ"); return; }
+    r.Same("vis", a.vis, v, vn);
+    r.Same("hidden", a.hidden, h, a.ballN);
+    r.Same("hiddenN", &a.hiddenN, &want.hiddenN, 4);
+}
+static RpReg reg_foam_cull(DgFoamCull, rp_foam_cull);
+#endif

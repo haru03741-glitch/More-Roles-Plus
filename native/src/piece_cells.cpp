@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 
 // 抜いた画素を割れ目の細胞ごとに数える (src/Terrain/BreakPieces.cs の Spawn の画素の数え上げと同じ結果)。
 // この破壊の番号を書いた画素のうち、周りの 3×3 に見える穴がある物を、いちばん近い種点の細胞へ足す
@@ -66,6 +67,13 @@ MRP_API void mrp_dg_piece_cells(PieceArgs* a)
     d.In2D(a->px, a->w, a->h, 4, a->rx0, a->ry0, a->rx1 - 1, a->ry1 - 1);
     d.In2D(a->gens, a->w, a->h, 1, a->rx0, a->ry0, a->rx1 - 1, a->ry1 - 1);
     d.In(a->xs, (int64_t)a->n * 4); d.In(a->ys, (int64_t)a->n * 4);
+    Cap c(DgPieceCells);
+    c.RawV(*a);
+    // 画素は数える範囲とその周り 1 画素 (3×3 で見る)・世代は数える範囲だけ
+    c.Rect(a->px, a->w, a->h, 4, a->rx0 - 1, a->ry0 - 1, a->rx1, a->ry1);
+    c.Rect(a->gens, a->w, a->h, 1, a->rx0, a->ry0, a->rx1 - 1, a->ry1 - 1);
+    c.Blob(a->xs, (int64_t)a->n * 4); c.Blob(a->ys, (int64_t)a->n * 4);
+    c.Blob(a->acc, 256 * (int64_t)sizeof(PieceAcc));
     mrp_piece_cells(a);
     // count = 0 の細胞は他の値が古いまま・pad は書かれないので入れない
     for (int i = 0; i < 256; i++)
@@ -75,4 +83,31 @@ MRP_API void mrp_dg_piece_cells(PieceArgs* a)
         d.OutV(i); d.OutV(c.x0); d.OutV(c.y0); d.OutV(c.x1); d.OutV(c.y1); d.OutV(c.count); d.OutV(c.sumX); d.OutV(c.sumY);
     }
     d.Commit();
+    c.Blob(a->acc, 256 * (int64_t)sizeof(PieceAcc));
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_piece_cells と同じ)
+static void rp_piece_cells(Rp& r)
+{
+    PieceArgs a;
+    r.RawV(a);
+    a.px = (const uint8_t*)r.RectInto(a.w, a.h, 4, a.rx0 - 1, a.ry0 - 1, a.rx1, a.ry1, 0xA5);
+    a.gens = (const uint8_t*)r.RectInto(a.w, a.h, 1, a.rx0, a.ry0, a.rx1 - 1, a.ry1 - 1, 0xA5);
+    a.xs = (const float*)r.Blob();
+    a.ys = (const float*)r.Blob();
+    int64_t la;
+    a.acc = (PieceAcc*)r.Blob(&la);
+    if (!r.ok) return;
+    const int64_t accBytes = 256 * (int64_t)sizeof(PieceAcc);
+    if (la != accBytes) { r.Fail("piece_cells: acc blob %lld bytes", (long long)la); return; }
+    mrp_piece_cells(&a);
+    int64_t lw;
+    const void* want = r.Blob(&lw);
+    if (!r.ok) return;
+    if (lw != accBytes) { r.Fail("piece_cells: result blob %lld bytes", (long long)lw); return; }
+    r.Same("acc", a.acc, want, accBytes);
+}
+static RpReg reg_piece_cells(DgPieceCells, rp_piece_cells);
+#endif

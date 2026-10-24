@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 #include <string.h>
 
@@ -110,7 +111,46 @@ MRP_API void mrp_dg_water_spray(SprayArgs* a)
     d.InV(a->count); d.InV(a->n); d.InV(a->orgx); d.InV(a->orgy); d.InV(a->x0); d.InV(a->y0);
     d.In(a->ox, c * 4); d.In(a->oy, c * 4); d.In(a->oh, c * 4); d.In(a->px, c * 4); d.In(a->py, c * 4); d.In(a->ph, c * 4); d.In(a->stuck, c);
     d.In(a->box, 16); d.In(a->dens, nn * 4); d.In(a->foam, nn * 4); d.In(a->out, nn * 4);
+    Cap cp(DgWaterSpray);
+    cp.RawV(*a);
+    cp.Blob(a->ox, c * 4); cp.Blob(a->oy, c * 4); cp.Blob(a->oh, c * 4);
+    cp.Blob(a->px, c * 4); cp.Blob(a->py, c * 4); cp.Blob(a->ph, c * 4);
+    cp.Blob(a->stuck, c);
+    cp.Blob(a->box, 16); cp.Blob(a->dens, nn * 4); cp.Blob(a->foam, nn * 4); cp.Blob(a->out, nn * 4);
     mrp_water_spray(a);
     d.Out(a->box, 16); d.Out(a->dens, nn * 4); d.Out(a->foam, nn * 4); d.Out(a->out, nn * 4);
     d.Commit();
+    cp.Blob(a->box, 16); cp.Blob(a->dens, nn * 4); cp.Blob(a->foam, nn * 4); cp.Blob(a->out, nn * 4);
+    cp.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_water_spray と同じ)
+void rp_water_spray(Rp& r)
+{
+    SprayArgs a;
+    r.RawV(a);
+    int64_t c = a.count, nn = (int64_t)a.n * a.n;
+    int64_t l[11];
+    a.ox = (const int32_t*)r.Blob(&l[0]); a.oy = (const int32_t*)r.Blob(&l[1]); a.oh = (const int32_t*)r.Blob(&l[2]);
+    a.px = (const int32_t*)r.Blob(&l[3]); a.py = (const int32_t*)r.Blob(&l[4]); a.ph = (const int32_t*)r.Blob(&l[5]);
+    a.stuck = (const uint8_t*)r.Blob(&l[6]);
+    a.box = (int32_t*)r.Blob(&l[7]); a.dens = (float*)r.Blob(&l[8]); a.foam = (float*)r.Blob(&l[9]); a.out = (uint8_t*)r.Blob(&l[10]);
+    if (!r.ok) return;
+    const int64_t size[11] = { c * 4, c * 4, c * 4, c * 4, c * 4, c * 4, c, 16, nn * 4, nn * 4, nn * 4 };
+    for (int k = 0; k < 11; k++)
+        if (l[k] != size[k]) { r.Fail("water_spray: input blob %d is %lld bytes, want %lld", k, (long long)l[k], (long long)size[k]); return; }
+    mrp_water_spray(&a);
+    const char* names[4] = { "box", "dens", "foam", "out" };
+    const void* got[4] = { a.box, a.dens, a.foam, a.out };
+    for (int k = 0; k < 4; k++)
+    {
+        int64_t pl;
+        const void* post = r.Blob(&pl);
+        if (!r.ok) return;
+        if (pl != size[7 + k]) { r.Fail("water_spray: output blob %s size differs", names[k]); return; }
+        r.Same(names[k], got[k], post, pl);
+    }
+}
+static RpReg reg_water_spray(DgWaterSpray, rp_water_spray);
+#endif

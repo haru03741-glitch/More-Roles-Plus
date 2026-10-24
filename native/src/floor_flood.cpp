@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 歩ける所の地図の上を種から距離の近い順に塗り広げる (src/Terrain/FloorFlood.cs の Fill と同じ結果)。
@@ -169,8 +170,55 @@ MRP_API void mrp_dg_floor_flood(FloorFloodArgs* a)
     d.InV(a->mapW); d.InV(a->x0); d.InV(a->y0); d.InV(a->w); d.InV(a->h); d.InV(a->lx); d.InV(a->ly); d.InV(a->search); d.InV(a->nearestOnly);
     d.InV(a->target); d.InV(a->maxCost);
     d.In2D(a->open, a->mapW, a->y0 + a->h, 1, a->x0, a->y0, a->x0 + a->w - 1, a->y0 + a->h - 1);
+    Cap c(DgFloorFlood);
+    // 置き場は w*h (C# は範囲より大きく取るが触るのは先頭の w*h だけ)。地図は範囲の外 1 升まで読む (呼ぶ側が範囲を地図の縁から 1 升内に収める)
+    int64_t cells = (int64_t)a->w * a->h > 0 ? (int64_t)a->w * a->h : 0;
+    int64_t openBytes = a->open ? ((int64_t)(a->y0 + a->h) * a->mapW + a->x0 + a->w + 1) : 0;
+    c.RawV(*a);
+    c.Blob(a->open, openBytes > 0 ? openBytes : 0);
+    c.Blob(a->dist, cells * 2);
+    c.Blob(a->pass, cells);
+    c.Blob(a->nxt, cells * 4);
+    c.Blob(a->prv, cells * 4);
+    c.Blob(a->touched, cells * 4);
+    c.Blob(a->out, cells * 2);
     mrp_floor_flood(a);
     d.OutV(a->bx); d.OutV(a->by); d.OutV(a->bw); d.OutV(a->bh); d.OutV(a->popped); d.OutV(a->far); d.OutV(a->found);
     d.Out(a->out, (int64_t)a->bw * a->bh * 2);
     d.Commit();
+    c.Blob(a->dist, cells * 2);
+    c.Blob(a->pass, cells);
+    c.Blob(a->nxt, cells * 4);
+    c.Blob(a->prv, cells * 4);
+    c.Blob(a->touched, cells * 4);
+    c.Blob(a->out, cells * 2);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_floor_flood と同じ)。置き場は記録した中身で始める
+void rp_floor_flood(Rp& r)
+{
+    FloorFloodArgs a, want;
+    r.RawV(a);
+    a.open = (const uint8_t*)r.Blob();
+    int64_t len[6], wlen[6];
+    void* buf[6]; const void* wbuf[6];
+    for (int i = 0; i < 6; i++) buf[i] = (void*)r.Blob(&len[i]);
+    for (int i = 0; i < 6; i++) wbuf[i] = r.Blob(&wlen[i]);
+    r.RawV(want);
+    if (!r.ok) return;
+    static const char* const names[6] = { "dist", "pass", "nxt", "prv", "touched", "out" };
+    static const int sz[6] = { 2, 1, 4, 4, 4, 2 };
+    int64_t cells = (int64_t)a.w * a.h > 0 ? (int64_t)a.w * a.h : 0;
+    for (int i = 0; i < 6; i++)
+        if (len[i] != cells * sz[i] || wlen[i] != len[i]) { r.Fail("%s blob %lld/%lld bytes, want %lld", names[i], (long long)len[i], (long long)wlen[i], (long long)(cells * sz[i])); return; }
+    a.dist = (uint16_t*)buf[0]; a.pass = (uint8_t*)buf[1]; a.nxt = (int32_t*)buf[2]; a.prv = (int32_t*)buf[3];
+    a.touched = (int32_t*)buf[4]; a.out = (uint16_t*)buf[5];
+    mrp_floor_flood(&a);
+    for (int i = 0; i < 6; i++) r.Same(names[i], buf[i], wbuf[i], len[i]);
+    r.Same("result", &a.bx, &want.bx, 28); // bx by bw bh popped far found
+}
+static RpReg reg_floor_flood(DgFloorFlood, rp_floor_flood);
+#endif

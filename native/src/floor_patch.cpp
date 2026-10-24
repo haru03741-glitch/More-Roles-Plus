@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 
 // 持ち上げた家具の跡を床マスクの床にする (src/Terrain/FloorMask.cs の Apply と同じ結果) と、
@@ -79,10 +80,22 @@ MRP_API void mrp_dg_floor_patch(FloorPatchArgs* a)
     d.In(a->shape, (int64_t)a->n * a->n);
     d.InBits(a->bits, a->w, a->x0, a->y0, a->x1, a->y1);
     d.In(a->dry, dryBytes);
+    Cap c(DgFloorPatch);
+    // 床マスクは書く範囲の最後の画素を含む所まで (範囲の外は読み書きしない)
+    int64_t bitBytes = a->x1 >= a->x0 && a->y1 >= a->y0 ? ((int64_t)a->y1 * a->w + a->x1) / 8 + 1 : 0;
+    int64_t shapeBytes = (int64_t)a->n * a->n > 0 ? (int64_t)a->n * a->n : 0;
+    if (dryBytes < 0) dryBytes = 0;
+    c.RawV(*a);
+    c.Blob(a->bits, bitBytes);
+    c.Blob(a->shape, shapeBytes);
+    c.Blob(a->dry, dryBytes);
     mrp_floor_patch(a);
     d.OutBits(a->bits, a->w, a->x0, a->y0, a->x1, a->y1);
     d.Out(a->dry, dryBytes);
     d.Commit();
+    c.Blob(a->bits, bitBytes);
+    c.Blob(a->dry, dryBytes);
+    c.End();
 }
 
 MRP_API void mrp_dg_floor_cut_moved(FloorCutArgs* a)
@@ -93,7 +106,52 @@ MRP_API void mrp_dg_floor_cut_moved(FloorCutArgs* a)
     d.InV(a->mcx); d.InV(a->mcy); d.InV(a->half); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->dx0); d.InV(a->dy0); d.InV(a->dw); d.InV(a->dh);
     d.In(a->dry, ((int64_t)a->dw * a->dh + 7) / 8);
     d.In(a->into, n);
+    Cap c(DgFloorCutMoved);
+    int64_t dryBytes = ((int64_t)a->dw * a->dh + 7) / 8;
+    if (n < 0) n = 0;
+    if (dryBytes < 0) dryBytes = 0;
+    c.RawV(*a);
+    c.Blob(a->into, n);
+    c.Blob(a->dry, dryBytes);
     mrp_floor_cut_moved(a);
     d.Out(a->into, n);
     d.Commit();
+    c.Blob(a->into, n);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_floor_patch / mrp_dg_floor_cut_moved と同じ)
+void rp_floor_patch(Rp& r)
+{
+    FloorPatchArgs a;
+    r.RawV(a);
+    int64_t bitsLen = 0, dryLen = 0, wantBitsLen = 0, wantDryLen = 0;
+    a.bits = (uint8_t*)r.Blob(&bitsLen);
+    a.shape = (const uint8_t*)r.Blob();
+    a.dry = (uint8_t*)r.Blob(&dryLen);
+    const uint8_t* wantBits = (const uint8_t*)r.Blob(&wantBitsLen);
+    const uint8_t* wantDry = (const uint8_t*)r.Blob(&wantDryLen);
+    if (!r.ok) return;
+    if (wantBitsLen != bitsLen || wantDryLen != dryLen) { r.Fail("patch blobs %lld/%lld %lld/%lld", (long long)bitsLen, (long long)wantBitsLen, (long long)dryLen, (long long)wantDryLen); return; }
+    mrp_floor_patch(&a);
+    r.Same("bits", a.bits, wantBits, bitsLen);
+    r.Same("dry", a.dry, wantDry, dryLen);
+}
+static RpReg reg_floor_patch(DgFloorPatch, rp_floor_patch);
+
+void rp_floor_cut_moved(Rp& r)
+{
+    FloorCutArgs a;
+    r.RawV(a);
+    int64_t intoLen = 0, wantLen = 0;
+    a.into = (uint8_t*)r.Blob(&intoLen);
+    a.dry = (const uint8_t*)r.Blob();
+    const uint8_t* want = (const uint8_t*)r.Blob(&wantLen);
+    if (!r.ok) return;
+    if (wantLen != intoLen) { r.Fail("into %lld/%lld bytes", (long long)intoLen, (long long)wantLen); return; }
+    mrp_floor_cut_moved(&a);
+    r.Same("into", a.into, want, intoLen);
+}
+static RpReg reg_floor_cut_moved(DgFloorCutMoved, rp_floor_cut_moved);
+#endif

@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
 #include <float.h>
 #include "cut_shape.h"
@@ -249,9 +250,52 @@ MRP_API void mrp_dg_damage_stamp(StampArgs* a)
     d.In(a->keep, (int64_t)a->keepN * 16);
     d.In2D(a->px, a->w, a->h, 4, a->x0, a->y0, a->x1, a->y1);
     d.In2D(a->gens, a->w, a->h, 1, a->x0, a->y0, a->x1, a->y1);
+    Cap c(DgDamageStamp);
+    int64_t shapeBytes = (int64_t)(a->shapeKind == 0 ? 3 : a->shapeKind == 1 ? 8 : a->shapeN * 4) * 4;
+    int64_t solidBytes = (int64_t)a->sw * a->sh;
+    c.RawV(*a);
+    c.Blob(a->shape, shapeBytes);
+    c.Blob(a->banded ? a->band : nullptr, (int64_t)a->bandN * 8);
+    c.Blob(a->hasBody ? a->bseg : nullptr, (int64_t)a->bsegN * 8);
+    c.Blob(a->hasBody ? a->bopen : nullptr, (int64_t)a->bopenN * 8);
+    c.Blob(a->keep, (int64_t)a->keepN * 16);
+    c.Blob(a->sOpen, solidBytes);
+    c.Blob(a->sOutside, solidBytes);
+    c.Rect(a->px, a->w, a->h, 4, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->gens, a->w, a->h, 1, a->x0, a->y0, a->x1, a->y1);
     mrp_damage_stamp(a);
     d.Out2D(a->px, a->w, a->h, 4, a->x0, a->y0, a->x1, a->y1);
     d.Out2D(a->gens, a->w, a->h, 1, a->x0, a->y0, a->x1, a->y1);
     d.OutV(a->tx0); d.OutV(a->ty0); d.OutV(a->tx1); d.OutV(a->ty1);
     d.Commit();
+    c.Rect(a->px, a->w, a->h, 4, a->x0, a->y0, a->x1, a->y1);
+    c.Rect(a->gens, a->w, a->h, 1, a->x0, a->y0, a->x1, a->y1);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_damage_stamp と同じ)
+void rp_damage_stamp(Rp& r)
+{
+    StampArgs a, want;
+    r.RawV(a);
+    a.shape = (const float*)r.Blob();
+    a.band = (const float*)r.Blob();
+    a.bseg = (const float*)r.Blob();
+    a.bopen = (const float*)r.Blob();
+    a.keep = (const float*)r.Blob();
+    a.sOpen = (const uint8_t*)r.Blob();
+    a.sOutside = (const uint8_t*)r.Blob();
+    if (!r.ok) return;
+    a.px = (uint8_t*)r.RectInto(a.w, a.h, 4, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    a.gens = (uint8_t*)r.RectInto(a.w, a.h, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    if (!r.ok) return;
+    mrp_damage_stamp(&a);
+    r.RectSame("px", a.px, a.w, a.h, 4, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    r.RectSame("gens", a.gens, a.w, a.h, 1, a.x0, a.y0, a.x1, a.y1, 0xA5);
+    r.RawV(want);
+    r.Same("touched", &a.tx0, &want.tx0, 16);
+}
+static RpReg reg(DgDamageStamp, rp_damage_stamp);
+#endif

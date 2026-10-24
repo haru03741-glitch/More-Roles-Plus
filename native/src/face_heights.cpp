@@ -1,5 +1,6 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 
 // 水のタイルの画素ごとの壁の面の高さ (src/Terrain/FloorMask.cs の FaceHeights と同じ結果) と、
 // 壁の絵が抜けた所を面から外す (src/Terrain/WaterHeight.cs の CutHoles と同じ結果)。小数の式の順番は C# と同じにする
@@ -98,10 +99,44 @@ MRP_API void mrp_dg_face_heights(FaceHeightsArgs* a)
     Dg d(DgFaceHeights);
     // 床と面のマスクは船全体で大きいので入力には入れない
     d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->x); d.InV(a->y); d.InV(a->size); d.InV(a->n);
+    Cap c(DgFaceHeights);
+    int64_t bitsB = ((int64_t)a->w * a->h + 7) >> 3, nn = (int64_t)a->n * a->n;
+    c.RawV(*a);
+    c.Blob(a->bits, bitsB);
+    c.Blob(a->face, bitsB);
+    c.Blob(a->into, nn);
     mrp_face_heights(a);
     d.Out(a->into, (int64_t)a->n * a->n); d.OutV(a->any);
     d.Commit();
+    c.Blob(a->into, nn);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_face_heights と同じ)
+void rp_face_heights(Rp& r)
+{
+    FaceHeightsArgs a, want;
+    r.RawV(a);
+    int64_t bitsB = ((int64_t)a.w * a.h + 7) >> 3, nn = (int64_t)a.n * a.n;
+    int64_t lb, lf, li;
+    a.bits = (const uint8_t*)r.Blob(&lb);
+    a.face = (const uint8_t*)r.Blob(&lf);
+    a.into = (uint8_t*)r.Blob(&li);
+    if (!r.ok) return;
+    if (lb != bitsB || lf != bitsB || li != nn) { r.Fail("face_heights: input blob sizes differ"); return; }
+    mrp_face_heights(&a);
+    int64_t wi;
+    const void* into = r.Blob(&wi);
+    r.RawV(want);
+    if (!r.ok) return;
+    if (wi != nn) { r.Fail("face_heights: output blob size differs"); return; }
+    r.Same("into", a.into, into, nn);
+    r.Same("any", &a.any, &want.any, 4);
+}
+static RpReg reg_face_heights(DgFaceHeights, rp_face_heights);
+#endif
 
 MRP_API void mrp_dg_face_cut_holes(FaceHolesArgs* a)
 {
@@ -109,7 +144,36 @@ MRP_API void mrp_dg_face_cut_holes(FaceHolesArgs* a)
     int64_t n = (int64_t)a->n * a->n;
     d.InV(a->n); d.InV(a->x); d.InV(a->y); d.InV(a->size); d.InV(a->w); d.InV(a->h); d.InV(a->ox); d.InV(a->oy); d.InV(a->ppu); d.InV(a->holeMin);
     d.In(a->face, n);
+    Cap c(DgFaceCutHoles);
+    int64_t pxB = (int64_t)a->w * a->h * 4;
+    c.RawV(*a);
+    c.Blob(a->px, pxB);
+    c.Blob(a->face, n);
     mrp_face_cut_holes(a);
     d.Out(a->face, n);
     d.Commit();
+    c.Blob(a->face, n);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_face_cut_holes と同じ)
+void rp_face_cut_holes(Rp& r)
+{
+    FaceHolesArgs a;
+    r.RawV(a);
+    int64_t n = (int64_t)a.n * a.n, pxB = (int64_t)a.w * a.h * 4;
+    int64_t lp, lf;
+    a.px = (const uint8_t*)r.Blob(&lp);
+    a.face = (uint8_t*)r.Blob(&lf);
+    if (!r.ok) return;
+    if (lp != pxB || lf != n) { r.Fail("face_cut_holes: input blob sizes differ"); return; }
+    mrp_face_cut_holes(&a);
+    int64_t wf;
+    const void* face = r.Blob(&wf);
+    if (!r.ok) return;
+    if (wf != n) { r.Fail("face_cut_holes: output blob size differs"); return; }
+    r.Same("face", a.face, face, n);
+}
+static RpReg reg_face_cut_holes(DgFaceCutHoles, rp_face_cut_holes);
+#endif

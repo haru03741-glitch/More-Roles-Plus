@@ -1,6 +1,8 @@
 #include "mrp_native.h"
 #include "digest.h"
+#include "capture.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 // 滝の絵 (src/Terrain/WaterFall.cs の DrawCs と同じ結果)。縁ごとの膜・着地の泡・手すりを越える膜を、世界の画素の格子に揃えた升の絵へ描き、
@@ -440,6 +442,23 @@ MRP_API void mrp_fall_draw(FallArgs* a)
     }
 }
 
+// 升の絵 5 枚 (濃さ・泡・深さ・水たまり・色) を升の順に 1 つの塊へ並べる (升ごとに塊を分けると記録の上限を超える)
+static uint8_t* PackTiles(const FallArgs* a, int64_t* bytes)
+{
+    int64_t tp = (int64_t)a->tilePx * a->tilePx * 4;
+    *bytes = tp * 5 * a->tileN;
+    uint8_t* p = (uint8_t*)malloc((size_t)(*bytes > 0 ? *bytes : 1));
+    if (!p) { *bytes = 0; return nullptr; }
+    for (int i = 0; i < a->tileN; i++)
+    {
+        const FallTile& t = a->tiles[i];
+        uint8_t* o = p + i * tp * 5;
+        memcpy(o, t.dens, (size_t)tp); memcpy(o + tp, t.foam, (size_t)tp); memcpy(o + tp * 2, t.dep, (size_t)tp);
+        memcpy(o + tp * 3, t.pool, (size_t)tp); memcpy(o + tp * 4, t.px, (size_t)tp);
+    }
+    return p;
+}
+
 // 指紋を取る版 (digest.h)
 MRP_API void mrp_dg_fall_draw(FallArgs* a)
 {
@@ -453,6 +472,20 @@ MRP_API void mrp_dg_fall_draw(FallArgs* a)
         const FallTile& t = a->tiles[i];
         d.InV(t.tx); d.InV(t.ty); d.InV(t.isVoid); d.InV(t.x0p); d.InV(t.y0p); d.InV(t.x1p); d.InV(t.y1p);
     }
+    Cap c(DgFallDraw);
+    int64_t tileB = (int64_t)a->tileN * (int64_t)sizeof(FallTile), mapN = (int64_t)a->w * a->h;
+    int64_t packB = 0;
+    uint8_t* pack = c.on ? PackTiles(a, &packB) : nullptr;
+    c.RawV(*a);
+    c.Blob(a->tiles, tileB);
+    c.Blob(a->edges, (int64_t)a->edgeN * (int64_t)sizeof(FallEdge));
+    c.Blob(a->low, (int64_t)a->lowN * 24);
+    c.Blob(a->open, mapN);
+    c.Blob(a->open ? a->hgt : nullptr, mapN * 4);
+    c.Blob(a->bits, ((int64_t)a->bw * a->bh + 7) >> 3);
+    c.Blob(a->mask, ((int64_t)a->mw * a->mh + 7) >> 3);
+    c.Blob(pack, packB);
+    free(pack);
     mrp_fall_draw(a);
     for (int i = 0; i < a->tileN; i++)
     {
@@ -462,4 +495,59 @@ MRP_API void mrp_dg_fall_draw(FallArgs* a)
     }
     d.OutV(a->puts); d.OutV(a->clipped);
     d.Commit();
+    pack = c.on ? PackTiles(a, &packB) : nullptr;
+    c.Blob(pack, packB);
+    free(pack);
+    c.Blob(a->tiles, tileB);
+    c.RawV(*a);
+    c.End();
 }
+
+#if defined(MRP_REPLAY)
+// 記録した呼び出しを食わせ直す (塊の順は上の mrp_dg_fall_draw と同じ)
+void rp_fall_draw(Rp& r)
+{
+    FallArgs a, want;
+    r.RawV(a);
+    int64_t lt, le, ll, lo, lh, lb, lm, lp;
+    a.tiles = (FallTile*)r.Blob(&lt);
+    a.edges = (const FallEdge*)r.Blob(&le);
+    a.low = (const float*)r.Blob(&ll);
+    a.open = (const uint8_t*)r.Blob(&lo);
+    a.hgt = (const int32_t*)r.Blob(&lh);
+    a.bits = (const uint8_t*)r.Blob(&lb);
+    a.mask = (const uint8_t*)r.Blob(&lm);
+    uint8_t* pack = (uint8_t*)r.Blob(&lp);
+    if (!r.ok) return;
+    int64_t tp = (int64_t)a.tilePx * a.tilePx * 4, mapN = (int64_t)a.w * a.h;
+    if (lt != (int64_t)a.tileN * (int64_t)sizeof(FallTile) || le != (int64_t)a.edgeN * (int64_t)sizeof(FallEdge) || ll != (int64_t)a.lowN * 24
+        || lo != (a.open ? mapN : 0) || lh != (a.open ? mapN * 4 : 0) || lb != (a.bits ? ((int64_t)a.bw * a.bh + 7) >> 3 : 0) || lm != (a.mask ? ((int64_t)a.mw * a.mh + 7) >> 3 : 0)
+        || lp != tp * 5 * a.tileN)
+    { r.Fail("fall_draw: input blob sizes differ"); return; }
+    // 升の絵 5 枚を塊から振り分ける (番地は記録のものを捨てて差し替える)
+    for (int i = 0; i < a.tileN; i++)
+    {
+        uint8_t* o = pack + i * tp * 5;
+        FallTile& t = a.tiles[i];
+        t.dens = (float*)o; t.foam = (float*)(o + tp); t.dep = (float*)(o + tp * 2); t.pool = (float*)(o + tp * 3); t.px = o + tp * 4;
+    }
+    mrp_fall_draw(&a);
+    int64_t wp, wt;
+    const uint8_t* wantPack = (const uint8_t*)r.Blob(&wp);
+    const FallTile* wantTile = (const FallTile*)r.Blob(&wt);
+    r.RawV(want);
+    if (!r.ok) return;
+    if (wp != lp || wt != lt) { r.Fail("fall_draw: output blob sizes differ"); return; }
+    r.Same("tiles", pack, wantPack, lp);
+    for (int i = 0; i < a.tileN && r.ok; i++)
+    {
+        const FallTile& g = a.tiles[i];
+        const FallTile& w = wantTile[i];
+        r.Same("changed", &g.changed, &w.changed, 4);
+        r.Same("rect", &g.x0p, &w.x0p, 16);
+        r.Same("work", &g.bx0, &w.bx0, 16);
+    }
+    r.Same("puts", &a.puts, &want.puts, 16);
+}
+static RpReg reg_fall_draw(DgFallDraw, rp_fall_draw);
+#endif
