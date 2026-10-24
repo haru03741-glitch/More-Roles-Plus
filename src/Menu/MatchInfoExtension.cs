@@ -9,6 +9,7 @@ using MoreRolesPlus.Roles;
 using MoreRolesPlus.Roles.Builtin;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using Object = UnityEngine.Object;
 
 namespace MoreRolesPlus.Menu;
@@ -59,11 +60,12 @@ internal static class MatchInfoExtension
 
     // ── 役職のタブ ──
 
-    private static void BuildRoles(MatchInfoGuide g, bool waiting)
+    private static void BuildRoles(MatchInfoGuide g, bool waiting, bool keepScroll = false)
     {
         var scroller = g.MatchInfoRoleScroller;
         var inner = scroller ? scroller.Inner : null;
         if (!inner) return;
+        float scrollY = inner.localPosition.y;
         for (int i = inner.childCount - 1; i >= 0; i--)
         {
             var c = inner.GetChild(i).gameObject;
@@ -80,32 +82,189 @@ internal static class MatchInfoExtension
 
         // 幅は欄いっぱい (マスクの幅 − 両端の余白)
         float width = g.MatchInfoRoleMaskArea ? g.MatchInfoRoleMaskArea.size.x - 0.2f : _cell0.x * 2f;
-        float need = 0f;
         var cards = new List<MatchInfoRolePanel>();
+        var heights = new List<float>();
         var mine = Mine();
+        var mask = ClickMaskOf(scroller);
         foreach (var a in list)
         {
             var b = a is VanillaRole vr ? vr.Behaviour() : null;
             g.CreateRoleEntry(b ? b : (a is RoleBase r && r.Team == Team.Impostor ? imp : crew));
             var card = inner.GetChild(inner.childCount - 1).GetComponent<MatchInfoRolePanel>();
             if (!card) continue;
-            Fill(card, a, b, mine.Contains(a.Id), width);
-            need = Math.Max(need, CardHeight(card));
+            bool rows = Fill(card, a, b, mine.Contains(a.Id), width);
+            float below = rows ? AddRows(card, a, mask) : 0f;
             cards.Add(card);
+            heights.Add(Math.Max(_cell0.y, CardHeight(card) + below));
         }
 
-        float h = Math.Max(_cell0.y, need);
-        grid.cellSize = new Vector2(width, h);
-        // 本編のカードは中心から上下 _cell0.y / 2 に部品を置いている。高くした分だけ上へ寄せて、伸びた分は説明の下へ
-        float dy = (h - _cell0.y) / 2f;
-        foreach (var card in cards) Lift(card, dy);
+        // 押して開いた節の分だけそのカードが伸びるので、本編の並べ方 (全部同じ大きさのマス) を止めて上から順に置く
+        grid.enabled = false;
+        var irt = inner.TryCast<RectTransform>();
+        var rect = irt ? irt.rect : new Rect(-width / 2f, -1f, width, 2f);
+        float x = grid.childAlignment switch
+        {
+            TextAnchor.UpperLeft or TextAnchor.MiddleLeft or TextAnchor.LowerLeft => rect.xMin + grid.padding.left + width / 2f,
+            TextAnchor.UpperRight or TextAnchor.MiddleRight or TextAnchor.LowerRight => rect.xMax - grid.padding.right - width / 2f,
+            _ => rect.center.x + (grid.padding.left - grid.padding.right) / 2f,
+        };
+        float y = rect.yMax - grid.padding.top;
+        for (int i = 0; i < cards.Count; i++)
+        {
+            var card = cards[i];
+            float h = heights[i];
+            var crt = card.transform.TryCast<RectTransform>();
+            if (crt) crt.sizeDelta = new Vector2(width, h);
+            // 本編のカードは中心から上下 _cell0.y / 2 に部品を置いている。高くした分だけ上へ寄せて、伸びた分は説明の下へ
+            Lift(card, (h - _cell0.y) / 2f);
+            var p = card.transform.localPosition;
+            card.transform.localPosition = new Vector3(x, y - h / 2f, p.z);
+            y -= h + grid.spacing.y;
+        }
 
         if (g.rolesEnabledMessage) g.rolesEnabledMessage.SetActive(list.Count == 0);
         float view = g.MatchInfoRoleMaskArea ? g.MatchInfoRoleMaskArea.size.y : 1.8f;
         // 欄の上端から 1 枚目のカードまでの余白があるので、最後のカードが下端で切れないよう同じだけ足す
-        float content = list.Count * (h + grid.spacing.y) - grid.spacing.y + grid.padding.top + grid.padding.bottom + BottomMargin;
+        float content = rect.yMax - y + grid.padding.bottom + BottomMargin;
         scroller.SetYBoundsMax(Math.Max(0f, content - view));
-        scroller.ScrollToTop();
+        if (!keepScroll) scroller.ScrollToTop();
+        else
+        {
+            var ip = inner.localPosition;
+            inner.localPosition = new Vector3(ip.x, Math.Clamp(scrollY, scroller.ContentYBounds.min, scroller.ContentYBounds.max), ip.z);
+        }
+    }
+
+    // ── カードの節の行 (ボタンの絵 + 名前 + 短い 1 行・押すと詳しい文が開く) ──
+
+    private const float RowIcon = 0.34f;   // 行のボタンの絵の幅
+    private const float RowIndent = 0.08f; // 絵と字の間
+    private const float RowGap = 0.1f;     // 行と行の間
+    private static readonly HashSet<string> Expanded = new(StringComparer.Ordinal);       // 開いている節 ("<Id>/<鍵>")
+    private static readonly Dictionary<string, UnityAction> Toggles = new(StringComparer.Ordinal); // 節ごとに 1 回だけ作る (開くたびに足すと漏れる)
+
+    private static Collider2D ClickMaskOf(Scroller s)
+    {
+        if (!s) return null;
+        if (s.ClickMask) return s.ClickMask;
+        var cs = s.Colliders;
+        return cs != null && cs.Length > 0 ? cs[0] : s.GetComponent<Collider2D>();
+    }
+
+    // 説明の下に節を 1 行ずつ、最後に設定の値を足す。足した高さ (説明の下端から) を返す
+    private static float AddRows(MatchInfoRolePanel card, Assignable a, Collider2D mask)
+    {
+        var d = card.roleDescription;
+        var drt = d.rectTransform;
+        float left = d.transform.localPosition.x - drt.sizeDelta.x * drt.pivot.x;
+        float right = left + drt.sizeDelta.x;
+        float top = BlurbTop(card) - BlurbHeight(card);
+        float y = top;
+
+        foreach (var s in a.HelpSections ?? Array.Empty<HelpSection>())
+        {
+            string name = $"<b><color={a.Color}>{new Text(s.Key)}</color></b>";
+            string shortText = Tr.Has(s.Key + ".Short") ? new Text(s.Key + ".Short").ToString() : null;
+            string longText = Tr.Has(s.Key + ".Help") ? new Text(s.Key + ".Help").ToString() : null;
+            y -= RowGap;
+            y -= Row(card, a.Id + "/" + s.Key, s.Icon, name, shortText, longText, left, right, y, mask);
+        }
+        if (Tr.Has(a.Id + ".Tips"))
+        {
+            string name = $"<color={RoleDoc.LabelColor}>{new Text("RoleDoc.Tips")}</color>";
+            y -= RowGap;
+            y -= Row(card, a.Id + "/Tips", null, name, null, new Text(a.Id + ".Tips").ToString(), left, right, y, mask);
+        }
+        if (Tr.Has(a.Id + ".Quote"))
+        {
+            y -= RowGap;
+            var q = Clone(d, card, "MrpQuote", $"<i><color={RoleDoc.LabelColor}>{new Text(a.Id + ".Quote")}</color></i>", left, right - left, y);
+            y -= q.rectTransform.sizeDelta.y;
+        }
+        string opts = OptionLine(a);
+        if (opts.Length > 0)
+        {
+            y -= RowGap * 2f;
+            var t = Clone(d, card, "MrpOptions", $"<color={RoleDoc.LabelColor}>{opts}</color>", left, right - left, y);
+            y -= t.rectTransform.sizeDelta.y;
+        }
+        return top - y;
+    }
+
+    // 1 行。左に絵 (無ければ空き)、右に「名前 +」と短い文。開いている時は短い文の代わりに詳しい文。行の高さを返す
+    private static float Row(MatchInfoRolePanel card, string state, string icon, string name, string shortText, string longText,
+        float left, float right, float top, Collider2D mask)
+    {
+        bool open = longText != null && Expanded.Contains(state);
+        var sb = new StringBuilder(name);
+        if (longText != null) sb.Append(" <color=").Append(RoleDoc.LabelColor).Append('>').Append(open ? "-" : "+").Append("</color>");
+        string body = open ? longText : shortText;
+        if (body != null) sb.Append('\n').Append(body);
+
+        float tx = left + RowIcon + RowIndent;
+        var t = Clone(card.roleDescription, card, "MrpRow", sb.ToString(), tx, right - tx, top);
+        float h = Math.Max(icon != null ? RowIcon : 0f, t.rectTransform.sizeDelta.y);
+
+        if (icon != null && card.roleIcon && ButtonIcons.Get(icon) is { } sp)
+        {
+            var ic = Object.Instantiate(card.roleIcon, card.transform);
+            ic.name = "MrpRowIcon";
+            ic.sprite = sp;
+            ic.drawMode = SpriteDrawMode.Simple;
+            ic.color = Color.white;
+            float sc = RowIcon / sp.bounds.size.x;
+            ic.transform.localScale = new Vector3(sc, sc, 1f);
+            var ip = card.roleIcon.transform.localPosition;
+            ic.transform.localPosition = new Vector3(left + RowIcon / 2f, top - RowIcon / 2f, ip.z);
+        }
+
+        if (longText != null)
+        {
+            // 行全体 (絵の列も含む) を押せるように。字の欄の原点は左上
+            var tr = t.transform;
+            float s = tr.localScale.x > 0f ? tr.localScale.x : 1f;
+            var col = t.gameObject.AddComponent<BoxCollider2D>();
+            float w = right - left;
+            col.size = new Vector2(w, h) / s;
+            col.offset = new Vector2((w / 2f - (RowIcon + RowIndent)) / s, -h / 2f / s);
+            var pb = t.gameObject.AddComponent<PassiveButton>();
+            pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+            pb.OnMouseOver = new UnityEvent();
+            pb.OnMouseOut = new UnityEvent();
+            if (mask) pb.ClickMask = mask;
+            if (!Toggles.TryGetValue(state, out var act)) Toggles[state] = act = (UnityAction)(() => Toggle(state));
+            pb.OnClick.AddListener(act);
+        }
+        return h;
+    }
+
+    // 説明の欄を複製して字を書く (マスクと書体の設定を引き継ぐ)。左上を (left, top) に置き、高さは文に合わせる
+    private static TextMeshPro Clone(TextMeshPro proto, MatchInfoRolePanel card, string name, string text, float left, float width, float top)
+    {
+        var t = Object.Instantiate(proto, card.transform);
+        t.name = name;
+        t.enableAutoSizing = false;
+        t.fontSize = BlurbSize;
+        t.margin = Vector4.zero;
+        t.alignment = TextAlignmentOptions.TopLeft;
+        t.enableWordWrapping = true;
+        t.text = text;
+        var rt = t.rectTransform;
+        rt.pivot = new Vector2(0f, 1f);
+        float h = t.GetPreferredValues(text, width, 0f).y;
+        rt.sizeDelta = new Vector2(width, h);
+        var p = proto.transform.localPosition;
+        t.transform.localPosition = new Vector3(left, top, p.z);
+        return t;
+    }
+
+    private static void Toggle(string state)
+    {
+        if (!Expanded.Remove(state)) Expanded.Add(state);
+        var g = MatchInfoGuide.Instance;
+        if (!g || !g.IsActive) return;
+        var client = AmongUsClient.Instance;
+        BuildRoles(g, client && !client.AmHost && !OptionSync.HoldsHostValues, keepScroll: true);
     }
 
     // 自分の役職とアドオンが先頭、あとは設定画面と同じ並び (クルー → インポスター → 第三陣営 → アドオン)
@@ -147,7 +306,8 @@ internal static class MatchInfoExtension
         return null;
     }
 
-    private static void Fill(MatchInfoRolePanel card, Assignable a, RoleBehaviour vanilla, bool mine, float width)
+    // 部品から組み立てる説明 (RoleDoc) の役職は説明を要約までにして true を返す (節と設定の値は AddRows が行で足す)
+    private static bool Fill(MatchInfoRolePanel card, Assignable a, RoleBehaviour vanilla, bool mine, float width)
     {
         card.name = "MrpRole_" + a.Id;
         var head = new StringBuilder(a.ColoredName);
@@ -158,11 +318,16 @@ internal static class MatchInfoExtension
             ? new Text("MatchInfo.Count").With("count", a.Count != null ? a.Count.Value : 1).With("chance", a.Chance.Value)
             : new Text("MatchInfo.NotInRoom");
 
-        var body = new StringBuilder(a.Help.ToString());
-        string opts = OptionLine(a);
-        // 長い説明は灰色の決め台詞で終わるので、空の行を挟んで設定の値と分ける
-        if (opts.Length > 0) body.Append(RoleDoc.Has(a) ? "\n\n" : "\n").Append("<color=#A8A8B4>").Append(opts).Append("</color>");
-        card.roleDescription.text = body.ToString();
+        bool rows = RoleDoc.Has(a);
+        if (rows) card.roleDescription.text = RoleDoc.OriginLine(a) + RoleDoc.Head(a);
+        else
+        {
+            var body = new StringBuilder(a.Help.ToString());
+            string opts = OptionLine(a);
+            // 長い説明は灰色の決め台詞で終わるので、空の行を挟んで設定の値と分ける
+            if (opts.Length > 0) body.Append(RoleDoc.Has(a) ? "\n\n" : "\n").Append("<color=#A8A8B4>").Append(opts).Append("</color>");
+            card.roleDescription.text = body.ToString();
+        }
 
         // 本編の役職は本編のアイコン。MRP の物は役職の色の丸 (本編のクルーには白いアイコンが無い)。
         // 絵だけ差し替えて、マスクの設定が入った本編の SpriteRenderer はそのまま使う
@@ -198,6 +363,7 @@ internal static class MatchInfoExtension
         d.fontSize = BlurbSize;
         d.margin = Vector4.zero;
         d.alignment = TextAlignmentOptions.TopLeft;
+        return rows;
     }
 
     // 説明の欄の上端 = 人数の欄の下端の少し下 (カードの中心が原点・カードの高さが本編のままの時の座標)
@@ -399,6 +565,14 @@ internal static class MatchInfoExtension
             else if (verb == "close") { if (g.IsActive) g.Close(); }
             else if (verb == "tab" && a.Length > 1 && int.TryParse(a[1], out int t)) g.SetActiveTab(t);
             else if (verb == "dump") return "OK matchinfo " + Dump(g);
+            else if (verb == "row" && a.Length > 1 && int.TryParse(a[1], out int n))
+            {
+                // 役職のタブの n 番目の押せる行 (上から 0 番) の OnClick を呼ぶ
+                var inner = g.MatchInfoRoleScroller ? g.MatchInfoRoleScroller.Inner : null;
+                var rows = inner ? inner.GetComponentsInChildren<PassiveButton>() : null;
+                if (rows == null || n < 0 || n >= rows.Length) return $"ERR matchinfo row {n}/{(rows == null ? 0 : rows.Length)}";
+                rows[n].OnClick.Invoke();
+            }
             else if (verb == "scroll" && a.Length > 1 && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float y))
             {
                 var s = g.activeTabIndex == 2 ? g.MatchInfoRoleScroller : (g.NormalModeSettings.Count > 0 && g.NormalModeSettings[0] ? ScrollerAbove(g.NormalModeSettings[0].transform) : null);
@@ -420,7 +594,9 @@ internal static class MatchInfoExtension
         var sb = new StringBuilder();
         var inner = g.MatchInfoRoleScroller ? g.MatchInfoRoleScroller.Inner : null;
         var grid = inner ? inner.GetComponent<UnityEngine.UI.GridLayoutGroup>() : null;
-        if (grid) sb.Append($"cell={grid.cellSize} spacing={grid.spacing} cell0={_cell0} ");
+        if (grid) sb.Append($"cell={grid.cellSize} spacing={grid.spacing} cell0={_cell0} pad={grid.padding.left},{grid.padding.top} align={grid.childAlignment} corner={grid.startCorner} gridOn={grid.enabled} ");
+        if (inner && inner.TryCast<RectTransform>() is { } irt) sb.Append($"rect={irt.rect} pivot={irt.pivot} ");
+        if (inner) for (int i = 0; i < Math.Min(3, inner.childCount); i++) sb.Append($"c{i}={inner.GetChild(i).localPosition} ");
         if (g.MatchInfoRoleScroller) sb.Append($"rolesY={g.MatchInfoRoleScroller.ContentYBounds.min:0.##}..{g.MatchInfoRoleScroller.ContentYBounds.max:0.##} ");
         if (inner && inner.childCount > 0)
         {

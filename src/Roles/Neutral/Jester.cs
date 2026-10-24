@@ -8,6 +8,7 @@ public sealed class Jester : RoleBase
     public override Text Name => new("Jester.Name");
     public override string Reading => "どうけ";
     public override Text Blurb => new("Jester.Blurb");
+    public override string Origin => "Jester Mod";
 
     public override System.Type[] NotWith => new[] { typeof(Survivor) };
 

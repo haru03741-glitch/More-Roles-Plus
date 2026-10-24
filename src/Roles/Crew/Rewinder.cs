@@ -12,7 +12,7 @@ public sealed class Rewinder : RoleBase
     public override Text Name => new("Rewinder.Name");
     public override string Reading => "ときもどし";
     public override Text Blurb => new("Rewinder.Blurb");
-    public override string[] HelpSections => new[] { "Rewinder.Rewind" };
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Rewinder.Rewind", "rewind") };
 
     // 戻せる秒数の上限。押した人はボタンを長押しして MinSeconds からここまで 1 秒ずつ溜める
     public static readonly FloatOpt Seconds = new("Rewinder.Seconds", 5f, 3f, 15f, 1f, "s");

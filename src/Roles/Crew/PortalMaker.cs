@@ -20,7 +20,8 @@ public sealed class PortalMaker : RoleBase
     public override Text Name => new("PortalMaker.Name");
     public override string Reading => "ぽーたるめーかー";
     public override Text Blurb => new("PortalMaker.Blurb");
-    public override string[] HelpSections => new[] { "PortalMaker.Portal" };
+    public override string Origin => "TOR";
+    public override HelpSection[] HelpSections => new HelpSection[] { new("PortalMaker.Portal", "portal") };
 
     public static readonly FloatOpt PlaceCooldown = new("PortalMaker.PlaceCooldown", 5f, 1f, 60f, 1f, "s");
     public static readonly BoolOpt CanRemove = new("PortalMaker.CanRemove", true);

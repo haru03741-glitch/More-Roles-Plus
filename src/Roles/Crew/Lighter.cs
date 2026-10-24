@@ -9,6 +9,7 @@ public sealed class Lighter : RoleBase
     public override string Color => "#EEE5BE";
     public override Text Name => new("Lighter.Name");
     public override Text Blurb => new("Lighter.Blurb");
+    public override string Origin => "TOR";
 
     public static readonly FloatOpt VisionMultiplier = new("Lighter.VisionMultiplier", 1.5f, 1f, 3f, 0.25f, "x");
 

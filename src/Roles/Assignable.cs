@@ -23,12 +23,17 @@ public abstract class Assignable
 
     // 試合の情報 (右上の「?」) と /r に出す長い説明。文のファイルに「<Id>.Summary」があれば部品から組み立て (RoleDoc)、
     // 無ければ「<Id>.Help」、それも無ければ設定画面の説明
-    public virtual Text Help => RoleDoc.Has(this) ? Text.Raw(RoleDoc.Compose(this))
-        : Tr.Has(Id + ".Help") ? new Text(Id + ".Help") : Description;
+    public virtual Text Help => Text.Raw(RoleDoc.OriginLine(this) + (RoleDoc.Has(this) ? RoleDoc.Compose(this)
+        : Tr.Has(Id + ".Help") ? new Text(Id + ".Help").ToString() : Description.ToString()));
 
-    // 長い説明の節の見出しの鍵 (本文は鍵 + ".Help")。ボタンの名前の鍵を押す順に並べる。ボタンでない仕組みも節にしてよい
-    //   public override string[] HelpSections => new[] { "Demolisher.Hammer" };
-    public virtual string[] HelpSections => null;
+    // この役職を最初に作った Among Us の mod (RoleDoc.Origins の鍵・複数ならカンマ区切り)。説明の先頭に「From:」で出す。
+    // MRP で作った役職は null のまま
+    public virtual string Origin => null;
+
+    // 長い説明の節。ボタンの名前の鍵を押す順に並べ、試合の情報で並べるボタンの絵 (ButtonIcons の名前) を添える。
+    // ボタンでない仕組みも節にしてよい (絵は無くてよい)
+    //   public override HelpSection[] HelpSections => new HelpSection[] { new("Demolisher.Hammer", "hammer") };
+    public virtual HelpSection[] HelpSections => null;
 
     // 設定画面の「人数」の上限
     public virtual int MaxCount => Options.Crowded.MaxPlayers;
@@ -86,4 +91,17 @@ public abstract class Assignable
     internal IntOpt Count;
 
     internal string ColoredName => $"<color={Color}>{Name}</color>";
+}
+
+// 長い説明の 1 節: 見出しの鍵 (本文 = 鍵 + ".Help"・試合の情報の 1 行 = 鍵 + ".Short") とボタンの絵の名前 (無ければ null)
+public readonly struct HelpSection
+{
+    public readonly string Key;
+    public readonly string Icon;
+
+    public HelpSection(string key, string icon = null)
+    {
+        Key = key;
+        Icon = icon;
+    }
 }

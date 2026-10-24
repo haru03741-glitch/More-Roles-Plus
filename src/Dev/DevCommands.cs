@@ -439,7 +439,7 @@ internal static class DevCommands
             if (args.Trim() == "self") Roles.Spectate.WatchSelfForTest();
             reply(Roles.Spectate.Describe());
         });
-        TestBridge.Register("matchinfo", "[open | close | click | tab <n> | scroll <y> | dump] 試合の情報 (右上の「?」) を開く・閉じる・ボタンを押す・タブを選ぶ (0 = 人・1 = 設定・2 = 役職)・欄を送る・寸法 / 状態", (args, reply) => reply(Menu.MatchInfoExtension.Simulate(args.Trim())));
+        TestBridge.Register("matchinfo", "[open | close | click | tab <n> | scroll <y> | row <n> | dump] 試合の情報 (右上の「?」) を開く・閉じる・ボタンを押す・タブを選ぶ (0 = 人・1 = 設定・2 = 役職)・欄を送る・役職のタブの n 番目の行を押す・寸法 / 状態", (args, reply) => reply(Menu.MatchInfoExtension.Simulate(args.Trim())));
 
         TestBridge.Register("teamchat", "[0|1] 陣営チャットのボタンを押したのと同じ (0/1 で会議中の切り替えを直に決める) / 状態", (args, reply) =>
         {
