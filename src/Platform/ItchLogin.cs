@@ -120,6 +120,7 @@ internal static class ItchLogin
                 opts._Credentials_k__BackingField = nullable;
                 InvokeConnectLogin(__instance.PlatformInterface.GetConnectInterface(), opts, successCallbackIn);
                 Plugin.Logger.LogInfo("itch: Connect.Login issued");
+                Menu.AccountSleep.WakeForAccountLogin();
                 return false;
             }
             catch (Exception e) { Plugin.Logger.LogError("itch: Connect.Login threw, falling back: " + e); return true; }

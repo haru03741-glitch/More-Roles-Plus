@@ -126,7 +126,16 @@ android {
     }
 
     buildTypes {
+        // itch.io sign-in. Release builds keep it hidden until an OAuth application is registered for
+        // this launcher (redirect morerolesplus://itch-auth). Debug builds borrow End K not's application
+        // for testing, so its redirect scheme is also handled (src/debug/AndroidManifest.xml).
+        debug {
+            buildConfigField("String", "ITCH_CLIENT_ID", "\"01c313b3a6f82c2f0485804bfcd56c94\"")
+            buildConfigField("String", "ITCH_REDIRECT_SCHEME", "\"endknot\"")
+        }
         release {
+            buildConfigField("String", "ITCH_CLIENT_ID", "\"\"")
+            buildConfigField("String", "ITCH_REDIRECT_SCHEME", "\"morerolesplus\"")
             if (releaseKeystore != null) {
                 signingConfig = signingConfigs.getByName("release")
             }

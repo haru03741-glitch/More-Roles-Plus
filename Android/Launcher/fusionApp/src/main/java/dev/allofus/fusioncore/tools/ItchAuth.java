@@ -1,5 +1,7 @@
 package dev.allofus.fusioncore.tools;
 
+import dev.allofus.fusioncore.BuildConfig;
+
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -40,12 +42,14 @@ import javax.crypto.spec.GCMParameterSpec;
 public final class ItchAuth {
     private static final String TAG = "ItchAuth";
     /**
-     * Public identifier of the launcher's OAuth application on itch.io (implicit grant, no secret).
-     * Empty while no application is registered for this launcher; sign-in is then hidden.
+     * Public identifier of the launcher's OAuth application on itch.io (implicit grant, no secret),
+     * set per build type in build.gradle.kts. Empty while no application is registered for this
+     * launcher; sign-in is then hidden.
      */
-    private static final String CLIENT_ID = "";
+    private static final String CLIENT_ID = BuildConfig.ITCH_CLIENT_ID;
     private static final String SCOPE = "profile:me";
-    public static final String REDIRECT_SCHEME = "morerolesplus";
+    /** Must match the redirect URI registered for {@link #CLIENT_ID}. */
+    public static final String REDIRECT_SCHEME = BuildConfig.ITCH_REDIRECT_SCHEME;
     public static final String REDIRECT_HOST = "itch-auth";
     private static final String REDIRECT_URI = REDIRECT_SCHEME + "://" + REDIRECT_HOST;
     private static final String AUTHORIZE_URL = "https://itch.io/user/oauth";

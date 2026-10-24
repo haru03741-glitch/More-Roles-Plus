@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Debug builds sign in through End K not's itch.io application, whose redirect uses this scheme. -->
+    <activity android:name="dev.allofus.fusioncore.ItchAuthCallbackActivity">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="endknot" android:host="itch-auth" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

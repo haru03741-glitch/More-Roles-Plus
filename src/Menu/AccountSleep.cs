@@ -12,6 +12,7 @@ internal static class AccountSleep
 {
     private static bool _asleep;
     private static bool _sleptBeforeLogin; // 本編の幕を外した = ログインの途中でメニューを離れられる
+    private static bool _accountLogin; // 正式なアカウントでログイン中 (止めない)
     private static MainMenuManager _menu;
 
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Start))]
@@ -19,7 +20,7 @@ internal static class AccountSleep
     {
         public static void Postfix(MainMenuManager __instance)
         {
-            if (_asleep || !Plugin.SleepAccountManager.Value) return;
+            if (_asleep || _accountLogin || !Plugin.SleepAccountManager.Value) return;
             var eos = EOSManager.Instance;
             if (!eos || eos.loginFlowFinished) return; // ログイン済みでメニューに戻った時は本編のまま
             if (!AccountManager.InstanceExists) return;
@@ -39,6 +40,15 @@ internal static class AccountSleep
         if (!_asleep) return;
         if (!_menu) { Wake("menu gone"); return; }
         if (_menu.finishStartup) Wake("startup finished");
+    }
+
+    // 正式なアカウントでのログイン (Android の itch) は、年齢確認やゲストの引き継ぎの画面を出すことがある。
+    // それらはアカウント表示が止まっている間は出てこず (下の DialogPatches の入口も Android では呼ばれない)、
+    // 見えない画面が入力を待ってログインが終わらないので、ログインを始めた時点で起こす
+    internal static void WakeForAccountLogin()
+    {
+        _accountLogin = true;
+        Wake("account login");
     }
 
     private static void Wake(string why)
