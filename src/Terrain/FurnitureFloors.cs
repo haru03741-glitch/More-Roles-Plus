@@ -9,6 +9,7 @@ internal static partial class FurnitureFloors
 {
     internal static readonly Dictionary<string, FurnitureLift.Floor> Table = new()
     {
+        ["room_cafeteria/Table"] = new FurnitureLift.Floor(203f, 461f, 124.40f, 124.35f, 0.3f),
         ["room_cafeteria/Table (1)"] = new FurnitureLift.Floor(399f, 589f, 124.38f, 0.00f, 0.3f),
         ["room_cafeteria/Table (3)"] = new FurnitureLift.Floor(200f, 401f, 124.43f, 124.30f, 0.3f),
         ["room_cafeteria/Table (4)"] = new FurnitureLift.Floor(616f, 401f, 123.88f, 124.50f, 0.3f),
