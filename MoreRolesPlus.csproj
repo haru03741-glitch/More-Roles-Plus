@@ -82,7 +82,7 @@
     <ItemGroup>
         <Compile Remove="tools\**;unity\**;patcher\**" />
     </ItemGroup>
-    <!-- 能力ボタンの絵 (tools/make-button-icons.py で描く) -->
+    <!-- 能力ボタンの絵 -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Cinema\*.*" LogicalName="MoreRolesPlus.Resources.Cinema.%(Filename)%(Extension)" />

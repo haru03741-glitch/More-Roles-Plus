@@ -26,6 +26,17 @@ src/Dev/DevUsers.Local.cs
 Resources/FloorMasks/
 tools/__pycache__/
 
+# 手元だけの開発用の道具 (リポジトリにはビルドに要る物とライセンス上の改変の記録だけを入れる)
+tools/*
+!tools/build-native.ps1
+!tools/StructInline/
+!tools/make-floor-mask.py
+!tools/InteropWbPatch/
+!tools/AndroidDotnetPatch/
+!tools/sounds/
+src/Bridge/TestBridge.Host.cs
+.mcp.json
+
 # --- AI アシスタント / コーディングエージェントの個人設定 ---
 # 各自の手元で作られる設定やメモ。共有したい設定はここに足さず相談してから入れる。
 CLAUDE.local.md

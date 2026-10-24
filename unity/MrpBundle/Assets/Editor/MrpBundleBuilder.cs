@@ -3,7 +3,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-// AssetBundle mrp_fx のビルド入口 (tools/build-bundle.ps1 から Unity バッチモードで呼ばれる)。
+// AssetBundle mrp_fx のビルド入口 (Unity バッチモードで呼ばれる)。
 // 毎回 Assets/Generated に素材を作り直してから焼く:
 //   noise.png    … 継ぎ目なく敷き詰められる雲状のノイズ (128px・繰り返し)
 //   cells.png    … 細胞模様 (ボロノイ・繰り返し)。割れ口を角張らせる

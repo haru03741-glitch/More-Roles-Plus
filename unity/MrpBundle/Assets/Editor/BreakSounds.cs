@@ -2,14 +2,13 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-// 壁を壊した音 (noise_*.wav) を AssetBundle に入れる。wav は tools/make-break-sounds.py が
-// tools/build-bundle.ps1 の中で Assets/Generated に書き出しておく
+// 壁を壊した音 (noise_*.wav) を AssetBundle に入れる。wav はバンドルを焼く前に Assets/Generated に書き出しておく
 public static class BreakSounds
 {
     public static void ImportAll(string folder, string bundle)
     {
         string[] files = Directory.GetFiles(folder, "noise_*.wav");
-        if (files.Length == 0) Debug.LogError("MrpBundleBuilder: no noise_*.wav (run tools/make-break-sounds.py)");
+        if (files.Length == 0) Debug.LogError("MrpBundleBuilder: no noise_*.wav in Assets/Generated");
         foreach (string file in files)
         {
             string path = folder + "/" + Path.GetFileName(file);

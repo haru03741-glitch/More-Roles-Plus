@@ -516,7 +516,7 @@ internal static class FurnitureLift
         }
     }
 
-    // 床を測る道具 (tools/measure-room-floors.py) へ: 持ち上げられそうな家具ごとに、部屋の絵の名前・絵の画素と世界座標の対応・
+    // 床を測る道具へ: 持ち上げられそうな家具ごとに、部屋の絵の名前・絵の画素と世界座標の対応・
     // 当たり判定の輪郭 (世界座標の線分) を Screens/lifts_<船>.json へ
     internal static void Register()
     {

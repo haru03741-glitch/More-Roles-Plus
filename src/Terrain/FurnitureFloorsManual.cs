@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace MoreRolesPlus.Terrain;
 
-// 部屋の絵に描き込まれた家具のうち、tools/measure-room-floors.py が測れなかった物の床 (手で測った値)。
+// 部屋の絵に描き込まれた家具のうち、絵から自動で測れなかった物の床 (手で測った値)。
 // 道具の表 (FurnitureFloors.Table) より先に引く。道具が書き直すのは Table だけ
 internal static partial class FurnitureFloors
 {

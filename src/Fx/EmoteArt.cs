@@ -4,7 +4,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Fx;
 
 // エモートの見た目: 本編の手と同じ様式 (3 本指 + 親指・赤=本体色/青=影色のひな形) で描いたエモート用の手の絵
-// (Resources/Icons/emote_*.png・tools/make-emote-hands.py) を本人の色で塗り、人の子に置いて一緒に動かす。
+// (Resources/Icons/emote_*.png) を本人の色で塗り、人の子に置いて一緒に動かす。
 // 手を振る (開いた手)・跳ねる (握りこぶし)・拍手 (横から見た手)・手招き (手のひらを上へ・指を曲げる 3 段) の 4 種。跳ねるは体の絵 (BodyForms) と帽子・服 (cosmetics) の根を同じだけ上げ下げし、終わりに元へ戻す。
 // 描くのは手元の画面だけ。毎フレーム触るのは出している人だけで、出ていない時は件数の比較だけで帰る。算術は FxMath
 internal static class EmoteArt

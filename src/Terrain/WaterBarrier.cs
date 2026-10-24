@@ -5,7 +5,7 @@ using System.Reflection;
 
 namespace MoreRolesPlus.Terrain;
 
-// 水を止める絵の画素の地図 (柵・家具など手前の物の絵の不透明な所)。地図は tools/make-water-barrier.py がゲームの絵から作る。
+// 水を止める絵の画素の地図 (柵・家具など手前の物の絵の不透明な所)。地図はゲームの絵から作る。
 // 斜め上から見た絵では、縁に立つ物の高さ z の画素は縁から画面で z だけ上にある。縁の真上の画素の列を見れば、
 // どこに柱があってどこが抜けているか・どこまで高いかがそのまま分かる (網の目や柱の間は透明なので水が抜ける)
 internal static class WaterBarrier

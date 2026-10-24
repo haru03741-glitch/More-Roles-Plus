@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 能力ボタンの絵 (Resources/Icons/*.png を DLL に埋め込んだ物・tools/make-button-icons.py で描く)。
+// 能力ボタンの絵 (Resources/Icons/*.png を DLL に埋め込んだ物)。
 // 1 回読んだら起動中は持ち続ける (ボタンを作り直すたびに読まない)
 internal static class ButtonIcons
 {

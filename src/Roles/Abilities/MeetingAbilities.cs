@@ -16,7 +16,7 @@ internal static class MeetingAbilities
 {
     private const float IconPixelsPerUnit = 297f; // 220 px の絵を本編の ✓ の丸 (0.74 単位) と同じ大きさに
     private const float RightX = 1.3f, Spacing = 0.65f; // 本編の並びの右端 (✗) と間隔
-    private const string TileIcon = "meeting_tile";    // tools/make-meeting-tile.py
+    private const string TileIcon = "meeting_tile";    // 本編の ✓ のタイルと同じ作りの下地
     private const float TilePixelsPerUnit = 265f;      // タイルの外形を本編の ✓ のタイルと同じ大きさに (実測)
     private const float IconScale = 0.8f;
 

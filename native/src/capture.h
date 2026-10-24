@@ -29,7 +29,7 @@ private:
 };
 
 #if defined(MRP_REPLAY)
-// 再生側 (tools/native-replay)。1 回の呼び出しの塊を前から順に取り出す
+// 再生側。1 回の呼び出しの塊を前から順に取り出す
 struct Rp
 {
     int32_t n, k;

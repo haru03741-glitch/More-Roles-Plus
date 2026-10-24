@@ -54,11 +54,9 @@ jobs:
       - name: Restore
         run: dotnet restore MoreRolesPlus.csproj
 
-      # tools/check-gates.ps1 = Release ビルド (ゲームへは配置しない) + il2cpp 配列の長さの検査。
-      # Android のビルドと照合は端末のローダーが生成した参照先が要るので CI では回らない (-SkipAndroid)。
-      - name: Gates (Release build + array length check)
-        shell: pwsh
-        run: pwsh tools/check-gates.ps1 -SkipAndroid
+      # Release ビルド (ゲームへは配置しない)。Android のビルドは端末のローダーが生成した参照先が要るので CI では回らない
+      - name: Release build
+        run: dotnet build MoreRolesPlus.csproj -c Release --no-restore -p:MrpNoDeploy=true -v:q -nologo
 
       - name: Upload MoreRolesPlus.dll
         uses: actions/upload-artifact@v4
