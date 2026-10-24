@@ -73,6 +73,19 @@ internal static class EveryoneVentsPatch
     }
 }
 
+// タスクで勝てなくするルールの間は、本編のタスクの勝ちの判定に「まだ」と答える。
+// 本編は通報の時にもこれを見て、済んでいれば会議を開かずにタスクの勝ちで終わらせようとする (止めると会議が開けないまま残る)
+[HarmonyPatch(typeof(GameManager), nameof(GameManager.CheckTaskCompletion))]
+internal static class TaskWinRulePatch
+{
+    public static bool Prefix(ref bool __result)
+    {
+        if (!Options.GameModeSwitch.IsNormal || !GameRules.TaskWinBlocked()) return true;
+        __result = false;
+        return false;
+    }
+}
+
 // 会議を無くす: 緊急ボタンの画面はすぐ閉じる・通報は送らない (自分) / 受けない (ホスト)
 [HarmonyPatch(typeof(EmergencyMinigame), nameof(EmergencyMinigame.Begin))]
 internal static class NoMeetingsButtonPatch
