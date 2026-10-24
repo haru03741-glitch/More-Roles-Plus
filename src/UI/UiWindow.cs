@@ -11,7 +11,8 @@ namespace MoreRolesPlus.UI;
 internal sealed class UiWindow
 {
     private const int UiLayer = 5;
-    private const float Z = -600f;
+    // 本編の Esc の画面・試合の情報 (-900) より手前 (押した所がそちらへ届かないように)
+    private const float Z = -950f;
 
     public static UiWindow Current { get; private set; }
 
@@ -102,6 +103,12 @@ internal sealed class UiWindow
 
     private static UnityAction _closeAction;
     private static UnityAction CloseAction => _closeAction ??= (UnityAction)(() => Current?.Close());
+
+    // 場面が変わって窓が消えた時に、借りた番号と参照を手放す (毎フレーム・窓が無い時は何もしない)
+    public static void Tick()
+    {
+        if (Current != null && !Current.Root) Current.Close();
+    }
 
     public void Close()
     {

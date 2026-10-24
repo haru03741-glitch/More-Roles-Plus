@@ -443,6 +443,15 @@ RolePage.BulkTeam: {team}をまとめて変える
 RolePage.Enabled: 出る役職: {n} / {count}
 RolePage.ChanceTo: 出現率を {pct} に
 RolePage.CountTo: 人数を {n} 人に
+RoleDictionary.Title: 役職辞典
+RoleDictionary.Open: 役職辞典を開く
+RoleDictionary.Hint: 役職のカードに当てると、ここに設定の要約が出ます。押すと説明と細かい設定が開きます。
+RoleDictionary.HintTouch: 役職のカードを押すと、ここに設定の要約が出ます。もう一度押すと説明と細かい設定が開きます。
+RoleDictionary.BackToHint: 要約を閉じる
+RoleDictionary.Settings: 今の設定
+RoleDictionary.SettingsEditable: 設定 (ロビーではホストがここで変えられます)
+RoleDictionary.ShowInDictionary: 説明を見る
+RoleDictionary.SearchHint: 役職を探す
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP 全般

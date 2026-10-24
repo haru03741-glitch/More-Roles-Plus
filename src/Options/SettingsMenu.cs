@@ -488,6 +488,12 @@ internal static class SettingsMenu
         _searching = false;
         MenuToPage.Clear();
         Pages.Clear();
+        CommitHostEdits();
+    }
+
+    // ホストが変えた値を保存して全員へ送る (設定画面を閉じた時・役職辞典の窓で値を変えて閉じた時)
+    internal static void CommitHostEdits()
+    {
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
         Registry.Save();
         PresetLabel.Recheck();

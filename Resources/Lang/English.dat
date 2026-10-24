@@ -443,6 +443,15 @@ RolePage.BulkTeam: Change all {team}
 RolePage.Enabled: Enabled: {n} / {count}
 RolePage.ChanceTo: Chance to {pct}
 RolePage.CountTo: Count to {n}
+RoleDictionary.Title: Role Dictionary
+RoleDictionary.Open: Open role dictionary
+RoleDictionary.Hint: Hover a role card to see its settings here. Press it for the description and all settings.
+RoleDictionary.HintTouch: Tap a role card to see its settings here. Tap it again for the description and all settings.
+RoleDictionary.BackToHint: Close summary
+RoleDictionary.Settings: Current settings
+RoleDictionary.SettingsEditable: Settings (the host can change them here in the lobby)
+RoleDictionary.ShowInDictionary: Description
+RoleDictionary.SearchHint: Search roles
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP

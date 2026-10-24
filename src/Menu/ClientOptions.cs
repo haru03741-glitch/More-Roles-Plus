@@ -67,6 +67,7 @@ internal static class ClientOptions
         var scaleLabel = new Text("ClientOptions.ButtonScale");
         ButtonScale = cfg.Bind("Client", "ButtonScale", 100, scaleLabel.Builtin(false));
         Items.Add(new Item { Key = "ButtonScale", Label = scaleLabel, Click = HudTweaks.NextScale, Value = HudTweaks.ScaleLabel });
+        Items.Add(new Item { Key = "RoleDictionary", Label = new Text("RoleDictionary.Open"), Click = RoleDictionary.Open });
     }
 
     private static ConfigEntry<bool> Add(string key, bool def, Text label, Action changed)
