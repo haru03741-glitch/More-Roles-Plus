@@ -411,8 +411,8 @@ Registry.NeutralsCanHaveIt: Neutrals can have it
 
 # ── RoleMenu ──
 RoleMenu.TabName: Roles
-RoleMenu.Description: Hover a role card to see its settings on the right; press it to open them.\nBorder: gray = off, white = by chance, yellow = always. Right-click toggles 0% / 100%.\nEnabled: {enabledCount} / {count}
-RoleMenu.DescriptionTouch: Tap a role card to see its settings on the right; tap it again to open them.\nBorder: gray = off, white = by chance, yellow = always.\nEnabled: {enabledCount} / {count}
+RoleMenu.Description: Hover a role card to see its settings on the right; press it to open them. Right-click toggles the chance between 0% and 100%.\nEnabled: {enabledCount} / {count}
+RoleMenu.DescriptionTouch: Tap a role card to see its settings on the right; tap it again to open them.\nEnabled: {enabledCount} / {count}
 RoleMenu.Impostor: Impostor
 RoleMenu.Neutral: Neutral
 RoleMenu.Crewmate: Crewmate
@@ -443,6 +443,7 @@ RolePage.BulkTeam: Change all {team}
 RolePage.Enabled: Enabled: {n} / {count}
 RolePage.ChanceTo: Chance to {pct}
 RolePage.CountTo: Count to {n}
+RolePage.Legend: Card border: gray = off, white = by chance, yellow = always
 RoleDictionary.Title: Role Dictionary
 RoleDictionary.Open: Open role dictionary
 RoleDictionary.Hint: Hover a role card to see its settings here. Press it for the description and all settings.

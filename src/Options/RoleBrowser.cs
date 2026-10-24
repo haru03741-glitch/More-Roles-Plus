@@ -260,7 +260,9 @@ internal sealed class RoleBrowser
     {
         if (_hover != null) return Summary(_hover);
         if (_settings && Editable) return Bulk();
-        return new Label(new Text(Touch ? "RoleDictionary.HintTouch" : "RoleDictionary.Hint"), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start };
+        return new Stack(false,
+            new Label(new Text(Touch ? "RoleDictionary.HintTouch" : "RoleDictionary.Hint"), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start },
+            new Label(new Text("RolePage.Legend"), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start }) { Gap = 0.12f, Width = SideW };
     }
 
     private Widget Summary(Registry.Section sec)
@@ -316,6 +318,7 @@ internal sealed class RoleBrowser
         var col = new Stack(false) { Gap = 0.08f, Width = SideW };
         col.Add(new Label(_team < 0 ? new Text("RolePage.BulkAll") : new Text("RolePage.BulkTeam").With("team", team), 1.6f) { Bold = true, Width = SideW, Align = Align.Start });
         col.Add(new Label(new Text("RolePage.Enabled").With("n", EnabledIn()).With("count", CountIn()), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start });
+        col.Add(new Label(new Text("RolePage.Legend"), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start });
         col.Add(new Spacer(0.1f, 0.05f));
         float half = (SideW - 0.08f) / 2f;
         col.Add(new Stack(true,
