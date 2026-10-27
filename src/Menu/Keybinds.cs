@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Menu;
 // Rewired のキーボードのキーの番号は Unity の KeyCode と同じ
 internal static class Keybinds
 {
-    internal enum Slot { Ability1, Ability2, Ability3, Emote }
+    internal enum Slot { Ability1, Ability2, Ability3, Emote, Dictionary }
 
     private static readonly (string Id, string Text, KeyboardKeyCode Key)[] Defs =
     {
@@ -21,13 +21,14 @@ internal static class Keybinds
         ("MRP.Ability2", "Keybinds.Ability2", KeyboardKeyCode.X),
         ("MRP.Ability3", "Keybinds.Ability3", KeyboardKeyCode.C),
         ("MRP.Emote", "Keybinds.Emote", KeyboardKeyCode.B),
+        ("MRP.Dictionary", "Keybinds.Dictionary", KeyboardKeyCode.H),
     };
 
     private const int RefreshFrames = 120;
 
-    private static readonly int[] ActionIds = { -1, -1, -1, -1 };
-    private static readonly KeyCode[] Keys = { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.B };
-    private static readonly string[] Names = new string[4]; // 画面に出している名前 (言語が替わった時だけ書き直す)
+    private static readonly int[] ActionIds = { -1, -1, -1, -1, -1 };
+    private static readonly KeyCode[] Keys = { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.B, KeyCode.H };
+    private static readonly string[] Names = new string[5]; // 画面に出している名前 (言語が替わった時だけ書き直す)
     private static InputManager_Base _manager;
     private static int _frame;
 
@@ -93,6 +94,11 @@ internal static class Keybinds
             try { Refresh(); }
             catch (Exception e) { Plugin.Logger.LogError($"keybinds: {e}"); _frame = -RefreshFrames * 14; }
         }
+        if (Down(Slot.Dictionary))
+        {
+            ToggleDictionary();
+            return;
+        }
         int n = Math.Min(3, Roles.Abilities.Local.Count); // 能力の数だけ読む
         if (n == 0 || !Roles.ModButton.HudShown) return;
         for (int i = 0; i < n; i++)
@@ -102,6 +108,18 @@ internal static class Keybinds
             if (!Emotes.Covered()) Roles.Abilities.PressSlot(i, Keys[i]);
             return;
         }
+    }
+
+    // 役職辞典を開く / 閉じる。字を打っている間 (チャット・検索欄)・演出や作業の画面の間は何もしない
+    private static void ToggleDictionary()
+    {
+        if (IntroCutscene.Instance || ExileController.Instance || Minigame.Instance) return;
+        var chat = Vanilla.Chat;
+        if (chat && chat.IsOpenOrOpening) return;
+        foreach (var box in UnityEngine.Object.FindObjectsOfType<TextBoxTMP>())
+            if (box && box.hasFocus) return;
+        if (RoleDictionary.IsOpen) UI.UiWindow.Current?.Close();
+        else RoleDictionary.Open();
     }
 
     private static bool _warned;
