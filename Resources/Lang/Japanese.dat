@@ -373,7 +373,7 @@ PresetLabel.CustomName: カスタム
 
 # ── PresetPage ──
 PresetPage.TabName: プリセット
-PresetPage.Description: 設定に名前を付けて保存・読み込み。書き出し・取り込みは受け渡しのフォルダ (デスクトップの MRP_Presets) を使います。
+PresetPage.Description: 設定に名前を付けて保存・読み込み。書き出し・取り込みは受け渡しのフォルダ (デスクトップの MRP_Presets) を使います。「コードをコピー」を押すと、今の設定を 1 行の文字にできます。もらったコードは、コピーしてから「コードを読む」を押すと読み込めます。
 PresetPage.NameForANewPreset: 新しいプリセットの名前
 PresetPage.SaveCurrent: 今の設定を保存
 PresetPage.Import: 取り込む
@@ -384,6 +384,13 @@ PresetPage.Delete: 消す
 PresetPage.NoSavedPresets: 保存したプリセットはありません
 PresetPage.Really: 本当に消す
 PresetPage.ShareFolder: 受け渡しのフォルダ: {dir}
+PresetPage.CopyCode: コードをコピー
+PresetPage.PasteCode: コードを読む
+RoleDictionary.CopyCode: 今の設定をコードでコピー
+SettingCode.Copied: 設定のコードをコピーしました ({count} 文字)。Discord などに貼って渡せます
+SettingCode.CouldntMake: 設定のコードを作れませんでした: {message}
+SettingCode.NotACode: コピーしてある文字は設定のコードではありません
+SettingCode.Loaded: 設定のコードを読み込みました (変わった項目: {count})
 PresetPage.OnlyTheHostCanLoad: 読み込めるのはホストだけです
 PresetPage.PressAgainToDelete: もう一度押すと「{name}」を消します
 

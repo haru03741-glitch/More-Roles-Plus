@@ -304,7 +304,9 @@ internal sealed class RoleBrowser
         if (_settings && Editable) return Bulk();
         return new Stack(false,
             new Label(new Text(Touch ? "RoleDictionary.HintTouch" : "RoleDictionary.Hint"), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start },
-            new Label(new Text("RolePage.Legend"), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start }) { Gap = 0.12f, Width = SideW };
+            new Label(new Text("RolePage.Legend"), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start },
+            new Spacer(0.1f, 0.05f),
+            new Button(new Text("RoleDictionary.CopyCode"), () => SettingNotice.Toast(SettingCode.Copy()), 1.35f) { Size = new Vector2(SideW, 0.4f) }) { Gap = 0.12f, Width = SideW };
     }
 
     private Widget Summary(Registry.Section sec)

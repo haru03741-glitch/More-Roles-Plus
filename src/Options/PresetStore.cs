@@ -77,19 +77,28 @@ internal static class PresetStore
 
     private static void SaveVanilla(string path)
     {
+        string line = VanillaLine();
+        if (line == null) return;
+        try { File.AppendAllText(path, line + "\n"); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"preset vanilla save: {e.Message}"); }
+    }
+
+    // 本編のゲーム設定の 1 行 (設定のコードにも入れる)。読めなければ null
+    internal static string VanillaLine()
+    {
         try
         {
             var gm = GameOptionsManager.Instance;
             var opts = gm?.CurrentGameOptions;
-            if (opts == null) return;
+            if (opts == null) return null;
             byte[] bytes = gm.gameOptionsFactory.ToBytes(opts, false);
-            File.AppendAllText(path, VanillaKey + "=" + Convert.ToBase64String(bytes) + "\n");
+            return VanillaKey + "=" + Convert.ToBase64String(bytes);
         }
-        catch (Exception e) { Plugin.Logger.LogWarning($"preset vanilla save: {e.Message}"); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"preset vanilla save: {e.Message}"); return null; }
     }
 
     // 部屋の外か自分がホストの時だけ本編の設定を置き換えて、本編の保存と同期を回す
-    private static void LoadVanilla(string path)
+    internal static void LoadVanilla(string path)
     {
         if (AmongUsClient.Instance && AmongUsClient.Instance.AmConnected && !AmongUsClient.Instance.AmHost) return;
         try

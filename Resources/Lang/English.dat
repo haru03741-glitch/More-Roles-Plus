@@ -373,7 +373,7 @@ PresetLabel.CustomName: Custom
 
 # ── PresetPage ──
 PresetPage.TabName: Presets
-PresetPage.Description: Save and load settings by name. Export / import goes through the MRP_Presets folder on the desktop.
+PresetPage.Description: Save and load settings by name. Export / import goes through the MRP_Presets folder on the desktop. "Copy code" turns the current settings into one line of text; to load a code you were given, copy it and press "Paste code".
 PresetPage.NameForANewPreset: Name for a new preset
 PresetPage.SaveCurrent: Save current
 PresetPage.Import: Import
@@ -384,6 +384,13 @@ PresetPage.Delete: Delete
 PresetPage.NoSavedPresets: No saved presets
 PresetPage.Really: Really?
 PresetPage.ShareFolder: Share folder: {dir}
+PresetPage.CopyCode: Copy code
+PresetPage.PasteCode: Paste code
+RoleDictionary.CopyCode: Copy these settings as a code
+SettingCode.Copied: Copied the settings code ({count} chars). Paste it on Discord etc. to share
+SettingCode.CouldntMake: Couldn't make the settings code: {message}
+SettingCode.NotACode: The copied text is not a settings code
+SettingCode.Loaded: Loaded the settings code ({count} changed)
 PresetPage.OnlyTheHostCanLoad: Only the host can load presets
 PresetPage.PressAgainToDelete: Press again to delete "{name}"
 

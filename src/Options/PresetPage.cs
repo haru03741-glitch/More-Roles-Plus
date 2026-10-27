@@ -17,7 +17,7 @@ internal static class PresetPage
     public static readonly Color TabColor = new(0.45f, 0.85f, 0.6f);
     public static readonly Text Description = new("PresetPage.Description");
 
-    private const int PerPage = 5;
+    private const int PerPage = 4;
     private const float Top = 2f, RowStep = 0.45f, Z = -2f;
     private const float SX = 0.32f, SY = 0.55f; // ボタンの縮み (本編のタブのボタンを写して使う)
 
@@ -65,10 +65,13 @@ internal static class PresetPage
         _status.text = "";
         Button(proto, parent, new Vector3(1.8f, Top - 1.12f, Z), new Text("PresetPage.Import"), 1, new Color(0.2f, 0.6f, 0.9f));
         Button(proto, parent, new Vector3(3.05f, Top - 1.12f, Z), new Text("PresetPage.OpenFolder"), 2, new Color(0.45f, 0.45f, 0.5f));
+        // 設定のコード (1 行の文字で渡す)
+        Button(proto, parent, new Vector3(1.8f, Top - 1.64f, Z), new Text("PresetPage.CopyCode"), 5, new Color(0.2f, 0.6f, 0.9f));
+        Button(proto, parent, new Vector3(3.05f, Top - 1.64f, Z), new Text("PresetPage.PasteCode"), 6, new Color(0.2f, 0.7f, 0.4f));
 
         for (int i = 0; i < PerPage; i++)
         {
-            float y = Top - 1.7f - i * RowStep;
+            float y = Top - 2.22f - i * RowStep;
             var r = new Row { Name = Label(menu.MenuDescriptionText, parent, new Vector3(-1.9f, y, Z), 2.9f, 1.4f) };
             r.Load = Button(proto, parent, new Vector3(1.25f, y, Z), new Text("PresetPage.Load"), 100 + i * 4, new Color(0.2f, 0.7f, 0.4f));
             r.Export = Button(proto, parent, new Vector3(2.3f, y, Z), new Text("PresetPage.Export"), 101 + i * 4, new Color(0.45f, 0.45f, 0.5f));
@@ -77,7 +80,7 @@ internal static class PresetPage
             Rows[i] = r;
         }
 
-        float by = Top - 1.7f - PerPage * RowStep + 0.05f;
+        float by = Top - 2.22f - PerPage * RowStep + 0.05f;
         _prev = Button(proto, parent, new Vector3(-1.4f, by, Z), Text.Raw("◀"), 3, new Color(0.35f, 0.35f, 0.4f));
         _pageLabel = Label(menu.MenuDescriptionText, parent, new Vector3(-0.85f, by, Z), 0.8f, 1.3f);
         _next = Button(proto, parent, new Vector3(0.2f, by, Z), Text.Raw("▶"), 4, new Color(0.35f, 0.35f, 0.4f));
@@ -195,6 +198,12 @@ internal static class PresetPage
                 string dir = PresetStore.OpenShare();
                 Say(new Text("PresetPage.ShareFolder").With("dir", dir));
             }
+                break;
+            case 5:
+                Say(SettingCode.Copy());
+                break;
+            case 6:
+                Say(SettingCode.Paste());
                 break;
             case 3: _page--; break;
             case 4: _page++; break;

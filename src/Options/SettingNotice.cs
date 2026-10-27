@@ -39,6 +39,15 @@ internal static class SettingNotice
 
     public static void ClearFresh() => MarkFresh(new List<Opt>());
 
+    // 1 行の知らせを同じ枠へ (設定のコードをコピーした時など)
+    public static void Toast(string text)
+    {
+        var hud = Vanilla.Hud;
+        if (!hud || !hud.Notifier) return;
+        try { Post(hud.Notifier, text, false); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"setting notice: {e.Message}"); }
+    }
+
     // preset = 読み込んだプリセットの名前 (プリセットへ切り替わった時だけ・個別の項目は並べない)
     public static void Show(List<Opt> changed, string preset, bool sound)
     {
