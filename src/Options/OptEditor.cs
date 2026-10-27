@@ -65,11 +65,15 @@ internal sealed class OptEditor
     public Widget Row(Opt opt, bool editable, float indent = 0f, Color? nameColor = null)
     {
         opt.Sync();
-        var name = new Label(opt.Label, FontSize) { Width = NameW - indent, Bold = true, Color = nameColor ?? Color.white };
+        var info = InfoButton(opt);
+        float nameW = NameW - indent - (info != null ? InfoW + 0.08f : 0f);
+        var name = new Label(opt.Label, FontSize) { Width = nameW, Bold = true, Color = nameColor ?? Color.white };
         var colon = new Label(":", FontSize) { Width = 0.2f, TextAlign = TextAlignmentOptions.Center };
         var row = new Stack(true) { Gap = 0.08f, Align = Align.Start };
         if (indent > 0f) row.Add(new Spacer(indent, 0.1f));
-        row.Add(name).Add(colon);
+        row.Add(name);
+        if (info != null) row.Add(info);
+        row.Add(colon);
 
         if (opt.IsToggle)
         {
@@ -103,6 +107,35 @@ internal sealed class OptEditor
         _rows.Add((opt, val, null, minus, plus, reset));
         return row;
     }
+
+    private const float InfoW = 0.3f;
+    private static readonly bool Touch = OperatingSystem.IsAndroid();
+
+    // 項目の説明 (文の鍵 <名前の鍵>.Detail) がある時だけ、名前の後ろに「?」の箱。PC は当てると・スマホは押すと札が出る
+    private static Button InfoButton(Opt opt)
+    {
+        string key = opt.Label.Key;
+        if (key == null || !Tr.Has(key + ".Detail")) return null;
+        var detail = new Text(key + ".Detail");
+        Button b = null;
+        b = new Button("?", () =>
+        {
+            if (!Touch) return;
+            var t = b.BackRenderer ? b.BackRenderer.transform : null;
+            if (Tooltip.ShownFor(t)) Tooltip.Hide();
+            else Tooltip.Show(t, detail);
+        }, 1.2f)
+        {
+            Size = new Vector2(InfoW, InfoW),
+            Padding = Vector2.zero,
+            Color = InfoColor,
+            OnHover = () => { if (!Touch && b.BackRenderer) Tooltip.Show(b.BackRenderer.transform, detail); },
+            OnUnhover = () => { if (!Touch) Tooltip.Hide(); },
+        };
+        return b;
+    }
+
+    private static readonly Color InfoColor = new(0.55f, 0.8f, 1f, 1f);
 
     // 既定へ戻すボタン (既定の時は暗く、押しても何もしない)。既定を持たない項目には付けない
     private Button ResetButton(Opt opt) =>

@@ -27,6 +27,7 @@ Lighter.Summary: 普通のクルーより視界が広いクルーです。
 Lighter.Tips: 遠くの動きを見張って、見たことを会議で伝えましょう。
 Lighter.Quote: 暗がりの奥まで、見えている。
 Lighter.VisionMultiplier: 視界の倍率
+Lighter.VisionMultiplier.Detail: 普通のクルーの視界に掛ける倍率です。
 
 # ── ポータルメーカー (PortalMaker) ──
 PortalMaker.Name: ポータルメーカー
@@ -38,6 +39,7 @@ PortalMaker.Tips: ポータルはインポスターも使えます。解体屋�
 PortalMaker.Quote: 遠回りは、もう要らない。
 PortalMaker.PlaceCooldown: ポータルを置く待ち時間
 PortalMaker.CanRemove: 置いた後にもう一度押すと消せる
+PortalMaker.CanRemove.Detail: OFF にすると、2 つ置いた後にもう一度押しても消せず、置き直せません。
 PortalMaker.Portal: ポータル
 
 # ── 時戻し (Rewinder) ──
@@ -49,6 +51,7 @@ Rewinder.Rewind.Short: 押し続けて離すと、全員の時間が戻る
 Rewinder.Tips: 直前の会議より前の時点には戻せません。時が戻ると全員の画面が一瞬光りますが、誰が戻したかは分かりません。
 Rewinder.Quote: その一瞬は、なかったことにする。
 Rewinder.Seconds: 戻せる最大の秒数
+Rewinder.Seconds.Detail: ボタンを押し続けると、戻す秒数が 3 秒から 1 秒ずつ増え、ここで決めた秒数で止まります。
 Rewinder.Cooldown: 時戻しの待ち時間
 Rewinder.Uses: 時戻しの回数 (0 = 何回でも)
 Rewinder.Rewind: 時戻し
@@ -72,10 +75,14 @@ Architect.Quote: この船の形は、私が決める。
 Architect.DeskCount: 置ける設計台の数
 Architect.DeskCooldown: 設計台を置く待ち時間
 Architect.GaugeLength: 壁のゲージの量 (引ける長さ)
+Architect.GaugeLength.Detail: 線を引いて壁を立てると、引いた長さの分だけゲージが減ります。この設定で満タンの量を決めます。
 Architect.GaugeRefill: ゲージが空から満タンに戻る時間
 Architect.WallLife: 壁が崩れるまでの時間
+Architect.WallLife.Detail: 立てた壁は、この時間がたつと崩れます。
 Architect.PipeCost: 配管を裂くのに使うゲージ
+Architect.PipeCost.Detail: 水回りの壁の配管を 1 回裂くのに使うゲージの量です。単位は壁を引く長さと同じです。
 Architect.OwnRubble: 崩れた自分の壁の瓦礫も拾える
+Architect.OwnRubble.Detail: ON にすると、自分の壁が時間で崩れた後の瓦礫もドローンが拾ってきて、ゲージに足せます。
 Architect.Desk: 設計台
 Architect.Plan: 設計図
 Architect.UseDesk: 設計台を使う
@@ -120,18 +127,21 @@ Hawkeye.Name: 鷹の目
 Hawkeye.Blurb: 遠くまで見通せる
 Hawkeye.Help: 視界が広くなるアドオンです。どの陣営の人に付くかは設定で決まります。
 Hawkeye.VisionPercent: 視界の広さ
+Hawkeye.VisionPercent.Detail: 普通の視界を 100% として、付いた人の視界をこの割合にします。
 
 # ── 早業 (Quickhands) ──
 Quickhands.Name: 早業
 Quickhands.Blurb: 次のキルまでの時間が短い
 Quickhands.Help: キルのクールダウンが短くなるアドオンです。キルできる人 (インポスターと、キルボタンを持つ役職) にだけ付きます。
 Quickhands.Reduction: 短くする割合
+Quickhands.Reduction.Detail: キルのクールダウンをこの割合だけ短くします。30 秒で 20% なら 24 秒です。
 
 # ── 敏感 (Sensitive) ──
 Sensitive.Name: 敏感
 Sensitive.Blurb: 誰かが倒されると気配を感じる
 Sensitive.Help: 誰かが倒されると、自分の画面だけが一瞬赤く光ります。誰がどこで倒されたかまでは分かりません。
 Sensitive.Strength: 光の強さ
+Sensitive.Strength.Detail: 誰かが倒された時に、画面が赤く光る濃さです。
 
 # ── RoleDoc ──
 RoleDoc.WinCond: 勝利条件
@@ -408,7 +418,9 @@ PresetStore.CouldntImport: 取り込めませんでした: {message}
 
 # ── Registry ──
 Registry.Chance: 出現率
+Registry.Chance.Detail: 試合ごとに、この役職が出るかを 1 人分ずつ抽選する確率です。100% なら必ず出て、0% なら出ません。「役職が付かなかった人」を埋める設定にしている時は、余った人へ配る役職を選ぶ重みにもなります。
 Registry.Count: 人数
+Registry.Count.Detail: 1 試合に出る最大の人数です。1 人分ずつ出現率で抽選します。
 Registry.NotWith: 一緒に出ない役職
 RoleSetOpt.None: なし
 RoleSetOpt.More: {name} ほか {n}

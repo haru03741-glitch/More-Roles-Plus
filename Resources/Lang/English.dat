@@ -27,6 +27,7 @@ Lighter.Summary: A crewmate who sees farther than others.
 Lighter.Tips: Keep watch from afar and report what you saw in meetings.
 Lighter.Quote: Nothing hides in the dark from me.
 Lighter.VisionMultiplier: Vision Multiplier
+Lighter.VisionMultiplier.Detail: Multiplier applied to normal crewmate vision.
 
 # ── Portal Maker (PortalMaker) ──
 PortalMaker.Name: Portal Maker
@@ -38,6 +39,7 @@ PortalMaker.Tips: Impostors can use the portals too. A portal breaks after three
 PortalMaker.Quote: No more long way around.
 PortalMaker.PlaceCooldown: Portal Cooldown
 PortalMaker.CanRemove: Press Again to Remove Portals
+PortalMaker.CanRemove.Detail: When OFF, pressing again after placing both portals does not remove them, so they cannot be placed again.
 PortalMaker.Portal: Portal
 
 # ── Rewinder ──
@@ -49,6 +51,7 @@ Rewinder.Rewind.Short: Hold, then release to turn time back
 Rewinder.Tips: You cannot go back to before the last meeting. When time turns back, everyone's screen flashes for a moment, but no one can tell who did it.
 Rewinder.Quote: That moment never happened.
 Rewinder.Seconds: Max Seconds to Turn Back
+Rewinder.Seconds.Detail: While you hold the button, the rewind grows from 3 seconds by 1 second at a time, up to this limit.
 Rewinder.Cooldown: Rewind Cooldown
 Rewinder.Uses: Rewind Uses (0 = unlimited)
 Rewinder.Rewind: Rewind
@@ -72,10 +75,14 @@ Architect.Quote: I decide what shape this ship takes.
 Architect.DeskCount: Desks
 Architect.DeskCooldown: Desk Cooldown
 Architect.GaugeLength: Wall Gauge (Length)
+Architect.GaugeLength.Detail: Drawing a wall uses up gauge equal to the length drawn. This sets how much a full gauge holds.
 Architect.GaugeRefill: Gauge Refill Time
 Architect.WallLife: Wall Lifetime
+Architect.WallLife.Detail: Walls you raise crumble after this long.
 Architect.PipeCost: Pipe Burst Cost
+Architect.PipeCost.Detail: Gauge used to burst a water pipe once. Same unit as wall length.
 Architect.OwnRubble: Rubble From Own Walls
+Architect.OwnRubble.Detail: When ON, the drone can also bring back rubble from your own walls that crumbled with time, refilling the gauge.
 Architect.Desk: Desk
 Architect.Plan: Blueprint
 Architect.UseDesk: Use Desk
@@ -120,18 +127,21 @@ Hawkeye.Name: Hawkeye
 Hawkeye.Blurb: See further than the rest
 Hawkeye.Help: An add-on that widens your vision. The settings decide which teams can get it.
 Hawkeye.VisionPercent: Vision
+Hawkeye.VisionPercent.Detail: Vision of the holder, where normal vision is 100%.
 
 # ── Quickhands ──
 Quickhands.Name: Quickhands
 Quickhands.Blurb: Strike again sooner
 Quickhands.Help: An add-on that shortens your kill cooldown. Only players who can kill (impostors and roles with a kill button) can get it.
 Quickhands.Reduction: Cooldown Reduction
+Quickhands.Reduction.Detail: Shortens the kill cooldown by this much. 20% of 30 seconds gives 24 seconds.
 
 # ── Sensitive ──
 Sensitive.Name: Sensitive
 Sensitive.Blurb: Sense it when someone falls
 Sensitive.Help: When someone is killed, your screen alone flashes red for a moment. It does not tell you who or where.
 Sensitive.Strength: Flash Strength
+Sensitive.Strength.Detail: How strongly the screen flashes red when someone is killed.
 
 # ── RoleDoc ──
 RoleDoc.WinCond: Win condition
@@ -408,7 +418,9 @@ PresetStore.CouldntImport: Couldn't import: {message}
 
 # ── Registry ──
 Registry.Chance: Chance
+Registry.Chance.Detail: Each game, every slot of this role is rolled separately at this chance. 100% always appears; 0% never does. When "Players left without a role" fills them, this is also the weight used to hand out leftover roles.
 Registry.Count: Count
+Registry.Count.Detail: The most players who can get this role in one game. Each one is rolled separately with the chance.
 Registry.NotWith: Never with
 RoleSetOpt.None: None
 RoleSetOpt.More: {name} +{n}

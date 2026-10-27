@@ -409,6 +409,7 @@ internal sealed class UiScreen
         foreach (var c in _inner) c.Clear();
         _inner.Clear();
         UiActions.Release(_slots);
+        Tooltip.HideUnder(Root);
         if (!Root) return;
         // 指が乗っているボタンを捨てると、本編のボタンの管理役が捨てたボタンへ毎フレーム「外れた」を送って落ち続ける
         if (PassiveButtonManager.InstanceExists)
