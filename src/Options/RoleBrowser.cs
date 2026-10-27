@@ -114,7 +114,8 @@ internal sealed class RoleBrowser
 
     private static void Prepare()
     {
-        var chars = new System.Text.StringBuilder("0123456789%/×:+-<>");
+        // カードの名前に付ける印 (★・*・「更新」) も先に入れておく
+        var chars = new System.Text.StringBuilder("0123456789%/×:+-<>*").Append(FavMark).Append(FreshMark.ToString());
         foreach (var t in new[] { Tab.Crew, Tab.Impostor, Tab.Neutral, Tab.Addon })
             foreach (var sec in Registry.SectionsOf(t)) chars.Append(sec.Title);
         MenuFont.Prepare(chars.ToString());
@@ -240,7 +241,12 @@ internal sealed class RoleBrowser
         return list;
     }
 
-    private static string SortName(Registry.Section sec) => sec.Role?.Reading ?? sec.Title.ToString();
+    // 名前の並びは読み (無ければ名前) をひらがなに揃えて比べる (検索と同じ揃え方)
+    private static string SortName(Registry.Section sec) => RoleSearch.Normalize(sec.Role?.Reading ?? sec.Title.ToString());
+
+    // 凡例 (「更新」の印の説明は、印が付いている時だけ)
+    private static string LegendText() =>
+        SettingNotice.FreshCount > 0 ? $"{new Text("RolePage.Legend")}{new Text("RolePage.LegendFresh")}" : new Text("RolePage.Legend").ToString();
 
     private IEnumerable<Registry.Section> VisibleInOrder()
     {
@@ -380,7 +386,7 @@ internal sealed class RoleBrowser
         if (_settings && Editable) return Bulk();
         return new Stack(false,
             new Label(new Text(Touch ? "RoleDictionary.HintTouch" : "RoleDictionary.Hint"), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start },
-            new Label(new Text("RolePage.Legend"), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start },
+            new Label(LegendText(), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start },
             new Spacer(0.1f, 0.05f),
             new Button(new Text("RoleDictionary.CopyCode"), () => SettingNotice.Toast(SettingCode.Copy()), 1.35f) { Size = new Vector2(SideW, 0.4f) }) { Gap = 0.12f, Width = SideW };
     }
@@ -442,7 +448,7 @@ internal sealed class RoleBrowser
         var col = new Stack(false) { Gap = 0.08f, Width = SideW };
         col.Add(new Label(_team < 0 ? new Text("RolePage.BulkAll") : new Text("RolePage.BulkTeam").With("team", team), 1.6f) { Bold = true, Width = SideW, Align = Align.Start });
         col.Add(new Label(new Text("RolePage.Enabled").With("n", EnabledIn()).With("count", CountIn()), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start });
-        col.Add(new Label(new Text("RolePage.Legend"), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start });
+        col.Add(new Label(LegendText(), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start });
         col.Add(new Spacer(0.1f, 0.05f));
         float half = (SideW - 0.08f) / 2f;
         col.Add(new Stack(true,
