@@ -331,6 +331,15 @@ internal static class RoleCommands
             reply($"OK tasks n={lp.myTasks.Count} total={GameData.Instance?.TotalTasks} done={GameData.Instance?.CompletedTasks} {sb}");
         });
 
+        TestBridge.Register("fresh", "[key...] ホストが直前に変えた印を付ける (受け取った時と同じ・key 無し = 外す)", (args, reply) =>
+        {
+            var list = new System.Collections.Generic.List<Opt>();
+            foreach (var k in args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))
+                if (Registry.TryGet(k, out var o)) list.Add(o);
+            SettingNotice.MarkFresh(list);
+            reply($"OK fresh {SettingNotice.FreshCount}");
+        });
+
         TestBridge.Register("opt", "<key> [番号] [sync] 設定項目を見る / 番号で変える (sync = 全員へ送る・例 opt Lighter.Chance 10 sync)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
