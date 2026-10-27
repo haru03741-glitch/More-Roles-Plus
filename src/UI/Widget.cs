@@ -301,9 +301,16 @@ internal sealed class Button : Box
         }
         var hover = OnHover;
         var unhover = OnUnhover;
-        if (OnClick != null) pb.OnClick.AddListener(UiActions.Take(OnClick, ctx.Slots));
+        if (OnClick != null)
+        {
+            pb.OnClick.AddListener(UiActions.Take(OnClick, ctx.Slots));
+            // 本編のボタンと同じ音 (押した音は PassiveButton が鳴らす)
+            pb.ClickSound = UiAssets.ClickSound;
+        }
+        bool sound = OnClick != null;
         pb.OnMouseOver.AddListener(UiActions.Take(() =>
         {
+            if (sound) PlayHover();
             _over = true;
             if (Back) Back.color = HoverColor;
             hover?.Invoke();
@@ -317,6 +324,13 @@ internal sealed class Button : Box
     }
 
     private bool _over;
+
+    private static void PlayHover()
+    {
+        var clip = UiAssets.HoverSound;
+        var sm = SoundManager.Instance;
+        if (clip && sm) sm.PlaySound(clip, false, 0.8f, null);
+    }
 
     // 縁の色を変える (当てている間は当てた色のまま、外れた時にこの色へ)
     public void SetColor(Color c)

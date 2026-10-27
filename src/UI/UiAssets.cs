@@ -26,6 +26,10 @@ internal static class UiAssets
     public static Sprite Blank => Load() ? _blank : null;
     public static TextMeshPro TextProto => Load() ? _textProto : null;
 
+    // 本編のボタンの押した音と当てた音 (Twitch の窓の ExitGame のボタンの物)。無ければ鳴らさない
+    public static AudioClip ClickSound { get; private set; }
+    public static AudioClip HoverSound { get; private set; }
+
     public static bool Load()
     {
         // 抜き終えた後は Unity の生存確認をしない (部品を作るたびに何度も呼ばれる)
@@ -38,6 +42,16 @@ internal static class UiAssets
         var bg = popup.Find("Background");
         var blank = popup.Find("BackroundIgnore");
         var text = popup.Find("Text_TMP");
+        var exit = popup.Find("ExitGame");
+        if (exit)
+        {
+            var pb = exit.GetComponent<PassiveButton>();
+            if (pb && pb.ClickSound) ClickSound = pb.ClickSound;
+            var rh = exit.GetComponent<ButtonRolloverHandler>();
+            if (rh && rh.HoverSound) HoverSound = rh.HoverSound;
+            if (ClickSound) ClickSound.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            if (HoverSound) HoverSound.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+        }
         if (!_box && bg) _box = bg.GetComponent<SpriteRenderer>()?.sprite;
         if (!_blank && blank) _blank = blank.GetComponent<SpriteRenderer>()?.sprite;
         if (!_textProto && text)
@@ -64,7 +78,7 @@ internal static class UiAssets
     {
         var tm = GameObject.Find("TwitchManager");
         Load();
-        return $"tm={(bool)tm} children={(tm ? tm.transform.childCount : -1)} box={(bool)_box} blank={(bool)_blank} text={(bool)_textProto} hud={(bool)Vanilla.Hud}";
+        return $"tm={(bool)tm} children={(tm ? tm.transform.childCount : -1)} box={(bool)_box} blank={(bool)_blank} text={(bool)_textProto} click={(bool)ClickSound} hover={(bool)HoverSound} hud={(bool)Vanilla.Hud}";
     }
 
     // 確かめ用: 切り抜きの字の材質の型板の値を変える
