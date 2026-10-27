@@ -618,7 +618,25 @@ internal sealed class RoleBrowser
         bool edit = Editable;
         var back = new Button("<<", () => { _open = null; _hover = null; Rebuild(); }, 1.9f) { Size = new Vector2(0.7f, 0.5f) };
         var title = new Label(sec.Title, 2.6f) { MenuFont = true, Color = TitleColor(sec), Outline = 0.2f };
-        var head = new Stack(true, back, title) { Gap = 0.25f, Align = Align.Start };
+        var head = new Stack(true, back) { Gap = 0.2f, Align = Align.Start };
+        // 一覧の今の並び (陣営・絞り込み・並べ替え) で前後の物へ。端は反対の端へ回る。
+        // 今の一覧に無い物 (別の陣営の札の時に外から開いた等) はその陣営の並び。検索の結果から開いた時は出さない
+        var order = _tokens.Length > 0 ? null : Visible();
+        int at = order?.IndexOf(sec) ?? -1;
+        if (at < 0 && order != null)
+        {
+            order = KindOf(sec);
+            at = order?.IndexOf(sec) ?? -1;
+        }
+        if (at >= 0 && order.Count > 1)
+        {
+            var prev = order[(at + order.Count - 1) % order.Count];
+            var next = order[(at + 1) % order.Count];
+            head.Add(new Stack(true,
+                new Button("◀", () => OpenSection(prev), 1.5f) { Size = new Vector2(0.45f, 0.5f) },
+                new Button("▶", () => OpenSection(next), 1.5f) { Size = new Vector2(0.45f, 0.5f) }) { Gap = 0.05f });
+        }
+        head.Add(title);
         var extra = HeadExtra?.Invoke(sec);
         if (extra != null) head.Add(extra);
         if (sec.Role != null)
@@ -626,8 +644,8 @@ internal sealed class RoleBrowser
             // お気に入り (自分の手元だけ)。押すと札の色で塗る
             bool fav = RoleFavorites.Has(sec.Role);
             var c = TagColor(1);
-            var label = new Label(new Text("RolePage.Tag1"), 1.35f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = fav ? new Color(0.08f, 0.08f, 0.1f) : c };
-            var b = new Button(label, () => { RoleFavorites.Toggle(sec.Role); Rebuild(); }) { Size = new Vector2(0f, 0.42f), MinSize = new Vector2(1.1f, 0.42f), Padding = new Vector2(0.14f, 0.04f), Color = c };
+            var label = new Label(FavMark, 1.8f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = fav ? new Color(0.08f, 0.08f, 0.1f) : c };
+            var b = new Button(label, () => { RoleFavorites.Toggle(sec.Role); Rebuild(); }) { Size = new Vector2(0.5f, 0.5f), Padding = Vector2.zero, Color = c };
             if (fav) b.Fill = c;
             head.Add(b);
         }
@@ -670,6 +688,16 @@ internal sealed class RoleBrowser
 
         _list = new ScrollView(new Vector2(W, H - 0.62f), rows) { Tag = _tag + ":detail:" + (sec.Role?.Id ?? sec.Title.ToString()) };
         return new Stack(false, head, _list) { Gap = 0.1f, Width = W };
+    }
+
+    private static List<Registry.Section> KindOf(Registry.Section sec)
+    {
+        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+        {
+            var list = new List<Registry.Section>(Registry.SectionsOf(RoleMenu.KindTab(k)));
+            if (list.Contains(sec)) return list;
+        }
+        return null;
     }
 
     private static int Depth(Opt opt)
