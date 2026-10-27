@@ -14,6 +14,31 @@ internal static class SettingNotice
 
     private const int MaxShown = 5;
 
+    // 客の側で、ホストが直前に変えた項目の数 (設定の画面と辞典とロビーの一覧で印を付ける)
+    public static int FreshCount { get; private set; }
+
+    // 続けて届いた変更は 1 回分にまとめる (設定画面を閉じた時と、プリセットや人数の調整が続けて送られる時)
+    private const float MergeSeconds = 5f;
+    private static float _lastFresh = -100f;
+
+    // 受け取った 1 回分の変更を印にする (前の印は外す)。別の部屋へ移った・自分がホストになった時は印を全部外す
+    public static void MarkFresh(List<Opt> changed)
+    {
+        if (changed.Count == 0 && FreshCount == 0) return;
+        float now = UnityEngine.Time.realtimeSinceStartup;
+        bool merge = changed.Count > 0 && now - _lastFresh < MergeSeconds;
+        _lastFresh = changed.Count > 0 ? now : -100f;
+        if (!merge) foreach (var o in Registry.All) o.Fresh = false;
+        foreach (var o in changed) o.Fresh = true;
+        int n = 0;
+        foreach (var o in Registry.All) if (o.Fresh) n++;
+        FreshCount = n;
+        RolePage.RefreshCards();
+        Menu.RoleDictionary.Refresh();
+    }
+
+    public static void ClearFresh() => MarkFresh(new List<Opt>());
+
     // preset = 読み込んだプリセットの名前 (プリセットへ切り替わった時だけ・個別の項目は並べない)
     public static void Show(List<Opt> changed, string preset, bool sound)
     {

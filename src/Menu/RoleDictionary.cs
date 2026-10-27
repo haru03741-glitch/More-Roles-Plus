@@ -222,6 +222,12 @@ internal static class RoleDictionary
         for (int i = 0; i < list.Count; i++) list[i].r.sortingOrder = baseOrder + i;
     }
 
+    // 開いている間にホストから設定が届いた時、役職の頁を今の値へ
+    public static void Refresh()
+    {
+        if (IsOpen && _view == 0) Browser.RefreshFromOutside();
+    }
+
     private static void OnClosed()
     {
         Browser.Detach();

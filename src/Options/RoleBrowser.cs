@@ -37,7 +37,8 @@ internal sealed class RoleBrowser
 
     // 開き直しても残す
     private int _team;
-    private bool _enabledOnly;
+    private bool _enabledOnly, _freshOnly;
+    private bool _freshChip;  // 一覧に「変わった所だけ」の札を出したか
     private int _bulkChance = 50, _bulkCount = 1;
 
     private UiScreen _screen;
@@ -135,6 +136,7 @@ internal sealed class RoleBrowser
     private Widget ListPage()
     {
         var chips = new Stack(true) { Gap = 0.07f, Align = Align.Start };
+        _freshChip = SettingNotice.FreshCount > 0;
         for (int k = -1; k <= RoleMenu.AddonKind; k++)
         {
             int kind = k;
@@ -142,6 +144,8 @@ internal sealed class RoleBrowser
             chips.Add(Chip(k < 0 ? new Text("RoleMenu.All") : RoleMenu.KindName(k), c, _team == k, () => { _team = kind; _hover = null; Rebuild(); }));
         }
         chips.Add(Chip(new Text("RoleMenu.EnabledOnly"), new Color(0.6f, 1f, 0.6f), _enabledOnly, () => { _enabledOnly = !_enabledOnly; Rebuild(); }));
+        if (SettingNotice.FreshCount > 0)
+            chips.Add(Chip(new Text("RolePage.FreshOnly"), FreshColor, _freshOnly, () => { _freshOnly = !_freshOnly; Rebuild(); }));
 
         var cards = new Stack(false) { Gap = 0.07f, Width = CardW };
         int n = 0;
@@ -178,6 +182,7 @@ internal sealed class RoleBrowser
                     if (_enabledOnly || !sec.Opts.Exists(o => !o.OffTab)) continue;
                 }
                 else if (_enabledOnly && !Enabled(sec.Role)) continue;
+                if (FreshOnly && !Fresh(sec)) continue;
                 yield return sec;
             }
         }
@@ -217,9 +222,27 @@ internal sealed class RoleBrowser
         return false;
     }
 
-    // カードの名前 (細かい設定を変えてあれば印を付ける)
-    private static string CardName(Registry.Section sec) =>
-        DetailChanged(sec) ? $"{sec.Title} <color=#{ChangedHex}>*</color>" : sec.Title.ToString();
+    // ホストが直前に変えた項目の字 (客の側)
+    public static readonly Color FreshColor = new(0.4f, 0.88f, 1f, 1f);
+    private static readonly string FreshHex = ColorUtility.ToHtmlStringRGB(FreshColor);
+    private static readonly Text FreshMark = new("RolePage.FreshMark");
+
+    private static bool Fresh(Registry.Section sec)
+    {
+        foreach (var opt in sec.Opts)
+            if (opt.Fresh) return true;
+        return false;
+    }
+
+    // カードの名前 (細かい設定を変えてあれば *・ホストが直前に変えていれば「更新」)
+    private static string CardName(Registry.Section sec)
+    {
+        string s = DetailChanged(sec) ? $"{sec.Title} <color=#{ChangedHex}>*</color>" : sec.Title.ToString();
+        return Fresh(sec) ? $"{s} <size=70%><color=#{FreshHex}>{FreshMark}</color></size>" : s;
+    }
+
+    // 「変わった所だけ」の札を出すか (受け取った変更がある間だけ)
+    private bool FreshOnly => _freshOnly && SettingNotice.FreshCount > 0;
 
     private static string ShortText(Registry.Section sec)
     {
@@ -233,7 +256,7 @@ internal sealed class RoleBrowser
         var a = sec.Role;
         bool on = a == null || Enabled(a);
         var title = TitleColor(sec);
-        var name = new Label(CardName(sec), 1.9f) { MenuFont = true, Color = on ? title : Color.Lerp(title, Gray, 0.55f) };
+        var name = new Label(CardName(sec), 1.9f) { MenuFont = true, Width = width - 1.0f, Color = on ? title : Color.Lerp(title, Gray, 0.55f) };
         var desc = new Label(ShortText(sec), 1.15f) { Width = width - 1.0f, Color = on ? SubText : Gray };
         var values = new Label(CardValues(a), 1.35f) { Width = 0.6f, TextAlign = TextAlignmentOptions.Right, Bold = true, Color = on ? Color.white : Gray };
         var text = new Stack(false, name) { Gap = 0.01f, Width = width - 0.95f };
@@ -294,7 +317,7 @@ internal sealed class RoleBrowser
         foreach (var opt in SectionOpts(sec))
         {
             if (!opt.Shown) continue;
-            col.Add(new Label($"{opt.Label}: {ValueText(opt)}", 1.25f) { Width = SideW, Align = Align.Start });
+            col.Add(new Label($"{opt.Label}: {ValueText(opt)}", 1.25f) { Width = SideW, Align = Align.Start, Color = opt.Fresh ? FreshColor : Color.white });
         }
         if (DetailChanged(sec))
             col.Add(new Label(new Text("RolePage.ChangedNote"), 1.15f) { Color = OptEditor.ChangedColor, Width = SideW, Align = Align.Start });
@@ -473,7 +496,8 @@ internal sealed class RoleBrowser
     // 窓の外 (役職辞典など) で値を変えた後: 細かい頁と検索の結果は行ごと作り直し、一覧ならカードだけ書き換える
     public void RefreshFromOutside()
     {
-        if (_open != null || _tokens.Length > 0) Rebuild();
+        // 「変わった所だけ」の札が出る/消える時は一覧ごと作り直す
+        if (_open != null || _tokens.Length > 0 || _freshChip != SettingNotice.FreshCount > 0) Rebuild();
         else RefreshCards();
     }
 
@@ -537,7 +561,7 @@ internal sealed class RoleBrowser
         {
             if (!opt.Shown) continue;
             float indent = Depth(opt) * 0.3f;
-            var r = _editor.Row(opt, edit, indent);
+            var r = _editor.Row(opt, edit, indent, opt.Fresh ? FreshColor : (Color?)null);
             r.Align = Align.Start;
             rows.Add(r);
         }

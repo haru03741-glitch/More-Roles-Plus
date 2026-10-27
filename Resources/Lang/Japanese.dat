@@ -443,10 +443,12 @@ RolePage.BulkTeam: {team}をまとめて変える
 RolePage.Enabled: 出る役職: {n} / {count}
 RolePage.ChanceTo: 出現率を {pct} に
 RolePage.CountTo: 人数を {n} 人に
-RolePage.Legend: カードの縁の色: 灰 = 出ない・白 = 確率で出る・黄 = 必ず出る。名前の横の * と橙色の字は、初期値から変えた設定の印です
+RolePage.Legend: カードの縁の色: 灰 = 出ない・白 = 確率で出る・黄 = 必ず出る。名前の横の * と橙色の字は、初期値から変えた設定の印です。水色の「更新」は、ホストが直前に変えた設定の印です
 RolePage.ChangedNote: 初期値から変えた設定があります
 RolePage.ResetRole: すべて初期値に戻す
 OptEditor.Reset: 初期値
+RolePage.FreshMark: 更新
+RolePage.FreshOnly: 変わった所だけ
 RoleDictionary.Title: 役職辞典
 RoleDictionary.Open: 役職辞典を開く
 RoleDictionary.Hint: 役職のカードに当てると、ここに設定の要約が出ます。押すと説明と細かい設定が開きます。

@@ -151,6 +151,9 @@ internal static class LobbyView
         if (opt.IsToggle) p.SetInfoCheckbox(StringNames.Accept, MaskLayer, opt.Index != 0);
         else p.SetInfo(StringNames.Accept, opt.Display(), MaskLayer);
         p.titleText.text = opt.Label;
+        // ホストが直前に変えた項目は名前を水色に・初期値から変えた値は橙に (設定画面と辞典と同じ色)
+        if (opt.Fresh) p.titleText.color = RoleBrowser.FreshColor;
+        if (!opt.IsToggle && opt.Changed) p.settingText.color = OptEditor.ChangedColor;
         pane.settingsInfo.Add(p.gameObject);
     }
 

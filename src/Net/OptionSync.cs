@@ -74,6 +74,9 @@ internal static class OptionSync
         }
         // ホストの値に置き換わったので、自分が前に変えた値の取り消しは残さない
         OptHistory.Clear();
+        // 同じ値の送り直し (人が来た時など) では前の印を残す
+        if (!notify) SettingNotice.ClearFresh();
+        else if (Changes.Count > 0) SettingNotice.MarkFresh(Changes);
         HoldsHostValues = true;
         _heldGame = game;
         LobbyView.OnOptionsReceived();
@@ -103,6 +106,7 @@ internal static class OptionSync
         string heldPreset = PresetLabel.Shown;
         Registry.Load();
         HoldsHostValues = false;
+        SettingNotice.ClearFresh();
         PresetLabel.Recheck();
         _sent = null;
         RememberSent();

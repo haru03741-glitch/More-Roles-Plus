@@ -71,6 +71,9 @@ public abstract class Opt
     // ON/OFF の行 (チェックの行) で出すか
     internal virtual bool IsToggle => false;
 
+    // ホストが直前に変えた項目 (客の側だけ・受け取るたびに付け直す)
+    internal bool Fresh;
+
     // 既定値を持つか (値を外に持つ項目は既定がこちらに無い)
     internal virtual bool HasDefault => true;
 
