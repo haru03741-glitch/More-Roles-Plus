@@ -245,6 +245,7 @@ internal static class RoleDictionary
             Open(a.Length > 1 ? RoleBrowser.Find(a[1]) : null);
             return IsOpen ? Dump() : "not opened";
         }
+        if (op == "button") return DictionaryButton.Command(a);
         if (op == "close")
         {
             UiWindow.Current?.Close();

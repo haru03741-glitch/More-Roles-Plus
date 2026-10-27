@@ -543,6 +543,8 @@ internal static class MatchInfoExtension
         _ = VanillaButtonDefault;
         MatchInfoHudButton.defaultDistanceFromEdge = MatchInfoHudButton.adjustedDistanceFromEdge;
         if (!hud.MatchInfoButton.gameObject.activeSelf) hud.MatchInfoButton.gameObject.SetActive(true);
+        // 辞典のボタンの絵が HUD の起動の時にまだ読まれていなかった時の作り直し
+        DictionaryButton.Ensure();
         return true;
     }
 
