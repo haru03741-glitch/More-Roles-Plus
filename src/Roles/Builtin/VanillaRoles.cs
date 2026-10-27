@@ -265,6 +265,7 @@ internal sealed class VanillaOpt : Opt
     }
 
     internal override bool IsToggle => _check != null;
+    internal override bool HasDefault => false;
 
     private static IGameOptions Options => GameOptionsManager.Instance?.CurrentGameOptions;
 

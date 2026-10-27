@@ -71,6 +71,32 @@ public abstract class Opt
     // ON/OFF の行 (チェックの行) で出すか
     internal virtual bool IsToggle => false;
 
+    // 既定値を持つか (値を外に持つ項目は既定がこちらに無い)
+    internal virtual bool HasDefault => true;
+
+    // 既定値から変えてあるか
+    internal bool Changed
+    {
+        get
+        {
+            if (!HasDefault) return false;
+            Sync();
+            return Index != DefaultIndex;
+        }
+    }
+
+    // 番号を書いて、押して変えた時と同じ後始末をする (既定へ戻す・取り消し)。変わったら true
+    internal bool Restore(int index)
+    {
+        Sync();
+        if (index < 0 || index >= Count || index == Index) return false;
+        Index = index;
+        OnStepped();
+        return true;
+    }
+
+    internal bool ResetToDefault() => HasDefault && Restore(DefaultIndex);
+
     internal void SetIndex(int index)
     {
         if (index >= 0 && index < Count) Index = index;

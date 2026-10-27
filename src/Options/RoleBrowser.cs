@@ -46,9 +46,9 @@ internal sealed class RoleBrowser
     private Registry.Section _picked; // スマホで 1 回押した物 (もう 1 回で開く)
     private Holder _side;
     private ScrollView _list;
-    private List<(Assignable role, int chance, int count)> _undo;
     private readonly List<(Registry.Section sec, Button card, Label values, Label name)> _cards = new();
     private readonly OptEditor _editor;
+    private Button _resetBtn, _undoBtn;  // 2 枚目の「既定に戻す」「元に戻す」(行を押した時に色だけ書き換える)
     private string[] _tokens = Array.Empty<string>();
     private readonly int[] _hits = new int[3];  // 検索の件数: 0 = ゲーム設定・1 = MRP 全般・2 = 役職
 
@@ -77,7 +77,6 @@ internal sealed class RoleBrowser
         _open = open;
         _hover = null;
         _picked = null;
-        _undo = null;
         Prepare();
         Rebuild();
     }
@@ -129,6 +128,7 @@ internal sealed class RoleBrowser
         _editor.Clear();
         _side = null;
         _list = null;
+        _resetBtn = _undoBtn = null;
         _screen.Set(_open != null ? DetailPage(_open) : _tokens.Length > 0 ? SearchPage() : ListPage());
     }
 
@@ -199,8 +199,27 @@ internal sealed class RoleBrowser
         return sec.Color != null ? RoleDisplay.ParseColor(sec.Color) : Color.white;
     }
 
-    private static string CardValues(Assignable a) =>
-        a == null ? "" : $"×{a.Count.Display()}\n{a.Chance.Display()}";
+    private static string CardValues(Assignable a)
+    {
+        if (a == null) return "";
+        string count = $"×{a.Count.Display()}";
+        if (a.Count.Changed) count = $"<color=#{ChangedHex}>{count}</color>";
+        return $"{count}\n{a.Chance.Display()}";
+    }
+
+    private static readonly string ChangedHex = ColorUtility.ToHtmlStringRGB(OptEditor.ChangedColor);
+
+    // 細かい設定を既定から変えてあるか。出現率は既定が 0 (出ない) なので縁の色で分かる → 数えない
+    private static bool DetailChanged(Registry.Section sec)
+    {
+        foreach (var opt in SectionOpts(sec))
+            if (opt != sec.Role?.Chance && opt.Changed) return true;
+        return false;
+    }
+
+    // カードの名前 (細かい設定を変えてあれば印を付ける)
+    private static string CardName(Registry.Section sec) =>
+        DetailChanged(sec) ? $"{sec.Title} <color=#{ChangedHex}>*</color>" : sec.Title.ToString();
 
     private static string ShortText(Registry.Section sec)
     {
@@ -214,7 +233,7 @@ internal sealed class RoleBrowser
         var a = sec.Role;
         bool on = a == null || Enabled(a);
         var title = TitleColor(sec);
-        var name = new Label(sec.Title, 1.9f) { MenuFont = true, Color = on ? title : Color.Lerp(title, Gray, 0.55f) };
+        var name = new Label(CardName(sec), 1.9f) { MenuFont = true, Color = on ? title : Color.Lerp(title, Gray, 0.55f) };
         var desc = new Label(ShortText(sec), 1.15f) { Width = width - 1.0f, Color = on ? SubText : Gray };
         var values = new Label(CardValues(a), 1.35f) { Width = 0.6f, TextAlign = TextAlignmentOptions.Right, Bold = true, Color = on ? Color.white : Gray };
         var text = new Stack(false, name) { Gap = 0.01f, Width = width - 0.95f };
@@ -277,6 +296,8 @@ internal sealed class RoleBrowser
             if (!opt.Shown) continue;
             col.Add(new Label($"{opt.Label}: {ValueText(opt)}", 1.25f) { Width = SideW, Align = Align.Start });
         }
+        if (DetailChanged(sec))
+            col.Add(new Label(new Text("RolePage.ChangedNote"), 1.15f) { Color = OptEditor.ChangedColor, Width = SideW, Align = Align.Start });
         if (sec.Role is RoleBase rb && rb.Excluded != null)
             col.Add(new Label($"{new Text("Registry.NotWith")}: {ExclSummary(rb)}", 1.25f) { Width = SideW, Align = Align.Start });
         if (Touch)
@@ -291,9 +312,9 @@ internal sealed class RoleBrowser
     private static string ValueText(Opt opt)
     {
         opt.Sync();
-        return opt.IsToggle
-            ? $"<color=#{ColorUtility.ToHtmlStringRGB(opt.Index != 0 ? OptEditor.OnColor : OptEditor.OffColor)}>{opt.Display()}</color>"
-            : opt.Display();
+        if (opt.IsToggle)
+            return $"<color=#{ColorUtility.ToHtmlStringRGB(opt.Index != 0 ? OptEditor.OnColor : OptEditor.OffColor)}>{opt.Display()}</color>";
+        return opt.Changed ? $"<color=#{ChangedHex}>{opt.Display()}</color>" : opt.Display();
     }
 
     // 人数・出現率を先に、そのあと細かい設定 (タブに出さない項目は除く)
@@ -332,7 +353,7 @@ internal sealed class RoleBrowser
             () => { _bulkCount = Math.Max(1, _bulkCount - 1); ShowSide(null); },
             () => { _bulkCount = Math.Min(MaxBulkCount(), _bulkCount + 1); ShowSide(null); },
             () => Apply(a => a.Count.SetValue(_bulkCount))));
-        col.Add(new Button(new Text("RoleMenu.Undo"), Undo, 1.45f) { Size = new Vector2(SideW, 0.4f), Color = _undo != null ? Color.white : OptEditor.Dim });
+        col.Add(new Button(new Text("RoleMenu.Undo"), Undo, 1.45f) { Size = new Vector2(SideW, 0.4f), Color = OptHistory.Any ? Color.white : OptEditor.Dim });
         return col;
     }
 
@@ -375,35 +396,75 @@ internal sealed class RoleBrowser
     internal void Apply(Func<Assignable, bool> change)
     {
         if (!Editable) return;
-        var before = new List<(Assignable, int, int)>();
-        foreach (var a in TeamRoles())
+        int n = 0;
+        OptHistory.BeginGroup();
+        try
         {
-            int chance = a.Chance.Index, count = a.Count.Index;
-            if (change(a)) before.Add((a, chance, count));
+            foreach (var a in TeamRoles())
+            {
+                int chance = a.Chance.Index, count = a.Count.Index;
+                if (!change(a)) continue;
+                if (a.Chance.Index != chance) OptHistory.Push(a.Chance, chance);
+                if (a.Count.Index != count) OptHistory.Push(a.Count, count);
+                Roles.TeamSizes.OnEdited(a.Count);
+                n++;
+            }
         }
-        if (before.Count == 0) return;
-        _undo = before;
-        foreach (var (a, _, _) in before) Roles.TeamSizes.OnEdited(a.Count);
+        finally { OptHistory.EndGroup(); }
+        if (n == 0) return;
         AfterEdit();
         ShowSide(null);
     }
 
+    // 最後の 1 回の操作を戻す (行の 1 押し・まとめて変える・既定に戻す。設定画面と辞典で共通)
     internal void Undo()
     {
-        if (_undo == null || !Editable) return;
-        foreach (var (a, chance, count) in _undo)
-        {
-            a.Chance.SetIndex(chance);
-            a.Count.SetIndex(count);
-            Roles.TeamSizes.OnEdited(a.Count);
-        }
-        _undo = null;
+        if (!OptHistory.Any || !Editable) return;
+        OptHistory.Undo();
         AfterEdit();
-        ShowSide(null);
+        if (_open != null || _tokens.Length > 0) Rebuild();
+        else ShowSide(null);
+    }
+
+    // 開いている役職の項目を全部既定へ (1 回の取り消しで戻る)
+    private void ResetSection(Registry.Section sec)
+    {
+        if (!Editable) return;
+        bool any = false;
+        OptHistory.BeginGroup();
+        try
+        {
+            foreach (var opt in SectionOpts(sec))
+            {
+                int before = opt.Index;
+                if (!opt.ResetToDefault()) continue;
+                OptHistory.Push(opt, before);
+                OptEditor.AfterStep(opt);
+                any = true;
+            }
+        }
+        finally { OptHistory.EndGroup(); }
+        if (!any) return;
+        AfterEdit();
+        Rebuild();
+    }
+
+    private static Color UndoColor => OptHistory.Any ? Color.white : OptEditor.Dim;
+
+    private static Color ResetColor(Registry.Section sec)
+    {
+        foreach (var opt in SectionOpts(sec))
+            if (opt.Changed) return OptEditor.ChangedColor;
+        return OptEditor.Dim;
     }
 
     private void AfterEdit()
     {
+        if (_open != null)
+        {
+            _resetBtn?.SetColor(ResetColor(_open));
+            _undoBtn?.SetColor(UndoColor);
+        }
         RefreshCards();
         Changed?.Invoke();
     }
@@ -424,12 +485,19 @@ internal sealed class RoleBrowser
             if (a == null) continue;
             bool on = Enabled(a);
             card.SetColor(CardColor(sec));
+            // 字はゲーム側へ写すたびに費用が掛かるので、変わったカードだけ書く (Content = 今出している字)
             if (values.Built)
             {
-                values.Built.text = CardValues(a);
+                string v = CardValues(a);
+                if (v != values.Content) { values.Content = v; values.Built.text = v; }
                 values.Built.color = on ? Color.white : Gray;
             }
-            if (name.Built) name.Built.color = on ? TitleColor(sec) : Color.Lerp(TitleColor(sec), Gray, 0.55f);
+            if (name.Built)
+            {
+                string s = CardName(sec);
+                if (s != name.Content) { name.Content = s; name.Built.text = s; }
+                name.Built.color = on ? TitleColor(sec) : Color.Lerp(TitleColor(sec), Gray, 0.55f);
+            }
         }
     }
 
@@ -458,6 +526,12 @@ internal sealed class RoleBrowser
             if (s.Length > 0) rows.Add(new Label(s, 1.3f) { Color = SubText, Width = W - 0.4f, Align = Align.Start });
         }
         var opts = new List<Opt>(SectionOpts(sec));
+        if (edit)
+        {
+            _resetBtn = new Button(new Text("RolePage.ResetRole"), () => ResetSection(sec), 1.35f) { Size = new Vector2(0f, 0.4f), MinSize = new Vector2(1.5f, 0.4f), Color = ResetColor(sec) };
+            _undoBtn = new Button(new Text("RoleMenu.Undo"), Undo, 1.35f) { Size = new Vector2(0f, 0.4f), MinSize = new Vector2(1.2f, 0.4f), Color = UndoColor };
+            rows.Add(new Stack(true, _resetBtn, _undoBtn) { Gap = 0.1f, Align = Align.Start });
+        }
         _editor.Watch(opts);
         foreach (var opt in opts)
         {
@@ -660,6 +734,7 @@ internal sealed class RoleBrowser
         if (Touch || !_settings || _tokens.Length > 0 || _open != null || _hover?.Role == null) return;
         if (!Input.GetMouseButtonDown(1) || !Editable) return;
         var c = _hover.Role.Chance;
+        OptHistory.Push(c, c.Index);
         c.SetIndex(c.Index > 0 ? 0 : c.Count - 1);
         Roles.TeamSizes.OnEdited(c);
         AfterEdit();
@@ -698,6 +773,9 @@ internal sealed class RoleBrowser
                 else if (a.Length > 1 && a[1] == "1") Apply(x => x.Chance.SetValue(100));
                 else Undo();
                 break;
+            case "reset":
+                if (_open != null) ResetSection(_open);
+                break;
             case "rebuild":
             {
                 var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -705,7 +783,7 @@ internal sealed class RoleBrowser
                 return $"ms={sw.Elapsed.TotalMilliseconds:0.0} slots={UiActions.Census()}";
             }
         }
-        var sb = new System.Text.StringBuilder($"team={_team} only={_enabledOnly} edit={Editable} open={_open?.Role?.Id ?? _open?.Title.ToString() ?? "-"} hover={_hover?.Role?.Id ?? "-"} undo={_undo?.Count ?? -1} hits={_hits[0]}/{_hits[1]}/{_hits[2]} slots={UiActions.Census()} cards:");
+        var sb = new System.Text.StringBuilder($"team={_team} only={_enabledOnly} edit={Editable} open={_open?.Role?.Id ?? _open?.Title.ToString() ?? "-"} hover={_hover?.Role?.Id ?? "-"} undo={(OptHistory.Any ? 1 : 0)} hits={_hits[0]}/{_hits[1]}/{_hits[2]} slots={UiActions.Census()} cards:");
         foreach (var (sec, _, values, _) in _cards)
             sb.Append($" {sec.Role?.Id ?? sec.Title.ToString()}({(values.Built ? values.Built.text.Replace('\n', ',') : "")})");
         return sb.ToString();

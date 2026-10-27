@@ -443,7 +443,10 @@ RolePage.BulkTeam: Change all {team}
 RolePage.Enabled: Enabled: {n} / {count}
 RolePage.ChanceTo: Chance to {pct}
 RolePage.CountTo: Count to {n}
-RolePage.Legend: Card border: gray = off, white = by chance, yellow = always
+RolePage.Legend: Card border: gray = off, white = by chance, yellow = always. A * by the name and orange text mark settings changed from the default
+RolePage.ChangedNote: Some settings differ from the default
+RolePage.ResetRole: Reset all
+OptEditor.Reset: Def
 RoleDictionary.Title: Role Dictionary
 RoleDictionary.Open: Open role dictionary
 RoleDictionary.Hint: Hover a role card to see its settings here. Press it for the description and all settings.

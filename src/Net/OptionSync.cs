@@ -72,6 +72,8 @@ internal static class OptionSync
             opt.SetIndex(values[i]);
             if (notify && opt.Index != before) Changes.Add(opt);
         }
+        // ホストの値に置き換わったので、自分が前に変えた値の取り消しは残さない
+        OptHistory.Clear();
         HoldsHostValues = true;
         _heldGame = game;
         LobbyView.OnOptionsReceived();

@@ -224,6 +224,7 @@ internal static class Registry
     public static bool LoadFrom(string path)
     {
         foreach (var o in All) o.Index = o.DefaultIndex;
+        OptHistory.Clear();
         try
         {
             if (!File.Exists(path)) return false;
