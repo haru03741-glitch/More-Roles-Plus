@@ -14,22 +14,23 @@ internal static class UiCommands
 
     public static void Register()
     {
-        TestBridge.Register("tip", "[<n> | out <n> | click <n>] 項目の説明の「?」の n 番目に当てる・外す・押す (画面に出ている物を上から数える)", (args, reply) =>
+        TestBridge.Register("uibtn", "<字> [n] 自前の画面のボタンを字で探して n 番目 (上から) を押す (窓が開いていれば窓の中だけ)", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 0) { reply("ERR uibtn <字> [n]"); return; }
+            int n = a.Length > 1 && int.TryParse(a[1], out int v) ? v : 0;
+            var found = Buttons(a[0]);
+            if (n < 0 || n >= found.Count) { reply($"ERR uibtn {a[0]} {n}/{found.Count}"); return; }
+            found[n].OnClick.Invoke();
+            reply($"OK uibtn {a[0]} {n}/{found.Count}");
+        });
+
+        TestBridge.Register("tip","[<n> | out <n> | click <n>] 項目の説明の「?」の n 番目に当てる・外す・押す (画面に出ている物を上から数える)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             string op = a.Length > 0 && !int.TryParse(a[0], out _) ? a[0] : "over";
             int n = int.TryParse(a.Length > 0 ? a[^1] : "0", out int v) ? v : 0;
-            var found = new System.Collections.Generic.List<PassiveButton>();
-            foreach (var b in UnityEngine.Object.FindObjectsOfType<PassiveButton>())
-            {
-                if (!b || !b.isActiveAndEnabled) continue;
-                var t = b.GetComponentInChildren<TMPro.TextMeshPro>();
-                if (!t || t.text != "?") continue;
-                // 窓が開いている間は窓の中の物だけ (奥の設定画面の物は本物のマウスでは当たらない)
-                if (UiWindow.IsOpen && !InWindow(b.transform)) continue;
-                found.Add(b);
-            }
-            found.Sort((x, y) => y.transform.position.y.CompareTo(x.transform.position.y));
+            var found = Buttons("?");
             if (n < 0 || n >= found.Count) { reply($"ERR tip {n}/{found.Count}"); return; }
             if (op == "out") found[n].OnMouseOut.Invoke();
             else if (op == "click") found[n].OnClick.Invoke();
@@ -103,6 +104,22 @@ internal static class UiCommands
                     return;
             }
         });
+    }
+
+    // 字が text のボタン (有効な物だけ・上から順)。窓が開いている間は窓の中の物だけ (奥の物は本物のマウスでは当たらない)
+    private static System.Collections.Generic.List<PassiveButton> Buttons(string text)
+    {
+        var found = new System.Collections.Generic.List<PassiveButton>();
+        foreach (var b in UnityEngine.Object.FindObjectsOfType<PassiveButton>())
+        {
+            if (!b || !b.isActiveAndEnabled) continue;
+            var t = b.GetComponentInChildren<TMPro.TextMeshPro>();
+            if (!t || t.text != text) continue;
+            if (UiWindow.IsOpen && !InWindow(b.transform)) continue;
+            found.Add(b);
+        }
+        found.Sort((x, y) => y.transform.position.y.CompareTo(x.transform.position.y));
+        return found;
     }
 
     private static bool InWindow(Transform t)
