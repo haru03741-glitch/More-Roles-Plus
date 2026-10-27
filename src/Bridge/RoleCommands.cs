@@ -331,6 +331,14 @@ internal static class RoleCommands
             reply($"OK tasks n={lp.myTasks.Count} total={GameData.Instance?.TotalTasks} done={GameData.Instance?.CompletedTasks} {sb}");
         });
 
+        TestBridge.Register("settingcode", "copy | paste | show  設定のコードをコピー / 貼ってある物を読む / 貼ってある物の中身", (args, reply) =>
+        {
+            string a = args.Trim();
+            if (a == "copy") reply($"OK settingcode {SettingCode.Copy()} len={UnityEngine.GUIUtility.systemCopyBuffer.Length}");
+            else if (a == "paste") reply($"OK settingcode {SettingCode.Paste()}");
+            else reply($"OK settingcode {(SettingCode.Decode(UnityEngine.GUIUtility.systemCopyBuffer) ?? "(not a code)").Replace('\n', '|')}");
+        });
+
         TestBridge.Register("fresh", "[key...] ホストが直前に変えた印を付ける (受け取った時と同じ・key 無し = 外す)", (args, reply) =>
         {
             var list = new System.Collections.Generic.List<Opt>();
