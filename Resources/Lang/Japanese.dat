@@ -94,6 +94,13 @@ Quickdraw.Summary: キルのクールダウンが部屋の設定より短いイ�
 Quickdraw.Tips: 1 人倒したら、怪しまれる前に次を狙いましょう。
 Quickdraw.Quote: 抜くのも仕留めるのも、誰より早く。
 Quickdraw.KillCooldown: キルのクールダウン
+Quickdraw.KillCooldownMode: キルのクールダウンの決め方
+Quickdraw.KillCooldownMode.Detail: 部屋の値 (ゲーム設定のキルのクールダウン) を基にすると、部屋の値を変えた時に早撃ちの秒数も付いてきます。括弧の中は今の部屋の値で計算した秒数です。
+Quickdraw.KillCooldownOffset: 部屋の値に足す秒数
+Quickdraw.KillCooldownRatio: 部屋の値に掛ける倍率
+CooldownMode.Fixed: 固定
+CooldownMode.Offset: 部屋の値 ± 秒
+CooldownMode.Ratio: 部屋の値 × 倍
 
 # ── 道化 (Jester) ──
 Jester.Name: 道化

@@ -94,6 +94,13 @@ Quickdraw.Summary: An impostor whose kill cooldown is shorter than the room sett
 Quickdraw.Tips: After a kill, go for the next one before anyone gets suspicious.
 Quickdraw.Quote: Quickest on the draw, quickest to finish.
 Quickdraw.KillCooldown: Kill Cooldown
+Quickdraw.KillCooldownMode: Kill Cooldown Type
+Quickdraw.KillCooldownMode.Detail: When based on the room value (the Kill Cooldown in game settings), the Quickdraw cooldown follows when the room value changes. The number in brackets is the result with the current room value.
+Quickdraw.KillCooldownOffset: Seconds Added to Room Value
+Quickdraw.KillCooldownRatio: Multiplier on Room Value
+CooldownMode.Fixed: Fixed
+CooldownMode.Offset: Room value ± sec
+CooldownMode.Ratio: Room value ×
 
 # ── Jester ──
 Jester.Name: Jester
