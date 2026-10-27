@@ -520,8 +520,14 @@ internal static class GameSettingMenuPatch
     public static bool ChangeTab(GameSettingMenu __instance, [HarmonyArgument(0)] int tabNum, [HarmonyArgument(1)] bool previewOnly) =>
         SettingsMenu.OnChangeTab(__instance, tabNum, previewOnly);
 
+    // 設定画面の上に自前の窓がある時の Esc は窓だけを閉じる (設定画面も自分で Esc を見て閉じるため)
     [HarmonyPatch(nameof(GameSettingMenu.Close)), HarmonyPrefix]
-    public static void Close() => SettingsMenu.OnClose();
+    public static bool Close()
+    {
+        if (UI.UiWindow.EscapeTaken()) return false;
+        SettingsMenu.OnClose();
+        return true;
+    }
 }
 
 [HarmonyPatch(typeof(GameOptionsMenu))]

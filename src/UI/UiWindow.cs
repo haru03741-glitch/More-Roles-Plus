@@ -98,6 +98,14 @@ internal sealed class UiWindow
         close.transform.localPosition = new Vector3(-Size.x / 2f - 0.05f, Size.y / 2f + 0.05f, -1f);
         UiScreen.Order(close.transform, 1);
         _closeSlots = ctx.Slots;
+        // 本編の「重なった画面」に入れる: Esc (コントローラーの戻る) で × が押され、本編の画面は開かない
+        var cm = ControllerManager.Instance;
+        var back = close.GetComponent<PassiveButton>();
+        if (cm && back)
+        {
+            _overlay = Root.name;
+            cm.OpenOverlayMenu(_overlay, back, back, new Il2CppSystem.Collections.Generic.List<UiElement>());
+        }
     }
 
     private System.Collections.Generic.List<int> _closeSlots;
@@ -111,9 +119,24 @@ internal sealed class UiWindow
         if (Current != null && !Current.Root) Current.Close();
     }
 
+    private static int _closedFrame = -1;
+
+    // この Esc は窓のための物か (窓が開いている・同じフレームで窓が閉じた)。本編の画面が Esc で閉じる前に聞く
+    public static bool EscapeTaken() =>
+        (IsOpen || _closedFrame == Time.frameCount) && Input.GetKeyDown(KeyCode.Escape);
+
+    private string _overlay; // 本編の重なった画面に入れた名前 (窓が場面ごと消えた後も外せるように控える)
+
     public void Close()
     {
         if (Current == this) Current = null;
+        _closedFrame = Time.frameCount;
+        if (_overlay != null)
+        {
+            var cm = ControllerManager.Instance;
+            if (cm) cm.CloseOverlayMenu(_overlay);
+            _overlay = null;
+        }
         Body.Clear();
         _chrome.Clear();
         if (_closeSlots != null) UiActions.Release(_closeSlots);
