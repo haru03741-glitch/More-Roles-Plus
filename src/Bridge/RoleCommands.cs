@@ -461,6 +461,22 @@ internal static class RoleCommands
             reply($"OK uilook diffs={diffs.Count}" + (diffs.Count > 0 ? "\n" + string.Join("\n", diffs) : ""));
         });
 
+        TestBridge.Register("excl", "<役職Id> <n|all|none> 一緒に出ない役職を、候補の先頭から n 個だけ選んだ状態にする (相手の側も揃える)。値の欄の要約を返す", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var me = a.Length > 0 ? Registry.Roles.Find(r => r.Id == a[0]) as RoleBase : null;
+            if (me?.Excluded == null || a.Length < 2) { reply("ERR excl <役職Id> <n|all|none>"); return; }
+            var cands = Registry.Roles.FindAll(r => r != me && r is RoleBase rb && rb.Excluded != null);
+            int n = a[1] == "all" ? cands.Count : a[1] == "none" ? 0 : int.TryParse(a[1], out int v) ? v : 0;
+            for (int i = 0; i < cands.Count; i++)
+            {
+                var other = (RoleBase)cands[i];
+                me.Excluded.Set(other.Order, i < n);
+                other.Excluded.Set(me.Order, i < n);
+            }
+            reply($"OK excl {me.Id} {System.Math.Min(n, cands.Count)}/{cands.Count} display={me.Excluded.Display()}");
+        });
+
         TestBridge.Register("closesettings", "設定画面を閉じる", (_, reply) =>
         {
             if (!GameSettingMenu.Instance) { reply("ERR closesettings menu not open"); return; }
