@@ -456,6 +456,13 @@ RolePage.ResetRole: Reset all
 OptEditor.Reset: Def
 RolePage.FreshMark: NEW
 RolePage.FreshOnly: Just changed
+RolePage.Sort0: Sort: default
+RolePage.Sort1: Sort: chance
+RolePage.Sort2: Sort: name
+RolePage.Tag1: Favorites
+RolePage.Tag2: Killer
+RolePage.Tag3: Changes terrain
+RolePage.Tag4: Vanilla roles
 RoleDictionary.Title: Role Dictionary
 RoleDictionary.Open: Open role dictionary
 RoleDictionary.Hint: Hover a role card to see its settings here. Press it for the description and all settings.

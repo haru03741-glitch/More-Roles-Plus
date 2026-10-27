@@ -38,6 +38,7 @@ internal sealed class RoleBrowser
     // 開き直しても残す
     private int _team;
     private bool _enabledOnly, _freshOnly;
+    private int _sort, _filter;
     private bool _freshChip;  // 一覧に「変わった所だけ」の札を出したか
     private int _bulkChance = 50, _bulkCount = 1;
 
@@ -144,8 +145,17 @@ internal sealed class RoleBrowser
             chips.Add(Chip(k < 0 ? new Text("RoleMenu.All") : RoleMenu.KindName(k), c, _team == k, () => { _team = kind; _hover = null; Rebuild(); }));
         }
         chips.Add(Chip(new Text("RoleMenu.EnabledOnly"), new Color(0.6f, 1f, 0.6f), _enabledOnly, () => { _enabledOnly = !_enabledOnly; Rebuild(); }));
+
+        // 2 段目: 並べ替えとタグの絞り込み (タグは 1 つだけ選ぶ・もう一度押すと外す)
+        var chips2 = new Stack(true) { Gap = 0.07f, Align = Align.Start };
+        chips2.Add(Chip(new Text("RolePage.Sort" + _sort), SortColor, false, () => { _sort = (_sort + 1) % SortCount; Rebuild(); }));
+        for (int f = 1; f <= TagCount; f++)
+        {
+            int tag = f;
+            chips2.Add(Chip(new Text("RolePage.Tag" + f), TagColor(f), _filter == f, () => { _filter = _filter == tag ? 0 : tag; Rebuild(); }));
+        }
         if (SettingNotice.FreshCount > 0)
-            chips.Add(Chip(new Text("RolePage.FreshOnly"), FreshColor, _freshOnly, () => { _freshOnly = !_freshOnly; Rebuild(); }));
+            chips2.Add(Chip(new Text("RolePage.FreshOnly"), FreshColor, _freshOnly, () => { _freshOnly = !_freshOnly; Rebuild(); }));
 
         var cards = new Stack(false) { Gap = 0.07f, Width = CardW };
         int n = 0;
@@ -156,9 +166,11 @@ internal sealed class RoleBrowser
         }
         if (n == 0) cards.Add(new Label(new Text("RoleMenu.NoMatchingRoles"), 1.6f) { Color = SubText, Width = CardW, TextAlign = TextAlignmentOptions.Center });
 
-        _list = new ScrollView(new Vector2(ListW, H - ChipH - 0.12f), cards) { Tag = _tag + ":" + _team + (_enabledOnly ? "+" : "") };
-        _side = new Holder(new Vector2(SideW, H - ChipH - 0.12f), SideContent());
-        return new Stack(false, chips, new Stack(true, _list, _side) { Gap = 0.15f }) { Gap = 0.12f, Width = W };
+        float listH = H - ChipH * 2f - 0.07f - 0.12f;
+        _list = new ScrollView(new Vector2(ListW, listH), cards) { Tag = _tag + ":" + _team + (_enabledOnly ? "+" : "") + _filter + _sort };
+        _side = new Holder(new Vector2(SideW, listH), SideContent());
+        var head = new Stack(false, chips, chips2) { Gap = 0.07f, Align = Align.Start };
+        return new Stack(false, head, new Stack(true, _list, _side) { Gap = 0.15f }) { Gap = 0.12f, Width = W };
     }
 
     private static Button Chip(string text, Color c, bool on, Action click)
@@ -170,7 +182,67 @@ internal sealed class RoleBrowser
     }
 
     // 今の陣営の札・「出る役職だけ」で見せる物 (役職とアドオン・陣営に置いた設定のまとまり)
-    private IEnumerable<Registry.Section> Visible()
+    // ---- 並べ替えとタグ ----
+
+    private const int SortCount = 3;   // 0 = 標準・1 = 出現率の高い順・2 = 名前
+    private const int TagCount = 4;    // 1 = お気に入り・2 = キル役・3 = 地形を変える・4 = 本編の役職
+    private static readonly Color SortColor = new(0.78f, 0.78f, 0.84f);
+
+    private static Color TagColor(int tag) => tag switch
+    {
+        1 => new Color(1f, 0.6f, 0.8f),
+        2 => new Color(1f, 0.45f, 0.4f),
+        3 => new Color(1f, 0.7f, 0.35f),
+        _ => new Color(0.75f, 0.85f, 1f),
+    };
+
+    private static bool HasTag(Registry.Section sec, int tag)
+    {
+        var a = sec.Role;
+        if (a == null) return false;
+        var rb = a as RoleBase;
+        return tag switch
+        {
+            1 => RoleFavorites.Has(a),
+            2 => rb != null && rb.CanKill,
+            3 => rb != null && rb.TerrainPermit.Any,
+            4 => a is Roles.Builtin.VanillaRole,
+            _ => true,
+        };
+    }
+
+    // 要約と 2 枚目に出すタグの名前 (お気に入りは別の印なので入れない)
+    private static string TagLine(Registry.Section sec)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int t = 2; t <= TagCount; t++)
+        {
+            if (!HasTag(sec, t)) continue;
+            if (sb.Length > 0) sb.Append('・');
+            sb.Append($"<color=#{ColorUtility.ToHtmlStringRGB(TagColor(t))}>{new Text("RolePage.Tag" + t)}</color>");
+        }
+        return sb.ToString();
+    }
+
+    private List<Registry.Section> Visible()
+    {
+        var list = new List<Registry.Section>(VisibleInOrder());
+        if (_sort == 0 || list.Count < 2) return list;
+        var order = new Dictionary<Registry.Section, int>();
+        for (int i = 0; i < list.Count; i++) order[list[i]] = i;
+        list.Sort((x, y) =>
+        {
+            int c = 0;
+            if (_sort == 1) c = (y.Role?.Chance.Value ?? -1).CompareTo(x.Role?.Chance.Value ?? -1);
+            else if (_sort == 2) c = string.CompareOrdinal(SortName(x), SortName(y));
+            return c != 0 ? c : order[x].CompareTo(order[y]);
+        });
+        return list;
+    }
+
+    private static string SortName(Registry.Section sec) => sec.Role?.Reading ?? sec.Title.ToString();
+
+    private IEnumerable<Registry.Section> VisibleInOrder()
     {
         for (int k = 0; k <= RoleMenu.AddonKind; k++)
         {
@@ -183,6 +255,7 @@ internal sealed class RoleBrowser
                 }
                 else if (_enabledOnly && !Enabled(sec.Role)) continue;
                 if (FreshOnly && !Fresh(sec)) continue;
+                if (_filter != 0 && !HasTag(sec, _filter)) continue;
                 yield return sec;
             }
         }
@@ -226,6 +299,8 @@ internal sealed class RoleBrowser
     public static readonly Color FreshColor = new(0.4f, 0.88f, 1f, 1f);
     private static readonly string FreshHex = ColorUtility.ToHtmlStringRGB(FreshColor);
     private static readonly Text FreshMark = new("RolePage.FreshMark");
+    private static readonly string FavHex = ColorUtility.ToHtmlStringRGB(TagColor(1));
+    private const string FavMark = "★";
 
     private static bool Fresh(Registry.Section sec)
     {
@@ -238,6 +313,7 @@ internal sealed class RoleBrowser
     private static string CardName(Registry.Section sec)
     {
         string s = DetailChanged(sec) ? $"{sec.Title} <color=#{ChangedHex}>*</color>" : sec.Title.ToString();
+        if (RoleFavorites.Has(sec.Role)) s = $"<color=#{FavHex}>{FavMark}</color> {s}";
         return Fresh(sec) ? $"{s} <size=70%><color=#{FreshHex}>{FreshMark}</color></size>" : s;
     }
 
@@ -315,6 +391,8 @@ internal sealed class RoleBrowser
         col.Add(new Label(sec.Title, 2.0f) { MenuFont = true, Color = TitleColor(sec), Width = SideW, Align = Align.Start });
         string s = ShortText(sec);
         if (s.Length > 0) col.Add(new Label(s, 1.2f) { Color = SubText, Width = SideW, Align = Align.Start });
+        string tags = TagLine(sec);
+        if (tags.Length > 0) col.Add(new Label(tags, 1.15f) { Width = SideW, Align = Align.Start });
         col.Add(new Spacer(0.1f, 0.06f));
         foreach (var opt in SectionOpts(sec))
         {
@@ -537,6 +615,16 @@ internal sealed class RoleBrowser
         var head = new Stack(true, back, title) { Gap = 0.25f, Align = Align.Start };
         var extra = HeadExtra?.Invoke(sec);
         if (extra != null) head.Add(extra);
+        if (sec.Role != null)
+        {
+            // お気に入り (自分の手元だけ)。押すと札の色で塗る
+            bool fav = RoleFavorites.Has(sec.Role);
+            var c = TagColor(1);
+            var label = new Label(new Text("RolePage.Tag1"), 1.35f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = fav ? new Color(0.08f, 0.08f, 0.1f) : c };
+            var b = new Button(label, () => { RoleFavorites.Toggle(sec.Role); Rebuild(); }) { Size = new Vector2(0f, 0.42f), MinSize = new Vector2(1.1f, 0.42f), Padding = new Vector2(0.14f, 0.04f), Color = c };
+            if (fav) b.Fill = c;
+            head.Add(b);
+        }
 
         var rows = new Stack(false) { Gap = 0.1f, Width = W - 0.3f };
         if (!_settings && sec.Role != null)
@@ -801,6 +889,18 @@ internal sealed class RoleBrowser
                 break;
             case "reset":
                 if (_open != null) ResetSection(_open);
+                break;
+            case "sort":
+                _sort = a.Length > 1 && int.TryParse(a[1], out int so) ? Math.Clamp(so, 0, SortCount - 1) : 0;
+                Rebuild();
+                break;
+            case "tag":
+                _filter = a.Length > 1 && int.TryParse(a[1], out int tg) ? Math.Clamp(tg, 0, TagCount) : 0;
+                Rebuild();
+                break;
+            case "fav":
+                if (a.Length > 1 && Find(a[1])?.Role is { } fr) RoleFavorites.Toggle(fr);
+                Rebuild();
                 break;
             case "rebuild":
             {

@@ -456,6 +456,13 @@ RolePage.ResetRole: すべて初期値に戻す
 OptEditor.Reset: 初期値
 RolePage.FreshMark: 更新
 RolePage.FreshOnly: 変わった所だけ
+RolePage.Sort0: 並び: 標準
+RolePage.Sort1: 並び: 出現率
+RolePage.Sort2: 並び: 名前
+RolePage.Tag1: お気に入り
+RolePage.Tag2: キル役
+RolePage.Tag3: 地形を変える
+RolePage.Tag4: 本編の役職
 RoleDictionary.Title: 役職辞典
 RoleDictionary.Open: 役職辞典を開く
 RoleDictionary.Hint: 役職のカードに当てると、ここに設定の要約が出ます。押すと説明と細かい設定が開きます。
