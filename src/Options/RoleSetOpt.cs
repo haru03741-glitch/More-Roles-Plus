@@ -31,15 +31,35 @@ internal sealed class RoleSetOpt : Opt
     internal override string Display()
     {
         if (Index == 0) return Tr.Get("RoleSetOpt.None");
-        string first = null;
-        int n = 0;
+        var me = Section?.Role;
+        var picked = new System.Collections.Generic.List<string>();
+        var rest = new System.Collections.Generic.List<string>();
         for (int i = 0; i < Registry.Roles.Count && i < MaxRoles; i++)
         {
-            if (!Has(i)) continue;
-            first ??= Registry.Roles[i].Name.ToString();
-            n++;
+            var r = Registry.Roles[i];
+            if (Has(i)) picked.Add(r.Name.ToString());
+            else if (r != me && r is Roles.RoleBase rb && rb.Excluded != null) rest.Add(r.Name.ToString());
         }
-        return n > 1 ? new Text("RoleSetOpt.More").With("name", first).With("n", n - 1) : first;
+        return Summary(picked, rest, 1);
+    }
+
+    // 選んだ役職の要約。選んだ方と選ばなかった方の少ない方を名前で書く (「A, B を除く全部」)。
+    // 名前は max 個まで・残りは数で
+    internal static string Summary(System.Collections.Generic.List<string> picked, System.Collections.Generic.List<string> rest, int max)
+    {
+        if (picked.Count == 0) return Tr.Get("RoleSetOpt.None");
+        if (rest.Count == 0) return Tr.Get("RoleSetOpt.All");
+        bool except = rest.Count < picked.Count;
+        var names = except ? rest : picked;
+        var sb = new StringBuilder();
+        int shown = Math.Min(max, names.Count);
+        for (int i = 0; i < shown; i++)
+        {
+            if (i > 0) sb.Append(Tr.Get("RoleSetOpt.Sep"));
+            sb.Append(names[i]);
+        }
+        string list = names.Count > shown ? new Text("RoleSetOpt.More").With("name", sb.ToString()).With("n", names.Count - shown).ToString() : sb.ToString();
+        return except ? new Text("RoleSetOpt.Except").With("names", list).ToString() : list;
     }
 
     internal override string Save()

@@ -424,6 +424,9 @@ Registry.Count.Detail: 1 試合に出る最大の人数です。1 人分ずつ�
 Registry.NotWith: 一緒に出ない役職
 RoleSetOpt.None: なし
 RoleSetOpt.More: {name} ほか {n}
+RoleSetOpt.All: すべて
+RoleSetOpt.Except: {names} を除く全部
+RoleSetOpt.Sep: 、
 Registry.CrewmatesCanHaveIt: クルーに付く
 Registry.ImpostorsCanHaveIt: インポスターに付く
 Registry.NeutralsCanHaveIt: 第三陣営に付く

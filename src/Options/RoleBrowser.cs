@@ -730,16 +730,14 @@ internal sealed class RoleBrowser
 
     private static string ExclSummary(RoleBase me)
     {
-        string first = null;
-        int n = 0;
+        var picked = new List<string>();
+        var rest = new List<string>();
         foreach (var other in ExclCandidates(me))
         {
-            if (!AssignPlan.FixedPair(me, other) && !AssignPlan.PickedPair(me, other)) continue;
-            first ??= other.Name.ToString();
-            n++;
+            if (AssignPlan.FixedPair(me, other) || AssignPlan.PickedPair(me, other)) picked.Add(other.Name.ToString());
+            else rest.Add(other.Name.ToString());
         }
-        if (n == 0) return Tr.Get("RoleSetOpt.None");
-        return n > 1 ? new Text("RoleSetOpt.More").With("name", first).With("n", n - 1) : first;
+        return RoleSetOpt.Summary(picked, rest, 4);
     }
 
     // ---- 検索 ----

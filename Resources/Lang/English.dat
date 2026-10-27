@@ -424,6 +424,9 @@ Registry.Count.Detail: The most players who can get this role in one game. Each 
 Registry.NotWith: Never with
 RoleSetOpt.None: None
 RoleSetOpt.More: {name} +{n}
+RoleSetOpt.All: All
+RoleSetOpt.Except: All but {names}
+RoleSetOpt.Sep: , 
 Registry.CrewmatesCanHaveIt: Crewmates can have it
 Registry.ImpostorsCanHaveIt: Impostors can have it
 Registry.NeutralsCanHaveIt: Neutrals can have it
