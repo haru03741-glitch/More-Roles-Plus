@@ -12,7 +12,8 @@ internal static class RoomRelative
     // 本編のキルのクールダウン (読めない時は本編の既定)
     internal static float KillCooldown()
     {
-        var o = GameOptionsManager.Instance?.CurrentGameOptions;
+        var m = GameOptionsManager.Instance;
+        var o = m != null ? m.CurrentGameOptions : null;
         return o != null ? o.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown) : 25f;
     }
 

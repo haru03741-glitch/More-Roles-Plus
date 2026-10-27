@@ -44,13 +44,16 @@ internal static class Tooltip
         _go.transform.localPosition = new Vector3(x, y, p.z - 1f);
     }
 
+    // 先に控えを空にしてから片付ける (札の Clear が HideUnder 経由でここへ戻っても何もしないように)
     public static void Hide()
     {
-        _screen?.Clear();
+        var screen = _screen;
+        var go = _go;
         _screen = null;
-        if (_go) Object.Destroy(_go);
         _go = null;
         _anchor = null;
+        screen?.Clear();
+        if (go) Object.Destroy(go);
     }
 
     // 作り直す画面の中に元の部品があれば消す (消えた部品の札を残さない)
