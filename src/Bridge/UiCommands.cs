@@ -14,6 +14,30 @@ internal static class UiCommands
 
     public static void Register()
     {
+        TestBridge.Register("tip", "[<n> | out <n> | click <n>] 項目の説明の「?」の n 番目に当てる・外す・押す (画面に出ている物を上から数える)", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string op = a.Length > 0 && !int.TryParse(a[0], out _) ? a[0] : "over";
+            int n = int.TryParse(a.Length > 0 ? a[^1] : "0", out int v) ? v : 0;
+            var found = new System.Collections.Generic.List<PassiveButton>();
+            foreach (var b in UnityEngine.Object.FindObjectsOfType<PassiveButton>())
+            {
+                if (!b || !b.isActiveAndEnabled) continue;
+                var t = b.GetComponentInChildren<TMPro.TextMeshPro>();
+                if (!t || t.text != "?") continue;
+                // 窓が開いている間は窓の中の物だけ (奥の設定画面の物は本物のマウスでは当たらない)
+                if (UiWindow.IsOpen && !InWindow(b.transform)) continue;
+                found.Add(b);
+            }
+            found.Sort((x, y) => y.transform.position.y.CompareTo(x.transform.position.y));
+            if (n < 0 || n >= found.Count) { reply($"ERR tip {n}/{found.Count}"); return; }
+            if (op == "out") found[n].OnMouseOut.Invoke();
+            else if (op == "click") found[n].OnClick.Invoke();
+            else found[n].OnMouseOver.Invoke();
+            var tip = GameObject.Find("Tooltip");
+            reply($"OK tip {op} {n}/{found.Count} shown={(tip ? tip.transform.position.ToString() : "-")}");
+        });
+
         TestBridge.Register("uiwin", "[open <カード数> | rebuild <カード数> | scroll <0〜1> | close | info] 部品の試作の窓 (カードの縦並び・スクロール欄)。作るのにかかった ms を返す", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -79,6 +103,16 @@ internal static class UiCommands
                     return;
             }
         });
+    }
+
+    private static bool InWindow(Transform t)
+    {
+        for (var p = t; p; p = p.parent)
+        {
+            var g = p.GetComponent<UnityEngine.Rendering.SortingGroup>();
+            if (g && g.sortingOrder >= 500) return true;
+        }
+        return false;
     }
 
     private static Widget Cards(int n)
