@@ -391,7 +391,7 @@ internal static class RoleCommands
         TestBridge.Register("rolepage", "[q <語> | team <-1〜3> | only | hover <Id> | open <Id> | scroll <0〜1> | bulk <0|1|2> | rebuild] 設定画面の役職タブ (カードの頁) を操作して、並んでいるカードを返す", (args, reply) =>
             reply("OK rolepage " + RolePage.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
-        TestBridge.Register("dict", "[open [役職Id] | close | q <語> | team <-1〜3> | only | hover <Id> | scroll <0〜1> | rebuild | button [click|ensure]] 役職辞典の窓を開いて操作し、並んでいるカードを返す (button = 右上の辞典のボタン)", (args, reply) =>
+        TestBridge.Register("dict", "[open [役職Id] | close | q <語> | team <-1〜3> | only | hover <Id> | scroll <0〜1> | rebuild | button [click|ensure|look <高さ> <y>|state <Inactive|Active|Selected>]] 役職辞典の窓を開いて操作し、並んでいるカードを返す (button = 右上の辞典のボタン)", (args, reply) =>
             reply("OK dict " + Menu.RoleDictionary.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
         TestBridge.Register("variant", "<札の番号 0=通常 1=左右反転> ゲーム設定のタブのマップのバリエーションの札を押す", (args, reply) =>
