@@ -18,6 +18,8 @@ internal sealed class ScrollView : Widget
     public Action<ScrollView> OnBuiltView;
 
     private static readonly Dictionary<string, float> Positions = new();
+    private static readonly List<Scroller> Live = new();
+    private const float WheelSpeed = 0.3f;
 
     public UiScreen Inner { get; private set; }
     public Scroller Scroller { get; private set; }
@@ -87,7 +89,11 @@ internal sealed class ScrollView : Widget
         scroller.allowY = true;
         scroller.active = true;
         scroller.MouseMustBeOverToScroll = true;
-        scroller.ScrollWheelSpeed = 0.3f;
+        // 本編の Scroller は ClickMask があれば毎フレームそれでマウスが欄の上かを見る。無いとボタンの管理役が
+        // 欄を「いちばん手前」に選んだ時しかホイールが効かず、欄の中のボタンや背景に取られて一度も効かない (実測)
+        scroller.ClickMask = hit;
+        Live.Add(scroller);
+        ApplyFront(scroller, FrontWindow());
         scroller.ScrollbarY = sb;
         scroller.ScrollbarYBounds = new FloatRange(-Size.y / 2f + barH / 2f, Size.y / 2f - barH / 2f);
         sb.parent = scroller;
@@ -124,6 +130,24 @@ internal sealed class ScrollView : Widget
         s.UpdateScrollBars();
         if (s.ScrollbarY) s.ScrollbarY.gameObject.SetActive(h > Size.y);
     }
+
+    // 窓が開いている間は窓の外の欄のホイールを止める。Scroller は手前に何があっても ClickMask の範囲だけを見るので、
+    // 窓と重なった奥の欄も一緒に動いてしまう。窓を開け閉めした時に呼ぶ
+    internal static void FrontChanged()
+    {
+        var front = FrontWindow();
+        for (int i = Live.Count - 1; i >= 0; i--)
+        {
+            var s = Live[i];
+            if (!s) { Live.RemoveAt(i); continue; }
+            ApplyFront(s, front);
+        }
+    }
+
+    private static Transform FrontWindow() => UiWindow.IsOpen ? UiWindow.Current.Root.transform : null;
+
+    private static void ApplyFront(Scroller s, Transform front) =>
+        s.ScrollWheelSpeed = front && !s.transform.IsChildOf(front) ? 0f : WheelSpeed;
 
     // 今のスクロールの位置を控える (画面を閉じる前に呼ぶ)
     public void Remember()

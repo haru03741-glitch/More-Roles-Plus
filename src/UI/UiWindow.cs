@@ -50,6 +50,7 @@ internal sealed class UiWindow
         var w = new UiWindow(root, size) { _onClose = onClose };
         w.BuildChrome();
         Current = w;
+        ScrollView.FrontChanged();
         return w;
     }
 
@@ -127,6 +128,7 @@ internal sealed class UiWindow
             }
             Object.Destroy(Root);
         }
+        ScrollView.FrontChanged();
         var cb = _onClose;
         _onClose = null;
         cb?.Invoke();
