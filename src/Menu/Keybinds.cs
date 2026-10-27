@@ -113,6 +113,8 @@ internal static class Keybinds
     // 役職辞典を開く / 閉じる。字を打っている間 (チャット・検索欄)・演出や作業の画面の間は何もしない
     private static void ToggleDictionary()
     {
+        // 開けるのは右上の辞典のボタンと同じく HUD のある場面 (ロビー・試合中) だけ
+        if (!Vanilla.Hud) return;
         if (IntroCutscene.Instance || ExileController.Instance || Minigame.Instance) return;
         var chat = Vanilla.Chat;
         if (chat && chat.IsOpenOrOpening) return;

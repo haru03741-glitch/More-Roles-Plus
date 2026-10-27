@@ -1,3 +1,4 @@
+// Based on https://github.com/Dolly1016/Nebula-Public NebulaPluginNova/Configuration/CoolDownConfiguration.cs (GPL-3.0)
 using System;
 using System.Globalization;
 
