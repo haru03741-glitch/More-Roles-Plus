@@ -275,6 +275,9 @@ internal sealed class Button : Box
     public Action OnHover;
     public Action OnUnhover;
 
+    // 押し続けると OnClick を繰り返す間隔 (秒・0 = 繰り返さない)。本編の数値の ± と同じ仕組みを使う
+    public float Repeat;
+
     public Button(Widget content, Action onClick) : base(content) { OnClick = onClick; }
 
     public Button(string text, Action onClick, float fontSize = 1.6f) : base(new Label(text, fontSize) { TextAlign = TextAlignmentOptions.Center })
@@ -291,6 +294,11 @@ internal sealed class Button : Box
         pb.OnMouseOver = new UnityEvent();
         pb.OnMouseOut = new UnityEvent();
         if (ctx.ClickMask) pb.ClickMask = ctx.ClickMask;
+        if (Repeat > 0f)
+        {
+            pb.OnRepeat = true;
+            pb.RepeatDuration = Repeat;
+        }
         var hover = OnHover;
         var unhover = OnUnhover;
         if (OnClick != null) pb.OnClick.AddListener(UiActions.Take(OnClick, ctx.Slots));

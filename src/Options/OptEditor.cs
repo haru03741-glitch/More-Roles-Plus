@@ -18,6 +18,8 @@ internal sealed class OptEditor
     // 既定から変えた値の字
     public static readonly Color ChangedColor = new(1f, 0.72f, 0.3f, 1f);
     public const float NameW = 2.72f, ValueW = 1.25f, FontSize = 1.7f, StepW = 0.42f, RowH = 0.4f, ResetW = 0.6f;
+    // ± を押し続けた時に 1 つ進める間隔 (秒)
+    private const float RepeatSeconds = 0.12f;
 
     private readonly List<(Opt opt, Label value, Button toggle, Button minus, Button plus, Button reset)> _rows = new();
     private readonly List<Opt> _watched = new();
@@ -93,8 +95,8 @@ internal sealed class OptEditor
             _rows.Add((opt, val, null, null, null, null));
             return row;
         }
-        var minus = new Button("-", () => Changed(opt, -1), FontSize) { Size = new Vector2(StepW, RowH - 0.04f) };
-        var plus = new Button("+", () => Changed(opt, 1), FontSize) { Size = new Vector2(StepW, RowH - 0.04f) };
+        var minus = new Button("-", () => Changed(opt, -1), FontSize) { Size = new Vector2(StepW, RowH - 0.04f), Repeat = RepeatSeconds };
+        var plus = new Button("+", () => Changed(opt, 1), FontSize) { Size = new Vector2(StepW, RowH - 0.04f), Repeat = RepeatSeconds };
         row.Add(minus).Add(val).Add(plus);
         var reset = ResetButton(opt);
         if (reset != null) row.Add(reset);
@@ -185,14 +187,23 @@ internal static class OptHistory
     {
         Steps.Clear();
         _group = null;
+        _lastAt = -100f;
     }
 
     // 変える前の番号を積む。BeginGroup と EndGroup の間は 1 段にまとめる
     public static void Push(Opt opt, int before)
     {
         if (_group != null) { _group.Add((opt, before)); return; }
+        // 同じ項目を続けて動かした分 (± の長押し・連打) は 1 段にまとめ、最初の値へ戻す
+        float now = UnityEngine.Time.unscaledTime;
+        bool same = Steps.Count > 0 && Steps[^1].Count == 1 && Steps[^1][0].opt == opt && now - _lastAt < MergeSeconds;
+        _lastAt = now;
+        if (same) return;
         Add(new List<(Opt, int)> { (opt, before) });
     }
+
+    private const float MergeSeconds = 0.6f;
+    private static float _lastAt = -100f;
 
     public static void BeginGroup() => _group = new List<(Opt, int)>();
 
@@ -216,6 +227,7 @@ internal static class OptHistory
         if (Steps.Count == 0) return done;
         var step = Steps[^1];
         Steps.RemoveAt(Steps.Count - 1);
+        _lastAt = -100f;
         for (int i = step.Count - 1; i >= 0; i--)
         {
             var (opt, index) = step[i];
