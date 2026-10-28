@@ -1,177 +1,159 @@
 using System;
 using System.Collections.Generic;
-using TMPro;
+using MoreRolesPlus.UI;
 using UnityEngine;
-using UnityEngine.Events;
 using Object = UnityEngine.Object;
 
 namespace MoreRolesPlus.Options;
 
-// 設定画面の「プリセット」のタブ。
-//   上: 名前の欄と「保存」・知らせの文と「取り込む」(受け渡しのフォルダから)・「フォルダを開く」
-//   中: 保存したプリセットの一覧 (1 ページ 5 件・行ごとに 読み込む・書き出す・消す) / 下: ページ送り
-// 消すは 2 回押した時だけ消す。ボタンの処理は番号ごとに 1 つだけ作って使い回す (何も捕まえない)
+// 設定画面の「プリセット」の頁。
+//   上: 新しいプリセットの名前の欄と知らせの文
+//   中: 保存したプリセットの枠 (3 列・クルーの絵・保存した日時・読み込む / 書き出す / 消す)。今の設定のままのプリセットは金の縁。
+//       最後の枠は「今の設定を保存」(名前の欄の名前で)
+//   下: 取り込む (受け渡しのフォルダから)・フォルダを開く・コードをコピー・コードを読む
+// 消すは 2 回押した時だけ消す。押すたびに頁を作り直す (スクロールの位置は残す)
 internal static class PresetPage
 {
     public static readonly Text TabName = new("PresetPage.TabName");
     public static readonly Color TabColor = new(0.45f, 0.85f, 0.6f);
     public static readonly Text Description = new("PresetPage.Description");
 
-    private const int PerPage = 4;
-    private const float Top = 2f, RowStep = 0.45f, Z = -2f;
-    private const float SX = 0.32f, SY = 0.55f; // ボタンの縮み (本編のタブのボタンを写して使う)
+    // 頁の置き場 (タブの GameOptionsMenu の座標で・役職の頁と同じ)
+    private static readonly Vector3 Center = new(4.41f, -2.2f, -6f);
+    private const float W = 6.3f, H = 4.15f;
+    private const float NameW = 3.4f, NameH = 0.42f, Gap = 0.12f, SlotH = 1.3f, BarH = 0.4f;
+    private const int Cols = 3;
 
-    private sealed class Row
+    private static readonly Color SubText = new(0.78f, 0.8f, 0.86f, 1f);
+    private static readonly Color Gold = new(1f, 0.82f, 0.2f, 1f);
+    private static readonly Color Dim = new(0.42f, 0.42f, 0.45f, 1f);
+    private static readonly Color Blue = new(0.4f, 0.75f, 1f), Green = new(0.45f, 0.9f, 0.55f), Red = new(1f, 0.45f, 0.45f);
+    // 枠のクルーの色 (並び順で回す)
+    private static readonly Color[] CrewColors =
     {
-        public TextMeshPro Name;
-        public PassiveButton Load, Export, Delete;
-        public TextMeshPro DeleteLabel;
-    }
+        new(0.37f, 0.88f, 1f), new(1f, 0.25f, 0.25f), new(1f, 0.77f, 0.2f), new(0.7f, 0.53f, 1f), new(0.45f, 0.9f, 0.55f), new(1f, 0.55f, 0.75f),
+    };
 
-    private static readonly Row[] Rows = new Row[PerPage];
+    private static GameObject _root;
+    private static UiScreen _screen;
     private static SearchBox _name;
-    private static TextMeshPro _status, _pageLabel;
-    private static PassiveButton _prev, _next;
+    private static string _status = "";
     private static List<string> _names = new();
-    private static int _page, _armed = -1;
-    private static readonly Dictionary<int, UnityAction> Actions = new();
+    private static int _armed = -1;
 
     public static void Forget()
     {
         if (_name != null) SearchBox.Forget(_name);
         _name = null;
-        _status = _pageLabel = null;
-        _prev = _next = null;
-        for (int i = 0; i < PerPage; i++) Rows[i] = null;
+        _screen?.Clear();
+        _screen = null;
+        _root = null;
         _armed = -1;
+        _status = "";
     }
 
     public static void Build(GameOptionsMenu m, GameSettingMenu menu)
     {
         Forget();
-        var proto = menu.GameSettingsButton;
-        var parent = m.settingsContainer;
-
-        var h = Object.Instantiate(m.categoryHeaderOrigin, parent);
-        h.SetHeader(StringNames.RolesCategory, 20);
-        h.Title.text = TabName;
-        h.transform.localScale = new Vector3(0.63f, 0.63f, 1f);
-        h.transform.localPosition = new Vector3(-0.903f, Top, Z);
-
-        _name = SearchBox.Create(parent, new Vector3(0f, Top - 0.6f, Z), 3.4f, 0.42f, new Text("PresetPage.NameForANewPreset"), _ => { });
-        Button(proto, parent, new Vector3(2.65f, Top - 0.6f, Z), new Text("PresetPage.SaveCurrent"), 0, new Color(0.2f, 0.6f, 0.9f));
-
-        _status = Label(menu.MenuDescriptionText, parent, new Vector3(-1.9f, Top - 1.12f, Z), 2.9f, 1.0f);
-        _status.text = "";
-        Button(proto, parent, new Vector3(1.8f, Top - 1.12f, Z), new Text("PresetPage.Import"), 1, new Color(0.2f, 0.6f, 0.9f));
-        Button(proto, parent, new Vector3(3.05f, Top - 1.12f, Z), new Text("PresetPage.OpenFolder"), 2, new Color(0.45f, 0.45f, 0.5f));
-        // 設定のコード (1 行の文字で渡す)
-        Button(proto, parent, new Vector3(1.8f, Top - 1.64f, Z), new Text("PresetPage.CopyCode"), 5, new Color(0.2f, 0.6f, 0.9f));
-        Button(proto, parent, new Vector3(3.05f, Top - 1.64f, Z), new Text("PresetPage.PasteCode"), 6, new Color(0.2f, 0.7f, 0.4f));
-
-        for (int i = 0; i < PerPage; i++)
+        if (!m || !UiAssets.Box) return;
+        // タブの元の中身 (本編の行の一覧・スクロール) は使わない。コントローラーで閉じるボタンだけ残す
+        for (int i = 0; i < m.transform.childCount; i++)
         {
-            float y = Top - 2.22f - i * RowStep;
-            var r = new Row { Name = Label(menu.MenuDescriptionText, parent, new Vector3(-1.9f, y, Z), 2.9f, 1.4f) };
-            r.Load = Button(proto, parent, new Vector3(1.25f, y, Z), new Text("PresetPage.Load"), 100 + i * 4, new Color(0.2f, 0.7f, 0.4f));
-            r.Export = Button(proto, parent, new Vector3(2.3f, y, Z), new Text("PresetPage.Export"), 101 + i * 4, new Color(0.45f, 0.45f, 0.5f));
-            r.Delete = Button(proto, parent, new Vector3(3.35f, y, Z), new Text("PresetPage.Delete"), 102 + i * 4, new Color(0.7f, 0.25f, 0.25f));
-            r.DeleteLabel = r.Delete ? r.Delete.GetComponentInChildren<TextMeshPro>() : null;
-            Rows[i] = r;
+            var c = m.transform.GetChild(i);
+            if (c.name != "CloseButton") c.gameObject.SetActive(false);
         }
-
-        float by = Top - 2.22f - PerPage * RowStep + 0.05f;
-        _prev = Button(proto, parent, new Vector3(-1.4f, by, Z), Text.Raw("◀"), 3, new Color(0.35f, 0.35f, 0.4f));
-        _pageLabel = Label(menu.MenuDescriptionText, parent, new Vector3(-0.85f, by, Z), 0.8f, 1.3f);
-        _next = Button(proto, parent, new Vector3(0.2f, by, Z), Text.Raw("▶"), 4, new Color(0.35f, 0.35f, 0.4f));
-
-        m.scrollBar.SetYBoundsMax(0f);
+        _root = Widget.Node("MrpPresetPage", m.transform, m.gameObject.layer);
+        _root.transform.localPosition = Center;
+        _root.AddComponent<UnityEngine.Rendering.SortingGroup>().sortingOrder = 5;
+        // 名前の欄は作り直さない (打った字を残す)。欄の中の字と地の前後は z で決まる作りなので、頁の SortingGroup の外に置く
+        _name = SearchBox.Create(m.transform, Center + new Vector3(-W / 2f + NameW / 2f, H / 2f - NameH / 2f, -0.05f), NameW, NameH, new Text("PresetPage.NameForANewPreset"), _ => { });
+        var body = Widget.Node("Body", _root.transform, m.gameObject.layer);
+        _screen = new UiScreen(body.transform) { MaxWidth = W, BaseOrder = 1 };
         Refresh();
-    }
-
-    private static PassiveButton Button(PassiveButton proto, Transform parent, Vector3 pos, string label, int id, Color c)
-    {
-        var b = Object.Instantiate(proto, parent);
-        b.name = "MrpPreset" + id;
-        // 写し元 (本編のタブのボタン) は左の列にまとめたので隠してある
-        b.gameObject.SetActive(true);
-        b.transform.localPosition = pos;
-        b.transform.localScale = new Vector3(SX, SY, 1f);
-        var t = b.GetComponentInChildren<TextMeshPro>();
-        if (t)
-        {
-            var tr = t.GetComponent<TextTranslatorTMP>();
-            if (tr) Object.Destroy(tr);
-            t.text = label;
-            t.enableAutoSizing = true;
-            t.fontSizeMin = 1f;
-            t.fontSizeMax = t.fontSize;
-            t.alignment = TextAlignmentOptions.Center;
-            // 横に潰れないように縦横の縮みを揃える
-            var ls = t.transform.localScale;
-            t.transform.localScale = new Vector3(ls.x * SY / SX, ls.y, ls.z);
-            t.rectTransform.sizeDelta = new Vector2(t.rectTransform.sizeDelta.x * SX / SY, t.rectTransform.sizeDelta.y);
-        }
-        foreach (var go in new[] { b.inactiveSprites, b.activeSprites, b.selectedSprites })
-        {
-            var sr = go ? go.GetComponent<SpriteRenderer>() : null;
-            if (sr) sr.color = go == b.inactiveSprites ? new Color(c.r * 0.7f, c.g * 0.7f, c.b * 0.7f, 1f) : c;
-        }
-        b.OnMouseOver = new UnityEvent();
-        b.OnMouseOut = new UnityEvent();
-        b.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
-        if (!Actions.TryGetValue(id, out var a)) Actions[id] = a = (UnityAction)(() => Click(id));
-        b.OnClick.AddListener(a);
-        b.SelectButton(false);
-        return b;
-    }
-
-    private static TextMeshPro Label(TextMeshPro proto, Transform parent, Vector3 pos, float width, float size)
-    {
-        var t = Object.Instantiate(proto, parent);
-        t.name = "MrpPresetLabel";
-        var tr = t.GetComponent<TextTranslatorTMP>();
-        if (tr) Object.Destroy(tr);
-        t.transform.localPosition = pos;
-        t.transform.localScale = Vector3.one;
-        t.rectTransform.pivot = new Vector2(0f, 0.5f);
-        t.rectTransform.sizeDelta = new Vector2(width, 0.45f);
-        t.alignment = TextAlignmentOptions.Left;
-        t.enableWordWrapping = true;
-        t.enableAutoSizing = true;
-        t.fontSizeMin = 0.8f;
-        t.fontSizeMax = size * 1.4f;
-        t.color = Color.white;
-        t.fontStyle = FontStyles.Normal; // 見出しの文字の斜体・大文字を外す
-        return t;
     }
 
     private static void Refresh()
     {
+        if (_screen == null || !_screen.Alive) return;
         _names = PresetStore.Names();
-        int pages = Math.Max(1, (_names.Count + PerPage - 1) / PerPage);
-        _page = Math.Clamp(_page, 0, pages - 1);
-        // 1 ページに収まる時はページ送りを出さない
-        if (_pageLabel) _pageLabel.text = pages > 1 ? $"{_page + 1}/{pages}" : "";
-        if (_prev) _prev.gameObject.SetActive(pages > 1);
-        if (_next) _next.gameObject.SetActive(pages > 1);
-        for (int i = 0; i < PerPage; i++)
-        {
-            var r = Rows[i];
-            if (r == null) continue;
-            int n = _page * PerPage + i;
-            bool has = n < _names.Count;
-            if (r.Name) r.Name.text = has ? _names[n] : (i == 0 && _names.Count == 0 ? (string)new Text("PresetPage.NoSavedPresets") : "");
-            if (r.Load) r.Load.gameObject.SetActive(has);
-            if (r.Export) r.Export.gameObject.SetActive(has);
-            if (r.Delete) r.Delete.gameObject.SetActive(has);
-            if (r.DeleteLabel) r.DeleteLabel.text = _armed == i ? new Text("PresetPage.Really") : new Text("PresetPage.Delete");
-        }
+        _screen.Set(Page());
     }
+
+    private static Widget Page()
+    {
+        // 上の段: 名前の欄 (別に置いた物) の場所を空け、右に知らせの文
+        string status = _status.Length > 0 ? _status : _names.Count == 0 ? new Text("PresetPage.NoSavedPresets") : "";
+        var top = new Stack(true,
+            new Spacer(NameW, NameH),
+            new Label(status, 1.15f) { Color = SubText, Width = W - NameW - 0.15f, MinFontSize = 0.8f }) { Gap = 0.15f };
+
+        float slotW = (W - 0.2f - Gap * (Cols - 1)) / Cols;
+        var grid = new Stack(false) { Gap = Gap, Width = W - 0.2f, Align = Align.Start };
+        Stack row = null;
+        for (int i = 0; i <= _names.Count; i++)
+        {
+            if (i % Cols == 0) { row = new Stack(true) { Gap = Gap, Align = Align.Start }; grid.Add(row); }
+            row.Add(i < _names.Count ? Slot(i, slotW) : SaveSlot(slotW));
+        }
+        float listH = H - NameH - BarH - 0.24f;
+        var list = new ScrollView(new Vector2(W, listH), grid) { Tag = "presets" };
+
+        float bw = (W - 0.1f * 3) / 4f;
+        var bar = new Stack(true,
+            new Button(new Text("PresetPage.Import"), () => Click(1), 1.3f) { Size = new Vector2(bw, BarH), Color = Blue },
+            new Button(new Text("PresetPage.OpenFolder"), () => Click(2), 1.3f) { Size = new Vector2(bw, BarH), Color = Dim },
+            new Button(new Text("PresetPage.CopyCode"), () => Click(5), 1.3f) { Size = new Vector2(bw, BarH), Color = Blue },
+            new Button(new Text("PresetPage.PasteCode"), () => Click(6), 1.3f) { Size = new Vector2(bw, BarH), Color = Green }) { Gap = 0.1f };
+        return new Stack(false, top, list, bar) { Gap = 0.12f, Width = W };
+    }
+
+    // 保存したプリセット 1 つの枠
+    private static Widget Slot(int n, float w)
+    {
+        string name = _names[n];
+        bool current = name == PresetLabel.Shown;
+        var slot = new Layers(w, SlotH);
+        slot.Add(new Box(null) { Size = new Vector2(w, SlotH), Color = current ? Gold : Color.white, Fill = current ? new Color(0.16f, 0.13f, 0.04f) : Color.black }, 0f, 0f);
+        var sp = CrewArt.Pose(n % CrewArt.Count);
+        var mat = sp ? CrewArt.Material(CrewColors[n % CrewColors.Length]) : null;
+        if (mat) slot.Add(new Picture(sp, 0.75f, 0.68f) { Fit = true, Material = mat, Color = new Color(1f, 1f, 1f, 0.9f) }, 0.06f, 0.06f, true);
+
+        float textW = w - 0.2f;
+        var at = PresetStore.SavedAt(name);
+        var text = new Stack(false, new Label(name, 1.8f) { MenuFont = true, Outline = 0.15f, Width = textW - 0.6f, MinFontSize = 1.1f, Align = Align.Start }) { Gap = 0f, Width = textW };
+        if (at is DateTime t) text.Add(new Label(new Text("PresetPage.SavedAt").With("time", t.ToString("M/d HH:mm")), 1.0f) { Color = SubText, Width = textW, Align = Align.Start });
+        slot.Add(text, 0.1f, 0.1f);
+
+        int id = 100 + n * 4;
+        float bw = (w - 0.2f - 0.06f * 2) / 3f;
+        string del = _armed == n ? new Text("PresetPage.Really") : new Text("PresetPage.Delete");
+        var buttons = new Stack(true,
+            SmallButton(new Text("PresetPage.Load"), id, bw, Green),
+            SmallButton(new Text("PresetPage.Export"), id + 1, bw, Dim),
+            SmallButton(del, id + 2, bw, Red)) { Gap = 0.06f };
+        slot.Add(buttons, 0.1f, 0.1f, false, true);
+        return slot;
+    }
+
+    private static Button SmallButton(string text, int id, float w, Color c) =>
+        new(new Label(text, 1.1f) { Width = w - 0.08f, MinFontSize = 0.7f, TextAlign = TMPro.TextAlignmentOptions.Center }, () => Click(id))
+        {
+            Size = new Vector2(w, 0.32f),
+            Padding = new Vector2(0.04f, 0.02f),
+            Color = c,
+        };
+
+    // 最後の枠: 今の設定を名前の欄の名前で保存する
+    private static Widget SaveSlot(float w) =>
+        new Button(new Label("＋ " + new Text("PresetPage.SaveCurrent"), 1.5f) { Width = w - 0.3f, MinFontSize = 1f, Color = SubText, TextAlign = TMPro.TextAlignmentOptions.Center }, () => Click(0))
+        {
+            Size = new Vector2(w, SlotH),
+            Color = Dim,
+        };
 
     private static void Say(string s)
     {
-        if (_status) _status.text = s;
+        _status = s ?? "";
         Plugin.Logger.LogInfo($"presets: {s}");
     }
 
@@ -207,19 +189,16 @@ internal static class PresetPage
             case 6:
                 Say(SettingCode.Paste());
                 break;
-            case 3: _page--; break;
-            case 4: _page++; break;
             default:
             {
-                int slot = (id - 100) / 4, kind = (id - 100) % 4;
-                int n = _page * PerPage + slot;
-                if (slot < 0 || slot >= PerPage || n >= _names.Count) break;
+                int n = (id - 100) / 4, kind = (id - 100) % 4;
+                if (n < 0 || n >= _names.Count) break;
                 string name = _names[n];
                 if (kind == 0) Say(AmHost ? PresetStore.Load(name) : new Text("PresetPage.OnlyTheHostCanLoad"));
                 else if (kind == 1) Say(PresetStore.Export(name));
                 else if (kind == 2)
                 {
-                    if (armed != slot) { _armed = slot; Say(new Text("PresetPage.PressAgainToDelete").With("name", name)); }
+                    if (armed != n) { _armed = n; Say(new Text("PresetPage.PressAgainToDelete").With("name", name)); }
                     else Say(PresetStore.Delete(name));
                 }
                 break;
@@ -228,11 +207,11 @@ internal static class PresetPage
         Refresh();
     }
 
-    // 試験用: 名前を入れる / ボタンを押す (0 保存・1 取り込む・2 フォルダ・3 前・4 次・100+行*4+{0 読む,1 書き出す,2 消す})
+    // 試験用: 名前を入れる / ボタンを押す (0 保存・1 取り込む・2 フォルダ・5 コードをコピー・6 コードを読む・100+番号*4+{0 読む,1 書き出す,2 消す})
     internal static string Simulate(string args)
     {
         if (args.StartsWith("name ")) { if (_name != null) _name.Type(args[5..]); }
         else if (int.TryParse(args, out int id)) Click(id);
-        return $"OK presetui built={(_status != null)} page={_page} names=[{string.Join(",", _names)}] status=[{(_status ? _status.text : "")}]";
+        return $"OK presetui built={(_screen != null)} names=[{string.Join(",", _names)}] current={PresetLabel.Shown} status=[{_status}]";
     }
 }

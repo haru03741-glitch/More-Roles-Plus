@@ -403,6 +403,7 @@ PresetPage.Really: Really?
 PresetPage.ShareFolder: Share folder: {dir}
 PresetPage.CopyCode: Copy code
 PresetPage.PasteCode: Paste code
+PresetPage.SavedAt: Saved {time}
 RoleDictionary.CopyCode: Copy these settings as a code
 SettingCode.Copied: Copied the settings code ({count} chars). Paste it on Discord etc. to share
 SettingCode.CouldntMake: Couldn't make the settings code: {message}

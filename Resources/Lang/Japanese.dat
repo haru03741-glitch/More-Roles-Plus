@@ -403,6 +403,7 @@ PresetPage.Really: 本当に消す
 PresetPage.ShareFolder: 受け渡しのフォルダ: {dir}
 PresetPage.CopyCode: コードをコピー
 PresetPage.PasteCode: コードを読む
+PresetPage.SavedAt: {time} に保存
 RoleDictionary.CopyCode: 今の設定をコードでコピー
 SettingCode.Copied: 設定のコードをコピーしました ({count} 文字)。Discord などに貼って渡せます
 SettingCode.CouldntMake: 設定のコードを作れませんでした: {message}

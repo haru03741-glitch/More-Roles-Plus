@@ -29,6 +29,13 @@ internal static class PresetStore
 
     public static bool Exists(string name) => ValidName(name) && File.Exists(PathOf(name));
 
+    // 保存した日時 (読めなければ null)
+    public static DateTime? SavedAt(string name)
+    {
+        try { return Exists(name) ? File.GetLastWriteTime(PathOf(name)) : null; }
+        catch (Exception) { return null; }
+    }
+
     public static List<string> Names()
     {
         var list = new List<string>();
