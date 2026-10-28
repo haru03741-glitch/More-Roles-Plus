@@ -206,9 +206,11 @@ internal static class SettingsMenu
         Cats.Add((btn, cat));
     }
 
-    // 陣営のボタンの名前の右に「出る役職の数/全部の数」(値を変えるたびに書き直す)
+    // 陣営のボタンの名前の右に「出る役職の数/全部の数」と、初期値から変えた設定がある時は橙の点 (値を変えるたびに書き直す)
     private static readonly Dictionary<int, (TextMeshPro Label, string Name)> CatLabels = new();
     private static readonly Dictionary<int, int> CatShown = new(); // 今出している数 (変わった陣営だけ書き直す)
+
+    private static readonly string ChangedDotHex = ColorUtility.ToHtmlStringRGB(OptEditor.ChangedColor);
 
     internal static void RefreshCatCounts()
     {
@@ -216,17 +218,21 @@ internal static class SettingsMenu
         {
             if (!label) continue;
             int on = 0, all = 0;
+            bool changed = false;
             foreach (var sec in Registry.SectionsOf(RoleMenu.KindTab(cat - CatKind0)))
             {
+                if (!changed)
+                    foreach (var opt in sec.Opts)
+                        if (opt.Changed) { changed = true; break; }
                 var a = sec.Role;
                 if (a == null) continue;
                 all++;
                 if (a.Chance.Value > 0 && a.Count.Value > 0) on++;
             }
-            int key = on << 16 | all;
+            int key = on << 16 | all << 1 | (changed ? 1 : 0);
             if (CatShown.TryGetValue(cat, out int shown) && shown == key) continue;
             CatShown[cat] = key;
-            label.text = $"{name}<size=65%>  {on}/{all}</size>";
+            label.text = changed ? $"{name}<size=65%>  {on}/{all} <color=#{ChangedDotHex}>●</color></size>" : $"{name}<size=65%>  {on}/{all}</size>";
         }
     }
 
