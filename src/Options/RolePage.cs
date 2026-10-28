@@ -43,8 +43,22 @@ internal static class RolePage
         var group = _root.AddComponent<UnityEngine.Rendering.SortingGroup>();
         group.sortingOrder = 5;
         _built = true;
+        Browser.ChipScreen = ChipScreen(m);
         Browser.Attach(new UiScreen(_root.transform) { MaxWidth = W, BaseOrder = 1 });
         if (_query.Length > 0) Browser.SetQuery(_query);
+    }
+
+    // 絞り込みの札の置き場 = 左の列の下 (左の列の位置が分からなければ一覧の上に出す)
+    private static UiScreen ChipScreen(GameOptionsMenu m)
+    {
+        if (!SettingsMenu.CatFoot(out var topLeft, out float width)) return null;
+        var t = m.transform;
+        var go = Widget.Node("MrpRoleChips", t, m.gameObject.layer);
+        var local = t.InverseTransformPoint(topLeft);
+        go.transform.localPosition = new Vector3(local.x, local.y, Center.z);
+        go.AddComponent<UnityEngine.Rendering.SortingGroup>().sortingOrder = 5;
+        float w = t.InverseTransformVector(new Vector3(width, 0f, 0f)).x;
+        return new UiScreen(go.transform) { Anchor = Align.Start, MaxWidth = w, BaseOrder = 1 };
     }
 
     public static void Forget()

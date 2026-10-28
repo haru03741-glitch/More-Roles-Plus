@@ -75,6 +75,8 @@ internal sealed class RoleBrowser
 
     // true = 一覧に陣営の札を出さず、陣営は持ち主が Team で選ぶ
     public bool TeamFromOutside;
+    // 絞り込みと並べ替えの札を一覧の外 (設定画面の左の列の下) に出す置き場 (null = 一覧の上)
+    public UiScreen ChipScreen;
 
     public int Team
     {
@@ -110,6 +112,9 @@ internal sealed class RoleBrowser
     {
         _screen?.Clear();
         _screen = null;
+        ChipScreen?.Clear();
+        if (ChipScreen != null && ChipScreen.Root) UnityEngine.Object.Destroy(ChipScreen.Root.gameObject);
+        ChipScreen = null;
         _side = null;
         _list = null;
         _cards.Clear();
@@ -164,6 +169,7 @@ internal sealed class RoleBrowser
         _side = null;
         _list = null;
         _resetBtn = _undoBtn = null;
+        ChipScreen?.Clear();
         _screen.Set(_open != null && !SideEdit ? DetailPage(_open) : _tokens.Length > 0 ? SearchPage() : ListPage());
     }
 
@@ -218,12 +224,44 @@ internal sealed class RoleBrowser
         }
         if (n == 0) cards.Add(new Label(new Text("RoleMenu.NoMatchingRoles"), 1.6f) { Color = SubText, Width = CardW, TextAlign = TextAlignmentOptions.Center });
 
-        float listH = TeamFromOutside ? H - ChipH - 0.12f : H - ChipH * 2f - 0.07f - 0.12f;
+        bool outside = TeamFromOutside && ChipScreen != null && ChipScreen.Alive;
+        if (outside) ChipScreen.Set(ChipGrid(chips2));
+        float listH = outside ? H : TeamFromOutside ? H - ChipH - 0.12f : H - ChipH * 2f - 0.07f - 0.12f;
         _list = new ScrollView(new Vector2(ListW, listH), cards) { Tag = _tag + ":" + _team + (_enabledOnly ? "+" : "") + _filter + _sort };
         _sideH = listH;
         _side = new Holder(new Vector2(SideW, listH), SideContent());
+        var body = new Stack(true, _list, _side) { Gap = 0.15f };
+        if (outside) return body;
         var head = TeamFromOutside ? chips2 : new Stack(false, chips, chips2) { Gap = 0.07f, Align = Align.Start };
-        return new Stack(false, head, new Stack(true, _list, _side) { Gap = 0.15f }) { Gap = 0.12f, Width = W };
+        return new Stack(false, head, body) { Gap = 0.12f, Width = W };
+    }
+
+    // 札を 3 つずつの段に並べ直す (左の列の幅に合わせて札の幅を揃え、長い字は縮める)
+    private Widget ChipGrid(Stack chips)
+    {
+        const int cols = 3;
+        const float gap = 0.05f;
+        float w = (ChipScreen.MaxWidth - gap * (cols - 1)) / cols;
+        var grid = new Stack(false) { Gap = gap, Width = ChipScreen.MaxWidth, Align = Align.Start };
+        Stack row = null;
+        for (int i = 0; i < chips.Children.Count; i++)
+        {
+            if (i % cols == 0) { row = new Stack(true) { Gap = gap, Align = Align.Start }; grid.Add(row); }
+            if (chips.Children[i] is Button b)
+            {
+                b.Size = new Vector2(w, ChipH * 0.9f);
+                b.MinSize = Vector2.zero;
+                b.Padding = new Vector2(0.04f, 0.02f);
+                if (b.Content is Label l)
+                {
+                    l.FontSize = 1.15f;
+                    l.Width = w - 0.1f;
+                    l.MinFontSize = 0.75f;
+                }
+            }
+            row.Add(chips.Children[i]);
+        }
+        return grid;
     }
 
     private Button Chip(string text, Color c, bool on, Action click)

@@ -25,8 +25,8 @@ internal static class SettingsMenu
     private const int FirstTab = 3; // 本編のタブは 0〜2
 
     // 左の列 (設定画面の座標)。X は本編のタブのボタンと同じ所 (絵はボタンの位置から左へずれて描かれる)
-    private const float CatX = -2.96f, CatTopY = 1.6f, CatStepY = 0.55f;
-    private const float CatScaleX = 1f, CatScaleY = 0.9f;
+    private const float CatX = -2.96f, CatTopY = 1.6f, CatStepY = 0.46f;
+    private const float CatScaleX = 1f, CatScaleY = 0.78f;
     private const float CompactX = 0.48f, CompactY = 0.8f;
     // 検索欄は板の上の縁より上・右上の本編のボタンの列に掛からない所
     private const float SearchX = -1.2f, SearchY = 2.6f, SearchW = 3.6f;
@@ -309,6 +309,21 @@ internal static class SettingsMenu
             t.localScale = on ? scale * CatArtPicked : scale;
             t.localPosition = on ? new Vector3(pos.x, pos.y + lift, pos.z) : pos;
         }
+    }
+
+    // 左の列の一番下のボタンのすぐ下 (世界座標の左上と幅)。陣営の頁ではここに絞り込みの札を置く
+    internal static bool CatFoot(out Vector3 topLeft, out float width)
+    {
+        topLeft = default;
+        width = 0f;
+        if (Cats.Count == 0) return false;
+        var btn = Cats[Cats.Count - 1].Btn;
+        var col = btn ? btn.GetComponent<Collider2D>() : null;
+        if (!col) return false;
+        var b = col.bounds;
+        topLeft = new Vector3(b.min.x, b.min.y - b.size.y * 0.25f, b.center.z);
+        width = b.size.x;
+        return true;
     }
 
     // ボタンを小さくする。文字は横だけ潰れないよう縦横の縮みを揃え、はみ出す分は自動で小さくする
