@@ -297,7 +297,7 @@ internal static class MatchInfoExtension
         return ids;
     }
 
-    private static RoleBehaviour Base(RoleTypes t)
+    internal static RoleBehaviour Base(RoleTypes t)
     {
         var rm = RoleManager.Instance;
         if (!rm || rm.AllRoles == null) return null;

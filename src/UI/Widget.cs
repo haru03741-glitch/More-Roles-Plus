@@ -66,6 +66,7 @@ internal sealed class Label : Widget
     public TextAlignmentOptions TextAlign = TextAlignmentOptions.Left;
     public bool MenuFont;     // 見出し・役職名のフォント (無い字は本編のフォント)
     public float Outline;
+    public float MinFontSize;   // > 0 なら、1 行で Width に入らない時にこの大きさまで縮める
 
     // 作った字 (作り直さずに字だけ書き換える時に使う)
     public TextMeshPro Built { get; private set; }
@@ -100,6 +101,12 @@ internal sealed class Label : Widget
         if (MenuFont) Options.MenuFont.Apply(t, 0, Outline);
         string text = Content ?? "";
         t.text = text;
+        if (MinFontSize > 0f && Width > 0f)
+        {
+            // 1 行で幅に入らない時だけ字を小さくする (MinFontSize より小さくはしない)
+            float one = t.GetPreferredValues(text).x;
+            if (one > Width) t.fontSize = Math.Max(MinFontSize, FontSize * Width / one * 0.98f);
+        }
         float w = Width > 0f ? Width : Math.Min(t.GetPreferredValues(text).x + 0.02f, maxWidth);
         float h = t.GetPreferredValues(text, w, 0f).y;
         rt.sizeDelta = new Vector2(w, h);
@@ -115,6 +122,7 @@ internal sealed class Picture : Widget
     public Sprite Sprite;
     public Vector2 Size;
     public Color Color = Color.white;
+    public bool Fit;
 
     public Picture(Sprite sprite, float w, float h)
     {
@@ -130,9 +138,14 @@ internal sealed class Picture : Widget
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = Sprite;
         sr.color = Color;
-        // 絵の元の大きさから Size に合わせる
+        // 絵の元の大きさから Size に合わせる (Fit = 縦横比を保って Size の中に収める)
         var b = Sprite.bounds.size;
-        if (b.x > 0f && b.y > 0f) go.transform.localScale = new Vector3(Size.x / b.x, Size.y / b.y, 1f);
+        if (b.x > 0f && b.y > 0f)
+        {
+            float sx = Size.x / b.x, sy = Size.y / b.y;
+            if (Fit) sx = sy = Math.Min(sx, sy);
+            go.transform.localScale = new Vector3(sx, sy, 1f);
+        }
         return go;
     }
 }

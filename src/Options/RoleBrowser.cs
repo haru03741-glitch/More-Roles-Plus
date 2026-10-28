@@ -24,6 +24,8 @@ internal sealed class RoleBrowser
     private static readonly Color ChipOff = new(0.32f, 0.33f, 0.36f, 1f);
     private static readonly bool Touch = OperatingSystem.IsAndroid();
     private const float ChipH = 0.36f;
+    private const float CardGap = 0.07f;
+    private const float IconW = 0.36f;   // 2 列のカードの左の絵の枠
 
     private readonly float W, H, ListW, SideW, CardW;
     private readonly bool _settings;   // 設定画面のタブ (まとめて変える札・本編の設定の検索)
@@ -48,7 +50,7 @@ internal sealed class RoleBrowser
     private Registry.Section _picked; // スマホで 1 回押した物 (もう 1 回で開く)
     private Holder _side;
     private ScrollView _list;
-    private readonly List<(Registry.Section sec, Button card, Label values, Label name)> _cards = new();
+    private readonly List<(Registry.Section sec, Button card, Label values, Label name, bool narrow)> _cards = new();
     private readonly OptEditor _editor;
     private Button _resetBtn, _undoBtn;  // 2 枚目の「既定に戻す」「元に戻す」(行を押した時に色だけ書き換える)
     private string[] _tokens = Array.Empty<string>();
@@ -176,11 +178,19 @@ internal sealed class RoleBrowser
         if (SettingNotice.FreshCount > 0)
             chips2.Add(Chip(new Text("RolePage.FreshOnly"), FreshColor, _freshOnly, () => { _freshOnly = !_freshOnly; Rebuild(); }));
 
-        var cards = new Stack(false) { Gap = 0.07f, Width = CardW };
+        // カードは 2 列 (左から右へ・2 枚で 1 段)
+        var cards = new Stack(false) { Gap = CardGap, Width = CardW };
+        float half = (CardW - CardGap) / 2f;
+        Stack line = null;
         int n = 0;
         foreach (var sec in Visible())
         {
-            cards.Add(Card(sec, CardW));
+            if (n % 2 == 0)
+            {
+                line = new Stack(true) { Gap = CardGap, Align = Align.Start };
+                cards.Add(line);
+            }
+            line.Add(Card(sec, half, true));
             n++;
         }
         if (n == 0) cards.Add(new Label(new Text("RoleMenu.NoMatchingRoles"), 1.6f) { Color = SubText, Width = CardW, TextAlign = TextAlignmentOptions.Center });
@@ -302,12 +312,13 @@ internal sealed class RoleBrowser
         return sec.Color != null ? RoleDisplay.ParseColor(sec.Color) : Color.white;
     }
 
-    private static string CardValues(Assignable a)
+    // oneLine = 2 列のカード (名前の下に「×1  50%」)
+    private static string CardValues(Assignable a, bool oneLine = false)
     {
         if (a == null) return "";
         string count = $"×{a.Count.Display()}";
         if (a.Count.Changed) count = $"<color=#{ChangedHex}>{count}</color>";
-        return $"{count}\n{a.Chance.Display()}";
+        return oneLine ? $"{count}  {a.Chance.Display()}" : $"{count}\n{a.Chance.Display()}";
     }
 
     private static readonly string ChangedHex = ColorUtility.ToHtmlStringRGB(OptEditor.ChangedColor);
@@ -352,29 +363,51 @@ internal sealed class RoleBrowser
         return RoleDoc.Has(a) ? new Text(a.Id + ".Summary").ToString() : a.Description.ToString();
     }
 
-    private Widget Card(Registry.Section sec, float width)
+    private static readonly Color IconOff = new(1f, 1f, 1f, 0.35f);
+
+    // カードの絵。本編の役職は本編の役職アイコン (クルーメイトとインポスターには無い)。MRP の役職はまだ無い
+    private static Sprite Icon(Assignable a) =>
+        a is Roles.Builtin.VanillaRole v ? Menu.MatchInfoExtension.Base(v.Type)?.RoleIconSolid : null;
+
+    // narrow = 2 列の一覧のカード (絵の枠+名前+人数と出現率の 1 行・説明は右の欄だけ)。検索の結果は幅いっぱいで説明つき
+    private Widget Card(Registry.Section sec, float width, bool narrow = false)
     {
         var a = sec.Role;
         bool on = a == null || Enabled(a);
         var title = TitleColor(sec);
-        var name = new Label(CardName(sec), 1.9f) { MenuFont = true, Width = width - 1.0f, Color = on ? title : Color.Lerp(title, Gray, 0.55f) };
-        var desc = new Label(ShortText(sec), 1.15f) { Width = width - 1.0f, Color = on ? SubText : Gray };
-        var values = new Label(CardValues(a), 1.35f) { Width = 0.6f, TextAlign = TextAlignmentOptions.Right, Bold = true, Color = on ? Color.white : Gray };
-        var text = new Stack(false, name) { Gap = 0.01f, Width = width - 0.95f };
-        if (desc.Content.Length > 0) text.Add(desc);
-        name.Align = Align.Start;
-        desc.Align = Align.Start;
-        var body = new Stack(true, text, values) { Gap = 0.1f };
+        float pad = narrow ? 0.09f : 0.14f;
+        Label name, values;
+        Widget body;
+        if (narrow)
+        {
+            float textW = width - pad * 2f - IconW - 0.06f;
+            name = new Label(CardName(sec), 1.6f) { MenuFont = true, Width = textW, MinFontSize = 1.05f, Color = on ? title : Color.Lerp(title, Gray, 0.55f), Align = Align.Start };
+            values = new Label(CardValues(a, true), 1.15f) { Width = textW, Bold = true, Color = on ? Color.white : Gray, Align = Align.Start };
+            var text = new Stack(false, name) { Gap = 0f, Width = textW, Align = Align.Start };
+            if (a != null) text.Add(values);
+            var icon = Icon(a);
+            Widget art = icon ? new Picture(icon, IconW, IconW) { Fit = true, Color = on ? Color.white : IconOff } : new Spacer(IconW, IconW);
+            body = new Stack(true, art, text) { Gap = 0.06f };
+        }
+        else
+        {
+            name = new Label(CardName(sec), 1.9f) { MenuFont = true, Width = width - 1.0f, Color = on ? title : Color.Lerp(title, Gray, 0.55f), Align = Align.Start };
+            var desc = new Label(ShortText(sec), 1.15f) { Width = width - 1.0f, Color = on ? SubText : Gray, Align = Align.Start };
+            values = new Label(CardValues(a), 1.35f) { Width = 0.6f, TextAlign = TextAlignmentOptions.Right, Bold = true, Color = on ? Color.white : Gray };
+            var text = new Stack(false, name) { Gap = 0.01f, Width = width - 0.95f };
+            if (desc.Content.Length > 0) text.Add(desc);
+            body = new Stack(true, text, values) { Gap = 0.1f };
+        }
         var card = new Button(body, () => OnCard(sec))
         {
             Size = new Vector2(width, 0f),
             MinSize = new Vector2(width, 0.55f),
-            Padding = new Vector2(0.14f, 0.07f),
+            Padding = new Vector2(pad, 0.07f),
             Color = CardColor(sec),
             OnHover = () => { if (!Touch) ShowSide(sec); },
             OnUnhover = () => { if (!Touch && _hover == sec) ShowSide(null); },
         };
-        _cards.Add((sec, card, values, name));
+        _cards.Add((sec, card, values, name, narrow));
         return card;
     }
 
@@ -608,7 +641,7 @@ internal sealed class RoleBrowser
 
     public void RefreshCards()
     {
-        foreach (var (sec, card, values, name) in _cards)
+        foreach (var (sec, card, values, name, narrow) in _cards)
         {
             var a = sec.Role;
             if (a == null) continue;
@@ -617,7 +650,7 @@ internal sealed class RoleBrowser
             // 字はゲーム側へ写すたびに費用が掛かるので、変わったカードだけ書く (Content = 今出している字)
             if (values.Built)
             {
-                string v = CardValues(a);
+                string v = CardValues(a, narrow);
                 if (v != values.Content) { values.Content = v; values.Built.text = v; }
                 values.Built.color = on ? Color.white : Gray;
             }
@@ -961,7 +994,7 @@ internal sealed class RoleBrowser
             }
         }
         var sb = new System.Text.StringBuilder($"team={_team} only={_enabledOnly} edit={Editable} open={_open?.Role?.Id ?? _open?.Title.ToString() ?? "-"} hover={_hover?.Role?.Id ?? "-"} undo={(OptHistory.Any ? 1 : 0)} hits={_hits[0]}/{_hits[1]}/{_hits[2]} slots={UiActions.Census()} cards:");
-        foreach (var (sec, _, values, _) in _cards)
+        foreach (var (sec, _, values, _, _) in _cards)
             sb.Append($" {sec.Role?.Id ?? sec.Title.ToString()}({(values.Built ? values.Built.text.Replace('\n', ',') : "")})");
         return sb.ToString();
     }
