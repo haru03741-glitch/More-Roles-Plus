@@ -402,18 +402,7 @@ internal sealed class RoleBrowser
 
     private static readonly Color IconOff = new(1f, 1f, 1f, 0.35f);
 
-    // カードの絵。本編の役職は本編の役職アイコン (クルーメイトとインポスターには無い)。MRP の役職はまだ無い
-    private static readonly Dictionary<AmongUs.GameOptions.RoleTypes, Sprite> Icons = new();
-
-    private static Sprite Icon(Assignable a)
-    {
-        if (a is not Roles.Builtin.VanillaRole v) return null;
-        // 本編の役職の一覧を総なめするので 1 回だけ (無い役職の null も覚える・消えた絵は探し直す)
-        if (Icons.TryGetValue(v.Type, out var s) && (ReferenceEquals(s, null) || s)) return s;
-        s = Menu.MatchInfoExtension.Base(v.Type)?.RoleIconSolid;
-        Icons[v.Type] = s ? s : null;
-        return Icons[v.Type];
-    }
+    private static Sprite Icon(Assignable a) => RoleArt.Of(a);
 
     // narrow = 2 列の一覧のカード (絵の枠+名前+人数と出現率の 1 行・説明は右の欄だけ)。検索の結果は幅いっぱいで説明つき
     private Widget Card(Registry.Section sec, float width, bool narrow = false)
