@@ -71,13 +71,13 @@ internal sealed class OptEditor
     // 名前が 1 行に入らない時は、名前を上の段 (幅いっぱい)・値を下の段の右に置く
     public const float NarrowFont = 1.35f, NarrowStepW = 0.3f, NarrowValueW = 0.74f, NarrowRowH = 0.34f;
 
-    // compactToggle = ON/OFF の箱を数値の値の欄と同じ幅に (名前を 1 行に収めやすくする)
-    public Widget NarrowRow(Opt opt, bool editable, float width, float indent = 0f, Color? nameColor = null, bool compactToggle = false)
+    // ON/OFF はスイッチ (編集できない時は字だけ)
+    public Widget NarrowRow(Opt opt, bool editable, float width, float indent = 0f, Color? nameColor = null)
     {
         opt.Sync();
         var info = InfoButton(opt);
         const float gap = 0.06f;
-        float controls = compactToggle && opt.IsToggle ? NarrowValueW + 0.12f : NarrowStepW * 2f + NarrowValueW + gap * 2f;
+        float controls = opt.IsToggle ? (editable ? Switch.W : NarrowValueW) : NarrowStepW * 2f + NarrowValueW + gap * 2f;
         float infoW = info != null ? InfoW + gap : 0f;
         float nameW = width - indent - controls - gap - infoW;
         bool twoLines = Label.Measure(opt.Label, NarrowFont, true) > nameW;
@@ -99,15 +99,16 @@ internal sealed class OptEditor
 
         if (opt.IsToggle)
         {
-            var value = new Label(opt.Display(), NarrowFont) { Width = controls - 0.2f, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = ToggleColor(opt) };
-            Button toggle = null;
             if (editable)
             {
-                toggle = new Button(value, () => Changed(opt, 1)) { Size = new Vector2(controls, NarrowRowH), Color = ToggleColor(opt) };
-                ctl.Add(toggle);
+                var sw = new Switch(opt.Index != 0, () => Changed(opt, 1));
+                ctl.Add(sw);
+                _rows.Add((opt, name, null, sw, null, null, null));
+                return row;
             }
-            else ctl.Add(value);
-            _rows.Add((opt, name, value, toggle, null, null, null));
+            var value = new Label(opt.Display(), NarrowFont) { Width = controls, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = ToggleColor(opt) };
+            ctl.Add(value);
+            _rows.Add((opt, name, value, null, null, null, null));
             return row;
         }
 
@@ -258,6 +259,11 @@ internal sealed class OptEditor
             var nt = name.Built;
             string ns = NameText(opt);
             if (nt && ns != name.Content) { name.Content = ns; nt.text = ns; }
+            if (toggle is Switch sw)
+            {
+                sw.SetOn(opt.Index != 0);
+                continue;
+            }
             var t = value.Built;
             if (t) t.text = opt.Display();
             if (opt.IsToggle)

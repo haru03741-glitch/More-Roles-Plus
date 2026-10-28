@@ -22,7 +22,7 @@ internal sealed class SectionPage
     private const float W = 6.3f, H = 4.15f;
     private static readonly float ListW = (float)Math.Round(W * 0.65f, 2), SideW = W - ListW - 0.15f;
     internal static float RowW => ListW - 0.24f;
-    private const float HeadH = 0.4f, BarH = 0.4f;
+    private const float HeadH = 0.4f, BarH = 0.4f, RowPad = 0.08f;
 
     private readonly string _tag;
     private readonly Func<string> _title;
@@ -143,11 +143,12 @@ internal sealed class SectionPage
                 Align = Align.Start,
             };
             rows.Add(e.Head);
+            // 行ごとに灰の地 (行の境目を見やすく)
             foreach (var opt in shown)
             {
-                var r = _editor.NarrowRow(opt, edit, rowW, RoleBrowser.Depth(opt) * 0.2f, opt.Fresh ? RoleBrowser.FreshColor : (Color?)null, true);
+                var r = _editor.NarrowRow(opt, edit, rowW - RowPad * 2f, RoleBrowser.Depth(opt) * 0.2f, opt.Fresh ? RoleBrowser.FreshColor : (Color?)null);
                 r.Align = Align.Start;
-                rows.Add(r);
+                rows.Add(new Plate(r) { Width = rowW, Padding = new Vector2(RowPad, 0.025f), Align = Align.Start });
             }
             _entries.Add(e);
             _shownOpts.AddRange(shown);
