@@ -62,6 +62,63 @@ internal sealed class OptEditor
         GameTabRows.OnEdited(opt);
     }
 
+    // 狭い欄 (設定画面の右の欄) の行: 字を小さく・「初期値」のボタンは無し (変えた値は橙の字で分かり、戻すのは欄の下のボタン)。
+    // 名前が 1 行に入らない時は、名前を上の段 (幅いっぱい)・値を下の段の右に置く
+    public const float NarrowFont = 1.35f, NarrowStepW = 0.3f, NarrowValueW = 0.74f, NarrowRowH = 0.34f;
+
+    public Widget NarrowRow(Opt opt, bool editable, float width, float indent = 0f, Color? nameColor = null)
+    {
+        opt.Sync();
+        var info = InfoButton(opt);
+        const float gap = 0.06f;
+        float controls = NarrowStepW * 2f + NarrowValueW + gap * 2f;
+        float infoW = info != null ? InfoW + gap : 0f;
+        float nameW = width - indent - controls - gap - infoW;
+        bool twoLines = Label.Measure(opt.Label, NarrowFont, true) > nameW;
+        if (twoLines) nameW = width - indent - infoW;
+        var name = new Label(opt.Label, NarrowFont) { Width = nameW, Bold = true, Color = nameColor ?? Color.white };
+        var head = new Stack(true) { Gap = gap, Align = Align.Start };
+        if (indent > 0f) head.Add(new Spacer(indent - gap, 0.1f));
+        head.Add(name);
+        if (info != null) head.Add(info);
+        // 値の部品を足す先 (1 行なら名前の右・2 段なら下の段の右寄せ)
+        Widget row = head;
+        var ctl = head;
+        if (twoLines)
+        {
+            ctl = new Stack(true) { Gap = gap, Align = Align.Start };
+            ctl.Add(new Spacer(width - controls - gap, 0.1f));
+            row = new Stack(false, head, ctl) { Gap = 0.03f, Width = width, Align = Align.Start };
+        }
+
+        if (opt.IsToggle)
+        {
+            var value = new Label(opt.Display(), NarrowFont) { Width = controls - 0.2f, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = ToggleColor(opt) };
+            Button toggle = null;
+            if (editable)
+            {
+                toggle = new Button(value, () => Changed(opt, 1)) { Size = new Vector2(controls, NarrowRowH), Color = ToggleColor(opt) };
+                ctl.Add(toggle);
+            }
+            else ctl.Add(value);
+            _rows.Add((opt, value, toggle, null, null, null));
+            return row;
+        }
+
+        var val = new Label(opt.Display(), NarrowFont) { Width = editable ? NarrowValueW : controls, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = opt.Changed ? ChangedColor : Color.white };
+        if (!editable)
+        {
+            ctl.Add(val);
+            _rows.Add((opt, val, null, null, null, null));
+            return row;
+        }
+        var minus = new Button("-", () => Changed(opt, -1), NarrowFont) { Size = new Vector2(NarrowStepW, NarrowRowH), Repeat = RepeatSeconds };
+        var plus = new Button("+", () => Changed(opt, 1), NarrowFont) { Size = new Vector2(NarrowStepW, NarrowRowH), Repeat = RepeatSeconds };
+        ctl.Add(minus).Add(val).Add(plus);
+        _rows.Add((opt, val, null, minus, plus, null));
+        return row;
+    }
+
     public Widget Row(Opt opt, bool editable, float indent = 0f, Color? nameColor = null)
     {
         opt.Sync();

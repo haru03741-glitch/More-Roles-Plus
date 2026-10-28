@@ -45,10 +45,13 @@ internal sealed class RoleBrowser
     private int _bulkChance = 50, _bulkCount = 1;
 
     private UiScreen _screen;
-    private Registry.Section _open;   // 2 枚目に開いている物 (null = 1 枚目)
+    // 開いている物 (null = 1 枚目)。設定画面の一覧では右の欄で編集している物 (一覧はそのまま)、それ以外は 2 枚目
+    private Registry.Section _open;
     private Registry.Section _hover;  // 右に要約を出している物
     private Registry.Section _picked; // スマホで 1 回押した物 (もう 1 回で開く)
     private Holder _side;
+    private float _sideH;
+    private ScrollView _sideList;  // 右の欄で編集している時の行の欄
     private ScrollView _list;
     private readonly List<(Registry.Section sec, Button card, Label values, Label name, bool narrow)> _cards = new();
     private readonly OptEditor _editor;
@@ -60,13 +63,13 @@ internal sealed class RoleBrowser
     {
         W = width;
         H = height;
-        ListW = (float)Math.Round(width * 0.595f, 2);
+        ListW = (float)Math.Round(width * 0.56f, 2);
         SideW = width - ListW - 0.15f;
         CardW = ListW - 0.2f;
         _settings = settings;
         _canEdit = canEdit;
         _tag = tag;
-        _editor = new OptEditor(Rebuild, _ => AfterEdit(), canEdit);
+        _editor = new OptEditor(OnShownChanged, _ => AfterEdit(), canEdit);
     }
 
     // true = 一覧に陣営の札を出さず、陣営は持ち主が Team で選ぶ
@@ -125,6 +128,11 @@ internal sealed class RoleBrowser
 
     public void OpenSection(Registry.Section sec)
     {
+        if (SideEdit && _side != null && sec?.Role != null)
+        {
+            Select(sec);
+            return;
+        }
         _list?.Remember();
         _open = sec;
         _picked = null;
@@ -151,7 +159,17 @@ internal sealed class RoleBrowser
         _side = null;
         _list = null;
         _resetBtn = _undoBtn = null;
-        _screen.Set(_open != null ? DetailPage(_open) : _tokens.Length > 0 ? SearchPage() : ListPage());
+        _screen.Set(_open != null && !SideEdit ? DetailPage(_open) : _tokens.Length > 0 ? SearchPage() : ListPage());
+    }
+
+    // 設定画面の一覧 = 役職を押すと右の欄で編集する (2 枚目へ切り替えない)。役職辞典と検索の結果から開いた時は 2 枚目
+    private bool SideEdit => _settings && _tokens.Length == 0;
+
+    // 項目の出入り (ほかの項目の値で出る行) が変わった: 右の欄で編集中なら右の欄だけ作り直す
+    private void OnShownChanged()
+    {
+        if (SideEdit && _open != null && _side != null) RefreshSide();
+        else Rebuild();
     }
 
     private Widget ListPage()
@@ -197,6 +215,7 @@ internal sealed class RoleBrowser
 
         float listH = TeamFromOutside ? H - ChipH - 0.12f : H - ChipH * 2f - 0.07f - 0.12f;
         _list = new ScrollView(new Vector2(ListW, listH), cards) { Tag = _tag + ":" + _team + (_enabledOnly ? "+" : "") + _filter + _sort };
+        _sideH = listH;
         _side = new Holder(new Vector2(SideW, listH), SideContent());
         var head = TeamFromOutside ? chips2 : new Stack(false, chips, chips2) { Gap = 0.07f, Align = Align.Start };
         return new Stack(false, head, new Stack(true, _list, _side) { Gap = 0.15f }) { Gap = 0.12f, Width = W };
@@ -273,9 +292,22 @@ internal sealed class RoleBrowser
     // 名前の並びは読み (無ければ名前) をひらがなに揃えて比べる (検索と同じ揃え方)
     private static string SortName(Registry.Section sec) => RoleSearch.Normalize(sec.Role?.Reading ?? sec.Title.ToString());
 
-    // 凡例 (「更新」の印の説明は、印が付いている時だけ)
-    private static string LegendText() =>
-        SettingNotice.FreshCount > 0 ? $"{new Text("RolePage.Legend")}{new Text("RolePage.LegendFresh")}" : new Text("RolePage.Legend").ToString();
+    // 凡例: カードの縁の色の見本 3 つと、名前の印の説明 (「更新」の印の説明は、印が付いている時だけ)
+    private Widget Legend()
+    {
+        var swatches = new Stack(true) { Gap = 0.05f, Align = Align.Start };
+        float itemW = (SideW - 0.1f) / 3f;
+        (string key, Color c)[] items = { ("RolePage.SwatchOff", Gray), ("RolePage.SwatchChance", Color.white), ("RolePage.SwatchAlways", Gold) };
+        foreach (var (key, c) in items)
+            swatches.Add(new Stack(true,
+                new Box(null) { Size = new Vector2(0.32f, 0.24f), Color = c },
+                new Label(new Text(key), 1.05f) { Color = SubText, Width = itemW - 0.37f, MinFontSize = 0.8f }) { Gap = 0.05f });
+        var col = new Stack(false, swatches) { Gap = 0.04f, Width = SideW, Align = Align.Start };
+        col.Add(new Label(new Text("RolePage.LegendMarks"), 1.05f) { Color = SubText, Width = SideW, Align = Align.Start });
+        if (SettingNotice.FreshCount > 0) col.Add(new Label(new Text("RolePage.LegendFreshLine"), 1.05f) { Color = SubText, Width = SideW, Align = Align.Start });
+        swatches.Align = Align.Start;
+        return col;
+    }
 
     private IEnumerable<Registry.Section> VisibleInOrder()
     {
@@ -404,6 +436,8 @@ internal sealed class RoleBrowser
             MinSize = new Vector2(width, 0.55f),
             Padding = new Vector2(pad, 0.07f),
             Color = CardColor(sec),
+            // 選んだカードは中を薄く塗る (選び直しは塗りの色だけ書き換える)
+            Fill = narrow && SideEdit ? SelectFill(sec) : null,
             OnHover = () => { if (!Touch) ShowSide(sec); },
             OnUnhover = () => { if (!Touch && _hover == sec) ShowSide(null); },
         };
@@ -411,8 +445,16 @@ internal sealed class RoleBrowser
         return card;
     }
 
+    private Color SelectFill(Registry.Section sec) => sec == _open ? Color.Lerp(Color.black, TitleColor(sec), 0.28f) : Color.black;
+
     private void OnCard(Registry.Section sec)
     {
+        if (SideEdit && sec.Role != null)
+        {
+            // もう一度押すと閉じる
+            Select(_open == sec ? null : sec);
+            return;
+        }
         // スマホは当てられないので、1 回目は右に要約・2 回目で開く (検索の結果は右の欄が無いのですぐ開く)
         if (Touch && _picked != sec && _side != null)
         {
@@ -425,20 +467,40 @@ internal sealed class RoleBrowser
 
     // ---- 右の欄 ----
 
+    // 当てた物の要約を右に出す (右の欄で編集している間は編集のまま)
     private void ShowSide(Registry.Section sec)
     {
         _hover = sec;
+        if (SideEdit && _open != null) return;
+        RefreshSide();
+    }
+
+    private void RefreshSide()
+    {
         if (_side?.Screen == null || !_side.Screen.Alive) return;
+        _editor.Clear();
+        _resetBtn = _undoBtn = null;
         _side.Screen.Set(SideContent());
+    }
+
+    // 右の欄で編集する物を選ぶ (null = 選びを外して、まとめて変える札へ)
+    private void Select(Registry.Section sec)
+    {
+        _open = sec;
+        _picked = null;
+        foreach (var (s, card, _, _, narrow) in _cards)
+            if (narrow && card.FillRenderer) card.FillRenderer.color = SelectFill(s);
+        RefreshSide();
     }
 
     private Widget SideContent()
     {
+        if (SideEdit && _open != null) return SideEditor(_open);
         if (_hover != null) return Summary(_hover);
         if (_settings && Editable) return Bulk();
         return new Stack(false,
             new Label(new Text(Touch ? "RoleDictionary.HintTouch" : "RoleDictionary.Hint"), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start },
-            new Label(LegendText(), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start },
+            Legend(),
             new Spacer(0.1f, 0.05f),
             new Button(new Text("RoleDictionary.CopyCode"), () => SettingNotice.Toast(SettingCode.Copy()), 1.35f) { Size = new Vector2(SideW, 0.4f) }) { Gap = 0.12f, Width = SideW };
     }
@@ -500,7 +562,7 @@ internal sealed class RoleBrowser
         var col = new Stack(false) { Gap = 0.08f, Width = SideW };
         col.Add(new Label(_team < 0 ? new Text("RolePage.BulkAll") : new Text("RolePage.BulkTeam").With("team", team), 1.6f) { Bold = true, Width = SideW, Align = Align.Start });
         col.Add(new Label(new Text("RolePage.Enabled").With("n", EnabledIn()).With("count", CountIn()), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start });
-        col.Add(new Label(LegendText(), 1.15f) { Color = SubText, Width = SideW, Align = Align.Start });
+        col.Add(Legend());
         col.Add(new Spacer(0.1f, 0.05f));
         float half = (SideW - 0.08f) / 2f;
         col.Add(new Stack(true,
@@ -583,7 +645,8 @@ internal sealed class RoleBrowser
         if (!OptHistory.Any || !Editable) return;
         OptHistory.Undo();
         AfterEdit();
-        if (_open != null || _tokens.Length > 0) Rebuild();
+        if (SideEdit) RefreshSide();
+        else if (_open != null || _tokens.Length > 0) Rebuild();
         else ShowSide(null);
     }
 
@@ -607,7 +670,8 @@ internal sealed class RoleBrowser
         finally { OptHistory.EndGroup(); }
         if (!any) return;
         AfterEdit();
-        Rebuild();
+        if (SideEdit) RefreshSide();
+        else Rebuild();
     }
 
     private static Color UndoColor => OptHistory.Any ? Color.white : OptEditor.Dim;
@@ -673,34 +737,14 @@ internal sealed class RoleBrowser
         var head = new Stack(true, back) { Gap = 0.2f, Align = Align.Start };
         // 一覧の今の並び (陣営・絞り込み・並べ替え) で前後の物へ。端は反対の端へ回る。
         // 今の一覧に無い物 (別の陣営の札の時に外から開いた等) はその陣営の並び。検索の結果から開いた時は出さない
-        var order = _tokens.Length > 0 ? null : Visible();
-        int at = order?.IndexOf(sec) ?? -1;
-        if (at < 0 && order != null)
-        {
-            order = KindOf(sec);
-            at = order?.IndexOf(sec) ?? -1;
-        }
-        if (at >= 0 && order.Count > 1)
-        {
-            var prev = order[(at + order.Count - 1) % order.Count];
-            var next = order[(at + 1) % order.Count];
+        if (Neighbors(sec) is var (prev, next))
             head.Add(new Stack(true,
                 new Button("◀", () => OpenSection(prev), 1.5f) { Size = new Vector2(0.45f, 0.5f) },
                 new Button("▶", () => OpenSection(next), 1.5f) { Size = new Vector2(0.45f, 0.5f) }) { Gap = 0.05f });
-        }
         head.Add(title);
         var extra = HeadExtra?.Invoke(sec);
         if (extra != null) head.Add(extra);
-        if (sec.Role != null)
-        {
-            // お気に入り (自分の手元だけ)。押すと札の色で塗る
-            bool fav = RoleFavorites.Has(sec.Role);
-            var c = TagColor(1);
-            var label = new Label(FavMark, 1.8f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = fav ? new Color(0.08f, 0.08f, 0.1f) : c };
-            var b = new Button(label, () => { RoleFavorites.Toggle(sec.Role); Rebuild(); }) { Size = new Vector2(0.5f, 0.5f), Padding = Vector2.zero, Color = c };
-            if (fav) b.Fill = c;
-            head.Add(b);
-        }
+        if (sec.Role != null) head.Add(FavButton(sec, 0.5f));
 
         var rows = new Stack(false) { Gap = 0.1f, Width = W - 0.3f };
         if (!_settings && sec.Role != null)
@@ -742,6 +786,120 @@ internal sealed class RoleBrowser
         return new Stack(false, head, _list) { Gap = 0.1f, Width = W };
     }
 
+    // 一覧の今の並び (陣営・絞り込み・並べ替え) での前後の物。端は反対の端へ回る。
+    // 今の一覧に無い物 (別の陣営の札の時に外から開いた等) はその陣営の並び。検索の結果から開いた時は無し
+    private (Registry.Section prev, Registry.Section next)? Neighbors(Registry.Section sec)
+    {
+        var order = _tokens.Length > 0 ? null : Visible();
+        int at = order?.IndexOf(sec) ?? -1;
+        if (at < 0 && order != null)
+        {
+            order = KindOf(sec);
+            at = order?.IndexOf(sec) ?? -1;
+        }
+        if (at < 0 || order.Count < 2) return null;
+        return (order[(at + order.Count - 1) % order.Count], order[(at + 1) % order.Count]);
+    }
+
+    // お気に入り (自分の手元だけ)。押すと札の色で塗る
+    private Button FavButton(Registry.Section sec, float size)
+    {
+        bool fav = RoleFavorites.Has(sec.Role);
+        var c = TagColor(1);
+        var label = new Label(FavMark, size * 3.6f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = fav ? new Color(0.08f, 0.08f, 0.1f) : c };
+        var b = new Button(label, () =>
+        {
+            RoleFavorites.Toggle(sec.Role);
+            if (SideEdit)
+            {
+                RefreshCards();
+                RefreshSide();
+            }
+            else Rebuild();
+        })
+        { Size = new Vector2(size, size), Padding = Vector2.zero, Color = c };
+        if (fav) b.Fill = c;
+        return b;
+    }
+
+    // ---- 右の欄で編集 (設定画面の一覧) ----
+
+    private Widget SideEditor(Registry.Section sec)
+    {
+        bool edit = Editable;
+        const float btn = 0.36f, gap = 0.05f;
+        var head = new Stack(true) { Gap = gap, Align = Align.Start };
+        float titleW = SideW - btn - gap;
+        if (Neighbors(sec) is var (prev, next))
+        {
+            head.Add(new Button("◀", () => Select(prev), 1.3f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
+            head.Add(new Button("▶", () => Select(next), 1.3f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
+            titleW -= (btn + gap) * 2f;
+        }
+        if (sec.Role != null) titleW -= btn + gap;
+        head.Add(new Label(sec.Title, 1.9f) { MenuFont = true, Color = TitleColor(sec), Width = titleW, MinFontSize = 1.2f });
+        if (sec.Role != null) head.Add(FavButton(sec, btn));
+        head.Add(new Button("×", () => Select(null), 1.5f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
+
+        var col = new Stack(false) { Gap = 0.05f, Width = SideW };
+        col.Add(head);
+        string s = ShortText(sec);
+        if (s.Length > 0) col.Add(new Label(s, 1.1f) { Color = SubText, Width = SideW, Align = Align.Start });
+        string tags = TagLine(sec);
+        if (tags.Length > 0) col.Add(new Label(tags, 1.1f) { Width = SideW, Align = Align.Start });
+
+        // 項目の行 (多い時はこの中だけスクロール)
+        float rowW = SideW - 0.18f;
+        var rows = new Stack(false) { Gap = 0.06f, Width = rowW };
+        var opts = new List<Opt>(SectionOpts(sec));
+        _editor.Watch(opts);
+        foreach (var opt in opts)
+        {
+            if (!opt.Shown) continue;
+            var r = _editor.NarrowRow(opt, edit, rowW, Depth(opt) * 0.2f, opt.Fresh ? FreshColor : (Color?)null);
+            r.Align = Align.Start;
+            rows.Add(r);
+        }
+        if (sec.Role is RoleBase rb && rb.Excluded != null)
+        {
+            if (edit) rows.Add(ExclSection(rb, rowW, 2));
+            else rows.Add(new Label($"{new Text("Registry.NotWith")}: {ExclSummary(rb)}", OptEditor.NarrowFont) { Bold = true, Width = rowW, Align = Align.Start });
+        }
+        _editor.Refresh();
+
+        // 下の段: 初期値に戻す・元に戻す・説明を見る (役職辞典)
+        const float barH = 0.38f;
+        var bar = new Stack(true) { Gap = gap, Align = Align.Start };
+        var extra = HeadExtra?.Invoke(sec) as Box;
+        int n = (edit ? 2 : 0) + (extra != null ? 1 : 0);
+        float bw = n > 0 ? (SideW - gap * (n - 1)) / n : 0f;
+        if (edit)
+        {
+            _resetBtn = new Button(new Text("OptEditor.Reset"), () => ResetSection(sec), 1.2f) { Size = new Vector2(bw, barH), Color = ResetColor(sec) };
+            _undoBtn = new Button(new Text("RoleMenu.Undo"), Undo, 1.2f) { Size = new Vector2(bw, barH), Color = UndoColor };
+            bar.Add(_resetBtn).Add(_undoBtn);
+        }
+        if (extra != null)
+        {
+            extra.Size = new Vector2(bw, barH);
+            extra.MinSize = Vector2.zero;
+            if (extra.Content is Label el)
+            {
+                el.FontSize = 1.2f;
+                el.Width = bw - 0.12f;
+                el.MinFontSize = 0.9f;
+            }
+            bar.Add(extra);
+        }
+
+        // 見出しと説明の高さは字の量で変わるので、行の欄の高さは大まかに見積もる
+        float used = btn + 0.05f + (s.Length > 0 ? 0.42f : 0f) + (tags.Length > 0 ? 0.2f : 0f) + (n > 0 ? barH + 0.1f : 0f);
+        _sideList = new ScrollView(new Vector2(SideW, Math.Max(_sideH - used, 1f)), rows);
+        col.Add(_sideList);
+        if (n > 0) col.Add(bar);
+        return col;
+    }
+
     private static List<Registry.Section> KindOf(Registry.Section sec)
     {
         for (int k = 0; k <= RoleMenu.AddonKind; k++)
@@ -760,14 +918,16 @@ internal sealed class RoleBrowser
     }
 
     // 一緒に出ない役職: 札を押すと両方の役職の選びを揃えて切り替える (片方だけ残ると、外したのに選んだままに見えるため)
-    private Widget ExclSection(RoleBase me)
+    private Widget ExclSection(RoleBase me) => ExclSection(me, W - 0.3f, 3);
+
+    private Widget ExclSection(RoleBase me, float width, int columns)
     {
-        const int columns = 3;
-        float w = (W - 0.3f - 0.08f * (columns - 1)) / columns;
-        var col = new Stack(false) { Gap = 0.06f, Width = W - 0.3f, Align = Align.Start };
+        float w = (width - 0.08f * (columns - 1)) / columns;
+        bool narrow = columns < 3;
+        var col = new Stack(false) { Gap = 0.06f, Width = width, Align = Align.Start };
         col.Add(new Spacer(0.1f, 0.1f));
-        col.Add(new Label(new Text("Registry.NotWith"), OptEditor.FontSize) { Bold = true, Align = Align.Start });
-        col.Add(new Label(new Text("RoleMenu.NotWithHint"), 1.15f) { Color = SubText, Width = W - 0.4f, Align = Align.Start });
+        col.Add(new Label(new Text("Registry.NotWith"), narrow ? OptEditor.NarrowFont : OptEditor.FontSize) { Bold = true, Align = Align.Start });
+        col.Add(new Label(new Text("RoleMenu.NotWithHint"), narrow ? 1.05f : 1.15f) { Color = SubText, Width = width - 0.1f, Align = Align.Start });
         Stack row = null;
         int i = 0;
         foreach (var other in ExclCandidates(me))
@@ -792,7 +952,7 @@ internal sealed class RoleBrowser
         bool on = locked || AssignPlan.PickedPair(me, other);
         var c = RoleDisplay.ParseColor(other.Color);
         string text = locked ? new Text("RoleMenu.FixedPair").With("name", other.Name) : other.Name.ToString();
-        var label = new Label(text, 1.35f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = on ? c : Gray, Width = w - 0.2f };
+        var label = new Label(text, 1.35f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = on ? c : Gray, Width = w - 0.2f, MinFontSize = 1f };
         Button b = null;
         b = new Button(label, () =>
         {
@@ -929,14 +1089,14 @@ internal sealed class RoleBrowser
     // カードに当てている間の右クリック = 出現率を 0% と 100% で切り替える (設定画面で値を変えられる時だけ)
     public void Tick()
     {
-        if (Touch || !_settings || _tokens.Length > 0 || _open != null || _hover?.Role == null) return;
+        if (Touch || !SideEdit || _hover?.Role == null) return;
         if (!Input.GetMouseButtonDown(1) || !Editable) return;
         var c = _hover.Role.Chance;
         OptHistory.Push(c, c.Index);
         c.SetIndex(c.Index > 0 ? 0 : c.Count - 1);
         Roles.TeamSizes.OnEdited(c);
         AfterEdit();
-        ShowSide(_hover);
+        if (_open == null || _open == _hover) RefreshSide();
     }
 
     // ---- 試験用 ----
@@ -958,8 +1118,16 @@ internal sealed class RoleBrowser
                 ShowSide(a.Length > 1 ? Find(a[1]) : null);
                 break;
             case "open":
-                _open = a.Length > 1 ? Find(a[1]) : null;
-                Rebuild();
+                if (SideEdit && _side != null) Select(a.Length > 1 ? Find(a[1]) : null);
+                else
+                {
+                    _open = a.Length > 1 ? Find(a[1]) : null;
+                    Rebuild();
+                }
+                break;
+            case "sidescroll":
+                if (_sideList?.Scroller != null && a.Length > 1 && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float ss))
+                    _sideList.Scroller.ScrollPercentY(ss);
                 break;
             case "scroll":
                 if (_list?.Scroller != null && a.Length > 1 && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sp))

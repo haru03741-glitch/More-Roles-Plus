@@ -71,6 +71,18 @@ internal sealed class Label : Widget
     // 作った字 (作り直さずに字だけ書き換える時に使う)
     public TextMeshPro Built { get; private set; }
 
+    // 1 行で書いた時の幅 (組む前に並べ方を決めるため。字の見本の部品で測る)
+    public static float Measure(string text, float fontSize, bool bold)
+    {
+        var t = UiAssets.TextProto;
+        if (!t) return 0f;
+        t.enableAutoSizing = false;
+        t.fontSize = fontSize;
+        t.fontStyle = bold ? FontStyles.Bold : FontStyles.Normal;
+        t.richText = true;
+        return t.GetPreferredValues(text ?? "").x;
+    }
+
     public Label(string content, float fontSize = 1.6f)
     {
         Content = content;
