@@ -67,6 +67,23 @@ internal sealed class RoleBrowser
         _editor = new OptEditor(Rebuild, _ => AfterEdit(), canEdit);
     }
 
+    // true = 一覧に陣営の札を出さず、陣営は持ち主が Team で選ぶ
+    public bool TeamFromOutside;
+
+    public int Team
+    {
+        get => _team;
+        set
+        {
+            if (_team == value && _open == null) return;
+            _team = value;
+            _open = null;
+            _hover = null;
+            _picked = null;
+            Rebuild();
+        }
+    }
+
     public bool Searching => _tokens.Length > 0;
     public bool Editable => _canEdit();
     public Registry.Section Open => _open;
@@ -139,16 +156,17 @@ internal sealed class RoleBrowser
     {
         var chips = new Stack(true) { Gap = 0.07f, Align = Align.Start };
         _freshChip = SettingNotice.FreshCount > 0;
-        for (int k = -1; k <= RoleMenu.AddonKind; k++)
+        for (int k = -1; k <= RoleMenu.AddonKind && !TeamFromOutside; k++)
         {
             int kind = k;
             Color c = k < 0 ? Color.white : RoleMenu.KindColor(k);
             chips.Add(Chip(k < 0 ? new Text("RoleMenu.All") : RoleMenu.KindName(k), c, _team == k, () => { _team = kind; _hover = null; Rebuild(); }));
         }
-        chips.Add(Chip(new Text("RoleMenu.EnabledOnly"), new Color(0.6f, 1f, 0.6f), _enabledOnly, () => { _enabledOnly = !_enabledOnly; Rebuild(); }));
+        var enabledOnly = Chip(new Text("RoleMenu.EnabledOnly"), new Color(0.6f, 1f, 0.6f), _enabledOnly, () => { _enabledOnly = !_enabledOnly; Rebuild(); });
 
-        // 2 段目: 並べ替えとタグの絞り込み (タグは 1 つだけ選ぶ・もう一度押すと外す)
+        // 2 段目: 並べ替えとタグの絞り込み (タグは 1 つだけ選ぶ・もう一度押すと外す)。陣営の札が無い時はこの 1 段だけ
         var chips2 = new Stack(true) { Gap = 0.07f, Align = Align.Start };
+        (TeamFromOutside ? chips2 : chips).Add(enabledOnly);
         chips2.Add(Chip(new Text("RolePage.Sort" + _sort), SortColor, false, () => { _sort = (_sort + 1) % SortCount; Rebuild(); }));
         for (int f = 1; f <= TagCount; f++)
         {
@@ -167,17 +185,18 @@ internal sealed class RoleBrowser
         }
         if (n == 0) cards.Add(new Label(new Text("RoleMenu.NoMatchingRoles"), 1.6f) { Color = SubText, Width = CardW, TextAlign = TextAlignmentOptions.Center });
 
-        float listH = H - ChipH * 2f - 0.07f - 0.12f;
+        float listH = TeamFromOutside ? H - ChipH - 0.12f : H - ChipH * 2f - 0.07f - 0.12f;
         _list = new ScrollView(new Vector2(ListW, listH), cards) { Tag = _tag + ":" + _team + (_enabledOnly ? "+" : "") + _filter + _sort };
         _side = new Holder(new Vector2(SideW, listH), SideContent());
-        var head = new Stack(false, chips, chips2) { Gap = 0.07f, Align = Align.Start };
+        var head = TeamFromOutside ? chips2 : new Stack(false, chips, chips2) { Gap = 0.07f, Align = Align.Start };
         return new Stack(false, head, new Stack(true, _list, _side) { Gap = 0.15f }) { Gap = 0.12f, Width = W };
     }
 
-    private static Button Chip(string text, Color c, bool on, Action click)
+    private Button Chip(string text, Color c, bool on, Action click)
     {
-        var label = new Label(text, 1.45f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = on ? new Color(0.08f, 0.08f, 0.1f) : c };
-        var b = new Button(label, click) { Size = new Vector2(0f, ChipH), MinSize = new Vector2(0.75f, ChipH), Padding = new Vector2(0.14f, 0.04f), Color = c };
+        // 陣営の札が無い時は札を 1 段に詰めるので、字と余白を小さく
+        var label = new Label(text, TeamFromOutside ? 1.2f : 1.45f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = on ? new Color(0.08f, 0.08f, 0.1f) : c };
+        var b = new Button(label, click) { Size = new Vector2(0f, ChipH), MinSize = new Vector2(TeamFromOutside ? 0.6f : 0.75f, ChipH), Padding = new Vector2(TeamFromOutside ? 0.09f : 0.14f, 0.04f), Color = c };
         if (on) b.Fill = c;
         return b;
     }

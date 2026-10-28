@@ -505,7 +505,9 @@ RoleDictionary.Avg: avg {n}
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP
-SettingsMenu.SearchAllTabs: Search all tabs
+SettingsMenu.SearchEverything: Search everything
+SettingsMenu.CatGame: Game
+SettingsMenu.CatGeneral: General
 SettingsMenu.Description: More Roles Plus settings. Sent to everyone when you close this menu.
 
 # ── VanillaGame ──

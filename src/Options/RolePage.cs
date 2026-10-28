@@ -16,6 +16,7 @@ internal static class RolePage
     {
         Changed = UpdateDescription,
         HeadExtra = DictionaryButton,
+        TeamFromOutside = true,
     };
 
     private static GameObject _root;
@@ -60,6 +61,10 @@ internal static class RolePage
         _query = q ?? "";
         if (_built) Browser.SetQuery(_query);
     }
+
+    // 一覧に出す陣営 (設定画面の左の列で選ぶ)
+    public static int Team => Browser.Team;
+    public static void SetTeam(int kind) => Browser.Team = kind;
 
     // 左の説明の欄の「出る役職」の数
     private static void UpdateDescription()

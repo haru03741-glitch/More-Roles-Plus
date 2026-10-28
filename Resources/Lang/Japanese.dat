@@ -505,7 +505,9 @@ RoleDictionary.Avg: 平均 {n} 人
 
 # ── SettingsMenu ──
 SettingsMenu.MRP: MRP 全般
-SettingsMenu.SearchAllTabs: 全部のタブから探す
+SettingsMenu.SearchEverything: 全部から探す
+SettingsMenu.CatGame: ゲーム
+SettingsMenu.CatGeneral: 全般
 SettingsMenu.Description: More Roles Plus の設定。閉じた時に全員へ送られます。
 
 # ── VanillaGame ──

@@ -390,6 +390,12 @@ internal static class RoleCommands
             reply($"OK pressrow {SettingsMenu.PressRow(p, r, d)}");
         });
 
+        TestBridge.Register("clickcat", "<番号> 設定画面の左の列のボタンを押す (0=プリセット 1=ゲーム 2=全般 3=クルー 4=インポスター 5=第三陣営 6=アドオン)", (args, reply) =>
+        {
+            if (!int.TryParse(args.Trim(), out int c)) { reply("ERR clickcat number"); return; }
+            reply($"OK clickcat {SettingsMenu.ClickCat(c)}");
+        });
+
         TestBridge.Register("clicktab", "<MRPタブ番号 0〜> MRP のタブのボタンを押す", (args, reply) =>
         {
             if (!int.TryParse(args.Trim(), out int p)) { reply("ERR clicktab number"); return; }

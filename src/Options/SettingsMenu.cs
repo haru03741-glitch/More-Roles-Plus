@@ -24,16 +24,22 @@ internal static class SettingsMenu
 {
     private const int FirstTab = 3; // 本編のタブは 0〜2
 
-    // タブの並び (1920x1080 の画面での px)。本編の「ゲーム設定」ボタンの中心が基準
-    private const float GameButtonX = 370f, GameButtonY = 760f;
-    private const float LeftColumnX = 240f, RightColumnX = 474f, FirstRowY = 640f, RowStepY = 95f;
+    // 左の列 (設定画面の座標)。X は本編のタブのボタンと同じ所 (絵はボタンの位置から左へずれて描かれる)
+    private const float CatX = -2.96f, CatTopY = 1.6f, CatStepY = 0.55f;
+    private const float CatScaleX = 1f, CatScaleY = 0.9f;
     private const float CompactX = 0.48f, CompactY = 0.8f;
+    // 検索欄は板の上の縁より上・右上の本編のボタンの列に掛からない所
+    private const float SearchX = -1.2f, SearchY = 2.6f, SearchW = 3.6f;
+
+    // 左の列のボタンの番号 (陣営は CatKind0 + RoleMenu の陣営の番号)
+    private const int CatPresets = 0, CatGame = 1, CatGeneral = 2, CatKind0 = 3;
+    private static readonly Color GameCatColor = new(0.82f, 0.84f, 0.88f), GeneralCatColor = new(1f, 0.55f, 0.75f);
+    private static readonly List<(PassiveButton Btn, int Cat)> Cats = new();
 
     private sealed class Page
     {
         public bool Roles;  // false = 全般のタブ
         public bool Presets; // プリセットのタブ
-        public PassiveButton Button;
         public GameOptionsMenu Menu;
     }
 
@@ -57,10 +63,21 @@ internal static class SettingsMenu
     }
 
     // 試験用: MRP のタブのボタンを押す (OnClick をそのまま呼ぶ)
+    internal static string ClickCat(int cat)
+    {
+        var hit = Cats.Find(c => c.Cat == cat);
+        if (!hit.Btn) return "no button";
+        hit.Btn.OnClick.Invoke();
+        return "ok";
+    }
+
     internal static string ClickTabButton(int page)
     {
-        if (page < 0 || page >= Pages.Count || !Pages[page].Button) return "no button";
-        Pages[page].Button.OnClick.Invoke();
+        if (page < 0 || page >= Pages.Count) return "no page";
+        int cat = Pages[page].Presets ? CatPresets : Pages[page].Roles ? CatKind0 + RolePage.Team : CatGeneral;
+        var hit = Cats.Find(c => c.Cat == cat);
+        if (!hit.Btn) return "no button";
+        hit.Btn.OnClick.Invoke();
         return Pages[page].Menu && Pages[page].Menu.gameObject.activeSelf ? "shown" : "not shown";
     }
 
@@ -117,64 +134,40 @@ internal static class SettingsMenu
         _currentTab = _returnTab = 1;
         if (!_template) return;
 
-        // 左の列を 2 列に詰める: 左 = 本編の 3 つ、右 = MRP のタブ。
-        // 位置は本編の 2 つのボタンの間隔 (1920x1080 の画面で 113px) を物差しにして px で決める
+        // 左の列 1 本で全部の設定へ行く: プリセット / ゲーム (本編のゲーム設定) / 全般 / 陣営ごとの役職。
+        // 本編のタブのボタンと、左上の題・説明の箱は出さない (この列と同じ役目か、文が多いだけなので)
         var gameBtn = menu.GameSettingsButton;
-        Vector3 origin = gameBtn.transform.localPosition;
-        float unit = Mathf.Abs(menu.RoleSettingsButton.transform.localPosition.y - origin.y) / 113f;
-        Vector3 scale = gameBtn.transform.localScale;
-        Vector3 At(float px, float py) => origin + new Vector3((px - GameButtonX) * unit, (GameButtonY - py) * unit, 0f);
-        // 本編のプリセットのタブは出さない (MRP のプリセットのタブが本編の設定も含めて保存する)
-        menu.GamePresetsButton.gameObject.SetActive(false);
-        PassiveButton[] vanilla = { gameBtn, menu.RoleSettingsButton };
-
         foreach (int kind in new[] { 0, 1, 2 })
         {
             bool roles = kind == 1, presets = kind == 2;
             if (roles ? !RoleMenu.HasContent() : kind == 0 && Registry.SectionsOf(Tab.General).Count == 0) continue;
-            int index = Pages.Count;
-            string tab = presets ? "Presets" : roles ? "Roles" : "General";
-
-            var btn = Object.Instantiate(gameBtn, gameBtn.transform.parent);
-            btn.name = "MrpTabButton_" + tab;
-            Compact(btn, At(RightColumnX, FirstRowY + index * RowStepY), scale);
-            var label = btn.GetComponentInChildren<TextMeshPro>();
-            var tr = label.GetComponent<TextTranslatorTMP>();
-            if (tr) Object.Destroy(tr);
-            label.text = presets ? PresetPage.TabName : TabName(roles);
-            Color c = presets ? PresetPage.TabColor : TabColor(roles);
-            btn.inactiveSprites.GetComponent<SpriteRenderer>().color = new Color(c.r * 0.6f, c.g * 0.6f, c.b * 0.6f, 1f);
-            btn.activeSprites.GetComponent<SpriteRenderer>().color = c;
-            btn.selectedSprites.GetComponent<SpriteRenderer>().color = c;
-            btn.OnMouseOver = new UnityEvent();
-            btn.OnMouseOut = new UnityEvent();
-            btn.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
-            btn.OnClick.AddListener(ClickAction(FirstTab + index));
-            menu.ControllerSelectable.Add(btn);
-
             var page = Object.Instantiate(_template, _template.transform.parent);
-            page.name = "MrpTab_" + tab;
+            page.name = "MrpTab_" + (presets ? "Presets" : roles ? "Roles" : "General");
             page.gameObject.SetActive(false);
-            MenuToPage[page.Pointer] = index;
-            Pages.Add(new Page { Roles = roles, Presets = presets, Button = btn, Menu = page });
+            MenuToPage[page.Pointer] = Pages.Count;
+            Pages.Add(new Page { Roles = roles, Presets = presets, Menu = page });
         }
-        // MRP のボタンは本編のボタンを複製して作るので、本編の方を縮めるのは複製の後
-        for (int i = 0; i < vanilla.Length; i++) Compact(vanilla[i], At(LeftColumnX, FirstRowY + i * RowStepY), scale);
-        // 本編の役職は MRP の役職タブに並ぶので、本編の役職のタブは出さない
-        if (Pages.Exists(p => p.Roles)) menu.RoleSettingsButton.gameObject.SetActive(false);
-        // 検索欄: タブのボタンの 2 列の幅で、いちばん下のボタンの下
+
+        Cats.Clear();
+        if (Pages.Exists(p => p.Presets)) AddCat(menu, gameBtn, CatPresets, PresetPage.TabName, PresetPage.TabColor);
+        AddCat(menu, gameBtn, CatGame, new Text("SettingsMenu.CatGame"), GameCatColor);
+        if (Pages.Exists(p => !p.Roles && !p.Presets)) AddCat(menu, gameBtn, CatGeneral, new Text("SettingsMenu.CatGeneral"), GeneralCatColor);
         if (Pages.Exists(p => p.Roles))
+            for (int k = 0; k <= RoleMenu.AddonKind; k++) AddCat(menu, gameBtn, CatKind0 + k, RoleMenu.KindName(k), RoleMenu.KindColor(k));
+        foreach (var b in new[] { gameBtn, menu.RoleSettingsButton, menu.GamePresetsButton })
         {
-            var col = gameBtn.GetComponent<BoxCollider2D>();
-            float half = (col ? col.size.x : 3.21f) * gameBtn.transform.localScale.x / 2f;
-            Vector3 l = At(LeftColumnX, FirstRowY), r = At(RightColumnX, FirstRowY + (Pages.Count - 1) * RowStepY);
-            float w = r.x - l.x + half * 2f;
-            // ボタンの絵はボタンの位置から左へずれて描かれているので、絵の中心にそろえる
-            var placer = gameBtn.transform.Find("FontPlacer");
-            float shift = placer ? placer.localPosition.x * gameBtn.transform.localScale.x : 0f;
-            _search = SearchBox.Create(gameBtn.transform.parent, new Vector3((l.x + r.x) / 2f + shift, r.y - RowStepY * unit * 1.05f, l.z), w, 0.4f,
-                new Text("SettingsMenu.SearchAllTabs"), OnSearch);
+            b.gameObject.SetActive(false);
+            menu.ControllerSelectable.Remove(b);
         }
+        var label = menu.transform.Find("GameSettingsLabel");
+        if (label) label.gameObject.SetActive(false);
+        var info = menu.transform.Find("What Is This?");
+        if (info) info.gameObject.SetActive(false);
+
+        // 検索欄: 板の上 (どの頁からでも全部を探す)
+        if (Pages.Exists(p => p.Roles))
+            _search = SearchBox.Create(gameBtn.transform.parent, new Vector3(SearchX, SearchY, gameBtn.transform.localPosition.z), SearchW, 0.42f,
+                new Text("SettingsMenu.SearchEverything"), OnSearch);
         // 本編は開いた時にプリセットのタブを出すので、ゲーム設定のタブから始める
         menu.ChangeTab(1, false);
         var desc = menu.MenuDescriptionText;
@@ -184,14 +177,73 @@ internal static class SettingsMenu
         desc.text = TranslationController.Instance.GetString(StringNames.GameSettingsDescription);
     }
 
+    // 左の列のボタン 1 つ (本編のゲーム設定のボタンの複製・押す音と当てた時の見た目は本編のまま)
+    private static void AddCat(GameSettingMenu menu, PassiveButton proto, int cat, Text name, Color c)
+    {
+        var btn = Object.Instantiate(proto, proto.transform.parent);
+        btn.name = "MrpCat_" + cat;
+        btn.gameObject.SetActive(true);
+        var z = proto.transform.localPosition.z;
+        Compact(btn, new Vector3(CatX, CatTopY - Cats.Count * CatStepY, z), proto.transform.localScale, CatScaleX, CatScaleY);
+        var label = btn.GetComponentInChildren<TextMeshPro>();
+        var tr = label.GetComponent<TextTranslatorTMP>();
+        if (tr) Object.Destroy(tr);
+        label.text = name;
+        btn.inactiveSprites.GetComponent<SpriteRenderer>().color = new Color(c.r * 0.6f, c.g * 0.6f, c.b * 0.6f, 1f);
+        btn.activeSprites.GetComponent<SpriteRenderer>().color = c;
+        btn.selectedSprites.GetComponent<SpriteRenderer>().color = c;
+        btn.OnMouseOver = new UnityEvent();
+        btn.OnMouseOut = new UnityEvent();
+        btn.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+        btn.OnClick.AddListener(CatAction(cat));
+        menu.ControllerSelectable.Add(btn);
+        Cats.Add((btn, cat));
+    }
+
+    private static UnityAction CatAction(int cat)
+    {
+        int key = 1000 + cat;
+        if (!Clicks.TryGetValue(key, out var a)) Clicks[key] = a = (UnityAction)(() => SelectCat(cat));
+        return a;
+    }
+
+    private static void SelectCat(int cat)
+    {
+        var menu = GameSettingMenu.Instance;
+        if (!menu) return;
+        int page = cat switch
+        {
+            CatPresets => Pages.FindIndex(p => p.Presets),
+            CatGeneral => Pages.FindIndex(p => !p.Roles && !p.Presets),
+            >= CatKind0 => Pages.FindIndex(p => p.Roles),
+            _ => -1,
+        };
+        if (cat >= CatKind0) RolePage.SetTeam(cat - CatKind0);
+        menu.ChangeTab(page < 0 ? 1 : FirstTab + page, false);
+    }
+
+    // 今の頁に当たる左の列のボタンだけを選んだ見た目に (-1 = どれも選ばない・検索の間)
+    private static void HighlightCat(int tabNum)
+    {
+        int cur = -1;
+        if (tabNum == 1) cur = CatGame;
+        else if (tabNum >= FirstTab && tabNum - FirstTab < Pages.Count)
+        {
+            var p = Pages[tabNum - FirstTab];
+            cur = p.Presets ? CatPresets : p.Roles ? CatKind0 + RolePage.Team : CatGeneral;
+        }
+        foreach (var (btn, cat) in Cats)
+            if (btn) btn.SelectButton(cat == cur);
+    }
+
     // ボタンを小さくする。文字は横だけ潰れないよう縦横の縮みを揃え、はみ出す分は自動で小さくする
-    private static void Compact(PassiveButton b, Vector3 pos, Vector3 scale)
+    private static void Compact(PassiveButton b, Vector3 pos, Vector3 scale, float sx = CompactX, float sy = CompactY)
     {
         b.transform.localPosition = pos;
-        b.transform.localScale = new Vector3(scale.x * CompactX, scale.y * CompactY, scale.z);
+        b.transform.localScale = new Vector3(scale.x * sx, scale.y * sy, scale.z);
         var label = b.GetComponentInChildren<TextMeshPro>();
         if (!label) return;
-        const float fix = CompactY / CompactX;
+        float fix = sy / sx;
         var ls = label.transform.localScale;
         label.transform.localScale = new Vector3(ls.x * fix, ls.y, ls.z);
         var rt = label.rectTransform;
@@ -243,7 +295,7 @@ internal static class SettingsMenu
             menu.GameSettingsButton.SelectButton(false);
             menu.RoleSettingsButton.SelectButton(false);
             ShowPage(roles);
-            if (Pages[roles].Button) Pages[roles].Button.SelectButton(false);
+            HighlightCat(-1);
             menu.ToggleLeftSideDarkener(true);
             menu.ToggleRightSideDarkener(false);
             RefreshAll(); // 他のタブで変えた値を結果の行へ
@@ -298,6 +350,7 @@ internal static class SettingsMenu
                 RolePage.SetQuery("");
             }
             _currentTab = tabNum;
+            HighlightCat(tabNum);
             RefreshAll();
             if (tabNum == 1) RefreshGameTab(menu);
         }
@@ -345,7 +398,6 @@ internal static class SettingsMenu
         {
             var p = Pages[i];
             if (p.Menu) p.Menu.gameObject.SetActive(i == index);
-            if (p.Button) p.Button.SelectButton(i == index);
         }
     }
 
@@ -472,10 +524,9 @@ internal static class SettingsMenu
 
     public static void OnClose()
     {
-        foreach (var p in Pages)
-        {
-            if (p.Button) p.Button.OnClick.RemoveAllListeners();
-        }
+        foreach (var (btn, _) in Cats)
+            if (btn) btn.OnClick.RemoveAllListeners();
+        Cats.Clear();
         // 閉じた画面の行は破棄され、そのアドレスは別の物に使い回されうるので、ここで全部忘れる
         Rows.Clear();
         RowList.Clear();
