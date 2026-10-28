@@ -150,6 +150,7 @@ internal static class SettingsMenu
 
         Cats.Clear();
         CatLabels.Clear();
+        CatArts.Clear();
         if (Pages.Exists(p => p.Presets)) AddCat(menu, gameBtn, CatPresets, PresetPage.TabName, PresetPage.TabColor);
         AddCat(menu, gameBtn, CatGame, new Text("SettingsMenu.CatGame"), GameCatColor);
         if (Pages.Exists(p => !p.Roles && !p.Presets)) AddCat(menu, gameBtn, CatGeneral, new Text("SettingsMenu.CatGeneral"), GeneralCatColor);
@@ -245,6 +246,7 @@ internal static class SettingsMenu
         sr.transform.localScale = new Vector3(s.x * aspect, s.y, s.z);
         // 絵の左端をボタンの左の縁の少し内側へ (ポーズで横幅が違う)
         sr.transform.position += new Vector3(b.min.x + b.size.y * 0.08f - sr.bounds.min.x, 0f, 0f);
+        CatArts[cat] = (sr.transform, sr.transform.localPosition, sr.transform.localScale, h * 0.07f);
         if (label.sortingOrder <= sr.sortingOrder) label.sortingOrder = sr.sortingOrder + 1;
         // 字の左の余白 = 絵の右端まで
         float right = sr.bounds.max.x;
@@ -254,7 +256,8 @@ internal static class SettingsMenu
         if (m > 0f) label.margin = new Vector4(m, 0f, 0f, 0f);
     }
 
-    private const float CatArtHeight = 1.05f, CatArtX = 0.5f;
+    private const float CatArtHeight = 1.05f, CatArtX = 0.5f, CatArtPicked = 1.15f;
+    private static readonly Dictionary<int, (Transform T, Vector3 Pos, Vector3 Scale, float Lift)> CatArts = new();
 
     private static UnityAction CatAction(int cat)
     {
@@ -290,6 +293,14 @@ internal static class SettingsMenu
         }
         foreach (var (btn, cat) in Cats)
             if (btn) btn.SelectButton(cat == cur);
+        // 選んだ頁のクルーは少し大きく持ち上げる
+        foreach (var (cat, (t, pos, scale, lift)) in CatArts)
+        {
+            if (!t) continue;
+            bool on = cat == cur;
+            t.localScale = on ? scale * CatArtPicked : scale;
+            t.localPosition = on ? new Vector3(pos.x, pos.y + lift, pos.z) : pos;
+        }
     }
 
     // ボタンを小さくする。文字は横だけ潰れないよう縦横の縮みを揃え、はみ出す分は自動で小さくする
@@ -582,6 +593,7 @@ internal static class SettingsMenu
             if (btn) btn.OnClick.RemoveAllListeners();
         Cats.Clear();
         CatLabels.Clear();
+        CatArts.Clear();
         // 閉じた画面の行は破棄され、そのアドレスは別の物に使い回されうるので、ここで全部忘れる
         Rows.Clear();
         RowList.Clear();
