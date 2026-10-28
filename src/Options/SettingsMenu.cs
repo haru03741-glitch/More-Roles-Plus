@@ -152,6 +152,7 @@ internal static class SettingsMenu
         Cats.Clear();
         CatLabels.Clear();
         CatShown.Clear();
+        CatDots.Clear();
         CatArts.Clear();
         if (Pages.Exists(p => p.Presets)) AddCat(menu, gameBtn, CatPresets, PresetPage.TabName, PresetPage.TabColor);
         AddCat(menu, gameBtn, CatGame, new Text("SettingsMenu.CatGame"), GameCatColor);
@@ -198,7 +199,11 @@ internal static class SettingsMenu
         btn.activeSprites.GetComponent<SpriteRenderer>().color = c;
         btn.selectedSprites.GetComponent<SpriteRenderer>().color = c;
         AddCatArt(btn, label, cat, c);
-        if (cat >= CatKind0) CatLabels[cat] = (label, name.ToString());
+        if (cat >= CatKind0)
+        {
+            CatLabels[cat] = (label, name.ToString());
+            AddCatDot(btn, cat);
+        }
         btn.OnMouseOver = new UnityEvent();
         btn.OnMouseOut = new UnityEvent();
         btn.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
@@ -207,11 +212,29 @@ internal static class SettingsMenu
         Cats.Add((btn, cat));
     }
 
-    // 陣営のボタンの名前の右に「出る役職の数/全部の数」と、初期値から変えた設定がある時は橙の点 (値を変えるたびに書き直す)
+    // 陣営のボタンの名前の右に「出る役職の数/全部の数」、初期値から変えた設定がある時は右上の角に橙の点 (値を変えるたびに書き直す)
     private static readonly Dictionary<int, (TextMeshPro Label, string Name)> CatLabels = new();
     private static readonly Dictionary<int, int> CatShown = new(); // 今出している数 (変わった陣営だけ書き直す)
+    private static readonly Dictionary<int, GameObject> CatDots = new();
 
-    private static readonly string ChangedDotHex = ColorUtility.ToHtmlStringRGB(OptEditor.ChangedColor);
+    private static void AddCatDot(PassiveButton btn, int cat)
+    {
+        var bg = btn.inactiveSprites ? btn.inactiveSprites.GetComponent<SpriteRenderer>() : null;
+        if (!bg || !UI.UiAssets.Circle) return;
+        var t = btn.transform;
+        var b = bg.bounds;
+        // 縁の角の少し内側。ボタンは縦横で縮みが違うので、丸の横を戻す
+        float d = b.size.y * 0.24f;
+        var pos = t.InverseTransformPoint(new Vector3(b.max.x - d * 0.55f, b.max.y - d * 0.55f, b.center.z));
+        var ls = t.lossyScale;
+        var dot = UI.ChangeDot.Make(t, new Vector3(pos.x, pos.y, -0.02f), btn.gameObject.layer, 1f);
+        dot.transform.localScale = new Vector3(d / ls.x, d / ls.y, 1f);
+        dot.sortingOrder = bg.sortingOrder + 5;
+        var inner = dot.transform.GetChild(0).GetComponent<SpriteRenderer>();
+        if (inner) inner.sortingOrder = bg.sortingOrder + 6;
+        dot.gameObject.SetActive(false);
+        CatDots[cat] = dot.gameObject;
+    }
 
     internal static void RefreshCatCounts()
     {
@@ -233,7 +256,8 @@ internal static class SettingsMenu
             int key = on << 16 | all << 1 | (changed ? 1 : 0);
             if (CatShown.TryGetValue(cat, out int shown) && shown == key) continue;
             CatShown[cat] = key;
-            label.text = changed ? $"{name}<size=65%>  {on}/{all} <color=#{ChangedDotHex}>●</color></size>" : $"{name}<size=65%>  {on}/{all}</size>";
+            label.text = $"{name}<size=65%>  {on}/{all}</size>";
+            if (CatDots.TryGetValue(cat, out var dot) && dot) dot.SetActive(changed);
         }
     }
 
@@ -592,6 +616,7 @@ internal static class SettingsMenu
         foreach (var row in RowList)
             if (row && Rows.TryGetValue(row.Pointer, out var opt)) Refresh(row, opt);
         GameTabRows.Relayout();
+        SettingsToc.RefreshMarks();
         RefreshCatCounts();
     }
 
@@ -601,9 +626,9 @@ internal static class SettingsMenu
         var num = row.TryCast<NumberOption>();
         if (num != null)
         {
-            num.TitleText.text = opt.Label;
+            // 初期値から変えた項目は名前の右に橙の点 (値の字は白のまま)
+            num.TitleText.text = opt.Changed ? opt.Label + OptEditor.ChangedMark : opt.Label;
             num.ValueText.text = opt.Display();
-            num.ValueText.color = opt.Changed ? OptEditor.ChangedColor : Color.white; // 初期値から変えた値は橙
             // 数値は端で止まるので、それ以上動かない側のボタンを灰色にする (選択肢は回るので両方押せる)
             num.MinusBtn?.SetInteractable(opt.WrapsAround || opt.Index > 0);
             num.PlusBtn?.SetInteractable(opt.WrapsAround || opt.Index < opt.Count - 1);
@@ -612,8 +637,7 @@ internal static class SettingsMenu
         var tog = row.TryCast<ToggleOption>();
         if (tog != null)
         {
-            tog.TitleText.text = opt.Label;
-            tog.TitleText.color = opt.Changed ? OptEditor.ChangedColor : Color.white; // 箱だけでは変えたか分からないので名前を橙に
+            tog.TitleText.text = opt.Changed ? opt.Label + OptEditor.ChangedMark : opt.Label;
             tog.CheckMark.enabled = opt.Index != 0;
         }
     }
@@ -625,6 +649,7 @@ internal static class SettingsMenu
         Cats.Clear();
         CatLabels.Clear();
         CatShown.Clear();
+        CatDots.Clear();
         CatArts.Clear();
         // 閉じた画面の行は破棄され、そのアドレスは別の物に使い回されうるので、ここで全部忘れる
         Rows.Clear();
@@ -727,6 +752,7 @@ internal static class NumberOptionPatch
         SettingsMenu.Refresh(row, opt);
         Roles.TeamSizes.OnEdited(opt);
         GameTabRows.OnEdited(opt);
+        SettingsToc.RefreshMarks();
         return false;
     }
 
@@ -759,9 +785,10 @@ internal static class ToggleOptionPatch
     {
         if (!SettingsMenu.TryRow(__instance, out var opt)) return true;
         opt.Step(1);
-        __instance.CheckMark.enabled = opt.Index != 0;
+        SettingsMenu.Refresh(__instance, opt);
         Roles.TeamSizes.OnEdited(opt);
         GameTabRows.OnEdited(opt);
+        SettingsToc.RefreshMarks();
         return false;
     }
 }

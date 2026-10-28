@@ -475,7 +475,7 @@ RolePage.CountTo: Count to {n}
 RolePage.SwatchOff: Off
 RolePage.SwatchChance: By chance
 RolePage.SwatchAlways: Always
-RolePage.LegendMarks: * by the name and orange text = changed from the default
+RolePage.LegendMarks: = changed from the default
 RolePage.LegendFreshLine: Blue NEW = just changed by the host
 RolePage.ChangedNote: Some settings differ from the default
 RolePage.ResetRole: Reset all

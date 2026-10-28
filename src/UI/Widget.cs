@@ -67,6 +67,7 @@ internal sealed class Label : Widget
     public bool MenuFont;     // 見出し・役職名のフォント (無い字は本編のフォント)
     public float Outline;
     public float MinFontSize;   // > 0 なら、1 行で Width に入らない時にこの大きさまで縮める
+    public bool NoWrap;         // 折り返さない (Width を少しはみ出す小さな印を後ろに足す名前)
 
     // 作った字 (作り直さずに字だけ書き換える時に使う)
     public TextMeshPro Built { get; private set; }
@@ -110,7 +111,7 @@ internal sealed class Label : Widget
         t.fontStyle = Bold ? FontStyles.Bold : FontStyles.Normal;
         t.color = Color;
         t.alignment = TextAlign;
-        t.enableWordWrapping = true;
+        t.enableWordWrapping = !NoWrap;
         t.richText = true;
         if (MenuFont) Options.MenuFont.Apply(t, 0, Outline);
         string text = Content ?? "";
@@ -239,6 +240,9 @@ internal class Box : Widget
     public Vector2 Size;
     public Color Color = Color.white;
     public Color? Fill;   // 中を塗る色 (null = 本編の箱のまま黒)
+    public bool Badge;    // 右上の角に変えた所の点を置く (出すかは BadgeOn・後から SetBadge で切り替える)
+    public bool BadgeOn;
+    private GameObject _badge;
 
     public Box(Widget content) { Content = content; }
 
@@ -287,9 +291,21 @@ internal class Box : Widget
             fr.color = fill;
             FillRenderer = fr;
         }
+        if (Badge)
+        {
+            _badge = ChangeDot.Make(go.transform, new Vector3(s.x / 2f - 0.08f, s.y / 2f - 0.08f, -0.03f), ctx.Layer).gameObject;
+            _badge.SetActive(BadgeOn);
+        }
         size = s;
         OnBuilt(go, ctx, s);
         return go;
+    }
+
+    public void SetBadge(bool on)
+    {
+        if (on == BadgeOn) return;
+        BadgeOn = on;
+        if (_badge) _badge.SetActive(on);
     }
 
     protected virtual void OnBuilt(GameObject go, BuildCtx ctx, Vector2 size) { }
@@ -430,6 +446,9 @@ internal sealed class Slider : Widget
             Show(v);
         }, ctx.Slots));
         go.SetActive(true);
+        // OnEnable が Bar と Dot を本編の色 (白) に塗るので戻す
+        track.color = TrackColor;
+        dot.color = Color;
         Show(Value);
         return go;
     }
@@ -557,7 +576,7 @@ internal sealed class UiScreen
         return go;
     }
 
-    internal const string BackName = "Back", FillName = "Fill";
+    internal const string BackName = "Back", FillName = "Fill", BadgeName = "Badge";
 
     // 描く順の起点。部品は深いほど後に描く
     public int BaseOrder;
@@ -576,7 +595,8 @@ internal sealed class UiScreen
             // 重ねる箱の子は、後の子ほど前の子の中身より手前に
             if (t.name == Layers.NodeName) { Order(c, order + 2 + i * Layers.OrderStep); continue; }
             // 箱の地 (Back) は中身と同じ深さだが中身より先に描き、地の塗り (Back の子) はその間に描く
-            Order(c, c.name == BackName ? order : c.name == FillName ? order + 1 : order + 2);
+            // 角の点は箱の中身より手前に
+            Order(c, c.name == BackName ? order : c.name == FillName ? order + 1 : c.name == BadgeName ? order + 40 : order + 2);
         }
     }
 

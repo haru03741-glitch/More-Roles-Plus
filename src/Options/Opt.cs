@@ -31,6 +31,9 @@ public abstract class Opt
     // タブには並べない (別の場所で操作する項目)。保存・同期・検索・ロビーの一覧には入る
     internal bool OffTab;
 
+    // 初期値から変えても名前の右に点を出さない (出現率は既定が 0 = 出ないなので、カードの縁の色で分かる)
+    internal bool NoChangeMark;
+
     // 親の ON/OFF の項目。親が OFF の間は画面にも一覧にも出さない (値はそのまま持つ)
     internal BoolOpt Parent;
     // ほかの項目の値で出し入れする時の条件 (偽の間は親が OFF の時と同じく隠す)

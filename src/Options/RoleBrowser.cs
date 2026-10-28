@@ -346,7 +346,7 @@ internal sealed class RoleBrowser
                 new Box(null) { Size = new Vector2(0.32f, 0.24f), Color = c },
                 new Label(new Text(key), 1.05f) { Color = SubText, Width = itemW - 0.37f, MinFontSize = 0.8f }) { Gap = 0.05f });
         var col = new Stack(false, swatches) { Gap = 0.04f, Width = SideW, Align = Align.Start };
-        col.Add(new Label(new Text("RolePage.LegendMarks"), 1.05f) { Color = SubText, Width = SideW, Align = Align.Start });
+        col.Add(new Label(OptEditor.ChangedMark + " " + new Text("RolePage.LegendMarks"), 1.05f) { Color = SubText, Width = SideW, Align = Align.Start });
         if (SettingNotice.FreshCount > 0) col.Add(new Label(new Text("RolePage.LegendFreshLine"), 1.05f) { Color = SubText, Width = SideW, Align = Align.Start });
         swatches.Align = Align.Start;
         return col;
@@ -392,13 +392,11 @@ internal sealed class RoleBrowser
     {
         if (a == null) return "";
         string count = $"×{a.Count.Display()}";
-        if (a.Count.Changed) count = $"<color=#{ChangedHex}>{count}</color>";
         return oneLine ? $"{count}  {a.Chance.Display()}" : $"{count}\n{a.Chance.Display()}";
     }
 
-    private static readonly string ChangedHex = ColorUtility.ToHtmlStringRGB(OptEditor.ChangedColor);
 
-    // 細かい設定を既定から変えてあるか。出現率は既定が 0 (出ない) なので縁の色で分かる → 数えない
+    // カードの右上の点: 人数と細かい設定を既定から変えてあるか。出現率は既定が 0 (出ない) なので縁の色で分かる → 数えない
     private static bool DetailChanged(Registry.Section sec)
     {
         foreach (var opt in SectionOpts(sec))
@@ -420,10 +418,10 @@ internal sealed class RoleBrowser
         return false;
     }
 
-    // カードの名前 (細かい設定を変えてあれば *・ホストが直前に変えていれば「更新」)
+    // カードの名前 (ホストが直前に変えていれば「更新」)
     private static string CardName(Registry.Section sec)
     {
-        string s = DetailChanged(sec) ? $"{sec.Title} <color=#{ChangedHex}>*</color>" : sec.Title.ToString();
+        string s = sec.Title.ToString();
         if (RoleFavorites.Has(sec.Role)) s = $"<color=#{FavHex}>{FavMark}</color> {s}";
         return Fresh(sec) ? $"{s} <size=70%><color=#{FreshHex}>{FreshMark}</color></size>" : s;
     }
@@ -477,6 +475,8 @@ internal sealed class RoleBrowser
             MinSize = new Vector2(width, 0.55f),
             Padding = new Vector2(pad, 0.07f),
             Color = CardColor(sec),
+            Badge = a != null,
+            BadgeOn = a != null && DetailChanged(sec),
             // 選んだカードは中を薄く塗る (選び直しは塗りの色だけ書き換える)
             Fill = narrow && SideEdit ? SelectFill(sec) : null,
             OnHover = () => { if (!Touch) ShowSide(sec); },
@@ -610,7 +610,7 @@ internal sealed class RoleBrowser
         foreach (var opt in SectionOpts(sec))
         {
             if (!opt.Shown) continue;
-            col.Add(new Label($"{opt.Label}: {ValueText(opt)}", 1.25f) { Width = SideW, Align = Align.Start, Color = opt.Fresh ? FreshColor : Color.white });
+            col.Add(new Label($"{opt.Label}{(opt.Changed && !opt.NoChangeMark ? OptEditor.ChangedMark : "")}: {ValueText(opt)}", 1.25f) { Width = SideW, Align = Align.Start, Color = opt.Fresh ? FreshColor : Color.white });
         }
         if (DetailChanged(sec))
             col.Add(new Label(new Text("RolePage.ChangedNote"), 1.15f) { Color = OptEditor.ChangedColor, Width = SideW, Align = Align.Start });
@@ -630,7 +630,7 @@ internal sealed class RoleBrowser
         opt.Sync();
         if (opt.IsToggle)
             return $"<color=#{ColorUtility.ToHtmlStringRGB(opt.Index != 0 ? OptEditor.OnColor : OptEditor.OffColor)}>{opt.Display()}</color>";
-        return opt.Changed ? $"<color=#{ChangedHex}>{opt.Display()}</color>" : opt.Display();
+        return opt.Display();
     }
 
     // 人数・出現率を先に、そのあと細かい設定 (タブに出さない項目は除く)
@@ -851,6 +851,7 @@ internal sealed class RoleBrowser
             if (a == null) continue;
             bool on = Enabled(a);
             card.SetColor(CardColor(sec));
+            card.SetBadge(DetailChanged(sec));
             // 字はゲーム側へ写すたびに費用が掛かるので、変わったカードだけ書く (Content = 今出している字)
             if (values.Built)
             {

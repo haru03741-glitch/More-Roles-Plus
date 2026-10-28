@@ -21,7 +21,12 @@ internal sealed class OptEditor
     // ± を押し続けた時に 1 つ進める間隔 (秒)
     private const float RepeatSeconds = 0.12f;
 
-    private readonly List<(Opt opt, Label value, Button toggle, Button minus, Button plus, Button reset)> _rows = new();
+    private readonly List<(Opt opt, Label name, Label value, Button toggle, Button minus, Button plus, Button reset)> _rows = new();
+
+    // 項目の名前の右の小さい点 (初期値から変えた項目・値の字は白のまま)
+    internal static readonly string ChangedMark = $"<size=60%> <color=#{ColorUtility.ToHtmlStringRGB(ChangeDot.Color)}>●</color></size>";
+
+    private static string NameText(Opt opt) => opt.Changed && !opt.NoChangeMark ? opt.Label + ChangedMark : opt.Label;
     private readonly List<Opt> _watched = new();
     private bool[] _shown;
     private readonly Action _onShownChanged;
@@ -60,9 +65,10 @@ internal sealed class OptEditor
     {
         Roles.TeamSizes.OnEdited(opt);
         GameTabRows.OnEdited(opt);
+        SettingsToc.RefreshMarks();
     }
 
-    // 狭い欄 (設定画面の右の欄) の行: 字を小さく・「初期値」のボタンは無し (変えた値は橙の字で分かり、戻すのは欄の下のボタン)。
+    // 狭い欄 (設定画面の右の欄) の行: 字を小さく・「初期値」のボタンは無し (変えた項目は名前の右の点で分かり、戻すのは欄の下のボタン)。
     // 名前が 1 行に入らない時は、名前を上の段 (幅いっぱい)・値を下の段の右に置く
     public const float NarrowFont = 1.35f, NarrowStepW = 0.3f, NarrowValueW = 0.74f, NarrowRowH = 0.34f;
 
@@ -76,7 +82,7 @@ internal sealed class OptEditor
         float nameW = width - indent - controls - gap - infoW;
         bool twoLines = Label.Measure(opt.Label, NarrowFont, true) > nameW;
         if (twoLines) nameW = width - indent - infoW;
-        var name = new Label(opt.Label, NarrowFont) { Width = nameW, Bold = true, Color = nameColor ?? Color.white };
+        var name = new Label(NameText(opt), NarrowFont) { Width = nameW, NoWrap = !twoLines, Bold = true, Color = nameColor ?? Color.white };
         var head = new Stack(true) { Gap = gap, Align = Align.Start };
         if (indent > 0f) head.Add(new Spacer(indent - gap, 0.1f));
         head.Add(name);
@@ -101,21 +107,21 @@ internal sealed class OptEditor
                 ctl.Add(toggle);
             }
             else ctl.Add(value);
-            _rows.Add((opt, value, toggle, null, null, null));
+            _rows.Add((opt, name, value, toggle, null, null, null));
             return row;
         }
 
-        var val = new Label(opt.Display(), NarrowFont) { Width = editable ? NarrowValueW : controls, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = opt.Changed ? ChangedColor : Color.white };
+        var val = new Label(opt.Display(), NarrowFont) { Width = editable ? NarrowValueW : controls, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = Color.white };
         if (!editable)
         {
             ctl.Add(val);
-            _rows.Add((opt, val, null, null, null, null));
+            _rows.Add((opt, name, val, null, null, null, null));
             return row;
         }
         var minus = new Button("-", () => Changed(opt, -1), NarrowFont) { Size = new Vector2(NarrowStepW, NarrowRowH), Repeat = RepeatSeconds };
         var plus = new Button("+", () => Changed(opt, 1), NarrowFont) { Size = new Vector2(NarrowStepW, NarrowRowH), Repeat = RepeatSeconds };
         ctl.Add(minus).Add(val).Add(plus);
-        _rows.Add((opt, val, null, minus, plus, null));
+        _rows.Add((opt, name, val, null, minus, plus, null));
         return row;
     }
 
@@ -124,7 +130,7 @@ internal sealed class OptEditor
         opt.Sync();
         var info = InfoButton(opt);
         float nameW = NameW - indent - (info != null ? InfoW + 0.08f : 0f);
-        var name = new Label(opt.Label, FontSize) { Width = nameW, Bold = true, Color = nameColor ?? Color.white };
+        var name = new Label(NameText(opt), FontSize) { Width = nameW, Bold = true, Color = nameColor ?? Color.white };
         var colon = new Label(":", FontSize) { Width = 0.2f, TextAlign = TextAlignmentOptions.Center };
         var row = new Stack(true) { Gap = 0.08f, Align = Align.Start };
         if (indent > 0f) row.Add(new Spacer(indent, 0.1f));
@@ -145,15 +151,15 @@ internal sealed class OptEditor
                 if (treset != null) row.Add(new Spacer(StepW * 2f + 0.08f, 0.1f)).Add(treset);
             }
             else row.Add(value);
-            _rows.Add((opt, value, toggle, null, null, treset));
+            _rows.Add((opt, name, value, toggle, null, null, treset));
             return row;
         }
 
-        var val = new Label(opt.Display(), FontSize) { Width = ValueW, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = opt.Changed ? ChangedColor : Color.white };
+        var val = new Label(opt.Display(), FontSize) { Width = ValueW, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = Color.white };
         if (!editable)
         {
             row.Add(val);
-            _rows.Add((opt, val, null, null, null, null));
+            _rows.Add((opt, name, val, null, null, null, null));
             return row;
         }
         var minus = new Button("-", () => Changed(opt, -1), FontSize) { Size = new Vector2(StepW, RowH - 0.04f), Repeat = RepeatSeconds };
@@ -161,7 +167,7 @@ internal sealed class OptEditor
         row.Add(minus).Add(val).Add(plus);
         var reset = ResetButton(opt);
         if (reset != null) row.Add(reset);
-        _rows.Add((opt, val, null, minus, plus, reset));
+        _rows.Add((opt, name, val, null, minus, plus, reset));
         return row;
     }
 
@@ -242,11 +248,14 @@ internal sealed class OptEditor
     // 並んでいる行の字を今の値に (外から値を変えた後も)
     public void Refresh()
     {
-        foreach (var (opt, value, toggle, minus, plus, reset) in _rows)
+        foreach (var (opt, name, value, toggle, minus, plus, reset) in _rows)
         {
             opt.Sync();
             bool changed = opt.Changed;
             reset?.SetColor(changed ? ChangedColor : Dim);
+            var nt = name.Built;
+            string ns = NameText(opt);
+            if (nt && ns != name.Content) { name.Content = ns; nt.text = ns; }
             var t = value.Built;
             if (t) t.text = opt.Display();
             if (opt.IsToggle)
@@ -255,7 +264,6 @@ internal sealed class OptEditor
                 toggle?.SetColor(ToggleColor(opt));
                 continue;
             }
-            if (t) t.color = changed ? ChangedColor : Color.white;
             // 数値は端で止まるので、それ以上動かない側を暗くする
             minus?.SetColor(opt.WrapsAround || opt.Index > 0 ? Color.white : Dim);
             plus?.SetColor(opt.WrapsAround || opt.Index < opt.Count - 1 ? Color.white : Dim);

@@ -62,7 +62,7 @@ internal static class Registry
             {
                 sec = new Section { Title = role.Name, Color = role.Color, Role = role };
                 var opts = CollectFields(t);
-                role.Chance = new IntOpt("Registry.Chance", 0, 0, 100, 10, "%");
+                role.Chance = new IntOpt("Registry.Chance", 0, 0, 100, 10, "%") { NoChangeMark = true };
                 role.Count = new IntOpt("Registry.Count", 1, 1, Math.Max(role.MaxCount, 1));
                 Add(sec, role.Chance, role.Id + ".Chance");
                 Add(sec, role.Count, role.Id + ".Count");
@@ -113,7 +113,7 @@ internal static class Registry
             {
                 sec = new Section { Title = addon.Name, Color = addon.Color, Role = addon };
                 var opts = CollectFields(t);
-                addon.Chance = new IntOpt("Registry.Chance", 0, 0, 100, 10, "%");
+                addon.Chance = new IntOpt("Registry.Chance", 0, 0, 100, 10, "%") { NoChangeMark = true };
                 addon.Count = new IntOpt("Registry.Count", 1, 1, Math.Max(addon.MaxCount, 1));
                 addon.OnCrew = new BoolOpt("Registry.CrewmatesCanHaveIt", true);
                 addon.OnImpostor = new BoolOpt("Registry.ImpostorsCanHaveIt", true);

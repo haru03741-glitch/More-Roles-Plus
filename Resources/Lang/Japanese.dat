@@ -475,7 +475,7 @@ RolePage.CountTo: 人数を {n} 人に
 RolePage.SwatchOff: 出ない
 RolePage.SwatchChance: 確率で出る
 RolePage.SwatchAlways: 必ず出る
-RolePage.LegendMarks: 名前の横の * と橙色の字 = 初期値から変えた設定
+RolePage.LegendMarks: = 初期値から変えた設定
 RolePage.LegendFreshLine: 水色の「更新」= ホストが直前に変えた設定
 RolePage.ChangedNote: 初期値から変えた設定があります
 RolePage.ResetRole: すべて初期値に戻す
