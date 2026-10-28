@@ -128,6 +128,7 @@ internal static class SettingsMenu
         RowList.Clear();
         RolePage.Forget();
         PresetPage.Forget();
+        SettingsToc.Forget();
         if (_search != null) SearchBox.Forget(_search);
         _search = null;
         _searching = false;
@@ -544,6 +545,7 @@ internal static class SettingsMenu
             }
         }
         m.scrollBar.SetYBoundsMax(-y - 1.65f);
+        SettingsToc.Attach(m);
     }
 
     // 設定項目 1 つ分の行 (本編の数値 / チェックの行の複製)。操作は下のパッチが MRP の項目へ回す
@@ -628,6 +630,7 @@ internal static class SettingsMenu
         Rows.Clear();
         RowList.Clear();
         PresetPage.Forget();
+        SettingsToc.Forget();
         RolePage.Forget();
         MapVariants.Forget();
         GameTabRows.Forget();
@@ -696,6 +699,8 @@ internal static class GameOptionsMenuPatch
         catch (Exception e) { Plugin.Logger.LogError($"map variants: {e}"); }
         try { GameTabRows.Attach(__instance); }
         catch (Exception e) { Plugin.Logger.LogError($"game tab rows: {e}"); }
+        try { SettingsToc.Attach(__instance, 0.12f); }
+        catch (Exception e) { Plugin.Logger.LogError($"settings toc: {e}"); }
     }
 }
 
