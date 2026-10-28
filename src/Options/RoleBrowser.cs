@@ -951,6 +951,7 @@ internal sealed class RoleBrowser
         col.Add(new Spacer(0.1f, 0.1f));
         col.Add(new Label(new Text("Registry.NotWith"), narrow ? OptEditor.NarrowFont : OptEditor.FontSize) { Bold = true, Align = Align.Start });
         col.Add(new Label(new Text("RoleMenu.NotWithHint"), narrow ? 1.05f : 1.15f) { Color = SubText, Width = width - 0.1f, Align = Align.Start });
+        if (Editable) col.Add(ExclBulk(me, width, narrow));
         Stack row = null;
         int i = 0;
         foreach (var other in ExclCandidates(me))
@@ -958,6 +959,40 @@ internal sealed class RoleBrowser
             if (i % columns == 0) { row = new Stack(true) { Gap = 0.08f, Align = Align.Start }; col.Add(row); }
             row.Add(ExclChip(me, other, w));
             i++;
+        }
+        return col;
+    }
+
+    // まとめて選ぶ札: 全部・陣営ごと。その範囲が全部選ばれていれば外し、そうでなければ全部選ぶ
+    private Widget ExclBulk(RoleBase me, float width, bool narrow)
+    {
+        int columns = narrow ? 2 : 4;
+        float w = (width - 0.08f * (columns - 1)) / columns;
+        var col = new Stack(false) { Gap = 0.06f, Align = Align.Start };
+        Stack row = null;
+        for (int k = -1; k < 3; k++)
+        {
+            if ((k + 1) % columns == 0) { row = new Stack(true) { Gap = 0.08f, Align = Align.Start }; col.Add(row); }
+            int kind = k;
+            Color c = k < 0 ? Color.white : RoleMenu.KindColor(k);
+            var text = k < 0 ? new Text("RoleMenu.All") : RoleMenu.KindName(k);
+            row.Add(new Button(new Label(text, 1.3f) { TextAlign = TextAlignmentOptions.Center, Color = c, Width = w - 0.15f, MinFontSize = 0.9f }, () =>
+            {
+                if (!Editable) return;
+                bool all = true;
+                foreach (var other in ExclCandidates(me))
+                    if ((kind < 0 || (int)other.Team == kind) && !AssignPlan.FixedPair(me, other) && !AssignPlan.PickedPair(me, other)) { all = false; break; }
+                foreach (var other in ExclCandidates(me))
+                {
+                    if ((kind >= 0 && (int)other.Team != kind) || AssignPlan.FixedPair(me, other)) continue;
+                    me.Excluded.Set(other.Order, !all);
+                    other.Excluded.Set(me.Order, !all);
+                }
+                Changed?.Invoke();
+                if (narrow) RefreshSide();
+                else Rebuild();
+            })
+            { Size = new Vector2(w, 0.36f), Color = ChipOff });
         }
         return col;
     }
