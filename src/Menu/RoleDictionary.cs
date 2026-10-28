@@ -40,7 +40,16 @@ internal static class RoleDictionary
 
     public static bool IsOpen => UiWindow.Current != null && UiWindow.Current.Root && UiWindow.Current.Root.name == "MrpWindow_RoleDictionary";
 
-    public static void Open() => Open(null);
+    // 試合中は自分の役職の頁から開く (<< で一覧へ)
+    public static void Open() => Open(MySection());
+
+    private static Registry.Section MySection()
+    {
+        var me = PlayerControl.LocalPlayer;
+        if (!ShipStatus.Instance || !me || me.Data == null) return null;
+        string id = RoleState.Local?.Id ?? (me.Data.Role ? me.Data.Role.Role.ToString() : null);
+        return id != null ? RoleBrowser.Find(id) : null;
+    }
 
     public static void Open(Registry.Section sec)
     {
@@ -248,7 +257,7 @@ internal static class RoleDictionary
         string op = a.Length > 0 ? a[0] : "dump";
         if (op == "open")
         {
-            Open(a.Length > 1 ? RoleBrowser.Find(a[1]) : null);
+            if (a.Length > 1) Open(RoleBrowser.Find(a[1])); else Open();
             return IsOpen ? Dump() : "not opened";
         }
         if (op == "button") return DictionaryButton.Command(a);
