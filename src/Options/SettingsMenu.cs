@@ -34,8 +34,6 @@ internal static class SettingsMenu
     // 左の列のボタンの番号 (陣営は CatKind0 + RoleMenu の陣営の番号)
     private const int CatPresets = 0, CatGame = 1, CatGeneral = 2, CatKind0 = 3;
     internal static readonly Color GameCatColor = new(0.82f, 0.84f, 0.88f), GeneralCatColor = new(1f, 0.55f, 0.75f);
-    internal static int GeneralPose => CatPose[CatGeneral];
-    internal static int GamePose => CatPose[CatGame];
     private static readonly List<(PassiveButton Btn, int Cat)> Cats = new();
 
     private sealed class Page
@@ -251,9 +249,6 @@ internal static class SettingsMenu
 
     // 左の列のボタンの左端に、その頁の色のクルーの絵 (メインメニューの絵のポーズ)。字は絵の右の残りの幅へ寄せる
     private static readonly int[] CatPose = { -1, 5, 5, 1, 2, 3, 0 }; // 番号 = CatPresets..CatKind0+AddonKind
-
-    // 陣営 (RoleMenu の陣営の番号) のクルーの絵のポーズ
-    internal static int KindPose(int kind) => CatKind0 + kind < CatPose.Length ? CatPose[CatKind0 + kind] : -1;
 
     private static void AddCatArt(PassiveButton btn, TextMeshPro label, int cat, Color c)
     {

@@ -50,6 +50,7 @@ internal sealed class RoleBrowser
     private Registry.Section _hover;  // 右に要約を出している物
     private Registry.Section _picked; // スマホで 1 回押した物 (もう 1 回で開く)
     private Holder _side;
+    private Backdrop _backdrop;   // 右の欄の後ろに敷く役職の挿絵
     private float _sideH;
     private ScrollView _sideList;  // 右の欄で編集している時の行の欄
     private ScrollView _list;
@@ -230,7 +231,8 @@ internal sealed class RoleBrowser
         _list = new ScrollView(new Vector2(ListW, listH), cards) { Tag = _tag + ":" + _team + (_enabledOnly ? "+" : "") + _filter + _sort };
         _sideH = listH;
         _side = new Holder(new Vector2(SideW, listH), SideContent());
-        var body = new Stack(true, _list, _side) { Gap = 0.15f };
+        _backdrop = new Backdrop(SideW, listH, SideIllustration());
+        var body = new Stack(true, _list, new Layers(SideW, listH).Add(_backdrop, 0f, 0f).Add(_side, 0f, 0f)) { Gap = 0.15f };
         if (outside) return body;
         var head = TeamFromOutside ? chips2 : new Stack(false, chips, chips2) { Gap = 0.07f, Align = Align.Start };
         return new Stack(false, head, body) { Gap = 0.12f, Width = W };
@@ -524,6 +526,14 @@ internal sealed class RoleBrowser
         _editor.Clear();
         _resetBtn = _undoBtn = null;
         _side.Screen.Set(SideContent());
+        _backdrop?.Show(SideIllustration());
+    }
+
+    // 右の欄に出している役職の挿絵 (編集中の物・当てている物)
+    private Sprite SideIllustration()
+    {
+        var sec = SideEdit && _open != null ? _open : _hover;
+        return RoleArt.Illustration(sec?.Role);
     }
 
     // 右の欄で編集する物を選ぶ (null = 選びを外して、まとめて変える札へ)
@@ -557,9 +567,12 @@ internal sealed class RoleBrowser
     internal static Widget Hero(float width, Color c, Widget art, string title, string sub, Widget tools = null)
     {
         var hero = new Layers(width, HeroH);
-        hero.Add(new Box(null) { Size = new Vector2(width, HeroH), Color = Color.Lerp(c, Color.black, 0.5f), Fill = Color.Lerp(Color.black, c, 0.2f) }, 0f, 0f);
+        // 地は半分透かす (後ろに敷いた挿絵が見えるように)
+        var fill = Color.Lerp(Color.black, c, 0.2f);
+        fill.a = 0.55f;
+        hero.Add(new Box(null) { Size = new Vector2(width, HeroH), Color = Color.Lerp(c, Color.black, 0.5f), Fill = fill, Hollow = true }, 0f, 0f);
         if (art != null) hero.Add(art, 0.08f, (HeroH - HeroArt) / 2f, true);
-        float textW = width - HeroArt - 0.3f;
+        float textW = width - (art != null ? HeroArt : 0f) - 0.3f;
         var text = new Stack(false, new Label(title, 1.9f) { MenuFont = true, Outline = 0.2f, Color = c, Width = textW, MinFontSize = 1.2f, Align = Align.Start }) { Gap = 0f, Width = textW };
         if (!string.IsNullOrEmpty(sub)) text.Add(new Label(sub, 1.05f) { Color = SubText, Width = textW, Align = Align.Start });
         hero.Add(text, 0.14f, 0.06f, false, true);
@@ -567,24 +580,6 @@ internal sealed class RoleBrowser
         return hero;
     }
 
-    // 役職の絵 (無ければ陣営のクルーの絵)
-    private static Widget RoleArtPic(Registry.Section sec)
-    {
-        var icon = Icon(sec.Role);
-        if (icon) return new Picture(icon, HeroArt, HeroArt) { Fit = true };
-        int k = KindIndex(sec);
-        return k >= 0 ? PosePic(k) : null;
-    }
-
-    // 陣営のクルーの絵 (メインメニューの絵を陣営の色で)
-    private static Widget PosePic(int kind) => PosePic(SettingsMenu.KindPose(kind), RoleMenu.KindColor(kind));
-
-    internal static Widget PosePic(int pose, Color c)
-    {
-        var sp = CrewArt.Pose(pose);
-        var mat = sp ? CrewArt.Material(c) : null;
-        return mat ? new Picture(sp, HeroArt * 1.1f, HeroArt) { Fit = true, Material = mat } : null;
-    }
 
     private static int KindIndex(Registry.Section sec)
     {
@@ -606,7 +601,7 @@ internal sealed class RoleBrowser
     private Widget Summary(Registry.Section sec)
     {
         var col = new Stack(false) { Gap = 0.03f, Width = SideW };
-        col.Add(Hero(TitleColor(sec), RoleArtPic(sec), sec.Title.ToString(), HeroSub(sec)));
+        col.Add(Hero(TitleColor(sec), null, sec.Title.ToString(), HeroSub(sec)));
         col.Add(new Spacer(0.1f, 0.03f));
         string s = ShortText(sec);
         if (s.Length > 0) col.Add(new Label(s, 1.2f) { Color = SubText, Width = SideW, Align = Align.Start });
@@ -658,7 +653,7 @@ internal sealed class RoleBrowser
         string team = _team < 0 ? "" : RoleMenu.KindName(_team);
         var col = new Stack(false) { Gap = 0.08f, Width = SideW };
         string head = _team < 0 ? new Text("RolePage.BulkAll") : new Text("RolePage.BulkTeam").With("team", team);
-        if (_team >= 0) col.Add(Hero(RoleMenu.KindColor(_team), PosePic(_team), team, head));
+        if (_team >= 0) col.Add(Hero(RoleMenu.KindColor(_team), null, team, head));
         else col.Add(new Label(head, 1.6f) { Bold = true, Width = SideW, Align = Align.Start });
         col.Add(new Label(new Text("RolePage.EnabledBig").With("n", EnabledIn()).With("count", CountIn()), 3.2f) { Bold = true, Width = SideW, Align = Align.Start });
         col.Add(Legend());
@@ -985,7 +980,7 @@ internal sealed class RoleBrowser
         tools.Add(new Button("×", () => Select(null), 1.5f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
 
         var col = new Stack(false) { Gap = 0.05f, Width = SideW };
-        col.Add(Hero(TitleColor(sec), RoleArtPic(sec), sec.Title.ToString(), HeroSub(sec), tools));
+        col.Add(Hero(TitleColor(sec), null, sec.Title.ToString(), HeroSub(sec), tools));
         string s = ShortText(sec);
         if (s.Length > 0) col.Add(new Label(s, 1.1f) { Color = SubText, Width = SideW, Align = Align.Start });
 
@@ -1007,7 +1002,7 @@ internal sealed class RoleBrowser
             if (core == null)
             {
                 core = new Stack(false) { Gap = 0.06f, Width = coreW };
-                rows.Add(new Box(core) { Size = new Vector2(rowW, 0f), Padding = new Vector2(0.05f, 0.07f), Color = Color.Lerp(TitleColor(sec), Color.black, 0.25f) });
+                rows.Add(new Box(core) { Size = new Vector2(rowW, 0f), Padding = new Vector2(0.05f, 0.07f), Color = Color.Lerp(TitleColor(sec), Color.black, 0.25f), Hollow = true });
             }
             core.Add(r);
             if (opt == a.Chance && edit)

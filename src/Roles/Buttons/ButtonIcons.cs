@@ -20,7 +20,15 @@ internal static class ButtonIcons
     {
         string key = pixelsPerUnit == PixelsPerUnit && pivot.x == 0.5f && pivot.y == 0.5f ? name : $"{name}|{pixelsPerUnit}|{pivot.x}|{pivot.y}";
         if (Cache.TryGetValue(key, out var cached) && cached) return cached;
-        string res = $"MoreRolesPlus.Resources.Icons.{name}.png";
+        var sp = Decode("Icons", name, pixelsPerUnit, pivot);
+        if (sp) Cache[key] = sp;
+        return sp;
+    }
+
+    // Resources/<folder>/<name>.<ext> (PNG か JPEG) を読む (持ち続けるかは呼ぶ側が決める)
+    public static Sprite Decode(string folder, string name, float pixelsPerUnit, Vector2 pivot, string ext = "png")
+    {
+        string res = $"MoreRolesPlus.Resources.{folder}.{name}.{ext}";
         using Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream(res);
         if (s == null) { Plugin.Logger.LogError($"icon missing: {res}"); return null; }
         using var ms = new MemoryStream();
@@ -28,16 +36,21 @@ internal static class ButtonIcons
         var bytes = ms.ToArray();
         // (long) 必須: net10 (Android) では int が nint のポインタ受けコンストラクタに解決され、壊れた配列になる
         var data = new Il2CppStructArray<byte>((long)bytes.Length);
-        for (int i = 0; i < bytes.Length; i++) data[i] = bytes[i];
+        // 1 バイトずつの添字は 1 回ごとに interop を通る (挿絵の大きな PNG で目立つ) ので中身へ直接写す
+        System.Runtime.InteropServices.Marshal.Copy(bytes, 0, Il2Array.Data(data), bytes.Length);
         var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false) { name = "MrpIcon_" + name, wrapMode = TextureWrapMode.Clamp };
         // 読み込んだら CPU 側のピクセルは捨てる (描くだけなので要らない)
-        if (!tex.LoadImage(data, true)) { Plugin.Logger.LogError($"icon decode failed: {name}"); return null; }
+        if (!tex.LoadImage(data, true))
+        {
+            Plugin.Logger.LogError($"icon decode failed: {name}");
+            Object.Destroy(tex);
+            return null;
+        }
         tex.hideFlags = HideFlags.HideAndDontSave;
         // 読み出し不可のテクスチャは Tight の形を作れないので FullRect
         var sp = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), pivot, pixelsPerUnit, 0, SpriteMeshType.FullRect);
         sp.name = name;
         sp.hideFlags = HideFlags.HideAndDontSave;
-        Cache[key] = sp;
         return sp;
     }
 }

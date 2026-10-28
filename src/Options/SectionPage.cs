@@ -27,7 +27,8 @@ internal sealed class SectionPage
     private readonly string _tag;
     private readonly Func<string> _title;
     private readonly Color _color;
-    private readonly int _pose;
+    private readonly Func<Sprite> _backdrop;    // 右の欄の後ろに敷く絵 (null = 無し)
+    private Sprite _lastBackdrop;               // 前に敷いた絵 (替わった時だけ滑り込ませる)
     private readonly Func<List<Group>> _groups;
     private readonly Func<bool, Widget> _top;   // 節の前に置く物 (編集できるか)。null = 無し
     private readonly Action _onBuild;           // 組む前に呼ぶ (項目の作り直しなど)
@@ -52,12 +53,12 @@ internal sealed class SectionPage
     private Button _resetBtn, _undoBtn;
     private bool _built;
 
-    public SectionPage(string tag, Func<string> title, Color color, int pose, Func<List<Group>> groups, Func<bool, Widget> top = null, Action onBuild = null, Func<int> topKey = null)
+    public SectionPage(string tag, Func<string> title, Color color, Func<Sprite> backdrop, Func<List<Group>> groups, Func<bool, Widget> top = null, Action onBuild = null, Func<int> topKey = null)
     {
         _tag = tag;
         _title = title;
         _color = color;
-        _pose = pose;
+        _backdrop = backdrop;
         _groups = groups;
         _top = top;
         _onBuild = onBuild;
@@ -155,13 +156,17 @@ internal sealed class SectionPage
         }
         _editor.Refresh();
         _list = new ScrollView(new Vector2(ListW, H), rows) { Tag = _tag };
-        _screen.Set(new Stack(true, _list, Side(edit)) { Gap = 0.15f, Align = Align.Start });
+        var bd = new Backdrop(SideW, H);
+        _screen.Set(new Stack(true, _list, new Layers(SideW, H).Add(bd, 0f, 0f).Add(Side(edit), 0f, 0f)) { Gap = 0.15f, Align = Align.Start });
+        var art = _backdrop?.Invoke();
+        bd.Show(art, art != _lastBackdrop);
+        _lastBackdrop = art;
     }
 
     private Widget Side(bool edit)
     {
         var col = new Stack(false) { Gap = 0.06f, Width = SideW };
-        col.Add(RoleBrowser.Hero(SideW, _color, RoleBrowser.PosePic(_pose, _color), _title(), HeroSub?.Invoke() ?? ""));
+        col.Add(RoleBrowser.Hero(SideW, _color, null, _title(), HeroSub?.Invoke() ?? ""));
         // 目次: 押すとその節の見出しへ (節の中に初期値から変えた項目があれば点)
         var toc = new Stack(false) { Gap = 0.05f, Width = SideW - 0.2f };
         for (int i = 0; i < _entries.Count; i++)
@@ -169,7 +174,7 @@ internal sealed class SectionPage
             var e = _entries[i];
             int n = i;
             e.TocLabel = new Label(TocText(e), 1.3f) { Width = SideW - 0.44f, NoWrap = true, Bold = true, MinFontSize = 0.9f };
-            toc.Add(new Button(e.TocLabel, () => Jump(n)) { Size = new Vector2(SideW - 0.2f, 0.34f), Padding = new Vector2(0.1f, 0.02f), Color = new Color(0.42f, 0.42f, 0.45f, 1f) });
+            toc.Add(new Button(e.TocLabel, () => Jump(n)) { Size = new Vector2(SideW - 0.2f, 0.34f), Padding = new Vector2(0.1f, 0.02f), Color = new Color(0.42f, 0.42f, 0.45f, 1f), Hollow = true });
         }
         float tocH = H - RoleBrowser.HeroH - 0.06f - (edit ? BarH + 0.06f : 0f);
         col.Add(new ScrollView(new Vector2(SideW, tocH), toc) { Tag = _tag + ":toc" });

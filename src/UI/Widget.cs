@@ -240,6 +240,7 @@ internal class Box : Widget
     public Vector2 Size;
     public Color Color = Color.white;
     public Color? Fill;   // 中を塗る色 (null = 本編の箱のまま黒)
+    public bool Hollow;   // 中を透かす (縁だけ・後ろに敷いた絵を見せる)
     public bool Badge;    // 右上の角に変えた所の点を置く (出すかは BadgeOn・後から SetBadge で切り替える)
     public bool BadgeOn;
     private GameObject _badge;
@@ -275,7 +276,7 @@ internal class Box : Widget
         }
         var bg = Node(UiScreen.BackName, go.transform, ctx.Layer);
         Back = bg.AddComponent<SpriteRenderer>();
-        Back.sprite = UiAssets.Box;
+        Back.sprite = Hollow ? UiAssets.Hollow : UiAssets.Box;
         Back.drawMode = SpriteDrawMode.Sliced;
         Back.size = s;
         Back.color = Color;
@@ -666,7 +667,8 @@ internal sealed class UiScreen
     internal static void Order(Transform t, int order)
     {
         var r = t.GetComponent<Renderer>();
-        if (r) r.sortingOrder = order;
+        // 下敷きの絵は頁の何よりも奥 (中のスクロール欄は SortingGroup の順 0 のまま描かれるので、それより前に描く)
+        if (r) r.sortingOrder = t.name == Backdrop.ImageName ? Backdrop.SortOrder : order;
         for (int i = 0; i < t.childCount; i++)
         {
             var c = t.GetChild(i);

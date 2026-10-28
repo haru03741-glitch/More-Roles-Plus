@@ -30,6 +30,42 @@ internal static class UiAssets
     private static Sprite _circle;
     public static Sprite Circle => _circle ? _circle : _circle = Fx.FxSprites.Rect(64, 64, (x, y) => (0.5f - Fx.FxMath.Sqrt(x * x + y * y)) * 64f, "MrpUiCircle");
 
+    // 中が透明な箱 (Box と同じ二重の縁・中だけ抜く)。後ろに敷いた絵を見せたい欄で使う。
+    // 本編の箱の絵 (100px 四方・9 分割の縁 25px・ppu 100) を測った寸法: 外の白 3.5px → 黒 3px → 内の白 2px・角の半径 12px
+    private static Sprite _hollow;
+    public static Sprite Hollow => _hollow ? _hollow : _hollow = BakeHollow();
+
+    private static unsafe Sprite BakeHollow()
+    {
+        const int n = 100;
+        const float r = 12f, half = n / 2f;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            // 角の丸い四角の縁からの内向きの距離 (px)
+            float qx = Fx.FxMath.Abs(x + 0.5f - half) - (half - r), qy = Fx.FxMath.Abs(y + 0.5f - half) - (half - r);
+            float ox = Fx.FxMath.Max(qx, 0f), oy = Fx.FxMath.Max(qy, 0f);
+            float d = r - Fx.FxMath.Sqrt(ox * ox + oy * oy) - Fx.FxMath.Min(Fx.FxMath.Max(qx, qy), 0f);
+            float white = Band(d, 0f, 3.5f) + Band(d, 6.5f, 8.5f);
+            float alpha = Fx.FxMath.Clamp01(d + 0.5f) * (1f - Fx.FxMath.Clamp01(d - 8.5f + 0.5f));
+            int i = (y * n + x) * 4;
+            byte c = (byte)(Fx.FxMath.Clamp01(white) * 255f + 0.5f);
+            px[i] = px[i + 1] = px[i + 2] = c;
+            px[i + 3] = (byte)(alpha * 255f + 0.5f);
+        }
+        var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { name = "MrpUiHollow", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        fixed (byte* p = px) tex.LoadRawTextureData((System.IntPtr)p, px.Length);
+        tex.Apply(false, true);
+        tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        var sp = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(25f, 25f, 25f, 25f));
+        sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return sp;
+    }
+
+    // d が [a, b) の内なら 1 (縁は半画素ぼかす)
+    private static float Band(float d, float a, float b) => Fx.FxMath.Clamp01(d - a + 0.5f) * Fx.FxMath.Clamp01(b - d + 0.5f);
+
     // 本編のボタンの押した音と当てた音 (Twitch の窓の ExitGame のボタンの物)。無ければ鳴らさない
     public static AudioClip ClickSound { get; private set; }
     public static AudioClip HoverSound { get; private set; }
@@ -82,7 +118,8 @@ internal static class UiAssets
     {
         var tm = GameObject.Find("TwitchManager");
         Load();
-        return $"tm={(bool)tm} children={(tm ? tm.transform.childCount : -1)} box={(bool)_box} blank={(bool)_blank} text={(bool)_textProto} click={(bool)ClickSound} hover={(bool)HoverSound} hud={(bool)Vanilla.Hud}";
+        return $"tm={(bool)tm} children={(tm ? tm.transform.childCount : -1)} box={(bool)_box} blank={(bool)_blank} text={(bool)_textProto} click={(bool)ClickSound} hover={(bool)HoverSound} hud={(bool)Vanilla.Hud}" +
+            (_box ? $" boxRect={_box.rect} boxBorder={_box.border} boxPpu={_box.pixelsPerUnit} tex={_box.texture.width}x{_box.texture.height}" : "");
     }
 
     // 確かめ用: 切り抜きの字の材質の型板の値を変える

@@ -89,6 +89,7 @@
     <!-- 能力ボタンの絵 -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
+        <EmbeddedResource Include="Resources\Illus\*.jpg" LogicalName="MoreRolesPlus.Resources.Illus.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Cinema\*.*" LogicalName="MoreRolesPlus.Resources.Cinema.%(Filename)%(Extension)" />
         <!-- 画面に出す文 (言語ごと・遊ぶ人は BepInEx/config/MoreRolesPlus/Language で書き換えられる) -->
         <EmbeddedResource Include="Resources\Lang\*.dat" LogicalName="MoreRolesPlus.Resources.Lang.%(Filename)%(Extension)" />

@@ -13,10 +13,10 @@ namespace MoreRolesPlus.Options;
 internal static class SettingsPages
 {
     public static readonly SectionPage General = new("generalpage", () => new Text("SettingsMenu.CatGeneral"),
-        SettingsMenu.GeneralCatColor, SettingsMenu.GeneralPose, GeneralGroups);
+        SettingsMenu.GeneralCatColor, null, GeneralGroups);
 
     public static readonly SectionPage Game = new("gamepage", () => new Text("SettingsMenu.CatGame"),
-        SettingsMenu.GameCatColor, SettingsMenu.GamePose, GameGroups, MapTop, VanillaGame.Rebuild, TopKey) { HeroSub = MapName };
+        SettingsMenu.GameCatColor, MapImage, GameGroups, MapTop, VanillaGame.Rebuild, TopKey) { HeroSub = MapName };
 
     public static void Forget()
     {
@@ -152,6 +152,13 @@ internal static class SettingsPages
             col.Add(line);
         }
         return col;
+    }
+
+    // 選んでいるマップの挿絵 (無いマップは null)
+    private static Sprite MapImage()
+    {
+        var o = Options;
+        return o != null ? UI.RoleArt.Illustration("Map_" + o.MapId) : null;
     }
 
     // 選んでいるマップの名前 (左右反転は名前の後ろに添える)
