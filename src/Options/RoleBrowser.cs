@@ -154,6 +154,8 @@ internal sealed class RoleBrowser
     {
         if (_screen == null || !_screen.Alive) return;
         _list?.Remember();
+        _sideList?.Remember();
+        _sideList = null;
         _cards.Clear();
         _editor.Clear();
         _side = null;
@@ -398,8 +400,17 @@ internal sealed class RoleBrowser
     private static readonly Color IconOff = new(1f, 1f, 1f, 0.35f);
 
     // カードの絵。本編の役職は本編の役職アイコン (クルーメイトとインポスターには無い)。MRP の役職はまだ無い
-    private static Sprite Icon(Assignable a) =>
-        a is Roles.Builtin.VanillaRole v ? Menu.MatchInfoExtension.Base(v.Type)?.RoleIconSolid : null;
+    private static readonly Dictionary<AmongUs.GameOptions.RoleTypes, Sprite> Icons = new();
+
+    private static Sprite Icon(Assignable a)
+    {
+        if (a is not Roles.Builtin.VanillaRole v) return null;
+        // 本編の役職の一覧を総なめするので 1 回だけ (無い役職の null も覚える・消えた絵は探し直す)
+        if (Icons.TryGetValue(v.Type, out var s) && (ReferenceEquals(s, null) || s)) return s;
+        s = Menu.MatchInfoExtension.Base(v.Type)?.RoleIconSolid;
+        Icons[v.Type] = s ? s : null;
+        return Icons[v.Type];
+    }
 
     // narrow = 2 列の一覧のカード (絵の枠+名前+人数と出現率の 1 行・説明は右の欄だけ)。検索の結果は幅いっぱいで説明つき
     private Widget Card(Registry.Section sec, float width, bool narrow = false)
@@ -478,6 +489,8 @@ internal sealed class RoleBrowser
     private void RefreshSide()
     {
         if (_side?.Screen == null || !_side.Screen.Alive) return;
+        _sideList?.Remember();
+        _sideList = null;
         _editor.Clear();
         _resetBtn = _undoBtn = null;
         _side.Screen.Set(SideContent());
@@ -699,7 +712,13 @@ internal sealed class RoleBrowser
     public void RefreshFromOutside()
     {
         // 「変わった所だけ」の札が出る/消える時は一覧ごと作り直す
-        if (_open != null || _tokens.Length > 0 || _freshChip != SettingNotice.FreshCount > 0) Rebuild();
+        if (SideEdit && _open != null && _freshChip == SettingNotice.FreshCount > 0)
+        {
+            // 右の欄で編集中は一覧を作り直さず、カードの字と右の欄だけ
+            RefreshCards();
+            RefreshSide();
+        }
+        else if (_open != null || _tokens.Length > 0 || _freshChip != SettingNotice.FreshCount > 0) Rebuild();
         else RefreshCards();
     }
 
@@ -894,7 +913,8 @@ internal sealed class RoleBrowser
 
         // 見出しと説明の高さは字の量で変わるので、行の欄の高さは大まかに見積もる
         float used = btn + 0.05f + (s.Length > 0 ? 0.42f : 0f) + (tags.Length > 0 ? 0.2f : 0f) + (n > 0 ? barH + 0.1f : 0f);
-        _sideList = new ScrollView(new Vector2(SideW, Math.Max(_sideH - used, 1f)), rows);
+        // 値を変えて作り直しても同じ所を見せる (役職ごとの位置)
+        _sideList = new ScrollView(new Vector2(SideW, Math.Max(_sideH - used, 1f)), rows) { Tag = _tag + ":side:" + (sec.Role?.Id ?? sec.Title.ToString()) };
         col.Add(_sideList);
         if (n > 0) col.Add(bar);
         return col;

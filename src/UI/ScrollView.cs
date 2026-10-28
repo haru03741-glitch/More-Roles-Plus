@@ -21,6 +21,8 @@ internal sealed class ScrollView : Widget
     private static readonly List<Scroller> Live = new();
     private const float WheelSpeed = 0.3f;
 
+    private bool _filled;
+
     public UiScreen Inner { get; private set; }
     public Scroller Scroller { get; private set; }
 
@@ -111,7 +113,9 @@ internal sealed class ScrollView : Widget
     public void SetContent(Widget content)
     {
         if (Inner == null || !Inner.Alive) return;
-        Remember();
+        // 組んだ直後 (中身がまだ無い) は位置が 0 なので控えない (控えると前の位置を消してしまう)
+        if (_filled) Remember();
+        _filled = true;
         Content = content;
         var go = Inner.Set(content);
         float h = Inner.LastSize.y;

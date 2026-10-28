@@ -77,6 +77,8 @@ internal sealed class Label : Widget
         var t = UiAssets.TextProto;
         if (!t) return 0f;
         t.enableAutoSizing = false;
+        t.margin = Vector4.zero;
+        t.enableWordWrapping = false;
         t.fontSize = fontSize;
         t.fontStyle = bold ? FontStyles.Bold : FontStyles.Normal;
         t.richText = true;
