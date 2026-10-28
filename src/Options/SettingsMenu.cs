@@ -35,6 +35,7 @@ internal static class SettingsMenu
     private const int CatPresets = 0, CatGame = 1, CatGeneral = 2, CatKind0 = 3;
     internal static readonly Color GameCatColor = new(0.82f, 0.84f, 0.88f), GeneralCatColor = new(1f, 0.55f, 0.75f);
     internal static int GeneralPose => CatPose[CatGeneral];
+    internal static int GamePose => CatPose[CatGame];
     private static readonly List<(PassiveButton Btn, int Cat)> Cats = new();
 
     private sealed class Page
@@ -46,23 +47,12 @@ internal static class SettingsMenu
 
     private static readonly List<Page> Pages = new();
     private static readonly Dictionary<IntPtr, int> MenuToPage = new();
-    private static readonly Dictionary<IntPtr, Opt> Rows = new();
-    private static readonly List<OptionBehaviour> RowList = new(); // 値を外から変えた時に描き直す相手
     private static GameOptionsMenu _template;
     private static SearchBox _search;
     private static bool _searching, _leavingSearch;
     private static int _currentTab = 1, _returnTab = 1;
 
     public static string SearchQuery => _search != null ? _search.Query : "";
-    private static FloatGameSetting _numberData;
-    private static CheckboxGameSetting _checkData;
-
-    public static bool TryRow(Il2CppObjectBase row, out Opt opt)
-    {
-        if (Rows.Count == 0) { opt = null; return false; }
-        return Rows.TryGetValue(row.Pointer, out opt);
-    }
-
     // 試験用: MRP のタブのボタンを押す (OnClick をそのまま呼ぶ)
     internal static string ClickCat(int cat)
     {
@@ -80,20 +70,6 @@ internal static class SettingsMenu
         if (!hit.Btn) return "no button";
         hit.Btn.OnClick.Invoke();
         return Pages[page].Menu && Pages[page].Menu.gameObject.activeSelf ? "shown" : "not shown";
-    }
-
-    // 試験用: 開いているタブの n 行目の ± / チェックを押したのと同じことをする
-    internal static string PressRow(int page, int row, int delta)
-    {
-        if (page < 0 || page >= Pages.Count || !Pages[page].Menu) return "no page";
-        var children = Pages[page].Menu.Children;
-        if (children == null || row < 0 || row >= children.Count) return "no row";
-        var b = children[row];
-        var num = b.TryCast<NumberOption>();
-        if (num != null) { if (delta > 0) num.Increase(); else num.Decrease(); return num.ValueText.text; }
-        var tog = b.TryCast<ToggleOption>();
-        if (tog != null) { tog.Toggle(); return tog.CheckMark.enabled ? "checked" : "unchecked"; }
-        return "unknown row";
     }
 
     // 試験用: 開いている MRP のタブ
@@ -125,12 +101,9 @@ internal static class SettingsMenu
         OptionSync.RestoreOwn();
         Pages.Clear();
         MenuToPage.Clear();
-        Rows.Clear();
-        RowList.Clear();
         RolePage.Forget();
-        GeneralPage.Forget();
+        SettingsPages.Forget();
         PresetPage.Forget();
-        SettingsToc.Forget();
         if (_search != null) SearchBox.Forget(_search);
         _search = null;
         _searching = false;
@@ -439,24 +412,6 @@ internal static class SettingsMenu
         RolePage.SetQuery(q);
     }
 
-    // 本編のゲーム設定のタブの行を設定から読み直す (検索の結果の行で値を変えた後)
-    private static void RefreshGameTab(GameSettingMenu menu)
-    {
-        var tab = menu.GameSettingsTab;
-        var children = tab ? tab.Children : null;
-        if (children == null) return;
-        foreach (var c in children)
-        {
-            if (!c) continue;
-            var num = c.TryCast<NumberOption>();
-            if (num != null) { num.Initialize(); continue; }
-            var str = c.TryCast<StringOption>();
-            if (str != null) { str.Initialize(); continue; }
-            c.TryCast<ToggleOption>()?.Initialize();
-        }
-        MapVariants.Refresh();
-    }
-
     // 試験用: 検索欄に打ち込んだのと同じことをする
     internal static bool TypeSearch(string q)
     {
@@ -483,7 +438,6 @@ internal static class SettingsMenu
             _currentTab = tabNum;
             HighlightCat(tabNum);
             RefreshAll();
-            if (tabNum == 1) RefreshGameTab(menu);
         }
         if (tabNum < FirstTab)
         {
@@ -544,7 +498,7 @@ internal static class SettingsMenu
             {
                 if (Pages[index].Presets) PresetPage.Build(m, GameSettingMenu.Instance);
                 else if (Pages[index].Roles) RolePage.Build(m);
-                else GeneralPage.Build(m);
+                else SettingsPages.General.Build(m);
             }
             catch (Exception e) { Plugin.Logger.LogError($"settings tab build: {e}"); }
             m.cachedData = GameOptionsManager.Instance.CurrentGameOptions;
@@ -553,75 +507,11 @@ internal static class SettingsMenu
         return false;
     }
 
-    // 設定項目 1 つ分の行 (本編の数値 / チェックの行の複製)。操作は下のパッチが MRP の項目へ回す
-    internal static OptionBehaviour MakeRow(GameOptionsMenu m, Opt opt)
-    {
-        EnsureData();
-        OptionBehaviour row = opt.IsToggle
-            ? Object.Instantiate(m.checkboxOrigin, m.settingsContainer)
-            : Object.Instantiate(m.numberOptionOrigin, m.settingsContainer);
-        row.SetClickMask(m.ButtonClickMask);
-        row.SetUpFromData(opt.IsToggle ? _checkData : _numberData, 20);
-        Rows[row.Pointer] = opt;
-        RowList.Add(row);
-        Refresh(row, opt);
-        return row;
-    }
-
-    private static void EnsureData()
-    {
-        if (!_numberData)
-        {
-            _numberData = ScriptableObject.CreateInstance<FloatGameSetting>();
-            _numberData.Type = OptionTypes.Float;
-            _numberData.Title = StringNames.Accept;
-            _numberData.Value = 0f;
-            _numberData.Increment = 1f;
-            _numberData.ValidRange = new FloatRange(0f, 1000f);
-            _numberData.FormatString = "";
-            _numberData.ZeroIsInfinity = false;
-            _numberData.SuffixType = NumberSuffixes.None;
-        }
-        if (!_checkData)
-        {
-            _checkData = ScriptableObject.CreateInstance<CheckboxGameSetting>();
-            _checkData.Type = OptionTypes.Checkbox;
-            _checkData.Title = StringNames.Accept;
-        }
-    }
-
     // プリセットを読み込んだ後など、値を外から変えた時に開いている行を全部描き直す
     public static void RefreshAll()
     {
-        RowList.RemoveAll(r => !r); // 作り直しで消えた行
-        foreach (var row in RowList)
-            if (row && Rows.TryGetValue(row.Pointer, out var opt)) Refresh(row, opt);
-        GameTabRows.Relayout();
-        SettingsToc.RefreshMarks();
-        GeneralPage.RefreshFromOutside();
+        SettingsPages.RefreshFromOutside();
         RefreshCatCounts();
-    }
-
-    public static void Refresh(OptionBehaviour row, Opt opt)
-    {
-        opt.Sync();
-        var num = row.TryCast<NumberOption>();
-        if (num != null)
-        {
-            // 初期値から変えた項目は名前の右に橙の点 (値の字は白のまま)
-            num.TitleText.text = opt.Changed ? opt.Label + OptEditor.ChangedMark : opt.Label;
-            num.ValueText.text = opt.Display();
-            // 数値は端で止まるので、それ以上動かない側のボタンを灰色にする (選択肢は回るので両方押せる)
-            num.MinusBtn?.SetInteractable(opt.WrapsAround || opt.Index > 0);
-            num.PlusBtn?.SetInteractable(opt.WrapsAround || opt.Index < opt.Count - 1);
-            return;
-        }
-        var tog = row.TryCast<ToggleOption>();
-        if (tog != null)
-        {
-            tog.TitleText.text = opt.Changed ? opt.Label + OptEditor.ChangedMark : opt.Label;
-            tog.CheckMark.enabled = opt.Index != 0;
-        }
     }
 
     public static void OnClose()
@@ -634,14 +524,9 @@ internal static class SettingsMenu
         CatDots.Clear();
         CatArts.Clear();
         // 閉じた画面の行は破棄され、そのアドレスは別の物に使い回されうるので、ここで全部忘れる
-        Rows.Clear();
-        RowList.Clear();
         PresetPage.Forget();
-        SettingsToc.Forget();
         RolePage.Forget();
-        GeneralPage.Forget();
-        MapVariants.Forget();
-        GameTabRows.Forget();
+        SettingsPages.Forget();
         if (_search != null) SearchBox.Forget(_search);
         _search = null;
         _searching = false;
@@ -698,80 +583,12 @@ internal static class GameOptionsMenuPatch
     [HarmonyPatch("CreateSettings"), HarmonyPrefix]
     public static bool CreateSettings(GameOptionsMenu __instance) => !SettingsMenu.IsOurMenu(__instance, out _);
 
-    // 本編のゲーム設定のタブ: マップ選びの下にマップのバリエーション、陣営の数と配り方 (GameTabRows) を足す
+    // 本編のゲーム設定のタブ: 本編の行は隠し、本編の設定と MRP のゲームのルールを自前の頁で並べる
     [HarmonyPatch("CreateSettings"), HarmonyPostfix]
     public static void CreateSettingsPost(GameOptionsMenu __instance)
     {
         if (SettingsMenu.IsOurMenu(__instance, out _)) return;
-        try { MapVariants.Attach(__instance); }
-        catch (Exception e) { Plugin.Logger.LogError($"map variants: {e}"); }
-        try { GameTabRows.Attach(__instance); }
-        catch (Exception e) { Plugin.Logger.LogError($"game tab rows: {e}"); }
-        try { SettingsToc.Attach(__instance, 0.12f); }
-        catch (Exception e) { Plugin.Logger.LogError($"settings toc: {e}"); }
-    }
-}
-
-// MRP の行は本編の値の処理を通さず、MRP の設定項目を直接書き換える
-[HarmonyPatch(typeof(NumberOption))]
-internal static class NumberOptionPatch
-{
-    [HarmonyPatch(nameof(NumberOption.Initialize)), HarmonyPrefix]
-    public static bool Initialize(NumberOption __instance) => !SettingsMenu.TryRow(__instance, out _);
-
-    [HarmonyPatch("FixedUpdate"), HarmonyPrefix]
-    public static bool FixedUpdate(NumberOption __instance) => !SettingsMenu.TryRow(__instance, out _);
-
-    [HarmonyPatch(nameof(NumberOption.Increase)), HarmonyPrefix]
-    public static bool Increase(NumberOption __instance) => Step(__instance, 1);
-
-    [HarmonyPatch(nameof(NumberOption.Decrease)), HarmonyPrefix]
-    public static bool Decrease(NumberOption __instance) => Step(__instance, -1);
-
-    private static bool Step(NumberOption row, int delta)
-    {
-        if (!SettingsMenu.TryRow(row, out var opt)) return true;
-        opt.Step(delta);
-        SettingsMenu.Refresh(row, opt);
-        Roles.TeamSizes.OnEdited(opt);
-        GameTabRows.OnEdited(opt);
-        SettingsToc.RefreshMarks();
-        return false;
-    }
-
-    // 本編のインポスター数の行 (= 最多人数) を押した後: 最少人数と人数の帯を合わせる
-    [HarmonyPatch(nameof(NumberOption.Increase)), HarmonyPostfix]
-    public static void IncreasePost(NumberOption __instance) => VanillaStepped(__instance);
-
-    [HarmonyPatch(nameof(NumberOption.Decrease)), HarmonyPostfix]
-    public static void DecreasePost(NumberOption __instance) => VanillaStepped(__instance);
-
-    private static void VanillaStepped(NumberOption row)
-    {
-        if (row.Title != StringNames.GameNumImpostors || SettingsMenu.TryRow(row, out _)) return;
-        try { Roles.TeamSizes.OnEdited(null, vanillaImpostors: true); }
-        catch (Exception e) { Plugin.Logger.LogError($"team sizes: {e}"); }
-    }
-}
-
-[HarmonyPatch(typeof(ToggleOption))]
-internal static class ToggleOptionPatch
-{
-    [HarmonyPatch(nameof(ToggleOption.Initialize)), HarmonyPrefix]
-    public static bool Initialize(ToggleOption __instance) => !SettingsMenu.TryRow(__instance, out _);
-
-    [HarmonyPatch("FixedUpdate"), HarmonyPrefix]
-    public static bool FixedUpdate(ToggleOption __instance) => !SettingsMenu.TryRow(__instance, out _);
-
-    [HarmonyPatch(nameof(ToggleOption.Toggle)), HarmonyPrefix]
-    public static bool Toggle(ToggleOption __instance)
-    {
-        if (!SettingsMenu.TryRow(__instance, out var opt)) return true;
-        opt.Step(1);
-        SettingsMenu.Refresh(__instance, opt);
-        Roles.TeamSizes.OnEdited(opt);
-        GameTabRows.OnEdited(opt);
-        SettingsToc.RefreshMarks();
-        return false;
+        try { SettingsPages.Game.Build(__instance); }
+        catch (Exception e) { Plugin.Logger.LogError($"game page: {e}"); }
     }
 }

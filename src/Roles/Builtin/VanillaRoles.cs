@@ -372,7 +372,9 @@ internal static class VanillaRoles
         Dirty = false;
         try
         {
-            GameOptionsManager.Instance.SaveNormalHostOptions();
+            // かくれんぼの時は本編の設定の欄も別 (保存先も別)
+            if (GameModeSwitch.IsNormal) GameOptionsManager.Instance.SaveNormalHostOptions();
+            else GameOptionsManager.Instance.SaveHideNSeekHostOptions();
             if (GameManager.Instance) GameManager.Instance.LogicOptions.SyncOptions();
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"vanilla options sync: {e.Message}"); }

@@ -64,9 +64,7 @@ internal sealed class OptEditor
     public static void AfterStep(Opt opt)
     {
         Roles.TeamSizes.OnEdited(opt);
-        GameTabRows.OnEdited(opt);
-        SettingsToc.RefreshMarks();
-        GeneralPage.RefreshMarks();
+        SettingsPages.RefreshMarks();
     }
 
     // 狭い欄 (設定画面の右の欄) の行: 字を小さく・「初期値」のボタンは無し (変えた項目は名前の右の点で分かり、戻すのは欄の下のボタン)。
@@ -233,6 +231,8 @@ internal sealed class OptEditor
         if (ShownChanged()) { _onShownChanged?.Invoke(); return; }
         Refresh();
     }
+
+    internal bool ShownChangedForTest() => ShownChanged();
 
     private bool ShownChanged()
     {

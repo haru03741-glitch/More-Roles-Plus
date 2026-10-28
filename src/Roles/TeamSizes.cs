@@ -131,7 +131,7 @@ public static class TeamSizes
         bo.MaxNeutralKillers.SetValue(NeutralKillSettings.MaxKillers.Value);
     }
 
-    // 最少が最多を超えないように、変えた方に合わせてもう片方を動かす (edited = null は本編のインポスター数)。
+    // 最少が最多を超えないように、変えた方に合わせてもう片方を動かす (最少以外を変えた時は最少を下げる)。
     // 本編のインポスター数を変えたら true
     private static bool Normalize(Opt edited, IGameOptions o)
     {
@@ -161,15 +161,15 @@ public static class TeamSizes
         return vanilla;
     }
 
-    // 設定画面で項目が押された後 (MRP の行・検索の結果の行)。vanillaImpostors = 本編のインポスター数の行が押された
-    internal static void OnEdited(Opt opt, bool vanillaImpostors = false)
+    // 設定画面で項目が押された後 (本編のインポスター数も VanillaOpt の行として来る)
+    internal static void OnEdited(Opt opt)
     {
         if (!AmHost || !LobbyBehaviour.Instance) return;
         var o = Options;
         if (o == null) return;
-        bool row = vanillaImpostors || IsCountRow(opt);
+        bool row = IsCountRow(opt);
         if (!row && opt != Enabled && !IsBandOpt(opt)) return;
-        bool vanilla = row && Normalize(vanillaImpostors ? null : opt, o);
+        bool vanilla = row && Normalize(opt, o);
         var bo = Active(PlayerCount());
         if (bo != null)
         {
@@ -189,13 +189,10 @@ public static class TeamSizes
         if (GameManager.Instance) GameManager.Instance.LogicOptions.SyncOptions();
     }
 
-    // 開いている設定画面の行を値に合わせて描き直す (MRP の行と本編のインポスター数の行)
+    // 開いている設定画面の行を値に合わせて描き直す
     private static void RefreshMenu()
     {
-        var menu = GameSettingMenu.Instance;
-        if (!menu) return;
-        SettingsMenu.RefreshAll();
-        GameTabRows.RefreshVanillaImpostors(menu.GameSettingsTab);
+        if (GameSettingMenu.Instance) SettingsMenu.RefreshAll();
     }
 
     // ---- インポスター (ホスト・開始の数えが始まった時) ----

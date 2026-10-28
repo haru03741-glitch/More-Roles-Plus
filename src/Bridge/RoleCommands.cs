@@ -382,13 +382,6 @@ internal static class RoleCommands
             reply($"OK settab {n}");
         });
 
-        TestBridge.Register("pressrow", "<MRPタブ番号 0〜> <行> <+1|-1> MRP のタブの行のボタンを押す", (args, reply) =>
-        {
-            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
-            if (a.Length < 3 || !int.TryParse(a[0], out int p) || !int.TryParse(a[1], out int r) || !int.TryParse(a[2], out int d))
-            { reply("ERR pressrow args"); return; }
-            reply($"OK pressrow {SettingsMenu.PressRow(p, r, d)}");
-        });
 
         TestBridge.Register("clickcat", "<番号> 設定画面の左の列のボタンを押す (0=プリセット 1=ゲーム 2=全般 3=クルー 4=インポスター 5=第三陣営 6=アドオン)", (args, reply) =>
         {
@@ -412,18 +405,14 @@ internal static class RoleCommands
 
 
         TestBridge.Register("genpage", "[jump <n> | reset | undo | rebuild] 設定画面の全般の頁 (節の目次へ飛ぶ・すべて初期値に戻す・元に戻す) を操作して、節の並びを返す (* = 初期値から変えた項目あり)", (args, reply) =>
-            reply("OK genpage " + GeneralPage.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
+            reply("OK genpage " + SettingsPages.Command(SettingsPages.General, args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
+        TestBridge.Register("gamepage", "[map <MapId> | chip <行 0=バリエーション 1=モード> <札の番号 0〜> | imp | jump <n> | reset | undo | rebuild] 設定画面のゲームの頁を操作して、節の並びを返す (imp = インポスターと第三陣営の人数)", (args, reply) =>
+            reply("OK gamepage " + SettingsPages.Command(SettingsPages.Game, args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
         TestBridge.Register("rolepage", "[q <語> | team <-1〜3> | only | hover <Id> | open <Id> | scroll <0〜1> | bulk <0|1|2 (2 = 元に戻す)> | reset (開いている役職を初期値へ) | rebuild] 設定画面の役職タブ (カードの頁) を操作して、並んでいるカードを返す", (args, reply) =>
             reply("OK rolepage " + RolePage.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
         TestBridge.Register("dict", "[open [役職Id] | close | q <語> | team <-1〜3> | only | hover <Id> | scroll <0〜1> | rebuild | button [click|ensure|look <高さ> <y>|state <Inactive|Active|Selected>]] 役職辞典の窓を開いて操作し、並んでいるカードを返す (button = 右上の辞典のボタン)", (args, reply) =>
             reply("OK dict " + Menu.RoleDictionary.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
-
-        TestBridge.Register("variant", "<札の番号 0=通常 1=左右反転> ゲーム設定のタブのマップのバリエーションの札を押す", (args, reply) =>
-            reply("OK variant " + MapVariants.Press(int.TryParse(args.Trim(), out int vi) ? vi : -1)));
-
-        TestBridge.Register("gamerows", "[scroll <0〜1> | press <行> <+1|-1>] [q] ゲーム設定のタブに足した行と本編のインポスター数の行 (見出し・行の位置と値) / タブを縦に送る / 行の ± (ON/OFF は切り替え) を押す", (args, reply) =>
-            reply(GameTabRows.Probe(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 
         TestBridge.Register("uitree", "<chat|menu|page|gametab|cam|map|GameObject のパス> [深さ=3] 画面の部品の階層 (位置・大きさ・部品の種類・有効か)", (args, reply) =>
         {

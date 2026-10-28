@@ -129,14 +129,13 @@ internal static class ImpostorCapLobbyPatch
     }
 }
 
-// ゲーム設定の「インポスター」の行の幅を接続先に合わせる
+// ゲーム設定の本編の「インポスター」の行 (画面では隠している) を開いた時に、設定の値を接続先の上限に収める
 [HarmonyPatch(typeof(NumberOption), nameof(NumberOption.Initialize))]
 internal static class ImpostorCapRowPatch
 {
     public static void Postfix(NumberOption __instance)
     {
         if (__instance.Title != StringNames.GameNumImpostors || !GameModeSwitch.IsNormal) return;
-        GameTabRows.Relabel(__instance);
         ImpostorCap.Refresh();
         var opts = GameOptionsManager.Instance.CurrentGameOptions;
         int max = ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts));
