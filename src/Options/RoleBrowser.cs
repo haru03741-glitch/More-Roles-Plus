@@ -18,7 +18,7 @@ internal sealed class RoleBrowser
 {
     private static readonly Color Gray = new(0.42f, 0.42f, 0.45f, 1f);
     private static readonly Color Gold = new(1f, 0.82f, 0.2f, 1f);
-    private static readonly Color SubText = new(0.78f, 0.8f, 0.86f, 1f);
+    internal static readonly Color SubText = new(0.78f, 0.8f, 0.86f, 1f);
     private static readonly Color Highlight = new(1f, 0.88f, 0.4f, 1f);
     private static readonly Color GameColor = new(0.5f, 0.85f, 0.75f);
     private static readonly Color ChipOff = new(0.32f, 0.33f, 0.36f, 1f);
@@ -550,14 +550,16 @@ internal sealed class RoleBrowser
 
     // ---- 右の欄の見出し: 陣営の色の地に大きな絵と名前 (左上に操作のボタン) ----
 
-    private const float HeroH = 0.98f, HeroArt = 0.8f;
+    internal const float HeroH = 0.98f, HeroArt = 0.8f;
 
-    private Widget Hero(Color c, Widget art, string title, string sub, Widget tools = null)
+    private Widget Hero(Color c, Widget art, string title, string sub, Widget tools = null) => Hero(SideW, c, art, title, sub, tools);
+
+    internal static Widget Hero(float width, Color c, Widget art, string title, string sub, Widget tools = null)
     {
-        var hero = new Layers(SideW, HeroH);
-        hero.Add(new Box(null) { Size = new Vector2(SideW, HeroH), Color = Color.Lerp(c, Color.black, 0.5f), Fill = Color.Lerp(Color.black, c, 0.2f) }, 0f, 0f);
+        var hero = new Layers(width, HeroH);
+        hero.Add(new Box(null) { Size = new Vector2(width, HeroH), Color = Color.Lerp(c, Color.black, 0.5f), Fill = Color.Lerp(Color.black, c, 0.2f) }, 0f, 0f);
         if (art != null) hero.Add(art, 0.08f, (HeroH - HeroArt) / 2f, true);
-        float textW = SideW - HeroArt - 0.3f;
+        float textW = width - HeroArt - 0.3f;
         var text = new Stack(false, new Label(title, 1.9f) { MenuFont = true, Outline = 0.2f, Color = c, Width = textW, MinFontSize = 1.2f, Align = Align.Start }) { Gap = 0f, Width = textW };
         if (!string.IsNullOrEmpty(sub)) text.Add(new Label(sub, 1.05f) { Color = SubText, Width = textW, Align = Align.Start });
         hero.Add(text, 0.14f, 0.06f, false, true);
@@ -575,10 +577,12 @@ internal sealed class RoleBrowser
     }
 
     // 陣営のクルーの絵 (メインメニューの絵を陣営の色で)
-    private static Widget PosePic(int kind)
+    private static Widget PosePic(int kind) => PosePic(SettingsMenu.KindPose(kind), RoleMenu.KindColor(kind));
+
+    internal static Widget PosePic(int pose, Color c)
     {
-        var sp = CrewArt.Pose(SettingsMenu.KindPose(kind));
-        var mat = sp ? CrewArt.Material(RoleMenu.KindColor(kind)) : null;
+        var sp = CrewArt.Pose(pose);
+        var mat = sp ? CrewArt.Material(c) : null;
         return mat ? new Picture(sp, HeroArt * 1.1f, HeroArt) { Fit = true, Material = mat } : null;
     }
 
@@ -1070,7 +1074,7 @@ internal sealed class RoleBrowser
         return null;
     }
 
-    private static int Depth(Opt opt)
+    internal static int Depth(Opt opt)
     {
         int d = 0;
         for (var p = opt.Parent; p != null && d < 4; p = p.Parent) d++;

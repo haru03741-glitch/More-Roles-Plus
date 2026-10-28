@@ -153,6 +153,17 @@ internal sealed class ScrollView : Widget
     private static void ApplyFront(Scroller s, Transform front) =>
         s.ScrollWheelSpeed = front && !s.transform.IsChildOf(front) ? 0f : WheelSpeed;
 
+    // 中身の上端からの位置 y を欄の上端に (端で止める)
+    public void ScrollTo(float y)
+    {
+        var s = Scroller;
+        if (!s) return;
+        var b = s.ContentYBounds;
+        var p = s.Inner.localPosition;
+        s.Inner.localPosition = new Vector3(p.x, Math.Clamp(y, b.min, b.max), p.z);
+        s.UpdateScrollBars();
+    }
+
     // 今のスクロールの位置を控える (画面を閉じる前に呼ぶ)
     public void Remember()
     {

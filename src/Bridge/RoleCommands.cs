@@ -411,6 +411,8 @@ internal static class RoleCommands
         });
 
 
+        TestBridge.Register("genpage", "[jump <n> | reset | undo | rebuild] 設定画面の全般の頁 (節の目次へ飛ぶ・すべて初期値に戻す・元に戻す) を操作して、節の並びを返す (* = 初期値から変えた項目あり)", (args, reply) =>
+            reply("OK genpage " + GeneralPage.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
         TestBridge.Register("rolepage", "[q <語> | team <-1〜3> | only | hover <Id> | open <Id> | scroll <0〜1> | bulk <0|1|2 (2 = 元に戻す)> | reset (開いている役職を初期値へ) | rebuild] 設定画面の役職タブ (カードの頁) を操作して、並んでいるカードを返す", (args, reply) =>
             reply("OK rolepage " + RolePage.Command(args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries))));
 

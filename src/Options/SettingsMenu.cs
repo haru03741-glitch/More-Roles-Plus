@@ -33,7 +33,8 @@ internal static class SettingsMenu
 
     // 左の列のボタンの番号 (陣営は CatKind0 + RoleMenu の陣営の番号)
     private const int CatPresets = 0, CatGame = 1, CatGeneral = 2, CatKind0 = 3;
-    private static readonly Color GameCatColor = new(0.82f, 0.84f, 0.88f), GeneralCatColor = new(1f, 0.55f, 0.75f);
+    internal static readonly Color GameCatColor = new(0.82f, 0.84f, 0.88f), GeneralCatColor = new(1f, 0.55f, 0.75f);
+    internal static int GeneralPose => CatPose[CatGeneral];
     private static readonly List<(PassiveButton Btn, int Cat)> Cats = new();
 
     private sealed class Page
@@ -127,6 +128,7 @@ internal static class SettingsMenu
         Rows.Clear();
         RowList.Clear();
         RolePage.Forget();
+        GeneralPage.Forget();
         PresetPage.Forget();
         SettingsToc.Forget();
         if (_search != null) SearchBox.Forget(_search);
@@ -199,11 +201,8 @@ internal static class SettingsMenu
         btn.activeSprites.GetComponent<SpriteRenderer>().color = c;
         btn.selectedSprites.GetComponent<SpriteRenderer>().color = c;
         AddCatArt(btn, label, cat, c);
-        if (cat >= CatKind0)
-        {
-            CatLabels[cat] = (label, name.ToString());
-            AddCatDot(btn, cat);
-        }
+        if (cat >= CatKind0) CatLabels[cat] = (label, name.ToString());
+        if (cat >= CatGame) AddCatDot(btn, cat);
         btn.OnMouseOver = new UnityEvent();
         btn.OnMouseOut = new UnityEvent();
         btn.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
@@ -259,6 +258,22 @@ internal static class SettingsMenu
             label.text = $"{name}<size=65%>  {on}/{all}</size>";
             if (CatDots.TryGetValue(cat, out var dot) && dot) dot.SetActive(changed);
         }
+        // ゲームと全般: MRP の全般の項目のうち、その頁に並ぶ物 (ゲームの頁へ回した物 = OffTab) に初期値から変えた物があれば点
+        bool game = false, general = false;
+        foreach (var sec in Registry.SectionsOf(Tab.General))
+            foreach (var opt in sec.Opts)
+                if (opt.Changed && !opt.NoChangeMark)
+                {
+                    if (opt.OffTab) game = true;
+                    else general = true;
+                }
+        SetCatDot(CatGame, game);
+        SetCatDot(CatGeneral, general);
+    }
+
+    private static void SetCatDot(int cat, bool on)
+    {
+        if (CatDots.TryGetValue(cat, out var dot) && dot && dot.activeSelf != on) dot.SetActive(on);
     }
 
     // 左の列のボタンの左端に、その頁の色のクルーの絵 (メインメニューの絵のポーズ)。字は絵の右の残りの幅へ寄せる
@@ -529,47 +544,13 @@ internal static class SettingsMenu
             {
                 if (Pages[index].Presets) PresetPage.Build(m, GameSettingMenu.Instance);
                 else if (Pages[index].Roles) RolePage.Build(m);
-                else Build(m, Tab.General);
+                else GeneralPage.Build(m);
             }
             catch (Exception e) { Plugin.Logger.LogError($"settings tab build: {e}"); }
             m.cachedData = GameOptionsManager.Instance.CurrentGameOptions;
             m.InitializeControllerNavigation();
         }
         return false;
-    }
-
-    private static void Build(GameOptionsMenu m, Tab tab)
-    {
-        EnsureData();
-        const float rowX = 0.952f, headerX = -0.903f, z = -2f;
-        float y = 2f;
-        foreach (var sec in Registry.SectionsOf(tab))
-        {
-            if (!sec.Opts.Exists(o => !o.OffTab)) continue;
-            var h = Object.Instantiate(m.categoryHeaderOrigin, m.settingsContainer);
-            h.SetHeader(StringNames.RolesCategory, 20);
-            h.Title.text = sec.Color != null ? $"<color={sec.Color}>{sec.Title}</color>" : sec.Title.ToString();
-            if (sec.Color != null)
-            {
-                Color c = Roles.RoleDisplay.ParseColor(sec.Color);
-                h.Background.color = new Color(c.r * 0.35f, c.g * 0.35f, c.b * 0.35f, 1f);
-                h.Divider.color = c;
-            }
-            h.transform.localScale = new Vector3(0.63f, 0.63f, 1f);
-            h.transform.localPosition = new Vector3(headerX, y, z);
-            y -= 0.63f;
-
-            foreach (var opt in sec.Opts)
-            {
-                if (opt.OffTab) continue;
-                var row = MakeRow(m, opt);
-                row.transform.localPosition = new Vector3(rowX, y, z);
-                m.Children.Add(row);
-                y -= 0.45f;
-            }
-        }
-        m.scrollBar.SetYBoundsMax(-y - 1.65f);
-        SettingsToc.Attach(m);
     }
 
     // 設定項目 1 つ分の行 (本編の数値 / チェックの行の複製)。操作は下のパッチが MRP の項目へ回す
@@ -617,6 +598,7 @@ internal static class SettingsMenu
             if (row && Rows.TryGetValue(row.Pointer, out var opt)) Refresh(row, opt);
         GameTabRows.Relayout();
         SettingsToc.RefreshMarks();
+        GeneralPage.RefreshFromOutside();
         RefreshCatCounts();
     }
 
@@ -657,6 +639,7 @@ internal static class SettingsMenu
         PresetPage.Forget();
         SettingsToc.Forget();
         RolePage.Forget();
+        GeneralPage.Forget();
         MapVariants.Forget();
         GameTabRows.Forget();
         if (_search != null) SearchBox.Forget(_search);

@@ -66,18 +66,20 @@ internal sealed class OptEditor
         Roles.TeamSizes.OnEdited(opt);
         GameTabRows.OnEdited(opt);
         SettingsToc.RefreshMarks();
+        GeneralPage.RefreshMarks();
     }
 
     // 狭い欄 (設定画面の右の欄) の行: 字を小さく・「初期値」のボタンは無し (変えた項目は名前の右の点で分かり、戻すのは欄の下のボタン)。
     // 名前が 1 行に入らない時は、名前を上の段 (幅いっぱい)・値を下の段の右に置く
     public const float NarrowFont = 1.35f, NarrowStepW = 0.3f, NarrowValueW = 0.74f, NarrowRowH = 0.34f;
 
-    public Widget NarrowRow(Opt opt, bool editable, float width, float indent = 0f, Color? nameColor = null)
+    // compactToggle = ON/OFF の箱を数値の値の欄と同じ幅に (名前を 1 行に収めやすくする)
+    public Widget NarrowRow(Opt opt, bool editable, float width, float indent = 0f, Color? nameColor = null, bool compactToggle = false)
     {
         opt.Sync();
         var info = InfoButton(opt);
         const float gap = 0.06f;
-        float controls = NarrowStepW * 2f + NarrowValueW + gap * 2f;
+        float controls = compactToggle && opt.IsToggle ? NarrowValueW + 0.12f : NarrowStepW * 2f + NarrowValueW + gap * 2f;
         float infoW = info != null ? InfoW + gap : 0f;
         float nameW = width - indent - controls - gap - infoW;
         bool twoLines = Label.Measure(opt.Label, NarrowFont, true) > nameW;
