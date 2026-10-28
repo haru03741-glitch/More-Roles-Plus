@@ -428,16 +428,16 @@ internal static class TerrainProbe
 
     internal static void RegisterFindSprite()
     {
-        TestBridge.Register("findsprite", "<正規表現> 読み込み済みの Sprite を名前で探す", (args, reply) =>
+        TestBridge.Register("findsprite", "<正規表現> 読み込み済みの Sprite を名前で探す (「tex=テクスチャ名」にも当たる)", (args, reply) =>
         {
             var re = new System.Text.RegularExpressions.Regex(args.Trim(), System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             int n = 0;
             foreach (var o in Resources.FindObjectsOfTypeAll(Il2CppInterop.Runtime.Il2CppType.Of<Sprite>()))
             {
                 var sp = o.TryCast<Sprite>();
-                if (!sp || !re.IsMatch(sp.name)) continue;
+                if (!sp || !re.IsMatch(sp.name + " tex=" + (sp.texture ? sp.texture.name : ""))) continue;
                 if (++n > 40) break;
-                reply($"SPRITE {sp.name} rect={sp.textureRect.width}x{sp.textureRect.height} tex={(sp.texture ? sp.texture.name : "?")} ppu={sp.pixelsPerUnit}");
+                reply($"SPRITE {sp.name} rect={sp.textureRect.width}x{sp.textureRect.height}@{sp.textureRect.x},{sp.textureRect.y} tex={(sp.texture ? sp.texture.name : "?")} ppu={sp.pixelsPerUnit}");
             }
             reply($"OK findsprite n={n}");
         });
