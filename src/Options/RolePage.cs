@@ -78,25 +78,6 @@ internal static class RolePage
         sec.Role == null ? null
             : new Button(new Text("RoleDictionary.ShowInDictionary"), () => Menu.RoleDictionary.Open(sec), 1.35f) { Size = new Vector2(0f, 0.42f), MinSize = new Vector2(1.6f, 0.42f) };
 
-    // 検索の件数 (左の説明の欄に出す)
-    public static Text SearchSummary(string q)
-    {
-        var hits = Browser.Hits;
-        int total = hits[0] + hits[1] + hits[2];
-        if (total == 0) return new Text("RoleMenu.NothingMatches").With("q", q);
-        var sb = new System.Text.StringBuilder(new Text("RoleMenu.SearchCount").With("q", q).With("total", total));
-        Text[] names = { VanillaGame.TabName, SettingsMenu.TabName(false), RoleMenu.TabName };
-        string sep = "\n";
-        for (int i = 0; i < 3; i++)
-        {
-            if (hits[i] == 0) continue;
-            sb.Append(sep).Append(new Text("RoleMenu.SearchTabCount").With("tab", names[i]).With("n", hits[i]));
-            sep = Tr.Get("RoleMenu.SearchSeparator");
-        }
-        sb.Append('\n').Append(Tr.Get("RoleMenu.SearchClearHint"));
-        return Text.Raw(sb.ToString());
-    }
-
     // 設定画面の外 (役職辞典の窓) で値を変えた後に、開いたままのタブのカードの値と縁の色を今の値へ
     public static void RefreshCards()
     {

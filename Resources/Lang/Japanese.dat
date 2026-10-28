@@ -450,7 +450,6 @@ RoleMenu.All: 全部
 RoleMenu.EnabledOnly: 出る役職だけ
 RoleMenu.NothingMatches: 「{q}」に当てはまる設定はありません。
 RoleMenu.Undo: 元に戻す
-RoleMenu.NothingMatchesShort: 当てはまる設定がありません
 RoleMenu.NoMatchingRoles: 当てはまる役職がありません
 RoleMenu.Breadcrumb: {a} › {b}
 RoleMenu.SearchCount: 「{q}」: {total} 件

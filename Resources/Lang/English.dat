@@ -450,7 +450,6 @@ RoleMenu.All: All
 RoleMenu.EnabledOnly: Enabled only
 RoleMenu.NothingMatches: Nothing matches "{q}".
 RoleMenu.Undo: Undo
-RoleMenu.NothingMatchesShort: Nothing matches
 RoleMenu.NoMatchingRoles: No matching roles
 RoleMenu.Breadcrumb: {a} › {b}
 RoleMenu.SearchCount: "{q}": {total}

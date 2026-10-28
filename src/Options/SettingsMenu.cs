@@ -301,11 +301,6 @@ internal static class SettingsMenu
             RefreshAll(); // 他のタブで変えた値を結果の行へ
         }
         RolePage.SetQuery(q);
-        var desc = menu.MenuDescriptionText;
-        if (!desc) return;
-        var tr = desc.GetComponent<TextTranslatorTMP>();
-        if (tr) Object.Destroy(tr);
-        desc.text = RolePage.SearchSummary(RoleSearch.ForDisplay(q.Trim(), desc.font));
     }
 
     // 本編のゲーム設定のタブの行を設定から読み直す (検索の結果の行で値を変えた後)

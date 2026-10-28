@@ -57,6 +57,7 @@ internal sealed class RoleBrowser
     private readonly OptEditor _editor;
     private Button _resetBtn, _undoBtn;  // 2 枚目の「既定に戻す」「元に戻す」(行を押した時に色だけ書き換える)
     private string[] _tokens = Array.Empty<string>();
+    private string _queryText = "";
     private readonly int[] _hits = new int[3];  // 検索の件数: 0 = ゲーム設定・1 = MRP 全般・2 = 役職
 
     public RoleBrowser(float width, float height, bool settings, Func<bool> canEdit, string tag)
@@ -119,6 +120,8 @@ internal sealed class RoleBrowser
     // 検索の語が変わった (空 = 検索をやめた)
     public void SetQuery(string q)
     {
+        var menu = GameSettingMenu.Instance;
+        _queryText = RoleSearch.ForDisplay((q ?? "").Trim(), menu && menu.MenuDescriptionText ? menu.MenuDescriptionText.font : null);
         var tokens = RoleSearch.Tokens(q);
         bool was = _tokens.Length > 0;
         _tokens = tokens;
@@ -1097,11 +1100,31 @@ internal sealed class RoleBrowser
             }
         }
         if (_hits[0] + _hits[1] + _hits[2] == 0)
-            col.Add(new Label(new Text(_settings ? "RoleMenu.NothingMatchesShort" : "RoleMenu.NoMatchingRoles"), 1.6f) { Color = SubText, Width = W - 0.4f, TextAlign = TextAlignmentOptions.Center });
+            col.Add(new Label(_settings ? $"{new Text("RoleMenu.NothingMatches").With("q", _queryText)}\n{Tr.Get("RoleMenu.SearchClearHint")}" : new Text("RoleMenu.NoMatchingRoles").ToString(), 1.6f) { Color = SubText, Width = W - 0.4f, TextAlign = TextAlignmentOptions.Center });
+        else
+            col.Children.Insert(0, new Label(SearchSummary(), 1.3f) { Color = SubText, Width = W - 0.4f, Align = Align.Start });
         _editor.Watch(all);
         _editor.Refresh();
         _list = new ScrollView(new Vector2(W, H), col);
         return _list;
+    }
+
+    // 検索の結果の頁の先頭に出す件数 (設定画面では本編/MRP/役職ごとの内訳と戻り方も)
+    private string SearchSummary()
+    {
+        int total = _hits[0] + _hits[1] + _hits[2];
+        var sb = new System.Text.StringBuilder(new Text("RoleMenu.SearchCount").With("q", _queryText).With("total", total));
+        if (!_settings) return sb.ToString();
+        Text[] names = { VanillaGame.TabName, SettingsMenu.TabName(false), RoleMenu.TabName };
+        string sep = "\n";
+        for (int i = 0; i < 3; i++)
+        {
+            if (_hits[i] == 0) continue;
+            sb.Append(sep).Append(new Text("RoleMenu.SearchTabCount").With("tab", names[i]).With("n", _hits[i]));
+            sep = Tr.Get("RoleMenu.SearchSeparator");
+        }
+        sb.Append('\n').Append(Tr.Get("RoleMenu.SearchClearHint"));
+        return sb.ToString();
     }
 
     // ---- 毎フレーム (開いている間だけ) ----
