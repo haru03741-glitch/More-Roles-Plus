@@ -14,7 +14,7 @@ internal static class RoleArt
     private static HashSet<string> _own;   // 自前の絵がある役職の Id (無い役職で読みに行って毎回エラーを出さないため)
     private static readonly Dictionary<RoleTypes, Sprite> VanillaIcons = new();
     private static Sprite _impostor;
-    private static int _scans; // 見つからない版で、開くたびに全部の絵を走査し続けないため
+    private static int _scans; // 見つからない版・絵が捨てられた時に、開くたびに全部の絵を走査し続けないため
 
     public static Sprite Of(Assignable a)
     {
@@ -58,7 +58,6 @@ internal static class RoleArt
             if (sp && sp.name == "ICON-Impostor")
             {
                 _impostor = sp;
-                _scans = 0;
                 break;
             }
         }

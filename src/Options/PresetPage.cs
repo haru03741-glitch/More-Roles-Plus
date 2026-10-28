@@ -47,6 +47,7 @@ internal static class PresetPage
         _name = null;
         _screen?.Clear();
         _screen = null;
+        if (_root) Object.Destroy(_root);
         _root = null;
         _armed = -1;
         _status = "";
