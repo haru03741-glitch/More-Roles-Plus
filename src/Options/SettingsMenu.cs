@@ -192,6 +192,7 @@ internal static class SettingsMenu
         btn.inactiveSprites.GetComponent<SpriteRenderer>().color = new Color(c.r * 0.6f, c.g * 0.6f, c.b * 0.6f, 1f);
         btn.activeSprites.GetComponent<SpriteRenderer>().color = c;
         btn.selectedSprites.GetComponent<SpriteRenderer>().color = c;
+        AddCatArt(btn, label, cat, c);
         btn.OnMouseOver = new UnityEvent();
         btn.OnMouseOut = new UnityEvent();
         btn.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
@@ -199,6 +200,38 @@ internal static class SettingsMenu
         menu.ControllerSelectable.Add(btn);
         Cats.Add((btn, cat));
     }
+
+    // 左の列のボタンの左端に、その頁の色のクルーの絵 (メインメニューの絵のポーズ)。字は絵の右の残りの幅へ寄せる
+    private static readonly int[] CatPose = { -1, 5, 5, 1, 2, 3, 0 }; // 番号 = CatPresets..CatKind0+AddonKind
+
+    private static void AddCatArt(PassiveButton btn, TextMeshPro label, int cat, Color c)
+    {
+        int pose = cat < CatPose.Length ? CatPose[cat] : -1;
+        var bg = btn.inactiveSprites.GetComponent<SpriteRenderer>();
+        if (pose < 0 || !bg) return;
+        var t = btn.transform;
+        var b = bg.bounds;
+        Vector3 min = t.InverseTransformPoint(b.min), max = t.InverseTransformPoint(b.max);
+        float h = max.y - min.y;
+        var ls = t.lossyScale;
+        float aspect = ls.y / ls.x; // ボタンは縦横で縮みが違うので、絵の横を戻す
+        float artH = h * CatArtHeight;
+        var sr = UI.CrewArt.Place(t, pose, c, new Vector3(min.x + h * CatArtX * aspect, min.y + h * 0.04f, -0.01f), artH, btn.gameObject.layer, bg.sortingOrder + 1);
+        if (!sr) return;
+        var s = sr.transform.localScale;
+        sr.transform.localScale = new Vector3(s.x * aspect, s.y, s.z);
+        // 絵の左端をボタンの左の縁の少し内側へ (ポーズで横幅が違う)
+        sr.transform.position += new Vector3(b.min.x + b.size.y * 0.08f - sr.bounds.min.x, 0f, 0f);
+        if (label.sortingOrder <= sr.sortingOrder) label.sortingOrder = sr.sortingOrder + 1;
+        // 字の左の余白 = 絵の右端まで
+        float right = sr.bounds.max.x;
+        var rt = label.rectTransform;
+        float edge = label.transform.InverseTransformPoint(new Vector3(right, b.center.y, b.center.z)).x;
+        float m = edge - rt.rect.xMin;
+        if (m > 0f) label.margin = new Vector4(m, 0f, 0f, 0f);
+    }
+
+    private const float CatArtHeight = 1.05f, CatArtX = 0.5f;
 
     private static UnityAction CatAction(int cat)
     {
