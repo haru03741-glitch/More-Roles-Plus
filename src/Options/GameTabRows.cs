@@ -340,6 +340,8 @@ internal static class GameTabRows
             }
         }
         if (m.scrollBar) m.scrollBar.SetYBoundsMax(_scrollBase + total);
+        // 見出しが出入りしたので、目次も今の見出しで作り直す
+        SettingsToc.Refresh(m);
     }
 
     private static int Visible(Part[] rows)

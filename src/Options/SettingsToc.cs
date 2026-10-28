@@ -53,6 +53,7 @@ internal static class SettingsToc
         var screen = new UiScreen(go.transform) { Anchor = Align.Start, MaxWidth = W, BaseOrder = 1 };
         screen.Set(body);
         Screens[m.Pointer] = screen;
+        Offsets[m.Pointer] = dx;
     }
 
     // ボタンの番号は借り物なので、設定画面を作り直す時と閉じる時に返す
@@ -62,9 +63,18 @@ internal static class SettingsToc
     {
         foreach (var s in Screens.Values) s.Clear();
         Screens.Clear();
+        Offsets.Clear();
     }
 
     private const string NodeName = "MrpToc";
+
+    // 見出しが出入りした後: 目次を作ってある頁だけ作り直す (まだ作っていない頁は、作る時に今の見出しで作る)
+    public static void Refresh(GameOptionsMenu m)
+    {
+        if (m && Screens.ContainsKey(m.Pointer)) Attach(m, Offsets.TryGetValue(m.Pointer, out float dx) ? dx : 0f);
+    }
+
+    private static readonly Dictionary<IntPtr, float> Offsets = new();
 
     private static void Jump(GameOptionsMenu m, Transform header)
     {
