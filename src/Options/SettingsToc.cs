@@ -18,6 +18,9 @@ internal static class SettingsToc
     public static void Attach(GameOptionsMenu m, float dx = 0f)
     {
         if (!m || !m.settingsContainer || !UiAssets.Box) return;
+        // 本編のゲーム設定のタブは同じ頁で何度も作り直されるので、前の目次のボタンの番号を返してから捨てる
+        if (Screens.TryGetValue(m.Pointer, out var prev)) prev.Clear();
+        Screens.Remove(m.Pointer);
         var old = m.transform.Find(NodeName);
         if (old) UnityEngine.Object.Destroy(old.gameObject);
 
@@ -49,15 +52,15 @@ internal static class SettingsToc
         Widget body = heads.Count * (BtnH + 0.06f) > H ? new ScrollView(new Vector2(W, H), col) : col;
         var screen = new UiScreen(go.transform) { Anchor = Align.Start, MaxWidth = W, BaseOrder = 1 };
         screen.Set(body);
-        Screens.Add(screen);
+        Screens[m.Pointer] = screen;
     }
 
     // ボタンの番号は借り物なので、設定画面を作り直す時と閉じる時に返す
-    private static readonly List<UiScreen> Screens = new();
+    private static readonly Dictionary<IntPtr, UiScreen> Screens = new();
 
     public static void Forget()
     {
-        foreach (var s in Screens) s.Clear();
+        foreach (var s in Screens.Values) s.Clear();
         Screens.Clear();
     }
 
