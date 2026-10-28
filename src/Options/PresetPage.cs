@@ -93,6 +93,8 @@ internal static class PresetPage
     {
         var b = Object.Instantiate(proto, parent);
         b.name = "MrpPreset" + id;
+        // 写し元 (本編のタブのボタン) は左の列にまとめたので隠してある
+        b.gameObject.SetActive(true);
         b.transform.localPosition = pos;
         b.transform.localScale = new Vector3(SX, SY, 1f);
         var t = b.GetComponentInChildren<TextMeshPro>();
