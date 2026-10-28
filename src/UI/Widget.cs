@@ -369,6 +369,106 @@ internal sealed class Button : Box
     }
 }
 
+// 横に引くつまみ (0〜1)。引く処理は本編の音量の SlideBar に任せる (マウスも指も本編と同じ扱い)。
+// 引いている間は OnChange が毎フレーム来る。戻り値 = つまみを置く値 (刻みに寄せる)
+internal sealed class Slider : Widget
+{
+    public float Width, Value;
+    public Color Color = Color.white;
+    public Func<float, float> OnChange;
+
+    private const float TrackH = 0.09f, Knob = 0.26f, HitH = 0.32f;
+    private static readonly Color TrackColor = new(0.17f, 0.18f, 0.21f, 1f);
+
+    private SlideBar _bar;
+    private Transform _fill;
+    private float _shown = -1f;
+
+    public Slider(float width, float value, Func<float, float> onChange)
+    {
+        Width = width;
+        Value = value;
+        OnChange = onChange;
+    }
+
+    public override GameObject Build(Transform parent, BuildCtx ctx, float maxWidth, out Vector2 size)
+    {
+        var go = Node("Slider", parent, ctx.Layer);
+        size = new Vector2(Width, HitH);
+        var circle = UiAssets.Circle;
+        var track = Node(UiScreen.BackName, go.transform, ctx.Layer).AddComponent<SpriteRenderer>();
+        track.sprite = UiAssets.Blank;
+        track.color = TrackColor;
+        Stretch(track.transform, Width, TrackH);
+        var fill = Node(UiScreen.FillName, go.transform, ctx.Layer).AddComponent<SpriteRenderer>();
+        fill.sprite = UiAssets.Blank;
+        fill.color = Color;
+        _fill = fill.transform;
+        // つまみ = 陣営の色の輪・黒の縁・白の丸 (後の子ほど手前)
+        var dot = Disc(go.transform, "Knob", circle, Knob, Color, ctx.Layer);
+        Disc(Disc(dot.transform, "Rim", circle, 0.84f, Color.black, ctx.Layer).transform, "Face", circle, 0.8f, Color.white, ctx.Layer);
+        var col = go.AddComponent<BoxCollider2D>();
+        col.size = size;
+
+        // SlideBar は付けた瞬間の OnEnable で Bar/Dot を読むので、止めた状態で付けて埋めてから有効にする
+        go.SetActive(false);
+        _bar = go.AddComponent<SlideBar>();
+        _bar.Bar = track;
+        _bar.Dot = dot;
+        _bar.Range = new FloatRange(-Width / 2f, Width / 2f);
+        _bar.Vertical = false;
+        _bar.sliderSegmentIncrement = 0.1f;
+        _bar.OnMouseOver = new UnityEvent();
+        _bar.OnMouseOut = new UnityEvent();
+        _bar.OnValueChange = new UnityEvent();
+        if (ctx.ClickMask) _bar.ClickMask = ctx.ClickMask;
+        var bar = _bar;
+        _bar.OnValueChange.AddListener(UiActions.Take(() =>
+        {
+            float v = bar.Value;
+            if (OnChange != null) v = OnChange(v);
+            Show(v);
+        }, ctx.Slots));
+        go.SetActive(true);
+        Show(Value);
+        return go;
+    }
+
+    // つまみと塗りを値の位置へ (OnChange は呼ばない)
+    public void Show(float v)
+    {
+        v = Math.Clamp(v, 0f, 1f);
+        Value = v;
+        if (!_bar) return;
+        // つまみは引いている間 SlideBar が指の位置へ動かすので、毎回刻みの位置へ戻す
+        var d = _bar.Dot.transform;
+        d.localPosition = new Vector3(-Width / 2f + Width * v, 0f, d.localPosition.z);
+        _bar.Value = v;
+        if (v == _shown) return;
+        _shown = v;
+        float w = Math.Max(Width * v, 0.001f);
+        Stretch(_fill, w, TrackH);
+        _fill.localPosition = new Vector3(-Width / 2f + w / 2f, 0f, 0f);
+    }
+
+    private static void Stretch(Transform t, float w, float h)
+    {
+        var b = UiAssets.Blank ? UiAssets.Blank.bounds.size : Vector3.one;
+        t.localScale = new Vector3(w / Math.Max(b.x, 0.0001f), h / Math.Max(b.y, 0.0001f), 1f);
+    }
+
+    // 親の大きさに対する直径 d の丸 (いちばん外は単位で)
+    internal static SpriteRenderer Disc(Transform parent, string name, Sprite circle, float d, Color c, int layer)
+    {
+        var sr = Node(name, parent, layer).AddComponent<SpriteRenderer>();
+        sr.sprite = circle;
+        sr.color = c;
+        sr.transform.localScale = new Vector3(d, d, 1f);
+        sr.transform.localPosition = new Vector3(0f, 0f, -0.01f);
+        return sr;
+    }
+}
+
 // 決まった大きさの中に子を重ねて置く。後に足した物ほど手前に描く。
 // 位置は子の四角の角を、自分の同じ側の角から内側へ測る (既定は左上・right = 右側から・bottom = 下側から)
 internal sealed class Layers : Widget

@@ -781,6 +781,32 @@ internal sealed class RoleBrowser
         RefreshSide();
     }
 
+    // 出現率のつまみ (右の欄で役職を編集している間だけ)。引いて変えた値は ± と同じ道で後始末する
+    private Slider _slider;
+    private Opt _slideOpt;
+    private float _slideAt;
+
+    private static float Frac(Opt opt) => opt.Count > 1 ? opt.Index / (float)(opt.Count - 1) : 0f;
+
+    private float SlideChance(Registry.Section sec, float v)
+    {
+        var opt = sec.Role?.Chance;
+        if (opt == null) return v;
+        if (!Editable) return Frac(opt);
+        // 引いている間は毎フレーム来る。1 回引く間の変更は取り消し 1 段にまとめる (離して間が空いたら次の段)
+        float now = Time.unscaledTime;
+        bool sameDrag = _slideOpt == opt && now - _slideAt < 0.5f;
+        _slideOpt = opt;
+        _slideAt = now;
+        int before = opt.Index;
+        if (!opt.Restore((int)Math.Round(v * (opt.Count - 1)))) return Frac(opt);
+        if (!sameDrag) OptHistory.Push(opt, before);
+        OptEditor.AfterStep(opt);
+        AfterEdit();
+        _editor.Refresh();
+        return Frac(opt);
+    }
+
     private static Color UndoColor => OptHistory.Any ? Color.white : OptEditor.Dim;
 
     private static Color ResetColor(Registry.Section sec)
@@ -797,6 +823,7 @@ internal sealed class RoleBrowser
             _resetBtn?.SetColor(ResetColor(_open));
             _undoBtn?.SetColor(UndoColor);
         }
+        if (_slider != null && _open?.Role?.Chance is { } chance) _slider.Show(Frac(chance));
         RefreshCards();
         Changed?.Invoke();
     }
@@ -939,6 +966,7 @@ internal sealed class RoleBrowser
 
     private Widget SideEditor(Registry.Section sec)
     {
+        _slider = null;
         bool edit = Editable;
         const float btn = 0.36f, gap = 0.05f;
         // 見出しの左上: 前後の役職・お気に入り・閉じる
@@ -977,6 +1005,11 @@ internal sealed class RoleBrowser
                 rows.Add(new Box(core) { Size = new Vector2(rowW, 0f), Padding = new Vector2(0.05f, 0.07f), Color = Color.Lerp(TitleColor(sec), Color.black, 0.25f) });
             }
             core.Add(r);
+            if (opt == a.Chance && edit)
+            {
+                _slider = new Slider(coreW, Frac(opt), v => SlideChance(sec, v)) { Color = TitleColor(sec) };
+                core.Add(_slider);
+            }
         }
         if (core != null && edit && a.Chance != null)
         {
@@ -1309,6 +1342,11 @@ internal sealed class RoleBrowser
             case "sidescroll":
                 if (_sideList?.Scroller != null && a.Length > 1 && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float ss))
                     _sideList.Scroller.ScrollPercentY(ss);
+                break;
+            case "slide":
+                // 出現率のつまみを引いた時と同じ道 (0〜1)
+                if (_slider?.OnChange != null && a.Length > 1 && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sv))
+                    _slider.Show(_slider.OnChange(sv));
                 break;
             case "scroll":
                 if (_list?.Scroller != null && a.Length > 1 && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sp))

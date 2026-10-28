@@ -26,6 +26,10 @@ internal static class UiAssets
     public static Sprite Blank => Load() ? _blank : null;
     public static TextMeshPro TextProto => Load() ? _textProto : null;
 
+    // 縁の滑らかな白い丸 (直径 1 単位)。変えた所の点とスライダーのつまみ。本編に合う丸の絵が無いので式から焼く
+    private static Sprite _circle;
+    public static Sprite Circle => _circle ? _circle : _circle = Fx.FxSprites.Rect(64, 64, (x, y) => (0.5f - Fx.FxMath.Sqrt(x * x + y * y)) * 64f, "MrpUiCircle");
+
     // 本編のボタンの押した音と当てた音 (Twitch の窓の ExitGame のボタンの物)。無ければ鳴らさない
     public static AudioClip ClickSound { get; private set; }
     public static AudioClip HoverSound { get; private set; }
