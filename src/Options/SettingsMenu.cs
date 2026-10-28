@@ -504,6 +504,7 @@ internal static class SettingsMenu
         {
             num.TitleText.text = opt.Label;
             num.ValueText.text = opt.Display();
+            num.ValueText.color = opt.Changed ? OptEditor.ChangedColor : Color.white; // 初期値から変えた値は橙
             // 数値は端で止まるので、それ以上動かない側のボタンを灰色にする (選択肢は回るので両方押せる)
             num.MinusBtn?.SetInteractable(opt.WrapsAround || opt.Index > 0);
             num.PlusBtn?.SetInteractable(opt.WrapsAround || opt.Index < opt.Count - 1);
@@ -513,6 +514,7 @@ internal static class SettingsMenu
         if (tog != null)
         {
             tog.TitleText.text = opt.Label;
+            tog.TitleText.color = opt.Changed ? OptEditor.ChangedColor : Color.white; // 箱だけでは変えたか分からないので名前を橙に
             tog.CheckMark.enabled = opt.Index != 0;
         }
     }
