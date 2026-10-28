@@ -14,12 +14,14 @@ internal static class CrewArt
 
     private static readonly Sprite[] Poses = new Sprite[Count]; // テクスチャの左から順
     private static bool _loaded;
+    private static int _tries; // 見つからない版で、メインメニューに戻るたびに全部の絵を走査し続けないため
     private static readonly Dictionary<int, Material> Mats = new(); // 色ごとに 1 つ (作ったら捨てない)
 
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Start)), HarmonyPostfix]
     public static void OnMainMenu()
     {
-        if (_loaded) return;
+        if (_loaded || _tries >= 3) return;
+        _tries++;
         var found = new List<Sprite>();
         foreach (var o in Resources.FindObjectsOfTypeAll(Il2CppInterop.Runtime.Il2CppType.Of<Sprite>()))
         {

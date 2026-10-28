@@ -150,6 +150,7 @@ internal static class SettingsMenu
 
         Cats.Clear();
         CatLabels.Clear();
+        CatShown.Clear();
         CatArts.Clear();
         if (Pages.Exists(p => p.Presets)) AddCat(menu, gameBtn, CatPresets, PresetPage.TabName, PresetPage.TabColor);
         AddCat(menu, gameBtn, CatGame, new Text("SettingsMenu.CatGame"), GameCatColor);
@@ -207,6 +208,7 @@ internal static class SettingsMenu
 
     // 陣営のボタンの名前の右に「出る役職の数/全部の数」(値を変えるたびに書き直す)
     private static readonly Dictionary<int, (TextMeshPro Label, string Name)> CatLabels = new();
+    private static readonly Dictionary<int, int> CatShown = new(); // 今出している数 (変わった陣営だけ書き直す)
 
     internal static void RefreshCatCounts()
     {
@@ -221,6 +223,9 @@ internal static class SettingsMenu
                 all++;
                 if (a.Chance.Value > 0 && a.Count.Value > 0) on++;
             }
+            int key = on << 16 | all;
+            if (CatShown.TryGetValue(cat, out int shown) && shown == key) continue;
+            CatShown[cat] = key;
             label.text = $"{name}<size=65%>  {on}/{all}</size>";
         }
     }
@@ -593,6 +598,7 @@ internal static class SettingsMenu
             if (btn) btn.OnClick.RemoveAllListeners();
         Cats.Clear();
         CatLabels.Clear();
+        CatShown.Clear();
         CatArts.Clear();
         // 閉じた画面の行は破棄され、そのアドレスは別の物に使い回されうるので、ここで全部忘れる
         Rows.Clear();
