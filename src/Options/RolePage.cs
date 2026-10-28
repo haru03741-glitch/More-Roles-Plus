@@ -14,7 +14,7 @@ internal static class RolePage
     // 開き直しても陣営の札などを残すので、作るのは 1 回だけ
     private static readonly RoleBrowser Browser = new(W, H, true, CanEdit, "rolepage")
     {
-        Changed = UpdateDescription,
+        Changed = SettingsMenu.RefreshCatCounts,
         HeadExtra = DictionaryButton,
         TeamFromOutside = true,
     };
@@ -66,13 +66,6 @@ internal static class RolePage
     public static int Team => Browser.Team;
     public static void SetTeam(int kind) => Browser.Team = kind;
 
-    // 左の説明の欄の「出る役職」の数
-    private static void UpdateDescription()
-    {
-        var menu = GameSettingMenu.Instance;
-        if (!Browser.Searching && menu && menu.MenuDescriptionText) menu.MenuDescriptionText.text = RoleMenu.DefaultDescription;
-    }
-
     // 細かい頁の見出しの右に「役職辞典で見る」(説明の本文はそちらに)
     private static Widget DictionaryButton(Registry.Section sec) =>
         sec.Role == null ? null
@@ -83,7 +76,7 @@ internal static class RolePage
     {
         if (!_built || !_root) return;
         Browser.RefreshFromOutside();
-        UpdateDescription();
+        SettingsMenu.RefreshCatCounts();
     }
 
     public static void Tick()

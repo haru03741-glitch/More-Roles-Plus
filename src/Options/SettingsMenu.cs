@@ -149,11 +149,13 @@ internal static class SettingsMenu
         }
 
         Cats.Clear();
+        CatLabels.Clear();
         if (Pages.Exists(p => p.Presets)) AddCat(menu, gameBtn, CatPresets, PresetPage.TabName, PresetPage.TabColor);
         AddCat(menu, gameBtn, CatGame, new Text("SettingsMenu.CatGame"), GameCatColor);
         if (Pages.Exists(p => !p.Roles && !p.Presets)) AddCat(menu, gameBtn, CatGeneral, new Text("SettingsMenu.CatGeneral"), GeneralCatColor);
         if (Pages.Exists(p => p.Roles))
             for (int k = 0; k <= RoleMenu.AddonKind; k++) AddCat(menu, gameBtn, CatKind0 + k, RoleMenu.KindName(k), RoleMenu.KindColor(k));
+        RefreshCatCounts();
         foreach (var b in new[] { gameBtn, menu.RoleSettingsButton, menu.GamePresetsButton })
         {
             b.gameObject.SetActive(false);
@@ -193,12 +195,33 @@ internal static class SettingsMenu
         btn.activeSprites.GetComponent<SpriteRenderer>().color = c;
         btn.selectedSprites.GetComponent<SpriteRenderer>().color = c;
         AddCatArt(btn, label, cat, c);
+        if (cat >= CatKind0) CatLabels[cat] = (label, name.ToString());
         btn.OnMouseOver = new UnityEvent();
         btn.OnMouseOut = new UnityEvent();
         btn.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
         btn.OnClick.AddListener(CatAction(cat));
         menu.ControllerSelectable.Add(btn);
         Cats.Add((btn, cat));
+    }
+
+    // 陣営のボタンの名前の右に「出る役職の数/全部の数」(値を変えるたびに書き直す)
+    private static readonly Dictionary<int, (TextMeshPro Label, string Name)> CatLabels = new();
+
+    internal static void RefreshCatCounts()
+    {
+        foreach (var (cat, (label, name)) in CatLabels)
+        {
+            if (!label) continue;
+            int on = 0, all = 0;
+            foreach (var sec in Registry.SectionsOf(RoleMenu.KindTab(cat - CatKind0)))
+            {
+                var a = sec.Role;
+                if (a == null) continue;
+                all++;
+                if (a.Chance.Value > 0 && a.Count.Value > 0) on++;
+            }
+            label.text = $"{name}<size=65%>  {on}/{all}</size>";
+        }
     }
 
     // 左の列のボタンの左端に、その頁の色のクルーの絵 (メインメニューの絵のポーズ)。字は絵の右の残りの幅へ寄せる
@@ -527,6 +550,7 @@ internal static class SettingsMenu
         foreach (var row in RowList)
             if (row && Rows.TryGetValue(row.Pointer, out var opt)) Refresh(row, opt);
         GameTabRows.Relayout();
+        RefreshCatCounts();
     }
 
     public static void Refresh(OptionBehaviour row, Opt opt)
@@ -557,6 +581,7 @@ internal static class SettingsMenu
         foreach (var (btn, _) in Cats)
             if (btn) btn.OnClick.RemoveAllListeners();
         Cats.Clear();
+        CatLabels.Clear();
         // 閉じた画面の行は破棄され、そのアドレスは別の物に使い回されうるので、ここで全部忘れる
         Rows.Clear();
         RowList.Clear();
