@@ -510,14 +510,64 @@ internal sealed class RoleBrowser
             new Button(new Text("RoleDictionary.CopyCode"), () => SettingNotice.Toast(SettingCode.Copy()), 1.35f) { Size = new Vector2(SideW, 0.4f) }) { Gap = 0.12f, Width = SideW };
     }
 
+    // ---- 右の欄の見出し: 陣営の色の地に大きな絵と名前 (左上に操作のボタン) ----
+
+    private const float HeroH = 0.98f, HeroArt = 0.8f;
+
+    private Widget Hero(Color c, Widget art, string title, string sub, Widget tools = null)
+    {
+        var hero = new Layers(SideW, HeroH);
+        hero.Add(new Box(null) { Size = new Vector2(SideW, HeroH), Color = Color.Lerp(c, Color.black, 0.5f), Fill = Color.Lerp(Color.black, c, 0.2f) }, 0f, 0f);
+        if (art != null) hero.Add(art, 0.08f, (HeroH - HeroArt) / 2f, true);
+        float textW = SideW - HeroArt - 0.3f;
+        var text = new Stack(false, new Label(title, 1.9f) { MenuFont = true, Outline = 0.2f, Color = c, Width = textW, MinFontSize = 1.2f, Align = Align.Start }) { Gap = 0f, Width = textW };
+        if (!string.IsNullOrEmpty(sub)) text.Add(new Label(sub, 1.05f) { Color = SubText, Width = textW, Align = Align.Start });
+        hero.Add(text, 0.14f, 0.06f, false, true);
+        if (tools != null) hero.Add(tools, 0.1f, 0.08f);
+        return hero;
+    }
+
+    // 役職の絵 (無ければ陣営のクルーの絵)
+    private static Widget RoleArtPic(Registry.Section sec)
+    {
+        var icon = Icon(sec.Role);
+        if (icon) return new Picture(icon, HeroArt, HeroArt) { Fit = true };
+        int k = KindIndex(sec);
+        return k >= 0 ? PosePic(k) : null;
+    }
+
+    // 陣営のクルーの絵 (メインメニューの絵を陣営の色で)
+    private static Widget PosePic(int kind)
+    {
+        var sp = CrewArt.Pose(SettingsMenu.KindPose(kind));
+        var mat = sp ? CrewArt.Material(RoleMenu.KindColor(kind)) : null;
+        return mat ? new Picture(sp, HeroArt * 1.1f, HeroArt) { Fit = true, Material = mat } : null;
+    }
+
+    private static int KindIndex(Registry.Section sec)
+    {
+        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+            foreach (var s in Registry.SectionsOf(RoleMenu.KindTab(k)))
+                if (s == sec) return k;
+        return -1;
+    }
+
+    // 見出しの下の字: 陣営の名前とタグ
+    private static string HeroSub(Registry.Section sec)
+    {
+        int k = KindIndex(sec);
+        string team = k >= 0 ? RoleMenu.KindName(k).ToString() : "";
+        string tags = TagLine(sec);
+        return tags.Length > 0 ? $"{team}・{tags}" : team;
+    }
+
     private Widget Summary(Registry.Section sec)
     {
         var col = new Stack(false) { Gap = 0.03f, Width = SideW };
-        col.Add(new Label(sec.Title, 2.0f) { MenuFont = true, Color = TitleColor(sec), Width = SideW, Align = Align.Start });
+        col.Add(Hero(TitleColor(sec), RoleArtPic(sec), sec.Title.ToString(), HeroSub(sec)));
+        col.Add(new Spacer(0.1f, 0.03f));
         string s = ShortText(sec);
         if (s.Length > 0) col.Add(new Label(s, 1.2f) { Color = SubText, Width = SideW, Align = Align.Start });
-        string tags = TagLine(sec);
-        if (tags.Length > 0) col.Add(new Label(tags, 1.15f) { Width = SideW, Align = Align.Start });
         col.Add(new Spacer(0.1f, 0.06f));
         foreach (var opt in SectionOpts(sec))
         {
@@ -565,14 +615,16 @@ internal sealed class RoleBrowser
     {
         string team = _team < 0 ? "" : RoleMenu.KindName(_team);
         var col = new Stack(false) { Gap = 0.08f, Width = SideW };
-        col.Add(new Label(_team < 0 ? new Text("RolePage.BulkAll") : new Text("RolePage.BulkTeam").With("team", team), 1.6f) { Bold = true, Width = SideW, Align = Align.Start });
-        col.Add(new Label(new Text("RolePage.Enabled").With("n", EnabledIn()).With("count", CountIn()), 1.3f) { Color = SubText, Width = SideW, Align = Align.Start });
+        string head = _team < 0 ? new Text("RolePage.BulkAll") : new Text("RolePage.BulkTeam").With("team", team);
+        if (_team >= 0) col.Add(Hero(RoleMenu.KindColor(_team), PosePic(_team), team, head));
+        else col.Add(new Label(head, 1.6f) { Bold = true, Width = SideW, Align = Align.Start });
+        col.Add(new Label(new Text("RolePage.EnabledBig").With("n", EnabledIn()).With("count", CountIn()), 3.2f) { Bold = true, Width = SideW, Align = Align.Start });
         col.Add(Legend());
-        col.Add(new Spacer(0.1f, 0.05f));
-        float half = (SideW - 0.08f) / 2f;
+        float third = (SideW - 0.16f) / 3f;
         col.Add(new Stack(true,
-            new Button("0%", () => Apply(a => a.Chance.SetValue(0)), 1.45f) { Size = new Vector2(half, 0.4f) },
-            new Button("100%", () => Apply(a => a.Chance.SetValue(100)), 1.45f) { Size = new Vector2(half, 0.4f) }) { Gap = 0.08f });
+            new Button("0%", () => Apply(a => a.Chance.SetValue(0)), 1.4f) { Size = new Vector2(third, 0.4f) },
+            new Button("100%", () => Apply(a => a.Chance.SetValue(100)), 1.4f) { Size = new Vector2(third, 0.4f) },
+            new Button(new Text("RoleMenu.Undo"), Undo, 1.3f) { Size = new Vector2(third, 0.4f), Color = OptHistory.Any ? Color.white : OptEditor.Dim }) { Gap = 0.08f });
         col.Add(BulkStepper(new Text("RolePage.ChanceTo").With("pct", _bulkChance + "%"),
             () => { _bulkChance = Math.Max(0, _bulkChance - 10); ShowSide(null); },
             () => { _bulkChance = Math.Min(100, _bulkChance + 10); ShowSide(null); },
@@ -581,7 +633,6 @@ internal sealed class RoleBrowser
             () => { _bulkCount = Math.Max(1, _bulkCount - 1); ShowSide(null); },
             () => { _bulkCount = Math.Min(MaxBulkCount(), _bulkCount + 1); ShowSide(null); },
             () => Apply(a => a.Count.SetValue(_bulkCount))));
-        col.Add(new Button(new Text("RoleMenu.Undo"), Undo, 1.45f) { Size = new Vector2(SideW, 0.4f), Color = OptHistory.Any ? Color.white : OptEditor.Dim });
         return col;
     }
 
@@ -677,6 +728,19 @@ internal sealed class RoleBrowser
         AfterEdit();
         if (SideEdit) RefreshSide();
         else Rebuild();
+    }
+
+    // 右の欄の 0% / 100% (1 回の取り消しで戻る)
+    private void SetChance(Registry.Section sec, int value)
+    {
+        var opt = sec.Role?.Chance;
+        if (opt == null || !Editable) return;
+        int before = opt.Index;
+        if (!opt.SetValue(value)) return;
+        OptHistory.Push(opt, before);
+        OptEditor.AfterStep(opt);
+        AfterEdit();
+        RefreshSide();
     }
 
     private static Color UndoColor => OptHistory.Any ? Color.white : OptEditor.Dim;
@@ -839,37 +903,49 @@ internal sealed class RoleBrowser
     {
         bool edit = Editable;
         const float btn = 0.36f, gap = 0.05f;
-        var head = new Stack(true) { Gap = gap, Align = Align.Start };
-        float titleW = SideW - btn - gap;
+        // 見出しの左上: 前後の役職・お気に入り・閉じる
+        var tools = new Stack(true) { Gap = gap };
         if (Neighbors(sec) is var (prev, next))
         {
-            head.Add(new Button("◀", () => Select(prev), 1.3f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
-            head.Add(new Button("▶", () => Select(next), 1.3f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
-            titleW -= (btn + gap) * 2f;
+            tools.Add(new Button("◀", () => Select(prev), 1.3f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
+            tools.Add(new Button("▶", () => Select(next), 1.3f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
         }
-        if (sec.Role != null) titleW -= btn + gap;
-        head.Add(new Label(sec.Title, 1.9f) { MenuFont = true, Color = TitleColor(sec), Width = titleW, MinFontSize = 1.2f });
-        if (sec.Role != null) head.Add(FavButton(sec, btn));
-        head.Add(new Button("×", () => Select(null), 1.5f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
+        if (sec.Role != null) tools.Add(FavButton(sec, btn));
+        tools.Add(new Button("×", () => Select(null), 1.5f) { Size = new Vector2(btn, btn), Padding = Vector2.zero });
 
         var col = new Stack(false) { Gap = 0.05f, Width = SideW };
-        col.Add(head);
+        col.Add(Hero(TitleColor(sec), RoleArtPic(sec), sec.Title.ToString(), HeroSub(sec), tools));
         string s = ShortText(sec);
         if (s.Length > 0) col.Add(new Label(s, 1.1f) { Color = SubText, Width = SideW, Align = Align.Start });
-        string tags = TagLine(sec);
-        if (tags.Length > 0) col.Add(new Label(tags, 1.1f) { Width = SideW, Align = Align.Start });
 
-        // 項目の行 (多い時はこの中だけスクロール)
+        // 項目の行 (多い時はこの中だけスクロール)。人数と出現率は陣営の色の枠にまとめ、0% / 100% のボタンを添える
         float rowW = SideW - 0.18f;
         var rows = new Stack(false) { Gap = 0.06f, Width = rowW };
         var opts = new List<Opt>(SectionOpts(sec));
         _editor.Watch(opts);
+        var a = sec.Role;
+        Stack core = null;
+        float coreW = rowW - 0.1f;
         foreach (var opt in opts)
         {
             if (!opt.Shown) continue;
-            var r = _editor.NarrowRow(opt, edit, rowW, Depth(opt) * 0.2f, opt.Fresh ? FreshColor : (Color?)null);
+            bool inCore = a != null && (opt == a.Count || opt == a.Chance);
+            var r = _editor.NarrowRow(opt, edit, inCore ? coreW : rowW, Depth(opt) * 0.2f, opt.Fresh ? FreshColor : (Color?)null);
             r.Align = Align.Start;
-            rows.Add(r);
+            if (!inCore) { rows.Add(r); continue; }
+            if (core == null)
+            {
+                core = new Stack(false) { Gap = 0.06f, Width = coreW };
+                rows.Add(new Box(core) { Size = new Vector2(rowW, 0f), Padding = new Vector2(0.05f, 0.07f), Color = Color.Lerp(TitleColor(sec), Color.black, 0.25f) });
+            }
+            core.Add(r);
+        }
+        if (core != null && edit && a.Chance != null)
+        {
+            float qw = (coreW - 0.08f) / 2f;
+            core.Add(new Stack(true,
+                new Button("0%", () => SetChance(sec, 0), 1.3f) { Size = new Vector2(qw, 0.32f) },
+                new Button("100%", () => SetChance(sec, 100), 1.3f) { Size = new Vector2(qw, 0.32f) }) { Gap = 0.08f });
         }
         if (sec.Role is RoleBase rb && rb.Excluded != null)
         {
@@ -904,7 +980,7 @@ internal sealed class RoleBrowser
         }
 
         // 見出しと説明の高さは字の量で変わるので、行の欄の高さは大まかに見積もる
-        float used = btn + 0.05f + (s.Length > 0 ? 0.42f : 0f) + (tags.Length > 0 ? 0.2f : 0f) + (n > 0 ? barH + 0.1f : 0f);
+        float used = HeroH + 0.05f + (s.Length > 0 ? 0.42f : 0f) + (n > 0 ? barH + 0.1f : 0f);
         // 値を変えて作り直しても同じ所を見せる (役職ごとの位置)
         _sideList = new ScrollView(new Vector2(SideW, Math.Max(_sideH - used, 1f)), rows) { Tag = _tag + ":side:" + (sec.Role?.Id ?? sec.Title.ToString()) };
         col.Add(_sideList);

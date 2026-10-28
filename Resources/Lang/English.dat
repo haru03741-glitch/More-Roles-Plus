@@ -468,7 +468,7 @@ RolePage.OpenSettings: Open settings
 RolePage.BackToBulk: Back to bulk edit
 RolePage.BulkAll: Change all roles
 RolePage.BulkTeam: Change all {team}
-RolePage.Enabled: Enabled: {n} / {count}
+RolePage.EnabledBig: {n}<size=50%> / {count} enabled</size>
 RolePage.ChanceTo: Chance to {pct}
 RolePage.CountTo: Count to {n}
 RolePage.SwatchOff: Off

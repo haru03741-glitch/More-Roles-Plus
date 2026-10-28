@@ -233,6 +233,9 @@ internal static class SettingsMenu
     // 左の列のボタンの左端に、その頁の色のクルーの絵 (メインメニューの絵のポーズ)。字は絵の右の残りの幅へ寄せる
     private static readonly int[] CatPose = { -1, 5, 5, 1, 2, 3, 0 }; // 番号 = CatPresets..CatKind0+AddonKind
 
+    // 陣営 (RoleMenu の陣営の番号) のクルーの絵のポーズ
+    internal static int KindPose(int kind) => CatKind0 + kind < CatPose.Length ? CatPose[CatKind0 + kind] : -1;
+
     private static void AddCatArt(PassiveButton btn, TextMeshPro label, int cat, Color c)
     {
         int pose = cat < CatPose.Length ? CatPose[cat] : -1;

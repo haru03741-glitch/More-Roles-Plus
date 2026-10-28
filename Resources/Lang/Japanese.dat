@@ -468,7 +468,7 @@ RolePage.OpenSettings: 細かい設定を開く
 RolePage.BackToBulk: まとめて変える札に戻る
 RolePage.BulkAll: 全部の役職をまとめて変える
 RolePage.BulkTeam: {team}をまとめて変える
-RolePage.Enabled: 出る役職: {n} / {count}
+RolePage.EnabledBig: {n}<size=50%> / {count} が出る</size>
 RolePage.ChanceTo: 出現率を {pct} に
 RolePage.CountTo: 人数を {n} 人に
 RolePage.SwatchOff: 出ない

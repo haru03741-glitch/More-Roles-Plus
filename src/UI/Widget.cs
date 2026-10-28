@@ -137,6 +137,7 @@ internal sealed class Picture : Widget
     public Vector2 Size;
     public Color Color = Color.white;
     public bool Fit;
+    public Material Material;   // null = 絵の既定の材質 (クルーの絵は本編の人の材質で色を付ける)
 
     public Picture(Sprite sprite, float w, float h)
     {
@@ -152,6 +153,7 @@ internal sealed class Picture : Widget
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = Sprite;
         sr.color = Color;
+        if (Material) sr.sharedMaterial = Material;
         // 絵の元の大きさから Size に合わせる (Fit = 縦横比を保って Size の中に収める)
         var b = Sprite.bounds.size;
         if (b.x > 0f && b.y > 0f)
@@ -367,6 +369,39 @@ internal sealed class Button : Box
     }
 }
 
+// 決まった大きさの中に子を重ねて置く。後に足した物ほど手前に描く。
+// 位置は子の四角の角を、自分の同じ側の角から内側へ測る (既定は左上・right = 右側から・bottom = 下側から)
+internal sealed class Layers : Widget
+{
+    public Vector2 Size;
+    private readonly List<(Widget w, float x, float y, bool right, bool bottom)> _items = new();
+
+    public Layers(float w, float h) { Size = new Vector2(w, h); }
+
+    public Layers Add(Widget w, float x, float y, bool right = false, bool bottom = false)
+    {
+        if (w != null) _items.Add((w, x, y, right, bottom));
+        return this;
+    }
+
+    internal const string NodeName = "Layers";
+    internal const int OrderStep = 20; // 子の中身の深さより大きく取る (重ねた子が前の子の中身より手前に出るように)
+
+    public override GameObject Build(Transform parent, BuildCtx ctx, float maxWidth, out Vector2 size)
+    {
+        var go = Node(NodeName, parent, ctx.Layer);
+        foreach (var (w, x, y, right, bottom) in _items)
+        {
+            var c = w.Build(go.transform, ctx, Size.x, out var s);
+            float cx = right ? Size.x / 2f - x - s.x / 2f : -Size.x / 2f + x + s.x / 2f;
+            float cy = bottom ? -Size.y / 2f + y + s.y / 2f : Size.y / 2f - y - s.y / 2f;
+            c.transform.localPosition = new Vector3(cx, cy, 0f);
+        }
+        size = Size;
+        return go;
+    }
+}
+
 // 決まった大きさの置き場。中身は Screen で後から何度でも作り直せる (左上が起点)
 internal sealed class Holder : Widget
 {
@@ -438,6 +473,8 @@ internal sealed class UiScreen
             var c = t.GetChild(i);
             // 入れ子の SortingGroup (スクロール欄) の中の順は、その欄が自分で決める
             if (c.GetComponent<UnityEngine.Rendering.SortingGroup>()) continue;
+            // 重ねる箱の子は、後の子ほど前の子の中身より手前に
+            if (t.name == Layers.NodeName) { Order(c, order + 2 + i * Layers.OrderStep); continue; }
             // 箱の地 (Back) は中身と同じ深さだが中身より先に描き、地の塗り (Back の子) はその間に描く
             Order(c, c.name == BackName ? order : c.name == FillName ? order + 1 : order + 2);
         }
