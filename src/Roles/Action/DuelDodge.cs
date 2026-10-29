@@ -181,6 +181,7 @@ internal static class DuelDodge
         }
         TrailId[slot] = id;
         TrailUntil[slot] = Time.time + TrailTime;
+        SamuraiSound.Dodge(GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null);
         TrailLast[slot] = -10f;
     }
 

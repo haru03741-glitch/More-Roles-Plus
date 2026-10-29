@@ -40,6 +40,7 @@ internal sealed partial class SamuraiBlade
         _iaiPow = 0f;
         _iaiTier = 1;
         _auraHot = _strokePow * 0.8f;
+        if (!_hidden) SamuraiSound.Swing(_role.Player, _strokePow);
     }
 
     // 振り抜いた: 居合なら切っ先が光り、段に応じた斬線を出す
@@ -80,7 +81,12 @@ internal sealed partial class SamuraiBlade
         };
         bool full = c >= 1f;
         _auraHot = full ? 0.85f + 0.15f * FxMath.Sin(now * 25f) : c * 0.7f;
-        if (full && !_chargeFull) Glint(0f, 0f, 0.18f, 0.55f);
+        SamuraiSound.Charge(c);
+        if (full && !_chargeFull)
+        {
+            Glint(0f, 0f, 0.18f, 0.55f);
+            SamuraiSound.ChargeFull();
+        }
         _chargeFull = full;
         SamuraiScreen.Pulse(full);
         return true;
@@ -89,6 +95,7 @@ internal sealed partial class SamuraiBlade
     private void EndCharge()
     {
         if (!_charging) return;
+        SamuraiSound.ChargeStop();
         _charging = _chargeFull = false;
         _auraHot = 0f;
         SamuraiScreen.Pulse(false);

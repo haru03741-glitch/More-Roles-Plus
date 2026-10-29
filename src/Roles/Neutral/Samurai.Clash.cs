@@ -223,6 +223,7 @@ public sealed partial class Samurai
         {
             case Kind.Clash:
                 Spark(a, b, 1f);
+                SamuraiSound.Clash(Pc(a), Pc(b));
                 (RoleState.Of(a) as Samurai)?.OnClash(b, true);
                 (RoleState.Of(b) as Samurai)?.OnClash(a, true);
                 break;
@@ -230,6 +231,7 @@ public sealed partial class Samurai
                 _lockA = a;
                 _lockB = b;
                 Spark(a, b, 1.2f);
+                SamuraiSound.LockOn(Pc(a), Pc(b));
                 (RoleState.Of(a) as Samurai)?.BeginLock(b);
                 (RoleState.Of(b) as Samurai)?.BeginLock(a);
                 break;
@@ -241,6 +243,7 @@ public sealed partial class Samurai
             case Kind.LockEnd:
                 _lockA = _lockB = 255;
                 Spark(a, b, 1.4f);
+                SamuraiSound.LockEnd(Pc(a), Pc(b));
                 (RoleState.Of(a) as Samurai)?.EndLock(lost: false, other: b, tie: tie);
                 (RoleState.Of(b) as Samurai)?.EndLock(lost: !tie, other: a, tie: tie);
                 break;
@@ -248,6 +251,8 @@ public sealed partial class Samurai
     }
 
     // 二人の間 (刀がぶつかった所 = 鍔迫り合いで刀が交わる点) に火花。quiet = 当事者の画面の光と揺れを付けない
+    private static PlayerControl Pc(byte id) => GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null;
+
     private static void Spark(byte a, byte b, float size, bool quiet = false)
     {
         var gd = GameData.Instance;
@@ -323,6 +328,7 @@ public sealed partial class Samurai
     private void EndLock(bool lost = false, byte other = 255, bool tie = false)
     {
         if (_lockWith == 255) return;
+        SamuraiSound.StopLock();
         byte with = _lockWith;
         _lockWith = 255;
         _lockOpp = null;

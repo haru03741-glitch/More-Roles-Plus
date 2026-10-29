@@ -84,6 +84,7 @@ internal sealed unsafe partial class SamuraiBlade
         var pc = _role.Player;
         if (!pc || !EnsureStrike(pc)) return;
         _strikes++;
+        SamuraiSound.Rend(pc, tier);
         // 振った刀の真ん中の向き = 斬った向き
         float mid = (_smA0 + _smA1) * 0.5f;
         float mr = mid * FxMath.Deg2Rad, dx = FxMath.Cos(mr), dy = FxMath.Sin(mr);
@@ -194,6 +195,7 @@ internal sealed unsafe partial class SamuraiBlade
         float at = 0.40f * SheatheSlow;   // 納める振り付けの鍔の光と揃える
         int tier = _dlTier;
         int n = tier >= 4 ? 9 : tier >= 3 ? 6 : 3;
+        SamuraiSound.Delayed(pc, n, at);
         Pal(_dlRed, out float pr, out float pg, out float pb, out float br, out float bg, out float bb);
         float px = _dlX1 - _dlX0, py = _dlY1 - _dlY0;
         for (int i = 0; i < n; i++)

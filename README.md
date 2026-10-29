@@ -44,6 +44,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 - [Mochiy Pop One](https://github.com/fontdasu/Mochiypop) (The MochiyPop Project Authors、SIL Open Font License 1.1): 設定画面の文字のフォント。使う字だけに削って同梱しています (ライセンス文は [Resources/Fonts/OFL.txt](Resources/Fonts/OFL.txt))
 - [OtoLogic](https://otologic.jp/) (CC BY 4.0): 時戻しの演出で鳴る時計の秒針の音。「Clock-Second_Hand04」から 1 打ずつ切り出し、少し低くして低音と響きを重ねています (切り出した音は [tools/sounds/clock_tick_otologic.wav](tools/sounds/clock_tick_otologic.wav))
 - [Freesound](https://freesound.org/) の録音 (CC0): 時戻しの演出で鳴る音。JakobGille・Jeln Pueskas (教会と塔の時計の機械)、Clagnar・weyhingj (歯車・ラチェット)、Crinkem・NachtmahrTV・slag777・PrrLl・bendavisdrumguy (金属のきしみ・唸り・弓で擦ったシンバル)、camel7695・JensZygar・ZoshP (タムタム・ゴング・鐘)、Breviceps (機械の足音)、daalvinz (合唱)、olver (ハープ)、Justjooning (羽ばたき) の録音を切り出して重ねています
+- [Freesound](https://freesound.org/) の録音 (CC0): サムライの刀の音。ethanchase7744・Scottrex05・Hano_van_Dalen・lucabia・Q.K. (刀を抜く・納める・鍔の音)、lmbubec・nekoninja・qubodup・Nomagician・Danjocross・velcronator (刃と風切り)、chungkury・d00121058・kibibu・KVV_Audio (刃と刃がぶつかる・擦れる)、perspektywa_tn・melle_teich・NearTheAtmoshphere・Joshua_van_Zyl・Johnny2810・brandondelehoy・JonasTisell (布が裂ける・服が擦れる)、j_p_higgins・getwecked・thatonecode・unfa・ElevatorFan2020 (氷とガラスが割れる)、michael_grinnell・JoelAudio・The_Chemical_Workshop・cb9382・gecop・weaveofkev (放電と火花)、Robo9418 (金属のきしみ) の録音を切り出して重ねています
 - [TownOfHost-hamo](https://github.com/rar006/TownOfHost-hamo) (rar006、GPL-3.0): 共同制作者の haru の mod
 
 ## ライセンス

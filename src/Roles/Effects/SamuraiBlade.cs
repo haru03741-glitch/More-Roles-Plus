@@ -130,6 +130,11 @@ internal sealed partial class SamuraiBlade
         if (!drawn) _spent = false;
         if (drawn) { Ensure(); _sheatheSlow = 1f; }
         else StrikeSheathed();
+        if (!_hidden)
+        {
+            if (!drawn) SamuraiSound.Sheathe(_role.Player, _sheatheSlow * SlowMo);
+            else if (!iai) SamuraiSound.Draw(_role.Player);
+        }
         if (!_root) return;
         // 振りの途中で納めたら振りを捨てる
         _repT = _endT = -10f;
@@ -143,6 +148,7 @@ internal sealed partial class SamuraiBlade
     {
         if (!_drawn || !Ensure()) return;
         _dashUntil = Time.time + seconds;
+        if (!_hidden) SamuraiSound.Dash(_role.Player);
         Track();
     }
 
@@ -151,6 +157,7 @@ internal sealed partial class SamuraiBlade
 
     internal void SetSpent(bool spent)
     {
+        if (spent && !_spent && _drawn && !_hidden) SamuraiSound.Spent(_role.Player);
         _spent = spent;
         if (_root) Track();
     }

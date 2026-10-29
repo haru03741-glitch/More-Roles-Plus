@@ -51,6 +51,7 @@ internal static class DuelHitFx
     internal static void Burst(PlayerControl target, PlayerControl attacker, int dmg, bool ko)
     {
         float k = FxMath.Clamp01(dmg / 60f);
+        SamuraiSound.Hit(target, ko);
         byte me = PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.PlayerId : (byte)255;
         if (me == target.PlayerId || attacker && me == attacker.PlayerId)
         {
