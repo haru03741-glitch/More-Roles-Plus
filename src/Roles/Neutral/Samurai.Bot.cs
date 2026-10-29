@@ -45,4 +45,12 @@ public sealed partial class Samurai
 
     // 鍔迫り合いの最中か (ホスト)
     internal static bool BotLocked(byte id) => _hlA != 255 && (id == _hlA || id == _hlB);
+
+    // 鍔迫り合いの間のボットの速さ (ホスト): 人と同じく相手との間合いを詰める
+    internal static Vector2 BotLockPull(byte id, PlayerControl self)
+    {
+        byte other = id == _hlA ? _hlB : _hlA;
+        var o = GameData.Instance ? GameData.Instance.GetPlayerById(other)?.Object : null;
+        return o ? LockPull(self.transform.position, o.transform.position) : default;
+    }
 }

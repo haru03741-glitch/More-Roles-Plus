@@ -430,9 +430,9 @@ internal sealed partial class SamuraiBlade
         }
         else if (_lockOn)
         {
-            p = LockPose(now);
+            p = LockPose(now, pc);
             world = true;
-            LockSparks(now, pc, p);
+            LockSparks(now, pc);
         }
         else if (SwingAngle(now, out float a, out float speed, out bool inStroke, out float a0))
         {

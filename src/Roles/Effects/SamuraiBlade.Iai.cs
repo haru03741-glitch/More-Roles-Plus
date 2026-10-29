@@ -90,15 +90,38 @@ internal sealed partial class SamuraiBlade
     // ---- 弾き合い・鍔迫り合い ----
 
     private bool _lockOn;
-    private float _lockAngle, _lockSparkT;
+    private float _lockAngle, _lockSparkT, _lockSign, _lockMx, _lockMy;
+    private PlayerControl _lockOpp;
+    // 鍔迫り合いで刀が交わる点 = 二人の真ん中から LockLift 上・交わるのは刀の真ん中
+    internal const float LockLift = 0.08f;
+    private const float LockCross = 0.5f, LockTilt = 35f;
 
-    // 鍔迫り合い: 相手の方 (angle 度) へ刀を斜めに押し付けたまま震える
-    internal void SetLock(bool on, float angle)
+    // 鍔迫り合い: 相手 (other) の刀と二人の間の一点で X 字に交わるよう押し付けたまま震える
+    internal void SetLock(bool on, byte other)
     {
         if (on && !Ensure()) return;
         _lockOn = on;
-        _lockAngle = angle;
-        if (on) _strokePow = 0f;
+        _lockOpp = on && GameData.Instance ? GameData.Instance.GetPlayerById(other)?.Object : null;
+        if (on)
+        {
+            _strokePow = 0f;
+            var pc = _role.Player;
+            if (pc && _lockOpp)
+            {
+                // 刀を傾ける向き: 番号の小さい方から見て相手が右なら上へ・相手は鏡に映した向き (二人とも切っ先が上の X になる)
+                Vector3 a = pc.transform.position, b = _lockOpp.transform.position;
+                _lockAngle = FxMath.Atan2(b.y - a.y, b.x - a.x) * FxMath.Rad2Deg;
+                bool low = _role.PlayerId < other;
+                float lowDx = low ? b.x - a.x : a.x - b.x;
+                float sLow = lowDx >= 0f ? 1f : -1f;
+                _lockSign = low ? sLow : -sLow;
+            }
+            else
+            {
+                _lockOpp = null;
+                _lockSign = 1f;
+            }
+        }
         Track();
     }
 
@@ -119,29 +142,43 @@ internal sealed partial class SamuraiBlade
         Track();
     }
 
-    private Pose LockPose(float now)
+    // 刀が交わる点へ向けて刀を傾け、拳はその刀の握りの所 (遠ければ拳が体から離れて浮く)。
+    // 二人とも同じ点を通る直線の上に刀を置くので、間合いに関わらず必ずぶつかる
+    private Pose LockPose(float now, PlayerControl pc)
     {
-        float ar = _lockAngle * FxMath.Deg2Rad, co = FxMath.Cos(ar), si = FxMath.Sin(ar);
-        bool right = co >= 0f;
-        // 押し合いで 30 コマ/秒に震える
+        // 押し合いで 30 コマ/秒に震える (刀の向きに押し引きするので交わる点はずれない)
         float shake = (FxMath.Floor(now * 30f) % 2f == 0f ? 1f : -1f) * 0.012f;
+        var opp = _lockOpp;
+        if (opp)
+        {
+            Vector3 a = pc.transform.position, b = opp.transform.position;
+            _lockMx = (b.x - a.x) * 0.5f;
+            _lockMy = (b.y - a.y) * 0.5f + LockLift;
+        }
+        else
+        {
+            float ar = _lockAngle * FxMath.Deg2Rad;
+            _lockMx = FxMath.Cos(ar) * 0.5f;
+            _lockMy = FxMath.Sin(ar) * 0.5f + LockLift;
+        }
+        bool right = _lockMx >= 0f;
+        float th = FxMath.Atan2(_lockMy, _lockMx) * FxMath.Rad2Deg + LockTilt * _lockSign;
+        float tr = th * FxMath.Deg2Rad, back = TipLen * LockCross - shake;
+        float dx = right ? 0.06f : -0.06f;
         return new Pose
         {
-            Fx = co * 0.30f, Fy = si * 0.30f + SwingDrop, Fs = 1.1f, Blade = _lockAngle + (right ? 35f : -35f), BladeA = 1f,
-            Lean = right ? -11f : 11f, Sx = 1.04f, Sy = 0.95f + shake, Turn = 1f, Hop = 0f, Dx = co * 0.06f + shake, Aura = 1f,
+            Fx = _lockMx - FxMath.Cos(tr) * back - dx, Fy = _lockMy - FxMath.Sin(tr) * back, Fs = 1.1f, Blade = th, BladeA = 1f,
+            Lean = right ? -11f : 11f, Sx = 1.04f, Sy = 0.95f + shake, Turn = 1f, Hop = 0f, Dx = dx, Aura = 1f,
         };
     }
 
-    // 押し付けた刀の中ほどから小さな火花が散り続ける
-    private void LockSparks(float now, PlayerControl pc, in Pose p)
+    // 刀が交わる所から小さな火花が散り続ける
+    private void LockSparks(float now, PlayerControl pc)
     {
         if (now - _lockSparkT < 0.12f || _hidden) return;
         _lockSparkT = now;
-        float br = p.Blade * FxMath.Deg2Rad;
         Vector3 at = pc.transform.position;
-        float x = at.x + p.Fx + p.Dx + FxMath.Cos(br) * TipLen * 0.55f;
-        float y = at.y + p.Fy + FxMath.Sin(br) * TipLen * 0.55f;
-        DuelHitFx.Clash(FxMath.V3(x, y, at.z - 0.02f), pc.gameObject.layer, 0.3f);
+        DuelHitFx.Clash(FxMath.V3(at.x + _lockMx, at.y + _lockMy, at.z - 0.02f), pc.gameObject.layer, 0.3f);
     }
 
     // 刀の上の光 (拳から from → to 単位・秒・大きさ)

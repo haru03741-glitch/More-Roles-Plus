@@ -247,7 +247,7 @@ public sealed partial class Samurai
         }
     }
 
-    // 二人の間 (刀がぶつかった所) に火花。quiet = 当事者の画面の光と揺れを付けない
+    // 二人の間 (刀がぶつかった所 = 鍔迫り合いで刀が交わる点) に火花。quiet = 当事者の画面の光と揺れを付けない
     private static void Spark(byte a, byte b, float size, bool quiet = false)
     {
         var gd = GameData.Instance;
@@ -255,7 +255,7 @@ public sealed partial class Samurai
         var pb = gd ? gd.GetPlayerById(b)?.Object : null;
         if (!pa || !pb) return;
         Vector3 x = pa.transform.position, y = pb.transform.position;
-        DuelHitFx.Clash(FxMath.V3((x.x + y.x) * 0.5f, (x.y + y.y) * 0.5f + 0.15f, FxMath.Min(x.z, y.z) - 0.02f), pa.gameObject.layer, size);
+        DuelHitFx.Clash(FxMath.V3((x.x + y.x) * 0.5f, (x.y + y.y) * 0.5f + SamuraiBlade.LockLift, FxMath.Min(x.z, y.z) - 0.02f), pa.gameObject.layer, size);
         if (quiet) return;
         byte me = PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.PlayerId : (byte)255;
         if (me == a || me == b)
@@ -272,6 +272,7 @@ public sealed partial class Samurai
     private static Vector2 _knockDir;
     private float _lockUntil = -10f;
     private byte _lockWith = 255;
+    private PlayerControl _lockOpp;
     private int _mash, _mashSent;
     private float _mashNext;
     private static float _camBase = -1f;
@@ -307,8 +308,9 @@ public sealed partial class Samurai
     {
         if (!Drawn) SetDrawn(true, iai: true);
         _lockWith = other;
+        _lockOpp = GameData.Instance ? GameData.Instance.GetPlayerById(other)?.Object : null;
         _lockUntil = Time.time + LockTime + 1f;
-        _blade.SetLock(true, AngleTo(other));
+        _blade.SetLock(true, other);
         if (!IsLocal) return;
         _mash = _mashSent = 0;
         _mashNext = Time.time + 0.2f;
@@ -323,7 +325,8 @@ public sealed partial class Samurai
         if (_lockWith == 255) return;
         byte with = _lockWith;
         _lockWith = 255;
-        _blade.SetLock(false, 0f);
+        _lockOpp = null;
+        _blade.SetLock(false, 255);
         if (!IsLocal) return;
         UI.DuelHud.EndLock(other == 255 ? -1 : tie ? 0 : lost ? 2 : 1);
         RestoreCam();
@@ -405,15 +408,34 @@ public sealed partial class Samurai
         _hidTop = _hidBottom = _hidChat = null;
     }
 
-    // 本編の FixedUpdate の後置きから: 弾かれている間の速さ・鍔迫り合いの間は止める
+    // 本編の FixedUpdate の後置きから: 弾かれている間の速さ・鍔迫り合いの間は相手との間合いを詰めて止まる
     internal static bool Pushed(out Vector2 velocity)
     {
         velocity = default;
         var s = _local;
-        if (s != null && s._lockWith != 255) return true;
+        if (s != null && s._lockWith != 255)
+        {
+            var p = s.Player;
+            if (p && s._lockOpp) velocity = LockPull(p.transform.position, s._lockOpp.transform.position);
+            return true;
+        }
         if (Time.time >= _knockUntil) return false;
         velocity = FxMath.V2(_knockDir.x * KnockSpeed, _knockDir.y * KnockSpeed);
         return true;
+    }
+
+    // 鍔迫り合いの間合い: 離れていれば相手へ寄り (二人とも寄るので半分ずつ)、近すぎれば少し下がる。刀は間合いに関わらず交わる (SamuraiBlade.LockPose)
+    private const float LockGap = 1f;
+
+    internal static Vector2 LockPull(Vector3 me, Vector3 opp)
+    {
+        float dx = opp.x - me.x, dy = opp.y - me.y, d = FxMath.Sqrt(dx * dx + dy * dy);
+        if (d < 0.001f) return default;
+        float gap = d - LockGap, sp;
+        if (gap > 0.05f) sp = FxMath.Min(gap * 8f, 7f);
+        else if (d < 0.7f) sp = -2f;
+        else return default;
+        return FxMath.V2(dx / d * sp, dy / d * sp);
     }
 
     // 確かめ用: ホストで二人を弾き合わせる (lockNow = すぐ鍔迫り合い)

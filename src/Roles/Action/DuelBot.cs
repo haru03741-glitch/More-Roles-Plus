@@ -123,6 +123,7 @@ internal static class DuelBot
             if (b.Kind == Kind.Samurai && Samurai.BotLocked(b.Id))
             {
                 Dummy.StopWalk(pc);
+                pc.MyPhysics.body.velocity = Samurai.BotLockPull(b.Id, pc);
                 b.MashCarry += MashRate(b) * dt;
                 int n = (int)b.MashCarry;
                 b.MashCarry -= n;
