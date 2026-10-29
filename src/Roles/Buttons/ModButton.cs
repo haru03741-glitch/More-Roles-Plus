@@ -170,6 +170,12 @@ internal sealed class ModButton
         else _button.SetDisabled();
     }
 
+    // ボタンの下の名前を書き換える (切り替えのボタン)
+    public void SetLabel(string label)
+    {
+        if (_button && _button.buttonLabelText) _button.buttonLabelText.text = label;
+    }
+
     // 残りの回数を出す (負なら回数の表示を隠す)
     public void SetUses(int left)
     {

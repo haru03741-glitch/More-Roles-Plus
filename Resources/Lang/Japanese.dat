@@ -129,6 +129,34 @@ Survivor.WinCond: 試合の終わりに生きていれば、どの陣営が勝�
 Survivor.Tips: キルはできません。どの陣営にも狙われないように立ち回りましょう。
 Survivor.Quote: 誰が勝とうと、生きていれば勝ちだ。
 
+# ── サムライ (Samurai) ──
+Samurai.Name: サムライ
+Samurai.Blurb: 刀を抜き、斬るべき者を斬れ
+Samurai.Summary: 刀で向いた方向の相手をまとめて斬れる第三陣営です。
+Samurai.WinCond: 守の道: インポスターを決められた人数斬り、試合の終わりに生きていれば、勝った陣営と一緒に勝ち。修羅の道: 自分以外の生存者が 1 人以下になると一人勝ち
+Samurai.Draw: 抜刀
+Samurai.Draw.Help: 刀を抜きます。もう一度押すと鞘に納めます。抜いている間は刀が全員に見えます。抜くのにも納めるのにも少し時間がかかります。会議が終わると刀は鞘に戻っています。
+Samurai.Draw.Short: 刀を抜く・納める
+Samurai.Sheathe: 納刀
+Samurai.Slash: 斬る
+Samurai.Slash.Help: 刀を抜いている間だけ使えます。PC はマウスの指す方向、スマホは歩いている方向へ刀を振り、前方へ扇形に広がる範囲にいる全員を斬ります。振りかぶってから斬るまでに一瞬の間があり、その間に離れれば避けられます。壁の向こうには届きません。
+Samurai.Slash.Short: 向いた方向を扇形に斬る
+Samurai.Paths: 守の道と修羅の道
+Samurai.Paths.Help: 始めは守の道です。インポスター以外を決められた人数斬ると修羅の道に堕ち、守の道の勝ちがなくなります。堕ちたことはあなたにだけ知らされます。
+Samurai.Paths.Short: 斬った相手で道が変わる
+Samurai.Tips: 刀を抜くと、見た人にはサムライだと分かります。クルーにとって、インポスターを斬ってくれるあなたは心強い味方です。
+Samurai.Quote: 抜いたからには、斬る。
+Samurai.PathKills: 守の道で斬るインポスターの数
+Samurai.FallKills: 修羅に堕ちるまでの、インポスター以外を斬った数
+Samurai.AnnounceFall: 修羅に堕ちたことを全員に知らせる
+Samurai.SlashCooldown: 斬るの待ち時間
+Samurai.SlashRange: 斬れる距離
+Samurai.PathDesc: 守の道: インポスターを斬った数 {n}/{max}
+Samurai.FallenDesc: 修羅の道: 自分以外の生存者を 1 人以下にしろ
+Samurai.PathNotice: <color=#4A8CFF>守の道を極めた。生き延びれば勝ちだ</color>
+Samurai.FellNotice: <color=#C0203A>修羅に堕ちた。もう誰とも勝てない</color>
+Samurai.FellAnnounce: <color=#C0203A>サムライが修羅に堕ちた</color>
+
 # ── 鷹の目 (Hawkeye) ──
 Hawkeye.Name: 鷹の目
 Hawkeye.Blurb: 遠くまで見通せる

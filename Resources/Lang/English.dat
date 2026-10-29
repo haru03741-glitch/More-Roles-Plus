@@ -129,6 +129,34 @@ Survivor.WinCond: Win with whoever wins, as long as you are alive at the end of 
 Survivor.Tips: You cannot kill. Stay out of every team's way.
 Survivor.Quote: Whoever wins, staying alive is my victory.
 
+# ── Samurai ──
+Samurai.Name: Samurai
+Samurai.Blurb: Draw your blade and cut down those who deserve it
+Samurai.Summary: A neutral who can cut down everyone in the direction they face.
+Samurai.WinCond: Path of the Guardian: cut down the set number of Impostors and be alive at the end to win with the winning team. Path of Carnage: win alone when at most one other player is left alive
+Samurai.Draw: Draw
+Samurai.Draw.Help: Draws your katana. Press again to sheathe it. While drawn, everyone can see your katana. Drawing and sheathing both take a moment. Your katana is sheathed again after each meeting.
+Samurai.Draw.Short: Draw or sheathe your katana
+Samurai.Sheathe: Sheathe
+Samurai.Slash: Slash
+Samurai.Slash.Help: Only while your katana is drawn. Swings toward the mouse cursor on PC, or the direction you are walking on mobile, cutting down everyone in the arc in front of you. There is a brief wind-up before the cut, so players can dodge by stepping away. It does not reach through walls.
+Samurai.Slash.Short: Cut everyone in the arc you face
+Samurai.Paths: Guardian and Carnage
+Samurai.Paths.Help: You start on the Path of the Guardian. Cutting down the set number of non-Impostors makes you fall to the Path of Carnage, and you can no longer win as a Guardian. Only you are told that you have fallen.
+Samurai.Paths.Short: Who you cut decides your path
+Samurai.Tips: Drawing your katana reveals what you are. To the Crewmates, a Samurai who cuts down Impostors is a strong ally.
+Samurai.Quote: Once drawn, the blade must cut.
+Samurai.PathKills: Impostors to cut for the Guardian path
+Samurai.FallKills: Non-Impostors cut before falling to Carnage
+Samurai.AnnounceFall: Tell everyone when the Samurai falls
+Samurai.SlashCooldown: Slash Cooldown
+Samurai.SlashRange: Slash Range
+Samurai.PathDesc: Path of the Guardian: Impostors cut {n}/{max}
+Samurai.FallenDesc: Path of Carnage: leave at most one other player alive
+Samurai.PathNotice: <color=#4A8CFF>You have mastered the Guardian path. Survive to win</color>
+Samurai.FellNotice: <color=#C0203A>You have fallen to Carnage. You can no longer win with anyone</color>
+Samurai.FellAnnounce: <color=#C0203A>The Samurai has fallen to Carnage</color>
+
 # ── Hawkeye ──
 Hawkeye.Name: Hawkeye
 Hawkeye.Blurb: See further than the rest
