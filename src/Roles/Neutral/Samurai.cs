@@ -142,7 +142,11 @@ public sealed partial class Samurai : RoleBase
     }
 
     // 確かめ用: 他人から届いた一振りと同じ再生を自分の刀で流す (当たりは無し)
-    internal void ShowForTest(float a0, float sweep, float seconds) => _blade.Replay(a0, sweep, seconds, _fallen);
+    internal void ShowForTest(float a0, float sweep, float seconds, float iaiPow = -1f)
+    {
+        if (iaiPow >= 0f) _blade.ArmIai(iaiPow);
+        _blade.Replay(a0, sweep, seconds, _fallen);
+    }
 
     private static readonly RemoteCall<Stroke> StrokeCall = new("Samurai.Stroke", Route.ToHost,
         // Hazel に short の書き手は無い (int の 4 バイトになる)。読み手の ReadInt16 と合わせて 2 バイトで書く
@@ -150,7 +154,7 @@ public sealed partial class Samurai : RoleBase
         r => new Stroke(r.ReadInt16(), r.ReadInt16(), r.ReadUInt16(), r.ReadByte()),
         (sender, s) => (RoleState.Of(sender) as Samurai)?.HostStroke(s), perSecond: 8);
 
-    // 振った姿 (ホスト → 全員)。値 = 振った人 | 修羅の色 << 7 | 始めの角度 + 180 << 8 | 掃引角 + 512 << 17 (10 bit) | 居合 << 27・ms は別
+    // 振った姿 (ホスト → 全員)。値 = 振った人 | 修羅の色 << 7 | 始めの角度 + 180 << 8 | 掃引角 + 512 << 17 (10 bit) | 居合 << 27 | 居合の溜め (0〜15) << 28・ms は別
     private static readonly RemoteCall<(int head, ushort ms)> ShowCall = new("Samurai.Show", Route.HostToAll,
         (w, m) => { w.Write(m.head); w.Write(m.ms); }, r => (r.ReadInt32(), r.ReadUInt16()),
         (_, m) => (RoleState.Of((byte)(m.head & 0x7F)) as Samurai)?.ShowStroke(m.head, m.ms));
@@ -161,7 +165,11 @@ public sealed partial class Samurai : RoleBase
         bool fallen = (head >> 7 & 1) != 0;
         float a0 = ((head >> 8) & 0x1FF) - 180f;
         float sweep = ((head >> 17) & 0x3FF) - 512f;
-        if ((head >> 27 & 1) != 0) SetDrawn(true, iai: true);
+        if ((head >> 27 & 1) != 0)
+        {
+            SetDrawn(true, iai: true);
+            _blade.ArmIai(((head >> 28) & 0xF) / 15f);
+        }
         _blade.Replay(a0, sweep, ms / 1000f, fallen);
     }
 
@@ -197,7 +205,7 @@ public sealed partial class Samurai : RoleBase
         float sweep = Math.Clamp((int)s.Sweep, -(int)SwipeInput.MaxSweep, (int)SwipeInput.MaxSweep);
         // 速さ (= 威力) は客の申告なので、人の手で出せない短さは丸める
         float secs = Math.Clamp(s.Ms / 1000f, MinStrokeSeconds, SwipeInput.MaxSeconds);
-        int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17 | (iai ? 1 : 0) << 27;
+        int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17 | (iai ? 1 : 0) << 27 | (int)MathF.Round(charge * 15f) << 28;
         ShowCall.Send((head, (ushort)(secs * 1000f)));
         if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f));
         int dmg = Damage(FxMath.Abs(sweep) / secs);
@@ -359,7 +367,7 @@ public sealed partial class Samurai : RoleBase
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] duel[{Duel.Describe()}]";
+        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] duel[{Duel.Describe()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。

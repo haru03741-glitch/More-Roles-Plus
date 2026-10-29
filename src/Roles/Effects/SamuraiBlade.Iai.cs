@@ -1,0 +1,142 @@
+using MoreRolesPlus.Fx;
+using UnityEngine;
+
+namespace MoreRolesPlus.Roles;
+
+// 居合の見た目。溜め (本人の画面だけ): 拳を腰の鯉口に添えて沈み、震えながらオーラが大きく白く焼ける。溜め切ると拳が光り、画面が脈打って暗む。
+// 放つ (全員の画面): 抜いた所で鯉口が光り、一振りは溜めた分だけ大きく前へ踏み出して太い三日月を残し、振り抜いた形で長く止まって切っ先が光る
+internal sealed partial class SamuraiBlade
+{
+    private const float IaiHold = 0.25f;   // 溜め切った居合で、振り抜いた形に足す止めの秒
+
+    private float _iaiPow, _strokePow, _auraHot;
+    private bool _powArmed, _wasInStroke, _charging, _chargeFull;
+
+    // 納めたまま押している (自分の刀): 毎フレーム書く列に入れる
+    internal void Charging()
+    {
+        if (Ensure()) Track();
+    }
+
+    // 居合で抜いた。pow = 溜め (0〜1)。続く一振りがこの強さになる
+    internal void ArmIai(float pow)
+    {
+        if (!Ensure()) return;
+        EndCharge();
+        _iaiPow = FxMath.Clamp01(pow);
+        _powArmed = true;
+        Glint(0.06f, 0.06f, 0.10f + 0.06f * _iaiPow, 0.30f + 0.5f * _iaiPow);
+        Track();
+    }
+
+    private void BeginStroke()
+    {
+        _strokePow = _powArmed ? _iaiPow : 0f;
+        _powArmed = false;
+        _iaiPow = 0f;
+        _auraHot = _strokePow * 0.8f;
+    }
+
+    // 振り抜いた: 居合なら切っ先が光る
+    private void EndStroke()
+    {
+        if (_strokePow > 0.05f) Glint(TipLen - 0.04f, TipLen - 0.04f, 0.14f + 0.10f * _strokePow, 0.30f + 0.55f * _strokePow);
+    }
+
+    // 居合の一振り: 振る向きへ大きく踏み出して浮き、前へ深く傾く
+    private void IaiLunge(ref Pose p, float angle, float progress)
+    {
+        float k = _strokePow;
+        float bulge = FxMath.Sin(FxMath.Clamp01(progress) * FxMath.PI);
+        float co = FxMath.Cos(angle * FxMath.Deg2Rad);
+        p.Dx += co * 0.30f * k * bulge;
+        p.Hop += 0.05f * k * bulge;
+        p.Lean *= 1f + 0.5f * k;
+        p.Fs += 0.15f * k;
+        p.Aura = FxMath.Max(p.Aura, 0.8f + 0.4f * k);
+    }
+
+    // 溜めの姿 (自分の刀で、納めたまま押している間だけ)。溜めていなければ false
+    private bool ChargePose(float now, out Pose p)
+    {
+        p = default;
+        if (this != LocalFollow || !SwipeInput.Dragging || SwipeInput.InStroke) return false;
+        float c = _role.Charge;
+        _charging = true;
+        // 30 コマ/秒で左右に震える (溜めるほど大きく)
+        float shake = (FxMath.Floor(now * 30f) % 2f == 0f ? 1f : -1f) * 0.010f * c;
+        p = new Pose
+        {
+            Lean = -5f * c, Sx = 1f + 0.10f * c, Sy = 1f - 0.12f * c, Turn = 1f, Hop = 0f, Dx = shake,
+            Fx = -0.06f, Fy = -0.15f, Fs = FxMath.Clamp01(0.3f + 4f * c), Blade = 200f, BladeA = 0f,
+            Aura = 0.2f + 0.8f * c,
+        };
+        bool full = c >= 1f;
+        _auraHot = full ? 0.85f + 0.15f * FxMath.Sin(now * 25f) : c * 0.7f;
+        if (full && !_chargeFull) Glint(0f, 0f, 0.18f, 0.55f);
+        _chargeFull = full;
+        SamuraiScreen.Pulse(full);
+        return true;
+    }
+
+    private void EndCharge()
+    {
+        if (!_charging) return;
+        _charging = _chargeFull = false;
+        _auraHot = 0f;
+        SamuraiScreen.Pulse(false);
+    }
+
+    // 刀の上の光 (拳から from → to 単位・秒・大きさ)
+    private void Glint(float from, float to, float dur, float size)
+    {
+        _glT = Time.time;
+        _glFrom = from;
+        _glTo = to;
+        _glDur = dur;
+        _glSize = size;
+        _gl2T = -10f;
+    }
+}
+
+// 自分の画面だけの全画面の明滅 (本編の FullScreen を借りる)。溜め切った間の脈打ちと、斬り合いの当たりの 1 コマの暗転。
+// 本編やサボタージュの点滅が使っている間は借りない
+internal static class SamuraiScreen
+{
+    private static bool _own, _pulse;
+    private static float _flashUntil = -10f, _flashA;
+
+    internal static void Pulse(bool on) => _pulse = on;
+
+    internal static string Describe() => $"own={_own} pulse={_pulse} flash={(Time.time < _flashUntil ? "on" : "off")}";
+
+    internal static void Flash(float alpha, float seconds)
+    {
+        _flashA = alpha;
+        _flashUntil = Time.time + seconds * SamuraiBlade.SlowMo;
+    }
+
+    // 毎フレーム。使っていなければ比較だけで帰る
+    internal static void Tick()
+    {
+        float now = Time.time;
+        if (!_own && !_pulse && now >= _flashUntil) return;
+        var hud = Vanilla.Hud;
+        var fs = hud ? hud.FullScreen : null;
+        if (!fs) { _own = _pulse = false; return; }
+        float a = now < _flashUntil ? _flashA : _pulse && FxMath.Repeat(now * 4f, 1f) < 0.35f ? 0.22f : 0f;
+        if (a <= 0f)
+        {
+            if (_own) fs.gameObject.SetActive(false);
+            _own = false;
+            return;
+        }
+        if (!_own)
+        {
+            if (fs.gameObject.activeSelf) return;
+            _own = true;
+            fs.gameObject.SetActive(true);
+        }
+        fs.color = FxMath.Rgba(0.04f, 0.01f, 0.08f, a);
+    }
+}

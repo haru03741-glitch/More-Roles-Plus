@@ -145,19 +145,22 @@ internal sealed partial class SamuraiBlade
         float sway = 0.012f * f2;
         float y = 0.24f + hop;
         _auraOutTf.localPosition = FxMath.V3(sway, y + 0.04f, AuraZ);
-        _auraOutTf.localScale = FxMath.V3(1.55f, 1.75f * fy, 1f);
+        // 溜め (_auraHot) で炎が大きく、内の色が白く焼ける
+        float big = 1f + 0.35f * _auraHot;
+        _auraOutTf.localScale = FxMath.V3(1.55f * big, 1.75f * fy * big, 1f);
         _auraInTf.localPosition = FxMath.V3(-sway * 0.5f, y, AuraZ - 0.0002f);
-        _auraInTf.localScale = FxMath.V3(1.2f, 1.35f * (2f - fy), 1f);
+        _auraInTf.localScale = FxMath.V3(1.2f * big, 1.35f * (2f - fy) * big, 1f);
         float a = FxMath.Clamp01(level);
+        float h = _auraHot * 0.7f;
         if (_fallenTint)
         {
             _auraOut.color = FxMath.Rgba(1f, 0.15f, 0.25f, 0.7f * a);
-            _auraIn.color = FxMath.Rgba(1f, 0.45f, 0.35f, 0.8f * a);
+            _auraIn.color = FxMath.Rgba(1f, 0.45f + 0.55f * h, 0.35f + 0.65f * h, 0.8f * a);
         }
         else
         {
             _auraOut.color = FxMath.Rgba(1f, 0.30f, 0.62f, 0.7f * a);
-            _auraIn.color = FxMath.Rgba(0.25f, 0.5f, 1f, 0.8f * a);
+            _auraIn.color = FxMath.Rgba(0.25f + 0.75f * h, 0.5f + 0.5f * h, 1f, 0.8f * a);
         }
         WriteGlint(now);
     }

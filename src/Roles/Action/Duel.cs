@@ -27,6 +27,7 @@ internal static class Duel
     internal static event Action<byte, byte, int> OnHit;   // (攻撃した人, 当たった人, 残りの体力)
 
     internal static int Started, Hits;
+    internal static int LastDamage; // 今の OnHit で減った体力 (回復なら負)
 
     private static Lifespan _hooked;
 
@@ -40,6 +41,7 @@ internal static class Duel
         _hooked = match;
         Reset();
         UI.DuelHud.Hook();
+        DuelHitFx.Hook();
         Events<MeetingStartEvent>.Subscribe(_ => OnMeeting(), match, owner: "Duel");
     }
 
@@ -85,6 +87,7 @@ internal static class Duel
                 OnStart?.Invoke(a, t);
                 break;
             case Kind.Hit:
+                LastDamage = Hp[t] - hp;
                 Hp[t] = (byte)hp;
                 Hits++;
                 OnHit?.Invoke(a, t, hp);

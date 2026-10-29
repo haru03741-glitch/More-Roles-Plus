@@ -185,6 +185,7 @@ internal sealed partial class SamuraiBlade
     internal void Dispose()
     {
         Live.Remove(this);
+        EndCharge();
         RestoreBody();
         DisposeFx();
         if (_root) Object.Destroy(_root);
@@ -255,6 +256,7 @@ internal sealed partial class SamuraiBlade
     // 毎フレーム (動いている刀だけ)
     internal static void TickAll()
     {
+        SamuraiScreen.Tick();
         TickFx();
         if (Live.Count == 0) return;
         _frame++;
@@ -293,8 +295,9 @@ internal sealed partial class SamuraiBlade
     {
         if ((now - _drawT) / SlowMo < 0.6f || now < _dashUntil) return true;
         if (this == LocalFollow && (SwipeInput.Dragging || _localStroke)) return true;
+        if (_powArmed) return true;
         if ((now - _repT) / SlowMo <= _repDur + 0.05f) return true;
-        return (now - _endT) / SlowMo < Hold + Recover || SmearLive;
+        return (now - _endT) / SlowMo < Hold + IaiHold * _strokePow + Recover || SmearLive;
     }
 
     // 振り付けの t 秒の姿
@@ -400,10 +403,15 @@ internal sealed partial class SamuraiBlade
         Pose p;
         bool world = false;
         bool drawing = td < DrawKeys[^1].T;
-        if (!_drawn)
+        if (!_drawn && td >= SheatheKeys[^1].T && ChargePose(now, out var cp))
+        {
+            p = cp;
+        }
+        else if (!_drawn)
         {
             if (td >= SheatheKeys[^1].T)
             {
+                EndCharge();
                 _swinging = false;
                 _root.SetActive(false);
                 RestoreBody();
@@ -423,7 +431,11 @@ internal sealed partial class SamuraiBlade
             float sweep = a - a0;
             float prog = this == LocalFollow && SwipeInput.Dragging ? FxMath.Clamp01(FxMath.Abs(sweep) / 360f) : FxMath.Clamp01((now - _repT) / SlowMo / _repDur);
             float shownSweep = this == LocalFollow && SwipeInput.Dragging ? sweep : _repSweep;
+            if (inStroke && !_wasInStroke) BeginStroke();
+            else if (!inStroke && _wasInStroke) EndStroke();
+            _wasInStroke = inStroke;
             p = SwingPose(a, speed, prog, shownSweep);
+            if (_strokePow > 0f) IaiLunge(ref p, a, prog);
             world = true;
             if (inStroke)
             {
@@ -437,16 +449,19 @@ internal sealed partial class SamuraiBlade
         }
         else
         {
+            if (_wasInStroke) EndStroke();
+            _wasInStroke = false;
             if (_swinging) ReleaseSmear();
             float te = (now - _endT) / SlowMo;
-            if (_endWorld && te < Hold + Recover)
+            float hold = Hold + IaiHold * _strokePow;
+            if (_endWorld && te < hold + Recover)
             {
                 // 振り抜いた形で止め、構えへ戻る (戻る間は右/左の向きへ鏡に移る)
                 p = _endPose;
                 world = true;
-                if (te >= Hold)
+                if (te >= hold)
                 {
-                    float u = (te - Hold) / Recover;
+                    float u = (te - hold) / Recover;
                     u = u * u * (3f - 2f * u);
                     var st = Stance(now);
                     if (_flip) Mirror(ref st);
@@ -456,6 +471,7 @@ internal sealed partial class SamuraiBlade
             else
             {
                 _endWorld = false;
+                _strokePow = _auraHot = 0f;
                 SampleMoving(pc);
                 p = Stance(FxMath.Floor(now * 15f) / 15f);
             }

@@ -141,7 +141,7 @@ Samurai.Slash: Slash
 Samurai.Slash.Help: While your katana is drawn, hold the left mouse button and move the mouse on PC, or drag on the right half of the screen on mobile, and the katana follows your motion. Faster swings cut harder. Anyone you cut enters a one-on-one duel with you, losing health with each cut and falling at zero. It does not reach through walls. Press Shift on PC (the dash button on mobile) to dash toward the mouse (your walking direction on mobile). You cannot walk with the mouse, so walk with the keys.
 Samurai.Slash.Short: Swipe to swing and wear down health
 Samurai.Ki: Spirit
-Samurai.Ki.Help: Every swing and dash spends spirit, shown as the ring at your feet. Spirit refills quickly while sheathed, slowly while you stand still with your katana drawn, and barely at all while walking. Run out and your katana droops, leaving you unable to act for a moment. The back of the ring is notched with how many you have cut down.
+Samurai.Ki.Help: Every swing and dash spends spirit, shown as the ring at your feet. Spirit refills quickly while sheathed, slowly while you stand still with your katana drawn, and even more slowly while walking. Run out and your katana droops, leaving you unable to act for a moment. The back of the ring is notched with how many you have cut down.
 Samurai.Ki.Short: Each swing spends spirit; run dry and you are open
 Samurai.Paths: Guardian and Carnage
 Samurai.Paths.Help: You start on the Path of the Guardian. Cutting down the set number of non-Impostors makes you fall to the Path of Carnage, and you can no longer win as a Guardian. Only you are told that you have fallen.

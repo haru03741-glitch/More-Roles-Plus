@@ -9,12 +9,12 @@ namespace MoreRolesPlus.Roles.Neutral;
 // サムライの操作と「気」。本編の能力ボタンも待ち時間も使わない。
 //   納刀中に押して溜め、なぞる = 居合 (抜きながら斬る・溜めた分だけ強い)
 //   抜刀中のなぞり = 斬る (気を使う)・右クリック (スマホは鞘のボタン) = 納刀・Shift (スマホは踏み込みのボタン) = 踏み込み (気を使う)
-// 気は納めている間に速く、抜いて止まっている間はゆっくり溜まり、歩いている間はほとんど溜まらない。尽きると刀が下がってしばらく何もできない
+// 気は納めている間に速く、抜いて止まっている間はゆっくり溜まり、歩いている間はさらにゆっくり溜まる。尽きると刀が下がってしばらく何もできない
 public sealed partial class Samurai
 {
     internal const float KiMax = 100f;
-    private const float StrokeCost = 22f, DashCost = 30f;
-    private const float RegenSheathed = 34f, RegenStill = 12f, RegenMoving = 4f;
+    private const float StrokeCost = 18f, DashCost = 26f;
+    private const float RegenSheathed = 34f, RegenStill = 16f, RegenMoving = 8f;
     internal const float SpentTime = 1.6f;
     private const float KiSlack = 25f;             // ホストの気の見積もりの余裕 (踏み込みはホストへ届かないので、ホストの方が多めに見る)
     internal const float ChargeTime = 1.0f;        // 居合を溜め切るまで (押してから)
@@ -146,6 +146,7 @@ public sealed partial class Samurai
         SwipeInput.Arm(free && ready && !Spent ? p : null);
         _ring?.Tick(alive && !MeetingHud.Instance);
         _padOn = UI.SamuraiPad.Tick(this, free && alive);
+        if (!Drawn && SwipeInput.Dragging) _blade.Charging();
         // 居合で抜いたのに一振りを送らずに離した: 抜いたことだけを全員へ
         if (_iaiStroke && !SwipeInput.Dragging)
         {
@@ -194,6 +195,7 @@ public sealed partial class Samurai
         _iaiStroke = true;
         _iaiCharge = ChargeOf(Time.time - SwipeInput.PressedAt);
         SetDrawn(true, iai: true);
+        _blade.ArmIai(_iaiCharge);
     }
 
     // ---- 踏み込み ----

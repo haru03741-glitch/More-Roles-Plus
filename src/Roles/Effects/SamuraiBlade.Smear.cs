@@ -21,7 +21,7 @@ internal sealed unsafe partial class SamuraiBlade
     private Mesh _smearMesh;
     private Il2CppStructArray<Vector3> _smV;
     private Il2CppStructArray<Color32> _smC;
-    private float _smA0, _smA1, _smCx, _smCy, _smZ, _smStr = 1f;
+    private float _smA0, _smA1, _smCx, _smCy, _smZ, _smStr = 1f, _smPow;
     private float _smT = -10f;   // 薄れ始めた時刻 (-10 = 描いている途中)
     private bool _smOn, _smRed;
 
@@ -53,6 +53,7 @@ internal sealed unsafe partial class SamuraiBlade
         _smA0 = a0;
         _smA1 = a1;
         _smStr = strength;
+        _smPow = world ? _strokePow : 0f;
         _smRed = this == LocalFollow || !world ? _fallenTint : _repFallen;
         _smT = -10f;
         _smOn = true;
@@ -70,7 +71,8 @@ internal sealed unsafe partial class SamuraiBlade
     internal void FadeSmear(float now)
     {
         if (!_smOn || _smT < 0f) return;
-        float u = (now - _smT) / (SmFade * SlowMo);
+        // 居合の三日月は長く残る
+        float u = (now - _smT) / (SmFade * (1f + 1.6f * _smPow) * SlowMo);
         if (u >= 1f)
         {
             _smOn = false;
@@ -141,8 +143,9 @@ internal sealed unsafe partial class SamuraiBlade
             float ang = (a0 + span * u) * FxMath.Deg2Rad;
             float co = FxMath.Cos(ang), si = FxMath.Sin(ang);
             // 太さ: 尾は細く先頭へ太る (先頭の手前で最も太い三日月)
-            float thick = (0.06f + 0.62f * FxMath.Pow(u, 1.2f) * (1f - 0.3f * u * u)) * grow * (0.6f + 0.4f * _smStr);
-            float rOut = SmOut * spread;
+            // 居合は溜めた分だけ太く、外へ大きく張り出す
+            float thick = (0.06f + 0.62f * FxMath.Pow(u, 1.2f) * (1f - 0.3f * u * u)) * grow * (0.6f + 0.4f * _smStr) * (1f + 0.9f * _smPow);
+            float rOut = SmOut * spread * (1f + 0.35f * _smPow);
             float rIn = rOut - thick;
             float au = FxMath.Pow(u, 0.45f) * (u < eat ? 0f : FxMath.Clamp01((u - eat) / 0.12f)) * alpha;
             // 尾の濃い桃から先頭の濃い青 (陣営の青→桃を地の床に負けない濃さで)・修羅は暗い赤から明るい赤
@@ -156,7 +159,8 @@ internal sealed unsafe partial class SamuraiBlade
                 vp[vi * 3] = _smCx + co * rad;
                 vp[vi * 3 + 1] = _smCy + si * rad;
                 vp[vi * 3 + 2] = _smZ;
-                float w = RingW[r];
+                // 居合は芯の白が内へ広がる
+                float w = RingW[r] + (1f - RingW[r]) * 0.45f * _smPow * RingA[r];
                 byte* c = cp + vi * 4;
                 c[0] = (byte)(255f * (cr + (1f - cr) * w));
                 c[1] = (byte)(255f * (cg + (1f - cg) * w));

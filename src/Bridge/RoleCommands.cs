@@ -130,7 +130,7 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("samurai", "[sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒>] 自分のサムライの状態 / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し)", (args, reply) =>
+        TestBridge.Register("samurai", "[sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] | hitfx <番号> <威力> [ko]] 自分のサムライの状態 / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い)", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -144,6 +144,14 @@ internal static class RoleCommands
             {
                 SamuraiBlade.SlowMo = System.Math.Clamp(slow, 0.1f, 20f);
                 reply($"OK samurai slow={SamuraiBlade.SlowMo}");
+                return;
+            }
+            if (p.Length >= 3 && p[0] == "hitfx" && byte.TryParse(p[1], out byte hid) && int.TryParse(p[2], out int hdmg))
+            {
+                var ht = GameData.Instance ? GameData.Instance.GetPlayerById(hid)?.Object : null;
+                if (!ht) { reply("ERR samurai hitfx no player"); return; }
+                DuelHitFx.Burst(ht, PlayerControl.LocalPlayer, hdmg, p.Length >= 4 && p[3] == "ko");
+                reply($"OK samurai hitfx {hid} {hdmg}");
                 return;
             }
             if (RoleState.Local is not Roles.Neutral.Samurai sm) { reply("ERR samurai not Samurai"); return; }
@@ -162,7 +170,11 @@ internal static class RoleCommands
                      && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float s0)
                      && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float sw)
                      && float.TryParse(p[3], System.Globalization.NumberStyles.Float, inv, out float ss))
-                sm.ShowForTest(s0, sw, ss);
+            {
+                float pow = -1f;
+                if (p.Length >= 5) float.TryParse(p[4], System.Globalization.NumberStyles.Float, inv, out pow);
+                sm.ShowForTest(s0, sw, ss, pow);
+            }
             else if (p.Length >= 4 && p[0] == "swipe"
                      && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float a0)
                      && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float a1)
