@@ -34,6 +34,12 @@ public sealed partial class Samurai : RoleBase
     private const float Touching = 0.3f;          // これより近い人は向きによらず当たる
     private const int WinCheckMs = 500;
     private const float MinStrokeSeconds = 0.12f;
+    // 突き: 斬りより遠くまで細く届く (斬れる距離 + ThrustExtra・向きの左右 12 度・体の幅 ThrustWidth までは向きがずれても当たる)
+    internal const float ThrustExtra = 0.8f;
+    private const float ThrustWidth = 0.3f, ThrustTan = 0.2126f; // tan 12°
+    private const int ThrustDamage = 30;
+    internal const ushort ThrustMs = 120;
+    internal const byte ThrustFlag = 0x80; // 一振りの段の上の bit = 突き
 
     // 一振りの威力 = 角速度 (度/秒) の帯。居合は溜めた分を足す
     private static int Damage(float degPerSec) => degPerSec >= 1000f ? 40 : degPerSec >= 600f ? 30 : 20;
@@ -109,7 +115,7 @@ public sealed partial class Samurai : RoleBase
 
     // ---- 斬る (なぞりの一振り) ----
 
-    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms・居合 (0 = 違う・1〜255 = 居合で溜め (v-1)/254)・居合の段 (1〜4)
+    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms・居合 (0 = 違う・1〜255 = 居合で溜め (v-1)/254)・居合の段 (1〜4・突きは ThrustFlag を足す)
     private readonly struct Stroke
     {
         public readonly short A0, Sweep;
@@ -138,14 +144,46 @@ public sealed partial class Samurai : RoleBase
     // 自分の端末: なぞりで一振りが出来た。軌跡は手元で描いているので、ホストへ当たりを頼むだけ
     private void OnLocalStroke(float a0, float sweep, float seconds)
     {
-        if (!Drawn) return;
+        if (!Drawn || Spent) return;
         bool iai = _iaiStroke;
         _iaiStroke = false;
-        UseKi(StrokeCost);
+        UseKi(LocalStrokeCost(!iai));
         _sent++;
         byte charge = iai ? (byte)(1 + (int)MathF.Round(_iaiCharge * 254f)) : (byte)0;
         _sentIai = charge;
         StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000), charge, (byte)(iai ? _iaiTier : 1)));
+    }
+
+    // 自分の端末: 外へ押し出して突いた。納めていれば抜きながら突く (居合・溜めた分だけ強い・段は 1)。
+    // 突いた向きへ少しだけ前へ出る (気は突きの分だけ)
+    private void OnLocalThrust(float angle)
+    {
+        if (Spent) return;
+        bool iai = _iaiStroke;
+        _iaiStroke = false;
+        if (!Drawn)
+        {
+            iai = true;
+            _iaiCharge = ChargeOf(Time.time - SwipeInput.PressedAt);
+            SetDrawn(true, iai: true);
+            _blade.ArmIai(_iaiCharge, 1);
+        }
+        UseKi(LocalStrokeCost(false));
+        _sent++;
+        _blade.Thrust(angle, _fallen);
+        float ar = angle * FxMath.Deg2Rad;
+        Lunge(FxMath.Cos(ar), FxMath.Sin(ar));
+        byte charge = iai ? (byte)(1 + (int)MathF.Round(_iaiCharge * 254f)) : (byte)0;
+        _sentIai = charge;
+        StrokeCall.Send(new Stroke((short)MathF.Round(angle), 0, ThrustMs, charge, (byte)(1 | ThrustFlag)));
+    }
+
+    // 確かめ用: 外へ突いた扱いにする (hold 秒押したまま溜めてから)
+    internal bool ThrustForTest(float angle, float hold = 0f)
+    {
+        if (!SwipeInput.Armed) return false;
+        SwipeInput.SynthThrust(angle, hold);
+        return true;
     }
 
     // 確かめ用: なぞりを作り物で流す (a0 → a1 度を秒で・hold 秒押したまま溜めてから)
@@ -177,9 +215,11 @@ public sealed partial class Samurai : RoleBase
     private void ShowStroke(int head, ushort ms, byte tier)
     {
         if (IsLocal) return;
-        // ホストは確かめた時に引いている
-        if (!AmongUsClient.Instance.AmHost) _hostKi = HostKiNow() - StrokeCost;
         bool fallen = (head >> 7 & 1) != 0;
+        bool thrust = (tier & ThrustFlag) != 0;
+        // ホストは確かめた時に引いている
+        if (!AmongUsClient.Instance.AmHost) _hostKi = HostKiNow() - SeenStrokeCost(!thrust && (head >> 27 & 1) == 0);
+        tier &= 0x7F;
         float a0 = ((head >> 8) & 0x1FF) - 180f;
         float sweep = ((head >> 17) & 0x3FF) - 512f;
         if ((head >> 27 & 1) != 0)
@@ -187,7 +227,8 @@ public sealed partial class Samurai : RoleBase
             SetDrawn(true, iai: true);
             _blade.ArmIai(((head >> 28) & 0xF) / 15f, tier);
         }
-        _blade.Replay(a0, sweep, ms / 1000f, fallen);
+        if (thrust) _blade.Thrust(a0, fallen);
+        else _blade.Replay(a0, sweep, ms / 1000f, fallen);
     }
 
     // ホスト: 一振りを確かめ、掃引した扇の中の生きている人に当てる (壁越しは当たらない)
@@ -210,6 +251,7 @@ public sealed partial class Samurai : RoleBase
             return;
         }
         _hostStrokes++;
+        bool thrust = (s.Tier & ThrustFlag) != 0;
         float charge = 0f;
         if (iai)
         {
@@ -218,21 +260,24 @@ public sealed partial class Samurai : RoleBase
             SetDrawn(true, iai: true);
         }
         // 段も客の申告。ホストの見積もりの気 (余裕込み) で出せる段までに丸める
-        byte tier = (byte)(iai ? Math.Min(Math.Clamp((int)s.Tier, 1, 4), IaiTier(DevFree(Player) ? KiMax : HostKiNow() + KiSlack, charge)) : 1);
-        if (!DevFree(Player)) _hostKi -= StrokeCost;
+        byte tier = (byte)(iai && !thrust ? Math.Min(Math.Clamp(s.Tier & 0x7F, 1, 4), IaiTier(DevFree(Player) ? KiMax : HostKiNow() + KiSlack, charge)) : 1);
+        float cost = SeenStrokeCost(!thrust && !iai);
+        if (!DevFree(Player)) _hostKi -= cost;
         float a0 = Math.Clamp((int)s.A0, -180, 180);
-        float sweep = Math.Clamp((int)s.Sweep, -(int)SwipeInput.MaxSweep, (int)SwipeInput.MaxSweep);
+        float sweep = thrust ? 0f : Math.Clamp((int)s.Sweep, -(int)SwipeInput.MaxSweep, (int)SwipeInput.MaxSweep);
         // 速さ (= 威力) は客の申告なので、人の手で出せない短さは丸める
-        float secs = Math.Clamp(s.Ms / 1000f, MinStrokeSeconds, SwipeInput.MaxSeconds);
+        float secs = thrust ? ThrustMs / 1000f : Math.Clamp(s.Ms / 1000f, MinStrokeSeconds, SwipeInput.MaxSeconds);
+        if (thrust) tier |= ThrustFlag;
         int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17 | (iai ? 1 : 0) << 27 | (int)MathF.Round(charge * 15f) << 28;
         ShowCall.Send((head, (ushort)(secs * 1000f), tier));
         if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f), tier);
-        int dmg = Damage(FxMath.Abs(sweep) / secs);
+        int dmg = thrust ? ThrustDamage : Damage(FxMath.Abs(sweep) / secs);
         if (iai) dmg += (int)(IaiCharged * charge);
         _lastDamage = dmg;
         _hostStrokeIai = iai;
         _hostStrokeFull = iai && charge >= FullCharge;
-        HostHit(a0, sweep, dmg);
+        _hostStrokeSecs = secs;
+        HostHit(a0, sweep, dmg, thrust);
     }
 
     private int _lastDamage;
@@ -252,16 +297,18 @@ public sealed partial class Samurai : RoleBase
         return null;
     }
 
-    private void HostHit(float a0, float sweep, int damage)
+    // thrust = 突き (a0 の向きへ細く遠く・sweep は使わない)
+    private void HostHit(float a0, float sweep, int damage, bool thrust = false)
     {
         var p = Player;
         Vector2 me = p.GetTruePosition();
-        float reach = SlashRange + RangeSlack;
+        float reach = SlashRange + RangeSlack + (thrust ? ThrustExtra : 0f);
+        float tr = a0 * FxMath.Deg2Rad, tc = FxMath.Cos(tr), tsn = FxMath.Sin(tr);
         float span = FxMath.Abs(sweep);
         var all = GameData.Instance.AllPlayers;
         // 先に当たる人を全員決めてから斬る (斬った後の本編の処理で一覧が変わる)
         Span<byte> hits = stackalloc byte[16];
-        int n = 0;
+        int n = 0, aimedBits = 0; // aimedBits = 刀の向きが相手へ向いていた当たり (近すぎて向きを問わず当たった物でない)
         for (int i = 0; i < all.Count && n < hits.Length; i++)
         {
             var info = all[i];
@@ -271,17 +318,27 @@ public sealed partial class Samurai : RoleBase
             Vector2 at = pc.GetTruePosition();
             float dx = at.x - me.x, dy = at.y - me.y, sq = dx * dx + dy * dy;
             if (sq > reach * reach) { _missFar++; continue; }
-            if (sq > Touching * Touching)
+            bool aimed;
+            if (thrust)
+            {
+                // 突いた向きの前で、向きのずれが 12° 以内か、線からの離れが体の幅以内
+                float along = dx * tc + dy * tsn, side = FxMath.Abs(dx * tsn - dy * tc);
+                aimed = along > 0f && (side <= ThrustWidth || side <= along * ThrustTan);
+            }
+            else
             {
                 // 振った向きに沿って、始めの角度から相手の角度までの回り (0〜360)
                 float ta = FxMath.Atan2(dy, dx) * FxMath.Rad2Deg;
                 float d = (sweep >= 0f ? ta - a0 : a0 - ta) % 360f;
                 if (d < 0f) d += 360f;
-                if (d > span + ArcPad && d < 360f - ArcPad) { _missArc++; continue; }
+                aimed = d <= span + ArcPad || d >= 360f - ArcPad;
             }
+            // これより近い人は向きによらず当たる
+            if (!aimed && sq > Touching * Touching) { _missArc++; continue; }
             if (PhysicsHelpers.AnythingBetween(me, at, Constants.ShipAndObjectsMask, false)) { _missWall++; continue; }
             // 回避で飛び退いている間は当たらない
             if (DuelDodge.HostSafe(info.PlayerId)) { _missDodge++; continue; }
+            if (aimed) aimedBits |= 1 << n;
             hits[n++] = info.PlayerId;
         }
         bool counted = false;
@@ -292,7 +349,7 @@ public sealed partial class Samurai : RoleBase
             // 立ち合いの外からの溜め切りの居合 (不意打ち) は誰でも一太刀で倒れる
             int dmg = _hostStrokeFull && !Duel.InDuel(target.PlayerId) ? Duel.MaxHp : damage;
             // サムライへの斬りは、相手の斬り (納めていれば居合) とぶつかるかを少し待ってから決める (Samurai.Clash.cs)
-            if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, dmg)) continue;
+            if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, dmg, (aimedBits >> i & 1) != 0)) continue;
             counted |= HostApply(target, dmg);
         }
         if (counted) HostUpdatePath();

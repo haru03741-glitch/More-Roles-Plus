@@ -133,7 +133,7 @@ internal static partial class DuelHud
     private static readonly SpriteRenderer[] _lockSeg = new SpriteRenderer[3];
     private static GameObject _lockRoot;
     private static TextMeshPro _lockText;
-    private static float _lockY, _lockT = -10f, _push = 0.5f, _pushGoal = 0.5f;
+    private static float _lockY, _lockT = -10f, _push = 0.5f, _pushGoal = 0.5f, _mashT = -10f;
     private static int _lockSegLeft;
     private static bool _lockOn;
 
@@ -143,7 +143,7 @@ internal static partial class DuelHud
         SetLockOn(on && _shown);
         if (!_lockOn) return;
         _lockT = Time.time;
-        _lockText.text = new Text("Duel.LockMash").ToString();
+        _lockText.text = new Text(OperatingSystem.IsAndroid() ? "Duel.LockMashTouch" : "Duel.LockMash").ToString();
         _push = _pushGoal = 0.5f;
         _lockSegLeft = -1;
         Push(0.5f);
@@ -193,7 +193,9 @@ internal static partial class DuelHud
         float t = now - _lockT;
         _push += (_pushGoal - _push) * FxMath.Min(1f, PushEase * Time.deltaTime);
         Push(_push);
-        float s = 1f + 0.12f * FxMath.Abs(FxMath.Sin(t * 14f));
+        // 押すたびに字が跳ねる (押したことが手元で分かる)
+        float m = FxMath.Clamp01(1f - (now - _mashT) / 0.12f);
+        float s = 1f + 0.12f * FxMath.Abs(FxMath.Sin(t * 14f)) + 0.22f * m;
         _lockText.transform.localScale = FxMath.V3(s, s, 1f);
         float g = 0.85f + 0.35f * FxMath.Abs(FxMath.Sin(t * 37f)), c = 0.8f + 0.4f * FxMath.Abs(FxMath.Sin(t * 53f + 1f));
         _lockGlow.transform.localScale = FxMath.V3(0.62f * g, 0.62f * g, 1f);
@@ -204,6 +206,9 @@ internal static partial class DuelHud
         for (int i = 0; i < _lockSeg.Length; i++)
             _lockSeg[i].color = i < left ? FxMath.Rgba(1f, 0.9f, 0.55f, 1f) : FxMath.Rgba(0.3f, 0.3f, 0.35f, 0.5f);
     }
+
+    // 鍔迫り合いで自分が押した
+    internal static void MashPressed() => _mashT = Time.time;
 
     // 自分のバーの下の一行 (空 = 出さない)。出していない時は何もしない (書けたら true)
     internal static bool SetHint(string text)

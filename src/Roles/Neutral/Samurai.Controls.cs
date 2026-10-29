@@ -8,20 +8,24 @@ namespace MoreRolesPlus.Roles.Neutral;
 
 // サムライの操作と「気」。本編の能力ボタンも待ち時間も使わない。
 //   納刀中に押して溜め、なぞる = 居合 (抜きながら斬る・溜めた分だけ強い)
-//   抜刀中のなぞり = 斬る (気を使う)・右クリック (スマホは鞘のボタン) = 納刀・Shift (スマホは踏み込みのボタン) = 踏み込み (気を使う)
+//   抜刀中のなぞり = 斬る・外へ押し出すなぞり = 突く (どちらも気を使う)・右クリック (スマホは鞘のボタン) = 納刀・Shift (スマホは踏み込みのボタン) = 踏み込み (気を使う)
 // 気は納めている間に速く、抜いて止まっている間はゆっくり溜まり、歩いている間はさらにゆっくり溜まる。尽きると刀が下がってしばらく何もできない
 public sealed partial class Samurai
 {
     internal const float KiMax = 100f;
     internal const float StrokeCost = 18f;
+    // 押したまま前の振りから ChainGap 秒以内に続けた振りは安い (振り回せるように)。ホストと他人の見積もりは時間だけで同じに数える
+    private const float ChainCost = 10f, ChainGap = 0.8f;
     private const float DashCost = 26f;
-    private const float RegenSheathed = 34f, RegenStill = 16f, RegenMoving = 8f;
+    private const float RegenSheathed = 34f, RegenStill = 16f, RegenMoving = 12f;
     internal const float SpentTime = 1.6f;
     private const float KiSlack = 25f;             // ホストの気の見積もりの余裕 (踏み込みはホストへ届かないので、ホストの方が多めに見る)
     internal const float ChargeTime = 1.0f;        // 居合を溜め切るまで (押してから)
     private const float ChargeDelay = 0.12f;       // 押してすぐのなぞりは溜め無し
     internal const float DashSpeed = 14f;
     private const float DashTime = 0.16f;
+    // 突いた時に前へ出る (0.5 単位)
+    private const float LungeSpeed = 7f, LungeTime = 0.07f;
 
     // 自分の端末の値
     private float _ki = KiMax, _kiT = -1f;
@@ -50,13 +54,16 @@ public sealed partial class Samurai
         _local = this;
         SwipeInput.OnStroke += OnLocalStroke;
         SwipeInput.OnStrokeStart += OnLocalStrokeStart;
+        SwipeInput.OnThrust += OnLocalThrust;
         SwipeInput.TouchBlocked = UI.SamuraiPad.Hit;
         _ring = new SamuraiRing(this);
         Lifespan.OnRelease(() =>
         {
             SwipeInput.OnStroke -= OnLocalStroke;
             SwipeInput.OnStrokeStart -= OnLocalStrokeStart;
+            SwipeInput.OnThrust -= OnLocalThrust;
             SwipeInput.TouchBlocked = null;
+            SwipeInput.NoThrust = false;
             SwipeInput.Arm(null);
             UI.SamuraiPad.Hide();
             EndLock();
@@ -83,6 +90,28 @@ public sealed partial class Samurai
         if (now < _spentUntil) return;
         float rate = !Drawn ? RegenSheathed : _moving ? RegenMoving : RegenStill;
         _ki = FxMath.Min(_ki + rate * dt, KiMax);
+    }
+
+    private float _lastStrokeAt = -10f, _othersLastStroke = -10f;
+    private int _lastStrokeDrag = -1;
+
+    // 自分の一振りの気: 同じなぞりで前の振りから間もなければ安い (居合と突きは続けても安くしない)
+    private float LocalStrokeCost(bool chainable)
+    {
+        float now = Time.time;
+        bool chain = chainable && SwipeInput.DragId == _lastStrokeDrag && now - _lastStrokeAt <= ChainGap;
+        _lastStrokeAt = now;
+        _lastStrokeDrag = chainable ? SwipeInput.DragId : -1;
+        return chain ? ChainCost : StrokeCost;
+    }
+
+    // ホストと他人の端末: 届いた一振りの気 (前に届いた振りからの間だけで見る)
+    private float SeenStrokeCost(bool chainable)
+    {
+        float now = Time.time;
+        bool chain = chainable && now - _othersLastStroke <= ChainGap;
+        _othersLastStroke = now;
+        return chain ? ChainCost : StrokeCost;
     }
 
     // 気を使う。尽きたら刀が下がる (全員に見せる)
@@ -157,8 +186,10 @@ public sealed partial class Samurai
             _spentUntil = -10f;
             EndSpent();
         }
-        // 納めていても抜いていても、なぞりを構える (納刀中のなぞり = 居合)。マウスでは歩かない。鍔迫り合いの間は振れない
-        SwipeInput.Arm(free && ready && !Spent && !Locked ? p : null);
+        // 納めていても抜いていても、なぞりを構える (納刀中のなぞり = 居合)。マウスでは歩かない。鍔迫り合いの間は振れない。
+        // 気が尽きている間も構えたまま (押しっぱなしのなぞりを捨てない・振りは役職の側で捨てる) なので、戻ればそのまま振れる
+        SwipeInput.Arm(free && ready && !Locked ? p : null);
+        SwipeInput.NoThrust = Spent;
         _ring?.Tick(alive && !MeetingHud.Instance);
         _padOn = UI.SamuraiPad.Tick(this, free && alive && !Locked);
         if (!Drawn && SwipeInput.Dragging) _blade.Charging();
@@ -207,7 +238,7 @@ public sealed partial class Samurai
     private void OnLocalStrokeStart()
     {
         _starts++;
-        if (Drawn) return;
+        if (Drawn || Spent) return;
         _iaiStroke = true;
         _iaiCharge = ChargeOf(Time.time - SwipeInput.PressedAt);
         _iaiTier = IaiTier(_ki, _iaiCharge);
@@ -228,6 +259,7 @@ public sealed partial class Samurai
         if (dist > 0.05f)
         {
             secs = dist / DashSpeed;
+            _dashSpeed = DashSpeed;
             _dashDir = FxMath.V2(dx, dy);
             _dashUntil = Time.time + secs;
             _dashOn = true;
@@ -252,16 +284,28 @@ public sealed partial class Samurai
     private static float _dashUntil = -10f;
     private static bool _dashOn; // 踏み込みの間だけ立つ (本編の FixedUpdate の後置きは、まずこれだけを見る)
     private static Vector2 _dashDir;
+    private static float _dashSpeed = DashSpeed;
+    internal static float DashSpeedNow => _dashSpeed;
 
     private void Dash(Vector2 dir)
     {
         if (!Drawn || dir.sqrMagnitude < 1e-4f) return;
         UseKi(DashCost);
+        _dashSpeed = DashSpeed;
         _dashDir = dir.normalized;
         _dashUntil = Time.time + DashTime;
         _dashOn = true;
         _blade.Dash(DashTime + 0.06f);
         DashCall.Send((byte)Math.Clamp((int)(DashTime * 100f), 1, 255));
+    }
+
+    // 突いた向きへ少し前へ (自分の端末だけ・位置は本編の同期で届く)
+    private void Lunge(float dx, float dy)
+    {
+        _dashSpeed = LungeSpeed;
+        _dashDir = FxMath.V2(dx, dy);
+        _dashUntil = Time.time + LungeTime;
+        _dashOn = true;
     }
 
     private static readonly RemoteCall<byte> DashCall = new("Samurai.Dash", Route.Anyone,
@@ -324,6 +368,6 @@ internal static class SamuraiDashPatch
         if (!dash && !pushed || !__instance.AmOwner) return;
         var pc = __instance.myPlayer;
         if (!pc || !pc.CanMove || pc.inVent) return;
-        __instance.body.velocity = dash ? FxMath.V2(dir.x * Samurai.DashSpeed, dir.y * Samurai.DashSpeed) : vel;
+        __instance.body.velocity = dash ? FxMath.V2(dir.x * Samurai.DashSpeedNow, dir.y * Samurai.DashSpeedNow) : vel;
     }
 }

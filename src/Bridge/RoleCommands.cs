@@ -130,7 +130,7 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("samurai", "[sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] [居合の段 1〜4] | hitfx <番号> <威力> [ko] | clash <番号> <番号> [lock] | clashwin <秒> | mash <回数>] 自分のサムライの状態 / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い) / ホストで二人のサムライを弾き合わせる (lock = すぐ鍔迫り合い) / ホストが斬りを待つ秒を伸ばす (0 = 既定) / 鍔迫り合いの連打を足す", (args, reply) =>
+        TestBridge.Register("samurai", "[sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | thrust <角度> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] [居合の段 1〜4] | hitfx <番号> <威力> [ko] | clash <番号> <番号> [lock] | clashwin <秒> | mash <回数>] 自分のサムライの状態 / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 角度の向きへ外へ押し出した扱いにする (突き) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い) / ホストで二人のサムライを弾き合わせる (lock = すぐ鍔迫り合い) / ホストが斬りを待つ秒を伸ばす (0 = 既定) / 鍔迫り合いの連打を足す", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -189,6 +189,13 @@ internal static class RoleCommands
                 int tier = 0;
                 if (p.Length >= 6) int.TryParse(p[5], out tier);
                 sm.ShowForTest(s0, sw, ss, pow, tier);
+            }
+            else if (p.Length >= 2 && p[0] == "thrust"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float ta))
+            {
+                float hold = 0f;
+                if (p.Length >= 3) float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out hold);
+                if (!sm.ThrustForTest(ta, hold)) { reply($"ERR samurai thrust not armed {sm.Probe()} swipe[{SwipeInput.Describe()}]"); return; }
             }
             else if (p.Length >= 4 && p[0] == "swipe"
                      && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float a0)

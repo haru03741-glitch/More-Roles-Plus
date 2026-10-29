@@ -137,7 +137,7 @@ internal sealed partial class SamuraiBlade
         }
         if (!_root) return;
         // 振りの途中で納めたら振りを捨てる
-        _repT = _endT = -10f;
+        _repT = _endT = _thT = -10f;
         _localStroke = false;
         SpawnGlint(drawn ? 0.10f : 0.38f * _sheatheSlow, drawn);
         Track();
@@ -307,9 +307,9 @@ internal sealed partial class SamuraiBlade
     private bool Busy(float now)
     {
         if ((now - _drawT) / SlowMo < 0.6f * _sheatheSlow || now < _dashUntil) return true;
-        if (this == LocalFollow && (SwipeInput.Dragging || _localStroke)) return true;
+        if (this == LocalFollow && (SwipeInput.Dragging || _localStroke) && !_spent) return true;
         if (_powArmed || _lockOn) return true;
-        if ((now - _repT) / SlowMo <= _repDur + 0.05f) return true;
+        if ((now - _repT) / SlowMo <= _repDur + 0.05f || ThrustBusy(now)) return true;
         return (now - _endT) / SlowMo < Hold + IaiHold * _strokePow + _holdExtra + Recover || SmearLive;
     }
 
@@ -365,7 +365,8 @@ internal sealed partial class SamuraiBlade
     {
         angle = speed = a0 = 0f;
         inStroke = false;
-        if (this == LocalFollow && SwipeInput.Dragging)
+        // 気が尽きて刀が下がっている間は、押したままのなぞりを追わない
+        if (this == LocalFollow && SwipeInput.Dragging && !_spent)
         {
             angle = SwipeInput.Angle;
             speed = SwipeInput.Speed;
@@ -447,11 +448,22 @@ internal sealed partial class SamuraiBlade
             world = true;
             LockSparks(now, pc);
         }
+        else if (ThrustPose(now, out var tp))
+        {
+            if (_wasInStroke) EndStroke();
+            _wasInStroke = false;
+            p = tp;
+            world = true;
+            _endPose = p;
+            _endT = now;
+            _endWorld = true;
+        }
         else if (SwingAngle(now, out float a, out float speed, out bool inStroke, out float a0))
         {
             float sweep = a - a0;
-            float prog = this == LocalFollow && SwipeInput.Dragging ? FxMath.Clamp01(FxMath.Abs(sweep) / 360f) : FxMath.Clamp01((now - _repT) / SlowMo / _repDur);
-            float shownSweep = this == LocalFollow && SwipeInput.Dragging ? sweep : _repSweep;
+            bool live = this == LocalFollow && SwipeInput.Dragging && !_spent;
+            float prog = live ? FxMath.Clamp01(FxMath.Abs(sweep) / 360f) : FxMath.Clamp01((now - _repT) / SlowMo / _repDur);
+            float shownSweep = live ? sweep : _repSweep;
             if (inStroke && !_wasInStroke) BeginStroke();
             else if (!inStroke && _wasInStroke) EndStroke();
             _wasInStroke = inStroke;

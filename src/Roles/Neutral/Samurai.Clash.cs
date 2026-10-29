@@ -9,6 +9,8 @@ namespace MoreRolesPlus.Roles.Neutral;
 // サムライ同士: 刀同士がぶつかると弾き合う。
 // ホストはサムライへの斬りをすぐには当てず ClashWindow 秒だけ待ち、その間に相手からも斬り (納めていれば居合) が返ってきたら
 // 二人ともに当てず「弾き合い」にする (火花・二人とも後ろへ弾かれて気を少し失う)。
+// 弾き合うのは二振りが時間で重なり (後の振りの始めが先の振りの終わりから ClashSlack 以内)、どちらも刀を相手へ向けていた時だけ。
+// 一振りは振り終えた時に届くので、届いた時刻 - かかった秒 を振りの始めとみなす。外れたら二人とも普通に当たる
 // 同じ二人の弾き合いが続いた時・二人とも居合だった時は「鍔迫り合い」: 刀を押し付け合ったまま動けず、当事者の画面はカメラが寄り、
 // LockTime 秒の連打の多かった方が勝つ。負けた方は刀が下がり (気が尽きた姿)、勝った方の一太刀を受ける
 public sealed partial class Samurai
@@ -17,6 +19,7 @@ public sealed partial class Samurai
     internal static float TestWindow;              // 確かめ用: 待つ秒を伸ばす (0 = 既定)
     private static float ClashWindow => TestWindow > 0f ? TestWindow : ClashWindowBase;
     private const float ClashKi = 10f;
+    private const float ClashSlack = 0.1f;    // 振りが重なったとみなす余裕 (届く時刻の揺れ)
     private const float ChainTime = 4f;       // この間に同じ二人が弾き合ったら鍔迫り合い
     internal const float LockTime = 3f;
     private const int LockDamage = 40;
@@ -29,7 +32,7 @@ public sealed partial class Samurai
         public byte A, T;
         public int Dmg;
         public float At;
-        public bool Iai;
+        public bool Iai, Aimed;
     }
 
     private static readonly List<Held> HostHeld = new();
@@ -44,10 +47,12 @@ public sealed partial class Samurai
     private static float _hlNextMeter;
     private bool _hostStrokeIai;
     private bool _hostStrokeFull;
+    private float _hostStrokeSecs;
+    internal static int ClashMisses; // 待っていた相手から返ったが、重なっていない/向いていないので弾き合いにしなかった数
     internal static int Clashes, Locks;
 
     // ホスト: サムライ ts への斬り。待っている ts からの斬りとぶつかれば弾き合い、でなければ当てるのを少し待つ
-    private bool HostClashOrHold(Samurai ts, int damage)
+    private bool HostClashOrHold(Samurai ts, int damage, bool aimed)
     {
         float now = Time.time;
         if (_hlA != 255 && (PlayerId == _hlA || PlayerId == _hlB)) return true; // 鍔迫り合いの間の斬りは通らない
@@ -55,11 +60,12 @@ public sealed partial class Samurai
         {
             var h = HostHeld[i];
             if (h.A != ts.PlayerId || h.T != PlayerId || now - h.At > ClashWindow) continue;
+            if (!h.Aimed || !aimed || now - _hostStrokeSecs > h.At + ClashSlack) { ClashMisses++; break; }
             HostHeld.RemoveAt(i);
             HostClash(h.A, PlayerId, h.Iai && _hostStrokeIai);
             return true;
         }
-        HostHeld.Add(new Held { A = PlayerId, T = ts.PlayerId, Dmg = damage, At = now, Iai = _hostStrokeIai });
+        HostHeld.Add(new Held { A = PlayerId, T = ts.PlayerId, Dmg = damage, At = now, Iai = _hostStrokeIai, Aimed = aimed });
         DuelBot.OnHeld(ts.PlayerId, PlayerId, ClashWindow);
         return true;
     }
@@ -361,7 +367,7 @@ public sealed partial class Samurai
                 if (Input.GetTouch(i).phase == TouchPhase.Began) press = true;
         }
         else press = Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space);
-        if (press) _mash++;
+        if (press) { _mash++; UI.DuelHud.MashPressed(); }
         if (now >= _mashNext && _mash > _mashSent)
         {
             _mashNext = now + 0.2f;
@@ -457,5 +463,5 @@ public sealed partial class Samurai
     internal void MashForTest(int n) => _mash += n;
 
     internal static string DescribeClash() =>
-        $"clashes={Clashes} locks={Locks} held={HostHeld.Count} chain={_chain} lock={(_lockA == 255 ? "-" : $"{_lockA}vs{_lockB}")} hostLock={(_hlA == 255 ? "-" : $"{_hlA}:{_hlCountA} vs {_hlB}:{_hlCountB}")}";
+        $"clashes={Clashes} clashMiss={ClashMisses} locks={Locks} held={HostHeld.Count} chain={_chain} lock={(_lockA == 255 ? "-" : $"{_lockA}vs{_lockB}")} hostLock={(_hlA == 255 ? "-" : $"{_hlA}:{_hlCountA} vs {_hlB}:{_hlCountB}")}";
 }

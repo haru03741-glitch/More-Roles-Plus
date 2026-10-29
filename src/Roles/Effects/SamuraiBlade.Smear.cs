@@ -21,9 +21,9 @@ internal sealed unsafe partial class SamuraiBlade
     private Mesh _smearMesh;
     private Il2CppStructArray<Vector3> _smV;
     private Il2CppStructArray<Color32> _smC;
-    private float _smA0, _smA1, _smCx, _smCy, _smZ, _smStr = 1f, _smPow;
+    private float _smA0, _smA1, _smCx, _smCy, _smZ, _smStr = 1f, _smPow, _smLen;
     private float _smT = -10f;   // 薄れ始めた時刻 (-10 = 描いている途中)
-    private bool _smOn, _smRed;
+    private bool _smOn, _smRed, _smThrust; // _smThrust = 突きの直線の筋 (SamuraiBlade.Thrust)
 
     private bool SmearLive => _smOn;
 
@@ -55,6 +55,7 @@ internal sealed unsafe partial class SamuraiBlade
         _smStr = strength;
         _smPow = world ? _strokePow : 0f;
         _smRed = this == LocalFollow || !world ? _fallenTint : _repFallen;
+        _smThrust = false;
         _smT = -10f;
         _smOn = true;
         if (!_smearGo.activeSelf) _smearGo.SetActive(true);
@@ -124,6 +125,7 @@ internal sealed unsafe partial class SamuraiBlade
     // fade = 0 (濃い) 〜 1 (消えた)
     private void BuildSmear(float fade)
     {
+        if (_smThrust) { BuildThrust(fade); return; }
         float span = _smA1 - _smA0;
         float a0 = _smA0;
         if (span > SmMaxSpan) { a0 = _smA1 - SmMaxSpan; span = SmMaxSpan; }
