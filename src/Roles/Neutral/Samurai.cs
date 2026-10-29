@@ -103,6 +103,8 @@ public sealed class Samurai : RoleBase
         if (Drawn == drawn) return;
         Drawn = drawn;
         _drawnAt = Time.time;
+        // 抜く時に出ていたエモートは打ち切る (抜いている間は出せない)
+        if (drawn) Fx.EmoteArt.Stop(PlayerId);
         _blade.SetDrawn(drawn);
     }
 
@@ -150,6 +152,9 @@ public sealed class Samurai : RoleBase
         SwipeInput.Synth(a0, a1, seconds);
         return true;
     }
+
+    // 確かめ用: 他人から届いた一振りと同じ再生を自分の刀で流す (当たりは無し)
+    internal void ShowForTest(float a0, float sweep, float seconds) => _blade.Replay(a0, sweep, seconds, _fallen);
 
     private static readonly RemoteCall<Stroke> StrokeCall = new("Samurai.Stroke", Route.ToHost,
         (w, s) => { w.Write(s.A0); w.Write(s.Sweep); w.Write(s.Ms); },

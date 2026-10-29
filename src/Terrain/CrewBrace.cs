@@ -193,6 +193,7 @@ internal static class CrewBrace
         var pc = c.Pc;
         var root = pc.transform;
         c.Root = root;
+        Roles.SamuraiBlade.ReleaseBody(pc.PlayerId);
         c.Body = root.Find("BodyForms");
         c.Cos = pc.cosmetics ? pc.cosmetics.transform : null;
         if (!c.Body && !c.Cos) return false;

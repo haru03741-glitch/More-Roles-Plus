@@ -130,7 +130,7 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("samurai", "[draw | swipe <a0> <a1> <秒> | of <番号>] 自分のサムライの状態 / 抜刀・納刀のボタンを押す / a0 度から a1 度へ秒でなぞった扱いにする / 番号の人のサムライの状態", (args, reply) =>
+        TestBridge.Register("samurai", "[draw | swipe <a0> <a1> <秒> | of <番号> | slow <倍> | show <a0> <掃引角> <秒>] 自分のサムライの状態 / 抜刀・納刀のボタンを押す / a0 度から a1 度へ秒でなぞった扱いにする / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し)", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -140,8 +140,19 @@ internal static class RoleCommands
                 reply($"OK samurai {os.Probe()}");
                 return;
             }
+            if (p.Length >= 2 && p[0] == "slow" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float slow))
+            {
+                SamuraiBlade.SlowMo = System.Math.Clamp(slow, 0.1f, 20f);
+                reply($"OK samurai slow={SamuraiBlade.SlowMo}");
+                return;
+            }
             if (RoleState.Local is not Roles.Neutral.Samurai sm) { reply("ERR samurai not Samurai"); return; }
             if (p.Length >= 1 && p[0] == "draw") Abilities.PressSlot(0);
+            else if (p.Length >= 4 && p[0] == "show"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float s0)
+                     && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float sw)
+                     && float.TryParse(p[3], System.Globalization.NumberStyles.Float, inv, out float ss))
+                sm.ShowForTest(s0, sw, ss);
             else if (p.Length >= 4 && p[0] == "swipe"
                      && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float a0)
                      && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float a1)

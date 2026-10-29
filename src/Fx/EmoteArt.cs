@@ -122,6 +122,7 @@ internal static class EmoteArt
         // 体の根を他の演出 (流れに踏ん張る・吸い出し) が動かしている間は跳ねない (位置の取り合いになる)
         if (kind == Jump && !Terrain.CrewBrace.Posed(s.Id) && !Terrain.CrewGrip.Active)
         {
+            Roles.SamuraiBlade.ReleaseBody(s.Id);
             s.Body = s.Root.Find("BodyForms");
             s.Cos = pc.cosmetics ? pc.cosmetics.transform : null;
             if (s.Body) s.Bp = s.Body.localPosition;
