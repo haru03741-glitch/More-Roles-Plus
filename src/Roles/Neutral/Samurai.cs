@@ -38,6 +38,7 @@ public sealed partial class Samurai : RoleBase
     // 一振りの威力 = 角速度 (度/秒) の帯。居合は溜めた分を足す
     private static int Damage(float degPerSec) => degPerSec >= 1000f ? 40 : degPerSec >= 600f ? 30 : 20;
     private const int IaiCharged = 30; // 溜め切った居合に足す分 (溜め無しの居合は普通の一振りと同じ)
+    private const float FullCharge = 0.93f; // ここまで溜めた居合を溜め切りとみなす (不意打ちなら一撃)
 
     // 修羅に堕ちたらキル役として数える (インポスターがいなくなっても生存者が多ければクルーの勝ちにしない)。
     // ホストの判定で読むので、ホストの値で決まる
@@ -164,6 +165,8 @@ public sealed partial class Samurai : RoleBase
     private void ShowStroke(int head, ushort ms)
     {
         if (IsLocal) return;
+        // ホストは確かめた時に引いている
+        if (!AmongUsClient.Instance.AmHost) _hostKi = HostKiNow() - StrokeCost;
         bool fallen = (head >> 7 & 1) != 0;
         float a0 = ((head >> 8) & 0x1FF) - 180f;
         float sweep = ((head >> 17) & 0x3FF) - 512f;
@@ -214,6 +217,7 @@ public sealed partial class Samurai : RoleBase
         if (iai) dmg += (int)(IaiCharged * charge);
         _lastDamage = dmg;
         _hostStrokeIai = iai;
+        _hostStrokeFull = iai && charge >= FullCharge;
         HostHit(a0, sweep, dmg);
     }
 
@@ -271,22 +275,30 @@ public sealed partial class Samurai : RoleBase
         {
             var target = GameData.Instance.GetPlayerById(hits[i])?.Object;
             if (!target || target.Data == null || target.Data.IsDead) continue;
+            // 立ち合いの外からの溜め切りの居合 (不意打ち) は誰でも一太刀で倒れる
+            int dmg = _hostStrokeFull && !Duel.InDuel(target.PlayerId) ? Duel.MaxHp : damage;
             // サムライへの斬りは、相手の斬り (納めていれば居合) とぶつかるかを少し待ってから決める (Samurai.Clash.cs)
-            if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, damage)) continue;
-            counted |= HostApply(target, damage);
+            if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, dmg)) continue;
+            counted |= HostApply(target, dmg);
         }
         if (counted) HostUpdatePath();
     }
+
+    // 立ち合い (体力の削り合い) になる相手 = 刀を受けて戦える人。それ以外は一太刀で倒れる
+    private static bool Fighter(PlayerControl p) =>
+        p.Data.Role && p.Data.Role.IsImpostor || RoleState.Of(p) is Samurai or { CanKill: true } or { IsKiller: true };
 
     // ホスト: 斬りを当てる。倒したら斬った数を数えて true (道の更新は呼んだ側)
     private bool HostApply(PlayerControl target, int damage)
     {
         var p = Player;
         if (!p || !target || target.Data == null || target.Data.IsDead) return false;
+        int left = Duel.HpOf(target.PlayerId);
+        bool fighter = Fighter(target);
+        int dmg = fighter ? damage : left;
         // 倒す一振りだけキルとして確かめる (盾などに止められたら体力 1 で残す)
-        int dmg = damage, left = Duel.HpOf(target.PlayerId);
         if (left - dmg <= 0 && BeforeMurderEvent.Ask(p, target) != null) dmg = left - 1;
-        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg)) return false;
+        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg, start: fighter && dmg < left)) return false;
         bool impostor = target.Data.Role && target.Data.Role.IsImpostor;
         p.RpcMurderPlayer(target, true);
         if (Duel.OpponentOf(PlayerId) == target.PlayerId) Duel.HostEnd(PlayerId);

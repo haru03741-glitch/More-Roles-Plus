@@ -103,10 +103,11 @@ internal static class Duel
     }
 
     // ホスト: 攻撃が当たった。どちらも立ち合い中でなければ二人の立ち合いを始め、体力を減らす。0 になったら true (倒すのは呼んだ側)。
-    // 立ち合いの相手でない人に当たった時 (一振りで何人も・横から割り込んだ人) は組み直さず体力だけ減らす
-    internal static bool HostDamage(byte attacker, byte target, int damage)
+    // 立ち合いの相手でない人に当たった時 (一振りで何人も・横から割り込んだ人) は組み直さず体力だけ減らす。
+    // start = false は立ち合いにしない当たり (一太刀で倒れる相手)。当たりの見た目だけ全員に出る
+    internal static bool HostDamage(byte attacker, byte target, int damage, bool start = true)
     {
-        if (Opp[attacker] == None && Opp[target] == None) Send(Kind.Start, attacker, target, MaxHp);
+        if (start && Opp[attacker] == None && Opp[target] == None) Send(Kind.Start, attacker, target, MaxHp);
         FarSince[attacker] = FarSince[target] = 0;
         LastHit[target] = Environment.TickCount64;
         int hp = Math.Max(Hp[target] - damage, 0);

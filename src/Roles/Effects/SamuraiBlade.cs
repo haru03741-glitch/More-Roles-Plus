@@ -146,6 +146,8 @@ internal sealed partial class SamuraiBlade
     }
 
     // 気が尽きた間は刀が下がって切っ先が床を向く
+    internal bool Spent => _spent;
+
     internal void SetSpent(bool spent)
     {
         _spent = spent;

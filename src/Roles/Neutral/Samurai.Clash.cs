@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // LockTime 秒の連打の多かった方が勝つ。負けた方は刀が下がり (気が尽きた姿)、勝った方の一太刀を受ける
 public sealed partial class Samurai
 {
-    private const float ClashWindowBase = 0.2f;   // 先の斬りを当てずに待つ秒
+    private const float ClashWindowBase = 0.35f;  // 先の斬りを当てずに待つ秒
     internal static float TestWindow;              // 確かめ用: 待つ秒を伸ばす (0 = 既定)
     private static float ClashWindow => TestWindow > 0f ? TestWindow : ClashWindowBase;
     private const float ClashKi = 10f;
@@ -43,6 +43,7 @@ public sealed partial class Samurai
     private static int _hlCountA, _hlCountB;
     private static float _hlNextMeter;
     private bool _hostStrokeIai;
+    private bool _hostStrokeFull;
     internal static int Clashes, Locks;
 
     // ホスト: サムライ ts への斬り。待っている ts からの斬りとぶつかれば弾き合い、でなければ当てるのを少し待つ
@@ -141,6 +142,43 @@ public sealed partial class Samurai
             else if (sender.PlayerId == _hlB) _hlCountB += add;
         }, perSecond: 10);
 
+    // ---- 立ち合いの相手のインポスターのキル ----
+
+    private const int KillDamage = 50;
+    private const float KillReachSlack = 1f;
+
+    // ホスト: 立ち合っているインポスターのキルは一撃にならず体力を削る (残りがそれ以下なら本編どおり倒れる)。
+    // 本編の待ち時間の確かめより前に呼ばれるので距離は自分で見る。止めたキルは待ち時間が戻らないので、キルした人の端末で戻させる
+    [OnlyMine]
+    private void OnKillAttempt(BeforeMurderEvent e)
+    {
+        var k = e.Killer;
+        var p = Player;
+        if (!k || !p || k.Data == null || !k.Data.Role || !k.Data.Role.IsImpostor) return;
+        if (Duel.OpponentOf(PlayerId) != k.PlayerId || Duel.HpOf(PlayerId) <= KillDamage) return;
+        float reach = KillAbility.Reach(k) + KillReachSlack;
+        Vector2 a = k.GetTruePosition(), b = p.GetTruePosition();
+        float dx = a.x - b.x, dy = a.y - b.y;
+        if (dx * dx + dy * dy > reach * reach) return;
+        e.Cancel("samurai duel");
+        Duel.HostDamage(k.PlayerId, PlayerId, KillDamage);
+        BlockedCall.Send((k.PlayerId, PlayerId));
+        OnKillBlocked(k.PlayerId, PlayerId);
+    }
+
+    private static readonly RemoteCall<(byte killer, byte target)> BlockedCall = new("Samurai.KillBlocked", Route.HostToAll,
+        (w, v) => { w.Write(v.killer); w.Write(v.target); }, r => (r.ReadByte(), r.ReadByte()),
+        (_, v) => OnKillBlocked(v.killer, v.target));
+
+    // 全員の端末: 刀で受けた姿・キルした本人は待ち時間が始まる
+    private static void OnKillBlocked(byte killer, byte target)
+    {
+        (RoleState.Of(target) as Samurai)?.OnClash(killer, false);
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || lp.PlayerId != killer || lp.Data == null || !lp.Data.Role || !lp.Data.Role.IsImpostor) return;
+        lp.SetKillTimer(GameManager.Instance.LogicOptions.GetKillCooldown());
+    }
+
     // 試合が替わったら持ち越さない (待っていた斬り・鍔迫り合い・寄せたカメラと隠したボタン)
     private static Lifespan _clashMatch;
 
@@ -195,20 +233,21 @@ public sealed partial class Samurai
                 (RoleState.Of(b) as Samurai)?.BeginLock(a);
                 break;
             case Kind.Meter:
-                // a / b = 一人目 / 二人目の連打の数
+                // a / b = 一人目 / 二人目の連打の数。押し合っている間は刀の当たる所に小さな火花が出続ける
                 UI.DuelHud.LockMeter(_lockA, _lockB, a, b);
+                if (_lockA != 255) Spark(_lockA, _lockB, 0.45f, quiet: true);
                 break;
             case Kind.LockEnd:
                 _lockA = _lockB = 255;
                 Spark(a, b, 1.4f);
-                (RoleState.Of(a) as Samurai)?.EndLock(lost: false, other: b);
-                (RoleState.Of(b) as Samurai)?.EndLock(lost: !tie, other: a);
+                (RoleState.Of(a) as Samurai)?.EndLock(lost: false, other: b, tie: tie);
+                (RoleState.Of(b) as Samurai)?.EndLock(lost: !tie, other: a, tie: tie);
                 break;
         }
     }
 
-    // 二人の間 (刀がぶつかった所) に火花
-    private static void Spark(byte a, byte b, float size)
+    // 二人の間 (刀がぶつかった所) に火花。quiet = 当事者の画面の光と揺れを付けない
+    private static void Spark(byte a, byte b, float size, bool quiet = false)
     {
         var gd = GameData.Instance;
         var pa = gd ? gd.GetPlayerById(a)?.Object : null;
@@ -216,6 +255,7 @@ public sealed partial class Samurai
         if (!pa || !pb) return;
         Vector3 x = pa.transform.position, y = pb.transform.position;
         DuelHitFx.Clash(FxMath.V3((x.x + y.x) * 0.5f, (x.y + y.y) * 0.5f + 0.15f, FxMath.Min(x.z, y.z) - 0.02f), pa.gameObject.layer, size);
+        if (quiet) return;
         byte me = PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.PlayerId : (byte)255;
         if (me == a || me == b)
         {
@@ -277,14 +317,14 @@ public sealed partial class Samurai
     }
 
     // 鍔迫り合いが終わった (会議でも)。負けた本人は刀が下がり、二人とも弾かれる
-    private void EndLock(bool lost = false, byte other = 255)
+    private void EndLock(bool lost = false, byte other = 255, bool tie = false)
     {
         if (_lockWith == 255) return;
         byte with = _lockWith;
         _lockWith = 255;
         _blade.SetLock(false, 0f);
         if (!IsLocal) return;
-        UI.DuelHud.ShowLock(false);
+        UI.DuelHud.EndLock(other == 255 ? -1 : tie ? 0 : lost ? 2 : 1);
         RestoreCam();
         if (other == 255) return;
         Knock(with);

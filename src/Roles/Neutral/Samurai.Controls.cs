@@ -13,7 +13,8 @@ namespace MoreRolesPlus.Roles.Neutral;
 public sealed partial class Samurai
 {
     internal const float KiMax = 100f;
-    private const float StrokeCost = 18f, DashCost = 26f;
+    internal const float StrokeCost = 18f;
+    private const float DashCost = 26f;
     private const float RegenSheathed = 34f, RegenStill = 16f, RegenMoving = 8f;
     internal const float SpentTime = 1.6f;
     private const float KiSlack = 25f;             // ホストの気の見積もりの余裕 (踏み込みはホストへ届かないので、ホストの方が多めに見る)
@@ -27,7 +28,7 @@ public sealed partial class Samurai
     private float _spentUntil = -10f;
     private float _moveX, _moveY;
     private bool _moving;
-    // ホストの見積もり
+    // ホストと他人の端末の見積もり (振った姿と尽きた知らせから)
     private float _hostKi = KiMax, _hostKiT = -1f;
 
     // 自分のサムライ (毎フレームの入力はこれだけ見る)
@@ -103,7 +104,16 @@ public sealed partial class Samurai
 
     private static readonly RemoteCall<bool> SpentCall = new("Samurai.Spent", Route.Anyone,
         (w, v) => w.Write(v), r => r.ReadBoolean(),
-        (sender, v) => (RoleState.Of(sender) as Samurai)?._blade.SetSpent(v), perSecond: 8);
+        (sender, v) =>
+        {
+            if (RoleState.Of(sender) is not Samurai s) return;
+            s._blade.SetSpent(v);
+            if (v) { s.HostKiNow(); s._hostKi = 0f; }
+        }, perSecond: 8);
+
+    // 立ち合いの HUD に出す気 (本人の端末なら本人の値・他人なら見積もり)
+    internal float ShownKi => IsLocal ? _ki : FxMath.Clamp(HostKiNow(), 0f, KiMax);
+    internal bool ShownSpent => IsLocal ? Spent : _blade.Spent;
 
     // ホスト: 時刻から気を見積もる (歩いているかは見ないので、本人の値より多め)
     private float HostKiNow()
