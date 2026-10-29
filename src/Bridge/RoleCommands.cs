@@ -130,7 +130,7 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("samurai", "[draw | slash <dx> <dy> | of <番号>] 自分のサムライの状態 / 抜刀・納刀のボタンを押す / その向きへ斬る (ボタンの待ち時間は使う) / 番号の人のサムライの状態", (args, reply) =>
+        TestBridge.Register("samurai", "[draw | swipe <a0> <a1> <秒> | of <番号>] 自分のサムライの状態 / 抜刀・納刀のボタンを押す / a0 度から a1 度へ秒でなぞった扱いにする / 番号の人のサムライの状態", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -142,13 +142,23 @@ internal static class RoleCommands
             }
             if (RoleState.Local is not Roles.Neutral.Samurai sm) { reply("ERR samurai not Samurai"); return; }
             if (p.Length >= 1 && p[0] == "draw") Abilities.PressSlot(0);
-            else if (p.Length >= 3 && p[0] == "slash"
-                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float dx)
-                     && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float dy))
+            else if (p.Length >= 4 && p[0] == "swipe"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float a0)
+                     && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float a1)
+                     && float.TryParse(p[3], System.Globalization.NumberStyles.Float, inv, out float secs))
             {
-                if (!sm.SlashForTest(new UnityEngine.Vector2(dx, dy))) { reply($"ERR samurai slash refused {sm.Probe()}"); return; }
+                if (!sm.SwipeForTest(a0, a1, secs)) { reply($"ERR samurai swipe not armed {sm.Probe()} swipe[{SwipeInput.Describe()}]"); return; }
             }
-            reply($"OK samurai {sm.Probe()}");
+            reply($"OK samurai {sm.Probe()} swipe[{SwipeInput.Describe()}]");
+        });
+
+        TestBridge.Register("duelhud", "[show <自分> <相手> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko] 立ち合いの HUD を当事者でなくても出す / 当たった扱い / K.O. を出す", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 3 && p[0] == "show" && byte.TryParse(p[1], out byte me) && byte.TryParse(p[2], out byte opp)) UI.DuelHud.TestShow(me, opp);
+            else if (p.Length >= 3 && p[0] == "hit" && int.TryParse(p[2], out int hp)) UI.DuelHud.TestHit(p[1] == "1", hp);
+            else if (p.Length >= 1 && p[0] == "ko") UI.DuelHud.TestKo();
+            reply($"OK duelhud {UI.DuelHud.Describe()} duel[{Duel.Describe()}]");
         });
 
         TestBridge.Register("architect", "[use | of <番号> ... | place x y | simuse <番号> <台|255> | smash <台> <叩いた人> <回数> | x y | here | check x y | fly | visit x y | land | go <番号> | open | close | draw x1 y1 x2 y2 ... | pipe x y] 自分の構築士の状態 / 自分 (構築士でない人) が足元の設計台を使う / 番号の人の構築士を相手にする / この端末だけで台を置く / 番号の人が台を使った (255 = やめた) と届いた扱い / 台が叩かれた (3 回目で壊れる) と届いた扱い /(x, y) に設計台を置く (待ち時間は使わない) / 足元に能力ボタンと同じ決まりで置く / 床の点 (x, y) に置けるか / 設計図を開かずに自分の端末だけでドローンを飛ばす・行き先を足す・降ろす / 設計台の手前へ移る / 設計図を開く・閉じる / 点の列をなぞった扱いにする (ゲージを使い壁を立てる) / (x, y) を軽く押した扱いにする (近くの壁の配管を裂く)", (args, reply) =>

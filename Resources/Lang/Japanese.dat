@@ -132,15 +132,15 @@ Survivor.Quote: 誰が勝とうと、生きていれば勝ちだ。
 # ── サムライ (Samurai) ──
 Samurai.Name: サムライ
 Samurai.Blurb: 刀を抜き、斬るべき者を斬れ
-Samurai.Summary: 刀で向いた方向の相手をまとめて斬れる第三陣営です。
+Samurai.Summary: 刀を振って相手と斬り合い、体力を削って倒す第三陣営です。
 Samurai.WinCond: 守の道: インポスターを決められた人数斬り、試合の終わりに生きていれば、勝った陣営と一緒に勝ち。修羅の道: 自分以外の生存者が 1 人以下になると一人勝ち
 Samurai.Draw: 抜刀
 Samurai.Draw.Help: 刀を抜きます。もう一度押すと鞘に納めます。抜いている間は刀が全員に見えます。抜くのにも納めるのにも少し時間がかかります。会議が終わると刀は鞘に戻っています。
 Samurai.Draw.Short: 刀を抜く・納める
 Samurai.Sheathe: 納刀
 Samurai.Slash: 斬る
-Samurai.Slash.Help: 刀を抜いている間だけ使えます。PC はマウスの指す方向、スマホは歩いている方向へ刀を振り、前方へ扇形に広がる範囲にいる全員を斬ります。振りかぶってから斬るまでに一瞬の間があり、その間に離れれば避けられます。壁の向こうには届きません。
-Samurai.Slash.Short: 向いた方向を扇形に斬る
+Samurai.Slash.Help: 刀を抜いている間は、PC なら左ボタンを押したままマウスを動かすと、スマホなら画面の右半分を指でなぞると、その動きに合わせて刀を振ります。速く振るほど強く斬れます。斬られた相手とは 1 対 1 の立ち合いになり、斬るたびに相手の体力が減って、0 になると倒れます。壁の向こうには届きません。抜いている間はマウスでは歩けず、キーで歩きます。
+Samurai.Slash.Short: なぞって刀を振り、体力を削る
 Samurai.Paths: 守の道と修羅の道
 Samurai.Paths.Help: 始めは守の道です。インポスター以外を決められた人数斬ると修羅の道に堕ち、守の道の勝ちがなくなります。堕ちたことはあなたにだけ知らされます。
 Samurai.Paths.Short: 斬った相手で道が変わる
@@ -149,7 +149,7 @@ Samurai.Quote: 抜いたからには、斬る。
 Samurai.PathKills: 守の道で斬るインポスターの数
 Samurai.FallKills: 修羅に堕ちるまでの、インポスター以外を斬った数
 Samurai.AnnounceFall: 修羅に堕ちたことを全員に知らせる
-Samurai.SlashCooldown: 斬るの待ち時間
+Samurai.StrokeGap: 一振りの間隔
 Samurai.SlashRange: 斬れる距離
 Samurai.PathDesc: 守の道: インポスターを斬った数 {n}/{max}
 Samurai.FallenDesc: 修羅の道: 自分以外の生存者を 1 人以下にしろ

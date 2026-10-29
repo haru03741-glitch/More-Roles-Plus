@@ -118,7 +118,9 @@ public class Ticker : MonoBehaviour
         Terrain.FireFx.Tick(); t = Bridge.Perf.Lane(37, t);
         Fx.FxHands.Tick(); t = Bridge.Perf.Lane(16, t);
         Fx.EmoteArt.Tick();
+        Roles.SwipeInput.Tick();
         Roles.SamuraiBlade.TickAll();
+        UI.DuelHud.Tick();
         Menu.Emotes.Tick();
         Menu.MeetingStamps.Tick();
         Roles.PortalArt.Tick();

@@ -6,10 +6,11 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Neutral;
 
-// サムライ (第三陣営): 刀を抜いている間だけ、向いた方向の扇の中にいる全員を斬れる。
+// サムライ (第三陣営): 刀を抜いている間、なぞり (PC = 左ドラッグ・スマホ = 画面の右半分) で刀を振って斬る。
+// 当たった相手とは立ち合い (Duel) になり、斬るたびに体力が減って 0 で倒れる。
 // 始めは守の道 = インポスターを PathKills 人斬って最後まで生きていれば、勝った陣営と一緒に勝つ。
 // インポスター以外を FallKills 人斬ると修羅の道へ堕ち、以後は自分以外の生存者が 1 人以下になった時に単独で勝つ。
-// 抜いた刀は全員に見える。斬った数と堕ちたかはホストが数え、本人にだけ知らせる (全員へ知らせるかは設定)
+// 抜いた刀は全員に見える。一振りはホストが当たりを決め、斬った数と堕ちたかもホストが数えて本人にだけ知らせる (全員へ知らせるかは設定)
 public sealed class Samurai : RoleBase
 {
     public override Team Team => Team.Neutral;
@@ -25,23 +26,26 @@ public sealed class Samurai : RoleBase
     public static readonly IntOpt PathKills = new("Samurai.PathKills", 1, 1, 3);
     public static readonly IntOpt FallKills = new("Samurai.FallKills", 2, 1, 5);
     public static readonly BoolOpt AnnounceFall = new("Samurai.AnnounceFall", false);
-    public static readonly FloatOpt SlashCooldown = new("Samurai.SlashCooldown", 20f, 5f, 60f, 2.5f, "s");
+    public static readonly FloatOpt StrokeGap = new("Samurai.StrokeGap", 0.4f, 0.2f, 1.5f, 0.05f, "s");
     public static readonly FloatOpt SlashRange = new("Samurai.SlashRange", 2f, 1f, 3.5f, 0.25f);
 
-    // 斬れる扇の半分の角度 (度)・振りの溜め (ホストは溜めの後の位置で当てる = 見てから避けられる)・抜刀/納刀の動作の長さ
-    internal const float HalfArcDeg = 55f;
-    internal const float WindUp = 0.25f;
-    internal const float DrawTime = 0.6f;
-    private const float CooldownSlack = 1.5f; // ホストが待ち時間を確かめる時の通信の遅れの分 (秒)
-    private const float RangeSlack = 0.3f;    // 溜めの間に相手が動いた分の余裕
+    internal const float DrawTime = 0.6f;         // 抜刀/納刀の動作の長さ
+    private const float GapSlack = 0.15f;         // ホストが一振りの間隔を確かめる時の通信のぶれの分 (秒)
+    private const float RangeSlack = 0.3f;        // 振っている間に相手が動いた分の余裕
+    private const float ArcPad = 15f;             // 掃引角の両端に足す当たりの余裕 (度)
+    private const float Touching = 0.3f;          // これより近い人は向きによらず当たる
     private const int WinCheckMs = 500;
+    private const float MinStrokeSeconds = 0.12f;
+
+    // 一振りの威力 = 角速度 (度/秒) の帯
+    private static int Damage(float degPerSec) => degPerSec >= 1000f ? 40 : degPerSec >= 600f ? 30 : 20;
 
     // 修羅に堕ちたらキル役として数える (インポスターがいなくなっても生存者が多ければクルーの勝ちにしない)。
     // ホストの判定で読むので、ホストの値で決まる
     public override bool IsKiller => _fallen;
     public override bool CanKill => false; // 本編のキルボタンは使わない (斬りは自前の依頼)
 
-    // 抜いているか (全員の端末で持つ)・抜いた時刻 (動作の間は斬れない)
+    // 抜いているか (全員の端末で持つ)・抜いた時刻 (動作の間は振れない)
     internal bool Drawn { get; private set; }
     private float _drawnAt = -10f;
     // ホストが数える値。本人の端末には知らせで写す。時戻しで戻る
@@ -50,19 +54,20 @@ public sealed class Samurai : RoleBase
     private readonly Tracked<bool> _fallen = new(false);
     private readonly Tracked<bool> _pathDone = new(false);
 
-    private Ability _draw, _slash;
+    private Ability _draw;
     private bool? _shownDrawn;
     private SamuraiBlade _blade;
-    // ホスト: 溜めている振り (向き・当てる時刻)
-    private Vector2 _pendingDir;
-    private long _pendingAt;
+    private long _hostLastStrokeMs = long.MinValue / 2;
     private long _nextWinCheck;
+    private int _sent, _hostStrokes, _hostRefused;
+    private string _lastRefusal = "-";
 
     internal bool Fallen => _fallen;
     internal bool PathDone => _pathDone;
 
     public override void OnAssigned()
     {
+        Duel.Use();
         _blade = new SamuraiBlade(this);
         Lifespan.OnRelease(_blade.Dispose);
         _draw = AddAbility(new Ability(new Text("Samurai.Draw"), "katana_draw")
@@ -71,11 +76,16 @@ public sealed class Samurai : RoleBase
             CooldownAtStart = false,
             OnUse = ToggleDraw,
         });
-        _slash = AddAbility(new Ability(new Text("Samurai.Slash"), "katana_slash")
+        if (IsLocal)
         {
-            Cooldown = () => SlashCooldown,
-            OnUse = Slash,
-        });
+            SamuraiBlade.LocalFollow = _blade;
+            SwipeInput.OnStroke += OnLocalStroke;
+            Lifespan.OnRelease(() =>
+            {
+                SwipeInput.OnStroke -= OnLocalStroke;
+                SwipeInput.Arm(null);
+            });
+        }
     }
 
     // ---- 抜刀 / 納刀 ----
@@ -99,7 +109,6 @@ public sealed class Samurai : RoleBase
     private void RefreshButtons()
     {
         _draw?.Button?.SetLabel(new Text(Drawn ? "Samurai.Sheathe" : "Samurai.Draw"));
-        _slash?.Button?.SetUsable(Drawn);
     }
 
     // 抜いた全員の端末で。抜いた人は送った時に手元で済ませている
@@ -110,123 +119,97 @@ public sealed class Samurai : RoleBase
     // 会議が終わると刀は鞘に戻っている (全員の端末で同じに戻す)
     private void OnMeetingEnd(MeetingEndEvent e) => SetDrawn(false);
 
-    // ---- 斬る ----
+    // ---- 斬る (なぞりの一振り) ----
 
-    private bool Slash() => Slash(Aim(Player));
-
-    private bool Slash(Vector2 dir)
+    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms
+    private readonly struct Stroke
     {
-        if (!Drawn || Time.time - _drawnAt < DrawTime) return false;
-        _blade.Swing(dir, Fallen);
-        SlashCall.Send(dir);
+        public readonly short A0, Sweep;
+        public readonly ushort Ms;
+
+        public Stroke(short a0, short sweep, ushort ms)
+        {
+            A0 = a0;
+            Sweep = sweep;
+            Ms = ms;
+        }
+    }
+
+    // 自分の端末: なぞりで一振りが出来た。軌跡は手元で描いているので、ホストへ当たりを頼むだけ
+    private void OnLocalStroke(float a0, float sweep, float seconds)
+    {
+        if (!Drawn) return;
+        _sent++;
+        StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000)));
+    }
+
+    // 確かめ用: なぞりを作り物で流す (a0 → a1 度を秒で)
+    internal bool SwipeForTest(float a0, float a1, float seconds)
+    {
+        if (!SwipeInput.Armed) return false;
+        SwipeInput.Synth(a0, a1, seconds);
         return true;
     }
 
-    // 確かめ用: 向きを決めて斬るのボタンを押したのと同じにする (待ち時間と回数も使う)
-    internal bool SlashForTest(Vector2 dir)
-    {
-        if (_slash?.Button == null || _slash.Button.CoolingDown || !Slash(dir)) return false;
-        _slash.Spend();
-        _slash.Button.StartUsed();
-        return true;
-    }
+    private static readonly RemoteCall<Stroke> StrokeCall = new("Samurai.Stroke", Route.ToHost,
+        (w, s) => { w.Write(s.A0); w.Write(s.Sweep); w.Write(s.Ms); },
+        r => new Stroke(r.ReadInt16(), r.ReadInt16(), r.ReadUInt16()),
+        (sender, s) => (RoleState.Of(sender) as Samurai)?.HostStroke(s), perSecond: 8);
 
-    // PC はマウスの指す方向 (ボタンをマウスで押した時はボタンの上なので歩く向き)。スマホは歩く向き
-    private static Vector2 Aim(PlayerControl lp)
-    {
-        Vector2 walk = Terrain.HammerSwing.Aim(lp, out _);
-        if (OperatingSystem.IsAndroid()) return walk;
-        if (PassiveButtonManager.InstanceExists && PassiveButtonManager.Instance.currentOver) return walk;
-        var cam = Camera.main;
-        if (!cam) return walk;
-        Vector3 m = cam.ScreenToWorldPoint(Input.mousePosition);
-        Vector2 at = lp.GetTruePosition();
-        float dx = m.x - at.x, dy = m.y - at.y, len = MathF.Sqrt(dx * dx + dy * dy);
-        return len > 0.05f ? FxMath.V2(dx / len, dy / len) : walk;
-    }
+    // 振った姿 (ホスト → 全員)。値 = 振った人 | 修羅の色 << 7 | 始めの角度 + 180 << 8 | 掃引角 + 512 << 17 (10 bit)・ms は別
+    private static readonly RemoteCall<(int head, ushort ms)> ShowCall = new("Samurai.Show", Route.HostToAll,
+        (w, m) => { w.Write(m.head); w.Write(m.ms); }, r => (r.ReadInt32(), r.ReadUInt16()),
+        (_, m) => (RoleState.Of((byte)(m.head & 0x7F)) as Samurai)?.ShowStroke(m.head, m.ms));
 
-    private static readonly RemoteCall<Vector2> SlashCall = new("Samurai.Slash", Route.ToHost,
-        (w, v) => { w.Write(v.x); w.Write(v.y); }, r => FxMath.V2(r.ReadSingle(), r.ReadSingle()),
-        (sender, v) => (RoleState.Of(sender) as Samurai)?.HostSlash(v));
-
-    // 振った姿 (ホスト → 全員)。値 = 振った人 | 向きの角度 (0..65535) << 8 | 修羅の色 << 24。振った本人は手元で済ませている
-    private static readonly RemoteCall<int> SwingCall = new("Samurai.Swing", Route.HostToAll,
-        (w, v) => w.Write(v), r => r.ReadInt32(),
-        (_, v) => (RoleState.Of((byte)v) as Samurai)?.ShowSwing(v));
-
-    private void ShowSwing(int v)
+    private void ShowStroke(int head, ushort ms)
     {
         if (IsLocal) return;
-        float a = ((v >> 8) & 0xFFFF) / 65535f * MathF.PI * 2f;
-        _blade.Swing(FxMath.V2(MathF.Cos(a), MathF.Sin(a)), FallenTrailSeen && (v >> 24 & 1) != 0);
+        bool fallen = (head >> 7 & 1) != 0;
+        float a0 = ((head >> 8) & 0x1FF) - 180f;
+        float sweep = ((head >> 17) & 0x3FF) - 512f;
+        _blade.Replay(a0, sweep, ms / 1000f, fallen);
     }
 
-    // 修羅の軌跡の色を他の人に見せるか (今は常に見せる)
-    private static bool FallenTrailSeen => true;
-
-    // ホスト: 振りの依頼を確かめ、溜めの後に当てる
-    private void HostSlash(Vector2 dir)
+    // ホスト: 一振りを確かめ、掃引した扇の中の生きている人に当てる (壁越しは当たらない)
+    private void HostStroke(Stroke s)
     {
-        string why = HostRefuse(dir);
+        string why = HostRefuse();
         if (why != null)
         {
-            Plugin.Logger.LogWarning($"Samurai slash refused {PlayerId}: {why}");
+            _hostRefused++;
+            _lastRefusal = why;
+            Plugin.Logger.LogWarning($"Samurai stroke refused {PlayerId}: {why}");
             return;
         }
-        float len = MathF.Sqrt(dir.x * dir.x + dir.y * dir.y);
-        _pendingDir = FxMath.V2(dir.x / len, dir.y / len);
-        _pendingAt = Environment.TickCount64 + (long)(WindUp * 1000f);
-        _slash.HostLastMs = Environment.TickCount64;
-        float ang = MathF.Atan2(_pendingDir.y, _pendingDir.x);
-        if (ang < 0f) ang += MathF.PI * 2f;
-        int a16 = (int)(ang / (MathF.PI * 2f) * 65535f) & 0xFFFF;
-        SwingCall.Send(PlayerId | a16 << 8 | (_fallen ? 1 : 0) << 24);
-        if (!IsLocal) ShowSwing(PlayerId | a16 << 8 | (_fallen ? 1 : 0) << 24);
+        _hostStrokes++;
+        _hostLastStrokeMs = Environment.TickCount64;
+        float a0 = Math.Clamp((int)s.A0, -180, 180);
+        float sweep = Math.Clamp((int)s.Sweep, -(int)SwipeInput.MaxSweep, (int)SwipeInput.MaxSweep);
+        // 速さ (= 威力) は客の申告なので、人の手で出せない短さは丸める
+        float secs = Math.Clamp(s.Ms / 1000f, MinStrokeSeconds, SwipeInput.MaxSeconds);
+        int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17;
+        ShowCall.Send((head, (ushort)(secs * 1000f)));
+        if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f));
+        HostHit(a0, sweep, Damage(FxMath.Abs(sweep) / secs));
     }
 
-    private string HostRefuse(Vector2 dir)
+    private string HostRefuse()
     {
         if (AmongUsClient.Instance.IsGameOver || !ShipStatus.Instance || MeetingHud.Instance || ExileController.Instance) return "not now";
         var p = Player;
         if (!p || p.Data == null || p.Data.IsDead || p.Data.Disconnected) return "user";
         if (p.inVent || p.inMovingPlat) return "user busy";
         if (!Drawn || Time.time - _drawnAt < DrawTime - 0.2f) return "sheathed";
-        if (_pendingAt != 0) return "swinging";
-        if (float.IsNaN(dir.x) || float.IsNaN(dir.y) || dir.x * dir.x + dir.y * dir.y < 0.01f) return "dir";
-        if ((Environment.TickCount64 - _slash.HostLastMs) / 1000f < SlashCooldown - CooldownSlack && !Dev.DevCooldown.Skips(p)) return "cooldown";
+        if ((Environment.TickCount64 - _hostLastStrokeMs) / 1000f < StrokeGap - GapSlack && !Dev.DevCooldown.Skips(p)) return "gap";
         return null;
     }
 
-    public override void OnFixedUpdate()
-    {
-        _blade.Tick();
-        // ボタンは HUD が出てから作られるので、出来た後に今の抜き具合へ合わせる
-        if (IsLocal && _slash?.Button != null && _shownDrawn != Drawn)
-        {
-            _shownDrawn = Drawn;
-            RefreshButtons();
-        }
-        if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
-        long now = Environment.TickCount64;
-        if (_pendingAt != 0 && now >= _pendingAt)
-        {
-            _pendingAt = 0;
-            HostResolve(_pendingDir);
-        }
-        if (_fallen && now >= _nextWinCheck)
-        {
-            _nextWinCheck = now + WinCheckMs;
-            HostCheckFallenWin();
-        }
-    }
-
-    // ホスト: 扇の中の生きている人を全員斬る (壁越しは斬れない)
-    private void HostResolve(Vector2 dir)
+    private void HostHit(float a0, float sweep, int damage)
     {
         var p = Player;
-        if (HostRefuseResolve(p)) return;
         Vector2 me = p.GetTruePosition();
-        float reach = SlashRange + RangeSlack, minDot = MathF.Cos(HalfArcDeg * FxMath.Deg2Rad);
+        float reach = SlashRange + RangeSlack;
+        float span = FxMath.Abs(sweep);
         var all = GameData.Instance.AllPlayers;
         // 先に当たる人を全員決めてから斬る (斬った後の本編の処理で一覧が変わる)
         Span<byte> hits = stackalloc byte[16];
@@ -240,28 +223,60 @@ public sealed class Samurai : RoleBase
             Vector2 at = pc.GetTruePosition();
             float dx = at.x - me.x, dy = at.y - me.y, sq = dx * dx + dy * dy;
             if (sq > reach * reach) continue;
-            float len = MathF.Sqrt(sq);
-            // 体が重なるほど近い人は向きによらず当たる
-            if (len > 0.25f && (dx * dir.x + dy * dir.y) / len < minDot) continue;
+            if (sq > Touching * Touching)
+            {
+                // 振った向きに沿って、始めの角度から相手の角度までの回り (0〜360)
+                float ta = FxMath.Atan2(dy, dx) * FxMath.Rad2Deg;
+                float d = (sweep >= 0f ? ta - a0 : a0 - ta) % 360f;
+                if (d < 0f) d += 360f;
+                if (d > span + ArcPad && d < 360f - ArcPad) continue;
+            }
             if (PhysicsHelpers.AnythingBetween(me, at, Constants.ShipAndObjectsMask, false)) continue;
             hits[n++] = info.PlayerId;
         }
+        bool counted = false;
         for (int i = 0; i < n; i++)
         {
             var target = GameData.Instance.GetPlayerById(hits[i])?.Object;
             if (!target || target.Data == null || target.Data.IsDead) continue;
-            if (BeforeMurderEvent.Ask(p, target) != null) continue;
+            // 倒す一振りだけキルとして確かめる (盾などに止められたら体力 1 で残す)
+            int dmg = damage, left = Duel.HpOf(target.PlayerId);
+            if (left - dmg <= 0 && BeforeMurderEvent.Ask(p, target) != null) dmg = left - 1;
+            if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg)) continue;
             bool impostor = target.Data.Role && target.Data.Role.IsImpostor;
             p.RpcMurderPlayer(target, true);
+            if (Duel.OpponentOf(PlayerId) == target.PlayerId) Duel.HostEnd(PlayerId);
             if (impostor) _impostorKills.Value++;
             else _otherKills.Value++;
+            counted = true;
         }
-        if (n > 0) HostUpdatePath();
+        if (counted) HostUpdatePath();
     }
 
-    private static bool HostRefuseResolve(PlayerControl p) =>
-        AmongUsClient.Instance.IsGameOver || !ShipStatus.Instance || MeetingHud.Instance || ExileController.Instance
-        || !p || p.Data == null || p.Data.IsDead || p.Data.Disconnected || p.inVent || p.inMovingPlat;
+    public override void OnFixedUpdate()
+    {
+        _blade.Tick();
+        if (IsLocal)
+        {
+            if (_draw?.Button != null && _shownDrawn != Drawn)
+            {
+                _shownDrawn = Drawn;
+                RefreshButtons();
+            }
+            // 抜いて動ける間だけ、なぞりで振る入力を構える
+            var p = Player;
+            bool armed = Drawn && Time.time - _drawnAt >= DrawTime && p && p.Data != null && !p.Data.IsDead && p.CanMove && !MeetingHud.Instance;
+            SwipeInput.Arm(armed ? p : null);
+        }
+        if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
+        Duel.HostTick();
+        long now = Environment.TickCount64;
+        if (_fallen && now >= _nextWinCheck)
+        {
+            _nextWinCheck = now + WinCheckMs;
+            HostCheckFallenWin();
+        }
+    }
 
     // ホスト: 斬った数から道を決め、本人へ知らせる (堕ちたのは設定で全員へ)。値 = 本人 | 変わった道 << 8 | 斬ったインポスターの数 << 16
     private void HostUpdatePath()
@@ -336,7 +351,7 @@ public sealed class Samurai : RoleBase
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} pending={_pendingAt != 0} blade[{_blade?.Describe()}]";
+        $"samurai={PlayerId} drawn={Drawn} imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] duel[{Duel.Describe()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。
