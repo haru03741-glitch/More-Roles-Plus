@@ -128,12 +128,13 @@ internal sealed partial class SamuraiBlade
         _drawn = drawn;
         _drawT = iai ? Time.time - (DrawKeys[^1].T + Frame) * SlowMo : Time.time;
         if (!drawn) _spent = false;
-        if (drawn) Ensure();
+        if (drawn) { Ensure(); _sheatheSlow = 1f; }
+        else StrikeSheathed();
         if (!_root) return;
         // 振りの途中で納めたら振りを捨てる
         _repT = _endT = -10f;
         _localStroke = false;
-        SpawnGlint(drawn ? 0.10f : 0.38f, drawn);
+        SpawnGlint(drawn ? 0.10f : 0.38f * _sheatheSlow, drawn);
         Track();
     }
 
@@ -190,6 +191,7 @@ internal sealed partial class SamuraiBlade
         EndCharge();
         RestoreBody();
         DisposeFx();
+        DisposeStrike();
         if (_root) Object.Destroy(_root);
         _root = null;
         if (LocalFollow == this) LocalFollow = null;
@@ -259,7 +261,9 @@ internal sealed partial class SamuraiBlade
     internal static void TickAll()
     {
         SamuraiScreen.Tick();
+        IaiScreen.Tick();
         TickFx();
+        TickStrikes();
         if (Live.Count == 0) return;
         _frame++;
         bool check = _frame % CheckEvery == 0;
@@ -286,7 +290,7 @@ internal sealed partial class SamuraiBlade
         {
             _hidden = hidden;
             _sr.enabled = _fist.enabled = !hidden;
-            if (hidden) { RestoreBody(); HideFx(); }
+            if (hidden) { RestoreBody(); HideFx(); HideStrike(); }
         }
         if (!_swinging) _flip = pc.cosmetics && pc.cosmetics.FlipX;
         RefreshColor();
@@ -295,11 +299,11 @@ internal sealed partial class SamuraiBlade
     // 毎フレーム書く必要があるか (抜く・納める・振る・止めて戻る間)
     private bool Busy(float now)
     {
-        if ((now - _drawT) / SlowMo < 0.6f || now < _dashUntil) return true;
+        if ((now - _drawT) / SlowMo < 0.6f * _sheatheSlow || now < _dashUntil) return true;
         if (this == LocalFollow && (SwipeInput.Dragging || _localStroke)) return true;
         if (_powArmed || _lockOn) return true;
         if ((now - _repT) / SlowMo <= _repDur + 0.05f) return true;
-        return (now - _endT) / SlowMo < Hold + IaiHold * _strokePow + Recover || SmearLive;
+        return (now - _endT) / SlowMo < Hold + IaiHold * _strokePow + _holdExtra + Recover || SmearLive;
     }
 
     // 振り付けの t 秒の姿
@@ -402,6 +406,8 @@ internal sealed partial class SamuraiBlade
         var pc = _role.Player;
         if (!pc) return false;
         float td = (now - _drawT) / SlowMo;
+        // 居合の後の納刀はゆっくり (鍔が鳴る所で遅れ斬撃が走る)
+        if (!_drawn) td /= _sheatheSlow;
         Pose p;
         bool world = false;
         bool drawing = td < DrawKeys[^1].T;
@@ -461,7 +467,7 @@ internal sealed partial class SamuraiBlade
             _wasInStroke = false;
             if (_swinging) ReleaseSmear();
             float te = (now - _endT) / SlowMo;
-            float hold = Hold + IaiHold * _strokePow;
+            float hold = Hold + IaiHold * _strokePow + _holdExtra;
             if (_endWorld && te < hold + Recover)
             {
                 // 振り抜いた形で止め、構えへ戻る (戻る間は右/左の向きへ鏡に移る)
@@ -479,7 +485,7 @@ internal sealed partial class SamuraiBlade
             else
             {
                 _endWorld = false;
-                _strokePow = _auraHot = 0f;
+                _strokePow = _auraHot = _holdExtra = 0f;
                 SampleMoving(pc);
                 p = Stance(FxMath.Floor(now * 15f) / 15f);
             }
@@ -532,5 +538,5 @@ internal sealed partial class SamuraiBlade
     }
 
     internal string Describe() =>
-        $"root={(_root ? (_root.activeSelf ? "on" : "off") : "none")} drawn={_drawn} hidden={_hidden} flip={_flip} live={Live.Contains(this)} swing={_swinging} moving={_moving} posed={_posed} smear={SmearLive} blade={_last.Blade:0} lean={_last.Lean:0.0}";
+        $"root={(_root ? (_root.activeSelf ? "on" : "off") : "none")} drawn={_drawn} hidden={_hidden} flip={_flip} live={Live.Contains(this)} swing={_swinging} moving={_moving} posed={_posed} smear={SmearLive} blade={_last.Blade:0} lean={_last.Lean:0.0} iai[armed={_lastArmedTier} strikes={_strikes} delayed={_delayedRuns}]";
 }

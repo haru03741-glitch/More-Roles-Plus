@@ -10,6 +10,7 @@ internal sealed partial class SamuraiBlade
     private const float IaiHold = 0.25f;   // 溜め切った居合で、振り抜いた形に足す止めの秒
 
     private float _iaiPow, _strokePow, _auraHot;
+    private int _iaiTier = 1, _strokeTier = 1;
     private bool _powArmed, _wasInStroke, _charging, _chargeFull;
 
     // 納めたまま押している (自分の刀): 毎フレーム書く列に入れる
@@ -18,12 +19,14 @@ internal sealed partial class SamuraiBlade
         if (Ensure()) Track();
     }
 
-    // 居合で抜いた。pow = 溜め (0〜1)。続く一振りがこの強さになる
-    internal void ArmIai(float pow)
+    // 居合で抜いた。pow = 溜め (0〜1)・tier = 段 (1〜4)。続く一振りがこの強さになる
+    internal void ArmIai(float pow, int tier)
     {
         if (!Ensure()) return;
         EndCharge();
         _iaiPow = FxMath.Clamp01(pow);
+        _iaiTier = tier < 1 ? 1 : tier > 4 ? 4 : tier;
+        _lastArmedTier = _iaiTier;
         _powArmed = true;
         Glint(0.06f, 0.06f, 0.10f + 0.06f * _iaiPow, 0.30f + 0.5f * _iaiPow);
         Track();
@@ -32,15 +35,19 @@ internal sealed partial class SamuraiBlade
     private void BeginStroke()
     {
         _strokePow = _powArmed ? _iaiPow : 0f;
+        _strokeTier = _powArmed ? _iaiTier : 1;
         _powArmed = false;
         _iaiPow = 0f;
+        _iaiTier = 1;
         _auraHot = _strokePow * 0.8f;
     }
 
-    // 振り抜いた: 居合なら切っ先が光る
+    // 振り抜いた: 居合なら切っ先が光り、段に応じた斬線を出す
     private void EndStroke()
     {
         if (_strokePow > 0.05f) Glint(TipLen - 0.04f, TipLen - 0.04f, 0.14f + 0.10f * _strokePow, 0.30f + 0.55f * _strokePow);
+        if (_strokeTier >= 2) StrikeRelease(_strokeTier);
+        _strokeTier = 1;
     }
 
     // 居合の一振り: 振る向きへ大きく踏み出して浮き、前へ深く傾く

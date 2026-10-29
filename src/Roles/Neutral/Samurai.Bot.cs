@@ -19,7 +19,7 @@ public sealed partial class Samurai
     internal void BotStroke(float a0, float sweep, float secs, float charge)
     {
         byte iai = Drawn ? (byte)0 : (byte)(1 + (int)MathF.Round(FxMath.Clamp01(charge) * 254f));
-        HostStroke(new Stroke((short)Math.Clamp((int)a0, -180, 180), (short)sweep, (ushort)(secs * 1000f), iai));
+        HostStroke(new Stroke((short)Math.Clamp((int)a0, -180, 180), (short)sweep, (ushort)(secs * 1000f), iai, (byte)IaiTier(HostKiNow(), Drawn ? 0f : charge)));
     }
 
     // 刀を納める (全員に見せる)。人の納刀と同じく、すぐには抜けない

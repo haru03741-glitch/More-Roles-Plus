@@ -107,20 +107,30 @@ public sealed partial class Samurai : RoleBase
 
     // ---- 斬る (なぞりの一振り) ----
 
-    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms・居合 (0 = 違う・1〜255 = 居合で溜め (v-1)/254)
+    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms・居合 (0 = 違う・1〜255 = 居合で溜め (v-1)/254)・居合の段 (1〜4)
     private readonly struct Stroke
     {
         public readonly short A0, Sweep;
         public readonly ushort Ms;
-        public readonly byte Iai;
+        public readonly byte Iai, Tier;
 
-        public Stroke(short a0, short sweep, ushort ms, byte iai)
+        public Stroke(short a0, short sweep, ushort ms, byte iai, byte tier)
         {
             A0 = a0;
             Sweep = sweep;
             Ms = ms;
             Iai = iai;
+            Tier = tier;
         }
+    }
+
+    // 居合の段: 抜いた時に残っていた気を 4 つに区切る (気が多いほど派手)。
+    // 溜め無しの居合は普通の一振りなので段 1・段 4 は溜め切った時だけ (足りなければ段 3)
+    internal static int IaiTier(float ki, float charge)
+    {
+        if (charge <= 0.02f) return 1;
+        int t = ki >= 75f ? 4 : ki >= 50f ? 3 : ki >= 25f ? 2 : 1;
+        return t == 4 && charge < FullCharge ? 3 : t;
     }
 
     // 自分の端末: なぞりで一振りが出来た。軌跡は手元で描いているので、ホストへ当たりを頼むだけ
@@ -133,7 +143,7 @@ public sealed partial class Samurai : RoleBase
         _sent++;
         byte charge = iai ? (byte)(1 + (int)MathF.Round(_iaiCharge * 254f)) : (byte)0;
         _sentIai = charge;
-        StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000), charge));
+        StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000), charge, (byte)(iai ? _iaiTier : 1)));
     }
 
     // 確かめ用: なぞりを作り物で流す (a0 → a1 度を秒で・hold 秒押したまま溜めてから)
@@ -145,24 +155,24 @@ public sealed partial class Samurai : RoleBase
     }
 
     // 確かめ用: 他人から届いた一振りと同じ再生を自分の刀で流す (当たりは無し)
-    internal void ShowForTest(float a0, float sweep, float seconds, float iaiPow = -1f)
+    internal void ShowForTest(float a0, float sweep, float seconds, float iaiPow = -1f, int tier = 0)
     {
-        if (iaiPow >= 0f) _blade.ArmIai(iaiPow);
+        if (iaiPow >= 0f) _blade.ArmIai(iaiPow, tier > 0 ? tier : IaiTier(KiMax, iaiPow));
         _blade.Replay(a0, sweep, seconds, _fallen);
     }
 
     private static readonly RemoteCall<Stroke> StrokeCall = new("Samurai.Stroke", Route.ToHost,
         // Hazel に short の書き手は無い (int の 4 バイトになる)。読み手の ReadInt16 と合わせて 2 バイトで書く
-        (w, s) => { w.Write(unchecked((ushort)s.A0)); w.Write(unchecked((ushort)s.Sweep)); w.Write(s.Ms); w.Write(s.Iai); },
-        r => new Stroke(r.ReadInt16(), r.ReadInt16(), r.ReadUInt16(), r.ReadByte()),
+        (w, s) => { w.Write(unchecked((ushort)s.A0)); w.Write(unchecked((ushort)s.Sweep)); w.Write(s.Ms); w.Write(s.Iai); w.Write(s.Tier); },
+        r => new Stroke(r.ReadInt16(), r.ReadInt16(), r.ReadUInt16(), r.ReadByte(), r.ReadByte()),
         (sender, s) => (RoleState.Of(sender) as Samurai)?.HostStroke(s), perSecond: 8);
 
-    // 振った姿 (ホスト → 全員)。値 = 振った人 | 修羅の色 << 7 | 始めの角度 + 180 << 8 | 掃引角 + 512 << 17 (10 bit) | 居合 << 27 | 居合の溜め (0〜15) << 28・ms は別
-    private static readonly RemoteCall<(int head, ushort ms)> ShowCall = new("Samurai.Show", Route.HostToAll,
-        (w, m) => { w.Write(m.head); w.Write(m.ms); }, r => (r.ReadInt32(), r.ReadUInt16()),
-        (_, m) => (RoleState.Of((byte)(m.head & 0x7F)) as Samurai)?.ShowStroke(m.head, m.ms));
+    // 振った姿 (ホスト → 全員)。値 = 振った人 | 修羅の色 << 7 | 始めの角度 + 180 << 8 | 掃引角 + 512 << 17 (10 bit) | 居合 << 27 | 居合の溜め (0〜15) << 28・ms と居合の段は別
+    private static readonly RemoteCall<(int head, ushort ms, byte tier)> ShowCall = new("Samurai.Show", Route.HostToAll,
+        (w, m) => { w.Write(m.head); w.Write(m.ms); w.Write(m.tier); }, r => (r.ReadInt32(), r.ReadUInt16(), r.ReadByte()),
+        (_, m) => (RoleState.Of((byte)(m.head & 0x7F)) as Samurai)?.ShowStroke(m.head, m.ms, m.tier));
 
-    private void ShowStroke(int head, ushort ms)
+    private void ShowStroke(int head, ushort ms, byte tier)
     {
         if (IsLocal) return;
         // ホストは確かめた時に引いている
@@ -173,7 +183,7 @@ public sealed partial class Samurai : RoleBase
         if ((head >> 27 & 1) != 0)
         {
             SetDrawn(true, iai: true);
-            _blade.ArmIai(((head >> 28) & 0xF) / 15f);
+            _blade.ArmIai(((head >> 28) & 0xF) / 15f, tier);
         }
         _blade.Replay(a0, sweep, ms / 1000f, fallen);
     }
@@ -193,7 +203,7 @@ public sealed partial class Samurai : RoleBase
             {
                 SetDrawn(true, iai: true);
                 int h = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | (Math.Clamp((int)s.A0, -180, 180) + 180) << 8 | 512 << 17 | 1 << 27;
-                ShowCall.Send((h, (ushort)100));
+                ShowCall.Send((h, (ushort)100, (byte)1));
             }
             return;
         }
@@ -205,14 +215,16 @@ public sealed partial class Samurai : RoleBase
             charge = FxMath.Min(s.Iai > 0 ? (s.Iai - 1) / 254f : 0f, ChargeOf(Time.time - _sheathedAt + 0.3f));
             SetDrawn(true, iai: true);
         }
+        // 段も客の申告。ホストの見積もりの気 (余裕込み) で出せる段までに丸める
+        byte tier = (byte)(iai ? Math.Min(Math.Clamp((int)s.Tier, 1, 4), IaiTier(DevFree(Player) ? KiMax : HostKiNow() + KiSlack, charge)) : 1);
         if (!DevFree(Player)) _hostKi -= StrokeCost;
         float a0 = Math.Clamp((int)s.A0, -180, 180);
         float sweep = Math.Clamp((int)s.Sweep, -(int)SwipeInput.MaxSweep, (int)SwipeInput.MaxSweep);
         // 速さ (= 威力) は客の申告なので、人の手で出せない短さは丸める
         float secs = Math.Clamp(s.Ms / 1000f, MinStrokeSeconds, SwipeInput.MaxSeconds);
         int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17 | (iai ? 1 : 0) << 27 | (int)MathF.Round(charge * 15f) << 28;
-        ShowCall.Send((head, (ushort)(secs * 1000f)));
-        if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f));
+        ShowCall.Send((head, (ushort)(secs * 1000f), tier));
+        if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f), tier);
         int dmg = Damage(FxMath.Abs(sweep) / secs);
         if (iai) dmg += (int)(IaiCharged * charge);
         _lastDamage = dmg;

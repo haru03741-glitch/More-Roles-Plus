@@ -134,6 +134,7 @@ public sealed partial class Samurai
     {
         var s = _local;
         if (s == null) return;
+        if (s._autoSheatheAt > 0f && Time.time >= s._autoSheatheAt) s.AutoSheathe();
         if (s._lockWith != 255) { s.LockTick(); return; }
         if (!s._padOn && !s._canAct) return;
         if (s._padOn) UI.SamuraiPad.Poll(s);
@@ -199,6 +200,7 @@ public sealed partial class Samurai
     // 短すぎて捨てられた一振りの後に本当の一振りが続くことがあるので、居合の印は送った一振りで使うまで持ち越す
     private bool _iaiStroke;
     private float _iaiCharge;
+    private int _iaiTier = 1;
 
     private int _starts;
 
@@ -208,8 +210,41 @@ public sealed partial class Samurai
         if (Drawn) return;
         _iaiStroke = true;
         _iaiCharge = ChargeOf(Time.time - SwipeInput.PressedAt);
+        _iaiTier = IaiTier(_ki, _iaiCharge);
         SetDrawn(true, iai: true);
-        _blade.ArmIai(_iaiCharge);
+        _blade.ArmIai(_iaiCharge, _iaiTier);
+    }
+
+    // ---- 居合の後の駆け抜けと納刀 ----
+
+    private float _autoSheatheAt = -10f;
+
+    // 段 2 からの居合を振り抜いた (自分の刀の見た目から): 斬った向きへ駆け抜け、hold 秒止めてから自動で刀を納める。
+    // 気は使わない (居合の一振りで払っている)
+    internal void IaiFollow(float dx, float dy, float dist, float hold)
+    {
+        if (!IsLocal || !Drawn) return;
+        float secs = 0f;
+        if (dist > 0.05f)
+        {
+            secs = dist / DashSpeed;
+            _dashDir = FxMath.V2(dx, dy);
+            _dashUntil = Time.time + secs;
+            _dashOn = true;
+            _blade.Dash(secs + 0.08f);
+            DashCall.Send((byte)Math.Clamp((int)(secs * 100f), 1, 255));
+        }
+        _autoSheatheAt = Time.time + (secs + hold) * SamuraiBlade.SlowMo;
+    }
+
+    // 続けて振り始めた・倒れた・鍔迫り合いの間は納めない
+    private void AutoSheathe()
+    {
+        _autoSheatheAt = -10f;
+        if (!Drawn || SwipeInput.Dragging || Locked || Spent) return;
+        var p = Player;
+        if (!p || p.Data == null || p.Data.IsDead || MeetingHud.Instance) return;
+        Sheathe();
     }
 
     // ---- 踏み込み ----
