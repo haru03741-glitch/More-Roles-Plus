@@ -37,7 +37,7 @@ public sealed partial class Samurai : RoleBase
 
     // 一振りの威力 = 角速度 (度/秒) の帯。居合は溜めた分を足す
     private static int Damage(float degPerSec) => degPerSec >= 1000f ? 40 : degPerSec >= 600f ? 30 : 20;
-    private const int IaiBase = 10, IaiCharged = 30;
+    private const int IaiCharged = 30; // 溜め切った居合に足す分 (溜め無しの居合は普通の一振りと同じ)
 
     // 修羅に堕ちたらキル役として数える (インポスターがいなくなっても生存者が多ければクルーの勝ちにしない)。
     // ホストの判定で読むので、ホストの値で決まる
@@ -126,7 +126,7 @@ public sealed partial class Samurai : RoleBase
         if (!Drawn) return;
         bool iai = _iaiStroke;
         _iaiStroke = false;
-        if (!iai) UseKi(StrokeCost);
+        UseKi(StrokeCost);
         _sent++;
         byte charge = iai ? (byte)(1 + (int)MathF.Round(_iaiCharge * 254f)) : (byte)0;
         _sentIai = charge;
@@ -192,7 +192,7 @@ public sealed partial class Samurai : RoleBase
             charge = FxMath.Min(s.Iai > 0 ? (s.Iai - 1) / 254f : 0f, ChargeOf(Time.time - _sheathedAt + 0.3f));
             SetDrawn(true, iai: true);
         }
-        else if (!DevFree(Player)) _hostKi -= StrokeCost;
+        if (!DevFree(Player)) _hostKi -= StrokeCost;
         float a0 = Math.Clamp((int)s.A0, -180, 180);
         float sweep = Math.Clamp((int)s.Sweep, -(int)SwipeInput.MaxSweep, (int)SwipeInput.MaxSweep);
         // 速さ (= 威力) は客の申告なので、人の手で出せない短さは丸める
@@ -201,7 +201,7 @@ public sealed partial class Samurai : RoleBase
         ShowCall.Send((head, (ushort)(secs * 1000f)));
         if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f));
         int dmg = Damage(FxMath.Abs(sweep) / secs);
-        if (iai) dmg += IaiBase + (int)(IaiCharged * charge);
+        if (iai) dmg += (int)(IaiCharged * charge);
         _lastDamage = dmg;
         HostHit(a0, sweep, dmg);
     }
@@ -219,7 +219,7 @@ public sealed partial class Samurai : RoleBase
         if (!p || p.Data == null || p.Data.IsDead || p.Data.Disconnected) return "user";
         if (p.inVent || p.inMovingPlat) return "user busy";
         if (Time.time - _drawnAt < DrawTime - 0.2f) return iai ? "sheathing" : "drawing";
-        if (!iai && HostKiNow() < -KiSlack && !DevFree(p)) return "ki";
+        if (HostKiNow() < -KiSlack && !DevFree(p)) return "ki";
         return null;
     }
 
