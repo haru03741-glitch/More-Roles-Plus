@@ -222,13 +222,18 @@ internal sealed partial class SamuraiBlade
 
     private void SpawnGhost(float now)
     {
-        if (now - _lastGhost < Frame || _hidden || Ghosts.Count >= MaxGhosts) return;
-        var pc = _role.Player;
+        if (now - _lastGhost < Frame || _hidden) return;
+        if (GhostOf(_role.Player, _colorId, _fallenTint, now)) _lastGhost = now;
+    }
+
+    // 人の体の絵の写しをその場に置いて薄れさせる (サムライ以外の回避の残像にも)。置けたら true
+    internal static bool GhostOf(PlayerControl pc, int colorId, bool red, float now)
+    {
+        if (Ghosts.Count >= MaxGhosts) return false;
         var body = pc && pc.cosmetics ? pc.cosmetics.currentBodySprite : null;
         var src = body != null ? body.BodySprite : null;
         var mat = FxHands.PlayerMat();
-        if (!src || !mat) return;
-        _lastGhost = now;
+        if (!src || !mat) return false;
         var g = GhostPool.Count > 0 ? GhostPool.Pop() : null;
         if (g == null || !g.Go)
         {
@@ -244,11 +249,12 @@ internal sealed partial class SamuraiBlade
         g.Tf.localScale = stf.lossyScale;
         g.Sr.sprite = src.sprite;
         g.Sr.flipX = src.flipX;
-        if (_colorId >= 0 && _colorId < Palette.PlayerColors.Length) PlayerMaterial.SetColors(_colorId, g.Sr);
+        if (colorId >= 0 && colorId < Palette.PlayerColors.Length) PlayerMaterial.SetColors(colorId, g.Sr);
         g.T = now;
-        g.Red = _fallenTint;
+        g.Red = red;
         g.Go.SetActive(true);
         Ghosts.Add(g);
+        return true;
     }
 
     // 毎フレーム。残像が無ければ件数の比較だけで帰る

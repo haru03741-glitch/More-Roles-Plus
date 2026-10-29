@@ -21,7 +21,7 @@ internal static class DuelHud
     private static GameObject _root;
     private static Transform _rootTf;
     private static SpriteRenderer _leftFill, _rightFill, _leftGhost, _rightGhost, _leftFace, _rightFace;
-    private static TextMeshPro _leftName, _rightName, _center, _title;
+    private static TextMeshPro _leftName, _rightName, _center, _title, _hint;
     private static Material[] _mats = Array.Empty<Material>();
     private static float _halfW, _halfH, _barW;
 
@@ -88,6 +88,7 @@ internal static class DuelHud
         _me = me;
         _opp = opp;
         _shown = true;
+        _hint.text = "";
         _root.SetActive(true);
         // 左のタスク一覧はバーと重なるので、立ち合いの間だけ隠す
         var hud = Vanilla.Hud;
@@ -108,6 +109,69 @@ internal static class DuelHud
     private static GameObject _tasks;
     private static bool _tasksWasOn;
 
+    // ---- 鍔迫り合い ----
+
+    private const float LockW = 4.4f;
+    private static SpriteRenderer _lockFrame, _lockMine, _lockTheirs;
+    private static TextMeshPro _lockText;
+    private static float _lockY, _lockT = -10f;
+    private static bool _lockOn;
+
+    internal static void ShowLock(bool on)
+    {
+        if (!_root) return;
+        SetLockOn(on && _shown);
+        if (!_lockOn) return;
+        _lockT = Time.time;
+        _lockText.text = new Text("Duel.LockMash").ToString();
+        Push(0.5f);
+    }
+
+    private static void SetLockOn(bool on)
+    {
+        _lockOn = on;
+        _lockFrame.gameObject.SetActive(on);
+        _lockMine.gameObject.SetActive(on);
+        _lockTheirs.gameObject.SetActive(on);
+        _lockText.gameObject.SetActive(on);
+    }
+
+    // ホストから届いた連打の数 (a / b = 二人・ca / cb = それぞれの数)
+    internal static void LockMeter(byte a, byte b, int ca, int cb)
+    {
+        if (!_lockOn) return;
+        int mine, theirs;
+        if (_me == a) { mine = ca; theirs = cb; }
+        else if (_me == b) { mine = cb; theirs = ca; }
+        else return;
+        Push((mine + 1f) / (mine + theirs + 2f));
+    }
+
+    // 押し合いの割合 (0〜1・自分の分) をバーへ
+    private static void Push(float k)
+    {
+        float mine = LockW * FxMath.Clamp(k, 0.05f, 0.95f), theirs = LockW - mine;
+        _lockMine.transform.localPosition = FxMath.V3(-LockW * 0.5f + mine * 0.5f, _lockY, -0.1f);
+        _lockMine.transform.localScale = FxMath.V3(mine, 0.22f, 1f);
+        _lockTheirs.transform.localPosition = FxMath.V3(-LockW * 0.5f + mine + theirs * 0.5f, _lockY, -0.1f);
+        _lockTheirs.transform.localScale = FxMath.V3(theirs, 0.22f, 1f);
+    }
+
+    // 「連打!」の字が脈打つ
+    private static void LockTick(float now)
+    {
+        float s = 1f + 0.12f * FxMath.Abs(FxMath.Sin((now - _lockT) * 14f));
+        _lockText.transform.localScale = FxMath.V3(s, s, 1f);
+    }
+
+    // 自分のバーの下の一行 (空 = 出さない)。出していない時は何もしない (書けたら true)
+    internal static bool SetHint(string text)
+    {
+        if (!_shown || !_hint) return false;
+        _hint.text = text;
+        return true;
+    }
+
     private static void Hide()
     {
         if (_tasksWasOn && _tasks) _tasks.SetActive(true);
@@ -116,6 +180,7 @@ internal static class DuelHud
         _shown = false;
         _me = _opp = 255;
         if (_root) _root.SetActive(false);
+        if (_lockFrame) SetLockOn(false);
     }
 
     // 毎フレーム (出している間だけ動く)
@@ -128,6 +193,7 @@ internal static class DuelHud
         bool ghost = Ghost(ref _leftGhostHp, _leftHp, _leftHitT, now) | Ghost(ref _rightGhostHp, _rightHp, _rightHitT, now);
         if (ghost) Write();
         TitleTick(now);
+        if (_lockOn) LockTick(now);
         ComboTick(now);
         if (_koT > 0f && now - _koT > KoHold + TitleFade) Hide();
     }
@@ -289,6 +355,11 @@ internal static class DuelHud
         _center = Text(src, "Infinity", 0f, y, 3.2f, TextAlignmentOptions.Center, layer, 1f);
         _center.text = "∞";
         Outline(_center, 0.25f, FxMath.Rgba(0.1f, 0.1f, 0.15f, 1f));
+        // 自分の手 (回避の残り) は自分のバーの下
+        _hint = Text(src, "Hint", -(BarGap + _barW * 0.5f), y - 0.62f, 1.6f, TextAlignmentOptions.Center, layer, 4f);
+        _hint.color = FxMath.Rgba(1f, 0.92f, 0.55f, 1f);
+        Outline(_hint, 0.25f, FxMath.Rgba(0.05f, 0.05f, 0.08f, 1f));
+        _hint.text = "";
 
         _title = Text(src, "Title", 0f, 0.55f, 9f, TextAlignmentOptions.Center, layer, 12f);
         _title.fontStyle = FontStyles.Bold | FontStyles.Italic;
@@ -297,6 +368,17 @@ internal static class DuelHud
             FxMath.Rgba(1f, 0.42f, 0.08f, 1f), FxMath.Rgba(1f, 0.42f, 0.08f, 1f));
         Outline(_title, 0.28f, FxMath.Rgba(0.55f, 0.05f, 0.05f, 1f));
         _title.gameObject.SetActive(false);
+
+        // 鍔迫り合いの押し合いのバー (画面の下・左 = 自分の押し)
+        float ly = -_halfH + 1.35f;
+        _lockFrame = Quad("LockFrame", white, 0f, ly, 0f, LockW + 0.08f, 0.3f, FxMath.Rgba(0.06f, 0.06f, 0.1f, 0.9f), layer);
+        _lockMine = Quad("LockMine", white, 0f, ly, -0.1f, LockW * 0.5f, 0.22f, FxMath.Rgba(0.35f, 0.75f, 1f, 1f), layer);
+        _lockTheirs = Quad("LockTheirs", white, 0f, ly, -0.1f, LockW * 0.5f, 0.22f, FxMath.Rgba(1f, 0.3f, 0.35f, 1f), layer);
+        _lockText = Text(src, "LockText", 0f, ly + 0.55f, 3.2f, TextAlignmentOptions.Center, layer, 10f);
+        _lockText.fontStyle = FontStyles.Bold | FontStyles.Italic;
+        Outline(_lockText, 0.28f, FxMath.Rgba(0.1f, 0.05f, 0.05f, 1f));
+        _lockY = ly;
+        SetLockOn(false);
 
         // 左寄せの字は箱の左端から始まるので、箱の幅の半分だけ内へ
         _comboTmp = Text(src, "Combo", -_halfW + 0.35f + 2f, 0.9f, 3.2f, TextAlignmentOptions.Left, layer, 4f);

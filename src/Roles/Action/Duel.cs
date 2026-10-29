@@ -42,6 +42,7 @@ internal static class Duel
         Reset();
         UI.DuelHud.Hook();
         DuelHitFx.Hook();
+        DuelDodge.Hook();
         Events<MeetingStartEvent>.Subscribe(_ => OnMeeting(), match, owner: "Duel");
     }
 

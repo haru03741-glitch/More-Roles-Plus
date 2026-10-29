@@ -130,7 +130,7 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("samurai", "[sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] | hitfx <番号> <威力> [ko]] 自分のサムライの状態 / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い)", (args, reply) =>
+        TestBridge.Register("samurai", "[sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] | hitfx <番号> <威力> [ko] | clash <番号> <番号> [lock] | clashwin <秒> | mash <回数>] 自分のサムライの状態 / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い) / ホストで二人のサムライを弾き合わせる (lock = すぐ鍔迫り合い) / ホストが斬りを待つ秒を伸ばす (0 = 既定) / 鍔迫り合いの連打を足す", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -154,6 +154,18 @@ internal static class RoleCommands
                 reply($"OK samurai hitfx {hid} {hdmg}");
                 return;
             }
+            if (p.Length >= 3 && p[0] == "clash" && byte.TryParse(p[1], out byte ca) && byte.TryParse(p[2], out byte cb))
+            {
+                if (!Roles.Neutral.Samurai.ClashForTest(ca, cb, p.Length >= 4 && p[3] == "lock")) { reply("ERR samurai clash (host only / both must be Samurai)"); return; }
+                reply($"OK samurai clash {Roles.Neutral.Samurai.DescribeClash()}");
+                return;
+            }
+            if (p.Length >= 2 && p[0] == "clashwin" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float cw))
+            {
+                Roles.Neutral.Samurai.TestWindow = cw;
+                reply($"OK samurai clashwin={cw}");
+                return;
+            }
             if (RoleState.Local is not Roles.Neutral.Samurai sm) { reply("ERR samurai not Samurai"); return; }
             if (p.Length >= 1 && p[0] == "sheathe")
             {
@@ -166,6 +178,7 @@ internal static class RoleCommands
                 if (!sm.DashForTest(ddx, ddy)) { reply($"ERR samurai dash {sm.Probe()}"); return; }
             }
             else if (p.Length >= 2 && p[0] == "pad") UI.SamuraiPad.ForceShow = p[1] == "on";
+            else if (p.Length >= 2 && p[0] == "mash" && int.TryParse(p[1], out int mn)) sm.MashForTest(mn);
             else if (p.Length >= 4 && p[0] == "show"
                      && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float s0)
                      && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float sw)
@@ -185,6 +198,15 @@ internal static class RoleCommands
                 if (!sm.SwipeForTest(a0, a1, secs, hold)) { reply($"ERR samurai swipe not armed {sm.Probe()} swipe[{SwipeInput.Describe()}]"); return; }
             }
             reply($"OK samurai {sm.Probe()} swipe[{SwipeInput.Describe()}] padTaps={UI.SamuraiPad.Taps}");
+        });
+
+        TestBridge.Register("dodge", "[go | pad on|off | safe <秒>] 立ち合いの回避の状態 / 回避する (キーを押したのと同じ) / スマホの回避のボタンを PC でも出す / ホストの無敵の秒を伸ばす (0 = 既定)", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 1 && p[0] == "go" && !DuelDodge.ForTest()) { reply($"ERR dodge {DuelDodge.Describe()}"); return; }
+            if (p.Length >= 2 && p[0] == "pad") DodgePad.ForceShow = p[1] == "on";
+            if (p.Length >= 2 && p[0] == "safe") float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out DuelDodge.TestSafe);
+            reply($"OK dodge {DuelDodge.Describe()} duel[{Duel.Describe()}]");
         });
 
         TestBridge.Register("duelhud", "[show <自分> <相手> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko] 立ち合いの HUD を当事者でなくても出す / 当たった扱い / K.O. を出す", (args, reply) =>

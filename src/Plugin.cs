@@ -122,6 +122,7 @@ public class Ticker : MonoBehaviour
         Roles.Neutral.Samurai.LocalTick();
         Roles.SamuraiBlade.TickAll();
         Roles.DuelHitFx.Tick();
+        Roles.DuelDodge.Tick();
         UI.DuelHud.Tick();
         Menu.Emotes.Tick();
         Menu.MeetingStamps.Tick();

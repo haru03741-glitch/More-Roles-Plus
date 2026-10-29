@@ -67,6 +67,7 @@ public sealed partial class Samurai : RoleBase
     public override void OnAssigned()
     {
         Duel.Use();
+        ResetClash();
         _blade = new SamuraiBlade(this);
         Lifespan.OnRelease(_blade.Dispose);
         if (IsLocal) SamuraiBlade.LocalFollow = _blade;
@@ -96,6 +97,7 @@ public sealed partial class Samurai : RoleBase
     // 会議が終わると刀は鞘に戻り、気も満ちている (全員の端末で同じに戻す)
     private void OnMeetingEnd(MeetingEndEvent e)
     {
+        EndLock();
         SetDrawn(false);
         _ki = _hostKi = KiMax;
         _spentUntil = -10f;
@@ -211,11 +213,12 @@ public sealed partial class Samurai : RoleBase
         int dmg = Damage(FxMath.Abs(sweep) / secs);
         if (iai) dmg += (int)(IaiCharged * charge);
         _lastDamage = dmg;
+        _hostStrokeIai = iai;
         HostHit(a0, sweep, dmg);
     }
 
     private int _lastDamage;
-    private int _missBusy, _missFar, _missArc, _missWall;
+    private int _missBusy, _missFar, _missArc, _missWall, _missDodge;
     private byte _sentIai, _hostIai;
 
     // iai = 納めている所からの一振り (居合)。ホスト自身がサムライなら一振りの始めに手元で抜いているので、申告で見る
@@ -259,6 +262,8 @@ public sealed partial class Samurai : RoleBase
                 if (d > span + ArcPad && d < 360f - ArcPad) { _missArc++; continue; }
             }
             if (PhysicsHelpers.AnythingBetween(me, at, Constants.ShipAndObjectsMask, false)) { _missWall++; continue; }
+            // 回避で飛び退いている間は当たらない
+            if (DuelDodge.HostSafe(info.PlayerId)) { _missDodge++; continue; }
             hits[n++] = info.PlayerId;
         }
         bool counted = false;
@@ -266,18 +271,28 @@ public sealed partial class Samurai : RoleBase
         {
             var target = GameData.Instance.GetPlayerById(hits[i])?.Object;
             if (!target || target.Data == null || target.Data.IsDead) continue;
-            // 倒す一振りだけキルとして確かめる (盾などに止められたら体力 1 で残す)
-            int dmg = damage, left = Duel.HpOf(target.PlayerId);
-            if (left - dmg <= 0 && BeforeMurderEvent.Ask(p, target) != null) dmg = left - 1;
-            if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg)) continue;
-            bool impostor = target.Data.Role && target.Data.Role.IsImpostor;
-            p.RpcMurderPlayer(target, true);
-            if (Duel.OpponentOf(PlayerId) == target.PlayerId) Duel.HostEnd(PlayerId);
-            if (impostor) _impostorKills.Value++;
-            else _otherKills.Value++;
-            counted = true;
+            // サムライへの斬りは、相手の斬り (納めていれば居合) とぶつかるかを少し待ってから決める (Samurai.Clash.cs)
+            if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, damage)) continue;
+            counted |= HostApply(target, damage);
         }
         if (counted) HostUpdatePath();
+    }
+
+    // ホスト: 斬りを当てる。倒したら斬った数を数えて true (道の更新は呼んだ側)
+    private bool HostApply(PlayerControl target, int damage)
+    {
+        var p = Player;
+        if (!p || !target || target.Data == null || target.Data.IsDead) return false;
+        // 倒す一振りだけキルとして確かめる (盾などに止められたら体力 1 で残す)
+        int dmg = damage, left = Duel.HpOf(target.PlayerId);
+        if (left - dmg <= 0 && BeforeMurderEvent.Ask(p, target) != null) dmg = left - 1;
+        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg)) return false;
+        bool impostor = target.Data.Role && target.Data.Role.IsImpostor;
+        p.RpcMurderPlayer(target, true);
+        if (Duel.OpponentOf(PlayerId) == target.PlayerId) Duel.HostEnd(PlayerId);
+        if (impostor) _impostorKills.Value++;
+        else _otherKills.Value++;
+        return true;
     }
 
     public override void OnFixedUpdate()
@@ -290,6 +305,7 @@ public sealed partial class Samurai : RoleBase
         }
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
         Duel.HostTick();
+        HostClashTick();
         long now = Environment.TickCount64;
         if (_fallen && now >= _nextWinCheck)
         {
@@ -367,7 +383,7 @@ public sealed partial class Samurai : RoleBase
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] duel[{Duel.Describe()}]";
+        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。

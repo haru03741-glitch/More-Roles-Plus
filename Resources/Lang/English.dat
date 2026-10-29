@@ -138,7 +138,7 @@ Samurai.Draw: Iaido and Sheathing
 Samurai.Draw.Help: Your katana normally stays in its sheath, and you look like any other Crewmate. Hold the left mouse button on PC, or press and hold the right half of the screen on mobile, to charge an iaido strike, then swipe to draw and cut in one motion. The longer you charge, the harder it cuts. Right-click on PC, or tap the sheath button on mobile, to sheathe your katana. While drawn, everyone can see your katana. It is sheathed again after each meeting.
 Samurai.Draw.Short: Charge and swipe to draw and cut at once
 Samurai.Slash: Slash
-Samurai.Slash.Help: While your katana is drawn, hold the left mouse button and move the mouse on PC, or drag on the right half of the screen on mobile, and the katana follows your motion. Faster swings cut harder. Anyone you cut enters a one-on-one duel with you, losing health with each cut and falling at zero. It does not reach through walls. Press Shift on PC (the dash button on mobile) to dash toward the mouse (your walking direction on mobile). You cannot walk with the mouse, so walk with the keys.
+Samurai.Slash.Help: While your katana is drawn, hold the left mouse button and move the mouse on PC, or drag on the right half of the screen on mobile, and the katana follows your motion. Faster swings cut harder. Anyone you cut enters a one-on-one duel with you, losing health with each cut and falling at zero. It does not reach through walls. Press Shift on PC (the dash button on mobile) to dash toward the mouse (your walking direction on mobile). You cannot walk with the mouse, so walk with the keys. Whoever you cut can leap back a few times during the duel to avoid your strikes.
 Samurai.Slash.Short: Swipe to swing and wear down health
 Samurai.Ki: Spirit
 Samurai.Ki.Help: Every swing and dash spends spirit, shown as the ring at your feet. Spirit refills quickly while sheathed, slowly while you stand still with your katana drawn, and even more slowly while walking. Run out and your katana droops, leaving you unable to act for a moment. The back of the ring is notched with how many you have cut down.
@@ -1100,3 +1100,6 @@ Keybinds.Ability2: MRP ability 2
 Keybinds.Ability3: MRP ability 3
 Keybinds.Emote: MRP emote / stamp
 Keybinds.Dictionary: MRP role dictionary
+Keybinds.Dodge: MRP dodge (during a duel)
+Duel.DodgeHint: Dodge x{n}
+Duel.LockMash: Blade lock! Mash to overpower

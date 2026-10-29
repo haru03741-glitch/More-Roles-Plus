@@ -57,6 +57,7 @@ public sealed partial class Samurai
             SwipeInput.TouchBlocked = null;
             SwipeInput.Arm(null);
             UI.SamuraiPad.Hide();
+            EndLock();
             _ring?.Dispose();
             if (_local == this) _local = null;
         });
@@ -121,7 +122,9 @@ public sealed partial class Samurai
     internal static void LocalTick()
     {
         var s = _local;
-        if (s == null || !s._padOn && !s._canAct) return;
+        if (s == null) return;
+        if (s._lockWith != 255) { s.LockTick(); return; }
+        if (!s._padOn && !s._canAct) return;
         if (s._padOn) UI.SamuraiPad.Poll(s);
         if (!s._canAct || OperatingSystem.IsAndroid()) return;
         if (s.Drawn && Input.GetMouseButtonDown(1) && !SwipeInput.Dragging) s.Sheathe();
@@ -142,10 +145,10 @@ public sealed partial class Samurai
             _spentUntil = -10f;
             EndSpent();
         }
-        // 納めていても抜いていても、なぞりを構える (納刀中のなぞり = 居合)。マウスでは歩かない
-        SwipeInput.Arm(free && ready && !Spent ? p : null);
+        // 納めていても抜いていても、なぞりを構える (納刀中のなぞり = 居合)。マウスでは歩かない。鍔迫り合いの間は振れない
+        SwipeInput.Arm(free && ready && !Spent && !Locked ? p : null);
         _ring?.Tick(alive && !MeetingHud.Instance);
-        _padOn = UI.SamuraiPad.Tick(this, free && alive);
+        _padOn = UI.SamuraiPad.Tick(this, free && alive && !Locked);
         if (!Drawn && SwipeInput.Dragging) _blade.Charging();
         // 居合で抜いたのに一振りを送らずに離した: 抜いたことだけを全員へ
         if (_iaiStroke && !SwipeInput.Dragging)
@@ -156,7 +159,7 @@ public sealed partial class Samurai
         // チャット・開発者の窓に打っている間は Shift や右クリックを拾わない
         var hud = Vanilla.Hud;
         bool typing = hud && hud.Chat && hud.Chat.IsOpenOrOpening || Dev.DevConsole.IsOpen;
-        _canAct = free && ready && !Spent && !typing;
+        _canAct = free && ready && !Spent && !typing && !Locked;
         if (_dashOn && Time.time >= _dashUntil) _dashOn = false;
     }
 
@@ -263,15 +266,18 @@ public sealed partial class Samurai
     }
 }
 
-// 踏み込み: 本編の歩行の後で、短い間だけ体の速さを踏み込みの向きへ書き換える (壁は物理が止める)
+// 踏み込み・弾かれ・鍔迫り合い: 本編の歩行の後で、短い間だけ体の速さを書き換える (壁は物理が止める)
 [HarmonyPatch(typeof(PlayerPhysics), nameof(PlayerPhysics.FixedUpdate))]
 internal static class SamuraiDashPatch
 {
     public static void Postfix(PlayerPhysics __instance)
     {
-        if (!Samurai.Dashing(out var dir) || !__instance.AmOwner) return;
+        Vector2 vel = default;
+        bool dash = Samurai.Dashing(out var dir);
+        bool pushed = !dash && Samurai.Pushed(out vel);
+        if (!dash && !pushed || !__instance.AmOwner) return;
         var pc = __instance.myPlayer;
         if (!pc || !pc.CanMove || pc.inVent) return;
-        __instance.body.velocity = FxMath.V2(dir.x * Samurai.DashSpeed, dir.y * Samurai.DashSpeed);
+        __instance.body.velocity = dash ? FxMath.V2(dir.x * Samurai.DashSpeed, dir.y * Samurai.DashSpeed) : vel;
     }
 }

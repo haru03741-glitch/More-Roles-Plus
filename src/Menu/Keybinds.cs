@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Menu;
 // Rewired のキーボードのキーの番号は Unity の KeyCode と同じ
 internal static class Keybinds
 {
-    internal enum Slot { Ability1, Ability2, Ability3, Emote, Dictionary }
+    internal enum Slot { Ability1, Ability2, Ability3, Emote, Dictionary, Dodge }
 
     private static readonly (string Id, string Text, KeyboardKeyCode Key)[] Defs =
     {
@@ -22,13 +22,14 @@ internal static class Keybinds
         ("MRP.Ability3", "Keybinds.Ability3", KeyboardKeyCode.C),
         ("MRP.Emote", "Keybinds.Emote", KeyboardKeyCode.B),
         ("MRP.Dictionary", "Keybinds.Dictionary", KeyboardKeyCode.H),
+        ("MRP.Dodge", "Keybinds.Dodge", KeyboardKeyCode.LeftShift),
     };
 
     private const int RefreshFrames = 120;
 
-    private static readonly int[] ActionIds = { -1, -1, -1, -1, -1 };
-    private static readonly KeyCode[] Keys = { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.B, KeyCode.H };
-    private static readonly string[] Names = new string[5]; // 画面に出している名前 (言語が替わった時だけ書き直す)
+    private static readonly int[] ActionIds = { -1, -1, -1, -1, -1, -1 };
+    private static readonly KeyCode[] Keys = { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.B, KeyCode.H, KeyCode.LeftShift };
+    private static readonly string[] Names = new string[6]; // 画面に出している名前 (言語が替わった時だけ書き直す)
     private static InputManager_Base _manager;
     private static int _frame;
 

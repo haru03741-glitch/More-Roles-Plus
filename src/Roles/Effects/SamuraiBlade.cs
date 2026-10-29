@@ -295,7 +295,7 @@ internal sealed partial class SamuraiBlade
     {
         if ((now - _drawT) / SlowMo < 0.6f || now < _dashUntil) return true;
         if (this == LocalFollow && (SwipeInput.Dragging || _localStroke)) return true;
-        if (_powArmed) return true;
+        if (_powArmed || _lockOn) return true;
         if ((now - _repT) / SlowMo <= _repDur + 0.05f) return true;
         return (now - _endT) / SlowMo < Hold + IaiHold * _strokePow + Recover || SmearLive;
     }
@@ -425,6 +425,12 @@ internal sealed partial class SamuraiBlade
         {
             p = Eval(DrawKeys, FxMath.Floor(td / Frame) * Frame);
             if (td >= DrawSmT0 && td <= DrawSmT1 + Frame) DrawSmear(DrawSmA0, FxMath.Lerp(DrawSmA0, DrawSmA1, (td - DrawSmT0) / (DrawSmT1 - DrawSmT0)), td > DrawSmT1, 1f, false);
+        }
+        else if (_lockOn)
+        {
+            p = LockPose(now);
+            world = true;
+            LockSparks(now, pc, p);
         }
         else if (SwingAngle(now, out float a, out float speed, out bool inStroke, out float a0))
         {

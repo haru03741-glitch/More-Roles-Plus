@@ -97,6 +97,23 @@ internal static class DuelHitFx
         }
     }
 
+    // 刀同士がぶつかった所の火花 (全員の画面): 黄みの白い星と、周りへ散る短い筋
+    internal static void Clash(Vector3 at, int layer, float size)
+    {
+        if (!Ensure()) return;
+        float x = at.x, y = at.y, z = at.z;
+        Spawn(Kind.Star, layer, x, y, z, 0f, 0f, 0.7f * size, FxMath.Range(0f, 45f), 0.14f + 0.04f * size, 1f, 0.9f, 0.55f);
+        int n = 3 + (int)(5f * size);
+        for (int i = 0; i < n; i++)
+        {
+            float ang = FxMath.Range(0f, 360f);
+            float ar = ang * FxMath.Deg2Rad;
+            float dist = 0.5f * size * FxMath.Range(0.6f, 1.2f);
+            Spawn(Kind.Streak, layer, x, y, z - 0.001f, FxMath.Cos(ar) * dist, FxMath.Sin(ar) * dist,
+                0.28f * size * FxMath.Range(0.7f, 1.1f), ang, 0.16f, 1f, 0.8f, 0.35f);
+        }
+    }
+
     private static bool Ensure()
     {
         _star ??= FxSprites.Rect(64, 64, Star, "MrpHitStar");
