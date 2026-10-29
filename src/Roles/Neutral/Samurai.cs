@@ -27,6 +27,10 @@ public sealed partial class Samurai : RoleBase
     public static readonly IntOpt FallKills = new("Samurai.FallKills", 2, 1, 5);
     public static readonly BoolOpt AnnounceFall = new("Samurai.AnnounceFall", false);
     public static readonly FloatOpt SlashRange = new("Samurai.SlashRange", 2f, 1f, 3.5f, 0.25f);
+    // 斬った扉 (と斬り跡) の戻り方: 次の会議 / 秒数 / ずっと
+    public static readonly ChoiceOpt CutRestore = new("Samurai.CutRestore", 1,
+        new Text("Samurai.CutRestoreMeeting"), new Text("Samurai.CutRestoreSeconds"), new Text("Samurai.CutRestoreNever"));
+    public static readonly FloatOpt CutRestoreTime = new("Samurai.CutRestoreTime", 30f, 5f, 120f, 5f) { When = () => CutRestore.Value == 1 };
 
     internal const float DrawTime = 0.6f;         // 抜刀/納刀の動作の長さ
     private const float RangeSlack = 0.3f;        // 振っている間に相手が動いた分の余裕
@@ -74,6 +78,7 @@ public sealed partial class Samurai : RoleBase
     public override void OnAssigned()
     {
         Duel.Use();
+        CutDoors.Use();
         ResetClash();
         _blade = new SamuraiBlade(this);
         Lifespan.OnRelease(_blade.Dispose);
@@ -353,6 +358,7 @@ public sealed partial class Samurai : RoleBase
             counted |= HostApply(target, dmg);
         }
         if (counted) HostUpdatePath();
+        CutDoors.HostCut(me, a0, sweep, reach, thrust, PlayerId);
     }
 
     // 立ち合い (体力の削り合い) になる相手 = 刀を受けて戦える人。それ以外は一太刀で倒れる

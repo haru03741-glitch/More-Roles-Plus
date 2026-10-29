@@ -1031,6 +1031,7 @@ internal static class TimeRewind
     private static readonly Dictionary<IntPtr, (int at, bool bits)> DirtyField = new();
 
     private static void MarkDirty(ISystemType sys) => WriteDirty(sys, uint.MaxValue);
+    internal static void MarkSystemDirty(ISystemType sys) => WriteDirty(sys, uint.MaxValue);
 
     private static unsafe uint ReadDirty(ISystemType sys)
     {

@@ -34,7 +34,8 @@ internal static class SamuraiPad
         }
         if (!Build()) return false;
         if (!_root.activeSelf) _root.SetActive(true);
-        bool canSheathe = s.Drawn && !s.Spent, canDash = s.Drawn && !s.Spent && s.Ki > 0f;
+        // 踏み込みのボタンは納めていても押せる (向きの先に跳べる所があれば跳ぶ)
+        bool canSheathe = s.Drawn && !s.Spent, canDash = !s.Spent && s.Ki > 0f;
         int key = (canSheathe ? 1 : 0) | (canDash ? 2 : 0);
         if (key != _shown)
         {

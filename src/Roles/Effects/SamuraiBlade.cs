@@ -306,7 +306,7 @@ internal sealed partial class SamuraiBlade
     // 毎フレーム書く必要があるか (抜く・納める・振る・止めて戻る間)
     private bool Busy(float now)
     {
-        if ((now - _drawT) / SlowMo < 0.6f * _sheatheSlow || now < _dashUntil) return true;
+        if ((now - _drawT) / SlowMo < 0.6f * _sheatheSlow || now < _dashUntil || LeapBusy(now)) return true;
         if (this == LocalFollow && (SwipeInput.Dragging || _localStroke) && !_spent) return true;
         if (_powArmed || _lockOn) return true;
         if ((now - _repT) / SlowMo <= _repDur + 0.05f || ThrustBusy(now)) return true;
@@ -413,6 +413,16 @@ internal sealed partial class SamuraiBlade
     {
         var pc = _role.Player;
         if (!pc) return false;
+        // 跳んでいる間は抜いていても納めていても跳ぶ姿 (向きはワールドのまま)
+        if (LeapBusy(now))
+        {
+            var lp = LeapPose(now, pc);
+            _swinging = true;
+            if (!_root.activeSelf) _root.SetActive(true);
+            _last = lp;
+            WritePose(pc, lp, true);
+            return true;
+        }
         float td = (now - _drawT) / SlowMo;
         // 居合の後の納刀はゆっくり (鍔が鳴る所で遅れ斬撃が走る)
         if (!_drawn) td /= _sheatheSlow;

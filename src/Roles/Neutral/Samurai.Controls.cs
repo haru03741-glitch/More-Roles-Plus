@@ -67,6 +67,7 @@ public sealed partial class Samurai
             SwipeInput.Arm(null);
             UI.SamuraiPad.Hide();
             EndLock();
+            ReleaseLeap();
             _ring?.Dispose();
             if (_local == this) _local = null;
         });
@@ -204,6 +205,7 @@ public sealed partial class Samurai
         bool typing = hud && hud.Chat && hud.Chat.IsOpenOrOpening || Dev.DevConsole.IsOpen;
         _canAct = free && ready && !Spent && !typing && !Locked;
         if (_dashOn && Time.time >= _dashUntil) _dashOn = false;
+        TickLeap(p);
     }
 
     // スマホのボタンから
@@ -289,7 +291,7 @@ public sealed partial class Samurai
 
     private void Dash(Vector2 dir)
     {
-        if (!Drawn || dir.sqrMagnitude < 1e-4f) return;
+        if (_leapOn || dir.sqrMagnitude < 1e-4f || TryLeap(dir) || !Drawn) return;
         UseKi(DashCost);
         _dashSpeed = DashSpeed;
         _dashDir = dir.normalized;
@@ -362,6 +364,12 @@ internal static class SamuraiDashPatch
 {
     public static void Postfix(PlayerPhysics __instance)
     {
+        // 跳躍は当たり判定を切って動くので、歩けるか (CanMove) によらず先に書く
+        if (__instance.AmOwner && Samurai.Leaping(__instance, out var leapVel))
+        {
+            __instance.body.velocity = leapVel;
+            return;
+        }
         Vector2 vel = default;
         bool dash = Samurai.Dashing(out var dir);
         bool pushed = !dash && Samurai.Pushed(out vel);
