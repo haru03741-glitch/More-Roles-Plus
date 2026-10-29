@@ -209,6 +209,12 @@ internal static class RoleCommands
             reply($"OK dodge {DuelDodge.Describe()} duel[{Duel.Describe()}]");
         });
 
+        TestBridge.Register("bot", "[samurai|impostor] [1〜9] | off | (空 = 状態) チャットの /bot と同じに練習の相手を出す / 止める", (args, reply) =>
+        {
+            string r = string.IsNullOrWhiteSpace(args) ? "" : Commands.HostActions.Bot(args.Trim());
+            reply($"OK bot {r} | {DuelBot.Describe()}");
+        });
+
         TestBridge.Register("duelhud", "[show <自分> <相手> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko | intro | lock on | push <0〜1> | lockend <1 勝ち|2 負け|0 引き分け>] 立ち合いの HUD を当事者でなくても出す / 当たった扱い / K.O. を出す / 入りの幕をもう一度 / 鍔迫り合いの見た目だけ / 押し合いの割合 / 決着の題字", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

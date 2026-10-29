@@ -79,6 +79,7 @@ internal static class DummyBrain
         {
             var pc = all[i];
             if (!pc || pc.Data == null || pc.Data.IsDead || pc.Data.Disconnected || pc == DummyPilot.Possessed) continue;
+            if (Roles.DuelBot.Has(pc.PlayerId)) continue; // 練習の相手は自分で動く
             if (!Minds.TryGetValue(pc.PlayerId, out var m))
                 Minds[pc.PlayerId] = m = new Mind { KillReadyMs = now + FirstKillMs };
             if (now < m.NextThinkMs) continue;

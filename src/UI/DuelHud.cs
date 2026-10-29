@@ -111,6 +111,7 @@ internal static partial class DuelHud
         _rightHp = _rightGhostHp = Duel.HpOf(opp) / (float)Duel.MaxHp;
         Paint(_leftFace, _leftName, me);
         Paint(_rightFace, _rightName, opp);
+        DressCrew(0, 1, me, opp);
         KiShow();
         Write();
     }
@@ -421,6 +422,7 @@ internal static partial class DuelHud
 
         BuildKi(white, layer, y);
         BuildIntro(white, layer, src);
+        BuildCrew(layer);
 
         // 鍔迫り合いの押し合いのバー (画面の下・左 = 自分の押し)。縁の明るい線 → 黒い枠 → 二人の押し → 境目の光
         float ly = -_halfH + 1.35f;

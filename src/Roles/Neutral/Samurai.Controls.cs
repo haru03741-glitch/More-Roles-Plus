@@ -41,7 +41,8 @@ public sealed partial class Samurai
 
     private static float ChargeOf(float held) => FxMath.Clamp01((held - ChargeDelay) / ChargeTime);
 
-    private static bool DevFree(PlayerControl p) => p && Dev.DevCooldown.Skips(p);
+    // ダミー (練習の相手) はホストが持ち主でも開発用の待ち時間なしを使わない
+    private static bool DevFree(PlayerControl p) => p && !p.isDummy && Dev.DevCooldown.Skips(p);
 
     private void HookControls()
     {

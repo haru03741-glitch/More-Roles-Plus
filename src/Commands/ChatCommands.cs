@@ -53,6 +53,7 @@ internal static class ChatCommands
         Add(new[] { "end", "廃村" }, Who.Host, default, new Text("Command.end"), _ => HostActions.Abort());
         Add(new[] { "mt", "meet" }, Who.Host, default, new Text("Command.meet"), _ => HostActions.ToggleMeeting());
         Add(new[] { "setrole" }, Who.Host, new Text("Command.setrole.Usage"), new Text("Command.setrole"), HostActions.SetRole);
+        Add(new[] { "bot" }, Who.Host, new Text("Command.bot.Usage"), new Text("Command.bot"), HostActions.Bot);
         Add(new[] { "kill" }, Who.Host, new Text("Command.kill.Usage"), new Text("Command.kill"), HostActions.Kill);
         Add(new[] { "revive" }, Who.Host, new Text("Command.revive.Usage"), new Text("Command.revive"), HostActions.Revive);
         Add(new[] { "kick" }, Who.Host, new Text("Command.kick.Usage"), new Text("Command.kick"), JoinLists.Kick);

@@ -60,6 +60,7 @@ public sealed partial class Samurai
             return true;
         }
         HostHeld.Add(new Held { A = PlayerId, T = ts.PlayerId, Dmg = damage, At = now, Iai = _hostStrokeIai });
+        DuelBot.OnHeld(ts.PlayerId, PlayerId, ClashWindow);
         return true;
     }
 

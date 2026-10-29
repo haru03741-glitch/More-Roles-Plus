@@ -603,6 +603,8 @@ Command.unban: BAN を解く
 Command.unban.Usage: <一覧の番号|フレンドコード>
 Command.cjclear: 前の試合にいた人の記録を消す (続けて入れない設定用)
 Command.say: 全員の画面にお知らせを出す
+Command.bot: 自分から攻めてくる練習の相手 (サムライかインポスター) を出す
+Command.bot.Usage: [samurai|impostor] [強さ 1〜9] / off
 Command.say.Usage: <文>
 Command.preset: 設定を名前を付けて保存 / 読み込み
 Command.preset.Usage: [save|load|del <名前>]
@@ -654,6 +656,10 @@ HostActions.RoleReserved: 次の試合で {name} を {role} にします
 HostActions.RoleChanged: {name} を {role} にしました
 HostActions.AlreadyDead: もう死んでいます
 HostActions.Killed: {name} を倒しました
+HostActions.BotAdded: 練習の相手 {name} ({role}) を出しました。/bot off で止まります
+HostActions.BotsStopped: 練習の相手を {n} 人止めました
+HostActions.BotNotHere: 練習の相手を出せるのは、フリープレイかカスタムサーバー・ローカルの部屋のホストだけです
+HostActions.BotFull: これ以上は出せません
 HostActions.NotDead: 生きています
 HostActions.Revived: {name} を生き返らせました
 HostActions.NoPlayerSeeId: {arg} 番の人はいません (/id で番号を確認)

@@ -99,6 +99,7 @@ internal static partial class DuelHud
         if (!_introRoot) return;
         PaintPlate(_plateBackL, _plateEdgeL, _plateFaceL, _plateNameL, _plateLinesL, _me);
         PaintPlate(_plateBackR, _plateEdgeR, _plateFaceR, _plateNameR, _plateLinesR, _opp);
+        DressCrew(2, 3, _me, _opp);
         _introOn = true;
         _vsFlashed = false;
         _introRoot.SetActive(true);

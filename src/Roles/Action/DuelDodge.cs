@@ -137,6 +137,20 @@ internal static class DuelDodge
         Apply(p.PlayerId);
     }
 
+    // ホスト: 練習の相手 (ダミー) が回避した。使えたら true (動かすのは呼んだ側)
+    internal static bool BotDodge(byte id)
+    {
+        if (!Duel.InDuel(id) || HostLeft[id] == 0 || !CanHave(id)) return false;
+        Apply(id);
+        BotDodgeCall.Send(id);
+        return true;
+    }
+
+    internal static float BotDodgeTime => MoveTime;
+
+    private static readonly RemoteCall<byte> BotDodgeCall = new("Duel.BotDodge", Route.HostToAll,
+        (w, v) => w.Write(v), r => r.ReadByte(), (_, id) => StartTrail(id));
+
     // 回避した (全員の端末で・送った本人とホスト自身は手元で)
     private static readonly RemoteCall<byte> DodgeCall = new("Duel.Dodge", Route.Anyone,
         (w, v) => w.Write(v), r => r.ReadByte(), (sender, _) => { if (sender) Apply(sender.PlayerId); }, perSecond: 6);

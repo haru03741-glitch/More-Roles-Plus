@@ -603,6 +603,8 @@ Command.unban: Remove someone from the ban list
 Command.unban.Usage: <list number|friend code>
 Command.cjclear: Forget who played the previous games
 Command.say: Show a message to everyone
+Command.bot: Add a practice opponent (Samurai or Impostor) that attacks on its own
+Command.bot.Usage: [samurai|impostor] [level 1-9] / off
 Command.say.Usage: <message>
 Command.preset: Save / load settings by name
 Command.preset.Usage: [save|load|del <name>]
@@ -654,6 +656,10 @@ HostActions.RoleReserved: {name} will be {role} in the next game
 HostActions.RoleChanged: {name} is now {role}
 HostActions.AlreadyDead: Already dead
 HostActions.Killed: Killed {name}
+HostActions.BotAdded: Added practice opponent {name} ({role}). /bot off stops it
+HostActions.BotsStopped: Stopped {n} practice opponents
+HostActions.BotNotHere: Only the host of Freeplay, a custom-server lobby or a local lobby can add practice opponents
+HostActions.BotFull: No room for more
 HostActions.NotDead: Not dead
 HostActions.Revived: Revived {name}
 HostActions.NoPlayerSeeId: No player {arg} (see /id)
