@@ -134,13 +134,15 @@ Samurai.Name: Samurai
 Samurai.Blurb: Draw your blade and cut down those who deserve it
 Samurai.Summary: A neutral who duels with a katana, wearing down health until the opponent falls.
 Samurai.WinCond: Path of the Guardian: cut down the set number of Impostors and be alive at the end to win with the winning team. Path of Carnage: win alone when at most one other player is left alive
-Samurai.Draw: Draw
-Samurai.Draw.Help: Draws your katana. Press again to sheathe it. While drawn, everyone can see your katana. Drawing and sheathing both take a moment. Your katana is sheathed again after each meeting.
-Samurai.Draw.Short: Draw or sheathe your katana
-Samurai.Sheathe: Sheathe
+Samurai.Draw: Iaido and Sheathing
+Samurai.Draw.Help: Your katana normally stays in its sheath, and you look like any other Crewmate. Hold the left mouse button on PC, or press and hold the right half of the screen on mobile, to charge an iaido strike, then swipe to draw and cut in one motion. The longer you charge, the harder it cuts. Right-click on PC, or tap the sheath button on mobile, to sheathe your katana. While drawn, everyone can see your katana. It is sheathed again after each meeting.
+Samurai.Draw.Short: Charge and swipe to draw and cut at once
 Samurai.Slash: Slash
-Samurai.Slash.Help: While your katana is drawn, hold the left mouse button and move the mouse on PC, or drag on the right half of the screen on mobile, and the katana follows your motion. Faster swings cut harder. Anyone you cut enters a one-on-one duel with you, losing health with each cut and falling at zero. It does not reach through walls. While drawn, you cannot walk with the mouse (use the keys).
+Samurai.Slash.Help: While your katana is drawn, hold the left mouse button and move the mouse on PC, or drag on the right half of the screen on mobile, and the katana follows your motion. Faster swings cut harder. Anyone you cut enters a one-on-one duel with you, losing health with each cut and falling at zero. It does not reach through walls. Press Shift on PC (the dash button on mobile) to dash toward the mouse (your walking direction on mobile). You cannot walk with the mouse, so walk with the keys.
 Samurai.Slash.Short: Swipe to swing and wear down health
+Samurai.Ki: Spirit
+Samurai.Ki.Help: Every swing and dash spends spirit, shown as the ring at your feet. Spirit refills quickly while sheathed, slowly while you stand still with your katana drawn, and barely at all while walking. Run out and your katana droops, leaving you unable to act for a moment. The back of the ring is notched with how many you have cut down.
+Samurai.Ki.Short: Each swing spends spirit; run dry and you are open
 Samurai.Paths: Guardian and Carnage
 Samurai.Paths.Help: You start on the Path of the Guardian. Cutting down the set number of non-Impostors makes you fall to the Path of Carnage, and you can no longer win as a Guardian. Only you are told that you have fallen.
 Samurai.Paths.Short: Who you cut decides your path
@@ -149,7 +151,6 @@ Samurai.Quote: Once drawn, the blade must cut.
 Samurai.PathKills: Impostors to cut for the Guardian path
 Samurai.FallKills: Non-Impostors cut before falling to Carnage
 Samurai.AnnounceFall: Tell everyone when the Samurai falls
-Samurai.StrokeGap: Time Between Swings
 Samurai.SlashRange: Slash Range
 Samurai.PathDesc: Path of the Guardian: Impostors cut {n}/{max}
 Samurai.FallenDesc: Path of Carnage: leave at most one other player alive

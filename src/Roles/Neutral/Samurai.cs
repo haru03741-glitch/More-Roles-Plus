@@ -6,12 +6,12 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Neutral;
 
-// サムライ (第三陣営): 刀を抜いている間、なぞり (PC = 左ドラッグ・スマホ = 画面の右半分) で刀を振って斬る。
-// 当たった相手とは立ち合い (Duel) になり、斬るたびに体力が減って 0 で倒れる。
+// サムライ (第三陣営): なぞり (PC = 左ドラッグ・スマホ = 画面の右半分) で刀を振って斬る。納めている時のなぞりは居合 (抜きながら斬る)。
+// 操作と「気」は Samurai.Controls.cs。当たった相手とは立ち合い (Duel) になり、斬るたびに体力が減って 0 で倒れる。
 // 始めは守の道 = インポスターを PathKills 人斬って最後まで生きていれば、勝った陣営と一緒に勝つ。
 // インポスター以外を FallKills 人斬ると修羅の道へ堕ち、以後は自分以外の生存者が 1 人以下になった時に単独で勝つ。
 // 抜いた刀は全員に見える。一振りはホストが当たりを決め、斬った数と堕ちたかもホストが数えて本人にだけ知らせる (全員へ知らせるかは設定)
-public sealed class Samurai : RoleBase
+public sealed partial class Samurai : RoleBase
 {
     public override Team Team => Team.Neutral;
     public override string Color => "#4A8CFF";
@@ -20,25 +20,24 @@ public sealed class Samurai : RoleBase
     public override Text Blurb => new("Samurai.Blurb");
     public override HelpSection[] HelpSections => new HelpSection[]
     {
-        new("Samurai.Draw", "katana_draw"), new("Samurai.Slash", "katana_slash"), new("Samurai.Paths"),
+        new("Samurai.Draw", "katana_draw"), new("Samurai.Slash", "katana_slash"), new("Samurai.Ki"), new("Samurai.Paths"),
     };
 
     public static readonly IntOpt PathKills = new("Samurai.PathKills", 1, 1, 3);
     public static readonly IntOpt FallKills = new("Samurai.FallKills", 2, 1, 5);
     public static readonly BoolOpt AnnounceFall = new("Samurai.AnnounceFall", false);
-    public static readonly FloatOpt StrokeGap = new("Samurai.StrokeGap", 0.4f, 0.2f, 1.5f, 0.05f, "s");
     public static readonly FloatOpt SlashRange = new("Samurai.SlashRange", 2f, 1f, 3.5f, 0.25f);
 
     internal const float DrawTime = 0.6f;         // 抜刀/納刀の動作の長さ
-    private const float GapSlack = 0.15f;         // ホストが一振りの間隔を確かめる時の通信のぶれの分 (秒)
     private const float RangeSlack = 0.3f;        // 振っている間に相手が動いた分の余裕
     private const float ArcPad = 15f;             // 掃引角の両端に足す当たりの余裕 (度)
     private const float Touching = 0.3f;          // これより近い人は向きによらず当たる
     private const int WinCheckMs = 500;
     private const float MinStrokeSeconds = 0.12f;
 
-    // 一振りの威力 = 角速度 (度/秒) の帯
+    // 一振りの威力 = 角速度 (度/秒) の帯。居合は溜めた分を足す
     private static int Damage(float degPerSec) => degPerSec >= 1000f ? 40 : degPerSec >= 600f ? 30 : 20;
+    private const int IaiBase = 10, IaiCharged = 30;
 
     // 修羅に堕ちたらキル役として数える (インポスターがいなくなっても生存者が多ければクルーの勝ちにしない)。
     // ホストの判定で読むので、ホストの値で決まる
@@ -48,21 +47,21 @@ public sealed class Samurai : RoleBase
     // 抜いているか (全員の端末で持つ)・抜いた時刻 (動作の間は振れない)
     internal bool Drawn { get; private set; }
     private float _drawnAt = -10f;
+    private float _sheathedAt = -10f; // 納めた時刻 (居合の溜めの上限をホストが見る)
     // ホストが数える値。本人の端末には知らせで写す。時戻しで戻る
     private readonly Tracked<int> _impostorKills = new(0);
     private readonly Tracked<int> _otherKills = new(0);
     private readonly Tracked<bool> _fallen = new(false);
     private readonly Tracked<bool> _pathDone = new(false);
 
-    private Ability _draw;
-    private bool? _shownDrawn;
     private SamuraiBlade _blade;
-    private long _hostLastStrokeMs = long.MinValue / 2;
     private long _nextWinCheck;
     private int _sent, _hostStrokes, _hostRefused;
     private string _lastRefusal = "-";
 
     internal bool Fallen => _fallen;
+    internal int ImpostorKills => _impostorKills.Value;
+    internal int OtherKills => _otherKills.Value;
     internal bool PathDone => _pathDone;
 
     public override void OnAssigned()
@@ -70,70 +69,54 @@ public sealed class Samurai : RoleBase
         Duel.Use();
         _blade = new SamuraiBlade(this);
         Lifespan.OnRelease(_blade.Dispose);
-        _draw = AddAbility(new Ability(new Text("Samurai.Draw"), "katana_draw")
-        {
-            Cooldown = () => DrawTime,
-            CooldownAtStart = false,
-            OnUse = ToggleDraw,
-        });
-        if (IsLocal)
-        {
-            SamuraiBlade.LocalFollow = _blade;
-            SwipeInput.OnStroke += OnLocalStroke;
-            Lifespan.OnRelease(() =>
-            {
-                SwipeInput.OnStroke -= OnLocalStroke;
-                SwipeInput.Arm(null);
-            });
-        }
+        if (IsLocal) SamuraiBlade.LocalFollow = _blade;
+        HookControls();
     }
 
     // ---- 抜刀 / 納刀 ----
 
-    private bool ToggleDraw()
-    {
-        bool drawn = !Drawn;
-        SetDrawn(drawn);
-        DrawCall.Send(drawn);
-        return true;
-    }
-
-    private void SetDrawn(bool drawn)
+    // iai = 居合 (抜く動作を飛ばし、そのまま振れる)
+    private void SetDrawn(bool drawn, bool iai = false)
     {
         if (Drawn == drawn) return;
         Drawn = drawn;
-        _drawnAt = Time.time;
+        // 居合は抜く動作を済ませた扱い (丸めで「まだ抜いている途中」に見えないよう少し前へ)
+        _drawnAt = iai ? Time.time - DrawTime - 0.05f : Time.time;
+        if (!drawn) _sheathedAt = Time.time;
         // 抜く時に出ていたエモートは打ち切る (抜いている間は出せない)
         if (drawn) Fx.EmoteArt.Stop(PlayerId);
-        _blade.SetDrawn(drawn);
+        _blade.SetDrawn(drawn, iai);
     }
 
-    private void RefreshButtons()
-    {
-        _draw?.Button?.SetLabel(new Text(Drawn ? "Samurai.Sheathe" : "Samurai.Draw"));
-    }
-
-    // 抜いた全員の端末で。抜いた人は送った時に手元で済ませている
+    // 納めた全員の端末で (抜くのは居合の一振りと一緒に届く)。納めた人は送った時に手元で済ませている
     private static readonly RemoteCall<bool> DrawCall = new("Samurai.Draw", Route.Anyone,
         (w, v) => w.Write(v), r => r.ReadBoolean(),
         (sender, v) => (RoleState.Of(sender) as Samurai)?.SetDrawn(v), perSecond: 6);
 
-    // 会議が終わると刀は鞘に戻っている (全員の端末で同じに戻す)
-    private void OnMeetingEnd(MeetingEndEvent e) => SetDrawn(false);
+    // 会議が終わると刀は鞘に戻り、気も満ちている (全員の端末で同じに戻す)
+    private void OnMeetingEnd(MeetingEndEvent e)
+    {
+        SetDrawn(false);
+        _ki = _hostKi = KiMax;
+        _spentUntil = -10f;
+        _blade.SetSpent(false);
+    }
 
     // ---- 斬る (なぞりの一振り) ----
 
-    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms
+    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms・居合 (0 = 違う・1〜255 = 居合で溜め (v-1)/254)
     private readonly struct Stroke
     {
         public readonly short A0, Sweep;
         public readonly ushort Ms;
+        public readonly byte Iai;
 
-        public Stroke(short a0, short sweep, ushort ms)
+        public Stroke(short a0, short sweep, ushort ms, byte iai)
         {
             A0 = a0;
             Sweep = sweep;
             Ms = ms;
+            Iai = iai;
         }
     }
 
@@ -141,15 +124,20 @@ public sealed class Samurai : RoleBase
     private void OnLocalStroke(float a0, float sweep, float seconds)
     {
         if (!Drawn) return;
+        bool iai = _iaiStroke;
+        _iaiStroke = false;
+        if (!iai) UseKi(StrokeCost);
         _sent++;
-        StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000)));
+        byte charge = iai ? (byte)(1 + (int)MathF.Round(_iaiCharge * 254f)) : (byte)0;
+        _sentIai = charge;
+        StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000), charge));
     }
 
-    // 確かめ用: なぞりを作り物で流す (a0 → a1 度を秒で)
-    internal bool SwipeForTest(float a0, float a1, float seconds)
+    // 確かめ用: なぞりを作り物で流す (a0 → a1 度を秒で・hold 秒押したまま溜めてから)
+    internal bool SwipeForTest(float a0, float a1, float seconds, float hold = 0f)
     {
         if (!SwipeInput.Armed) return false;
-        SwipeInput.Synth(a0, a1, seconds);
+        SwipeInput.Synth(a0, a1, seconds, hold);
         return true;
     }
 
@@ -157,11 +145,12 @@ public sealed class Samurai : RoleBase
     internal void ShowForTest(float a0, float sweep, float seconds) => _blade.Replay(a0, sweep, seconds, _fallen);
 
     private static readonly RemoteCall<Stroke> StrokeCall = new("Samurai.Stroke", Route.ToHost,
-        (w, s) => { w.Write(s.A0); w.Write(s.Sweep); w.Write(s.Ms); },
-        r => new Stroke(r.ReadInt16(), r.ReadInt16(), r.ReadUInt16()),
+        // Hazel に short の書き手は無い (int の 4 バイトになる)。読み手の ReadInt16 と合わせて 2 バイトで書く
+        (w, s) => { w.Write(unchecked((ushort)s.A0)); w.Write(unchecked((ushort)s.Sweep)); w.Write(s.Ms); w.Write(s.Iai); },
+        r => new Stroke(r.ReadInt16(), r.ReadInt16(), r.ReadUInt16(), r.ReadByte()),
         (sender, s) => (RoleState.Of(sender) as Samurai)?.HostStroke(s), perSecond: 8);
 
-    // 振った姿 (ホスト → 全員)。値 = 振った人 | 修羅の色 << 7 | 始めの角度 + 180 << 8 | 掃引角 + 512 << 17 (10 bit)・ms は別
+    // 振った姿 (ホスト → 全員)。値 = 振った人 | 修羅の色 << 7 | 始めの角度 + 180 << 8 | 掃引角 + 512 << 17 (10 bit) | 居合 << 27・ms は別
     private static readonly RemoteCall<(int head, ushort ms)> ShowCall = new("Samurai.Show", Route.HostToAll,
         (w, m) => { w.Write(m.head); w.Write(m.ms); }, r => (r.ReadInt32(), r.ReadUInt16()),
         (_, m) => (RoleState.Of((byte)(m.head & 0x7F)) as Samurai)?.ShowStroke(m.head, m.ms));
@@ -172,40 +161,65 @@ public sealed class Samurai : RoleBase
         bool fallen = (head >> 7 & 1) != 0;
         float a0 = ((head >> 8) & 0x1FF) - 180f;
         float sweep = ((head >> 17) & 0x3FF) - 512f;
+        if ((head >> 27 & 1) != 0) SetDrawn(true, iai: true);
         _blade.Replay(a0, sweep, ms / 1000f, fallen);
     }
 
     // ホスト: 一振りを確かめ、掃引した扇の中の生きている人に当てる (壁越しは当たらない)
     private void HostStroke(Stroke s)
     {
-        string why = HostRefuse();
+        _hostIai = s.Iai;
+        string why = HostRefuse(s, out bool iai);
         if (why != null)
         {
             _hostRefused++;
             _lastRefusal = why;
             Plugin.Logger.LogWarning($"Samurai stroke refused {PlayerId}: {why}");
+            // 居合を断っても本人の端末では抜いている。抜いたことだけは全員に揃える (当たりは無し)
+            if (iai && !Drawn && why == "sheathing")
+            {
+                SetDrawn(true, iai: true);
+                int h = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | (Math.Clamp((int)s.A0, -180, 180) + 180) << 8 | 512 << 17 | 1 << 27;
+                ShowCall.Send((h, (ushort)100));
+            }
             return;
         }
         _hostStrokes++;
-        _hostLastStrokeMs = Environment.TickCount64;
+        float charge = 0f;
+        if (iai)
+        {
+            // 溜めは客の申告。納めてから経った時間で溜められた分までに丸める
+            charge = FxMath.Min(s.Iai > 0 ? (s.Iai - 1) / 254f : 0f, ChargeOf(Time.time - _sheathedAt + 0.3f));
+            SetDrawn(true, iai: true);
+        }
+        else if (!DevFree(Player)) _hostKi -= StrokeCost;
         float a0 = Math.Clamp((int)s.A0, -180, 180);
         float sweep = Math.Clamp((int)s.Sweep, -(int)SwipeInput.MaxSweep, (int)SwipeInput.MaxSweep);
         // 速さ (= 威力) は客の申告なので、人の手で出せない短さは丸める
         float secs = Math.Clamp(s.Ms / 1000f, MinStrokeSeconds, SwipeInput.MaxSeconds);
-        int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17;
+        int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17 | (iai ? 1 : 0) << 27;
         ShowCall.Send((head, (ushort)(secs * 1000f)));
         if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f));
-        HostHit(a0, sweep, Damage(FxMath.Abs(sweep) / secs));
+        int dmg = Damage(FxMath.Abs(sweep) / secs);
+        if (iai) dmg += IaiBase + (int)(IaiCharged * charge);
+        _lastDamage = dmg;
+        HostHit(a0, sweep, dmg);
     }
 
-    private string HostRefuse()
+    private int _lastDamage;
+    private int _missBusy, _missFar, _missArc, _missWall;
+    private byte _sentIai, _hostIai;
+
+    // iai = 納めている所からの一振り (居合)。ホスト自身がサムライなら一振りの始めに手元で抜いているので、申告で見る
+    private string HostRefuse(in Stroke s, out bool iai)
     {
+        iai = !Drawn || IsLocal && s.Iai != 0;
         if (AmongUsClient.Instance.IsGameOver || !ShipStatus.Instance || MeetingHud.Instance || ExileController.Instance) return "not now";
         var p = Player;
         if (!p || p.Data == null || p.Data.IsDead || p.Data.Disconnected) return "user";
         if (p.inVent || p.inMovingPlat) return "user busy";
-        if (!Drawn || Time.time - _drawnAt < DrawTime - 0.2f) return "sheathed";
-        if ((Environment.TickCount64 - _hostLastStrokeMs) / 1000f < StrokeGap - GapSlack && !Dev.DevCooldown.Skips(p)) return "gap";
+        if (Time.time - _drawnAt < DrawTime - 0.2f) return iai ? "sheathing" : "drawing";
+        if (!iai && HostKiNow() < -KiSlack && !DevFree(p)) return "ki";
         return null;
     }
 
@@ -224,19 +238,19 @@ public sealed class Samurai : RoleBase
             var info = all[i];
             if (info == null || info.Disconnected || info.IsDead || info.PlayerId == PlayerId) continue;
             var pc = info.Object;
-            if (!pc || pc.inVent || pc.inMovingPlat) continue;
+            if (!pc || pc.inVent || pc.inMovingPlat) { _missBusy++; continue; }
             Vector2 at = pc.GetTruePosition();
             float dx = at.x - me.x, dy = at.y - me.y, sq = dx * dx + dy * dy;
-            if (sq > reach * reach) continue;
+            if (sq > reach * reach) { _missFar++; continue; }
             if (sq > Touching * Touching)
             {
                 // 振った向きに沿って、始めの角度から相手の角度までの回り (0〜360)
                 float ta = FxMath.Atan2(dy, dx) * FxMath.Rad2Deg;
                 float d = (sweep >= 0f ? ta - a0 : a0 - ta) % 360f;
                 if (d < 0f) d += 360f;
-                if (d > span + ArcPad && d < 360f - ArcPad) continue;
+                if (d > span + ArcPad && d < 360f - ArcPad) { _missArc++; continue; }
             }
-            if (PhysicsHelpers.AnythingBetween(me, at, Constants.ShipAndObjectsMask, false)) continue;
+            if (PhysicsHelpers.AnythingBetween(me, at, Constants.ShipAndObjectsMask, false)) { _missWall++; continue; }
             hits[n++] = info.PlayerId;
         }
         bool counted = false;
@@ -261,17 +275,10 @@ public sealed class Samurai : RoleBase
     public override void OnFixedUpdate()
     {
         _blade.Tick();
-        if (IsLocal)
+        if (IsLocal && Player)
         {
-            if (_draw?.Button != null && _shownDrawn != Drawn)
-            {
-                _shownDrawn = Drawn;
-                RefreshButtons();
-            }
-            // 抜いて動ける間だけ、なぞりで振る入力を構える
-            var p = Player;
-            bool armed = Drawn && Time.time - _drawnAt >= DrawTime && p && p.Data != null && !p.Data.IsDead && p.CanMove && !MeetingHud.Instance;
-            SwipeInput.Arm(armed ? p : null);
+            TickKi(Player);
+            TickControls();
         }
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
         Duel.HostTick();
@@ -342,11 +349,7 @@ public sealed class Samurai : RoleBase
     public override void OnRewound()
     {
         _blade.SetFallen(Fallen && IsLocal);
-        if (IsLocal)
-        {
-            RefreshButtons();
-            RoleDisplay.EnsureTaskHeader(Player);
-        }
+        if (IsLocal) RoleDisplay.EnsureTaskHeader(Player);
     }
 
     // 自分の画面のタスク欄の先頭: 今の道と進み
@@ -356,7 +359,7 @@ public sealed class Samurai : RoleBase
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] duel[{Duel.Describe()}]";
+        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] duel[{Duel.Describe()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。

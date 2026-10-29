@@ -29,12 +29,17 @@ internal static class SwipeInput
 
     // 一振り: 始めの角度 (度)・符号付きの掃引角・かかった秒
     internal static event Action<float, float, float> OnStroke;
+    // 一振りが始まった (速さが閾値を越えた所)。押してから始まるまでの溜めは Time.time - PressedAt
+    internal static event Action OnStrokeStart;
+    internal static float PressedAt { get; private set; }
+    // スマホ: 押し始めがここで true を返す所 (役職のボタン) なら、なぞりにしない
+    internal static Func<Vector2, bool> TouchBlocked;
 
     private static int _finger = -1;
     private static float _prevT, _strokeStartA, _strokeStartT, _slowT;
     private static int _strokeSign;
     // 確かめ用の作り物のなぞり (bridge): a0 → a1 を ms で
-    private static float _synA0, _synA1, _synStart = -1f, _synDur;
+    private static float _synA0, _synA1, _synStart = -1f, _synDur, _synHold;
     internal static int Strokes;
     internal static string Last = "-";
 
@@ -48,11 +53,13 @@ internal static class SwipeInput
         _cam = armed ? Camera.main : null;
     }
 
-    internal static void Synth(float a0, float a1, float seconds)
+    // hold = 押したまま動かさずに待つ秒 (溜め)
+    internal static void Synth(float a0, float a1, float seconds, float hold = 0f)
     {
         _synA0 = a0;
         _synA1 = a1;
         _synDur = Math.Max(seconds, 0.02f);
+        _synHold = Math.Max(hold, 0f);
         _synStart = Time.time;
     }
 
@@ -67,8 +74,9 @@ internal static class SwipeInput
         float now = Time.time;
         if (_synStart >= 0f)
         {
-            float k = (now - _synStart) / _synDur;
+            float k = (now - _synStart - _synHold) / _synDur;
             if (!Dragging) Begin(_synA0, now);
+            if (k < 0f) { Step(_synA0, now); return; }
             Step(FxMath.Lerp(_synA0, _synA1, k), now);
             if (k >= 1f) { _synStart = -1f; End(true); }
             return;
@@ -112,6 +120,7 @@ internal static class SwipeInput
             if (!down && !Dragging) return false;
             Vector3 m = Input.mousePosition;
             screen = FxMath.V2(m.x, m.y);
+            if (began && !Dragging && TouchBlocked != null && TouchBlocked(screen)) return false;
             return true;
         }
         int n = Input.touchCount;
@@ -119,6 +128,7 @@ internal static class SwipeInput
         {
             var t = Input.GetTouch(i);
             if (_finger >= 0 ? t.fingerId != _finger : t.phase != TouchPhase.Began || t.position.x < Screen.width * 0.5f) continue;
+            if (_finger < 0 && TouchBlocked != null && TouchBlocked(t.position)) continue;
             screen = t.position;
             began = t.phase == TouchPhase.Began;
             down = t.phase != TouchPhase.Ended && t.phase != TouchPhase.Canceled;
@@ -136,6 +146,7 @@ internal static class SwipeInput
     {
         Dragging = true;
         Angle = angle;
+        PressedAt = now;
         _prevT = now;
         InStroke = false;
         Speed = 0f;
@@ -161,6 +172,7 @@ internal static class SwipeInput
             _strokeStartA = prev;
             _strokeStartT = now - dt;
             _slowT = -1f;
+            StrokeStarted();
             return;
         }
         float sweep = Angle - _strokeStartA;
@@ -178,8 +190,15 @@ internal static class SwipeInput
                 _strokeStartA = prev;
                 _strokeStartT = now - dt;
                 _slowT = -1f;
+                StrokeStarted();
             }
         }
+    }
+
+    private static void StrokeStarted()
+    {
+        try { OnStrokeStart?.Invoke(); }
+        catch (Exception e) { Plugin.Logger.LogError($"swipe stroke start: {e}"); }
     }
 
     private static void Finish(float now)

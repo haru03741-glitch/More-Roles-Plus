@@ -371,7 +371,7 @@ internal static class DuelHud
     }
 
     // 顔の丸 (64 px・縁は滑らか)。1 回だけ作る
-    private static Sprite Circle()
+    internal static Sprite Circle()
     {
         if (_circle) return _circle;
         const int n = 64;

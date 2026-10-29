@@ -130,7 +130,7 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("samurai", "[draw | swipe <a0> <a1> <秒> | of <番号> | slow <倍> | show <a0> <掃引角> <秒>] 自分のサムライの状態 / 抜刀・納刀のボタンを押す / a0 度から a1 度へ秒でなぞった扱いにする / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し)", (args, reply) =>
+        TestBridge.Register("samurai", "[sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒>] 自分のサムライの状態 / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し)", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -147,7 +147,17 @@ internal static class RoleCommands
                 return;
             }
             if (RoleState.Local is not Roles.Neutral.Samurai sm) { reply("ERR samurai not Samurai"); return; }
-            if (p.Length >= 1 && p[0] == "draw") Abilities.PressSlot(0);
+            if (p.Length >= 1 && p[0] == "sheathe")
+            {
+                if (!sm.SheatheForTest()) { reply($"ERR samurai sheathe {sm.Probe()}"); return; }
+            }
+            else if (p.Length >= 3 && p[0] == "dash"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float ddx)
+                     && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float ddy))
+            {
+                if (!sm.DashForTest(ddx, ddy)) { reply($"ERR samurai dash {sm.Probe()}"); return; }
+            }
+            else if (p.Length >= 2 && p[0] == "pad") UI.SamuraiPad.ForceShow = p[1] == "on";
             else if (p.Length >= 4 && p[0] == "show"
                      && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float s0)
                      && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float sw)
@@ -158,9 +168,11 @@ internal static class RoleCommands
                      && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float a1)
                      && float.TryParse(p[3], System.Globalization.NumberStyles.Float, inv, out float secs))
             {
-                if (!sm.SwipeForTest(a0, a1, secs)) { reply($"ERR samurai swipe not armed {sm.Probe()} swipe[{SwipeInput.Describe()}]"); return; }
+                float hold = 0f;
+                if (p.Length >= 5) float.TryParse(p[4], System.Globalization.NumberStyles.Float, inv, out hold);
+                if (!sm.SwipeForTest(a0, a1, secs, hold)) { reply($"ERR samurai swipe not armed {sm.Probe()} swipe[{SwipeInput.Describe()}]"); return; }
             }
-            reply($"OK samurai {sm.Probe()} swipe[{SwipeInput.Describe()}]");
+            reply($"OK samurai {sm.Probe()} swipe[{SwipeInput.Describe()}] padTaps={UI.SamuraiPad.Taps}");
         });
 
         TestBridge.Register("duelhud", "[show <自分> <相手> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko] 立ち合いの HUD を当事者でなくても出す / 当たった扱い / K.O. を出す", (args, reply) =>

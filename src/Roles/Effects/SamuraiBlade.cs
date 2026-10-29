@@ -103,7 +103,7 @@ internal sealed partial class SamuraiBlade
     private GameObject _root;
     private Transform _rootTf, _gripTf, _fistTf;
     private SpriteRenderer _sr, _fist;
-    private bool _drawn, _hidden, _flip, _fallenTint, _swinging, _moving;
+    private bool _drawn, _hidden, _flip, _fallenTint, _swinging, _moving, _spent;
     private float _drawT = -10f;    // 抜く/納める動作を始めた時刻
     private float _inv = 1f;
     private int _tick, _colorId = -1;
@@ -118,13 +118,16 @@ internal sealed partial class SamuraiBlade
     private bool _localStroke;
     private float _localA0;
     private float _lastX, _lastY;
+    private float _dashUntil = -10f;
 
     internal SamuraiBlade(Samurai role) => _role = role;
 
-    internal void SetDrawn(bool drawn)
+    // iai = 居合: 抜く振り付けを飛ばし、続く一振りでそのまま抜く
+    internal void SetDrawn(bool drawn, bool iai = false)
     {
         _drawn = drawn;
-        _drawT = Time.time;
+        _drawT = iai ? Time.time - (DrawKeys[^1].T + Frame) * SlowMo : Time.time;
+        if (!drawn) _spent = false;
         if (drawn) Ensure();
         if (!_root) return;
         // 振りの途中で納めたら振りを捨てる
@@ -132,6 +135,21 @@ internal sealed partial class SamuraiBlade
         _localStroke = false;
         SpawnGlint(drawn ? 0.10f : 0.38f, drawn);
         Track();
+    }
+
+    // 踏み込み: seconds の間、残像を残す
+    internal void Dash(float seconds)
+    {
+        if (!_drawn || !Ensure()) return;
+        _dashUntil = Time.time + seconds;
+        Track();
+    }
+
+    // 気が尽きた間は刀が下がって切っ先が床を向く
+    internal void SetSpent(bool spent)
+    {
+        _spent = spent;
+        if (_root) Track();
     }
 
     internal void SetFallen(bool tint)
@@ -273,7 +291,7 @@ internal sealed partial class SamuraiBlade
     // 毎フレーム書く必要があるか (抜く・納める・振る・止めて戻る間)
     private bool Busy(float now)
     {
-        if ((now - _drawT) / SlowMo < 0.6f) return true;
+        if ((now - _drawT) / SlowMo < 0.6f || now < _dashUntil) return true;
         if (this == LocalFollow && (SwipeInput.Dragging || _localStroke)) return true;
         if ((now - _repT) / SlowMo <= _repDur + 0.05f) return true;
         return (now - _endT) / SlowMo < Hold + Recover || SmearLive;
@@ -311,6 +329,18 @@ internal sealed partial class SamuraiBlade
         p.Sx -= br * 0.008f;
         p.Blade += br * 2f;
         p.Aura = 0.45f + 0.1f * FxMath.Sin(now * 2.3f);
+        if (_spent)
+        {
+            // 肩で息をして、刀は下へ垂れる
+            float pant = FxMath.Sin(now * 9f);
+            p.Blade = -62f + pant * 3f;
+            p.Fx = 0.2f;
+            p.Fy = -0.16f;
+            p.Lean = 7f;
+            p.Sy = 0.93f + pant * 0.025f;
+            p.Sx = 1.04f - pant * 0.015f;
+            p.Aura = 0f;
+        }
         return p;
     }
 
@@ -430,6 +460,7 @@ internal sealed partial class SamuraiBlade
                 p = Stance(FxMath.Floor(now * 15f) / 15f);
             }
         }
+        if (now < _dashUntil) SpawnGhost(now);
         _swinging = world;
         if (!_root.activeSelf) _root.SetActive(true);
         _last = p;
