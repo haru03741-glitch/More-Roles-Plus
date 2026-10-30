@@ -36,6 +36,7 @@ public sealed partial class Samurai : RoleBase
     internal const float DrawTime = 0.6f;         // 抜刀/納刀の動作の長さ
     private const float RangeSlack = 0.3f;        // 振っている間に相手が動いた分の余裕
     private const float ArcPad = 15f;             // 掃引角の両端に足す当たりの余裕 (度)
+    private const float DoorReachSlack = 0.25f;   // 扉の厚みの分 (刀の切っ先より少し先の扉まで斬れる)
     private const float Touching = 0.3f;          // これより近い人は向きによらず当たる
     private const int WinCheckMs = 500;
     private const float MinStrokeSeconds = 0.12f;
@@ -365,7 +366,8 @@ public sealed partial class Samurai : RoleBase
             counted |= HostApply(target, dmg);
         }
         if (counted) HostUpdatePath();
-        CutDoors.HostCut(me, a0, sweep, reach, thrust, PlayerId);
+        // 扉は刀の絵が届く所だけ (人の当たりは振っている間に動く分の余裕があるので扉より遠い)
+        CutDoors.HostCut(me, a0, sweep, thrust ? SlashRange + ThrustExtra : SamuraiBlade.BladeReach + DoorReachSlack, thrust, PlayerId);
     }
 
     // 立ち合い (体力の削り合い) になる相手 = 刀を受けて戦える人。それ以外は一太刀で倒れる

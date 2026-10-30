@@ -17,7 +17,6 @@ internal static class CutDoors
     private static ChoiceOpt Restore => Neutral.Samurai.CutRestore;
     private static FloatOpt RestoreSeconds => Neutral.Samurai.CutRestoreTime;
 
-    private const float DoorSlack = 0.5f; // 扉の真ん中から縁までの分の余裕 (扉の長さの半分ほど)
     private static int ShipMask => Constants.ShipAndObjectsMask;
 
     // 壊れている扉 (ship.AllDoors の添字) と、ホストだけが持つ戻す時刻 (秒数の設定の時)
@@ -80,35 +79,71 @@ internal static class CutDoors
 
     // ---- ホスト ----
 
-    // 一振りの扇 (from から a0 度の向きへ sweep 度・reach まで) に入った扉を壊す。thrust = 突き (向きの左右 12 度)
+    // 一振りの扇 (from から a0 度の向きへ sweep 度・reach まで) に刀が通った扉を壊す。thrust = 突き (a0 の向きへ細く)。
+    // 扉は長いので真ん中の 1 点でなく扉の線の上を何点か見て、刀の届く所に入った点があれば斬る
     internal static void HostCut(Vector2 from, float a0, float sweep, float reach, bool thrust, byte by)
     {
         var ship = ShipStatus.Instance;
         var all = ship ? ship.AllDoors : null;
         if (all == null) return;
         float span = FxMath.Abs(sweep);
-        float r = reach + DoorSlack;
+        float tr = a0 * FxMath.Deg2Rad, tc = FxMath.Cos(tr), tsn = FxMath.Sin(tr);
         for (int i = 0; i < all.Length; i++)
         {
             var d = all[i];
             if (Broken.Contains(i) || !Cuttable(d)) continue;
             var col = ColliderOf(d);
             if (!col) continue;
-            Vector2 at = CenterOf(col);
-            float dx = at.x - from.x, dy = at.y - from.y;
-            if (dx * dx + dy * dy > r * r) continue;
-            float ta = FxMath.Atan2(dy, dx) * FxMath.Rad2Deg;
-            float off = (sweep >= 0f ? ta - a0 : a0 - ta) % 360f;
-            if (off < 0f) off += 360f;
-            // 扉は長いので扇の両端に人より広い余裕を足す
-            bool aimed = thrust ? off <= 25f || off >= 335f : off <= span + 30f || off >= 330f;
-            if (!aimed) continue;
-            // 間に別の壁があれば届かない (最初に当たったのが当の扉なら通す)
-            if (WallBetween(from, dx, dy, col, d)) continue;
-            // 割る線 = 斬った刀の通り道 (扉の所での刀の向き)。扇の振りなら相手への向きに直角、突きならその向き
-            float cut = thrust ? ta : ta + 90f;
-            HostBreak(i, cut, by);
+            SpanOf(col, out Vector2 e0, out Vector2 e1);
+            // 真ん中から外へ順に見る (端は隣の壁に接していて間の壁の確かめに掛かりやすい)
+            for (int k = 0; k < Along.Length; k++)
+            {
+                float s = Along[k];
+                float px = (e0.x + e1.x) * 0.5f + (e1.x - e0.x) * 0.5f * s, py = (e0.y + e1.y) * 0.5f + (e1.y - e0.y) * 0.5f * s;
+                float dx = px - from.x, dy = py - from.y;
+                if (dx * dx + dy * dy > reach * reach) continue;
+                float ta = FxMath.Atan2(dy, dx) * FxMath.Rad2Deg;
+                if (thrust)
+                {
+                    float along = dx * tc + dy * tsn, side = FxMath.Abs(dx * tsn - dy * tc);
+                    if (along <= 0f || side > ThrustHalfWidth) continue;
+                }
+                else
+                {
+                    float off = (sweep >= 0f ? ta - a0 : a0 - ta) % 360f;
+                    if (off < 0f) off += 360f;
+                    if (off > span + ArcPad && off < 360f - ArcPad) continue;
+                }
+                // 間に別の壁があれば届かない (最初に当たったのが当の扉なら通す)
+                if (WallBetween(from, dx, dy, col, d)) continue;
+                // 割る線 = 斬った刀の通り道 (扉の所での刀の向き)。扇の振りなら相手への向きに直角、突きならその向き
+                HostBreak(i, thrust ? ta : ta + 90f, by);
+                break;
+            }
         }
+    }
+
+    private const float ArcPad = 15f;          // 扇の両端に足す余裕 (度・人の当たりと同じ)
+    private const float ThrustHalfWidth = 0.3f; // 突きの筋の太さの半分
+    private static readonly float[] Along = { 0f, -0.3f, 0.3f, -0.6f, 0.6f, -0.85f, 0.85f };
+
+    // 扉の線の両端。箱の当たり判定なら長い向きの両端、それ以外は真ん中の 1 点
+    private static void SpanOf(Collider2D col, out Vector2 a, out Vector2 b)
+    {
+        float hx = 0f, hy = 0f;
+        var box = col.TryCast<BoxCollider2D>();
+        if (box != null)
+        {
+            Vector2 sz = box.size;
+            if (sz.x >= sz.y) hx = sz.x * 0.5f;
+            else hy = sz.y * 0.5f;
+        }
+        Vector2 o = col.offset;
+        var t = col.transform;
+        Vector3 pa = t.TransformPoint(FxMath.V3(o.x - hx, o.y - hy, 0f));
+        Vector3 pb = t.TransformPoint(FxMath.V3(o.x + hx, o.y + hy, 0f));
+        a = FxMath.V2(pa.x, pa.y);
+        b = FxMath.V2(pb.x, pb.y);
     }
 
     // from から扉までの間に、その扉でない壁があるか (Linecast は Android の本体に無いので細い円で掃く)

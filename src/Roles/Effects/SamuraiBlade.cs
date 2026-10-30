@@ -21,6 +21,7 @@ internal sealed partial class SamuraiBlade
     private const float FistSize = 0.24f / 1.4f;
     private const float FistRot = -90f;       // 刀の向きに対する拳の絵の傾き
     private const float SwingGrip = 0.22f;    // 振る間の体の中心から拳までの長さ
+    internal const float BladeReach = SwingGrip + TipLen; // 振った刀の切っ先が通る体の中心からの長さ
     private const float SwingDrop = -0.04f;   // 振る間の拳の高さのずれ
     private const float Hold = 0.10f;         // 振り抜いた形で止める秒
     private const float Recover = 0.20f;      // 止めた後に構えへ戻る秒
