@@ -203,7 +203,12 @@ internal sealed partial class SamuraiBlade
         _tick = 0;
         if (!_root) return;
         var pc = _role.Player;
-        if (!pc || pc.Data == null || pc.Data.IsDead) { Dispose(); return; }
+        if (!pc || pc.Data == null || pc.Data.IsDead)
+        {
+            Dispose();
+            _role.OnBladeLost();
+            return;
+        }
         if (_drawn) Track();
     }
 
@@ -231,6 +236,8 @@ internal sealed partial class SamuraiBlade
         if (!blade || !saya || !fist || !mat) return false;
         int layer = pc.gameObject.layer;
         _root = new GameObject("MrpKatana") { layer = layer };
+        // 倒れて片付けた刀を生き返った後に作り直した時も、自分のなぞりに付いて振る
+        if (_role.IsLocal) LocalFollow = this;
         _rootTf = _root.transform;
         _rootTf.SetParent(pc.transform, false);
         float scale = pc.transform.localScale.x;
@@ -650,5 +657,5 @@ internal sealed partial class SamuraiBlade
     }
 
     internal string Describe() =>
-        $"root={(_root ? (_root.activeSelf ? "on" : "off") : "none")} drawn={_drawn} hidden={_hidden} flip={_flip} live={Live.Contains(this)} swing={_swinging} moving={_moving} posed={_posed} smear={SmearLive} blade={_last.Blade:0} lean={_last.Lean:0.0} iai[armed={_lastArmedTier} strikes={_strikes} delayed={_delayedRuns}]";
+        $"root={(_root ? (_root.activeSelf ? "on" : "off") : "none")} follow={LocalFollow == this} drawn={_drawn} hidden={_hidden} flip={_flip} live={Live.Contains(this)} swing={_swinging} moving={_moving} posed={_posed} smear={SmearLive} blade={_last.Blade:0} lean={_last.Lean:0.0} iai[armed={_lastArmedTier} strikes={_strikes} delayed={_delayedRuns}]";
 }

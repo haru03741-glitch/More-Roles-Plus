@@ -104,6 +104,14 @@ public sealed partial class Samurai : RoleBase
         _blade.SetDrawn(drawn, iai);
     }
 
+    // 倒れて刀を片付けた (全員の端末で)。刀は鞘に戻した扱いにして、生き返った後の一振りを居合で抜き直す (抜き直しで刀を作り直す)
+    internal void OnBladeLost()
+    {
+        Drawn = false;
+        _iaiStroke = false;
+        _sheathedAt = Time.time;
+    }
+
     // 納めた全員の端末で (抜くのは居合の一振りと一緒に届く)。納めた人は送った時に手元で済ませている
     private static readonly RemoteCall<bool> DrawCall = new("Samurai.Draw", Route.Anyone,
         (w, v) => w.Write(v), r => r.ReadBoolean(),

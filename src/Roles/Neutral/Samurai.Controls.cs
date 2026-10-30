@@ -19,6 +19,7 @@ public sealed partial class Samurai
     private const float DashCost = 26f;
     private const float RegenSheathed = 34f, RegenStill = 16f, RegenMoving = 12f;
     internal const float SpentTime = 1.6f;
+    private const float SpentRefill = 25f;          // 気切れが明けた時に戻る気 (明けてすぐの一振りでまた尽きないよう、一振り分より少し多く)
     private const float KiSlack = 25f;             // ホストの気の見積もりの余裕 (踏み込みはホストへ届かないので、ホストの方が多めに見る)
     internal const float ChargeTime = 1.0f;        // 居合を溜め切るまで (押してから)
     private const float ChargeDelay = 0.12f;       // 押してすぐのなぞりは溜め無し
@@ -139,7 +140,8 @@ public sealed partial class Samurai
         {
             if (RoleState.Of(sender) is not Samurai s) return;
             s._blade.SetSpent(v);
-            if (v) { s.HostKiNow(); s._hostKi = 0f; }
+            s.HostKiNow();
+            s._hostKi = v ? 0f : FxMath.Max(s._hostKi, SpentRefill);
         }, perSecond: 8);
 
     // 立ち合いの HUD に出す気 (本人の端末なら本人の値・他人なら見積もり)
@@ -159,6 +161,7 @@ public sealed partial class Samurai
 
     // 毎フレームは押した瞬間の読みだけ (動けるかなどは FixedUpdate で決めておく)
     private bool _canAct, _padOn;
+    internal string Disarm = "-"; // 確かめ用: 最後に構えを外した理由
 
     internal static void LocalTick()
     {
@@ -185,11 +188,14 @@ public sealed partial class Samurai
         if (_spentUntil > 0f && Time.time >= _spentUntil)
         {
             _spentUntil = -10f;
+            _ki = FxMath.Max(_ki, SpentRefill);
             EndSpent();
         }
         // 納めていても抜いていても、なぞりを構える (納刀中のなぞり = 居合)。マウスでは歩かない。鍔迫り合いの間は振れない。
         // 気が尽きている間も構えたまま (押しっぱなしのなぞりを捨てない・振りは役職の側で捨てる) なので、戻ればそのまま振れる
-        SwipeInput.Arm(free && ready && !Locked ? p : null);
+        bool arm = free && ready && !Locked;
+        if (!arm) Disarm = !alive ? "dead" : !p.CanMove ? "canmove" : MeetingHud.Instance ? "meeting" : p.inVent ? "vent" : !ready ? "drawing" : "locked";
+        SwipeInput.Arm(arm ? p : null);
         SwipeInput.NoThrust = Spent;
         _ring?.Tick(alive && !MeetingHud.Instance);
         _padOn = UI.SamuraiPad.Tick(this, free && alive && !Locked);

@@ -54,6 +54,9 @@ internal static class SwipeInput
     private static float _synA0, _synA1, _synStart = -1f, _synDur, _synHold;
     private static bool _synThrust;
     internal static int Strokes, Thrusts;
+    // 確かめ用: 押した数・UI の上として捨てた数 (と名前)・なぞりの途中で構えが外れた数
+    internal static int Presses, UiRejects, Drops;
+    internal static string LastUi = "-";
     // 押すたびに増える番号 (同じなぞりの中で続けた振りかを役職が見分ける)
     internal static int DragId;
     internal static string Last = "-";
@@ -62,7 +65,11 @@ internal static class SwipeInput
     {
         bool armed = owner;
         if (armed == Armed && (!armed || Owner == owner)) return;
-        if (!armed) End(false);
+        if (!armed)
+        {
+            if (Dragging) Drops++;
+            End(false);
+        }
         Owner = armed ? owner : null;
         Armed = armed;
         _cam = armed ? Camera.main : null;
@@ -122,7 +129,9 @@ internal static class SwipeInput
         }
         if (!Dragging)
         {
-            if (!began || OverUi()) return;
+            if (!began) return;
+            Presses++;
+            if (OverUi()) return;
         }
         else if (!down)
         {
@@ -181,9 +190,16 @@ internal static class SwipeInput
         return false;
     }
 
-    // 押し始めがボタン・パネルの上なら振らない
-    private static bool OverUi() =>
-        PassiveButtonManager.InstanceExists && PassiveButtonManager.Instance.currentOver;
+    // 押し始めがボタン・パネルの上なら振らない。人の体 (本編は体にも押せる当たりを持たせている) の上は振る
+    private static bool OverUi()
+    {
+        if (!PassiveButtonManager.InstanceExists) return false;
+        var over = PassiveButtonManager.Instance.currentOver;
+        if (!over || over.GetComponent<PlayerControl>()) return false;
+        UiRejects++;
+        LastUi = over.name;
+        return true;
+    }
 
     // 外へ押し出す動き (突き)。突いたら true (なぞりはそこで終わる)。
     // 押し出しの速さが接線の速さより十分大きい間・体に近すぎる間は、角度の一振りを始めさせない
@@ -324,7 +340,7 @@ internal static class SwipeInput
     }
 
     internal static string Describe() =>
-        $"armed={Armed} drag={Dragging} stroke={InStroke} angle={Wrap(Angle):0} speed={Speed:0} strokes={Strokes} thrusts={Thrusts} last[{Last}] moveBlocked={MoveBlock.Hits}";
+        $"armed={Armed} drag={Dragging} stroke={InStroke} angle={Wrap(Angle):0} speed={Speed:0} strokes={Strokes} thrusts={Thrusts} last[{Last}] presses={Presses} ui={UiRejects}({LastUi}) drops={Drops} moveBlocked={MoveBlock.Hits}";
 }
 
 // 構えている間は PC のマウスで歩く操作を止める (キーで歩くのは残す)
