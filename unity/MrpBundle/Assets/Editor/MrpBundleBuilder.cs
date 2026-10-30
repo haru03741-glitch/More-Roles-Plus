@@ -12,6 +12,7 @@ using UnityEngine;
 //   water_wade.mat … MRP/Water の _Mode 2 (水に浸かったクルー・小物の手前に置く水面)
 //   firefloor.mat / flame.mat … MRP/Fire (床の照りと油の膜 / 立ち上がる炎。CPU が書いた升ごとの火の値から見た目を決める)
 //   playergrad.mat … MRP/PlayerGradient (2 色のグラデーションのクルー。シェーダだけを使う)
+//   riftwarp.mat … MRP/RiftWarp (空間の裂け目: 描き上がった画面を斬った線に沿ってせん断する)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -99,6 +100,18 @@ public static class MrpBundleBuilder
         AssetDatabase.DeleteAsset(gradPath);
         AssetDatabase.CreateAsset(new Material(gradShader) { name = "playergrad" }, gradPath);
         Tag(gradPath);
+
+        Shader riftShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/RiftWarp.shader");
+        if (riftShader == null)
+        {
+            Debug.LogError("MrpBundleBuilder: RiftWarp shader not found");
+            EditorApplication.Exit(2);
+            return;
+        }
+        string riftPath = Folder + "/riftwarp.mat";
+        AssetDatabase.DeleteAsset(riftPath);
+        AssetDatabase.CreateAsset(new Material(riftShader) { name = "riftwarp" }, riftPath);
+        Tag(riftPath);
 
         BreakSounds.ImportAll(Folder, BundleName);
 

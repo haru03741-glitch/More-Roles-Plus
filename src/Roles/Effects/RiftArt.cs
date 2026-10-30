@@ -7,18 +7,16 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles;
 
 // 空間の裂け目の線 (全員の画面)。2 つの空間の間の何も無い溝 (暗い芯) を、左を青・右を桃の細く明るい縁が挟む。
-// 裂け目の両端からも、ずれた景色の帯 (RiftView) の縁に沿って同じ溝が走り、空間の塊が切られてずれたように見せる
-// (端の溝が無いと、帯の端が景色に貼った四角に見える)。開く時は真ん中から伸び、端の溝は伸び切ってから走る。全部の線を 1 枚の網にまとめ、開閉の途中は毎フレーム、
-// 揺らぎだけの間は 20 回/秒だけ書き直す
+// 画面のせん断 (RiftView) で線の左右は逆向きにずれるが、どちらも線に沿う向きなので、この線は割れずに切れ目を覆う。開く時は真ん中から伸びる。
+// 全部の線を 1 枚の網にまとめ、開閉の途中は毎フレーム、揺らぎだけの間は 20 回/秒だけ書き直す
 internal static unsafe class RiftArt
 {
-    private const int Slots = 24;                 // 裂け目 8 × (線 + 両端の溝)
-    private const float EdgeLen = 20f;            // 端の溝の長さ (帯の幅と同じ)
+    private const int Slots = 16;                 // 裂け目 8 + 閉じかけの物
     private const int Cols = 12, Rows = 7, Verts = Cols * Rows;
     private const float OpenTime = 0.18f, CloseTime = 0.3f, BurnTime = 0.35f;
     private const float EndTaper = 0.35f;         // 両端の細る長さ
     private const float IdleRate = 1f / 20f;      // 揺らぎだけの間の書き直しの間隔
-    // 透明物は網の中心の z で前後が決まる。ずれた景色の帯 (RiftView) より手前・視界の影の板 (-5) より奥
+    // 透明物は網の中心の z で前後が決まる。人より手前・視界の影の板 (-5) より奥 (暗い所では線も見えない)
     private const float Z = -1.2f;
 
     // 帯の横の位置 (線からの離れ)・濃さ・色 (0 = 左の青, 1 = 白, 2 = 右の桃, 3 = 溝の暗さ)
@@ -28,7 +26,7 @@ internal static unsafe class RiftArt
 
     private struct Seg
     {
-        public bool On, Edge; // Edge = 端の溝 (始めの端から先へ伸びる・両端は細らない)
+        public bool On;
         public byte Id;
         public float X0, Y0, Ux, Uy, Len;
         public float T0, TClose;
@@ -55,21 +53,7 @@ internal static unsafe class RiftArt
         if (slot < 0) return;
         float now = Time.time;
         Segs[slot] = new Seg { On = true, Id = rf.Id, X0 = rf.X0, Y0 = rf.Y0, Ux = rf.Ux, Uy = rf.Uy, Len = rf.Len, T0 = now, TClose = -1f };
-        // 両端の溝は線の左 (帯の側) へ
-        float nx = -rf.Uy, ny = rf.Ux;
-        AddEdge(rf.Id, rf.X0, rf.Y0, nx, ny, now + OpenTime);
-        AddEdge(rf.Id, rf.X0 + rf.Ux * rf.Len, rf.Y0 + rf.Uy * rf.Len, nx, ny, now + OpenTime);
         Wake();
-    }
-
-    private static void AddEdge(byte id, float x, float y, float dx, float dy, float t0)
-    {
-        for (int i = 0; i < Slots; i++)
-        {
-            if (Segs[i].On && Segs[i].TClose < 0f) continue;
-            Segs[i] = new Seg { On = true, Edge = true, Id = id, X0 = x, Y0 = y, Ux = dx, Uy = dy, Len = EdgeLen, T0 = t0, TClose = -1f };
-            return;
-        }
     }
 
     internal static void Close(byte id)
@@ -120,8 +104,7 @@ internal static unsafe class RiftArt
         _gen = GameClock.ShipGen;
         // GameObject は前の船ごと消えるが、Mesh は親付けでは消えない
         if (_mesh) UnityEngine.Object.Destroy(_mesh);
-        // ずれた景色を写すカメラに映り込まないよう、帯と同じ層に置く
-        _go = new GameObject("MrpSpaceRifts") { layer = 1 };
+        _go = new GameObject("MrpSpaceRifts");
         _go.transform.SetParent(ship.transform, false);
         // 船の根は倍率や左右反転を持つことがあるので、網は世界の座標のまま置けるよう根の変換を打ち消す
         _go.transform.position = Vector3.zero;
@@ -171,9 +154,7 @@ internal static unsafe class RiftArt
             if (s.On)
             {
                 float age = now - s.T0;
-                // 端の溝は線が伸び切るまで出さない
-                if (age < 0f) { grow = 0f; busy = true; }
-                else if (age < OpenTime) { grow = age / OpenTime; grow = 1f - (1f - grow) * (1f - grow); busy = true; }
+                if (age < OpenTime) { grow = age / OpenTime; grow = 1f - (1f - grow) * (1f - grow); busy = true; }
                 if (age < OpenTime + BurnTime) { burn = 1f - FxMath.Max(0f, age - OpenTime) / BurnTime; busy = true; }
                 if (s.TClose >= 0f)
                 {
@@ -211,7 +192,7 @@ internal static unsafe class RiftArt
     {
         float nx = -s.Uy, ny = s.Ux;
         // 真ん中から両へ伸びる
-        float a0 = s.Edge ? 0f : s.Len * 0.5f * (1f - grow), a1 = s.Edge ? s.Len * grow : s.Len * 0.5f * (1f + grow);
+        float a0 = s.Len * 0.5f * (1f - grow), a1 = s.Len * 0.5f * (1f + grow);
         float span = a1 - a0;
         for (int c = 0; c < Cols; c++)
         {
@@ -220,7 +201,7 @@ internal static unsafe class RiftArt
             float cx = s.X0 + s.Ux * along, cy = s.Y0 + s.Uy * along;
             // 両端は細る
             float endD = FxMath.Min(along - a0, a1 - along);
-            float taper = s.Edge ? 1f : FxMath.Clamp01(endD / EndTaper);
+            float taper = FxMath.Clamp01(endD / EndTaper);
             taper = taper * (2f - taper);
             // 縁の明るさがわずかに流れる揺らぎ (溝の暗さは揺らさない)
             float sh = 0.88f + 0.12f * FxMath.Sin(now * 3.1f + c * 0.9f + s.Id * 1.7f);

@@ -142,7 +142,7 @@ internal static class RoleCommands
             }
             if (p.Length >= 1 && p[0] == "rift")
             {
-                // rift [cut <x> <y> <角度> [段] | here <角度> [段] | clear | tune <z> <描く順番> [色に掛ける値]] 空間の裂け目の一覧 / ホストで線を作る / 全部消す / 帯の見え方をその場で変える
+                // rift [cut <x> <y> <角度> [段] | here <角度> [段] | clear | tune <幅> <ずれ幅に掛ける値> [溝の半幅] [両端の細る長さ]] 空間の裂け目の一覧 / ホストで線を作る / 全部消す / せん断の見え方をその場で変える
                 var fl = System.Globalization.NumberStyles.Float;
                 if (p.Length >= 5 && p[1] == "cut" && float.TryParse(p[2], fl, inv, out float rx) && float.TryParse(p[3], fl, inv, out float ry) && float.TryParse(p[4], fl, inv, out float rd))
                 {
@@ -156,8 +156,8 @@ internal static class RoleCommands
                     if (!SpaceRifts.ForTest(hp.x, hp.y, hd, rt)) { reply("ERR samurai rift (host only)"); return; }
                 }
                 else if (p.Length >= 2 && p[1] == "clear" && !SpaceRifts.ClearForTest()) { reply("ERR samurai rift (host only)"); return; }
-                else if (p.Length >= 4 && p[1] == "tune" && float.TryParse(p[2], fl, inv, out float tz) && int.TryParse(p[3], out int tq))
-                    RiftView.Tune(tz, tq, p.Length >= 5 && float.TryParse(p[4], fl, inv, out float tg) ? tg : 0.62f);
+                else if (p.Length >= 4 && p[1] == "tune" && float.TryParse(p[2], fl, inv, out float tw) && float.TryParse(p[3], fl, inv, out float ts))
+                    RiftView.Tune(tw, ts, p.Length >= 5 && float.TryParse(p[4], fl, inv, out float tg) ? tg : 0f, p.Length >= 6 && float.TryParse(p[5], fl, inv, out float tt) ? tt : 1f);
                 reply($"OK samurai rift {SpaceRifts.Describe()} art[{RiftArt.Describe()}] view[{RiftView.Describe()}]");
                 return;
             }

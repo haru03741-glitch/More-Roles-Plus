@@ -8,9 +8,8 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 空間の裂け目: 居合の段 3〜4 の斬線が空間の裂け目として残る。裂け目の左側 (線の向きから反時計回りの側) の景色は、
-// 線に沿ってずれて見える (RiftView)。ずれは見た目だけで、立っている位置や当たり判定は変わらない。
-// 裂け目をまたいで立つと、左側に入った体の部分だけがずれた所に見えるので、体が裂け目で分かれて見える。
+// 空間の裂け目: 居合の段 3〜4 の斬線が空間の裂け目として残る。裂け目の左右の景色は線に沿って逆向きにずれて見える (RiftView)。
+// ずれは見た目だけで、立っている位置や当たり判定は変わらない。裂け目をまたいで立つと、体が裂け目で分かれて見える。
 // 線はホストが作って全員へ写す。戻り方は斬った扉と同じ設定
 internal static class SpaceRifts
 {
@@ -18,7 +17,7 @@ internal static class SpaceRifts
     private static FloatOpt RestoreSeconds => Neutral.Samurai.CutRestoreTime;
 
     private const int MaxRifts = 8;        // 同時に残る線 (超えたら古い物から消す)
-    private const float MaxShift = 3f;     // ずれの上限 (線の長さの 1/3 まで)
+    private const float MaxShift = 1.5f;   // 左右のずれの合計の上限 (線の長さの 1/6 まで)
 
     internal struct Rift
     {
@@ -52,6 +51,7 @@ internal static class SpaceRifts
         Rifts.Clear();
         RestoreAt.Clear();
         RiftArt.Clear();
+        RiftView.Clear();
     }
 
     // ---- ホスト ----
@@ -153,7 +153,7 @@ internal static class SpaceRifts
         if (!float.IsFinite(m.X0) || !float.IsFinite(m.Y0) || !float.IsFinite(m.X1) || !float.IsFinite(m.Y1)) return;
         float dx = m.X1 - m.X0, dy = m.Y1 - m.Y0, len = FxMath.Sqrt(dx * dx + dy * dy);
         if (len < 0.5f || len > 40f) return;
-        var rf = new Rift { Id = m.Id, By = m.By, X0 = m.X0, Y0 = m.Y0, Ux = dx / len, Uy = dy / len, Len = len, Shift = FxMath.Min(len / 3f, MaxShift) };
+        var rf = new Rift { Id = m.Id, By = m.By, X0 = m.X0, Y0 = m.Y0, Ux = dx / len, Uy = dy / len, Len = len, Shift = FxMath.Min(len / 6f, MaxShift) };
         Rifts.Add(rf);
         RiftArt.Open(rf);
     }
