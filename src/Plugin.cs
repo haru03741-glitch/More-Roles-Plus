@@ -162,6 +162,7 @@ public class Ticker : MonoBehaviour
         Bridge.Perf.Lane(34, t);
         Terrain.DecompFx.LateTick();
         Roles.PortalArt.LateTick(); // 窓は人とカメラが動き終わった後に描く
+        Roles.RiftView.LateTick();
         Terrain.WaterSim.Kick(); // 預けた水の小刻みを描画の裏で回す (読み手は次に水の配列に触る時に終わりを待つ)
         Bridge.Perf.FrameLate();
     }

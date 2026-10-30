@@ -6,32 +6,32 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 空間のずれの見た目 (全員の画面)。床に残る裂け目は、左を青・右を桃にずらした縁と白い芯の帯で、空間が割れて食い違って見えるようにする。
-// 誰かがずれると、抜けた所から出た所まで線に沿って白い筋が走り、裂け目が一瞬明るくなる。
-// 全部の線を 1 枚の網にまとめ、動いている間は毎フレーム、揺らぎだけの間は 20 回/秒だけ書き直す
+// 空間の裂け目の線 (全員の画面)。2 つの空間の間の何も無い溝 (暗い芯) を、左を青・右を桃の細く明るい縁が挟む。
+// 裂け目の両端からも、ずれた景色の帯 (RiftView) の縁に沿って同じ溝が走り、空間の塊が切られてずれたように見せる
+// (端の溝が無いと、帯の端が景色に貼った四角に見える)。開く時は真ん中から伸び、端の溝は伸び切ってから走る。全部の線を 1 枚の網にまとめ、開閉の途中は毎フレーム、
+// 揺らぎだけの間は 20 回/秒だけ書き直す
 internal static unsafe class RiftArt
 {
-    private const int Slots = 12;                 // 裂け目 8 + 筋 4
-    private const int RiftSlots = 8;
+    private const int Slots = 24;                 // 裂け目 8 × (線 + 両端の溝)
+    private const float EdgeLen = 20f;            // 端の溝の長さ (帯の幅と同じ)
     private const int Cols = 12, Rows = 7, Verts = Cols * Rows;
     private const float OpenTime = 0.18f, CloseTime = 0.3f, BurnTime = 0.35f;
-    private const float StreakTime = 0.22f, FlickerTime = 0.25f;
     private const float EndTaper = 0.35f;         // 両端の細る長さ
     private const float IdleRate = 1f / 20f;      // 揺らぎだけの間の書き直しの間隔
-    // 透明物は網の中心の z で前後が決まる。床の絵 (z 8 前後) より手前・人や物 (z ≈ y/1000) より奥
-    private const float Z = 0.5f;
+    // 透明物は網の中心の z で前後が決まる。ずれた景色の帯 (RiftView) より手前・視界の影の板 (-5) より奥
+    private const float Z = -1.2f;
 
-    // 帯の横の位置 (線からの離れ)・濃さ・色 (0 = 左の青, 1 = 白, 2 = 右の桃)
-    private static readonly float[] RowAcross = { -0.16f, -0.06f, -0.02f, 0f, 0.02f, 0.06f, 0.16f };
-    private static readonly float[] RowA = { 0f, 0.5f, 0.9f, 1f, 0.9f, 0.5f, 0f };
-    private static readonly int[] RowTint = { 0, 0, 1, 1, 1, 2, 2 };
+    // 帯の横の位置 (線からの離れ)・濃さ・色 (0 = 左の青, 1 = 白, 2 = 右の桃, 3 = 溝の暗さ)
+    private static readonly float[] RowAcross = { -0.09f, -0.03f, -0.018f, 0f, 0.018f, 0.03f, 0.09f };
+    private static readonly float[] RowA = { 0f, 0.95f, 1f, 1f, 1f, 0.95f, 0f };
+    private static readonly int[] RowTint = { 0, 1, 3, 3, 3, 1, 2 };
 
     private struct Seg
     {
-        public bool On, Streak;
+        public bool On, Edge; // Edge = 端の溝 (始めの端から先へ伸びる・両端は細らない)
         public byte Id;
         public float X0, Y0, Ux, Uy, Len;
-        public float T0, TClose, TFlick;
+        public float T0, TClose;
     }
 
     private static readonly Seg[] Segs = new Seg[Slots];
@@ -42,58 +42,41 @@ internal static unsafe class RiftArt
     private static Material _mat;
     private static int _gen = -1, _active;
     private static float _nextBuild;
-    private static bool _busy; // 開く・閉じる・筋・明滅の途中 (毎フレーム書き直す)
+    private static bool _busy; // 開く・閉じるの途中 (毎フレーム書き直す)
 
     internal static void Open(in SpaceRifts.Rift rf)
     {
         // 空いた枠が無ければ閉じかけの枠を使う (上限を超えると古い線を閉じてすぐ新しい線を開く)
         int slot = -1;
-        for (int i = 0; i < RiftSlots && slot < 0; i++)
+        for (int i = 0; i < Slots && slot < 0; i++)
             if (!Segs[i].On) slot = i;
-        for (int i = 0; i < RiftSlots && slot < 0; i++)
+        for (int i = 0; i < Slots && slot < 0; i++)
             if (Segs[i].TClose >= 0f) slot = i;
         if (slot < 0) return;
-        Segs[slot] = new Seg { On = true, Id = rf.Id, X0 = rf.X0, Y0 = rf.Y0, Ux = rf.Ux, Uy = rf.Uy, Len = rf.Len, T0 = Time.time, TClose = -1f, TFlick = -10f };
+        float now = Time.time;
+        Segs[slot] = new Seg { On = true, Id = rf.Id, X0 = rf.X0, Y0 = rf.Y0, Ux = rf.Ux, Uy = rf.Uy, Len = rf.Len, T0 = now, TClose = -1f };
+        // 両端の溝は線の左 (帯の側) へ
+        float nx = -rf.Uy, ny = rf.Ux;
+        AddEdge(rf.Id, rf.X0, rf.Y0, nx, ny, now + OpenTime);
+        AddEdge(rf.Id, rf.X0 + rf.Ux * rf.Len, rf.Y0 + rf.Uy * rf.Len, nx, ny, now + OpenTime);
         Wake();
+    }
+
+    private static void AddEdge(byte id, float x, float y, float dx, float dy, float t0)
+    {
+        for (int i = 0; i < Slots; i++)
+        {
+            if (Segs[i].On && Segs[i].TClose < 0f) continue;
+            Segs[i] = new Seg { On = true, Edge = true, Id = id, X0 = x, Y0 = y, Ux = dx, Uy = dy, Len = EdgeLen, T0 = t0, TClose = -1f };
+            return;
+        }
     }
 
     internal static void Close(byte id)
     {
-        for (int i = 0; i < RiftSlots; i++)
+        for (int i = 0; i < Slots; i++)
             if (Segs[i].On && Segs[i].Id == id && Segs[i].TClose < 0f) Segs[i].TClose = Time.time;
         _busy = true;
-    }
-
-    // 誰かがずれた (見た目だけ)
-    internal static void Flicker(byte id)
-    {
-        float now = Time.time;
-        for (int i = 0; i < RiftSlots; i++)
-            if (Segs[i].On && Segs[i].Id == id) Segs[i].TFlick = now;
-        _busy = true;
-    }
-
-    // 自分がずれた: (x0, y0) から (x1, y1) へ白い筋を走らせ、裂け目を明るくする
-    internal static void Pass(float x0, float y0, float x1, float y1, float deg)
-    {
-        float dx = x1 - x0, dy = y1 - y0, len = FxMath.Sqrt(dx * dx + dy * dy);
-        if (len < 0.05f) return;
-        int slot = RiftSlots;
-        for (int i = RiftSlots; i < Slots; i++)
-            if (!Segs[i].On) { slot = i; break; }
-        // 筋は人の腰の高さ (足元から少し上) を走る
-        Segs[slot] = new Seg { On = true, Streak = true, X0 = x0, Y0 = y0 + 0.25f, Ux = dx / len, Uy = dy / len, Len = len, T0 = Time.time, TClose = -1f, TFlick = -10f };
-        float now = Time.time;
-        for (int i = 0; i < RiftSlots; i++)
-        {
-            ref var s = ref Segs[i];
-            if (!s.On) continue;
-            // 跨いだ線 = 出た所と入った所の間を通る線
-            float t = (x0 - s.X0) * s.Ux + (y0 - s.Y0) * s.Uy;
-            float side = FxMath.Abs(s.Ux * (y0 - s.Y0) - s.Uy * (x0 - s.X0));
-            if (side < 0.6f && t > -0.5f && t < s.Len + 0.5f) s.TFlick = now;
-        }
-        Wake();
     }
 
     internal static void Clear()
@@ -137,8 +120,8 @@ internal static unsafe class RiftArt
         _gen = GameClock.ShipGen;
         // GameObject は前の船ごと消えるが、Mesh は親付けでは消えない
         if (_mesh) UnityEngine.Object.Destroy(_mesh);
-        var lp = PlayerControl.LocalPlayer;
-        _go = new GameObject("MrpSpaceRifts") { layer = lp ? lp.gameObject.layer : 8 };
+        // ずれた景色を写すカメラに映り込まないよう、帯と同じ層に置く
+        _go = new GameObject("MrpSpaceRifts") { layer = 1 };
         _go.transform.SetParent(ship.transform, false);
         // 船の根は倍率や左右反転を持つことがあるので、網は世界の座標のまま置けるよう根の変換を打ち消す
         _go.transform.position = Vector3.zero;
@@ -185,26 +168,13 @@ internal static unsafe class RiftArt
             ref var s = ref Segs[l];
             int vb = l * Verts;
             float grow = 1f, alpha = 1f, burn = 0f;
-            if (s.On && s.Streak)
-            {
-                float u = (now - s.T0) / StreakTime;
-                if (u >= 1f) s.On = false;
-                else
-                {
-                    busy = true;
-                    // 一気に伸びて、伸び切ったら細りながら消える
-                    grow = FxMath.Min(1f, u * 2.2f);
-                    alpha = u < 0.45f ? 1f : 1f - (u - 0.45f) / 0.55f;
-                    burn = 1f;
-                }
-            }
-            else if (s.On)
+            if (s.On)
             {
                 float age = now - s.T0;
-                if (age < OpenTime) { grow = age / OpenTime; grow = 1f - (1f - grow) * (1f - grow); busy = true; }
+                // 端の溝は線が伸び切るまで出さない
+                if (age < 0f) { grow = 0f; busy = true; }
+                else if (age < OpenTime) { grow = age / OpenTime; grow = 1f - (1f - grow) * (1f - grow); busy = true; }
                 if (age < OpenTime + BurnTime) { burn = 1f - FxMath.Max(0f, age - OpenTime) / BurnTime; busy = true; }
-                float fl = now - s.TFlick;
-                if (fl < FlickerTime) { burn = FxMath.Max(burn, 1f - fl / FlickerTime); busy = true; }
                 if (s.TClose >= 0f)
                 {
                     float c = (now - s.TClose) / CloseTime;
@@ -227,16 +197,22 @@ internal static unsafe class RiftArt
         _busy = busy;
         _mesh.vertices = _v;
         _mesh.colors32 = _c;
+        // 透明物はカメラから網の範囲の中心までの距離で並ぶので、中心をカメラの真ん中に置いて z だけで前後が決まるようにする
+        var cam = Camera.main;
+        if (cam)
+        {
+            Vector3 at = cam.transform.position;
+            _mesh.bounds = new Bounds(FxMath.V3(at.x, at.y, Z), FxMath.V3(1000f, 1000f, 0.1f));
+        }
         return any;
     }
 
     private static void WriteSeg(float* vp, byte* cp, int vb, in Seg s, float now, float grow, float alpha, float burn)
     {
         float nx = -s.Uy, ny = s.Ux;
-        // 裂け目は真ん中から両へ、筋は始めの端から先へ伸びる
-        float a0 = s.Streak ? 0f : s.Len * 0.5f * (1f - grow), a1 = s.Streak ? s.Len * grow : s.Len * 0.5f * (1f + grow);
+        // 真ん中から両へ伸びる
+        float a0 = s.Edge ? 0f : s.Len * 0.5f * (1f - grow), a1 = s.Edge ? s.Len * grow : s.Len * 0.5f * (1f + grow);
         float span = a1 - a0;
-        float wMul = s.Streak ? 0.55f : 1f;
         for (int c = 0; c < Cols; c++)
         {
             float k = c / (float)(Cols - 1);
@@ -244,29 +220,30 @@ internal static unsafe class RiftArt
             float cx = s.X0 + s.Ux * along, cy = s.Y0 + s.Uy * along;
             // 両端は細る
             float endD = FxMath.Min(along - a0, a1 - along);
-            float taper = FxMath.Clamp01(endD / EndTaper);
+            float taper = s.Edge ? 1f : FxMath.Clamp01(endD / EndTaper);
             taper = taper * (2f - taper);
-            // 列ごとに濃さが流れる揺らぎ
-            float sh = s.Streak ? 1f : 0.75f + 0.25f * FxMath.Sin(now * 3.1f + c * 0.9f + s.Id * 1.7f);
+            // 縁の明るさがわずかに流れる揺らぎ (溝の暗さは揺らさない)
+            float sh = 0.88f + 0.12f * FxMath.Sin(now * 3.1f + c * 0.9f + s.Id * 1.7f);
             // 長さに沿って青 → 桃へ寄る
             float hue = k;
             for (int r = 0; r < Rows; r++)
             {
                 int v = vb + c * Rows + r;
-                float off = RowAcross[r] * taper * wMul * (1f + 0.6f * burn);
+                float off = RowAcross[r] * taper * (1f + 0.6f * burn);
                 vp[v * 3] = cx + nx * off;
                 vp[v * 3 + 1] = cy + ny * off;
                 vp[v * 3 + 2] = Z;
                 float rr, gg, bb;
                 int tint = RowTint[r];
-                if (tint == 1 || s.Streak) { rr = gg = bb = 1f; }
+                if (tint == 3) { rr = 0.02f; gg = 0.02f; bb = 0.05f; }
+                else if (tint == 1) { rr = gg = bb = 1f; }
                 else if (tint == 0) { rr = 0.30f + 0.25f * hue; gg = 0.62f - 0.12f * hue; bb = 1f; }
                 else { rr = 1f; gg = 0.42f + 0.10f * (1f - hue); bb = 0.72f + 0.2f * (1f - hue); }
                 // 焼けている間は白へ寄る
                 rr += (1f - rr) * burn * 0.7f;
                 gg += (1f - gg) * burn * 0.7f;
                 bb += (1f - bb) * burn * 0.7f;
-                float a = RowA[r] * alpha * sh * taper;
+                float a = RowA[r] * alpha * (tint == 3 ? 1f : sh) * taper;
                 cp[v * 4] = (byte)(rr * 255f);
                 cp[v * 4 + 1] = (byte)(gg * 255f);
                 cp[v * 4 + 2] = (byte)(bb * 255f);

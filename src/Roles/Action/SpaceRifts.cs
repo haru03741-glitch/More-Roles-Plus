@@ -8,10 +8,10 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 空間のずれ: 居合の段 3〜4 の斬線が床に残り、線を歩いて跨ぐと線に沿って横にずれた所へ出る (全員・斬った本人も)。
-// 線の左側の空間が線に沿って Shift だけ滑った形にする: 右から左へ跨ぐと +Shift、左から右へ跨ぐと -Shift。跨ぎ直せば元の所へ戻る。
-// ずれた先が壁・家具の中・別の島・線の範囲の外なら、ずれを縮めて床のある所へ寄せる (どこも無ければ普通に跨ぐ)。
-// 線はホストが作って全員へ写す。跨いだかは各端末が自分の足元で見て、自分の位置を自分で動かす (位置は本編の同期と Teleport で届く)
+// 空間の裂け目: 居合の段 3〜4 の斬線が空間の裂け目として残る。裂け目の左側 (線の向きから反時計回りの側) の景色は、
+// 線に沿ってずれて見える (RiftView)。ずれは見た目だけで、立っている位置や当たり判定は変わらない。
+// 裂け目をまたいで立つと、左側に入った体の部分だけがずれた所に見えるので、体が裂け目で分かれて見える。
+// 線はホストが作って全員へ写す。戻り方は斬った扉と同じ設定
 internal static class SpaceRifts
 {
     private static ChoiceOpt Restore => Neutral.Samurai.CutRestore;
@@ -19,19 +19,11 @@ internal static class SpaceRifts
 
     private const int MaxRifts = 8;        // 同時に残る線 (超えたら古い物から消す)
     private const float MaxShift = 3f;     // ずれの上限 (線の長さの 1/3 まで)
-    private const float ShiftStep = 0.1f;  // 寄せる時に縮める刻み
-    private const float MinShift = 0.3f;   // これより小さくしか寄せられなければずらさない
-    private const float EndPad = 0.1f;     // 線の端からこれ以内には出さない
-    private const float Body = 0.2f;       // 着く所に要る体の半径
-    private const float MaxStep = 1.5f;    // 1 フレームにこれ以上動いたのは跨ぎでなく飛んだ (Teleport・ベント)
-    private const float PassGap = 0.25f;   // 跨いだ直後は数えない (飛んだ先で同じ線を拾わない)
-    private const float Straddle = 0.35f;  // 線ができた時にこれより近くに立っていた人は、一度離れるまでその線で数えない
 
     internal struct Rift
     {
         public byte Id, By;
         public float X0, Y0, Ux, Uy, Len, Shift;
-        public bool Grace; // 自分の端末だけ: 線ができた時に線の上に立っていた (斬った本人は線の上から駆け抜ける)
     }
 
     private static readonly List<Rift> Rifts = new();
@@ -39,12 +31,10 @@ internal static class SpaceRifts
     private static readonly List<byte> Due = new();
     private static Lifespan _match;
     private static byte _nextId;
-    private static bool _hasPrev;
-    private static float _prevX, _prevY, _quietUntil;
-    internal static int Cuts, Passes, Pinned; // 計器: 作った数・ずれた数・寄せられず普通に跨いだ数
-    internal static string LastPass = "-";
+    internal static int Cuts; // 計器: 作った数
 
     internal static bool Any => Rifts.Count > 0;
+    internal static List<Rift> All => Rifts; // 読むだけ (景色の帯)
 
     // サムライが付いた時に (全員の端末で)。試合ごとに 1 回だけ
     internal static void Use()
@@ -61,7 +51,6 @@ internal static class SpaceRifts
     {
         Rifts.Clear();
         RestoreAt.Clear();
-        _hasPrev = false;
         RiftArt.Clear();
     }
 
@@ -114,9 +103,6 @@ internal static class SpaceRifts
 
     private static void OnMeeting()
     {
-        // 会議の後は湧く場所へ飛ぶので、明けてしばらくは跨ぎを数えない
-        _hasPrev = false;
-        _quietUntil = float.MaxValue;
         if (Restore.Value != 0 || Rifts.Count == 0 || !AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
         Due.Clear();
         foreach (var rf in Rifts) Due.Add(rf.Id);
@@ -168,14 +154,6 @@ internal static class SpaceRifts
         float dx = m.X1 - m.X0, dy = m.Y1 - m.Y0, len = FxMath.Sqrt(dx * dx + dy * dy);
         if (len < 0.5f || len > 40f) return;
         var rf = new Rift { Id = m.Id, By = m.By, X0 = m.X0, Y0 = m.Y0, Ux = dx / len, Uy = dy / len, Len = len, Shift = FxMath.Min(len / 3f, MaxShift) };
-        var lp = PlayerControl.LocalPlayer;
-        if (lp)
-        {
-            Vector2 f = lp.GetTruePosition();
-            float t = (f.x - rf.X0) * rf.Ux + (f.y - rf.Y0) * rf.Uy;
-            float side = rf.Ux * (f.y - rf.Y0) - rf.Uy * (f.x - rf.X0);
-            rf.Grace = FxMath.Abs(side) < Straddle && t > -Straddle && t < len + Straddle;
-        }
         Rifts.Add(rf);
         RiftArt.Open(rf);
     }
@@ -187,99 +165,17 @@ internal static class SpaceRifts
         return -1;
     }
 
-    // 毎フレーム (Plugin)。線が無ければ何もしない
-    internal static void Tick()
-    {
-        HostTick();
-        if (Rifts.Count == 0) { _hasPrev = false; return; }
-        var lp = PlayerControl.LocalPlayer;
-        if (!lp) { _hasPrev = false; return; }
-        Vector2 f = lp.GetTruePosition();
-        float px = _prevX, py = _prevY;
-        bool had = _hasPrev;
-        _prevX = f.x;
-        _prevY = f.y;
-        _hasPrev = true;
-        if (_quietUntil == float.MaxValue)
-        {
-            if (MeetingHud.Instance || ExileController.Instance) return;
-            _quietUntil = Time.time + 1f;
-        }
-        if (!had || Time.time < _quietUntil || Teleport.Pending) return;
-        float mx = f.x - px, my = f.y - py, step = mx * mx + my * my;
-        if (step < 1e-8f || step > MaxStep * MaxStep) return;
-        for (int i = 0; i < Rifts.Count; i++)
-        {
-            var rf = Rifts[i];
-            // 左 (線の向きから反時計回り) が正
-            float s0 = rf.Ux * (py - rf.Y0) - rf.Uy * (px - rf.X0);
-            float s1 = rf.Ux * (f.y - rf.Y0) - rf.Uy * (f.x - rf.X0);
-            if (rf.Grace)
-            {
-                if (FxMath.Abs(s1) > Straddle) { rf.Grace = false; Rifts[i] = rf; }
-                continue;
-            }
-            if (s0 < 0f == s1 < 0f) continue;
-            float a = s0 / (s0 - s1);
-            float t = (px + mx * a - rf.X0) * rf.Ux + (py + my * a - rf.Y0) * rf.Uy;
-            if (t < 0f || t > rf.Len) continue;
-            Cross(lp, f, rf, t, s1 >= 0f ? 1f : -1f);
-            return;
-        }
-    }
-
-    // 自分が線を跨いだ: 線に沿って sign 向きへ、着ける所までずらす
-    private static void Cross(PlayerControl lp, Vector2 f, in Rift rf, float t, float sign)
-    {
-        if (lp.Data == null || lp.Data.IsDead || lp.inVent || lp.onLadder || lp.inMovingPlat || lp.walkingToVent || Neutral.Samurai.LeapActive || MeetingHud.Instance) return;
-        int home = SolidMap.Valid ? SolidMap.IslandNear(f.x, f.y, 0.5f) : 0;
-        for (float s = rf.Shift; s >= MinShift; s -= ShiftStep)
-        {
-            float t1 = t + s * sign;
-            if (t1 < EndPad || t1 > rf.Len - EndPad) continue;
-            float tx = f.x + rf.Ux * s * sign, ty = f.y + rf.Uy * s * sign;
-            if (!Arrivable(tx, ty, home)) continue;
-            Vector3 root = lp.transform.position;
-            Teleport.Self(FxMath.V2(root.x + tx - f.x, root.y + ty - f.y));
-            _prevX = tx;
-            _prevY = ty;
-            _quietUntil = Time.time + PassGap;
-            Passes++;
-            LastPass = $"rift={rf.Id} from={f.x:0.00},{f.y:0.00} to={tx:0.00},{ty:0.00} shift={s * sign:0.00}/{rf.Shift:0.00}";
-            float deg = FxMath.Atan2(rf.Uy, rf.Ux) * FxMath.Rad2Deg;
-            RiftArt.Pass(f.x, f.y, tx, ty, deg);
-            PassCall.Send((byte)(rf.Id));
-            return;
-        }
-        Pinned++;
-        LastPass = $"rift={rf.Id} pinned at t={t:0.00}";
-    }
-
-    // 体が収まり、壁や家具に埋まらず、跨いだ所と同じ島 (崖の下などへ出ない) か
-    private static bool Arrivable(float x, float y, int home)
-    {
-        if (SolidMap.Valid)
-        {
-            if (SolidMap.Solid(x, y) || SolidMap.Solid(x - Body, y) || SolidMap.Solid(x + Body, y) || SolidMap.Solid(x, y - Body) || SolidMap.Solid(x, y + Body)) return false;
-            if (home != 0 && SolidMap.IslandNear(x, y, 0.3f) != home) return false;
-        }
-        return !Neutral.Samurai.Buried(FxMath.V2(x, y));
-    }
-
-    // 誰かがずれた (本人 → 全員)。見た目だけ (位置は本編の同期で届く)
-    private static readonly RemoteCall<byte> PassCall = new("Samurai.RiftPass", Route.Anyone,
-        (w, v) => w.Write(v), r => r.ReadByte(),
-        (sender, v) => { if (sender) RiftArt.Flicker(v); },
-        perSecond: 8);
+    // 毎フレーム (Plugin)
+    internal static void Tick() => HostTick();
 
     // ---- 確かめ用 ----
 
     internal static string Describe()
     {
         var sb = new System.Text.StringBuilder();
-        sb.Append($"rifts={Rifts.Count} cuts={Cuts} passes={Passes} pinned={Pinned} last[{LastPass}] restore={Restore.Value}");
+        sb.Append($"rifts={Rifts.Count} cuts={Cuts} restore={Restore.Value}");
         foreach (var rf in Rifts)
-            sb.Append($" #{rf.Id}{(rf.Grace ? "(grace)" : "")}:{rf.X0:0.00},{rf.Y0:0.00}->{rf.X0 + rf.Ux * rf.Len:0.00},{rf.Y0 + rf.Uy * rf.Len:0.00} len={rf.Len:0.00} shift={rf.Shift:0.00}");
+            sb.Append($" #{rf.Id}:{rf.X0:0.00},{rf.Y0:0.00}->{rf.X0 + rf.Ux * rf.Len:0.00},{rf.Y0 + rf.Uy * rf.Len:0.00} len={rf.Len:0.00} shift={rf.Shift:0.00}");
         return sb.ToString();
     }
 
