@@ -21,7 +21,7 @@ internal static class DuelBot
         public byte Id;
         public Kind Kind;
         public int Level;
-        public float NextThink, NextMove, NextStroke, KillReady, CounterAt = -1f, DodgeAt = -1f, DodgeUntil, MashCarry, Charge = -1f;
+        public float NextThink, NextMove, NextStroke, KillReady, CounterAt = -1f, DodgeAt = -1f, DodgeUntil, MashCarry, Charge = -1f, GuardAt = -1f, TongueReady;
         public byte Foe = 255;      // 斬り返す・飛び退く相手
         public Vector2 DodgeDir;
         public bool Retreat;
@@ -37,6 +37,7 @@ internal static class DuelBot
     private const float Reach = 1.7f;         // ここまで詰めて斬る (斬れる距離の内側)
     private const float ChargeDistance = 2.7f; // 居合を溜める間に保つ距離
     private const float Keep = 3.2f;           // インポスターが待ち時間の間に取る距離
+    private const float TongueNear = 2.1f;     // 立ち合い中のインポスターが詰める距離 (斬りの届く所の内側)
     private const float RegenTo = 75f;          // 納めて離れた時、ここまで気が溜まったら戻る
     private const float FirstKill = 8f;
 
@@ -131,6 +132,7 @@ internal static class DuelBot
                 continue;
             }
             if (b.CounterAt >= 0f && now >= b.CounterAt) Counter(b, pc);
+            if (b.GuardAt >= 0f && now >= b.GuardAt) { b.GuardAt = -1f; DuelTongue.HostPress(pc); }
             if (b.DodgeAt >= 0f && now >= b.DodgeAt) { b.DodgeAt = -1f; DodgeAway(b, pc, now); }
             if (now < b.NextThink) continue;
             b.NextThink = now + ThinkEvery;
@@ -231,6 +233,13 @@ internal static class DuelBot
         b.Foe = attacker;
     }
 
+    // 立ち合いの相手のサムライの斬りが保留された (ホスト)。読みが当たれば口で受ける
+    internal static void OnHeldGuard(byte bot, byte attacker, float window)
+    {
+        if (!Bots.TryGetValue(bot, out var b) || b.Kind != Kind.Impostor || b.GuardAt >= 0f || !Roll(ClashChance(b) * 0.7f)) return;
+        b.GuardAt = Time.time + Rand(0.02f, window - 0.03f);
+    }
+
     private static void Counter(Bot b, PlayerControl pc)
     {
         b.CounterAt = -1f;
@@ -248,6 +257,27 @@ internal static class DuelBot
         if (Aggro(b) <= 0f) { Dummy.StopWalk(pc); return; }
         Vector2 me = pc.GetTruePosition(), at = target.GetTruePosition();
         float dx = at.x - me.x, dy = at.y - me.y, d = FxMath.Sqrt(dx * dx + dy * dy);
+        // サムライと立ち合っている間は斬りの届く所まで踏み込んで舌を撃つ (届かない所に構えると練習にならない)
+        if (DuelTongue.FoeOf(pc) is { } foe && foe.PlayerId == target.PlayerId)
+        {
+            if (d > TongueNear) { Toward(b, pc, at, now); return; }
+            if (d < TongueNear - 0.7f) { Away(b, pc, me, dx, dy, d, TongueNear - 0.3f, now); }
+            else Dummy.StopWalk(pc);
+            if (now >= b.TongueReady && Roll(Aggro(b) * ThinkEvery * AggroPace))
+            {
+                DuelTongue.HostPress(pc);
+                b.TongueReady = now + DuelTongue.Cooldown + Rand(0.1f, 1.2f - 0.9f * T(b));
+            }
+            return;
+        }
+        // 相手のサムライには本編の一撃のキルを使わず、舌の届く所で立ち合いを挑む
+        if (RoleState.Of(target) is Samurai && !Duel.InDuel(pc.PlayerId) && !Duel.InDuel(target.PlayerId))
+        {
+            if (d > DuelTongue.Reach * 0.9f) { Toward(b, pc, at, now); return; }
+            Duel.HostDamage(pc.PlayerId, target.PlayerId, 0);
+            b.TongueReady = now + 0.5f;
+            return;
+        }
         if (now >= b.KillReady)
         {
             if (d > KillAbility.Reach(pc) * 0.85f) { Toward(b, pc, at, now); return; }

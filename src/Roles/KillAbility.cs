@@ -254,7 +254,7 @@ internal static class KillTargetPatch
     public static bool Prefix(KillButton __instance, [HarmonyArgument(0)] ref PlayerControl target)
     {
         if (__instance is null) return false;
-        KillAbility.OverrideTarget(ref target);
+        if (!DuelTongue.OverrideTarget(ref target)) KillAbility.OverrideTarget(ref target);
         return true;
     }
 }
@@ -262,9 +262,10 @@ internal static class KillTargetPatch
 [HarmonyPatch(typeof(KillButton), nameof(KillButton.DoClick))]
 internal static class KillButtonClickPatch
 {
-    // 構築士が設計図を開いている間 (体は設計台の前で止まっている) はキルしない (キーの Q でも押せるため)
+    // 構築士が設計図を開いている間 (体は設計台の前で止まっている) はキルしない (キーの Q でも押せるため)。
+    // サムライと立ち合っているインポスターのキルボタンは舌の一撃 (DuelTongue)
     public static bool Prefix(KillButton __instance) =>
-        !ArchitectPlan.IsOpen && !Rules.VanillaTweaks.Shielded(__instance.currentTarget) && KillAbility.OnClick(__instance);
+        !ArchitectPlan.IsOpen && DuelTongue.OnClick(__instance) && !Rules.VanillaTweaks.Shielded(__instance.currentTarget) && KillAbility.OnClick(__instance);
 }
 
 // 本編はインポスターにだけキルボタンを出すので、キルできる役職にも出す (試合の始め・会議の後・死んだ時に来る)

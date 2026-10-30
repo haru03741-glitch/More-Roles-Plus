@@ -81,6 +81,7 @@ public sealed partial class Samurai : RoleBase
     {
         Duel.Use();
         CutDoors.Use();
+        DuelTongue.Use();
         SpaceRifts.Use();
         ResetClash();
         _blade = new SamuraiBlade(this);
@@ -313,6 +314,7 @@ public sealed partial class Samurai : RoleBase
         if (!p || p.Data == null || p.Data.IsDead || p.Data.Disconnected) return "user";
         if (p.inVent || p.inMovingPlat) return "user busy";
         if (_ultStart >= 0f) return "ult";
+        if (Time.time < _hostStunUntil) return "guarded";
         if (Time.time - _drawnAt < DrawTime - 0.2f) return iai ? "sheathing" : "drawing";
         if (HostKiNow() < -KiSlack && !DevFree(p)) return "ki";
         return null;
@@ -326,6 +328,8 @@ public sealed partial class Samurai : RoleBase
         float reach = SlashRange + RangeSlack + (thrust ? ThrustExtra : 0f);
         float tr = a0 * FxMath.Deg2Rad, tc = FxMath.Cos(tr), tsn = FxMath.Sin(tr);
         float span = FxMath.Abs(sweep);
+        // 自分へ伸びている舌を斬ったか、舌を出しかけたインポスターに受けられたら、その人には当てない
+        byte spared = DuelTongue.HostStroke(this, me, a0, sweep, thrust, _hostStrokeSecs);
         var all = GameData.Instance.AllPlayers;
         // 先に当たる人を全員決めてから斬る (斬った後の本編の処理で一覧が変わる)
         Span<byte> hits = stackalloc byte[16];
@@ -333,7 +337,7 @@ public sealed partial class Samurai : RoleBase
         for (int i = 0; i < all.Count && n < hits.Length; i++)
         {
             var info = all[i];
-            if (info == null || info.Disconnected || info.IsDead || info.PlayerId == PlayerId) continue;
+            if (info == null || info.Disconnected || info.IsDead || info.PlayerId == PlayerId || info.PlayerId == spared) continue;
             var pc = info.Object;
             if (!pc || pc.inVent || pc.inMovingPlat) { _missBusy++; continue; }
             Vector2 at = pc.GetTruePosition();
@@ -371,6 +375,8 @@ public sealed partial class Samurai : RoleBase
             int dmg = _hostStrokeFull && !Duel.InDuel(target.PlayerId) ? Duel.MaxHp : damage;
             // サムライへの斬りは、相手の斬り (納めていれば居合) とぶつかるかを少し待ってから決める (Samurai.Clash.cs)
             if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, dmg, (aimedBits >> i & 1) != 0)) continue;
+            // 立ち合いの相手のインポスターへの斬りは、口で受けられるかを少し待ってから決める (Samurai.Tongue.cs)
+            if (HostHoldForGuard(target, dmg, (aimedBits >> i & 1) != 0)) continue;
             counted |= HostApply(target, dmg);
         }
         if (counted) HostUpdatePath();
@@ -495,7 +501,7 @@ public sealed partial class Samurai : RoleBase
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。
-// サムライの斬りは間合いの外から当たるので、移された同じフレームのうちに元の場所へ戻す (全員の端末で同じに)
+// サムライの斬りと舌の一撃は間合いの外から当たるので、移された同じフレームのうちに元の場所へ戻す (全員の端末で同じに)
 [HarmonyLib.HarmonyPatch]
 internal static class SamuraiKillSnapPatch
 {
@@ -517,7 +523,7 @@ internal static class SamuraiKillSnapPatch
         _has = false;
         if (_source == null || RoleState.All.Count == 0) return;
         var src = _source.GetValue(__instance) as PlayerControl;
-        if (!src || RoleState.Of(src) is not Samurai) return;
+        if (!src || RoleState.Of(src) is not Samurai && !DuelTongue.JustKilled(src.PlayerId)) return;
         _saved = src.transform.position;
         _has = true;
     }

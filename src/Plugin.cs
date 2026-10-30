@@ -128,6 +128,7 @@ public class Ticker : MonoBehaviour
         Roles.SpaceRifts.Tick();
         Roles.RiftArt.Tick();
         Roles.DuelDodge.Tick();
+        Roles.DuelTongue.Tick();
         UI.DuelHud.Tick();
         Menu.Emotes.Tick();
         Menu.MeetingStamps.Tick();

@@ -32,7 +32,7 @@ public sealed partial class Samurai
         public byte A, T;
         public int Dmg;
         public float At;
-        public bool Iai, Aimed;
+        public bool Iai, Aimed, Guard; // Guard = 立ち合いの相手のインポスターへの斬り (口で受けられるのを待つ)
     }
 
     private static readonly List<Held> HostHeld = new();
@@ -81,7 +81,7 @@ public sealed partial class Samurai
         for (int i = HostHeld.Count - 1; i >= 0; i--)
         {
             var h = HostHeld[i];
-            if (now - h.At <= ClashWindow) continue;
+            if (now - h.At <= (h.Guard ? GuardHold : ClashWindow)) continue;
             HostHeld.RemoveAt(i);
             if (RoleState.Of(h.A) is not Samurai s) continue;
             var target = GameData.Instance ? GameData.Instance.GetPlayerById(h.T)?.Object : null;
@@ -151,39 +151,14 @@ public sealed partial class Samurai
 
     // ---- 立ち合いの相手のインポスターのキル ----
 
-    private const int KillDamage = 50;
-    private const float KillReachSlack = 1f;
-
-    // ホスト: 立ち合っているインポスターのキルは一撃にならず体力を削る (残りがそれ以下なら本編どおり倒れる)。
-    // 本編の待ち時間の確かめより前に呼ばれるので距離は自分で見る。止めたキルは待ち時間が戻らないので、キルした人の端末で戻させる
+    // ホスト: 立ち合っているインポスターの本編のキル (ボット・遅れて届いた押し) は止めて舌の一撃にする (DuelTongue)
     [OnlyMine]
     private void OnKillAttempt(BeforeMurderEvent e)
     {
         var k = e.Killer;
-        var p = Player;
-        if (!k || !p || k.Data == null || !k.Data.Role || !k.Data.Role.IsImpostor) return;
-        if (Duel.OpponentOf(PlayerId) != k.PlayerId || Duel.HpOf(PlayerId) <= KillDamage) return;
-        float reach = KillAbility.Reach(k) + KillReachSlack;
-        Vector2 a = k.GetTruePosition(), b = p.GetTruePosition();
-        float dx = a.x - b.x, dy = a.y - b.y;
-        if (dx * dx + dy * dy > reach * reach) return;
+        if (DuelTongue.Finishing || !k || DuelTongue.FoeOf(k) is not { } foe || foe.PlayerId != PlayerId) return;
         e.Cancel("samurai duel");
-        Duel.HostDamage(k.PlayerId, PlayerId, KillDamage);
-        BlockedCall.Send((k.PlayerId, PlayerId));
-        OnKillBlocked(k.PlayerId, PlayerId);
-    }
-
-    private static readonly RemoteCall<(byte killer, byte target)> BlockedCall = new("Samurai.KillBlocked", Route.HostToAll,
-        (w, v) => { w.Write(v.killer); w.Write(v.target); }, r => (r.ReadByte(), r.ReadByte()),
-        (_, v) => OnKillBlocked(v.killer, v.target));
-
-    // 全員の端末: 刀で受けた姿・キルした本人は待ち時間が始まる
-    private static void OnKillBlocked(byte killer, byte target)
-    {
-        (RoleState.Of(target) as Samurai)?.OnClash(killer, false);
-        var lp = PlayerControl.LocalPlayer;
-        if (!lp || lp.PlayerId != killer || lp.Data == null || !lp.Data.Role || !lp.Data.Role.IsImpostor) return;
-        lp.SetKillTimer(GameManager.Instance.LogicOptions.GetKillCooldown());
+        DuelTongue.HostPress(k);
     }
 
     // 試合が替わったら持ち越さない (待っていた斬り・鍔迫り合い・寄せたカメラと隠したボタン)
