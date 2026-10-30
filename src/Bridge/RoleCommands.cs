@@ -286,18 +286,19 @@ internal static class RoleCommands
             reply($"OK bot {r} | {DuelBot.Describe()}");
         });
 
-        TestBridge.Register("duelhud", "[show <自分> <相手> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko | intro | lock on | push <0〜1> | lockend <1 勝ち|2 負け|0 引き分け>] 立ち合いの HUD を当事者でなくても出す / 当たった扱い / K.O. を出す / 入りの幕をもう一度 / 鍔迫り合いの見た目だけ / 押し合いの割合 / 決着の題字", (args, reply) =>
+        TestBridge.Register("duelhud", "[show <自分> <相手> | sub <0|1> <番号> | join <番号> <番号> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko | intro | lock on | push <0〜1> | lockend <1 勝ち|2 負け|0 引き分け>] 立ち合いの HUD を当事者でなくても出す / 当たった扱い / K.O. を出す / 入りの幕をもう一度 / 鍔迫り合いの見た目だけ / 押し合いの割合 / 決着の題字", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (p.Length >= 3 && p[0] == "show" && byte.TryParse(p[1], out byte me) && byte.TryParse(p[2], out byte opp)) UI.DuelHud.TestShow(me, opp);
             else if (p.Length >= 3 && p[0] == "hit" && int.TryParse(p[2], out int hp)) UI.DuelHud.TestHit(p[1] == "1", hp);
             else if (p.Length >= 3 && p[0] == "sub" && int.TryParse(p[1], out int sj) && byte.TryParse(p[2], out byte sid)) UI.DuelHud.TestSub(sj, sid);
+            else if (p.Length >= 3 && p[0] == "join" && byte.TryParse(p[1], out byte ja) && byte.TryParse(p[2], out byte jb)) Duel.HostJoin(ja, jb);
             else if (p.Length >= 1 && p[0] == "ko") UI.DuelHud.TestKo();
             else if (p.Length >= 1 && p[0] == "intro") UI.DuelHud.TestIntro();
             else if (p.Length >= 2 && p[0] == "lock") UI.DuelHud.ShowLock(p[1] == "on");
             else if (p.Length >= 2 && p[0] == "push" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float k)) UI.DuelHud.TestPush(k);
             else if (p.Length >= 2 && p[0] == "lockend" && int.TryParse(p[1], out int r)) UI.DuelHud.EndLock(r);
-            reply($"OK duelhud {UI.DuelHud.Describe()} {UI.DuelHud.DescribeKi()} duel[{Duel.Describe()}]");
+            reply($"OK duelhud {UI.DuelHud.Describe()} {UI.DuelHud.DescribeKi()} duel[{Duel.Describe()}] shade[{DuelShade.Describe()}]");
         });
 
         TestBridge.Register("architect", "[use | of <番号> ... | place x y | simuse <番号> <台|255> | smash <台> <叩いた人> <回数> | x y | here | check x y | fly | visit x y | land | go <番号> | open | close | draw x1 y1 x2 y2 ... | pipe x y] 自分の構築士の状態 / 自分 (構築士でない人) が足元の設計台を使う / 番号の人の構築士を相手にする / この端末だけで台を置く / 番号の人が台を使った (255 = やめた) と届いた扱い / 台が叩かれた (3 回目で壊れる) と届いた扱い /(x, y) に設計台を置く (待ち時間は使わない) / 足元に能力ボタンと同じ決まりで置く / 床の点 (x, y) に置けるか / 設計図を開かずに自分の端末だけでドローンを飛ばす・行き先を足す・降ろす / 設計台の手前へ移る / 設計図を開く・閉じる / 点の列をなぞった扱いにする (ゲージを使い壁を立てる) / (x, y) を軽く押した扱いにする (近くの壁の配管を裂く)", (args, reply) =>

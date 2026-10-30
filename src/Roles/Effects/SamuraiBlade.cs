@@ -273,17 +273,23 @@ internal sealed partial class SamuraiBlade
         return true;
     }
 
-    // 拳は本人の今の色 (変身すると変わる)
+    // 拳は本人の今の体の色 (変身すると変わる・戦いの外から見ている人には影の色)
     private void RefreshColor()
     {
         var pc = _role.Player;
         if (!_fist || !pc || pc.Data == null) return;
         int id = pc.Data.DefaultOutfit.ColorId;
         if (pc.CurrentOutfit != null) id = pc.CurrentOutfit.ColorId;
-        if (id == _colorId) return;
+        bool shade = DuelShade.On(pc.PlayerId);
+        if (shade) id = DuelShade.ShadeColor;
+        if (id == _colorId && shade == _shadeFist) return;
         _colorId = id;
+        _shadeFist = shade;
         if (id >= 0 && id < Palette.PlayerColors.Length) PlayerMaterial.SetColors(id, _fist);
+        _fist.color = shade ? DuelShade.Tint : FxMath.Rgba(1f, 1f, 1f, 1f);
     }
+
+    private bool _shadeFist;
 
     // 列に入る時に見え方を確かめ直す (列の外では確かめないので、演出で隠された後の印が残っている。
     // 残ったままだと抜く最初のコマの鞘と刀が出ない)

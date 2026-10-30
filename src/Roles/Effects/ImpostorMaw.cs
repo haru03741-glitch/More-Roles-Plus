@@ -53,6 +53,9 @@ internal static unsafe class ImpostorMaw
     }
 
     private static readonly Dictionary<byte, Maw> Maws = new();
+
+    // この人の着せ替えを化け物の姿が隠している最中か (終わる時に化け物の側が戻す)
+    internal static bool HidesCosmetics(byte id) => Maws.TryGetValue(id, out var m) && m.Active && m.CosHidden;
     private static readonly List<Maw> Live = new();
     private static Sprite[] _frames;
     private static bool _searched;
@@ -236,6 +239,8 @@ internal static unsafe class ImpostorMaw
         m.EndAt = m.T0 + Slow * (mode == Mode.Guard ? GuardOpen + GuardHold + GuardClose : Open + Extend + Hold + Retract + Close + Squash);
         int color = pc.cosmetics.ColorId;
         if (color >= 0 && color < Palette.PlayerColors.Length) PlayerMaterial.SetColors(color, m.Sr);
+        // 戦いの外から見ている人には影の色 (体と同じ暗さ)
+        m.Sr.color = DuelShade.On(pc.PlayerId) ? DuelShade.Tint : FxMath.Rgba(1f, 1f, 1f, 1f);
         m.Sr.flipX = m.Flip;
         m.Tf.localScale = FxMath.V3(m.Scale, m.Scale, 1f);
         m.Go.layer = m.TGo.layer = pc.gameObject.layer;
@@ -306,7 +311,8 @@ internal static unsafe class ImpostorMaw
         bool show = m.Pc && m.Pc.Visible;
         if (m.BodyHidden && m.Body && show) m.Body.enabled = true;
         m.BodyHidden = false;
-        if (m.CosHidden && show && m.Pc.cosmetics != null) m.Pc.cosmetics.SetBodyCosmeticsVisible(true);
+        // 影の人の着せ替えは影が戻す時に出す (ここで出すと一瞬だけ正体が見える)
+        if (m.CosHidden && show && m.Pc.cosmetics != null && !DuelShade.On(m.Pc.PlayerId)) m.Pc.cosmetics.SetBodyCosmeticsVisible(true);
         m.CosHidden = false;
     }
 
