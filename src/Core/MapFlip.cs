@@ -164,6 +164,23 @@ internal static class MapFlipSpawnInPatch
     }
 }
 
+// Fungle のジップラインは降りた後、着地点 (世界の位置) をジップライン自身の TransformPoint にもう一度通して歩かせる。
+// 反転していなければずれは小さいが、反転すると x が裏返って反転前の側へ壁を抜けて歩く。
+// 通した後が「反転前の行き先の鏡写し」(ジップラインの位置 + 着地点) になる値へ、歩き始める前に 1 回だけ置き換える。
+// (CoAlightPlayerFromZipline 自体は Vector3 の引数を取るのでパッチせず、中の MoveNext に当てる)
+[HarmonyPatch(typeof(ZiplineBehaviour._CoAlightPlayerFromZipline_d__46), nameof(ZiplineBehaviour._CoAlightPlayerFromZipline_d__46.MoveNext))]
+internal static class MapFlipZiplineLandingPatch
+{
+    public static void Prefix(ZiplineBehaviour._CoAlightPlayerFromZipline_d__46 __instance)
+    {
+        if (!MapFlip.Flipped || __instance.__1__state != 0) return;
+        var zip = __instance.__4__this;
+        if (!zip) return;
+        var t = zip.transform;
+        __instance.landingPosition = t.InverseTransformPoint(t.position + __instance.landingPosition);
+    }
+}
+
 [HarmonyPatch(typeof(ShipStatus), nameof(ShipStatus.Start))]
 internal static class MapFlipShipStartPatch
 {
