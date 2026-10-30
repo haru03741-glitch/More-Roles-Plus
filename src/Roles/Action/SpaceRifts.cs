@@ -16,7 +16,7 @@ internal static class SpaceRifts
     private static ChoiceOpt Restore => Neutral.Samurai.CutRestore;
     private static FloatOpt RestoreSeconds => Neutral.Samurai.CutRestoreTime;
 
-    private const int MaxRifts = 8;        // 同時に残る線 (超えたら古い物から消す)
+    private const int MaxRifts = 16;       // 同時に残る線 (超えたら古い物から消す・必殺技の連撃の跡 11 本が収まる数)
     private const float MaxShift = 1.5f;   // 左右のずれの合計の上限 (線の長さの 1/6 まで)
 
     internal struct Rift

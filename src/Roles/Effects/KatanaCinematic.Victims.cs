@@ -202,13 +202,15 @@ internal static unsafe partial class KatanaCinematic
         bool any = false;
         bool opaque = U(f, 0) != 0;
         uint flags = U(f, 1);
+        // 板が閉じきった後は空間が見えない (記録の被害者は最後の形のまま残っているので出さない)
+        bool closed = !opaque && U(f, 118) != 0;
         for (int i = 0; i < _vicCount; i++)
         {
             var v = _vic[i];
             int k = 32 + i * 10;
             int pose = (int)F(f, k + 5);
             // インパクトのコマ: A (白地に墨) では墨の影絵・B では出さない
-            if (pose < 0 || (opaque && (flags & 8) != 0)) { if (v.Go.activeSelf) v.Go.SetActive(false); continue; }
+            if (pose < 0 || closed || (opaque && (flags & 8) != 0)) { if (v.Go.activeSelf) v.Go.SetActive(false); continue; }
             any = true;
             if (!v.Go.activeSelf) v.Go.SetActive(true);
             if (pose != v.Pose)

@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Roles;
 // 全部の線を 1 枚の網にまとめ、開閉の途中は毎フレーム、揺らぎだけの間は 20 回/秒だけ書き直す
 internal static unsafe class RiftArt
 {
-    private const int Slots = 16;                 // 裂け目 8 + 閉じかけの物
+    private const int Slots = 32;                 // 裂け目 16 + 閉じかけの物
     private const int Cols = 12, Rows = 7, Verts = Cols * Rows;
     private const float OpenTime = 0.18f, CloseTime = 0.3f, BurnTime = 0.35f;
     private const float EndTaper = 0.35f;         // 両端の細る長さ

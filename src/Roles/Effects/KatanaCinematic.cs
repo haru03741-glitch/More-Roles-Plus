@@ -75,8 +75,34 @@ internal static unsafe partial class KatanaCinematic
     private static Quaternion _baseRot;
 
     internal static bool Playing => _on;
+    internal static string Why => _why;
+    internal const float FieldToWorld = PlateWorld; // 演出の場の 1 = ワールドの長さ
     private static int _hold = -1;      // 確かめ用: このコマで止める
     private static string _why;         // 確かめ用: 始められなかった理由
+    private static PlayerControl _lp;
+    private static bool _frozen, _wasMoveable;
+
+    // 元のコマ番号 (止めを差し込む前) が最初に出るまでの秒 (流し始めから)。最後のコマより後は終わりから同じ間隔で数える。素材が無ければ -1。
+    // 流していない端末 (ホストが見ているだけの時) でも引けるよう、素材を開いていなければ開いて閉じる
+    internal static float TimeOfFrame(int orig)
+    {
+        if (_origOf == null)
+        {
+            bool opened = _data != null;
+            if (!opened && !Open()) return -1f;
+            var tab = new int[_n];
+            for (int f = 0; f < _n; f++) tab[f] = (int)U(f, 31);
+            _origFps = _fps;
+            if (!opened) Close();
+            _origOf = tab;
+        }
+        int n = _origOf.Length;
+        for (int f = 0; f < n; f++) if (_origOf[f] == orig) return f / (float)_origFps;
+        return orig > _origOf[n - 1] ? (n - 1 + (orig - _origOf[n - 1])) / (float)_origFps : -1f;
+    }
+
+    private static int[] _origOf; // 書き出しのコマごとの元のコマ番号 (一度だけ引く)
+    private static int _origFps;
 
     // victims = 斬られる人 (近い順)。空間に出すのは先頭の 5 人まで
     internal static bool Play(PlayerControl attacker, PlayerControl[] victims)
@@ -107,6 +133,14 @@ internal static unsafe partial class KatanaCinematic
         BuildVictims(victims, _root.layer);
         _hidAtk = atk.Visible;
         if (_hidAtk) atk.Visible = false;       // 攻撃者はコマの中に描いてある
+        // 演出の間は本人をその場で止める (会議は本編が動きを決めるので戻す時に触らない)
+        _lp = PlayerControl.LocalPlayer;
+        if (_lp)
+        {
+            _wasMoveable = _lp.moveable;
+            _lp.moveable = false;
+            _frozen = true;
+        }
         _shown = -1;
         StartWorker();
         _missed = _skipped = _shownCount = _ticks = 0;
@@ -131,6 +165,9 @@ internal static unsafe partial class KatanaCinematic
             if (f >= _n) { Teardown(); return; }
             Volatile.Write(ref _decodeNext, Math.Max(Volatile.Read(ref _decodeNext), f));
             if (f != _shown) Show(f);
+            // 本編のキルの演出は倒した人を見える状態に・動ける状態に戻すので、閉じた後に倒れた時も戻し直す
+            if (_hidAtk && _atk.Visible) _atk.Visible = false;
+            if (_frozen && _lp && _lp.moveable) _lp.moveable = false;
         }
         catch (Exception e)
         {
@@ -608,6 +645,9 @@ internal static unsafe partial class KatanaCinematic
         VictimsDestroy();
         if (_hidAtk && _atk) _atk.Visible = true;
         _hidAtk = false;
+        if (_frozen && _lp && !MeetingHud.Instance && GameClock.ShipGen == _shipGen && GameClock.ShipAlive) _lp.moveable = _wasMoveable;
+        _frozen = false;
+        _lp = null;
         foreach (var c in _hiddenCams) if (c) c.enabled = true;
         _hiddenCams.Clear();
         foreach (var o in new UnityEngine.Object[] { _frameMat, _plateMat, _quad, _plate, _colTex, _alphaTex, _maskTex }) if (o) UnityEngine.Object.Destroy(o);

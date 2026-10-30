@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Roles;
 // 位置や当たり判定は変わらない (見た目だけ)。全部の裂け目を 1 枚の網 (裂け目ごとの四角) にまとめ、画面に入っている時だけ出す
 internal static class RiftView
 {
-    private const int Slots = 8;            // 同時に残る線の数と同じ
+    private const int Slots = 16;           // 同時に残る線の数と同じ
     private const float OpenTime = 0.25f, CloseTime = 0.3f;
     private static float _width = 3f;       // 線から左右へ、ずれが 0 へ戻るまでの幅 (広いほど遠くの景色まで曲がる)
     private static float _shiftScale = 1f;  // 確かめ用: ずれ幅に掛ける値
