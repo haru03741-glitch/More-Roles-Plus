@@ -2,7 +2,7 @@
 
 Android launcher that starts Among Us with the More Roles Plus mod loaded through BepInEx Fusion.
 It is a rebranded build of [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) by
-All-Of-Us-Mods, used under the GNU General Public License v3.0 (see [`LICENSE`](./LICENSE) and
+XtraCube / All-Of-Us-Mods, used under the GNU General Public License v3.0 (see [`LICENSE`](./LICENSE) and
 [`UPSTREAM.md`](./UPSTREAM.md) for how upstream is tracked), and carries the launcher changes made in
 [End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful, GPL-3.0). Most of the code here
 is FusionCore's; the local changes are small and listed in `UPSTREAM.md`.
