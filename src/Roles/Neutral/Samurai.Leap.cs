@@ -9,9 +9,10 @@ namespace MoreRolesPlus.Roles.Neutral;
 
 // 跳躍: 踏み込み (Shift・スマホは踏み込みのボタン) の向きの先に、歩いては行けない床があればそこへ跳ぶ。納めていても跳べる。
 // 行き先になるのは 2 種類だけ (同じ高さの壁は越えない = 壁抜けにしない):
-//   1. はしごの反対の端・昇降床の向こう岸 (近くの端から向きの合う反対側へ)
+//   1. はしごの反対の端・昇降床の向こう岸・ジップラインの反対の端 (近くの端から向きの合う反対側へ)
 //   2. 歩いてつながっていない別の床 (崖の上と下など)。向きの先を辿り、自分の床を出てから最初に出会う別の島。
-//      途中で自分と同じ島に戻ったら、それは部屋の間の壁なので跳ばない
+//      途中で自分と同じ島に戻ったら、それは部屋の間の壁なので跳ばない。
+//      歩ける所の地図は中身の詰まった当たり判定 (鉱山の岩など) の内側も床に数えるので、着地点が当たり判定に埋まる島は飛ばして先を探す
 // 跳ぶ間だけ自分の足元の当たり判定を切って一直線に動き、着いたら行き先へ位置を合わせる (間に床の無い所へ落ちて止まらないように)。
 // 位置は本編の同期と Teleport で全員に届くので、電文は跳ぶ姿 (秒・高さ・向き) だけ
 public sealed partial class Samurai
@@ -21,9 +22,11 @@ public sealed partial class Samurai
     private const float LeapMax = 9f;      // はしご・昇降床の反対側までの長さの上限
     private const float ScanMax = 10f;     // 別の床を探す長さ (Fungle の崖は上と下の床が 6〜9 離れている)
     private const float LandClear = 0.22f; // 着地点に要る体の半径
+    private const float ZipMax = 25f;      // ジップラインの両端の長さの上限 (Fungle は約 18)
+    private const int LandMask = 1 << 9 | 1 << 12; // 船の層と家具の層
 
-    // 跳べる組 (端・反対の端)。船ごとに 1 回作る
-    private static readonly List<(Vector2 A, Vector2 B)> Links = new();
+    // 跳べる組 (端・反対の端・長さの上限)。船ごとに 1 回作る
+    private static readonly List<(Vector2 A, Vector2 B, float Max)> Links = new();
     private static int _linksGen = -1;
 
     // 自分の跳躍 (自分の端末だけ)
@@ -44,24 +47,26 @@ public sealed partial class Samurai
         if (!ship || _linksGen == GameClock.ShipGen) return;
         _linksGen = GameClock.ShipGen;
         Links.Clear();
-        foreach (var (top, bottom) in ShipLadders.Of(ship)) AddLink(top, bottom);
+        foreach (var (top, bottom) in ShipLadders.Of(ship)) AddLink(top, bottom, LeapMax);
         foreach (var mp in ship.GetComponentsInChildren<MovingPlatformBehaviour>(true))
         {
             if (!mp) continue;
             var parent = mp.transform.parent;
             Vector3 l = parent ? parent.TransformPoint(mp.LeftUsePosition) : mp.LeftUsePosition;
             Vector3 r = parent ? parent.TransformPoint(mp.RightUsePosition) : mp.RightUsePosition;
-            AddLink(l, r);
+            AddLink(l, r, LeapMax);
         }
+        foreach (var z in ship.GetComponentsInChildren<ZiplineBehaviour>(true))
+            if (z && z.landingPositionTop && z.landingPositionBottom) AddLink(z.landingPositionTop.position, z.landingPositionBottom.position, ZipMax);
     }
 
     // 両端を歩ける床へ寄せて、両向きを足す
-    private static void AddLink(Vector2 a, Vector2 b)
+    private static void AddLink(Vector2 a, Vector2 b, float max)
     {
         if (SolidMap.NearestFloor(a.x, a.y, 0.8f, LandClear, out var fa)) a = fa;
         if (SolidMap.NearestFloor(b.x, b.y, 0.8f, LandClear, out var fb)) b = fb;
-        Links.Add((a, b));
-        Links.Add((b, a));
+        Links.Add((a, b, max));
+        Links.Add((b, a, max));
     }
 
     // dir の向きの跳び先。無ければ false
@@ -74,13 +79,13 @@ public sealed partial class Samurai
         Vector2 me = p.GetTruePosition();
         EnsureLinks();
         float best = float.MaxValue;
-        foreach (var (a, b) in Links)
+        foreach (var (a, b, max) in Links)
         {
             float ax = a.x - me.x, ay = a.y - me.y;
             float da = ax * ax + ay * ay;
             if (da > LeapNear * LeapNear || da >= best) continue;
             float vx = b.x - me.x, vy = b.y - me.y, vl = FxMath.Sqrt(vx * vx + vy * vy);
-            if (vl < 1f || vl > LeapMax || (vx * dx + vy * dy) / vl < LeapCos) continue;
+            if (vl < 1f || vl > max || (vx * dx + vy * dy) / vl < LeapCos) continue;
             best = da;
             to = b;
         }
@@ -92,9 +97,7 @@ public sealed partial class Samurai
     private static bool FindLedge(Vector2 me, float dx, float dy, out Vector2 to)
     {
         to = default;
-        int home = SolidMap.IslandAt(me.x, me.y);
-        // 床の縁に立っていると足元が地図の升から外れることがある
-        if (home == 0 && SolidMap.NearestFloor(me.x, me.y, 0.5f, 0.05f, out var near)) home = SolidMap.IslandAt(near.x, near.y);
+        int home = HomeIsland(me);
         if (home == 0) { LastMiss = "no floor here"; return false; }
         bool left = false;
         for (float d = 0.1f; d <= ScanMax; d += 0.1f)
@@ -111,10 +114,46 @@ public sealed partial class Samurai
             // 縁から少し内側を着地点にする
             float ex = me.x + dx * (d + 0.35f), ey = me.y + dy * (d + 0.35f);
             if (!SolidMap.NearestFloor(ex, ey, 0.6f, LandClear, out var at) || SolidMap.IslandAt(at.x, at.y) != k) { LastMiss = $"no room to land at {d:0.0}"; return false; }
+            if (Buried(at))
+            {
+                // 当たり判定の中の島 = 歩いては入れない所。その島を抜けるまで進めて、先の島を探し直す
+                LastMiss = $"buried at {d:0.0}";
+                while (d <= ScanMax && SolidMap.IslandAt(me.x + dx * d, me.y + dy * d) == k) d += 0.1f;
+                d -= 0.1f;
+                continue;
+            }
             to = at;
             return true;
         }
         LastMiss = $"nothing within {ScanMax:0} (home={home})";
+        return false;
+    }
+
+    // 足元の島。床の縁や棚の間 (Fungle の保管庫) に立っていると足元の升がどの島にも入っていないことがあるので、近い島の升を 1 まで探す
+    private static int HomeIsland(Vector2 me)
+    {
+        int k = SolidMap.IslandAt(me.x, me.y);
+        if (k != 0) return k;
+        const float Step = 0.1f, Reach = 1f;
+        float best = float.MaxValue;
+        for (float y = -Reach; y <= Reach; y += Step)
+        for (float x = -Reach; x <= Reach; x += Step)
+        {
+            float d = x * x + y * y;
+            if (d >= best || d > Reach * Reach) continue;
+            int i = SolidMap.IslandAt(me.x + x, me.y + y);
+            if (i == 0) continue;
+            best = d;
+            k = i;
+        }
+        return k;
+    }
+
+    // 着地点の体が壁や家具の当たり判定に重なるか (歩ける所の地図に載らない詰まった当たり判定の中を弾く)
+    private static bool Buried(Vector2 at)
+    {
+        foreach (var col in Physics2D.OverlapCircleAll(at, LandClear, LandMask))
+            if (col && !col.isTrigger) return true;
         return false;
     }
 
