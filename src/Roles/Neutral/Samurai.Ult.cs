@@ -14,16 +14,17 @@ public sealed partial class Samurai
 {
     private const float UltRadius = 4f;
     private const int UltMaxVictims = 64;      // 電文に載せる上限 (200 人を超える部屋でも 1 通に収まる)
-    // コマ番号は演出の絵の番号 (止めを差し込む前・30 コマ/秒)。最後のコマより後は終わりから数える
-    private const int UltCloseFrame = 106;      // 画面が閉じきったコマ (ここで倒れる)
-    private const int UltVictimLineFrame = 111; // 被害者を通る線を刻むコマ
+    // コマ番号 = 演出の始めから数えたコマ (30 コマ/秒・止めも数える)。演出の音の合図と同じ番号 (画面は 113 で閉じきる)
+    private const int UltFps = 30;
+    private const int UltKillFrame = 115;       // 袈裟の音で倒れる
+    private const int UltVictimLineFrame = 122; // 腰の横一文字の音で被害者を通る線を刻む
 
-    // 演出の連撃の跡 (コマ番号・角度・線までの距離)。距離は攻撃者を映した画面の中心からの、線の法線 (-sin, cos) の向きの長さ (演出の場の単位)。
-    // 事前に描いたコマには描いておらず、この表で試合の床に刻む
+    // 演出の連撃の跡 (コマ番号・角度・線までの距離)。音の「斬り跡が 1 コマずつ刻まれる」123〜129 に合わせる。
+    // 距離は攻撃者を映した画面の中心からの、線の法線 (-sin, cos) の向きの長さ (演出の場の単位)。事前に描いたコマには描いておらず、この表で試合の床に刻む
     private static readonly (int f, float deg, float off)[] UltFlurry =
     {
-        (108, -32f, 4.8f), (109, 40f, -3.6f), (110, 82f, -5.0f), (112, -58f, 5.4f), (113, 2f, 2.8f),
-        (114, 43f, 3.2f), (115, 4f, -4.0f), (115, -29f, -5.0f), (116, 82f, 6.5f), (117, -58f, -5.0f),
+        (123, -32f, 4.8f), (124, 40f, -3.6f), (124, 82f, -5.0f), (125, -58f, 5.4f), (126, 2f, 2.8f),
+        (126, 43f, 3.2f), (127, 4f, -4.0f), (128, -29f, -5.0f), (128, 82f, 6.5f), (129, -58f, -5.0f),
     };
 
     private readonly Tracked<bool> _ultUsed = new(false);
@@ -67,36 +68,33 @@ public sealed partial class Samurai
         if (!UltReady || _ultStart >= 0f) return false;
         HostUltPick(_ultVictims);
         if (_ultVictims.Count == 0) return false;
-        float close = KatanaCinematic.TimeOfFrame(UltCloseFrame);
-        if (close < 0f) { Plugin.Logger.LogWarning("Samurai ult: no cinematic data"); return false; }
         _ultUsed.Value = true;
         _ultStart = Time.time;
         _ultNext = 0;
         _ultCount++;
         _ultOrigin = Player.transform.position;
-        BuildUltEvents(close);
+        BuildUltEvents();
         var msg = new UltMsg(PlayerId, _ultVictims.ToArray());
         UltCall.Send(msg);
         OnUlt(msg);
-        Plugin.Logger.LogInfo($"Samurai ult {PlayerId}: victims={_ultVictims.Count} close={close:0.00}s events={_ultEvents.Count}");
+        Plugin.Logger.LogInfo($"Samurai ult {PlayerId}: victims={_ultVictims.Count} events={_ultEvents.Count}");
         return true;
     }
 
-    private void BuildUltEvents(float close)
+    private void BuildUltEvents()
     {
         _ultEvents.Clear();
-        _ultEvents.Add((close, 0, 0f, 0f, 0f));
+        _ultEvents.Add((UltKillFrame / (float)UltFps, 0, 0f, 0f, 0f));
         foreach (var (f, deg, off) in UltFlurry)
         {
-            float t = KatanaCinematic.TimeOfFrame(f);
-            if (t < 0f) continue;
+            float t = f / (float)UltFps;
             float r = deg * FxMath.Deg2Rad;
             float x = _ultOrigin.x - FxMath.Sin(r) * off * KatanaCinematic.FieldToWorld, y = _ultOrigin.y + FxMath.Cos(r) * off * KatanaCinematic.FieldToWorld;
             _ultEvents.Add((t, 1, x, y, deg));
         }
         // 被害者全員を通る線 (1 人なら水平・2 人以上は並びの向き = 位置の主軸)
-        float tv = KatanaCinematic.TimeOfFrame(UltVictimLineFrame);
-        if (tv >= 0f && UltVictimLine(out float vx, out float vy, out float vdeg)) _ultEvents.Add((tv, 1, vx, vy, vdeg));
+        float tv = UltVictimLineFrame / (float)UltFps;
+        if (UltVictimLine(out float vx, out float vy, out float vdeg)) _ultEvents.Add((tv, 1, vx, vy, vdeg));
         _ultEvents.Sort((a, b) => a.t.CompareTo(b.t));
     }
 

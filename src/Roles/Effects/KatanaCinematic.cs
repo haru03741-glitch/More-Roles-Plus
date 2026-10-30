@@ -82,34 +82,12 @@ internal static unsafe partial class KatanaCinematic
     private static PlayerControl _lp;
     private static bool _frozen, _wasMoveable;
 
-    // 元のコマ番号 (止めを差し込む前) が最初に出るまでの秒 (流し始めから)。最後のコマより後は終わりから同じ間隔で数える。素材が無ければ -1。
-    // 流していない端末 (ホストが見ているだけの時) でも引けるよう、素材を開いていなければ開いて閉じる
-    internal static float TimeOfFrame(int orig)
-    {
-        if (_origOf == null)
-        {
-            bool opened = _data != null;
-            if (!opened && !Open()) return -1f;
-            var tab = new int[_n];
-            for (int f = 0; f < _n; f++) tab[f] = (int)U(f, 31);
-            _origFps = _fps;
-            if (!opened) Close();
-            _origOf = tab;
-        }
-        int n = _origOf.Length;
-        for (int f = 0; f < n; f++) if (_origOf[f] == orig) return f / (float)_origFps;
-        return orig > _origOf[n - 1] ? (n - 1 + (orig - _origOf[n - 1])) / (float)_origFps : -1f;
-    }
-
-    private static int[] _origOf; // 書き出しのコマごとの元のコマ番号 (一度だけ引く)
-    private static int _origFps;
-
     // victims = 斬られる人 (近い順)。空間に出すのは先頭の 5 人まで
     internal static bool Play(PlayerControl attacker, PlayerControl[] victims)
     {
         if (_on) return false;
         try { return PlayCore(attacker, victims); }
-        catch (Exception e) { Plugin.Logger.LogError($"[KatanaCinematic] play: {e}"); Teardown(); return false; }
+        catch (Exception e) { Plugin.Logger.LogError($"[KatanaCinematic] play: {e}"); Teardown(); StopSound(); return false; }
     }
 
     private static bool PlayCore(PlayerControl atk, PlayerControl[] victims)
@@ -148,15 +126,16 @@ internal static unsafe partial class KatanaCinematic
         _worstMs = _sumMs = 0;
         _start = System.Diagnostics.Stopwatch.GetTimestamp();
         _on = true;
+        StartSound();
         return true;
     }
 
     internal static void Tick()
     {
-        if (!_on) return;
+        if (!_on) { SoundTick(); return; }
         try
         {
-            if (GameClock.ShipGen != _shipGen || !GameClock.ShipAlive || !_atk || MeetingHud.Instance) { Teardown(); return; }
+            if (GameClock.ShipGen != _shipGen || !GameClock.ShipAlive || !_atk || MeetingHud.Instance) { Teardown(); StopSound(); return; }
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             if (++_ticks == 2) _start = now - System.Diagnostics.Stopwatch.Frequency / _fps;
             long t = (now - _start) * _fps * 1000 / System.Diagnostics.Stopwatch.Frequency + 500;
@@ -173,6 +152,7 @@ internal static unsafe partial class KatanaCinematic
         {
             Plugin.Logger.LogError($"[KatanaCinematic] tick: {e}");
             Teardown();
+            StopSound();
         }
     }
 
@@ -677,7 +657,7 @@ internal static unsafe partial class KatanaCinematic
                 reply($"OK katanault skin layer={(bool)sl} enabled={(sl ? sl.enabled : false)} sprite={(sl && sl.sprite ? sl.sprite.name : "null")} go={(sl ? sl.gameObject.activeInHierarchy : false)}");
                 return;
             }
-            if (a == "stop") { _hold = -1; if (_on) Teardown(); reply("OK katanault stopped"); return; }
+            if (a == "stop") { _hold = -1; if (_on) Teardown(); StopSound(); reply("OK katanault stopped"); return; }
             int hi = a.IndexOf("hold ", StringComparison.Ordinal);
             if (hi >= 0 && int.TryParse(a.Substring(hi + 5).Split(' ')[0], out int hf))
             {
@@ -708,5 +688,5 @@ internal static unsafe partial class KatanaCinematic
         });
     }
 
-    internal static string Probe() => $"on={_on} shown={_shown} count={_shownCount} skipped={_skipped} missed={_missed} worst={_worstMs:0.00}ms n={_n} vic={_vicCount} pieces={_pcCount}";
+    internal static string Probe() => $"on={_on} shown={_shown} count={_shownCount} skipped={_skipped} missed={_missed} worst={_worstMs:0.00}ms n={_n} vic={_vicCount} pieces={_pcCount} sound[{(_voice && _voice.isPlaying ? $"{_voice.time:0.00}s" : "off")} muted={_muted.Length} clip={(bool)_clip}]";
 }
