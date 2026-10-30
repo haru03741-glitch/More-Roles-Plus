@@ -39,7 +39,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 - [TownOfHost-Pko](https://github.com/satokazoku/TownOfHost-Pko) (satokazoku ほか、GPL-3.0): 前の試合にいた人を続けて入れない仕組み
 - [Town of Host: Enhanced](https://github.com/EnhancedNetwork/TownofHost-Enhanced) (The Enhanced Network、GPL-3.0): BAN 一覧・ホワイトリストで使うプレイヤー ID の要約の取り方、試合のルール (ジップラインと胞子の無効化・除染の時間・Airship の電気室の壁を変える設定・サボタージュの制限時間と無効化・マップの出やすさ・会議の無効)
 - [LotusContinued](https://github.com/Lotus-AU/LotusContinued) (Lotus-AU、GPL-3.0): 入室ホワイトリスト、フォントをファイルから作る方法
-- [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) (All-Of-Us-Mods、GPL-3.0): Android の起動アプリの土台 (`Android/Launcher/`)。同梱しているライブラリは [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) に載せています
+- [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) (All-Of-Us-Mods、GPL-3.0): Android の起動アプリ (`Android/Launcher/`)。FusionCore の名前と見た目を変えて APK にしたもので、コードの大部分は FusionCore のものです。同梱しているライブラリは [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) に載せています
 - [AndroidUtilities / AuthFix](https://github.com/All-Of-Us-Mods/AndroidUtilities) (All-Of-Us-Mods、Starlight 用): Android 版で itch.io のキーを使って EOS にログインする方法、広告の初期化を止める方法
 - [Mochiy Pop One](https://github.com/fontdasu/Mochiypop) (The MochiyPop Project Authors、SIL Open Font License 1.1): 設定画面の文字のフォント。使う字だけに削って同梱しています (ライセンス文は [Resources/Fonts/OFL.txt](Resources/Fonts/OFL.txt))
 - [OtoLogic](https://otologic.jp/) (CC BY 4.0): 時戻しの演出で鳴る時計の秒針の音。「Clock-Second_Hand04」から 1 打ずつ切り出し、少し低くして低音と響きを重ねています (切り出した音は [tools/sounds/clock_tick_otologic.wav](tools/sounds/clock_tick_otologic.wav))
