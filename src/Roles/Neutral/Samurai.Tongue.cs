@@ -11,10 +11,10 @@ public sealed partial class Samurai
     private const float StunTime = 0.35f;
     private float _hostStunUntil = -10f;
 
-    // ホスト: 立ち合いの相手のインポスターへの斬りなら保留する
+    // ホスト: 同じ組のインポスターへの斬りなら保留する
     private bool HostHoldForGuard(PlayerControl target, int damage, bool aimed)
     {
-        if (DuelTongue.FoeOf(target) is not { } foe || foe.PlayerId != PlayerId) return false;
+        if (!Duel.SameGroup(target.PlayerId, PlayerId) || !DuelTongue.Engages(target, PlayerId)) return false;
         HostHeld.Add(new Held { A = PlayerId, T = target.PlayerId, Dmg = damage, At = Time.time, Iai = _hostStrokeIai, Aimed = aimed, Guard = true });
         DuelBot.OnHeldGuard(target.PlayerId, PlayerId, GuardHold);
         return true;

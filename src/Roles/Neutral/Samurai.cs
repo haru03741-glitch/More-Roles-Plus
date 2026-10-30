@@ -401,7 +401,7 @@ public sealed partial class Samurai : RoleBase
         if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg, start: fighter && dmg < left)) return false;
         bool impostor = target.Data.Role && target.Data.Role.IsImpostor;
         p.RpcMurderPlayer(target, true);
-        if (Duel.OpponentOf(PlayerId) == target.PlayerId) Duel.HostEnd(PlayerId);
+        Duel.HostLeave(target.PlayerId);
         if (impostor) _impostorKills.Value++;
         else _otherKills.Value++;
         return true;

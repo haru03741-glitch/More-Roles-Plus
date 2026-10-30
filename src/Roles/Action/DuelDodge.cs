@@ -19,7 +19,7 @@ internal static class DuelDodge
     private const byte None = 255;
 
     // 自分の端末
-    private static byte _opp = None;
+    private static bool _on; // 自分が組にいて回避を持つ
     private static int _left;
     private static float _moveUntil = -10f;
     private static bool _moveOn;
@@ -43,8 +43,8 @@ internal static class DuelDodge
     {
         if (_hooked) return;
         _hooked = true;
-        Duel.OnStart += OnStart;
-        Duel.OnEnd += OnEnd;
+        Duel.OnJoin += OnJoin;
+        Duel.OnLeave += OnLeave;
     }
 
     private static byte LocalId => PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.PlayerId : None;
@@ -52,22 +52,24 @@ internal static class DuelDodge
     // 回避を使えるのはサムライでない側 (サムライは踏み込みを持つ)
     private static bool CanHave(byte id) => RoleState.Of(id) is not Neutral.Samurai;
 
-    private static void OnStart(byte a, byte t)
+    // 組に入るたびに回数を配り直す (組同士の合流で移った時は残りのまま)
+    private static void OnJoin(byte id, byte g, bool fresh)
     {
-        HostLeft[a] = HostLeft[t] = PerDuel;
-        SafeUntil[a] = SafeUntil[t] = 0f;
-        byte me = LocalId;
-        if (me != a && me != t || !CanHave(me)) return;
-        _opp = me == a ? t : a;
+        if (Duel.Moved) return;
+        HostLeft[id] = PerDuel;
+        SafeUntil[id] = 0f;
+        if (id != LocalId || !CanHave(id)) return;
+        _on = true;
         _left = PerDuel;
         _shownLeft = -1;
     }
 
-    private static void OnEnd(byte a, byte t)
+    private static void OnLeave(byte id, byte g)
     {
-        byte me = LocalId;
-        if (me != a && me != t) return;
-        _opp = None;
+        // 組同士の合流で移っただけ (移った先に入れてから呼ばれる)
+        if (Duel.InDuel(id)) return;
+        if (id != LocalId) return;
+        _on = false;
         _usable = false;
         DodgePad.Hide();
     }
@@ -79,11 +81,11 @@ internal static class DuelDodge
     internal static void Tick()
     {
         if (_trails > 0) TickTrails();
-        if (_opp == None) return;
+        if (!_on) return;
         var p = PlayerControl.LocalPlayer;
         if (!p || p.Data == null || p.Data.IsDead || !Duel.InDuel(p.PlayerId))
         {
-            _opp = None;
+            _on = false;
             DodgePad.Hide();
             return;
         }
@@ -113,14 +115,33 @@ internal static class DuelDodge
         _shownKey = key;
     }
 
+    // 同じ組で一番近い、生きている人
+    private static PlayerControl Nearest(PlayerControl p)
+    {
+        byte g = Duel.GroupOf(p.PlayerId);
+        Vector3 me = p.transform.position;
+        PlayerControl best = null;
+        float bestD = float.MaxValue;
+        for (int i = 0; i < Duel.CountOf(g); i++)
+        {
+            byte id = Duel.MemberOf(g, i);
+            var o = id == p.PlayerId || !GameData.Instance ? null : GameData.Instance.GetPlayerById(id)?.Object;
+            if (!o || o.Data == null || o.Data.IsDead) continue;
+            Vector3 at = o.transform.position;
+            float dx = at.x - me.x, dy = at.y - me.y, d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; best = o; }
+        }
+        return best;
+    }
+
     private static void Dodge(PlayerControl p)
     {
         var v = p.MyPhysics ? p.MyPhysics.body.velocity : default;
         float dx = v.x, dy = v.y;
         if (dx * dx + dy * dy < 0.01f)
         {
-            // 止まっていれば相手から離れる向き
-            var opp = GameData.Instance ? GameData.Instance.GetPlayerById(_opp)?.Object : null;
+            // 止まっていれば一番近い相手から離れる向き
+            var opp = Nearest(p);
             Vector3 me = p.transform.position;
             Vector3 o = opp ? opp.transform.position : me;
             dx = me.x - o.x;
@@ -221,13 +242,13 @@ internal static class DuelDodge
     internal static bool ForTest()
     {
         var p = PlayerControl.LocalPlayer;
-        if (_opp == None || !p || _left <= 0) return false;
+        if (!_on || !p || _left <= 0) return false;
         Dodge(p);
         return true;
     }
 
     internal static string Describe() =>
-        $"opp={_opp} left={_left} usable={_usable} used={Used} refused={Refused} pad={DodgePad.Shown} trails={_trails}";
+        $"on={_on} left={_left} usable={_usable} used={Used} refused={Refused} pad={DodgePad.Shown} trails={_trails}";
 }
 
 // 回避: 本編の歩行の後で、短い間だけ体の速さを飛び退く向きへ書き換える (壁は物理が止める)

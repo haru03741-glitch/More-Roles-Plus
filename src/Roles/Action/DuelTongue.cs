@@ -58,13 +58,13 @@ internal static class DuelTongue
         Reset();
         ImpostorMaw.Clear();
         ImpostorMaw.Preload();
-        Duel.OnStart += OnDuelStart;
-        Duel.OnEnd += OnDuelEnd;
+        Duel.OnJoin += OnDuelJoin;
+        Duel.OnLeave += OnDuelLeave;
         Events<MeetingStartEvent>.Subscribe(_ => { Reset(); ImpostorMaw.Clear(); }, match, owner: "DuelTongue");
         match.OnRelease(() =>
         {
-            Duel.OnStart -= OnDuelStart;
-            Duel.OnEnd -= OnDuelEnd;
+            Duel.OnJoin -= OnDuelJoin;
+            Duel.OnLeave -= OnDuelLeave;
             RestoreKillTimer();
             Reset();
             ImpostorMaw.Clear();
@@ -86,14 +86,60 @@ internal static class DuelTongue
 
     private static bool IsImpostor(PlayerControl p) => p.Data.Role && p.Data.Role.IsImpostor;
 
-    // この人がサムライと立ち合っているインポスターなら、その相手のサムライ
+    // このインポスターが舌で戦えるサムライ。同じ組のサムライのうち一番近い人。
+    // 組の外のインポスターは、舌の届く所で戦っている (組に空きのある) サムライへ乱入できる
     internal static PlayerControl FoeOf(PlayerControl p)
     {
+        if (!Duel.Any || !p) return null;
+        byte me = p.PlayerId, g = Duel.GroupOf(me);
+        // 組の外の人は毎 FixedUpdate 呼ばれるので、乱入の相手探しは 0.1 秒に 1 回 (覚えた答えを返す)
+        long tick = Environment.TickCount64;
+        if (g == 0 && me == _outsideFor && tick < _outsideUntil) return _outside && Alive(_outside) ? _outside : null;
         if (!Alive(p) || !IsImpostor(p)) return null;
-        byte o = Duel.OpponentOf(p.PlayerId);
-        if (o == None || RoleState.Of(o) is not Samurai) return null;
-        var s = Pc(o);
-        return Alive(s) ? s : null;
+        Vector2 a = p.GetTruePosition();
+        PlayerControl best = null;
+        float bestD = float.MaxValue;
+        if (g != 0)
+        {
+            int n = Duel.CountOf(g);
+            for (int i = 0; i < n; i++) Closer(Duel.MemberOf(g, i), me, a, ref best, ref bestD);
+            return best;
+        }
+        // 組の外: 戦っている全部の組から (組は数えるほどしか無い)
+        for (byte k = 1; k <= Duel.MaxGroups; k++)
+        {
+            int n = Duel.CountOf(k);
+            if (n == 0 || n >= Duel.MaxMembers) continue;
+            for (int i = 0; i < n; i++) Closer(Duel.MemberOf(k, i), me, a, ref best, ref bestD);
+        }
+        _outside = bestD <= Reach * Reach ? best : null;
+        _outsideFor = me;
+        _outsideUntil = tick + 100;
+        return _outside;
+    }
+
+    private static PlayerControl _outside;
+    private static byte _outsideFor = None;
+    private static long _outsideUntil;
+
+    private static void Closer(byte id, byte me, Vector2 a, ref PlayerControl best, ref float bestD)
+    {
+        if (id == me || RoleState.Of(id) is not Samurai) return;
+        var s = Pc(id);
+        if (!Alive(s)) return;
+        Vector2 b = s.GetTruePosition();
+        float dx = b.x - a.x, dy = b.y - a.y, d = dx * dx + dy * dy;
+        if (d >= bestD) return;
+        bestD = d;
+        best = s;
+    }
+
+    // このインポスターがこのサムライと舌で戦えるか (同じ組・または乱入できる)
+    internal static bool Engages(PlayerControl imp, byte samurai)
+    {
+        if (!Alive(imp) || !IsImpostor(imp) || RoleState.Of(samurai) is not Samurai || !Alive(Pc(samurai))) return false;
+        if (Duel.SameGroup(imp.PlayerId, samurai)) return true;
+        return !Duel.InDuel(imp.PlayerId) && FoeOf(imp) is { } f && f.PlayerId == samurai;
     }
 
     private static float AngleTo(PlayerControl a, PlayerControl b)
@@ -108,7 +154,7 @@ internal static class DuelTongue
     internal static bool OverrideTarget(ref PlayerControl target)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || Duel.OpponentOf(lp.PlayerId) == None) return false; // 立ち合いの外は比べるだけ (毎 FixedUpdate)
+        if (!lp || !Duel.Any) return false; // どこにも組が無ければ比べるだけ (毎 FixedUpdate)
         var foe = FoeOf(lp);
         if (!foe) return false;
         Vector2 a = lp.GetTruePosition(), b = foe.GetTruePosition();
@@ -121,17 +167,17 @@ internal static class DuelTongue
     internal static bool OnClick(KillButton button)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || Duel.OpponentOf(lp.PlayerId) == None || !FoeOf(lp)) return true;
+        if (!lp || !Duel.Any || !FoeOf(lp)) return true;
         if (!button.isActiveAndEnabled || button.isCoolingDown || !lp.CanMove || !button.currentTarget) return false;
         PressCall.Send(0);
         lp.SetKillTimer(Cooldown);
         return false;
     }
 
-    private static void OnDuelStart(byte a, byte t)
+    private static void OnDuelJoin(byte id, byte g, bool fresh)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || lp.PlayerId != a && lp.PlayerId != t || !FoeOf(lp)) return;
+        if (!lp || lp.PlayerId != id || !FoeOf(lp)) return;
         // 本編のキルの待ち時間は控えて裏で数え、舌はすぐ使える
         if (!_shadowOn)
         {
@@ -142,10 +188,10 @@ internal static class DuelTongue
         lp.SetKillTimer(0f);
     }
 
-    private static void OnDuelEnd(byte a, byte t)
+    private static void OnDuelLeave(byte id, byte g)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (lp && (lp.PlayerId == a || lp.PlayerId == t)) RestoreKillTimer();
+        if (lp && lp.PlayerId == id && !Duel.InDuel(id)) RestoreKillTimer();
     }
 
     private static void RestoreKillTimer()
@@ -172,6 +218,8 @@ internal static class DuelTongue
         byte i = imp.PlayerId;
         float now = Time.time;
         if (now < ReadyAt[i] - CooldownSlack || now < StunUntil[i] || Lashes[i].On) { Refused++; return false; }
+        // 組の外からの乱入: 舌を出せる時だけ組へ入れる (満員になっていたら押せない)
+        if (!Duel.SameGroup(i, s.PlayerId) && !Duel.HostJoin(i, s.PlayerId)) { Refused++; return false; }
         Presses++;
         PressAt[i] = now;
         ReadyAt[i] = now + Cooldown;
@@ -262,7 +310,7 @@ internal static class DuelTongue
             var imp = Pc((byte)i);
             var s = Pc(l.S);
             // 押してから立ち合いが終わっていたら当てない (当てると新しい立ち合いが始まる)
-            if (!Alive(s) || MeetingHud.Instance || FoeOf(imp) is not { } foe || foe.PlayerId != l.S) continue;
+            if (!Alive(s) || MeetingHud.Instance || !Duel.SameGroup((byte)i, l.S)) continue;
             Vector2 a = imp.GetTruePosition(), b = s.GetTruePosition();
             float ar = l.Ang * FxMath.Deg2Rad, dx = b.x - a.x, dy = b.y - a.y;
             float along = dx * FxMath.Cos(ar) + dy * FxMath.Sin(ar), side = FxMath.Abs(dx * FxMath.Sin(ar) - dy * FxMath.Cos(ar));
@@ -287,7 +335,7 @@ internal static class DuelTongue
             {
                 Broadcast(Kind.Kill, (byte)i, l.S, LenByte(along));
                 imp.RpcMurderPlayer(s, true);
-                Duel.HostEnd((byte)i);
+                Duel.HostLeave(l.S);
                 continue;
             }
             Broadcast(Kind.Hit, (byte)i, l.S, LenByte(along));

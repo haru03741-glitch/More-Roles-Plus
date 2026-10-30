@@ -258,7 +258,7 @@ internal static class DuelBot
         Vector2 me = pc.GetTruePosition(), at = target.GetTruePosition();
         float dx = at.x - me.x, dy = at.y - me.y, d = FxMath.Sqrt(dx * dx + dy * dy);
         // サムライと立ち合っている間は斬りの届く所まで踏み込んで舌を撃つ (届かない所に構えると練習にならない)
-        if (DuelTongue.FoeOf(pc) is { } foe && foe.PlayerId == target.PlayerId)
+        if (Duel.SameGroup(pc.PlayerId, target.PlayerId) && DuelTongue.Engages(pc, target.PlayerId))
         {
             if (d > TongueNear) { Toward(b, pc, at, now); return; }
             if (d < TongueNear - 0.7f) { Away(b, pc, me, dx, dy, d, TongueNear - 0.3f, now); }
@@ -271,10 +271,10 @@ internal static class DuelBot
             return;
         }
         // 相手のサムライには本編の一撃のキルを使わず、舌の届く所で立ち合いを挑む
-        if (RoleState.Of(target) is Samurai && !Duel.InDuel(pc.PlayerId) && !Duel.InDuel(target.PlayerId))
+        if (RoleState.Of(target) is Samurai && !Duel.InDuel(pc.PlayerId) && (!Duel.InDuel(target.PlayerId) || Duel.HasRoom(target.PlayerId)))
         {
             if (d > DuelTongue.Reach * 0.9f) { Toward(b, pc, at, now); return; }
-            Duel.HostDamage(pc.PlayerId, target.PlayerId, 0);
+            Duel.HostJoin(pc.PlayerId, target.PlayerId);
             b.TongueReady = now + 0.5f;
             return;
         }

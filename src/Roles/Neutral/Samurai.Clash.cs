@@ -94,7 +94,8 @@ public sealed partial class Samurai
             ClashCall.Send(Pack(Kind.Meter, (byte)Math.Min(_hlCountA, 255), (byte)Math.Min(_hlCountB, 255)));
             ApplyClash(Pack(Kind.Meter, (byte)Math.Min(_hlCountA, 255), (byte)Math.Min(_hlCountB, 255)));
         }
-        if (now >= _hlEnd) HostEndLock();
+        // 乱戦で片方が横から倒されたら、残り時間を待たずに解く
+        if (now >= _hlEnd || Gone(_hlA) || Gone(_hlB)) HostEndLock();
     }
 
     private static void HostClash(byte a, byte b, bool bothIai)
@@ -105,8 +106,8 @@ public sealed partial class Samurai
         _chainA = a;
         _chainB = b;
         _chainAt = now;
-        // 二人の立ち合いにする (体力は減らさない)
-        if (!Duel.InDuel(a) && !Duel.InDuel(b)) Duel.HostDamage(a, b, 0);
+        // 二人を同じ組にする (体力は減らさない)
+        Duel.HostJoin(a, b);
         Clashes++;
         if (_chain >= 2 || bothIai)
         {
@@ -122,6 +123,8 @@ public sealed partial class Samurai
         }
         Broadcast(Pack(Kind.Clash, a, b));
     }
+
+    private static bool Gone(byte id) => GameData.Instance && GameData.Instance.GetPlayerById(id) is not { IsDead: false, Disconnected: false };
 
     private static void HostEndLock()
     {
@@ -156,7 +159,7 @@ public sealed partial class Samurai
     private void OnKillAttempt(BeforeMurderEvent e)
     {
         var k = e.Killer;
-        if (DuelTongue.Finishing || !k || DuelTongue.FoeOf(k) is not { } foe || foe.PlayerId != PlayerId) return;
+        if (DuelTongue.Finishing || !k || !DuelTongue.Engages(k, PlayerId)) return;
         e.Cancel("samurai duel");
         DuelTongue.HostPress(k);
     }

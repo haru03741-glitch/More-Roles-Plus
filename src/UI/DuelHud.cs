@@ -8,7 +8,8 @@ using Object = UnityEngine.Object;
 
 namespace MoreRolesPlus.UI;
 
-// 立ち合い (Duel) の当事者の画面に出す格闘ゲーム風の HUD。上の左右に自分 (左) と相手 (右) の体力のバー・その下に気のバー・中央に ∞・
+// 立ち合い (Duel) の当事者の画面に出す格闘ゲーム風の HUD。上の左右に自分 (左) と主な相手 (右) の体力のバー・その下に気のバー・中央に ∞・
+// 3 人目と 4 人目 (乱戦) は大きなバーの下の小さなバー (左 = 味方のインポスター・右 = 2 人目の相手・空いている方へ)・
 // 始まりに VS の幕 (DuelHud.Intro.cs) →「FIGHT!」の大きな題字・続けて当てると「n HIT COMBO」・相手が倒れると「K.O.」・鍔迫り合いの決着の題字。
 // 字は本編のタスク欄の字を複製して使う (書体を合わせる)。作るのは最初に出す時の 1 回で、終わったら隠すだけ。
 // 毎フレーム書くのは題字・連撃・削られた分の影が動いている間だけ
@@ -43,18 +44,51 @@ internal static partial class DuelHud
     {
         if (_hooked) return;
         _hooked = true;
-        Duel.OnStart += OnStart;
+        Duel.OnJoin += OnJoin;
         Duel.OnHit += OnHit;
-        Duel.OnEnd += OnEnd;
+        Duel.OnLeave += OnLeave;
     }
 
     private static byte LocalId => PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.PlayerId : (byte)255;
 
-    private static void OnStart(byte a, byte t)
+    private static void OnJoin(byte id, byte g, bool fresh)
     {
         byte me = LocalId;
-        if (me != a && me != t) return;
-        Show(me, me == a ? t : a);
+        if (id == me)
+        {
+            // 入った組の顔ぶれで出す。新しくできた組だけ VS の幕から・途中から加わった時と合流で移った時はすぐ戦える姿で
+            if (!_shown) Show(me, FirstFoe(me), fresh);
+            _leaving = false;
+            Layout();
+            return;
+        }
+        if (_shown && Duel.SameGroup(id, me)) Layout();
+    }
+
+    private static void OnLeave(byte id, byte g)
+    {
+        if (!_shown || Duel.InDuel(id) && Duel.SameGroup(id, _me)) return; // 合流で同じ組へ移っただけ
+        if (id == _me)
+        {
+            // 最後の相手を倒して組が畳まれた時は K.O. を見せ切ってから隠す
+            if (_koT > 0f) _leaving = true;
+            else Hide();
+            return;
+        }
+        int slot = SlotOf(id);
+        if (slot < 0) return;
+        // 大きなバーの相手が倒れた: K.O. を出し、見せ切ってから並べ直す (小さなバーは空けて並べ直すだけ)。
+        // 倒れたかは抜ける前の体力で見る (本編の死亡の知らせはこの電文より後に届くことがある)
+        var p = GameData.Instance ? GameData.Instance.GetPlayerById(id) : null;
+        if (slot == SlotR0 && (Duel.LeftHp == 0 || p != null && p.IsDead))
+        {
+            _rightHp = 0f;
+            _koT = Time.time;
+            Banner(BannerKo);
+            Write();
+            return;
+        }
+        Layout();
     }
 
     private static void OnHit(byte a, byte t, int hp)
@@ -64,6 +98,7 @@ internal static partial class DuelHud
         float now = Time.time;
         if (t == _me) { _leftHp = k; _leftHitT = now; }
         else if (t == _opp) { _rightHp = k; _rightHitT = now; }
+        else if (SlotOf(t) is var sl and >= SlotL1) { _subHp[sl - SlotL1] = k; _subHitT[sl - SlotL1] = now; }
         if (a == _me)
         {
             _combo = now - _comboT <= ComboKeep ? _combo + 1 : 1;
@@ -73,27 +108,93 @@ internal static partial class DuelHud
         Write();
     }
 
-    private static void OnEnd(byte a, byte t)
+    // ---- 枠の並び (0 = 左の大 = 自分・1 = 右の大・2 = 左の小・3 = 右の小) ----
+    private const int SlotL0 = 0, SlotR0 = 1, SlotL1 = 2, SlotR1 = 3;
+    private static readonly byte[] _slot = { 255, 255, 255, 255 };
+    private static readonly float[] _subHp = { 1f, 1f }, _subGhostHp = { 1f, 1f }, _subHitT = new float[2];
+    private static readonly GameObject[] _subRoot = new GameObject[2];
+    private static readonly SpriteRenderer[] _subFill = new SpriteRenderer[2], _subGhost = new SpriteRenderer[2], _subFace = new SpriteRenderer[2];
+    private static readonly TextMeshPro[] _subName = new TextMeshPro[2];
+    private static bool _leaving; // 自分が組を抜けた・K.O. を見せ切ったら隠す
+    private static readonly int[] AllyOrder = { SlotL1, SlotR0, SlotR1 }, FoeOrder = { SlotR0, SlotR1, SlotL1 };
+
+    private static int SlotOf(byte id)
     {
-        if (!_shown || !(a == _me && t == _opp || a == _opp && t == _me)) return;
-        var opp = GameData.Instance ? GameData.Instance.GetPlayerById(_opp) : null;
-        if (opp != null && opp.IsDead)
-        {
-            // 相手が倒れた: K.O. を出してから隠す
-            _rightHp = 0f;
-            _koT = Time.time;
-            Banner(BannerKo);
-            Write();
-            return;
-        }
-        Hide();
+        if (id == 255) return -1;
+        for (int i = 0; i < 4; i++)
+            if (_slot[i] == id) return i;
+        return -1;
     }
 
-    private static void Show(byte me, byte opp)
+    // 味方 = どちらもインポスター
+    private static bool Allies(byte a, byte b)
+    {
+        var pa = GameData.Instance ? GameData.Instance.GetPlayerById(a) : null;
+        var pb = GameData.Instance ? GameData.Instance.GetPlayerById(b) : null;
+        return pa != null && pb != null && pa.Role && pb.Role && pa.Role.IsImpostor && pb.Role.IsImpostor;
+    }
+
+    // 組で自分の次に並ぶ相手 (味方でない人を先に)
+    private static byte FirstFoe(byte me)
+    {
+        byte g = Duel.GroupOf(me), ally = 255;
+        for (int i = 0; i < Duel.CountOf(g); i++)
+        {
+            byte id = Duel.MemberOf(g, i);
+            if (id == me) continue;
+            if (!Allies(me, id)) return id;
+            if (ally == 255) ally = id;
+        }
+        return ally;
+    }
+
+    // 今の組の顔ぶれに枠を合わせる。いる人は今の枠のまま・抜けた人の枠を空け・空いた大きな枠へ小さな枠の相手を上げ・新しい人を入れる
+    private static void Layout()
+    {
+        if (!_shown) return;
+        byte g = Duel.GroupOf(_me);
+        for (int i = SlotR0; i < 4; i++)
+            if (_slot[i] != 255 && !(g != 0 && Duel.GroupOf(_slot[i]) == g)) _slot[i] = 255;
+        if (_slot[SlotR0] == 255 && _slot[SlotR1] != 255) { _slot[SlotR0] = _slot[SlotR1]; _slot[SlotR1] = 255; }
+        if (_slot[SlotR0] == 255 && _slot[SlotL1] != 255 && !Allies(_me, _slot[SlotL1])) { _slot[SlotR0] = _slot[SlotL1]; _slot[SlotL1] = 255; }
+        for (int i = 0; g != 0 && i < Duel.CountOf(g); i++)
+        {
+            byte id = Duel.MemberOf(g, i);
+            if (id == _me || SlotOf(id) >= 0) continue;
+            int[] order = Allies(_me, id) ? AllyOrder : FoeOrder;
+            foreach (int k in order)
+                if (_slot[k] == 255) { _slot[k] = id; break; }
+        }
+        if (_slot[SlotR0] != _opp)
+        {
+            _opp = _slot[SlotR0];
+            _rightHp = _rightGhostHp = _opp == 255 ? 1f : Duel.HpOf(_opp) / (float)Duel.MaxHp;
+            Paint(_rightFace, _rightName, _opp);
+            Dress(1, _opp, true);
+            KiShow();
+        }
+        for (int j = 0; j < 2; j++)
+        {
+            byte id = _slot[SlotL1 + j];
+            bool on = id != 255;
+            if (_subRoot[j].activeSelf != on) _subRoot[j].SetActive(on);
+            if (!on) continue;
+            _subHp[j] = _subGhostHp[j] = Duel.HpOf(id) / (float)Duel.MaxHp;
+            Paint(_subFace[j], _subName[j], id);
+        }
+        Write();
+    }
+
+    private static void Show(byte me, byte opp, bool intro = true)
     {
         if (!Build()) return;
         _me = me;
         _opp = opp;
+        _slot[SlotL0] = me;
+        _slot[SlotR0] = opp;
+        _slot[SlotL1] = _slot[SlotR1] = 255;
+        _leaving = false;
+        for (int j = 0; j < 2; j++) _subRoot[j].SetActive(false);
         _shown = true;
         _hint.text = "";
         _root.SetActive(true);
@@ -106,7 +207,8 @@ internal static partial class DuelHud
         _koT = _comboT = _comboPop = _bannerT = -10f;
         _combo = 0;
         _titleState = -1;
-        IntroBegin();
+        if (intro) IntroBegin();
+        else _startT = Time.time - IntroTime; // 幕を飛ばして FIGHT! から
         _leftHp = _leftGhostHp = Duel.HpOf(me) / (float)Duel.MaxHp;
         _rightHp = _rightGhostHp = Duel.HpOf(opp) / (float)Duel.MaxHp;
         Paint(_leftFace, _leftName, me);
@@ -225,6 +327,8 @@ internal static partial class DuelHud
         _tasks = null;
         _shown = false;
         _me = _opp = 255;
+        for (int i = 0; i < 4; i++) _slot[i] = 255;
+        _leaving = false;
         _bannerT = -10f;
         if (_lockRoot) SetLockOn(false);
         IntroHide();
@@ -238,14 +342,21 @@ internal static partial class DuelHud
         if (!_root || MeetingHud.Instance) { Hide(); return; }
         float now = Time.time;
         // 削られた分の影は少し遅れてから減る
-        bool ghost = Ghost(ref _leftGhostHp, _leftHp, _leftHitT, now) | Ghost(ref _rightGhostHp, _rightHp, _rightHitT, now);
+        bool ghost = Ghost(ref _leftGhostHp, _leftHp, _leftHitT, now) | Ghost(ref _rightGhostHp, _rightHp, _rightHitT, now)
+                     | Ghost(ref _subGhostHp[0], _subHp[0], _subHitT[0], now) | Ghost(ref _subGhostHp[1], _subHp[1], _subHitT[1], now);
         if (ghost) Write();
         TitleTick(now);
         IntroTick(now);
         KiTick(now);
         if (_lockOn) LockTick(now);
         ComboTick(now);
-        if (_koT > 0f && now - _koT > KoHold + TitleFade) Hide();
+        if (_koT > 0f && now - _koT > KoHold + TitleFade)
+        {
+            // K.O. を見せ切った: 自分が組を抜けていれば隠す・まだ戦っていれば倒れた人の枠を詰める
+            _koT = -10f;
+            if (_leaving || !Duel.InDuel(_me)) Hide();
+            else Layout();
+        }
     }
 
     private static bool Ghost(ref float g, float hp, float hitT, float now)
@@ -331,6 +442,45 @@ internal static partial class DuelHud
         if (!_root) return;
         Bar(_leftFill, _leftGhost, _leftHp, _leftGhostHp, -1f);
         Bar(_rightFill, _rightGhost, _rightHp, _rightGhostHp, 1f);
+        for (int j = 0; j < 2; j++)
+        {
+            if (!_subRoot[j] || !_subRoot[j].activeSelf) continue;
+            float side = j == 0 ? -1f : 1f, outer = SubOuter(side);
+            Set(_subFill[j], outer, _subHp[j] * SubW, side, HpColor(_subHp[j]), SubH * 0.72f);
+            Set(_subGhost[j], outer, _subGhostHp[j] * SubW, side, FxMath.Rgba(0.95f, 0.2f, 0.2f, 1f), SubH * 0.72f);
+        }
+    }
+
+    // 小さなバー (3 人目と 4 人目)。大きなバーの外側の端にそろえ、幅は SubW 倍 (Set の幅は _barW が基準なので体力に SubW を掛けて渡す)。
+    // 顔は色の丸・名前はバーの内側の先
+    private const float SubH = 0.1f, SubW = 0.6f, SubBelow = 0.48f, SubInset = 0.55f;
+
+    // 小さなバーの外側の端 (大きなバーの端の立ち絵に色の丸が隠れないよう内へ寄せる)
+    private static float SubOuter(float side) => side * (BarGap + _barW - SubInset);
+
+    private static void BuildSub(Sprite white, int layer, float y, TextMeshPro src)
+    {
+        float sy = y - SubBelow;
+        for (int j = 0; j < 2; j++)
+        {
+            float side = j == 0 ? -1f : 1f, outer = SubOuter(side), w = _barW * SubW, mid = outer - side * w * 0.5f;
+            var root = new GameObject(j == 0 ? "SubL" : "SubR") { layer = layer };
+            var tf = root.transform;
+            tf.SetParent(_rootTf, false);
+            _subRoot[j] = root;
+            Quad("Frame", white, mid, sy, 0f, w + 0.05f, SubH, FxMath.Rgba(0.06f, 0.06f, 0.1f, 0.88f), layer, tf);
+            Quad("Back", white, mid, sy, -0.1f, w, SubH * 0.72f, FxMath.Rgba(0.22f, 0.05f, 0.08f, 0.9f), layer, tf);
+            _subGhost[j] = Quad("Ghost", white, mid, sy, -0.2f, w, SubH * 0.72f, FxMath.Rgba(0.95f, 0.2f, 0.2f, 1f), layer, tf);
+            _subFill[j] = Quad("Fill", white, mid, sy, -0.3f, w, SubH * 0.72f, HpColor(1f), layer, tf);
+            _subFace[j] = Quad("Face", Circle(), outer + side * 0.17f, sy, -0.3f, 0.26f, 0.26f, FxMath.Rgba(1f, 1f, 1f, 1f), layer, tf);
+            var name = Text(src, "Name", 0f, 0f, 1f, side < 0 ? TextAlignmentOptions.Left : TextAlignmentOptions.Right, layer, 3f);
+            name.transform.SetParent(tf, false);
+            Outline(name, 0.2f, FxMath.Rgba(0.05f, 0.05f, 0.08f, 1f));
+            // 左寄せの字は箱の左端から始まるので、箱の幅の半分だけずらす
+            name.transform.localPosition = FxMath.V3(outer - side * (w + 0.12f) - side * 1.5f, sy, -0.3f);
+            _subName[j] = name;
+            root.SetActive(false);
+        }
     }
 
     private static void Bar(SpriteRenderer fill, SpriteRenderer ghost, float hp, float gh, float side)
@@ -413,7 +563,7 @@ internal static partial class DuelHud
         _center.text = "∞";
         Outline(_center, 0.25f, FxMath.Rgba(0.1f, 0.1f, 0.15f, 1f));
         // 自分の手 (回避の残り) は自分のバーの下
-        _hint = Text(src, "Hint", -(BarGap + _barW * 0.5f), y - 0.62f, 1.6f, TextAlignmentOptions.Center, layer, 4f);
+        _hint = Text(src, "Hint", -(BarGap + _barW * 0.5f), y - 0.8f, 1.6f, TextAlignmentOptions.Center, layer, 4f);
         _hint.color = FxMath.Rgba(1f, 0.92f, 0.55f, 1f);
         Outline(_hint, 0.25f, FxMath.Rgba(0.05f, 0.05f, 0.08f, 1f));
         _hint.text = "";
@@ -426,6 +576,7 @@ internal static partial class DuelHud
         _title.gameObject.SetActive(false);
 
         BuildKi(white, layer, y);
+        BuildSub(white, layer, y, src);
         BuildIntro(white, layer, src);
         BuildCrew(layer);
 
@@ -550,10 +701,24 @@ internal static partial class DuelHud
     // 確かめ用: 当事者でなくても出す (me = 自分の番号・opp = 相手)
     internal static void TestShow(byte me, byte opp) => Show(me, opp);
     internal static void TestHit(bool mine, int hp) => OnHit(mine ? _me : _opp, mine ? _opp : _me, hp);
+
+    // 確かめ用: 小さな枠に人を入れる (j = 0 左・1 右・id 255 で空ける)
+    internal static void TestSub(int j, byte id)
+    {
+        if (!_shown) return;
+        _slot[SlotL1 + j] = id;
+        _subRoot[j].SetActive(id != 255);
+        if (id != 255)
+        {
+            _subHp[j] = _subGhostHp[j] = 1f;
+            Paint(_subFace[j], _subName[j], id);
+        }
+        Write();
+    }
     internal static void TestKo() { _rightHp = 0f; _koT = Time.time; Banner(BannerKo); Write(); }
     internal static void TestIntro() { if (_shown) { _startT = Time.time; _titleState = -1; IntroBegin(); } }
     internal static void TestPush(float k) => _pushGoal = k;
 
     internal static string Describe() =>
-        $"shown={_shown} me={_me} opp={_opp} hp={_leftHp:0.00}/{_rightHp:0.00} ghost={_leftGhostHp:0.00}/{_rightGhostHp:0.00} combo={_combo} title={_titleState} built={(bool)_root}";
+        $"shown={_shown} slots={_slot[0]},{_slot[1]},{_slot[2]},{_slot[3]} leaving={_leaving} hp={_leftHp:0.00}/{_rightHp:0.00} ghost={_leftGhostHp:0.00}/{_rightGhostHp:0.00} combo={_combo} title={_titleState} built={(bool)_root}";
 }

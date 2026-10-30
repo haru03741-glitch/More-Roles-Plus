@@ -291,6 +291,7 @@ internal static class RoleCommands
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (p.Length >= 3 && p[0] == "show" && byte.TryParse(p[1], out byte me) && byte.TryParse(p[2], out byte opp)) UI.DuelHud.TestShow(me, opp);
             else if (p.Length >= 3 && p[0] == "hit" && int.TryParse(p[2], out int hp)) UI.DuelHud.TestHit(p[1] == "1", hp);
+            else if (p.Length >= 3 && p[0] == "sub" && int.TryParse(p[1], out int sj) && byte.TryParse(p[2], out byte sid)) UI.DuelHud.TestSub(sj, sid);
             else if (p.Length >= 1 && p[0] == "ko") UI.DuelHud.TestKo();
             else if (p.Length >= 1 && p[0] == "intro") UI.DuelHud.TestIntro();
             else if (p.Length >= 2 && p[0] == "lock") UI.DuelHud.ShowLock(p[1] == "on");
