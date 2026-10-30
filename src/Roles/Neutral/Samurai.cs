@@ -17,6 +17,7 @@ public sealed partial class Samurai : RoleBase
     public override string Color => "#4A8CFF";
     public override Text Name => new("Samurai.Name");
     public override string Reading => "さむらい";
+    public override Epithet Epithet => Epithet.Wayfinder;
     public override Text Blurb => new("Samurai.Blurb");
     public override HelpSection[] HelpSections => new HelpSection[]
     {

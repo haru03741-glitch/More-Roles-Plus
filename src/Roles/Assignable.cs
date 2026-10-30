@@ -30,6 +30,9 @@ public abstract class Assignable
     // MRP で作った役職は null のまま
     public virtual string Origin => null;
 
+    // 特別枠の二つ名 (航路守など)。付いた役職は役職の一覧でマークと光で別格に見せる
+    public virtual Epithet Epithet => Epithet.None;
+
     // 長い説明の節。ボタンの名前の鍵を押す順に並べ、試合の情報で並べるボタンの絵 (ButtonIcons の名前) を添える。
     // ボタンでない仕組みも節にしてよい (絵は無くてよい)
     //   public override HelpSection[] HelpSections => new HelpSection[] { new("Demolisher.Hammer", "hammer") };

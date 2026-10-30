@@ -146,7 +146,7 @@ public class Ticker : MonoBehaviour
         Commands.ChatInput.Tick();
         Menu.ColorPicker.Tick();
         Menu.MeetingMemo.Tick();
-        Options.RolePage.Tick(); UI.UiWindow.Tick(); UI.Backdrop.Tick(); t = Bridge.Perf.Lane(23, t);
+        Options.RolePage.Tick(); UI.UiWindow.Tick(); UI.Backdrop.Tick(); UI.Aura.Tick(); t = Bridge.Perf.Lane(23, t);
         Options.CrowdPages.Tick();
         Options.GameModeSwitch.Tick();
         Menu.ChatNotes.Tick();
