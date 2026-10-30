@@ -166,7 +166,7 @@ internal sealed unsafe partial class SamuraiBlade
     }
 
     // 壁と物の当たり判定まで (want で打ち切り)。始めから中にいる当たりは数えない
-    private static float WallDist(float x, float y, float dx, float dy, float want, out bool hit)
+    internal static float WallDist(float x, float y, float dx, float dy, float want, out bool hit)
     {
         hit = false;
         float best = want;

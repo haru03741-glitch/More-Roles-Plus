@@ -27,7 +27,7 @@ public sealed partial class Samurai : RoleBase
     public static readonly IntOpt FallKills = new("Samurai.FallKills", 2, 1, 5);
     public static readonly BoolOpt AnnounceFall = new("Samurai.AnnounceFall", false);
     public static readonly FloatOpt SlashRange = new("Samurai.SlashRange", 2f, 1f, 3.5f, 0.25f);
-    // 斬った扉 (と斬り跡) の戻り方: 次の会議 / 秒数 / ずっと
+    // 斬った扉と空間のずれ (斬り跡) の戻り方: 次の会議 / 秒数 / ずっと
     public static readonly ChoiceOpt CutRestore = new("Samurai.CutRestore", 1,
         new Text("Samurai.CutRestoreMeeting"), new Text("Samurai.CutRestoreSeconds"), new Text("Samurai.CutRestoreNever"));
     public static readonly FloatOpt CutRestoreTime = new("Samurai.CutRestoreTime", 30f, 5f, 120f, 5f) { When = () => CutRestore.Value == 1 };
@@ -79,6 +79,7 @@ public sealed partial class Samurai : RoleBase
     {
         Duel.Use();
         CutDoors.Use();
+        SpaceRifts.Use();
         ResetClash();
         _blade = new SamuraiBlade(this);
         Lifespan.OnRelease(_blade.Dispose);
@@ -276,6 +277,8 @@ public sealed partial class Samurai : RoleBase
         int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17 | (iai ? 1 : 0) << 27 | (int)MathF.Round(charge * 15f) << 28;
         ShowCall.Send((head, (ushort)(secs * 1000f), tier));
         if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f), tier);
+        // 段 3〜4 の居合は斬線が空間のずれとして床に残る (向き = 振った刀の真ん中)
+        if (iai && !thrust && (tier & 0x7F) >= 3) SpaceRifts.HostCut(Player.GetTruePosition(), a0 + sweep * 0.5f, tier & 0x7F, PlayerId);
         int dmg = thrust ? ThrustDamage : Damage(FxMath.Abs(sweep) / secs);
         if (iai) dmg += (int)(IaiCharged * charge);
         _lastDamage = dmg;

@@ -125,6 +125,8 @@ public class Ticker : MonoBehaviour
         Roles.DuelHitFx.Tick();
         Roles.DoorCutFx.Tick();
         Roles.CutDoors.HostTick();
+        Roles.SpaceRifts.Tick();
+        Roles.RiftArt.Tick();
         Roles.DuelDodge.Tick();
         UI.DuelHud.Tick();
         Menu.Emotes.Tick();

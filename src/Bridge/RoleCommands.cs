@@ -140,6 +140,25 @@ internal static class RoleCommands
                 reply($"OK samurai {os.Probe()}");
                 return;
             }
+            if (p.Length >= 1 && p[0] == "rift")
+            {
+                // rift [cut <x> <y> <角度> [段] | here <角度> [段] | clear] 空間のずれの一覧 / ホストで線を作る / 全部消す
+                var fl = System.Globalization.NumberStyles.Float;
+                if (p.Length >= 5 && p[1] == "cut" && float.TryParse(p[2], fl, inv, out float rx) && float.TryParse(p[3], fl, inv, out float ry) && float.TryParse(p[4], fl, inv, out float rd))
+                {
+                    int rt = p.Length >= 6 && int.TryParse(p[5], out int rti) ? rti : 3;
+                    if (!SpaceRifts.ForTest(rx, ry, rd, rt)) { reply("ERR samurai rift (host only)"); return; }
+                }
+                else if (p.Length >= 3 && p[1] == "here" && float.TryParse(p[2], fl, inv, out float hd) && PlayerControl.LocalPlayer)
+                {
+                    int rt = p.Length >= 4 && int.TryParse(p[3], out int rti) ? rti : 3;
+                    var hp = PlayerControl.LocalPlayer.GetTruePosition();
+                    if (!SpaceRifts.ForTest(hp.x, hp.y, hd, rt)) { reply("ERR samurai rift (host only)"); return; }
+                }
+                else if (p.Length >= 2 && p[1] == "clear" && !SpaceRifts.ClearForTest()) { reply("ERR samurai rift (host only)"); return; }
+                reply($"OK samurai rift {SpaceRifts.Describe()} art[{RiftArt.Describe()}]");
+                return;
+            }
             if (p.Length >= 1 && p[0] == "door")
             {
                 // door [list | cut <添字> [角度] | mend <添字>] 扉の一覧 / ホストで扉を斬った扱い / 戻す

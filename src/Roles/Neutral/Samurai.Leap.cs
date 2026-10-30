@@ -21,9 +21,9 @@ public sealed partial class Samurai
     private const float LeapCos = 0.8f;    // 向きと行き先のずれの許し (約 37 度)
     private const float LeapMax = 9f;      // はしご・昇降床の反対側までの長さの上限
     private const float ScanMax = 10f;     // 別の床を探す長さ (Fungle の崖は上と下の床が 6〜9 離れている)
-    private const float LandClear = 0.22f; // 着地点に要る体の半径
+    internal const float LandClear = 0.22f; // 着地点に要る体の半径
     private const float ZipMax = 25f;      // ジップラインの両端の長さの上限 (Fungle は約 18)
-    private const int LandMask = 1 << 9 | 1 << 12; // 船の層と家具の層
+    internal const int LandMask = 1 << 9 | 1 << 12; // 船の層と家具の層
 
     // 跳べる組 (端・反対の端・長さの上限)。船ごとに 1 回作る
     private static readonly List<(Vector2 A, Vector2 B, float Max)> Links = new();
@@ -31,6 +31,7 @@ public sealed partial class Samurai
 
     // 自分の跳躍 (自分の端末だけ)
     private static bool _leapOn;
+    internal static bool LeapActive => _leapOn;
     private static float _leapStart, _leapAir;
     private static Vector2 _leapFrom, _leapTo;
     private static PlayerControl _leapPc;
@@ -97,7 +98,7 @@ public sealed partial class Samurai
     private static bool FindLedge(Vector2 me, float dx, float dy, out Vector2 to)
     {
         to = default;
-        int home = HomeIsland(me);
+        int home = SolidMap.IslandNear(me.x, me.y, 1f);
         if (home == 0) { LastMiss = "no floor here"; return false; }
         bool left = false;
         for (float d = 0.1f; d <= ScanMax; d += 0.1f)
@@ -129,28 +130,8 @@ public sealed partial class Samurai
         return false;
     }
 
-    // 足元の島。床の縁や棚の間 (Fungle の保管庫) に立っていると足元の升がどの島にも入っていないことがあるので、近い島の升を 1 まで探す
-    private static int HomeIsland(Vector2 me)
-    {
-        int k = SolidMap.IslandAt(me.x, me.y);
-        if (k != 0) return k;
-        const float Step = 0.1f, Reach = 1f;
-        float best = float.MaxValue;
-        for (float y = -Reach; y <= Reach; y += Step)
-        for (float x = -Reach; x <= Reach; x += Step)
-        {
-            float d = x * x + y * y;
-            if (d >= best || d > Reach * Reach) continue;
-            int i = SolidMap.IslandAt(me.x + x, me.y + y);
-            if (i == 0) continue;
-            best = d;
-            k = i;
-        }
-        return k;
-    }
-
     // 着地点の体が壁や家具の当たり判定に重なるか (歩ける所の地図に載らない詰まった当たり判定の中を弾く)
-    private static bool Buried(Vector2 at)
+    internal static bool Buried(Vector2 at)
     {
         foreach (var col in Physics2D.OverlapCircleAll(at, LandClear, LandMask))
             if (col && !col.isTrigger) return true;
