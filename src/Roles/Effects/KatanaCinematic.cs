@@ -29,13 +29,14 @@ internal static unsafe partial class KatanaCinematic
     private static byte* _data;
     private static byte[] _copy;
     private static GCHandle _copyPin;
-    private static int _w, _h, _n, _fps, _nVic, _nPcs;
+    private static int _w, _h, _n, _fps, _nVic;
     private static long _blob;
     private static float _hw, _hh;
 
     private static uint U(int f, int k) => ((uint*)(_data + HeadBytes))[f * Rec + k];
     private static float F(int f, int k) => ((float*)(_data + HeadBytes))[f * Rec + k];
-    private static float Head(int k) => ((float*)(_data + 24))[k];
+    // 頭の数値は 'MRPK'+版+寸法 6 個 (20 バイト) の直後から
+    private static float Head(int k) => ((float*)(_data + 20))[k];
 
     // ---- 先読み ----
     private static readonly Thread[] _workers = new Thread[Workers];
@@ -109,6 +110,7 @@ internal static unsafe partial class KatanaCinematic
         HideOverlayCams(hud.UICamera);
         CamBegin();
         BuildVictims(victims, _root.layer);
+        BuildHits(victims, _root.layer);
         _hidAtk = atk.Visible;
         if (_hidAtk) atk.Visible = false;       // 攻撃者はコマの中に描いてある
         // 演出の間は本人をその場で止める (会議は本編が動きを決めるので戻す時に触らない)
@@ -132,7 +134,7 @@ internal static unsafe partial class KatanaCinematic
 
     internal static void Tick()
     {
-        if (!_on) { SoundTick(); return; }
+        if (!_on) { SoundTick(); if (_easing) EaseTick(); return; }
         try
         {
             if (GameClock.ShipGen != _shipGen || !GameClock.ShipAlive || !_atk || MeetingHud.Instance) { Teardown(); StopSound(); return; }
@@ -141,7 +143,7 @@ internal static unsafe partial class KatanaCinematic
             long t = (now - _start) * _fps * 1000 / System.Diagnostics.Stopwatch.Frequency + 500;
             int f = Math.Max((int)(t / 1000), _shown);
             if (_hold >= 0 && f > _hold) f = _hold;
-            if (f >= _n) { Teardown(); return; }
+            if (f >= _n) { Teardown(true); return; }
             Volatile.Write(ref _decodeNext, Math.Max(Volatile.Read(ref _decodeNext), f));
             if (f != _shown) Show(f);
             // 本編のキルの演出は倒した人を見える状態に・動ける状態に戻すので、閉じた後に倒れた時も戻し直す
@@ -177,7 +179,7 @@ internal static unsafe partial class KatanaCinematic
         }
         if (_data[0] != (byte)'M' || _data[3] != (byte)'K' || *(uint*)(_data + 4) != 1) { Close(); return false; }
         var h = (ushort*)(_data + 8);
-        _w = h[0]; _h = h[1]; _n = h[2]; _fps = h[3]; _nVic = h[4]; _nPcs = h[5];
+        _w = h[0]; _h = h[1]; _n = h[2]; _fps = h[3]; _nVic = h[4];
         _hw = Head(0); _hh = Head(1);
         _blob = *(uint*)(_data + 76);
         if (_fps <= 0 || _n <= 0) { Close(); return false; }
@@ -576,6 +578,7 @@ internal static unsafe partial class KatanaCinematic
     // ---- 本物のカメラを描いたカメラ (板が無傷だった最後のカメラ) に合わせる ----
     private static void CamBegin()
     {
+        EaseEnd(1f);
         var hud = Vanilla.Hud;
         _follow = hud ? hud.PlayerCam : null;
         _cam = _follow ? _follow.GetComponent<Camera>() : Camera.main;
@@ -604,6 +607,59 @@ internal static unsafe partial class KatanaCinematic
 
     private static bool _camSnapped;
 
+    // 最後のコマのカメラは本来の大きさの少し手前で終わるので、一度に戻すと画面が跳ぶ。0.2 秒で戻す
+    private const float EaseSec = 0.2f;
+    private static bool _easing;        // 出ていない時に毎フレーム Camera の生存を問わない
+    private static Camera _easeCam;
+    private static FollowerCamera _easeFollow;
+    private static float _easeSize, _easeRoll, _easeBase;
+    private static Vector2 _easeOffset, _easeBaseOffset;
+    private static long _easeStart;
+
+    private static void CamEaseOut()
+    {
+        if (!_cam || _shown < 0) { CamRestore(); return; }
+        _easeCam = _cam;
+        _easeFollow = _follow;
+        _easeSize = _cam.orthographicSize;
+        _easeRoll = F(_shown, 117) * (180f / MathF.PI);
+        _easeBase = _baseSize;
+        _easeOffset = _follow ? _follow.Offset : default;
+        _easeBaseOffset = _baseOffset;
+        _easeStart = System.Diagnostics.Stopwatch.GetTimestamp();
+        _follow = null;
+        _cam = null;
+        _easing = true;
+    }
+
+    private static void EaseTick()
+    {
+        if (GameClock.ShipGen != _shipGen || !GameClock.ShipAlive) { _easing = false; _easeCam = null; _easeFollow = null; return; }
+        float t = (float)((System.Diagnostics.Stopwatch.GetTimestamp() - _easeStart) / (double)System.Diagnostics.Stopwatch.Frequency / EaseSec);
+        EaseEnd(t);
+    }
+
+    // t ≥ 1 で本来の値に戻して終える
+    private static void EaseEnd(float t)
+    {
+        if (!_easing) return;
+        if (!_easeCam) { _easing = false; _easeCam = null; _easeFollow = null; return; }
+        if (t >= 1f)
+        {
+            _easeCam.orthographicSize = _easeBase;
+            _easeCam.transform.localRotation = _baseRot;
+            if (_easeFollow) _easeFollow.Offset = _easeBaseOffset;
+            _easing = false;
+            _easeCam = null;
+            _easeFollow = null;
+            return;
+        }
+        float k = t * t * (3f - 2f * t), j = 1f - k;
+        _easeCam.orthographicSize = _easeSize * j + _easeBase * k;
+        _easeCam.transform.localRotation = FxMath.RotZ(_easeRoll * j);
+        if (_easeFollow) _easeFollow.Offset = FxMath.V2(_easeOffset.x * j + _easeBaseOffset.x * k, _easeOffset.y * j + _easeBaseOffset.y * k);
+    }
+
     private static void CamRestore()
     {
         if (_cam)
@@ -616,12 +672,14 @@ internal static unsafe partial class KatanaCinematic
         _cam = null;
     }
 
-    private static void Teardown()
+    // ease = 最後まで流れて終わった時だけカメラを滑らかに戻す (打ち切りは一度に戻す)
+    private static void Teardown(bool ease = false)
     {
         if (_on) Plugin.Logger.LogInfo($"[KatanaCinematic] end shown={_shownCount} skipped={_skipped} ticks={_ticks} missed={_missed} main ms avg={(_shownCount > 0 ? _sumMs / _shownCount : 0):0.00} worst={_worstMs:0.00}");
         _on = false;
         StopWorker();
-        CamRestore();
+        if (ease) CamEaseOut();
+        else CamRestore();
         VictimsDestroy();
         if (_hidAtk && _atk) _atk.Visible = true;
         _hidAtk = false;
@@ -688,5 +746,5 @@ internal static unsafe partial class KatanaCinematic
         });
     }
 
-    internal static string Probe() => $"on={_on} shown={_shown} count={_shownCount} skipped={_skipped} missed={_missed} worst={_worstMs:0.00}ms n={_n} vic={_vicCount} pieces={_pcCount} sound[{(_voice && _voice.isPlaying ? $"{_voice.time:0.00}s" : "off")} muted={_muted.Length} clip={(bool)_clip}]";
+    internal static string Probe() => $"on={_on} shown={_shown} count={_shownCount} skipped={_skipped} missed={_missed} worst={_worstMs:0.00}ms n={_n} vic={_vicCount} pieces={_pcCount} {HitsProbe()} sound[{(_voice && _voice.isPlaying ? $"{_voice.time:0.00}s" : "off")} muted={_muted.Length} clip={(bool)_clip}]";
 }

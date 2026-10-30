@@ -7,10 +7,10 @@ namespace MoreRolesPlus.Roles;
 
 // 必殺技の演出の被害者。空間では本編の大きなクルーの絵 (やられの形) を本人の色で塗り、帽子とバイザーを頭に付けて、
 // 書き出した位置・回し・潰れで置く。手前の物 (攻撃者・刀・斬線) はコマを手前の型の割合でもう一度描いて被害者の上に戻す。
-// 入りの生の画面では、抜刀のコマで本物の服 (スキン) を消し、服の絵を斬線で 2 片にして書き出した動きで飛ばす
+// 入りの生の画面で服を斬り落とすのは KatanaCinematic.Pieces (円の一閃)
 internal static unsafe partial class KatanaCinematic
 {
-    private const int MaxVic = 5, MaxPieces = 8;
+    private const int MaxVic = 5;
     private const float KMsc = 150f / 210f, Px = 0.01f;
     private static readonly string[] PoseNames = { "stand", "shock", "curl", "recoil", "kneel", "spun" };
     // 立ち絵の画素 (y 上向き) → 各ポーズの絵の画素。帽子とバイザーは頭の置き場で固い板として写る (道具の網から求めた厳密なアフィン)
@@ -39,8 +39,6 @@ internal static unsafe partial class KatanaCinematic
         public readonly float[][] ItemCorners = new float[3][];   // 帽子の後ろ・バイザー・帽子の前の四隅 (立ち絵の画素)
         public readonly Rect[] ItemUv = new Rect[3];
         public int Pose = -2;
-        public SpriteRenderer Skin;
-        public bool SkinWas;
     }
 
     private static readonly Victim[] _vic = new Victim[MaxVic];
@@ -91,9 +89,6 @@ internal static unsafe partial class KatanaCinematic
             }
             BuildItems(v, layer);
             v.Go.SetActive(false);
-            var cos = pc.cosmetics;
-            v.Skin = cos && cos.skin ? cos.skin.layer : null;
-            v.SkinWas = v.Skin && v.Skin.enabled;
             _vic[_vicCount++] = v;
         }
     }
@@ -245,7 +240,6 @@ internal static unsafe partial class KatanaCinematic
         {
             var v = _vic[i];
             if (v == null) continue;
-            if (v.Skin && v.SkinWas) v.Skin.enabled = true;
             foreach (var (_, mesh, mat) in v.Items)
             {
                 if (mesh) UnityEngine.Object.Destroy(mesh);

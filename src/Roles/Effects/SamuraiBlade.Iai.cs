@@ -3,8 +3,8 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 居合の見た目。溜め (本人の画面だけ): 拳を腰の鯉口に添えて沈み、震えながらオーラが大きく白く焼ける。溜め切ると拳が光り、画面が脈打って暗む。
-// 放つ (全員の画面): 抜いた所で鯉口が光り、一振りは溜めた分だけ大きく前へ踏み出して太い三日月を残し、振り抜いた形で長く止まって切っ先が光る
+// 居合の見た目。溜め (本人の画面だけ): 鞘を出し、拳で柄を握って沈み、震えながらオーラが大きく白く焼ける。溜め切ると拳が光り、画面が脈打って暗む。
+// 放つ (全員の画面): 振りの前の 2 コマで鞘から刀が滑り出て鯉口が光り、一振りは溜めた分だけ大きく前へ踏み出して太い三日月を残し、振り抜いた形で長く止まって切っ先が光る
 internal sealed partial class SamuraiBlade
 {
     private const float IaiHold = 0.25f;   // 溜め切った居合で、振り抜いた形に足す止めの秒
@@ -76,7 +76,7 @@ internal sealed partial class SamuraiBlade
         p = new Pose
         {
             Lean = -5f * c, Sx = 1f + 0.10f * c, Sy = 1f - 0.12f * c, Turn = 1f, Hop = 0f, Dx = shake,
-            Fx = -0.06f, Fy = -0.15f, Fs = FxMath.Clamp01(0.3f + 4f * c), Blade = 200f, BladeA = 0f,
+            Fx = SayaX, Fy = SayaY, Fs = FxMath.Clamp01(0.3f + 4f * c), Blade = SayaA, BladeA = 1f,
             Aura = 0.2f + 0.8f * c,
         };
         bool full = c >= 1f;

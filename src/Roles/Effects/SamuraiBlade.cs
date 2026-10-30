@@ -71,13 +71,21 @@ internal sealed partial class SamuraiBlade
     // 歩く構え: 前のめりで刀を前へ寝かせる
     private const float WkFx = 0.27f, WkFy = -0.10f, WkBlade = 18f, WkLean = -9f;
 
-    // 抜刀: 縮んで後ろへ反り、腰の後ろに拳 (鯉口を切る) → 2 コマで刀を頭の上を越して前へ振り抜き (三日月)・伸びて浮く →
-    // 行き過ぎ → 着地で潰れる → 刀を立てて構え
+    // 鞘 (Resources/Icons/katana_saya.png・刀と同じ枠と握る所): 納めた刀と同じ所・同じ向きに置く。
+    // 正体が分かるので普段は出さず、抜く間・納める間・本人の画面の溜めの間だけ出す
+    private const float SayaA = 200f;                        // 納めた刀の向き (腰から後ろの下へ)
+    private const float SayaX = -0.06f, SayaY = -0.15f;      // 納めた時の握る所
+    private const float FwdX = 0.9397f, FwdY = 0.3420f;      // 鞘から抜ける向き (SayaA の逆 = 20 度)
+    private const float SayaFade = 0.15f;                    // 抜き終えてから鞘が消えるまでの秒
+    private const float IaiDraw = 2f * Frame;                // 居合で振りの前に鞘から滑り出る秒
+
+    // 抜刀: 縮んで後ろへ反り、拳が柄を握って鞘の向きに沿って刀を滑り出させる (鯉口を切る → 半ばまで) →
+    // 2 コマで刀を頭の上を越して前へ振り抜き (三日月)・伸びて浮く → 行き過ぎ → 着地で潰れる → 刀を立てて構え
     private static readonly Key[] DrawKeys =
     {
-        new(0.000f, 0, 0f, 1.00f, 1.00f, 0f, -0.04f, -0.15f, 0.0f, 200f, 0f, 0f),
-        new(0.067f, 1, 9f, 1.12f, 0.86f, 0f, -0.12f, -0.15f, 1.2f, 205f, 1f, 0.35f),
-        new(0.133f, 2, 10f, 1.13f, 0.85f, 0f, -0.12f, -0.14f, 1.0f, 206f, 1f, 0.45f),
+        new(0.000f, 0, 0f, 1.00f, 1.00f, 0f, SayaX, SayaY, 0.0f, SayaA, 1f, 0f),
+        new(0.067f, 1, 9f, 1.12f, 0.86f, 0f, SayaX + 0.08f * FwdX, SayaY + 0.08f * FwdY, 1.2f, SayaA, 1f, 0.35f),
+        new(0.133f, 2, 10f, 1.13f, 0.85f, 0f, SayaX + 0.30f * FwdX, SayaY + 0.30f * FwdY, 1.0f, SayaA, 1f, 0.45f),
         new(0.200f, 1, -13f, 0.88f, 1.16f, 0.08f, 0.33f, 0.10f, 1.1f, 32f, 1f, 1f, 0.05f),
         new(0.267f, 1, -15f, 0.93f, 1.09f, 0.04f, 0.37f, -0.02f, 1.0f, -22f, 1f, 1f, 0.06f),
         new(0.333f, 1, -6f, 1.13f, 0.87f, 0f, 0.30f, -0.07f, 1.0f, -12f, 1f, 0.8f, 0.04f),
@@ -85,24 +93,29 @@ internal sealed partial class SamuraiBlade
         new(0.533f, 1, StLean, 1.00f, 1.00f, 0f, StFx, StFy, 1.0f, StBlade, 1f, 0.45f),
     };
     // 抜刀の振り抜き (三日月): 鯉口から前へ (度・秒)
-    private const float DrawSmA0 = 206f, DrawSmA1 = 32f, DrawSmT0 = 0.133f, DrawSmT1 = 0.200f;
+    private const float DrawSmA0 = SayaA, DrawSmA1 = 32f, DrawSmT0 = 0.133f, DrawSmT1 = 0.200f;
 
-    // 納刀: 血振り (前の下へ鋭く払う) → 止め → 拳を腰へ・刀を後ろへ回して納め、カチリで小さく沈む → 拳が消える
+    // 納刀: 血振り (前の下へ鋭く払う) → 止め → 刀を後ろへ回して切っ先を鯉口に当て、鞘の向きに沿って滑り込ませる →
+    // カチリで小さく沈む → 拳と鞘が消える
     private static readonly Key[] SheatheKeys =
     {
         new(0.000f, 0, StLean, 1.00f, 1.00f, 0f, StFx, StFy, 1.0f, StBlade, 1f, 0.45f),
         new(0.067f, 1, -10f, 0.95f, 1.06f, 0f, 0.34f, -0.12f, 1.0f, -42f, 1f, 0.6f, 0.03f),
         new(0.200f, 2, -9f, 0.96f, 1.05f, 0f, 0.34f, -0.13f, 1.0f, -44f, 1f, 0.4f, 0.03f),
-        new(0.333f, 1, 3f, 1.02f, 0.98f, 0f, -0.08f, -0.13f, 1.0f, 196f, 1f, 0.2f),
-        new(0.400f, 1, 5f, 1.08f, 0.91f, 0f, -0.10f, -0.15f, 1.1f, 200f, 0.6f, 0.1f),
-        new(0.533f, 1, 0f, 1.00f, 1.00f, 0f, -0.06f, -0.15f, 0.0f, 200f, 0f, 0f),
+        new(0.333f, 1, 3f, 1.02f, 0.98f, 0f, SayaX + 0.40f * FwdX, SayaY + 0.40f * FwdY, 1.0f, SayaA, 1f, 0.2f),
+        new(0.400f, 1, 5f, 1.08f, 0.91f, 0f, SayaX - 0.01f * FwdX, SayaY - 0.01f * FwdY, 1.1f, SayaA, 1f, 0.1f),
+        new(0.533f, 1, 0f, 1.00f, 1.00f, 0f, SayaX, SayaY, 0.0f, SayaA, 0f, 0f),
     };
+    private const float SheatheSayaIn = 0.267f, SheatheSayaOut = 0.433f;   // 納刀で鞘が出始める秒・消え始める秒
     private const float SheatheSmA0 = StBlade, SheatheSmA1 = -42f, SheatheSmT0 = 0f, SheatheSmT1 = 0.067f;
 
     private readonly Samurai _role;
     private GameObject _root;
-    private Transform _rootTf, _gripTf, _fistTf;
-    private SpriteRenderer _sr, _fist;
+    private Transform _rootTf, _gripTf, _fistTf, _sayaTf;
+    private SpriteRenderer _sr, _fist, _saya;
+    // 鞘の濃さ・鞘を後ろへ引く長さ (鞘引き)・刀より手前に置くか (刀が中にある間)。居合で抜いた時刻
+    private float _sayaAlpha, _sayaBack, _iaiT = -10f;
+    private bool _sayaFront, _sayaOn;
     private bool _drawn, _hidden, _flip, _fallenTint, _swinging, _moving, _spent;
     private float _drawT = -10f;    // 抜く/納める動作を始めた時刻
     private float _inv = 1f;
@@ -127,6 +140,7 @@ internal sealed partial class SamuraiBlade
     {
         _drawn = drawn;
         _drawT = iai ? Time.time - (DrawKeys[^1].T + Frame) * SlowMo : Time.time;
+        _iaiT = drawn && iai ? Time.time : -10f;
         if (!drawn) _spent = false;
         if (drawn) { Ensure(); _sheatheSlow = 1f; }
         else StrikeSheathed();
@@ -210,9 +224,10 @@ internal sealed partial class SamuraiBlade
         var pc = _role.Player;
         if (!pc) return false;
         var blade = ButtonIcons.Load("katana_held", Ppu, FxMath.V2(GripPx / SpriteW, 1f - GripPy / SpriteH));
+        var saya = ButtonIcons.Load("katana_saya", Ppu, FxMath.V2(GripPx / SpriteW, 1f - GripPy / SpriteH));
         var fist = FxHands.GripSprite();
         var mat = FxHands.PlayerMat();
-        if (!blade || !fist || !mat) return false;
+        if (!blade || !saya || !fist || !mat) return false;
         int layer = pc.gameObject.layer;
         _root = new GameObject("MrpKatana") { layer = layer };
         _rootTf = _root.transform;
@@ -228,6 +243,13 @@ internal sealed partial class SamuraiBlade
         bgo.transform.localPosition = FxMath.V3(0f, 0f, 0.0006f);
         _sr = bgo.AddComponent<SpriteRenderer>();
         _sr.sprite = blade;
+        // 鞘は納めた刀と同じ置き方 (握る所が同じ枠の絵)。刀より奥/手前は WritePose で
+        var sgo = new GameObject("Saya") { layer = layer };
+        _sayaTf = sgo.transform;
+        _sayaTf.SetParent(_rootTf, false);
+        _saya = sgo.AddComponent<SpriteRenderer>();
+        _saya.sprite = saya;
+        _saya.enabled = false;
         var fgo = new GameObject("Fist") { layer = layer };
         _fistTf = fgo.transform;
         _fistTf.SetParent(_gripTf, false);
@@ -255,9 +277,13 @@ internal sealed partial class SamuraiBlade
         if (id >= 0 && id < Palette.PlayerColors.Length) PlayerMaterial.SetColors(id, _fist);
     }
 
+    // 列に入る時に見え方を確かめ直す (列の外では確かめないので、演出で隠された後の印が残っている。
+    // 残ったままだと抜く最初のコマの鞘と刀が出ない)
     private void Track()
     {
-        if (!Live.Contains(this)) Live.Add(this);
+        if (Live.Contains(this)) return;
+        if (_root) Check();
+        Live.Add(this);
     }
 
     private Color Tint(float a) => _fallenTint ? FxMath.Rgba(1f, 0.45f, 0.5f, a) : FxMath.Rgba(1f, 1f, 1f, a);
@@ -297,6 +323,7 @@ internal sealed partial class SamuraiBlade
         {
             _hidden = hidden;
             _sr.enabled = _fist.enabled = !hidden;
+            if (hidden) _saya.enabled = _sayaOn = false;
             if (hidden) { RestoreBody(); HideFx(); HideStrike(); }
         }
         if (!_swinging) _flip = pc.cosmetics && pc.cosmetics.FlipX;
@@ -307,6 +334,7 @@ internal sealed partial class SamuraiBlade
     private bool Busy(float now)
     {
         if ((now - _drawT) / SlowMo < 0.6f * _sheatheSlow || now < _dashUntil || LeapBusy(now)) return true;
+        if ((now - _iaiT) / SlowMo < IaiDraw + SayaFade) return true;
         if (this == LocalFollow && (SwipeInput.Dragging || _localStroke) && !_spent) return true;
         if (_powArmed || _lockOn) return true;
         if ((now - _repT) / SlowMo <= _repDur + 0.05f || ThrustBusy(now)) return true;
@@ -418,6 +446,7 @@ internal sealed partial class SamuraiBlade
         {
             var lp = LeapPose(now, pc);
             _swinging = true;
+            _sayaAlpha = 0f;
             if (!_root.activeSelf) _root.SetActive(true);
             _last = lp;
             WritePose(pc, lp, true);
@@ -429,9 +458,15 @@ internal sealed partial class SamuraiBlade
         Pose p;
         bool world = false;
         bool drawing = td < DrawKeys[^1].T;
+        float ti = (now - _iaiT) / SlowMo;
+        bool sliding = _drawn && ti < IaiDraw && !_lockOn;
+        _sayaAlpha = 0f;
+        _sayaBack = 0f;
+        _sayaFront = true;
         if (!_drawn && td >= SheatheKeys[^1].T && ChargePose(now, out var cp))
         {
             p = cp;
+            _sayaAlpha = 1f;
         }
         else if (!_drawn)
         {
@@ -445,11 +480,17 @@ internal sealed partial class SamuraiBlade
                 return false;
             }
             p = Eval(SheatheKeys, FxMath.Floor(td / Frame) * Frame);
+            _sayaAlpha = FxMath.Clamp01((td - SheatheSayaIn) / Frame) * (1f - FxMath.Clamp01((td - SheatheSayaOut) / (SheatheKeys[^1].T - SheatheSayaOut)));
             if (td >= SheatheSmT0 && td <= SheatheSmT1 + Frame) DrawSmear(SheatheSmA0, FxMath.Lerp(SheatheSmA0, SheatheSmA1, (td - SheatheSmT0) / (SheatheSmT1 - SheatheSmT0)), td > SheatheSmT1, 0.6f, false);
         }
         else if (drawing)
         {
-            p = Eval(DrawKeys, FxMath.Floor(td / Frame) * Frame);
+            float tf = FxMath.Floor(td / Frame) * Frame;
+            p = Eval(DrawKeys, tf);
+            // 鯉口を切る所で鞘を少し引き、半ばまで抜く所でさらに引く (鞘引き)。振り抜いた後に消える
+            _sayaBack = tf >= DrawKeys[2].T ? 0.07f : tf >= DrawKeys[1].T ? 0.03f : 0f;
+            _sayaFront = tf < DrawSmT1;
+            _sayaAlpha = 1f - FxMath.Clamp01((td - DrawSmT1) / SayaFade);
             if (td >= DrawSmT0 && td <= DrawSmT1 + Frame) DrawSmear(DrawSmA0, FxMath.Lerp(DrawSmA0, DrawSmA1, (td - DrawSmT0) / (DrawSmT1 - DrawSmT0)), td > DrawSmT1, 1f, false);
         }
         else if (_lockOn)
@@ -480,7 +521,7 @@ internal sealed partial class SamuraiBlade
             p = SwingPose(a, speed, prog, shownSweep);
             if (_strokePow > 0f) IaiLunge(ref p, a, prog);
             world = true;
-            if (inStroke)
+            if (inStroke && !sliding)
             {
                 DrawSmear(a0, a, false, 1f, true);
                 SpawnGhost(now);
@@ -519,12 +560,52 @@ internal sealed partial class SamuraiBlade
                 p = Stance(FxMath.Floor(now * 15f) / 15f);
             }
         }
+        if (_drawn && ti < IaiDraw + SayaFade && !_lockOn)
+        {
+            if (sliding)
+            {
+                // 居合: 振りの前の 2 コマで、柄を握った拳が鞘の向きに沿って刀を滑り出させる (三日月はまだ出さない)
+                int k = ti < Frame ? 0 : 1;
+                float d = k == 0 ? 0.24f : 0.50f;
+                p = new Pose
+                {
+                    Lean = 10f, Sx = 1.12f, Sy = 0.86f, Turn = 1f, Hop = 0f, Dx = 0f,
+                    Fx = SayaX + d * FwdX, Fy = SayaY + d * FwdY, Fs = 1.15f, Blade = SayaA, BladeA = 1f,
+                    Aura = FxMath.Max(p.Aura, 0.8f),
+                };
+                world = false;
+                _sayaBack = k == 0 ? 0.04f : 0.09f;
+                _sayaFront = true;
+                _sayaAlpha = 1f;
+            }
+            else
+            {
+                _sayaBack = 0.09f;
+                _sayaFront = false;
+                _sayaAlpha = 1f - FxMath.Clamp01((ti - IaiDraw) / SayaFade);
+            }
+        }
         if (now < _dashUntil) SpawnGhost(now);
         _swinging = world;
         if (!_root.activeSelf) _root.SetActive(true);
         _last = p;
         WritePose(pc, p, world);
         return true;
+    }
+
+    // 鞘は納めた刀の所に止めたまま (体の傾きは継がない = 刀と軸がずれない)。mirror = 振りの間 (根を返さない) に左を向いている
+    private void WriteSaya(bool mirror)
+    {
+        bool on = !_hidden && _sayaAlpha > 0.01f;
+        if (_sayaOn != on) _saya.enabled = _sayaOn = on;
+        if (!on) return;
+        float x = SayaX - _sayaBack * FwdX, y = SayaY - _sayaBack * FwdY;
+        // 刀の奥は拳の z から刀の差 (0.0006) だけ奥。中にある間は鞘を刀の手前へ
+        float z = _sayaFront ? -0.0027f : -0.0021f;
+        _sayaTf.localPosition = FxMath.V3(mirror ? -x : x, y, z);
+        _sayaTf.localRotation = FxMath.RotZ(mirror ? 180f - SayaA : SayaA);
+        _sayaTf.localScale = FxMath.V3(1f, mirror ? -1f : 1f, 1f);
+        _saya.color = Tint(_sayaAlpha);
     }
 
     private static void Mirror(ref Pose p)
@@ -560,6 +641,7 @@ internal sealed partial class SamuraiBlade
         _gripTf.localScale = FxMath.V3(1f, gsy, 1f);
         _fistTf.localScale = FxMath.V3(fs, fs, 1f);
         _sr.color = Tint(FxMath.Clamp01(p.BladeA));
+        WriteSaya(world && _flip);
         if (_hidden) return;
         var body = new Pose { Lean = p.Lean * m, Sx = p.Sx, Sy = p.Sy, Turn = p.Turn, Hop = p.Hop, Dx = p.Dx * m };
         WriteBody(pc, body);
