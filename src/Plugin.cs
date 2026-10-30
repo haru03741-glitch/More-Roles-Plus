@@ -135,6 +135,7 @@ public class Ticker : MonoBehaviour
         Roles.RewindWorldFx.Tick();
         Roles.RewindChargeFx.Tick();
         Roles.RewindCinematic.Tick();
+        Roles.KatanaCinematic.Tick();
         Terrain.RubbleBake.Tick(); t = Bridge.Perf.Lane(17, t);
         Terrain.ShadowPatch.Tick(); t = Bridge.Perf.Lane(18, t);
         Bridge.Burst.Tick(); t = Bridge.Perf.Lane(19, t);

@@ -13,6 +13,7 @@ using UnityEngine;
 //   firefloor.mat / flame.mat … MRP/Fire (床の照りと油の膜 / 立ち上がる炎。CPU が書いた升ごとの火の値から見た目を決める)
 //   playergrad.mat … MRP/PlayerGradient (2 色のグラデーションのクルー。シェーダだけを使う)
 //   riftwarp.mat … MRP/RiftWarp (空間の裂け目: 描き上がった画面を斬った線に沿ってせん断する)
+//   katanaplate.mat / katanaframe.mat / katanaflash.mat … MRP/Katana* (必殺技の演出: 生の画面を板に貼る / 事前に描いたコマ / 被害者の白の閃き)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -112,6 +113,21 @@ public static class MrpBundleBuilder
         AssetDatabase.DeleteAsset(riftPath);
         AssetDatabase.CreateAsset(new Material(riftShader) { name = "riftwarp" }, riftPath);
         Tag(riftPath);
+
+        foreach (string name in new[] { "KatanaPlate", "KatanaFrame", "KatanaFlash" })
+        {
+            Shader sh = AssetDatabase.LoadAssetAtPath<Shader>($"Assets/Shaders/{name}.shader");
+            if (sh == null)
+            {
+                Debug.LogError($"MrpBundleBuilder: {name} shader not found");
+                EditorApplication.Exit(2);
+                return;
+            }
+            string mp = $"{Folder}/{name.ToLowerInvariant()}.mat";
+            AssetDatabase.DeleteAsset(mp);
+            AssetDatabase.CreateAsset(new Material(sh) { name = name.ToLowerInvariant() }, mp);
+            Tag(mp);
+        }
 
         BreakSounds.ImportAll(Folder, BundleName);
 

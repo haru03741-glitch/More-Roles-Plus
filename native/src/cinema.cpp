@@ -154,6 +154,40 @@ MRP_API void mrp_cine_light(CineLightArgs* a)
     a->ok = 1;
 }
 
+// 1 チャンネルの PNG (コマの一部を切り抜いた物) を全画面の 1 バイトの面へ広げる。切り抜きの外は fill。
+// 使い道 = 事前に描いたコマの不透明度・被害者より手前の物の割合 (Unity の R8 テクスチャへそのまま渡す・下の行から)
+struct CinePlaneArgs
+{
+    const uint8_t* img; int32_t imgLen;   // PNG (灰 1ch)。無ければ null = 全部 fill
+    int32_t cropX, cropY;                 // 切り抜きの左上が全画面のどこか (画素・上から)
+    int32_t fill;                         // 切り抜きの外の値
+    uint8_t* out; int32_t w, h;           // 出力 (w × h・下の行から)
+    int32_t ok;
+};
+
+MRP_API void mrp_cine_plane(CinePlaneArgs* a)
+{
+    a->ok = 0;
+    if (!a->out || a->w <= 0 || a->h <= 0) return;
+    memset(a->out, a->fill & 0xFF, (size_t)a->w * a->h);
+    if (a->img && a->imgLen > 0)
+    {
+        int pw, ph, n;
+        uint8_t* px = stbi_load_from_memory(a->img, a->imgLen, &pw, &ph, &n, 1);
+        if (!px) return;
+        for (int y = 0; y < ph; y++)
+        {
+            int sy = a->cropY + y;
+            if (sy < 0 || sy >= a->h) continue;
+            int x0 = a->cropX < 0 ? -a->cropX : 0;
+            int x1 = a->cropX + pw > a->w ? a->w - a->cropX : pw;
+            if (x1 > x0) memcpy(a->out + (size_t)(a->h - 1 - sy) * a->w + a->cropX + x0, px + (size_t)y * pw + x0, (size_t)(x1 - x0));
+        }
+        stbi_image_free(px);
+    }
+    a->ok = 1;
+}
+
 // 着せ替えの絵の頂点を、立ち絵の空間の格子 (コマごとに画面のどこへ行くか) から双線形で写す。
 // 飛ぶ時は、写した頂点の重心を中心に回転・拡大 (2x2) して中心を動かす (着せ替えはそれぞれ自分の中心で回る)
 struct CineWarpArgs

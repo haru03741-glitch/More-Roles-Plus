@@ -20,6 +20,7 @@ internal static class MrpBundle
     private const string FlameMatPath = "assets/generated/flame.mat";
     private const string PlayerGradMatPath = "assets/generated/playergrad.mat";
     private const string RiftWarpMatPath = "assets/generated/riftwarp.mat";
+    private static readonly string[] KatanaMatPaths = { "assets/generated/katanaplate.mat", "assets/generated/katanaframe.mat", "assets/generated/katanaflash.mat" };
 
     private static AssetBundle _bundle;
     private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq, _gradReq, _riftReq;
@@ -76,6 +77,8 @@ internal static class MrpBundle
     public static Shader PlayerGradientShader { get; private set; }
     // 空間の裂け目のせん断 (MRP/RiftWarp)
     public static Material RiftWarpMaterial { get; private set; }
+    // 必殺技の演出: 0 = 生の画面を板に貼る・1 = 事前に描いたコマ・2 = 被害者の白の閃き
+    public static readonly Material[] KatanaMaterials = new Material[3];
 
     public static bool Ready => TerrainMaterial;
 
@@ -89,6 +92,7 @@ internal static class MrpBundle
             else if (!FlameMaterial && !_fireFailed) TickFire();
             else if (!PlayerGradientShader && !_gradFailed) TickGradient();
             else if (!RiftWarpMaterial && !_riftFailed) TickRift();
+            else if (_katanaNext < KatanaMatPaths.Length && !_katanaFailed) TickKatana();
             if (_clipsLeft > 0) TickClips();
             return;
         }
@@ -186,6 +190,26 @@ internal static class MrpBundle
             Plugin.Logger.LogInfo($"bundle rift: shader={mat.shader.name} supported={mat.shader.isSupported}");
         }
         catch (Exception e) { Plugin.Logger.LogError($"bundle rift: {e}"); _riftFailed = true; }
+    }
+
+    private static AssetBundleRequest _katanaReq;
+    private static int _katanaNext;
+    private static bool _katanaFailed;
+
+    private static void TickKatana()
+    {
+        try
+        {
+            _katanaReq ??= _bundle.LoadAssetAsync(KatanaMatPaths[_katanaNext], Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_katanaReq.isDone) return;
+            var mat = _katanaReq.asset ? _katanaReq.asset.TryCast<Material>() : null;
+            _katanaReq = null;
+            if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {KatanaMatPaths[_katanaNext]}"); _katanaFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            KatanaMaterials[_katanaNext++] = mat;
+            Plugin.Logger.LogInfo($"bundle katana: shader={mat.shader.name} supported={mat.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle katana: {e}"); _katanaFailed = true; }
     }
 
     private static void TickClips()
