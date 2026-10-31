@@ -38,10 +38,11 @@ internal static class DuelBot
     private static bool _hooked;
     private const float ThinkEvery = 0.05f, MoveEvery = 0.25f;
     private const float AggroPace = 2.5f;     // 攻め気 1 で 1 回の考えごとに仕掛ける割合の倍率
-    private const float Reach = 1.7f;         // ここまで詰めて斬る (斬れる距離の内側)
+    private const float ReachIn = 0.3f;       // 斬れる距離よりこれだけ内側まで詰めて斬る
+    private static float Reach => Samurai.SlashReach - ReachIn;
     private const float ChargeDistance = 2.7f; // 居合を溜める間に保つ距離
     private const float Keep = 3.2f;           // インポスターが待ち時間の間に取る距離
-    private const float TongueNear = 2.1f;     // 立ち合い中のインポスターが詰める距離 (斬りの届く所の内側)
+    private static float TongueNear => Samurai.SlashReach - 0.2f; // 立ち合い中のインポスターが詰める距離 (斬りの届く所の内側)
     private const float RegenTo = 75f;          // 納めて離れた時、ここまで気が溜まったら戻る
     private const float FirstKill = 8f;
 
@@ -221,7 +222,7 @@ internal static class DuelBot
         if (b.StrikeAfterDash)
         {
             b.StrikeAfterDash = false;
-            if (d <= Reach + 0.5f)
+            if (d <= Reach + ReachIn)
             {
                 Strike(b, pc, s, dx, dy, now, 0f);
                 if (Roll(0.3f + 0.4f * T(b))) b.DashOutAt = b.NextStroke - StrokeGap(b) + 0.05f;

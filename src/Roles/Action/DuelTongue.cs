@@ -22,6 +22,13 @@ internal static class DuelTongue
     internal const float GuardLead = 0.15f;    // 振りの始めよりこれだけ前の押しまでは「受けた」とみなす (相手の振りは届いてから見えるので読みで押す・口を見てから振った時は斬れる側)
     internal const float Stagger = 0.5f;       // 舌を斬られたインポスターが何もできない秒
     private const float ResolveAt = ImpostorMaw.Open + ImpostorMaw.Extend;
+    // 刀が口と舌に触れたかの形 (足元の高さで比べる・口も刀も体の中心から同じだけ上なので差は打ち消し合う)
+    private const float MouthOff = 0.4f;   // 体の中心から口までの横の離れ
+    private const float MouthPad = 0.2f;   // 口の大きさ + 振っている間に動いた分
+    private const float TonguePad = 0.12f; // 舌の太さ + 振っている間に動いた分
+    private const float ThrustHalf = 0.15f; // 突きの刃の帯の半分の幅
+    private const float PopOut = 0.5f;     // 溜めの途中に斬られた舌が口から飛び出す長さ
+    private const int CutSteps = 12;
     private const float CooldownSlack = 0.15f;
     private const byte None = 255;
 
@@ -236,25 +243,27 @@ internal static class DuelTongue
     }
 
     // ホスト: サムライの振り (a0 から sweep 度・thrust = 突き) がこのサムライへ伸ばしている舌を斬るか、舌を出しかけたインポスターに受けられるか。
-    // 斬ったか受けられたインポスターを返す (その振りはそのインポスターに当てない)
+    // どちらも刀が舌か口に届いた時だけ (届き = 刀の切っ先・向き = 振った扇)。斬ったか受けられたインポスターを返す (その振りはそのインポスターに当てない)
     internal static byte HostStroke(Samurai sam, Vector2 me, float a0, float sweep, bool thrust, float secs)
     {
         if (_lashes == 0) return None;
         float now = Time.time;
         byte sid = sam.PlayerId;
+        float reach = thrust ? Samurai.SlashRange + Samurai.ThrustExtra - 0.2f : SamuraiBlade.BladeReach;
         for (int i = 0; i < 256; i++)
         {
             ref var l = ref Lashes[i];
             if (!l.On || l.S != sid) continue;
             var imp = Pc((byte)i);
             if (!Alive(imp)) continue;
+            // 口 = 体の舌を伸ばす向きの側 (絵は舌の向きで左右を決める)
             Vector2 at = imp.GetTruePosition();
-            float dx = at.x - me.x, dy = at.y - me.y;
-            float dist = FxMath.Sqrt(dx * dx + dy * dy);
-            if (dist > Reach + 0.8f || !Aimed(dx, dy, a0, sweep, thrust)) continue;
-            // 振りが始まった後に押していた = 振りを見て受けた
+            float ar = l.Ang * FxMath.Deg2Rad, co = FxMath.Cos(ar), si = FxMath.Sin(ar);
+            float mx = at.x + (co < 0f ? -MouthOff : MouthOff) - me.x, my = at.y - me.y;
+            // 振りが始まった後に押していた = 振りを見て受けた (刀が口に届いた時だけ)
             if (l.T0 >= now - secs - GuardLead)
             {
+                if (!Swept(mx, my, a0, sweep, thrust, reach + MouthPad)) continue;
                 l.On = false;
                 _lashes--;
                 HostGuard((byte)i, sid, sam);
@@ -262,31 +271,37 @@ internal static class DuelTongue
             }
             float age = now - l.T0;
             if (age < CutFrom || age > CutTo) continue;
+            // 今の舌 (口から伸びた分・溜めの途中は斬られた所まで飛び出す分) の上で、刀の通った所に一番口に近い点
+            float len = age < ImpostorMaw.Open ? PopOut : FxMath.Max(PopOut, Reach * FxMath.Clamp01((age - ImpostorMaw.Open) / ImpostorMaw.Extend));
+            float cut = -1f;
+            for (int k = 0; k <= CutSteps; k++)
+            {
+                float t = len * k / CutSteps;
+                if (!Swept(mx + co * t, my + si * t, a0, sweep, thrust, reach + TonguePad)) continue;
+                cut = t;
+                break;
+            }
+            if (cut < 0f) continue;
             l.On = false;
             _lashes--;
             StunUntil[i] = now + Stagger;
             CutCount++;
-            // 斬れた所 = 舌の線の上でサムライに一番近い所 (口から)
-            float ar = l.Ang * FxMath.Deg2Rad;
-            float along = (me.x - at.x) * FxMath.Cos(ar) + (me.y - at.y) * FxMath.Sin(ar);
-            Broadcast(Kind.Cut, (byte)i, sid, LenByte(FxMath.Clamp(along - 0.6f, 0.2f, Reach)));
+            Broadcast(Kind.Cut, (byte)i, sid, LenByte(FxMath.Clamp(cut, 0.2f, Reach)));
             return (byte)i;
         }
         return None;
     }
 
-    private static bool Aimed(float dx, float dy, float a0, float sweep, bool thrust)
+    // サムライから (dx, dy) の点を振りが通ったか。斬り = 届き reach の扇 (両端に Samurai.ArcPad)・突き = 線から ThrustHalf の帯
+    private static bool Swept(float dx, float dy, float a0, float sweep, bool thrust, float reach)
     {
+        if (dx * dx + dy * dy > reach * reach) return false;
+        float ar = a0 * FxMath.Deg2Rad, c = FxMath.Cos(ar), s = FxMath.Sin(ar);
+        if (thrust) return dx * c + dy * s > 0f && FxMath.Abs(dx * s - dy * c) <= ThrustHalf;
         float ta = FxMath.Atan2(dy, dx) * FxMath.Rad2Deg;
-        if (thrust)
-        {
-            float off = (ta - a0) % 360f;
-            if (off < 0f) off += 360f;
-            return off <= 25f || off >= 335f;
-        }
         float d = (sweep >= 0f ? ta - a0 : a0 - ta) % 360f;
         if (d < 0f) d += 360f;
-        return d <= FxMath.Abs(sweep) + 30f || d >= 330f;
+        return d <= FxMath.Abs(sweep) + Samurai.ArcPad || d >= 360f - Samurai.ArcPad;
     }
 
     private static void HostGuard(byte i, byte sid, Samurai sam)

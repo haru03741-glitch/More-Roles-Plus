@@ -34,8 +34,13 @@ public sealed partial class Samurai : RoleBase
     public static readonly FloatOpt CutRestoreTime = new("Samurai.CutRestoreTime", 30f, 5f, 120f, 5f) { When = () => CutRestore.Value == 1 };
 
     internal const float DrawTime = 0.6f;         // 抜刀/納刀の動作の長さ
-    private const float RangeSlack = 0.3f;        // 振っている間に相手が動いた分の余裕
-    private const float ArcPad = 15f;             // 掃引角の両端に足す当たりの余裕 (度)
+    private const float RangeSlack = 0.3f;        // 振っている間に相手が動いた分の余裕 (突き)
+    // 斬りの当たり = 刀の絵の切っ先が相手の体の縁に届く所まで (絵より遠い人には触れていないのに当たって見える)。
+    // 設定の斬れる距離は既定 2 からの差だけ伸び縮みさせる
+    private const float BodyPad = 0.35f;          // 相手の体の半分の幅
+    private const float SlashSlack = 0.15f;       // 振っている間に相手が動いた分の余裕 (斬り)
+    internal static float SlashReach => SamuraiBlade.BladeReach + BodyPad + SlashSlack + (SlashRange - 2f);
+    internal const float ArcPad = 15f;            // 掃引角の両端に足す当たりの余裕 (度)
     private const float DoorReachSlack = 0.25f;   // 扉の厚みの分 (刀の切っ先より少し先の扉まで斬れる)
     private const float Touching = 0.3f;          // これより近い人は向きによらず当たる
     private const int WinCheckMs = 500;
@@ -327,7 +332,7 @@ public sealed partial class Samurai : RoleBase
     {
         var p = Player;
         Vector2 me = p.GetTruePosition();
-        float reach = SlashRange + RangeSlack + (thrust ? ThrustExtra : 0f);
+        float reach = thrust ? SlashRange + RangeSlack + ThrustExtra : SlashReach;
         float tr = a0 * FxMath.Deg2Rad, tc = FxMath.Cos(tr), tsn = FxMath.Sin(tr);
         float span = FxMath.Abs(sweep);
         // 自分へ伸びている舌を斬ったか、舌を出しかけたインポスターに受けられたら、その人には当てない
@@ -391,7 +396,7 @@ public sealed partial class Samurai : RoleBase
         p.Data.Role && p.Data.Role.IsImpostor || RoleState.Of(p) is Samurai or { CanKill: true } or { IsKiller: true };
 
     // ホスト: 斬りを当てる。倒したら斬った数を数えて true (道の更新は呼んだ側)
-    private bool HostApply(PlayerControl target, int damage)
+    private bool HostApply(PlayerControl target, int damage, bool smash = false)
     {
         var p = Player;
         if (!p || !target || target.Data == null || target.Data.IsDead) return false;
@@ -400,7 +405,7 @@ public sealed partial class Samurai : RoleBase
         int dmg = fighter ? damage : left;
         // 倒す一振りだけキルとして確かめる (盾などに止められたら体力 1 で残す)
         if (left - dmg <= 0 && BeforeMurderEvent.Ask(p, target) != null) dmg = left - 1;
-        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg, start: fighter && dmg < left)) return false;
+        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg, start: fighter && dmg < left, smash: smash)) return false;
         bool impostor = target.Data.Role && target.Data.Role.IsImpostor;
         p.RpcMurderPlayer(target, true);
         Duel.HostLeave(target.PlayerId);
