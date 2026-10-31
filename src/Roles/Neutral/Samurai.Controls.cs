@@ -366,6 +366,8 @@ public sealed partial class Samurai
     }
 
     // 確かめ用
+    internal void DrawForTest() => SetDrawn(true, iai: true);
+
     internal bool SheatheForTest()
     {
         if (!Drawn || Time.time - _drawnAt < DrawTime) return false;

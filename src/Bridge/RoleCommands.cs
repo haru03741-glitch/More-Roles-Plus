@@ -130,7 +130,7 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("samurai", "[unlock [番号] | ultreset [番号] | tongue [番号 | slow <倍>] | door [list | cut <添字> [角度] | mend <添字>] | leaps | leap <dx> <dy> | sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | thrust <角度> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] [居合の段 1〜4] | hitfx <番号> <威力> [ko] | clash <番号> <番号> [lock] | clashwin <秒> | mash <回数>] 自分のサムライの状態 / ホストで道を決めた扱いにする (必殺技が撃てる) / 必殺技をもう一度撃てるように / 舌の一撃の状態・番号のインポスターがキルボタンを押した扱い / 扉の一覧・ホストで扉を斬る/戻す / 跳べる組と跳んだ記録 / その向きへ跳ぶ (跳べる所が無ければ ERR) / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 角度の向きへ外へ押し出した扱いにする (突き) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い) / ホストで二人のサムライを弾き合わせる (lock = すぐ鍔迫り合い) / ホストが斬りを待つ秒を伸ばす (0 = 既定) / 鍔迫り合いの連打を足す", (args, reply) =>
+        TestBridge.Register("samurai", "[unlock [番号] | ultreset [番号] | tongue [番号 | slow <倍>] | door [list | cut <添字> [角度] | mend <添字>] | leaps | leap <dx> <dy> | sheathe | draw | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | thrust <角度> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] [居合の段 1〜4] | hitfx <番号> <威力> [ko] | clash <番号> <番号> [lock] | clashwin <秒> | mash <回数>] 自分のサムライの状態 / ホストで道を決めた扱いにする (必殺技が撃てる) / 必殺技をもう一度撃てるように / 舌の一撃の状態・番号のインポスターがキルボタンを押した扱い / 扉の一覧・ホストで扉を斬る/戻す / 跳べる組と跳んだ記録 / その向きへ跳ぶ (跳べる所が無ければ ERR) / 納刀 / 振らずに抜いた状態にする (この端末だけ) / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 角度の向きへ外へ押し出した扱いにする (突き) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い) / ホストで二人のサムライを弾き合わせる (lock = すぐ鍔迫り合い) / ホストが斬りを待つ秒を伸ばす (0 = 既定) / 鍔迫り合いの連打を足す", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -220,6 +220,7 @@ internal static class RoleCommands
             {
                 if (!sm.SheatheForTest()) { reply($"ERR samurai sheathe {sm.Probe()}"); return; }
             }
+            else if (p.Length >= 1 && p[0] == "draw") sm.DrawForTest();
             else if (p.Length >= 1 && p[0] == "leaps")
             {
                 reply($"OK samurai leaps {Roles.Neutral.Samurai.DescribeLeap()}");

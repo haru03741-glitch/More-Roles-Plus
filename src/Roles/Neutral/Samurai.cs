@@ -65,6 +65,10 @@ public sealed partial class Samurai : RoleBase
 
     // 抜いているか (全員の端末で持つ)・抜いた時刻 (動作の間は振れない)
     internal bool Drawn { get; private set; }
+
+    // 刀を抜いているサムライの数 (全員の端末)。インポスターのキルボタンを舌にするかを毎 FixedUpdate 比べる口 (0 なら探さない)。
+    // 試合の替わり目で数がずれても、探す回数が増えるだけで答えは変わらない
+    internal static int DrawnCount;
     private float _drawnAt = -10f;
     private float _sheathedAt = -10f; // 納めた時刻 (居合の溜めの上限をホストが見る)
     // ホストが数える値。本人の端末には知らせで写す。時戻しで戻る
@@ -103,6 +107,7 @@ public sealed partial class Samurai : RoleBase
     {
         if (Drawn == drawn) return;
         Drawn = drawn;
+        DrawnCount = Math.Max(DrawnCount + (drawn ? 1 : -1), 0);
         // 居合は抜く動作を済ませた扱い (丸めで「まだ抜いている途中」に見えないよう少し前へ)
         _drawnAt = iai ? Time.time - DrawTime - 0.05f : Time.time;
         if (!drawn) _sheathedAt = Time.time;
@@ -114,6 +119,7 @@ public sealed partial class Samurai : RoleBase
     // 倒れて刀を片付けた (全員の端末で)。刀は鞘に戻した扱いにして、生き返った後の一振りを居合で抜き直す (抜き直しで刀を作り直す)
     internal void OnBladeLost()
     {
+        if (Drawn) DrawnCount = Math.Max(DrawnCount - 1, 0);
         Drawn = false;
         _iaiStroke = false;
         _sheathedAt = Time.time;

@@ -89,6 +89,9 @@ internal static class DuelTongue
         _lashes = 0;
     }
 
+    // 舌の相手を探すか (組がある・刀を抜いたサムライがいる)
+    private static bool Watching => Duel.Any || Samurai.DrawnCount > 0;
+
     private static PlayerControl Pc(byte id) => GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null;
 
     private static bool Alive(PlayerControl p) => p && p.Data != null && !p.Data.IsDead && !p.Data.Disconnected;
@@ -96,10 +99,11 @@ internal static class DuelTongue
     private static bool IsImpostor(PlayerControl p) => p.Data.Role && p.Data.Role.IsImpostor;
 
     // このインポスターが舌で戦えるサムライ。同じ組のサムライのうち一番近い人。
-    // 組の外のインポスターは、舌の届く所で戦っている (組に空きのある) サムライへ乱入できる
+    // 組の外のインポスターは、舌の届く所で戦っている (組に空きのある) サムライへ乱入でき、刀を抜いているサムライへは
+    // 立ち合いを挑む (抜いているサムライは本編のキルの一撃では倒れない。納めている時だけ不意打ちが効く)
     internal static PlayerControl FoeOf(PlayerControl p)
     {
-        if (!Duel.Any || !p) return null;
+        if (!Watching || !p) return null;
         byte me = p.PlayerId, g = Duel.GroupOf(me);
         // 組の外の人は毎 FixedUpdate 呼ばれるので、乱入の相手探しは 0.1 秒に 1 回 (覚えた答えを返す)
         long tick = Environment.TickCount64;
@@ -120,6 +124,17 @@ internal static class DuelTongue
             int n = Duel.CountOf(k);
             if (n == 0 || n >= Duel.MaxMembers) continue;
             for (int i = 0; i < n; i++) Closer(Duel.MemberOf(k, i), me, a, ref best, ref bestD);
+        }
+        // 組の外で刀を抜いているサムライ
+        if (Samurai.DrawnCount > 0 && GameData.Instance)
+        {
+            var all = GameData.Instance.AllPlayers;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var info = all[i];
+                if (info == null || Duel.InDuel(info.PlayerId) || RoleState.Of(info.PlayerId) is not Samurai { Drawn: true }) continue;
+                Closer(info.PlayerId, me, a, ref best, ref bestD);
+            }
         }
         _outside = bestD <= Reach * Reach ? best : null;
         _outsideFor = me;
@@ -163,7 +178,7 @@ internal static class DuelTongue
     internal static bool OverrideTarget(ref PlayerControl target)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || !Duel.Any) return false; // どこにも組が無ければ比べるだけ (毎 FixedUpdate)
+        if (!lp || !Watching) return false; // どこにも組が無く刀を抜いた人もいなければ比べるだけ (毎 FixedUpdate)
         var foe = FoeOf(lp);
         if (!foe) return false;
         Vector2 a = lp.GetTruePosition(), b = foe.GetTruePosition();
@@ -176,7 +191,7 @@ internal static class DuelTongue
     internal static bool OnClick(KillButton button)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || !Duel.Any || !FoeOf(lp)) return true;
+        if (!lp || !Watching || !FoeOf(lp)) return true;
         if (!button.isActiveAndEnabled || button.isCoolingDown || !lp.CanMove || !button.currentTarget || DuelTumble.Busy(lp.PlayerId)) return false;
         PressCall.Send(0);
         lp.SetKillTimer(Cooldown);
