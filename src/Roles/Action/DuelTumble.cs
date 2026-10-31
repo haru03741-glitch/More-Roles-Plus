@@ -61,8 +61,10 @@ internal static partial class DuelTumble
     {
         if (a == t) return;
         // 吹き飛ばす一撃で倒れた: 飛んで落ちた所に倒れる。ふつうの当たりで倒れた時は本編のキルの演出のまま
+        // サムライに斬られて倒れた時は斬られた形の死体になり、片が飛ぶ (強い一撃ほど遠くへ)
         if (hp <= 0)
         {
+            if (RoleState.Of(a) is Neutral.Samurai && CutCorpse.CaptureHit(t, a, Duel.LastSmash)) return;
             if (Duel.LastSmash) KoLaunch(t, a);
             return;
         }

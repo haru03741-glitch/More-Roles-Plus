@@ -35,6 +35,7 @@ internal static class CutCorpse
         public float Delay, SlideT, FallT;
         public float Sx, Sy;           // 滑る向きと長さ
         public float Lx, Ly, Rot;      // 落ちた所 (中心からの差) と傾き (度)
+        public float Arc;              // 落ちる間に浮く高さ (飛ばされた時)
         public float Z;
         public bool Landed;
     }
@@ -64,7 +65,34 @@ internal static class CutCorpse
         foreach (byte id in victims) Capture(id);
     }
 
-    internal static bool Capture(byte id)
+    // 立ち合いでサムライに斬られて倒れる人 (全員の端末・倒れる知らせは本編のキルより先に届く)。
+    // 片は斬った人と反対へ飛ぶ (強い一撃ほど遠くへ)。2 本の線は一振りなので、欠片も間を置かずに離れる
+    internal static bool CaptureHit(byte id, byte from, bool strong)
+    {
+        var a = GameData.Instance ? GameData.Instance.GetPlayerById(from)?.Object : null;
+        var t = GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null;
+        float dx = 0f, dy = 0f;
+        if (a && t)
+        {
+            Vector2 at = a.GetTruePosition(), me = t.GetTruePosition();
+            dx = me.x - at.x;
+            dy = me.y - at.y;
+            float d = FxMath.Sqrt(dx * dx + dy * dy);
+            if (d > 0.01f) { dx /= d; dy /= d; }
+            else dx = dy = 0f;
+        }
+        return Capture(id, new Fling { Dx = dx, Dy = dy, Far = strong ? 1.8f : 0.35f, Arc = strong ? 0.6f : 0f, Quick = true });
+    }
+
+    private struct Fling
+    {
+        public float Dx, Dy, Far, Arc;
+        public bool Quick;
+    }
+
+    internal static bool Capture(byte id) => Capture(id, default);
+
+    private static bool Capture(byte id, Fling fl)
     {
         CheckShip();
         var pc = GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null;
@@ -81,6 +109,9 @@ internal static class CutCorpse
         var c0 = new Corpse { Id = id, Made = Time.time, Px = pp.x, Py = pp.y, FootX = b.center.x, FootY = b.min.y, H = h, Layer = pc.gameObject.layer };
         // バイザーの側 (+1 = 右向き)。袈裟はバイザーの側が高く背中の側が低い
         float face = cos.FlipX ? -1f : 1f;
+        // 斬った人がいれば、その人の側を前として斬る (頭と背中の片が斬った人と反対へ飛ぶ)
+        if (fl.Dx > 0.15f) face = -1f;
+        else if (fl.Dx < -0.15f) face = 1f;
         float ar = KesaDeg * FxMath.Deg2Rad;
         // 袈裟の線の上側の法線 (線はバイザーの側へ上る: 傾き = tan·face)
         float knx = -FxMath.Sin(ar) * face, kny = FxMath.Cos(ar);
@@ -136,7 +167,7 @@ internal static class CutCorpse
                 }
             }
             if (made == 0) { Kill(p); continue; }
-            Plan(c0, p, k, face);
+            Plan(c0, p, k, face, fl);
             c0.Pcs[k] = p;
         }
         if (c0.Pcs[0] == null && c0.Pcs[1] == null) return false;
@@ -209,7 +240,7 @@ internal static class CutCorpse
 
     // 片ごとの落ち方 (体の高さに合わせる)。頭と背中は袈裟に沿って背中の側へ滑り、切り口を下にして床へ。
     // 欠片は腰の一文字の後でバイザーの側へ滑って前へ落ちる。どちらも脚から離して置く (重なると脚と骨が読めない)
-    private static void Plan(Corpse c, Piece p, int k, float face)
+    private static void Plan(Corpse c, Piece p, int k, float face, Fling fl)
     {
         float h = c.H, back = -face;
         float ar = KesaDeg * FxMath.Deg2Rad;
@@ -226,7 +257,7 @@ internal static class CutCorpse
         }
         else
         {
-            p.Delay = 0.23f;     // 腰の横一文字の音 (袈裟の 7 コマ後)
+            p.Delay = fl.Quick ? 0.06f : 0.23f;     // 必殺技は腰の横一文字の音 (袈裟の 7 コマ後) に合わせる
             p.SlideT = 0.06f;
             p.FallT = 0.15f;
             p.Sx = face * 0.08f * h;
@@ -235,14 +266,28 @@ internal static class CutCorpse
             p.Ly = c.FootY + 0.1f * h - p.Cy;
             p.Rot = -10f * face;
         }
-        // 壁と家具の手前で止める (足元の高さで、落ちる先の横まで見る)
-        float fy = c.FootY + 0.05f * h;
+        // 一振りで斬られた時は切り口で滑る間を短く (すぐ飛ぶ)
+        if (fl.Quick) p.SlideT *= 0.35f;
+        // 飛ばされた分 (床の上を動く)。欠片は少し近くへ
+        float far = fl.Far * h * (k == 0 ? 1f : 0.8f);
+        float fx = p.Lx + fl.Dx * far, fy = fl.Dy * far;
+        if (fl.Arc > 0f)
+        {
+            p.Arc = fl.Arc * h;
+            p.FallT += 0.3f;
+        }
+        // 壁と家具の手前で止める (足元の高さで、床の上の行き先まで見る)
+        float y0 = c.FootY + 0.05f * h;
         for (int i = 0; i < 3; i++)
         {
-            float tx = p.Cx + p.Lx, pad = p.Lx >= 0f ? 0.15f : -0.15f;
-            if (!PhysicsHelpers.AnythingBetween(FxMath.V2(c.FootX, fy), FxMath.V2(tx + pad, fy), StopMask, false)) break;
-            p.Lx = i == 2 ? p.Sx : p.Lx * 0.5f;
+            float ex = p.Cx + fx - c.FootX, ey = fy, el = FxMath.Sqrt(ex * ex + ey * ey);
+            float pad = el > 0.01f ? 0.15f / el : 0f;
+            if (!PhysicsHelpers.AnythingBetween(FxMath.V2(c.FootX, y0), FxMath.V2(c.FootX + ex * (1f + pad), y0 + ey * (1f + pad)), StopMask, false)) break;
+            if (i == 2) { fx = p.Sx; fy = 0f; }
+            else { fx *= 0.5f; fy *= 0.5f; }
         }
+        p.Lx = fx;
+        p.Ly += fy;
     }
 
     private static void CheckShip()
@@ -329,7 +374,7 @@ internal static class CutCorpse
             float s = (t - t1) / p.FallT;
             float e = s * s;
             x = p.Sx + (p.Lx - p.Sx) * s;
-            y = p.Sy + (p.Ly - p.Sy) * e;
+            y = p.Sy + (p.Ly - p.Sy) * (p.Arc > 0f ? s : e) + p.Arc * FxMath.Sin(FxMath.PI * s);
             a = p.Rot * (0.06f + 1.04f * s);
         }
         else if (t < t3)
