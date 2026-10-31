@@ -1249,6 +1249,10 @@ RolePicker.Crew: Crew
 RolePicker.Impostor: Impostor
 RolePicker.Neutral: Neutral
 RolePicker.Close: Close
+RolePicker.SearchHint: Search roles
+RolePicker.NoMatch: No matching roles
+RolePicker.Pick: Pick a role
+RolePicker.Confirm: Press {role} again to shoot
 GuessKit.Hit: {name} was shot
 GuessKit.Missed: {name} guessed wrong and was shot
 # ── ナイスゲッサー (NiceGuesser) ──

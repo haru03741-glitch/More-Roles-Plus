@@ -1249,6 +1249,10 @@ RolePicker.Crew: クルー
 RolePicker.Impostor: インポスター
 RolePicker.Neutral: 第三陣営
 RolePicker.Close: 閉じる
+RolePicker.SearchHint: 役職名で探す
+RolePicker.NoMatch: 当てはまる役職がありません
+RolePicker.Pick: 役職を選んでください
+RolePicker.Confirm: {role} をもう一度押すと撃ちます
 GuessKit.Hit: {name} が撃ち抜かれた
 GuessKit.Missed: {name} は役職を外して撃たれた
 # ── ナイスゲッサー (NiceGuesser) ──

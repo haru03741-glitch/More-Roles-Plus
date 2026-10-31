@@ -51,6 +51,31 @@ internal static class RoleCommands
             reply($"OK tmpsprite default={defInfo} find={(sh ? sh.name : "-")}");
         });
 
+        TestBridge.Register("picker", "[open | type <語> | press <役職Id> | tab <crew|imp|neu> | close] 会議の役職を選ぶ画面 (ゲッサーの画面) を開いて操作し、並んでいる役職を返す (open は選んでも誰も撃たない)", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', 2, System.StringSplitOptions.RemoveEmptyEntries);
+            string cmd = a.Length > 0 ? a[0] : "", rest = a.Length > 1 ? a[1] : "";
+            switch (cmd)
+            {
+                case "open":
+                    if (!RolePicker.Open(r => Plugin.Logger.LogInfo($"picker picked {r.Id}"))) { reply("ERR picker open (会議中だけ・既に開いている)"); return; }
+                    break;
+                case "type":
+                    if (!RolePicker.TestType(rest)) { reply("ERR picker type (検索欄が無い)"); return; }
+                    break;
+                case "press":
+                    if (!RolePicker.TestPress(rest)) { reply($"ERR picker press {rest} (並んでいない)"); return; }
+                    break;
+                case "tab":
+                    RolePicker.TestTab(rest.StartsWith("imp") ? Team.Impostor : rest.StartsWith("neu") ? Team.Neutral : Team.Crew);
+                    break;
+                case "close":
+                    RolePicker.Close();
+                    break;
+            }
+            reply($"OK picker {RolePicker.Dump()}");
+        });
+
         TestBridge.Register("roles", "登録された役職と、今の割り当て", (_, reply) =>
         {
             string reg = string.Join(" ", Registry.Roles.Select(r => $"{r.Id}({r.Team},{r.Chance.Value}%x{r.Count.Value})"));
