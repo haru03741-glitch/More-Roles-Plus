@@ -35,6 +35,8 @@ internal sealed class RocketCannon
     private const float SinkAfter = 0.5f, SinkTime = 0.3f;
     private const float TrailEvery = 0.05f;
     private const float BodyToFeet = 0.3636f;   // 人の体の中心 (transform) から足元まで
+    // 飛ぶ姿勢: 頭を飛ぶ向きへ倒し、飛び出した直後は縦に伸びて少しずつ戻る (体の向きの縦横の倍率)
+    private const float FlyStretch0 = 1.28f, FlyStretch1 = 1.1f, FlySquash0 = 0.84f, FlySquash1 = 0.93f, FlySettle = 0.2f;
 
     // ---- 絵 ----
     private static Sprite _flash;
@@ -88,6 +90,11 @@ internal sealed class RocketCannon
     private bool _hidden, _flying, _done;
     private Vector2 _p0, _hold;
     private bool _hasHold;
+    // 飛ぶ姿勢で動かした相手の体と着せ替え (戻すために元の値を控える)
+    private Transform _poseBody, _poseCos;
+    private Vector3 _bodyPos0, _bodyScale0, _cosPos0, _cosScale0;
+    private float _poseCx, _poseCy, _poseAng;
+    private bool _posed;
 
     private RocketCannon(RoleBase owner) => _owner = owner;
 
@@ -148,6 +155,7 @@ internal sealed class RocketCannon
         _flying = true;
         _lastTrail = 0f;
         Show();
+        BeginPose();
         var m = Muzzle(dir);
         if (_flashTf)
         {
@@ -167,6 +175,7 @@ internal sealed class RocketCannon
     internal void Landed()
     {
         _flying = false;
+        EndPose();
         Show();
     }
 
@@ -319,6 +328,7 @@ internal sealed class RocketCannon
         else
         {
             _hasHold = false;
+            if (_posed) PoseFly(Time.time - _fireStart);
             if (_flying && _target && Time.time - _lastTrail >= TrailEvery)
             {
                 _lastTrail = Time.time;
@@ -403,6 +413,76 @@ internal sealed class RocketCannon
         _handR.transform.position = FxMath.V3(body.x + HandDx + ox, body.y + HandDy - oy, z);
     }
 
+    // ---- 飛ぶ姿勢 ----
+
+    // 相手の体と着せ替えを、体の絵の中心のまわりに回せるように控える (名札は回さない)
+    private void BeginPose()
+    {
+        if (_posed || !_target || !_target.cosmetics) return;
+        var root = _target.transform;
+        _poseBody = root.Find("BodyForms");
+        _poseCos = _target.cosmetics.transform;
+        if (_poseBody) { _bodyPos0 = _poseBody.localPosition; _bodyScale0 = _poseBody.localScale; }
+        _cosPos0 = _poseCos.localPosition;
+        _cosScale0 = _poseCos.localScale;
+        float sc = root.localScale.y;
+        if (sc < 0.01f) sc = 1f;
+        var bodyRef = _target.cosmetics.currentBodySprite;
+        var body = bodyRef != null ? bodyRef.BodySprite : null;
+        if (body)
+        {
+            Vector3 c = body.bounds.center, r = root.position;
+            _poseCx = (c.x - r.x) / sc;
+            _poseCy = (c.y - r.y) / sc;
+        }
+        else _poseCx = _poseCy = 0f;
+        _poseAng = _aim - 90f; // 体の上 (頭) が飛ぶ向きを向く角度
+        _posed = true;
+        PoseFly(0f);
+    }
+
+    private void PoseFly(float t)
+    {
+        if (!_target) { _posed = false; return; }
+        float k = EaseOut(t / FlySettle);
+        float sy = FlyStretch0 + (FlyStretch1 - FlyStretch0) * k, sx = FlySquash0 + (FlySquash1 - FlySquash0) * k;
+        // 中心 (cx, cy) を伸ばして回した先が元の中心に重なるようにずらす
+        var off = FxMath.RotateZ(_poseAng, _poseCx * sx, _poseCy * sy);
+        float ox = _poseCx - off.x, oy = _poseCy - off.y;
+        var rot = FxMath.RotZ(_poseAng);
+        if (_poseBody)
+        {
+            _poseBody.localPosition = FxMath.V3(_bodyPos0.x + ox, _bodyPos0.y + oy, _bodyPos0.z);
+            _poseBody.localRotation = rot;
+            _poseBody.localScale = FxMath.V3(_bodyScale0.x * sx, _bodyScale0.y * sy, _bodyScale0.z);
+        }
+        if (_poseCos)
+        {
+            _poseCos.localPosition = FxMath.V3(_cosPos0.x + ox, _cosPos0.y + oy, _cosPos0.z);
+            _poseCos.localRotation = rot;
+            _poseCos.localScale = FxMath.V3(_cosScale0.x * sx, _cosScale0.y * sy, _cosScale0.z);
+        }
+    }
+
+    private void EndPose()
+    {
+        if (!_posed) return;
+        _posed = false;
+        if (_poseBody)
+        {
+            _poseBody.localPosition = _bodyPos0;
+            _poseBody.localRotation = FxMath.RotZ(0f);
+            _poseBody.localScale = _bodyScale0;
+        }
+        if (_poseCos)
+        {
+            _poseCos.localPosition = _cosPos0;
+            _poseCos.localRotation = FxMath.RotZ(0f);
+            _poseCos.localScale = _cosScale0;
+        }
+        _poseBody = _poseCos = null;
+    }
+
     // ---- 作る・消す ----
 
     private bool Build(int color)
@@ -460,6 +540,7 @@ internal sealed class RocketCannon
     private void Remove()
     {
         _done = true;
+        EndPose();
         Show();
         if (_root) Object.Destroy(_root);
         if (_handL) Object.Destroy(_handL);
