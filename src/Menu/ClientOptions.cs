@@ -41,6 +41,7 @@ internal static class ClientOptions
     public static ConfigEntry<bool> AutoPlayAgain { get; private set; }
     public static ConfigEntry<bool> Reconnect { get; private set; }
     public static ConfigEntry<bool> Spectate { get; private set; }
+    public static ConfigEntry<bool> WatchDuels { get; private set; }
     public static ConfigEntry<bool> SabotageFlash { get; private set; }
     public static ConfigEntry<bool> SabotageAlarm { get; private set; }
     public static ConfigEntry<bool> PreciseCooldown { get; private set; }
@@ -59,6 +60,7 @@ internal static class ClientOptions
         AutoPlayAgain = Add("AutoPlayAgain", false, new Text("ClientOptions.AutoReturn"), null);
         Reconnect = Add("Reconnect", true, new Text("ClientOptions.AutoRejoin"), null);
         Spectate = Add("Spectate", false, new Text("ClientOptions.Spectate"), Roles.Spectate.OnOptionChanged);
+        WatchDuels = Add("WatchDuels", true, new Text("ClientOptions.WatchDuels"), null);
         DarkMeeting = Add("DarkMeeting", false, new Text("ClientOptions.DarkMeetingScreen"), null); // 次の会議から
         SabotageFlash = Add("SabotageFlash", true, new Text("ClientOptions.SabotageFlash"), null); // 次のサボタージュから
         SabotageAlarm = Add("SabotageAlarm", true, new Text("ClientOptions.SabotageAlarm"), null);

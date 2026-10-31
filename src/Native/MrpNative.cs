@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 40;
+    internal const int Abi = 41;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -61,6 +61,7 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> CineFrame;
     internal static delegate* unmanaged[Cdecl]<void*, void> CineLight;
     internal static delegate* unmanaged[Cdecl]<void*, void> CineWarp;
+    internal static delegate* unmanaged[Cdecl]<void*, void> CinePlane;
 
     // 部品が読めたか。偽なら Plugin.Load が mod ごと起動しない
     internal static bool Loaded
@@ -212,6 +213,7 @@ internal static unsafe class MrpNative
         CineFrame = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_frame");
         CineLight = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_light");
         CineWarp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_warp");
+        CinePlane = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_plane");
     }
 
 #if !ANDROID

@@ -113,7 +113,7 @@ internal static class BuiltinCommands
             reply($"OK noclip hold={NoClip.Hold} on={NoClip.On}");
         });
 
-        TestBridge.Register("flip","[on|off|probe|map [count]|platform] 次に作る船を左右反転するか (省略で今の状態)・probe = 昇降床とはしごの位置・map = 地図を開く (count = 管理室の人数の地図)・platform = 昇降床に乗る", (args, reply) =>
+        TestBridge.Register("flip","[on|off|probe|map [count]|platform|zip top|zip bottom|pos] 次に作る船を左右反転するか (省略で今の状態)・probe = 昇降床とはしごとジップラインの位置・zip = ジップラインに乗る・pos = 自分の位置・map = 地図を開く (count = 管理室の人数の地図)・platform = 昇降床に乗る", (args, reply) =>
         {
             if (args == "on") MapFlip.Next = true;
             else if (args == "off") MapFlip.Next = false;
@@ -123,8 +123,34 @@ internal static class BuiltinCommands
                     reply($"PLATFORM pos={pf.transform.position} local={pf.transform.localPosition} L={pf.LeftPosition} R={pf.RightPosition} LU={pf.LeftUsePosition} RU={pf.RightUsePosition}");
                 foreach (var ld in UnityEngine.Object.FindObjectsOfType<Ladder>())
                     reply($"LADDER {ld.Id} top={ld.IsTop} pos={ld.transform.position}");
+                foreach (var z in UnityEngine.Object.FindObjectsOfType<ZiplineBehaviour>())
+                {
+                    var root = z.transform;
+                    while (root.parent) root = root.parent;
+                    reply($"ZIPLINE root={root.name} lossy={z.transform.lossyScale} hT={z.handleTop.position} hB={z.handleBottom.position} landT={z.landingPositionTop.position} landB={z.landingPositionBottom.position} dropT={z.dropPositionTop.position} dropB={z.dropPositionBottom.position} zpos={z.transform.position} tpLandT={z.transform.TransformPoint(z.landingPositionTop.position)} itpLandT={z.transform.InverseTransformPoint(z.landingPositionTop.position)}");
+                }
+                foreach (var zc in UnityEngine.Object.FindObjectsOfType<ZiplineConsole>())
+                    reply($"ZCONSOLE top={zc.atTop} pos={zc.transform.position}");
             }
             else if (args is "map" or "map count") Vanilla.Hud?.ToggleMapVisible(new MapOptions { Mode = args == "map" ? MapOptions.Modes.Normal : MapOptions.Modes.CountOverlay });
+            else if (args is "zip top" or "zip bottom")
+            {
+                var z = UnityEngine.Object.FindObjectOfType<ZiplineBehaviour>();
+                bool top = args == "zip top";
+                ZiplineConsole con = null;
+                foreach (var zc in UnityEngine.Object.FindObjectsOfType<ZiplineConsole>()) if (zc.atTop == top) con = zc;
+                var me = PlayerControl.LocalPlayer;
+                if (z && con && me)
+                {
+                    me.NetTransform.SnapTo(con.transform.position);
+                    z.Use(top, con);
+                }
+            }
+            else if (args == "pos")
+            {
+                var me = PlayerControl.LocalPlayer;
+                if (me) reply($"POS {me.transform.position} canMove={me.CanMove} inVent={me.inVent} onLadder={me.onLadder}");
+            }
             else if (args == "platform")
             {
                 var pf = UnityEngine.Object.FindObjectOfType<MovingPlatformBehaviour>();

@@ -98,6 +98,7 @@ public class Ticker : MonoBehaviour
         Menu.Keybinds.Tick();
         Dev.Dummy.Tick();
         Dev.DummyBrain.Tick();
+        Roles.DuelBot.Tick();
         Terrain.BreakNoise.Tick(); t = Bridge.Perf.Lane(2, t);
         Terrain.HammerSwing.Tick(); t = Bridge.Perf.Lane(3, t);
         Terrain.BombFuse.Tick(); t = Bridge.Perf.Lane(4, t);
@@ -120,12 +121,26 @@ public class Ticker : MonoBehaviour
         Terrain.FireFx.Tick(); t = Bridge.Perf.Lane(37, t);
         Fx.FxHands.Tick(); t = Bridge.Perf.Lane(16, t);
         Fx.EmoteArt.Tick();
+        Roles.SwipeInput.Tick();
+        Roles.Neutral.Samurai.LocalTick();
+        Roles.Watch.Tick();
+        Roles.SamuraiBlade.TickAll();
+        Roles.DuelHitFx.Tick();
+        Roles.DoorCutFx.Tick();
+        Roles.CutDoors.HostTick();
+        Roles.SpaceRifts.Tick();
+        Roles.RiftArt.Tick();
+        Roles.DuelDodge.Tick();
+        Roles.DuelTongue.Tick();
+        Roles.DuelShade.Tick();
+        UI.DuelHud.Tick();
         Menu.Emotes.Tick();
         Menu.MeetingStamps.Tick();
         Roles.PortalArt.Tick();
         Roles.RewindWorldFx.Tick();
         Roles.RewindChargeFx.Tick();
         Roles.RewindCinematic.Tick();
+        Roles.KatanaCinematic.Tick();
         Terrain.RubbleBake.Tick(); t = Bridge.Perf.Lane(17, t);
         Terrain.ShadowPatch.Tick(); t = Bridge.Perf.Lane(18, t);
         Bridge.Burst.Tick(); t = Bridge.Perf.Lane(19, t);
@@ -137,7 +152,7 @@ public class Ticker : MonoBehaviour
         Commands.ChatInput.Tick();
         Menu.ColorPicker.Tick();
         Menu.MeetingMemo.Tick();
-        Options.RolePage.Tick(); UI.UiWindow.Tick(); UI.Backdrop.Tick(); t = Bridge.Perf.Lane(23, t);
+        Options.RolePage.Tick(); UI.UiWindow.Tick(); UI.Backdrop.Tick(); UI.Aura.Tick(); t = Bridge.Perf.Lane(23, t);
         Options.CrowdPages.Tick();
         Options.GameModeSwitch.Tick();
         Menu.ChatNotes.Tick();
@@ -153,6 +168,7 @@ public class Ticker : MonoBehaviour
         Bridge.Perf.Lane(34, t);
         Terrain.DecompFx.LateTick();
         Roles.PortalArt.LateTick(); // 窓は人とカメラが動き終わった後に描く
+        Roles.RiftView.LateTick();
         Terrain.WaterSim.Kick(); // 預けた水の小刻みを描画の裏で回す (読み手は次に水の配列に触る時に終わりを待つ)
         Bridge.Perf.FrameLate();
     }

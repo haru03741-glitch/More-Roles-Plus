@@ -335,7 +335,7 @@ internal static class FireFx
         if (!FireSim.Ready || FireSim.BurningCount == 0) return;
         var lp = PlayerControl.LocalPlayer;
         if (!lp) return;
-        Vector2 me = lp.GetTruePosition();
+        Vector2 me = Roles.Watch.Ear(lp);
         float best = float.MaxValue, bx = 0f;
         int near = 0;
         var act = FireSim.ActiveCells;

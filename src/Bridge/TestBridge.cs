@@ -72,6 +72,7 @@ public static partial class TestBridge
             RoleCommands.Register();
             UiCommands.Register();
             Roles.RewindCinematic.Register();
+            Roles.KatanaCinematic.Register();
             Rules.RulesProbe.Register();
             Terrain.TerrainProbe.Register();
             InitHost();

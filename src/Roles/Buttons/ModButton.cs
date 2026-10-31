@@ -18,15 +18,15 @@ internal sealed class ModButton
 
     private static readonly List<ModButton> All = new();
     private static bool _hudShown = true;
-    private static bool _ghostShown;      // 死んでいて HUD が出ている (幽霊の能力のボタンだけ出す)
+    private static bool _ghostShown; // 幽霊の HUD が出ているか (幽霊のボタンだけを出す)
     private static int _tick;
     private static float _dt; // 物理の刻み (本編は 1/30 秒。0.02 秒の決め打ちだと実時間の 6 割で減る)。試合中は変わらないので 1 回だけ読む
 
     private readonly AbilityButton _button;
     private readonly Func<bool> _onClick;
     private readonly IntPtr _ptr;
-    private bool _ghost; // 死んでいる間だけ出すボタン (幽霊の能力)
     private bool _inGrid = true; // 右下の並びに居るか (並びの外のボタンは置いた先の画面と一緒に出入りする)
+    private bool _ghost;         // 幽霊の間だけ出るボタン (生きている間は隠す)
     private float _left;
     private float _effect, _effectMax; // 効果の残り (本編の技術者のベントと同じく、ボタンを満たす形と残りの秒で出す)
     private int _effectShown = -1;     // 最後に書いた残りの秒
@@ -145,7 +145,7 @@ internal sealed class ModButton
 
     // onClick の返り値 = 使えたか (false なら待ち時間を始めない)。
     // parent を渡すと右下の並びの外 (その子) に置く (位置は呼び手が決める・HUD と一緒に出入りするのは同じ)
-    public static ModButton Create(Lifespan life, Sprite icon, string label, float cooldown, Func<bool> onClick, Transform parent = null)
+    public static ModButton Create(Lifespan life, Sprite icon, string label, float cooldown, Func<bool> onClick, Transform parent = null, bool ghost = false)
     {
         var hud = Vanilla.Hud;
         if (!hud || !hud.AbilityButton || life.IsDead) return null;
@@ -166,9 +166,9 @@ internal sealed class ModButton
         if (uses) uses.gameObject.SetActive(false);
         b.SetCoolDown(0f, 1f);
         b.SetEnabled();
-        b.gameObject.SetActive(_hudShown);
+        b.gameObject.SetActive(ghost ? _ghostShown : _hudShown);
 
-        var mb = new ModButton(b, cooldown, onClick) { _inGrid = inGrid };
+        var mb = new ModButton(b, cooldown, onClick) { _inGrid = inGrid, _ghost = ghost };
         All.Add(mb);
         life.OnRelease(() =>
         {
@@ -197,6 +197,12 @@ internal sealed class ModButton
         UpdateHint();
         if (usable) _button.SetEnabled();
         else _button.SetDisabled();
+    }
+
+    // ボタンの下の名前を書き換える (切り替えのボタン)
+    public void SetLabel(string label)
+    {
+        if (_button && _button.buttonLabelText) _button.buttonLabelText.text = label;
     }
 
     // 残りの回数を出す (負なら回数の表示を隠す)
@@ -664,7 +670,9 @@ internal static class ModButtonClickPatch
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.SetHudActive), typeof(PlayerControl), typeof(RoleBehaviour), typeof(bool))]
 internal static class ModButtonHudPatch
 {
-    public static void Postfix(PlayerControl localPlayer, bool isActive) =>
-        ModButton.SetHudShown(isActive && localPlayer && localPlayer.Data != null && !localPlayer.Data.IsDead,
-            isActive && localPlayer && localPlayer.Data != null && localPlayer.Data.IsDead);
+    public static void Postfix(PlayerControl localPlayer, bool isActive)
+    {
+        bool dead = localPlayer && localPlayer.Data != null && localPlayer.Data.IsDead;
+        ModButton.SetHudShown(isActive && localPlayer && localPlayer.Data != null && !dead, isActive && dead);
+    }
 }

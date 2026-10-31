@@ -48,6 +48,9 @@ internal static class RoleArt
         return _own.Contains(id) ? ButtonIcons.Get("role_" + id) : null;
     }
 
+    // 二つ名のマーク (Resources/Icons/mark_<名前>.png)。役職の一覧で名前のすぐ右に付ける
+    public static Sprite Mark(Epithet e) => e == Epithet.None ? null : ButtonIcons.Get("mark_" + e);
+
     // 役職とマップの挿絵 (Resources/Illus/<id>.jpg・設定画面の右の欄の後ろに敷く)。無い役職は null (代わりの絵は出さない)。
     // 大きいので持つのは最近の数枚だけ (捨てる時はテクスチャごと)
     private static HashSet<string> _illus;

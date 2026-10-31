@@ -25,6 +25,20 @@ internal static class UiCommands
             reply($"OK uibtn {a[0]} {n}/{found.Count}");
         });
 
+        TestBridge.Register("watch", "[<番号> | self | next | duel] 幽霊の観戦: 状態 / その人を見る / 自分に戻る / 次の人のボタン / 戦いを見るのボタン (人が押したのと同じ道)", (args, reply) =>
+        {
+            var a = args.Trim();
+            if (a == "next" || a == "duel")
+            {
+                var b = a == "next" ? Roles.Watch.NextButton : Roles.Watch.DuelButton;
+                if (b == null) { reply("ERR watch: no button (not a ghost?)"); return; }
+                b.Press(KeyCode.None);
+            }
+            else if (a == "self") Roles.Watch.SetTarget(255);
+            else if (byte.TryParse(a, out byte id)) Roles.Watch.SetTarget(id);
+            reply(Roles.Watch.Describe());
+        });
+
         TestBridge.Register("tip","[<n> | out <n> | click <n>] 項目の説明の「?」の n 番目に当てる・外す・押す (画面に出ている物を上から数える)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);

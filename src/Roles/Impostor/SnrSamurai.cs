@@ -5,30 +5,30 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Impostor;
 
-// 侍 (インポスター): 1 試合に 1 度だけ「必殺技」で周りのクルーを全員斬る
-public sealed class Samurai : RoleBase
+// 侍 (インポスター・SNR 版。MRP の第三陣営のサムライとは別の役職): 1 試合に 1 度だけ「必殺技」で周りのクルーを全員斬る
+public sealed class SnrSamurai : RoleBase
 {
     public override Team Team => Team.Impostor;
     public override string Color => "#FF1919";
-    public override Text Name => new("Samurai.Name");
+    public override Text Name => new("SnrSamurai.Name");
     public override string Reading => "さむらい";
-    public override Text Blurb => new("Samurai.Blurb");
+    public override Text Blurb => new("SnrSamurai.Blurb");
     public override string Origin => "SNR";
-    public override HelpSection[] HelpSections => new HelpSection[] { new("Samurai.Slash", "snr_slash") };
-    public static readonly FloatOpt Range = new("Samurai.Range", 2f, 0.5f, 10f, 0.5f, "m");
+    public override HelpSection[] HelpSections => new HelpSection[] { new("SnrSamurai.Slash", "snr_slash") };
+    public static readonly FloatOpt Range = new("SnrSamurai.Range", 2f, 0.5f, 10f, 0.5f, "m");
 
     public override void OnAssigned()
     {
-        AddAbility(new Ability(new Text("Samurai.Slash"), "snr_slash")
+        AddAbility(new Ability(new Text("SnrSamurai.Slash"), "snr_slash")
         {
             MaxUses = () => 1,
             OnUse = () => { AreaCall.Send(0); if (AmongUsClient.Instance.AmHost) Strike(Player); return true; },
         });
     }
 
-    private static readonly RemoteCall<byte> AreaCall = new("Samurai.Strike", Route.ToHost,
+    private static readonly RemoteCall<byte> AreaCall = new("SnrSamurai.Strike", Route.ToHost,
         (w, _) => w.Write((byte)0), r => r.ReadByte(),
-        (sender, _) => { if (RoleState.Of(sender) is Samurai && !sender.AmOwner) Strike(sender); });
+        (sender, _) => { if (RoleState.Of(sender) is SnrSamurai && !sender.AmOwner) Strike(sender); });
 
     // ホストの端末で: 周りの人を倒す
     private static void Strike(PlayerControl user)

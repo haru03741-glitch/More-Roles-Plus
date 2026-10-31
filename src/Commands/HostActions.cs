@@ -118,6 +118,29 @@ internal static class HostActions
         return new Text("HostActions.RoleChanged").With("name", target.Data.PlayerName).With("role", proto.Name);
     }
 
+    // 練習の相手 (ボット) を出す: /bot [samurai|impostor] [強さ 1〜9] ・ /bot off で全部止める
+    public static string Bot(string args)
+    {
+        var words = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length > 0 && (words[0] == "off" || words[0] == "stop"))
+            return new Text("HostActions.BotsStopped").With("n", DuelBot.Stop().ToString());
+        if (!InGame) return NotInGame;
+        if (!AmHost || Net.ServerKind.IsOfficial()) return new Text("HostActions.BotNotHere");
+        if (MeetingHud.Instance || ExileController.Instance) return NotInGame;
+        if (GameData.Instance.GetAvailableId() < 0) return new Text("HostActions.BotFull");
+        var kind = DuelBot.Kind.Samurai;
+        int level = 5;
+        foreach (var w in words)
+        {
+            if (int.TryParse(w, out int lv)) level = Math.Clamp(lv, 1, 9);
+            else if (w.StartsWith("i", StringComparison.OrdinalIgnoreCase) || w == "インポスター") kind = DuelBot.Kind.Impostor;
+            else if (w.StartsWith("s", StringComparison.OrdinalIgnoreCase) || w == "サムライ") kind = DuelBot.Kind.Samurai;
+        }
+        string name = DuelBot.Add(kind, level);
+        if (name == null) return new Text("HostActions.UnknownRole").With("roleNames", RoleNames());
+        return new Text("HostActions.BotAdded").With("name", name).With("role", (kind == DuelBot.Kind.Samurai ? FindRole("Samurai") : FindRole("Impostor"))?.Name ?? "");
+    }
+
     public static string Kill(string args)
     {
         if (!InGame) return NotInGame;

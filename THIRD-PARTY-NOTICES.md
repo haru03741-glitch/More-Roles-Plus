@@ -9,7 +9,7 @@ More Roles Plus 本体は GPL-3.0 です ([`LICENSE`](./LICENSE))。以下は別
 
 | Component | Author / Project | License | Where |
 |---|---|---|---|
-| FusionCore | All-Of-Us-Mods — [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) | GPL-3.0 | source, `Android/Launcher/` (git subtree, rebranded Android launcher) |
+| FusionCore | XtraCube / All-Of-Us-Mods — [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) | GPL-3.0 | source, `Android/Launcher/` (git subtree, rebranded Android launcher) |
 | BepInEx Fusion | All-Of-Us-Mods — [BepInExFusion](https://github.com/All-Of-Us-Mods/BepInExFusion) | LGPL-2.1 | bundled in the launcher APK (`Android/Launcher/fusionApp/src/main/assets/BepInEx-arm64.zip`) |
 | Il2CppInterop Fusion | All-Of-Us-Mods — [Il2CppInteropFusion](https://github.com/All-Of-Us-Mods/Il2CppInteropFusion) | LGPL-3.0 | bundled in the launcher APK (same `BepInEx-arm64.zip`; `Il2CppInterop.Runtime.dll` modified) |
 | BepInEx core libraries (HarmonyX, MonoMod, Mono.Cecil, Cpp2IL / LibCpp2IL / StableNameDotNet / WasmDisassembler, Disarm, AsmResolver, AssetRipper.CIL / AssetRipper.Primitives, Iced, Capstone.NET, SemanticVersioning, Microsoft.Extensions.*) | BepInEx & Andreas Pardeike — [HarmonyX](https://github.com/BepInEx/HarmonyX); 0x0ade — [MonoMod](https://github.com/MonoMod/MonoMod); Jb Evain — [Cecil](https://github.com/jbevain/cecil); Sam Byass — [Cpp2IL](https://github.com/SamboyCoding/Cpp2IL), [Disarm](https://github.com/SamboyCoding/Disarm); Washi — [AsmResolver](https://github.com/Washi1337/AsmResolver); ds5678 — [AssetRipper.CIL](https://github.com/AssetRipper/AssetRipper.CIL), [AssetRipper.Primitives](https://github.com/AssetRipper/AssetRipper.Primitives); [iced](https://github.com/icedland/iced); Ahmed Garhy — [Capstone.NET](https://github.com/9ee1/Capstone.NET); Adam Reeve — [semver.net](https://github.com/adamreeve/semver.net); Microsoft — [dotnet/runtime](https://github.com/dotnet/runtime) | MIT | bundled in the launcher APK (`core/` inside `BepInEx-arm64.zip`) |
@@ -25,13 +25,13 @@ More Roles Plus 本体は GPL-3.0 です ([`LICENSE`](./LICENSE))。以下は別
 ## FusionCore (Android launcher)
 
 The Android launcher in `Android/Launcher/` is a `git subtree` of
-[FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) by All-Of-Us-Mods (GPL-3.0), carrying the
+[FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) by XtraCube / All-Of-Us-Mods (GPL-3.0), carrying the
 launcher changes made in [End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful, GPL-3.0),
 with branding and package name changed for More Roles Plus. It stays under GPL-3.0; the full text is in
 [`Android/Launcher/LICENSE`](./Android/Launcher/LICENSE) and the tracked upstream commit is recorded in
 [`Android/Launcher/UPSTREAM.md`](./Android/Launcher/UPSTREAM.md).
 
-`Android/Launcher/` の Android ランチャーは All-Of-Us-Mods の [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) (GPL-3.0) を
+`Android/Launcher/` の Android ランチャーは XtraCube / All-Of-Us-Mods の [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) (GPL-3.0) を
 git subtree として取り込み、End K not で加えられた変更を重ねて、名前とパッケージ名を More Roles Plus 向けに変えたものです。
 
 ## BepInEx Fusion (LGPL-2.1) / Il2CppInterop Fusion (LGPL-3.0)

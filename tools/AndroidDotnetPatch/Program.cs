@@ -1,5 +1,6 @@
 // Patches the bundled runtime and loader assemblies so that the game's libraries are found as loaded
 // modules when the arm64 runtime runs under binary translation on an x86_64 emulator.
+// Ported from https://github.com/waffle-ful/Aeterna-End-K-not tools/AndroidDotnetPatch/Program.cs (GPL-3.0)
 //
 // Both System.Diagnostics.Process (Process.Modules) and MonoMod.Core (its own copy of the same parser)
 // build the module list from /proc/self/maps and keep only file mappings that carry both the read and the

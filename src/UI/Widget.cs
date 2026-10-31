@@ -657,7 +657,7 @@ internal sealed class UiScreen
         return go;
     }
 
-    internal const string BackName = "Back", FillName = "Fill", BadgeName = "Badge";
+    internal const string BackName = "Back", FillName = "Fill", BadgeName = "Badge", FrontName = "Front";
 
     // 描く順の起点。部品は深いほど後に描く
     public int BaseOrder;
@@ -677,8 +677,8 @@ internal sealed class UiScreen
             // 重ねる箱の子は、後の子ほど前の子の中身より手前に
             if (t.name == Layers.NodeName) { Order(c, order + 2 + i * Layers.OrderStep); continue; }
             // 箱の地 (Back) は中身と同じ深さだが中身より先に描き、地の塗り (Back の子) はその間に描く
-            // 角の点は箱の中身より手前に
-            Order(c, c.name == BackName ? order : c.name == FillName ? order + 1 : c.name == BadgeName ? order + 40 : order + 2);
+            // 角の点は箱の中身より手前に・飾りの星 (Front) は重ねた札の中身の何よりも手前に
+            Order(c, c.name == BackName ? order : c.name == FillName ? order + 1 : c.name == BadgeName ? order + 40 : c.name == FrontName ? order + 80 : order + 2);
         }
     }
 

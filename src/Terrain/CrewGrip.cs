@@ -91,6 +91,7 @@ internal static class CrewGrip
         public Pose(PlayerControl pc)
         {
             var root = pc.transform;
+            Roles.SamuraiBlade.ReleaseBody(pc.PlayerId);
             _body = root.Find("BodyForms");
             _cos = pc.cosmetics ? pc.cosmetics.transform : null;
             _names = root.Find("Names");

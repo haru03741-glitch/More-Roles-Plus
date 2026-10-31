@@ -147,6 +147,26 @@ internal static class SolidMap
         return _island[y * _w + x];
     }
 
+    // その点の島。床の縁や棚の間 (Fungle の保管庫) では足元の升がどの島にも入っていないことがあるので、reach までの近い島の升を探す
+    public static int IslandNear(float px, float py, float reach)
+    {
+        int k = IslandAt(px, py);
+        if (k != 0 || _island == null) return k;
+        const float Step = 0.1f;
+        float best = float.MaxValue;
+        for (float y = -reach; y <= reach; y += Step)
+        for (float x = -reach; x <= reach; x += Step)
+        {
+            float d = x * x + y * y;
+            if (d >= best || d > reach * reach) continue;
+            int i = IslandAt(px + x, py + y);
+            if (i == 0) continue;
+            best = d;
+            k = i;
+        }
+        return k;
+    }
+
     // from から dir へ max まで進んで最初に出会う島の番号 (無ければ 0)。壁の線の上から、その面の片側の床の高さを知る用
     public static int IslandAlong(Vector2 from, Vector2 dir, float max)
     {

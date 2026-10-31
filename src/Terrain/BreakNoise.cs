@@ -98,7 +98,7 @@ internal static class BreakNoise
 
         var kind = r.Kind == DamageKind.Explosion ? Sound.Boom : r.Hp <= 0 ? Sound.Crumble : Sound.Hit;
         var spec = Specs[(int)kind];
-        Vector2 me = lp.GetTruePosition();
+        Vector2 me = Roles.Watch.Ear(lp);
         float dx = r.Position.x - me.x, dy = r.Position.y - me.y;
         float d = MathF.Sqrt(dx * dx + dy * dy);
         if (d >= spec.Range) { Last = $"{kind} d={d:0.0} out of range"; return; }
@@ -167,7 +167,7 @@ internal static class BreakNoise
     {
         var lp = PlayerControl.LocalPlayer;
         if (!lp || MeetingHud.Instance) return;
-        Vector2 me = lp.GetTruePosition();
+        Vector2 me = Roles.Watch.Ear(lp);
         float dx = x - me.x, dy = y - me.y;
         float d = MathF.Sqrt(dx * dx + dy * dy);
         if (d >= range) return;
@@ -388,7 +388,7 @@ internal static class BreakNoise
 
         var lp = PlayerControl.LocalPlayer;
         if (!lp || MeetingHud.Instance) { Clear(); return; }
-        Vector2 me = lp.GetTruePosition();
+        Vector2 me = Roles.Watch.Ear(lp);
         for (int i = Marks.Count - 1; i >= 0; i--)
         {
             var m = Marks[i];

@@ -129,6 +129,40 @@ Survivor.WinCond: 試合の終わりに生きていれば、どの陣営が勝�
 Survivor.Tips: キルはできません。どの陣営にも狙われないように立ち回りましょう。
 Survivor.Quote: 誰が勝とうと、生きていれば勝ちだ。
 
+# ── サムライ (Samurai) ──
+Samurai.Name: サムライ
+Samurai.Blurb: 刀を抜き、斬るべき者を斬れ
+Samurai.Summary: 刀を振って斬る第三陣営です。戦える相手とは斬り合いになり、体力を削って倒します。
+Samurai.WinCond: 守の道: インポスターを決められた人数斬り、試合の終わりに生きていれば、勝った陣営と一緒に勝ち。修羅の道: 自分以外の生存者が 1 人以下になると一人勝ち
+Samurai.Draw: 居合と納刀
+Samurai.Draw.Help: 刀は普段は鞘の中で、見た目は普通のクルーと変わりません。PC なら左ボタンを、スマホなら画面の右半分を押したまま待つと居合を溜められ、そのままなぞると刀を抜きながら斬ります。溜めるほど強く斬れます。気が多く残っている時に居合で抜くと、斬った線が空間の裂け目として残ります。裂け目の両側の景色は、線に沿って互いに逆向きにずれて見えます。裂け目をまたいで立つと、体も裂け目のところで分かれて見えます。見え方が変わるだけで、立っている場所は変わりません。裂け目は斬った扉と同じ時に消えます。立ち合いの外から溜め切った居合を当てると、相手が誰でも一太刀で倒れます。PC なら右クリック、スマホなら鞘のボタンで刀を納めます。抜いている間は刀が全員に見え、会議が終わると刀は鞘に戻っています。
+Samurai.Draw.Short: 溜めてなぞると、抜きながら斬る
+Samurai.Slash: 斬る
+Samurai.Slash.Help: 刀を抜いている間は、PC なら左ボタンを押したままマウスを動かすと、スマホなら画面の右半分を指でなぞると、その動きに合わせて刀を振ります。速く振るほど強く斬れます。マウスや指を体から外へ真っすぐ素早く押し出すと突きになります。突きは斬りより遠くまで細く届き、突くと少し前へ踏み出します。納刀中に押し出せば、抜きながら突きます。戦う手段のない相手は一太刀で倒れます。インポスター・キルのできる第三陣営・ほかのサムライとは 1 対 1 の立ち合いになり、斬るたびに相手の体力が減って、0 になると倒れます。立ち合っているインポスターにキルされても、体力が半分より多く残っていれば倒れずに体力が 50 減ります。壁の向こうには届きません。PC の Shift (スマホは踏み込みのボタン) で、マウスの方向 (スマホは歩いている向き) へ一気に踏み込みます。その向きの先に、はしごや昇降床の反対側、崖の上や下のような歩いては行けない床があれば、踏み込む代わりにそこへ跳びます。刀を納めていても跳べます。マウスでは歩けないので、キーで歩きます。斬られた相手は立ち合いの間に数回だけ飛び退いて斬りを避けられます。ほかのサムライと刀がぶつかり合うと鍔迫り合いになり、PC なら左クリックか Space、スマホなら画面を連打して押し合います。 扉を斬ると壊れ、戻るまで閉められなくなります。扉のサボタージュでも閉まりません。
+Samurai.Slash.Short: なぞって刀を振り、体力を削る
+Samurai.Ki: 気
+Samurai.Ki.Help: 刀を振ったり踏み込んだりするたびに、足元の輪で表される気が減ります。ボタンや指を離さずに続けて振ると、2 振り目からは気の減りが少なくなります。気は刀を納めている間に速く、抜いて立ち止まっている間はゆっくり、歩いている間はさらにゆっくり溜まります。気を使い切ると刀が下がり、しばらく何もできなくなります。足元の輪の奥には斬った相手の数が刻まれます。
+Samurai.Ki.Short: 振るたびに気が減り、尽きると隙ができる
+Samurai.Paths: 守の道と修羅の道
+Samurai.Paths.Help: 始めは守の道です。インポスター以外を決められた人数斬ると修羅の道に堕ち、守の道の勝ちがなくなります。堕ちたことはあなたにだけ知らされます。
+Samurai.Paths.Short: 斬った相手で道が変わる
+Samurai.Tips: 刀を抜くと、見た人にはサムライだと分かります。クルーにとって、インポスターを斬ってくれるあなたは心強い味方です。
+Samurai.Quote: 抜いたからには、斬る。
+Samurai.PathKills: 守の道で斬るインポスターの数
+Samurai.FallKills: 修羅に堕ちるまでの、インポスター以外を斬った数
+Samurai.AnnounceFall: 修羅に堕ちたことを全員に知らせる
+Samurai.SlashRange: 斬れる距離
+Samurai.CutRestore: 斬った扉と斬り跡の戻り方
+Samurai.CutRestoreMeeting: 次の会議で戻る
+Samurai.CutRestoreSeconds: 時間で戻る
+Samurai.CutRestoreNever: ずっと壊れたまま
+Samurai.CutRestoreTime: 扉と斬り跡が戻るまでの秒数
+Samurai.PathDesc: 守の道: インポスターを斬った数 {n}/{max}
+Samurai.FallenDesc: 修羅の道: 自分以外の生存者を 1 人以下にしろ
+Samurai.PathNotice: <color=#4A8CFF>守の道を極めた。生き延びれば勝ちだ</color>
+Samurai.FellNotice: <color=#C0203A>修羅に堕ちた。もう誰とも勝てない</color>
+Samurai.FellAnnounce: <color=#C0203A>サムライが修羅に堕ちた</color>
+
 # ── 鷹の目 (Hawkeye) ──
 Hawkeye.Name: 鷹の目
 Hawkeye.Blurb: 遠くまで見通せる
@@ -373,6 +407,9 @@ Spectate.OnlyInLobby: ロビーで選んでください
 Spectate.WillSpectate: 次の試合を観戦します (幽霊で見るだけ)
 Spectate.WillPlay: 次の試合に参加します
 Spectate.Spectating: 観戦中です (幽霊で見るだけ)
+Watch.Next: 次の人
+Watch.Duel: 戦いを見る
+Watch.Watching: 観戦中: {name}
 Spectate.Hud: <color=#9FD8FF>観戦中: 幽霊として自由に見て回れます。会議では全員の役職が見えます</color>
 
 # ── LobbyView ──
@@ -574,6 +611,8 @@ Command.unban: BAN を解く
 Command.unban.Usage: <一覧の番号|フレンドコード>
 Command.cjclear: 前の試合にいた人の記録を消す (続けて入れない設定用)
 Command.say: 全員の画面にお知らせを出す
+Command.bot: 自分から攻めてくる練習の相手 (サムライかインポスター) を出す
+Command.bot.Usage: [samurai|impostor] [強さ 1〜9] / off
 Command.say.Usage: <文>
 Command.preset: 設定を名前を付けて保存 / 読み込み
 Command.preset.Usage: [save|load|del <名前>]
@@ -625,6 +664,10 @@ HostActions.RoleReserved: 次の試合で {name} を {role} にします
 HostActions.RoleChanged: {name} を {role} にしました
 HostActions.AlreadyDead: もう死んでいます
 HostActions.Killed: {name} を倒しました
+HostActions.BotAdded: 練習の相手 {name} ({role}) を出しました。/bot off で止まります
+HostActions.BotsStopped: 練習の相手を {n} 人止めました
+HostActions.BotNotHere: 練習の相手を出せるのは、フリープレイかカスタムサーバー・ローカルの部屋のホストだけです
+HostActions.BotFull: これ以上は出せません
 HostActions.NotDead: 生きています
 HostActions.Revived: {name} を生き返らせました
 HostActions.NoPlayerSeeId: {arg} 番の人はいません (/id で番号を確認)
@@ -756,6 +799,7 @@ ClientOptions.ShowRolesAtEnd: 試合の終わりに全員の役職を出す
 ClientOptions.AutoReturn: 試合が終わったら自動でロビーへ戻る
 ClientOptions.AutoRejoin: 回線で切れたら同じ部屋へ入り直す
 ClientOptions.Spectate: 次の試合を観戦する (幽霊で見るだけ)
+ClientOptions.WatchDuels: 幽霊の時、始まった斬り合いへカメラを自動で移す
 ClientOptions.DarkMeetingScreen: 会議の画面を暗い色にする
 ClientOptions.SabotageFlash: サボタージュの画面の点滅
 ClientOptions.SabotageAlarm: サボタージュの警報音
@@ -1886,13 +1930,13 @@ Robber.Name: 泥棒
 Robber.Blurb: その努力、いただくぜ
 Robber.Summary: キルした相手のタスクの進みを無かったことにするインポスターです。
 # ── 侍 (Samurai) ──
-Samurai.Name: 侍
-Samurai.Blurb: 一刀両断
-Samurai.Summary: 1 度だけ、周りのクルーを全員斬れるインポスターです。
-Samurai.Slash: 必殺技
-Samurai.Slash.Help: 周りのインポスター以外を全員キルします (1 試合に 1 回)。
-Samurai.Slash.Short: 周りを全員斬る
-Samurai.Range: 届く範囲
+SnrSamurai.Name: 侍 (SNR)
+SnrSamurai.Blurb: 一刀両断
+SnrSamurai.Summary: 1 度だけ、周りのクルーを全員斬れるインポスターです。
+SnrSamurai.Slash: 必殺技
+SnrSamurai.Slash.Help: 周りのインポスター以外を全員キルします (1 試合に 1 回)。
+SnrSamurai.Slash.Short: 周りを全員斬る
+SnrSamurai.Range: 届く範囲
 # ── 自爆魔 (SelfBomber) ──
 SelfBomber.Name: 自爆魔
 SelfBomber.Blurb: 道連れだ！
@@ -2761,3 +2805,7 @@ Vampire.CannotFixSabotage: 停電を直せない
 Vampire.InvisibleOnAdmin: アドミンに映らない
 Vampire.NoDeathOnVitals: バイタルで死んでも生きて見える
 Vampire.CannotUseDevice: 端末を使えない
+Keybinds.Dodge: MRP の回避 (立ち合いの間)
+Duel.DodgeHint: 回避 残り {n}
+Duel.LockMash: 鍔迫り合い！ 左クリックか SPACE を連打
+Duel.LockMashTouch: 鍔迫り合い！ 画面を連打

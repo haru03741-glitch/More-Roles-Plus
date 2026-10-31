@@ -19,10 +19,12 @@ internal static class MrpBundle
     private const string FireFloorMatPath = "assets/generated/firefloor.mat";
     private const string FlameMatPath = "assets/generated/flame.mat";
     private const string PlayerGradMatPath = "assets/generated/playergrad.mat";
+    private const string RiftWarpMatPath = "assets/generated/riftwarp.mat";
+    private static readonly string[] KatanaMatPaths = { "assets/generated/katanaplate.mat", "assets/generated/katanaframe.mat", "assets/generated/katanaflash.mat" };
 
     private static AssetBundle _bundle;
-    private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq, _gradReq;
-    private static bool _failed, _waterFailed, _fireFailed, _gradFailed;
+    private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq, _gradReq, _riftReq;
+    private static bool _failed, _waterFailed, _fireFailed, _gradFailed, _riftFailed;
 
     // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音・エモートの音 (BreakNoise と DecompSound が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
     private static readonly string[] ClipNames = MakeClipNames();
@@ -45,6 +47,11 @@ internal static class MrpBundle
             "noise_drone_loop",
             "noise_emote_clap_1", "noise_emote_clap_2", "noise_emote_clap_3", "noise_emote_land_1", "noise_emote_land_2",
             "noise_emote_push", "noise_emote_swish_1", "noise_emote_swish_2", "noise_emote_rustle",
+            "noise_samurai_swing_1", "noise_samurai_swing_2", "noise_samurai_swing_3", "noise_samurai_iai",
+            "noise_samurai_rend", "noise_samurai_rend_max", "noise_samurai_delayed_3", "noise_samurai_delayed_6", "noise_samurai_delayed_9",
+            "noise_samurai_hit", "noise_samurai_hit_ko", "noise_samurai_clash", "noise_samurai_lock_on", "noise_samurai_lock_break",
+            "noise_samurai_lock_loop", "noise_samurai_charge_loop", "noise_samurai_charge_full",
+            "noise_samurai_draw", "noise_samurai_slide", "noise_samurai_chin", "noise_samurai_dodge", "noise_samurai_dash", "noise_samurai_spent",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {
@@ -68,6 +75,10 @@ internal static class MrpBundle
     public static Material FlameMaterial { get; private set; }
     // クルーの 2 色のグラデーション (MRP/PlayerGradient)。人形ごとのマテリアルのシェーダだけを差し替えて使う
     public static Shader PlayerGradientShader { get; private set; }
+    // 空間の裂け目のせん断 (MRP/RiftWarp)
+    public static Material RiftWarpMaterial { get; private set; }
+    // 必殺技の演出: 0 = 生の画面を板に貼る・1 = 事前に描いたコマ・2 = 被害者の白の閃き
+    public static readonly Material[] KatanaMaterials = new Material[3];
 
     public static bool Ready => TerrainMaterial;
 
@@ -80,6 +91,8 @@ internal static class MrpBundle
             if (!WaterMaterial && !_waterFailed) TickWater();
             else if (!FlameMaterial && !_fireFailed) TickFire();
             else if (!PlayerGradientShader && !_gradFailed) TickGradient();
+            else if (!RiftWarpMaterial && !_riftFailed) TickRift();
+            else if (_katanaNext < KatanaMatPaths.Length && !_katanaFailed) TickKatana();
             if (_clipsLeft > 0) TickClips();
             return;
         }
@@ -162,6 +175,41 @@ internal static class MrpBundle
             Menu.CustomColors.MarkDirty(); // 先に塗った人をグラデーションで塗り直す
         }
         catch (Exception e) { Plugin.Logger.LogError($"bundle gradient: {e}"); _gradFailed = true; }
+    }
+
+    private static void TickRift()
+    {
+        try
+        {
+            _riftReq ??= _bundle.LoadAssetAsync(RiftWarpMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_riftReq.isDone) return;
+            var mat = _riftReq.asset ? _riftReq.asset.TryCast<Material>() : null;
+            if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {RiftWarpMatPath}"); _riftFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            RiftWarpMaterial = mat;
+            Plugin.Logger.LogInfo($"bundle rift: shader={mat.shader.name} supported={mat.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle rift: {e}"); _riftFailed = true; }
+    }
+
+    private static AssetBundleRequest _katanaReq;
+    private static int _katanaNext;
+    private static bool _katanaFailed;
+
+    private static void TickKatana()
+    {
+        try
+        {
+            _katanaReq ??= _bundle.LoadAssetAsync(KatanaMatPaths[_katanaNext], Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_katanaReq.isDone) return;
+            var mat = _katanaReq.asset ? _katanaReq.asset.TryCast<Material>() : null;
+            _katanaReq = null;
+            if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {KatanaMatPaths[_katanaNext]}"); _katanaFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            KatanaMaterials[_katanaNext++] = mat;
+            Plugin.Logger.LogInfo($"bundle katana: shader={mat.shader.name} supported={mat.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle katana: {e}"); _katanaFailed = true; }
     }
 
     private static void TickClips()

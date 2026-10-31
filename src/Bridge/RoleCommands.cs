@@ -130,6 +130,177 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
+        TestBridge.Register("samurai", "[unlock [番号] | ultreset [番号] | tongue [番号 | slow <倍>] | door [list | cut <添字> [角度] | mend <添字>] | leaps | leap <dx> <dy> | sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | thrust <角度> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] [居合の段 1〜4] | hitfx <番号> <威力> [ko] | clash <番号> <番号> [lock] | clashwin <秒> | mash <回数>] 自分のサムライの状態 / ホストで道を決めた扱いにする (必殺技が撃てる) / 必殺技をもう一度撃てるように / 舌の一撃の状態・番号のインポスターがキルボタンを押した扱い / 扉の一覧・ホストで扉を斬る/戻す / 跳べる組と跳んだ記録 / その向きへ跳ぶ (跳べる所が無ければ ERR) / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 角度の向きへ外へ押し出した扱いにする (突き) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い) / ホストで二人のサムライを弾き合わせる (lock = すぐ鍔迫り合い) / ホストが斬りを待つ秒を伸ばす (0 = 既定) / 鍔迫り合いの連打を足す", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (p.Length >= 2 && p[0] == "of" && byte.TryParse(p[1], out byte oid))
+            {
+                if (RoleState.Of(oid) is not Roles.Neutral.Samurai os) { reply("ERR samurai not Samurai"); return; }
+                reply($"OK samurai {os.Probe()}");
+                return;
+            }
+            if (p.Length >= 1 && (p[0] == "unlock" || p[0] == "ultreset"))
+            {
+                // unlock [番号] = ホストで道を決めた扱いにする (必殺技が撃てる) / ultreset [番号] = 必殺技をもう一度撃てるように戻す
+                var us = p.Length >= 2 && byte.TryParse(p[1], out byte uid) ? RoleState.Of(uid) as Roles.Neutral.Samurai : RoleState.Local as Roles.Neutral.Samurai;
+                if (us == null) { reply("ERR samurai not Samurai"); return; }
+                if (!(p[0] == "unlock" ? us.UnlockForTest() : us.ResetUltForTest())) { reply("ERR samurai (host only)"); return; }
+                reply($"OK samurai {p[0]} {us.Probe()}");
+                return;
+            }
+            if (p.Length >= 1 && p[0] == "rift")
+            {
+                // rift [cut <x> <y> <角度> [段] | here <角度> [段] | clear | tune <幅> <ずれ幅に掛ける値> [溝の半幅] [両端の細る長さ]] 空間の裂け目の一覧 / ホストで線を作る / 全部消す / せん断の見え方をその場で変える
+                var fl = System.Globalization.NumberStyles.Float;
+                if (p.Length >= 5 && p[1] == "cut" && float.TryParse(p[2], fl, inv, out float rx) && float.TryParse(p[3], fl, inv, out float ry) && float.TryParse(p[4], fl, inv, out float rd))
+                {
+                    int rt = p.Length >= 6 && int.TryParse(p[5], out int rti) ? rti : 3;
+                    if (!SpaceRifts.ForTest(rx, ry, rd, rt)) { reply("ERR samurai rift (host only)"); return; }
+                }
+                else if (p.Length >= 3 && p[1] == "here" && float.TryParse(p[2], fl, inv, out float hd) && PlayerControl.LocalPlayer)
+                {
+                    int rt = p.Length >= 4 && int.TryParse(p[3], out int rti) ? rti : 3;
+                    var hp = PlayerControl.LocalPlayer.GetTruePosition();
+                    if (!SpaceRifts.ForTest(hp.x, hp.y, hd, rt)) { reply("ERR samurai rift (host only)"); return; }
+                }
+                else if (p.Length >= 2 && p[1] == "clear" && !SpaceRifts.ClearForTest()) { reply("ERR samurai rift (host only)"); return; }
+                else if (p.Length >= 4 && p[1] == "tune" && float.TryParse(p[2], fl, inv, out float tw) && float.TryParse(p[3], fl, inv, out float ts))
+                    RiftView.Tune(tw, ts, p.Length >= 5 && float.TryParse(p[4], fl, inv, out float tg) ? tg : 0f, p.Length >= 6 && float.TryParse(p[5], fl, inv, out float tt) ? tt : 1f);
+                reply($"OK samurai rift {SpaceRifts.Describe()} art[{RiftArt.Describe()}] view[{RiftView.Describe()}]");
+                return;
+            }
+            if (p.Length >= 1 && p[0] == "tongue")
+            {
+                // tongue [<番号>] 舌の一撃の状態 / その人 (サムライと立ち合っているインポスター) がキルボタンを押した扱い (ホスト)
+                if (p.Length >= 3 && p[1] == "slow" && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float tsl)) ImpostorMaw.Slow = System.Math.Max(tsl, 0.1f);
+                else if (p.Length >= 2 && byte.TryParse(p[1], out byte tid) && !DuelTongue.ForTest(tid)) { reply($"ERR samurai tongue (host only / not dueling a samurai / cooling down) {DuelTongue.Describe()}"); return; }
+                reply($"OK samurai tongue {DuelTongue.Describe()}");
+                return;
+            }
+            if (p.Length >= 1 && p[0] == "door")
+            {
+                // door [list | cut <添字> [角度] | mend <添字>] 扉の一覧 / ホストで扉を斬った扱い / 戻す
+                if (p.Length >= 3 && (p[1] == "cut" || p[1] == "mend") && int.TryParse(p[2], out int di))
+                {
+                    float deg = p.Length >= 4 && float.TryParse(p[3], System.Globalization.NumberStyles.Float, inv, out float dd) ? dd : 90f;
+                    if (!CutDoors.ForTest(di, p[1] == "cut", deg)) { reply("ERR samurai door (host only / bad index)"); return; }
+                }
+                reply($"OK samurai door {CutDoors.Describe()} {(p.Length >= 2 && p[1] == "list" ? CutDoors.List() : "")}");
+                return;
+            }
+            if (p.Length >= 2 && p[0] == "slow" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float slow))
+            {
+                SamuraiBlade.SlowMo = System.Math.Clamp(slow, 0.1f, 20f);
+                reply($"OK samurai slow={SamuraiBlade.SlowMo}");
+                return;
+            }
+            if (p.Length >= 3 && p[0] == "hitfx" && byte.TryParse(p[1], out byte hid) && int.TryParse(p[2], out int hdmg))
+            {
+                var ht = GameData.Instance ? GameData.Instance.GetPlayerById(hid)?.Object : null;
+                if (!ht) { reply("ERR samurai hitfx no player"); return; }
+                DuelHitFx.Burst(ht, PlayerControl.LocalPlayer, hdmg, p.Length >= 4 && p[3] == "ko");
+                reply($"OK samurai hitfx {hid} {hdmg}");
+                return;
+            }
+            if (p.Length >= 3 && p[0] == "clash" && byte.TryParse(p[1], out byte ca) && byte.TryParse(p[2], out byte cb))
+            {
+                if (!Roles.Neutral.Samurai.ClashForTest(ca, cb, p.Length >= 4 && p[3] == "lock")) { reply("ERR samurai clash (host only / both must be Samurai)"); return; }
+                reply($"OK samurai clash {Roles.Neutral.Samurai.DescribeClash()}");
+                return;
+            }
+            if (p.Length >= 2 && p[0] == "clashwin" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float cw))
+            {
+                Roles.Neutral.Samurai.TestWindow = cw;
+                reply($"OK samurai clashwin={cw}");
+                return;
+            }
+            if (RoleState.Local is not Roles.Neutral.Samurai sm) { reply("ERR samurai not Samurai"); return; }
+            if (p.Length >= 1 && p[0] == "sheathe")
+            {
+                if (!sm.SheatheForTest()) { reply($"ERR samurai sheathe {sm.Probe()}"); return; }
+            }
+            else if (p.Length >= 1 && p[0] == "leaps")
+            {
+                reply($"OK samurai leaps {Roles.Neutral.Samurai.DescribeLeap()}");
+                return;
+            }
+            else if (p.Length >= 3 && p[0] == "leap"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float lx)
+                     && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float ly))
+            {
+                bool ok = sm.LeapForTest(lx, ly);
+                reply($"{(ok ? "OK" : "ERR")} samurai leap {Roles.Neutral.Samurai.DescribeLeap()}");
+                return;
+            }
+            else if (p.Length >= 3 && p[0] == "dash"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float ddx)
+                     && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float ddy))
+            {
+                if (!sm.DashForTest(ddx, ddy)) { reply($"ERR samurai dash {sm.Probe()}"); return; }
+            }
+            else if (p.Length >= 2 && p[0] == "pad") UI.SamuraiPad.ForceShow = p[1] == "on";
+            else if (p.Length >= 2 && p[0] == "mash" && int.TryParse(p[1], out int mn)) sm.MashForTest(mn);
+            else if (p.Length >= 4 && p[0] == "show"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float s0)
+                     && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float sw)
+                     && float.TryParse(p[3], System.Globalization.NumberStyles.Float, inv, out float ss))
+            {
+                float pow = -1f;
+                if (p.Length >= 5) float.TryParse(p[4], System.Globalization.NumberStyles.Float, inv, out pow);
+                int tier = 0;
+                if (p.Length >= 6) int.TryParse(p[5], out tier);
+                sm.ShowForTest(s0, sw, ss, pow, tier);
+            }
+            else if (p.Length >= 2 && p[0] == "thrust"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float ta))
+            {
+                float hold = 0f;
+                if (p.Length >= 3) float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out hold);
+                if (!sm.ThrustForTest(ta, hold)) { reply($"ERR samurai thrust not armed {sm.Probe()} swipe[{SwipeInput.Describe()}]"); return; }
+            }
+            else if (p.Length >= 4 && p[0] == "swipe"
+                     && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float a0)
+                     && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float a1)
+                     && float.TryParse(p[3], System.Globalization.NumberStyles.Float, inv, out float secs))
+            {
+                float hold = 0f;
+                if (p.Length >= 5) float.TryParse(p[4], System.Globalization.NumberStyles.Float, inv, out hold);
+                if (!sm.SwipeForTest(a0, a1, secs, hold)) { reply($"ERR samurai swipe not armed {sm.Probe()} swipe[{SwipeInput.Describe()}]"); return; }
+            }
+            reply($"OK samurai {sm.Probe()} swipe[{SwipeInput.Describe()} disarm={sm.Disarm}] padTaps={UI.SamuraiPad.Taps}");
+        });
+
+        TestBridge.Register("dodge", "[go | pad on|off | safe <秒>] 立ち合いの回避の状態 / 回避する (キーを押したのと同じ) / スマホの回避のボタンを PC でも出す / ホストの無敵の秒を伸ばす (0 = 既定)", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 1 && p[0] == "go" && !DuelDodge.ForTest()) { reply($"ERR dodge {DuelDodge.Describe()}"); return; }
+            if (p.Length >= 2 && p[0] == "pad") DodgePad.ForceShow = p[1] == "on";
+            if (p.Length >= 2 && p[0] == "safe") float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out DuelDodge.TestSafe);
+            reply($"OK dodge {DuelDodge.Describe()} duel[{Duel.Describe()}]");
+        });
+
+        TestBridge.Register("bot", "[samurai|impostor] [1〜9] | off | (空 = 状態) チャットの /bot と同じに練習の相手を出す / 止める", (args, reply) =>
+        {
+            string r = string.IsNullOrWhiteSpace(args) ? "" : Commands.HostActions.Bot(args.Trim());
+            reply($"OK bot {r} | {DuelBot.Describe()}");
+        });
+
+        TestBridge.Register("duelhud", "[show <自分> <相手> | sub <0|1> <番号> | join <番号> <番号> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko | intro | lock on | push <0〜1> | lockend <1 勝ち|2 負け|0 引き分け>] 立ち合いの HUD を当事者でなくても出す / 当たった扱い / K.O. を出す / 入りの幕をもう一度 / 鍔迫り合いの見た目だけ / 押し合いの割合 / 決着の題字", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length >= 3 && p[0] == "show" && byte.TryParse(p[1], out byte me) && byte.TryParse(p[2], out byte opp)) UI.DuelHud.TestShow(me, opp);
+            else if (p.Length >= 3 && p[0] == "hit" && int.TryParse(p[2], out int hp)) UI.DuelHud.TestHit(p[1] == "1", hp);
+            else if (p.Length >= 3 && p[0] == "sub" && int.TryParse(p[1], out int sj) && byte.TryParse(p[2], out byte sid)) UI.DuelHud.TestSub(sj, sid);
+            else if (p.Length >= 3 && p[0] == "join" && byte.TryParse(p[1], out byte ja) && byte.TryParse(p[2], out byte jb)) Duel.HostJoin(ja, jb);
+            else if (p.Length >= 1 && p[0] == "ko") UI.DuelHud.TestKo();
+            else if (p.Length >= 1 && p[0] == "intro") UI.DuelHud.TestIntro();
+            else if (p.Length >= 2 && p[0] == "lock") UI.DuelHud.ShowLock(p[1] == "on");
+            else if (p.Length >= 2 && p[0] == "push" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float k)) UI.DuelHud.TestPush(k);
+            else if (p.Length >= 2 && p[0] == "lockend" && int.TryParse(p[1], out int r)) UI.DuelHud.EndLock(r);
+            reply($"OK duelhud {UI.DuelHud.Describe()} {UI.DuelHud.DescribeKi()} duel[{Duel.Describe()}] shade[{DuelShade.Describe()}]");
+        });
+
         TestBridge.Register("architect", "[use | of <番号> ... | place x y | simuse <番号> <台|255> | smash <台> <叩いた人> <回数> | x y | here | check x y | fly | visit x y | land | go <番号> | open | close | draw x1 y1 x2 y2 ... | pipe x y] 自分の構築士の状態 / 自分 (構築士でない人) が足元の設計台を使う / 番号の人の構築士を相手にする / この端末だけで台を置く / 番号の人が台を使った (255 = やめた) と届いた扱い / 台が叩かれた (3 回目で壊れる) と届いた扱い /(x, y) に設計台を置く (待ち時間は使わない) / 足元に能力ボタンと同じ決まりで置く / 床の点 (x, y) に置けるか / 設計図を開かずに自分の端末だけでドローンを飛ばす・行き先を足す・降ろす / 設計台の手前へ移る / 設計図を開く・閉じる / 点の列をなぞった扱いにする (ゲージを使い壁を立てる) / (x, y) を軽く押した扱いにする (近くの壁の配管を裂く)", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

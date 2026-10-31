@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Dev;
 // 公式サーバーでは出さない。
 internal static class Dummy
 {
-    public static PlayerControl Spawn(int index)
+    public static PlayerControl Spawn(int index, string name = null)
     {
         var lp = PlayerControl.LocalPlayer;
         var pc = UnityEngine.Object.Instantiate(AmongUsClient.Instance.PlayerPrefab);
@@ -23,7 +23,7 @@ internal static class Dummy
 
         // 見た目 (色だけ・帽子などは無し)
         int color = id % Palette.PlayerColors.Length;
-        pc.SetName($"Dummy {id}");
+        pc.SetName(name ?? $"Dummy {id}");
         pc.SetColor(color);
         pc.SetHat(CosmeticsLayer.EMPTY_HAT_ID, color);
         pc.SetVisor(CosmeticsLayer.EMPTY_VISOR_ID, color);

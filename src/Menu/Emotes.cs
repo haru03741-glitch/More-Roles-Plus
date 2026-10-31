@@ -40,7 +40,7 @@ internal static class Emotes
     private static GameObject _ring;
     private static Sprite _backdropSprite;
     private static string _fanInfo = "";
-    private static bool _retry, _iconDim, _lobby;
+    private static bool _retry, _iconDim, _lobby, _armed;
     private static SpriteRenderer _mainIcon;
     private static readonly System.Collections.Generic.List<(Transform T, Vector3 Scale)> Hidden = new();
     private static int _frame;
@@ -51,10 +51,13 @@ internal static class Emotes
     // ロビーか試合の作業中 (会議・追放の間は出さない)
     private static bool InTasks => (ShipStatus.Instance || LobbyBehaviour.Instance) && !MeetingHud.Instance && !ExileController.Instance;
 
+    // 刀を抜いているサムライは体ごと構えているのでエモートを出さない
+    private static bool Armed(PlayerControl p) => Roles.RoleState.Of(p.PlayerId) is Roles.Neutral.Samurai { Drawn: true };
+
     private static void Receive(PlayerControl sender, byte kind)
     {
         long now = Environment.TickCount64;
-        if (!sender || kind >= EmoteArt.Count || !Alive(sender) || !InTasks || now - LastMs[sender.PlayerId] < MinGapMs)
+        if (!sender || kind >= EmoteArt.Count || !Alive(sender) || !InTasks || Armed(sender) || now - LastMs[sender.PlayerId] < MinGapMs)
         {
             Dropped++;
             return;
@@ -67,7 +70,7 @@ internal static class Emotes
     internal static bool PlayLocal(byte kind)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (kind >= EmoteArt.Count || !Alive(lp) || !InTasks || lp.inVent || !lp.Visible) return false;
+        if (kind >= EmoteArt.Count || !Alive(lp) || !InTasks || lp.inVent || !lp.Visible || Armed(lp)) return false;
         if (!EmoteArt.Play(lp, kind)) return false;
         LastMs[lp.PlayerId] = Environment.TickCount64;
         PlayCall.Send(kind);
@@ -153,7 +156,7 @@ internal static class Emotes
     private static void SetRing(bool open)
     {
         if (!_ring) return;
-        if (open && _main != null && _main.CoolingDown) return;
+        if (open && ((_main != null && _main.CoolingDown) || Armed(PlayerControl.LocalPlayer))) return;
         if (!open)
         {
             // 開いた途中で落ちて扇が閉じたままの時も、隠した物は必ず戻す
@@ -318,9 +321,11 @@ internal static class Emotes
             }
         }
         // 待ち時間の間はアイコンを暗く (本編のボタンの暗くする処理は隠した本編の絵にしか掛からない)
-        if (_main.CoolingDown != _iconDim && _mainIcon)
+        bool dim = _main.CoolingDown || (_frame % 10 == 0 ? _armed = Armed(PlayerControl.LocalPlayer) : _armed);
+        if (_armed && RingOpen) SetRing(false);
+        if (dim != _iconDim && _mainIcon)
         {
-            _iconDim = _main.CoolingDown;
+            _iconDim = dim;
             _mainIcon.color = _iconDim ? new Color(0.45f, 0.45f, 0.45f, 1f) : Color.white;
         }
         if (!ModButton.HudShown) return;

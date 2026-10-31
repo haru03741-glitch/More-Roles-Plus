@@ -26,6 +26,7 @@ internal sealed class RoleBrowser
     private const float ChipH = 0.36f;
     private const float CardGap = 0.07f;
     private const float IconW = 0.36f;   // 2 列のカードの左の絵の枠
+    private const float MarkW = 0.2f, MarkGap = -0.01f; // 二つ名のマーク (名前のすぐ右) の大きさと名前との間 (絵の縁の余白のぶん詰める)
 
     private readonly float W, H, ListW, SideW, CardW;
     private readonly bool _settings;   // 設定画面のタブ (まとめて変える札・本編の設定の検索)
@@ -442,6 +443,12 @@ internal sealed class RoleBrowser
 
     private static Sprite Icon(Assignable a) => RoleArt.Of(a);
 
+    private static Widget MarkOf(Assignable a, bool on)
+    {
+        var sp = a != null ? RoleArt.Mark(a.Epithet) : null;
+        return sp ? new Picture(sp, MarkW, MarkW) { Fit = true, Color = on ? Color.white : IconOff } : null;
+    }
+
     // narrow = 2 列の一覧のカード (絵の枠+名前+人数と出現率の 1 行・説明は右の欄だけ)。検索の結果は幅いっぱいで説明つき
     private Widget Card(Registry.Section sec, float width, bool narrow = false)
     {
@@ -456,7 +463,16 @@ internal sealed class RoleBrowser
             float textW = width - pad * 2f - IconW - 0.06f;
             name = new Label(CardName(sec), 1.6f) { MenuFont = true, Width = textW, MinFontSize = 1.05f, Color = on ? title : Color.Lerp(title, Gray, 0.55f), Align = Align.Start };
             values = new Label(CardValues(a, true), 1.15f) { Width = textW, Bold = true, Color = on ? Color.white : Gray, Align = Align.Start };
-            var text = new Stack(false, name) { Gap = 0f, Width = textW, Align = Align.Start };
+            // 特別枠の役職は名前のすぐ右に小さく二つ名のマーク (役職の絵とは別の、別格の印)
+            Widget head = name;
+            var mark = MarkOf(a, on);
+            if (mark != null)
+            {
+                // 名前は字の幅に合わせる (マークのぶんを残した幅が上限)
+                name.Width = 0f;
+                head = new Stack(true, name, mark) { Gap = MarkGap, Width = textW - MarkW - MarkGap, Align = Align.Start };
+            }
+            var text = new Stack(false, head) { Gap = 0f, Width = textW, Align = Align.Start };
             if (a != null) text.Add(values);
             var icon = Icon(a);
             Widget art = icon ? new Picture(icon, IconW, IconW) { Fit = true, Color = on ? Color.white : IconOff } : new Spacer(IconW, IconW);
@@ -485,6 +501,8 @@ internal sealed class RoleBrowser
             OnUnhover = () => { if (!Touch && _hover == sec) ShowSide(null); },
         };
         _cards.Add((sec, card, values, name, narrow));
+        // 特別枠の役職の札は外側を光らせて縁に星を瞬かせる
+        if (a != null && a.Epithet != Roles.Epithet.None) return new Aura(card) { Dim = () => !Enabled(a) };
         return card;
     }
 
