@@ -76,6 +76,16 @@ internal static class RoleCommands
             reply($"OK picker {RolePicker.Dump()}");
         });
 
+        TestBridge.Register("rlaim", "<角度° | off> ロケットランチャーの狙いの向きを固定する (0 = 右・90 = 上)", (args, reply) =>
+        {
+            string a = args.Trim();
+            if (a == "off" || a.Length == 0) { Roles.Impostor.RocketLauncher.TestAim = null; reply("OK rlaim off"); return; }
+            if (!float.TryParse(a, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float deg)) { reply("ERR rlaim <deg>"); return; }
+            float r = deg * System.MathF.PI / 180f;
+            Roles.Impostor.RocketLauncher.TestAim = new UnityEngine.Vector2(System.MathF.Cos(r), System.MathF.Sin(r));
+            reply($"OK rlaim {deg}");
+        });
+
         TestBridge.Register("roles", "登録された役職と、今の割り当て", (_, reply) =>
         {
             string reg = string.Join(" ", Registry.Roles.Select(r => $"{r.Id}({r.Team},{r.Chance.Value}%x{r.Count.Value})"));

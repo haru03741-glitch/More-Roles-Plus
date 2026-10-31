@@ -73,19 +73,37 @@ public sealed class RocketLauncher : RoleBase
         {
             if (_held != 255) Release(_held);
             if (_shot != 255) Release(_shot);
+            RocketCannon.Drop(this);
         });
     }
 
     private Vector2 HoldPosition()
     {
+        // 大砲が出ていれば、装填の動き (持ち上げて砲口へ押し込む) と筒の中の位置はそちらが決める
+        var cannon = RocketCannon.For(this);
+        if (cannon != null && cannon.HoldPosition(out var at)) return at;
         bool left = Player.cosmetics && Player.cosmetics.FlipX;
         return (Vector2)Player.transform.position + new Vector2(left ? -0.45f : 0.45f, 0.25f);
     }
 
+    // 狙いの向き: PC はマウスの方・スマホは最後に歩いた向き
+    internal static Vector2? TestAim; // 試験用: 狙いの向きを固定する (bridge の rlaim)
+
+    private Vector2 AimDir()
+    {
+        if (TestAim is { } fixedAim) return fixedAim;
+        if (System.OperatingSystem.IsAndroid() || !Camera.main) return ShotKit.Facing;
+        Vector2 mouse = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        Vector2 from = Player.transform.position;
+        float dx = mouse.x - from.x, dy = mouse.y - from.y, d = System.MathF.Sqrt(dx * dx + dy * dy);
+        return d < 0.01f ? ShotKit.Facing : new Vector2(dx / d, dy / d);
+    }
+
     private void Shoot()
     {
-        Vector2 start = HoldPosition() + new Vector2(0f, -0.4f);
-        Vector2 dir = Player.cosmetics && Player.cosmetics.FlipX ? Vector2.left : Vector2.right;
+        Vector2 dir = AimDir();
+        var cannon = RocketCannon.For(this);
+        Vector2 start = cannon != null ? cannon.Muzzle(dir) : HoldPosition() + new Vector2(0f, -0.4f);
         var m = (_held, start, dir);
         ShotCall.Send(m);
         StartShot(Player, m.Item1, m.Item2, m.Item3);
@@ -101,6 +119,7 @@ public sealed class RocketLauncher : RoleBase
         rl._held = target;
         rl._heldFor = 0f;
         Held.Add(target);
+        RocketCannon.Load(rl, user, t);
         if (t.MyPhysics && t.MyPhysics.body) t.MyPhysics.body.velocity = Vector2.zero;
     }
 
@@ -124,12 +143,23 @@ public sealed class RocketLauncher : RoleBase
         {
             if (_held != 255) { Release(_held); _held = 255; }
             if (_flying) { Release(_shot); _flying = false; _shot = 255; }
+            RocketCannon.Drop(this);
             return;
+        }
+        if (IsLocal)
+        {
+            ShotKit.Track();
+            // 自分の画面だけ、筒を狙いの方へ向ける
+            if (_held != 255 && RocketCannon.For(this) is { } c)
+            {
+                var a = AimDir();
+                c.Aim(System.MathF.Atan2(a.y, a.x) * (180f / System.MathF.PI));
+            }
         }
         if (_held != 255)
         {
             var t = PortKit.ById(_held);
-            if (!PortKit.Alive(t)) { Release(_held); _held = 255; }
+            if (!PortKit.Alive(t)) { Release(_held); _held = 255; RocketCannon.Drop(this); }
             else if (!MeetingHud.Instance)
             {
                 MoveTo(t, HoldPosition());
@@ -259,6 +289,7 @@ public sealed class RocketLauncher : RoleBase
         rl._dir = dir;
         rl._life = 0f;
         Held.Add(target);
+        RocketCannon.For(rl)?.Fire(dir);
         MoveTo(PortKit.ById(target), start);
     }
 
@@ -273,6 +304,7 @@ public sealed class RocketLauncher : RoleBase
             }
         rl._held = rl._shot = 255;
         rl._flying = false;
+        RocketCannon.For(rl)?.Landed();
         if (!AmongUsClient.Instance.AmHost) return;
         _exploding = true;
         try
