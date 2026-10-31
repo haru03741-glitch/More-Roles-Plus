@@ -26,5 +26,20 @@ internal static class DuelCommands
             }
             reply("OK " + DuelTumble.Describe() + " " + DuelTumble.DescribeKo());
         });
+        TestBridge.Register("cutbody", "[<番号>] 必殺技で斬られた形の死体: 番号の人の姿を写して自分が倒す (ホスト・フリープレイ向け) / 空 = 状態", (args, reply) =>
+        {
+            var a = args.Trim();
+            if (a.Length > 0 && byte.TryParse(a, out byte id))
+            {
+                var lp = PlayerControl.LocalPlayer;
+                var t = GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null;
+                if (!AmongUsClient.Instance.AmHost || !lp || !t) { reply("ERR cutbody <id> (host only)"); return; }
+                bool ok = CutCorpse.Capture(id);
+                lp.RpcMurderPlayer(t, true);
+                reply($"OK captured={ok} {CutCorpse.Describe()}");
+                return;
+            }
+            reply("OK " + CutCorpse.Describe());
+        });
     }
 }

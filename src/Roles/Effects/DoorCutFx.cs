@@ -107,61 +107,10 @@ internal static class DoorCutFx
     {
         var sp = sr.sprite;
         var tf = sr.transform;
-        var vs = sp.vertices;
-        var uv = sp.uv;
-        var ts = sp.triangles;
-        int n = vs.Length;
-        // 絵の網目をワールドへ (片の根は扉の真ん中・奥行きは元の絵のまま)
-        var wx = new float[n];
-        var wy = new float[n];
-        for (int i = 0; i < n; i++)
-        {
-            Vector3 w = tf.TransformPoint(FxMath.V3(vs[i].x, vs[i].y, 0f));
-            wx[i] = w.x - cx;
-            wy[i] = w.y - cy;
-        }
         float nx = ly, ny = -lx;
-        var pos = new List<Vector3>();
-        var tex = new List<Vector2>();
-        var idx = new List<int>();
-        var poly = new List<(float x, float y, float u, float v)>(6);
-        var next = new List<(float x, float y, float u, float v)>(6);
-        for (int t = 0; t + 2 < ts.Length; t += 3)
-        {
-            poly.Clear();
-            for (int k = 0; k < 3; k++)
-            {
-                int i = ts[t + k];
-                poly.Add((wx[i], wy[i], uv[i].x, uv[i].y));
-            }
-            // 半平面 (法線との内積 * side >= 0) で切る
-            next.Clear();
-            for (int k = 0; k < poly.Count; k++)
-            {
-                var a = poly[k];
-                var b = poly[(k + 1) % poly.Count];
-                float da = (a.x * nx + a.y * ny) * side, db = (b.x * nx + b.y * ny) * side;
-                if (da >= 0f) next.Add(a);
-                if ((da >= 0f) != (db >= 0f))
-                {
-                    float f = da / (da - db);
-                    next.Add((a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, a.u + (b.u - a.u) * f, a.v + (b.v - a.v) * f));
-                }
-            }
-            if (next.Count < 3) continue;
-            int b0 = pos.Count;
-            foreach (var q in next)
-            {
-                pos.Add(FxMath.V3(q.x, q.y, 0f));
-                tex.Add(FxMath.V2(q.u, q.v));
-            }
-            for (int k = 1; k + 1 < next.Count; k++) { idx.Add(b0); idx.Add(b0 + k); idx.Add(b0 + k + 1); }
-        }
-        if (idx.Count < 3) return;
-        var mesh = new Mesh { name = "MrpDoorPiece" };
-        mesh.SetVertices(pos.ToArray());
-        mesh.SetUVs(0, tex.ToArray());
-        mesh.SetTriangles(idx.ToArray(), 0);
+        // 線の両側を半平面 (法線との内積 * side >= 0) で切る
+        var mesh = FxMeshCut.Cut(sr, cx, cy, new[] { new FxMeshCut.Plane(nx * side, ny * side, 0f) }, 1, null, "MrpDoorPiece");
+        if (!mesh) return;
         var go = new GameObject("MrpDoorPiece") { layer = sr.gameObject.layer };
         var ship = ShipStatus.Instance;
         if (ship) go.transform.SetParent(ship.transform, true);

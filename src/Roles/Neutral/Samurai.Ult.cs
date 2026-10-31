@@ -194,6 +194,8 @@ public sealed partial class Samurai
     private void OnUlt(in UltMsg m)
     {
         if (!AmongUsClient.Instance.AmHost) _ultUsed.Value = true;
+        // 斬られる人は全員の画面で斬れた形の死体になる (今の姿を写しておく)
+        CutCorpse.Expect(m.Victims);
         var lp = PlayerControl.LocalPlayer;
         if (!lp || !Player) return;
         bool mine = lp.PlayerId == PlayerId;
