@@ -39,6 +39,11 @@ internal static class MapFlip
         t.localScale = new Vector3(-s.x, s.y, s.z);
         Flipped = true;
 
+        // 胞子の霧の型は視界を遮る影として描かれ、裏面を描かない材質なので、裏向きのままだと霧の中の人が隠れない
+        if (ship.TryCast<FungleShipStatus>() != null)
+            foreach (var m in ship.GetComponentsInChildren<Mushroom>(true))
+                if (m.sporeMask) FaceUp(m.sporeMask.transform);
+
         ship.InitialSpawnCenter = MirrorV2(ship.InitialSpawnCenter);
         ship.MeetingSpawnCenter = MirrorV2(ship.MeetingSpawnCenter);
         ship.MeetingSpawnCenter2 = MirrorV2(ship.MeetingSpawnCenter2);
@@ -47,6 +52,15 @@ internal static class MapFlip
     }
 
     private static Vector2 MirrorV2(Vector2 v) => new(Mirror(v.x), v.y);
+
+    // 倍率の積が負 (裏向き) の物を、自分の横の倍率の符号を変えて表へ戻す
+    internal static void FaceUp(Transform t)
+    {
+        var l = t.lossyScale;
+        if (l.x * l.y >= 0f) return;
+        var s = t.localScale;
+        t.localScale = new Vector3(-s.x, s.y, s.z);
+    }
 
     // 反転前の船で焼いた格子 (原点 ox・幅 w 升・1 単位 ppu 升) の、反転後の原点
     internal static float GridOrigin(float ox, int w, float ppu) => Mirror(ox + w / ppu);

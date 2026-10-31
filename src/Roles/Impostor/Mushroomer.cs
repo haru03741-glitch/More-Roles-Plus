@@ -125,8 +125,15 @@ public sealed class Mushroomer : RoleBase
         if (m.sporeMask)
         {
             m.sporeMask.gameObject.SetActive(true);
-            m.sporeMask.transform.localScale = new Vector3(2.4f, 2.4f, 1.2f);
+            m.sporeMask.transform.localScale = MaskScale(m);
         }
+    }
+
+    // 胞子の霧の型の元の大きさ。型は裏面を描かないので、船が左右反転していたら横を負にして表向きに保つ
+    internal static Vector3 MaskScale(Mushroom m)
+    {
+        var l = m.transform.lossyScale;
+        return new Vector3(l.x * l.y < 0f ? -2.4f : 2.4f, 2.4f, 1.2f);
     }
 
     // ---- ファングル以外の船にキノコを置く (SNR の CustomSpores) ----
@@ -160,6 +167,7 @@ public sealed class Mushroomer : RoleBase
                 m.transform.position = pos;
                 m.id = id;
                 m.origPosition = pos;
+                if (m.sporeMask) MapFlip.FaceUp(m.sporeMask.transform);
                 if (ship != null) ship.sporeMushrooms.Add(id, m);
                 else All[id] = m;
                 done(m);
@@ -266,7 +274,7 @@ internal static class MushroomerResetPatch
     {
         __instance.transform.localScale = Vector3.one;
         __instance.secondsSporeIsActive = 5f;
-        if (__instance.sporeMask) __instance.sporeMask.transform.localScale = new Vector3(2.4f, 2.4f, 1.2f);
+        if (__instance.sporeMask) __instance.sporeMask.transform.localScale = Mushroomer.MaskScale(__instance);
     }
 }
 
@@ -278,6 +286,6 @@ internal static class MushroomerGasMaskPatch
     {
         if (RoleState.Local is not Mushroomer || !__instance.sporeMask) return;
         if (RoleState.Local is Mushroomer && Mushroomer.HasGasMask) __instance.sporeMask.transform.localScale = Vector3.zero;
-        else if (__instance.sporeMask.transform.localScale.x == 0f) __instance.sporeMask.transform.localScale = new Vector3(2.4f, 2.4f, 1.2f);
+        else if (__instance.sporeMask.transform.localScale.x == 0f) __instance.sporeMask.transform.localScale = Mushroomer.MaskScale(__instance);
     }
 }
