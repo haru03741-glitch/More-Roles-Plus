@@ -23,7 +23,7 @@ internal static partial class DuelHud
     private static GameObject _root;
     private static Transform _rootTf;
     private static SpriteRenderer _leftFill, _rightFill, _leftGhost, _rightGhost, _leftFace, _rightFace;
-    private static TextMeshPro _leftName, _rightName, _center, _title, _hint;
+    private static TextMeshPro _leftName, _rightName, _center, _title;
     private static Material[] _mats = Array.Empty<Material>();
     private static float _halfW, _halfH, _barW;
 
@@ -95,8 +95,8 @@ internal static partial class DuelHud
         if (!_shown || a == t) return; // 自分から自分 = 立ち合いの外の回復
         float k = hp / (float)Duel.MaxHp;
         float now = Time.time;
-        if (t == _me) { _leftHp = k; _leftHitT = now; }
-        else if (t == _opp) { _rightHp = k; _rightHitT = now; }
+        if (t == _me) { FxCut(0, _leftHp, k); _leftHp = k; _leftHitT = now; }
+        else if (t == _opp) { FxCut(1, _rightHp, k); _rightHp = k; _rightHitT = now; }
         else if (SlotOf(t) is var sl and >= SlotL1) { _subHp[sl - SlotL1] = k; _subHitT[sl - SlotL1] = now; }
         if (a == _me)
         {
@@ -195,7 +195,6 @@ internal static partial class DuelHud
         _leaving = false;
         for (int j = 0; j < 2; j++) _subRoot[j].SetActive(false);
         _shown = true;
-        _hint.text = "";
         _root.SetActive(true);
         // 左のタスク一覧はバーと重なるので、立ち合いの間だけ隠す
         var hud = Vanilla.Hud;
@@ -221,6 +220,7 @@ internal static partial class DuelHud
     {
         _banner = which;
         _bannerT = Time.time;
+        FxBanner();
     }
 
     private static GameObject _tasks;
@@ -286,6 +286,7 @@ internal static partial class DuelHud
         _lockTheirs.transform.localScale = FxMath.V3(theirs, LockH, 1f);
         _lockGlow.transform.localPosition = FxMath.V3(edge, _lockY, -0.2f);
         _lockCore.transform.localPosition = FxMath.V3(edge, _lockY, -0.3f);
+        _lockEdge = edge;
     }
 
     // 押し合いは届いた割合へ滑らかに寄せる・境目の光が震える・「連打!」の字が脈打つ・残り時間の区切りが消える
@@ -311,14 +312,6 @@ internal static partial class DuelHud
     // 鍔迫り合いで自分が押した
     internal static void MashPressed() => _mashT = Time.time;
 
-    // 自分のバーの下の一行 (空 = 出さない)。出していない時は何もしない (書けたら true)
-    internal static bool SetHint(string text)
-    {
-        if (!_shown || !_hint) return false;
-        _hint.text = text;
-        return true;
-    }
-
     // 幽霊の観戦で見る人が替わった: 見る人が戦っていればその人の側で出し直す
     internal static void OnViewChanged()
     {
@@ -340,6 +333,7 @@ internal static partial class DuelHud
         _bannerT = -10f;
         if (_lockRoot) SetLockOn(false);
         IntroHide();
+        FxHide();
         if (_root) _root.SetActive(false);
     }
 
@@ -359,6 +353,7 @@ internal static partial class DuelHud
         if (_lockOn) LockTick(now);
         ComboTick(now);
         WhiffTick(now);
+        FxTick(now);
         if (_koT > 0f && now - _koT > KoHold + TitleFade)
         {
             // K.O. を見せ切った: 自分が組を抜けていれば隠す・まだ戦っていれば倒れた人の枠を詰める
@@ -601,11 +596,6 @@ internal static partial class DuelHud
         _center = Text(src, "Infinity", 0f, y, 3.2f, TextAlignmentOptions.Center, layer, 1f);
         _center.text = "∞";
         Outline(_center, 0.25f, FxMath.Rgba(0.1f, 0.1f, 0.15f, 1f));
-        // 自分の手 (回避の残り) は自分のバーの下
-        _hint = Text(src, "Hint", -(BarGap + _barW * 0.5f), y - 0.8f, 1.6f, TextAlignmentOptions.Center, layer, 4f);
-        _hint.color = FxMath.Rgba(1f, 0.92f, 0.55f, 1f);
-        Outline(_hint, 0.25f, FxMath.Rgba(0.05f, 0.05f, 0.08f, 1f));
-        _hint.text = "";
 
         _title = Text(src, "Title", 0f, 0.55f, 9f, TextAlignmentOptions.Center, layer, 12f);
         _title.fontStyle = FontStyles.Bold | FontStyles.Italic;
@@ -615,6 +605,7 @@ internal static partial class DuelHud
         _title.gameObject.SetActive(false);
 
         BuildKi(white, layer, y);
+        BuildFx(white, layer, y);
         BuildSub(white, layer, y, src);
         BuildIntro(white, layer, src);
         BuildCrew(layer);
@@ -713,7 +704,7 @@ internal static partial class DuelHud
 
     private static Sprite _white, _circle;
 
-    private static Sprite WhiteSprite()
+    internal static Sprite WhiteSprite()
     {
         if (_white) return _white;
         var tex = Texture2D.whiteTexture;

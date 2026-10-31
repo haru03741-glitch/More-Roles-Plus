@@ -14,6 +14,7 @@ using UnityEngine;
 //   playergrad.mat … MRP/PlayerGradient (2 色のグラデーションのクルー。シェーダだけを使う)
 //   riftwarp.mat … MRP/RiftWarp (空間の裂け目: 描き上がった画面を斬った線に沿ってせん断する)
 //   katanaplate.mat / katanaframe.mat / katanaflash.mat … MRP/Katana* (必殺技の演出: 生の画面を板に貼る / 事前に描いたコマ / 被害者の白の閃き)
+//   uifire.mat … MRP/UiFire (立ち合いの HUD の炎: 体力のバーから立つ炎・回避の枠の炎の輪)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -128,6 +129,20 @@ public static class MrpBundleBuilder
             AssetDatabase.CreateAsset(new Material(sh) { name = name.ToLowerInvariant() }, mp);
             Tag(mp);
         }
+
+        Shader uiFireShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/UiFire.shader");
+        if (uiFireShader == null)
+        {
+            Debug.LogError("MrpBundleBuilder: UiFire shader not found");
+            EditorApplication.Exit(2);
+            return;
+        }
+        string uiFirePath = Folder + "/uifire.mat";
+        AssetDatabase.DeleteAsset(uiFirePath);
+        var uiFire = new Material(uiFireShader) { name = "uifire" };
+        uiFire.SetTexture("_Noise", noise);
+        AssetDatabase.CreateAsset(uiFire, uiFirePath);
+        Tag(uiFirePath);
 
         BreakSounds.ImportAll(Folder, BundleName);
 
