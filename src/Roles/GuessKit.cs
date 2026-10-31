@@ -43,9 +43,38 @@ internal static class GuessKit
         if (!PortKit.Alive(target)) return;
         var actual = RoleState.Of(target);
         bool hit = actual != null && actual.GetType() == Registry.Roles[roleIdx].GetType();
-        PortKit.HostVanish(user, hit ? target : user);
-        ResultCall.Send((user.PlayerId, hit ? targetId : user.PlayerId));
-        Announce(user.PlayerId, hit ? targetId : user.PlayerId);
+        byte deadId = hit ? targetId : user.PlayerId;
+        // 先に全員の画面で撃ち抜く演出を始め、照準が縮み切って撃った少し後に倒す (名札の ✕ が銃声より先に出ないように)
+        ShotCall.Send(deadId);
+        GuessShotFx.Begin(deadId);
+        Due.Add((UnityEngine.Time.time + KillDelay, user.PlayerId, deadId, Terrain.GameClock.ShipGen));
+    }
+
+    private const float KillDelay = GuessShotFx.HitAt + 0.15f;
+    private static readonly System.Collections.Generic.List<(float at, byte user, byte dead, int ship)> Due = new();
+
+    private static readonly RemoteCall<byte> ShotCall = new("GuessKit.Shot", Route.HostToAll,
+        (w, id) => w.Write(id), r => r.ReadByte(),
+        (_, id) => GuessShotFx.Begin(id));
+
+    // ホスト: 撃った演出の後に倒す。会議が先に閉じていても倒す (撃ったことは取り消さない)。別の試合になっていたら捨てる (番号が使い回される)
+    internal static void HostTick()
+    {
+        if (Due.Count == 0) return;
+        float now = UnityEngine.Time.time;
+        for (int i = Due.Count - 1; i >= 0; i--)
+        {
+            var d = Due[i];
+            if (now < d.at) continue;
+            Due.RemoveAt(i);
+            if (d.ship != Terrain.GameClock.ShipGen || !AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) continue;
+            var user = PortKit.ById(d.user);
+            var dead = PortKit.ById(d.dead);
+            if (!PortKit.Alive(dead)) continue;
+            PortKit.HostVanish(user ? user : dead, dead);
+            ResultCall.Send((d.user, d.dead));
+            Announce(d.user, d.dead);
+        }
     }
 
     private static bool IsGuesser(PlayerControl p)

@@ -149,6 +149,7 @@ public class Ticker : MonoBehaviour
         UI.DuelHud.Tick();
         Menu.Emotes.Tick();
         Menu.MeetingStamps.Tick();
+        Roles.GuessShotFx.Tick();
         Roles.PortalArt.Tick();
         Roles.RewindWorldFx.Tick();
         Roles.RewindChargeFx.Tick();

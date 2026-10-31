@@ -511,6 +511,12 @@ internal static class RoleCommands
             reply("OK meeting");
         });
 
+        TestBridge.Register("guessfx", "[番号] ゲッサーの撃ち抜く演出をこの端末だけで出す (倒さない) / 引数なしで状態", (args, reply) =>
+        {
+            if (byte.TryParse(args.Trim(), out byte id)) Roles.GuessShotFx.Begin(id);
+            reply($"OK guessfx {Roles.GuessShotFx.Describe()}");
+        });
+
         TestBridge.Register("meetingtags", "会議の名札ごとの役職名の有無と位置", (_, reply) =>
         {
             var hud = MeetingHud.Instance;

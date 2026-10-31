@@ -160,6 +160,9 @@ internal static class BreakNoise
         Play(clip, volume, 0f, 1f, 0f, true);
     }
 
+    // 会議の画面の出来事の音 (全員に同じ大きさ・会議中でも鳴らす)
+    internal static void PlayMeeting(string clip, float volume) => Play(clip, volume, 0f, 1f, 0f, true);
+
     internal static void PlayAt(string clip, float x, float y, float range, float muffle, float volume, float pitch) =>
         PlayAt(clip, x, y, range, muffle, volume, pitch, false);
 
