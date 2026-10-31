@@ -7,6 +7,8 @@ public enum Team
 {
     Crew,
     Impostor,
+    // インポスターと一緒に勝つクルー側の人 (生き残りの人数はクルーとして数え、タスクは勝ちに数えない)
+    Madmate,
     Neutral,
 }
 
@@ -127,6 +129,7 @@ public abstract class RoleBase : Assignable
     internal override Tab Tab => Team switch
     {
         Team.Impostor => Tab.Impostor,
+        Team.Madmate => Tab.Madmate,
         Team.Neutral => Tab.Neutral,
         _ => Tab.Crew,
     };

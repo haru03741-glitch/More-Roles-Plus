@@ -10,6 +10,7 @@ public enum Tab
     General,
     Crew,
     Impostor,
+    Madmate,
     Neutral,
     Addon,
 }

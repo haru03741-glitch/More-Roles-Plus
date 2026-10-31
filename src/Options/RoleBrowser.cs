@@ -153,7 +153,7 @@ internal sealed class RoleBrowser
     {
         // カードの名前に付ける印 (★・*・「更新」) も先に入れておく
         var chars = new System.Text.StringBuilder("0123456789%/×:+-<>*").Append(FavMark).Append(FreshMark.ToString());
-        foreach (var t in new[] { Tab.Crew, Tab.Impostor, Tab.Neutral, Tab.Addon })
+        foreach (var t in new[] { Tab.Crew, Tab.Impostor, Tab.Madmate, Tab.Neutral, Tab.Addon })
             foreach (var sec in Registry.SectionsOf(t)) chars.Append(sec.Title);
         MenuFont.Prepare(chars.ToString());
     }
@@ -191,6 +191,7 @@ internal sealed class RoleBrowser
         _freshChip = SettingNotice.FreshCount > 0;
         for (int k = -1; k <= RoleMenu.AddonKind && !TeamFromOutside; k++)
         {
+            if (k >= 0 && !RoleMenu.KindShown(k)) continue;
             int kind = k;
             Color c = k < 0 ? Color.white : RoleMenu.KindColor(k);
             chips.Add(Chip(k < 0 ? new Text("RoleMenu.All") : RoleMenu.KindName(k), c, _team == k, () => { _team = kind; _hover = null; Rebuild(); }));
@@ -1124,9 +1125,11 @@ internal sealed class RoleBrowser
         float w = (width - 0.08f * (columns - 1)) / columns;
         var col = new Stack(false) { Gap = 0.06f, Align = Align.Start };
         Stack row = null;
-        for (int k = -1; k < 3; k++)
+        int n = 0;
+        for (int k = -1; k < RoleMenu.AddonKind; k++)
         {
-            if ((k + 1) % columns == 0) { row = new Stack(true) { Gap = 0.08f, Align = Align.Start }; col.Add(row); }
+            if (k >= 0 && !RoleMenu.KindShown(k)) continue;
+            if (n++ % columns == 0) { row = new Stack(true) { Gap = 0.08f, Align = Align.Start }; col.Add(row); }
             int kind = k;
             Color c = k < 0 ? Color.white : RoleMenu.KindColor(k);
             var text = k < 0 ? new Text("RoleMenu.All") : RoleMenu.KindName(k);
@@ -1153,7 +1156,7 @@ internal sealed class RoleBrowser
 
     private static IEnumerable<RoleBase> ExclCandidates(RoleBase me)
     {
-        foreach (var t in new[] { Tab.Crew, Tab.Impostor, Tab.Neutral })
+        foreach (var t in new[] { Tab.Crew, Tab.Impostor, Tab.Madmate, Tab.Neutral })
             foreach (var sec in Registry.SectionsOf(t))
                 if (sec.Role is RoleBase rb && rb != me && rb.Excluded != null) yield return rb;
     }

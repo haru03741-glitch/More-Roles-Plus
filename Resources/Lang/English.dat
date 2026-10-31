@@ -481,6 +481,7 @@ RoleMenu.TabName: Roles
 RoleMenu.Description: Hover a role card to see its settings on the right; press it to open them. Right-click toggles the chance between 0% and 100%.\nEnabled: {enabledCount} / {count}
 RoleMenu.DescriptionTouch: Tap a role card to see its settings on the right; tap it again to open them.\nEnabled: {enabledCount} / {count}
 RoleMenu.Impostor: Impostor
+RoleMenu.Madmate: Madmate
 RoleMenu.Neutral: Neutral
 RoleMenu.Crewmate: Crewmate
 RoleMenu.Addons: Addons
@@ -687,6 +688,7 @@ InfoCommands.Addons: Addons
 InfoCommands.DetailsHint: (/r <role or addon> for details)
 InfoCommands.Crew: Crew
 InfoCommands.Impostor: Impostor
+InfoCommands.Madmate: Madmate
 InfoCommands.Neutral: Neutral
 InfoCommands.SimLobbyOnly: The assignment trial is only available in the lobby
 InfoCommands.SimNormalOnly: The assignment trial is only available in the normal game mode

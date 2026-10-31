@@ -79,7 +79,7 @@ internal static class NameTaskTag
     private static bool IsCrewSide(NetworkedPlayerInfo data)
     {
         var mrp = Roles.RoleState.Of(data.PlayerId);
-        if (mrp != null) return mrp.Team == Roles.Team.Crew;
+        if (mrp != null) return mrp.Team is Roles.Team.Crew or Roles.Team.Madmate;
         var role = data.Role;
         return role && role.TeamType == RoleTeamTypes.Crewmate;
     }

@@ -429,7 +429,7 @@ public static class AssignPlan
                 continue;
             }
             // クルーの役職が第三陣営の最少のための席を埋めない
-            if (role.Team == Team.Crew && !free[pick].Impostor && CrewSeats() <= Reserve())
+            if (role.Team is Team.Crew or Team.Madmate && !free[pick].Impostor && CrewSeats() <= Reserve())
             {
                 if (stats != null) stats.LimitSkips++;
                 continue;

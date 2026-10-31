@@ -168,7 +168,7 @@ internal static class MatchLog
         var tasks = p.Tasks;
         if (tasks == null || tasks.Count == 0) return null;
         var mrp = RoleState.Of(p.PlayerId);
-        bool crew = mrp != null ? mrp.Team == Team.Crew : p.Role && p.Role.TeamType == RoleTeamTypes.Crewmate;
+        bool crew = mrp != null ? mrp.Team is Team.Crew or Team.Madmate : p.Role && p.Role.TeamType == RoleTeamTypes.Crewmate;
         if (!crew) return null;
         int done = 0;
         for (int i = 0; i < tasks.Count; i++)

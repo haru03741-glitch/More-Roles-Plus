@@ -481,6 +481,7 @@ RoleMenu.TabName: 役職
 RoleMenu.Description: 役職のカードに当てると右に設定の要約が出て、押すと細かい設定が開きます。右クリックで出現率を 0% と 100% に切り替えます。\n出る役職: {enabledCount} / {count}
 RoleMenu.DescriptionTouch: 役職のカードを押すと右に設定の要約が出て、もう一度押すと細かい設定が開きます。\n出る役職: {enabledCount} / {count}
 RoleMenu.Impostor: インポスター
+RoleMenu.Madmate: マッドメイト
 RoleMenu.Neutral: 第三陣営
 RoleMenu.Crewmate: クルー
 RoleMenu.Addons: アドオン
@@ -687,6 +688,7 @@ InfoCommands.Addons: アドオン
 InfoCommands.DetailsHint: (/r <役職名・アドオン名> で説明)
 InfoCommands.Crew: クルー
 InfoCommands.Impostor: インポスター
+InfoCommands.Madmate: マッドメイト
 InfoCommands.Neutral: 第三陣営
 InfoCommands.SimLobbyOnly: 配役の試走はロビーでだけ使えます
 InfoCommands.SimNormalOnly: 配役の試走は通常のモードでだけ使えます

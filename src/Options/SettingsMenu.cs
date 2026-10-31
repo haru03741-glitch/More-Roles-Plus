@@ -131,7 +131,8 @@ internal static class SettingsMenu
         AddCat(menu, gameBtn, CatGame, new Text("SettingsMenu.CatGame"), GameCatColor);
         if (Pages.Exists(p => !p.Roles && !p.Presets)) AddCat(menu, gameBtn, CatGeneral, new Text("SettingsMenu.CatGeneral"), GeneralCatColor);
         if (Pages.Exists(p => p.Roles))
-            for (int k = 0; k <= RoleMenu.AddonKind; k++) AddCat(menu, gameBtn, CatKind0 + k, RoleMenu.KindName(k), RoleMenu.KindColor(k));
+            for (int k = 0; k <= RoleMenu.AddonKind; k++)
+                if (RoleMenu.KindShown(k)) AddCat(menu, gameBtn, CatKind0 + k, RoleMenu.KindName(k), RoleMenu.KindColor(k));
         RefreshCatCounts();
         foreach (var b in new[] { gameBtn, menu.RoleSettingsButton, menu.GamePresetsButton })
         {
@@ -248,7 +249,7 @@ internal static class SettingsMenu
     }
 
     // 左の列のボタンの左端に、その頁の色のクルーの絵 (メインメニューの絵のポーズ)。字は絵の右の残りの幅へ寄せる
-    private static readonly int[] CatPose = { -1, 5, 5, 1, 2, 3, 0 }; // 番号 = CatPresets..CatKind0+AddonKind
+    private static readonly int[] CatPose = { -1, 5, 5, 1, 2, 4, 3, 0 }; // 番号 = CatPresets..CatKind0+AddonKind
 
     private static void AddCatArt(PassiveButton btn, TextMeshPro label, int cat, Color c)
     {

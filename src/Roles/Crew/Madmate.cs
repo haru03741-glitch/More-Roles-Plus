@@ -7,7 +7,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 設定でタスクを決めた数だけ終えるとインポスターが誰か分かる
 public sealed class Madmate : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team Team => Team.Madmate;
     public override string Color => "#FF1919";
     public override Text Name => new("Madmate.Name");
     public override string Reading => "まっどめいと";

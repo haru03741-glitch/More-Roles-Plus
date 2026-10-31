@@ -95,6 +95,7 @@ internal static class InfoCommands
     {
         Team.Crew => new Text("InfoCommands.Crew"),
         Team.Impostor => new Text("InfoCommands.Impostor"),
+        Team.Madmate => new Text("InfoCommands.Madmate"),
         _ => new Text("InfoCommands.Neutral"),
     };
 

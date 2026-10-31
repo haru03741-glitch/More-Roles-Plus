@@ -116,7 +116,7 @@ public static class RolePicker
         foreach (var r in Registry.Roles)
         {
             if (!InPlay(r)) continue;
-            if (searching ? !Matches(r) : r.Team != _team) continue;
+            if (searching ? !Matches(r) : (r.Team == Team.Madmate ? Team.Crew : r.Team) != _team) continue; // マッドメイトはクルーの札に並べる
             list.Add(r);
         }
         return list;

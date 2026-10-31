@@ -267,13 +267,13 @@ internal static class MatchInfoExtension
         BuildRoles(g, client && !client.AmHost && !OptionSync.HoldsHostValues, keepScroll: true);
     }
 
-    // 自分の役職とアドオンが先頭、あとは設定画面と同じ並び (クルー → インポスター → 第三陣営 → アドオン)
+    // 自分の役職とアドオンが先頭、あとは設定画面と同じ並び (クルー → インポスター → マッドメイト → 第三陣営 → アドオン)
     private static List<Assignable> Collect()
     {
         var mine = Mine();
         var first = new List<Assignable>();
         var rest = new List<Assignable>();
-        foreach (var tab in new[] { Tab.Crew, Tab.Impostor, Tab.Neutral, Tab.Addon })
+        foreach (var tab in new[] { Tab.Crew, Tab.Impostor, Tab.Madmate, Tab.Neutral, Tab.Addon })
             foreach (var sec in Registry.SectionsOf(tab))
             {
                 var a = sec.Role;
@@ -403,6 +403,7 @@ internal static class MatchInfoExtension
         {
             Team.Crew => new Text("InfoCommands.Crew"),
             Team.Impostor => new Text("InfoCommands.Impostor"),
+            Team.Madmate => new Text("InfoCommands.Madmate"),
             _ => new Text("InfoCommands.Neutral"),
         }
         : new Text("InfoCommands.Addon");
