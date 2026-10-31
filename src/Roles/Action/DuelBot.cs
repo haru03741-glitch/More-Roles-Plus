@@ -29,6 +29,7 @@ internal static class DuelBot
         public byte Foe = 255;      // 斬り返す・飛び退く相手
         public Vector2 DodgeDir;        // 踏み込み・回避で動く向き (DodgeUntil まで MoveSpeed で)
         public bool Retreat;
+        public float DetourSide;        // 塞がれて回り込む側 (0 = 回り込んでいない)
     }
 
     private static readonly Dictionary<byte, Bot> Bots = new();
@@ -46,7 +47,9 @@ internal static class DuelBot
     private const float RegenTo = 75f;          // 納めて離れた時、ここまで気が溜まったら戻る
     private const float FirstKill = 8f;
 
-    internal static int Dodges, Counters, Dashes, Circles;
+    internal static int Dodges, Counters, Dashes, Circles, Detours;
+    private static readonly int WalkMask = Constants.ShipAndObjectsMask | 1 << 12; // 本編の船と物の層に家具 (机) の層を足す
+    private const float Body = 0.15f;         // 歩く先を確かめる太さ (体の当たりより少し細く: 机に押し付いていても前の面を拾う)
 
     internal static bool Has(byte id) => Bots.ContainsKey(id);
     internal static int Count => Bots.Count;
@@ -258,7 +261,10 @@ internal static class DuelBot
     private static bool DashBot(Bot b, PlayerControl pc, Samurai s, Vector2 dir, float dist, float now)
     {
         float l = FxMath.Sqrt(dir.x * dir.x + dir.y * dir.y);
-        if (l < 0.01f || dist < 0.3f || !s.BotDash()) return false;
+        if (l < 0.01f || dist < 0.3f) return false;
+        // 机や壁に当たって止まる向きへは踏み込まない (歩きの回り道に任せる)
+        float go = FxMath.Min(dist, Samurai.BotDashTime * Samurai.BotDashSpeed);
+        if (Blocked(pc.GetTruePosition(), dir.x / l, dir.y / l, go) || !s.BotDash()) return false;
         Dummy.StopWalk(pc);
         Dashes++;
         b.DodgeDir = FxMath.V2(dir.x / l, dir.y / l);
@@ -402,7 +408,7 @@ internal static class DuelBot
     {
         if (now < b.NextMove && Dummy.IsWalking(b.Id)) return;
         b.NextMove = now + MoveEvery;
-        Dummy.WalkTo(pc, at.x, at.y);
+        Go(b, pc, pc.GetTruePosition(), at.x, at.y);
     }
 
     // 相手の周りを回る: 相手から見た自分の向きを少し回した、距離 keep の所へ歩く。回る向きはときどき変える。強さ 2 から
@@ -419,7 +425,7 @@ internal static class DuelBot
         if (d < 0.01f) d = 0.01f;
         Circles++;
         var u = Turn((me.x - at.x) / d, (me.y - at.y) / d, b.Side * 35f);
-        Dummy.WalkTo(pc, at.x + u.x * keep, at.y + u.y * keep);
+        Go(b, pc, me, at.x + u.x * keep, at.y + u.y * keep);
     }
 
     // 相手 (me から dx, dy の所) から離れて距離 keep の所へ
@@ -429,12 +435,42 @@ internal static class DuelBot
         b.NextMove = now + MoveEvery;
         if (d < 0.01f) { dx = 1f; dy = 0f; d = 1f; }
         float k = (keep - d) / d;
-        Dummy.WalkTo(pc, me.x - dx * k, me.y - dy * k);
+        Go(b, pc, me, me.x - dx * k, me.y - dy * k);
+    }
+
+    // (x, y) へ歩く。まっすぐ歩くと机や壁に押し付いたまま止まるので、塞がれていたら向きを少しずつ回して通れる向きへ少し歩く。
+    // 回る側は塞がれている間は変えない (丸い机は縁をなぞって回り込み、左右に迷わない)
+    private static void Go(Bot b, PlayerControl pc, Vector2 me, float x, float y)
+    {
+        float dx = x - me.x, dy = y - me.y, d = FxMath.Sqrt(dx * dx + dy * dy);
+        float step = FxMath.Min(d, 1.2f);
+        if (d < 0.05f || !Blocked(me, dx / d, dy / d, step)) { b.DetourSide = 0f; Dummy.WalkTo(pc, x, y); return; }
+        if (b.DetourSide == 0f) b.DetourSide = Roll(0.5f) ? 1f : -1f;
+        for (int i = 1; i <= 5; i++)
+        for (int k = 0; k < 2; k++)
+        {
+            float side = k == 0 ? b.DetourSide : -b.DetourSide;
+            var u = Turn(dx / d, dy / d, side * 30f * i);
+            if (Blocked(me, u.x, u.y, step)) continue;
+            b.DetourSide = side;
+            Detours++;
+            Dummy.WalkTo(pc, me.x + u.x * step, me.y + u.y * step);
+            return;
+        }
+        Dummy.WalkTo(pc, x, y);
+    }
+
+    // me から向き (ux, uy) へ len 進む間に、壁か机の当たり判定があるか。始めから触れている当たりは数えない
+    private static bool Blocked(Vector2 me, float ux, float uy, float len)
+    {
+        foreach (var h in Physics2D.CircleCastAll(me, Body, FxMath.V2(ux, uy), len, WalkMask))
+            if (h.collider && !h.collider.isTrigger && h.distance > 0.02f) return true;
+        return false;
     }
 
     internal static string Describe()
     {
-        var sb = new System.Text.StringBuilder($"bots={Bots.Count} dodges={Dodges} counters={Counters} dashes={Dashes} circles={Circles} faced={DuelFacing.Turned}");
+        var sb = new System.Text.StringBuilder($"bots={Bots.Count} dodges={Dodges} counters={Counters} dashes={Dashes} circles={Circles} detours={Detours} faced={DuelFacing.Turned}");
         foreach (var b in Bots.Values)
         {
             sb.Append($" [{b.Id} {b.Kind} Lv{b.Level} retreat={b.Retreat} charge={b.Charge:0.00} kill={FxMath.Max(b.KillReady - Time.time, 0f):0.0}s");
