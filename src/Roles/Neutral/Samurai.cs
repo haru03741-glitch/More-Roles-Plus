@@ -510,8 +510,8 @@ public sealed partial class Samurai : RoleBase
         {
             var target = GameData.Instance.GetPlayerById(hits[i])?.Object;
             if (!target || target.Data == null || target.Data.IsDead) continue;
-            // 立ち合いの外からの溜め切りの居合 (不意打ち) は誰でも一太刀で倒れる
-            int dmg = _hostStrokeFull && !Duel.InDuel(target.PlayerId) ? Duel.MaxHp : damage;
+            // 溜め切りの居合は、立ち合いの外からの不意打ちなら誰でも、戦えない人なら立ち合いの中でも一太刀で倒れる
+            int dmg = _hostStrokeFull && (!Duel.InDuel(target.PlayerId) || !Fighter(target)) ? Duel.MaxHp : damage;
             // サムライへの斬りは、相手の斬り (納めていれば居合) とぶつかるかを少し待ってから決める (Samurai.Clash.cs)
             if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, dmg, (aimedBits >> i & 1) != 0)) continue;
             // 立ち合いの相手のインポスターへの斬りは、口で受けられるかを少し待ってから決める (Samurai.Tongue.cs)
@@ -531,7 +531,6 @@ public sealed partial class Samurai : RoleBase
         return counted;
     }
 
-    // 立ち合い (体力の削り合い) になる相手 = 刀を受けて戦える人。それ以外は一太刀で倒れる
     // 確かめ用: 振り終わりの外れは絵の重なりと突き合わせ、触れた瞬間の外れはそのまま出す
     private void WatchMiss(byte target, byte only, string note)
     {
@@ -539,6 +538,7 @@ public sealed partial class Samurai : RoleBase
         else HitWatch.CutMiss(PlayerId, target, note);
     }
 
+    // 刀を受けて戦える人。戦えない人も普通の振りでは体力が削れるだけで、溜め切りの居合でだけ一太刀で倒れる
     private static bool Fighter(PlayerControl p) =>
         p.Data.Role && p.Data.Role.IsImpostor || RoleState.Of(p) is Samurai or { CanKill: true } or { IsKiller: true };
 
@@ -548,11 +548,11 @@ public sealed partial class Samurai : RoleBase
         var p = Player;
         if (!p || !target || target.Data == null || target.Data.IsDead) return false;
         int left = Duel.HpOf(target.PlayerId);
-        bool fighter = Fighter(target);
-        int dmg = fighter ? damage : left;
+        int dmg = damage;
         // 倒す一振りだけキルとして確かめる (盾などに止められたら体力 1 で残す)
         if (left - dmg <= 0 && BeforeMurderEvent.Ask(p, target) != null) dmg = left - 1;
-        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg, start: fighter && dmg < left, smash: smash)) return false;
+        // 倒れない一振りは立ち合いを始める (戦えない人も体力のバーと回避が付く)
+        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg, start: dmg < left, smash: smash)) return false;
         bool impostor = target.Data.Role && target.Data.Role.IsImpostor;
         p.RpcMurderPlayer(target, true);
         Duel.HostLeave(target.PlayerId);

@@ -213,7 +213,7 @@ internal static class Duel
     }
 
     // ホスト: 攻撃が当たった。start なら二人を同じ組にし (HostJoin)、体力を減らす。0 になったら true (倒すのは呼んだ側)。
-    // 組に入れなかった人 (組が満員など) は体力だけ減る。start = false は組にしない当たり (一太刀で倒れる相手)。当たりの見た目だけ全員に出る
+    // 組に入れなかった人 (組が満員など) は体力だけ減る。start = false は組にしない当たり (この一振りで倒れる相手)。当たりの見た目だけ全員に出る
     // smash = 吹き飛ばす一撃 (受けた人が飛ばされる・倒れた時は飛んだ先に倒れる)
     internal static bool HostDamage(byte attacker, byte target, int damage, bool start = true, bool smash = false)
     {
