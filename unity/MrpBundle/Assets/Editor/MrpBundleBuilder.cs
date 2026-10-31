@@ -15,6 +15,7 @@ using UnityEngine;
 //   riftwarp.mat … MRP/RiftWarp (空間の裂け目: 描き上がった画面を斬った線に沿ってせん断する)
 //   katanaplate.mat / katanaframe.mat / katanaflash.mat … MRP/Katana* (必殺技の演出: 生の画面を板に貼る / 事前に描いたコマ / 被害者の白の閃き)
 //   uifire.mat … MRP/UiFire (立ち合いの HUD の炎: 体力のバーから立つ炎・回避の枠の炎の輪)
+//   uibar.mat … MRP/UiBar (立ち合いの HUD の体力のバー・中央の鍔・顔の額縁)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -143,6 +144,20 @@ public static class MrpBundleBuilder
         uiFire.SetTexture("_Noise", noise);
         AssetDatabase.CreateAsset(uiFire, uiFirePath);
         Tag(uiFirePath);
+
+        Shader uiBarShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/UiBar.shader");
+        if (uiBarShader == null)
+        {
+            Debug.LogError("MrpBundleBuilder: UiBar shader not found");
+            EditorApplication.Exit(2);
+            return;
+        }
+        string uiBarPath = Folder + "/uibar.mat";
+        AssetDatabase.DeleteAsset(uiBarPath);
+        var uiBar = new Material(uiBarShader) { name = "uibar" };
+        uiBar.SetTexture("_Noise", noise);
+        AssetDatabase.CreateAsset(uiBar, uiBarPath);
+        Tag(uiBarPath);
 
         BreakSounds.ImportAll(Folder, BundleName);
 

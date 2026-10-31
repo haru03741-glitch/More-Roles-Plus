@@ -1,7 +1,7 @@
 // 立ち合いの HUD の炎 (体力のバーから立つ炎・回避の枠の炎の輪)。板 1 枚に式で炎を描く。
 // 値は頂点の色で受け取る (Android の MaterialPropertyBlock に SetVector が無く、色なら SpriteRenderer.color の 1 回で済む):
 //   r = 燃えている長さ (バー: 外側の端からの割合 / 輪: 上から時計回りの割合)・g = 熱さ (0〜1・高いほど背が高く白く明るい)
-//   b = 形 (0 = バー・1 = 輪)・a = 全体の濃さ
+//   b = 形 (0 = バー・0.5 = 宙に浮く炎 (根元と燃える端を広くぼかす)・1 = 輪)・a = 全体の濃さ
 // 炎の形: 上へ流れる 2 段のノイズの片方でもう片方を横へゆがめ、高さで削って舌にする。ノイズは HUD の座標で読むので、
 //   板の大きさが違ってもきめが揃う。色は温度の連続した変化 (暗い赤 → 赤 → 橙 → 黄白) で、根元と芯ほど熱い。
 // 合成は乗算済みアルファ (One / OneMinusSrcAlpha): 熱い所ほどアルファを下げて光として足す。
@@ -67,17 +67,19 @@ Shader "MRP/UiFire"
                 float t = _Time.y;
                 float n = FlameNoise(i.world, t);
                 float a, temp;
-                if (i.color.b < 0.5)
+                if (i.color.b < 0.75)
                 {
+                    // 宙に浮く炎は台が無いので、根元を消し燃える端を広くぼかす
+                    float loose = step(0.25, i.color.b);
                     // バー: uv.x = 外側の端 (0) から内へ・uv.y = 根元 (0) から上へ。燃えているのは fill まで
                     float x = i.uv.x, y = i.uv.y;
                     // 燃えている端は箱に見えないよう広くぼかし、端へ向かって背も低くする
-                    float inside = smoothstep(fill + 0.03, fill - 0.06, x) * smoothstep(0.0, 0.03, x);
+                    float inside = (1.0 - smoothstep(fill - lerp(0.06, 0.45, loose), fill + 0.03, x)) * smoothstep(0.0, 0.03, x);
                     float h = lerp(0.4, 0.95, heat) * (0.6 + 0.4 * inside);
                     float shape = n * 1.35 - y / h - 0.12;
-                    float f = saturate(shape * 2.6) * inside;
+                    float f = saturate(shape * lerp(2.6, 3.4, loose)) * inside * lerp(1.0, smoothstep(0.0, 0.3, y), loose);
                     // 根元のにじみ (バーそのものが熱を持って光る)。普段は弱く、バーの色を透かす
-                    float base = exp(-y * 14.0) * inside * (0.1 + 0.6 * heat * heat);
+                    float base = exp(-y * 14.0) * inside * (0.1 + 0.6 * heat * heat) * (1.0 - loose);
                     temp = saturate(f * (0.5 + 0.65 * heat) + base * 0.6 - y * 0.35);
                     a = saturate(f * (0.7 + 0.3 * heat) + base * 0.5);
                 }
@@ -103,7 +105,9 @@ Shader "MRP/UiFire"
                 float3 col = Ramp(temp);
                 a *= alpha;
                 // 乗算済み: 色は a を掛けて足し、熱い所ほど下を透かす (光として重なる)
-                return fixed4(col * a * 1.25, a * (0.55 - 0.35 * temp));
+                // 宙に浮く炎は下地 (暗い煙の板) の上に重なるので、下をより隠して濃く見せる
+                float cover = i.color.b > 0.25 && i.color.b < 0.75 ? 0.8 : 0.55;
+                return fixed4(col * a * 1.25, a * (cover - 0.35 * temp));
             }
             ENDCG
         }

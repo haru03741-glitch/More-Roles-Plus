@@ -5,7 +5,7 @@ namespace MoreRolesPlus.UI;
 
 // 立ち合いの HUD の燃える演出: 体力のバーから立つ炎 (MRP/UiFire のシェーダ・動きはシェーダの中の時刻で決まる)・
 // 火の粉 (昇る粒と飛び散る火花)・横切る光の筋・残りが少ない時の脈打ち・削られた所の白い光・∞ の後ろの炎の光・題字の火の粉・
-// 鍔迫り合いの境目の火花。粒は Embers 個を使い回し、毎フレーム書くのは生きている粒と、動いている光だけ
+// 鍔迫り合いの境目の火花と白熱・題字の下から吹き上がる炎・小さなバーの減る端の燠火。粒は Embers 個を使い回し、毎フレーム書くのは生きている粒と、動いている光だけ
 // (炎の板は残りと熱さが変わった時だけ色を書く)
 internal static partial class DuelHud
 {
@@ -35,6 +35,15 @@ internal static partial class DuelHud
     private static float _lockEdge, _lockCarry, _centerCarry, _barY;
     private static Sprite _dot, _soft;
 
+    // 鍔迫り合いの境目から左右へ伸びる短い炎 (境目が uv.x = 0)・題字の下の炎 (中央から左右へ)・小さなバーの燠火
+    private const float LockFireW = 1.3f, LockFireH = 0.55f, TitleFireW = 2.4f, TitleFireH = 2.3f, TitleFireBase = -0.15f;
+    private static readonly SpriteRenderer[] _lockFire = new SpriteRenderer[2], _titleFire = new SpriteRenderer[2], _subEmber = new SpriteRenderer[2];
+    private static SpriteRenderer _titleSmoke;
+    private static readonly float[] _subEmberCarry = new float[2];
+    private static bool _titleFireOn;
+    private static int _titleFireKey = -1, _lockFireKey = -1;
+    private static readonly int[] _subEmberKey = { -1, -1 };
+
     private static void BuildFx(Sprite white, int layer, float y)
     {
         _dot ??= FxSprites.Rect(32, 32, FxSprites.Dot, "MrpDuelEmber");
@@ -45,7 +54,7 @@ internal static partial class DuelHud
             float side = i == 0 ? -1f : 1f, mid = side * (BarGap + _barW * 0.5f);
             // 炎の板はバーの上の縁から上へ。右のバーは左右を返して、板の左端 (uv.x = 0) をいつも外側の端にする
             // 根元はバーの上の縁 (バーに重ねるとバーの色が光で塗りつぶされる)
-            _fire[i] = Quad("Fire", white, mid, y + BarH * 0.25f + FireH * 0.5f, -0.32f, _barW * -side, FireH, FxMath.Rgba(1f, 0f, 0f, 0f), layer);
+            _fire[i] = Quad("Fire", white, mid, y + BarH * 0.65f + FireH * 0.5f, -0.32f, _barW * -side, FireH, FxMath.Rgba(1f, 0f, 0f, 0f), layer);
             _fire[i].enabled = false;
             _fireKey[i] = -1;
             // 光の筋と削られた所の光は体力より手前
@@ -58,6 +67,18 @@ internal static partial class DuelHud
             _sheenOn[i] = false;
         }
         _fireMat = false;
+        for (int i = 0; i < 2; i++)
+        {
+            float side = i == 0 ? -1f : 1f;
+            // 中央が uv.x = 0 (燃え始め)。消える時は外側から中央へ縮む
+            _titleFire[i] = Quad("TitleFire", white, side * TitleFireW * 0.5f, TitleFireBase + TitleFireH * 0.5f, -1.95f, TitleFireW * side, TitleFireH, FxMath.Rgba(1f, 0f, 0f, 0f), layer);
+            _titleFire[i].enabled = false;
+        }
+        // 炎の下地の暗い煙 (明るい床の上でも炎が沈まない)
+        _titleSmoke = Quad("TitleSmoke", _soft, 0f, 0.6f, -1.9f, 7.4f, 2.6f, FxMath.Rgba(0.05f, 0.01f, 0f, 0f), layer);
+        _titleSmoke.enabled = false;
+        _titleFireOn = false;
+        _titleFireKey = -1;
         _centerGlow = Quad("CenterGlow", _soft, 0f, y, 0.1f, 0.95f, 0.95f, FxMath.Rgba(1f, 0.55f, 0.18f, 0.4f), layer);
         for (int i = 0; i < Embers; i++)
         {
@@ -158,6 +179,10 @@ internal static partial class DuelHud
             {
                 _fire[i].sharedMaterial = MrpBundle.UiFireMaterial;
                 _fire[i].enabled = true;
+                _titleFire[i].sharedMaterial = MrpBundle.UiFireMaterial;
+                // 鍔迫り合いの炎は押し合いのバーと一緒に出る (隠すのはバーの親)
+                _lockFire[i].sharedMaterial = MrpBundle.UiFireMaterial;
+                _lockFire[i].enabled = true;
             }
         }
         float dt = Time.deltaTime;
@@ -183,7 +208,97 @@ internal static partial class DuelHud
                 Emit(_lockEdge, _lockY, 1, FxMath.Cos(ang) * v, FxMath.Sin(ang) * v * 0.8f + 0.6f, 0.2f);
             }
         }
+        for (int j = 0; j < 2; j++) SubFx(j, now, dt);
         if (_emLive > 0) EmberTick(now, dt);
+    }
+
+    // 押し合いのバーの境目の炎 (Build の鍔迫り合いの組み立てから)。残り時間の区切りは炎より手前
+    private static void BuildLockFx(Sprite white, int layer, Transform parent, float ly)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            float side = i == 0 ? -1f : 1f;
+            _lockFire[i] = Quad("LockFire", white, side * LockFireW * 0.5f, ly + LockH * 0.5f + LockFireH * 0.5f - 0.04f, -0.15f, LockFireW * side, LockFireH, FxMath.Rgba(0.5f, 0.5f, 0f, 1f), layer, parent);
+            _lockFire[i].enabled = _fireMat;
+        }
+        _lockFireKey = -1;
+    }
+
+    // 鍔迫り合いの境目: 刀の当たる所が白熱して左右へ短い炎が伸びる。押すたび・押し合いが動くほど熱く広く
+    private static void LockFire(float now)
+    {
+        if (!_fireMat) return;
+        float mash = FxMath.Clamp01(1f - (now - _mashT) / 0.35f);
+        float sway = FxMath.Clamp01(FxMath.Abs(_pushGoal - _push) * 6f);
+        float k = FxMath.Max(mash, sway);
+        // 境目と熱さが変わった時だけ書く (押し合いが止まっている間は書かない)
+        int key = (int)(_lockEdge * 400f) * 64 + (int)(k * 63f);
+        if (key == _lockFireKey) return;
+        _lockFireKey = key;
+        var c = FxMath.Rgba(0.6f + 0.3f * k, 0.6f + 0.4f * k, 0f, 1f);
+        float y = _lockY + LockH * 0.5f + LockFireH * 0.5f - 0.04f;
+        for (int i = 0; i < 2; i++)
+        {
+            float side = i == 0 ? -1f : 1f;
+            _lockFire[i].transform.localPosition = FxMath.V3(_lockEdge + side * LockFireW * 0.5f, y, -0.15f);
+            _lockFire[i].color = c;
+        }
+    }
+
+    // 題字の下の炎: 出た瞬間に高く白く吹き上がり 0.5 秒で落ち着き、題字が消えるのに合わせて中央へ縮む。
+    // 崩された側の赤い題字は暗く燻るだけ。色は量子化した値が変わった時だけ書く
+    private static void TitleFire(int state, float k, float alpha)
+    {
+        bool on = state >= 1 && _fireMat;
+        if (on != _titleFireOn)
+        {
+            _titleFireOn = on;
+            _titleFire[0].enabled = on;
+            _titleFire[1].enabled = on;
+            _titleSmoke.enabled = on;
+            _titleFireKey = -1;
+        }
+        if (!on) return;
+        bool red = state == 2 + BannerBroken;
+        float flare = FxMath.Clamp01(1f - k / 0.5f), al = FxMath.Clamp01(alpha);
+        float heat = red ? 0.28f + 0.22f * flare : 0.35f + 0.6f * flare;
+        float fill = al * (red ? 0.85f : 1f), a = al;
+        int key = (int)(heat * 100f) * 10000 + (int)(fill * 99f) * 100 + (int)(a * 99f);
+        if (key == _titleFireKey) return;
+        _titleFireKey = key;
+        var c = FxMath.Rgba(fill, heat, 0.5f, a);
+        _titleFire[0].color = c;
+        _titleFire[1].color = c;
+        _titleSmoke.color = FxMath.Rgba(0.05f, 0.01f, 0f, 0.55f * al);
+    }
+
+    // 小さなバーの燠火を減る端へ (体力が変わった時の Write から)
+    private static void SubEmberAt(int j, float x, float y, float hp)
+    {
+        var sr = _subEmber[j];
+        if (!sr) return;
+        sr.transform.localPosition = FxMath.V3(x, y, -0.35f);
+        sr.enabled = hp > 0f;
+    }
+
+    // 小さなバー: 減る端の燠火が揺らぎ、ときどき火の粉が昇る (炎の板は大きなバーだけ)
+    private static void SubFx(int j, float now, float dt)
+    {
+        if (_slot[SlotL1 + j] == 255 || _subHp[j] <= 0f) return;
+        float side = j == 0 ? -1f : 1f, w = _barW * SubW * FxMath.Clamp01(_subHp[j]);
+        float f = 0.5f + 0.5f * FxMath.Sin(now * (11f + j * 2.3f)) * FxMath.Sin(now * 6.1f + j);
+        // 揺らぎは 16 段に丸め、段が変わった時だけ書く
+        int key = (int)(f * 15.99f);
+        if (key != _subEmberKey[j])
+        {
+            _subEmberKey[j] = key;
+            _subEmber[j].color = FxMath.Rgba(1f, 0.5f + 0.15f * f, 0.15f, 0.35f + 0.3f * f);
+        }
+        _subEmberCarry[j] += 2.5f * dt;
+        if (_subEmberCarry[j] < 1f) return;
+        _subEmberCarry[j] -= 1f;
+        float x = SubOuter(side) - side * FxMath.Range(0f, w);
+        Emit(x, _barY - SubBelow + SubH * 0.4f, 0, FxMath.Range(-0.15f, 0.15f), FxMath.Range(0.35f, 0.7f), 0.3f);
     }
 
     // 体力のバー i: にじみ・横切る光の筋・残りが少ない時の脈打ちと火の粉・削られた所の光
@@ -323,6 +438,10 @@ internal static partial class DuelHud
             if (_sheen[i]) _sheen[i].enabled = false;
             _pulseOn[i] = 0;
         }
+        _titleFireOn = false;
+        for (int i = 0; i < 2; i++)
+            if (_titleFire[i]) _titleFire[i].enabled = false;
+        if (_titleSmoke) _titleSmoke.enabled = false;
     }
 
     internal static string DescribeFx() => $"fire={_fireMat} embers={_emLive}/{Embers} cut={_cutT[0] > 0f}/{_cutT[1] > 0f} low={_pulseOn[0]}/{_pulseOn[1]}";
