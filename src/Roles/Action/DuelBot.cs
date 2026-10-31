@@ -40,9 +40,15 @@ internal static class DuelBot
         public float ModeUntil, WaitKeep = 2.3f;
         public bool Escape;             // 斬られた後、のけぞりが明けたら踏み込みで抜ける
         public bool Masher;          // 確かめ用: 寄って気の続く限り振り回すだけ (TestMash)
+        public bool Rusher;          // 確かめ用: 間合いの外から相手の後ろへ踏み込んで斬るだけ (TestRush)
         public float CalmUntil;         // 出した直後はこの時刻まで斬らずに間合いの外を回る
         public bool SaveGuard;          // インポスター: 抜いたサムライの間合いの近くでは舌を撃たず、口で受けるために残す
         public float ReturnAt = -1f;    // インポスター: 口で受けた後に舌で返す時刻
+        // 相手の踏み込みへの備え: 受け・弾きを確かにする時刻まで・横へ抜ける向きと時刻 (インポスターは回避・サムライは踏み込み)
+        public float DashSeenUntil, SideAt = -1f;
+        public Vector2 SideDir;
+        public Vector2 CounterAim;      // 斬り返す先 (踏み込んで来る相手の行き着く所)。CounterAimOn の時だけ
+        public bool CounterAimOn;
     }
 
     // 作戦: ふつうに戦う・相手の間合いのすぐ外で待つ (振り回しを空振りさせる)・相手の隙 (気切れ) に踏み込む
@@ -106,6 +112,44 @@ internal static class DuelBot
         return true;
     }
 
+    // 確かめ用: サムライのボットを「後ろへ踏み込んで斬るだけ」に切り替える (踏み込みへの備えを試す)
+    internal static bool TestRush(byte id)
+    {
+        if (!Bots.TryGetValue(id, out var b) || b.Kind != Kind.Samurai) return false;
+        b.Rusher = !b.Rusher;
+        return true;
+    }
+
+    internal static int Rushes, RushHits, DashReads;
+
+    private static void Rush(Bot b, PlayerControl pc, Samurai s, Vector2 me, Vector2 at, float dx, float dy, float d, float now)
+    {
+        if (!s.BotDrawn)
+        {
+            if (d > Reach) Toward(b, pc, at, now);
+            else if (now >= b.NextStroke) Strike(b, pc, s, dx, dy, now, 0f);
+            return;
+        }
+        // 踏み込み終わり: 相手の背中へ斬る
+        if (b.StrikeAfterDash)
+        {
+            b.StrikeAfterDash = false;
+            Strike(b, pc, s, dx, dy, now, 0f);
+            b.NextMove = 0f;
+            return;
+        }
+        if (s.BotKi < 50f) { Away(b, pc, me, dx, dy, d, 4.5f, now); return; }
+        if (d > 3.2f) { Toward(b, pc, at, now); return; }
+        if (d < 1.8f) { Away(b, pc, me, dx, dy, d, 2.8f, now); return; }
+        if (now < b.DashReady || now < b.NextStroke) { Circle(b, pc, me, at, d, 2.6f, now, 60f); return; }
+        // 相手を少し横へ外して通り抜け、背中側 1.0 の所で止まる
+        var dir = Turn(dx, dy, b.Side * 12f);
+        if (!DashBot(b, pc, s, dir, d + 1.0f, now)) return;
+        Rushes++;
+        b.DashReady = now + 1.2f;
+        b.StrikeAfterDash = true;
+    }
+
     // ---- 出す・消す (チャットの /bot) ----
 
     internal static string Add(Kind kind, int level)
@@ -166,6 +210,17 @@ internal static class DuelBot
             // 踏み込み・回避の飛び退きの間は向きと速さを毎フレーム書く
             if (now < b.DodgeUntil)
             {
+                // 確かめ用の踏み込みは、人と同じく終わり際に振り始める
+                if (b.Rusher && b.StrikeAfterDash && now >= b.DodgeUntil - 0.06f && RoleState.Of(pc) is Samurai rs)
+                {
+                    b.StrikeAfterDash = false;
+                    var rt = Player(b.Watched);
+                    if (rt)
+                    {
+                        Vector2 rm = pc.GetTruePosition(), ra = rt.GetTruePosition();
+                        Strike(b, pc, rs, ra.x - rm.x, ra.y - rm.y, now, 0f);
+                    }
+                }
                 pc.MyPhysics.body.velocity = FxMath.V2(b.DodgeDir.x * b.MoveSpeed, b.DodgeDir.y * b.MoveSpeed);
                 continue;
             }
@@ -193,6 +248,12 @@ internal static class DuelBot
                 if (DuelTongue.HostPress(pc)) { Returns++; b.TongueReady = now + DuelTongue.Cooldown; }
             }
             if (b.DodgeAt >= 0f && now >= b.DodgeAt) { b.DodgeAt = -1f; DodgeAway(b, pc, now); }
+            if (b.SideAt >= 0f && now >= b.SideAt)
+            {
+                b.SideAt = -1f;
+                if (b.Kind == Kind.Impostor) DodgeTo(b, pc, now, b.SideDir);
+                else if (RoleState.Of(pc) is Samurai ss) DashBot(b, pc, ss, b.SideDir, 2.2f, now);
+            }
             if (now < b.NextThink) continue;
             b.NextThink = now + ThinkEvery;
             var target = Target(b, pc);
@@ -314,6 +375,12 @@ internal static class DuelBot
         if (Aggro(b) <= 0f) { Dummy.StopWalk(pc); return; }
         Vector2 me = pc.GetTruePosition(), at = target.GetTruePosition();
         float dx = at.x - me.x, dy = at.y - me.y, d = FxMath.Sqrt(dx * dx + dy * dy);
+        if (b.Rusher)
+        {
+            b.Watched = target.PlayerId;
+            Rush(b, pc, s, me, at, dx, dy, d, now);
+            return;
+        }
         if (b.Masher)
         {
             Toward(b, pc, at, now);
@@ -469,6 +536,7 @@ internal static class DuelBot
         b.MoveSpeed = Samurai.BotDashSpeed;
         b.DodgeUntil = now + FxMath.Min(Samurai.BotDashTime, dist / Samurai.BotDashSpeed);
         b.DashReady = now + Rand(0.8f, 2.4f) - 0.5f * T(b);
+        OnDash(b.Id, (byte)((int)MathF.Round(FxMath.Atan2(dir.y, dir.x) * FxMath.Rad2Deg / 360f * 256f) & 0xFF), b.DodgeUntil - now);
         return true;
     }
 
@@ -499,7 +567,7 @@ internal static class DuelBot
     {
         if (!Bots.TryGetValue(bot, out var b) || b.Kind != Kind.Samurai || b.CounterAt >= 0f) return;
         // 振り回す癖を読んでいるほど、振りを待ち構えて早く確かに斬り返す
-        float read = b.Watched == attacker ? b.Spam : 0f;
+        float read = ReadOf(b, attacker);
         float react = Reaction(b) * Rand(0.6f, 1.1f) * (1f - 0.5f * read);
         float chance = ClashChance(b);
         if (react >= window - 0.02f || !Roll(chance + (1f - chance) * 0.6f * read)) return;
@@ -511,18 +579,73 @@ internal static class DuelBot
     internal static void OnHeldGuard(byte bot, byte attacker, float window)
     {
         if (!Bots.TryGetValue(bot, out var b) || b.Kind != Kind.Impostor || b.GuardAt >= 0f) return;
-        float read = b.Watched == attacker ? b.Spam : 0f;
+        float read = ReadOf(b, attacker);
         float chance = ClashChance(b) * 0.7f;
         if (!Roll(chance + (1f - chance) * 0.5f * read)) return;
         b.GuardAt = Time.time + Rand(0.02f, window - 0.03f);
     }
 
+    // 相手の斬りをどれだけ読めているか (0〜1): 振り回しの癖と、踏み込んで来るのを見た直後
+    private static float ReadOf(Bot b, byte attacker)
+    {
+        float read = b.Watched == attacker ? b.Spam : 0f;
+        if (b.Foe == attacker && Time.time < b.DashSeenUntil) read = FxMath.Max(read, 0.5f + 0.5f * T(b));
+        return read;
+    }
+
+    // ホスト: サムライが踏み込んだ (人は電文・ボットは DashBot から)。向き = 256 分割。
+    // 踏み込みの終わりが斬りの届く所に入る組のボットは、反応の遅れの後に横へ抜けるか (インポスターは回避・サムライは踏み込み)、
+    // サムライは踏み込みの終わりへ斬り返して弾き合いにする。抜けない時も、その後の受け・弾きが確かになる
+    internal static void OnDash(byte dasher, byte angle, float secs)
+    {
+        if (Bots.Count == 0) return;
+        var dp = Player(dasher);
+        if (!dp) return;
+        float ar = angle * (360f / 256f) * FxMath.Deg2Rad, ux = FxMath.Cos(ar), uy = FxMath.Sin(ar);
+        float len = Samurai.DashSpeed * secs, now = Time.time;
+        Vector2 p = dp.GetTruePosition();
+        float reach = Samurai.SlashReach + 0.6f;
+        foreach (var b in Bots.Values)
+        {
+            if (b.Id == dasher || b.Level < 3 || !Duel.SameGroup(b.Id, dasher)) continue;
+            var pc = Player(b.Id);
+            if (!pc || DuelTumble.Busy(b.Id)) continue;
+            Vector2 m = pc.GetTruePosition();
+            float rx = m.x - p.x, ry = m.y - p.y, ex = rx - ux * len, ey = ry - uy * len;
+            if (ex * ex + ey * ey > reach * reach) continue;
+            DashReads++;
+            b.Foe = dasher;
+            b.DashSeenUntil = now + secs + 0.5f;
+            float react = Reaction(b) * Rand(0.6f, 1f);
+            // 踏み込みの線から離れる側の横 (線の上にいれば左右どちらか)
+            float side = -rx * uy + ry * ux;
+            float sg = FxMath.Abs(side) < 0.2f ? (Roll(0.5f) ? 1f : -1f) : side > 0f ? 1f : -1f;
+            var away = FxMath.V2(-uy * sg, ux * sg);
+            if (b.Kind == Kind.Impostor)
+            {
+                if (b.SideAt < 0f && b.DodgeAt < 0f && Roll(DodgeChance(b))) { b.SideAt = now + react; b.SideDir = away; }
+                continue;
+            }
+            if (RoleState.Of(pc) is not Samurai s || s.BotSpent) continue;
+            if (b.CounterAt < 0f && Roll(ClashChance(b)))
+            {
+                // 踏み込みの途中の位置へ振ると背中側へ抜けた相手に届かないので、行き着く所へ、着く間際に振る
+                b.CounterAt = FxMath.Max(now + react, now + secs - 0.04f);
+                b.CounterAim = FxMath.V2(p.x + ux * len, p.y + uy * len);
+                b.CounterAimOn = true;
+            }
+            else if (b.SideAt < 0f && s.BotDrawn && Roll(DodgeChance(b) * 0.6f)) { b.SideAt = now + react; b.SideDir = away; }
+        }
+    }
+
     private static void Counter(Bot b, PlayerControl pc)
     {
         b.CounterAt = -1f;
+        bool aimed = b.CounterAimOn;
+        b.CounterAimOn = false;
         var o = Player(b.Foe);
         if (!o || RoleState.Of(pc) is not Samurai s || s.BotKi < -10f) return;
-        Vector2 me = pc.GetTruePosition(), at = o.GetTruePosition();
+        Vector2 me = pc.GetTruePosition(), at = aimed ? b.CounterAim : o.GetTruePosition();
         Counters++;
         Strike(b, pc, s, at.x - me.x, at.y - me.y, Time.time, 0f);
     }
@@ -613,6 +736,7 @@ internal static class DuelBot
     // 立ち合いで斬られたボットは用心を増やす (強いほど)。インポスターは反応が間に合えば飛び退く
     private static void OnHit(byte a, byte t, int hp)
     {
+        if (a != t && Bots.TryGetValue(a, out var ra) && ra.Rusher) RushHits++;
         if (a == t || hp <= 0 || !Bots.TryGetValue(t, out var b)) return;
         if (b.Level >= 3)
         {
@@ -637,10 +761,16 @@ internal static class DuelBot
         var dir = Turn(me.x - at.x, me.y - at.y, turn);
         float l = FxMath.Sqrt(dir.x * dir.x + dir.y * dir.y);
         if (l < 0.01f) { dir = FxMath.V2(1f, 0f); l = 1f; }
-        if (!DuelDodge.BotDodge(b.Id, dir.x / l, dir.y / l)) return false;
+        return DodgeTo(b, pc, now, FxMath.V2(dir.x / l, dir.y / l));
+    }
+
+    // 向き (単位) へ飛び退く (立ち合いごとの回数を使う)
+    private static bool DodgeTo(Bot b, PlayerControl pc, float now, Vector2 dir)
+    {
+        if (!DuelDodge.BotDodge(b.Id, dir.x, dir.y)) return false;
         Dummy.StopWalk(pc);
         Dodges++;
-        b.DodgeDir = FxMath.V2(dir.x / l, dir.y / l);
+        b.DodgeDir = dir;
         b.MoveSpeed = DuelDodge.Speed;
         b.DodgeUntil = now + DuelDodge.BotDodgeTime;
         return true;
@@ -714,7 +844,7 @@ internal static class DuelBot
 
     internal static string Describe()
     {
-        var sb = new System.Text.StringBuilder($"bots={Bots.Count} dodges={Dodges} baitDodges={BaitDodges} returns={Returns} counters={Counters} dashes={Dashes} circles={Circles} detours={Detours} waits={Waits} punishes={Punishes} faced={DuelFacing.Turned}");
+        var sb = new System.Text.StringBuilder($"bots={Bots.Count} dodges={Dodges} baitDodges={BaitDodges} returns={Returns} counters={Counters} dashes={Dashes} circles={Circles} detours={Detours} waits={Waits} punishes={Punishes} rushes={Rushes}/{RushHits} dashReads={DashReads} faced={DuelFacing.Turned}");
         foreach (var b in Bots.Values)
         {
             sb.Append($" [{b.Id} {b.Kind} Lv{b.Level} plan={b.Mode} heat={b.Heat:0.0} spam={b.Spam:0.00} caution={b.Caution:0.00} retreat={b.Retreat} charge={b.Charge:0.00} kill={FxMath.Max(b.KillReady - Time.time, 0f):0.0}s");

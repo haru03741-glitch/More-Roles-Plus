@@ -273,7 +273,7 @@ public sealed partial class Samurai
             _dashUntil = Time.time + secs;
             _dashOn = true;
             _blade.Dash(secs + 0.08f);
-            DashCall.Send((byte)Math.Clamp((int)(secs * 100f), 1, 255));
+            SendDash(dx, dy, secs);
         }
         _autoSheatheAt = Time.time + (secs + hold) * SamuraiBlade.SlowMo;
     }
@@ -305,7 +305,16 @@ public sealed partial class Samurai
         _dashUntil = Time.time + DashTime;
         _dashOn = true;
         _blade.Dash(DashTime + 0.06f);
-        DashCall.Send((byte)Math.Clamp((int)(DashTime * 100f), 1, 255));
+        SendDash(_dashDir.x, _dashDir.y, DashTime);
+    }
+
+    // 値 = 秒 (1/100) | 向き (256 分割) << 8。ホストは練習のボットに踏み込みを知らせる (送った本人の端末では受け手の処理が走らない)
+    private void SendDash(float dx, float dy, float secs)
+    {
+        byte t = (byte)Math.Clamp((int)(secs * 100f), 1, 255);
+        byte a = (byte)((int)MathF.Round(FxMath.Atan2(dy, dx) * FxMath.Rad2Deg / 360f * 256f) & 0xFF);
+        DashCall.Send((ushort)(t | a << 8));
+        if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) DuelBot.OnDash(PlayerId, a, secs);
     }
 
     // 突いた向きへ少し前へ (自分の端末だけ・位置は本編の同期で届く)
@@ -317,9 +326,16 @@ public sealed partial class Samurai
         _dashOn = true;
     }
 
-    private static readonly RemoteCall<byte> DashCall = new("Samurai.Dash", Route.Anyone,
-        (w, v) => w.Write(v), r => r.ReadByte(),
-        (sender, v) => (RoleState.Of(sender) as Samurai)?._blade.Dash(v / 100f + 0.06f), perSecond: 6);
+    private static readonly RemoteCall<ushort> DashCall = new("Samurai.Dash", Route.Anyone,
+        (w, v) => w.Write(v), r => r.ReadUInt16(), OnDashCall, perSecond: 6);
+
+    private static void OnDashCall(PlayerControl sender, ushort v)
+    {
+        if (RoleState.Of(sender) is not Samurai s) return;
+        float secs = (v & 0xFF) / 100f;
+        s._blade.Dash(secs + 0.06f);
+        if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) DuelBot.OnDash(sender.PlayerId, (byte)(v >> 8), secs);
+    }
 
     // PC: 体からマウスの方向
     private static Vector2 MouseDir(PlayerControl p)
