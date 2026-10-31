@@ -10,7 +10,7 @@ namespace MoreRolesPlus.Roles;
 //       上を向いた砲口へ押し込む。押し込んだ相手は見えなくなり、大砲は撃つ人の前に付いて動く。
 // 発射: 筒が狙った向きへ回り、反動で下がって閃光と白煙。相手は砲口から飛び出し、飛ぶ間は後ろに煙の帯。少し後に大砲は沈んで消える。
 // 置き場所はここが決め、相手の位置 (RocketLauncher.HoldPosition) もここの値を使う。毎フレームの算術は FxMath
-internal sealed class RocketCannon
+internal sealed partial class RocketCannon
 {
     // ---- 数値 ----
     private const float Side = 0.85f;            // 撃つ人の足元から大砲の台までの横の距離
@@ -223,6 +223,7 @@ internal sealed class RocketCannon
         Puffs.Clear();
         foreach (var p in PuffPool) if (p.Go) Object.Destroy(p.Go);
         PuffPool.Clear();
+        ClearShatter();
         _searched = false;
     }
 
@@ -230,16 +231,19 @@ internal sealed class RocketCannon
 
     internal static void Tick()
     {
-        if (Live.Count == 0 && Puffs.Count == 0) return;
+        if (Live.Count == 0 && Puffs.Count == 0 && Slashes.Count == 0 && Shards.Count == 0) return;
         float now = Time.time;
         for (int i = Live.Count - 1; i >= 0; i--)
         {
             var c = Live[i];
             if (!c._root || !c._launcher) { c.Remove(); continue; }
+            if (c._shatterAt >= 0f) { c.TickShatter(now); continue; }
             c.Place(now - c._loadStart);
             if (c._fireStart >= 0f && now - c._fireStart > SinkAfter + SinkTime && !c._flying) c.Remove();
         }
         TickPuffs(now);
+        if (Slashes.Count > 0) TickSlashes(now);
+        if (Shards.Count > 0) TickShards(Time.deltaTime);
     }
 
     private void Place(float t)

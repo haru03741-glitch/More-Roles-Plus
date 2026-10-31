@@ -437,8 +437,7 @@ public sealed class RocketLauncher : RoleBase
         {
             Release(target);
             rl._held = 255;
-            RocketCannon.Drop(rl);
-            GunSound.Escape(user);
+            RocketCannon.Shatter(rl, user);
         }
         else if (rl._flying && rl._shot == target)
         {

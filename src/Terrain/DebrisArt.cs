@@ -68,6 +68,9 @@ internal static class DebrisArt
     private static readonly float[] PipeSlitAt = { 0f, -0.32f, 0.24f, -0.12f, 0f };
     private static readonly float[,] PipePaint = { { 0.55f, 0.58f, 0.63f }, { 0.74f, 0.46f, 0.28f }, { 0.40f, 0.40f, 0.43f }, { 0.50f, 0.62f, 0.54f } };
     public static Sprite Foam => _foam ??= MakeFoam();
+    // 白いぼかしの丸 (色は頂点の色で付ける)。縦横に引き伸ばすと両端の尖った光の筋になる
+    public static Sprite SoftGlow => _softGlow ??= MakeSoftGlow();
+    private static Sprite _softGlow;
 
     private static Sprite[] MakeChunks()
     {
@@ -657,6 +660,24 @@ internal static class DebrisArt
             px[i] = c.r; px[i + 1] = c.g; px[i + 2] = c.b; px[i + 3] = 255;
         }
         return ToSprite(px, n, "MrpSpark");
+    }
+
+    private static Sprite MakeSoftGlow()
+    {
+        const int n = 64;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f;
+            float r = MathF.Sqrt(u * u + v * v);
+            if (r >= 1f) continue;
+            float a = (1f - r) * (1f - r);
+            int i = (y * n + x) * 4;
+            px[i] = px[i + 1] = px[i + 2] = 255;
+            px[i + 3] = (byte)(255f * a);
+        }
+        return ToSprite(px, n, "MrpSoftGlow");
     }
 
     private static unsafe Sprite ToSprite(byte[] px, int n, string name)

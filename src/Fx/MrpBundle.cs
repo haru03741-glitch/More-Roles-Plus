@@ -57,7 +57,7 @@ internal static class MrpBundle
             "noise_gat_fire_loop", "noise_gat_spin_loop", "noise_gat_tail", "noise_gat_raise", "noise_gat_lower",
             "noise_gat_ric_1", "noise_gat_ric_2", "noise_gat_ric_3", "noise_gat_ric_4", "noise_gat_ric_5",
             "noise_gat_hit_1", "noise_gat_hit_2", "noise_gat_hit_3", "noise_gat_case_1", "noise_gat_case_2", "noise_gat_case_3",
-            "noise_rl_load", "noise_rl_bang_1", "noise_rl_bang_2", "noise_rl_bang_3", "noise_rl_escape", "noise_rl_fire", "noise_rl_fly_loop", "noise_rl_blast",
+            "noise_rl_load", "noise_rl_bang_1", "noise_rl_bang_2", "noise_rl_bang_3", "noise_rl_escape", "noise_rl_shatter", "noise_rl_fire", "noise_rl_fly_loop", "noise_rl_blast",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {

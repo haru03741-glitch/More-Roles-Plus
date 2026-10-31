@@ -230,6 +230,9 @@ internal static class GunSound
 
     internal static void Escape(PlayerControl launcher) => At("noise_rl_escape", launcher, 0.85f, CannonRange, CannonMuffle);
 
+    // 詰められたサムライが大砲を内から斬り刻んだ (刃の 4 筋 → 割れて吹き飛ぶ)
+    internal static void Shatter(float x, float y) => At("noise_rl_shatter", x, y, 0.9f, 1f, CannonRange, CannonMuffle);
+
     internal static void Fire(PlayerControl launcher, Vector2 muzzle)
     {
         if (!launcher || !launcher.Visible) return;
