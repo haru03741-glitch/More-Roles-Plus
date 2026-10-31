@@ -14,13 +14,47 @@ public sealed partial class Samurai
     internal bool BotDrawn => Drawn;
     // 納めてから経った秒 (居合の溜めに使える分)
     internal float BotSheathedFor => Drawn ? 0f : Time.time - _sheathedAt;
+    // ホストが確かめた (通した) 一振りの数。ボットが相手の振りの勢いを数えるのに使う
+    internal int BotSeenStrokes => _hostStrokes;
 
     // 向き a0 (度) から sweep (度・符号付き) を secs 秒で振る。納めていれば居合 (charge = 0〜1 の溜め)
     internal void BotStroke(float a0, float sweep, float secs, float charge)
     {
+        if (BotSpent) return;
         byte iai = Drawn ? (byte)0 : (byte)(1 + (int)MathF.Round(FxMath.Clamp01(charge) * 254f));
         HostStroke(new Stroke((short)Math.Clamp((int)a0, -180, 180), (short)sweep, (ushort)(secs * 1000f), iai, (byte)IaiTier(HostKiNow(), Drawn ? 0f : charge)));
+        BotUsedKi();
     }
+
+    // 気切れ (人と同じく、尽きたら SpentTime の間は振れず、明けると SpentRefill まで戻る)。読むたびに明けたかを確かめる
+    internal bool BotSpent
+    {
+        get
+        {
+            if (_spentUntil > 0f && Time.time >= _spentUntil)
+            {
+                _spentUntil = -10f;
+                HostKiNow();
+                _hostKi = FxMath.Max(_hostKi, SpentRefill);
+                _blade.SetSpent(false);
+                BotSpentCall.Send((PlayerId, false));
+            }
+            return Spent;
+        }
+    }
+
+    private void BotUsedKi()
+    {
+        if (HostKiNow() > 0f) return;
+        _hostKi = 0f;
+        _spentUntil = Time.time + SpentTime;
+        _blade.SetSpent(true);
+        BotSpentCall.Send((PlayerId, true));
+    }
+
+    private static readonly RemoteCall<(byte id, bool spent)> BotSpentCall = new("Samurai.BotSpent", Route.HostToAll,
+        (w, v) => { w.Write(v.id); w.Write(v.spent); }, r => (r.ReadByte(), r.ReadBoolean()),
+        (_, v) => (RoleState.Of(v.id) as Samurai)?._blade.SetSpent(v.spent));
 
     // 刀を納める (全員に見せる)。人の納刀と同じく、すぐには抜けない
     internal void BotSheathe()
@@ -36,7 +70,7 @@ public sealed partial class Samurai
     // 踏み込む (ホスト・動かすのは呼んだ側)。抜いていて気が足りる時だけ。気は人の踏み込みと同じだけ減らす
     internal bool BotDash()
     {
-        if (!Drawn || HostKiNow() < DashCost + StrokeCost) return false;
+        if (!Drawn || BotSpent || HostKiNow() < DashCost + StrokeCost) return false;
         _hostKi -= DashCost;
         _blade.Dash(DashTime + 0.06f);
         BotDashCall.Send(PlayerId);

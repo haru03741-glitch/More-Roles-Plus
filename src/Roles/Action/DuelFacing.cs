@@ -16,11 +16,33 @@ internal static class DuelFacing
     private const float DeadX = 0.2f;    // 相手が真上・真下に近い時は向きを変えない
     private const byte None = 255;
     private static readonly byte[] Foe = new byte[256];
+    private static readonly bool[] Turns = new bool[256]; // 前のフレームで本編の向きを直した人
+    private static int _turning;                          // Turns が立っている人数
     internal static int Turned; // 確かめ用: 本編の向きを相手の方へ直した回数
 
     static DuelFacing()
     {
         for (int i = 0; i < Foe.Length; i++) Foe[i] = None;
+    }
+
+    // 本編は向きが変わると走りの絵を頭から流し直すので、毎フレーム直したままだと下がりながら歩く足が止まる。
+    // 本編が向きを決める前に、前のフレームで直した向きを本編の向きへ戻しておく (本編からは向きが変わっていないように見える)
+    public static void Prefix(PlayerPhysics __instance)
+    {
+        if (_turning == 0) return;
+        // 立ち合いが終わった・逆再生中は直しておらず、戻すものもない (抜けた人の印が残らないように畳む)
+        if (!Duel.Any || RewindPlayback.Active)
+        {
+            System.Array.Clear(Turns);
+            _turning = 0;
+            return;
+        }
+        var pc = __instance.myPlayer;
+        if (!pc || !Turns[pc.PlayerId]) return;
+        Turns[pc.PlayerId] = false;
+        _turning--;
+        var cos = pc.cosmetics;
+        if (cos) cos.SetFlipX(!cos.FlipX);
     }
 
     public static void Postfix(PlayerPhysics __instance)
@@ -63,6 +85,7 @@ internal static class DuelFacing
         bool left = bestX < 0f;
         if (cos.FlipX == left) return;
         cos.SetFlipX(left);
+        if (!Turns[id]) { Turns[id] = true; _turning++; }
         Turned++;
     }
 }

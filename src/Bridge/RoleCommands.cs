@@ -280,8 +280,14 @@ internal static class RoleCommands
             reply($"OK dodge {DuelDodge.Describe()} duel[{Duel.Describe()}]");
         });
 
-        TestBridge.Register("bot", "[samurai|impostor] [1〜9] | off | (空 = 状態) チャットの /bot と同じに練習の相手を出す / 止める", (args, reply) =>
+        TestBridge.Register("bot", "[samurai|impostor] [1〜9] | off | mash <番号> | (空 = 状態) チャットの /bot と同じに練習の相手を出す / 止める / サムライのボットを寄って振り回すだけにする (もう一度で戻す)", (args, reply) =>
         {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length >= 2 && a[0] == "mash" && byte.TryParse(a[1], out byte mid))
+            {
+                reply(DuelBot.TestMash(mid) ? $"OK bot mash {mid} | {DuelBot.Describe()}" : $"ERR bot mash {mid}: not a samurai bot");
+                return;
+            }
             string r = string.IsNullOrWhiteSpace(args) ? "" : Commands.HostActions.Bot(args.Trim());
             reply($"OK bot {r} | {DuelBot.Describe()}");
         });

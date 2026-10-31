@@ -55,7 +55,7 @@ public sealed partial class Samurai : RoleBase
     // 一振りの威力 = 角速度 (度/秒) の帯。居合は溜めた分を足す
     private static int Damage(float degPerSec) => degPerSec >= 1000f ? 40 : degPerSec >= 600f ? 30 : 20;
     private const int IaiCharged = 30; // 溜め切った居合に足す分 (溜め無しの居合は普通の一振りと同じ)
-    private const float FullCharge = 0.93f; // ここまで溜めた居合を溜め切りとみなす (不意打ちなら一撃)
+    internal const float FullCharge = 0.93f; // ここまで溜めた居合を溜め切りとみなす (不意打ちなら一撃)
 
     // 修羅に堕ちたらキル役として数える (インポスターがいなくなっても生存者が多ければクルーの勝ちにしない)。
     // ホストの判定で読むので、ホストの値で決まる
