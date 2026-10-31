@@ -128,6 +128,7 @@ public class Ticker : MonoBehaviour
         Fx.FxHands.Tick(); t = Bridge.Perf.Lane(16, t);
         Fx.EmoteArt.Tick();
         Roles.RocketCannon.Tick();
+        Roles.Impostor.RocketLauncher.LocalTick();
         Roles.SwipeInput.Tick();
         Roles.Neutral.Samurai.LocalTick();
         Roles.Watch.Tick();

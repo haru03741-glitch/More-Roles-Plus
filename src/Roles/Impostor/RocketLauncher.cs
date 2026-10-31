@@ -9,7 +9,9 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles.Impostor;
 
 // ロケットランチャー (インポスター): 「装填」で近くのクルーを掴み (その人は動けない)、「発射」で向いている方へ撃ち出す。
-// 撃たれた人は壁 (設定で人) に当たると爆発し、周りの人ごと死ぬ。会議が始まると掴んでいる・飛んでいる人は死ぬ
+// 撃たれた人は壁 (設定で人) に当たると爆発し、周りの人ごと死ぬ。会議が始まると掴んでいる・飛んでいる人は死ぬ。
+// PC の発射は左クリック (発射のボタンを押しに行くとマウスが下へ動き、狙いが必ず下になるため)・スマホはボタン。
+// サムライは大砲の中では斬れず、中で刀を振ると振り払える。爆発では死なずに体力が減って吹き飛び、立ち合いになる
 public sealed class RocketLauncher : RoleBase
 {
     public override Team Team => Team.Impostor;
@@ -55,6 +57,18 @@ public sealed class RocketLauncher : RoleBase
 
     private bool Busy => _held != 255 || _flying;
 
+    // サムライ: 大砲の中で振り払うまでの振りの数 (溜め切った居合なら 1 回)・爆発で減る体力
+    private const int BreakFreeSwings = 4;
+    private const int ToughBlastDamage = 50;
+    private int _swings;
+    private byte _escaped = 255;   // 振り払った人 (少しの間、その人への発射の知らせが遅れて届いても飛ばさない)
+    private float _escapedAt;
+
+    private static bool Tough(PlayerControl p) => RoleState.Of(p) is Neutral.Samurai;
+
+    // 自分の端末のロケットランチャー (PC の左クリックの発射を毎フレーム見る)
+    private static RocketLauncher _mine;
+
     public override void OnAssigned()
     {
         _load = AddAbility(new Ability(new Text("RocketLauncher.Load"), "snr_grab")
@@ -64,18 +78,16 @@ public sealed class RocketLauncher : RoleBase
             CanTarget = (_, t) => (!IsLocal || !Busy) && !PortKit.IsImpostor(t),
             OnUsed = (user, target) => Grab(user, target.PlayerId),
         });
-        AddAbility(new Ability(new Text("RocketLauncher.Shot"), "snr_rocket")
-        {
-            CooldownAtStart = false,
-            OnUse = () =>
+        if (System.OperatingSystem.IsAndroid())
+            AddAbility(new Ability(new Text("RocketLauncher.Shot"), "snr_rocket")
             {
-                if (_held == 255 || _flying || !Player.CanMove) return false;
-                Shoot();
-                return true;
-            },
-        });
+                CooldownAtStart = false,
+                OnUse = TryShoot,
+            });
+        else if (IsLocal) _mine = this;
         Lifespan.OnRelease(() =>
         {
+            if (_mine == this) _mine = null;
             if (_held != 255) Release(_held);
             if (_shot != 255) Release(_shot);
             RocketCannon.Drop(this);
@@ -104,6 +116,23 @@ public sealed class RocketLauncher : RoleBase
         return d < 0.01f ? ShotKit.Facing : new Vector2(dx / d, dy / d);
     }
 
+    private bool TryShoot()
+    {
+        if (_held == 255 || _flying || !Player.CanMove) return false;
+        Shoot();
+        return true;
+    }
+
+    // 毎フレーム (Plugin.Update): PC は掴んでいる間の左クリックで発射。押し始めがボタン・パネルの上なら撃たない
+    internal static void LocalTick()
+    {
+        var rl = _mine;
+        if (rl == null || rl._held == 255 || !Input.GetMouseButtonDown(0)) return;
+        if (PassiveButtonManager.InstanceExists && PassiveButtonManager.Instance.currentOver is { } over && over && !over.GetComponent<PlayerControl>()) return;
+        if (MeetingHud.Instance || Minigame.Instance) return;
+        rl.TryShoot();
+    }
+
     private void Shoot()
     {
         Vector2 dir = AimDir();
@@ -123,6 +152,7 @@ public sealed class RocketLauncher : RoleBase
         if (rl._held != 255 && rl._held != target) Release(rl._held);
         rl._held = target;
         rl._heldFor = 0f;
+        rl._swings = 0;
         Held.Add(target);
         RocketCannon.Load(rl, user, t);
         if (t.MyPhysics && t.MyPhysics.body) t.MyPhysics.body.velocity = Vector2.zero;
@@ -256,6 +286,13 @@ public sealed class RocketLauncher : RoleBase
         byte id = _held != 255 ? _held : _flying ? _shot : (byte)255;
         if (id == 255) return;
         var t = PortKit.ById(id);
+        // サムライは死なずにその場で離される
+        if (Tough(t))
+        {
+            EscapeCall.Send((PlayerId, id));
+            Escape(Player, id);
+            return;
+        }
         var m = ((Vector2)(t ? t.transform.position : Player.transform.position), new List<byte> { id });
         ExplodeCall.Send(m);
         Explode(Player, m.Item1, m.Item2);
@@ -286,6 +323,7 @@ public sealed class RocketLauncher : RoleBase
     private static void StartShot(PlayerControl user, byte target, Vector2 start, Vector2 dir)
     {
         if (RoleState.Of(user) is not RocketLauncher rl) return;
+        if (target == rl._escaped && Time.time - rl._escapedAt < 2f) return;
         rl._held = 255;
         rl._shot = target;
         rl._flying = true;
@@ -330,7 +368,25 @@ public sealed class RocketLauncher : RoleBase
             foreach (var id in victims)
             {
                 var v = PortKit.ById(id);
-                if (PortKit.Alive(v) && PortKit.Alive(user)) PortKit.HostKill(user, v);
+                if (!PortKit.Alive(v) || !PortKit.Alive(user)) continue;
+                // サムライは一撃では死なない: 体力が減って吹き飛び、撃った人と立ち合いになる。0 になったら倒れる
+                if (Tough(v))
+                {
+                    // 倒す一撃だけキルとして確かめる (盾などに止められたら体力 1 で残す)。
+                    // 立ち合いの相手のキルはサムライ側が舌の一撃に替えるので、その間だけ素通りさせる
+                    int left = Duel.HpOf(id), dmg = ToughBlastDamage;
+                    if (left - dmg <= 0)
+                    {
+                        DuelTongue.Finishing = true;
+                        try { if (BeforeMurderEvent.Ask(user, v) != null) dmg = left - 1; }
+                        finally { DuelTongue.Finishing = false; }
+                    }
+                    if (!Duel.HostDamage(user.PlayerId, id, dmg, start: dmg < left, smash: true)) continue;
+                    user.RpcMurderPlayer(v, true);
+                    Duel.HostLeave(id);
+                    continue;
+                }
+                PortKit.HostKill(user, v);
             }
         }
         finally { _exploding = false; }
@@ -346,4 +402,44 @@ public sealed class RocketLauncher : RoleBase
     }
 
     private static bool _exploding;
+
+    // ホスト: 大砲に詰められたサムライが刀を振った (strong = 溜め切った居合)。数が溜まったら振り払う
+    internal static void HostStruggle(byte id, bool strong)
+    {
+        foreach (var p in PlayerControl.AllPlayerControls)
+        {
+            if (RoleState.Of(p) is not RocketLauncher rl || rl._held != id) continue;
+            if (!strong && ++rl._swings < BreakFreeSwings) return;
+            EscapeCall.Send((p.PlayerId, id));
+            Escape(p, id);
+            return;
+        }
+    }
+
+    // 全員の端末: 掴まれていた人が大砲から抜けた (振り払った・会議)
+    private static void Escape(PlayerControl user, byte target)
+    {
+        if (RoleState.Of(user) is not RocketLauncher rl) return;
+        rl._escaped = target;
+        rl._escapedAt = Time.time;
+        if (rl._held == target)
+        {
+            Release(target);
+            rl._held = 255;
+            RocketCannon.Drop(rl);
+        }
+        else if (rl._flying && rl._shot == target)
+        {
+            // 抜けた知らせより先に発射が届いていた端末は、飛んでいる途中で止める
+            Release(target);
+            rl._shot = 255;
+            rl._flying = false;
+            RocketCannon.Drop(rl);
+        }
+        Plugin.Logger.LogInfo($"rocket launcher: {target} broke free");
+    }
+
+    private static readonly RemoteCall<(byte user, byte target)> EscapeCall = new("RocketLauncher.Escape", Route.Anyone,
+        (w, m) => { w.Write(m.user); w.Write(m.target); }, r => (r.ReadByte(), r.ReadByte()),
+        (_, m) => Escape(PortKit.ById(m.user), m.target));
 }

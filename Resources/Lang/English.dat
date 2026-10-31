@@ -1332,7 +1332,7 @@ RocketLauncher.Load: Load
 RocketLauncher.Load.Help: Grabs a nearby crewmate. They cannot move and are carried with you.
 RocketLauncher.Load.Short: Grab a crewmate
 RocketLauncher.Shot: Launch
-RocketLauncher.Shot.Help: Launches the grabbed person the way you face. On hitting a wall (or a person, by setting) they explode, killing those nearby. If a meeting starts, the held or flying person dies.
+RocketLauncher.Shot.Help: Launches the grabbed person where you aim: left-click on PC, or this button on mobile. On hitting a wall (or a person, by setting) they explode, killing those nearby. If a meeting starts, the held or flying person dies (a Samurai is just let go). A Samurai can break out of the cannon by swinging the sword a few times, and the blast does not kill them in one hit: they are knocked back and start a duel with you.
 RocketLauncher.Shot.Short: Launch the grabbed person
 RocketLauncher.Cooldown: Load cooldown
 RocketLauncher.CollideWithPlayers: Explodes on hitting people

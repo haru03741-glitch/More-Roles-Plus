@@ -300,6 +300,12 @@ public sealed partial class Samurai : RoleBase
         int head = PlayerId & 0x7F | (_fallen ? 1 : 0) << 7 | ((int)a0 + 180) << 8 | ((int)sweep + 512) << 17 | (iai ? 1 : 0) << 27 | (int)MathF.Round(charge * 15f) << 28;
         ShowCall.Send((head, (ushort)(secs * 1000f), tier));
         if (!IsLocal) ShowStroke(head, (ushort)(secs * 1000f), tier);
+        // 大砲に詰められている間は誰にも当たらず、振るたびに振り払おうとする (Impostor/RocketLauncher.cs)
+        if (Impostor.RocketLauncher.Held.Contains(PlayerId))
+        {
+            Impostor.RocketLauncher.HostStruggle(PlayerId, iai && !thrust && charge >= FullCharge);
+            return;
+        }
         // 道を決めた後の溜め切った段 4 の居合は必殺技 (範囲に人がいれば普通の当たりと斬線は出さない・Samurai.Ult.cs)
         if (iai && !thrust && tier == 4 && charge >= FullCharge && HostTryUlt()) return;
         // 段 3〜4 の居合は斬線が空間のずれとして床に残る (向き = 振った刀の真ん中)

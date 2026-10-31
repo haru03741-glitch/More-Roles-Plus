@@ -1332,7 +1332,7 @@ RocketLauncher.Load: 装填
 RocketLauncher.Load.Help: 近くのクルーを掴みます。掴まれた人は動けず、あなたについて来ます。
 RocketLauncher.Load.Short: クルーを掴む
 RocketLauncher.Shot: 発射
-RocketLauncher.Shot.Help: 掴んだ人を向いている方へ撃ち出します。壁 (設定で人) に当たると爆発し、周りの人ごと死にます。会議が始まると、掴んでいる人・飛んでいる人は死にます。
+RocketLauncher.Shot.Help: 掴んだ人を狙った方へ撃ち出します。PC なら左クリックで、スマホならこのボタンで撃ちます。壁 (設定で人) に当たると爆発し、周りの人ごと死にます。会議が始まると、掴んでいる人・飛んでいる人は死にます (サムライは離されるだけです)。サムライは大砲の中で刀を何度か振ると抜け出します。爆発でも一撃では死なずに吹き飛ばされ、あなたとの立ち合いになります。
 RocketLauncher.Shot.Short: 掴んだ人を撃ち出す
 RocketLauncher.Cooldown: 装填の待ち時間
 RocketLauncher.CollideWithPlayers: 人に当たっても爆発する
