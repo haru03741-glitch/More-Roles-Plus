@@ -476,7 +476,9 @@ internal sealed class RoleBrowser
             var text = new Stack(false, head) { Gap = 0f, Width = textW, Align = Align.Start };
             if (a != null) text.Add(values);
             var icon = Icon(a);
-            Widget art = icon ? new Picture(icon, IconW, IconW) { Fit = true, Color = on ? Color.white : IconOff } : new Spacer(IconW, IconW);
+            var frames = RoleArt.Animated(a);
+            Widget art = frames != null ? new AnimatedPicture(frames, RoleArt.AnimFps, IconW, IconW) { Fit = true, Color = on ? Color.white : IconOff }
+                : icon ? new Picture(icon, IconW, IconW) { Fit = true, Color = on ? Color.white : IconOff } : new Spacer(IconW, IconW);
             body = new Stack(true, art, text) { Gap = 0.06f };
         }
         else

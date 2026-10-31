@@ -48,6 +48,42 @@ internal static class RoleArt
         return _own.Contains(id) ? ButtonIcons.Get("role_" + id) : null;
     }
 
+    // 動く役職の絵 (Resources/Icons/role_<Id>_anim.png = 1 コマ AnimFrame px のコマを左上から横へ並べた物)。無い役職は null。
+    // 止め絵 (role_<Id>.png) は最初のコマと同じ絵
+    public const float AnimFps = 12f;
+    private const int AnimFrame = 160;
+    private static readonly Dictionary<string, Sprite[]> AnimCache = new();
+
+    public static Sprite[] Animated(Assignable a)
+    {
+        if (a == null || a is Roles.Builtin.VanillaRole) return null;
+        if (AnimCache.TryGetValue(a.Id, out var c) && (c == null || c[0])) return c;
+        Sprite[] frames = null;
+        var sheet = Own(a.Id + "_anim");
+        if (sheet)
+        {
+            var tex = sheet.texture;
+            int cols = tex.width / AnimFrame, rows = tex.height / AnimFrame;
+            if (cols > 0 && rows > 0)
+            {
+                // 止め絵 (320 px・ButtonIcons と同じ 1 単位 172 px) と同じ大きさになるように
+                const float ppu = 172f * AnimFrame / 320f;
+                frames = new Sprite[cols * rows];
+                for (int i = 0; i < frames.Length; i++)
+                {
+                    // 絵の上が 1 行目 (テクスチャの y は下から)
+                    var r = new Rect(i % cols * AnimFrame, (rows - 1 - i / cols) * AnimFrame, AnimFrame, AnimFrame);
+                    var sp = Sprite.Create(tex, r, new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
+                    sp.name = $"role_{a.Id}_{i}";
+                    sp.hideFlags = HideFlags.HideAndDontSave;
+                    frames[i] = sp;
+                }
+            }
+        }
+        AnimCache[a.Id] = frames;
+        return frames;
+    }
+
     // 二つ名のマーク (Resources/Icons/mark_<名前>.png)。役職の一覧で名前のすぐ右に付ける
     public static Sprite Mark(Epithet e) => e == Epithet.None ? null : ButtonIcons.Get("mark_" + e);
 
