@@ -69,6 +69,9 @@ public abstract class Assignable
     //   public override string NameMark(PlayerControl seen) => seen.PlayerId == _marked ? "<color=#FF0000>★</color>" : null;
     public virtual string NameMark(PlayerControl seen) => null;
 
+    // 歩く速さ (speed は本編が計算した値)。持ち主の体の動きの計算でだけ呼ばれる (動かすのは持ち主の端末)
+    public virtual void ModifySpeed(ref float speed) { }
+
     // キルの待ち時間 (seconds は部屋の設定の秒数)。自分の端末のほか、ホストがキルの依頼を確かめる時にも呼ぶので、
     // 設定値だけから決める (その端末の状態を見ない)
     public virtual void ModifyKillCooldown(ref float seconds) { }

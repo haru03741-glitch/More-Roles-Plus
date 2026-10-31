@@ -1,0 +1,194 @@
+// Ported from https://github.com/ykundesu/SuperNewRoles SuperNewRoles/MapDatabase/MapDatabase.cs (GPL-3.0), originally from https://github.com/Dolly1016/Nebula-Public NebulaPluginNova/Map/MapData.cs (GPL-3.0)
+using System.Collections.Generic;
+using System.IO;
+using AmongUs.GameOptions;
+using UnityEngine;
+
+// https://github.com/Dolly1016/Nebula-Public/blob/master/NebulaPluginNova/Map/MapData.csより
+
+namespace MoreRolesPlus.Roles.MapArea;
+
+public abstract class MapDatabase
+{
+    abstract protected Vector2[] MapArea { get; }
+    abstract protected Vector2[] NonMapArea { get; }
+    abstract protected SystemTypes[] SabotageTypes { get; }
+    // オルフェウスの儀式死体を優先的にスポーンさせる候補位置。空なら境界ランダム探索にフォールバックする。
+    public virtual Vector2[] OrpheusDeadBodySpawnPositionPool => [];
+    // 境界ランダム探索時に避けるプレイヤースポーン候補位置。
+    protected virtual Vector2[] PlayerSpawnPositions => [];
+    protected virtual float PlayerSpawnExclusionRadius => 3f;
+
+    public SystemTypes[] GetSabotageSystemTypes() => SabotageTypes;
+    public virtual bool CheckMapArea(Vector2 position)
+    {
+        int num = Physics2D.OverlapCircleNonAlloc(position, 0.1f, PhysicsHelpers.colliderHits, Constants.ShipAndAllObjectsMask);
+        if (num > 0 && num <= PhysicsHelpers.colliderHits.Length)
+        {
+            for (int i = 0; i < num; i++)
+            {
+                if (!PhysicsHelpers.colliderHits[i].isTrigger) return false;
+            }
+        }
+
+        return CheckMapAreaInternal(position);
+    }
+
+    public bool CheckMapAreaInternal(Vector2 position)
+    {
+        Vector2 vector;
+        float magnitude;
+
+        foreach (Vector2 p in NonMapArea)
+        {
+            vector = p - position;
+            magnitude = vector.magnitude;
+            if (magnitude > 6.0f) continue;
+
+            if (!PhysicsHelpers.AnyNonTriggersBetween(position, vector.normalized, magnitude, Constants.ShipAndAllObjectsMask)) return false;
+        }
+
+        foreach (Vector2 p in MapArea)
+        {
+            vector = p - position;
+            magnitude = vector.magnitude;
+            if (magnitude > 12.0f) continue;
+
+            if (!PhysicsHelpers.AnyNonTriggersBetween(position, vector.normalized, magnitude, Constants.ShipAndAllObjectsMask)) return true;
+        }
+
+        return false;
+    }
+
+    public int CheckMapAreaDebug(Vector2 position)
+    {
+        Vector2 vector;
+        float magnitude;
+        int count = 0;
+
+        foreach (Vector2 p in NonMapArea)
+        {
+            vector = p - position;
+            magnitude = vector.magnitude;
+            if (magnitude > 6.0f) continue;
+
+            if (!PhysicsHelpers.AnyNonTriggersBetween(position, vector.normalized, magnitude, Constants.ShipAndAllObjectsMask)) return 0;
+        }
+
+        foreach (Vector2 p in MapArea)
+        {
+            vector = p - position;
+            magnitude = vector.magnitude;
+            if (magnitude > 12.0f) continue;
+
+            if (!PhysicsHelpers.AnyNonTriggersBetween(position, vector.normalized, magnitude, Constants.ShipAndAllObjectsMask)) count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// マップ参照点（MapArea / NonMapArea）を包む AABB＋余白。オルフェウス等のランダムスポーン探索に使用。
+    /// </summary>
+    public virtual bool TryGetSpawnScanBounds(out Vector2 min, out Vector2 max)
+    {
+        min = max = Vector2.zero;
+        if (MapArea == null || MapArea.Length == 0)
+            return false;
+
+        float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+        void Acc(Vector2 p)
+        {
+            minX = Mathf.Min(minX, p.x);
+            minY = Mathf.Min(minY, p.y);
+            maxX = Mathf.Max(maxX, p.x);
+            maxY = Mathf.Max(maxY, p.y);
+        }
+        foreach (Vector2 p in MapArea)
+            Acc(p);
+        if (NonMapArea != null)
+            foreach (Vector2 p in NonMapArea)
+                Acc(p);
+        const float pad = 2f;
+        min = new Vector2(minX - pad, minY - pad);
+        max = new Vector2(maxX + pad, maxY + pad);
+        return true;
+    }
+
+    public bool TryGetRandomDeadBodySpawnPosition(out Vector2 position)
+    {
+        position = Vector2.zero;
+        Vector2[] positions = OrpheusDeadBodySpawnPositionPool;
+        if (positions == null || positions.Length == 0)
+            return false;
+
+        int startIndex = UnityEngine.Random.Range(0, positions.Length);
+        for (int i = 0; i < positions.Length; i++)
+        {
+            Vector2 candidate = positions[(startIndex + i) % positions.Length];
+            if (CheckMapArea(candidate))
+            {
+                position = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool IsNearPlayerSpawnPosition(Vector2 position)
+    {
+        Vector2[] positions = PlayerSpawnPositions;
+        if (positions == null || positions.Length == 0)
+            return false;
+
+        float sqrRadius = PlayerSpawnExclusionRadius * PlayerSpawnExclusionRadius;
+        foreach (Vector2 spawnPosition in positions)
+        {
+            if (((Vector2)(position - spawnPosition)).sqrMagnitude <= sqrRadius)
+                return true;
+        }
+
+        return false;
+    }
+
+    // 現在のマップのスポーン探索用境界を取得する
+    public static bool TryGetSpawnScanBoundsForCurrentMap(out Vector2 min, out Vector2 max)
+    {
+        min = max = Vector2.zero;
+        MapDatabase data = GetCurrentMapData();
+        if (data == null)
+            return false;
+        return data.TryGetSpawnScanBounds(out min, out max);
+    }
+
+    public static bool TryGetRandomDeadBodySpawnPositionForCurrentMap(out Vector2 position)
+    {
+        position = Vector2.zero;
+        MapDatabase data = GetCurrentMapData();
+        if (data == null)
+            return false;
+        return data.TryGetRandomDeadBodySpawnPosition(out position);
+    }
+
+    static private readonly MapDatabase[] AllMapData = [new SkeldData(), new MiraData(), new PolusData(), null!, new AirshipData(), new FungleData()];
+    static private readonly PhysicsMapDatabase PhysicsFallback = new();
+    static public MapDatabase GetCurrentMapData()
+    {
+        if (!TryGetCurrentMapId(out int id))
+            return PhysicsFallback;
+        if (id >= 0 && id < AllMapData.Length && AllMapData[id] != null)
+            return AllMapData[id];
+        return PhysicsFallback;
+    }
+
+    static private bool TryGetCurrentMapId(out int id)
+    {
+        id = -1;
+        IGameOptions options = GameOptionsManager.Instance?.CurrentGameOptions;
+        if (options == null)
+            return false;
+        id = options.GetByte(ByteOptionNames.MapId);
+        return true;
+    }
+}

@@ -18,12 +18,14 @@ internal sealed class ModButton
 
     private static readonly List<ModButton> All = new();
     private static bool _hudShown = true;
+    private static bool _ghostShown;      // 死んでいて HUD が出ている (幽霊の能力のボタンだけ出す)
     private static int _tick;
     private static float _dt; // 物理の刻み (本編は 1/30 秒。0.02 秒の決め打ちだと実時間の 6 割で減る)。試合中は変わらないので 1 回だけ読む
 
     private readonly AbilityButton _button;
     private readonly Func<bool> _onClick;
     private readonly IntPtr _ptr;
+    private bool _ghost; // 死んでいる間だけ出すボタン (幽霊の能力)
     private bool _inGrid = true; // 右下の並びに居るか (並びの外のボタンは置いた先の画面と一緒に出入りする)
     private float _left;
     private float _effect, _effectMax; // 効果の残り (本編の技術者のベントと同じく、ボタンを満たす形と残りの秒で出す)
@@ -60,6 +62,33 @@ internal sealed class ModButton
     public Action OnEffectEnd { get; set; }
 
     public bool InEffect => _effect > 0f;
+
+    // 効果の間にもう一度押すと効果を途中で終える
+    private bool _cancellable;
+    private Action _onCancel;
+    private string _label, _cancelLabel;
+
+    private Func<bool> _canCancel;
+
+    public void SetCancel(Action onCancel, string label, Func<bool> canCancel = null)
+    {
+        _canCancel = canCancel;
+        _cancellable = true;
+        _onCancel = onCancel;
+        _cancelLabel = label;
+    }
+
+    // 効果を今終える。byUser = 押して終えた (OnCancel も呼ぶ)
+    public void CancelEffect(bool byUser)
+    {
+        if (_effect <= 0f) return;
+        if (byUser)
+        {
+            try { _onCancel?.Invoke(); }
+            catch (Exception e) { Plugin.Logger.LogError($"button cancel: {e}"); }
+        }
+        EndEffect();
+    }
 
     // HUD が出直した時 (試合の始め・会議の後) に待ち時間を最初から数え直す
     public bool ResetOnShow { get; set; }
@@ -196,7 +225,12 @@ internal sealed class ModButton
         _effect = _effectMax = d;
         _left = 0f;
         _effectShown = -1;
-        _button.SetDisabled();
+        if (_cancellable)
+        {
+            _button.SetEnabled();
+            if (_cancelLabel != null) { _label = _button.buttonLabelText.text; _button.buttonLabelText.text = _cancelLabel; }
+        }
+        else _button.SetDisabled();
         UpdateHint();
         DrawEffect();
     }
@@ -273,6 +307,7 @@ internal sealed class ModButton
     // 押された (待ち時間中・押せない時は何もしない)
     private void Click()
     {
+        if (_effect > 0f && _cancellable) { if (_canCancel == null || _canCancel()) CancelEffect(true); return; }
         if (_left > 0f || _effect > 0f || !_usable || _holding) return;
         bool used;
         try { used = _onClick(); }
@@ -435,6 +470,7 @@ internal sealed class ModButton
     private void EndEffect()
     {
         _effect = 0f;
+        if (_label != null && _button) { _button.buttonLabelText.text = _label; _label = null; }
         try { OnEffectEnd?.Invoke(); }
         catch (Exception e) { Plugin.Logger.LogError($"button effect end: {e}"); }
         if (!_button) return;
@@ -453,7 +489,7 @@ internal sealed class ModButton
     // 毎 FixedUpdate。ボタンが無い時・冷めている時は数の比較だけで帰る
     public static void TickAll()
     {
-        if (All.Count == 0 || !_hudShown) return;
+        if (All.Count == 0 || (!_hudShown && !_ghostShown)) return;
         _tick++;
         bool redraw = _tick % RedrawTicks == 0;
         if (_dt <= 0f) _dt = Time.fixedDeltaTime;
@@ -507,20 +543,23 @@ internal sealed class ModButton
     }
 
     // 本編が HUD を出し入れする時 (会議・死亡・イントロ) に合わせる
-    public static void SetHudShown(bool shown)
+    public static void SetHudShown(bool shown, bool ghost = false)
     {
         bool reshown = shown && !_hudShown;
+        bool ghostReshown = ghost && !_ghostShown;
         _hudShown = shown;
+        _ghostShown = ghost;
         if (All.Count == 0) return;
         // HUD ごと消えた後 (シーンが変わった) のボタンは寿命が切れるまで残るので飛ばす。
         // 効果の終わりの処理が寿命を切って一覧から外すことがあるので写しを回す
         foreach (var b in All.ToArray())
         {
-            if (!shown && b._effect > 0f) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ)
-            if (!shown && b._holding) b.EndHold(false);  // 溜めている途中の会議・死亡は使わずに捨てる
+            bool vis = b._ghost ? ghost : shown;
+            if (!vis && b._effect > 0f) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ)
+            if (!vis && b._holding) b.EndHold(false);  // 溜めている途中の会議・死亡は使わずに捨てる
             if (!b._inGrid || !b._button) continue;
-            b._button.gameObject.SetActive(shown);
-            if (reshown && b.ResetOnShow) b.StartCooldown();
+            b._button.gameObject.SetActive(vis);
+            if ((b._ghost ? ghostReshown : reshown) && b.ResetOnShow) b.StartCooldown();
         }
         Arrange();
     }
@@ -553,6 +592,22 @@ internal sealed class ModButton
     internal static int Count => All.Count;
 
     internal static bool HudShown => _hudShown;
+    internal static bool GhostShown => _ghostShown;
+
+    // 死んでいる間だけ出すボタンにする (作った直後に呼ぶ)
+    public void SetGhost(bool ghost)
+    {
+        _ghost = ghost;
+        if (ghost)
+        {
+            // 死んだ時に本編が HUD を出し直さないことがあるので、今死んでいるかで決める
+            var lp = PlayerControl.LocalPlayer;
+            bool dead = lp && lp.Data != null && lp.Data.IsDead;
+            if (dead && _hudShown) SetHudShown(false, true);
+        }
+        if (_inGrid && _button) _button.gameObject.SetActive(ghost ? _ghostShown : _hudShown);
+        Arrange();
+    }
 
     // 本編の PassiveButton から押す (人が押したのと同じく DoClick の前置を通る)
     // key = キーで押した時のそのキー (長押しのボタンはキーを離すまで溜める)
@@ -610,5 +665,6 @@ internal static class ModButtonClickPatch
 internal static class ModButtonHudPatch
 {
     public static void Postfix(PlayerControl localPlayer, bool isActive) =>
-        ModButton.SetHudShown(isActive && localPlayer && localPlayer.Data != null && !localPlayer.Data.IsDead);
+        ModButton.SetHudShown(isActive && localPlayer && localPlayer.Data != null && !localPlayer.Data.IsDead,
+            isActive && localPlayer && localPlayer.Data != null && localPlayer.Data.IsDead);
 }

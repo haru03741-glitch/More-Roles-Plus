@@ -28,6 +28,22 @@ internal static class Zoom
 
     internal static bool Zoomed => _size > Base;
 
+    private static bool _roleHeld; // 役職の能力 (ホークアイなど) で引いている間は、生きていても引ける
+
+    // 役職の能力で mult 倍に引く (1 以下で戻す)。会議・追放の演出に入ると戻る
+    internal static void ByRole(float mult)
+    {
+        if (mult <= 1f)
+        {
+            if (!_roleHeld) return;
+            _roleHeld = false;
+            Reset();
+            return;
+        }
+        _roleHeld = true;
+        Apply(Math.Min(Base * mult, Max * 3f));
+    }
+
     public static void Tick()
     {
         float d = Touch ? Pinch() : Input.mouseScrollDelta.y;
@@ -115,7 +131,7 @@ internal static class Zoom
         if (!ShipStatus.Instance) return false;
         if (client.NetworkMode == NetworkModes.FreePlay) return true;
         var lp = PlayerControl.LocalPlayer;
-        return lp && lp.Data != null && lp.Data.IsDead;
+        return _roleHeld || (lp && lp.Data != null && lp.Data.IsDead);
     }
 
     private static void Apply(float size)
@@ -163,6 +179,7 @@ internal static class Zoom
     public static void Reset()
     {
         _pinch = 0f;
+        _roleHeld = false;
         if (!Zoomed && !_shadow) return;
         _size = Base;
         if (_cam) _cam.orthographicSize = Base;

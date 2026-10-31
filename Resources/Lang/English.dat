@@ -1071,3 +1071,1693 @@ Keybinds.Ability2: MRP ability 2
 Keybinds.Ability3: MRP ability 3
 Keybinds.Emote: MRP emote / stamp
 Keybinds.Dictionary: MRP role dictionary
+
+# ════ SuperNewRoles から移した役職 ════
+# ── メイヤー (Mayor) ──
+Mayor.Name: Mayor
+Mayor.Blurb: That power will save the village
+Mayor.Summary: A crewmate who casts more votes than anyone else in meetings.
+Mayor.Votes: Number of votes
+# ── スタントマン (Stuntman) ──
+Stuntman.Name: Stuntman
+Stuntman.Blurb: Unconscious offense and defense
+Stuntman.Summary: A crewmate who automatically blocks a set number of kills. You never notice that you were attacked.
+Stuntman.Uses: Blocks
+# ── ベスト冤罪ヤー (BestFalseCharge) ──
+BestFalseCharge.Name: Best False Charge
+BestFalseCharge.Blurb: N-No, it's a false charge!
+BestFalseCharge.Summary: A crewmate with no abilities who doesn't know their role until death, and dies when the first meeting ends.
+# ── 狼憑き (HauntedWolf) ──
+HauntedWolf.Name: Haunted Wolf
+HauntedWolf.Blurb: A fleeting phantom of the beast
+HauntedWolf.Summary: A crewmate with no abilities who doesn't know their role until death. Roles that judge teams, like the Sheriff, see you as an impostor.
+# ── オポチュニスト (Opportunist) ──
+Opportunist.Name: Opportunist
+Opportunist.Blurb: Where right and wrong hold no meaning
+Opportunist.Summary: A neutral who cannot kill.
+Opportunist.WinCond: Win with whoever wins, as long as you are alive at the end
+# ── 仕事人 (Workperson) ──
+Workperson.Name: Workperson
+Workperson.Blurb: Work, I must do work...
+Workperson.Summary: A neutral who cannot kill.
+Workperson.WinCond: Finish all your tasks to win alone
+Workperson.NeedAlive: Must be alive to win
+Workperson.CanVent: Can use vents
+# ── てるてる (Teruteru) ──
+Teruteru.Name: Teruteru
+Teruteru.Blurb: Dreaming of the gallows ahead
+Teruteru.Summary: A neutral who cannot kill.
+Teruteru.WinCond: Get voted out in a meeting to win alone
+Teruteru.CanVent: Can use vents
+Teruteru.NeedTasks: Tasks required to win
+Teruteru.NeededTasks: Required tasks
+# ── マッドメイト (Madmate) ──
+Madmate.Name: Madmate
+Madmate.Blurb: One who has strayed from the path
+Madmate.Summary: A crewmate on the impostors' side.
+Madmate.WinCond: Win when the impostors win, dead or alive
+Madmate.KnowImpostors: Can know the impostors
+Madmate.NeededTasks: Tasks needed to know them
+Madmate.CanVent: Can use vents
+Madmate.ImpostorVision: Has impostor vision
+# ── ダークキラー (DarkKiller) ──
+DarkKiller.Name: Dark Killer
+DarkKiller.Blurb: Jet-black gale
+DarkKiller.Summary: An impostor with a short kill cooldown who can only kill during a blackout.
+DarkKiller.KillCooldown: Kill cooldown
+DarkKiller.CanVent: Can use vents
+# ── シリアルキラー (SerialKiller) ──
+SerialKiller.Name: Serial Killer
+SerialKiller.Blurb: A beast starving for blood
+SerialKiller.Summary: An impostor with a short kill cooldown who dies if they go too long without killing.
+SerialKiller.Tips: The timer starts at your first kill.
+SerialKiller.KillCooldown: Kill cooldown
+SerialKiller.SuicideTime: Time until suicide
+SerialKiller.ResetOnMeeting: Reset the timer after meetings
+SerialKiller.CanVent: Can use vents
+SerialKiller.Timer: Suicide in
+# ── マフィア (Mafia) ──
+Mafia.Name: Mafia
+Mafia.Blurb: The final round
+Mafia.Summary: An impostor who cannot kill while other impostors live, and gains the kill once they are the last.
+Mafia.OwnCooldown: Use own kill cooldown
+Mafia.KillCooldown: Kill cooldown
+# ── イビルギャンブラー (EvilGambler) ──
+EvilGambler.Name: Evil Gambler
+EvilGambler.Blurb: Staking their life on chance
+EvilGambler.Summary: An impostor whose next kill cooldown changes by luck after each kill. It returns to the room's value after meetings.
+EvilGambler.WinCooldown: Kill cooldown on success
+EvilGambler.LoseCooldown: Kill cooldown on failure
+EvilGambler.WinChance: Success chance
+# ── スーサイドウィッシャー (SuicideWisher) ──
+SuicideWisher.Name: Suicide Wisher
+SuicideWisher.Blurb: Severing ties with this world
+SuicideWisher.Summary: An impostor who can kill themselves at any time.
+SuicideWisher.Suicide: Suicide
+SuicideWisher.Suicide.Help: Press to kill yourself on the spot.
+SuicideWisher.Suicide.Short: Kill yourself on the spot
+SuicideWisher.Cooldown: Suicide cooldown
+
+# ── シェリフ (Sheriff) ──
+Sheriff.Name: Sheriff
+Sheriff.Blurb: In the name of justice
+Sheriff.Summary: A crewmate who can execute a nearby player. If the target isn't on a team you may kill, you die instead.
+Sheriff.Execute: Execute
+Sheriff.Execute.Help: Kills a nearby player. If they aren't on a team you're allowed to kill, you die instead (depends on the suicide setting).
+Sheriff.Execute.Short: Execute a nearby player
+Sheriff.KillCooldown: Execute cooldown
+Sheriff.MaxKills: Executions
+Sheriff.SuicideMode: Suicide mode
+Sheriff.SuicideMode.Default: Only on a wrong target
+Sheriff.SuicideMode.AlwaysSuicide: Always die with the target
+Sheriff.SuicideMode.AlwaysKill: Never die
+Sheriff.KillImpostor: Can kill impostors
+Sheriff.KillMad: Can kill madmates
+Sheriff.KillNeutral: Can kill neutrals
+Sheriff.KillFriends: Can kill friends
+Sheriff.KillLovers: Can kill lovers
+# ── 村長 (Chief) ──
+Chief.Name: Chief
+Chief.Blurb: I grant you a heart of justice
+Chief.Summary: A crewmate who can once appoint a nearby player as Sheriff. If the target is an impostor, you die.
+Chief.Appoint: Appoint
+Chief.Appoint.Help: Turns a nearby player into a Sheriff (once). The new Sheriff uses the Sheriff settings. If the target is an impostor, you die.
+Chief.Appoint.Short: Make a nearby player Sheriff
+Chief.Cooldown: Appoint cooldown
+Chief.SeeSheriff: Can see the appointed Sheriff
+Chief.AppointNeutral: Can appoint neutrals
+Chief.AppointNeutralKiller: Can appoint neutral killers
+# ── スピードブースター (SpeedBooster) ──
+SpeedBooster.Name: Speed Booster
+SpeedBooster.Blurb: Faster than anyone
+SpeedBooster.Summary: A crewmate who can move faster for a while.
+SpeedBooster.Boost: Boost
+SpeedBooster.Boost.Help: Raises your speed for a set time.
+SpeedBooster.Boost.Short: Move faster for a while
+SpeedBooster.Cooldown: Boost cooldown
+SpeedBooster.Duration: Boost duration
+SpeedBooster.Multiplier: Speed multiplier
+# ── イビルスピードブースター (EvilSpeedBooster) ──
+EvilSpeedBooster.Name: Evil Speed Booster
+EvilSpeedBooster.Blurb: No one escapes faster
+EvilSpeedBooster.Summary: An impostor who can move faster for a while.
+EvilSpeedBooster.Boost: Boost
+EvilSpeedBooster.Boost.Help: Raises your speed for a set time.
+EvilSpeedBooster.Boost.Short: Move faster for a while
+EvilSpeedBooster.Cooldown: Boost cooldown
+EvilSpeedBooster.Duration: Boost duration
+EvilSpeedBooster.Multiplier: Speed multiplier
+# ── ナイスボタナー (NiceButtoner) ──
+NiceButtoner.Name: Nice Buttoner
+NiceButtoner.Blurb: A button anywhere
+NiceButtoner.Summary: A crewmate who can call an emergency meeting from anywhere.
+NiceButtoner.Press: Press
+NiceButtoner.Press.Help: Calls an emergency meeting on the spot. Unusable during sabotage.
+NiceButtoner.Press.Short: Call a meeting anywhere
+NiceButtoner.Cooldown: Button cooldown
+NiceButtoner.Uses: Uses
+# ── イビルボタナー (EvilButtoner) ──
+EvilButtoner.Name: Evil Buttoner
+EvilButtoner.Blurb: It's meeting time
+EvilButtoner.Summary: An impostor who can call an emergency meeting from anywhere.
+EvilButtoner.Press: Press
+EvilButtoner.Press.Help: Calls an emergency meeting on the spot. Unusable during sabotage.
+EvilButtoner.Press.Short: Call a meeting anywhere
+EvilButtoner.Cooldown: Button cooldown
+EvilButtoner.Uses: Uses
+# ── ムービング (Moving) ──
+Moving.Name: Moving
+Moving.Blurb: Back to that place, once more
+Moving.Summary: A crewmate who can teleport to a remembered spot.
+Moving.Move: Move
+Moving.Move.Help: Press once to remember your spot, press again to teleport back there.
+Moving.Move.Short: Teleport to a saved spot
+Moving.Cooldown: Move cooldown
+Moving.Saved: Location saved
+Moving.UntilMove: Press again to teleport
+# ── イビルムービング (EvilMoving) ──
+EvilMoving.Name: Evil Moving
+EvilMoving.Blurb: Gone from the scene in a flash
+EvilMoving.Summary: An impostor who can teleport to a remembered spot.
+EvilMoving.Move: Move
+EvilMoving.Move.Help: Press once to remember your spot, press again to teleport back there.
+EvilMoving.Move.Short: Teleport to a saved spot
+EvilMoving.Cooldown: Move cooldown
+EvilMoving.Saved: Location saved
+EvilMoving.UntilMove: Press again to teleport
+# ── 霊媒師 (Seer) ──
+Seer.Name: Seer
+Seer.Blurb: Hear the voices of souls
+Seer.Summary: A crewmate whose screen flashes when someone dies and who sees souls where people died.
+Seer.Mode: Mode
+Seer.Mode.Both: Flash and souls
+Seer.Mode.Flash: Flash only
+Seer.Mode.Soul: Souls only
+Seer.LimitSoul: Souls fade over time
+Seer.SoulDuration: Soul duration
+# ── パン屋 (Bakery) ──
+Bakery.Name: Bakery
+Bakery.Blurb: Baking bread again today
+Bakery.Summary: A crewmate whose survival is shown on the exile screen.
+Bakery.ExileText: Bread is being baked today too
+# ── ジャッカル (Jackal) ──
+Jackal.Name: Jackal
+Jackal.Blurb: Hunt everything with your pack
+Jackal.Summary: A neutral killer who can recruit a partner once.
+Jackal.WinCond: Win when only the Jackal's pack is left alive
+Jackal.Kill: Kill
+Jackal.Kill.Help: Has the vanilla kill button. Vision and kill distance follow the Neutral settings in the Game Settings tab. Cannot kill your pack.
+Jackal.Kill.Short: Has the kill button
+Jackal.Sidekick: Sidekick
+Jackal.Sidekick.Help: Turns a nearby player into your partner (Sidekick or Jackal Friends), once.
+Jackal.Sidekick.Short: Recruit a nearby player
+Jackal.KillCooldown: Kill cooldown
+Jackal.CanVent: Can use vents
+Jackal.CanSidekick: Can recruit
+Jackal.SidekickKind: Partner type
+Jackal.SidekickKind.Sidekick: Sidekick
+Jackal.SidekickKind.Friends: Jackal Friends
+Jackal.SidekickCooldown: Recruit cooldown
+Jackal.Infinite: Promoted Jackals can recruit too
+# ── サイドキック (Sidekick) ──
+Sidekick.Name: Sidekick
+Sidekick.Blurb: The Jackal's right hand
+Sidekick.Summary: A neutral recruited by the Jackal. Cannot kill, and becomes a Jackal when all Jackals are dead.
+Sidekick.WinCond: Win when the Jackal wins
+Sidekick.CanVent: Can use vents
+# ── ジャッカルフレンズ (JackalFriends) ──
+JackalFriends.Name: Jackal Friends
+JackalFriends.Blurb: A friend of the Jackal
+JackalFriends.Summary: A crewmate on the Jackal's side.
+JackalFriends.WinCond: Win when the Jackal wins, dead or alive
+JackalFriends.KnowJackal: Can know the Jackal
+JackalFriends.NeededTasks: Tasks needed to know them
+JackalFriends.CanVent: Can use vents
+JackalFriends.ImpostorVision: Has impostor vision
+
+# ── ベイト (Bait) ──
+Bait.Name: Bait
+Bait.Blurb: Who fell into the trap?
+Bait.Summary: A crewmate whose killer reports their body shortly after the kill.
+Bait.ReportTime: Time until report
+Bait.WarnKiller: Flash the killer's screen
+Bait.RandomDelay: Randomize the report delay
+Bait.DelayVariation: Maximum extra delay
+# ── ナイス猫又 (NiceNekomata) ──
+NiceNekomata.Name: Nice Nekomata
+NiceNekomata.Blurb: I won't die alone
+NiceNekomata.Summary: A crewmate who takes a random living player down with them when exiled.
+# ── イビル猫又 (EvilNekomata) ──
+EvilNekomata.Name: Evil Nekomata
+EvilNekomata.Blurb: You're coming with me
+EvilNekomata.Summary: An impostor who takes a random living player down with them when exiled.
+EvilNekomata.ExcludeImpostor: Never take impostors
+# ── ライター (SnrLighter) ──
+SnrLighter.Name: Lighter
+SnrLighter.Blurb: A light that pierces the dark
+SnrLighter.Summary: A crewmate who can widen their vision for a while, unaffected by lights sabotage.
+SnrLighter.Light: Light
+SnrLighter.Light.Help: Widens your vision for a set time, even during a blackout.
+SnrLighter.Light.Short: Widen your vision for a while
+SnrLighter.Cooldown: Light cooldown
+SnrLighter.Duration: Light duration
+SnrLighter.Radius: Vision while lit
+# ── スター (Celebrity) ──
+Celebrity.Name: Celebrity
+Celebrity.Blurb: Everyone's center of attention
+Celebrity.Summary: A crewmate with no abilities. Everyone sees a ★ next to your name.
+Celebrity.OnlyWhileAlive: Show the ★ only while alive
+# ── 自宅警備員 (HomeSecurityGuard) ──
+HomeSecurityGuard.Name: Home Security Guard
+HomeSecurityGuard.Blurb: Guarding home is my job
+HomeSecurityGuard.Summary: A crewmate with no abilities and no tasks. Your tasks don't count toward the crew's progress.
+# ── 技術者 (Technician) ──
+Technician.Name: Technician
+Technician.Blurb: The emergency shortcut
+Technician.Summary: A crewmate who can use vents only during a sabotage.
+
+# ── イビルシーア (EvilSeer) ──
+EvilSeer.Name: Evil Seer
+EvilSeer.Blurb: Sense the presence of death
+EvilSeer.Summary: An impostor whose screen flashes when someone dies and who sees souls and arrows to bodies.
+EvilSeer.Mode: Mode
+EvilSeer.Mode.Both: Flash and souls
+EvilSeer.Mode.Flash: Flash only
+EvilSeer.Mode.Soul: Souls only
+EvilSeer.LimitSoul: Souls fade over time
+EvilSeer.SoulDuration: Soul duration
+# ── 忘却者 (Amnesiac) ──
+Amnesiac.Name: Amnesiac
+Amnesiac.Blurb: Who was I?
+Amnesiac.Summary: A neutral with no way to win. Reporting a body gives you that player's role.
+Amnesiac.WinCond: No win condition (get a role by reporting)
+# ── 神 (God) ──
+God.Name: God
+God.Blurb: The one who sees all
+God.Summary: A neutral who sees everyone's role and steals the win if alive at the end. May be unable to fix sabotages, report or call meetings (options).
+God.WinCond: Win alone if alive at the end
+God.NeedTasks: Must finish all tasks to win
+# ── マグロ (Tuna) ──
+Tuna.Name: Tuna
+Tuna.Blurb: Stop and you die
+Tuna.Summary: A neutral who dies after standing still for too long.
+Tuna.WinCond: Win alongside the winners if alive at the end (or alone, by setting)
+Tuna.StopLimit: Time you can stand still
+Tuna.SoloWin: Win alone
+Tuna.CanVent: Can use vents
+Tuna.Timer: Dying if still in
+# ── さつまといも (SatsumaAndImo) ──
+SatsumaAndImo.Name: Satsuma and Imo
+SatsumaAndImo.Blurb: The undecided potato
+SatsumaAndImo.Summary: A role that switches between crewmate and madmate after every meeting. Your current side is shown after your name.
+SatsumaAndImo.WinCond: Win with the crew while (C), with the impostors while (M)
+
+# ── ナイスホーク (NiceHawk) ──
+NiceHawk.Name: Nice Hawk
+NiceHawk.Blurb: Survey with a hawk's eye
+NiceHawk.Summary: A crewmate who can zoom out to watch a wide area for a while.
+NiceHawk.Eye: Hawk Eye
+NiceHawk.Eye.Help: Zooms out for a set time. Depending on settings, you can't walk meanwhile.
+NiceHawk.Eye.Short: Zoom out for a while
+NiceHawk.Cooldown: Hawk Eye cooldown
+NiceHawk.Duration: Hawk Eye duration
+NiceHawk.Magnification: Zoom-out factor
+NiceHawk.CannotWalk: Can't walk while active
+# ── イビルホーク (EvilHawk) ──
+EvilHawk.Name: Evil Hawk
+EvilHawk.Blurb: Hunt your prey from the sky
+EvilHawk.Summary: An impostor who can zoom out to watch a wide area for a while.
+EvilHawk.Eye: Hawk Eye
+EvilHawk.Eye.Help: Zooms out for a set time. Depending on settings, you can't walk meanwhile.
+EvilHawk.Eye.Short: Zoom out for a while
+EvilHawk.Cooldown: Hawk Eye cooldown
+EvilHawk.Duration: Hawk Eye duration
+EvilHawk.Magnification: Zoom-out factor
+EvilHawk.CannotWalk: Can't walk while active
+# ── ナイステレポーター (NiceTeleporter) ──
+NiceTeleporter.Name: Nice Teleporter
+NiceTeleporter.Blurb: Everyone, gather up!
+NiceTeleporter.Summary: A crewmate who can gather every living player to one living player's spot.
+NiceTeleporter.Teleport: Teleport!
+NiceTeleporter.Teleport.Help: After a short wait, teleports every living player to a random living player.
+NiceTeleporter.Teleport.Short: Gather everyone to someone
+NiceTeleporter.Cooldown: Teleport cooldown
+NiceTeleporter.WaitingTime: Delay before teleport
+NiceTeleporter.Soon: Teleporting to {name} in
+# ── テレポーター (Teleporter) ──
+Teleporter.Name: Teleporter
+Teleporter.Blurb: Everyone's invited
+Teleporter.Summary: An impostor who can gather every living player to one living player's spot.
+Teleporter.Teleport: Teleport!
+Teleporter.Teleport.Help: After a short wait, teleports every living player to a random living player.
+Teleporter.Teleport.Short: Gather everyone to someone
+Teleporter.Cooldown: Teleport cooldown
+Teleporter.WaitingTime: Delay before teleport
+Teleporter.Soon: Teleporting to {name} in
+# ── 賢者 (WiseMan) ──
+WiseMan.Name: Wise Man
+WiseMan.Blurb: A holy guard repels evil
+WiseMan.Summary: A crewmate who can put up a barrier that reflects kills, at the cost of not moving.
+WiseMan.Barrier: Holy Barrier
+WiseMan.Barrier.Help: Puts up a barrier for a set time. Anyone who kills you meanwhile dies instead. Depending on settings, you can't move meanwhile.
+WiseMan.Barrier.Short: Barrier that reflects kills
+WiseMan.Cooldown: Barrier cooldown
+WiseMan.Duration: Barrier duration
+WiseMan.CanWalk: Can walk with the barrier up
+# ── マガジナー (Magaziner) ──
+Magaziner.Name: Magaziner
+Magaziner.Blurb: The magazine is loaded
+Magaziner.Summary: An impostor who can store ready kills as ammo and use them later. Your ammo is shown after your name.
+Magaziner.Store: Reload
+Magaziner.Store.Help: When your kill is ready, stores it as 1 ammo and restarts your kill cooldown.
+Magaziner.Store.Short: Store a ready kill as ammo
+Magaziner.Fire: Use
+Magaziner.Fire.Help: Uses 1 ammo to cut your kill cooldown down to the set value.
+Magaziner.Fire.Short: Use ammo to speed up your kill
+Magaziner.SetKillTime: Cooldown after using ammo
+Magaziner.AmmoLimit: Limit ammo
+Magaziner.MaxAmmo: Max ammo
+
+# ── 聖職者 (Clergy) ──
+Clergy.Name: Clergy
+Clergy.Blurb: Shine holy light on evil
+Clergy.Summary: A crewmate who can narrow the impostors' vision for a while.
+Clergy.Light: Holy Light
+Clergy.Light.Help: Narrows the impostors' vision for a set time. Depending on settings, also affects neutral killers.
+Clergy.Light.Short: Narrow the impostors' vision
+Clergy.Cooldown: Holy Light cooldown
+Clergy.Duration: Effect duration
+Clergy.VisionMultiplier: Vision multiplier
+Clergy.ForNeutralKiller: Also affects neutral killers
+Clergy.Effect: Vision narrowed by holy light
+# ── ファインダー (Finder) ──
+Finder.Name: Finder
+Finder.Blurb: Where are my allies?
+Finder.Summary: An impostor who learns who the madmates are after enough kills.
+Finder.KillCooldown: Kill cooldown
+Finder.RevealKills: Kills needed to reveal
+Finder.Revealed: You can now see the madmates (▲ by their names)
+
+# ── ラバーズ (Lovers) ──
+Lovers.Name: Lovers
+Lovers.Blurb: Our love is forever
+Lovers.Summary: An add-on given to a pair. You know your partner (♥ by their name), and you die when they die.
+Lovers.WinCond: If both are alive at the end, you steal the win together
+Lovers.FollowDeath: Die when your partner dies
+Lovers.SoloWin: Steal the win if both are alive
+
+# ── パブロフの犬の飼い主 (PavlovsOwner) ──
+PavlovsOwner.Name: Pavlov's Owner
+PavlovsOwner.Blurb: Good dog
+PavlovsOwner.Summary: A neutral who can't kill but can turn nearby players into dogs.
+PavlovsOwner.WinCond: Win with your dogs when only your pack remains (a dog must be alive)
+PavlovsOwner.Train: Train
+PavlovsOwner.Train.Help: Turns a nearby player into a Pavlov's Dog. If they're an impostor, you die (by setting).
+PavlovsOwner.Train.Short: Turn a nearby player into a dog
+PavlovsOwner.Cooldown: Train cooldown
+PavlovsOwner.MaxDogs: Max dogs
+PavlovsOwner.SuicideOnImpostor: Die when training an impostor
+# ── パブロフの犬 (PavlovsDog) ──
+PavlovsDog.Name: Pavlov's Dog
+PavlovsDog.Blurb: For my master
+PavlovsDog.Summary: A neutral killer trained by the owner. Goes on a rampage when all owners are dead.
+PavlovsDog.WinCond: Win when only your owner's pack remains
+PavlovsDog.Kill: Kill
+PavlovsDog.Kill.Help: Has the vanilla kill button. Kill distance follows the Neutral settings. Can't kill your pack. While rampaging, your cooldown is shorter but you die if you don't kill in time.
+PavlovsDog.Kill.Short: Has the kill button
+PavlovsDog.CanVent: Can use vents
+PavlovsDog.ImpostorVision: Has impostor vision
+PavlovsDog.KillCooldown: Kill cooldown
+PavlovsDog.RampageKillCooldown: Kill cooldown while rampaging
+PavlovsDog.RampageSuicideTime: Time until death while rampaging
+PavlovsDog.ResetOnMeeting: Reset the timer after meetings
+PavlovsDog.Timer: Rampage death in
+# ── キューピッド (Cupid) ──
+Cupid.Name: Cupid
+Cupid.Blurb: Shoot the arrow of love
+Cupid.Summary: A neutral who shoots two players to make them Lovers.
+Cupid.WinCond: Win when the Lovers you made win
+Cupid.Arrow: Love Arrow
+Cupid.Arrow.Help: Shoot two players to make them Lovers. With a time limit, you die if you don't finish in time.
+Cupid.Arrow.Short: Make two players Lovers
+Cupid.Cooldown: Love Arrow cooldown
+Cupid.TimeLimitOn: Enable time limit
+Cupid.TimeLimit: Time limit
+Cupid.Timer: Dying unless Lovers are made in
+# ── 純愛者 (Truelover) ──
+Truelover.Name: Truelover
+Truelover.Blurb: Love at first sight
+Truelover.Summary: A neutral who becomes Lovers with a nearby player.
+Truelover.WinCond: Win as Lovers
+Truelover.Arrow: Fall in Love
+Truelover.Arrow.Help: Become Lovers with a nearby player (once). With a time limit, you die if you don't choose in time.
+Truelover.Arrow.Short: Become Lovers with someone
+Truelover.Cooldown: Cooldown
+Truelover.TimeLimitOn: Enable time limit
+Truelover.TimeLimit: Time limit
+Truelover.Timer: Dying unless you choose in
+
+# ── ミーティングシェリフ (MeetingSheriff) ──
+MeetingSheriff.Name: Meeting Sheriff
+MeetingSheriff.Blurb: Pass judgment in court
+MeetingSheriff.Summary: A crewmate who can shoot a player during meetings. If the target isn't on a team you may kill, you die instead.
+MeetingSheriff.Shoot: Shoot
+MeetingSheriff.Shoot.Help: During a meeting, tap a nameplate and press the button to shoot. If the target isn't on a team you may kill, you die (depends on the suicide setting). No body is left.
+MeetingSheriff.Shoot.Short: Shoot someone during a meeting
+MeetingSheriff.MaxKills: Shots
+MeetingSheriff.ShotsPerMeeting: Shots per meeting
+MeetingSheriff.SuicideMode: Suicide mode
+MeetingSheriff.KillImpostor: Can kill impostors
+MeetingSheriff.KillMad: Can kill madmates
+MeetingSheriff.KillNeutral: Can kill neutrals
+MeetingSheriff.KillFriends: Can kill friends
+MeetingSheriff.KillLovers: Can kill lovers
+# ── ヴァルチャー (Vulture) ──
+Vulture.Name: Vulture
+Vulture.Blurb: Feast on the dead
+Vulture.Summary: A neutral who eats bodies to erase them. Eat enough to win alone.
+Vulture.WinCond: Win alone the moment you've eaten enough bodies
+Vulture.Eat: Eat
+Vulture.Eat.Help: Eats and removes a body within report range. You see arrows to bodies (option).
+Vulture.Eat.Short: Eat a nearby body
+Vulture.Cooldown: Eat cooldown
+Vulture.RequiredBodies: Bodies needed to win
+Vulture.CanVent: Can use vents
+Vulture.Count: Bodies eaten {n}/{max}
+# ── アーソニスト (Arsonist) ──
+Arsonist.Name: Arsonist
+Arsonist.Blurb: Burn it all to ashes
+Arsonist.Summary: A neutral who wins by dousing everyone in oil and setting it alight.
+Arsonist.WinCond: Win alone by dousing every living player and igniting
+Arsonist.Douse: Douse
+Arsonist.Douse.Help: Stay next to a nearby person for a moment to douse them. Moving away or a different nearest person cancels it. Doused people are marked §.
+Arsonist.Douse.Short: Douse a nearby player
+Arsonist.Ignite: Ignite
+Arsonist.Ignite.Help: If every other living player is doused, ignite to win alone.
+Arsonist.Ignite.Short: Ignite to win once all are doused
+Arsonist.Cooldown: Douse cooldown
+Arsonist.CanVent: Can use vents
+Arsonist.ImpostorVision: Has impostor vision
+
+# ── 黒猫 (BlackCat) ──
+BlackCat.Name: Black Cat
+BlackCat.Blurb: Bringer of bad luck
+BlackCat.Summary: A crewmate on the impostors' side who takes a random player down when exiled.
+BlackCat.SpareImpostors: Never take impostors
+BlackCat.CanVent: Can use vents
+BlackCat.ImpostorVision: Has impostor vision
+BlackCat.KnowImpostors: Can know the impostors
+BlackCat.NeededTasks: Tasks needed to know them
+BlackCat.WinCond: Win when the impostors win, dead or alive
+# ── マッドホーク (MadHawk) ──
+MadHawk.Name: Mad Hawk
+MadHawk.Blurb: Aid your masters from the sky
+MadHawk.Summary: A crewmate on the impostors' side who can zoom out for a while.
+MadHawk.Eye: Hawk Eye
+MadHawk.Eye.Help: Zooms out for a set time. Depending on settings, you can't walk meanwhile.
+MadHawk.Eye.Short: Zoom out for a while
+MadHawk.Cooldown: Hawk Eye cooldown
+MadHawk.Duration: Hawk Eye duration
+MadHawk.Magnification: Zoom-out factor
+MadHawk.CannotWalk: Can't walk while active
+MadHawk.CanVent: Can use vents
+MadHawk.ImpostorVision: Has impostor vision
+MadHawk.KnowImpostors: Can know the impostors
+MadHawk.NeededTasks: Tasks needed to know them
+MadHawk.WinCond: Win when the impostors win, dead or alive
+# ── マッドてるてる (MadJester) ──
+MadJester.Name: Mad Jester
+MadJester.Blurb: Get hanged to make your masters win
+MadJester.Summary: A crewmate on the impostors' side. If exiled after finishing enough tasks, the impostors win.
+MadJester.WinOnExiled: Impostors win when you're exiled
+MadJester.WinTasks: Tasks needed for the win
+MadJester.CanVent: Can use vents
+MadJester.ImpostorVision: Has impostor vision
+MadJester.KnowImpostors: Can know the impostors
+MadJester.NeededTasks: Tasks needed to know them
+MadJester.WinCond: Win when the impostors win, dead or alive
+# ── 化け狸 (MadRaccoon) ──
+MadRaccoon.Name: Mad Raccoon
+MadRaccoon.Blurb: Shapeshift and deceive
+MadRaccoon.Summary: A crewmate on the impostors' side who can take another player's look for a while.
+MadRaccoon.Morph: Disguise
+MadRaccoon.Morph.Help: Takes the chosen player's look for a set time.
+MadRaccoon.Morph.Short: Disguise as someone
+MadRaccoon.Cooldown: Disguise cooldown
+MadRaccoon.Duration: Disguise duration
+MadRaccoon.CanVent: Can use vents
+MadRaccoon.ImpostorVision: Has impostor vision
+MadRaccoon.KnowImpostors: Can know the impostors
+MadRaccoon.NeededTasks: Tasks needed to know them
+MadRaccoon.WinCond: Win when the impostors win, dead or alive
+# ── 崇拝者 (Worshiper) ──
+Worshiper.Name: Worshiper
+Worshiper.Blurb: I offer my life
+Worshiper.Summary: A crewmate on the impostors' side who can kill themselves at any time.
+Worshiper.Suicide: Suicide
+Worshiper.Suicide.Help: Press to kill yourself on the spot.
+Worshiper.Suicide.Short: Kill yourself on the spot
+Worshiper.Cooldown: Suicide cooldown
+Worshiper.CanVent: Can use vents
+Worshiper.ImpostorVision: Has impostor vision
+Worshiper.KnowImpostors: Can know the impostors
+Worshiper.NeededTasks: Tasks needed to know them
+Worshiper.WinCond: Win when the impostors win, dead or alive
+
+# ── モディファイア狼憑き (ModifierHauntedWolf) ──
+ModifierHauntedWolf.Name: Haunted Wolf
+ModifierHauntedWolf.Blurb: A fleeting phantom of the beast
+ModifierHauntedWolf.Summary: An add-on for crew roles. Team-judging roles like the Sheriff see you as an impostor.
+ModifierHauntedWolf.OnMadAndFriends: Can attach to madmates and friends
+# ── モディファイアホーク (ModifierHawk) ──
+ModifierHawk.Name: Hawk
+ModifierHawk.Blurb: Has a hawk's eye
+ModifierHawk.Summary: An add-on that lets you zoom out for a while.
+ModifierHawk.Eye: Hawk Eye
+ModifierHawk.Eye.Help: Zooms out for a set time.
+ModifierHawk.Eye.Short: Zoom out for a while
+ModifierHawk.Cooldown: Hawk Eye cooldown
+ModifierHawk.Duration: Hawk Eye duration
+ModifierHawk.Magnification: Zoom-out factor
+ModifierHawk.CannotWalk: Can't walk while active
+# ── ルーラー (RulerModifier) ──
+RulerModifier.Name: Ruler
+RulerModifier.Blurb: Obey me
+RulerModifier.Summary: An add-on for impostors. Once, you can turn a nearby player into a Madmate.
+RulerModifier.Madden: Madden
+RulerModifier.Madden.Help: Turns a nearby player into a Madmate (once).
+RulerModifier.Madden.Short: Make someone a Madmate
+RulerModifier.Cooldown: Madden cooldown
+# ── スペランカー (Spelunker) ──
+Spelunker.Name: Spelunker
+Spelunker.Blurb: Dies at the slightest thing
+Spelunker.Summary: A very frail neutral. Approaching vents, riding the lift, climbing ladders or opening doors may kill them, and long comms or lights sabotage kills them.
+Spelunker.SabotageDeath: Die when a sabotage drags on
+Spelunker.CommsTime: Time until death in comms
+Spelunker.LightsTime: Time until death in lights
+Spelunker.VentChance: Death chance on vents
+Spelunker.LiftChance: Death chance on lifts
+Spelunker.LadderChance: Death chance on ladders
+# ── 虚弱 (ModifierSpelunker) ──
+ModifierSpelunker.Name: Frail
+ModifierSpelunker.Blurb: Dies at the slightest thing
+ModifierSpelunker.Summary: A very frail add-on. Approaching vents, riding the lift, climbing ladders or opening doors may kill them, and long comms or lights sabotage kills them.
+ModifierSpelunker.SabotageDeath: Die when a sabotage drags on
+ModifierSpelunker.CommsTime: Time until death in comms
+ModifierSpelunker.LightsTime: Time until death in lights
+ModifierSpelunker.VentChance: Death chance on vents
+ModifierSpelunker.LiftChance: Death chance on lifts
+ModifierSpelunker.LadderChance: Death chance on ladders
+Spelunker.WinCond: Win if alive at the end
+Spelunker.AdditionalWin: Win alongside the winners (off = win alone)
+# ── ジャンボ (JumboModifier) ──
+JumboModifier.Name: Jumbo
+JumboModifier.Blurb: Grow big
+JumboModifier.Summary: A modifier whose body keeps growing over time. Your growth shows next to your name.
+JumboModifier.OnImpostor: Can attach to impostors
+JumboModifier.OnNeutral: Can attach to neutrals
+JumboModifier.GrowSeconds: Time to fully grow
+JumboModifier.GrowInMeeting: Grow during meetings
+
+# ── 選挙管理委員 (ElectionCommissioner) ──
+ElectionCommissioner.Name: Election Commissioner
+ElectionCommissioner.Blurb: Watch every honest vote
+ElectionCommissioner.Summary: A crewmate who can see who voted for whom, even with anonymous votes.
+# ── ハンバーガー屋 (HamburgerShop) ──
+HamburgerShop.Name: Hamburger Shop
+HamburgerShop.Blurb: Welcome, what'll it be?
+HamburgerShop.Summary: A crewmate with no abilities.
+# ── ボディービルダー (BodyBuilder) ──
+BodyBuilder.Name: Body Builder
+BodyBuilder.Blurb: Behold these muscles!
+BodyBuilder.Summary: A crewmate who can strike a pose after finishing all tasks.
+BodyBuilder.Pose: Pose
+BodyBuilder.Pose.Help: Usable after all tasks are done. Shows 💪 by your name for everyone for a while.
+BodyBuilder.Pose.Short: Show off your muscles
+BodyBuilder.Cooldown: Pose cooldown
+# ── ジャンプダンサー (JumpDancer) ──
+JumpDancer.Name: Jump Dancer
+JumpDancer.Blurb: Everybody jump!
+JumpDancer.Summary: A crewmate who can make themselves and nearby players jump (visual only).
+JumpDancer.Jump: Jump!
+JumpDancer.Jump.Help: You and nearby players hop for a moment (visual only).
+JumpDancer.Jump.Short: Jump with those nearby
+JumpDancer.Cooldown: Jump cooldown
+JumpDancer.Range: Jump range
+# ── ナイス赤ずきん (NiceRedRidingHood) ──
+NiceRedRidingHood.Name: Nice Red Riding Hood
+NiceRedRidingHood.Blurb: Back from the wolf's belly
+NiceRedRidingHood.Summary: A crewmate who comes back to life after the next meeting once their killer dies.
+NiceRedRidingHood.Revives: Revives
+# ── ナイスサイエンティスト (NiceScientist) ──
+NiceScientist.Name: Nice Scientist
+NiceScientist.Blurb: The invisible researcher
+NiceScientist.Summary: A crewmate who can turn invisible for a while.
+NiceScientist.Hide: Invisibility
+NiceScientist.Hide.Help: Turns you invisible for a set time. You can still be targeted by abilities.
+NiceScientist.Hide.Short: Turn invisible for a while
+NiceScientist.Cooldown: Invisibility cooldown
+NiceScientist.Duration: Invisibility duration
+# ── イビルサイエンティスト (EvilScientist) ──
+EvilScientist.Name: Evil Scientist
+EvilScientist.Blurb: The invisible researcher
+EvilScientist.Summary: An impostor who can turn invisible for a while.
+EvilScientist.Hide: Invisibility
+EvilScientist.Hide.Help: Turns you invisible for a set time. You can still be targeted by abilities.
+EvilScientist.Hide.Short: Turn invisible for a while
+EvilScientist.Cooldown: Invisibility cooldown
+EvilScientist.Duration: Invisibility duration
+
+# ── 警察医 (PoliceSurgeon) ──
+PoliceSurgeon.Name: Police Surgeon
+PoliceSurgeon.Blurb: The estimated time of death is...
+PoliceSurgeon.Summary: A crewmate who learns how long ago each victim died when a meeting starts.
+PoliceSurgeon.Error: Time error
+PoliceSurgeon.Title: [Estimated time of death]
+PoliceSurgeon.Line: {name}: about {s}s ago
+# ── サイコメトラー (Psychometrist) ──
+Psychometrist.Name: Psychometrist
+Psychometrist.Blurb: Read the memories of the dead
+Psychometrist.Summary: A crewmate who can read a body's cause of death and how long ago it died.
+Psychometrist.Read: Read
+Psychometrist.Read.Help: Examines a nearby body and posts its cause of death and time (with error) to chat.
+Psychometrist.Read.Short: Read a body
+Psychometrist.Cooldown: Read cooldown
+Psychometrist.Error: Time error
+Psychometrist.Result: {name}: {cause} / about {s}s ago
+Psychometrist.Killed: killed
+Psychometrist.Suicide: suicide
+# ── 遺言伝達者 (DyingMessenger) ──
+DyingMessenger.Name: Dying Messenger
+DyingMessenger.Blurb: Hear their last words
+DyingMessenger.Summary: A crewmate who learns the killer's role by reporting a fresh body.
+DyingMessenger.Within: Time window
+DyingMessenger.Message: {name}'s last words: the killer is {role}
+# ── サンタ (Santa) ──
+Santa.Name: Santa
+Santa.Blurb: Presents for good kids
+Santa.Summary: A crewmate who can give a nearby player a random crew role. If they aren't crew, you die.
+Santa.Gift: Present
+Santa.Gift.Help: Gives a nearby player a random crew role. If they aren't crew, you die.
+Santa.Gift.Short: Give a role
+Santa.Cooldown: Present cooldown
+Santa.Uses: Presents
+# ── ブラックサンタ (BlackSanta) ──
+BlackSanta.Name: Black Santa
+BlackSanta.Blurb: Presents for good kids
+BlackSanta.Summary: A crewmate on the impostors' side who can give an impostor a random impostor role. If they aren't an impostor, you die.
+BlackSanta.Gift: Present
+BlackSanta.Gift.Help: Gives a nearby impostor a random impostor role. If they aren't an impostor, you die.
+BlackSanta.Gift.Short: Give a role
+BlackSanta.Cooldown: Present cooldown
+BlackSanta.Uses: Presents
+BlackSanta.CanVent: Can use vents
+BlackSanta.ImpostorVision: Has impostor vision
+BlackSanta.KnowImpostors: Can know the impostors
+BlackSanta.NeededTasks: Tasks needed to know them
+BlackSanta.WinCond: Win when the impostors win, dead or alive
+# ── シルバーバレット (SilverBullet) ──
+SilverBullet.Name: Silver Bullet
+SilverBullet.Blurb: Traces never lie
+SilverBullet.Summary: A crewmate who can check how many times a vent was used last round.
+SilverBullet.Analyze: Analyze
+SilverBullet.Analyze.Help: Checks a nearby vent and posts how many times it was used last round.
+SilverBullet.Analyze.Short: Check a vent's use count
+SilverBullet.Cooldown: Analyze cooldown
+SilverBullet.Result: This vent was used {n} time(s) last round
+# ── イカ (Squid) ──
+Squid.Name: Squid
+Squid.Blurb: Spray ink and run
+Squid.Summary: A crewmate who, while on guard, blocks a kill and blinds the killer.
+Squid.Guard: Guard
+Squid.Guard.Help: Stay on guard for a set time. If attacked meanwhile, you block the kill, blind the killer for a while and get a speed boost.
+Squid.Guard.Short: Block a kill and spray ink
+Squid.Cooldown: Guard cooldown
+Squid.Duration: Guard duration
+Squid.InkTime: Blind duration
+Squid.BoostTime: Speed boost duration
+# ── タスクマスター (Taskmaster) ──
+Taskmaster.Name: Taskmaster
+Taskmaster.Blurb: Tasks done in an instant
+Taskmaster.Summary: A crewmate who finishes a task just by opening it.
+# ── ベントトラッパー (VentTrapper) ──
+VentTrapper.Name: Vent Trapper
+VentTrapper.Blurb: The trap is already set
+VentTrapper.Summary: A crewmate who traps vents. Anyone else who enters a trapped vent dies.
+VentTrapper.Trap: Trap!
+VentTrapper.Trap.Help: Traps a nearby vent. Anyone else who enters it dies (the trap is used up).
+VentTrapper.Trap.Short: Trap a vent
+VentTrapper.Cooldown: Trap cooldown
+VentTrapper.Uses: Traps
+# ── データハッカー (Datahacker) ──
+Datahacker.Name: Datahacker
+Datahacker.Blurb: Expose all the data
+Datahacker.Summary: A crewmate who learns the enemies after enough tasks, but is exposed to them a bit earlier.
+Datahacker.NeededTasks: Tasks needed to see enemies
+Datahacker.ExposeTasks: Tasks at which enemies see you
+
+# ── カモフラージャー (Camouflager) ──
+Camouflager.Name: Camouflager
+Camouflager.Blurb: Who is who?
+Camouflager.Summary: An impostor who can make everyone look like them for a while.
+Camouflager.Camo: Camouflage
+Camouflager.Camo.Help: For a set time, every living player looks like you.
+Camouflager.Camo.Short: Make everyone look alike
+Camouflager.Cooldown: Camouflage cooldown
+Camouflager.Duration: Camouflage duration
+# ── カニ (Crab) ──
+Crab.Name: Crab
+Crab.Blurb: Welcome to the sideways world
+Crab.Summary: An impostor who can make everyone walk only sideways for a while.
+Crab.Crab: Crab
+Crab.Crab.Help: For a set time, everyone can only walk sideways.
+Crab.Crab.Short: Make everyone walk sideways
+Crab.Cooldown: Crab cooldown
+Crab.Duration: Crab duration
+# ── ドッペルゲンガー (Doppelganger) ──
+Doppelganger.Name: Doppelganger
+Doppelganger.Blurb: Your other self
+Doppelganger.Summary: An impostor who can take another's look. Killing that person shortens the next cooldown.
+Doppelganger.Morph: Morph
+Doppelganger.Morph.Help: Takes the chosen player's look for a set time.
+Doppelganger.Morph.Short: Disguise as someone
+Doppelganger.Cooldown: Morph cooldown
+Doppelganger.Duration: Morph duration
+Doppelganger.BonusCooldown: Cooldown after killing your look-alike
+# ── ダブルキラー (DoubleKiller) ──
+DoubleKiller.Name: Double Killer
+DoubleKiller.Blurb: The dual-wielding killer
+DoubleKiller.Summary: An impostor with two kill buttons on separate cooldowns.
+DoubleKiller.Kill: Kill (2)
+DoubleKiller.Kill.Help: Kills a nearby player, separately from the normal kill button.
+DoubleKiller.Kill.Short: A second kill
+DoubleKiller.Cooldown: Second kill cooldown
+# ── イビルハッカー (EvilHacker) ──
+EvilHacker.Name: Evil Hacker
+EvilHacker.Blurb: Every room is an open book
+EvilHacker.Summary: An impostor who can view the admin map anywhere, anytime.
+EvilHacker.Admin: Admin
+EvilHacker.Admin.Help: Opens the admin map (player counts per room).
+EvilHacker.Admin.Short: View admin anywhere
+# ── ジャマー (Jammer) ──
+Jammer.Name: Jammer
+Jammer.Blurb: Invisible prey
+Jammer.Summary: An impostor who can make a nearby player invisible to others for a while.
+Jammer.Jam: Jam
+Jammer.Jam.Help: Makes a nearby player invisible for a set time. They and impostors still see them.
+Jammer.Jam.Short: Make someone invisible
+Jammer.Cooldown: Jam cooldown
+Jammer.Duration: Jam duration
+# ── ネコカボチャ (NekoKabocha) ──
+NekoKabocha.Name: Neko Kabocha
+NekoKabocha.Blurb: I won't go alone
+NekoKabocha.Summary: An impostor who takes their killer down when killed, or a random player when exiled.
+# ── オーバーキラー (OverKiller) ──
+OverKiller.Name: Over Killer
+OverKiller.Blurb: Way overkill
+OverKiller.Summary: An impostor whose victims leave several bodies around.
+OverKiller.ExtraBodies: Extra bodies
+# ── 追跡者 (Pursuer) ──
+Pursuer.Name: Pursuer
+Pursuer.Blurb: Follow the prey's scent
+Pursuer.Summary: An impostor with an arrow pointing to the nearest non-impostor.
+# ── 泥棒 (Robber) ──
+Robber.Name: Robber
+Robber.Blurb: I'll take that hard work
+Robber.Summary: An impostor who undoes their victims' task progress.
+# ── 侍 (Samurai) ──
+Samurai.Name: Samurai
+Samurai.Blurb: One clean cut
+Samurai.Summary: An impostor who can once slay every crewmate around them.
+Samurai.Slash: Special Move
+Samurai.Slash.Help: Kills everyone around you except impostors (once per game).
+Samurai.Slash.Short: Slay everyone nearby
+Samurai.Range: Range
+# ── 自爆魔 (SelfBomber) ──
+SelfBomber.Name: Self Bomber
+SelfBomber.Blurb: You're all coming with me!
+SelfBomber.Summary: An impostor who can blow up, killing themselves and every crewmate nearby.
+SelfBomber.Bomb: Self-Destruct
+SelfBomber.Bomb.Help: You die, along with everyone around you except impostors.
+SelfBomber.Bomb.Short: Blow up with those nearby
+SelfBomber.Range: Blast range
+# ── スラッガー (Slugger) ──
+Slugger.Name: Slugger
+Slugger.Blurb: Knock 'em out of the park!
+Slugger.Summary: An impostor who knocks nearby players away, leaving no bodies.
+Slugger.Swing: Harisen
+Slugger.Swing.Help: Knocks away everyone around you except impostors. No bodies are left.
+Slugger.Swing.Short: Knock everyone away
+Slugger.Cooldown: Harisen cooldown
+Slugger.Range: Range
+# ── シフトアクター (ShiftActor) ──
+ShiftActor.Name: Shift Actor
+ShiftActor.Blurb: I'll play that part perfectly
+ShiftActor.Summary: An impostor who can take another's look and learn their role.
+ShiftActor.Morph: Morph
+ShiftActor.Morph.Help: Takes the chosen player's look for a set time and posts their role to chat.
+ShiftActor.Morph.Short: Disguise and learn their role
+ShiftActor.Cooldown: Morph cooldown
+ShiftActor.Duration: Morph duration
+ShiftActor.Role: {name}'s role: {role}
+# ── サイドキラー (SideKiller) ──
+SideKiller.Name: Side Killer
+SideKiller.Blurb: Become my right hand
+SideKiller.Summary: An impostor who can once turn a nearby player into a Mad Killer.
+SideKiller.Convert: Corrupt
+SideKiller.Convert.Help: Turns a nearby player into a Mad Killer (once). When you die, they become an impostor.
+SideKiller.Convert.Short: Make someone a Mad Killer
+SideKiller.Cooldown: Corrupt cooldown
+# ── マッドキラー (MadKiller) ──
+MadKiller.Name: Mad Killer
+MadKiller.Blurb: Inherit my master's will
+MadKiller.Summary: A crewmate on the impostors' side made by the Side Killer. Becomes an impostor when the Side Killer dies.
+MadKiller.WinCond: Win when the impostors win, dead or alive
+# ── 眷属 (VampireDependent) ──
+VampireDependent.Name: Vampire Dependent
+VampireDependent.Blurb: Darkness is my domain
+VampireDependent.Summary: An impostor made by a Vampire. Optionally has reverse vision, and dies with the Vampire.
+
+# ── クノイチ (Kunoichi) ──
+Kunoichi.Name: Kunoichi
+Kunoichi.Blurb: A throw from the shadows
+Kunoichi.Summary: An impostor who can't kill normally but kills by hitting the same person with enough kunai. Can turn invisible by standing still.
+Kunoichi.Kunai: Kunai
+Kunoichi.Kunai.Help: Throw a kunai toward the mouse (only you see it). Hitting the same person enough times kills them.
+Kunoichi.Kunai.Short: Throw kunai
+Kunoichi.Cooldown: Kunai cooldown
+# ── トリガーハッピー (TriggerHappy) ──
+TriggerHappy.Name: Trigger Happy
+TriggerHappy.Blurb: Shoot, shoot, and keep shooting
+TriggerHappy.Summary: An impostor who sprays a machine gun for a while and kills anyone hit by enough bullets.
+TriggerHappy.Spray: Spray
+TriggerHappy.Spray.Help: Hold a machine gun for a while and keep spraying bullets toward the mouse. Anyone hit enough times dies. Bullets stop at walls (unless set to pierce) and bounce off a Wise Man's barrier.
+TriggerHappy.Spray.Short: Spray the machine gun
+TriggerHappy.Cooldown: Spray cooldown
+TriggerHappy.Range: Bullet range
+# ── 波動砲 (WaveCannon) ──
+WaveCannon.Name: Wave Cannon
+WaveCannon.Blurb: A light that pierces all
+WaveCannon.Summary: An impostor who sets up a cannon, charges it, and fires a beam sideways. Anyone hit dies regardless of team.
+WaveCannon.Beam: Wave Cannon
+WaveCannon.Beam.Help: Set up a cannon and stand still; when charged, fire a wall-piercing beam (Tank) or charging Santas (Santa) to the side you face. Anyone hit dies regardless of team. A Wise Man's barrier stops and reflects the beam.
+WaveCannon.Beam.Short: Charge and fire sideways
+WaveCannon.Cooldown: Wave cannon cooldown
+# ── ヴァンパイア (Vampire) ──
+Vampire.Name: Vampire
+Vampire.Blurb: It takes effect slowly
+Vampire.Summary: An impostor whose victims die after a delay, leaving a trail of blood. Can create a dependent.
+Vampire.Delay: Seconds until the bitten die
+# ── マトリョーシカ (Matryoshka) ──
+Matryoshka.Name: Matryoshka
+Matryoshka.Blurb: Someone else inside
+Matryoshka.Summary: An impostor who wears nearby bodies to take their look. Each wear lengthens the kill cooldown.
+Matryoshka.Wear: Wear
+Matryoshka.Wear.Help: Wear a nearby body to take that person's look (the body comes with you). When time runs out or you press again, you drop it there. A meeting also makes you take it off.
+Matryoshka.Wear.Short: Wear a body as a disguise
+Matryoshka.Cooldown: Wear cooldown
+Matryoshka.Duration: Wear duration
+# ── ペンギン (Penguin) ──
+Penguin.Name: Penguin
+Penguin.Blurb: Come along for a bit
+Penguin.Summary: An impostor who grabs a nearby player, drags them along, and kills them when time is up.
+Penguin.Grab: Abduct
+Penguin.Grab.Help: Grabs a nearby player and drags them along. Kill them with the kill button or when time runs out.
+Penguin.Grab.Short: Grab, drag, and kill
+Penguin.Cooldown: Abduct cooldown
+Penguin.Duration: Grab duration
+# ── ロケット (Rocket) ──
+Rocket.Name: Rocket
+Rocket.Blurb: Tamaya!
+Rocket.Summary: An impostor who grabs a player and launches them into the sky. No body is left.
+Rocket.Grab: Grab
+Rocket.Grab.Help: Grabs a nearby player and drags them for a set time.
+Rocket.Grab.Short: Grab a nearby player
+Rocket.Cooldown: Grab cooldown
+Rocket.Launch: Launch
+Rocket.Launch.Help: Launches the grabbed player into the sky. No body is left.
+Rocket.Launch.Short: Launch the grabbed player
+Rocket.Duration: Grab duration
+# ── 魔術師 (Conjurer) ──
+Conjurer.Name: Conjurer
+Conjurer.Blurb: No escape inside the triangle
+Conjurer.Summary: An impostor who places three markers and kills everyone inside the triangle. Cannot kill normally.
+Conjurer.Mark: Marker
+Conjurer.Mark.Help: Place a marker where you stand (only you see it). From the second one, it must be within the set distance of the previous one. Up to 3; they vanish at meetings.
+Conjurer.Mark.Short: Place a marker
+Conjurer.MarkCooldown: Marker cooldown
+Conjurer.Crush: Activate
+Conjurer.Crush.Help: Kills everyone inside the triangle of your 3 markers (impostors too if set).
+Conjurer.Crush.Short: Kill all inside the triangle
+# ── ディメンションウォーカー (DimensionWalker) ──
+DimensionWalker.Name: Dimension Walker
+DimensionWalker.Blurb: One who walks between dimensions
+DimensionWalker.Summary: An impostor who places wormholes that become linked vents after a while.
+DimensionWalker.Place: Place / Collect
+DimensionWalker.Place.Help: Place a wormhole at your feet (not near doors). After the set time it becomes a vent linked to your other wormholes (anyone who can vent may use it). Impostors see the time left. Press while your vent button targets one of your wormholes to collect it and get the use back.
+DimensionWalker.Place.Short: Place or collect a wormhole
+DimensionWalker.Cooldown: Place cooldown
+
+# ── 波動砲ジャッカル (WaveCannonJackal) ──
+WaveCannonJackal.Name: Wave Cannon Jackal
+WaveCannonJackal.Blurb: The pack's cannon
+WaveCannonJackal.Summary: A Jackal-pack member with a kill button and a Wave Cannon.
+WaveCannonJackal.Kill: Kill
+WaveCannonJackal.Kill.Help: You can kill anyone outside the Jackal pack. Win when only the pack remains.
+WaveCannonJackal.Kill.Short: Kill outside the pack
+WaveCannonJackal.Beam: Wave Cannon
+WaveCannonJackal.Beam.Help: Set up a cannon, charge, and fire a wall-piercing beam or Santas sideways. Anyone hit dies, including allies. A Wise Man's barrier reflects it.
+WaveCannonJackal.Beam.Short: Charge and fire sideways
+WaveCannonJackal.Cooldown: Wave cannon cooldown
+WaveCannonJackal.Sidekick: Sidekick
+WaveCannonJackal.Sidekick.Help: Turn a nearby player into an ally of the set kind (once).
+WaveCannonJackal.Sidekick.Short: Recruit a nearby player
+WaveCannonJackal.SidekickCooldown: Sidekick cooldown
+WaveCannonJackal.KillCooldown: Kill cooldown
+WaveCannonJackal.CanVent: Can use vents
+WaveCannonJackal.CanSidekick: Can make a sidekick
+# ── 波動砲サイドキック (SidekickWaveCannon) ──
+SidekickWaveCannon.Name: Wave Cannon Sidekick
+SidekickWaveCannon.Blurb: Heir to the cannon
+SidekickWaveCannon.Summary: Recruited by the Wave Cannon Jackal. Becomes one when no Wave Cannon Jackal is left alive.
+SidekickWaveCannon.CanVent: Can use vents
+# ── 殺し屋 (Hitman) ──
+Hitman.Name: Hitman
+Hitman.Blurb: The job always gets done
+Hitman.Summary: A neutral who wins alone by killing their secret target a set number of times within the time limit.
+Hitman.NeededHits: Target kills needed to win
+Hitman.FailLimit: Failures before death
+Hitman.CanVent: Can use vents
+# ── 爆ぜ師 (LoversBreaker) ──
+LoversBreaker.Name: Lovers Breaker
+LoversBreaker.Blurb: Down with happy couples
+LoversBreaker.Summary: A neutral who wins alone by blowing up the Lovers until none are left.
+LoversBreaker.Blast: Blast
+LoversBreaker.Blast.Help: Kills a nearby player if they are a Lover. If not, you die instead.
+LoversBreaker.Blast.Short: Blow up a Lover
+LoversBreaker.Cooldown: Blast cooldown
+LoversBreaker.NeededBlasts: Blasts needed to win
+# ── 冤罪師 (FalseCharges) ──
+FalseCharges.Name: False Charges
+FalseCharges.Blurb: They did it!
+FalseCharges.Summary: A neutral who dies to frame someone, winning alone if they get exiled.
+FalseCharges.Frame: Frame
+FalseCharges.Frame.Help: Frames a nearby player and you die. Win if they are exiled within a set number of meetings.
+FalseCharges.Frame.Short: Frame someone and die
+FalseCharges.Meetings: Meetings allowed for the exile
+# ── 陰陽師 (OrientalShaman) ──
+OrientalShaman.Name: Oriental Shaman
+OrientalShaman.Blurb: Seeing through the wicked
+OrientalShaman.Summary: A neutral who can see who can kill, and steals the win by surviving.
+OrientalShaman.Servant: Shikigami
+OrientalShaman.Servant.Help: Turns a nearby player into your Shikigami, who wins with you (once).
+OrientalShaman.Servant.Short: Make a Shikigami
+OrientalShaman.Cooldown: Shikigami cooldown
+OrientalShaman.CanVent: Can use vents
+OrientalShaman.CanServant: Can make a Shikigami
+# ── 式神 (ShermansServant) ──
+ShermansServant.Name: Shikigami
+ShermansServant.Blurb: For my master
+ShermansServant.Summary: A servant made by the Oriental Shaman. Wins when the Shaman wins.
+ShermansServant.Morph: Morph
+ShermansServant.Morph.Help: Takes the Oriental Shaman's look for a set time.
+ShermansServant.Morph.Short: Disguise as the Shaman
+ShermansServant.Cooldown: Morph cooldown
+ShermansServant.Suicide: Suicide
+ShermansServant.Suicide.Help: Kills yourself on the spot.
+ShermansServant.Suicide.Short: Kill yourself
+ShermansServant.Duration: Morph duration
+# ── フリーター (PartTimer) ──
+PartTimer.Name: Part Timer
+PartTimer.Blurb: Ride the winning horse
+PartTimer.Summary: A neutral who picks an employer and wins with them if both survive.
+PartTimer.Hire: Hire
+PartTimer.Hire.Help: Makes a nearby player your employer. If they die, you can pick another.
+PartTimer.Hire.Short: Pick an employer
+PartTimer.Cooldown: Hire cooldown
+# ── モイラ (Moira) ──
+Moira.Name: Moira
+Moira.Blurb: Weaver of fate
+Moira.Summary: A neutral who swaps two players' roles during meetings. Steals the win by surviving after using them all.
+Moira.Pick: Fate
+Moira.Pick.Help: Pick two players in a meeting; their roles swap when it ends.
+Moira.Pick.Short: Swap two players' roles
+Moira.Swaps: Number of swaps
+# ── シュレディンガーの猫 (SchrodingersCat) ──
+SchrodingersCat.Name: Schrodinger's Cat
+SchrodingersCat.Blurb: Alive, or dead?
+SchrodingersCat.Summary: A neutral who, when attacked, survives and becomes a cat of the attacker's team.
+# ── ブラックハットハッカー (BlackHatHacker) ──
+BlackHatHacker.Name: Black Hat Hacker
+BlackHatHacker.Blurb: The virus spreads quietly
+BlackHatHacker.Summary: A neutral who spreads a virus and wins alone once everyone is infected.
+BlackHatHacker.Hack: Hack
+BlackHatHacker.Hack.Help: Infects a nearby player. Those near fully infected players slowly get infected too.
+BlackHatHacker.Hack.Short: Infect with a virus
+BlackHatHacker.Cooldown: Hack cooldown
+BlackHatHacker.Uses: Hack uses
+BlackHatHacker.Range: Spread range
+BlackHatHacker.Seconds: Seconds nearby to be fully infected
+# ── 金庫破り (Safecracker) ──
+Safecracker.Name: Safecracker
+Safecracker.Blurb: Every lock is open
+Safecracker.Summary: A neutral who wins alone by finishing all their tasks, growing stronger as tasks progress.
+
+# ── カンテラ (Cantera) ──
+Cantera.Name: Cantera
+Cantera.Blurb: Light your friends' way
+Cantera.Summary: A ghost role for dead crewmates. Haunts someone to widen their sight for a while.
+Cantera.Light: Lantern
+Cantera.Light.Help: Haunts someone (even through walls) and sets their sight to a multiple of the ship's brightest for a while.
+Cantera.Light.Short: Widen someone's sight
+Cantera.Cooldown: Lantern cooldown
+Cantera.Duration: Lantern duration
+Cantera.Vision: Lantern vision
+Cantera.Lit: Lantern
+# ── ゴーストメカニック (GhostMechanic) ──
+GhostMechanic.Name: Ghost Mechanic
+GhostMechanic.Blurb: Fix the ship even in death
+GhostMechanic.Summary: A ghost role for dead crewmates. Fixes active sabotages.
+GhostMechanic.Repair: Repair
+GhostMechanic.Repair.Help: Instantly fixes every active sabotage. Settings can stop it fixing Mushroom Mixup.
+GhostMechanic.Repair.Short: Fix sabotages
+# ── レヴェナント (Revenant) ──
+Revenant.Name: Revenant
+Revenant.Blurb: Take your revenge
+Revenant.Summary: A ghost bound by the Necromancer. Each time it finishes its ghost tasks it can haunt a living crewmate and take their sight.
+# ── ミラージュ (Mirage) ──
+Mirage.Name: Mirage
+Mirage.Blurb: Confuse them with phantom bodies
+Mirage.Summary: A ghost role for dead impostors. Places copies of bodies. The screen flashes when someone dies.
+Mirage.Copy: Phantom
+Mirage.Copy.Help: Places a copy of one of the existing bodies where you are. The screen flashes cyan when someone dies.
+Mirage.Copy.Short: Place a copy of a body
+
+RolePicker.Crew: Crew
+RolePicker.Impostor: Impostor
+RolePicker.Neutral: Neutral
+RolePicker.Close: Close
+GuessKit.Hit: {name} was shot
+GuessKit.Missed: {name} guessed wrong and was shot
+# ── ナイスゲッサー (NiceGuesser) ──
+NiceGuesser.Name: Nice Guesser
+NiceGuesser.Blurb: I see what you really are
+NiceGuesser.Summary: A crewmate who can shoot by guessing roles in meetings. A wrong guess kills them.
+NiceGuesser.Shoot: Shoot
+NiceGuesser.Shoot.Help: In a meeting, pick a player and guess their role. If right, they die; if wrong, you die.
+NiceGuesser.Shoot.Short: Guess a role and shoot
+NiceGuesser.Shots: Total shots
+NiceGuesser.PerMeeting: Shots per meeting
+# ── イビルゲッサー (EvilGuesser) ──
+EvilGuesser.Name: Evil Guesser
+EvilGuesser.Blurb: The meeting is my hunting ground
+EvilGuesser.Summary: An impostor who can shoot by guessing roles in meetings. A wrong guess kills them.
+EvilGuesser.Shoot: Shoot
+EvilGuesser.Shoot.Help: In a meeting, pick a player and guess their role. If right, they die; if wrong, you die.
+EvilGuesser.Shoot.Short: Guess a role and shoot
+EvilGuesser.Shots: Total shots
+EvilGuesser.PerMeeting: Shots per meeting
+# ── モディファイアゲッサー (ModifierGuesser) ──
+ModifierGuesser.Name: Modifier Guesser
+ModifierGuesser.Blurb: See through, then shoot
+ModifierGuesser.Summary: An add-on that lets you shoot by guessing roles in meetings. A wrong guess kills you.
+ModifierGuesser.Shoot: Shoot
+ModifierGuesser.Shoot.Help: In a meeting, pick a player and guess their role. If right, they die; if wrong, you die.
+ModifierGuesser.Shoot.Short: Guess a role and shoot
+ModifierGuesser.Shots: Total shots
+ModifierGuesser.PerMeeting: Shots per meeting
+
+# ── ドアー (Doorr) ──
+Doorr.Name: Doorr
+Doorr.Blurb: Doors are my friends
+Doorr.Summary: A crewmate who can open and close the door in front of them.
+Doorr.Door: Doooor!!
+Doorr.Door.Help: Closes a nearby open door, or opens a closed one. Only on maps with openable doors.
+Doorr.Door.Short: Toggle the nearby door
+Doorr.Cooldown: Door cooldown
+# ── イビルドアー (EvilDoorr) ──
+EvilDoorr.Name: Evil Doorr
+EvilDoorr.Blurb: Let me lock you in
+EvilDoorr.Summary: A impostor who can open and close the door in front of them.
+EvilDoorr.Door: Doooor!!
+EvilDoorr.Door.Help: Closes a nearby open door, or opens a closed one. Only on maps with openable doors.
+EvilDoorr.Door.Short: Toggle the nearby door
+EvilDoorr.Cooldown: Door cooldown
+
+# ── バスカー (Busker) ──
+Busker.Name: Busker
+Busker.Blurb: Playing dead is part of the act
+Busker.Summary: A crewmate who can fake their death and come back later.
+Busker.Fake: Pseudocide
+Busker.Fake.Help: Leaves your body and turns you into a ghost. Press again to come back where you are (only while the body remains and you are inside the map). If time runs out, a meeting starts, or the body disappears, you really die.
+Busker.Fake.Short: Fake your death
+Busker.Reborn: Reborn
+Busker.Cooldown: Pseudocide cooldown
+Busker.Duration: Time until real death
+# ── ナイスメカニック (NiceMechanic) ──
+NiceMechanic.Name: Nice Mechanic
+NiceMechanic.Blurb: Let me move this vent a little
+NiceMechanic.Summary: A crewmate who can become a vent and carry it around.
+NiceMechanic.Move: Relocate
+NiceMechanic.Move.Help: Turns you into a nearby vent and lets you carry it for a while (press again to put it down). Nobody can enter it while it moves. Its connections stay the same.
+NiceMechanic.Move.Short: Carry a vent
+NiceMechanic.Cooldown: Relocate cooldown
+NiceMechanic.Duration: Relocate duration
+# ── イビルメカニック (EvilMechanic) ──
+EvilMechanic.Name: Evil Mechanic
+EvilMechanic.Blurb: Vents go where I want
+EvilMechanic.Summary: A impostor who can become a vent and carry it around.
+EvilMechanic.Move: Relocate
+EvilMechanic.Move.Help: Turns you into a nearby vent and lets you carry it for a while (press again to put it down). Nobody can enter it while it moves. Its connections stay the same.
+EvilMechanic.Move.Short: Carry a vent
+EvilMechanic.Cooldown: Relocate cooldown
+EvilMechanic.Duration: Relocate duration
+NiceMechanic.CanVent: Can use vents
+# ── ホスフォラス (Phosphorus) ──
+Phosphorus.Name: Phosphorus
+Phosphorus.Blurb: A lantern against the dark
+Phosphorus.Summary: A crewmate who places lanterns and lights them up.
+Phosphorus.Put: Place
+Phosphorus.Put.Help: Places a lantern where you stand. Everyone can see it from the next round.
+Phosphorus.Put.Short: Place a lantern
+Phosphorus.Light: Light
+Phosphorus.Light.Help: Lights your lanterns for a while, brightening their surroundings (press again to turn off).
+Phosphorus.Light.Short: Light the lanterns
+Phosphorus.Cooldown: Place cooldown
+Phosphorus.Limit: Lantern limit
+Phosphorus.LightCooldown: Light cooldown
+Phosphorus.Duration: Light duration
+Phosphorus.Range: Light range
+# ── トイレファン (ToiletFan) ──
+ToiletFan.Name: Toilet Fan
+ToiletFan.Blurb: Toilets should be open
+ToiletFan.Summary: A crewmate who can open all the lounge toilet doors (Airship only).
+ToiletFan.Open: Toilet!
+ToiletFan.Open.Help: Opens all the lounge toilet doors.
+ToiletFan.Open.Short: Open the toilet doors
+ToiletFan.Cooldown: Toilet cooldown
+# ── ぬーん (Nun) ──
+Nun.Name: Nun
+Nun.Blurb: Nuuun
+Nun.Summary: An impostor who can move the lift from afar (Airship only).
+Nun.Move: Nuuun
+Nun.Move.Help: Moves the Airship lift remotely, carrying whoever is on it.
+Nun.Move.Short: Move the lift
+Nun.Cooldown: Nun cooldown
+
+# ── タスカー (Tasker) ──
+Tasker.Name: Tasker
+Tasker.Blurb: Take the ship by doing tasks
+Tasker.Summary: An impostor who can do real tasks. Finishing all of them while alive wins for the impostors.
+Tasker.Tasks: Tasks
+Tasker.Tasks.Help: You can use task consoles. Finishing all your tasks while alive wins for the impostors. Settings can stop you from killing, or freeze your kill cooldown while a task is open.
+Tasker.Tasks.Short: Finish all tasks to win
+Tasker.EnableIndividualTasks: Use its own task counts
+Tasker.CommonTasks: Common tasks
+Tasker.ShortTasks: Short tasks
+Tasker.LongTasks: Long tasks
+Tasker.CanKill: Can kill
+Tasker.KillCoolDuringTask: Kill cooldown runs during tasks
+# ── ネクロマンサー (Necromancer) ──
+Necromancer.Name: Necromancer
+Necromancer.Blurb: Dead, obey me
+Necromancer.Summary: An impostor who sees ghosts and can turn them into Revenants.
+Necromancer.Curse: Bind
+Necromancer.Curse.Help: Turns a nearby ghost into a Revenant. Each time it finishes its ghost tasks, a Revenant can haunt a living crewmate, taking their sight and stopping reports. Arrows show where your Revenants are.
+Necromancer.Curse.Short: Turn a ghost into a Revenant
+Necromancer.Cooldown: Bind cooldown
+Necromancer.MaxRevenants: Max Revenants
+Necromancer.RevenantRequiredTasks: Revenant: tasks per haunt
+Necromancer.RevenantHauntDuration: Revenant: haunt duration
+Necromancer.RevenantHauntVision: Revenant: haunted vision
+Necromancer.RevenantCannotReport: Revenant: haunted cannot report
+# ── レヴェナント (Revenant) ──
+Revenant.Haunt: Haunt
+Revenant.Haunt.Help: Usable once each time you finish all your ghost tasks. Haunts a living crewmate for a while, shrinking their sight and stopping reports and emergency meetings. Ends when a meeting ends. Arrows show where the Necromancer is.
+Revenant.Haunt.Short: Haunt a crewmate
+Revenant.Haunted: Haunted
+# ── ミーディアム (Medium) ──
+Medium.Name: Medium
+Medium.Blurb: Hear the voices of the dead
+Medium.Summary: A crewmate who can see ghosts and hear from the dead.
+Medium.Vision: Spirit Sight
+Medium.Vision.Help: For a while, you can see ghosts.
+Medium.Vision.Short: See ghosts
+Medium.Talk: Spirit Talk
+Medium.Talk.Help: Only during Spirit Sight. A nearby ghost tells you one of: its killer's role, whether its killer's color is light or dark, the room it died in, or its own role. The answer appears in chat at the next meeting. Using it ends Spirit Sight.
+Medium.Talk.Short: Hear from a ghost
+Medium.Cooldown: Spirit Sight cooldown
+Medium.Duration: Spirit Sight duration
+Medium.TalkMaxUses: Spirit Talk uses
+Medium.VisionActive: Spirit Sight
+Medium.Exiled: {name} was exiled, or could not be heard
+Medium.KillerRole: {name} was killed by a {role}
+Medium.KillerColor: {name}'s killer has a {color}
+Medium.Light: light color
+Medium.Dark: dark color
+Medium.Place: {name} died in {place}
+Medium.Role: {name}'s role was {role}
+Medium.NoRoom: outside any room
+# ── カンテラ (Cantera) ──
+Cantera.LimitUses: Limit uses
+Cantera.MaxUses: Lantern uses
+# ── ゴーストメカニック (GhostMechanic) ──
+GhostMechanic.Cooldown: Repair cooldown
+GhostMechanic.CannotFixMixup: Cannot fix Mushroom Mixup
+# ── ミラージュ (Mirage) ──
+Mirage.LimitUse: Limit uses
+Mirage.LimitCount: Phantom uses
+
+# ── 品行方正 (WellBehaver) ──
+WellBehaver.Name: Well-Behaver
+WellBehaver.Blurb: Trash goes in the bin
+WellBehaver.Summary: A crewmate who picks up the trash someone keeps dropping instead of doing tasks. Too much trash kills them.
+WellBehaver.Pick: Pick Up
+WellBehaver.Pick.Help: You have no tasks. Trash drops at someone's feet at regular intervals; pick up nearby trash. If the trash on the ship reaches the limit (Well-Behavers × the set number), you die.
+WellBehaver.Pick.Short: Pick up nearby trash
+WellBehaver.LimitTrash: Trash limit (per person)
+WellBehaver.Frequency: Trash interval
+WellBehaver.AllCanSee: Everyone can see trash
+# ── バンシー (Banshee) ──
+Banshee.Name: Banshee
+Banshee.Blurb: A whisper heralds death
+Banshee.Summary: An impostor who kills whoever comes close to the person carrying her fairy.
+Banshee.Release: Release
+Banshee.Release.Help: Puts a fairy on a nearby person. The fairy jumps to whoever comes close to its holder. The holder is marked ✧.
+Banshee.Release.Short: Release the fairy
+Banshee.Whisper: Whisper
+Banshee.Whisper.Help: After releasing the fairy: the next person to come close to its holder is killed.
+Banshee.Whisper.Short: Kill the next to approach
+Banshee.ReleaseCooldown: Release cooldown
+Banshee.WhisperCooldown: Whisper cooldown
+Banshee.FairyRange: Fairy range
+Banshee.Range.Short: Short
+Banshee.Range.Medium: Medium
+Banshee.Range.Long: Long
+Banshee.CanKillImpostor: Can kill impostors
+Banshee.CanNormalKill: Can kill normally
+# ── フクロウ (Owl) ──
+Owl.Name: Owl
+Owl.Blurb: Hunter of the night
+Owl.Summary: A neutral killer who makes a vent its nest, hides bodies there, and can cause a special blackout.
+Owl.Nest: Build Nest
+Owl.Nest.Help: Makes a nearby vent your nest (once). You cannot kill until you have a nest.
+Owl.Nest.Short: Make a vent your nest
+Owl.Transport: Carry
+Owl.Transport.Help: Carries a nearby body. Dropping it next to your nest hides it and adds to your count.
+Owl.Transport.Short: Carry bodies to your nest
+Owl.Drop: Drop
+Owl.Blackout: Special Blackout
+Owl.Blackout.Help: Usable once enough bodies are hidden. For a while, everyone except impostors sees as if the lights were out.
+Owl.Blackout.Short: Darken everyone's sight
+Owl.KillCooldown: Kill cooldown
+Owl.CanVent: Can use vents
+Owl.BlackoutBodies: Hidden bodies for blackout
+Owl.BlackoutCooldown: Blackout cooldown
+Owl.BlackoutTime: Blackout duration
+Owl.KillOutsideBlackout: Can kill outside blackouts
+Owl.TransportOutsideBlackout: Can carry outside blackouts
+# ── プテラノドン (Pteranodon) ──
+Pteranodon.Name: Pteranodon
+Pteranodon.Blurb: Who needs a lift?
+Pteranodon.Summary: A crewmate who can fly across the gap without the lift (Airship only).
+Pteranodon.Fly: Fly
+Pteranodon.Fly.Help: Next to a gap platform landing, flies you to the other side.
+Pteranodon.Fly.Short: Fly across the gap
+Pteranodon.Cooldown: Fly cooldown
+
+# ── マッシュルーマー (Mushroomer) ──
+Mushroomer.Name: Mushroomer
+Mushroomer.Blurb: Smother them in spores
+Mushroomer.Summary: An impostor who plants mushrooms and makes every mushroom on the ship burst with spores. Works on any map.
+Mushroomer.Plant: Plant
+Mushroomer.Plant.Help: Plants a mushroom at your feet. It becomes active after the next meeting (impostors see it faintly).
+Mushroomer.Plant.Short: Plant a mushroom
+Mushroomer.Explode: Burst
+Mushroomer.Explode.Help: Usable once all your mushrooms are planted and active. Every active mushroom on the ship bursts with spores at once.
+Mushroomer.Explode.Short: Burst all mushrooms
+Mushroomer.HasGasMask: Has a gas mask
+Mushroomer.PlantCooldown: Plant cooldown
+Mushroomer.PlantCount: Mushrooms to plant
+Mushroomer.ExplodeCooldown: Burst cooldown
+Mushroomer.ExplodeCount: Burst uses
+Mushroomer.ExplodeRange: Spore range
+Mushroomer.ExplodeDuration: Spore duration
+Mushroomer.ActiveUsedMushroom: Planted mushrooms visible only to you
+# ── リモコン (RemoteController) ──
+RemoteController.Name: Remote Controller
+RemoteController.Blurb: You move as I please
+RemoteController.Summary: An impostor who controls a crewmate's movement and makes them kill.
+RemoteController.Mark: Mark
+RemoteController.Mark.Help: Picks a nearby crewmate to control.
+RemoteController.Mark.Short: Pick who to control
+RemoteController.Operate: Operate
+RemoteController.Operate.Help: For a while (or without limit), you move the marked person. Neither of you can move on your own meanwhile. Press again to stop.
+RemoteController.Operate.Short: Move the marked person
+RemoteController.Kill: Remote Kill
+RemoteController.Kill.Help: While operating: the person you control kills someone near them. Ends the operation.
+RemoteController.Kill.Short: Make your puppet kill
+RemoteController.MarkCooldown: Mark cooldown
+RemoteController.OperationInfinite: Unlimited operation
+RemoteController.OperationDuration: Operation duration
+# ── ロケットランチャー (RocketLauncher) ──
+RocketLauncher.Name: Rocket Launcher
+RocketLauncher.Blurb: Human rocket, launch!
+RocketLauncher.Summary: An impostor who grabs a crewmate and launches them to explode on impact.
+RocketLauncher.Load: Load
+RocketLauncher.Load.Help: Grabs a nearby crewmate. They cannot move and are carried with you.
+RocketLauncher.Load.Short: Grab a crewmate
+RocketLauncher.Shot: Launch
+RocketLauncher.Shot.Help: Launches the grabbed person the way you face. On hitting a wall (or a person, by setting) they explode, killing those nearby. If a meeting starts, the held or flying person dies.
+RocketLauncher.Shot.Short: Launch the grabbed person
+RocketLauncher.Cooldown: Load cooldown
+RocketLauncher.CollideWithPlayers: Explodes on hitting people
+RocketLauncher.KillImpostors: Explosion kills impostors
+RocketLauncher.ExplosionRange: Explosion range
+RocketLauncher.LimitLoadedTime: Limit holding time
+RocketLauncher.LoadedTimeLimit: Holding time
+RocketLauncher.CanUseNormalKill: Can kill normally
+
+# ── 突き落と師 (Pusher) ──
+Pusher.Name: Pusher
+Pusher.Blurb: Watch your step
+Pusher.Summary: An impostor who pushes people standing at the ship's edges or atop ladders (Skeld, Polus, Airship, Fungle).
+Pusher.Push: Push
+Pusher.Push.Help: Pushes a crewmate standing at a ship edge (fixed spots). They fall and leave no body. Pushing someone atop a ladder leaves their body at the bottom.
+Pusher.Push.Short: Push someone off an edge
+Pusher.Cooldown: Push cooldown
+# ── オルフェウス (Orpheus) ──
+Orpheus.Name: Orpheus
+Orpheus.Blurb: Bring your friends back from the underworld
+Orpheus.Summary: An impostor who revives dead fellow impostors from ritual bodies.
+Orpheus.Revive: Revive
+Orpheus.Revive.Help: When a fellow impostor dies, a "ritual body" appears somewhere on the ship after each meeting (for a set number of meetings). Use this next to it and that impostor comes back with their role after the next meeting. Ritual bodies can only be reported up close; once reported, that impostor can no longer be revived.
+Orpheus.Revive.Short: Revive a fellow impostor
+Orpheus.CorpseTurns: Meetings a ritual body appears
+Orpheus.Cooldown: Revive cooldown
+Orpheus.ReportPercent: Ritual body report distance
+Orpheus.Banner: Someone's soul has been called back from the underworld...
+
+# ── サウナー (Sauner) ──
+Sauner.Name: Sauner
+Sauner.Blurb: Time to get totonou
+Sauner.Summary: A neutral who wins alone by going through the sauna, the shower and the open-air rest in order (Airship only).
+Sauner.Stages: Get Totonou
+Sauner.Stages.Help: Spend the set time in each room in order: sauna (lounge) → shower → open-air rest (viewing deck). Time does not pass outside the room or during meetings. An arrow points to the next room. Finish the open-air rest to win alone.
+Sauner.Stages.Short: Sauna → shower → rest
+Sauner.DarkroomTime: Sauna time
+Sauner.ShowerTime: Shower time
+Sauner.DeckTime: Open-air rest time
+Sauner.Darkroom: Sauna
+Sauner.Shower: Shower
+Sauner.Deck: Open-air rest
+Sauner.Darkroom.Action: Sweat it out in the lounge
+Sauner.Shower.Action: Rinse off in the shower
+Sauner.Deck.Action: Rest on the viewing deck
+Sauner.Remaining: ({n}s left)
+# ── 三匹の仔豚 (TheThreeLittlePigs) ──
+TheThreeLittlePigs.Name: The Three Little Pigs
+TheThreeLittlePigs.Blurb: Who's afraid of the big bad wolf?
+TheThreeLittlePigs.Summary: A neutral team of three who cannot kill. If all three survive they steal the win; otherwise they win once every killing non-crew is dead.
+TheThreeLittlePigs.Team: The Three Little Pigs
+TheThreeLittlePigs.Team.Help: When assigned, you team up with two other crewmates as the first, second and third little pig. Teammates are marked ●. If all three are alive when the game ends, you steal the win. If any of you is gone, you win when every killing non-crew is dead.
+TheThreeLittlePigs.Team.Short: Survive together
+TheThreeLittlePigs.CustomTasks: Use own task counts
+TheThreeLittlePigs.CommonTasks: Common tasks
+TheThreeLittlePigs.ShortTasks: Short tasks
+TheThreeLittlePigs.LongTasks: Long tasks
+TheThreeLittlePigs.FirstPercent: First pig: task %
+TheThreeLittlePigs.FirstCustomTimer: First pig: custom flash interval
+TheThreeLittlePigs.FirstFlashTimer: First pig: flash interval
+TheThreeLittlePigs.SecondPercent: Second pig: task %
+TheThreeLittlePigs.SecondGuards: Second pig: guards
+TheThreeLittlePigs.ThirdPercent: Third pig: task %
+TheThreeLittlePigs.ThirdCounters: Third pig: counters
+TheFirstLittlePig.Name: First Little Pig
+TheFirstLittlePig.Blurb: Even a straw house is better than nothing
+TheFirstLittlePig.Summary: The first of the three little pigs. After enough tasks, your screen flashes every kill cooldown.
+TheFirstLittlePig.Flash: Straw House
+TheFirstLittlePig.Flash.Help: Once you finish the set share of tasks, your screen flashes red at an interval (the kill cooldown by default). If all three pigs are alive at the end, you steal the win.
+TheFirstLittlePig.Flash.Short: Flash every kill cooldown
+TheSecondLittlePig.Name: Second Little Pig
+TheSecondLittlePig.Blurb: A wooden house is reliable, up to a point
+TheSecondLittlePig.Summary: The second of the three little pigs. After enough tasks, you can block kills.
+TheSecondLittlePig.Guard: Wooden House
+TheSecondLittlePig.Guard.Help: Once you finish the set share of tasks, you block kills on you a set number of times. If all three pigs are alive at the end, you steal the win.
+TheSecondLittlePig.Guard.Short: Block kills
+TheThirdLittlePig.Name: Third Little Pig
+TheThirdLittlePig.Blurb: A brick house is as solid as they come
+TheThirdLittlePig.Summary: The third of the three little pigs. After enough tasks, you bounce kills back on the killer.
+TheThirdLittlePig.Counter: Brick House
+TheThirdLittlePig.Counter.Help: Once you finish the set share of tasks, you block kills on you a set number of times and the killer dies. If all three pigs are alive at the end, you steal the win.
+TheThirdLittlePig.Counter.Short: Counter kills
+
+# ── フランケンシュタイン (Frankenstein) ──
+Frankenstein.Name: Frankenstein
+Frankenstein.Blurb: Make a monster out of the dead
+Frankenstein.Summary: A neutral who builds monsters from bodies and wins alone after enough monster kills.
+Frankenstein.Create: Create Monster
+Frankenstein.Create.Help: Use a nearby body to become a monster wearing that person's look. While a monster you can kill with no cooldown; killing drops the body there and returns you to where you started. Monsters cannot be killed: an attack just breaks the monster. A meeting also breaks it. Win alone after the set number of monster kills. You see arrows to bodies.
+Frankenstein.Create.Short: Become a monster and kill
+Frankenstein.Cooldown: Create cooldown
+Frankenstein.WinKillCount: Kills needed to win
+Frankenstein.ImpostorVision: Monster has impostor vision
+Frankenstein.CanVent: Monster can vent
+# ── ユビキタス (Ubiquitous) ──
+Ubiquitous.Name: Ubiquitous
+Ubiquitous.Blurb: Drones are everywhere
+Ubiquitous.Summary: A crewmate who flies a drone to watch and open doors.
+Ubiquitous.Call: Call / Return
+Ubiquitous.Call.Help: Spawns a drone at your feet. Press again to remove it. When a meeting starts, a flying drone stops where it is and stays for the set number of meetings. People near your stopped drones show on the map.
+Ubiquitous.Call.Short: Call a drone
+Ubiquitous.Operate: Operate
+Ubiquitous.Operate.Help: Pilot the drone. You cannot move while doing so; the camera follows the drone and you can see around it.
+Ubiquitous.Operate.Short: Fly the drone
+Ubiquitous.DoorHack: Hack Doors
+Ubiquitous.DoorHack.Help: While piloting, opens closed doors near the drone.
+Ubiquitous.DoorHack.Short: Open nearby doors
+Ubiquitous.CallCooldown: Call cooldown
+Ubiquitous.OperateCooldown: Operate cooldown
+Ubiquitous.LimitOperate: Limit operating time
+Ubiquitous.OperateTime: Operating time
+Ubiquitous.StayTurns: Meetings a drone stays
+Ubiquitous.FlyingSpeed: Drone speed
+Ubiquitous.DoorHackCooldown: Door hack cooldown
+Ubiquitous.DoorHackScope: Door hack range
+Ubiquitous.VisibilityRange: Drone vision range
+Ubiquitous.MapShowColor: Show colors on the map
+# ── バランサー (Balancer) ──
+Balancer.Name: Balancer
+Balancer.Blurb: Put them on the scales
+Balancer.Summary: A crewmate who puts two people on the scales in a meeting so one of them must go.
+Balancer.Balance: Balance
+Balancer.Balance.Help: Pick two people in a meeting to put them on the scales. Everyone else's card and skip disappear and everyone votes again for one of the two (within the set time). The one with more votes is ejected; on a tie both are ejected. If one dies meanwhile, the other is ejected.
+Balancer.Balance.Short: Eject one of two
+Balancer.VoteTime: Balance voting time
+Balancer.UseCount: Uses
+Balancer.RandomVote: Non-voters vote at random
+Balancer.Started: The scales tip... vote for one of them
+Balancer.Title.Either: Choose one
+Balancer.Title.Average: Which one goes?
+Balancer.Title.YouVote: You decide
+Balancer.Title.EitherExile: One of them will be ejected
+Balancer.Title.WhoIsImpostor: Who is the impostor?
+Balancer.Title.GetBalance: Will the scales balance?
+Balancer.Title.PleaseVote: Vote
+Balancer.DoubleExile: The scales balanced. Both were ejected
+Balancer.OnePlayerDead: One fell, so the other was ejected
+Balancer.NoPlayer: No one is left on the scales
+
+# ── 作り直し: シーア / イビルシーア / ヴァルチャー / アーソニスト / マトリョーシカ / 魔術師 ──
+EvilSeer.ColorMode: Show body color
+EvilSeer.ColorMode.None: Off
+EvilSeer.ColorMode.LightDark: Light / dark only
+EvilSeer.ColorMode.Adaptive: Body color
+EvilSeer.ColorTarget: Show color on
+EvilSeer.ColorTarget.All: All
+EvilSeer.ColorTarget.Flash: Flash only
+EvilSeer.ColorTarget.Soul: Soul only
+EvilSeer.ColorTarget.Arrow: Arrow only
+EvilSeer.ShowArrows: Show arrows to bodies
+EvilSeer.HauntMode: Haunting
+EvilSeer.HauntMode.None: None
+EvilSeer.HauntMode.Both: Both
+EvilSeer.HauntMode.Others: Haunt others
+EvilSeer.HauntMode.Self: Haunt killer
+EvilSeer.HauntCooldown: Haunt cooldown
+EvilSeer.Haunt: Haunt
+EvilSeer.Haunt.Help: With "Haunt killer", whoever kills you gets the Haunted Wolf modifier (looks like an impostor to role checks). With "Haunt others", you can give a nearby person the Haunted Wolf modifier once.
+EvilSeer.Haunt.Short: Give Haunted Wolf
+EvilSeer.LightColor: a light color
+EvilSeer.DarkColor: a dark color
+EvilSeer.FlashColorText: Someone of {color} died
+Vulture.ShowArrows: Show arrows to bodies
+Arsonist.Duration: Douse time
+Matryoshka.WearLimit: Wear limit
+Matryoshka.WearReport: Worn body can be reported
+Matryoshka.AddKillCooldown: Added kill cooldown per wear
+Conjurer.AddLength: Marker distance
+Conjurer.CanKillImpostor: Can kill impostors
+Conjurer.ShowFlash: Flash everyone's screen on activation
+
+# ── 作り直し: ディメンションウォーカー / 殺し屋 ──
+DimensionWalker.ActivateTime: Wormhole activation time
+DimensionWalker.HoleCount: Wormhole count
+Hitman.KillCooldown: Kill cooldown
+Hitman.ChangeTargetTime: Time before the target changes
+Hitman.OutMission: Die after too many failures
+Hitman.ImpostorVision: Has impostor vision
+Hitman.ResetOnMeeting: New target after meetings
+Hitman.Timer: Target deadline: {n}s
+
+# ── 作り直し: シュレディンガーの猫 ──
+SchrodingersCat.HasKill: Cats can kill
+SchrodingersCat.KillCooldown: Cat kill cooldown
+SchrodingersCat.KillVictimSuicide: Attacker dies shortly after
+SchrodingersCat.SuicideTime: Time until the attacker dies
+SchrodingersCat.BeCrewOnExile: Become a crew cat when ejected
+SchrodingersCat.CrewOnKillByNonSpecific: Die as a crew cat when killed by other neutrals
+SchrodingersCat.SuicideText: The cat's curse will kill you soon...
+SchrodingersCat.TeamCrew: Crew Cat
+SchrodingersCat.TeamCrew.Help: You win with the crew.
+SchrodingersCat.TeamCrew.Short: Win with the crew
+SchrodingersCat.TeamImpostor: Impostor Cat
+SchrodingersCat.TeamImpostor.Help: You win with the impostors. You can kill non-impostors, vent, and have impostor vision. You and the impostors know each other.
+SchrodingersCat.TeamImpostor.Short: Win with the impostors
+SchrodingersCat.TeamMadmate: Mad Cat
+SchrodingersCat.TeamMadmate.Help: You win with the impostors (follows the Madmate settings).
+SchrodingersCat.TeamMadmate.Short: Win with the impostors
+SchrodingersCat.TeamJackal: Jackal Cat
+SchrodingersCat.TeamJackal.Help: You win with the Jackal. You can kill anyone outside the Jackal's team. You and the Jackal's team know each other.
+SchrodingersCat.TeamJackal.Short: Win with the Jackal
+SchrodingersCat.TeamFriends: Friends Cat
+SchrodingersCat.TeamFriends.Help: You win with the Jackal (follows the Jackal Friends settings).
+SchrodingersCat.TeamFriends.Short: Win with the Jackal
+SchrodingersCat.TeamPavlovs: Pavlov Cat
+SchrodingersCat.TeamPavlovs.Help: You win with Pavlov's owner. You can kill anyone outside Pavlov's team. You and Pavlov's team know each other.
+SchrodingersCat.TeamPavlovs.Short: Win with Pavlov
+SchrodingersCat.TeamPavlovFriends: Pavlov Friends Cat
+SchrodingersCat.TeamPavlovFriends.Help: You win with Pavlov's owner.
+SchrodingersCat.TeamPavlovFriends.Short: Win with Pavlov
+
+# ── 作り直し: 金庫破り ──
+Safecracker.Unlock: Crack the Safe
+Safecracker.Unlock.Help: Finish all your tasks to win alone. As you reach the set task percentages you gain: blocking kills (limited), reviving after ejection (limited), venting, impostor vision, and knowing the impostors.
+Safecracker.Unlock.Short: Finish all tasks to win
+Safecracker.KillGuardTask: Task % to block kills
+Safecracker.MaxKillGuard: Kill blocks
+Safecracker.ExiledGuardTask: Task % to survive ejection
+Safecracker.MaxExiledGuard: Ejection survivals
+Safecracker.VentTask: Task % to vent
+Safecracker.ImpostorLightTask: Task % for impostor vision
+Safecracker.CheckImpostorTask: Task % to know impostors
+Safecracker.CommonTasks: Common tasks
+Safecracker.ShortTasks: Short tasks
+Safecracker.LongTasks: Long tasks
+Safecracker.KillGuarded: Your safe blocked a kill!
+Safecracker.ExileGuarded: Your safe brought you back!
+
+# ── 作り直し: 神 ──
+God.SeeVote: See votes
+God.CommonTasks: Common tasks
+God.ShortTasks: Short tasks
+God.LongTasks: Long tasks
+God.CannotFixReactor: Cannot fix reactor / O2
+God.CannotFixComms: Cannot fix comms
+God.CannotFixLights: Cannot fix lights
+God.CannotUseReport: Cannot report
+God.CannotUseEmergency: Cannot call meetings
+God.NoEmergencyText: God cannot call emergency meetings
+
+# ── 作り直し: 自宅警備員 ──
+HomeSecurityGuard.Task1: Guard the home
+HomeSecurityGuard.Task2: Laze around
+HomeSecurityGuard.Task3: Eat snacks
+HomeSecurityGuard.Task4: Watch TV
+HomeSecurityGuard.Task5: Play games
+HomeSecurityGuard.Task6: Bask in the sun
+HomeSecurityGuard.Task7: Watch the front door
+HomeSecurityGuard.Task8: Check for suspicious people
+HomeSecurityGuard.Task9: Doze off
+HomeSecurityGuard.Task10: Fiddle with your phone
+HomeSecurityGuard.Task11: Patrol the internet
+HomeSecurityGuard.Task12: Check the deliveries
+
+# ── 作り直し: ジャンボ ──
+JumboModifier.MaxSize: Max size (10 = 2x)
+
+Spelunker.DoorChance: Death chance when opening a door
+ModifierSpelunker.DoorChance: Death chance when opening a door
+
+WaveCannon.Duration: Wave Cannon charge time
+WaveCannon.SyncKillCooldown: Sync Wave Cannon and kill cooldowns
+WaveCannon.AnimationType: Wave Cannon type
+WaveCannon.AnimationType.Tank: Tank
+WaveCannon.AnimationType.Santa: Santa
+WaveCannon.KillSound: Play kill sound
+WaveCannon.KillSoundDistributed: Distribute kill sounds
+WaveCannonJackal.ImpostorVision: Impostor vision
+WaveCannonJackal.Infinite: Infinite Jackal
+WaveCannonJackal.SidekickKind: Sidekick type
+WaveCannonJackal.SidekickKind.SidekickWaveCannon: Wave Cannon Sidekick
+WaveCannonJackal.SidekickKind.Bullet: Bullet
+WaveCannonJackal.BulletToJackal: Bullet becomes Jackal
+WaveCannonJackal.BulletHasWaveCannon: Promoted Bullet has a Wave Cannon
+WaveCannonJackal.BulletLoadCooldown: Load cooldown
+WaveCannonJackal.BulletChargeTime: Loaded charge time
+WaveCannonJackal.BulletSeesParent: Bullet can see parent
+WaveCannonJackal.ParentSeesBullet: Parent can see bullet
+WaveCannonJackal.Duration: Wave Cannon charge time
+WaveCannonJackal.SyncKillCooldown: Sync Wave Cannon and kill cooldowns
+WaveCannonJackal.AnimationType: Wave Cannon type
+WaveCannonJackal.KillSound: Play kill sound
+WaveCannonJackal.KillSoundDistributed: Distribute kill sounds
+Bullet.Name: Bullet
+Bullet.Blurb: Loaded into the cannon
+Bullet.Summary: Made by a Wave Cannon Jackal. Load yourself into your parent's cannon to make a Super Wave Cannon that pierces Wise Men.
+Bullet.Load: Load
+Bullet.Load.Help: Use near your parent to load yourself into their cannon. It becomes ready at once; you stick to your parent while it charges and vanish when it fires. If your parent dies you may become a Jackal.
+Bullet.Load.Short: Load into parent's cannon
+Bullet.NoEmergencyText: Something is scary and I can't open the meeting...
+
+Kunoichi.Show: Show Kunai
+Kunoichi.Show.Help: Toggle showing a kunai in your hand (only you see it).
+Kunoichi.Show.Short: Show held kunai
+Kunoichi.Hide: Hide
+Kunoichi.Hide.Help: After standing still for a while you turn invisible (automatically or by button). Moving ends it. Allies see you faintly.
+Kunoichi.Hide.Short: Stand still to vanish
+Kunoichi.KillKunai: Kunai needed for a kill
+Kunoichi.IsHide: Invisibility
+Kunoichi.HideByButton: Turn invisible with a button
+Kunoichi.HideTime: Time needed to turn invisible
+Kunoichi.ThrowWhileHidden: Can throw kunai while invisible
+
+TriggerHappy.UseLimit: Uses
+TriggerHappy.SyncKillCooldown: Sync spray and kill cooldowns
+TriggerHappy.Duration: Spray duration
+TriggerHappy.RequiredHits: Hits needed to kill
+TriggerHappy.BulletSize: Bullet size
+TriggerHappy.PierceWalls: Bullets pierce walls
+TriggerHappy.SpreadAngle: Bullet spread
+TriggerHappy.FriendlyFire: Friendly fire
+TriggerHappy.KillSound: Play kill sound
+
+Vampire.Bite: Bite
+Vampire.Bite.Help: Biting with the kill button makes the target die after a set time (or when a meeting is called). The bitten person drops blood as they walk, visible from the next meeting for a set number of meetings. Optionally you cannot fix lights or use devices, don't show on admin, and look alive on vitals (same for your dependent).
+Vampire.Bite.Short: Bitten players die later
+Vampire.NightFall: Night Fall
+Vampire.NightFall.Help: Turn a nearby non-impostor into your dependent (once). They die when you die.
+Vampire.NightFall.Short: Create a dependent
+Vampire.AbsorptionCooldown: Bite cooldown
+Vampire.BloodstainDuration: Meetings blood stays
+Vampire.BlackBloodstains: Black bloodstains
+Vampire.CreateDependents: Can create dependents
+Vampire.NightFallCooldown: Night Fall cooldown
+Vampire.DependentKillCooldown: Dependent kill cooldown
+Vampire.DependentCanVent: Dependent can vent
+Vampire.DependentReverseVision: Dependent has reverse vision
+Vampire.DependentImpostorVisionInLightsOff: Dependent has impostor vision in blackout
+Vampire.CannotFixSabotage: Cannot fix lights
+Vampire.InvisibleOnAdmin: Invisible on admin
+Vampire.NoDeathOnVitals: Looks alive on vitals
+Vampire.CannotUseDevice: Cannot use devices

@@ -96,6 +96,13 @@ public sealed class PlayerExiledEvent : GameEvent, IPlayerEvent
 // 会議が始まった (投票の画面が出た)
 public sealed class MeetingStartEvent : GameEvent { }
 
+// 追放の演出 (会議の結果の画面) が出た。Controller = 本編の演出 (文を足す時に使う)。Exiled = 追放される人 (いなければ null)
+public sealed class ExileShownEvent : GameEvent
+{
+    public ExileController Controller { get; internal set; }
+    public NetworkedPlayerInfo Exiled { get; internal set; }
+}
+
 // 会議が終わって歩けるようになった。Exiled = 追放された人 (いなければ null)
 public sealed class MeetingEndEvent : GameEvent
 {
@@ -200,6 +207,8 @@ internal static class ExiledEventPatch
             MatchLog.OnSpaced(__instance);
             return;
         }
+        // 死体を残さずに倒す時 (PortKit.HostVanish) も追放の死に方を借りるだけ。倒された出来事は PortKit が起こす
+        if (__instance && __instance.PlayerId == PortKit.Vanishing) return;
         // 観戦の人を幽霊にする時も追放の処理を借りるだけ
         if (__instance && __instance.PlayerId == Spectate.Applying)
         {
@@ -277,13 +286,14 @@ internal static class MeetingEndWatch
 {
     private const int QuietTicks = 10; // 両方なくなってから 0.2 秒待つ (会議の画面と追放の演出の入れ替わりの隙間を拾わない)
 
-    private static bool _active;
+    private static bool _active, _exileSeen;
     private static int _quiet;
     private static NetworkedPlayerInfo _exiled;
 
     public static void Begin()
     {
         _active = true;
+        _exileSeen = false;
         _quiet = 0;
         _exiled = null;
     }
@@ -299,6 +309,11 @@ internal static class MeetingEndWatch
         {
             _quiet = 0;
             if (exile && _exiled == null) _exiled = exile.initData?.networkedPlayer;
+            if (exile && !_exileSeen)
+            {
+                _exileSeen = true;
+                Events<ExileShownEvent>.Run(new ExileShownEvent { Controller = exile, Exiled = _exiled });
+            }
             return;
         }
         if (++_quiet < QuietTicks) return;

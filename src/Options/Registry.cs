@@ -64,8 +64,12 @@ internal static class Registry
                 var opts = CollectFields(t);
                 role.Chance = new IntOpt("Registry.Chance", 0, 0, 100, 10, "%") { NoChangeMark = true };
                 role.Count = new IntOpt("Registry.Count", 1, 1, Math.Max(role.MaxCount, 1));
-                Add(sec, role.Chance, role.Id + ".Chance");
-                Add(sec, role.Count, role.Id + ".Count");
+                // 他の役職から変わるだけの役職 (サイドキックなど) は配る確率を出さない (0% のまま)
+                if (!role.MadeByOthers)
+                {
+                    Add(sec, role.Chance, role.Id + ".Chance");
+                    Add(sec, role.Count, role.Id + ".Count");
+                }
                 foreach (var (name, opt) in opts) Add(sec, opt, role.Id + "." + name);
             }
             catch (Exception e)
@@ -87,7 +91,7 @@ internal static class Registry
         {
             var role = Roles[i];
             role.Order = i;
-            if (role.AssignedOnDeath || i >= RoleSetOpt.MaxRoles) continue;
+            if (role.AssignedOnDeath || role.MadeByOthers || i >= RoleSetOpt.MaxRoles) continue;
             var sec = SectionList(role.Tab).Find(s => s.Role == role);
             if (sec == null) continue;
             role.Excluded = new RoleSetOpt("Registry.NotWith");

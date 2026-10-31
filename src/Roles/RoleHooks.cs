@@ -25,10 +25,16 @@ internal static class VisionPatch
         var role = RoleState.All.Count > 0 ? RoleState.Of(player.PlayerId) : null;
         if (NeutralKillSettings.Applies(role) && !player.IsDead) result = ship.MaxLightRadius * NeutralKillSettings.Vision;
         if (Terrain.DustCloud.VisionMul < 1f && player.PlayerId == Terrain.DustCloud.LocalId) result *= Terrain.DustCloud.VisionMul;
-        if (RoleState.All.Count == 0 && RoleState.AllAddons.Count == 0) return;
+        if (VisionEffects.Multiplier != 1f && !player.IsDead && player.Object && player.Object.AmOwner) result *= VisionEffects.Multiplier;
+        if (RoleState.All.Count == 0 && RoleState.AllAddons.Count == 0)
+        {
+            result = SnrKit.ApplyVision(player, result);
+            return;
+        }
         role?.ModifyVision(ref result);
         var addons = RoleState.AddonsOf(player.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyVision(ref result);
+        result = SnrKit.ApplyVision(player, result);
     }
 }
 
@@ -50,6 +56,29 @@ internal static class AirshipVisionPatch
     }
 }
 
+// 歩く速さ。体を動かすのは持ち主の端末だけなので、自分の体の分だけ見る。
+// 役職に関係なく掛かる効果 (全員を遅くするなど) は SpeedEffects.Multiplier に掛ける
+[HarmonyPatch(typeof(PlayerPhysics), nameof(PlayerPhysics.TrueSpeed), MethodType.Getter)]
+internal static class SpeedPatch
+{
+    public static void Postfix(PlayerPhysics __instance, ref float __result)
+    {
+        if (!RoleState.Any && SpeedEffects.Multiplier == 1f) return;
+        var p = __instance.myPlayer;
+        if (p is null || !p || !p.AmOwner) return;
+        __result *= SpeedEffects.Multiplier;
+        RoleState.Of(p)?.ModifySpeed(ref __result);
+        var addons = RoleState.AddonsOf(p.PlayerId);
+        for (int i = 0; i < addons.Count; i++) addons[i].ModifySpeed(ref __result);
+    }
+}
+
+// 役職の外から自分の歩く速さに掛ける倍率 (試合が終わると 1 に戻す)
+public static class SpeedEffects
+{
+    public static float Multiplier = 1f;
+}
+
 // キルの待ち時間の長さ (キルの後・会議の後に戻る秒数と、ボタンの減り方の基準)
 [HarmonyPatch(typeof(LogicOptions), nameof(LogicOptions.GetKillCooldown))]
 internal static class KillCooldownPatch
@@ -65,4 +94,10 @@ internal static class KillCooldownPatch
         var addons = RoleState.AddonsOf(lp.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref __result);
     }
+}
+
+// 役職に関係なく自分の視界に掛かる効果 (聖職者の聖なる光など)。試合の始めに 1 へ戻す
+public static class VisionEffects
+{
+    public static float Multiplier = 1f;
 }

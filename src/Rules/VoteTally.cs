@@ -34,6 +34,8 @@ internal static class VoteTally
         _before = _after = null;
         // 本編は話し合いの間でも全員が入れ終えたら締める。結果を出した後だけ締め直さない
         if (!AmongUsClient.Instance.AmHost || !hud || hud.state is MeetingHud.MeetingStates.Results or MeetingHud.MeetingStates.Proceeding) return false;
+        // バランサーの天秤の間はその締め方で締める
+        if (Roles.Crew.Balancer.HostCheck(hud)) return true;
         var states = hud.playerStates;
         for (int i = 0; i < states.Length; i++)
             if (states[i] && !states[i].AmDead && !states[i].DidVote) return false; // 本編も締めない

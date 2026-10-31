@@ -25,6 +25,9 @@ internal static class MatchLog
         public Kind Kind;
         public string Killer;     // 倒した人の名前 (倒された時だけ)
         public string KillerRole; // 倒した時の役職 (色付き)
+        public byte KillerId = 255;  // 倒した人の番号 (倒された時だけ)
+        public float At;             // 死んだ時刻 (Time.time・この端末の時計)
+        public UnityEngine.Vector2 Where; // 死んだ場所
     }
 
     private static readonly Dictionary<byte, Death> Deaths = new();
@@ -93,6 +96,9 @@ internal static class MatchLog
             Kind = self ? Kind.Suicide : Kind.Killed,
             Killer = self ? null : killer.Data?.PlayerName,
             KillerRole = self ? null : Dev.DevGod.Label(killer.PlayerId),
+            KillerId = self ? (byte)255 : killer.PlayerId,
+            At = UnityEngine.Time.time,
+            Where = target.GetTruePosition(),
         };
     }
 

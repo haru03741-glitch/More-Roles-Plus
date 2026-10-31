@@ -20,7 +20,7 @@ internal static class RoleDisplay
 
     public static void OnAssigned(RoleBase role)
     {
-        if (!role.IsLocal) return;
+        if (!role.IsLocal || role.HiddenWhileAlive) return;
         Menu.NameTaskTag.Refresh(role.Player);
         try { AddNameTag(role.Player, LabelOf(role)); }
         catch (Exception e) { Plugin.Logger.LogWarning($"name tag: {e.Message}"); }
@@ -39,7 +39,17 @@ internal static class RoleDisplay
     }
 
     // 自分の役職のうち MRP が表示する物 (本編の役職は本編の表示のまま)
-    private static RoleBase Shown => RoleState.Local is { IsVanilla: false } r ? r : null;
+    // 生きている間は隠す役職 (HiddenWhileAlive) も、生きている間は本編の役職の表示のまま
+    private static RoleBase Shown => RoleState.Local is { IsVanilla: false } r && !(r.HiddenWhileAlive && LocalAlive) ? r : null;
+
+    private static bool LocalAlive
+    {
+        get
+        {
+            var lp = PlayerControl.LocalPlayer;
+            return lp && lp.Data != null && !lp.Data.IsDead;
+        }
+    }
 
     // 自分に表示する役職かアドオンがあるか
     internal static bool HasLocal()
@@ -154,7 +164,7 @@ internal static class RoleDisplay
         {
             var addons = RoleState.AddonsOf(pid);
             if (role == null && addons.Count == 0) return;
-            bool show = pid == lp.PlayerId
+            bool show = (pid == lp.PlayerId && !(role is { HiddenWhileAlive: true } && !lp.Data.IsDead))
                         || (lp.Data.IsDead && (RoleSettings.GhostSees || Spectate.IsWatching(lp.PlayerId)))
                         || (role != null && role.Team == Team.Impostor && RoleSettings.ImpostorsSeeRoles && lp.Data.Role && lp.Data.Role.IsImpostor);
             label = !show ? null : role != null ? LabelOf(role) : AddonSuffix(pid).TrimStart();

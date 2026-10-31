@@ -1071,3 +1071,1693 @@ Keybinds.Ability2: MRP の能力 2
 Keybinds.Ability3: MRP の能力 3
 Keybinds.Emote: MRP のエモート・スタンプ
 Keybinds.Dictionary: MRP の役職辞典
+
+# ════ SuperNewRoles から移した役職 ════
+# ── メイヤー (Mayor) ──
+Mayor.Name: メイヤー
+Mayor.Blurb: その権力は村を救うだろう
+Mayor.Summary: 会議でほかの人より多くの票を入れられるクルーです。
+Mayor.Votes: 所持票数
+# ── スタントマン (Stuntman) ──
+Stuntman.Name: スタントマン
+Stuntman.Blurb: 無意識の攻防
+Stuntman.Summary: 決まった回数までキルを自動で防ぐクルーです。防いだことに本人は気付きません。
+Stuntman.Uses: 防げる回数
+# ── ベスト冤罪ヤー (BestFalseCharge) ──
+BestFalseCharge.Name: ベスト冤罪ヤー
+BestFalseCharge.Blurb: そ、そんな、冤罪です！
+BestFalseCharge.Summary: 能力の無いクルーです。死ぬまで自分の役職に気付かず、最初の会議が終わるとそのまま死にます。
+# ── 狼憑き (HauntedWolf) ──
+HauntedWolf.Name: 狼憑き
+HauntedWolf.Blurb: 過る獣の幻影
+HauntedWolf.Summary: 能力の無いクルーです。死ぬまで自分の役職に気付かず、シェリフなど陣営を見分ける役職からはインポスターに見えます。
+# ── オポチュニスト (Opportunist) ──
+Opportunist.Name: オポチュニスト
+Opportunist.Blurb: そこに善悪は存在しない
+Opportunist.Summary: キルできない第三陣営です。
+Opportunist.WinCond: 試合の終わりに生きていれば、誰が勝っても一緒に勝ち
+# ── 仕事人 (Workperson) ──
+Workperson.Name: 仕事人
+Workperson.Blurb: 仕事を、仕事をしなきゃ……
+Workperson.Summary: キルできない第三陣営です。
+Workperson.WinCond: 自分のタスクを全部終えると一人勝ち
+Workperson.NeedAlive: 生きていないと勝てない
+Workperson.CanVent: ベントを使える
+# ── てるてる (Teruteru) ──
+Teruteru.Name: てるてる
+Teruteru.Blurb: その処刑台へ夢を見る
+Teruteru.Summary: キルできない第三陣営です。
+Teruteru.WinCond: 会議で追放されると一人勝ち
+Teruteru.CanVent: ベントを使える
+Teruteru.NeedTasks: 勝つのにタスクが要る
+Teruteru.NeededTasks: 要るタスクの数
+# ── マッドメイト (Madmate) ──
+Madmate.Name: マッドメイト
+Madmate.Blurb: 道を違えし者
+Madmate.Summary: クルーの姿のまま、インポスターの味方をする役職です。
+Madmate.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+Madmate.KnowImpostors: インポスターが分かる
+Madmate.NeededTasks: 分かるのに要るタスクの数
+Madmate.CanVent: ベントを使える
+Madmate.ImpostorVision: インポスターの視界を持つ
+# ── ダークキラー (DarkKiller) ──
+DarkKiller.Name: ダークキラー
+DarkKiller.Blurb: 疾風漆黒
+DarkKiller.Summary: キルのクールダウンが短い代わりに、停電中しかキルできないインポスターです。
+DarkKiller.KillCooldown: キルのクールダウン
+DarkKiller.CanVent: ベントを使える
+# ── シリアルキラー (SerialKiller) ──
+SerialKiller.Name: シリアルキラー
+SerialKiller.Blurb: 血に飢えし獣
+SerialKiller.Summary: キルのクールダウンが短い代わりに、決まった時間キルしないと自殺するインポスターです。
+SerialKiller.Tips: 時間は最初のキルから数え始めます。
+SerialKiller.KillCooldown: キルのクールダウン
+SerialKiller.SuicideTime: 自殺までの時間
+SerialKiller.ResetOnMeeting: 会議の後に時間を戻す
+SerialKiller.CanVent: ベントを使える
+SerialKiller.Timer: 自殺まで
+# ── マフィア (Mafia) ──
+Mafia.Name: マフィア
+Mafia.Blurb: 最後の弾丸
+Mafia.Summary: ほかのインポスターが生きている間はキルできず、生き残りのインポスターが自分だけになるとキルできるインポスターです。
+Mafia.OwnCooldown: 独自のキルのクールダウンを使う
+Mafia.KillCooldown: キルのクールダウン
+# ── イビルギャンブラー (EvilGambler) ──
+EvilGambler.Name: イビルギャンブラー
+EvilGambler.Blurb: その命を賭けて
+EvilGambler.Summary: キルするたびに、次のキルのクールダウンが運で変わるインポスターです。会議の後は部屋の値に戻ります。
+EvilGambler.WinCooldown: 当たりの時のキルのクールダウン
+EvilGambler.LoseCooldown: はずれの時のキルのクールダウン
+EvilGambler.WinChance: 当たりの確率
+# ── スーサイドウィッシャー (SuicideWisher) ──
+SuicideWisher.Name: スーサイドウィッシャー
+SuicideWisher.Blurb: この世と縁を断ち切って
+SuicideWisher.Summary: いつでも自殺できるインポスターです。
+SuicideWisher.Suicide: 自殺
+SuicideWisher.Suicide.Help: 押すとその場で自殺します。
+SuicideWisher.Suicide.Short: その場で自殺する
+SuicideWisher.Cooldown: 自殺の待ち時間
+
+# ── シェリフ (Sheriff) ──
+Sheriff.Name: シェリフ
+Sheriff.Blurb: 正義の名のもとに
+Sheriff.Summary: 「執行」で近くの人を倒せるクルーです。倒してよい陣営の人でなければ自分が死にます。
+Sheriff.Execute: 執行
+Sheriff.Execute.Help: 近くの人を倒します。相手が設定で倒してよい陣営でなければ自分が死にます (自決の設定による)。
+Sheriff.Execute.Short: 近くの人を執行する
+Sheriff.KillCooldown: 執行の待ち時間
+Sheriff.MaxKills: 執行できる回数
+Sheriff.SuicideMode: 自決の仕方
+Sheriff.SuicideMode.Default: 誤射した時だけ
+Sheriff.SuicideMode.AlwaysSuicide: いつも相手と一緒に死ぬ
+Sheriff.SuicideMode.AlwaysKill: 誤射しても死なない
+Sheriff.KillImpostor: インポスターを倒せる
+Sheriff.KillMad: マッドを倒せる
+Sheriff.KillNeutral: 第三陣営を倒せる
+Sheriff.KillFriends: フレンズを倒せる
+Sheriff.KillLovers: 恋人を倒せる
+# ── 村長 (Chief) ──
+Chief.Name: 村長
+Chief.Blurb: 正義の心を授けよう
+Chief.Summary: 1 度だけ「任命」で近くの人をシェリフにできるクルーです。相手がインポスターなら自分が死にます。
+Chief.Appoint: 任命
+Chief.Appoint.Help: 近くの人をシェリフにします (1 回だけ)。任命されたシェリフの設定はシェリフの設定のままです。相手がインポスターなら自分が死にます。
+Chief.Appoint.Short: 近くの人をシェリフにする
+Chief.Cooldown: 任命の待ち時間
+Chief.SeeSheriff: 任命したシェリフが分かる
+Chief.AppointNeutral: 第三陣営を任命できる
+Chief.AppointNeutralKiller: キルできる第三陣営を任命できる
+# ── スピードブースター (SpeedBooster) ──
+SpeedBooster.Name: スピードブースター
+SpeedBooster.Blurb: 誰よりも速く
+SpeedBooster.Summary: しばらくの間速く歩けるクルーです。
+SpeedBooster.Boost: ブースト
+SpeedBooster.Boost.Help: 決まった時間だけ歩く速さが上がります。
+SpeedBooster.Boost.Short: しばらく速く歩く
+SpeedBooster.Cooldown: ブーストの待ち時間
+SpeedBooster.Duration: ブーストの長さ
+SpeedBooster.Multiplier: 速さの倍率
+# ── イビルスピードブースター (EvilSpeedBooster) ──
+EvilSpeedBooster.Name: イビルスピードブースター
+EvilSpeedBooster.Blurb: 逃げ足だけは誰にも負けない
+EvilSpeedBooster.Summary: しばらくの間速く歩けるインポスターです。
+EvilSpeedBooster.Boost: ブースト
+EvilSpeedBooster.Boost.Help: 決まった時間だけ歩く速さが上がります。
+EvilSpeedBooster.Boost.Short: しばらく速く歩く
+EvilSpeedBooster.Cooldown: ブーストの待ち時間
+EvilSpeedBooster.Duration: ブーストの長さ
+EvilSpeedBooster.Multiplier: 速さの倍率
+# ── ナイスボタナー (NiceButtoner) ──
+NiceButtoner.Name: ナイスボタナー
+NiceButtoner.Blurb: どこでもボタン
+NiceButtoner.Summary: どこからでも緊急会議を開けるクルーです。
+NiceButtoner.Press: ポチッ
+NiceButtoner.Press.Help: その場で緊急会議を開きます。サボタージュ中は使えません。
+NiceButtoner.Press.Short: どこでも会議を開く
+NiceButtoner.Cooldown: ボタンの待ち時間
+NiceButtoner.Uses: 使える回数
+# ── イビルボタナー (EvilButtoner) ──
+EvilButtoner.Name: イビルボタナー
+EvilButtoner.Blurb: 会議の時間だ
+EvilButtoner.Summary: どこからでも緊急会議を開けるインポスターです。
+EvilButtoner.Press: ポチッ
+EvilButtoner.Press.Help: その場で緊急会議を開きます。サボタージュ中は使えません。
+EvilButtoner.Press.Short: どこでも会議を開く
+EvilButtoner.Cooldown: ボタンの待ち時間
+EvilButtoner.Uses: 使える回数
+# ── ムービング (Moving) ──
+Moving.Name: ムービング
+Moving.Blurb: あの場所へ、もう一度
+Moving.Summary: 覚えた場所へ飛べるクルーです。
+Moving.Move: ムーブ
+Moving.Move.Help: 1 回目に押すとその場所を覚え、2 回目に押すと覚えた場所へ飛びます。
+Moving.Move.Short: 覚えた場所へ飛ぶ
+Moving.Cooldown: ムーブの待ち時間
+Moving.Saved: 場所を記憶中
+Moving.UntilMove: もう一度押すと飛ぶ
+# ── イビルムービング (EvilMoving) ──
+EvilMoving.Name: イビルムービング
+EvilMoving.Blurb: 現場から一瞬で
+EvilMoving.Summary: 覚えた場所へ飛べるインポスターです。
+EvilMoving.Move: ムーブ
+EvilMoving.Move.Help: 1 回目に押すとその場所を覚え、2 回目に押すと覚えた場所へ飛びます。
+EvilMoving.Move.Short: 覚えた場所へ飛ぶ
+EvilMoving.Cooldown: ムーブの待ち時間
+EvilMoving.Saved: 場所を記憶中
+EvilMoving.UntilMove: もう一度押すと飛ぶ
+# ── 霊媒師 (Seer) ──
+Seer.Name: 霊媒師
+Seer.Blurb: 魂の声を聞け
+Seer.Summary: 誰かが死ぬと画面が光り、死んだ場所に魂が見えるクルーです。
+Seer.Mode: 見え方
+Seer.Mode.Both: 光と魂
+Seer.Mode.Flash: 光だけ
+Seer.Mode.Soul: 魂だけ
+Seer.LimitSoul: 魂を時間で消す
+Seer.SoulDuration: 魂の見える時間
+# ── パン屋 (Bakery) ──
+Bakery.Name: パン屋
+Bakery.Blurb: 今日もパンを焼く
+Bakery.Summary: 生きている間、追放の画面にパン屋がいることが出るクルーです。
+Bakery.ExileText: 今日もパンを焼いています
+# ── ジャッカル (Jackal) ──
+Jackal.Name: ジャッカル
+Jackal.Blurb: 仲間と共に全てを狩れ
+Jackal.Summary: キルでき、1 度だけ仲間を作れる第三陣営です。
+Jackal.WinCond: ジャッカルの仲間だけが生き残ると勝ち
+Jackal.Kill: キル
+Jackal.Kill.Help: 本編のキルボタンを持ちます。視界とキル可能距離は「ゲーム設定」タブの「第三陣営」で決まります。仲間は倒せません。
+Jackal.Kill.Short: 本編のキルボタンを持つ
+Jackal.Sidekick: サイドキック
+Jackal.Sidekick.Help: 近くの人を仲間 (サイドキックかジャッカルフレンズ) にします (1 回だけ)。
+Jackal.Sidekick.Short: 近くの人を仲間にする
+Jackal.KillCooldown: キルのクールダウン
+Jackal.CanVent: ベントを使える
+Jackal.CanSidekick: 仲間を作れる
+Jackal.SidekickKind: 仲間の種類
+Jackal.SidekickKind.Sidekick: サイドキック
+Jackal.SidekickKind.Friends: ジャッカルフレンズ
+Jackal.SidekickCooldown: 仲間作りの待ち時間
+Jackal.Infinite: 上がったジャッカルも仲間を作れる
+# ── サイドキック (Sidekick) ──
+Sidekick.Name: サイドキック
+Sidekick.Blurb: ジャッカルの右腕
+Sidekick.Summary: ジャッカルに仲間にされた第三陣営です。キルはできず、ジャッカルが全員死ぬとジャッカルに上がります。
+Sidekick.WinCond: ジャッカルが勝つと一緒に勝ち
+Sidekick.CanVent: ベントを使える
+# ── ジャッカルフレンズ (JackalFriends) ──
+JackalFriends.Name: ジャッカルフレンズ
+JackalFriends.Blurb: ジャッカルの友達
+JackalFriends.Summary: クルーの姿のまま、ジャッカルの味方をする役職です。
+JackalFriends.WinCond: ジャッカルが勝つと一緒に勝ち (生死は問わない)
+JackalFriends.KnowJackal: ジャッカルが分かる
+JackalFriends.NeededTasks: 分かるのに要るタスクの数
+JackalFriends.CanVent: ベントを使える
+JackalFriends.ImpostorVision: インポスターの視界を持つ
+
+# ── ベイト (Bait) ──
+Bait.Name: ベイト
+Bait.Blurb: 罠にかかったのはどちらだ
+Bait.Summary: キルされると、少し後にキルした人が自分の死体を通報してしまうクルーです。
+Bait.ReportTime: 通報までの時間
+Bait.WarnKiller: キルした人の画面を光らせる
+Bait.RandomDelay: 通報までの時間をばらつかせる
+Bait.DelayVariation: ばらつきの最大
+# ── ナイス猫又 (NiceNekomata) ──
+NiceNekomata.Name: ナイス猫又
+NiceNekomata.Blurb: ただでは死なない
+NiceNekomata.Summary: 追放されると、生きている人を 1 人ランダムに道連れにするクルーです。
+# ── イビル猫又 (EvilNekomata) ──
+EvilNekomata.Name: イビル猫又
+EvilNekomata.Blurb: 道連れにしてやる
+EvilNekomata.Summary: 追放されると、生きている人を 1 人ランダムに道連れにするインポスターです。
+EvilNekomata.ExcludeImpostor: インポスターを道連れにしない
+# ── ライター (SnrLighter) ──
+SnrLighter.Name: ライター
+SnrLighter.Blurb: 闇を照らす灯り
+SnrLighter.Summary: しばらくの間視界を広げられるクルーです。停電でも視界が狭まりません。
+SnrLighter.Light: 点灯
+SnrLighter.Light.Help: 決まった時間だけ視界が広がります。停電中も狭まりません。
+SnrLighter.Light.Short: しばらく視界を広げる
+SnrLighter.Cooldown: 点灯の待ち時間
+SnrLighter.Duration: 点灯の長さ
+SnrLighter.Radius: 点灯中の視界
+# ── スター (Celebrity) ──
+Celebrity.Name: スター
+Celebrity.Blurb: みんなの注目の的
+Celebrity.Summary: 能力は無いクルーです。全員の画面で名前に★が付き、スターだと皆に分かります。
+Celebrity.OnlyWhileAlive: 生きている間だけ★を付ける
+# ── 自宅警備員 (HomeSecurityGuard) ──
+HomeSecurityGuard.Name: 自宅警備員
+HomeSecurityGuard.Blurb: 家を守るのが仕事
+HomeSecurityGuard.Summary: 能力もタスクも無いクルーです。持っているタスクはクルーのタスクの進み具合に数えられません。
+# ── 技術者 (Technician) ──
+Technician.Name: 技術者
+Technician.Blurb: 非常時の抜け道
+Technician.Summary: サボタージュが起きている間だけベントを使えるクルーです。
+
+# ── イビルシーア (EvilSeer) ──
+EvilSeer.Name: イビルシーア
+EvilSeer.Blurb: 死の気配を嗅ぎ取れ
+EvilSeer.Summary: 誰かが死ぬと画面が光り、死んだ場所に魂と死体への矢印が見えるインポスターです。
+EvilSeer.Mode: 見え方
+EvilSeer.Mode.Both: 光と魂
+EvilSeer.Mode.Flash: 光だけ
+EvilSeer.Mode.Soul: 魂だけ
+EvilSeer.LimitSoul: 魂を時間で消す
+EvilSeer.SoulDuration: 魂の見える時間
+# ── 忘却者 (Amnesiac) ──
+Amnesiac.Name: 忘却者
+Amnesiac.Blurb: 私は誰だったのか
+Amnesiac.Summary: 勝ち方を持たない第三陣営です。死体を通報すると、その死体の人の役職になります。
+Amnesiac.WinCond: 勝ち方は無い (通報で役職を得る)
+# ── 神 (God) ──
+God.Name: 神
+God.Blurb: 全てを見通す者
+God.Summary: 全員の役職が見える第三陣営です。試合の終わりに生きていれば勝ちを奪います。サボタージュを直せず、通報や緊急会議ができないことがあります (設定)。
+God.WinCond: 試合の終わりに生きていれば単独勝ち
+God.NeedTasks: 勝つのにタスクを全部終える必要がある
+# ── マグロ (Tuna) ──
+Tuna.Name: マグロ
+Tuna.Blurb: 止まったら死ぬ
+Tuna.Summary: 決まった秒数立ち止まると死んでしまう第三陣営です。
+Tuna.WinCond: 試合の終わりまで生きていれば一緒に勝ち (設定で単独勝ち)
+Tuna.StopLimit: 止まっていられる時間
+Tuna.SoloWin: 単独勝ちにする
+Tuna.CanVent: ベントを使える
+Tuna.Timer: 止まっていると死ぬまで
+# ── さつまといも (SatsumaAndImo) ──
+SatsumaAndImo.Name: さつまといも
+SatsumaAndImo.Blurb: どっちつかずの芋
+SatsumaAndImo.Summary: 会議が終わるたびにクルーとマッドメイトが入れ替わる役職です。今どちらかは自分の名前の後ろに出ます。
+SatsumaAndImo.WinCond: (C) の時はクルーと、(M) の時はインポスターと勝つ
+
+# ── ナイスホーク (NiceHawk) ──
+NiceHawk.Name: ナイスホーク
+NiceHawk.Blurb: 鷹の目で見渡せ
+NiceHawk.Summary: しばらく視点を引いて広く見渡せるクルーです。
+NiceHawk.Eye: ホークアイ
+NiceHawk.Eye.Help: 決まった時間だけ視点を引いて広く見渡します。設定によってはその間歩けません。
+NiceHawk.Eye.Short: しばらく広く見渡す
+NiceHawk.Cooldown: ホークアイの待ち時間
+NiceHawk.Duration: ホークアイの長さ
+NiceHawk.Magnification: 引く倍率
+NiceHawk.CannotWalk: 使っている間は歩けない
+# ── イビルホーク (EvilHawk) ──
+EvilHawk.Name: イビルホーク
+EvilHawk.Blurb: 獲物を空から探せ
+EvilHawk.Summary: しばらく視点を引いて広く見渡せるインポスターです。
+EvilHawk.Eye: ホークアイ
+EvilHawk.Eye.Help: 決まった時間だけ視点を引いて広く見渡します。設定によってはその間歩けません。
+EvilHawk.Eye.Short: しばらく広く見渡す
+EvilHawk.Cooldown: ホークアイの待ち時間
+EvilHawk.Duration: ホークアイの長さ
+EvilHawk.Magnification: 引く倍率
+EvilHawk.CannotWalk: 使っている間は歩けない
+# ── ナイステレポーター (NiceTeleporter) ──
+NiceTeleporter.Name: ナイステレポーター
+NiceTeleporter.Blurb: みんな集まれ！
+NiceTeleporter.Summary: 生きている全員を、生きている誰かの所へ集められるクルーです。
+NiceTeleporter.Teleport: テレポート！
+NiceTeleporter.Teleport.Help: 少し待ってから、生きている全員を生きている誰か (ランダム) の所へ飛ばします。
+NiceTeleporter.Teleport.Short: 全員を誰かの所へ集める
+NiceTeleporter.Cooldown: テレポートの待ち時間
+NiceTeleporter.WaitingTime: 飛ぶまでの時間
+NiceTeleporter.Soon: {name}の所へテレポートまで
+# ── テレポーター (Teleporter) ──
+Teleporter.Name: テレポーター
+Teleporter.Blurb: 全員まとめてご招待
+Teleporter.Summary: 生きている全員を、生きている誰かの所へ集められるインポスターです。
+Teleporter.Teleport: テレポート！
+Teleporter.Teleport.Help: 少し待ってから、生きている全員を生きている誰か (ランダム) の所へ飛ばします。
+Teleporter.Teleport.Short: 全員を誰かの所へ集める
+Teleporter.Cooldown: テレポートの待ち時間
+Teleporter.WaitingTime: 飛ぶまでの時間
+Teleporter.Soon: {name}の所へテレポートまで
+# ── 賢者 (WiseMan) ──
+WiseMan.Name: 賢者
+WiseMan.Blurb: 聖なる守りは悪を退ける
+WiseMan.Summary: しばらく動けなくなる代わりに、キルを跳ね返すバリアを張れるクルーです。
+WiseMan.Barrier: 聖なるバリア
+WiseMan.Barrier.Help: 決まった時間だけバリアを張ります。その間にキルされると、キルした人が死にます。設定によってはその間動けません。
+WiseMan.Barrier.Short: キルを跳ね返すバリアを張る
+WiseMan.Cooldown: バリアの待ち時間
+WiseMan.Duration: バリアの長さ
+WiseMan.CanWalk: バリア中も歩ける
+# ── マガジナー (Magaziner) ──
+Magaziner.Name: マガジナー
+Magaziner.Blurb: 弾は込めてある
+Magaziner.Summary: キルできる状態を弾としてためておき、後で使えるインポスターです。今の弾の数は自分の名前の後ろに出ます。
+Magaziner.Store: 補充
+Magaziner.Store.Help: キルできる状態の時に押すと、弾を 1 つためてキルのクールダウンを最初から数え直します。
+Magaziner.Store.Short: キルできる状態を弾にためる
+Magaziner.Fire: 消費
+Magaziner.Fire.Help: 弾を 1 つ使い、キルのクールダウンを設定の値まで縮めます。
+Magaziner.Fire.Short: 弾を使ってキルを早める
+Magaziner.SetKillTime: 消費した後のクールダウン
+Magaziner.AmmoLimit: 弾の数に上限を付ける
+Magaziner.MaxAmmo: 弾の上限
+
+# ── 聖職者 (Clergy) ──
+Clergy.Name: 聖職者
+Clergy.Blurb: 聖なる光で悪を照らせ
+Clergy.Summary: しばらくインポスターの視界を狭くできるクルーです。
+Clergy.Light: 聖なる光
+Clergy.Light.Help: 決まった時間だけインポスターの視界を狭くします。設定によってはキルできる第三陣営にも効きます。
+Clergy.Light.Short: インポスターの視界を狭める
+Clergy.Cooldown: 聖なる光の待ち時間
+Clergy.Duration: 効果の長さ
+Clergy.VisionMultiplier: 狭めた視界の倍率
+Clergy.ForNeutralKiller: キルできる第三陣営にも効く
+Clergy.Effect: 聖なる光で視界が狭い
+# ── ファインダー (Finder) ──
+Finder.Name: ファインダー
+Finder.Blurb: 仲間はどこだ
+Finder.Summary: 決めた数だけキルすると、マッドメイトが誰か分かるインポスターです。
+Finder.KillCooldown: キルのクールダウン
+Finder.RevealKills: 分かるのに要るキルの数
+Finder.Revealed: マッドメイトが分かるようになった (名前に ▲)
+
+# ── ラバーズ (Lovers) ──
+Lovers.Name: ラバーズ
+Lovers.Blurb: 二人の愛は永遠に
+Lovers.Summary: 2 人 1 組で付くアドオンです。相方が誰か分かり (名前に ♥)、相方が死ぬと後を追って死にます。
+Lovers.WinCond: 試合の終わりに 2 人とも生きていれば、勝ちを奪って 2 人で勝ち
+Lovers.FollowDeath: 相方が死ぬと後を追う
+Lovers.SoloWin: 2 人とも生きていれば勝ちを奪う
+
+# ── パブロフの犬の飼い主 (PavlovsOwner) ──
+PavlovsOwner.Name: パブロフの犬(飼い主)
+PavlovsOwner.Blurb: よし、いい子だ
+PavlovsOwner.Summary: キルはできず、近くの人を犬 (パブロフの犬) にできる第三陣営です。
+PavlovsOwner.WinCond: 犬が生きていて、犬の陣営だけが残ると一緒に勝ち
+PavlovsOwner.Train: しつけ
+PavlovsOwner.Train.Help: 近くの人をパブロフの犬にします。相手がインポスターなら自分が死にます (設定)。
+PavlovsOwner.Train.Short: 近くの人を犬にする
+PavlovsOwner.Cooldown: しつけの待ち時間
+PavlovsOwner.MaxDogs: 犬を作れる数
+PavlovsOwner.SuicideOnImpostor: インポスターをしつけようとすると死ぬ
+# ── パブロフの犬 (PavlovsDog) ──
+PavlovsDog.Name: パブロフの犬
+PavlovsDog.Blurb: ご主人のために
+PavlovsDog.Summary: 飼い主にしつけられた、キルできる第三陣営です。飼い主が全員死ぬと暴走します。
+PavlovsDog.WinCond: 飼い主の陣営だけが残ると勝ち
+PavlovsDog.Kill: キル
+PavlovsDog.Kill.Help: 本編のキルボタンを持ちます。キルの距離は「ゲーム設定」タブの「第三陣営」で決まります。飼い主の陣営は倒せません。暴走中はクールダウンが短くなる代わりに、決まった時間キルしないと死にます。
+PavlovsDog.Kill.Short: 本編のキルボタンを持つ
+PavlovsDog.CanVent: ベントを使える
+PavlovsDog.ImpostorVision: インポスターの視界を持つ
+PavlovsDog.KillCooldown: キルのクールダウン
+PavlovsDog.RampageKillCooldown: 暴走中のキルのクールダウン
+PavlovsDog.RampageSuicideTime: 暴走中に死ぬまでの時間
+PavlovsDog.ResetOnMeeting: 会議の後に時間を戻す
+PavlovsDog.Timer: 暴走で死ぬまで
+# ── キューピッド (Cupid) ──
+Cupid.Name: キューピッド
+Cupid.Blurb: 恋の矢を放て
+Cupid.Summary: 2 人に「恋の矢」を撃ってラバーズにする第三陣営です。
+Cupid.WinCond: 作ったラバーズが勝つと一緒に勝ち
+Cupid.Arrow: 恋の矢
+Cupid.Arrow.Help: 1 人目と 2 人目に撃つと、その 2 人がラバーズになります。時間の制限がある時は、それまでに作らないと死にます。
+Cupid.Arrow.Short: 2 人をラバーズにする
+Cupid.Cooldown: 恋の矢の待ち時間
+Cupid.TimeLimitOn: 時間の制限を付ける
+Cupid.TimeLimit: 制限時間
+Cupid.Timer: ラバーズを作らないと死ぬまで
+# ── 純愛者 (Truelover) ──
+Truelover.Name: 純愛者
+Truelover.Blurb: あなたに一目惚れ
+Truelover.Summary: 「一目惚れ」で近くの人と 2 人でラバーズになる第三陣営です。
+Truelover.WinCond: ラバーズとして勝つ
+Truelover.Arrow: 一目惚れ
+Truelover.Arrow.Help: 近くの人と 2 人でラバーズになります (1 回だけ)。時間の制限がある時は、それまでに決めないと死にます。
+Truelover.Arrow.Short: 近くの人とラバーズになる
+Truelover.Cooldown: 一目惚れの待ち時間
+Truelover.TimeLimitOn: 時間の制限を付ける
+Truelover.TimeLimit: 制限時間
+Truelover.Timer: 相手を決めないと死ぬまで
+
+# ── ミーティングシェリフ (MeetingSheriff) ──
+MeetingSheriff.Name: ミーティングシェリフ
+MeetingSheriff.Blurb: 法廷で裁きを下せ
+MeetingSheriff.Summary: 会議中に人を撃てるクルーです。倒してよい陣営の人でなければ自分が死にます。
+MeetingSheriff.Shoot: 撃つ
+MeetingSheriff.Shoot.Help: 会議中に名札を押し、出てきたボタンで撃ちます。倒してよい陣営でなければ自分が死にます (自決の設定による)。死体は残りません。
+MeetingSheriff.Shoot.Short: 会議中に人を撃つ
+MeetingSheriff.MaxKills: 撃てる回数
+MeetingSheriff.ShotsPerMeeting: 1 回の会議で撃てる回数
+MeetingSheriff.SuicideMode: 自決の仕方
+MeetingSheriff.KillImpostor: インポスターを倒せる
+MeetingSheriff.KillMad: マッドを倒せる
+MeetingSheriff.KillNeutral: 第三陣営を倒せる
+MeetingSheriff.KillFriends: フレンズを倒せる
+MeetingSheriff.KillLovers: 恋人を倒せる
+# ── ヴァルチャー (Vulture) ──
+Vulture.Name: ヴァルチャー
+Vulture.Blurb: 死肉を喰らえ
+Vulture.Summary: 死体を食べて消せる第三陣営です。決めた数を食べると単独勝ちします。
+Vulture.WinCond: 決めた数の死体を食べるとその場で単独勝ち
+Vulture.Eat: 喰らう
+Vulture.Eat.Help: 通報できる距離の死体を食べて消します。死体への矢印が見えます (設定)。
+Vulture.Eat.Short: 近くの死体を食べる
+Vulture.Cooldown: 喰らうの待ち時間
+Vulture.RequiredBodies: 勝つのに要る死体の数
+Vulture.CanVent: ベントを使える
+Vulture.Count: 食べた死体 {n}/{max}
+# ── アーソニスト (Arsonist) ──
+Arsonist.Name: アーソニスト
+Arsonist.Blurb: 全てを灰に
+Arsonist.Summary: 全員にオイルを塗ってから燃やすと勝つ第三陣営です。
+Arsonist.WinCond: 生きている全員にオイルを塗って「燃やす」と単独勝ち
+Arsonist.Douse: 塗る
+Arsonist.Douse.Help: 近くの人のそばに少しの間いるとオイルを塗れます。途中で離れたり一番近い人が変わると失敗します。塗った人の名前に § が付きます。
+Arsonist.Douse.Short: 近くの人にオイルを塗る
+Arsonist.Ignite: 燃やす
+Arsonist.Ignite.Help: 自分以外の生きている全員に塗ってあれば、燃やして単独勝ちします。
+Arsonist.Ignite.Short: 全員に塗ったら燃やして勝つ
+Arsonist.Cooldown: 塗るの待ち時間
+Arsonist.CanVent: ベントを使える
+Arsonist.ImpostorVision: インポスターの視界を持つ
+
+# ── 黒猫 (BlackCat) ──
+BlackCat.Name: 黒猫
+BlackCat.Blurb: 不吉を運ぶ
+BlackCat.Summary: インポスターの味方のクルーです。追放されると生きている人を 1 人道連れにします。
+BlackCat.SpareImpostors: インポスターは道連れにしない
+BlackCat.CanVent: ベントを使える
+BlackCat.ImpostorVision: インポスターの視界を持つ
+BlackCat.KnowImpostors: インポスターが分かる
+BlackCat.NeededTasks: 分かるのに要るタスクの数
+BlackCat.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+# ── マッドホーク (MadHawk) ──
+MadHawk.Name: マッドホーク
+MadHawk.Blurb: 空から主を助けよ
+MadHawk.Summary: しばらく視点を引いて広く見渡せる、インポスターの味方のクルーです。
+MadHawk.Eye: ホークアイ
+MadHawk.Eye.Help: 決まった時間だけ視点を引いて広く見渡します。設定によってはその間歩けません。
+MadHawk.Eye.Short: しばらく広く見渡す
+MadHawk.Cooldown: ホークアイの待ち時間
+MadHawk.Duration: ホークアイの長さ
+MadHawk.Magnification: 引く倍率
+MadHawk.CannotWalk: 使っている間は歩けない
+MadHawk.CanVent: ベントを使える
+MadHawk.ImpostorVision: インポスターの視界を持つ
+MadHawk.KnowImpostors: インポスターが分かる
+MadHawk.NeededTasks: 分かるのに要るタスクの数
+MadHawk.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+# ── マッドてるてる (MadJester) ──
+MadJester.Name: マッドてるてる
+MadJester.Blurb: 吊られて主を勝たせよ
+MadJester.Summary: インポスターの味方のクルーです。決めた数のタスクを終えてから追放されると、インポスター陣営が勝ちます。
+MadJester.WinOnExiled: 追放されるとインポスターの勝ち
+MadJester.WinTasks: 勝ちに要るタスクの数
+MadJester.CanVent: ベントを使える
+MadJester.ImpostorVision: インポスターの視界を持つ
+MadJester.KnowImpostors: インポスターが分かる
+MadJester.NeededTasks: 分かるのに要るタスクの数
+MadJester.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+# ── 化け狸 (MadRaccoon) ──
+MadRaccoon.Name: 化け狸
+MadRaccoon.Blurb: 化けて惑わせ
+MadRaccoon.Summary: しばらく他の人の姿になれる、インポスターの味方のクルーです。
+MadRaccoon.Morph: 化ける
+MadRaccoon.Morph.Help: 選んだ人の姿に、決まった時間だけなります。
+MadRaccoon.Morph.Short: しばらく他の人に化ける
+MadRaccoon.Cooldown: 化けるの待ち時間
+MadRaccoon.Duration: 化けている時間
+MadRaccoon.CanVent: ベントを使える
+MadRaccoon.ImpostorVision: インポスターの視界を持つ
+MadRaccoon.KnowImpostors: インポスターが分かる
+MadRaccoon.NeededTasks: 分かるのに要るタスクの数
+MadRaccoon.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+# ── 崇拝者 (Worshiper) ──
+Worshiper.Name: 崇拝者
+Worshiper.Blurb: 我が命を捧げよう
+Worshiper.Summary: いつでも自殺できる、インポスターの味方のクルーです。
+Worshiper.Suicide: 自殺
+Worshiper.Suicide.Help: 押すとその場で自殺します。
+Worshiper.Suicide.Short: その場で自殺する
+Worshiper.Cooldown: 自殺の待ち時間
+Worshiper.CanVent: ベントを使える
+Worshiper.ImpostorVision: インポスターの視界を持つ
+Worshiper.KnowImpostors: インポスターが分かる
+Worshiper.NeededTasks: 分かるのに要るタスクの数
+Worshiper.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+
+# ── モディファイア狼憑き (ModifierHauntedWolf) ──
+ModifierHauntedWolf.Name: 狼憑き
+ModifierHauntedWolf.Blurb: 過る獣の幻影
+ModifierHauntedWolf.Summary: クルーの役職に付くアドオンです。シェリフなど陣営を見分ける役職からインポスターに見えます。
+ModifierHauntedWolf.OnMadAndFriends: マッド・フレンズにも付く
+# ── モディファイアホーク (ModifierHawk) ──
+ModifierHawk.Name: ホーク
+ModifierHawk.Blurb: 鷹の目を持つ
+ModifierHawk.Summary: しばらく視点を引いて広く見渡せるアドオンです。
+ModifierHawk.Eye: ホークアイ
+ModifierHawk.Eye.Help: 決まった時間だけ視点を引いて広く見渡します。
+ModifierHawk.Eye.Short: しばらく広く見渡す
+ModifierHawk.Cooldown: ホークアイの待ち時間
+ModifierHawk.Duration: ホークアイの長さ
+ModifierHawk.Magnification: 引く倍率
+ModifierHawk.CannotWalk: 使っている間は歩けない
+# ── ルーラー (RulerModifier) ──
+RulerModifier.Name: ルーラー
+RulerModifier.Blurb: 我に従え
+RulerModifier.Summary: インポスターに付くアドオンです。1 度だけ近くの人をマッドメイトにできます。
+RulerModifier.Madden: 狂わせる
+RulerModifier.Madden.Help: 近くの人をマッドメイトにします (1 回だけ)。
+RulerModifier.Madden.Short: 近くの人をマッドにする
+RulerModifier.Cooldown: 狂わせるの待ち時間
+# ── スペランカー (Spelunker) ──
+Spelunker.Name: スペランカー
+Spelunker.Blurb: うっかり死んでしまう
+Spelunker.Summary: とても虚弱な第三陣営です。ベントに近づく・昇降機に乗る・はしごに乗る・ドアを開けると決まった確率で死に、通信妨害や停電が長引くと死にます。
+Spelunker.SabotageDeath: サボタージュが長引くと死ぬ
+Spelunker.CommsTime: 通信妨害で死ぬまで
+Spelunker.LightsTime: 停電で死ぬまで
+Spelunker.VentChance: ベントで死ぬ確率
+Spelunker.LiftChance: 昇降機で死ぬ確率
+Spelunker.LadderChance: はしごで死ぬ確率
+# ── 虚弱 (ModifierSpelunker) ──
+ModifierSpelunker.Name: 虚弱
+ModifierSpelunker.Blurb: うっかり死んでしまう
+ModifierSpelunker.Summary: とても虚弱になるアドオンです。ベントに近づく・昇降機に乗る・はしごに乗る・ドアを開けると決まった確率で死に、通信妨害や停電が長引くと死にます。
+ModifierSpelunker.SabotageDeath: サボタージュが長引くと死ぬ
+ModifierSpelunker.CommsTime: 通信妨害で死ぬまで
+ModifierSpelunker.LightsTime: 停電で死ぬまで
+ModifierSpelunker.VentChance: ベントで死ぬ確率
+ModifierSpelunker.LiftChance: 昇降機で死ぬ確率
+ModifierSpelunker.LadderChance: はしごで死ぬ確率
+Spelunker.WinCond: 試合の終わりまで生きていれば勝ち
+Spelunker.AdditionalWin: 勝った陣営と一緒に勝つ (切ると単独勝ち)
+# ── ジャンボ (JumboModifier) ──
+JumboModifier.Name: ジャンボ
+JumboModifier.Blurb: 大きく育て
+JumboModifier.Summary: 時間が経つほど体が大きくなるアドオンです。名前の横に育ち具合が出ます。
+JumboModifier.OnImpostor: インポスターにも付く
+JumboModifier.OnNeutral: 第三陣営にも付く
+JumboModifier.GrowSeconds: 育ち切るまでの時間
+JumboModifier.GrowInMeeting: 会議中も育つ
+
+# ── 選挙管理委員 (ElectionCommissioner) ──
+ElectionCommissioner.Name: 選挙管理委員
+ElectionCommissioner.Blurb: 清き一票を見届けよ
+ElectionCommissioner.Summary: 匿名投票の設定でも、誰が誰に投票したかが見えるクルーです。
+# ── ハンバーガー屋 (HamburgerShop) ──
+HamburgerShop.Name: ハンバーガー屋
+HamburgerShop.Blurb: へいらっしゃい！
+HamburgerShop.Summary: 能力の無いクルーです。
+# ── ボディービルダー (BodyBuilder) ──
+BodyBuilder.Name: ボディービルダー
+BodyBuilder.Blurb: 見よ、この筋肉！
+BodyBuilder.Summary: タスクを全部終えるとポーズをとれるクルーです。
+BodyBuilder.Pose: ポーズ
+BodyBuilder.Pose.Help: タスクを全部終えると使えます。しばらく全員の画面で名前に 💪 が出ます。
+BodyBuilder.Pose.Short: 筋肉を見せつける
+BodyBuilder.Cooldown: ポーズの待ち時間
+# ── ジャンプダンサー (JumpDancer) ──
+JumpDancer.Name: ジャンプダンサー
+JumpDancer.Blurb: みんなで跳ぼう！
+JumpDancer.Summary: 自分と周りの人をジャンプさせられるクルーです (見た目だけ)。
+JumpDancer.Jump: ジャンプ！
+JumpDancer.Jump.Help: 自分と周りの人が一瞬ジャンプします (見た目だけ)。
+JumpDancer.Jump.Short: 周りの人とジャンプ
+JumpDancer.Cooldown: ジャンプの待ち時間
+JumpDancer.Range: ジャンプさせる範囲
+# ── ナイス赤ずきん (NiceRedRidingHood) ──
+NiceRedRidingHood.Name: ナイス赤ずきん
+NiceRedRidingHood.Blurb: 狼のお腹から帰ってきたよ
+NiceRedRidingHood.Summary: キルされた後、自分をキルした人が死ぬと、次の会議の後に生き返るクルーです。
+NiceRedRidingHood.Revives: 生き返れる回数
+# ── ナイスサイエンティスト (NiceScientist) ──
+NiceScientist.Name: ナイスサイエンティスト
+NiceScientist.Blurb: 見えない研究者
+NiceScientist.Summary: しばらく透明になれるクルーです。
+NiceScientist.Hide: 透明化
+NiceScientist.Hide.Help: 決まった時間だけ姿が見えなくなります。透明でも能力の対象にはなります。
+NiceScientist.Hide.Short: しばらく透明になる
+NiceScientist.Cooldown: 透明化の待ち時間
+NiceScientist.Duration: 透明化の長さ
+# ── イビルサイエンティスト (EvilScientist) ──
+EvilScientist.Name: イビルサイエンティスト
+EvilScientist.Blurb: 見えない研究者
+EvilScientist.Summary: しばらく透明になれるインポスターです。
+EvilScientist.Hide: 透明化
+EvilScientist.Hide.Help: 決まった時間だけ姿が見えなくなります。透明でも能力の対象にはなります。
+EvilScientist.Hide.Short: しばらく透明になる
+EvilScientist.Cooldown: 透明化の待ち時間
+EvilScientist.Duration: 透明化の長さ
+
+# ── 警察医 (PoliceSurgeon) ──
+PoliceSurgeon.Name: 警察医
+PoliceSurgeon.Blurb: 死亡推定時刻は…
+PoliceSurgeon.Summary: 会議が始まると、倒された人が何秒前に死んだかが分かるクルーです。
+PoliceSurgeon.Error: 時刻の誤差
+PoliceSurgeon.Title: 【死亡推定時刻】
+PoliceSurgeon.Line: {name}: 約 {s} 秒前
+# ── サイコメトラー (Psychometrist) ──
+Psychometrist.Name: サイコメトラー
+Psychometrist.Blurb: 死者の記憶を読め
+Psychometrist.Summary: 死体から、死因と何秒前に死んだかを読み取れるクルーです。
+Psychometrist.Read: よみとり
+Psychometrist.Read.Help: 近くの死体を調べ、死因と何秒前に死んだか (誤差つき) をチャットに出します。
+Psychometrist.Read.Short: 死体から情報を読む
+Psychometrist.Cooldown: よみとりの待ち時間
+Psychometrist.Error: 時刻の誤差
+Psychometrist.Result: {name}: {cause} / 約 {s} 秒前
+Psychometrist.Killed: キルされた
+Psychometrist.Suicide: 自殺
+# ── 遺言伝達者 (DyingMessenger) ──
+DyingMessenger.Name: 遺言伝達者
+DyingMessenger.Blurb: 最期の言葉を聞け
+DyingMessenger.Summary: 死んですぐの死体を通報すると、倒した人の役職が分かるクルーです。
+DyingMessenger.Within: 役職が分かる時間
+DyingMessenger.Message: {name} の遺言: 犯人は {role}
+# ── サンタ (Santa) ──
+Santa.Name: サンタ
+Santa.Blurb: 良い子にはプレゼントを
+Santa.Summary: 近くの人をランダムなクルーの役職にできるクルーです。相手がクルーでなければ自分が死にます。
+Santa.Gift: プレゼント
+Santa.Gift.Help: 近くの人をランダムなクルーの役職にします。相手がクルーでなければ自分が死にます。
+Santa.Gift.Short: 近くの人に役職を贈る
+Santa.Cooldown: プレゼントの待ち時間
+Santa.Uses: 贈れる回数
+# ── ブラックサンタ (BlackSanta) ──
+BlackSanta.Name: ブラックサンタ
+BlackSanta.Blurb: 良い子にはプレゼントを
+BlackSanta.Summary: インポスターをランダムなインポスターの役職にできる、インポスターの味方のクルーです。相手がインポスターでなければ自分が死にます。
+BlackSanta.Gift: プレゼント
+BlackSanta.Gift.Help: 近くのインポスターをランダムなインポスターの役職にします。相手がインポスターでなければ自分が死にます。
+BlackSanta.Gift.Short: 近くの人に役職を贈る
+BlackSanta.Cooldown: プレゼントの待ち時間
+BlackSanta.Uses: 贈れる回数
+BlackSanta.CanVent: ベントを使える
+BlackSanta.ImpostorVision: インポスターの視界を持つ
+BlackSanta.KnowImpostors: インポスターが分かる
+BlackSanta.NeededTasks: 分かるのに要るタスクの数
+BlackSanta.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+# ── シルバーバレット (SilverBullet) ──
+SilverBullet.Name: シルバーバレット
+SilverBullet.Blurb: 痕跡は嘘をつかない
+SilverBullet.Summary: ベントを調べて、前のターンに何回使われたかが分かるクルーです。
+SilverBullet.Analyze: 分析
+SilverBullet.Analyze.Help: 近くのベントを調べ、前のターンに使われた回数をチャットに出します。
+SilverBullet.Analyze.Short: ベントの使われた回数を調べる
+SilverBullet.Cooldown: 分析の待ち時間
+SilverBullet.Result: このベントは前のターンに {n} 回使われた
+# ── イカ (Squid) ──
+Squid.Name: イカ
+Squid.Blurb: 墨を吐いて逃げろ
+Squid.Summary: 警戒中にキルされると、キルを防いで相手の視界を奪えるクルーです。
+Squid.Guard: 警戒
+Squid.Guard.Help: 決まった時間だけ警戒します。その間にキルされるとキルを防ぎ、キルした人の視界をしばらく奪い、自分はしばらく速く動けます。
+Squid.Guard.Short: キルを防いで墨を吐く
+Squid.Cooldown: 警戒の待ち時間
+Squid.Duration: 警戒の長さ
+Squid.InkTime: 視界を奪う時間
+Squid.BoostTime: 速くなる時間
+# ── タスクマスター (Taskmaster) ──
+Taskmaster.Name: タスクマスター
+Taskmaster.Blurb: タスクなど一瞬で
+Taskmaster.Summary: タスクを開くだけで終えられるクルーです。
+# ── ベントトラッパー (VentTrapper) ──
+VentTrapper.Name: ベントトラッパー
+VentTrapper.Blurb: 罠はもう仕掛けてある
+VentTrapper.Summary: ベントに罠を仕掛けられるクルーです。自分以外がそのベントに入ると死にます。
+VentTrapper.Trap: トラップ！
+VentTrapper.Trap.Help: 近くのベントに罠を仕掛けます。自分以外がそのベントに入ると死にます (罠は 1 回で消えます)。
+VentTrapper.Trap.Short: ベントに罠を仕掛ける
+VentTrapper.Cooldown: 罠の待ち時間
+VentTrapper.Uses: 仕掛けられる数
+# ── データハッカー (Datahacker) ──
+Datahacker.Name: データハッカー
+Datahacker.Blurb: 全てのデータを暴け
+Datahacker.Summary: タスクを進めると敵が誰か分かるクルーです。ただし少し前から敵に正体がばれます。
+Datahacker.NeededTasks: 敵が分かるのに要るタスクの数
+Datahacker.ExposeTasks: 敵にばれるタスクの数
+
+# ── カモフラージャー (Camouflager) ──
+Camouflager.Name: カモフラージャー
+Camouflager.Blurb: 誰が誰だか分からない
+Camouflager.Summary: しばらく全員の見た目を自分と同じにできるインポスターです。
+Camouflager.Camo: カモフラージュ
+Camouflager.Camo.Help: 決まった時間だけ、生きている全員の見た目が自分と同じになります。
+Camouflager.Camo.Short: 全員の見た目を揃える
+Camouflager.Cooldown: カモフラージュの待ち時間
+Camouflager.Duration: カモフラージュの長さ
+# ── カニ (Crab) ──
+Crab.Name: カニ
+Crab.Blurb: 横歩きの世界へようこそ
+Crab.Summary: しばらく全員を横にしか歩けなくできるインポスターです。
+Crab.Crab: カニ
+Crab.Crab.Help: 決まった時間だけ、全員が横にしか歩けなくなります。
+Crab.Crab.Short: 全員を横歩きにする
+Crab.Cooldown: カニの待ち時間
+Crab.Duration: カニの長さ
+# ── ドッペルゲンガー (Doppelganger) ──
+Doppelganger.Name: ドッペルゲンガー
+Doppelganger.Blurb: もう一人の自分
+Doppelganger.Summary: 他の人の姿になれるインポスターです。化けている相手をキルすると次のキルが早くなります。
+Doppelganger.Morph: 変身
+Doppelganger.Morph.Help: 選んだ人の姿に、決まった時間だけなります。
+Doppelganger.Morph.Short: 他の人に化ける
+Doppelganger.Cooldown: 変身の待ち時間
+Doppelganger.Duration: 変身の長さ
+Doppelganger.BonusCooldown: 化けた相手をキルした後のクールダウン
+# ── ダブルキラー (DoubleKiller) ──
+DoubleKiller.Name: ダブルキラー
+DoubleKiller.Blurb: 二刀流の殺し屋
+DoubleKiller.Summary: キルボタンを 2 つ持つインポスターです。待ち時間は別々です。
+DoubleKiller.Kill: キル (2)
+DoubleKiller.Kill.Help: 本編のキルボタンとは別に、近くの人をキルします。
+DoubleKiller.Kill.Short: もう 1 つのキル
+DoubleKiller.Cooldown: 2 つ目のキルの待ち時間
+# ── イビルハッカー (EvilHacker) ──
+EvilHacker.Name: イビルハッカー
+EvilHacker.Blurb: 全ての部屋は筒抜けだ
+EvilHacker.Summary: いつでもどこでもアドミンを見られるインポスターです。
+EvilHacker.Admin: アドミン
+EvilHacker.Admin.Help: アドミン (部屋ごとの人数) の地図を開きます。
+EvilHacker.Admin.Short: どこでもアドミンを見る
+# ── ジャマー (Jammer) ──
+Jammer.Name: ジャマー
+Jammer.Blurb: 見えない獲物
+Jammer.Summary: 近くの人をしばらく他の人から見えなくできるインポスターです。
+Jammer.Jam: 透明化
+Jammer.Jam.Help: 近くの人を決まった時間だけ見えなくします。本人とインポスターには見えたままです。
+Jammer.Jam.Short: 近くの人を見えなくする
+Jammer.Cooldown: 透明化の待ち時間
+Jammer.Duration: 透明化の長さ
+# ── ネコカボチャ (NekoKabocha) ──
+NekoKabocha.Name: ネコカボチャ
+NekoKabocha.Blurb: ただでは死なない
+NekoKabocha.Summary: キルされるとキルした人を、追放されると誰か 1 人を道連れにするインポスターです。
+# ── オーバーキラー (OverKiller) ──
+OverKiller.Name: オーバーキラー
+OverKiller.Blurb: やりすぎだ
+OverKiller.Summary: キルした相手の死体が周りにいくつも増えるインポスターです。
+OverKiller.ExtraBodies: 増える死体の数
+# ── 追跡者 (Pursuer) ──
+Pursuer.Name: 追跡者
+Pursuer.Blurb: 獲物の匂いをたどれ
+Pursuer.Summary: いちばん近くのインポスター以外の人の方へ矢印が出るインポスターです。
+# ── 泥棒 (Robber) ──
+Robber.Name: 泥棒
+Robber.Blurb: その努力、いただくぜ
+Robber.Summary: キルした相手のタスクの進みを無かったことにするインポスターです。
+# ── 侍 (Samurai) ──
+Samurai.Name: 侍
+Samurai.Blurb: 一刀両断
+Samurai.Summary: 1 度だけ、周りのクルーを全員斬れるインポスターです。
+Samurai.Slash: 必殺技
+Samurai.Slash.Help: 周りのインポスター以外を全員キルします (1 試合に 1 回)。
+Samurai.Slash.Short: 周りを全員斬る
+Samurai.Range: 届く範囲
+# ── 自爆魔 (SelfBomber) ──
+SelfBomber.Name: 自爆魔
+SelfBomber.Blurb: 道連れだ！
+SelfBomber.Summary: 自分が死ぬ代わりに、周りのクルーを全員倒せるインポスターです。
+SelfBomber.Bomb: 自爆
+SelfBomber.Bomb.Help: 自分が死ぬ代わりに、周りのインポスター以外を全員倒します。
+SelfBomber.Bomb.Short: 周りを巻き込んで自爆
+SelfBomber.Range: 爆発の範囲
+# ── スラッガー (Slugger) ──
+Slugger.Name: スラッガー
+Slugger.Blurb: かっ飛ばせ！
+Slugger.Summary: 周りの人を吹き飛ばして倒せるインポスターです。死体は残りません。
+Slugger.Swing: ハリセン
+Slugger.Swing.Help: 周りのインポスター以外を吹き飛ばします。死体は残りません。
+Slugger.Swing.Short: 周りを吹き飛ばす
+Slugger.Cooldown: ハリセンの待ち時間
+Slugger.Range: 届く範囲
+# ── シフトアクター (ShiftActor) ──
+ShiftActor.Name: シフトアクター
+ShiftActor.Blurb: その役、演じきってみせよう
+ShiftActor.Summary: 他の人の姿になれ、化けた相手の役職が分かるインポスターです。
+ShiftActor.Morph: 変身
+ShiftActor.Morph.Help: 選んだ人の姿に決まった時間だけなり、その人の役職がチャットに出ます。
+ShiftActor.Morph.Short: 化けて役職を知る
+ShiftActor.Cooldown: 変身の待ち時間
+ShiftActor.Duration: 変身の長さ
+ShiftActor.Role: {name} の役職: {role}
+# ── サイドキラー (SideKiller) ──
+SideKiller.Name: サイドキラー
+SideKiller.Blurb: 我が右腕となれ
+SideKiller.Summary: 1 度だけ近くの人をマッドキラーにできるインポスターです。
+SideKiller.Convert: 侵食する
+SideKiller.Convert.Help: 近くの人をマッドキラーにします (1 回だけ)。自分が死ぬとマッドキラーはインポスターになります。
+SideKiller.Convert.Short: 近くの人をマッドキラーにする
+SideKiller.Cooldown: 侵食するの待ち時間
+# ── マッドキラー (MadKiller) ──
+MadKiller.Name: マッドキラー
+MadKiller.Blurb: 主の跡を継ぐ
+MadKiller.Summary: サイドキラーに変えられた、インポスターの味方のクルーです。サイドキラーが死ぬとインポスターになります。
+MadKiller.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+# ── 眷属 (VampireDependent) ──
+VampireDependent.Name: 眷属
+VampireDependent.Blurb: 闇こそ我が領域
+VampireDependent.Summary: ヴァンパイアに作られたインポスターです。設定で視界が逆になり、ヴァンパイアが死ぬと一緒に死にます。
+
+# ── クノイチ (Kunoichi) ──
+Kunoichi.Name: クノイチ
+Kunoichi.Blurb: 影より放つ一投
+Kunoichi.Summary: 普通のキルができない代わりに、クナイを同じ人に決まった数当ててキルするインポスターです。止まっていると透明になれます。
+Kunoichi.Kunai: クナイ
+Kunoichi.Kunai.Help: マウスの方へクナイを投げます (自分の画面にだけ見えます)。同じ人に決まった数当てるとキルします。
+Kunoichi.Kunai.Short: クナイを投げる
+Kunoichi.Cooldown: クナイのクールダウン
+# ── トリガーハッピー (TriggerHappy) ──
+TriggerHappy.Name: トリガーハッピー
+TriggerHappy.Blurb: 撃って撃って撃ちまくれ
+TriggerHappy.Summary: しばらく機関銃を乱射し、同じ人に決まった数の弾を当てて倒すインポスターです。
+TriggerHappy.Spray: 乱射
+TriggerHappy.Spray.Help: しばらく機関銃を構え、マウスの方へ弾をばらまき続けます。同じ人に決まった数当たると倒れます。弾は壁で止まり (設定で抜けます)、賢者のバリアには跳ね返されます。
+TriggerHappy.Spray.Short: 機関銃を乱射する
+TriggerHappy.Cooldown: 乱射の待ち時間
+TriggerHappy.Range: 弾の射程
+# ── 波動砲 (WaveCannon) ──
+WaveCannon.Name: 波動砲
+WaveCannon.Blurb: 全てを貫く光
+WaveCannon.Summary: その場に砲台を置いて充填し、左右の向いている方へビームを撃つインポスターです。当たった人は陣営に関係なく死にます。
+WaveCannon.Beam: 波動砲
+WaveCannon.Beam.Help: その場に砲台を置いて動けなくなり、充填が終わると左右の向いている方へ壁を抜けるビーム (戦車) か走っていくサンタ (サンタ) を撃ちます。当たった人は陣営に関係なく死にます。賢者のバリアに当たると、ビームはそこで止まって跳ね返ります。
+WaveCannon.Beam.Short: 充填して横へ撃つ
+WaveCannon.Cooldown: 波動砲の待ち時間
+# ── ヴァンパイア (Vampire) ──
+Vampire.Name: ヴァンパイア
+Vampire.Blurb: じわじわと効いてくる
+Vampire.Summary: キルした相手が少したってから死ぬインポスターです。噛まれた人は血の跡を残します。眷属を作れます。
+Vampire.Delay: 噛んでから死ぬまでの秒数
+# ── マトリョーシカ (Matryoshka) ──
+Matryoshka.Name: マトリョーシカ
+Matryoshka.Blurb: 中にも誰かいる
+Matryoshka.Summary: 近くの死体を着て、その人の姿になれるインポスターです。着るたびにキルの待ち時間が延びます。
+Matryoshka.Wear: 着る
+Matryoshka.Wear.Help: 近くの死体を着てその人の姿になります (死体は自分に付いて回ります)。時間が来るか、もう一度押すとその場に死体を脱ぎ捨てます。会議が呼ばれても脱ぎます。
+Matryoshka.Wear.Short: 死体を着て化ける
+Matryoshka.Cooldown: 着るの待ち時間
+Matryoshka.Duration: 着ていられる時間
+# ── ペンギン (Penguin) ──
+Penguin.Name: ペンギン
+Penguin.Blurb: ちょっと付き合ってもらおうか
+Penguin.Summary: 近くの人を掴んで運び、時間が来るとキルするインポスターです。
+Penguin.Grab: 拉致
+Penguin.Grab.Help: 近くの人を掴んで運びます。キルボタンか、時間切れでその人をキルします。
+Penguin.Grab.Short: 掴んで運んでキル
+Penguin.Cooldown: 拉致の待ち時間
+Penguin.Duration: 掴んでいる時間
+# ── ロケット (Rocket) ──
+Rocket.Name: ロケット
+Rocket.Blurb: たまや〜！
+Rocket.Summary: 近くの人を掴んで、空へ打ち上げられるインポスターです。死体は残りません。
+Rocket.Grab: 掴む
+Rocket.Grab.Help: 近くの人を掴んで、決まった時間だけ運びます。
+Rocket.Grab.Short: 近くの人を掴む
+Rocket.Cooldown: 掴むの待ち時間
+Rocket.Launch: 打ち上げる
+Rocket.Launch.Help: 掴んでいる人を空へ打ち上げて倒します。死体は残りません。
+Rocket.Launch.Short: 掴んだ人を打ち上げる
+Rocket.Duration: 掴んでいる時間
+# ── 魔術師 (Conjurer) ──
+Conjurer.Name: 魔術師
+Conjurer.Blurb: 三角の内に逃げ場なし
+Conjurer.Summary: マーカーを 3 つ置き、その三角形の中の人を全員倒すインポスターです。普通のキルはできません。
+Conjurer.Mark: マーカー
+Conjurer.Mark.Help: 今いる所にマーカーを置きます (自分にだけ見えます)。2 つ目からは前のマーカーから決めた距離の中にしか置けません。3 つまで置け、会議で消えます。
+Conjurer.Mark.Short: マーカーを置く
+Conjurer.MarkCooldown: マーカーの待ち時間
+Conjurer.Crush: 発動
+Conjurer.Crush.Help: 3 つのマーカーを結んだ三角形の中にいる人を全員倒します (設定でインポスターも)。
+Conjurer.Crush.Short: 三角形の中を全員倒す
+# ── ディメンションウォーカー (DimensionWalker) ──
+DimensionWalker.Name: ディメンションウォーカー
+DimensionWalker.Blurb: 次元の狭間を歩く者
+DimensionWalker.Summary: ワームホールを置き、時間が経つとそれがつながったベントになるインポスターです。
+DimensionWalker.Place: 設置 / 回収
+DimensionWalker.Place.Help: 足元にワームホールを置きます (ドアのそばには置けません)。設定の時間が経つとワームホールはベントになり、自分のワームホール同士がつながります (ベントを使える人なら誰でも通れます)。起動までの残り時間はインポスターに見えます。自分のワームホールにベントのボタンを向けている時に押すと回収でき、置ける数が戻ります。
+DimensionWalker.Place.Short: ワームホールを置く / 回収
+DimensionWalker.Cooldown: 設置の待ち時間
+
+# ── 波動砲ジャッカル (WaveCannonJackal) ──
+WaveCannonJackal.Name: 波動砲ジャッカル
+WaveCannonJackal.Blurb: 群れの砲台
+WaveCannonJackal.Summary: キルボタンと波動砲を持つジャッカルの仲間です。
+WaveCannonJackal.Kill: キル
+WaveCannonJackal.Kill.Help: ジャッカルの仲間以外をキルできます。ジャッカルの仲間だけが残れば勝ちです。
+WaveCannonJackal.Kill.Short: ジャッカルの仲間以外をキル
+WaveCannonJackal.Beam: 波動砲
+WaveCannonJackal.Beam.Help: その場に砲台を置いて充填し、左右の向いている方へ壁を抜けるビームかサンタを撃ちます。当たった人は仲間も含めて死にます。賢者のバリアに当たると跳ね返ります。
+WaveCannonJackal.Beam.Short: 充填して横へ撃つ
+WaveCannonJackal.Cooldown: 波動砲の待ち時間
+WaveCannonJackal.Sidekick: サイドキック
+WaveCannonJackal.Sidekick.Help: 近くの人を仲間 (設定の種類) にします (1 回だけ)。
+WaveCannonJackal.Sidekick.Short: 近くの人を仲間にする
+WaveCannonJackal.SidekickCooldown: サイドキックの待ち時間
+WaveCannonJackal.KillCooldown: キルのクールダウン
+WaveCannonJackal.CanVent: ベントを使える
+WaveCannonJackal.CanSidekick: サイドキックを作れる
+# ── 波動砲サイドキック (SidekickWaveCannon) ──
+SidekickWaveCannon.Name: 波動砲サイドキック
+SidekickWaveCannon.Blurb: 砲台を継ぐ者
+SidekickWaveCannon.Summary: 波動砲ジャッカルに仲間にされた人です。波動砲ジャッカルがいなくなると波動砲ジャッカルになります。
+SidekickWaveCannon.CanVent: ベントを使える
+# ── 殺し屋 (Hitman) ──
+Hitman.Name: 殺し屋
+Hitman.Blurb: 依頼は必ずこなす
+Hitman.Summary: 自分にだけ分かるターゲットを、時間内に決まった数キルすると単独で勝つ第三陣営です。
+Hitman.NeededHits: 勝つのに必要なターゲットのキル数
+Hitman.FailLimit: 死ぬまでの失敗の数
+Hitman.CanVent: ベントを使える
+# ── 爆ぜ師 (LoversBreaker) ──
+LoversBreaker.Name: 爆ぜ師
+LoversBreaker.Blurb: リア充爆発しろ
+LoversBreaker.Summary: ラバーズを倒し、ラバーズを全滅させると単独で勝つ第三陣営です。
+LoversBreaker.Blast: 爆破
+LoversBreaker.Blast.Help: 近くの人がラバーズなら倒します。ラバーズでなければ自分が死にます。
+LoversBreaker.Blast.Short: ラバーズを爆破
+LoversBreaker.Cooldown: 爆破の待ち時間
+LoversBreaker.NeededBlasts: 勝つのに必要な爆破の数
+# ── 冤罪師 (FalseCharges) ──
+FalseCharges.Name: 冤罪師
+FalseCharges.Blurb: あいつがやりました
+FalseCharges.Summary: 自分の死と引き換えに人に冤罪をかけ、その人が追放されると単独で勝つ第三陣営です。
+FalseCharges.Frame: 冤罪
+FalseCharges.Frame.Help: 近くの人に冤罪をかけ、自分は死にます。その人が決まった数の会議以内に追放されると勝ちです。
+FalseCharges.Frame.Short: 冤罪をかけて自決
+FalseCharges.Meetings: 追放されるまでの会議の数
+# ── 陰陽師 (OrientalShaman) ──
+OrientalShaman.Name: 陰陽師
+OrientalShaman.Blurb: 悪しき者を見抜く
+OrientalShaman.Summary: キルできる人が分かり、最後まで生き残ると勝ちを奪う第三陣営です。
+OrientalShaman.Servant: 式神
+OrientalShaman.Servant.Help: 近くの人を式神 (自分と一緒に勝つ味方) にします (1 回だけ)。
+OrientalShaman.Servant.Short: 近くの人を式神にする
+OrientalShaman.Cooldown: 式神の待ち時間
+OrientalShaman.CanVent: ベントを使える
+OrientalShaman.CanServant: 式神を作れる
+# ── 式神 (ShermansServant) ──
+ShermansServant.Name: 式神
+ShermansServant.Blurb: 主のために
+ShermansServant.Summary: 陰陽師に変えられた味方です。陰陽師が勝つと一緒に勝ちます。
+ShermansServant.Morph: 変身
+ShermansServant.Morph.Help: 決まった時間だけ陰陽師の姿になります。
+ShermansServant.Morph.Short: 陰陽師に化ける
+ShermansServant.Cooldown: 変身の待ち時間
+ShermansServant.Suicide: 自決
+ShermansServant.Suicide.Help: その場で自決します。
+ShermansServant.Suicide.Short: 自決する
+ShermansServant.Duration: 変身の長さ
+# ── フリーター (PartTimer) ──
+PartTimer.Name: フリーター
+PartTimer.Blurb: 勝ち馬に乗れ
+PartTimer.Summary: 雇い主を選び、雇い主が生きたまま勝つと一緒に勝つ第三陣営です。
+PartTimer.Hire: バイト
+PartTimer.Hire.Help: 近くの人を雇い主にします。雇い主が死ぬと、また別の人を選べます。
+PartTimer.Hire.Short: 雇い主を選ぶ
+PartTimer.Cooldown: バイトの待ち時間
+# ── モイラ (Moira) ──
+Moira.Name: モイラ
+Moira.Blurb: 運命を紡ぐ者
+Moira.Summary: 会議中に 2 人の役職を入れ替えられる第三陣営です。使い切って生き残ると勝ちを奪います。
+Moira.Pick: 運命
+Moira.Pick.Help: 会議中に 2 人を選ぶと、会議の終わりにその 2 人の役職が入れ替わります。
+Moira.Pick.Short: 2 人の役職を入れ替える
+Moira.Swaps: 入れ替えられる回数
+# ── シュレディンガーの猫 (SchrodingersCat) ──
+SchrodingersCat.Name: シュレディンガーの猫
+SchrodingersCat.Blurb: 生きているか、死んでいるか
+SchrodingersCat.Summary: キルされかけると死なずに、キルした人の陣営の猫になる第三陣営です。
+# ── ブラックハットハッカー (BlackHatHacker) ──
+BlackHatHacker.Name: ブラックハットハッカー
+BlackHatHacker.Blurb: ウィルスは静かに広がる
+BlackHatHacker.Summary: ウィルスを広げ、全員を感染させると単独で勝つ第三陣営です。
+BlackHatHacker.Hack: ハック
+BlackHatHacker.Hack.Help: 近くの人を感染させます。感染しきった人の近くにいる人も少しずつ感染します。
+BlackHatHacker.Hack.Short: ウィルスに感染させる
+BlackHatHacker.Cooldown: ハックの待ち時間
+BlackHatHacker.Uses: ハックできる回数
+BlackHatHacker.Range: うつる距離
+BlackHatHacker.Seconds: 近くにいて感染しきるまでの秒数
+# ── 金庫破り (Safecracker) ──
+Safecracker.Name: 金庫破り
+Safecracker.Blurb: 鍵は全部開けた
+Safecracker.Summary: 自分のタスクを全部終えると単独で勝つ第三陣営です。タスクが進むと力が増えます。
+
+# ── カンテラ (Cantera) ──
+Cantera.Name: カンテラ
+Cantera.Blurb: 仲間の行く道を照らせ
+Cantera.Summary: 死んだクルーに付く幽霊役職です。誰かに取り憑き、しばらくその人の視界を広げます。
+Cantera.Light: 灯火
+Cantera.Light.Help: 誰かに (壁越しでも) 取り憑き、しばらくその人の視界を船の一番明るい時の何倍かにします。
+Cantera.Light.Short: 誰かの視界を広げる
+Cantera.Cooldown: 灯火の待ち時間
+Cantera.Duration: 灯火の長さ
+Cantera.Vision: 灯火の視界
+Cantera.Lit: 灯火
+# ── ゴーストメカニック (GhostMechanic) ──
+GhostMechanic.Name: ゴーストメカニック
+GhostMechanic.Blurb: 死んでも船は直せる
+GhostMechanic.Summary: 死んだクルーに付く幽霊役職です。起きているサボタージュを直せます。
+GhostMechanic.Repair: 修理
+GhostMechanic.Repair.Help: 起きているサボタージュを全部すぐに直します。設定でキノコの混乱だけは直せないようにできます。
+GhostMechanic.Repair.Short: サボタージュを直す
+# ── レヴェナント (Revenant) ──
+Revenant.Name: レヴェナント
+Revenant.Blurb: 恨みを晴らせ
+Revenant.Summary: ネクロマンサーに呪われた幽霊です。幽霊のタスクを終えるたびに、生きているクルーに取り憑いて視界を奪えます。
+# ── ミラージュ (Mirage) ──
+Mirage.Name: ミラージュ
+Mirage.Blurb: 幻の死体で惑わせ
+Mirage.Summary: 死んだインポスターに付く幽霊役職です。死体の写しを置けます。誰かが死ぬと画面が光ります。
+Mirage.Copy: 幻影
+Mirage.Copy.Help: 今ある死体のどれか 1 人の死体の写しを、自分の居る場所に置きます。誰かが死ぬと画面が水色に光ります。
+Mirage.Copy.Short: 死体の写しを置く
+
+RolePicker.Crew: クルー
+RolePicker.Impostor: インポスター
+RolePicker.Neutral: 第三陣営
+RolePicker.Close: 閉じる
+GuessKit.Hit: {name} が撃ち抜かれた
+GuessKit.Missed: {name} は役職を外して撃たれた
+# ── ナイスゲッサー (NiceGuesser) ──
+NiceGuesser.Name: ナイスゲッサー
+NiceGuesser.Blurb: その正体、見破った
+NiceGuesser.Summary: 会議中に役職を当てて撃てるクルーです。外すと自分が死にます。
+NiceGuesser.Shoot: 撃つ
+NiceGuesser.Shoot.Help: 会議中に名札のボタンで人を選び、その人の役職を当てます。当たればその人が、外れれば自分が死にます。
+NiceGuesser.Shoot.Short: 役職を当てて撃つ
+NiceGuesser.Shots: 撃てる回数
+NiceGuesser.PerMeeting: 1 回の会議で撃てる回数
+# ── イビルゲッサー (EvilGuesser) ──
+EvilGuesser.Name: イビルゲッサー
+EvilGuesser.Blurb: 会議の場こそ狩り場
+EvilGuesser.Summary: 会議中に役職を当てて撃てるインポスターです。外すと自分が死にます。
+EvilGuesser.Shoot: 撃つ
+EvilGuesser.Shoot.Help: 会議中に名札のボタンで人を選び、その人の役職を当てます。当たればその人が、外れれば自分が死にます。
+EvilGuesser.Shoot.Short: 役職を当てて撃つ
+EvilGuesser.Shots: 撃てる回数
+EvilGuesser.PerMeeting: 1 回の会議で撃てる回数
+# ── モディファイアゲッサー (ModifierGuesser) ──
+ModifierGuesser.Name: モディファイアゲッサー
+ModifierGuesser.Blurb: 見抜いて、撃て
+ModifierGuesser.Summary: 元の役職に加えて、会議中に役職を当てて撃てるアドオンです。外すと自分が死にます。
+ModifierGuesser.Shoot: 撃つ
+ModifierGuesser.Shoot.Help: 会議中に名札のボタンで人を選び、その人の役職を当てます。当たればその人が、外れれば自分が死にます。
+ModifierGuesser.Shoot.Short: 役職を当てて撃つ
+ModifierGuesser.Shots: 撃てる回数
+ModifierGuesser.PerMeeting: 1 回の会議で撃てる回数
+
+# ── ドアー (Doorr) ──
+Doorr.Name: ドアー
+Doorr.Blurb: ドアは友達
+Doorr.Summary: 目の前のドアを開け閉めできるクルーです。
+Doorr.Door: ドアーー!!
+Doorr.Door.Help: 近くのドアが開いていれば閉め、閉まっていれば開けます。ドアを開け閉めできる船だけで使えます。
+Doorr.Door.Short: 目の前のドアを開け閉め
+Doorr.Cooldown: ドアーー!!の待ち時間
+# ── イビルドアー (EvilDoorr) ──
+EvilDoorr.Name: イビルドアー
+EvilDoorr.Blurb: 閉じ込めてあげる
+EvilDoorr.Summary: 目の前のドアを開け閉めできるインポスターです。
+EvilDoorr.Door: ドアーー!!
+EvilDoorr.Door.Help: 近くのドアが開いていれば閉め、閉まっていれば開けます。ドアを開け閉めできる船だけで使えます。
+EvilDoorr.Door.Short: 目の前のドアを開け閉め
+EvilDoorr.Cooldown: ドアーー!!の待ち時間
+
+# ── バスカー (Busker) ──
+Busker.Name: バスカー
+Busker.Blurb: 死んだふりも芸のうち
+Busker.Summary: 死んだふりをして、後で生き返れるクルーです。
+Busker.Fake: 偽装死
+Busker.Fake.Help: その場に自分の死体を残して幽霊になります。もう一度押すと今いる所で生き返ります (死体が残っていて、マップの中にいる時だけ)。時間切れ・会議が始まる・死体が消えると本当に死にます。
+Busker.Fake.Short: 死んだふりをする
+Busker.Reborn: 復活
+Busker.Cooldown: 偽装死の待ち時間
+Busker.Duration: 本当に死ぬまでの時間
+# ── ナイスメカニック (NiceMechanic) ──
+NiceMechanic.Name: ナイスメカニック
+NiceMechanic.Blurb: このベント、少しずらしておきますね
+NiceMechanic.Summary: ベントの姿になって、ベントを運べるクルーです。
+NiceMechanic.Move: 移設
+NiceMechanic.Move.Help: 近くのベントの姿になり、決まった時間そのベントを運びます (もう一度押すとその場に置きます)。運んでいる間、そのベントには誰も入れません。つながる先は変わりません。
+NiceMechanic.Move.Short: ベントを運ぶ
+NiceMechanic.Cooldown: 移設の待ち時間
+NiceMechanic.Duration: 移設の長さ
+# ── イビルメカニック (EvilMechanic) ──
+EvilMechanic.Name: イビルメカニック
+EvilMechanic.Blurb: ベントは思いのままに
+EvilMechanic.Summary: ベントの姿になって、ベントを運べるインポスターです。
+EvilMechanic.Move: 移設
+EvilMechanic.Move.Help: 近くのベントの姿になり、決まった時間そのベントを運びます (もう一度押すとその場に置きます)。運んでいる間、そのベントには誰も入れません。つながる先は変わりません。
+EvilMechanic.Move.Short: ベントを運ぶ
+EvilMechanic.Cooldown: 移設の待ち時間
+EvilMechanic.Duration: 移設の長さ
+NiceMechanic.CanVent: ベントを使える
+# ── ホスフォラス (Phosphorus) ──
+Phosphorus.Name: ホスフォラス
+Phosphorus.Blurb: 闇を照らす灯をここに
+Phosphorus.Summary: ランタンを置いて、周りを照らせるクルーです。
+Phosphorus.Put: 設置
+Phosphorus.Put.Help: 今いる所にランタンを置きます。次のターンから全員に見えるようになります。
+Phosphorus.Put.Short: ランタンを置く
+Phosphorus.Light: 点灯
+Phosphorus.Light.Help: 置いたランタンを決まった時間だけ点け、周りを照らします (もう一度押すと消します)。
+Phosphorus.Light.Short: ランタンを点ける
+Phosphorus.Cooldown: 設置の待ち時間
+Phosphorus.Limit: 置けるランタンの数
+Phosphorus.LightCooldown: 点灯の待ち時間
+Phosphorus.Duration: 点灯の長さ
+Phosphorus.Range: 照らす広さ
+# ── トイレファン (ToiletFan) ──
+ToiletFan.Name: トイレファン
+ToiletFan.Blurb: トイレは開かれるべきだ
+ToiletFan.Summary: ラウンジのトイレのドアを全部開けられるクルーです (エアシップだけ)。
+ToiletFan.Open: トイレ！
+ToiletFan.Open.Help: ラウンジのトイレのドアを全部開けます。
+ToiletFan.Open.Short: トイレのドアを開ける
+ToiletFan.Cooldown: トイレ！の待ち時間
+# ── ぬーん (Nun) ──
+Nun.Name: ぬーん
+Nun.Blurb: ぬーん
+Nun.Summary: 昇降機を遠くから動かせるインポスターです (エアシップだけ)。
+Nun.Move: ぬーん
+Nun.Move.Help: エアシップの昇降機を遠くから動かします。乗っている人がいれば一緒に運びます。
+Nun.Move.Short: 昇降機を動かす
+Nun.Cooldown: ぬーんの待ち時間
+
+# ── タスカー (Tasker) ──
+Tasker.Name: タスカー
+Tasker.Blurb: タスクで船を乗っ取れ
+Tasker.Summary: 本物のタスクができ、生きたまま全部終えるとインポスターの勝ちになるインポスターです。
+Tasker.Tasks: タスク
+Tasker.Tasks.Help: タスクの道具を使えます。生きたまま自分のタスクを全部終えるとインポスターの勝ちです。設定でキルできなくしたり、タスクの画面を開いている間はキルの待ち時間を止めたりできます。
+Tasker.Tasks.Short: 全部終えると勝ち
+Tasker.EnableIndividualTasks: タスクの数を個別に決める
+Tasker.CommonTasks: 共通タスクの数
+Tasker.ShortTasks: 短いタスクの数
+Tasker.LongTasks: 長いタスクの数
+Tasker.CanKill: キルできる
+Tasker.KillCoolDuringTask: タスク中もキルの待ち時間が進む
+# ── ネクロマンサー (Necromancer) ──
+Necromancer.Name: ネクロマンサー
+Necromancer.Blurb: 死者よ、我に従え
+Necromancer.Summary: 幽霊が見え、幽霊をレヴェナントに変えられるインポスターです。
+Necromancer.Curse: 呪縛
+Necromancer.Curse.Help: 近くの幽霊をレヴェナントにします。レヴェナントは幽霊のタスクを終えるたびに生きているクルーに取り憑き、視界を奪って通報できなくします。レヴェナントの居場所は矢印で分かります。
+Necromancer.Curse.Short: 幽霊をレヴェナントにする
+Necromancer.Cooldown: 呪縛の待ち時間
+Necromancer.MaxRevenants: レヴェナントにできる数
+Necromancer.RevenantRequiredTasks: レヴェナント: 憑依 1 回に要るタスクの数
+Necromancer.RevenantHauntDuration: レヴェナント: 憑依の長さ
+Necromancer.RevenantHauntVision: レヴェナント: 取り憑かれた人の視界
+Necromancer.RevenantCannotReport: レヴェナント: 取り憑かれた人は通報できない
+# ── レヴェナント (Revenant) ──
+Revenant.Haunt: 憑依
+Revenant.Haunt.Help: 幽霊のタスクを全部終えるごとに 1 回使えます。生きているクルーに取り憑き、しばらくその人の視界をとても狭くし、通報や緊急会議もできなくします。会議が終わると解けます。ネクロマンサーの居場所は矢印で分かります。
+Revenant.Haunt.Short: クルーに取り憑く
+Revenant.Haunted: 取り憑かれている
+# ── ミーディアム (Medium) ──
+Medium.Name: ミーディアム
+Medium.Blurb: 死者の声を聞け
+Medium.Summary: 霊視で幽霊を見て、霊話で死んだ人から話を聞けるクルーです。
+Medium.Vision: 霊視
+Medium.Vision.Help: しばらくの間、幽霊が見えるようになります。
+Medium.Vision.Short: 幽霊が見える
+Medium.Talk: 霊話
+Medium.Talk.Help: 霊視の間だけ使えます。近くの幽霊から、倒した人の役職・倒した人の色の明暗・死んだ部屋・その人の役職のどれか 1 つを聞きます。聞いた話は次の会議のチャットに出ます。使うと霊視が終わります。
+Medium.Talk.Short: 幽霊から話を聞く
+Medium.Cooldown: 霊視の待ち時間
+Medium.Duration: 霊視の長さ
+Medium.TalkMaxUses: 霊話の回数
+Medium.VisionActive: 霊視中
+Medium.Exiled: {name} は追放されたか、話を聞けなかった
+Medium.KillerRole: {name} を倒したのは {role}
+Medium.KillerColor: {name} を倒した人は {color}
+Medium.Light: 明るい色
+Medium.Dark: 暗い色
+Medium.Place: {name} は {place} で死んだ
+Medium.Role: {name} の役職は {role}
+Medium.NoRoom: 部屋の外
+# ── カンテラ (Cantera) ──
+Cantera.LimitUses: 回数を限る
+Cantera.MaxUses: 灯火の回数
+# ── ゴーストメカニック (GhostMechanic) ──
+GhostMechanic.Cooldown: 修理の待ち時間
+GhostMechanic.CannotFixMixup: キノコの混乱は直せない
+# ── ミラージュ (Mirage) ──
+Mirage.LimitUse: 回数を限る
+Mirage.LimitCount: 幻影の回数
+
+# ── 品行方正 (WellBehaver) ──
+WellBehaver.Name: 品行方正
+WellBehaver.Blurb: ゴミはゴミ箱へ
+WellBehaver.Summary: タスクの代わりに、誰かが落とすゴミを拾い続けるクルーです。ゴミが溜まりすぎると死にます。
+WellBehaver.Pick: ゴミ拾い
+WellBehaver.Pick.Help: タスクはありません。ほかの誰か 1 人の足元に一定の間隔でゴミが落ちるので、近くのゴミを拾います。船のゴミが上限 (品行方正の人数 × 設定の数) に達すると死にます。
+WellBehaver.Pick.Short: 近くのゴミを拾う
+WellBehaver.LimitTrash: ゴミの上限 (1 人あたり)
+WellBehaver.Frequency: ゴミが落ちる間隔
+WellBehaver.AllCanSee: ゴミが全員に見える
+# ── バンシー (Banshee) ──
+Banshee.Name: バンシー
+Banshee.Blurb: 囁きは死の知らせ
+Banshee.Summary: 妖精を付けた人に近づいた人を、囁きで倒すインポスターです。
+Banshee.Release: 解放
+Banshee.Release.Help: 近くの人に妖精を付けます。妖精は、それを持つ人に近づいた人へ次々に移ります。妖精の居場所は名前の ✧ で分かります。
+Banshee.Release.Short: 妖精を付ける
+Banshee.Whisper: 囁き
+Banshee.Whisper.Help: 妖精を付けた後に使えます。この後、妖精を持つ人に新しく近づいた人を倒します。
+Banshee.Whisper.Short: 次に近づいた人を倒す
+Banshee.ReleaseCooldown: 解放の待ち時間
+Banshee.WhisperCooldown: 囁きの待ち時間
+Banshee.FairyRange: 妖精の範囲
+Banshee.Range.Short: 狭い
+Banshee.Range.Medium: 普通
+Banshee.Range.Long: 広い
+Banshee.CanKillImpostor: インポスターも倒せる
+Banshee.CanNormalKill: 普通のキルもできる
+# ── フクロウ (Owl) ──
+Owl.Name: フクロウ
+Owl.Blurb: 夜の狩人
+Owl.Summary: ベントを巣にしてからキルし、死体を巣に隠して特殊停電を起こす第三陣営のキル役です。
+Owl.Nest: 巣作り
+Owl.Nest.Help: 近くのベントを巣にします (1 回だけ)。巣を作るまではキルできません。
+Owl.Nest.Short: ベントを巣にする
+Owl.Transport: 運搬
+Owl.Transport.Help: 近くの死体を運びます。巣のそばで降ろすと死体を隠し、隠した数が増えます。
+Owl.Transport.Short: 死体を運んで巣に隠す
+Owl.Drop: 降ろす
+Owl.Blackout: 特殊停電
+Owl.Blackout.Help: 隠した死体が設定の数に達すると使えます。しばらく、インポスター以外の視界を停電の時のように狭めます。
+Owl.Blackout.Short: 皆の視界を暗くする
+Owl.KillCooldown: キルの待ち時間
+Owl.CanVent: ベントを使える
+Owl.BlackoutBodies: 特殊停電に要る隠した死体の数
+Owl.BlackoutCooldown: 特殊停電の待ち時間
+Owl.BlackoutTime: 特殊停電の長さ
+Owl.KillOutsideBlackout: 停電の時以外もキルできる
+Owl.TransportOutsideBlackout: 停電の時以外も運べる
+# ── プテラノドン (Pteranodon) ──
+Pteranodon.Name: プテラノドン
+Pteranodon.Blurb: 昇降機なんていらない
+Pteranodon.Summary: 昇降機を使わずに飛んで渡れるクルーです (エアシップだけ)。
+Pteranodon.Fly: 飛翔
+Pteranodon.Fly.Help: 昇降機の乗り場のそばで使うと、反対の乗り場まで飛んで渡ります。
+Pteranodon.Fly.Short: 昇降機の向こうへ飛ぶ
+Pteranodon.Cooldown: 飛翔の待ち時間
+
+# ── マッシュルーマー (Mushroomer) ──
+Mushroomer.Name: マッシュルーマー
+Mushroomer.Blurb: 胞子で包み込め
+Mushroomer.Summary: キノコを植え、船中のキノコから一斉に胞子を出させるインポスターです。どのマップでも使えます。
+Mushroomer.Plant: 植える
+Mushroomer.Plant.Help: 足元にキノコを植えます。植えたキノコは次の会議の後から動き出します (インポスターには薄く見えます)。
+Mushroomer.Plant.Short: キノコを植える
+Mushroomer.Explode: 爆発
+Mushroomer.Explode.Help: 植え終わり、植えたキノコが全部動き出した後に使えます。船の動いているキノコから一斉に胞子を出させます。
+Mushroomer.Explode.Short: キノコから一斉に胞子
+Mushroomer.HasGasMask: ガスマスクを持つ
+Mushroomer.PlantCooldown: 植えるの待ち時間
+Mushroomer.PlantCount: 植えられる数
+Mushroomer.ExplodeCooldown: 爆発の待ち時間
+Mushroomer.ExplodeCount: 爆発の回数
+Mushroomer.ExplodeRange: 胞子の広さ
+Mushroomer.ExplodeDuration: 胞子の長さ
+Mushroomer.ActiveUsedMushroom: 植えたキノコは自分にだけ見える
+# ── リモコン (RemoteController) ──
+RemoteController.Name: リモコン
+RemoteController.Blurb: あなたは私の思いのまま
+RemoteController.Summary: クルーを操作して歩かせ、その人の手でキルさせるインポスターです。
+RemoteController.Mark: マーク
+RemoteController.Mark.Help: 近くのクルーを操作する相手に選びます。
+RemoteController.Mark.Short: 操作する人を選ぶ
+RemoteController.Operate: 操作
+RemoteController.Operate.Help: しばらく (設定で無制限)、選んだ人を自分の操作で歩かせます。その間、その人も自分も自分では動けません。もう一度押すと終わります。
+RemoteController.Operate.Short: 選んだ人を歩かせる
+RemoteController.Kill: 遠隔キル
+RemoteController.Kill.Help: 操作中に使えます。操作している人の近くの人を、操作している人の手で倒します。倒すと操作は終わります。
+RemoteController.Kill.Short: 操作している人に倒させる
+RemoteController.MarkCooldown: マークの待ち時間
+RemoteController.OperationInfinite: 操作の時間を無制限にする
+RemoteController.OperationDuration: 操作の長さ
+# ── ロケットランチャー (RocketLauncher) ──
+RocketLauncher.Name: ロケットランチャー
+RocketLauncher.Blurb: 人間ロケット発射！
+RocketLauncher.Summary: クルーを掴んで撃ち出し、当たった所で爆発させるインポスターです。
+RocketLauncher.Load: 装填
+RocketLauncher.Load.Help: 近くのクルーを掴みます。掴まれた人は動けず、あなたについて来ます。
+RocketLauncher.Load.Short: クルーを掴む
+RocketLauncher.Shot: 発射
+RocketLauncher.Shot.Help: 掴んだ人を向いている方へ撃ち出します。壁 (設定で人) に当たると爆発し、周りの人ごと死にます。会議が始まると、掴んでいる人・飛んでいる人は死にます。
+RocketLauncher.Shot.Short: 掴んだ人を撃ち出す
+RocketLauncher.Cooldown: 装填の待ち時間
+RocketLauncher.CollideWithPlayers: 人に当たっても爆発する
+RocketLauncher.KillImpostors: 爆発でインポスターも死ぬ
+RocketLauncher.ExplosionRange: 爆発の広さ
+RocketLauncher.LimitLoadedTime: 掴んでいられる時間を限る
+RocketLauncher.LoadedTimeLimit: 掴んでいられる時間
+RocketLauncher.CanUseNormalKill: 普通のキルもできる
+
+# ── 突き落と師 (Pusher) ──
+Pusher.Name: 突き落と師
+Pusher.Blurb: 足元に気をつけて
+Pusher.Summary: 船の縁やはしごの上に立っている人を突き落とすインポスターです (スケルド・ポーラス・エアシップ・ファングル)。
+Pusher.Push: 突き落とす
+Pusher.Push.Help: 船の縁 (決まった場所) に立っているクルーを突き落とします。落ちた人は死体も残りません。はしごの上にいる人を突き落とすと、はしごの下に死体が残ります。
+Pusher.Push.Short: 縁にいる人を突き落とす
+Pusher.Cooldown: 突き落とすの待ち時間
+# ── オルフェウス (Orpheus) ──
+Orpheus.Name: オルフェウス
+Orpheus.Blurb: 冥府から仲間を連れ戻せ
+Orpheus.Summary: 死んだ仲間のインポスターを、儀式の死体から生き返らせるインポスターです。
+Orpheus.Revive: 蘇生
+Orpheus.Revive.Help: 仲間のインポスターが死ぬと、会議の後に船のどこかへその「儀式の死体」が現れます (設定の会議の数まで)。儀式の死体のそばで使うと、次の会議の後にその仲間が元の役職で生き返ります。儀式の死体は近くでないと通報できず、通報されるとその仲間はもう生き返りません。
+Orpheus.Revive.Short: 仲間を生き返らせる
+Orpheus.CorpseTurns: 儀式の死体が出る会議の数
+Orpheus.Cooldown: 蘇生の待ち時間
+Orpheus.ReportPercent: 儀式の死体を通報できる距離
+Orpheus.Banner: 冥府から誰かの魂が呼び戻された…
+
+# ── サウナー (Sauner) ──
+Sauner.Name: サウナー
+Sauner.Blurb: ととのいたい
+Sauner.Summary: サウナ・シャワー・外気浴を順にこなすと 1 人で勝つ第三陣営です (エアシップだけ)。
+Sauner.Stages: ととのう
+Sauner.Stages.Help: サウナ (ラウンジ) → シャワー → 外気浴 (展望デッキ) の順に、それぞれの部屋で決まった時間を過ごします。部屋の外や会議の間は時間が進みません。次の部屋は矢印で分かります。外気浴まで終えると 1 人で勝ちます。
+Sauner.Stages.Short: サウナ→シャワー→外気浴
+Sauner.DarkroomTime: サウナの時間
+Sauner.ShowerTime: シャワーの時間
+Sauner.DeckTime: 外気浴の時間
+Sauner.Darkroom: サウナ
+Sauner.Shower: シャワー
+Sauner.Deck: 外気浴
+Sauner.Darkroom.Action: ラウンジで汗を流す
+Sauner.Shower.Action: シャワーで汗を流す
+Sauner.Deck.Action: 展望デッキで外気浴
+Sauner.Remaining: (あと {n} 秒)
+# ── 三匹の仔豚 (TheThreeLittlePigs) ──
+TheThreeLittlePigs.Name: 三匹の仔豚
+TheThreeLittlePigs.Blurb: オオカミなんか怖くない
+TheThreeLittlePigs.Summary: 3 人 1 組の第三陣営です。キルはできません。3 人とも生き残れば勝ちを横取りし、欠けてもキルできる人外が全滅すれば勝ちます。
+TheThreeLittlePigs.Team: 三匹の仔豚
+TheThreeLittlePigs.Team.Help: 配られると、ほかのクルー 2 人と組になって一番目・二番目・三番目の仔豚になります。仲間は名前の ● で分かります。3 人とも生きて試合が終わると、その勝ちを横取りします。1 人でも欠けたら、キルできる人外が全滅した時に勝ちます。
+TheThreeLittlePigs.Team.Short: 3 人で生き残る
+TheThreeLittlePigs.CustomTasks: 仔豚のタスクの数を個別に決める
+TheThreeLittlePigs.CommonTasks: 共通タスクの数
+TheThreeLittlePigs.ShortTasks: 短いタスクの数
+TheThreeLittlePigs.LongTasks: 長いタスクの数
+TheThreeLittlePigs.FirstPercent: 一番目の仔豚: 要るタスクの割合
+TheThreeLittlePigs.FirstCustomTimer: 一番目の仔豚: 光る間隔を決める
+TheThreeLittlePigs.FirstFlashTimer: 一番目の仔豚: 光る間隔
+TheThreeLittlePigs.SecondPercent: 二番目の仔豚: 要るタスクの割合
+TheThreeLittlePigs.SecondGuards: 二番目の仔豚: 防げる回数
+TheThreeLittlePigs.ThirdPercent: 三番目の仔豚: 要るタスクの割合
+TheThreeLittlePigs.ThirdCounters: 三番目の仔豚: 跳ね返せる回数
+TheFirstLittlePig.Name: 一番目の仔豚
+TheFirstLittlePig.Blurb: 藁の家でもないよりマシ
+TheFirstLittlePig.Summary: 三匹の仔豚の一番目です。タスクを一定の割合こなすと、キルの待ち時間ごとに画面が光ります。
+TheFirstLittlePig.Flash: 藁の家
+TheFirstLittlePig.Flash.Help: タスクを設定の割合こなすと、一定の間隔 (既定はキルの待ち時間) で画面が赤く光ります。3 人とも生きて試合が終わると勝ちを横取りします。
+TheFirstLittlePig.Flash.Short: キルの間隔で画面が光る
+TheSecondLittlePig.Name: 二番目の仔豚
+TheSecondLittlePig.Blurb: 木の家はそこそこ頼りになる
+TheSecondLittlePig.Summary: 三匹の仔豚の二番目です。タスクを一定の割合こなすと、キルを防げます。
+TheSecondLittlePig.Guard: 木の家
+TheSecondLittlePig.Guard.Help: タスクを設定の割合こなすと、設定の回数だけ自分へのキルを防ぎます。3 人とも生きて試合が終わると勝ちを横取りします。
+TheSecondLittlePig.Guard.Short: キルを防ぐ
+TheThirdLittlePig.Name: 三番目の仔豚
+TheThirdLittlePig.Blurb: レンガの家は盤石さ
+TheThirdLittlePig.Summary: 三匹の仔豚の三番目です。タスクを一定の割合こなすと、キルを跳ね返してキルした人を倒します。
+TheThirdLittlePig.Counter: レンガの家
+TheThirdLittlePig.Counter.Help: タスクを設定の割合こなすと、設定の回数だけ自分へのキルを防ぎ、キルした人を倒します。3 人とも生きて試合が終わると勝ちを横取りします。
+TheThirdLittlePig.Counter.Short: キルを跳ね返す
+
+# ── フランケンシュタイン (Frankenstein) ──
+Frankenstein.Name: フランケンシュタイン
+Frankenstein.Blurb: 死体から怪物を作れ
+Frankenstein.Summary: 死体で怪物を作り、怪物でキルを重ねると 1 人で勝つ第三陣営です。
+Frankenstein.Create: 怪物を作る
+Frankenstein.Create.Help: 近くの死体で怪物を作ると、その死体の人の姿になります。怪物の間だけ待ち時間なしでキルでき、キルするとその死体をその場に置いて元の場所へ戻ります。怪物はキルされず、キルされかけると怪物が解けます。会議が始まっても解けます。怪物のキルを設定の回数こなすと 1 人で勝ちます。死体への矢印が見えます。
+Frankenstein.Create.Short: 死体で怪物になってキル
+Frankenstein.Cooldown: 怪物を作る待ち時間
+Frankenstein.WinKillCount: 勝つのに要るキルの数
+Frankenstein.ImpostorVision: 怪物はインポスターの視界
+Frankenstein.CanVent: 怪物はベントを使える
+# ── ユビキタス (Ubiquitous) ──
+Ubiquitous.Name: ユビキタス
+Ubiquitous.Blurb: ドローンはどこにでも
+Ubiquitous.Summary: ドローンを飛ばして見張り、ドアを開けられるクルーです。
+Ubiquitous.Call: 呼ぶ / 戻す
+Ubiquitous.Call.Help: 足元にドローンを出します。もう一度押すとドローンを消します。会議が始まると飛んでいるドローンはその場に止まり、設定の会議の数だけ残ります。止まったドローンの近くにいる人は地図に映ります。
+Ubiquitous.Call.Short: ドローンを出す
+Ubiquitous.Operate: 操作
+Ubiquitous.Operate.Help: ドローンを操作します。その間は自分は動けず、カメラがドローンへ移ってドローンを飛ばせます。ドローンのまわりも見えます。
+Ubiquitous.Operate.Short: ドローンを飛ばす
+Ubiquitous.DoorHack: ドアを開ける
+Ubiquitous.DoorHack.Help: ドローンの操作中に、ドローンの近くの閉まったドアを開けます。
+Ubiquitous.DoorHack.Short: 近くのドアを開ける
+Ubiquitous.CallCooldown: 呼ぶ / 戻すの待ち時間
+Ubiquitous.OperateCooldown: 操作の待ち時間
+Ubiquitous.LimitOperate: 操作できる時間を決める
+Ubiquitous.OperateTime: 操作できる時間
+Ubiquitous.StayTurns: ドローンが残る会議の数
+Ubiquitous.FlyingSpeed: ドローンの速さ
+Ubiquitous.DoorHackCooldown: ドアを開ける待ち時間
+Ubiquitous.DoorHackScope: ドアを開けられる広さ
+Ubiquitous.VisibilityRange: ドローンの見える広さ
+Ubiquitous.MapShowColor: 地図に色を出す
+# ── バランサー (Balancer) ──
+Balancer.Name: バランサー
+Balancer.Blurb: 天秤にかけろ
+Balancer.Summary: 会議で 2 人を天秤にかけ、どちらかを必ず追放させるクルーです。
+Balancer.Balance: 天秤
+Balancer.Balance.Help: 会議中に 2 人を選ぶと天秤にかけます。ほかの人の名札とスキップが消え、全員がその 2 人のどちらかへ投票し直します (投票の時間は設定の秒数)。票の多い方が追放され、同じ票なら 2 人とも追放されます。途中で片方が死んだら残った方が追放されます。
+Balancer.Balance.Short: 2 人のどちらかを追放
+Balancer.VoteTime: 天秤の投票時間
+Balancer.UseCount: 使える回数
+Balancer.RandomVote: 入れなかった人の票はどちらかへ
+Balancer.Started: 天秤が傾く……どちらかに投票せよ
+Balancer.Title.Either: どちらかを選べ
+Balancer.Title.Average: どちらを追放する？
+Balancer.Title.YouVote: あなたが決めろ
+Balancer.Title.EitherExile: どちらかが追放される
+Balancer.Title.WhoIsImpostor: インポスターはどっちだ
+Balancer.Title.GetBalance: 天秤は釣り合うか
+Balancer.Title.PleaseVote: 投票せよ
+Balancer.DoubleExile: 天秤は釣り合い、2 人とも追放された
+Balancer.OnePlayerDead: 片方が倒れ、もう 1 人が追放された
+Balancer.NoPlayer: 天秤に乗る人はもういない
+
+# ── 作り直し: シーア / イビルシーア / ヴァルチャー / アーソニスト / マトリョーシカ / 魔術師 ──
+EvilSeer.ColorMode: 死体の色を出す
+EvilSeer.ColorMode.None: 出さない
+EvilSeer.ColorMode.LightDark: 明暗だけ
+EvilSeer.ColorMode.Adaptive: 死体の色
+EvilSeer.ColorTarget: 色を出すもの
+EvilSeer.ColorTarget.All: 全部
+EvilSeer.ColorTarget.Flash: 光だけ
+EvilSeer.ColorTarget.Soul: 魂だけ
+EvilSeer.ColorTarget.Arrow: 矢印だけ
+EvilSeer.ShowArrows: 死体への矢印を出す
+EvilSeer.HauntMode: 取り憑き
+EvilSeer.HauntMode.None: 無し
+EvilSeer.HauntMode.Both: 両方
+EvilSeer.HauntMode.Others: 取り憑かせる
+EvilSeer.HauntMode.Self: 取り憑く
+EvilSeer.HauntCooldown: 取り憑かせるの待ち時間
+EvilSeer.Haunt: 取り憑かせる
+EvilSeer.Haunt.Help: 「取り憑く」設定なら、自分をキルした人に狼憑き (陣営を見分ける役職からインポスターに見える) が付きます。「取り憑かせる」設定なら、1 回だけ近くの人に狼憑きを付けられます。
+EvilSeer.Haunt.Short: 狼憑きを付ける
+EvilSeer.LightColor: 明るい色
+EvilSeer.DarkColor: 暗い色
+EvilSeer.FlashColorText: {color} の人が死んだ
+Vulture.ShowArrows: 死体への矢印を出す
+Arsonist.Duration: 塗るのにかかる時間
+Matryoshka.WearLimit: 着られる回数
+Matryoshka.WearReport: 着ている間も死体を通報できる
+Matryoshka.AddKillCooldown: 着るたびに延びるキルの待ち時間
+Conjurer.AddLength: マーカーを置ける距離
+Conjurer.CanKillImpostor: インポスターも倒す
+Conjurer.ShowFlash: 発動で全員の画面を光らせる
+
+# ── 作り直し: ディメンションウォーカー / 殺し屋 ──
+DimensionWalker.ActivateTime: ワームホールが使えるまでの時間
+DimensionWalker.HoleCount: 置けるワームホールの数
+Hitman.KillCooldown: キルの待ち時間
+Hitman.ChangeTargetTime: ターゲットが変わるまでの時間
+Hitman.OutMission: 失敗が重なると死ぬ
+Hitman.ImpostorVision: インポスターの視界を持つ
+Hitman.ResetOnMeeting: 会議の後にターゲットを変える
+Hitman.Timer: ターゲットの期限: あと {n} 秒
+
+# ── 作り直し: シュレディンガーの猫 ──
+SchrodingersCat.HasKill: 猫はキルできる
+SchrodingersCat.KillCooldown: 猫のキルの待ち時間
+SchrodingersCat.KillVictimSuicide: キルした人が少し後に死ぬ
+SchrodingersCat.SuicideTime: キルした人が死ぬまでの時間
+SchrodingersCat.BeCrewOnExile: 追放されたらクルーの猫になる
+SchrodingersCat.CrewOnKillByNonSpecific: ほかの第三陣営にキルされたらクルーの猫として死ぬ
+SchrodingersCat.SuicideText: 猫の呪いで、もうすぐ死ぬ……
+SchrodingersCat.TeamCrew: クルーの猫
+SchrodingersCat.TeamCrew.Help: クルーと一緒に勝ちます。
+SchrodingersCat.TeamCrew.Short: クルーと勝つ
+SchrodingersCat.TeamImpostor: インポスターの猫
+SchrodingersCat.TeamImpostor.Help: インポスターと一緒に勝ちます。インポスター以外をキルでき、ベントを使え、インポスターの視界を持ちます。インポスターとお互いに分かります。
+SchrodingersCat.TeamImpostor.Short: インポスターと勝つ
+SchrodingersCat.TeamMadmate: マッドの猫
+SchrodingersCat.TeamMadmate.Help: インポスターと一緒に勝ちます (マッドメイトの設定に従います)。
+SchrodingersCat.TeamMadmate.Short: インポスターと勝つ
+SchrodingersCat.TeamJackal: ジャッカルの猫
+SchrodingersCat.TeamJackal.Help: ジャッカルと一緒に勝ちます。ジャッカルの仲間以外をキルできます。ジャッカルの仲間とお互いに分かります。
+SchrodingersCat.TeamJackal.Short: ジャッカルと勝つ
+SchrodingersCat.TeamFriends: フレンズの猫
+SchrodingersCat.TeamFriends.Help: ジャッカルと一緒に勝ちます (ジャッカルフレンズの設定に従います)。
+SchrodingersCat.TeamFriends.Short: ジャッカルと勝つ
+SchrodingersCat.TeamPavlovs: パブロフの猫
+SchrodingersCat.TeamPavlovs.Help: パブロフの飼い主と一緒に勝ちます。パブロフの仲間以外をキルできます。パブロフの仲間とお互いに分かります。
+SchrodingersCat.TeamPavlovs.Short: パブロフと勝つ
+SchrodingersCat.TeamPavlovFriends: パブロフのフレンズの猫
+SchrodingersCat.TeamPavlovFriends.Help: パブロフの飼い主と一緒に勝ちます。
+SchrodingersCat.TeamPavlovFriends.Short: パブロフと勝つ
+
+# ── 作り直し: 金庫破り ──
+Safecracker.Unlock: 金庫を開ける
+Safecracker.Unlock.Help: 自分のタスクを全部終えると単独で勝ちます。タスクを設定の割合こなすごとに力が増えます: キルを防ぐ (回数)・追放されても生き返る (回数)・ベントを使える・インポスターの視界・インポスターが分かる。
+Safecracker.Unlock.Short: タスクを全部終えて勝つ
+Safecracker.KillGuardTask: キルを防げるようになるタスクの割合
+Safecracker.MaxKillGuard: キルを防げる回数
+Safecracker.ExiledGuardTask: 追放から生き返れるようになるタスクの割合
+Safecracker.MaxExiledGuard: 追放から生き返れる回数
+Safecracker.VentTask: ベントを使えるようになるタスクの割合
+Safecracker.ImpostorLightTask: インポスターの視界になるタスクの割合
+Safecracker.CheckImpostorTask: インポスターが分かるタスクの割合
+Safecracker.CommonTasks: 共通タスクの数
+Safecracker.ShortTasks: 短いタスクの数
+Safecracker.LongTasks: 長いタスクの数
+Safecracker.KillGuarded: 金庫の守りがキルを防いだ！
+Safecracker.ExileGuarded: 金庫の守りで生き返った！
+
+# ── 作り直し: 神 ──
+God.SeeVote: 投票先が見える
+God.CommonTasks: 共通タスクの数
+God.ShortTasks: 短いタスクの数
+God.LongTasks: 長いタスクの数
+God.CannotFixReactor: 原子炉・酸素を直せない
+God.CannotFixComms: 通信を直せない
+God.CannotFixLights: 停電を直せない
+God.CannotUseReport: 通報できない
+God.CannotUseEmergency: 緊急会議を開けない
+God.NoEmergencyText: 神は緊急会議を開けない
+
+# ── 作り直し: 自宅警備員 ──
+HomeSecurityGuard.Task1: 自宅を警備する
+HomeSecurityGuard.Task2: ゴロゴロする
+HomeSecurityGuard.Task3: お菓子を食べる
+HomeSecurityGuard.Task4: テレビを見る
+HomeSecurityGuard.Task5: ゲームをする
+HomeSecurityGuard.Task6: ひなたぼっこする
+HomeSecurityGuard.Task7: 玄関を見張る
+HomeSecurityGuard.Task8: 不審者をチェックする
+HomeSecurityGuard.Task9: 居眠りする
+HomeSecurityGuard.Task10: スマホをいじる
+HomeSecurityGuard.Task11: ネットを巡回する
+HomeSecurityGuard.Task12: 届いた荷物を確かめる
+
+# ── 作り直し: ジャンボ ──
+JumboModifier.MaxSize: 最大の大きさ (10 で 2 倍)
+
+Spelunker.DoorChance: ドアを開けた時に死ぬ確率
+ModifierSpelunker.DoorChance: ドアを開けた時に死ぬ確率
+
+WaveCannon.Duration: 波動砲の充填時間
+WaveCannon.SyncKillCooldown: 波動砲とキルボタンのクールダウンを同期する
+WaveCannon.AnimationType: 波動砲の種類
+WaveCannon.AnimationType.Tank: 戦車
+WaveCannon.AnimationType.Santa: サンタ
+WaveCannon.KillSound: キル音を鳴らす
+WaveCannon.KillSoundDistributed: キル音を分散させる
+WaveCannonJackal.ImpostorVision: インポスターの視界
+WaveCannonJackal.Infinite: 無限ジャッカル
+WaveCannonJackal.SidekickKind: サイドキックの種類
+WaveCannonJackal.SidekickKind.SidekickWaveCannon: 波動砲サイドキック
+WaveCannonJackal.SidekickKind.Bullet: 弾
+WaveCannonJackal.BulletToJackal: 弾がジャッカルに昇格する
+WaveCannonJackal.BulletHasWaveCannon: 弾が昇格した際波動砲を持つ
+WaveCannonJackal.BulletLoadCooldown: 装填のクールダウン
+WaveCannonJackal.BulletChargeTime: 超波動砲の充填時間
+WaveCannonJackal.BulletSeesParent: 弾が親を見られる
+WaveCannonJackal.ParentSeesBullet: 親が弾を見られる
+WaveCannonJackal.Duration: 波動砲の充填時間
+WaveCannonJackal.SyncKillCooldown: 波動砲とキルボタンのクールダウンを同期する
+WaveCannonJackal.AnimationType: 波動砲の種類
+WaveCannonJackal.KillSound: キル音を鳴らす
+WaveCannonJackal.KillSoundDistributed: キル音を分散させる
+Bullet.Name: 弾
+Bullet.Blurb: 波動砲に込められる
+Bullet.Summary: 波動砲ジャッカルに仲間にされた人です。親の波動砲に自分を込めて、賢者も貫く超波動砲にできます。
+Bullet.Load: 装填
+Bullet.Load.Help: 親 (波動砲ジャッカル) に近づいて使うと、親の波動砲に自分を込めます。親の波動砲はすぐ撃てるようになり、充填の間は親に張り付いて動けません。撃つと弾は消えます。親が死ぬと、設定でジャッカルに上がります。
+Bullet.Load.Short: 親の波動砲に込める
+Bullet.NoEmergencyText: なんだか怖くて会議を開けない...
+
+Kunoichi.Show: クナイ表示
+Kunoichi.Show.Help: 手にクナイを持って見せるかを切り替えます (自分の画面だけ)。
+Kunoichi.Show.Short: 手のクナイを表示
+Kunoichi.Hide: 隠れる
+Kunoichi.Hide.Help: しばらく止まっていると透明になれます (設定で自動かボタン)。動くと元に戻ります。仲間からはうっすら見えます。
+Kunoichi.Hide.Short: 止まって透明になる
+Kunoichi.KillKunai: キルに必要なクナイ数
+Kunoichi.IsHide: 透明化
+Kunoichi.HideByButton: 透明化をボタンで行う
+Kunoichi.HideTime: 透明化に必要な時間
+Kunoichi.ThrowWhileHidden: 透明化中にクナイを投げられる
+
+TriggerHappy.UseLimit: 使える回数
+TriggerHappy.SyncKillCooldown: 乱射とキルボタンのクールダウンを同期する
+TriggerHappy.Duration: 乱射の時間
+TriggerHappy.RequiredHits: 倒すのに必要な弾数
+TriggerHappy.BulletSize: 弾の大きさ
+TriggerHappy.PierceWalls: 弾が壁を抜ける
+TriggerHappy.SpreadAngle: 弾のばらつき
+TriggerHappy.FriendlyFire: 仲間にも当たる
+TriggerHappy.KillSound: キル音を鳴らす
+
+Vampire.Bite: 吸血
+Vampire.Bite.Help: キルボタンで噛むと、相手は決まった秒数たってから死にます (会議が呼ばれたらその時に死にます)。噛まれた人は歩いた跡に血を落とし、その血は次の会議の後から決まった回数の会議の間だけ見えます。設定で、停電を直せず、端末を使えず、アドミンに映らず、バイタルでは死んでも生きて見えます (眷属も同じ)。
+Vampire.Bite.Short: 噛んだ相手が遅れて死ぬ
+Vampire.NightFall: 眷属化
+Vampire.NightFall.Help: 近くのインポスター以外の人を眷属にします (1 回だけ)。眷属はあなたが死ぬと一緒に死にます。
+Vampire.NightFall.Short: 眷属を作る
+Vampire.AbsorptionCooldown: 吸血のクールダウン
+Vampire.BloodstainDuration: 血の跡が残る会議の数
+Vampire.BlackBloodstains: 血の跡を黒くする
+Vampire.CreateDependents: 眷属を作れる
+Vampire.NightFallCooldown: 眷属化のクールダウン
+Vampire.DependentKillCooldown: 眷属のキルのクールダウン
+Vampire.DependentCanVent: 眷属がベントを使える
+Vampire.DependentReverseVision: 眷属の視界が逆になる
+Vampire.DependentImpostorVisionInLightsOff: 停電中の眷属の視界をインポスターと同じにする
+Vampire.CannotFixSabotage: 停電を直せない
+Vampire.InvisibleOnAdmin: アドミンに映らない
+Vampire.NoDeathOnVitals: バイタルで死んでも生きて見える
+Vampire.CannotUseDevice: 端末を使えない
