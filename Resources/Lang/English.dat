@@ -1280,10 +1280,10 @@ Phosphorus.Name: Phosphorus
 Phosphorus.Blurb: A lantern against the dark
 Phosphorus.Summary: A crewmate who places lanterns and lights them up.
 Phosphorus.Put: Place
-Phosphorus.Put.Help: Places a lantern where you stand. Everyone can see it from the next round.
+Phosphorus.Put.Help: Places a lantern where you stand. Everyone can see it from the next round. If an explosion or a blow knocks it over, it breaks and spills oil, which catches fire if the lantern was lit.
 Phosphorus.Put.Short: Place a lantern
 Phosphorus.Light: Light
-Phosphorus.Light.Help: Lights your lanterns for a while, brightening their surroundings (press again to turn off).
+Phosphorus.Light.Help: Lights your lanterns for a while, brightening their surroundings (press again to turn off). Walls block the light, but it leaks through holes in them. A lantern goes out under water and lights up by itself near fire.
 Phosphorus.Light.Short: Light the lanterns
 Phosphorus.Cooldown: Place cooldown
 Phosphorus.Limit: Lantern limit

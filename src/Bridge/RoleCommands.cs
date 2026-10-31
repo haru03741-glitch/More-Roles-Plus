@@ -511,6 +511,12 @@ internal static class RoleCommands
             reply("OK meeting");
         });
 
+        TestBridge.Register("lantern", "[reveal] ホスフォラスのランタンの状態 (倒れた・水で消えた・火で点いた数と、1 つずつの状態) / reveal = 会議を待たずに全員に見せる (この端末だけ)", (args, reply) =>
+        {
+            if (args.Trim() == "reveal") Roles.Crew.Phosphorus.RevealForTest();
+            reply($"OK lantern {Roles.Crew.Phosphorus.Describe()}");
+        });
+
         TestBridge.Register("guessfx", "[番号] ゲッサーの撃ち抜く演出をこの端末だけで出す (倒さない) / 引数なしで状態", (args, reply) =>
         {
             if (byte.TryParse(args.Trim(), out byte id)) Roles.GuessShotFx.Begin(id);

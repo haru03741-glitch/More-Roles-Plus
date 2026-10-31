@@ -1280,10 +1280,10 @@ Phosphorus.Name: ホスフォラス
 Phosphorus.Blurb: 闇を照らす灯をここに
 Phosphorus.Summary: ランタンを置いて、周りを照らせるクルーです。
 Phosphorus.Put: 設置
-Phosphorus.Put.Help: 今いる所にランタンを置きます。次のターンから全員に見えるようになります。
+Phosphorus.Put.Help: 今いる所にランタンを置きます。次のターンから全員に見えるようになります。ランタンは爆発や打撃で倒れると割れて油がこぼれ、点いていれば火がつきます。
 Phosphorus.Put.Short: ランタンを置く
 Phosphorus.Light: 点灯
-Phosphorus.Light.Help: 置いたランタンを決まった時間だけ点け、周りを照らします (もう一度押すと消します)。
+Phosphorus.Light.Help: 置いたランタンを決まった時間だけ点け、周りを照らします (もう一度押すと消します)。光は壁でさえぎられますが、壁の穴からは漏れます。ランタンは水に浸かると消え、燃えている所の近くでは勝手に点きます。
 Phosphorus.Light.Short: ランタンを点ける
 Phosphorus.Cooldown: 設置の待ち時間
 Phosphorus.Limit: 置けるランタンの数
