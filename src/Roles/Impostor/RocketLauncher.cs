@@ -293,9 +293,15 @@ public sealed class RocketLauncher : RoleBase
         MoveTo(PortKit.ById(target), start);
     }
 
+    private float _blastAt = -9f; // 全員の端末: 最後に爆発した時刻 (爆発で倒す本編のキルで撃った人を動かさないため)
+
+    // 爆発から少しの間 (本編のキルが全員に届くまで) に起きたその人のキルは、離れた所からのキル
+    internal static bool RangedKill(PlayerControl p) => RoleState.Of(p) is RocketLauncher rl && Time.time - rl._blastAt < 1.5f;
+
     private static void Explode(PlayerControl user, Vector2 at, List<byte> victims)
     {
         if (RoleState.Of(user) is not RocketLauncher rl) return;
+        rl._blastAt = Time.time;
         foreach (var id in new[] { rl._held, rl._shot })
             if (id != 255)
             {

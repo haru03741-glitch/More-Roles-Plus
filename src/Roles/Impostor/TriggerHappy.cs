@@ -47,7 +47,10 @@ public sealed class TriggerHappy : RoleBase
 
     private const int MaxLive = 160; // 1 人ぶんの飛んでいる弾の上限 (止まった端末の後で一度に湧いても重くしない)
     private const int MaxBatch = 40; // 1 通に載せる弾の数 (16B × 40 = 640B)
-    private float _activeUntil;      // ホスト: 乱射の終わりから少しの間はキルの申告を受ける (まとめて送るぶんの遅れ)
+    private float _activeUntil;      // 乱射の終わりから少しの間はキルの申告を受ける (まとめて送るぶんの遅れ)。全員の端末で同じ
+
+    // 乱射中 (と終わった直後) のその人のキルは、弾で離れた所から倒したキル
+    internal static bool RangedKill(PlayerControl p) => RoleState.Of(p) is TriggerHappy th && (th._active || Time.time < th._activeUntil + 0.5f);
 
     private readonly List<Shot> _shots = new();
     private readonly Dictionary<byte, int> _hits = new();
