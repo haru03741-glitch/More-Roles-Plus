@@ -24,9 +24,11 @@ internal static class ShotKit
 
     // from から dir へ、壁 (当たりのある物) までの距離。無ければ len
     private static readonly Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<RaycastHit2D> _rayHits = new((long)8); // int を渡すと Android で壊れた配列になる
-    internal static float WallDistance(Vector2 from, Vector2 dir, float len)
+    internal static float WallDistance(Vector2 from, Vector2 dir, float len) => WallDistance(from, dir, len, Constants.ShipAndObjectsMask);
+
+    internal static float WallDistance(Vector2 from, Vector2 dir, float len, int mask)
     {
-        int n = Physics2D.RaycastNonAlloc(from, dir, _rayHits, len, Constants.ShipAndObjectsMask);
+        int n = Physics2D.RaycastNonAlloc(from, dir, _rayHits, len, mask);
         float best = len;
         for (int i = 0; i < n; i++)
         {
@@ -59,19 +61,5 @@ internal static class ShotKit
         if (t < 0f || t > len) return -1f;
         float d = (ap - ab / len * t).magnitude;
         return d <= width ? t : -1f;
-    }
-
-    // 全員の端末で: 線をしばらく描く
-    internal static void Beam(Vector2 a, Vector2 b, Color c, float width, float secs)
-    {
-        var go = new GameObject("MrpBeam");
-        var lr = go.AddComponent<LineRenderer>();
-        lr.positionCount = 2;
-        lr.SetPosition(0, new Vector3(a.x, a.y, -5f));
-        lr.SetPosition(1, new Vector3(b.x, b.y, -5f));
-        lr.startWidth = lr.endWidth = width;
-        lr.sharedMaterial = LineMat;
-        lr.startColor = lr.endColor = c;
-        PortKit.After(secs, () => { if (go) Object.Destroy(go); });
     }
 }

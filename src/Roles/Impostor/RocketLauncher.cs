@@ -28,6 +28,10 @@ public sealed class RocketLauncher : RoleBase
     public static readonly FloatOpt LoadedTimeLimit = new("RocketLauncher.LoadedTimeLimit", 10f, 2.5f, 60f, 2.5f, "s") { When = () => LimitLoadedTime };
     public static readonly BoolOpt CanUseNormalKill = new("RocketLauncher.CanUseNormalKill", true);
 
+    // 撃たれた人がぶつかった所で地形ごと爆発する (爆発の見た目・音・土煙・瓦礫・壁の穴は地形の仕組みが出す)
+    private static float BlastRadius => System.Math.Clamp(ExplosionRange * 2.4f, 0.6f, Terrain.TerrainPermit.MaxRadius);
+    public override Terrain.TerrainPermit TerrainPermit => Terrain.TerrainPermit.None.WithBlast(BlastRadius);
+
     private const float Speed = 7.5f;
     private const float MaxLifetime = 8f;
     private const float PlayerRadius = 0.1f;
@@ -156,15 +160,20 @@ public sealed class RocketLauncher : RoleBase
         _life += dt;
         Vector2 step = _dir * Speed * dt;
         Vector2 next = _pos + step;
-        bool hit = false;
-        Vector2 at = next;
+        bool hit = false, wallHit = false;
+        Vector2 at = next, wallPoint = next;
         if (IsLocal && !_exploded)
         {
-            var wall = Physics2D.Raycast(_pos, _dir, step.magnitude + 0.3f, Constants.ShipAndAllObjectsMask);
-            if (wall.collider)
+            // 壁と物と家具 (層 12 は本編のマスクに入っていない) だけを、トリガーを飛ばして見る。
+            // 人の層を入れると、飛ばしている本人の体に当たる
+            float look = Speed * dt + 0.3f;
+            float d = ShotKit.WallDistance(_pos, _dir, look, Constants.ShipAndObjectsMask | (1 << 12));
+            if (d < look)
             {
-                hit = true;
-                at = wall.point - _dir * 0.55f;
+                hit = wallHit = true;
+                wallPoint = _pos + _dir * d;
+                Plugin.Logger.LogInfo($"rocket launcher: hit wall at {wallPoint.x:0.00},{wallPoint.y:0.00}");
+                at = wallPoint - _dir * 0.55f;
             }
             else if (CollideWithPlayers)
             {
@@ -184,6 +193,9 @@ public sealed class RocketLauncher : RoleBase
             var victims = Victims(t, _pos);
             ExplodeCall.Send((_pos, victims));
             Explode(Player, _pos, victims);
+            // 壁に当たったら壁の上で、飛んできた向きへ涙形に抜ける爆発 (壁の奥まで壊れる)。人に当たった・止まった時は円
+            var res = Terrain.TerrainApi.Blast(wallHit ? wallPoint : _pos, BlastRadius, wallHit ? _dir : Vector2.zero, wallHit ? 0.8f : 0f);
+            if (!res.Ok) Plugin.Logger.LogInfo($"rocket launcher: terrain blast refused ({res.Why})");
         }
     }
 
@@ -211,7 +223,7 @@ public sealed class RocketLauncher : RoleBase
         var t = PortKit.ById(id);
         var m = ((Vector2)(t ? t.transform.position : Player.transform.position), new List<byte> { id });
         ExplodeCall.Send(m);
-        Explode(Player, m.Item1, m.Item2, false);
+        Explode(Player, m.Item1, m.Item2);
     }
 
     private static readonly RemoteCall<(byte target, Vector2 start, Vector2 dir)> ShotCall = new("RocketLauncher.Shot", Route.Anyone,
@@ -250,7 +262,7 @@ public sealed class RocketLauncher : RoleBase
         MoveTo(PortKit.ById(target), start);
     }
 
-    private static void Explode(PlayerControl user, Vector2 at, List<byte> victims, bool effect = true)
+    private static void Explode(PlayerControl user, Vector2 at, List<byte> victims)
     {
         if (RoleState.Of(user) is not RocketLauncher rl) return;
         foreach (var id in new[] { rl._held, rl._shot })
@@ -261,11 +273,6 @@ public sealed class RocketLauncher : RoleBase
             }
         rl._held = rl._shot = 255;
         rl._flying = false;
-        if (effect)
-        {
-            ShotKit.Beam(at + new Vector2(-ExplosionRange, 0f), at + new Vector2(ExplosionRange, 0f), new UnityEngine.Color(1f, 0.5f, 0f, 0.8f), ExplosionRange * 2f, 0.4f);
-            if (PlayerControl.LocalPlayer && Vector2.Distance(PlayerControl.LocalPlayer.transform.position, at) < 4f) PortKit.Flash(new UnityEngine.Color(1f, 0.5f, 0f), 0.4f);
-        }
         if (!AmongUsClient.Instance.AmHost) return;
         _exploding = true;
         try
