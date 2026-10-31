@@ -54,12 +54,26 @@ public static class GameRules
     // 自分の本編の役職にベントを許す (役職が付いた時)
     internal static void OnRoleSet(PlayerControl p)
     {
+        if (p && Roles.RoleState.Of(p) is { CanVent: not null } mrp) { ApplyRoleVent(mrp); return; }
         if (!EveryoneVents || !p || !p.AmOwner || p.Data == null) return;
         var role = p.Data.Role;
         if (!role || role.CanVent || RoleManager.IsGhostRole(role.Role)) return;
         role.CanVent = true;
         var hud = Vanilla.Hud;
         if (hud && hud.ImpostorVentButton && ShipStatus.Instance) hud.ImpostorVentButton.ToggleVisible(true);
+    }
+
+    // MRP の役職が決めたベントの可否を本編の役職へ写す (役職が付いた時と、本編の役職が後から届いた時)
+    internal static void ApplyRoleVent(Roles.RoleBase mrp)
+    {
+        var p = mrp.Player;
+        if (mrp.CanVent is not bool can || !p || p.Data == null) return;
+        var role = p.Data.Role;
+        if (!role || RoleManager.IsGhostRole(role.Role)) return;
+        role.CanVent = can;
+        if (!p.AmOwner) return;
+        var hud = Vanilla.Hud;
+        if (hud && hud.ImpostorVentButton && ShipStatus.Instance) hud.ImpostorVentButton.ToggleVisible(can && !p.Data.IsDead);
     }
 }
 

@@ -40,6 +40,17 @@ public sealed class Ability
     // 効果で変えた物は役職の寿命 (Lifespan) にも片付けを付けておく
     public Action OnEnd { get; init; }
 
+    // 効果の間にもう一度押すと効果を途中で終える (押した時に OnCancel、その後 OnEnd)。CancelLabel = 効果の間のボタンの名前
+    public bool Cancellable { get; init; }
+    public Action OnCancel { get; init; }
+    public Text? CancelLabel { get; init; }
+    public Func<bool> CanCancel { get; init; } // 途中で終えられるか (null = いつでも)
+
+    // 効果を今終える (使った人の端末で・OnEnd が呼ばれる)
+    public void EndEffect() => Button?.CancelEffect(false);
+
+    public bool InEffect => Button != null && Button.InEffect;
+
     // 使える回数 (null か 0 以下 = 何回でも)
     public Func<int> MaxUses { get; init; }
 
@@ -66,6 +77,13 @@ public sealed class Ability
 
     // 試合の始めと会議の後は待ち時間から始める
     public bool CooldownAtStart { get; init; } = true;
+
+    // Player: 死んだ人 (幽霊) を狙う / 壁越しでも狙える
+    public bool TargetDead { get; init; }
+    public bool IgnoreWalls { get; init; }
+
+    // 死んでいる間だけ使える (幽霊の能力)。生きている間はボタンが出ない
+    public bool Ghost { get; init; }
 
     // 時戻しで回数と待ち時間を戻さない (時戻しの能力そのもの)
     public bool KeepOnRewind { get; init; }
@@ -180,8 +198,10 @@ internal static class Abilities
             a.Button.ResetOnShow = a.CooldownAtStart;
             a.Button.Effect = a.Duration;
             a.Button.OnEffectEnd = a.OnEnd;
+            if (a.Cancellable) a.Button.SetCancel(a.OnCancel, a.CancelLabel?.ToString(), a.CanCancel);
             a.Button.SetUses(a.UsesLeft);
             a.Button.SetUsable(a.Target != AbilityTarget.Player && a.UsesLeft != 0);
+            if (a.Ghost) a.Button.SetGhost(true);
             if (a.CooldownAtStart) a.Button.StartCooldown();
         }
     }
@@ -190,7 +210,7 @@ internal static class Abilities
     {
         if (a.UsesLeft == 0) return false;
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || lp.Data == null || lp.Data.IsDead || !lp.CanMove) return false;
+        if (!lp || lp.Data == null || lp.Data.IsDead != a.Ghost || !lp.CanMove) return false;
         if (a.Target == AbilityTarget.Self)
         {
             if (a.OnHold != null) return true; // 長押しの能力は押せるかだけを返す (ボタンが溜め始め、離した時に Released)
@@ -236,13 +256,15 @@ internal static class Abilities
         _scan = 0;
         var lp = role.Player;
         bool live = ModButton.HudShown && lp && lp.Data != null && !lp.Data.IsDead;
+        bool ghost = ModButton.GhostShown && lp && lp.Data != null && lp.Data.IsDead;
         long now = Environment.TickCount64;
         foreach (var a in role.Abilities)
         {
+            bool on = a.Ghost ? ghost : live;
             if (a.Target == AbilityTarget.Pick && a.Button != null)
-                a.Button.SetUsable(live && a.UsesLeft != 0 && now >= a.PendingUntil);
+                a.Button.SetUsable(on && a.UsesLeft != 0 && now >= a.PendingUntil);
             if (a.Target != AbilityTarget.Player || a.Button == null) continue;
-            var aim = live && lp.CanMove ? Targeting.ClosestPlayer(lp, Reach(a), a.CanTarget) : null;
+            var aim = on && lp.CanMove ? Targeting.ClosestPlayer(lp, Reach(a), a.CanTarget, a.TargetDead, a.IgnoreWalls) : null;
             SetAim(a, aim);
             a.Button.SetUsable(aim is not null && a.UsesLeft != 0 && now >= a.PendingUntil);
         }
@@ -342,17 +364,17 @@ internal static class Abilities
         var hud = MeetingHud.Instance;
         if (meeting ? !hud || hud.state is MeetingHud.MeetingStates.Results or MeetingHud.MeetingStates.Proceeding
                     : hud || ExileController.Instance) return "not now";
-        if (!user || user.Data == null || user.Data.IsDead || user.Data.Disconnected) return "user";
+        if (!user || user.Data == null || user.Data.IsDead != a.Ghost || user.Data.Disconnected) return "user";
         if (!meeting && (user.inVent || user.inMovingPlat)) return "user busy";
         if (a.UsesLeft == 0) return "no uses";
         if (a.MeetingLeft == 0) return "no uses this meeting";
-        if (!target || target == user || target.Data == null || target.Data.IsDead || target.Data.Disconnected) return "target";
+        if (!target || target == user || target.Data == null || target.Data.IsDead != a.TargetDead || target.Data.Disconnected) return "target";
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
         if (meeting) return null; // 会議の能力は距離と待ち時間を見ない
         if (a.Target == AbilityTarget.Pick)
             return (Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user) ? "cooldown" : null;
         if (target.inVent || target.inMovingPlat) return "target busy";
-        string far = Targeting.Unreachable(user, target, Reach(a) + DistanceSlack);
+        string far = Targeting.Unreachable(user, target, Reach(a) + DistanceSlack, a.IgnoreWalls);
         if (far != null) return far;
         if ((Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user)) return "cooldown";
         return null;

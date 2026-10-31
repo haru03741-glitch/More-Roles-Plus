@@ -31,6 +31,19 @@ public abstract class AddonBase : Assignable
         _ => OnCrew.Value,
     };
 
+    // 付いている役職に能力ボタンを足す (OnAssigned の中で。役職の無い人には足せないので null)
+    protected Ability AddAbility(Ability ability) => Role?.AddAbility(ability);
+
+    // 何人 1 組で付くか (ラバーズなら 2)。2 以上なら配る時に同じ数の人へまとめて付け、組は AddonGroups で分かる
+    public virtual int GroupSize => 1;
+
+    // 幽霊役職か。試合の始めには配らず、死んだ人に (出現率・人数どおりに) ホストが後から付ける (GhostRoles)。
+    // 能力は Ability.Ghost = true にして、死んでいる間に使う
+    public virtual bool Ghost => false;
+
+    // 試合の終わりに、勝った陣営から勝ちを奪うか (RoleBase.StealsWin と同じ)
+    public virtual bool StealsWin(GameResult result) => false;
+
     // 付く陣営。設定画面に自動で付く
     internal BoolOpt OnCrew, OnImpostor, OnNeutral;
 }

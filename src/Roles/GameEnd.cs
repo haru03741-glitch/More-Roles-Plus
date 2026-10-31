@@ -54,6 +54,29 @@ public static class GameEnd
         End(r, GameOverReason.ImpostorsByKill);
     }
 
+    // 役職から: role とその仲間 (winners) の勝ちで試合を終わらせる (三匹の仔豚など)。ホストの端末で呼ばれた時だけ効く
+    public static void WinWith(RoleBase role, System.Collections.Generic.IEnumerable<byte> winners)
+    {
+        if (role == null || !AmongUsClient.Instance.AmHost || _pending != null) return;
+        var r = new GameResult { Role = role };
+        foreach (var id in winners) r.Winners.Add(id);
+        End(r, GameOverReason.ImpostorsByKill);
+    }
+
+    // ホスト: 全員の負けで今すぐ終える (ジャンボの追放など)
+    public static void DrawAll()
+    {
+        if (!AmongUsClient.Instance.AmHost || _pending != null) return;
+        End(new GameResult { Draw = true }, GameOverReason.ImpostorDisconnect);
+    }
+
+    // ホスト: その陣営の勝ちで今すぐ終える (マッドてるてるの追放など)
+    public static void WinTeam(Team team)
+    {
+        if (!AmongUsClient.Instance.AmHost || _pending != null) return;
+        End(TeamResult(team), team == Team.Impostor ? GameOverReason.ImpostorsByVote : GameOverReason.CrewmatesByVote);
+    }
+
     internal static void Reset()
     {
         _pending = null;
@@ -112,13 +135,23 @@ public static class GameEnd
         reason = GameOverReason.ImpostorsByKill;
         int imp = 0, crew = 0, nk = 0;
         Killers.Clear();
+        LiveFactions.Clear();
         var all = GameData.Instance.AllPlayers;
+        // 先にキル役が生きている陣営を集める (キルしない仲間はその陣営が生きている間だけ陣営として数える)
         for (int i = 0; i < all.Count; i++)
         {
             var p = all[i];
             if (p == null || p.Disconnected || p.IsDead) continue;
             var role = RoleState.Of(p.PlayerId);
-            string killer = TestKillers.Contains(p.PlayerId) ? "test" : role is { Team: Team.Neutral, IsKiller: true } ? role.Id : null;
+            if (role is { Team: Team.Neutral, IsKiller: true } && role.Faction != null) LiveFactions.Add(role.Faction);
+        }
+        for (int i = 0; i < all.Count; i++)
+        {
+            var p = all[i];
+            if (p == null || p.Disconnected || p.IsDead) continue;
+            var role = RoleState.Of(p.PlayerId);
+            string killer = TestKillers.Contains(p.PlayerId) ? "test"
+                : role is { Team: Team.Neutral } && role.Faction != null && LiveFactions.Contains(role.Faction) ? role.Faction : null;
             if (killer != null)
             {
                 Killers.TryGetValue(killer, out int c);
@@ -144,14 +177,22 @@ public static class GameEnd
         if (imp > 0 || crew > nk || Killers.Count != 1) return null;
 
         string id = Killers.Keys.First();
-        var r = new GameResult { Role = Registry.Roles.FirstOrDefault(x => x.Id == id) };
+        return FactionResult(id);
+    }
+
+    // 第三陣営の陣営の勝ち: その陣営の全員 (死んだ人も) と、その陣営と一緒に勝つ役職
+    internal static GameResult FactionResult(string faction)
+    {
+        var r = new GameResult { Role = Registry.Roles.FirstOrDefault(x => x.Id == faction) ?? Registry.Roles.FirstOrDefault(x => x.Faction == faction) };
         foreach (var role in RoleState.All)
         {
-            if (role.Id == id) r.Winners.Add(role.PlayerId);
+            if (role.Faction == faction || role.WinsWithFaction == faction) r.Winners.Add(role.PlayerId);
         }
         foreach (byte pid in TestKillers) r.Winners.Add(pid);
         return r;
     }
+
+    private static readonly HashSet<string> LiveFactions = new();
 
     private static bool IsImpostor(NetworkedPlayerInfo p)
     {
@@ -159,7 +200,8 @@ public static class GameEnd
         return rb && rb.IsImpostor;
     }
 
-    // 陣営の勝ち: その陣営の全員 (死んだ人も)。第三陣営は入れない
+    // 陣営の勝ち: その陣営の全員 (死んだ人も)。第三陣営は入れない。
+    // 別の陣営と勝つ役職 (マッドメイトなど) は、その陣営の勝ちの時だけ入れる
     internal static GameResult TeamResult(Team team)
     {
         var r = new GameResult { Team = team };
@@ -169,7 +211,12 @@ public static class GameEnd
             var p = all[i];
             if (p == null || p.Disconnected) continue;
             var role = RoleState.Of(p.PlayerId);
-            if (role != null && role.Team == Team.Neutral) continue;
+            if (role?.WinsWithTeam != null)
+            {
+                if (role.WinsWithTeam == team) r.Winners.Add(p.PlayerId);
+                continue;
+            }
+            if (role != null && (role.Team == Team.Neutral || role.WinsWithFaction != null)) continue;
             if (IsImpostor(p) == (team == Team.Impostor)) r.Winners.Add(p.PlayerId);
         }
         return r;
@@ -240,6 +287,46 @@ public static class GameEnd
                 if (role.AlsoWins(r)) r.Winners.Add(role.PlayerId);
             }
             catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.AlsoWins: {e}"); }
+        }
+        // 横取り: 条件を満たした人がいれば、その人たちだけの勝ちにする
+        if (!r.Draw)
+        {
+            var thieves = new List<RoleBase>();
+            foreach (var role in RoleState.All)
+            {
+                try
+                {
+                    if (role.StealsWin(r)) thieves.Add(role);
+                }
+                catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.StealsWin: {e}"); }
+            }
+            var addonThieves = new List<byte>();
+            foreach (var addon in RoleState.AllAddons)
+            {
+                try
+                {
+                    if (addon.StealsWin(r) && !addonThieves.Contains(addon.PlayerId)) addonThieves.Add(addon.PlayerId);
+                }
+                catch (Exception e) { Plugin.Logger.LogError($"{addon.Id}.StealsWin: {e}"); }
+            }
+            if (thieves.Count > 0 || addonThieves.Count > 0)
+            {
+                r.Winners.Clear();
+                r.Team = null;
+                r.Role = thieves.Count > 0 ? thieves[0] : RoleState.Of(addonThieves[0]);
+                foreach (var t in thieves) r.Winners.Add(t.PlayerId);
+                foreach (var id in addonThieves) r.Winners.Add(id);
+                // 奪った勝ちに乗る役職 (キューピッドなど) をもう一度見る
+                foreach (var role in RoleState.All)
+                {
+                    if (r.Winners.Contains(role.PlayerId)) continue;
+                    try
+                    {
+                        if (role.AlsoWins(r)) r.Winners.Add(role.PlayerId);
+                    }
+                    catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.AlsoWins: {e}"); }
+                }
+            }
         }
         r.Winners.RemoveWhere(Spectate.IsWatching); // 観戦の人は勝敗に入らない
 
@@ -487,10 +574,9 @@ internal static class NeutralTaskPatch
 {
     public static void Prefix()
     {
-        if (!RoleState.AnyNeutral) return;
         foreach (var role in RoleState.All)
         {
-            if (role.Team != Team.Neutral || !role.Player) continue;
+            if (role.TasksCount || !role.Player) continue;
             var rb = role.Player.Data?.Role;
             if (rb) rb.TasksCountTowardProgress = false;
         }

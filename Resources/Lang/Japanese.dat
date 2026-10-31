@@ -1119,3 +1119,266 @@ Keybinds.Dodge: MRP の回避 (立ち合いの間)
 Duel.DodgeHint: 回避 残り {n}
 Duel.LockMash: 鍔迫り合い！ 左クリックか SPACE を連打
 Duel.LockMashTouch: 鍔迫り合い！ 画面を連打
+
+# ════ SuperNewRoles から移した役職 ════
+# ── メイヤー (Mayor) ──
+Mayor.Name: メイヤー
+Mayor.Blurb: その権力は村を救うだろう
+Mayor.Summary: 会議でほかの人より多くの票を入れられるクルーです。
+Mayor.Votes: 所持票数
+# ── マッドメイト (Madmate) ──
+Madmate.Name: マッドメイト
+Madmate.Blurb: 道を違えし者
+Madmate.Summary: クルーの姿のまま、インポスターの味方をする役職です。
+Madmate.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
+Madmate.KnowImpostors: インポスターが分かる
+Madmate.NeededTasks: 分かるのに要るタスクの数
+Madmate.CanVent: ベントを使える
+Madmate.ImpostorVision: インポスターの視界を持つ
+# ── シェリフ (Sheriff) ──
+Sheriff.Name: シェリフ
+Sheriff.Blurb: 正義の名のもとに
+Sheriff.Summary: 「執行」で近くの人を倒せるクルーです。倒してよい陣営の人でなければ自分が死にます。
+Sheriff.Execute: 執行
+Sheriff.Execute.Help: 近くの人を倒します。相手が設定で倒してよい陣営でなければ自分が死にます (自決の設定による)。
+Sheriff.Execute.Short: 近くの人を執行する
+Sheriff.KillCooldown: 執行の待ち時間
+Sheriff.MaxKills: 執行できる回数
+Sheriff.SuicideMode: 自決の仕方
+Sheriff.SuicideMode.Default: 誤射した時だけ
+Sheriff.SuicideMode.AlwaysSuicide: いつも相手と一緒に死ぬ
+Sheriff.SuicideMode.AlwaysKill: 誤射しても死なない
+Sheriff.KillImpostor: インポスターを倒せる
+Sheriff.KillMad: マッドを倒せる
+Sheriff.KillNeutral: 第三陣営を倒せる
+Sheriff.KillFriends: フレンズを倒せる
+Sheriff.KillLovers: 恋人を倒せる
+# ── 霊媒師 (Seer) ──
+Seer.Name: 霊媒師
+Seer.Blurb: 魂の声を聞け
+Seer.Summary: 誰かが死ぬと画面が光り、死んだ場所に魂が見えるクルーです。
+Seer.Mode: 見え方
+Seer.Mode.Both: 光と魂
+Seer.Mode.Flash: 光だけ
+Seer.Mode.Soul: 魂だけ
+Seer.LimitSoul: 魂を時間で消す
+Seer.SoulDuration: 魂の見える時間
+# ── ジャッカル (Jackal) ──
+Jackal.Name: ジャッカル
+Jackal.Blurb: 仲間と共に全てを狩れ
+Jackal.Summary: キルでき、1 度だけ仲間を作れる第三陣営です。
+Jackal.WinCond: ジャッカルの仲間だけが生き残ると勝ち
+Jackal.Kill: キル
+Jackal.Kill.Help: 本編のキルボタンを持ちます。視界とキル可能距離は「ゲーム設定」タブの「第三陣営」で決まります。仲間は倒せません。
+Jackal.Kill.Short: 本編のキルボタンを持つ
+Jackal.Sidekick: サイドキック
+Jackal.Sidekick.Help: 近くの人を仲間 (サイドキックかジャッカルフレンズ) にします (1 回だけ)。
+Jackal.Sidekick.Short: 近くの人を仲間にする
+Jackal.KillCooldown: キルのクールダウン
+Jackal.CanVent: ベントを使える
+Jackal.CanSidekick: 仲間を作れる
+Jackal.SidekickCooldown: 仲間作りの待ち時間
+Jackal.Infinite: 上がったジャッカルも仲間を作れる
+# ── サイドキック (Sidekick) ──
+Sidekick.Name: サイドキック
+Sidekick.Blurb: ジャッカルの右腕
+Sidekick.Summary: ジャッカルに仲間にされた第三陣営です。キルはできず、ジャッカルが全員死ぬとジャッカルに上がります。
+Sidekick.WinCond: ジャッカルが勝つと一緒に勝ち
+Sidekick.CanVent: ベントを使える
+# ── ベイト (Bait) ──
+Bait.Name: ベイト
+Bait.Blurb: 罠にかかったのはどちらだ
+Bait.Summary: キルされると、少し後にキルした人が自分の死体を通報してしまうクルーです。
+Bait.ReportTime: 通報までの時間
+Bait.WarnKiller: キルした人の画面を光らせる
+Bait.RandomDelay: 通報までの時間をばらつかせる
+Bait.DelayVariation: ばらつきの最大
+# ── ラバーズ (Lovers) ──
+Lovers.Name: ラバーズ
+Lovers.Blurb: 二人の愛は永遠に
+Lovers.Summary: 2 人 1 組で付くアドオンです。相方が誰か分かり (名前に ♥)、相方が死ぬと後を追って死にます。
+Lovers.WinCond: 試合の終わりに 2 人とも生きていれば、勝ちを奪って 2 人で勝ち
+Lovers.FollowDeath: 相方が死ぬと後を追う
+Lovers.SoloWin: 2 人とも生きていれば勝ちを奪う
+# ── ヴァルチャー (Vulture) ──
+Vulture.Name: ヴァルチャー
+Vulture.Blurb: 死肉を喰らえ
+Vulture.Summary: 死体を食べて消せる第三陣営です。決めた数を食べると単独勝ちします。
+Vulture.WinCond: 決めた数の死体を食べるとその場で単独勝ち
+Vulture.Eat: 喰らう
+Vulture.Eat.Help: 通報できる距離の死体を食べて消します。死体への矢印が見えます (設定)。
+Vulture.Eat.Short: 近くの死体を食べる
+Vulture.Cooldown: 喰らうの待ち時間
+Vulture.RequiredBodies: 勝つのに要る死体の数
+Vulture.CanVent: ベントを使える
+Vulture.Count: 食べた死体 {n}/{max}
+# ── アーソニスト (Arsonist) ──
+Arsonist.Name: アーソニスト
+Arsonist.Blurb: 全てを灰に
+Arsonist.Summary: 全員にオイルを塗ってから燃やすと勝つ第三陣営です。
+Arsonist.WinCond: 生きている全員にオイルを塗って「燃やす」と単独勝ち
+Arsonist.Douse: 塗る
+Arsonist.Douse.Help: 近くの人のそばに少しの間いるとオイルを塗れます。途中で離れたり一番近い人が変わると失敗します。塗った人の名前に § が付きます。
+Arsonist.Douse.Short: 近くの人にオイルを塗る
+Arsonist.Ignite: 燃やす
+Arsonist.Ignite.Help: 自分以外の生きている全員に塗ってあれば、燃やして単独勝ちします。
+Arsonist.Ignite.Short: 全員に塗ったら燃やして勝つ
+Arsonist.Cooldown: 塗るの待ち時間
+Arsonist.CanVent: ベントを使える
+Arsonist.ImpostorVision: インポスターの視界を持つ
+# ── カモフラージャー (Camouflager) ──
+Camouflager.Name: カモフラージャー
+Camouflager.Blurb: 誰が誰だか分からない
+Camouflager.Summary: しばらく全員の見た目を自分と同じにできるインポスターです。
+Camouflager.Camo: カモフラージュ
+Camouflager.Camo.Help: 決まった時間だけ、生きている全員の見た目が自分と同じになります。
+Camouflager.Camo.Short: 全員の見た目を揃える
+Camouflager.Cooldown: カモフラージュの待ち時間
+Camouflager.Duration: カモフラージュの長さ
+# ── トリガーハッピー (TriggerHappy) ──
+TriggerHappy.Name: トリガーハッピー
+TriggerHappy.Blurb: 撃って撃って撃ちまくれ
+TriggerHappy.Summary: しばらく機関銃を乱射し、同じ人に決まった数の弾を当てて倒すインポスターです。
+TriggerHappy.Spray: 乱射
+TriggerHappy.Spray.Help: しばらく機関銃を構え、マウスの方へ弾をばらまき続けます。同じ人に決まった数当たると倒れます。弾は壁で止まり (設定で抜けます)、賢者のバリアには跳ね返されます。
+TriggerHappy.Spray.Short: 機関銃を乱射する
+TriggerHappy.Cooldown: 乱射の待ち時間
+TriggerHappy.Range: 弾の射程
+# ── ミラージュ (Mirage) ──
+RolePicker.Crew: クルー
+RolePicker.Impostor: インポスター
+RolePicker.Neutral: 第三陣営
+RolePicker.Close: 閉じる
+GuessKit.Hit: {name} が撃ち抜かれた
+GuessKit.Missed: {name} は役職を外して撃たれた
+# ── ナイスゲッサー (NiceGuesser) ──
+NiceGuesser.Name: ナイスゲッサー
+NiceGuesser.Blurb: その正体、見破った
+NiceGuesser.Summary: 会議中に役職を当てて撃てるクルーです。外すと自分が死にます。
+NiceGuesser.Shoot: 撃つ
+NiceGuesser.Shoot.Help: 会議中に名札のボタンで人を選び、その人の役職を当てます。当たればその人が、外れれば自分が死にます。
+NiceGuesser.Shoot.Short: 役職を当てて撃つ
+NiceGuesser.Shots: 撃てる回数
+NiceGuesser.PerMeeting: 1 回の会議で撃てる回数
+# ── イビルゲッサー (EvilGuesser) ──
+EvilGuesser.Name: イビルゲッサー
+EvilGuesser.Blurb: 会議の場こそ狩り場
+EvilGuesser.Summary: 会議中に役職を当てて撃てるインポスターです。外すと自分が死にます。
+EvilGuesser.Shoot: 撃つ
+EvilGuesser.Shoot.Help: 会議中に名札のボタンで人を選び、その人の役職を当てます。当たればその人が、外れれば自分が死にます。
+EvilGuesser.Shoot.Short: 役職を当てて撃つ
+EvilGuesser.Shots: 撃てる回数
+EvilGuesser.PerMeeting: 1 回の会議で撃てる回数
+# ── ホスフォラス (Phosphorus) ──
+Phosphorus.Name: ホスフォラス
+Phosphorus.Blurb: 闇を照らす灯をここに
+Phosphorus.Summary: ランタンを置いて、周りを照らせるクルーです。
+Phosphorus.Put: 設置
+Phosphorus.Put.Help: 今いる所にランタンを置きます。次のターンから全員に見えるようになります。
+Phosphorus.Put.Short: ランタンを置く
+Phosphorus.Light: 点灯
+Phosphorus.Light.Help: 置いたランタンを決まった時間だけ点け、周りを照らします (もう一度押すと消します)。
+Phosphorus.Light.Short: ランタンを点ける
+Phosphorus.Cooldown: 設置の待ち時間
+Phosphorus.Limit: 置けるランタンの数
+Phosphorus.LightCooldown: 点灯の待ち時間
+Phosphorus.Duration: 点灯の長さ
+Phosphorus.Range: 照らす広さ
+# ── マッシュルーマー (Mushroomer) ──
+Mushroomer.Name: マッシュルーマー
+Mushroomer.Blurb: 胞子で包み込め
+Mushroomer.Summary: キノコを植え、船中のキノコから一斉に胞子を出させるインポスターです。どのマップでも使えます。
+Mushroomer.Plant: 植える
+Mushroomer.Plant.Help: 足元にキノコを植えます。植えたキノコは次の会議の後から動き出します (インポスターには薄く見えます)。
+Mushroomer.Plant.Short: キノコを植える
+Mushroomer.Explode: 爆発
+Mushroomer.Explode.Help: 植え終わり、植えたキノコが全部動き出した後に使えます。船の動いているキノコから一斉に胞子を出させます。
+Mushroomer.Explode.Short: キノコから一斉に胞子
+Mushroomer.HasGasMask: ガスマスクを持つ
+Mushroomer.PlantCooldown: 植えるの待ち時間
+Mushroomer.PlantCount: 植えられる数
+Mushroomer.ExplodeCooldown: 爆発の待ち時間
+Mushroomer.ExplodeCount: 爆発の回数
+Mushroomer.ExplodeRange: 胞子の広さ
+Mushroomer.ExplodeDuration: 胞子の長さ
+Mushroomer.ActiveUsedMushroom: 植えたキノコは自分にだけ見える
+# ── リモコン (RemoteController) ──
+RemoteController.Name: リモコン
+RemoteController.Blurb: あなたは私の思いのまま
+RemoteController.Summary: クルーを操作して歩かせ、その人の手でキルさせるインポスターです。
+RemoteController.Mark: マーク
+RemoteController.Mark.Help: 近くのクルーを操作する相手に選びます。
+RemoteController.Mark.Short: 操作する人を選ぶ
+RemoteController.Operate: 操作
+RemoteController.Operate.Help: しばらく (設定で無制限)、選んだ人を自分の操作で歩かせます。その間、その人も自分も自分では動けません。もう一度押すと終わります。
+RemoteController.Operate.Short: 選んだ人を歩かせる
+RemoteController.Kill: 遠隔キル
+RemoteController.Kill.Help: 操作中に使えます。操作している人の近くの人を、操作している人の手で倒します。倒すと操作は終わります。
+RemoteController.Kill.Short: 操作している人に倒させる
+RemoteController.MarkCooldown: マークの待ち時間
+RemoteController.OperationInfinite: 操作の時間を無制限にする
+RemoteController.OperationDuration: 操作の長さ
+# ── ロケットランチャー (RocketLauncher) ──
+RocketLauncher.Name: ロケットランチャー
+RocketLauncher.Blurb: 人間ロケット発射！
+RocketLauncher.Summary: クルーを掴んで撃ち出し、当たった所で爆発させるインポスターです。
+RocketLauncher.Load: 装填
+RocketLauncher.Load.Help: 近くのクルーを掴みます。掴まれた人は動けず、あなたについて来ます。
+RocketLauncher.Load.Short: クルーを掴む
+RocketLauncher.Shot: 発射
+RocketLauncher.Shot.Help: 掴んだ人を向いている方へ撃ち出します。壁 (設定で人) に当たると爆発し、周りの人ごと死にます。会議が始まると、掴んでいる人・飛んでいる人は死にます。
+RocketLauncher.Shot.Short: 掴んだ人を撃ち出す
+RocketLauncher.Cooldown: 装填の待ち時間
+RocketLauncher.CollideWithPlayers: 人に当たっても爆発する
+RocketLauncher.KillImpostors: 爆発でインポスターも死ぬ
+RocketLauncher.ExplosionRange: 爆発の広さ
+RocketLauncher.LimitLoadedTime: 掴んでいられる時間を限る
+RocketLauncher.LoadedTimeLimit: 掴んでいられる時間
+RocketLauncher.CanUseNormalKill: 普通のキルもできる
+# ── 突き落と師 (Pusher) ──
+Pusher.Name: 突き落と師
+Pusher.Blurb: 足元に気をつけて
+Pusher.Summary: 船の縁やはしごの上に立っている人を突き落とすインポスターです (スケルド・ポーラス・エアシップ・ファングル)。
+Pusher.Push: 突き落とす
+Pusher.Push.Help: 船の縁 (決まった場所) に立っているクルーを突き落とします。落ちた人は死体も残りません。はしごの上にいる人を突き落とすと、はしごの下に死体が残ります。
+Pusher.Push.Short: 縁にいる人を突き落とす
+Pusher.Cooldown: 突き落とすの待ち時間
+# ── ユビキタス (Ubiquitous) ──
+Ubiquitous.Name: ユビキタス
+Ubiquitous.Blurb: ドローンはどこにでも
+Ubiquitous.Summary: ドローンを飛ばして見張り、ドアを開けられるクルーです。
+Ubiquitous.Call: 呼ぶ / 戻す
+Ubiquitous.Call.Help: 足元にドローンを出します。もう一度押すとドローンを消します。会議が始まると飛んでいるドローンはその場に止まり、設定の会議の数だけ残ります。止まったドローンの近くにいる人は地図に映ります。
+Ubiquitous.Call.Short: ドローンを出す
+Ubiquitous.Operate: 操作
+Ubiquitous.Operate.Help: ドローンを操作します。その間は自分は動けず、カメラがドローンへ移ってドローンを飛ばせます。ドローンのまわりも見えます。
+Ubiquitous.Operate.Short: ドローンを飛ばす
+Ubiquitous.DoorHack: ドアを開ける
+Ubiquitous.DoorHack.Help: ドローンの操作中に、ドローンの近くの閉まったドアを開けます。
+Ubiquitous.DoorHack.Short: 近くのドアを開ける
+Ubiquitous.CallCooldown: 呼ぶ / 戻すの待ち時間
+Ubiquitous.OperateCooldown: 操作の待ち時間
+Ubiquitous.LimitOperate: 操作できる時間を決める
+Ubiquitous.OperateTime: 操作できる時間
+Ubiquitous.StayTurns: ドローンが残る会議の数
+Ubiquitous.FlyingSpeed: ドローンの速さ
+Ubiquitous.DoorHackCooldown: ドアを開ける待ち時間
+Ubiquitous.DoorHackScope: ドアを開けられる広さ
+Ubiquitous.VisibilityRange: ドローンの見える広さ
+Ubiquitous.MapShowColor: 地図に色を出す
+# ── 作り直し: シーア / イビルシーア / ヴァルチャー / アーソニスト / マトリョーシカ / 魔術師 ──
+EvilSeer.LightColor: 明るい色
+EvilSeer.DarkColor: 暗い色
+EvilSeer.FlashColorText: {color} の人が死んだ
+Vulture.ShowArrows: 死体への矢印を出す
+Arsonist.Duration: 塗るのにかかる時間
+# ── 作り直し: ジャンボ ──
+TriggerHappy.UseLimit: 使える回数
+TriggerHappy.SyncKillCooldown: 乱射とキルボタンのクールダウンを同期する
+TriggerHappy.Duration: 乱射の時間
+TriggerHappy.RequiredHits: 倒すのに必要な弾数
+TriggerHappy.BulletSize: 弾の大きさ
+TriggerHappy.PierceWalls: 弾が壁を抜ける
+TriggerHappy.SpreadAngle: 弾のばらつき
+TriggerHappy.FriendlyFire: 仲間にも当たる
+TriggerHappy.KillSound: キル音を鳴らす

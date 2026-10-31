@@ -16,13 +16,14 @@ internal static class RoleFrame
 
     private struct Caps
     {
-        public bool Frame, FrameLocal, FrameHost, Mark;
+        public bool Frame, FrameLocal, FrameHost, Mark, Public;
     }
 
     private static readonly Dictionary<Type, Caps> ByType = new();
     private static readonly List<Assignable> Frame = new();
     private static readonly List<bool> FrameHost = new();
     private static readonly List<Assignable> Marks = new();
+    private static readonly List<RoleBase> Publics = new(); // 全員の画面で名前に印が付く役職 (RoleBase.PublicMark)
 
     public static void OnAssigned(Assignable role)
     {
@@ -35,6 +36,11 @@ internal static class RoleFrame
         if (c.Mark && role.IsLocal)
         {
             Marks.Add(role);
+            if (_markEvery == 0) _markEvery = Math.Max(1, (int)(MarkSeconds / Time.fixedDeltaTime + 0.5f));
+        }
+        if (c.Public && role is RoleBase rb)
+        {
+            Publics.Add(rb);
             if (_markEvery == 0) _markEvery = Math.Max(1, (int)(MarkSeconds / Time.fixedDeltaTime + 0.5f));
         }
     }
@@ -52,6 +58,9 @@ internal static class RoleFrame
             c.FrameHost = frame.GetCustomAttribute<HostOnlyAttribute>() != null;
         }
         c.Mark = mark != null && mark.DeclaringType != typeof(Assignable);
+        var pub = t.GetProperty(nameof(RoleBase.PublicMark), F);
+        var seenBy = t.GetMethod(nameof(RoleBase.MarkSeenBy), F, new[] { typeof(PlayerControl) });
+        c.Public = (pub != null && pub.DeclaringType != typeof(RoleBase)) || (seenBy != null && seenBy.DeclaringType != typeof(RoleBase));
         return ByType[t] = c;
     }
 
@@ -60,7 +69,8 @@ internal static class RoleFrame
     public static void Tick()
     {
         if (Frame.Count > 0) RunFrame();
-        if (Marks.Count > 0 && ++_tick >= _markEvery)
+        PortKit.TickLater();
+        if ((Marks.Count > 0 || Publics.Count > 0) && ++_tick >= _markEvery)
         {
             _tick = 0;
             try { RefreshMarks(); }
@@ -143,6 +153,12 @@ internal static class RoleFrame
             }
             if (!string.IsNullOrEmpty(m)) Sb.Append(m);
         }
+        for (int i = 0; i < Publics.Count; i++)
+        {
+            if (Publics[i].PlayerId != seen.PlayerId) continue;
+            string m = Publics[i].MarkSeenBy(PlayerControl.LocalPlayer);
+            if (!string.IsNullOrEmpty(m)) Sb.Append(m);
+        }
         return Sb.Length == 0 ? null : Sb.ToString();
     }
 
@@ -201,11 +217,28 @@ internal static class RoleFrame
         return sb.ToString();
     }
 
+    // 試合の途中で役職が外れた時 (RoleState.Replace)。外れた役職の毎フレームの処理と名前の印を止める
+    public static void Remove(Assignable role)
+    {
+        int i = Frame.IndexOf(role);
+        if (i >= 0)
+        {
+            Frame.RemoveAt(i);
+            FrameHost.RemoveAt(i);
+        }
+        if (Marks.Remove(role) | (role is RoleBase rb && Publics.Remove(rb)))
+        {
+            ClearSlots(InGame);
+            ClearSlots(InMeeting);
+        }
+    }
+
     public static void Clear()
     {
         Frame.Clear();
         FrameHost.Clear();
         Marks.Clear();
+        Publics.Clear();
         _tick = 0;
         ClearSlots(InGame);
         ClearSlots(InMeeting);

@@ -37,7 +37,7 @@ public static class RoleState
     public static Lifespan Match => _match ??= new Lifespan();
     private static Lifespan _match;
 
-    // 第三陣営の役職が誰かに付いている試合か (付いていない試合の勝敗は本編のまま)
+    // 第三陣営の役職か、別の陣営と勝つ役職 (RoleBase.NeedsMrpEnd) が誰かに付いている試合か (付いていない試合の勝敗は本編のまま)
     public static bool AnyNeutral { get; private set; }
 
     internal static void Assign(PlayerControl p, RoleBase proto, IReadOnlyList<AddonBase> addonProtos)
@@ -50,10 +50,11 @@ public static class RoleState
         ByPlayer[p.PlayerId] = role;
         Active.Add(role);
         if (p.AmOwner) Local = role;
-        if (role.Team == Team.Neutral) AnyNeutral = true;
+        if (role.NeedsMrpEnd) AnyNeutral = true;
         role.Lifespan = Match.Child();
         EventBinder.Bind(role);
         KillAbility.OnAssigned(role);
+        if (role.CanVent != null) Rules.GameRules.ApplyRoleVent(role);
         try { role.OnAssigned(); }
         catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.OnAssigned: {e}"); }
         Abilities.OnAssigned(role);
@@ -64,6 +65,97 @@ public static class RoleState
         else RoleDisplay.OnAssigned(role);
         if (Dev.DevGod.On) Dev.DevGod.Refresh();
     }
+
+    // 試合の途中で 1 人の役職だけを替える (任命・サイドキック・役職の入れ替えなど)。ほかの人の役職と状態はそのまま。
+    // 付いていたアドオンは付け直す (状態は新しくなる)。ホストが Change で全員に配る
+    internal static void Replace(PlayerControl p, RoleBase proto)
+    {
+        if (!p) return;
+        byte pid = p.PlayerId;
+        var old = ByPlayer[pid];
+        var addonProtos = new List<AddonBase>();
+        foreach (var a in AddonsOf(pid))
+        {
+            var ap = Options.Registry.Addons.Find(x => x.Id == a.Id);
+            if (ap != null) addonProtos.Add(ap);
+            RoleFrame.Remove(a);
+            ActiveAddons.Remove(a);
+            a.Lifespan?.Release();
+        }
+        AddonsByPlayer[pid] = null;
+        if (old != null)
+        {
+            RoleFrame.Remove(old);
+            Active.Remove(old);
+            ByPlayer[pid] = null;
+            old.Lifespan?.Release();
+            // キルできなくなる時は本編のキルボタンを外す (インポスターの土台は本編のまま)
+            var rb = p.Data?.Role;
+            if (old.CanKill && proto is not { CanKill: true } && rb && !rb.IsImpostor)
+            {
+                rb.CanUseKillButton = false;
+                if (p.AmOwner && Vanilla.Hud) Vanilla.Hud.KillButton.ToggleVisible(false);
+            }
+        }
+        if (p.AmOwner)
+        {
+            Local = null;
+            Abilities.Clear();
+            KillAbility.Clear();
+            RoleDisplay.Clear();
+        }
+        if (proto == null) AssignAddonsOnly(p, addonProtos);
+        else Assign(p, proto, addonProtos);
+        MatchLog.NoteRole(pid);
+        Plugin.Logger.LogInfo($"role changed: {pid} {old?.Id ?? "-"} -> {proto?.Id ?? "-"}");
+    }
+
+    // ホスト: その人の役職を替えて全員に配る (本編の土台の役職も合わせる)。proto = null で MRP の役職を外す
+    public static void Change(PlayerControl p, RoleBase proto)
+    {
+        if (!p || !AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
+        var vanilla = p.Data?.Role;
+        if (proto != null && vanilla && !p.Data.IsDead && vanilla.Role != proto.BaseRole) p.RpcSetRole(proto.BaseRole, true);
+        int idx = proto == null ? -1 : Options.Registry.Roles.IndexOf(proto);
+        ChangeCall.Send((p.PlayerId, idx));
+        Replace(p, proto);
+    }
+
+    // ホスト: 試合の途中でその人にアドオンを 1 つ足して全員に配る (キューピッドの恋の矢など)
+    public static void AddAddon(PlayerControl p, AddonBase proto)
+    {
+        if (!p || proto == null || !AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
+        int idx = Options.Registry.Addons.IndexOf(proto);
+        if (idx < 0) return;
+        AddAddonCall.Send((p.PlayerId, idx));
+        Attach(p.PlayerId, idx);
+    }
+
+    private static readonly RemoteCall<(byte pid, int addon)> AddAddonCall = new("RoleState.AddAddon", Route.HostToAll,
+        (w, m) => { w.Write(m.pid); w.WritePacked(m.addon); }, r => (r.ReadByte(), r.ReadPackedInt32()),
+        (_, m) => Attach(m.pid, m.addon));
+
+    private static void Attach(byte pid, int idx)
+    {
+        var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
+        if (!p || idx < 0 || idx >= Options.Registry.Addons.Count) return;
+        AttachAddons(p, new[] { Options.Registry.Addons[idx] }, ByPlayer[pid]?.Lifespan ?? Match);
+        Plugin.Logger.LogInfo($"addon added: {pid} +{Options.Registry.Addons[idx].Id}");
+    }
+
+    public static AddonBase AddonProto<T>() where T : AddonBase => Options.Registry.Addons.Find(a => a is T);
+
+    // 役職のクラスから設定画面の見本 (Registry の物) を引く
+    public static RoleBase Proto<T>() where T : RoleBase => Options.Registry.Roles.Find(r => r is T);
+
+    private static readonly RemoteCall<(byte pid, int role)> ChangeCall = new("RoleState.Change", Route.HostToAll,
+        (w, m) => { w.Write(m.pid); w.WritePacked(m.role); }, r => (r.ReadByte(), r.ReadPackedInt32()),
+        (_, m) =>
+        {
+            var p = GameData.Instance ? GameData.Instance.GetPlayerById(m.pid)?.Object : null;
+            var proto = m.role >= 0 && m.role < Options.Registry.Roles.Count ? Options.Registry.Roles[m.role] : null;
+            Replace(p, proto);
+        });
 
     // 役職が無い人 (本編の役職のまま) にアドオンだけ付ける。寿命は試合の寿命の子
     internal static void AssignAddonsOnly(PlayerControl p, IReadOnlyList<AddonBase> addonProtos)
@@ -93,6 +185,9 @@ public static class RoleState
             catch (Exception e) { Plugin.Logger.LogError($"{addon.Id}.OnAssigned: {e}"); }
             RoleFrame.OnAssigned(addon);
         }
+        // アドオンが役職に足した能力のボタンを作る (作ってある物はそのまま)
+        var owner = ByPlayer[p.PlayerId];
+        if (owner != null) Abilities.OnAssigned(owner);
     }
 
     internal static void Clear(bool gameEnded)
@@ -192,6 +287,7 @@ public static class AssignPlan
         }
         Shuffle(sure, rng);
         Shuffle(lucky, rng);
+        Groups.Clear();
 
         var free = new List<Slot>(roster);
         Shuffle(free, rng);
@@ -394,7 +490,7 @@ public static class AssignPlan
     }
 
     // 配り方で配ってよい役職。幽霊になってから付く役職は本編が配る。MRP の役職を切った時は本編の役職だけ
-    private static bool Usable(RoleBase r) => !r.AssignedOnDeath && (r.IsVanilla || RoleSettings.Enabled);
+    private static bool Usable(RoleBase r) => !r.AssignedOnDeath && (r.IsVanilla || RoleSettings.Enabled) && r.AllowedOnMap();
 
     // 同時に出ない組 (どちらの側に書いてあっても)
     private static bool Conflicts(RoleBase role, List<RoleBase> chosen)
@@ -428,7 +524,7 @@ public static class AssignPlan
         {
             var a = Registry.Addons[i];
             int chance = a.Chance;
-            if (chance <= 0) continue;
+            if (chance <= 0 || a.Ghost) continue;
             for (int k = 0; k < a.Count.Value; k++)
             {
                 if (chance >= 100) sure.Add(i);
@@ -454,18 +550,30 @@ public static class AssignPlan
                 var team = role != null ? role.Team : slot.Impostor ? Team.Impostor : Team.Crew;
                 if (addon.CanAttach(team, role)) candidates.Add(i);
             }
-            if (candidates.Count == 0) continue;
-            var target = roster[candidates[rng.Next(candidates.Count)]];
-            if (!picks.TryGetValue(target.PlayerId, out var tp))
+            int size = Math.Max(addon.GroupSize, 1);
+            if (candidates.Count < size) continue;
+            var group = new byte[size];
+            for (int g = 0; g < size; g++)
             {
-                // 役職の無い人 (本編のまま) にはアドオンだけの Pick を作る
-                tp = new Pick { PlayerId = target.PlayerId, RoleIndex = -1 };
-                picks[target.PlayerId] = tp;
-                plan.Add(tp);
+                int at = rng.Next(candidates.Count);
+                var target = roster[candidates[at]];
+                candidates.RemoveAt(at);
+                group[g] = target.PlayerId;
+                if (!picks.TryGetValue(target.PlayerId, out var tp))
+                {
+                    // 役職の無い人 (本編のまま) にはアドオンだけの Pick を作る
+                    tp = new Pick { PlayerId = target.PlayerId, RoleIndex = -1 };
+                    picks[target.PlayerId] = tp;
+                    plan.Add(tp);
+                }
+                tp.Addons.Add(ai);
             }
-            tp.Addons.Add(ai);
+            if (size > 1) Groups.Add(group);
         }
     }
+
+    // 最後に決めた配布案で、何人 1 組のアドオン (ラバーズなど) が付いた組 (ホストが AddonGroups で全員へ配る)
+    public static readonly List<byte[]> Groups = new();
 
     // 公平化: インポスターを重みで選び直す (人数は本編が決めた数のまま)。固定指定の人は今の陣営のまま数に入れる。
     // 陣営を替えるべき人の添字を返す (名簿は書き換えない)
@@ -693,6 +801,7 @@ internal static class RoleAssigner
         {
             OptionSync.SendAll();
             Send(plan);
+            AddonGroups.HostSend(AssignPlan.Groups);
         }
     }
 
@@ -838,6 +947,7 @@ internal static class RoleAssigner
     private static void Apply(List<Pick> plan)
     {
         RoleState.Clear(false);
+        AddonGroups.Clear();
         GameEnd.Reset();
         var addons = new List<AddonBase>();
         foreach (var p in plan)

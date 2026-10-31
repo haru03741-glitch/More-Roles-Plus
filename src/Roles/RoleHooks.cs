@@ -25,10 +25,15 @@ internal static class VisionPatch
         var role = RoleState.All.Count > 0 ? RoleState.Of(player.PlayerId) : null;
         if (NeutralKillSettings.Applies(role) && !player.IsDead) result = ship.MaxLightRadius * NeutralKillSettings.Vision;
         if (Terrain.DustCloud.VisionMul < 1f && player.PlayerId == Terrain.DustCloud.LocalId) result *= Terrain.DustCloud.VisionMul;
-        if (RoleState.All.Count == 0 && RoleState.AllAddons.Count == 0) return;
+        if (RoleState.All.Count == 0 && RoleState.AllAddons.Count == 0)
+        {
+            result = SnrKit.ApplyVision(player, result);
+            return;
+        }
         role?.ModifyVision(ref result);
         var addons = RoleState.AddonsOf(player.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyVision(ref result);
+        result = SnrKit.ApplyVision(player, result);
     }
 }
 

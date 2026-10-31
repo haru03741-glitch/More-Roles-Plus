@@ -1119,3 +1119,266 @@ Keybinds.Dodge: MRP dodge (during a duel)
 Duel.DodgeHint: Dodge x{n}
 Duel.LockMash: Blade lock! Mash Left Click or SPACE
 Duel.LockMashTouch: Blade lock! Mash the screen
+
+# ════ SuperNewRoles から移した役職 ════
+# ── メイヤー (Mayor) ──
+Mayor.Name: Mayor
+Mayor.Blurb: That power will save the village
+Mayor.Summary: A crewmate who casts more votes than anyone else in meetings.
+Mayor.Votes: Number of votes
+# ── マッドメイト (Madmate) ──
+Madmate.Name: Madmate
+Madmate.Blurb: One who has strayed from the path
+Madmate.Summary: A crewmate on the impostors' side.
+Madmate.WinCond: Win when the impostors win, dead or alive
+Madmate.KnowImpostors: Can know the impostors
+Madmate.NeededTasks: Tasks needed to know them
+Madmate.CanVent: Can use vents
+Madmate.ImpostorVision: Has impostor vision
+# ── シェリフ (Sheriff) ──
+Sheriff.Name: Sheriff
+Sheriff.Blurb: In the name of justice
+Sheriff.Summary: A crewmate who can execute a nearby player. If the target isn't on a team you may kill, you die instead.
+Sheriff.Execute: Execute
+Sheriff.Execute.Help: Kills a nearby player. If they aren't on a team you're allowed to kill, you die instead (depends on the suicide setting).
+Sheriff.Execute.Short: Execute a nearby player
+Sheriff.KillCooldown: Execute cooldown
+Sheriff.MaxKills: Executions
+Sheriff.SuicideMode: Suicide mode
+Sheriff.SuicideMode.Default: Only on a wrong target
+Sheriff.SuicideMode.AlwaysSuicide: Always die with the target
+Sheriff.SuicideMode.AlwaysKill: Never die
+Sheriff.KillImpostor: Can kill impostors
+Sheriff.KillMad: Can kill madmates
+Sheriff.KillNeutral: Can kill neutrals
+Sheriff.KillFriends: Can kill friends
+Sheriff.KillLovers: Can kill lovers
+# ── 霊媒師 (Seer) ──
+Seer.Name: Seer
+Seer.Blurb: Hear the voices of souls
+Seer.Summary: A crewmate whose screen flashes when someone dies and who sees souls where people died.
+Seer.Mode: Mode
+Seer.Mode.Both: Flash and souls
+Seer.Mode.Flash: Flash only
+Seer.Mode.Soul: Souls only
+Seer.LimitSoul: Souls fade over time
+Seer.SoulDuration: Soul duration
+# ── ジャッカル (Jackal) ──
+Jackal.Name: Jackal
+Jackal.Blurb: Hunt everything with your pack
+Jackal.Summary: A neutral killer who can recruit a partner once.
+Jackal.WinCond: Win when only the Jackal's pack is left alive
+Jackal.Kill: Kill
+Jackal.Kill.Help: Has the vanilla kill button. Vision and kill distance follow the Neutral settings in the Game Settings tab. Cannot kill your pack.
+Jackal.Kill.Short: Has the kill button
+Jackal.Sidekick: Sidekick
+Jackal.Sidekick.Help: Turns a nearby player into your partner (Sidekick or Jackal Friends), once.
+Jackal.Sidekick.Short: Recruit a nearby player
+Jackal.KillCooldown: Kill cooldown
+Jackal.CanVent: Can use vents
+Jackal.CanSidekick: Can recruit
+Jackal.SidekickCooldown: Recruit cooldown
+Jackal.Infinite: Promoted Jackals can recruit too
+# ── サイドキック (Sidekick) ──
+Sidekick.Name: Sidekick
+Sidekick.Blurb: The Jackal's right hand
+Sidekick.Summary: A neutral recruited by the Jackal. Cannot kill, and becomes a Jackal when all Jackals are dead.
+Sidekick.WinCond: Win when the Jackal wins
+Sidekick.CanVent: Can use vents
+# ── ベイト (Bait) ──
+Bait.Name: Bait
+Bait.Blurb: Who fell into the trap?
+Bait.Summary: A crewmate whose killer reports their body shortly after the kill.
+Bait.ReportTime: Time until report
+Bait.WarnKiller: Flash the killer's screen
+Bait.RandomDelay: Randomize the report delay
+Bait.DelayVariation: Maximum extra delay
+# ── ラバーズ (Lovers) ──
+Lovers.Name: Lovers
+Lovers.Blurb: Our love is forever
+Lovers.Summary: An add-on given to a pair. You know your partner (♥ by their name), and you die when they die.
+Lovers.WinCond: If both are alive at the end, you steal the win together
+Lovers.FollowDeath: Die when your partner dies
+Lovers.SoloWin: Steal the win if both are alive
+# ── ヴァルチャー (Vulture) ──
+Vulture.Name: Vulture
+Vulture.Blurb: Feast on the dead
+Vulture.Summary: A neutral who eats bodies to erase them. Eat enough to win alone.
+Vulture.WinCond: Win alone the moment you've eaten enough bodies
+Vulture.Eat: Eat
+Vulture.Eat.Help: Eats and removes a body within report range. You see arrows to bodies (option).
+Vulture.Eat.Short: Eat a nearby body
+Vulture.Cooldown: Eat cooldown
+Vulture.RequiredBodies: Bodies needed to win
+Vulture.CanVent: Can use vents
+Vulture.Count: Bodies eaten {n}/{max}
+# ── アーソニスト (Arsonist) ──
+Arsonist.Name: Arsonist
+Arsonist.Blurb: Burn it all to ashes
+Arsonist.Summary: A neutral who wins by dousing everyone in oil and setting it alight.
+Arsonist.WinCond: Win alone by dousing every living player and igniting
+Arsonist.Douse: Douse
+Arsonist.Douse.Help: Stay next to a nearby person for a moment to douse them. Moving away or a different nearest person cancels it. Doused people are marked §.
+Arsonist.Douse.Short: Douse a nearby player
+Arsonist.Ignite: Ignite
+Arsonist.Ignite.Help: If every other living player is doused, ignite to win alone.
+Arsonist.Ignite.Short: Ignite to win once all are doused
+Arsonist.Cooldown: Douse cooldown
+Arsonist.CanVent: Can use vents
+Arsonist.ImpostorVision: Has impostor vision
+# ── カモフラージャー (Camouflager) ──
+Camouflager.Name: Camouflager
+Camouflager.Blurb: Who is who?
+Camouflager.Summary: An impostor who can make everyone look like them for a while.
+Camouflager.Camo: Camouflage
+Camouflager.Camo.Help: For a set time, every living player looks like you.
+Camouflager.Camo.Short: Make everyone look alike
+Camouflager.Cooldown: Camouflage cooldown
+Camouflager.Duration: Camouflage duration
+# ── トリガーハッピー (TriggerHappy) ──
+TriggerHappy.Name: Trigger Happy
+TriggerHappy.Blurb: Shoot, shoot, and keep shooting
+TriggerHappy.Summary: An impostor who sprays a machine gun for a while and kills anyone hit by enough bullets.
+TriggerHappy.Spray: Spray
+TriggerHappy.Spray.Help: Hold a machine gun for a while and keep spraying bullets toward the mouse. Anyone hit enough times dies. Bullets stop at walls (unless set to pierce) and bounce off a Wise Man's barrier.
+TriggerHappy.Spray.Short: Spray the machine gun
+TriggerHappy.Cooldown: Spray cooldown
+TriggerHappy.Range: Bullet range
+# ── ミラージュ (Mirage) ──
+RolePicker.Crew: Crew
+RolePicker.Impostor: Impostor
+RolePicker.Neutral: Neutral
+RolePicker.Close: Close
+GuessKit.Hit: {name} was shot
+GuessKit.Missed: {name} guessed wrong and was shot
+# ── ナイスゲッサー (NiceGuesser) ──
+NiceGuesser.Name: Nice Guesser
+NiceGuesser.Blurb: I see what you really are
+NiceGuesser.Summary: A crewmate who can shoot by guessing roles in meetings. A wrong guess kills them.
+NiceGuesser.Shoot: Shoot
+NiceGuesser.Shoot.Help: In a meeting, pick a player and guess their role. If right, they die; if wrong, you die.
+NiceGuesser.Shoot.Short: Guess a role and shoot
+NiceGuesser.Shots: Total shots
+NiceGuesser.PerMeeting: Shots per meeting
+# ── イビルゲッサー (EvilGuesser) ──
+EvilGuesser.Name: Evil Guesser
+EvilGuesser.Blurb: The meeting is my hunting ground
+EvilGuesser.Summary: An impostor who can shoot by guessing roles in meetings. A wrong guess kills them.
+EvilGuesser.Shoot: Shoot
+EvilGuesser.Shoot.Help: In a meeting, pick a player and guess their role. If right, they die; if wrong, you die.
+EvilGuesser.Shoot.Short: Guess a role and shoot
+EvilGuesser.Shots: Total shots
+EvilGuesser.PerMeeting: Shots per meeting
+# ── ホスフォラス (Phosphorus) ──
+Phosphorus.Name: Phosphorus
+Phosphorus.Blurb: A lantern against the dark
+Phosphorus.Summary: A crewmate who places lanterns and lights them up.
+Phosphorus.Put: Place
+Phosphorus.Put.Help: Places a lantern where you stand. Everyone can see it from the next round.
+Phosphorus.Put.Short: Place a lantern
+Phosphorus.Light: Light
+Phosphorus.Light.Help: Lights your lanterns for a while, brightening their surroundings (press again to turn off).
+Phosphorus.Light.Short: Light the lanterns
+Phosphorus.Cooldown: Place cooldown
+Phosphorus.Limit: Lantern limit
+Phosphorus.LightCooldown: Light cooldown
+Phosphorus.Duration: Light duration
+Phosphorus.Range: Light range
+# ── マッシュルーマー (Mushroomer) ──
+Mushroomer.Name: Mushroomer
+Mushroomer.Blurb: Smother them in spores
+Mushroomer.Summary: An impostor who plants mushrooms and makes every mushroom on the ship burst with spores. Works on any map.
+Mushroomer.Plant: Plant
+Mushroomer.Plant.Help: Plants a mushroom at your feet. It becomes active after the next meeting (impostors see it faintly).
+Mushroomer.Plant.Short: Plant a mushroom
+Mushroomer.Explode: Burst
+Mushroomer.Explode.Help: Usable once all your mushrooms are planted and active. Every active mushroom on the ship bursts with spores at once.
+Mushroomer.Explode.Short: Burst all mushrooms
+Mushroomer.HasGasMask: Has a gas mask
+Mushroomer.PlantCooldown: Plant cooldown
+Mushroomer.PlantCount: Mushrooms to plant
+Mushroomer.ExplodeCooldown: Burst cooldown
+Mushroomer.ExplodeCount: Burst uses
+Mushroomer.ExplodeRange: Spore range
+Mushroomer.ExplodeDuration: Spore duration
+Mushroomer.ActiveUsedMushroom: Planted mushrooms visible only to you
+# ── リモコン (RemoteController) ──
+RemoteController.Name: Remote Controller
+RemoteController.Blurb: You move as I please
+RemoteController.Summary: An impostor who controls a crewmate's movement and makes them kill.
+RemoteController.Mark: Mark
+RemoteController.Mark.Help: Picks a nearby crewmate to control.
+RemoteController.Mark.Short: Pick who to control
+RemoteController.Operate: Operate
+RemoteController.Operate.Help: For a while (or without limit), you move the marked person. Neither of you can move on your own meanwhile. Press again to stop.
+RemoteController.Operate.Short: Move the marked person
+RemoteController.Kill: Remote Kill
+RemoteController.Kill.Help: While operating: the person you control kills someone near them. Ends the operation.
+RemoteController.Kill.Short: Make your puppet kill
+RemoteController.MarkCooldown: Mark cooldown
+RemoteController.OperationInfinite: Unlimited operation
+RemoteController.OperationDuration: Operation duration
+# ── ロケットランチャー (RocketLauncher) ──
+RocketLauncher.Name: Rocket Launcher
+RocketLauncher.Blurb: Human rocket, launch!
+RocketLauncher.Summary: An impostor who grabs a crewmate and launches them to explode on impact.
+RocketLauncher.Load: Load
+RocketLauncher.Load.Help: Grabs a nearby crewmate. They cannot move and are carried with you.
+RocketLauncher.Load.Short: Grab a crewmate
+RocketLauncher.Shot: Launch
+RocketLauncher.Shot.Help: Launches the grabbed person the way you face. On hitting a wall (or a person, by setting) they explode, killing those nearby. If a meeting starts, the held or flying person dies.
+RocketLauncher.Shot.Short: Launch the grabbed person
+RocketLauncher.Cooldown: Load cooldown
+RocketLauncher.CollideWithPlayers: Explodes on hitting people
+RocketLauncher.KillImpostors: Explosion kills impostors
+RocketLauncher.ExplosionRange: Explosion range
+RocketLauncher.LimitLoadedTime: Limit holding time
+RocketLauncher.LoadedTimeLimit: Holding time
+RocketLauncher.CanUseNormalKill: Can kill normally
+# ── 突き落と師 (Pusher) ──
+Pusher.Name: Pusher
+Pusher.Blurb: Watch your step
+Pusher.Summary: An impostor who pushes people standing at the ship's edges or atop ladders (Skeld, Polus, Airship, Fungle).
+Pusher.Push: Push
+Pusher.Push.Help: Pushes a crewmate standing at a ship edge (fixed spots). They fall and leave no body. Pushing someone atop a ladder leaves their body at the bottom.
+Pusher.Push.Short: Push someone off an edge
+Pusher.Cooldown: Push cooldown
+# ── ユビキタス (Ubiquitous) ──
+Ubiquitous.Name: Ubiquitous
+Ubiquitous.Blurb: Drones are everywhere
+Ubiquitous.Summary: A crewmate who flies a drone to watch and open doors.
+Ubiquitous.Call: Call / Return
+Ubiquitous.Call.Help: Spawns a drone at your feet. Press again to remove it. When a meeting starts, a flying drone stops where it is and stays for the set number of meetings. People near your stopped drones show on the map.
+Ubiquitous.Call.Short: Call a drone
+Ubiquitous.Operate: Operate
+Ubiquitous.Operate.Help: Pilot the drone. You cannot move while doing so; the camera follows the drone and you can see around it.
+Ubiquitous.Operate.Short: Fly the drone
+Ubiquitous.DoorHack: Hack Doors
+Ubiquitous.DoorHack.Help: While piloting, opens closed doors near the drone.
+Ubiquitous.DoorHack.Short: Open nearby doors
+Ubiquitous.CallCooldown: Call cooldown
+Ubiquitous.OperateCooldown: Operate cooldown
+Ubiquitous.LimitOperate: Limit operating time
+Ubiquitous.OperateTime: Operating time
+Ubiquitous.StayTurns: Meetings a drone stays
+Ubiquitous.FlyingSpeed: Drone speed
+Ubiquitous.DoorHackCooldown: Door hack cooldown
+Ubiquitous.DoorHackScope: Door hack range
+Ubiquitous.VisibilityRange: Drone vision range
+Ubiquitous.MapShowColor: Show colors on the map
+# ── 作り直し: シーア / イビルシーア / ヴァルチャー / アーソニスト / マトリョーシカ / 魔術師 ──
+EvilSeer.LightColor: a light color
+EvilSeer.DarkColor: a dark color
+EvilSeer.FlashColorText: Someone of {color} died
+Vulture.ShowArrows: Show arrows to bodies
+Arsonist.Duration: Douse time
+# ── 作り直し: ジャンボ ──
+TriggerHappy.UseLimit: Uses
+TriggerHappy.SyncKillCooldown: Sync spray and kill cooldowns
+TriggerHappy.Duration: Spray duration
+TriggerHappy.RequiredHits: Hits needed to kill
+TriggerHappy.BulletSize: Bullet size
+TriggerHappy.PierceWalls: Bullets pierce walls
+TriggerHappy.SpreadAngle: Bullet spread
+TriggerHappy.FriendlyFire: Friendly fire
+TriggerHappy.KillSound: Play kill sound
