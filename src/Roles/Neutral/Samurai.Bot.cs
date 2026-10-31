@@ -31,6 +31,22 @@ public sealed partial class Samurai
         BotDrawCall.Send((PlayerId, false));
     }
 
+    internal const float BotDashSpeed = DashSpeed, BotDashTime = DashTime;
+
+    // 踏み込む (ホスト・動かすのは呼んだ側)。抜いていて気が足りる時だけ。気は人の踏み込みと同じだけ減らす
+    internal bool BotDash()
+    {
+        if (!Drawn || HostKiNow() < DashCost + StrokeCost) return false;
+        _hostKi -= DashCost;
+        _blade.Dash(DashTime + 0.06f);
+        BotDashCall.Send(PlayerId);
+        return true;
+    }
+
+    private static readonly RemoteCall<byte> BotDashCall = new("Samurai.BotDash", Route.HostToAll,
+        (w, v) => w.Write(v), r => r.ReadByte(),
+        (_, id) => (RoleState.Of(id) as Samurai)?._blade.Dash(DashTime + 0.06f));
+
     private static readonly RemoteCall<(byte id, bool drawn)> BotDrawCall = new("Samurai.BotDraw", Route.HostToAll,
         (w, v) => { w.Write(v.id); w.Write(v.drawn); }, r => (r.ReadByte(), r.ReadBoolean()),
         (_, v) => (RoleState.Of(v.id) as Samurai)?.SetDrawn(v.drawn));
