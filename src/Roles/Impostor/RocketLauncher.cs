@@ -123,6 +123,9 @@ public sealed class RocketLauncher : RoleBase
         return true;
     }
 
+    // 試験用: 左クリックと同じ道で撃つ (bridge の rlaim fire)
+    internal static bool ShootForTest() => _mine != null && _mine.TryShoot();
+
     // 毎フレーム (Plugin.Update): PC は掴んでいる間の左クリックで発射。押し始めがボタン・パネルの上なら撃たない
     internal static void LocalTick()
     {

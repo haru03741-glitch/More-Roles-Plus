@@ -97,10 +97,11 @@ internal static class RoleCommands
 
         TestBridge.Register("gunsnd", "機関銃と大砲の効果音の鳴らした数と最後の音", (_, reply) => reply($"OK gunsnd {Roles.GunSound.Describe()}"));
 
-        TestBridge.Register("rlaim", "<角度° | off> ロケットランチャーの狙いの向きを固定する (0 = 右・90 = 上)", (args, reply) =>
+        TestBridge.Register("rlaim", "<角度° | off | fire> ロケットランチャーの狙いの向きを固定する (0 = 右・90 = 上) / 詰めていれば撃つ (左クリックと同じ道)", (args, reply) =>
         {
             string a = args.Trim();
             if (a == "off" || a.Length == 0) { Roles.Impostor.RocketLauncher.TestAim = null; reply("OK rlaim off"); return; }
+            if (a == "fire") { reply(Roles.Impostor.RocketLauncher.ShootForTest() ? "OK rlaim fire" : "ERR rlaim fire: nothing loaded"); return; }
             if (!float.TryParse(a, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float deg)) { reply("ERR rlaim <deg>"); return; }
             float r = deg * System.MathF.PI / 180f;
             Roles.Impostor.RocketLauncher.TestAim = new UnityEngine.Vector2(System.MathF.Cos(r), System.MathF.Sin(r));

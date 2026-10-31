@@ -450,7 +450,11 @@ public sealed partial class Samurai
     }
 
     // 確かめ用
-    internal void DrawForTest() => SetDrawn(true, iai: true);
+    internal void DrawForTest()
+    {
+        SetDrawn(true, iai: true);
+        if (IsLocal) DrawCall.Send(true);
+    }
 
     internal bool SheatheForTest()
     {
