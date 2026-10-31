@@ -481,6 +481,9 @@ internal sealed class Slider : Widget
     private Transform _fill;
     private float _shown = -1f;
 
+    // つまみの動く幅 = 幅からつまみの直径を引いた分 (端に寄せてもつまみが幅の外へ出ない)
+    private float Span => Math.Max(Width - Knob, 0.01f);
+
     public Slider(float width, float value, Func<float, float> onChange)
     {
         Width = width;
@@ -496,7 +499,7 @@ internal sealed class Slider : Widget
         var track = Node(UiScreen.BackName, go.transform, ctx.Layer).AddComponent<SpriteRenderer>();
         track.sprite = UiAssets.Blank;
         track.color = TrackColor;
-        Stretch(track.transform, Width, TrackH);
+        Stretch(track.transform, Span, TrackH);
         var fill = Node(UiScreen.FillName, go.transform, ctx.Layer).AddComponent<SpriteRenderer>();
         fill.sprite = UiAssets.Blank;
         fill.color = Color;
@@ -512,7 +515,7 @@ internal sealed class Slider : Widget
         _bar = go.AddComponent<SlideBar>();
         _bar.Bar = track;
         _bar.Dot = dot;
-        _bar.Range = new FloatRange(-Width / 2f, Width / 2f);
+        _bar.Range = new FloatRange(-Span / 2f, Span / 2f);
         _bar.Vertical = false;
         _bar.sliderSegmentIncrement = 0.1f;
         _bar.OnMouseOver = new UnityEvent();
@@ -542,13 +545,13 @@ internal sealed class Slider : Widget
         if (!_bar) return;
         // つまみは引いている間 SlideBar が指の位置へ動かすので、毎回刻みの位置へ戻す
         var d = _bar.Dot.transform;
-        d.localPosition = new Vector3(-Width / 2f + Width * v, 0f, d.localPosition.z);
+        d.localPosition = new Vector3(-Span / 2f + Span * v, 0f, d.localPosition.z);
         _bar.Value = v;
         if (v == _shown) return;
         _shown = v;
-        float w = Math.Max(Width * v, 0.001f);
+        float w = Math.Max(Span * v, 0.001f);
         Stretch(_fill, w, TrackH);
-        _fill.localPosition = new Vector3(-Width / 2f + w / 2f, 0f, 0f);
+        _fill.localPosition = new Vector3(-Span / 2f + w / 2f, 0f, 0f);
     }
 
     private static void Stretch(Transform t, float w, float h)

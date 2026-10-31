@@ -240,10 +240,10 @@ internal sealed class RoleBrowser
         return new Stack(false, head, body) { Gap = 0.12f, Width = W };
     }
 
-    // 札を 3 つずつの段に並べ直す (左の列の幅に合わせて札の幅を揃え、長い字は縮める)
+    // 札を 3 つずつの段に並べ直す (左の列の幅に合わせて札の幅を揃え、長い字は縮める)。7 つ以上は 1 段に増やして 2 段に収める
     private Widget ChipGrid(Stack chips)
     {
-        const int cols = 3;
+        int cols = Math.Max(3, (chips.Children.Count + 1) / 2);
         const float gap = 0.05f;
         float w = (ChipScreen.MaxWidth - gap * (cols - 1)) / cols;
         var grid = new Stack(false) { Gap = gap, Width = ChipScreen.MaxWidth, Align = Align.Start };

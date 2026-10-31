@@ -25,8 +25,11 @@ internal static class SettingsMenu
     private const int FirstTab = 3; // 本編のタブは 0〜2
 
     // 左の列 (設定画面の座標)。X は本編のタブのボタンと同じ所 (絵はボタンの位置から左へずれて描かれる)
+    // ボタンが CatFitCount 個を超えたら、同じ高さに収まるよう間隔とボタンの高さを詰める (下に絞り込みの札を置く場所を残す)
     private const float CatX = -2.96f, CatTopY = 1.6f, CatStepY = 0.46f;
     private const float CatScaleX = 1f, CatScaleY = 0.78f;
+    private const int CatFitCount = 7;
+    private static float _catStep = CatStepY, _catScaleY = CatScaleY;
     private const float CompactX = 0.48f, CompactY = 0.8f;
     // 検索欄は板の上の縁より上・右上の本編のボタンの列に掛からない所
     private const float SearchX = -1.2f, SearchY = 2.6f, SearchW = 3.6f;
@@ -127,6 +130,13 @@ internal static class SettingsMenu
         CatShown.Clear();
         CatDots.Clear();
         CatArts.Clear();
+        int catCount = 1 + (Pages.Exists(p => p.Presets) ? 1 : 0) + (Pages.Exists(p => !p.Roles && !p.Presets) ? 1 : 0);
+        if (Pages.Exists(p => p.Roles))
+            for (int k = 0; k <= RoleMenu.AddonKind; k++)
+                if (RoleMenu.KindShown(k)) catCount++;
+        float fit = catCount > CatFitCount ? (CatFitCount - 1f) / (catCount - 1f) : 1f;
+        _catStep = CatStepY * fit;
+        _catScaleY = CatScaleY * fit;
         if (Pages.Exists(p => p.Presets)) AddCat(menu, gameBtn, CatPresets, PresetPage.TabName, PresetPage.TabColor);
         AddCat(menu, gameBtn, CatGame, new Text("SettingsMenu.CatGame"), GameCatColor);
         if (Pages.Exists(p => !p.Roles && !p.Presets)) AddCat(menu, gameBtn, CatGeneral, new Text("SettingsMenu.CatGeneral"), GeneralCatColor);
@@ -164,7 +174,7 @@ internal static class SettingsMenu
         btn.name = "MrpCat_" + cat;
         btn.gameObject.SetActive(true);
         var z = proto.transform.localPosition.z;
-        Compact(btn, new Vector3(CatX, CatTopY - Cats.Count * CatStepY, z), proto.transform.localScale, CatScaleX, CatScaleY);
+        Compact(btn, new Vector3(CatX, CatTopY - Cats.Count * _catStep, z), proto.transform.localScale, CatScaleX, _catScaleY);
         var label = btn.GetComponentInChildren<TextMeshPro>();
         var tr = label.GetComponent<TextTranslatorTMP>();
         if (tr) Object.Destroy(tr);
