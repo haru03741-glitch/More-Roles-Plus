@@ -87,6 +87,8 @@ internal static class RoleCommands
             reply(Roles.RoleState.Of(lp) is Roles.Impostor.TriggerHappy th ? $"OK th {th.Describe()} stick={UI.FireStick.ForceShow} held={UI.FireStick.Held}" : "ERR th: not a trigger happy");
         });
 
+        TestBridge.Register("gunsnd", "機関銃と大砲の効果音の鳴らした数と最後の音", (_, reply) => reply($"OK gunsnd {Roles.GunSound.Describe()}"));
+
         TestBridge.Register("rlaim", "<角度° | off> ロケットランチャーの狙いの向きを固定する (0 = 右・90 = 上)", (args, reply) =>
         {
             string a = args.Trim();

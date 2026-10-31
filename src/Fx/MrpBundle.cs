@@ -28,7 +28,7 @@ internal static class MrpBundle
     private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq, _gradReq, _riftReq;
     private static bool _failed, _waterFailed, _fireFailed, _gradFailed, _riftFailed;
 
-    // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音・エモートの音 (BreakNoise と DecompSound が鳴らす)。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
+    // 壁を壊した音・導火線・水漏れ・外壁の穴・家具がぶつかる音・エモートの音 (BreakNoise と DecompSound が鳴らす)・サムライ・機関銃と大砲の音。マテリアルの後に読む。<名前>_m = 遠い・壁越しのこもった音
     private static readonly string[] ClipNames = MakeClipNames();
     private static readonly AssetBundleRequest[] ClipReqs = new AssetBundleRequest[ClipNames.Length];
     private static readonly bool[] ClipDone = new bool[ClipNames.Length];
@@ -54,6 +54,10 @@ internal static class MrpBundle
             "noise_samurai_hit", "noise_samurai_hit_ko", "noise_samurai_clash", "noise_samurai_lock_on", "noise_samurai_lock_break",
             "noise_samurai_lock_loop", "noise_samurai_charge_loop", "noise_samurai_charge_full",
             "noise_samurai_draw", "noise_samurai_slide", "noise_samurai_chin", "noise_samurai_dodge", "noise_samurai_dash", "noise_samurai_spent",
+            "noise_gat_fire_loop", "noise_gat_spin_loop", "noise_gat_tail", "noise_gat_raise", "noise_gat_lower",
+            "noise_gat_ric_1", "noise_gat_ric_2", "noise_gat_ric_3", "noise_gat_ric_4", "noise_gat_ric_5",
+            "noise_gat_hit_1", "noise_gat_hit_2", "noise_gat_hit_3", "noise_gat_case_1", "noise_gat_case_2", "noise_gat_case_3",
+            "noise_rl_load", "noise_rl_bang_1", "noise_rl_bang_2", "noise_rl_bang_3", "noise_rl_escape", "noise_rl_fire", "noise_rl_fly_loop", "noise_rl_blast",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {

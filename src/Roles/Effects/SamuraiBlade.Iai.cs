@@ -32,6 +32,13 @@ internal sealed partial class SamuraiBlade
         Track();
     }
 
+    // 大砲に詰められている間の振りは筒の内側を打つ
+    private void CannonBang()
+    {
+        var pc = _role.Player;
+        if (pc && Impostor.RocketLauncher.CannonOf(pc.PlayerId) is { } launcher) GunSound.Bang(launcher, _strokePow > 0.9f);
+    }
+
     private void BeginStroke()
     {
         _strokePow = _powArmed ? _iaiPow : 0f;
@@ -41,6 +48,7 @@ internal sealed partial class SamuraiBlade
         _iaiTier = 1;
         _auraHot = _strokePow * 0.8f;
         if (!_hidden) SamuraiSound.Swing(_role.Player, _strokePow);
+        CannonBang();
     }
 
     // 振り抜いた: 居合なら切っ先が光り、段に応じた斬線を出す

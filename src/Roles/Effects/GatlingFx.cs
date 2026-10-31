@@ -60,6 +60,7 @@ internal static class GatlingFx
         internal float Px, Py, Pz;   // 握りの位置 (跳ねる前)
         internal float Gx, Gy;       // 今置いてある銃の位置 (跳ね・震えを含む)
         internal float YawRad;       // 今出しているコマの床の上の向き (絵の銃身の向き)
+        internal readonly GunSound.Loops Snd = new();
     }
 
     private static readonly List<Gun> Guns = new();
@@ -126,6 +127,7 @@ internal static class GatlingFx
         g.HandTop = NewHand(g, "HandTop", color, out g.HandTopSr);
         Guns.Add(g);
         Place(g, Time.time, 0f);
+        GunSound.Raise(owner);
         return g;
     }
 
@@ -154,6 +156,8 @@ internal static class GatlingFx
     {
         if (g == null) return;
         Guns.Remove(g);
+        GunSound.StopGun(g.Snd);
+        if (g.Shown && g.Owner) GunSound.Lower(g.Owner);
         if (g.Go) Object.Destroy(g.Go);
         g.Go = null;
     }
@@ -168,7 +172,7 @@ internal static class GatlingFx
         if (!g.Owner) return;
         bool show = !g.Hidden;
         if (show != g.Shown) { g.Shown = show; g.Go.SetActive(show); }
-        if (!show) return;
+        if (!show) { GunSound.StopGun(g.Snd); return; }
         var c = g.Owner.transform.position;
         float r = g.Angle * (MathF.PI / 180f);
         float cs = FxMath.Cos(r), sn = FxMath.Sin(r);
@@ -182,6 +186,7 @@ internal static class GatlingFx
         float want = firing ? SpinTop : 0f;
         g.SpinSpeed = g.SpinSpeed < want ? FxMath.Min(want, g.SpinSpeed + SpinUp * dt) : FxMath.Max(want, g.SpinSpeed - SpinDown * dt);
         g.Spin += g.SpinSpeed * dt;
+        GunSound.TickGun(g.Snd, g.Go, g.Owner, show, firing, g.SpinSpeed);
         if (g.Spin > 4096f) g.Spin -= 4096f;
         // 撃っている間は 1 フレームおきに軸に沿って後ろへ跳ね、横にわずかに震える
         float kick = firing ? ((Time.frameCount & 1) == 0 ? Kick : Kick * 0.35f) : 0f;
@@ -342,6 +347,7 @@ internal static class GatlingFx
     internal static void Impact(float x, float y, float dx, float dy)
     {
         if (!Ready()) return;
+        GunSound.Impact(x, y, !Impostor.TriggerHappy.PierceWalls && Impostor.TriggerHappy.Ricochets > 0);
         float z = y / 1000f - 0.02f;
         float back = FxMath.Atan2(-dy, -dx);
         if (Parts.Count < MaxParts)
@@ -533,7 +539,7 @@ internal static class GatlingFx
                     {
                         p.Y = p.Floor;
                         if (p.Bounced) { p.Vx = p.Vy = 0f; p.Turn = 0f; }
-                        else { p.Bounced = true; p.Vy = -p.Vy * 0.35f; p.Vx *= 0.5f; p.Turn *= 0.4f; }
+                        else { p.Bounced = true; p.Vy = -p.Vy * 0.35f; p.Vx *= 0.5f; p.Turn *= 0.4f; GunSound.Case(p.X, p.Y); }
                     }
                     p.Rot += p.Turn * dt;
                     p.Tf.position = FxMath.V3(p.X, p.Y, p.Bounced ? p.Floor / 1000f + 0.0004f : p.Z);

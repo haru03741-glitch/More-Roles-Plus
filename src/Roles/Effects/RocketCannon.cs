@@ -126,6 +126,7 @@ internal sealed class RocketCannon
         if (!c.Build(launcher.Data != null ? launcher.Data.DefaultOutfit.ColorId : 0)) return;
         Live.Add(c);
         c.Place(0f);
+        GunSound.Load(launcher);
     }
 
     // 相手の体の中心を置く所 (装填の動きの途中も)。大砲が無ければ false
@@ -157,6 +158,7 @@ internal sealed class RocketCannon
         Show();
         BeginPose();
         var m = Muzzle(dir);
+        GunSound.Fire(_launcher, m);
         if (_flashTf)
         {
             _flashTf.position = FxMath.V3(m.x, m.y, Z() - 0.002f);
@@ -174,6 +176,7 @@ internal sealed class RocketCannon
     // 飛んだ相手が止まった (爆発・会議・抜けた)
     internal void Landed()
     {
+        GunSound.StopFly();
         _flying = false;
         EndPose();
         Show();
@@ -182,6 +185,7 @@ internal sealed class RocketCannon
     // 撃たれた人が爆発した所 (全員の端末)。白い核 → 橙のにじみ → 火の色から白へ変わる煙の輪と火花。近い人ほど画面が揺れる
     internal static void Impact(Vector2 at, float r)
     {
+        GunSound.Blast(at);
         if (!Search()) return;
         float z = (at.y - 1.5f) / 1000f; // そばに立つ人より手前
         SpawnPuff(at.x, at.y, 0f, 0f, r * ImpactGlowK0, r * ImpactGlowK1, ImpactGlowLife, z + 0.0002f, true, PuffKind.Glow);
@@ -213,6 +217,7 @@ internal sealed class RocketCannon
 
     internal static void ClearAll()
     {
+        GunSound.StopFly();
         for (int i = Live.Count - 1; i >= 0; i--) Live[i].Remove();
         foreach (var p in Puffs) if (p.Go) Object.Destroy(p.Go);
         Puffs.Clear();

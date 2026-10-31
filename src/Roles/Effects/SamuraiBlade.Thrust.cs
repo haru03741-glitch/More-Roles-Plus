@@ -34,6 +34,7 @@ internal sealed unsafe partial class SamuraiBlade
         _iaiTier = 1;
         _auraHot = _strokePow * 0.8f;
         if (!_hidden) SamuraiSound.Swing(_role.Player, _strokePow);
+        CannonBang();
         Track();
     }
 

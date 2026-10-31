@@ -89,7 +89,7 @@ public sealed class RocketLauncher : RoleBase
         {
             if (_mine == this) _mine = null;
             if (_held != 255) Release(_held);
-            if (_shot != 255) Release(_shot);
+            if (_shot != 255) { Release(_shot); GunSound.StopFly(); }
             RocketCannon.Drop(this);
         });
     }
@@ -177,7 +177,7 @@ public sealed class RocketLauncher : RoleBase
         if (!PortKit.Alive(Player))
         {
             if (_held != 255) { Release(_held); _held = 255; }
-            if (_flying) { Release(_shot); _flying = false; _shot = 255; }
+            if (_flying) { Release(_shot); _flying = false; _shot = 255; GunSound.StopFly(); }
             RocketCannon.Drop(this);
             return;
         }
@@ -219,6 +219,7 @@ public sealed class RocketLauncher : RoleBase
             Release(_shot);
             _flying = false;
             _shot = 255;
+            GunSound.StopFly();
             return;
         }
         float dt = Time.fixedDeltaTime;
@@ -252,6 +253,7 @@ public sealed class RocketLauncher : RoleBase
         }
         _pos = hit ? at : next;
         MoveTo(t, _pos);
+        if (!hit) GunSound.Fly(t);
         if (hit)
         {
             _exploded = true;
@@ -337,6 +339,15 @@ public sealed class RocketLauncher : RoleBase
     }
 
     private float _blastAt = -9f; // 全員の端末: 最後に爆発した時刻 (爆発で倒す本編のキルで撃った人を動かさないため)
+
+    // 全員の端末: id の人を大砲に詰めている人 (いなければ null)
+    internal static PlayerControl CannonOf(byte id)
+    {
+        if (!Held.Contains(id)) return null;
+        foreach (var p in PlayerControl.AllPlayerControls)
+            if (RoleState.Of(p) is RocketLauncher rl && rl._held == id) return p;
+        return null;
+    }
 
     // 爆発から少しの間 (本編のキルが全員に届くまで) に起きたその人のキルは、離れた所からのキル
     internal static bool RangedKill(PlayerControl p) => RoleState.Of(p) is RocketLauncher rl && Time.time - rl._blastAt < 1.5f;
@@ -427,6 +438,7 @@ public sealed class RocketLauncher : RoleBase
             Release(target);
             rl._held = 255;
             RocketCannon.Drop(rl);
+            GunSound.Escape(user);
         }
         else if (rl._flying && rl._shot == target)
         {
@@ -435,6 +447,8 @@ public sealed class RocketLauncher : RoleBase
             rl._shot = 255;
             rl._flying = false;
             RocketCannon.Drop(rl);
+            GunSound.StopFly();
+            GunSound.Escape(user);
         }
         Plugin.Logger.LogInfo($"rocket launcher: {target} broke free");
     }
