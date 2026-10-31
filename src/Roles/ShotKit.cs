@@ -40,6 +40,27 @@ internal static class ShotKit
         return best;
     }
 
+    // from から dir へ、壁までの距離とその面の向き (跳ね返りに使う)。壁が無ければ false で dist = len
+    internal static bool WallHit(Vector2 from, Vector2 dir, float len, out float dist, out Vector2 normal)
+    {
+        int n = Physics2D.RaycastNonAlloc(from, dir, _rayHits, len, Constants.ShipAndObjectsMask);
+        dist = len;
+        normal = default;
+        int best = -1;
+        // 当たりは近い順に並んでいるので、最初の当たりのある物が壁 (弾ごとに呼ぶので残りは読まない)
+        for (int i = 0; i < n; i++)
+        {
+            var c = _rayHits[i].collider;
+            if (!c || c.isTrigger) continue;
+            dist = _rayHits[i].distance;
+            best = i;
+            break;
+        }
+        if (best < 0) return false;
+        normal = _rayHits[best].normal;
+        return true;
+    }
+
     // from から dir へ len だけ進んだ所 (walls なら壁で止まる)
     internal static Vector2 End(Vector2 from, Vector2 dir, float len, bool walls)
     {

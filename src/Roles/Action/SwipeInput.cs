@@ -353,11 +353,12 @@ internal static class SwipeInput
 internal static class MoveBlock
 {
     internal static int Hits;
+    internal static bool Gun; // 機関銃を構えている間 (左クリックが撃つのに使われる)
     private static bool _logged;
 
     internal static bool Blocks()
     {
-        if (!SwipeInput.Armed || OperatingSystem.IsAndroid()) return false;
+        if (!(SwipeInput.Armed || Gun) || OperatingSystem.IsAndroid()) return false;
         Hits++;
         if (!_logged) { _logged = true; Plugin.Logger.LogInfo("swipe: mouse movement blocked while armed"); }
         return true;

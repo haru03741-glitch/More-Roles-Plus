@@ -1242,7 +1242,7 @@ TriggerHappy.Name: トリガーハッピー
 TriggerHappy.Blurb: 撃って撃って撃ちまくれ
 TriggerHappy.Summary: しばらく機関銃を乱射し、同じ人に決まった数の弾を当てて倒すインポスターです。
 TriggerHappy.Spray: 乱射
-TriggerHappy.Spray.Help: しばらく機関銃を構え、マウスの方へ弾をばらまき続けます。同じ人に決まった数当たると倒れます。弾は壁で止まり (設定で抜けます)、賢者のバリアには跳ね返されます。
+TriggerHappy.Spray.Help: しばらく機関銃を構えます。PC では右クリックを押している間だけ構え、そのまま左クリックを押している間はマウスの方へ弾をばらまきます。キーボードだけで遊ぶ時は、乱射のキーを押すと構え、押し続けている間は歩いている向きへばらまきます。スマホでは画面の右半分に触れると出るスティックを倒している間だけ、その向きへばらまきます。同じ人に決まった数当たると倒れます。弾は壁で跳ね返り (回数は設定で変えられます)、同じ所に当て続けると壁が削れて穴が開きます。
 TriggerHappy.Spray.Short: 機関銃を乱射する
 TriggerHappy.Cooldown: 乱射の待ち時間
 TriggerHappy.Range: 弾の射程
@@ -1382,12 +1382,14 @@ EvilSeer.FlashColorText: {color} の人が死んだ
 Vulture.ShowArrows: 死体への矢印を出す
 Arsonist.Duration: 塗るのにかかる時間
 # ── 作り直し: ジャンボ ──
+TriggerHappy.Unlimited: 使える回数を無限にする
 TriggerHappy.UseLimit: 使える回数
 TriggerHappy.SyncKillCooldown: 乱射とキルボタンのクールダウンを同期する
 TriggerHappy.Duration: 乱射の時間
 TriggerHappy.RequiredHits: 倒すのに必要な弾数
 TriggerHappy.BulletSize: 弾の大きさ
 TriggerHappy.PierceWalls: 弾が壁を抜ける
+TriggerHappy.Ricochets: 壁で跳ね返る回数
 TriggerHappy.SpreadAngle: 弾のばらつき
 TriggerHappy.FriendlyFire: 仲間にも当たる
 TriggerHappy.KillSound: キル音を鳴らす

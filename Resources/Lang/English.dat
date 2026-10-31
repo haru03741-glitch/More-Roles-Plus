@@ -1242,7 +1242,7 @@ TriggerHappy.Name: Trigger Happy
 TriggerHappy.Blurb: Shoot, shoot, and keep shooting
 TriggerHappy.Summary: An impostor who sprays a machine gun for a while and kills anyone hit by enough bullets.
 TriggerHappy.Spray: Spray
-TriggerHappy.Spray.Help: Hold a machine gun for a while and keep spraying bullets toward the mouse. Anyone hit enough times dies. Bullets stop at walls (unless set to pierce) and bounce off a Wise Man's barrier.
+TriggerHappy.Spray.Help: Hold a machine gun for a while. On PC, hold the right mouse button to raise it, and hold the left mouse button to fire toward the mouse. Keyboard only: press the spray key to raise it, and keep holding it to fire in the direction you are walking. On mobile, touch the right half of the screen to bring up a stick, and it fires in that direction only while you tilt the stick. Anyone hit enough times dies. Bullets ricochet off walls (the number of bounces can be set), and keeping fire on one spot chips the wall until it breaks open.
 TriggerHappy.Spray.Short: Spray the machine gun
 TriggerHappy.Cooldown: Spray cooldown
 TriggerHappy.Range: Bullet range
@@ -1382,12 +1382,14 @@ EvilSeer.FlashColorText: Someone of {color} died
 Vulture.ShowArrows: Show arrows to bodies
 Arsonist.Duration: Douse time
 # ── 作り直し: ジャンボ ──
+TriggerHappy.Unlimited: Unlimited uses
 TriggerHappy.UseLimit: Uses
 TriggerHappy.SyncKillCooldown: Sync spray and kill cooldowns
 TriggerHappy.Duration: Spray duration
 TriggerHappy.RequiredHits: Hits needed to kill
 TriggerHappy.BulletSize: Bullet size
 TriggerHappy.PierceWalls: Bullets pierce walls
+TriggerHappy.Ricochets: Ricochets off walls
 TriggerHappy.SpreadAngle: Bullet spread
 TriggerHappy.FriendlyFire: Friendly fire
 TriggerHappy.KillSound: Play kill sound

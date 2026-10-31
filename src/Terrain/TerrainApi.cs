@@ -47,6 +47,17 @@ public static class TerrainApi
         return TerrainResult.Done(res);
     }
 
+    // 離れた所の壁を叩く (弾など)。from から dir の向きの壁を叩く。from は自分から許可の HitReach 以内。force 0..1
+    public static TerrainResult Shoot(Vector2 from, Vector2 dir, float force = 0.3f)
+    {
+        if (!Local(TerrainUse.Hammer, 0f, out var lp, out string why)) return TerrainResult.Fail(why);
+        if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
+        string res = TerrainSync.Request(new DamageEvent(DamageKind.Blunt, from, dir.normalized, 0f, Math.Clamp(force, 0f, 1f), Seed()), out bool ok);
+        if (!ok) return TerrainResult.Fail(res);
+        TerrainPermits.Mark(lp.PlayerId, TerrainUse.Hammer);
+        return TerrainResult.Done(res);
+    }
+
     // 足元に爆弾を置く (導火線の後に爆発)
     public static TerrainResult Bomb(float radius)
     {

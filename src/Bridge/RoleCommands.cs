@@ -76,6 +76,17 @@ internal static class RoleCommands
             reply($"OK picker {RolePicker.Dump()}");
         });
 
+        TestBridge.Register("th", "[fire <角度°> <秒> | stick on|off] 自分のトリガーハッピーの状態 / その向きへ秒の間撃った扱い (射撃スティックを倒したのと同じ道) / スマホの射撃スティックを PC でも出す (左ボタンで触る)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (a.Length >= 3 && a[0] == "fire" && float.TryParse(a[1], System.Globalization.NumberStyles.Float, inv, out float deg) && float.TryParse(a[2], System.Globalization.NumberStyles.Float, inv, out float sec))
+                UI.FireStick.Synth(deg, sec);
+            else if (a.Length >= 2 && a[0] == "stick") UI.FireStick.ForceShow = a[1] == "on";
+            var lp = PlayerControl.LocalPlayer;
+            reply(Roles.RoleState.Of(lp) is Roles.Impostor.TriggerHappy th ? $"OK th {th.Describe()} stick={UI.FireStick.ForceShow} held={UI.FireStick.Held}" : "ERR th: not a trigger happy");
+        });
+
         TestBridge.Register("rlaim", "<角度° | off> ロケットランチャーの狙いの向きを固定する (0 = 右・90 = 上)", (args, reply) =>
         {
             string a = args.Trim();
