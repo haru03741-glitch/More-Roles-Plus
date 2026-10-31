@@ -58,6 +58,7 @@ internal static class DuelFacing
         var cos = pc.cosmetics;
         if (!cos) return;
         Vector2 me = pc.GetTruePosition();
+        DuelTrail.Record(id, me, Time.time);
         bool samurai = RoleState.Of(id) is Samurai;
         byte cur = Foe[id], best = None;
         float bestD = float.MaxValue, curD = float.MaxValue, curX = 0f, bestX = 0f;

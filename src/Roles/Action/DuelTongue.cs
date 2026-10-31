@@ -16,6 +16,8 @@ internal static class DuelTongue
     internal const float Reach = 3.0f;
     internal const int Damage = 35;
     internal const float Cooldown = 1.6f;
+    internal const float GuardReady = 0.25f;
+    internal static readonly float[] GuardedAt = new float[256]; // ホスト: 最後に口で受けた時刻   // 口で受けた後、舌を撃てるまで (受けられたサムライは Samurai.StunTime の間振れない)
     internal const float HitWidth = 0.45f;     // 伸びきった舌の線から相手の足元までの離れ
     // 押してからこの間に向いて来た振りは舌を斬る (口が開くのを見てから振って間に合うよう、開く溜めを長く取ってある)
     internal const float CutFrom = 0.05f, CutTo = ImpostorMaw.Open + ImpostorMaw.Extend + 0.05f;
@@ -233,6 +235,8 @@ internal static class DuelTongue
         // 振りかかって来ている刀があれば口で受ける (舌は出さない)
         if (RoleState.Of(s) is Samurai ss && ss.HostTakeHeldOn(i))
         {
+            // 受けたら舌はすぐ撃てる (受けて振れないサムライへ返す)
+            ReadyAt[i] = now + GuardReady;
             HostGuard(i, s.PlayerId, ss);
             return true;
         }
@@ -307,6 +311,7 @@ internal static class DuelTongue
     private static void HostGuard(byte i, byte sid, Samurai sam)
     {
         GuardCount++;
+        GuardedAt[i] = Time.time;
         sam.HostStun();
         Broadcast(Kind.Guard, i, sid, 0);
     }

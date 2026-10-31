@@ -196,7 +196,7 @@ public sealed partial class Samurai
         bool arm = free && ready && !Locked;
         if (!arm) Disarm = !alive ? "dead" : !p.CanMove ? "canmove" : DuelTumble.Busy(PlayerId) ? "tumble" : MeetingHud.Instance ? "meeting" : p.inVent ? "vent" : !ready ? "drawing" : "locked";
         SwipeInput.Arm(arm ? p : null);
-        SwipeInput.NoThrust = Spent;
+        SwipeInput.NoThrust = Spent || _blade.Stunned;
         _ring?.Tick(alive && !MeetingHud.Instance);
         _padOn = UI.SamuraiPad.Tick(this, free && alive && !Locked);
         if (!Drawn && SwipeInput.Dragging) _blade.Charging();
@@ -246,6 +246,7 @@ public sealed partial class Samurai
     private void OnLocalStrokeStart()
     {
         _starts++;
+        NextStrokeSeq();
         if (Drawn || Spent) return;
         _iaiStroke = true;
         _iaiCharge = ChargeOf(Time.time - SwipeInput.PressedAt);

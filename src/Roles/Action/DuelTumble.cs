@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Roles;
 // 見た目は全員の端末で同じ式から描く (体の絵・着せ替え・名札を回して持ち上げる)。体を動かすのは持ち主の端末だけで、位置は本編の同期で届く
 internal static partial class DuelTumble
 {
-    private enum Mode : byte { None, Recoil, Launch }
+    private enum Mode : byte { None, Recoil, Launch, Roll }
 
     // 吹っ飛び: 空中・跳ね・滑り・起き上がり (秒)
     private const float Air = 0.45f, Bounce = 0.2f, Slide = 0.35f, Rise = 0.3f;
@@ -23,6 +23,8 @@ internal static partial class DuelTumble
     private const float AirTurn = 360f, Lying = 90f; // 空中で 1 回り・着地の跳ねで横倒しまで
     // のけぞり
     private const float RecoilTime = 0.35f, RecoilLean = 25f, RecoilHop = 0.12f, RecoilSpeed = 3f, RecoilPush = 0.12f;
+    // 回避の転がり: 飛び退く向きへ 1 回りして立つ (体を動かすのは回避の側・ここは見た目だけ)
+    private const float RollTime = 0.34f, RollTurn = 360f, RollHop = 0.07f;
 
     private sealed class State
     {
@@ -42,7 +44,7 @@ internal static partial class DuelTumble
 
     private static readonly State[] States = new State[256];
     private static int _live;
-    internal static int Recoils, Launches, Techs, TechMisses;
+    internal static int Recoils, Launches, Techs, TechMisses, Rolls;
 
     // ---- 始める ----
 
@@ -75,6 +77,15 @@ internal static partial class DuelTumble
         if (s != null) Recoils++;
     }
 
+    // 回避した人が (dx, dy) の向きへ転がる (全員の端末)
+    internal static void Roll(byte id, float dx, float dy)
+    {
+        var s = Begin(id, 255, Mode.Roll, dx, dy);
+        if (s == null) return;
+        Rolls++;
+        Dust(s, 3, 0.55f);
+    }
+
     internal static void Launch(byte id, byte from)
     {
         var s = Begin(id, from, Mode.Launch);
@@ -86,18 +97,19 @@ internal static partial class DuelTumble
         SamuraiSound.At("noise_samurai_dodge", pc, 0.55f);
     }
 
-    private static State Begin(byte id, byte from, Mode mode)
+    // dirX/dirY = 向きを渡す時 (0, 0 なら from から離れる向き)
+    private static State Begin(byte id, byte from, Mode mode, float dirX = 0f, float dirY = 0f)
     {
         var pc = Player(id);
         if (!pc || pc.Data == null || pc.Data.IsDead || pc.inVent || pc.onLadder || pc.inMovingPlat || !pc.cosmetics) return null;
         var s = States[id] ??= new State();
-        if (s.Mode == Mode.Launch && mode == Mode.Recoil) return null;
+        if (s.Mode == Mode.Launch && mode != Mode.Launch) return null;
         if (s.Mode == Mode.None) _live++;
         else Restore(s);
         var src = Player(from);
         Vector2 me = pc.GetTruePosition();
-        float dx = 0f, dy = 0f;
-        if (src)
+        float dx = dirX, dy = dirY;
+        if (dx == 0f && dy == 0f && src)
         {
             Vector2 at = src.GetTruePosition();
             dx = me.x - at.x;
@@ -228,13 +240,14 @@ internal static partial class DuelTumble
             if (s == null || s.Mode == Mode.None) continue;
             var pc = s.Pc;
             float t = now - s.T0;
-            float len = s.Mode == Mode.Recoil ? RecoilTime : LaunchLen(s);
+            float len = s.Mode == Mode.Recoil ? RecoilTime : s.Mode == Mode.Roll ? RollTime : LaunchLen(s);
             if (stop || t >= len || !pc || pc.Data == null || pc.Data.IsDead || pc.inVent)
             {
                 End(s);
                 continue;
             }
             if (s.Mode == Mode.Recoil) PoseRecoil(s, t);
+            else if (s.Mode == Mode.Roll) PoseRoll(s, t);
             else
             {
                 if (!s.Tech && !s.TechSpent && t >= Air - BotTechLead) BotTech(s);
@@ -248,6 +261,19 @@ internal static partial class DuelTumble
         float k = FxMath.Sin(FxMath.PI * t / RecoilTime);
         // 当てた人と反対へ倒れる = 右へ押されたら時計回り
         Pose(s, s.Spin * RecoilLean * k, RecoilHop * k);
+    }
+
+    private static void PoseRoll(State s, float t)
+    {
+        float k = t / RollTime;
+        // 踏み切りで速く回り、立つ前に緩む
+        float e = k * k * (3f - 2f * k);
+        Pose(s, s.Spin * RollTurn * e, RollHop * FxMath.Sin(FxMath.PI * k));
+        if (!s.Landed && k >= 0.8f)
+        {
+            s.Landed = true;
+            Dust(s, 2, 0.45f);
+        }
     }
 
     private static void PoseLaunch(State s, float t)
@@ -425,7 +451,7 @@ internal static partial class DuelTumble
 
     internal static string Describe()
     {
-        var sb = new System.Text.StringBuilder($"tumble live={_live} recoils={Recoils} launches={Launches} techs={Techs} techMiss={TechMisses}");
+        var sb = new System.Text.StringBuilder($"tumble live={_live} rolls={Rolls} recoils={Recoils} launches={Launches} techs={Techs} techMiss={TechMisses}");
         for (int i = 0; i < States.Length; i++)
         {
             var s = States[i];

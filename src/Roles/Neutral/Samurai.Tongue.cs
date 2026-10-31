@@ -37,10 +37,11 @@ public sealed partial class Samurai
     // ホスト: 口で受けられた。少しの間このサムライの振りを通さない
     internal void HostStun() => _hostStunUntil = Time.time + StunTime;
 
-    // 全員の端末: 刀が弾かれた姿 (本人は少し押し戻される。気は減らさない = 受けられ続けて気切れに追い込まれない)
+    // 全員の端末: 刀が弾かれた姿 (本人は少し押し戻される。気は減らさない = 受けられ続けて気切れに追い込まれない)。
+    // 振れない間 (StunTime) は刀が跳ね上がったまま震え、本人の端末ではなぞっても振らない (ホストが捨てる振りを手元で見せない)
     internal void OnGuarded(byte imp)
     {
-        _blade.Recoil(AngleTo(imp));
+        _blade.Recoil(AngleTo(imp), StunTime);
         DuelTumble.Recoil(PlayerId, imp);
         if (IsLocal) Knock(imp);
     }

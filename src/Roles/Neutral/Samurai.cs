@@ -48,6 +48,7 @@ public sealed partial class Samurai : RoleBase
     // 突き: 斬りより遠くまで細く届く (斬れる距離 + ThrustExtra・向きの左右 12 度・体の幅 ThrustWidth までは向きがずれても当たる)
     internal const float ThrustExtra = 0.8f;
     private const float ThrustWidth = 0.3f, ThrustTan = 0.2126f; // tan 12°
+    private const float ThrustBody = 0.15f, ThrustNear = 0.6f; // 拳の近く (ThrustNear まで) は相手の体の幅の分だけ帯を太く (拳の近くで重なった体にも当たる)
     private const int ThrustDamage = 30;
     internal const ushort ThrustMs = 120;
     internal const byte ThrustFlag = 0x80; // 一振りの段の上の bit = 突き
@@ -142,10 +143,11 @@ public sealed partial class Samurai : RoleBase
     {
         public readonly short A0, Sweep;
         public readonly ushort Ms;
-        public readonly byte Iai, Tier;
+        public readonly byte Iai, Tier, Seq; // Seq = 一振りの番号 (触れた瞬間に当てた相手を、振り終わりにもう一度斬らない)
 
-        public Stroke(short a0, short sweep, ushort ms, byte iai, byte tier)
+        public Stroke(short a0, short sweep, ushort ms, byte iai, byte tier, byte seq = 0)
         {
+            Seq = seq;
             A0 = a0;
             Sweep = sweep;
             Ms = ms;
@@ -166,21 +168,21 @@ public sealed partial class Samurai : RoleBase
     // 自分の端末: なぞりで一振りが出来た。軌跡は手元で描いているので、ホストへ当たりを頼むだけ
     private void OnLocalStroke(float a0, float sweep, float seconds)
     {
-        if (!Drawn || Spent) return;
+        if (!Drawn || Spent || _blade.Stunned) return;
         bool iai = _iaiStroke;
         _iaiStroke = false;
         UseKi(LocalStrokeCost(!iai));
         _sent++;
         byte charge = iai ? (byte)(1 + (int)MathF.Round(_iaiCharge * 254f)) : (byte)0;
         _sentIai = charge;
-        StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000), charge, (byte)(iai ? _iaiTier : 1)));
+        StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000), charge, (byte)(iai ? _iaiTier : 1), _strokeSeq));
     }
 
     // 自分の端末: 外へ押し出して突いた。納めていれば抜きながら突く (居合・溜めた分だけ強い・段は 1)。
     // 突いた向きへ少しだけ前へ出る (気は突きの分だけ)
     private void OnLocalThrust(float angle)
     {
-        if (Spent) return;
+        if (Spent || _blade.Stunned) return;
         bool iai = _iaiStroke;
         _iaiStroke = false;
         if (!Drawn)
@@ -209,10 +211,10 @@ public sealed partial class Samurai : RoleBase
     }
 
     // 確かめ用: なぞりを作り物で流す (a0 → a1 度を秒で・hold 秒押したまま溜めてから)
-    internal bool SwipeForTest(float a0, float a1, float seconds, float hold = 0f)
+    internal bool SwipeForTest(float a0, float a1, float seconds, float hold = 0f, bool ease = false)
     {
         if (!SwipeInput.Armed) return false;
-        SwipeInput.Synth(a0, a1, seconds, hold);
+        SwipeInput.Synth(a0, a1, seconds, hold, ease);
         return true;
     }
 
@@ -225,8 +227,7 @@ public sealed partial class Samurai : RoleBase
 
     private static readonly RemoteCall<Stroke> StrokeCall = new("Samurai.Stroke", Route.ToHost,
         // Hazel に short の書き手は無い (int の 4 バイトになる)。読み手の ReadInt16 と合わせて 2 バイトで書く
-        (w, s) => { w.Write(unchecked((ushort)s.A0)); w.Write(unchecked((ushort)s.Sweep)); w.Write(s.Ms); w.Write(s.Iai); w.Write(s.Tier); },
-        r => new Stroke(r.ReadInt16(), r.ReadInt16(), r.ReadUInt16(), r.ReadByte(), r.ReadByte()),
+        (w, s) => WriteStroke(w, s), ReadStroke,
         (sender, s) => (RoleState.Of(sender) as Samurai)?.HostStroke(s), perSecond: 8);
 
     // 振った姿 (ホスト → 全員)。値 = 振った人 | 修羅の色 << 7 | 始めの角度 + 180 << 8 | 掃引角 + 512 << 17 (10 bit) | 居合 << 27 | 居合の溜め (0〜15) << 28・ms と居合の段は別
@@ -304,11 +305,85 @@ public sealed partial class Samurai : RoleBase
         _hostStrokeFull = iai && charge >= FullCharge;
         _hostStrokeSmash = iai && !thrust && (tier & 0x7F) >= SmashTier;
         _hostStrokeSecs = secs;
-        HostHit(a0, sweep, dmg, thrust);
+        // 練習の相手の振りは、刀の絵が振り終わってから当てる (人の振りがホストへ届くのと同じ順番で、刀が通った時刻の位置で決める)
+        if (!thrust && DuelBot.Has(PlayerId))
+        {
+            _botPending.Add(new BotPending { At = Time.time + secs, A0 = a0, Sweep = sweep, Dmg = dmg, Iai = iai, Full = _hostStrokeFull, Smash = _hostStrokeSmash, Secs = secs });
+            return;
+        }
+        HostHit(a0, sweep, dmg, thrust, skip: s.Seq == _hostCutSeq ? _hostCuts : null);
+        if (s.Seq == _hostCutSeq) _hostCuts.Clear();
     }
 
     private int _lastDamage;
+    private string _watchNote = "";
+    private const int SweepSteps = 8;          // 振りを区切って、区切りごとの位置で刀が通ったかを見る
+    private const float MaxLag = 0.3f;
+
+    // ホスト: 刀 (a0 から sweep 度・_hostStrokeSecs 秒で tEnd に振り終わり) が相手 id の向きを通った時の、自分と相手の足元。
+    // 通った区切りがあれば true で、from/at をその時の位置・csq をその時の距離の 2 乗にする (届いた区切りがあればそれを優先)
+    private bool SweptAt(byte id, float a0, float sweep, float tEnd, float now, ref Vector2 from, ref Vector2 at, out float csq, out float tHit)
+    {
+        csq = float.MaxValue;
+        tHit = now;
+        float span = FxMath.Abs(sweep), secs = _hostStrokeSecs, reachSq = SlashReach * SlashReach;
+        bool meTracked = DuelTrail.Tracks(PlayerId, now), crossed = false;
+        float fx = from.x, fy = from.y, ax = at.x, ay = at.y;
+        for (int k = 0; k < SweepSteps; k++)
+        {
+            float u0 = k / (float)SweepSteps, u1 = (k + 1) / (float)SweepSteps;
+            float t = tEnd - secs * (1f - (u0 + u1) * 0.5f);
+            float mx = from.x, my = from.y;
+            if (meTracked) DuelTrail.At(PlayerId, t, out mx, out my);
+            DuelTrail.At(id, t, out float tx, out float ty);
+            float dx = tx - mx, dy = ty - my;
+            float ta = FxMath.Atan2(dy, dx) * FxMath.Rad2Deg;
+            float d = (sweep >= 0f ? ta - a0 : a0 - ta) % 360f;
+            if (d < 0f) d += 360f;
+            // この区切りで刀が通った角度 (両端に相手の体の幅の分)
+            float sq = dx * dx + dy * dy, pad = ArcPadAt(sq);
+            float lo = span * u0 - pad, hi = span * u1 + pad;
+            if (!(d >= lo && d <= hi || lo < 0f && d >= 360f + lo || hi > 360f && d <= hi - 360f)) continue;
+            if (crossed && sq >= csq) continue;
+            crossed = true;
+            csq = sq;
+            tHit = t;
+            fx = mx; fy = my; ax = tx; ay = ty;
+            if (sq <= reachSq) break;
+        }
+        if (!crossed) return false;
+        from = FxMath.V2(fx, fy);
+        at = FxMath.V2(ax, ay);
+        return true;
+    }
+
+    // 刀の向きの両端の余裕 (度)。遠くは ArcPad・近いほど相手の体 (半分の幅 BodyPad の円) が大きく見えるので、その見える角度 + 5° まで広げる
+    private static float ArcPadAt(float sq)
+    {
+        const float r2 = BodyPad * BodyPad;
+        if (sq <= r2) return 180f;
+        float a = FxMath.Atan2(BodyPad, FxMath.Sqrt(sq - r2)) * FxMath.Rad2Deg + 5f;
+        return a > ArcPad ? a : ArcPad;
+    }
+
+    // 客の振りの遅れ: 振り終わってから届くまでと、客の画面の相手の位置が遅れていた分 (ホストの往復を客の往復の目安にする)
+    private float StrokeLag()
+    {
+        if (IsLocal || DuelBot.Has(PlayerId)) return 0f;
+        var conn = AmongUsClient.Instance ? AmongUsClient.Instance.connection : null;
+        var udp = conn != null ? conn.TryCast<Hazel.Udp.UdpConnection>() : null;
+        if (udp == null) return 0f;
+        return FxMath.Min((float)udp.AveragePingMs * 2f / 1000f, MaxLag);
+    }
+    // 届く所からこれだけ外まで・振った扇から WhiffArc 度 (突きは向きの tan) までにいた相手を外したら空振り
+    private const float WhiffPad = 0.6f, WhiffArc = 45f, WhiffTan = 0.5f;
+
+    // 空振り (ホスト → 全員)。値 = 振った人 | 外した相手 << 8
+    private static readonly RemoteCall<int> WhiffCall = new("Samurai.Whiff", Route.HostToAll,
+        (w, v) => w.Write(v), r => r.ReadInt32(),
+        (_, v) => UI.DuelHud.Whiff((byte)v));
     private int _missBusy, _missFar, _missArc, _missWall, _missDodge;
+    private static int _sweptSaves, _sweptDrops, _sweptChecks; // 刀が通った時刻の位置で決めたら、振り終わりの位置と当たり外れが入れ替わった数 (全員の合計)
     private byte _sentIai, _hostIai;
 
     // iai = 納めている所からの一振り (居合)。ホスト自身がサムライなら一振りの始めに手元で抜いているので、申告で見る
@@ -328,8 +403,12 @@ public sealed partial class Samurai : RoleBase
     }
 
     // thrust = 突き (a0 の向きへ細く遠く・sweep は使わない)
-    private void HostHit(float a0, float sweep, int damage, bool thrust = false)
+    // only = この人だけを見る (刀が触れた瞬間の当たり・Samurai.Cut.cs)。skip = この一振りで触れた瞬間に当てた人 (もう斬らない)。
+    // only を渡した時は、その人に当たった (受けられた・弾き合いを待つ物も含む) なら true
+    // spareOut = 舌を斬った / 口で受けた人をここへ足す (only の時)
+    private bool HostHit(float a0, float sweep, int damage, bool thrust = false, byte only = 255, System.Collections.Generic.List<byte> skip = null, System.Collections.Generic.List<byte> spareOut = null)
     {
+        bool skipped = false;
         var p = Player;
         Vector2 me = p.GetTruePosition();
         float reach = thrust ? SlashRange + RangeSlack + ThrustExtra : SlashReach;
@@ -337,25 +416,34 @@ public sealed partial class Samurai : RoleBase
         float span = FxMath.Abs(sweep);
         // 自分へ伸びている舌を斬ったか、舌を出しかけたインポスターに受けられたら、その人には当てない
         byte spared = DuelTongue.HostStroke(this, me, a0, sweep, thrust, _hostStrokeSecs);
+        if (spared != 255 && spareOut != null && !spareOut.Contains(spared)) spareOut.Add(spared);
         var all = GameData.Instance.AllPlayers;
         // 先に当たる人を全員決めてから斬る (斬った後の本編の処理で一覧が変わる)
         Span<byte> hits = stackalloc byte[16];
         int n = 0, aimedBits = 0; // aimedBits = 刀の向きが相手へ向いていた当たり (近すぎて向きを問わず当たった物でない)
+        byte whiff = 255;
+        float whiffSq = (reach + WhiffPad) * (reach + WhiffPad);
+        // 刀が通った時刻を探す区間の終わり (ホストの時計)。客の振りは届くまでと、客が見ていた位置の遅れの分だけ前
+        float now = Time.time, tEnd = now - StrokeLag();
         for (int i = 0; i < all.Count && n < hits.Length; i++)
         {
             var info = all[i];
-            if (info == null || info.Disconnected || info.IsDead || info.PlayerId == PlayerId || info.PlayerId == spared) continue;
+            if (info == null || info.Disconnected || info.IsDead || info.PlayerId == PlayerId || info.PlayerId == spared || info.PlayerId == TestSpared) continue;
+            if (only != 255 && info.PlayerId != only) continue;
+            if (skip != null && skip.Contains(info.PlayerId)) { skipped = true; continue; }
             var pc = info.Object;
             if (!pc || pc.inVent || pc.inMovingPlat) { _missBusy++; continue; }
-            Vector2 at = pc.GetTruePosition();
+            if (HitWatch.On) _watchNote = thrust ? "thrust" : "";
+            Vector2 at = pc.GetTruePosition(), from = me;
+            float hitT = now; // 刀が相手に届いた時刻 (ホストの時計)
             float dx = at.x - me.x, dy = at.y - me.y, sq = dx * dx + dy * dy;
-            if (sq > reach * reach) { _missFar++; continue; }
-            bool aimed;
+            bool aimed, near; // near = 刀の向きの近く (空振りに数える)
             if (thrust)
             {
                 // 突いた向きの前で、向きのずれが 12° 以内か、線からの離れが体の幅以内
                 float along = dx * tc + dy * tsn, side = FxMath.Abs(dx * tsn - dy * tc);
-                aimed = along > 0f && (side <= ThrustWidth || side <= along * ThrustTan);
+                aimed = along > -ThrustBody && (side <= ThrustWidth + (along < ThrustNear ? ThrustBody : 0f) || side <= along * ThrustTan);
+                near = along > 0f && side <= along * WhiffTan;
             }
             else
             {
@@ -363,13 +451,57 @@ public sealed partial class Samurai : RoleBase
                 float ta = FxMath.Atan2(dy, dx) * FxMath.Rad2Deg;
                 float d = (sweep >= 0f ? ta - a0 : a0 - ta) % 360f;
                 if (d < 0f) d += 360f;
-                aimed = d <= span + ArcPad || d >= 360f - ArcPad;
+                float pad = ArcPadAt(sq);
+                aimed = d <= span + pad || d >= 360f - pad;
+                near = d <= span + WhiffArc || d >= 360f - WhiffArc;
+                // 立ち合いで位置を取っている相手は、刀がその向きを通った時刻の位置で決める (触れるほど近ければ今のままで当たる)
+                if (HitWatch.On) _watchNote = $"end d={FxMath.Sqrt(sq):0.00} rel=({dx:0.00},{dy:0.00}) ang={ta:0} a0={a0:0} sweep={sweep:0} secs={_hostStrokeSecs:0.00} lag={now - tEnd:0.00} endAimed={aimed}";
+                if (sq > Touching * Touching && DuelTrail.Tracks(info.PlayerId, now))
+                {
+                    bool endHit = aimed && sq <= reach * reach;
+                    _sweptChecks++;
+                    if (SweptAt(info.PlayerId, a0, sweep, tEnd, now, ref from, ref at, out float csq, out float th))
+                    {
+                        aimed = near = true;
+                        sq = csq;
+                        hitT = th;
+                    }
+                    else aimed = false;
+                    bool hit = aimed && sq <= reach * reach;
+                    if (HitWatch.On) _watchNote += $" swept={aimed} cd={FxMath.Sqrt(sq):0.00} from=({from.x - me.x:0.00},{from.y - me.y:0.00}) at=({at.x - me.x:0.00},{at.y - me.y:0.00})";
+                    if (hit && !endHit) _sweptSaves++;
+                    else if (!hit && endHit) _sweptDrops++;
+                }
+            }
+            if (sq > reach * reach)
+            {
+                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"far reach={reach:0.00} {_watchNote}", _hostStrokeSecs + StrokeLag());
+                _missFar++;
+                if (near && sq < whiffSq) { whiff = info.PlayerId; whiffSq = sq; }
+                continue;
             }
             // これより近い人は向きによらず当たる
-            if (!aimed && sq > Touching * Touching) { _missArc++; continue; }
-            if (PhysicsHelpers.AnythingBetween(me, at, Constants.ShipAndObjectsMask, false)) { _missWall++; continue; }
+            if (!aimed && sq > Touching * Touching)
+            {
+                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"arc {_watchNote}", _hostStrokeSecs + StrokeLag());
+                _missArc++;
+                if (near && sq < whiffSq) { whiff = info.PlayerId; whiffSq = sq; }
+                continue;
+            }
+            if (PhysicsHelpers.AnythingBetween(from, at, Constants.ShipAndObjectsMask, false))
+            {
+                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"wall {_watchNote}", _hostStrokeSecs + StrokeLag());
+                _missWall++;
+                continue;
+            }
             // 回避で飛び退いている間は当たらない
-            if (DuelDodge.HostSafe(info.PlayerId)) { _missDodge++; continue; }
+            if (DuelDodge.HostSafeAt(info.PlayerId, hitT))
+            {
+                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"dodge {_watchNote}", _hostStrokeSecs + StrokeLag());
+                _missDodge++;
+                continue;
+            }
+            if (HitWatch.On) HitWatch.Hit(PlayerId, info.PlayerId);
             if (aimed) aimedBits |= 1 << n;
             hits[n++] = info.PlayerId;
         }
@@ -387,8 +519,16 @@ public sealed partial class Samurai : RoleBase
             counted |= HostApply(target, dmg, _hostStrokeSmash);
         }
         if (counted) HostUpdatePath();
+        // 刀の近くにいた相手を外した (振っている間に間合いの外へ出られた) = 空振りを見せる
+        if (n == 0 && spared == 255 && whiff != 255 && only == 255 && !skipped)
+        {
+            WhiffCall.Send(PlayerId | whiff << 8);
+            UI.DuelHud.Whiff(PlayerId);
+        }
+        if (only != 255) return n > 0 || spared == only;
         // 扉は刀の絵が届く所だけ (人の当たりは振っている間に動く分の余裕があるので扉より遠い)
         CutDoors.HostCut(me, a0, sweep, thrust ? SlashRange + ThrustExtra : SamuraiBlade.BladeReach + DoorReachSlack, thrust, PlayerId);
+        return counted;
     }
 
     // 立ち合い (体力の削り合い) になる相手 = 刀を受けて戦える人。それ以外は一太刀で倒れる
@@ -425,6 +565,7 @@ public sealed partial class Samurai : RoleBase
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
         Duel.HostTick();
         HostClashTick();
+        if (_botPending.Count > 0) HostBotPendingTick();
         HostUltTick();
         long now = Environment.TickCount64;
         if (_fallen && now >= _nextWinCheck)
@@ -504,7 +645,7 @@ public sealed partial class Samurai : RoleBase
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
+        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。

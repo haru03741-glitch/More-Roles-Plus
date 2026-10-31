@@ -1,3 +1,4 @@
+using System;
 using HarmonyLib;
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
@@ -32,6 +33,7 @@ internal static class DuelDodge
     // ホスト
     private static readonly byte[] HostLeft = new byte[256];
     private static readonly float[] SafeUntil = new float[256];
+    private static readonly float[] SafeFrom = new float[256];
     // 残像を置いている人 (全員の端末)
     private static readonly byte[] TrailId = new byte[8];
     private static readonly float[] TrailUntil = new float[8];
@@ -76,6 +78,9 @@ internal static class DuelDodge
 
     // ホスト: この人は今、斬りを避けているか
     internal static bool HostSafe(byte id) => Time.time < SafeUntil[id];
+
+    // 時刻 t (ホストの時計) に無敵だったか (刀が通った時刻で見る・回避が刀より後なら当たる)
+    internal static bool HostSafeAt(byte id, float t) => t >= SafeFrom[id] && t < SafeUntil[id];
 
     // 毎フレーム。立ち合い中でも残像も無ければ比較だけで帰る
     internal static void Tick()
@@ -162,44 +167,53 @@ internal static class DuelDodge
         _moveOn = true;
         _left--;
         Used++;
-        DodgeCall.Send(0);
-        Apply(p.PlayerId);
+        byte ang = AngleByte(_dir.x, _dir.y);
+        DodgeCall.Send(ang);
+        Apply(p.PlayerId, ang);
     }
 
     // ホスト: 練習の相手 (ダミー) が回避した。使えたら true (動かすのは呼んだ側)
-    internal static bool BotDodge(byte id)
+    internal static bool BotDodge(byte id, float dx, float dy)
     {
         if (!Duel.InDuel(id) || HostLeft[id] == 0 || !CanHave(id)) return false;
-        Apply(id);
-        BotDodgeCall.Send(id);
+        byte ang = AngleByte(dx, dy);
+        Apply(id, ang);
+        BotDodgeCall.Send((ushort)(id | ang << 8));
         return true;
     }
 
+    // 飛び退く向き (256 分割の角度)
+    private static byte AngleByte(float dx, float dy) => (byte)((int)MathF.Round(FxMath.Atan2(dy, dx) * FxMath.Rad2Deg / 360f * 256f) & 0xFF);
+
     internal static float BotDodgeTime => MoveTime;
 
-    private static readonly RemoteCall<byte> BotDodgeCall = new("Duel.BotDodge", Route.HostToAll,
-        (w, v) => w.Write(v), r => r.ReadByte(), (_, id) => StartTrail(id));
+    // 値 = 回避した人 | 向き << 8
+    private static readonly RemoteCall<ushort> BotDodgeCall = new("Duel.BotDodge", Route.HostToAll,
+        (w, v) => w.Write(v), r => r.ReadUInt16(), (_, v) => StartTrail((byte)v, (byte)(v >> 8)));
 
-    // 回避した (全員の端末で・送った本人とホスト自身は手元で)
+    // 回避した (全員の端末で・送った本人とホスト自身は手元で)。値 = 向き
     private static readonly RemoteCall<byte> DodgeCall = new("Duel.Dodge", Route.Anyone,
-        (w, v) => w.Write(v), r => r.ReadByte(), (sender, _) => { if (sender) Apply(sender.PlayerId); }, perSecond: 6);
+        (w, v) => w.Write(v), r => r.ReadByte(), (sender, ang) => { if (sender) Apply(sender.PlayerId, ang); }, perSecond: 6);
 
-    private static void Apply(byte id)
+    private static void Apply(byte id, byte ang)
     {
         if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost)
         {
             if (Duel.InDuel(id) && HostLeft[id] > 0 && CanHave(id))
             {
                 HostLeft[id]--;
+                SafeFrom[id] = Time.time;
                 SafeUntil[id] = Time.time + (TestSafe > 0f ? TestSafe : Safe);
             }
             else Refused++;
         }
-        StartTrail(id);
+        StartTrail(id, ang);
     }
 
-    private static void StartTrail(byte id)
+    private static void StartTrail(byte id, byte ang)
     {
+        float ar = ang * (360f / 256f) * FxMath.Deg2Rad;
+        DuelTumble.Roll(id, FxMath.Cos(ar), FxMath.Sin(ar));
         int slot = -1;
         for (int i = 0; i < _trails; i++)
             if (TrailId[i] == id) slot = i;

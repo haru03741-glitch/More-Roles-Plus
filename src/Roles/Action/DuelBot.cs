@@ -41,6 +41,8 @@ internal static class DuelBot
         public bool Escape;             // 斬られた後、のけぞりが明けたら踏み込みで抜ける
         public bool Masher;          // 確かめ用: 寄って気の続く限り振り回すだけ (TestMash)
         public float CalmUntil;         // 出した直後はこの時刻まで斬らずに間合いの外を回る
+        public bool SaveGuard;          // インポスター: 抜いたサムライの間合いの近くでは舌を撃たず、口で受けるために残す
+        public float ReturnAt = -1f;    // インポスター: 口で受けた後に舌で返す時刻
     }
 
     // 作戦: ふつうに戦う・相手の間合いのすぐ外で待つ (振り回しを空振りさせる)・相手の隙 (気切れ) に踏み込む
@@ -63,7 +65,8 @@ internal static class DuelBot
     private const float SpawnCalm = 3f;        // 出してから斬り始めるまで (相手が構える間)
     private const float RiseCalm = 0.5f;       // 吹っ飛んだ相手が起き上がってから斬り始めるまで
 
-    internal static int Dodges, Counters, Dashes, Circles, Detours, Waits, Punishes;
+    internal static int Returns;
+    internal static int Dodges, BaitDodges, Counters, Dashes, Circles, Detours, Waits, Punishes;
     private const float HeatKeep = 0.95f;     // 考えるたびに勢いに掛ける (ThinkEvery 0.05 で約 1 秒で薄れる = 勢い ≒ 1 秒あたりの振り)
     private const float CautionFade = 0.12f;  // 用心が 1 秒に薄れる分
     private const float OpenKi = 10f;         // 相手の気がこれより少なければ (続けて振る一振りの分も無い) 隙とみなす
@@ -177,7 +180,18 @@ internal static class DuelBot
                 continue;
             }
             if (b.CounterAt >= 0f && now >= b.CounterAt) Counter(b, pc);
-            if (b.GuardAt >= 0f && now >= b.GuardAt) { b.GuardAt = -1f; DuelTongue.HostPress(pc); }
+            if (b.GuardAt >= 0f && now >= b.GuardAt)
+            {
+                b.GuardAt = -1f;
+                // 受けられたら、強さに応じて受けて振れないサムライへ舌で返す
+                if (DuelTongue.HostPress(pc) && DuelTongue.GuardedAt[b.Id] == now && b.Level >= 3 && Roll(0.3f + 0.7f * T(b)))
+                    b.ReturnAt = now + DuelTongue.GuardReady + Rand(0f, 0.25f - 0.2f * T(b));
+            }
+            if (b.ReturnAt >= 0f && now >= b.ReturnAt)
+            {
+                b.ReturnAt = -1f;
+                if (DuelTongue.HostPress(pc)) { Returns++; b.TongueReady = now + DuelTongue.Cooldown; }
+            }
             if (b.DodgeAt >= 0f && now >= b.DodgeAt) { b.DodgeAt = -1f; DodgeAway(b, pc, now); }
             if (now < b.NextThink) continue;
             b.NextThink = now + ThinkEvery;
@@ -268,6 +282,7 @@ internal static class DuelBot
         if (b.Mode == Plan.Punish) { b.Mode = Plan.Engage; b.ModeUntil = 0f; }
         if (now < b.ModeUntil) return;
         b.ModeUntil = now + Rand(0.35f, 0.8f);
+        b.SaveGuard = b.Level >= 4 && Roll(0.35f + 0.65f * T(b));
         // 間合いで振り回されている・振り回されて斬られた直後は、値で比べずにすぐ待つ (2 番手も選ばない)
         if (b.Heat >= 2f && d < Samurai.SlashReach + 1f || now - b.HitAt < 1f && b.Heat >= 1f)
         {
@@ -535,8 +550,15 @@ internal static class DuelBot
             // 待つ: 刀の届く所の外 (舌は届く) を回り、時々そこから舌を撃つ
             if (b.Mode == Plan.Wait)
             {
+                // 刀の届く所へ踏み込まれたら、歩いて下がらず飛び退いて抜ける (かわしたと見て分かるように・回避の回数は共有)
+                if (b.Level >= 3 && d < Samurai.SlashReach + 0.15f && now >= b.DodgeReady)
+                {
+                    b.DodgeReady = now + Rand(0.8f, 1.6f);
+                    b.Foe = target.PlayerId;
+                    if (Roll(DodgeChance(b)) && DodgeAway(b, pc, now, b.Side * Rand(15f, 40f))) { BaitDodges++; return; }
+                }
                 Circle(b, pc, me, at, d, FxMath.Min(b.WaitKeep, DuelTongue.Reach - 0.4f), now);
-                if (now >= b.TongueReady && Roll(Aggro(b) * ThinkEvery * AggroPace * 0.5f)) Tongue(b, pc, now);
+                if (now >= b.TongueReady && !Saving(b, target, d) && Roll(Aggro(b) * ThinkEvery * AggroPace * 0.5f)) Tongue(b, pc, now);
                 return;
             }
             if (d > TongueNear) { Toward(b, pc, at, now); return; }
@@ -550,7 +572,7 @@ internal static class DuelBot
                 b.DodgeReady = now + Rand(1.5f, 3f);
                 if (DodgeAway(b, pc, now, b.Side * Rand(50f, 80f))) return;
             }
-            if (now >= b.TongueReady && Roll(Aggro(b) * ThinkEvery * AggroPace)) Tongue(b, pc, now);
+            if (now >= b.TongueReady && !Saving(b, target, d) && Roll(Aggro(b) * ThinkEvery * AggroPace)) Tongue(b, pc, now);
             return;
         }
         // 相手のサムライには本編の一撃のキルを使わず、舌の届く所で立ち合いを挑む
@@ -577,6 +599,10 @@ internal static class DuelBot
         else if (d > Keep + 1.5f) Toward(b, pc, at, now);
         else Dummy.StopWalk(pc);
     }
+
+    // 抜いたサムライの刀の届く所の近くでは、舌を撃たずに口で受ける手を残す (舌を撃つと待ち時間の間は受けられない)
+    private static bool Saving(Bot b, PlayerControl target, float d) =>
+        b.SaveGuard && d < Samurai.SlashReach + 0.8f && RoleState.Of(target) is Samurai s && s.BotDrawn;
 
     private static void Tongue(Bot b, PlayerControl pc, float now)
     {
@@ -606,11 +632,12 @@ internal static class DuelBot
     private static bool DodgeAway(Bot b, PlayerControl pc, float now, float turn = 0f)
     {
         var o = Player(b.Foe);
-        if (!o || !DuelDodge.BotDodge(b.Id)) return false;
+        if (!o) return false;
         Vector2 me = pc.GetTruePosition(), at = o.GetTruePosition();
         var dir = Turn(me.x - at.x, me.y - at.y, turn);
         float l = FxMath.Sqrt(dir.x * dir.x + dir.y * dir.y);
         if (l < 0.01f) { dir = FxMath.V2(1f, 0f); l = 1f; }
+        if (!DuelDodge.BotDodge(b.Id, dir.x / l, dir.y / l)) return false;
         Dummy.StopWalk(pc);
         Dodges++;
         b.DodgeDir = FxMath.V2(dir.x / l, dir.y / l);
@@ -687,7 +714,7 @@ internal static class DuelBot
 
     internal static string Describe()
     {
-        var sb = new System.Text.StringBuilder($"bots={Bots.Count} dodges={Dodges} counters={Counters} dashes={Dashes} circles={Circles} detours={Detours} waits={Waits} punishes={Punishes} faced={DuelFacing.Turned}");
+        var sb = new System.Text.StringBuilder($"bots={Bots.Count} dodges={Dodges} baitDodges={BaitDodges} returns={Returns} counters={Counters} dashes={Dashes} circles={Circles} detours={Detours} waits={Waits} punishes={Punishes} faced={DuelFacing.Turned}");
         foreach (var b in Bots.Values)
         {
             sb.Append($" [{b.Id} {b.Kind} Lv{b.Level} plan={b.Mode} heat={b.Heat:0.0} spam={b.Spam:0.00} caution={b.Caution:0.00} retreat={b.Retreat} charge={b.Charge:0.00} kill={FxMath.Max(b.KillReady - Time.time, 0f):0.0}s");

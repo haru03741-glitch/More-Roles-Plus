@@ -139,9 +139,15 @@ internal sealed partial class SamuraiBlade
         Track();
     }
 
-    // 弾かれた: 刀が相手と反対へ跳ね上がった形で止め、構えへ戻る (相手は angle 度の方)
-    internal void Recoil(float angle)
+    // 弾かれた: 刀が相手と反対へ跳ね上がった形で止め、構えへ戻る (相手は angle 度の方)。
+    // stun = 振れない秒 (その間は跳ね上がった形のまま震える)
+    internal void Recoil(float angle, float stun = 0f)
     {
+        if (stun > 0f)
+        {
+            _stunUntil = Time.time + stun;
+            _stunLen = stun;
+        }
         if (!_drawn || !Ensure()) return;
         float ar = angle * FxMath.Deg2Rad, co = FxMath.Cos(ar), si = FxMath.Sin(ar);
         bool right = co >= 0f;
@@ -152,6 +158,7 @@ internal sealed partial class SamuraiBlade
         };
         _endT = Time.time;
         _endWorld = true;
+        _holdExtra = FxMath.Max(stun - Hold, 0f);
         Glint(TipLen * 0.6f, TipLen * 0.6f, 0.16f, 0.5f);
         Track();
     }

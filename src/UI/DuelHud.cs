@@ -203,7 +203,7 @@ internal static partial class DuelHud
         _tasksWasOn = _tasks && _tasks.activeSelf;
         if (_tasksWasOn) _tasks.SetActive(false);
         _startT = Time.time;
-        _koT = _comboT = _comboPop = _bannerT = -10f;
+        _koT = _comboT = _comboPop = _bannerT = _whiffT = -10f;
         _combo = 0;
         _titleState = -1;
         if (intro) IntroBegin();
@@ -358,6 +358,7 @@ internal static partial class DuelHud
         KiTick(now);
         if (_lockOn) LockTick(now);
         ComboTick(now);
+        WhiffTick(now);
         if (_koT > 0f && now - _koT > KoHold + TitleFade)
         {
             // K.O. を見せ切った: 自分が組を抜けていれば隠す・まだ戦っていれば倒れた人の枠を詰める
@@ -437,6 +438,36 @@ internal static partial class DuelHud
         float s = p < 0.12f ? FxMath.Lerp(1.35f, 1f, p / 0.12f) : 1f;
         _comboTf.localScale = FxMath.V3(s, s, 1f);
         _comboTmp.alpha = FxMath.Clamp01((ComboKeep - (now - _comboT)) / 0.3f);
+    }
+
+    // 空振り: 自分の振りが近くの相手を外した (Samurai.HostHit)。連打の題字の上に「MISS」を短く出す
+    private const float WhiffHold = 0.55f, WhiffFade = 0.25f;
+    private static float _whiffT = -10f;
+    private static bool _whiffOn;
+    private static Transform _whiffTf;
+    private static TextMeshPro _whiffTmp;
+
+    internal static void Whiff(byte attacker)
+    {
+        if (!_shown || attacker != _me || !_whiffTmp) return;
+        _whiffT = Time.time;
+        Whiffs++;
+    }
+
+    internal static int Whiffs;
+
+    private static void WhiffTick(float now)
+    {
+        float p = now - _whiffT;
+        bool on = p <= WhiffHold + WhiffFade;
+        if (_whiffOn != on) { _whiffOn = on; _whiffTf.gameObject.SetActive(on); }
+        if (!on) return;
+        if (p < 0.12f)
+        {
+            float s = p < 0.1f ? FxMath.Lerp(1.4f, 1f, p / 0.1f) : 1f;
+            _whiffTf.localScale = FxMath.V3(s, s, 1f);
+        }
+        _whiffTmp.alpha = p <= WhiffHold ? 1f : 1f - (p - WhiffHold) / WhiffFade;
     }
 
     private static int _comboShown = -1;
@@ -619,6 +650,17 @@ internal static partial class DuelHud
         _comboTf.gameObject.SetActive(false);
         _comboOn = false;
         _comboShown = -1;
+
+        _whiffTmp = Text(src, "Whiff", -_halfW + 0.35f + 2f, 1.85f, 3.0f, TextAlignmentOptions.Left, layer, 4f);
+        _whiffTmp.fontStyle = FontStyles.Bold | FontStyles.Italic;
+        _whiffTmp.enableVertexGradient = true;
+        _whiffTmp.colorGradient = new VertexGradient(FxMath.Rgba(0.85f, 0.92f, 1f, 1f), FxMath.Rgba(0.85f, 0.92f, 1f, 1f),
+            FxMath.Rgba(0.42f, 0.5f, 0.66f, 1f), FxMath.Rgba(0.42f, 0.5f, 0.66f, 1f));
+        Outline(_whiffTmp, 0.25f, FxMath.Rgba(0.06f, 0.08f, 0.16f, 1f));
+        _whiffTmp.text = "MISS";
+        _whiffTf = _whiffTmp.transform;
+        _whiffTf.gameObject.SetActive(false);
+        _whiffOn = false;
         _root.SetActive(false);
         return true;
     }
@@ -728,5 +770,5 @@ internal static partial class DuelHud
     internal static void TestPush(float k) => _pushGoal = k;
 
     internal static string Describe() =>
-        $"shown={_shown} slots={_slot[0]},{_slot[1]},{_slot[2]},{_slot[3]} leaving={_leaving} hp={_leftHp:0.00}/{_rightHp:0.00} ghost={_leftGhostHp:0.00}/{_rightGhostHp:0.00} combo={_combo} title={_titleState} built={(bool)_root}";
+        $"shown={_shown} slots={_slot[0]},{_slot[1]},{_slot[2]},{_slot[3]} leaving={_leaving} hp={_leftHp:0.00}/{_rightHp:0.00} ghost={_leftGhostHp:0.00}/{_rightGhostHp:0.00} combo={_combo} whiffs={Whiffs} title={_titleState} built={(bool)_root}";
 }

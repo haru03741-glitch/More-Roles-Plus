@@ -169,6 +169,10 @@ internal sealed partial class SamuraiBlade
 
     // 気が尽きた間は刀が下がって切っ先が床を向く
     internal bool Spent => _spent;
+    // 口で受けられて振れない間 (自分の端末ではなぞりを追わず、振りも送らない)
+    internal bool Stunned => Time.time < _stunUntil;
+    private float _stunUntil = -10f, _stunLen = 1f;
+    private const float StunShake = 0.018f, StunShakeDeg = 4f;
 
     internal void SetSpent(bool spent)
     {
@@ -300,7 +304,9 @@ internal sealed partial class SamuraiBlade
         Live.Add(this);
     }
 
-    private Color Tint(float a) => _fallenTint ? FxMath.Rgba(1f, 0.45f, 0.5f, a) : FxMath.Rgba(1f, 1f, 1f, a);
+    // 刀身と鞘の色。戦いの外から見ている人には影 (体と同じ暗さ)
+    private Color Tint(float a) => _shadeFist ? FxMath.Rgba(0.2f, 0.2f, 0.25f, a)
+        : _fallenTint ? FxMath.Rgba(1f, 0.45f, 0.5f, a) : FxMath.Rgba(1f, 1f, 1f, a);
 
     private static Pose Rest() => DrawKeys[0].P;
 
@@ -350,7 +356,7 @@ internal sealed partial class SamuraiBlade
     {
         if ((now - _drawT) / SlowMo < 0.6f * _sheatheSlow || now < _dashUntil || LeapBusy(now)) return true;
         if ((now - _iaiT) / SlowMo < IaiDraw + SayaFade) return true;
-        if (this == LocalFollow && (SwipeInput.Dragging || _localStroke) && !_spent) return true;
+        if (this == LocalFollow && (SwipeInput.Dragging || _localStroke) && !_spent && now >= _stunUntil) return true;
         if (_powArmed || _lockOn) return true;
         if ((now - _repT) / SlowMo <= _repDur + 0.05f || ThrustBusy(now)) return true;
         return (now - _endT) / SlowMo < Hold + IaiHold * _strokePow + _holdExtra + Recover || SmearLive;
@@ -408,8 +414,8 @@ internal sealed partial class SamuraiBlade
     {
         angle = speed = a0 = 0f;
         inStroke = false;
-        // 気が尽きて刀が下がっている間は、押したままのなぞりを追わない
-        if (this == LocalFollow && SwipeInput.Dragging && !_spent)
+        // 気が尽きて刀が下がっている間・弾かれて痺れている間は、押したままのなぞりを追わない
+        if (this == LocalFollow && SwipeInput.Dragging && !_spent && now >= _stunUntil)
         {
             angle = SwipeInput.Angle;
             speed = SwipeInput.Speed;
@@ -527,7 +533,7 @@ internal sealed partial class SamuraiBlade
         else if (SwingAngle(now, out float a, out float speed, out bool inStroke, out float a0))
         {
             float sweep = a - a0;
-            bool live = this == LocalFollow && SwipeInput.Dragging && !_spent;
+            bool live = this == LocalFollow && SwipeInput.Dragging && !_spent && now >= _stunUntil;
             float prog = live ? FxMath.Clamp01(FxMath.Abs(sweep) / 360f) : FxMath.Clamp01((now - _repT) / SlowMo / _repDur);
             float shownSweep = live ? sweep : _repSweep;
             if (inStroke && !_wasInStroke) BeginStroke();
@@ -558,6 +564,15 @@ internal sealed partial class SamuraiBlade
                 // 振り抜いた形で止め、構えへ戻る (戻る間は右/左の向きへ鏡に移る)
                 p = _endPose;
                 world = true;
+                // 弾かれて振れない間は、跳ね上がった刀が手の痺れで小刻みに震える (明けに向けて弱まる)
+                if (now < _stunUntil)
+                {
+                    float k = (_stunUntil - now) / _stunLen;
+                    float sh = (FxMath.Floor(now * 30f) % 2f == 0f ? 1f : -1f) * StunShake * k;
+                    p.Fx += sh;
+                    p.Fy -= sh * 0.5f;
+                    p.Blade += sh * StunShakeDeg / StunShake;
+                }
                 if (te >= hold)
                 {
                     float u = (te - hold) / Recover;
@@ -605,6 +620,13 @@ internal sealed partial class SamuraiBlade
         if (!_root.activeSelf) _root.SetActive(true);
         _last = p;
         WritePose(pc, p, world);
+        if (world && !_hidden)
+        {
+            bool replay = (now - _repT) / SlowMo <= _repDur;
+            bool cut = (this == LocalFollow ? _wasInStroke : replay) && _role.WantsCut;
+            bool watch = HitWatch.On && (_wasInStroke || this == LocalFollow && SwipeInput.Dragging || replay);
+            if (cut || watch) ScanContacts(pc, p, cut, watch);
+        }
         return true;
     }
 
@@ -640,6 +662,59 @@ internal sealed partial class SamuraiBlade
         _lastY = at.y;
         _moving = dx * dx + dy * dy > 0.0004f;
     }
+
+    // 振っている刀の絵 (拳から切っ先までの 8 点) が人の体の絵に掛かったか。
+    // cut = 掛かった相手に触れた瞬間の当たりを頼む (立ち合いの組があれば組の人・無ければ近くの人)・watch = 確かめ用の HitWatch へ (組の人だけ)
+    private void ScanContacts(PlayerControl pc, in Pose p, bool cut, bool watch)
+    {
+        byte me = _role.PlayerId, g = Duel.GroupOf(me);
+        if (!GameData.Instance || g == 0 && !cut) return;
+        Vector3 c = pc.transform.position;
+        float gx = c.x + p.Fx + p.Dx, gy = c.y + p.Fy + p.Hop;
+        float ar = p.Blade * FxMath.Deg2Rad, co = FxMath.Cos(ar), si = FxMath.Sin(ar);
+        var all = GameData.Instance.AllPlayers;
+        int n = g != 0 ? Duel.CountOf(g) : all.Count;
+        for (int i = 0; i < n; i++)
+        {
+            byte o;
+            if (g != 0) o = Duel.MemberOf(g, i);
+            else
+            {
+                var info = all[i];
+                if (info == null) continue;
+                o = info.PlayerId;
+            }
+            if (o == me) continue;
+            bool wantCut = cut && !_role.CutDone(o);
+            if (!wantCut && !watch) continue;
+            var op = GameData.Instance.GetPlayerById(o)?.Object;
+            if (!op) continue;
+            // 遠い人は位置だけ見て飛ばす (振っている間の毎フレームなので、他の読み取りは近い人だけ)
+            Vector3 oc = op.transform.position;
+            float ddx = oc.x - c.x, ddy = oc.y - c.y;
+            if (ddx * ddx + ddy * ddy > ContactRange * ContactRange) continue;
+            if (op.Data == null || op.Data.IsDead || op.inVent || !op.cosmetics) continue;
+            var bs = op.cosmetics.currentBodySprite;
+            var body = bs != null ? bs.BodySprite : null;
+            if (!body) continue;
+            var b = body.bounds;
+            Vector3 mn = b.min, mx = b.max;
+            for (int k = 1; k <= 8; k++)
+            {
+                float x = gx + co * TipLen * k / 8f, y = gy + si * TipLen * k / 8f;
+                if (x < mn.x || x > mx.x || y < mn.y || y > mx.y) continue;
+                if (wantCut) _role.OnBladeContact(o);
+                if (watch)
+                {
+                    Vector2 tp = op.GetTruePosition(), mp = pc.GetTruePosition();
+                    HitWatch.Contact(me, o, $"ang={p.Blade:0} at={k}/8 feetD={FxMath.Sqrt((tp.x - mp.x) * (tp.x - mp.x) + (tp.y - mp.y) * (tp.y - mp.y)):0.00} rel=({tp.x - mp.x:0.00},{tp.y - mp.y:0.00}) live={_wasInStroke}");
+                }
+                break;
+            }
+        }
+    }
+
+    private const float ContactRange = 2.5f; // これより遠い人の体の絵は見ない (刀が届かない)
 
     // 姿を体・拳・刀へ書く。world = 右/左の向きに関わらず値をそのまま使う (振りの間)
     private void WritePose(PlayerControl pc, in Pose p, bool world)

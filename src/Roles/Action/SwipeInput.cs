@@ -46,13 +46,16 @@ internal static class SwipeInput
 
     private static int _finger = -1;
     private static float _prevT, _strokeStartA, _strokeStartT, _slowT;
+    // 今の一振りの始めの角度 (度・連続) と時刻
+    internal static float StrokeStartA => _strokeStartA;
+    internal static float StrokeStartT => _strokeStartT;
     private static int _strokeSign;
     // 体からカーソルへの前のフレームの差・外向きの速さ (ならした値)・突きの押し出しの始め
     private static float _ox, _oy, _vr, _thX0, _thY0, _thSlowT, _scale = 1f;
     private static bool _thOn, _noStart;
     // 確かめ用の作り物のなぞり (bridge): a0 → a1 を ms で
     private static float _synA0, _synA1, _synStart = -1f, _synDur, _synHold;
-    private static bool _synThrust;
+    private static bool _synThrust, _synEase;
     internal static int Strokes, Thrusts;
     // 確かめ用: 押した数・UI の上として捨てた数 (と名前)・なぞりの途中で構えが外れた数
     internal static int Presses, UiRejects, Drops;
@@ -76,8 +79,10 @@ internal static class SwipeInput
     }
 
     // hold = 押したまま動かさずに待つ秒 (溜め)
-    internal static void Synth(float a0, float a1, float seconds, float hold = 0f)
+    // ease = 人の手のように、ゆっくり動き出して加速し、ゆっくり止まる
+    internal static void Synth(float a0, float a1, float seconds, float hold = 0f, bool ease = false)
     {
+        _synEase = ease;
         _synA0 = a0;
         _synA1 = a1;
         _synDur = Math.Max(seconds, 0.02f);
@@ -118,7 +123,8 @@ internal static class SwipeInput
             float k = (now - _synStart - _synHold) / _synDur;
             if (!Dragging) Begin(_synA0, now);
             if (k < 0f) { Step(_synA0, now); return; }
-            Step(FxMath.Lerp(_synA0, _synA1, k), now);
+            float e = k >= 1f ? 1f : _synEase ? (1f - FxMath.Cos(FxMath.PI * k)) * 0.5f : k;
+            Step(FxMath.Lerp(_synA0, _synA1, e), now);
             if (k >= 1f) { _synStart = -1f; End(true); }
             return;
         }

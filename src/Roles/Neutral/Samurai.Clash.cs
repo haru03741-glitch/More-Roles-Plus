@@ -17,6 +17,7 @@ public sealed partial class Samurai
 {
     private const float ClashWindowBase = 0.35f;  // 先の斬りを当てずに待つ秒
     internal static float TestWindow;              // 確かめ用: 待つ秒を伸ばす (0 = 既定)
+    internal static byte TestSpared = 255;         // 確かめ用: この人には斬りを当てない (外から見る人を撮る時)
     private static float ClashWindow => TestWindow > 0f ? TestWindow : ClashWindowBase;
     private const float ClashKi = 10f;
     private const float ClashSlack = 0.1f;    // 振りが重なったとみなす余裕 (届く時刻の揺れ)
@@ -140,7 +141,7 @@ public sealed partial class Samurai
         Broadcast(Pack(Kind.LockEnd, win == 255 ? a : win, lose == 255 ? b : lose, win == 255));
         if (win == 255 || MeetingHud.Instance || RoleState.Of(win) is not Samurai ws) return;
         var target = GameData.Instance ? GameData.Instance.GetPlayerById(lose)?.Object : null;
-        if (ws.HostApply(target, LockDamage)) ws.HostUpdatePath();
+        if (ws.HostApply(target, LockDamage, smash: true)) ws.HostUpdatePath();
     }
 
     // 鍔迫り合いの連打の数 (本人 → ホスト・増えた分だけ)
