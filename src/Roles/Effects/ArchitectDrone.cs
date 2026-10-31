@@ -257,7 +257,7 @@ internal sealed class ArchitectDrone
         bool muffle = false;
         if (lp && !MeetingHud.Instance)
         {
-            Vector2 me = lp.GetTruePosition();
+            Vector2 me = Watch.Ear(lp);
             float dx = _x - me.x, dy = _y - me.y, d = FxMath.Sqrt(dx * dx + dy * dy);
             if (d < SoundRange)
             {

@@ -18,6 +18,7 @@ internal sealed class ModButton
 
     private static readonly List<ModButton> All = new();
     private static bool _hudShown = true;
+    private static bool _ghostShown; // 幽霊の HUD が出ているか (幽霊のボタンだけを出す)
     private static int _tick;
     private static float _dt; // 物理の刻み (本編は 1/30 秒。0.02 秒の決め打ちだと実時間の 6 割で減る)。試合中は変わらないので 1 回だけ読む
 
@@ -25,6 +26,7 @@ internal sealed class ModButton
     private readonly Func<bool> _onClick;
     private readonly IntPtr _ptr;
     private bool _inGrid = true; // 右下の並びに居るか (並びの外のボタンは置いた先の画面と一緒に出入りする)
+    private bool _ghost;         // 幽霊の間だけ出るボタン (生きている間は隠す)
     private float _left;
     private float _effect, _effectMax; // 効果の残り (本編の技術者のベントと同じく、ボタンを満たす形と残りの秒で出す)
     private int _effectShown = -1;     // 最後に書いた残りの秒
@@ -116,7 +118,7 @@ internal sealed class ModButton
 
     // onClick の返り値 = 使えたか (false なら待ち時間を始めない)。
     // parent を渡すと右下の並びの外 (その子) に置く (位置は呼び手が決める・HUD と一緒に出入りするのは同じ)
-    public static ModButton Create(Lifespan life, Sprite icon, string label, float cooldown, Func<bool> onClick, Transform parent = null)
+    public static ModButton Create(Lifespan life, Sprite icon, string label, float cooldown, Func<bool> onClick, Transform parent = null, bool ghost = false)
     {
         var hud = Vanilla.Hud;
         if (!hud || !hud.AbilityButton || life.IsDead) return null;
@@ -137,9 +139,9 @@ internal sealed class ModButton
         if (uses) uses.gameObject.SetActive(false);
         b.SetCoolDown(0f, 1f);
         b.SetEnabled();
-        b.gameObject.SetActive(_hudShown);
+        b.gameObject.SetActive(ghost ? _ghostShown : _hudShown);
 
-        var mb = new ModButton(b, cooldown, onClick) { _inGrid = inGrid };
+        var mb = new ModButton(b, cooldown, onClick) { _inGrid = inGrid, _ghost = ghost };
         All.Add(mb);
         life.OnRelease(() =>
         {
@@ -513,10 +515,11 @@ internal sealed class ModButton
     }
 
     // 本編が HUD を出し入れする時 (会議・死亡・イントロ) に合わせる
-    public static void SetHudShown(bool shown)
+    public static void SetHudShown(bool shown, bool ghost = false)
     {
         bool reshown = shown && !_hudShown;
         _hudShown = shown;
+        _ghostShown = ghost;
         if (All.Count == 0) return;
         // HUD ごと消えた後 (シーンが変わった) のボタンは寿命が切れるまで残るので飛ばす。
         // 効果の終わりの処理が寿命を切って一覧から外すことがあるので写しを回す
@@ -525,7 +528,7 @@ internal sealed class ModButton
             if (!shown && b._effect > 0f) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ)
             if (!shown && b._holding) b.EndHold(false);  // 溜めている途中の会議・死亡は使わずに捨てる
             if (!b._inGrid || !b._button) continue;
-            b._button.gameObject.SetActive(shown);
+            b._button.gameObject.SetActive(b._ghost ? ghost : shown);
             if (reshown && b.ResetOnShow) b.StartCooldown();
         }
         Arrange();
@@ -559,6 +562,7 @@ internal sealed class ModButton
     internal static int Count => All.Count;
 
     internal static bool HudShown => _hudShown;
+    internal static bool GhostShown => _ghostShown;
 
     // 本編の PassiveButton から押す (人が押したのと同じく DoClick の前置を通る)
     // key = キーで押した時のそのキー (長押しのボタンはキーを離すまで溜める)
@@ -615,6 +619,9 @@ internal static class ModButtonClickPatch
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.SetHudActive), typeof(PlayerControl), typeof(RoleBehaviour), typeof(bool))]
 internal static class ModButtonHudPatch
 {
-    public static void Postfix(PlayerControl localPlayer, bool isActive) =>
-        ModButton.SetHudShown(isActive && localPlayer && localPlayer.Data != null && !localPlayer.Data.IsDead);
+    public static void Postfix(PlayerControl localPlayer, bool isActive)
+    {
+        bool dead = localPlayer && localPlayer.Data != null && localPlayer.Data.IsDead;
+        ModButton.SetHudShown(isActive && localPlayer && localPlayer.Data != null && !dead, isActive && dead);
+    }
 }

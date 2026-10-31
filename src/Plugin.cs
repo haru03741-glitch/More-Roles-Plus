@@ -121,6 +121,7 @@ public class Ticker : MonoBehaviour
         Fx.EmoteArt.Tick();
         Roles.SwipeInput.Tick();
         Roles.Neutral.Samurai.LocalTick();
+        Roles.Watch.Tick();
         Roles.SamuraiBlade.TickAll();
         Roles.DuelHitFx.Tick();
         Roles.DoorCutFx.Tick();

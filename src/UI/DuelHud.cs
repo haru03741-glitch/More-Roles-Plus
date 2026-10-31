@@ -49,11 +49,10 @@ internal static partial class DuelHud
         Duel.OnLeave += OnLeave;
     }
 
-    private static byte LocalId => PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.PlayerId : (byte)255;
-
     private static void OnJoin(byte id, byte g, bool fresh)
     {
-        byte me = LocalId;
+        // 自分の側 = 視点の持ち主 (幽霊が観戦している時は見ている人)
+        byte me = Roles.Watch.ViewId;
         if (id == me)
         {
             // 入った組の顔ぶれで出す。新しくできた組だけ VS の幕から・途中から加わった時と合流で移った時はすぐ戦える姿で
@@ -318,6 +317,15 @@ internal static partial class DuelHud
         if (!_shown || !_hint) return false;
         _hint.text = text;
         return true;
+    }
+
+    // 幽霊の観戦で見る人が替わった: 見る人が戦っていればその人の側で出し直す
+    internal static void OnViewChanged()
+    {
+        byte v = Roles.Watch.ViewId;
+        if (_shown && _me == v) return;
+        if (_shown) Hide();
+        if (v != 255 && Duel.InDuel(v)) Show(v, FirstFoe(v), false);
     }
 
     private static void Hide()

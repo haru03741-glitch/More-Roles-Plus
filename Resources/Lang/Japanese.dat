@@ -407,6 +407,9 @@ Spectate.OnlyInLobby: ロビーで選んでください
 Spectate.WillSpectate: 次の試合を観戦します (幽霊で見るだけ)
 Spectate.WillPlay: 次の試合に参加します
 Spectate.Spectating: 観戦中です (幽霊で見るだけ)
+Watch.Next: 次の人
+Watch.Duel: 戦いを見る
+Watch.Watching: 観戦中: {name}
 Spectate.Hud: <color=#9FD8FF>観戦中: 幽霊として自由に見て回れます。会議では全員の役職が見えます</color>
 
 # ── LobbyView ──
@@ -796,6 +799,7 @@ ClientOptions.ShowRolesAtEnd: 試合の終わりに全員の役職を出す
 ClientOptions.AutoReturn: 試合が終わったら自動でロビーへ戻る
 ClientOptions.AutoRejoin: 回線で切れたら同じ部屋へ入り直す
 ClientOptions.Spectate: 次の試合を観戦する (幽霊で見るだけ)
+ClientOptions.WatchDuels: 幽霊の時、始まった斬り合いへカメラを自動で移す
 ClientOptions.DarkMeetingScreen: 会議の画面を暗い色にする
 ClientOptions.SabotageFlash: サボタージュの画面の点滅
 ClientOptions.SabotageAlarm: サボタージュの警報音

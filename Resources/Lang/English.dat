@@ -407,6 +407,9 @@ Spectate.OnlyInLobby: Choose this in the lobby
 Spectate.WillSpectate: You'll spectate the next game (as a ghost)
 Spectate.WillPlay: You'll play the next game
 Spectate.Spectating: You're spectating (as a ghost)
+Watch.Next: Next
+Watch.Duel: Watch fight
+Watch.Watching: Watching: {name}
 Spectate.Hud: <color=#9FD8FF>Spectating: roam freely as a ghost. You see everyone's role in meetings</color>
 
 # ── LobbyView ──
@@ -796,6 +799,7 @@ ClientOptions.ShowRolesAtEnd: Show everyone's role at game end
 ClientOptions.AutoReturn: Return to the lobby after a game
 ClientOptions.AutoRejoin: Rejoin the room after a connection drop
 ClientOptions.Spectate: Spectate the next game (as a ghost)
+ClientOptions.WatchDuels: As a ghost, move the camera to duels as they start
 ClientOptions.DarkMeetingScreen: Dark meeting screen
 ClientOptions.SabotageFlash: Sabotage screen flash
 ClientOptions.SabotageAlarm: Sabotage alarm sound

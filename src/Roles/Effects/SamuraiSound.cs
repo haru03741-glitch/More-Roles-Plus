@@ -63,7 +63,7 @@ internal static class SamuraiSound
         far = false;
         var lp = PlayerControl.LocalPlayer;
         if (!lp || MeetingHud.Instance) return false;
-        Vector2 me = lp.GetTruePosition();
+        Vector2 me = Watch.Ear(lp);
         float dx = x - me.x, dy = y - me.y;
         float d = MathF.Sqrt(dx * dx + dy * dy);
         if (d >= Range) return false;
