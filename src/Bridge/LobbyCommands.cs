@@ -56,9 +56,11 @@ internal static class LobbyCommands
             if (!int.TryParse(want, out int idx)) idx = -1;
             if (idx < 0 && want.Length > 0)
             {
-                string key = want.ToLowerInvariant() switch { "custom" => "Impostor Test UDP", "official" => "Asia", _ => want };
-                for (int i = 0; i < regions.Length && idx < 0; i++)
-                    if (regions[i].Name.Contains(key, System.StringComparison.OrdinalIgnoreCase)) idx = i;
+                // custom = MRP のサーバー (一覧に足していない時は前のテスト用の鯖)
+                string[] keys = want.ToLowerInvariant() switch { "custom" => new[] { "MRP Server", "Impostor Test UDP" }, "official" => new[] { "Asia" }, _ => new[] { want } };
+                foreach (var key in keys)
+                    for (int i = 0; i < regions.Length && idx < 0; i++)
+                        if (regions[i].Name.Contains(key, System.StringComparison.OrdinalIgnoreCase)) idx = i;
                 if (idx < 0) reply($"ERR region '{want}' not found");
             }
             if (idx >= 0 && idx < regions.Length) sm.SetRegion(regions[idx]);
