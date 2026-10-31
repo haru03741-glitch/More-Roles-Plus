@@ -17,7 +17,7 @@ internal static class DuelShade
 
     private struct Shade
     {
-        public bool On, NameHidden, PetHidden, CosHidden;
+        public bool On, NameHidden, ColorNameHidden, PetHidden, CosHidden;
         public long OutSince;
     }
 
@@ -123,6 +123,13 @@ internal static class DuelShade
             c.nameText.gameObject.SetActive(false);
             s.NameHidden = true;
         }
+        // 色覚の補助の色の名前 (塗った黒の名前が出て、黒の人と取り違えられる)
+        var cb = c.colorBlindText;
+        if (cb && cb.gameObject.activeSelf)
+        {
+            cb.gameObject.SetActive(false);
+            s.ColorNameHidden = true;
+        }
         var pet = c.currentPet;
         if (pet && pet.Visible)
         {
@@ -135,7 +142,7 @@ internal static class DuelShade
     {
         ref var s = ref Shades[id];
         if (!s.On) return;
-        bool name = s.NameHidden, pet = s.PetHidden;
+        bool name = s.NameHidden, colorName = s.ColorNameHidden, pet = s.PetHidden;
         s = default;
         _count--;
         Restored++;
@@ -147,6 +154,7 @@ internal static class DuelShade
         // ベントの中などで本編が隠している人と、化け物の姿の最中の人の着せ替えは出さない (それぞれ終わる時に戻る)
         if (pc.Visible && !ImpostorMaw.HidesCosmetics(id)) c.SetBodyCosmeticsVisible(true);
         if (name && c.nameText) c.nameText.gameObject.SetActive(true);
+        if (colorName && c.colorBlindText) c.colorBlindText.gameObject.SetActive(true);
         if (pet) c.SetPetVisible(true);
     }
 

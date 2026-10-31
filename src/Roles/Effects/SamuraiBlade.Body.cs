@@ -211,7 +211,7 @@ internal sealed partial class SamuraiBlade
         public Transform Tf;
         public SpriteRenderer Sr;
         public float T;
-        public bool Red;
+        public bool Red, Shade;
     }
 
     private const int MaxGhosts = 12;
@@ -252,6 +252,8 @@ internal sealed partial class SamuraiBlade
         if (colorId >= 0 && colorId < Palette.PlayerColors.Length) PlayerMaterial.SetColors(colorId, g.Sr);
         g.T = now;
         g.Red = red;
+        // 戦いの外から見ている人には残像も影 (色で誰か分からないよう、青白い光にしない)
+        g.Shade = DuelShade.On(pc.PlayerId);
         g.Go.SetActive(true);
         Ghosts.Add(g);
         return true;
@@ -275,7 +277,7 @@ internal sealed partial class SamuraiBlade
                 continue;
             }
             float a = 0.5f * (1f - u) * (1f - u);
-            g.Sr.color = g.Red ? FxMath.Rgba(1f, 0.4f, 0.45f, a) : FxMath.Rgba(0.55f, 0.75f, 1f, a);
+            g.Sr.color = g.Shade ? FxMath.Rgba(0.12f, 0.12f, 0.16f, a * 1.4f) : g.Red ? FxMath.Rgba(1f, 0.4f, 0.45f, a) : FxMath.Rgba(0.55f, 0.75f, 1f, a);
         }
     }
 
