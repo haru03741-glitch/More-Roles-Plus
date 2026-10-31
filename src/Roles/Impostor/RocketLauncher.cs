@@ -23,17 +23,22 @@ public sealed class RocketLauncher : RoleBase
     public static readonly FloatOpt LaunchCooldown = new("RocketLauncher.Cooldown", 30f, 2.5f, 60f, 2.5f, "s");
     public static readonly BoolOpt CollideWithPlayers = new("RocketLauncher.CollideWithPlayers", true);
     public static readonly BoolOpt KillImpostors = new("RocketLauncher.KillImpostors", false);
-    public static readonly FloatOpt ExplosionRange = new("RocketLauncher.ExplosionRange", 0.5f, 0.25f, 2f, 0.25f, "x");
+    public static readonly FloatOpt ExplosionRange = new("RocketLauncher.ExplosionRange", 0.75f, 0.25f, 2f, 0.25f, "x");
+    public static readonly FloatOpt LaunchSpeed = new("RocketLauncher.LaunchSpeed", 1.5f, 0.5f, 3f, 0.25f, "x");
+    public static readonly FloatOpt WallBlastSize = new("RocketLauncher.WallBlastSize", 2f, 0.5f, 3f, 0.25f);
+    public static readonly IntOpt WallBlastPower = new("RocketLauncher.WallBlastPower", 100, 0, 100, 10, "%");
     public static readonly BoolOpt LimitLoadedTime = new("RocketLauncher.LimitLoadedTime", false);
     public static readonly FloatOpt LoadedTimeLimit = new("RocketLauncher.LoadedTimeLimit", 10f, 2.5f, 60f, 2.5f, "s") { When = () => LimitLoadedTime };
     public static readonly BoolOpt CanUseNormalKill = new("RocketLauncher.CanUseNormalKill", true);
 
-    // 撃たれた人がぶつかった所で地形ごと爆発する (爆発の見た目・音・土煙・瓦礫・壁の穴は地形の仕組みが出す)
-    private static float BlastRadius => System.Math.Clamp(ExplosionRange * 2.4f, 0.6f, Terrain.TerrainPermit.MaxRadius);
+    // 撃たれた人がぶつかった所で地形ごと爆発する (音・土煙・瓦礫・壁の穴は地形の仕組みが出す。閃光と煙の輪と揺れは RocketCannon.Impact)
+    private static float BlastRadius => System.Math.Clamp(WallBlastSize, 0.5f, Terrain.TerrainPermit.MaxRadius);
     public override Terrain.TerrainPermit TerrainPermit => Terrain.TerrainPermit.None.WithBlast(BlastRadius);
 
-    private const float Speed = 7.5f;
-    private const float MaxLifetime = 8f;
+    private const float BaseSpeed = 7.5f;
+    private static float Speed => BaseSpeed * System.Math.Clamp(LaunchSpeed, 0.5f, 3f);
+    // 飛べる長さ。地形の爆発は撃った人から一定の距離までしか通らないので、その手前で止める
+    private const float MaxTravel = 18f;
     private const float PlayerRadius = 0.1f;
 
     // 掴まれている・飛んでいる人 (全員の端末で同じ)。動けない
@@ -213,7 +218,7 @@ public sealed class RocketLauncher : RoleBase
                     if (Vector2.Distance(next, p.GetTruePosition()) <= PlayerRadius + 0.3f) { hit = true; break; }
                 }
             }
-            if (_life >= MaxLifetime) hit = true;
+            if (_life * Speed >= MaxTravel) hit = true;
         }
         _pos = hit ? at : next;
         MoveTo(t, _pos);
@@ -224,7 +229,7 @@ public sealed class RocketLauncher : RoleBase
             ExplodeCall.Send((_pos, victims));
             Explode(Player, _pos, victims);
             // 壁に当たったら壁の上で、飛んできた向きへ涙形に抜ける爆発 (壁の奥まで壊れる)。人に当たった・止まった時は円
-            var res = Terrain.TerrainApi.Blast(wallHit ? wallPoint : _pos, BlastRadius, wallHit ? _dir : Vector2.zero, wallHit ? 0.8f : 0f);
+            var res = Terrain.TerrainApi.Blast(wallHit ? wallPoint : _pos, BlastRadius, wallHit ? _dir : Vector2.zero, wallHit ? WallBlastPower / 100f : 0f);
             if (!res.Ok) Plugin.Logger.LogInfo($"rocket launcher: terrain blast refused ({res.Why})");
         }
     }
@@ -302,6 +307,7 @@ public sealed class RocketLauncher : RoleBase
     {
         if (RoleState.Of(user) is not RocketLauncher rl) return;
         rl._blastAt = Time.time;
+        bool flew = rl._shot != 255;
         foreach (var id in new[] { rl._held, rl._shot })
             if (id != 255)
             {
@@ -310,7 +316,13 @@ public sealed class RocketLauncher : RoleBase
             }
         rl._held = rl._shot = 255;
         rl._flying = false;
-        RocketCannon.For(rl)?.Landed();
+        // 撃つ前に終わった (会議で掴んでいた人が死んだ) 時は大砲ごと片付ける。撃った後は大砲が自分で沈む
+        if (flew)
+        {
+            RocketCannon.For(rl)?.Landed();
+            RocketCannon.Impact(at, BlastRadius);
+        }
+        else RocketCannon.Drop(rl);
         if (!AmongUsClient.Instance.AmHost) return;
         _exploding = true;
         try

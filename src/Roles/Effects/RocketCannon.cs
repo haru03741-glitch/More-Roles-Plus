@@ -16,7 +16,7 @@ internal sealed class RocketCannon
     private const float Side = 0.85f;            // 撃つ人の足元から大砲の台までの横の距離
     private const float Rise = 0.35f;            // せり上がる秒
     private const float GrabAt = 0.12f, SqueezeAt = 0.2f, LiftEnd = 0.55f, PushEnd = 0.8f, HandsGone = 0.95f;
-    // 大砲は 3D の形から描いた向きごとのコマ (Resources/Icons/rl_cannon3d.png・tools/make-rocket-cannon3d.py)。数値はそちらと同じ
+    // 大砲は 3D の形から描いた向きごとのコマ (Resources/Icons/rl_cannon3d.png・1 コマ 160 四方・8 列)。数値は絵の作りと同じ
     private const int Cell = 160, Cols = 8, Yaws = 32;
     private const float Ppu = 125f, OriginY = 40f;
     private const float Squash = 0.58f, HeightK = 0.82f;  // 床の奥行き・高さが画面で縮む倍率
@@ -47,7 +47,15 @@ internal sealed class RocketCannon
     private static readonly List<RocketCannon> Live = new();
     private static readonly List<Puff> Puffs = new();
     private static readonly Stack<Puff> PuffPool = new();
-    private const int MaxPuffs = 48;
+    private const int MaxPuffs = 96;
+
+    // 着弾 (爆発の広さ r に比べた大きさ)
+    private const float ImpactCoreK = 1.5f, ImpactCoreLife = 0.16f;           // 白い核 (閃光の絵)
+    private const float ImpactGlowK0 = 1.1f, ImpactGlowK1 = 2.6f, ImpactGlowLife = 0.32f; // 外の橙のにじみ
+    private const int ImpactRing = 12, ImpactSparks = 10;
+    private const float ShakeReach = 9f;
+
+    private enum PuffKind : byte { Smoke, Core, Glow, Spark }
 
     private sealed class Puff
     {
@@ -56,6 +64,8 @@ internal sealed class RocketCannon
         public SpriteRenderer Sr;
         public float Start, Life, Size0, Size1, X, Y, Vx, Vy, Z;
         public bool Warm;
+        public PuffKind Kind;
+        public Sprite Art;
     }
 
     private readonly RoleBase _owner;
@@ -67,6 +77,9 @@ internal sealed class RocketCannon
     private GameObject _handL, _handR;
     private SpriteRenderer _handLsr, _handRsr;
     private int _handFrame = -1;
+    private bool _handsOn, _flashOn;
+    private float _handAlpha = -1f, _recoilSet = -1f;
+    private float _room = -1f, _roomSide, _roomAt = -9f; // 置く側の壁までの空き (0.15 秒ごとに測り直す)
     private float _loadStart = -1f, _fireStart = -1f, _lastTrail;
     private float _side = 1f, _aim;              // _aim = 画面の上の狙いの向き (度)
     private float _yaw;                          // 見えている筒の床の上の向き (度)
@@ -157,6 +170,35 @@ internal sealed class RocketCannon
         Show();
     }
 
+    // 撃たれた人が爆発した所 (全員の端末)。白い核 → 橙のにじみ → 火の色から白へ変わる煙の輪と火花。近い人ほど画面が揺れる
+    internal static void Impact(Vector2 at, float r)
+    {
+        if (!Search()) return;
+        float z = (at.y - 1.5f) / 1000f; // そばに立つ人より手前
+        SpawnPuff(at.x, at.y, 0f, 0f, r * ImpactGlowK0, r * ImpactGlowK1, ImpactGlowLife, z + 0.0002f, true, PuffKind.Glow);
+        SpawnPuff(at.x, at.y, 0f, 0f, r * ImpactCoreK * 0.7f, r * ImpactCoreK, ImpactCoreLife, z, true, PuffKind.Core);
+        for (int i = 0; i < ImpactRing; i++)
+        {
+            float a = (i + FxMath.Range(-0.3f, 0.3f)) * (2f * System.MathF.PI / ImpactRing);
+            float v = r * FxMath.Range(1.3f, 2.0f);
+            SpawnPuff(at.x, at.y, FxMath.Cos(a) * v, FxMath.Sin(a) * v * 0.75f, 0.35f, r * 0.55f + 0.3f, FxMath.Range(0.8f, 1.1f), z + 0.0004f, true);
+        }
+        for (int i = 0; i < ImpactSparks; i++)
+        {
+            float a = FxMath.Range(0f, 2f * System.MathF.PI);
+            float v = r * FxMath.Range(3f, 5f);
+            SpawnPuff(at.x, at.y, FxMath.Cos(a) * v, FxMath.Sin(a) * v, 0.16f, 0.08f, FxMath.Range(0.25f, 0.4f), z - 0.0002f, true, PuffKind.Spark, a * (180f / System.MathF.PI));
+        }
+        var lp = PlayerControl.LocalPlayer;
+        var hud = Vanilla.Hud;
+        if (!lp || !hud || !hud.PlayerCam) return;
+        var me = lp.transform.position;
+        float dx = me.x - at.x, dy = me.y - at.y, d = FxMath.Sqrt(dx * dx + dy * dy);
+        if (d >= ShakeReach) return;
+        float k = 1f - d / ShakeReach;
+        hud.PlayerCam.ShakeScreen(0.2f + 0.25f * k, 0.5f + 2.5f * k * k);
+    }
+
     // 撃たずに終わった (役職が外れた・死んだ)
     internal static void Drop(RoleBase owner) => For(owner)?.Remove();
 
@@ -198,7 +240,13 @@ internal sealed class RocketCannon
             if (want != _side && Room(feet, want) >= CannonHalf + 0.35f) _side = want;
         }
         // 壁にめり込まないよう、置く側の空きに合わせて手前へ詰める
-        float room = Room(feet, _side);
+        if (_roomSide != _side || Time.time - _roomAt > 0.15f)
+        {
+            _room = Room(feet, _side);
+            _roomSide = _side;
+            _roomAt = Time.time;
+        }
+        float room = _room;
         float dist = FxMath.Clamp(room - CannonHalf, 0.35f, Side);
         float goal = _side * dist;
         if (float.IsNaN(_offX)) _offX = goal;
@@ -244,8 +292,12 @@ internal sealed class RocketCannon
             float f = Time.time - _fireStart;
             recoil = f < RecoilIn ? Recoil * f / RecoilIn : Recoil * FxMath.Clamp01(1f - (f - RecoilIn) / RecoilBack);
         }
-        float ar = _aim * (System.MathF.PI / 180f);
-        _cannonTf.localPosition = FxMath.V3(-FxMath.Cos(ar) * recoil, -FxMath.Sin(ar) * recoil, 0f);
+        if (recoil != _recoilSet)
+        {
+            _recoilSet = recoil;
+            float ar = _aim * (System.MathF.PI / 180f);
+            _cannonTf.localPosition = FxMath.V3(-FxMath.Cos(ar) * recoil, -FxMath.Sin(ar) * recoil, 0f);
+        }
 
         // 閃光
         if (_flashSr)
@@ -259,7 +311,7 @@ internal sealed class RocketCannon
                 _flashTf.localScale = FxMath.V3(s, s, 1f);
                 _flashSr.color = FxMath.Rgba(1f, 1f, 1f, FxMath.Clamp01(k * 1.4f));
             }
-            if (_flashSr.enabled != on) _flashSr.enabled = on;
+            if (_flashOn != on) { _flashOn = on; _flashSr.enabled = on; }
         }
 
         // 相手の置き場所 (装填の動き)
@@ -323,7 +375,7 @@ internal sealed class RocketCannon
     {
         if (!_handL) return;
         bool on = _fireStart < 0f && t < HandsGone;
-        if (_handL.activeSelf != on) { _handL.SetActive(on); _handR.SetActive(on); }
+        if (_handsOn != on) { _handsOn = on; _handL.SetActive(on); _handR.SetActive(on); }
         if (!on) return;
         int frame = t < GrabAt ? 0 : t < SqueezeAt ? 1 : 2;
         if (frame != _handFrame)
@@ -332,9 +384,14 @@ internal sealed class RocketCannon
             _handLsr.sprite = _handRsr.sprite = Hand[frame];
         }
         float al = t < 0.1f ? t / 0.1f : t > PushEnd ? 1f - (t - PushEnd) / (HandsGone - PushEnd) : 1f;
-        var col = FxMath.Rgba(1f, 1f, 1f, FxMath.Clamp01(al));
-        _handLsr.color = col;
-        _handRsr.color = col;
+        al = FxMath.Clamp01(al);
+        if (al != _handAlpha)
+        {
+            _handAlpha = al;
+            var col = FxMath.Rgba(1f, 1f, 1f, al);
+            _handLsr.color = col;
+            _handRsr.color = col;
+        }
         // 手は相手の肩の上 (相手の体の中心に対して)。押し込んだ後は筒の中の位置に付いていく
         Vector2 body = _hasHold ? _hold : _p0;
         var hc = HandCenter[frame];
@@ -367,9 +424,12 @@ internal sealed class RocketCannon
             _flashSr.sprite = _flash;
             _flashSr.enabled = false;
 
-            var mat = FxHands.PlayerMat();
-            _handL = NewHand(mat, color, false, out _handLsr);
-            _handR = NewHand(mat, color, true, out _handRsr);
+            if (Hand[0] && Hand[1] && Hand[2])
+            {
+                var mat = FxHands.PlayerMat();
+                _handL = NewHand(mat, color, false, out _handLsr);
+                _handR = NewHand(mat, color, true, out _handRsr);
+            }
             return true;
         }
         catch (System.Exception e)
@@ -478,7 +538,7 @@ internal sealed class RocketCannon
     private static float EaseIn(float u) { u = FxMath.Clamp01(u); return u * u; }
     private static float EaseInOut(float u) { u = FxMath.Clamp01(u); return u * u * (3f - 2f * u); }
 
-    private static void SpawnPuff(float x, float y, float vx, float vy, float s0, float s1, float life, float z, bool warm)
+    private static void SpawnPuff(float x, float y, float vx, float vy, float s0, float s1, float life, float z, bool warm, PuffKind kind = PuffKind.Smoke, float rot = float.NaN)
     {
         if (Puffs.Count >= MaxPuffs) return;
         var p = PuffPool.Count > 0 ? PuffPool.Pop() : null;
@@ -488,8 +548,10 @@ internal sealed class RocketCannon
             var ship = ShipStatus.Instance;
             if (ship) go.transform.SetParent(ship.transform, true);
             p = new Puff { Go = go, Tf = go.transform, Sr = go.AddComponent<SpriteRenderer>() };
-            p.Sr.sprite = Terrain.DebrisArt.Puff;
         }
+        var art = kind == PuffKind.Core ? _flash : kind == PuffKind.Spark ? Terrain.DebrisArt.Spark : Terrain.DebrisArt.Puff;
+        if (!ReferenceEquals(p.Art, art)) { p.Art = art; p.Sr.sprite = art; }
+        p.Kind = kind;
         p.Go.SetActive(true);
         p.Start = Time.time;
         p.Life = life;
@@ -497,7 +559,7 @@ internal sealed class RocketCannon
         p.Size1 = s1;
         p.X = x; p.Y = y; p.Vx = vx; p.Vy = vy; p.Z = z;
         p.Warm = warm;
-        p.Tf.rotation = FxMath.RotZ(FxMath.Range(0f, 360f));
+        p.Tf.rotation = FxMath.RotZ(float.IsNaN(rot) ? FxMath.Range(0f, 360f) : rot);
         Puffs.Add(p);
     }
 
@@ -514,13 +576,29 @@ internal sealed class RocketCannon
                 continue;
             }
             float t = now - p.Start;
-            float drag = 1f - f * 0.6f;
+            float drag = p.Kind == PuffKind.Spark ? 1f - f * 0.3f : 1f - f * 0.6f;
             float s = p.Size0 + (p.Size1 - p.Size0) * EaseOut(f);
             p.Tf.position = FxMath.V3(p.X + p.Vx * t * drag, p.Y + p.Vy * t * drag, p.Z);
             p.Tf.localScale = FxMath.V3(s, s, 1f);
-            // 撃った瞬間の煙は火の色から白へ・あとは白から薄れる
-            float w = p.Warm ? FxMath.Clamp01(1f - f * 4f) : 0f;
-            p.Sr.color = FxMath.Rgba(1f, 1f - 0.25f * w, 1f - 0.6f * w, (1f - f) * 0.9f);
+            switch (p.Kind)
+            {
+                case PuffKind.Core: // 白い核は一瞬で抜ける
+                    p.Sr.color = FxMath.Rgba(1f, 1f, 0.92f, FxMath.Clamp01((1f - f) * 1.6f));
+                    break;
+                case PuffKind.Glow: // 明るい黄から橙へ移りながら消える (濃いと明るい床の上で茶色の円盤に見える)
+                    p.Sr.color = FxMath.Rgba(1f, 0.95f - 0.35f * f, 0.65f - 0.35f * f, (1f - f) * (1f - f) * 0.5f);
+                    break;
+                case PuffKind.Spark:
+                    p.Sr.color = FxMath.Rgba(1f, 0.9f - 0.4f * f, 0.45f - 0.3f * f, 1f - f * f);
+                    break;
+                default:
+                {
+                    // 撃った瞬間・爆発の煙は火の色から白へ・あとは白から薄れる
+                    float w = p.Warm ? FxMath.Clamp01(1f - f * 4f) : 0f;
+                    p.Sr.color = FxMath.Rgba(1f, 1f - 0.25f * w, 1f - 0.6f * w, (1f - f) * 0.9f);
+                    break;
+                }
+            }
         }
     }
 
@@ -528,8 +606,8 @@ internal sealed class RocketCannon
 
     private static bool Search()
     {
-        if (Frames[0] && _flash && Hand[2]) return true;
-        if (_searched && !Hand[2]) return false;
+        if (Frames[0] && _flash) return true;
+        if (_searched) return false;
         _searched = true;
         _flash = ButtonIcons.Load("rl_flash", 200f, FxMath.V2(0.5f, 0.5f));
         var atlas = ButtonIcons.Load("rl_cannon3d", Ppu, FxMath.V2(0.5f, 0.5f));
@@ -559,7 +637,8 @@ internal sealed class RocketCannon
                     HandCenter[i] = FxMath.V2(c.x, c.y);
                 }
         }
+        // 手の絵が見つからなければ手だけ出さない (大砲と着弾は出す)
         if (!Hand[0] || !Hand[1] || !Hand[2]) Plugin.Logger.LogWarning("rocket cannon: petting hand art not found");
-        return Frames[0] && _flash && Hand[2];
+        return Frames[0] && _flash;
     }
 }

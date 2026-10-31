@@ -1337,7 +1337,10 @@ RocketLauncher.Shot.Short: Launch the grabbed person
 RocketLauncher.Cooldown: Load cooldown
 RocketLauncher.CollideWithPlayers: Explodes on hitting people
 RocketLauncher.KillImpostors: Explosion kills impostors
-RocketLauncher.ExplosionRange: Explosion range
+RocketLauncher.ExplosionRange: Kill radius
+RocketLauncher.LaunchSpeed: Launch speed
+RocketLauncher.WallBlastSize: Wall blast size
+RocketLauncher.WallBlastPower: Wall blast power
 RocketLauncher.LimitLoadedTime: Limit holding time
 RocketLauncher.LoadedTimeLimit: Holding time
 RocketLauncher.CanUseNormalKill: Can kill normally

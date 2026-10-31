@@ -13,10 +13,21 @@ internal static class RangedKillSnapPatch
     private static bool _has;
     private static Vector3 _saved;
 
+    private static System.Type Coroutine() =>
+        System.Linq.Enumerable.FirstOrDefault(typeof(KillAnimation).GetNestedTypes(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic),
+            n => n.Name.Contains("CoPerformKill"));
+
+    // 本編の更新でコルーチンの名前が変わっても、このパッチだけを外して他のパッチは当てる
+    public static bool Prepare()
+    {
+        if (Coroutine() != null) return true;
+        Plugin.Logger.LogWarning("RangedKillSnap: CoPerformKill not found (kill snap not undone)");
+        return false;
+    }
+
     public static System.Reflection.MethodBase TargetMethod()
     {
-        var t = System.Linq.Enumerable.First(typeof(KillAnimation).GetNestedTypes(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic),
-            n => n.Name.Contains("CoPerformKill"));
+        var t = Coroutine();
         _source = HarmonyLib.AccessTools.Property(t, "source");
         if (_source == null) Plugin.Logger.LogWarning("RangedKillSnap: CoPerformKill has no source field (kill snap not undone)");
         return HarmonyLib.AccessTools.Method(t, "MoveNext");

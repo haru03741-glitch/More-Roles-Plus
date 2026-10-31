@@ -1337,7 +1337,10 @@ RocketLauncher.Shot.Short: 掴んだ人を撃ち出す
 RocketLauncher.Cooldown: 装填の待ち時間
 RocketLauncher.CollideWithPlayers: 人に当たっても爆発する
 RocketLauncher.KillImpostors: 爆発でインポスターも死ぬ
-RocketLauncher.ExplosionRange: 爆発の広さ
+RocketLauncher.ExplosionRange: 爆発で倒す広さ
+RocketLauncher.LaunchSpeed: 飛ぶ速さ
+RocketLauncher.WallBlastSize: 壁を壊す広さ
+RocketLauncher.WallBlastPower: 壁を突き抜ける強さ
 RocketLauncher.LimitLoadedTime: 掴んでいられる時間を限る
 RocketLauncher.LoadedTimeLimit: 掴んでいられる時間
 RocketLauncher.CanUseNormalKill: 普通のキルもできる
