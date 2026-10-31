@@ -87,6 +87,14 @@ internal static class RoleCommands
             reply(Roles.RoleState.Of(lp) is Roles.Impostor.TriggerHappy th ? $"OK th {th.Describe()} stick={UI.FireStick.ForceShow} held={UI.FireStick.Held}" : "ERR th: not a trigger happy");
         });
 
+        TestBridge.Register("tharm", "<番号> [on|off] その人のトリガーハッピーに機関銃を構えさせる (この端末の見た目と状態だけ・練習の相手に居合を当てて機関銃が切れるかを見る)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length < 1 || !byte.TryParse(a[0], out byte id) || Roles.PortKit.ById(id) is not { } p) { reply("ERR tharm <番号> [on|off]"); return; }
+            bool on = a.Length < 2 || a[1] != "off";
+            reply(Roles.Impostor.TriggerHappy.ArmForTest(p, on) ? $"OK tharm {id} {on}" : "ERR tharm: not a trigger happy");
+        });
+
         TestBridge.Register("gunsnd", "機関銃と大砲の効果音の鳴らした数と最後の音", (_, reply) => reply($"OK gunsnd {Roles.GunSound.Describe()}"));
 
         TestBridge.Register("rlaim", "<角度° | off> ロケットランチャーの狙いの向きを固定する (0 = 右・90 = 上)", (args, reply) =>
@@ -186,6 +194,14 @@ internal static class RoleCommands
             {
                 if (RoleState.Of(oid) is not Roles.Neutral.Samurai os) { reply("ERR samurai not Samurai"); return; }
                 reply($"OK samurai {os.Probe()}");
+                return;
+            }
+            if (p.Length >= 2 && p[0] == "sheatheof" && byte.TryParse(p[1], out byte shid))
+            {
+                // sheatheof <番号> = その人のサムライにボットと同じ道で納刀させる (ホスト)
+                if (RoleState.Of(shid) is not Roles.Neutral.Samurai sh) { reply("ERR samurai not Samurai"); return; }
+                sh.BotSheathe();
+                reply($"OK samurai sheatheof {sh.Probe()}");
                 return;
             }
             if (p.Length >= 5 && p[0] == "stroke" && byte.TryParse(p[1], out byte sid))

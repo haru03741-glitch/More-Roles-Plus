@@ -69,6 +69,7 @@ public sealed partial class Samurai : RoleBase
     // 刀を抜いているサムライの数 (全員の端末)。インポスターのキルボタンを舌にするかを毎 FixedUpdate 比べる口 (0 なら探さない)。
     // 試合の替わり目で数がずれても、探す回数が増えるだけで答えは変わらない
     internal static int DrawnCount;
+    internal static int Count;   // 試合にいるサムライの数 (いなければ弾ごとの確かめを飛ばす)
     private float _drawnAt = -10f;
     private float _sheathedAt = -10f; // 納めた時刻 (居合の溜めの上限をホストが見る)
     // ホストが数える値。本人の端末には知らせで写す。時戻しで戻る
@@ -96,6 +97,8 @@ public sealed partial class Samurai : RoleBase
         ResetClash();
         _blade = new SamuraiBlade(this);
         Lifespan.OnRelease(_blade.Dispose);
+        Count++;
+        Lifespan.OnRelease(() => Count = Math.Max(Count - 1, 0));
         if (IsLocal) SamuraiBlade.LocalFollow = _blade;
         HookControls();
     }
@@ -317,6 +320,8 @@ public sealed partial class Samurai : RoleBase
         _hostStrokeFull = iai && charge >= FullCharge;
         _hostStrokeSmash = iai && !thrust && (tier & 0x7F) >= SmashTier;
         _hostStrokeSecs = secs;
+        // 段 2 以上の居合の振りの間 (と届くまでの遅れ) だけ、弾を跳ね返したという申告を受ける (Samurai.Bullets.cs)
+        if (iai && !thrust && (tier & 0x7F) >= 2) _hostReflectUntil = Time.time + secs + ReflectSlack;
         // 練習の相手の振りは、刀の絵が振り終わってから当てる (人の振りがホストへ届くのと同じ順番で、刀が通った時刻の位置で決める)
         if (!thrust && DuelBot.Has(PlayerId))
         {
@@ -528,6 +533,8 @@ public sealed partial class Samurai : RoleBase
             if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, dmg, (aimedBits >> i & 1) != 0)) continue;
             // 立ち合いの相手のインポスターへの斬りは、口で受けられるかを少し待ってから決める (Samurai.Tongue.cs)
             if (HostHoldForGuard(target, dmg, (aimedBits >> i & 1) != 0)) continue;
+            // 溜め切りの居合は構えている機関銃を斬る (乱射が終わる・Impostor/TriggerHappy.Samurai.cs)
+            if (_hostStrokeFull && RoleState.Of(target) is Impostor.TriggerHappy gunner) gunner.HostBreakGun();
             counted |= HostApply(target, dmg, _hostStrokeSmash);
         }
         if (counted) HostUpdatePath();

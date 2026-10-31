@@ -14,7 +14,7 @@ internal static class GunSound
     private const float SmallRange = 8f, SmallMuffle = 4f;   // 着弾・薬莢
     private const float CannonRange = 14f, CannonMuffle = 7f;
     private const int Voices = 10;
-    private const float HitGap = 0.06f, RicGap = 0.22f, CaseGap = 0.14f;
+    private const float HitGap = 0.06f, RicGap = 0.22f, CaseGap = 0.14f, DeflectGap = 0.05f;
     private const float SpinTop = 40f;
     private const int Every = 4;                              // ループの音量と左右は 4 フレームに 1 回だけ書き直す
 
@@ -22,7 +22,8 @@ internal static class GunSound
     private static AudioSource[] _voices;
     private static AudioSource _fly;
     private static int _next, _flyFrame;
-    private static float _nextHit, _nextRic, _nextCase;
+    private static float _nextHit, _nextRic, _nextCase, _nextDeflect;
+    private static int _deflects;
     private static byte _flyId = 255;
 
     internal static bool Muted;
@@ -98,6 +99,22 @@ internal static class GunSound
         int h = (int)FxMath.Range(0f, 2.999f) + 1;
         At("noise_gat_hit_" + h, x, y, 0.35f, FxMath.Range(0.9f, 1.15f), SmallRange, SmallMuffle);
     }
+
+    // サムライの刀が弾を受けた・斬った「キン」(跳ね返した時は刃の鳴りを重ねる)
+    internal static void Deflect(float x, float y, bool reflect)
+    {
+        float now = Time.time;
+        if (now < _nextDeflect) return;
+        _nextDeflect = now + DeflectGap;
+        int i = (int)FxMath.Range(0f, 4.999f) + 1;
+        At("noise_gat_ric_" + i, x, y, 0.55f, FxMath.Range(1.35f, 1.6f), SmallRange, SmallMuffle);
+        if (reflect || ++_deflects % 4 == 0)
+            At("noise_samurai_clash", x, y, reflect ? 0.5f : 0.3f, FxMath.Range(1.15f, 1.3f), SmallRange, SmallMuffle);
+    }
+
+    // 機関銃が居合で斬られた: 金属が裂けて割れる
+    internal static void Break(float x, float y) =>
+        At("noise_rl_escape", x, y, 0.75f, FxMath.Range(1.15f, 1.25f), GunRange, GunMuffle);
 
     // 薬莢が床で跳ねた
     internal static void Case(float x, float y)

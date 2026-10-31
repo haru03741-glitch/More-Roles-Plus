@@ -12,7 +12,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // トリガーハッピー (インポスター): 「乱射」でしばらく機関銃を構える。構えている間、PC は右クリックを押している間だけマウスの方へ、
 // スマホは画面の右半分の射撃スティックを倒している間だけその向きへ弾をばらまく。
 // 同じ人に決まった数当たると倒れる。弾は壁で止まり (設定で抜ける)、同じ所に当て続けると壁が削れて穴が開く
-public sealed class TriggerHappy : RoleBase
+public sealed partial class TriggerHappy : RoleBase
 {
     public override Team Team => Team.Impostor;
     public override string Color => "#FF1919";
@@ -378,8 +378,8 @@ public sealed class TriggerHappy : RoleBase
 
     private void MoveShots(float dt)
     {
-        if (_shots.Count == 0) return;
-        bool cached = false;
+        if (_shots.Count == 0) { FlushGraze(dt); return; }
+        bool cached = false, judged = false;
         float step = Speed * dt;
         for (int i = _shots.Count - 1; i >= 0; i--)
         {
@@ -402,10 +402,14 @@ public sealed class TriggerHappy : RoleBase
                 Remove(i);
                 continue;
             }
+            if (!judged) { CacheJudged(); judged = true; }
+            if (_judged.Count > 0 && TrySamurai(s)) { Remove(i); continue; }
+            if (_shields.Count > 0 && Shielded(s)) { Remove(i); continue; }
             if (!s.Real) continue;
             if (!cached) { CacheTargets(); cached = true; }
             if (TryHit(s)) Remove(i);
         }
+        FlushGraze(dt);
     }
 
     // 撃った人の端末で: 壁に当たった弾を場所ごとに数え、決まった数ごとに壁を叩く
@@ -432,6 +436,8 @@ public sealed class TriggerHappy : RoleBase
         {
             if (!PortKit.Alive(p) || p.PlayerId == PlayerId || p.inVent) continue;
             if (!FriendlyFire && SameSide(p)) continue;
+            // サムライに当たったかは撃たれた本人の端末が決める (TriggerHappy.Samurai.cs)
+            if (Tough(p)) continue;
             var pos = p.GetTruePosition();
             _targets.Add((p, pos.x, pos.y + 0.3f));
         }
@@ -507,6 +513,7 @@ public sealed class TriggerHappy : RoleBase
             // 当たるのに要る弾数を撃ち切れない速さの申告 (同じ人の次のキルまでの間) も受けない
             if (MeetingHud.Instance || RoleState.Of(sender) is not TriggerHappy th || !(th._active || Time.time < th._activeUntil)) return;
             if (PortKit.ById(id) is not { } t || !PortKit.Alive(t)) return;
+            if (Tough(t)) return;
             if (!FriendlyFire && th.SameSide(t)) return;
             Vector2 a = sender.GetTruePosition(), b = t.GetTruePosition();
             float dx = b.x - a.x, dy = b.y - a.y, reach = SprayRange + 2f, d = FxMath.Sqrt(dx * dx + dy * dy);

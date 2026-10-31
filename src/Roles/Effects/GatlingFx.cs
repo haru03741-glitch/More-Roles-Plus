@@ -152,12 +152,12 @@ internal static class GatlingFx
     private static Vector2 Project(float yawRad, float x, float z) =>
         FxMath.V2(FxMath.Cos(yawRad) * x, FxMath.Sin(yawRad) * x * Squash + z * Height);
 
-    internal static void RemoveGun(Gun g)
+    internal static void RemoveGun(Gun g, bool quiet = false)
     {
         if (g == null) return;
         Guns.Remove(g);
         GunSound.StopGun(g.Snd);
-        if (g.Shown && g.Owner) GunSound.Lower(g.Owner);
+        if (!quiet && g.Shown && g.Owner) GunSound.Lower(g.Owner);
         if (g.Go) Object.Destroy(g.Go);
         g.Go = null;
     }
@@ -341,6 +341,126 @@ internal static class GatlingFx
         t.Live = false;
     }
 
+    // ---- 刀で受けた弾 ----
+
+    // サムライの刀に当たった弾 (全員の端末): 弾の来た方へ散る火花と白い瞬き。弾痕は残さない
+    internal static void Deflect(float x, float y, float dx, float dy)
+    {
+        if (!Ready() || Parts.Count >= MaxParts) return;
+        float z = y / 1000f - 0.03f;
+        float back = FxMath.Atan2(-dy, -dx);
+        for (int i = 0; i < 4; i++)
+        {
+            float a = back + FxMath.Range(-1.1f, 1.1f);
+            float v = FxMath.Range(3f, 5.5f);
+            Spawn(Kind.Spark, x, y, z - 0.0001f, FxMath.Cos(a) * v, FxMath.Sin(a) * v, 0.13f, 0.05f, FxMath.Range(0.12f, 0.22f), Terrain.DebrisArt.Spark, a * (180f / MathF.PI));
+        }
+        Spawn(Kind.Flash, x, y, z - 0.0002f, 0f, 0f, 0.16f, 0.26f, 0.05f, _flash, FxMath.Range(0f, 360f));
+    }
+
+    // ---- 斬られた機関銃 ----
+
+    private sealed class Half
+    {
+        public GameObject Go;
+        public Transform Tf;
+        public Mesh Mesh;
+        public float X, Y, Z, Vx, Vy, Spin, Rot, Floor, Start;
+        public bool Landed;
+    }
+
+    private static readonly List<Half> Halves = new();   // 落ちている途中
+    private static readonly List<Half> Wrecks = new();   // 床に落ちて残っている残骸 (試合の終わりまで)
+    private static Material _halfMat;
+    private const int MaxWrecks = 24;                    // これを超えたら古い残骸から片付ける
+
+    // 居合で斬られた (全員の端末): 銃身の途中で 2 つに割れ、銃口の側は前へ回りながら飛び、握りの側は足元へ落ちる
+    internal static void BreakGun(Gun g)
+    {
+        if (g == null) return;
+        if (g.Shown && g.Sr && g.Sr.sprite)
+        {
+            float now = Time.time;
+            float cs = FxMath.Cos(g.YawRad), sn = FxMath.Sin(g.YawRad) * Squash;
+            float cx = g.Gx + cs * MuzzleLen * 0.45f, cy = g.Gy + sn * MuzzleLen * 0.45f;
+            float feet = g.Owner ? g.Owner.transform.position.y - BodyToFeet : g.Gy - 0.4f;
+            for (int side = -1; side <= 1; side += 2)
+            {
+                var mesh = FxMeshCut.Cut(g.Sr, cx, cy, new[] { new FxMeshCut.Plane(cs * side, sn * side, 0f) }, 1, null, "MrpGatlingHalf");
+                if (!mesh) continue;
+                var go = new GameObject("MrpGatlingHalf");
+                Under(go);
+                go.AddComponent<MeshFilter>().mesh = mesh;
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = HalfMat(g.Sr);
+                bool front = side > 0;
+                var h = new Half
+                {
+                    Go = go, Tf = go.transform, Mesh = mesh, X = cx, Y = cy, Z = g.Pz, Start = now,
+                    Vx = front ? cs * FxMath.Range(2.2f, 2.8f) : -cs * 0.4f, Vy = front ? 2.4f : 1.2f,
+                    Spin = (front ? 1f : -1f) * FxMath.Range(360f, 620f), Floor = feet + (front ? FxMath.Range(-0.1f, 0.15f) : 0.05f),
+                };
+                h.Tf.position = FxMath.V3(cx, cy, g.Pz);
+                Halves.Add(h);
+            }
+            // 切り口の火花
+            for (int i = 0; i < 8 && Parts.Count < MaxParts; i++)
+            {
+                float a = FxMath.Range(0f, 2f * MathF.PI), v = FxMath.Range(2f, 5f);
+                Spawn(Kind.Spark, cx, cy, g.Pz - 0.0003f, FxMath.Cos(a) * v, FxMath.Sin(a) * v, 0.14f, 0.05f, FxMath.Range(0.2f, 0.35f), Terrain.DebrisArt.Spark, a * (180f / MathF.PI));
+            }
+            if (Parts.Count < MaxParts) Spawn(Kind.Flash, cx, cy, g.Pz - 0.0004f, 0f, 0f, 0.3f, 0.5f, 0.08f, _flash, FxMath.Range(0f, 360f));
+            if (g.Owner && g.Owner.Visible) GunSound.Break(cx, cy);
+        }
+        RemoveGun(g, quiet: true);
+    }
+
+    private static Material HalfMat(SpriteRenderer sr)
+    {
+        if (_halfMat) return _halfMat;
+        var shader = Shader.Find("Sprites/Default");
+        _halfMat = shader ? new Material(shader) : new Material(sr.sharedMaterial);
+        _halfMat.mainTexture = sr.sprite.texture;
+        return _halfMat;
+    }
+
+    // 落ちて床で跳ね、止まったら残骸として試合の終わりまで床に残す (止まった物は毎フレーム触らない)
+    private static void TickHalves(float now, float dt)
+    {
+        for (int i = Halves.Count - 1; i >= 0; i--)
+        {
+            var h = Halves[i];
+            if (!h.Go)
+            {
+                if (h.Mesh) Object.Destroy(h.Mesh);
+                Halves.RemoveAt(i);
+                continue;
+            }
+            h.Vy -= 9f * dt;
+            h.X += h.Vx * dt;
+            h.Y += h.Vy * dt;
+            h.Rot += h.Spin * dt;
+            if (h.Y < h.Floor && h.Vy < 0f)
+            {
+                h.Y = h.Floor;
+                if (h.Vy > -1.5f) h.Landed = true;
+                else { h.Vy = -h.Vy * 0.3f; h.Vx *= 0.5f; h.Spin *= 0.3f; }
+            }
+            h.Tf.position = FxMath.V3(h.X, h.Y, h.Landed ? h.Floor / 1000f + 0.0005f : h.Z);
+            h.Tf.rotation = FxMath.RotZ(h.Rot);
+            if (!h.Landed) continue;
+            Halves.RemoveAt(i);
+            if (Wrecks.Count >= MaxWrecks)
+            {
+                var old = Wrecks[0];
+                if (old.Go) Object.Destroy(old.Go);
+                if (old.Mesh) Object.Destroy(old.Mesh);
+                Wrecks.RemoveAt(0);
+            }
+            Wrecks.Add(h);
+        }
+    }
+
     // ---- 着弾 ----
 
     // 壁に当たった (全員の端末)。火花 3 つ・煙 1 つ・小さな閃光・弾痕
@@ -412,9 +532,10 @@ internal static class GatlingFx
 
     internal static void Tick()
     {
-        if (Guns.Count == 0 && Tracers.Count == 0 && Parts.Count == 0) return;
+        if (Guns.Count == 0 && Tracers.Count == 0 && Parts.Count == 0 && Halves.Count == 0 && Wrecks.Count == 0) return;
         if (GameClock.ShipGen != _shipGen) { Forget(); return; }
         float now = Time.time, dt = Time.deltaTime;
+        if (Halves.Count > 0) TickHalves(now, dt);
         for (int i = Guns.Count - 1; i >= 0; i--)
         {
             var g = Guns[i];
@@ -573,6 +694,10 @@ internal static class GatlingFx
         TracerPool.Clear();
         Parts.Clear();
         PartPool.Clear();
+        foreach (var h in Halves) if (h.Mesh) Object.Destroy(h.Mesh);
+        foreach (var h in Wrecks) if (h.Mesh) Object.Destroy(h.Mesh);
+        Halves.Clear();
+        Wrecks.Clear();
         _holes = 0;
     }
 

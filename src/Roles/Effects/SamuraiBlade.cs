@@ -171,6 +171,13 @@ internal sealed partial class SamuraiBlade
     internal bool Spent => _spent;
     // 口で受けられて振れない間 (自分の端末ではなぞりを追わず、振りも送らない)
     internal bool Stunned => Time.time < _stunUntil;
+
+    // 刀を振っている・突いている最中か (飛んでくる弾を斬る)。tier = この振りの居合の段 (普通の振りは 1)
+    internal bool Cutting(out int tier)
+    {
+        tier = _strokeTier;
+        return !_hidden && (_wasInStroke || ThrustBusy(Time.time));
+    }
     private float _stunUntil = -10f, _stunLen = 1f;
     private const float StunShake = 0.018f, StunShakeDeg = 4f;
 

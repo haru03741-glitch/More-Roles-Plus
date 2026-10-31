@@ -88,6 +88,12 @@ public sealed partial class Samurai
         _moveX = at.x;
         _moveY = at.y;
         _moving = mx * mx + my * my > 1e-5f;
+        if (_moving)
+        {
+            float ml = FxMath.Sqrt(mx * mx + my * my);
+            _faceX = mx / ml;
+            _faceY = my / ml;
+        }
         if (DevFree(p)) { _ki = KiMax; return; }
         if (now < _spentUntil) return;
         float rate = !Drawn ? RegenSheathed : _moving ? RegenMoving : RegenStill;
