@@ -8,7 +8,7 @@ namespace MoreRolesPlus.Roles;
 internal static class HitWatch
 {
     internal static bool On;
-    internal static int Contacts, Misses, Mismatches;
+    internal static int Contacts, Misses, Mismatches, CutMisses;
 
     private const float Slack = 0.5f; // 一振りの前の、ゆっくり動かした間の重なりも拾う (重なった時に一振りの中だったかは note に)
     private static readonly Dictionary<int, float> LastContact = new();
@@ -43,6 +43,13 @@ internal static class HitWatch
         LastContact.Remove(Key(a, t));
     }
 
+    // 刀の絵が触れた瞬間に頼んだ当たりが外れた
+    internal static void CutMiss(byte a, byte t, string note)
+    {
+        CutMisses++;
+        Plugin.Logger.LogWarning($"HITWATCH-CUT {a}->{t} miss[{note}] contact[{(ContactNote.TryGetValue(Key(a, t), out var cn) ? cn : "-")}]");
+    }
+
     // dt = 絵が重なった時刻 − 外れと決めた時刻
     private static void Report(byte a, byte t, string miss, string contact, float dt)
     {
@@ -50,5 +57,5 @@ internal static class HitWatch
         Plugin.Logger.LogWarning($"HITWATCH {a}->{t} dt={dt:0.00} miss[{miss}] contact[{contact}]");
     }
 
-    internal static string Describe() => $"hitwatch on={On} contacts={Contacts} misses={Misses} mismatches={Mismatches}";
+    internal static string Describe() => $"hitwatch on={On} contacts={Contacts} misses={Misses} mismatches={Mismatches} cutMisses={CutMisses}";
 }

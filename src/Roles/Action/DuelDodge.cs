@@ -8,11 +8,14 @@ using Object = UnityEngine.Object;
 namespace MoreRolesPlus.Roles;
 
 // 立ち合いの相手の手 = 回避。立ち合いの間だけ、サムライでない側が短く飛び退ける (PC = 回避のキー (既定 Shift・Space は本編の「使う」と重なる)・スマホ = 右の縁のボタン)。
-// 飛び退く向きは歩いている向き (止まっていれば相手から離れる向き)。立ち合いごとに数回まで。
+// 飛び退く向きは歩いている向き (止まっていれば相手から離れる向き)。MaxStock 回ぶんまで溜められ、1 回ぶんは Recharge 秒で溜まる
+// (立ち合いに入った時は満タン)。続けて使う時は Gap 秒空ける。
 // ホストは回避を受け取ってから少しの間、その人への斬りを当てない (無敵)。飛び退いた跡には全員の画面で残像が残る
 internal static class DuelDodge
 {
-    internal const int PerDuel = 3;
+    internal const int MaxStock = 2;
+    internal const float Recharge = 3f, Gap = 0.4f;
+    private const float HostSlack = 0.3f;   // ホストの数え方の余裕 (届くまでの遅れの揺れ・固まって届く分)
     internal const float Speed = 13f;
     private const float MoveTime = 0.18f;
     private const float Safe = 0.35f;       // ホストが受け取ってから当てない秒
@@ -21,17 +24,16 @@ internal static class DuelDodge
 
     // 自分の端末
     private static bool _on; // 自分が組にいて回避を持つ
-    private static int _left;
+    // 溜まり具合 = _stock (時刻 _stockAt の値) + 経った秒 / Recharge (MaxStock まで)
+    private static float _stock, _stockAt, _lastUse = -10f;
     private static float _moveUntil = -10f;
     private static bool _moveOn;
     private static Vector2 _dir;
     private static bool _usable;
-    private static int _shownLeft = -1;
-    private static KeyCode _shownKey;
     internal static int Used, Refused;
     internal static float TestSafe; // 確かめ用: 無敵の秒を伸ばす (0 = 既定)
     // ホスト
-    private static readonly byte[] HostLeft = new byte[256];
+    private static readonly float[] HostStock = new float[256], HostStockAt = new float[256], HostLastUse = new float[256];
     private static readonly float[] SafeUntil = new float[256];
     private static readonly float[] SafeFrom = new float[256];
     // 残像を置いている人 (全員の端末)
@@ -54,16 +56,36 @@ internal static class DuelDodge
     // 回避を使えるのはサムライでない側 (サムライは踏み込みを持つ)
     private static bool CanHave(byte id) => RoleState.Of(id) is not Neutral.Samurai;
 
-    // 組に入るたびに回数を配り直す (組同士の合流で移った時は残りのまま)
+    private static float StockAt(float stock, float at, float now) => FxMath.Min(MaxStock, stock + (now - at) / Recharge);
+
+    // 自分の今の溜まり具合 (0〜MaxStock)
+    internal static float Stock => StockAt(_stock, _stockAt, Time.time);
+
+    // 組に入るたびに満タンにする (組同士の合流で移った時は今のまま)
     private static void OnJoin(byte id, byte g, bool fresh)
     {
         if (Duel.Moved) return;
-        HostLeft[id] = PerDuel;
+        float now = Time.time;
+        HostStock[id] = MaxStock;
+        HostStockAt[id] = now;
+        HostLastUse[id] = -10f;
         SafeUntil[id] = 0f;
         if (id != LocalId || !CanHave(id)) return;
         _on = true;
-        _left = PerDuel;
-        _shownLeft = -1;
+        _stock = MaxStock;
+        _stockAt = now;
+        _lastUse = -10f;
+    }
+
+    // ホスト: この人が今回避を使えるか (使えたら 1 回ぶん減らす)
+    private static bool HostUse(byte id, float now)
+    {
+        float cur = StockAt(HostStock[id], HostStockAt[id], now);
+        if (cur < 1f - HostSlack || now - HostLastUse[id] < Gap - HostSlack) return false;
+        HostStock[id] = FxMath.Max(cur - 1f, 0f);
+        HostStockAt[id] = now;
+        HostLastUse[id] = now;
+        return true;
     }
 
     private static void OnLeave(byte id, byte g)
@@ -96,8 +118,9 @@ internal static class DuelDodge
         }
         // 動けるか (毎フレームの読みを減らすため 4 フレームに 1 回)
         if (Time.frameCount % 4 == 0) _usable = p.CanMove && !p.inVent && !MeetingHud.Instance;
-        bool pad = DodgePad.Tick(_usable && _left > 0);
-        Hint();
+        float now = Time.time, stock = StockAt(_stock, _stockAt, now);
+        bool ready = stock >= 1f && now - _lastUse >= Gap;
+        bool pad = DodgePad.Tick(stock, _usable && ready, now);
         // 吹っ飛ばされている間の回避のキーは受け身 (回避の回数は使わない)
         if (DuelTumble.Busy(p.PlayerId))
         {
@@ -106,7 +129,7 @@ internal static class DuelDodge
             if (tech) DuelTumble.TryTech(p);
             return;
         }
-        if (!_usable || _left <= 0) return;
+        if (!_usable || !ready) return;
         bool press = pad && DodgePad.Pressed();
         if (!press && !System.OperatingSystem.IsAndroid() && Menu.Keybinds.Down(Menu.Keybinds.Slot.Dodge))
         {
@@ -114,18 +137,6 @@ internal static class DuelDodge
             press = !(hud && hud.Chat && hud.Chat.IsOpenOrOpening) && !Dev.DevConsole.IsOpen;
         }
         if (press) Dodge(p);
-    }
-
-    private static void Hint()
-    {
-        var key = Menu.Keybinds.Key(Menu.Keybinds.Slot.Dodge);
-        if (_left == _shownLeft && key == _shownKey) return;
-        string line = new Text("Duel.DodgeHint").With("n", _left).ToString();
-        if (!System.OperatingSystem.IsAndroid() && key != KeyCode.None) line = $"[{(key is KeyCode.LeftShift or KeyCode.RightShift ? "Shift" : key.ToString())}] {line}";
-        // HUD がまだ出ていなければ次のフレームに書き直す
-        if (!UI.DuelHud.SetHint(line)) return;
-        _shownLeft = _left;
-        _shownKey = key;
     }
 
     // 同じ組で一番近い、生きている人
@@ -165,8 +176,12 @@ internal static class DuelDodge
         _dir = FxMath.V2(dx / l, dy / l);
         _moveUntil = Time.time + MoveTime;
         _moveOn = true;
-        _left--;
+        float now = Time.time;
+        _stock = FxMath.Max(StockAt(_stock, _stockAt, now) - 1f, 0f);
+        _stockAt = now;
+        _lastUse = now;
         Used++;
+        DodgePad.OnUse();
         byte ang = AngleByte(_dir.x, _dir.y);
         DodgeCall.Send(ang);
         Apply(p.PlayerId, ang);
@@ -175,7 +190,7 @@ internal static class DuelDodge
     // ホスト: 練習の相手 (ダミー) が回避した。使えたら true (動かすのは呼んだ側)
     internal static bool BotDodge(byte id, float dx, float dy)
     {
-        if (!Duel.InDuel(id) || HostLeft[id] == 0 || !CanHave(id)) return false;
+        if (!Duel.InDuel(id) || !CanHave(id) || !HostUse(id, Time.time)) return false;
         byte ang = AngleByte(dx, dy);
         Apply(id, ang);
         BotDodgeCall.Send((ushort)(id | ang << 8));
@@ -199,9 +214,9 @@ internal static class DuelDodge
     {
         if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost)
         {
-            if (Duel.InDuel(id) && HostLeft[id] > 0 && CanHave(id))
+            // ボットの回避は BotDodge が数え終えている
+            if (Duel.InDuel(id) && CanHave(id) && (DuelBot.Has(id) || HostUse(id, Time.time)))
             {
-                HostLeft[id]--;
                 SafeFrom[id] = Time.time;
                 SafeUntil[id] = Time.time + (TestSafe > 0f ? TestSafe : Safe);
             }
@@ -264,13 +279,13 @@ internal static class DuelDodge
     internal static bool ForTest()
     {
         var p = PlayerControl.LocalPlayer;
-        if (!_on || !p || _left <= 0) return false;
+        if (!_on || !p || Stock < 1f) return false;
         Dodge(p);
         return true;
     }
 
     internal static string Describe() =>
-        $"on={_on} left={_left} usable={_usable} used={Used} refused={Refused} pad={DodgePad.Shown} trails={_trails}";
+        $"on={_on} stock={Stock:0.00} usable={_usable} used={Used} refused={Refused} pad={DodgePad.Shown} trails={_trails}";
 }
 
 // 回避: 本編の歩行の後で、短い間だけ体の速さを飛び退く向きへ書き換える (壁は物理が止める)
@@ -283,116 +298,5 @@ internal static class DuelDodgeMovePatch
         var pc = __instance.myPlayer;
         if (!pc || !pc.CanMove || pc.inVent) return;
         __instance.body.velocity = FxMath.V2(dir.x * DuelDodge.Speed, dir.y * DuelDodge.Speed);
-    }
-}
-
-// 回避のスマホのボタン (画面の右の縁)。立ち合いの間だけ出す。確かめ用に PC でも出せる (ForceShow)
-internal static class DodgePad
-{
-    private const float Z = -490f, Size = 1.05f, Edge = 0.78f, Y = 0.5f;
-
-    internal static bool ForceShow;
-    internal static bool Shown => _root && _root.activeSelf;
-
-    private static GameObject _root;
-    private static Transform _btn;
-    private static SpriteRenderer _bg, _icon;
-    private static int _painted = -1;
-    private static Sprite _chevrons;
-
-    private static bool Wanted => ForceShow || System.OperatingSystem.IsAndroid();
-
-    // 出すか・塗り。出していれば true
-    internal static bool Tick(bool usable)
-    {
-        if (!Wanted) return false;
-        if (!Build()) return false;
-        if (!_root.activeSelf) _root.SetActive(true);
-        int key = usable ? 1 : 0;
-        if (key != _painted)
-        {
-            _painted = key;
-            _bg.color = usable ? FxMath.Rgba(0.10f, 0.12f, 0.25f, 0.78f) : FxMath.Rgba(0.08f, 0.08f, 0.12f, 0.45f);
-            _icon.color = usable ? FxMath.Rgba(1f, 1f, 1f, 1f) : FxMath.Rgba(1f, 1f, 1f, 0.3f);
-        }
-        return true;
-    }
-
-    // 押した瞬間か (スマホ = 指・PC で出している時 = 左クリック)
-    internal static bool Pressed()
-    {
-        if (System.OperatingSystem.IsAndroid())
-        {
-            int n = Input.touchCount;
-            for (int i = 0; i < n; i++)
-            {
-                var t = Input.GetTouch(i);
-                if (t.phase == TouchPhase.Began && Hit(t.position)) return true;
-            }
-            return false;
-        }
-        if (!Input.GetMouseButtonDown(0)) return false;
-        Vector3 m = Input.mousePosition;
-        return Hit(FxMath.V2(m.x, m.y));
-    }
-
-    private static bool Hit(Vector2 screen)
-    {
-        var hud = Vanilla.Hud;
-        var cam = hud ? hud.UICamera : null;
-        if (!cam || !_btn) return false;
-        Vector3 w = cam.ScreenToWorldPoint(FxMath.V3(screen.x, screen.y, 0f));
-        Vector3 c = _btn.position;
-        float dx = w.x - c.x, dy = w.y - c.y, r = Size * 0.5f;
-        return dx * dx + dy * dy <= r * r;
-    }
-
-    internal static void Hide()
-    {
-        if (_root && _root.activeSelf) _root.SetActive(false);
-    }
-
-    private static bool Build()
-    {
-        if (_root) return true;
-        var hud = Vanilla.Hud;
-        var cam = hud ? hud.UICamera : null;
-        if (!hud || !cam) return false;
-        float halfW = cam.orthographicSize * cam.aspect;
-        int layer = hud.gameObject.layer;
-        _root = new GameObject("MrpDodgePad") { layer = layer };
-        var tf = _root.transform;
-        tf.SetParent(hud.transform, false);
-        tf.localPosition = FxMath.V3(0f, 0f, Z);
-        var go = new GameObject("Dodge") { layer = layer };
-        _btn = go.transform;
-        _btn.SetParent(tf, false);
-        _btn.localPosition = FxMath.V3(halfW - Edge, Y, 0f);
-        _btn.localScale = FxMath.V3(Size, Size, 1f);
-        _bg = go.AddComponent<SpriteRenderer>();
-        _bg.sprite = UI.DuelHud.Circle();
-        _chevrons ??= FxSprites.Rect(64, 64, Chevrons, "MrpDodgeIcon");
-        var igo = new GameObject("Icon") { layer = layer };
-        igo.transform.SetParent(_btn, false);
-        igo.transform.localPosition = FxMath.V3(0f, 0f, -0.1f);
-        igo.transform.localScale = FxMath.V3(0.62f, 0.62f, 1f);
-        _icon = igo.AddComponent<SpriteRenderer>();
-        _icon.sprite = _chevrons;
-        _painted = -1;
-        return true;
-    }
-
-    // 2 つ重ねた «  (飛び退く)
-    private static float Chevrons(float x, float y)
-    {
-        float best = 0f;
-        for (int k = 0; k < 2; k++)
-        {
-            float cx = x + 0.12f - 0.24f * k;
-            float d = FxMath.Abs(cx - (FxMath.Abs(y) * 0.6f - 0.1f));
-            if (FxMath.Abs(y) > 0.3f) continue;
-            best = FxMath.Max(best, FxMath.Clamp01((0.06f - d) / 0.025f));
-        }
-        return best;
     }
 }

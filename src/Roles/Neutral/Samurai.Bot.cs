@@ -34,6 +34,7 @@ public sealed partial class Samurai
         public int Dmg;
         public bool Iai, Full, Smash;
         public readonly List<byte> Cuts = new(); // 刀が触れた瞬間に当てた相手 (振り終わりにもう斬らない)
+        public readonly Dictionary<byte, float> Tried = new(); // 触れて頼んだが外れた相手と、その時の掃引角 (度・絶対値)
     }
 
     private readonly List<BotPending> _botPending = new();

@@ -20,7 +20,8 @@ public sealed partial class Samurai
     // ホスト: 本人から届いた一振りの番号と、その一振りで触れた瞬間に当てた相手
     private byte _hostCutSeq;
     private readonly List<byte> _hostCuts = new();
-    internal static int CutsAsked, CutsHit;
+    internal static int CutsAsked, CutsHit, CutRetryHits;
+    private const float RetryCutDeg = 12f; // 練習の相手の振りで、触れて外れた相手へ頼み直すまでに刀が進む角度
 
     private static void WriteStroke(MessageWriter w, Stroke s)
     {
@@ -71,13 +72,23 @@ public sealed partial class Samurai
             return;
         }
         var b = BotSwinging();
-        if (b == null) return;
-        b.Cuts.Add(target);
+        if (b == null)
+        {
+            if (HitWatch.On) HitWatch.CutMiss(PlayerId, target, "no-swing");
+            return;
+        }
         // 練習の相手の振りの再生と同じ式 (始めが速く終わりで止まる) で今の刀の向き。威力は振り終わりの一振りと同じ
         float k = FxMath.Clamp01((Time.time - (b.At - b.Secs)) / b.Secs);
         float e = 1f - (1f - k) * (1f - k);
+        // 振り始めから刀の絵が体に重なっていると、まだ振っていない分だけ外れる。外れた相手は振り終わりの判定に残し、
+        // 刀が少し進んでから頼み直す (当たった相手だけ HostCutApply が Cuts に入れる)
+        float swept = FxMath.Abs(b.Sweep * e);
+        if (b.Tried.TryGetValue(target, out float tried) && swept - tried < RetryCutDeg) return;
+        bool retry = b.Tried.ContainsKey(target);
+        b.Tried[target] = swept;
         CutsAsked++;
         HostCutApply(b.A0, b.Sweep * e, FxMath.Max(k * b.Secs, 0.01f), b.Dmg, target, b.Cuts);
+        if (retry && b.Cuts.Contains(target)) CutRetryHits++;
     }
 
     // 練習の相手の今の刀の再生にあたる一振り (始めた時刻が今より前の中で一番新しい物)
@@ -117,7 +128,11 @@ public sealed partial class Samurai
     {
         _hostStrokeIai = _hostStrokeFull = _hostStrokeSmash = false;
         _hostStrokeSecs = secs;
-        if (!HostHit(a0, sweep, damage, only: target, spareOut: cuts)) return;
+        if (!HostHit(a0, sweep, damage, only: target, spareOut: cuts))
+        {
+            if (HitWatch.On) HitWatch.CutMiss(PlayerId, target, $"false a0={a0:0} sweep={sweep:0} secs={secs:0.00}");
+            return;
+        }
         CutsHit++;
         if (!cuts.Contains(target)) cuts.Add(target);
     }

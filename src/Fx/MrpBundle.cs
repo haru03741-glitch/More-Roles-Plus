@@ -20,6 +20,8 @@ internal static class MrpBundle
     private const string FlameMatPath = "assets/generated/flame.mat";
     private const string PlayerGradMatPath = "assets/generated/playergrad.mat";
     private const string RiftWarpMatPath = "assets/generated/riftwarp.mat";
+    private const string UiFireMatPath = "assets/generated/uifire.mat";
+    private const string UiBarMatPath = "assets/generated/uibar.mat";
     private static readonly string[] KatanaMatPaths = { "assets/generated/katanaplate.mat", "assets/generated/katanaframe.mat", "assets/generated/katanaflash.mat" };
 
     private static AssetBundle _bundle;
@@ -79,6 +81,8 @@ internal static class MrpBundle
     public static Material RiftWarpMaterial { get; private set; }
     // 必殺技の演出: 0 = 生の画面を板に貼る・1 = 事前に描いたコマ・2 = 被害者の白の閃き
     public static readonly Material[] KatanaMaterials = new Material[3];
+    public static Material UiFireMaterial { get; private set; }
+    public static Material UiBarMaterial { get; private set; }
 
     public static bool Ready => TerrainMaterial;
 
@@ -93,6 +97,8 @@ internal static class MrpBundle
             else if (!PlayerGradientShader && !_gradFailed) TickGradient();
             else if (!RiftWarpMaterial && !_riftFailed) TickRift();
             else if (_katanaNext < KatanaMatPaths.Length && !_katanaFailed) TickKatana();
+            else if (!UiFireMaterial && !_uiFireFailed) TickUiFire();
+            else if (!UiBarMaterial && !_uiBarFailed) TickUiBar();
             if (_clipsLeft > 0) TickClips();
             return;
         }
@@ -190,6 +196,42 @@ internal static class MrpBundle
             Plugin.Logger.LogInfo($"bundle rift: shader={mat.shader.name} supported={mat.shader.isSupported}");
         }
         catch (Exception e) { Plugin.Logger.LogError($"bundle rift: {e}"); _riftFailed = true; }
+    }
+
+    private static AssetBundleRequest _uiFireReq;
+    private static bool _uiFireFailed;
+
+    private static void TickUiFire()
+    {
+        try
+        {
+            _uiFireReq ??= _bundle.LoadAssetAsync(UiFireMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_uiFireReq.isDone) return;
+            var mat = _uiFireReq.asset ? _uiFireReq.asset.TryCast<Material>() : null;
+            if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {UiFireMatPath}"); _uiFireFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            UiFireMaterial = mat;
+            Plugin.Logger.LogInfo($"bundle uifire: shader={mat.shader.name} supported={mat.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle uifire: {e}"); _uiFireFailed = true; }
+    }
+
+    private static AssetBundleRequest _uiBarReq;
+    private static bool _uiBarFailed;
+
+    private static void TickUiBar()
+    {
+        try
+        {
+            _uiBarReq ??= _bundle.LoadAssetAsync(UiBarMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_uiBarReq.isDone) return;
+            var mat = _uiBarReq.asset ? _uiBarReq.asset.TryCast<Material>() : null;
+            if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {UiBarMatPath}"); _uiBarFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            UiBarMaterial = mat;
+            Plugin.Logger.LogInfo($"bundle uibar: shader={mat.shader.name} supported={mat.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle uibar: {e}"); _uiBarFailed = true; }
     }
 
     private static AssetBundleRequest _katanaReq;

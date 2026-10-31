@@ -11,7 +11,7 @@ namespace MoreRolesPlus.UI;
 internal static partial class DuelHud
 {
     private const int KiSteps = 5;
-    private const float KiH = 0.07f, KiBelow = 0.155f, KiFlash = 0.14f, KiBlink = 9f;
+    private const float KiH = 0.07f, KiBelow = 0.24f, KiFlash = 0.14f, KiBlink = 9f;
 
     private static readonly GameObject[] _kiRoot = new GameObject[2];
     private static readonly SpriteRenderer[] _kiBack = new SpriteRenderer[2], _kiFill = new SpriteRenderer[2];

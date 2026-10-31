@@ -65,6 +65,10 @@ public sealed partial class Samurai : RoleBase
 
     // 抜いているか (全員の端末で持つ)・抜いた時刻 (動作の間は振れない)
     internal bool Drawn { get; private set; }
+
+    // 刀を抜いているサムライの数 (全員の端末)。インポスターのキルボタンを舌にするかを毎 FixedUpdate 比べる口 (0 なら探さない)。
+    // 試合の替わり目で数がずれても、探す回数が増えるだけで答えは変わらない
+    internal static int DrawnCount;
     private float _drawnAt = -10f;
     private float _sheathedAt = -10f; // 納めた時刻 (居合の溜めの上限をホストが見る)
     // ホストが数える値。本人の端末には知らせで写す。時戻しで戻る
@@ -103,6 +107,7 @@ public sealed partial class Samurai : RoleBase
     {
         if (Drawn == drawn) return;
         Drawn = drawn;
+        DrawnCount = Math.Max(DrawnCount + (drawn ? 1 : -1), 0);
         // 居合は抜く動作を済ませた扱い (丸めで「まだ抜いている途中」に見えないよう少し前へ)
         _drawnAt = iai ? Time.time - DrawTime - 0.05f : Time.time;
         if (!drawn) _sheathedAt = Time.time;
@@ -114,6 +119,7 @@ public sealed partial class Samurai : RoleBase
     // 倒れて刀を片付けた (全員の端末で)。刀は鞘に戻した扱いにして、生き返った後の一振りを居合で抜き直す (抜き直しで刀を作り直す)
     internal void OnBladeLost()
     {
+        if (Drawn) DrawnCount = Math.Max(DrawnCount - 1, 0);
         Drawn = false;
         _iaiStroke = false;
         _sheathedAt = Time.time;
@@ -475,7 +481,7 @@ public sealed partial class Samurai : RoleBase
             }
             if (sq > reach * reach)
             {
-                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"far reach={reach:0.00} {_watchNote}", _hostStrokeSecs + StrokeLag());
+                if (HitWatch.On) WatchMiss(info.PlayerId, only, $"far reach={reach:0.00} {_watchNote}");
                 _missFar++;
                 if (near && sq < whiffSq) { whiff = info.PlayerId; whiffSq = sq; }
                 continue;
@@ -483,21 +489,21 @@ public sealed partial class Samurai : RoleBase
             // これより近い人は向きによらず当たる
             if (!aimed && sq > Touching * Touching)
             {
-                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"arc {_watchNote}", _hostStrokeSecs + StrokeLag());
+                if (HitWatch.On) WatchMiss(info.PlayerId, only, $"arc {_watchNote}");
                 _missArc++;
                 if (near && sq < whiffSq) { whiff = info.PlayerId; whiffSq = sq; }
                 continue;
             }
             if (PhysicsHelpers.AnythingBetween(from, at, Constants.ShipAndObjectsMask, false))
             {
-                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"wall {_watchNote}", _hostStrokeSecs + StrokeLag());
+                if (HitWatch.On) WatchMiss(info.PlayerId, only, $"wall {_watchNote}");
                 _missWall++;
                 continue;
             }
             // 回避で飛び退いている間は当たらない
             if (DuelDodge.HostSafeAt(info.PlayerId, hitT))
             {
-                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"dodge {_watchNote}", _hostStrokeSecs + StrokeLag());
+                if (HitWatch.On) WatchMiss(info.PlayerId, only, $"dodge {_watchNote}");
                 _missDodge++;
                 continue;
             }
@@ -510,8 +516,8 @@ public sealed partial class Samurai : RoleBase
         {
             var target = GameData.Instance.GetPlayerById(hits[i])?.Object;
             if (!target || target.Data == null || target.Data.IsDead) continue;
-            // 立ち合いの外からの溜め切りの居合 (不意打ち) は誰でも一太刀で倒れる
-            int dmg = _hostStrokeFull && !Duel.InDuel(target.PlayerId) ? Duel.MaxHp : damage;
+            // 溜め切りの居合は、立ち合いの外からの不意打ちなら誰でも、戦えない人なら立ち合いの中でも一太刀で倒れる
+            int dmg = _hostStrokeFull && (!Duel.InDuel(target.PlayerId) || !Fighter(target)) ? Duel.MaxHp : damage;
             // サムライへの斬りは、相手の斬り (納めていれば居合) とぶつかるかを少し待ってから決める (Samurai.Clash.cs)
             if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, dmg, (aimedBits >> i & 1) != 0)) continue;
             // 立ち合いの相手のインポスターへの斬りは、口で受けられるかを少し待ってから決める (Samurai.Tongue.cs)
@@ -531,7 +537,14 @@ public sealed partial class Samurai : RoleBase
         return counted;
     }
 
-    // 立ち合い (体力の削り合い) になる相手 = 刀を受けて戦える人。それ以外は一太刀で倒れる
+    // 確かめ用: 振り終わりの外れは絵の重なりと突き合わせ、触れた瞬間の外れはそのまま出す
+    private void WatchMiss(byte target, byte only, string note)
+    {
+        if (only == 255) HitWatch.Miss(PlayerId, target, note, _hostStrokeSecs + StrokeLag());
+        else HitWatch.CutMiss(PlayerId, target, note);
+    }
+
+    // 刀を受けて戦える人。戦えない人も普通の振りでは体力が削れるだけで、溜め切りの居合でだけ一太刀で倒れる
     private static bool Fighter(PlayerControl p) =>
         p.Data.Role && p.Data.Role.IsImpostor || RoleState.Of(p) is Samurai or { CanKill: true } or { IsKiller: true };
 
@@ -541,11 +554,11 @@ public sealed partial class Samurai : RoleBase
         var p = Player;
         if (!p || !target || target.Data == null || target.Data.IsDead) return false;
         int left = Duel.HpOf(target.PlayerId);
-        bool fighter = Fighter(target);
-        int dmg = fighter ? damage : left;
+        int dmg = damage;
         // 倒す一振りだけキルとして確かめる (盾などに止められたら体力 1 で残す)
         if (left - dmg <= 0 && BeforeMurderEvent.Ask(p, target) != null) dmg = left - 1;
-        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg, start: fighter && dmg < left, smash: smash)) return false;
+        // 倒れない一振りは立ち合いを始める (戦えない人も体力のバーと回避が付く)
+        if (!Duel.HostDamage(PlayerId, target.PlayerId, dmg, start: dmg < left, smash: smash)) return false;
         bool impostor = target.Data.Role && target.Data.Role.IsImpostor;
         p.RpcMurderPlayer(target, true);
         Duel.HostLeave(target.PlayerId);
@@ -645,7 +658,7 @@ public sealed partial class Samurai : RoleBase
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
+        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit} retryHit={CutRetryHits}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。

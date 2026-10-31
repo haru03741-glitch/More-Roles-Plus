@@ -16,14 +16,15 @@ namespace MoreRolesPlus.UI;
 internal static partial class DuelHud
 {
     private const float Z = -500f;
-    private const float BarH = 0.16f, BarGap = 0.32f, BarTop = 1.05f; // バーの高さ・中央からの空き・画面の上からの位置 (本編の上の段のボタンの下)
+    private const float BarH = 0.16f, BarGap = 0.32f, BarTop = 1.2f; // バーの高さ・中央からの空き・画面の上からの位置 (本編の上の段のボタンの下)
+    private const float NameBelow = 0.34f; // 名前は気のバーの下
     private const float FightPop = 0.15f, FightHold = 0.5f, TitleFade = 0.2f;
     private const float ComboKeep = 1.6f, KoHold = 0.9f, GhostDelay = 0.35f, GhostSpeed = 0.9f;
 
     private static GameObject _root;
     private static Transform _rootTf;
     private static SpriteRenderer _leftFill, _rightFill, _leftGhost, _rightGhost, _leftFace, _rightFace;
-    private static TextMeshPro _leftName, _rightName, _center, _title, _hint;
+    private static TextMeshPro _leftName, _rightName, _center, _title;
     private static Material[] _mats = Array.Empty<Material>();
     private static float _halfW, _halfH, _barW;
 
@@ -95,8 +96,8 @@ internal static partial class DuelHud
         if (!_shown || a == t) return; // 自分から自分 = 立ち合いの外の回復
         float k = hp / (float)Duel.MaxHp;
         float now = Time.time;
-        if (t == _me) { _leftHp = k; _leftHitT = now; }
-        else if (t == _opp) { _rightHp = k; _rightHitT = now; }
+        if (t == _me) { FxCut(0, _leftHp, k); _leftHp = k; _leftHitT = now; }
+        else if (t == _opp) { FxCut(1, _rightHp, k); _rightHp = k; _rightHitT = now; }
         else if (SlotOf(t) is var sl and >= SlotL1) { _subHp[sl - SlotL1] = k; _subHitT[sl - SlotL1] = now; }
         if (a == _me)
         {
@@ -195,7 +196,6 @@ internal static partial class DuelHud
         _leaving = false;
         for (int j = 0; j < 2; j++) _subRoot[j].SetActive(false);
         _shown = true;
-        _hint.text = "";
         _root.SetActive(true);
         // 左のタスク一覧はバーと重なるので、立ち合いの間だけ隠す
         var hud = Vanilla.Hud;
@@ -221,6 +221,7 @@ internal static partial class DuelHud
     {
         _banner = which;
         _bannerT = Time.time;
+        FxBanner();
     }
 
     private static GameObject _tasks;
@@ -286,6 +287,7 @@ internal static partial class DuelHud
         _lockTheirs.transform.localScale = FxMath.V3(theirs, LockH, 1f);
         _lockGlow.transform.localPosition = FxMath.V3(edge, _lockY, -0.2f);
         _lockCore.transform.localPosition = FxMath.V3(edge, _lockY, -0.3f);
+        _lockEdge = edge;
     }
 
     // 押し合いは届いた割合へ滑らかに寄せる・境目の光が震える・「連打!」の字が脈打つ・残り時間の区切りが消える
@@ -294,6 +296,7 @@ internal static partial class DuelHud
         float t = now - _lockT;
         _push += (_pushGoal - _push) * FxMath.Min(1f, PushEase * Time.deltaTime);
         Push(_push);
+        LockFire(now);
         // 押すたびに字が跳ねる (押したことが手元で分かる)
         float m = FxMath.Clamp01(1f - (now - _mashT) / 0.12f);
         float s = 1f + 0.12f * FxMath.Abs(FxMath.Sin(t * 14f)) + 0.22f * m;
@@ -310,14 +313,6 @@ internal static partial class DuelHud
 
     // 鍔迫り合いで自分が押した
     internal static void MashPressed() => _mashT = Time.time;
-
-    // 自分のバーの下の一行 (空 = 出さない)。出していない時は何もしない (書けたら true)
-    internal static bool SetHint(string text)
-    {
-        if (!_shown || !_hint) return false;
-        _hint.text = text;
-        return true;
-    }
 
     // 幽霊の観戦で見る人が替わった: 見る人が戦っていればその人の側で出し直す
     internal static void OnViewChanged()
@@ -340,6 +335,7 @@ internal static partial class DuelHud
         _bannerT = -10f;
         if (_lockRoot) SetLockOn(false);
         IntroHide();
+        FxHide();
         if (_root) _root.SetActive(false);
     }
 
@@ -359,6 +355,8 @@ internal static partial class DuelHud
         if (_lockOn) LockTick(now);
         ComboTick(now);
         WhiffTick(now);
+        BarTick();
+        FxTick(now);
         if (_koT > 0f && now - _koT > KoHold + TitleFade)
         {
             // K.O. を見せ切った: 自分が組を抜けていれば隠す・まだ戦っていれば倒れた人の枠を詰める
@@ -397,6 +395,7 @@ internal static partial class DuelHud
             alpha = k > FightPop + FightHold ? 1f - (k - FightPop - FightHold) / TitleFade : 1f;
         }
         else state = -1;
+        TitleFire(state, state >= 2 ? now - _bannerT : t - IntroTime, alpha);
 
         if (state != _titleState)
         {
@@ -487,12 +486,14 @@ internal static partial class DuelHud
             float side = j == 0 ? -1f : 1f, outer = SubOuter(side);
             Set(_subFill[j], outer, _subHp[j] * SubW, side, HpColor(_subHp[j]), SubH * 0.72f);
             Set(_subGhost[j], outer, _subGhostHp[j] * SubW, side, FxMath.Rgba(0.95f, 0.2f, 0.2f, 1f), SubH * 0.72f);
+            SubEmberAt(j, outer - side * _barW * SubW * FxMath.Clamp01(_subHp[j]), _barY - SubBelow, _subHp[j]);
         }
+        WritePlates();
     }
 
     // 小さなバー (3 人目と 4 人目)。大きなバーの外側の端にそろえ、幅は SubW 倍 (Set の幅は _barW が基準なので体力に SubW を掛けて渡す)。
     // 顔は色の丸・名前はバーの内側の先
-    private const float SubH = 0.1f, SubW = 0.6f, SubBelow = 0.48f, SubInset = 0.55f;
+    private const float SubH = 0.1f, SubW = 0.6f, SubBelow = 0.56f, SubInset = 0.55f;
 
     // 小さなバーの外側の端 (大きなバーの端の立ち絵に色の丸が隠れないよう内へ寄せる)
     private static float SubOuter(float side) => side * (BarGap + _barW - SubInset);
@@ -507,10 +508,14 @@ internal static partial class DuelHud
             var tf = root.transform;
             tf.SetParent(_rootTf, false);
             _subRoot[j] = root;
-            Quad("Frame", white, mid, sy, 0f, w + 0.05f, SubH, FxMath.Rgba(0.06f, 0.06f, 0.1f, 0.88f), layer, tf);
-            Quad("Back", white, mid, sy, -0.1f, w, SubH * 0.72f, FxMath.Rgba(0.22f, 0.05f, 0.08f, 0.9f), layer, tf);
+            _flat.Add(Quad("Frame", white, mid, sy, 0f, w + 0.05f, SubH, FxMath.Rgba(0.06f, 0.06f, 0.1f, 0.88f), layer, tf));
+            _flat.Add(Quad("Back", white, mid, sy, -0.1f, w, SubH * 0.72f, FxMath.Rgba(0.22f, 0.05f, 0.08f, 0.9f), layer, tf));
             _subGhost[j] = Quad("Ghost", white, mid, sy, -0.2f, w, SubH * 0.72f, FxMath.Rgba(0.95f, 0.2f, 0.2f, 1f), layer, tf);
             _subFill[j] = Quad("Fill", white, mid, sy, -0.3f, w, SubH * 0.72f, HpColor(1f), layer, tf);
+            _flat.Add(_subGhost[j]); _flat.Add(_subFill[j]);
+            BuildSubPlate(j, white, layer, sy, mid, w, side, tf);
+            _subEmber[j] = Quad("Ember", _soft, outer - side * w, sy, -0.35f, 0.3f, 0.22f, FxMath.Rgba(1f, 0.55f, 0.15f, 0.5f), layer, tf);
+            _subEmberKey[j] = -1;
             _subFace[j] = Quad("Face", Circle(), outer + side * 0.17f, sy, -0.3f, 0.26f, 0.26f, FxMath.Rgba(1f, 1f, 1f, 1f), layer, tf);
             var name = Text(src, "Name", 0f, 0f, 1f, side < 0 ? TextAlignmentOptions.Left : TextAlignmentOptions.Right, layer, 3f);
             name.transform.SetParent(tf, false);
@@ -574,38 +579,37 @@ internal static partial class DuelHud
         _rootTf.localPosition = FxMath.V3(0f, 0f, Z);
         float y = _halfH - BarTop;
         var white = WhiteSprite();
+        _flat.Clear();
 
         foreach (float side in new[] { -1f, 1f })
         {
             float outer = side * (BarGap + _barW), mid = side * (BarGap + _barW * 0.5f);
-            // 枠 (黒の板) → 削られた分の影 (赤) → 体力 (緑)
-            Quad("Frame", white, mid, y, 0f, _barW + 0.06f, BarH, FxMath.Rgba(0.06f, 0.06f, 0.1f, 0.88f), layer);
-            Quad("Back", white, mid, y, -0.1f, _barW, BarH * 0.72f, FxMath.Rgba(0.22f, 0.05f, 0.08f, 0.9f), layer);
+            // 枠 (黒の板) → 削られた分の影 (赤) → 体力 (緑)。格闘ゲーム風の板 (DuelHud.Bar.cs) が届くまでの代わり
+            var frame = Quad("Frame", white, mid, y, 0f, _barW + 0.06f, BarH, FxMath.Rgba(0.06f, 0.06f, 0.1f, 0.88f), layer);
+            var back = Quad("Back", white, mid, y, -0.1f, _barW, BarH * 0.72f, FxMath.Rgba(0.22f, 0.05f, 0.08f, 0.9f), layer);
             var ghost = Quad("Ghost", white, mid, y, -0.2f, _barW, BarH * 0.72f, FxMath.Rgba(0.95f, 0.2f, 0.2f, 1f), layer);
             var fill = Quad("Fill", white, mid, y, -0.3f, _barW, BarH * 0.72f, HpColor(1f), layer);
-            // 顔 (陣営色の丸) と名前は外側の端
-            var face = Quad("Face", Circle(), outer + side * 0.24f, y, -0.3f, 0.36f, 0.36f, FxMath.Rgba(1f, 1f, 1f, 1f), layer);
+            _flat.Add(frame); _flat.Add(back); _flat.Add(ghost); _flat.Add(fill);
+            BuildPlate(side < 0 ? 0 : 1, white, layer, y, mid, outer, side);
+            // 顔 (陣営色の丸) と名前は外側の端。顔は額縁より手前
+            var face = Quad("Face", Circle(), outer + side * 0.24f, y, -0.31f, 0.36f, 0.36f, FxMath.Rgba(1f, 1f, 1f, 1f), layer);
             var name = Text(src, "Name", 0f, 0f, 1.25f, side < 0 ? TextAlignmentOptions.Left : TextAlignmentOptions.Right, layer, 3f);
             Outline(name, 0.2f, FxMath.Rgba(0.05f, 0.05f, 0.08f, 1f));
             if (side < 0)
             {
-                name.transform.localPosition = FxMath.V3(outer + 0.5f + 1.5f, y - 0.24f, -0.3f);
+                name.transform.localPosition = FxMath.V3(outer + 0.5f + 1.5f, y - NameBelow, -0.3f);
                 _leftFill = fill; _leftGhost = ghost; _leftFace = face; _leftName = name;
             }
             else
             {
-                name.transform.localPosition = FxMath.V3(outer - 0.5f - 1.5f, y - 0.24f, -0.3f);
+                name.transform.localPosition = FxMath.V3(outer - 0.5f - 1.5f, y - NameBelow, -0.3f);
                 _rightFill = fill; _rightGhost = ghost; _rightFace = face; _rightName = name;
             }
         }
         _center = Text(src, "Infinity", 0f, y, 3.2f, TextAlignmentOptions.Center, layer, 1f);
         _center.text = "∞";
         Outline(_center, 0.25f, FxMath.Rgba(0.1f, 0.1f, 0.15f, 1f));
-        // 自分の手 (回避の残り) は自分のバーの下
-        _hint = Text(src, "Hint", -(BarGap + _barW * 0.5f), y - 0.8f, 1.6f, TextAlignmentOptions.Center, layer, 4f);
-        _hint.color = FxMath.Rgba(1f, 0.92f, 0.55f, 1f);
-        Outline(_hint, 0.25f, FxMath.Rgba(0.05f, 0.05f, 0.08f, 1f));
-        _hint.text = "";
+        BuildEmblem(white, layer, y);
 
         _title = Text(src, "Title", 0f, 0.55f, 9f, TextAlignmentOptions.Center, layer, 12f);
         _title.fontStyle = FontStyles.Bold | FontStyles.Italic;
@@ -615,6 +619,7 @@ internal static partial class DuelHud
         _title.gameObject.SetActive(false);
 
         BuildKi(white, layer, y);
+        BuildFx(white, layer, y);
         BuildSub(white, layer, y, src);
         BuildIntro(white, layer, src);
         BuildCrew(layer);
@@ -631,12 +636,13 @@ internal static partial class DuelHud
         _lockGlow = Quad("LockGlow", Glow(), 0f, ly, -0.2f, 0.62f, 0.62f, FxMath.Rgba(1f, 0.85f, 0.45f, 0.9f), layer, lockTf);
         _lockCore = Quad("LockCore", Glow(), 0f, ly, -0.3f, 0.2f, 0.2f, FxMath.Rgba(1f, 1f, 1f, 1f), layer, lockTf);
         for (int i = 0; i < _lockSeg.Length; i++)
-            _lockSeg[i] = Quad("LockSeg", white, (i - 1) * 0.62f, ly + 0.34f, 0f, 0.52f, 0.09f, FxMath.Rgba(1f, 0.9f, 0.55f, 1f), layer, lockTf);
+            _lockSeg[i] = Quad("LockSeg", white, (i - 1) * 0.62f, ly + 0.34f, -0.25f, 0.52f, 0.09f, FxMath.Rgba(1f, 0.9f, 0.55f, 1f), layer, lockTf);
         _lockText = Text(src, "LockText", 0f, ly + 0.8f, 3.2f, TextAlignmentOptions.Center, layer, 10f);
         _lockText.transform.SetParent(lockTf, true);
         _lockText.fontStyle = FontStyles.Bold | FontStyles.Italic;
         Outline(_lockText, 0.28f, FxMath.Rgba(0.1f, 0.05f, 0.05f, 1f));
         _lockY = ly;
+        BuildLockFx(white, layer, lockTf, ly);
         SetLockOn(false);
 
         // 左寄せの字は箱の左端から始まるので、箱の幅の半分だけ内へ
@@ -713,7 +719,7 @@ internal static partial class DuelHud
 
     private static Sprite _white, _circle;
 
-    private static Sprite WhiteSprite()
+    internal static Sprite WhiteSprite()
     {
         if (_white) return _white;
         var tex = Texture2D.whiteTexture;

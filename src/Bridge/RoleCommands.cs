@@ -165,7 +165,7 @@ internal static class RoleCommands
             reply($"OK portal {pm.Describe()} art={PortalArt.LiveCount}");
         });
 
-        TestBridge.Register("samurai", "[unlock [番号] | ultreset [番号] | tongue [番号 | slow <倍>] | door [list | cut <添字> [角度] | mend <添字>] | leaps | leap <dx> <dy> | sheathe | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | thrust <角度> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] [居合の段 1〜4] | hitfx <番号> <威力> [ko] | clash <番号> <番号> [lock] | clashwin <秒> | mash <回数>] 自分のサムライの状態 / ホストで道を決めた扱いにする (必殺技が撃てる) / 必殺技をもう一度撃てるように / 舌の一撃の状態・番号のインポスターがキルボタンを押した扱い / 扉の一覧・ホストで扉を斬る/戻す / 跳べる組と跳んだ記録 / その向きへ跳ぶ (跳べる所が無ければ ERR) / 納刀 / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 角度の向きへ外へ押し出した扱いにする (突き) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い) / ホストで二人のサムライを弾き合わせる (lock = すぐ鍔迫り合い) / ホストが斬りを待つ秒を伸ばす (0 = 既定) / 鍔迫り合いの連打を足す", (args, reply) =>
+        TestBridge.Register("samurai", "[unlock [番号] | ultreset [番号] | tongue [番号 | slow <倍>] | door [list | cut <添字> [角度] | mend <添字>] | leaps | leap <dx> <dy> | sheathe | draw | dash <dx> <dy> | pad on|off | swipe <a0> <a1> <秒> [溜めの秒] | thrust <角度> [溜めの秒] | of <番号> | slow <倍> | show <a0> <掃引角> <秒> [居合の溜め 0〜1] [居合の段 1〜4] | hitfx <番号> <威力> [ko] | clash <番号> <番号> [lock] | clashwin <秒> | mash <回数>] 自分のサムライの状態 / ホストで道を決めた扱いにする (必殺技が撃てる) / 必殺技をもう一度撃てるように / 舌の一撃の状態・番号のインポスターがキルボタンを押した扱い / 扉の一覧・ホストで扉を斬る/戻す / 跳べる組と跳んだ記録 / その向きへ跳ぶ (跳べる所が無ければ ERR) / 納刀 / 振らずに抜いた状態にする (この端末だけ) / 踏み込み / スマホのボタンを PC でも出す / a0 度から a1 度へ秒でなぞった扱いにする (納刀中は居合・溜めの秒だけ押したまま待ってから) / 角度の向きへ外へ押し出した扱いにする (突き) / 番号の人のサムライの状態 / 抜刀・振りの動きを倍の時間に伸ばす (1 = 元) / 他人から届いた一振りと同じ再生を自分の刀で (当たりは無し・溜めを付けると居合) / 番号の人に立ち合いの当たりの見た目を出す (自分が斬った扱い) / ホストで二人のサムライを弾き合わせる (lock = すぐ鍔迫り合い) / ホストが斬りを待つ秒を伸ばす (0 = 既定) / 鍔迫り合いの連打を足す", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -255,6 +255,7 @@ internal static class RoleCommands
             {
                 if (!sm.SheatheForTest()) { reply($"ERR samurai sheathe {sm.Probe()}"); return; }
             }
+            else if (p.Length >= 1 && p[0] == "draw") sm.DrawForTest();
             else if (p.Length >= 1 && p[0] == "leaps")
             {
                 reply($"OK samurai leaps {Roles.Neutral.Samurai.DescribeLeap()}");
@@ -321,12 +322,17 @@ internal static class RoleCommands
             reply($"OK dodge {DuelDodge.Describe()} duel[{Duel.Describe()}]");
         });
 
-        TestBridge.Register("bot", "[samurai|impostor] [1〜9] | off | mash <番号> | (空 = 状態) チャットの /bot と同じに練習の相手を出す / 止める / サムライのボットを寄って振り回すだけにする (もう一度で戻す)", (args, reply) =>
+        TestBridge.Register("bot", "[samurai|impostor] [1〜9] | off | mash <番号> | rush <番号> | (空 = 状態) チャットの /bot と同じに練習の相手を出す / 止める / サムライのボットを寄って振り回すだけにする / 後ろへ踏み込んで斬るだけにする (もう一度で戻す)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (a.Length >= 2 && a[0] == "mash" && byte.TryParse(a[1], out byte mid))
             {
                 reply(DuelBot.TestMash(mid) ? $"OK bot mash {mid} | {DuelBot.Describe()}" : $"ERR bot mash {mid}: not a samurai bot");
+                return;
+            }
+            if (a.Length >= 2 && a[0] == "rush" && byte.TryParse(a[1], out byte rid))
+            {
+                reply(DuelBot.TestRush(rid) ? $"OK bot rush {rid} | {DuelBot.Describe()}" : $"ERR bot rush {rid}: not a samurai bot");
                 return;
             }
             string r = string.IsNullOrWhiteSpace(args) ? "" : Commands.HostActions.Bot(args.Trim());
@@ -346,7 +352,7 @@ internal static class RoleCommands
             else if (p.Length >= 2 && p[0] == "lock") UI.DuelHud.ShowLock(p[1] == "on");
             else if (p.Length >= 2 && p[0] == "push" && float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float k)) UI.DuelHud.TestPush(k);
             else if (p.Length >= 2 && p[0] == "lockend" && int.TryParse(p[1], out int r)) UI.DuelHud.EndLock(r);
-            reply($"OK duelhud {UI.DuelHud.Describe()} {UI.DuelHud.DescribeKi()} duel[{Duel.Describe()}] shade[{DuelShade.Describe()}] gloom[{DuelGloom.Describe()}]");
+            reply($"OK duelhud {UI.DuelHud.Describe()} {UI.DuelHud.DescribeKi()} {UI.DuelHud.DescribeFx()} {UI.DuelHud.DescribeBar()} duel[{Duel.Describe()}] shade[{DuelShade.Describe()}] gloom[{DuelGloom.Describe()}]");
         });
 
         TestBridge.Register("architect", "[use | of <番号> ... | place x y | simuse <番号> <台|255> | smash <台> <叩いた人> <回数> | x y | here | check x y | fly | visit x y | land | go <番号> | open | close | draw x1 y1 x2 y2 ... | pipe x y] 自分の構築士の状態 / 自分 (構築士でない人) が足元の設計台を使う / 番号の人の構築士を相手にする / この端末だけで台を置く / 番号の人が台を使った (255 = やめた) と届いた扱い / 台が叩かれた (3 回目で壊れる) と届いた扱い /(x, y) に設計台を置く (待ち時間は使わない) / 足元に能力ボタンと同じ決まりで置く / 床の点 (x, y) に置けるか / 設計図を開かずに自分の端末だけでドローンを飛ばす・行き先を足す・降ろす / 設計台の手前へ移る / 設計図を開く・閉じる / 点の列をなぞった扱いにする (ゲージを使い壁を立てる) / (x, y) を軽く押した扱いにする (近くの壁の配管を裂く)", (args, reply) =>
