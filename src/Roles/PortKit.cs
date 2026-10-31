@@ -60,7 +60,13 @@ public static class PortKit
         Vanishing = target.PlayerId;
         try { target.Exiled(); }
         finally { Vanishing = -1; }
-        if (MeetingHud.Instance) MeetingDeath(target);
+        if (MeetingHud.Instance)
+        {
+            MeetingDeath(target);
+            // 本編の Exiled は死んだ本人の HUD (タスク欄・幽霊のボタン) を出し直す。会議の初めに隠す処理は会議の途中で死んだ時には
+            // 走らないので、隠さないと会議の画面の上にタスク欄が出たままになる。会議の後は本編が出し直す
+            if (target.AmOwner && Vanilla.Hud is { } hud) hud.SetHudActive(false);
+        }
         MatchLog.OnMurder(killer, target);
         if (RoleState.All.Count > 0)
             Events<PlayerMurderedEvent>.Run(new PlayerMurderedEvent { Killer = killer ? killer : target, Target = target });
