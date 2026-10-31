@@ -475,7 +475,7 @@ public sealed partial class Samurai : RoleBase
             }
             if (sq > reach * reach)
             {
-                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"far reach={reach:0.00} {_watchNote}", _hostStrokeSecs + StrokeLag());
+                if (HitWatch.On) WatchMiss(info.PlayerId, only, $"far reach={reach:0.00} {_watchNote}");
                 _missFar++;
                 if (near && sq < whiffSq) { whiff = info.PlayerId; whiffSq = sq; }
                 continue;
@@ -483,21 +483,21 @@ public sealed partial class Samurai : RoleBase
             // これより近い人は向きによらず当たる
             if (!aimed && sq > Touching * Touching)
             {
-                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"arc {_watchNote}", _hostStrokeSecs + StrokeLag());
+                if (HitWatch.On) WatchMiss(info.PlayerId, only, $"arc {_watchNote}");
                 _missArc++;
                 if (near && sq < whiffSq) { whiff = info.PlayerId; whiffSq = sq; }
                 continue;
             }
             if (PhysicsHelpers.AnythingBetween(from, at, Constants.ShipAndObjectsMask, false))
             {
-                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"wall {_watchNote}", _hostStrokeSecs + StrokeLag());
+                if (HitWatch.On) WatchMiss(info.PlayerId, only, $"wall {_watchNote}");
                 _missWall++;
                 continue;
             }
             // 回避で飛び退いている間は当たらない
             if (DuelDodge.HostSafeAt(info.PlayerId, hitT))
             {
-                if (HitWatch.On && only == 255) HitWatch.Miss(PlayerId, info.PlayerId, $"dodge {_watchNote}", _hostStrokeSecs + StrokeLag());
+                if (HitWatch.On) WatchMiss(info.PlayerId, only, $"dodge {_watchNote}");
                 _missDodge++;
                 continue;
             }
@@ -532,6 +532,13 @@ public sealed partial class Samurai : RoleBase
     }
 
     // 立ち合い (体力の削り合い) になる相手 = 刀を受けて戦える人。それ以外は一太刀で倒れる
+    // 確かめ用: 振り終わりの外れは絵の重なりと突き合わせ、触れた瞬間の外れはそのまま出す
+    private void WatchMiss(byte target, byte only, string note)
+    {
+        if (only == 255) HitWatch.Miss(PlayerId, target, note, _hostStrokeSecs + StrokeLag());
+        else HitWatch.CutMiss(PlayerId, target, note);
+    }
+
     private static bool Fighter(PlayerControl p) =>
         p.Data.Role && p.Data.Role.IsImpostor || RoleState.Of(p) is Samurai or { CanKill: true } or { IsKiller: true };
 
@@ -645,7 +652,7 @@ public sealed partial class Samurai : RoleBase
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
+        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit} retryHit={CutRetryHits}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。
