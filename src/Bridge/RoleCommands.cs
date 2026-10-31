@@ -303,6 +303,7 @@ internal static class RoleCommands
                 return;
             }
             else if (p.Length >= 2 && p[0] == "mash" && int.TryParse(p[1], out int mn)) sm.MashForTest(mn);
+            else if (p.Length >= 2 && p[0] == "key") { reply($"OK samurai key {sm.KeyForTest(p[1])} swipe[{SwipeInput.Describe()}]"); return; }
             else if (p.Length >= 4 && p[0] == "show"
                      && float.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out float s0)
                      && float.TryParse(p[2], System.Globalization.NumberStyles.Float, inv, out float sw)

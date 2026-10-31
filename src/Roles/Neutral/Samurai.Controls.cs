@@ -168,12 +168,90 @@ public sealed partial class Samurai
         var s = _local;
         if (s == null) return;
         if (s._autoSheatheAt > 0f && Time.time >= s._autoSheatheAt) s.AutoSheathe();
+        // 溜めているキーボードの斬りは、動けなくなっても離した時に振り終える (溜めたまま残さない)
+        if (s._kbHold && !s._kbTestHold && !OperatingSystem.IsAndroid() && !Input.GetKey(Menu.Keybinds.Key(Menu.Keybinds.Slot.Ability1))) s.KeyRelease();
         if (s._lockWith != 255) { s.LockTick(); return; }
         if (!s._padOn && !s._canAct) return;
         if (s._padOn) UI.SamuraiPad.Poll(s);
         if (!s._canAct || OperatingSystem.IsAndroid()) return;
         if (s.Drawn && Input.GetMouseButtonDown(1) && !SwipeInput.Dragging) s.Sheathe();
-        if (Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) s.Dash(MouseDir(s.Player));
+        if (Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) s.Dash(s.KeyboardMode() ? StickDir(s.Player) : MouseDir(s.Player));
+        if (Input.anyKeyDown) s.KeyControls();
+    }
+
+    // ---- キーボードだけの操作 (PC) ----
+    // 斬る (能力 1 のキー・既定 Z) = 歩いている向き (止まっていれば向いている左右) を横に薙ぐ一振り。続けて押すと左右交互に切り返す。
+    // 納刀中は押している間が居合の溜めで、離すと抜きながら斬る。突く (能力 3・既定 C) = 歩いている向きへ突き。納刀 (能力 2・既定 X)。
+    // マウスと同じなぞりの道 (SwipeInput) へ一振りを流すので、強さ・気・居合の溜め・必殺技はマウスと同じに決まる
+    private const float KeySweep = 75f, KeySwing = 0.15f, KeyChain = 0.9f;
+    private bool _kbHold;
+    private int _kbSide = 1, _kbPresses = -1;
+    private float _kbLast = -9f, _kbA0, _kbFace;
+
+    // 最後に使ったのがキーボードの斬りか (マウスで押すと外れる)。踏み込みの向きを歩いている向きにする
+    private bool KeyboardMode()
+    {
+        if (_kbPresses >= 0 && SwipeInput.Presses != _kbPresses) _kbPresses = -1;
+        return _kbPresses >= 0;
+    }
+
+    private void KeyControls()
+    {
+        if (Menu.Keybinds.Down(Menu.Keybinds.Slot.Ability2)) KeyAct(2);
+        else if (Menu.Keybinds.Down(Menu.Keybinds.Slot.Ability3)) KeyAct(3);
+        else if (Menu.Keybinds.Down(Menu.Keybinds.Slot.Ability1)) KeyAct(1);
+    }
+
+    // 1 = 斬る・2 = 納刀・3 = 突く
+    private void KeyAct(int key)
+    {
+        if (SwipeInput.Dragging && !SwipeInput.HeldSynth && !_kbHold) return; // マウスでなぞっている間
+        if (key == 2)
+        {
+            if (Drawn && !SwipeInput.Dragging) Sheathe();
+            return;
+        }
+        var face = StickDir(Player);
+        float deg = FxMath.Atan2(face.y, face.x) * (180f / FxMath.PI);
+        if (key == 3)
+        {
+            if (SwipeInput.Dragging) return;
+            _kbPresses = SwipeInput.Presses;
+            SwipeInput.SynthThrust(deg);
+            return;
+        }
+        if (SwipeInput.Dragging) return;
+        _kbPresses = SwipeInput.Presses;
+        float now = Time.time;
+        _kbSide = now - _kbLast < KeyChain ? -_kbSide : 1;
+        _kbLast = now;
+        _kbFace = deg;
+        _kbA0 = deg + KeySweep * _kbSide;
+        if (Drawn) SwipeInput.Synth(_kbA0, deg - KeySweep * _kbSide, KeySwing, 0f, ease: true);
+        else
+        {
+            // 居合: 押している間は溜め
+            SwipeInput.HoldSynth(_kbA0);
+            _kbHold = true;
+        }
+    }
+
+    // 確かめ用 (bridge): slash / thrust / sheathe / hold (離すまで溜めたまま) / release
+    private bool _kbTestHold;
+    internal string KeyForTest(string what)
+    {
+        _kbTestHold = what == "hold";
+        if (what == "release") { if (_kbHold) KeyRelease(); }
+        else KeyAct(what == "sheathe" ? 2 : what == "thrust" ? 3 : 1);
+        return $"kbHold={_kbHold} heldSynth={SwipeInput.HeldSynth} side={_kbSide} kbMode={KeyboardMode()}";
+    }
+
+    private void KeyRelease()
+    {
+        _kbHold = false;
+        _kbTestHold = false;
+        _kbLast = Time.time;
+        SwipeInput.ReleaseHeld(_kbFace - KeySweep * _kbSide, KeySwing);
     }
 
     // FixedUpdate ごと (自分の端末)

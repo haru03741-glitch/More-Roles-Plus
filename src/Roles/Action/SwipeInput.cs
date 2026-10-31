@@ -72,6 +72,7 @@ internal static class SwipeInput
         {
             if (Dragging) Drops++;
             End(false);
+            _synStart = -1f; // 溜めたままのキーボードの斬りを、次に構えた時へ持ち越さない
         }
         Owner = armed ? owner : null;
         Armed = armed;
@@ -90,6 +91,28 @@ internal static class SwipeInput
         _synThrust = false;
         _synStart = Time.time;
     }
+
+    // キーボードの斬り: 押した時に a0 の向きで構え (押している間は溜め)、離した時に ReleaseHeld で a1 まで振る
+    internal static void HoldSynth(float a0)
+    {
+        _synEase = true;
+        _synA0 = _synA1 = a0;
+        _synDur = 0.1f;
+        _synHold = float.MaxValue;
+        _synThrust = false;
+        _synStart = Time.time;
+    }
+
+    internal static void ReleaseHeld(float a1, float seconds)
+    {
+        if (_synStart < 0f || _synThrust || _synHold != float.MaxValue) return;
+        _synA1 = a1;
+        _synDur = Math.Max(seconds, 0.02f);
+        _synHold = Time.time - _synStart;
+    }
+
+    // キーボードの斬りを溜めている間
+    internal static bool HeldSynth => _synStart >= 0f && !_synThrust && _synHold == float.MaxValue;
 
     // 確かめ用: hold 秒押したまま待ってから angle 度へ突く
     internal static void SynthThrust(float angle, float hold = 0f)
