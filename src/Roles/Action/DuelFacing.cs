@@ -29,6 +29,7 @@ internal static class DuelFacing
         var pc = __instance.myPlayer;
         if (!pc) return;
         byte id = pc.PlayerId;
+        if (DuelTumble.Busy(id)) return;
         byte g = Duel.GroupOf(id);
         if (g == 0) { Foe[id] = None; return; }
         if (pc.inVent || pc.onLadder || pc.Data == null || pc.Data.IsDead || !GameData.Instance) return;

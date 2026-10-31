@@ -11,7 +11,7 @@ internal static class DuelHitFx
 {
     private const int MaxParts = 48;
 
-    private enum Kind : byte { Star, Streak, Drop }
+    private enum Kind : byte { Star, Streak, Drop, Puff }
 
     private sealed class Part
     {
@@ -25,7 +25,7 @@ internal static class DuelHitFx
 
     private static readonly List<Part> Parts = new();
     private static readonly Stack<Part> Pool = new();
-    private static Sprite _star, _streak, _dot;
+    private static Sprite _star, _streak, _dot, _soft;
     private static bool _hooked;
 
     internal static void Hook()
@@ -115,12 +115,30 @@ internal static class DuelHitFx
         }
     }
 
+    private const float DustAlpha = 0.55f;
+
+    // 体が床に当たった・擦った所の土ぼこり (全員の画面)。dx, dy = 体の進む向き (ほこりは後ろと横へ散る)。
+    // 白い床でも見えるよう、明るい灰でなく茶色がかった暗い灰
+    internal static void Dust(float x, float y, float z, int layer, float dx, float dy, int n, float size)
+    {
+        if (!Ensure()) return;
+        for (int i = 0; i < n; i++)
+        {
+            float side = FxMath.Range(-1f, 1f);
+            float back = FxMath.Range(0.1f, 0.5f) * size;
+            float ex = -dx * back - dy * side * 0.5f * size, ey = -dy * back + dx * side * 0.5f * size;
+            Spawn(Kind.Puff, layer, x + FxMath.Range(-0.1f, 0.1f), y + FxMath.Range(-0.05f, 0.05f), z, ex, ey * 0.6f,
+                size * FxMath.Range(0.5f, 0.8f), 0f, FxMath.Range(0.4f, 0.6f), 0.42f, 0.39f, 0.35f);
+        }
+    }
+
     private static bool Ensure()
     {
         _star ??= FxSprites.Rect(64, 64, Star, "MrpHitStar");
         _streak ??= FxSprites.Rect(64, 16, Streak, "MrpHitStreak");
         _dot ??= FxSprites.Rect(16, 16, FxSprites.Dot, "MrpHitDot");
-        return _star && _streak && _dot;
+        _soft ??= FxSprites.Rect(32, 32, FxSprites.Soft, "MrpHitSoft");
+        return _star && _streak && _dot && _soft;
     }
 
     // 4 本の鋭い光 (縦横は長く、斜めは短い) と丸い芯
@@ -159,7 +177,7 @@ internal static class DuelHitFx
         }
         p.Go.layer = layer;
         p.Kind = kind;
-        p.Sr.sprite = kind == Kind.Star ? _star : kind == Kind.Streak ? _streak : _dot;
+        p.Sr.sprite = kind == Kind.Star ? _star : kind == Kind.Streak ? _streak : kind == Kind.Puff ? _soft : _dot;
         p.T = Time.time;
         p.Life = life;
         p.X = x;
@@ -211,6 +229,12 @@ internal static class DuelHitFx
                     sy = p.Size * 0.22f * (1f - u);
                     a = 1f - u * u;
                     break;
+                case Kind.Puff:
+                    // 土ぼこり: 広がりながら薄れる (横に平たい)
+                    sx = p.Size * (0.6f + 0.8f * e);
+                    sy = sx * 0.6f;
+                    a = DustAlpha * (1f - u) * (1f - u);
+                    break;
                 default:
                     sx = sy = p.Size * (1f - 0.5f * u);
                     a = 1f - u * u;
@@ -219,7 +243,7 @@ internal static class DuelHitFx
             p.Tf.position = FxMath.V3(p.X + p.Ex * e, p.Y + p.Ey * e, pos.z);
             p.Tf.localScale = FxMath.V3(sx, sy, 1f);
             // 光は始めが白く、色へ移る
-            float w = p.Kind == Kind.Drop ? 0f : 1f - u;
+            float w = p.Kind is Kind.Drop or Kind.Puff ? 0f : 1f - u;
             p.Sr.color = FxMath.Rgba(p.R + (1f - p.R) * w, p.G + (1f - p.G) * w, p.B + (1f - p.B) * w, a);
         }
     }

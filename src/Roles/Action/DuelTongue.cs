@@ -168,7 +168,7 @@ internal static class DuelTongue
     {
         var lp = PlayerControl.LocalPlayer;
         if (!lp || !Duel.Any || !FoeOf(lp)) return true;
-        if (!button.isActiveAndEnabled || button.isCoolingDown || !lp.CanMove || !button.currentTarget) return false;
+        if (!button.isActiveAndEnabled || button.isCoolingDown || !lp.CanMove || !button.currentTarget || DuelTumble.Busy(lp.PlayerId)) return false;
         PressCall.Send(0);
         lp.SetKillTimer(Cooldown);
         return false;
@@ -214,7 +214,7 @@ internal static class DuelTongue
     {
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost || AmongUsClient.Instance.IsGameOver || MeetingHud.Instance) return false;
         var s = FoeOf(imp);
-        if (!s || imp.inVent || imp.inMovingPlat) { Refused++; return false; }
+        if (!s || imp.inVent || imp.inMovingPlat || DuelTumble.Busy(imp.PlayerId)) { Refused++; return false; }
         byte i = imp.PlayerId;
         float now = Time.time;
         if (now < ReadyAt[i] - CooldownSlack || now < StunUntil[i] || Lashes[i].On) { Refused++; return false; }
@@ -339,7 +339,7 @@ internal static class DuelTongue
                 continue;
             }
             Broadcast(Kind.Hit, (byte)i, l.S, LenByte(along));
-            Duel.HostDamage((byte)i, l.S, dmg);
+            Duel.HostDamage((byte)i, l.S, dmg, smash: true);
         }
     }
 
@@ -385,6 +385,7 @@ internal static class DuelTongue
             case Kind.Kill:
                 KillAt[i] = Time.time;
                 ImpostorMaw.Resolve(i, q / 50f, true);
+                DuelTumble.KoLaunch(sid, i); // 舌の一撃で倒れた人は飛ばされた先に倒れる
                 break;
             case Kind.Miss:
                 ImpostorMaw.Resolve(i, q / 50f, false);

@@ -32,7 +32,7 @@ public sealed partial class Samurai
         public byte A, T;
         public int Dmg;
         public float At;
-        public bool Iai, Aimed, Guard; // Guard = 立ち合いの相手のインポスターへの斬り (口で受けられるのを待つ)
+        public bool Iai, Aimed, Guard, Smash; // Guard = 立ち合いの相手のインポスターへの斬り (口で受けられるのを待つ)
     }
 
     private static readonly List<Held> HostHeld = new();
@@ -47,6 +47,8 @@ public sealed partial class Samurai
     private static float _hlNextMeter;
     private bool _hostStrokeIai;
     private bool _hostStrokeFull;
+    private bool _hostStrokeSmash;   // 溜めた居合 (段 SmashTier 以上) = 当たった人を吹き飛ばす
+    private const int SmashTier = 2;
     private float _hostStrokeSecs;
     internal static int ClashMisses; // 待っていた相手から返ったが、重なっていない/向いていないので弾き合いにしなかった数
     internal static int Clashes, Locks;
@@ -65,7 +67,7 @@ public sealed partial class Samurai
             HostClash(h.A, PlayerId, h.Iai && _hostStrokeIai);
             return true;
         }
-        HostHeld.Add(new Held { A = PlayerId, T = ts.PlayerId, Dmg = damage, At = now, Iai = _hostStrokeIai, Aimed = aimed });
+        HostHeld.Add(new Held { A = PlayerId, T = ts.PlayerId, Dmg = damage, At = now, Iai = _hostStrokeIai, Aimed = aimed, Smash = _hostStrokeSmash });
         DuelBot.OnHeld(ts.PlayerId, PlayerId, ClashWindow);
         return true;
     }
@@ -85,7 +87,7 @@ public sealed partial class Samurai
             HostHeld.RemoveAt(i);
             if (RoleState.Of(h.A) is not Samurai s) continue;
             var target = GameData.Instance ? GameData.Instance.GetPlayerById(h.T)?.Object : null;
-            if (s.HostApply(target, h.Dmg)) s.HostUpdatePath();
+            if (s.HostApply(target, h.Dmg, h.Smash)) s.HostUpdatePath();
         }
         if (_hlA == 255) return;
         if (now >= _hlNextMeter)
@@ -272,6 +274,7 @@ public sealed partial class Samurai
     private void OnClash(byte other, bool knock)
     {
         _blade.Recoil(AngleTo(other));
+        if (knock) DuelTumble.Recoil(PlayerId, other);
         if (!IsLocal) return;
         if (knock) Knock(other);
         UseKi(ClashKi);

@@ -58,6 +58,9 @@ internal static class DuelBot
     private static float ClashChance(Bot b) => b.Level < 3 ? 0f : 0.15f + 0.65f * T(b);
     private static float DodgeChance(Bot b) => b.Level < 3 ? 0f : 0.2f + 0.7f * T(b);
     private static float MashRate(Bot b) => 2f + 9f * T(b);                           // 鍔迫り合いの連打 (回/秒)
+
+    // 吹っ飛ばされた時に受け身を取る割合 (ボットでなければ 0)
+    internal static float TechChance(byte id) => Bots.TryGetValue(id, out var b) && b.Level >= 2 ? 0.1f + 0.8f * T(b) : 0f;
     private static float StrokeGap(Bot b) => 1.4f - 1.0f * T(b);
     private static float DashChance(Bot b) => b.Level < 3 ? 0f : 0.6f + 1.2f * T(b);    // 間合いの少し外にいる時に 1 秒あたり踏み込む見込み
     private static float MaxCharge(Bot b) => b.Level < 3 ? 0f : b.Level < 7 ? 0.8f : 1f; // 溜め切り (不意打ちで一撃) は 7 から
@@ -120,6 +123,8 @@ internal static class DuelBot
         {
             var pc = Player(b.Id);
             if (!pc || pc.Data == null || pc.Data.IsDead || pc.Data.Disconnected || !pc.MyPhysics) { Gone.Add(b.Id); continue; }
+            // 吹っ飛ばされている間は体の速さを DuelTumble に任せ、考えるのも止める
+            if (DuelTumble.Busy(b.Id)) continue;
             // 踏み込み・回避の飛び退きの間は向きと速さを毎フレーム書く
             if (now < b.DodgeUntil)
             {

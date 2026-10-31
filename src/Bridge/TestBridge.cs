@@ -71,6 +71,7 @@ public static partial class TestBridge
             LobbyCommands.Register();
             RoleCommands.Register();
             UiCommands.Register();
+            DuelCommands.Register();
             Roles.RewindCinematic.Register();
             Roles.KatanaCinematic.Register();
             Rules.RulesProbe.Register();

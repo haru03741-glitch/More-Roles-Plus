@@ -297,6 +297,7 @@ public sealed partial class Samurai : RoleBase
         _lastDamage = dmg;
         _hostStrokeIai = iai;
         _hostStrokeFull = iai && charge >= FullCharge;
+        _hostStrokeSmash = iai && !thrust && (tier & 0x7F) >= SmashTier;
         _hostStrokeSecs = secs;
         HostHit(a0, sweep, dmg, thrust);
     }
@@ -314,6 +315,7 @@ public sealed partial class Samurai : RoleBase
         if (!p || p.Data == null || p.Data.IsDead || p.Data.Disconnected) return "user";
         if (p.inVent || p.inMovingPlat) return "user busy";
         if (_ultStart >= 0f) return "ult";
+        if (DuelTumble.Busy(PlayerId)) return "tumble";
         if (Time.time < _hostStunUntil) return "guarded";
         if (Time.time - _drawnAt < DrawTime - 0.2f) return iai ? "sheathing" : "drawing";
         if (HostKiNow() < -KiSlack && !DevFree(p)) return "ki";
@@ -377,7 +379,7 @@ public sealed partial class Samurai : RoleBase
             if (RoleState.Of(target) is Samurai ts && HostClashOrHold(ts, dmg, (aimedBits >> i & 1) != 0)) continue;
             // 立ち合いの相手のインポスターへの斬りは、口で受けられるかを少し待ってから決める (Samurai.Tongue.cs)
             if (HostHoldForGuard(target, dmg, (aimedBits >> i & 1) != 0)) continue;
-            counted |= HostApply(target, dmg);
+            counted |= HostApply(target, dmg, _hostStrokeSmash);
         }
         if (counted) HostUpdatePath();
         // 扉は刀の絵が届く所だけ (人の当たりは振っている間に動く分の余裕があるので扉より遠い)

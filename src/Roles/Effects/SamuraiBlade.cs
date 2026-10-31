@@ -332,7 +332,8 @@ internal sealed partial class SamuraiBlade
     {
         var pc = _role.Player;
         if (!pc) return;
-        bool hidden = !pc.Visible || Rules.NightVisionCams.Active;
+        // 吹っ飛ばされている間は刀が手を離れる (体と一緒に回さない)
+        bool hidden = !pc.Visible || Rules.NightVisionCams.Active || DuelTumble.Busy(pc.PlayerId);
         if (hidden != _hidden)
         {
             _hidden = hidden;

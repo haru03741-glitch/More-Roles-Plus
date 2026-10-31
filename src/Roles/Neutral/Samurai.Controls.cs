@@ -183,7 +183,7 @@ public sealed partial class Samurai
         _canAct = false;
         if (!p || p.Data == null) return;
         bool alive = !p.Data.IsDead;
-        bool free = alive && p.CanMove && !MeetingHud.Instance && !p.inVent;
+        bool free = alive && p.CanMove && !MeetingHud.Instance && !p.inVent && !DuelTumble.Busy(PlayerId);
         bool ready = Time.time - _drawnAt >= DrawTime;
         if (_spentUntil > 0f && Time.time >= _spentUntil)
         {
@@ -194,7 +194,7 @@ public sealed partial class Samurai
         // 納めていても抜いていても、なぞりを構える (納刀中のなぞり = 居合)。マウスでは歩かない。鍔迫り合いの間は振れない。
         // 気が尽きている間も構えたまま (押しっぱなしのなぞりを捨てない・振りは役職の側で捨てる) なので、戻ればそのまま振れる
         bool arm = free && ready && !Locked;
-        if (!arm) Disarm = !alive ? "dead" : !p.CanMove ? "canmove" : MeetingHud.Instance ? "meeting" : p.inVent ? "vent" : !ready ? "drawing" : "locked";
+        if (!arm) Disarm = !alive ? "dead" : !p.CanMove ? "canmove" : DuelTumble.Busy(PlayerId) ? "tumble" : MeetingHud.Instance ? "meeting" : p.inVent ? "vent" : !ready ? "drawing" : "locked";
         SwipeInput.Arm(arm ? p : null);
         SwipeInput.NoThrust = Spent;
         _ring?.Tick(alive && !MeetingHud.Instance);
@@ -370,6 +370,12 @@ internal static class SamuraiDashPatch
 {
     public static void Postfix(PlayerPhysics __instance)
     {
+        // 吹っ飛ばされている・のけぞっている間 (役職によらない)
+        if (__instance.AmOwner && __instance.myPlayer && DuelTumble.Velocity(__instance.myPlayer.PlayerId, out var tumbleVel))
+        {
+            __instance.body.velocity = tumbleVel;
+            return;
+        }
         // 跳躍は当たり判定を切って動くので、歩けるか (CanMove) によらず先に書く
         if (__instance.AmOwner && Samurai.Leaping(__instance, out var leapVel))
         {

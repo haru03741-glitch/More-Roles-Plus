@@ -15,7 +15,7 @@ public sealed partial class Samurai
     private bool HostHoldForGuard(PlayerControl target, int damage, bool aimed)
     {
         if (!Duel.SameGroup(target.PlayerId, PlayerId) || !DuelTongue.Engages(target, PlayerId)) return false;
-        HostHeld.Add(new Held { A = PlayerId, T = target.PlayerId, Dmg = damage, At = Time.time, Iai = _hostStrokeIai, Aimed = aimed, Guard = true });
+        HostHeld.Add(new Held { A = PlayerId, T = target.PlayerId, Dmg = damage, At = Time.time, Iai = _hostStrokeIai, Aimed = aimed, Guard = true, Smash = _hostStrokeSmash });
         DuelBot.OnHeldGuard(target.PlayerId, PlayerId, GuardHold);
         return true;
     }
@@ -41,6 +41,7 @@ public sealed partial class Samurai
     internal void OnGuarded(byte imp)
     {
         _blade.Recoil(AngleTo(imp));
+        DuelTumble.Recoil(PlayerId, imp);
         if (IsLocal) Knock(imp);
     }
 }

@@ -93,6 +93,14 @@ internal static class DuelDodge
         if (Time.frameCount % 4 == 0) _usable = p.CanMove && !p.inVent && !MeetingHud.Instance;
         bool pad = DodgePad.Tick(_usable && _left > 0);
         Hint();
+        // 吹っ飛ばされている間の回避のキーは受け身 (回避の回数は使わない)
+        if (DuelTumble.Busy(p.PlayerId))
+        {
+            bool tech = pad && DodgePad.Pressed()
+                        || !System.OperatingSystem.IsAndroid() && Menu.Keybinds.Down(Menu.Keybinds.Slot.Dodge);
+            if (tech) DuelTumble.TryTech(p);
+            return;
+        }
         if (!_usable || _left <= 0) return;
         bool press = pad && DodgePad.Pressed();
         if (!press && !System.OperatingSystem.IsAndroid() && Menu.Keybinds.Down(Menu.Keybinds.Slot.Dodge))

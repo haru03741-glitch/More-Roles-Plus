@@ -29,6 +29,13 @@ internal static class FxSprites
         return sp;
     }
 
+    // 縁へ滑らかに薄れる丸 (芯の無い煙・影の形)
+    internal static float Soft(float x, float y)
+    {
+        float t = FxMath.Clamp01(1f - FxMath.Sqrt(x * x + y * y) * 2f);
+        return t * t * (3f - 2f * t);
+    }
+
     // 柔らかい丸 (縁へ消える・中心が明るい)
     internal static float Dot(float x, float y)
     {

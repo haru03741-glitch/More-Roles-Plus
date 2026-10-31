@@ -36,6 +36,7 @@ internal static class Duel
 
     internal static int Started, Joined, Hits;
     internal static int LastDamage; // 今の OnHit で減った体力 (回復なら負)
+    internal static bool LastSmash; // 今の OnHit は吹き飛ばす一撃 (溜めた居合・舌の一撃・鍔迫り合いの負け)
     internal static bool Moved;     // 今の OnJoin は組同士の合流で移っただけ
     internal static int LeftHp;     // 今の OnLeave で抜けた人の抜ける前の体力 (0 = 倒れた・死亡の知らせより先に届いても分かる)
 
@@ -53,11 +54,13 @@ internal static class Duel
         UI.DuelHud.Hook();
         DuelHitFx.Hook();
         DuelDodge.Hook();
+        DuelTumble.Hook();
         Events<MeetingStartEvent>.Subscribe(_ => OnMeeting(), match, owner: "Duel");
     }
 
     internal static void Reset()
     {
+        DuelTumble.Reset();
         for (int i = 0; i < 256; i++)
         {
             Hp[i] = MaxHp;
@@ -77,7 +80,7 @@ internal static class Duel
     internal static bool HasRoom(byte id) => Group[id] != 0 && Count[Group[id]] < MaxMembers;
     internal static bool Any => _groups > 0; // どこかに組がある (無ければ比べるだけで帰る口に)
 
-    private enum Kind : byte { Start = 1, Hit = 2, Leave = 3, Join = 4 }
+    private enum Kind : byte { Start = 1, Hit = 2, Leave = 3, Join = 4, Smash = 5 }
 
     // 値 = 種類 | 人 a << 8 | 人 t << 16 | (体力 か 組) << 24
     private static readonly RemoteCall<int> StateCall = new("Duel.State", Route.HostToAll,
@@ -127,7 +130,9 @@ internal static class Duel
                 break;
             }
             case Kind.Hit:
+            case Kind.Smash:
                 LastDamage = Hp[t] - last;
+                LastSmash = k == Kind.Smash;
                 Hp[t] = last;
                 Hits++;
                 OnHit?.Invoke(a, t, last);
@@ -209,13 +214,14 @@ internal static class Duel
 
     // ホスト: 攻撃が当たった。start なら二人を同じ組にし (HostJoin)、体力を減らす。0 になったら true (倒すのは呼んだ側)。
     // 組に入れなかった人 (組が満員など) は体力だけ減る。start = false は組にしない当たり (一太刀で倒れる相手)。当たりの見た目だけ全員に出る
-    internal static bool HostDamage(byte attacker, byte target, int damage, bool start = true)
+    // smash = 吹き飛ばす一撃 (受けた人が飛ばされる・倒れた時は飛んだ先に倒れる)
+    internal static bool HostDamage(byte attacker, byte target, int damage, bool start = true, bool smash = false)
     {
         if (start) HostJoin(attacker, target);
         FarSince[attacker] = FarSince[target] = 0;
         LastHit[target] = Environment.TickCount64;
         int hp = Math.Max(Hp[target] - damage, 0);
-        Send(Kind.Hit, attacker, target, hp);
+        Send(smash ? Kind.Smash : Kind.Hit, attacker, target, hp);
         return hp == 0;
     }
 
