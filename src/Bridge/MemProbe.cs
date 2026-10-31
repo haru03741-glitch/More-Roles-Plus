@@ -48,7 +48,11 @@ internal static class MemProbe
         {
             if (!o) continue;
             long b;
+#if ANDROID
+            try { b = size(o); } catch { continue; } // Android の libunity には Profiler の大きさ取得が無い
+#else
             try { b = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(o); if (b <= 0) b = size(o); } catch { continue; }
+#endif
             // この mod が作った物は名前が無いか hideFlags で見分ける (本編の資産は名前と保存の印がある)
             bool mine = string.IsNullOrEmpty(o.name) || (o.hideFlags & HideFlags.DontSave) != 0;
             total += b;

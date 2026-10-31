@@ -53,7 +53,8 @@ internal static class MrpRegion
     {
         string host = _address.Value.Trim();
         string url = host.StartsWith("http://") || host.StartsWith("https://") ? host : (_port.Value == 443 ? "https://" : "http://") + host;
-        var servers = new Il2CppReferenceArray<ServerInfo>(new[] { new ServerInfo("Http-1", url, _port.Value, false) });
+        var servers = new Il2CppReferenceArray<ServerInfo>((long)1);
+        servers[0] = new ServerInfo("Http-1", url, _port.Value, false);
         var region = new StaticHttpRegionInfo(_name.Value, StringNames.NoTranslation, url, servers).Cast<IRegionInfo>();
         sm.AddOrUpdateRegion(region);
         MoveToTop(sm);
@@ -70,10 +71,11 @@ internal static class MrpRegion
     {
         var all = sm.AvailableRegions;
         if (all == null || all.Length < 2 || all[0].Name == _name.Value) return;
-        var list = new System.Collections.Generic.List<IRegionInfo>(all.Length);
-        foreach (var r in all) if (r.Name == _name.Value) list.Add(r);
-        foreach (var r in all) if (r.Name != _name.Value) list.Add(r);
-        sm.AvailableRegions = new Il2CppReferenceArray<IRegionInfo>(list.ToArray());
+        var sorted = new Il2CppReferenceArray<IRegionInfo>((long)all.Length);
+        int at = 0;
+        foreach (var r in all) if (r.Name == _name.Value) sorted[at++] = r;
+        foreach (var r in all) if (r.Name != _name.Value) sorted[at++] = r;
+        sm.AvailableRegions = sorted;
     }
 
     private static void Probe(string host, int port)
