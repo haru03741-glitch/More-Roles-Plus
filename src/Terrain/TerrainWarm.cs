@@ -13,11 +13,14 @@ namespace MoreRolesPlus.Terrain;
 // ロビーと試合でも続け、船ごとの準備 (段 1〜) はコンパイルが済んでから始める。
 // コンパイルは 1 回の FixedUpdate に 4ms ずつ (メニューでは MenuBudgetMs ずつ) に分けて、1 フレームを長く止めない。
 // 船ごとの準備は止まっても見えない瞬間にまとめる (LateTick / OnIntro)。
+// 地形を壊せる人がいない試合 (壊せる役職の出現率が全部 0・練習でもフリープレイでもない) では、コンパイルも船ごとの準備もしない
+// (メモリと読み込みを使わない。設定画面から外して壊れた時は、その場で作る従来の道に戻る)。コンパイルは要る設定を見てから (ロビー) 始める。
 internal static class TerrainWarm
 {
     private const double TickBudgetMs = 4.0;
     private const double MenuBudgetMs = 6.0; // メニューでは動く物が少なく、少し長く止まっても目立たない
     private const int Stages = 17;
+    private const int GcStage = 16;
     private static ShipStatus _ship;
     private static int _stage;
     private static int _at;
@@ -31,6 +34,25 @@ internal static class TerrainWarm
     public static string Report =>
         $"stage={_stage} jit={StageMs[0]:F1}ms (before match {_preMatchMs:F1}ms, {_methods} methods{(_jitDone ? "" : " running")}, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1}+{StageMs[6]:F1} props={StageMs[7]:F1} breakables+low={StageMs[8]:F1} decompfx={StageMs[9]:F1} water={StageMs[10]:F1} edges={StageMs[11]:F1} floor={StageMs[12]:F1} grid={StageMs[13]:F1}+{StageMs[14]:F1} front={StageMs[15]:F1} gc={StageMs[16]:F1}";
 
+    // 地形を壊せる人が出る試合か (練習・フリープレイは誰でも壊せる)
+    internal static bool Needed()
+    {
+        if (TerrainPermits.SandboxOverride ?? Roles.PracticeMatch.Sandbox) return true;
+        if (!Roles.RoleSettings.Enabled) return false;
+        foreach (var r in Options.Registry.Roles)
+            if (r.Chance != null && r.Chance.Value > 0 && r.TerrainPermit.Any) return true;
+        return false;
+    }
+
+    // Needed を数 tick ごとに見直す (役職の一覧を毎 tick 回さない)
+    private static int _needAt;
+    private static bool _need;
+    private static bool NeedNow()
+    {
+        if (--_needAt <= 0) { _needAt = 25; _need = Needed(); }
+        return _need;
+    }
+
     public static void Tick()
     {
         if (!Fx.MrpBundle.Ready) return;
@@ -38,6 +60,14 @@ internal static class TerrainWarm
         if (!_jitDone)
         {
             if (!ship && !Boot.BootClock.StartupOver) return; // 起動の処理 (ログイン等) とは重ねない
+            if (!ship && !LobbyBehaviour.Instance && !(TerrainPermits.SandboxOverride ?? Roles.PracticeMatch.Sandbox)) return; // メニューでは要るか分からない
+            if (!NeedNow())
+            {
+                // 要らない試合: GC の先回しだけ済ませる
+                if (ship && _ship != ship) { Begin(ship); _stage = GcStage; }
+                if (ship && _stage < Stages && Environment.TickCount64 >= _holdUntil) Step(TickBudgetMs);
+                return;
+            }
             Clock.Restart();
             _jitDone = JitSome(ship || PlayerControl.LocalPlayer ? TickBudgetMs : MenuBudgetMs);
             double ms = Clock.Elapsed.TotalMilliseconds;
@@ -47,7 +77,7 @@ internal static class TerrainWarm
             return;
         }
         if (!ship) return;
-        if (_ship != ship) Begin(ship);
+        if (_ship != ship) { Begin(ship); if (!Needed()) _stage = GcStage; }
         if (_stage < Stages && Environment.TickCount64 >= _holdUntil) Step(TickBudgetMs);
     }
 
@@ -73,11 +103,13 @@ internal static class TerrainWarm
 
     private static void LateTickCore()
     {
-        if (!_jitDone || !Fx.MrpBundle.Ready) return;
+        if (!Fx.MrpBundle.Ready) return;
         var ship = ShipStatus.Instance;
         if (!ship) return;
+        bool need = Needed();
+        if (!_jitDone && need) return;
         GameClock.Tick(); // 船の世代を今の船にそろえてから作る (準備の作り置きは世代で見分ける)
-        if (_ship != ship) Begin(ship);
+        if (_ship != ship) { Begin(ship); if (!need) _stage = GcStage; }
         var client = AmongUsClient.Instance;
         bool freePlay = client && client.NetworkMode == NetworkModes.FreePlay; // フリープレイはイントロが無い
         if (freePlay || UnityEngine.Time.unscaledDeltaTime >= LongFrameSec) RunAll();
@@ -94,11 +126,13 @@ internal static class TerrainWarm
 
     private static void OnIntroCore()
     {
-        if (!_jitDone || !Fx.MrpBundle.Ready) return;
+        if (!Fx.MrpBundle.Ready) return;
         var ship = ShipStatus.Instance;
         if (!ship) return;
+        bool need = Needed();
+        if (!_jitDone && need) return;
         GameClock.Tick();
-        if (_ship != ship) Begin(ship);
+        if (_ship != ship) { Begin(ship); if (!need) _stage = GcStage; }
         RunAll();
     }
 
@@ -153,7 +187,7 @@ internal static class TerrainWarm
                 // 準備で出たごみを今まとめて回収し、最初の破壊や水の作り直しの途中で全体の回収が走らないようにする。
                 // 本編の側 (il2cpp) も回す: 船の読み込みのごみで、直後に本編の GC が 60ms 級で走っていた
                 case 15: PropSim.WarmFront(); break; // 手前の絵の水面の板の対象 (最初に水が来た時に集めると Airship で 11ms)
-                case 16: if (Plugin.PreemptiveGc.Value) Boot.GcPrepass.Collect("ship", force: true); else GC.Collect(); break;
+                case 16: if (Plugin.PreemptiveGc.Value) Boot.GcPrepass.Collect("ship", force: true); else Boot.MemTrim.Collect(); break;
             }
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"[TerrainWarm] stage {_stage}: {e.Message}"); }
@@ -177,7 +211,7 @@ internal static class TerrainWarm
         // 中身を読み終えた回は、読んだごみの回収を 1 tick 使って済ませる (次の重い段に重ねない)
         if (_scanGarbage)
         {
-            if (_gcNext) { GC.Collect(); _scanGarbage = false; _list = null; return true; }
+            if (_gcNext) { Boot.MemTrim.Compact("jit"); _scanGarbage = false; _list = null; return true; }
             _gcNext = true;
             return false;
         }

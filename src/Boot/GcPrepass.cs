@@ -33,7 +33,7 @@ internal static class GcPrepass
         _lastMs = now;
 
         var sw = Stopwatch.StartNew();
-        GC.Collect();
+        MemTrim.Collect(); // 詰めて空きを OS に返す (普通の GC と数 ms しか違わない)
         long clrMs = sw.ElapsedMilliseconds;
         if (!_noExport)
         {

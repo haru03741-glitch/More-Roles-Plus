@@ -64,6 +64,7 @@ public static partial class TestBridge
             BuiltinCommands.RegisterAll();
             Burst.Register();
             Perf.Register();
+            MemProbe.Register();
             PatchProf.Register();
             StructCheck.Register();
             Dev.TpBurst.Register();
@@ -78,7 +79,7 @@ public static partial class TestBridge
             Terrain.TerrainProbe.Register();
             InitHost();
         }
-        catch { _dir = null; }
+        catch (Exception e) { _dir = null; Plugin.Logger.LogError("bridge: init failed: " + e); }
     }
 
     public static void Tick()

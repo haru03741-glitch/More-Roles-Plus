@@ -75,6 +75,37 @@
         <WriteLinesToFile File="$(IntermediateOutputPath)structinline.refs" Lines="@(ReferencePath->'%(FullPath)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
         <Exec Command="dotnet &quot;$(StructInlineDll)&quot; &quot;@(IntermediateAssembly->'%(FullPath)')&quot; &quot;$(IntermediateOutputPath)structinline.refs&quot;" />
     </Target>
+    <!-- 先に機械語へ訳しておく (ReadyToRun)。起動と試合前の JIT が半分ほどになる。
+         ゲームの BepInEx\interop を参照に使うので、MRP が入っているゲームがある時だけ (無ければ IL のまま)。
+         interop が作り直されて合わなくなったメソッドは、その時だけ普通に JIT される。MrpReadyToRun=false で切る -->
+    <ItemGroup Condition="'$(Configuration)' != 'Android'">
+        <PackageDownload Include="Microsoft.NETCore.App.Crossgen2.win-x64" Version="[6.0.36]" />
+    </ItemGroup>
+    <Target Name="MrpReadyToRun" AfterTargets="CopyFilesToOutputDirectory" BeforeTargets="CopyToGame" Condition="'$(DesignTimeBuild)' != 'true' And '$(Configuration)' != 'Android' And '$(MrpReadyToRun)' != 'false'">
+        <ItemGroup>
+            <_MrpR2RAll Include="$(AmongUsPath);$(MrpExtraGamePaths)" />
+            <!-- MRP が入っているゲームの interop を優先 (その DLL が実際に読み込まれる) -->
+            <_MrpR2RRoot Include="@(_MrpR2RAll)" Condition="Exists('%(Identity)\BepInEx\interop\Assembly-CSharp.dll') And Exists('%(Identity)\BepInEx\plugins\$(AssemblyName).dll')" />
+            <_MrpR2RRoot Include="@(_MrpR2RAll)" Condition="'@(_MrpR2RRoot)' == '' And Exists('%(Identity)\BepInEx\interop\Assembly-CSharp.dll')" />
+        </ItemGroup>
+        <PropertyGroup>
+            <_MrpR2RGame>@(_MrpR2RRoot->'%(Identity)')</_MrpR2RGame>
+            <_MrpR2RGame Condition="$(_MrpR2RGame.Contains(';'))">$(_MrpR2RGame.Split(';')[0])</_MrpR2RGame>
+            <_MrpCrossgen>$(NuGetPackageRoot)microsoft.netcore.app.crossgen2.win-x64\6.0.36\tools\crossgen2.exe</_MrpCrossgen>
+            <_MrpR2ROut>$(IntermediateOutputPath)r2r\$(AssemblyName).dll</_MrpR2ROut>
+        </PropertyGroup>
+        <Message Importance="high" Text="ReadyToRun: ゲームの interop が見つからないので IL のまま" Condition="'$(_MrpR2RGame)' == ''" />
+        <MakeDir Directories="$(IntermediateOutputPath)r2r" Condition="'$(_MrpR2RGame)' != ''" />
+        <Exec Condition="'$(_MrpR2RGame)' != '' And Exists('$(_MrpCrossgen)')" ContinueOnError="true" StandardOutputImportance="low"
+              Command="&quot;$(_MrpCrossgen)&quot; &quot;@(IntermediateAssembly->'%(FullPath)')&quot; -o &quot;$(_MrpR2ROut)&quot; --targetos windows --targetarch x64 -O -r &quot;$(_MrpR2RGame)\dotnet\*.dll&quot; -r &quot;$(_MrpR2RGame)\BepInEx\core\*.dll&quot; -r &quot;$(_MrpR2RGame)\BepInEx\interop\*.dll&quot;">
+            <Output TaskParameter="ExitCode" PropertyName="_MrpR2RExit" />
+        </Exec>
+        <!-- obj の IL はそのまま (次のビルドの StructInline は IL にしか使えない)。出力 (bin) の方だけ差し替える -->
+        <Copy SourceFiles="$(_MrpR2ROut)" DestinationFiles="$(OutDir)$(TargetFileName)" Condition="'$(_MrpR2RExit)' == '0' And Exists('$(_MrpR2ROut)')" />
+        <Delete Files="$(_MrpR2ROut)" />
+        <Message Importance="high" Text="ReadyToRun: 機械語つき ($(_MrpR2RGame))" Condition="'$(_MrpR2RExit)' == '0'" />
+        <Warning Text="ReadyToRun に失敗したので IL のまま配る" Condition="'$(_MrpR2RExit)' != '' And '$(_MrpR2RExit)' != '0'" />
+    </Target>
     <!-- 設定画面の見出し用のフォント (SIL OFL 1.1・JIS 第一水準までに削ったもの) -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Fonts\MochiyPopOne-Regular.ttf" LogicalName="MoreRolesPlus.Resources.Fonts.MochiyPopOne-Regular.ttf" />
@@ -107,12 +138,15 @@
         <Warning Code="MRP001" Text="Resources\FloorMasks の床マスクが @(_MrpFloorMask->Count()) 枚しかありません (5 マップ分要る)。tools/make-floor-mask.py で作るか、作ってある所から写してください" Condition="@(_MrpFloorMask->Count()) &lt; 5" />
     </Target>
     <!-- 配置先は AmongUsPath と、local.props の MrpExtraGamePaths (; 区切り・Epic 版と Steam 版の両方へ置く時など)。
-         BepInEx-MRP\core が無い所は飛ばす。MrpNoDeploy=true で配置しない。 -->
+         BepInEx-MRP\core がある所は BepInEx-MRP\plugins へ。無くても、普通の BepInEx\plugins に MRP が入っている所はそこへ
+         (他の mod の BepInEx に勝手に入れないよう、MRP が既にある時だけ)。MrpNoDeploy=true で配置しない。 -->
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(Configuration)' != 'Android' And '$(MrpNoDeploy)' != 'true'">
         <ItemGroup>
             <_MrpGameRoot Include="$(AmongUsPath);$(MrpExtraGamePaths)" />
-            <_MrpGameRoot Remove="@(_MrpGameRoot)" Condition="!Exists('%(Identity)\BepInEx-MRP\core')" />
-            <_MrpPluginDir Include="@(_MrpGameRoot->'%(Identity)\BepInEx-MRP\plugins')" />
+            <_MrpRootMrp Include="@(_MrpGameRoot)" Condition="Exists('%(Identity)\BepInEx-MRP\core')" />
+            <_MrpRootPlain Include="@(_MrpGameRoot)" Condition="!Exists('%(Identity)\BepInEx-MRP\core') And Exists('%(Identity)\BepInEx\plugins\$(AssemblyName).dll')" />
+            <_MrpPluginDir Include="@(_MrpRootMrp->'%(Identity)\BepInEx-MRP\plugins')" />
+            <_MrpPluginDir Include="@(_MrpRootPlain->'%(Identity)\BepInEx\plugins')" />
         </ItemGroup>
         <RemoveDuplicates Inputs="@(_MrpPluginDir)">
             <Output TaskParameter="Filtered" ItemName="_MrpPluginDirUnique" />

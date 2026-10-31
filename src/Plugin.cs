@@ -39,18 +39,25 @@ public class Plugin : BasePlugin
         EnableTestBridge = Config.Bind("Debug", "EnableTestBridge", false, "外部ツールからの遠隔テスト口を有効にする");
         ForceDisableIncrementalGc = Config.Bind("Performance", "ForceDisableIncrementalGc", false, "incremental GC を常に切る (既定は書き込みバリア付きの Il2CppInterop.Runtime が載っている 64bit の時だけ残す・Windows のみ)");
         ReuseDelegateTypes = Config.Bind("Performance", "ReuseDelegateTypes", true, "パッチを当てる時の型を形ごとに使い回して起動を速くする (パッチが当たらない時は切る)");
-        SleepAccountManager = Config.Bind("Performance", "SleepAccountManager", true, "メニューのアカウント表示を止めておき、ログイン待ちの間もメニューを使えるようにする");
+        // 止めるとログイン前のメニューが作りかけ (上の欄が無い・絵が出ない) のまま見えるので、既定は本編のまま (前の true を引き継がないよう名前を変えた)
+        SleepAccountManager = Config.Bind("Performance", "SleepAccountMenu", false, "メニューのアカウント表示を止めておき、ログイン待ちの間もメニューを使えるようにする (ログインが終わるまでメニューが作りかけに見える)");
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
+        Boot.BootClock.Mark("cfg0"); Net.MrpRegion.Bind(Config);
         Menu.ClientOptions.Bind(Config);
         Menu.CustomColors.Bind(Config);
         Menu.ModUpdate.Bind(Config);
         try { Menu.CustomColors.ExtendPalette(); }
         catch (System.Exception e) { Log.LogError($"colors: palette not extended: {e.Message}"); }
         Options.PresetLabel.Bind(Config);
+        Boot.BootClock.Mark("cfg");
 
         Boot.IncrementalGcInvalidator.ApplyIfConfigured();
+        Boot.UnityAllocatorSetup.Run(); // Unity のメモリの区切り方 (次の起動から効く)
+        Boot.BootClock.Mark("igc");
         Net.Remote.Init(); // 電文の名前は設定の指紋に入るので先に
+        Boot.BootClock.Mark("remote");
         Options.Registry.Init();
+        Boot.BootClock.Mark("registry");
         Rules.VanillaTweaks.Init();
         Dev.DevCommands.Register();
         Dev.DevCooldown.Register();
@@ -58,7 +65,7 @@ public class Plugin : BasePlugin
 
         Harmony = new Harmony(Guid);
         if (ReuseDelegateTypes.Value) Boot.DelegateTypeCache.Install(Harmony);
-        Harmony.PatchAll();
+        Boot.LatePatch.PatchEarly(Harmony); // 試合の中だけのパッチはメニューが出てから
         Boot.BootClock.Mark("patch");
         Log.LogInfo(Boot.DelegateTypeCache.Summary());
 
@@ -83,6 +90,7 @@ public class Ticker : MonoBehaviour
         if (!_ran) { _ran = true; Boot.BootClock.Mark("frame1"); }
         Health.Frame();
         Boot.BootClock.Tick();
+        Boot.LatePatch.Tick();
         Menu.AccountSleep.Tick();
         Bridge.Perf.FrameStart();
         long t0 = Bridge.Perf.Begin(), t = t0;
@@ -187,6 +195,7 @@ public class Ticker : MonoBehaviour
         Menu.ModUpdate.Tick();
         Roles.Spectate.Tick();
         Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
+        Net.MrpRegion.Tick();
         Net.HostChange.Tick();
         Roles.TeamSizes.Tick();
         Menu.MatchInfoExtension.Tick();

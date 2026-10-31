@@ -27,6 +27,10 @@
         <FileVersion>1.0.0.0</FileVersion>
         <MrpBepInExDir>$(AmongUsPath)\BepInEx-MRP</MrpBepInExDir>
     </PropertyGroup>
+    <!-- BepInEx-MRP が無い時は、MRP が普通の BepInEx に入っているゲーム (Steam 版など) の core を参照する -->
+    <PropertyGroup Condition="!Exists('$(MrpBepInExDir)\core\BepInEx.Preloader.Core.dll')">
+        <MrpBepInExDir Condition="'$(MrpExtraGamePaths)' != '' And Exists('$(MrpExtraGamePaths)\BepInEx\core\BepInEx.Preloader.Core.dll')">$(MrpExtraGamePaths)\BepInEx</MrpBepInExDir>
+    </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="BepInEx.Core" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
@@ -51,13 +55,16 @@
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(MrpNoDeploy)' != 'true'">
         <ItemGroup>
             <_MrpGameRoot Include="$(AmongUsPath);$(MrpExtraGamePaths)" />
-            <_MrpGameRoot Remove="@(_MrpGameRoot)" Condition="!Exists('%(Identity)\BepInEx-MRP\core')" />
-            <_MrpPatcherDir Include="@(_MrpGameRoot->'%(Identity)\BepInEx-MRP\patchers')" />
+            <_MrpRootMrp Include="@(_MrpGameRoot)" Condition="Exists('%(Identity)\BepInEx-MRP\core')" />
+            <_MrpRootPlain Include="@(_MrpGameRoot)" Condition="!Exists('%(Identity)\BepInEx-MRP\core') And Exists('%(Identity)\BepInEx\plugins\MoreRolesPlus.dll')" />
+            <_MrpPatcherDir Include="@(_MrpRootMrp->'%(Identity)\BepInEx-MRP\patchers')" />
+            <_MrpPatcherDir Include="@(_MrpRootPlain->'%(Identity)\BepInEx\patchers')" />
         </ItemGroup>
         <RemoveDuplicates Inputs="@(_MrpPatcherDir)">
             <Output TaskParameter="Filtered" ItemName="_MrpPatcherDirUnique" />
         </RemoveDuplicates>
         <MakeDir Directories="@(_MrpPatcherDirUnique)" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="%(_MrpPatcherDirUnique.Identity)\" ContinueOnError="WarnAndContinue" Condition="'@(_MrpPatcherDirUnique)' != ''" />
+        <Message Importance="high" Text="配置済み (patcher): %(_MrpPatcherDirUnique.Identity)" Condition="'@(_MrpPatcherDirUnique)' != ''" />
     </Target>
 </Project>
