@@ -257,7 +257,8 @@ internal static class TerrainDamage
             }, keep, dryRun: true);
         }
         Mark("dry");
-        int hullHp = HullDamage(hullCells, hullSegs, allowed);
+        // 向きに偏った爆発ほど外壁を深く削る (力 0 = 1・力 1 = 3 で 1 発で抜ける)
+        int hullHp = HullDamage(hullCells, hullSegs, allowed, 1 + (int)MathF.Round(Math.Clamp(e.Force, 0f, 1f) * 2f));
         Mark("hulldmg");
         var shipRemoved = new List<Vector2>(); // 動きの層で切った区間 (高さの違う所に縁を張る用)
         foreach (var col in walls)
@@ -331,16 +332,16 @@ internal static class TerrainDamage
         return $"explosion cut={cut} cracked={cracked} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} props={props} breach={LastBreach:0.00} hull={(hullCells.Count > 0 ? hullHp.ToString() : "-")} visual={visual ?? "ok"}";
     }
 
-    // 外壁は爆発 1 発では抜けない: 形に掛かった外壁の格子の耐久を 1 ずつ削り、どれかが尽きたら、その爆発で掛かった外壁を
+    // 外壁は爆発 1 発では抜けない: 形に掛かった外壁の格子の耐久を hits ずつ削り、どれかが尽きたら、その爆発で掛かった外壁を
     // まとめて抜く (抜け方は 1 発で抜けていた時と同じ形)。尽きるまでは見た目を変えない。
     // 全員が同じ順で適用するので耐久も全員で同じになる。返すのは残りのいちばん小さい耐久
     private static int HullDamage(Dictionary<long, Vector2> cells, List<(Vector2 A, Vector2 B, Vector2 Away)> segs,
-        HashSet<(float, float, float, float)> allowed)
+        HashSet<(float, float, float, float)> allowed, int hits)
     {
         int min = WallDurability.MaxHp;
         foreach (var kv in cells)
         {
-            int hp = WallDurability.Hit(kv.Value, 1);
+            int hp = WallDurability.Hit(kv.Value, hits);
             if (hp < min) min = hp;
         }
         if (min > 0) return min;
