@@ -9,9 +9,9 @@ internal sealed partial class SamuraiBlade
 {
     private const float IaiHold = 0.25f;   // 溜め切った居合で、振り抜いた形に足す止めの秒
 
-    private float _iaiPow, _strokePow, _auraHot;
+    private float _iaiPow, _strokePow, _auraHot, _auraUlt; // _auraUlt = 必殺技の溜め (炎の色を道の色へ寄せる)
     private int _iaiTier = 1, _strokeTier = 1;
-    private bool _powArmed, _wasInStroke, _charging, _chargeFull;
+    private bool _powArmed, _wasInStroke, _charging, _chargeFull, _ultFull;
 
     // 納めたまま押している (自分の刀): 毎フレーム書く列に入れる
     internal void Charging()
@@ -77,26 +77,37 @@ internal sealed partial class SamuraiBlade
     {
         p = default;
         if (this != LocalFollow || !SwipeInput.Dragging || SwipeInput.InStroke) return false;
-        float c = _role.Charge;
+        _role.ChargeNow(now, out float c, out float u);
         _charging = true;
-        // 30 コマ/秒で左右に震える (溜めるほど大きく)
-        float shake = (FxMath.Floor(now * 30f) % 2f == 0f ? 1f : -1f) * 0.010f * c;
+        // 30 コマ/秒で左右に震える (溜めるほど大きく・必殺技の溜めでさらに倍以上)
+        float shake = (FxMath.Floor(now * 30f) % 2f == 0f ? 1f : -1f) * (0.010f * c + 0.016f * u);
         p = new Pose
         {
-            Lean = -5f * c, Sx = 1f + 0.10f * c, Sy = 1f - 0.12f * c, Turn = 1f, Hop = 0f, Dx = shake,
+            Lean = -5f * c - 3f * u, Sx = 1f + 0.10f * c + 0.04f * u, Sy = 1f - 0.12f * c - 0.05f * u, Turn = 1f, Hop = 0f, Dx = shake,
             Fx = SayaX, Fy = SayaY, Fs = FxMath.Clamp01(0.3f + 4f * c), Blade = SayaA, BladeA = 1f,
             Aura = 0.2f + 0.8f * c,
         };
-        bool full = c >= 1f;
-        _auraHot = full ? 0.85f + 0.15f * FxMath.Sin(now * 25f) : c * 0.7f;
-        SamuraiSound.Charge(c);
+        bool full = c >= 1f, ult = u >= 1f;
+        // 必殺技の溜めの間は炎がさらに大きくなり、溜め切ると速く脈打つ
+        _auraHot = ult ? 1.6f + 0.2f * FxMath.Sin(now * 40f)
+            : full ? 0.85f + 0.15f * FxMath.Sin(now * 25f) + 0.6f * u
+            : c * 0.7f;
+        _auraUlt = u;
+        SamuraiSound.Charge(c + 0.8f * u);
         if (full && !_chargeFull)
         {
             Glint(0f, 0f, 0.18f, 0.55f);
             SamuraiSound.ChargeFull();
         }
+        if (ult && !_ultFull)
+        {
+            Glint(0f, 0f, 0.30f, 1.0f);
+            SamuraiSound.ChargeFull(0.62f, 0.85f);
+            SamuraiScreen.Flash(0.45f, 0.06f);
+        }
         _chargeFull = full;
-        SamuraiScreen.Pulse(full);
+        _ultFull = ult;
+        SamuraiScreen.Pulse(full, ult);
         return true;
     }
 
@@ -104,9 +115,9 @@ internal sealed partial class SamuraiBlade
     {
         if (!_charging) return;
         SamuraiSound.ChargeStop();
-        _charging = _chargeFull = false;
-        _auraHot = 0f;
-        SamuraiScreen.Pulse(false);
+        _charging = _chargeFull = _ultFull = false;
+        _auraHot = _auraUlt = 0f;
+        SamuraiScreen.Pulse(false, false);
     }
 
     // ---- 弾き合い・鍔迫り合い ----
@@ -226,10 +237,15 @@ internal sealed partial class SamuraiBlade
 // 本編やサボタージュの点滅が使っている間は借りない
 internal static class SamuraiScreen
 {
-    private static bool _own, _pulse;
+    private static bool _own, _pulse, _ult;
     private static float _flashUntil = -10f, _flashA;
 
-    internal static void Pulse(bool on) => _pulse = on;
+    // ult = 必殺技まで溜め切った (速く・濃く脈打つ)
+    internal static void Pulse(bool on, bool ult)
+    {
+        _pulse = on;
+        _ult = on && ult;
+    }
 
     internal static string Describe() => $"own={_own} pulse={_pulse} flash={(Time.time < _flashUntil ? "on" : "off")}";
 
@@ -247,7 +263,9 @@ internal static class SamuraiScreen
         var hud = Vanilla.Hud;
         var fs = hud ? hud.FullScreen : null;
         if (!fs) { _own = _pulse = false; return; }
-        float a = now < _flashUntil ? _flashA : _pulse && FxMath.Repeat(now * 4f, 1f) < 0.35f ? 0.22f : 0f;
+        float a = now < _flashUntil ? _flashA
+            : _ult ? (FxMath.Repeat(now * 7f, 1f) < 0.4f ? 0.36f : 0.12f)
+            : _pulse && FxMath.Repeat(now * 4f, 1f) < 0.35f ? 0.22f : 0f;
         if (a <= 0f)
         {
             if (_own) fs.gameObject.SetActive(false);

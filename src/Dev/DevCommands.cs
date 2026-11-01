@@ -57,6 +57,13 @@ internal static class DevCommands
             reply($"OK tp {TestBridge.F(to.x)} {TestBridge.F(to.y)}");
         });
 
+        TestBridge.Register("epithetend", "<dawn|blood> [役職Id=Samurai] | off  次の終わりの画面を、特別枠の人が勝ったものとして出す (dawn = 守の道・blood = 修羅の単独勝ち。forcewin と組む)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 0 || a[0] == "off") UI.EpithetEnd.TestSet(null, false);
+            else UI.EpithetEnd.TestSet(a.Length > 1 ? a[1] : "Samurai", a[0] == "blood");
+            reply($"OK epithetend {UI.EpithetEnd.Describe()}");
+        });
         TestBridge.Register("setrole", "<役職Id> [番号] その人 (省略で自分) に役職を付けて全員に配る (ホストのみ。土台の役職も合わせる)", GiveRole);
         TestBridge.Register("giverole", "setrole と同じ", GiveRole);
         TestBridge.Register("setaddon", "<アドオンId> [番号] その人 (省略で自分) にアドオンを足して全員に配る (ホストのみ。役職が無い人にはアドオンだけ付く)", GiveAddon);
@@ -842,6 +849,13 @@ internal static class DevCommands
         if (!PlayerControl.LocalPlayer || !AmongUsClient.Instance.AmHost) { reply("ERR setrole needs host in game"); return; }
         var target = a.Length > 1 && byte.TryParse(a[1], out byte pid) ? Player(pid) : PlayerControl.LocalPlayer;
         if (!target) { reply($"ERR setrole no player {a[1]}"); return; }
+        // ロビーでは次の試合の予約にする (チャットの /setrole と同じ。役職の発表まで通して見る時に使う)
+        if (LobbyBehaviour.Instance && !ShipStatus.Instance)
+        {
+            RoleAssigner.Reserved[target.PlayerId] = Registry.Roles.IndexOf(proto);
+            reply($"OK setrole {proto.Id} reserved for={target.PlayerId}");
+            return;
+        }
         RoleAssigner.Give(target, proto);
         reply($"OK setrole {proto.Id} to={target.PlayerId} base={target.Data.Role.Role} neutral={RoleState.AnyNeutral}");
     }

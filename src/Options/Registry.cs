@@ -119,12 +119,14 @@ internal static class Registry
                 var opts = CollectFields(t);
                 addon.Chance = new IntOpt("Registry.Chance", 0, 0, 100, 10, "%") { NoChangeMark = true };
                 addon.Count = new IntOpt("Registry.Count", 1, 1, Math.Max(addon.MaxCount, 1));
-                addon.OnCrew = new BoolOpt("Registry.CrewmatesCanHaveIt", true);
-                addon.OnImpostor = new BoolOpt("Registry.ImpostorsCanHaveIt", true);
-                addon.OnNeutral = new BoolOpt("Registry.NeutralsCanHaveIt", true);
+                addon.OnCrew = new BoolOpt("Registry.CrewmatesCanHaveIt", addon.DefaultOnCrew);
+                addon.OnMadmate = new BoolOpt("Registry.MadmatesCanHaveIt", addon.DefaultOnMadmate);
+                addon.OnImpostor = new BoolOpt("Registry.ImpostorsCanHaveIt", addon.DefaultOnImpostor);
+                addon.OnNeutral = new BoolOpt("Registry.NeutralsCanHaveIt", addon.DefaultOnNeutral);
                 Add(sec, addon.Chance, addon.Id + ".Chance");
                 Add(sec, addon.Count, addon.Id + ".Count");
                 Add(sec, addon.OnCrew, addon.Id + ".OnCrew");
+                Add(sec, addon.OnMadmate, addon.Id + ".OnMadmate");
                 Add(sec, addon.OnImpostor, addon.Id + ".OnImpostor");
                 Add(sec, addon.OnNeutral, addon.Id + ".OnNeutral");
                 foreach (var (name, opt) in opts) Add(sec, opt, addon.Id + "." + name);

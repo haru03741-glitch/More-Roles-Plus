@@ -46,6 +46,7 @@ internal static partial class DuelHud
         _plateX = 0.25f + pw * 0.5f;
         _plateL = Plate(white, layer, root, -1f, pw, src, _plateLinesL, out _plateBackL, out _plateEdgeL, out _plateFaceL, out _plateNameL);
         _plateR = Plate(white, layer, root, 1f, pw, src, _plateLinesR, out _plateBackR, out _plateEdgeR, out _plateFaceR, out _plateNameR);
+        BuildEpithet(layer, src, pw);
 
         // 斬り線 = 外の淡い光 + 白い芯 (斜めに 1 本)
         var slash = new GameObject("Slash") { layer = layer };
@@ -99,6 +100,7 @@ internal static partial class DuelHud
         if (!_introRoot) return;
         PaintPlate(_plateBackL, _plateEdgeL, _plateFaceL, _plateNameL, _plateLinesL, _me);
         PaintPlate(_plateBackR, _plateEdgeR, _plateFaceR, _plateNameR, _plateLinesR, _opp);
+        PaintEpithet();
         DressCrew(2, 3, _me, _opp);
         _introOn = true;
         _vsFlashed = false;
@@ -165,6 +167,7 @@ internal static partial class DuelHud
         float drift = 0.18f * FxMath.Clamp01((t - IntroIn) / (IntroTime - IntroIn));
         _plateL.localPosition = FxMath.V3(-_plateX - x + drift, _plateY, 0f);
         _plateR.localPosition = FxMath.V3(_plateX + x - drift, _plateY, 0f);
+        EpithetTick(t);
 
         // 斬り線: 中央から両へ一気に伸び、細くなって消える
         float sk = FxMath.Clamp01((t - SlashAt) / SlashGrow);

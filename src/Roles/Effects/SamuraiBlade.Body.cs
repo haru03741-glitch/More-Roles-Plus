@@ -151,16 +151,18 @@ internal sealed partial class SamuraiBlade
         _auraInTf.localPosition = FxMath.V3(-sway * 0.5f, y, AuraZ - 0.0002f);
         _auraInTf.localScale = FxMath.V3(1.2f * big, 1.35f * (2f - fy) * big, 1f);
         float a = FxMath.Clamp01(level);
-        float h = _auraHot * 0.7f;
+        float h = FxMath.Min(_auraHot * 0.7f, 1f);
+        // 必殺技の溜め (_auraUlt) で外の炎を道の色へ寄せる (守 = 夜明けの金・修羅 = 濃い紅)
+        float u = _auraUlt;
         if (_fallenTint)
         {
-            _auraOut.color = FxMath.Rgba(1f, 0.15f, 0.25f, 0.7f * a);
+            _auraOut.color = FxMath.Rgba(1f, 0.15f - 0.10f * u, 0.25f - 0.15f * u, (0.7f + 0.2f * u) * a);
             _auraIn.color = FxMath.Rgba(1f, 0.45f + 0.55f * h, 0.35f + 0.65f * h, 0.8f * a);
         }
         else
         {
-            _auraOut.color = FxMath.Rgba(1f, 0.30f, 0.62f, 0.7f * a);
-            _auraIn.color = FxMath.Rgba(0.25f + 0.75f * h, 0.5f + 0.5f * h, 1f, 0.8f * a);
+            _auraOut.color = FxMath.Rgba(1f, 0.30f + 0.45f * u, 0.62f - 0.30f * u, (0.7f + 0.2f * u) * a);
+            _auraIn.color = FxMath.Rgba(0.25f + 0.75f * h, 0.5f + 0.5f * h, 1f - 0.15f * u, 0.8f * a);
         }
         WriteGlint(now);
     }

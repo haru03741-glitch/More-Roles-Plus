@@ -244,6 +244,7 @@ internal static class RoleDisplay
         intro.RoleText.color = color;
         intro.RoleBlurbText.text = role.Blurb.ToString() + AddonLines(role.PlayerId, 80);
         intro.RoleBlurbText.color = color;
+        UI.EpithetIntro.Begin(intro, role);
     }
 
     internal static Color ParseColor(string hex)

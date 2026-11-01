@@ -23,6 +23,7 @@ internal static class RoleFrame
     private static readonly List<Assignable> Frame = new();
     private static readonly List<bool> FrameHost = new();
     private static readonly List<Assignable> Marks = new();
+<<<<<<< HEAD
     private static readonly List<RoleBase> Publics = new(); // 全員の画面で名前に印が付く役職 (RoleBase.PublicMark)
     // 役職の持ち主でない人の画面にも出す印 (スカーレットに誑かされた人が自分の名前に見る ♡ など)。寿命が切れると外れる
     private static readonly List<(Lifespan life, Func<PlayerControl, string> fn)> ExtraMarks = new();
@@ -33,6 +34,9 @@ internal static class RoleFrame
         ExtraMarks.Add((life, fn));
         if (_markEvery == 0) _markEvery = Math.Max(1, (int)(MarkSeconds / Time.fixedDeltaTime + 0.5f));
     }
+=======
+    private static readonly List<Assignable> Publics = new(); // 全員の画面で名前に印が付く役職とアドオン (MarkSeenBy)
+>>>>>>> ae4c39b399088735a04072f4a6bab91e01255570
 
     public static void OnAssigned(Assignable role)
     {
@@ -47,9 +51,9 @@ internal static class RoleFrame
             Marks.Add(role);
             if (_markEvery == 0) _markEvery = Math.Max(1, (int)(MarkSeconds / Time.fixedDeltaTime + 0.5f));
         }
-        if (c.Public && role is RoleBase rb)
+        if (c.Public)
         {
-            Publics.Add(rb);
+            Publics.Add(role);
             if (_markEvery == 0) _markEvery = Math.Max(1, (int)(MarkSeconds / Time.fixedDeltaTime + 0.5f));
         }
     }
@@ -69,7 +73,7 @@ internal static class RoleFrame
         c.Mark = mark != null && mark.DeclaringType != typeof(Assignable);
         var pub = t.GetProperty(nameof(RoleBase.PublicMark), F);
         var seenBy = t.GetMethod(nameof(RoleBase.MarkSeenBy), F, new[] { typeof(PlayerControl) });
-        c.Public = (pub != null && pub.DeclaringType != typeof(RoleBase)) || (seenBy != null && seenBy.DeclaringType != typeof(RoleBase));
+        c.Public = (pub != null && pub.DeclaringType != typeof(RoleBase)) || (seenBy != null && seenBy.DeclaringType != typeof(RoleBase) && seenBy.DeclaringType != typeof(AddonBase));
         return ByType[t] = c;
     }
 
@@ -167,7 +171,12 @@ internal static class RoleFrame
         for (int i = 0; i < Publics.Count; i++)
         {
             if (Publics[i].PlayerId != seen.PlayerId) continue;
-            string m = Publics[i].MarkSeenBy(PlayerControl.LocalPlayer);
+            string m = Publics[i] switch
+            {
+                RoleBase r => r.MarkSeenBy(PlayerControl.LocalPlayer),
+                AddonBase a => a.MarkSeenBy(PlayerControl.LocalPlayer),
+                _ => null,
+            };
             if (!string.IsNullOrEmpty(m)) Sb.Append(m);
         }
         for (int i = 0; i < ExtraMarks.Count; i++)
@@ -244,7 +253,7 @@ internal static class RoleFrame
             Frame.RemoveAt(i);
             FrameHost.RemoveAt(i);
         }
-        if (Marks.Remove(role) | (role is RoleBase rb && Publics.Remove(rb)))
+        if (Marks.Remove(role) | Publics.Remove(role))
         {
             ClearSlots(InGame);
             ClearSlots(InMeeting);

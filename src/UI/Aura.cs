@@ -130,7 +130,7 @@ internal sealed class Aura : Widget
     }
 
     // オーロラの色 (pos は 1 巡 = 1)
-    private static Color Hue(float pos, float alpha)
+    internal static Color Hue(float pos, float alpha)
     {
         float f = FxMath.Repeat(pos, 1f) * 3f;
         int a = (int)f % 3, b = (a + 1) % 3;
@@ -177,7 +177,7 @@ internal sealed class Aura : Widget
     }
 
     // 細い 4 本の光の星 (高さ 1 単位)
-    private static Sprite SparkSprite => _sparkSprite ? _sparkSprite : _sparkSprite = FxSprites.Rect(32, 32, (x, y) =>
+    internal static Sprite SparkSprite => _sparkSprite ? _sparkSprite : _sparkSprite = FxSprites.Rect(32, 32, (x, y) =>
     {
         float ax = FxMath.Abs(x), ay = FxMath.Abs(y);
         float ray = FxMath.Max(1f - ay * 2f - ax * 14f, 1f - ax * 2f - ay * 14f);

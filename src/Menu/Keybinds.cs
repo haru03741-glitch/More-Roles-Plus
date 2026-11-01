@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Menu;
 // Rewired のキーボードのキーの番号は Unity の KeyCode と同じ
 internal static class Keybinds
 {
-    internal enum Slot { Ability1, Ability2, Ability3, Emote, Dictionary, Dodge }
+    internal enum Slot { Ability1, Ability2, Ability3, Emote, Dictionary, Dodge, PhotoMode }
 
     private static readonly (string Id, string Text, KeyboardKeyCode Key)[] Defs =
     {
@@ -23,13 +23,14 @@ internal static class Keybinds
         ("MRP.Emote", "Keybinds.Emote", KeyboardKeyCode.B),
         ("MRP.Dictionary", "Keybinds.Dictionary", KeyboardKeyCode.H),
         ("MRP.Dodge", "Keybinds.Dodge", KeyboardKeyCode.LeftShift),
+        ("MRP.PhotoMode", "Keybinds.PhotoMode", KeyboardKeyCode.F3),
     };
 
     private const int RefreshFrames = 120;
 
-    private static readonly int[] ActionIds = { -1, -1, -1, -1, -1, -1 };
-    private static readonly KeyCode[] Keys = { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.B, KeyCode.H, KeyCode.LeftShift };
-    private static readonly string[] Names = new string[6]; // 画面に出している名前 (言語が替わった時だけ書き直す)
+    private static readonly int[] ActionIds = { -1, -1, -1, -1, -1, -1, -1 };
+    private static readonly KeyCode[] Keys = { KeyCode.Z, KeyCode.X, KeyCode.C, KeyCode.B, KeyCode.H, KeyCode.LeftShift, KeyCode.F3 };
+    private static readonly string[] Names = new string[7]; // 画面に出している名前 (言語が替わった時だけ書き直す)
     private static InputManager_Base _manager;
     private static int _frame;
 
@@ -95,9 +96,16 @@ internal static class Keybinds
             try { Refresh(); }
             catch (Exception e) { Plugin.Logger.LogError($"keybinds: {e}"); _frame = -RefreshFrames * 14; }
         }
+        // ここから先は押された瞬間の読みだけなので、何も押されていないフレームは 1 回の問い合わせで帰す
+        if (!Input.anyKeyDown) return;
         if (Down(Slot.Dictionary))
         {
             ToggleDictionary();
+            return;
+        }
+        if (Down(Slot.PhotoMode))
+        {
+            if (!Typing()) PhotoMode.Toggle();
             return;
         }
         int n = Math.Min(3, Roles.Abilities.Local.Count); // 能力の数だけ読む
@@ -117,12 +125,26 @@ internal static class Keybinds
         // 開けるのは右上の辞典のボタンと同じく HUD のある場面 (ロビー・試合中) だけ
         if (!Vanilla.Hud) return;
         if (IntroCutscene.Instance || ExileController.Instance || Minigame.Instance) return;
+<<<<<<< HEAD
         var chat = Vanilla.Chat;
         if ((chat && chat.IsOpenOrOpening) || UI.TextField.Typing) return;
         foreach (var box in UnityEngine.Object.FindObjectsOfType<TextBoxTMP>())
             if (box && box.hasFocus) return;
+=======
+        if (Typing()) return;
+>>>>>>> ae4c39b399088735a04072f4a6bab91e01255570
         if (RoleDictionary.IsOpen) UI.UiWindow.Current?.Close();
         else RoleDictionary.Open();
+    }
+
+    // 字を打っている間 (チャット・検索欄)。押された時だけ見る
+    private static bool Typing()
+    {
+        var chat = Vanilla.Chat;
+        if (chat && chat.IsOpenOrOpening) return true;
+        foreach (var box in UnityEngine.Object.FindObjectsOfType<TextBoxTMP>())
+            if (box && box.hasFocus) return true;
+        return false;
     }
 
     private static bool _warned;

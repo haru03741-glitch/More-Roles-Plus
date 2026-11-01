@@ -389,6 +389,7 @@ public static class GameEnd
         LocalNeutral = RoleState.Local?.Team == Team.Neutral;
         LocalSpectating = lp && Spectate.IsWatching(lp.PlayerId);
         _localColor = RoleState.Local?.Color;
+        UI.EpithetEnd.Capture(r);
         Plugin.Logger.LogInfo($"win: draw={r.Draw} team={r.Team?.ToString() ?? "-"} role={r.Role?.Id ?? "-"} winners=[{string.Join(",", r.Winners)}] localWon={LocalWon}");
     }
 
@@ -576,6 +577,8 @@ internal static class EndScreenPatch
     {
         try { GameEnd.ApplyText(__instance); }
         catch (Exception e) { Plugin.Logger.LogWarning($"end screen: {e.Message}"); }
+        try { UI.EpithetEnd.Show(__instance); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"end epithet: {e.Message}"); }
         try { Menu.EndSummary.Show(__instance); }
         catch (Exception e) { Plugin.Logger.LogWarning($"end summary: {e.Message}"); }
     }

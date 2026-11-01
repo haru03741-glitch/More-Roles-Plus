@@ -7,7 +7,7 @@ namespace MoreRolesPlus.Roles;
 // 試合での割り当て・表示まで自動で行われる。書き方は役職と同じ (設定は static readonly・起きた事はメソッド)。
 //
 // 役職と違うところ:
-//   - 陣営を持たない。どの陣営の人に付くかは設定 (クルー / インポスター / 第三陣営) で、ホストが配る時に見る。
+//   - 陣営を持たない。どの陣営の人に付くかは設定 (クルー / マッドメイト / インポスター / 第三陣営) で、ホストが配る時に見る。
 //   - 能力ボタン・単独の勝ち (GameEnd.Win) は持てない。
 public abstract class AddonBase : Assignable
 {
@@ -28,6 +28,7 @@ public abstract class AddonBase : Assignable
     {
         Team.Impostor => OnImpostor.Value,
         Team.Neutral => OnNeutral.Value,
+        Team.Madmate => OnMadmate.Value,
         _ => OnCrew.Value,
     };
 
@@ -45,5 +46,14 @@ public abstract class AddonBase : Assignable
     public virtual bool StealsWin(GameResult result) => false;
 
     // 付く陣営。設定画面に自動で付く
-    internal BoolOpt OnCrew, OnImpostor, OnNeutral;
+    internal BoolOpt OnCrew, OnMadmate, OnImpostor, OnNeutral;
+
+    // 付く陣営の設定の初めの値 (クルーだけに付くアドオンなら OnImpostor 等を false に)
+    protected internal virtual bool DefaultOnCrew => true;
+    protected internal virtual bool DefaultOnMadmate => true;
+    protected internal virtual bool DefaultOnImpostor => true;
+    protected internal virtual bool DefaultOnNeutral => true;
+
+    // 全員の画面で、このアドオンの人の名前の後ろに付く印 (RoleBase.MarkSeenBy と同じ)。null なら付けない
+    public virtual string MarkSeenBy(PlayerControl viewer) => null;
 }

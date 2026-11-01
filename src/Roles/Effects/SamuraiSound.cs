@@ -173,7 +173,7 @@ internal static class SamuraiSound
         _charge.pitch = _chargePitch = pitch;
     }
 
-    internal static void ChargeFull()
+    internal static void ChargeFull(float pitch = 1f, float volume = 0.5f)
     {
         if (MeetingHud.Instance || !Ensure()) return;
         var clip = MrpBundle.Clip("noise_samurai_charge_full");
@@ -182,9 +182,9 @@ internal static class SamuraiSound
         _next = (_next + 1) % Voices;
         src.Stop();
         src.clip = clip;
-        src.volume = 0.5f;
+        src.volume = volume;
         src.panStereo = 0f;
-        src.pitch = 1f;
+        src.pitch = pitch;
         src.Play();
     }
 

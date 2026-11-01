@@ -18,11 +18,11 @@ public sealed partial class Samurai
     // ホストが確かめた (通した) 一振りの数。ボットが相手の振りの勢いを数えるのに使う
     internal int BotSeenStrokes => _hostStrokes;
 
-    // 向き a0 (度) から sweep (度・符号付き) を secs 秒で振る。納めていれば居合 (charge = 0〜1 の溜め)
+    // 向き a0 (度) から sweep (度・符号付き) を secs 秒で振る。納めていれば居合 (charge = 0〜1 の溜め・2 以上 = 必殺技まで溜めた)
     internal void BotStroke(float a0, float sweep, float secs, float charge)
     {
         if (BotSpent) return;
-        byte iai = Drawn ? (byte)0 : (byte)(1 + (int)MathF.Round(FxMath.Clamp01(charge) * 254f));
+        byte iai = Drawn ? (byte)0 : charge >= 2f ? UltIai : IaiByte(charge);
         HostStroke(new Stroke((short)Math.Clamp((int)a0, -180, 180), (short)sweep, (ushort)(secs * 1000f), iai, (byte)IaiTier(HostKiNow(), Drawn ? 0f : charge)));
         BotUsedKi();
     }
