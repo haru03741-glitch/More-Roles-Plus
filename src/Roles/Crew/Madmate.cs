@@ -12,7 +12,7 @@ public sealed class Madmate : RoleBase
     public override Text Name => new("Madmate.Name");
     public override string Reading => "まっどめいと";
     public override Text Blurb => new("Madmate.Blurb");
-    public override string Origin => "sln";
+    public override string Origin => "libhalt";
     public override Team? WinsWithTeam => Team.Impostor;
 
     public static readonly BoolOpt KnowImpostors = new("Madmate.KnowImpostors", false);

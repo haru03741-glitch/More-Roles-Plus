@@ -12,7 +12,7 @@ public sealed class Seer : RoleBase
     public override Text Name => new("Seer.Name");
     public override string Reading => "れいばいし";
     public override Text Blurb => new("Seer.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOR";
 
     public static readonly ChoiceOpt Mode = new("Seer.Mode", 0,
         new Text("Seer.Mode.Both"), new Text("Seer.Mode.Flash"), new Text("Seer.Mode.Soul"));
