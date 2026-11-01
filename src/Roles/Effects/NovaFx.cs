@@ -840,6 +840,8 @@ internal static partial class NovaFx
     private const float PlasmaBack = 0.5f, PlasmaOpen = 0.12f;
 
     // プラズマの筒: 長さは芯が伸びるのに合わせ、開き具合は芯が届いてからすぐ開く。値は色で渡す (r = 開き・g = 熱・b = 芯の太さ・a = 濃さ)
+    private static int _idLen, _idBack, _idHalf, _idCore, _idLit, _idTail; // 光線の絵ごとの値の番号 (名前で渡すと呼ぶたびに文字列を写す)
+
     private static void TickPlasma(Beam b, float t, float len, float k, float fade)
     {
         float coreHalf = b.Size * 0.5f * 0.4f;
@@ -858,12 +860,17 @@ internal static partial class NovaFx
         {
             b.MpbLen = len;
             b.Mpb ??= new MaterialPropertyBlock();
-            b.Mpb.SetFloat("_Len", full);
-            b.Mpb.SetFloat("_Back", PlasmaBack);
-            b.Mpb.SetFloat("_Half", farHalf);
-            b.Mpb.SetFloat("_Core", coreHalf * (0.6f + 0.4f * k));
-            b.Mpb.SetFloat("_Lit", b.Lit);
-            b.Mpb.SetFloat("_Tail", b.Tail);
+            if (_idLen == 0)
+            {
+                _idLen = Shader.PropertyToID("_Len"); _idBack = Shader.PropertyToID("_Back"); _idHalf = Shader.PropertyToID("_Half");
+                _idCore = Shader.PropertyToID("_Core"); _idLit = Shader.PropertyToID("_Lit"); _idTail = Shader.PropertyToID("_Tail");
+            }
+            b.Mpb.SetFloat(_idLen, full);
+            b.Mpb.SetFloat(_idBack, PlasmaBack);
+            b.Mpb.SetFloat(_idHalf, farHalf);
+            b.Mpb.SetFloat(_idCore, coreHalf * (0.6f + 0.4f * k));
+            b.Mpb.SetFloat(_idLit, b.Lit);
+            b.Mpb.SetFloat(_idTail, b.Tail);
             b.Plasma.SetPropertyBlock(b.Mpb);
             if (b.FloorGlow) b.FloorGlow.SetPropertyBlock(b.Mpb);
         }
@@ -1103,6 +1110,7 @@ internal static partial class NovaFx
         Beams.Clear();
         foreach (var p in Puffs) if (p.Go) { p.Go.SetActive(false); Pool.Push(p); }
         Puffs.Clear();
+        PendingSplit.Clear();
         if (_ov) _ov.SetActive(false);
         _ovT0 = -99f;
         _ovOn = false;

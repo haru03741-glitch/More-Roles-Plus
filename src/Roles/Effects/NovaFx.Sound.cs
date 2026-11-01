@@ -131,7 +131,8 @@ internal static partial class NovaFx
     {
         if (Shots.Count == 0 && Beams.Count == 0 && !_sndOn) return;
         if (MeetingHud.Instance) { StopSound(); return; }
-        if (!SndReady() || !Ear()) return;
+        if (!SndReady()) return;
+        if (!Ear()) { StopSound(); return; } // 試合を抜けた後にループが鳴り残らないように
         int frame = ++_sndFrame;
         bool any = false;
 
