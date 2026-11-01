@@ -109,10 +109,19 @@ internal static class RoleCommands
             reply($"OK rlaim {deg}");
         });
 
-        TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く) / stance = 右クリックと同じ (構える・しまう) / fire = 左クリックと同じ (構えていれば溜めずに撃つ) / charge <秒> = 左クリックをその秒だけ押して離す / mash <番号> <回数> = 光線と押し合っているサムライの連打をホストで足す", (args, reply) =>
+        TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く) / stance = 右クリックと同じ (構える・しまう) / fire = 左クリックと同じ (構えていれば溜めずに撃つ) / charge <秒> = 左クリックをその秒だけ押して離す / mash <番号> <回数> = 光線と押し合っているサムライの連打をホストで足す / ear <dx> <dy> | off = 音を聞く位置を自分からずらす / snd = 音の状態", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (a.Length == 1 && a[0] == "stance") { reply("OK nova stance " + Roles.Impostor.Nova.StanceForTest()); return; }
+            if (a.Length >= 2 && a[0] == "ear")
+            {
+                if (a[1] == "off") { Roles.NovaFx.EarShift = false; reply("OK nova ear off"); return; }
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                if (a.Length < 3 || !float.TryParse(a[1], System.Globalization.NumberStyles.Float, ci, out float ex) || !float.TryParse(a[2], System.Globalization.NumberStyles.Float, ci, out float ey)) { reply("ERR nova ear <dx> <dy> | off"); return; }
+                Roles.NovaFx.EarShiftX = ex; Roles.NovaFx.EarShiftY = ey; Roles.NovaFx.EarShift = true;
+                reply($"OK nova ear {ex} {ey}"); return;
+            }
+            if (a.Length == 1 && a[0] == "snd") { reply("OK nova snd " + Roles.NovaFx.SoundState()); return; }
             if (a.Length == 1 && a[0] == "fire") { reply("OK nova fire " + Roles.Impostor.Nova.FireForTest()); return; }
             if (a.Length == 3 && a[0] == "mash" && byte.TryParse(a[1], out byte msam) && int.TryParse(a[2], out int mn)) { reply($"OK nova mash {Roles.Impostor.Nova.HostBeamMash(msam, mn)}"); return; }
             if (a.Length == 2 && a[0] == "charge" && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec)) { reply("OK nova charge " + Roles.Impostor.Nova.ChargeForTest(sec)); return; }

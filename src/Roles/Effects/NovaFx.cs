@@ -130,6 +130,9 @@ internal static partial class NovaFx
         public Transform CannonTf, GlowTf, CoreTf, HaloTf, LightTf, AimTf, DotTf, BoltTf;
         public float T0, C0, Dur, Limit, Open, OpenFire, LevelFire, Ax, Ay, Angle, Size, AimLen, AimYaw, FiredAt = -1f, EndAt = -1f, Extra;
         public float NextHaze, NextBolt, BoltOff, NextDrip, NextSteam;
+        public float Plate, Rail, PlateFire, RailFire;   // 装甲板の開き・棒の伸び (撃った時の値から続ける)
+        public float ShakeA, ShakeB;
+        public int ShakeTick = -1;
         public float Mx, My, Px, Py, Z, Dx, Dy;   // 今の砲口 (画面)・光線の頂点 (画面)・奥行き・今のキャノンの画面の向き
         public float Side = 1f;           // キャノンを持つ手 (右 = 1・左 = -1)
         public float Vx = 1f, Vy, VisYaw, VisVel, LastNow, Bob, BobPhase, Rot; // 見えている向き (狙いに重さで遅れて付いてくる)・歩く揺れ・絵を回した角度
@@ -187,7 +190,8 @@ internal static partial class NovaFx
     internal static void Stance(PlayerControl p, float angle, float aimLen)
     {
         if (!p || RewindPlayback.Active || !Art()) return;
-        var s = Find(p, true) ?? NewShot(p, angle);
+        var s = Find(p, true);
+        if (s == null) { s = NewShot(p, angle); SndStance(true); }
         s.Stance = true;
         if (angle != s.Angle) SetAngle(s, angle);
         s.AimLen = aimLen;
@@ -197,7 +201,7 @@ internal static partial class NovaFx
     internal static void EndStance(PlayerControl p)
     {
         var s = Find(p, true);
-        if (s != null) s.EndAt = Time.time;
+        if (s != null) { s.EndAt = Time.time; SndStance(false); }
     }
 
     // 撃つ人・向き (画面の度)・溜めの秒・光線の太さ・狙いの線の長さ。構えていればそのキャノンから溜める
@@ -362,6 +366,51 @@ internal static partial class NovaFx
             heat = FxMath.Clamp01(1f - (tf - t0) / (end - t0));
         }
         TickRig(s, cx, cy, now, open, vent, heat, g, alpha, s.Shown && !firing && td > Deploy);
+        // 溜めと発射に合わせて動く部品: 溜めで芯が後ろから灯り・輪が回り・装甲板が開き・棒が伸びる。撃つと押し戻され、光線が消えると畳む
+        {
+            float fill, bright, spin, plate, rail, press = 0f, cap = 0f;
+            if (firing)
+            {
+                float beamEnd = BeamLife + s.Extra;
+                float lv = FxMath.Clamp01(s.LevelFire);
+                fill = 0.15f + 0.85f * lv;
+                bright = tf < beamEnd ? 1f : FxMath.Clamp01(1f - (tf - beamEnd) / Hold);
+                spin = -1f;
+                float shut = tf < beamEnd ? 0f : EaseOut((tf - beamEnd) / 0.5f);
+                plate = (s.PlateFire + (1f - s.PlateFire) * FxMath.Clamp01(tf / 0.06f)) * (1f - shut);
+                rail = FxMath.Max(s.RailFire, 0.35f) * (1f - (tf < beamEnd ? 0f : EaseOut((tf - beamEnd) / 0.4f)));
+                float r = tf < RecoilTime ? 1f - tf / RecoilTime : 0f;
+                press = RecoilPress * r * r;
+                cap = 0.03f * r * r;
+                // 照射中の震え: 30 回/秒で揺らす (毎フレーム揺らすと部品を毎フレーム置き直すことになる)
+                if (tf < beamEnd)
+                {
+                    int tick = (int)(now * 30f);
+                    if (tick != s.ShakeTick) { s.ShakeTick = tick; s.ShakeA = FxMath.Range(0f, 1f); s.ShakeB = FxMath.Range(-1f, 1f); }
+                    press += 0.006f * s.ShakeA;
+                    cap += 0.004f + 0.004f * s.ShakeB;
+                    plate += 0.012f * s.ShakeB * (1f - shut);
+                }
+            }
+            else if (s.Stance || td < Deploy)
+            {
+                fill = bright = plate = rail = 0f;
+                spin = RingIdle;
+            }
+            else
+            {
+                float u = FxMath.Clamp01(tc / (s.Dur + 0.001f));
+                fill = u; bright = 0.35f + 0.65f * u;
+                spin = RingIdle + (RingMax - RingIdle) * u;
+                plate = EaseOut(u / 0.7f);
+                rail = EaseOut(u);
+                press = 0.012f * u;
+                cap = 0.002f * u * FxMath.Sin(now * 90f);
+                s.Plate = plate; s.Rail = rail;
+            }
+            plate *= alpha; rail *= alpha;
+            TickMech(s.Rig, dt, alpha, fill, bright, spin, plate, rail, press, cap);
+        }
         // 溜まり具合の筒 (撃ったら 0.4 秒で薄れて消える)
         if (!s.Stance || s.Tank != null)
         {
@@ -517,8 +566,9 @@ internal static partial class NovaFx
         public float Height, FloorZ;               // 光線の床からの高さ (画面)・床の奥行き
         public MaterialPropertyBlock Mpb;
         public float MpbLen = -1f;
+        public float Tail;                         // 先で細りながら消える長さ (刀に割られた所・0 = 先で切れる)
         public float NextShake, NextHit, NextDust;
-        public bool Embered, HitWall;
+        public bool Embered, HitWall, Branch; // Branch = 刀で割れた/弾かれた枝 (もう割らない)
     }
 
     private static readonly List<Beam> Beams = new();
@@ -537,6 +587,7 @@ internal static partial class NovaFx
         {
             shot.FiredAt = Time.time;
             shot.OpenFire = shot.Open;
+            shot.PlateFire = shot.Plate; shot.RailFire = shot.Rail;
             shot.Core.enabled = shot.Halo.enabled = shot.Light.enabled = shot.Aim.enabled = shot.Dot.enabled = shot.Bolt.enabled = false;
             mx = shot.Px; my = shot.Py;
         }
@@ -547,7 +598,31 @@ internal static partial class NovaFx
         // 足元の線の長さを頂点から測り直す (頂点の分だけ短い)
         float back = (mx - from.x) * dx + (my - from.y) * dy;
         float len = length - back > 0.05f ? length - back : 0.05f;
-        var b = new Beam { P = p, T0 = Time.time, X = mx, Y = my, Dx = dx, Dy = dy, Len = len, Size = size, Angle = angle, Z = (from.y - 2f) / 1000f, FloorY = from.y };
+        var b = NewBeam(p, mx, my, angle, len, size, half, hitWall, from.y, my - from.y, from.y + dy * back);
+        // 後ろの放熱口から噴気と火花 (反動)
+        float rx = mx - dx * (1.2f + ApexGap), ry = my - dy * (1.0f + ApexGap);
+        for (int i = 0; i < 6; i++)
+        {
+            float a = angle + 180f + FxMath.Range(-35f, 35f), v = FxMath.Range(1.2f, 2.6f);
+            SpawnPuff(rx, ry, FxMath.Cos(a * Deg) * v, FxMath.Sin(a * Deg) * v, 0.25f, 0.9f, FxMath.Range(0.6f, 0.9f), b.Z + 0.0002f, PuffKind.Steam);
+            SpawnPuff(rx, ry, FxMath.Cos(a * Deg) * v * 1.6f, FxMath.Sin(a * Deg) * v * 1.6f + 1f, 0.12f, 0.08f, FxMath.Range(0.3f, 0.5f), b.Z - 0.0004f, PuffKind.Spark);
+        }
+        // 砲口: ごく短い閃光と、まわりを照らす光
+        SpawnPuff(mx, my, 0f, 0f, 0.8f * size + 0.5f, 1.4f * size + 0.8f, 0.1f, b.Z - 0.0008f, PuffKind.Flash, angle);
+        SpawnPuff(mx, my, 0f, 0f, 2.5f, 4.5f, 0.45f, b.Z + 0.0004f, PuffKind.Glow);
+        Shake(mx, my, 10f, 0.18f, 0.7f);
+        Overlay(mx, my, 0.6f);
+        if (hitWall) Impact(mx + dx * len, my + dy * len, angle, size, b.Z);
+        SndFire(p, mx, my, shot != null ? FxMath.Clamp01(shot.LevelFire) : 0f, hitWall, mx + dx * len, my + dy * len);
+        TakePendingSplit(p);
+    }
+
+    // 光線 1 本の絵を組んで Beams へ足す (砲口から撃った物も、刀で割れた枝も同じ作り)。
+    // (mx, my) = 頂点・floorY = 足元の床の y (前後の奥行き)・height = 頂点の床からの高さ・scarY = 焼けた線の始まりの床の y
+    private static Beam NewBeam(PlayerControl p, float mx, float my, float angle, float len, float size, float half, bool hitWall, float floorY, float height, float scarY)
+    {
+        float dx = FxMath.Cos(angle * Deg), dy = FxMath.Sin(angle * Deg);
+        var b = new Beam { P = p, T0 = Time.time, X = mx, Y = my, Dx = dx, Dy = dy, Len = len, Size = size, Angle = angle, Z = (floorY - 2f) / 1000f, FloorY = floorY };
         // 光線の横向き (板の +y = 画面の (-dy, dx)) と左上からの光 (-0.45, 0.89) の内積。光の当たる側の縁を明るくする
         b.Lit = dy * 0.45f + dx * 0.89f;
         b.Root = new GameObject("MrpNovaBeam");
@@ -567,7 +642,7 @@ internal static partial class NovaFx
         }
         // シェーダがあれば、帯の層の代わりに式で描くプラズマの筒 1 枚 (根元から先へラッパに広がり、中をエネルギーが流れる)。
         // 真下の床には同じ形で広がる照り返しを置き、光線が手の高さに浮いて見えるようにする
-        b.Height = my - from.y;
+        b.Height = height;
         b.HitWall = hitWall;
         if (MrpBundle.NovaBeamMaterial)
         {
@@ -581,7 +656,7 @@ internal static partial class NovaFx
                 b.FloorGlow = Make("FloorGlow", _plasmaSprite, rt);
                 b.FloorGlow.sharedMaterial = MrpBundle.NovaBeamMaterial;
                 b.FloorTf = b.FloorGlow.transform;
-                b.FloorZ = from.y / 1000f + 0.0006f;
+                b.FloorZ = floorY / 1000f + 0.0006f;
                 b.FloorTf.rotation = FxMath.RotZ(angle);
                 b.FloorGlow.enabled = false;
             }
@@ -608,25 +683,12 @@ internal static partial class NovaFx
         // 床に残る焼けた線 (光線の真下の床・人の下)。光線が細り始めたら出して冷めていく
         b.Scar = Make("Scar", _beam, rt);
         var scarTf = b.Scar.transform;
-        scarTf.position = FxMath.V3(mx, from.y + dy * back, from.y / 1000f + 0.0007f);
+        scarTf.position = FxMath.V3(mx, scarY, floorY / 1000f + 0.0007f);
         scarTf.rotation = FxMath.RotZ(angle);
         scarTf.localScale = FxMath.V3(len, 0.6f * size, 1f);
         b.Scar.enabled = false;
         Beams.Add(b);
-        // 後ろの放熱口から噴気と火花 (反動)
-        float rx = mx - dx * (1.2f + ApexGap), ry = my - dy * (1.0f + ApexGap);
-        for (int i = 0; i < 6; i++)
-        {
-            float a = angle + 180f + FxMath.Range(-35f, 35f), v = FxMath.Range(1.2f, 2.6f);
-            SpawnPuff(rx, ry, FxMath.Cos(a * Deg) * v, FxMath.Sin(a * Deg) * v, 0.25f, 0.9f, FxMath.Range(0.6f, 0.9f), b.Z + 0.0002f, PuffKind.Steam);
-            SpawnPuff(rx, ry, FxMath.Cos(a * Deg) * v * 1.6f, FxMath.Sin(a * Deg) * v * 1.6f + 1f, 0.12f, 0.08f, FxMath.Range(0.3f, 0.5f), b.Z - 0.0004f, PuffKind.Spark);
-        }
-        // 砲口: ごく短い閃光と、まわりを照らす光
-        SpawnPuff(mx, my, 0f, 0f, 0.8f * size + 0.5f, 1.4f * size + 0.8f, 0.1f, b.Z - 0.0008f, PuffKind.Flash, angle);
-        SpawnPuff(mx, my, 0f, 0f, 2.5f, 4.5f, 0.45f, b.Z + 0.0004f, PuffKind.Glow);
-        Shake(mx, my, 10f, 0.18f, 0.7f);
-        Overlay(mx, my, 0.6f);
-        if (hitWall) Impact(mx + dx * len, my + dy * len, angle, size, b.Z);
+        return b;
     }
 
     // 着弾: 当たった所が白熱して冷めていく・火花が放物線を描いて散る・煙が立つ
@@ -801,6 +863,7 @@ internal static partial class NovaFx
             b.Mpb.SetFloat("_Half", farHalf);
             b.Mpb.SetFloat("_Core", coreHalf * (0.6f + 0.4f * k));
             b.Mpb.SetFloat("_Lit", b.Lit);
+            b.Mpb.SetFloat("_Tail", b.Tail);
             b.Plasma.SetPropertyBlock(b.Mpb);
             if (b.FloorGlow) b.FloorGlow.SetPropertyBlock(b.Mpb);
         }
@@ -1007,8 +1070,8 @@ internal static partial class NovaFx
     internal static void Tick()
     {
         Impostor.Nova.LocalTick();
-        if (Shots.Count == 0 && Beams.Count == 0 && Puffs.Count == 0 && !_ovOn && !_surging) return;
-        if (RewindPlayback.Active) { _rewound = true; EndSurge(); return; }
+        if (Shots.Count == 0 && Beams.Count == 0 && Puffs.Count == 0 && !_ovOn && !_surging && !_sndOn) return;
+        if (RewindPlayback.Active) { _rewound = true; EndSurge(); StopSound(); return; }
         if (_rewound) { _rewound = false; Drop(); return; }
         float now = Time.time;
         if (_ovOn) { if (_ov) TickOverlay(now); else _ovOn = false; }
@@ -1026,6 +1089,7 @@ internal static partial class NovaFx
                 if (!b.Root || !TickBeam(b, now)) { if (b.Root) Object.Destroy(b.Root); Beams.RemoveAt(i); }
             }
         }
+        TickSound(now);
         if (Shots.Count > 0) TickSurge(now);
         else EndSurge();
         if (Puffs.Count > 0) TickPuffs(now);
@@ -1043,5 +1107,6 @@ internal static partial class NovaFx
         _ovT0 = -99f;
         _ovOn = false;
         EndSurge();
+        StopSound();
     }
 }

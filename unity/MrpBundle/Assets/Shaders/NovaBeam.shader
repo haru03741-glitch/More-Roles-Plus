@@ -4,6 +4,7 @@
 // 立体: 断面を円柱として、奥行き (弦の長さ) の分だけ濃く・左上からの光が当たる側の縁を明るく・反対側を暗くする。筋は円柱の表面に巻いて読む (縁ほど詰まる)。
 // 大きさは絵ごとの値 (MaterialPropertyBlock の SetFloat) で受け取る: _Len = 板の長さ・_Back = 板のうち頂点より後ろの長さ (頂点の光のにじみの分)・_Half = 太くなりきった時の半分の幅・_Core = 芯の半分の幅 (世界の単位)・
 //   _Lit = 光線の横向き (板の +y) と画面の左上の光の向きの内積 (-1〜1)。板の縦は _Half の 1.3 倍まで取ってあり、外の煙のにじみはそこまで。
+//   _Tail = 先で細りながら消える長さ (0 = 先はすぐ壁に当たって切れる)。刀に割られた光線はこの長さで刃へ絞られて消え、そこから枝が分かれる。
 // 時間で変わる値は頂点の色: r = 太り具合 (0 = 芯だけ・1 = 太くなりきる)・g = 熱さ (細って消える時に下げる)・b = 1 なら床に落ちた影と照り返し・a = 全体の濃さ。
 // 合成は乗算済みアルファ (One / OneMinusSrcAlpha): 暗いガスは背景を隠し、明るい筋ほどアルファを下げて光として足す。
 Shader "MRP/NovaBeam"
@@ -17,6 +18,7 @@ Shader "MRP/NovaBeam"
         _Core ("Core half width", Float) = 0.2
         _Back ("Behind the apex", Float) = 0.2
         _Lit ("Light side", Float) = 0.9
+        _Tail ("Fade at the far end", Float) = 0
         _R0r ("Ramp 0 r", Float) = 0.006
         _R0g ("Ramp 0 g", Float) = 0.006
         _R0b ("Ramp 0 b", Float) = 0.008
@@ -51,7 +53,7 @@ Shader "MRP/NovaBeam"
             #include "UnityCG.cginc"
 
             sampler2D _Noise;
-            float _Len, _Half, _Core, _Back, _Lit;
+            float _Len, _Half, _Core, _Back, _Lit, _Tail;
             float _R0r, _R0g, _R0b, _R1r, _R1g, _R1b, _R2r, _R2g, _R2b, _R3r, _R3g, _R3b, _R4r, _R4g, _R4b;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
@@ -90,6 +92,9 @@ Shader "MRP/NovaBeam"
                 hw = max(hw, 0.001);
                 float wob = tex2D(_Noise, float2(x * 0.18 - t * 2.6, (y > 0 ? 0.25 : 0.75) + t * 0.2)).r - 0.5;
                 hw *= 1.0 + wob * 0.3;
+                // 先で絞られて消える (刀に割られた所): 先の _Tail の間に幅が半分近くまで細り、濃さも 0 へ
+                float tail = _Tail > 0.001 ? smoothstep(0.0, _Tail, _Len - _Back - x) : 1.0;
+                hw *= 0.45 + 0.55 * tail;
                 float a1 = clamp(y / hw, -1.0, 1.0);
                 float d = abs(y) / hw;                           // 0 = 芯の線・1 = 縁
 
@@ -135,6 +140,7 @@ Shader "MRP/NovaBeam"
                 // 先はすぐ壁 (着弾の光が隠す)。板の始まり (頂点の後ろ) では頂点の光も必ず 0 まで落とす
                 a *= 1.0 - smoothstep(0.985, 1.0, u);
                 a *= smoothstep(-_Back, -_Back * 0.2, x);
+                a *= tail;
 
                 float3 col = Ramp(lev);
                 // 床: 柱の真下に落ちる暗い影と、筋の光の淡い照り返し

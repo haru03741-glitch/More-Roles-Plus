@@ -175,12 +175,14 @@ public sealed partial class Nova
         {
             case Kind.Deflect:
                 s.OnBeamDeflect(nova);
+                NovaFx.SplitBeam(np, deflect: true);
                 Contact(np, sp, 1.3f);
                 SamuraiSound.Clash(np, sp);
                 break;
             case Kind.LockStart:
                 s.BeginBeamLock(nova);
                 NovaFx.HoldBeam(np, LockTime + 0.2f);
+                NovaFx.SplitBeam(np, deflect: false, LockTime + 0.2f);
                 Contact(np, sp, 1.2f);
                 SamuraiSound.LockOn(np, sp);
                 RangedKillSnapPatch.Mark(nova, LockTime + 2f);

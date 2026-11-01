@@ -55,6 +55,7 @@ internal static partial class NovaFx
         if (now >= _dipNext)
         {
             dipStart = true;
+            if (!dead) SndBrownout(best);
             _dipDepth = FxMath.Range(0.3f, 0.62f) * best;
             _dipEnd = now + FxMath.Range(0.05f, 0.18f);
             // 3 回に 1 回ほどは落ちた直後にもう一度ちらつく

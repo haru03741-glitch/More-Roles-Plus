@@ -4,6 +4,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles;
 
 // キャノンの動く部品: 砲口の爪 3 本 (構えている間はわずかに開閉し、撃つと開く)・上面の排熱口の蓋 2 枚 (撃った後に開いて熱を吐く)・照準器のレンズの照り。
+// 溜めと発射に合わせて動く残りの部品は NovaFx.Mech.cs。
 // 絵の 3D の形と同じ座標で部品の位置を計算し、今のコマと同じ見え方で画面へ写す (真上から斜めに見た平行投影なので、
 // 棒は帯・玉は円・平らな板は平行四辺形になり、回して伸ばすだけで正しく重なる)。部品は形の真ん中に置いた台 (Rig) の子で、
 // 台の位置は毎フレーム・部品の置き直しはコマか開き具合が変わった時だけ
@@ -24,10 +25,10 @@ internal static partial class NovaFx
         _ball = ButtonIcons.Load("nova_ball", BallPpu, FxMath.V2(0.5f, 0.5f));
         _tip = ButtonIcons.Load("nova_tip", BallPpu, FxMath.V2(0.5f, 0.5f));
         _flap = ButtonIcons.Load("nova_flap", FlapPpu, FxMath.V2(0.5f, 0.5f));
-        return _rod && _ball && _tip && _flap;
+        return _rod && _ball && _tip && _flap && MechArt();
     }
 
-    private sealed class Rig
+    private sealed partial class Rig
     {
         public GameObject Go;
         public Transform Tf;
@@ -73,6 +74,7 @@ internal static partial class NovaFx
         }
         r.Glint = Make("Glint", Terrain.DebrisArt.SoftGlow, r.Tf); r.GlintTf = r.Glint.transform;
         r.GlintTf.localScale = FxMath.V3(0.06f, 0.06f, 1f);
+        MakeMech(r);
         return r;
     }
 
@@ -126,13 +128,13 @@ internal static partial class NovaFx
             for (int i = 0; i < 6; i++) r.Rods[i].color = white;
             r.Alpha = a;
             for (int i = 0; i < 2; i++) r.Flaps[i].color = FxMath.Rgba(r.FlapTone[i], r.FlapTone[i], r.FlapTone[i], a);
-            var tip = FxMath.Rgba(0.42f + 0.58f * g, 0.6f + 0.4f * g, 0.7f + 0.3f * g, a);
+            var tip = Pm(1, 0.3f + 0.7f * g, a);
             for (int i = 0; i < 3; i++)
             {
                 r.Balls[i].color = white;
                 r.Tips[i].color = tip;
                 r.TipGlow[i].enabled = g > 0.02f;
-                r.TipGlow[i].color = FxMath.Rgba(1f, 0.16f, 0.12f, 0.55f * g * a);
+                r.TipGlow[i].color = Pc(3, 0.55f * g * a);
             }
         }
         // 排熱口の中の熱 (蓋が開いた分だけ見える)

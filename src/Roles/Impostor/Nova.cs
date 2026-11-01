@@ -283,7 +283,6 @@ public sealed partial class Nova : RoleBase
         if (!p) return;
         n._heardChargeAt = Time.time;
         Vector2 from0 = p.GetTruePosition();
-        PortSound.Play("nova_charge", () => PortSound.Fallback("nova_charge"), 0.8f, from0, 15f);
         NovaFx.BeginCharge(p, angle, Charge, Size, Reach(from0, angle, out _), Charge + HoldLimit);
     }
 
@@ -331,10 +330,8 @@ public sealed partial class Nova : RoleBase
         float half = Half(level);
         int hits = Victims(n.Player, from, dir, length, half, Pierce(level), level >= 0.999f, out float stopAt);
         if (stopAt < length) { length = stopAt; wall = false; }
-        PortSound.Play("nova_beam", () => PortSound.Fallback("nova_beam"), 1f, from, 25f);
         // サムライで止まった所は、壁に当たった時と同じく光が弾ける (壁は焼かない)
         NovaFx.Fire(n.Player, from, angle, length, size, wall || _samuraiStop, half);
-        if (wall || _samuraiStop) PortSound.Play("nova_impact", null, 1f, from + dir * length, 25f);
         if (AmongUsClient.Instance.AmHost) HostBeam(n, hits, from, dir, length, size, wall, level);
     }
 
