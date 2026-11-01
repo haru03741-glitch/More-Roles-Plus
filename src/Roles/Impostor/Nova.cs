@@ -44,22 +44,48 @@ public sealed class Nova : RoleBase
         });
     }
 
-    // 撃つ向き (度・右が 0)
+    // スマホは最後に歩いた向きへ撃つので、自分の端末で向きを覚えておく
+    public override void OnFixedUpdate()
+    {
+        if (IsLocal && System.OperatingSystem.IsAndroid()) ShotKit.Track();
+    }
+
+    // 撃つ向き (度・右が 0)。PC はマウスの方・スマホは最後に歩いた向き (タッチの位置は押したボタンの所になるため)
     private static float Aim(PlayerControl lp)
     {
         bool left = lp.cosmetics && lp.cosmetics.FlipX;
         if (Mode.Value == 1) return left ? 180f : 0f;
+        float a;
         var cam = Camera.main;
-        Vector2 me = lp.GetTruePosition();
-        Vector2 mouse = cam ? (Vector2)cam.ScreenToWorldPoint(Input.mousePosition) : me + FxMath.V2(left ? -1f : 1f, 0f);
-        float a = Mathf.Atan2(mouse.y - me.y, mouse.x - me.x) * Mathf.Rad2Deg;
+        if (System.OperatingSystem.IsAndroid() || !cam)
+        {
+            var f = ShotKit.Facing;
+            a = Mathf.Atan2(f.y, f.x) * Mathf.Rad2Deg;
+        }
+        else
+        {
+            Vector2 me = lp.GetTruePosition();
+            Vector2 mouse = cam.ScreenToWorldPoint(Input.mousePosition);
+            a = Mathf.Atan2(mouse.y - me.y, mouse.x - me.x) * Mathf.Rad2Deg;
+        }
         if (Mode.Value == 2) a = Mathf.Round(a / 90f) * 90f;
         return a;
     }
 
     private static readonly RemoteCall<float> FireCall = new("Nova.Fire", Route.Anyone,
         (w, a) => w.Write(a), r => r.ReadSingle(),
-        (sender, a) => { if (RoleState.Of(sender) is Nova n) OnFire(n, a); });
+        (sender, a) => { if (RoleState.Of(sender) is Nova n && n.AcceptFire()) OnFire(n, a); });
+
+    // 受けた側の端末で: 待ち時間より明らかに早い発射は無視する
+    private float _lastFireAt = -999f;
+
+    private bool AcceptFire()
+    {
+        float now = Time.time;
+        if (now - _lastFireAt < Cooldown * 0.5f && !Dev.DevCooldown.Zero) return false;
+        _lastFireAt = now;
+        return true;
+    }
 
     // 全員の端末で: 溜めの光 → 光線。倒すのはホスト
     private static void OnFire(Nova n, float angle)

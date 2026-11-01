@@ -63,6 +63,8 @@ public sealed class Comet : RoleBase
     [HostOnly, OnlyMine]
     private void OnBeforeMurder(BeforeMurderEvent e)
     {
-        if (e.Killer && e.Killer.PlayerId != PlayerId && Cloak.IsOn(PlayerId)) e.Cancel("cloaked");
+        if (!e.Killer || e.Killer.PlayerId == PlayerId || !Cloak.IsOn(PlayerId)) return;
+        e.Cancel("cloaked");
+        PortKit.HostBlocked(e.Killer, Player); // キルした人の待ち時間を戻す (戻さないと連打できる)
     }
 }

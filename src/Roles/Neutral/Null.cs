@@ -29,6 +29,7 @@ public sealed class Null : RoleBase
     private int _phase = 1;
     private float _together, _alone;
     private int _sentSec = -1;
+    private float _sendIn; // 次に送れるまでの秒。境目を行き来しても 0.5 秒に 1 回まで
     private bool _advancing;
     private Ability _gauge;
 
@@ -66,9 +67,11 @@ public sealed class Null : RoleBase
             if (!near) _alone += dt;
             if (_alone >= AloneTime) { _phase = 3; changed = true; }
         }
+        _sendIn -= dt;
         int sec = (int)(_phase == 1 ? _together : _alone) + _phase * 1000 + (_advancing ? 0 : 500);
-        if (!changed && sec == _sentSec) return;
+        if (!changed && (sec == _sentSec || _sendIn > 0f)) return;
         _sentSec = sec;
+        _sendIn = 0.5f;
         Sync.Send((PlayerId, (byte)_phase, _together, _alone, _advancing));
         Receive(this, _phase, _together, _alone, _advancing, changed);
     }

@@ -39,6 +39,7 @@ public sealed class Doppelganger : RoleBase
 
     public override void OnAssigned()
     {
+        System.Array.Clear(_lastStrikeMs); // 前の試合の時刻を持ち越さない
         AddAbility(new Ability(new Text("Doppelganger.Command"), "doppelganger_map")
         {
             CooldownAtStart = false,
@@ -165,15 +166,15 @@ public sealed class Doppelganger : RoleBase
 
     private static readonly RemoteCall<(byte id, float x, float y, bool flip)> SpawnCall = new("Doppel.Spawn", Route.Anyone,
         (w, m) => { w.Write(m.id); w.Write(m.x); w.Write(m.y); w.Write(m.flip); }, r => (r.ReadByte(), r.ReadSingle(), r.ReadSingle(), r.ReadBoolean()),
-        (_, m) => DoppelPuppet.Spawn(PortKit.ById(m.id), FxMath.V2(m.x, m.y), m.flip));
+        (sender, m) => { if (sender) DoppelPuppet.Spawn(sender, FxMath.V2(m.x, m.y), m.flip); });
 
     private static readonly RemoteCall<(byte id, bool effect)> DespawnCall = new("Doppel.Despawn", Route.Anyone,
         (w, m) => { w.Write(m.id); w.Write(m.effect); }, r => (r.ReadByte(), r.ReadBoolean()),
-        (_, m) => DoppelPuppet.Despawn(m.id, m.effect));
+        (sender, m) => { if (sender) DoppelPuppet.Despawn(sender.PlayerId, m.effect); });
 
     private static readonly RemoteCall<(byte id, float x, float y)> StopCall = new("Doppel.Stop", Route.Anyone,
         (w, m) => { w.Write(m.id); w.Write(m.x); w.Write(m.y); }, r => (r.ReadByte(), r.ReadSingle(), r.ReadSingle()),
-        (_, m) => DoppelPuppet.Of(m.id)?.StopAt(FxMath.V2(m.x, m.y)));
+        (sender, m) => { if (sender) DoppelPuppet.Of(sender.PlayerId)?.StopAt(FxMath.V2(m.x, m.y)); });
 
     private static readonly RemoteCall<(byte id, float speed, float[] pts)> WalkCall = new("Doppel.Walk", Route.Anyone,
         (w, m) => { w.Write(m.id); w.Write(m.speed); w.WritePacked(m.pts.Length); foreach (var f in m.pts) w.Write(f); },
@@ -181,11 +182,14 @@ public sealed class Doppelganger : RoleBase
         {
             byte id = r.ReadByte();
             float speed = r.ReadSingle();
-            var pts = new float[r.ReadPackedInt32()];
+            int n = r.ReadPackedInt32();
+            var pts = new float[n is >= 0 and <= MaxWalkFloats ? n : 0];
             for (int i = 0; i < pts.Length; i++) pts[i] = r.ReadSingle();
             return (id, speed, pts);
         },
-        (_, m) => DoppelPuppet.Of(m.id)?.Walk(m.pts, m.speed, null));
+        (sender, m) => { if (sender && m.pts.Length > 0) DoppelPuppet.Of(sender.PlayerId)?.Walk(m.pts, m.speed, null); });
+
+    private const int MaxWalkFloats = 512; // 経路の点 (x, y) の上限。超えた電文は歩かせない
 
     // 会議で分身は消える (どの端末でも)
     private void OnMeetingStart(MeetingStartEvent e)
@@ -239,7 +243,10 @@ public sealed class Doppelganger : RoleBase
         if (m == null || !PortKit.Alive(owner) || !PortKit.Alive(killer) || !PortKit.CanKillAnyone(killer)) return;
         if (MeetingHud.Instance || ExileController.Instance || killer.inVent) return;
         if (Vector2.Distance(killer.GetTruePosition(), m.True) > KillAbility.Reach(killer) + 1f) return;
+        if (StruckTooSoon(killer)) return;
         if (BeforeMurderEvent.Ask(killer, owner) != null) return;
+        _lastStrikeMs[killer.PlayerId] = System.Environment.TickCount64;
+        KillAbility.HostCounted(killer);
         StruckCall.Send(ownerId);
         Struck(ownerId);
         // 本物が分身の所へ飛ぶのを待ってから倒す (体はそこに残る)
@@ -247,6 +254,20 @@ public sealed class Doppelganger : RoleBase
         {
             if (PortKit.Alive(owner) && PortKit.Alive(killer)) killer.RpcMurderPlayer(owner, true);
         });
+    }
+
+    // ホスト: キルの待ち時間の中なら断る (押した人の画面の待ち時間だけに頼らない)。インポスターは本編のキルの待ち時間を
+    // 前に分身を倒した時から数える
+    private static readonly long[] _lastStrikeMs = new long[256];
+
+    private static bool StruckTooSoon(PlayerControl killer)
+    {
+        if (Dev.DevCooldown.Skips(killer)) return false;
+        if (KillAbility.HostCoolingDown(killer)) return true;
+        long last = _lastStrikeMs[killer.PlayerId];
+        if (last == 0 || !PortKit.IsImpostor(killer)) return false;
+        float cd = GameManager.Instance ? GameManager.Instance.LogicOptions.GetKillCooldown() : 0f;
+        return (System.Environment.TickCount64 - last) / 1000f < cd - 1f;
     }
 
     private static readonly RemoteCall<byte> StruckCall = new("Doppel.Struck", Route.HostToAll,

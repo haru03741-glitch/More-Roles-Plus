@@ -79,13 +79,16 @@ public sealed class Guardian : RoleBase, IGuessShield
         }
     }
 
+    private bool _sacrificing;
+
     // ホスト: 守っている人へのキルを止め、守護者が身代わりになる
     [HostOnly]
     private void OnBeforeMurder(BeforeMurderEvent e)
     {
         var target = e.Target;
         if (!target || !e.Killer || e.Killer.PlayerId == target.PlayerId || !_guards.ContainsKey(target.PlayerId)) return;
-        if (!PortKit.Alive(Player)) return;
+        if (!PortKit.Alive(Player) || _sacrificing) return; // 身代わりは 1 回だけ (爆発などで守った人が何人も巻き込まれても)
+        _sacrificing = true;
         e.Cancel("guardian");
         PortKit.HostBlocked(e.Killer, target);
         SacrificeCall.Send((PlayerId, target.PlayerId));

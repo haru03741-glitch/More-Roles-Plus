@@ -230,7 +230,13 @@ internal static class KillAbility
         if (target.inVent || target.inMovingPlat) return "target busy";
         string far = Targeting.Unreachable(killer, target, Reach(role) + DistanceSlack);
         if (far != null) return far;
-        // 前のキル (無ければ割り当て) からの経過。最初は試合の始めの待ち時間
+        if (CoolingDown(killer, role)) return "cooldown";
+        return BeforeMurderEvent.Ask(killer, target); // 他の確かめを全部通った後に、役職や本編の調整が断る
+    }
+
+    // 前のキル (無ければ割り当て) からの経過が待ち時間に届いていないか。最初は試合の始めの待ち時間
+    private static bool CoolingDown(PlayerControl killer, RoleBase role)
+    {
         float cd = FirstCooldown;
         if (_killed[killer.PlayerId])
         {
@@ -239,8 +245,22 @@ internal static class KillAbility
             var addons = RoleState.AddonsOf(killer.PlayerId);
             for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref cd);
         }
-        if ((Environment.TickCount64 - LastKillMs[killer.PlayerId]) / 1000f < cd - CooldownSlack && !Dev.DevCooldown.Skips(killer)) return "cooldown";
-        return BeforeMurderEvent.Ask(killer, target); // 他の確かめを全部通った後に、役職や本編の調整が断る
+        return (Environment.TickCount64 - LastKillMs[killer.PlayerId]) / 1000f < cd - CooldownSlack && !Dev.DevCooldown.Skips(killer);
+    }
+
+    // ホスト: このキル役の人 (インポスター以外) が待ち時間の中か。本編のキルを通さずに倒す能力 (分身へのキルなど) が見る
+    internal static bool HostCoolingDown(PlayerControl killer)
+    {
+        var role = RoleState.Of(killer);
+        return Uses(role) && CoolingDown(killer, role);
+    }
+
+    // ホスト: 本編のキルを通さずに倒した時も、次のキルの待ち時間をここから数える
+    internal static void HostCounted(PlayerControl killer)
+    {
+        if (!killer) return;
+        LastKillMs[killer.PlayerId] = Environment.TickCount64;
+        _killed[killer.PlayerId] = true;
     }
 }
 

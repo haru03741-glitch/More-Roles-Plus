@@ -49,6 +49,7 @@ public sealed class Spectre : RoleBase
 
     private float _left; // 残りの生きられる秒 (満腹度 × 1 満腹の秒)。本人の端末が数えて配る
     private float _shareIn;
+    private float _rate = 1f; // 減る速さ。他の端末は届いた速さで次の値まで自分で減らす
     private float _suicideAt = -10f;
     private Ability _vanish, _eat;
     private readonly Dictionary<byte, WorldArrow> _killerArrows = new();
@@ -146,20 +147,24 @@ public sealed class Spectre : RoleBase
         (w, m) => { w.Write(m.id); w.Write(m.amount); }, r => (r.ReadByte(), r.ReadSingle()),
         (_, m) => { if (RoleState.Of(m.id) is Spectre s) s.AddSatiety(m.amount); });
 
+    // 送るのは 1.5 秒ごとと減る速さが変わった時だけ (公式鯖の通信の予算を食わない)。間は他の端末が同じ速さで減らす
     private void ShareNow()
     {
-        _shareIn = 0.2f;
-        ShareCall.Send((PlayerId, _left));
+        _shareIn = 1.5f;
+        ShareCall.Send((PlayerId, _left, _rate));
     }
 
-    private static readonly RemoteCall<(byte id, float left)> ShareCall = new("Spectre.Share", Route.Anyone,
-        (w, m) => { w.Write(m.id); w.Write(m.left); }, r => (r.ReadByte(), r.ReadSingle()),
-        (_, m) => { if (RoleState.Of(m.id) is Spectre s && !s.IsLocal) s._left = m.left; });
+    private static readonly RemoteCall<(byte id, float left, float rate)> ShareCall = new("Spectre.Share", Route.Anyone,
+        (w, m) => { w.Write(m.id); w.Write(m.left); w.Write(m.rate); }, r => (r.ReadByte(), r.ReadSingle(), r.ReadSingle()),
+        (_, m) => { if (RoleState.Of(m.id) is Spectre s && !s.IsLocal) { s._left = m.left; s._rate = m.rate; } });
 
     public override void OnFixedUpdate()
     {
-        if (IsLocal) TickLocal(Time.fixedDeltaTime);
-        SpectreDishes.Tick(Time.fixedDeltaTime);
+        float dt = Time.fixedDeltaTime;
+        if (IsLocal) TickLocal(dt);
+        else if (_left > 0f && _rate > 0f && !MeetingHud.Instance && !ExileController.Instance && ShipStatus.Instance && PortKit.Alive(Player))
+            _left = Mathf.Max(0f, _left - dt * _rate);
+        SpectreDishes.Tick(dt);
     }
 
     private void TickLocal(float dt)
@@ -167,14 +172,16 @@ public sealed class Spectre : RoleBase
         bool meeting = MeetingHud.Instance || ExileController.Instance;
         bool alive = PortKit.Alive(Player);
         bool danger = Adrenaline && KillerNearby();
-        if (!meeting && alive && ShipStatus.Instance) _left -= dt * (danger ? AdrenalineRate : 1f);
+        float rate = danger ? AdrenalineRate : 1f;
+        if (!meeting && alive && ShipStatus.Instance) _left -= dt * rate;
         if (!(_left > 0f))
         {
             _left = 0f;
             if (alive && Time.time > _suicideAt + 0.2f) { _suicideAt = Time.time; PortKit.Suicide(); }
         }
         _shareIn -= dt;
-        if (_shareIn <= 0f) ShareNow();
+        if (rate != _rate && _shareIn <= 1f) { _rate = rate; ShareNow(); } // 速さの切り替わりも 0.5 秒に 1 回まで
+        else if (_shareIn <= 0f) ShareNow();
 
         _vanish?.Button?.SetUsable(VanishCost + 1f < Satiety && !Cloak.IsOn(PlayerId));
         UpdateEat(_eat);
@@ -222,7 +229,7 @@ public sealed class Spectre : RoleBase
 
     private void OnMeetingStart(MeetingStartEvent e)
     {
-        if (IsLocal) _left = Mathf.Max(20f, _left);
+        if (IsLocal) { _left = Mathf.Max(20f, _left); ShareNow(); }
     }
 
     public override void ModifyVision(ref float radius) => PortKit.ImpostorVision(ref radius);
