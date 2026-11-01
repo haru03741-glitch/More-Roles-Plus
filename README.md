@@ -173,7 +173,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 * **Il2CppInterop** ([BepInEx Team](https://github.com/BepInEx/Il2CppInterop))  
   Il2Cpp C++ コードと C# (.NET) 間の相互運用ライブラリ。
 * **[FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) (XtraCube / All-Of-Us-Mods、GPL-3.0)**  
-  Android の起動アプリ (`Android/Launcher/`)。FusionCore の名前と見た目を変えて APK にしたもので、コードの大部分は FusionCore のものです。同梱しているライブラリは [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) に載せています
+  Android の起動アプリ (`Android/Launcher/`)。FusionCore の名前と見た目を変えて APK にしたもので、コードの大部分は FusionCore のものです。起動の入口の部品 (`fusionApp/src/main/jni/main/`) は [libmain.so](https://github.com/springmusk026/libmain.so) (springmusk026) が元です。同梱しているライブラリは [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) に載せています
 * **[AndroidUtilities / AuthFix](https://github.com/All-Of-Us-Mods/AndroidUtilities) (All-Of-Us-Mods、Starlight 用)**  
   Android 版で itch.io のキーを使って EOS にログインする方法、広告の初期化を止める方法
 
