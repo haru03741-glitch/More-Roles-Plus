@@ -8,8 +8,8 @@
 #   <役>.Quote          最後に出る決め台詞
 # 設定の値は説明の下に自動で並ぶので、本文には書かない。アドオンは <役>.Help に短い文だけ。
 
-# ── 解体屋 (Demolisher) ──
-Demolisher.Name: 解体屋
+# ── デモリッシャー (Demolisher) ──
+Demolisher.Name: デモリッシャー
 Demolisher.Blurb: ハンマーで壁を壊して道を作れ
 Demolisher.Summary: 壁を壊して、船に新しい道を作れるクルーです。
 Demolisher.Hammer.Help: 向いている方向の壁を叩いて壊します。壊れた壁は全員の画面で崩れ、通れる道になります。ポータルや設計台も 3 回叩くと壊せます。
@@ -35,15 +35,15 @@ PortalMaker.Blurb: 2 つのポータルで船の中をつなげ
 PortalMaker.Summary: 離れた 2 か所をポータルでつなげるクルーです。
 PortalMaker.Portal.Help: 足元にポータルを置きます。2 つ置くと、生きている人なら誰でも、ポータルの上で使用ボタンを押してもう一方へ移れます。2 つ置いた後にもう一度押すと 2 つとも消え、置き直せます。消せるかどうかは設定で決まります。
 PortalMaker.Portal.Short: 足元に置く。2 つでつながる
-PortalMaker.Tips: ポータルはインポスターも使えます。解体屋のハンマーで 3 回叩かれると壊れます。
+PortalMaker.Tips: ポータルはインポスターも使えます。デモリッシャーのハンマーで 3 回叩かれると壊れます。
 PortalMaker.Quote: 遠回りは、もう要らない。
 PortalMaker.PlaceCooldown: ポータルを置く待ち時間
 PortalMaker.CanRemove: 置いた後にもう一度押すと消せる
 PortalMaker.CanRemove.Detail: OFF にすると、2 つ置いた後にもう一度押しても消せず、置き直せません。
 PortalMaker.Portal: ポータル
 
-# ── 時戻し (Rewinder) ──
-Rewinder.Name: 時戻し
+# ── クロノリバース (Rewinder) ──
+Rewinder.Name: クロノリバース
 Rewinder.Blurb: 時を戻して、起きたことをなかったことにしろ
 Rewinder.Summary: 船の時間を数秒前まで巻き戻せるクルーです。
 Rewinder.Rewind.Help: ボタンを押している間、戻す秒数が 3 秒から 1 秒ずつ増え、離すと発動します。全員の位置・生き死に・タスクの進み・クールダウン・サボタージュを数秒前の状態に戻します。戻した数秒の間に倒された人は生き返ります。自分も一緒に戻り、変わらないのはこのボタンの回数とクールダウンだけです。
@@ -56,11 +56,11 @@ Rewinder.Cooldown: 時戻しの待ち時間
 Rewinder.Uses: 時戻しの回数 (0 = 何回でも)
 Rewinder.Rewind: 時戻し
 
-# ── 構築士 (Architect) ──
-Architect.Name: 構築士
+# ── フォートレスメイカー (Architect) ──
+Architect.Name: フォートレスメイカー
 Architect.Blurb: 設計図から船を作り変えろ
 Architect.Summary: 設計図に線を引いて、船に壁を建てられるインポスターです。
-Architect.Desk.Help: 足元の少し奥に設計台を置きます。設計台は全員に見え、ほかの人も使えます。解体屋のハンマーで 3 回叩かれるか、爆発に巻き込まれると壊れ、壊れた分は置き直せません。
+Architect.Desk.Help: 足元の少し奥に設計台を置きます。設計台は全員に見え、ほかの人も使えます。デモリッシャーのハンマーで 3 回叩かれるか、爆発に巻き込まれると壊れ、壊れた分は置き直せません。
 Architect.Desk.Short: 設計図を開くための台を置く
 Architect.Plan.Help: 設計台の手前で押すと、船の歩ける所を上から見た設計図が開きます。ほかの人の居場所は色のない影で分かります。押したまま動かして線を引き、離すと、その線に沿って床から壁がせり上がります。線を引けるのは設計台から届く円の中だけで、長さはゲージの分までです。ゲージは時間で戻ります。壁が立った所にいた人は横へ押し出されます。壁は時間が経つと崩れ、ハンマーや爆発でも壊れます。設計図を開いている間はその場から動けず、キルもできません。
 Architect.Plan.Short: 線を引くと、そこに壁が建つ
