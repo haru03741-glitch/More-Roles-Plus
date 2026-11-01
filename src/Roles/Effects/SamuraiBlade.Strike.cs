@@ -340,6 +340,7 @@ internal sealed unsafe partial class SamuraiBlade
         _shards = new StShard[StShards];
         _puffs = new StPuff[StPuffs];
         _stGo = new GameObject("MrpIaiStrike") { layer = pc.gameObject.layer };
+        FxRoot.AttachWorld(_stGo); // 時戻しの逆再生に映る置き場
         _stV = new Il2CppStructArray<Vector3>((long)StVerts);
         _stC = new Il2CppStructArray<Color32>((long)StVerts);
         int tris = StLines * (LnCols - 1) * (LnRows - 1) * 6 + StShards * 3 + StPuffs * PfRim * 3;
@@ -375,6 +376,7 @@ internal sealed unsafe partial class SamuraiBlade
         _stMesh.triangles = idx;
         _stMesh.bounds = new Bounds(Vector3.zero, FxMath.V3(1000f, 1000f, 10f));
         _stGo.AddComponent<MeshFilter>().mesh = _stMesh;
+        FxRoot.Track(_stMesh, _stV, _stC);
         var mr = _stGo.AddComponent<MeshRenderer>();
         if (!_smearMat)
         {

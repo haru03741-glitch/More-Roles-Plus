@@ -322,6 +322,7 @@ internal sealed partial class SamuraiBlade
     {
         SamuraiScreen.Tick();
         IaiScreen.Tick();
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         TickFx();
         TickStrikes();
         if (Live.Count == 0) return;

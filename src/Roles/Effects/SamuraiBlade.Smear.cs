@@ -88,6 +88,7 @@ internal sealed unsafe partial class SamuraiBlade
     {
         if (_smearGo) return true;
         _smearGo = new GameObject("MrpKatanaSmear") { layer = pc.gameObject.layer };
+        FxRoot.AttachWorld(_smearGo); // 時戻しの逆再生に映る置き場
         _smV = new Il2CppStructArray<Vector3>((long)(SmN * SmR));
         _smC = new Il2CppStructArray<Color32>((long)(SmN * SmR));
         var idx = new Il2CppStructArray<int>((long)((SmN - 1) * (SmR - 1) * 6));
@@ -105,6 +106,7 @@ internal sealed unsafe partial class SamuraiBlade
         _smearMesh.triangles = idx;
         _smearMesh.bounds = new Bounds(Vector3.zero, FxMath.V3(1000f, 1000f, 10f));
         _smearGo.AddComponent<MeshFilter>().mesh = _smearMesh;
+        FxRoot.Track(_smearMesh, _smV, _smC);
         var mr = _smearGo.AddComponent<MeshRenderer>();
         if (!_smearMat)
         {

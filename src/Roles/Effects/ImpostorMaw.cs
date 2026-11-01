@@ -186,11 +186,12 @@ internal static unsafe class ImpostorMaw
     internal static void Tick()
     {
         if (Live.Count == 0) return;
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         float now = Time.time;
         for (int i = Live.Count - 1; i >= 0; i--)
         {
             var m = Live[i];
-            if (!m.Pc || !m.Go || m.Pc.Data == null || m.Pc.Data.IsDead || now >= m.EndAt || MeetingHud.Instance || m.Pc.inVent || !m.Pc.Visible)
+            if (!m.Pc || !m.Go || !m.Go.activeSelf || m.Pc.Data == null || m.Pc.Data.IsDead || now >= m.EndAt || MeetingHud.Instance || m.Pc.inVent || !m.Pc.Visible)
             {
                 Stop(m);
                 Live.RemoveAt(i);
@@ -260,11 +261,11 @@ internal static unsafe class ImpostorMaw
     private static Maw Make(PlayerControl pc, Material mat)
     {
         var go = new GameObject("MrpImpostorMaw") { layer = pc.gameObject.layer };
-        Object.DontDestroyOnLoad(go);
+        FxRoot.AttachWorld(go); // 時戻しの逆再生に映る置き場
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sharedMaterial = mat;
         var tgo = new GameObject("MrpImpostorTongue") { layer = pc.gameObject.layer };
-        Object.DontDestroyOnLoad(tgo);
+        FxRoot.AttachWorld(tgo);
         var v = new Il2CppStructArray<Vector3>((long)Verts);
         var c = new Il2CppStructArray<Color32>((long)Verts);
         int tris = (Segs * 2 + TipSegs * 2) * 6;
@@ -288,6 +289,7 @@ internal static unsafe class ImpostorMaw
         mesh.triangles = idx;
         mesh.bounds = new Bounds(Vector3.zero, FxMath.V3(1000f, 1000f, 10f));
         tgo.AddComponent<MeshFilter>().mesh = mesh;
+        FxRoot.Track(mesh, v, c);
         var mr = tgo.AddComponent<MeshRenderer>();
         if (!_tongueMat)
         {

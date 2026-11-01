@@ -172,7 +172,7 @@ internal static class DuelHitFx
         if (p == null || !p.Go)
         {
             var go = new GameObject("MrpDuelHit");
-            Object.DontDestroyOnLoad(go);
+            FxRoot.AttachWorld(go); // 時戻しの逆再生に映る置き場
             p = new Part { Go = go, Tf = go.transform, Sr = go.AddComponent<SpriteRenderer>() };
         }
         p.Go.layer = layer;
@@ -200,6 +200,7 @@ internal static class DuelHitFx
     internal static void Tick()
     {
         if (Parts.Count == 0) return;
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         float now = Time.time;
         for (int i = Parts.Count - 1; i >= 0; i--)
         {

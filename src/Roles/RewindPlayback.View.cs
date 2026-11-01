@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using MoreRolesPlus.Fx;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -35,6 +36,29 @@ internal static class FxRoot
 
     internal static bool Exists => _gen == Terrain.GameClock.ShipGen && _root;
     internal static Transform Current => Exists ? _root : null;
+
+    // 船の外 (世界の座標そのまま) に置く物の置き場。頂点を世界の座標で書くメッシュ・使い回す粒子など。
+    // 場面が替わると中身ごと消える (持ち主は Unity の null で作り直す)
+    private static Transform _world;
+
+    internal static void AttachWorld(GameObject go)
+    {
+        if (!_world)
+        {
+            _world = new GameObject("MrpFxWorld").transform;
+        }
+        go.transform.SetParent(_world, true);
+    }
+
+    internal static Transform CurrentWorld => _world ? _world : null;
+
+    // 毎フレーム頂点を書き直すメッシュを登録する (v と c は持ち主がメッシュへ書き込む元の配列)。
+    // 登録したメッシュは控えの時に頂点と色を写すので、逆再生でその時の形で出る
+    internal static void Track(Mesh mesh, Il2CppStructArray<Vector3> v, Il2CppStructArray<Color32> c)
+    {
+        if (!mesh || v == null || c == null) return;
+        RewindPlayback.TrackMesh(mesh, v, c);
+    }
 }
 
 // 録画: FxRoot の下の SpriteRenderer と MeshRenderer を姿と同じ 0.1 秒ごとに控え、逆再生の間は根を隠して代わりの板を控えのとおりに置く。
@@ -53,6 +77,98 @@ internal static partial class RewindPlayback
         public int Order, Layer;
         public byte Flags;           // 1 = flipX・2 = flipY
         public bool Mesh;            // true = MeshRenderer (Sprite は MeshCache の番号・色は材質のまま)
+        public int DynN;             // 写した頂点の数 (0 = 写していない・Mesh をそのまま出す)
+        public long DynAt;           // 写した頂点の DynBuf の通し位置
+    }
+
+    // 毎フレーム頂点を書き直すメッシュ (FxRoot.Track で登録) の頂点と色の写し。輪で使い、上書きされた控えは写し無しとして扱う
+    private sealed class Dyn
+    {
+        public Mesh Mesh;
+        public Il2CppStructArray<Vector3> V;
+        public Il2CppStructArray<Color32> C;
+        // 逆再生で出す自前のメッシュ (三角形は元から 1 回だけ写す)
+        public Mesh Own;
+        public Il2CppStructArray<Vector3> OwnV;
+        public Il2CppStructArray<Color32> OwnC;
+    }
+
+    private const int DynBytes = 4 << 20;   // 写しの輪の大きさ (居合の線 1 回 = 約 14KB)
+    private const int VertBytes = 16;        // 位置 12 + 色 4
+    private static byte[] _dynBuf;
+    private static long _dynAt;              // 次に書く通し位置
+    private static readonly Dictionary<IntPtr, Dyn> Dyns = new();
+
+    internal static void TrackMesh(Mesh mesh, Il2CppStructArray<Vector3> v, Il2CppStructArray<Color32> c)
+    {
+        var p = mesh.Pointer;
+        if (Dyns.TryGetValue(p, out var d) && d.Mesh && d.V == v) return;
+        if (d != null && d.Own) Object.Destroy(d.Own);
+        Dyns[p] = new Dyn { Mesh = mesh, V = v, C = c };
+    }
+
+    private static unsafe void CopyDyn(ref Shot e, Dyn d)
+    {
+        if (!d.Mesh) return;
+        int n = (int)Math.Min(d.V.Length, d.C.Length);
+        int bytes = n * VertBytes;
+        if (n <= 0 || bytes > DynBytes / 4) return;
+        _dynBuf ??= new byte[DynBytes];
+        int off = (int)(_dynAt % DynBytes);
+        if (off + bytes > DynBytes) { _dynAt += DynBytes - off; off = 0; } // 端で割れないよう先頭へ
+        fixed (byte* dst = &_dynBuf[off])
+        {
+            byte* vs = (byte*)d.V.Pointer + 4 * IntPtr.Size;
+            byte* cs = (byte*)d.C.Pointer + 4 * IntPtr.Size;
+            Buffer.MemoryCopy(vs, dst, bytes, n * 12);
+            Buffer.MemoryCopy(cs, dst + n * 12, bytes - n * 12, n * 4);
+        }
+        e.DynAt = _dynAt;
+        e.DynN = n;
+        _dynAt += bytes;
+    }
+
+    // 写しがまだ輪に残っているか
+    private static bool DynAlive(in Shot e) => e.DynN > 0 && _dynBuf != null && e.DynAt >= _dynAt - DynBytes + (long)e.DynN * VertBytes;
+
+    // 写しを自前のメッシュへ書く。b があれば (同じ頂点数なら) u で補間する
+    private static unsafe Mesh DynMesh(Dyn d, in Shot a, in Shot b, bool lerp, float u)
+    {
+        int n = a.DynN;
+        if (!d.Own || d.OwnV == null || d.OwnV.Length != n)
+        {
+            if (!d.Mesh) return null;
+            if (d.Own) Object.Destroy(d.Own);
+            d.OwnV = new Il2CppStructArray<Vector3>((long)n);
+            d.OwnC = new Il2CppStructArray<Color32>((long)n);
+            d.Own = new Mesh { name = "MrpRewindDyn" };
+            d.Own.vertices = d.OwnV;
+            d.Own.colors32 = d.OwnC;
+            d.Own.triangles = d.Mesh.triangles;
+            d.Own.bounds = new Bounds(Vector3.zero, FxMath.V3(1000f, 1000f, 10f));
+        }
+        float* vp = (float*)((byte*)d.OwnV.Pointer + 4 * IntPtr.Size);
+        byte* cp = (byte*)d.OwnC.Pointer + 4 * IntPtr.Size;
+        fixed (byte* buf = _dynBuf)
+        {
+            float* av = (float*)(buf + (int)(a.DynAt % DynBytes));
+            byte* ac = (byte*)av + n * 12;
+            if (!lerp)
+            {
+                Buffer.MemoryCopy(av, vp, n * 12, n * 12);
+                Buffer.MemoryCopy(ac, cp, n * 4, n * 4);
+            }
+            else
+            {
+                float* bv = (float*)(buf + (int)(b.DynAt % DynBytes));
+                byte* bc = (byte*)bv + n * 12;
+                for (int k = 0; k < n * 3; k++) vp[k] = av[k] + (bv[k] - av[k]) * u;
+                for (int k = 0; k < n * 4; k++) cp[k] = (byte)(ac[k] + (bc[k] - ac[k]) * u + 0.5f);
+            }
+        }
+        d.Own.vertices = d.OwnV;
+        d.Own.colors32 = d.OwnC;
+        return d.Own;
     }
 
     private static readonly Shot[] Shots = new Shot[ViewCap];
@@ -115,11 +231,48 @@ internal static partial class RewindPlayback
     {
         ViewCount[s] = 0;
         ViewStart[s] = _viewHead;
-        var root = FxRoot.Current;
-        if (!root) return;
-        var all = root.GetComponentsInChildren<SpriteRenderer>(false);
         int n = 0;
         SeenNow.Clear();
+        var root = FxRoot.Current;
+        if (root) CaptureUnder(root, ref n, now);
+        var world = FxRoot.CurrentWorld;
+        if (world) CaptureUnder(world, ref n, now);
+        if (n >= MaxPerSlot) ViewDropped++; // 上限で切った回数
+        ViewCount[s] = n;
+        _viewHead = (_viewHead + n) % ViewCap;
+        ViewShots = n;
+        SeenPrev.Clear();
+        foreach (var id in SeenNow) SeenPrev.Add(id);
+        // 今回見なかった物の生まれた時刻は捨てる (番地が別の物に使い回された時に古い時刻を引き継がない)
+        if (Born.Count > SeenNow.Count)
+        {
+            Gone.Clear();
+            foreach (var kv in Born) if (!SeenNow.Contains(kv.Key)) Gone.Add(kv.Key);
+            foreach (var id in Gone) Born.Remove(id);
+        }
+        // 消えた MeshRenderer の控えも捨てる (破片を出すたびに増えないように)
+        if (FilterOf.Count > SeenNow.Count + 32)
+        {
+            Gone.Clear();
+            foreach (var kv in FilterOf) if (!SeenNow.Contains(kv.Key)) Gone.Add(kv.Key);
+            foreach (var id in Gone) FilterOf.Remove(id);
+        }
+        // 持ち主が捨てたメッシュの登録を外す (自前のメッシュも捨てる)
+        if (Dyns.Count > 0 && ++_dynSweep >= 50)
+        {
+            _dynSweep = 0;
+            Gone.Clear();
+            foreach (var kv in Dyns)
+                if (!kv.Value.Mesh) { if (kv.Value.Own) Object.Destroy(kv.Value.Own); Gone.Add(kv.Key); }
+            foreach (var id in Gone) Dyns.Remove(id);
+        }
+    }
+
+    private static int _dynSweep;
+
+    private static void CaptureUnder(Transform root, ref int n, long now)
+    {
+        var all = root.GetComponentsInChildren<SpriteRenderer>(false);
         for (int i = 0; i < all.Count && n < MaxPerSlot; i++)
         {
             var sr = all[i];
@@ -169,29 +322,11 @@ internal static partial class RewindPlayback
             e.Layer = mr.gameObject.layer;
             e.Flags = 0;
             e.Mesh = true;
+            e.DynN = 0;
+            if (Dyns.Count > 0 && Dyns.TryGetValue(mesh.Pointer, out var d)) CopyDyn(ref e, d);
             SeenNow.Add(id);
             if (!SeenPrev.Contains(id)) Born[id] = now;
             n++;
-        }
-        if (n >= MaxPerSlot) ViewDropped++; // 上限で切った回数
-        ViewCount[s] = n;
-        _viewHead = (_viewHead + n) % ViewCap;
-        ViewShots = n;
-        SeenPrev.Clear();
-        foreach (var id in SeenNow) SeenPrev.Add(id);
-        // 今回見なかった物の生まれた時刻は捨てる (番地が別の物に使い回された時に古い時刻を引き継がない)
-        if (Born.Count > SeenNow.Count)
-        {
-            Gone.Clear();
-            foreach (var kv in Born) if (!SeenNow.Contains(kv.Key)) Gone.Add(kv.Key);
-            foreach (var id in Gone) Born.Remove(id);
-        }
-        // 消えた MeshRenderer の控えも捨てる (破片を出すたびに増えないように)
-        if (FilterOf.Count > SeenNow.Count + 32)
-        {
-            Gone.Clear();
-            foreach (var kv in FilterOf) if (!SeenNow.Contains(kv.Key)) Gone.Add(kv.Key);
-            foreach (var id in Gone) FilterOf.Remove(id);
         }
     }
 
@@ -224,7 +359,11 @@ internal static partial class RewindPlayback
     {
         var root = FxRoot.Current;
         if (root && root.gameObject.activeSelf) { root.gameObject.SetActive(false); _rootHidden = true; }
+        var world = FxRoot.CurrentWorld;
+        if (world && world.gameObject.activeSelf) { world.gameObject.SetActive(false); _worldHidden = true; }
     }
+
+    private static bool _worldHidden;
 
     // 控え a (古い) と b (新しい) の間 u で置く。同じ絵が両方にあれば位置・向き・大きさ・色を補間する
     private static void DriveView(int a, int b, float u)
@@ -267,8 +406,24 @@ internal static partial class RewindPlayback
             }
             if (e.Mesh)
             {
+                Mesh dyn = null;
+                if (e.DynN > 0)
+                {
+                    // 頂点を写したメッシュ: 写しが輪から消えていれば出さない (今の形は戻し先の形ではない)
+                    if (!DynAlive(e) || !Dyns.TryGetValue(mesh.Pointer, out var d)) continue;
+                    var fb = e;
+                    bool lerp = false;
+                    if (b != a && NewerIndex.TryGetValue(e.Id, out int j2))
+                    {
+                        fb = Shots[j2];
+                        lerp = fb.DynN == e.DynN && DynAlive(fb);
+                    }
+                    dyn = DynMesh(d, e, fb, lerp, u);
+                    if (!dyn) continue;
+                }
                 var q = MeshProxyAt(usedMesh++);
-                if (q.Mesh != e.Sprite) { q.Mf.sharedMesh = mesh; q.Mesh = e.Sprite; }
+                if (dyn) { q.Mf.sharedMesh = dyn; q.Mesh = int.MinValue; }
+                else if (q.Mesh != e.Sprite) { q.Mf.sharedMesh = mesh; q.Mesh = e.Sprite; }
                 if (q.Mat != e.Mat) { q.Mr.sharedMaterial = MatCache[e.Mat]; q.Mat = e.Mat; }
                 if (q.Order != e.Order) { q.Mr.sortingOrder = e.Order; q.Order = e.Order; }
                 if (q.Layer != e.Layer) { q.Go.layer = e.Layer; q.Layer = e.Layer; }
@@ -364,6 +519,12 @@ internal static partial class RewindPlayback
             var root = FxRoot.Current;
             if (root) root.gameObject.SetActive(true);
         }
+        if (_worldHidden)
+        {
+            _worldHidden = false;
+            var world = FxRoot.CurrentWorld;
+            if (world) world.gameObject.SetActive(true);
+        }
     }
 
     // 戻し終わり: 戻し先の時刻より後に出てきた絵を隠す (戻し先の世界には無かった物)。
@@ -372,12 +533,15 @@ internal static partial class RewindPlayback
     {
         ViewHidden = 0;
         var root = FxRoot.Current;
-        if (!root)
-        {
-            Born.Clear();
-            SeenPrev.Clear();
-            return;
-        }
+        if (root) HideUnder(root, destMs);
+        var world = FxRoot.CurrentWorld;
+        if (world) HideUnder(world, destMs);
+        Born.Clear();
+        SeenPrev.Clear();
+    }
+
+    private static void HideUnder(Transform root, long destMs)
+    {
         var srs = root.GetComponentsInChildren<SpriteRenderer>(false);
         var mrs = root.GetComponentsInChildren<MeshRenderer>(false);
         // 戻し先にもあった絵とその先祖 (根の直下まで) は隠さない。試合中ずっと生きる入れ物 (大砲の根など) の下に後から出た子だけを隠す
@@ -404,8 +568,6 @@ internal static partial class RewindPlayback
             if (t.gameObject.activeSelf) { t.gameObject.SetActive(false); ViewHidden++; }
         }
         Late.Clear();
-        Born.Clear();
-        SeenPrev.Clear();
     }
 
     private static readonly HashSet<IntPtr> Keep = new();

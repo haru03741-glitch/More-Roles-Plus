@@ -240,7 +240,7 @@ internal sealed partial class SamuraiBlade
         if (g == null || !g.Go)
         {
             var go = new GameObject("MrpSamuraiGhost") { layer = pc.gameObject.layer };
-            Object.DontDestroyOnLoad(go);
+            FxRoot.AttachWorld(go); // 時戻しの逆再生に映る置き場
             g = new Ghost { Go = go, Tf = go.transform, Sr = go.AddComponent<SpriteRenderer>() };
             g.Sr.sharedMaterial = mat;
         }
