@@ -13,7 +13,7 @@ namespace MoreRolesPlus;
 public class Plugin : BasePlugin
 {
     public const string Guid = "86aa5c38-7092-4d6f-ae72-7e9301070806";
-    public const string Version = "0.0.1";
+    public const string Version = "0.1.0";
 
     internal static ManualLogSource Logger;
     internal static Harmony Harmony;
