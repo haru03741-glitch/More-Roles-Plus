@@ -97,6 +97,15 @@ public sealed partial class Samurai
         BotDrawCall.Send((PlayerId, false));
     }
 
+    // 刀を抜く (全員に見せる・確かめ用の練習の相手)
+    internal void BotDraw()
+    {
+        if (Drawn) return;
+        HostKiNow();
+        SetDrawn(true);
+        BotDrawCall.Send((PlayerId, true));
+    }
+
     internal const float BotDashSpeed = DashSpeed, BotDashTime = DashTime;
 
     // 踏み込む (ホスト・動かすのは呼んだ側)。抜いていて気が足りる時だけ。気は人の踏み込みと同じだけ減らす
@@ -120,17 +129,18 @@ public sealed partial class Samurai
     // 鍔迫り合いの連打を足す (ホスト)。人の連打と同じ数え方
     internal static void BotMash(byte id, int n)
     {
-        if (_hlA == 255 || n <= 0) return;
+        if (n <= 0 || Impostor.Nova.HostBeamMash(id, n) || _hlA == 255) return;
         if (id == _hlA) _hlCountA += n;
         else if (id == _hlB) _hlCountB += n;
     }
 
     // 鍔迫り合いの最中か (ホスト)
-    internal static bool BotLocked(byte id) => _hlA != 255 && (id == _hlA || id == _hlB);
+    internal static bool BotLocked(byte id) => _hlA != 255 && (id == _hlA || id == _hlB) || Impostor.Nova.BeamLocked(id);
 
     // 鍔迫り合いの間のボットの速さ (ホスト): 人と同じく相手との間合いを詰める
     internal static Vector2 BotLockPull(byte id, PlayerControl self)
     {
+        if (Impostor.Nova.BeamLocked(id)) return BotBeamPull(id, self);
         byte other = id == _hlA ? _hlB : _hlA;
         var o = GameData.Instance ? GameData.Instance.GetPlayerById(other)?.Object : null;
         return o ? LockPull(self.transform.position, o.transform.position) : default;

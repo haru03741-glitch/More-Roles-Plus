@@ -128,7 +128,7 @@ internal static partial class NovaFx
         public Tank Tank;
         public SpriteRenderer Cannon, Glow, Core, Halo, Light, Aim, Dot, Heat, Bolt;
         public Transform CannonTf, GlowTf, CoreTf, HaloTf, LightTf, AimTf, DotTf, BoltTf;
-        public float T0, C0, Dur, Limit, Open, OpenFire, LevelFire, Ax, Ay, Angle, Size, AimLen, AimYaw, FiredAt = -1f, EndAt = -1f;
+        public float T0, C0, Dur, Limit, Open, OpenFire, LevelFire, Ax, Ay, Angle, Size, AimLen, AimYaw, FiredAt = -1f, EndAt = -1f, Extra;
         public float NextHaze, NextBolt, BoltOff, NextDrip, NextSteam;
         public float Mx, My, Px, Py, Z, Dx, Dy;   // 今の砲口 (画面)・光線の頂点 (画面)・奥行き・今のキャノンの画面の向き
         public float Side = 1f;           // キャノンを持つ手 (右 = 1・左 = -1)
@@ -237,7 +237,7 @@ internal static partial class NovaFx
         bool firing = s.FiredAt >= 0f, ending = s.EndAt >= 0f;
         float tf = firing ? now - s.FiredAt : 0f;
         float tc = s.Stance ? 0f : now - s.C0;
-        float end = BeamLife + Hold;
+        float end = BeamLife + Hold + s.Extra;
         if (firing && tf > end + Retract) return false;
         if (ending && now - s.EndAt > Retract) return false;
         if (!firing && !s.Stance && !ending && tc > s.Limit) return false; // 撃たれずに終わった (会議・死)
@@ -509,6 +509,7 @@ internal static partial class NovaFx
         public Transform[] LayerTf;
         public SpriteRenderer Scar;
         public float T0, X, Y, Dx, Dy, Len, Size, Z, NextSmoke, NextFloor, Angle, FloorY, Spread, Lit, Life = BeamLife;
+        public PlayerControl P;
         public SpriteRenderer[] Cone;
         public Transform[] ConeTf;
         public SpriteRenderer Plasma, FloorGlow;   // 式で描くプラズマの筒 (シェーダがある時)・真下の床の照り返し
@@ -546,7 +547,7 @@ internal static partial class NovaFx
         // 足元の線の長さを頂点から測り直す (頂点の分だけ短い)
         float back = (mx - from.x) * dx + (my - from.y) * dy;
         float len = length - back > 0.05f ? length - back : 0.05f;
-        var b = new Beam { T0 = Time.time, X = mx, Y = my, Dx = dx, Dy = dy, Len = len, Size = size, Angle = angle, Z = (from.y - 2f) / 1000f, FloorY = from.y };
+        var b = new Beam { P = p, T0 = Time.time, X = mx, Y = my, Dx = dx, Dy = dy, Len = len, Size = size, Angle = angle, Z = (from.y - 2f) / 1000f, FloorY = from.y };
         // 光線の横向き (板の +y = 画面の (-dy, dx)) と左上からの光 (-0.45, 0.89) の内積。光の当たる側の縁を明るくする
         b.Lit = dy * 0.45f + dx * 0.89f;
         b.Root = new GameObject("MrpNovaBeam");

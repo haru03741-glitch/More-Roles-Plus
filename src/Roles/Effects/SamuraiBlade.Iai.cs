@@ -158,6 +158,18 @@ internal sealed partial class SamuraiBlade
         Track();
     }
 
+    // 光線を受ける押し合い: 光線の来る方 (angle 度) へ刀を斜めに立てて押し付けたまま震える (相手の刀は無い)
+    internal void SetBeamLock(float angle)
+    {
+        if (!Ensure()) return;
+        _lockOn = true;
+        _lockOpp = null;
+        _strokePow = 0f;
+        _lockAngle = angle;
+        _lockSign = FxMath.Cos(angle * FxMath.Deg2Rad) >= 0f ? 1f : -1f;
+        Track();
+    }
+
     // 弾かれた: 刀が相手と反対へ跳ね上がった形で止め、構えへ戻る (相手は angle 度の方)。
     // stun = 振れない秒 (その間は跳ね上がった形のまま震える)
     internal void Recoil(float angle, float stun = 0f)

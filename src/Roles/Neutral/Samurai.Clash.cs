@@ -59,7 +59,9 @@ public sealed partial class Samurai
     {
         float now = Time.time;
         if (_hlA != 255 && (PlayerId == _hlA || PlayerId == _hlB)) return true; // 鍔迫り合いの間の斬りは通らない
-        for (int i = 0; i < HostHeld.Count; i++)
+        // 光線と押し合っている人は弾き合い・鍔迫り合いに入らない (横からの斬りは普通に当たる)
+        bool beam = Impostor.Nova.BeamLocked(ts.PlayerId) || Impostor.Nova.BeamLocked(PlayerId);
+        for (int i = 0; i < HostHeld.Count && !beam; i++)
         {
             var h = HostHeld[i];
             if (h.A != ts.PlayerId || h.T != PlayerId || now - h.At > ClashWindow) continue;
@@ -149,8 +151,9 @@ public sealed partial class Samurai
         (w, v) => w.Write(v), r => r.ReadByte(),
         (sender, v) =>
         {
-            if (!sender || _hlA == 255) return;
+            if (!sender) return;
             int add = Math.Min((int)v, 8); // 0.2 秒ごとに送る。人の手で出せる分まで
+            if (Impostor.Nova.HostBeamMash(sender.PlayerId, add) || _hlA == 255) return;
             if (sender.PlayerId == _hlA) _hlCountA += add;
             else if (sender.PlayerId == _hlB) _hlCountB += add;
         }, perSecond: 10);
@@ -300,6 +303,7 @@ public sealed partial class Samurai
     private void BeginLock(byte other)
     {
         if (!Drawn) SetDrawn(true, iai: true);
+        _beamLock = false;
         _lockWith = other;
         _lockOpp = GameData.Instance ? GameData.Instance.GetPlayerById(other)?.Object : null;
         _lockUntil = Time.time + LockTime + 1f;
@@ -319,6 +323,7 @@ public sealed partial class Samurai
         SamuraiSound.StopLock();
         byte with = _lockWith;
         _lockWith = 255;
+        _beamLock = false;
         _lockOpp = null;
         _blade.SetLock(false, 255);
         if (!IsLocal) return;
@@ -410,7 +415,8 @@ public sealed partial class Samurai
         if (s != null && s._lockWith != 255)
         {
             var p = s.Player;
-            if (p && s._lockOpp) velocity = LockPull(p.transform.position, s._lockOpp.transform.position);
+            if (p && s._beamLock) velocity = s.BeamPull(p.transform.position);
+            else if (p && s._lockOpp) velocity = LockPull(p.transform.position, s._lockOpp.transform.position);
             return true;
         }
         if (Time.time >= _knockUntil) return false;

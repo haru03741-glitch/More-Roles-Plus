@@ -109,11 +109,12 @@ internal static class RoleCommands
             reply($"OK rlaim {deg}");
         });
 
-        TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く) / stance = 右クリックと同じ (構える・しまう) / fire = 左クリックと同じ (構えていれば溜めずに撃つ) / charge <秒> = 左クリックをその秒だけ押して離す", (args, reply) =>
+        TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く) / stance = 右クリックと同じ (構える・しまう) / fire = 左クリックと同じ (構えていれば溜めずに撃つ) / charge <秒> = 左クリックをその秒だけ押して離す / mash <番号> <回数> = 光線と押し合っているサムライの連打をホストで足す", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (a.Length == 1 && a[0] == "stance") { reply("OK nova stance " + Roles.Impostor.Nova.StanceForTest()); return; }
             if (a.Length == 1 && a[0] == "fire") { reply("OK nova fire " + Roles.Impostor.Nova.FireForTest()); return; }
+            if (a.Length == 3 && a[0] == "mash" && byte.TryParse(a[1], out byte msam) && int.TryParse(a[2], out int mn)) { reply($"OK nova mash {Roles.Impostor.Nova.HostBeamMash(msam, mn)}"); return; }
             if (a.Length == 2 && a[0] == "charge" && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec)) { reply("OK nova charge " + Roles.Impostor.Nova.ChargeForTest(sec)); return; }
             if (a.Length < 2 || a[0] != "aim") { reply("ERR nova aim <deg|off>"); return; }
             if (a[1] == "off") { Roles.Impostor.Nova.TestAngle = null; reply("OK nova aim off"); return; }
@@ -251,6 +252,14 @@ internal static class RoleCommands
             {
                 if (RoleState.Of(oid) is not Roles.Neutral.Samurai os) { reply("ERR samurai not Samurai"); return; }
                 reply($"OK samurai {os.Probe()}");
+                return;
+            }
+            if (p.Length >= 2 && p[0] == "drawof" && byte.TryParse(p[1], out byte drid))
+            {
+                // drawof <番号> = その人のサムライに刀を抜かせる (ホスト・練習の相手)
+                if (RoleState.Of(drid) is not Roles.Neutral.Samurai dr) { reply("ERR samurai not Samurai"); return; }
+                dr.BotDraw();
+                reply($"OK samurai drawof {dr.Probe()}");
                 return;
             }
             if (p.Length >= 2 && p[0] == "sheatheof" && byte.TryParse(p[1], out byte shid))

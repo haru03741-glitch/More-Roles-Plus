@@ -12,7 +12,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 溜まり具合はノヴァの脇の筒で全員に見える。撃つ向きは設定で選ぶ: 自由 (マウスの向き) / 左右 (向いている方) / 上下左右・8 方向 (マウスの向きに近い方)。
 // PC は右クリックで構え (もう一度でしまう)・左クリックを押している間溜める (発射のボタンを押しに行くとマウスが下へ動き、狙いが必ず下になるため)。
 // ボタンは構えの切り替えと待ち時間の表示に使う。スマホはボタンを押している間溜め、最後に歩いた向きへ撃つ
-public sealed class Nova : RoleBase
+public sealed partial class Nova : RoleBase
 {
     public override Team Team => Team.Impostor;
     public override string Color => "#FF1919";
@@ -220,6 +220,7 @@ public sealed class Nova : RoleBase
     // スマホは最後に歩いた向きへ撃つので、自分の端末で向きを覚えておく
     public override void OnFixedUpdate()
     {
+        if (_blSam != 255) HostLockTick();
         if (IsLocal && System.OperatingSystem.IsAndroid()) ShotKit.Track();
     }
 
@@ -328,18 +329,20 @@ public sealed class Nova : RoleBase
         float size = Size * Thick(level);
         // 貫ける人数を超えたら、その人の所で光線が止まる (どの端末でも同じ並びから決める)
         float half = Half(level);
-        int hits = Victims(n.Player, from, dir, length, half, Pierce(level), out float stopAt);
+        int hits = Victims(n.Player, from, dir, length, half, Pierce(level), level >= 0.999f, out float stopAt);
         if (stopAt < length) { length = stopAt; wall = false; }
         PortSound.Play("nova_beam", () => PortSound.Fallback("nova_beam"), 1f, from, 25f);
-        NovaFx.Fire(n.Player, from, angle, length, size, wall, half);
-        if (wall) PortSound.Play("nova_impact", null, 1f, from + dir * length, 25f);
-        if (AmongUsClient.Instance.AmHost) HostBeam(n, hits, from, dir, length, size, wall);
+        // サムライで止まった所は、壁に当たった時と同じく光が弾ける (壁は焼かない)
+        NovaFx.Fire(n.Player, from, angle, length, size, wall || _samuraiStop, half);
+        if (wall || _samuraiStop) PortSound.Play("nova_impact", null, 1f, from + dir * length, 25f);
+        if (AmongUsClient.Instance.AmHost) HostBeam(n, hits, from, dir, length, size, wall, level);
     }
 
     private static readonly System.Collections.Generic.List<(float along, PlayerControl p)> Hit = new();
 
     // 光線 (頂点から開く形・片側の幅 half) の中の生きている人を近い順に、貫ける人数まで。超えた所で光線を止める長さを返す
-    private static int Victims(PlayerControl invoker, Vector2 from, Vector2 dir, float length, float half, int pierce, out float stopAt)
+    // 満タンでない光線は、抜いていても抜いていなくても最初に当たったサムライで止まる (刀で受ける・体で受ける)
+    private static int Victims(PlayerControl invoker, Vector2 from, Vector2 dir, float length, float half, int pierce, bool full, out float stopAt)
     {
         Hit.Clear();
         stopAt = float.MaxValue;
@@ -364,6 +367,16 @@ public sealed class Nova : RoleBase
             Hit.Add((along, p));
         }
         Hit.Sort((a, b) => a.along.CompareTo(b.along));
+        _samuraiStop = false;
+        if (!full && Neutral.Samurai.Count > 0)
+            for (int i = 0; i < Hit.Count && i < pierce; i++)
+            {
+                if (RoleState.Of(Hit[i].p) is not Neutral.Samurai) continue;
+                if (Hit.Count > i + 1) Hit.RemoveRange(i + 1, Hit.Count - i - 1);
+                stopAt = FxMath.Max(Hit[i].along - SamuraiStop, ApexBack + 0.1f);
+                _samuraiStop = true;
+                return Hit.Count;
+            }
         if (Hit.Count > pierce)
         {
             stopAt = Hit[pierce - 1].along + 0.3f;
@@ -373,7 +386,7 @@ public sealed class Nova : RoleBase
     }
 
     // ホスト: 光線が貫いた人を倒す (Victims の結果)。キルを防ぐ役職には聞く
-    private static void HostBeam(Nova n, int hits, Vector2 from, Vector2 dir, float length, float size, bool wall)
+    private static void HostBeam(Nova n, int hits, Vector2 from, Vector2 dir, float length, float size, bool wall, float level)
     {
         var invoker = n.Player;
         if (!PortKit.Alive(invoker)) return;
@@ -381,6 +394,7 @@ public sealed class Nova : RoleBase
         for (int i = 0; i < hits && i < Hit.Count; i++)
         {
             var p = Hit[i].p;
+            if (RoleState.Of(p) is Neutral.Samurai s) { n.HostSamurai(s, from, level); continue; }
             if (BeforeMurderEvent.Ask(invoker, p) != null) continue;
             invoker.RpcMurderPlayer(p, true);
         }
