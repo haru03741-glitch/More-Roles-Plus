@@ -1709,3 +1709,7 @@ Doppelganger.NoPath: 幻影がそこへ行く道が見つからない
 Doppelganger.SwapCooldown: スワップの待ち時間
 Doppelganger.SwapDuration: スワップにかかる時間
 Doppelganger.DetectionRadius: 幻影がプレイヤーを探知する範囲
+IntroTeam.Neutral: 第三陣営
+IntroTeam.NeutralSub: クルーでもインポスターでもない、自分だけの勝ちを目指そう
+IntroTeam.Madmate: マッドメイト
+IntroTeam.MadmateSub: クルーにまぎれて、インポスターを勝たせよう

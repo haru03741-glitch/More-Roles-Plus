@@ -1709,3 +1709,7 @@ Doppelganger.NoPath: No path for the phantom to get there
 Doppelganger.SwapCooldown: Swap cooldown
 Doppelganger.SwapDuration: Swap time
 Doppelganger.DetectionRadius: Phantom detection radius
+IntroTeam.Neutral: Neutral
+IntroTeam.NeutralSub: Neither Crewmate nor Impostor. Win your own way
+IntroTeam.Madmate: Madmate
+IntroTeam.MadmateSub: Blend in with the crew and help the Impostors win
