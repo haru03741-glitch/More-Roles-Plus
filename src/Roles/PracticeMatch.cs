@@ -11,8 +11,8 @@ internal static class PracticeMatch
     // 今の試合が練習か。試合の始めの人数で全員がそれぞれ決める (同じ人数を見るので通信は要らない)
     public static bool Active { get; private set; }
 
-    // 練習かフリープレイ (誰でも地形の破壊などを試してよい場)
-    public static bool Sandbox => Active || AmongUsClient.Instance && AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay;
+    // フリープレイ (誰でも地形の破壊などを試してよい場)。人数が少ないだけのオンラインの試合は普通の役職のままにする
+    public static bool Sandbox => AmongUsClient.Instance && AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay;
 
     internal static void OnIntro()
     {
@@ -43,7 +43,7 @@ internal static class PracticeIntroPatch
     }
 }
 
-// 練習とフリープレイでは試合中もチャット欄と破壊のボタンを出す。陣営チャットをタスク中に使える設定なら、仲間のいる人にも出す。
+// フリープレイでは試合中もチャット欄と破壊のボタンを出す。陣営チャットをタスク中に使える設定なら、仲間のいる人にも出す。
 // 本編は HUD を出し直す時 (会議の後・死んだ時・フリープレイの始め) と、オンラインの試合ではイントロの後にチャット欄を隠すので、その両方の後に出す
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.OnGameStart))]
 internal static class SandboxChatOnStartPatch

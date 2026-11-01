@@ -51,7 +51,7 @@ public readonly struct TerrainPermit
 
     public static readonly TerrainPermit None = default;
 
-    // 練習・フリープレイ: 何でも使える (待ち時間はボタンと各武器の決まりに任せる)
+    // フリープレイ: 何でも使える (待ち時間はボタンと各武器の決まりに任せる)
     public static readonly TerrainPermit All = new(true, 0f, MaxRadius, 0f, MaxRadius, 0f, MaxFireRadius, 0f, true, 0f, MaxWallLength, 0f, true, MaxHitReach);
 
     public TerrainPermit WithHammer(float cooldown = 0f) => new(true, cooldown, BlastRadius, BlastCooldown, BombRadius, BombCooldown, FireRadius, FireCooldown, Water, WaterCooldown, WallLength, WallCooldown, WallPush, HitReach);
@@ -90,7 +90,7 @@ internal static class TerrainPermits
     private static readonly Dictionary<int, float> LastUse = new();
     private static int _shipGen = -1;
 
-    // 確かめ用 (ブリッジの permit コマンドからだけ・この端末だけ): 練習・フリープレイの「何でも使える」を切る (null = 本当の判定)
+    // 確かめ用 (ブリッジの permit コマンドからだけ・この端末だけ): フリープレイの「何でも使える」を切る (null = 本当の判定)
     internal static bool? SandboxOverride;
 
     public static TerrainPermit Of(byte playerId)

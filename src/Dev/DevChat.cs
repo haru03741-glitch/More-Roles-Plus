@@ -79,7 +79,7 @@ internal static class DevChat
         string line = text[1..];
         int sp = line.IndexOf(' ');
         string name = sp < 0 ? line : line[..sp];
-        // 練習とフリープレイでは誰でも地形の破壊を試せる (/hammer /blast)
+        // フリープレイでは誰でも地形の破壊を試せる (/hammer /blast)
         if (Terrain.SandboxCommands.TryHandle(name, sp < 0 ? "" : line[(sp + 1)..], out string sandbox))
         {
             field.Clear();

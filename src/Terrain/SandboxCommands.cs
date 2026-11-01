@@ -96,7 +96,7 @@ internal static class SandboxCommands
         return TerrainApi.Wall(lp.GetTruePosition() + aim * (extent + WallGap), t);
     }
 
-    // 練習とフリープレイの試合ごとに、ハンマー・爆破・点火・放水・浸水のボタンを出す (もう出ていれば何もしない)
+    // フリープレイの試合ごとに、ハンマー・爆破・点火・放水・浸水のボタンを出す (もう出ていれば何もしない)
     private static Lifespan _buttons;
 
     public static void EnsureButtons()

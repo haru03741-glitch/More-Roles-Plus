@@ -34,7 +34,7 @@ internal static class TerrainWarm
     public static string Report =>
         $"stage={_stage} jit={StageMs[0]:F1}ms (before match {_preMatchMs:F1}ms, {_methods} methods{(_jitDone ? "" : " running")}, max {_maxTick:F1}ms/tick) map={StageMs[1]:F1} ({DamageMap.EnsureBreakdown}) art={StageMs[2]:F1} sites={StageMs[3]:F1} bake={StageMs[4]:F1} solid={StageMs[5]:F1}+{StageMs[6]:F1} props={StageMs[7]:F1} breakables+low={StageMs[8]:F1} decompfx={StageMs[9]:F1} water={StageMs[10]:F1} edges={StageMs[11]:F1} floor={StageMs[12]:F1} grid={StageMs[13]:F1}+{StageMs[14]:F1} front={StageMs[15]:F1} gc={StageMs[16]:F1}";
 
-    // 地形を壊せる人が出る試合か (練習・フリープレイは誰でも壊せる)
+    // 地形を壊せる人が出る試合か (フリープレイは誰でも壊せる)
     internal static bool Needed()
     {
         if (TerrainPermits.SandboxOverride ?? Roles.PracticeMatch.Sandbox) return true;
