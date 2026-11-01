@@ -21,7 +21,7 @@ internal static class GameModeSwitch
 
     public static GameModes Current => GameOptionsManager.Instance?.currentGameMode ?? GameModes.Normal;
 
-    // 開始できる最少人数。通常は 1 人から練習として始められる。かくれんぼは鬼と隠れる側が要る (1 人だと本編のイントロが鬼を探して落ちる)
+    // 開始できる最少人数。通常は 1 人から始められる (終わらせたくない時はホストの設定で止める)。かくれんぼは鬼と隠れる側が要る (1 人だと本編のイントロが鬼を探して落ちる)
     public static int MinPlayers => IsNormal ? 1 : 2;
 
     // 設定画面を閉じる演出の間は開けないので、消えたフレームで開き直す

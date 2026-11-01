@@ -2,27 +2,10 @@ using HarmonyLib;
 
 namespace MoreRolesPlus.Roles;
 
-// 一人でも試合を始められるようにする。本編の下限より少ない人数で始めた試合は「練習」として自動では終わらない
-// (一人だと始まった瞬間に勝敗が決まってしまうため)。終えるときはメニューから抜ける
-internal static class PracticeMatch
+// フリープレイ (誰でも地形の破壊などを試してよい場)。オンラインの試合は人数が少なくても普通の役職のまま
+internal static class SandboxMode
 {
-    private const int VanillaMinPlayers = 4;
-
-    // 今の試合が練習か。試合の始めの人数で全員がそれぞれ決める (同じ人数を見るので通信は要らない)
-    public static bool Active { get; private set; }
-
-    // フリープレイ (誰でも地形の破壊などを試してよい場)。人数が少ないだけのオンラインの試合は普通の役職のままにする
-    public static bool Sandbox => AmongUsClient.Instance && AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay;
-
-    internal static void OnIntro()
-    {
-        var data = GameData.Instance;
-        // かくれんぼは本編の勝ち負けで回す (人数が少なくても練習にしない)
-        Active = data && data.PlayerCount < VanillaMinPlayers && Options.GameModeSwitch.IsNormal;
-        if (Active) Plugin.Logger.LogInfo($"practice match: {data.PlayerCount} player(s), automatic game end off");
-    }
-
-    internal static void OnJoined() => Active = false;
+    public static bool On => AmongUsClient.Instance && AmongUsClient.Instance.NetworkMode == NetworkModes.FreePlay;
 }
 
 // 本編はロビーが開いた時の下限 (4 人) で開始ボタンを押せなくする。下限は Update で書き戻されないので、開いた時に 1 回だけ下げる
@@ -33,11 +16,10 @@ internal static class MinPlayersPatch
 }
 
 [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin))]
-internal static class PracticeIntroPatch
+internal static class MatchStartIntroPatch
 {
     public static void Prefix()
     {
-        PracticeMatch.OnIntro();
         MatchLog.Reset(); // 「もう一度プレイ」でロビーを通らずに次の試合へ入っても前の死因を残さない
         Commands.JoinLists.OnMatchStart();
     }
@@ -65,7 +47,7 @@ internal static class SandboxChatPatch
 
     public static void Show(HudManager hud)
     {
-        bool sandbox = PracticeMatch.Sandbox;
+        bool sandbox = SandboxMode.On;
         if (!sandbox && !Commands.TeamChat.ShowsInTasks) { Unshift(); return; }
         if (!hud.Chat) return;
         hud.Chat.SetVisible(true);

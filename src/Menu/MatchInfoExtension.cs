@@ -523,7 +523,7 @@ internal static class MatchInfoExtension
     // (ボタンは毎フレームどちらかの静的な位置へ自分を置くので、静的な値を 1 回書く)。船に移る時に戻す
     private static Vector3? _vanillaDefault;
 
-    // 本編のボタンの普段の位置。練習の試合 (PracticeMatch) も同じ静的な値を書き換えるので、書き換える前に必ずここで 1 回控えて共有する
+    // 本編のボタンの普段の位置。フリープレイのチャット欄 (SandboxChatPatch) も同じ静的な値を書き換えるので、書き換える前に必ずここで 1 回控えて共有する
     internal static Vector3 VanillaButtonDefault => _vanillaDefault ??= MatchInfoHudButton.defaultDistanceFromEdge;
     private static bool _buttonPending;
 

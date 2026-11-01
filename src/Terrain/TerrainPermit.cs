@@ -95,7 +95,7 @@ internal static class TerrainPermits
 
     public static TerrainPermit Of(byte playerId)
     {
-        if (SandboxOverride ?? Roles.PracticeMatch.Sandbox) return TerrainPermit.All;
+        if (SandboxOverride ?? Roles.SandboxMode.On) return TerrainPermit.All;
         var role = Roles.RoleState.Of(playerId);
         var p = role != null ? role.TerrainPermit : TerrainPermit.None;
         // 構築士の設計台を使っている人は、その間だけ人を押し出す壁を立てられる (全員の端末で同じ判定)
@@ -180,7 +180,7 @@ internal static class TerrainPermits
     internal static string Describe(byte playerId)
     {
         var p = Of(playerId);
-        return $"sandbox={(SandboxOverride?.ToString() ?? "auto")}/{Roles.PracticeMatch.Sandbox} hammer={p.Hammer}/{p.HammerCooldown:0.#}s blast={p.BlastRadius:0.#}/{p.BlastCooldown:0.#}s bomb={p.BombRadius:0.#}/{p.BombCooldown:0.#}s";
+        return $"sandbox={(SandboxOverride?.ToString() ?? "auto")}/{Roles.SandboxMode.On} hammer={p.Hammer}/{p.HammerCooldown:0.#}s blast={p.BlastRadius:0.#}/{p.BlastCooldown:0.#}s bomb={p.BombRadius:0.#}/{p.BombCooldown:0.#}s";
     }
 
     public static TerrainUse UseOf(in DamageEvent e) => e.Kind switch

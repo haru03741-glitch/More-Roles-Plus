@@ -1170,6 +1170,11 @@ GameRules.TaskWin: タスクで勝つ
 GameRules.TaskWinOn: 勝てる
 GameRules.TaskWinNever: 勝てない
 GameRules.TaskWinNotIfCrewDead: クルー全滅なら勝てない
+GameRules.EndTitle: 試合の終わり方
+GameRules.NoCountWin: 人数 (キル・追放) で勝ち負けを決めない
+GameRules.NoSabotageWin: サボタージュで勝てない
+GameRules.Respawn: 死んでも生き返る
+GameRules.RespawnSeconds: 生き返るまでの秒数
 
 # ── Emote ──
 Emote.Button: エモート

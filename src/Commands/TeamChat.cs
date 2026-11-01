@@ -40,7 +40,7 @@ internal static class TeamChat
     private static int Mode => TeamChatSettings.Mode.Value;
     private static bool InMeeting => MeetingHud.Instance;
     // 追放の画面も含める (本編は追放の画面が消える前に HUD を出し直すので、その時にチャット欄を出す)
-    private static bool InTasks => ShipStatus.Instance && !MeetingHud.Instance && !PracticeMatch.Sandbox;
+    private static bool InTasks => ShipStatus.Instance && !MeetingHud.Instance && !SandboxMode.On;
 
     // 陣営チャットでつながる陣営 (無ければ null)。送り手と受け手で同じ判定を使う
     private static Team? TeamOf(PlayerControl p)

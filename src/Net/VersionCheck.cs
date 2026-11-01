@@ -330,7 +330,6 @@ internal static class ResetOnJoinPatch
     public static void Prefix()
     {
         VersionCheck.OnJoined();
-        Roles.PracticeMatch.OnJoined();
         Commands.ChatGuard.Reset();
     }
 

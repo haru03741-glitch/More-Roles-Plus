@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus;
 
-// Ctrl を押している間だけ壁を通り抜ける (PC)。使えるのはロビーとフリープレイ・練習の試合、開発者は試合中も。
+// Ctrl を押している間だけ壁を通り抜ける (PC)。使えるのはロビーとフリープレイ、開発者は試合中も。
 // 自分の足元の当たり判定を切って壁に触れなくする (位置の同期はそのままなので他の人にも普通に動いて見える)。
 // 当たり判定を遠くへずらす方法だと、足元の位置 (タスク・キルの距離・水の深さが使う) まで一緒にずれるので使わない。
 // 毎フレームの問い合わせは Ctrl の 2 つだけで、切る・戻すは切り替わった時だけ書く
@@ -60,6 +60,6 @@ internal static class NoClip
         if (!client) return false;
         if (LobbyBehaviour.Instance && !ShipStatus.Instance) return true;
         if (!ShipStatus.Instance) return false;
-        return Roles.PracticeMatch.Sandbox || Dev.DevUsers.AmDev;
+        return Roles.SandboxMode.On || Dev.DevUsers.AmDev;
     }
 }

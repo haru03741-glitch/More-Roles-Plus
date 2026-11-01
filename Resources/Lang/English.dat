@@ -1170,6 +1170,11 @@ GameRules.TaskWin: Win by tasks
 GameRules.TaskWinOn: Yes
 GameRules.TaskWinNever: No
 GameRules.TaskWinNotIfCrewDead: Not if all crewmates are dead
+GameRules.EndTitle: How the game ends
+GameRules.NoCountWin: No win by player count (kills / ejections)
+GameRules.NoSabotageWin: No win by sabotage
+GameRules.Respawn: Dead players come back to life
+GameRules.RespawnSeconds: Seconds until revived
 
 # ── Emote ──
 Emote.Button: Emote

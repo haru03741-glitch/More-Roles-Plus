@@ -12,6 +12,7 @@ namespace MoreRolesPlus.Rules;
 // - 会議: 会議を無くす (緊急ボタンも死体の通報も。押す側で止め、ホストも断る)・スキップできない・
 //   投票しなかった人は自分に入れた扱い (MeetingVotes)
 // - タスク: タスクで勝てなくする (いつも / クルーが全員死んだ時だけ)
+// - 終わり方: 人数 (キル・追放) やサボタージュで勝ち負けを決めない・死んでも生き返る (タブの終わりの組)
 [Settings(Tab.General, "GameRules.Title", order: -55)]
 public static class GameRules
 {
@@ -21,6 +22,18 @@ public static class GameRules
     public static readonly BoolOpt SelfVoteIfNone = new("GameRules.SelfVoteIfNone", false) { OffTab = true };
     public static readonly ChoiceOpt TaskWin = new("GameRules.TaskWin", 0,
         new Text("GameRules.TaskWinOn"), new Text("GameRules.TaskWinNever"), new Text("GameRules.TaskWinNotIfCrewDead")) { OffTab = true };
+
+    // 試合の終わり方を止める (ホストの終わりの判定で見る)。タスクの勝ちは上の TaskWin
+    public static readonly BoolOpt NoCountWin = new("GameRules.NoCountWin", false) { OffTab = true };
+    public static readonly BoolOpt NoSabotageWin = new("GameRules.NoSabotageWin", false) { OffTab = true };
+    // 死んでも数秒で生き返る (ホストが生き返らせる・Respawn)
+    public static readonly BoolOpt Respawn = new("GameRules.Respawn", false) { OffTab = true };
+    public static readonly IntOpt RespawnSeconds = new("GameRules.RespawnSeconds", 5, 1, 60, 1, "s") { OffTab = true, Parent = Respawn };
+
+    internal static readonly Opt[] EndRows = { NoCountWin, NoSabotageWin, Respawn, RespawnSeconds };
+
+    // 本編の終わりの判定の代わりに MRP の判定で見る必要があるルールが入っているか
+    internal static bool EndRuleOn => TaskWin.Value != 0 || NoCountWin || NoSabotageWin;
 
     // タスクで勝つのを止めているか (ホストの終わりの判定で見る)
     internal static bool TaskWinBlocked()
@@ -32,8 +45,6 @@ public static class GameRules
             default: return false;
         }
     }
-
-    internal static bool TaskWinRuleOn => TaskWin.Value != 0;
 
     private static bool AnyCrewAlive()
     {
@@ -87,14 +98,17 @@ internal static class EveryoneVentsPatch
     }
 }
 
-// タスクで勝てなくするルールの間は、本編のタスクの勝ちの判定に「まだ」と答える。
+// タスクで勝てなくするルールの間と、配られたタスクが 1 つも無い試合 (クルーがいない) では、本編のタスクの勝ちの判定に「まだ」と答える
+// (本編はタスクの総数 0 を「全部済んだ」と数える)。
 // 本編は通報の時にもこれを見て、済んでいれば会議を開かずにタスクの勝ちで終わらせようとする (止めると会議が開けないまま残る)
 [HarmonyPatch(typeof(GameManager), nameof(GameManager.CheckTaskCompletion))]
 internal static class TaskWinRulePatch
 {
     public static bool Prefix(ref bool __result)
     {
-        if (!Options.GameModeSwitch.IsNormal || !GameRules.TaskWinBlocked()) return true;
+        if (!Options.GameModeSwitch.IsNormal) return true;
+        var gd = GameData.Instance;
+        if (!GameRules.TaskWinBlocked() && !(gd && gd.TotalTasks <= 0)) return true;
         __result = false;
         return false;
     }

@@ -966,9 +966,15 @@ internal static class DevCommands
             if (RoleDisplay.HasLocal()) RoleDisplay.EnsureTaskHeader(p);
         }
         Plugin.Logger.LogInfo($"revive {pid}: alive role={alive?.ToString() ?? "-"} now={p.Data.Role?.Role} hints={hints}");
-        // 倒れた体が残ると通報できてしまうので片付ける
+        // 倒れた体が残ると通報できてしまうので片付ける。本人は体のあった所に立つ (幽霊のまま壁の中にいることがある)
+        UnityEngine.Vector3? at = null;
         foreach (var body in UnityEngine.Object.FindObjectsOfType<DeadBody>())
-            if (body && body.ParentId == pid) UnityEngine.Object.Destroy(body.gameObject);
+        {
+            if (!body || body.ParentId != pid) continue;
+            at = body.transform.position;
+            UnityEngine.Object.Destroy(body.gameObject);
+        }
+        if (p.AmOwner && at is UnityEngine.Vector3 to) Net.Teleport.Self(to);
         if (DevGod.On) DevGod.Refresh();
     }
 }

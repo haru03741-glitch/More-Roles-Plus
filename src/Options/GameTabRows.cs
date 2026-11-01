@@ -10,7 +10,7 @@ namespace MoreRolesPlus.Options;
 // - インポスター: 本編のインポスター数の行を「最多人数」と呼び替え、その上に最少人数の行
 // - インポスターの節の後: 第三陣営 (数とキル役の設定)
 // - クルー・会議・タスクの節の終わり: 全員ベント・会議を無くす・タスクで勝てなくする の行
-// - 頁の終わり: タスクの無効化・機器の無効化・サボタージュ・配り方・人数の帯 (帯ごとに見出し 1 つ)
+// - 頁の終わり: 試合の終わり方・タスクの無効化・機器の無効化・サボタージュ・配り方・人数の帯 (帯ごとに見出し 1 つ)
 internal static class GameTabRows
 {
     internal readonly struct Group
@@ -38,6 +38,7 @@ internal static class GameTabRows
     // タブの終わりに並べる組
     public static IEnumerable<Group> Tail()
     {
+        yield return new Group(new Text("GameRules.EndTitle"), GameRules.EndRows);
         yield return new Group(new Text("TaskFilter.Title"), TaskFilter.Rows);
         yield return new Group(new Text("Devices.Title"), Devices.Rows);
         yield return new Group(new Text("SabotageRules.Title"), SabotageRules.Rows);

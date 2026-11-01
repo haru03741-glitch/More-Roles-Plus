@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
 
-// 練習の試合とフリープレイで、誰でもチャット欄から地形の破壊を試せるコマンド。
+// フリープレイで、誰でもチャット欄から地形の破壊を試せるコマンド。
 //   /hammer [強さ 0〜1]  向いている方向の壁をハンマーで叩く (3 回で崩れる)
 //   /blast [半径]        足元に爆弾を置く (導火線の後に爆発)
 //   /fire [半径]         足元の床に火を付ける (燃え広がるかは床の材質次第)
@@ -42,7 +42,7 @@ internal static class SandboxCommands
     {
         reply = null;
         if (name != "hammer" && name != "blast" && name != "fire" && name != "water" && name != "flood" && name != "wall") return false;
-        if (!Roles.PracticeMatch.Sandbox) return false;
+        if (!Roles.SandboxMode.On) return false;
         var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length > 1) return false;
         float? num = parts.Length == 1 && float.TryParse(parts[0], System.Globalization.NumberStyles.Float,
@@ -101,7 +101,7 @@ internal static class SandboxCommands
 
     public static void EnsureButtons()
     {
-        if (_buttons is { IsDead: false } || !Roles.PracticeMatch.Sandbox) return;
+        if (_buttons is { IsDead: false } || !Roles.SandboxMode.On) return;
         _buttons = Roles.RoleState.Match.Child();
         var hammer = Roles.ModButton.Create(_buttons, Roles.ButtonIcons.Get("hammer"), new Text("SandboxCommands.Hammer"), HammerCooldown,
             () => Report(TerrainApi.Hammer(DefaultForce)));

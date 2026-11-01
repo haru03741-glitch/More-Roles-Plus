@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Terrain;
 // ロビーと試合でも続け、船ごとの準備 (段 1〜) はコンパイルが済んでから始める。
 // コンパイルは 1 回の FixedUpdate に 4ms ずつ (メニューでは MenuBudgetMs ずつ) に分けて、1 フレームを長く止めない。
 // 船ごとの準備は止まっても見えない瞬間にまとめる (LateTick / OnIntro)。
-// 地形を壊せる人がいない試合 (壊せる役職の出現率が全部 0・練習でもフリープレイでもない) では、コンパイルも船ごとの準備もしない
+// 地形を壊せる人がいない試合 (壊せる役職の出現率が全部 0・フリープレイでもない) では、コンパイルも船ごとの準備もしない
 // (メモリと読み込みを使わない。設定画面から外して壊れた時は、その場で作る従来の道に戻る)。コンパイルは要る設定を見てから (ロビー) 始める。
 internal static class TerrainWarm
 {
@@ -37,7 +37,7 @@ internal static class TerrainWarm
     // 地形を壊せる人が出る試合か (フリープレイは誰でも壊せる)
     internal static bool Needed()
     {
-        if (TerrainPermits.SandboxOverride ?? Roles.PracticeMatch.Sandbox) return true;
+        if (TerrainPermits.SandboxOverride ?? Roles.SandboxMode.On) return true;
         if (!Roles.RoleSettings.Enabled) return false;
         foreach (var r in Options.Registry.Roles)
             if (r.Chance != null && r.Chance.Value > 0 && r.TerrainPermit.Any) return true;
@@ -60,7 +60,7 @@ internal static class TerrainWarm
         if (!_jitDone)
         {
             if (!ship && !Boot.BootClock.StartupOver) return; // 起動の処理 (ログイン等) とは重ねない
-            if (!ship && !LobbyBehaviour.Instance && !(TerrainPermits.SandboxOverride ?? Roles.PracticeMatch.Sandbox)) return; // メニューでは要るか分からない
+            if (!ship && !LobbyBehaviour.Instance && !(TerrainPermits.SandboxOverride ?? Roles.SandboxMode.On)) return; // メニューでは要るか分からない
             if (!NeedNow())
             {
                 // 要らない試合: GC の先回しだけ済ませる

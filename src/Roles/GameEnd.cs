@@ -120,7 +120,8 @@ public static class GameEnd
         _nextCheckMs = now + CheckIntervalMs;
         if (!AmongUsClient.Instance.AmHost || TutorialManager.InstanceExists || !GameData.Instance || !ShipStatus.Instance) return;
 
-        if (SabotageExpired())
+        // 時間切れのサボタージュは止めて片付ける (サボタージュで勝てないルールでも、警報を鳴らしたままにしない)
+        if (SabotageExpired() && !Rules.GameRules.NoSabotageWin)
         {
             End(TeamResult(Team.Impostor), GameOverReason.ImpostorsBySabotage);
             return;
@@ -130,6 +131,7 @@ public static class GameEnd
             End(TeamResult(Team.Crew), GameOverReason.CrewmatesByTask);
             return;
         }
+        if (Rules.GameRules.NoCountWin) return;
         var r = Decide(out var reason, out _);
         if (r != null) End(r, reason);
     }
@@ -260,14 +262,16 @@ public static class GameEnd
 
     // ---- ホスト: 終わる直前に結果を配る (本編の判定で終わる時もここを通る) ----
 
-    // 自動の終わりを止めている (ホストの設定・テスト用の noend・人数が足りない練習の試合)
-    internal static bool Held => Commands.HostSettings.NoGameEnd || Bridge.LobbyCommands.NoGameEnd || PracticeMatch.Active;
+    // 自動の終わりを止めている (ホストの設定・テスト用の noend)
+    internal static bool Held => Commands.HostSettings.NoGameEnd || Bridge.LobbyCommands.NoGameEnd;
 
     // 本編が出した終わりを通すか (MRP が決めた終わりは常に通す)
     internal static bool Allows(GameOverReason reason)
     {
         if (_pending != null) return true;
         if (GameEnd.Held) return false;
+        if (Rules.GameRules.NoSabotageWin && reason is GameOverReason.ImpostorsBySabotage) return false;
+        if (Rules.GameRules.NoCountWin && reason is GameOverReason.ImpostorsByKill or GameOverReason.ImpostorsByVote or GameOverReason.CrewmatesByVote) return false;
         if (!RoleState.AnyNeutral) return true;
         return reason switch
         {
@@ -507,8 +511,8 @@ internal static class CheckEndCriteriaPatch
     public static bool Prefix()
     {
         if (GameEnd.Held) return false;
-        // タスクで勝てなくするルールの試合も MRP の判定で見る (本編の判定はタスクの勝ちを止められない)
-        if (!RoleState.AnyNeutral && !Rules.GameRules.TaskWinRuleOn) return true;
+        // 終わり方を止めるルールの試合も MRP の判定で見る (本編の判定は終わり方ごとに止められない)
+        if (!RoleState.AnyNeutral && !Rules.GameRules.EndRuleOn) return true;
         GameEnd.Check();
         return false;
     }
@@ -521,8 +525,9 @@ internal static class GameOverDueToDeathPatch
 {
     public static bool Prefix(ref bool __result)
     {
-        if (!RoleState.AnyNeutral && !GameEnd.Held) return true;
-        __result = !GameEnd.Held && GameData.Instance && GameEnd.Decide(out _, out _) != null;
+        bool held = GameEnd.Held || Rules.GameRules.NoCountWin;
+        if (!RoleState.AnyNeutral && !held) return true;
+        __result = !held && GameData.Instance && GameEnd.Decide(out _, out _) != null;
         return false;
     }
 }
