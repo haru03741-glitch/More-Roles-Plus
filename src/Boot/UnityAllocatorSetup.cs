@@ -8,7 +8,7 @@ using BepInEx;
 namespace MoreRolesPlus.Boot;
 
 // Unity プレイヤーのネイティブアロケータ設定 (boot.config の memorysetup-*) を上書きするファイルを用意する。
-// 同梱の doorstop_config.ini が `boot_config_override=BepInEx-MRP\config\MoreRolesPlus.boot.config` を指しており、
+// 同梱の doorstop_config.ini が `boot_config_override=BepInEx\config\MoreRolesPlus.boot.config` を指しており、
 // Doorstop は起動時にゲームの boot.config の代わりにこのファイルを Unity へ読ませる (ファイルが無ければ素通り)。
 // 読まれるのは起動の最初だけなので、ここで書いた内容が効くのは次回起動から。
 //

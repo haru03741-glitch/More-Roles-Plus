@@ -10,14 +10,14 @@ More Roles Plus 本体は GPL-3.0 です ([`LICENSE`](./LICENSE))。以下は別
 | Component | Author / Project | License | Where |
 |---|---|---|---|
 | FusionCore | XtraCube / All-Of-Us-Mods — [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) | GPL-3.0 | source, `Android/Launcher/` (git subtree, rebranded Android launcher) |
-| BepInEx 6.0.0-be.735 | BepInEx team — [BepInEx](https://github.com/BepInEx/BepInEx) | LGPL-2.1 | PC release zip (`BepInEx-MRP/core/`) |
-| Unity Doorstop 4.5.1 | NeighTools — [UnityDoorstop](https://github.com/NeighTools/UnityDoorstop) | LGPL-2.1 | PC release zip (`winhttp.dll`, `doorstop_config.ini`) |
-| Il2CppInterop 1.5.3 | BepInEx team, knah et al. — [Il2CppInterop](https://github.com/BepInEx/Il2CppInterop) | LGPL-3.0 | PC release zip (`BepInEx-MRP/core/`; `Il2CppInterop.Runtime.dll` modified) |
+| BepInEx 6.0.0-be.735 | BepInEx team — [BepInEx](https://github.com/BepInEx/BepInEx) | LGPL-2.1 | PC installer and release zip (`BepInEx/core/`) |
+| Unity Doorstop 4.5.1 | NeighTools — [UnityDoorstop](https://github.com/NeighTools/UnityDoorstop) | LGPL-2.1 | PC installer and release zip (`winhttp.dll`, `doorstop_config.ini`) |
+| Il2CppInterop 1.5.3 | BepInEx team, knah et al. — [Il2CppInterop](https://github.com/BepInEx/Il2CppInterop) | LGPL-3.0 | PC installer and release zip (`BepInEx/core/`; `Il2CppInterop.Runtime.dll` modified) |
 | BepInEx Fusion | All-Of-Us-Mods — [BepInExFusion](https://github.com/All-Of-Us-Mods/BepInExFusion) | LGPL-2.1 | bundled in the launcher APK (`Android/Launcher/fusionApp/src/main/assets/BepInEx-arm64.zip`) |
 | Il2CppInterop Fusion | All-Of-Us-Mods — [Il2CppInteropFusion](https://github.com/All-Of-Us-Mods/Il2CppInteropFusion) | LGPL-3.0 | bundled in the launcher APK (same `BepInEx-arm64.zip`; `Il2CppInterop.Runtime.dll` modified) |
-| BepInEx core libraries (HarmonyX, MonoMod, Mono.Cecil, Cpp2IL / LibCpp2IL / StableNameDotNet / WasmDisassembler, Disarm, AsmResolver, AssetRipper.CIL / AssetRipper.Primitives, Iced, Capstone.NET, SemanticVersioning, Microsoft.Extensions.*) | BepInEx & Andreas Pardeike — [HarmonyX](https://github.com/BepInEx/HarmonyX); 0x0ade — [MonoMod](https://github.com/MonoMod/MonoMod); Jb Evain — [Cecil](https://github.com/jbevain/cecil); Sam Byass — [Cpp2IL](https://github.com/SamboyCoding/Cpp2IL), [Disarm](https://github.com/SamboyCoding/Disarm); Washi — [AsmResolver](https://github.com/Washi1337/AsmResolver); ds5678 — [AssetRipper.CIL](https://github.com/AssetRipper/AssetRipper.CIL), [AssetRipper.Primitives](https://github.com/AssetRipper/AssetRipper.Primitives); [iced](https://github.com/icedland/iced); Ahmed Garhy — [Capstone.NET](https://github.com/9ee1/Capstone.NET); Adam Reeve — [semver.net](https://github.com/adamreeve/semver.net); Microsoft — [dotnet/runtime](https://github.com/dotnet/runtime) | MIT | PC release zip (`BepInEx-MRP/core/`); bundled in the launcher APK (`core/` inside `BepInEx-arm64.zip`) |
-| .NET runtime | Microsoft & .NET Foundation — [dotnet/runtime](https://github.com/dotnet/runtime) | MIT | PC release zip (`dotnet/`); bundled in the launcher APK (`assets/dotnet-arm64.zip`, `jniLibs/arm64-v8a/`; `System.Diagnostics.Process.dll` patched) |
-| Dobby (modified) | jmpews — [Dobby](https://github.com/jmpews/Dobby) | Apache-2.0 | PC release zip (`BepInEx-MRP/core/dobby.dll`, unmodified); bundled in the launcher APK (`jniLibs/arm64-v8a/libdobby.so`); changes in [`Android/Launcher/third_party/dobby/`](./Android/Launcher/third_party/dobby/) |
+| BepInEx core libraries (HarmonyX, MonoMod, Mono.Cecil, Cpp2IL / LibCpp2IL / StableNameDotNet / WasmDisassembler, Disarm, AsmResolver, AssetRipper.CIL / AssetRipper.Primitives, Iced, Capstone.NET, SemanticVersioning, Microsoft.Extensions.*) | BepInEx & Andreas Pardeike — [HarmonyX](https://github.com/BepInEx/HarmonyX); 0x0ade — [MonoMod](https://github.com/MonoMod/MonoMod); Jb Evain — [Cecil](https://github.com/jbevain/cecil); Sam Byass — [Cpp2IL](https://github.com/SamboyCoding/Cpp2IL), [Disarm](https://github.com/SamboyCoding/Disarm); Washi — [AsmResolver](https://github.com/Washi1337/AsmResolver); ds5678 — [AssetRipper.CIL](https://github.com/AssetRipper/AssetRipper.CIL), [AssetRipper.Primitives](https://github.com/AssetRipper/AssetRipper.Primitives); [iced](https://github.com/icedland/iced); Ahmed Garhy — [Capstone.NET](https://github.com/9ee1/Capstone.NET); Adam Reeve — [semver.net](https://github.com/adamreeve/semver.net); Microsoft — [dotnet/runtime](https://github.com/dotnet/runtime) | MIT | PC installer and release zip (`BepInEx/core/`); bundled in the launcher APK (`core/` inside `BepInEx-arm64.zip`) |
+| .NET runtime | Microsoft & .NET Foundation — [dotnet/runtime](https://github.com/dotnet/runtime) | MIT | PC installer and release zip (`dotnet/`); bundled in the launcher APK (`assets/dotnet-arm64.zip`, `jniLibs/arm64-v8a/`; `System.Diagnostics.Process.dll` patched) |
+| Dobby (modified) | jmpews — [Dobby](https://github.com/jmpews/Dobby) | Apache-2.0 | PC installer and release zip (`BepInEx/core/dobby.dll`, unmodified); bundled in the launcher APK (`jniLibs/arm64-v8a/libdobby.so`); changes in [`Android/Launcher/third_party/dobby/`](./Android/Launcher/third_party/dobby/) |
 | stb_image | Sean Barrett — [stb](https://github.com/nothings/stb) | MIT or Public Domain (Unlicense) | compiled into the mod's native component (`native/src/third_party/stb_image.h`; the license text is at the end of that file) |
 | OpenSSL | The OpenSSL Project Authors — [OpenSSL](https://github.com/openssl/openssl) | Apache-2.0 | bundled in the launcher APK (`jniLibs/arm64-v8a/libcrypto.so`, `libssl.so`) |
 | LLVM libunwind | The LLVM Project — [llvm-project](https://github.com/llvm/llvm-project) | Apache-2.0 WITH LLVM-exception | bundled in the launcher APK (`libfusionunwind.so`, built from the Android NDK's `libunwind.a`) |
@@ -37,11 +37,10 @@ with branding and package name changed for More Roles Plus. It stays under GPL-3
 `Android/Launcher/` の Android ランチャーは XtraCube / All-Of-Us-Mods の [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) (GPL-3.0) を
 git subtree として取り込み、End K not で加えられた変更を重ねて、名前とパッケージ名を More Roles Plus 向けに変えたものです。
 
-## BepInEx / Unity Doorstop (LGPL-2.1) / Il2CppInterop (LGPL-3.0) — PC release zip
+## BepInEx / Unity Doorstop (LGPL-2.1) / Il2CppInterop (LGPL-3.0) — PC installer and release zip
 
-The PC release zip contains [BepInEx](https://github.com/BepInEx/BepInEx) 6.0.0-be.735 (the official
-`BepInEx-Unity.IL2CPP-win-x64` build, placed in `BepInEx-MRP/` instead of `BepInEx/` so that it does not share
-plugins with other mods), [Unity Doorstop](https://github.com/NeighTools/UnityDoorstop) 4.5.1 and
+The PC installer (`MoreRolesPlusInstaller.exe`, which embeds the files) and the PC release zip contain
+[BepInEx](https://github.com/BepInEx/BepInEx) 6.0.0-be.735 (the official `BepInEx-Unity.IL2CPP-win-x64` build), [Unity Doorstop](https://github.com/NeighTools/UnityDoorstop) 4.5.1 and
 [Il2CppInterop](https://github.com/BepInEx/Il2CppInterop) 1.5.3. BepInEx and Unity Doorstop are unmodified
 (`doorstop_config.ini` and `BepInEx.cfg` are configuration files adjusted for More Roles Plus).
 `Il2CppInterop.Runtime.dll` / `Il2CppInterop.Common.dll` are the 1.5.3 build distributed with
@@ -51,14 +50,14 @@ reference stores go through the game's GC write barrier (`IL2CPP.FieldWriteWbarr
 `Il2CppReferenceArray<T>.StoreValue` and the `Il2CppStringArray` indexer setter; adds `IL2CPP.WbStore`).
 The modified file is reproduced from the unmodified one by [`tools/InteropWbPatch`](./tools/InteropWbPatch/).
 The full license texts are in [`licenses/LGPL-2.1.txt`](./licenses/LGPL-2.1.txt) and
-[`licenses/LGPL-3.0.txt`](./licenses/LGPL-3.0.txt), and are included in the release zip.
+[`licenses/LGPL-3.0.txt`](./licenses/LGPL-3.0.txt), and are included in the installed files and the release zip.
 
-PC 版の配布 zip には BepInEx 6.0.0-be.735 (公式のビルド。ほかの mod と plugins を共有しないよう `BepInEx/` でなく
-`BepInEx-MRP/` に置いています)・Unity Doorstop 4.5.1・Il2CppInterop 1.5.3 が入っています。BepInEx と Unity Doorstop は
+PC 版のインストーラー (`MoreRolesPlusInstaller.exe` の中に埋め込んでいます) と配布 zip には、BepInEx 6.0.0-be.735 (公式のビルド)・
+Unity Doorstop 4.5.1・Il2CppInterop 1.5.3 が入っています。BepInEx と Unity Doorstop は
 無改変です (`doorstop_config.ini` と `BepInEx.cfg` は設定ファイルのため More Roles Plus 向けに調整しています)。
 Il2CppInterop は Endless Host Roles の配布物に含まれる 1.5.3 のビルド (`packaging/il2cppinterop/` に無改変のまま置いています) を使い、
 `Il2CppInterop.Runtime.dll` だけ参照の書き込みが GC の書き込みバリアを通るように書き換えています
-(元のファイルから `tools/InteropWbPatch` で作り直せます)。ライセンス全文は `licenses/` にあり、配布 zip にも入っています。
+(元のファイルから `tools/InteropWbPatch` で作り直せます)。ライセンス全文は `licenses/` にあり、インストールされるファイルと配布 zip にも入っています。
 
 ## BepInEx Fusion (LGPL-2.1) / Il2CppInterop Fusion (LGPL-3.0)
 
@@ -76,7 +75,7 @@ The MonoMod libraries in the same zip are covered below. The full license texts 
 
 ## MIT components (.NET runtime, BepInEx core libraries)
 
-The .NET runtime and the BepInEx core libraries listed above are included in the PC release zip (unmodified) and
+The .NET runtime and the BepInEx core libraries listed above are included in the PC installer and release zip (unmodified) and
 bundled inside the launcher APK under the MIT License, with these copyright notices. In the APK they are unmodified except that `System.Diagnostics.Process.dll`
 is patched, and `MonoMod.Core`, `MonoMod.Utils`, `MonoMod.RuntimeDetour` and `MonoMod.Iced` are the builds
 shipped in FusionCore with `MonoMod.Core` patched (see [`Android/Launcher/UPSTREAM.md`](./Android/Launcher/UPSTREAM.md)).
