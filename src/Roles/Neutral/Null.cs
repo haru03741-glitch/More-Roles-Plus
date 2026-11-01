@@ -1,4 +1,4 @@
-// Ported from https://github.com/Tomi-1103/TownOfHost-hamo Roles/Neutral/Null.cs (GPL-3.0)
+// Ported from https://github.com/rar006/TownOfHost-hamo Roles/Neutral/Null.cs (GPL-3.0)
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
 using UnityEngine;

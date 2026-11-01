@@ -1,4 +1,4 @@
-// Ported from https://github.com/Dolly1016/UchuAddon UchuAddon/Scripts/Role/Crewmate/Alchemist.cs (GPL-3.0)
+// Ported from https://github.com/Dolly1016/UchuAddon UchuAddon/Scripts/Role/Crewmate/Alchemist.cs (role idea and logic; UchuAddon allows porting them, no assets used)
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
 using UnityEngine;

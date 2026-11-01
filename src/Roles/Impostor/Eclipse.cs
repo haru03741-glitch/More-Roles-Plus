@@ -1,4 +1,4 @@
-// Ported from https://github.com/Dolly1016/UchuAddon UchuAddon/Scripts/Role/Impostor/Eclipse.cs (GPL-3.0)
+// Ported from https://github.com/Dolly1016/UchuAddon UchuAddon/Scripts/Role/Impostor/Eclipse.cs (role idea and logic; UchuAddon allows porting them, no assets used)
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;

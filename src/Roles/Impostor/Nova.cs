@@ -1,4 +1,4 @@
-// Based on the Nova role of https://github.com/SuperNewRoles/SuperNewRoles (GPL-3.0) as described by its role card
+// Based on the Nova role of https://github.com/ykundesu/SuperNewRoles (GPL-3.0) as described by its role card
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
