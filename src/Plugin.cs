@@ -85,6 +85,9 @@ public class Ticker : MonoBehaviour
 
     private static bool _ran;
 
+    // 地域の設定は本編と他の Mod で共用なので、閉じる時に MRP のサーバーを選んだままにしない
+    private void OnApplicationQuit() => Net.MrpRegion.RestoreOnQuit();
+
     private void Update()
     {
         if (!_ran) { _ran = true; Boot.BootClock.Mark("frame1"); }

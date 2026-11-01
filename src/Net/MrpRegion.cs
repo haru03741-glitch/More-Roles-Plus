@@ -146,16 +146,46 @@ internal static class MrpRegion
         if (r == 2) { Plugin.Logger.LogInfo("mrp region: server reachable"); return; }
         var sm = ServerManager.Instance;
         if (!sm || sm.CurrentRegion == null || sm.CurrentRegion.Name != _name.Value) return; // 利用者がもう切り替えた
-        // 前回も MRP を選んでいた時は保存された地域も MRP なので、公式のアジア (無ければ最初の公式) へ
-        var back = _previous != null && _previous.Name != _name.Value ? _previous : null;
-        if (back == null)
-            foreach (var r2 in sm.AvailableRegions)
-                if (r2.Name != _name.Value && (back == null || r2.Name.Contains("Asia"))) back = r2;
+        var back = OtherRegion(sm);
         if (back == null) { Plugin.Logger.LogWarning("mrp region: server unreachable (no other region)"); return; }
         sm.SetRegion(back);
         _fallback = back.Name;
         _retryAt = System.Environment.TickCount64 + RetryMs;
         Plugin.Logger.LogWarning($"mrp region: server unreachable, back to {back.Name} (retry every {RetryMs / 1000}s)");
+    }
+
+    // MRP 以外の戻り先 = 起動した時に選ばれていた地域。前回も MRP のまま閉じていた時は公式のアジア
+    // (無ければ最初の公式・それも無ければ最初の別の地域)。公式かは表示名でなく接続先で見る
+    private static IRegionInfo OtherRegion(ServerManager sm)
+    {
+        if (_previous != null && _previous.Name != _name.Value) return _previous;
+        IRegionInfo asia = null, official = null, any = null;
+        foreach (var r in sm.AvailableRegions)
+        {
+            if (r.Name == _name.Value) continue;
+            any ??= r;
+            if (!(r.PingServer ?? "").EndsWith("among.us", System.StringComparison.OrdinalIgnoreCase)) continue;
+            official ??= r;
+            if (asia == null && r.Name.Contains("Asia")) asia = r;
+        }
+        return asia ?? official ?? any;
+    }
+
+    // 閉じる時に MRP のサーバーを選んだままなら戻り先へ切り替えて保存する。
+    // 地域の保存 (regionInfo.json) は本編と他の Mod で共用なので、そのままだと次に起動した別の物も MRP のサーバーへつながる。
+    // MRP は次の起動で AutoSelect がまた選ぶ
+    public static void RestoreOnQuit()
+    {
+        try
+        {
+            if (_name == null || !ServerManager.InstanceExists || !IsCurrent()) return;
+            var sm = ServerManager.Instance;
+            var back = OtherRegion(sm);
+            if (back == null) return;
+            sm.SetRegion(back);
+            Plugin.Logger.LogInfo($"mrp region: restored {back.Name} on quit");
+        }
+        catch (System.Exception e) { Plugin.Logger.LogError($"mrp region quit: {e}"); }
     }
 
     // 戻した後の確かめ直し。部屋の中では切り替えない (メニューにいる時だけ)
