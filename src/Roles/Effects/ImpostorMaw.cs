@@ -186,7 +186,13 @@ internal static unsafe class ImpostorMaw
     internal static void Tick()
     {
         if (Live.Count == 0) return;
-        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
+        if (RewindPlayback.Active)
+        {
+            // 逆再生の間は舌を片付けて本物の体を戻す (見えるのは録画の逆再生。舌は短いので戻し先にはまず無い)
+            for (int i = Live.Count - 1; i >= 0; i--) Stop(Live[i]);
+            Live.Clear();
+            return;
+        }
         float now = Time.time;
         for (int i = Live.Count - 1; i >= 0; i--)
         {

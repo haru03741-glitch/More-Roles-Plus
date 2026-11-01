@@ -125,6 +125,7 @@ internal static partial class RewindPlayback
         }
         e.DynAt = _dynAt;
         e.DynN = n;
+        DynShots++;
         _dynAt += bytes;
     }
 
@@ -168,10 +169,11 @@ internal static partial class RewindPlayback
         }
         d.Own.vertices = d.OwnV;
         d.Own.colors32 = d.OwnC;
+        DynDrawn++;
         return d.Own;
     }
 
-    private static readonly Shot[] Shots = new Shot[ViewCap];
+    private static Shot[] Shots; // 時戻しのいる試合の最初の控えで作る (約 3MB)
     private static readonly int[] ViewStart = new int[Slots], ViewCount = new int[Slots];
     private static int _viewHead; // 次に書く位置 (輪)
 
@@ -214,7 +216,7 @@ internal static partial class RewindPlayback
     private static bool _rootHidden;
     private static readonly Dictionary<IntPtr, int> NewerIndex = new();
 
-    internal static int ViewShots, ViewDropped, ViewHidden; // 確かめ用
+    internal static int ViewShots, ViewDropped, ViewHidden, DynShots, DynDrawn; // 確かめ用
 
     private static void ClearView()
     {
@@ -231,6 +233,8 @@ internal static partial class RewindPlayback
     {
         ViewCount[s] = 0;
         ViewStart[s] = _viewHead;
+        Shots ??= new Shot[ViewCap];
+        DynShots = 0;
         int n = 0;
         SeenNow.Clear();
         var root = FxRoot.Current;
@@ -368,7 +372,7 @@ internal static partial class RewindPlayback
     // 控え a (古い) と b (新しい) の間 u で置く。同じ絵が両方にあれば位置・向き・大きさ・色を補間する
     private static void DriveView(int a, int b, float u)
     {
-        if (!EnsureProxyRoot()) return;
+        if (Shots == null || !EnsureProxyRoot()) return;
         NewerIndex.Clear();
         int bs = ViewStart[b], bn = ViewCount[b];
         if (b != a)
@@ -582,5 +586,5 @@ internal static partial class RewindPlayback
     }
 
     internal static string DescribeView() =>
-        $"view[shots={ViewShots} dropped={ViewDropped} hidden={ViewHidden} sprites={SpriteCache.Count} proxies={_proxyUsed}/{Proxies.Count} meshes={_meshUsed}/{MeshProxies.Count} rootHidden={_rootHidden}]";
+        $"view[shots={ViewShots} dropped={ViewDropped} hidden={ViewHidden} sprites={SpriteCache.Count} proxies={_proxyUsed}/{Proxies.Count} meshes={_meshUsed}/{MeshProxies.Count} dyn={DynShots}/{DynDrawn}/{Dyns.Count} rootHidden={_rootHidden}]";
 }
