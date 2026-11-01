@@ -8,7 +8,7 @@ using BepInEx;
 namespace MoreRolesPlus.Boot;
 
 // Unity プレイヤーのネイティブアロケータ設定 (boot.config の memorysetup-*) を上書きするファイルを用意する。
-// 同梱の doorstop_config.ini が `boot_config_override=BepInEx\config\MoreRolesPlus.boot.config` を指しており、
+// 同梱の doorstop_config.ini が `boot_config_override=BepInEx-MRP\config\MoreRolesPlus.boot.config` を指しており、
 // Doorstop は起動時にゲームの boot.config の代わりにこのファイルを Unity へ読ませる (ファイルが無ければ素通り)。
 // 読まれるのは起動の最初だけなので、ここで書いた内容が効くのは次回起動から。
 //
@@ -22,7 +22,6 @@ namespace MoreRolesPlus.Boot;
 internal static class UnityAllocatorSetup
 {
     public const string OverrideFileName = "MoreRolesPlus.boot.config";
-    private const string IniValue = @"BepInEx\config\" + OverrideFileName;
 
     private static readonly (string Key, string Value)[] Settings =
     [
@@ -111,7 +110,9 @@ internal static class UnityAllocatorSetup
         }
 
         string tmpPath = ini + ".tmp";
-        File.WriteAllText(tmpPath, text[..valueGroup.Index] + IniValue + text[(valueGroup.Index + valueGroup.Length)..]);
+        // BepInEx の置き場 (BepInEx-MRP など) に合わせ、ゲームのフォルダからの相対パスで書く
+        string iniValue = Path.GetRelativePath(Paths.GameRootPath, Path.Combine(Paths.ConfigPath, OverrideFileName));
+        File.WriteAllText(tmpPath, text[..valueGroup.Index] + iniValue + text[(valueGroup.Index + valueGroup.Length)..]);
         File.Move(tmpPath, ini, true);
         Log.LogInfo("UNITYALLOC: doorstop_config.ini now hands the override to Unity (takes effect from the next launch)");
     }
