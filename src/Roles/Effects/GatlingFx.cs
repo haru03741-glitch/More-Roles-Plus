@@ -534,6 +534,7 @@ internal static class GatlingFx
     {
         if (Guns.Count == 0 && Tracers.Count == 0 && Parts.Count == 0 && Halves.Count == 0 && Wrecks.Count == 0) return;
         if (GameClock.ShipGen != _shipGen) { Forget(); return; }
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         float now = Time.time, dt = Time.deltaTime;
         if (Halves.Count > 0) TickHalves(now, dt);
         for (int i = Guns.Count - 1; i >= 0; i--)
@@ -703,11 +704,7 @@ internal static class GatlingFx
 
     // ---- 小物 ----
 
-    private static void Under(GameObject go)
-    {
-        var ship = ShipStatus.Instance;
-        if (ship) go.transform.SetParent(ship.transform, true);
-    }
+    private static void Under(GameObject go) => FxRoot.Attach(go); // 時戻しの逆再生に映る置き場
 
     // 画面の上の向き (度) → 床の上の向き (度)。画面の縦は床の奥行きが縮んだ物なので伸ばして戻す
     private static float YawOf(float screenDeg)

@@ -371,6 +371,9 @@ public sealed partial class TriggerHappy : RoleBase
         return true;
     }
 
+    // 戻し先には無かった弾なので、飛んでいる途中の物は全部消す (戻した後に当たらない)
+    public override void OnRewound() => ClearShots();
+
     private void ClearShots()
     {
         for (int i = _shots.Count - 1; i >= 0; i--) Remove(i);
@@ -379,6 +382,7 @@ public sealed partial class TriggerHappy : RoleBase
     private void MoveShots(float dt)
     {
         if (_shots.Count == 0) { FlushGraze(dt); return; }
+        if (RewindPlayback.Active) return; // 逆再生の間は弾を止める (見た目は録画が逆にたどる・戻し終わりに消す)
         bool cached = false, judged = false;
         float step = Speed * dt;
         for (int i = _shots.Count - 1; i >= 0; i--)
@@ -511,7 +515,7 @@ public sealed partial class TriggerHappy : RoleBase
         {
             // 構えている (か終わった直後の) 人の申告で、相手が射程の中にいて、当たりうる (壁越しでない・仲間に当てない設定なら仲間でない) 時だけ受ける。
             // 当たるのに要る弾数を撃ち切れない速さの申告 (同じ人の次のキルまでの間) も受けない
-            if (MeetingHud.Instance || RoleState.Of(sender) is not TriggerHappy th || !(th._active || Time.time < th._activeUntil)) return;
+            if (MeetingHud.Instance || TimeRewind.Playing || RoleState.Of(sender) is not TriggerHappy th || !(th._active || Time.time < th._activeUntil)) return;
             if (PortKit.ById(id) is not { } t || !PortKit.Alive(t)) return;
             if (Tough(t)) return;
             if (!FriendlyFire && th.SameSide(t)) return;

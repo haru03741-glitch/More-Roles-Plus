@@ -66,6 +66,7 @@ internal static partial class RewindPlayback
         if (_active) Stop();
         _head = _count = 0;
         ClearGhosts();
+        ClearView();
         foreach (var t in Tracks)
         {
             if (t == null) continue;
@@ -105,6 +106,8 @@ internal static partial class RewindPlayback
                 Plugin.Logger.LogWarning($"RewindPlayback capture {t.Id}: {e.Message}");
             }
         }
+        try { CaptureView(s, now); }
+        catch (Exception e) { ViewCount[s] = 0; Plugin.Logger.LogWarning($"RewindPlayback view: {e.Message}"); }
         _head = (_head + 1) % Slots;
         if (_count < Slots) _count++;
         ExpireGhosts(now);
@@ -235,6 +238,7 @@ internal static partial class RewindPlayback
             _driven++;
         }
         BeginGhosts();
+        BeginView();
     }
 
     private static void HoldPet(Track t)
@@ -252,6 +256,8 @@ internal static partial class RewindPlayback
         if (!_active) return;
         Bracket(at, out int a, out int b, out float u);
         if (a < 0) return;
+        try { DriveView(a, b, u); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"RewindPlayback view drive: {e.Message}"); }
         foreach (var t in Tracks)
         {
             if (t == null) continue;
@@ -450,6 +456,7 @@ internal static partial class RewindPlayback
         foreach (var t in Tracks)
             if (t != null && t.Driving) Release(t);
         HideGhosts();
+        StopView();
     }
 
     private static void Release(Track t)
@@ -476,6 +483,7 @@ internal static partial class RewindPlayback
             _head = s;
             _count--;
         }
+        ForgetView();
     }
 
     // その体を今こちらが動かしているか (本編の処理を止める判定)

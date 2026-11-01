@@ -737,6 +737,7 @@ internal static class TimeRewind
         Step("roles", () => RestoreRoles(s, now - SlotMs[s]));
         if (AmongUsClient.Instance.AmHost) Step("host", () => RestoreHost(s, now - SlotMs[s]));
         NotifyRewound();
+        Step("view", () => RewindPlayback.HideBornAfter(SlotMs[s]));
         // 戻した所より後の記録は無かったことになる
         RewindSounds.Forget(SlotMs[s]);
         RewindPlayback.Forget(SlotMs[s]);
@@ -1072,6 +1073,6 @@ internal static class TimeRewind
     internal static string Probe()
     {
         long now = Environment.TickCount64;
-        return $"on={_on} playing={_playing} slots={_count} span={Span:0.00}s rewinds={Rewinds} lastAge={LastSlotAgeMs}ms revived={LastRevived} gone={LastGone} journal={RewindJournal.Count}/{RewindJournal.Undone} tasksUndone={LastTasksUndone} systems={LastSystems}/{_sysN} note={LastNote} next={_nextMs - now}ms";
+        return $"on={_on} playing={_playing} slots={_count} span={Span:0.00}s rewinds={Rewinds} lastAge={LastSlotAgeMs}ms revived={LastRevived} gone={LastGone} journal={RewindJournal.Count}/{RewindJournal.Undone} tasksUndone={LastTasksUndone} systems={LastSystems}/{_sysN} note={LastNote} next={_nextMs - now}ms {RewindPlayback.DescribeView()}";
     }
 }
