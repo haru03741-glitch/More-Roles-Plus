@@ -1,3 +1,4 @@
+using UnityEngine;
 using AmongUs.GameOptions;
 using System.Linq;
 using MoreRolesPlus.Options;
@@ -108,16 +109,36 @@ internal static class RoleCommands
             reply($"OK rlaim {deg}");
         });
 
-        TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く) / stance = 右クリックと同じ (構える・しまう) / fire = 左クリックと同じ (構えていれば撃つ)", (args, reply) =>
+        TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く) / stance = 右クリックと同じ (構える・しまう) / fire = 左クリックと同じ (構えていれば溜めずに撃つ) / charge <秒> = 左クリックをその秒だけ押して離す", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (a.Length == 1 && a[0] == "stance") { reply("OK nova stance " + Roles.Impostor.Nova.StanceForTest()); return; }
             if (a.Length == 1 && a[0] == "fire") { reply("OK nova fire " + Roles.Impostor.Nova.FireForTest()); return; }
+            if (a.Length == 2 && a[0] == "charge" && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec)) { reply("OK nova charge " + Roles.Impostor.Nova.ChargeForTest(sec)); return; }
             if (a.Length < 2 || a[0] != "aim") { reply("ERR nova aim <deg|off>"); return; }
             if (a[1] == "off") { Roles.Impostor.Nova.TestAngle = null; reply("OK nova aim off"); return; }
             if (!float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float deg)) { reply("ERR nova aim <deg>"); return; }
             Roles.Impostor.Nova.TestAngle = deg;
             reply($"OK nova aim {deg}");
+        });
+
+        TestBridge.Register("fxat", "<画面x> <画面y> 画面のその点 (左上が原点の画素) に重なっている有効な SpriteRenderer を並べる (名前・親・絵・色・材質)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var cam = Camera.main;
+            if (a.Length < 2 || !cam || !float.TryParse(a[0], out float sx) || !float.TryParse(a[1], out float sy)) { reply("ERR fxat <x> <y>"); return; }
+            var w = cam.ScreenToWorldPoint(new Vector3(sx, Screen.height - sy, 0f));
+            var sb = new System.Text.StringBuilder($"OK fxat world=({w.x:0.00},{w.y:0.00}) screen={Screen.width}x{Screen.height}");
+            foreach (var r in Object.FindObjectsOfType<SpriteRenderer>())
+            {
+                if (!r.enabled || !r.gameObject.activeInHierarchy) continue;
+                var b = r.bounds;
+                if (w.x < b.min.x || w.x > b.max.x || w.y < b.min.y || w.y > b.max.y) continue;
+                var par = r.transform.parent;
+                var c = r.color;
+                sb.Append($"\n{r.name} <-{(par ? par.name : "-")} <- {(par && par.parent ? par.parent.name : "-")} sprite={(r.sprite ? r.sprite.name : "-")} mat={(r.sharedMaterial ? r.sharedMaterial.name : "-")} col=({c.r:0.00},{c.g:0.00},{c.b:0.00},{c.a:0.00}) z={r.transform.position.z:0.0000} size=({b.size.x:0.0},{b.size.y:0.0})");
+            }
+            reply(sb.ToString());
         });
 
         TestBridge.Register("doppel", "[go <x> <y> | of <番号>] 自分のドッペルゲンガーの分身の位置 / 地図のその点を押した扱いで分身を歩かせる (無ければ出す) / この端末に見えている番号の人の分身", (args, reply) =>

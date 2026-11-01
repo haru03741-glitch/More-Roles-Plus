@@ -22,6 +22,7 @@ internal static class MrpBundle
     private const string RiftWarpMatPath = "assets/generated/riftwarp.mat";
     private const string UiFireMatPath = "assets/generated/uifire.mat";
     private const string UiBarMatPath = "assets/generated/uibar.mat";
+    private const string NovaBeamMatPath = "assets/generated/novabeam.mat";
     private static readonly string[] KatanaMatPaths = { "assets/generated/katanaplate.mat", "assets/generated/katanaframe.mat", "assets/generated/katanaflash.mat" };
 
     private static AssetBundle _bundle;
@@ -88,6 +89,7 @@ internal static class MrpBundle
     public static readonly Material[] KatanaMaterials = new Material[3];
     public static Material UiFireMaterial { get; private set; }
     public static Material UiBarMaterial { get; private set; }
+    public static Material NovaBeamMaterial { get; private set; }
 
     public static bool Ready => TerrainMaterial;
 
@@ -104,6 +106,7 @@ internal static class MrpBundle
             else if (_katanaNext < KatanaMatPaths.Length && !_katanaFailed) TickKatana();
             else if (!UiFireMaterial && !_uiFireFailed) TickUiFire();
             else if (!UiBarMaterial && !_uiBarFailed) TickUiBar();
+            else if (!NovaBeamMaterial && !_novaBeamFailed) TickNovaBeam();
             if (_clipsLeft > 0) TickClips();
             return;
         }
@@ -237,6 +240,24 @@ internal static class MrpBundle
             Plugin.Logger.LogInfo($"bundle uibar: shader={mat.shader.name} supported={mat.shader.isSupported}");
         }
         catch (Exception e) { Plugin.Logger.LogError($"bundle uibar: {e}"); _uiBarFailed = true; }
+    }
+
+    private static AssetBundleRequest _novaBeamReq;
+    private static bool _novaBeamFailed;
+
+    private static void TickNovaBeam()
+    {
+        try
+        {
+            _novaBeamReq ??= _bundle.LoadAssetAsync(NovaBeamMatPath, Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_novaBeamReq.isDone) return;
+            var mat = _novaBeamReq.asset ? _novaBeamReq.asset.TryCast<Material>() : null;
+            if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {NovaBeamMatPath}"); _novaBeamFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            NovaBeamMaterial = mat;
+            Plugin.Logger.LogInfo($"bundle novabeam: shader={mat.shader.name} supported={mat.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle novabeam: {e}"); _novaBeamFailed = true; }
     }
 
     private static AssetBundleRequest _katanaReq;

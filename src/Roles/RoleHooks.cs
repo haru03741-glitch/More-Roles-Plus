@@ -10,7 +10,7 @@ internal static class VisionPatch
 {
     // player は Unity の == (生存確認の呼び出し) を避けて is null で見る。
     // Airship は CalculateLightRadius を上書きしているので別に当てる。中で元の処理を呼んでいても二重に掛けない。
-    // 粉塵の視界は役職と関係なく掛かるので、役職が誰にも付いていない時の早抜けより先に見る
+    // 粉塵とノヴァの満タンで乱れる照明の視界は役職と関係なく掛かるので、役職が誰にも付いていない時の早抜けより先に見る
     internal static int AirshipDepth;
 
     public static void Postfix(ShipStatus __instance, [HarmonyArgument(0)] NetworkedPlayerInfo player, ref float __result)
@@ -25,6 +25,7 @@ internal static class VisionPatch
         var role = RoleState.All.Count > 0 ? RoleState.Of(player.PlayerId) : null;
         if (NeutralKillSettings.Applies(role) && !player.IsDead) result = ship.MaxLightRadius * NeutralKillSettings.Vision;
         if (Terrain.DustCloud.VisionMul < 1f && player.PlayerId == Terrain.DustCloud.LocalId) result *= Terrain.DustCloud.VisionMul;
+        if (NovaFx.VisionMul < 1f && player.PlayerId == NovaFx.LocalId) result *= NovaFx.VisionMul;
         if (RoleState.All.Count == 0 && RoleState.AllAddons.Count == 0)
         {
             result = SnrKit.ApplyVision(player, result);

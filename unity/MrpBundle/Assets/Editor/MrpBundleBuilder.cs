@@ -16,6 +16,7 @@ using UnityEngine;
 //   katanaplate.mat / katanaframe.mat / katanaflash.mat … MRP/Katana* (必殺技の演出: 生の画面を板に貼る / 事前に描いたコマ / 被害者の白の閃き)
 //   uifire.mat … MRP/UiFire (立ち合いの HUD の炎: 体力のバーから立つ炎・回避の枠の炎の輪)
 //   uibar.mat … MRP/UiBar (立ち合いの HUD の体力のバー・中央の鍔・顔の額縁)
+//   novabeam.mat … MRP/NovaBeam (ノヴァの光線: 先へ広がるプラズマの筒)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -158,6 +159,20 @@ public static class MrpBundleBuilder
         uiBar.SetTexture("_Noise", noise);
         AssetDatabase.CreateAsset(uiBar, uiBarPath);
         Tag(uiBarPath);
+
+        Shader novaBeamShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/NovaBeam.shader");
+        if (novaBeamShader == null)
+        {
+            Debug.LogError("MrpBundleBuilder: NovaBeam shader not found");
+            EditorApplication.Exit(2);
+            return;
+        }
+        string novaBeamPath = Folder + "/novabeam.mat";
+        AssetDatabase.DeleteAsset(novaBeamPath);
+        var novaBeam = new Material(novaBeamShader) { name = "novabeam" };
+        novaBeam.SetTexture("_Noise", noise);
+        AssetDatabase.CreateAsset(novaBeam, novaBeamPath);
+        Tag(novaBeamPath);
 
         BreakSounds.ImportAll(Folder, BundleName);
 

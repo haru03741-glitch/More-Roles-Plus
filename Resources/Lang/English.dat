@@ -1581,9 +1581,9 @@ Nova.Name: Nova
 Nova.Blurb: The first cry of a star
 Nova.Summary: An impostor who charges up and fires a straight beam that kills.
 Nova.Fire: Fire
-Nova.Fire.Help: Charge in place for a moment, then fire a beam. Anyone hit by the beam dies (walls stop it). On PC, right-click to raise the cannon and left-click to fire toward the mouse. Right-click again while aiming to lower the cannon. On mobile, press the button to fire the way you last walked. The allowed directions depend on the setting.
+Nova.Fire.Help: Hold to charge in place, then release to fire a beam. The longer you charge, the wider the beam and the more people it can pierce. A quick tap stops at the first person hit; a full charge kills everyone in the beam. Walls stop the beam. You cannot move while charging, and your aim turns only slowly. Your charge shows in a tank beside you that others can see too. On PC, right-click to raise the cannon, hold left-click to charge, and release to fire toward the mouse. Right-click again while aiming to lower the cannon. On mobile, hold the button to charge and release to fire the way you last walked. The allowed directions depend on the setting.
 Nova.Fire.Short: Charge and fire a beam
-Nova.Tips: You cannot move while charging and the glow is visible. Long corridors make it strong.
+Nova.Tips: You cannot move while charging, and others can see how charged you are. A fully charged beam is especially strong in long corridors.
 Nova.Mode: Fire mode
 Nova.Mode.Free: Free (mouse direction)
 Nova.Mode.LeftRight: Left/right (facing)
@@ -1591,7 +1591,10 @@ Nova.Mode.FourWay: Four directions
 Nova.Mode.EightWay: Eight directions
 Nova.Cooldown: Fire cooldown
 Nova.Size: Beam width
-Nova.Charge: Charge time
+Nova.Charge: Time to full charge
+Nova.BeamColor: Beam Color
+Nova.BeamColor.Mono: Black & White
+Nova.BeamColor.Violet: Black & Violet
 Scarlet.Name: Scarlet
 Scarlet.Blurb: Still, I love you
 Scarlet.Summary: A neutral who aims to win together with their favorite. Use your kept lovers well.
