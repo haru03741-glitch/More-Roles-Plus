@@ -809,6 +809,7 @@ Report.ButtonTip: Bug report / Contact (chat with the developers)
 Report.Title: Bug report / Contact
 Report.New: + New report
 Report.Intro: Staff reply to your reports on Discord. Read replies here and keep chatting.
+Report.NeedFriendCode: Bug reports need a friend code. Sign in to your Among Us account and set up a friend code, then open this again.
 Report.None: No reports yet. If something is wrong, send one with New report.
 Report.StateOpen: Open
 Report.StateReply: Reply

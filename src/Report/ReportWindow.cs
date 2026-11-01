@@ -57,12 +57,29 @@ internal static class ReportWindow
 
     public static bool IsOpen => UiWindow.Current != null && UiWindow.Current.Root && UiWindow.Current.Root.name == "MrpWindow_Report";
 
+    // フレンドコードが無い (ゲストなど) 間は使えない。報告はフレンドコードで本人を確かめるため
+    private static bool _testNoFriendCode; // 試験用 (ブリッジ: report nofc)
+    public static bool HasFriendCode
+    {
+        get
+        {
+            if (_testNoFriendCode) return false;
+            try { return EOSManager.Instance && !string.IsNullOrWhiteSpace(EOSManager.Instance.FriendCode); }
+            catch { return false; }
+        }
+    }
+
     public static void Open()
     {
         var w = UiWindow.Open("Report", new Vector2(WinW, WinH), OnClosed);
         if (w == null) return;
         _page = Page.List;
         _status = null;
+        if (!HasFriendCode)
+        {
+            w.Body.Set(new Stack(false, Title(new Text("Report.Title")), new Spacer(0.1f, 0.2f), Small(new Text("Report.NeedFriendCode"), Warn)) { Gap = 0.12f, Width = InnerW });
+            return;
+        }
         if (_tab != ListTabs.Mine) FetchKnown();
         Build();
     }
@@ -92,7 +109,7 @@ internal static class ReportWindow
     private static void Build()
     {
         var w = UiWindow.Current;
-        if (w == null || !w.Root || !IsOpen) return;
+        if (w == null || !w.Root || !IsOpen || !HasFriendCode) return;
         TextField.Blur();
         Widget body = _page switch
         {
@@ -587,6 +604,7 @@ internal static class ReportWindow
             switch (op)
             {
                 case "open": Open(); break;
+                case "nofc": _testNoFriendCode = !_testNoFriendCode; if (IsOpen) UiWindow.Current.Close(); Open(); break;
                 case "tab":
                     if (!IsOpen) Open();
                     _tab = (ListTabs)Math.Clamp(int.TryParse(rest, out int ti) ? ti : 0, 0, 2);

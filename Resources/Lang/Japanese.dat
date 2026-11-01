@@ -809,6 +809,7 @@ Report.ButtonTip: バグ報告・お問い合わせ (開発者とチャットで
 Report.Title: バグ報告・お問い合わせ
 Report.New: ＋ 新しく報告する
 Report.Intro: 送った報告にはスタッフが Discord で返事をします。返事はこの窓で読めて、そのままチャットできます。
+Report.NeedFriendCode: フレンドコードが無いとバグ報告は使えません。Among Us のアカウントでログインして、フレンドコードを作ってから開いてください。
 Report.None: まだ報告はありません。困った事や直してほしい所があれば「新しく報告する」から送ってください。
 Report.StateOpen: 受付中
 Report.StateReply: 返事あり
