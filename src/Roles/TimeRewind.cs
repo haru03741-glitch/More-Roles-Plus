@@ -59,6 +59,8 @@ internal static class TimeRewind
     private static readonly ulong[] DeadBits = new ulong[Slots * 4];
     // ---- ホスト ----
     private static readonly long[] KillMs = new long[Slots * 256];
+    private static readonly byte[] DuelSnap = new byte[Slots * Duel.SnapBytes]; // ホスト: 立ち合いの組と体力
+    private static readonly bool[] DuelSaved = new bool[Slots];                   // その控えに立ち合いを書いたか
     private static readonly SystemTypes[] SysTypes = new SystemTypes[MaxSystems];
     private static readonly ISystemType[] Systems = new ISystemType[MaxSystems];
     private static int _sysN;
@@ -449,6 +451,8 @@ internal static class TimeRewind
     {
         foreach (var role in RoleState.All) Notify(role);
         foreach (var addon in RoleState.AllAddons) Notify(addon);
+        // 立ち合いの HUD は戻った組と体力から出し直す (客はホストから全部が届いた時にもう一度)
+        Step("duelhud", UI.DuelHud.Resync);
     }
 
     private static void Notify(Assignable a)
@@ -478,6 +482,8 @@ internal static class TimeRewind
     private static void CaptureHost(int s)
     {
         KillAbility.CopyHostKillMs(KillMs.AsSpan(s * 256, 256), false);
+        DuelSaved[s] = Duel.InUse;
+        if (DuelSaved[s]) Duel.Save(DuelSnap.AsSpan(s * Duel.SnapBytes, Duel.SnapBytes));
         CaptureSystems(s);
     }
 
@@ -951,6 +957,7 @@ internal static class TimeRewind
         KillMs.AsSpan(s * 256, 256).CopyTo(kill);
         for (int i = 0; i < 256; i++) kill[i] += shiftMs;
         KillAbility.CopyHostKillMs(kill, true);
+        if (Duel.InUse && DuelSaved[s]) Duel.HostRestore(DuelSnap.AsSpan(s * Duel.SnapBytes, Duel.SnapBytes));
         LastSystems = RestoreSystems(s);
     }
 

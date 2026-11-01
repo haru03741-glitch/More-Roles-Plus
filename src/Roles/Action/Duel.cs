@@ -42,6 +42,9 @@ internal static class Duel
 
     private static Lifespan _hooked;
 
+    // この試合で立ち合いを使う役職がいる
+    internal static bool InUse => _hooked != null && _hooked == RoleState.Match && !_hooked.IsDead;
+
     static Duel() => Reset();
 
     // 立ち合いを使う役職が付いた時に呼ぶ (全員の端末で)。試合ごとに 1 回だけ、会議の購読と全快をする
@@ -237,6 +240,8 @@ internal static class Duel
         long now = Environment.TickCount64;
         if (now < _nextCheck) return;
         _nextCheck = now + CheckMs;
+        // 逆再生の間は止める (体が戻っていく間に離れた・倒れたで組を抜けさせない)。戻し終わりに組と体力は控えから戻る
+        if (TimeRewind.Playing) return;
         if (!GameData.Instance) return;
         // 組の外で削られた体力は、しばらく当たらなければ全快に戻す
         for (int i = 0; i < 255; i++)
@@ -282,6 +287,83 @@ internal static class Duel
         return true;
     }
 
+    // ---- 時戻し: ホストが控えから組と体力を戻し、全員へ今の全部を配る ----
+
+    // 体力 256 + 組 256 + 名簿 + 組ごとの人数
+    internal const int SnapBytes = 256 + 256 + (MaxGroups + 1) * MaxMembers + (MaxGroups + 1);
+
+    internal static void Save(Span<byte> dst)
+    {
+        Hp.CopyTo(dst);
+        Group.CopyTo(dst.Slice(256));
+        Members.CopyTo(dst.Slice(512));
+        Count.CopyTo(dst.Slice(512 + Members.Length));
+    }
+
+    // ホスト: 戻し先の控えを読み、組の外の体力を全快へ戻す待ちと離れた時刻を今から数え直して、全員へ配る
+    internal static void HostRestore(ReadOnlySpan<byte> src)
+    {
+        src.Slice(0, 256).CopyTo(Hp);
+        src.Slice(256, 256).CopyTo(Group);
+        src.Slice(512, Members.Length).CopyTo(Members);
+        src.Slice(512 + Members.Length, Count.Length).CopyTo(Count);
+        long now = Environment.TickCount64;
+        for (int i = 0; i < 256; i++) { FarSince[i] = 0; LastHit[i] = now; }
+        Recount();
+        var msg = Pack();
+        SyncCall.Send(msg);
+        UI.DuelHud.Resync();
+    }
+
+    private static void Recount()
+    {
+        _groups = 0;
+        for (int g = 1; g <= MaxGroups; g++)
+            if (Count[g] > 0) _groups++;
+    }
+
+    // 組の人 (組ごとに入った順) と組の外で削られた人だけを 3 バイトずつ (人・体力・組)
+    private static byte[] Pack()
+    {
+        int n = 0;
+        for (int i = 0; i < 256; i++)
+            if (Group[i] != 0 || Hp[i] != MaxHp) n++;
+        var b = new byte[n * 3];
+        int k = 0;
+        for (int g = 1; g <= MaxGroups; g++)
+            for (int i = 0; i < Count[g]; i++)
+            {
+                byte id = Members[g * MaxMembers + i];
+                b[k++] = id; b[k++] = Hp[id]; b[k++] = (byte)g;
+            }
+        for (int i = 0; i < 256 && k < b.Length; i++)
+            if (Group[i] == 0 && Hp[i] != MaxHp) { b[k++] = (byte)i; b[k++] = Hp[i]; b[k++] = 0; }
+        return b;
+    }
+
+    private static readonly RemoteCall<byte[]> SyncCall = new("Duel.Sync", Route.HostToAll,
+        (w, b) => w.WriteBytesAndSize(b), r => r.ReadBytesAndSize(), (_, b) => ApplySync(b));
+
+    private static void ApplySync(byte[] b)
+    {
+        if (b == null) return;
+        for (int i = 0; i < 256; i++) { Hp[i] = MaxHp; Group[i] = 0; }
+        Array.Clear(Count);
+        for (int k = 0; k + 2 < b.Length; k += 3)
+        {
+            byte id = b[k], g = b[k + 2];
+            Hp[id] = Math.Min(b[k + 1], (byte)MaxHp);
+            if (g == 0 || g > MaxGroups || Count[g] >= MaxMembers || Group[id] != 0) continue;
+            Members[g * MaxMembers + Count[g]++] = id;
+            Group[id] = g;
+        }
+        Recount();
+        Syncs++;
+        UI.DuelHud.Resync();
+    }
+
+    internal static int Syncs;
+
     // 会議が始まったら全部の組を畳む (全員の端末で同じに)
     internal static void OnMeeting()
     {
@@ -298,7 +380,7 @@ internal static class Duel
 
     internal static string Describe()
     {
-        var sb = new System.Text.StringBuilder($"started={Started} joined={Joined} hits={Hits} groups={_groups}");
+        var sb = new System.Text.StringBuilder($"started={Started} joined={Joined} hits={Hits} groups={_groups} syncs={Syncs}");
         for (byte g = 1; g <= MaxGroups; g++)
         {
             if (Count[g] == 0) continue;

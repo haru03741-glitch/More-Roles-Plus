@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using MoreRolesPlus.Fx;
+using TMPro;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -59,13 +60,29 @@ internal static class FxRoot
         if (!mesh || v == null || c == null) return;
         RewindPlayback.TrackMesh(mesh, v, c);
     }
+
+    // 画面 (HUD) に出す mod の板の根を登録する (本編の HudManager の子)。下の絵と字は HUD の中の位置で控え、
+    // 逆再生の間は根を隠して控えのとおりに出す。戻し終わりに根は戻すので、持ち主は戻った値から出し直す
+    internal static void TrackHud(Transform root)
+    {
+        if (!root) return;
+        for (int i = HudRoots.Count - 1; i >= 0; i--)
+        {
+            if (!HudRoots[i]) HudRoots.RemoveAt(i);
+            else if (HudRoots[i].Pointer == root.Pointer) return;
+        }
+        HudRoots.Add(root);
+    }
+
+    internal static readonly List<Transform> HudRoots = new();
 }
 
 // 録画: FxRoot の下の SpriteRenderer と MeshRenderer を姿と同じ 0.1 秒ごとに控え、逆再生の間は根を隠して代わりの板を控えのとおりに置く。
 // メッシュは同じ Mesh を指すだけで頂点は写さない (一度作って動かさない片・跡の型)。毎フレーム頂点を書き直すメッシュは、控えた時の形でなく今の形で出る
 internal static partial class RewindPlayback
 {
-    private const int MaxPerSlot = 160;          // 1 回の控えで 160 枚まで (超えた分は控えない)
+    private const int MaxPerSlot = 224;          // 1 回の控えで 224 枚まで (超えた分は控えない)
+    private const int WorldMax = 160;            // そのうち世界の絵は 160 枚まで (残りは HUD の分)
     private const int ViewCap = Slots * MaxPerSlot; // 控えの輪と同じ数だけ持つので、生きている控えが上書きされない
 
     private struct Shot
@@ -77,6 +94,8 @@ internal static partial class RewindPlayback
         public int Order, Layer;
         public byte Flags;           // 1 = flipX・2 = flipY
         public bool Mesh;            // true = MeshRenderer (Sprite は MeshCache の番号・色は材質のまま)
+        public bool Hud;             // true = HUD の中の位置 (HudManager からの相対)
+        public int Text;             // 字 (TextMeshPro) なら TextCache の番号・それ以外は -1
         public int DynN;             // 写した頂点の数 (0 = 写していない・Mesh をそのまま出す)
         public long DynAt;           // 写した頂点の DynBuf の通し位置
     }
@@ -226,6 +245,7 @@ internal static partial class RewindPlayback
         SpriteCache.Clear(); SpriteIndex.Clear();
         MatCache.Clear(); MatIndex.Clear();
         MeshCache.Clear(); MeshIndex.Clear(); FilterOf.Clear();
+        TextCache.Clear(); TextIndex.Clear(); TextSrc.Clear(); IsTextMesh.Clear();
         Born.Clear(); SeenNow.Clear(); SeenPrev.Clear();
     }
 
@@ -241,7 +261,8 @@ internal static partial class RewindPlayback
         if (root) CaptureUnder(root, ref n, now);
         var world = FxRoot.CurrentWorld;
         if (world) CaptureUnder(world, ref n, now);
-        if (n >= MaxPerSlot) ViewDropped++; // 上限で切った回数
+        if (n >= WorldMax) ViewDropped++; // 上限で切った回数
+        CaptureHud(ref n);
         ViewCount[s] = n;
         _viewHead = (_viewHead + n) % ViewCap;
         ViewShots = n;
@@ -261,6 +282,13 @@ internal static partial class RewindPlayback
             foreach (var kv in FilterOf) if (!SeenNow.Contains(kv.Key)) Gone.Add(kv.Key);
             foreach (var id in Gone) FilterOf.Remove(id);
         }
+        if (IsTextMesh.Count > 512) IsTextMesh.Clear();
+        if (TextSrc.Count > 256)
+        {
+            Gone.Clear();
+            foreach (var kv in TextSrc) if (!kv.Value) Gone.Add(kv.Key);
+            foreach (var id in Gone) TextSrc.Remove(id);
+        }
         // 持ち主が捨てたメッシュの登録を外す (自前のメッシュも捨てる)
         if (Dyns.Count > 0 && ++_dynSweep >= 50)
         {
@@ -277,7 +305,7 @@ internal static partial class RewindPlayback
     private static void CaptureUnder(Transform root, ref int n, long now)
     {
         var all = root.GetComponentsInChildren<SpriteRenderer>(false);
-        for (int i = 0; i < all.Count && n < MaxPerSlot; i++)
+        for (int i = 0; i < all.Count && n < WorldMax; i++)
         {
             var sr = all[i];
             if (!sr || !sr.enabled) continue;
@@ -296,12 +324,14 @@ internal static partial class RewindPlayback
             e.Layer = sr.gameObject.layer;
             e.Flags = (byte)((sr.flipX ? 1 : 0) | (sr.flipY ? 2 : 0));
             e.Mesh = false;
+            e.Hud = false;
+            e.Text = -1;
             SeenNow.Add(e.Id);
             if (!SeenPrev.Contains(e.Id)) Born[e.Id] = now;
             n++;
         }
         var meshes = root.GetComponentsInChildren<MeshRenderer>(false);
-        for (int i = 0; i < meshes.Count && n < MaxPerSlot; i++)
+        for (int i = 0; i < meshes.Count && n < WorldMax; i++)
         {
             var mr = meshes[i];
             if (!mr || !mr.enabled) continue;
@@ -326,12 +356,198 @@ internal static partial class RewindPlayback
             e.Layer = mr.gameObject.layer;
             e.Flags = 0;
             e.Mesh = true;
+            e.Hud = false;
+            e.Text = -1;
             e.DynN = 0;
             if (Dyns.Count > 0 && Dyns.TryGetValue(mesh.Pointer, out var d)) CopyDyn(ref e, d);
             SeenNow.Add(id);
             if (!SeenPrev.Contains(id)) Born[id] = now;
             n++;
         }
+    }
+
+    // ---- HUD ----
+
+    private static readonly List<string> TextCache = new();
+    private static readonly Dictionary<string, int> TextIndex = new();
+    private static readonly Dictionary<IntPtr, TextMeshPro> TextSrc = new();   // 字の持ち主 (代わりの字を複製する元)
+    private static readonly Dictionary<IntPtr, bool> IsTextMesh = new();       // MeshRenderer が字の物か (字は文字列で控える)
+    private static readonly List<Transform> HudHidden = new(); // 逆再生の間に隠した HUD の根
+
+    // HUD の根の下の絵と字を HudManager からの相対の位置で控える。戻し終わりに隠すこと (HideBornAfter) はしない
+    // (HUD は持ち主が戻った値から出し直す・切り替えで出し入れする題字を隠すと戻らなくなる)
+    private static void CaptureHud(ref int n)
+    {
+        var roots = FxRoot.HudRoots;
+        if (roots.Count == 0) return;
+        var hud = Vanilla.Hud;
+        if (!hud) return;
+        Matrix4x4 inv = default;
+        bool got = false;
+        for (int r = 0; r < roots.Count; r++)
+        {
+            var root = roots[r];
+            if (!root || !root.gameObject.activeInHierarchy) continue;
+            if (!got) { inv = hud.transform.worldToLocalMatrix; got = true; }
+            var srs = root.GetComponentsInChildren<SpriteRenderer>(false);
+            for (int i = 0; i < srs.Count && n < MaxPerSlot; i++)
+            {
+                var sr = srs[i];
+                if (!sr || !sr.enabled) continue;
+                var sp = sr.sprite;
+                if (!sp) continue;
+                var c = sr.color;
+                if (c.a <= 0.003f) continue;
+                ref var e = ref Shots[(_viewHead + n) % ViewCap];
+                PoseRel(ref e, inv, sr.transform.localToWorldMatrix);
+                e.Id = sr.Pointer;
+                e.Col = c;
+                e.Sprite = Intern(sp, SpriteCache, SpriteIndex);
+                var mat = sr.sharedMaterial;
+                e.Mat = mat ? Intern(mat, MatCache, MatIndex) : -1;
+                e.Order = sr.sortingOrder;
+                e.Layer = sr.gameObject.layer;
+                e.Flags = (byte)((sr.flipX ? 1 : 0) | (sr.flipY ? 2 : 0));
+                e.Mesh = false;
+                e.Hud = true;
+                e.Text = -1;
+                n++;
+            }
+            var mrs = root.GetComponentsInChildren<MeshRenderer>(false);
+            for (int i = 0; i < mrs.Count && n < MaxPerSlot; i++)
+            {
+                var mr = mrs[i];
+                if (!mr || !mr.enabled) continue;
+                var id = mr.Pointer;
+                if (!IsTextMesh.TryGetValue(id, out bool text))
+                {
+                    text = mr.GetComponent<TMP_Text>() || mr.GetComponent<TMP_SubMesh>();
+                    IsTextMesh[id] = text;
+                }
+                if (text) continue;
+                if (!FilterOf.TryGetValue(id, out var mf) || !mf)
+                {
+                    mf = mr.GetComponent<MeshFilter>();
+                    FilterOf[id] = mf;
+                }
+                if (!mf) continue;
+                var mesh = mf.sharedMesh;
+                var mat = mr.sharedMaterial;
+                if (!mesh || !mat) continue;
+                ref var e = ref Shots[(_viewHead + n) % ViewCap];
+                PoseRel(ref e, inv, mr.transform.localToWorldMatrix);
+                e.Id = id;
+                e.Col = Color.white;
+                e.Sprite = Intern(mesh, MeshCache, MeshIndex);
+                e.Mat = Intern(mat, MatCache, MatIndex);
+                e.Order = mr.sortingOrder;
+                e.Layer = mr.gameObject.layer;
+                e.Flags = 0;
+                e.Mesh = true;
+                e.Hud = true;
+                e.Text = -1;
+                e.DynN = 0;
+                n++;
+            }
+            var tmps = root.GetComponentsInChildren<TextMeshPro>(false);
+            for (int i = 0; i < tmps.Count && n < MaxPerSlot; i++)
+            {
+                var tmp = tmps[i];
+                if (!tmp || !tmp.enabled) continue;
+                var c = tmp.color;
+                if (c.a <= 0.003f) continue;
+                var str = tmp.text;
+                if (string.IsNullOrEmpty(str)) continue;
+                if (!TextIndex.TryGetValue(str, out int k))
+                {
+                    if (TextCache.Count >= 1024) continue; // 毎回違う字を出す物で膨らませない
+                    k = TextCache.Count;
+                    TextCache.Add(str);
+                    TextIndex[str] = k;
+                }
+                ref var e = ref Shots[(_viewHead + n) % ViewCap];
+                PoseRel(ref e, inv, tmp.transform.localToWorldMatrix);
+                e.Id = tmp.Pointer;
+                TextSrc[e.Id] = tmp;
+                e.Col = c;
+                e.Sprite = e.Mat = -1;
+                e.Order = 0;
+                e.Layer = tmp.gameObject.layer;
+                e.Flags = 0;
+                e.Mesh = false;
+                e.Hud = true;
+                e.Text = k;
+                e.DynN = 0;
+                n++;
+            }
+        }
+    }
+
+    // a (HUD の逆) × b (絵の行列) を、Unity の行列の掛け算 (interop) を使わずに計算して姿を取り出す
+    private static void PoseRel(ref Shot e, in Matrix4x4 a, in Matrix4x4 b)
+    {
+        Matrix4x4 m = default;
+        m.m00 = a.m00 * b.m00 + a.m01 * b.m10 + a.m02 * b.m20;
+        m.m01 = a.m00 * b.m01 + a.m01 * b.m11 + a.m02 * b.m21;
+        m.m10 = a.m10 * b.m00 + a.m11 * b.m10 + a.m12 * b.m20;
+        m.m11 = a.m10 * b.m01 + a.m11 * b.m11 + a.m12 * b.m21;
+        m.m03 = a.m00 * b.m03 + a.m01 * b.m13 + a.m02 * b.m23 + a.m03;
+        m.m13 = a.m10 * b.m03 + a.m11 * b.m13 + a.m12 * b.m23 + a.m13;
+        m.m23 = a.m20 * b.m03 + a.m21 * b.m13 + a.m22 * b.m23 + a.m23;
+        Pose(ref e, m);
+    }
+
+    private sealed class TextProxy
+    {
+        public GameObject Go;
+        public Transform Tf;
+        public TextMeshPro Tmp;
+        public int Text = -1;
+        public bool Used;
+    }
+
+    private static readonly Dictionary<IntPtr, TextProxy> TextProxies = new();
+    private static readonly List<Proxy> HudProxies = new();
+    private static readonly List<MeshProxy> HudMeshProxies = new();
+    private static Transform _hudProxyRoot;
+    private static IntPtr _hudProxyOf;
+    private static int _hudUsed, _hudMeshUsed;
+
+    private static bool EnsureHudProxyRoot()
+    {
+        var hud = Vanilla.Hud;
+        if (!hud) return false;
+        if (_hudProxyRoot && _hudProxyOf == hud.Pointer) return true;
+        if (_hudProxyRoot) Object.Destroy(_hudProxyRoot.gameObject);
+        HudProxies.Clear();
+        HudMeshProxies.Clear();
+        TextProxies.Clear();
+        _hudUsed = _hudMeshUsed = 0;
+        var go = new GameObject("MrpRewindHud") { layer = hud.gameObject.layer };
+        _hudProxyRoot = go.transform;
+        _hudProxyRoot.SetParent(hud.transform, false);
+        _hudProxyOf = hud.Pointer;
+        return true;
+    }
+
+    // 字の代わり: 持ち主を 1 回だけ複製する (書体・材質・縁取り・色の段がそろう)。字の部品でない子は捨てる
+    private static TextProxy TextProxyOf(IntPtr id)
+    {
+        if (TextProxies.TryGetValue(id, out var t) && t.Go) return t;
+        if (!TextSrc.TryGetValue(id, out var src) || !src) return null;
+        var go = Object.Instantiate(src.gameObject, _hudProxyRoot);
+        go.name = "MrpRewindText";
+        var tf = go.transform;
+        for (int i = tf.childCount - 1; i >= 0; i--)
+        {
+            var ch = tf.GetChild(i);
+            if (!ch.GetComponent<TMP_SubMesh>()) Object.Destroy(ch.gameObject);
+        }
+        var tmp = go.GetComponent<TextMeshPro>();
+        if (!tmp) { Object.Destroy(go); return null; }
+        t = new TextProxy { Go = go, Tf = tf, Tmp = tmp };
+        TextProxies[id] = t;
+        return t;
     }
 
     private static readonly List<IntPtr> Gone = new();
@@ -365,6 +581,13 @@ internal static partial class RewindPlayback
         if (root && root.gameObject.activeSelf) { root.gameObject.SetActive(false); _rootHidden = true; }
         var world = FxRoot.CurrentWorld;
         if (world && world.gameObject.activeSelf) { world.gameObject.SetActive(false); _worldHidden = true; }
+        HudHidden.Clear();
+        foreach (var r in FxRoot.HudRoots)
+        {
+            if (!r || !r.gameObject.activeSelf) continue;
+            r.gameObject.SetActive(false);
+            HudHidden.Add(r);
+        }
     }
 
     private static bool _worldHidden;
@@ -378,13 +601,20 @@ internal static partial class RewindPlayback
         if (b != a)
             for (int k = 0; k < bn; k++) NewerIndex[Shots[(bs + k) % ViewCap].Id] = (bs + k) % ViewCap;
         int s0 = ViewStart[a], n = ViewCount[a];
-        int used = 0, usedMesh = 0;
+        int used = 0, usedMesh = 0, hudUsed = 0, hudMesh = 0;
+        bool hudOk = FxRoot.HudRoots.Count > 0 && EnsureHudProxyRoot();
+        foreach (var t in TextProxies.Values) t.Used = false;
         for (int k = 0; k < n; k++)
         {
             ref var e = ref Shots[(s0 + k) % ViewCap];
+            if (e.Hud && !hudOk) continue;
             Sprite sp = null;
             Mesh mesh = null;
-            if (e.Mesh)
+            if (e.Text >= 0)
+            {
+                // 字は下で置く (位置と色は絵と同じに補間する)
+            }
+            else if (e.Mesh)
             {
                 if (e.Sprite < 0 || e.Sprite >= MeshCache.Count || e.Mat < 0) continue;
                 mesh = MeshCache[e.Sprite];
@@ -408,6 +638,20 @@ internal static partial class RewindPlayback
                 rot += dr * u;
                 col = FxMath.Rgba(col.r + (f.Col.r - col.r) * u, col.g + (f.Col.g - col.g) * u, col.b + (f.Col.b - col.b) * u, col.a + (f.Col.a - col.a) * u);
             }
+            if (e.Text >= 0)
+            {
+                if (e.Text >= TextCache.Count) continue;
+                var tp = TextProxyOf(e.Id);
+                if (tp == null) continue;
+                if (tp.Text != e.Text) { tp.Tmp.text = TextCache[e.Text]; tp.Text = e.Text; }
+                tp.Tmp.color = col;
+                tp.Tf.localPosition = FxMath.V3(x, y, e.Z);
+                tp.Tf.localRotation = FxMath.RotZ(rot);
+                tp.Tf.localScale = FxMath.V3(sx, sy, 1f);
+                if (!tp.Go.activeSelf) tp.Go.SetActive(true);
+                tp.Used = true;
+                continue;
+            }
             if (e.Mesh)
             {
                 Mesh dyn = null;
@@ -425,19 +669,17 @@ internal static partial class RewindPlayback
                     dyn = DynMesh(d, e, fb, lerp, u);
                     if (!dyn) continue;
                 }
-                var q = MeshProxyAt(usedMesh++);
+                var q = e.Hud ? MeshProxyAt(HudMeshProxies, _hudProxyRoot, hudMesh++) : MeshProxyAt(MeshProxies, _proxyRoot, usedMesh++);
                 if (dyn) { q.Mf.sharedMesh = dyn; q.Mesh = int.MinValue; }
                 else if (q.Mesh != e.Sprite) { q.Mf.sharedMesh = mesh; q.Mesh = e.Sprite; }
                 if (q.Mat != e.Mat) { q.Mr.sharedMaterial = MatCache[e.Mat]; q.Mat = e.Mat; }
                 if (q.Order != e.Order) { q.Mr.sortingOrder = e.Order; q.Order = e.Order; }
                 if (q.Layer != e.Layer) { q.Go.layer = e.Layer; q.Layer = e.Layer; }
-                q.Tf.position = FxMath.V3(x, y, e.Z);
-                q.Tf.rotation = FxMath.RotZ(rot);
-                q.Tf.localScale = FxMath.V3(sx, sy, 1f);
+                Place(q.Tf, e.Hud, x, y, e.Z, rot, sx, sy);
                 if (!q.Go.activeSelf) q.Go.SetActive(true);
                 continue;
             }
-            var p = ProxyAt(used++);
+            var p = e.Hud ? ProxyAt(HudProxies, _hudProxyRoot, hudUsed++) : ProxyAt(Proxies, _proxyRoot, used++);
             if (p.Sprite != e.Sprite) { p.Sr.sprite = sp; p.Sprite = e.Sprite; }
             if (p.Mat != e.Mat)
             {
@@ -449,11 +691,17 @@ internal static partial class RewindPlayback
             if (p.Layer != e.Layer) { p.Go.layer = e.Layer; p.Layer = e.Layer; }
             if (p.Flags != e.Flags) { p.Sr.flipX = (e.Flags & 1) != 0; p.Sr.flipY = (e.Flags & 2) != 0; p.Flags = e.Flags; }
             p.Sr.color = col;
-            p.Tf.position = FxMath.V3(x, y, e.Z);
-            p.Tf.rotation = FxMath.RotZ(rot);
-            p.Tf.localScale = FxMath.V3(sx, sy, 1f);
+            Place(p.Tf, e.Hud, x, y, e.Z, rot, sx, sy);
             if (!p.Go.activeSelf) p.Go.SetActive(true);
         }
+        for (int k = hudUsed; k < _hudUsed; k++)
+            if (HudProxies[k].Go) HudProxies[k].Go.SetActive(false);
+        _hudUsed = hudUsed;
+        for (int k = hudMesh; k < _hudMeshUsed; k++)
+            if (HudMeshProxies[k].Go) HudMeshProxies[k].Go.SetActive(false);
+        _hudMeshUsed = hudMesh;
+        foreach (var t in TextProxies.Values)
+            if (!t.Used && t.Go && t.Go.activeSelf) t.Go.SetActive(false);
         for (int k = used; k < _proxyUsed; k++)
             if (Proxies[k].Go) Proxies[k].Go.SetActive(false);
         _proxyUsed = used;
@@ -476,35 +724,45 @@ internal static partial class RewindPlayback
         return true;
     }
 
-    private static Proxy ProxyAt(int i)
+    // 世界の板は世界の座標・HUD の板は HUD の中の位置
+    private static void Place(Transform tf, bool hud, float x, float y, float z, float rot, float sx, float sy)
     {
-        while (Proxies.Count <= i)
+        if (hud)
         {
-            var go = new GameObject("MrpRewindShot");
-            go.transform.SetParent(_proxyRoot, false);
-            var sr = go.AddComponent<SpriteRenderer>();
-            Proxies.Add(new Proxy { Go = go, Tf = go.transform, Sr = sr, Default = sr.sharedMaterial });
+            tf.localPosition = FxMath.V3(x, y, z);
+            tf.localRotation = FxMath.RotZ(rot);
         }
-        var p = Proxies[i];
-        if (!p.Go)
+        else
         {
-            var go = new GameObject("MrpRewindShot");
-            go.transform.SetParent(_proxyRoot, false);
+            tf.position = FxMath.V3(x, y, z);
+            tf.rotation = FxMath.RotZ(rot);
+        }
+        tf.localScale = FxMath.V3(sx, sy, 1f);
+    }
+
+    private static Proxy ProxyAt(List<Proxy> list, Transform parent, int i)
+    {
+        while (list.Count <= i) list.Add(null);
+        var p = list[i];
+        if (p == null || !p.Go)
+        {
+            var go = new GameObject("MrpRewindShot") { layer = parent.gameObject.layer };
+            go.transform.SetParent(parent, false);
             var sr = go.AddComponent<SpriteRenderer>();
-            p = Proxies[i] = new Proxy { Go = go, Tf = go.transform, Sr = sr, Default = sr.sharedMaterial };
+            p = list[i] = new Proxy { Go = go, Tf = go.transform, Sr = sr, Default = sr.sharedMaterial };
         }
         return p;
     }
 
-    private static MeshProxy MeshProxyAt(int i)
+    private static MeshProxy MeshProxyAt(List<MeshProxy> list, Transform parent, int i)
     {
-        while (MeshProxies.Count <= i) MeshProxies.Add(null);
-        var q = MeshProxies[i];
+        while (list.Count <= i) list.Add(null);
+        var q = list[i];
         if (q == null || !q.Go)
         {
-            var go = new GameObject("MrpRewindMesh");
-            go.transform.SetParent(_proxyRoot, false);
-            q = MeshProxies[i] = new MeshProxy { Go = go, Tf = go.transform, Mf = go.AddComponent<MeshFilter>(), Mr = go.AddComponent<MeshRenderer>() };
+            var go = new GameObject("MrpRewindMesh") { layer = parent.gameObject.layer };
+            go.transform.SetParent(parent, false);
+            q = list[i] = new MeshProxy { Go = go, Tf = go.transform, Mf = go.AddComponent<MeshFilter>(), Mr = go.AddComponent<MeshRenderer>() };
         }
         return q;
     }
@@ -529,6 +787,18 @@ internal static partial class RewindPlayback
             var world = FxRoot.CurrentWorld;
             if (world) world.gameObject.SetActive(true);
         }
+        for (int k = 0; k < _hudUsed && k < HudProxies.Count; k++)
+            if (HudProxies[k].Go) HudProxies[k].Go.SetActive(false);
+        _hudUsed = 0;
+        for (int k = 0; k < _hudMeshUsed && k < HudMeshProxies.Count; k++)
+            if (HudMeshProxies[k].Go) HudMeshProxies[k].Go.SetActive(false);
+        _hudMeshUsed = 0;
+        foreach (var t in TextProxies.Values)
+            if (t.Go && t.Go.activeSelf) t.Go.SetActive(false);
+        // 戻した後の出し直し (持ち主の OnRewound など) が、戻った値に合わせて隠し直す
+        foreach (var r in HudHidden)
+            if (r) r.gameObject.SetActive(true);
+        HudHidden.Clear();
     }
 
     // 戻し終わり: 戻し先の時刻より後に出てきた絵を隠す (戻し先の世界には無かった物)。
@@ -586,5 +856,5 @@ internal static partial class RewindPlayback
     }
 
     internal static string DescribeView() =>
-        $"view[shots={ViewShots} dropped={ViewDropped} hidden={ViewHidden} sprites={SpriteCache.Count} proxies={_proxyUsed}/{Proxies.Count} meshes={_meshUsed}/{MeshProxies.Count} dyn={DynShots}/{DynDrawn}/{Dyns.Count} rootHidden={_rootHidden}]";
+        $"view[shots={ViewShots} dropped={ViewDropped} hidden={ViewHidden} sprites={SpriteCache.Count} proxies={_proxyUsed}/{Proxies.Count} meshes={_meshUsed}/{MeshProxies.Count} hud={_hudUsed}/{_hudMeshUsed}/{TextProxies.Count} texts={TextCache.Count} dyn={DynShots}/{DynDrawn}/{Dyns.Count} rootHidden={_rootHidden}]";
 }

@@ -339,11 +339,44 @@ internal static partial class DuelHud
         if (_root) _root.SetActive(false);
     }
 
+    // 時戻しの戻し終わり・ホストから立ち合いの全部が届いた時: 戻った組と体力から出し直す。
+    // 題字・連撃・鍔迫り合いは打ち切り、新しく出す時も VS の幕と FIGHT! は飛ばす (戻る前に一度見ている)
+    internal static void Resync()
+    {
+        if (!_root) return;
+        if (RewindPlayback.Active) return; // 逆再生の終わりにもう一度呼ばれる
+        byte v = Roles.Watch.ViewId;
+        if (v == 255 || !Duel.InDuel(v) || MeetingHud.Instance)
+        {
+            if (_shown) Hide();
+            else if (_root.activeSelf) _root.SetActive(false);
+            return;
+        }
+        if (_shown && _me != v) Hide();
+        if (!_shown) Show(v, FirstFoe(v), false);
+        if (!_shown) return;
+        _koT = _comboT = _comboPop = _bannerT = _whiffT = -10f;
+        _combo = 0;
+        _leaving = false;
+        _startT = Time.time - IntroTime - FightPop - FightHold - TitleFade;
+        IntroHide();
+        if (_lockOn) SetLockOn(false);
+        if (!_root.activeSelf) _root.SetActive(true);
+        Layout();
+        _leftHp = _leftGhostHp = Duel.HpOf(_me) / (float)Duel.MaxHp;
+        if (_opp != 255) _rightHp = _rightGhostHp = Duel.HpOf(_opp) / (float)Duel.MaxHp;
+        Write();
+        Resyncs++;
+    }
+
+    internal static int Resyncs;
+
     // 毎フレーム (出している間だけ動く)
     internal static void Tick()
     {
         if (!_shown) return;
         if (!_root || MeetingHud.Instance) { Hide(); return; }
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         float now = Time.time;
         // 削られた分の影は少し遅れてから減る
         bool ghost = Ghost(ref _leftGhostHp, _leftHp, _leftHitT, now) | Ghost(ref _rightGhostHp, _rightHp, _rightHitT, now)
@@ -577,6 +610,7 @@ internal static partial class DuelHud
         _rootTf = _root.transform;
         _rootTf.SetParent(hud.transform, false);
         _rootTf.localPosition = FxMath.V3(0f, 0f, Z);
+        FxRoot.TrackHud(_rootTf);
         float y = _halfH - BarTop;
         var white = WhiteSprite();
         _flat.Clear();
@@ -776,5 +810,5 @@ internal static partial class DuelHud
     internal static void TestPush(float k) => _pushGoal = k;
 
     internal static string Describe() =>
-        $"shown={_shown} slots={_slot[0]},{_slot[1]},{_slot[2]},{_slot[3]} leaving={_leaving} hp={_leftHp:0.00}/{_rightHp:0.00} ghost={_leftGhostHp:0.00}/{_rightGhostHp:0.00} combo={_combo} whiffs={Whiffs} title={_titleState} built={(bool)_root}";
+        $"shown={_shown} slots={_slot[0]},{_slot[1]},{_slot[2]},{_slot[3]} leaving={_leaving} hp={_leftHp:0.00}/{_rightHp:0.00} ghost={_leftGhostHp:0.00}/{_rightGhostHp:0.00} combo={_combo} whiffs={Whiffs} title={_titleState} resyncs={Resyncs} built={(bool)_root}";
 }

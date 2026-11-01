@@ -402,7 +402,7 @@ internal static class RoleCommands
             reply($"OK bot {r} | {DuelBot.Describe()}");
         });
 
-        TestBridge.Register("duelhud", "[show <自分> <相手> | sub <0|1> <番号> | join <番号> <番号> | spare <番号|255> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko | intro | lock on | push <0〜1> | lockend <1 勝ち|2 負け|0 引き分け>] 立ち合いの HUD を当事者でなくても出す / 当たった扱い / K.O. を出す / 入りの幕をもう一度 / 鍔迫り合いの見た目だけ / 押し合いの割合 / 決着の題字", (args, reply) =>
+        TestBridge.Register("duelhud", "[show <自分> <相手> | sub <0|1> <番号> | join <番号> <番号> | dmg <当てた人> <当たった人> <量> | spare <番号|255> | hit <0|1 (1 = 自分が当てた)> <残りの体力> | ko | intro | lock on | push <0〜1> | lockend <1 勝ち|2 負け|0 引き分け>] 立ち合いの HUD を当事者でなくても出す / ホストで二人を組にする / ホストで体力を減らす (組にもする) / 当たった扱い / K.O. を出す / 入りの幕をもう一度 / 鍔迫り合いの見た目だけ / 押し合いの割合 / 決着の題字", (args, reply) =>
         {
             var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (p.Length >= 3 && p[0] == "show" && byte.TryParse(p[1], out byte me) && byte.TryParse(p[2], out byte opp)) UI.DuelHud.TestShow(me, opp);
@@ -410,6 +410,7 @@ internal static class RoleCommands
             else if (p.Length >= 3 && p[0] == "sub" && int.TryParse(p[1], out int sj) && byte.TryParse(p[2], out byte sid)) UI.DuelHud.TestSub(sj, sid);
             else if (p.Length >= 2 && p[0] == "spare" && byte.TryParse(p[1], out byte sp)) Roles.Neutral.Samurai.TestSpared = sp;
             else if (p.Length >= 3 && p[0] == "join" && byte.TryParse(p[1], out byte ja) && byte.TryParse(p[2], out byte jb)) Duel.HostJoin(ja, jb);
+            else if (p.Length >= 4 && p[0] == "dmg" && byte.TryParse(p[1], out byte da) && byte.TryParse(p[2], out byte dt) && int.TryParse(p[3], out int dd)) Duel.HostDamage(da, dt, dd);
             else if (p.Length >= 1 && p[0] == "ko") UI.DuelHud.TestKo();
             else if (p.Length >= 1 && p[0] == "intro") UI.DuelHud.TestIntro();
             else if (p.Length >= 2 && p[0] == "lock") UI.DuelHud.ShowLock(p[1] == "on");
