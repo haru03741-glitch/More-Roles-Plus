@@ -313,7 +313,10 @@ internal static class ReportClient
             ("LogOutput.log", Path.Combine(BepInEx.Paths.BepInExRootPath, "LogOutput.log")),
             ("ErrorLog.log", Path.Combine(BepInEx.Paths.BepInExRootPath, "ErrorLog.log")),
         };
+#if !ANDROID
+        // Application.consoleLogPath は Android 版のゲームに無い (Android のログは logcat)
         try { list.Add(("Player.log", Application.consoleLogPath)); } catch { }
+#endif
         return list;
     }
 

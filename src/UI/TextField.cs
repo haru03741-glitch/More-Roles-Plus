@@ -11,6 +11,7 @@ namespace MoreRolesPlus.UI;
 // 押すと入力を受け、Input.inputString で字を足す。日本語の変換中の字 (IME) は下線で出す。
 // Ctrl+V で貼り付け・Backspace で消す・Enter は 1 行の欄なら OnSubmit、複数行の欄なら改行 (Ctrl+Enter で OnSubmit)。
 // 欄の外を押すと入力をやめる。入力中は Typing が true (本編の移動やキーの割り当てを止める)
+// Android は Input.inputString が無いので、入力中は端末のキーボードを開いてその字を写す (決定で OnSubmit)
 internal sealed class TextField : Widget
 {
     public string Value = "";
@@ -30,6 +31,10 @@ internal sealed class TextField : Widget
 
     private static TextField _focused;
     private static bool _clickedField;
+#if ANDROID
+    private static TouchScreenKeyboard _keyboard;
+    private static TextField _keyboardFor;
+#endif
     private TextMeshPro _text;
     private SpriteRenderer _edge;
     private GameObject _root;
@@ -115,6 +120,9 @@ internal sealed class TextField : Widget
     {
         var old = _focused;
         _focused = null;
+#if ANDROID
+        CloseKeyboard();
+#endif
         Input.imeCompositionMode = IMECompositionMode.Auto;
         old?.Refresh();
         old?.OnBlur?.Invoke();
@@ -188,6 +196,9 @@ internal sealed class TextField : Widget
         if (Input.GetMouseButtonDown(0)) _clickedField = false;
 
         if (f.OnCancel != null && Input.GetKeyDown(KeyCode.Escape)) { f.OnCancel(); return; }
+#if ANDROID
+        TickKeyboard(f);
+#else
         bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
         string v = f.Value;
         bool changed = false, submit = false;
@@ -230,7 +241,45 @@ internal sealed class TextField : Widget
         }
         f.Refresh();
         if (submit) f.OnSubmit?.Invoke();
+#endif
     }
+
+#if ANDROID
+    // 入力中の欄の字を端末のキーボードの字に揃える。決定で OnSubmit・キーボードを閉じたら入力をやめる
+    private static void TickKeyboard(TextField f)
+    {
+        if (_keyboard == null || _keyboardFor != f)
+        {
+            CloseKeyboard();
+            f.Selected = false;
+            _keyboard = TouchScreenKeyboard.Open(f.Value, TouchScreenKeyboardType.Default, false, f.Multiline, false);
+            _keyboardFor = f;
+            if (_keyboard == null) { Blur(); return; }
+        }
+        var status = _keyboard.status;
+        string t = _keyboard.text ?? "";
+        if (!f.Multiline) t = t.Replace("\r", "").Replace("\n", "");
+        if (t != f.Value)
+        {
+            f.Value = f.Clip(t);
+            f.OnChange?.Invoke(f.Value);
+        }
+        f.Refresh();
+        if (status == TouchScreenKeyboard.Status.Visible) return;
+        _keyboard = null;
+        _keyboardFor = null;
+        if (status == TouchScreenKeyboard.Status.Done) f.OnSubmit?.Invoke();
+        if (_focused == f) Blur();
+    }
+
+    private static void CloseKeyboard()
+    {
+        var k = _keyboard;
+        _keyboard = null;
+        _keyboardFor = null;
+        if (k != null && k.status == TouchScreenKeyboard.Status.Visible) k.active = false;
+    }
+#endif
 
     // 打っている間は本編の移動 (WASD・矢印) を止める
     [HarmonyPatch(typeof(KeyboardJoystick), nameof(KeyboardJoystick.Update))]

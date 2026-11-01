@@ -131,13 +131,25 @@ internal static class Origins
         return list.ToArray();
     }
 
+    // "#RRGGBB" / "#RGB" (# は無くてもよい) を色に。ColorUtility.TryParseHtmlString は Android 版のゲームに無いので自前で読む
+    private static bool TryParseHex(string h, out Color c)
+    {
+        c = default;
+        if (string.IsNullOrEmpty(h)) return false;
+        h = h.Trim().TrimStart('#');
+        if (h.Length == 3) h = new string(new[] { h[0], h[0], h[1], h[1], h[2], h[2] });
+        if (h.Length != 6 || !uint.TryParse(h, System.Globalization.NumberStyles.HexNumber, null, out uint v)) return false;
+        c = new Color(((v >> 16) & 0xFF) / 255f, ((v >> 8) & 0xFF) / 255f, (v & 0xFF) / 255f, 1f);
+        return true;
+    }
+
     // 1 文字ずつ、並べた色の間を滑らかに変える
     private static string Gradient(string name, List<string> stops)
     {
         var letters = Letters(name);
         var cs = new List<Color>();
         foreach (var h in stops)
-            if (ColorUtility.TryParseHtmlString(h, out var c)) cs.Add(c);
+            if (TryParseHex(h, out var c)) cs.Add(c);
         if (cs.Count < 2 || letters.Length == 0) return name;
         var sb = new System.Text.StringBuilder();
         for (int i = 0; i < letters.Length; i++)
