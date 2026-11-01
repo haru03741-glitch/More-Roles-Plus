@@ -18,6 +18,7 @@ public sealed partial class Samurai : RoleBase
     public override Text Name => new("Samurai.Name");
     public override string Reading => "さむらい";
     public override Epithet Epithet => Epithet.Wayfinder;
+    public override bool AnnounceEpithet => AnnounceSlot;
     public override Text Blurb => new("Samurai.Blurb");
     public override HelpSection[] HelpSections => new HelpSection[]
     {
@@ -26,6 +27,7 @@ public sealed partial class Samurai : RoleBase
 
     public static readonly IntOpt PathKills = new("Samurai.PathKills", 1, 1, 3);
     public static readonly IntOpt FallKills = new("Samurai.FallKills", 2, 1, 5);
+    public static readonly BoolOpt AnnounceSlot = new("Samurai.AnnounceSlot", true);
     public static readonly BoolOpt AnnounceFall = new("Samurai.AnnounceFall", false);
     public static readonly FloatOpt SlashRange = new("Samurai.SlashRange", 2f, 1f, 3.5f, 0.25f);
     // 斬った扉と空間のずれ (斬り跡) の戻り方: 次の会議 / 秒数 / ずっと

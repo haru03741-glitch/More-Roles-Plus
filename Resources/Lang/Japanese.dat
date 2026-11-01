@@ -132,6 +132,8 @@ Survivor.Quote: 誰が勝とうと、生きていれば勝ちだ。
 # ── サムライ (Samurai) ──
 Samurai.Name: サムライ
 Samurai.Blurb: 刀を抜き、斬るべき者を斬れ
+Samurai.Epithet: 黎明の執行者
+Epithet.Wayfinder: 航路守
 Samurai.Summary: 刀を振って斬る第三陣営です。戦える相手とは斬り合いになり、体力を削って倒します。
 Samurai.WinCond: 守の道: インポスターを決められた人数斬り、試合の終わりに生きていれば、勝った陣営と一緒に勝ち。修羅の道: 自分以外の生存者が 1 人以下になると一人勝ち
 Samurai.Draw: 居合と納刀
@@ -150,6 +152,8 @@ Samurai.Tips: 刀を抜くと、見た人にはサムライだと分かります
 Samurai.Quote: 抜いたからには、斬る。
 Samurai.PathKills: 守の道で斬るインポスターの数
 Samurai.FallKills: 修羅に堕ちるまでの、インポスター以外を斬った数
+Samurai.AnnounceSlot: 航路守がいることを試合の始めに全員へ知らせる (誰かは伏せる)
+Epithet.Announce: この航路には {name} がいる
 Samurai.AnnounceFall: 修羅に堕ちたことを全員に知らせる
 Samurai.SlashRange: 斬れる距離
 Samurai.CutRestore: 斬った扉と斬り跡の戻り方

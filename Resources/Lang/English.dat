@@ -132,6 +132,8 @@ Survivor.Quote: Whoever wins, staying alive is my victory.
 # ── Samurai ──
 Samurai.Name: Samurai
 Samurai.Blurb: Draw your blade and cut down those who deserve it
+Samurai.Epithet: Aurora Avenger
+Epithet.Wayfinder: Wayfinder
 Samurai.Summary: A neutral who cuts with a katana. Anyone who can fight back is drawn into a duel and worn down until they fall.
 Samurai.WinCond: Path of the Guardian: cut down the set number of Impostors and be alive at the end to win with the winning team. Path of Carnage: win alone when at most one other player is left alive
 Samurai.Draw: Iaido and Sheathing
@@ -150,6 +152,8 @@ Samurai.Tips: Drawing your katana reveals what you are. To the Crewmates, a Samu
 Samurai.Quote: Once drawn, the blade must cut.
 Samurai.PathKills: Impostors to cut for the Guardian path
 Samurai.FallKills: Non-Impostors cut before falling to Carnage
+Samurai.AnnounceSlot: Tell everyone a Wayfinder is in the match (without saying who)
+Epithet.Announce: A {name} sails with this crew
 Samurai.AnnounceFall: Tell everyone when the Samurai falls
 Samurai.SlashRange: Slash Range
 Samurai.CutRestore: Cut Doors and Rifts Return
