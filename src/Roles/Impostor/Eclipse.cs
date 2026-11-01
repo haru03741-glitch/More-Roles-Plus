@@ -30,11 +30,9 @@ public sealed class Eclipse : RoleBase
     public static readonly BoolOpt MarkSound = new("Eclipse.MarkSound", true);
     public static readonly FloatOpt SoundRange = new("Eclipse.SoundRange", 10f, 2.5f, 20f, 2.5f, "x") { When = () => MarkSound };
 
+    private const float FallSoundLength = 1f, SoundReach = 25f;
+
     private Vector2? _mark;
-    private SpriteRenderer _markArt;
-    private Sprite[] _antenna;
-    private int _frame;
-    private float _frameT;
     private Ability _markAbility, _blast;
 
     public override void OnAssigned()
@@ -50,6 +48,7 @@ public sealed class Eclipse : RoleBase
             MaxUses = () => Uses,
             OnUse = Blast,
         });
+        if (IsLocal) Lifespan.OnRelease(EclipseFx.HideMark);
     }
 
     private bool PlaceMark()
@@ -58,9 +57,7 @@ public sealed class Eclipse : RoleBase
         Vector2 at = lp.transform.position;
         ClearMark();
         _mark = at;
-        _antenna ??= ButtonIcons.Frames("eclipse_antenna", 4, 200f);
-        _markArt = PortArt.Spawn(_antenna != null ? _antenna[0] : ButtonIcons.Get("snr_marker"), at, _antenna != null ? 1f : 0.5f, UnityEngine.Color.white, at.y / 1000f + 0.01f);
-        Lifespan.Bind(_markArt.gameObject);
+        EclipseFx.ShowMark(at, Size);
         MoveSpeed.Add("EclipseStop", 0f, MarkStop);
         if (MarkSound) PortSound.PlayAll("eclipse_mark", at, SoundRange, 0.6f);
         else PortSound.Play("eclipse_mark", () => PortSound.Fallback("eclipse_mark"), 0.6f);
@@ -81,19 +78,13 @@ public sealed class Eclipse : RoleBase
     private void ClearMark()
     {
         _mark = null;
-        if (_markArt) Object.Destroy(_markArt.gameObject);
-        _markArt = null;
+        if (IsLocal) EclipseFx.HideMark();
     }
 
     [LocalOnly]
     public override void OnFixedUpdate()
     {
         _blast?.Button?.SetUsable(_mark != null && _blast.UsesLeft != 0);
-        if (!_markArt || _antenna == null) return;
-        _frameT -= Time.fixedDeltaTime;
-        if (_frameT > 0f) return;
-        _frameT = 0.21f;
-        _markArt.sprite = _antenna[++_frame % _antenna.Length];
     }
 
     private void OnMeetingStart(MeetingStartEvent e)
@@ -118,58 +109,25 @@ public sealed class Eclipse : RoleBase
         return true;
     }
 
-    // 全員の端末で: 警告の円 → 隕石 → 爆発。倒すのはホスト
+    // 全員の端末で: 影と照準の警告 → 隕石が落ちる → 着弾。倒すのと地形を壊すのはホスト
     private static void OnBlast(Eclipse e, Vector2 at, float size)
     {
-        float warn = WarningTime;
-        RangedKillSnapPatch.Mark(e.PlayerId, warn + 3f);
-        PortSound.Play("eclipse_alert", () => PortSound.Fallback("eclipse_alert"), 0.8f);
-        var circle = PortArt.Spawn(PortArt.Disc, at, size * 2f, new UnityEngine.Color(1f, 0f, 0f, 0.5f), -9f);
-        PortKit.After(warn, () =>
+        float impact = EclipseFx.ImpactDelay(WarningTime);
+        RangedKillSnapPatch.Mark(e.PlayerId, impact + 3f);
+        PortSound.Play("eclipse_warn", () => PortSound.Fallback("eclipse_alert"), 0.7f);
+        EclipseFx.Begin(at, size, WarningTime);
+        // 迫る唸りは 1 秒の音なので、着弾のちょうど 1 秒前から (警告が短ければすぐ) 鳴らす
+        float fallAt = impact > FallSoundLength ? impact - FallSoundLength : 0f;
+        PortKit.After(fallAt, () =>
         {
-            if (circle) Object.Destroy(circle.gameObject);
             if (MeetingHud.Instance || !ShipStatus.Instance) return;
-            Fall(e, at, size);
+            PortSound.Play("eclipse_fall", null, 1f, at, SoundReach);
         });
-    }
-
-    private static Sprite[] _meteor, _explosion;
-
-    private static void Fall(Eclipse e, Vector2 at, float size)
-    {
-        _meteor ??= ButtonIcons.Frames("eclipse_meteor_fall", 2, 100f);
-        _explosion ??= ButtonIcons.Frames("eclipse_explosion", 8, 100f, 2);
-        var art = PortArt.Spawn(_meteor != null ? _meteor[0] : PortArt.Disc, at, _meteor != null ? 1f : 0.4f,
-            _meteor != null ? UnityEngine.Color.white : new UnityEngine.Color(1f, 0.55f, 0.15f, 1f), -10f);
-        if (_meteor != null) PortKit.After(0.05f, () => { if (art) art.sprite = _meteor[1]; });
-        PortKit.After(0.1f, () =>
+        PortKit.After(impact, () =>
         {
-            PortSound.Play("eclipse_boom", () => PortSound.Fallback("eclipse_boom"), 1f, at, 20f);
+            if (MeetingHud.Instance || !ShipStatus.Instance) return;
+            PortSound.Play("eclipse_boom", () => PortSound.Fallback("eclipse_boom"), 1f, at, SoundReach);
             if (AmongUsClient.Instance.AmHost) HostBlast(e.Player, at, size);
-            if (!art) return;
-            if (_explosion != null)
-            {
-                art.color = UnityEngine.Color.white;
-                for (int i = 0; i < _explosion.Length; i++)
-                {
-                    int f = i;
-                    PortKit.After(0.12f * f, () => { if (art) { art.sprite = _explosion[f]; art.transform.localScale = Vector3.one * Mathf.Max(1f, size * 0.8f); } });
-                }
-                PortKit.After(0.12f * _explosion.Length, () => { if (art) Object.Destroy(art.gameObject); });
-                return;
-            }
-            // 絵が無い時: 橙の丸が円の大きさまで広がって薄れる
-            for (int i = 0; i <= 8; i++)
-            {
-                float t = i / 8f;
-                PortKit.After(0.06f * i, () =>
-                {
-                    if (!art) return;
-                    art.transform.localScale = Vector3.one * Mathf.Lerp(0.4f, size * 2f, t);
-                    art.color = new UnityEngine.Color(1f, 0.55f + 0.3f * t, 0.15f, 1f - t);
-                });
-            }
-            PortKit.After(0.55f, () => { if (art) Object.Destroy(art.gameObject); });
         });
     }
 
@@ -186,7 +144,11 @@ public sealed class Eclipse : RoleBase
             if (BeforeMurderEvent.Ask(invoker, p) != null) continue;
             invoker.RpcMurderPlayer(p, true);
         }
-        // 自分が巻き込まれた時は、他の人を倒し終えてから
+        // 地形: 範囲の壁が壊れて床が焦げ、着弾点に小さな火が残る (地形の爆発は半径 3 まで)
+        var res = Terrain.TerrainApi.WorldBlast(at, System.Math.Min(size, Terrain.TerrainPermit.MaxRadius));
+        if (!res.Ok) Plugin.Logger.LogInfo($"eclipse: terrain blast refused ({res.Why})");
+        Terrain.TerrainApi.WorldIgnite(at, 0.5f, 0.6f);
+        // 自分が巻き込まれた時は、他の人を倒して地形を壊し終えてから
         if (self) PortKit.HostSuicide(invoker);
     }
 }

@@ -25,7 +25,6 @@ public sealed class Nova : RoleBase
     public static readonly FloatOpt Charge = new("Nova.Charge", 1.5f, 0f, 5f, 0.25f, "s");
 
     private const float MaxLength = 40f;
-    private static readonly UnityEngine.Color BeamColor = new(1f, 0.85f, 0.4f, 1f);
 
     public override void OnAssigned()
     {
@@ -87,64 +86,49 @@ public sealed class Nova : RoleBase
         return true;
     }
 
-    // 全員の端末で: 溜めの光 → 光線。倒すのはホスト
+    // 全員の端末で: 溜め (光の球と狙いの線) → 光線。倒すのと地形を焼くのはホスト
     private static void OnFire(Nova n, float angle)
     {
         var p = n.Player;
         if (!p) return;
         float charge = Charge;
         RangedKillSnapPatch.Mark(n.PlayerId, charge + 2f);
-        PortSound.Play("nova_charge", () => PortSound.Fallback("nova_charge"), 0.7f, p.GetTruePosition(), 15f);
-        var glow = PortArt.Spawn(PortArt.Disc, p.GetTruePosition(), 0.2f, new UnityEngine.Color(BeamColor.r, BeamColor.g, BeamColor.b, 0.8f), -9f);
-        int steps = Mathf.Max(1, (int)(charge / 0.05f));
-        for (int i = 1; i <= steps; i++)
-        {
-            float t = i / (float)steps;
-            PortKit.After(charge * t, () =>
-            {
-                if (!glow || !p) return;
-                glow.transform.position = new Vector3(p.GetTruePosition().x, p.GetTruePosition().y + 0.2f, -9f);
-                glow.transform.localScale = Vector3.one * Mathf.Lerp(0.2f, Size * 1.2f, t);
-            });
-        }
+        Vector2 from0 = p.GetTruePosition();
+        PortSound.Play("nova_charge", () => PortSound.Fallback("nova_charge"), 0.8f, from0, 15f);
+        NovaFx.BeginCharge(p, angle, charge, Size, Reach(from0, angle, out _));
         PortKit.After(charge, () =>
         {
-            if (glow) Object.Destroy(glow.gameObject);
+            NovaFx.CancelCharge(p);
             if (MeetingHud.Instance || !ShipStatus.Instance || !PortKit.Alive(p)) return;
             Beam(n, p.GetTruePosition(), angle);
         });
     }
 
+    // 光線の届く長さ (壁で止まる)
+    private static float Reach(Vector2 from, float angle, out bool wall)
+    {
+        float r = angle * (System.MathF.PI / 180f);
+        var hit = Physics2D.Raycast(from, FxMath.V2(FxMath.Cos(r), FxMath.Sin(r)), MaxLength, Constants.ShipOnlyMask);
+        wall = hit.collider;
+        return wall ? hit.distance : MaxLength;
+    }
+
     private static void Beam(Nova n, Vector2 from, float angle)
     {
-        Vector2 dir = FxMath.V2(Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad));
-        float length = MaxLength;
-        var hit = Physics2D.Raycast(from, dir, MaxLength, Constants.ShipOnlyMask);
-        if (hit.collider) length = hit.distance;
+        float r = angle * (System.MathF.PI / 180f);
+        Vector2 dir = FxMath.V2(FxMath.Cos(r), FxMath.Sin(r));
+        float length = Reach(from, angle, out bool wall);
         float size = Size;
         PortSound.Play("nova_beam", () => PortSound.Fallback("nova_beam"), 1f, from, 25f);
-        // 帯の絵は幅 4・高さ 1 単位。長さ × 太さに伸ばして、撃った所から先へ置く
-        var beam = PortArt.Spawn(PortArt.Beam, from + dir * (length * 0.5f), 1f, BeamColor, -9f);
-        beam.transform.rotation = Quaternion.Euler(0f, 0f, angle);
-        beam.transform.localScale = new Vector3(length / 4f, size, 1f);
-        for (int i = 0; i <= 10; i++)
-        {
-            float t = i / 10f;
-            PortKit.After(0.05f * i, () =>
-            {
-                if (!beam) return;
-                beam.color = new UnityEngine.Color(BeamColor.r, BeamColor.g, BeamColor.b, 1f - t);
-                beam.transform.localScale = new Vector3(length / 4f, size * (1f - 0.6f * t), 1f);
-            });
-        }
-        PortKit.After(0.55f, () => { if (beam) Object.Destroy(beam.gameObject); });
-        if (AmongUsClient.Instance.AmHost) HostBeam(n.Player, from, dir, length, size);
+        NovaFx.Fire(from, angle, length, size, wall);
+        if (AmongUsClient.Instance.AmHost) HostBeam(n.Player, from, dir, length, size, wall);
     }
 
     // ホスト: 光線の帯 (太さ size) の中の生きている人を倒す。キルを防ぐ役職には聞く
-    private static void HostBeam(PlayerControl invoker, Vector2 from, Vector2 dir, float length, float size)
+    private static void HostBeam(PlayerControl invoker, Vector2 from, Vector2 dir, float length, float size, bool wall)
     {
         if (!PortKit.Alive(invoker)) return;
+        HostScorch(from, dir, length, size, wall);
         float half = size * 0.5f + 0.2f; // 体の半径の分だけ太く
         foreach (var p in PlayerControl.AllPlayerControls)
         {
@@ -157,5 +141,22 @@ public sealed class Nova : RoleBase
             if (BeforeMurderEvent.Ask(invoker, p) != null) continue;
             invoker.RpcMurderPlayer(p, true);
         }
+    }
+
+    // ホスト: 当たった壁を焼いて耐久を削り、通った床に熱を足す (水は湯気になり、燃える物には火が付く)。
+    // 熱を足す所は長さに応じて最大 5 か所 (電文を増やしすぎない)
+    private const int MaxHeatPoints = 5;
+
+    private static void HostScorch(Vector2 from, Vector2 dir, float length, float size, bool wall)
+    {
+        if (wall)
+        {
+            var res = Terrain.TerrainApi.WorldBurn(from + dir * (length - 0.3f), dir);
+            if (!res.Ok) Plugin.Logger.LogInfo($"nova: terrain burn refused ({res.Why})");
+        }
+        int n = System.Math.Clamp((int)(length / 2f), 1, MaxHeatPoints);
+        float rad = 0.3f + 0.2f * size;
+        for (int i = 0; i < n; i++)
+            Terrain.TerrainApi.WorldIgnite(from + dir * (length * (i + 0.5f) / n), rad, 0.6f);
     }
 }
