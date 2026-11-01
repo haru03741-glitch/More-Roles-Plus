@@ -108,6 +108,29 @@ internal static class RoleCommands
             reply($"OK rlaim {deg}");
         });
 
+        TestBridge.Register("doppel", "[go <x> <y> | of <番号>] 自分のドッペルゲンガーの分身の位置 / 地図のその点を押した扱いで分身を歩かせる (無ければ出す) / この端末に見えている番号の人の分身", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (a.Length >= 2 && a[0] == "of" && byte.TryParse(a[1], out byte id))
+            {
+                var p = Roles.Crew.DoppelPuppet.Of(id);
+                reply(p == null ? $"OK doppel of {id} none" : $"OK doppel of {id} at={p.True.x.ToString("F2", inv)},{p.True.y.ToString("F2", inv)}");
+                return;
+            }
+            if (RoleState.Local is not Roles.Crew.Doppelganger d) { reply("ERR doppel not Doppelganger"); return; }
+            if (a.Length >= 3 && a[0] == "go"
+                && float.TryParse(a[1], System.Globalization.NumberStyles.Float, inv, out float x)
+                && float.TryParse(a[2], System.Globalization.NumberStyles.Float, inv, out float y))
+            {
+                d.Command(new UnityEngine.Vector2(x, y));
+                reply($"OK doppel go {x.ToString(inv)} {y.ToString(inv)}");
+                return;
+            }
+            var m = Roles.Crew.DoppelPuppet.Of(d.PlayerId);
+            reply(m == null ? "OK doppel none" : $"OK doppel at={m.True.x.ToString("F2", inv)},{m.True.y.ToString("F2", inv)}");
+        });
+
         TestBridge.Register("roles", "登録された役職と、今の割り当て", (_, reply) =>
         {
             string reg = string.Join(" ", Registry.Roles.Select(r => $"{r.Id}({r.Team},{r.Chance.Value}%x{r.Count.Value})"));
