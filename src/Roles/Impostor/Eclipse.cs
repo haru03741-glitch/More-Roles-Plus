@@ -1,4 +1,4 @@
-// Ported from https://github.com/Dolly1016/UchuAddon UchuAddon/Scripts/Role/Impostor/Eclipse.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Impostor/Eclipse.cs (role idea and logic; UchuAddon allows porting them, no assets used)
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
@@ -103,7 +103,20 @@ public sealed class Eclipse : RoleBase
 
     private static readonly RemoteCall<(float x, float y, float size)> BlastCall = new("Eclipse.Blast", Route.Anyone,
         (w, m) => { w.Write(m.x); w.Write(m.y); w.Write(m.size); }, r => (r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
-        (sender, m) => { if (RoleState.Of(sender) is Eclipse e) OnBlast(e, FxMath.V2(m.x, m.y), m.size); });
+        (sender, m) => { if (RoleState.Of(sender) is Eclipse e && e.AcceptBlast()) OnBlast(e, FxMath.V2(m.x, m.y), Size); });
+
+    // 受けた側の端末で: 回数と待ち時間を超えた爆発は無視する。大きさは届いた値でなく設定の値を使う
+    private int _blastsSeen;
+    private float _lastBlastAt = -999f;
+
+    private bool AcceptBlast()
+    {
+        float now = Time.time;
+        if (_blastsSeen >= Uses || (now - _lastBlastAt < BlastCooldown * 0.5f && !Dev.DevCooldown.Zero)) return false;
+        _blastsSeen++;
+        _lastBlastAt = now;
+        return true;
+    }
 
     // 全員の端末で: 警告の円 → 隕石 → 爆発。倒すのはホスト
     private static void OnBlast(Eclipse e, Vector2 at, float size)
