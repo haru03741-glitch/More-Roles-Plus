@@ -1,0 +1,619 @@
+// Ported from https://github.com/Dolly1016/Nebula-Public NebulaPluginNova/Roles/Crewmate/Doppelganger.cs (GPL-3.0)
+using System;
+using System.Collections.Generic;
+using HarmonyLib;
+using MoreRolesPlus.Fx;
+using MoreRolesPlus.Net;
+using MoreRolesPlus.Options;
+using UnityEngine;
+
+namespace MoreRolesPlus.Roles.Crew;
+
+// ドッペルゲンガー (クルー): 地図を押した所へ、自分そっくりの分身を歩かせる (分身がいなければ足元に出る)。
+// 分身の近く (決めた範囲) にいる人は地図に映る。「入れ替わり」で少しの間止まった後、分身と居場所を入れ替える。
+// 分身は誰にでも本物に見え、キルできる。分身がキルされると本物が分身の所で死ぬ。会議・死亡で分身は消える
+public sealed class Doppelganger : RoleBase
+{
+    public const string Hex = "#BF67D7";
+
+    public override Team Team => Team.Crew;
+    public override string Color => Hex;
+    public override Text Name => new("Doppelganger.Name");
+    public override string Reading => "どっぺるげんがー";
+    public override Text Blurb => new("Doppelganger.Blurb");
+    public override string Origin => "Nebula";
+    public override HelpSection[] HelpSections => new HelpSection[]
+    {
+        new("Doppelganger.Command", "doppelganger_map"), new("Doppelganger.Swap", "doppelganger_swap"), new("Doppelganger.Despawn", "doppelganger_despawn"),
+    };
+
+    public static readonly FloatOpt SwapCooldown = new("Doppelganger.SwapCooldown", 10f, 0f, 60f, 2.5f, "s");
+    public static readonly FloatOpt SwapDuration = new("Doppelganger.SwapDuration", 2f, 1f, 5f, 0.5f, "s");
+    public static readonly FloatOpt DetectionRadius = new("Doppelganger.DetectionRadius", 3f, 0f, 10f, 0.25f, "x");
+
+    private Ability _swap, _despawn;
+    private Vector2? _flag;          // 自分の端末: 歩かせている行き先
+    private int _walkId;
+
+    private DoppelPuppet Mine => DoppelPuppet.Of(PlayerId);
+
+    public override void OnAssigned()
+    {
+        AddAbility(new Ability(new Text("Doppelganger.Command"), "doppelganger_map")
+        {
+            CooldownAtStart = false,
+            OnUse = () =>
+            {
+                var hud = Vanilla.Hud;
+                if (hud) hud.ToggleMapVisible(new MapOptions { Mode = MapOptions.Modes.Normal, AllowMovementWhileMapOpen = true, ShowLivePlayerPosition = true });
+                return false;
+            },
+        });
+        _swap = AddAbility(new Ability(new Text("Doppelganger.Swap"), "doppelganger_swap")
+        {
+            Cooldown = () => SwapCooldown,
+            Duration = () => SwapDuration,
+            OnUse = () =>
+            {
+                var m = Mine;
+                if (m == null || PlayerControl.LocalPlayer.inVent) return false;
+                MoveSpeed.Add("DoppelSwap", 0f, SwapDuration + 0.25f);
+                Stop(); // 歩いている分身はその場で待たせる
+                return true;
+            },
+            OnEnd = Swap,
+        });
+        _despawn = AddAbility(new Ability(new Text("Doppelganger.Despawn"), "doppelganger_despawn")
+        {
+            CooldownAtStart = false,
+            OnUse = () =>
+            {
+                if (Mine == null) return false;
+                Despawn(true);
+                return true;
+            },
+        });
+        if (IsLocal) Lifespan.OnRelease(() =>
+        {
+            DoppelMap.Clear();
+            Despawn(true);
+            if (MapBehaviour.Instance && MapBehaviour.Instance.IsOpen) MapBehaviour.Instance.Close();
+        });
+    }
+
+    [LocalOnly]
+    public override void OnFixedUpdate()
+    {
+        bool has = Mine != null;
+        _swap?.Button?.SetUsable(has && !_swap.InEffect);
+        _despawn?.Button?.SetUsable(has);
+        if (!has) _flag = null;
+    }
+
+    // ---- 分身 (自分の端末から全員へ) ----
+
+    private void Summon(Vector2 root, bool flip)
+    {
+        SpawnCall.Send((PlayerId, root.x, root.y, flip));
+        DoppelPuppet.Spawn(Player, root, flip);
+    }
+
+    private void Despawn(bool effect)
+    {
+        _flag = null;
+        if (Mine == null) return;
+        DespawnCall.Send((PlayerId, effect));
+        DoppelPuppet.Despawn(PlayerId, effect);
+    }
+
+    private void Stop()
+    {
+        var m = Mine;
+        if (m == null) return;
+        _walkId++;
+        _flag = null;
+        StopCall.Send((PlayerId, m.Root.x, m.Root.y));
+        m.StopAt(m.Root);
+    }
+
+    // 地図を押した所へ歩かせる (分身がいなければ足元に出してから)
+    internal void Command(Vector2 to)
+    {
+        if (!PortKit.Alive(Player) || MeetingHud.Instance) return;
+        if (_swap != null && _swap.InEffect) return; // 入れ替わりを待っている間は動かせない
+        if (Mine == null) Summon(Player.transform.position, Player.cosmetics.FlipX);
+        var m = Mine;
+        if (m == null) return;
+        var xs = new List<float>();
+        var ys = new List<float>();
+        Vector2 from = m.True;
+        if (!Dev.DummyNav.Path(from.x, from.y, to.x, to.y, xs, ys) || xs.Count == 0)
+        {
+            PortKit.Notice(new Text("Doppelganger.NoPath").ToString());
+            return;
+        }
+        float speed = Player.MyPhysics ? Player.MyPhysics.TrueSpeed : 2.5f;
+        var pts = new float[xs.Count * 2];
+        for (int i = 0; i < xs.Count; i++) { pts[i * 2] = xs[i]; pts[i * 2 + 1] = ys[i]; }
+        int id = ++_walkId;
+        _flag = to;
+        WalkCall.Send((PlayerId, speed, pts));
+        m.Walk(pts, speed, () =>
+        {
+            if (id != _walkId || Mine != m) return;
+            _flag = null;
+            PortKit.Flash(RoleDisplay.ParseColor(Hex), 0.5f);
+        });
+    }
+
+    // 入れ替わり: 自分は分身の所へ飛び、分身は自分のいた所に出る
+    private void Swap()
+    {
+        var m = Mine;
+        var lp = PlayerControl.LocalPlayer;
+        if (m == null || !PortKit.Alive(lp) || MeetingHud.Instance || !ShipStatus.Instance) return;
+        Vector2 myRoot = lp.transform.position;
+        bool myFlip = lp.cosmetics.FlipX;
+        Vector2 to = m.Root;
+        bool flip = m.Flip;
+        DespawnCall.Send((PlayerId, false));
+        DoppelPuppet.Despawn(PlayerId, false);
+        Net.Teleport.Self(to);
+        lp.cosmetics.SetFlipX(flip);
+        Summon(myRoot, myFlip);
+    }
+
+    private static readonly RemoteCall<(byte id, float x, float y, bool flip)> SpawnCall = new("Doppel.Spawn", Route.Anyone,
+        (w, m) => { w.Write(m.id); w.Write(m.x); w.Write(m.y); w.Write(m.flip); }, r => (r.ReadByte(), r.ReadSingle(), r.ReadSingle(), r.ReadBoolean()),
+        (_, m) => DoppelPuppet.Spawn(PortKit.ById(m.id), FxMath.V2(m.x, m.y), m.flip));
+
+    private static readonly RemoteCall<(byte id, bool effect)> DespawnCall = new("Doppel.Despawn", Route.Anyone,
+        (w, m) => { w.Write(m.id); w.Write(m.effect); }, r => (r.ReadByte(), r.ReadBoolean()),
+        (_, m) => DoppelPuppet.Despawn(m.id, m.effect));
+
+    private static readonly RemoteCall<(byte id, float x, float y)> StopCall = new("Doppel.Stop", Route.Anyone,
+        (w, m) => { w.Write(m.id); w.Write(m.x); w.Write(m.y); }, r => (r.ReadByte(), r.ReadSingle(), r.ReadSingle()),
+        (_, m) => DoppelPuppet.Of(m.id)?.StopAt(FxMath.V2(m.x, m.y)));
+
+    private static readonly RemoteCall<(byte id, float speed, float[] pts)> WalkCall = new("Doppel.Walk", Route.Anyone,
+        (w, m) => { w.Write(m.id); w.Write(m.speed); w.WritePacked(m.pts.Length); foreach (var f in m.pts) w.Write(f); },
+        r =>
+        {
+            byte id = r.ReadByte();
+            float speed = r.ReadSingle();
+            var pts = new float[r.ReadPackedInt32()];
+            for (int i = 0; i < pts.Length; i++) pts[i] = r.ReadSingle();
+            return (id, speed, pts);
+        },
+        (_, m) => DoppelPuppet.Of(m.id)?.Walk(m.pts, m.speed, null));
+
+    // 会議で分身は消える (どの端末でも)
+    private void OnMeetingStart(MeetingStartEvent e)
+    {
+        _flag = null;
+        DoppelPuppet.Despawn(PlayerId, false);
+    }
+
+    [OnlyMine]
+    private void OnMurdered(PlayerMurderedEvent e) => DoppelPuppet.Despawn(PlayerId, true);
+
+    [OnlyMine]
+    private void OnExiled(PlayerExiledEvent e) => DoppelPuppet.Despawn(PlayerId, false);
+
+    // ---- 地図 (自分の端末) ----
+
+    internal void UpdateMap(MapBehaviour map)
+    {
+        var m = Mine;
+        bool on = PortKit.Alive(Player) && !MeetingHud.Instance && !(map.countOverlay && map.countOverlay.gameObject.activeSelf);
+        DoppelMap.Draw(map, on ? m : null, on ? _flag : null, Player, DetectionRadius);
+    }
+
+    // 地図を開いている間、押した所へ歩かせる (毎フレーム)
+    internal static void FrameTick()
+    {
+        if (RoleState.Local is not Doppelganger d || !Input.GetMouseButtonDown(0)) return;
+        var map = MapBehaviour.Instance;
+        if (!map || !map.IsOpen || !map.HerePoint || !ShipStatus.Instance || MeetingHud.Instance) return;
+        if (map.countOverlay && map.countOverlay.gameObject.activeSelf) return;
+        var cam = Camera.main;
+        if (!cam) return;
+        var parent = map.HerePoint.transform.parent;
+        Vector3 local = parent.InverseTransformPoint(cam.ScreenToWorldPoint(Input.mousePosition));
+        var ship = ShipStatus.Instance;
+        var world = FxMath.V2(local.x * Mathf.Sign(ship.transform.localScale.x), local.y) * ship.MapScale;
+        d.Command(world);
+    }
+
+    // ---- 分身へのキル ----
+
+    // キルした人の端末から: その人の分身を倒した
+    internal static readonly RemoteCall<byte> KillRequest = new("Doppel.KillReq", Route.ToHost,
+        (w, id) => w.Write(id), r => r.ReadByte(),
+        (killer, owner) => HostStrike(killer, owner));
+
+    internal static void HostStrike(PlayerControl killer, byte ownerId)
+    {
+        var owner = PortKit.ById(ownerId);
+        var m = DoppelPuppet.Of(ownerId);
+        if (m == null || !PortKit.Alive(owner) || !PortKit.Alive(killer) || !PortKit.CanKillAnyone(killer)) return;
+        if (MeetingHud.Instance || ExileController.Instance || killer.inVent) return;
+        if (Vector2.Distance(killer.GetTruePosition(), m.True) > KillAbility.Reach(killer) + 1f) return;
+        if (BeforeMurderEvent.Ask(killer, owner) != null) return;
+        StruckCall.Send(ownerId);
+        Struck(ownerId);
+        // 本物が分身の所へ飛ぶのを待ってから倒す (体はそこに残る)
+        PortKit.After(0.45f, () =>
+        {
+            if (PortKit.Alive(owner) && PortKit.Alive(killer)) killer.RpcMurderPlayer(owner, true);
+        });
+    }
+
+    private static readonly RemoteCall<byte> StruckCall = new("Doppel.Struck", Route.HostToAll,
+        (w, id) => w.Write(id), r => r.ReadByte(), (_, id) => Struck(id));
+
+    private static void Struck(byte ownerId)
+    {
+        var m = DoppelPuppet.Of(ownerId);
+        if (m == null) return;
+        var lp = PlayerControl.LocalPlayer;
+        if (lp && lp.PlayerId == ownerId)
+        {
+            Net.Teleport.Self(m.Root);
+            lp.cosmetics.SetFlipX(m.Flip);
+        }
+        DoppelPuppet.Despawn(ownerId, false);
+    }
+}
+
+// 分身の見た目 (全員の端末で同じ動き)。本編の人の型から体の部品だけを残して作る
+internal sealed class DoppelPuppet
+{
+    private static readonly Dictionary<byte, DoppelPuppet> All = new();
+    private static bool _bound;
+
+    public readonly byte Owner;
+    private readonly GameObject _go;
+    private readonly CosmeticsLayer _cos;
+    private readonly PlayerAnimations _anims;
+    private readonly Vector2 _offset; // 体の根から足元 (GetTruePosition) まで
+    private float[] _path;
+    private int _next;
+    private float _speed;
+    private Action _arrived;
+    private bool _running;
+
+    public Vector2 Root { get; private set; }
+    public Vector2 True => Root + _offset;
+    public bool Flip => _cos && _cos.FlipX;
+    public bool Moving => _path != null;
+
+    internal static DoppelPuppet Of(byte owner) => All.TryGetValue(owner, out var m) ? m : null;
+    internal static IEnumerable<DoppelPuppet> Each => All.Values;
+
+    private DoppelPuppet(PlayerControl owner, Vector2 root, bool flip)
+    {
+        Owner = owner.PlayerId;
+        _offset = owner.Collider ? owner.Collider.offset : FxMath.V2(0f, -0.3636f);
+        var prefab = AmongUsClient.Instance.PlayerPrefab;
+        prefab.gameObject.SetActive(false);
+        _go = UnityEngine.Object.Instantiate(prefab.gameObject);
+        prefab.gameObject.SetActive(true);
+        _go.name = "MrpDoppelganger";
+        UnityEngine.Object.Destroy(_go.GetComponent<PlayerControl>());
+        UnityEngine.Object.Destroy(_go.GetComponent<PlayerPhysics>());
+        UnityEngine.Object.Destroy(_go.GetComponent<Rigidbody2D>());
+        UnityEngine.Object.Destroy(_go.GetComponent<CircleCollider2D>());
+        UnityEngine.Object.Destroy(_go.GetComponent<BoxCollider2D>());
+        UnityEngine.Object.Destroy(_go.GetComponent<AudioSource>());
+        UnityEngine.Object.Destroy(_go.GetComponent<PassiveButton>());
+        UnityEngine.Object.Destroy(_go.GetComponent<CustomNetworkTransform>());
+        UnityEngine.Object.Destroy(_go.GetComponent<DummyBehaviour>());
+        UnityEngine.Object.Destroy(_go.GetComponent<HnSImpostorScreamSfx>());
+        _go.SetActive(true);
+        _cos = _go.GetComponentInChildren<CosmeticsLayer>();
+        _anims = _go.GetComponentInChildren<PlayerAnimations>();
+        Root = root;
+        _go.transform.position = new Vector3(root.x, root.y, (root.y + _offset.y) / 1000f);
+        Dress(owner, flip);
+    }
+
+    private void Dress(PlayerControl owner, bool flip)
+    {
+        if (!_cos) return;
+        _cos.EnsureInitialized(PlayerBodyTypes.Normal);
+        if (_anims) _anims.SetBodyType(PlayerBodyTypes.Normal, _cos.currentBodySprite.normalCosmeticOffset, _cos.currentBodySprite.flippedCosmeticOffset);
+        _cos.normalBodySprite.Visible = true;
+        var outfit = owner.Data.Outfits[owner.CurrentOutfitType];
+        _cos.SetMaskType(PlayerMaterial.MaskType.None);
+        _cos.SetColor(outfit.ColorId);
+        _cos.SetHat(outfit.HatId, outfit.ColorId);
+        _cos.SetSkin(outfit.SkinId, outfit.ColorId, null);
+        _cos.SetVisor(outfit.VisorId, outfit.ColorId);
+        _cos.SetNamePosition(new Vector3(0f, string.IsNullOrEmpty(outfit.HatId) ? 0.8f : 1f, -0.5f));
+        if (_cos.nameText) _cos.nameText.text = outfit.PlayerName;
+        _cos.SetFlipX(flip);
+        _cos.TogglePet(false);
+        if (_anims) _anims.PlayIdleAnimation();
+        _cos.AnimateSkinIdle();
+    }
+
+    internal static void Spawn(PlayerControl owner, Vector2 root, bool flip)
+    {
+        if (!owner || !AmongUsClient.Instance || !AmongUsClient.Instance.PlayerPrefab) return;
+        Despawn(owner.PlayerId, false);
+        if (!_bound)
+        {
+            _bound = true;
+            RoleState.Match.OnRelease(() =>
+            {
+                foreach (var m in All.Values) m.Destroy();
+                All.Clear();
+                _bound = false;
+            });
+        }
+        try { All[owner.PlayerId] = new DoppelPuppet(owner, root, flip); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"doppelganger: {e.Message}"); }
+        Poof(root, 0.6f);
+    }
+
+    internal static void Despawn(byte owner, bool effect)
+    {
+        if (!All.TryGetValue(owner, out var m)) return;
+        All.Remove(owner);
+        if (effect) Poof(m.Root, 1f);
+        m.Destroy();
+    }
+
+    // 煙のように消える・現れる演出 (広がって薄れる輪)
+    private static void Poof(Vector2 root, float size)
+    {
+        if (!ShipStatus.Instance) return;
+        var c = RoleDisplay.ParseColor(Doppelganger.Hex);
+        var ring = PortArt.Spawn(PortArt.Ring, root, 0.3f, c, -5f);
+        var disc = PortArt.Spawn(PortArt.Disc, root, 0.2f, new Color(1f, 1f, 1f, 0.5f), -5f);
+        for (int i = 0; i <= 10; i++)
+        {
+            float t = i / 10f;
+            PortKit.After(0.04f * i, () =>
+            {
+                if (ring) { ring.transform.localScale = Vector3.one * Mathf.Lerp(0.3f, 1.6f * size, t); ring.color = new Color(c.r, c.g, c.b, 1f - t); }
+                if (disc) { disc.transform.localScale = Vector3.one * Mathf.Lerp(0.2f, 1.2f * size, t); disc.color = new Color(1f, 1f, 1f, 0.5f * (1f - t)); }
+            });
+        }
+        PortKit.After(0.45f, () =>
+        {
+            if (ring) UnityEngine.Object.Destroy(ring.gameObject);
+            if (disc) UnityEngine.Object.Destroy(disc.gameObject);
+        });
+    }
+
+    private void Destroy()
+    {
+        if (_go) UnityEngine.Object.Destroy(_go);
+    }
+
+    // 足元の点の列 (x, y, x, y…) をたどって歩く
+    internal void Walk(float[] path, float speed, Action arrived)
+    {
+        _path = path;
+        _next = 0;
+        _speed = Mathf.Max(speed, 0.5f);
+        _arrived = arrived;
+    }
+
+    internal void StopAt(Vector2 root)
+    {
+        _path = null;
+        _arrived = null;
+        Root = root;
+    }
+
+    internal static void TickAll(float dt)
+    {
+        if (All.Count == 0) return;
+        foreach (var m in All.Values) m.Tick(dt);
+    }
+
+    private void Tick(float dt)
+    {
+        if (!_go) return;
+        bool moving = false;
+        if (_path != null && !MeetingHud.Instance)
+        {
+            float budget = _speed * dt;
+            while (budget > 0f && _path != null)
+            {
+                var target = FxMath.V2(_path[_next * 2], _path[_next * 2 + 1]) - _offset;
+                var d = target - Root;
+                float len = d.magnitude;
+                if (len <= budget)
+                {
+                    Root = target;
+                    budget -= len;
+                    if (++_next * 2 >= _path.Length)
+                    {
+                        _path = null;
+                        var a = _arrived;
+                        _arrived = null;
+                        a?.Invoke();
+                    }
+                }
+                else
+                {
+                    Root += d / len * budget;
+                    budget = 0f;
+                }
+                if (Mathf.Abs(d.x) > 0.01f && _cos) _cos.SetFlipX(d.x < 0f);
+                moving = true;
+            }
+        }
+        _go.transform.position = new Vector3(Root.x, Root.y, (Root.y + _offset.y) / 1000f);
+        if (_anims && _cos)
+        {
+            if (moving && !_running) { _anims.PlayRunAnimation(); _cos.AnimateSkinRun(); }
+            else if (!moving && _running) { _anims.PlayIdleAnimation(); _cos.AnimateSkinIdle(); }
+        }
+        _running = moving;
+        UpdateName();
+    }
+
+    // 名前は見えている時だけ (影の中・壁の向こうでは本物と同じく出さない)
+    private void UpdateName()
+    {
+        if (!_cos || !_cos.nameText) return;
+        var lp = PlayerControl.LocalPlayer;
+        bool show = true;
+        if (lp && lp.Data != null && !lp.Data.IsDead)
+        {
+            float r = lp.lightSource ? lp.lightSource.viewDistance : 3f;
+            Vector2 me = lp.GetTruePosition();
+            show = Vector2.Distance(me, True) <= r && !PhysicsHelpers.AnythingBetween(me, True, Constants.ShadowMask, false);
+        }
+        var holder = _cos.nameText.transform.parent ? _cos.nameText.transform.parent.gameObject : _cos.nameText.gameObject;
+        if (holder.activeSelf != show) holder.SetActive(show);
+    }
+
+    internal void SetOutline(bool on, Color color)
+    {
+        if (_cos) _cos.SetOutline(on, new Il2CppSystem.Nullable<Color>(color));
+    }
+}
+
+// 地図: 分身の居場所・行き先の旗・分身の近くの人
+internal static class DoppelMap
+{
+    private static SpriteRenderer _me, _flag;
+    private static readonly List<SpriteRenderer> Near = new();
+
+    internal static void Clear()
+    {
+        if (_me) UnityEngine.Object.Destroy(_me.gameObject);
+        if (_flag) UnityEngine.Object.Destroy(_flag.gameObject);
+        foreach (var r in Near) if (r) UnityEngine.Object.Destroy(r.gameObject);
+        Near.Clear();
+        _me = _flag = null;
+    }
+
+    private static Vector3 ToMap(Vector2 world, float z)
+    {
+        var ship = ShipStatus.Instance;
+        Vector3 pos = world / ship.MapScale;
+        pos.x *= Mathf.Sign(ship.transform.localScale.x);
+        pos.z = z;
+        return pos;
+    }
+
+    internal static void Draw(MapBehaviour map, DoppelPuppet m, Vector2? flag, PlayerControl owner, float radius)
+    {
+        var parent = map.HerePoint.transform.parent;
+        if (!_me)
+        {
+            _me = UnityEngine.Object.Instantiate(map.HerePoint, parent);
+            _me.name = "MrpDoppelHere";
+            _me.material.SetInt(PlayerMaterial.MaskLayer, 255);
+            _flag = new GameObject("MrpDoppelFlag").AddComponent<SpriteRenderer>();
+            _flag.transform.SetParent(parent, false);
+            _flag.gameObject.layer = map.HerePoint.gameObject.layer;
+            _flag.sprite = ButtonIcons.Has("doppelganger_flag") ? ButtonIcons.Get("doppelganger_flag") : ButtonIcons.Get("snr_marker");
+            _flag.transform.localScale = Vector3.one * (ButtonIcons.Has("doppelganger_flag") ? 0.65f : 0.3f);
+        }
+        _me.gameObject.SetActive(m != null);
+        if (m != null)
+        {
+            owner.SetPlayerMaterialColors(_me);
+            _me.color = new Color(0.88f, 0.88f, 0.88f, 1f);
+            _me.transform.localPosition = ToMap(m.True, -1.5f);
+        }
+        _flag.gameObject.SetActive(m != null && flag != null);
+        if (m != null && flag is Vector2 f) _flag.transform.localPosition = ToMap(f, -2f);
+
+        // 分身の近くの人
+        var near = new List<PlayerControl>();
+        if (m != null && radius > 0f)
+            foreach (var p in PlayerControl.AllPlayerControls)
+                if (PortKit.Alive(p) && p.PlayerId != owner.PlayerId && Vector2.Distance(p.GetTruePosition(), m.True) < radius) near.Add(p);
+        while (Near.Count < near.Count)
+        {
+            var r = UnityEngine.Object.Instantiate(map.HerePoint, parent);
+            r.material.SetInt(PlayerMaterial.MaskLayer, 255);
+            Near.Add(r);
+        }
+        for (int i = 0; i < Near.Count; i++)
+        {
+            var r = Near[i];
+            if (!r) continue;
+            if (i >= near.Count) { r.gameObject.SetActive(false); continue; }
+            near[i].SetPlayerMaterialColors(r);
+            r.transform.localPosition = ToMap(near[i].GetTruePosition(), -1f);
+            r.gameObject.SetActive(true);
+        }
+    }
+}
+
+[HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.FixedUpdate))]
+internal static class DoppelMapPatch
+{
+    public static void Postfix(MapBehaviour __instance)
+    {
+        if (RoleState.Local is not Doppelganger d) return;
+        try { d.UpdateMap(__instance); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"doppelganger map: {e.Message}"); }
+    }
+}
+
+// キルボタン: 狙う人がいない時、届く所にいる他人の分身を狙う
+[HarmonyPatch(typeof(KillButton), nameof(KillButton.SetTarget))]
+internal static class DoppelKillTargetPatch
+{
+    internal static byte Target = 255;
+    private static DoppelPuppet _lit;
+
+    public static void Postfix(KillButton __instance)
+    {
+        if (__instance is null) return;
+        try { Pick(__instance); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"doppelganger kill target: {e.Message}"); }
+    }
+
+    private static void Pick(KillButton b)
+    {
+        DoppelPuppet best = null;
+        var lp = PlayerControl.LocalPlayer;
+        if (b.currentTarget == null && lp && PortKit.Alive(lp) && PortKit.CanKillAnyone(lp) && !lp.inVent && lp.CanMove && !MeetingHud.Instance)
+        {
+            float reach = KillAbility.Reach(lp);
+            Vector2 me = lp.GetTruePosition();
+            foreach (var m in DoppelPuppet.Each)
+            {
+                if (m.Owner == lp.PlayerId || !PortKit.Alive(PortKit.ById(m.Owner))) continue;
+                float d = Vector2.Distance(me, m.True);
+                if (d > reach || PhysicsHelpers.AnythingBetween(me, m.True, Constants.ShipAndObjectsMask, false)) continue;
+                reach = d;
+                best = m;
+            }
+        }
+        if (_lit != null && _lit != best) _lit.SetOutline(false, Color.clear);
+        _lit = best;
+        Target = best?.Owner ?? 255;
+        if (best == null) return;
+        best.SetOutline(true, Palette.ImpostorRed);
+        b.SetEnabled();
+    }
+}
+
+[HarmonyPatch(typeof(KillButton), nameof(KillButton.DoClick))]
+[HarmonyPriority(Priority.First)]
+internal static class DoppelKillClickPatch
+{
+    public static bool Prefix(KillButton __instance)
+    {
+        if (__instance is null || __instance.currentTarget != null || DoppelKillTargetPatch.Target == 255) return true;
+        var lp = PlayerControl.LocalPlayer;
+        if (!__instance.isActiveAndEnabled || __instance.isCoolingDown || !PortKit.Alive(lp) || !lp.CanMove) return false;
+        byte owner = DoppelKillTargetPatch.Target;
+        if (AmongUsClient.Instance.AmHost) Doppelganger.HostStrike(lp, owner);
+        else Doppelganger.KillRequest.Send(owner);
+        return false;
+    }
+}

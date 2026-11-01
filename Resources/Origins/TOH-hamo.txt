@@ -1,0 +1,3 @@
+# From: に出す名前 (役職のコードの Origin => "TOH-hamo" で使う)
+name: TownOfHost-hamo
+gradient: #fb85ff

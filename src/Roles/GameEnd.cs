@@ -16,6 +16,11 @@ public sealed class GameResult
     public RoleBase Role { get; internal set; }
     public bool Draw { get; internal set; } // 廃村 (ホストが打ち切った・勝者なし)
     public readonly HashSet<byte> Winners = new();
+
+    // 本編の終わり方 (ホストの端末の相乗り・横取りの判定でだけ入っている)
+    public GameOverReason Reason { get; internal set; }
+    public bool BySabotage => Reason is GameOverReason.ImpostorsBySabotage;
+    public bool ByTasks => Reason is GameOverReason.CrewmatesByTask;
 }
 
 // 第三陣営がいる試合の勝敗。全員が MRP を入れている前提なので、ホストが勝者を決めて 1 通で配り、
@@ -278,6 +283,7 @@ public static class GameEnd
         _announced = true;
         var r = _pending ?? FromReason(reason);
         _pending = r;
+        r.Reason = reason;
         Plugin.Logger.LogInfo($"end reason={reason}");
         foreach (var role in RoleState.All)
         {
@@ -314,7 +320,12 @@ public static class GameEnd
                 r.Winners.Clear();
                 r.Team = null;
                 r.Role = thieves.Count > 0 ? thieves[0] : RoleState.Of(addonThieves[0]);
-                foreach (var t in thieves) r.Winners.Add(t.PlayerId);
+                foreach (var t in thieves)
+                {
+                    r.Winners.Add(t.PlayerId);
+                    var with = t.StealsWith;
+                    if (with != null) foreach (var id in with) r.Winners.Add(id);
+                }
                 foreach (var id in addonThieves) r.Winners.Add(id);
                 // 奪った勝ちに乗る役職 (キューピッドなど) をもう一度見る
                 foreach (var role in RoleState.All)
@@ -328,6 +339,12 @@ public static class GameEnd
                 }
             }
         }
+        if (!r.Draw)
+            foreach (var role in RoleState.All)
+            {
+                try { r.Winners.RemoveWhere(id => role.BlocksWinOf(id, r)); }
+                catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.BlocksWinOf: {e}"); }
+            }
         r.Winners.RemoveWhere(Spectate.IsWatching); // 観戦の人は勝敗に入らない
 
         Result.Send(r);
@@ -582,6 +599,16 @@ internal static class NeutralTaskPatch
             if (role.TasksCount || !role.Player) continue;
             var rb = role.Player.Data?.Role;
             if (rb) rb.TasksCountTowardProgress = false;
+        }
+        foreach (var role in RoleState.All)
+        {
+            var ids = role.IgnoresTasksOf;
+            if (ids == null) continue;
+            foreach (var id in ids)
+            {
+                var rb = PortKit.ById(id)?.Data?.Role;
+                if (rb) rb.TasksCountTowardProgress = false;
+            }
         }
     }
 

@@ -99,6 +99,8 @@ public class Ticker : MonoBehaviour
         Terrain.TerrainFx.Tick(); t = Bridge.Perf.Lane(1, t);
         Terrain.TrickWall.Tick();
         Roles.ArchitectPlan.Frame();
+        Roles.Neutral.SpectreMinigame.Tick();
+        Roles.Crew.Doppelganger.FrameTick();
         Roles.ArchitectDrone.FrameAll();
         Roles.StatusEffects.Tick();
         Menu.Keybinds.Tick();
@@ -166,7 +168,11 @@ public class Ticker : MonoBehaviour
         Commands.ChatInput.Tick();
         Menu.ColorPicker.Tick();
         Menu.MeetingMemo.Tick();
+<<<<<<< HEAD
+        Options.RolePage.Tick(); UI.UiWindow.Tick(); UI.TextField.Tick(); Report.ReportWindow.Tick(); UI.Backdrop.Tick(); UI.Aura.Tick(); UI.AnimatedPicture.Tick(); t = Bridge.Perf.Lane(23, t);
+=======
         Options.RolePage.Tick(); UI.UiWindow.Tick(); UI.Backdrop.Tick(); UI.Aura.Tick(); UI.WayfinderSky.TickAll(); UI.EpithetIntro.Tick(); UI.IntroIai.Tick(); UI.EpithetAnnounce.Tick(); UI.AnimatedPicture.Tick(); t = Bridge.Perf.Lane(23, t);
+>>>>>>> ae4c39b399088735a04072f4a6bab91e01255570
         Options.CrowdPages.Tick();
         Options.GameModeSwitch.Tick();
         Menu.ChatNotes.Tick();
@@ -200,6 +206,7 @@ public class Ticker : MonoBehaviour
         Roles.Spectate.Tick();
         Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
         Net.MrpRegion.Tick();
+        Net.JoinLink.Tick();
         Net.HostChange.Tick();
         Roles.TeamSizes.Tick();
         Menu.MatchInfoExtension.Tick();
@@ -207,6 +214,7 @@ public class Ticker : MonoBehaviour
         Roles.KillAbility.Tick(); t = Bridge.Perf.Lane(28, t);
         Rules.VanillaTweaks.Tick();
         Roles.RoleFrame.Tick();
+        Roles.Crew.DoppelPuppet.TickAll(UnityEngine.Time.fixedDeltaTime);
         Roles.TimeRewind.Tick();
         Roles.Abilities.Tick(); t = Bridge.Perf.Lane(29, t);
         Roles.ModButton.TickAll(); t = Bridge.Perf.Lane(30, t);

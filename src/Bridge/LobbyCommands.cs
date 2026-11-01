@@ -154,6 +154,9 @@ internal static class LobbyCommands
             reply($"OK pressstart min={gsm.MinPlayers} players={GameData.Instance.PlayerCount}");
         });
 
+        TestBridge.Register("presscountdown", "開始の数えの間に出る「開始まであと〇」の板を押す (当たり判定とボタンがあるか確かめてから)", (_, reply) =>
+            reply("OK presscountdown " + Net.StartCancel.Press()));
+
         TestBridge.Register("vrow", "<impostors> [+N|-N] 本編のゲーム設定の行 (いまはインポスター数) を ± で押して、値と幅を返す (設定画面のゲーム設定タブを開いておく)", (args, reply) =>
         {
             var menu = GameSettingMenu.Instance;

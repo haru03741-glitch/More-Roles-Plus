@@ -23,6 +23,8 @@ internal static class ClientOptions
         public Text Label;
         public Action Changed;
         public Func<string> Value; // 押すたびに値が替わるボタン (字の後ろに今の値を出す)
+        public Func<bool> Visible; // null = いつも出す / 板を開くたびに見て、false なら隠す
+        public GameObject Go;
         public TextMeshPro Tmp;
         public SpriteRenderer Back;
         public ButtonRolloverHandler Rollover;
@@ -70,6 +72,7 @@ internal static class ClientOptions
         ButtonScale = cfg.Bind("Client", "ButtonScale", 100, scaleLabel.Builtin(false));
         Items.Add(new Item { Key = "ButtonScale", Label = scaleLabel, Click = HudTweaks.NextScale, Value = HudTweaks.ScaleLabel });
         Items.Add(new Item { Key = "RoleDictionary", Label = new Text("RoleDictionary.Open"), Click = RoleDictionary.Open });
+        Items.Add(new Item { Key = "BugReport", Label = new Text("Report.Open"), Click = Report.ReportWindow.Open, Visible = () => MatchInfoExtension.InLobby });
     }
 
     private static ConfigEntry<bool> Add(string key, bool def, Text label, Action changed)
@@ -134,6 +137,7 @@ internal static class ClientOptions
                 Clicks[i] = a = (UnityAction)(() => Toggle(idx));
             }
             SetClick(b, a);
+            it.Go = b.gameObject;
             if (it.Value != null) it.Tmp = b.GetComponentInChildren<TextMeshPro>(true);
             Paint(it);
         }
@@ -153,6 +157,9 @@ internal static class ClientOptions
 
     internal static void ShowPanel(bool on)
     {
+        if (on)
+            foreach (var it in Items)
+                if (it.Visible != null && it.Go) it.Go.SetActive(it.Visible());
         if (_panel) _panel.gameObject.SetActive(on);
         HideTab(on);
     }

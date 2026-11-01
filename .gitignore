@@ -177,3 +177,8 @@ $RECYCLE.BIN/
 *.bak
 *.orig
 *.rej
+
+# make-release.ps1 の出力 (GitHub の Releases に載せる物)
+/release/
+/server/MrpServer/bin/
+/server/MrpServer/obj/

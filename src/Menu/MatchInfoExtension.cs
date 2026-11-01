@@ -622,13 +622,8 @@ internal static class MatchInfoExtension
 [HarmonyPatch(typeof(MatchInfoGuide), nameof(MatchInfoGuide.Open))]
 internal static class MatchInfoOpenPatch
 {
-    public static bool Prefix(MatchInfoGuide __instance)
-    {
-        if (!MatchInfoExtension.InLobby) return true;
-        try { MatchInfoExtension.OpenInLobby(__instance); }
-        catch (Exception e) { Plugin.Logger.LogError($"match info (lobby): {e}"); }
-        return false;
-    }
+    // 本編の「?」(試合の情報) は使わない (ボタンの場所はバグ報告に譲った。Report.ReportNotifier)
+    public static bool Prefix() => false;
 
     public static void Postfix(MatchInfoGuide __instance)
     {

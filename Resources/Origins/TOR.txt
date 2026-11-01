@@ -1,0 +1,2 @@
+name: TheOtherRoles
+color: #FF0000

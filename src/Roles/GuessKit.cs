@@ -7,6 +7,18 @@ namespace MoreRolesPlus.Roles;
 // ゲッサー (会議中に役職を当てて撃つ) の共通部品。当たれば相手が、外れれば撃った人が死ぬ
 public interface IGuesser { }
 
+// 当てられた人を守る役職 (守護者)。true の間は当たっても撃った人が死ぬ。ホストの端末で呼ぶ
+public interface IGuessShield
+{
+    bool ShieldsFromGuess(byte target);
+}
+
+// 撃ってはいけない相手 (スカーレットに誑かされた人から見たスカーレットなど)。自分の端末の役職を選ぶ画面と、ホストの確かめで呼ぶ
+public interface IGuessBlock
+{
+    bool BlocksGuess(PlayerControl guesser, PlayerControl target);
+}
+
 internal static class GuessKit
 {
     // 能力の「撃つ」で狙う相手が決まった時 (全員の端末で呼ばれる)。撃つ本人の端末で役職を選ぶ画面を開く
@@ -43,6 +55,9 @@ internal static class GuessKit
         if (!PortKit.Alive(target)) return;
         var actual = RoleState.Of(target);
         bool hit = actual != null && actual.GetType() == Registry.Roles[roleIdx].GetType();
+        if (hit)
+            foreach (var r in RoleState.All)
+                if (r is IGuessShield s && s.ShieldsFromGuess(targetId)) { hit = false; break; }
         byte deadId = hit ? targetId : user.PlayerId;
         // 先に全員の画面で撃ち抜く演出を始め、照準が縮み切って撃った少し後に倒す (名札の ✕ が銃声より先に出ないように)
         ShotCall.Send(deadId);
@@ -75,6 +90,14 @@ internal static class GuessKit
             ResultCall.Send((d.user, d.dead));
             Announce(d.user, d.dead);
         }
+    }
+
+    // 撃ってはいけない相手か (IGuessBlock)
+    internal static bool Blocked(PlayerControl guesser, PlayerControl target)
+    {
+        foreach (var r in RoleState.All)
+            if (r is IGuessBlock b && b.BlocksGuess(guesser, target)) return true;
+        return false;
     }
 
     private static bool IsGuesser(PlayerControl p)

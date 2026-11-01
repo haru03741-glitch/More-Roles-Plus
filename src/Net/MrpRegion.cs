@@ -38,6 +38,47 @@ internal static class MrpRegion
         }
     }
 
+    // MRP のサーバーの Web の口 (バグ報告など)。443 なら https
+    public static string WebBase
+    {
+        get
+        {
+            string host = (_address?.Value ?? "amongus.nkzk.win").Trim().TrimEnd('/');
+            if (host.StartsWith("http://") || host.StartsWith("https://")) return host;
+            ushort port = _port?.Value ?? 443;
+            return port == 443 ? "https://" + host : $"http://{host}:{port}";
+        }
+    }
+
+    // 今選んでいる地域が MRP のサーバーか (表示名でなく接続先で見る)
+    public static bool IsCurrent()
+    {
+        try
+        {
+            var region = ServerManager.Instance ? ServerManager.Instance.CurrentRegion : null;
+            if (region == null || _address == null) return false;
+            string host = _address.Value.Trim().Replace("http://", "").Replace("https://", "").TrimEnd('/');
+            return host.Length > 0 && (region.PingServer ?? "").Contains(host, System.StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
+    // MRP のサーバーへ切り替える (参加リンクから入る時)。地域の一覧に無ければ false
+    public static bool Select()
+    {
+        var sm = ServerManager.Instance;
+        if (!sm || _name == null) return false;
+        if (IsCurrent()) return true;
+        foreach (var r in sm.AvailableRegions)
+        {
+            if (r.Name != _name.Value) continue;
+            sm.SetRegion(r);
+            _fallback = null;
+            return true;
+        }
+        return false;
+    }
+
     [HarmonyPatch(typeof(ServerManager), nameof(ServerManager.LoadServers))]
     private static class LoadServersPatch
     {

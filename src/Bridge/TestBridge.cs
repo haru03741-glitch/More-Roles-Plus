@@ -75,6 +75,7 @@ public static partial class TestBridge
             DuelCommands.Register();
             Roles.RewindCinematic.Register();
             Roles.KatanaCinematic.Register();
+            Report.ReportWindow.RegisterBridge();
             Rules.RulesProbe.Register();
             Terrain.TerrainProbe.Register();
             InitHost();

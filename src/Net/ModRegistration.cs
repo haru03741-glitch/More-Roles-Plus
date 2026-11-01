@@ -32,9 +32,36 @@ internal static class ModRegistration
     [HarmonyPatch(typeof(InnerNetClient), nameof(InnerNetClient.RequestGameList))]
     private static class RequestGameListPatch { public static void Prefix() => Apply(); }
 
-    // 「ゲームを探す」画面は開いた時に GUID を読んで検索条件を作る (上の RequestGameList は通らない)
+    // 「ゲームを探す」画面は開いた時に GUID を読んで検索条件を作る (上の RequestGameList は通らない)。
+    // この画面はまだオンラインになっていない (NetworkMode が違う) ので、Apply だと GUID が外れる。
+    // GUID が空のまま作られた mod の条件は中身が null になり、Impostor は「読めない」と 400 を返して一覧が出ない
     [HarmonyPatch(typeof(FindAGameManager), nameof(FindAGameManager.Start))]
-    private static class FindAGameStartPatch { public static void Prefix() => Apply(); }
+    private static class FindAGameStartPatch { public static void Prefix() => ForSearch(); }
+
+    [HarmonyPatch(typeof(CurrentModRegistration), nameof(CurrentModRegistration.UpdateFilterSetWithModRegistrationSettings))]
+    private static class FilterSetPatch
+    {
+        public static void Prefix() => ForSearch();
+
+        // それでも中身の無い mod の条件が残ったら外す (送ると一覧が 400 で読めない)
+        public static void Postfix(AmongUs.Matchmaking.GameFilterSet __0)
+        {
+            try
+            {
+                var filters = __0?.Filters;
+                if (filters == null) return;
+                for (int i = filters.Count - 1; i >= 0; i--)
+                {
+                    var f = filters[i];
+                    if (f != null && f.OptionType == "mod" && f.SubFilter == null) filters.RemoveAt(i);
+                }
+            }
+            catch (System.Exception e) { Plugin.Logger.LogWarning($"modreg: filter fix failed: {e.Message}"); }
+        }
+    }
+
+    // 部屋探しは必ずオンラインなので、同じ mod の部屋だけを探す
+    private static void ForSearch() => CurrentModRegistration.ModRegistrationGuidString = Off ? string.Empty : Guid;
 
 #if !ANDROID
     // Android では this を渡さずに呼ばれる関数で、パッチの入口が例外を出して本編の接続の挨拶が壊れる

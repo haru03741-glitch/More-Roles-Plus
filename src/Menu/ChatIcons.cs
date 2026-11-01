@@ -20,7 +20,8 @@ internal static class ChatIcons
     private const string AssetVersion = "1.1.0";
 
     // 字の中に置く絵の書き方。絵が無い・作れない時は空
-    public static string Tag(Sprite sp)
+    // scale = 字の高さに対する大きさ (ボタンの絵は余白の分だけ大きく 1.6)
+    public static string Tag(Sprite sp, float scale = 1.6f)
     {
         if (!sp || !sp.texture) return string.Empty;
         int id = sp.GetInstanceID();
@@ -50,7 +51,7 @@ internal static class ChatIcons
             metrics = new GlyphMetrics(r.width, r.height, 0f, r.height * 0.85f, r.width),
             scale = 1f,
         };
-        var ch = new TMP_SpriteCharacter(FirstUnicode + serial, glyph) { name = name, scale = 1.6f }; // 字の高さ (アセンダー) に合わせて縮むので、ボタンの絵の余白の分だけ大きく
+        var ch = new TMP_SpriteCharacter(FirstUnicode + serial, glyph) { name = name, scale = scale }; // 字の高さ (アセンダー) に合わせて縮む
 
         var mat = new Material(_shader) { name = "MrpChatIcon_" + sp.name, mainTexture = sp.texture, hideFlags = HideFlags.HideAndDontSave };
         var asset = ScriptableObject.CreateInstance<TMP_SpriteAsset>();

@@ -68,6 +68,13 @@ internal sealed class Label : Widget
     public float Outline;
     public float MinFontSize;   // > 0 なら、1 行で Width に入らない時にこの大きさまで縮める
     public bool NoWrap;         // 折り返さない (Width を少しはみ出す小さな印を後ろに足す名前)
+    public Action<Label> OnDoubleClick;   // 字をすばやく 2 回押した時 (null なら押せない字)
+    public float HitHeight;               // 押せる所の高さ (0 = 字の高さ)
+
+    // 作った時の当たり判定の囲い (スクロール欄の中なら、その欄)。後から部品を足す時に使う
+    internal Collider2D ClickMask { get; private set; }
+    private float _lastClick = -10f;
+    private const float DoubleClickSeconds = 0.4f;
 
     // 作った字 (作り直さずに字だけ書き換える時に使う)
     public TextMeshPro Built { get; private set; }
@@ -115,6 +122,8 @@ internal sealed class Label : Widget
         t.richText = true;
         if (MenuFont) Options.MenuFont.Apply(t, 0, Outline);
         string text = Content ?? "";
+        // 字の中の絵 (<sprite>: 役職の説明の起源のロゴなど)
+        if (text.Contains("<sprite")) Menu.ChatIcons.Apply(t);
         t.text = text;
         if (MinFontSize > 0f && Width > 0f)
         {
@@ -127,6 +136,24 @@ internal sealed class Label : Widget
         rt.sizeDelta = new Vector2(w, h);
         size = new Vector2(w, h);
         Built = t;
+        ClickMask = ctx.ClickMask;
+        if (OnDoubleClick != null)
+        {
+            var col = t.gameObject.AddComponent<BoxCollider2D>();
+            col.size = new Vector2(w, Math.Max(h, HitHeight));
+            var pb = t.gameObject.AddComponent<PassiveButton>();
+            pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+            pb.OnMouseOver = new UnityEvent();
+            pb.OnMouseOut = new UnityEvent();
+            if (ctx.ClickMask) pb.ClickMask = ctx.ClickMask;
+            var cb = OnDoubleClick;
+            pb.OnClick.AddListener(UiActions.Take(() =>
+            {
+                float now = Time.realtimeSinceStartup;
+                if (now - _lastClick <= DoubleClickSeconds) { _lastClick = -10f; cb(this); }
+                else _lastClick = now;
+            }, ctx.Slots));
+        }
         return t.gameObject;
     }
 }

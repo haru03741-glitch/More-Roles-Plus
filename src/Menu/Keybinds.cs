@@ -125,7 +125,14 @@ internal static class Keybinds
         // 開けるのは右上の辞典のボタンと同じく HUD のある場面 (ロビー・試合中) だけ
         if (!Vanilla.Hud) return;
         if (IntroCutscene.Instance || ExileController.Instance || Minigame.Instance) return;
+<<<<<<< HEAD
+        var chat = Vanilla.Chat;
+        if ((chat && chat.IsOpenOrOpening) || UI.TextField.Typing) return;
+        foreach (var box in UnityEngine.Object.FindObjectsOfType<TextBoxTMP>())
+            if (box && box.hasFocus) return;
+=======
         if (Typing()) return;
+>>>>>>> ae4c39b399088735a04072f4a6bab91e01255570
         if (RoleDictionary.IsOpen) UI.UiWindow.Current?.Close();
         else RoleDictionary.Open();
     }

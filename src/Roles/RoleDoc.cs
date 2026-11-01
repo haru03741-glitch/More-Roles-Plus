@@ -19,6 +19,8 @@ internal static class RoleDoc
     private const string ChatInk = "#2E2E38";
     private const string ChatMuted = "#6C6C78";
 
+<<<<<<< HEAD
+=======
     // Assignable.Origin の鍵 → 表に出す mod の名前
     private static readonly Dictionary<string, string> Origins = new()
     {
@@ -28,6 +30,7 @@ internal static class RoleDoc
         ["TOHY"] = "<color=#FFD700>TownOfHost_Y</color>",
     };
 
+>>>>>>> ae4c39b399088735a04072f4a6bab91e01255570
     // 説明の先頭に置く起源の 1 行 (改行まで含む)。起源の無い役職は空
     internal static string OriginLine(Assignable a, string label = LabelColor)
     {
@@ -39,7 +42,7 @@ internal static class RoleDoc
         {
             string key = keys[i].Trim();
             if (i > 0) sb.Append(", ");
-            sb.Append(Origins.TryGetValue(key, out string shown) ? shown : key);
+            sb.Append(Origins.Shown(key));
         }
         return sb.Append('\n').ToString();
     }

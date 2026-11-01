@@ -1,0 +1,84 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- More Roles Plus のインストーラー (1 つの .exe)。
+         .NET Framework 4.8 の WPF なので、Windows 10/11 なら何も足さずに動く。
+         BepInEx 一式と MRP の DLL は Payload.zip にまとめて exe の中へ埋め込む (ビルドの時に作る)。
+         作り方: dotnet build installer/MrpInstaller/MrpInstaller.csproj -c Release
+         → installer/MrpInstaller/bin/Release/MoreRolesPlusInstaller.exe -->
+    <Import Project="..\..\local.props" Condition="Exists('..\..\local.props')" />
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net48</TargetFramework>
+        <UseWPF>true</UseWPF>
+        <LangVersion>latest</LangVersion>
+        <Nullable>disable</Nullable>
+        <AssemblyName>MoreRolesPlusInstaller</AssemblyName>
+        <RootNamespace>MrpInstaller</RootNamespace>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <ApplicationIcon>mrp.ico</ApplicationIcon>
+        <Product>More Roles Plus Installer</Product>
+        <Copyright>GPL-3.0</Copyright>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <!-- 中身の元: MRP が入って動いている Among Us (BepInEx の土台を写す) と、MRP 本体のビルド出力 -->
+        <MrpRepo>$(MSBuildThisFileDirectory)..\..\</MrpRepo>
+        <MrpPayloadGame Condition="'$(MrpPayloadGame)' == '' And Exists('$(MrpExtraGamePaths)\BepInEx\core\BepInEx.Unity.IL2CPP.dll')">$(MrpExtraGamePaths)</MrpPayloadGame>
+        <MrpPayloadGame Condition="'$(MrpPayloadGame)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Among Us</MrpPayloadGame>
+        <MrpPayloadDir>$(MSBuildThisFileDirectory)obj\mrp-payload\</MrpPayloadDir>
+        <MrpPayloadZip>$(MSBuildThisFileDirectory)obj\Payload.zip</MrpPayloadZip>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+        <Reference Include="System.IO.Compression" />
+        <Reference Include="System.IO.Compression.FileSystem" />
+        <Reference Include="System.Net.Http" />
+        <Reference Include="System.Web" />
+        <Reference Include="System.Web.Extensions" />
+        <Reference Include="System.Windows.Forms" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Resource Include="mrp.png" />
+        <Resource Include="mrp-art.jpg" />
+    </ItemGroup>
+
+    <!-- 埋め込む中身を集めて zip にする。interop・cache・ログ・他の mod の設定は入れない (初回起動で作り直される) -->
+    <Target Name="MrpPayload" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+        <PropertyGroup>
+            <_MrpDll>$(MrpRepo)bin\Release\net6.0\MoreRolesPlus.dll</_MrpDll>
+            <_MrpPatcher>$(MrpRepo)patcher\bin\Release\MoreRolesPlus.BootAccel.dll</_MrpPatcher>
+        </PropertyGroup>
+        <Error Condition="!Exists('$(_MrpDll)')" Text="MRP 本体のビルド出力が無い: $(_MrpDll) (先に dotnet build MoreRolesPlus.csproj -c Release)" />
+        <Error Condition="!Exists('$(MrpPayloadGame)\BepInEx\core\BepInEx.Unity.IL2CPP.dll')" Text="BepInEx の土台が見つからない: $(MrpPayloadGame) (MrpPayloadGame で MRP が動いている Among Us を指す)" />
+        <ItemGroup>
+            <_PCore Include="$(MrpPayloadGame)\BepInEx\core\**\*" />
+            <_PDotnet Include="$(MrpPayloadGame)\dotnet\**\*" />
+            <_PRoot Include="$(MrpPayloadGame)\winhttp.dll;$(MrpPayloadGame)\.doorstop_version" />
+        </ItemGroup>
+        <RemoveDir Directories="$(MrpPayloadDir)" />
+        <Copy SourceFiles="@(_PCore)" DestinationFiles="@(_PCore->'$(MrpPayloadDir)BepInEx\core\%(RecursiveDir)%(Filename)%(Extension)')" />
+        <Copy SourceFiles="@(_PDotnet)" DestinationFiles="@(_PDotnet->'$(MrpPayloadDir)dotnet\%(RecursiveDir)%(Filename)%(Extension)')" />
+        <Copy SourceFiles="@(_PRoot)" DestinationFolder="$(MrpPayloadDir)" Condition="Exists('%(Identity)')" />
+        <Copy SourceFiles="payload\doorstop_config.ini" DestinationFolder="$(MrpPayloadDir)" />
+        <Copy SourceFiles="payload\BepInEx.cfg" DestinationFolder="$(MrpPayloadDir)BepInEx\config\" />
+        <Copy SourceFiles="$(_MrpDll)" DestinationFolder="$(MrpPayloadDir)BepInEx\plugins\" />
+        <Copy SourceFiles="$(_MrpPatcher)" DestinationFolder="$(MrpPayloadDir)BepInEx\patchers\" Condition="Exists('$(_MrpPatcher)')" />
+        <Delete Files="$(MrpPayloadZip)" />
+        <ZipDirectory SourceDirectory="$(MrpPayloadDir)" DestinationFile="$(MrpPayloadZip)" Overwrite="true" />
+        <ItemGroup>
+            <EmbeddedResource Include="$(MrpPayloadZip)" LogicalName="MrpInstaller.Payload.zip" />
+        </ItemGroup>
+        <Message Importance="high" Text="インストーラーの中身: $(MrpPayloadZip) (土台 $(MrpPayloadGame))" />
+    </Target>
+    <!-- インストーラーの版も MRP と同じ (src/Plugin.cs の Version)。自分の更新はこれとリリースのタグで決める -->
+    <Target Name="MrpVersionFromPlugin" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo">
+        <PropertyGroup>
+            <_MrpPluginSrc>$([System.IO.File]::ReadAllText('$(MrpRepo)src/Plugin.cs'))</_MrpPluginSrc>
+            <Version>$([System.Text.RegularExpressions.Regex]::Match($(_MrpPluginSrc), 'const string Version = "([0-9.]+)"').Groups[1].Value)</Version>
+            <FileVersion>$(Version)</FileVersion>
+            <AssemblyVersion>$(Version)</AssemblyVersion>
+            <InformationalVersion>$(Version)</InformationalVersion>
+        </PropertyGroup>
+    </Target>
+</Project>

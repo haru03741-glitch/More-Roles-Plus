@@ -36,7 +36,7 @@ internal static class Shortcuts
         var client = AmongUsClient.Instance;
         if (!client || !client.AmHost || Dev.DevConsole.IsOpen) return;
         var hud = Vanilla.Hud;
-        if (hud && hud.Chat && hud.Chat.IsOpenOrOpening) return;
+        if ((hud && hud.Chat && hud.Chat.IsOpenOrOpening) || UI.TextField.Typing) return;
 
         if (!enter)
         {

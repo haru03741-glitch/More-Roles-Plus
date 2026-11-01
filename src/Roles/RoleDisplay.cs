@@ -94,6 +94,19 @@ internal static class RoleDisplay
     // 役職名 + アドオン名 (色付き)
     public static string LabelOf(RoleBase role) => role.ColoredName + AddonSuffix(role.PlayerId);
 
+    // 自分の役職の名前・説明が試合の途中で変わった (フェイクジェスターの自覚など): 名前の上の役職名とタスク欄を書き直す
+    internal static void Relabel(RoleBase role)
+    {
+        if (role == null || !role.IsLocal) return;
+        foreach (var go in Tags)
+        {
+            var tmp = go ? go.GetComponent<TextMeshPro>() : null;
+            if (tmp) tmp.text = LabelOf(role);
+        }
+        try { EnsureTaskHeader(role.Player); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"task header: {e.Message}"); }
+    }
+
     public static void Clear()
     {
         System.Array.Clear(Suffixes, 0, Suffixes.Length);
