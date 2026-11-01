@@ -85,17 +85,18 @@ internal static class Registry
         Roles.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
 
         // 一緒に出ない役職の選び。番号は並べ終えた後の Roles の番号
-        if (Roles.Count > RoleSetOpt.MaxRoles)
-            Plugin.Logger.LogError($"roles: {Roles.Count} > {RoleSetOpt.MaxRoles} — 'not with' cannot hold the roles after the {RoleSetOpt.MaxRoles}th");
         for (int i = 0; i < Roles.Count; i++)
         {
             var role = Roles[i];
             role.Order = i;
-            if (role.AssignedOnDeath || role.MadeByOthers || i >= RoleSetOpt.MaxRoles) continue;
+            if (role.AssignedOnDeath || role.MadeByOthers) continue;
             var sec = SectionList(role.Tab).Find(s => s.Role == role);
             if (sec == null) continue;
-            role.Excluded = new RoleSetOpt("Registry.NotWith");
+            role.Excluded = new RoleSetOpt("Registry.NotWith", Roles.Count);
             Add(sec, role.Excluded, role.Id + ".NotWith");
+            // 続きのビットは見出しの項目に並べず、同期と保存の一覧にだけ入れる
+            for (int k = 0; k < role.Excluded.Parts.Length; k++)
+                Add(sec, role.Excluded.Parts[k], role.Id + ".NotWith." + (k + 2), listed: false);
         }
 
         foreach (var t in types.Where(t => t.IsSubclassOf(typeof(AddonBase)) && !t.IsAbstract).OrderBy(t => t.Name, StringComparer.Ordinal))
@@ -192,7 +193,7 @@ internal static class Registry
         return list;
     }
 
-    private static void Add(Section sec, Opt opt, string key)
+    private static void Add(Section sec, Opt opt, string key, bool listed = true)
     {
         if (ByKey.ContainsKey(key))
         {
@@ -203,7 +204,7 @@ internal static class Registry
         opt.Section = sec;
         ByKey[key] = opt;
         All.Add(opt);
-        sec.Opts.Add(opt);
+        if (listed) sec.Opts.Add(opt);
     }
 
     private static uint MakeFingerprint()

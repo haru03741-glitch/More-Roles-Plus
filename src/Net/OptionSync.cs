@@ -49,13 +49,20 @@ internal static class OptionSync
         Changes.Clear();
         if (_sent != null && _sent.Length == values.Length && _sentGame == client.GameId)
             for (int i = 0; i < values.Length; i++)
-                if (values[i] != _sent[i]) Changes.Add(Registry.All[i]);
+                if (values[i] != _sent[i]) AddChange(Registry.All[i]);
         string preset = PresetLabel.Shown;
         string loaded = preset != null && preset != _sentPreset ? preset : null;
         _sent = values;
         _sentGame = client.GameId;
         _sentPreset = preset;
         SettingNotice.Show(Changes, loaded, false); // 画面を触っていたのは自分なので音は鳴らさない
+    }
+
+    // 一緒に出ない役職の続きのビットは、持ち主の項目の変更として 1 つにまとめる
+    private static void AddChange(Opt opt)
+    {
+        if (opt is RoleSetPart part) opt = part.Owner;
+        if (!Changes.Contains(opt)) Changes.Add(opt);
     }
 
     private static void Receive(int[] values, string preset)
@@ -70,7 +77,7 @@ internal static class OptionSync
             var opt = Registry.All[i];
             int before = opt.Index;
             opt.SetIndex(values[i]);
-            if (notify && opt.Index != before) Changes.Add(opt);
+            if (notify && opt.Index != before) AddChange(opt);
         }
         // ホストの値に置き換わったので、自分が前に変えた値の取り消しは残さない
         OptHistory.Clear();
