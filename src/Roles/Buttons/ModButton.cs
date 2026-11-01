@@ -575,7 +575,10 @@ internal sealed class ModButton
         var hud = Vanilla.Hud;
         if (!hud || !hud.AbilityButton) return;
         var grid = hud.AbilityButton.transform.parent.GetComponent<GridArrange>();
-        if (grid) grid.ArrangeChilds();
+        if (!grid) return;
+        // 並びが非表示の間は子の出入りの通知が届かず、外したボタンが手元の一覧に残って並べ直しが落ちる。先に一覧を作り直す
+        grid.CheckCurrentChildren();
+        grid.ArrangeChilds();
     }
 
     internal static bool Owns(AbilityButton b, out ModButton mine)

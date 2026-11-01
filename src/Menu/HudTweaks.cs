@@ -71,7 +71,12 @@ internal static class HudTweaks
         aspect.DistanceFromEdge = new Vector3(_edge.x - shift, _edge.y - shift, _edge.z);
         aspect.AdjustPosition();
         arrange.CellSize = new Vector2(_cell.x * s, _cell.y * s);
-        if (rearrange && grid.gameObject.activeInHierarchy && arrange.cells != null) arrange.ArrangeChilds();
+        if (rearrange && grid.gameObject.activeInHierarchy && arrange.cells != null)
+        {
+            // 隠れていた間に外れたボタンが手元の一覧に残っていることがあるので作り直してから並べる
+            arrange.CheckCurrentChildren();
+            arrange.ArrangeChilds();
+        }
     }
 
     internal static string Describe() =>
