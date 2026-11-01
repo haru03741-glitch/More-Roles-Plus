@@ -117,7 +117,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 ### 🔹 移植・参考にした Mod
 
 * **[Nebula on the Ship](https://github.com/Dolly1016/Nebula-Public) (Dolly1016、GPL-3.0)**  
-  incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方、mod の通信を 1 つの番号にまとめて名前で振り分ける仕組み、試合の出来事を寿命付きで受け取る仕組み、ダミープレイヤーを出す手順、自分で作った色を人ごとの色の表で全員に見せる考え方、会議中の地図に自分だけのメモ (人の印と線) を書く機能、本編の地図の上に層を作って押し・なぞりを受ける仕組み (フォートレスメイカーの設計図)、スクリーンショットのキー、本編の絵で組む自前の画面の部品 (窓・スクロールする欄・ボタン)、役職のカードの一覧と細かい頁の設定画面、役職辞典の窓と配役の見込み、コメット・ドッペルゲンガー・スカーレット・妖狐の役職
+  incremental GC を実行時に切る仕組み、演出中に GC を先に回す考え方、mod の通信を 1 つの番号にまとめて名前で振り分ける仕組み、試合の出来事を寿命付きで受け取る仕組み、ダミープレイヤーを出す手順、自分で作った色を人ごとの色の表で全員に見せる考え方、会議中の地図に自分だけのメモ (人の印と線) を書く機能、本編の地図の上に層を作って押し・なぞりを受ける仕組み (フォートレスメイカーの設計図)、スクリーンショットのキー、本編の絵で組む自前の画面の部品 (窓・スクロールする欄・ボタン)、役職のカードの一覧と細かい頁の設定画面、役職辞典の窓と配役の見込み、コメット・ドッペルゲンガー・スカーレット・妖狐の役職、ホスフォラスとユビキタスの役職 (SNR を経由して取り込み)
 * **[ExtremeRoles](https://github.com/yukieiji/ExtremeRoles) (yukieiji、GPL-3.0)**  
   ダミープレイヤーを出す手順、設定の項目の名前が変わっても前の値を引き継ぐ仕組み
 * **[Super New Roles](https://github.com/ykundesu/SuperNewRoles) (ykundesu、GPL-3.0)**  
@@ -159,11 +159,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 * **[TownOfHost-hamo](https://github.com/rar006/TownOfHost-hamo) (rar006、GPL-3.0)**  
   共同制作者の haru の mod。守護者・フェイクジェスター・ヌルの役職
 * **[Town of Us](https://github.com/slushiegoose/Town-Of-Us)** (slushiegoose)  
-  メイヤーとアーソニストの役職 (SNR を経由して取り込み)
+  メイヤーとアーソニストの役職 (SNR を経由して取り込み)、生存者の役職
 * **[Sheriff Mod](https://github.com/Woodi-dev/Among-Us-Sheriff-Mod)** (Woodi-dev)  
   シェリフの役職 (SNR を経由して取り込み)
 * **[au libhalt net](https://au.libhalt.net/)**  
   マッドメイトの役職 (SNR を経由して取り込み)
+* **[Among-Us-Love-Couple-Mod](https://github.com/Woodi-dev/Among-Us-Love-Couple-Mod)** (Woodi-dev)  
+  ラバーズの役職 (SNR を経由して取り込み)
 
 ### 🔹 主要オープンソースプロジェクト
 * **BepInEx** ([BepInEx Team](https://github.com/BepInEx/BepInEx))  

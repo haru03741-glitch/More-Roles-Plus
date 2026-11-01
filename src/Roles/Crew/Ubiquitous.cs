@@ -18,7 +18,7 @@ public sealed class Ubiquitous : RoleBase
     public override Text Name => new("Ubiquitous.Name");
     public override string Reading => "ゆびきたす";
     public override Text Blurb => new("Ubiquitous.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "Nebula";
     public override HelpSection[] HelpSections => new HelpSection[]
         { new("Ubiquitous.Call", "snr_drone"), new("Ubiquitous.Operate", "snr_remote"), new("Ubiquitous.DoorHack", "snr_door") };
 

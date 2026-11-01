@@ -7,6 +7,7 @@ public sealed class Survivor : RoleBase
     public override string Color => "#FFE64D";
     public override Text Name => new("Survivor.Name");
     public override string Reading => "せいぞんしゃ";
+    public override string Origin => "TOU";
     public override Text Blurb => new("Survivor.Blurb");
 
     public override bool AlsoWins(GameResult result) => Player && !Player.Data.IsDead;

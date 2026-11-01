@@ -13,7 +13,7 @@ public sealed class Lovers : AddonBase, PortKit.ILovers
     public override Text Name => new("Lovers.Name");
     public override string Reading => "らばーず";
     public override Text Blurb => new("Lovers.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "LCM";
     public override int GroupSize => 2;
 
     public static readonly BoolOpt FollowDeath = new("Lovers.FollowDeath", true);

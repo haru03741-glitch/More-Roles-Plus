@@ -20,7 +20,7 @@ public sealed class Phosphorus : RoleBase
     public override Text Name => new("Phosphorus.Name");
     public override string Reading => "ほすふぉらす";
     public override Text Blurb => new("Phosphorus.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "Nebula";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Phosphorus.Put", "snr_lantern"), new("Phosphorus.Light", "snr_light") };
     public static readonly FloatOpt PutCooldown = new("Phosphorus.Cooldown", 30f, 2.5f, 60f, 2.5f, "s");
     public static readonly IntOpt PutLimit = new("Phosphorus.Limit", 1, 1, 10);
