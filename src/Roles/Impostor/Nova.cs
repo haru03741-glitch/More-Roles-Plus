@@ -15,7 +15,7 @@ public sealed class Nova : RoleBase
     public override Text Name => new("Nova.Name");
     public override string Reading => "のゔぁ";
     public override Text Blurb => new("Nova.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "uchu";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Nova.Fire", "nova_fire") };
 
     public static readonly ChoiceOpt Mode = new("Nova.Mode", 0,

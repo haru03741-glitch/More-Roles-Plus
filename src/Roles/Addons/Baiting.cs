@@ -13,7 +13,7 @@ public sealed class Baiting : AddonBase
     public override Text Name => new("Baiting.Name");
     public override string Reading => "べいてぃんぐ";
     public override Text Blurb => new("Baiting.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOR";
 
     protected internal override bool DefaultOnMadmate => false;
     protected internal override bool DefaultOnImpostor => false;

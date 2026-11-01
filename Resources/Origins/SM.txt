@@ -1,0 +1,3 @@
+# From: に出す名前 (役職のコードの Origin => "SM" で使う)
+name: Sheriff Mod
+color: #F8CD46

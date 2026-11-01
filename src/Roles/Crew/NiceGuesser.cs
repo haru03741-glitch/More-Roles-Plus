@@ -11,7 +11,7 @@ public sealed class NiceGuesser : RoleBase, IGuesser
     public override Text Name => new("NiceGuesser.Name");
     public override string Reading => "ないすげっさー";
     public override Text Blurb => new("NiceGuesser.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("NiceGuesser.Shoot", "snr_guess") };
     public static readonly IntOpt Shots = new("NiceGuesser.Shots", 3, 1, 15);
     public static readonly IntOpt PerMeeting = new("NiceGuesser.PerMeeting", 1, 1, 15);

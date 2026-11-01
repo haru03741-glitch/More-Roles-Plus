@@ -11,7 +11,7 @@ public sealed class Mayor : RoleBase
     public override Text Name => new("Mayor.Name");
     public override string Reading => "めいやー";
     public override Text Blurb => new("Mayor.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOU";
 
     public static readonly IntOpt Votes = new("Mayor.Votes", 2, 1, 10);
 

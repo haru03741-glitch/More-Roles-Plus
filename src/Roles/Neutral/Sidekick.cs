@@ -12,7 +12,7 @@ public sealed class Sidekick : RoleBase
     public override Text Name => new("Sidekick.Name");
     public override string Reading => "さいどきっく";
     public override Text Blurb => new("Sidekick.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOR";
     public override string Faction => Jackal.Pack;
     public override bool MadeByOthers => true;
 

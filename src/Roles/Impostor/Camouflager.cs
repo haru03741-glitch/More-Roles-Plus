@@ -13,7 +13,7 @@ public sealed class Camouflager : RoleBase
     public override Text Name => new("Camouflager.Name");
     public override string Reading => "かもふらーじゃー";
     public override Text Blurb => new("Camouflager.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Camouflager.Camo", "snr_camo") };
     public static readonly FloatOpt CamoCooldown = new("Camouflager.Cooldown", 30f, 2.5f, 120f, 2.5f, "s");
     public static readonly FloatOpt CamoDuration = new("Camouflager.Duration", 10f, 2.5f, 60f, 2.5f, "s");
