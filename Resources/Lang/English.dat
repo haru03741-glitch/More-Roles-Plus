@@ -1581,13 +1581,14 @@ Nova.Name: Nova
 Nova.Blurb: The first cry of a star
 Nova.Summary: An impostor who charges up and fires a straight beam that kills.
 Nova.Fire: Fire
-Nova.Fire.Help: Charge in place for a moment, then fire a beam. Anyone hit by the beam dies (walls stop it). The direction depends on the setting.
+Nova.Fire.Help: Charge in place for a moment, then fire a beam. Anyone hit by the beam dies (walls stop it). On PC, right-click to raise the cannon and left-click to fire toward the mouse. Right-click again while aiming to lower the cannon. On mobile, press the button to fire the way you last walked. The allowed directions depend on the setting.
 Nova.Fire.Short: Charge and fire a beam
 Nova.Tips: You cannot move while charging and the glow is visible. Long corridors make it strong.
 Nova.Mode: Fire mode
 Nova.Mode.Free: Free (mouse direction)
 Nova.Mode.LeftRight: Left/right (facing)
 Nova.Mode.FourWay: Four directions
+Nova.Mode.EightWay: Eight directions
 Nova.Cooldown: Fire cooldown
 Nova.Size: Beam width
 Nova.Charge: Charge time

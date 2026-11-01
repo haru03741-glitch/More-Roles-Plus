@@ -1581,13 +1581,14 @@ Nova.Name: ノヴァ
 Nova.Blurb: 星の産声
 Nova.Summary: 力を溜めてから、まっすぐな光線で人を倒せるインポスターです。
 Nova.Fire: 発射
-Nova.Fire.Help: 少しの間その場で力を溜めてから、光線を撃ちます。光線に当たった人を倒します (壁で止まります)。撃つ向きは設定で決まります。
+Nova.Fire.Help: 少しの間その場で力を溜めてから、光線を撃ちます。光線に当たった人を倒します (壁で止まります)。PC では右クリックでキャノンを構え、左クリックでマウスの方へ撃ちます。構えている間にもう一度右クリックすると、キャノンをしまいます。スマホではボタンを押すと、最後に歩いた方へ撃ちます。撃てる向きは設定で決まります。
 Nova.Fire.Short: 溜めてから光線を撃つ
 Nova.Tips: 溜めている間は動けず、光も見えます。長い通路で使うと強力です。
 Nova.Mode: 発射モード
 Nova.Mode.Free: 自由 (マウスの向き)
 Nova.Mode.LeftRight: 左右 (向いている方)
 Nova.Mode.FourWay: 上下左右
+Nova.Mode.EightWay: 8 方向
 Nova.Cooldown: 発射の待ち時間
 Nova.Size: 光線の太さ
 Nova.Charge: チャージ時間

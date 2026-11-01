@@ -108,9 +108,11 @@ internal static class RoleCommands
             reply($"OK rlaim {deg}");
         });
 
-        TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く)", (args, reply) =>
+        TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く) / stance = 右クリックと同じ (構える・しまう) / fire = 左クリックと同じ (構えていれば撃つ)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 1 && a[0] == "stance") { reply("OK nova stance " + Roles.Impostor.Nova.StanceForTest()); return; }
+            if (a.Length == 1 && a[0] == "fire") { reply("OK nova fire " + Roles.Impostor.Nova.FireForTest()); return; }
             if (a.Length < 2 || a[0] != "aim") { reply("ERR nova aim <deg|off>"); return; }
             if (a[1] == "off") { Roles.Impostor.Nova.TestAngle = null; reply("OK nova aim off"); return; }
             if (!float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float deg)) { reply("ERR nova aim <deg>"); return; }

@@ -6,8 +6,10 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Impostor;
 
-// ノヴァ (インポスター): 「発射」で溜めてから、まっすぐな光線を撃つ。光線に当たった人を倒す (壁で止まる)。
-// 撃つ向きは設定で選ぶ: 自由 (マウスの向き) / 左右 (向いている方) / 上下左右 (マウスの向きに近い方)。溜めている間は動けない
+// ノヴァ (インポスター): 溜めてから、まっすぐな光線を撃つ。光線に当たった人を倒す (壁で止まる)。
+// 撃つ向きは設定で選ぶ: 自由 (マウスの向き) / 左右 (向いている方) / 上下左右・8 方向 (マウスの向きに近い方)。溜めている間は動けない。
+// PC は右クリックで構え (もう一度でしまう)・左クリックで撃つ (発射のボタンを押しに行くとマウスが下へ動き、狙いが必ず下になるため)。
+// ボタンは構えの切り替えと待ち時間の表示に使う。スマホはボタンで撃つ
 public sealed class Nova : RoleBase
 {
     public override Team Team => Team.Impostor;
@@ -19,29 +21,109 @@ public sealed class Nova : RoleBase
     public override HelpSection[] HelpSections => new HelpSection[] { new("Nova.Fire", "nova_fire") };
 
     public static readonly ChoiceOpt Mode = new("Nova.Mode", 0,
-        new Text("Nova.Mode.Free"), new Text("Nova.Mode.LeftRight"), new Text("Nova.Mode.FourWay"));
+        new Text("Nova.Mode.Free"), new Text("Nova.Mode.LeftRight"), new Text("Nova.Mode.FourWay"), new Text("Nova.Mode.EightWay"));
     public static readonly FloatOpt Cooldown = new("Nova.Cooldown", 30f, 2.5f, 60f, 2.5f, "s");
     public static readonly FloatOpt Size = new("Nova.Size", 1f, 0.25f, 5f, 0.25f, "x");
     public static readonly FloatOpt Charge = new("Nova.Charge", 1.5f, 0f, 5f, 0.25f, "s");
 
     private const float MaxLength = 40f;
 
+    private Ability _fire;
+    private bool _stance;      // 自分の端末: 構えている (PC)
+    private int _reachFrame;   // 照準の線の長さを測り直すフレーム
+    private float _reach = MaxLength;
+
+    // 自分の端末のノヴァ (PC の右クリック/左クリックを毎フレーム見る)
+    private static Nova _mine;
+
     public override void OnAssigned()
     {
-        AddAbility(new Ability(new Text("Nova.Fire"), "nova_fire")
+        bool pc = !System.OperatingSystem.IsAndroid();
+        _fire = AddAbility(new Ability(new Text("Nova.Fire"), "nova_fire")
         {
             Cooldown = () => Cooldown,
             OnUse = () =>
             {
-                var lp = PlayerControl.LocalPlayer;
-                float angle = Aim(lp);
-                MoveSpeed.Add("NovaCharge", 0f, Charge + 0.2f);
-                FireCall.Send(angle);
-                OnFire(this, angle);
+                if (pc) { ToggleStance(); return false; }
+                Shoot(Aim(PlayerControl.LocalPlayer));
                 return true;
             },
         });
+        if (pc && IsLocal)
+        {
+            _mine = this;
+            Lifespan.OnRelease(() =>
+            {
+                if (_stance) EndStance();
+                if (_mine == this) _mine = null;
+            });
+        }
     }
+
+    private float _chargeUntil; // 自分の端末: 溜めて撃ち終わるまで (この間は構え直せない)
+
+    private void Shoot(float angle)
+    {
+        _chargeUntil = Time.time + Charge + 0.3f;
+        MoveSpeed.Add("NovaCharge", 0f, Charge + 0.2f);
+        FireCall.Send(angle);
+        OnFire(this, angle);
+    }
+
+    private void ToggleStance()
+    {
+        if (_stance) { EndStance(); return; }
+        if (!PortKit.Alive(Player) || !Player.CanMove || Time.time < _chargeUntil || RewindPlayback.Active) return;
+        _stance = true;
+        _reachFrame = 0;
+    }
+
+    private void EndStance()
+    {
+        _stance = false;
+        NovaFx.EndStance(Player);
+    }
+
+    // 試験用: 右クリック/左クリックと同じ道 (bridge の nova stance / nova fire)
+    internal static string StanceForTest() { if (_mine == null) return "no nova"; _mine.ToggleStance(); return _mine._stance ? "on" : "off"; }
+    internal static string FireForTest() => _mine == null ? "no nova" : _mine.TryFire() ? "fired" : "not ready";
+
+    private bool TryFire()
+    {
+        var button = _fire?.Button;
+        if (!_stance || button == null || button.CoolingDown || RewindPlayback.Active || !PortKit.Alive(Player) || !Player.CanMove) return false;
+        _stance = false;
+        Shoot(Aim(Player));
+        button.StartCooldown();
+        return true;
+    }
+
+    // 毎フレーム (NovaFx.Tick から): PC の右クリックで構え・左クリックで撃つ。押し始めがボタン・パネルの上なら何もしない
+    internal static void LocalTick()
+    {
+        var n = _mine;
+        if (n == null) return;
+        var p = n.Player;
+        if (n._stance && (!p || MeetingHud.Instance || Minigame.Instance || RewindPlayback.Active || !PortKit.Alive(p) || !p.CanMove)) { n.EndStance(); return; }
+        bool right = Input.GetMouseButtonDown(1), left = n._stance && Input.GetMouseButtonDown(0);
+        if ((right || left) && !Minigame.Instance && !MeetingHud.Instance && !OverUi())
+        {
+            if (right) n.ToggleStance();
+            else if (n.TryFire()) return;
+        }
+        if (!n._stance) return;
+        float angle = Aim(p);
+        // 照準の線の長さ (壁まで) は数フレームに 1 回測る
+        if (--n._reachFrame <= 0)
+        {
+            n._reachFrame = 4;
+            n._reach = Reach(p.GetTruePosition(), angle, out _);
+        }
+        NovaFx.Stance(p, angle, n._reach);
+    }
+
+    private static bool OverUi() =>
+        PassiveButtonManager.InstanceExists && PassiveButtonManager.Instance.currentOver is { } over && over && !over.GetComponent<PlayerControl>();
 
     // スマホは最後に歩いた向きへ撃つので、自分の端末で向きを覚えておく
     public override void OnFixedUpdate()
@@ -62,15 +144,16 @@ public sealed class Nova : RoleBase
         if (System.OperatingSystem.IsAndroid() || !cam)
         {
             var f = ShotKit.Facing;
-            a = Mathf.Atan2(f.y, f.x) * Mathf.Rad2Deg;
+            a = FxMath.Atan2(f.y, f.x) * (180f / System.MathF.PI);
         }
         else
         {
             Vector2 me = lp.GetTruePosition();
             Vector2 mouse = cam.ScreenToWorldPoint(Input.mousePosition);
-            a = Mathf.Atan2(mouse.y - me.y, mouse.x - me.x) * Mathf.Rad2Deg;
+            a = FxMath.Atan2(mouse.y - me.y, mouse.x - me.x) * (180f / System.MathF.PI);
         }
-        if (Mode.Value == 2) a = Mathf.Round(a / 90f) * 90f;
+        if (Mode.Value == 2) a = System.MathF.Round(a / 90f) * 90f;
+        else if (Mode.Value == 3) a = System.MathF.Round(a / 45f) * 45f;
         return a;
     }
 
