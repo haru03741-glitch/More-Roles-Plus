@@ -20,7 +20,7 @@ internal static class ReportWindow
     private static readonly Color Sub = new(0.72f, 0.75f, 0.8f, 1f);
     private static readonly Color Warn = new(1f, 0.55f, 0.5f, 1f);
     private static readonly Color MeBubble = new(0.03f, 0.3f, 0.17f, 1f), StaffBubble = new(0.16f, 0.17f, 0.2f, 1f);
-    private const float PollSeconds = 5f;
+    private const float PollSeconds = 15f; // サーバーは 1 回ごとに Discord へ問い合わせるので短くしない
 
     private enum Page { List, Write, Chat }
 
