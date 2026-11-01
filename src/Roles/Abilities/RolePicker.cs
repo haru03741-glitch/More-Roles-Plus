@@ -295,7 +295,8 @@ public static class RolePicker
             var m = Object.Instantiate(mask.gameObject, holder.transform);
             m.SetActive(true);
             m.transform.localPosition = new Vector3(0f, 0f, 1f);
-            m.transform.localScale = new Vector3(0.3f, 1.6f, 1f); // ボタン (0.56 四方) が欠けない高さ
+            // マスクの絵 (1 単位四方) をボタン (0.56 四方) が欠けない大きさに。左の検索欄には掛からない幅
+            m.transform.localScale = new Vector3(0.75f, 1.6f, 1f);
         }
         var b = Object.Instantiate(cancel.gameObject, holder.transform);
         b.SetActive(true);

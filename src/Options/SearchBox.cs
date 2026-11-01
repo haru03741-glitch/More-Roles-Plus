@@ -167,12 +167,50 @@ internal sealed class SearchBox
         return -1;
     }
 
-    // 欄を押した時に入力を受け付ける (Android ではキーボードが開く)
+    // 欄を押した時に入力を受け付ける。Android では本編の欄に任せてもキーボードが開かないので、自分で開いて字を写す
     private static UnityAction FocusAction(int slot) => FocusActions[slot] ??= (UnityAction)(() =>
     {
         var b = Live[slot];
-        if (b != null && b._text) b._text.GiveFocus();
+        if (b == null || !b._text) return;
+#if ANDROID
+        OpenKeyboard(b);
+#else
+        b._text.GiveFocus();
+#endif
     });
+
+#if ANDROID
+    private static TouchScreenKeyboard _keyboard;
+    private static SearchBox _keyboardFor;
+
+    private static void OpenKeyboard(SearchBox b)
+    {
+        CloseKeyboard();
+        _keyboard = TouchScreenKeyboard.Open(b.Query, TouchScreenKeyboardType.Default, false, false, false);
+        _keyboardFor = _keyboard != null ? b : null;
+    }
+
+    private static void CloseKeyboard()
+    {
+        var k = _keyboard;
+        _keyboard = null;
+        _keyboardFor = null;
+        if (k != null && k.status == TouchScreenKeyboard.Status.Visible) k.active = false;
+    }
+#endif
+
+    // 毎フレーム (Plugin.Update): Android のキーボードの字を欄へ写す。キーボードを閉じたら入力をやめる
+    public static void Tick()
+    {
+#if ANDROID
+        var b = _keyboardFor;
+        if (b == null) return;
+        if (!b._text || !b.Root || !b.Root.activeInHierarchy) { CloseKeyboard(); return; }
+        string t = (_keyboard.text ?? "").Replace("\r", "").Replace("\n", "");
+        if (t != b.Query) b._text.SetText(t, "");
+        if (_keyboard.status != TouchScreenKeyboard.Status.Visible) { _keyboard = null; _keyboardFor = null; }
+#endif
+    }
 
     public void Clear()
     {
