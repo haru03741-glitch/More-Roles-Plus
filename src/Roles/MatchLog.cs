@@ -25,6 +25,7 @@ internal static class MatchLog
         public Kind Kind;
         public string Killer;     // 倒した人の名前 (倒された時だけ)
         public string KillerRole; // 倒した時の役職 (色付き)
+        public string KillerRoleBare; // 倒した時の役職だけ (色付き・アドオンなし)
         public byte KillerId = 255;  // 倒した人の番号 (倒された時だけ)
         public float At;             // 死んだ時刻 (Time.time・この端末の時計)
         public UnityEngine.Vector2 Where; // 死んだ場所
@@ -96,6 +97,7 @@ internal static class MatchLog
             Kind = self ? Kind.Suicide : Kind.Killed,
             Killer = self ? null : killer.Data?.PlayerName,
             KillerRole = self ? null : Dev.DevGod.Label(killer.PlayerId),
+            KillerRoleBare = self ? null : BareRole(killer.PlayerId),
             KillerId = self ? (byte)255 : killer.PlayerId,
             At = UnityEngine.Time.time,
             Where = target.GetTruePosition(),
@@ -122,6 +124,15 @@ internal static class MatchLog
         var p = c?.Character;
         if (!p || !ShipStatus.Instance || p.Data == null || p.Data.IsDead) return;
         Deaths[p.PlayerId] = new Death { Kind = Kind.Left };
+    }
+
+    // 役職の名前だけ (色付き・アドオンを付けない)
+    private static string BareRole(byte pid)
+    {
+        var role = RoleState.Of(pid);
+        if (role != null) return role.ColoredName;
+        var r = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Role : null;
+        return r ? $"<color=#{UnityEngine.ColorUtility.ToHtmlStringRGB(r.TeamColor)}>{r.NiceName}</color>" : null;
     }
 
     public static string Describe(Death d) => d.Kind switch

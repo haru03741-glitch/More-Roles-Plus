@@ -25,6 +25,7 @@ internal static class RoleDoc
         ["TOR"] = "<color=#FF0000>TheOtherRoles</color>",
         ["Jester Mod"] = "<color=#EC62A5>Jester</color>",
         ["SNR"] = "<color=#FFA500>SuperNewRoles</color>",
+        ["TOHY"] = "<color=#FFD700>TownOfHost_Y</color>",
     };
 
     // 説明の先頭に置く起源の 1 行 (改行まで含む)。起源の無い役職は空

@@ -175,6 +175,7 @@ public static class RoleState
             addon.Chance = ap.Chance;
             addon.Count = ap.Count;
             addon.OnCrew = ap.OnCrew;
+            addon.OnMadmate = ap.OnMadmate;
             addon.OnImpostor = ap.OnImpostor;
             addon.OnNeutral = ap.OnNeutral;
             (AddonsByPlayer[p.PlayerId] ??= new List<AddonBase>()).Add(addon);

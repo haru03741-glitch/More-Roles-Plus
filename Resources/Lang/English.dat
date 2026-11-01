@@ -184,6 +184,37 @@ Sensitive.Help: When someone is killed, your screen alone flashes red for a mome
 Sensitive.Strength: Flash Strength
 Sensitive.Strength.Detail: How strongly the screen flashes red when someone is killed.
 
+# ── Autopsy ──
+Autopsy.Name: Autopsy
+Autopsy.Blurb: The dead tell tales
+Autopsy.Help: An add-on that shows how each dead player died on their meeting nameplate: killed, ejected, or by their own hand.
+Autopsy.ShowKillerRole: See the killer's role
+Autopsy.ShowKillerRole.Detail: Adds the killer's role to the cause of death. The killer's name is not shown.
+Autopsy.OnBodies: Show on bodies during the round
+Autopsy.OnBodies.Detail: Shows the cause of death above nearby bodies before a meeting. Bodies behind walls do not show it.
+Autopsy.Killed: Killed
+Autopsy.KilledByRole: Killed by {role}
+Autopsy.Suicide: Own hand
+Autopsy.Exiled: Ejected
+Autopsy.Spaced: Spaced
+Autopsy.Left: Disconnected
+
+# ── Baiting ──
+Baiting.Name: Baiting
+Baiting.Blurb: Who fell into the trap?
+Baiting.Help: An add-on that makes your killer report your body shortly after the kill.
+Baiting.ReportTime: Time until report
+Baiting.ReportTime.Detail: Seconds after the kill until the killer reports the body.
+Baiting.WarnKiller: Flash the killer's screen
+Baiting.WarnKiller.Detail: Flashes the killer's screen cyan so they know they killed a Baiting player.
+Baiting.RandomDelay: Randomize the report delay
+Baiting.DelayVariation: Maximum extra delay
+Baiting.DelayVariation.Detail: Adds a random 0 to this many seconds to the report delay.
+Baiting.KnowSelf: Know you have Baiting
+Baiting.KnowSelf.Detail: A ◎ appears next to your own name.
+Baiting.EveryoneKnows: Everyone knows
+Baiting.EveryoneKnows.Detail: A ◎ appears next to Baiting players' names on everyone's screen.
+
 # ── RoleDoc ──
 RoleDoc.WinCond: Win condition
 RoleDoc.Tips: Tips
@@ -473,6 +504,7 @@ RoleSetOpt.All: All
 RoleSetOpt.Except: All but {names}
 RoleSetOpt.Sep: , 
 Registry.CrewmatesCanHaveIt: Crewmates can have it
+Registry.MadmatesCanHaveIt: Madmates can have it
 Registry.ImpostorsCanHaveIt: Impostors can have it
 Registry.NeutralsCanHaveIt: Neutrals can have it
 
@@ -1188,14 +1220,6 @@ Sidekick.Blurb: The Jackal's right hand
 Sidekick.Summary: A neutral recruited by the Jackal. Cannot kill, and becomes a Jackal when all Jackals are dead.
 Sidekick.WinCond: Win when the Jackal wins
 Sidekick.CanVent: Can use vents
-# ── ベイト (Bait) ──
-Bait.Name: Bait
-Bait.Blurb: Who fell into the trap?
-Bait.Summary: A crewmate whose killer reports their body shortly after the kill.
-Bait.ReportTime: Time until report
-Bait.WarnKiller: Flash the killer's screen
-Bait.RandomDelay: Randomize the report delay
-Bait.DelayVariation: Maximum extra delay
 # ── ラバーズ (Lovers) ──
 Lovers.Name: Lovers
 Lovers.Blurb: Our love is forever

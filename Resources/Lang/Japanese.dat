@@ -184,6 +184,37 @@ Sensitive.Help: 誰かが倒されると、自分の画面だけが一瞬赤く�
 Sensitive.Strength: 光の強さ
 Sensitive.Strength.Detail: 誰かが倒された時に、画面が赤く光る濃さです。
 
+# ── オートプシー (Autopsy) ──
+Autopsy.Name: オートプシー
+Autopsy.Blurb: 遺体は語る
+Autopsy.Help: 死んだ人の死因が会議の名札に出るアドオンです。倒されたのか、追放されたのか、自滅したのかが分かります。
+Autopsy.ShowKillerRole: 倒した人の役職も見える
+Autopsy.ShowKillerRole.Detail: 倒された人の死因に、倒した人の役職も出します。名前は出ません。
+Autopsy.OnBodies: 試合中に死体の上にも出す
+Autopsy.OnBodies.Detail: 会議の前でも、近くにある死体の上に死因が出ます。壁の向こうの死体には出ません。
+Autopsy.Killed: 倒された
+Autopsy.KilledByRole: {role} に倒された
+Autopsy.Suicide: 自滅
+Autopsy.Exiled: 追放
+Autopsy.Spaced: 船外へ
+Autopsy.Left: 切断
+
+# ── ベイティング (Baiting) ──
+Baiting.Name: ベイティング
+Baiting.Blurb: 罠にかかったのはどちらだ
+Baiting.Help: 倒されると、倒した人が少し後にその死体を通報してしまうアドオンです。
+Baiting.ReportTime: 通報までの時間
+Baiting.ReportTime.Detail: 倒されてから、倒した人が通報してしまうまでの秒数です。
+Baiting.WarnKiller: 倒した人の画面を光らせる
+Baiting.WarnKiller.Detail: 倒した人の画面を水色に光らせ、ベイティングを倒したことを知らせます。
+Baiting.RandomDelay: 通報までの時間をばらつかせる
+Baiting.DelayVariation: ばらつきの最大
+Baiting.DelayVariation.Detail: 通報までの時間に、0 秒からこの秒数までのどれかを足します。
+Baiting.KnowSelf: 自分がベイティングだと分かる
+Baiting.KnowSelf.Detail: 自分の名前の横に ◎ が付きます。
+Baiting.EveryoneKnows: 全員に分かる
+Baiting.EveryoneKnows.Detail: 全員の画面で、ベイティングの人の名前の横に ◎ が付きます。
+
 # ── RoleDoc ──
 RoleDoc.WinCond: 勝利条件
 RoleDoc.Tips: ヒント
@@ -473,6 +504,7 @@ RoleSetOpt.All: すべて
 RoleSetOpt.Except: {names} を除く全部
 RoleSetOpt.Sep: 、
 Registry.CrewmatesCanHaveIt: クルーに付く
+Registry.MadmatesCanHaveIt: マッドメイトに付く
 Registry.ImpostorsCanHaveIt: インポスターに付く
 Registry.NeutralsCanHaveIt: 第三陣営に付く
 
@@ -1188,14 +1220,6 @@ Sidekick.Blurb: ジャッカルの右腕
 Sidekick.Summary: ジャッカルに仲間にされた第三陣営です。キルはできず、ジャッカルが全員死ぬとジャッカルに上がります。
 Sidekick.WinCond: ジャッカルが勝つと一緒に勝ち
 Sidekick.CanVent: ベントを使える
-# ── ベイト (Bait) ──
-Bait.Name: ベイト
-Bait.Blurb: 罠にかかったのはどちらだ
-Bait.Summary: キルされると、少し後にキルした人が自分の死体を通報してしまうクルーです。
-Bait.ReportTime: 通報までの時間
-Bait.WarnKiller: キルした人の画面を光らせる
-Bait.RandomDelay: 通報までの時間をばらつかせる
-Bait.DelayVariation: ばらつきの最大
 # ── ラバーズ (Lovers) ──
 Lovers.Name: ラバーズ
 Lovers.Blurb: 二人の愛は永遠に
