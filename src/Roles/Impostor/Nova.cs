@@ -98,8 +98,7 @@ public sealed class Nova : RoleBase
         NovaFx.BeginCharge(p, angle, charge, Size, Reach(from0, angle, out _));
         PortKit.After(charge, () =>
         {
-            NovaFx.CancelCharge(p);
-            if (MeetingHud.Instance || !ShipStatus.Instance || !PortKit.Alive(p)) return;
+            if (MeetingHud.Instance || !ShipStatus.Instance || !PortKit.Alive(p)) { NovaFx.CancelCharge(p); return; }
             Beam(n, p.GetTruePosition(), angle);
         });
     }
@@ -120,7 +119,8 @@ public sealed class Nova : RoleBase
         float length = Reach(from, angle, out bool wall);
         float size = Size;
         PortSound.Play("nova_beam", () => PortSound.Fallback("nova_beam"), 1f, from, 25f);
-        NovaFx.Fire(from, angle, length, size, wall);
+        NovaFx.Fire(n.Player, from, angle, length, size, wall);
+        if (wall) PortSound.Play("nova_impact", null, 1f, from + dir * length, 25f);
         if (AmongUsClient.Instance.AmHost) HostBeam(n.Player, from, dir, length, size, wall);
     }
 
@@ -143,7 +143,7 @@ public sealed class Nova : RoleBase
         }
     }
 
-    // ホスト: 当たった壁を焼いて耐久を削り、通った床に熱を足す (水は湯気になり、燃える物には火が付く)。
+    // ホスト: 当たった壁をプラズマの爆発で抜き (光線の向きへ伸びた形)、通った床に熱を足す (水は湯気になり、燃える物には火が付く)。
     // 熱を足す所は長さに応じて最大 5 か所 (電文を増やしすぎない)
     private const int MaxHeatPoints = 5;
 
@@ -151,8 +151,9 @@ public sealed class Nova : RoleBase
     {
         if (wall)
         {
-            var res = Terrain.TerrainApi.WorldBurn(from + dir * (length - 0.3f), dir);
-            if (!res.Ok) Plugin.Logger.LogInfo($"nova: terrain burn refused ({res.Why})");
+            float r = System.Math.Clamp(0.6f + 0.5f * size, 0.6f, Terrain.TerrainPermit.MaxRadius);
+            var res = Terrain.TerrainApi.WorldBlast(from + dir * length, r, dir, 0.7f);
+            if (!res.Ok) Plugin.Logger.LogInfo($"nova: terrain blast refused ({res.Why})");
         }
         int n = System.Math.Clamp((int)(length / 2f), 1, MaxHeatPoints);
         float rad = 0.3f + 0.2f * size;
