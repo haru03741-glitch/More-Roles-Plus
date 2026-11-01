@@ -50,8 +50,11 @@ public sealed class Nova : RoleBase
     }
 
     // 撃つ向き (度・右が 0)。PC はマウスの方・スマホは最後に歩いた向き (タッチの位置は押したボタンの所になるため)
+    internal static float? TestAngle; // 試験用: 撃つ向きを固定する (bridge の nova aim)
+
     private static float Aim(PlayerControl lp)
     {
+        if (TestAngle is float fixedAngle) return fixedAngle;
         bool left = lp.cosmetics && lp.cosmetics.FlipX;
         if (Mode.Value == 1) return left ? 180f : 0f;
         float a;

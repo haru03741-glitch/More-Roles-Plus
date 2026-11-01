@@ -5,34 +5,42 @@ using Object = UnityEngine.Object;
 
 namespace MoreRolesPlus.Roles;
 
-// ノヴァの見た目: 腕のプラズマキャノンが展開して狙いの方を向く → 溜め (砲口に赤いプラズマの球・まわりを走る放電・吸い込まれる粒・狙いの線)
-// → 発射 (赤白の光線の帯 4 枚・砲口から光線に直交する輪が 2 つ広がる・反動) → 着弾 (床に巨大な衝撃波の輪 2 つ・爆発・火花)。
+// ノヴァの見た目 (腕のプラズマキャノンの光線):
+//  展開   = キャノンが体の後ろ向きから狙いの方へ回り込みながら振り上がる (3D のコマを順に通る)
+//  溜め   = 光る所が灯っていき、筒の中を光の粒が砲口へ流れ、脈動で筒が前後に跳ねる。砲口の前に二重の輪が何度も広がり、
+//           砲口に赤いプラズマの球と放電・吸い込まれる粒・狙いの線
+//  出始め = 白い光の粒が球状に弾け、細い先導の光が壁まで走り、光線が膨らむ。巨大な輪が射線を囲み、近くの画面が赤白く光って砂嵐が走る
+//  光線   = 赤白の帯 4 枚 + まわりを 2 本の光の螺旋がねじれて流れる + 光線に沿って輪が飛ぶ + 放電 + 床に火花
+//  出た後 = 細い糸になってほどけ火の粉に。床に焼けた線。キャノンは赤熱して湯気を吹き、回りながら畳まれる
 // 壁を壊す・床の水を湯気にする・燃える物に火を付けるのは、ホストが起こす地形の爆発と熱が全員の画面で出す
 internal static class NovaFx
 {
     // ---- 数値 ----
     private const float CannonPpu = 200f;            // 3D の形を描いた時と同じ (長さ約 1.6 単位)
+    private const float GlowPpu = CannonPpu / 2f;    // 光の絵は半分の解像度
     private const float Squash = 0.58f;              // 床の奥行きが画面で縮む倍率 (形を描いた時と同じ)
     private const float MuzzleAhead = 0.635f;        // 形の真ん中から砲口まで (床の上の長さ)
     private const float HandAhead = 0.3f, HandLift = -0.08f; // 形の真ん中: 体の芯から狙いの方へ・上下
-    private const float Deploy = 0.18f, Retract = 0.25f, Hold = 1.3f; // Hold = 撃った後に赤熱が冷めて湯気を吹く間
+    private const float Deploy = 0.5f, Retract = 0.4f, Hold = 1.3f; // Hold = 撃った後に赤熱が冷めて湯気を吹く間
+    private const float SwingFrom = 200f;            // 展開の回り込み (度・狙いからこれだけ手前の向きから回る)
+    private const float RecoilBack = 0.32f, RecoilTime = 0.3f;
     private const float Ignite = 0.07f;              // 出始め: 細い先導の光が壁まで走る時間
     private const float Swell = 0.08f;               // その後に光線が太く膨らむ時間
     private const float Thread = 0.35f;              // 出た後: 細い糸になって揺らぐ時間 (光線の終わりの内)
     private const float ScarLife = 2.5f;             // 床に残る焼けた線が冷める時間
-    private const float RecoilBack = 0.16f, RecoilTime = 0.22f;
     private const float OrbPpu = 256f / 0.9f;
     private const float BeamPpu = 512f;
     private const float StreakPpu = 128f;
     private const float BoltPpu = 256f / 0.7f;       // 放電 1 本 = 長さ 0.7 単位
     private const float RingPpu = 512f;              // 輪の絵 = 直径 1 単位
-    private const float BeamLife = 0.9f;
-    private const float BeamWide = 1.25f;             // 見た目の太さ (当たりの太さに掛ける)
+    private const float BeamLife = 1.2f;
+    private const float BeamWide = 1.25f;            // 見た目の太さ (当たりの太さに掛ける)
     private const float StreakSpeed = 30f;
-    private const int MaxPuffs = 200;
+    private const int Helix = 22;                    // 螺旋 1 本の光の点の数
+    private const int MaxPuffs = 260;
 
-    private static Sprite[] _cannon, _orb, _bolt;
-    private static Sprite _beam, _streak, _ring, _flash;
+    private static Sprite[] _cannon, _glow, _orb, _bolt;
+    private static Sprite _beam, _streak, _ring, _flash, _static;
     private static bool _searched;
 
     private static bool Art()
@@ -41,13 +49,15 @@ internal static class NovaFx
         if (_searched) return false;
         _searched = true;
         _cannon = ButtonIcons.Frames("nova_cannon3d", 32, CannonPpu, 4);
+        _glow = ButtonIcons.Frames("nova_cannon_glow", 32, GlowPpu, 4);
         _orb = ButtonIcons.Frames("nova_orb", 4, OrbPpu);
         _bolt = ButtonIcons.Frames("nova_bolt", 6, BoltPpu, 6);
         _beam = ButtonIcons.Load("nova_beam", BeamPpu, FxMath.V2(0f, 0.5f)); // 左端が原点 (撃った所から先へ伸ばす)
         _streak = ButtonIcons.Load("nova_streak", StreakPpu, FxMath.V2(0.5f, 0.5f));
         _ring = ButtonIcons.Load("nova_ring", RingPpu, FxMath.V2(0.5f, 0.5f));
         _flash = ButtonIcons.Load("rl_flash", 200f, FxMath.V2(0.5f, 0.5f));
-        return _cannon != null && _orb != null && _bolt != null && _beam && _streak && _ring;
+        _static = ButtonIcons.Load("nova_static", 128f, FxMath.V2(0.5f, 0.5f));
+        return _cannon != null && _glow != null && _orb != null && _bolt != null && _beam && _streak && _ring;
     }
 
     private static SpriteRenderer Make(string name, Sprite sp, Transform parent)
@@ -59,12 +69,22 @@ internal static class NovaFx
         return sr;
     }
 
+    private const float Deg = System.MathF.PI / 180f;
+
     // 画面の上の向き (度) → 床の上の向き (度)。画面の縦は床の奥行きが縮んだ物なので伸ばして戻す
     private static float YawOf(float screenDeg)
     {
-        float r = screenDeg * (System.MathF.PI / 180f);
-        return FxMath.Atan2(FxMath.Sin(r) / Squash, FxMath.Cos(r)) * (180f / System.MathF.PI);
+        float r = screenDeg * Deg;
+        return FxMath.Atan2(FxMath.Sin(r) / Squash, FxMath.Cos(r)) / Deg;
     }
+
+    private static int FrameOf(float yaw)
+    {
+        int k = (int)System.MathF.Round(yaw / 11.25f);
+        return ((k % 32) + 32) % 32;
+    }
+
+    private static float BackOut(float u) { u = FxMath.Clamp01(u); const float c = 1.7f; return 1f + (c + 1f) * (u - 1f) * (u - 1f) * (u - 1f) + c * (u - 1f) * (u - 1f); }
 
     // ================= キャノンと溜め =================
 
@@ -72,11 +92,11 @@ internal static class NovaFx
     {
         public GameObject Root;
         public PlayerControl P;
-        public SpriteRenderer Cannon, Orb, Light, Aim, Heat;
+        public SpriteRenderer Cannon, Glow, Orb, Light, Aim, Heat;
         public SpriteRenderer[] Bolts;
-        public Transform CannonTf, OrbTf, LightTf, AimTf;
-        public float T0, Dur, Ax, Ay, Size, AimLen, NextSpark, NextBolt, FiredAt = -1f, MuzzleLen, NextSteam;
-        public float Mx, My, Z;            // 今の砲口 (画面) と奥行き
+        public Transform CannonTf, GlowTf, OrbTf, LightTf, AimTf;
+        public float T0, Dur, Ax, Ay, Size, AimLen, AimYaw, NextSpark, NextBolt, NextPulse, NextRing, NextSteam, FiredAt = -1f;
+        public float Mx, My, Z, Dx, Dy;   // 今の砲口 (画面)・奥行き・今のキャノンの画面の向き
         public int Frame = -1, Check;
         public bool Shown = true;
     }
@@ -90,22 +110,16 @@ internal static class NovaFx
         CancelCharge(p);
         var root = new GameObject("MrpNovaShot");
         FxRoot.Attach(root);
-        float r = angle * (System.MathF.PI / 180f);
-        var s = new Shot { Root = root, P = p, T0 = Time.time, Dur = dur, Ax = FxMath.Cos(r), Ay = FxMath.Sin(r), Size = size, AimLen = aimLen };
-        // 床の上の向きのコマと、そのコマでの砲口までの画面の長さ
-        float yaw = YawOf(angle);
-        int k = (int)System.MathF.Round(yaw / 11.25f);
-        s.Frame = ((k % 32) + 32) % 32;
-        float yr = yaw * (System.MathF.PI / 180f);
-        float cy = FxMath.Cos(yr), sy = FxMath.Sin(yr) * Squash;
-        s.MuzzleLen = MuzzleAhead * FxMath.Sqrt(cy * cy + sy * sy);
+        var s = new Shot { Root = root, P = p, T0 = Time.time, Dur = dur, Ax = FxMath.Cos(angle * Deg), Ay = FxMath.Sin(angle * Deg), Size = size, AimLen = aimLen, AimYaw = YawOf(angle) };
         s.Light = Make("Light", Terrain.DebrisArt.Puff, root.transform);
         s.LightTf = s.Light.transform;
         s.Aim = Make("Aim", _beam, root.transform);
         s.AimTf = s.Aim.transform;
         s.AimTf.rotation = FxMath.RotZ(angle);
-        s.Cannon = Make("Cannon", _cannon[s.Frame], root.transform);
+        s.Cannon = Make("Cannon", _cannon[0], root.transform);
         s.CannonTf = s.Cannon.transform;
+        s.Glow = Make("Glow", _glow[0], root.transform);
+        s.GlowTf = s.Glow.transform;
         s.Bolts = new SpriteRenderer[3];
         for (int i = 0; i < 3; i++) s.Bolts[i] = Make("Bolt" + i, _bolt[i], root.transform);
         s.Orb = Make("Orb", _orb[0], root.transform);
@@ -121,30 +135,141 @@ internal static class NovaFx
         float t = now - s.T0;
         bool firing = s.FiredAt >= 0f;
         float tf = firing ? now - s.FiredAt : 0f;
-        if (firing && tf > BeamLife + Hold + Retract) return false;
+        float end = BeamLife + Hold;
+        if (firing && tf > end + Retract) return false;
         if (!firing && t > s.Dur + 1.5f) return false; // 撃たれずに終わった (会議・死)
         // 生死と見え方は数フレームに 1 回: 死んだら消す・撃つ人が自分の視界に無い時は出さない (壁越しに居場所が漏れない)
         if (++s.Check % 6 == 1)
         {
             if (!firing && !PortKit.Alive(s.P)) return false;
             bool vis = s.P.Visible;
-            if (vis != s.Shown) { s.Shown = vis; s.Cannon.enabled = vis; }
+            if (vis != s.Shown) { s.Shown = vis; s.Cannon.enabled = s.Glow.enabled = vis; }
         }
-        // キャノン: 展開 (0 → 1.1 → 1) → 撃った時に反動で後ろへ → 引っ込む
-        float scale = t < Deploy ? Back(t / Deploy) : 1f;
-        if (firing && tf > BeamLife + Hold) scale = 1f - (tf - BeamLife - Hold) / Retract;
-        float recoil = firing && tf < RecoilTime ? RecoilBack * (1f - tf / RecoilTime) * (1f - tf / RecoilTime) : 0f;
+        // 向き: 展開は後ろ向きから回り込み (行き過ぎて戻る)・畳む時は逆へ回りながら縮む
+        float yaw = s.AimYaw, scale = 1f, lift = 0f;
+        if (t < Deploy)
+        {
+            float u = t / Deploy;
+            yaw = s.AimYaw - SwingFrom * (1f - BackOut(u));
+            scale = 0.45f + 0.55f * FxMath.Clamp01(u * 1.6f);
+            lift = -0.35f * (1f - u) * (1f - u);
+        }
+        if (firing && tf > end)
+        {
+            float u = FxMath.Clamp01((tf - end) / Retract);
+            yaw = s.AimYaw + 160f * u * u;
+            scale = 1f - u;
+            lift = -0.3f * u;
+        }
+        // 撃っている間は細かく震える (向きも 1 コマ揺れる)
+        if (firing && tf < BeamLife) yaw += FxMath.Range(-6f, 6f);
+        int f = FrameOf(yaw);
+        if (f != s.Frame) { s.Frame = f; s.Cannon.sprite = _cannon[f]; s.Glow.sprite = _glow[f]; }
+        // 今のコマの画面の向き (砲口の位置と脈動の向き)
+        float yr = f * 11.25f * Deg;
+        float cyaw = FxMath.Cos(yr), syaw = FxMath.Sin(yr) * Squash;
+        float dl = FxMath.Sqrt(cyaw * cyaw + syaw * syaw);
+        s.Dx = cyaw / dl; s.Dy = syaw / dl;
+        // 反動と溜めの脈動 (だんだん速く強く)・溜めの終わりの震え
+        float kick = 0f, jx = 0f, jy = 0f;
+        if (firing && tf < RecoilTime) kick = RecoilBack * (1f - tf / RecoilTime) * (1f - tf / RecoilTime);
+        if (!firing && t > Deploy)
+        {
+            float u = FxMath.Clamp01(t / s.Dur);
+            float ph = FxMath.Sin(t * (8f + 30f * u * u));
+            kick = 0.045f * (0.3f + u) * ph * ph * ph * ph;
+            jx = FxMath.Range(-0.02f, 0.02f) * u; jy = FxMath.Range(-0.02f, 0.02f) * u;
+        }
         var pos = s.P.transform.position;
-        float cx = pos.x + s.Ax * (HandAhead - recoil), cyy = pos.y + HandLift + s.Ay * (HandAhead - recoil) * 0.8f;
+        float cx = pos.x + s.Ax * HandAhead - s.Dx * kick + jx;
+        float cy = pos.y + HandLift + lift + s.Ay * HandAhead * 0.8f - s.Dy * kick + jy;
         // 上を狙う時は体の後ろ、それ以外は体の前
-        s.Z = pos.z + (s.Ay > 0.35f ? 0.0004f : -0.0004f);
-        s.CannonTf.position = FxMath.V3(cx, cyy, s.Z);
+        s.Z = pos.z + (s.Dy > 0.35f ? 0.0004f : -0.0004f);
+        s.CannonTf.position = FxMath.V3(cx, cy, s.Z);
         s.CannonTf.localScale = FxMath.V3(scale, scale, 1f);
-        s.Mx = cx + s.Ax * s.MuzzleLen * scale;
-        s.My = cyy + s.Ay * s.MuzzleLen * scale;
+        s.GlowTf.position = FxMath.V3(cx, cy, s.Z - 0.00005f);
+        s.GlowTf.localScale = FxMath.V3(scale, scale, 1f);
+        s.Mx = cx + s.Dx * MuzzleAhead * dl * scale;
+        s.My = cy + s.Dy * MuzzleAhead * dl * scale;
+        // 光る所: 溜めで灯っていき脈打つ・撃った瞬間は最大・その後は冷めて消える
+        float g;
+        if (!firing) g = t < Deploy ? 0f : FxMath.Clamp01((t - Deploy) / (s.Dur - Deploy + 0.001f)) * (0.75f + 0.25f * FxMath.Sin(now * 25f));
+        else g = tf < BeamLife ? 1f : FxMath.Clamp01(1f - (tf - BeamLife) / Hold);
+        s.Glow.color = FxMath.Rgba(1f, 1f, 1f, g);
         if (!firing) TickCharge(s, now, t);
-        else TickCooling(s, now, tf, cx, cyy);
+        else TickCooling(s, now, tf, cx, cy);
         return true;
+    }
+
+    private static void TickCharge(Shot s, float now, float t)
+    {
+        bool show = s.Shown;
+        s.Orb.enabled = s.Light.enabled = s.Aim.enabled = show;
+        for (int i = 0; i < 3; i++) s.Bolts[i].enabled = show && t > Deploy;
+        if (!show) return;
+        float u = s.Dur > 0f ? FxMath.Clamp01(t / s.Dur) : 1f;
+        float z = s.Z - 0.0003f;
+        float ox = s.Mx + s.Dx * 0.1f, oy = s.My + s.Dy * 0.1f;
+        s.OrbTf.position = FxMath.V3(ox, oy, z);
+        float os = (0.2f + 1.0f * u * u) * (0.8f + 0.2f * s.Size) * (1f + 0.1f * FxMath.Sin(now * 45f));
+        s.OrbTf.localScale = FxMath.V3(os, os, 1f);
+        s.Orb.sprite = _orb[(int)(now * 16f) & 3];
+        // 放電: 3 本が 0.05 秒ごとに向きと長さを変えて砲口のまわりを走る (溜めの終わりほど長く明るい)
+        if (t > Deploy && now >= s.NextBolt)
+        {
+            s.NextBolt = now + 0.05f;
+            for (int i = 0; i < 3; i++)
+            {
+                var b = s.Bolts[i];
+                b.sprite = _bolt[(int)FxMath.Range(0f, 5.999f)];
+                float a = FxMath.Range(0f, 360f), len = FxMath.Range(0.5f, 1f) * (0.5f + 0.9f * u);
+                var tf = b.transform;
+                tf.position = FxMath.V3(ox + FxMath.Cos(a * Deg) * len * 0.45f, oy + FxMath.Sin(a * Deg) * len * 0.45f, z - 0.0001f);
+                tf.rotation = FxMath.RotZ(a);
+                tf.localScale = FxMath.V3(len, 0.6f + 0.5f * u, 1f);
+                b.color = FxMath.Rgba(1f, 0.35f + 0.3f * u, 0.32f + 0.3f * u, 0.5f + 0.5f * u);
+            }
+        }
+        // 筒の中を光の粒が砲口へ流れる
+        if (t > Deploy && now >= s.NextPulse)
+        {
+            s.NextPulse = now + (0.06f - 0.04f * u);
+            float rx = s.Mx - s.Dx * 1.1f, ry = s.My - s.Dy * 1.1f;
+            const float life = 0.18f;
+            SpawnPuff(rx, ry, (s.Mx - rx) / life, (s.My - ry) / life, 0.16f, 0.24f, life, s.Z - 0.0001f, PuffKind.Gather);
+        }
+        // 砲口の前に二重の輪が広がる (だんだん間が詰まり大きくなる)
+        if (t > Deploy && now >= s.NextRing)
+        {
+            s.NextRing = now + (0.42f - 0.26f * u);
+            float big = 1.2f + 3.5f * u * u;
+            float ang = FxMath.Atan2(s.Dy, s.Dx) / Deg;
+            SpawnPuff(ox, oy, s.Dx * 1.5f, s.Dy * 1.5f, 0.3f, big, 0.35f, z - 0.0002f, PuffKind.RingCross, ang);
+            SpawnPuff(ox, oy, s.Dx * 2.5f, s.Dy * 2.5f, 0.2f, big * 0.75f, 0.32f, z - 0.0002f, PuffKind.RingCross, ang, 0.05f);
+        }
+        // 床の赤い光だまり (明るい床で濁らないよう薄く)
+        var pos = s.P.transform.position;
+        float fy = pos.y - 0.36f;
+        float ld = 1.0f + 2.6f * u;
+        s.LightTf.position = FxMath.V3(ox, fy + 0.05f, fy / 1000f + 0.0006f);
+        s.LightTf.localScale = FxMath.V3(ld, ld * 0.6f, 1f);
+        s.Light.color = FxMath.Rgba(1f, 0.45f, 0.4f, 0.06f + 0.22f * u);
+        // 狙いの線
+        s.AimTf.position = FxMath.V3(ox, oy, z + 0.0002f);
+        s.AimTf.localScale = FxMath.V3(s.AimLen, 0.2f + 0.25f * u, 1f);
+        s.Aim.color = FxMath.Rgba(1f, 0.3f, 0.25f, t < Deploy ? 0f : (0.25f + 0.4f * u) * (0.75f + 0.25f * FxMath.Sin(now * 31f)));
+        // 光の粒が砲口へ吸い込まれる
+        while (s.NextSpark <= now)
+        {
+            s.NextSpark = (s.NextSpark <= 0f ? now : s.NextSpark) + (0.04f - 0.03f * u);
+            float a = FxMath.Range(0f, 2f * System.MathF.PI);
+            float rad = FxMath.Range(0.8f, 1.6f);
+            const float life = 0.22f;
+            float sx = ox + FxMath.Cos(a) * rad, sy = oy + FxMath.Sin(a) * rad * 0.8f;
+            SpawnPuff(sx, sy, (ox - sx) / life, (oy - sy) / life, 0.07f, 0.14f, life, z - 0.0001f, PuffKind.Gather);
+        }
+        // 溜めの終わり 0.3 秒は近くの画面を細かく揺らす
+        if (t > s.Dur - 0.3f && ((int)(now * 20f) & 1) == 0) Shake(ox, oy, 6f, 0.05f, 0.3f);
     }
 
     // 撃った後: 砲口が赤熱して冷め、キャノンの上から湯気が昇る
@@ -156,74 +281,18 @@ internal static class NovaFx
         if (s.Heat.enabled)
         {
             float hs = 0.9f - 0.4f * cool;
-            s.Heat.transform.position = FxMath.V3(s.Mx, s.My, s.Z - 0.0003f);
-            s.Heat.transform.localScale = FxMath.V3(hs, hs, 1f);
+            var ht = s.Heat.transform;
+            ht.position = FxMath.V3(s.Mx, s.My, s.Z - 0.0003f);
+            ht.localScale = FxMath.V3(hs, hs, 1f);
             s.Heat.color = FxMath.Rgba(1f, 0.25f + 0.2f * (1f - cool), 0.15f, 0.75f * (1f - cool));
         }
         if (tf > 0.25f && tf < BeamLife + Hold && now >= s.NextSteam)
         {
             s.NextSteam = now + 0.07f;
             float k = FxMath.Range(-0.35f, 0.25f);
-            float sx = cx + s.Ax * k * 1.2f, sy = cy + s.Ay * k + 0.12f;
+            float sx = cx + s.Dx * k * 1.2f, sy = cy + s.Dy * k + 0.12f;
             SpawnPuff(sx, sy, FxMath.Range(-0.15f, 0.15f), FxMath.Range(0.5f, 0.9f), 0.15f, 0.55f, FxMath.Range(0.6f, 0.9f), s.Z - 0.0006f, PuffKind.Steam);
         }
-    }
-
-    private static float Back(float u) { u = FxMath.Clamp01(u); float c = 1.7f; return 1f + (c + 1f) * (u - 1f) * (u - 1f) * (u - 1f) + c * (u - 1f) * (u - 1f); }
-
-    private static void TickCharge(Shot s, float now, float t)
-    {
-        bool show = s.Shown;
-        s.Orb.enabled = s.Light.enabled = s.Aim.enabled = show;
-        for (int i = 0; i < 3; i++) s.Bolts[i].enabled = show;
-        if (!show) return;
-        float u = s.Dur > 0f ? FxMath.Clamp01(t / s.Dur) : 1f;
-        float z = s.Z - 0.0003f;
-        float ox = s.Mx + s.Ax * 0.08f, oy = s.My + s.Ay * 0.08f;
-        s.OrbTf.position = FxMath.V3(ox, oy, z);
-        float os = (0.35f + 0.9f * u * u) * (0.8f + 0.2f * s.Size) * (1f + 0.1f * FxMath.Sin(now * 45f));
-        s.OrbTf.localScale = FxMath.V3(os, os, 1f);
-        s.Orb.sprite = _orb[(int)(now * 16f) & 3];
-        // 放電: 3 本が 0.05 秒ごとに向きと長さを変えて砲口のまわりを走る (溜めの終わりほど長く明るい)
-        if (now >= s.NextBolt)
-        {
-            s.NextBolt = now + 0.05f;
-            for (int i = 0; i < 3; i++)
-            {
-                var b = s.Bolts[i];
-                b.sprite = _bolt[(int)FxMath.Range(0f, 5.999f)];
-                float a = FxMath.Range(0f, 360f), len = FxMath.Range(0.5f, 1f) * (0.5f + 0.9f * u);
-                float ar = a * (System.MathF.PI / 180f);
-                var tf = b.transform;
-                tf.position = FxMath.V3(ox + FxMath.Cos(ar) * len * 0.45f, oy + FxMath.Sin(ar) * len * 0.45f, z - 0.0001f);
-                tf.rotation = FxMath.RotZ(a);
-                tf.localScale = FxMath.V3(len, 0.6f + 0.5f * u, 1f);
-                b.color = FxMath.Rgba(1f, 0.35f + 0.3f * u, 0.32f + 0.3f * u, 0.5f + 0.5f * u);
-            }
-        }
-        // 床の赤い光だまり (明るい床で濁らないよう薄く)
-        var pos = s.P.transform.position;
-        float fy = pos.y - 0.36f;
-        float ld = 1.0f + 2.2f * u;
-        s.LightTf.position = FxMath.V3(ox, fy + 0.05f, fy / 1000f + 0.0006f);
-        s.LightTf.localScale = FxMath.V3(ld, ld * 0.6f, 1f);
-        s.Light.color = FxMath.Rgba(1f, 0.45f, 0.4f, 0.06f + 0.2f * u);
-        // 狙いの線
-        s.AimTf.position = FxMath.V3(ox, oy, z + 0.0002f);
-        s.AimTf.localScale = FxMath.V3(s.AimLen, 0.2f + 0.25f * u, 1f);
-        s.Aim.color = FxMath.Rgba(1f, 0.3f, 0.25f, (0.25f + 0.4f * u) * (0.75f + 0.25f * FxMath.Sin(now * 31f)));
-        // 光の粒が砲口へ吸い込まれる
-        while (s.NextSpark <= now)
-        {
-            s.NextSpark = (s.NextSpark <= 0f ? now : s.NextSpark) + (0.04f - 0.03f * u);
-            float a = FxMath.Range(0f, 2f * System.MathF.PI);
-            float rad = FxMath.Range(0.8f, 1.5f);
-            float life = 0.22f;
-            float sx = ox + FxMath.Cos(a) * rad, sy = oy + FxMath.Sin(a) * rad * 0.8f;
-            SpawnPuff(sx, sy, (ox - sx) / life, (oy - sy) / life, 0.07f, 0.14f, life, z - 0.0001f, PuffKind.Gather, a * (180f / System.MathF.PI));
-        }
-        // 溜めの終わり 0.3 秒は近くの画面を細かく揺らす
-        if (t > s.Dur - 0.3f && ((int)(now * 20f) & 1) == 0) Shake(ox, oy, 6f, 0.04f, 0.3f);
     }
 
     // 撃たずに終わった (光線に替わらなかった) 溜めを消す
@@ -238,10 +307,10 @@ internal static class NovaFx
     private sealed class Beam
     {
         public GameObject Root;
-        public SpriteRenderer[] Layers;
+        public SpriteRenderer[] Layers, HelixA, HelixB, Bolts;
         public Transform[] LayerTf;
-        public float T0, X, Y, Dx, Dy, Len, Size, Z, NextStreak, Angle;
         public SpriteRenderer Scar;
+        public float T0, X, Y, Dx, Dy, Len, Size, Z, NextStreak, NextRing, NextBolt, NextFloor, Angle, FloorY;
         public bool Embered;
     }
 
@@ -260,8 +329,7 @@ internal static class NovaFx
     internal static void Fire(PlayerControl p, Vector2 from, float angle, float length, float size, bool hitWall)
     {
         if (RewindPlayback.Active || !Art()) return;
-        float r = angle * (System.MathF.PI / 180f);
-        float dx = FxMath.Cos(r), dy = FxMath.Sin(r);
+        float dx = FxMath.Cos(angle * Deg), dy = FxMath.Sin(angle * Deg);
         Shot shot = null;
         foreach (var s in Shots) if (s.P == p && s.FiredAt < 0f) { shot = s; break; }
         float mx, my;
@@ -279,22 +347,33 @@ internal static class NovaFx
         // 足元の線の長さを砲口から測り直す (砲口の分だけ短い)
         float back = (mx - from.x) * dx + (my - from.y) * dy;
         float len = length - back > 0.05f ? length - back : 0.05f;
-        var b = new Beam { T0 = Time.time, X = mx, Y = my, Dx = dx, Dy = dy, Len = len, Size = size * BeamWide, Angle = angle, Z = (from.y - 2f) / 1000f };
+        var b = new Beam { T0 = Time.time, X = mx, Y = my, Dx = dx, Dy = dy, Len = len, Size = size * BeamWide, Angle = angle, Z = (from.y - 2f) / 1000f, FloorY = from.y };
         b.Root = new GameObject("MrpNovaBeam");
         FxRoot.Attach(b.Root);
+        var rt = b.Root.transform;
         b.Layers = new SpriteRenderer[4];
         b.LayerTf = new Transform[4];
         for (int i = 0; i < 4; i++)
         {
-            var sr = Make("Layer" + i, _beam, b.Root.transform);
+            var sr = Make("Layer" + i, _beam, rt);
             var tf = sr.transform;
             tf.position = FxMath.V3(b.X, b.Y, b.Z - i * 0.0001f);
             tf.rotation = FxMath.RotZ(angle);
             b.Layers[i] = sr;
             b.LayerTf[i] = tf;
         }
+        b.HelixA = new SpriteRenderer[Helix];
+        b.HelixB = new SpriteRenderer[Helix];
+        for (int i = 0; i < Helix; i++)
+        {
+            b.HelixA[i] = Make("HA", Terrain.DebrisArt.Spark, rt);
+            b.HelixB[i] = Make("HB", Terrain.DebrisArt.Spark, rt);
+            b.HelixA[i].enabled = b.HelixB[i].enabled = false;
+        }
+        b.Bolts = new SpriteRenderer[4];
+        for (int i = 0; i < 4; i++) { b.Bolts[i] = Make("Bolt", _bolt[i], rt); b.Bolts[i].enabled = false; }
         // 床に残る焼けた線 (光線の真下の床・人の下)。光線が細り始めたら出して冷めていく
-        b.Scar = Make("Scar", _beam, b.Root.transform);
+        b.Scar = Make("Scar", _beam, rt);
         var scarTf = b.Scar.transform;
         scarTf.position = FxMath.V3(mx, my - 0.3f, from.y / 1000f + 0.0007f);
         scarTf.rotation = FxMath.RotZ(angle);
@@ -305,16 +384,23 @@ internal static class NovaFx
         float rx = mx - dx * 1.2f, ry = my - dy * 1.0f;
         for (int i = 0; i < 9; i++)
         {
-            float a = angle + 180f + FxMath.Range(-35f, 35f), ar = a * (System.MathF.PI / 180f), v = FxMath.Range(1.5f, 3.5f);
-            SpawnPuff(rx, ry, FxMath.Cos(ar) * v, FxMath.Sin(ar) * v, 0.25f, 0.9f, FxMath.Range(0.5f, 0.8f), b.Z + 0.0002f, PuffKind.Steam);
-            SpawnPuff(rx, ry, FxMath.Cos(ar) * v * 2f, FxMath.Sin(ar) * v * 2f, 0.14f, 0.06f, FxMath.Range(0.2f, 0.4f), b.Z - 0.0004f, PuffKind.Spark, a);
+            float a = angle + 180f + FxMath.Range(-35f, 35f), v = FxMath.Range(1.5f, 3.5f);
+            SpawnPuff(rx, ry, FxMath.Cos(a * Deg) * v, FxMath.Sin(a * Deg) * v, 0.25f, 0.9f, FxMath.Range(0.5f, 0.8f), b.Z + 0.0002f, PuffKind.Steam);
+            SpawnPuff(rx, ry, FxMath.Cos(a * Deg) * v * 2f, FxMath.Sin(a * Deg) * v * 2f, 0.14f, 0.06f, FxMath.Range(0.2f, 0.4f), b.Z - 0.0004f, PuffKind.Spark, a);
         }
-        // 砲口: 閃光・大きなにじみ・光線に直交するプラズマの輪 2 つ
+        // 砲口: 白い光の粒が球状に弾ける・閃光・大きなにじみ・射線を囲む巨大な輪と二重の輪
+        for (int i = 0; i < 44; i++)
+        {
+            float a = FxMath.Range(0f, 360f), v = FxMath.Range(2f, 7f);
+            SpawnPuff(mx, my, FxMath.Cos(a * Deg) * v, FxMath.Sin(a * Deg) * v, 0.12f, 0.05f, FxMath.Range(0.25f, 0.5f), b.Z - 0.0009f, PuffKind.Sparkle, a);
+        }
         if (_flash) SpawnPuff(mx, my, 0f, 0f, 0.8f * size + 0.6f, 1.6f * size + 1f, 0.22f, b.Z - 0.0008f, PuffKind.Flash, angle);
-        SpawnPuff(mx, my, 0f, 0f, 2f, 6f, 0.5f, b.Z + 0.0004f, PuffKind.Glow);
+        SpawnPuff(mx, my, 0f, 0f, 2f, 7f, 0.55f, b.Z + 0.0004f, PuffKind.Glow);
+        SpawnPuff(mx + dx * 0.8f, my + dy * 0.8f, dx * 4f, dy * 4f, 0.8f, 8f, 0.6f, b.Z - 0.0007f, PuffKind.RingThin, angle);
         SpawnPuff(mx, my, 0f, 0f, 0.6f, 4.2f, 0.5f, b.Z - 0.0007f, PuffKind.RingCross, angle);
         SpawnPuff(mx + dx * 0.5f, my + dy * 0.5f, dx * 3f, dy * 3f, 0.4f, 3.0f, 0.45f, b.Z - 0.0007f, PuffKind.RingCross, angle, 0.1f);
-        Shake(mx, my, 12f, 0.35f, 1.6f);
+        Shake(mx, my, 12f, 0.4f, 1.8f);
+        Overlay(mx, my, 1f);
         if (hitWall) Impact(mx + dx * len, my + dy * len, angle, size, b.Z);
     }
 
@@ -322,14 +408,13 @@ internal static class NovaFx
     private static void Impact(float x, float y, float angle, float size, float z)
     {
         if (_flash) SpawnPuff(x, y, 0f, 0f, 0.9f * size + 0.6f, 1.8f * size + 1.2f, 0.28f, z - 0.0008f, PuffKind.Flash);
-        SpawnPuff(x, y, 0f, 0f, 1.5f, 4.5f, 0.55f, z + 0.0004f, PuffKind.Glow);
-        SpawnPuff(x, y, 0f, 0f, 0.5f, 5.5f, 0.65f, z + 0.0006f, PuffKind.RingFloor);
-        SpawnPuff(x, y, 0f, 0f, 0.3f, 3.8f, 0.6f, z + 0.0006f, PuffKind.RingFloor, float.NaN, 0.12f);
-        for (int i = 0; i < 22; i++)
+        SpawnPuff(x, y, 0f, 0f, 1.5f, 5f, 0.6f, z + 0.0004f, PuffKind.Glow);
+        SpawnPuff(x, y, 0f, 0f, 0.5f, 6f, 0.7f, z + 0.0006f, PuffKind.RingFloor);
+        SpawnPuff(x, y, 0f, 0f, 0.3f, 4f, 0.65f, z + 0.0006f, PuffKind.RingFloor, float.NaN, 0.12f);
+        for (int i = 0; i < 26; i++)
         {
-            float a = angle + 180f + FxMath.Range(-80f, 80f);
-            float ar = a * (System.MathF.PI / 180f), v = FxMath.Range(3.5f, 8f);
-            SpawnPuff(x, y, FxMath.Cos(ar) * v, FxMath.Sin(ar) * v, 0.18f, 0.08f, FxMath.Range(0.3f, 0.6f), z - 0.0005f, PuffKind.Spark, a);
+            float a = angle + 180f + FxMath.Range(-80f, 80f), v = FxMath.Range(3.5f, 8f);
+            SpawnPuff(x, y, FxMath.Cos(a * Deg) * v, FxMath.Sin(a * Deg) * v, 0.18f, 0.08f, FxMath.Range(0.3f, 0.6f), z - 0.0005f, PuffKind.Spark, a);
         }
         for (int i = 0; i < 12; i++)
         {
@@ -337,6 +422,7 @@ internal static class NovaFx
             SpawnPuff(x, y, FxMath.Cos(a) * v, FxMath.Sin(a) * v * 0.7f, 0.4f, 1.3f, FxMath.Range(0.8f, 1.2f), z + 0.0002f, PuffKind.Smoke);
         }
         Shake(x, y, 12f, 0.3f, 1.4f);
+        Overlay(x, y, 0.7f);
     }
 
     private static void Shake(float x, float y, float reach, float amp, float dur)
@@ -365,7 +451,13 @@ internal static class NovaFx
         }
         if (t >= BeamLife)
         {
-            if (!b.Embered) { b.Embered = true; for (int i = 0; i < 4; i++) b.Layers[i].enabled = false; Embers(b); }
+            if (!b.Embered)
+            {
+                b.Embered = true;
+                for (int i = 0; i < 4; i++) b.Layers[i].enabled = b.Bolts[i].enabled = false;
+                for (int i = 0; i < Helix; i++) b.HelixA[i].enabled = b.HelixB[i].enabled = false;
+                Embers(b);
+            }
             return true;
         }
         // 長さ: 出始めは細い先導の光が砲口から壁まで走る
@@ -395,15 +487,74 @@ internal static class NovaFx
             var c = LayerC[i];
             b.Layers[i].color = FxMath.Rgba(c.r, c.g, c.b, c.a * fade);
         }
-        // 先導の先端の光
-        if (t < Ignite) SpawnPuff(b.X + b.Dx * len, b.Y + b.Dy * len, 0f, 0f, 0.5f, 0.2f, 0.08f, b.Z - 0.0009f, PuffKind.Spark);
-        float end = fade;
-        while (b.NextStreak <= now && end > 0.3f && t >= Ignite)
+        if (t < Ignite)
+        {
+            SpawnPuff(b.X + b.Dx * len, b.Y + b.Dy * len, 0f, 0f, 0.5f, 0.2f, 0.08f, b.Z - 0.0009f, PuffKind.Spark);
+            return true;
+        }
+        // 螺旋: 2 本の光の点の列が光線のまわりをねじれながら先へ流れる (手前に来た点ほど大きく明るい)
+        float amp = b.Size * 0.55f * k;
+        float px = -b.Dy, py = b.Dx;
+        float flow = (t * 9f) % 1f;
+        for (int i = 0; i < Helix; i++)
+        {
+            float d = ((i + flow) / Helix) * len;
+            float ph = d * 2.4f - t * 22f;
+            for (int sIdx = 0; sIdx < 2; sIdx++)
+            {
+                var sr = sIdx == 0 ? b.HelixA[i] : b.HelixB[i];
+                float a = ph + sIdx * System.MathF.PI;
+                float sn = FxMath.Sin(a), cs = FxMath.Cos(a);
+                float near = 0.5f + 0.5f * cs;
+                var tf = sr.transform;
+                tf.position = FxMath.V3(b.X + b.Dx * d + px * sn * amp, b.Y + b.Dy * d + py * sn * amp, b.Z - (cs > 0f ? 0.0006f : -0.0001f));
+                float sz = (0.22f + 0.25f * near) * b.Size * (fade > 0.3f ? 1f : fade / 0.3f);
+                tf.localScale = FxMath.V3(sz * 2.2f, sz, 1f);
+                tf.rotation = FxMath.RotZ(b.Angle + cs * 25f);
+                if (!sr.enabled) sr.enabled = true;
+                sr.color = FxMath.Rgba(1f, 0.5f + 0.45f * near, 0.45f + 0.45f * near, (0.35f + 0.65f * near) * fade);
+            }
+        }
+        // 光線に沿って輪が次々に飛んでいく
+        if (now >= b.NextRing && fade > 0.4f)
+        {
+            b.NextRing = now + 0.09f;
+            float life = b.Len / 24f;
+            SpawnPuff(b.X, b.Y, b.Dx * 24f, b.Dy * 24f, b.Size * 0.9f, b.Size * 1.6f, life > 0.1f ? life : 0.1f, b.Z - 0.0007f, PuffKind.RingTravel, b.Angle);
+        }
+        // 光線の上を放電が走る
+        if (now >= b.NextBolt)
+        {
+            b.NextBolt = now + 0.04f;
+            for (int i = 0; i < 4; i++)
+            {
+                var sr = b.Bolts[i];
+                sr.enabled = fade > 0.3f;
+                sr.sprite = _bolt[(int)FxMath.Range(0f, 5.999f)];
+                float d = FxMath.Range(0.2f, len);
+                float side = FxMath.Range(-0.6f, 0.6f) * b.Size;
+                var tf = sr.transform;
+                tf.position = FxMath.V3(b.X + b.Dx * d + px * side, b.Y + b.Dy * d + py * side, b.Z - 0.0008f);
+                tf.rotation = FxMath.RotZ(b.Angle + FxMath.Range(-30f, 30f));
+                tf.localScale = FxMath.V3(FxMath.Range(0.8f, 1.6f), 0.8f, 1f);
+                sr.color = FxMath.Rgba(1f, 0.6f, 0.55f, 0.9f * fade);
+            }
+        }
+        // 床に火花が散る (光線の真下)
+        if (now >= b.NextFloor && fade > 0.3f)
+        {
+            b.NextFloor = now + 0.03f;
+            float d = FxMath.Range(0.3f, len);
+            float fx = b.X + b.Dx * d, fyy = b.Y + b.Dy * d - 0.3f;
+            float a = FxMath.Range(30f, 150f);
+            SpawnPuff(fx, fyy, FxMath.Cos(a * Deg) * 2.5f, FxMath.Sin(a * Deg) * 2.5f, 0.12f, 0.05f, 0.3f, b.FloorY / 1000f - 0.0002f, PuffKind.Spark, a);
+        }
+        while (b.NextStreak <= now && fade > 0.3f)
         {
             b.NextStreak = (b.NextStreak <= 0f ? now : b.NextStreak) + 0.009f;
-            float d0 = FxMath.Range(0f, b.Len * 0.75f);
+            float d0 = FxMath.Range(0f, len * 0.75f);
             float side = FxMath.Range(-0.35f, 0.35f) * b.Size;
-            float sx = b.X + b.Dx * d0 - b.Dy * side, sy = b.Y + b.Dy * d0 + b.Dx * side;
+            float sx = b.X + b.Dx * d0 + px * side, sy = b.Y + b.Dy * d0 + py * side;
             SpawnPuff(sx, sy, b.Dx * StreakSpeed, b.Dy * StreakSpeed, 0.6f, 1.1f, FxMath.Range(0.12f, 0.22f), b.Z - 0.0005f, PuffKind.Streak, b.Angle);
         }
         return true;
@@ -422,9 +573,61 @@ internal static class NovaFx
         }
     }
 
+    // ================= 近くの画面: 赤白い閃光と砂嵐 =================
+
+    private static GameObject _ov;
+    private static SpriteRenderer _ovFlash, _ovStatic;
+    private static Transform _ovStaticTf;
+    private static float _ovT0 = -99f, _ovK;
+    private const float OvFlash = 0.25f, OvStatic = 0.7f, OvReach = 11f;
+
+    // 自分の画面がこの点から近いほど強く光って砂嵐が走る (ゲームのカメラの子・HUD は別のカメラなので覆わない)
+    private static void Overlay(float x, float y, float strength)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        var cam = Camera.main;
+        if (!lp || !cam || !_static) return;
+        var me = lp.transform.position;
+        float dx = me.x - x, dy = me.y - y, d = FxMath.Sqrt(dx * dx + dy * dy);
+        if (d >= OvReach) return;
+        float k = (1f - d / OvReach) * strength;
+        if (!_ov)
+        {
+            _ov = new GameObject("MrpNovaOverlay") { layer = cam.gameObject.layer };
+            var tf = _ov.transform;
+            tf.SetParent(cam.transform, false);
+            tf.localPosition = FxMath.V3(0f, 0f, cam.nearClipPlane + 0.4f);
+            float h = cam.orthographicSize * 2.1f;
+            _ovFlash = Make("Flash", Terrain.DebrisArt.Puff, tf);
+            _ovFlash.transform.localScale = FxMath.V3(h * cam.aspect * 2.2f, h * 2.2f, 1f);
+            _ovStatic = Make("Static", _static, tf);
+            _ovStaticTf = _ovStatic.transform;
+            _ovStaticTf.localScale = FxMath.V3(h * cam.aspect * 1.1f, h * 1.1f, 1f);
+        }
+        float now = Time.time;
+        bool active = _ov.activeSelf && now - _ovT0 <= OvStatic;
+        _ovK = active && _ovK > k ? _ovK : k;
+        _ovT0 = now;
+        _ov.SetActive(true);
+        _ovOn = true;
+    }
+
+    private static void TickOverlay(float now)
+    {
+        float t = now - _ovT0;
+        if (t > OvStatic) { _ov.SetActive(false); _ovK = 0f; _ovOn = false; return; }
+        float fl = t < OvFlash ? (1f - t / OvFlash) : 0f;
+        _ovFlash.color = FxMath.Rgba(1f, 0.75f + 0.25f * fl, 0.72f + 0.25f * fl, 0.85f * fl * _ovK);
+        float st = 1f - t / OvStatic;
+        // 砂嵐: 毎フレームずらして裏返し、流れて見えるように
+        _ovStaticTf.localPosition = FxMath.V3(FxMath.Range(-0.5f, 0.5f), FxMath.Range(-0.5f, 0.5f), 0f);
+        _ovStaticTf.localRotation = FxMath.RotZ(((int)(now * 60f) & 1) * 180f);
+        _ovStatic.color = FxMath.Rgba(1f, 0.82f, 0.8f, 0.42f * st * st * _ovK);
+    }
+
     // ================= 粒 =================
 
-    private enum PuffKind : byte { Gather, Streak, Spark, Flash, Glow, Smoke, RingCross, RingFloor, Steam, Ember }
+    private enum PuffKind : byte { Gather, Streak, Spark, Flash, Glow, Smoke, RingCross, RingFloor, RingThin, RingTravel, Steam, Ember, Sparkle }
 
     private sealed class Puff
     {
@@ -455,7 +658,7 @@ internal static class NovaFx
             PuffKind.Flash => _flash,
             PuffKind.Streak => _streak,
             PuffKind.Glow or PuffKind.Smoke or PuffKind.Steam => Terrain.DebrisArt.Puff,
-            PuffKind.RingCross or PuffKind.RingFloor => _ring,
+            PuffKind.RingCross or PuffKind.RingFloor or PuffKind.RingThin or PuffKind.RingTravel => _ring,
             _ => Terrain.DebrisArt.Spark,
         };
         if (!ReferenceEquals(p.Art, art)) { p.Art = art; p.Sr.sprite = art; }
@@ -487,9 +690,10 @@ internal static class NovaFx
                 Puffs.RemoveAt(i);
                 continue;
             }
-            float drag = p.Kind == PuffKind.Spark ? 1f - f * 0.35f : p.Kind is PuffKind.Smoke or PuffKind.Steam ? 1f - f * 0.6f : 1f;
+            float drag = p.Kind is PuffKind.Spark or PuffKind.Sparkle ? 1f - f * 0.35f : p.Kind is PuffKind.Smoke or PuffKind.Steam ? 1f - f * 0.6f : 1f;
             float e = 1f - (1f - f) * (1f - f);
-            float s = p.Size0 + (p.Size1 - p.Size0) * (p.Kind is PuffKind.RingCross or PuffKind.RingFloor or PuffKind.Smoke or PuffKind.Glow ? e : f);
+            bool easeOut = p.Kind is PuffKind.RingCross or PuffKind.RingFloor or PuffKind.RingThin or PuffKind.Smoke or PuffKind.Glow;
+            float s = p.Size0 + (p.Size1 - p.Size0) * (easeOut ? e : f);
             p.Tf.position = FxMath.V3(p.X + p.Vx * t * drag, p.Y + p.Vy * t * drag, p.Z);
             switch (p.Kind)
             {
@@ -505,9 +709,17 @@ internal static class NovaFx
                     p.Tf.localScale = FxMath.V3(s, s * 0.8f, 1f);
                     p.Sr.color = FxMath.Rgba(1f, 0.4f + 0.2f * (1f - f), 0.35f, (1f - f) * (1f - f) * 0.45f);
                     break;
-                case PuffKind.RingCross: // 光線に直交する輪: 光線の向きに潰れた楕円
+                case PuffKind.RingCross: // 光線に直交する太い輪: 光線の向きに潰れた楕円
                     p.Tf.localScale = FxMath.V3(s * 0.32f, s, 1f);
                     p.Sr.color = FxMath.Rgba(1f, 0.3f + 0.5f * (1f - f), 0.28f + 0.4f * (1f - f), (1f - f) * (1f - f));
+                    break;
+                case PuffKind.RingThin: // 射線を囲む巨大な細い輪 (速く広がって薄れる)
+                    p.Tf.localScale = FxMath.V3(s * 0.22f, s, 1f);
+                    p.Sr.color = FxMath.Rgba(1f, 0.25f, 0.22f, (1f - f) * 0.8f);
+                    break;
+                case PuffKind.RingTravel: // 光線に沿って飛ぶ輪
+                    p.Tf.localScale = FxMath.V3(s * 0.3f, s, 1f);
+                    p.Sr.color = FxMath.Rgba(1f, 0.55f, 0.5f, 0.7f * (1f - f * f));
                     break;
                 case PuffKind.RingFloor: // 床に広がる衝撃波 (奥行きで潰れた楕円)
                     p.Tf.localScale = FxMath.V3(s, s * Squash, 1f);
@@ -528,6 +740,10 @@ internal static class NovaFx
                     p.Tf.localScale = FxMath.V3(s, s, 1f);
                     p.Sr.color = FxMath.Rgba(1f, 0.5f - 0.4f * f, 0.35f - 0.3f * f, (1f - f) * (0.6f + 0.4f * FxMath.Sin(now * 40f + p.X * 7f)));
                     break;
+                case PuffKind.Sparkle: // 球状に弾ける白い光の粒
+                    p.Tf.localScale = FxMath.V3(s, s, 1f);
+                    p.Sr.color = FxMath.Rgba(1f, 0.92f - 0.4f * f, 0.9f - 0.45f * f, 1f - f);
+                    break;
                 case PuffKind.Gather:
                     p.Tf.localScale = FxMath.V3(s, s, 1f);
                     p.Sr.color = FxMath.Rgba(1f, 0.55f + 0.35f * f, 0.5f + 0.3f * f, 0.3f + 0.7f * f);
@@ -542,14 +758,15 @@ internal static class NovaFx
 
     // ================= 毎フレーム =================
 
-    private static bool _rewound;
+    private static bool _rewound, _ovOn; // _ovOn = 画面の閃光が出ている (管理側の旗・出ていない時は Unity に触らない)
 
     internal static void Tick()
     {
-        if (Shots.Count == 0 && Beams.Count == 0 && Puffs.Count == 0) return;
+        if (Shots.Count == 0 && Beams.Count == 0 && Puffs.Count == 0 && !_ovOn) return;
         if (RewindPlayback.Active) { _rewound = true; return; }
         if (_rewound) { _rewound = false; Drop(); return; }
         float now = Time.time;
+        if (_ovOn) { if (_ov) TickOverlay(now); else _ovOn = false; }
         if (Shots.Count > 0 || Beams.Count > 0)
         {
             if (MeetingHud.Instance) { Drop(); return; }
@@ -575,5 +792,8 @@ internal static class NovaFx
         Beams.Clear();
         foreach (var p in Puffs) if (p.Go) { p.Go.SetActive(false); Pool.Push(p); }
         Puffs.Clear();
+        if (_ov) _ov.SetActive(false);
+        _ovT0 = -99f;
+        _ovOn = false;
     }
 }
