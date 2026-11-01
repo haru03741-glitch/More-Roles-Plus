@@ -62,6 +62,7 @@ public sealed class RemoteController : RoleBase
                 if (!PortKit.Alive(Player) || _operating || !PortKit.Alive(t)) return false;
                 if (Player.MyPhysics && Player.MyPhysics.body) Player.MyPhysics.body.velocity = Vector2.zero;
                 Follow(t);
+                ShowEye(t);
                 OperateCall.Send((true, _target));
                 SetOperating(Player, true, _target);
                 return true;
@@ -88,6 +89,7 @@ public sealed class RemoteController : RoleBase
         {
             if (_target != 255) Controlled.Remove(_target);
             if (IsLocal) Follow(PlayerControl.LocalPlayer);
+            HideEye();
         });
     }
 
@@ -128,9 +130,50 @@ public sealed class RemoteController : RoleBase
         OperateCall.Send((false, _target));
         SetOperating(Player, false, _target);
         Follow(PlayerControl.LocalPlayer);
+        HideEye();
         _target = 255;
         TargetCall.Send(255);
         Player.SetKillTimer(GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown));
+    }
+
+    // 操作している端末だけ: 操っている人のまわりも見える (本編の視界の切り抜きをその人に付ける) のと、
+    // 誰を操っているかが分かる赤い縁取り
+    private GameObject _eye;
+    private PlayerControl _outlined;
+    private float _outlineTimer;
+    private static Il2CppSystem.Nullable<UnityEngine.Color> _outlineOn, _outlineOff;
+    private static Material _eyeMat;
+
+    private void ShowEye(PlayerControl t)
+    {
+        HideEye();
+        var src = PlayerControl.LocalPlayer ? PlayerControl.LocalPlayer.LightPrefab : null;
+        var ship = ShipStatus.Instance;
+        if (src && ship)
+        {
+            _eye = new GameObject("MrpRemoteEye") { layer = LayerMask.NameToLayer("Shadow") };
+            _eye.transform.SetParent(t.transform, false);
+            float size = ship.MaxLightRadius * 5.25f;
+            _eye.transform.localScale = new Vector3(size, size, 1f);
+            _eye.AddComponent<MeshFilter>().mesh = src.lightChildMesh;
+            // 材質は 1 つを使い回す (renderer.material は複製を作り、GameObject を消しても残る)
+            _eyeMat ??= new Material(src.LightCutawayMaterial.shader) { hideFlags = HideFlags.DontUnloadUnusedAsset };
+            _eye.AddComponent<MeshRenderer>().sharedMaterial = _eyeMat;
+        }
+        if (t.cosmetics)
+        {
+            t.cosmetics.SetOutline(true, _outlineOn ??= new Il2CppSystem.Nullable<UnityEngine.Color>(new UnityEngine.Color(1f, 0.1f, 0.1f, 1f)));
+            _outlined = t;
+        }
+    }
+
+    private void HideEye()
+    {
+        if (_eye) Object.Destroy(_eye);
+        _eye = null;
+        if (_outlined && _outlined.cosmetics)
+            _outlined.cosmetics.SetOutline(false, _outlineOff ??= new Il2CppSystem.Nullable<UnityEngine.Color>(new UnityEngine.Color(0f, 0f, 0f, 0f)));
+        _outlined = null;
     }
 
     private void CancelAndClear()
@@ -172,6 +215,13 @@ public sealed class RemoteController : RoleBase
         {
             CancelAndClear();
             return;
+        }
+        // 能力の狙いの縁取りは狙いが替わる時に前の人の縁取りを消すので、操っている間は少しずつ付け直す
+        _outlineTimer -= Time.fixedDeltaTime;
+        if (_outlineTimer <= 0f && _outlined && _outlined.cosmetics)
+        {
+            _outlineTimer = 0.5f;
+            _outlined.cosmetics.SetOutline(true, _outlineOn);
         }
         Vector2 dir = Minigame.Instance ? Vector2.zero : Quantize(hud && hud.joystick != null ? hud.joystick.DeltaL : Vector2.zero);
         _syncTimer -= Time.fixedDeltaTime;

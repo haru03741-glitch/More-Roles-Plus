@@ -277,6 +277,9 @@ public sealed class Doppelganger : RoleBase
     {
         var m = DoppelPuppet.Of(ownerId);
         if (m == null) return;
+        // 本物は分身の所へ引き寄せられて消えるので、元いた所に煙を残す
+        var owner = PortKit.ById(ownerId);
+        if (owner) DoppelPuppet.Poof(owner.GetTruePosition(), 0.8f);
         var lp = PlayerControl.LocalPlayer;
         if (lp && lp.PlayerId == ownerId)
         {
@@ -386,27 +389,11 @@ internal sealed class DoppelPuppet
         m.Destroy();
     }
 
-    // 煙のように消える・現れる演出 (広がって薄れる輪)
-    private static void Poof(Vector2 root, float size)
+    // 煙のように消える・現れる: その場に床に沿って広がる煙を立てる (壁を壊した時の土煙と同じ部品)
+    internal static void Poof(Vector2 root, float size)
     {
         if (!ShipStatus.Instance) return;
-        var c = RoleDisplay.ParseColor(Doppelganger.Hex);
-        var ring = PortArt.Spawn(PortArt.Ring, root, 0.3f, c, -5f);
-        var disc = PortArt.Spawn(PortArt.Disc, root, 0.2f, new Color(1f, 1f, 1f, 0.5f), -5f);
-        for (int i = 0; i <= 10; i++)
-        {
-            float t = i / 10f;
-            PortKit.After(0.04f * i, () =>
-            {
-                if (ring) { ring.transform.localScale = Vector3.one * Mathf.Lerp(0.3f, 1.6f * size, t); ring.color = new Color(c.r, c.g, c.b, 1f - t); }
-                if (disc) { disc.transform.localScale = Vector3.one * Mathf.Lerp(0.2f, 1.2f * size, t); disc.color = new Color(1f, 1f, 1f, 0.5f * (1f - t)); }
-            });
-        }
-        PortKit.After(0.45f, () =>
-        {
-            if (ring) UnityEngine.Object.Destroy(ring.gameObject);
-            if (disc) UnityEngine.Object.Destroy(disc.gameObject);
-        });
+        Terrain.DustCloud.Kick(root, 0.25f + 0.35f * size, (ushort)FxMath.Range(0, 65535));
     }
 
     private void Destroy()
@@ -525,6 +512,18 @@ internal static class DoppelMap
         return pos;
     }
 
+    // 地図の旗: 細い竿と、風で少しなびく三角の布 (高さ 1 単位・竿の根元が原点より下の端)
+    private static Sprite _flagSprite;
+    private static Sprite FlagSprite => _flagSprite ? _flagSprite : _flagSprite = FxSprites.Rect(48, 64, (x, y) =>
+    {
+        float pole = Mathf.Clamp01((0.045f - MathF.Abs(x + 0.30f)) / 0.02f) * Mathf.Clamp01((0.48f - MathF.Abs(y)) / 0.02f);
+        float u = (x + 0.27f) / 0.62f;                       // 竿から布の先へ 0..1
+        float mid = 0.27f - 0.05f * MathF.Sin(u * 5f) * u;   // 布の真ん中の高さ (先ほど揺れる)
+        float half = 0.17f * (1f - u);
+        float cloth = u is > 0f and < 1f ? Mathf.Clamp01((half - MathF.Abs(y - mid)) / 0.03f) : 0f;
+        return MathF.Max(pole, cloth);
+    }, "MrpDoppelFlag");
+
     internal static void Draw(MapBehaviour map, DoppelPuppet m, Vector2? flag, PlayerControl owner, float radius)
     {
         var parent = map.HerePoint.transform.parent;
@@ -536,8 +535,9 @@ internal static class DoppelMap
             _flag = new GameObject("MrpDoppelFlag").AddComponent<SpriteRenderer>();
             _flag.transform.SetParent(parent, false);
             _flag.gameObject.layer = map.HerePoint.gameObject.layer;
-            _flag.sprite = ButtonIcons.Has("doppelganger_flag") ? ButtonIcons.Get("doppelganger_flag") : ButtonIcons.Get("snr_marker");
-            _flag.transform.localScale = Vector3.one * (ButtonIcons.Has("doppelganger_flag") ? 0.65f : 0.3f);
+            _flag.sprite = FlagSprite;
+            _flag.color = RoleDisplay.ParseColor(Doppelganger.Hex);
+            _flag.transform.localScale = Vector3.one * 0.32f;
         }
         _me.gameObject.SetActive(m != null);
         if (m != null)
@@ -547,7 +547,7 @@ internal static class DoppelMap
             _me.transform.localPosition = ToMap(m.True, -1.5f);
         }
         _flag.gameObject.SetActive(m != null && flag != null);
-        if (m != null && flag is Vector2 f) _flag.transform.localPosition = ToMap(f, -2f);
+        if (m != null && flag is Vector2 f) _flag.transform.localPosition = ToMap(f, -2f) + new Vector3(0.072f, 0.155f, 0f); // 竿の根元をその点に
 
         // 分身の近くの人
         var near = new List<PlayerControl>();

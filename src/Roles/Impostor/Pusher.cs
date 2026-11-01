@@ -126,33 +126,9 @@ public sealed class Pusher : RoleBase
         });
     }
 
-    // 落ちていく姿 (その人の色の影がその向きへ飛び、回りながら小さくなって消える)
     private static void Fall(PlayerControl target, Vector2 from, Dir dir, Vector2? to)
     {
-        var go = new GameObject("PusherFall");
-        var r = go.AddComponent<SpriteRenderer>();
-        r.sprite = ButtonIcons.Get("snr_push");
-        r.color = Palette.PlayerColors[target.Data != null ? target.Data.DefaultOutfit.ColorId : 0];
-        go.transform.position = new Vector3(from.x, from.y, -5f);
-        go.transform.localScale = Vector3.one * 0.35f;
-        Vector3 v = dir switch { Dir.Right => new Vector3(16f, 0f), Dir.Left => new Vector3(-16f, 0f), Dir.Up => new Vector3(0f, 9f), _ => new Vector3(0f, -9f) };
-        float t = 0f;
-        System.Action step = null;
-        step = () =>
-        {
-            if (!go) return;
-            t += 0.02f;
-            if (t < 0.03f) go.transform.position += v * 0.02f;
-            else
-            {
-                go.transform.position += new Vector3(0f, -1.5f * (to.HasValue ? 1.5f : 1f) * 0.02f, 0f);
-                go.transform.Rotate(0f, 0f, dir == Dir.Left ? 5f : -5f);
-                go.transform.localScale *= 0.985f;
-                if (t > 0.23f) r.color = new UnityEngine.Color(r.color.r, r.color.g, r.color.b, Mathf.Max(0f, r.color.a - 0.03f));
-            }
-            if (t >= 0.98f) { Object.Destroy(go); return; }
-            PortKit.After(0.02f, step);
-        };
-        step();
+        float dx = dir == Dir.Right ? 1f : dir == Dir.Left ? -1f : 0f, dy = dir == Dir.Up ? 1f : dir == Dir.Down ? -1f : 0f;
+        PushFall.Start(target, dx, dy, to);
     }
 }

@@ -252,7 +252,21 @@ internal static class FungleLoader
     }
 }
 
-// ファングル以外に置いたキノコは本編の胞子の電文で探せないので、踏んだ人が全員に知らせる
+// ファングル以外に置いたキノコは本編の胞子の電文で探せないので、踏んだ人が全員に知らせる。
+// 本編はホスト以外が踏むと電文でホストに判定を頼む (CheckSporeTrigger はホストでだけ走る) ので、踏んだ人の端末の入口で止める
+[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CmdCheckSporeTrigger))]
+internal static class MushroomerSporeCmdPatch
+{
+    public static bool Prefix(PlayerControl __instance, [HarmonyArgument(0)] Mushroom mushroom)
+    {
+        if (!Mushroomer.Spores.Managed(mushroom)) return true;
+        if (!__instance.AmOwner) return false;
+        mushroom.TriggerSpores();
+        Mushroomer.Spores.TriggerCall.Send(mushroom.id);
+        return false;
+    }
+}
+
 [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CheckSporeTrigger))]
 internal static class MushroomerSporePatch
 {

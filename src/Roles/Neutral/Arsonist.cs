@@ -39,6 +39,8 @@ public sealed class Arsonist : RoleBase
         {
             Cooldown = () => DouseCooldown,
             Duration = () => DouseDuration,
+            // 塗っている間はその人、待っている間は押せば塗る人
+            ShowAim = () => _douse.InEffect ? PortKit.ById(_current) : NearestTarget(),
             OnUse = () =>
             {
                 var t = NearestTarget();
@@ -68,23 +70,10 @@ public sealed class Arsonist : RoleBase
     }
 
     // キルの届く所で、まだ塗っていない一番近い人
-    private PlayerControl NearestTarget()
-    {
-        float reach = GameManager.Instance.LogicOptions.GetKillDistance();
-        Vector2 me = Player.GetTruePosition();
-        PlayerControl best = null;
-        float bestD = reach;
-        foreach (var p in PlayerControl.AllPlayerControls)
-        {
-            if (!PortKit.Alive(p) || p == Player || _doused.Contains(p.PlayerId) || p.inVent) continue;
-            Vector2 pos = p.GetTruePosition();
-            float d = Vector2.Distance(me, pos);
-            if (d > bestD || PhysicsHelpers.AnythingBetween(me, pos, Constants.ShipAndObjectsMask, false)) continue;
-            best = p;
-            bestD = d;
-        }
-        return best;
-    }
+    private PlayerControl NearestTarget() =>
+        Targeting.ClosestPlayer(Player, GameManager.Instance.LogicOptions.GetKillDistance(), _notDoused ??= (_, p) => !_doused.Contains(p.PlayerId));
+
+    private System.Func<PlayerControl, PlayerControl, bool> _notDoused;
 
     // 塗っている途中に相手が死ぬか、一番近い人が変わったら失敗
     [LocalOnly]
@@ -113,8 +102,22 @@ public sealed class Arsonist : RoleBase
         (w, _) => w.Write((byte)0), r => r.ReadByte(),
         (sender, _) =>
         {
-            if (RoleState.Of(sender) is Arsonist a && PortKit.Alive(sender) && a.AllDoused()) GameEnd.Win(a);
+            if (RoleState.Of(sender) is not Arsonist a || a._ignited || !PortKit.Alive(sender) || !a.AllDoused()) return;
+            a._ignited = true;
+            // 塗った人の足元のオイルに火が付く (床の火の計算に載せるので全員の画面で燃え、床の材質と水で燃え方が変わる)。
+            // 燃え上がるのを見せてから勝ちを決める
+            foreach (var p in PlayerControl.AllPlayerControls)
+            {
+                if (!PortKit.Alive(p) || !a._doused.Contains(p.PlayerId)) continue;
+                Vector2 at = p.GetTruePosition();
+                Terrain.TerrainApi.WorldSpill(at, IgniteRadius, 1f);
+                Terrain.TerrainApi.WorldIgnite(at, IgniteRadius, 1f);
+            }
+            PortKit.After(IgniteDelay, () => { if (PortKit.Alive(sender) && RoleState.Of(sender) == a) GameEnd.Win(a); });
         });
+
+    private const float IgniteRadius = 0.7f, IgniteDelay = 2.5f;
+    private bool _ignited; // ホストだけ: 火を付けてから勝ちが決まるまでの間にもう一度押されても数えない
 
     public override string NameMark(PlayerControl seen) =>
         _doused.Contains(seen.PlayerId) ? $"<color={Color}>§</color>" : null;

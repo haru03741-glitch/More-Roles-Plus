@@ -153,6 +153,7 @@ public class Ticker : MonoBehaviour
         Roles.DuelShade.Tick();
         Roles.DuelTumble.Tick();
         Roles.CutCorpse.Tick();
+        Roles.PushFall.Tick();
         Roles.DuelGloom.Tick();
         UI.DuelHud.Tick();
         Menu.Emotes.Tick();

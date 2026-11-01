@@ -334,24 +334,71 @@ public static class SeerKit
         return new Text("EvilSeer.FlashColorText").With("color", name).ToString();
     }
 
-    // 魂を置く。limit なら seconds かけて薄くなって消える
+    // 魂を置く。limit なら seconds かけて薄くなって消える。
+    // 魂 = 床から少し浮いた淡い火の玉: 大きく薄いにじみ・上へすぼまる本体・白い芯の 3 枚を重ねる (色を指定されたら本体とにじみをその色に)
     public static void Soul(Lifespan life, Vector2 at, Color? tint, bool limit, float seconds)
     {
-        var sr = PortKit.Marker(life, at, "snr_soul", 0.6f, tint);
-        if (!limit || !sr) return;
+        var go = new GameObject("MrpSeerSoul");
+        go.transform.position = new Vector3(at.x, at.y + 0.25f, at.y / 1000f + 0.01f);
+        life.Bind(go);
+        Color c = tint ?? new Color(0.72f, 0.88f, 1f, 1f);
+        var parts = new[]
+        {
+            Part(go, SoulGlow, new Vector3(0f, -0.02f, 0.002f), 1.1f, new Color(c.r, c.g, c.b, 0.28f)),
+            Part(go, SoulBody, Vector3.zero, 0.62f, new Color(c.r * 0.6f + 0.4f, c.g * 0.6f + 0.4f, c.b * 0.6f + 0.4f, 0.75f)),
+            Part(go, SoulCore, new Vector3(0f, -0.08f, -0.001f), 0.27f, new Color(1f, 1f, 1f, 0.9f)),
+        };
+        if (!limit) return;
+        var alpha = new float[parts.Length];
+        for (int i = 0; i < parts.Length; i++) alpha[i] = parts[i].color.a;
         float t = 0f;
         System.Action step = null;
         step = () =>
         {
-            if (!sr) return;
+            if (!go) return;
             t += 0.05f;
             float p = Mathf.Clamp01(t / Mathf.Max(0.01f, seconds));
-            var c = sr.color;
-            c.a = 1f - p;
-            sr.color = c;
-            if (p >= 1f) { Object.Destroy(sr.gameObject); return; }
+            for (int i = 0; i < parts.Length; i++)
+            {
+                var pc = parts[i].color;
+                pc.a = alpha[i] * (1f - p);
+                parts[i].color = pc;
+            }
+            if (p >= 1f) { Object.Destroy(go); return; }
             PortKit.After(0.05f, step);
         };
         step();
     }
+
+    private static SpriteRenderer Part(GameObject parent, Sprite sprite, Vector3 local, float size, Color color)
+    {
+        var go = new GameObject("Part");
+        go.transform.SetParent(parent.transform, false);
+        go.transform.localPosition = local;
+        go.transform.localScale = Vector3.one * size;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = sprite;
+        sr.color = color;
+        return sr;
+    }
+
+    private static Sprite _glow, _body, _core;
+    private static Sprite SoulGlow => _glow ? _glow : _glow = Fx.FxSprites.Rect(64, 64, (x, y) => Fx.FxSprites.Soft(x, y), "MrpSoulGlow");
+    private static Sprite SoulCore => _core ? _core : _core = Fx.FxSprites.Rect(32, 32, Fx.FxSprites.Dot, "MrpSoulCore");
+    // 下が丸く上へすぼまって揺らぐ炎の形 (幅 0.6・高さ 1)
+    private static Sprite SoulBody => _body ? _body : _body = Fx.FxSprites.Rect(48, 80, (x, y) =>
+    {
+        float ux = x * 0.6f, by = -0.18f;
+        float r = 0.27f;
+        float w;
+        if (y < by) w = System.MathF.Sqrt(System.MathF.Max(0f, r * r - (y - by) * (y - by)));
+        else
+        {
+            float k = System.MathF.Max(0f, 1f - (y - by) / 0.66f);
+            w = r * System.MathF.Pow(k, 1.3f);
+            ux -= 0.04f * System.MathF.Sin((y - by) * 9f) * (1f - k); // 先が少し揺らいで曲がる
+        }
+        float edge = (w - System.MathF.Abs(ux)) / 0.08f;
+        return Mathf.Clamp01(edge) * Mathf.Clamp01((0.5f - System.MathF.Abs(y)) / 0.05f);
+    }, "MrpSoulBody");
 }

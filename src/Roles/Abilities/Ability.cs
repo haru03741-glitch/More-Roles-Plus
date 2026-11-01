@@ -69,6 +69,9 @@ public sealed class Ability
     // Self: 押した時 (自分の端末)。true = 使えた (待ち時間と回数を使う)
     public Func<bool> OnUse { get; init; }
 
+    // Self: 押すと誰に効くかを縁取りで見せる時、その相手 (自分の端末・0.1 秒ごと)。null = 縁取りなし
+    public Func<PlayerControl> ShowAim { get; init; }
+
     // Self の長押し: 押している間は HoldMin から 1 秒に 1 ずつ溜まって HoldMax で止まり、離した時に OnHold (溜めた値)。
     // true = 使えた。OnHold がある能力は OnUse を使わない。ボタンの数の欄に溜めた値を出す
     public Func<float> HoldMin { get; init; }
@@ -266,6 +269,11 @@ internal static class Abilities
             bool on = a.Ghost ? ghost : live;
             if (a.Target == AbilityTarget.Pick && a.Button != null)
                 a.Button.SetUsable(on && a.UsesLeft != 0 && now >= a.PendingUntil);
+            if (a.ShowAim != null && a.Target == AbilityTarget.Self && a.Button != null)
+            {
+                SetAim(a, on && lp.CanMove && a.UsesLeft != 0 ? a.ShowAim() : null);
+                continue;
+            }
             if (a.Target != AbilityTarget.Player || a.Button == null) continue;
             var aim = on && lp.CanMove ? Targeting.ClosestPlayer(lp, Reach(a), a.CanTarget, a.TargetDead, a.IgnoreWalls) : null;
             SetAim(a, aim);
