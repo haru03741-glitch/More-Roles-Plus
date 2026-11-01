@@ -137,7 +137,7 @@ internal static class CutCorpse
             // 0 = 頭と背中 (袈裟の上・帽子も載る)・1 = バイザーの下の欠片 (袈裟の下・腰の上)
             var planes = k == 0 ? new[] { kesaUp } : new[] { kesaDown, waistUp };
             var go = new GameObject(k == 0 ? "MrpCutCorpseTop" : "MrpCutCorpseChip") { layer = c0.Layer };
-            if (ship) go.transform.SetParent(ship.transform, true);
+            if (ship) FxRoot.Attach(go);
             go.SetActive(false);
             var p = new Piece { Go = go, Tf = go.transform };
             int made = 0;
@@ -300,6 +300,7 @@ internal static class CutCorpse
     internal static void Tick()
     {
         if (_live.Count == 0) return;
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         if (_shipGen != GameClock.ShipGen) { CheckShip(); return; }
         float now = Time.time;
         bool check = ++_frame >= AliveCheckEvery;

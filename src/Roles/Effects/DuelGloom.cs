@@ -38,6 +38,7 @@ internal static class DuelGloom
     internal static void Tick()
     {
         if (!Duel.Any && _live == 0 && _vigA <= 0f) return;
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         if (_gen != Terrain.GameClock.ShipGen)
         {
             // 船が替わった (暗がりは船の子なので一緒に消えている)
@@ -247,7 +248,7 @@ internal static class DuelGloom
         var soft = Soft();
         if (!soft) return null;
         var go = new GameObject("MrpDuelGloom");
-        go.transform.SetParent(ship.transform, true);
+        FxRoot.Attach(go);
         go.SetActive(false);
         var p = new Pool { Go = go, Seed = g * 2.39f };
         p.Core = Renderer(go, soft, "Pool");

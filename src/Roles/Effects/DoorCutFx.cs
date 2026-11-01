@@ -112,8 +112,7 @@ internal static class DoorCutFx
         var mesh = FxMeshCut.Cut(sr, cx, cy, new[] { new FxMeshCut.Plane(nx * side, ny * side, 0f) }, 1, null, "MrpDoorPiece");
         if (!mesh) return;
         var go = new GameObject("MrpDoorPiece") { layer = sr.gameObject.layer };
-        var ship = ShipStatus.Instance;
-        if (ship) go.transform.SetParent(ship.transform, true);
+        FxRoot.Attach(go);
         go.AddComponent<MeshFilter>().mesh = mesh;
         var mr = go.AddComponent<MeshRenderer>();
         mr.sharedMaterial = MatFor(sr);
@@ -160,8 +159,7 @@ internal static class DoorCutFx
         _line ??= FxSprites.Rect(64, 16, Glow, "MrpDoorCutLine");
         if (!_line) return;
         var go = new GameObject("MrpDoorCutLine") { layer = layer };
-        var ship = ShipStatus.Instance;
-        if (ship) go.transform.SetParent(ship.transform, true);
+        FxRoot.Attach(go);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = _line;
         go.transform.position = FxMath.V3(x, y, z);
@@ -183,6 +181,7 @@ internal static class DoorCutFx
     internal static void Tick()
     {
         if (Pieces.Count == 0 && Lines.Count == 0) return;
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         float now = Time.time;
         for (int i = Pieces.Count - 1; i >= 0; i--)
         {

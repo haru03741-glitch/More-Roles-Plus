@@ -135,8 +135,7 @@ internal sealed partial class RocketCannon
             if (d < 0.02f) { cx = 0f; cy = 1f; d = 1f; }
             float v = FxMath.Range(2.2f, 3.6f);
             var go = new GameObject("MrpCannonShard");
-            var ship = ShipStatus.Instance;
-            if (ship) go.transform.SetParent(ship.transform, true);
+            FxRoot.Attach(go);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             go.AddComponent<MeshRenderer>().sharedMaterial = _shardMat;
             var s = new Shard
@@ -192,8 +191,7 @@ internal sealed partial class RocketCannon
     private static GameObject NewStreak(string name, out Transform tf, out SpriteRenderer sr)
     {
         var go = new GameObject(name);
-        var ship = ShipStatus.Instance;
-        if (ship) go.transform.SetParent(ship.transform, true);
+        FxRoot.Attach(go);
         tf = go.transform;
         sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = Terrain.DebrisArt.SoftGlow;

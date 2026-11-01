@@ -232,6 +232,7 @@ internal sealed partial class RocketCannon
     internal static void Tick()
     {
         if (Live.Count == 0 && Puffs.Count == 0 && Slashes.Count == 0 && Shards.Count == 0) return;
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         float now = Time.time;
         for (int i = Live.Count - 1; i >= 0; i--)
         {
@@ -499,8 +500,7 @@ internal sealed partial class RocketCannon
         try
         {
             _root = new GameObject("MrpRocketCannon");
-            var ship = ShipStatus.Instance;
-            if (ship) _root.transform.SetParent(ship.transform, true);
+            FxRoot.Attach(_root);
             _rootTf = _root.transform;
             var cn = new GameObject("Cannon");
             _cannonTf = cn.transform;
@@ -533,8 +533,7 @@ internal sealed partial class RocketCannon
     {
         // 手は大砲の根の子にしない (せり上がる時の縦の伸び縮みで潰れるので)
         var go = new GameObject(flip ? "MrpRocketHandR" : "MrpRocketHandL");
-        var ship = ShipStatus.Instance;
-        if (ship) go.transform.SetParent(ship.transform, true);
+        FxRoot.Attach(go);
         go.transform.localScale = FxMath.V3(HandSize, HandSize, 1f);
         sr = go.AddComponent<SpriteRenderer>();
         if (mat) sr.sharedMaterial = mat;
@@ -635,8 +634,7 @@ internal sealed partial class RocketCannon
         if (p == null || !p.Go)
         {
             var go = new GameObject("MrpRocketPuff");
-            var ship = ShipStatus.Instance;
-            if (ship) go.transform.SetParent(ship.transform, true);
+            FxRoot.Attach(go);
             p = new Puff { Go = go, Tf = go.transform, Sr = go.AddComponent<SpriteRenderer>() };
         }
         var art = kind == PuffKind.Core ? _flash : kind == PuffKind.Spark ? Terrain.DebrisArt.Spark : Terrain.DebrisArt.Puff;
