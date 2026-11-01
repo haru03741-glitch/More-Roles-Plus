@@ -809,10 +809,21 @@ Report.ButtonTip: バグ報告・お問い合わせ (開発者とチャットで
 Report.Title: バグ報告・お問い合わせ
 Report.New: ＋ 新しく報告する
 Report.Intro: 送った報告にはスタッフが Discord で返事をします。返事はこの窓で読めて、そのままチャットできます。
+Report.NeedFriendCode: フレンドコードが無いとバグ報告は使えません。Among Us のアカウントでログインして、フレンドコードを作ってから開いてください。
 Report.None: まだ報告はありません。困った事や直してほしい所があれば「新しく報告する」から送ってください。
 Report.StateOpen: 受付中
 Report.StateReply: 返事あり
 Report.StateClosed: 完了
+Report.TabMine: 自分の報告
+Report.TabKnown: 未修正のバグ
+Report.KnownIntro: みんなから届いて、まだ直っていないバグです。同じバグなら送らなくても大丈夫です。右はそのバグが出た MRP と Among Us のバージョンです。
+Report.KnownLoading: 読み込んでいます…
+Report.KnownNone: 今わかっている未修正のバグはありません。
+Report.TabFixed: 修正済み
+Report.FixedIntro: 直ったバグの控えです。右はそのバグが出た MRP と Among Us のバージョンと、直った日です。
+Report.FixedNone: まだ直ったバグはありません。
+Report.KnownNotReady: サーバーがまだこの一覧に対応していません (サーバーの MrpServer の更新待ち)。
+Report.TagFixed: 修正済み
 Report.WriteTitle: 新しく報告する
 Report.CatBug: バグ
 Report.CatIdea: 要望
@@ -1707,3 +1718,7 @@ Doppelganger.NoPath: 幻影がそこへ行く道が見つからない
 Doppelganger.SwapCooldown: スワップの待ち時間
 Doppelganger.SwapDuration: スワップにかかる時間
 Doppelganger.DetectionRadius: 幻影がプレイヤーを探知する範囲
+IntroTeam.Neutral: 第三陣営
+IntroTeam.NeutralSub: クルーでもインポスターでもない、自分だけの勝ちを目指そう
+IntroTeam.Madmate: マッドメイト
+IntroTeam.MadmateSub: クルーにまぎれて、インポスターを勝たせよう

@@ -11,7 +11,7 @@ public sealed class EvilGuesser : RoleBase, IGuesser
     public override Text Name => new("EvilGuesser.Name");
     public override string Reading => "いびるげっさー";
     public override Text Blurb => new("EvilGuesser.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("EvilGuesser.Shoot", "snr_guess") };
     public static readonly IntOpt Shots = new("EvilGuesser.Shots", 3, 1, 15);
     public static readonly IntOpt PerMeeting = new("EvilGuesser.PerMeeting", 1, 1, 15);

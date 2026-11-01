@@ -13,7 +13,7 @@ public sealed class Vulture : RoleBase
     public override Text Name => new("Vulture.Name");
     public override string Reading => "ゔぁるちゃー";
     public override Text Blurb => new("Vulture.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Vulture.Eat", "snr_eat") };
 
     public static readonly FloatOpt EatCooldown = new("Vulture.Cooldown", 30f, 2.5f, 60f, 2.5f, "s");

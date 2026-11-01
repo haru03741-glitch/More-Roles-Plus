@@ -11,7 +11,7 @@ public sealed class Sheriff : RoleBase
     public override Text Name => new("Sheriff.Name");
     public override string Reading => "しぇりふ";
     public override Text Blurb => new("Sheriff.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "SM";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Sheriff.Execute", "snr_execute") };
 
     public static readonly FloatOpt KillCooldown = new("Sheriff.KillCooldown", 25f, 0f, 60f, 2.5f, "s");

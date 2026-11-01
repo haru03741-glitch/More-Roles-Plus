@@ -93,7 +93,8 @@ internal static class Origins
         if (name.Length == 0) return null;
         var grad = Colors(gradient);
         if (grad.Count >= 2) return Gradient(name.Replace("|", ""), grad);
-        var cols = Colors(color);
+        // gradient: に色が 1 つだけなら、その 1 色で塗る
+        var cols = grad.Count == 1 && Colors(color).Count == 0 ? grad : Colors(color);
         if (cols.Count == 0) return name.Replace("|", "");
         // 「|」で区切った名前は区切りごと・区切りが無ければ 1 文字ずつ (色が足りなければ最後の色のまま)
         var parts = name.Contains('|') ? name.Split('|') : Letters(name);

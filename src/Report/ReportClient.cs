@@ -55,6 +55,23 @@ internal static class ReportClient
         public List<Message> Messages { get; set; } = new();
     }
 
+    // みんなのバグの報告 (題・版・日時・直ったか だけ)
+    public sealed class KnownBug
+    {
+        public bool Closed { get; set; }      // 直った (スタッフが閉じた)
+        public long ClosedAt { get; set; }
+        public string Id { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string ModVersion { get; set; } = "";
+        public string GameVersion { get; set; } = "";
+        public long Created { get; set; }
+    }
+
+    private sealed class KnownList
+    {
+        public List<KnownBug> Reports { get; set; } = new();
+    }
+
     // 送る前に画面に出す、一緒に送られる物
     public sealed class Info
     {
@@ -205,6 +222,46 @@ internal static class ReportClient
                 Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             };
         }
+    }
+
+    public static async Task<List<KnownBug>> OpenBugs()
+    {
+        using var http = Client(TimeSpan.FromSeconds(20));
+        HttpResponseMessage res;
+        try { res = await http.GetAsync(BaseUrl + "/reports").ConfigureAwait(false); }
+        catch (Exception) { throw new ReportException("network"); }
+        using (res) return JsonSerializer.Deserialize<KnownList>(await Read(res).ConfigureAwait(false), Json)?.Reports ?? new List<KnownBug>();
+    }
+
+    // ---- 部屋の MRP の版 (マッチメイキングに出す) ----
+
+    private static string _announced;
+    private static Task _announcing;
+
+    // 毎フレーム: MRP のサーバーで部屋のホストになったら、その部屋の版を 1 回知らせる
+    public static void TickRoom()
+    {
+        var c = AmongUsClient.Instance;
+        if (!c || !c.AmHost || c.NetworkMode != NetworkModes.OnlineGame || c.GameState == InnerNet.InnerNetClient.GameStates.NotJoined)
+        {
+            _announced = null;
+            return;
+        }
+        if (_announcing != null && !_announcing.IsCompleted) return;
+        string code = InnerNet.GameCode.IntToGameName(c.GameId);
+        if (string.IsNullOrEmpty(code) || code == _announced || !Net.MrpRegion.IsCurrent()) return;
+        _announced = code;
+        string version = Plugin.Version;
+        _announcing = Task.Run(async () =>
+        {
+            try
+            {
+                using var http = Client(TimeSpan.FromSeconds(15));
+                var body = new StringContent(JsonSerializer.Serialize(new Dictionary<string, string> { ["code"] = code, ["modVersion"] = version }), Encoding.UTF8, "application/json");
+                using var res = await http.PostAsync(BaseUrl + "/room", body).ConfigureAwait(false);
+            }
+            catch (Exception) { }
+        });
     }
 
     public static async Task<Thread> Fetch(Saved s)

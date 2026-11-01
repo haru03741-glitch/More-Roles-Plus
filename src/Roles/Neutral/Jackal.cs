@@ -17,7 +17,7 @@ public sealed class Jackal : RoleBase
     public override Text Name => new("Jackal.Name");
     public override string Reading => "じゃっかる";
     public override Text Blurb => new("Jackal.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Jackal.Kill"), new("Jackal.Sidekick", "snr_sidekick") };
     public override bool IsKiller => true;
     public override string Faction => Pack;

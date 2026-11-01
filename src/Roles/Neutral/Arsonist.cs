@@ -14,7 +14,7 @@ public sealed class Arsonist : RoleBase
     public override Text Name => new("Arsonist.Name");
     public override string Reading => "あーそにすと";
     public override Text Blurb => new("Arsonist.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "TOU";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Arsonist.Douse", "snr_oil"), new("Arsonist.Ignite", "snr_fire") };
 
     public static readonly FloatOpt DouseCooldown = new("Arsonist.Cooldown", 10f, 2.5f, 60f, 2.5f, "s");
