@@ -24,6 +24,13 @@ internal static class ReportWindow
 
     private enum Page { List, Write, Chat }
 
+    // 一覧の頁のタブ: 自分の報告 / 未修正のバグ (みんなの) / 修正済み (直ったバグの控え)
+    private enum ListTabs { Mine, Open, Fixed }
+    private static ListTabs _tab;
+    private static List<ReportClient.KnownBug> _known;
+    private static Task<List<ReportClient.KnownBug>> _knownFetch;
+    private static string _knownError;
+
     private static Page _page;
     private static string _category = "bug";
     private static TextField _title, _body, _chat;
@@ -56,7 +63,15 @@ internal static class ReportWindow
         if (w == null) return;
         _page = Page.List;
         _status = null;
+        if (_tab != ListTabs.Mine) FetchKnown();
         Build();
+    }
+
+    private static void FetchKnown()
+    {
+        if (_knownFetch != null) return;
+        _knownError = null;
+        _knownFetch = Task.Run(ReportClient.OpenBugs);
     }
 
     private static void OnClosed()
@@ -112,6 +127,13 @@ internal static class ReportWindow
     private static Widget ListPage()
     {
         var head = new Stack(true, Title(new Text("Report.Title")), new Spacer(0.3f, 0.1f), Action(new Text("Report.New"), () => Go(Page.Write), 2.6f, true)) { Gap = 0.1f, Align = Align.Start };
+        var tabs = new Stack(true, ListTab(ListTabs.Mine, new Text("Report.TabMine")), ListTab(ListTabs.Open, new Text("Report.TabKnown")), ListTab(ListTabs.Fixed, new Text("Report.TabFixed")))
+        { Gap = 0.12f, Align = Align.Start };
+        if (_tab != ListTabs.Mine)
+        {
+            bool fixedTab = _tab == ListTabs.Fixed;
+            return new Stack(false, head, tabs, Small(new Text(fixedTab ? "Report.FixedIntro" : "Report.KnownIntro"), Sub), KnownList(fixedTab), StatusLine()) { Gap = 0.12f, Width = InnerW };
+        }
         var col = new Stack(false) { Gap = 0.08f, Width = InnerW - 0.3f };
         var all = ReportClient.All;
         if (all.Count == 0) col.Add(Small(new Text("Report.None"), Sub, InnerW - 0.3f));
@@ -128,8 +150,57 @@ internal static class ReportWindow
             var saved = s;
             col.Add(new Button(row, () => OpenChat(saved)) { Size = new Vector2(InnerW - 0.3f, 0.5f), Badge = true, BadgeOn = unread, Color = new Color(0.35f, 0.38f, 0.44f), Fill = new Color(0.09f, 0.1f, 0.12f) });
         }
-        var list = new ScrollView(new Vector2(InnerW, 3.5f), col) { Tag = "report-list" };
-        return new Stack(false, head, Small(new Text("Report.Intro"), Sub), list, StatusLine()) { Gap = 0.12f, Width = InnerW };
+        var list = new ScrollView(new Vector2(InnerW, 3.0f), col) { Tag = "report-list" };
+        return new Stack(false, head, tabs, Small(new Text("Report.Intro"), Sub), list, StatusLine()) { Gap = 0.12f, Width = InnerW };
+    }
+
+    private static Widget ListTab(ListTabs tab, string text)
+    {
+        bool on = _tab == tab;
+        var label = new Label(text, 1.4f) { Bold = true, TextAlign = TextAlignmentOptions.Center, Color = on ? new Color(0.02f, 0.16f, 0.09f) : Color.white };
+        var b = new Button(label, () =>
+        {
+            if (_tab == tab) return;
+            // 未修正と修正済みは同じ一覧から分けるので、行き来では読み直さない
+            if (_tab == ListTabs.Mine && tab != ListTabs.Mine) { _known = null; FetchKnown(); }
+            _tab = tab;
+            Build();
+        })
+        { Size = new Vector2(2.3f, 0.42f), Color = on ? Accent : new Color(0.45f, 0.48f, 0.54f) };
+        if (on) b.Fill = Accent;
+        return b;
+    }
+
+    // みんなのバグ (題と、その時の MRP と Among Us の版)。fixedOnly = 直った物 (控え) / でなければ直っていない物
+    private static Widget KnownList(bool fixedOnly)
+    {
+        const float w = InnerW - 0.3f;
+        var col = new Stack(false) { Gap = 0.08f, Width = w };
+        var shown = _known?.FindAll(k => k.Closed == fixedOnly);
+        if (shown == null) col.Add(Small(_knownError ?? new Text("Report.KnownLoading"), _knownError != null ? Warn : Sub, w));
+        else if (shown.Count == 0) col.Add(Small(new Text(fixedOnly ? "Report.FixedNone" : "Report.KnownNone"), Sub, w));
+        else
+            foreach (var k in shown)
+            {
+                // 修正済みは直った日・未修正は届いた日
+                long at = fixedOnly && k.ClosedAt > 0 ? k.ClosedAt : k.Created;
+                string when = DateTimeOffset.FromUnixTimeSeconds(at).ToLocalTime().ToString("MM/dd");
+                string tag = fixedOnly ? $"<color=#00E676>[{new Text("Report.TagFixed")}]</color>" : Icon("bug");
+                string title = fixedOnly ? $"<color=#9AA3AD>{Esc(k.Title)}</color>" : Esc(k.Title);
+                string ver = k.ModVersion.Length > 0 ? $"MRP {Esc(k.ModVersion)}" : "MRP ?";
+                if (k.GameVersion.Length > 0) ver += $"  /  AU {Esc(k.GameVersion)}";
+                var mine = ReportClient.All.Find(s => s.Id == k.Id);
+                var row = new Stack(true,
+                    new Label($"{tag}  {title}", 1.5f) { Width = 4.6f, NoWrap = true, Bold = mine != null },
+                    new Label(ver, 1.2f) { Width = 2.4f, Color = Sub, NoWrap = true, TextAlign = TextAlignmentOptions.Right },
+                    new Label(when, 1.2f) { Width = 0.9f, Color = Sub, TextAlign = TextAlignmentOptions.Right }) { Gap = 0.1f };
+                var size = new Vector2(w, 0.5f);
+                // 自分が送った物は押すとやり取りを開く
+                col.Add(mine != null
+                    ? new Button(row, () => OpenChat(mine)) { Size = size, Color = new Color(0.35f, 0.38f, 0.44f), Fill = new Color(0.09f, 0.1f, 0.12f) }
+                    : new Button(row, () => { }) { Size = size, Color = new Color(0.25f, 0.27f, 0.31f), Fill = new Color(0.07f, 0.08f, 0.09f) });
+            }
+        return new ScrollView(new Vector2(InnerW, 3.0f), col) { Tag = "report-known" };
     }
 
     // 種類の印 (本編の字に絵文字が無いので色の付いた字で)
@@ -422,6 +493,21 @@ internal static class ReportWindow
                 if (IsOpen) OpenChat(t.Result);
             }
         }
+        if (_knownFetch != null && _knownFetch.IsCompleted)
+        {
+            var t = _knownFetch;
+            _knownFetch = null;
+            if (t.IsFaulted)
+            {
+                _known = null;
+                // 一覧の口が無い = サーバーがまだ古い
+                string code = (t.Exception?.GetBaseException() as ReportClient.ReportException)?.Code;
+                _knownError = code is "not_found" or "http404" ? new Text("Report.KnownNotReady") : Error(t.Exception);
+            }
+            else { _known = t.Result; _knownError = null; }
+            if (IsOpen && _page == Page.List && _tab != ListTabs.Mine) Build();
+        }
+        ReportClient.TickRoom();
         if (_posting != null && _posting.IsCompleted)
         {
             var t = _posting;
@@ -501,6 +587,26 @@ internal static class ReportWindow
             switch (op)
             {
                 case "open": Open(); break;
+                case "tab":
+                    if (!IsOpen) Open();
+                    _tab = (ListTabs)Math.Clamp(int.TryParse(rest, out int ti) ? ti : 0, 0, 2);
+                    if (_tab != ListTabs.Mine) FetchKnown();
+                    Go(Page.List);
+                    break;
+                case "knowndemo":
+                {
+                    // 見た目の確認用 (サーバーへは読みに行かない)
+                    long t0 = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    _known = new List<ReportClient.KnownBug>
+                    {
+                        new() { Id = "demo1", Title = "会議の後に名前が消える", ModVersion = "v0.0.1", GameVersion = "2025.9.9", Created = t0 - 3600 },
+                        new() { Id = "demo2", Title = "ドッペルゲンガーの分身が壁を抜ける", ModVersion = "v0.0.1", GameVersion = "2025.9.9", Created = t0 - 86400 },
+                        new() { Id = "demo3", Title = "サムライの斬り合いで画面が止まる", ModVersion = "v0.0.0", GameVersion = "2025.9.9", Created = t0 - 86400 * 5, Closed = true, ClosedAt = t0 - 86400 * 2 },
+                    };
+                    _knownError = null;
+                    Build();
+                    break;
+                }
                 case "new": if (!IsOpen) Open(); Go(Page.Write); break;
                 case "title": _titleText = rest; Build(); break;
                 case "body": _bodyText = rest.Replace("\\n", "\n"); Build(); break;

@@ -813,6 +813,16 @@ Report.None: まだ報告はありません。困った事や直してほしい�
 Report.StateOpen: 受付中
 Report.StateReply: 返事あり
 Report.StateClosed: 完了
+Report.TabMine: 自分の報告
+Report.TabKnown: 未修正のバグ
+Report.KnownIntro: みんなから届いて、まだ直っていないバグです。同じバグなら送らなくても大丈夫です。右はそのバグが出た MRP と Among Us のバージョンです。
+Report.KnownLoading: 読み込んでいます…
+Report.KnownNone: 今わかっている未修正のバグはありません。
+Report.TabFixed: 修正済み
+Report.FixedIntro: 直ったバグの控えです。右はそのバグが出た MRP と Among Us のバージョンと、直った日です。
+Report.FixedNone: まだ直ったバグはありません。
+Report.KnownNotReady: サーバーがまだこの一覧に対応していません (サーバーの MrpServer の更新待ち)。
+Report.TagFixed: 修正済み
 Report.WriteTitle: 新しく報告する
 Report.CatBug: バグ
 Report.CatIdea: 要望

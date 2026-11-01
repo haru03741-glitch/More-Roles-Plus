@@ -813,6 +813,16 @@ Report.None: No reports yet. If something is wrong, send one with New report.
 Report.StateOpen: Open
 Report.StateReply: Reply
 Report.StateClosed: Done
+Report.TabMine: My reports
+Report.TabKnown: Known bugs
+Report.KnownIntro: Bugs reported by everyone that are not fixed yet. No need to report the same one again. On the right: the MRP and Among Us versions it happened on.
+Report.KnownLoading: Loading…
+Report.KnownNone: No known unfixed bugs right now.
+Report.TabFixed: Fixed
+Report.FixedIntro: An archive of fixed bugs. On the right: the MRP and Among Us versions it happened on, and the day it was fixed.
+Report.FixedNone: No fixed bugs yet.
+Report.KnownNotReady: The server does not support this list yet (MrpServer needs an update).
+Report.TagFixed: Fixed
 Report.WriteTitle: New report
 Report.CatBug: Bug
 Report.CatIdea: Idea
