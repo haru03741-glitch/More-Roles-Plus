@@ -1118,6 +1118,7 @@ Keybinds.Ability3: MRP の能力 3
 Keybinds.Emote: MRP のエモート・スタンプ
 Keybinds.Dictionary: MRP の役職辞典
 Keybinds.Dodge: MRP の回避 (立ち合いの間)
+Keybinds.PhotoMode: MRP の撮影モード (HUD を隠す / 戻す)
 Duel.DodgeLabel: 回避
 Duel.LockMash: 鍔迫り合い！ 左クリックか SPACE を連打
 Duel.LockMashTouch: 鍔迫り合い！ 画面を連打

@@ -1118,6 +1118,7 @@ Keybinds.Ability3: MRP ability 3
 Keybinds.Emote: MRP emote / stamp
 Keybinds.Dictionary: MRP role dictionary
 Keybinds.Dodge: MRP dodge (during a duel)
+Keybinds.PhotoMode: MRP photo mode (hide / show the HUD)
 Duel.DodgeLabel: Dodge
 Duel.LockMash: Blade lock! Mash Left Click or SPACE
 Duel.LockMashTouch: Blade lock! Mash the screen

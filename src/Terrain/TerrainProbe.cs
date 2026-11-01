@@ -978,10 +978,8 @@ internal static class TerrainProbe
 
         TestBridge.Register("hud", "<0|1> HUD (タスク一覧・ボタン) を隠す / 戻す (撮影用)", (args, reply) =>
         {
-            var hud = Vanilla.Hud;
-            if (!hud) { reply("ERR no hud"); return; }
-            hud.gameObject.SetActive(args.Trim() != "0");
-            reply($"OK hud {(hud.gameObject.activeSelf ? 1 : 0)}");
+            if (!Menu.PhotoMode.Set(args.Trim() == "0")) { reply("ERR no hud"); return; }
+            reply($"OK hud {(Menu.PhotoMode.On ? 0 : 1)}");
         });
     }
 
