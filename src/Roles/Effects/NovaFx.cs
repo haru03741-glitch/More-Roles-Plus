@@ -12,7 +12,7 @@ namespace MoreRolesPlus.Roles;
 //  出た後 = 光線は細って消え、床に焼けた線が残って冷める。砲口は赤熱して湯気を吹き、キャノンは下げて消える
 //  着弾   = 当たった所が白熱して冷めていき、火花が放物線を描いて散り、煙が立つ
 // 壁を壊す・床の水を湯気にする・燃える物に火を付けるのは、ホストが起こす地形の爆発と熱が全員の画面で出す
-internal static class NovaFx
+internal static partial class NovaFx
 {
     // ---- 数値 ----
     private const float CannonPpu = 200f;            // 3D の形を描いた時と同じ (長さ約 1.6 単位)
@@ -24,6 +24,9 @@ internal static class NovaFx
     private const float HandOut = 0.4f, HandSide = 0.2f, HandY = -0.24f; // 手: 体の芯から狙いの方へ・上下を狙う時は利き手の側へ
     private const float Deploy = 0.3f, Retract = 0.35f, Hold = 1.3f; // Hold = 撃った後に赤熱が冷めて湯気を吹く間
     private const float RaiseFrom = 55f;             // 構える前は狙いからこれだけ下げた向き
+    private const float SpringW = 16f, SpringZeta = 0.62f; // 砲身の重さ: 狙いへ 0.2 秒ほどで追い付き、数度だけ行き過ぎる
+    private const float BobRate = 11f, BobLift = 0.022f, BobSway = 1.5f; // 歩く揺れ: 歩みの速さ (rad/s)・上下の幅・振れの度
+    private const float VentOpenTime = 0.3f;         // 排熱口の蓋が開く/閉じる時間
     private const float RecoilBack = 0.18f, RecoilTime = 0.22f;
     private const float Ignite = 0.05f;              // 出始め: 芯が砲口から壁まで伸びる時間
     private const float Settle = 0.12f;              // 出始めの太さの山から落ち着くまで
@@ -60,7 +63,7 @@ internal static class NovaFx
         _bolt = ButtonIcons.Frames("nova_bolt", 6, BoltPpu, 6);
         _beam = ButtonIcons.Load("nova_beam", BeamPpu, FxMath.V2(0f, 0.5f)); // 左端が原点 (撃った所から先へ伸ばす)
         _streak = ButtonIcons.Load("nova_streak", StreakPpu, FxMath.V2(0.5f, 0.5f));
-        return _cannon != null && _glow != null && _bolt != null && _beam && _streak;
+        return _cannon != null && _glow != null && _bolt != null && _beam && _streak && PartsArt();
     }
 
     private static SpriteRenderer Make(string name, Sprite sp, Transform parent)
@@ -87,6 +90,20 @@ internal static class NovaFx
         return ((k % 32) + 32) % 32;
     }
 
+    // -180..180 へ畳む
+    private static float Wrap(float d)
+    {
+        d %= 360f;
+        return d > 180f ? d - 360f : d < -180f ? d + 360f : d;
+    }
+
+    // 床の上の向き (度) → 画面の上の向き (度)
+    private static float ScreenOf(float yaw)
+    {
+        float r = yaw * Deg;
+        return FxMath.Atan2(FxMath.Sin(r) * Squash, FxMath.Cos(r)) / Deg;
+    }
+
     private static float EaseOut(float u) { u = 1f - FxMath.Clamp01(u); return 1f - u * u * u; }
 
     // ================= キャノン (構え・溜め・冷め) =================
@@ -95,14 +112,16 @@ internal static class NovaFx
     {
         public GameObject Root;
         public PlayerControl P;
+        public Rig Rig;
         public SpriteRenderer Cannon, Glow, Core, Halo, Light, Aim, Dot, Heat, Bolt;
         public Transform CannonTf, GlowTf, CoreTf, HaloTf, LightTf, AimTf, DotTf, BoltTf;
         public float T0, C0, Dur, Ax, Ay, Angle, Size, AimLen, AimYaw, FiredAt = -1f, EndAt = -1f;
         public float NextHaze, NextBolt, BoltOff, NextDrip, NextSteam;
         public float Mx, My, Z, Dx, Dy;   // 今の砲口 (画面)・奥行き・今のキャノンの画面の向き
         public float Side = 1f;           // キャノンを持つ手 (右 = 1・左 = -1)
-        public int Frame = -1, Check;
-        public bool Shown = true, Stance;
+        public float Vx = 1f, Vy, VisYaw, VisVel, LastNow, Bob, BobPhase, Rot; // 見えている向き (狙いに重さで遅れて付いてくる)・歩く揺れ・絵を回した角度
+        public int Frame = -1, Check, KeyCannon = -1, KeyGlow = -1;
+        public bool Shown = true, Stance, Moving;
     }
 
     private static readonly List<Shot> Shots = new();
@@ -120,12 +139,18 @@ internal static class NovaFx
         var s = new Shot { Root = root, P = p, T0 = Time.time };
         s.Side = p.cosmetics && p.cosmetics.FlipX ? -1f : 1f;
         SetAngle(s, angle);
+        s.VisYaw = s.AimYaw;
+        s.Vx = s.Ax; s.Vy = s.Ay;
+        if (s.Ax > 0.25f) s.Side = 1f; else if (s.Ax < -0.25f) s.Side = -1f;
+        s.LastNow = s.T0;
         var rt = root.transform;
         s.Light = Make("Light", Terrain.DebrisArt.SoftGlow, rt); s.LightTf = s.Light.transform;
         s.Aim = Make("Aim", _beam, rt); s.AimTf = s.Aim.transform;
         s.Dot = Make("Dot", Terrain.DebrisArt.SoftGlow, rt); s.DotTf = s.Dot.transform;
-        s.Cannon = Make("Cannon", _cannon[0], rt); s.CannonTf = s.Cannon.transform;
-        s.Glow = Make("Glow", _glow[0], rt); s.GlowTf = s.Glow.transform;
+        s.Rig = MakeRig(rt);
+        s.Cannon = Make("Cannon", _cannon[0], s.Rig.Tf); s.CannonTf = s.Cannon.transform;
+        s.Glow = Make("Glow", _glow[0], s.Rig.Tf); s.GlowTf = s.Glow.transform;
+        s.GlowTf.localPosition = FxMath.V3(0f, 0f, -0.00005f);
         s.Halo = Make("Halo", Terrain.DebrisArt.SoftGlow, rt); s.HaloTf = s.Halo.transform;
         s.Core = Make("Core", Terrain.DebrisArt.SoftGlow, rt); s.CoreTf = s.Core.transform;
         s.Bolt = Make("Bolt", _bolt[0], rt); s.BoltTf = s.Bolt.transform;
@@ -141,7 +166,6 @@ internal static class NovaFx
         s.Angle = angle;
         s.Ax = FxMath.Cos(angle * Deg); s.Ay = FxMath.Sin(angle * Deg);
         s.AimYaw = YawOf(angle);
-        if (s.Ax > 0.25f) s.Side = 1f; else if (s.Ax < -0.25f) s.Side = -1f;
         if (s.AimTf) s.AimTf.rotation = FxMath.RotZ(angle);
     }
 
@@ -193,17 +217,41 @@ internal static class NovaFx
         {
             if (!firing && !PortKit.Alive(s.P)) return false;
             bool vis = s.P.Visible;
-            if (vis != s.Shown) { s.Shown = vis; s.Cannon.enabled = s.Glow.enabled = vis; }
+            if (vis != s.Shown) { s.Shown = vis; s.Rig.Go.SetActive(vis); }
             // 体を狙いの側へ向ける (キャノンを持つ手が体の前に来る)。構えて歩いている間は歩く向きのまま
-            if ((s.Ax > 0.25f || s.Ax < -0.25f) && (!s.Stance || Still(s.P)))
+            s.Moving = s.Stance && !Still(s.P);
+            if ((s.Vx > 0.25f || s.Vx < -0.25f) && !s.Moving)
             {
                 var cos = s.P.cosmetics;
-                bool left = s.Ax < 0f;
+                bool left = s.Vx < 0f;
                 if (cos && cos.FlipX != left) cos.SetFlipX(left);
             }
         }
+        // 見えている向き: 重い砲身は狙いへ少し遅れて回り、わずかに行き過ぎて止まる (減衰の強いばね)。撃つ時は狙いと一致させる
+        float dt = now - s.LastNow;
+        s.LastNow = now;
+        if (dt > 0.05f) dt = 0.05f;
+        if (firing) { s.VisYaw = s.AimYaw; s.VisVel = 0f; }
+        else
+        {
+            float h = dt * 0.5f;
+            for (int i = 0; i < 2; i++)
+            {
+                float err = Wrap(s.AimYaw - s.VisYaw);
+                s.VisVel += (SpringW * SpringW * err - 2f * SpringZeta * SpringW * s.VisVel) * h;
+                s.VisYaw += s.VisVel * h;
+            }
+        }
+        // 手の位置・持つ手・体の向きは見えている砲身の向きに合わせる (狙いが先に回っても、砲身が回り込むまで持ち替えない)
+        float vs = ScreenOf(s.VisYaw) * Deg;
+        s.Vx = FxMath.Cos(vs); s.Vy = FxMath.Sin(vs);
+        if (s.Vx > 0.25f) s.Side = 1f; else if (s.Vx < -0.25f) s.Side = -1f;
+        // 構えて歩くと、歩みに合わせて上下に揺れ、わずかに振れる。止まると落ち着く
+        s.Bob += ((s.Moving ? 1f : 0f) - s.Bob) * FxMath.Clamp01(dt * 6f);
+        if (s.Bob > 0.01f) s.BobPhase += dt * BobRate;
         // 向き: 構える時は下げた向きから持ち上げる・しまう時は下げながら消える
-        float yaw = s.AimYaw, lift = 0f, alpha = 1f;
+        float yaw = s.VisYaw + s.Bob * BobSway * FxMath.Sin(s.BobPhase * 0.5f), lift = 0f, alpha = 1f;
+        if (s.Bob > 0.01f) lift += s.Bob * BobLift * FxMath.Abs(FxMath.Sin(s.BobPhase));
         if (td < Deploy)
         {
             float e = EaseOut(td / Deploy);
@@ -219,10 +267,19 @@ internal static class NovaFx
             lift = -0.12f * u;
             alpha = 1f - u;
         }
-        int f = FrameOf(yaw);
+        // 絵は 11.25° 刻みの 32 コマ。いちばん近いコマを選び (境目で行き来しないよう少し粘る)、残りの角度は画面の上で絵を回して埋める
+        int f = s.Frame;
+        if (f < 0 || FxMath.Abs(Wrap(yaw - f * 11.25f)) > 6.6f) f = FrameOf(yaw);
         if (f != s.Frame) { s.Frame = f; s.Cannon.sprite = _cannon[f]; s.Glow.sprite = _glow[f]; }
-        // 今のコマの画面の向き (握りから砲口へ)
-        float yr = f * 11.25f * Deg;
+        float scr = ScreenOf(yaw);
+        float rot = (int)System.MathF.Round(Wrap(scr - ScreenOf(f * 11.25f)) * 4f) * 0.25f;
+        if (rot != s.Rot)
+        {
+            s.Rot = rot;
+            s.Rig.Tf.rotation = FxMath.RotZ(rot);
+        }
+        // 今の画面の向き (握りから砲口へ) と、床の上の長さが画面で縮む倍率
+        float yr = yaw * Deg;
         float cyaw = FxMath.Cos(yr), syaw = FxMath.Sin(yr) * Squash;
         float dl = FxMath.Sqrt(cyaw * cyaw + syaw * syaw);
         s.Dx = cyaw / dl; s.Dy = syaw / dl;
@@ -237,15 +294,14 @@ internal static class NovaFx
         if (s.Stance) lift += 0.006f * FxMath.Sin(now * 2.2f);
         // 手の位置 → 握り → 形の真ん中
         var pos = s.P.transform.position;
-        float ax = FxMath.Abs(s.Ax);
-        float hx = pos.x + s.Ax * HandOut + s.Side * HandSide * (1f - ax) - s.Dx * kick + jx;
-        float hy = pos.y + HandY + s.Ay * 0.05f + lift - s.Dy * kick + jy;
+        float ax = FxMath.Abs(s.Vx);
+        float hx = pos.x + s.Vx * HandOut + s.Side * HandSide * (1f - ax) - s.Dx * kick + jx;
+        float hy = pos.y + HandY + s.Vy * 0.05f + lift - s.Dy * kick + jy;
         float cx = hx + s.Dx * GripBack * dl, cy = hy + s.Dy * GripBack * dl + GripLift;
         // 上へ構える時は体の後ろ、それ以外は体の前
-        s.Z = pos.z + (s.Ay > 0.35f ? 0.0004f : -0.0004f);
-        s.CannonTf.position = FxMath.V3(cx, cy, s.Z);
-        s.GlowTf.position = FxMath.V3(cx, cy, s.Z - 0.00005f);
-        s.Cannon.color = FxMath.Rgba(1f, 1f, 1f, alpha);
+        s.Z = pos.z + (s.Vy > 0.35f ? 0.0004f : -0.0004f);
+        int kc = (int)(alpha * 64f);
+        if (kc != s.KeyCannon) { s.KeyCannon = kc; s.Cannon.color = FxMath.Rgba(1f, 1f, 1f, kc / 64f); }
         s.Mx = cx + s.Dx * MuzzleAhead * dl;
         s.My = cy + s.Dy * MuzzleAhead * dl;
         // 光る所: 溜めで灯っていく・撃った瞬間は最大・その後は冷めて消える
@@ -253,7 +309,23 @@ internal static class NovaFx
         if (s.Stance || td < Deploy) g = 0f;
         else if (!firing) g = FxMath.Clamp01(tc / (s.Dur + 0.001f)) * FxMath.Range(0.9f, 1f);
         else g = tf < BeamLife ? 1f : FxMath.Clamp01(1f - (tf - BeamLife) / Hold);
-        s.Glow.color = FxMath.Rgba(1f, 1f, 1f, g * alpha);
+        int kg = (int)(g * alpha * 64f);
+        if (kg != s.KeyGlow) { s.KeyGlow = kg; s.Glow.color = FxMath.Rgba(1f, 1f, 1f, kg / 64f); }
+        // 爪の開き: 構えている間はゆっくり息をするように開閉・溜めで少しずつ開く・撃つと一気に開いて戻る・しまう時は閉じる
+        float open;
+        if (firing) open = tf < 0.08f ? 0.1f + 0.45f * tf / 0.08f : 0.1f + 0.45f * FxMath.Clamp01(1f - (tf - 0.08f) / BeamLife);
+        else if (s.Stance) open = 0.08f + 0.05f * FxMath.Sin((now - s.T0) * 1.7f);
+        else open = 0.1f + 0.25f * FxMath.Clamp01(tc / (s.Dur + 0.001f));
+        open *= alpha;
+        // 排熱口: 光線が細り始めた頃に開いて熱を吐き、冷めたら閉じる
+        float vent = 0f, heat = 0f;
+        if (firing)
+        {
+            float t0 = BeamLife * 0.5f, t1 = end - 0.5f;
+            vent = tf < t0 ? 0f : tf < t0 + VentOpenTime ? EaseOut((tf - t0) / VentOpenTime) : tf < t1 ? 1f : 1f - FxMath.Clamp01((tf - t1) / VentOpenTime);
+            heat = FxMath.Clamp01(1f - (tf - t0) / (end - t0));
+        }
+        TickRig(s, cx, cy, now, open, vent, heat, g, alpha, s.Shown && !firing && td > Deploy);
         if (firing) TickCooling(s, now, tf, cx, cy, dl);
         else TickAim(s, now, td, tc, alpha, dl);
         return true;
@@ -354,12 +426,21 @@ internal static class NovaFx
             ht.localScale = FxMath.V3(hs, hs, 1f);
             s.Heat.color = FxMath.Rgba(1f, 0.3f + 0.3f * (1f - cool), 0.12f, 0.7f * (1f - cool));
         }
-        if (tf > 0.25f && tf < BeamLife + Hold && now >= s.NextSteam)
+        // 開いた排熱口から熱い空気と湯気を外の上へ吐く (蓋が開いている間)
+        var r = s.Rig;
+        if (r.KeyVent > 40 && now >= s.NextSteam)
         {
-            s.NextSteam = now + 0.08f;
-            float k = FxMath.Range(-0.35f, 0.6f);
-            float sx = cx + s.Dx * dl * k, sy = cy + s.Dy * dl * k + 0.1f;
-            SpawnPuff(sx, sy, FxMath.Range(-0.1f, 0.1f), FxMath.Range(0.4f, 0.7f), 0.15f, 0.6f, FxMath.Range(0.7f, 1f), s.Z - 0.0006f, PuffKind.Steam);
+            s.NextSteam = now + 0.05f;
+            float hot = FxMath.Clamp01(1f - tf / (BeamLife + Hold));
+            float c = FxMath.Cos(s.Rot * Deg), sn = FxMath.Sin(s.Rot * Deg);
+            for (int i = 0; i < 2; i++)
+            {
+                float vx = r.VentX[i], vy = r.VentY[i];
+                float wx = cx + c * vx - sn * vy, wy = cy + sn * vx + c * vy;
+                float nx = c * r.VentNx[i] - sn * r.VentNy[i], ny = sn * r.VentNx[i] + c * r.VentNy[i];
+                float v = FxMath.Range(0.5f, 0.9f);
+                SpawnPuff(wx, wy, nx * v + FxMath.Range(-0.08f, 0.08f), ny * v + 0.25f, 0.08f, 0.45f + 0.2f * hot, FxMath.Range(0.6f, 0.9f), s.Z - 0.0006f, hot > 0.5f ? PuffKind.Haze : PuffKind.Steam);
+            }
         }
     }
 
