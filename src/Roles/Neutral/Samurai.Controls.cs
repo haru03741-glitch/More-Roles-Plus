@@ -22,6 +22,7 @@ public sealed partial class Samurai
     private const float SpentRefill = 25f;          // 気切れが明けた時に戻る気 (明けてすぐの一振りでまた尽きないよう、一振り分より少し多く)
     private const float KiSlack = 25f;             // ホストの気の見積もりの余裕 (踏み込みはホストへ届かないので、ホストの方が多めに見る)
     internal const float ChargeTime = 1.0f;        // 居合を溜め切るまで (押してから)
+    internal const float UltChargeTime = 1.2f;     // 道を決めた後、溜め切った居合をさらに溜めて必殺技になるまで
     private const float ChargeDelay = 0.12f;       // 押してすぐのなぞりは溜め無し
     internal const float DashSpeed = 14f;
     private const float DashTime = 0.16f;
@@ -45,6 +46,18 @@ public sealed partial class Samurai
     internal float Charge => !Drawn && SwipeInput.Dragging && !SwipeInput.InStroke ? ChargeOf(Time.time - SwipeInput.PressedAt) : 0f;
 
     private static float ChargeOf(float held) => FxMath.Clamp01((held - ChargeDelay) / ChargeTime);
+    // 必殺技の溜め (0〜1) = 溜め切った後も押し続けた分
+    private static float UltChargeOf(float held) => FxMath.Clamp01((held - ChargeDelay - ChargeTime) / UltChargeTime);
+
+    // 溜めの姿の毎フレーム用: 居合の溜めと必殺技の溜めを、押してからの時間を 1 回だけ読んで出す
+    internal void ChargeNow(float now, out float charge, out float ult)
+    {
+        charge = ult = 0f;
+        if (Drawn || !SwipeInput.Dragging || SwipeInput.InStroke) return;
+        float held = now - SwipeInput.PressedAt;
+        charge = ChargeOf(held);
+        if (UltReady) ult = UltChargeOf(held);
+    }
 
     // ダミー (練習の相手) はホストが持ち主でも開発用の待ち時間なしを使わない
     private static bool DevFree(PlayerControl p) => p && !p.isDummy && Dev.DevCooldown.Skips(p);
@@ -321,7 +334,7 @@ public sealed partial class Samurai
 
     // なぞりが一振りになった瞬間。納めていれば、ここで抜く (見た目は振り付けを飛ばしてそのまま振る)。
     // 短すぎて捨てられた一振りの後に本当の一振りが続くことがあるので、居合の印は送った一振りで使うまで持ち越す
-    private bool _iaiStroke;
+    private bool _iaiStroke, _iaiUlt;
     private float _iaiCharge;
     private int _iaiTier = 1;
 
@@ -334,6 +347,7 @@ public sealed partial class Samurai
         if (Drawn || Spent) return;
         _iaiStroke = true;
         _iaiCharge = ChargeOf(Time.time - SwipeInput.PressedAt);
+        _iaiUlt = UltReady && UltChargeOf(Time.time - SwipeInput.PressedAt) >= 1f;
         _iaiTier = IaiTier(_ki, _iaiCharge);
         SetDrawn(true, iai: true);
         _blade.ArmIai(_iaiCharge, _iaiTier);

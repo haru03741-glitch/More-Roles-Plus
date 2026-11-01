@@ -207,7 +207,7 @@ internal static class RoleCommands
             }
             if (p.Length >= 5 && p[0] == "stroke" && byte.TryParse(p[1], out byte sid))
             {
-                // stroke <番号> <a0> <掃引角> <秒> [溜め 0〜1] = その人のサムライにボットと同じ道で一振りさせる (ホスト)
+                // stroke <番号> <a0> <掃引角> <秒> [溜め 0〜1・2 = 必殺技まで] = その人のサムライにボットと同じ道で一振りさせる (ホスト)
                 if (RoleState.Of(sid) is not Roles.Neutral.Samurai ss) { reply("ERR samurai not Samurai"); return; }
                 float charge = p.Length >= 6 ? float.Parse(p[5], inv) : 0f;
                 ss.BotStroke(float.Parse(p[2], inv), float.Parse(p[3], inv), float.Parse(p[4], inv), charge);

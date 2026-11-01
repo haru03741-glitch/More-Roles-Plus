@@ -8,8 +8,9 @@ namespace MoreRolesPlus.Roles.Neutral;
 
 // サムライ (第三陣営): なぞり (PC = 左ドラッグ・スマホ = 画面の右半分) で刀を振って斬る。納めている時のなぞりは居合 (抜きながら斬る)。
 // 操作と「気」は Samurai.Controls.cs。当たった相手とは立ち合い (Duel) になり、斬るたびに体力が減って 0 で倒れる。
-// 始めは守の道 = インポスターを PathKills 人斬って最後まで生きていれば、勝った陣営と一緒に勝つ。
-// インポスター以外を FallKills 人斬ると修羅の道へ堕ち、以後は自分以外の生存者が 1 人以下になった時に単独で勝つ。
+// 始めは守の道 = インポスターを PathKills 人斬って最後まで生きていれば、クルーが勝った時に一緒に勝つ。
+// インポスター以外を FallKills 人斬ると修羅の道へ堕ち、以後は堕ちた時の生存者の CarnageShare の割合の人数を斬るか、
+// 自分以外の生存者が 1 人以下 (最後の 1 人がインポスターなら立ち合いで決着) になった時に単独で勝つ。
 // 抜いた刀は全員に見える。一振りはホストが当たりを決め、斬った数と堕ちたかもホストが数えて本人にだけ知らせる (全員へ知らせるかは設定)
 public sealed partial class Samurai : RoleBase
 {
@@ -27,6 +28,8 @@ public sealed partial class Samurai : RoleBase
 
     public static readonly IntOpt PathKills = new("Samurai.PathKills", 1, 1, 3);
     public static readonly IntOpt FallKills = new("Samurai.FallKills", 2, 1, 5);
+    // 修羅の勝ちに要る斬った数 = 堕ちた時の自分以外の生存者のこの割合 (四捨五入・最低 1)。部屋の人数と堕ちた時期の両方に合う
+    public static readonly IntOpt CarnageShare = new("Samurai.CarnageShare", 35, 20, 50, 5, "%");
     public static readonly BoolOpt AnnounceSlot = new("Samurai.AnnounceSlot", true);
     public static readonly BoolOpt AnnounceFall = new("Samurai.AnnounceFall", false);
     public static readonly FloatOpt SlashRange = new("Samurai.SlashRange", 2f, 1f, 3.5f, 0.25f);
@@ -78,6 +81,9 @@ public sealed partial class Samurai : RoleBase
     private readonly Tracked<int> _impostorKills = new(0);
     private readonly Tracked<int> _otherKills = new(0);
     private readonly Tracked<bool> _fallen = new(false);
+    // 修羅の道: 堕ちた後に斬った数と、勝ちに要る数 (堕ちた時に決めて以後は変えない)
+    private readonly Tracked<int> _carnageKills = new(0);
+    private readonly Tracked<int> _carnageGoal = new(0);
     private readonly Tracked<bool> _pathDone = new(false);
 
     private SamuraiBlade _blade;
@@ -149,7 +155,7 @@ public sealed partial class Samurai : RoleBase
 
     // ---- 斬る (なぞりの一振り) ----
 
-    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms・居合 (0 = 違う・1〜255 = 居合で溜め (v-1)/254)・居合の段 (1〜4・突きは ThrustFlag を足す)
+    // 一振り = 始めの角度・符号付きの掃引角 (度・整数)・かかった ms・居合 (0 = 違う・1〜254 = 居合で溜め (v-1)/253・UltIai = 必殺技まで溜めた)・居合の段 (1〜4・突きは ThrustFlag を足す)
     private readonly struct Stroke
     {
         public readonly short A0, Sweep;
@@ -169,6 +175,9 @@ public sealed partial class Samurai : RoleBase
 
     // 居合の段: 抜いた時に残っていた気を 4 つに区切る (気が多いほど派手)。
     // 溜め無しの居合は普通の一振りなので段 1・段 4 は溜め切った時だけ (足りなければ段 3)
+    private const byte UltIai = 255;
+    private static byte IaiByte(float charge) => (byte)(1 + (int)MathF.Round(FxMath.Clamp01(charge) * 253f));
+
     internal static int IaiTier(float ki, float charge)
     {
         if (charge <= 0.02f) return 1;
@@ -184,7 +193,8 @@ public sealed partial class Samurai : RoleBase
         _iaiStroke = false;
         UseKi(LocalStrokeCost(!iai));
         _sent++;
-        byte charge = iai ? (byte)(1 + (int)MathF.Round(_iaiCharge * 254f)) : (byte)0;
+        byte charge = !iai ? (byte)0 : _iaiUlt ? UltIai : IaiByte(_iaiCharge);
+        _iaiUlt = false;
         _sentIai = charge;
         StrokeCall.Send(new Stroke((short)MathF.Round(a0), (short)MathF.Round(sweep), (ushort)Math.Clamp((int)(seconds * 1000f), 1, 60000), charge, (byte)(iai ? _iaiTier : 1), _strokeSeq));
     }
@@ -208,7 +218,8 @@ public sealed partial class Samurai : RoleBase
         _blade.Thrust(angle, _fallen);
         float ar = angle * FxMath.Deg2Rad;
         Lunge(FxMath.Cos(ar), FxMath.Sin(ar));
-        byte charge = iai ? (byte)(1 + (int)MathF.Round(_iaiCharge * 254f)) : (byte)0;
+        byte charge = iai ? IaiByte(_iaiCharge) : (byte)0;
+        _iaiUlt = false;
         _sentIai = charge;
         StrokeCall.Send(new Stroke((short)MathF.Round(angle), 0, ThrustMs, charge, (byte)(1 | ThrustFlag)));
     }
@@ -287,10 +298,13 @@ public sealed partial class Samurai : RoleBase
         _hostStrokes++;
         bool thrust = (s.Tier & ThrustFlag) != 0;
         float charge = 0f;
+        bool ultAsk = false;
         if (iai)
         {
             // 溜めは客の申告。納めてから経った時間で溜められた分までに丸める
-            charge = FxMath.Min(s.Iai > 0 ? (s.Iai - 1) / 254f : 0f, ChargeOf(Time.time - _sheathedAt + 0.3f));
+            charge = FxMath.Min(s.Iai == UltIai ? 1f : s.Iai > 0 ? (s.Iai - 1) / 253f : 0f, ChargeOf(Time.time - _sheathedAt + 0.3f));
+            // 必殺技の溜めも客の申告。納めてから経った時間で溜められたかを確かめる
+            ultAsk = s.Iai == UltIai && UltChargeOf(Time.time - _sheathedAt + 0.3f) >= 1f;
             SetDrawn(true, iai: true);
         }
         // 段も客の申告。ホストの見積もりの気 (余裕込み) で出せる段までに丸める
@@ -311,8 +325,8 @@ public sealed partial class Samurai : RoleBase
             Impostor.RocketLauncher.HostStruggle(PlayerId, iai && !thrust && charge >= FullCharge);
             return;
         }
-        // 道を決めた後の溜め切った段 4 の居合は必殺技 (範囲に人がいれば普通の当たりと斬線は出さない・Samurai.Ult.cs)
-        if (iai && !thrust && tier == 4 && charge >= FullCharge && HostTryUlt()) return;
+        // 道を決めた後、溜め切ってからさらに溜めた段 4 の居合は必殺技 (範囲に人がいれば普通の当たりと斬線は出さない・Samurai.Ult.cs)
+        if (iai && !thrust && ultAsk && tier == 4 && HostTryUlt()) return;
         // 段 3〜4 の居合は斬線が空間のずれとして床に残る (向き = 振った刀の真ん中)
         if (iai && !thrust && (tier & 0x7F) >= 3) SpaceRifts.HostCut(Player.GetTruePosition(), a0 + sweep * 0.5f, tier & 0x7F, PlayerId);
         int dmg = thrust ? ThrustDamage : Damage(FxMath.Abs(sweep) / secs);
@@ -579,6 +593,7 @@ public sealed partial class Samurai : RoleBase
         Duel.HostLeave(target.PlayerId);
         if (impostor) _impostorKills.Value++;
         else _otherKills.Value++;
+        if (_fallen) _carnageKills.Value++;
         return true;
     }
 
@@ -607,18 +622,32 @@ public sealed partial class Samurai : RoleBase
     private void HostUpdatePath()
     {
         var s = PathState.Progress;
-        if (!_fallen && _otherKills >= FallKills) s = PathState.Fallen;
-        else if (!_fallen && !_pathDone && _impostorKills >= PathKills) s = PathState.PathDone;
-        int v = PlayerId | (int)s << 8 | Math.Min(_impostorKills.Value, 255) << 16;
+        if (!_fallen && _otherKills >= FallKills)
+        {
+            s = PathState.Fallen;
+            _carnageKills.Value = 0;
+            _carnageGoal.Value = Math.Max(1, (AliveOthers() * CarnageShare.Value + 50) / 100);
+        }
+        else if (_fallen) s = PathState.Carnage;
+        else if (!_pathDone && _impostorKills >= PathKills) s = PathState.PathDone;
+        // 修羅の道では斬った数の欄に堕ちてからの数と要る数を載せる
+        int v = PlayerId | (int)s << 8 | (s >= PathState.Fallen
+            ? Math.Min(_carnageKills.Value, 255) << 16 | Math.Min(_carnageGoal.Value, 127) << 24
+            : Math.Min(_impostorKills.Value, 255) << 16);
         ApplyPath(v);
         // 全員へ知らせる時は斬った数を載せない (使うのは本人とホストだけ)。ホスト自身がサムライなら手元だけ
-        if (s == PathState.Fallen && AnnounceFall) PathCall.Send(v & 0xFFFF, -1);
+        if (s == PathState.Fallen && AnnounceFall)
+        {
+            PathCall.Send(v & 0xFFFF, -1);
+            // 本人へは数だけを知らせ直す (Carnage にして、堕ちた知らせを二度出さない)
+            if (!IsLocal && OwnerClient() >= 0) PathCall.Send(v & ~(0xFF << 8) | (int)PathState.Carnage << 8, OwnerClient());
+        }
         else if (!IsLocal && OwnerClient() >= 0) PathCall.Send(v, OwnerClient());
     }
 
     private int OwnerClient() => Player ? Player.OwnerId : -2;
 
-    private enum PathState : byte { Progress = 0, PathDone = 1, Fallen = 2 }
+    private enum PathState : byte { Progress = 0, PathDone = 1, Fallen = 2, Carnage = 3 } // Carnage = 堕ちた後の斬った数の更新
 
     private static readonly RemoteCall<int> PathCall = new("Samurai.Path", Route.HostToAll,
         (w, v) => w.Write(v), r => r.ReadInt32(),
@@ -628,36 +657,68 @@ public sealed partial class Samurai : RoleBase
     private void ApplyPath(int v)
     {
         var s = (PathState)(v >> 8 & 0xFF);
-        if (IsLocal || AmongUsClient.Instance.AmHost) _impostorKills.Value = Math.Max(_impostorKills.Value, v >> 16 & 0xFF);
-        if (s == PathState.Fallen) _fallen.Value = true;
-        else if (s == PathState.PathDone) _pathDone.Value = true;
+        bool mine = IsLocal || AmongUsClient.Instance.AmHost;
+        if (s >= PathState.Fallen)
+        {
+            _fallen.Value = true;
+            // 全員へ知らせる分は数を載せない (要る数 0) ので、本人とホストだけ受け取る
+            if (mine && (v >> 24 & 0x7F) > 0)
+            {
+                _carnageKills.Value = v >> 16 & 0xFF;
+                _carnageGoal.Value = v >> 24 & 0x7F;
+            }
+        }
+        else if (mine) _impostorKills.Value = Math.Max(_impostorKills.Value, v >> 16 & 0xFF);
+        if (s == PathState.PathDone) _pathDone.Value = true;
         _blade.SetFallen(Fallen && IsLocal);
         if (IsLocal) RoleDisplay.EnsureTaskHeader(Player);
-        if (s == PathState.Progress) return;
+        if (s is PathState.Progress or PathState.Carnage) return;
         var hud = Vanilla.Hud;
         if (!hud || !hud.Notifier) return;
         if (IsLocal) hud.Notifier.AddDisconnectMessage(new Text(s == PathState.Fallen ? "Samurai.FellNotice" : "Samurai.PathNotice"));
         else if (s == PathState.Fallen && AnnounceFall) hud.Notifier.AddDisconnectMessage(new Text("Samurai.FellAnnounce"));
     }
 
-    // ホスト: 修羅は自分以外の生存者が 1 人以下になったら単独で勝つ
+    // ホスト: 修羅は堕ちてから要る数を斬るか、自分以外の生存者が 1 人以下になったら単独で勝つ。
+    // 最後の 1 人がインポスターなら勝ちにせず、立ち合いで決着をつけさせる
     private void HostCheckFallenWin()
     {
         var p = Player;
         if (!p || p.Data == null || p.Data.IsDead || p.Data.Disconnected || !GameData.Instance) return;
+        if (_carnageGoal.Value > 0 && _carnageKills.Value >= _carnageGoal.Value)
+        {
+            GameEnd.Win(this);
+            return;
+        }
         int others = 0;
+        bool impostorLeft = false;
         var all = GameData.Instance.AllPlayers;
         for (int i = 0; i < all.Count; i++)
         {
             var info = all[i];
             if (info == null || info.Disconnected || info.IsDead || info.PlayerId == PlayerId) continue;
             if (++others > 1) return;
+            impostorLeft = info.Role && info.Role.IsImpostor;
         }
+        if (impostorLeft) return;
         GameEnd.Win(this);
     }
 
-    // 守の道: インポスターを決めた人数斬り、生きていれば勝った陣営と一緒に勝つ (修羅に堕ちていない時だけ)
-    public override bool AlsoWins(GameResult result) => !_fallen && _pathDone && Player && !Player.Data.IsDead;
+    // ホスト: 自分以外の生きている人の数
+    private int AliveOthers()
+    {
+        int n = 0;
+        var all = GameData.Instance.AllPlayers;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var info = all[i];
+            if (info != null && !info.Disconnected && !info.IsDead && info.PlayerId != PlayerId) n++;
+        }
+        return n;
+    }
+
+    // 守の道: インポスターを決めた人数斬り、生きていてクルーが勝てば一緒に勝つ (修羅に堕ちていない時だけ)
+    public override bool AlsoWins(GameResult result) => result.Team == Team.Crew && !_fallen && _pathDone && Player && !Player.Data.IsDead;
 
     public override void OnRewound()
     {
@@ -668,12 +729,12 @@ public sealed partial class Samurai : RoleBase
 
     // 自分の画面のタスク欄の先頭: 今の道と進み
     public override Text Description => !IsLocal ? Blurb
-        : Fallen ? new Text("Samurai.FallenDesc")
+        : Fallen ? new Text("Samurai.FallenDesc").With("n", _carnageKills.Value).With("max", _carnageGoal.Value)
         : new Text("Samurai.PathDesc").With("n", _impostorKills.Value).With("max", PathKills.Value);
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit} retryHit={CutRetryHits}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
+        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit} retryHit={CutRetryHits}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} carnage={_carnageKills.Value}/{_carnageGoal.Value} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。
