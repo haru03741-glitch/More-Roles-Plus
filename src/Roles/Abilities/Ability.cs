@@ -57,6 +57,9 @@ public sealed class Ability
     // Meeting: 1 回の会議で使える回数 (0 = 何回でも)
     public int UsesPerMeeting { get; init; }
 
+    // Meeting: ゲッサーと同じく、撃ってはいけない相手 (IGuessBlock) を狙えない
+    public bool GuessLike { get; init; }
+
     // Player の届く距離 (0 = 部屋の設定のキルの距離)
     public float Range { get; init; }
 
@@ -370,6 +373,7 @@ internal static class Abilities
         if (a.MeetingLeft == 0) return "no uses this meeting";
         if (!target || target == user || target.Data == null || target.Data.IsDead != a.TargetDead || target.Data.Disconnected) return "target";
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
+        if (meeting && (a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(user, target)) return "guess blocked";
         if (meeting) return null; // 会議の能力は距離と待ち時間を見ない
         if (a.Target == AbilityTarget.Pick)
             return (Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user) ? "cooldown" : null;

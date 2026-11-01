@@ -118,7 +118,7 @@ internal static class Keybinds
         if (!Vanilla.Hud) return;
         if (IntroCutscene.Instance || ExileController.Instance || Minigame.Instance) return;
         var chat = Vanilla.Chat;
-        if (chat && chat.IsOpenOrOpening) return;
+        if ((chat && chat.IsOpenOrOpening) || UI.TextField.Typing) return;
         foreach (var box in UnityEngine.Object.FindObjectsOfType<TextBoxTMP>())
             if (box && box.hasFocus) return;
         if (RoleDictionary.IsOpen) UI.UiWindow.Current?.Close();

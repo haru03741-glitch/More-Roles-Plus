@@ -113,6 +113,7 @@ internal sealed class OptEditor
         }
 
         var val = new Label(opt.Display(), NarrowFont) { Width = editable ? NarrowValueW : controls, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = Color.white };
+        if (editable) Typable(opt, val, NarrowRowH);
         if (!editable)
         {
             ctl.Add(val);
@@ -157,6 +158,7 @@ internal sealed class OptEditor
         }
 
         var val = new Label(opt.Display(), FontSize) { Width = ValueW, TextAlign = TextAlignmentOptions.Center, Bold = true, Color = Color.white };
+        if (editable) Typable(opt, val, RowH);
         if (!editable)
         {
             row.Add(val);
@@ -173,6 +175,116 @@ internal sealed class OptEditor
     }
 
     private const float InfoW = 0.3f;
+
+    // 数値の値の欄: すばやく 2 回押すと字を打ち込む欄になる (Enter か欄の外を押すと決める・Esc でやめる)。
+    // 打った数は範囲の中のいちばん近い、± で選べる値に寄せる (全角・単位付きでもよい)
+    private static OptEditor _lastTypable;
+
+    private void Typable(Opt opt, Label val, float h)
+    {
+        if (!opt.Numeric) return;
+        _lastTypable = this;
+        val.HitHeight = h;
+        val.OnDoubleClick = l => BeginInput(opt, l, h);
+    }
+
+    private sealed class Typing
+    {
+        public OptEditor Editor;
+        public Opt Opt;
+        public Label Label;
+        public TextField Field;
+        public GameObject Go;
+        public readonly List<int> Slots = new();
+    }
+
+    private static Typing _typing;
+
+    private void BeginInput(Opt opt, Label label, float h)
+    {
+        if (_canEdit != null && !_canEdit()) return;
+        var t = label.Built;
+        if (!t) return;
+        EndInput(false);
+        var e = new Typing { Editor = this, Opt = opt, Label = label };
+        var ctx = new BuildCtx(e.Slots, t.gameObject.layer) { ClickMask = label.ClickMask };
+        float w = Math.Max(t.rectTransform.sizeDelta.x, 0.6f);
+        var field = new TextField(new Vector2(w, h - 0.02f), opt.InputText()) { FontSize = label.FontSize, MaxLength = 16, Selected = true };
+        var go = field.Build(t.transform.parent, ctx, w, out _);
+        go.transform.localPosition = t.transform.localPosition + new Vector3(0f, 0f, -0.05f);
+        UiScreen.Order(go.transform, t.sortingOrder + 1);
+        // スクロール欄の中なら、欄の外へはみ出さないよう行と同じく切り抜く
+        if (label.ClickMask) ScrollView.Masked(go.transform);
+        e.Field = field;
+        e.Go = go;
+        _typing = e;
+        t.gameObject.SetActive(false);
+        field.OnSubmit = () => EndInput(true);
+        field.OnBlur = () => EndInput(true);
+        field.OnCancel = () => EndInput(false);
+        field.Focus();
+    }
+
+    // 打ち込む欄を閉じる。commit なら打った数を値にする (欄が見えなくなった時はやめる)
+    internal static void EndInput(bool commit)
+    {
+        var e = _typing;
+        if (e == null) return;
+        _typing = null;
+        e.Field.OnBlur = null;
+        if (TextField.Focused == e.Field) TextField.Blur();
+        bool alive = e.Go && e.Go.activeInHierarchy;
+        UiActions.Release(e.Slots);
+        if (e.Go)
+        {
+            if (PassiveButtonManager.InstanceExists && PassiveButtonManager.Instance.currentOver
+                && PassiveButtonManager.Instance.currentOver.transform.IsChildOf(e.Go.transform))
+                PassiveButtonManager.Instance.currentOver = null;
+            UnityEngine.Object.Destroy(e.Go);
+        }
+        if (e.Label.Built) e.Label.Built.gameObject.SetActive(true);
+        if (commit && alive) e.Editor.Typed(e.Opt, e.Field.Value);
+        else e.Editor.Refresh();
+    }
+
+    // 確かめ用 (ブリッジ): 並んでいる行の値の欄を 2 回押し、字を打って Enter (esc = Esc でやめる)。押した後の値を返す
+    internal static string TestInput(string key, string text, bool esc)
+    {
+        var ed = _lastTypable;
+        if (ed == null) return "no editor";
+        foreach (var r in ed._rows)
+        {
+            if (r.opt.Key != key || r.value?.Built == null) continue;
+            var pb = r.value.Built.GetComponent<PassiveButton>();
+            if (!pb) return "value not clickable";
+            string before = r.opt.Display();
+            pb.OnClick.Invoke();
+            pb.OnClick.Invoke();
+            var e = _typing;
+            if (e == null) return "no field after double click";
+            string shown = e.Field.Value;
+            if (text == "hold") return $"held field={shown}";
+            if (esc) e.Field.OnCancel();
+            else
+            {
+                e.Field.Set(text);
+                e.Field.OnSubmit();
+            }
+            return $"before={before} field={shown} after={r.opt.Display()} open={_typing != null}";
+        }
+        return "row not shown";
+    }
+
+    private void Typed(Opt opt, string input)
+    {
+        if (_canEdit != null && !_canEdit()) { Refresh(); return; }
+        int index = opt.IndexForInput(input);
+        int before = opt.Index;
+        if (index < 0 || !opt.Restore(index)) { Refresh(); return; }
+        AfterStep(opt);
+        OptHistory.Push(opt, before);
+        Edited(opt);
+    }
     private static readonly bool Touch = OperatingSystem.IsAndroid();
 
     // 項目の説明 (文の鍵 <名前の鍵>.Detail) がある時だけ、名前の後ろに「?」の箱。PC は当てると・スマホは押すと札が出る

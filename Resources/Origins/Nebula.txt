@@ -1,0 +1,3 @@
+# From: に出す名前 (役職のコードの Origin => "Nebula" で使う)
+name: Nebula on the Ship
+gradient: #7B5CFF #38B6FF

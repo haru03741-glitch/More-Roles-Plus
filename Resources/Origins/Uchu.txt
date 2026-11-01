@@ -1,0 +1,3 @@
+# From: に出す名前 (役職のコードの Origin => "Uchu" で使う)
+name: Uchu|Addon
+color: #3D5AFE #7C8CFF

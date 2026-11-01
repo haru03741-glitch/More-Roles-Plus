@@ -94,6 +94,15 @@ public abstract class RoleBase : Assignable
     // 誰かの勝ちで試合が終わる時に、その勝ちを横取りするか (true の人だけが勝者になる)。ホストの端末で、相乗りの後に呼ばれる
     public virtual bool StealsWin(GameResult result) => false;
 
+    // 横取りした時に一緒に勝者にする人 (スカーレットの本命・妖狐の仲間など)。StealsWin が true の役職でだけ読む
+    public virtual System.Collections.Generic.IEnumerable<byte> StealsWith => null;
+
+    // 決まった勝者からその人を外すか (スカーレットの本命など)。ホストの端末で、相乗り・横取りの後に呼ばれる
+    public virtual bool BlocksWinOf(byte playerId, GameResult result) => false;
+
+    // クルーのタスク勝利に数えないタスクの持ち主 (スカーレットの本命など)。全員の端末で読む
+    public virtual System.Collections.Generic.IEnumerable<byte> IgnoresTasksOf => null;
+
     // 第三陣営の陣営の名前。同じ名前の役職は生き残りの数え方と勝ちで 1 つの陣営になる (ジャッカルとサイドキックなど)。
     // 既定はキル役なら自分の Id。陣営の中にキル役が生きている間だけ、キルしない仲間もその陣営として数える
     public virtual string Faction => IsKiller ? Id : null;

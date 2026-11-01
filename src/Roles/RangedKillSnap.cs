@@ -33,12 +33,19 @@ internal static class RangedKillSnapPatch
         return HarmonyLib.AccessTools.Method(t, "MoveNext");
     }
 
+    // 離れた所から倒す役職 (エクリプスの隕石・ノヴァの光線) が、全員の端末で同じ時に「この秒まで離れて倒す」と印を付ける
+    private static readonly System.Collections.Generic.Dictionary<byte, float> Until = new();
+
+    internal static void Mark(byte killer, float seconds) => Until[killer] = Time.time + seconds;
+
+    private static bool Marked(byte id) => Until.TryGetValue(id, out var t) && Time.time < t;
+
     public static void Prefix(object __instance)
     {
         _has = false;
         if (_source == null || RoleState.All.Count == 0) return;
         var src = _source.GetValue(__instance) as PlayerControl;
-        if (!src || (!Impostor.RocketLauncher.RangedKill(src) && !Impostor.TriggerHappy.RangedKill(src))) return;
+        if (!src || (!Impostor.RocketLauncher.RangedKill(src) && !Impostor.TriggerHappy.RangedKill(src) && !Marked(src.PlayerId))) return;
         _saved = src.transform.position;
         _has = true;
     }

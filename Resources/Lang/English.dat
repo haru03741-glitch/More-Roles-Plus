@@ -420,6 +420,9 @@ MapVariants.Title: Map variant
 MapVariants.Normal: Normal
 MapVariants.Mirrored: Mirrored
 MapVariants.Variant: Variant
+GameModeSwitch.ServerUnsupported: This server can't switch the game mode in the lobby (it would disconnect you). Create a new room instead.
+GameModeSwitch.ServerOld: The MRP server doesn't support switching the game mode in the lobby yet (waiting for a server update). Create a new room instead.
+GameModeSwitch.Checking: Checking whether the server supports switching. Wait a moment and try again.
 GameMode.Label: Mode
 
 # ── PresetLabel ──
@@ -762,6 +765,59 @@ HostSettings.PlayersCanRename: Players can change name and color with /rename /c
 HostSettings.StartSeconds: Start countdown
 HostSettings.NoGameEnd: Never end the game automatically (end it with /end)
 HostSettings.AbortWhenHostLeaves: End the game with no winner if the host leaves mid-game
+PublicGuard.MrpOnly: Rooms can only be public on the MRP server (they stay private elsewhere)
+JoinLink.InRoom: Leave this room first, then press Join again to enter {code}
+Report.Open: Bug report / Contact
+Report.ButtonTip: Bug report / Contact (chat with the developers)
+Report.Title: Bug report / Contact
+Report.New: + New report
+Report.Intro: Staff reply to your reports on Discord. Read replies here and keep chatting.
+Report.None: No reports yet. If something is wrong, send one with New report.
+Report.StateOpen: Open
+Report.StateReply: Reply
+Report.StateClosed: Done
+Report.WriteTitle: New report
+Report.CatBug: Bug
+Report.CatIdea: Idea
+Report.CatOther: Other
+Report.TitleHint: Title (e.g. names vanish after a meeting)
+Report.BodyHint: What you did, what happened, does it always happen (Enter = new line)
+Report.SentWith: Sent with it: friend code {fc} · name {name} · MRP v{ver} · your system · logs (your PC user name is hidden)
+Report.NoFriendCode: (unavailable)
+Report.Send: Send
+Report.Sending: Sending…
+Report.ChatIntro: Report #{id} - staff replies show here (refreshed while open)
+Report.Loading: Loading…
+Report.NoReply: No reply yet. Please wait for the staff to take a look.
+Report.ClosedNote: This report is done. Send a new one if there is more.
+Report.ChatHint: Write a message (Enter to send)
+Report.ChatSend: Send
+Report.You: You
+Report.ErrNoFriendCode: Your friend code is not available. Try again after logging in.
+Report.ErrNoTitle: Please write a title.
+Report.ErrNotSeen: To confirm it is you, connect to the MRP server once (find or create a game), then send again.
+Report.ErrTooMany: You've reached the hourly limit. You can send again once staff have read your earlier report.
+Report.ErrBanned: Reports from this account are not accepted.
+Report.ErrDisabled: The server is not taking reports right now.
+Report.ErrNetwork: Could not reach the server. Check your network and try again.
+Report.ErrOther: Could not send ({code})
+Report.TagBug: Bug
+Report.TagIdea: Idea
+Report.TagOther: Other
+Report.ErrNotReady: The server does not take reports yet. Please try again later.
+Report.Attach: + Image/video
+Report.AttachHint: Attach up to {n} screenshots or recordings (9.5MB each)
+Report.PickTitle: Choose images or videos to send
+Report.PickFilter: Images and videos (png, jpg, gif, webp, mp4, mov, webm)
+Report.TagImage: Image
+Report.TagVideo: Video
+Report.TagFile: File
+Report.OpenFile: Open
+Report.Uploading: Uploading images/videos…
+Report.ErrFileTooLarge: A file is too large (9.5MB max each). Trim or shrink it.
+Report.ErrTooManyFiles: You can attach up to {n} files.
+Report.ErrBadMedia: Only images (png, jpg, gif, webp) and videos (mp4, mov, webm) can be sent.
+Report.ErrFileUnreadable: Couldn't read the file.
 HostChange.NewHost: The host left. {name} is the new host
 
 # ── WhisperSettings ──
@@ -1393,3 +1449,222 @@ TriggerHappy.Ricochets: Ricochets off walls
 TriggerHappy.SpreadAngle: Bullet spread
 TriggerHappy.FriendlyFire: Friendly fire
 TriggerHappy.KillSound: Play kill sound
+Null.Name: Null
+Null.Blurb: Be no one, become someone
+Null.Summary: A neutral who wins by surviving after spending time with others, then time alone.
+Null.WinCond: Finish both phases and be alive at the end (steal the win or join the winners, by setting)
+Null.Phase1: Together
+Null.Phase1.Help: Time builds up while someone is within range. When it reaches the set time, phase 2 begins.
+Null.Phase1.Short: Stay near someone to build time
+Null.Phase2: Alone
+Null.Phase2.Help: Time builds up while no one is within range. When it reaches the set time, the condition is met.
+Null.Phase2.Short: Stay alone to build time
+Null.Achieved: Null condition met. Survive to win
+Null.Achieved.Label: Done
+Null.Phase2Started: Phase 2: now stay alone
+Null.Status1: Time together {n}/{max} s
+Null.Status2: Time alone {n}/{max} s
+Null.Tips: The button fill and the task list show your progress. Built-up time never goes down.
+Null.SoloWin: Steal the win alone
+Null.TogetherRange: Range counted as together
+Null.AloneRange: Range counted as alone
+Null.TogetherTime: Time needed together
+Null.AloneTime: Time needed alone
+FakeJester.Name: Fake Jester
+FakeJester.Blurb: A fake who played the fool
+FakeJester.Summary: A neutral who believes they are the Jester. After a set number of meetings, they realize their true role.
+FakeJester.WinCond: After realizing, win by being alive at the end (being voted out is not a win)
+FakeJester.Tips: Until you realize, you will act like a Jester. After that, aim to survive.
+FakeJester.Awaken: You were never the Jester... you are the Fake Jester! Survive to win
+FakeJester.AwakenedLabel: Jester/Fake Jester
+FakeJester.AwakenMeetings: Meetings until realizing
+FakeJester.AdditionalWin: Join the winners
+Guardian.Name: Guardian
+Guardian.Blurb: My body as your shield
+Guardian.Summary: A crewmate who protects a chosen player in meetings and dies in their place when they are attacked.
+Guardian.Guard: Guard
+Guardian.Guard.Help: In a meeting, pick a player with the button on their nameplate (after finishing the set number of tasks). If they are about to be killed, they survive and the Guardian dies instead. If a guesser shoots them, the shooter dies. The guard ends after the set number of meetings.
+Guardian.Guard.Short: Die in place of the player you chose
+Guardian.Tips: Guard players who seem likely to be targeted. Your sacrifice is announced at the next meeting.
+Guardian.StartGuarding: Started guarding {name}
+Guardian.YouAreGuarded: You are being guarded by a Guardian
+Guardian.GuardExpired: Your Guardian's protection has ended
+Guardian.GuardExpiredSelf: Your guard on {name} has ended
+Guardian.SacrificeAnnounce: A Guardian died in place of {name}
+Guardian.Duration: Meetings a guard lasts
+Guardian.Simultaneous: Players guarded at once
+Guardian.Lifetime: Players guarded per match
+Guardian.RequiredTasks: Tasks needed to guard
+Comet.Name: Comet
+Comet.Blurb: Blaze through
+Comet.Summary: A crewmate who can turn invisible and run fast.
+Comet.Blaze: Blaze
+Comet.Blaze.Help: Become invisible and faster for a set time (your vision widens and the screen zooms out a little). While invisible you cannot be seen or killed.
+Comet.Blaze.Short: Turn invisible and run fast
+Comet.Tips: Not affected by lights sabotage.
+Comet.Cooldown: Boost cooldown
+Comet.Duration: Boost duration
+Comet.Speed: Boost speed
+Comet.Vision: Vision during boost
+Comet.Screen: Screen zoom during boost
+Alchemist.Name: Alchemist
+Alchemist.Blurb: Harmony toward death
+Alchemist.Summary: A crewmate who turns bodies into alchemy bullets and shoots players in meetings.
+Alchemist.Alchemy: Alchemy
+Alchemist.Alchemy.Help: Remove a nearby body and turn it into the set number of alchemy bullets.
+Alchemist.Alchemy.Short: Turn a body into bullets
+Alchemist.Shoot: Shoot
+Alchemist.Shoot.Help: In a meeting, shoot the player chosen with the button on their nameplate (up to the per-meeting limit). Players a guesser cannot shoot cannot be shot.
+Alchemist.Shoot.Short: Shoot with alchemy bullets in meetings
+Alchemist.Tips: Removed bodies can no longer be reported. Choose your targets carefully.
+Alchemist.Bullets: Alchemy bullets: {n}
+Alchemist.Hit: {name} was shot by an alchemy bullet
+Alchemist.AlchemyCooldown: Alchemy cooldown
+Alchemist.PerAlchemy: Bullets per alchemy
+Alchemist.PerMeeting: Shots per meeting
+Eclipse.Name: Eclipse
+Eclipse.Blurb: Disaster rains down
+Eclipse.Summary: An impostor who drops a meteor on a marked spot to kill everyone around it.
+Eclipse.Mark: Mark
+Eclipse.Mark.Help: Place a meteor mark at your feet (only you can see it). You stop briefly and a sound plays.
+Eclipse.Mark.Short: Mark where the meteor falls
+Eclipse.Blast: Meteor
+Eclipse.Blast.Help: Drop a meteor on the mark. A red warning circle appears for everyone, then it falls and kills everyone inside, allies and yourself included.
+Eclipse.Blast.Short: Drop a meteor on the mark
+Eclipse.Tips: The meteor hits allies and you too. The warning circle lets people escape, so do not wait too long.
+Eclipse.Uses: Meteor uses
+Eclipse.MarkCooldown: Mark cooldown
+Eclipse.BlastCooldown: Meteor cooldown
+Eclipse.WarningTime: Warning time before impact
+Eclipse.MarkStop: Stop time when marking
+Eclipse.Size: Meteor size
+Eclipse.ResetBlastCool: Marking resets meteor cooldown
+Eclipse.MeetingReset: Meetings clear the mark
+Eclipse.MarkSound: Mark sound heard by others
+Eclipse.SoundRange: Mark sound range
+Nova.Name: Nova
+Nova.Blurb: The first cry of a star
+Nova.Summary: An impostor who charges up and fires a straight beam that kills.
+Nova.Fire: Fire
+Nova.Fire.Help: Charge in place for a moment, then fire a beam. Anyone hit by the beam dies (walls stop it). The direction depends on the setting.
+Nova.Fire.Short: Charge and fire a beam
+Nova.Tips: You cannot move while charging and the glow is visible. Long corridors make it strong.
+Nova.Mode: Fire mode
+Nova.Mode.Free: Free (mouse direction)
+Nova.Mode.LeftRight: Left/right (facing)
+Nova.Mode.FourWay: Four directions
+Nova.Cooldown: Fire cooldown
+Nova.Size: Beam width
+Nova.Charge: Charge time
+Scarlet.Name: Scarlet
+Scarlet.Blurb: Still, I love you
+Scarlet.Summary: A neutral who aims to win together with their favorite. Use your kept lovers well.
+Scarlet.WinCond: When your favorite wins and both of you are alive (and the gauge is full), steal the win for the two of you
+Scarlet.Keep: Keep
+Scarlet.Keep.Help: Seduce a nearby player as a kept lover. You can see their role. Kept lovers do not die with you.
+Scarlet.Keep.Short: Make a nearby player a kept lover
+Scarlet.Favorite: Favorite
+Scarlet.Favorite.Help: Make a nearby player your favorite (only one). If either of you dies, the other dies too.
+Scarlet.Favorite.Short: Make a nearby player your favorite
+Scarlet.Hourglass: Time left
+Scarlet.Hourglass.Help: If you do not choose a favorite in time, you die of loneliness. The timer stops during meetings and shortly after. Once chosen, it becomes the favorite gauge.
+Scarlet.Hourglass.Short: Time left to choose a favorite
+Scarlet.Command: Command
+Scarlet.Command.Help: In a meeting, issue the crimson command with the button on your own nameplate. Your favorite and kept lovers' votes go to your vote.
+Scarlet.Command.Short: Make your lovers vote with you
+Scarlet.Tips: The favorite gauge fills near your favorite and drains away from them. Your lovers cannot guess you.
+Scarlet.Commanded: Crimson command issued. Your lovers' votes will follow yours
+Scarlet.FavoriteChosen: {name} is now your favorite
+Scarlet.KeptChosen: {name} is now kept
+Scarlet.Gauge: Favorite gauge
+Scarlet.GraceStatus: {n} s left to choose a favorite
+Scarlet.FavoriteStatus: Favorite: {name}
+Scarlet.GaugeStatus: Favorite: {name}  Gauge {n}%
+Scarlet.Grace: Grace before choosing a favorite
+Scarlet.NumOfKept: Max kept lovers
+Scarlet.NumOfCommand: Max commands
+Scarlet.CanOverrideTaskWin: Can steal task wins
+Scarlet.WithGauge: Favorite gauge
+Scarlet.RequiredGauge: Gauge needed to win
+Scarlet.SurplusGauge: Surplus gauge
+Scarlet.GaugeReduction: Gauge drain speed
+Scarlet.CanLocateLovers: Show lovers' location
+Scarlet.PreAssignedLovers: Pre-assigned lovers
+Scarlet.Vent: Can use vents
+Spectre.Name: Spectre
+Spectre.Blurb: Grudge made flesh
+Spectre.Summary: A neutral who steals the win by surviving to the end. But they starve without eating fried tofu for a while.
+Spectre.WinCond: Alive at the end with more satiety than the set value: steal the win (not against sabotage wins)
+Spectre.Vanish: Vanish
+Spectre.Vanish.Help: Spend satiety to become invisible for a while. Usable only when at least one tofu's worth of satiety remains afterward.
+Spectre.Vanish.Short: Spend satiety to turn invisible
+Spectre.Eat: Fried tofu
+Spectre.Eat.Help: Dishes on the map get fried tofu. Press near a dish with tofu to open the eating screen (click to bite). You starve when satiety runs out.
+Spectre.Eat.Short: Eat the tofu on a dish
+Spectre.Tips: Arrows show where killers are. You have impostor vision, ignore lights sabotage and can see through walls (by setting).
+Spectre.Vent: Can use vents
+Spectre.ShowKillers: Show killers' location
+Spectre.Clairvoyance: Clairvoyance
+Spectre.Immoralist: Follower assignment
+Spectre.Immoralist.None: None
+Spectre.Immoralist.Follower: Little Fox
+Spectre.Immoralist.Immoralist: Immoralist
+Spectre.Immoralist.Random: Random
+Spectre.Immoralist.Alternate: Alternate
+Spectre.FollowerChance: Little Fox chance (%)
+Spectre.NumOfDishes: Max dishes
+Spectre.SatietyRate: Satiety per tofu
+Spectre.MaxSatiety: Max satiety
+Spectre.InitialSatiety: Starting satiety
+Spectre.RequiredSatiety: Satiety needed to win
+Spectre.ShowDishesOnMap: Show tofu on the map
+Spectre.Replenish: Tofu refill cooldown
+Spectre.VanishCost: Vanish tofu cost
+Spectre.VanishCooldown: Vanish cooldown
+Spectre.VanishDuration: Vanish duration
+Spectre.Adrenaline: Adrenaline mode
+Spectre.AdrenalineRate: Satiety drain near killers
+SpectreFollower.Name: Little Fox
+SpectreFollower.Blurb: Dreaming of the great spirit
+SpectreFollower.Summary: The Spectre's companion. Eats fried tofu to keep the Spectre's satiety up.
+SpectreFollower.WinCond: Wins with the Spectre (dies when the Spectre dies)
+SpectreFollower.Tips: The gauge at the bottom left shows the Spectre's satiety.
+SpectreFollower.Vent: Can use vents
+SpectreFollower.SatietyRate: Satiety per tofu
+SpectreFollower.ShowDishesOnMap: Show tofu on the map
+SpectreImmoralist.Name: Immoralist
+SpectreImmoralist.Blurb: Walking the forbidden path
+SpectreImmoralist.Summary: The Spectre's companion. While alive they offer fried tofu; after death they can remove it.
+SpectreImmoralist.WinCond: Wins with the Spectre (dies when the Spectre dies)
+SpectreImmoralist.Place: Offer
+SpectreImmoralist.Place.Help: Press near an empty dish and wait there briefly to put tofu on it.
+SpectreImmoralist.Place.Short: Offer tofu on an empty dish
+SpectreImmoralist.Remove: Remove
+SpectreImmoralist.Remove.Help: After death, remove tofu from dishes (while the Spectre is alive). Removing too much makes the Spectre starve.
+SpectreImmoralist.Remove.Short: As a ghost, remove tofu
+SpectreImmoralist.Suicide: Suicide
+SpectreImmoralist.Suicide.Help: Kill yourself whenever you like.
+SpectreImmoralist.Suicide.Short: Kill yourself
+SpectreImmoralist.Vent: Can use vents
+SpectreImmoralist.RespawnCooldown: Offer cooldown
+SpectreImmoralist.RespawnDuration: Offer time
+SpectreImmoralist.ShowDishesOnMap: Show tofu on the map
+SpectreImmoralist.CanSuicide: Can kill self
+SpectreImmoralist.ShowKillFlash: Show kill flash
+Doppelganger.Name: Doppelganger
+Doppelganger.Blurb: Me and my friend
+Doppelganger.Summary: A crewmate who creates a phantom of themselves that can walk around and swap places with them.
+Doppelganger.Command: Place
+Doppelganger.Command.Help: Opens the map. The phantom walks where you click (it appears at your feet if there is none). The normal map works too. Players near the phantom show on the map.
+Doppelganger.Command.Short: Walk the phantom from the map
+Doppelganger.Swap: Swap
+Doppelganger.Swap.Help: Stop in place for a moment, then swap places with the phantom.
+Doppelganger.Swap.Short: Swap places with the phantom
+Doppelganger.Despawn: Despawn
+Doppelganger.Despawn.Help: Remove the phantom.
+Doppelganger.Despawn.Short: Remove the phantom
+Doppelganger.Tips: The phantom looks real to everyone. If it is killed, you die where the phantom was. It vanishes at meetings and when you die.
+Doppelganger.NoPath: No path for the phantom to get there
+Doppelganger.SwapCooldown: Swap cooldown
+Doppelganger.SwapDuration: Swap time
+Doppelganger.DetectionRadius: Phantom detection radius

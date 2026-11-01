@@ -1,0 +1,28 @@
+{
+  "PublicUrl": "https://amongus.nkzk.win",
+  "ModGuid": "169375b5-e08c-4ca8-bf96-0c8cde15ddf7",
+  "TrustProxyHeaders": true,
+  "Discord": {
+    "BotToken": "",
+    "GuildId": "",
+    "ReportChannelId": "",
+    "MatchmakingChannelId": "",
+    "StaffRoleId": "",
+    "StaffChannelId": ""
+  },
+  "Reports": {
+    "RequireRecentConnection": true,
+    "RecentConnectionHours": 72,
+    "MaxPerHourPerPlayer": 3,
+    "MaxPerHourPerIp": 6,
+    "MaxLogBytes": 6291456,
+    "MaxMediaFiles": 4,
+    "MaxMediaBytes": 9961472,
+    "ChatCooldownSeconds": 3,
+    "MaxChatPerHour": 60
+  },
+  "Matchmaking": {
+    "Enabled": true,
+    "OnlyMrpGames": true
+  }
+}

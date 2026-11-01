@@ -625,6 +625,13 @@ internal static class RoleCommands
             reply($"OK fresh {SettingNotice.FreshCount}");
         });
 
+        TestBridge.Register("optinput", "<key> <字|esc> 設定画面に並んだ行の値の欄をダブルクリックして字を打ち Enter (全角も可)", (args, reply) =>
+        {
+            var a = args.Split(' ', 2, System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length < 2) { reply("ERR optinput <key> <text>"); return; }
+            reply("OK optinput " + OptEditor.TestInput(a[0], a[1], a[1] == "esc"));
+        });
+
         TestBridge.Register("opt", "<key> [番号] [sync] 設定項目を見る / 番号で変える (sync = 全員へ送る・例 opt Lighter.Chance 10 sync)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

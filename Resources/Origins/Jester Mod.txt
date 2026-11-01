@@ -1,0 +1,2 @@
+name: Jester
+color: #EC62A5

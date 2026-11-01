@@ -15,6 +15,28 @@ internal static class ButtonIcons
 
     public static Sprite Get(string name) => Load(name, PixelsPerUnit, new Vector2(0.5f, 0.5f));
 
+    // その絵が入っているか (無くても誤りを書かない・差し替え前の仮の絵を選ぶ時に)
+    public static bool Has(string name) =>
+        Assembly.GetExecutingAssembly().GetManifestResourceInfo($"MoreRolesPlus.Resources.Icons.{name}.png") != null;
+
+    // 横に n 枚並んだ絵 (アニメーションのコマ) を切り分ける。無ければ null
+    public static Sprite[] Frames(string name, int n, float pixelsPerUnit, int rows = 1)
+    {
+        if (!Has(name)) return null;
+        var sheet = Load(name, pixelsPerUnit, new Vector2(0.5f, 0.5f));
+        if (!sheet) return null;
+        var tex = sheet.texture;
+        int cols = n / rows, w = tex.width / cols, h = tex.height / rows;
+        var list = new Sprite[n];
+        for (int i = 0; i < n; i++)
+        {
+            int cx = i % cols, cy = rows - 1 - i / cols;
+            list[i] = Sprite.Create(tex, new Rect(cx * w, cy * h, w, h), new Vector2(0.5f, 0.5f), pixelsPerUnit, 0, SpriteMeshType.FullRect);
+            list[i].hideFlags = HideFlags.HideAndDontSave;
+        }
+        return list;
+    }
+
     // 同じ置き場の絵を、大きさ (1 単位あたりの px) と原点を指定して読む (演出の絵用。同じ絵を別の大きさ・原点でも持てる)
     public static Sprite Load(string name, float pixelsPerUnit, Vector2 pivot)
     {
@@ -33,7 +55,14 @@ internal static class ButtonIcons
         if (s == null) { Plugin.Logger.LogError($"icon missing: {res}"); return null; }
         using var ms = new MemoryStream();
         s.CopyTo(ms);
-        var bytes = ms.ToArray();
+        var sp = FromBytes(ms.ToArray(), name, pixelsPerUnit, pivot);
+        if (!sp) Plugin.Logger.LogError($"icon decode failed: {name}");
+        return sp;
+    }
+
+    // PNG か JPEG の中身から絵を作る (読めなければ null)
+    public static Sprite FromBytes(byte[] bytes, string name, float pixelsPerUnit, Vector2 pivot)
+    {
         // (long) 必須: net10 (Android) では int が nint のポインタ受けコンストラクタに解決され、壊れた配列になる
         var data = new Il2CppStructArray<byte>((long)bytes.Length);
         // 1 バイトずつの添字は 1 回ごとに interop を通る (挿絵の大きな PNG で目立つ) ので中身へ直接写す
@@ -42,7 +71,6 @@ internal static class ButtonIcons
         // 読み込んだら CPU 側のピクセルは捨てる (描くだけなので要らない)
         if (!tex.LoadImage(data, true))
         {
-            Plugin.Logger.LogError($"icon decode failed: {name}");
             Object.Destroy(tex);
             return null;
         }

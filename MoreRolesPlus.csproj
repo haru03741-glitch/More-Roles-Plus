@@ -111,7 +111,7 @@
         <EmbeddedResource Include="Resources\Fonts\MochiyPopOne-Regular.ttf" LogicalName="MoreRolesPlus.Resources.Fonts.MochiyPopOne-Regular.ttf" />
     </ItemGroup>
     <ItemGroup>
-        <Compile Remove="tools\**;unity\**;patcher\**" />
+        <Compile Remove="tools\**;unity\**;patcher\**;installer\**;server\**" />
     </ItemGroup>
     <!-- 配る DLL (MrpPublicBuild=true) は公開しているソースだけで組む -->
     <ItemGroup Condition="'$(MrpPublicBuild)' == 'true'">
@@ -122,6 +122,9 @@
         <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Illus\*.jpg" LogicalName="MoreRolesPlus.Resources.Illus.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Cinema\*.*" LogicalName="MoreRolesPlus.Resources.Cinema.%(Filename)%(Extension)" />
+        <EmbeddedResource Include="Resources\Sounds\*.wav" LogicalName="MoreRolesPlus.Resources.Sounds.%(Filename)%(Extension)" />
+        <!-- 役職の説明の「From:」に出す mod の名前 (<鍵>.txt) と絵 (<鍵>.png)。鍵は役職のコードの Origin => "鍵" -->
+        <EmbeddedResource Include="Resources\Origins\*.txt;Resources\Origins\*.png" LogicalName="MoreRolesPlus.Resources.Origins.%(Filename)%(Extension)" />
         <!-- 画面に出す文 (言語ごと・遊ぶ人は BepInEx/config/MoreRolesPlus/Language で書き換えられる) -->
         <EmbeddedResource Include="Resources\Lang\*.dat" LogicalName="MoreRolesPlus.Resources.Lang.%(Filename)%(Extension)" />
         <!-- 床マスクはゲームの絵から tools/make-floor-mask.py で作る (リポジトリには入れない・無ければ当たり判定で切る) -->
@@ -189,5 +192,15 @@
         <WriteLinesToFile File="$(AndroidApkAssetsDir)$(AssemblyName).dll.properties" Overwrite="true" Lines="version=$(_PluginVersion);sha256=$([System.String]::Copy('$(_PluginSha256)').ToLowerInvariant())" />
         <!-- C++ の部品は本体に入ったので、前に別ファイルで入れていた物は APK から外す -->
         <Delete Files="$(AndroidApkAssetsDir)libmrpnative.so;$(AndroidApkAssetsDir)libmrpnative.so.properties" />
+    </Target>
+    <!-- DLL の版は src/Plugin.cs の Version (インストーラーの更新確認と GitHub リリースのタグ vX.Y.Z がこれと見比べる) -->
+    <Target Name="MrpVersionFromPlugin" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo">
+        <PropertyGroup>
+            <_MrpPluginSrc>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)src/Plugin.cs'))</_MrpPluginSrc>
+            <Version>$([System.Text.RegularExpressions.Regex]::Match($(_MrpPluginSrc), 'const string Version = "([0-9.]+)"').Groups[1].Value)</Version>
+            <FileVersion>$(Version)</FileVersion>
+            <AssemblyVersion>$(Version)</AssemblyVersion>
+            <InformationalVersion>$(Version)</InformationalVersion>
+        </PropertyGroup>
     </Target>
 </Project>

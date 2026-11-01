@@ -55,6 +55,7 @@ internal static class MeetingAbilities
                 byte id = pva.PlayerId.Value;
                 var target = GameData.Instance.GetPlayerById(id)?.Object;
                 if (!target || id == lp.PlayerId || (a.CanTarget != null && !a.CanTarget(lp, target))) continue;
+                if ((a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(lp, target)) continue;
                 var go = Create(pva, a, id, x);
                 if (go) _buttons.Add(new Entry { Ability = a, Target = id, Button = go });
             }
@@ -116,14 +117,21 @@ internal static class MeetingAbilities
         if (index < list.Count && list[index].Target == AbilityTarget.Meeting) Abilities.MeetingClick(list[index], targetId);
     }
 
-    // 使えなくなった能力のボタンを隠す (本編は出ているボタンだけを並べる)
+    // 使えなくなった能力のボタンを隠す (本編は出ているボタンだけを並べる)。狙ってよいかの条件 (CanTarget) が会議の途中で変わる
+    // 能力 (守護者の守れる人数・アルケミストの錬金弾など) も、使った後に見直す
     internal static void Refresh()
     {
+        var lp = PlayerControl.LocalPlayer;
         for (int i = 0; i < _buttons.Count; i++)
         {
             var e = _buttons[i];
             if (!e.Button) continue;
             bool on = e.Ability.UsesLeft != 0 && e.Ability.MeetingLeft != 0;
+            if (on && e.Ability.CanTarget != null)
+            {
+                var target = PortKit.ById(e.Target);
+                on = lp && target && e.Ability.CanTarget(lp, target);
+            }
             if (e.Button.activeSelf != on) e.Button.SetActive(on);
         }
     }

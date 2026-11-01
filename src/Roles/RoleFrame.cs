@@ -24,6 +24,15 @@ internal static class RoleFrame
     private static readonly List<bool> FrameHost = new();
     private static readonly List<Assignable> Marks = new();
     private static readonly List<RoleBase> Publics = new(); // 全員の画面で名前に印が付く役職 (RoleBase.PublicMark)
+    // 役職の持ち主でない人の画面にも出す印 (スカーレットに誑かされた人が自分の名前に見る ♡ など)。寿命が切れると外れる
+    private static readonly List<(Lifespan life, Func<PlayerControl, string> fn)> ExtraMarks = new();
+
+    // 自分の端末で: seen の名前の後ろに fn(seen) の印を足す (寿命の間)
+    internal static void AddExtraMark(Lifespan life, Func<PlayerControl, string> fn)
+    {
+        ExtraMarks.Add((life, fn));
+        if (_markEvery == 0) _markEvery = Math.Max(1, (int)(MarkSeconds / Time.fixedDeltaTime + 0.5f));
+    }
 
     public static void OnAssigned(Assignable role)
     {
@@ -70,7 +79,9 @@ internal static class RoleFrame
     {
         if (Frame.Count > 0) RunFrame();
         PortKit.TickLater();
-        if ((Marks.Count > 0 || Publics.Count > 0) && ++_tick >= _markEvery)
+        Cloak.Tick();
+        ViewScale.Tick();
+        if ((Marks.Count > 0 || Publics.Count > 0 || ExtraMarks.Count > 0) && ++_tick >= _markEvery)
         {
             _tick = 0;
             try { RefreshMarks(); }
@@ -159,6 +170,13 @@ internal static class RoleFrame
             string m = Publics[i].MarkSeenBy(PlayerControl.LocalPlayer);
             if (!string.IsNullOrEmpty(m)) Sb.Append(m);
         }
+        for (int i = 0; i < ExtraMarks.Count; i++)
+        {
+            var (life, fn) = ExtraMarks[i];
+            if (life.IsDead) { ExtraMarks.RemoveAt(i--); continue; }
+            string m = fn(seen);
+            if (!string.IsNullOrEmpty(m)) Sb.Append(m);
+        }
         return Sb.Length == 0 ? null : Sb.ToString();
     }
 
@@ -239,6 +257,7 @@ internal static class RoleFrame
         FrameHost.Clear();
         Marks.Clear();
         Publics.Clear();
+        ExtraMarks.Clear();
         _tick = 0;
         ClearSlots(InGame);
         ClearSlots(InMeeting);

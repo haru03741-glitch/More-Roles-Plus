@@ -293,6 +293,7 @@ internal sealed class VanillaOpt : Opt
     }
 
     private float ValueOf(int index) => _min + index * _step;
+    internal override double? ValueAt(int index) => _float != null || _int != null ? Math.Round(ValueOf(index), 4) : null;
 
     internal override string Display()
     {

@@ -1,0 +1,4 @@
+# From: に出す名前 (役職のコードの Origin => "SNR" で使う)
+# 「|」で区切ると区切りごとに color: の色を順に付ける
+name: Super|New|Roles
+color: #FFA500 #FF0000 #00FF00

@@ -1,13 +1,14 @@
 // Based on https://github.com/Gurge44/EndlessHostRoles and https://github.com/waffle-ful/Aeterna-End-K-not Modules/Zoom.cs,
 // which credit https://github.com/tugaru1975/TownOfPlus (TOPmods/Zoom.cs) and https://github.com/Yumenopai/TownOfHost_Y (GPL-3.0)
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
 
 namespace MoreRolesPlus;
 
-// マウスのホイール (スマホは 2 本指のピンチ) で世界のカメラを引いて広く見る。
+// Ctrl を押しながらマウスのホイール (スマホは 2 本指のピンチ) で世界のカメラを引いて広く見る。
 // 使えるのはロビー・フリープレイ・死んだ後だけ (生きている人が引くと壁の影の外まで見えてしまう)。
 // HUD の端に寄せる部品 (AspectPosition) は世界のカメラの大きさで位置を決めるので、HUD のカメラ (Hud/UI Camera) も同じだけ引いて
 // 位置を計算し直させる (HUD は引いた分だけ小さく見える)。視界の影 (ShadowQuad) は 3 単位の画面に合わせた板なので、
@@ -25,12 +26,16 @@ internal static class Zoom
     private static float _nextCheck;
     private static MeshRenderer _shadow;  // 隠した影 (戻す先)
     private static bool _shadowWasOn;
+    // ロビーの開始ボタン (GameStartManager/StartGameArea の子)。「ホスト:」(Host Info) は画面の下の端から決まった所に寄せられるが、
+    // 開始ボタンは端に寄せる部品 (AspectPosition) を持たないので、HUD のカメラを引くと画面の中ほどに残ってしまう。
+    // 引いた分 (画面の下の端が下がった分) だけ下げて、「ホスト:」の下に並んだままにする
+    private static readonly List<(Transform t, Vector3 pos)> _start = new();
 
     internal static bool Zoomed => _size > Base;
 
     public static void Tick()
     {
-        float d = Touch ? Pinch() : Input.mouseScrollDelta.y;
+        float d = Touch ? Pinch() : CtrlWheel();
         if (d != 0f && Blocked() != null) d = 0f;
         if (d == 0f && !Zoomed) return;
         if (d != 0f || Time.unscaledTime >= _nextCheck)
@@ -44,6 +49,14 @@ internal static class Zoom
         if (size > Max) size = Max;
         if (size == _size) return;
         Apply(size);
+    }
+
+    // PC は Ctrl を押しながらのホイールだけ (押していないホイールは一覧などのスクロールに任せる)
+    private static float CtrlWheel()
+    {
+        float d = Input.mouseScrollDelta.y;
+        if (d == 0f) return 0f;
+        return Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ? d : 0f;
     }
 
     // 2 本指の間が広がれば寄る (+)・狭まれば引く (−)
@@ -110,7 +123,7 @@ internal static class Zoom
             || PlayerCustomizationMenu.Instance || Dev.DevConsole.IsOpen) return false;
         if (MapBehaviour.Instance && MapBehaviour.Instance.IsOpen) return false;
         var chat = Vanilla.Chat;
-        if (chat && chat.IsOpenOrOpening) return false;
+        if ((chat && chat.IsOpenOrOpening) || UI.TextField.Typing) return false;
         if (LobbyBehaviour.Instance && !ShipStatus.Instance) return true;
         if (!ShipStatus.Instance) return false;
         if (client.NetworkMode == NetworkModes.FreePlay) return true;
@@ -130,7 +143,42 @@ internal static class Zoom
         if (_ui) _ui.orthographicSize = size;
         if (size > Base) HideShadow();
         else RestoreShadow();
+        PlaceStart(size);
         Relayout();
+    }
+
+    private static void PlaceStart(float size)
+    {
+        var gsm = Vanilla.StartManager;
+        var area = gsm ? gsm.transform.Find("StartGameArea") : null;
+        if (_start.Count > 0 && (!_start[0].t || _start[0].t.parent != area)) RestoreStart();
+        if (!area) return;
+        if (_start.Count == 0)
+            for (int i = 0; i < area.childCount; i++)
+            {
+                var c = area.GetChild(i);
+                if (!c.GetComponent<AspectPosition>()) _start.Add((c, c.localPosition));
+            }
+        float down = size - Base;
+        foreach (var (t, pos) in _start)
+            if (t) t.localPosition = new Vector3(pos.x, pos.y - down, pos.z);
+        if (size <= Base) _start.Clear();
+    }
+
+    private static void RestoreStart()
+    {
+        foreach (var (t, pos) in _start)
+            if (t) t.localPosition = pos;
+        _start.Clear();
+    }
+
+    // 確かめ用 (ブリッジ): ホイールで引いた時と同じに
+    internal static string ApplyForTest(float size)
+    {
+        Apply(Mathf.Clamp(size, Base, Max));
+        var gsm = Vanilla.StartManager;
+        var btn = gsm ? gsm.transform.Find("StartGameArea/StartButton (Host)") : null;
+        return $"size={_size:0.##} start={(btn ? btn.localPosition.ToString() : "-")}";
     }
 
     // HUD の端に寄せる部品を今のカメラの大きさで置き直す (本編が画面の大きさが変わった時に呼ぶのと同じ)
@@ -170,6 +218,7 @@ internal static class Zoom
         _cam = null;
         _ui = null;
         RestoreShadow();
+        RestoreStart();
         Relayout();
     }
 }

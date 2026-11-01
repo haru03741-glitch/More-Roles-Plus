@@ -953,8 +953,15 @@ internal static class TerrainProbe
     // カメラの寄りと止め・HUD (撮影用)
     private static void RegisterCameraView()
     {
-        TestBridge.Register("zoom", "[大きさ=3] カメラの写す範囲 (縦の半分・世界単位)。小さいほど寄る", (args, reply) =>
+        TestBridge.Register("zoom", "[hud] [大きさ=3] (hud = ホイールで引いた時と同じ) カメラの写す範囲 (縦の半分・世界単位)。小さいほど寄る", (args, reply) =>
         {
+            if (args.Trim().StartsWith("hud"))
+            {
+                // ホイールで引いた時と同じ (HUD のカメラも・開始ボタンも)
+                float.TryParse(args.Trim().Substring(3).Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float hz);
+                reply($"OK zoom {Zoom.ApplyForTest(hz > 0f ? hz : 3f)}");
+                return;
+            }
             var cam = Camera.main;
             if (!cam) { reply("ERR no camera"); return; }
             cam.orthographicSize = float.TryParse(args.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float z) && z > 0.3f ? z : 3f;

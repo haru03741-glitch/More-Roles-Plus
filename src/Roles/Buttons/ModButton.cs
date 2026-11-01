@@ -205,6 +205,19 @@ internal sealed class ModButton
         if (_button && _button.buttonLabelText) _button.buttonLabelText.text = label;
     }
 
+    // 待ち時間でも効果でもない量を、ボタンを満たす形と数で出す (ヌルのフェーズの進みなど)。number = null で数を隠す。
+    // 待ち時間・効果の間は書かない
+    public void ShowGauge(float value, float max, string number)
+    {
+        if (!_button || _left > 0f || _effect > 0f) return;
+        _button.SetFillUp(Math.Max(value, 0f), Math.Max(max, 0.01f));
+        var text = _button.cooldownTimerText;
+        if (!text) return;
+        bool on = number != null;
+        if (text.gameObject.activeSelf != on) text.gameObject.SetActive(on);
+        if (on && text.text != number) text.text = number;
+    }
+
     // 残りの回数を出す (負なら回数の表示を隠す)
     public void SetUses(int left)
     {

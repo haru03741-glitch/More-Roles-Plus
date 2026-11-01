@@ -420,6 +420,9 @@ MapVariants.Title: マップのバリエーション
 MapVariants.Normal: 通常
 MapVariants.Mirrored: 左右反転
 MapVariants.Variant: バリエーション
+GameModeSwitch.ServerUnsupported: このサーバーではロビーでモードを切り替えられません (切り替えると切断されます)。部屋を作り直してください
+GameModeSwitch.ServerOld: MRP のサーバーがまだロビーでのモードの切り替えに対応していません (サーバーの更新待ち)。部屋を作り直してください
+GameModeSwitch.Checking: サーバーが切り替えに対応しているか確かめています。少し待ってからもう一度押してください
 GameMode.Label: モード
 
 # ── PresetLabel ──
@@ -762,6 +765,59 @@ HostSettings.PlayersCanRename: 参加者が /rename /color で名前と色を変
 HostSettings.StartSeconds: 開始の数えの秒数
 HostSettings.NoGameEnd: 試合を自動で終わらせない (/end で終える)
 HostSettings.AbortWhenHostLeaves: 試合中にホストが抜けたら廃村にする
+PublicGuard.MrpOnly: 部屋の公開は MRP のサーバーでだけできます (公式などでは非公開のままです)
+JoinLink.InRoom: 部屋 {code} に入るには、今の部屋から抜けてから「参加する」を押し直してください
+Report.Open: バグ報告・お問い合わせ
+Report.ButtonTip: バグ報告・お問い合わせ (開発者とチャットできます)
+Report.Title: バグ報告・お問い合わせ
+Report.New: ＋ 新しく報告する
+Report.Intro: 送った報告にはスタッフが Discord で返事をします。返事はこの窓で読めて、そのままチャットできます。
+Report.None: まだ報告はありません。困った事や直してほしい所があれば「新しく報告する」から送ってください。
+Report.StateOpen: 受付中
+Report.StateReply: 返事あり
+Report.StateClosed: 完了
+Report.WriteTitle: 新しく報告する
+Report.CatBug: バグ
+Report.CatIdea: 要望
+Report.CatOther: その他
+Report.TitleHint: 題 (例: 会議の後に名前が消える)
+Report.BodyHint: 何をしたら何が起きたか・いつも起きるか など (Enter で改行)
+Report.SentWith: 一緒に送られる物: フレンドコード {fc} ・ 名前 {name} ・ MRP v{ver} ・ 遊んでいる環境 ・ ログ (PC の利用者名は伏せます)
+Report.NoFriendCode: (取得できません)
+Report.Send: 送信
+Report.Sending: 送信中…
+Report.ChatIntro: 報告 #{id} ・ スタッフの返事はここに出ます (開いている間は自動で読み直します)
+Report.Loading: 読み込み中…
+Report.NoReply: まだ返事はありません。スタッフが確認するまで少しお待ちください。
+Report.ClosedNote: この報告は完了しました。続きがあれば新しく報告してください。
+Report.ChatHint: メッセージを書く (Enter で送信)
+Report.ChatSend: 送る
+Report.You: あなた
+Report.ErrNoFriendCode: フレンドコードが取得できません。ログインが終わってからもう一度試してください。
+Report.ErrNoTitle: 題を書いてください。
+Report.ErrNotSeen: 本人確認のため、MRP のサーバーに一度つないで (部屋を探す・作る) からもう一度送ってください。
+Report.ErrTooMany: 1 時間に送れる数を越えました。スタッフが前の報告を読むと、また送れます。
+Report.ErrBanned: このアカウントからの報告は受け付けていません。
+Report.ErrDisabled: 今はサーバーで報告を受け付けていません。
+Report.ErrNetwork: サーバーにつながりませんでした。ネットワークを確かめてもう一度試してください。
+Report.ErrOther: 送れませんでした ({code})
+Report.TagBug: バグ
+Report.TagIdea: 要望
+Report.TagOther: その他
+Report.ErrNotReady: サーバーがまだバグ報告に対応していません。少し後でもう一度試してください。
+Report.Attach: + 画像・動画
+Report.AttachHint: スクリーンショットや録画を {n} つまで付けられます (1 つ 9.5MB まで)
+Report.PickTitle: 送る画像・動画を選ぶ
+Report.PickFilter: 画像・動画 (png・jpg・gif・webp・mp4・mov・webm)
+Report.TagImage: 画像
+Report.TagVideo: 動画
+Report.TagFile: ファイル
+Report.OpenFile: 開く
+Report.Uploading: 画像・動画を送っています…
+Report.ErrFileTooLarge: 大きすぎるファイルがあります (1 つ 9.5MB まで)。短く切るか小さくしてください。
+Report.ErrTooManyFiles: 付けられるのは {n} つまでです。
+Report.ErrBadMedia: 送れるのは画像 (png・jpg・gif・webp) と動画 (mp4・mov・webm) だけです。
+Report.ErrFileUnreadable: ファイルを読めませんでした。
 HostChange.NewHost: ホストが抜けたので {name} がホストになりました
 
 # ── WhisperSettings ──
@@ -1393,3 +1449,222 @@ TriggerHappy.Ricochets: 壁で跳ね返る回数
 TriggerHappy.SpreadAngle: 弾のばらつき
 TriggerHappy.FriendlyFire: 仲間にも当たる
 TriggerHappy.KillSound: キル音を鳴らす
+Null.Name: ヌル
+Null.Blurb: 誰でもない、誰かになる
+Null.Summary: 誰かのそばにいた時間と、ひとりきりでいた時間を溜めて生き残ると勝つ第三陣営です。
+Null.WinCond: 2 つの段階を終えて試合の終わりに生きていれば勝ち (設定で単独勝ち / 勝った陣営に相乗り)
+Null.Phase1: 誰かと一緒に
+Null.Phase1.Help: 決めた範囲に誰かがいる間、時間が溜まります。決めた秒に届くと第 2 段階へ進みます。
+Null.Phase1.Short: 誰かのそばにいて時間を溜める
+Null.Phase2: ひとりきり
+Null.Phase2.Help: 決めた範囲に誰もいない間、時間が溜まります。決めた秒に届くと条件達成です。
+Null.Phase2.Short: ひとりでいて時間を溜める
+Null.Achieved: ヌルの条件を達成した。このまま生き残れば勝ち
+Null.Achieved.Label: 達成
+Null.Phase2Started: 第 2 段階: 今度はひとりきりでいよう
+Null.Status1: 一緒にいた時間 {n}/{max} 秒
+Null.Status2: ひとりきりの時間 {n}/{max} 秒
+Null.Tips: ボタンの満ち方とタスク欄で進み具合が分かります。溜まった時間は離れても減りません。
+Null.SoloWin: 単独で勝ちを奪う
+Null.TogetherRange: 「一緒」とみなす距離
+Null.AloneRange: 「ひとり」とみなす距離
+Null.TogetherTime: 一緒にいる必要な時間
+Null.AloneTime: ひとりでいる必要な時間
+FakeJester.Name: フェイクジェスター
+FakeJester.Blurb: 道化を演じた偽者
+FakeJester.Summary: 自分をジェスターだと思い込んでいる第三陣営です。決めた数の会議が始まると、本当の役職に気づきます。
+FakeJester.WinCond: 自覚した後、試合の終わりに生きていれば勝ち (追放されても勝ちにならない)
+FakeJester.Tips: 気づくまではジェスターとして振る舞ってしまいます。気づいた後は生き残ることを目指しましょう。
+FakeJester.Awaken: 自分はジェスターではなかった……フェイクジェスターだ！ 生き残れば勝ち
+FakeJester.AwakenedLabel: ジェスター/フェイクジェスター
+FakeJester.AwakenMeetings: 自覚するまでの会議の数
+FakeJester.AdditionalWin: 勝った陣営に相乗りする
+Guardian.Name: 守護者
+Guardian.Blurb: 我が身を盾に
+Guardian.Summary: 会議で選んだ人を守り、その人がキルされそうになると身代わりに死ぬクルーです。
+Guardian.Guard: 守護
+Guardian.Guard.Help: 会議中に名札のボタンで人を選んで守ります (決めた数のタスクを終えていること)。守っている人がキルされそうになると、その人は生き残り、代わりに守護者が死にます。ゲッサーに撃たれた時は撃った人が死にます。守りは決めた数の会議が終わると切れます。
+Guardian.Guard.Short: 会議で選んだ人の身代わりになる
+Guardian.Tips: 狙われそうな人を守りましょう。守護者が身代わりになったことは次の会議で知らされます。
+Guardian.StartGuarding: {name} を守り始めた
+Guardian.YouAreGuarded: あなたは守護者に守られている
+Guardian.GuardExpired: 守護者の守りが切れた
+Guardian.GuardExpiredSelf: {name} の守りが切れた
+Guardian.SacrificeAnnounce: 守護者が {name} の身代わりになった
+Guardian.Duration: 守りが続く会議の数
+Guardian.Simultaneous: 同時に守れる人数
+Guardian.Lifetime: 試合で守れる人数
+Guardian.RequiredTasks: 守るのに要るタスクの数
+Comet.Name: コメット
+Comet.Blurb: 駆け抜けろ
+Comet.Summary: 透明になって速く走れるクルーです。
+Comet.Blaze: 透明化
+Comet.Blaze.Help: 決めた時間だけ透明になり、足が速くなります (視界も広がり、画面も少し引きます)。透明の間は他の人に見えず、キルされません。
+Comet.Blaze.Short: 透明になって速く走る
+Comet.Tips: 停電の影響を受けません。
+Comet.Cooldown: ブーストの待ち時間
+Comet.Duration: ブーストの効果時間
+Comet.Speed: ブーストの速さ
+Comet.Vision: ブースト中の視界の倍率
+Comet.Screen: ブースト中の画面の倍率
+Alchemist.Name: アルケミスト
+Alchemist.Blurb: 死への調和
+Alchemist.Summary: 死体を錬金弾に変え、会議で人を撃ち抜けるクルーです。
+Alchemist.Alchemy: 錬金
+Alchemist.Alchemy.Help: 近くの死体を消して、決めた数の錬金弾に変えます。
+Alchemist.Alchemy.Short: 死体を錬金弾に変える
+Alchemist.Shoot: 撃つ
+Alchemist.Shoot.Help: 会議中、名札のボタンで選んだ人を錬金弾で撃ち抜きます (1 回の会議で撃てる数まで)。ゲッサーが撃てない相手は撃てません。
+Alchemist.Shoot.Short: 会議で錬金弾を撃つ
+Alchemist.Tips: 死体を消すと通報できなくなります。撃つ相手はよく考えましょう。
+Alchemist.Bullets: 錬金弾: {n}
+Alchemist.Hit: {name} が錬金弾で撃ち抜かれた
+Alchemist.AlchemyCooldown: 錬金の待ち時間
+Alchemist.PerAlchemy: 1 回の錬金でできる弾の数
+Alchemist.PerMeeting: 1 回の会議で撃てる数
+Eclipse.Name: エクリプス
+Eclipse.Blurb: 災いが降り注ぐ
+Eclipse.Summary: 印の場所へ隕石を落とし、まわりの人をまとめて倒せるインポスターです。
+Eclipse.Mark: マーク
+Eclipse.Mark.Help: 足元に隕石の落ちる印を置きます (自分にしか見えません)。置く間は少し動けず、音が鳴ります。
+Eclipse.Mark.Short: 隕石の落ちる所に印を置く
+Eclipse.Blast: メテオ
+Eclipse.Blast.Help: 印の所へ隕石を落とします。全員の画面に赤い円で警告が出て、少しの後に落ち、円の中の人を味方も自分も問わず倒します。
+Eclipse.Blast.Short: 印の所へ隕石を落とす
+Eclipse.Tips: 隕石は仲間も自分も巻き込みます。警告の円が出るので、早めに落とさないと逃げられます。
+Eclipse.Uses: メテオを使える回数
+Eclipse.MarkCooldown: マークの待ち時間
+Eclipse.BlastCooldown: メテオの待ち時間
+Eclipse.WarningTime: 落ちるまでの警告の時間
+Eclipse.MarkStop: マークで止まる時間
+Eclipse.Size: 隕石の大きさ
+Eclipse.ResetBlastCool: マークでメテオの待ち時間を戻す
+Eclipse.MeetingReset: 会議で印を消す
+Eclipse.MarkSound: マークの音を周りにも鳴らす
+Eclipse.SoundRange: マークの音が聞こえる範囲
+Nova.Name: ノヴァ
+Nova.Blurb: 星の産声
+Nova.Summary: 力を溜めてから、まっすぐな光線で人を倒せるインポスターです。
+Nova.Fire: 発射
+Nova.Fire.Help: 少しの間その場で力を溜めてから、光線を撃ちます。光線に当たった人を倒します (壁で止まります)。撃つ向きは設定で決まります。
+Nova.Fire.Short: 溜めてから光線を撃つ
+Nova.Tips: 溜めている間は動けず、光も見えます。長い通路で使うと強力です。
+Nova.Mode: 発射モード
+Nova.Mode.Free: 自由 (マウスの向き)
+Nova.Mode.LeftRight: 左右 (向いている方)
+Nova.Mode.FourWay: 上下左右
+Nova.Cooldown: 発射の待ち時間
+Nova.Size: 光線の太さ
+Nova.Charge: チャージ時間
+Scarlet.Name: スカーレット
+Scarlet.Blurb: それでも、愛してる
+Scarlet.Summary: 本命とともに勝利を目指す第三陣営です。誑かしたキープもうまく使いましょう。
+Scarlet.WinCond: 本命が勝った時に本命と自分が生きていれば (本命ゲージが溜まっていれば)、勝ちを奪って本命と 2 人で勝ち
+Scarlet.Keep: キープ
+Scarlet.Keep.Help: 近くの人を誑かしてキープにします。キープの役職が分かります。キープは死んでも後を追いません。
+Scarlet.Keep.Short: 近くの人をキープにする
+Scarlet.Favorite: 本命
+Scarlet.Favorite.Help: 近くの人を本命にします (1 人だけ)。スカーレットと本命は、どちらかが死ぬともう一方も後を追って死にます。
+Scarlet.Favorite.Short: 近くの人を本命にする
+Scarlet.Hourglass: 残り時間
+Scarlet.Hourglass.Help: 決めた時間のうちに本命を決めないと、寂しさで死んでしまいます。会議中と会議の後少しの間は止まります。本命を決めた後は本命ゲージになります。
+Scarlet.Hourglass.Short: 本命を決めるまでの猶予
+Scarlet.Command: 号令
+Scarlet.Command.Help: 会議中、自分の名札のボタンで深紅の号令をかけます。本命とキープの票を、自分の投票先へ向けさせます。
+Scarlet.Command.Short: 恋人たちの票を自分に合わせる
+Scarlet.Tips: 本命ゲージは本命のそばにいると溜まり、離れると減ります。恋人たちはスカーレットをゲッサーで撃てません。
+Scarlet.Commanded: 深紅の号令をかけた。恋人たちの票はあなたの投票先へ向く
+Scarlet.FavoriteChosen: {name} を本命にした
+Scarlet.KeptChosen: {name} をキープにした
+Scarlet.Gauge: 本命ゲージ
+Scarlet.GraceStatus: 本命を決めるまで残り {n} 秒
+Scarlet.FavoriteStatus: 本命: {name}
+Scarlet.GaugeStatus: 本命: {name}  ゲージ {n}%
+Scarlet.Grace: 本命決定までの猶予時間
+Scarlet.NumOfKept: キープの最大人数
+Scarlet.NumOfCommand: 号令の最大使用回数
+Scarlet.CanOverrideTaskWin: タスク勝利の乗っ取り
+Scarlet.WithGauge: 本命ゲージ
+Scarlet.RequiredGauge: 勝利に必要なゲージ量
+Scarlet.SurplusGauge: 余剰ゲージ量
+Scarlet.GaugeReduction: 本命ゲージの減少速度
+Scarlet.CanLocateLovers: 恋人の位置を表示
+Scarlet.PreAssignedLovers: 恋人の事前割り当て
+Scarlet.Vent: ベントを使える
+Spectre.Name: 妖狐
+Spectre.Blurb: 具現する怨嗟
+Spectre.Summary: 最後まで生き残ると他の勝利を乗っ取る第三陣営です。ただし、しばらくお揚げを食べないと飢えてしまいます。
+Spectre.WinCond: 試合の終わりに生きていて、満腹度が決めた値より多ければ勝ちを奪う (破壊工作での負けは除く)
+Spectre.Vanish: 透明化
+Spectre.Vanish.Help: 満腹度を使って、しばらくの間透明になります。使った後もお揚げ 1 つ分の満腹度が残る時だけ使えます。
+Spectre.Vanish.Short: 満腹度を使って透明になる
+Spectre.Eat: お揚げ
+Spectre.Eat.Help: マップの皿にお揚げが盛られます。お揚げが載った皿の近くで押すと、お揚げを食べる画面が開きます (クリックしてかじる)。満腹度が尽きると餓死します。
+Spectre.Eat.Short: 皿のお揚げを食べる
+Spectre.Tips: キル役の居場所が矢印で分かります。インポスターの視界を持ち、停電の影響を受けず、壁越しにも見えます (設定)。
+Spectre.Vent: ベントを使える
+Spectre.ShowKillers: キラーの位置を認識可能
+Spectre.Clairvoyance: 透視能力
+Spectre.Immoralist: 背徳者の割り当て
+Spectre.Immoralist.None: なし
+Spectre.Immoralist.Follower: 子狐
+Spectre.Immoralist.Immoralist: 背徳者
+Spectre.Immoralist.Random: ランダム
+Spectre.Immoralist.Alternate: 交互
+Spectre.FollowerChance: 子狐の出現確率 (%)
+Spectre.NumOfDishes: 皿の最大出現数
+Spectre.SatietyRate: お揚げ 1 個あたりの腹持ち
+Spectre.MaxSatiety: 最大満腹度
+Spectre.InitialSatiety: 初期満腹度
+Spectre.RequiredSatiety: 勝利に必要な満腹度
+Spectre.ShowDishesOnMap: マップ上でのお揚げの表示
+Spectre.Replenish: お揚げ補給の待ち時間
+Spectre.VanishCost: 透明化のお揚げコスト
+Spectre.VanishCooldown: 透明化の待ち時間
+Spectre.VanishDuration: 透明化の効果時間
+Spectre.Adrenaline: アドレナリンモード
+Spectre.AdrenalineRate: キラー接近時の腹持ち減少速度
+SpectreFollower.Name: 子狐
+SpectreFollower.Blurb: 大妖怪を夢見て
+SpectreFollower.Summary: 妖狐の仲間です。お揚げを食べて、妖狐の満腹度の維持に貢献します。
+SpectreFollower.WinCond: 妖狐が勝つと一緒に勝ち (妖狐が死ぬと後を追う)
+SpectreFollower.Tips: 妖狐の満腹度が左下のゲージで分かります。
+SpectreFollower.Vent: ベントを使える
+SpectreFollower.SatietyRate: お揚げ 1 個あたりの腹持ち
+SpectreFollower.ShowDishesOnMap: マップ上でのお揚げの表示
+SpectreImmoralist.Name: 背徳者
+SpectreImmoralist.Blurb: 道ならぬ道をゆく
+SpectreImmoralist.Summary: 妖狐の仲間です。生きている間はお揚げをお供えし、死んだ後はお揚げを消し去れます。
+SpectreImmoralist.WinCond: 妖狐が勝つと一緒に勝ち (妖狐が死ぬと後を追う)
+SpectreImmoralist.Place: 奉納
+SpectreImmoralist.Place.Help: 空の皿の近くで押して、その場で少し待つとお揚げが盛られます。
+SpectreImmoralist.Place.Short: 空の皿にお揚げをお供えする
+SpectreImmoralist.Remove: 消去
+SpectreImmoralist.Remove.Help: 死んだ後、皿のお揚げを消し去れます (妖狐が生きている間)。消しすぎると妖狐が飢えやすくなります。
+SpectreImmoralist.Remove.Short: 幽霊になって皿のお揚げを消す
+SpectreImmoralist.Suicide: 自決
+SpectreImmoralist.Suicide.Help: 好きな時に自決できます。
+SpectreImmoralist.Suicide.Short: 自決する
+SpectreImmoralist.Vent: ベントを使える
+SpectreImmoralist.RespawnCooldown: お供えの待ち時間
+SpectreImmoralist.RespawnDuration: お供えにかかる時間
+SpectreImmoralist.ShowDishesOnMap: マップ上でのお揚げの表示
+SpectreImmoralist.CanSuicide: 自決できる
+SpectreImmoralist.ShowKillFlash: キルフラッシュの表示
+Doppelganger.Name: ドッペルゲンガー
+Doppelganger.Blurb: ワタシ と オトモダチ
+Doppelganger.Summary: 自分そっくりの幻影を生み出し、動かしたり居場所を入れ替えたりできるクルーです。
+Doppelganger.Command: 配置
+Doppelganger.Command.Help: 地図を開きます。地図を押した所へ幻影が歩きます (幻影がいなければ足元に出ます)。ふつうの地図からも指示できます。幻影の近くにいる人は地図に映ります。
+Doppelganger.Command.Short: 地図で幻影を歩かせる
+Doppelganger.Swap: スワップ
+Doppelganger.Swap.Help: 少しの間その場で止まった後、幻影と居場所を入れ替えます。
+Doppelganger.Swap.Short: 幻影と居場所を入れ替える
+Doppelganger.Despawn: デスポーン
+Doppelganger.Despawn.Help: 幻影を消します。
+Doppelganger.Despawn.Short: 幻影を消す
+Doppelganger.Tips: 幻影は誰にでも本物に見え、キルされると本物が幻影の所で死にます。会議や死亡で幻影は消えます。
+Doppelganger.NoPath: 幻影がそこへ行く道が見つからない
+Doppelganger.SwapCooldown: スワップの待ち時間
+Doppelganger.SwapDuration: スワップにかかる時間
+Doppelganger.DetectionRadius: 幻影がプレイヤーを探知する範囲

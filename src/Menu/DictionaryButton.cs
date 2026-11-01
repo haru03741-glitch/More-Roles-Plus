@@ -67,6 +67,12 @@ internal static class DictionaryButton
     }
 
     // 状態の絵を「?」の同じ状態の台に替え、手帳を覆って絵を重ねる
+    internal static void Restyle(Transform root, Transform src, string state, Sprite icon)
+    {
+        var bg = state switch { "Active" => ActiveBg, "Selected" => SelectedBg, _ => InactiveBg };
+        Restyle(root, src, state, bg, icon);
+    }
+
     private static void Restyle(Transform root, Transform src, string state, Color bg, Sprite icon)
     {
         var t = root.Find(state);

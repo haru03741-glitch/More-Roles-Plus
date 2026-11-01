@@ -346,9 +346,18 @@ internal sealed class RoleBrowser
         float itemW = (SideW - 0.1f) / 3f;
         (string key, Color c)[] items = { ("RolePage.SwatchOff", Gray), ("RolePage.SwatchChance", Color.white), ("RolePage.SwatchAlways", Gold) };
         foreach (var (key, c) in items)
+        {
+            // 確率で出る見本は 10% → 50% → 90% の 3 つの小さな箱 (高いほど白い)
+            Widget sample = key == "RolePage.SwatchChance"
+                ? new Stack(true,
+                    new Box(null) { Size = new Vector2(0.1f, 0.24f), Padding = Vector2.zero, Color = ChanceColor(10) },
+                    new Box(null) { Size = new Vector2(0.1f, 0.24f), Padding = Vector2.zero, Color = ChanceColor(50) },
+                    new Box(null) { Size = new Vector2(0.1f, 0.24f), Padding = Vector2.zero, Color = ChanceColor(90) }) { Gap = 0.01f }
+                : new Box(null) { Size = new Vector2(0.32f, 0.24f), Color = c };
             swatches.Add(new Stack(true,
-                new Box(null) { Size = new Vector2(0.32f, 0.24f), Color = c },
+                sample,
                 new Label(new Text(key), 1.05f) { Color = SubText, Width = itemW - 0.37f, MinFontSize = 0.8f }) { Gap = 0.05f });
+        }
         var col = new Stack(false, swatches) { Gap = 0.04f, Width = SideW, Align = Align.Start };
         col.Add(new Label(OptEditor.ChangedMark + " " + new Text("RolePage.LegendMarks"), 1.05f) { Color = SubText, Width = SideW, Align = Align.Start });
         if (SettingNotice.FreshCount > 0) col.Add(new Label(new Text("RolePage.LegendFreshLine"), 1.05f) { Color = SubText, Width = SideW, Align = Align.Start });
@@ -382,8 +391,13 @@ internal sealed class RoleBrowser
         var a = sec.Role;
         if (a == null) return Color.white;
         if (!Enabled(a)) return Gray;
-        return a.Chance.Value >= 100 ? Gold : Color.white;
+        return a.Chance.Value >= 100 ? Gold : ChanceColor(a.Chance.Value);
     }
+
+    // 確率で出る役職の縁: 低いほど落ち着いた青・高いほど白 (色数を増やさず明るさで分かるように)。100% は金
+    private static readonly Color ChanceLow = new(0.46f, 0.6f, 0.8f, 1f), ChanceHigh = new(0.97f, 0.97f, 0.98f, 1f);
+
+    internal static Color ChanceColor(int pct) => Color.Lerp(ChanceLow, ChanceHigh, Mathf.Clamp01((pct - 10) / 80f));
 
     internal static Color TitleColor(Registry.Section sec)
     {
@@ -432,6 +446,15 @@ internal sealed class RoleBrowser
 
     // 「変わった所だけ」の札を出すか (受け取った変更がある間だけ)
     private bool FreshOnly => _freshOnly && SettingNotice.FreshCount > 0;
+
+    // 右の欄の説明: 移植元の「From:」の 1 行 (あれば) + 短い説明
+    private static string SideText(Registry.Section sec)
+    {
+        string s = ShortText(sec);
+        string origin = sec.Role != null ? Roles.RoleDoc.OriginLine(sec.Role) : "";
+        if (origin.Length == 0) return s;
+        return s.Length > 0 ? origin + s : origin.TrimEnd();
+    }
 
     private static string ShortText(Registry.Section sec)
     {
@@ -624,7 +647,7 @@ internal sealed class RoleBrowser
         var col = new Stack(false) { Gap = 0.03f, Width = SideW };
         col.Add(Hero(TitleColor(sec), null, sec.Title.ToString(), HeroSub(sec)));
         col.Add(new Spacer(0.1f, 0.03f));
-        string s = ShortText(sec);
+        string s = SideText(sec);
         if (s.Length > 0) col.Add(new Label(s, 1.2f) { Color = SubText, Width = SideW, Align = Align.Start });
         col.Add(new Spacer(0.1f, 0.06f));
         foreach (var opt in SectionOpts(sec))
@@ -917,7 +940,7 @@ internal sealed class RoleBrowser
         }
         else
         {
-            string s = ShortText(sec);
+            string s = SideText(sec);
             if (s.Length > 0) rows.Add(new Label(s, 1.3f) { Color = SubText, Width = W - 0.4f, Align = Align.Start });
         }
         var opts = new List<Opt>(SectionOpts(sec));
@@ -1002,7 +1025,7 @@ internal sealed class RoleBrowser
 
         var col = new Stack(false) { Gap = 0.05f, Width = SideW };
         col.Add(Hero(TitleColor(sec), null, sec.Title.ToString(), HeroSub(sec), tools));
-        string s = ShortText(sec);
+        string s = SideText(sec);
         if (s.Length > 0) col.Add(new Label(s, 1.1f) { Color = SubText, Width = SideW, Align = Align.Start });
 
         // 項目の行 (多い時はこの中だけスクロール)。人数と出現率は陣営の色の枠にまとめ、0% / 100% のボタンを添える

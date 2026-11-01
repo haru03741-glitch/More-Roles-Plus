@@ -51,6 +51,13 @@ internal static class GameModeSwitch
         var opts = GameOptionsManager.Instance;
         var prev = opts.currentGameMode;
         if (prev == mode) return $"already {mode}";
+        // サーバーが切り替えに対応していないと、切り替えた途端にホストが切断される
+        string blocked = Net.ServerModeSwitch.Blocked();
+        if (blocked != null)
+        {
+            SettingNotice.Toast(new Text(blocked));
+            return $"blocked: {blocked} ({Net.ServerModeSwitch.Describe()})";
+        }
 
         try { return Respawn(client, mode); }
         catch (System.Exception e)

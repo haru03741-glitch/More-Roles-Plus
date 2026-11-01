@@ -299,9 +299,15 @@ internal static class HelloOnSpawnPatch
 [HarmonyPatch(typeof(GameStartManager), nameof(GameStartManager.BeginGame))]
 internal static class BlockStartPatch
 {
-    public static bool Prefix()
+    public static bool Prefix(GameStartManager __instance)
     {
         if (!AmongUsClient.Instance.AmHost) return true;
+        // 数えの途中にもう一度「開始」を押したら取りやめる (本編の取りやめ。客の数えの表示も消える)
+        if (__instance.startState == GameStartManager.StartingStates.Countdown)
+        {
+            __instance.ResetStartState();
+            return false;
+        }
         var blockers = VersionCheck.Blockers(out int checking);
         if (blockers.Count == 0) { VersionCheck.CancelHeldStart(); return true; }
         if (checking == blockers.Count)

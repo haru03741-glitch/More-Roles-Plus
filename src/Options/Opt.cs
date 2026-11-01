@@ -111,6 +111,29 @@ public abstract class Opt
         if (index >= 0 && index < Count) Index = index;
     }
 
+    // 数値の項目の、番号 index の値 (数値でない項目は null)。打ち込んだ数を設定できる値へ寄せるのに使う
+    internal virtual double? ValueAt(int index) => null;
+    internal bool Numeric => ValueAt(0) != null;
+
+    // 打ち込んだ字 (全角・単位付きでもよい) を、範囲の中のいちばん近い設定できる値の番号に。数が読めなければ -1
+    internal int IndexForInput(string input)
+    {
+        if (!Numeric || !NumberInput.TryParse(input, out double v)) return -1;
+        int n = Count;
+        double lo = ValueAt(0).Value, hi = ValueAt(n - 1).Value;
+        if (n <= 1 || hi == lo) return 0;
+        double i = (v - lo) / (hi - lo) * (n - 1);
+        return Math.Clamp((int)Math.Round(i, MidpointRounding.AwayFromZero), 0, n - 1);
+    }
+
+    // 打ち込む欄に最初に出す字 (今の値の数だけ)
+    internal string InputText()
+    {
+        Sync();
+        var v = ValueAt(Index);
+        return v == null ? "" : v.Value.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
     // 保存は番号でなく値で書く (範囲や刻みを後で変えても、近い値に戻るように)
     internal virtual string Save() => Index.ToString(CultureInfo.InvariantCulture);
     internal virtual void Load(string s)
@@ -149,6 +172,7 @@ public sealed class IntOpt : Opt
 
     public int Value => Min + Index * StepSize;
     internal override int Count => (Max - Min) / StepSize + 1;
+    internal override double? ValueAt(int index) => Min + index * StepSize;
     internal override string Display() => Value.ToString(CultureInfo.InvariantCulture) + Suffix;
 
     internal override string Save() => Value.ToString(CultureInfo.InvariantCulture);
@@ -189,6 +213,7 @@ public sealed class FloatOpt : Opt
 
     public float Value => Min + Index * StepSize;
     internal override int Count => (int)Math.Round((Max - Min) / StepSize) + 1;
+    internal override double? ValueAt(int index) => Math.Round(Min + index * (double)StepSize, 4);
     internal override string Display() => Format?.Invoke(Value) ?? Value.ToString("0.##", CultureInfo.InvariantCulture) + Suffix;
 
     internal override string Save() => Value.ToString("R", CultureInfo.InvariantCulture);
@@ -229,4 +254,21 @@ public sealed class ChoiceOpt : Opt
     internal override string Display() => _choices[Index];
 
     public static implicit operator int(ChoiceOpt o) => o.Value;
+}
+
+// 打ち込んだ数を読む。全角の数字・小数点・負の印、後ろの単位 (秒・%・x など) を許す
+internal static class NumberInput
+{
+    private static readonly System.Text.RegularExpressions.Regex Num = new(@"-?(?:\d+(?:\.\d*)?|\.\d+)");
+
+    public static bool TryParse(string input, out double value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        string s = input.Normalize(System.Text.NormalizationForm.FormKC)
+            .Replace('ー', '-').Replace('−', '-').Replace('‐', '-').Replace('―', '-').Replace('－', '-')
+            .Replace('。', '.').Replace('、', '.').Replace(',', '.').Replace(" ", "");
+        var m = Num.Match(s);
+        return m.Success && double.TryParse(m.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+    }
 }
