@@ -176,6 +176,8 @@ internal static class GatlingFx
         var c = g.Owner.transform.position;
         float r = g.Angle * (MathF.PI / 180f);
         float cs = FxMath.Cos(r), sn = FxMath.Sin(r);
+        // 体を銃口の側へ向ける (右を向いたまま左へ撃たない)。狙いと逆へ歩けば後ろ向きに歩く
+        DuelFacing.Hold(g.Owner, cs);
         // 右手の側 (狙いの向きから見て右) に持つ: 上を狙っても体の横から銃が見える
         g.Px = c.x + cs * HoldOut + sn * HoldSide;
         g.Py = c.y + sn * HoldOut * Squash - cs * HoldSide * Squash - HoldDown;

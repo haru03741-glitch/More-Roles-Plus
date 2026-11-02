@@ -251,15 +251,10 @@ internal static partial class NovaFx
             if (!firing && !PortKit.Alive(s.P)) return false;
             bool vis = s.P.Visible;
             if (vis != s.Shown) { s.Shown = vis; s.Rig.Go.SetActive(vis); }
-            // 体を狙いの側へ向ける (キャノンを持つ手が体の前に来る)。構えて歩いている間は歩く向きのまま
             s.Moving = s.Stance && !Still(s.P);
-            if ((s.Vx > 0.25f || s.Vx < -0.25f) && !s.Moving)
-            {
-                var cos = s.P.cosmetics;
-                bool left = s.Vx < 0f;
-                if (cos && cos.FlipX != left) cos.SetFlipX(left);
-            }
         }
+        // 体を狙いの側へ向ける (キャノンを持つ手が体の前に来る)。構えて歩いている間も、狙いと逆へ歩けば後ろ向きに歩く
+        DuelFacing.Hold(s.P, s.Vx);
         // 見えている向き: 重い砲身は狙いへ少し遅れて回り、わずかに行き過ぎて止まる (減衰の強いばね)。撃つ時は狙いと一致させる
         float dt = now - s.LastNow;
         s.LastNow = now;
