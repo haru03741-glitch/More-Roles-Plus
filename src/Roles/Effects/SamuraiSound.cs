@@ -105,7 +105,13 @@ internal static class SamuraiSound
     internal static void Delayed(PlayerControl pc, int n, float delay) =>
         At(n >= 9 ? "noise_samurai_delayed_9" : n >= 6 ? "noise_samurai_delayed_6" : "noise_samurai_delayed_3", pc, 0.7f, delay);
 
-    internal static void Hit(PlayerControl target, bool ko) => At(ko ? "noise_samurai_hit_ko" : "noise_samurai_hit", target, ko ? 0.9f : 0.8f);
+    // 透明な人でも斬られた所では鳴る (刀は見えない相手にも当たる)
+    internal static void Hit(PlayerControl target, bool ko)
+    {
+        if (!target || target.inVent || !(target.Visible || Cloak.IsOn(target.PlayerId))) return;
+        Vector3 p = target.transform.position;
+        At(ko ? "noise_samurai_hit_ko" : "noise_samurai_hit", p.x, p.y, ko ? 0.9f : 0.8f);
+    }
     internal static void Dash(PlayerControl pc) => At("noise_samurai_dash", pc, 0.45f);
     internal static void Dodge(PlayerControl pc) => At("noise_samurai_dodge", pc, 0.4f);
     internal static void Spent(PlayerControl pc) => At("noise_samurai_spent", pc, 0.4f);

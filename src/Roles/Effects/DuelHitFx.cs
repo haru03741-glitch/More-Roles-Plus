@@ -59,7 +59,8 @@ internal static class DuelHitFx
             var hud = Vanilla.Hud;
             if (hud && hud.PlayerCam) hud.PlayerCam.ShakeScreen(0.12f + 0.1f * k, 0.6f + 1.2f * k);
         }
-        if (!target.Visible) return;
+        // 透明な人も斬られた所に火花と血しぶきが出る (ベントの中など本当に居ない時だけ出さない)
+        if (target.inVent || !target.Visible && !Cloak.IsOn(target.PlayerId)) return;
         if (!Ensure()) return;
         Vector3 at = target.transform.position;
         float x = at.x, y = at.y + 0.1f, z = at.z - 0.01f;

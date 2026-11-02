@@ -122,6 +122,13 @@ public sealed class Scarlet : RoleBase, IGuessBlock
         if (IsLover(id)) return;
         _lovers[id] = favorite;
         if (favorite) _favorite = id;
+        var lp = PlayerControl.LocalPlayer;
+        if (lp && lp.PlayerId == id && lp.PlayerId != PlayerId)
+        {
+            // 本命かキープかは選ばれた側に伝えない (♡ の印と同じ)
+            PortKit.Notice(new Text("Scarlet.YouWereChosen").ToString());
+            Fx.Hearing.Self("scarlet_chosen", 0.45f);
+        }
         if (!IsLocal) return;
         var other = favorite ? _keep : _fav;
         other?.Button?.StartCooldown();

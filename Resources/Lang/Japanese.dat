@@ -1713,6 +1713,7 @@ Scarlet.Tips: 本命ゲージは本命のそばにいると溜まり、離れる
 Scarlet.Commanded: 深紅の号令をかけた。恋人たちの票はあなたの投票先へ向く
 Scarlet.FavoriteChosen: {name} を本命にした
 Scarlet.KeptChosen: {name} をキープにした
+Scarlet.YouWereChosen: スカーレットの恋人に選ばれた
 Scarlet.Gauge: 本命ゲージ
 Scarlet.GraceStatus: 本命を決めるまで残り {n} 秒
 Scarlet.FavoriteStatus: 本命: {name}

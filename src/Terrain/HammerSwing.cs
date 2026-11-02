@@ -1,5 +1,6 @@
 using System;
 using MoreRolesPlus.Fx;
+using MoreRolesPlus.Net;
 using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
@@ -34,6 +35,10 @@ internal static class HammerSwing
     private static byte _fixtureOwner, _fixtureDesk;
     private static bool _fixtureIsDesk;
     private static float _fixtureAt;       // ポータルの装置か設計台を叩いた: この時刻にホストへ伝える (0 = 無し)
+    private static float _bodyAt;          // 場に置かれた物 (ドローン等) を叩いた: この時刻に当てて全員へ伝える (0 = 無し)
+    private static Vector2 _bodyHit, _bodyDir;
+    private const float BodyPad = 0.4f;
+    private static readonly float[] BodyNext = new float[256]; // 送り主ごとの、次に受ける時刻
     private static int _shipGen;           // 試合の切り替わり (GameClock.ShipGen)
     private static string _last = "-";     // 確認用: 最後に見せた振り
 
@@ -44,7 +49,7 @@ internal static class HammerSwing
         ok = false;
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.Data == null || lp.Data.IsDead) return new Text("HammerSwing.OnlyWhileAlive");
-        if (_pendingAt > 0f || _fixtureAt > 0f) return new Text("HammerSwing.AlreadySwinging");
+        if (_pendingAt > 0f || _fixtureAt > 0f || _bodyAt > 0f) return new Text("HammerSwing.AlreadySwinging");
         Vector2 at = lp.GetTruePosition();
         Vector2 dirAim = Aim(lp, out bool facingLeft);
         if (aim is { } forced && forced.sqrMagnitude > 1e-6f) { dirAim = forced.normalized; facingLeft = forced.x < 0f; }
@@ -74,6 +79,17 @@ internal static class HammerSwing
             _fixtureIsDesk = false;
             _fixtureAt = Time.time + HitAt;
             return new Text("HammerSwing.HitPortal");
+        }
+        // 壁より手前に場に置かれた物 (止まったドローン等) があれば、それを叩く (壊れるかは物を決める端末が決める)
+        // 足元の高さで振るので、浮いている物 (胴の真ん中で当たりを持つ) にも届くよう少し広く見る
+        if (Roles.Bodies.Count > 0 && Roles.Bodies.Probe(at, dirAim, wallDist, BodyPad, out Vector2 bodyFace, out Vector2 bodyCenter))
+        {
+            ok = true;
+            Play(bodyFace, dirAim, facingLeft, color, own: true, air: false);
+            _bodyHit = bodyCenter;
+            _bodyDir = dirAim;
+            _bodyAt = Time.time + HitAt;
+            return new Text("HammerSwing.HammerHit");
         }
         if (!wall)
         {
@@ -131,7 +147,18 @@ internal static class HammerSwing
             _shipGen = GameClock.ShipGen;
             _pendingAt = 0f;
             _fixtureAt = 0f;
+            _bodyAt = 0f;
             FxHands.ClearAll();
+        }
+        if (_bodyAt > 0f && Time.time >= _bodyAt)
+        {
+            _bodyAt = 0f;
+            var me = PlayerControl.LocalPlayer;
+            if (GameClock.ShipAlive && me && me.Data != null && !me.Data.IsDead && !MeetingHud.Instance)
+            {
+                HitBody(me.PlayerId, _bodyHit, _bodyDir);
+                BodyCall.Send((_bodyHit, _bodyDir));
+            }
         }
         if (_fixtureAt > 0f && Time.time >= _fixtureAt)
         {
@@ -149,6 +176,31 @@ internal static class HammerSwing
         if (!GameClock.ShipAlive || !lp || lp.Data == null || lp.Data.IsDead || MeetingHud.Instance) return;
         TerrainSync.Request(_pending);
     }
+
+    private static void HitBody(byte by, Vector2 at, Vector2 dir) =>
+        Roles.Bodies.Circle(new Roles.Strike(Roles.StrikeElement.Blunt, Roles.Bodies.BluntPower, 0, at.x, at.y, dir.x, dir.y, by), 0.1f);
+
+    // ほかの人が場に置かれた物を叩いた (全員の端末): 叩いた姿を見せ、同じ一撃を当てる (物を決める端末で耐久が減る)
+    private static readonly RemoteCall<(Vector2 at, Vector2 dir)> BodyCall = new("HammerSwing.Body", Route.Anyone,
+        (w, v) => { w.Write(v.at.x); w.Write(v.at.y); w.Write(v.dir.x); w.Write(v.dir.y); },
+        r => (new Vector2(r.ReadSingle(), r.ReadSingle()), new Vector2(r.ReadSingle(), r.ReadSingle())),
+        (sender, v) =>
+        {
+            if (!sender || sender.AmOwner || sender.Data == null || sender.Data.IsDead || !GameClock.ShipAlive || MeetingHud.Instance) return;
+            // 1 回の振りより速い連打は捨てる
+            float now = Time.time;
+            int id = sender.PlayerId & 255;
+            if (now < BodyNext[id]) return;
+            BodyNext[id] = now + HitAt * 0.8f;
+            // 叩いた人の手の届く所だけ (離れた所・数でない座標の送りつけは捨てる)。手元で拾う広さ (半径 + BodyPad) に合わせる
+            Vector2 p = sender.GetTruePosition();
+            float dx = v.at.x - p.x, dy = v.at.y - p.y, reach = DamageProfile.Of(DamageKind.Blunt).Reach + BodyPad + 0.4f;
+            if (!(dx * dx + dy * dy <= reach * reach) || !float.IsFinite(v.dir.x) || !float.IsFinite(v.dir.y)) return;
+            float dl = MathF.Sqrt(v.dir.x * v.dir.x + v.dir.y * v.dir.y);
+            Vector2 dir = dl > 1e-4f ? new Vector2(v.dir.x / dl, v.dir.y / dl) : new Vector2(1f, 0f);
+            if (sender.Visible) PlayOther(v.at - dir * 0.2f, dir, Roles.GatlingFx.ShownColor(sender));
+            HitBody(sender.PlayerId, v.at, dir);
+        });
 
     // 他の人がポータルの装置を叩いた姿 (その人の色で当たった姿から)
     internal static void PlayOther(Vector2 face, Vector2 toward, int color) => Play(face, toward, toward.x < 0f, color, own: false, air: false);

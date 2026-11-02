@@ -1713,6 +1713,7 @@ Scarlet.Tips: The favorite gauge fills near your favorite and drains away from t
 Scarlet.Commanded: Crimson command issued. Your lovers' votes will follow yours
 Scarlet.FavoriteChosen: {name} is now your favorite
 Scarlet.KeptChosen: {name} is now kept
+Scarlet.YouWereChosen: You were chosen as the Scarlet's lover
 Scarlet.Gauge: Favorite gauge
 Scarlet.GraceStatus: {n} s left to choose a favorite
 Scarlet.FavoriteStatus: Favorite: {name}

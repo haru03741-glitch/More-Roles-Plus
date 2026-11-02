@@ -13,7 +13,7 @@ namespace MoreRolesPlus;
 public class Plugin : BasePlugin
 {
     public const string Guid = "86aa5c38-7092-4d6f-ae72-7e9301070806";
-    public const string Version = "0.1.0";
+    public const string Version = "0.1.1";
 
     internal static ManualLogSource Logger;
     internal static Harmony Harmony;
@@ -153,6 +153,7 @@ public class Ticker : MonoBehaviour
         Roles.CutDoors.HostTick();
         Roles.SpaceRifts.Tick();
         Roles.Bodies.Tick();
+        Roles.BodyWreck.Tick();
         Roles.RiftArt.Tick();
         Roles.DuelDodge.Tick();
         Roles.DuelTongue.Tick();

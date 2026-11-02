@@ -70,6 +70,7 @@ public static class Cloak
     {
         public float Until, Alpha = 1f;
         public bool Hidden; // 本編の Visible を消した
+        public bool On;     // 始めと終わりの音を 1 回ずつ鳴らすための今の状態 (時間切れと終わりの電文のどちらが先でも)
     }
 
     private static readonly Dictionary<byte, State> _all = new();
@@ -99,6 +100,14 @@ public static class Cloak
         }
         if (!_all.TryGetValue(id, out var s)) _all[id] = s = new State();
         s.Until = seconds > 0f ? Time.time + seconds : 0f;
+        Turn(id, s, seconds > 0f);
+    }
+
+    private static void Turn(byte id, State s, bool on)
+    {
+        if (s.On == on) return;
+        s.On = on;
+        Neutral.Spectre.OnCloak(id, on);
     }
 
     // 毎 FixedUpdate (RoleFrame.Tick から)
@@ -116,6 +125,7 @@ public static class Cloak
             var s = kv.Value;
             if (!p) { (done ??= new()).Add(kv.Key); continue; }
             bool on = s.Until > now && PortKit.Alive(p);
+            if (!on && s.On) Turn(kv.Key, s, false);
             float want = !on ? 1f : p.AmOwner || ghost ? SelfAlpha : 0f;
             s.Alpha = Mathf.MoveTowards(s.Alpha, want, step);
             if (on && want == 0f && s.Alpha <= 0f)

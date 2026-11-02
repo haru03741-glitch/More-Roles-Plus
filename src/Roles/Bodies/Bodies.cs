@@ -156,6 +156,35 @@ internal static class Bodies
         return false;
     }
 
+    // 叩く向きの線 (at から dir へ reach まで) に、物の半径 + pad で掛かるいちばん近い物。face = 線が縁に入る所
+    internal static bool Probe(Vector2 at, Vector2 dir, float reach, float pad, out Vector2 face, out Vector2 center)
+    {
+        face = center = default;
+        float best = reach;
+        bool found = false;
+        for (int i = All.Count - 1; i >= 0; i--)
+        {
+            var b = All[i];
+            if (b.BulletsOnly) continue;
+            Refresh(b);
+            if (b.Gone) continue;
+            float px = b.X - at.x, py = b.Y - at.y;
+            float t = px * dir.x + py * dir.y;
+            if (t < 0f) continue;
+            float rr = b.Radius + pad;
+            float qx = px - dir.x * t, qy = py - dir.y * t, q2 = qx * qx + qy * qy, r2 = rr * rr;
+            if (q2 > r2) continue;
+            float enter = t - FxMath.Sqrt(r2 - q2);
+            if (enter < 0f) enter = 0f;
+            if (enter >= best) continue;
+            best = enter;
+            found = true;
+            face = FxMath.V2(at.x + dir.x * enter, at.y + dir.y * enter);
+            center = FxMath.V2(b.X, b.Y);
+        }
+        return found;
+    }
+
     // 円の範囲 (爆発・叩いた所) の物すべて
     internal static void Circle(in Strike s, float r)
     {
