@@ -249,7 +249,7 @@ public sealed partial class TriggerHappy
             GatlingFx.BreakGun(_gun);
             _gun = null;
         }
-        if (IsLocal && _active && _spray != null) _spray.EndEffect();
+        if (Driven && _active && _spray != null) _spray.EndEffect();
         else if (_active) SetActive(false);
     }
 }

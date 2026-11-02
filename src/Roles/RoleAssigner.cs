@@ -796,6 +796,7 @@ internal static class RoleAssigner
     public static void AssignAndSend()
     {
         OptionSync.RestoreOwn();
+        Dev.BotPlay.Reserve();
         // 本編の役職も MRP が配る (MRP の役職を切っていても本編の役職は配る)
         int seed = Rng.Next();
         var rng = new Random(seed);

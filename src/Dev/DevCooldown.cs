@@ -41,7 +41,7 @@ internal static class DevCooldown
     }
 
     // ホストの確かめで待ち時間を見ないか
-    public static bool Skips(PlayerControl user) => Zero && user && user.AmOwner;
+    public static bool Skips(PlayerControl user) => Zero && user && (user.AmOwner || Dummy.Owns(user));
 
     // 毎フレーム (旗が立っている時だけ先を見る)。本編のキルの待ち時間は本編が減らして表示するので、値を 0 にするだけでよい
     public static void Tick()

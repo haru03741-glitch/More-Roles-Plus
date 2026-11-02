@@ -130,7 +130,58 @@ internal sealed class RemoteCall<T> : RemoteCall
         Remote.Close(w);
     }
 
+    // actor の名前で送る。actor がこの端末 (ホスト) の動かしているダミーなら、受け手には送り手がそのダミーに見える
+    // (ダミーは中の人がいないので、自分の物でない体の RPC を使わず、ホストの電文の中に「誰として」を入れて運ぶ)。
+    // それ以外の人なら Send と同じ
+    public void SendAs(PlayerControl actor, T value, int target = -1)
+    {
+        if (!actor || actor.AmOwner || Route == Route.HostToAll || !Dev.Dummy.Owns(actor))
+        {
+            Send(value, target);
+            return;
+        }
+        // ダミーの持ち主はホスト = この端末なので、ホスト宛ての物はその場で受けた扱い
+        if (Route == Route.ToHost)
+        {
+            _body(actor, value);
+            return;
+        }
+        var w = Remote.Open(Remote.As, target);
+        try
+        {
+            w.Write(actor.PlayerId);
+            w.StartMessage(Id);
+            _write(w, value);
+            w.EndMessage();
+        }
+        catch (Exception e)
+        {
+            Remote.Abort(w);
+            Plugin.Logger.LogError($"remote {Name} (as {actor.PlayerId}) write: {e}");
+            return;
+        }
+        Remote.Close(w);
+    }
+
     internal override void Receive(PlayerControl sender, MessageReader r) => _body(sender, _read(r));
+}
+
+// ホストが動かすダミーの名前で送った電文の包み: [ダミーの番号][中の電文]。ホストから来た物だけ受け、送り手をそのダミーに替えて中の電文を渡す
+internal sealed class ActAsCall : RemoteCall
+{
+    public ActAsCall() : base("Net.As", Route.HostToAll, Delivery.Now, 0) { }
+
+    internal override void Receive(PlayerControl sender, MessageReader r)
+    {
+        byte id = r.ReadByte();
+        var actor = GameData.Instance ? GameData.Instance.GetPlayerById(id)?.Object : null;
+        if (!actor || !actor.isDummy || r.BytesRemaining <= 0) return;
+        var sub = r.ReadMessage();
+        var call = Remote.ById(sub.Tag);
+        if (call == null || call is ActAsCall || call.Route != Route.Anyone) return;
+        call.Received++;
+        call.Receive(actor, sub);
+    }
 }
 
 // 電文をまとめて運ぶ所。本編の RPC 番号は 1 つ (Rpc.Bus) だけ使い、中に [指紋][電文]... を詰める。
@@ -159,6 +210,11 @@ internal static class Remote
     private static int _sentIdx;
 
     internal static void Add(RemoteCall call) => Pending.Add(call);
+
+    internal static RemoteCall ById(int id) => id >= 0 && id < _byId.Length ? _byId[id] : null;
+
+    // ダミーの名前で送る電文の包み (RemoteCall<T>.SendAs)
+    internal static readonly ActAsCall As = new();
 
     // 起動時に 1 回。static readonly の RemoteCall を全部読み (その型の static の初期化が走る)、名前順に番号を振る
     public static void Init()

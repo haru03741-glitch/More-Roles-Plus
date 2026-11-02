@@ -720,6 +720,25 @@ HostActions.BotAdded: 練習の相手 {name} ({role}) を出しました。/bot 
 HostActions.BotsStopped: 練習の相手を {n} 人止めました
 HostActions.BotNotHere: 練習の相手を出せるのは、フリープレイかカスタムサーバー・ローカルの部屋のホストだけです
 HostActions.BotFull: これ以上は出せません
+BotPanel.Title: ボット
+BotPanel.Count: {n} 体
+BotPanel.Add: ボットを出す
+BotPanel.AddRole: 役職を選んで出す
+BotPanel.RemoveAll: 全部消す
+BotPanel.Mode: 試合中の動き
+BotPanel.ModeStand: 立っているだけ
+BotPanel.ModeAttack: 自分を狙う
+BotPanel.ModeAuto: 自動で遊ぶ
+BotPanel.HintStand: 何もせずに立っています。自分の能力を試す的にできます。
+BotPanel.HintAttack: 役職の能力やキルを自分に使ってきます。撃たれる側や操られる側を一人で試せます。
+BotPanel.HintAuto: 普通のプレイヤーのように、タスク・キル・通報・投票をします。
+BotPanel.RoleAny: おまかせ
+BotPanel.ChangeRole: 役職
+BotPanel.Empty: ボットはいません
+BotPanel.AddThisRole: この役職のボットを出す
+BotPanel.GiveRole: {name} に付ける
+BotPlay.NotHere: ボットを出せるのは、公式サーバー以外の部屋のホストだけです
+BotPlay.LobbyOnly: ボットはロビーでだけ出せます
 HostActions.NotDead: 生きています
 HostActions.Revived: {name} を生き返らせました
 HostActions.NoPlayerSeeId: {arg} 番の人はいません (/id で番号を確認)
@@ -1441,6 +1460,8 @@ RemoteController.Kill.Short: 操作している人に倒させる
 RemoteController.MarkCooldown: マークの待ち時間
 RemoteController.OperationInfinite: 操作の時間を無制限にする
 RemoteController.OperationDuration: 操作の長さ
+RemoteController.Controlled: 操られている
+RemoteController.ControlledUntil: 自分では動けない
 # ── ロケットランチャー (RocketLauncher) ──
 RocketLauncher.Name: ロケットランチャー
 RocketLauncher.Blurb: 人間ロケット発射！

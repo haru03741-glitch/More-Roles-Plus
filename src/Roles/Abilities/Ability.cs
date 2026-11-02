@@ -42,14 +42,23 @@ public sealed class Ability
 
     // 効果の間にもう一度押すと効果を途中で終える (押した時に OnCancel、その後 OnEnd)。CancelLabel = 効果の間のボタンの名前
     public bool Cancellable { get; init; }
+    // 本人が動けない間 (別の物を操っている間など) も押せる
+    public bool WhileStill { get; init; }
     public Action OnCancel { get; init; }
     public Text? CancelLabel { get; init; }
     public Func<bool> CanCancel { get; init; } // 途中で終えられるか (null = いつでも)
 
     // 効果を今終える (使った人の端末で・OnEnd が呼ばれる)
-    public void EndEffect() => Button?.CancelEffect(false);
+    public void EndEffect()
+    {
+        if (BotEffectUntil >= 0f) { Abilities.EndBotEffect(this); return; }
+        Button?.CancelEffect(false);
+    }
 
-    public bool InEffect => Button != null && Button.InEffect;
+    public bool InEffect => (Button != null && Button.InEffect) || BotEffectUntil >= 0f;
+
+    // ボット (ホストが動かすダミー) が使った効果の切れる時刻 (-1 = 効果の間でない)。ボットにはボタンが無いので時刻で持つ
+    internal float BotEffectUntil = -1f;
 
     // 使える回数 (null か 0 以下 = 何回でも)
     public Func<int> MaxUses { get; init; }
@@ -254,9 +263,85 @@ internal static class Abilities
         return true;
     }
 
+    // ---- ボット (ホストが動かすダミー) の能力 ----
+
+    private static readonly List<Ability> BotEffects = new();
+
+    // ボットに能力を使わせる (ホストだけ)。Self = その場で OnUse (効果の長さは時刻で数える)・長押しは hold 秒溜めた扱い・
+    // 人を狙う能力 = 本人が押した時と同じくホストの確かめを通す。断った理由を返す (null = 使えた/確かめに回した)
+    internal static string UseAs(PlayerControl user, int index, byte targetId, float hold = -1f)
+    {
+        if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost || !Dev.Dummy.Owns(user)) return "not a bot";
+        var role = RoleState.Of(user);
+        if (role == null || index < 0 || index >= role.Abilities.Count) return "ability";
+        var a = role.Abilities[index];
+        if (a.Target != AbilityTarget.Self)
+        {
+            // 待ち時間の間はホストの確かめに回さない (断られるたびに警告を出すので)
+            if (a.Target != AbilityTarget.Meeting && (Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds && !Dev.DevCooldown.Skips(user)) return "cooldown";
+            string before = LastRefusal;
+            HostUse(user, (byte)index, targetId);
+            return ReferenceEquals(before, LastRefusal) ? null : LastRefusal;
+        }
+        if (a.UsesLeft == 0) return "no uses";
+        if (!user || user.Data == null || user.Data.IsDead != a.Ghost) return "user";
+        if (a.InEffect)
+        {
+            // 効果の間にもう一度 = 途中で終える (本人がボタンを押し直したのと同じ)
+            if (!a.Cancellable) return "in effect";
+            a.OnCancel?.Invoke();
+            EndBotEffect(a);
+            return null;
+        }
+        if ((Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds && !Dev.DevCooldown.Skips(user)) return "cooldown";
+        if (a.OnHold != null)
+        {
+            float max = a.HoldMax?.Invoke() ?? 1f, min = a.HoldMin?.Invoke() ?? 0f;
+            if (!a.OnHold(Math.Clamp(hold < 0f ? max : hold, min, max))) return "refused";
+        }
+        else if (a.OnUse == null || !a.OnUse()) return "refused";
+        a.Spend();
+        a.HostLastMs = Environment.TickCount64;
+        float d = a.Duration?.Invoke() ?? 0f;
+        if (d > 0f)
+        {
+            a.BotEffectUntil = Time.time + d;
+            if (!BotEffects.Contains(a)) BotEffects.Add(a);
+        }
+        return null;
+    }
+
+    internal static void EndBotEffect(Ability a)
+    {
+        if (a.BotEffectUntil < 0f) return;
+        a.BotEffectUntil = -1f;
+        a.HostLastMs = Environment.TickCount64; // 待ち時間は効果が切れてから
+        BotEffects.Remove(a);
+        try { a.OnEnd?.Invoke(); }
+        catch (Exception e) { Plugin.Logger.LogError($"{a.Role?.Id} bot ability end: {e}"); }
+    }
+
+    // 効果の切れ目 (本人のボタンと同じく会議・死亡・役職が外れた時も切る)
+    private static void TickBots()
+    {
+        if (BotEffects.Count == 0) return;
+        bool meeting = MeetingHud.Instance || ExileController.Instance;
+        float now = Time.time;
+        for (int i = BotEffects.Count - 1; i >= 0; i--)
+        {
+            if (i >= BotEffects.Count) continue;
+            var a = BotEffects[i];
+            var p = a.Role?.Player;
+            bool gone = a.Role == null || a.Role.Lifespan == null || a.Role.Lifespan.IsDead || !p;
+            if (gone) { a.BotEffectUntil = -1f; BotEffects.RemoveAt(i); continue; }
+            if (meeting || now >= a.BotEffectUntil || p.Data == null || p.Data.IsDead != a.Ghost) EndBotEffect(a);
+        }
+    }
+
     // 毎 FixedUpdate。Player の能力がある時だけ、0.1 秒ごとに狙う相手を選び直す
     internal static void Tick()
     {
+        TickBots();
         var role = _local;
         if (role == null || ++_scan < ScanEvery) return;
         _scan = 0;

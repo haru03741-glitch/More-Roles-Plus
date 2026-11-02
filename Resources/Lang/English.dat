@@ -720,6 +720,25 @@ HostActions.BotAdded: Added practice opponent {name} ({role}). /bot off stops it
 HostActions.BotsStopped: Stopped {n} practice opponents
 HostActions.BotNotHere: Only the host of Freeplay, a custom-server lobby or a local lobby can add practice opponents
 HostActions.BotFull: No room for more
+BotPanel.Title: Bots
+BotPanel.Count: {n} bots
+BotPanel.Add: Add bot
+BotPanel.AddRole: Add with role
+BotPanel.RemoveAll: Remove all
+BotPanel.Mode: In game
+BotPanel.ModeStand: Stand still
+BotPanel.ModeAttack: Target me
+BotPanel.ModeAuto: Play on its own
+BotPanel.HintStand: Bots stand still. Use them as targets for your own abilities.
+BotPanel.HintAttack: Bots use their role's abilities and kills on you, so you can try being shot or controlled on your own.
+BotPanel.HintAuto: Bots play like normal players: tasks, kills, reports and votes.
+BotPanel.RoleAny: Random
+BotPanel.ChangeRole: Role
+BotPanel.Empty: No bots
+BotPanel.AddThisRole: Add a bot with this role
+BotPanel.GiveRole: Give to {name}
+BotPlay.NotHere: Only the host of a lobby that is not on an official server can add bots
+BotPlay.LobbyOnly: Bots can only be added in the lobby
 HostActions.NotDead: Not dead
 HostActions.Revived: Revived {name}
 HostActions.NoPlayerSeeId: No player {arg} (see /id)
@@ -1441,6 +1460,8 @@ RemoteController.Kill.Short: Make your puppet kill
 RemoteController.MarkCooldown: Mark cooldown
 RemoteController.OperationInfinite: Unlimited operation
 RemoteController.OperationDuration: Operation duration
+RemoteController.Controlled: Remote-controlled
+RemoteController.ControlledUntil: you can't move on your own
 # ── ロケットランチャー (RocketLauncher) ──
 RocketLauncher.Name: Rocket Launcher
 RocketLauncher.Blurb: Human rocket, launch!

@@ -107,8 +107,10 @@ public class Ticker : MonoBehaviour
         Roles.ArchitectDrone.FrameAll();
         Roles.StatusEffects.Tick();
         Menu.Keybinds.Tick();
+        Menu.BotPanel.Tick();
         Dev.Dummy.Tick();
         Dev.DummyBrain.Tick();
+        Dev.BotPlay.Tick();
         Roles.DuelBot.Tick();
         Rules.Respawn.Tick();
         Terrain.BreakNoise.Tick(); t = Bridge.Perf.Lane(2, t);

@@ -89,6 +89,11 @@ public sealed partial class TriggerHappy : RoleBase
     private Shot _lastShot;
     private Vector2 _lastFire;
 
+    // ボット (ホストが動かすダミー) の狙い: 撃つ向き (null = 撃たない)。ボットの頭が決める
+    internal Vector2? BotAim;
+    internal bool Active => _active;
+    internal Ability Spray => _spray;
+
     public override void OnAssigned()
     {
         _spray = AddAbility(new Ability(new Text("TriggerHappy.Spray"), "snr_gun")
@@ -99,7 +104,7 @@ public sealed partial class TriggerHappy : RoleBase
             OnUse = () =>
             {
                 if (!Player.CanMove) return false;
-                StateCall.Send(true);
+                StateCall.SendAs(Player, true);
                 SetActive(true);
                 if (SyncKillCooldown) Player.SetKillTimer(GameManager.Instance.LogicOptions.GetKillCooldown());
                 return true;
@@ -107,7 +112,7 @@ public sealed partial class TriggerHappy : RoleBase
             OnEnd = () =>
             {
                 Flush(true);
-                StateCall.Send(false);
+                StateCall.SendAs(Player, false);
                 SetActive(false);
             },
         });
@@ -223,10 +228,19 @@ public sealed partial class TriggerHappy : RoleBase
         if (IsLocal && !System.OperatingSystem.IsAndroid()) ReadRightClick();
         if (!_active) return;
         bool vent = Player.inVent;
-        if (IsLocal)
+        if (Driven)
         {
-            ShotKit.Track();
-            _firing = ReadInput(out var target) && !vent && Player.CanMove;
+            Vector2 target;
+            if (IsLocal)
+            {
+                ShotKit.Track();
+                _firing = ReadInput(out target) && !vent && Player.CanMove;
+            }
+            else
+            {
+                target = BotAim ?? _aim;
+                _firing = BotAim != null && !vent && Player.CanMove;
+            }
             // 向きはなめらかに狙いへ寄せる
             float want = FxMath.Atan2(target.y, target.x) * (180f / System.MathF.PI);
             _angle += DeltaDeg(_angle, want) * FxMath.Clamp01(dt / 0.06f);
@@ -283,7 +297,7 @@ public sealed partial class TriggerHappy : RoleBase
         if (MeetingHud.Instance) { _batch.Clear(); return; }
         bool turned = float.IsNaN(_sentAngle) || FxMath.Abs(DeltaDeg(_sentAngle, _angle)) > 3f;
         if (_batch.Count == 0 && !turned && !force) return;
-        BatchCall.Send((_angle, _batch.ToArray()));
+        BatchCall.SendAs(Player, (_angle, _batch.ToArray()));
         _sentAngle = _angle;
         _batch.Clear();
     }
@@ -389,7 +403,7 @@ public sealed partial class TriggerHappy : RoleBase
         if (_shots.Count == 0) { FlushGraze(dt); return; }
         if (RewindPlayback.Active) return; // 逆再生の間は弾を止める (見た目は録画が逆にたどる・戻し終わりに消す)
         bool cached = false, judged = false;
-        _anyReal = IsLocal;
+        _anyReal = Driven;
         float step = Speed * dt;
         for (int i = _shots.Count - 1; i >= 0; i--)
         {

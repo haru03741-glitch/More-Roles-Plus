@@ -106,8 +106,21 @@ public sealed class RocketLauncher : RoleBase
     // 狙いの向き: PC はマウスの方・スマホは最後に歩いた向き
     internal static Vector2? TestAim; // 試験用: 狙いの向きを固定する (bridge の rlaim)
 
+    // ボット (ホストが動かすダミー) の狙いの向き。ボットの頭が決める
+    internal Vector2 BotAim = Vector2.right;
+    internal byte HeldId => _held;
+    internal bool Flying => _flying;
+
+    // ボット: 掴んでいれば dir の向きへ撃つ
+    internal bool BotShoot(Vector2 dir)
+    {
+        BotAim = dir;
+        return IsBot && TryShoot();
+    }
+
     private Vector2 AimDir()
     {
+        if (IsBot) return BotAim;
         if (TestAim is { } fixedAim) return fixedAim;
         if (System.OperatingSystem.IsAndroid() || !Camera.main) return ShotKit.Facing;
         Vector2 mouse = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -142,7 +155,7 @@ public sealed class RocketLauncher : RoleBase
         var cannon = RocketCannon.For(this);
         Vector2 start = cannon != null ? cannon.Muzzle(dir) : HoldPosition() + new Vector2(0f, -0.4f);
         var m = (_held, start, dir);
-        ShotCall.Send(m);
+        ShotCall.SendAs(Player, m);
         StartShot(Player, m.Item1, m.Item2, m.Item3);
         if (CanUseNormalKill) Player.SetKillTimer(GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown));
     }
@@ -184,10 +197,10 @@ public sealed class RocketLauncher : RoleBase
             RocketCannon.Drop(this);
             return;
         }
-        if (IsLocal)
+        if (Driven)
         {
-            ShotKit.Track();
-            // 自分の画面だけ、筒を狙いの方へ向ける
+            if (IsLocal) ShotKit.Track();
+            // 撃つ人の画面だけ、筒を狙いの方へ向ける
             if (_held != 255 && RocketCannon.For(this) is { } c)
             {
                 var a = AimDir();
@@ -202,7 +215,7 @@ public sealed class RocketLauncher : RoleBase
             {
                 MoveTo(t, HoldPosition());
                 _heldFor += Time.fixedDeltaTime;
-                if (IsLocal && LimitLoadedTime && _heldFor >= LoadedTimeLimit) Shoot();
+                if (Driven && LimitLoadedTime && _heldFor >= LoadedTimeLimit) Shoot();
             }
         }
         if (_flying) Fly();
@@ -231,7 +244,7 @@ public sealed class RocketLauncher : RoleBase
         Vector2 next = _pos + step;
         bool hit = false, wallHit = false;
         Vector2 at = next, wallPoint = next;
-        if (IsLocal && !_exploded)
+        if (Driven && !_exploded)
         {
             // 壁と物と家具 (層 12 は本編のマスクに入っていない) だけを、トリガーを飛ばして見る。
             // 人の層を入れると、飛ばしている本人の体に当たる
@@ -248,9 +261,13 @@ public sealed class RocketLauncher : RoleBase
             {
                 foreach (var p in PlayerControl.AllPlayerControls)
                 {
-                    if (!PortKit.Alive(p) || p == t || p.PlayerId == PlayerId || p.inVent) continue;
+                    if (!PortKit.Alive(p) || p == t || p.PlayerId == PlayerId || p.inVent || !p.Visible) continue; // 透明な人の所で弾けると居場所が分かる
                     if (Vector2.Distance(next, p.GetTruePosition()) <= PlayerRadius + 0.3f) { hit = true; break; }
                 }
+                // ドッペルゲンガーの分身にも人と同じく当たる (全員の端末で同じ位置)
+                if (!hit && Crew.DoppelPuppet.Any)
+                    foreach (var m in Crew.DoppelPuppet.Each)
+                        if (Vector2.Distance(next, m.True) <= PlayerRadius + 0.3f) { hit = true; break; }
             }
             if (_life * Speed >= MaxTravel) hit = true;
         }
@@ -261,10 +278,10 @@ public sealed class RocketLauncher : RoleBase
         {
             _exploded = true;
             var victims = Victims(t, _pos);
-            ExplodeCall.Send((_pos, victims));
+            ExplodeCall.SendAs(Player, (_pos, victims));
             Explode(Player, _pos, victims);
             // 壁に当たったら壁の上で、飛んできた向きへ涙形に抜ける爆発 (壁の奥まで壊れる)。人に当たった・止まった時は円
-            var res = Terrain.TerrainApi.Blast(wallHit ? wallPoint : _pos, BlastRadius, wallHit ? _dir : Vector2.zero, wallHit ? WallBlastPower / 100f : 0f);
+            var res = Terrain.TerrainApi.Blast(wallHit ? wallPoint : _pos, BlastRadius, wallHit ? _dir : Vector2.zero, wallHit ? WallBlastPower / 100f : 0f, Player);
             if (!res.Ok) Plugin.Logger.LogInfo($"rocket launcher: terrain blast refused ({res.Why})");
         }
     }
@@ -285,21 +302,22 @@ public sealed class RocketLauncher : RoleBase
     }
 
     // 会議が始まったら、掴んでいる人・飛んでいる人はその場で死ぬ
-    [LocalOnly]
+    // 持ち主の端末 (ボットならホスト) で
     private void OnMeeting(MeetingStartEvent e)
     {
+        if (!Driven) return;
         byte id = _held != 255 ? _held : _flying ? _shot : (byte)255;
         if (id == 255) return;
         var t = PortKit.ById(id);
         // サムライは死なずにその場で離される
         if (Tough(t))
         {
-            EscapeCall.Send((PlayerId, id));
+            EscapeCall.SendAs(Player, (PlayerId, id));
             Escape(Player, id);
             return;
         }
         var m = ((Vector2)(t ? t.transform.position : Player.transform.position), new List<byte> { id });
-        ExplodeCall.Send(m);
+        ExplodeCall.SendAs(Player, m);
         Explode(Player, m.Item1, m.Item2);
     }
 

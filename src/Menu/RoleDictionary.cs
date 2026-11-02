@@ -27,6 +27,7 @@ internal static class RoleDictionary
     private static readonly RoleBrowser Browser = new(InnerW, InnerH, false, CanEdit, "dict")
     {
         Changed = () => _dirty = true,
+        HeadExtra = BotPanel.DictionaryExtra,
     };
 
     private static bool _dirty;
@@ -261,6 +262,7 @@ internal static class RoleDictionary
             return IsOpen ? Dump() : "not opened";
         }
         if (op == "button") return DictionaryButton.Command(a);
+        if (op == "bots") return BotPanel.Command(a);
         if (op == "close")
         {
             UiWindow.Current?.Close();

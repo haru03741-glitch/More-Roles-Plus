@@ -50,6 +50,49 @@ internal static class Dummy
     private static readonly List<PlayerControl> Owned = new();
     internal static List<PlayerControl> All => Owned;
 
+    // Owned の番号 (役職が毎フレーム「ボットか」を引くので、ゲームの物に触らずに読める形でも持つ)
+    private static readonly List<byte> OwnedIds = new();
+    private static readonly bool[] OwnedMark = new bool[256];
+
+    // この端末 (ホスト) が代わりに動かしているダミーか。役職の「持ち主の端末でする事」をダミーの分もここでする
+    internal static bool OwnsId(byte id) => OwnedMark[id];
+    internal static bool Owns(PlayerControl p) => OwnedIds.Count > 0 && p && OwnedMark[p.PlayerId];
+
+    private static void Forget(int i)
+    {
+        OwnedMark[OwnedIds[i]] = false;
+        OwnedIds.RemoveAt(i);
+        Owned.RemoveAt(i);
+    }
+
+    private static void ForgetAll()
+    {
+        foreach (var id in OwnedIds) OwnedMark[id] = false;
+        OwnedIds.Clear();
+        Owned.Clear();
+    }
+
+    // ダミーを消す (ホストのロビー・試合の前だけ。試合中に消すと役職と勝ち負けの数えが崩れる)
+    public static void Remove(PlayerControl pc)
+    {
+        var client = AmongUsClient.Instance;
+        if (!pc || !client || !client.AmHost || ShipStatus.Instance) return;
+        StopWalk(pc);
+        if (DummyPilot.Possessed == pc || DummyPilot.Voter == pc) DummyPilot.Reset();
+        int at = Owned.IndexOf(pc);
+        if (at >= 0) Forget(at);
+        var data = pc.Data;
+        byte id = pc.PlayerId;
+        client.Despawn(pc);
+        if (data) client.Despawn(data);
+        if (GameData.Instance) GameData.Instance.RemovePlayer(id);
+        // 送り出すだけでは送った側 (ホスト) の手元に体が残り、一覧の中で情報の無い人になって本編の処理が NRE になる
+        if (!pc) return;
+        PlayerControl.AllPlayerControls.Remove(pc);
+        UnityEngine.Object.Destroy(pc.gameObject);
+        if (data && (!GameData.Instance || data.gameObject != GameData.Instance.gameObject)) UnityEngine.Object.Destroy(data.gameObject);
+    }
+
     // 歩かせている途中のダミー (経路の点を順にたどる)
     private sealed class Walk
     {
@@ -110,7 +153,7 @@ internal static class Dummy
         var client = AmongUsClient.Instance;
         if (!client || !client.AmHost)
         {
-            if (Owned.Count > 0 || Walking.Count > 0) { DummyPilot.Reset(); Owned.Clear(); Walking.Clear(); Stuck.Clear(); }
+            if (Owned.Count > 0 || Walking.Count > 0) { DummyPilot.Reset(); ForgetAll(); Walking.Clear(); Stuck.Clear(); }
             return;
         }
         long now = Environment.TickCount64;
@@ -190,16 +233,35 @@ internal static class DummyPatches
     {
         var client = AmongUsClient.Instance;
         var gd = GameData.Instance;
-        if (!client || client.AmHost || !gd || !__instance || gd.GetPlayerById(__instance.PlayerId) != null) return;
+        if (!client || client.AmHost || !gd || !__instance) return;
+        // ホストが消したダミーの情報は、客の一覧に壊れたまま残る (同じ番号で出し直したダミーを足せなくなる)
+        var have = gd.GetPlayerById(__instance.PlayerId);
+        if (have != null && have) return;
         foreach (var o in client.allObjects.allObjects)
         {
             var info = o ? o.TryCast<NetworkedPlayerInfo>() : null;
             if (!info || info.PlayerId != __instance.PlayerId || info.ClientId >= 0) continue;
+            if (have != null) gd.AllPlayers.Remove(have);
             gd.AllPlayers.Add(info);
+            _sawRemoteDummy = true;
             // 本編はダミーの印が無いと名札を「???」に伏せる (ホストの端末では Spawn の前に付けている)
             __instance.isDummy = true;
             return;
         }
+    }
+
+    private static bool _sawRemoteDummy; // この端末がホストのダミーを受け取ったことがある (無ければ一覧を見ない)
+
+    // 客の側: ホストがロビーで消したダミーの情報 (壊れた物) を一覧から外す。ロビーの人数の表示と、試合の始めの本編の処理が数えないように
+    internal static void DropStaleInfos()
+    {
+        if (!_sawRemoteDummy) return;
+        var client = AmongUsClient.Instance;
+        var gd = GameData.Instance;
+        if (!client || client.AmHost || !gd || ShipStatus.Instance) return;
+        var list = gd.AllPlayers;
+        for (int i = list.Count - 1; i >= 0; i--)
+            if (!list[i]) list.RemoveAt(i);
     }
 
     // 本編は名札をこの情報から書き直さないので、ここで 1 回書く

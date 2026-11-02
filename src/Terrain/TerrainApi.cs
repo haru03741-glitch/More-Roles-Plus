@@ -70,14 +70,14 @@ public static class TerrainApi
 
     // その場で爆発させる (ロケット・自爆など)。pos は自分から MaxBlastDistance 以内。
     // dir と force (0..1) を付けると、その向きへ伸びた涙形に抜ける (0 = 円)
-    public static TerrainResult Blast(Vector2 pos, float radius, Vector2 dir = default, float force = 0f)
+    public static TerrainResult Blast(Vector2 pos, float radius, Vector2 dir = default, float force = 0f, PlayerControl by = null)
     {
-        if (!Local(TerrainUse.Blast, radius, out var lp, out string why)) return TerrainResult.Fail(why);
+        if (!Local(TerrainUse.Blast, radius, by, out var lp, out string why)) return TerrainResult.Fail(why);
         Vector2 me = lp.GetTruePosition();
         float dx = pos.x - me.x, dy = pos.y - me.y;
         if (dx * dx + dy * dy > TerrainSync.MaxBlastDistance * TerrainSync.MaxBlastDistance)
             return TerrainResult.Fail(new Text("TerrainApi.TooFarAway"));
-        string res = TerrainSync.Request(new DamageEvent(DamageKind.Explosion, pos, dir, radius, Math.Clamp(force, 0f, 1f), Seed()), out bool ok);
+        string res = Send(new DamageEvent(DamageKind.Explosion, pos, dir, radius, Math.Clamp(force, 0f, 1f), Seed()), lp, out bool ok);
         if (!ok) return TerrainResult.Fail(res);
         TerrainPermits.Mark(lp.PlayerId, TerrainUse.Blast);
         return TerrainResult.Done(res);
@@ -278,9 +278,13 @@ public static class TerrainApi
         return ok ? TerrainResult.Done(res) : TerrainResult.Fail(res);
     }
 
-    private static bool Local(TerrainUse use, float radius, out PlayerControl lp, out string why)
+    private static bool Local(TerrainUse use, float radius, out PlayerControl lp, out string why) => Local(use, radius, null, out lp, out why);
+
+    private static bool Local(TerrainUse use, float radius, PlayerControl by, out PlayerControl lp, out string why)
     {
-        lp = PlayerControl.LocalPlayer;
+        lp = by && !by.AmOwner && Dev.Dummy.Owns(by) ? by : PlayerControl.LocalPlayer;
+        // 自分でも自分の動かすダミーでもない人の名前では壊さない
+        if (by && lp != by && !by.AmOwner) { why = new Text("TerrainApi.YourRoleCantDoThat"); return false; }
         why = null;
         if (!lp || lp.Data == null || lp.Data.IsDead) { why = new Text("TerrainApi.OnlyWhileAlive"); return false; }
         if (!GameClock.ShipAlive) { why = new Text("TerrainApi.OnlyDuringAGame"); return false; }
@@ -290,6 +294,10 @@ public static class TerrainApi
         Plugin.Logger.LogDebug($"terrain {use} refused locally: {bad}");
         return false;
     }
+
+    // 自分の依頼はふつうに・ボットの分はホストがそのダミーの名前で決める
+    private static string Send(in DamageEvent e, PlayerControl actor, out bool ok) =>
+        actor.AmOwner ? TerrainSync.Request(e, out ok) : TerrainSync.RequestAs(e, actor.PlayerId, out ok);
 
     private static ushort Seed() => (ushort)Environment.TickCount;
 }

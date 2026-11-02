@@ -281,8 +281,56 @@ internal static class DevCommands
                     Dummy.Vote(d, v);
                     reply($"OK dact vote {v}");
                     return;
+                case "shift": // この端末の見た目だけ本編の変身をさせる (相手を省くと元の姿へ)
+                    var to = a.Length >= 3 && byte.TryParse(a[2], out byte sid) ? Player(sid) : d;
+                    if (!to) { reply("ERR dact shift target"); return; }
+                    d.Shapeshift(to, false);
+                    reply($"OK dact shift target={d.shapeshiftTargetPlayerId}");
+                    return;
             }
             reply("ERR dact unknown action");
+        });
+
+        TestBridge.Register("duse", "<番号> <能力の順番> [相手の番号|255] [溜めの秒] ボット (ホストが動かすダミー) に能力を使わせる (本人がボタンを押したのと同じ確かめ)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var d = a.Length >= 2 && byte.TryParse(a[0], out byte did) ? Player(did) : null;
+            if (!d || !int.TryParse(a[1], out int slot)) { reply("ERR duse <dummy id> <slot> [target] [hold]"); return; }
+            byte t = a.Length >= 3 && byte.TryParse(a[2], out byte tid) ? tid : (byte)255;
+            float hold = a.Length >= 4 && float.TryParse(a[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float h) ? h : -1f;
+            string why = Roles.Abilities.UseAs(d, slot, t, hold);
+            reply(why == null ? $"OK duse {d.PlayerId}#{slot}" : $"ERR duse {why}");
+        });
+
+        TestBridge.Register("bots", "[add [役職Id] | role <番号> <役職Id|-> | rm <番号|all> | mode <stand|attack|auto> | target <番号|me>] ロビーのボット (ボタンと同じ) / 状態", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string op = a.Length > 0 ? a[0] : "";
+            switch (op)
+            {
+                case "add":
+                {
+                    var role = a.Length > 1 ? Commands.HostActions.FindRole(a[1]) : null;
+                    if (a.Length > 1 && role == null) { reply($"ERR bots no role {a[1]}"); return; }
+                    string why = BotPlay.Add(role);
+                    if (why != null) { reply($"ERR bots {why}"); return; }
+                    break;
+                }
+                case "role" when a.Length > 2 && byte.TryParse(a[1], out byte rid):
+                    BotPlay.SetRole(rid, a[2] == "-" ? null : Commands.HostActions.FindRole(a[2]));
+                    break;
+                case "rm" when a.Length > 1:
+                    if (a[1] == "all") BotPlay.RemoveAll();
+                    else if (byte.TryParse(a[1], out byte xid)) BotPlay.Remove(xid);
+                    break;
+                case "mode" when a.Length > 1:
+                    BotPlay.Current = a[1] switch { "stand" => BotPlay.Mode.Stand, "auto" => BotPlay.Mode.Auto, _ => BotPlay.Mode.Attack };
+                    break;
+                case "target" when a.Length > 1:
+                    BotPlay.TargetId = a[1] == "me" ? (byte)255 : byte.TryParse(a[1], out byte tid) ? tid : (byte)255;
+                    break;
+            }
+            reply($"OK bots {BotPlay.Describe()}");
         });
     }
 

@@ -128,6 +128,33 @@ public sealed partial class Nova : RoleBase
         NovaFx.EndStance(Player);
     }
 
+    // ボット (ホストが動かすダミー): angle の向きへ seconds 溜めて撃つ (溜めの間の見た目と音は本人が撃つ時と同じ電文で全員へ)
+    private bool _botCharging;
+    internal bool BotCharging => _botCharging;
+
+    internal bool BotFire(float angle, float seconds)
+    {
+        if (!IsBot || _botCharging || RewindPlayback.Active || !PortKit.Alive(Player) || !Player.CanMove) return false;
+        _botCharging = true;
+        ChargeCall.SendAs(Player, angle);
+        OnCharge(this, angle);
+        float hold = System.Math.Clamp(seconds, 0f, Charge);
+        PortKit.After(hold, () =>
+        {
+            _botCharging = false;
+            var p = Player;
+            if (!IsBot || MeetingHud.Instance || !PortKit.Alive(p))
+            {
+                if (p) NovaFx.CancelCharge(p);
+                return;
+            }
+            byte lv = (byte)System.MathF.Round(FxMath.Clamp01(hold / Charge) * 255f);
+            FireCall.SendAs(p, (angle, lv));
+            OnFire(this, angle, lv);
+        });
+        return true;
+    }
+
     // 試験用: 右クリック/左クリックと同じ道 (bridge の nova stance / nova fire / nova charge)
     private static float _testReleaseAt = -1f;
     internal static string StanceForTest() { if (_mine == null) return "no nova"; _mine.ToggleStance(); return _mine._stance ? "on" : "off"; }

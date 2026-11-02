@@ -32,10 +32,15 @@ public sealed class RemoteController : RoleBase
     private float _syncTimer;
     private Vector2 _sentDir;
 
-    // 操作されている自分の端末: 最後に届いた向きと、それが切れる時刻 (届かなくなったら止まる)
-    private static Vector2 _puppetDir;
-    private static float _puppetUntil;
+    // 操作されている人を動かす端末 (本人・ダミーならホスト): 人ごとの最後に届いた向きと、それが切れる時刻 (届かなくなったら止まる)
+    private static readonly Dictionary<byte, (Vector2 dir, float until)> Puppets = new();
     private Ability _operate;
+
+    // ボット (ホストが動かすダミー) が操作している時に歩かせる向き (ボットの頭が決める)
+    internal Vector2 BotDir;
+
+    // その人の体をこの端末が動かすか (本人の端末・ダミーはホスト)
+    private static bool Drives(PlayerControl p) => p && (p.AmOwner || Dev.Dummy.Owns(p));
 
     private PlayerControl Target => _target == 255 ? null : PortKit.ById(_target);
 
@@ -61,9 +66,12 @@ public sealed class RemoteController : RoleBase
                 var t = Target;
                 if (!PortKit.Alive(Player) || _operating || !PortKit.Alive(t)) return false;
                 if (Player.MyPhysics && Player.MyPhysics.body) Player.MyPhysics.body.velocity = Vector2.zero;
-                Follow(t);
-                ShowEye(t);
-                OperateCall.Send((true, _target));
+                if (IsLocal)
+                {
+                    Follow(t);
+                    ShowEye(t);
+                }
+                OperateCall.SendAs(Player, (true, _target));
                 SetOperating(Player, true, _target);
                 return true;
             },
@@ -80,14 +88,19 @@ public sealed class RemoteController : RoleBase
                 var victim = NearestVictim(t);
                 if (!victim) return false;
                 if (AmongUsClient.Instance.AmHost) HostRemoteKill(Player, victim.PlayerId);
-                else KillCall.Send(victim.PlayerId);
+                else KillCall.SendAs(Player, victim.PlayerId);
                 CancelAndClear();
                 return true;
             },
         });
         Lifespan.OnRelease(() =>
         {
-            if (_target != 255) Controlled.Remove(_target);
+            if (_target != 255)
+            {
+                Controlled.Remove(_target);
+                Puppets.Remove(_target);
+                if (_operating && Target && Target.AmOwner) ShowPuppet(false);
+            }
             if (IsLocal) Follow(PlayerControl.LocalPlayer);
             HideEye();
         });
@@ -108,7 +121,8 @@ public sealed class RemoteController : RoleBase
         Vector2 at = from.GetTruePosition();
         foreach (var p in PlayerControl.AllPlayerControls)
         {
-            if (!PortKit.Alive(p) || p == from || p.AmOwner || PortKit.IsImpostor(p)) continue;
+            if (!PortKit.Alive(p) || p == from || p.PlayerId == PlayerId || PortKit.IsImpostor(p)) continue;
+            if (p.inVent || p.inMovingPlat || !p.Visible) continue; // 本編のキルの狙いと同じく、ベントの中・昇降機・透明な人は狙わない
             Vector2 pos = p.GetTruePosition();
             float d = Vector2.Distance(at, pos);
             if (d > bestD || PhysicsHelpers.AnythingBetween(at, pos, Constants.ShipAndObjectsMask, false)) continue;
@@ -127,12 +141,12 @@ public sealed class RemoteController : RoleBase
     private void StopOperation()
     {
         if (!_operating) return;
-        OperateCall.Send((false, _target));
+        OperateCall.SendAs(Player, (false, _target));
         SetOperating(Player, false, _target);
-        Follow(PlayerControl.LocalPlayer);
+        if (IsLocal) Follow(PlayerControl.LocalPlayer);
         HideEye();
         _target = 255;
-        TargetCall.Send(255);
+        TargetCall.SendAs(Player, 255);
         Player.SetKillTimer(GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown));
     }
 
@@ -181,16 +195,18 @@ public sealed class RemoteController : RoleBase
         if (_operate != null && _operate.InEffect) _operate.EndEffect();
         else StopOperation();
         _target = 255;
-        TargetCall.Send(255);
+        TargetCall.SendAs(Player, 255);
     }
 
-    [LocalOnly]
-    private void OnMeeting(MeetingStartEvent e) => CancelAndClear();
+    // 持ち主の端末 (ボットならホスト) で
+    private void OnMeeting(MeetingStartEvent e)
+    {
+        if (Driven) CancelAndClear();
+    }
 
-    [LocalOnly]
     private void OnDeath(PlayerMurderedEvent e)
     {
-        if (e.Target && e.Target.PlayerId == PlayerId) CancelAndClear();
+        if (Driven && e.Target && e.Target.PlayerId == PlayerId) CancelAndClear();
     }
 
     // 操作している端末: スティックの向きを 8 方向+停止に丸め、変わった時と 0.2 秒ごとにだけ、操作されている人へ送る。
@@ -204,11 +220,13 @@ public sealed class RemoteController : RoleBase
         {
             _operating = false;
             Controlled.Remove(_target);
-            if (t && t.AmOwner) _puppetUntil = 0f;
+            Puppets.Remove(_target);
+            if (t && t.AmOwner) ShowPuppet(false);
             return;
         }
-        if (t && t.AmOwner) { DrivePuppet(t); return; }
-        if (!IsLocal) return;
+        // 操作されている体をこの端末が動かすなら動かす (操作しているのもこの端末のボット/本人なら、下で向きも決める)
+        if (Drives(t)) DrivePuppet(t);
+        if (!Driven) return;
         var hud = Vanilla.Hud;
         if ((hud && hud.IsIntroDisplayed) || MeetingHud.Instance || ExileController.Instance) return;
         if (!PortKit.Alive(t) || !PortKit.Alive(Player))
@@ -217,24 +235,27 @@ public sealed class RemoteController : RoleBase
             return;
         }
         // 能力の狙いの縁取りは狙いが替わる時に前の人の縁取りを消すので、操っている間は少しずつ付け直す
-        _outlineTimer -= Time.fixedDeltaTime;
+        if (IsLocal) _outlineTimer -= Time.fixedDeltaTime;
         if (_outlineTimer <= 0f && _outlined && _outlined.cosmetics)
         {
             _outlineTimer = 0.5f;
             _outlined.cosmetics.SetOutline(true, _outlineOn);
         }
-        Vector2 dir = Minigame.Instance ? Vector2.zero : Quantize(hud && hud.joystick != null ? hud.joystick.DeltaL : Vector2.zero);
+        Vector2 dir = !IsLocal ? Quantize(BotDir) : Minigame.Instance ? Vector2.zero : Quantize(hud && hud.joystick != null ? hud.joystick.DeltaL : Vector2.zero);
         _syncTimer -= Time.fixedDeltaTime;
         if (dir == _sentDir && _syncTimer > 0f) return;
         _sentDir = dir;
         _syncTimer = 0.2f;
-        VelocityCall.Send((_target, dir), t.OwnerId);
+        // 操作されている体をこの端末が動かすなら電文は要らない (ダミーの体はホストが動かすので、ダミー宛ての向きはホストへ)
+        if (Drives(t)) Puppets[_target] = (dir, Time.time + 0.6f);
+        else VelocityCall.SendAs(Player, (_target, dir), t.isDummy ? AmongUsClient.Instance.HostId : t.OwnerId);
     }
 
     private static void DrivePuppet(PlayerControl t)
     {
         if (!t.MyPhysics || MeetingHud.Instance || ExileController.Instance) return;
-        t.MyPhysics.SetNormalizedVelocity(Time.time < _puppetUntil ? _puppetDir : Vector2.zero);
+        var dir = Puppets.TryGetValue(t.PlayerId, out var m) && Time.time < m.until ? m.dir : Vector2.zero;
+        t.MyPhysics.SetNormalizedVelocity(dir);
     }
 
     // 8 方向+停止 (ゆれで電文が増えないように)
@@ -258,9 +279,8 @@ public sealed class RemoteController : RoleBase
         (sender, m) =>
         {
             var t = PortKit.ById(m.target);
-            if (!t || !t.AmOwner || !Controlled.Contains(m.target) || RoleState.Of(sender) is not RemoteController { _operating: true }) return;
-            _puppetDir = m.v;
-            _puppetUntil = Time.time + 0.6f;
+            if (!Drives(t) || !Controlled.Contains(m.target) || RoleState.Of(sender) is not RemoteController { _operating: true }) return;
+            Puppets[m.target] = (m.v, Time.time + 0.6f);
         }, Delivery.Queued);
     private static readonly RemoteCall<byte> KillCall = new("RemoteController.Kill", Route.ToHost,
         (w, id) => w.Write(id), r => r.ReadByte(), (sender, id) => HostRemoteKill(sender, id));
@@ -272,11 +292,19 @@ public sealed class RemoteController : RoleBase
         if (on) { rc._target = target; Controlled.Add(target); }
         else Controlled.Remove(target);
         var t = PortKit.ById(target);
-        if (!on && t && t.AmOwner)
+        if (t && t.AmOwner) ShowPuppet(on);
+        if (!on && Drives(t))
         {
-            _puppetUntil = 0f;
+            Puppets.Remove(target);
             if (t.MyPhysics) t.MyPhysics.SetNormalizedVelocity(Vector2.zero);
         }
+    }
+
+    // 操られている自分の端末: 自分で動けない理由をタスク欄の効果の行に出す (誰に操られているかは出さない)
+    private static void ShowPuppet(bool on)
+    {
+        if (on) StatusEffects.ShowUntil("RemoteControlled", new Text("RemoteController.Controlled"), "#FF1919", new Text("RemoteController.ControlledUntil"));
+        else StatusEffects.Hide("RemoteControlled");
     }
 
     // ホスト: 操作している人の手で倒す
@@ -290,4 +318,6 @@ public sealed class RemoteController : RoleBase
     }
 
     internal static bool Operating(PlayerControl p) => RoleState.Of(p) is RemoteController { _operating: true };
+    internal bool IsOperating => _operating;
+    internal byte MarkedId => _target;
 }

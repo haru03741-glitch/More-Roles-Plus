@@ -54,6 +54,11 @@ public abstract class Assignable
     public byte PlayerId { get; internal set; }
     public bool IsLocal => Player && Player.AmOwner;
 
+    // ホストがボット (ダミー) の代わりに動かしている役職。画面に出す物 (ボタン・カメラ・自分の画面の演出) は IsLocal のまま、
+    // 持ち主の端末で決める事 (撃つ・当たりの判定・電文を送る) は Driven で分ける
+    public bool IsBot => Dev.Dummy.OwnsId(PlayerId) && Player && !Player.AmOwner;
+    public bool Driven => IsLocal || IsBot;
+
     // 付いている間の寿命。外れる (試合が終わる・配り直す) と切れる。
     // 中で作った GameObject は Lifespan.Bind、自分で購読したイベントもこの寿命で
     public Lifespan Lifespan { get; internal set; }
