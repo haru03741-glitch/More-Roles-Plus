@@ -576,8 +576,8 @@ public sealed partial class TriggerHappy : RoleBase
             return;
         }
         _hits.Remove(p.PlayerId);
-        KillCall.Send(p.PlayerId);
         if (AmongUsClient.Instance.AmHost) HostKill(Player, p);
+        else KillCall.Send(p.PlayerId);
         if (KillSound)
         {
             byte id = p.PlayerId;

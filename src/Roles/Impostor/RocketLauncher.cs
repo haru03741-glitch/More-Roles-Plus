@@ -404,22 +404,13 @@ public sealed class RocketLauncher : RoleBase
                 // サムライは一撃では死なない: 体力が減って吹き飛び、撃った人と立ち合いになる。0 になったら倒れる
                 if (Tough(v))
                 {
-                    // 倒す一撃だけキルとして確かめる (盾などに止められたら体力 1 で残す)。
-                    // 立ち合いの相手のキルはサムライ側が舌の一撃に替えるので、その間だけ素通りさせる
-                    int left = Duel.HpOf(id), dmg = ToughBlastDamage;
-                    if (left - dmg <= 0)
-                    {
-                        DuelTongue.Finishing = true;
-                        try { if (BeforeMurderEvent.Ask(user, v) != null) dmg = left - 1; }
-                        finally { DuelTongue.Finishing = false; }
-                    }
-                    if (!Duel.HostDamage(user.PlayerId, id, dmg, start: dmg < left, smash: true)) continue;
-                    user.RpcMurderPlayer(v, true);
-                    Duel.HostLeave(id);
+                    Duel.HostSmash(user, v, ToughBlastDamage);
                     continue;
                 }
                 PortKit.HostKill(user, v);
             }
+            // ドッペルゲンガーの分身も人と同じく巻き込まれる (本物が分身の所で倒れる)
+            if (flew && PortKit.Alive(user)) Crew.Doppelganger.HostStrikeArea(user, at, BlastRadius);
         }
         finally { _exploding = false; }
     }

@@ -359,8 +359,32 @@ public sealed partial class Nova : RoleBase
         if (stopAt < length) { length = stopAt; wall = false; }
         // サムライで止まった所は、壁に当たった時と同じく光が弾ける (壁は焼かない)
         NovaFx.Fire(n.Player, from, angle, length, size, wall || _samuraiStop, half);
-        if (AmongUsClient.Instance.AmHost) HostBeam(n, hits, from, dir, length, size, wall, level);
+        if (AmongUsClient.Instance.AmHost)
+        {
+            HostBeam(n, hits, from, dir, length, size, wall, level);
+            HostBeamPuppets(n.Player, from, dir, length, half);
+        }
     }
+
+    // ホスト: 光線の中のドッペルゲンガーの分身を倒す (人と同じ形で当てる・貫ける人数には数えない)
+    private static void HostBeamPuppets(PlayerControl invoker, Vector2 from, Vector2 dir, float length, float half)
+    {
+        if (!Crew.DoppelPuppet.Any || !PortKit.Alive(invoker)) return;
+        float grow = 0.85f * half;
+        PuppetHits.Clear();
+        foreach (var m in Crew.DoppelPuppet.Each)
+        {
+            Vector2 d = m.True - from;
+            float along = d.x * dir.x + d.y * dir.y;
+            if (along < ApexBack || along > length) continue;
+            float side = FxMath.Abs(d.x * dir.y - d.y * dir.x);
+            float e = FxMath.Exp(-2f * (along - ApexBack) / grow);
+            if (side > half * (1f - e) / (1f + e) + 0.2f) continue;
+            PuppetHits.Add(m.Owner);
+        }
+        foreach (var id in PuppetHits) Crew.Doppelganger.HostStrikeRanged(invoker, id);
+    }
+    private static readonly System.Collections.Generic.List<byte> PuppetHits = new();
 
     private static readonly System.Collections.Generic.List<(float along, PlayerControl p)> Hit = new();
 
@@ -403,8 +427,18 @@ public sealed partial class Nova : RoleBase
             }
         if (Hit.Count > pierce)
         {
-            stopAt = Hit[pierce - 1].along + 0.3f;
-            Hit.RemoveRange(pierce, Hit.Count - pierce);
+            // 透明な人は貫ける人数に数えず、光線もそこで止めない (止まった所で居場所が分かる)。見えている光線の中にいれば倒れる
+            int seen = 0, cut = -1;
+            for (int i = 0; i < Hit.Count; i++)
+            {
+                if (!Hit[i].p.Visible) continue;
+                if (++seen > pierce) { cut = i; break; }
+                stopAt = Hit[i].along + 0.3f;
+            }
+            if (cut < 0) { stopAt = float.MaxValue; return Hit.Count; }
+            Hit.RemoveRange(cut, Hit.Count - cut);
+            for (int i = Hit.Count - 1; i >= 0; i--)
+                if (Hit[i].along >= stopAt) Hit.RemoveAt(i);
         }
         return Hit.Count;
     }

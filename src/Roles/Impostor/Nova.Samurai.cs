@@ -119,23 +119,7 @@ public sealed partial class Nova
     }
 
     // ホスト: 吹き飛ばして体力を減らす。倒れる分だけキルとして確かめる (盾などに止められたら体力 1 で残す)
-    private static void HostSmash(PlayerControl nova, PlayerControl v, int dmg)
-    {
-        if (!nova || !v) return;
-        byte id = v.PlayerId;
-        int left = Duel.HpOf(id);
-        if (dmg < 0) dmg = 0;
-        if (left - dmg <= 0)
-        {
-            DuelTongue.Finishing = true;
-            try { if (BeforeMurderEvent.Ask(nova, v) != null) dmg = left - 1; }
-            finally { DuelTongue.Finishing = false; }
-        }
-        if (!Duel.HostDamage(nova.PlayerId, id, dmg, start: dmg < left, smash: true)) return;
-        RangedKillSnapPatch.Mark(nova.PlayerId, 2f);
-        nova.RpcMurderPlayer(v, true);
-        Duel.HostLeave(id);
-    }
+    private static void HostSmash(PlayerControl nova, PlayerControl v, int dmg) => Duel.HostSmash(nova, v, dmg, 2f);
 
     // ---- 全員の端末 ----
 

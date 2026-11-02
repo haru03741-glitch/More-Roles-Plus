@@ -283,7 +283,7 @@ public sealed class Phosphorus : RoleBase
     // 全員の端末で (地形の壊れた知らせは全員に同じ順で届く): 爆発・打撃がランタンに届いたら倒す
     private void OnTerrainBroken(TerrainBrokenEvent e)
     {
-        float reach = e.Kind == DamageKind.Explosion ? e.Radius + BlastSlack : e.Kind == DamageKind.Blunt ? StrikeReach : -1f;
+        float reach = e.Kind == DamageKind.Explosion ? e.Radius + BlastSlack : e.Kind is DamageKind.Blunt or DamageKind.Gunfire ? StrikeReach : -1f;
         if (reach <= 0f) return;
         for (int i = 0; i < _lanterns.Count; i++)
         {
