@@ -107,6 +107,12 @@ public static class RoleState
         }
         if (proto == null) AssignAddonsOnly(p, addonProtos);
         else Assign(p, proto, addonProtos);
+        // 替えられた本人には、タスク欄の役職が黙って変わるだけにしない (サイドキックにされた・ジャッカルに上がったなど)
+        if (p.AmOwner && ByPlayer[pid] is { IsVanilla: false } now && now.Id != old?.Id)
+        {
+            PortKit.Flash(RoleDisplay.ParseColor(now.ShownColor));
+            PortKit.Notice(new Text("RoleState.Changed").With("role", now.ShownColoredName).ToString());
+        }
         MatchLog.NoteRole(pid);
         Plugin.Logger.LogInfo($"role changed: {pid} {old?.Id ?? "-"} -> {proto?.Id ?? "-"}");
     }
