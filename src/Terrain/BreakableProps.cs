@@ -379,6 +379,7 @@ internal static class BreakableProps
 
         float cx = (p.X0 + p.X1) * 0.5f, cy = (p.Y0 + p.Y1) * 0.5f, w = p.X1 - p.X0, h = p.Y1 - p.Y0;
         var center = new Vector2(cx, cy);
+        Roles.GatlingFx.ClearHoles(cx, cy, MathF.Sqrt(w * w + h * h) * 0.5f + 0.1f); // 壊れた物に付いていた弾痕
         SolidMap.Carve(p.Shape ?? new RectShape(center, Vector2.right, w + CarveMargin * 2f, h + CarveMargin * 2f), null, home);
         if (parts.Count == 0) Fallback(p, parts, seed, ref sx, ref sy);
         float reach = MathF.Sqrt(w * w + h * h) * 0.5f + 3f;

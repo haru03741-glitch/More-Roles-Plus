@@ -47,12 +47,13 @@ public static class TerrainApi
         return TerrainResult.Done(res);
     }
 
-    // 離れた所の壁を叩く (弾など)。from から dir の向きの壁を叩く。from は自分から許可の HitReach 以内。force 0..1
-    public static TerrainResult Shoot(Vector2 from, Vector2 dir, float force = 0.3f)
+    // 離れた所の壁を銃弾で削る。from から dir の向きの壁を削る (叩く手も一撃の音も出さない)。from は自分から許可の HitReach 以内。force 0..1
+    // by = ボット (ホストが動かすダミー) の代わりに壊す時のそのダミー (null = 自分)
+    public static TerrainResult Shoot(Vector2 from, Vector2 dir, float force = 0.3f, PlayerControl by = null)
     {
-        if (!Local(TerrainUse.Hammer, 0f, out var lp, out string why)) return TerrainResult.Fail(why);
+        if (!Local(TerrainUse.Hammer, 0f, by, out var lp, out string why)) return TerrainResult.Fail(why);
         if (dir.sqrMagnitude < 1e-6f) return TerrainResult.Fail("no direction");
-        string res = TerrainSync.Request(new DamageEvent(DamageKind.Blunt, from, dir.normalized, 0f, Math.Clamp(force, 0f, 1f), Seed()), out bool ok);
+        string res = Send(new DamageEvent(DamageKind.Gunfire, from, dir.normalized, 0f, Math.Clamp(force, 0f, 1f), Seed()), lp, out bool ok);
         if (!ok) return TerrainResult.Fail(res);
         TerrainPermits.Mark(lp.PlayerId, TerrainUse.Hammer);
         return TerrainResult.Done(res);

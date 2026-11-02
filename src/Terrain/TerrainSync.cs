@@ -421,7 +421,7 @@ internal static class TerrainSync
         if (e.Kind == DamageKind.Crumble) return "world only"; // 時間切れの壁を崩すのはホストだけ
         Vector2 at = sender.GetTruePosition();
         float dx = e.Position.x - at.x, dy = e.Position.y - at.y;
-        float max = e.Kind == DamageKind.Blunt
+        float max = e.Kind is DamageKind.Blunt or DamageKind.Gunfire
             ? MathF.Max(DamageProfile.Of(e.Kind).Reach, TerrainPermits.Of(sender.PlayerId).HitReach) + LagMargin
             : MaxBlastDistance;
         if (dx * dx + dy * dy > max * max) return $"too far {MathF.Sqrt(dx * dx + dy * dy):0.0}";

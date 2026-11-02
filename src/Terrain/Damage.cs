@@ -15,6 +15,7 @@ public enum DamageKind : byte
     Wall = 9,      // 仕掛け壁: 起点を真ん中に Direction の向きへ長さ Size の壁を立てる。壊れるまで歩きも視界も水も止める (壊れ方は物ごと壊れる家具と同じ)
     Crumble = 10,  // 崩れ: 起点にある仕掛け壁を物ごと崩す (立ててから時間が経った壁を崩す・ホストだけが出す)
     Rewind = 11,   // 時戻し: 刻み Tick に、水・火・減圧・物を Seed 刻み前の記録へ戻し、その後に壊した壁を取り消す (ホストだけが出す)
+    Gunfire = 12,  // 銃弾 (機関銃など): 同じ所に撃ち込み続けた壁 1 枚に耐久ダメージ。叩く手も一撃の音も無く、抜けると弾の向きへ破片が飛ぶ
 }
 
 internal static class DamageKinds
@@ -22,7 +23,7 @@ internal static class DamageKinds
     // 地形 (壁) を変える種類か。押し・点火・油は水と火と小物だけに効く
     public static bool Shapes(this DamageKind k) => k == DamageKind.Explosion || k == DamageKind.Crumble || k.IsStrike();
     // 壁 1 枚の耐久を削る種類か (叩いた面の向きと残りの耐久を持つ)
-    public static bool IsStrike(this DamageKind k) => k == DamageKind.Blunt || k == DamageKind.Burn;
+    public static bool IsStrike(this DamageKind k) => k == DamageKind.Blunt || k == DamageKind.Burn || k == DamageKind.Gunfire;
     public static bool IsFire(this DamageKind k) => k == DamageKind.Ignite || k == DamageKind.Spill;
 }
 
@@ -134,6 +135,20 @@ internal sealed class DamageProfile
         ForceLength = 1.6f,
     };
 
+    // 銃弾: 1 回の依頼 = 同じ所に当たった弾 12 発。振りの強さは無い。穴は打撃より狭く、弾の向きへほぼ真っすぐ抜ける
+    public static readonly DamageProfile Gunfire = new()
+    {
+        WallDamage = 1,
+        StrongDamage = 1,
+        StrongForce = 2f,
+        Scorch = false,
+        BreachLength = 0.75f,
+        BreachDepth = 1.1f,
+        Reach = 1.2f,
+        MaxSlantDeg = 20f,
+        ForceLength = 1.2f,
+    };
+
     // 焼け: 抜け方は打撃と同じ。抜けた縁は焦げる
     public static readonly DamageProfile Burn = new()
     {
@@ -152,6 +167,7 @@ internal sealed class DamageProfile
     {
         DamageKind.Explosion => Explosion,
         DamageKind.Burn => Burn,
+        DamageKind.Gunfire => Gunfire,
         _ => Blunt,
     };
 }

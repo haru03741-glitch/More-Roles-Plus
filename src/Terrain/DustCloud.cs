@@ -138,6 +138,7 @@ internal static class DustCloud
     private static void Add(in ResolvedDamage r)
     {
         if (!r.Kind.Shapes() || !ShipStatus.Instance || MeetingHud.Instance) return;
+        if (r.Kind == DamageKind.Gunfire && r.Hp > 0) return; // 弾で削れただけの所の粉は小さく、削れた所で出している
         long now = Environment.TickCount64;
         while (Recent.Count > 0 && now - Recent.Peek() > BurstWindowMs) Recent.Dequeue();
         if (Recent.Count >= MaxClouds) { Last = "dropped (burst)"; return; }

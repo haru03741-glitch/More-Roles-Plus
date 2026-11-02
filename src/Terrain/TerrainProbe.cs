@@ -424,6 +424,16 @@ internal static class TerrainProbe
             string res = TerrainSync.Request(new DamageEvent(DamageKind.Blunt, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]), 0f, force, NextSeed()));
             reply($"OK hammer {res} ms={sw.Elapsed.TotalMilliseconds:0.00}");
         });
+
+        TestBridge.Register("gunfire", "<x> <y> <dx> <dy> [n] 銃弾で壁を削る (同じ所に弾 12 発ぶんの依頼を n 回・既定 1)", (args, reply) =>
+        {
+            if (!TryParseFloats(args, out var v) || (v.Length != 4 && v.Length != 5)) { reply("ERR gunfire needs <x> <y> <dx> <dy> [n]"); return; }
+            int n = v.Length == 5 ? System.Math.Clamp((int)v[4], 1, 6) : 1;
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < n; i++)
+                sb.Append(' ').Append(TerrainSync.Request(new DamageEvent(DamageKind.Gunfire, new Vector2(v[0], v[1]), new Vector2(v[2], v[3]).normalized, 0f, 0.3f, NextSeed(i))));
+            reply($"OK gunfire{sb}");
+        });
     }
 
     internal static void RegisterFindSprite()

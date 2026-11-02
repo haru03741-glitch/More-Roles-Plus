@@ -137,7 +137,7 @@ internal static class TerrainDamage
         return r.Kind switch
         {
             DamageKind.Explosion => Explode(r, profile, given, ref landings),
-            DamageKind.Blunt or DamageKind.Burn => Strike(r, profile, given, ref landings),
+            DamageKind.Blunt or DamageKind.Burn or DamageKind.Gunfire => Strike(r, profile, given, ref landings),
             DamageKind.Push => "push", // 地形は変えない (水と小物は TerrainSync の受け手が押す)
             DamageKind.Ignite => "ignite", // 地形は変えない (火は TerrainSync の受け手が入れる)
             DamageKind.Spill => "spill",
@@ -323,6 +323,7 @@ internal static class TerrainDamage
         // 塊が跳ね返る壁は切った後の壁 (蓋を含む) から
         st = Stage(3, st);
         Mark("carve");
+        if (cut > 0) Roles.GatlingFx.ClearHoles(c.x, c.y, core.BoundRadius + 0.1f); // 吹き飛んだ壁に付いていた弾痕
         if (visual == null)
             landings = TerrainFx.Explosion(e.Position, e.Size, e.Direction, e.Force, e.Seed, pieces, removed, WallSegments.Snapshot(c, outer + FxReach), given);
         st = Stage(4, st);
@@ -536,6 +537,13 @@ internal static class TerrainDamage
 
         int hp = e.Hp;
         WallDurability.Set(hit, hp);
+        if (hp > 0 && e.Kind == DamageKind.Gunfire)
+        {
+            // 弾は叩くひびを入れない (弾痕は撃った絵の側で残る)。削れた所から細かい破片と粉が撃った側へ散る
+            TerrainFx.ShotSpall(hit, dir, normal, WallDurability.MaxHp - hp, e.Seed);
+            Mark("crack");
+            return $"gunfire hit hp={hp} at=({hit.x:0.00},{hit.y:0.00})";
+        }
         if (hp > 0)
         {
             // 耐久が減るほどひびが育つ
@@ -586,19 +594,20 @@ internal static class TerrainDamage
         // 剥げかけていた壁は、そのひびの上にこの打撃の割れ目が重なる (前のひびをなぞって崩れる)
         Vector2 crackAt = normal.y < -0.5f ? hit + new Vector2(0f, CrackLift) : hit;
         var cracks = WallPeel.Cracks(hit);
-        cracks.Add(StrikeCrack(crackAt, normal, e.Direction, e.Seed, default));
+        cracks.Add(StrikeCrack(crackAt, normal, e.Direction, e.Seed, default, shiftScale: e.Kind == DamageKind.Gunfire ? 0f : 1f));
         string visual = cut > 0 ? DamageMap.Breach(shape, removed, p.Scorch, floorY, keep, body, pieces, cracks) : null;
         if (visual == null && cut > 0) HideWallDecor(shape);
         Mark("breach");
         if (cut > 0) SolidMap.Carve(shape, keep, hit + normal * 0.1f); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
         Mark("carve");
         if (cut > 0) WallPeel.Release(hit);
+        if (cut > 0) Roles.GatlingFx.ClearHoles(center.x, center.y, shape.BoundRadius + 0.1f); // 抜けた壁に付いていた弾痕 (叩いても焼いても)
         // 壁が崩れ落ちて瓦礫の山になる (壁の線の少し奥を中心に、振った向きへ寄せて)
         // 全部が家具の裏で何も切れなかった時は崩さない (崩れた見た目なのに壁が残るのを避ける)
         if (cut == 0) TerrainFx.Chip(hit, dir, e.Seed);
         else if (visual == null)
             landings = TerrainFx.Crumble(hit + axis * (run * 0.3f), tangent, normal, axis, e.Force, length, e.Seed, pieces, removed,
-                WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f, given, e.Kind == DamageKind.Burn);
+                WallSegments.Snapshot(center, shape.BoundRadius + FxReach), hit + normal * 0.1f, given, e.Kind == DamageKind.Burn, e.Kind == DamageKind.Gunfire);
         Mark("fx");
         LastCut = cut; LastPieces = pieces.Count; LastBlocks = landings.Length;
         return $"blunt breach cut={cut} caps={caps} ledges={ledges} pieces={pieces.Count} blocks={landings.Length} depth={depth:0.00} slant={MathF.Acos(cos) * 57.29578f:0} len={length:0.00} visual={visual ?? "ok"}";

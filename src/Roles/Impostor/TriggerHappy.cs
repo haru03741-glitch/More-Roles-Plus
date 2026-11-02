@@ -443,7 +443,7 @@ public sealed partial class TriggerHappy : RoleBase
         n++;
         if (n >= ChipEvery && Time.time >= _nextChip)
         {
-            var res = Terrain.TerrainApi.Shoot(FxMath.V2(hx - dx * 0.4f, hy - dy * 0.4f), FxMath.V2(dx, dy), ChipForce);
+            var res = Terrain.TerrainApi.Shoot(FxMath.V2(hx - dx * 0.4f, hy - dy * 0.4f), FxMath.V2(dx, dy), ChipForce, Player);
             // ホストの受ける間 (ChipGap) より少し空けて、ネットの揺れで詰まった依頼を断られないように
             if (res.Ok) { n -= ChipEvery; _nextChip = Time.time + ChipGap * 1.25f; }
         }

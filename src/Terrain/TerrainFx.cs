@@ -65,8 +65,10 @@ internal static class TerrainFx
     // from = 叩いた側の床 (塊の落ちる先は、ここから残った壁を越えずに届く所)。
     // given = 大きな瓦礫の止まる所 (客: ホストから届いた物 / null = ここで決める)。返り値 = 置いた瓦礫
     public static RubbleLanding[] Crumble(Vector2 center, Vector2 tangent, Vector2 normal, Vector2 axis, float force, float length, ushort seed,
-        List<BreakPiece> pieces, List<Vector2> segs, float[] walls, Vector2 from, RubbleLanding[] given, bool burnt = false)
+        List<BreakPiece> pieces, List<Vector2> segs, float[] walls, Vector2 from, RubbleLanding[] given, bool burnt = false, bool shot = false)
     {
+        // shot = 銃弾で撃ち抜かれた: 叩き崩すのでなく弾に押されるので、塊は小さく、破片は弾の向き (穴の向こう) へ遠くまで飛ぶ
+        float push = shot ? 0.45f : 0f;
         var rnd = new System.Random(seed ^ Hash(center));
         int mat = burnt ? WallMat() : 0;
         Vector2 hit = center;
@@ -79,7 +81,7 @@ internal static class TerrainFx
                 var p = pieces[rank];
                 Vector2 ground = Ground(p.Origin, segs, walls, from, out float h);
                 // 崩れて落ちた先: 根元から振った向きへ少し (強いほど遠く)・壁に沿ってわずかに散る
-                Vector2 rest = ground + axis * (0.1f + (float)rnd.NextDouble() * 0.5f + force * 0.3f)
+                Vector2 rest = ground + axis * (0.1f + (float)rnd.NextDouble() * 0.5f + force * 0.3f + push)
                                       + tangent * (((float)rnd.NextDouble() - 0.5f) * 0.6f);
                 var it = AddPiece(p, ground, h, walls, from);
                 if (it == null) continue;
@@ -94,13 +96,14 @@ internal static class TerrainFx
                 byRank[rank] = it;
                 made++;
             }
-        int chunks = made >= 6 ? 4 : 16; // 絵の塊が出ない壁 (横の壁は枠線だけ) は手続きの塊で崩す
+        int chunks = made >= 6 ? (shot ? 2 : 4) : (shot ? 8 : 16); // 絵の塊が出ない壁 (横の壁は枠線だけ) は手続きの塊で崩す
         for (int k = 0; k < chunks; k++)
         {
             float along = ((float)rnd.NextDouble() - 0.5f) * length;
             float across = ((float)rnd.NextDouble() - 0.4f) * 0.45f; // 壁の線に寄せて山にする (叩いた側の反対へ少し多め)
             Vector2 rest = center + tangent * along - normal * across;
-            float size = 0.24f + (float)rnd.NextDouble() * 0.22f;
+            float size = (0.24f + (float)rnd.NextDouble() * 0.22f) * (shot ? 0.6f : 1f);
+            if (shot) rest += axis * (0.1f + (float)rnd.NextDouble() * push);
             var it = Spawn(Kind.Fall, DebrisArt.Chunk(rnd.Next()), rest, size, keep: true);
             if (burnt) it.Sr.color = Charred(mat, rnd);
             it.Height = 0.35f + (float)rnd.NextDouble() * 0.45f; // 壁の高さから落ちる
@@ -108,9 +111,10 @@ internal static class TerrainFx
             it.Rot = (float)rnd.NextDouble() * 360f;
             it.VRot = ((float)rnd.NextDouble() - 0.5f) * 200f;
         }
-        for (int k = 0; k < 22; k++)
+        for (int k = 0; k < (shot ? 34 : 22); k++)
         {
             Vector2 rest = center + tangent * (((float)rnd.NextDouble() - 0.5f) * length * 1.2f) - normal * (((float)rnd.NextDouble() - 0.4f) * 0.9f);
+            if (shot) rest += axis * ((float)rnd.NextDouble() * 1.1f); // 撃ち抜かれた細かい破片は穴の向こうへ散る
             var it = Spawn(Kind.Fall, DebrisArt.Pebble, rest, 0.06f + (float)rnd.NextDouble() * 0.07f, keep: true);
             if (burnt) it.Sr.color = Ash(rnd);
             it.Height = 0.2f + (float)rnd.NextDouble() * 0.5f;
@@ -132,8 +136,8 @@ internal static class TerrainFx
             {
                 Vector2 src = hit + tangent * (((float)rnd.NextDouble() - 0.5f) * length);
                 // 3 つに 2 つは振った向きへ (穴の中と向こう)、残りは叩いた側へこぼれる
-                Vector2 to = rnd.NextDouble() < 0.66
-                    ? axis * (0.15f + (float)rnd.NextDouble() * 0.6f + force * 0.4f)
+                Vector2 to = rnd.NextDouble() < (shot ? 0.85 : 0.66)
+                    ? axis * (0.15f + (float)rnd.NextDouble() * 0.6f + force * 0.4f + push * 1.5f)
                     : -axis * (0.1f + (float)rnd.NextDouble() * 0.35f);
                 to += tangent * (((float)rnd.NextDouble() - 0.5f) * 0.5f);
                 var it = Junk(art, rnd, src, size, walls, pile);
@@ -162,6 +166,35 @@ internal static class TerrainFx
             it.Height = 0.15f + (float)rnd.NextDouble() * 0.3f;
         }
         Dust(at - dir * 0.1f, rnd, 0.35f, 0.8f);
+    }
+
+    // 銃弾で削れた (まだ抜けない): 削れた所から細かい破片が撃った側へ跳ね、粉が薄く立つ。削れるほど多い (worn = 削れた回数 1..)。
+    // 金属の壁 (ポーラスとファングル以外) は火花も散る
+    public static void ShotSpall(Vector2 at, Vector2 dir, Vector2 normal, int worn, ushort seed)
+    {
+        var rnd = new System.Random(seed ^ Hash(at));
+        int n = 3 + 2 * Math.Clamp(worn, 1, 3);
+        for (int k = 0; k < n; k++)
+        {
+            Vector2 rest = at + normal * (0.08f + (float)rnd.NextDouble() * 0.45f) + new Vector2(-normal.y, normal.x) * (((float)rnd.NextDouble() - 0.5f) * 0.5f);
+            var it = Spawn(Kind.Fall, DebrisArt.Pebble, rest, 0.035f + (float)rnd.NextDouble() * 0.04f, keep: true);
+            it.Height = 0.2f + (float)rnd.NextDouble() * 0.3f;
+        }
+        var ship = ShipStatus.Instance;
+        bool metal = ship && ship.Type != ShipStatus.MapType.Pb && ship.Type != ShipStatus.MapType.Fungle;
+        if (metal)
+            for (int k = 0; k < 4; k++)
+            {
+                float ang = ((float)rnd.NextDouble() - 0.5f) * 2.4f;
+                float ca = MathF.Cos(ang), sa = MathF.Sin(ang);
+                var it = Spawn(Kind.Spark, DebrisArt.Spark, at, 0.05f + (float)rnd.NextDouble() * 0.04f, keep: false);
+                float sp = 1.5f + (float)rnd.NextDouble() * 1.5f;
+                it.Vx = (normal.x * ca - normal.y * sa) * sp; it.Vy = (normal.x * sa + normal.y * ca) * sp;
+                it.Height = 0.25f;
+                it.VH = 0.6f + (float)rnd.NextDouble();
+                it.Life = 0.12f + (float)rnd.NextDouble() * 0.15f;
+            }
+        Dust(at + normal * 0.08f, rnd, 0.22f + 0.05f * worn, 0.7f);
     }
 
     // 物ごと壊れる家具を叩いた (まだ壊れない): 叩いた所から素材の細かい物が少し飛ぶ (金属 = 火花 / 木 = 木くず)

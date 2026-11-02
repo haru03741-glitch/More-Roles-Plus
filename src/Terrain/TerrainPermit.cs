@@ -185,7 +185,7 @@ internal static class TerrainPermits
 
     public static TerrainUse UseOf(in DamageEvent e) => e.Kind switch
     {
-        DamageKind.Blunt => TerrainUse.Hammer,
+        DamageKind.Blunt or DamageKind.Gunfire => TerrainUse.Hammer,
         DamageKind.Push => TerrainUse.Push,
         DamageKind.Ignite or DamageKind.Spill or DamageKind.Burn => TerrainUse.Fire,
         DamageKind.Water or DamageKind.Flood => TerrainUse.Water,

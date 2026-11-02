@@ -91,6 +91,8 @@ internal static class BreakNoise
     {
         var lp = PlayerControl.LocalPlayer;
         if (!r.Kind.Shapes() || !lp || !ShipStatus.Instance || MeetingHud.Instance) return;
+        // 銃弾で削れただけの所は、弾ごとの着弾の音 (GunSound) が鳴っているので重ねない
+        if (r.Kind == DamageKind.Gunfire && r.Hp > 0) return;
         long now = Environment.TickCount64;
         while (Recent.Count > 0 && now - Recent.Peek() > BurstWindowMs) Recent.Dequeue();
         if (Recent.Count >= BurstLimit) { Dropped++; return; }
@@ -110,7 +112,7 @@ internal static class BreakNoise
         bool muffled = d > spec.Muffle || ThroughWall(lp, me, r);
         if (muffled && d <= spec.Muffle) vol *= MuffledGain;
         string m = muffled ? "_m" : "";
-        string clip = ClipName(kind, r.Kind == DamageKind.Burn) + m;
+        string clip = (r.Kind == DamageKind.Gunfire ? ShotClip() : ClipName(kind, r.Kind == DamageKind.Burn)) + m;
 
         // 崩れ方の大きさ 0..1 (割れた塊の数と大きな瓦礫の数の平均)
         float amount = 0.5f * (Math.Min(1f, TerrainDamage.LastPieces / PiecesFull) + Math.Min(1f, TerrainDamage.LastBlocks / BlocksFull));
@@ -184,9 +186,22 @@ internal static class BreakNoise
         if (lp.Data == null || lp.Data.IsDead) return false;
         Vector2 src = r.Position;
         if (r.Kind.IsStrike()) { src.x += r.Normal.x * WallProbeBack; src.y += r.Normal.y * WallProbeBack; }
+        return WallBetween(me, src);
+    }
+
+    // すぐそばは短い区間の壁判定が当てにならないので直接聞こえる扱い (聞く人が幽霊かは呼ぶ側が見る)
+    internal static bool WallBetween(Vector2 me, Vector2 src)
+    {
         float dx = src.x - me.x, dy = src.y - me.y;
         if (dx * dx + dy * dy < 1f) return false;
         return PhysicsHelpers.AnythingBetween(me, src, Constants.ShipOnlyMask, false);
+    }
+
+    // 撃ち抜かれた壁と撃ち壊された家具 (叩いて崩す音でなく、弾が食い込んで裂ける音)。家具はその素材 (木か金属)
+    private static string ShotClip()
+    {
+        ClipName(Sound.Crumble, false); // 船の素材を決める
+        return "noise_gat_breach_" + (TerrainDamage.LastMaterial ?? _mat);
     }
 
     // burn = 炎に焼かれた壁 (叩く一撃の無い、焼けて傷む・崩れる音)
@@ -214,9 +229,12 @@ internal static class BreakNoise
         return kind == Sound.Boom ? "noise_boom" : kind == Sound.Hit ? _hitClip : _crumbleClip;
     }
 
-    private static void Play(string name, float vol, float pan, float pitch, float delay, bool gesture = false)
+    private static void Play(string name, float vol, float pan, float pitch, float delay, bool gesture = false) =>
+        Voice(Fx.MrpBundle.Clip(name), vol, pan, pitch, delay, gesture);
+
+    // 鳴らす係はほかの効果音 (Hearing) とも共用する
+    internal static void Voice(AudioClip clip, float vol, float pan, float pitch, float delay, bool gesture)
     {
-        var clip = Fx.MrpBundle.Clip(name);
         if (!clip || !EnsureVoices()) return;
         AudioSource src;
         if (gesture)
