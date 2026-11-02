@@ -22,6 +22,7 @@ public sealed class Vulture : RoleBase
     public static readonly BoolOpt ShowArrows = new("Vulture.ShowArrows", true);
 
     private int _eaten;
+    private float _winAt; // ホスト: この時刻に勝ちを確定する (0 = 未定)
     private BodyArrows _arrows;
 
     public override bool? CanVent => Vent ? true : null;
@@ -42,10 +43,16 @@ public sealed class Vulture : RoleBase
         });
     }
 
-    // 死体への矢印
-    [LocalOnly]
-    public override void OnFixedUpdate() =>
-        (_arrows ??= new BodyArrows(Lifespan, new Color32(139, 69, 19, 255))).Update(ShowArrows && PortKit.Alive(Player));
+    // 死体への矢印 (持ち主の画面) と、勝ちの確定 (ホスト: 最後の 1 体を食べる姿を見せ終わってから)
+    public override void OnFixedUpdate()
+    {
+        if (IsLocal) (_arrows ??= new BodyArrows(Lifespan, new Color32(139, 69, 19, 255))).Update(ShowArrows && PortKit.Alive(Player));
+        if (_winAt > 0f && Time.time >= _winAt)
+        {
+            _winAt = 0f;
+            if (AmongUsClient.Instance.AmHost) GameEnd.Win(this);
+        }
+    }
 
     // 通報できる距離で、間に壁の無い一番近い死体
     private static DeadBody NearestBody(Vector2 from)
@@ -74,9 +81,13 @@ public sealed class Vulture : RoleBase
     private static void OnEat(Vulture v, byte bodyId)
     {
         foreach (var b in Object.FindObjectsOfType<DeadBody>())
-            if (b && b.ParentId == bodyId) Object.Destroy(b.gameObject);
+            if (b && b.ParentId == bodyId)
+            {
+                if (v.Player) BodyConsume.Start(b, BodyConsume.Kind.Devour, v.Player.GetTruePosition(), v.Player);
+                Object.Destroy(b.gameObject);
+            }
         v._eaten++;
         if (v.IsLocal) StatusEffects.ShowUntil("Vulture", new Text("Vulture.Count").With("n", v._eaten).With("max", RequiredBodies.Value), v.Color, Text.Raw(""));
-        if (v._eaten >= RequiredBodies && AmongUsClient.Instance.AmHost) GameEnd.Win(v);
+        if (v._eaten >= RequiredBodies && AmongUsClient.Instance.AmHost && v._winAt <= 0f) v._winAt = Time.time + BodyConsume.DevourSeconds;
     }
 }

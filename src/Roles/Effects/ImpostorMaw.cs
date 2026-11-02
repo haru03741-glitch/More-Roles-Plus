@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using MoreRolesPlus.Fx;
+using MoreRolesPlus.Terrain;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -31,7 +32,8 @@ internal static unsafe class ImpostorMaw
     private static readonly int[] CloseFrames = { 25, 26, 27, 28 };
     private static readonly int[] SquashFrames = { 29, 30, 31 };
 
-    internal enum Mode : byte { Strike, Guard }
+    internal enum Mode : byte { Strike, Guard, Devour }
+    private const float DevourOpen = 0.3f;
 
     private sealed class Maw
     {
@@ -45,6 +47,7 @@ internal static unsafe class ImpostorMaw
         public Il2CppStructArray<Color32> C;
         public bool Active, BodyHidden, CosHidden, Flip;
         public Mode Mode;
+        public float Bite, DevLen, DevAng; // Devour: 舌の長さと向き (食べる側が毎フレーム渡す)
         public float T0, Ang, Scale, Len, Pred, CutAt, CutDist, EndAt;
         public float Ox, Oy, Oz; // 人の根から本物の体の真ん中まで (隠した体の bounds は動かないので始めに測る)
         public int Shown;
@@ -59,8 +62,9 @@ internal static unsafe class ImpostorMaw
     private static readonly List<Maw> Live = new();
     private static Sprite[] _frames;
     private static bool _searched;
+    private static int _gen = -1;
     private static Material _tongueMat;
-    internal static int Plays, Guards, Cuts, NoArt;
+    internal static int Plays, Guards, Cuts, NoArt, Devours;
     internal static float Slow = 1f; // 確かめ用: 見た目だけをこの倍の時間に伸ばす
 
     // ---- 絵を探す (試合の始めに 1 回。キルの演出の絵は試合中は常に読まれている) ----
@@ -129,6 +133,33 @@ internal static unsafe class ImpostorMaw
         m.Len = m.Pred;
         Plays++;
         SamuraiSound.At("noise_samurai_dash", pc, 0.5f);
+    }
+
+    // 死体を食べる (ヴァルチャー): ang = 死体の向き・bite = 始めから噛み始めるまでの秒。口は噛むまで開いたまま
+    internal static bool Devour(PlayerControl pc, float ang, float bite)
+    {
+        var m = Begin(pc, ang, Mode.Devour, bite);
+        if (m == null) return false;
+        Devours++;
+        return true;
+    }
+
+    // 化け物の姿が出ている間の口の位置と奥行き (体の絵の z)・体の真ん中・体の高さ。flip = 左向き
+    internal static bool MouthAt(byte id, out float x, out float y, out float z, out bool flip, out float bx, out float by, out float bh)
+    {
+        x = y = z = bx = by = bh = 0f;
+        flip = false;
+        if (!Maws.TryGetValue(id, out var m) || !m.Active || !m.Pc) return false;
+        Vector3 r = m.Pc.transform.position;
+        float fx = m.Flip ? -1f : 1f;
+        x = r.x + m.Ox + MouthX * fx * m.Scale;
+        y = r.y + m.Oy + MouthY * m.Scale;
+        z = r.z + m.Oz - 0.001f;
+        flip = m.Flip;
+        bx = r.x + m.Ox;
+        by = r.y + m.Oy;
+        bh = ArtH * m.Scale;
+        return true;
     }
 
     // 口で刀を受けて弾く: ang = 相手の向き
@@ -209,8 +240,14 @@ internal static unsafe class ImpostorMaw
 
     // ---- 中身 ----
 
-    private static Maw Begin(PlayerControl pc, float ang, Mode mode)
+    private static Maw Begin(PlayerControl pc, float ang, Mode mode, float bite = 0f)
     {
+        // サムライの居ない試合 (ヴァルチャーの食べる姿だけ) では試合ごとの片付けが呼ばれないので、船が替わったらここで片付ける
+        if (_gen != GameClock.ShipGen)
+        {
+            Clear();
+            _gen = GameClock.ShipGen;
+        }
         if (!pc || !pc.Visible || pc.cosmetics == null || !Preload()) { NoArt++; return null; }
         // 前の姿が残っていれば先に本物の体を戻す (隠したままだと見えていない体と取り違える)
         if (Maws.TryGetValue(pc.PlayerId, out var prev) && prev.Active)
@@ -243,7 +280,10 @@ internal static unsafe class ImpostorMaw
         m.T0 = Time.time;
         m.Resolved = m.Hit = m.TipOn = false;
         m.CutAt = -1f;
-        m.EndAt = m.T0 + Slow * (mode == Mode.Guard ? GuardOpen + GuardHold + GuardClose : Open + Extend + Hold + Retract + Close + Squash);
+        m.Bite = bite;
+        m.EndAt = m.T0 + Slow * (mode == Mode.Guard ? GuardOpen + GuardHold + GuardClose
+            : mode == Mode.Devour ? bite + Close + Squash
+            : Open + Extend + Hold + Retract + Close + Squash);
         int color = pc.cosmetics.ColorId;
         if (color >= 0 && color < Palette.PlayerColors.Length) PlayerMaterial.SetColors(color, m.Sr);
         // 戦いの外から見ている人には影の色 (体と同じ暗さ)
@@ -257,7 +297,8 @@ internal static unsafe class ImpostorMaw
         m.CosHidden = true;
         m.Active = true;
         m.Go.SetActive(true);
-        m.TGo.SetActive(mode == Mode.Strike);
+        m.DevLen = 0f;
+        m.TGo.SetActive(mode != Mode.Guard);
         Live.Remove(m);
         Live.Add(m);
         Draw(m, m.T0);
@@ -370,6 +411,15 @@ internal static unsafe class ImpostorMaw
             t -= GuardHold;
             return CloseFrames[Math.Min((int)(t / GuardClose * CloseFrames.Length), CloseFrames.Length - 1)];
         }
+        if (m.Mode == Mode.Devour)
+        {
+            if (t < DevourOpen) return OpenFrames[Math.Min((int)(t / DevourOpen * OpenFrames.Length), OpenFrames.Length - 1)];
+            if (t < m.Bite) return 9;
+            t -= m.Bite;
+            if (t < Close) return CloseFrames[Math.Min((int)(t / Close * CloseFrames.Length), CloseFrames.Length - 1)];
+            t -= Close;
+            return SquashFrames[Math.Min((int)(t / Squash * SquashFrames.Length), SquashFrames.Length - 1)];
+        }
         // 斬られたら舌を引き戻しきった所で閉じ始める
         float closeAt = m.CutAt >= 0f ? (m.CutAt - m.T0) / Slow + CutRetract : Open + Extend + Hold + Retract;
         if (t < Open) return OpenFrames[Math.Min((int)(t / Open * OpenFrames.Length), OpenFrames.Length - 1)];
@@ -397,6 +447,28 @@ internal static unsafe class ImpostorMaw
         float z = c.z - 0.001f;
         m.Tf.position = FxMath.V3(c.x - ArtCx * fx * m.Scale, c.y - ArtCy * m.Scale, z);
         if (m.Mode == Mode.Strike) DrawTongue(m, now, c, fx, z - 0.0005f);
+        else if (m.Mode == Mode.Devour) DrawDevourTongue(m, now, c, fx, z - 0.0005f);
+    }
+
+    // 死体を食べる舌: 長さと向きは食べる側 (BodyConsume) が決める。伸びている間は先が小さく震える
+    internal static void DevourTongue(byte id, float len, float ang)
+    {
+        if (!Maws.TryGetValue(id, out var m) || !m.Active || m.Mode != Mode.Devour) return;
+        m.DevLen = len;
+        m.DevAng = ang;
+    }
+
+    private static void DrawDevourTongue(Maw m, float now, Vector3 c, float fx, float z)
+    {
+        float* vp = (float*)((byte*)m.V.Pointer + 4 * IntPtr.Size);
+        byte* cp = (byte*)m.C.Pointer + 4 * IntPtr.Size;
+        float mx = c.x + MouthX * fx * m.Scale, my = c.y + MouthY * m.Scale;
+        float ar = m.DevAng * FxMath.Deg2Rad;
+        float t = (now - m.T0) / Slow;
+        WriteStrip(vp, cp, 0, Segs, mx, my, FxMath.Cos(ar), FxMath.Sin(ar), m.DevLen, m.DevLen > 0.05f ? 0.02f : 0f, t * 38f, z, true);
+        Collapse(vp, TongueVerts, TipVerts, z);
+        m.Mesh.vertices = m.V;
+        m.Mesh.colors32 = m.C;
     }
 
     private static void DrawTongue(Maw m, float now, Vector3 c, float fx, float z)
@@ -486,5 +558,5 @@ internal static unsafe class ImpostorMaw
     }
 
     internal static string Describe() =>
-        $"art={(_frames != null ? "ok" : _searched ? "missing" : "-")} live={Live.Count} plays={Plays} guards={Guards} cuts={Cuts} noArt={NoArt}";
+        $"art={(_frames != null ? "ok" : _searched ? "missing" : "-")} live={Live.Count} plays={Plays} guards={Guards} cuts={Cuts} devours={Devours} noArt={NoArt}";
 }
