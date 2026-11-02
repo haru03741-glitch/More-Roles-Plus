@@ -517,20 +517,42 @@ internal static class SpectreMapPatch
     }
 }
 
-// 透視: 自分がスペクター (設定) の間、視界の影を作らない (壁越しに見える)
+// 透視: 自分がスペクター (設定) の間、視界の影を作らない (壁越しに見える)。
+// 影の絵は毎フレーム描き直す物なので、本編の描画を止めると一度も描かれず全面が影になる。
+// 本編に壁込みで描かせた後、壁の無い状態で同じ半径の光を描き直して上書きする
 [HarmonyPatch(typeof(LightSourceGpuRenderer), nameof(LightSourceGpuRenderer.GPUShadows))]
 internal static class SpectreClairvoyanceGpuPatch
 {
-    public static bool Prefix(LightSourceGpuRenderer __instance)
+    public static void Postfix(LightSourceGpuRenderer __instance)
     {
-        if (!Spectre.LocalClairvoyant) return true;
+        if (!Spectre.LocalClairvoyant) return;
+        var ls = __instance.lightSource;
+        if (!ls) return;
         __instance.ClearEdges();
-        return false;
+        __instance.UpdateOccMesh();
+        __instance.DrawOcclusion(ls.viewDistance);
     }
 }
 
+// 壁を探す光線の当たり先を空にして本編に描かせる (光は壁を抜けた丸になる)。描いた後に元へ戻す
 [HarmonyPatch(typeof(LightSourceRaycastRenderer), nameof(LightSourceRaycastRenderer.RaycastShadows))]
 internal static class SpectreClairvoyanceRaycastPatch
 {
-    public static bool Prefix() => !Spectre.LocalClairvoyant;
+    private static ContactFilter2D _saved;
+
+    public static void Prefix(LightSourceRaycastRenderer __instance, out bool __state)
+    {
+        __state = Spectre.LocalClairvoyant;
+        if (!__state) return;
+        _saved = __instance.filter;
+        var none = _saved;
+        none.useLayerMask = true;
+        none.layerMask = 0;
+        __instance.filter = none;
+    }
+
+    public static void Postfix(LightSourceRaycastRenderer __instance, bool __state)
+    {
+        if (__state) __instance.filter = _saved;
+    }
 }
