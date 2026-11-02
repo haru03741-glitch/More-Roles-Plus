@@ -430,12 +430,7 @@ internal static class MeetingMemo
     }
 
     // 押した所がメモの層の上か (取り消し・閉じるのボタンや本編の UI の上なら false)
-    private static bool OverLayer()
-    {
-        if (!PassiveButtonManager.InstanceExists) return false;
-        var over = PassiveButtonManager.Instance.currentOver;
-        return over && _layerButton && over.Pointer == _layerButton.Pointer;
-    }
+    private static bool OverLayer() => UI.PointerHit.IsTop(_layerButton);
 
     // いちばん上に描いた物から: 印は中心の近さ・線は区間までの近さ
     private static object HitTest(Vector2 p)

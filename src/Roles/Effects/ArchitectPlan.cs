@@ -560,12 +560,7 @@ internal static class ArchitectPlan
     }
 
     // 押した所が設計図の上か (閉じるボタンや本編の UI の上なら false)
-    private static bool OverLayer()
-    {
-        if (!PassiveButtonManager.InstanceExists) return false;
-        var over = PassiveButtonManager.Instance.currentOver;
-        return over && _layerButton && over.Pointer == _layerButton.Pointer;
-    }
+    private static bool OverLayer() => UI.PointerHit.IsTop(_layerButton);
 
     private static void FinishLine()
     {
