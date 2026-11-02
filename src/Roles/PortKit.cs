@@ -163,8 +163,14 @@ public static class PortKit
 
     // ---- 表示 ----
 
-    // 自分のチャット欄にだけ知らせを出す
-    public static void Notice(string text) => Dev.DevChat.Notice(Vanilla.Chat, text);
+    // 自分にだけ知らせを出す。チャット欄を開けない時 (試合中の生きている人) は、チャットに足しても読めないので本編の左下の知らせへ
+    public static void Notice(string text)
+    {
+        var chat = Vanilla.Chat;
+        var btn = chat ? chat.chatButton : null;
+        if (btn && btn.gameObject.activeInHierarchy) Dev.DevChat.Notice(chat, text);
+        else Options.SettingNotice.Toast(text); // 本編の抜けた人の知らせ (赤い矢印) は誤解を招くので、設定の知らせと同じ枠へ
+    }
 
     // 自分の画面を一瞬その色で光らせる
     public static void Flash(Color color, float seconds = 0.7f)
