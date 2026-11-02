@@ -309,6 +309,7 @@ internal static class MeetingEndWatch
         {
             _quiet = 0;
             if (exile && _exiled == null) _exiled = exile.initData?.networkedPlayer;
+            if (exile) Rules.ExileBlackout.Seen(exile);
             if (exile && !_exileSeen)
             {
                 _exileSeen = true;
@@ -320,5 +321,6 @@ internal static class MeetingEndWatch
         _active = false;
         Events<MeetingEndEvent>.Run(new MeetingEndEvent { Exiled = _exiled });
         _exiled = null;
+        Rules.ExileBlackout.OnMeetingEnd();
     }
 }
