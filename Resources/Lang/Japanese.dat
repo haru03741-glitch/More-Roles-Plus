@@ -1722,6 +1722,7 @@ Doppelganger.Despawn.Help: 幻影を消します。
 Doppelganger.Despawn.Short: 幻影を消す
 Doppelganger.Tips: 幻影は誰にでも本物に見え、キルされると本物が幻影の所で死にます。会議や死亡で幻影は消えます。
 Doppelganger.NoPath: 幻影がそこへ行く道が見つからない
+Doppelganger.SwapBlocked: 幻影が物に重なっていて入れ替われない
 Doppelganger.SwapCooldown: スワップの待ち時間
 Doppelganger.SwapDuration: スワップにかかる時間
 Doppelganger.DetectionRadius: 幻影がプレイヤーを探知する範囲

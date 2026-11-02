@@ -1722,6 +1722,7 @@ Doppelganger.Despawn.Help: Remove the phantom.
 Doppelganger.Despawn.Short: Remove the phantom
 Doppelganger.Tips: The phantom looks real to everyone. If it is killed, you die where the phantom was. It vanishes at meetings and when you die.
 Doppelganger.NoPath: No path for the phantom to get there
+Doppelganger.SwapBlocked: The phantom is inside an object, so you can't swap
 Doppelganger.SwapCooldown: Swap cooldown
 Doppelganger.SwapDuration: Swap time
 Doppelganger.DetectionRadius: Phantom detection radius

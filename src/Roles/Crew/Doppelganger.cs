@@ -128,7 +128,8 @@ public sealed class Doppelganger : RoleBase
         var xs = new List<float>();
         var ys = new List<float>();
         Vector2 from = m.True;
-        if (!Dev.DummyNav.Path(from.x, from.y, to.x, to.y, xs, ys) || xs.Count == 0)
+        // 分身は当たり判定を持たないので、机・家具・扉・瓦礫も道から外す (本物が通れない所は通らない)
+        if (!Dev.DummyNav.Path(from.x, from.y, to.x, to.y, xs, ys, solid: true) || xs.Count == 0)
         {
             PortKit.Notice(new Text("Doppelganger.NoPath").ToString());
             return;
@@ -157,6 +158,13 @@ public sealed class Doppelganger : RoleBase
         bool myFlip = lp.cosmetics.FlipX;
         Vector2 to = m.Root;
         bool flip = m.Flip;
+        // 分身が物の中にいたら入れ替えない (本物が机や扉の中に出る)
+        var feet = m.True;
+        if (Dev.DummyNav.InsideObject(feet.x, feet.y))
+        {
+            PortKit.Notice(new Text("Doppelganger.SwapBlocked").ToString());
+            return;
+        }
         DespawnCall.Send((PlayerId, false));
         DoppelPuppet.Despawn(PlayerId, false);
         Net.Teleport.Self(to);
