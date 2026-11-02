@@ -159,10 +159,15 @@ internal static class SpectreDishes
     {
         if (id < 0 || id >= All.Count) return;
         var d = All[id];
+        bool wasAte = d.Ate;
         d.Ate = ate;
         d.Respawn = Spectre.Replenish;
         Draw(d);
-        if (!ate) return;
+        if (!ate)
+        {
+            if (wasAte) Fx.Hearing.At("spectre_refill", d.At.x, d.At.y, 6f, 0.6f);
+            return;
+        }
         SpectreMinigame.CloseIf(id);
         // 食べた本人はかじる音を手元で聞いているので、周りの人にだけ皿の所で鳴らす
         var lp = PlayerControl.LocalPlayer;

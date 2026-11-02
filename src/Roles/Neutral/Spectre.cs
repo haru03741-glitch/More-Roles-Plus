@@ -38,6 +38,17 @@ public sealed class Spectre : RoleBase
     public static readonly FloatOpt ReplenishCooldown = new("Spectre.Replenish", 80f, 20f, 240f, 5f, "s");
     public static readonly FloatOpt VanishCost = new("Spectre.VanishCost", 0.5f, 0f, 2f, 0.25f, "x");
     public static readonly FloatOpt VanishCooldown = new("Spectre.VanishCooldown", 20f, 0f, 60f, 2.5f, "s");
+    private const float CloakSoundRange = 6f;
+
+    // 消える/現れる時の音 (どの端末でも・透明化を配る電文の受け手から)。現れる時は本人がまだ見えないので場所だけの音にする
+    internal static void OnCloak(byte id, bool on)
+    {
+        var p = PortKit.ById(id);
+        if (!p || p.inVent || RoleState.Of(p) is not Spectre || !PortKit.Alive(p)) return;
+        Vector2 at = p.GetTruePosition();
+        Fx.Hearing.At(on ? "spectre_vanish" : "spectre_appear", at.x, at.y, CloakSoundRange, on ? 0.7f : 0.6f, on ? p : null);
+    }
+
     public static readonly FloatOpt VanishDuration = new("Spectre.VanishDuration", 15f, 2.5f, 30f, 2.5f, "s");
     public static readonly BoolOpt Adrenaline = new("Spectre.Adrenaline", false);
     public static readonly FloatOpt AdrenalineRate = new("Spectre.AdrenalineRate", 0.25f, 0f, 0.875f, 0.125f, "x") { When = () => Adrenaline };
