@@ -37,7 +37,9 @@ public sealed partial class Samurai
         if (IsLocal && Dashing(out _)) return BulletFate.Pass;
         bool spent = IsLocal ? Spent : _blade.Spent;
         if (!Drawn || spent || _blade.Stunned) return BulletFate.Hit;
-        if (_blade.Cutting(out int tier)) return tier >= 2 ? BulletFate.Reflect : BulletFate.Cut;
+        // 斬れるかは弾の素材と大きさで決まる (Impostor.TriggerHappy.BulletKind)。斬れない時は刀で受けられるかへ
+        if (_blade.Cutting(out int tier) && BodyRules.CanCut(tier, Impostor.TriggerHappy.BulletKind.Material, Impostor.TriggerHappy.BulletKind.Size))
+            return tier >= 2 ? BulletFate.Reflect : BulletFate.Cut;
         // 弾が来る向き (弾の進む向きの逆) が、向いている方の正面か
         bool left = p.cosmetics && p.cosmetics.FlipX;
         float fx = _faceX, fy = _faceY;
@@ -65,6 +67,8 @@ public sealed partial class Samurai
         }
     }
 
+    // その種類の物を今の振りで斬れるか (振りの段が素材と大きさの要る切断力に届くか)
+    internal bool Cuts(BodyKind k) => CutsNow && _blade.Cutting(out int tier) && BodyRules.CanCut(tier, k.Material, k.Size);
 
     // ホスト: 本人の端末が受け流した数 (気の見積もりを合わせる)
     internal void HostSpendParry(int n)

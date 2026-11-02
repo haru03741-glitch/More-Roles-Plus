@@ -42,6 +42,7 @@ public sealed partial class Ubiquitous : RoleBase
         public byte Owner;
         public GameObject Go;
         public int Turns;
+        public Body Body;
     }
     private static readonly List<IdleDrone> Idle = new();
 
@@ -125,6 +126,7 @@ public sealed partial class Ubiquitous : RoleBase
     {
         foreach (var d in Idle)
         {
+            Bodies.Remove(d.Body);
             if (d.Go) Object.Destroy(d.Go);
         }
         Idle.Clear();
@@ -185,6 +187,7 @@ public sealed partial class Ubiquitous : RoleBase
         col.offset = new Vector2(0f, -0.2f);
         col.radius = 0.2234f;
         _rend = _drone.transform.Find("Renderer").GetComponent<SpriteRenderer>();
+        AddFlyingBody();
         Hearing.Self("ubiq_drone_up", HumVolume);
         var loop = Hearing.Clip("ubiq_drone");
         var sm = SoundManager.Instance;
@@ -217,6 +220,7 @@ public sealed partial class Ubiquitous : RoleBase
     private void DestroyDrone(bool spinDown = false)
     {
         if (_operate != null && _operate.InEffect) _operate.EndEffect();
+        RemoveFlyingBody();
         if (_drone)
         {
             if (spinDown)
@@ -368,6 +372,7 @@ public sealed partial class Ubiquitous : RoleBase
         for (int i = Idle.Count - 1; i >= 0; i--)
         {
             if (Idle[i].Turns-- > 0) continue;
+            Bodies.Remove(Idle[i].Body);
             if (Idle[i].Go) Object.Destroy(Idle[i].Go);
             Idle.RemoveAt(i);
         }
@@ -388,6 +393,7 @@ public sealed partial class Ubiquitous : RoleBase
     {
         if (!owner || RoleState.Of(owner) is not Ubiquitous) return;
         var d = new IdleDrone { Owner = owner.PlayerId, Go = MakeDrone(at, false, yaw), Turns = StayTurns };
+        d.Body = IdleBody(d);
         Idle.Add(d);
     }
 

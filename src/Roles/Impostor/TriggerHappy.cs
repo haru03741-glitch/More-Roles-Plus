@@ -68,6 +68,9 @@ public sealed partial class TriggerHappy : RoleBase
     private float _activeUntil;      // 乱射の終わりから少しの間はキルの申告を受ける (まとめて送るぶんの遅れ)。全員の端末で同じ
 
     // 構えている間 (と終わった直後) のその人のキルは、弾で離れた所から倒したキル
+    // 弾は小さな金属。普通の振りで斬れる (金属の中・大の物は段 2 から)
+    internal static readonly BodyKind BulletKind = new("TriggerHappyBullet", BodyMaterial.Metal, BodySize.Small, 0f);
+
     internal static bool RangedKill(PlayerControl p) => RoleState.Of(p) is TriggerHappy th && (th._active || Time.time < th._activeUntil + 0.5f);
 
     // 弾を遠くの壁へ当てて削る (撃った人から射程まで)。構えている間と、飛んでいる弾が届き切るまでだけ
@@ -429,6 +432,8 @@ public sealed partial class TriggerHappy : RoleBase
             if (!judged) { CacheJudged(); judged = true; }
             if (_judged.Count > 0 && TrySamurai(s)) { Remove(i); continue; }
             if (_shields.Count > 0 && Shielded(s)) { Remove(i); continue; }
+            // 場に置かれた物 (ドローン等) に当たったら弾はそこで止まる
+            if (Bodies.Count > 0 && Bodies.Point(new Strike(StrikeElement.Bullet, Bodies.BulletPower, 0, s.X, s.Y, s.Dx, s.Dy, PlayerId), Radius * BulletSize)) { Remove(i); continue; }
             if (!cached) { CacheTargets(); cached = true; }
             if (TryHit(s)) Remove(i);
         }

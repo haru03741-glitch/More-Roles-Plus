@@ -634,6 +634,8 @@ internal sealed partial class SamuraiBlade
             bool cut = (this == LocalFollow ? _wasInStroke : replay) && _role.WantsCut;
             bool watch = HitWatch.On && (_wasInStroke || this == LocalFollow && SwipeInput.Dragging || replay);
             if (cut || watch) ScanContacts(pc, p, cut, watch);
+            // 場に置かれた物 (ドローン・飛び道具など) は、この端末で見えている刃の通り道で斬る
+            if (Bodies.Count > 0 && (this == LocalFollow ? _wasInStroke : replay)) SweepBodies(pc, p);
         }
         return true;
     }
@@ -723,6 +725,13 @@ internal sealed partial class SamuraiBlade
     }
 
     private const float ContactRange = 2.5f; // これより遠い人の体の絵は見ない (刀が届かない)
+
+    private void SweepBodies(PlayerControl pc, in Pose p)
+    {
+        Vector3 c = pc.transform.position;
+        float ar = p.Blade * FxMath.Deg2Rad;
+        Bodies.Blade(_role.PlayerId, _strokeTier, c.x + p.Fx + p.Dx, c.y + p.Fy + p.Hop, FxMath.Cos(ar), FxMath.Sin(ar), TipLen);
+    }
 
     // 姿を体・拳・刀へ書く。world = 右/左の向きに関わらず値をそのまま使う (振りの間)
     private void WritePose(PlayerControl pc, in Pose p, bool world)

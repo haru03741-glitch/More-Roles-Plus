@@ -16,6 +16,9 @@ public sealed partial class Eclipse
     private const float CutSlack = 0.6f;                // 受け手が斬った人の位置を確かめる時の円の余裕 (動いた分と届くまでの遅れ)
     private const int ToughDamage = 50;                 // 斬れなかったサムライの体力の減り (ロケランの爆発と同じ)
 
+    // 燃えて落ちてくる岩。炎ごと割る物として、普通の振りで斬れる
+    internal static readonly BodyKind MeteorKind = new("EclipseMeteor", BodyMaterial.Energy, BodySize.Medium, 0f);
+
     internal enum Fate : byte { Falling, Hold, Cut, Land }
 
     private sealed class Strike
@@ -100,7 +103,7 @@ public sealed partial class Eclipse
     private static bool TryCut(Strike st, Neutral.Samurai s)
     {
         var p = s.Player;
-        if (!s.JudgesBullets || !PortKit.Alive(p) || p.inVent || !s.CutsNow) return false;
+        if (!s.JudgesBullets || !PortKit.Alive(p) || p.inVent || !s.Cuts(MeteorKind)) return false;
         Vector2 u = p.GetTruePosition();
         float dx = u.x - st.X, dy = u.y - st.Y;
         if (dx * dx + dy * dy > st.R * st.R) return false;

@@ -643,6 +643,8 @@ internal static class GatlingFx
     }
 
     // 壁が撃ち抜かれた: 抜けた所に残っていた弾痕を消す (宙に浮いて見えないように)
+    internal static int HoleCount => _holes; // 確認用
+
     internal static void ClearHoles(float x, float y, float r)
     {
         float r2 = r * r;

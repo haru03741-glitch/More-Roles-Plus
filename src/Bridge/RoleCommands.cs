@@ -85,7 +85,23 @@ internal static class RoleCommands
                 UI.FireStick.Synth(deg, sec);
             else if (a.Length >= 2 && a[0] == "stick") UI.FireStick.ForceShow = a[1] == "on";
             var lp = PlayerControl.LocalPlayer;
-            reply(Roles.RoleState.Of(lp) is Roles.Impostor.TriggerHappy th ? $"OK th {th.Describe()} stick={UI.FireStick.ForceShow} held={UI.FireStick.Held}" : "ERR th: not a trigger happy");
+            reply(Roles.RoleState.Of(lp) is Roles.Impostor.TriggerHappy th ? $"OK th {th.Describe()} stick={UI.FireStick.ForceShow} held={UI.FireStick.Held} holes={Roles.GatlingFx.HoleCount}" : "ERR th: not a trigger happy");
+        });
+
+        TestBridge.Register("bodies", "場に置かれた物 (ドローン等) の一覧: 種類・位置・残りの耐久・この端末が決めるか・当てた数・反応の無かった数", (_, reply) => reply($"OK {Roles.Bodies.Describe()}"));
+
+        TestBridge.Register("strike", "<slash|blunt|bullet|blast|heat|water> <x> <y> [半径=0.5] [強さ=1] [切断力=1] その場の物に一撃を当てる (斬は横向きの刃を半径の長さで振った扱い)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var st = System.Globalization.NumberStyles.Float;
+            if (a.Length < 3 || !System.Enum.TryParse(a[0], true, out Roles.StrikeElement e) || !float.TryParse(a[1], st, inv, out float x) || !float.TryParse(a[2], st, inv, out float y))
+            { reply("ERR strike <slash|blunt|bullet|blast|heat|water> <x> <y> [半径] [強さ] [切断力]"); return; }
+            float r = a.Length > 3 && float.TryParse(a[3], st, inv, out float rr) ? rr : 0.5f;
+            float pw = a.Length > 4 && float.TryParse(a[4], st, inv, out float pp) ? pp : 1f;
+            int edge = a.Length > 5 && int.TryParse(a[5], out int ed) ? ed : 1;
+            Roles.Bodies.Test(e, x, y, r, pw, edge);
+            reply($"OK strike {e} {Roles.Bodies.Describe()}");
         });
 
         TestBridge.Register("tharm", "<番号> [on|off] その人のトリガーハッピーに機関銃を構えさせる (この端末の見た目と状態だけ・練習の相手に居合を当てて機関銃が切れるかを見る)", (args, reply) =>
@@ -154,6 +170,14 @@ internal static class RoleCommands
 
         TestBridge.Register("drone", "[fly <x> <y> | stop | shut <部屋> | idle <番号> <x> <y>] 自分のユビキタスのドローンの状態 / 操作の入力を (x, y) (-1〜1) に置き換える / 置き換えをやめる / その部屋のドアを本編の道で閉める (ホストだけ・SystemTypes の名前) / その人の止まったドローンをこの端末だけに置く", (args, reply) =>
         {
+            var ia = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (ia.Length >= 4 && ia[0] == "idle" && byte.TryParse(ia[1], out byte iid)
+                && float.TryParse(ia[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float ix)
+                && float.TryParse(ia[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float iy))
+            {
+                reply(Roles.Crew.Ubiquitous.DevIdle(Roles.PortKit.ById(iid), new UnityEngine.Vector2(ix, iy)) ? $"OK drone idle {iid}" : "ERR drone idle: not a ubiquitous");
+                return;
+            }
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             if (a.Length >= 2 && a[0] == "shut")
