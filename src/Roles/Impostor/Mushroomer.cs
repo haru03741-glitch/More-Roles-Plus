@@ -90,6 +90,7 @@ public sealed class Mushroomer : RoleBase
     private static void Plant(PlayerControl owner, Vector2 at)
     {
         if (RoleState.Of(owner) is not Mushroomer mu) return;
+        Fx.Hearing.At("mushroom_plant", at.x, at.y, 7f, 0.7f, owner, Fx.Ears.Impostors); // キノコはクルーに見えないので音もインポスターだけ
         Spores.Add(at, m =>
         {
             if (!m) return;

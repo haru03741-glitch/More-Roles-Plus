@@ -60,6 +60,7 @@ public sealed class Doppelganger : RoleBase
                 if (m == null || PlayerControl.LocalPlayer.inVent) return false;
                 MoveSpeed.Add("DoppelSwap", 0f, SwapDuration + 0.25f);
                 Stop(); // 歩いている分身はその場で待たせる
+                Hearing.Self("doppel_swap_charge", 0.55f, 2f / SwapDuration); // 待つ長さに合わせて速める
                 return true;
             },
             OnEnd = Swap,
@@ -145,6 +146,7 @@ public sealed class Doppelganger : RoleBase
             if (id != _walkId || Mine != m) return;
             _flag = null;
             PortKit.Flash(RoleDisplay.ParseColor(Hex), 0.5f);
+            Hearing.Self("doppel_arrive", 0.6f);
         });
     }
 
@@ -407,7 +409,7 @@ internal sealed class DoppelPuppet
     internal static void Spawn(PlayerControl owner, Vector2 root, bool flip)
     {
         if (!owner || !AmongUsClient.Instance || !AmongUsClient.Instance.PlayerPrefab) return;
-        Despawn(owner.PlayerId, false);
+        if (All.Remove(owner.PlayerId, out var old)) old.Destroy(); // 出し直し (入れ替わりの印は残さない)
         if (!_bound)
         {
             _bound = true;
@@ -415,19 +417,38 @@ internal sealed class DoppelPuppet
             {
                 foreach (var m in All.Values) m.Destroy();
                 All.Clear();
+                _quietOut.Clear();
                 _bound = false;
             });
         }
         try { All[owner.PlayerId] = new DoppelPuppet(owner, root, flip); }
         catch (Exception e) { Plugin.Logger.LogWarning($"doppelganger: {e.Message}"); }
         Poof(root, 0.6f);
+        // 入れ替わりは「黙って消す → 本人のいた所に出す」の順で届く。直前に黙って消えていれば両方の地点で空気が抜ける
+        if (_quietOut.TryGetValue(owner.PlayerId, out var q) && Time.time - q.T < SwapWindow)
+        {
+            _quietOut.Remove(owner.PlayerId);
+            Poof(q.At, 0.6f);
+            Hearing.At("doppel_swap", q.At.x, q.At.y, SoundRange, 0.8f);
+            Hearing.At("doppel_swap", root.x, root.y, SoundRange, 0.8f);
+        }
+        else Hearing.At("doppel_spawn", root.x, root.y, SoundRange, 0.75f);
     }
+
+    private const float SoundRange = 7f;
+    private const float SwapWindow = 0.6f;
+    private static readonly Dictionary<byte, (float T, Vector2 At)> _quietOut = new();
 
     internal static void Despawn(byte owner, bool effect)
     {
         if (!All.TryGetValue(owner, out var m)) return;
         All.Remove(owner);
-        if (effect) Poof(m.Root, 1f);
+        if (effect)
+        {
+            Poof(m.Root, 1f);
+            Hearing.At("doppel_vanish", m.Root.x, m.Root.y, SoundRange, 0.75f);
+        }
+        else _quietOut[owner] = (Time.time, m.Root);
         m.Destroy();
     }
 

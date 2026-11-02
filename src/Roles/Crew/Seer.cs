@@ -25,7 +25,11 @@ public sealed class Seer : RoleBase
     private void OnMurdered(PlayerMurderedEvent e)
     {
         if (!PortKit.Alive(Player) || !e.Target) return;
-        if (Mode.Value != 2) PortKit.Flash(FlashColor);
+        if (Mode.Value != 2)
+        {
+            PortKit.Flash(FlashColor);
+            Fx.Hearing.Self("seer_flash", 0.5f);
+        }
         if (Mode.Value != 1) SeerKit.Soul(Lifespan, e.Target.transform.position, null, LimitSoul, SoulDuration);
     }
 }

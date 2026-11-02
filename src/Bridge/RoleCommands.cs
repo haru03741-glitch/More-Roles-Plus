@@ -96,7 +96,8 @@ internal static class RoleCommands
             reply(Roles.Impostor.TriggerHappy.ArmForTest(p, on) ? $"OK tharm {id} {on}" : "ERR tharm: not a trigger happy");
         });
 
-        TestBridge.Register("gunsnd", "機関銃と大砲の効果音の鳴らした数と最後の音", (_, reply) => reply($"OK gunsnd {Roles.GunSound.Describe()}"));
+        TestBridge.Register("hearing", "場所のある効果音 (Hearing) の鳴らした数・鳴らさなかった数・最後の音", (_, reply) => reply($"OK hearing {Fx.Hearing.Describe()}"));
+        TestBridge.Register("gunsnd","機関銃と大砲の効果音の鳴らした数と最後の音", (_, reply) => reply($"OK gunsnd {Roles.GunSound.Describe()}"));
 
         TestBridge.Register("rlaim", "<角度° | off | fire> ロケットランチャーの狙いの向きを固定する (0 = 右・90 = 上) / 詰めていれば撃つ (左クリックと同じ道)", (args, reply) =>
         {

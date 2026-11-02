@@ -35,6 +35,7 @@ public sealed class Comet : RoleBase
                 MoveSpeed.Add("Comet", Speed, Duration);
                 Cloak.Self(Duration);
                 if (Screen > 1f) ViewScale.Set(Screen);
+                Fx.Hearing.Self("comet_boost", 0.7f); // 透明になるので本人にだけ
                 return true;
             },
             OnEnd = Stop,
@@ -46,6 +47,7 @@ public sealed class Comet : RoleBase
     {
         if (!_boosting) return;
         _boosting = false;
+        Fx.Hearing.Self("comet_boost_end", 0.55f);
         MoveSpeed.Remove("Comet");
         Cloak.Self(0f);
         ViewScale.Set(1f);

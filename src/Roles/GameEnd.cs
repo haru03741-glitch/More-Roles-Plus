@@ -478,7 +478,7 @@ public static class GameEnd
         AddSubText(egm, new Text("GameEnd.Spectating"), Color.gray, 0.7f);
     }
 
-    // 観戦の人には本編の勝ち / 負けの曲の代わりに、見届けた音を鳴らす
+    // 観戦の人には本編の勝ち / 負けの曲の代わりに、見ていた中継が途切れる音を鳴らす
     internal static void ApplySpectatorSound(EndGameManager egm)
     {
         if (!LocalSpectating || Last == null || Last.Draw || !egm) return;
@@ -487,7 +487,7 @@ public static class GameEnd
         if (egm.CrewStinger) sm.StopSound(egm.CrewStinger);
         if (egm.ImpostorStinger) sm.StopSound(egm.ImpostorStinger);
         if (egm.DisconnectStinger) sm.StopSound(egm.DisconnectStinger);
-        var clip = Fx.MrpBundle.Clip("noise_end_spectate");
+        var clip = Fx.Hearing.Clip("spectate_end");
         if (clip) sm.PlaySound(clip, false, 1f, sm.SfxChannel);
         Plugin.Logger.LogInfo($"end sound: spectator clip={(bool)clip}");
     }
