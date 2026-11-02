@@ -158,6 +158,8 @@ public class Ticker : MonoBehaviour
         Roles.CutCorpse.Tick();
         Roles.PushFall.Tick();
         Roles.BodyConsume.Tick();
+        Roles.VictimView.Tick();
+        Roles.HitFeel.Tick();
         Roles.DuelGloom.Tick();
         UI.DuelHud.Tick();
         Menu.Emotes.Tick();

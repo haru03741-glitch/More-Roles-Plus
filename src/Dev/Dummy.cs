@@ -169,7 +169,7 @@ internal static class Dummy
         for (int i = Owned.Count - 1; i >= 0; i--)
         {
             var pc = Owned[i];
-            if (!pc) { Owned.RemoveAt(i); continue; }
+            if (!pc) { Forget(i); continue; }
             var nt = pc.NetTransform;
             if (nt.OwnerId != me) nt.OwnerId = me;
             if (!nt.enabled) nt.enabled = true;
@@ -220,6 +220,8 @@ internal static class Dummy
         var db = pc.GetComponent<DummyBehaviour>();
         if (db) db.enabled = false;
         Owned.Add(pc);
+        OwnedIds.Add(pc.PlayerId);
+        OwnedMark[pc.PlayerId] = true;
     }
 }
 
