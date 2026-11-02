@@ -156,7 +156,7 @@ internal static partial class NovaFx
         {
             float ph = now * 2.4f;
             Proj(r, -0.043f, 0.02f * FxMath.Cos(ph), 0.2f + 0.02f * FxMath.Sin(ph), out float gx, out float gy, out _);
-            r.GlintTf.localPosition = FxMath.V3(gx, gy, -0.00012f);
+            r.GlintTf.localPosition = FxMath.V3(gx, gy, -0.00014f);
             r.Glint.color = FxMath.Rgba(1f, 0.9f, 0.88f, (0.45f + 0.35f * FxMath.Sin(ph * 0.5f)) * alpha);
         }
     }
@@ -175,12 +175,12 @@ internal static partial class NovaFx
             Proj(r, tx, tr * ca, tr * sa, out float px, out float py, out float pd);
             // 筒の向こう側の爪は砲口の絵の後ろ、手前側は前
             Proj(r, kx, 0f, 0f, out _, out _, out float axisD);
-            float z = nd > axisD ? 0.00004f : -0.00008f;
+            float z = nd > axisD ? 0.00004f : -0.0001f;
             PlaceRod(r.RodTf[k * 2], bx, by, nx, ny, 0.07f, z);
             PlaceRod(r.RodTf[k * 2 + 1], nx, ny, px, py, 0.058f, z);
             r.BallTf[k].localPosition = FxMath.V3(nx, ny, z - 0.00001f);
-            r.TipTf[k].localPosition = FxMath.V3(px, py, (pd > axisD ? 0.00004f : -0.00008f) - 0.00001f);
-            r.TipGlowTf[k].localPosition = FxMath.V3(px, py, -0.0001f);
+            r.TipTf[k].localPosition = FxMath.V3(px, py, (pd > axisD ? 0.00004f : -0.0001f) - 0.00001f);
+            r.TipGlowTf[k].localPosition = FxMath.V3(px, py, -0.00012f);
         }
     }
 

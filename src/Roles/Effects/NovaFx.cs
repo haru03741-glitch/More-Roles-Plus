@@ -50,7 +50,7 @@ internal static partial class NovaFx
         new(0.95f, 0.84f, 1f, 1f),       // 芯
     };
 
-    private static Sprite[] _cannon, _glow, _bolt;
+    private static Sprite[] _cannon, _girder, _glow, _bolt;
     private static Sprite _beam, _streak, _cone;
     private const float ConeOpen = 0.6f, ConeExtra = 1.4f; // 円錐が開ききるまで・満タンの光線が長く照らす分
     // 円錐の層: 外の暗い地 → にじみ → 明るい本体 (広がりの割合・色)
@@ -69,13 +69,14 @@ internal static partial class NovaFx
         if (_searched) return false;
         _searched = true;
         _cannon = ButtonIcons.Frames("nova_cannon3d", 32, CannonPpu, 4);
+        _girder = ButtonIcons.Frames("nova_cannon_girder", 32, CannonPpu, 4);
         _glow = ButtonIcons.Frames("nova_cannon_glow", 32, GlowPpu, 4);
         _glowSets[0] = _glow;
         _bolt = ButtonIcons.Frames("nova_bolt", 6, BoltPpu, 6);
         _beam = ButtonIcons.Load("nova_beam", BeamPpu, FxMath.V2(0f, 0.5f)); // 左端が原点 (撃った所から先へ伸ばす)
         _streak = ButtonIcons.Load("nova_streak", StreakPpu, FxMath.V2(0.5f, 0.5f));
         _cone = ButtonIcons.Load("nova_cone", 512f, FxMath.V2(0f, 0.5f));
-        return _cannon != null && _glow != null && _bolt != null && _beam && _streak && PartsArt() && TankArt();
+        return _cannon != null && _girder != null && _glow != null && _bolt != null && _beam && _streak && PartsArt() && TankArt();
     }
 
     private static SpriteRenderer Make(string name, Sprite sp, Transform parent)
@@ -126,8 +127,8 @@ internal static partial class NovaFx
         public PlayerControl P;
         public Rig Rig;
         public Tank Tank;
-        public SpriteRenderer Cannon, Glow, Core, Halo, Light, Aim, Dot, Heat, Bolt;
-        public Transform CannonTf, GlowTf, CoreTf, HaloTf, LightTf, AimTf, DotTf, BoltTf;
+        public SpriteRenderer Cannon, Girder, Glow, Core, Halo, Light, Aim, Dot, Heat, Bolt;
+        public Transform CannonTf, GirderTf, GlowTf, CoreTf, HaloTf, LightTf, AimTf, DotTf, BoltTf;
         public float T0, C0, Dur, Limit, Open, OpenFire, LevelFire, Ax, Ay, Angle, Size, AimLen, AimYaw, FiredAt = -1f, EndAt = -1f, Extra;
         public float NextHaze, NextBolt, BoltOff, NextDrip, NextSteam;
         public float Plate, Rail, PlateFire, RailFire;   // 装甲板の開き・棒の伸び (撃った時の値から続ける)
@@ -166,14 +167,17 @@ internal static partial class NovaFx
         s.Dot = Make("Dot", Terrain.DebrisArt.SoftGlow, rt); s.DotTf = s.Dot.transform;
         s.Rig = MakeRig(rt);
         s.Cannon = Make("Cannon", _cannon[0], s.Rig.Tf); s.CannonTf = s.Cannon.transform;
+        // 筒の上の梁だけの絵: 回る輪のボルト (-0.00003) の上に重ね、梁と重なった所だけを隠す
+        s.Girder = Make("Girder", _girder[0], s.Rig.Tf); s.GirderTf = s.Girder.transform;
+        s.GirderTf.localPosition = GirderAt(0);
         s.Glow = Make("Glow", _glow[0], s.Rig.Tf); s.GlowTf = s.Glow.transform;
-        s.GlowTf.localPosition = FxMath.V3(0f, 0f, -0.00005f);
+        s.GlowTf.localPosition = FxMath.V3(0f, 0f, -0.00007f);
         s.Halo = Make("Halo", Terrain.DebrisArt.SoftGlow, rt); s.HaloTf = s.Halo.transform;
         s.Core = Make("Core", Terrain.DebrisArt.SoftGlow, rt); s.CoreTf = s.Core.transform;
         s.Bolt = Make("Bolt", _bolt[0], rt); s.BoltTf = s.Bolt.transform;
         s.Heat = Make("Heat", Terrain.DebrisArt.SoftGlow, rt);
         s.Core.enabled = s.Halo.enabled = s.Bolt.enabled = s.Heat.enabled = s.Light.enabled = false;
-        s.Cannon.color = FxMath.Rgba(1f, 1f, 1f, 0f);
+        s.Cannon.color = s.Girder.color = FxMath.Rgba(1f, 1f, 1f, 0f);
         Shots.Add(s);
         return s;
     }
@@ -298,7 +302,7 @@ internal static partial class NovaFx
         // 絵は 11.25° 刻みの 32 コマ。いちばん近いコマを選び (境目で行き来しないよう少し粘る)、残りの角度は画面の上で絵を回して埋める
         int f = s.Frame;
         if (f < 0 || FxMath.Abs(Wrap(yaw - f * 11.25f)) > 6.6f) f = FrameOf(yaw);
-        if (f != s.Frame) { s.Frame = f; s.Cannon.sprite = _cannon[f]; s.Glow.sprite = _glow[f]; }
+        if (f != s.Frame) { s.Frame = f; s.Cannon.sprite = _cannon[f]; s.Girder.sprite = _girder[f]; s.GirderTf.localPosition = GirderAt(f); s.Glow.sprite = _glow[f]; }
         float scr = ScreenOf(yaw);
         float rot = (int)System.MathF.Round(Wrap(scr - ScreenOf(f * 11.25f)) * 4f) * 0.25f;
         if (rot != s.Rot)
@@ -329,7 +333,7 @@ internal static partial class NovaFx
         // 上へ構える時は体の後ろ、それ以外は体の前
         s.Z = pos.z + (s.Vy > 0.35f ? 0.0004f : -0.0004f);
         int kc = (int)(alpha * 64f);
-        if (kc != s.KeyCannon) { s.KeyCannon = kc; s.Cannon.color = FxMath.Rgba(1f, 1f, 1f, kc / 64f); }
+        if (kc != s.KeyCannon) { s.KeyCannon = kc; s.Cannon.color = s.Girder.color = FxMath.Rgba(1f, 1f, 1f, kc / 64f); }
         s.Mx = cx + s.Dx * MuzzleAhead * dl;
         s.My = cy + s.Dy * MuzzleAhead * dl;
         s.Px = s.Mx + s.Dx * ApexGap * dl;

@@ -14,8 +14,13 @@ internal static partial class NovaFx
 {
     private const float BarX0 = 0.0f, BarX1 = 0.58f, BarThick = 0.18f;
     private static readonly float[] RingX = { 0.196f, 0.352f, 0.508f };
-    // 梁の幅の半分 0.012 + ボルトの絵の半径 (0.019 / 形の倍率 1.35)
-    private const float BoltBeamHalf = 0.026f;
+    // 梁だけの絵 (nova_cannon_girder) は梁のまわりだけ切ってあるので、コマごとに大砲の絵の中心からのずれ (画素・右と上が +) を持つ。
+    // 絵を描き直したら、描いた時に出るずれの表に貼り替える
+    private static readonly short[] GirderOff = { 22, 10, 24, 13, 25, 19, 25, 21, 23, 25, 19, 30, 15, 34, 8, 38, 0, 41, -8, 38, -15, 34, -20, 30, -24, 25, -26, 21, -26, 19, -24, 13, -23, 10, -19, 9, -15, 8, -9, 9, -6, 10, -3, 11, -2, 13, -1, 14, 0, 14, 0, 14, 1, 13, 3, 11, 6, 10, 9, 9, 14, 8, 19, 9 };
+
+    // 梁の絵はボルト (-0.00003) より手前・大砲の光の絵 (-0.00007) より奥
+    private static Vector3 GirderAt(int f) => FxMath.V3(GirderOff[f * 2] / CannonPpu, GirderOff[f * 2 + 1] / CannonPpu, -0.00005f);
+
     private const float RingR = 0.121f, RingIdle = 0.25f, RingMax = 2.6f, RingSpool = 1.2f, RingCoast = 0.9f;
     private const float RailR = 0.175f, RailX = 0.6f, RailMin = 0.03f, RailReach = 0.27f;
     private const float PlateX = 0.62f, PlateR = 0.122f, PlateLen = 0.25f, PlateW = 0.13f, PlateShut = 172f, PlateOpen = 50f;
@@ -117,7 +122,7 @@ internal static partial class NovaFx
                 PlaceBar(r.BarLitTf, bx0, by0, bx1, by1, BarThick, 0.00007f);
                 r.BarHeadTf.localPosition = FxMath.V3(bx1, by1, 0.00005f);
                 r.BarHeadTf.localScale = FxMath.V3(0.36f, 0.36f, 1f);
-                if (bloom) PlaceBar(r.BloomTf, bx0, by0, bx1, by1, 0.42f, -0.00006f);
+                if (bloom) PlaceBar(r.BloomTf, bx0, by0, bx1, by1, 0.42f, -0.00008f);
             }
             if (fade || kb != r.KeyBright)
             {
@@ -150,10 +155,8 @@ internal static partial class NovaFx
                     int i = k * 3 + j;
                     float th = dir * turn + j * 2.0944f + k * 0.6f;
                     Proj(r, x, RingR * FxMath.Cos(th), RingR * FxMath.Sin(th), out float px, out float py, out float pd);
-                    // 筒の上の梁 (幅 ±0.012・輪より高い) の下を通る間は梁に隠れる
-                    float by = RingR * FxMath.Cos(th), bz = RingR * FxMath.Sin(th);
-                    bool underBeam = bz > 0f && by > -BoltBeamHalf && by < BoltBeamHalf;
-                    bool on = pd < axisD && a > 0.01f && !underBeam;
+                    // 筒の上の梁の下を通る所は、上に重ねた梁だけの絵 (Girder) が重なった分だけ隠す
+                    bool on = pd < axisD && a > 0.01f;
                     bool show = on != r.BoltOn[i];
                     if (show) { r.BoltOn[i] = on; r.Bolts[i].enabled = on; }
                     if (!on) continue;
@@ -183,7 +186,7 @@ internal static partial class NovaFx
                 Proj(r, RailX + RailMin, y, 0f, out float x0s, out float y0s, out float d0);
                 Proj(r, x1, y, 0f, out float x1s, out float y1s, out _);
                 Proj(r, RailX, 0f, 0f, out _, out _, out float axisD);
-                float z = d0 > axisD ? 0.00004f : -0.00008f;
+                float z = d0 > axisD ? 0.00004f : -0.0001f;
                 PlaceRod(r.RailTf[i], x0s, y0s, x1s, y1s, 0.042f, z);
                 r.RailTipTf[i].localPosition = FxMath.V3(x1s, y1s, z - 0.00002f);
             }
@@ -217,7 +220,7 @@ internal static partial class NovaFx
                 Proj(r, PistonX0, s * PistonY0, -0.02f, out float x0s, out float y0s, out float d0);
                 Proj(r, x1, s * PistonY1, -0.015f, out float x1s, out float y1s, out _);
                 Proj(r, PistonX0, 0f, 0f, out _, out _, out float axisD);
-                float z = d0 > axisD ? 0.00004f : -0.00007f;
+                float z = d0 > axisD ? 0.00004f : -0.00009f;
                 PlaceRod(r.PistonTf[i], x0s, y0s, x1s, y1s, 0.03f, z);
                 r.CollarTf[i].localPosition = FxMath.V3(x1s, y1s, z - 0.00002f);
             }
@@ -275,7 +278,7 @@ internal static partial class NovaFx
             float q = FxMath.Sqrt(e * e + h * h), rr = FxMath.Sqrt(fq * fq + g * g);
             float a1 = FxMath.Atan2(g, fq), a2 = FxMath.Atan2(h, e);
             var root = r.PlateRoot[i];
-            root.localPosition = FxMath.V3(px, py, pd > axisD ? 0.000045f : -0.00009f);
+            root.localPosition = FxMath.V3(px, py, pd > axisD ? 0.000045f : -0.00011f);
             root.localRotation = FxMath.RotZ((a2 + a1) * 0.5f / Deg);
             root.localScale = FxMath.V3(q + rr, q - rr, 1f);
             r.PlateTf[i].localRotation = FxMath.RotZ((a2 - a1) * 0.5f / Deg);
