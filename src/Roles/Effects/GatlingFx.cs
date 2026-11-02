@@ -988,6 +988,7 @@ internal static class GatlingFx
                 float x = (k % Cols) * Cell, y = (rows - 1 - k / Cols) * Cell; // 絵の行は上から・テクスチャの y は下から
                 Frames[k] = Sprite.Create(tex, new Rect(x, y, Cell, Cell), FxMath.V2(0.5f, 0.5f), Ppu);
                 Frames[k].name = "MrpGatling" + k;
+                Frames[k].hideFlags = HideFlags.DontUnloadUnusedAsset; // メニューへ戻る時の片付けで消えると、探し直さないので二度と出ない
             }
         }
         _tracer = MakeTracer();

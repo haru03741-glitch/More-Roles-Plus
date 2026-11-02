@@ -708,6 +708,7 @@ internal sealed partial class RocketCannon
                 float x = (k % Cols) * Cell, y = (rows - 1 - k / Cols) * Cell; // 絵の行は上から・テクスチャの y は下から
                 Frames[k] = Sprite.Create(tex, new Rect(x, y, Cell, Cell), FxMath.V2(0.5f, OriginY / Cell), Ppu);
                 Frames[k].name = "MrpRocketCannon" + k;
+                Frames[k].hideFlags = HideFlags.DontUnloadUnusedAsset; // メニューへ戻る時の片付けで消えると、探し直さないので二度と出ない
             }
         }
         string[] names = { "pet_hand0003", "pet_hand0007", "pet_hand0019" };
