@@ -31,7 +31,8 @@ public static class VanillaTweaks
     public static Opt[] Rows => _rows ??= new Opt[] { ParallelScan, ScanNoWalk, TickInTasks, HideVentOutOfSight, DeadImpNoSabotage, FirstKillShield, NightCams, PetsShown, PetGoesWithBody };
 
     // 待ち時間を進めてよいか。本編は作業画面 (Minigame) を開いている間も動けない扱い (CanMove = false) になる
-    internal static bool CooldownTicks(PlayerControl lp) => lp.CanMove || (TickInTasks && Minigame.Instance);
+    // ドローンを操作している間は体が止まっているだけなので進める (ドアを開けるボタンは操作中にしか使えない)
+    internal static bool CooldownTicks(PlayerControl lp) => lp.CanMove || (TickInTasks && Minigame.Instance) || Roles.Crew.Ubiquitous.Operating(lp);
 
     // 本編のキルの待ち時間は作業画面を開いている間も進む (実測)。止める設定の時だけ本編が減らした分を足し戻す
     internal static void Tick()

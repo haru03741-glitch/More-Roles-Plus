@@ -152,6 +152,32 @@ internal static class RoleCommands
             reply(sb.ToString());
         });
 
+        TestBridge.Register("drone", "[fly <x> <y> | stop | shut <部屋> | idle <番号> <x> <y>] 自分のユビキタスのドローンの状態 / 操作の入力を (x, y) (-1〜1) に置き換える / 置き換えをやめる / その部屋のドアを本編の道で閉める (ホストだけ・SystemTypes の名前) / その人の止まったドローンをこの端末だけに置く", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (a.Length >= 2 && a[0] == "shut")
+            {
+                if (!ShipStatus.Instance || !System.Enum.TryParse(a[1], out SystemTypes room)) { reply("ERR drone shut"); return; }
+                ShipStatus.Instance.RpcCloseDoorsOfType(room);
+                var at = new System.Text.StringBuilder();
+                foreach (var d in ShipStatus.Instance.AllDoors)
+                {
+                    if (!d) continue;
+                    Vector2 p = d.transform.position;
+                    at.Append($" {d.Room}{(d.IsOpen ? "" : "*")}({p.x.ToString("F2", inv)},{p.y.ToString("F2", inv)})");
+                }
+                reply($"OK drone shut {room} doors={ShipStatus.Instance.AllDoors.Length}{at}");
+                return;
+            }
+            if (RoleState.Local is not Roles.Crew.Ubiquitous u) { reply("ERR drone not Ubiquitous"); return; }
+            if (a.Length >= 3 && a[0] == "fly" && float.TryParse(a[1], System.Globalization.NumberStyles.Float, inv, out float x)
+                && float.TryParse(a[2], System.Globalization.NumberStyles.Float, inv, out float y))
+                Roles.Crew.Ubiquitous.DevInput = new Vector2(x, y);
+            else if (a.Length >= 1 && a[0] == "stop") Roles.Crew.Ubiquitous.DevInput = null;
+            reply("OK drone " + u.Describe());
+        });
+
         TestBridge.Register("doppel", "[go <x> <y> | of <番号>] 自分のドッペルゲンガーの分身の位置 / 地図のその点を押した扱いで分身を歩かせる (無ければ出す) / この端末に見えている番号の人の分身", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

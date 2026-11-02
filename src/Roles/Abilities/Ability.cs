@@ -225,7 +225,7 @@ internal static class Abilities
     {
         if (a.UsesLeft == 0) return false;
         var lp = PlayerControl.LocalPlayer;
-        if (!lp || lp.Data == null || lp.Data.IsDead != a.Ghost || !lp.CanMove) return false;
+        if (!lp || lp.Data == null || lp.Data.IsDead != a.Ghost || (!a.WhileStill && !lp.CanMove)) return false;
         if (a.Target == AbilityTarget.Self)
         {
             if (a.OnHold != null) return true; // 長押しの能力は押せるかだけを返す (ボタンが溜め始め、離した時に Released)
