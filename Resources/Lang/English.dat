@@ -1514,6 +1514,7 @@ Ubiquitous.DoorHackCooldown: Door hack cooldown
 Ubiquitous.DoorHackScope: Door hack range
 Ubiquitous.VisibilityRange: Drone vision range
 Ubiquitous.MapShowColor: Show colors on the map
+Ubiquitous.ShowFlying: Show flying drones to everyone
 # ── 作り直し: シーア / イビルシーア / ヴァルチャー / アーソニスト / マトリョーシカ / 魔術師 ──
 EvilSeer.LightColor: a light color
 EvilSeer.DarkColor: a dark color

@@ -5,12 +5,12 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles.Crew;
 
 // ドローンは場に置かれた物 (Bodies) として、弾・刀・爆発・叩く・水に反応する。
-// 飛んでいるドローンは本人の端末にしか無いので本人の端末が決める。止まったドローンは全員の端末にあり、本人 (抜けていればホスト) が決めて配る。
+// 飛んでいるドローンは本人の端末が決める (ほかの端末の当たりは Ubiquitous.Share.cs)。止まったドローンは全員の端末にあり、本人 (抜けていればホスト) が決めて配る。
 // 当たっただけなら火花と金属の音・耐久が尽きる/斬られる/水に浸かると止まって落ちる
 public sealed partial class Ubiquitous
 {
-    // 飛んでいる時は人の腰より上 (泳ぐ深さで浸かる)・止まっている時は床の少し上。飛んでいるドローンは本人にしか無いので弾を止めない (火花と耐久だけ)
-    private static readonly BodyKind FlyingKind = new("UbiquitousDrone", BodyMaterial.Electronic, BodySize.Small, 15f, 0.4f, shared: false);
+    // 飛んでいる時は人の腰より上 (泳ぐ深さで浸かる)・止まっている時は床の少し上
+    private static readonly BodyKind FlyingKind = new("UbiquitousDrone", BodyMaterial.Electronic, BodySize.Small, 15f, 0.4f);
     private static readonly BodyKind IdleKind = new("UbiquitousDroneIdle", BodyMaterial.Electronic, BodySize.Small, 15f, 0.1f);
     private const float HitRadius = 0.25f;
 
@@ -37,6 +37,7 @@ public sealed partial class Ubiquitous
     private bool OnFlyingStrike(Body b, StrikeResult r, Strike s)
     {
         float x = b.X, y = b.Y;
+        if (s.Element == StrikeElement.Bullet) SendGuard(x, y);
         if (r == StrikeResult.Damage || r == StrikeResult.Glance)
         {
             Spark(x, y, s);

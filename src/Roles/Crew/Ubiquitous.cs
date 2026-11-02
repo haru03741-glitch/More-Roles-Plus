@@ -221,6 +221,7 @@ public sealed partial class Ubiquitous : RoleBase
     {
         if (_operate != null && _operate.InEffect) _operate.EndEffect();
         RemoveFlyingBody();
+        ShareGone();
         if (_drone)
         {
             if (spinDown)
@@ -239,9 +240,10 @@ public sealed partial class Ubiquitous : RoleBase
 
     public override void OnFixedUpdate()
     {
-        if (!IsLocal) return;
+        if (!IsLocal) { SeenTick(); return; }
         if (_drone && !PortKit.Alive(Player)) DestroyDrone();
         if (!_drone) return;
+        ShareTick();
         bool op = _operate.InEffect;
         float dt = Time.fixedDeltaTime;
         float max = FlyingSpeed * (Player.MyPhysics ? Player.MyPhysics.Speed : 2.5f);

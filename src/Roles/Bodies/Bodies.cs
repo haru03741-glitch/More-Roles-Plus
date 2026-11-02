@@ -14,7 +14,7 @@ internal sealed class BodyKind
     public readonly BodySize Size;
     public readonly float Hp;         // 耐久 (0 = 耐久を持たず、壊れずに当たった反応だけ)
     public readonly float Lift;       // 床からの高さ (水の深さ・Full = 1 単位)。これより深い水で浸かる。負 = 水を見ない
-    public readonly bool Shared;      // 全員の端末にある物か。本人にしか無い物は弾を止めない (撃った人の画面と当たりが食い違うため)
+    public readonly bool Shared;      // 弾を止めるか (撃った人の端末にも同じ当たりがある物だけ。無いと撃った人の画面と当たりが食い違う)
 
     public BodyKind(string name, BodyMaterial material, BodySize size, float hp, float lift = -1f, bool shared = true)
     {
@@ -38,6 +38,9 @@ internal sealed class Body
     public Func<bool> Judges;      // この端末が結果を決める (耐久を減らし、壊す) か。null = 決めない (見た目だけ)
     // 結果を受ける。false を返すと「反応が無い」としてログに出す (反応の抜けを探すため)
     public Func<Body, StrikeResult, Strike, bool> OnStrike;
+    public bool Fixed;             // Tf を持たず X, Y の位置に置いたまま (よそから届いた位置で置く当たり)
+    public float Until;            // この時刻を過ぎたら消えた扱い (0 = 期限なし)
+    public bool BulletsOnly;       // 弾にだけ反応する
     internal float X, Y;
     internal int SeenFrame = -1;
     internal float GuardUntil;     // 同じ物へ同じ斬りが毎フレーム重ならないように
@@ -85,12 +88,14 @@ internal static class Bodies
     internal static int Strikes, Silents;
 
     internal static int Count => All.Count;
+    internal static bool Contains(Body b) => All.Contains(b);
 
     internal static Body Add(Body b)
     {
         Use();
         b.Hp = b.Kind.Hp;
         b.Gone = false;
+        b.SeenFrame = -1;
         All.Add(b);
         return b;
     }
@@ -119,6 +124,8 @@ internal static class Bodies
         int f = Time.frameCount;
         if (b.SeenFrame == f) return;
         b.SeenFrame = f;
+        if (b.Until > 0f && Time.time > b.Until) { b.Gone = true; return; }
+        if (b.Fixed) return;
         if (!b.Tf) { b.Gone = true; return; }
         Vector3 p = b.Tf.position;
         b.X = p.x + b.OffX;
@@ -187,6 +194,7 @@ internal static class Bodies
 
     private static StrikeResult Apply(Body b, in Strike s)
     {
+        if (b.BulletsOnly && s.Element != StrikeElement.Bullet) return StrikeResult.None;
         var k = b.Kind;
         float hp = b.Hp;
         var res = BodyRules.Judge(s.Element, s.Power, s.Edge, k.Material, k.Size, ref hp);
@@ -267,6 +275,7 @@ internal static class Bodies
         foreach (var b in All)
         {
             Refresh(b);
+            if (b.Gone) continue;
             sb.Append($" | {b.Kind.Name} at={b.X.ToString("F2", inv)},{b.Y.ToString("F2", inv)} hp={b.Hp.ToString("F1", inv)} judge={(b.Judges != null && b.Judges() ? 1 : 0)}");
         }
         return sb.ToString();

@@ -1514,6 +1514,7 @@ Ubiquitous.DoorHackCooldown: ドアを開ける待ち時間
 Ubiquitous.DoorHackScope: ドアを開けられる広さ
 Ubiquitous.VisibilityRange: ドローンの見える広さ
 Ubiquitous.MapShowColor: 地図に色を出す
+Ubiquitous.ShowFlying: 飛ぶドローンを全員に見せる
 # ── 作り直し: シーア / イビルシーア / ヴァルチャー / アーソニスト / マトリョーシカ / 魔術師 ──
 EvilSeer.LightColor: 明るい色
 EvilSeer.DarkColor: 暗い色
