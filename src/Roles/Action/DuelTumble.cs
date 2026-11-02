@@ -106,7 +106,14 @@ internal static partial class DuelTumble
         if (!pc || pc.Data == null || pc.Data.IsDead || pc.inVent || pc.onLadder || pc.inMovingPlat || !pc.cosmetics) return null;
         var s = States[id] ??= new State();
         if (s.Mode == Mode.Launch && mode != Mode.Launch) return null;
-        if (s.Mode == Mode.None) _live++;
+        // 体を動かしている他の演出 (サムライの構え・撃たれたのけぞり) を先に元へ戻させる。
+        // 戻さないと、こちらが控える元の姿がずれ、向こうはこちらの傾いた姿を元として覚えて書き戻す
+        if (s.Mode == Mode.None)
+        {
+            SamuraiBlade.ReleaseBody(id);
+            GatlingFx.ReleaseJolt(pc);
+            _live++;
+        }
         else Restore(s);
         var src = Player(from);
         Vector2 me = pc.GetTruePosition();
@@ -203,6 +210,9 @@ internal static partial class DuelTumble
 
     // 吹っ飛んでいる (歩きのアニメと向きの変更・攻撃と回避を止める)
     internal static bool Busy(byte id) => _live > 0 && States[id] is { Mode: Mode.Launch };
+
+    // 体の絵を動かしている (のけぞり・吹っ飛び・転がり・転倒のどれか)。他の演出はこの間は体に触らない
+    internal static bool Posing(byte id) => _live > 0 && States[id] is { } s && s.Mode != Mode.None;
 
     internal static bool AnyLive => _live > 0;
 

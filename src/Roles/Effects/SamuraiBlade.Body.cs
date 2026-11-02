@@ -51,7 +51,7 @@ internal sealed partial class SamuraiBlade
         }
     }
 
-    private bool OthersPose(byte id) => Fx.EmoteArt.IsPlaying(id) || Terrain.CrewBrace.Posed(id) || Terrain.CrewGrip.Flying(id);
+    private bool OthersPose(byte id) => Fx.EmoteArt.IsPlaying(id) || Terrain.CrewBrace.Posed(id) || Terrain.CrewGrip.Flying(id) || DuelTumble.Posing(id);
 
     // 体の姿 (ワールドの値・左右の鏡は済んでいる)
     private void WriteBody(PlayerControl pc, in Pose p)

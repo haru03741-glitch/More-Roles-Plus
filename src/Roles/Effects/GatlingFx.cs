@@ -573,7 +573,7 @@ internal static class GatlingFx
     {
         byte id = who.PlayerId;
         // 体を別の演出が動かしている間はのけぞらせない
-        if (Terrain.CrewBrace.Posed(id) || Terrain.CrewGrip.Flying(id) || DuelTumble.Busy(id)) return;
+        if (Terrain.CrewBrace.Posed(id) || Terrain.CrewGrip.Flying(id) || DuelTumble.Posing(id)) return;
         Jolt j = null;
         for (int i = 0; i < Jolts.Count; i++) if (ReferenceEquals(Jolts[i].Who, who)) { j = Jolts[i]; break; }
         if (j == null)
@@ -620,6 +620,18 @@ internal static class GatlingFx
             var p = tf.localPosition;
             tf.localPosition = FxMath.V3(p.x + mx, p.y + my, p.z);
             if (ma != 0f) tf.localRotation = tf.localRotation * turn;
+        }
+    }
+
+    // 別の演出がこの人の体を動かし始める直前: この人に足した分を外す (向こうが控える元の姿を汚さない)
+    internal static void ReleaseJolt(PlayerControl who)
+    {
+        for (int i = Jolts.Count - 1; i >= 0; i--)
+        {
+            var j = Jolts[i];
+            if (!ReferenceEquals(j.Who, who)) continue;
+            if (j.Who) Shift(j, 0f, 0f, 0f);
+            Jolts.RemoveAt(i);
         }
     }
 
