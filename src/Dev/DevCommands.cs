@@ -122,7 +122,28 @@ internal static class DevCommands
             reply($"OK kill {pid}");
         });
 
-        TestBridge.Register("vrole", "[role <番号> <RoleTypes> | shift <番号> <相手> | unshift <番号> | vanish <番号> | appear <番号> | use | pet <番号> <ペットの並びの番号>] 本編の役職を付ける / 変身・解除・透明・出現を全員へ (ホスト) / 自分の本編の能力を使う / ペットを替える。引数なし = 全員の姿の状態と自分の本編の役職の残り", (args, reply) =>
+        TestBridge.Register("killby", "<倒す人の番号> <倒される人の番号> 倒させる (ホストのみ・距離は見ない・本編のキルと同じく倒す人は倒された所へ移る)", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var k = a.Length >= 2 && byte.TryParse(a[0], out byte kid) ? Player(kid) : null;
+            var t = a.Length >= 2 && byte.TryParse(a[1], out byte tid) ? Player(tid) : null;
+            if (!AmongUsClient.Instance.AmHost || !k || !t) { reply("ERR killby <killer> <target> (host only)"); return; }
+            k.RpcMurderPlayer(t, true);
+            reply($"OK killby {k.PlayerId} -> {t.PlayerId}");
+        });
+
+        TestBridge.Register("victimview", "[blast|shot] [dx dy] 遠くから倒された本人の画面を自分の画面で流す (死なない・dx dy = 撃った人のいる向き)・引数なし = 本編がキルの絵を出そうとした回数と代わった回数", (args, reply) =>
+        {
+            var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 0) { reply($"OK victimview calls={VictimView.Calls} taken={VictimView.Taken} active={VictimView.Active} sfxSetting={AmongUs.Data.DataManager.Settings.Audio.SfxVolume:0.###}"); return; }
+            if (a[0] != "blast" && a[0] != "shot") { reply("ERR victimview [blast|shot] [dx dy]"); return; }
+            float dx = a.Length >= 3 && float.TryParse(a[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ? x : 1f;
+            float dy = a.Length >= 3 && float.TryParse(a[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) ? y : 0f;
+            VictimView.Preview(a[0] == "blast", dx, dy);
+            reply($"OK victimview {a[0]} {TestBridge.F(dx)},{TestBridge.F(dy)}");
+        });
+
+        TestBridge.Register("vrole","[role <番号> <RoleTypes> | shift <番号> <相手> | unshift <番号> | vanish <番号> | appear <番号> | use | pet <番号> <ペットの並びの番号>] 本編の役職を付ける / 変身・解除・透明・出現を全員へ (ホスト) / 自分の本編の能力を使う / ペットを替える。引数なし = 全員の姿の状態と自分の本編の役職の残り", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var p = a.Length >= 2 && byte.TryParse(a[1], out byte pid) ? Player(pid) : null;

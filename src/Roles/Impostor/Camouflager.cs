@@ -40,13 +40,36 @@ public sealed class Camouflager : RoleBase
     private static void Apply(PlayerControl camo, bool on)
     {
         if (!camo) return;
+        bool fresh = on && _active == 255;
         _active = on ? camo.PlayerId : (byte)255;
+        if (fresh) Before.Clear();
         foreach (var p in PlayerControl.AllPlayerControls)
         {
             // 掛ける時は生きている人だけ、戻す時は途中で死んだ人も戻す
             if (!p || p.Data == null || (on && p.Data.IsDead) || p.PlayerId == camo.PlayerId) continue;
-            try { p.Shapeshift(on ? camo : p, true); }
+            try
+            {
+                if (on)
+                {
+                    if (fresh) Before[p.PlayerId] = p.shapeshiftTargetPlayerId;
+                    p.Shapeshift(camo, true);
+                    continue;
+                }
+                // 最中に本編の変身が姿を替えた人はそのまま。替わっていなければ掛ける前の姿 (本編の変身中ならその姿) へ
+                if (p.shapeshiftTargetPlayerId != camo.PlayerId) continue;
+                PlayerControl back = p;
+                if (Before.TryGetValue(p.PlayerId, out int was) && was >= 0 && was != p.PlayerId)
+                {
+                    var t = PortKit.ById((byte)was);
+                    if (t && t.Data != null) back = t;
+                }
+                p.Shapeshift(back, true);
+            }
             catch (System.Exception e) { Plugin.Logger.LogWarning($"camouflage: {e.Message}"); }
         }
+        if (!on) Before.Clear();
     }
+
+    // 掛ける前の本編の変身先 (人の番号 → 変身先の番号・-1 = 変身していない)
+    private static readonly System.Collections.Generic.Dictionary<byte, int> Before = new();
 }
