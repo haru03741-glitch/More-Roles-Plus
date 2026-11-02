@@ -1029,6 +1029,8 @@ internal static class DevCommands
         var p = Player(pid);
         if (!p || p.Data == null || !p.Data.IsDead) return;
         p.Revive();
+        // 死体を残さずに倒された人 (本編の Exiled) は姿が隠れたままなので、見えるように戻す
+        if (!p.Visible) p.Visible = true;
         // 死ぬと本編が幽霊の役職に替えるので、生きていた時の役職に戻す
         var alive = RoleWhenAlive(p.Data);
         // 読めない時や幽霊側の役職が入っている時 (フリープレイなど) は、陣営の基本の役職に戻す

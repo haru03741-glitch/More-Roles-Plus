@@ -65,11 +65,18 @@ public static class PortKit
             MeetingDeath(target);
             // 本編の Exiled は死んだ本人の HUD (タスク欄・幽霊のボタン) を出し直す。会議の初めに隠す処理は会議の途中で死んだ時には
             // 走らないので、隠さないと会議の画面の上にタスク欄が出たままになる。会議の後は本編が出し直す
-            if (target.AmOwner && Vanilla.Hud is { } hud) hud.SetHudActive(false);
+            if (target.AmOwner) HideDeadHud();
         }
         MatchLog.OnMurder(killer, target);
         if (RoleState.All.Count > 0)
             Events<PlayerMurderedEvent>.Run(new PlayerMurderedEvent { Killer = killer ? killer : target, Target = target });
+    }
+
+    // 会議中に死んだ本人の HUD を隠す。客ではこの後にホストから幽霊の役職が届き、本編が役職を付ける時に HUD を出し直すので
+    // 役職が付いた後にも呼ぶ (MeetingGhostHudPatch)
+    internal static void HideDeadHud()
+    {
+        if (MeetingHud.Instance && Vanilla.Hud is { } hud) hud.SetHudActive(false);
     }
 
     // 会議中に死んだ人を名札に反映する: 死んだ印を付け、その人への票とその人の票を外す。ホストは投票が揃ったかを見直す
@@ -409,5 +416,17 @@ internal static class PortFreezePatch
             || (local is Impostor.RemoteController && Impostor.RemoteController.Operating(__instance))
             || (local is Crew.Ubiquitous && Crew.Ubiquitous.Operating(__instance)))
             __result = false;
+    }
+}
+
+// 会議中に死んだ本人へ幽霊の役職が付いたら、本編が出し直した HUD をまた隠す
+[HarmonyLib.HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SetRole))]
+internal static class MeetingGhostHudPatch
+{
+    public static void Postfix([HarmonyLib.HarmonyArgument(0)] PlayerControl targetPlayer)
+    {
+        if (!targetPlayer || !targetPlayer.AmOwner || !MeetingHud.Instance || targetPlayer.Data == null || !targetPlayer.Data.IsDead) return;
+        PortKit.HideDeadHud();
+        PortKit.After(0f, PortKit.HideDeadHud); // 役職を付けた後の同じ流れで出し直されても次のフレームで隠す
     }
 }
