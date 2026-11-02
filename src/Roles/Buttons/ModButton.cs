@@ -612,6 +612,7 @@ internal sealed class ModButton
     }
 
     internal static int Count => All.Count;
+    internal static IReadOnlyList<ModButton> Buttons => All;
 
     internal static bool HudShown => _hudShown;
     internal static bool GhostShown => _ghostShown;

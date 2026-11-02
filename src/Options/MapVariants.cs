@@ -5,8 +5,8 @@ namespace MoreRolesPlus.Options;
 
 // ゲームの頁のマップ選びの下に並べる、札を選ぶ行の中身。
 // - バリエーション (通常 / 左右反転): どのマップにも掛かる
-// - モード (クラシック / かくれんぼ): 本編は部屋の作成時にしか選べないモードをロビーで替える。
-//   本編の設定の項目はモードごとに違うので、替えたら設定画面を開き直す
+// - モード (クラシック / かくれんぼ / サドンデス): 本編は部屋の作成時にしか選べないモードをロビーで替える。
+//   本編の設定の項目はモードごとに違うので、替えたら設定画面を開き直す。サドンデスは本編のクラシックの上の MRP のモード
 internal static class MapVariants
 {
     public static readonly Text Title = new("MapVariants.Title");
@@ -35,9 +35,24 @@ internal static class MapVariants
         new()
         {
             Label = () => new Text("GameMode.Label"),
-            Items = new (Func<string>, int)[] { (() => ModeName(GameModes.Normal), (int)GameModes.Normal), (() => ModeName(GameModes.HideNSeek), (int)GameModes.HideNSeek) },
-            Current = () => (int)GameModeSwitch.Current,
-            Select = i => SelectMode((GameModes)i),
+            Items = new (Func<string>, int)[]
+            {
+                (() => ModeName(GameModes.Normal), (int)GameModes.Normal),
+                (() => ModeName(GameModes.HideNSeek), (int)GameModes.HideNSeek),
+                (() => new Text("SuddenDeath.Chip"), Rules.SuddenDeath.ChipIndex),
+            },
+            Current = () => Rules.SuddenDeath.Active ? Rules.SuddenDeath.ChipIndex : (int)GameModeSwitch.Current,
+            Select = i =>
+            {
+                bool sudden = i == Rules.SuddenDeath.ChipIndex;
+                var mode = sudden ? GameModes.Normal : (GameModes)i;
+                if (Rules.SuddenDeath.Enabled != sudden)
+                {
+                    Rules.SuddenDeath.Enabled.SetIndex(sudden ? 1 : 0);
+                    if (GameModeSwitch.Current == mode) SettingsMenu.RefreshAll();
+                }
+                SelectMode(mode);
+            },
         },
     };
 

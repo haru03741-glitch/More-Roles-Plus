@@ -37,7 +37,9 @@ internal static class Emotes
     private static readonly long[] LastMs = new long[256];
     private static Lifespan _life;
     private static ModButton _main;
+    internal static ModButton MainButton => _main;
     private static GameObject _ring;
+    internal static Transform Ring => _ring ? _ring.transform : null; // 扇のボタンの親 (子の順 = エモートの番号)
     private static Sprite _backdropSprite;
     private static string _fanInfo = "";
     private static bool _retry, _iconDim, _lobby, _armed;

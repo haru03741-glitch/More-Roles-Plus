@@ -51,4 +51,6 @@
     <string name="bootstrap_launcher_update_required">此版本的 More Roles Plus 面向 Unity %1$s，但已安装的 Among Us 使用 Unity %2$s。请更新 More Roles Plus。</string>
     <string name="bootstrap_interop_update_required">此版本的 More Roles Plus 面向 Among Us %1$s，但已安装的是 %2$s。请更新 More Roles Plus。</string>
     <string name="bootstrap_game_layout_unsupported">此版本的 More Roles Plus 无法识别已安装的 Among Us 版本。请更新 More Roles Plus。</string>
+    <string name="join_link_failed">无法打开房间链接。</string>
+    <string name="join_link_joining">正在加入房间 %1$s…</string>
 </resources>

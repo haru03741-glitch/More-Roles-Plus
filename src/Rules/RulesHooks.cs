@@ -35,6 +35,7 @@ internal static class RulesHooks
         RandomSpawn.TickAirship();
         SelectSpawn.Tick();
         MapGimmicks.Tick();
+        NoMeetingsHudPatch.Tick();
         if (!_meeting) return;
         if (MeetingHud.Instance || ExileController.Instance) { _quiet = 0; return; }
         if (++_quiet < QuietTicks) return;

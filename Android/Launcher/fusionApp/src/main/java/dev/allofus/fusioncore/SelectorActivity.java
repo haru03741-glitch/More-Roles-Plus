@@ -120,12 +120,47 @@ public class SelectorActivity extends AppCompatActivity {
                     CrashDetector.init(this);
                     // Launch by itself only once an itch.io account is attached; otherwise wait for
                     // the player to sign in or to tap the card.
+                    // The voice chat needs the microphone; ask once, before the game takes the screen.
+                    // The countdown starts after the answer (the dialog pauses this activity).
+                    if (askMicrophoneOnce()) {
+                        return;
+                    }
                     if (targetInstalled && (signedIn || !ItchAuth.isAvailable())) {
                         startCountdown();
                     }
                 });
             }, "itch-reconcile").start();
         }, 100);
+    }
+
+    private static final int REQUEST_MICROPHONE = 7;
+    private static final String PREFS = "mrp_launcher";
+    private static final String PREF_MIC_ASKED = "mic_asked";
+
+    /** Requests RECORD_AUDIO the first time only; true while the system dialog is up. */
+    private boolean askMicrophoneOnce() {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return false;
+        }
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (prefs.getBoolean(PREF_MIC_ASKED, false)) {
+            return false;
+        }
+        prefs.edit().putBoolean(PREF_MIC_ASKED, true).apply();
+        requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
+        return true;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_MICROPHONE || isFinishing() || isDestroyed()) {
+            return;
+        }
+        boolean signedIn = refreshItchStatus();
+        if (targetInstalled && (signedIn || !ItchAuth.isAvailable())) {
+            startCountdown();
+        }
     }
 
     /** Updates the itch.io row and the launch hint; returns whether a token is stored. */

@@ -27,7 +27,8 @@ internal static class EmoteArt
 
     private sealed class Show
     {
-        public PlayerControl Pc;
+        public PlayerControl Pc;         // 着せ替え画面の見本 (Preview) では無い
+        public bool Preview;
         public byte Id, Kind;
         public float Start, Dur, Inv;
         public Transform Root, Body, Cos;
@@ -90,6 +91,47 @@ internal static class EmoteArt
 
     // pc にエモートを出す (同じ人の前のエモートは打ち切る)
     internal static bool Play(PlayerControl pc, byte kind) => Play(pc, kind, -1f);
+
+    // 着せ替え画面の見本の人 (PoolablePlayer) にエモートを出す。見本は試合の人と同じ部品の並びなので、手の置き方も同じ
+    internal const byte PreviewId = 254;
+
+    internal static bool Preview(PoolablePlayer pp, int color, byte kind, Material mat)
+    {
+        if (!pp || kind >= Count || !LoadSprites()) { Refused++; return false; }
+        if (!mat) { Refused++; return false; }
+        Stop(PreviewId);
+        if (Live.Count == 0) _shipGen = Terrain.GameClock.ShipGen;
+        var lp = PlayerControl.LocalPlayer;
+        float scale = lp ? lp.transform.localScale.x : 1f; // 試合の人の大きさ (手の位置はこの大きさでの長さで決めてある)
+        var s = new Show
+        {
+            Preview = true,
+            Id = PreviewId,
+            Kind = kind,
+            Start = Time.time,
+            Dur = Durations[kind],
+            Root = pp.transform,
+            Pitch = 1f,
+            Inv = scale > 0.01f ? 1f / scale : 1f,
+        };
+        int layer = pp.gameObject.layer;
+        s.A = NewHand(s.Root, mat, color, layer, out s.At, out s.Ac, out s.Ar);
+        if (kind == Clap || kind == Jump) s.B = NewHand(s.Root, mat, color, layer, out s.Bt, out s.Bc, out s.Br);
+        if (kind == Clap) NewClapFx(s, layer);
+        if (kind == Jump)
+        {
+            s.Body = s.Root.Find("BodyForms");
+            s.Cos = pp.cosmetics ? pp.cosmetics.transform : null;
+            if (s.Body) s.Bp = s.Body.localPosition;
+            if (s.Cos) s.Cp = s.Cos.localPosition;
+            s.Hop = s.Body || s.Cos;
+        }
+        s.Flip = pp.cosmetics && pp.cosmetics.FlipX;
+        Live.Add(s);
+        Played++;
+        Apply(s, 0f);
+        return true;
+    }
 
     private static bool Play(PlayerControl pc, byte kind, float hold)
     {
@@ -210,13 +252,13 @@ internal static class EmoteArt
         {
             var s = Live[i];
             float t = s.Hold >= 0f ? s.Hold : now - s.Start;
-            if (s.Hold < 0f && t >= s.Dur || !s.A || !s.Pc || check && !Alive(s.Pc))
+            if (s.Hold < 0f && t >= s.Dur || !s.A || !s.Root || !s.Preview && (!s.Pc || check && !Alive(s.Pc)))
             {
                 End(s);
                 Live.RemoveAt(i);
                 continue;
             }
-            if (check)
+            if (check && !s.Preview)
             {
                 SetHidden(s, !s.Pc.Visible || Rules.NightVisionCams.Active); // 停電中のカメラの暗視では誰か分かる手も隠す
                 s.Flip = s.Pc.cosmetics && s.Pc.cosmetics.FlipX;
@@ -323,8 +365,11 @@ internal static class EmoteArt
     // 見えない人 (透明・ベントの中) の音は鳴らさない (位置が分かってしまう)。隠れの見直しは数フレームおきなので、ここでも見る
     private static void Sound(Show s, string clip, float volume, float range, float muffle)
     {
-        if (s.Hidden || !s.Pc.Visible) return;
-        Vector2 p = s.Pc.GetTruePosition();
+        if (s.Hidden || s.Pc && !s.Pc.Visible) return;
+        // 見本は自分の足元で鳴らす (ノートパソコンの前にいるのでそのままの大きさで聞こえる)
+        var at = s.Pc ? s.Pc : PlayerControl.LocalPlayer;
+        if (!at) return;
+        Vector2 p = at.GetTruePosition();
         Sounds++;
         _lastSound = clip;
         Terrain.BreakNoise.PlayAt(clip, p.x, p.y, range, muffle, volume, s.Pitch * FxMath.Range(0.97f, 1.03f), true);

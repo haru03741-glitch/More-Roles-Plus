@@ -46,6 +46,7 @@ internal static class ModUpdate
     private static MainMenuManager _menu;
     private static bool _made, _popupChecked;
     private static GameObject _button;
+    internal static bool ButtonShown => _button && _button.activeSelf; // ホームのバグ報告のボタンはこの上に重ねる
     private static TextMeshPro _buttonText;
     private static Transform _screens, _credits; // 右の窓の中身 (遊び方の選択など)。開いている間はボタンを隠す
     private static int _tick;

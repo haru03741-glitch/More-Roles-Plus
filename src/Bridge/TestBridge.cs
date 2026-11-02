@@ -76,6 +76,8 @@ public static partial class TestBridge
             Roles.RewindCinematic.Register();
             Roles.KatanaCinematic.Register();
             Report.ReportWindow.RegisterBridge();
+            Menu.RoomShare.RegisterBridge();
+            Voice.VoiceChat.RegisterBridge();
             Rules.RulesProbe.Register();
             Terrain.TerrainProbe.Register();
             InitHost();

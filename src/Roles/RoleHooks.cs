@@ -65,7 +65,8 @@ internal static class KillCooldownPatch
         // 役職の無い人 (本編のまま) にもアドオンは付くので、役職の有無に関わらず自分のアドオンまで見る
         var lp = PlayerControl.LocalPlayer;
         if (!lp) return;
-        if (NeutralKillSettings.Applies(RoleState.Local)) __result = NeutralKillSettings.KillCooldown;
+        if (Rules.SuddenDeath.Active) __result = Rules.SuddenDeath.KillCooldown.Value;
+        else if (NeutralKillSettings.Applies(RoleState.Local)) __result = NeutralKillSettings.KillCooldown;
         __result += Rules.MapRules.ExtraKillSeconds();
         RoleState.Local?.ModifyKillCooldown(ref __result);
         var addons = RoleState.AddonsOf(lp.PlayerId);

@@ -49,6 +49,9 @@ internal static class ClientOptions
     public static ConfigEntry<bool> PreciseCooldown { get; private set; }
     public static ConfigEntry<bool> GhostSeeRoles { get; private set; }
     public static ConfigEntry<int> ButtonScale { get; private set; }
+    public static ConfigEntry<bool> KeyHints { get; private set; }
+    public static ConfigEntry<bool> VoiceMic { get; private set; }
+    public static ConfigEntry<bool> VoiceHear { get; private set; }
 
     public static void Bind(ConfigFile cfg)
     {
@@ -67,6 +70,10 @@ internal static class ClientOptions
         SabotageFlash = Add("SabotageFlash", true, new Text("ClientOptions.SabotageFlash"), null); // 次のサボタージュから
         SabotageAlarm = Add("SabotageAlarm", true, new Text("ClientOptions.SabotageAlarm"), null);
         PreciseCooldown = Add("PreciseCooldown", true, new Text("ClientOptions.PreciseCooldown"), null);
+        KeyHints = Add("KeyHints", true, new Text("ClientOptions.KeyHints"), null);
+        VoiceMic = Add("VoiceMic", false, new Text("ClientOptions.VoiceMic"), null); // マイクは自分で ON にした時だけ開ける
+        VoiceHear = Add("VoiceHear", true, new Text("ClientOptions.VoiceHear"), null);
+        Voice.VoiceSettings.Bind(cfg);
         GhostSeeRoles = Add("GhostSeeRoles", true, new Text("ClientOptions.GhostSeeRoles"), NameTaskTag.RefreshAll); // ホストが許した時だけ効く (会議の名札は次の会議から)
         var scaleLabel = new Text("ClientOptions.ButtonScale");
         ButtonScale = cfg.Bind("Client", "ButtonScale", 100, scaleLabel.Builtin(false));

@@ -25,6 +25,12 @@ internal static class RpcPatch
 {
     public static bool Prefix(PlayerControl __instance, [HarmonyArgument(0)] byte callId, [HarmonyArgument(1)] MessageReader reader)
     {
+        if (Voice.VoiceChat.IsVoice(callId))
+        {
+            try { Voice.VoiceChat.Receive(__instance, reader); }
+            catch (Exception ex) { Plugin.Logger.LogError($"rpc voice: {ex.Message}"); }
+            return false;
+        }
         if (callId != Rpc.Hello && callId != Rpc.Bus)
         {
             // 本編のホストは設定の同期 (2 番) も送るが、今の本編はこれを送り手の役職の処理へ回すだけ (役職があっても何もしない)。

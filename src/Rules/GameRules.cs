@@ -35,9 +35,13 @@ public static class GameRules
     // 本編の終わりの判定の代わりに MRP の判定で見る必要があるルールが入っているか
     internal static bool EndRuleOn => TaskWin.Value != 0 || NoCountWin || NoSabotageWin;
 
-    // タスクで勝つのを止めているか (ホストの終わりの判定で見る)
+    // 会議が無いか (設定か、サドンデスの間)
+    internal static bool MeetingsOff => NoMeetings || SuddenDeath.Active;
+
+    // タスクで勝つのを止めているか (ホストの終わりの判定で見る)。サドンデスではいつも止める
     internal static bool TaskWinBlocked()
     {
+        if (SuddenDeath.Active) return true;
         switch (TaskWin.Value)
         {
             case 1: return true;
@@ -66,7 +70,7 @@ public static class GameRules
     internal static void OnRoleSet(PlayerControl p)
     {
         if (p && Roles.RoleState.Of(p) is { CanVent: not null } mrp) { ApplyRoleVent(mrp); return; }
-        if (!EveryoneVents || !p || !p.AmOwner || p.Data == null) return;
+        if (!(EveryoneVents || SuddenDeath.Active && SuddenDeath.Vent) || !p || !p.AmOwner || p.Data == null) return;
         var role = p.Data.Role;
         if (!role || role.CanVent || RoleManager.IsGhostRole(role.Role)) return;
         role.CanVent = true;
@@ -120,20 +124,20 @@ internal static class NoMeetingsButtonPatch
 {
     public static void Postfix(EmergencyMinigame __instance)
     {
-        if (GameRules.NoMeetings && ShipStatus.Instance) __instance.Close();
+        if (GameRules.MeetingsOff && ShipStatus.Instance) __instance.Close();
     }
 }
 
 [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CmdReportDeadBody))]
 internal static class NoMeetingsReportPatch
 {
-    public static bool Prefix() => !(GameRules.NoMeetings && ShipStatus.Instance);
+    public static bool Prefix() => !(GameRules.MeetingsOff && ShipStatus.Instance);
 }
 
 [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.ReportDeadBody))]
 internal static class NoMeetingsHostPatch
 {
-    public static bool Prefix() => !(GameRules.NoMeetings && ShipStatus.Instance && AmongUsClient.Instance.AmHost);
+    public static bool Prefix() => !(GameRules.MeetingsOff && ShipStatus.Instance && AmongUsClient.Instance.AmHost);
 }
 
 // 通報のボタンを出さない (HUD を出し入れした時。本編は両方の入口から出し直す)
@@ -146,8 +150,15 @@ internal static class NoMeetingsHudPatch
     [HarmonyPatch(nameof(HudManager.SetHudActive), typeof(bool)), HarmonyPostfix]
     public static void Short(HudManager __instance) => Hide(__instance);
 
+    // 本編が後から出し直すことがある (役職が届いた時など) ので、毎 FixedUpdate も見る
+    internal static void Tick()
+    {
+        var hud = Vanilla.Hud;
+        if (hud && hud.ReportButton && hud.ReportButton.gameObject.activeSelf) Hide(hud);
+    }
+
     private static void Hide(HudManager hud)
     {
-        if (GameRules.NoMeetings && ShipStatus.Instance && hud.ReportButton) hud.ReportButton.gameObject.SetActive(false);
+        if (GameRules.MeetingsOff && ShipStatus.Instance && hud.ReportButton) hud.ReportButton.gameObject.SetActive(false);
     }
 }

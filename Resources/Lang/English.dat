@@ -120,6 +120,40 @@ Outlaw.Kill.Help: You have the regular kill button. Kill cooldown, vision and ki
 Outlaw.Kill.Short: You have the kill button
 Outlaw.Tips: Impostors are your enemies too.
 Outlaw.Quote: No law, no friends, no need.
+VoiceChat.Title: Voice Chat
+VoiceChat.Mode: Mode
+VoiceChat.Off: Off
+VoiceChat.Proximity: Nearby players (everyone in meetings)
+VoiceChat.MeetingOnly: Meetings only
+VoiceChat.Everyone: Everyone, always
+VoiceChat.Range: Voice range
+VoiceChat.InVent: People in vents can talk and hear
+VoiceChat.MicOff: Mic off (turn it on in the MRP settings)
+VoiceChat.Muted: Muted ({key} to unmute)
+VoiceChat.Listening: You cannot talk right now
+VoiceChat.MicOn: Mic on ({key} to mute)
+VoiceChat.Talking: Talking
+VoiceChat.NoMic: No microphone found
+VoiceChat.NoMicAndroid: Microphone unavailable (allow it in the launcher)
+VoicePanel.Title: Voice chat
+VoicePanel.Sub: Your own settings ({key} / click the mic at bottom left)
+VoicePanel.Mic: Mic
+VoicePanel.Mute: Mute
+VoicePanel.Hear: Listen
+VoicePanel.MicGain: Mic volume
+VoicePanel.Changer: Voice changer
+VoicePanel.FxNone: None
+VoicePanel.FxHigh: High
+VoicePanel.FxLow: Low
+VoicePanel.FxRobot: Robot
+VoicePanel.FxRadio: Radio
+VoicePanel.Players: Volume per player (only for you)
+VoicePanel.NoPlayers: Nobody else is here
+SuddenDeath.Title: Sudden Death
+SuddenDeath.Enabled: Sudden Death (battle royale)
+SuddenDeath.Chip: Sudden Death
+SuddenDeath.KillCooldown: Kill cooldown
+SuddenDeath.CanVent: Everyone can use vents
 
 # ── Survivor ──
 Survivor.Name: Survivor
@@ -944,6 +978,9 @@ ClientOptions.TaskOnName: Show task progress next to names
 ClientOptions.CopyRoomCode: Copy the room code when hosting
 ClientOptions.PreciseCooldown: Show decimals in the last 10s of cooldowns
 ClientOptions.GhostSeeRoles: See others' roles and tasks as a ghost
+ClientOptions.KeyHints: Show keys on buttons
+ClientOptions.VoiceMic: Use my mic for voice chat
+ClientOptions.VoiceHear: Hear voice chat
 ClientOptions.ButtonScale: Button size
 ClientOptions.Back: Back
 ClientOptions.MRPOptions: MRP Options
@@ -1224,6 +1261,8 @@ Emote.Wave: Wave
 Emote.Jump: Jump
 Emote.Clap: Clap
 Emote.Beckon: Beckon
+Emote.Tab: Emotes
+Emote.TabHint: Click one to see it on the right. In a match, press {key} to open the emote wheel, then the number in the corner.
 
 # ── Stamp ──
 Stamp.Button: Stamp
@@ -1259,6 +1298,16 @@ Keybinds.Emote: MRP emote / stamp
 Keybinds.Dictionary: MRP role dictionary
 Keybinds.Dodge: MRP dodge (during a duel)
 Keybinds.PhotoMode: MRP photo mode (hide / show the HUD)
+Keybinds.VoiceMute: Voice chat mute
+Keybinds.MatchInfo: Match info
+Keybinds.BugReport: Bug report
+Keybinds.Chat: Open chat
+Keybinds.Settings: Settings (menu)
+Keybinds.Friends: Friends
+Keybinds.CopyCode: Copy room code
+Keybinds.ShareLink: Share room link
+Keybinds.EditSettings: Edit game settings (host)
+Keybinds.VoicePanel: Voice chat settings
 Duel.DodgeLabel: Dodge
 Duel.LockMash: Blade lock! Mash Left Click or SPACE
 Duel.LockMashTouch: Blade lock! Mash the screen
@@ -1761,3 +1810,4 @@ IntroTeam.Neutral: Neutral
 IntroTeam.NeutralSub: Neither Crewmate nor Impostor. Win your own way
 IntroTeam.Madmate: Madmate
 IntroTeam.MadmateSub: Blend in with the crew and help the Impostors win
+RoomShare.Copied: Join link copied. Anyone can open it to join this room: {url}

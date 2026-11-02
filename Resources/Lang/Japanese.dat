@@ -120,6 +120,40 @@ Outlaw.Kill.Help: 本編のキルボタンを持ちます。キルのクール�
 Outlaw.Kill.Short: 本編のキルボタンを持つ
 Outlaw.Tips: インポスターとも敵同士です。
 Outlaw.Quote: 法も仲間も、要らない。
+VoiceChat.Title: ボイスチャット
+VoiceChat.Mode: 使い方
+VoiceChat.Off: なし
+VoiceChat.Proximity: 近くの人と (会議は全員)
+VoiceChat.MeetingOnly: 会議の時だけ
+VoiceChat.Everyone: いつも全員
+VoiceChat.Range: 声の届く距離
+VoiceChat.InVent: ベントの中の人も話せる・聞こえる
+VoiceChat.MicOff: マイク OFF (MRP の設定で ON)
+VoiceChat.Muted: ミュート中 ({key} で解除)
+VoiceChat.Listening: 今は話せません
+VoiceChat.MicOn: マイク ON ({key} でミュート)
+VoiceChat.Talking: 話しています
+VoiceChat.NoMic: マイクが見つかりません
+VoiceChat.NoMicAndroid: マイクが使えません (ランチャーでマイクを許可)
+VoicePanel.Title: ボイスチャット
+VoicePanel.Sub: 自分だけの設定 ({key} / 左下のマイクで開く)
+VoicePanel.Mic: マイク
+VoicePanel.Mute: ミュート
+VoicePanel.Hear: 聞く
+VoicePanel.MicGain: マイクの大きさ
+VoicePanel.Changer: ボイスチェンジャー
+VoicePanel.FxNone: なし
+VoicePanel.FxHigh: 高い声
+VoicePanel.FxLow: 低い声
+VoicePanel.FxRobot: ロボット
+VoicePanel.FxRadio: 無線
+VoicePanel.Players: 人ごとの聞こえる大きさ (自分にだけ効きます)
+VoicePanel.NoPlayers: 他に誰もいません
+SuddenDeath.Title: サドンデス
+SuddenDeath.Enabled: サドンデス (バトルロワイヤル)
+SuddenDeath.Chip: サドンデス
+SuddenDeath.KillCooldown: キルのクールダウン時間
+SuddenDeath.CanVent: 全員がベントを使える
 
 # ── 生存者 (Survivor) ──
 Survivor.Name: 生存者
@@ -944,6 +978,9 @@ ClientOptions.TaskOnName: 名前の横にタスクの進み具合を出す
 ClientOptions.CopyRoomCode: 部屋を立てたらコードをコピーする
 ClientOptions.PreciseCooldown: 残り 10 秒からクールダウンを小数で出す
 ClientOptions.GhostSeeRoles: 幽霊の時に他の人の役職とタスクを見る
+ClientOptions.KeyHints: ボタンに操作のキーを出す
+ClientOptions.VoiceMic: ボイスチャットでマイクを使う
+ClientOptions.VoiceHear: ボイスチャットを聞く
 ClientOptions.ButtonScale: ボタンの大きさ
 ClientOptions.Back: 戻る
 ClientOptions.MRPOptions: MRP の設定
@@ -1224,6 +1261,8 @@ Emote.Wave: 手を振る
 Emote.Jump: 跳ねる
 Emote.Clap: 拍手
 Emote.Beckon: 手招き
+Emote.Tab: エモート
+Emote.TabHint: 押すと右の人が見本を見せます。試合中は {key} でエモートの輪を開き、右上の数字のキーで出せます。
 
 # ── Stamp ──
 Stamp.Button: スタンプ
@@ -1259,6 +1298,16 @@ Keybinds.Emote: MRP のエモート・スタンプ
 Keybinds.Dictionary: MRP の役職辞典
 Keybinds.Dodge: MRP の回避 (立ち合いの間)
 Keybinds.PhotoMode: MRP の撮影モード (HUD を隠す / 戻す)
+Keybinds.VoiceMute: ボイスチャットのミュート
+Keybinds.MatchInfo: 試合の情報
+Keybinds.BugReport: 不具合の報告
+Keybinds.Chat: チャットを開く
+Keybinds.Settings: 設定 (メニュー)
+Keybinds.Friends: フレンド
+Keybinds.CopyCode: 部屋のコードをコピー
+Keybinds.ShareLink: 部屋のリンクを共有
+Keybinds.EditSettings: ゲーム設定の編集 (ホスト)
+Keybinds.VoicePanel: ボイスチャットの設定
 Duel.DodgeLabel: 回避
 Duel.LockMash: 鍔迫り合い！ 左クリックか SPACE を連打
 Duel.LockMashTouch: 鍔迫り合い！ 画面を連打
@@ -1761,3 +1810,4 @@ IntroTeam.Neutral: 第三陣営
 IntroTeam.NeutralSub: クルーでもインポスターでもない、自分だけの勝ちを目指そう
 IntroTeam.Madmate: マッドメイト
 IntroTeam.MadmateSub: クルーにまぎれて、インポスターを勝たせよう
+RoomShare.Copied: 参加リンクをコピーしました。送った相手はリンクを押すだけでこの部屋に入れます: {url}

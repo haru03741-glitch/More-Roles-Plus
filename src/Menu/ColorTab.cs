@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace MoreRolesPlus.Menu;
 
 // 確認用: 本編の着せ替え画面 (ロビーのノートパソコン) を開く・タブを切り替える・本編の色を押す・閉じる
@@ -14,6 +16,15 @@ internal static class ColorTab
             hud.UseButton.DoClick();
             return "OK custmenu use pressed";
         }
+        if (args == "open")
+        {
+            // ノートパソコンの前へ瞬間移動する (続けて use で開く)
+            var console = UnityEngine.Object.FindObjectOfType<OptionsConsole>();
+            var lp = PlayerControl.LocalPlayer;
+            if (!console || !lp) return "ERR custmenu no laptop";
+            lp.NetTransform.SnapTo((Vector2)console.transform.position + new Vector2(0f, -0.4f));
+            return "OK custmenu moved to laptop";
+        }
         if (!menu) return "ERR custmenu not open";
         if (args == "close") { menu.Close(true); return "OK custmenu closed"; }
         if (args.StartsWith("tab ") && int.TryParse(args[4..], out int n))
@@ -27,7 +38,12 @@ internal static class ColorTab
             if (!tab) return "ERR custmenu no color tab";
             tab.SelectColor(id);
         }
-        else if (args.Length > 0) return "ERR custmenu [use | tab <番号> | chip <色番号> | close]";
+        else if (args == "emote" || args.StartsWith("emote "))
+        {
+            EmoteTab.Test(args.Length > 6 && int.TryParse(args[6..], out int k) ? k : -1);
+            return "OK custmenu " + EmoteTab.Describe();
+        }
+        else if (args.Length > 0) return "ERR custmenu [open | use | tab <番号> | chip <色番号> | close]";
         var sb = new System.Text.StringBuilder("OK custmenu tabs=");
         for (int i = 0; i < menu.Tabs.Length; i++)
         {

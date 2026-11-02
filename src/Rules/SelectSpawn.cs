@@ -14,6 +14,7 @@ namespace MoreRolesPlus.Rules;
 //   メモリの厳しい Android では読み込まず、普段どおりに湧く
 // - 部屋はランダムスポーンの部屋の真ん中から画面のボタンの数だけ選び、ボタンの絵はその場所を船のカメラで撮って作る
 // - 選んだ後の移動は本編の画面に任せる (Airship と同じ)。反転した船では MapFlip が場所を鏡に映すので、ここは本編の向きで渡す
+// - ランダムスポーンも入っている時は、選ばせずに行き先の 1 つだけを見せる (Airship の本編の画面も同じ・OneSpawnPatch)
 internal static class SelectSpawn
 {
     private const int AirshipMap = 4;
@@ -86,7 +87,8 @@ internal static class SelectSpawn
 
         var mg = Object.Instantiate(prefab, cam.transform, false);
         mg.transform.localPosition = new Vector3(0f, 0f, -600f);
-        int count = Math.Min(mg.LocationButtons.Length, spots.Length);
+        bool one = MapRules.RandomSpawn;
+        int count = one ? 1 : Math.Min(mg.LocationButtons.Length, spots.Length);
         var picked = Pick(spots.Length, count);
         var vanilla = prefab.Locations;
         var locs = new SpawnInMinigame.SpawnLocation[count];
@@ -107,8 +109,9 @@ internal static class SelectSpawn
             };
             names[i] = RoomName(world);
         }
-        mg.Locations = locs;
+        mg.Locations = one ? Repeat(locs[0], mg.LocationButtons.Length) : locs;
         mg.Begin(null);
+        if (one) KeepOne(mg);
         var hud = Vanilla.Hud;
         if (hud) { hud.SetHudActive(false); _hudHidden = true; }
         // 本編は名前 (StringNames) から字を書き、ボタンの並びも入れ替えるので、ボタンの絵がどの部屋の物かで名前を書き直す
@@ -129,6 +132,49 @@ internal static class SelectSpawn
                 if (locs[i].Image && locs[i].Image.Pointer == sr.sprite.Pointer) { t.text = names[i]; break; }
         }
         Plugin.Logger.LogInfo($"select spawn: opened with {count} rooms ({string.Join(", ", names)}) hidden=0x{_hiddenLayers:X}");
+    }
+
+    // 本編はボタンの数だけ場所を並べる (足りないと止まる) ので、同じ場所をボタンの数だけ渡す
+    internal static SpawnInMinigame.SpawnLocation[] Repeat(SpawnInMinigame.SpawnLocation loc, int n)
+    {
+        var a = new SpawnInMinigame.SpawnLocation[Math.Max(n, 1)];
+        for (int i = 0; i < a.Length; i++) a[i] = loc;
+        return a;
+    }
+
+    // ボタンを 1 つだけ残して並びの真ん中へ
+    internal static void KeepOne(SpawnInMinigame mg)
+    {
+        float sum = 0f;
+        int n = 0;
+        foreach (var b in mg.LocationButtons)
+            if (b) { sum += b.transform.localPosition.x; n++; }
+        bool first = true;
+        foreach (var b in mg.LocationButtons)
+        {
+            if (!b) continue;
+            if (!first) { b.gameObject.SetActive(false); continue; }
+            first = false;
+            var p = b.transform.localPosition;
+            b.transform.localPosition = new Vector3(sum / n, p.y, p.z);
+        }
+    }
+
+    // Airship でランダムスポーンの行き先を全部の部屋から選んだ時の、ボタンの絵と名前
+    internal static SpawnInMinigame.SpawnLocation AirshipSpot(SpawnInMinigame.SpawnLocation like, Vector2 world, out string name)
+    {
+        ClearMade();
+        _hiddenLayers = HiddenLayers | PlayerLayers();
+        float x = MapFlip.Flipped ? MapFlip.Mirror(world.x) : world.x;
+        name = RoomName(world);
+        return new SpawnInMinigame.SpawnLocation
+        {
+            Name = like.Name,
+            Location = new Vector3(x, world.y, 0f),
+            Image = Shot(world),
+            Rollover = null,
+            RolloverSfx = like.RolloverSfx,
+        };
     }
 
     // 人の絵の部品がいる層 (着せ替えなどが人の層の外にあることがある)。開く時に 1 回だけ集める

@@ -70,7 +70,7 @@ internal static class KillAbility
 
     // 本編の役職の上に乗せるだけなので、インポスターの土台の役職は本編のまま
     private static bool Uses(RoleBase role) =>
-        role is { CanKill: true } && role.Player && role.Player.Data != null && role.Player.Data.Role && !role.Player.Data.Role.IsImpostor;
+        role != null && (role.CanKill || Rules.SuddenDeath.Active) && role.Player && role.Player.Data != null && role.Player.Data.Role && !role.Player.Data.Role.IsImpostor;
 
     internal static void OnAssigned(RoleBase role)
     {
@@ -240,7 +240,8 @@ internal static class KillAbility
         float cd = FirstCooldown;
         if (_killed[killer.PlayerId])
         {
-            cd = NeutralKillSettings.Applies(role) ? NeutralKillSettings.KillCooldown : GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown);
+            cd = Rules.SuddenDeath.Active ? Rules.SuddenDeath.KillCooldown.Value
+                : NeutralKillSettings.Applies(role) ? NeutralKillSettings.KillCooldown : GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown);
             role.ModifyKillCooldown(ref cd);
             var addons = RoleState.AddonsOf(killer.PlayerId);
             for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref cd);

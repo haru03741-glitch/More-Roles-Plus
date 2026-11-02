@@ -51,4 +51,6 @@
     <string name="bootstrap_launcher_update_required">This version of More Roles Plus was built for Unity %1$s, but the installed Among Us uses Unity %2$s. Please update More Roles Plus.</string>
     <string name="bootstrap_interop_update_required">This version of More Roles Plus was built for Among Us %1$s, but %2$s is installed. Please update More Roles Plus.</string>
     <string name="bootstrap_game_layout_unsupported">This version of More Roles Plus does not recognize the installed Among Us build. Please update More Roles Plus.</string>
+    <string name="join_link_failed">Could not open the room link.</string>
+    <string name="join_link_joining">Joining room %1$s…</string>
 </resources>

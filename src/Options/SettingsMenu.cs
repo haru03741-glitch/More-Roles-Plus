@@ -32,7 +32,7 @@ internal static class SettingsMenu
     private static float _catStep = CatStepY, _catScaleY = CatScaleY;
     private const float CompactX = 0.48f, CompactY = 0.8f;
     // 検索欄は板の上の縁より上・右上の本編のボタンの列に掛からない所
-    private const float SearchX = -1.2f, SearchY = 2.6f, SearchW = 3.6f;
+    private const float SearchX = -1.65f, SearchY = 2.6f, SearchW = 3.4f;
 
     // 左の列のボタンの番号 (陣営は CatKind0 + RoleMenu の陣営の番号)
     private const int CatPresets = 0, CatGame = 1, CatGeneral = 2, CatKind0 = 3;

@@ -26,6 +26,9 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
+#if !ANDROID
+        Net.JoinLink.RegisterProtocol();
+#endif
         Log.LogInfo($"console: {ConsoleGuard.Install()}");
         Boot.BootClock.Mark("load");
         // C++ の部品が読めない時は mod ごと起動しない (地形を部品抜きで動かさない)。本編はそのまま遊べる
@@ -212,6 +215,10 @@ public class Ticker : MonoBehaviour
         Commands.AfkGuard.Tick();
         Menu.AutoRejoin.Tick();
         Menu.ModUpdate.Tick();
+        Menu.HomeReport.Tick();
+        Menu.KeyHints.Tick();
+        Menu.EmoteTab.Tick();
+        Voice.VoiceChat.Tick();
         Roles.Spectate.Tick();
         Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
         Net.MrpRegion.Tick();

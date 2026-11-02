@@ -808,17 +808,21 @@ internal static class RoleAssigner
         var rng = new Random(seed);
         var vanilla = Roster();
         var roster = new List<Slot>(vanilla);
-        MatchReservedTeams(roster);
+        // サドンデス: 全員クルーの側にして、いつもどおり役職を配る (キルは KillAbility が全員に持たせる)
+        bool sudden = Rules.SuddenDeath.Active;
+        if (sudden) Rules.SuddenDeath.AllCrew(roster, Reserved);
+        else MatchReservedTeams(roster);
         // 切った間の古い履歴を入れ直した時に持ち出さない
         if (!AssignSettings.Fairness) _history = null;
         var history = AssignSettings.Fairness ? CurrentHistory() : null;
-        if (history != null)
+        if (history != null && !sudden)
         {
             Plugin.Logger.LogInfo($"roles: fairness weights (pid:imp/neutral/role){history.Describe(roster)}");
             foreach (int i in AssignPlan.ChooseImpostors(roster, rng, history, Reserved)) AssignPlan.SetSide(roster, i, !roster[i].Impostor);
         }
         SendTeamChanges(vanilla, roster);
         var plan = AssignPlan.Decide(roster, rng, Reserved, null, history);
+        if (sudden) Rules.SuddenDeath.FillRoles(roster, plan);
         history?.Record(roster, plan);
         Plugin.Logger.LogInfo($"roles: seed {seed}");
         Reserved.Clear();

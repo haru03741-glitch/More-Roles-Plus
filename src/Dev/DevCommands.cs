@@ -854,6 +854,7 @@ internal static class DevCommands
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (a.Length == 2 && a[0] == "press" && int.TryParse(a[1], out int slot)) Menu.Keybinds.PressForTest(slot);
+            if (a.Length == 1 && a[0] == "maps") { reply("OK keybinds " + Menu.Keybinds.DumpMaps()); return; }
             reply($"OK keybinds {Menu.Keybinds.Describe()}");
         });
 

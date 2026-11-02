@@ -4,6 +4,8 @@
   <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <!-- Voice chat (asked once by the launcher; the game only opens the microphone when the player turns it on) -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
   <!-- Package visibility is limited to what the launcher actually touches: the game it hosts,
        and a browser for the itch.io sign-in page. -->
   <queries>
@@ -63,6 +65,21 @@
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
         <data android:scheme="morerolesplus" android:host="itch-auth" />
+      </intent-filter>
+    </activity>
+    <!-- Room links (mrp://join/<code>) from the lobby's share button and Discord -->
+    <activity
+        android:name="dev.allofus.fusioncore.JoinLinkActivity"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
+        android:launchMode="singleTask"
+        android:noHistory="true"
+        android:excludeFromRecents="true"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="mrp" android:host="join" />
       </intent-filter>
     </activity>
     <activity

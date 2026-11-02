@@ -1,0 +1,188 @@
+using MoreRolesPlus.Fx;
+using TMPro;
+using UnityEngine;
+
+namespace MoreRolesPlus.Voice;
+
+// 画面の左下に、マイクの印 (色で状態)・自分の声の大きさのバー・状態の一言と、今話している人の名前を出す
+internal static class VoiceHud
+{
+    private const int Every = 5;
+    private const float Plate = 0.7f, BarW = 1.5f, BarH = 0.13f;
+    private const float FloorDb = -50f, TopDb = -10f; // バーの左端と右端の大きさ (dB)
+
+    private static readonly Color PlateIdle = new(0f, 0f, 0f, 0.65f);
+    private static readonly Color PlateTalk = new(0.18f, 0.7f, 0.3f, 0.9f);
+    private static readonly Color Gray = new(0.6f, 0.6f, 0.6f, 1f);
+    private static readonly Color Red = new(1f, 0.38f, 0.38f, 1f);
+    private static readonly Color Green = new(0.49f, 1f, 0.49f, 1f);
+
+    private static int _tick;
+    private static readonly System.Collections.Generic.List<int> Slots = new();
+    private static GameObject _root;
+    private static SpriteRenderer _plate, _mic, _slash, _barBack, _barFill, _barMark;
+    private static TextMeshPro _text;
+    private static string _shown;
+    private static float _shownLevel;
+    private static Sprite _circle, _micSprite, _slashSprite, _rect;
+
+    internal static void Tick(bool on)
+    {
+        var hud = Vanilla.Hud;
+        if (!on || !hud)
+        {
+            if (_root) _root.SetActive(false);
+            return;
+        }
+        if (!_root) Make(hud);
+        if (!_text) return;
+        if (!_root.activeSelf) _root.SetActive(true);
+        Meter();
+        if (++_tick % Every != 0) return;
+        Icon();
+        string text = Line();
+        if (text == _shown) return;
+        _shown = text;
+        _text.text = text;
+    }
+
+    // 声の大きさ: 上がる時はすぐ、下がる時はゆっくり
+    private static void Meter()
+    {
+        bool open = Mic.Open;
+        float target = open ? Fill(Mic.Level) : 0f;
+        _shownLevel = target > _shownLevel ? target : Mathf.Max(target, _shownLevel - 0.04f);
+        _barBack.enabled = _barMark.enabled = open;
+        _barFill.enabled = open && _shownLevel > 0.001f;
+        var t = _barFill.transform;
+        t.localScale = new Vector3(BarW * _shownLevel, BarH, 1f);
+        t.localPosition = new Vector3(Plate * 0.5f + 0.15f + BarW * _shownLevel * 0.5f, -0.17f, -0.01f);
+        _barFill.color = Mic.Talking ? Green : new Color(0.85f, 0.85f, 0.85f, 1f);
+    }
+
+    private static float Fill(float rms) => rms <= 0f ? 0f : Mathf.Clamp01((20f * Mathf.Log10(rms) - FloorDb) / (TopDb - FloorDb));
+
+    private static void Icon()
+    {
+        bool mic = Menu.ClientOptions.VoiceMic.Value && Microphone.devices != null && Microphone.devices.Length > 0;
+        bool muted = mic && VoiceChat.Muted;
+        bool talk = mic && !muted && VoiceRules.CanTalk(PlayerControl.LocalPlayer);
+        _mic.color = muted ? Red : talk ? Color.white : Gray;
+        _slash.enabled = !mic || muted;
+        _slash.color = muted ? Red : Gray;
+        _plate.color = talk && Mic.Talking ? PlateTalk : PlateIdle;
+    }
+
+    private static string Line()
+    {
+        string key = Menu.KeyHints.KeyName(Menu.Keybinds.Key(Menu.Keybinds.Slot.VoiceMute));
+        string me;
+        if (!Menu.ClientOptions.VoiceMic.Value) me = $"<color=#9A9A9A>{new Text("VoiceChat.MicOff")}</color>";
+#if ANDROID
+        else if (Microphone.devices == null || Microphone.devices.Length == 0) me = $"<color=#9A9A9A>{new Text("VoiceChat.NoMicAndroid")}</color>";
+#else
+        else if (Microphone.devices == null || Microphone.devices.Length == 0) me = $"<color=#9A9A9A>{new Text("VoiceChat.NoMic")}</color>";
+#endif
+        else if (VoiceChat.Muted) me = $"<color=#FF6060>{new Text("VoiceChat.Muted").With("key", key)}</color>";
+        else if (!VoiceRules.CanTalk(PlayerControl.LocalPlayer)) me = $"<color=#9A9A9A>{new Text("VoiceChat.Listening")}</color>";
+        else if (Mic.Talking) me = $"<color=#7CFF7C>{new Text("VoiceChat.Talking")}</color>";
+        else me = new Text("VoiceChat.MicOn").With("key", key).ToString();
+
+        var sb = new System.Text.StringBuilder();
+        foreach (var p in PlayerControl.AllPlayerControls)
+        {
+            if (!p || p.AmOwner || p.Data == null || !Speakers.Speaking(p.PlayerId)) continue;
+            if (VoiceRules.Volume(PlayerControl.LocalPlayer, p) <= 0f) continue;
+            sb.Append("<color=#7CFF7C>♪</color> ").Append(p.Data.PlayerName).Append('\n');
+        }
+        return sb.Append(me).ToString();
+    }
+
+    private static void Make(HudManager hud)
+    {
+        _root = new GameObject("MrpVoiceHud") { layer = hud.gameObject.layer };
+        _root.transform.SetParent(hud.transform, false);
+        var aspect = _root.AddComponent<AspectPosition>();
+        aspect.Alignment = AspectPosition.EdgeAlignments.LeftBottom;
+        aspect.DistanceFromEdge = new Vector3(0.3f + Plate * 0.5f, 0.3f + Plate * 0.5f, -20f);
+        aspect.AdjustPosition();
+
+        _circle ??= FxSprites.Rect(128, 128, (x, y) => Mathf.Clamp01((0.5f - Mathf.Sqrt(x * x + y * y)) * 64f), "MrpVoicePlate");
+        _micSprite ??= MicSprite();
+        _slashSprite ??= FxSprites.Rect(128, 128, (x, y) => Edge(Segment(new Vector2(x, y), new Vector2(-0.33f, 0.33f), new Vector2(0.33f, -0.33f)) - 0.045f), "MrpVoiceSlash");
+        _rect ??= FxSprites.Rect(4, 4, (x, y) => 1f, "MrpVoiceRect");
+
+        _plate = Sprite("Plate", _circle, Vector3.zero, Vector3.one * Plate);
+        // 印を押すとボイスチャットの窓
+        var col = _plate.gameObject.AddComponent<CircleCollider2D>();
+        col.radius = 0.5f;
+        var pb = _plate.gameObject.AddComponent<PassiveButton>();
+        pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+        pb.OnMouseOver = new UnityEngine.Events.UnityEvent();
+        pb.OnMouseOut = new UnityEngine.Events.UnityEvent();
+        UI.UiActions.Release(Slots);
+        pb.OnClick.AddListener(UI.UiActions.Take(VoicePanel.Toggle, Slots));
+        _mic = Sprite("Mic", _micSprite, new Vector3(0f, 0f, -0.01f), Vector3.one * Plate);
+        _slash = Sprite("Slash", _slashSprite, new Vector3(0f, 0f, -0.02f), Vector3.one * Plate);
+        float barX = Plate * 0.5f + 0.15f;
+        _barBack = Sprite("BarBack", _rect, new Vector3(barX + BarW * 0.5f, -0.17f, 0f), new Vector3(BarW, BarH, 1f));
+        _barBack.color = new Color(0f, 0f, 0f, 0.6f);
+        _barFill = Sprite("BarFill", _rect, Vector3.zero, Vector3.one);
+        // 声とみなす大きさの印
+        float mark = Fill(Mic.VoiceLevel);
+        _barMark = Sprite("BarMark", _rect, new Vector3(barX + BarW * mark, -0.17f, -0.02f), new Vector3(0.025f, BarH + 0.08f, 1f));
+        _barMark.color = new Color(1f, 0.85f, 0.3f, 0.9f);
+
+        var src = hud.TaskPanel ? hud.TaskPanel.GetComponentInChildren<TextMeshPro>(true) : null;
+        if (!src) return;
+        var go = Object.Instantiate(src.gameObject, _root.transform);
+        go.name = "Text";
+        var tr = go.GetComponent<TextTranslatorTMP>();
+        if (tr) Object.Destroy(tr);
+        go.transform.localPosition = new Vector3(barX, -0.05f, 0f);
+        go.transform.localScale = Vector3.one;
+        _text = go.GetComponent<TextMeshPro>();
+        _text.enableWordWrapping = false;
+        _text.fontSize = 1.6f;
+        _text.alignment = TextAlignmentOptions.BottomLeft;
+        _text.rectTransform.pivot = new Vector2(0f, 0f);
+        _text.rectTransform.sizeDelta = new Vector2(6f, 2f);
+        _text.color = Color.white;
+        _shown = null;
+        _shownLevel = 0f;
+    }
+
+    private static SpriteRenderer Sprite(string name, Sprite sprite, Vector3 pos, Vector3 scale)
+    {
+        var go = new GameObject(name) { layer = _root.layer };
+        go.transform.SetParent(_root.transform, false);
+        go.transform.localPosition = pos;
+        go.transform.localScale = scale;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = sprite;
+        sr.sortingOrder = _root.transform.childCount; // 作った順に上へ重ねる
+        return sr;
+    }
+
+    // マイクの印: 丸い頭・下半分の受け・軸・台
+    private static Sprite MicSprite() => FxSprites.Rect(128, 128, (x, y) =>
+    {
+        var p = new Vector2(x, y);
+        float d = Segment(p, new Vector2(0f, 0.04f), new Vector2(0f, 0.2f)) - 0.11f;
+        float ring = Mathf.Abs((p - new Vector2(0f, 0.08f)).magnitude - 0.19f) - 0.028f;
+        if (y > 0.08f) ring = Mathf.Min(Segment(p, new Vector2(-0.19f, 0.08f), new Vector2(-0.19f, 0.14f)), Segment(p, new Vector2(0.19f, 0.08f), new Vector2(0.19f, 0.14f))) - 0.028f;
+        d = Mathf.Min(d, ring);
+        d = Mathf.Min(d, Segment(p, new Vector2(0f, -0.11f), new Vector2(0f, -0.23f)) - 0.028f);
+        d = Mathf.Min(d, Segment(p, new Vector2(-0.12f, -0.24f), new Vector2(0.12f, -0.24f)) - 0.028f);
+        return Edge(d);
+    }, "MrpVoiceMic");
+
+    private static float Edge(float dist) => 1f - Mathf.Clamp01((dist + 0.008f) / 0.016f);
+
+    private static float Segment(Vector2 p, Vector2 a, Vector2 b)
+    {
+        var ab = b - a;
+        float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / ab.sqrMagnitude);
+        return (p - (a + ab * t)).magnitude;
+    }
+}

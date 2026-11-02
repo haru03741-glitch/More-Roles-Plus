@@ -140,6 +140,11 @@ public static class GameEnd
     internal static GameResult Decide(out GameOverReason reason, out string info, bool withInfo = false)
     {
         reason = GameOverReason.ImpostorsByKill;
+        if (Rules.SuddenDeath.Active)
+        {
+            info = null;
+            return Rules.SuddenDeath.Decide();
+        }
         int imp = 0, crew = 0, nk = 0;
         Killers.Clear();
         LiveFactions.Clear();

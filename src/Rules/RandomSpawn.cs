@@ -107,7 +107,39 @@ internal static class RandomSpawn
 
     private static bool _spawnIn;
 
-    internal static void OnSpawnIn() => _spawnIn = MapRules.RandomSpawn;
+    internal static void OnSpawnIn() => _spawnIn = MapRules.RandomSpawn && !_chosen;
+
+    // ---- Airship の本編の湧き場所選び: ランダムスポーンの時は行き先の 1 つだけを見せる (選んだ所へそのまま降りる) ----
+
+    private static bool _chosen;
+    private static string _chosenName;
+
+    internal static void BeforeSpawnIn(SpawnInMinigame mg)
+    {
+        _chosen = false;
+        if (!MapRules.RandomSpawn || MapRules.MapId != 4 || !mg || mg.Locations == null || mg.Locations.Length == 0) return;
+        var vanilla = mg.Locations;
+        SpawnInMinigame.SpawnLocation loc;
+        _chosenName = null;
+        if (MapRules.AirshipAllRooms)
+            loc = SelectSpawn.AirshipSpot(vanilla[0], ToShip(4, Airship[Rng.Next(Airship.Length)]), out _chosenName);
+        else
+            loc = vanilla[Rng.Next(vanilla.Length)];
+        mg.Locations = SelectSpawn.Repeat(loc, mg.LocationButtons.Length);
+        _chosen = true;
+    }
+
+    internal static void AfterSpawnIn(SpawnInMinigame mg)
+    {
+        if (!_chosen) return;
+        SelectSpawn.KeepOne(mg);
+        if (_chosenName == null) return;
+        foreach (var b in mg.LocationButtons)
+        {
+            var t = b ? b.GetComponentInChildren<TMPro.TextMeshPro>() : null;
+            if (t) t.text = _chosenName;
+        }
+    }
 
     internal static void TickAirship()
     {
@@ -124,5 +156,11 @@ internal static class RandomSpawn
 [HarmonyPatch(typeof(SpawnInMinigame), nameof(SpawnInMinigame.Begin))]
 internal static class RandomSpawnAirshipPatch
 {
-    public static void Postfix() => RandomSpawn.OnSpawnIn();
+    public static void Prefix(SpawnInMinigame __instance) => RandomSpawn.BeforeSpawnIn(__instance);
+
+    public static void Postfix(SpawnInMinigame __instance)
+    {
+        RandomSpawn.AfterSpawnIn(__instance);
+        RandomSpawn.OnSpawnIn();
+    }
 }
