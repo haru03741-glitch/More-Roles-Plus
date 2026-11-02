@@ -871,6 +871,7 @@ internal static class RoleAssigner
     {
         if (Reserved.Count == 0) return;
         var rng = new Random();
+        var alone = new List<int>(); // 相手なしで陣営だけ変えた人
         for (int i = 0; i < roster.Count; i++)
         {
             if (!Reserved.TryGetValue(roster[i].PlayerId, out int idx) || idx < 0 || idx >= Registry.Roles.Count) continue;
@@ -880,8 +881,32 @@ internal static class RoleAssigner
             for (int k = 0; k < roster.Count; k++)
                 if (roster[k].Impostor == impostor && !Reserved.ContainsKey(roster[k].PlayerId)) partners.Add(k);
             if (partners.Count > 0) AssignPlan.SetSide(roster, partners[rng.Next(partners.Count)], !impostor);
+            else alone.Add(i);
             AssignPlan.SetSide(roster, i, impostor);
             Plugin.Logger.LogInfo($"roles: reservation {roster[i].PlayerId}={Registry.Roles[idx].Id} moved team ({(partners.Count > 0 ? "swapped" : "no partner")})");
+        }
+        UndoMovesThatEndAtStart(roster, alone);
+    }
+
+    // 相手なしの移動でインポスターが 0 人か残りの人数以上になると、本編の人数の判定で始まった瞬間に試合が終わる。
+    // 人数での勝ちが効く時だけ、そうならなくなるまで移動を戻す (ボットの予約から)。戻した人の予約は配る時に陣営が合わず飛ばされる。
+    private static void UndoMovesThatEndAtStart(List<Slot> roster, List<int> alone)
+    {
+        if (alone.Count == 0 || roster.Count < 2 || GameEnd.Held || Rules.GameRules.NoCountWin) return;
+        alone.Sort((a, b) => (roster[a].Key == -1 ? 0 : 1).CompareTo(roster[b].Key == -1 ? 0 : 1));
+        while (true)
+        {
+            int imps = 0;
+            foreach (var s in roster) if (s.Impostor) imps++;
+            bool tooMany = imps >= roster.Count - imps, none = imps == 0;
+            if (!tooMany && !none) return;
+            // 多すぎればインポスターへ移した人を、0 人ならクルーへ移した人を戻す
+            int at = alone.FindIndex(k => roster[k].Impostor == tooMany);
+            if (at < 0) return;
+            int back = alone[at];
+            alone.RemoveAt(at);
+            AssignPlan.SetSide(roster, back, !roster[back].Impostor);
+            Plugin.Logger.LogInfo($"roles: reservation {roster[back].PlayerId} moved back (the game would end at start)");
         }
     }
 
