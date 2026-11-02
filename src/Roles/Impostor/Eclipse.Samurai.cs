@@ -19,6 +19,9 @@ public sealed partial class Eclipse
     // 燃えて落ちてくる岩。炎ごと割る物として、普通の振りで斬れる
     internal static readonly BodyKind MeteorKind = new("EclipseMeteor", BodyMaterial.Energy, BodySize.Medium, 0f);
 
+    // 着弾が置かれた物に当てる爆の強さ (普通の爆発の 2 倍。金属の物も 1 回で壊れる)。範囲は人を倒す円と同じ
+    private const float MeteorPower = Bodies.BlastPower * 2f;
+
     internal enum Fate : byte { Falling, Hold, Cut, Land }
 
     private sealed class Strike
@@ -65,6 +68,7 @@ public sealed partial class Eclipse
         st.Landed = true;
         var at = FxMath.V2(st.X, st.Y);
         PortSound.Play("eclipse_boom", () => PortSound.Fallback("eclipse_boom"), 1f, at, SoundReach);
+        Bodies.Blast(new Roles.Strike(StrikeElement.Blast, MeteorPower, 0, at.x, at.y, 0f, 0f, e.PlayerId), st.R);
         if (AmongUsClient.Instance.AmHost) HostBlast(e.Player, at, st.R);
     }
 

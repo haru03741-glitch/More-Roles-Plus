@@ -217,11 +217,28 @@ internal static class Bodies
         Plugin.Logger.LogWarning($"SILENT {k.Name} x {e} -> {r}");
     }
 
+    // 地形の爆発の知らせを待たずに、全員の端末で同じ時に爆を当てる (隕石など、地形の爆発より広い・強い物)。
+    // 同じ場所から後で届く地形の爆発の知らせは二重に当てない
+    internal static void Blast(in Strike s, float r)
+    {
+        _blastX = s.X;
+        _blastY = s.Y;
+        _blastUntil = Time.time + BlastDedupe;
+        if (All.Count > 0) Circle(s, r);
+    }
+    private static float _blastX, _blastY, _blastUntil;
+    private const float BlastDedupe = 3f;
+
     // 爆発と叩いた所 (地形の知らせは全員の端末に届く)
     private static void OnTerrainBroken(TerrainBrokenEvent e)
     {
         if (All.Count == 0) return;
         var p = e.Position;
+        if (e.Kind == DamageKind.Explosion && Time.time < _blastUntil)
+        {
+            float dx = p.x - _blastX, dy = p.y - _blastY;
+            if (dx * dx + dy * dy < 0.25f) { _blastUntil = 0f; return; }
+        }
         if (e.Kind == DamageKind.Explosion)
             Circle(new Strike(StrikeElement.Blast, BlastPower, 0, p.x, p.y, 0f, 0f, e.PlayerId), e.Radius);
         else if (e.Kind == DamageKind.Blunt)
