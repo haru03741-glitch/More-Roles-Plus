@@ -126,8 +126,15 @@ Survivor.Name: Survivor
 Survivor.Blurb: Stay alive until the end
 Survivor.Summary: A neutral who wins by staying alive until the end.
 Survivor.WinCond: Win with whoever wins, as long as you are alive at the end of the game
-Survivor.Tips: You cannot kill. Stay out of every team's way.
+Survivor.Tips: You cannot kill. Use your vest when in danger, and stay out of every team's way.
 Survivor.Quote: Whoever wins, staying alive is my victory.
+Survivor.Vest: Vest
+Survivor.Vest.Help: Put on a vest for a set time to block kills. Blocking a kill restarts the attacker's kill cooldown. The vest comes off when a meeting starts. It does not stop abilities that kill without leaving a body (such as blasts).
+Survivor.Vest.Short: Block kills for a while
+Survivor.VestSaved: Your vest blocked a kill
+Survivor.VestCooldown: Vest cooldown
+Survivor.VestDuration: Vest duration
+Survivor.MaxVests: Number of vests
 
 # ── Samurai ──
 Samurai.Name: Samurai

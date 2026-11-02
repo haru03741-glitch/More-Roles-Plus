@@ -256,6 +256,37 @@ public sealed class Doppelganger : RoleBase
         });
     }
 
+    // ホスト: 飛び道具 (弾・ロケット・光線・隕石) が分身を倒した。届く距離と待ち時間はそれぞれの武器が確かめている。
+    // 本物は分身の所へ引き寄せられて倒れる (近くでキルした時と同じ)
+    internal static void HostStrikeRanged(PlayerControl killer, byte ownerId)
+    {
+        var owner = PortKit.ById(ownerId);
+        if (DoppelPuppet.Of(ownerId) == null || !PortKit.Alive(owner) || !PortKit.Alive(killer) || killer.PlayerId == ownerId) return;
+        if (MeetingHud.Instance || ExileController.Instance) return;
+        if (BeforeMurderEvent.Ask(killer, owner) != null) return;
+        StruckCall.Send(ownerId);
+        Struck(ownerId);
+        PortKit.After(0.45f, () =>
+        {
+            if (PortKit.Alive(owner) && PortKit.Alive(killer)) killer.RpcMurderPlayer(owner, true);
+        });
+    }
+
+    // ホスト: 円の中の分身を全部倒す (爆発・隕石)
+    internal static void HostStrikeArea(PlayerControl killer, Vector2 at, float radius)
+    {
+        if (!DoppelPuppet.Any) return;
+        _area.Clear();
+        foreach (var m in DoppelPuppet.Each)
+        {
+            var t = m.True;
+            float dx = t.x - at.x, dy = t.y - at.y;
+            if (dx * dx + dy * dy <= radius * radius) _area.Add(m.Owner);
+        }
+        foreach (var id in _area) HostStrikeRanged(killer, id);
+    }
+    private static readonly List<byte> _area = new();
+
     // ホスト: キルの待ち時間の中なら断る (押した人の画面の待ち時間だけに頼らない)。インポスターは本編のキルの待ち時間を
     // 前に分身を倒した時から数える
     private static readonly long[] _lastStrikeMs = new long[256];
@@ -314,6 +345,7 @@ internal sealed class DoppelPuppet
 
     internal static DoppelPuppet Of(byte owner) => All.TryGetValue(owner, out var m) ? m : null;
     internal static IEnumerable<DoppelPuppet> Each => All.Values;
+    internal static bool Any => All.Count > 0;
 
     private DoppelPuppet(PlayerControl owner, Vector2 root, bool flip)
     {
@@ -350,6 +382,8 @@ internal sealed class DoppelPuppet
         _cos.normalBodySprite.Visible = true;
         var outfit = owner.Data.Outfits[owner.CurrentOutfitType];
         _cos.SetMaskType(PlayerMaterial.MaskType.None);
+        _dressType = (int)owner.CurrentOutfitType;
+        _dressColor = outfit.ColorId;
         _cos.SetColor(outfit.ColorId);
         _cos.SetHat(outfit.HatId, outfit.ColorId);
         _cos.SetSkin(outfit.SkinId, outfit.ColorId, null);
@@ -423,9 +457,26 @@ internal sealed class DoppelPuppet
         foreach (var m in All.Values) m.Tick(dt);
     }
 
+    // 本物の見た目 (変身・カモフラ) が変わったら分身も着替える (分身だけ元の服で正体が分かるのを防ぐ)。毎フレームは読まない
+    private int _dressType = -1, _dressColor = -1;
+    private float _nextDressCheck;
+
+    private void FollowOutfit()
+    {
+        if (Time.time < _nextDressCheck) return;
+        _nextDressCheck = Time.time + 0.25f;
+        var owner = PortKit.ById(Owner);
+        if (!owner || owner.Data == null) return;
+        int type = (int)owner.CurrentOutfitType;
+        var outfit = owner.Data.Outfits[owner.CurrentOutfitType];
+        if (outfit == null || (type == _dressType && outfit.ColorId == _dressColor)) return;
+        Dress(owner, _cos && _cos.FlipX);
+    }
+
     private void Tick(float dt)
     {
         if (!_go) return;
+        FollowOutfit();
         bool moving = false;
         if (_path != null && !MeetingHud.Instance)
         {

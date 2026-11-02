@@ -56,6 +56,8 @@ public sealed partial class TriggerHappy : RoleBase
         public float Wait;           // 飛び始めるまでの秒
         public bool Real;            // 撃った人の端末の弾 (当たり判定と壁を削る数え)
         public bool Wall;            // 飛び切ったら壁に当たった所
+        public byte GuardId;         // 守りで跳ね返った相手 (跳ね返った直後に同じ人へ当たり直さない)
+        public float GuardUntil;
         public GatlingFx.Tracer Tracer;
         public int Gen;
     }
@@ -127,6 +129,7 @@ public sealed partial class TriggerHappy : RoleBase
         _active = on;
         if (!on) _activeUntil = Time.time + 1f;
         _hits.Clear();
+        _puppetHits.Clear();
         _chips.Clear();
         _batch.Clear();
         _lastShot = null;
@@ -208,6 +211,7 @@ public sealed partial class TriggerHappy : RoleBase
     public override void OnFixedUpdate()
     {
         float dt = Time.fixedDeltaTime;
+        TickGuards();
         if (MeetingHud.Instance || !PortKit.Alive(Player))
         {
             if (_active) SetActive(false);
@@ -330,6 +334,7 @@ public sealed partial class TriggerHappy : RoleBase
         s.X = pos.x; s.Y = pos.y; s.Dx = dir.x; s.Dy = dir.y;
         s.Wait = wait;
         s.Real = real;
+        s.GuardId = 255;
         s.Bounces = PierceWalls ? 0 : Ricochets;
         Segment(s, SprayRange, wait);
         _shots.Add(s);
@@ -384,6 +389,7 @@ public sealed partial class TriggerHappy : RoleBase
         if (_shots.Count == 0) { FlushGraze(dt); return; }
         if (RewindPlayback.Active) return; // 逆再生の間は弾を止める (見た目は録画が逆にたどる・戻し終わりに消す)
         bool cached = false, judged = false;
+        _anyReal = IsLocal;
         float step = Speed * dt;
         for (int i = _shots.Count - 1; i >= 0; i--)
         {
@@ -409,7 +415,6 @@ public sealed partial class TriggerHappy : RoleBase
             if (!judged) { CacheJudged(); judged = true; }
             if (_judged.Count > 0 && TrySamurai(s)) { Remove(i); continue; }
             if (_shields.Count > 0 && Shielded(s)) { Remove(i); continue; }
-            if (!s.Real) continue;
             if (!cached) { CacheTargets(); cached = true; }
             if (TryHit(s)) Remove(i);
         }
@@ -431,11 +436,38 @@ public sealed partial class TriggerHappy : RoleBase
         _chips[key] = n;
     }
 
-    // 撃った人の端末で: 当たりの候補の位置を tick に 1 回だけ読む
-    private readonly List<(PlayerControl p, float x, float y)> _targets = new();
+    // 全員の端末で: 当たりの候補の位置を tick に 1 回だけ読む (撃った人以外の端末は弾が体で止まって見えるだけ)。
+    // 撃った人の端末だけは毎 tick・他の端末は 2 tick に 1 回 (位置の読みを増やしすぎない)
+    private sealed class Target
+    {
+        public PlayerControl P;
+        public float X, Y, Feet;
+        public bool Shown;   // この端末で見えている (透明な人・視界の外の人に当たった様子は出さない・居場所が漏れる)
+        public bool Me;      // この端末の人
+        public bool Counted; // この tick で当たりを 1 回数えた (数える速さは 1 tick に 1 発まで)
+        public bool Guard;   // 守り (ベスト・最初のキルの盾・守護天使) が付いている = 弾は跳ね返り当たりにならない
+    }
+    private readonly List<Target> _targets = new();
+    private readonly Stack<Target> _targetPool = new();
+    private int _targetAge;
+    private bool _anyReal;
+
     private void CacheTargets()
     {
+        if (!_anyReal && ++_targetAge < 2 && _targets.Count > 0)
+        {
+            for (int k = 0; k < _targets.Count; k++) _targets[k].Counted = false;
+            for (int k = 0; k < _puppets.Count; k++) _puppets[k].Counted = false;
+            return;
+        }
+        _targetAge = 0;
+        foreach (var t in _targets) { t.P = null; _targetPool.Push(t); }
         _targets.Clear();
+        // この端末の人の視界 (幽霊は全部見える)
+        var lp = PlayerControl.LocalPlayer;
+        bool ghost = !lp || lp.Data == null || lp.Data.IsDead;
+        Vector2 eye = ghost ? default : lp.GetTruePosition();
+        float reach = ghost || !ShipStatus.Instance ? 0f : ShipStatus.Instance.CalculateLightRadius(lp.Data);
         foreach (var p in PlayerControl.AllPlayerControls)
         {
             if (!PortKit.Alive(p) || p.PlayerId == PlayerId || p.inVent) continue;
@@ -443,8 +475,23 @@ public sealed partial class TriggerHappy : RoleBase
             // サムライに当たったかは撃たれた本人の端末が決める (TriggerHappy.Samurai.cs)
             if (Tough(p)) continue;
             var pos = p.GetTruePosition();
-            _targets.Add((p, pos.x, pos.y + 0.3f));
+            var t = _targetPool.Count > 0 ? _targetPool.Pop() : new Target();
+            t.P = p; t.X = pos.x; t.Y = pos.y + 0.3f; t.Feet = pos.y;
+            t.Me = p.AmOwner;
+            t.Shown = t.Me || (p.Visible && (ghost || InSight(eye, reach, pos)));
+            t.Counted = false;
+            t.Guard = Guarded(p);
+            _targets.Add(t);
         }
+        CachePuppets(ghost, eye, reach);
+    }
+
+    // 自分の視界に映る所か (光の届く所で、間に視界を遮る壁が無い)
+    private static bool InSight(Vector2 eye, float reach, Vector2 at)
+    {
+        float dx = at.x - eye.x, dy = at.y - eye.y;
+        if (dx * dx + dy * dy > reach * reach) return false;
+        return !PhysicsHelpers.AnythingBetween(eye, at, Constants.ShadowMask, false);
     }
 
     private void Remove(int i)
@@ -457,14 +504,15 @@ public sealed partial class TriggerHappy : RoleBase
         _shotPool.Push(s);
     }
 
-    // 撃った人の端末で: 弾が人に当たったか (遠くの壁は撃った時の距離で切ってあるので、体と弾の間の壁だけ確かめる)
+    // 弾が人に当たったか (遠くの壁は撃った時の距離で切ってあるので、体と弾の間の壁だけ確かめる)。true = 弾はそこで止まる。
+    // 当たった所に血煙と血の粒 (見えている人だけ)・当たった本人の画面の縁。当たりを数えるのは撃った人の端末の弾だけ
     private bool TryHit(Shot s)
     {
         float r = Radius * BulletSize + 0.3f, r2 = r * r;
         for (int k = 0; k < _targets.Count; k++)
         {
-            var (p, px, py) = _targets[k];
-            float dx = px - s.X, dy = py - s.Y;
+            var t = _targets[k];
+            float dx = t.X - s.X, dy = t.Y - s.Y;
             float d2 = dx * dx + dy * dy;
             if (d2 > r2) continue;
             if (!PierceWalls && d2 > 0.0001f)
@@ -472,11 +520,25 @@ public sealed partial class TriggerHappy : RoleBase
                 float d = FxMath.Sqrt(d2);
                 if (PhysicsHelpers.AnyNonTriggersBetween(FxMath.V2(s.X, s.Y), FxMath.V2(dx / d, dy / d), d, Constants.ShipAndObjectsMask)) continue;
             }
-            Hit(p);
-            _targets.RemoveAt(k);
+            if (t.Guard)
+            {
+                // 守りの付いた人: 当たりにせず、見えている人の所でだけ弾が守りに弾かれる (見えない人の所で跳ねると居場所が分かる)
+                if (!t.Shown || (s.GuardId == t.P.PlayerId && Time.time < s.GuardUntil)) continue;
+                GuardBounce(s, t.P);
+                return false;
+            }
+            if (s.Real && !t.Counted && t.P)
+            {
+                t.Counted = true;
+                Hit(t.P);
+            }
+            // 見えていない人の所では弾を止めない (止まった所で居場所が分かる)
+            if (!t.Shown) return false;
+            GatlingFx.BodyHit(s.X, s.Y, s.Dx, s.Dy, t.Feet, t.P);
+            if (t.Me) HitFeel.Take(-s.Dx, -s.Dy);
             return true;
         }
-        return false;
+        return TryHitPuppet(s);
     }
 
     // 同じ陣営 (仲間に当てない設定の時)
@@ -518,6 +580,7 @@ public sealed partial class TriggerHappy : RoleBase
             if (MeetingHud.Instance || TimeRewind.Playing || RoleState.Of(sender) is not TriggerHappy th || !(th._active || Time.time < th._activeUntil)) return;
             if (PortKit.ById(id) is not { } t || !PortKit.Alive(t)) return;
             if (Tough(t)) return;
+            if (Guarded(t)) return; // 守りの付いた人は弾で倒れない (撃った人の端末の数えが古い時の申告も捨てる)
             if (!FriendlyFire && th.SameSide(t)) return;
             Vector2 a = sender.GetTruePosition(), b = t.GetTruePosition();
             float dx = b.x - a.x, dy = b.y - a.y, reach = SprayRange + 2f, d = FxMath.Sqrt(dx * dx + dy * dy);

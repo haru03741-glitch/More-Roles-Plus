@@ -126,8 +126,15 @@ Survivor.Name: 生存者
 Survivor.Blurb: 最後まで生き延びよう
 Survivor.Summary: 最後まで生き残れば勝てる第三陣営です。
 Survivor.WinCond: 試合の終わりに生きていれば、どの陣営が勝っても一緒に勝ち
-Survivor.Tips: キルはできません。どの陣営にも狙われないように立ち回りましょう。
+Survivor.Tips: キルはできません。危ない時はベストで身を守り、どの陣営にも狙われないように立ち回りましょう。
 Survivor.Quote: 誰が勝とうと、生きていれば勝ちだ。
+Survivor.Vest: ベスト
+Survivor.Vest.Help: 決めた時間だけベストを着て、キルを防ぎます。防ぐと、キルしようとした人のキルの待ち時間は最初からになります。会議が始まると脱ぎます。死体を残さずに倒す能力 (吹き飛ばしなど) は防げません。
+Survivor.Vest.Short: しばらくキルを防ぐ
+Survivor.VestSaved: ベストがキルを防いだ
+Survivor.VestCooldown: ベストの待ち時間
+Survivor.VestDuration: ベストの効果時間
+Survivor.MaxVests: ベストの回数
 
 # ── サムライ (Samurai) ──
 Samurai.Name: サムライ

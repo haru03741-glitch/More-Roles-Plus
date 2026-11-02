@@ -14,7 +14,7 @@ internal static class GunSound
     private const float SmallRange = 8f, SmallMuffle = 4f;   // 着弾・薬莢
     private const float CannonRange = 14f, CannonMuffle = 7f;
     private const int Voices = 10;
-    private const float HitGap = 0.06f, RicGap = 0.22f, CaseGap = 0.14f, DeflectGap = 0.05f;
+    private const float HitGap = 0.06f, RicGap = 0.22f, CaseGap = 0.14f, DeflectGap = 0.05f, FleshGap = 0.07f;
     private const float SpinTop = 40f;
     private const int Every = 4;                              // ループの音量と左右は 4 フレームに 1 回だけ書き直す
 
@@ -22,7 +22,7 @@ internal static class GunSound
     private static AudioSource[] _voices;
     private static AudioSource _fly;
     private static int _next, _flyFrame;
-    private static float _nextHit, _nextRic, _nextCase, _nextDeflect;
+    private static float _nextHit, _nextRic, _nextCase, _nextDeflect, _nextFlesh;
     private static int _deflects;
     private static byte _flyId = 255;
 
@@ -98,6 +98,16 @@ internal static class GunSound
         _nextHit = now + HitGap;
         int h = (int)FxMath.Range(0f, 2.999f) + 1;
         At("noise_gat_hit_" + h, x, y, 0.35f, FxMath.Range(0.9f, 1.15f), SmallRange, SmallMuffle);
+    }
+
+    // 弾が人に当たった「パスッ」(1 秒に何十発も当たるので間を空けて鳴らす)
+    internal static void Flesh(float x, float y)
+    {
+        float now = Time.time;
+        if (now < _nextFlesh) { _skipped++; return; }
+        _nextFlesh = now + FleshGap;
+        int i = (int)FxMath.Range(0f, 2.999f) + 1;
+        At("noise_gat_flesh_" + i, x, y, 0.55f, FxMath.Range(0.9f, 1.12f), SmallRange, SmallMuffle);
     }
 
     // サムライの刀が弾を受けた・斬った「キン」(跳ね返した時は刃の鳴りを重ねる)

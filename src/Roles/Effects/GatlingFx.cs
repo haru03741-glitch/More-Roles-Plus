@@ -13,7 +13,8 @@ namespace MoreRolesPlus.Roles;
 //         撃つと銃身の回りが上がっていき (離すと緩んで止まる)、撃っている間は 1 発ごとに軸に沿って後ろへ跳ね、
 //         銃口から撃つ向きへ伸びた炎が出て、横へ薬莢を弾き出す (床で 1 回跳ねる)。撃ち終わっても少しの間は銃口から煙が立つ。
 // 弾: 黄白の光の筋。毎フレームここで進める (撃った人の当たりは TriggerHappy が tick ごとに決める)。
-// 着弾: 壁に当たった所に火花・小さな煙・黒い弾痕 (しばらくして薄れる)。
+// 着弾: 壁に当たった所に火花・小さな煙・黒い弾痕 (しばらく残ってから薄れる。壁が撃ち抜かれたらその辺りの弾痕は消える)。
+// 人に当たった弾: 当たった所に赤黒い血煙、弾の抜ける向きへ血の粒が飛んで床に落ち、床に小さな血の跡が残る (しばらくして乾いて薄れる)。
 // 物は全部使い回す。毎フレームの算術は FxMath
 internal static class GatlingFx
 {
@@ -35,12 +36,19 @@ internal static class GatlingFx
     private const float MuzzleLen = 0.63f;                   // 握りから銃口まで (銃に沿って・絵の銃身の先)
     private const float FlashLen = 0.34f, FlashWidth = 0.15f; // 銃口の炎の長さと太さ (炎の絵は 0.96 × 0.48)
     private const float TracerLen = 0.62f, TracerWidth = 0.05f;
-    private const float HoldSeconds = 2.5f, FadeSeconds = 1.5f; // 弾痕が濃いままの秒・薄れる秒
-    private const int MaxParts = 360, MaxHoles = 80, MaxTracers = 256;
+    private const float HoldSeconds = 10f, FadeSeconds = 2f; // 弾痕が濃いままの秒・薄れる秒 (同じ所を撃ち続けると壁が削れていくのが見える長さ)
+    private const int MaxParts = 520, MaxHoles = 160, MaxTracers = 256;
+    // 人に当たった弾
+    private const float BodyGap = 0.05f;                      // 同じ人の血煙と血の粒を出す間 (1 秒に 100 発を超えるので間引く)
+    private const float StainHold = 8f, StainFade = 3f;      // 床の血の跡が濃いままの秒・乾いて薄れる秒
+    private const int MaxStains = 60;
 
     // ---- 絵 ----
     private static readonly Sprite[] Frames = new Sprite[Yaws * Phases];
-    private static Sprite _flash, _tracer, _hole, _case;
+    private static Sprite _flash, _tracer, _hole, _case, _drop, _stain;
+    private static readonly float[] BodyAt = new float[256]; // 人ごとに最後に血煙を出した時刻
+    private static readonly float[] BloodR = new float[256], BloodG = new float[256], BloodB = new float[256], BloodAt = new float[256]; // 人ごとの血の色と読んだ時刻
+    private static int _stains;
     private static bool _searched;
 
     // ---- 機関銃 (人ごと) ----
@@ -55,6 +63,8 @@ internal static class GatlingFx
         internal SpriteRenderer Sr, FlashSr, HandRearSr, HandTopSr;
         internal float Spin, SpinSpeed, NextCase, NextSmoke, NextWisp, Heat;
         internal int HandFlip = -1, HandYaw = -1;
+        internal int HandColor = -1;
+        internal float NextColorCheck;
         internal int Frame = -1;
         internal bool FlashOn, Shown = true;
         internal float Px, Py, Pz;   // 握りの位置 (跳ねる前)
@@ -77,7 +87,7 @@ internal static class GatlingFx
         internal int Gen;
     }
 
-    private enum Kind : byte { Spark, Smoke, Flash, Hole, Case, Haze, Wisp }
+    private enum Kind : byte { Spark, Smoke, Flash, Hole, Case, Haze, Wisp, Mist, Drop, Stain }
 
     private sealed class Part
     {
@@ -121,8 +131,9 @@ internal static class GatlingFx
         var ssr = sh.AddComponent<SpriteRenderer>();
         ssr.sprite = Terrain.DebrisArt.SoftShadow;
         ssr.color = FxMath.Rgba(0f, 0f, 0f, 0.32f);
-        // 握った手 (本人の色)。手の絵が無ければ手だけ出さない
-        int color = owner.Data != null ? owner.Data.DefaultOutfit.ColorId : 0;
+        // 握った手 (見えている服の色・変身やカモフラ中はその色)。手の絵が無ければ手だけ出さない
+        int color = ShownColor(owner);
+        g.HandColor = color;
         g.HandRear = NewHand(g, "HandRear", color, out g.HandRearSr);
         g.HandTop = NewHand(g, "HandTop", color, out g.HandTopSr);
         Guns.Add(g);
@@ -488,6 +499,160 @@ internal static class GatlingFx
         _holes++;
     }
 
+    // 人に当たった (全員の端末・見えている人だけ)。x, y = 当たった所・dx, dy = 弾の向き・feet = その人の足元の高さ。
+    // 当たった所に赤黒い血煙。弾の抜ける向き (と少し手前) へ血の粒が飛び、足元の床に落ちて跡になる
+    internal static void BodyHit(float x, float y, float dx, float dy, float feet, PlayerControl who, bool flinch = true)
+    {
+        if (!Ready() || !who) return;
+        byte id = who.PlayerId;
+        GunSound.Flesh(x, y);
+        if (flinch) Flinch(who, dx, dy);
+        float now = Time.time;
+        if (now - BodyAt[id] < BodyGap) return;
+        BodyAt[id] = now;
+        float z = (feet + BodyToFeet) / 1000f - 0.0006f; // その人の体のすぐ手前
+        if (Parts.Count + 5 >= MaxParts) return;
+        // 血の色はその人のクルーの色 (血煙と粒は体の色・床の跡は影の色に寄せて暗く)
+        if (now - BloodAt[id] > 1f) // 色は 1 秒に 1 回だけ読み直す (変身・色の変更)
+        {
+            BloodAt[id] = now;
+            Blood(who, out BloodR[id], out BloodG[id], out BloodB[id]);
+        }
+        float br = BloodR[id], bg = BloodG[id], bb = BloodB[id];
+        var mist = Spawn(Kind.Mist, x + dx * 0.03f, y + dy * 0.03f, z, dx * 0.5f, dy * 0.5f, 0.06f, 0.17f, 0.28f, Terrain.DebrisArt.Puff, FxMath.Range(0f, 360f));
+        mist.Sr.color = FxMath.Rgba(br, bg, bb, 0f);
+        mist.Seed = id;
+        float back = FxMath.Atan2(dy, dx);
+        for (int i = 0; i < 2; i++)
+        {
+            // 多くは弾の抜ける向きへ、ときどき撃たれた側へ跳ねる
+            bool fwd = i == 0 || FxMath.Range(0f, 1f) < 0.6f;
+            float a = (fwd ? back : back + MathF.PI) + FxMath.Range(-0.5f, 0.5f);
+            float v = FxMath.Range(1f, 2.2f) * (fwd ? 1f : 0.5f);
+            var d = Spawn(Kind.Drop, x, y, z - 0.0001f, FxMath.Cos(a) * v, FxMath.Sin(a) * v + FxMath.Range(0.3f, 0.9f), 0.03f, 0.03f, 1.2f, _drop, 0f);
+            d.Floor = feet + FxMath.Range(-0.12f, 0.08f);
+            d.Turn = a * (180f / MathF.PI); // 床に落ちた跡は飛んだ向きに伸びる
+            d.Sr.color = FxMath.Rgba(br * 0.85f, bg * 0.85f, bb * 0.85f, 1f);
+            d.Seed = id;
+        }
+    }
+
+    // クルーの色 (体の色と影の色の間・少し暗く)
+    private static void Blood(PlayerControl who, out float r, out float g, out float b)
+    {
+        r = 0.45f; g = 0.03f; b = 0.04f;
+        var data = who.Data;
+        if (data == null) return;
+        var cur = who.CurrentOutfit; // 変身中は見えている色
+        int c = cur != null ? cur.ColorId : data.DefaultOutfit.ColorId;
+        var body = Palette.PlayerColors;
+        var shade = Palette.ShadowColors;
+        if (c < 0 || c >= body.Length || c >= shade.Length) return;
+        Color32 m = body[c], d = shade[c];
+        r = (m.r * 0.55f + d.r * 0.45f) / 255f;
+        g = (m.g * 0.55f + d.g * 0.45f) / 255f;
+        b = (m.b * 0.55f + d.b * 0.45f) / 255f;
+    }
+
+    // ---- 撃たれてのけぞる (見た目だけ・体と着せ替えの絵を弾の向きへ押して少し傾け、すぐ戻す) ----
+    // 体の絵 (BodyForms) と着せ替え (Cosmetics) は人の下の別々の子なので両方を動かす。人そのものの位置は通信で揃うので触らない。
+    // 同じ絵を動かす演出 (壁に掴まる・決闘で転がる等) があるので、元の位置を覚えて書き戻さず、前のフレームに足した分だけを差し替える
+
+    private sealed class Jolt
+    {
+        public PlayerControl Who;
+        public Transform Body, Cos;
+        public float Ox, Oy, Ang;    // 今足している分
+        public float Dx, Dy, Amt;
+    }
+
+    private static readonly List<Jolt> Jolts = new();
+    private const float JoltPush = 0.07f, JoltTilt = 7f, JoltBack = 10f; // 1 発で押される長さ・傾く角度 (度)・戻る速さ (1/秒)
+
+    private static void Flinch(PlayerControl who, float dx, float dy)
+    {
+        byte id = who.PlayerId;
+        // 体を別の演出が動かしている間はのけぞらせない
+        if (Terrain.CrewBrace.Posed(id) || Terrain.CrewGrip.Flying(id) || DuelTumble.Busy(id)) return;
+        Jolt j = null;
+        for (int i = 0; i < Jolts.Count; i++) if (ReferenceEquals(Jolts[i].Who, who)) { j = Jolts[i]; break; }
+        if (j == null)
+        {
+            var body = who.transform.Find("BodyForms");
+            var cos = who.cosmetics ? who.cosmetics.transform : null;
+            if (!body && !cos) return;
+            j = new Jolt { Who = who, Body = body, Cos = cos };
+            Jolts.Add(j);
+        }
+        j.Dx = dx; j.Dy = dy;
+        j.Amt = 1f; // 当たるたびに押し直す (連射の間は押されては戻りかけるのを繰り返す)
+    }
+
+    private static void TickJolts(float dt)
+    {
+        for (int i = Jolts.Count - 1; i >= 0; i--)
+        {
+            var j = Jolts[i];
+            j.Amt -= JoltBack * dt;
+            if (j.Amt <= 0f || !j.Who || j.Who.Data == null || j.Who.Data.IsDead)
+            {
+                Shift(j, 0f, 0f, 0f);
+                Jolts.RemoveAt(i);
+                continue;
+            }
+            float k = j.Amt * j.Amt;
+            // 床は斜めに見えるので縦は縮める・押された向きへ上体が傾く (右へ押されたら時計回り)
+            Shift(j, j.Dx * JoltPush * k, j.Dy * JoltPush * k * 0.6f, -j.Dx * JoltTilt * k);
+        }
+    }
+
+    // 足している分を (ox, oy, ang) に差し替える
+    private static void Shift(Jolt j, float ox, float oy, float ang)
+    {
+        float mx = ox - j.Ox, my = oy - j.Oy, ma = ang - j.Ang;
+        j.Ox = ox; j.Oy = oy; j.Ang = ang;
+        if (mx == 0f && my == 0f && ma == 0f) return;
+        var turn = FxMath.RotZ(ma);
+        for (int n = 0; n < 2; n++)
+        {
+            var tf = n == 0 ? j.Body : j.Cos;
+            if (!tf) continue;
+            var p = tf.localPosition;
+            tf.localPosition = FxMath.V3(p.x + mx, p.y + my, p.z);
+            if (ma != 0f) tf.localRotation = tf.localRotation * turn;
+        }
+    }
+
+    // 時戻しの逆再生・船が替わる時: 足した分を全部外す
+    private static void ReleaseJolts()
+    {
+        foreach (var j in Jolts) if (j.Who) Shift(j, 0f, 0f, 0f);
+        Jolts.Clear();
+    }
+
+    // 壁が撃ち抜かれた: 抜けた所に残っていた弾痕を消す (宙に浮いて見えないように)
+    internal static void ClearHoles(float x, float y, float r)
+    {
+        float r2 = r * r;
+        for (int i = Parts.Count - 1; i >= 0; i--)
+        {
+            var p = Parts[i];
+            if (p.Kind != Kind.Hole) continue;
+            float ex = p.X - x, ey = p.Y - y;
+            if (ex * ex + ey * ey < r2) Free(i);
+        }
+    }
+
+    private static void RecycleOldestStain()
+    {
+        for (int i = 0; i < Parts.Count; i++)
+        {
+            if (Parts[i].Kind != Kind.Stain) continue;
+            Free(i);
+            return;
+        }
+    }
+
     private static Part Spawn(Kind kind, float x, float y, float z, float vx, float vy, float s0, float s1, float life, Sprite art, float rot)
     {
         var p = PartPool.Count > 0 ? PartPool.Pop() : null;
@@ -525,6 +690,7 @@ internal static class GatlingFx
     {
         var p = Parts[i];
         if (p.Kind == Kind.Hole) _holes--;
+        else if (p.Kind == Kind.Stain) _stains--;
         p.Go.SetActive(false);
         PartPool.Push(p);
         Parts.RemoveAt(i);
@@ -534,19 +700,41 @@ internal static class GatlingFx
 
     internal static void Tick()
     {
-        if (Guns.Count == 0 && Tracers.Count == 0 && Parts.Count == 0 && Halves.Count == 0 && Wrecks.Count == 0) return;
+        if (Guns.Count == 0 && Tracers.Count == 0 && Parts.Count == 0 && Halves.Count == 0 && Wrecks.Count == 0 && Jolts.Count == 0) return;
         if (GameClock.ShipGen != _shipGen) { Forget(); return; }
-        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
+        if (RewindPlayback.Active) { if (Jolts.Count > 0) ReleaseJolts(); return; } // 逆再生の間は止める (見えるのは録画の逆再生)
         float now = Time.time, dt = Time.deltaTime;
         if (Halves.Count > 0) TickHalves(now, dt);
         for (int i = Guns.Count - 1; i >= 0; i--)
         {
             var g = Guns[i];
             if (!g.Owner) { RemoveGun(g); continue; }
+            if (now >= g.NextColorCheck) RecolorHands(g, now);
             Place(g, now, dt);
         }
         TickTracers(dt);
         TickParts(now, dt);
+        if (Jolts.Count > 0) TickJolts(dt);
+    }
+
+    // 見えている服の色 (変身・カモフラ中はその色)。手の色から正体が分からないように
+    internal static int ShownColor(PlayerControl p)
+    {
+        var data = p ? p.Data : null;
+        if (data == null) return 0;
+        var cur = p.CurrentOutfit;
+        return cur != null ? cur.ColorId : data.DefaultOutfit.ColorId;
+    }
+
+    // 構えている間に変身・カモフラで服の色が変わったら手も塗り直す (毎フレームは読まない)
+    private static void RecolorHands(Gun g, float now)
+    {
+        g.NextColorCheck = now + 0.25f;
+        int c = ShownColor(g.Owner);
+        if (c == g.HandColor) return;
+        g.HandColor = c;
+        if (g.HandRearSr) PlayerMaterial.SetColors(c, g.HandRearSr);
+        if (g.HandTopSr) PlayerMaterial.SetColors(c, g.HandTopSr);
     }
 
     private static void TickTracers(float dt)
@@ -653,6 +841,60 @@ internal static class GatlingFx
                     p.Sr.color = FxMath.Rgba(1f, 0.95f, 0.7f, 1f - f);
                     break;
                 }
+                case Kind.Mist:
+                {
+                    // 血煙: すぐ広がって止まり、薄れる
+                    float e = 1f - (1f - f) * (1f - f);
+                    float k = 1f - f;
+                    p.X += p.Vx * dt * k;
+                    p.Y += p.Vy * dt * k;
+                    float s = p.S0 + (p.S1 - p.S0) * e;
+                    p.Tf.position = FxMath.V3(p.X, p.Y, p.Z);
+                    p.Tf.localScale = FxMath.V3(s, s, 1f);
+                    int bi = (int)p.Seed;
+                    p.Sr.color = FxMath.Rgba(BloodR[bi], BloodG[bi], BloodB[bi], 0.7f * FxMath.Min(1f, f * 10f) * (1f - f));
+                    break;
+                }
+                case Kind.Drop:
+                {
+                    // 血の粒: 重さで落ち、足元の床で跡になる
+                    p.Vy -= 7f * dt;
+                    p.X += p.Vx * dt;
+                    p.Y += p.Vy * dt;
+                    if (p.Y < p.Floor && p.Vy < 0f)
+                    {
+                        if (_stains >= MaxStains) RecycleOldestStain();
+                        p.Kind = Kind.Stain;
+                        p.Start = now;
+                        p.Life = StainHold + StainFade;
+                        p.Y = p.Floor;
+                        if (!ReferenceEquals(p.Art, _stain)) { p.Art = _stain; p.Sr.sprite = _stain; }
+                        // 速く飛んだ粒ほど長く伸びる (しずくの頭が飛んだ向きの先)
+                        float sp = FxMath.Sqrt(p.Vx * p.Vx + p.Vy * p.Vy);
+                        float sz = FxMath.Range(0.035f, 0.06f);
+                        p.Tf.position = FxMath.V3(p.X, p.Y, p.Floor / 1000f + 0.0004f);
+                        p.Tf.localScale = FxMath.V3(sz * (1.2f + 0.25f * sp), sz * 0.75f, 1f);
+                        p.Tf.rotation = FxMath.RotZ(p.Turn);
+                        int si = (int)p.Seed;
+                        p.Sr.color = FxMath.Rgba(BloodR[si] * 0.7f, BloodG[si] * 0.7f, BloodB[si] * 0.7f, 0.85f);
+                        p.S0 = BloodR[si] * 0.7f; p.S1 = BloodG[si] * 0.7f; p.Alpha = BloodB[si] * 0.7f; // 乾いていく色の元
+                        _stains++;
+                        break;
+                    }
+                    p.Tf.position = FxMath.V3(p.X, p.Y, p.Z);
+                    break;
+                }
+                case Kind.Stain:
+                {
+                    // 床の血の跡: しばらく濃いまま残り、乾いて暗くなりながら薄れる
+                    float t = now - p.Start;
+                    if (t < StainHold) break;
+                    float u = (t - StainHold) / StainFade;
+                    if (((Time.frameCount + i) & 3) != 0) break;
+                    float dry = 1f - 0.35f * u;
+                    p.Sr.color = FxMath.Rgba(p.S0 * dry, p.S1 * dry, p.Alpha * dry, 0.85f * (1f - u));
+                    break;
+                }
                 case Kind.Case:
                 {
                     // 重さで落ち、足元の床で 1 回だけ跳ねて止まる・最後に薄れる
@@ -692,7 +934,9 @@ internal static class GatlingFx
     private static void Forget()
     {
         _shipGen = GameClock.ShipGen;
+        ReleaseJolts();
         Guns.Clear();
+        Array.Clear(BloodAt, 0, BloodAt.Length);
         Tracers.Clear();
         TracerPool.Clear();
         Parts.Clear();
@@ -737,6 +981,8 @@ internal static class GatlingFx
         _tracer = MakeTracer();
         _hole = MakeHole();
         _case = MakeCase();
+        _drop = FxSprites.Rect(12, 12, FxSprites.Dot, "MrpGatlingDrop");
+        _stain = MakeStain();
         if (!Frames[0] || !_flash) Plugin.Logger.LogWarning("gatling fx: art not found");
         return Frames[0] && _flash;
     }
@@ -831,6 +1077,19 @@ internal static class GatlingFx
         sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
         return sp;
     }
+
+    // 床の血の跡: 飛んできた向き (右) へ伸びたしずく。頭は丸く太く、尾は細る。縁が少し濃い (乾く時に縁へ寄る)。
+    // 横 32 × 縦 16 (高さ 1 単位)
+    private static Sprite MakeStain() => FxSprites.Rect(32, 16, (x, y) =>
+    {
+        float u = x * 2f;                                   // -1 (尾) 〜 1 (頭)
+        float half = u > 0.35f ? FxMath.Sqrt(FxMath.Max(0f, 1f - ((u - 0.35f) / 0.65f) * ((u - 0.35f) / 0.65f))) * 0.42f
+                               : 0.42f * FxMath.Clamp01((u + 1f) / 1.35f) * FxMath.Clamp01((u + 1f) / 1.35f);
+        float d = FxMath.Abs(y) - half;
+        float a = FxMath.Clamp01(-d / 0.05f);
+        float rim = 1f - FxMath.Clamp01(-d / 0.12f) * 0.25f;
+        return a * rim;
+    }, "MrpGatlingStain");
 
     // 弾痕: 黒い穴と、焦げた縁 (16 四方・1 単位 = 16 px)
     private static unsafe Sprite MakeHole()
