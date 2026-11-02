@@ -610,9 +610,12 @@ public sealed class Architect : RoleBase
             float dx = x - d.X, dy = y - d.Y;
             if (dx * dx + dy * dy < MinGap * MinGap) return false;
         }
+        // 台の当たり判定ができると、それ自体が音との間の壁に数えられてこもるので先に鳴らす
+        Fx.Hearing.At("architect_desk", x, y, 9f, 0.8f, null, Fx.Ears.All, FxMath.Range(0.96f, 1.04f));
         var h = ArchitectDeskArt.Place(x, y);
         if (h == null) return false;
         _desks.Add(h);
+        Terrain.DustCloud.Kick(FxMath.V2(x, y), 0.35f, (ushort)FxMath.Range(0, 65535)); // 脚が床を打った土ぼこり
         PushOut(x, y);
         return true;
     }
@@ -654,7 +657,7 @@ public sealed class Architect : RoleBase
         return PassGap;
     }
 
-    // 置かれた設計台に自分の体が掛かっていたら (届くまでの間に歩いて入った)、出る距離のいちばん短い辺の外へ出す。
+    // 置かれた設計台に自分の体が掛かっていたら (届くまでの間に歩いて入った)、出る距離のいちばん短い辺の外へ出し、その向きへ転ばせる。
     // 動かすのは自分の体だけ。はしご・昇降機・ジップラインの途中と会議中は本編が体を動かしているので触らない
     private static void PushOut(float x, float y)
     {
@@ -675,6 +678,7 @@ public sealed class Architect : RoleBase
         }
         var root = lp.transform.position;
         Teleport.Self(FxMath.V2(tx - (me.x - root.x), ty - (me.y - root.y)));
+        DuelTumble.TripSelf(me, FxMath.V2(tx, ty)); // 脚に払われて押された向きへ転ぶ (全員の画面で)
     }
 
     // 自分の足元から使える設計台 (いちばん近い 1 つ)。無ければ null

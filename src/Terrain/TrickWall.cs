@@ -201,7 +201,7 @@ internal static class TrickWall
         return $"wall placed {name} at=({c.x:0.00},{c.y:0.00}) dir=({t.x:0.00},{t.y:0.00}) len={len:0.00} cells={filled} slices={art.Slices.Count}{pushed} art={(t1 - t0) * k:0.0}ms {ArtMs} rest={(System.Diagnostics.Stopwatch.GetTimestamp() - t1) * k:0.0}ms";
     }
 
-    // 立った所に自分が掛かっていたら (届くまでの間に歩いて入った)、近い側の床へ出す。動かすのは自分の体だけ
+    // 立った所に自分が掛かっていたら (届くまでの間に歩いて入った)、近い側の床へ出して転ばせる。動かすのは自分の体だけ
     // backSide = 奥が n の向きなら 1・逆なら -1。奥の側は歩き止めの分 (backExtra) だけ厚い
     private static string PushOut(Vector2 c, Vector2 t, Vector2 n, float len, float backSide, float backExtra)
     {
@@ -224,6 +224,7 @@ internal static class TrickWall
         var rootPos = lp.transform.position;
         var to = FxMath.V2(tx - (me.x - rootPos.x), ty - (me.y - rootPos.y));
         Teleport.Self(to);
+        Roles.DuelTumble.TripSelf(me, FxMath.V2(tx, ty)); // 足元からせり上がった壁に押されて転ぶ (全員の画面で)
         return $" push=({tx:0.00},{ty:0.00})";
     }
 

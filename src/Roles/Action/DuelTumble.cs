@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Roles;
 // 見た目は全員の端末で同じ式から描く (体の絵・着せ替え・名札を回して持ち上げる)。体を動かすのは持ち主の端末だけで、位置は本編の同期で届く
 internal static partial class DuelTumble
 {
-    private enum Mode : byte { None, Recoil, Launch, Roll }
+    private enum Mode : byte { None, Recoil, Launch, Roll, Trip }
 
     // 吹っ飛び: 空中・跳ね・滑り・起き上がり (秒)
     private const float Air = 0.45f, Bounce = 0.2f, Slide = 0.35f, Rise = 0.3f;
@@ -25,6 +25,9 @@ internal static partial class DuelTumble
     private const float RecoilTime = 0.35f, RecoilLean = 25f, RecoilHop = 0.12f, RecoilSpeed = 3f, RecoilPush = 0.12f;
     // 回避の転がり: 飛び退く向きへ 1 回りして立つ (体を動かすのは回避の側・ここは見た目だけ)
     private const float RollTime = 0.34f, RollTurn = 360f, RollHop = 0.07f;
+    // 転ぶ (設計台の脚に払われた): 押された向きへ横倒し・少し跳ねて落ち着き・寝たまま・起き上がる。倒れてから起き上がりの前まで動けない
+    private const float TripFall = 0.16f, TripSettle = 0.06f, TripLie = 0.45f, TripRise = 0.3f, TripRiseHop = 0.08f;
+    private const float TripLen = TripFall + TripSettle + TripLie + TripRise;
 
     private sealed class State
     {
@@ -44,7 +47,7 @@ internal static partial class DuelTumble
 
     private static readonly State[] States = new State[256];
     private static int _live;
-    internal static int Recoils, Launches, Techs, TechMisses, Rolls;
+    internal static int Recoils, Launches, Techs, TechMisses, Rolls, Trips;
 
     // ---- 始める ----
 
@@ -87,6 +90,29 @@ internal static partial class DuelTumble
         Rolls++;
         Dust(s, 3, 0.55f);
     }
+
+    // 置かれた物・せり上がった壁に押し出されて (dx, dy) の向きへ転ぶ (全員の端末)
+    internal static void Trip(byte id, float dx, float dy)
+    {
+        var s = Begin(id, 255, Mode.Trip, dx, dy);
+        if (s != null) Trips++;
+    }
+
+    // 自分の体を押し出した側が呼ぶ: 押した向き (from → to) へ自分が転び、全員に知らせる
+    internal static void TripSelf(Vector2 from, Vector2 to)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        float dx = to.x - from.x, dy = to.y - from.y, len = FxMath.Sqrt(dx * dx + dy * dy);
+        if (!lp || len < 1e-3f) return;
+        dx /= len; dy /= len;
+        TripCall.Send(((sbyte)MathF.Round(dx * 127f), (sbyte)MathF.Round(dy * 127f)));
+        Trip(lp.PlayerId, dx, dy);
+    }
+
+    // 転んだ (転んだ本人 → 全員)。向きは -127〜127 に縮めて送る
+    private static readonly RemoteCall<(sbyte Dx, sbyte Dy)> TripCall = new("Tumble.Trip", Route.Anyone,
+        (w, v) => { w.Write((byte)v.Dx); w.Write((byte)v.Dy); }, r => ((sbyte)r.ReadByte(), (sbyte)r.ReadByte()),
+        (sender, v) => { if (sender) Trip(sender.PlayerId, v.Dx / 127f, v.Dy / 127f); });
 
     internal static void Launch(byte id, byte from)
     {
@@ -231,6 +257,11 @@ internal static partial class DuelTumble
             if (t >= RecoilPush) return false;
             sp = RecoilSpeed;
         }
+        else if (s.Mode == Mode.Trip)
+        {
+            if (t >= TripFall + TripSettle + TripLie) return false;
+            sp = 0f; // 倒れている間はその場から動けない
+        }
         else if (t < Air) sp = AirSpeed0 + (AirSpeed1 - AirSpeed0) * (t / Air);
         else if (s.Tech) sp = 0f;
         else if (t < Air + Bounce) sp = BounceSpeed;
@@ -252,7 +283,7 @@ internal static partial class DuelTumble
             if (s == null || s.Mode == Mode.None) continue;
             var pc = s.Pc;
             float t = now - s.T0;
-            float len = s.Mode == Mode.Recoil ? RecoilTime : s.Mode == Mode.Roll ? RollTime : LaunchLen(s);
+            float len = s.Mode == Mode.Recoil ? RecoilTime : s.Mode == Mode.Roll ? RollTime : s.Mode == Mode.Trip ? TripLen : LaunchLen(s);
             if (stop || t >= len || !pc || pc.Data == null || pc.Data.IsDead || pc.inVent)
             {
                 End(s);
@@ -260,6 +291,7 @@ internal static partial class DuelTumble
             }
             if (s.Mode == Mode.Recoil) PoseRecoil(s, t);
             else if (s.Mode == Mode.Roll) PoseRoll(s, t);
+            else if (s.Mode == Mode.Trip) PoseTrip(s, t);
             else
             {
                 if (!s.Tech && !s.TechSpent && t >= Air - BotTechLead) BotTech(s);
@@ -286,6 +318,39 @@ internal static partial class DuelTumble
             s.Landed = true;
             Dust(s, 2, 0.45f);
         }
+    }
+
+    private static void PoseTrip(State s, float t)
+    {
+        float ang, h = 0f;
+        if (t < TripFall)
+        {
+            // 足を払われて倒れる: 重さで速くなる (2 乗)
+            float k = t / TripFall;
+            ang = Lying * k * k;
+        }
+        else if (t < TripFall + TripSettle)
+        {
+            float k = (t - TripFall) / TripSettle;
+            if (!s.Landed)
+            {
+                s.Landed = true;
+                Dust(s, 3, 0.55f);
+                if (s.Pc) Fx.Hearing.At("architect_trip", s.Pc, 8f, 0.7f, pitch: FxMath.Range(0.95f, 1.05f));
+            }
+            // 床に当たった体が少しだけ弾んで落ち着く
+            ang = Lying - 7f * FxMath.Sin(FxMath.PI * k);
+            h = 0.03f * FxMath.Sin(FxMath.PI * k);
+        }
+        else if (t < TripFall + TripSettle + TripLie) ang = Lying;
+        else
+        {
+            float k = (t - TripFall - TripSettle - TripLie) / TripRise;
+            float e = 1f - (1f - k) * (1f - k);
+            ang = Lying * (1f - e);
+            h = TripRiseHop * FxMath.Sin(FxMath.PI * k);
+        }
+        Pose(s, s.Spin * ang, h);
     }
 
     private static void PoseLaunch(State s, float t)
