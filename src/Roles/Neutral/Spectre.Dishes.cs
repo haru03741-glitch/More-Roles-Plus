@@ -25,7 +25,6 @@ internal static class SpectreDishes
     private static readonly float[] InitialRespawnCoeff = { 1.0f, 0.6f, 0.2f, 0.5f, 0.8f, 0.3f, 0.7f, 0.4f, 0.9f, 1.0f, 1.0f, 1.0f, 1.0f };
     private static bool _spawned;
     private static Sprite[] _dishSprites;
-    private static Sprite _plate;
     internal const float UseDistance = 0.9f;
 
     internal static bool Spawned => _spawned;
@@ -120,44 +119,26 @@ internal static class SpectreDishes
 
     // ---- 絵 ----
 
+    // 立体で描いた長角皿 (空・お揚げ 3 枚を盛った)。絵の中心が皿を置いた床の点
     internal static Sprite DishSprite(bool full)
     {
-        _dishSprites ??= ButtonIcons.Frames("spectre_dish", 2, 100f);
-        if (_dishSprites != null) return _dishSprites[full ? 1 : 0];
-        // 絵が無い時: 白い皿 (楕円)。盛った時は上にお揚げの絵を重ねる (MakeArt)
-        return _plate ? _plate : _plate = FxSprites.Rect(96, 64, (x, y) => Ellipse(x, y * 1.5f, 0.5f), "MrpSpectreDish");
-    }
-
-    private static float Ellipse(float x, float y, float r)
-    {
-        float d = FxMath.Sqrt(x * x + y * y) / r;
-        return d >= 1f ? 0f : d > 0.85f ? 1f : 0.9f;
+        _dishSprites ??= ButtonIcons.Frames("spectre_dish", 2, 200f);
+        return _dishSprites[full ? 1 : 0];
     }
 
     private static SpriteRenderer MakeArt(Vector2 at)
     {
         var go = new GameObject("MrpSpectreDish");
-        go.transform.position = new Vector3(at.x, at.y, at.y / 1000f + 0.002f);
+        // 奥行きは人と同じ決め方 (足元 + 0.3636): 皿の手前に立つ人は前・奥に立つ人は後ろに回る
+        go.transform.position = new Vector3(at.x, at.y, (at.y + 0.3636f) / 1000f);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = DishSprite(false);
-        var top = new GameObject("Fries");
-        top.transform.SetParent(go.transform, false);
-        top.transform.localPosition = new Vector3(0f, 0.05f, -0.001f);
-        var fr = top.AddComponent<SpriteRenderer>();
-        fr.sprite = SpectreMinigame.FriesSprite(0);
-        top.transform.localScale = Vector3.one * 0.35f;
-        top.SetActive(false);
         return sr;
     }
 
     private static void Draw(Dish d)
     {
-        if (!d.Art) return;
-        bool full = !d.Ate;
-        d.Art.sprite = DishSprite(full);
-        // 皿の絵が用意されていない時は、上にお揚げの絵を重ねて盛ったことを見せる
-        var top = d.Art.transform.childCount > 0 ? d.Art.transform.GetChild(0).gameObject : null;
-        if (top) top.SetActive(full && _dishSprites == null);
+        if (d.Art) d.Art.sprite = DishSprite(!d.Ate);
     }
 
     // ---- 状態の変化 ----
@@ -240,46 +221,23 @@ internal static class SpectreMinigame
     private static readonly int[] Stage = new int[3];
     private static readonly int[] Bites = new int[3];
     private static Sprite[] _friesSprites;
-    private static Sprite _bg;
-    private static readonly Sprite[] _fallback = new Sprite[3];
     private static float _closeAt = -1f;
 
     internal static bool IsOpen => _root;
 
-    // お揚げの絵 (3 段: 0 = まるごと・1 = かじった・2 = 残り少し)
+    // 窓は本編の作業画面くらいの大きさ (HUD の単位で 5.9 x 4)。お揚げは皿の見込みの上 (窓の中心より少し上) に横に並べる
+    private const float HudPpu = 180f;
+    private const float RowY = 0.12f, Gap = 1.467f, HalfW = 2.93f, HalfH = 2f, PieceHalfW = 0.64f, PieceHalfH = 0.75f;
+
+    // お揚げの絵 (3 段: 0 = まるごと・1 = かじった・2 = 残り少し)。食べる画面の皿と同じ角度で描いた物
     internal static Sprite FriesSprite(int stage)
     {
-        _friesSprites ??= ButtonIcons.Frames("spectre_fries", 3, 100f);
-        if (_friesSprites != null) return _friesSprites[Mathf.Clamp(stage, 0, 2)];
-        stage = Mathf.Clamp(stage, 0, 2);
-        if (_fallback[stage]) return _fallback[stage];
-        // 絵が無い時: 角の丸いきつね色の四角。かじった分だけ右から欠ける
-        float cut = 0.5f - stage * 0.22f;
-        return _fallback[stage] = FxSprites.Rect(128, 96, (x, y) =>
-        {
-            float ax = Mathf.Abs(x) - 0.38f, ay = Mathf.Abs(y) - 0.3f;
-            float r = 0.1f;
-            float d = FxMath.Sqrt(Mathf.Max(ax, 0f) * Mathf.Max(ax, 0f) + Mathf.Max(ay, 0f) * Mathf.Max(ay, 0f));
-            if (d > r) return 0f;
-            // かじった跡 (丸い歯形)
-            float bx = x - cut, by = y;
-            if (stage > 0 && bx * bx + by * by < 0.06f) return 0f;
-            if (x > cut + 0.12f) return 0f;
-            return 1f;
-        }, "MrpSpectreFries" + stage);
+        _friesSprites ??= ButtonIcons.Frames("spectre_fries", 3, HudPpu);
+        return _friesSprites[Mathf.Clamp(stage, 0, 2)];
     }
 
-    private static Sprite Bg()
-    {
-        var s = ButtonIcons.Has("spectre_minigame") ? ButtonIcons.Get("spectre_minigame") : null;
-        if (s) return s;
-        return _bg ? _bg : _bg = FxSprites.Rect(300, 200, (x, y) =>
-        {
-            float ax = Mathf.Abs(x) - 0.46f, ay = Mathf.Abs(y) - 0.44f;
-            float d = FxMath.Sqrt(Mathf.Max(ax, 0f) * Mathf.Max(ax, 0f) + Mathf.Max(ay, 0f) * Mathf.Max(ay, 0f));
-            return d > 0.04f ? 0f : 1f;
-        }, "MrpSpectreBg");
-    }
+    // 木の卓に置いた長角皿 (角の丸い枠つき)
+    private static Sprite Bg() => ButtonIcons.Load("spectre_minigame", HudPpu, new Vector2(0.5f, 0.5f));
 
     internal static void Open(int dishId, Action onDone)
     {
@@ -292,19 +250,15 @@ internal static class SpectreMinigame
         _closeAt = -1f;
         _root = new GameObject("MrpSpectreMinigame");
         _root.transform.SetParent(hud.transform, false);
-        _root.transform.localPosition = new Vector3(0f, 0f, -60f);
+        _root.transform.localPosition = new Vector3(0f, 0f, -150f); // タスクの一覧や能力ボタンより手前
         RoleState.Match.Bind(_root);
 
-        var bg = Child("Bg", Bg(), new Vector3(0f, 0f, 0f), Vector3.one * (ButtonIcons.Has("spectre_minigame") ? 1f : 4.2f));
-        if (!ButtonIcons.Has("spectre_minigame")) bg.color = new Color(0.16f, 0.12f, 0.2f, 0.95f);
-        var plate = Child("Plate", SpectreDishes.DishSprite(false), new Vector3(0f, -0.15f, -0.1f), Vector3.one * 5f);
-        plate.color = new Color(0.95f, 0.95f, 0.95f, 1f);
+        Child("Bg", Bg(), Vector3.zero, Vector3.one);
         for (int i = 0; i < 3; i++)
         {
             Stage[i] = 0;
             Bites[i] = 0;
-            Fries[i] = Child("Fries" + i, FriesSprite(0), new Vector3(-1.1f + 1.1f * i, -0.1f + (i == 1 ? 0.2f : 0f), -0.2f - 0.01f * i), Vector3.one * 1.5f);
-            if (_friesSprites == null) Fries[i].color = new Color(0.86f, 0.6f, 0.25f, 1f);
+            Fries[i] = Child("Fries" + i, FriesSprite(0), new Vector3(-Gap + Gap * i, RowY, -0.2f - 0.01f * i), Vector3.one);
         }
         lp.moveable = false;
     }
@@ -353,16 +307,25 @@ internal static class SpectreMinigame
         if (!cam) return;
         Vector3 l = _root.transform.InverseTransformPoint(cam.ScreenToWorldPoint(Input.mousePosition));
         // 枠の外を押したら閉じる
-        if (Mathf.Abs(l.x) > 2.1f || Mathf.Abs(l.y) > 1.45f) { Close(); return; }
+        if (Mathf.Abs(l.x) > HalfW || Mathf.Abs(l.y) > HalfH) { Close(); return; }
         for (int i = 0; i < 3; i++)
         {
             var f = Fries[i];
             if (!f || !f.gameObject.activeSelf) continue;
             Vector3 c = f.transform.localPosition;
-            if (Mathf.Abs(l.x - c.x) > 0.55f || Mathf.Abs(l.y - c.y) > 0.45f) continue;
+            if (Mathf.Abs(l.x - c.x) > PieceHalfW || Mathf.Abs(l.y - c.y) > PieceHalfH) continue;
             Bite(i);
             return;
         }
+    }
+
+    // 残っているいちばん左のお揚げをかじる (確認用)。かじった番号・無ければ -1
+    internal static int BiteFirst()
+    {
+        if (!_root || _closeAt >= 0f) return -1;
+        for (int i = 0; i < 3; i++)
+            if (Fries[i] && Fries[i].gameObject.activeSelf) { Bite(i); return i; }
+        return -1;
     }
 
     private static void Bite(int i)
@@ -370,8 +333,8 @@ internal static class SpectreMinigame
         PortSound.Play("spectre_eat", () => PortSound.Fallback("spectre_eat"), 0.8f);
         var f = Fries[i];
         // かじった時に少し揺らす
-        f.transform.localScale = Vector3.one * 1.38f;
-        PortKit.After(0.06f, () => { if (f) f.transform.localScale = Vector3.one * 1.5f; });
+        f.transform.localScale = Vector3.one * 0.92f;
+        PortKit.After(0.06f, () => { if (f) f.transform.localScale = Vector3.one; });
         if (++Bites[i] < 2) return;
         Bites[i] = 0;
         if (++Stage[i] < 3) { f.sprite = FriesSprite(Stage[i]); return; }
@@ -532,13 +495,13 @@ internal static class SpectreMapLayer
             if (!show) continue;
             var d = SpectreDishes.All[i];
             r.sprite = SpectreDishes.DishSprite(!d.Ate);
-            r.color = d.Ate ? new Color(1f, 1f, 1f, 0.55f) : RoleDisplay.ParseColor(Spectre.Hex);
+            r.color = d.Ate ? new Color(1f, 1f, 1f, 0.55f) : Color.white;
             Vector3 pos = d.At;
             pos /= ShipStatus.Instance.MapScale;
             pos.x *= Mathf.Sign(ShipStatus.Instance.transform.localScale.x);
             pos.z = -1.5f;
             r.transform.localPosition = pos;
-            r.transform.localScale = Vector3.one * 0.55f;
+            r.transform.localScale = Vector3.one * 0.6f;
         }
     }
 }

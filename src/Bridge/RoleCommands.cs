@@ -839,6 +839,22 @@ internal static class RoleCommands
             GameSettingMenu.Instance.Close();
             reply("OK closesettings");
         });
+
+        TestBridge.Register("spectre", "[eat <皿の番号> | bite] スペクターの皿の一覧 (位置・空か) / その皿の食べる画面を開く / いちばん左の残っているお揚げをかじる", (args, reply) =>
+        {
+            var p = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var all = MoreRolesPlus.Roles.Neutral.SpectreDishes.All;
+            if (p.Length >= 2 && p[0] == "eat" && int.TryParse(p[1], out int id) && id >= 0 && id < all.Count)
+            {
+                MoreRolesPlus.Roles.Neutral.SpectreMinigame.Open(id, null);
+                reply($"OK spectre eat {id} open={MoreRolesPlus.Roles.Neutral.SpectreMinigame.IsOpen}");
+                return;
+            }
+            if (p.Length >= 1 && p[0] == "bite") { reply($"OK spectre bite {MoreRolesPlus.Roles.Neutral.SpectreMinigame.BiteFirst()}"); return; }
+            var sb = new System.Text.StringBuilder($"OK spectre dishes={all.Count}");
+            foreach (var d in all) sb.Append($"\n{d.Id} {TestBridge.F(d.At.x)} {TestBridge.F(d.At.y)} ate={d.Ate}");
+            reply(sb.ToString());
+        });
     }
 
     // 画面の部品の名前 (uitree / uilook)。「名前:子の名前」は子を名前で、gametab:header:N / gametab:row:N はゲーム設定のタブの N 番目の見出し / 行
