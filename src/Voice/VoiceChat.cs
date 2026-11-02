@@ -93,6 +93,9 @@ public static class VoiceChat
             else if (a.Length == 1 && a[0] == "noloop") LoopTo = -1;
             else if (a.Length == 1 && a[0] == "mute") ToggleMute();
             else if (a.Length == 2 && a[0] == "mic") Menu.ClientOptions.VoiceMic.Value = a[1] == "on";
+#if ANDROID
+            else if (a.Length == 2 && a[0] == "preset" && int.TryParse(a[1], out int preset)) Mic.Reopen(preset);
+#endif
             else if (a.Length == 2 && a[0] == "tone" && byte.TryParse(a[1], out byte pid))
             {
                 var pcm = new float[PacketSamples];
@@ -176,9 +179,38 @@ internal static class Mic
     private const int HangoverPackets = 5;    // 声が止んでもこの数だけ送り続ける (語尾を切らない)
     private const int Window = VoiceChat.Rate / 50; // 声かを見る長さ (20ms)
 
+#if ANDROID
+    // Android 版の Unity には Microphone が無いので、C++ の部品から端末の AAudio を直接読む
+    private static bool _native;
+    private static bool _failed;   // 開けなかった (許可が無い等)。マイクを一度切って入れ直すまで開き直さない
+    private static float _retryAt; // 録音が途中で切れた時は少し待ってから開き直す
+    private static readonly float[] _buf = new float[2048];
+    private static long _readTotal; // 読めた数 (テストの状態表示)
+    private static float _rawPeak;  // 加工前の一番大きな値 (テストの状態表示)
+    private static float _levelMax; // 20ms の大きさの一番大きな値 (テストの状態表示)
+    // 録音の種類 (AAudio の input preset)。1 = 一般。通話用 (7) は端末によって声が 1/10 ほどに小さくなり送る大きさに届かず、
+    // 音声認識用 (6) は近くで話すと割れる (Xperia 10 IV 実測)
+    private static int _preset = 1;
+
+    // 録音の種類を変えて開き直す (テスト用)
+    internal static void Reopen(int preset)
+    {
+        _preset = preset;
+        _readTotal = 0;
+        _rawPeak = _levelMax = 0f;
+        Stop();
+        _failed = false;
+    }
+    internal static bool Open => _native;
+    internal static bool Available => !_failed;
+#else
     private static AudioClip _clip;
-    private static int _rate, _chunk, _readPos;
+    private static int _readPos;
     private static Il2CppStructArray<float> _buf;
+    internal static bool Open => _clip;
+    internal static bool Available => Microphone.devices != null && Microphone.devices.Length > 0;
+#endif
+    private static int _rate, _chunk;
     private const int CaptureRate = 48000;
     private const int Taps = 47;                  // 落とす前の低域の濾し (窓付き sinc)
     private static float[] _fir;
@@ -196,9 +228,65 @@ internal static class Mic
     private static readonly byte[] Packet = new byte[4 + VoiceChat.PacketSamples / 2];
     private static float _lastLevel;
     internal static bool Talking { get; private set; } // 今送っているか (画面の印)
-    internal static bool Open => _clip;                // マイクを開いているか
-    internal static float Level => _clip ? _lastLevel : 0f; // 直近の 20ms の大きさ (RMS・画面の音量のバー)
+    internal static float Level => Open ? _lastLevel : 0f; // 直近の 20ms の大きさ (RMS・画面の音量のバー)
 
+#if ANDROID
+    internal static unsafe void Tick(bool want)
+    {
+        if (!want)
+        {
+            Stop();
+            _failed = false;
+            _retryAt = 0f;
+            return;
+        }
+        if (!_native) Start();
+        if (!_native) return;
+        while (true)
+        {
+            int n;
+            fixed (float* p = _buf) n = Native.MrpNative.MicRead(p, _buf.Length);
+            if (n < 0)
+            {
+                Stop();
+                _retryAt = Time.realtimeSinceStartup + 2f;
+                return;
+            }
+            if (n > 0)
+            {
+                _readTotal += n;
+                for (int i = 0; i < n; i++) _rawPeak = Math.Max(_rawPeak, Math.Abs(_buf[i]));
+                Feed(n);
+            }
+            if (n < _buf.Length) return;
+        }
+    }
+
+    private static unsafe void Start()
+    {
+        if (_failed || (_retryAt > 0f && Time.realtimeSinceStartup < _retryAt)) return;
+        int rate = Native.MrpNative.MicOpen(CaptureRate, _preset);
+        if (rate <= 0)
+        {
+            _failed = true;
+            Plugin.Logger.LogInfo($"voice: mic unavailable ({rate})");
+            return;
+        }
+        _native = true;
+        _rate = rate;
+        Begin();
+        Plugin.Logger.LogInfo($"voice: mic started ({_rate}Hz, AAudio)");
+    }
+
+    private static unsafe void Stop()
+    {
+        Talking = false;
+        if (!_native) return;
+        Native.MrpNative.MicClose();
+        _native = false;
+        Plugin.Logger.LogInfo("voice: mic stopped");
+    }
+#else
     internal static void Tick(bool want)
     {
         if (!want)
@@ -216,29 +304,22 @@ internal static class Mic
             _clip.GetData(_buf, _readPos);
             _readPos = (_readPos + _chunk) % len;
             avail -= _chunk;
-            Feed();
+            Feed(_chunk);
         }
     }
 
     private static void Start()
     {
-        if (Microphone.devices == null || Microphone.devices.Length == 0) return;
+        if (!Available) return;
         _clip = Microphone.Start(null, true, ClipSeconds, CaptureRate);
         if (!_clip) return;
         _rate = _clip.frequency > 0 ? _clip.frequency : CaptureRate;
-        _fir = _rate > VoiceChat.Rate ? Lowpass(0.45f * VoiceChat.Rate / _rate) : null;
-        Array.Clear(Hist, 0, Hist.Length);
-        _histPos = 0;
         _chunk = _rate / 50; // 20ms
         // 輪の長さが 20ms で割り切れない時は読む位置が端をまたがないように、割り切れる大きさにそろえる
         while (_clip.samples % _chunk != 0 && _chunk > 1) _chunk--;
         _buf = new Il2CppStructArray<float>((long)_chunk);
         _readPos = Microphone.GetPosition(null);
-        _frameLen = 0;
-        _hang = 0;
-        _phase = _prev = 0f;
-        _lastKept = false;
-        VoiceFx.Reset();
+        Begin();
         Plugin.Logger.LogInfo($"voice: mic started ({_rate}Hz, device '{Microphone.devices[0]}')");
     }
 
@@ -250,6 +331,20 @@ internal static class Mic
         Object.Destroy(_clip);
         _clip = null;
         Plugin.Logger.LogInfo("voice: mic stopped");
+    }
+#endif
+
+    // 開いた直後に、速さに合わせた濾しを作り、前の録音の名残を消す
+    private static void Begin()
+    {
+        _fir = _rate > VoiceChat.Rate ? Lowpass(0.45f * VoiceChat.Rate / _rate) : null;
+        Array.Clear(Hist, 0, Hist.Length);
+        _histPos = 0;
+        _frameLen = 0;
+        _hang = 0;
+        _phase = _prev = 0f;
+        _lastKept = false;
+        VoiceFx.Reset();
     }
 
     // 窓付き sinc (Blackman) の低域の濾し。cutoff は入りの速さに対する割合
@@ -271,10 +366,10 @@ internal static class Mic
     }
 
     // 20ms 分を 24kHz にそろえる (落とす時は濾してから、どちらも前の値との間を直線でつなぐ)
-    private static void Feed()
+    private static void Feed(int count)
     {
         float step = (float)_rate / VoiceChat.Rate;
-        for (int i = 0; i < _chunk; i++)
+        for (int i = 0; i < count; i++)
         {
             float s = _buf[i];
             if (_fir != null)
@@ -317,6 +412,9 @@ internal static class Mic
         {
             float level = (float)Math.Sqrt(_winSum / _winN);
             _lastLevel = level;
+#if ANDROID
+            if (level > _levelMax) _levelMax = level;
+#endif
             if (level >= VoiceLevel) _voiced = true;
             _winSum = 0;
             _winN = 0;
@@ -358,7 +456,11 @@ internal static class Mic
         _seq++;
     }
 
+#if ANDROID
+    internal static string Describe() => (_native ? $"on {_rate}Hz level={_lastLevel:0.000} talking={Talking}" : "off") + $" aaudio={(_failed ? "failed" : "ok")} preset={_preset} read={_readTotal} peak={_rawPeak:0.0000} lvmax={_levelMax:0.0000}";
+#else
     internal static string Describe() => (_clip ? $"on {_rate}Hz level={_lastLevel:0.000} talking={Talking}" : "off") + $" devices={Microphone.devices?.Length ?? 0}";
+#endif
 }
 
 // 話し手ごとの鳴らし手。届いた声は少し溜めてから鳴らし始め (届く間隔の揺れで途切れない)、

@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 41;
+    internal const int Abi = 42;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -62,6 +62,9 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, void> CineLight;
     internal static delegate* unmanaged[Cdecl]<void*, void> CineWarp;
     internal static delegate* unmanaged[Cdecl]<void*, void> CinePlane;
+    internal static delegate* unmanaged[Cdecl]<int, int, int> MicOpen;
+    internal static delegate* unmanaged[Cdecl]<float*, int, int> MicRead;
+    internal static delegate* unmanaged[Cdecl]<void> MicClose;
 
     // 部品が読めたか。偽なら Plugin.Load が mod ごと起動しない
     internal static bool Loaded
@@ -214,6 +217,9 @@ internal static unsafe class MrpNative
         CineLight = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_light");
         CineWarp = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_warp");
         CinePlane = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_cine_plane");
+        MicOpen = (delegate* unmanaged[Cdecl]<int, int, int>)NativeLibrary.GetExport(_lib, "mrp_mic_open");
+        MicRead = (delegate* unmanaged[Cdecl]<float*, int, int>)NativeLibrary.GetExport(_lib, "mrp_mic_read");
+        MicClose = (delegate* unmanaged[Cdecl]<void>)NativeLibrary.GetExport(_lib, "mrp_mic_close");
     }
 
 #if !ANDROID

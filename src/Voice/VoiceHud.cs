@@ -64,7 +64,7 @@ internal static class VoiceHud
 
     private static void Icon()
     {
-        bool mic = Menu.ClientOptions.VoiceMic.Value && Microphone.devices != null && Microphone.devices.Length > 0;
+        bool mic = Menu.ClientOptions.VoiceMic.Value && Mic.Available;
         bool muted = mic && VoiceChat.Muted;
         bool talk = mic && !muted && VoiceRules.CanTalk(PlayerControl.LocalPlayer);
         _mic.color = muted ? Red : talk ? Color.white : Gray;
@@ -79,9 +79,9 @@ internal static class VoiceHud
         string me;
         if (!Menu.ClientOptions.VoiceMic.Value) me = $"<color=#9A9A9A>{new Text("VoiceChat.MicOff")}</color>";
 #if ANDROID
-        else if (Microphone.devices == null || Microphone.devices.Length == 0) me = $"<color=#9A9A9A>{new Text("VoiceChat.NoMicAndroid")}</color>";
+        else if (!Mic.Available) me = $"<color=#9A9A9A>{new Text("VoiceChat.NoMicAndroid")}</color>";
 #else
-        else if (Microphone.devices == null || Microphone.devices.Length == 0) me = $"<color=#9A9A9A>{new Text("VoiceChat.NoMic")}</color>";
+        else if (!Mic.Available) me = $"<color=#9A9A9A>{new Text("VoiceChat.NoMic")}</color>";
 #endif
         else if (VoiceChat.Muted) me = $"<color=#FF6060>{new Text("VoiceChat.Muted").With("key", key)}</color>";
         else if (!VoiceRules.CanTalk(PlayerControl.LocalPlayer)) me = $"<color=#9A9A9A>{new Text("VoiceChat.Listening")}</color>";
