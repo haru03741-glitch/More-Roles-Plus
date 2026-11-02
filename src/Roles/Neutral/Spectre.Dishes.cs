@@ -71,6 +71,7 @@ internal static class SpectreDishes
         All.Clear();
         _spawned = false;
         SpectreMinigame.Close();
+        SpectreMinigame.Forget();
         SpectreMapLayer.Clear();
     }
 
@@ -161,7 +162,12 @@ internal static class SpectreDishes
         d.Ate = ate;
         d.Respawn = Spectre.Replenish;
         Draw(d);
-        if (ate) SpectreMinigame.CloseIf(id);
+        if (!ate) return;
+        SpectreMinigame.CloseIf(id);
+        // 食べた本人はかじる音を手元で聞いているので、周りの人にだけ皿の所で鳴らす
+        var lp = PlayerControl.LocalPlayer;
+        if (lp && lp.PlayerId == eater) return;
+        Fx.Hearing.At("spectre_eat", d.At.x, d.At.y, 6f, 0.8f, eater == 255 ? null : PortKit.ById(eater));
     }
 
     // 毎フレーム (どの端末でも): 空の皿の盛り直しを数える。盛るのはホスト
@@ -222,6 +228,7 @@ internal static class SpectreMinigame
     private static readonly int[] Bites = new int[3];
     private static Sprite[] _friesSprites;
     private static float _closeAt = -1f;
+    private static int _progressDish = -1; // かじりかけの皿 (閉じても同じ皿を開き直せば続きから)
 
     internal static bool IsOpen => _root;
 
@@ -254,11 +261,13 @@ internal static class SpectreMinigame
         RoleState.Match.Bind(_root);
 
         Child("Bg", Bg(), Vector3.zero, Vector3.one);
+        bool resume = _progressDish == dishId;
+        _progressDish = dishId;
         for (int i = 0; i < 3; i++)
         {
-            Stage[i] = 0;
-            Bites[i] = 0;
-            Fries[i] = Child("Fries" + i, FriesSprite(0), new Vector3(-Gap + Gap * i, RowY, -0.2f - 0.01f * i), Vector3.one);
+            if (!resume) { Stage[i] = 0; Bites[i] = 0; }
+            Fries[i] = Child("Fries" + i, FriesSprite(Stage[i]), new Vector3(-Gap + Gap * i, RowY, -0.2f - 0.01f * i), Vector3.one);
+            if (Stage[i] >= 3) Fries[i].gameObject.SetActive(false);
         }
         lp.moveable = false;
     }
@@ -275,8 +284,12 @@ internal static class SpectreMinigame
         return sr;
     }
 
+    // 皿を片付けた時 (試合の終わり): かじりかけを忘れる
+    internal static void Forget() => _progressDish = -1;
+
     internal static void CloseIf(int dishId)
     {
+        if (_progressDish == dishId) _progressDish = -1; // 誰かが食べた・取り除いた皿は盛り直されたら新しいお揚げ
         if (_root && _dish == dishId && _closeAt < 0f) Close();
     }
 
@@ -306,8 +319,8 @@ internal static class SpectreMinigame
         var cam = Camera.main;
         if (!cam) return;
         Vector3 l = _root.transform.InverseTransformPoint(cam.ScreenToWorldPoint(Input.mousePosition));
-        // 枠の外を押したら閉じる
-        if (Mathf.Abs(l.x) > HalfW || Mathf.Abs(l.y) > HalfH) { Close(); return; }
+        // 枠の外を押しても閉じない (押し損ねでかじった分を失わない)。閉じるのは Esc・右クリック・会議・死んだ時
+        if (Mathf.Abs(l.x) > HalfW || Mathf.Abs(l.y) > HalfH) return;
         for (int i = 0; i < 3; i++)
         {
             var f = Fries[i];
@@ -343,6 +356,7 @@ internal static class SpectreMinigame
         // 全部食べた
         var done = _onDone;
         int dish = _dish;
+        _progressDish = -1;
         _closeAt = Time.time + 0.25f;
         if (dish >= 0) SpectreDishes.Set(dish, true, PlayerControl.LocalPlayer.PlayerId);
         done?.Invoke();
@@ -357,6 +371,7 @@ internal static class SpectreGauge
     private static readonly List<(SpriteRenderer back, SpriteRenderer fill, float width)> Units = new();
     private static Sprite _barSprite, _unitSprite;
     private static Sprite[] _foxSprites;
+    private static int _foxShown; // 今出している狐 (0 = 足りない・1 = 足りた)
     private static readonly Color Purple = new(202f / 255f, 148f / 255f, 221f / 255f);
     private static readonly Color Gray = new(0.2f, 0.2f, 0.2f, 1f);
 
@@ -386,8 +401,9 @@ internal static class SpectreGauge
         _bar = Child("Bar", _barSprite, new Vector3(width * 0.5f - 0.2f, 0f, 0f), new Vector3(width / 4f, 0.55f, 1f));
         _bar.color = new Color(0.12f, 0.1f, 0.16f, 0.9f);
 
-        _foxSprites ??= ButtonIcons.Frames("spectre_gauge_fox", 2, 100f);
-        _fox = Child("Fox", _foxSprites != null ? _foxSprites[1] : ButtonIcons.Get("role_Spectre"), new Vector3(0.05f, 0.04f, -0.1f), Vector3.one * (_foxSprites != null ? 0.6f : 0.25f));
+        _foxSprites ??= SpectreFoxArt.Frames;
+        _foxShown = 1;
+        _fox = Child("Fox", _foxSprites[1], new Vector3(0.02f, 0.06f, -0.1f), Vector3.one * 0.68f);
 
         _unitSprite ??= ButtonIcons.Has("spectre_gauge_fries") ? ButtonIcons.Get("spectre_gauge_fries") : SpectreMinigame.FriesSprite(0);
         int n = Mathf.CeilToInt(max);
@@ -425,8 +441,8 @@ internal static class SpectreGauge
         if (_root.activeSelf != on) _root.SetActive(on);
         if (!on) return;
         _root.transform.localScale = MeetingHud.Instance ? new Vector3(0.8f, 0.8f, 1f) : Vector3.one;
-        if (_foxSprites != null) _fox.sprite = _foxSprites[level < required ? 0 : 1];
-        else _fox.color = level < required ? new Color(0.6f, 0.6f, 0.6f, 1f) : UnityEngine.Color.white;
+        int fox = level < required ? 0 : 1;
+        if (fox != _foxShown) { _foxShown = fox; _fox.sprite = _foxSprites[fox]; }
         for (int i = 0; i < Units.Count; i++)
         {
             var (back, fill, width) = Units[i];

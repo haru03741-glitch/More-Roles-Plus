@@ -108,7 +108,7 @@ public sealed class SpectreImmoralist : RoleBase, ISpectreTeam
                 var s = MySpectre;
                 var d = Near(false);
                 if (d == null || s == null || !PortKit.Alive(s.Player)) return false;
-                SpectreDishes.Set(d.Id, true);
+                SpectreDishes.Set(d.Id, true, PlayerControl.LocalPlayer.PlayerId);
                 PortSound.Play("spectre_eat", () => PortSound.Fallback("spectre_eat"), 0.8f);
                 return true;
             },
