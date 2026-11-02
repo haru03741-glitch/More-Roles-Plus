@@ -55,6 +55,17 @@ public sealed partial class Samurai
         return BulletFate.Parry;
     }
 
+    // 落ちてくる物を斬れる構えか (振り・突きの最中。気切れ・よろけでは斬れない)
+    internal bool CutsNow
+    {
+        get
+        {
+            if (!Drawn || (IsLocal ? Spent : _blade.Spent) || _blade.Stunned) return false;
+            return _blade.Cutting(out _);
+        }
+    }
+
+
     // ホスト: 本人の端末が受け流した数 (気の見積もりを合わせる)
     internal void HostSpendParry(int n)
     {

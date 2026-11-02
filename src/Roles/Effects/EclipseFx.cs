@@ -117,8 +117,8 @@ internal static class EclipseFx
         public GameObject Root;
         public SpriteRenderer Shadow, Rim, Rock, RockGlow, Light;
         public Transform ShadowTf, RimTf, RockTf, RockGlowTf, LightTf;
-        public float X, Y, R, T0, Impact, NextTrail;
-        public int RockFrame = -1;
+        public float X, Y, R, T0, Impact, NextTrail, CutAt = -1f, ShadowA, RockX, RockY;
+        public int RockFrame = -1, Key;
         public bool Hit;
     }
 
@@ -141,13 +141,13 @@ internal static class EclipseFx
     // 警告を出してから着弾までの秒 (落ちる時間より短ければ落ちる時間)。倒す時刻もこれに合わせる
     internal static float ImpactDelay(float warn) => warn < FallTime ? FallTime : warn;
 
-    internal static void Begin(Vector2 at, float r, float warn)
+    internal static void Begin(Vector2 at, float r, float warn, int key)
     {
         if (!Art()) return;
         var root = new GameObject("MrpEclipseStrike");
         FxRoot.Attach(root);
         float zFloor = at.y / 1000f;
-        var s = new Strike { Root = root, X = at.x, Y = at.y, R = r, T0 = Time.time, Impact = ImpactDelay(warn) };
+        var s = new Strike { Root = root, X = at.x, Y = at.y, R = r, T0 = Time.time, Impact = ImpactDelay(warn), Key = key };
         s.Shadow = Make("Shadow", _shadow, root.transform);
         s.ShadowTf = s.Shadow.transform;
         s.ShadowTf.position = FxMath.V3(at.x, at.y, zFloor + 0.0010f);
@@ -176,7 +176,9 @@ internal static class EclipseFx
 
     internal static void Tick()
     {
-        if (_mark == null && Live.Count == 0 && Puffs.Count == 0) return;
+        Impostor.Eclipse.TickStrikes();
+        if (_whiteOn) TickWhite(Time.time); // 出ていない間は Unity に触らない
+        if (_mark == null && Live.Count == 0 && Puffs.Count == 0 && Halves.Count == 0) return;
         // 時戻しの再生中は止める。明けた時に途中の隕石と粒が一度に進まないよう、捨てる
         if (RewindPlayback.Active) { _rewound = true; return; }
         if (_rewound) { _rewound = false; DropStrikes(); }
@@ -194,12 +196,14 @@ internal static class EclipseFx
             }
         }
         if (Puffs.Count > 0) TickPuffs(now);
+        if (Halves.Count > 0) TickHalves(now);
     }
 
     private static void DropStrikes()
     {
         foreach (var s in Live) if (s.Root) Object.Destroy(s.Root);
         Live.Clear();
+        DropHalves();
         foreach (var p in Puffs) if (p.Go) { p.Go.SetActive(false); Pool.Push(p); }
         Puffs.Clear();
     }
@@ -207,6 +211,21 @@ internal static class EclipseFx
     private static bool TickStrike(Strike s, float now)
     {
         float t = now - s.T0;
+        // 斬られた: 岩は割れて片になっている。影と照準だけが引く
+        if (s.CutAt >= 0f)
+        {
+            float c = 1f - (now - s.CutAt) / FadeOut;
+            if (c <= 0f) return false;
+            s.Shadow.color = FxMath.Rgba(0f, 0f, 0.02f, s.ShadowA * c * c);
+            s.Rim.color = FxMath.Rgba(1f, 0.35f, 0.2f, 0.5f * c);
+            return true;
+        }
+        // 円の中のサムライが斬ったかの知らせを待つ間は、落ちきった所で止めておく
+        if (t >= s.Impact && !s.Hit && Impostor.Eclipse.FateOf(s.Key) == Impostor.Eclipse.Fate.Hold)
+        {
+            Fall(s, now, 1f);
+            return true;
+        }
         if (t < s.Impact)
         {
             // 溜め: 影が広がって暗くなり、照準が速く脈打つ
@@ -214,7 +233,8 @@ internal static class EclipseFx
             float e = u * u;
             float d = s.R * 2f * (0.3f + 0.7f * e);
             s.ShadowTf.localScale = FxMath.V3(d, d, 1f);
-            s.Shadow.color = FxMath.Rgba(0f, 0f, 0.02f, ShadowMax * (0.15f + 0.85f * e));
+            s.ShadowA = ShadowMax * (0.15f + 0.85f * e);
+            s.Shadow.color = FxMath.Rgba(0f, 0f, 0.02f, s.ShadowA);
             float pulse = 0.5f + 0.5f * FxMath.Sin(t * RimPulseHz * 2f * System.MathF.PI);
             s.Rim.color = FxMath.Rgba(1f, 0.2f + 0.15f * pulse, 0.18f, FxMath.Clamp01(u * 4f) * (0.35f + 0.4f * pulse));
             s.RimTf.localRotation = FxMath.RotZ(-t * 40f);
@@ -248,6 +268,8 @@ internal static class EclipseFx
         float x = s.X + FallFromX * (1f - e), y = s.Y + FallFromY * (1f - e);
         const float zSky = -6f; // 空の物はどの人や壁よりも手前
         s.RockTf.position = FxMath.V3(x, y, zSky);
+        s.RockX = x;
+        s.RockY = y;
         int rf = (int)((now - s.T0) * RockTurns * 16f) & 15;
         if (rf != s.RockFrame) { s.RockFrame = rf; s.Rock.sprite = _rock[rf]; }
         float g = 1.5f + 0.6f * FxMath.Sin(now * 37f);
@@ -372,11 +394,286 @@ internal static class EclipseFx
         }
     }
 
+    // ================= 斬られた隕石 (全員の画面) =================
+    // 刃が通った線で岩が二つに割れ、落ちる勢いのまま刃の向きへ左右に開いて床に転がる。
+    // 割れた面 (断面) は斜めから見た平らな面として片に貼り、中まで焼けた溶岩の面が床に着いてから CoolTime 秒で暗い岩に冷め、HalfLife 秒で消える。
+    // 斬った瞬間は割れ目からの強い閃光と画面の揺れ (近いほど強い)
+
+    private const float HalfSpeed = 4.2f;    // 落ちる向きの勢い (割れた後に残る分)
+    private const float HalfSpread = 2.4f;   // 刃の向きへ開く速さ
+    private const float HalfGravity = 9f;
+    private const float FaceLen = 0.92f, FaceTilt = 0.36f; // 断面の長さ (岩の幅) と、斜めから見た縦の潰れ
+    private const float CutShakeReach = 12f;
+    private const float CoolTime = 2.6f;
+    private const float HalfLife = 6f, HalfFade = 0.6f;
+    private const int MaxHalves = 8;
+    private const float SoundCutReach = 14f, SoundLandReach = 9f;
+
+    private sealed class Half
+    {
+        public GameObject Go;
+        public Transform Tf, GlowTf;
+        public Mesh Mesh;
+        public SpriteRenderer Glow, FaceHot, FaceCold;
+        public float X, Y, Vx, Vy, Spin, Rot, Floor, Start, LandAt = -1f, NextShade;
+        public bool Resting;
+        public Color32[] RockCols;
+    }
+
+    private static readonly List<Half> Halves = new();
+    private static Material _halfMat;
+    private static Sprite _faceHot, _faceCold;
+    private static bool _faceSearched;
+
+    private static bool FaceArt()
+    {
+        if (!_faceSearched)
+        {
+            _faceSearched = true;
+            _faceHot = ButtonIcons.Load("eclipse_cutface_hot", 256f, FxMath.V2(0.5f, 0.5f));
+            _faceCold = ButtonIcons.Load("eclipse_cutface_cold", 256f, FxMath.V2(0.5f, 0.5f));
+        }
+        return _faceHot && _faceCold;
+    }
+
+    internal static void CutStrike(int key, PlayerControl by)
+    {
+        Strike s = null;
+        foreach (var x in Live) if (x.Key == key) { s = x; break; }
+        if (s == null || !s.Root || s.CutAt >= 0f || s.Hit) return;
+        float now = Time.time;
+        s.CutAt = now;
+        bool flying = s.Rock.enabled && s.Rock.sprite;
+        float rx = flying ? s.RockX : s.X, ry = flying ? s.RockY : s.Y + 0.6f;
+        const float zSky = -6f;
+        // 落ちる向き (右上から左下) と、それに直交する刃の向き
+        const float flen = 6.265f; // sqrt(3^2 + 5.5^2)
+        float fdx = -FallFromX / flen, fdy = -FallFromY / flen, nx = -fdy, ny = fdx;
+        float lineDeg = System.MathF.Atan2(fdy, fdx) * (180f / System.MathF.PI);
+        if (flying)
+        {
+            for (int side = -1; side <= 1; side += 2)
+            {
+                if (Halves.Count >= MaxHalves) { KillHalf(Halves[0]); Halves.RemoveAt(0); }
+                var mesh = FxMeshCut.Cut(s.Rock, rx, ry, new[] { new FxMeshCut.Plane(nx * side, ny * side, 0f) }, 1, null, "MrpEclipseHalf");
+                if (!mesh) continue;
+                var go = new GameObject("MrpEclipseHalf");
+                FxRoot.Attach(go);
+                go.AddComponent<MeshFilter>().mesh = mesh;
+                go.AddComponent<MeshRenderer>().sharedMaterial = HalfMat(s.Rock);
+                var h = new Half
+                {
+                    Go = go, Tf = go.transform, Mesh = mesh, X = rx, Y = ry, Start = now,
+                    Vx = fdx * HalfSpeed + nx * side * HalfSpread, Vy = fdy * HalfSpeed + ny * side * HalfSpread,
+                    Spin = side * FxMath.Range(160f, 260f),
+                    Floor = s.Y + ny * side * 0.35f + FxMath.Range(-0.08f, 0.08f),
+                };
+                // 断面: 切り口の線に沿った楕円の面を、その片の側へ半分ずらして重ねる (割れた平らな面を斜めから見た形)
+                if (FaceArt())
+                {
+                    float off = FaceLen * FaceTilt * 0.42f;
+                    h.FaceCold = Make("FaceCold", _faceCold, h.Tf);
+                    h.FaceHot = Make("FaceHot", _faceHot, h.Tf);
+                    for (int k = 0; k < 2; k++)
+                    {
+                        var ft = (k == 0 ? h.FaceCold : h.FaceHot).transform;
+                        ft.localPosition = FxMath.V3(nx * side * off, ny * side * off, -0.0001f - k * 0.00005f);
+                        ft.localRotation = FxMath.RotZ(lineDeg);
+                        ft.localScale = FxMath.V3(FaceLen, FaceLen * FaceTilt, 1f);
+                    }
+                }
+                h.RockCols = new Color32[mesh.vertexCount];
+                h.Glow = Make("Glow", Terrain.DebrisArt.Puff, h.Tf);
+                h.GlowTf = h.Glow.transform;
+                h.GlowTf.localPosition = FxMath.V3(nx * side * 0.1f, ny * side * 0.1f, 0.0002f);
+                Shade(h, 0f, 1f);
+                h.Tf.position = FxMath.V3(rx, ry, zSky);
+                Halves.Add(h);
+            }
+            s.Rock.enabled = s.RockGlow.enabled = s.Light.enabled = false;
+        }
+        // 刃が通った所: 割れ目から溶けた中身が一度に光る (周りを白く飛ばす大きな光 → 白い核 → 橙のにじみ) →
+        // 刃の向きへ飛ぶ火花 → 割れ目から散る火の粉。床も一瞬照らされる
+        if (_flash) SpawnPuff(rx, ry, 0f, 0f, 0.9f, 1.8f, 0.14f, zSky - 0.003f, PuffKind.Core);
+        SpawnPuff(rx, ry, 0f, 0f, 1.2f, 2.8f, 0.45f, zSky - 0.002f, PuffKind.Glow);
+        for (int i = 0; i < 26; i++)
+        {
+            float side = (i & 1) == 0 ? 1f : -1f, v = FxMath.Range(4f, 9f), j = FxMath.Range(-0.4f, 0.4f);
+            float vx = (nx + fdx * j) * side * v, vy = (ny + fdy * j) * side * v;
+            SpawnPuff(rx, ry, vx, vy, 0.16f, 0.06f, FxMath.Range(0.18f, 0.32f), zSky - 0.001f, PuffKind.Spark, System.MathF.Atan2(vy, vx) * (180f / System.MathF.PI));
+        }
+        for (int i = 0; i < 18; i++)
+            SpawnPuff(rx, ry, fdx * FxMath.Range(1f, 3f) + FxMath.Range(-1.2f, 1.2f), fdy * FxMath.Range(0.5f, 1.5f) + FxMath.Range(0.5f, 2f), 0.09f, 0.05f, FxMath.Range(0.5f, 0.9f), zSky - 0.001f, PuffKind.Ember);
+        Hearing.At("eclipse_cut", rx, ry, SoundCutReach, 0.95f, by);
+        Shake(rx, ry, CutShakeReach, 0.35f, 0.5f, 3.2f);
+        // 画面が一瞬白く飛ぶ (明るい床の上でも光って見えるのはこれだけ・近いほど濃い)
+        var lp = PlayerControl.LocalPlayer;
+        if (lp)
+        {
+            var me = lp.transform.position;
+            float ddx = me.x - rx, ddy = me.y - ry, dd = FxMath.Sqrt(ddx * ddx + ddy * ddy);
+            if (dd < CutShakeReach) WhiteOut(0.8f * (1f - dd / CutShakeReach), 0.3f);
+        }
+    }
+
+    // ---- 目がくらむ白 (ゲームのカメラの子・世界より手前。HUD は別のカメラなので白くならない) ----
+    private static GameObject _whiteGo;
+    private static SpriteRenderer _whiteSr;
+    private static Sprite _whiteSp;
+    private static float _whiteT0, _whiteLen, _whiteA;
+    private static bool _whiteOn;
+
+    private static void WhiteOut(float alpha, float seconds)
+    {
+        var cam = Camera.main;
+        if (!cam || alpha <= 0f) return;
+        if (!_whiteGo)
+        {
+            _whiteSp ??= FxSprites.Rect(4, 4, (_, _) => 1f, "MrpEclipseWhite");
+            _whiteGo = new GameObject("MrpEclipseWhiteOut") { layer = cam.gameObject.layer };
+            var tf = _whiteGo.transform;
+            tf.SetParent(cam.transform, false);
+            tf.localPosition = FxMath.V3(0f, 0f, cam.nearClipPlane + 0.4f);
+            _whiteSr = _whiteGo.AddComponent<SpriteRenderer>();
+            _whiteSr.sprite = _whiteSp;
+            float h = cam.orthographicSize * 2.2f;
+            tf.localScale = FxMath.V3(h * cam.aspect, h, 1f);
+        }
+        _whiteGo.SetActive(true);
+        _whiteOn = true;
+        _whiteT0 = Time.time;
+        _whiteLen = seconds;
+        _whiteA = alpha;
+        TickWhite(_whiteT0);
+    }
+
+    private static void TickWhite(float now)
+    {
+        float f = (now - _whiteT0) / _whiteLen;
+        if (!_whiteGo) { _whiteOn = false; return; }
+        if (f >= 1f) { _whiteOn = false; _whiteGo.SetActive(false); return; }
+        float k = 1f - f;
+        _whiteSr.color = FxMath.Rgba(1f, 0.97f, 0.88f - 0.2f * f, _whiteA * k * k);
+    }
+
+    // 近いほど強く・長く揺らす
+    private static void Shake(float x, float y, float reach, float dur0, float durK, float amp)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        var hud = Vanilla.Hud;
+        if (!lp || !hud || !hud.PlayerCam) return;
+        var me = lp.transform.position;
+        float ddx = me.x - x, ddy = me.y - y, dd = FxMath.Sqrt(ddx * ddx + ddy * ddy);
+        if (dd >= reach) return;
+        float k = 1f - dd / reach;
+        hud.PlayerCam.ShakeScreen(dur0 + durK * k, amp * k * k);
+    }
+
+    private static Material HalfMat(SpriteRenderer sr)
+    {
+        if (_halfMat) return _halfMat;
+        var shader = Shader.Find("Sprites/Default");
+        _halfMat = shader ? new Material(shader) : new Material(sr.sharedMaterial);
+        _halfMat.mainTexture = sr.sprite.texture;
+        return _halfMat;
+    }
+
+    // 断面の熱 (c = 0 割れた直後 → 1 冷めきった・熱い面が薄れて冷めた面が見えてくる) と、全体の濃さ a
+    private static void Shade(Half h, float c, float a)
+    {
+        byte al = (byte)(255f * a);
+        if (h.FaceHot)
+        {
+            float hot = 1f - c * c * (3f - 2f * c);
+            h.FaceHot.color = FxMath.Rgba(1f, 1f, 1f, hot * a);
+            h.FaceCold.color = FxMath.Rgba(1f, 1f, 1f, a);
+        }
+        if (a < 1f)
+        {
+            var w = new Color32(255, 255, 255, al);
+            for (int i = 0; i < h.RockCols.Length; i++) h.RockCols[i] = w;
+            h.Mesh.SetColors(h.RockCols);
+        }
+        float glow = (1f - c) * (1f - c);
+        h.Glow.color = FxMath.Rgba(1f, 0.55f + 0.3f * (1f - c), 0.2f, 0.45f * glow * a);
+        float gs = 0.7f + 0.4f * glow;
+        h.GlowTf.localScale = FxMath.V3(gs, gs, 1f);
+    }
+
+    private static void TickHalves(float now)
+    {
+        float dt = Time.deltaTime;
+        for (int i = Halves.Count - 1; i >= 0; i--)
+        {
+            var h = Halves[i];
+            if (!h.Go) { KillHalf(h); Halves.RemoveAt(i); continue; }
+            if (!h.Resting)
+            {
+                h.Vy -= HalfGravity * dt;
+                h.X += h.Vx * dt;
+                h.Y += h.Vy * dt;
+                h.Rot += h.Spin * dt;
+                if (h.Y < h.Floor && h.Vy < 0f)
+                {
+                    h.Y = h.Floor;
+                    if (h.LandAt < 0f) Land(h, now);
+                    if (h.Vy > -1.2f) h.Resting = true;
+                    else { h.Vy = -h.Vy * 0.25f; h.Vx *= 0.45f; h.Spin *= 0.3f; }
+                }
+                // 床に着くまでは空の高さ (どの人よりも手前)、着いたら足元の奥行き
+                h.Tf.position = FxMath.V3(h.X, h.Y, h.LandAt < 0f ? -6f : (h.Floor + 0.11f) / 1000f);
+                h.Tf.rotation = FxMath.RotZ(h.Rot);
+            }
+            if (now < h.NextShade) continue;
+            h.NextShade = now + 0.1f;
+            float age = now - h.Start;
+            float c = h.LandAt < 0f ? 0.1f : FxMath.Clamp01((now - h.LandAt) / CoolTime);
+            float a = age < HalfLife ? 1f : 1f - (age - HalfLife) / HalfFade;
+            if (a <= 0f) { KillHalf(h); Halves.RemoveAt(i); continue; }
+            Shade(h, c, a);
+        }
+    }
+
+    // 床に着いた: 砕けた砂ぼこりと火花・火の粉。重い一撃でなく、砕けて転がる音
+    private static void Land(Half h, float now)
+    {
+        h.LandAt = now;
+        float z = (h.Floor - 1f) / 1000f;
+        for (int i = 0; i < 7; i++)
+        {
+            float a = FxMath.Range(0f, 2f * System.MathF.PI), v = FxMath.Range(0.5f, 1.4f);
+            SpawnPuff(h.X, h.Y - 0.2f, FxMath.Cos(a) * v + h.Vx * 0.2f, FxMath.Sin(a) * v * 0.4f, 0.25f, 0.7f, FxMath.Range(0.6f, 1f), z + 0.0004f, PuffKind.Smoke);
+        }
+        for (int i = 0; i < 6; i++)
+        {
+            float a = FxMath.Range(0.2f, System.MathF.PI - 0.2f), v = FxMath.Range(2f, 4f);
+            SpawnPuff(h.X, h.Y - 0.2f, FxMath.Cos(a) * v, FxMath.Sin(a) * v, 0.13f, 0.05f, FxMath.Range(0.15f, 0.3f), z - 0.0002f, PuffKind.Spark, a * (180f / System.MathF.PI));
+            SpawnPuff(h.X, h.Y, FxMath.Range(-1f, 1f), FxMath.Range(1f, 2.5f), 0.08f, 0.04f, FxMath.Range(0.5f, 0.9f), z - 0.0001f, PuffKind.Ember);
+        }
+        Hearing.At("eclipse_rock_land", h.X, h.Y, SoundLandReach, 0.8f);
+        Shake(h.X, h.Y, 7f, 0.12f, 0.15f, 0.9f);
+    }
+
+    private static void KillHalf(Half h)
+    {
+        if (h.Go) Object.Destroy(h.Go);
+        if (h.Mesh) Object.Destroy(h.Mesh);
+    }
+
+    private static void DropHalves()
+    {
+        foreach (var h in Halves) KillHalf(h);
+        Halves.Clear();
+    }
+
     internal static void ClearAll()
     {
         HideMark();
         foreach (var s in Live) if (s.Root) Object.Destroy(s.Root);
         Live.Clear();
+        DropHalves();
+        if (_whiteGo) Object.Destroy(_whiteGo);
+        _whiteOn = false;
         foreach (var p in Puffs) if (p.Go) Object.Destroy(p.Go);
         Puffs.Clear();
         foreach (var p in Pool) if (p.Go) Object.Destroy(p.Go);

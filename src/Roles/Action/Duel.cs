@@ -228,6 +228,26 @@ internal static class Duel
         return hp == 0;
     }
 
+    // ホスト: 飛び道具の一撃で吹き飛ばして体力を減らす。倒す一撃だけキルとして確かめ (盾などに止められたら体力 1 で残す)、
+    // 0 になったら倒して組から抜く。立ち合いの相手のキルはサムライ側が舌の一撃に替えるので、確かめる間だけ素通りさせる
+    internal static void HostSmash(PlayerControl attacker, PlayerControl v, int dmg, float snapMark = 0f)
+    {
+        if (!attacker || !v) return;
+        byte id = v.PlayerId;
+        int left = HpOf(id);
+        if (dmg < 0) dmg = 0;
+        if (left - dmg <= 0)
+        {
+            DuelTongue.Finishing = true;
+            try { if (BeforeMurderEvent.Ask(attacker, v) != null) dmg = left - 1; }
+            finally { DuelTongue.Finishing = false; }
+        }
+        if (!HostDamage(attacker.PlayerId, id, dmg, start: dmg < left, smash: true)) return;
+        if (snapMark > 0f) RangedKillSnapPatch.Mark(attacker.PlayerId, snapMark);
+        attacker.RpcMurderPlayer(v, true);
+        HostLeave(id);
+    }
+
     // ホスト: この人を組から抜く (倒れた後など)
     internal static void HostLeave(byte id)
     {

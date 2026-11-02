@@ -109,13 +109,14 @@ public sealed partial class Eclipse : RoleBase
         return true;
     }
 
-    // 全員の端末で: 影と照準の警告 → 隕石が落ちる → 着弾。倒すのと地形を壊すのはホスト
+    // 全員の端末で: 影と照準の警告 → 隕石が落ちる → 着弾 (Settle)。倒すのと地形を壊すのはホスト
     private static void OnBlast(Eclipse e, Vector2 at, float size)
     {
         float impact = EclipseFx.ImpactDelay(WarningTime);
         RangedKillSnapPatch.Mark(e.PlayerId, impact + 3f);
         PortSound.Play("eclipse_warn", () => PortSound.Fallback("eclipse_alert"), 0.7f);
-        EclipseFx.Begin(at, size, WarningTime);
+        var st = AddStrike(e.PlayerId, at, size, impact);
+        EclipseFx.Begin(at, size, WarningTime, st.Key);
         // 迫る唸りは 1 秒の音なので、着弾のちょうど 1 秒前から (警告が短ければすぐ) 鳴らす
         float fallAt = impact > FallSoundLength ? impact - FallSoundLength : 0f;
         PortKit.After(fallAt, () =>
@@ -123,15 +124,10 @@ public sealed partial class Eclipse : RoleBase
             if (MeetingHud.Instance || !ShipStatus.Instance) return;
             PortSound.Play("eclipse_fall", null, 1f, at, SoundReach);
         });
-        PortKit.After(impact, () =>
-        {
-            if (MeetingHud.Instance || !ShipStatus.Instance) return;
-            PortSound.Play("eclipse_boom", () => PortSound.Fallback("eclipse_boom"), 1f, at, SoundReach);
-            if (AmongUsClient.Instance.AmHost) HostBlast(e.Player, at, size);
-        });
+        PortKit.After(impact, () => Settle(st, e));
     }
 
-    // ホスト: 円の中の生きている人を全員倒す (味方も自分も)。キルを防ぐ役職には聞く
+    // ホスト: 円の中の生きている人を全員倒す (味方も自分も)。キルを防ぐ役職には聞く。サムライは体力が減るだけ
     private static void HostBlast(PlayerControl invoker, Vector2 at, float size)
     {
         if (!invoker) return;
@@ -141,9 +137,11 @@ public sealed partial class Eclipse : RoleBase
             if (!PortKit.Alive(p) || p.inVent) continue;
             if (Vector2.Distance(p.GetTruePosition(), at) > size) continue;
             if (p.PlayerId == invoker.PlayerId) { self = true; continue; }
+            if (RoleState.Of(p) is Neutral.Samurai) { HostHitSamurai(invoker, p); continue; }
             if (BeforeMurderEvent.Ask(invoker, p) != null) continue;
             invoker.RpcMurderPlayer(p, true);
         }
+        Crew.Doppelganger.HostStrikeArea(invoker, at, size); // 分身も円の中なら倒れる (本物が分身の所で)
         // 地形: 範囲の壁が壊れて床が焦げ、着弾点に小さな火が残る (地形の爆発は半径 3 まで)
         var res = Terrain.TerrainApi.WorldBlast(at, System.Math.Min(size, Terrain.TerrainPermit.MaxRadius));
         if (!res.Ok) Plugin.Logger.LogInfo($"eclipse: terrain blast refused ({res.Why})");
