@@ -168,7 +168,7 @@ internal static class RoleCommands
             reply(sb.ToString());
         });
 
-        TestBridge.Register("drone", "[fly <x> <y> | stop | shut <部屋> | idle <番号> <x> <y>] 自分のユビキタスのドローンの状態 / 操作の入力を (x, y) (-1〜1) に置き換える / 置き換えをやめる / その部屋のドアを本編の道で閉める (ホストだけ・SystemTypes の名前) / その人の止まったドローンをこの端末だけに置く", (args, reply) =>
+        TestBridge.Register("drone", "[fly <x> <y> | stop | shut <部屋> | idle <番号> <x> <y> | wreck <break|cut|burn|douse> <x> <y> [fly|idle] [向き 0〜15] [角度] | wrecks] 自分のユビキタスのドローンの状態 / 操作の入力を (x, y) (-1〜1) に置き換える / 置き換えをやめる / その部屋のドアを本編の道で閉める (ホストだけ・SystemTypes の名前) / その人の止まったドローンをこの端末だけに置く", (args, reply) =>
         {
             var ia = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (ia.Length >= 4 && ia[0] == "idle" && byte.TryParse(ia[1], out byte iid)
@@ -180,6 +180,19 @@ internal static class RoleCommands
             }
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
+            // wreck <break|cut|burn|douse> <x> <y> [fly|idle] [向きの番号] [斬った線の法線の角度]: この端末だけに残骸を出す
+            if (a.Length >= 4 && a[0] == "wreck" && System.Enum.TryParse(a[1], true, out Roles.WreckFate wf)
+                && float.TryParse(a[2], System.Globalization.NumberStyles.Float, inv, out float wx)
+                && float.TryParse(a[3], System.Globalization.NumberStyles.Float, inv, out float wy))
+            {
+                bool fly = a.Length < 5 || a[4] != "idle";
+                int wyaw = a.Length >= 6 && int.TryParse(a[5], out int yv) ? yv : 12;
+                float wang = a.Length >= 7 && float.TryParse(a[6], System.Globalization.NumberStyles.Float, inv, out float av) ? av : 0f;
+                Roles.Crew.Ubiquitous.DevWreck(wf, new Vector2(wx, wy), fly, wyaw, wang);
+                reply($"OK drone wreck {Roles.BodyWreck.Describe()}");
+                return;
+            }
+            if (a.Length >= 1 && a[0] == "wrecks") { reply($"OK {Roles.BodyWreck.Describe()}"); return; }
             if (a.Length >= 2 && a[0] == "shut")
             {
                 if (!ShipStatus.Instance || !System.Enum.TryParse(a[1], out SystemTypes room)) { reply("ERR drone shut"); return; }

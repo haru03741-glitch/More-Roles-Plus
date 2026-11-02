@@ -44,8 +44,8 @@ public sealed partial class Ubiquitous
             return true;
         }
         if (r != StrikeResult.Break && r != StrikeResult.Cut && r != StrikeResult.Douse) return false;
-        Spark(x, y, s);
         Plugin.Logger.LogInfo($"ubiquitous: drone down by {s.Element} ({r})");
+        WreckFlying(r, s);
         DestroyDrone(true);
         return true;
     }
@@ -57,7 +57,9 @@ public sealed partial class Ubiquitous
         float d = FxMath.Sqrt(dx * dx + dy * dy);
         if (d < 0.0001f) { dx = 0f; dy = -1f; } else { dx /= d; dy /= d; }
         GatlingFx.Deflect(x, y, dx, dy);
-        GunSound.Deflect(x, y, false);
+        // 弾は跳ね返る音・ハンマーは殻を叩く音 (爆発と火はそれぞれの音が鳴っている)
+        if (s.Element == StrikeElement.Bullet) GunSound.Deflect(x, y, false);
+        else if (s.Element == StrikeElement.Blunt) Hearing.At("ubiq_drone_hit", x, y, HumRange, 0.8f, null, Ears.All);
     }
 
     // ---- 止まったドローン ----
@@ -103,18 +105,19 @@ public sealed partial class Ubiquitous
             return true;
         }
         if (r != StrikeResult.Break && r != StrikeResult.Cut && r != StrikeResult.Douse) return false;
-        IdleGoneCall.Send((d.Owner, FxMath.V2(x, y)));
-        DropIdle(d.Owner, FxMath.V2(x, y));
+        byte fate = (byte)FateOf(r, s), angle = StrikeAngle(s, x, y);
+        IdleGoneCall.Send((d.Owner, FxMath.V2(x, y), fate, angle));
+        DropIdle(d.Owner, FxMath.V2(x, y), fate, angle);
         return true;
     }
 
-    private static readonly RemoteCall<(byte owner, Vector2 at)> IdleGoneCall = new("Ubiquitous.IdleGone", Route.Anyone,
-        (w, v) => { w.Write(v.owner); w.Write(v.at.x); w.Write(v.at.y); },
-        r => (r.ReadByte(), new Vector2(r.ReadSingle(), r.ReadSingle())),
-        (sender, v) => { if (sender) DropIdle(v.owner, v.at); });
+    private static readonly RemoteCall<(byte owner, Vector2 at, byte fate, byte angle)> IdleGoneCall = new("Ubiquitous.IdleGone", Route.Anyone,
+        (w, v) => { w.Write(v.owner); w.Write(v.at.x); w.Write(v.at.y); w.Write(v.fate); w.Write(v.angle); },
+        r => (r.ReadByte(), new Vector2(r.ReadSingle(), r.ReadSingle()), r.ReadByte(), r.ReadByte()),
+        (sender, v) => { if (sender && float.IsFinite(v.at.x) && float.IsFinite(v.at.y)) DropIdle(v.owner, v.at, v.fate, v.angle); });
 
-    // 止まったドローンが壊れた (全員の端末): 一番近い物を消して、火花と落ちる音
-    private static void DropIdle(byte owner, Vector2 at)
+    // 止まったドローンが壊れた (全員の端末): 一番近い物を消して、その場に残骸
+    private static void DropIdle(byte owner, Vector2 at, byte fate, byte angle)
     {
         int best = -1;
         float bd = 0.36f;
@@ -130,8 +133,7 @@ public sealed partial class Ubiquitous
         var g = Idle[best];
         Bodies.Remove(g.Body);
         Vector2 gp = g.Go.transform.position;
-        GatlingFx.Deflect(gp.x, gp.y, 0f, -1f);
-        Hearing.At("ubiq_drone_down", gp.x, gp.y, HumRange, HumVolume, null, Ears.All);
+        if (fate <= (byte)WreckFate.Douse) SpawnWreck(gp, IdleLift, (WreckFate)fate, g.Yaw, angle);
         Object.Destroy(g.Go);
         Idle.RemoveAt(best);
         Plugin.Logger.LogInfo($"ubiquitous: idle drone of {owner} broken");

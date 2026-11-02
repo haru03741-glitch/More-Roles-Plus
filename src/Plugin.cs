@@ -150,6 +150,7 @@ public class Ticker : MonoBehaviour
         Roles.CutDoors.HostTick();
         Roles.SpaceRifts.Tick();
         Roles.Bodies.Tick();
+        Roles.BodyWreck.Tick();
         Roles.RiftArt.Tick();
         Roles.DuelDodge.Tick();
         Roles.DuelTongue.Tick();

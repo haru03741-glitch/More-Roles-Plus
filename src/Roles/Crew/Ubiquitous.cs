@@ -42,6 +42,7 @@ public sealed partial class Ubiquitous : RoleBase
         public byte Owner;
         public GameObject Go;
         public int Turns;
+        public int Yaw;
         public Body Body;
     }
     private static readonly List<IdleDrone> Idle = new();
@@ -394,7 +395,7 @@ public sealed partial class Ubiquitous : RoleBase
     private static void AddIdle(PlayerControl owner, Vector2 at, byte yaw)
     {
         if (!owner || RoleState.Of(owner) is not Ubiquitous) return;
-        var d = new IdleDrone { Owner = owner.PlayerId, Go = MakeDrone(at, false, yaw), Turns = StayTurns };
+        var d = new IdleDrone { Owner = owner.PlayerId, Go = MakeDrone(at, false, yaw), Turns = StayTurns, Yaw = yaw & 15 };
         d.Body = IdleBody(d);
         Idle.Add(d);
     }

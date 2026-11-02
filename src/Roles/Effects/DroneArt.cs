@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Roles;
 // 部品の境と輪郭には太い黒の縁取り。プロペラは筒の中の平面に重ねる: 止まっている時は羽 2 枚 (十字)、飛んでいる時は回った残像の円盤 (2 コマ)。
 // 床の上の向き 16 方向 × 前後の傾き 4 段を焼く。左右対称の形なので左向きの半分は右向きの絵を左右反転して使う (焼くのは 9 方向)。
 // 計算は C# の数値だけなので作業スレッドで作る: 傾き無しの 9 方向を先に焼き、傾いた絵はその後で焼く (焼けるまでは傾き無しを出す)
-internal static class DroneArt
+internal static partial class DroneArt
 {
     private const float Sin = 0.58f;                  // 床の上の奥行きは画面でこの倍に縮む (ポータルの装置と同じ見下ろし)
     private static readonly float Cos = MathF.Sqrt(1f - Sin * Sin);
@@ -55,6 +55,7 @@ internal static class DroneArt
             int u = i % Half, p = i / Half;
             BakeView(u, p >= Level ? p + 1 : p);
         }));
+        PrewarmWreck();
     }
 
     // 床の上の向き (ラジアン・右 = 0・上 = π/2) → 0〜15 の向きの番号
@@ -98,17 +99,19 @@ internal static class DroneArt
     // 黒で塗って使う柔らかい楕円
     internal static Sprite Shadow => _shadow ? _shadow : _shadow = FxSprites.Rect(64, 24, (x, y) => FxSprites.Soft(x, y) * 0.9f, "MrpDroneShadow");
 
-    private static unsafe Sprite Make(int i, string name)
+    private static Sprite Make(int i, string name) => Make(Px, Crop, i, name);
+
+    private static unsafe Sprite Make(byte[][] pxs, int[] crop, int i, string name)
     {
-        var px = Px[i];
-        int x0 = Crop[i * 4], y0 = Crop[i * 4 + 1], w = Crop[i * 4 + 2], h = Crop[i * 4 + 3];
+        var px = pxs[i];
+        int x0 = crop[i * 4], y0 = crop[i * 4 + 1], w = crop[i * 4 + 2], h = crop[i * 4 + 3];
         var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { name = name };
         tex.filterMode = FilterMode.Bilinear;
         tex.wrapMode = TextureWrapMode.Clamp;
         fixed (byte* q = px) tex.LoadRawTextureData((IntPtr)q, px.Length);
         tex.Apply(false, true);
         tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
-        Px[i] = null; // 絵はもう GPU にあるので手元の画素は捨てる
+        pxs[i] = null; // 絵はもう GPU にあるので手元の画素は捨てる
         // 原点 = 胴の真ん中 (切り抜く前の絵の中の位置から)
         float ox = (0f - Left) * Ppu - x0, oy = (PivotY * Cos - Bottom) * Ppu - y0;
         var sp = Sprite.Create(tex, new UnityEngine.Rect(0, 0, w, h), new Vector2(ox / w, oy / h), Ppu / Shown);
@@ -141,7 +144,10 @@ internal static class DroneArt
     }
 
     // 1 胴・2 バイザー・3 腕・4 筒・5 羽の軸と下の支え
-    private static float Scene(float x, float y, float z, out int id)
+    private static float Scene(float x, float y, float z, out int id) => Scene(x, y, z, out id, -1);
+
+    // skip = 腕の途中で折れて無くなった筒 (-1 = 全部ある)
+    private static float Scene(float x, float y, float z, out int id, int skip)
     {
         float d = Ell(x, y, z, BodyX, BodyY, BodyZ, BodyRx, BodyRy, BodyRz);
         id = 1;
@@ -150,32 +156,47 @@ internal static class DroneArt
         for (int k = 0; k < 4; k++)
         {
             float cx = DuctX[k], cz = DuctZ[k];
-            float a = Cap(x, y, z, cx * 0.35f, 0.27f, cz * 0.35f, cx * 0.62f, 0.272f, cz * 0.62f, 0.026f);
+            float end = k == skip ? ArmBreak : 0.62f;
+            float a = Cap(x, y, z, cx * 0.35f, 0.27f, cz * 0.35f, cx * end, 0.272f, cz * end, 0.026f);
             if (a < d) { d = a; id = 3; }
-            float rho = MathF.Sqrt((x - cx) * (x - cx) + (z - cz) * (z - cz));
-            if (rho - DR - 0.02f > d) continue; // この筒は今の距離より遠い
-            float qx = MathF.Abs(rho - (DR + Dr) * 0.5f) - (DR - Dr) * 0.5f, qy = MathF.Abs(y - (DY0 + DY1) * 0.5f) - (DY1 - DY0) * 0.5f;
-            float ring = MathF.Sqrt(MathF.Max(qx, 0f) * MathF.Max(qx, 0f) + MathF.Max(qy, 0f) * MathF.Max(qy, 0f)) + MathF.Min(MathF.Max(qx, qy), 0f) - 0.006f;
-            if (ring < d) { d = ring; id = 4; }
-            float hub = Cap(x, y, z, cx, PY - 0.03f, cz, cx, PY + 0.012f, cz, 0.026f);
-            float sx = x - cx, sy = y - (PY - 0.022f), sz = z - cz;
-            hub = MathF.Min(hub, MathF.Min(Box(sx, sy, sz, Dr, 0.006f, 0.009f), Box(sx, sy, sz, 0.009f, 0.006f, Dr)));
-            if (hub < d) { d = hub; id = 5; }
+            if (k != skip) Duct(k, x, y, z, ref d, ref id);
         }
         return d;
     }
 
+    // 筒 1 つ (輪・羽の軸・下の支え)
+    private static void Duct(int k, float x, float y, float z, ref float d, ref int id)
+    {
+        float cx = DuctX[k], cz = DuctZ[k];
+        float rho = MathF.Sqrt((x - cx) * (x - cx) + (z - cz) * (z - cz));
+        if (rho - DR - 0.02f > d) return; // この筒は今の距離より遠い
+        float qx = MathF.Abs(rho - (DR + Dr) * 0.5f) - (DR - Dr) * 0.5f, qy = MathF.Abs(y - (DY0 + DY1) * 0.5f) - (DY1 - DY0) * 0.5f;
+        float ring = MathF.Sqrt(MathF.Max(qx, 0f) * MathF.Max(qx, 0f) + MathF.Max(qy, 0f) * MathF.Max(qy, 0f)) + MathF.Min(MathF.Max(qx, qy), 0f) - 0.006f;
+        if (ring < d) { d = ring; id = 4; }
+        float hub = Cap(x, y, z, cx, PY - 0.03f, cz, cx, PY + 0.012f, cz, 0.026f);
+        float sx = x - cx, sy = y - (PY - 0.022f), sz = z - cz;
+        hub = MathF.Min(hub, MathF.Min(Box(sx, sy, sz, Dr, 0.006f, 0.009f), Box(sx, sy, sz, 0.009f, 0.006f, Dr)));
+        if (hub < d) { d = hub; id = 5; }
+    }
+
     private static float Dist(float x, float y, float z) => Scene(x, y, z, out _);
 
-    // 部品の色・照りの鋭さ・照りの強さ
-    private static readonly float[] BaseR = { 0f, 0.12f, 0.25f, 0.14f, 0.13f, 0.30f };
-    private static readonly float[] BaseG = { 0f, 0.125f, 0.72f, 0.145f, 0.135f, 0.31f };
-    private static readonly float[] BaseB = { 0f, 0.14f, 0.98f, 0.16f, 0.15f, 0.34f };
-    private static readonly float[] Shine = { 1f, 60f, 90f, 30f, 35f, 20f };
-    private static readonly float[] Ks = { 0f, 0.9f, 1f, 0.35f, 0.45f, 0.2f };
+    // 部品の色・照りの鋭さ・照りの強さ (6 = 切り口は CutFace が塗る)
+    private static readonly float[] BaseR = { 0f, 0.12f, 0.25f, 0.14f, 0.13f, 0.30f, 0f };
+    private static readonly float[] BaseG = { 0f, 0.125f, 0.72f, 0.145f, 0.135f, 0.31f, 0f };
+    private static readonly float[] BaseB = { 0f, 0.14f, 0.98f, 0.16f, 0.15f, 0.34f, 0f };
+    private static readonly float[] Shine = { 1f, 60f, 90f, 30f, 35f, 20f, 1f };
+    private static readonly float[] Ks = { 0f, 0.9f, 1f, 0.35f, 0.45f, 0.2f, 0f };
+
+    // 画面の点から形の中へ光線を出す向き。飛んでいる絵 (View) と壊れた絵 (Posed) の 2 つ
+    private interface IView
+    {
+        void Inv(float x, float y, float z, out float ox, out float oy, out float oz);
+        bool Ray(float sx, float sy, out float ox, out float oy, out float oz, out float dx, out float dy, out float dz, out float t0, out float t1);
+    }
 
     // 世界の向きを形の向きへ (向き φ と傾き α を戻す)
-    private readonly struct View
+    private readonly struct View : IView
     {
         private readonly float _cy, _sy, _cp, _sp;
         public View(int u, int p)
@@ -205,9 +226,29 @@ internal static class DroneArt
         }
     }
 
+    // 光線を当てた結果 (SS 倍の細かさ)
+    private sealed class Traced
+    {
+        public float[] HitT, Cr, Cg, Cb;
+        public byte[] Ids;
+        public bool[] Edge;
+    }
+
     private static void BakeView(int u, int p)
     {
         var view = new View(u, p);
+        var t = Trace(view, Shape.Whole);
+        int kinds = p == Level ? Kinds : Kinds - 1;
+        for (int k = 0; k < kinds; k++)
+        {
+            int slot = (u * Pitches + p) * Kinds + k;
+            Px[slot] = Cut(Compose(view, Shape.Whole, k == Still ? -1 : k, t), Crop, slot);
+        }
+        Volatile.Write(ref Ready[u * Pitches + p], 1);
+    }
+
+    private static Traced Trace<TV>(TV view, Shape shape) where TV : struct, IView
+    {
         int w = W * SS, h = H * SS, n = w * h;
         var hitT = new float[n];
         var ids = new byte[n];
@@ -232,7 +273,7 @@ internal static class DroneArt
                 if (!view.Ray(sx, sy, out float ox, out float oy, out float oz, out float vx, out float vy, out float vz, out float t, out float tEnd)) continue;
                 for (int it = 0; it < 140 && t < tEnd; it++)
                 {
-                    float d = Scene(ox + vx * t, oy + vy * t, oz + vz * t, out int sid);
+                    float d = Scene(shape, ox + vx * t, oy + vy * t, oz + vz * t, out int sid);
                     if (d < 0.0008f) { id = sid; break; }
                     t += MathF.Max(d, 0.0015f) * 0.9f;
                 }
@@ -240,20 +281,23 @@ internal static class DroneArt
                 if (id == 0) continue;
                 hitT[o] = t;
                 float px = ox + vx * t, py = oy + vy * t, pz = oz + vz * t;
-                float nx = Dist(px + Eps, py, pz) - Dist(px - Eps, py, pz);
-                float ny = Dist(px, py + Eps, pz) - Dist(px, py - Eps, pz);
-                float nz = Dist(px, py, pz + Eps) - Dist(px, py, pz - Eps);
+                float nx = Dist(shape, px + Eps, py, pz) - Dist(shape, px - Eps, py, pz);
+                float ny = Dist(shape, px, py + Eps, pz) - Dist(shape, px, py - Eps, pz);
+                float nz = Dist(shape, px, py, pz + Eps) - Dist(shape, px, py, pz - Eps);
                 float nl = Len(nx, ny, nz) + 1e-9f; nx /= nl; ny /= nl; nz /= nl;
                 float dif = Math.Clamp(nx * lx + ny * ly + nz * lz, 0f, 1f);
                 float spec = Math.Clamp(nx * hx + ny * hy + nz * hz, 0f, 1f);
                 float facing = Math.Clamp(nx * ex + ny * ey + nz * ez, 0f, 1f);
                 float fres = (1f - facing) * (1f - facing) * (1f - facing);
-                float ao = MathF.Pow(Math.Clamp(Dist(px + nx * 0.035f, py + ny * 0.035f, pz + nz * 0.035f) / 0.035f, 0f, 1f), 0.7f);
+                float ao = MathF.Pow(Math.Clamp(Dist(shape, px + nx * 0.035f, py + ny * 0.035f, pz + nz * 0.035f) / 0.035f, 0f, 1f), 0.7f);
                 float lit = (0.35f + 0.85f * dif) * (0.45f + 0.55f * ao);
-                float sp = Ks[id] * MathF.Pow(spec, Shine[id]);
-                float r = BaseR[id] * lit + sp + 0.22f * fres * 0.55f * ao;
-                float g = BaseG[id] * lit + sp + 0.22f * fres * 0.70f * ao;
-                float b = BaseB[id] * lit + sp + 0.22f * fres * 0.85f * ao;
+                float br = BaseR[id], bg = BaseG[id], bb = BaseB[id], ks = Ks[id], shine = Shine[id];
+                if (id == CutId) CutFace(py, pz, out br, out bg, out bb, out ks, out shine);
+                float sp = ks * MathF.Pow(spec, shine);
+                float rim = id == CutId ? 0f : 0.22f * fres * ao; // 平らな切り口に縁の光は乗らない
+                float r = br * lit + sp + rim * 0.55f;
+                float g = bg * lit + sp + rim * 0.70f;
+                float b = bb * lit + sp + rim * 0.85f;
                 if (id == 2) { g += 0.06f * (1f - dif); b += 0.10f * (1f - dif); }
                 cr[o] = r; cg[o] = g; cb[o] = b;
             }
@@ -279,17 +323,11 @@ internal static class DroneArt
                 edge[o] = e;
             }
         });
-        int kinds = p == Level ? Kinds : Kinds - 1;
-        for (int k = 0; k < kinds; k++)
-        {
-            int slot = (u * Pitches + p) * Kinds + k;
-            Px[slot] = Cut(Compose(view, k == Still ? -1 : k, w, h, hitT, ids, cr, cg, cb, edge), slot);
-        }
-        Volatile.Write(ref Ready[u * Pitches + p], 1);
+        return new Traced { HitT = hitT, Ids = ids, Cr = cr, Cg = cg, Cb = cb, Edge = edge };
     }
 
     // 何も描いていない周りを切り落とす (傾いた絵が入るよう広く取った分)
-    private static byte[] Cut(byte[] px, int slot)
+    private static byte[] Cut(byte[] px, int[] crop, int slot)
     {
         int x0 = W, y0 = H, x1 = -1, y1 = -1;
         for (int y = 0; y < H; y++)
@@ -305,13 +343,17 @@ internal static class DroneArt
         int cw = x1 - x0 + 1, ch = y1 - y0 + 1;
         var outp = new byte[cw * ch * 4];
         for (int y = 0; y < ch; y++) Buffer.BlockCopy(px, ((y0 + y) * W + x0) * 4, outp, y * cw * 4, cw * 4);
-        Crop[slot * 4] = x0; Crop[slot * 4 + 1] = y0; Crop[slot * 4 + 2] = cw; Crop[slot * 4 + 3] = ch;
+        crop[slot * 4] = x0; crop[slot * 4 + 1] = y0; crop[slot * 4 + 2] = cw; crop[slot * 4 + 3] = ch;
         return outp;
     }
 
     // 羽の平面を重ねて縁取りし、SS×SS を平均して 1 枚に。frame = -1 は止まった羽
-    private static byte[] Compose(View view, int frame, int w, int h, float[] hitT, byte[] ids, float[] cr, float[] cg, float[] cb, bool[] edge)
+    private static byte[] Compose<TV>(TV view, Shape shape, int frame, Traced t) where TV : struct, IView
     {
+        int w = W * SS, h = H * SS;
+        float[] hitT = t.HitT, cr = t.Cr, cg = t.Cg, cb = t.Cb;
+        byte[] ids = t.Ids;
+        bool[] edge = t.Edge;
         var acc = new float[W * H * 4];
         const float OutR = 0.035f, OutG = 0.035f, OutB = 0.05f;
         float pyl = frame < 0 ? PY + 0.008f : PY;
@@ -333,6 +375,7 @@ internal static class DroneArt
                         float bx = ox + vx * tp, bz = oz + vz * tp;
                         for (int k = 0; k < 4; k++)
                         {
+                            if (!HasDuct(shape, k)) continue;
                             float dx = bx - DuctX[k], dz = bz - DuctZ[k];
                             float rho = MathF.Sqrt(dx * dx + dz * dz);
                             if (rho >= Dr - 0.004f) continue;
