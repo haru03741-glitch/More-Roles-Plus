@@ -565,7 +565,7 @@ public sealed class Architect : RoleBase
         Vector2 face = ClosestOnFoot(d, at.x, at.y);
         float dx = face.x - at.x, dy = face.y - at.y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
         Vector2 toward = FxMath.V2(dx / len, dy / len);
-        if (obj && hitter != LocalId) HammerSwing.PlayOther(face, toward, info.DefaultOutfit.ColorId);
+        if (obj && hitter != LocalId && obj.Visible) HammerSwing.PlayOther(face, toward, GatlingFx.ShownColor(obj));
         ushort seed = (ushort)(PlayerId * 31 + desk * 7 + hits);
         if (hits < DeskHits) { ArchitectDeskArt.Crack(d, face, toward, seed); return; }
         BreakDesk(desk, toward, at, seed);

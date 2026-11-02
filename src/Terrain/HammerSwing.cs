@@ -49,7 +49,7 @@ internal static class HammerSwing
         Vector2 dirAim = Aim(lp, out bool facingLeft);
         if (aim is { } forced && forced.sqrMagnitude > 1e-6f) { dirAim = forced.normalized; facingLeft = forced.x < 0f; }
         float reach = DamageProfile.Of(DamageKind.Blunt).Reach;
-        int color = lp.Data.DefaultOutfit.ColorId;
+        int color = Roles.GatlingFx.ShownColor(lp);
 
         bool wall = FindTarget(at, dirAim, reach, out Vector2 dir, out Vector2 hit, out Vector2 normal);
         float wallDist = wall ? MathF.Sqrt((hit.x - at.x) * (hit.x - at.x) + (hit.y - at.y) * (hit.y - at.y)) : reach;
@@ -81,9 +81,15 @@ internal static class HammerSwing
             return new Text("HammerSwing.NoWallThatWay");
         }
 
+        var e = new DamageEvent(DamageKind.Blunt, at, dir, 0f, Math.Clamp(force, 0f, 1f), (ushort)Environment.TickCount);
+        // 外壁はホストが断る。叩く姿だけ見せて回数と待ち時間は使わない (形は全員の端末で同じなので手元で同じ確かめができる)
+        if (!TerrainDamage.TryResolve(e, out _, out string why) && why == TerrainDamage.OuterWallWhy)
+        {
+            Play(hit, -normal, facingLeft, color, own: true, air: false);
+            return new Text("HammerSwing.OuterWall");
+        }
         ok = true;
         Play(hit, -normal, facingLeft, color, own: true, air: false);
-        var e = new DamageEvent(DamageKind.Blunt, at, dir, 0f, Math.Clamp(force, 0f, 1f), (ushort)Environment.TickCount);
         if (TerrainSync.IsGuest())
         {
             TerrainSync.HoldOwnHitUntil(Time.time + HitAt);
@@ -111,8 +117,10 @@ internal static class HammerSwing
         if (lp && lp.PlayerId == r.Actor) return; // 自分の振りは押した時から出ている
         var info = GameData.Instance ? GameData.Instance.GetPlayerById(r.Actor) : null;
         if (info == null) return;
+        // 透明な人の振りは見せない (手で居場所と色が分かる)。手の色は見えている服の色
+        if (info.Object && !info.Object.Visible) return;
         Vector2 face = -r.Normal;
-        Play(r.Position, face, face.x < 0f, info.DefaultOutfit.ColorId, own: false, air: false);
+        Play(r.Position, face, face.x < 0f, info.Object ? Roles.GatlingFx.ShownColor(info.Object) : info.DefaultOutfit.ColorId, own: false, air: false);
     }
 
     // 毎フレーム。待っている依頼が無ければ比較 2 つで帰る
@@ -173,6 +181,12 @@ internal static class HammerSwing
             {
                 float dx = p.x - at.x, dy = p.y - at.y, dist = dx * dx + dy * dy;
                 if (dist < best) { best = dist; dir = d; hit = p; normal = n; }
+            }
+            // 物ごと壊れる家具と仕掛け壁は壁の探し方では見えないので別に見る (手前にあればそちらを叩く)
+            if (BreakableProps.Probe(at, d, reach, out Vector2 pp, out Vector2 pn))
+            {
+                float dx = pp.x - at.x, dy = pp.y - at.y, dist = dx * dx + dy * dy;
+                if (dist < best) { best = dist; dir = d; hit = pp; normal = pn; }
             }
             // 0° と ±30° のように左右の組を見終わった所で、見つかっていれば止める
             if (best < float.MaxValue && (i == 0 || i % 2 == 0)) return true;

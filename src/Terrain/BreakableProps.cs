@@ -215,6 +215,21 @@ internal static class BreakableProps
     // 壁の道 (切り取り・ひび・奥の面) から外す当たり判定か
     internal static bool Owns(Component c) => Ensure() && ByCollider.ContainsKey(c.GetInstanceID());
 
+    // 振った人の手元: 向きの先の届く所に壊れていない家具 (仕掛け壁を含む) があるか (ホストの TryResolve と同じ当て方)
+    internal static bool Probe(Vector2 from, Vector2 dir, float reach, out Vector2 point, out Vector2 normal)
+    {
+        point = normal = default;
+        if (!Ensure() || Props.Count == 0) return false;
+        float best = float.MaxValue;
+        foreach (var h in Physics2D.CircleCastAll(from, 0.1f, dir, reach, 1 << ShipLayer))
+        {
+            if (!h.collider || h.collider.isTrigger || h.distance >= best) continue;
+            if (!ByCollider.TryGetValue(h.collider.GetInstanceID(), out int k) || Props[k].Broken) continue;
+            best = h.distance; point = h.point; normal = h.normal;
+        }
+        return best < float.MaxValue;
+    }
+
     // ホスト: 打撃の届く所で、壁 (wallHit) より手前の壊れていない家具に当たるか。当たれば結果を決める
     internal static bool TryResolve(in DamageEvent e, Vector2 dir, float reach, bool wall, Vector2 wallHit, out ResolvedDamage r)
     {

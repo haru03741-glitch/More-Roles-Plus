@@ -123,7 +123,7 @@ internal sealed partial class RocketCannon
         var tp = target.transform.position;
         c._p0 = FxMath.V2(tp.x, tp.y);
         c._loadStart = Time.time;
-        if (!c.Build(launcher.Data != null ? launcher.Data.DefaultOutfit.ColorId : 0)) return;
+        if (!c.Build(GatlingFx.ShownColor(launcher))) return; // 見えている服の色 (変身・カモフラ中はその色)
         Live.Add(c);
         c.Place(0f);
         GunSound.Load(launcher);

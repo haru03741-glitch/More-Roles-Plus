@@ -1056,6 +1056,7 @@ HammerSwing.HitPortal: Hammered the portal device
 HammerSwing.HitDesk: Hammered the drafting desk
 HammerSwing.NoWallThatWay: No wall that way
 HammerSwing.HammerHit: Hammer hit
+HammerSwing.OuterWall: Outer walls can't be broken
 
 # ── SandboxCommands ──
 SandboxCommands.Hint: Practice: use the buttons or type /hammer to hit the wall you are facing (breaks on the 3rd hit), /blast to drop a bomb at your feet, /fire to set the floor at your feet on fire, /water to spray water the way you are facing, /flood to keep pouring water at your feet, /wall to put up a wall in front of you (/wall 0 = horizontal, /wall 90 = vertical)

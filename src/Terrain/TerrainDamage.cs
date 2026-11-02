@@ -22,6 +22,9 @@ internal static class TerrainDamage
     // テスト用: 直前の破壊で切り取った壁の区間 (線分の両端)。見た目の穴と当たり判定の抜けが揃っているかを holecheck で調べる
     internal static readonly List<Vector2> LastRemoved = new();
 
+    // 外壁なので断った時の理由 (叩いた人の手元でも同じ確かめをして回数を使わない)
+    internal const string OuterWallWhy = "blunt outer wall (protected)";
+
     // 依頼を結果に決める (ホストだけが呼ぶ)。地形は変えない。何も起きない時 (届く所に壁が無い・外壁) は false
     public static bool TryResolve(in DamageEvent e, out ResolvedDamage r, out string why)
     {
@@ -50,14 +53,14 @@ internal static class TerrainDamage
         // 裏の壁の中が線を越えずに空へつながる面 (外壁に付いた出っ張り) は、奥の面があっても外壁
         if (SolidMap.FacesSky(SolidMap.SkyNear(hit, StrikeSkyReach + 0.5f, new CircleShape(hit, StrikeSkyReach)), hit, normal))
         {
-            why = "blunt outer wall (protected)";
+            why = OuterWallWhy;
             return false;
         }
         // 奥の面が近くに無くても、裏が船体の塊 (エアシップの部屋と部屋の間) なら外壁ではない。1 打ごとに ThickStep ずつ掘り進む
         bool thick = false;
         if (far <= 0f)
         {
-            if (!ThickBehind(hit, -normal)) { why = "blunt outer wall (protected)"; return false; }
+            if (!ThickBehind(hit, -normal)) { why = OuterWallWhy; return false; }
             far = ThickStep;
             thick = true;
         }

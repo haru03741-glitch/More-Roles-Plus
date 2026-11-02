@@ -447,11 +447,11 @@ public sealed class PortalMaker : RoleBase
             Vector2 p = obj.GetTruePosition();
             float d = NearestMachine(p.x, p.y, out k);
             var lp = PlayerControl.LocalPlayer;
-            if (!lp || lp.PlayerId != hitter)
+            if ((!lp || lp.PlayerId != hitter) && obj.Visible)
             {
                 float dx = _x[k] - p.x, dy = _y[k] + PortalArt.MachineRise - p.y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
                 float edge = MathF.Max(0f, len - MachineR);
-                HammerSwing.PlayOther(FxMath.V2(p.x + dx / len * edge, p.y + dy / len * edge), FxMath.V2(dx / len, dy / len), pc.DefaultOutfit.ColorId);
+                HammerSwing.PlayOther(FxMath.V2(p.x + dx / len * edge, p.y + dy / len * edge), FxMath.V2(dx / len, dy / len), GatlingFx.ShownColor(obj));
             }
         }
         if (hits >= HammerHits) { Break(); return; }

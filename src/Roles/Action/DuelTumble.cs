@@ -329,7 +329,10 @@ internal static partial class DuelTumble
             h = RiseHop * FxMath.Sin(FxMath.PI * k);
         }
         Pose(s, s.Spin * ang, h);
-        PoseShadow(s, h);
+        // 透明な人は床の影も土ぼこりも出さない (体と違い本編が隠さないので、居場所が分かる)。転がっている間だけ読む
+        bool shown = s.Pc.Visible;
+        if (shown) PoseShadow(s, h);
+        else if (s.Shadow && s.Shadow.enabled) s.Shadow.enabled = false;
         // 横倒しで滑っている間は擦った跡の土ぼこり
         float now = Time.time;
         if (!s.Tech && t >= Air + Bounce && t < Air + Bounce + Slide && now >= s.NextDust)
@@ -383,7 +386,7 @@ internal static partial class DuelTumble
     private static void Dust(State s, int n, float size)
     {
         var pc = s.Pc;
-        if (!pc) return;
+        if (!pc || !pc.Visible) return; // 透明な人の所に土ぼこりを出すと居場所が分かる
         Vector3 r = pc.transform.position;
         DuelHitFx.Dust(r.x + s.Px * s.Scale, r.y + s.FootY * s.Scale, r.z + 0.001f, pc.gameObject.layer, s.Dx, s.Dy, n, size);
     }

@@ -1056,6 +1056,7 @@ HammerSwing.HitPortal: ハンマーでポータルの装置を叩いた
 HammerSwing.HitDesk: ハンマーで設計台を叩いた
 HammerSwing.NoWallThatWay: その方向に壁がありません
 HammerSwing.HammerHit: ハンマーで叩いた
+HammerSwing.OuterWall: 外壁は壊せません
 
 # ── SandboxCommands ──
 SandboxCommands.Hint: 練習: 右下のボタンかチャット欄の /hammer で向いている方向の壁を叩く (3 回で崩れる)・爆破ボタンか /blast で足元に爆弾を置く・点火ボタンか /fire で足元に火を付ける・放水ボタンか /water で向いている方向へ水を噴き出す・浸水ボタンか /flood で足元へ水を入れ続ける・壁ボタンか /wall で向いている方向の先に壁を立てる (/wall 0 = 横・/wall 90 = 縦)
