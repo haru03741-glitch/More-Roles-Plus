@@ -67,47 +67,104 @@ public sealed class Pusher : RoleBase
         });
     }
 
+    private const float StandRadius = 0.2f;
+    private const int FurnitureLayer = 1 << 12; // 机・緊急ボタンの台 (本編の ShipAndObjectsMask に入っていない)
+
+    private static bool CanStand(Vector2 at)
+    {
+        foreach (var c in Physics2D.OverlapCircleAll(at, StandRadius, Constants.ShipAndObjectsMask | FurnitureLayer))
+            if (c && !c.isTrigger) return false;
+        return true;
+    }
+
     private static byte MapId => GameManager.Instance ? GameManager.Instance.LogicOptions.MapId : (byte)255;
 
+    // 船を左右反転している時は、場所を鏡に映して左右の向きを入れ替える (突き落とす時だけ呼ぶ)
+    private static (Vector2 push, Dir dir) Spot(int i)
+    {
+        var s = Spots[MapId][i];
+        if (!MapFlip.Flipped) return (s.push, s.dir);
+        Dir dir = s.dir == Dir.Right ? Dir.Left : s.dir == Dir.Left ? Dir.Right : s.dir;
+        return (new Vector2(MapFlip.Mirror(s.push.x), s.push.y), dir);
+    }
+
+    // ボタンの狙いの判定で毎フレーム呼ばれるので、Unity の算術を使わずに比べる
     private static int SpotOf(PlayerControl p)
     {
         if (!p || !Spots.TryGetValue(MapId, out var list)) return -1;
+        var pos = p.transform.position;
+        float px = pos.x, py = pos.y;
+        bool flip = MapFlip.Flipped;
         for (int i = 0; i < list.Length; i++)
-            if (Vector2.Distance(list[i].at, p.transform.position) <= list[i].r) return i;
+        {
+            var s = list[i];
+            float dx = (flip ? MapFlip.Mirror(s.at.x) : s.at.x) - px, dy = s.at.y - py;
+            if (dx * dx + dy * dy <= s.r * s.r) return i;
+        }
         return -1;
     }
 
     private static Ladder LadderOf(PlayerControl p)
     {
-        var ship = ShipStatus.Instance;
-        if (!p || !ship || ship.Ladders == null) return null;
-        foreach (var l in ship.Ladders)
-            if (l && l.IsTop && Vector2.Distance(l.transform.position, p.transform.position) <= l.UsableDistance) return l;
-        return null;
+        int i = LadderIndex(p);
+        return i >= 0 ? ShipStatus.Instance.Ladders[i] : null;
     }
 
-    // 全員の端末で: 突き落とす。死体の扱いはホストが決める
+    private static int LadderIndex(PlayerControl p)
+    {
+        var ship = ShipStatus.Instance;
+        if (!p || !ship || ship.Ladders == null) return -1;
+        var ls = ship.Ladders;
+        for (int i = 0; i < ls.Length; i++)
+            if (ls[i] && ls[i].IsTop && Vector2.Distance(ls[i].transform.position, p.transform.position) <= ls[i].UsableDistance) return i;
+        return -1;
+    }
+
+    // 全員の端末で (ホストが狙いを確かめた後): ホストが守りを確かめてから結果を全員へ配る
     private static void Push(PlayerControl user, PlayerControl target)
     {
-        int spot = SpotOf(target);
-        var ladder = spot < 0 ? LadderOf(target) : null;
-        if (spot < 0 && !ladder) return;
-        Vector2 at = ladder ? (Vector2)ladder.transform.position + new Vector2(0f, 0.15f) : Spots[MapId][spot].push;
-        Dir dir = ladder ? Dir.Down : Spots[MapId][spot].dir;
-        if (user.AmOwner)
-        {
-            Net.Teleport.Self(at);
-            user.SetKillTimer(GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown));
-        }
-        Fall(target, at, dir, ladder ? (Vector2?)((Vector2)ladder.Destination.transform.position + new Vector2(0.15f, 0.2f)) : null);
         if (!AmongUsClient.Instance.AmHost) return;
+        int spot = SpotOf(target);
+        int ladder = spot < 0 ? LadderIndex(target) : -1;
+        if (spot < 0 && ladder < 0) return;
+        // 守り (守護者・ベスト・盾など) で止まった時は落とさない。はしごの上なら下へ降ろすだけ
+        bool blocked = PortKit.Alive(target) && BeforeMurderEvent.Ask(user, target) != null;
+        var m = (user.PlayerId, target.PlayerId, (sbyte)spot, (sbyte)ladder, blocked);
+        ResultCall.Send(m);
+        OnResult(m);
+    }
+
+    private static readonly Net.RemoteCall<(byte user, byte target, sbyte spot, sbyte ladder, bool blocked)> ResultCall = new("Pusher.Result", Net.Route.HostToAll,
+        (w, m) => { w.Write(m.user); w.Write(m.target); w.Write((byte)m.spot); w.Write((byte)m.ladder); w.Write(m.blocked); },
+        r => (r.ReadByte(), r.ReadByte(), (sbyte)r.ReadByte(), (sbyte)r.ReadByte(), r.ReadBoolean()),
+        (_, m) => OnResult(m));
+
+    private static void OnResult((byte user, byte target, sbyte spot, sbyte ladder, bool blocked) m)
+    {
+        var user = PortKit.ById(m.user);
+        var target = PortKit.ById(m.target);
+        if (!user || !target) return;
+        var ship = ShipStatus.Instance;
+        Ladder ladder = m.ladder >= 0 && ship && ship.Ladders != null && m.ladder < ship.Ladders.Length ? ship.Ladders[m.ladder] : null;
+        if (m.spot < 0 && !ladder) return;
+        if (user.AmOwner) user.SetKillTimer(GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown));
+        Vector2? bottom = ladder ? (Vector2)ladder.Destination.transform.position + new Vector2(0.15f, 0.2f) : null;
+        if (m.blocked)
+        {
+            if (ladder && target.AmOwner) Net.Teleport.Self(bottom.Value);
+            return;
+        }
+        Vector2 at = ladder ? (Vector2)ladder.transform.position + new Vector2(0f, 0.15f) : Spot(m.spot).push;
+        Dir dir = ladder ? Dir.Down : Spot(m.spot).dir;
+        // 突き落とす時に立つ所が壁や家具に掛かっていたら移らない (その場から押す)
+        if (user.AmOwner && CanStand(at)) Net.Teleport.Self(at);
+        Fall(target, at, dir, bottom);
+        if (!AmongUsClient.Instance.AmHost || !PortKit.Alive(user) || !PortKit.Alive(target)) return;
         if (ladder)
         {
-            byte id = target.PlayerId;
-            Vector2 bottom = (Vector2)ladder.Destination.transform.position + new Vector2(0.15f, 0.2f);
-            PortKit.HostKill(user, target);
-            BodyCall.Send((id, bottom));
-            MoveBody(id, bottom);
+            user.RpcMurderPlayer(target, true); // 守りは Push で確かめ済み
+            BodyCall.Send((target.PlayerId, bottom.Value));
+            MoveBody(target.PlayerId, bottom.Value);
         }
         else PortKit.HostVanish(user, target);
     }
