@@ -14,7 +14,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 同じ人に決まった数当たると倒れる。弾は壁で止まり (設定で抜ける)、同じ所に当て続けると壁が削れて穴が開く
 public sealed partial class TriggerHappy : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("TriggerHappy.Name");
     public override string Reading => "とりがーはっぴー";

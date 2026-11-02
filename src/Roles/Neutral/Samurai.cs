@@ -14,7 +14,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // 抜いた刀は全員に見える。一振りはホストが当たりを決め、斬った数と堕ちたかもホストが数えて本人にだけ知らせる (全員へ知らせるかは設定)
 public sealed partial class Samurai : RoleBase
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => "#4A8CFF";
     public override Text Name => new("Samurai.Name");
     public override string Reading => "さむらい";

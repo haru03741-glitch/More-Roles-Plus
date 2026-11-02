@@ -7,7 +7,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // ジャッカルが全員死ぬとジャッカルに上がる。最初から配られることはない
 public sealed class Sidekick : RoleBase
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => Jackal.PackColor;
     public override Text Name => new("Sidekick.Name");
     public override string Reading => "さいどきっく";

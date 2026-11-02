@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 操作中の「遠隔キル」は、操作している人の近くの人を、操作している人の手で倒す (倒すと操作は終わる)
 public sealed class RemoteController : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("RemoteController.Name");
     public override string Reading => "りもこん";

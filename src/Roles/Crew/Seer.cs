@@ -7,7 +7,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 霊媒師 (クルー): 誰かが死ぬと画面が光り、死んだ場所に魂が見える (追放では出ない)
 public sealed class Seer : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#61B26C";
     public override Text Name => new("Seer.Name");
     public override string Reading => "れいばいし";

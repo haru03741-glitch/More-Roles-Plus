@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // 死体を残さずに倒す能力 (吹き飛ばしなど) は防げない
 public sealed class Survivor : RoleBase
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => "#FFE64D";
     public override Text Name => new("Survivor.Name");
     public override string Reading => "せいぞんしゃ";

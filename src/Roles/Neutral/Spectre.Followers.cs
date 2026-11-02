@@ -8,7 +8,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // スペクターの満腹度が見える。インポスターの視界で停電の影響を受けない。スペクターが勝つと一緒に勝ち、死ぬと後を追う
 public sealed class SpectreFollower : RoleBase, ISpectreTeam
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => Spectre.Hex;
     public override Text Name => new("SpectreFollower.Name");
     public override string Reading => "こぎつね";
@@ -50,7 +50,7 @@ public sealed class SpectreFollower : RoleBase, ISpectreTeam
 // 幽霊になると皿のお揚げを取り除ける (スペクターが生きている間)。自分で死ねる (設定)。誰かがキルされると画面が光る (設定)
 public sealed class SpectreImmoralist : RoleBase, ISpectreTeam
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => Spectre.Hex;
     public override Text Name => new("SpectreImmoralist.Name");
     public override string Reading => "はいとくしゃ";

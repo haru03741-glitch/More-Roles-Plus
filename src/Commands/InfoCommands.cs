@@ -35,7 +35,7 @@ internal static class InfoCommands
         if (!InGame) return new Text("InfoCommands.OnlyDuringAGame");
         var role = RoleState.Local;
         if (role != null)
-            return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(role, null)}{RoleDisplay.LabelOf(role)[role.ColoredName.Length..]}\n{RoleDoc.Chat(role)}{RoleDisplay.AddonLines(role.PlayerId)}");
+            return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(role, null)}{RoleDisplay.LabelOf(role)[role.ShownColoredName.Length..]}\n{RoleDoc.Chat(role)}{RoleDisplay.AddonLines(role.PlayerId)}");
         return Dev.DevGod.Label(PlayerControl.LocalPlayer.PlayerId) ?? new Text("InfoCommands.NoRole");
     }
 
@@ -191,7 +191,7 @@ internal static class InfoCommands
                 if (sec.Role != null)
                 {
                     var r = sec.Role;
-                    if (r.Chance == null || r.Chance.Value <= 0) continue;
+                    if (!r.Appears) continue;
                     if (sb.Length > 0) sb.Append('\n');
                     sb.Append(r.ColoredName);
                     foreach (var o in sec.Opts)

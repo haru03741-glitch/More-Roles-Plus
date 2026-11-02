@@ -54,7 +54,8 @@ internal static class GuessKit
         var target = PortKit.ById(targetId);
         if (!PortKit.Alive(target)) return;
         var actual = RoleState.Of(target);
-        bool hit = actual != null && actual.GetType() == Registry.Roles[roleIdx].GetType();
+        // マッドメイトとして配られた人は、その役職でもマッドメイトでも当たる (NoS と同じ)
+        bool hit = actual != null && (actual.GetType() == Registry.Roles[roleIdx].GetType() || actual.Madden && Registry.Roles[roleIdx] is Crew.Madmate);
         if (hit)
             foreach (var r in RoleState.All)
                 if (r is IGuessShield s && s.ShieldsFromGuess(targetId)) { hit = false; break; }

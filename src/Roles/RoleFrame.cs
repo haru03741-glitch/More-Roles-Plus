@@ -42,7 +42,7 @@ internal static class RoleFrame
             Frame.Add(role);
             FrameHost.Add(c.FrameHost);
         }
-        if (c.Mark && role.IsLocal)
+        if ((c.Mark || role is RoleBase { Madden: true }) && role.IsLocal)
         {
             Marks.Add(role);
             if (_markEvery == 0) _markEvery = Math.Max(1, (int)(MarkSeconds / Time.fixedDeltaTime + 0.5f));
@@ -66,7 +66,7 @@ internal static class RoleFrame
             c.FrameLocal = frame.GetCustomAttribute<LocalOnlyAttribute>() != null;
             c.FrameHost = frame.GetCustomAttribute<HostOnlyAttribute>() != null;
         }
-        c.Mark = mark != null && mark.DeclaringType != typeof(Assignable);
+        c.Mark = mark != null && mark.DeclaringType != typeof(Assignable) && mark.DeclaringType != typeof(RoleBase); // RoleBase の分はマッドメイトとして配られた時だけ
         var pub = t.GetProperty(nameof(RoleBase.PublicMark), F);
         var seenBy = t.GetMethod(nameof(RoleBase.MarkSeenBy), F, new[] { typeof(PlayerControl) });
         c.Public = (pub != null && pub.DeclaringType != typeof(RoleBase)) || (seenBy != null && seenBy.DeclaringType != typeof(RoleBase) && seenBy.DeclaringType != typeof(AddonBase));

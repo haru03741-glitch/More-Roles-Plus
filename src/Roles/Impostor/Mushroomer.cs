@@ -16,7 +16,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 植え終わったら「爆発」で、船のキノコから一斉に胞子を出させる。どのマップでも使える
 public sealed class Mushroomer : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("Mushroomer.Name");
     public override string Reading => "まっしゅるーまー";

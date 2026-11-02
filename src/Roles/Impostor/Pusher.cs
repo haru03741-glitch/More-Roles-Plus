@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 「突き落とす」と、その人は落ちて死体も残らない。はしごの上にいる人を突き落とすと、はしごの下に死体が残る
 public sealed class Pusher : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("Pusher.Name");
     public override string Reading => "つきおとし";

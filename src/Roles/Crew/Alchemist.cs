@@ -9,12 +9,13 @@ namespace MoreRolesPlus.Roles.Crew;
 // 会議中、名札の錬金弾のボタンで選んだ人を撃ち抜く (1 回の会議で撃てる数まで)。ゲッサーが撃てない相手は撃てない
 public sealed class Alchemist : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#5A5FC0";
     public override Text Name => new("Alchemist.Name");
     public override string Reading => "あるけみすと";
     public override Text Blurb => new("Alchemist.Blurb");
     public override string Origin => "Uchu";
+    public override bool CanBeMadmate => true;
     public override HelpSection[] HelpSections => new HelpSection[] { new("Alchemist.Alchemy", "alchemist_alchemy"), new("Alchemist.Shoot", "alchemist_bullet") };
 
     public static readonly FloatOpt AlchemyCooldown = new("Alchemist.AlchemyCooldown", 30f, 0f, 60f, 2.5f, "s");

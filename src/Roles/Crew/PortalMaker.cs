@@ -15,7 +15,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 置き終わった後にもう一度押すと 2 つとも消え、置き直せる (設定で切れる)
 public sealed class PortalMaker : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#45D9C9";
     public override Text Name => new("PortalMaker.Name");
     public override string Reading => "ぽーたるめーかー";

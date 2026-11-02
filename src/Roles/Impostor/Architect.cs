@@ -15,7 +15,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 設計台はほかの人も使える。使った人は構築士のゲージで壁を引け (無駄うちさせる・自分の役に立てる)、構築士の設計図は閉じる
 public sealed class Architect : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#3C7FD8";
     public override Text Name => new("Architect.Name");
     public override string Reading => "こうちくし";

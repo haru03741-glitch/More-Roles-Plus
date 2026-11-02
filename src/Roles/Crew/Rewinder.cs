@@ -7,7 +7,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 押した本人も一緒に戻り、残るのはこのボタンの回数と待ち時間だけ
 public sealed class Rewinder : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#6FA8FF";
     public override Text Name => new("Rewinder.Name");
     public override string Reading => "ときもどし";

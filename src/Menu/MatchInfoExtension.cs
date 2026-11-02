@@ -279,7 +279,7 @@ internal static class MatchInfoExtension
                 var a = sec.Role;
                 if (a == null || a.Chance == null) continue;
                 if (mine.Contains(a.Id)) first.Add(a);
-                else if (a.Chance.Value > 0) rest.Add(a);
+                else if (a.Appears) rest.Add(a);
             }
         first.AddRange(rest);
         return first;

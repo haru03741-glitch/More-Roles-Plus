@@ -392,7 +392,7 @@ public static class GameEnd
         LocalWon = lp && r.Winners.Contains(lp.PlayerId);
         LocalNeutral = RoleState.Local?.Team == Team.Neutral;
         LocalSpectating = lp && Spectate.IsWatching(lp.PlayerId);
-        _localColor = RoleState.Local?.Color;
+        _localColor = RoleState.Local?.ShownColor;
         UI.EpithetEnd.Capture(r);
         Plugin.Logger.LogInfo($"win: draw={r.Draw} team={r.Team?.ToString() ?? "-"} role={r.Role?.Id ?? "-"} winners=[{string.Join(",", r.Winners)}] localWon={LocalWon}");
     }

@@ -23,7 +23,27 @@ public enum Team
 //   (GameEvents.cs)。値を返す問い合わせ (視界・キルの待ち時間・相乗り) は Assignable の Modify〜 / 下の AlsoWins を上書きする。
 public abstract class RoleBase : Assignable
 {
-    public abstract Team Team { get; }
+    // 陣営。役職のクラスは BaseTeam を書く。マッドメイトとして配られた人 (Madden) はマッドメイトになる
+    public Team Team => Madden ? Team.Madmate : BaseTeam;
+    public abstract Team BaseTeam { get; }
+
+    // マッドメイトとしても配れる役職か (NoS の「役職の能力を持つマッドメイト」)。true にすると設定に
+    // マッドメイトとして出る確率と人数が付く。クルーの役職だけ (配る席をクルーの席で選ぶため)。
+    // WinsWithTeam・CanVent・ModifyVision・NameMark を上書きする役職は base を呼ぶ。試合中に役職が替わる (Change) と素の役職に戻る
+    public virtual bool CanBeMadmate => false;
+
+    // マッドメイトとして配られた (全員の端末で同じ・割り当ての直後に決まる)
+    public bool Madden { get; internal set; }
+
+    // マッドメイトとして出る確率と人数 (CanBeMadmate の役職だけ・Registry が作る)
+    internal Options.IntOpt MadChance, MadCount;
+
+    internal override bool Appears => base.Appears || MadChance != null && Crew.Madmate.MaddenRoles && MadChance.Value > 0;
+
+    // 名前と色。マッドメイトとして配られた人は「マッド」を付けてマッドメイトの色にする
+    public Text ShownName => Madden ? Text.Raw(new Text("Madmate.Prefix").ToString() + Name) : Name;
+    public string ShownColor => Madden ? Crew.Madmate.MadColor : Color;
+    internal string ShownColoredName => $"<color={ShownColor}>{ShownName}</color>";
 
     // イントロに出る一行の説明
     public abstract Text Blurb { get; }
@@ -43,7 +63,7 @@ public abstract class RoleBase : Assignable
 
     // ベントを使えるか (null = 本編の役職のまま)。インポスターの役職で false にすると使えなくなり、クルーの役職で true にすると
     // インポスターと同じように (待ち時間無しで) 使える。設定値だけから決める
-    public virtual bool? CanVent => null;
+    public virtual bool? CanVent => Madden && Crew.Madmate.Vent ? true : null;
 
     // 陣営チャットを使えるか。同じ陣営で true の人同士がつながる (既定はインポスターだけ)
     public virtual bool HasTeamChat => Team == Team.Impostor;
@@ -108,7 +128,15 @@ public abstract class RoleBase : Assignable
     public virtual string Faction => IsKiller ? Id : null;
 
     // クルー / 第三陣営の姿のまま、別の陣営と一緒に勝つ (マッドメイトなら Team.Impostor)。自分の陣営の勝ちには入らない
-    public virtual Team? WinsWithTeam => null;
+    public virtual Team? WinsWithTeam => Madden ? Team.Impostor : null;
+
+    // マッドメイトとして配られた人はマッドメイトの設定 (インポスターの視界・インポスターが分かる) も持つ
+    public override void ModifyVision(ref float radius)
+    {
+        if (Madden) Crew.Madmate.ApplyVision(ref radius);
+    }
+
+    public override string NameMark(PlayerControl seen) => Madden ? Crew.Madmate.Mark(Player, seen) : null;
 
     // 第三陣営の陣営 (Faction) と一緒に勝つ (ジャッカルフレンズなら "Jackal")。自分の陣営の勝ちには入らない
     public virtual string WinsWithFaction => null;

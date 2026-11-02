@@ -130,7 +130,7 @@ internal static class MatchLog
     private static string BareRole(byte pid)
     {
         var role = RoleState.Of(pid);
-        if (role != null) return role.ColoredName;
+        if (role != null) return role.ShownColoredName;
         var r = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Role : null;
         return r ? $"<color=#{UnityEngine.ColorUtility.ToHtmlStringRGB(r.TeamColor)}>{r.NiceName}</color>" : null;
     }

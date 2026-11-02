@@ -14,7 +14,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // サムライは大砲の中では斬れず、中で刀を振ると振り払える。爆発では死なずに体力が減って吹き飛び、立ち合いになる
 public sealed class RocketLauncher : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("RocketLauncher.Name");
     public override string Reading => "ろけっとらんちゃー";

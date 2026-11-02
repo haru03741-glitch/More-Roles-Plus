@@ -16,7 +16,7 @@ public sealed class Doppelganger : RoleBase
 {
     public const string Hex = "#BF67D7";
 
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => Hex;
     public override Text Name => new("Doppelganger.Name");
     public override string Reading => "どっぺるげんがー";

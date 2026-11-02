@@ -6,7 +6,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // シェリフ (クルー): 「執行」で近くの人を倒す。倒してよい陣営でなければ自分が死ぬ
 public sealed class Sheriff : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#FFFF00";
     public override Text Name => new("Sheriff.Name");
     public override string Reading => "しぇりふ";

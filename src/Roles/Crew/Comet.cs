@@ -7,7 +7,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 透明の間は他の人に見えず、キルも能力も受けない。始めと終わりは姿が薄れて消える・現れる。停電で視界が狭まらない
 public sealed class Comet : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#79AFCE";
     public override Text Name => new("Comet.Name");
     public override string Reading => "こめっと";

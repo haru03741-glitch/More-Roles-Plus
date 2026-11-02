@@ -18,7 +18,7 @@ public abstract class VanillaRole : RoleBase
     protected abstract Text FallbackName { get; }
 
     public override string Id => Type.ToString();
-    public override Team Team => IsImpostorType(Type) ? Team.Impostor : Team.Crew;
+    public override Team BaseTeam => IsImpostorType(Type) ? Team.Impostor : Team.Crew;
     public override string Color => Team == Team.Impostor ? "#FF1919" : "#8CFFFF";
     public override RoleTypes BaseRole => Type;
     internal override bool IsVanilla => true;

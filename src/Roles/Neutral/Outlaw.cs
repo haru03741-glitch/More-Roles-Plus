@@ -4,7 +4,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // キルのクールダウン・視界・キルの距離は第三陣営のキル役の共通設定 (NeutralKillSettings)
 public sealed class Outlaw : RoleBase
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => "#8C6239";
     public override Text Name => new("Outlaw.Name");
     public override string Reading => "むほうもの";

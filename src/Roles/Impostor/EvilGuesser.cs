@@ -6,7 +6,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // イビルゲッサー (インポスター): 会議中に人の役職を当てると、その人を撃ち抜ける。外すと自分が死ぬ
 public sealed class EvilGuesser : RoleBase, IGuesser
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("EvilGuesser.Name");
     public override string Reading => "いびるげっさー";

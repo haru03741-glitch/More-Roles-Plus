@@ -8,7 +8,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // ヴァルチャー (第三陣営): 死体の近くで「喰らう」と死体が消える。決めた数を食べるとその場で単独勝ち。死体への矢印が見える
 public sealed class Vulture : RoleBase
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => "#8B4513";
     public override Text Name => new("Vulture.Name");
     public override string Reading => "ゔぁるちゃー";

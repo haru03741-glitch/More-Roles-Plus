@@ -512,6 +512,10 @@ Registry.Chance: 出現率
 Registry.Chance.Detail: 試合ごとに、この役職が出るかを 1 人分ずつ抽選する確率です。100% なら必ず出て、0% なら出ません。「役職が付かなかった人」を埋める設定にしている時は、余った人へ配る役職を選ぶ重みにもなります。
 Registry.Count: 人数
 Registry.Count.Detail: 1 試合に出る最大の人数です。1 人分ずつ出現率で抽選します。
+Registry.MadChance: マッドメイトとして出る確率
+Registry.MadChance.Detail: 試合ごとに、この役職がマッドメイトとして出るかを 1 人分ずつ抽選する確率です。マッドメイトとして出た人は能力がそのままで、インポスターが勝つと一緒に勝ちます。
+Registry.MadCount: マッドメイトとして出る人数
+Registry.MadCount.Detail: この役職がマッドメイトとして 1 試合に出る最大の人数です。
 Registry.NotWith: 一緒に出ない役職
 RoleSetOpt.None: なし
 RoleSetOpt.More: {name} ほか {n}
@@ -1254,6 +1258,10 @@ Madmate.KnowImpostors: インポスターが分かる
 Madmate.NeededTasks: 分かるのに要るタスクの数
 Madmate.CanVent: ベントを使える
 Madmate.ImpostorVision: インポスターの視界を持つ
+Madmate.MaddenRoles: クルーの役職をマッドメイトにする
+Madmate.MaddenRoles.Detail: 一部のクルーの役職を、能力はそのままでマッドメイトとして配れるようにします。出る確率と人数はその役職の設定で決めます。マッドメイトとして配られた人には、マッドメイトの設定 (インポスターが分かる・ベント・視界) も効きます。
+Madmate.Prefix: マッド
+RoleState.Changed: 役職が {role} になった
 # ── シェリフ (Sheriff) ──
 Sheriff.Name: シェリフ
 Sheriff.Blurb: 正義の名のもとに

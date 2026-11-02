@@ -15,7 +15,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 油と火を床に入れるのはホストだけ (地形の火はホストを通して全員へ配られる)
 public sealed class Phosphorus : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#F9BC51";
     public override Text Name => new("Phosphorus.Name");
     public override string Reading => "ほすふぉらす";

@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // アーソニスト (第三陣営): 「塗る」で近くの人に少しの間そばにいるとオイルを塗れる (離れると失敗)。生きている全員に塗ってから「燃やす」と単独勝ち
 public sealed class Arsonist : RoleBase
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => "#FF6600";
     public override Text Name => new("Arsonist.Name");
     public override string Reading => "あーそにすと";

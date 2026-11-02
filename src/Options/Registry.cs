@@ -70,6 +70,14 @@ internal static class Registry
                     Add(sec, role.Chance, role.Id + ".Chance");
                     Add(sec, role.Count, role.Id + ".Count");
                 }
+                // マッドメイトとしても配れる役職は、マッドメイトの「役職の能力を持つ」が入っている間だけ確率と人数を出す
+                if (role.CanBeMadmate && !role.MadeByOthers)
+                {
+                    role.MadChance = new IntOpt("Registry.MadChance", 0, 0, 100, 10, "%") { When = () => MoreRolesPlus.Roles.Crew.Madmate.MaddenRoles };
+                    role.MadCount = new IntOpt("Registry.MadCount", 1, 1, Math.Max(role.MaxCount, 1)) { When = () => MoreRolesPlus.Roles.Crew.Madmate.MaddenRoles && role.MadChance > 0 };
+                    Add(sec, role.MadChance, role.Id + ".MadChance");
+                    Add(sec, role.MadCount, role.Id + ".MadCount");
+                }
                 foreach (var (name, opt) in opts) Add(sec, opt, role.Id + "." + name);
             }
             catch (Exception e)

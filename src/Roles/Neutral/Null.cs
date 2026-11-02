@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // 時間を数えるのはホストだけで、1 秒ごととフェーズが変わった時に全員へ配る。ボタンの満ち方と残りの秒で進みが見える
 public sealed class Null : RoleBase
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => "#FFFFFF";
     public override Text Name => new("Null.Name");
     public override string Reading => "ぬる";

@@ -11,9 +11,9 @@ namespace MoreRolesPlus.Roles.Crew;
 // ユビキタス (クルー): 「呼ぶ / 戻す」で足元にドローンを出す (もう一度押すと消す)。「操作」の間は自分は動けず、カメラがドローンへ移って
 // ドローンを飛ばせる (ドローンのまわりが見える)。操作中は「ドアを開ける」で近くの閉まったドアを開けられる。
 // 会議が始まるとドローンはその場に止まり、設定の会議の数だけ残る。止まったドローンの近くにいる人は地図に映る
-public sealed class Ubiquitous : RoleBase
+public sealed partial class Ubiquitous : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#389BDF";
     public override Text Name => new("Ubiquitous.Name");
     public override string Reading => "ゆびきたす";

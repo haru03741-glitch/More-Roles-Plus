@@ -98,6 +98,9 @@ public abstract class Assignable
     internal IntOpt Chance;
     internal IntOpt Count;
 
+    // 今の設定で試合に出うるか (出現率 > 0・役職はマッドメイトとして出る分も)
+    internal virtual bool Appears => Chance != null && Chance.Value > 0;
+
     internal string ColoredName => $"<color={Color}>{Name}</color>";
 }
 

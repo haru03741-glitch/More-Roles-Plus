@@ -92,7 +92,7 @@ internal static class RoleDisplay
     }
 
     // 役職名 + アドオン名 (色付き)
-    public static string LabelOf(RoleBase role) => role.ColoredName + AddonSuffix(role.PlayerId);
+    public static string LabelOf(RoleBase role) => role.ShownColoredName + AddonSuffix(role.PlayerId);
 
     // 自分の役職の名前・説明が試合の途中で変わった (フェイクジェスターの自覚など): 名前の上の役職名とタスク欄を書き直す
     internal static void Relabel(RoleBase role)
@@ -139,7 +139,7 @@ internal static class RoleDisplay
         string text = "";
         if (role != null)
         {
-            text = $"<color={role.Color}>{role.Name}: {role.Description}";
+            text = $"<color={role.ShownColor}>{role.ShownName}: {role.Description}";
             if (role.Team == Team.Neutral) text += "\n" + new Text("RoleDisplay.YourTasksDoNotCount");
             text += "</color>";
         }
@@ -238,9 +238,9 @@ internal static class RoleDisplay
             }
             return;
         }
-        var color = ParseColor(role.Color);
+        var color = ParseColor(role.ShownColor);
         intro.YouAreText.color = color;
-        intro.RoleText.text = role.Name;
+        intro.RoleText.text = role.ShownName;
         intro.RoleText.color = color;
         intro.RoleBlurbText.text = role.Blurb.ToString() + AddonLines(role.PlayerId, 80);
         intro.RoleBlurbText.color = color;

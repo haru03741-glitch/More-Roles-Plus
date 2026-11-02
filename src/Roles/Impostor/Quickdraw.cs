@@ -5,7 +5,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 見本の役職 (インポスター): キルの待ち時間が短い
 public sealed class Quickdraw : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#E04040";
     public override Text Name => new("Quickdraw.Name");
     public override string Reading => "はやうち";

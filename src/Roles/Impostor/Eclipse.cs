@@ -9,9 +9,9 @@ namespace MoreRolesPlus.Roles.Impostor;
 // エクリプス (インポスター): 「マーク」で足元に隕石の落ちる所の印を置く (少しの間動けない・音が鳴る)。
 // 「メテオ」で印の所へ隕石を落とす。全員の画面に赤い円で警告が出て、決めた秒の後に落ち、円の中の人を味方も自分も問わず倒す。
 // 印は自分にしか見えない。会議で印を消す (設定)
-public sealed class Eclipse : RoleBase
+public sealed partial class Eclipse : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("Eclipse.Name");
     public override string Reading => "えくりぷす";

@@ -40,9 +40,10 @@ public static class RoleState
     // 第三陣営の役職か、別の陣営と勝つ役職 (RoleBase.NeedsMrpEnd) が誰かに付いている試合か (付いていない試合の勝敗は本編のまま)
     public static bool AnyNeutral { get; private set; }
 
-    internal static void Assign(PlayerControl p, RoleBase proto, IReadOnlyList<AddonBase> addonProtos)
+    internal static void Assign(PlayerControl p, RoleBase proto, IReadOnlyList<AddonBase> addonProtos, bool madden = false)
     {
         var role = (RoleBase)Activator.CreateInstance(proto.GetType());
+        role.Madden = madden && proto.CanBeMadmate; // 陣営 (Team) を読む物より先に
         role.Player = p;
         role.PlayerId = p.PlayerId;
         role.Chance = proto.Chance;
@@ -256,6 +257,7 @@ public sealed class Pick
 {
     public byte PlayerId;
     public int RoleIndex;
+    public bool Madden; // マッドメイトとして配る (RoleBase.CanBeMadmate の役職だけ)
     public readonly List<int> Addons = new();
 }
 
@@ -286,6 +288,21 @@ public static class AssignPlan
                 else if (rng.Next(100) < chance) lucky.Add(i);
             }
         }
+        // マッドメイトとして配る分 (番号 + 役職の数 で表す)
+        int madBase = Registry.Roles.Count;
+        if (Crew.Madmate.MaddenRoles && RoleSettings.Enabled)
+            for (int i = 0; i < Registry.Roles.Count; i++)
+            {
+                var r = Registry.Roles[i];
+                if (r.MadChance == null || !r.CanBeMadmate || !Usable(r)) continue;
+                int chance = r.MadChance;
+                if (chance <= 0) continue;
+                for (int k = 0; k < r.MadCount.Value; k++)
+                {
+                    if (chance >= 100) sure.Add(madBase + i);
+                    else if (rng.Next(100) < chance) lucky.Add(madBase + i);
+                }
+            }
         Shuffle(sure, rng);
         Shuffle(lucky, rng);
         Groups.Clear();
@@ -313,10 +330,10 @@ public static class AssignPlan
             maxKillers = Math.Min(NeutralKillSettings.MaxKillers.Value, maxNeutral);
             minNeutral = Math.Min(NeutralKillSettings.MinNeutrals.Value, maxNeutral);
         }
-        void Take(int slotIndex, int roleIndex)
+        void Take(int slotIndex, int roleIndex, bool madden = false)
         {
             var role = Registry.Roles[roleIndex];
-            plan.Add(new Pick { PlayerId = free[slotIndex].PlayerId, RoleIndex = roleIndex });
+            plan.Add(new Pick { PlayerId = free[slotIndex].PlayerId, RoleIndex = roleIndex, Madden = madden });
             free.RemoveAt(slotIndex);
             chosen.Add(role);
             taken[roleIndex]++;
@@ -410,8 +427,10 @@ public static class AssignPlan
             }
         }
 
-        foreach (int idx in sure.Concat(lucky))
+        foreach (int code in sure.Concat(lucky))
         {
+            bool madden = code >= madBase;
+            int idx = madden ? code - madBase : code;
             var role = Registry.Roles[idx];
             if (OverLimit(role))
             {
@@ -435,7 +454,7 @@ public static class AssignPlan
                 if (stats != null) stats.LimitSkips++;
                 continue;
             }
-            Take(pick, idx);
+            Take(pick, idx, madden);
         }
 
         // 第三陣営が最少に届かなければ、出現率を重みに第三陣営の役職から足す
@@ -548,7 +567,7 @@ public static class AssignPlan
                 picks.TryGetValue(slot.PlayerId, out var pick);
                 if (pick != null && (pick.Addons.Count >= maxPer || pick.Addons.Contains(ai))) continue;
                 RoleBase role = pick != null && pick.RoleIndex >= 0 ? Registry.Roles[pick.RoleIndex] : null;
-                var team = role != null ? role.Team : slot.Impostor ? Team.Impostor : Team.Crew;
+                var team = role != null ? (pick.Madden ? Team.Madmate : role.Team) : slot.Impostor ? Team.Impostor : Team.Crew;
                 if (addon.CanAttach(team, role)) candidates.Add(i);
             }
             int size = Math.Max(addon.GroupSize, 1);
@@ -879,6 +898,7 @@ internal static class RoleAssigner
             {
                 w.Write(p.PlayerId);
                 w.WritePacked(p.RoleIndex + 1);
+                w.Write(p.Madden);
                 w.Write((byte)p.Addons.Count);
                 foreach (int a in p.Addons) w.WritePacked(a);
             }
@@ -889,7 +909,7 @@ internal static class RoleAssigner
             var plan = new List<Pick>(n);
             for (int i = 0; i < n; i++)
             {
-                var p = new Pick { PlayerId = r.ReadByte(), RoleIndex = r.ReadPackedInt32() - 1 };
+                var p = new Pick { PlayerId = r.ReadByte(), RoleIndex = r.ReadPackedInt32() - 1, Madden = r.ReadBoolean() };
                 int na = r.ReadByte();
                 for (int k = 0; k < na; k++)
                 {
@@ -918,13 +938,13 @@ internal static class RoleAssigner
 
     // 試験用 (ホスト): target に役職を付け直して全員に配る。他の人の役職とアドオンはそのまま。土台の役職も合わせる。
     // addons = その人に付けるアドオン (null なら今付いている物を残す)
-    internal static void Give(PlayerControl target, RoleBase proto, IReadOnlyList<AddonBase> addons = null)
+    internal static void Give(PlayerControl target, RoleBase proto, IReadOnlyList<AddonBase> addons = null, bool madden = false)
     {
         var plan = new List<Pick>();
         foreach (var r in RoleState.All)
         {
             if (r.PlayerId == target.PlayerId || !r.Player) continue;
-            var keep = new Pick { PlayerId = r.PlayerId, RoleIndex = Registry.Roles.FindIndex(x => x.Id == r.Id) };
+            var keep = new Pick { PlayerId = r.PlayerId, RoleIndex = Registry.Roles.FindIndex(x => x.Id == r.Id), Madden = r.Madden };
             foreach (var a in RoleState.AddonsOf(r.PlayerId)) keep.Addons.Add(Registry.Addons.FindIndex(x => x.Id == a.Id));
             plan.Add(keep);
         }
@@ -936,7 +956,7 @@ internal static class RoleAssigner
             if (keep == null) plan.Add(keep = new Pick { PlayerId = a.PlayerId, RoleIndex = -1 });
             keep.Addons.Add(Registry.Addons.FindIndex(x => x.Id == a.Id));
         }
-        var mine = new Pick { PlayerId = target.PlayerId, RoleIndex = Registry.Roles.IndexOf(proto) };
+        var mine = new Pick { PlayerId = target.PlayerId, RoleIndex = Registry.Roles.IndexOf(proto), Madden = madden };
         if (addons != null) foreach (var a in addons) mine.Addons.Add(Registry.Addons.IndexOf(a));
         else foreach (var a in RoleState.AddonsOf(target.PlayerId)) mine.Addons.Add(Registry.Addons.FindIndex(x => x.Id == a.Id));
         plan.Add(mine);
@@ -958,10 +978,10 @@ internal static class RoleAssigner
             addons.Clear();
             foreach (int a in p.Addons) addons.Add(Registry.Addons[a]);
             if (p.RoleIndex < 0) RoleState.AssignAddonsOnly(player, addons);
-            else RoleState.Assign(player, Registry.Roles[p.RoleIndex], addons);
+            else RoleState.Assign(player, Registry.Roles[p.RoleIndex], addons, p.Madden);
         }
         foreach (var p in plan) MatchLog.NoteRole(p.PlayerId); // 試合中の付け直し (始まりの配りはイントロの後に起点を取るので数えない)
-        Plugin.Logger.LogInfo($"roles: {string.Join(", ", plan.Select(x => $"{x.PlayerId}={(x.RoleIndex < 0 ? "-" : Registry.Roles[x.RoleIndex].Id)}{string.Concat(x.Addons.Select(a => "+" + Registry.Addons[a].Id))}"))}");
+        Plugin.Logger.LogInfo($"roles: {string.Join(", ", plan.Select(x => $"{x.PlayerId}={(x.RoleIndex < 0 ? "-" : (x.Madden ? "Mad" : "") + Registry.Roles[x.RoleIndex].Id)}{string.Concat(x.Addons.Select(a => "+" + Registry.Addons[a].Id))}"))}");
     }
 }
 

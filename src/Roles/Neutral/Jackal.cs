@@ -12,7 +12,7 @@ public sealed class Jackal : RoleBase
     public const string Pack = "Jackal";
     public const string PackColor = "#00B4EB";
 
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => PackColor;
     public override Text Name => new("Jackal.Name");
     public override string Reading => "じゃっかる";

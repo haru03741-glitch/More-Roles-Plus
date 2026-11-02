@@ -16,7 +16,7 @@ public sealed class Scarlet : RoleBase, IGuessBlock
 {
     public const string Hex = "#8A1A31";
 
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => Hex;
     public override Text Name => new("Scarlet.Name");
     public override string Reading => "すかーれっと";

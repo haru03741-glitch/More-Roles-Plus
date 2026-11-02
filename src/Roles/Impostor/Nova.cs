@@ -14,7 +14,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // ボタンは構えの切り替えと待ち時間の表示に使う。スマホはボタンを押している間溜め、最後に歩いた向きへ撃つ
 public sealed partial class Nova : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("Nova.Name");
     public override string Reading => "のゔぁ";

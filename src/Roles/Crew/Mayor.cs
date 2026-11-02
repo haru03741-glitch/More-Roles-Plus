@@ -6,7 +6,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // メイヤー (クルー): 会議で何票分も入れられる
 public sealed class Mayor : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#008080";
     public override Text Name => new("Mayor.Name");
     public override string Reading => "めいやー";

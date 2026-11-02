@@ -6,7 +6,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // ナイスゲッサー (クルー): 会議中に人の役職を当てると、その人を撃ち抜ける。外すと自分が死ぬ
 public sealed class NiceGuesser : RoleBase, IGuesser
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#FFFF00";
     public override Text Name => new("NiceGuesser.Name");
     public override string Reading => "ないすげっさー";

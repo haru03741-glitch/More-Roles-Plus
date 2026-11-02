@@ -835,7 +835,7 @@ internal static class DevCommands
             {
                 if (d == null) continue;
                 var role = RoleState.Of(d.PlayerId);
-                reply($"PLAYER {d.PlayerId} {d.PlayerName} {(d.IsDead ? "dead" : "alive")} {(d.Role ? d.Role.Role.ToString() : "-")} {role?.Id ?? "-"}");
+                reply($"PLAYER {d.PlayerId} {d.PlayerName} {(d.IsDead ? "dead" : "alive")} {(d.Role ? d.Role.Role.ToString() : "-")} {(role is { Madden: true } ? "Mad" : "")}{role?.Id ?? "-"}");
             }
             reply("OK players");
         });
@@ -845,6 +845,13 @@ internal static class DevCommands
     {
         var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var proto = a.Length > 0 ? Registry.Roles.FirstOrDefault(r => string.Equals(r.Id, a[0], StringComparison.OrdinalIgnoreCase)) : null;
+        // 「Mad<役職>」= マッドメイトとして配る (試合中だけ)
+        bool madden = false;
+        if (proto == null && a.Length > 0 && a[0].StartsWith("Mad", StringComparison.OrdinalIgnoreCase))
+        {
+            proto = Registry.Roles.FirstOrDefault(r => r.CanBeMadmate && string.Equals(r.Id, a[0][3..], StringComparison.OrdinalIgnoreCase));
+            madden = proto != null;
+        }
         if (proto == null) { reply($"ERR setrole unknown {args} (roles で一覧)"); return; }
         if (!PlayerControl.LocalPlayer || !AmongUsClient.Instance.AmHost) { reply("ERR setrole needs host in game"); return; }
         var target = a.Length > 1 && byte.TryParse(a[1], out byte pid) ? Player(pid) : PlayerControl.LocalPlayer;
@@ -852,12 +859,13 @@ internal static class DevCommands
         // ロビーでは次の試合の予約にする (チャットの /setrole と同じ。役職の発表まで通して見る時に使う)
         if (LobbyBehaviour.Instance && !ShipStatus.Instance)
         {
+            if (madden) { reply("ERR setrole Mad<役職> は試合中だけ"); return; }
             RoleAssigner.Reserved[target.PlayerId] = Registry.Roles.IndexOf(proto);
             reply($"OK setrole {proto.Id} reserved for={target.PlayerId}");
             return;
         }
-        RoleAssigner.Give(target, proto);
-        reply($"OK setrole {proto.Id} to={target.PlayerId} base={target.Data.Role.Role} neutral={RoleState.AnyNeutral}");
+        RoleAssigner.Give(target, proto, null, madden);
+        reply($"OK setrole {(madden ? "Mad" : "")}{proto.Id} team={RoleState.Of(target)?.Team} to={target.PlayerId} base={target.Data.Role.Role} neutral={RoleState.AnyNeutral}");
     }
 
     private static void GiveAddon(string args, Action<string> reply)

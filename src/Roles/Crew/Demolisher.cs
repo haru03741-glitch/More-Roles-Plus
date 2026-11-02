@@ -6,7 +6,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 見本の役職 (クルー・能力ボタン): ハンマーで向いている方向の壁を叩いて壊す
 public sealed class Demolisher : RoleBase
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#C9873A";
     public override Text Name => new("Demolisher.Name");
     public override string Reading => "かいたいや";

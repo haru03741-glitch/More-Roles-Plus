@@ -14,7 +14,7 @@ public sealed class Spectre : RoleBase
 {
     public const string Hex = "#B998C5";
 
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => Hex;
     public override Text Name => new("Spectre.Name");
     public override string Reading => "ようこ";

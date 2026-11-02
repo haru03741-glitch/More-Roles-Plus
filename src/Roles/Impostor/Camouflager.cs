@@ -8,7 +8,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // カモフラージャー (インポスター): 「カモフラージュ」でしばらく全員の見た目を自分と同じにする
 public sealed class Camouflager : RoleBase
 {
-    public override Team Team => Team.Impostor;
+    public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
     public override Text Name => new("Camouflager.Name");
     public override string Reading => "かもふらーじゃー";

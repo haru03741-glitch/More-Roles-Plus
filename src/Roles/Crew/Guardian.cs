@@ -12,7 +12,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 元の mod (ホストだけの mod) は自分へ投票して守るモードにしてから投票で選ぶが、ここでは会議の名札のボタンで選ぶ
 public sealed class Guardian : RoleBase, IGuessShield
 {
-    public override Team Team => Team.Crew;
+    public override Team BaseTeam => Team.Crew;
     public override string Color => "#67E9FF";
     public override Text Name => new("Guardian.Name");
     public override string Reading => "しゅごしゃ";

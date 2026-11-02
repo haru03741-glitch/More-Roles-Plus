@@ -7,8 +7,9 @@ namespace MoreRolesPlus.Roles.Crew;
 // 設定でタスクを決めた数だけ終えるとインポスターが誰か分かる
 public sealed class Madmate : RoleBase
 {
-    public override Team Team => Team.Madmate;
-    public override string Color => "#FF1919";
+    public override Team BaseTeam => Team.Madmate;
+    internal const string MadColor = "#FF1919";
+    public override string Color => MadColor;
     public override Text Name => new("Madmate.Name");
     public override string Reading => "まっどめいと";
     public override Text Blurb => new("Madmate.Blurb");
@@ -19,14 +20,21 @@ public sealed class Madmate : RoleBase
     public static readonly IntOpt NeededTasks = new("Madmate.NeededTasks", 6, 0, 30) { When = () => KnowImpostors };
     public static readonly BoolOpt Vent = new("Madmate.CanVent", false);
     public static readonly BoolOpt ImpostorSight = new("Madmate.ImpostorVision", false);
+    // クルーの役職 (CanBeMadmate) をマッドメイトとしても配る。出る確率と人数はその役職の設定に出る
+    public static readonly BoolOpt MaddenRoles = new("Madmate.MaddenRoles", false);
 
     public override bool? CanVent => Vent ? true : null;
 
-    public override void ModifyVision(ref float radius)
+    public override void ModifyVision(ref float radius) => ApplyVision(ref radius);
+
+    public override string NameMark(PlayerControl seen) => Mark(Player, seen);
+
+    // マッドメイトとして配られた役職 (RoleBase.Madden) と共通
+    internal static void ApplyVision(ref float radius)
     {
         if (ImpostorSight) PortKit.ImpostorVision(ref radius);
     }
 
-    public override string NameMark(PlayerControl seen) =>
-        KnowImpostors && PortKit.TasksDone(Player) >= NeededTasks && PortKit.IsImpostor(seen) ? "<color=#FF1919>●</color>" : null;
+    internal static string Mark(PlayerControl me, PlayerControl seen) =>
+        KnowImpostors && PortKit.TasksDone(me) >= NeededTasks && PortKit.IsImpostor(seen) ? "<color=#FF1919>●</color>" : null;
 }

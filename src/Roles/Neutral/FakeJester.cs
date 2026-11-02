@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Roles.Neutral;
 // 自覚したまま試合の終わりに生きていれば勝ち (勝った陣営に相乗り / 単独で勝ちを奪う)。追放されても勝ちにならない
 public sealed class FakeJester : RoleBase
 {
-    public override Team Team => Team.Neutral;
+    public override Team BaseTeam => Team.Neutral;
     public override string Color => "#EC62A5";
     public override Text Name => Disguised ? Jester.Name : _awake && !IsLocal && !_revealed
         ? Text.Raw($"{Jester.Name}/{new Text("FakeJester.Name")}") : new Text("FakeJester.Name");

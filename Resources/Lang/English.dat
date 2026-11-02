@@ -512,6 +512,10 @@ Registry.Chance: Chance
 Registry.Chance.Detail: Each game, every slot of this role is rolled separately at this chance. 100% always appears; 0% never does. When "Players left without a role" fills them, this is also the weight used to hand out leftover roles.
 Registry.Count: Count
 Registry.Count.Detail: The most players who can get this role in one game. Each one is rolled separately with the chance.
+Registry.MadChance: Chance as Madmate
+Registry.MadChance.Detail: Each game, every slot of this role as a Madmate is rolled separately at this chance. A Madmate version keeps the role's abilities and wins when the impostors win.
+Registry.MadCount: Count as Madmate
+Registry.MadCount.Detail: The most players who can get this role as a Madmate in one game.
 Registry.NotWith: Never with
 RoleSetOpt.None: None
 RoleSetOpt.More: {name} +{n}
@@ -1254,6 +1258,10 @@ Madmate.KnowImpostors: Can know the impostors
 Madmate.NeededTasks: Tasks needed to know them
 Madmate.CanVent: Can use vents
 Madmate.ImpostorVision: Has impostor vision
+Madmate.MaddenRoles: Crew roles can be Madmates
+Madmate.MaddenRoles.Detail: Some crew roles can be handed out as Madmates, keeping their abilities. Set the chance and count in each role's settings. These Madmates also follow the Madmate settings above (knowing the impostors, vents, vision).
+Madmate.Prefix: Mad-
+RoleState.Changed: Your role is now {role}
 # ── シェリフ (Sheriff) ──
 Sheriff.Name: Sheriff
 Sheriff.Blurb: In the name of justice
