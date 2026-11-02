@@ -90,11 +90,18 @@ public sealed class Guardian : RoleBase, IGuessShield
         if (!PortKit.Alive(Player) || _sacrificing) return; // 身代わりは 1 回だけ (爆発などで守った人が何人も巻き込まれても)
         _sacrificing = true;
         e.Cancel("guardian");
-        PortKit.HostBlocked(e.Killer, target);
+        bool meeting = MeetingHud.Instance; // 会議の弾 (アルケミスト)
+        if (!meeting) PortKit.HostBlocked(e.Killer, target);
         SacrificeCall.Send((PlayerId, target.PlayerId));
         OnSacrificed(this, target.PlayerId);
         var me = Player;
-        PortKit.After(0.05f, () => { if (PortKit.Alive(me)) PortKit.HostSuicide(me); });
+        // 倒れた後は Alive で止まる。生き返り・時戻しで戻った後にまた身代わりになれるよう、倒し終えたら外す
+        // 会議中は本編のキルの演出を出せないので、死体を残さず倒して名札に反映する
+        PortKit.After(0.05f, () =>
+        {
+            if (PortKit.Alive(me)) { if (meeting) PortKit.HostVanish(me, me); else PortKit.HostSuicide(me); }
+            _sacrificing = false;
+        });
     }
 
     private static readonly RemoteCall<(byte guardian, byte target)> SacrificeCall = new("Guardian.Sacrifice", Route.HostToAll,
@@ -104,8 +111,23 @@ public sealed class Guardian : RoleBase, IGuessShield
     // 全員の端末で: 守りを外し、次の会議で知らせる
     private static void OnSacrificed(Guardian g, byte target)
     {
+        if (!g._guards.TryGetValue(target, out int left)) left = 0;
         g._guards.Remove(target);
-        g._savedQueue.Add(target);
+        // 会議中の身代わりはその場で知らせる (守護者が名札の上で死ぬので)。試合中は次の会議で
+        bool now = MeetingHud.Instance;
+        if (now)
+        {
+            var p = PortKit.ById(target);
+            if (p && p.Data != null) PortKit.Notice(new Text("Guardian.SacrificeAnnounce").With("name", p.Data.PlayerName).ToString());
+        }
+        else g._savedQueue.Add(target);
+        // 時戻しで身代わりの前へ戻ると、守りも残りの会議の数ごと戻る (守護者自身の生き死には時戻しが戻す)
+        Rewind.Undo(_ =>
+        {
+            if (!now) g._savedQueue.Remove(target);
+            if (left > 0) g._guards[target] = left;
+            g._sacrificing = false;
+        });
     }
 
     private void OnMeetingStart(MeetingStartEvent e)

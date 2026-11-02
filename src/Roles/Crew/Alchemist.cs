@@ -59,7 +59,11 @@ public sealed class Alchemist : RoleBase
     private static void OnAlchemy(Alchemist a, byte bodyId)
     {
         foreach (var b in Object.FindObjectsOfType<DeadBody>())
-            if (b && b.ParentId == bodyId) Object.Destroy(b.gameObject);
+            if (b && b.ParentId == bodyId)
+            {
+                if (a.Player) BodyConsume.Start(b, BodyConsume.Kind.Transmute, a.Player.GetTruePosition());
+                Object.Destroy(b.gameObject);
+            }
         a._bullets += PerAlchemy;
         if (a.IsLocal) PortKit.After(0f, a.ShowCount);
     }
@@ -78,6 +82,8 @@ public sealed class Alchemist : RoleBase
         PortKit.After(GuessShotFx.HitAt + 0.15f, () =>
         {
             if (!PortKit.Alive(target)) return;
+            // 試合中のキルと同じく守り (会議中に効くのは守護者だけ) に聞く。止められたら弾は使ったまま、知らせは守る側が出す
+            if (user && user.PlayerId != target.PlayerId && BeforeMurderEvent.Ask(user, target) != null) return;
             PortKit.HostVanish(user ? user : target, target);
             ShotCall.Send(target.PlayerId);
             Announce(target.PlayerId);

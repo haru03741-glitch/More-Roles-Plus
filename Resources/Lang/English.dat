@@ -1566,7 +1566,7 @@ Guardian.Name: Guardian
 Guardian.Blurb: My body as your shield
 Guardian.Summary: A crewmate who protects a chosen player in meetings and dies in their place when they are attacked.
 Guardian.Guard: Guard
-Guardian.Guard.Help: In a meeting, pick a player with the button on their nameplate (after finishing the set number of tasks). If they are about to be killed, they survive and the Guardian dies instead. If a guesser shoots them, the shooter dies. The guard ends after the set number of meetings.
+Guardian.Guard.Help: In a meeting, pick a player with the button on their nameplate (after finishing the set number of tasks). If they are about to be killed, they survive and the Guardian dies instead. If a guesser shoots them, the shooter dies. Against an Alchemist's alchemy bullet, the Guardian dies in their place as with other kills. The guard ends after the set number of meetings.
 Guardian.Guard.Short: Die in place of the player you chose
 Guardian.Tips: Guard players who seem likely to be targeted. Your sacrifice is announced at the next meeting.
 Guardian.StartGuarding: Started guarding {name}
@@ -1597,7 +1597,7 @@ Alchemist.Alchemy: Alchemy
 Alchemist.Alchemy.Help: Remove a nearby body and turn it into the set number of alchemy bullets.
 Alchemist.Alchemy.Short: Turn a body into bullets
 Alchemist.Shoot: Shoot
-Alchemist.Shoot.Help: In a meeting, shoot the player chosen with the button on their nameplate (up to the per-meeting limit). Players a guesser cannot shoot cannot be shot.
+Alchemist.Shoot.Help: In a meeting, shoot the player chosen with the button on their nameplate (up to the per-meeting limit). Players a guesser cannot shoot cannot be shot. If the target is guarded by a Guardian, the Guardian dies in their place (unlike a guesser, you do not die).
 Alchemist.Shoot.Short: Shoot with alchemy bullets in meetings
 Alchemist.Tips: Removed bodies can no longer be reported. Choose your targets carefully.
 Alchemist.Bullets: Alchemy bullets: {n}
