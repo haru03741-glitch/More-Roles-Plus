@@ -675,7 +675,7 @@ internal static class TerrainDamage
     internal static bool IsProtected(Component c, Vector2 at)
     {
         if (!IsProtected(c)) return false;
-        if (c.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || c.GetComponentInParent<OpenableDoor>() || IsMovingFurniture(c) ||
+        if (c.gameObject.name.StartsWith("Mrp", StringComparison.Ordinal) || IsDoor(c) || IsMovingFurniture(c) ||
             BreakableProps.Owns(c)) return true;
         return !MapNotes.InFree(at);
     }
@@ -687,9 +687,13 @@ internal static class TerrainDamage
         return ship && FurnitureKinds.TryGet(c.transform, FurnitureKinds.ShipName(ship), out _);
     }
 
+    // 開け閉めする扉。除染室の扉 (ManualDoor) は OpenableDoor ではないので共通の親の型で見る。
+    // 扉の当たり判定を切ると開け閉めしない別の壁に置き換わり、開いても通れなくなる
+    internal static bool IsDoor(Component c) => c.GetComponentInParent<SomeKindaDoor>();
+
     internal static bool IsProtected(Component c)
     {
-        if (c.GetComponentInParent<OpenableDoor>()) return true;
+        if (IsDoor(c)) return true;
         if (IsMovingFurniture(c) || BreakableProps.Owns(c)) return true; // 物ごと壊れる家具は壁として削らない
         for (var t = c.transform; t && !t.GetComponent<ShipStatus>(); t = t.parent)
             if (ProtectedName.IsMatch(t.name)) return true;
