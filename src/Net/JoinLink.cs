@@ -78,6 +78,24 @@ internal static class JoinLink
     }
 #endif
 
+    // コピーした物から部屋コードを読む: 参加リンク (…/mrp/join/<コード>・mrp://join/<コード>) か、コードそのもの。無ければ null
+    internal static string Parse(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Length > 300) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(text.Trim(), @"(?:/join/|^)([A-Za-z]{6}|[A-Za-z]{4})/?(?:[?#].*)?$");
+        if (!m.Success) return null;
+        string code = m.Groups[1].Value.ToUpperInvariant();
+        return GameCode.GameNameToInt(code) == -1 ? null : code;
+    }
+
+    // ホーム画面の「リンクで参加」から: リンクを開いた時と同じ道で入る (MRP のサーバーへ切り替える・非公開の部屋も入れる)
+    internal static void Request(string code)
+    {
+        _pending = code;
+        _pendingSince = Time.realtimeSinceStartup;
+        _next = 0f;
+    }
+
     public static void Tick()
     {
         float now = Time.realtimeSinceStartup;

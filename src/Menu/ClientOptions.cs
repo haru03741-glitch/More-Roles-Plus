@@ -294,6 +294,19 @@ internal static class ClientOptions
         return t;
     }
 
+    // ほかの画面で写した本編のボタンの横幅を変える (背景・光る枠・当たり判定。字と絵はそのまま)
+    internal static void FitBack(PassiveButton b, float width)
+    {
+        if (!b) return;
+        var text = b.GetComponentInChildren<TextMeshPro>(true);
+        var size = text ? text.rectTransform.sizeDelta : Vector2.zero;
+        bool auto = text && text.enableAutoSizing;
+        Fit(b, b.GetComponentInChildren<SpriteRenderer>(true), width);
+        if (!text) return;
+        text.rectTransform.sizeDelta = size;
+        text.enableAutoSizing = auto;
+    }
+
     // ボタンの横幅を変える (背景・当たり判定・字の欄)。字は欄に収まるまで小さくする
     private static void Fit(PassiveButton b, SpriteRenderer back, float width)
     {

@@ -29,6 +29,7 @@ tools/__pycache__/
 # 手元だけの開発用の道具 (リポジトリにはビルドに要る物とライセンス上の改変の記録だけを入れる)
 tools/*
 !tools/build-native.ps1
+!tools/opus-sources.txt
 !tools/StructInline/
 !tools/make-floor-mask.py
 !tools/InteropWbPatch/

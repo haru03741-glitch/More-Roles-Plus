@@ -8,9 +8,23 @@ $root = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $root 'native\src'
 $out = Join-Path $root 'build\native'
 $files = Get-ChildItem $src -Filter *.cpp | ForEach-Object { $_.FullName }
-# 声の圧縮 (libopus・C)。一覧は native/opus/sources.txt。x86 / ARM の専用命令は使わない (どの端末でも同じ C の道)
-$opus = Join-Path $root 'native\opus'
-$opusFiles = Get-Content (Join-Path $opus 'sources.txt') | Where-Object { $_.Trim() } | ForEach-Object { (Join-Path $opus $_.Trim()) -replace '/', '\' }
+# 声の圧縮 (libopus 1.5.2・C)。ソースはリポジトリの外 (リポジトリの一つ上の opus フォルダー、または MRP_OPUS) に置く。
+# 無ければ公式の配布物を build/opus-src へ取ってくる。組む .c の一覧は tools/opus-sources.txt。
+# x86 / ARM の専用命令は使わない (どの端末でも同じ C の道)
+$opus = if ($env:MRP_OPUS) { $env:MRP_OPUS } else { Join-Path (Split-Path -Parent $root) 'opus' }
+if (-not (Test-Path (Join-Path $opus 'include\opus.h'))) {
+    $opus = Join-Path $root 'build\opus-src\opus-1.5.2'
+    if (-not (Test-Path (Join-Path $opus 'include\opus.h'))) {
+        $dl = Join-Path $root 'build\opus-src'
+        New-Item -ItemType Directory -Force $dl | Out-Null
+        $tgz = Join-Path $dl 'opus-1.5.2.tar.gz'
+        Write-Host 'opus not found, downloading opus-1.5.2'
+        Invoke-WebRequest 'https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz' -OutFile $tgz -UseBasicParsing
+        tar -xzf $tgz -C $dl
+        if (-not (Test-Path (Join-Path $opus 'include\opus.h'))) { Write-Host 'ERR opus source not found'; exit 1 }
+    }
+}
+$opusFiles = Get-Content (Join-Path $PSScriptRoot 'opus-sources.txt') | Where-Object { $_.Trim() } | ForEach-Object { (Join-Path $opus $_.Trim()) -replace '/', '\' }
 $opusInc = @('include', 'celt', 'silk', 'silk\float', 'src') | ForEach-Object { Join-Path $opus $_ }
 $ok = $true
 
@@ -35,7 +49,7 @@ if (-not $SkipPc) {
     $opusObjs = ($opusFiles | ForEach-Object { "`"$opusObj\$([System.IO.Path]::GetFileNameWithoutExtension($_)).obj`"" })
     $linkRsp = Join-Path $dir 'link.rsp'
     [System.IO.File]::WriteAllLines($linkRsp, $opusObjs)
-    $cmd = "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && cl /nologo /utf-8 /LD /O2 /MT /std:c++20 /fp:precise /GR- /EHs-c- /W3 /Fo`"$obj`" $srcList @`"$linkRsp`" /Fe`"$dir\MrpNative.dll`" /link /NOLOGO >`"$dir\build.log`""
+    $cmd = "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && cl /nologo /utf-8 /LD /O2 /MT /std:c++20 /fp:precise /GR- /EHs-c- /W3 /I`"$opus\include`" /Fo`"$obj`" $srcList @`"$linkRsp`" /Fe`"$dir\MrpNative.dll`" /link /NOLOGO >`"$dir\build.log`""
     cmd /c $cmd
     if ($LASTEXITCODE -ne 0) { Get-Content "$dir\build.log" | Select-String 'error' | Select-Object -First 10; Write-Host 'ERR PC native build failed'; $ok = $false }
     else { Write-Host "OK PC   $dir\MrpNative.dll" }
@@ -67,7 +81,7 @@ if (-not $SkipAndroid) {
         $opusOut += $o
     }
     $clangArgs = @('-shared', '-fPIC', '-O2', '-std=c++20', '-ffp-contract=off', '-fno-exceptions', '-fno-rtti', '-fvisibility=hidden',
-              '-nostdlib++', '-Wl,--build-id=sha1', '-Wl,-z,max-page-size=16384', '-o', (Join-Path $dir 'libmrpnative.so')) + $files + $opusOut
+              '-nostdlib++', "-I$opus\include", '-Wl,--build-id=sha1', '-Wl,-z,max-page-size=16384', '-o', (Join-Path $dir 'libmrpnative.so')) + $files + $opusOut
     # ファイルが多くコマンドの長さを超えるので応答ファイルで渡す
     $andRsp = Join-Path $dir 'link.rsp'
     [System.IO.File]::WriteAllLines($andRsp, ($clangArgs | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"' }))

@@ -91,17 +91,22 @@ internal static class GameModeSwitch
 
 // 客の手元: ホストが出し直した GameManager は古い物の消去と同じフレームに届く。読み込み (Deserialize) の前に
 // 手元のモードを届いた物に合わせ、まだ消えていない古い物を Instance から外す (外さないと新しい物の部品が揃わない)。
-// モード合わせはロビーの外でも行う (かくれんぼの部屋の後で通常の部屋に入った時に、手元のモードが残らないように)
+// モード合わせはロビーの外でも行う (かくれんぼの部屋の後で通常の部屋に入った時に、手元のモードが残らないように)。
+// 同じモードの物が届いた時は出し直しでなく重複 (終わりの画面から先に戻った客は、ホストが戻った時に部屋の物を 2 回受け取る)。
+// 本編は重複を捨てるので、今の物を Instance に残す (外すと中身の無い重複が Instance になり、ロビーが黒いまま進まない)
 [HarmonyLib.HarmonyPatch(typeof(GameManager), nameof(GameManager.Awake))]
 internal static class GameManagerAwakeModePatch
 {
+    private static bool IsHideNSeek(GameManager gm) => gm.TryCast<HideAndSeekManager>() != null;
+
     private static void Prefix(GameManager __instance)
     {
-        var mode = __instance.TryCast<HideAndSeekManager>() != null ? GameModes.HideNSeek : GameModes.Normal;
+        var cur = GameManager.Instance;
+        if (cur && cur.Pointer != __instance.Pointer && IsHideNSeek(cur) == IsHideNSeek(__instance)) return;
+        var mode = IsHideNSeek(__instance) ? GameModes.HideNSeek : GameModes.Normal;
         var opts = GameOptionsManager.Instance;
         if (opts != null && opts.currentGameMode != mode) opts.SwitchGameMode(mode);
         if (!LobbyBehaviour.Instance) return;
-        var cur = GameManager.Instance;
         if (cur && cur.Pointer != __instance.Pointer) GameManager.Instance = null;
     }
 }

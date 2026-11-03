@@ -121,6 +121,7 @@ public class Ticker : MonoBehaviour
         Roles.ArchitectDrone.FrameAll();
         Roles.StatusEffects.Tick();
         Menu.Keybinds.Tick();
+        Menu.KeyNav.Tick();
         Menu.BotPanel.Tick();
         Dev.Dummy.Tick();
         Dev.DummyBrain.Tick();
@@ -227,7 +228,7 @@ public class Ticker : MonoBehaviour
         Commands.AfkGuard.Tick();
         Menu.AutoRejoin.Tick();
         Menu.ModUpdate.Tick();
-        Menu.HomeReport.Tick();
+        Menu.HomeScreen.Tick();
         Menu.KeyHints.Tick();
         Menu.EmoteTab.Tick();
         Voice.VoiceChat.Tick();

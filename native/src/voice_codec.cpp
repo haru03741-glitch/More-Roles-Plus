@@ -1,7 +1,7 @@
 #include "mrp_native.h"
-#include "../opus/include/opus.h"
+#include <opus.h> // libopus はリポジトリの外 (tools/build-native.ps1 が場所を渡す)
 
-// ボイスチャットの声の圧縮 (Opus・48kHz・1ch)。中身は native/opus (libopus 1.5.2・BSD) をそのまま組んだ物。
+// ボイスチャットの声の圧縮 (Opus・48kHz・1ch)。中身は libopus 1.5.2 (BSD・リポジトリの外の opus フォルダー) をそのまま組んだ物。
 // 送り手は 1 つの符号器を使い続け、受け手は話し手ごとに 1 つの復号器を持つ (前の包みの続きとして読むので、話し手ごとに分ける)。
 // 包みが抜けた時は data = null で呼ぶと、前の声から続きを作って埋める (fec = 1 なら次の包みに入っている前の分の控えから戻す)
 

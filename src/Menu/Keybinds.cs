@@ -275,7 +275,7 @@ internal static class Keybinds
     }
 
     // 字を打っている間 (チャット・検索欄)。押された時だけ見る
-    private static bool Typing()
+    internal static bool Typing()
     {
         var chat = Vanilla.Chat;
         if (chat && chat.IsOpenOrOpening) return true;

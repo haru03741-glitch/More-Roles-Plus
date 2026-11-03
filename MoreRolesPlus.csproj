@@ -53,7 +53,7 @@
         <NativeSkip Condition="'$(Configuration)' != 'Android'">-SkipAndroid</NativeSkip>
     </PropertyGroup>
     <ItemGroup>
-        <NativeSource Include="native/src/**/*.cpp;native/src/**/*.h;native/opus/sources.txt;tools/build-native.ps1" />
+        <NativeSource Include="native/src/**/*.cpp;native/src/**/*.h;tools/opus-sources.txt;tools/build-native.ps1" />
         <EmbeddedResource Include="$(NativeBinary)" LogicalName="MoreRolesPlus.Native.$(NativeFile)" />
     </ItemGroup>
     <Target Name="BuildNative" BeforeTargets="BeforeBuild" Inputs="@(NativeSource)" Outputs="$(NativeBinary)" Condition="'$(DesignTimeBuild)' != 'true'">

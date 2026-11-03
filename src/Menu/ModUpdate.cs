@@ -59,7 +59,7 @@ internal static class ModUpdate
     private static UnityAction _onButton, _onUpdate, _onClose, _onQuit, _onPage;
 
     // 右の窓 (RightPanel) の中の置き場所。窓の内側の左下から 0.2 内側 (右側は横長の画面で画面の外へ出る・本編の押すなボタンもある)
-    private const float ButtonX = -2.4f, ButtonY = -2.0f, ButtonZ = -1f;
+    private const float ButtonX = HomeScreen.UpdateX, ButtonY = HomeScreen.UpdateY, ButtonZ = -1f; // ホームの MRP の帯の上の右
     private const int VisibilityEvery = 10; // FixedUpdate 10 回ごと (0.2 秒) に右の窓の中身を見る
 
     public static void Bind(ConfigFile cfg)
