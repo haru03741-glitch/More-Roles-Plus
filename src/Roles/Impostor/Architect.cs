@@ -591,13 +591,56 @@ public sealed class Architect : RoleBase
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.inVent || lp.onLadder || lp.inMovingPlat) return false;
         Vector2 me = lp.GetTruePosition();
-        float x = me.x, y = me.y + DeskBack;
-        if (Crew.PortalMaker.NearFixture(FxMath.V2(x, y)) || (SolidMap.Valid && SolidMap.Solid(me.x, me.y))) return false;
-        string why = Blocked(x, y);
-        _lastDesk = why ?? "placed";
-        if (why != null) { Plugin.Logger.LogInfo($"Architect: desk refused {why}"); return false; }
+        if (!FindSpot(me.x, me.y, out float x, out float y, out string why))
+        {
+            _lastDesk = why;
+            Plugin.Logger.LogInfo($"Architect: desk refused {why}");
+            var hud = Vanilla.Hud;
+            if (hud && hud.Notifier) hud.Notifier.AddDisconnectMessage(new Text("Architect.DeskNoRoom"));
+            return false;
+        }
+        _lastDesk = "placed";
         if (!TryAdd(x, y)) return false;
         DeskCall.Send(FxMath.V2(x, y));
+        return true;
+    }
+
+    // 足元の少し奥に置けなければ、近くで置ける所を近い順に探す (壁や端末の脇に立っていても置けるように)。
+    // 壁の向こうへは置かない (足元から台の手前の縁までの間が歩ける所で続いていること)。why = 足元の少し奥で断った理由
+    private const float ShiftReach = 1f, ShiftRing = 0.25f;
+    private const int ShiftDirs = 12;
+    private static bool FindSpot(float mx, float my, out float x, out float y, out string why)
+    {
+        x = mx; y = my + DeskBack;
+        why = Spot(mx, my, x, y);
+        if (why == null) return true;
+        for (float r = ShiftRing; r <= ShiftReach + 1e-4f; r += ShiftRing)
+            for (int k = 0; k < ShiftDirs; k++)
+            {
+                float a = k * (MathF.PI * 2f / ShiftDirs);
+                float cx = mx + MathF.Sin(a) * r, cy = my + DeskBack + MathF.Cos(a) * r; // 奥 (上) から回る
+                if (Spot(mx, my, cx, cy) != null) continue;
+                x = cx; y = cy;
+                return true;
+            }
+        return false;
+    }
+
+    private static string Spot(float mx, float my, float x, float y)
+    {
+        if (Crew.PortalMaker.NearFixture(FxMath.V2(x, y))) return "fixture";
+        if (!Reachable(mx, my, x, y + ArchitectDeskArt.FootFront)) return "behind a wall";
+        return Blocked(x, y);
+    }
+
+    // 足元から (tx, ty) まで歩ける所が続いているか。足元のすぐ近くは見ない (壁際に立つと地図の太らせた壁の中に入る)
+    private static bool Reachable(float mx, float my, float tx, float ty)
+    {
+        if (!SolidMap.Ensure() || !SolidMap.Valid) return false;
+        float dx = tx - mx, dy = ty - my, len = MathF.Sqrt(dx * dx + dy * dy);
+        const float skip = 0.3f, step = 0.1f;
+        for (float d = skip; d < len; d += step)
+            if (SolidMap.Solid(mx + dx * d / len, my + dy * d / len)) return false;
         return true;
     }
 
@@ -628,7 +671,10 @@ public sealed class Architect : RoleBase
         if (!SolidMap.Ensure() || !SolidMap.Valid) return "no map";
         for (int i = -1; i <= 1; i++)
             for (int j = 0; j <= 2; j++)
-                if (!TrickWall.FreeForPushWall(FxMath.V2(x + hw * i, y + f + (bk - f) * 0.5f * j))) return "not on floor";
+            {
+                var q = FxMath.V2(x + hw * i, y + f + (bk - f) * 0.5f * j);
+                if (!TrickWall.FreeForPushWall(q)) return $"not on floor ({q.x:0.##},{q.y:0.##} {TrickWall.WhyNotFreeForPushWall(q)})";
+            }
         var all = PlayerControl.AllPlayerControls;
         for (int i = 0; i < all.Count; i++)
         {

@@ -60,8 +60,9 @@ Rewinder.Rewind: Rewind
 Architect.Name: Architect
 Architect.Blurb: Reshape the ship from your blueprint
 Architect.Summary: An impostor who can draw lines on a blueprint to raise walls in the ship.
-Architect.Desk.Help: Place a drafting desk just behind your feet. Everyone can see the desks, and anyone can use them. A desk breaks after three hits from the Demolisher's hammer or when caught in an explosion, and a broken one cannot be placed again.
+Architect.Desk.Help: Place a drafting desk just behind your feet. If walls or consoles are in the way, it goes to the nearest open spot. Everyone can see the desks, and anyone can use them. A desk breaks after three hits from the Demolisher's hammer or when caught in an explosion, and a broken one cannot be placed again.
 Architect.Desk.Short: Place a desk to open the blueprint
+Architect.DeskNoRoom: No room to place a desk nearby
 Architect.Plan.Help: Press it in front of a desk to open a top-down blueprint of where the ship can be walked. Other players appear as colorless shadows. Hold and drag to draw a line; release to raise walls from the floor along it. You can only draw inside the circle your desk reaches, and only as far as your gauge allows. The gauge refills over time. Anyone standing where a wall rises is pushed aside. Walls crumble after a while and can also be broken by hammers and explosions. While the blueprint is open you cannot move or kill.
 Architect.Plan.Short: Draw a line to raise a wall
 Architect.Pipe: Pipes
