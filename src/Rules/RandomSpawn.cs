@@ -83,6 +83,19 @@ internal static class RandomSpawn
         Plugin.Logger.LogInfo($"random spawn ({why}): ({to.x:0.#}, {to.y:0.#})");
     }
 
+    // ボットの湧く場所 (ホスト)。本物の人が湧き場所を選ぶ・ばらばらに飛ばされるのと同じ範囲から選ぶ。
+    // 人がその場で始まるマップ (Airship 以外で、どちらの設定も切ってある) は false
+    internal static bool BotSpot(out Vector2 at)
+    {
+        at = default;
+        int map = MapRules.MapId;
+        var spots = SpotsFor(map);
+        if (spots == null || (map != 4 && !MapRules.RandomSpawn && !MapRules.SelectSpawn)) return false;
+        int n = map == 4 && !(MapRules.RandomSpawn && MapRules.AirshipAllRooms) ? AirshipVanillaSpots : spots.Length;
+        at = ToShip(map, spots[Rng.Next(n)]);
+        return true;
+    }
+
     // ---- 試合の始め (Airship 以外。会議の後は RulesHooks から) ----
 
     private static int _shipGen = -1;

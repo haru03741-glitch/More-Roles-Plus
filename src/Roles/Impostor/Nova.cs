@@ -135,6 +135,7 @@ public sealed partial class Nova : RoleBase
     internal bool BotFire(float angle, float seconds)
     {
         if (!IsBot || _botCharging || RewindPlayback.Active || !PortKit.Alive(Player) || !Player.CanMove) return false;
+        if (_fire != null && _fire.HostCooling(Player)) return false;
         _botCharging = true;
         ChargeCall.SendAs(Player, angle);
         OnCharge(this, angle);
@@ -151,6 +152,7 @@ public sealed partial class Nova : RoleBase
             byte lv = (byte)System.MathF.Round(FxMath.Clamp01(hold / Charge) * 255f);
             FireCall.SendAs(p, (angle, lv));
             OnFire(this, angle, lv);
+            if (_fire != null) _fire.HostLastMs = System.Environment.TickCount64;
         });
         return true;
     }

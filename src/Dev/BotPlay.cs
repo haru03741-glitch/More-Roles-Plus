@@ -156,6 +156,8 @@ internal static class BotPlay
             foreach (var id in Gone) { Ours.Remove(id); Minds.Remove(id); }
         }
         if (Pending.Count > 0) { Respawn(); return; }
+        // 湧く場所と待ち時間は動き方によらず本物の人と同じに
+        if (client && client.AmHost && !client.IsGameOver && ShipStatus.Instance) BotRound.Tick(Ours.Keys);
         if (!client || !client.AmHost || client.IsGameOver || !ShipStatus.Instance || Current == Mode.Auto)
         {
             if (Minds.Count > 0) Minds.Clear();
@@ -177,8 +179,8 @@ internal static class BotPlay
         {
             if (Minds.TryGetValue(id, out var m) && now < m.NextThink) continue;
             var pc = PortKit.ById(id);
-            if (!PortKit.Alive(pc) || !pc.isDummy || pc == DummyPilot.Possessed) continue;
-            if (m == null) Minds[id] = m = new Mind { NextUse = now + 3f };
+            if (!PortKit.Alive(pc) || !pc.isDummy || pc == DummyPilot.Possessed || !BotRound.Ready(id)) continue;
+            if (m == null) Minds[id] = m = new Mind();
             m.NextThink = now + ThinkGap;
             try { Think(pc, m, target, now); }
             catch (Exception e) { Plugin.Logger.LogError($"bot {id}: {e}"); m.NextThink = now + 5f; }
@@ -322,7 +324,7 @@ internal static class BotPlay
         Dummy.StopWalk(pc);
         if (now < m.NextUse) return;
         float angle = FxMath.Atan2(dir.y, dir.x) * (180f / MathF.PI);
-        if (n.BotFire(angle, Nova.Charge * 0.6f)) m.NextUse = now + Math.Max(DevCooldown.Zero ? 0f : Nova.Cooldown * 0.6f, Nova.Charge) + 1f;
+        if (n.BotFire(angle, Nova.Charge * 0.6f)) m.NextUse = now + Nova.Charge + 1f; // 待ち時間は BotFire が本人と同じに見る
         else m.NextUse = now + RetryGap;
     }
 
@@ -351,8 +353,10 @@ internal static class BotPlay
         Dummy.StopWalk(pc);
         if (now < m.NextUse) return;
         if (use >= 0) { Use(pc, m, use, target.PlayerId, now); return; }
+        if (!BotRound.KillReady(pc.PlayerId)) return;
         string why = Dummy.Kill(pc, target);
-        m.NextUse = now + (why == null ? GameManager.Instance.LogicOptions.GetKillCooldown() : RetryGap);
+        if (why == null) BotRound.Killed(pc.PlayerId);
+        else m.NextUse = now + RetryGap;
     }
 
     private static void Use(PlayerControl pc, Mind m, int index, byte target, float now)
@@ -427,7 +431,7 @@ internal static class BotPlay
     {
         int pcs = 0, nodata = 0;
         foreach (var p in PlayerControl.AllPlayerControls) { pcs++; if (!p || p.Data == null) nodata++; }
-        var sb = new System.Text.StringBuilder($"mode={Current} target={TargetId} bots={Ours.Count} pcs={pcs} nodata={nodata} infos={(GameData.Instance ? GameData.Instance.AllPlayers.Count : -1)}");
+        var sb = new System.Text.StringBuilder($"mode={Current} target={TargetId} bots={Ours.Count} pcs={pcs} nodata={nodata} infos={(GameData.Instance ? GameData.Instance.AllPlayers.Count : -1)} round=[{BotRound.Describe()}]");
         foreach (var r in RoleState.All)
             if (r is RemoteController rc) sb.Append($" rc{rc.PlayerId}:mark={rc.MarkedId},op={rc.IsOperating}");
         foreach (var (pc, role) in List())

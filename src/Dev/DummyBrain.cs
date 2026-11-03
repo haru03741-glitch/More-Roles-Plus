@@ -81,6 +81,7 @@ internal static class DummyBrain
             if (!pc || pc.Data == null || pc.Data.IsDead || pc.Data.Disconnected || pc == DummyPilot.Possessed) continue;
             if (Roles.DuelBot.Has(pc.PlayerId)) continue; // 練習の相手は自分で動く
             if (BotPlay.Handles(pc.PlayerId)) continue; // ロビーのボットは BotPlay が動かす
+            if (BotPlay.IsOurs(pc.PlayerId) && !BotRound.Ready(pc.PlayerId)) continue; // 湧くまで動かない (本物の人と同じ)
             if (!Minds.TryGetValue(pc.PlayerId, out var m))
                 Minds[pc.PlayerId] = m = new Mind { KillReadyMs = now + FirstKillMs };
             if (now < m.NextThinkMs) continue;
@@ -110,7 +111,9 @@ internal static class DummyBrain
         }
 
         // キル
-        if (killer && now >= m.KillReadyMs)
+        // ロビーのボットのキルの待ち時間は本物の人と同じ数え方 (BotRound)
+        bool ours = BotPlay.IsOurs(pc.PlayerId);
+        if (killer && (ours ? BotRound.KillReady(pc.PlayerId) : now >= m.KillReadyMs))
         {
             var target = KillTarget(pc, pos.x, pos.y);
             if (target)
@@ -121,6 +124,7 @@ internal static class DummyBrain
                 {
                     KilledBy[target.PlayerId] = pc.PlayerId;
                     m.KillReadyMs = now + KillCooldownMs();
+                    if (ours) BotRound.Killed(pc.PlayerId);
                     m.HasGoal = m.Working = false;
                     return true;
                 }

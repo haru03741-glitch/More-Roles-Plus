@@ -145,6 +145,10 @@ public sealed class Ability
 
     internal float CooldownSeconds => Math.Max(Cooldown?.Invoke() ?? 0f, 0f);
 
+    // ホストの判定で待ち時間の間か (自分の道で能力を使うボットにも本人のボタンと同じ待ち時間を守らせる)
+    internal bool HostCooling(PlayerControl user) =>
+        (Environment.TickCount64 - HostLastMs) / 1000f < CooldownSeconds && !Dev.DevCooldown.Skips(user);
+
     internal void Spend()
     {
         if (UsesLeft > 0) UsesLeft--;
