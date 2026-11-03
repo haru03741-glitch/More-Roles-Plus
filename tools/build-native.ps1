@@ -20,7 +20,10 @@ if (-not (Test-Path (Join-Path $opus 'include\opus.h'))) {
         $tgz = Join-Path $dl 'opus-1.5.2.tar.gz'
         Write-Host 'opus not found, downloading opus-1.5.2'
         Invoke-WebRequest 'https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz' -OutFile $tgz -UseBasicParsing
-        tar -xzf $tgz -C $dl
+        # Git Bash の GNU tar が先に見つかると C: を接続先と読んで失敗するので Windows の tar を使う
+        $tarExe = Join-Path $env:SystemRoot 'System32\tar.exe'
+        if (-not (Test-Path $tarExe)) { $tarExe = 'tar' }
+        & $tarExe -xzf $tgz -C $dl
         if (-not (Test-Path (Join-Path $opus 'include\opus.h'))) { Write-Host 'ERR opus source not found'; exit 1 }
     }
 }
