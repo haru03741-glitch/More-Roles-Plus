@@ -139,6 +139,7 @@ VoiceChat.NoMic: マイクが見つかりません
 VoiceChat.NoMicAndroid: マイクが使えません (ランチャーでマイクを許可)
 VoicePanel.Title: ボイスチャット
 VoicePanel.Sub: 自分だけの設定 ({key} / 左下のマイクで開く)
+VoicePanel.SubAndroid: 自分だけの設定 (右上のマイクで開く)
 VoicePanel.Mic: マイク
 VoicePanel.Mute: ミュート
 VoicePanel.Hear: 聞く

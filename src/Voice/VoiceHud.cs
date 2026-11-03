@@ -4,7 +4,9 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Voice;
 
-// 画面の左下 (スマホ版は移動パッドの上) に、マイクの印 (色で状態)・自分の声の大きさのバー・状態の一言と、今話している人の名前を出す
+// マイクの印 (色で状態)・自分の声の大きさのバー・状態の一言と、今話している人の名前を出す。
+// PC = 画面の左下 (バーと字は印の右・名前は上へ積む)。スマホ = 右上のボタンの並びの左隣 (左下は移動パッドがあり押し間違えるので)。
+// バーと字は印の下に右揃え・名前は下へ積む
 internal static class VoiceHud
 {
     private const int Every = 5;
@@ -26,7 +28,8 @@ internal static class VoiceHud
     private static string _shown;
     private static float _shownLevel;
     private static Sprite _circle, _rimSprite, _micSprite, _slashSprite, _rect;
-    private static UI.StickClear _clear;
+    private static UI.TopRowDock _dock;
+    private static float _barLeft, _barY; // バーの左端と高さ (根から)
     private const float Glyph = 1.35f; // マイクの絵は丸に対してこの倍 (右下のボタンの絵と同じくらい丸いっぱいに)
 
     internal static void Tick(bool on)
@@ -40,7 +43,7 @@ internal static class VoiceHud
         if (!_root) Make(hud);
         if (!_text) return;
         if (!_root.activeSelf) _root.SetActive(true);
-        _clear?.Update();
+        _dock?.Update();
         Meter();
         if (++_tick % Every != 0) return;
         if (Mathf.Abs(ButtonSize(hud) - Plate) > 0.03f)
@@ -66,7 +69,7 @@ internal static class VoiceHud
         _barFill.enabled = open && _shownLevel > 0.001f;
         var t = _barFill.transform;
         t.localScale = new Vector3(BarW * _shownLevel, BarH, 1f);
-        t.localPosition = new Vector3(Plate * 0.5f + 0.15f + BarW * _shownLevel * 0.5f, -0.17f, -0.01f);
+        t.localPosition = new Vector3(_barLeft + BarW * _shownLevel * 0.5f, _barY, -0.01f);
         _barFill.color = Mic.Talking ? Green : new Color(0.85f, 0.85f, 0.85f, 1f);
     }
 
@@ -106,7 +109,12 @@ internal static class VoiceHud
             if (VoiceRules.Volume(PlayerControl.LocalPlayer, p) <= 0f) continue;
             sb.Append("<color=#7CFF7C>♪</color> ").Append(p.Data.PlayerName).Append('\n');
         }
+#if ANDROID
+        // 下へ積むので自分の状態を先に
+        return sb.Length == 0 ? me : me + "\n" + sb.ToString(0, sb.Length - 1);
+#else
         return sb.Append(me).ToString();
+#endif
     }
 
     // 右下の「使う」の絵の高さ (HUD の中の大きさ)。測れない時は前の値
@@ -125,8 +133,18 @@ internal static class VoiceHud
         _root = new GameObject("MrpVoiceHud") { layer = hud.gameObject.layer };
         _root.transform.SetParent(hud.transform, false);
         var aspect = _root.AddComponent<AspectPosition>();
+#if ANDROID
+        // 初めの位置は並びの左隣のおおよそ。出てから並びを測って寄せる
+        aspect.Alignment = AspectPosition.EdgeAlignments.RightTop;
+        aspect.DistanceFromEdge = new Vector3(4f, 0.25f + Plate * 0.5f, -20f);
+        _barLeft = Plate * 0.5f - BarW;
+        _barY = -(Plate * 0.5f + 0.15f);
+#else
         aspect.Alignment = AspectPosition.EdgeAlignments.LeftBottom;
         aspect.DistanceFromEdge = new Vector3(0.3f + Plate * 0.5f, 0.3f + Plate * 0.5f, -20f);
+        _barLeft = Plate * 0.5f + 0.15f;
+        _barY = -0.17f;
+#endif
         aspect.AdjustPosition();
 
         _circle ??= FxSprites.Rect(128, 128, (x, y) => Mathf.Clamp01((0.5f - Mathf.Sqrt(x * x + y * y)) * 64f), "MrpVoicePlate");
@@ -149,16 +167,18 @@ internal static class VoiceHud
         _rim = Sprite("Rim", _rimSprite, new Vector3(0f, 0f, -0.005f), Vector3.one * Plate);
         _mic = Sprite("Mic", _micSprite, new Vector3(0f, 0f, -0.01f), Vector3.one * (Plate * Glyph));
         _slash = Sprite("Slash", _slashSprite, new Vector3(0f, 0f, -0.02f), Vector3.one * (Plate * Glyph));
-        float barX = Plate * 0.5f + 0.15f;
-        _barBack = Sprite("BarBack", _rect, new Vector3(barX + BarW * 0.5f, -0.17f, 0f), new Vector3(BarW, BarH, 1f));
+        _barBack = Sprite("BarBack", _rect, new Vector3(_barLeft + BarW * 0.5f, _barY, 0f), new Vector3(BarW, BarH, 1f));
         _barBack.color = new Color(0f, 0f, 0f, 0.6f);
         _barFill = Sprite("BarFill", _rect, Vector3.zero, Vector3.one);
         // 声とみなす大きさの印
         float mark = Fill(Mic.VoiceLevel);
-        _barMark = Sprite("BarMark", _rect, new Vector3(barX + BarW * mark, -0.17f, -0.02f), new Vector3(0.025f, BarH + 0.08f, 1f));
+        _barMark = Sprite("BarMark", _rect, new Vector3(_barLeft + BarW * mark, _barY, -0.02f), new Vector3(0.025f, BarH + 0.08f, 1f));
         _barMark.color = new Color(1f, 0.85f, 0.3f, 0.9f);
-        // スマホ版の移動パッドに掛からないように (丸が一番下)
-        _clear = new UI.StickClear(aspect, _plate);
+#if ANDROID
+        _dock = new UI.TopRowDock(aspect, Plate * 0.5f);
+#else
+        _dock = null;
+#endif
 
         var src = hud.TaskPanel ? hud.TaskPanel.GetComponentInChildren<TextMeshPro>(true) : null;
         if (!src) return;
@@ -166,13 +186,22 @@ internal static class VoiceHud
         go.name = "Text";
         var tr = go.GetComponent<TextTranslatorTMP>();
         if (tr) Object.Destroy(tr);
-        go.transform.localPosition = new Vector3(barX, -0.05f, 0f);
+#if ANDROID
+        go.transform.localPosition = new Vector3(Plate * 0.5f, _barY - BarH * 0.5f - 0.08f, 0f);
+#else
+        go.transform.localPosition = new Vector3(_barLeft, -0.05f, 0f);
+#endif
         go.transform.localScale = Vector3.one;
         _text = go.GetComponent<TextMeshPro>();
         _text.enableWordWrapping = false;
         _text.fontSize = 1.6f;
+#if ANDROID
+        _text.alignment = TextAlignmentOptions.TopRight;
+        _text.rectTransform.pivot = new Vector2(1f, 1f);
+#else
         _text.alignment = TextAlignmentOptions.BottomLeft;
         _text.rectTransform.pivot = new Vector2(0f, 0f);
+#endif
         _text.rectTransform.sizeDelta = new Vector2(6f, 2f);
         _text.color = Color.white;
         _shown = null;

@@ -139,6 +139,7 @@ VoiceChat.NoMic: No microphone found
 VoiceChat.NoMicAndroid: Microphone unavailable (allow it in the launcher)
 VoicePanel.Title: Voice chat
 VoicePanel.Sub: Your own settings ({key} / click the mic at bottom left)
+VoicePanel.SubAndroid: Your own settings (tap the mic at top right)
 VoicePanel.Mic: Mic
 VoicePanel.Mute: Mute
 VoicePanel.Hear: Listen
