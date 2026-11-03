@@ -41,8 +41,16 @@ internal static class MapFlip
 
         // 胞子の霧の型は視界を遮る影として描かれ、裏面を描かない材質なので、裏向きのままだと霧の中の人が隠れない
         if (ship.TryCast<FungleShipStatus>() != null)
+        {
             foreach (var m in ship.GetComponentsInChildren<Mushroom>(true))
                 if (m.sporeMask) FaceUp(m.sporeMask.transform);
+            // 夕焼けの空は Awake で覚えた世界の位置 (反転前) を基準に毎フレーム置かれるので、基準も鏡に映す
+            foreach (var sky in ship.GetComponentsInChildren<FungleSunsetParallax>(true))
+            {
+                var o = sky.origin;
+                sky.origin = new Vector3(Mirror(o.x), o.y, o.z);
+            }
+        }
 
         ship.InitialSpawnCenter = MirrorV2(ship.InitialSpawnCenter);
         ship.MeetingSpawnCenter = MirrorV2(ship.MeetingSpawnCenter);
@@ -52,6 +60,10 @@ internal static class MapFlip
     }
 
     private static Vector2 MirrorV2(Vector2 v) => new(Mirror(v.x), v.y);
+
+    // 船の子に世界の回転を書く時の角度の変え方。反転した船の子は書いた角度の逆向きに回って見えるので、
+    // 世界で ang だけ回したいなら -ang を書く (位置を回す計算は ang のまま)
+    internal static float Turn(float ang) => Flipped ? -ang : ang;
 
     // 倍率の積が負 (裏向き) の物を、自分の横の倍率の符号を変えて表へ戻す
     internal static void FaceUp(Transform t)

@@ -57,6 +57,7 @@ internal static class HeightLevels
             var r = _zones[i].Area;
             _zoneB[i * 4] = r.xMin; _zoneB[i * 4 + 1] = r.yMin; _zoneB[i * 4 + 2] = r.xMax; _zoneB[i * 4 + 3] = r.yMax;
         }
+        if (MapFlip.Flipped) _zoneB = MapFlip.MirrorBoxes(_zoneB); // 範囲の表は反転前の船の座標
         // はしごの上と下の部屋 (同じ部屋の中のはしごは組にならない)
         foreach (var l in ship.GetComponentsInChildren<Ladder>(true))
         {

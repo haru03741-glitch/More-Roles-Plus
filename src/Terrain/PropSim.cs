@@ -1405,7 +1405,7 @@ internal static partial class PropSim
         float qx = fx + (p.Pivot0.x - p.F0.x), qy = fy + (p.Pivot0.y - p.F0.y);
         var o = FxMath.RotateZ(ang, p.T0.x - p.Pivot0.x, p.T0.y - p.Pivot0.y);
         p.Tr.position = FxMath.V3(qx + o.x, qy + o.y, p.Z);
-        p.Tr.rotation = FxMath.RotZ(p.Rot0 + ang);
+        p.Tr.rotation = FxMath.RotZ(p.Rot0 + MapFlip.Turn(ang));
     }
 
     // 部屋の絵から持ち上げた家具: 初めて動く時に切り抜き、絵と当たり判定を一緒に動かす
@@ -1431,7 +1431,7 @@ internal static partial class PropSim
             // 自分の絵を持つ家具: 当たり判定の範囲の真ん中を軸に絵を回して動かす (当たり判定も一緒に動く)
             var o = FxMath.RotateZ(ang, p.T0.x - p.Pivot0.x, p.T0.y - p.Pivot0.y);
             p.Tr.position = FxMath.V3(cx + o.x, cy + o.y, p.Z);
-            p.Tr.rotation = FxMath.RotZ(p.Rot0 + ang);
+            p.Tr.rotation = FxMath.RotZ(p.Rot0 + MapFlip.Turn(ang));
         }
         if (p.Riders == null) return;
         foreach (var q in p.Riders)
@@ -1439,7 +1439,7 @@ internal static partial class PropSim
             if (!q.Tr || (q.Prop != null && (q.Prop.D.Moved || q.Prop.D.WobStart != int.MinValue))) continue;
             var o = FxMath.RotateZ(ang, q.T0.x - p.Pivot0.x, q.T0.y - p.Pivot0.y);
             q.Tr.position = FxMath.V3(cx + o.x, cy + o.y, q.T0.z);
-            q.Tr.rotation = FxMath.RotZ(q.Rot0 + ang);
+            q.Tr.rotation = FxMath.RotZ(q.Rot0 + MapFlip.Turn(ang));
         }
     }
 

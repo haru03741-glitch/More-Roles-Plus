@@ -809,6 +809,8 @@ internal static class CrewGrip
         if (!ShipStatus.Instance) return false;
         _root = new GameObject("MrpCrewGrip") { layer = 0 };
         _root.transform.SetParent(ShipStatus.Instance.transform, false);
+        // 左右反転した船の中でも手の向きと絵・伸びる棒の向きが裏返らないように、入れ物の横の倍率で反転を打ち消す
+        if (ShipStatus.Instance.transform.lossyScale.x < 0f) _root.transform.localScale = FxMath.V3(-1f, 1f, 1f);
         GameClock.Ship.Bind(_root);
         _ringOn = _dotOn = _grabOn = false;
         _ringSprite ??= Bake(128, RingAlpha, "MrpGripRing");

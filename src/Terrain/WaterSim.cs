@@ -833,7 +833,7 @@ internal static partial class WaterSim
             for (int k = 0; k < n; k++)
                 if (_sub[k] != 0) _lvl[k] = zone[k] != 0 || rank[k] == NoLevel ? zone[k] : (sbyte)Math.Max((int)rank[k], VoidLevel + 1);
             var ship = ShipStatus.Instance;
-            if (ship && ship.TryCast<AirshipStatus>() != null) RaiseCells(AirshipRaised, 1);
+            if (ship && ship.TryCast<AirshipStatus>() != null) RaiseCells(MapFlip.Flipped ? MapFlip.MirrorBoxes(AirshipRaised) : AirshipRaised, 1);
             return;
         }
         var lv = IslandLevels();
@@ -930,7 +930,7 @@ internal static partial class WaterSim
     {
         var ship = ShipStatus.Instance;
         bool airship = ship && ship.TryCast<AirshipStatus>() != null;
-        _decks = airship ? AirshipDecks : NoDecks;
+        _decks = !airship ? NoDecks : MapFlip.Flipped ? MapFlip.MirrorBoxes(AirshipDecks) : AirshipDecks;
         bool mira = ship && ship.TryCast<MiraShipStatus>() != null;
         bool polus = ship && ship.TryCast<FungleShipStatus>() == null && ship.TryCast<PolusShipStatus>() != null;
         LowWalls.Load(mira, polus);
