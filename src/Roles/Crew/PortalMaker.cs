@@ -33,6 +33,9 @@ public sealed class PortalMaker : RoleBase
     private const float Body = 0.2f;     // 着く所に要る体の半径
     private const float ArriveMax = 1.5f; // 行き先がふさがれていたら、ここまで離れた床を探す
     private const int ShipLayer = 9, FurnitureLayer = 12;
+    // 細い円を滑らせる確かめで、始点で既に触れている壁 (距離 0 の当たり) は数えない。壁の当たり判定は部屋ごとに 1 つで、
+    // 壁際の点から出すと向きによらず全部が始点で当たり、どこへも行けなくなる (間の壁は歩ける所の地図の線の確かめが見る)
+    private const float TouchSlack = 0.02f;
     private const int ArrivePhysics = 24; // 着く所を探す 1 回で物理に問い合わせる上限 (1 フレームに固めない)
     private const long PassGapMs = 400;  // 通った直後に押しが重なっても (クリックとキーが同じ時など) 2 回飛ばない
 
@@ -171,7 +174,7 @@ public sealed class PortalMaker : RoleBase
         float dx = px - fx, dy = py - fy, len = MathF.Sqrt(dx * dx + dy * dy);
         if (len < 0.05f) return true;
         foreach (var hit in Physics2D.CircleCastAll(FxMath.V2(fx, fy), 0.1f, FxMath.V2(dx / len, dy / len), len, 1 << ShipLayer))
-            if (hit.collider && !hit.collider.isTrigger) return false;
+            if (hit.collider && !hit.collider.isTrigger && hit.distance > TouchSlack) return false;
         return true;
     }
 
@@ -334,7 +337,7 @@ public sealed class PortalMaker : RoleBase
         if (len < 0.05f) return true;
         // 線の判定は短い区間だと壁の継ぎ目を素通りするので、細い円を滑らせる
         foreach (var hit in Physics2D.CircleCastAll(FxMath.V2(fx, fy), 0.1f, FxMath.V2(dx / len, dy / len), len, 1 << ShipLayer))
-            if (hit.collider && !hit.collider.isTrigger) return false;
+            if (hit.collider && !hit.collider.isTrigger && hit.distance > TouchSlack) return false;
         return true;
     }
 
@@ -390,7 +393,7 @@ public sealed class PortalMaker : RoleBase
         float dx = cx - mx, dy = cy - my, len = MathF.Sqrt(dx * dx + dy * dy);
         if (len < 0.05f) return true;
         foreach (var hit in Physics2D.CircleCastAll(FxMath.V2(mx, my), 0.1f, FxMath.V2(dx / len, dy / len), len, 1 << ShipLayer))
-            if (hit.collider && !hit.collider.isTrigger && !hit.collider.OverlapPoint(FxMath.V2(mx, my))) return No(true, "cast " + hit.collider.name);
+            if (hit.collider && !hit.collider.isTrigger && hit.distance > TouchSlack) return No(true, "cast " + hit.collider.name);
         return true;
     }
 
