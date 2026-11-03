@@ -30,7 +30,12 @@ internal static class StartCancel
 
     private static void Cancel(GameStartManager gsm)
     {
-        if (!gsm || !AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
+        if (!gsm || !AmongUsClient.Instance) return;
+        if (!AmongUsClient.Instance.AmHost)
+        {
+            if (gsm.startState == GameStartManager.StartingStates.Countdown) Commands.Moderators.AskCancel();
+            return;
+        }
         if (gsm.startState != GameStartManager.StartingStates.Countdown) return;
         gsm.ResetStartState();
     }

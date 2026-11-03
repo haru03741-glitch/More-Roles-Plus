@@ -68,6 +68,7 @@ internal static class JoinLists
                 var sb = new StringBuilder();
                 foreach (var e in Entries) sb.Append(e.Fc).Append(',').Append(e.Puid).Append(',').Append(e.Name).Append('\n');
                 File.WriteAllText(Path, sb.ToString());
+                Moderators.Changed();
             }
             catch (Exception e) { Plugin.Logger.LogError($"join list write {Path}: {e}"); }
         }
@@ -88,6 +89,65 @@ internal static class JoinLists
     private static readonly ListFile Bans = new("BanList.txt");
     private static readonly ListFile White = new("WhiteList.txt");
     private static readonly ListFile Vips = new("VipList.txt");
+    private static readonly ListFile Mods = new("ModList.txt");
+
+    // ---- 一覧の窓 (JoinListPanel) から使う ----
+
+    internal enum Kind { Ban, White, Vip, Mod }
+
+    private static ListFile FileOf(Kind k) => k switch { Kind.Ban => Bans, Kind.White => White, Kind.Vip => Vips, _ => Mods };
+
+    internal static int Count(Kind k) => FileOf(k).Get().Count;
+
+    // i 番目の (名前, フレンドコードか PUID の要約)
+    internal static (string Name, string Id) At(Kind k, int i)
+    {
+        var e = FileOf(k).Get()[i];
+        return (e.Name, Label(e));
+    }
+
+    internal static void RemoveAt(Kind k, int i)
+    {
+        var f = FileOf(k);
+        var list = f.Get();
+        if (i < 0 || i >= list.Count) return;
+        list.RemoveAt(i);
+        f.Save();
+    }
+
+    // 部屋にいる人を足す (身元が取れない・もう入っている時は理由を返す)
+    internal static string AddClient(Kind k, ClientData c)
+    {
+        if (c == null) return "?";
+        var f = FileOf(k);
+        var (fc, puid) = Keys(c);
+        if (fc.Length == 0 && puid.Length == 0) return new Text("JoinLists.HasNoID").With("name", c.PlayerName);
+        if (f.Find(fc, puid) != null) return new Text("JoinLists.IsAlreadyListed").With("name", c.PlayerName);
+        f.Get().Add(new Entry { Fc = fc, Puid = puid, Name = Clean(c.PlayerName) });
+        f.Save();
+        return null;
+    }
+
+    // フレンドコード (例 abcdef#1234) を手で足す
+    internal static string AddCode(Kind k, string code, string name)
+    {
+        string fc = NormFc(code ?? "");
+        if (fc.Length < 3 || fc.IndexOf('#') <= 0) return new Text("JoinPanel.BadCode");
+        var f = FileOf(k);
+        if (f.Find(fc, "") != null) return new Text("JoinLists.IsAlreadyListed").With("name", code.Trim());
+        f.Get().Add(new Entry { Fc = fc, Puid = "", Name = Clean(name ?? "") });
+        f.Save();
+        return null;
+    }
+
+    // その人がモデレーター一覧にいるか (ホストの端末で使う)
+    internal static bool IsModerator(int clientId)
+    {
+        var c = AmongUsClient.Instance ? AmongUsClient.Instance.GetRecentClient(clientId) : null;
+        if (c == null) return false;
+        var (fc, puid) = Keys(c);
+        return (fc.Length > 0 || puid.Length > 0) && Mods.Find(fc, puid) != null;
+    }
 
     private static string NormFc(string s) => s.Trim().Replace(':', '#').ToLowerInvariant();
 
@@ -284,6 +344,9 @@ internal static class JoinLists
 
     // /vip = 一覧 / /vip add <番号> / /vip del <フレンドコードか一覧の番号>
     public static string VipCmd(string args) => ListCmd(Vips, "/vip", new Text("JoinLists.TheVIPList"), args);
+
+    // /modlist = 一覧 / /modlist add <番号> / /modlist del <フレンドコードか一覧の番号>
+    public static string ModCmd(string args) => ListCmd(Mods, "/modlist", new Text("JoinLists.TheModList"), args);
 
     private static string ListCmd(ListFile file, string cmd, Text what, string args)
     {

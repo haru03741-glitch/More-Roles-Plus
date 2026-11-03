@@ -15,7 +15,7 @@ internal static class Keybinds
 {
     internal enum Slot
     {
-        Ability1, Ability2, Ability3, Emote, Dictionary, Dodge, PhotoMode, VoiceMute,
+        Ability1, Ability2, Ability3, Emote, Dictionary, Dodge, PhotoMode, VoiceMute, Record,
         // 右上の段・ロビーの板のボタン (押すとそのボタンを押したのと同じ)
         MatchInfo, BugReport, Chat, Settings, Friends, CopyCode, ShareLink, EditSettings, VoicePanel,
     }
@@ -30,6 +30,7 @@ internal static class Keybinds
         ("MRP.Dodge", "Keybinds.Dodge", KeyboardKeyCode.LeftShift),
         ("MRP.PhotoMode", "Keybinds.PhotoMode", KeyboardKeyCode.F3),
         ("MRP.VoiceMute", "Keybinds.VoiceMute", KeyboardKeyCode.M),
+        ("MRP.Record", "Keybinds.Record", KeyboardKeyCode.F9),
         ("MRP.MatchInfo", "Keybinds.MatchInfo", KeyboardKeyCode.I),
         ("MRP.BugReport", "Keybinds.BugReport", KeyboardKeyCode.F4),
         ("MRP.Chat", "Keybinds.Chat", KeyboardKeyCode.T),
@@ -153,6 +154,11 @@ internal static class Keybinds
         if (Down(Slot.PhotoMode))
         {
             if (!Typing()) PhotoMode.Toggle();
+            return;
+        }
+        if (Down(Slot.Record))
+        {
+            if (!Typing()) Recorder.Toggle();
             return;
         }
         if (Down(Slot.VoiceMute))

@@ -140,6 +140,7 @@ VoicePanel.Sub: 自分だけの設定 ({key} / 左下のマイクで開く)
 VoicePanel.Mic: マイク
 VoicePanel.Mute: ミュート
 VoicePanel.Hear: 聞く
+VoicePanel.Denoise: ノイズ除去
 VoicePanel.MicGain: マイクの大きさ
 VoicePanel.Changer: ボイスチェンジャー
 VoicePanel.FxNone: なし
@@ -1812,3 +1813,49 @@ IntroTeam.NeutralSub: クルーでもインポスターでもない、自分だ�
 IntroTeam.Madmate: マッドメイト
 IntroTeam.MadmateSub: クルーにまぎれて、インポスターを勝たせよう
 RoomShare.Copied: 参加リンクをコピーしました。送った相手はリンクを押すだけでこの部屋に入れます: {url}
+JoinLists.TheModList: モデレーター一覧
+Command.modlist: モデレーター一覧 / 追加 / 削除 (ホスト用のコマンドの一部 (/kick /ban /start など) を使える人)
+Command.modlist.Usage: [add <番号> | del <一覧の番号>]
+Command.lists: BAN・ホワイトリスト・VIP・モデレーターの一覧の窓を開く
+Moderators.NotModerator: モデレーターではないので、このコマンドはホストしか使えません
+Moderators.Used: モデレーター {name} が {cmd} を使いました
+JoinPanel.Title: 参加の一覧
+JoinPanel.Open: BAN・モデレーターなどの一覧
+JoinPanel.Ban: BAN
+JoinPanel.White: ホワイトリスト
+JoinPanel.Vip: VIP
+JoinPanel.Mod: モデレーター
+JoinPanel.AboutBan: 部屋に入ろうとするとすぐ追い出す人 (ホストが BAN した人は自動で入ります)。
+JoinPanel.AboutWhite: 「ホワイトリストの人だけ入れる」を ON にした時に入れる人。
+JoinPanel.AboutVip: ホワイトリスト扱いで、荒らし対策 (禁止語・開始の催促) でも数えない人。
+JoinPanel.AboutMod: ホスト用のコマンドの一部 (/kick /ban /banlist /unban /start /cancel /end /meet /say) を自分のチャットから使える人。
+JoinPanel.Empty: まだ誰もいません
+JoinPanel.FromRoom: 部屋の人から足す:
+JoinPanel.NoOne: 部屋に他の人がいません
+JoinPanel.Code: フレンドコード
+JoinPanel.NameHint: 名前 (メモ)
+JoinPanel.Add: 追加
+JoinPanel.Added: {name} を足しました
+JoinPanel.BadCode: フレンドコードは「名前#1234」の形で打ってください
+ClientOptions.OnlyYou: この端末だけに効く設定です
+ClientOptions.CatDisplay: 表示
+ClientOptions.CatMatch: 試合
+ClientOptions.CatGhost: 幽霊・観戦
+ClientOptions.CatVoice: ボイスチャット
+ClientOptions.CatOther: その他
+ClientOptions.VoicePanel: ボイスチャットの詳しい設定
+ClientOptions.OpenButton: 開く
+ClientOptions.CatRecord: 録画
+ClientOptions.Record: 録画
+ClientOptions.RecordVoice: ボイスチャットの声も録画する
+ClientOptions.RecordQuality: 録画の画質
+ClientOptions.RecordFolder: 録画の保存先を開く
+Recorder.Off: 始める
+Recorder.On: ● 録画中 {time} (押すと止める)
+Recorder.Started: 録画を始めました ({key} で止める)
+Recorder.Saved: 録画を保存しました: {name}
+Recorder.Failed: 録画できませんでした ({why})
+Recorder.NotSupported: この端末では録画できません (描画: {api})
+Keybinds.Record: 録画を始める・止める
+Recorder.StartedTouch: 録画を始めました (MRP の設定の「録画」で止める)
+Recorder.Where: 録画の保存先: {path}

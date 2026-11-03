@@ -127,10 +127,16 @@ internal static class KeyHints
             if (t && t.gameObject.activeSelf) t.gameObject.SetActive(false);
             return;
         }
-        SpriteRenderer art = null;
+        // 本編のボタンの絵 (Inactive / Active / Selected のうち出ている物) を先に選ぶ。チャットを開くと Inactive が消えて
+        // 右へずれた台の絵 (Background) が先に見つかり、字が隣のボタンへずれるため。無い時 (ロビーの板のボタンなど) は最初の絵
+        SpriteRenderer art = null, any = null;
         foreach (var sr in host.GetComponentsInChildren<SpriteRenderer>())
-            if (sr.enabled && sr.sprite && sr.transform.parent && sr.transform.parent.name != HintName && sr.transform.name != "Back"
-                && (!ownArt || sr.transform.parent == host && sr.transform.name is "Inactive" or "Active" or "Selected")) { art = sr; break; }
+        {
+            if (!sr.enabled || !sr.sprite || !sr.transform.parent || sr.transform.parent.name == HintName || sr.transform.name == "Back") continue;
+            if (sr.transform.parent == host && sr.transform.name is "Inactive" or "Active" or "Selected") { art = sr; break; }
+            if (!ownArt && !any) any = sr;
+        }
+        if (!art) art = any;
         if (!art)
         {
             if (t && t.gameObject.activeSelf) t.gameObject.SetActive(false);

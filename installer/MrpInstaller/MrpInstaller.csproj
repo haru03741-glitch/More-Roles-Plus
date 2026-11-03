@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
     <!-- More Roles Plus のインストーラー (1 つの .exe)。
          .NET Framework 4.8 の WPF なので、Windows 10/11 なら何も足さずに動く。
          BepInEx 一式と MRP の DLL は Payload.zip にまとめて exe の中へ埋め込む (ビルドの時に作る)。
@@ -34,6 +34,7 @@
         <Reference Include="System.Web" />
         <Reference Include="System.Web.Extensions" />
         <Reference Include="System.Windows.Forms" />
+        <Reference Include="Microsoft.CSharp" />
     </ItemGroup>
 
     <ItemGroup>

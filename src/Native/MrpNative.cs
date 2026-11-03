@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 42;
+    internal const int Abi = 44;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -65,6 +65,19 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<int, int, int> MicOpen;
     internal static delegate* unmanaged[Cdecl]<float*, int, int> MicRead;
     internal static delegate* unmanaged[Cdecl]<void> MicClose;
+    internal static delegate* unmanaged[Cdecl]<int, int, void*> OpusEncOpen;
+    internal static delegate* unmanaged[Cdecl]<void*, float*, int, byte*, int, int> OpusEnc;
+    internal static delegate* unmanaged[Cdecl]<void*, void> OpusEncClose;
+    internal static delegate* unmanaged[Cdecl]<int, void*> OpusDecOpen;
+    internal static delegate* unmanaged[Cdecl]<void*, byte*, int, float*, int, int, int> OpusDec;
+    internal static delegate* unmanaged[Cdecl]<void*, void> OpusDecClose;
+    internal static delegate* unmanaged[Cdecl]<char*, int, int, int, int, int, int, void*> RecStart;
+    internal static delegate* unmanaged[Cdecl]<void*, void*, int, void> RecTexture;
+    internal static delegate* unmanaged[Cdecl]<void*> RecRenderEvent;
+    internal static delegate* unmanaged[Cdecl]<void*, short*, int, void> RecAudio;
+    internal static delegate* unmanaged[Cdecl]<void*, int*, void> RecInfo;
+    internal static delegate* unmanaged[Cdecl]<void*, byte*, int, int> RecPeek;
+    internal static delegate* unmanaged[Cdecl]<void*, int, int> RecStop;
 
     // 部品が読めたか。偽なら Plugin.Load が mod ごと起動しない
     internal static bool Loaded
@@ -220,6 +233,19 @@ internal static unsafe class MrpNative
         MicOpen = (delegate* unmanaged[Cdecl]<int, int, int>)NativeLibrary.GetExport(_lib, "mrp_mic_open");
         MicRead = (delegate* unmanaged[Cdecl]<float*, int, int>)NativeLibrary.GetExport(_lib, "mrp_mic_read");
         MicClose = (delegate* unmanaged[Cdecl]<void>)NativeLibrary.GetExport(_lib, "mrp_mic_close");
+        OpusEncOpen = (delegate* unmanaged[Cdecl]<int, int, void*>)NativeLibrary.GetExport(_lib, "mrp_opus_enc_open");
+        OpusEnc = (delegate* unmanaged[Cdecl]<void*, float*, int, byte*, int, int>)NativeLibrary.GetExport(_lib, "mrp_opus_enc");
+        OpusEncClose = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_opus_enc_close");
+        OpusDecOpen = (delegate* unmanaged[Cdecl]<int, void*>)NativeLibrary.GetExport(_lib, "mrp_opus_dec_open");
+        OpusDec = (delegate* unmanaged[Cdecl]<void*, byte*, int, float*, int, int, int>)NativeLibrary.GetExport(_lib, "mrp_opus_dec");
+        OpusDecClose = (delegate* unmanaged[Cdecl]<void*, void>)NativeLibrary.GetExport(_lib, "mrp_opus_dec_close");
+        RecStart = (delegate* unmanaged[Cdecl]<char*, int, int, int, int, int, int, void*>)NativeLibrary.GetExport(_lib, "mrp_rec_start");
+        RecTexture = (delegate* unmanaged[Cdecl]<void*, void*, int, void>)NativeLibrary.GetExport(_lib, "mrp_rec_texture");
+        RecRenderEvent = (delegate* unmanaged[Cdecl]<void*>)NativeLibrary.GetExport(_lib, "mrp_rec_render_event");
+        RecAudio = (delegate* unmanaged[Cdecl]<void*, short*, int, void>)NativeLibrary.GetExport(_lib, "mrp_rec_audio");
+        RecInfo = (delegate* unmanaged[Cdecl]<void*, int*, void>)NativeLibrary.GetExport(_lib, "mrp_rec_info");
+        RecPeek = (delegate* unmanaged[Cdecl]<void*, byte*, int, int>)NativeLibrary.GetExport(_lib, "mrp_rec_peek");
+        RecStop = (delegate* unmanaged[Cdecl]<void*, int, int>)NativeLibrary.GetExport(_lib, "mrp_rec_stop");
     }
 
 #if !ANDROID

@@ -2,15 +2,15 @@ using System;
 
 namespace MoreRolesPlus.Voice;
 
-// ボイスチェンジャー (自分の声を送る前に変える・24kHz で 1 つずつ)。
+// ボイスチェンジャー (自分の声を送る前に変える・48kHz で 1 つずつ)。
 // 0 = そのまま / 1 = 高い声 / 2 = 低い声 / 3 = ロボット / 4 = 無線
 internal static class VoiceFx
 {
     internal const int Count = 5;
 
     // 高さを変える: 少しずつ長さの変わる遅れを 2 本、半分ずらして重ね、継ぎ目を sin² で消す
-    private const int Win = 960;                 // 40ms
-    private const int Line = 2048;               // 遅れの入れ物 (2 の累乗)
+    private const int Win = VoiceChat.Rate / 25; // 40ms
+    private const int Line = 4096;               // 遅れの入れ物 (2 の累乗・Win より長く)
     private static readonly float[] Delay = new float[Line];
     private static int _w;
     private static float _phase;                 // 0〜Win
@@ -23,6 +23,20 @@ internal static class VoiceFx
 
     // 無線: 低い所と高い所を切って、少し歪ませる
     private static float _hpX, _hpY, _lp1, _lp2;
+    private static readonly float RadioHp = OnePoleHp(450f), RadioLp = OnePoleLp(2800f);
+
+    // 1 段の濾しの係数 (切る所の周波数から)
+    internal static float OnePoleHp(float hz)
+    {
+        float rc = 1f / (2f * MathF.PI * hz), dt = 1f / VoiceChat.Rate;
+        return rc / (rc + dt);
+    }
+
+    internal static float OnePoleLp(float hz)
+    {
+        float rc = 1f / (2f * MathF.PI * hz), dt = 1f / VoiceChat.Rate;
+        return dt / (rc + dt);
+    }
 
     internal static void Reset()
     {
@@ -86,12 +100,12 @@ internal static class VoiceFx
     private static float Radio(float x)
     {
         // 約 450Hz より下を切る
-        float hp = 0.894f * (_hpY + x - _hpX);
+        float hp = RadioHp * (_hpY + x - _hpX);
         _hpX = x;
         _hpY = hp;
         // 約 2.8kHz より上を切る (2 段)
-        _lp1 += 0.42f * (hp - _lp1);
-        _lp2 += 0.42f * (_lp1 - _lp2);
+        _lp1 += RadioLp * (hp - _lp1);
+        _lp2 += RadioLp * (_lp1 - _lp2);
         float d = _lp2 * 3.5f;
         return d / (1f + Math.Abs(d)) * 0.7f;
     }

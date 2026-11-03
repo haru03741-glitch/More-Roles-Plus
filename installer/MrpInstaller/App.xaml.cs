@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
@@ -20,6 +20,17 @@ public partial class App : Application
             Shutdown(msg == null ? 0 : 1);
             return;
         }
+        // インストール式 (MoreRolesPlusSetup.exe): このPCへ入れて、入れた方を開く / 「アプリ」から消す
+        if (SelfSetup.WantsUninstall(e.Args))
+        {
+            Shutdown(SelfSetup.Uninstall(e.Args.Contains("--quiet")));
+            return;
+        }
+        if (SelfSetup.Wants(e.Args))
+        {
+            Shutdown(SelfSetup.Install(e.Args.Contains("--quiet")));
+            return;
+        }
         if (Cli.Wants(e.Args))
         {
             int code = Cli.Run(e.Args);
@@ -29,6 +40,7 @@ public partial class App : Application
         // 自分を更新した後は、退けておいた古い exe を消す
         ReleaseCheck.CleanupOld();
         JoinLink.Register();
+        SelfSetup.RefreshEntry();
         if (e.Args.Contains("--tour"))
         {
             Settings.Current.TourDone = false;

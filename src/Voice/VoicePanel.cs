@@ -47,7 +47,9 @@ internal static class VoicePanel
             new Spacer(0.2f, 0.1f),
             Toggle(new Text("VoicePanel.Mute"), () => VoiceChat.Muted, v => { if (VoiceChat.Muted != v) VoiceChat.ToggleMute(); }),
             new Spacer(0.2f, 0.1f),
-            Toggle(new Text("VoicePanel.Hear"), () => Menu.ClientOptions.VoiceHear.Value, v => Menu.ClientOptions.VoiceHear.Value = v)) { Gap = 0.1f, Align = Align.Start });
+            Toggle(new Text("VoicePanel.Hear"), () => Menu.ClientOptions.VoiceHear.Value, v => Menu.ClientOptions.VoiceHear.Value = v),
+            new Spacer(0.2f, 0.1f),
+            Toggle(new Text("VoicePanel.Denoise"), () => VoiceSettings.Denoise, v => VoiceSettings.Denoise = v)) { Gap = 0.1f, Align = Align.Start });
 
         // マイクの大きさ (50〜300%・10% 刻み)
         var gainText = new Label(VoiceSettings.MicGainPercent + "%", 1.4f) { Width = 0.7f };
@@ -126,6 +128,7 @@ internal static class VoicePanel
                 if (p && p.PlayerId == id) VoiceSettings.SetPercent(p, pct);
             VoiceSettings.Save();
         }
-        return $"open={IsOpen} fx={VoiceSettings.Changer} gain={VoiceSettings.MicGainPercent}";
+        else if (a.Length == 2 && a[0] == "denoise") VoiceSettings.Denoise = a[1] == "on";
+        return $"open={IsOpen} fx={VoiceSettings.Changer} gain={VoiceSettings.MicGainPercent} denoise={VoiceSettings.Denoise}";
     }
 }

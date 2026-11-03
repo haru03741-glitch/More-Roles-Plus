@@ -140,6 +140,7 @@ VoicePanel.Sub: Your own settings ({key} / click the mic at bottom left)
 VoicePanel.Mic: Mic
 VoicePanel.Mute: Mute
 VoicePanel.Hear: Listen
+VoicePanel.Denoise: Noise cancel
 VoicePanel.MicGain: Mic volume
 VoicePanel.Changer: Voice changer
 VoicePanel.FxNone: None
@@ -1812,3 +1813,49 @@ IntroTeam.NeutralSub: Neither Crewmate nor Impostor. Win your own way
 IntroTeam.Madmate: Madmate
 IntroTeam.MadmateSub: Blend in with the crew and help the Impostors win
 RoomShare.Copied: Join link copied. Anyone can open it to join this room: {url}
+JoinLists.TheModList: the moderator list
+Command.modlist: Moderator list: list / add / remove (people who can use some host commands like /kick /ban /start)
+Command.modlist.Usage: [add <number> | del <list number>]
+Command.lists: Open the ban / whitelist / VIP / moderator lists window
+Moderators.NotModerator: You are not a moderator, so only the host can use this command
+Moderators.Used: Moderator {name} used {cmd}
+JoinPanel.Title: Join lists
+JoinPanel.Open: Ban / moderator lists
+JoinPanel.Ban: Ban
+JoinPanel.White: Whitelist
+JoinPanel.Vip: VIP
+JoinPanel.Mod: Moderators
+JoinPanel.AboutBan: Kicked as soon as they join (people the host bans are added automatically).
+JoinPanel.AboutWhite: Allowed in when "whitelist only" is on.
+JoinPanel.AboutVip: Treated as whitelisted, and never counted by chat moderation (banned words, start nagging).
+JoinPanel.AboutMod: Can use some host commands (/kick /ban /banlist /unban /start /cancel /end /meet /say) from their own chat.
+JoinPanel.Empty: Nobody yet
+JoinPanel.FromRoom: Add from the room:
+JoinPanel.NoOne: Nobody else is in the room
+JoinPanel.Code: Friend code
+JoinPanel.NameHint: Name (note)
+JoinPanel.Add: Add
+JoinPanel.Added: Added {name}
+JoinPanel.BadCode: Type the friend code like name#1234
+ClientOptions.OnlyYou: These only affect this device
+ClientOptions.CatDisplay: Display
+ClientOptions.CatMatch: Match
+ClientOptions.CatGhost: Ghost / spectate
+ClientOptions.CatVoice: Voice chat
+ClientOptions.CatOther: Other
+ClientOptions.VoicePanel: Voice chat details
+ClientOptions.OpenButton: Open
+ClientOptions.CatRecord: Record
+ClientOptions.Record: Recording
+ClientOptions.RecordVoice: Include voice chat in recordings
+ClientOptions.RecordQuality: Recording quality
+ClientOptions.RecordFolder: Open the recordings folder
+Recorder.Off: Start
+Recorder.On: ● REC {time} (click to stop)
+Recorder.Started: Recording started (press {key} to stop)
+Recorder.Saved: Recording saved: {name}
+Recorder.Failed: Could not record ({why})
+Recorder.NotSupported: Recording is not supported on this device (graphics: {api})
+Keybinds.Record: Start / stop recording
+Recorder.StartedTouch: Recording started (stop it from Record in the MRP settings)
+Recorder.Where: Recordings are saved in: {path}

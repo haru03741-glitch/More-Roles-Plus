@@ -14,6 +14,7 @@ internal static class VoiceSettings
 
     private static ConfigEntry<string> _volumes;
     private static ConfigEntry<int> _changer, _micGain;
+    private static ConfigEntry<bool> _denoise;
     private static readonly Dictionary<string, int> Volumes = new();
     private static bool _dirty;
 
@@ -22,6 +23,7 @@ internal static class VoiceSettings
         _volumes = cfg.Bind("Voice", "PlayerVolumes", "", "人ごとの聞こえる大きさ (フレンドコード=%;...)");
         _changer = cfg.Bind("Voice", "Changer", 0, "ボイスチェンジャー (0 なし / 1 高い / 2 低い / 3 ロボット / 4 無線)");
         _micGain = cfg.Bind("Voice", "MicGain", 100, "マイクの大きさ (%)");
+        _denoise = cfg.Bind("Voice", "Denoise", true, "ノイズキャンセリング (周りの雑音を抑える)");
         foreach (var part in _volumes.Value.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             int eq = part.LastIndexOf('=');
@@ -48,6 +50,17 @@ internal static class VoiceSettings
     }
 
     internal static float MicGain => MicGainPercent / 100f;
+
+    internal static bool Denoise
+    {
+        get => _denoise == null || _denoise.Value;
+        set
+        {
+            if (_denoise == null || _denoise.Value == value) return;
+            _denoise.Value = value;
+            VoiceDenoise.Reset();
+        }
+    }
 
     // 人を覚える名前: フレンドコード (無い時は表示名)
     private static string Key(PlayerControl p)

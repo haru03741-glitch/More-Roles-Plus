@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace MrpInstaller.Core;
 
@@ -17,6 +17,10 @@ public static class Lang
     private static readonly Dictionary<string, string> Ja = new()
     {
         ["nav.home"] = "ホーム",
+        ["setup.ask"] = "More Roles Plus をこのPCにインストールします。\n\n入れる場所: {0}\nスタートメニューとデスクトップにショートカットを作ります。\nWindows の「アプリ」から消せます。",
+        ["setup.failed"] = "インストールできませんでした: {0}",
+        ["setup.askRemove"] = "More Roles Plus (インストーラー) をこのPCから削除しますか?\n\nゲームに入れた MRP はそのまま残ります。ゲームから外す時は、先にアプリの「アンインストール」を使ってください。",
+        ["setup.removed"] = "More Roles Plus を削除しました。",
         ["nav.tools"] = "ツール",
         ["nav.settings"] = "設定",
         ["nav.backups"] = "バックアップ",
@@ -256,6 +260,10 @@ public static class Lang
         ["nav.backups"] = "Backups",
         ["nav.about"] = "About",
         ["app.subtitle"] = "Among Us role mod installer",
+        ["setup.ask"] = "Install More Roles Plus on this PC?\n\nLocation: {0}\nShortcuts are added to the Start menu and the desktop.\nYou can remove it from Windows Apps.",
+        ["setup.failed"] = "Could not install: {0}",
+        ["setup.askRemove"] = "Remove More Roles Plus (the installer) from this PC?\n\nMRP stays in your game. To remove it from the game, use Uninstall in the app first.",
+        ["setup.removed"] = "More Roles Plus was removed.",
 
         ["home.games"] = "Among Us installs",
         ["home.addFolder"] = "+ Add folder",

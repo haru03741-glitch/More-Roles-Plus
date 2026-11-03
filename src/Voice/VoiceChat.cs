@@ -10,7 +10,7 @@ using Object = UnityEngine.Object;
 namespace MoreRolesPlus.Voice;
 
 // ボイスチャット (ホストの設定で 近く / 会議だけ / いつも全員 を選ぶ)。
-// - 話す: マイク (各自の MRP の設定で ON にした人だけ) を 24kHz に落とし、声のある間だけ 0.06 秒ごとに IMA ADPCM (4bit) で全員へ送る。
+// - 話す: マイク (各自の MRP の設定で ON にした人だけ) を 48kHz のまま、声のある間だけ 0.06 秒ごとに Opus (96kbps・全帯域) で全員へ送る。
 //   公式サーバーは同じ種類の電文を毎秒十数本出すと切るので、MRP のサーバーと LAN の部屋でだけ使う。送りは信頼性なし (遅れた声は要らない)
 // - 聞く: 話し手ごとに輪になった音の入れ物を鳴らし続け、届いた声を少し溜めてから再生位置の少し先へ書き足す。
 //   音の大きさは 聞こえるか × 距離 (VoiceRules) × 自分で決めたその人の音量 (VoiceSettings)
@@ -23,9 +23,9 @@ public static class VoiceChat
     public static readonly IntOpt Range = new("VoiceChat.Range", 6, 2, 20, 1);
     public static readonly BoolOpt InVent = new("VoiceChat.InVent", true); // ベントの中の人も話せる・聞こえる
 
-    internal const int Rate = 24000;
-    internal const int PacketSamples = 1440; // 0.06 秒
-    private const byte Format = 3;           // 声の形 (版が違って形の違う声は鳴らさない)
+    internal const int Rate = 48000;
+    internal const int PacketSamples = 2880; // 0.06 秒
+    private const byte Format = 4;           // 声の形 (版が違って形の違う声は鳴らさない)
     private const byte VoiceRpc = 212;
 
     // 使える部屋か (MRP のサーバーか LAN)
@@ -100,8 +100,8 @@ public static class VoiceChat
             {
                 var pcm = new float[PacketSamples];
                 for (int i = 0; i < pcm.Length; i++) pcm[i] = 0.3f * Mathf.Sin(2f * Mathf.PI * 440f * i / Rate);
-                var pkt = new byte[4 + PacketSamples / 2];
-                int n = Adpcm.Encode(pcm, pkt);
+                var pkt = new byte[OpusCodec.MaxPacket];
+                int n = OpusCodec.Encode(pcm, pkt);
                 var exact = new byte[n];
                 Array.Copy(pkt, exact, n);
                 for (int k = 0; k < 5; k++) Speakers.Push(pid, (ushort)(_toneSeq++), exact);
@@ -110,6 +110,10 @@ public static class VoiceChat
         });
         Bridge.TestBridge.Register("voicepanel", "[open | close | fx <0-4> | gain <%> | vol <番号> <%>] ボイスチャットの窓・自分の設定",
             (args, reply) => reply("OK " + VoicePanel.Command(args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries))));
+        Bridge.TestBridge.Register("rec", "[start | stop [wait] | info | peek | flip | voice] 録画",
+            (args, reply) => reply(Menu.Recorder.Command(args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries))));
+        Bridge.TestBridge.Register("joinlists", "[open | close | tab <0-3> | del <i> | code <フレンドコード> [名前]] BAN・ホワイトリスト・VIP・モデレーターの一覧の窓",
+            (args, reply) => reply("OK " + Menu.JoinListPanel.Command(args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries))));
     }
 
     private static int _toneSeq = 1;
@@ -170,7 +174,7 @@ internal static class VoiceRules
 }
 
 // マイクから読み、声のある間だけ送る。
-// 48kHz で開いて 24kHz に落とし (落とす前に窓付き sinc で高い所を切って折り返しの雑音を出さない)、低い唸りを切り、自分で決めた大きさ・声の変え方をかけ、
+// 48kHz で開いてそのまま使い (48kHz で開けなかった時だけ速さをそろえる。落とす時は窓付き sinc で高い所を切って折り返しの雑音を出さない)、低い唸りを切り、自分で決めた大きさ・雑音消し・声の変え方をかけ、
 // 大きすぎる所は柔らかく抑える。声が始まった時は直前の 1 包みも送る (言い始めが切れない)
 internal static class Mic
 {
@@ -225,7 +229,8 @@ internal static class Mic
     private static double _winSum;
     private static bool _voiced;
     private static ushort _seq;
-    private static readonly byte[] Packet = new byte[4 + VoiceChat.PacketSamples / 2];
+    private static readonly byte[] Packet = new byte[OpusCodec.MaxPacket];
+    private static readonly float HpCoef = VoiceFx.OnePoleHp(60f);
     private static float _lastLevel;
     internal static bool Talking { get; private set; } // 今送っているか (画面の印)
     internal static float Level => Open ? _lastLevel : 0f; // 直近の 20ms の大きさ (RMS・画面の音量のバー)
@@ -345,6 +350,8 @@ internal static class Mic
         _phase = _prev = 0f;
         _lastKept = false;
         VoiceFx.Reset();
+        VoiceDenoise.Reset();
+        OpusCodec.ResetEncoder();
     }
 
     // 窓付き sinc (Blackman) の低域の濾し。cutoff は入りの速さに対する割合
@@ -365,7 +372,7 @@ internal static class Mic
         return h;
     }
 
-    // 20ms 分を 24kHz にそろえる (落とす時は濾してから、どちらも前の値との間を直線でつなぐ)
+    // 20ms 分を送る速さ (48kHz) にそろえる (落とす時は濾してから、どちらも前の値との間を直線でつなぐ)
     private static void Feed(int count)
     {
         float step = (float)_rate / VoiceChat.Rate;
@@ -398,10 +405,11 @@ internal static class Mic
     private static void Process(float x)
     {
         // 直流と低い唸りを切る (約 60Hz より下)
-        float y = x - _hpX + 0.985f * _hpY;
+        float y = x - _hpX + HpCoef * _hpY;
         _hpX = x;
         _hpY = y;
         y *= VoiceSettings.MicGain;
+        if (VoiceSettings.Denoise) y = VoiceDenoise.Next(y);
         y = VoiceFx.Apply(y);
         // 柔らかく抑える (割れた音にしない)
         y = y * (27f + y * y) / (27f + 9f * y * y);
@@ -445,7 +453,8 @@ internal static class Mic
 
     private static void SendFrame(float[] pcm)
     {
-        int len = Adpcm.Encode(pcm, Packet);
+        int len = OpusCodec.Encode(pcm, Packet);
+        if (len <= 0) return;
         VoiceChat.Send(Packet, len, _seq);
         if (VoiceChat.LoopTo >= 0)
         {
@@ -463,8 +472,8 @@ internal static class Mic
 #endif
 }
 
-// 話し手ごとの鳴らし手。届いた声は少し溜めてから鳴らし始め (届く間隔の揺れで途切れない)、
-// 溜めが尽きたら滑らかに消して、また溜まるのを待つ
+// 話し手ごとの鳴らし手。届いた声は話し手ごとの Opus の復号器で戻し、少し溜めてから鳴らし始め (届く間隔の揺れで途切れない)、
+// 溜めが尽きたら滑らかに消して、また溜まるのを待つ。包みが抜けた時は、次の包みの控え (FEC) と前の声の続き (PLC) で埋める
 internal static class Speakers
 {
     private const int ClipSamples = VoiceChat.Rate * 2;       // 輪は 2 秒
@@ -489,6 +498,8 @@ internal static class Speakers
         public float Tail; // 最後に書いた値 (尽きた時はここから 0 へ下げる)
         public long LastMs;
         public ushort LastSeq;
+        public OpusCodec.Decoder Dec;
+        public bool Hidden; // 録画に入れないように混ぜ口を外しているか
     }
 
     private static readonly Dictionary<byte, Speaker> All = new();
@@ -502,22 +513,33 @@ internal static class Speakers
         if (s == null) return;
         // 古い順番の物 (遅れて届いた物) は捨てる。16bit の番号の一回りは考える
         if (s.LastMs != 0 && (short)(seq - s.LastSeq) <= 0 && Environment.TickCount64 - s.LastMs < 3000) return;
+        int gap = s.LastMs != 0 && Environment.TickCount64 - s.LastMs < 1000 ? (short)(seq - s.LastSeq) : 1;
         s.LastSeq = seq;
         s.LastMs = Environment.TickCount64;
-        int n = Adpcm.Decode(bytes, Decoded);
         if (s.Count == 0 && !s.Playing) s.WaitSince = s.LastMs;
+        // 抜けた包み (3 つまで): 古い方は前の声の続きで、直前の 1 つはこの包みに入っている控えから戻す
+        if (gap > 1 && gap <= 4)
+        {
+            for (int k = 0; k < gap - 2; k++) Append(s, s.Dec.Conceal(Decoded));
+            Append(s, s.Dec.Recover(bytes, Decoded));
+        }
+        Append(s, s.Dec.Decode(bytes, Decoded));
+        if (s.Count > MaxQueue)
+        {
+            int drop = s.Count - TrimTo;
+            s.Head = (s.Head + drop) % s.Buf.Length;
+            s.Count -= drop;
+        }
+    }
+
+    private static void Append(Speaker s, int n)
+    {
         var buf = s.Buf;
         for (int i = 0; i < n; i++)
         {
             if (s.Count == buf.Length) { s.Head = (s.Head + 1) % buf.Length; s.Count--; }
             buf[(s.Head + s.Count) % buf.Length] = Decoded[i];
             s.Count++;
-        }
-        if (s.Count > MaxQueue)
-        {
-            int drop = s.Count - TrimTo;
-            s.Head = (s.Head + drop) % buf.Length;
-            s.Count -= drop;
         }
     }
 
@@ -535,6 +557,8 @@ internal static class Speakers
         _chunk ??= new Il2CppStructArray<float>((long)Chunk);
         long now = Environment.TickCount64;
         List<byte> gone = null;
+        bool hide = Menu.Recorder.HideVoice;
+        float sfx = hide && AmongUs.Data.DataManager.Settings?.Audio != null ? AmongUs.Data.DataManager.Settings.Audio.SfxVolume : 1f;
         foreach (var s in All.Values)
         {
             var p = Player(s.PlayerId);
@@ -545,7 +569,15 @@ internal static class Speakers
             }
             // 聞こえ方 (距離など) × 自分で決めたその人の音量。1 を超える分は音そのものを大きくする
             float vol = VoiceRules.Volume(me, p) * VoiceSettings.VolumeOf(p);
-            s.Source.volume = Math.Min(vol, 1f);
+            // 録画に声を入れない時は、本編の効果音の混ぜ口を通さず (混ぜ口の出口は録画の部品の手前を通る)、録画の部品も飛ばして鳴らす。
+            // 混ぜ口の効果音の大きさは自分で掛ける
+            if (hide != s.Hidden)
+            {
+                s.Hidden = hide;
+                s.Source.outputAudioMixerGroup = hide ? null : SfxGroup();
+                s.Source.bypassListenerEffects = hide;
+            }
+            s.Source.volume = Math.Min(vol, 1f) * (hide ? sfx : 1f);
             float boost = Math.Max(vol, 1f);
             if (!s.Playing && s.Count > 0 && (s.Count >= Prefill || now - s.WaitSince >= PrefillWaitMs)) s.Playing = true;
             int play = s.Source.timeSamples;
@@ -603,12 +635,17 @@ internal static class Speakers
         src.loop = true;
         src.spatialBlend = 0f;
         src.volume = 0f;
-        var sm = SoundManager.Instance;
-        if (sm && sm.sfxMixer) src.outputAudioMixerGroup = sm.sfxMixer; // 本編の効果音の大きさに従う
+        src.outputAudioMixerGroup = SfxGroup(); // 本編の効果音の大きさに従う
         src.Play();
-        var s = new Speaker { PlayerId = playerId, Go = go, Source = src, Clip = clip, Write = 0 };
+        var s = new Speaker { PlayerId = playerId, Go = go, Source = src, Clip = clip, Write = 0, Dec = new OpusCodec.Decoder() };
         All[playerId] = s;
         return s;
+    }
+
+    private static UnityEngine.Audio.AudioMixerGroup SfxGroup()
+    {
+        var sm = SoundManager.Instance;
+        return sm && sm.sfxMixer ? sm.sfxMixer : null;
     }
 
     private static void Remove(byte id)
@@ -617,6 +654,7 @@ internal static class Speakers
         All.Remove(id);
         if (s.Go) Object.Destroy(s.Go);
         if (s.Clip) Object.Destroy(s.Clip);
+        s.Dec?.Dispose();
     }
 
     internal static void Clear()
@@ -632,79 +670,59 @@ internal static class Speakers
     }
 }
 
-// IMA ADPCM (4bit・1ch)。先頭 3 バイトに 始まりの値 (16bit) と 段の番号
-internal static class Adpcm
+// Opus (C++ の部品の libopus)。送り手は符号器を 1 つ、受け手は話し手ごとに復号器を 1 つ
+internal static unsafe class OpusCodec
 {
-    private static readonly int[] IndexTable = { -1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8 };
-    private static readonly int[] StepTable =
+    internal const int Bitrate = 96000;  // 1ch の Opus でほぼ元の音と聞き分けられない所
+    internal const int MaxPacket = 1000; // 包みの上限 (送りの 1 通に収める。超えそうな時は Opus がこの中に収める)
+
+    private static void* _enc;
+
+    internal static void ResetEncoder()
     {
-        7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143,
-        157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552,
-        1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487,
-        12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
-    };
+        if (_enc != null) Native.MrpNative.OpusEncClose(_enc);
+        _enc = null;
+    }
 
-    private static int _encIndex; // 段は送り手の間で続ける (始まりの値と一緒に毎回送るので、受け手は途中からでも読める)
-
+    // 戻り = 包みのバイト数 (0 = 作れなかった)
     internal static int Encode(float[] pcm, byte[] dst)
     {
-        int pred = ToShort(pcm[0]);
-        int index = _encIndex;
-        dst[0] = (byte)pred;
-        dst[1] = (byte)(pred >> 8);
-        dst[2] = (byte)index;
-        int o = 3;
-        for (int i = 0; i < pcm.Length; i += 2)
+        if (_enc == null) _enc = Native.MrpNative.OpusEncOpen(VoiceChat.Rate, Bitrate);
+        if (_enc == null) return 0;
+        int n;
+        fixed (float* p = pcm)
+        fixed (byte* d = dst)
+            n = Native.MrpNative.OpusEnc(_enc, p, pcm.Length, d, Math.Min(dst.Length, MaxPacket));
+        return n > 0 ? n : 0;
+    }
+
+    internal sealed class Decoder : IDisposable
+    {
+        private void* _dec = Native.MrpNative.OpusDecOpen(VoiceChat.Rate);
+
+        // 届いた包みを戻す。戻り = 点の数
+        internal int Decode(byte[] src, float[] pcm) => Run(src, pcm, pcm.Length, 0);
+
+        // 抜けた包みの分を前の声の続きで作る
+        internal int Conceal(float[] pcm) => Run(null, pcm, VoiceChat.PacketSamples, 0);
+
+        // 直前に抜けた包みの分を、この包みに入っている控えから戻す (控えが無ければ続きで作る)
+        internal int Recover(byte[] next, float[] pcm) => Run(next, pcm, VoiceChat.PacketSamples, 1);
+
+        private int Run(byte[] src, float[] pcm, int max, int fec)
         {
-            int lo = Nibble(ToShort(pcm[i]), ref pred, ref index);
-            int hi = i + 1 < pcm.Length ? Nibble(ToShort(pcm[i + 1]), ref pred, ref index) : 0;
-            dst[o++] = (byte)(lo | (hi << 4));
+            if (_dec == null) return 0;
+            int n;
+            fixed (byte* s = src)
+            fixed (float* p = pcm)
+                n = Native.MrpNative.OpusDec(_dec, s, src?.Length ?? 0, p, Math.Min(max, pcm.Length), fec);
+            return n > 0 ? n : 0;
         }
-        _encIndex = index;
-        return o;
-    }
 
-    private static int Nibble(int sample, ref int pred, ref int index)
-    {
-        int step = StepTable[index];
-        int diff = sample - pred;
-        int code = 0;
-        if (diff < 0) { code = 8; diff = -diff; }
-        int delta = step >> 3;
-        if (diff >= step) { code |= 4; diff -= step; delta += step; }
-        if (diff >= step >> 1) { code |= 2; diff -= step >> 1; delta += step >> 1; }
-        if (diff >= step >> 2) { code |= 1; delta += step >> 2; }
-        pred = Math.Clamp((code & 8) != 0 ? pred - delta : pred + delta, -32768, 32767);
-        index = Math.Clamp(index + IndexTable[code], 0, 88);
-        return code;
-    }
-
-    internal static int Decode(byte[] src, float[] pcm)
-    {
-        if (src == null || src.Length < 3) return 0;
-        int pred = (short)(src[0] | (src[1] << 8));
-        int index = Math.Clamp((int)src[2], 0, 88);
-        int n = 0;
-        for (int o = 3; o < src.Length && n < pcm.Length; o++)
+        public void Dispose()
         {
-            int b = src[o];
-            pcm[n++] = Step(b & 15, ref pred, ref index) / 32768f;
-            if (n < pcm.Length) pcm[n++] = Step(b >> 4, ref pred, ref index) / 32768f;
+            if (_dec != null) Native.MrpNative.OpusDecClose(_dec);
+            _dec = null;
         }
-        return n;
     }
-
-    private static int Step(int code, ref int pred, ref int index)
-    {
-        int step = StepTable[index];
-        int delta = step >> 3;
-        if ((code & 4) != 0) delta += step;
-        if ((code & 2) != 0) delta += step >> 1;
-        if ((code & 1) != 0) delta += step >> 2;
-        pred = Math.Clamp((code & 8) != 0 ? pred - delta : pred + delta, -32768, 32767);
-        index = Math.Clamp(index + IndexTable[code], 0, 88);
-        return pred;
-    }
-
-    private static int ToShort(float f) => Math.Clamp((int)(f * 32767f), -32768, 32767);
 }

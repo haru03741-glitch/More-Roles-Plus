@@ -8,6 +8,10 @@ $root = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $root 'native\src'
 $out = Join-Path $root 'build\native'
 $files = Get-ChildItem $src -Filter *.cpp | ForEach-Object { $_.FullName }
+# 声の圧縮 (libopus・C)。一覧は native/opus/sources.txt。x86 / ARM の専用命令は使わない (どの端末でも同じ C の道)
+$opus = Join-Path $root 'native\opus'
+$opusFiles = Get-Content (Join-Path $opus 'sources.txt') | Where-Object { $_.Trim() } | ForEach-Object { (Join-Path $opus $_.Trim()) -replace '/', '\' }
+$opusInc = @('include', 'celt', 'silk', 'silk\float', 'src') | ForEach-Object { Join-Path $opus $_ }
 $ok = $true
 
 if (-not $SkipPc) {
@@ -19,7 +23,19 @@ if (-not $SkipPc) {
     $obj = (Join-Path $dir 'obj') + '/'
     $srcList = ($files | ForEach-Object { "`"$_`"" }) -join ' '
     $env:PATH = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer;$env:PATH"
-    $cmd = "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && cl /nologo /utf-8 /LD /O2 /MT /std:c++20 /fp:precise /GR- /EHs-c- /W3 /Fo`"$obj`" $srcList /Fe`"$dir\MrpNative.dll`" /link /NOLOGO >`"$dir\build.log`""
+    # libopus は先に別の置き場へ .obj にする (ファイルが多くコマンドの長さを超えるので応答ファイルで渡す)
+    $opusObj = Join-Path $dir 'obj\opus'
+    New-Item -ItemType Directory -Force $opusObj | Out-Null
+    $rsp = Join-Path $dir 'opus.rsp'
+    $rspLines = @('/nologo', '/c', '/O2', '/MT', '/fp:precise', '/W0', '/DOPUS_BUILD', '/DUSE_ALLOCA', '/DHAVE_LRINTF', '/DHAVE_LRINT', "/Fo`"$opusObj\\`"") +
+        ($opusInc | ForEach-Object { "/I`"$_`"" }) + ($opusFiles | ForEach-Object { "`"$_`"" })
+    [System.IO.File]::WriteAllLines($rsp, $rspLines)
+    cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && cl @`"$rsp`" >`"$dir\opus.log`""
+    if ($LASTEXITCODE -ne 0) { Get-Content "$dir\opus.log" | Select-String 'error' | Select-Object -First 10; Write-Host 'ERR PC opus build failed'; exit 1 }
+    $opusObjs = ($opusFiles | ForEach-Object { "`"$opusObj\$([System.IO.Path]::GetFileNameWithoutExtension($_)).obj`"" })
+    $linkRsp = Join-Path $dir 'link.rsp'
+    [System.IO.File]::WriteAllLines($linkRsp, $opusObjs)
+    $cmd = "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && cl /nologo /utf-8 /LD /O2 /MT /std:c++20 /fp:precise /GR- /EHs-c- /W3 /Fo`"$obj`" $srcList @`"$linkRsp`" /Fe`"$dir\MrpNative.dll`" /link /NOLOGO >`"$dir\build.log`""
     cmd /c $cmd
     if ($LASTEXITCODE -ne 0) { Get-Content "$dir\build.log" | Select-String 'error' | Select-Object -First 10; Write-Host 'ERR PC native build failed'; $ok = $false }
     else { Write-Host "OK PC   $dir\MrpNative.dll" }
@@ -29,14 +45,33 @@ if (-not $SkipAndroid) {
     $sdk = 'D:\Android\Sdk'
     $lp = Join-Path $root 'Android\Launcher\local.properties'
     if (Test-Path $lp) { $m = Select-String -Path $lp -Pattern '^sdk\.dir=(.+)$'; if ($m) { $sdk = $m.Matches[0].Groups[1].Value } }
-    $ndk = Get-ChildItem (Join-Path $sdk 'ndk') -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+    $ndk = $null
+    if (Test-Path "$sdk\ndk" -ErrorAction SilentlyContinue) { $ndk = Get-ChildItem "$sdk\ndk" -Directory | Sort-Object Name -Descending | Select-Object -First 1 }
+    # SDK を入れていない PC では ANDROID_NDK_HOME (NDK を展開したフォルダー) でも組める
+    if (-not $ndk -and $env:ANDROID_NDK_HOME -and (Test-Path $env:ANDROID_NDK_HOME)) { $ndk = Get-Item $env:ANDROID_NDK_HOME }
     if (-not $ndk) { Write-Host "ERR Android NDK not found under $sdk\ndk"; exit 1 }
     $cxx = Join-Path $ndk.FullName 'toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android24-clang++.cmd'
     $dir = Join-Path $out 'android-arm64'
     New-Item -ItemType Directory -Force $dir | Out-Null
+    # libopus は C として先に .o にする (clang++ に .c を渡すと C++ として読んでしまう)
+    $cc = Join-Path $ndk.FullName 'toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android24-clang.cmd'
+    $opusObj = Join-Path $dir 'obj\opus'
+    New-Item -ItemType Directory -Force $opusObj | Out-Null
+    $opusOut = @()
+    foreach ($f in $opusFiles) {
+        $o = Join-Path $opusObj ([System.IO.Path]::GetFileNameWithoutExtension($f) + '.o')
+        $ccArgs = @('-c', '-fPIC', '-O2', '-ffp-contract=off', '-fvisibility=hidden', '-w', '-DOPUS_BUILD', '-DUSE_ALLOCA', '-DHAVE_LRINTF', '-DHAVE_LRINT') +
+            ($opusInc | ForEach-Object { "-I$_" }) + @('-o', $o, $f)
+        & $cc @ccArgs 2>&1 | Select-Object -First 10
+        if ($LASTEXITCODE -ne 0) { Write-Host "ERR Android opus build failed: $f"; exit 1 }
+        $opusOut += $o
+    }
     $clangArgs = @('-shared', '-fPIC', '-O2', '-std=c++20', '-ffp-contract=off', '-fno-exceptions', '-fno-rtti', '-fvisibility=hidden',
-              '-nostdlib++', '-Wl,--build-id=sha1', '-Wl,-z,max-page-size=16384', '-o', (Join-Path $dir 'libmrpnative.so')) + $files
-    & $cxx @clangArgs 2>&1 | Select-Object -First 20
+              '-nostdlib++', '-Wl,--build-id=sha1', '-Wl,-z,max-page-size=16384', '-o', (Join-Path $dir 'libmrpnative.so')) + $files + $opusOut
+    # ファイルが多くコマンドの長さを超えるので応答ファイルで渡す
+    $andRsp = Join-Path $dir 'link.rsp'
+    [System.IO.File]::WriteAllLines($andRsp, ($clangArgs | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"' }))
+    & $cxx "@$andRsp" 2>&1 | Select-Object -First 20
     if ($LASTEXITCODE -ne 0) { Write-Host 'ERR Android native build failed'; $ok = $false }
     else { Write-Host "OK And  $dir\libmrpnative.so" }
 }

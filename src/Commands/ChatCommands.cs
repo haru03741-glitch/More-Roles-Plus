@@ -66,6 +66,8 @@ internal static class ChatCommands
         Add(new[] { "preset" }, Who.Host, new Text("Command.preset.Usage"), new Text("Command.preset"), LobbyTools.Preset);
         Add(new[] { "vip" }, Who.Host, new Text("Command.vip.Usage"), new Text("Command.vip"), JoinLists.VipCmd);
         Add(new[] { "wl", "whitelist" }, Who.Host, new Text("Command.whitelist.Usage"), new Text("Command.whitelist"), JoinLists.WhiteCmd);
+        Add(new[] { "modlist" }, Who.Host, new Text("Command.modlist.Usage"), new Text("Command.modlist"), JoinLists.ModCmd);
+        Add(new[] { "lists" }, Who.Host, default, new Text("Command.lists"), _ => { Menu.JoinListPanel.Open(); return null; });
 
         Add(new[] { "devhelp" }, Who.Dev, new Text("Command.devhelp.Usage"), new Text("Command.devhelp"), args =>
         {
@@ -98,6 +100,12 @@ internal static class ChatCommands
         {
             // 開発者のコマンドは名簿に無い人には無いのと同じにする (本編へそのまま流す)
             if (c.Who == Who.Dev) return false;
+            // モデレーターに任せられるコマンドはホストへ頼む (モデレーターかはホストが確かめて返事をくれる)
+            if (Moderators.Forward(name, args))
+            {
+                reply = null;
+                return true;
+            }
             reply = new Text("ChatCommands.OnlyTheHostCanUse");
             return true;
         }

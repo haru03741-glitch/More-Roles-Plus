@@ -8,7 +8,8 @@ namespace MoreRolesPlus.Voice;
 internal static class VoiceHud
 {
     private const int Every = 5;
-    private const float Plate = 0.7f, BarW = 1.5f, BarH = 0.13f;
+    private const float BarW = 1.5f, BarH = 0.13f;
+    private static float Plate = 0.7f; // 丸の直径 = 右下のボタン (使う) の絵の高さ (ボタンの大きさの設定に合わせて作り直す)
     private const float FloorDb = -50f, TopDb = -10f; // バーの左端と右端の大きさ (dB)
 
     private static readonly Color PlateIdle = new(0f, 0f, 0f, 0.65f);
@@ -20,11 +21,12 @@ internal static class VoiceHud
     private static int _tick;
     private static readonly System.Collections.Generic.List<int> Slots = new();
     private static GameObject _root;
-    private static SpriteRenderer _plate, _mic, _slash, _barBack, _barFill, _barMark;
+    private static SpriteRenderer _plate, _rim, _mic, _slash, _barBack, _barFill, _barMark;
     private static TextMeshPro _text;
     private static string _shown;
     private static float _shownLevel;
-    private static Sprite _circle, _micSprite, _slashSprite, _rect;
+    private static Sprite _circle, _rimSprite, _micSprite, _slashSprite, _rect;
+    private const float Glyph = 1.35f; // マイクの絵は丸に対してこの倍 (右下のボタンの絵と同じくらい丸いっぱいに)
 
     internal static void Tick(bool on)
     {
@@ -39,6 +41,12 @@ internal static class VoiceHud
         if (!_root.activeSelf) _root.SetActive(true);
         Meter();
         if (++_tick % Every != 0) return;
+        if (Mathf.Abs(ButtonSize(hud) - Plate) > 0.03f)
+        {
+            Object.Destroy(_root);
+            _root = null;
+            return;
+        }
         Icon();
         string text = Line();
         if (text == _shown) return;
@@ -71,6 +79,7 @@ internal static class VoiceHud
         _slash.enabled = !mic || muted;
         _slash.color = muted ? Red : Gray;
         _plate.color = talk && Mic.Talking ? PlateTalk : PlateIdle;
+        _rim.color = talk && Mic.Talking ? Green : muted ? Red : new Color(1f, 1f, 1f, 0.85f);
     }
 
     private static string Line()
@@ -98,8 +107,19 @@ internal static class VoiceHud
         return sb.Append(me).ToString();
     }
 
+    // 右下の「使う」の絵の高さ (HUD の中の大きさ)。測れない時は前の値
+    private static float ButtonSize(HudManager hud)
+    {
+        // ボタンが隠れている時 (ロビー) も測れるように、絵そのものの大きさ × 倍率で見る
+        var g = hud.UseButton ? hud.UseButton.graphic : null;
+        if (!g || !g.sprite) return Plate;
+        float h = g.sprite.bounds.size.y * Mathf.Abs(g.transform.lossyScale.y) / Mathf.Max(hud.transform.lossyScale.y, 0.0001f);
+        return h > 0.2f && h < 3f ? h : Plate;
+    }
+
     private static void Make(HudManager hud)
     {
+        Plate = ButtonSize(hud);
         _root = new GameObject("MrpVoiceHud") { layer = hud.gameObject.layer };
         _root.transform.SetParent(hud.transform, false);
         var aspect = _root.AddComponent<AspectPosition>();
@@ -122,8 +142,11 @@ internal static class VoiceHud
         pb.OnMouseOut = new UnityEngine.Events.UnityEvent();
         UI.UiActions.Release(Slots);
         pb.OnClick.AddListener(UI.UiActions.Take(VoicePanel.Toggle, Slots));
-        _mic = Sprite("Mic", _micSprite, new Vector3(0f, 0f, -0.01f), Vector3.one * Plate);
-        _slash = Sprite("Slash", _slashSprite, new Vector3(0f, 0f, -0.02f), Vector3.one * Plate);
+        // 縁: 暗い背景でも丸が見えるように
+        _rimSprite ??= FxSprites.Rect(128, 128, (x, y) => Edge(Mathf.Abs(Mathf.Sqrt(x * x + y * y) - 0.47f) - 0.022f), "MrpVoiceRim");
+        _rim = Sprite("Rim", _rimSprite, new Vector3(0f, 0f, -0.005f), Vector3.one * Plate);
+        _mic = Sprite("Mic", _micSprite, new Vector3(0f, 0f, -0.01f), Vector3.one * (Plate * Glyph));
+        _slash = Sprite("Slash", _slashSprite, new Vector3(0f, 0f, -0.02f), Vector3.one * (Plate * Glyph));
         float barX = Plate * 0.5f + 0.15f;
         _barBack = Sprite("BarBack", _rect, new Vector3(barX + BarW * 0.5f, -0.17f, 0f), new Vector3(BarW, BarH, 1f));
         _barBack.color = new Color(0f, 0f, 0f, 0.6f);

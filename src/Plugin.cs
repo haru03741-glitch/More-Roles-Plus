@@ -73,6 +73,7 @@ public class Plugin : BasePlugin
         Log.LogInfo(Boot.DelegateTypeCache.Summary());
 
         ClassInjector.RegisterTypeInIl2Cpp<Ticker>();
+        ClassInjector.RegisterTypeInIl2Cpp<Menu.RecordTap>();
         AddComponent<Ticker>();
         Health.Install();
         Boot.BootClock.Mark("loaded");
@@ -89,7 +90,17 @@ public class Ticker : MonoBehaviour
     private static bool _ran;
 
     // 地域の設定は本編と他の Mod で共用なので、閉じる時に MRP のサーバーを選んだままにしない
-    private void OnApplicationQuit() => Net.MrpRegion.RestoreOnQuit();
+    private void OnApplicationQuit()
+    {
+        Net.MrpRegion.RestoreOnQuit();
+        Menu.Recorder.OnQuit();
+    }
+
+    // Android は裏へ回るとそのまま閉じられることがあるので、録画はそこで書き終える
+    private void OnApplicationPause(bool paused)
+    {
+        if (paused && System.OperatingSystem.IsAndroid()) Menu.Recorder.OnQuit();
+    }
 
     private void Update()
     {
@@ -220,6 +231,8 @@ public class Ticker : MonoBehaviour
         Menu.KeyHints.Tick();
         Menu.EmoteTab.Tick();
         Voice.VoiceChat.Tick();
+        Menu.Recorder.Tick();
+        Commands.Moderators.Tick();
         Roles.Spectate.Tick();
         Net.VersionCheck.Tick(); t = Bridge.Perf.Lane(27, t);
         Net.MrpRegion.Tick();
