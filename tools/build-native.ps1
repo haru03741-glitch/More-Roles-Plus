@@ -84,7 +84,7 @@ if (-not $SkipAndroid) {
         $opusOut += $o
     }
     $clangArgs = @('-shared', '-fPIC', '-O2', '-std=c++20', '-ffp-contract=off', '-fno-exceptions', '-fno-rtti', '-fvisibility=hidden',
-              '-nostdlib++', "-I$opus\include", '-Wl,--build-id=sha1', '-Wl,-z,max-page-size=16384', '-o', (Join-Path $dir 'libmrpnative.so')) + $files + $opusOut
+              '-static-libstdc++', "-I$opus\include", '-Wl,--build-id=sha1', '-Wl,-z,max-page-size=16384', '-o', (Join-Path $dir 'libmrpnative.so')) + $files + $opusOut
     # ファイルが多くコマンドの長さを超えるので応答ファイルで渡す
     $andRsp = Join-Path $dir 'link.rsp'
     [System.IO.File]::WriteAllLines($andRsp, ($clangArgs | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"' }))
