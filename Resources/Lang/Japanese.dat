@@ -33,8 +33,9 @@ Lighter.VisionMultiplier.Detail: 普通のクルーの視界に掛ける倍率�
 PortalMaker.Name: ポータルメーカー
 PortalMaker.Blurb: 2 つのポータルで船の中をつなげ
 PortalMaker.Summary: 離れた 2 か所をポータルでつなげるクルーです。
-PortalMaker.Portal.Help: 足元にポータルを置きます。2 つ置くと、生きている人なら誰でも、ポータルの上で使用ボタンを押してもう一方へ移れます。2 つ置いた後にもう一度押すと 2 つとも消え、置き直せます。消せるかどうかは設定で決まります。
+PortalMaker.Portal.Help: 足元にポータルを置きます。ベントや端末、扉、はしごが近くて置けない時は、すぐ近くの空いた所に置きます。2 つ置くと、生きている人なら誰でも、ポータルの上で使用ボタンを押してもう一方へ移れます。2 つ置いた後にもう一度押すと 2 つとも消え、置き直せます。消せるかどうかは設定で決まります。
 PortalMaker.Portal.Short: 足元に置く。2 つでつながる
+PortalMaker.NoRoom: 近くにポータルを置ける場所がありません
 PortalMaker.Tips: ポータルはインポスターも使えます。デモリッシャーのハンマーで 3 回叩かれると壊れます。
 PortalMaker.Quote: 遠回りは、もう要らない。
 PortalMaker.PlaceCooldown: ポータルを置く待ち時間

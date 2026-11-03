@@ -33,8 +33,9 @@ Lighter.VisionMultiplier.Detail: Multiplier applied to normal crewmate vision.
 PortalMaker.Name: Portal Maker
 PortalMaker.Blurb: Link two places with portals
 PortalMaker.Summary: A crewmate who can link two distant places with portals.
-PortalMaker.Portal.Help: Place a portal at your feet. Once two are placed, any living player can stand on one and press Use to travel to the other. Press again after placing both to remove them and place again. The settings decide whether they can be removed.
+PortalMaker.Portal.Help: Place a portal at your feet. If a vent, console, door, or ladder is too close, it goes to the nearest open spot. Once two are placed, any living player can stand on one and press Use to travel to the other. Press again after placing both to remove them and place again. The settings decide whether they can be removed.
 PortalMaker.Portal.Short: Place at your feet. Two make a link
+PortalMaker.NoRoom: No room to place a portal nearby
 PortalMaker.Tips: Impostors can use the portals too. A portal breaks after three hits from the Demolisher's hammer.
 PortalMaker.Quote: No more long way around.
 PortalMaker.PlaceCooldown: Portal Cooldown
