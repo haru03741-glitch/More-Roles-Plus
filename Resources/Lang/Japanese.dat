@@ -1862,6 +1862,8 @@ Recorder.NotSupported: この端末では録画できません (描画: {api})
 Keybinds.Record: 録画を始める・止める
 Recorder.StartedTouch: 録画を始めました (MRP の設定の「録画」で止める)
 Recorder.Where: 録画の保存先: {path}
+Recorder.Denied: 画面の録画が許可されませんでした
+Recorder.OldLauncher: ランチャーが古いので録画できません。新しい APK を入れてください
 Home.JoinLink: リンク・コードで参加
 Home.JoinCode: 部屋 {code} に参加
 Home.JoinNone: 参加リンクか部屋コードをコピーしてから押してください

@@ -46,7 +46,7 @@ import dev.allofus.fusioncore.ui.Motion;
 public class SelectorActivity extends AppCompatActivity {
     private static final String TAG = "FusionCore";
     private static final String[] UNITY_ABIS = {"arm64-v8a", "armeabi-v7a", "x86_64", "x86"};
-    static final String TARGET_PACKAGE = "com.innersloth.spacemafia";
+    public static final String TARGET_PACKAGE = "com.innersloth.spacemafia";
     /** The web role maker; a role made there is pasted into the game with /role import. */
     /** Set on the intent that brings the player back after the itch.io sign-in page. */
     static final String EXTRA_AFTER_SIGN_IN = "after_sign_in";

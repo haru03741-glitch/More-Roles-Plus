@@ -1862,6 +1862,8 @@ Recorder.NotSupported: Recording is not supported on this device (graphics: {api
 Keybinds.Record: Start / stop recording
 Recorder.StartedTouch: Recording started (stop it from Record in the MRP settings)
 Recorder.Where: Recordings are saved in: {path}
+Recorder.Denied: Screen recording was not allowed
+Recorder.OldLauncher: The launcher is too old to record. Please install the new APK
 Home.JoinLink: Join by link / code
 Home.JoinCode: Join room {code}
 Home.JoinNone: Copy a join link or room code first, then press this

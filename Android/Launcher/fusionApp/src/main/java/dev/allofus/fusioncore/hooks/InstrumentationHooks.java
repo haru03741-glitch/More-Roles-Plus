@@ -317,6 +317,15 @@ public class InstrumentationHooks {
 
                 String targetClass = intent.getComponent().getClassName();
 
+                // Another app's screen (the system's screen capture consent, for one) is not part
+                // of the game and must open as itself.
+                String targetPackage = intent.getComponent().getPackageName();
+                if (!targetPackage.equals(BuildConfig.APPLICATION_ID)
+                        && !targetPackage.equals(dev.allofus.fusioncore.SelectorActivity.TARGET_PACKAGE)) {
+                    Log.d(TAG, "execStartActivity: Passing through other app's activity " + targetClass);
+                    return;
+                }
+
                 // Game code builds intents with the launcher-owned activity context, so the
                 // component package alone cannot tell a launcher activity from a game one.
                 if (launcherActivities.contains(targetClass)) {

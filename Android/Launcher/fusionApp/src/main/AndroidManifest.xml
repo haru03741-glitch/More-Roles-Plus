@@ -6,6 +6,9 @@
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <!-- Voice chat (asked once by the launcher; the game only opens the microphone when the player turns it on) -->
   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <!-- Screen recording from the mod's menu (the system asks for consent every time) -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
   <!-- Package visibility is limited to what the launcher actually touches: the game it hosts,
        and a browser for the itch.io sign-in page. -->
   <queries>
@@ -108,6 +111,17 @@
         android:theme="@android:style/Theme.Translucent.NoTitleBar"
         android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
         android:hardwareAccelerated="true"
+        android:exported="false" />
+    <!-- Screen recording: consent screen and the foreground service Android requires during capture -->
+    <activity
+        android:name="dev.allofus.fusioncore.ScreenRecorder$ConsentActivity"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
+        android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
+        android:excludeFromRecents="true"
+        android:exported="false" />
+    <service
+        android:name="dev.allofus.fusioncore.ScreenRecorder$CaptureService"
+        android:foregroundServiceType="mediaProjection"
         android:exported="false" />
     <!-- Read-only handle for the log bundle handed to the share sheet (cache/share only). -->
     <provider

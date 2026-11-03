@@ -96,12 +96,6 @@ public class Ticker : MonoBehaviour
         Menu.Recorder.OnQuit();
     }
 
-    // Android は裏へ回るとそのまま閉じられることがあるので、録画はそこで書き終える
-    private void OnApplicationPause(bool paused)
-    {
-        if (paused && System.OperatingSystem.IsAndroid()) Menu.Recorder.OnQuit();
-    }
-
     private void Update()
     {
         if (!_ran) { _ran = true; Boot.BootClock.Mark("frame1"); }
