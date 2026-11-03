@@ -373,6 +373,7 @@ internal static class SpectreGauge
 {
     private static GameObject _root;
     private static SpriteRenderer _bar, _fox;
+    private static UI.StickClear _clear;
     private static readonly List<(SpriteRenderer back, SpriteRenderer fill, float width)> Units = new();
     private static Sprite _barSprite, _unitSprite;
     private static Sprite[] _foxSprites;
@@ -405,6 +406,8 @@ internal static class SpectreGauge
         }, "MrpSpectreBar");
         _bar = Child("Bar", _barSprite, new Vector3(width * 0.5f - 0.2f, 0f, 0f), new Vector3(width / 4f, 0.55f, 1f));
         _bar.color = new Color(0.12f, 0.1f, 0.16f, 0.9f);
+        // スマホ版の移動パッドに掛からないように
+        _clear = new UI.StickClear(aspect, _bar);
 
         _foxSprites ??= SpectreFoxArt.Frames;
         _foxShown = 1;
@@ -445,6 +448,7 @@ internal static class SpectreGauge
         bool on = show && !(map && map.IsOpen) && !ExileController.Instance;
         if (_root.activeSelf != on) _root.SetActive(on);
         if (!on) return;
+        _clear?.Update();
         _root.transform.localScale = MeetingHud.Instance ? new Vector3(0.8f, 0.8f, 1f) : Vector3.one;
         int fox = level < required ? 0 : 1;
         if (fox != _foxShown) { _foxShown = fox; _fox.sprite = _foxSprites[fox]; }

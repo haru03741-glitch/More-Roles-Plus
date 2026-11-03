@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Voice;
 
-// 画面の左下に、マイクの印 (色で状態)・自分の声の大きさのバー・状態の一言と、今話している人の名前を出す
+// 画面の左下 (スマホ版は移動パッドの上) に、マイクの印 (色で状態)・自分の声の大きさのバー・状態の一言と、今話している人の名前を出す
 internal static class VoiceHud
 {
     private const int Every = 5;
@@ -26,6 +26,7 @@ internal static class VoiceHud
     private static string _shown;
     private static float _shownLevel;
     private static Sprite _circle, _rimSprite, _micSprite, _slashSprite, _rect;
+    private static UI.StickClear _clear;
     private const float Glyph = 1.35f; // マイクの絵は丸に対してこの倍 (右下のボタンの絵と同じくらい丸いっぱいに)
 
     internal static void Tick(bool on)
@@ -39,6 +40,7 @@ internal static class VoiceHud
         if (!_root) Make(hud);
         if (!_text) return;
         if (!_root.activeSelf) _root.SetActive(true);
+        _clear?.Update();
         Meter();
         if (++_tick % Every != 0) return;
         if (Mathf.Abs(ButtonSize(hud) - Plate) > 0.03f)
@@ -155,6 +157,8 @@ internal static class VoiceHud
         float mark = Fill(Mic.VoiceLevel);
         _barMark = Sprite("BarMark", _rect, new Vector3(barX + BarW * mark, -0.17f, -0.02f), new Vector3(0.025f, BarH + 0.08f, 1f));
         _barMark.color = new Color(1f, 0.85f, 0.3f, 0.9f);
+        // スマホ版の移動パッドに掛からないように (丸が一番下)
+        _clear = new UI.StickClear(aspect, _plate);
 
         var src = hud.TaskPanel ? hud.TaskPanel.GetComponentInChildren<TextMeshPro>(true) : null;
         if (!src) return;
