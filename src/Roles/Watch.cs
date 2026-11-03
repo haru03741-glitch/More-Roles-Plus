@@ -233,7 +233,9 @@ internal static class Watch
             var at = src.transform.localPosition;
             _label.transform.localPosition = new Vector3(at.x, rt.SourceY, at.z); // SourceY = 部屋の名前が出ている時の高さ
         }
-        string room = rt ? rt.GetRoomForPlayer(p.Data) : null;
+        // 本編の RoomTracker.GetRoomForPlayer は Airship で NRE を出すので、部屋の範囲を自分で引く
+        var inRoom = Terrain.TerrainDamage.RoomAt(p.GetTruePosition());
+        string room = inRoom && TranslationController.InstanceExists ? TranslationController.Instance.GetString(inRoom.RoomId) : null;
         string who = new Text("Watch.Watching").With("name", p.Data.PlayerName);
         string text = string.IsNullOrEmpty(room) ? who : $"<size=70%>{who}</size>\n{room}";
         if (text != _labelText)
