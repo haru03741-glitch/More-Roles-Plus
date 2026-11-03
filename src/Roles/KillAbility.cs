@@ -77,8 +77,11 @@ internal static class KillAbility
         // 最初のキルも試合の始めの待ち時間を確かめる (割り当ては始めの演出の前なので、そこから数えれば緩い側にずれる)
         LastKillMs[role.PlayerId] = Environment.TickCount64;
         _killed[role.PlayerId] = false;
-        if (!Uses(role)) return;
-        role.Player.Data.Role.CanUseKillButton = true;
+        // 客は本編の役職がこの役職の電文より後に付くことがある。自分の分はまだ本編の役職が無くても控えておき、
+        // ボタンを出す時 (KillButtonShowPatch・Tick) に本編の役職へ印を付ける
+        bool pending = role.IsLocal && (role.CanKill || Rules.SuddenDeath.Active) && role.Player && role.Player.Data != null && !role.Player.Data.Role;
+        if (!pending && !Uses(role)) return;
+        if (!pending) role.Player.Data.Role.CanUseKillButton = true;
         if (!role.IsLocal) return;
         _local = role;
         _dt = Time.fixedDeltaTime;
@@ -124,6 +127,7 @@ internal static class KillAbility
             _shown = true;
             // 客は本編の役職が役職の電文より後に届くことがあるので、ボタンが出るたびに印を付け直す
             var rb = lp.Data.Role;
+            if (rb && rb.IsImpostor) { _local = null; return; } // 土台がインポスターなら本編のキルのまま
             if (rb && !rb.CanUseKillButton) rb.CanUseKillButton = true;
             ResetTimer(lp, _started ? Cooldown() : FirstCooldown);
             _started = true;
@@ -296,7 +300,9 @@ internal static class KillButtonShowPatch
     public static void Postfix(HudManager __instance, PlayerControl localPlayer, RoleBehaviour role, bool isActive)
     {
         var mine = RoleState.Local;
-        if (mine is not { CanKill: true } || !role || role.IsImpostor || !role.CanUseKillButton) return;
+        if (mine is not { CanKill: true } || !role || role.IsImpostor) return;
+        // 客は本編の役職が役職の電文より後に付くことがあり、割り当ての時に印を付けられていないことがある
+        if (!role.CanUseKillButton) role.CanUseKillButton = true;
         __instance.KillButton.ToggleVisible(isActive && localPlayer && localPlayer.Data != null && !localPlayer.Data.IsDead);
     }
 }
