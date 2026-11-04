@@ -893,6 +893,8 @@ internal static class WaterLeak
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.05f, (now - _lastMs) / 1000f);
         _lastMs = now;
         if (!GameClock.ShipAlive) { Clear(); return; }
+        // 逆再生の間は粒をその場で止める (計算は時戻しが巻き戻す・戻し終わりに戻し先より後の粒は消す)
+        if (Roles.RewindPlayback.Active) return;
         _clock += dt;
 
         if (MeetingHud.Instance)

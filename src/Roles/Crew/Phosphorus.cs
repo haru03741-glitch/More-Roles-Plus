@@ -154,10 +154,23 @@ public sealed class Phosphorus : RoleBase
         var l = new Lantern { Owner = this, Go = go, Body = body, Glow = glow, LightGo = lg, LightR = mr, Mesh = mesh, X = at.x, Y = at.y, Phase = FxMath.Range(0f, 6.28f) };
         _lanterns.Add(l);
         All.Add(l);
+        Rewind.Undo(_ => Remove(l)); // 置く前へ戻るとランタンは無くなる (置いた回数は能力が戻す)
+        FxRoot.TrackWorld(go); // 逆再生の間は控えの絵で出す (光は視界の影を切るので今のまま)
+    }
+
+    private void Remove(Lantern l)
+    {
+        _lanterns.Remove(l);
+        All.Remove(l);
+        if (l.Go) Object.Destroy(l.Go);
+        if (l.LightGo) Object.Destroy(l.LightGo);
+        if (l.Mesh) Object.Destroy(l.Mesh);
     }
 
     private void Lighting(bool on)
     {
+        bool was = _manual;
+        if (was != on) Rewind.Undo(_ => Lighting(was));
         _manual = on;
         float now = Time.time;
         foreach (var l in _lanterns) Refresh(l, now);
@@ -298,7 +311,8 @@ public sealed class Phosphorus : RoleBase
     // 倒れてガラスが割れる。隠れていたランタンも全員に見える (油がこぼれるので何かあったと分かる)
     private void Break(Lantern l, float awayX)
     {
-        bool wasLit = l.Shown;
+        bool wasLit = l.Shown, wasActive = l.Active;
+
         l.Broken = true;
         l.Active = true;
         l.Shown = false;
@@ -310,7 +324,23 @@ public sealed class Phosphorus : RoleBase
         l.LightR.enabled = false;
         BreakNoise.PlayAt("noise_gat_case_2", FxMath.V2(l.X, l.Y), 8f, 4f, 0.8f);
         // 全員が積む: 倒れた後にホストが替わっても、新しいホストが入れられる
-        SpillDue.Add((FxMath.V2(l.X, l.Y), wasLit, GameClock.ShipGen));
+        var spill = (FxMath.V2(l.X, l.Y), wasLit, GameClock.ShipGen);
+        SpillDue.Add(spill);
+        // 倒れる前へ戻ると立ち直る。こぼれた油と火は地形の時戻しが戻し、まだ地形へ入れていない分はここで外す
+        Rewind.Undo(_ => { SpillDue.Remove(spill); Unbreak(l, wasActive); });
+    }
+
+    private void Unbreak(Lantern l, bool active)
+    {
+        if (!l.Go || !l.Broken) return;
+        l.Broken = false;
+        l.Active = active;
+        l.Shown = false;
+        l.Body.sprite = _off;
+        l.Body.flipX = false;
+        l.Body.color = active ? UnityEngine.Color.white : FxMath.Rgba(1f, 1f, 1f, IsLocal ? 0.5f : 0f);
+        l.NextCheck = 0f;
+        Refresh(l, Time.time);
     }
 
     // 倒れたランタンの油をこぼし、点いていたなら火をつける (地形の処理の外で・ホストだけ・別の試合の分は捨てる)

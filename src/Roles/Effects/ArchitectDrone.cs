@@ -92,7 +92,7 @@ internal sealed class ArchitectDrone
     // 毎フレーム (飛んでいる物が無ければ何もしない)
     internal static void FrameAll()
     {
-        if (Flying.Count == 0) return;
+        if (Flying.Count == 0 || RewindPlayback.Active) return; // 逆再生の間は止める (着いた時の片付けを前へ進めない)
         float dt = Time.deltaTime;
         for (int i = Flying.Count - 1; i >= 0; i--)
         {
@@ -293,8 +293,9 @@ internal sealed class ArchitectDrone
     {
         var ship = ShipStatus.Instance;
         if (!ship || !GameClock.ShipAlive || !EnsureSprites()) return false;
-        _root = new GameObject("MrpArchitectDrone");
-        _root.transform.SetParent(ship.transform, false);
+        _root = FxRoot.New("MrpArchitectDrone"); // 根 (船の子・倍率は船と同じ) の下なので逆再生に入る。下の打ち消しはそのまま効く
+        _root.transform.localPosition = Vector3.zero;
+        _root.transform.localRotation = Quaternion.identity;
         // 船の倍率と反転を打ち消して世界の長さで描く
         Vector3 ls = ship.transform.lossyScale;
         var holder = new GameObject("Shadow");

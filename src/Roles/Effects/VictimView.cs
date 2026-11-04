@@ -87,6 +87,9 @@ internal static class VictimView
         _gen = GameClock.ShipGen;
         _root = new GameObject("MrpVictimView") { layer = 5 };
         _root.transform.SetParent(hud.transform, false);
+        FxRoot.TrackHud(_root.transform); // 逆再生の間は見えていたとおりに逆へ流す
+        var made = _root;
+        Rewind.Undo(_ => { if (_root == made) Stop(); }); // 倒れる前へ戻ると (生き返る) 画面も戻す
         _root.transform.localPosition = FxMath.V3(0f, 0f, -60f);
         if (!_white) _white = FxSprites.Rect(4, 4, (_, _) => 1f, "MrpVictimWhite");
         _dark = Full("Dark", _white, 10);

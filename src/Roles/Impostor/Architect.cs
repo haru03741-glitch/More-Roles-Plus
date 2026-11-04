@@ -558,6 +558,14 @@ public sealed class Architect : RoleBase
     {
         if (desk >= _desks.Count || _desks[desk].Broken) return;
         var d = _desks[desk];
+        int wasHits = d.Hits;
+        var wasRot = d.Root ? d.Root.transform.rotation : Quaternion.identity;
+        // 叩かれる・壊れる前へ戻ると台も戻る (使っていた人の設計図は開き直さない)
+        Rewind.Undo(_ =>
+        {
+            if (d.Broken) { ArchitectDeskArt.Unbreak(d, wasHits, wasRot); RefreshDrone(); if (IsLocal) ArchitectPlan.MarkDirty(); }
+            else ArchitectDeskArt.Unhit(d, wasHits, wasRot);
+        });
         d.Hits = hits;
         var info = GameData.Instance ? GameData.Instance.GetPlayerById(hitter) : null;
         var obj = info != null ? info.Object : null;
@@ -658,6 +666,17 @@ public sealed class Architect : RoleBase
         var h = ArchitectDeskArt.Place(x, y);
         if (h == null) return false;
         _desks.Add(h);
+        // 置く前へ戻ると台は無くなる (台の番号は電文が指すので、いちばん後ろの物だけを外す。取り消しは新しい順なので必ず後ろから)
+        Rewind.Undo(_ =>
+        {
+            int last = _desks.Count - 1;
+            if (last < 0 || _desks[last] != h) return;
+            if (_openDesk == last) { if (IsLocal && ArchitectPlan.Owner == this) ArchitectPlan.Close(); _openDesk = -1; }
+            _desks.RemoveAt(last);
+            ArchitectDeskArt.Remove(h);
+            RefreshDrone();
+            if (IsLocal) ArchitectPlan.MarkDirty();
+        });
         Terrain.DustCloud.Kick(FxMath.V2(x, y), 0.35f, (ushort)FxMath.Range(0, 65535)); // 脚が床を打った土ぼこり
         PushOut(x, y);
         return true;

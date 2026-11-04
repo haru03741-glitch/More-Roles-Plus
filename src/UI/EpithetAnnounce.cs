@@ -42,6 +42,7 @@ internal static class EpithetAnnounce
         _go = new GameObject("EpithetAnnounce") { layer = layer };
         var tf = _go.transform;
         tf.SetParent(hud.transform, false);
+        FxRoot.TrackHud(tf); // 逆再生の間は見えていたとおりに逆へ流す
         tf.localPosition = FxMath.V3(0f, cam.orthographicSize * 0.56f, -40f);
 
         // 横に長いオーロラ色の光の帯 → 印 → 字

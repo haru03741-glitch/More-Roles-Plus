@@ -164,8 +164,12 @@ public sealed class Ability
     internal void RestoreUses(int left)
     {
         if (UsesLeft == left) return;
+        bool wasOut = UsesLeft == 0;
         UsesLeft = left;
         Button?.SetUses(UsesLeft);
+        // 使い切りで押せなくした自分に使う能力は、回数が戻ったら押せる形へ戻す (人を狙う能力は狙いの走査が毎回決める)
+        if (Target != AbilityTarget.Player && Target != AbilityTarget.Pick && Button != null && (wasOut || UsesLeft == 0))
+            Button.SetUsable(UsesLeft != 0);
     }
 }
 

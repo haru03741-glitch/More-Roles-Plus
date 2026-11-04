@@ -338,6 +338,12 @@ internal static class DustCloud
         _lastMs = now;
         if (!GameClock.ShipAlive || MeetingHud.Instance) { Clear(); return; }
         _clock += dt;
+        if (Roles.RewindPlayback.Active)
+        {
+            // 逆再生の間は広がり・流れ・色を止める。年齢だけは進める (RewindNewer が段ごとに年齢で新しい煙から消す)
+            for (int i = 0; i < Clouds.Count; i++) Clouds[i].T += dt;
+            return;
+        }
 
         for (int i = Clouds.Count - 1; i >= 0; i--)
         {

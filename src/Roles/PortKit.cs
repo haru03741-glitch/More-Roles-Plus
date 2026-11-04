@@ -244,6 +244,8 @@ public static class PortKit
         if (tint is Color c) sr.color = c;
         go.transform.localScale = Vector3.one * (size / 1.28f);
         life.Bind(go);
+        Rewind.Undo(_ => { if (go) Object.Destroy(go); }); // 置く前へ戻ると印も消える
+        FxRoot.TrackWorld(go);
         return sr;
     }
 

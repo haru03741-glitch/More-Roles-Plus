@@ -80,6 +80,7 @@ internal static class PushFall
             f.Len = FxMath.Sqrt(ex * ex + ey * ey);
         }
         Live.Add(f);
+        Rewind.Undo(_ => { if (Live.Remove(f) && f.Go) Object.Destroy(f.Go); }); // 押される前へ戻ると落ちる体の写しも消える
         BreakNoise.PlayAt("noise_emote_push", c.x, c.y, 7f, 4f, 0.75f, FxMath.Range(0.85f, 0.95f));
     }
 
@@ -106,7 +107,7 @@ internal static class PushFall
 
     internal static void Tick()
     {
-        if (Live.Count == 0) return;
+        if (Live.Count == 0 || RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         if (_gen != GameClock.ShipGen || !GameClock.ShipAlive) { Clear(); return; }
         float dt = Time.deltaTime;
         for (int i = Live.Count - 1; i >= 0; i--)

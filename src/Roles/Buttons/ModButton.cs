@@ -101,8 +101,51 @@ internal sealed class ModButton
 
     // 時戻し: 待ち時間を記録の時の値へ戻す。効果の途中へは戻せないので、今の効果は終わらせ、
     // 記録の時に効果中だった時は残りの効果の分も待たせる
+    // 時戻しの逆再生の間: 記録の時刻の待ち時間と効果の残りを見せるだけ (値は変えない・戻し終わりに RewindTo で値ごと戻る)
+    internal void ShowRewind(float left, float effect)
+    {
+        if (!_button) return;
+        if (effect > 0f && _effectMax > 0f)
+        {
+            _button.SetFillUp(effect, _effectMax);
+            int sec = (int)Math.Ceiling(effect);
+            var text = _button.cooldownTimerText;
+            if (text && sec != _effectShown)
+            {
+                _effectShown = sec;
+                text.text = sec.ToString();
+                if (!text.gameObject.activeSelf) text.gameObject.SetActive(true);
+            }
+            return;
+        }
+        if (_effectShown >= 0)
+        {
+            _effectShown = -1;
+            _button.SetFillUp(0f, Math.Max(_effectMax, 0.01f));
+            if (_button.cooldownTimerText) _button.cooldownTimerText.gameObject.SetActive(false);
+        }
+        if (left > 0f)
+        {
+            _button.SetCoolDown(left, Math.Max(Cooldown, left));
+            _button.SetDisabled();
+        }
+        else
+        {
+            _button.SetCoolDown(0f, Cooldown);
+            if (_usable) _button.SetEnabled();
+            else _button.SetDisabled();
+        }
+    }
+
     internal void RewindTo(float left, float effect)
     {
+        if (_effect <= 0f && _effectShown >= 0 && _button)
+        {
+            // 逆再生の間に見せていた効果の表示を消す
+            _effectShown = -1;
+            _button.SetFillUp(0f, Math.Max(_effectMax, 0.01f));
+            if (_button.cooldownTimerText) _button.cooldownTimerText.gameObject.SetActive(false);
+        }
         if (_effect > 0f)
         {
             _effect = 0f;
@@ -509,6 +552,7 @@ internal sealed class ModButton
     public static void TickAll()
     {
         if (All.Count == 0 || (!_hudShown && !_ghostShown)) return;
+        if (RewindPlayback.Active) return; // 逆再生の間は待ち時間も効果も進めない (表示は時戻しが記録の時刻の値で書く)
         _tick++;
         bool redraw = _tick % RedrawTicks == 0;
         if (_dt <= 0f) _dt = Time.fixedDeltaTime;

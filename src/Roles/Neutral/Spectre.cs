@@ -58,7 +58,7 @@ public sealed class Spectre : RoleBase
     internal static float Replenish => ReplenishCooldown;
     private static bool _alternate;
 
-    private float _left; // 残りの生きられる秒 (満腹度 × 1 満腹の秒)。本人の端末が数えて配る
+    private readonly Tracked<float> _left = new(); // 残りの生きられる秒 (満腹度 × 1 満腹の秒)。本人の端末が数えて配る・時戻しで戻る
     private float _shareIn;
     private float _rate = 1f; // 減る速さ。他の端末は届いた速さで次の値まで自分で減らす
     private float _suicideAt = -10f;
@@ -66,7 +66,7 @@ public sealed class Spectre : RoleBase
     private readonly Dictionary<byte, WorldArrow> _killerArrows = new();
     private readonly HashSet<byte> _team = new(); // 子狐・背徳者 (全員の端末で同じ)
 
-    public float Satiety => _left / SatietyRate;
+    public float Satiety => _left.Value / SatietyRate;
     private bool CanWin => PortKit.Alive(Player) && Satiety > RequiredSatiety;
 
     // 自分の端末が透視しているか (視界の影を作らない)
@@ -75,7 +75,7 @@ public sealed class Spectre : RoleBase
 
     public override void OnAssigned()
     {
-        _left = InitialSatiety * SatietyRate;
+        _left.Value = InitialSatiety * SatietyRate;
         _vanish = AddAbility(new Ability(new Text("Spectre.Vanish"), "spectre_vanish")
         {
             Cooldown = () => VanishCooldown,
@@ -144,7 +144,7 @@ public sealed class Spectre : RoleBase
     // 満腹度を足す (全員の端末で・本人の端末の値が正)
     private void AddSatiety(float satiety)
     {
-        _left = Mathf.Clamp(_left + satiety * SatietyRate, 0f, MaxSatiety * SatietyRate);
+        _left.Value = Mathf.Clamp(_left.Value + satiety * SatietyRate, 0f, MaxSatiety * SatietyRate);
         if (IsLocal) ShareNow();
     }
 
@@ -159,22 +159,28 @@ public sealed class Spectre : RoleBase
         (_, m) => { if (RoleState.Of(m.id) is Spectre s) s.AddSatiety(m.amount); });
 
     // 送るのは 1.5 秒ごとと減る速さが変わった時だけ (公式鯖の通信の予算を食わない)。間は他の端末が同じ速さで減らす
+    public override void OnRewound()
+    {
+        if (IsLocal) ShareNow(); // 戻った満腹度を配り直す
+    }
+
     private void ShareNow()
     {
         _shareIn = 1.5f;
-        ShareCall.Send((PlayerId, _left, _rate));
+        ShareCall.Send((PlayerId, _left.Value, _rate));
     }
 
     private static readonly RemoteCall<(byte id, float left, float rate)> ShareCall = new("Spectre.Share", Route.Anyone,
         (w, m) => { w.Write(m.id); w.Write(m.left); w.Write(m.rate); }, r => (r.ReadByte(), r.ReadSingle(), r.ReadSingle()),
-        (_, m) => { if (RoleState.Of(m.id) is Spectre s && !s.IsLocal) { s._left = m.left; s._rate = m.rate; } });
+        (_, m) => { if (RoleState.Of(m.id) is Spectre s && !s.IsLocal) { s._left.Value = m.left; s._rate = m.rate; } });
 
     public override void OnFixedUpdate()
     {
+        if (RewindPlayback.Active) return; // 逆再生の間は満腹度を減らさない (戻し終わりに記録の時の値へ戻る)
         float dt = Time.fixedDeltaTime;
         if (IsLocal) TickLocal(dt);
-        else if (_left > 0f && _rate > 0f && !MeetingHud.Instance && !ExileController.Instance && ShipStatus.Instance && PortKit.Alive(Player))
-            _left = Mathf.Max(0f, _left - dt * _rate);
+        else if (_left.Value > 0f && _rate > 0f && !MeetingHud.Instance && !ExileController.Instance && ShipStatus.Instance && PortKit.Alive(Player))
+            _left.Value = Mathf.Max(0f, _left.Value - dt * _rate);
         SpectreDishes.Tick(dt);
     }
 
@@ -184,10 +190,10 @@ public sealed class Spectre : RoleBase
         bool alive = PortKit.Alive(Player);
         bool danger = Adrenaline && KillerNearby();
         float rate = danger ? AdrenalineRate : 1f;
-        if (!meeting && alive && ShipStatus.Instance) _left -= dt * rate;
-        if (!(_left > 0f))
+        if (!meeting && alive && ShipStatus.Instance) _left.Value -= dt * rate;
+        if (!(_left.Value > 0f))
         {
-            _left = 0f;
+            _left.Value = 0f;
             if (alive && Time.time > _suicideAt + 0.2f) { _suicideAt = Time.time; PortKit.Suicide(); }
         }
         _shareIn -= dt;
@@ -240,7 +246,7 @@ public sealed class Spectre : RoleBase
 
     private void OnMeetingStart(MeetingStartEvent e)
     {
-        if (IsLocal) { _left = Mathf.Max(20f, _left); ShareNow(); }
+        if (IsLocal) { _left.Value = Mathf.Max(20f, _left.Value); ShareNow(); }
     }
 
     public override void ModifyVision(ref float radius) => PortKit.ImpostorVision(ref radius);

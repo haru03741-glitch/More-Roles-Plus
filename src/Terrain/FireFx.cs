@@ -69,6 +69,8 @@ internal static class FireFx
         long now = Environment.TickCount64;
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.1f, (now - _lastMs) / 1000f);
         _lastMs = now;
+        // 逆再生の間は粒をその場で止める (計算は時戻しが巻き戻す・戻し終わりに戻し先より後の粒は消す)
+        if (Roles.RewindPlayback.Active) return;
         _clock += dt;
         bool fire = FireSim.Ready && (FireSim.BurningCount > 0 || FireSim.Steam.Count > 0 || FireSim.FlareFx.Count > 0
             || FireSim.Arcs.Count > 0 || FireSim.Chars.Count > 0 || Ignited.Count > 0) || Smolders.Count > 0;

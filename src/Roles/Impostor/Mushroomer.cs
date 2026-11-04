@@ -99,7 +99,19 @@ public sealed class Mushroomer : RoleBase
             mu._nextTurn.Add(m);
             if (PortKit.IsImpostor(PlayerControl.LocalPlayer)) SetActive(m, false);
             else m.gameObject.SetActive(false);
+            Rewind.Undo(_ => Unplant(mu, m)); // 植える前へ戻るとキノコは無くなる (植えた回数は能力が戻す)
+            FxRoot.TrackWorld(m.gameObject); // 逆再生の間は控えの絵で出す (植えた所を過ぎると消える)
         });
+    }
+
+    private static void Unplant(Mushroomer mu, Mushroom m)
+    {
+        mu._nextTurn.Remove(m);
+        if (!m) return;
+        var fungle = ShipStatus.Instance ? ShipStatus.Instance.TryCast<FungleShipStatus>() : null;
+        if (fungle != null && fungle.sporeMushrooms.TryGetValue(m.id, out var f) && f == m) fungle.sporeMushrooms.Remove(m.id);
+        if (Spores.Managed(m)) Spores.All.Remove(m.id);
+        Object.Destroy(m.gameObject);
     }
 
     // 船の動いているキノコから一斉に胞子を出す

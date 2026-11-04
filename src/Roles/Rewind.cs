@@ -15,7 +15,8 @@ namespace MoreRolesPlus.Roles;
 //   戻し終わった後は Assignable.OnRewound が呼ばれる (戻った値から見た目を作り直す)。
 // 能力の回数・ボタンの待ち時間・位置・生き死に・タスク・妨害・地形は時戻しが自分で戻すので、ここに入れなくてよい。
 // 本編の電文で起きる事 (変身・透明など) は逆の操作が本編に無いので、その入口で Rewind.Undo を呼ぶ
-// 見た目: 世界に出す絵 (演出・弾・破片) は FxRoot.Attach(go) で置く。それだけで逆再生の間は見えていたとおりに逆へ流れる
+// 見た目: 世界に出す絵 (演出・弾・破片) の入れ物は FxRoot.New(name) で作る (作った物は FxRoot.Attach(go) で移す)。それだけで逆再生の間は見えていたとおりに逆へ流れる。
+//   根の下に置けない場に残る物 (物理の体を持つ・本編の部品の複製) は FxRoot.TrackWorld(go)、画面の板の根は FxRoot.TrackHud(tf)
 //   (0.1 秒ごとに SpriteRenderer を控えて、逆再生の間は根を隠して控えを置く)。演出の Tick は RewindPlayback.Active の間は止める。
 //   戻し先より後に出てきた絵は戻し終わりに隠れる。遊びに関わる物 (飛んでいる弾など) は OnRewound で自分の一覧からも消す
 public static class Rewind

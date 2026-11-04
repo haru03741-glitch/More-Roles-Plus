@@ -134,6 +134,7 @@ internal static class SpectreDishes
         go.transform.position = new Vector3(at.x, at.y, (at.y + 0.3636f) / 1000f);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = DishSprite(false);
+        FxRoot.TrackWorld(go); // 逆再生の間は控えの絵で出す (食べた皿が盛られた姿へ戻っていく)
         return sr;
     }
 
@@ -160,6 +161,8 @@ internal static class SpectreDishes
         if (id < 0 || id >= All.Count) return;
         var d = All[id];
         bool wasAte = d.Ate;
+        float wasRespawn = d.Respawn;
+        Rewind.Undo(_ => { d.Ate = wasAte; d.Respawn = wasRespawn; Draw(d); }); // 食べる・盛る前へ戻ると皿も戻る
         d.Ate = ate;
         d.Respawn = Spectre.Replenish;
         Draw(d);

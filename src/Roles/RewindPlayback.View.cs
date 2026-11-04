@@ -28,6 +28,16 @@ internal static class FxRoot
         return _root;
     }
 
+    // 演出の絵の入れ物を作る (世界の絵は new GameObject でなくこれで作る)。parent を渡さなければ根の下に作るので、それだけで逆再生に入る。
+    // 世界の位置と大きさは Attach と同じく世界の値のまま (船の倍率は打ち消される)。船が無い時は場面の根に作る
+    internal static GameObject New(string name, int layer = 0, Transform parent = null)
+    {
+        var go = new GameObject(name) { layer = layer };
+        var p = parent ? parent : Get();
+        if (p) go.transform.SetParent(p, true);
+        return go;
+    }
+
     // 作った絵をここへ移す (世界の位置はそのまま)。船が無い時は何もしない
     internal static void Attach(GameObject go)
     {
@@ -52,6 +62,34 @@ internal static class FxRoot
     }
 
     internal static Transform CurrentWorld => _world ? _world : null;
+
+    // 根の下に置けない場に残る物 (物理の体を持つ物・本編の部品を複製した物など) を、置いたまま逆再生に入れる。
+    // 根と同じく控え、逆再生の間はその物を隠して控えを置く。消えた物は控えの時に外れる。
+    // 戻し先より後に出した物は隠さないので、持ち主が Rewind.Undo で消す
+    internal static void TrackWorld(GameObject go)
+    {
+        if (!go) return;
+        var t = go.transform;
+        for (int i = WorldObjs.Count - 1; i >= 0; i--)
+        {
+            if (!WorldObjs[i]) WorldObjs.RemoveAt(i);
+            else if (WorldObjs[i].Pointer == t.Pointer) return;
+        }
+        WorldObjs.Add(t);
+        RewindPlayback.HideWhilePlaying(t); // 逆再生の途中で出し直した物 (取り消しで戻った物) は、控えの絵と二重にならないよう隠しておく
+    }
+
+    internal static readonly List<Transform> WorldObjs = new();
+
+    // TrackWorld から外す (使い回す物を池へ返す時に。逆再生の間に隠していた物は戻し終わりに出さない)
+    internal static void Untrack(GameObject go)
+    {
+        if (!go) return;
+        var p = go.transform.Pointer;
+        for (int i = WorldObjs.Count - 1; i >= 0; i--)
+            if (!WorldObjs[i] || WorldObjs[i].Pointer == p) WorldObjs.RemoveAt(i);
+        RewindPlayback.ForgetHidden(p);
+    }
 
     // 毎フレーム頂点を書き直すメッシュを登録する (v と c は持ち主がメッシュへ書き込む元の配列)。
     // 登録したメッシュは控えの時に頂点と色を写すので、逆再生でその時の形で出る
@@ -235,7 +273,7 @@ internal static partial class RewindPlayback
     private static bool _rootHidden;
     private static readonly Dictionary<IntPtr, int> NewerIndex = new();
 
-    internal static int ViewShots, ViewDropped, ViewHidden, DynShots, DynDrawn; // 確かめ用
+    internal static int ViewShots, ViewDropped, HudDropped, ViewHidden, DynShots, DynDrawn; // 確かめ用
 
     private static void ClearView()
     {
@@ -261,8 +299,15 @@ internal static partial class RewindPlayback
         if (root) CaptureUnder(root, ref n, now);
         var world = FxRoot.CurrentWorld;
         if (world) CaptureUnder(world, ref n, now);
+        for (int i = FxRoot.WorldObjs.Count - 1; i >= 0; i--)
+        {
+            var t = FxRoot.WorldObjs[i];
+            if (!t) { FxRoot.WorldObjs.RemoveAt(i); continue; }
+            if (t.gameObject.activeInHierarchy) CaptureUnder(t, ref n, now);
+        }
         if (n >= WorldMax) ViewDropped++; // 上限で切った回数
         CaptureHud(ref n);
+        if (n >= MaxPerSlot) HudDropped++; // 画面の板が上限で切れた回数 (世界の絵が多いと画面の分が減る)
         ViewCount[s] = n;
         _viewHead = (_viewHead + n) % ViewCap;
         ViewShots = n;
@@ -581,6 +626,13 @@ internal static partial class RewindPlayback
         if (root && root.gameObject.activeSelf) { root.gameObject.SetActive(false); _rootHidden = true; }
         var world = FxRoot.CurrentWorld;
         if (world && world.gameObject.activeSelf) { world.gameObject.SetActive(false); _worldHidden = true; }
+        WorldObjHidden.Clear();
+        foreach (var t in FxRoot.WorldObjs)
+        {
+            if (!t || !t.gameObject.activeSelf) continue;
+            t.gameObject.SetActive(false);
+            WorldObjHidden.Add(t);
+        }
         HudHidden.Clear();
         foreach (var r in FxRoot.HudRoots)
         {
@@ -591,6 +643,21 @@ internal static partial class RewindPlayback
     }
 
     private static bool _worldHidden;
+
+    internal static void ForgetHidden(IntPtr p)
+    {
+        for (int i = WorldObjHidden.Count - 1; i >= 0; i--)
+            if (!WorldObjHidden[i] || WorldObjHidden[i].Pointer == p) WorldObjHidden.RemoveAt(i);
+    }
+
+    internal static void HideWhilePlaying(Transform t)
+    {
+        if (!Active) return;
+        if (!t || !t.gameObject.activeSelf) return;
+        t.gameObject.SetActive(false);
+        WorldObjHidden.Add(t);
+    }
+    private static readonly List<Transform> WorldObjHidden = new();
 
     // 控え a (古い) と b (新しい) の間 u で置く。同じ絵が両方にあれば位置・向き・大きさ・色を補間する
     private static void DriveView(int a, int b, float u)
@@ -787,6 +854,9 @@ internal static partial class RewindPlayback
             var world = FxRoot.CurrentWorld;
             if (world) world.gameObject.SetActive(true);
         }
+        foreach (var t in WorldObjHidden)
+            if (t) t.gameObject.SetActive(true);
+        WorldObjHidden.Clear();
         for (int k = 0; k < _hudUsed && k < HudProxies.Count; k++)
             if (HudProxies[k].Go) HudProxies[k].Go.SetActive(false);
         _hudUsed = 0;
@@ -856,5 +926,5 @@ internal static partial class RewindPlayback
     }
 
     internal static string DescribeView() =>
-        $"view[shots={ViewShots} dropped={ViewDropped} hidden={ViewHidden} sprites={SpriteCache.Count} proxies={_proxyUsed}/{Proxies.Count} meshes={_meshUsed}/{MeshProxies.Count} hud={_hudUsed}/{_hudMeshUsed}/{TextProxies.Count} texts={TextCache.Count} dyn={DynShots}/{DynDrawn}/{Dyns.Count} rootHidden={_rootHidden}]";
+        $"view[shots={ViewShots} dropped={ViewDropped} hudDropped={HudDropped} worldObjs={FxRoot.WorldObjs.Count} hidden={ViewHidden} sprites={SpriteCache.Count} proxies={_proxyUsed}/{Proxies.Count} meshes={_meshUsed}/{MeshProxies.Count} hud={_hudUsed}/{_hudMeshUsed}/{TextProxies.Count} texts={TextCache.Count} dyn={DynShots}/{DynDrawn}/{Dyns.Count} rootHidden={_rootHidden}]";
 }

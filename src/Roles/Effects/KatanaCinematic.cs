@@ -135,6 +135,15 @@ internal static unsafe partial class KatanaCinematic
     internal static void Tick()
     {
         if (!_on) { SoundTick(); if (_easing) EaseTick(); return; }
+        if (RewindPlayback.Active)
+        {
+            // 時戻しが始まったら閉じて逆再生を見せる (斬った結果は時戻しが戻す)。体の止めは時戻しが持つので、ここでは動けるように戻さない
+            if (_frozen) TimeRewind.TakeFreeze(_wasMoveable);
+            _frozen = false;
+            Teardown();
+            StopSound();
+            return;
+        }
         try
         {
             if (GameClock.ShipGen != _shipGen || !GameClock.ShipAlive || !_atk || MeetingHud.Instance) { Teardown(); StopSound(); return; }

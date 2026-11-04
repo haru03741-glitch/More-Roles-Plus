@@ -217,6 +217,7 @@ internal static class DodgePad
         _root = new GameObject("MrpDodgePad") { layer = layer };
         var tf = _root.transform;
         tf.SetParent(hud.transform, false);
+        FxRoot.TrackHud(tf); // 逆再生の間は見えていたとおりに逆へ流す
         tf.localPosition = FxMath.V3(0f, 0f, Z);
 
         var go = new GameObject("Dodge") { layer = layer };

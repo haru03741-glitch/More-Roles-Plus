@@ -373,6 +373,8 @@ internal static class DecompFx
         long now = Environment.TickCount64;
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.1f, (now - _lastMs) / 1000f);
         _lastMs = now;
+        // 逆再生の間は閃光と吸い出しの粒をその場で止め、画面の揺れも止める (減圧の計算は時戻しが巻き戻す)
+        if (Roles.RewindPlayback.Active) { if (_shaking) StopShake(); return; }
         _clock += dt;
         _pollAcc += dt;
         if (_pollAcc >= PollEvery)

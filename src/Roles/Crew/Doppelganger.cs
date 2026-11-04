@@ -382,6 +382,67 @@ internal sealed class DoppelPuppet
         Root = root;
         _go.transform.position = new Vector3(root.x, root.y, (root.y + _offset.y) / 1000f);
         Dress(owner, flip);
+        FxRoot.TrackWorld(_go);
+    }
+
+    // ---- 時戻し: 分身は全員の端末が同じ電文で動かすので、各端末が自分の手元の出し入れと歩きを取り消しとして積む ----
+
+    private readonly struct Pose
+    {
+        public readonly Vector2 Root;
+        public readonly float[] Path;
+        public readonly int Next;
+        public readonly float Speed;
+        public readonly Action Arrived;
+        public readonly bool Flip;
+        public Pose(DoppelPuppet m) { Root = m.Root; Path = m._path; Next = m._next; Speed = m._speed; Arrived = m._arrived; Flip = m.Flip; }
+    }
+
+    private void Apply(in Pose p)
+    {
+        Root = p.Root;
+        _path = p.Path;
+        _next = p.Next;
+        _speed = p.Speed;
+        _arrived = p.Arrived;
+        if (_cos) _cos.SetFlipX(p.Flip);
+        if (_go) _go.transform.position = new Vector3(Root.x, Root.y, (Root.y + _offset.y) / 1000f);
+    }
+
+    private const float MarkEvery = 0.25f; // 歩いている間の位置を積む間 (時戻しの値の記録と同じ)
+    private float _nextMark;
+
+    // 今の歩きの状態へ戻る取り消しを積む
+    private void Mark()
+    {
+        if (!Rewind.Recording) return;
+        var p = new Pose(this);
+        Rewind.Undo(_ => Apply(p));
+    }
+
+    // 消えた分身を取り消しで出し直す (煙と音は出さない)
+    private static void Restore(byte owner, Pose p)
+    {
+        var pc = PortKit.ById(owner);
+        if (!pc || pc.Data == null || !AmongUsClient.Instance || !AmongUsClient.Instance.PlayerPrefab) return;
+        if (All.Remove(owner, out var cur)) cur.Destroy();
+        try
+        {
+            var m = new DoppelPuppet(pc, p.Root, p.Flip);
+            m.Apply(p);
+            All[owner] = m;
+        }
+        catch (Exception e) { Plugin.Logger.LogWarning($"doppelganger restore: {e.Message}"); }
+    }
+
+    private static void UndoSpawn(byte owner, DoppelPuppet made, bool hadOld, Pose old)
+    {
+        if (All.TryGetValue(owner, out var cur) && cur == made)
+        {
+            All.Remove(owner);
+            made.Destroy();
+        }
+        if (hadOld) Restore(owner, old);
     }
 
     private void Dress(PlayerControl owner, bool flip)
@@ -409,7 +470,9 @@ internal sealed class DoppelPuppet
     internal static void Spawn(PlayerControl owner, Vector2 root, bool flip)
     {
         if (!owner || !AmongUsClient.Instance || !AmongUsClient.Instance.PlayerPrefab) return;
-        if (All.Remove(owner.PlayerId, out var old)) old.Destroy(); // 出し直し (入れ替わりの印は残さない)
+        bool hadOld = All.Remove(owner.PlayerId, out var old);
+        var oldPose = hadOld ? new Pose(old) : default;
+        if (hadOld) old.Destroy(); // 出し直し (入れ替わりの印は残さない)
         if (!_bound)
         {
             _bound = true;
@@ -421,7 +484,13 @@ internal sealed class DoppelPuppet
                 _bound = false;
             });
         }
-        try { All[owner.PlayerId] = new DoppelPuppet(owner, root, flip); }
+        try
+        {
+            var made = new DoppelPuppet(owner, root, flip);
+            All[owner.PlayerId] = made;
+            byte id = owner.PlayerId;
+            Rewind.Undo(_ => UndoSpawn(id, made, hadOld, oldPose)); // 出す前へ戻ると分身は消える (前の分身がいたら戻る)
+        }
         catch (Exception e) { Plugin.Logger.LogWarning($"doppelganger: {e.Message}"); }
         Poof(root, 0.6f);
         // 入れ替わりは「黙って消す → 本人のいた所に出す」の順で届く。直前に黙って消えていれば両方の地点で空気が抜ける
@@ -443,6 +512,8 @@ internal sealed class DoppelPuppet
     {
         if (!All.TryGetValue(owner, out var m)) return;
         All.Remove(owner);
+        var pose = new Pose(m);
+        Rewind.Undo(_ => Restore(owner, pose)); // 消える前へ戻ると分身が戻る
         if (effect)
         {
             Poof(m.Root, 1f);
@@ -467,6 +538,7 @@ internal sealed class DoppelPuppet
     // 足元の点の列 (x, y, x, y…) をたどって歩く
     internal void Walk(float[] path, float speed, Action arrived)
     {
+        Mark();
         _path = path;
         _next = 0;
         _speed = Mathf.Max(speed, 0.5f);
@@ -475,6 +547,7 @@ internal sealed class DoppelPuppet
 
     internal void StopAt(Vector2 root)
     {
+        Mark();
         _path = null;
         _arrived = null;
         Root = root;
@@ -482,7 +555,7 @@ internal sealed class DoppelPuppet
 
     internal static void TickAll(float dt)
     {
-        if (All.Count == 0) return;
+        if (All.Count == 0 || RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         foreach (var m in All.Values) m.Tick(dt);
     }
 
@@ -509,6 +582,7 @@ internal sealed class DoppelPuppet
         bool moving = false;
         if (_path != null && !MeetingHud.Instance)
         {
+            if (Time.time >= _nextMark) { _nextMark = Time.time + MarkEvery; Mark(); }
             float budget = _speed * dt;
             while (budget > 0f && _path != null)
             {

@@ -186,6 +186,14 @@ internal static class CrewGrip
             _shown = false;
             _strandTried = false;
         }
+        if (Roles.RewindPlayback.Active)
+        {
+            // 逆再生の間はつかまりをやめ、流されている体の見た目も戻す (体の位置は逆再生が置き、吸い出しの計算は時戻しが巻き戻す)
+            foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
+            Flights.Clear();
+            Cancel();
+            return;
+        }
         if (Flights.Count > 0) TickFlights();
         if (SolidMap.AnySealed && ++_strandFrame >= StrandEvery) { _strandFrame = 0; CheckStranded(); }
         bool danger = _state != State.Free || (Decompression.Pulling && _hasTarget);
