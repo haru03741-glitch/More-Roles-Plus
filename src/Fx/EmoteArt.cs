@@ -9,9 +9,12 @@ namespace MoreRolesPlus.Fx;
 // 描くのは手元の画面だけ。毎フレーム触るのは出している人だけで、出ていない時は件数の比較だけで帰る。算術は FxMath
 internal static class EmoteArt
 {
-    internal const byte Wave = 0, Jump = 1, Clap = 2, Beckon = 3, Count = 4;
+    internal const byte Wave = 0, Jump = 1, Clap = 2, Beckon = 3;
+    // ショップ (MRP コイン) で買う物
+    internal const byte Cheer = 4, Dance = 5, Salute = 6, Shrug = 7, FistPump = 8, Bounce = 9, Crown = 10, Star = 11, Count = 12;
+    internal const byte FreeCount = 4; // 0〜3 は初めから持っている
 
-    private static readonly float[] Durations = { 1.6f, 1.2f, 1.6f, 1.6f };
+    private static readonly float[] Durations = { 1.6f, 1.2f, 1.6f, 1.6f, 1.6f, 2.0f, 1.4f, 1.3f, 1.4f, 1.5f, 2.0f, 2.0f };
     private static readonly string[] SpriteNames = { "emote_open", "emote_fist", "emote_side", "emote_beckon0", "emote_beckon1", "emote_beckon2" };
     private const int Open = 0, Fist = 1, Side = 2, Beckon0 = 3;
     // 絵の中心から手首までのずらし (持ち手 = 手首に置いて手首を軸に回す)。絵は 160 px・1 単位 = 100 px
@@ -32,6 +35,9 @@ internal static class EmoteArt
         public byte Id, Kind;
         public float Start, Dur, Inv;
         public Transform Root, Body, Cos;
+        public GameObject Prop;          // 王冠・流れ星の絵 (手と違って本人の色に塗らない)
+        public Transform PropT;
+        public SpriteRenderer PropR;
         public Vector3 Bp, Cp;
         public bool Hop;
         public GameObject A, B;
@@ -79,15 +85,32 @@ internal static class EmoteArt
         return false;
     }
 
-    private static int IconSprite(byte kind) => kind switch { Wave => Open, Jump => Fist, Clap => Side, _ => Beckon0 + 2 };
+    private static int IconSprite(byte kind) => kind switch
+    {
+        Wave or Cheer or Shrug or Bounce or Star => Open,
+        Jump or Dance or FistPump or Crown => Fist,
+        Clap or Salute => Side,
+        _ => Beckon0 + 2,
+    };
 
     // 各絵の手が描かれている所の中心 (絵の中心から・単位)。絵ごとに手の寄り方が違うので、ボタンでは手の中心を揃える
-    private static readonly Vector2[] IconCenters = { new(-0.09f, -0.01f), new(-0.035f, -0.215f), new(0.105f, -0.02f), new(-0.10f, 0f) };
+    private static Vector2 SpriteCenter(int sprite) => sprite switch
+    {
+        Open => new(-0.09f, -0.01f),
+        Fist => new(-0.035f, -0.215f),
+        Side => new(0.105f, -0.02f),
+        _ => new(-0.10f, 0f),
+    };
 
     // ボタンのアイコン (原点は絵の中心)
     internal static Sprite Icon(byte kind) => LoadSprites() ? Sprites[IconSprite(kind)] : null;
 
-    internal static Vector2 IconCenter(byte kind) => kind < Count ? IconCenters[kind] : default;
+    internal static Vector2 IconCenter(byte kind) => kind < Count ? SpriteCenter(IconSprite(kind)) : default;
+
+    // 両手を使う種類
+    private static bool TwoHands(byte kind) => kind is Clap or Jump or Cheer or Dance or Shrug or Bounce or Crown;
+    // 体を上下・左右に動かす種類
+    private static bool MovesBody(byte kind) => kind is Jump or Cheer or Dance or Shrug or FistPump or Bounce;
 
     // pc にエモートを出す (同じ人の前のエモートは打ち切る)
     internal static bool Play(PlayerControl pc, byte kind) => Play(pc, kind, -1f);
@@ -116,9 +139,10 @@ internal static class EmoteArt
         };
         int layer = pp.gameObject.layer;
         s.A = NewHand(s.Root, mat, color, layer, out s.At, out s.Ac, out s.Ar);
-        if (kind == Clap || kind == Jump) s.B = NewHand(s.Root, mat, color, layer, out s.Bt, out s.Bc, out s.Br);
+        if (TwoHands(kind)) s.B = NewHand(s.Root, mat, color, layer, out s.Bt, out s.Bc, out s.Br);
         if (kind == Clap) NewClapFx(s, layer);
-        if (kind == Jump)
+        NewProp(s, layer);
+        if (MovesBody(kind))
         {
             s.Body = s.Root.Find("BodyForms");
             s.Cos = pp.cosmetics ? pp.cosmetics.transform : null;
@@ -158,11 +182,12 @@ internal static class EmoteArt
         int color = pc.Data != null ? pc.Data.DefaultOutfit.ColorId : 0;
         int layer = pc.gameObject.layer;
         s.A = NewHand(s.Root, mat, color, layer, out s.At, out s.Ac, out s.Ar);
-        if (kind == Clap || kind == Jump) s.B = NewHand(s.Root, mat, color, layer, out s.Bt, out s.Bc, out s.Br);
+        if (TwoHands(kind)) s.B = NewHand(s.Root, mat, color, layer, out s.Bt, out s.Bc, out s.Br);
         if (kind == Clap) NewClapFx(s, layer);
+        NewProp(s, layer);
 
         // 体の根を他の演出 (流れに踏ん張る・吸い出し) が動かしている間は跳ねない (位置の取り合いになる)
-        if (kind == Jump && !Terrain.CrewBrace.Posed(s.Id) && !Terrain.CrewGrip.Active)
+        if (MovesBody(kind) && !Terrain.CrewBrace.Posed(s.Id) && !Terrain.CrewGrip.Active)
         {
             Roles.SamuraiBlade.ReleaseBody(s.Id);
             s.Body = s.Root.Find("BodyForms");
@@ -224,6 +249,7 @@ internal static class EmoteArt
         if (s.A) Object.Destroy(s.A);
         if (s.B) Object.Destroy(s.B);
         if (s.Fx) Object.Destroy(s.Fx);
+        if (s.Prop) Object.Destroy(s.Prop);
     }
 
     // 確認用: 自分のエモートを t 秒の姿で止めて出す (歩いても向きを変えても止まったまま・Stop/会議で消える)
@@ -277,6 +303,7 @@ internal static class EmoteArt
         s.Hidden = hidden;
         s.A.SetActive(!hidden);
         if (s.B) s.B.SetActive(!hidden);
+        if (s.Prop) s.Prop.SetActive(!hidden);
         if (s.Fx && hidden && s.FxOn)
         {
             s.FxOn = false;
@@ -336,6 +363,100 @@ internal static class EmoteArt
                 Hand(s.Bt, s.Bc, s.Br, ref s.Bsp, s.Inv, Side, -sx, -1f, 0.09f + gap, y, rot, alpha, ClapSize);
                 ClapFx(s, hit, since, alpha);
                 if (NewBeat(s, hit)) Sound(s, ClapClips[hit % ClapClips.Length], 0.75f * (0.6f + 0.4f * alpha), 10f, 5f);
+                break;
+            }
+            case Cheer:
+            {
+                // 両手を頭の上へ上げて左右に振り、小さく 3 回弾む
+                float hop = FxMath.Abs(FxMath.Sin(t / s.Dur * FxMath.PI * 3f)) * 0.12f;
+                Body(s, 0f, hop);
+                float rot = -15f + 22f * FxMath.Sin(w * 3f);
+                float y = 0.22f + (s.Hop ? hop : 0f) + 0.04f * FxMath.Sin(w * 3f);
+                Hand(s.At, s.Ac, s.Ar, ref s.Asp, s.Inv, Open, sx, 1f, 0.40f, y, rot, alpha);
+                Hand(s.Bt, s.Bc, s.Br, ref s.Bsp, s.Inv, Open, -sx, 1f, 0.40f, y, rot, alpha);
+                int beat = (int)((t + 0.05f) * 3f);
+                if (NewBeat(s, beat) && t < s.Dur - 0.2f) Sound(s, beat % 2 == 0 ? "noise_emote_swish_1" : "noise_emote_swish_2", 0.3f, 6f, 3.5f);
+                break;
+            }
+            case Dance:
+            {
+                // 体を左右に揺らしながら、握りこぶしを交互に突き上げる
+                float ph = w * 1.5f;
+                float sway = 0.07f * FxMath.Sin(ph);
+                Body(s, sway, 0.05f * FxMath.Abs(FxMath.Sin(ph)));
+                float bx = s.Hop ? sway : 0f;
+                float up = FxMath.Max(0f, FxMath.Sin(ph)), dn = FxMath.Max(0f, -FxMath.Sin(ph));
+                Hand(s.At, s.Ac, s.Ar, ref s.Asp, s.Inv, Fist, sx, 1f, 0.42f + bx * sx, -0.12f + 0.32f * up, -25f + 20f * up, alpha, FistSize);
+                Hand(s.Bt, s.Bc, s.Br, ref s.Bsp, s.Inv, Fist, -sx, 1f, 0.42f - bx * sx, -0.12f + 0.32f * dn, -25f + 20f * dn, alpha, FistSize);
+                int beat = (int)((t + 0.05f) * 1.5f * 2f);
+                if (NewBeat(s, beat) && t < s.Dur - 0.2f) Sound(s, beat % 2 == 0 ? "noise_emote_swish_1" : "noise_emote_swish_2", 0.28f, 6f, 3.5f);
+                break;
+            }
+            case Salute:
+            {
+                // 横から見た手を額へ上げて止める (指先を前へ)
+                float k = FxMath.Clamp01(t / 0.25f);
+                float e = 1f - (1f - k) * (1f - k);
+                Hand(s.At, s.Ac, s.Ar, ref s.Asp, s.Inv, Side, sx, 1f, 0.14f + 0.06f * (1f - e), -0.15f + 0.53f * e, -80f * e, alpha);
+                if (NewBeat(s, t >= 0.2f ? 0 : -1)) Sound(s, "noise_emote_rustle", 0.3f, 4f, 2.5f);
+                break;
+            }
+            case Shrug:
+            {
+                // 両手の手のひらを上へ向けて肩の高さで上げ下げし、体を少し沈める
+                float k = FxMath.Sin(FxMath.Clamp01(t / s.Dur) * FxMath.PI);
+                Body(s, 0f, -0.03f * k);
+                float y = -0.1f + 0.12f * k;
+                Hand(s.At, s.Ac, s.Ar, ref s.Asp, s.Inv, Open, sx, 1f, 0.46f, y, -65f, alpha);
+                Hand(s.Bt, s.Bc, s.Br, ref s.Bsp, s.Inv, Open, -sx, 1f, 0.46f, y, -65f, alpha);
+                if (NewBeat(s, t >= 0.15f ? 0 : -1)) Sound(s, "noise_emote_rustle", 0.3f, 4f, 2.5f);
+                break;
+            }
+            case FistPump:
+            {
+                // 握りこぶしを 3 回引き下ろし、最後に小さく跳ねる
+                float pump = FxMath.Abs(FxMath.Sin(FxMath.Clamp01(t / (s.Dur * 0.75f)) * FxMath.PI * 3f));
+                float last = FxMath.Clamp01((t - s.Dur * 0.75f) / (s.Dur * 0.25f));
+                float hop = FxMath.Sin(last * FxMath.PI) * 0.15f;
+                Body(s, 0f, hop);
+                Hand(s.At, s.Ac, s.Ar, ref s.Asp, s.Inv, Fist, sx, 1f, 0.40f, -0.05f + 0.25f * (1f - pump) + (s.Hop ? hop : 0f), -10f, alpha, FistSize);
+                int beat = (int)(FxMath.Clamp01(t / (s.Dur * 0.75f)) * 3f);
+                if (NewBeat(s, beat) && beat < 3) Sound(s, "noise_emote_push", 0.35f, 6f, 3.5f);
+                break;
+            }
+            case Bounce:
+            {
+                // 小刻みに 6 回跳ねる。手は横で開いて揺らす
+                float hop = FxMath.Abs(FxMath.Sin(t / s.Dur * FxMath.PI * 6f)) * 0.15f;
+                Body(s, 0f, hop);
+                float y = -0.2f + (s.Hop ? hop : 0f);
+                float rot = -40f + 12f * FxMath.Sin(w * 4f);
+                Hand(s.At, s.Ac, s.Ar, ref s.Asp, s.Inv, Open, sx, 1f, 0.46f, y, rot, alpha);
+                Hand(s.Bt, s.Bc, s.Br, ref s.Bsp, s.Inv, Open, -sx, 1f, 0.46f, y, rot, alpha);
+                int beat = (int)((t + 0.03f) / s.Dur * 6f);
+                if (NewBeat(s, beat) && s.Hop && beat > 0) Sound(s, beat % 2 == 1 ? "noise_emote_land_1" : "noise_emote_land_2", 0.4f, 7f, 4f);
+                break;
+            }
+            case Crown:
+            {
+                // 両手の握りこぶしを上げ、頭の上に金の王冠がきらめきながら降りてくる
+                float k = FxMath.Clamp01(t / 0.4f);
+                float e = 1f - (1f - k) * (1f - k) * (1f - k);
+                Hand(s.At, s.Ac, s.Ar, ref s.Asp, s.Inv, Fist, sx, 1f, 0.44f, 0.05f + 0.1f * e, -20f, alpha, FistSize);
+                Hand(s.Bt, s.Bc, s.Br, ref s.Bsp, s.Inv, Fist, -sx, 1f, 0.44f, 0.05f + 0.1f * e, -20f, alpha, FistSize);
+                float twinkle = 0.85f + 0.15f * FxMath.Sin(w * 4f);
+                PropAt(s, 0f, 1.05f - 0.3f * e + 0.03f * FxMath.Sin(w * 2f), 6f * FxMath.Sin(w), 0.55f * (0.6f + 0.4f * e), alpha * twinkle);
+                if (NewBeat(s, t >= 0.35f ? 0 : -1)) Sound(s, ClapClips[0], 0.45f, 8f, 4f);
+                break;
+            }
+            case Star:
+            {
+                // 開いた手を上へ。流れ星が体の周りを回る
+                Hand(s.At, s.Ac, s.Ar, ref s.Asp, s.Inv, Open, sx, 1f, 0.34f, 0.32f, -5f, alpha);
+                float a = t * 2f * FxMath.PI * 0.8f;
+                PropAt(s, FxMath.Cos(a) * 0.6f, 0.25f + FxMath.Sin(a) * 0.45f, -a * FxMath.Rad2Deg * 1.5f, 0.32f, alpha);
+                int beat = (int)(t * 0.8f);
+                if (NewBeat(s, beat)) Sound(s, "noise_emote_swish_1", 0.3f, 6f, 3.5f);
                 break;
             }
             default:
@@ -398,6 +519,112 @@ internal static class EmoteArt
         float k = size * inv;
         tf.localScale = FxMath.V3(m < 0f ? -k : k, k, 1f);
         sr.color = FxMath.Rgba(1f, 1f, 1f, alpha);
+    }
+
+    // 体の根を (dx, dy) だけずらす (跳ねる・揺れる。他の演出が体を動かしている時は動かさない)
+    private static void Body(Show s, float dx, float dy)
+    {
+        if (!s.Hop) return;
+        float x = dx * s.Inv, y = dy * s.Inv;
+        if (s.Body) s.Body.localPosition = FxMath.V3(s.Bp.x + x, s.Bp.y + y, s.Bp.z);
+        if (s.Cos) s.Cos.localPosition = FxMath.V3(s.Cp.x + x, s.Cp.y + y, s.Cp.z);
+    }
+
+    // 王冠・流れ星の絵 (本人の色に塗らない)
+    private static void NewProp(Show s, int layer)
+    {
+        Sprite sp = s.Kind == Crown ? CrownSprite() : s.Kind == Star ? StarSprite() : null;
+        if (!sp) return;
+        s.Prop = new GameObject("MrpEmoteProp") { layer = layer };
+        s.PropT = s.Prop.transform;
+        s.PropT.SetParent(s.Root, false);
+        s.PropR = s.Prop.AddComponent<SpriteRenderer>();
+        s.PropR.sprite = sp;
+        s.PropR.color = FxMath.Rgba(1f, 1f, 1f, 0f);
+    }
+
+    private static void PropAt(Show s, float x, float y, float rot, float size, float alpha)
+    {
+        if (!s.PropT) return;
+        float inv = s.Inv;
+        s.PropT.localPosition = FxMath.V3(x * inv, y * inv, (HandZ - 0.003f) * inv);
+        s.PropT.localRotation = FxMath.RotZ(rot);
+        s.PropT.localScale = FxMath.V3(size * inv, size * inv, 1f);
+        s.PropR.color = FxMath.Rgba(1f, 1f, 1f, alpha);
+    }
+
+    private static Sprite _crownSprite, _starSprite;
+
+    // 王冠の形の中か (0〜1 の座標)
+    private static bool InCrown(float fx, float fy, out bool gem)
+    {
+        gem = false;
+        bool band = fy > 0.12f && fy < 0.42f && fx > 0.1f && fx < 0.9f;
+        bool peak = false;
+        for (int k = 0; k < 3; k++)
+        {
+            float cx = 0.2f + 0.3f * k;
+            float half = 0.17f * (1f - (fy - 0.4f) / 0.45f);
+            if (fy >= 0.4f && fy < 0.85f && System.MathF.Abs(fx - cx) < half) peak = true;
+            float dx = (fx - cx) * 96f, dy = (fy - 0.88f) * 72f;
+            if (dx * dx + dy * dy < 36f) gem = true;
+        }
+        if (band || peak) gem = false;
+        return band || peak || gem;
+    }
+
+    // 金の王冠 (1 単位幅)。縁は暗い線、上に 3 つの山と赤い玉
+    private static Sprite CrownSprite()
+    {
+        if (_crownSprite) return _crownSprite;
+        const int w = 96, h = 72;
+        var px = new byte[w * h * 4];
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            float fx = (x + 0.5f) / w, fy = (y + 0.5f) / h;
+            int i = (y * w + x) * 4;
+            if (!InCrown(fx, fy, out bool gem)) { px[i + 3] = 0; continue; }
+            bool edge = false;
+            for (int oy = -2; oy <= 2 && !edge; oy++)
+            for (int ox = -2; ox <= 2 && !edge; ox++)
+            {
+                int nx = x + ox, ny = y + oy;
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h || !InCrown((nx + 0.5f) / w, (ny + 0.5f) / h, out _)) edge = true;
+            }
+            float shade = 0.75f + 0.25f * fy;
+            if (edge) { px[i] = 70; px[i + 1] = 40; px[i + 2] = 10; }
+            else if (gem) { px[i] = 230; px[i + 1] = 60; px[i + 2] = 90; }
+            else { px[i] = (byte)(255 * shade); px[i + 1] = (byte)(205 * shade); px[i + 2] = (byte)(60 * shade); }
+            px[i + 3] = 255;
+        }
+        return _crownSprite = MakeSprite("MrpEmoteCrown", px, w, h, w);
+    }
+
+    // 黄色い 5 つの角の星 (1 単位幅)。周りにうっすら光
+    private static Sprite StarSprite()
+    {
+        if (_starSprite) return _starSprite;
+        const int n = 96;
+        var px = new byte[n * n * 4];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+        {
+            float dx = (x + 0.5f) / n * 2f - 1f, dy = (y + 0.5f) / n * 2f - 1f;
+            float r = System.MathF.Sqrt(dx * dx + dy * dy);
+            float a = System.MathF.Atan2(dy, dx) - FxMath.PI / 2f;
+            float k = System.MathF.Cos(a * 5f) * 0.5f + 0.5f;
+            float edgeR = 0.42f + 0.48f * k * k;
+            float inside = FxMath.Clamp01((edgeR - r) * 40f);
+            float glow = FxMath.Clamp01(1f - r) * 0.35f;
+            float line = inside - FxMath.Clamp01((edgeR - 0.07f - r) * 40f);
+            float cr = 1f, cg = 0.9f - 0.2f * r, cb = 0.35f;
+            cr = cr * (1f - line) + 0.45f * line; cg = cg * (1f - line) + 0.3f * line; cb = cb * (1f - line) + 0.05f * line;
+            int i = (y * n + x) * 4;
+            px[i] = (byte)(FxMath.Clamp01(cr) * 255f); px[i + 1] = (byte)(FxMath.Clamp01(cg) * 255f); px[i + 2] = (byte)(FxMath.Clamp01(cb) * 255f);
+            px[i + 3] = (byte)(FxMath.Max(inside, glow) * 255f);
+        }
+        return _starSprite = MakeSprite("MrpEmoteStar", px, n, n, n);
     }
 
     // 拍手の効果の部品 (閃きのにじみ・白い核・線 4 本) を作る。角度・位置は打つたびに ClapFx が書く

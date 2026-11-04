@@ -173,7 +173,11 @@ public sealed class IntOpt : Opt
     public int Value => Min + Index * StepSize;
     internal override int Count => (Max - Min) / StepSize + 1;
     internal override double? ValueAt(int index) => Min + index * StepSize;
-    internal override string Display() => Value.ToString(CultureInfo.InvariantCulture) + Suffix;
+    // 一番上の値の時に数の代わりに出す字 (null = 数のまま)。「最多人数」の上限なし など
+    public Text? MaxLabel;
+
+    internal override string Display() =>
+        MaxLabel.HasValue && Value >= Max ? MaxLabel.Value.ToString() : Value.ToString(CultureInfo.InvariantCulture) + Suffix;
 
     internal override string Save() => Value.ToString(CultureInfo.InvariantCulture);
     internal override void Load(string s)

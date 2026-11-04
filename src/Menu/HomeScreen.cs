@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Menu;
 //   右の窓の下に MRP の帯 (名前・版・接続先) を敷き、「リンク・コードで参加」と「バグ報告・お問い合わせ」を並べる。
 //   リンクで参加は、コピーしたリンク (…/mrp/join/<コード>・mrp://join/<コード>) か部屋コードを読んで MRP のサーバーの部屋に入る
 //   (非公開の部屋も入れる。PC はコピーしてある間ボタンにコードを出す)。
-//   本編の MOD の印は友達のボタンに重なるので左下 (版の字の右) へ移し、版の字は少し大きくする。
+//   本編の MOD の印は本編どおり右上に置き、版の字は少し大きくする。
 // 更新のボタン (ModUpdate) は帯の上の右に出る
 [HarmonyPatch]
 internal static class HomeScreen
@@ -26,8 +26,6 @@ internal static class HomeScreen
     private const float TitleX = -4.2f, SubX = 1.8f, TitleY = -1.55f, TextZ = -3f;
     private const float RowY = -2.14f, JoinX = -2.73f, ReportX = 0.33f, ButtonW = 2.95f, ButtonZ = -1.3f;
     internal const float UpdateX = 0.33f, UpdateY = -0.95f;
-    private const float StampScale = 0.55f;
-    private static readonly Vector3 StampAt = new(0.255f, 0.026f, 0f); // 画面の割合 (版の字の右)
     private const float VersionScale = 1.25f;
     private const int VisibilityEvery = 10;
     private const int ClipEvery = 50; // コピーした物を見直す間 (FixedUpdate の回数・およそ 1 秒)
@@ -65,28 +63,6 @@ internal static class HomeScreen
         t.localScale = t.localScale * VersionScale;
     }
 
-    // 本編の MOD の印はメニューでは右上 (友達のボタンの上) に出るので、左下の版の字の右へ移す
-    [HarmonyPatch(typeof(ModManager), nameof(ModManager.LateUpdate)), HarmonyPostfix]
-    public static void StampLate(ModManager __instance)
-    {
-        var stamp = __instance ? __instance.ModStamp : null;
-        if (!stamp) return;
-        if (_menu is null || !_menu)
-        {
-            // メニューを出たら大きさを戻す (位置は本編が毎フレーム決め直す)
-            if (_stampScale.HasValue) { stamp.transform.localScale = _stampScale.Value; _stampScale = null; }
-            return;
-        }
-        var cam = __instance.localCamera ? __instance.localCamera : Camera.main;
-        if (!cam || !stamp.gameObject.activeInHierarchy) return;
-        _stampScale ??= stamp.transform.localScale;
-        stamp.transform.localScale = _stampScale.Value * StampScale;
-        var p = cam.ViewportToWorldPoint(StampAt);
-        stamp.transform.position = new Vector3(p.x, p.y, stamp.transform.position.z);
-    }
-
-    private static Vector3? _stampScale;
-
     // FixedUpdate から
     public static void Tick()
     {
@@ -99,8 +75,10 @@ internal static class HomeScreen
         }
         if (!_made) Make();
         if (!_root) return;
+        // 設定の窓・部屋を作る画面・持ち物が上に出ている間は、左上の題字も含めて隠す (重なって見える)
+        bool covered = Cover();
         // 遊び方の選択・クレジットなど、右の窓に別の物が出ている間は隠す
-        bool busy = _credits && _credits.gameObject.activeSelf;
+        bool busy = covered || _credits && _credits.gameObject.activeSelf;
         if (!busy && _screens)
         {
             for (int i = 0, n = _screens.childCount; i < n && !busy; i++)
@@ -110,6 +88,30 @@ internal static class HomeScreen
         if (busy) return;
         if (_tick % ClipEvery == 0) RefreshJoin();
         RefreshSub();
+        RefreshHello();
+    }
+
+    private static Transform _create;
+    private static readonly System.Collections.Generic.List<GameObject> _logoParts = new();
+
+    private static OptionsMenuBehaviour _options;
+
+    private static bool Covered()
+    {
+        if (_create && _create.gameObject.activeInHierarchy) return true;
+        if (PlayerCustomizationMenu.Instance) return true;
+        if (!_options)
+            foreach (var om in Object.FindObjectsOfType<OptionsMenuBehaviour>(true)) { _options = om; break; }
+        return _options && _options.gameObject.activeInHierarchy;
+    }
+
+    // 毎フレーム (MenuMotion から): 上に画面が出たらすぐ題字と右の窓の字を隠す (0.2 秒ごとの Tick では一瞬重なって見える)
+    internal static bool Cover()
+    {
+        bool covered = Covered();
+        foreach (var go in _logoParts) if (go && go.activeSelf == covered) go.SetActive(!covered);
+        if (covered && _root && _root.activeSelf) _root.SetActive(false);
+        return covered;
     }
 
     private static void Make()
@@ -174,6 +176,173 @@ internal static class HomeScreen
 
         RefreshJoin(force: true);
         RefreshSub();
+        try { Restyle(label, layer, order); }
+        catch (Exception e) { Plugin.Logger.LogError($"home: restyle: {e}"); }
+    }
+
+    // ── 見た目の作り直し (MRP のホーム画面) ─────────────────────
+    //   背景を本編の船の壁から夜空の色へ、左右の枠を夜空に合う色に、左上の Among Us の字を MRP の題字にする。
+    //   右の窓が空いている間は、窓の上に「ようこそ」と役職の数・ヒントを出す。
+    //   本編のボタンはそのまま使う (位置も押し方も本編のまま・Android の指でもそのまま押せる)
+    private static readonly Color FrameTint = new(0.52f, 0.58f, 0.95f, 1f);
+    private static TextMeshPro _hello, _facts, _tip;
+    private static int _tipIndex = -1;
+    private static float _tipAt;
+    private const int TipCount = 6;
+    private const float TipSeconds = 7f;
+
+    private static void Restyle(TextMeshPro font, int layer, int order)
+    {
+        var scaler = _menu.transform.Find("MainUI/AspectScaler");
+        if (!scaler) return;
+        _create = scaler.Find("CreateGameScreen");
+        _logoParts.Clear();
+        Transform skyT = null, logoMove = null;
+        // 背景: 横長の電話でも端まで埋まるよう広めに敷く (本編の絵は隠す)
+        var bgT = scaler.Find("BackgroundTexture");
+        var bg = bgT ? bgT.GetComponent<SpriteRenderer>() : null;
+        if (bg)
+        {
+            var sky = new GameObject("MrpSky").AddComponent<SpriteRenderer>();
+            sky.transform.SetParent(bgT, false);
+            sky.transform.localPosition = new Vector3(0f, 0f, -0.01f);
+            sky.transform.localScale = new Vector3(9f, 9f, 1f);
+            sky.sprite = _sky ??= SkySprite();
+            sky.sortingLayerID = bg.sortingLayerID;
+            sky.sortingOrder = bg.sortingOrder;
+            bg.enabled = false;
+            skyT = sky.transform;
+        }
+        foreach (var name in new[] { "LeftPanel", "RightPanel" })
+        {
+            var sr = scaler.Find(name)?.GetComponent<SpriteRenderer>();
+            if (sr) sr.color = FrameTint;
+        }
+        var shine = scaler.Find("RightPanel/WindowShine")?.GetComponent<SpriteRenderer>();
+        if (shine) shine.color = new Color(0.6f, 0.75f, 1f, 0.35f);
+
+        // 題字
+        var logoT = scaler.Find("LeftPanel/Sizer/LOGO-AU");
+        var logo = logoT ? logoT.GetComponent<SpriteRenderer>() : null;
+        if (logo)
+        {
+            logo.enabled = false;
+            var title = NewText(logoT.parent, "MrpLogo", font, 4.6f, logo.sortingOrder + 1, logo.sortingLayerID);
+            title.transform.localPosition = new Vector3(0f, 0.12f, -0.5f);
+            title.alignment = TextAlignmentOptions.Center;
+            title.fontStyle = FontStyles.Bold;
+            title.text = "MORE ROLES <color=#FFD54F>PLUS</color>";
+            title.enableVertexGradient = true;
+            title.colorGradient = new VertexGradient(new Color(0.55f, 0.9f, 1f), new Color(0.55f, 0.9f, 1f), new Color(0.75f, 0.6f, 1f), new Color(0.75f, 0.6f, 1f));
+            title.outlineWidth = 0.18f;
+            title.outlineColor = new Color32(10, 12, 30, 255);
+            var sub = NewText(logoT.parent, "MrpLogoSub", font, 1.7f, logo.sortingOrder + 1, logo.sortingLayerID);
+            sub.transform.localPosition = new Vector3(0f, -0.5f, -0.5f);
+            sub.alignment = TextAlignmentOptions.Center;
+            sub.color = new Color(0.78f, 0.82f, 0.9f);
+            sub.text = $"for Among Us  -  v{Plugin.Version}";
+            _logoParts.Add(title.gameObject);
+            _logoParts.Add(sub.gameObject);
+            logoMove = title.transform;
+        }
+
+        // 右の窓の「ようこそ」
+        _hello = NewText(_root.transform, "Hello", font, 3.4f, order + 1, layer);
+        _hello.transform.localPosition = FxMath.V3(-0.45f, 1.85f, TextZ);
+        _hello.alignment = TextAlignmentOptions.Center;
+        _hello.fontStyle = FontStyles.Bold;
+        _facts = NewText(_root.transform, "Facts", font, 1.9f, order + 1, layer);
+        _facts.transform.localPosition = FxMath.V3(-0.45f, 1.2f, TextZ);
+        _facts.alignment = TextAlignmentOptions.Center;
+        _facts.color = new Color(0.75f, 0.85f, 1f);
+        _tip = NewText(_root.transform, "Tip", font, 1.6f, order + 1, layer);
+        _tip.transform.localPosition = FxMath.V3(-0.45f, 0.55f, TextZ);
+        _tip.alignment = TextAlignmentOptions.Center;
+        _tip.color = new Color(1f, 0.88f, 0.55f);
+        _tip.enableWordWrapping = true;
+        _tip.rectTransform.sizeDelta = new Vector2(7.6f, 1f);
+        _facts.text = new Text("Home.Facts").With("roles", Options.Registry.Roles.Count.ToString());
+        _tipIndex = new System.Random().Next(TipCount) - 1;
+        _tipAt = 0f;
+        RefreshHello();
+        MenuMotion.Attach(_menu, logoMove, skyT, _root.transform, new[] { _hello, _facts, _tip }, _tip);
+    }
+
+    private static void RefreshHello()
+    {
+        if (!_hello) return;
+        string name = "";
+        try { name = AmongUs.Data.DataManager.Player.Customization.Name; } catch { }
+        string hello = string.IsNullOrEmpty(name) ? new Text("Home.Hello").ToString() : new Text("Home.HelloName").With("name", name).ToString();
+        if (_hello.text != hello) _hello.text = hello;
+        if (Time.realtimeSinceStartup < _tipAt) return;
+        _tipAt = Time.realtimeSinceStartup + TipSeconds;
+        _tipIndex = (_tipIndex + 1) % TipCount;
+        _tip.text = new Text("Home.Tip" + (_tipIndex + 1)).ToString();
+        MenuMotion.TipChanged();
+    }
+
+    private static TextMeshPro NewText(Transform parent, string name, TextMeshPro src, float size, int order, int layer)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        var t = go.AddComponent<TextMeshPro>();
+        if (src)
+        {
+            t.font = src.font;
+            t.fontSharedMaterial = src.fontSharedMaterial;
+        }
+        t.enableAutoSizing = false;
+        t.fontSize = size;
+        t.enableWordWrapping = false;
+        t.overflowMode = TextOverflowModes.Overflow;
+        t.color = Color.white;
+        t.rectTransform.sizeDelta = new Vector2(8f, 0.6f);
+        t.sortingOrder = order;
+        t.sortingLayerID = layer;
+        return t;
+    }
+
+    private static Sprite _sky;
+    internal static Sprite Sky() => _sky ??= SkySprite();
+
+    // 夜空: 上は濃い紺・下は紫。右上と左下にぼんやり光る雲、小さな星を散らす (横 2 : 縦 1・縦 1 単位)
+    private static Sprite SkySprite()
+    {
+        const int h = 256, w = 512;
+        var rng = new System.Random(7);
+        int n = 140;
+        var sx = new float[n]; var sy = new float[n]; var sr = new float[n]; var sa = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            sx[i] = (float)rng.NextDouble() - 0.5f;
+            sy[i] = (float)rng.NextDouble() - 0.5f;
+            sr[i] = 0.003f + (float)rng.NextDouble() * 0.007f;
+            sa[i] = 0.35f + (float)rng.NextDouble() * 0.65f;
+        }
+        var sp = FxSprites.RectRgb(w, h, (float x, float y, out float r, out float g, out float b) =>
+        {
+            float t = y + 0.5f; // 0 下・1 上
+            r = 0.10f - 0.06f * t; g = 0.06f; b = 0.20f - 0.04f * t;
+            float c1 = Glow((x - 0.32f) * 2f, y - 0.25f, 0.45f), c2 = Glow((x + 0.3f) * 2f, y + 0.28f, 0.42f);
+            r += c1 * 0.10f + c2 * 0.18f; g += c1 * 0.16f + c2 * 0.05f; b += c1 * 0.28f + c2 * 0.25f;
+            for (int i = 0; i < n; i++)
+            {
+                float dx = (x - sx[i]) * 2f, dy = y - sy[i];
+                float d = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (d < sr[i]) { float k = sa[i] * FxMath.Clamp01(1f - d / sr[i]); r += k; g += k; b += k; }
+            }
+            return 1f;
+        }, "MrpHomeSky");
+        sp.texture.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return sp;
+    }
+
+    private static float Glow(float x, float y, float r)
+    {
+        float k = FxMath.Clamp01(1f - (x * x + y * y) / (r * r));
+        return k * k;
     }
 
     private static PassiveButton CopyButton(PassiveButton proto, string name, float x, out TextMeshPro text)

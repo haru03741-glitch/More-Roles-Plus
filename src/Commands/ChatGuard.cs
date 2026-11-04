@@ -103,6 +103,7 @@ internal static class ChatGuardPatch
 {
     public static void Postfix([HarmonyArgument(0)] PlayerControl sourcePlayer, [HarmonyArgument(1)] string chatText)
     {
+        if (Net.MrpAccount.IsBindChat(chatText)) return;
         try { ChatGuard.OnChat(sourcePlayer, chatText); }
         catch (Exception e) { Plugin.Logger.LogError($"chat guard: {e}"); }
     }

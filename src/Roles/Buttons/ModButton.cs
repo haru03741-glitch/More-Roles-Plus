@@ -19,6 +19,9 @@ internal sealed class ModButton
     private static readonly List<ModButton> All = new();
     private static bool _hudShown = true;
     private static bool _ghostShown; // 幽霊の HUD が出ているか (幽霊のボタンだけを出す)
+    // 試合の始め・会議があった後の出し直しだけで待ち時間を数え直す (マップを開け閉めした時の出し直しでは戻さない)
+    private static bool _resetPending = true;
+    internal static void MarkRoundStart() => _resetPending = true;
     private static int _tick;
     private static float _dt; // 物理の刻み (本編は 1/30 秒。0.02 秒の決め打ちだと実時間の 6 割で減る)。試合中は変わらないので 1 回だけ読む
 
@@ -578,8 +581,9 @@ internal sealed class ModButton
             if (!vis && b._holding) b.EndHold(false);  // 溜めている途中の会議・死亡は使わずに捨てる
             if (!b._inGrid || !b._button) continue;
             b._button.gameObject.SetActive(vis);
-            if ((b._ghost ? ghostReshown : reshown) && b.ResetOnShow) b.StartCooldown();
+            if ((b._ghost ? ghostReshown : reshown) && b.ResetOnShow && _resetPending) b.StartCooldown();
         }
+        if (reshown || ghostReshown) _resetPending = false;
         Arrange();
     }
 
@@ -682,6 +686,16 @@ internal sealed class ModButton
 internal static class ModButtonClickPatch
 {
     public static bool Prefix(AbilityButton __instance) => !ModButton.HandleClick(__instance);
+}
+
+[HarmonyPatch]
+internal static class ModButtonRoundPatch
+{
+    [HarmonyPatch(typeof(MeetingHud), nameof(MeetingHud.Start)), HarmonyPostfix]
+    public static void Meeting() => ModButton.MarkRoundStart();
+
+    [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin)), HarmonyPrefix]
+    public static void Intro() => ModButton.MarkRoundStart();
 }
 
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.SetHudActive), typeof(PlayerControl), typeof(RoleBehaviour), typeof(bool))]

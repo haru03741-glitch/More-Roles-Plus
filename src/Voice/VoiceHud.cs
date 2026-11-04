@@ -94,16 +94,25 @@ internal static class VoiceHud
 #endif
         else if (VoiceChat.Muted) me = $"<color=#FF6060>{new Text("VoiceChat.Muted").With("key", key)}</color>";
         else if (!VoiceRules.CanTalk(PlayerControl.LocalPlayer)) me = $"<color=#9A9A9A>{new Text("VoiceChat.Listening")}</color>";
+        else if (VoiceChat.RadioOn) me = $"<color=#FF8A80>{new Text("VoiceChat.RadioOn").With("key", Menu.KeyHints.KeyName(Menu.Keybinds.Key(Menu.Keybinds.Slot.TeamRadio)))}</color>";
         else if (Mic.Talking) me = $"<color=#7CFF7C>{new Text("VoiceChat.Talking")}</color>";
         else me = new Text("VoiceChat.MicOn").With("key", key).ToString();
 
         var sb = new System.Text.StringBuilder();
+        bool radio = false;
         foreach (var p in PlayerControl.AllPlayerControls)
         {
             if (!p || p.AmOwner || p.Data == null || !Speakers.Speaking(p.PlayerId)) continue;
-            if (VoiceRules.Volume(PlayerControl.LocalPlayer, p) <= 0f) continue;
+            // 無線の声は誰の声か出さない
+            if (Speakers.SpeakingRadio(p.PlayerId))
+            {
+                if (VoiceRules.RadioVolume(PlayerControl.LocalPlayer, p) > 0f) radio = true;
+                continue;
+            }
+            if (VoiceRules.Volume(PlayerControl.LocalPlayer, p) <= 0f || !VoiceChat.ShowSpeaker.Value) continue;
             sb.Append("<color=#7CFF7C>♪</color> ").Append(p.Data.PlayerName).Append('\n');
         }
+        if (radio) sb.Append("<color=#FF8A80>♪ ").Append(new Text("VoiceChat.RadioHeard").ToString()).Append("</color>\n");
         return sb.Append(me).ToString();
     }
 

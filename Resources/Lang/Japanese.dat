@@ -1166,7 +1166,7 @@ MapRules.AirshipSpeed: The Airship の移動速度
 MapRules.FungleSpeed: The Fungle の移動速度
 MapRules.RandomSpawn: ランダムスポーン
 MapRules.AirshipAllRooms: The Airship は全部の部屋から選ぶ
-MapRules.SelectSpawn: 湧く場所を選ぶ (Airship と同じ画面・Airship 以外)
+MapRules.SelectSpawn: 湧く場所を選ぶ画面 (全マップ)
 MapRules.ExtraKillCooldown: マップごとにキルのクールダウンを足す
 MapRules.PolusKillCooldown: Polus で足す時間
 MapRules.AirshipKillCooldown: The Airship で足す時間
@@ -1864,3 +1864,96 @@ Home.JoinCode: 部屋 {code} に参加
 Home.JoinNone: 参加リンクか部屋コードをコピーしてから押してください
 Home.Joining: 部屋 {code} に入っています…
 Home.Server: 接続先
+TeamCounts.Title: 陣営の人数
+TeamCounts.CrewMin: クルー役職の最少人数
+TeamCounts.CrewMax: クルー役職の最多人数
+TeamCounts.MadMin: マッドメイトの最少人数
+TeamCounts.MadMax: マッドメイトの最多人数
+Registry.With: 一緒に出る役職
+RoleMenu.WithHint: 押して選んだ役職は、この役職が出た試合に一緒に出ます (人数と上限の範囲で。相手の役職の側にも付きます)
+RoleMenu.PairOpen: 選ぶ ▼
+RoleMenu.PairClose: 閉じる ▲
+RandomSpawn.Arrived: {room} に湧きました
+Keybinds.Bots: ボットの追加・設定
+Home.Hello: ようこそ！
+Home.HelloName: ようこそ、{name} さん！
+Home.Facts: 役職 {roles} 種類・MRP サーバーで遊べます
+Home.Tip1: ヒント: H キーか右上の「?」のボタンで役職辞典が開けます
+Home.Tip2: ヒント: 部屋のリンクをコピーして「リンク・コードで参加」を押すとすぐ入れます
+Home.Tip3: ヒント: 設定の「役職」タブで、一緒に出る役職・一緒に出ない役職を選べます
+Home.Tip4: ヒント: ゲーム設定の「陣営の人数」で、陣営ごとの最少・最多をまとめて決められます
+Home.Tip5: ヒント: 困ったことがあったら「バグ報告・お問い合わせ」から送ってください
+Home.Tip6: ヒント: 操作のキーは本編の設定の「操作」で割り当て直せます
+VersionBanner.HostTitle: ⚠ 次の人のせいで試合を始められません
+VersionBanner.HostHint: 同じ版の More Roles Plus を入れてもらうか、部屋から出てもらってください
+VersionBanner.Checking: 入ってきた人の MOD を確認しています…
+VersionBanner.ClientTitle: ⚠ このままでは試合を始められません
+VersionBanner.HostNoMrp: ホストに More Roles Plus が入っていないようです。MRP の入った部屋に入り直してください
+VoiceChat.TeamRadio: 陣営の無線 (インポスター同士はキーでどこでも話せる・誰の声かは出ない)
+VoiceChat.RadioOn: 無線で仲間に話しています ({key} で戻す)
+VoiceChat.RadioHeard: 仲間の無線
+Keybinds.TeamRadio: 陣営の無線の切り替え
+SectionPage.Count: {n} 項目
+TeamCounts.NoLimit: 制限なし
+VoiceChat.ShowSpeaker: 話している人を見せる (頭の上に ♪・左下に名前)
+Emote.Cheer: 応援
+Emote.Dance: ダンス
+Emote.Salute: 敬礼
+Emote.Shrug: やれやれ
+Emote.FistPump: ガッツポーズ
+Emote.Bounce: ぴょんぴょん
+Emote.Crown: 王冠
+Emote.Star: 流れ星
+Stamp.Tab: スタンプ
+Stamp.GG: GG
+Stamp.Thanks: ありがとう
+Stamp.Nice: ナイス!
+Stamp.Hmm: うーん…
+Stamp.Run: 逃げて!
+Stamp.Lol: 笑
+Stamp.Crown: ★王者★
+Stamp.Fire: 炎上中
+Loadout.Slots: エモートの枠 (試合中の扇の 1〜4)。押して選んでから下の一覧で中身を選びます
+Loadout.StampSlots: 会議のスタンプの枠 (1〜8)。押して選んでから下の一覧で中身を選びます
+Loadout.Pick: 枠 {n} に入れる物 (暗い物は MRP ショップで買えます)
+Shop.Title: MRP ショップ
+Shop.Open: MRP ショップ (非公式)
+Shop.Unofficial: ※ MRP コインは More Roles Plus だけの非公式のゲーム内通貨です。Among Us 本編のお金・豆・星とは関係なく、本物のお金では買えません。ランクマッチで勝つともらえます。
+Shop.Me: 持っている MRP コイン: <color=#FFD54F>{coins}</color>   ランク: {tier} ({rating})
+Shop.CoinsShort: MRP コイン {coins} (非公式)
+Shop.Offline: MRP のサーバーにつながっていません
+Shop.Loading: 読み込み中…
+Shop.Error: 読めませんでした ({error})。MRP のサーバーにつながっているか確かめてください
+Shop.Owned: 持っています
+Shop.Locked: 買えません
+Shop.NeedTier: {tier} から
+Shop.PriceShort: {price} コイン
+Shop.Buy: {price} コインで買う
+Shop.Buying: 買っています…
+Shop.Bought: 買いました! 持ち物の「エモート」で枠に入れられます
+Shop.Fail.coins: MRP コインが足りません
+Shop.Fail.rank: ランクが足りません
+Shop.Fail.owned: もう持っています
+Shop.Fail.no_item: その品はありません
+Shop.Fail.network: MRP のサーバーにつながりませんでした
+Shop.Fail.auth: アカウントを確かめられませんでした
+Shop.Fail.too_many: 少し待ってからもう一度押してください
+Shop.Fail.disabled: いまショップは閉まっています
+Shop.Hint: 買った物は持ち物の「エモート」タブで、エモートの扇の枠・会議のスタンプの枠に入れて使います。値段・持ち物・ランクは MRP のサーバーで数えています。
+Rank.Tier0: ブロンズ
+Rank.Tier1: シルバー
+Rank.Tier2: ゴールド
+Rank.Tier3: プラチナ
+Rank.Tier4: ダイヤ
+Rank.Tier5: マスター
+Rank.Record: {w} 勝 {l} 敗
+Ranked.Button: ランクマッチ (自動で部屋を探して入る)
+Ranked.Title: ランクマッチ
+Ranked.NoServer: MRP のサーバーが見つかりません。地域で MRP のサーバーを選んでください
+Ranked.Searching: 部屋を探しています…
+Ranked.Joining: 部屋 {code} に入っています…
+Ranked.Creating: 空いている部屋が無いので、新しい部屋を作っています…
+Ranked.Error: うまくいきませんでした ({error})
+Ranked.Players: {n} / {max} 人
+Ranked.Countdown: あと {s} 秒で開始 (足りない分はボットで埋めます)
+Ranked.Starting: まもなく開始します

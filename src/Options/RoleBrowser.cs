@@ -658,7 +658,10 @@ internal sealed class RoleBrowser
         if (DetailChanged(sec))
             col.Add(new Label(new Text("RolePage.ChangedNote"), 1.15f) { Color = OptEditor.ChangedColor, Width = SideW, Align = Align.Start });
         if (sec.Role is RoleBase rb && rb.Excluded != null)
-            col.Add(new Label($"{new Text("Registry.NotWith")}: {ExclSummary(rb)}", 1.25f) { Width = SideW, Align = Align.Start });
+        {
+            col.Add(new Label($"{PairTitle(false)}: {PairSummary(rb, false)}", 1.25f) { Width = SideW, Align = Align.Start });
+            col.Add(new Label($"{PairTitle(true)}: {PairSummary(rb, true)}", 1.25f) { Width = SideW, Align = Align.Start });
+        }
         if (Touch)
         {
             col.Add(new Spacer(0.1f, 0.08f));
@@ -951,6 +954,7 @@ internal sealed class RoleBrowser
             rows.Add(new Stack(true, _resetBtn, _undoBtn) { Gap = 0.1f, Align = Align.Start });
         }
         _editor.Watch(opts);
+        bool pairs = false;
         foreach (var opt in opts)
         {
             if (!opt.Shown) continue;
@@ -958,12 +962,13 @@ internal sealed class RoleBrowser
             var r = _editor.Row(opt, edit, indent, opt.Fresh ? FreshColor : (Color?)null);
             r.Align = Align.Start;
             rows.Add(r);
+            if (!pairs && sec.Role is RoleBase prb && prb.Excluded != null && opt == sec.Role.Chance)
+            {
+                AddPairs(rows, prb, W - 0.3f, 3, edit);
+                pairs = true;
+            }
         }
-        if (sec.Role is RoleBase rb && rb.Excluded != null)
-        {
-            if (edit) rows.Add(ExclSection(rb));
-            else rows.Add(new Label($"{new Text("Registry.NotWith")}: {ExclSummary(rb)}", OptEditor.FontSize) { Bold = true, Width = W - 0.4f, Align = Align.Start });
-        }
+        if (!pairs && sec.Role is RoleBase lrb && lrb.Excluded != null) AddPairs(rows, lrb, W - 0.3f, 3, edit);
         _editor.Refresh();
 
         _list = new ScrollView(new Vector2(W, H - 0.62f), rows) { Tag = _tag + ":detail:" + (sec.Role?.Id ?? sec.Title.ToString()) };
@@ -1036,6 +1041,8 @@ internal sealed class RoleBrowser
         var a = sec.Role;
         Stack core = null;
         float coreW = rowW - 0.1f;
+        bool pairs = false;
+        int pairsAfter = -1;
         foreach (var opt in opts)
         {
             if (!opt.Shown) continue;
@@ -1043,6 +1050,11 @@ internal sealed class RoleBrowser
             var r = _editor.NarrowRow(opt, edit, inCore ? coreW : rowW, Depth(opt) * 0.2f, opt.Fresh ? FreshColor : (Color?)null);
             r.Align = Align.Start;
             if (!inCore) { rows.Add(r); continue; }
+            if (!pairs && opt == a.Chance && a is RoleBase prb && prb.Excluded != null)
+            {
+                pairsAfter = rows.Children.Count;
+                pairs = true;
+            }
             if (core == null)
             {
                 core = new Stack(false) { Gap = 0.06f, Width = coreW };
@@ -1055,17 +1067,18 @@ internal sealed class RoleBrowser
                 core.Add(_slider);
             }
         }
+        if (sec.Role is RoleBase srb && srb.Excluded != null)
+        {
+            var tmp = new Stack(false);
+            AddPairs(tmp, srb, rowW, 2, edit);
+            rows.Children.InsertRange(pairsAfter >= 0 ? pairsAfter : rows.Children.Count, tmp.Children);
+        }
         if (core != null && edit && a.Chance != null)
         {
             float qw = (coreW - 0.08f) / 2f;
             core.Add(new Stack(true,
                 new Button("0%", () => SetChance(sec, 0), 1.3f) { Size = new Vector2(qw, 0.32f) },
                 new Button("100%", () => SetChance(sec, 100), 1.3f) { Size = new Vector2(qw, 0.32f) }) { Gap = 0.08f });
-        }
-        if (sec.Role is RoleBase rb && rb.Excluded != null)
-        {
-            if (edit) rows.Add(ExclSection(rb, rowW, 2));
-            else rows.Add(new Label($"{new Text("Registry.NotWith")}: {ExclSummary(rb)}", OptEditor.NarrowFont) { Bold = true, Width = rowW, Align = Align.Start });
         }
         _editor.Refresh();
 
@@ -1120,31 +1133,74 @@ internal sealed class RoleBrowser
         return d;
     }
 
-    // 一緒に出ない役職: 札を押すと両方の役職の選びを揃えて切り替える (片方だけ残ると、外したのに選んだままに見えるため)
-    private Widget ExclSection(RoleBase me) => ExclSection(me, W - 0.3f, 3);
+    // 一緒に出ない役職 (with = false) と一緒に出る役職 (with = true)。札を押すと両方の役職の選びを揃えて切り替える
+    // (片方だけ残ると、外したのに選んだままに見えるため)。同じ相手を両方に選ぶことはできない (片方を選ぶともう片方は外れる)。
+    // 役職が多くて札の並びが長いので、ふだんは要約の 1 行だけを人数・出現率のすぐ下に出し、「選ぶ」で開く
+    private static readonly HashSet<string> PairOpen = new();
 
-    private Widget ExclSection(RoleBase me, float width, int columns)
+    private static RoleSetOpt SetOf(RoleBase r, bool with) => with ? r.Together : r.Excluded;
+    private static bool PairOn(RoleBase me, RoleBase other, bool with) =>
+        with ? AssignPlan.TogetherPair(me, other) : AssignPlan.FixedPair(me, other) || AssignPlan.PickedPair(me, other);
+
+    private static void SetPair(RoleBase me, RoleBase other, bool with, bool on)
     {
-        float w = (width - 0.08f * (columns - 1)) / columns;
+        SetOf(me, with)?.Set(other.Order, on);
+        SetOf(other, with)?.Set(me.Order, on);
+        if (!on) return;
+        SetOf(me, !with)?.Set(other.Order, false);
+        SetOf(other, !with)?.Set(me.Order, false);
+    }
+
+    private static string PairTitle(bool with) => new Text(with ? "Registry.With" : "Registry.NotWith").ToString();
+
+    // 役職の行の中に足す 2 つの組 (一緒に出ない・一緒に出る)
+    private void AddPairs(Stack rows, RoleBase me, float width, int columns, bool edit)
+    {
+        rows.Add(PairSection(me, false, width, columns, edit));
+        rows.Add(PairSection(me, true, width, columns, edit));
+    }
+
+    private Widget PairSection(RoleBase me, bool with, float width, int columns, bool edit)
+    {
         bool narrow = columns < 3;
+        float font = narrow ? OptEditor.NarrowFont : OptEditor.FontSize;
+        string key = me.Id + (with ? ":with" : ":not");
+        bool open = edit && PairOpen.Contains(key);
         var col = new Stack(false) { Gap = 0.06f, Width = width, Align = Align.Start };
-        col.Add(new Spacer(0.1f, 0.1f));
-        col.Add(new Label(new Text("Registry.NotWith"), narrow ? OptEditor.NarrowFont : OptEditor.FontSize) { Bold = true, Align = Align.Start });
-        col.Add(new Label(new Text("RoleMenu.NotWithHint"), narrow ? 1.05f : 1.15f) { Color = SubText, Width = width - 0.1f, Align = Align.Start });
-        if (Editable) col.Add(ExclBulk(me, width, narrow));
+        const float btnW = 1.15f;
+        var tint = with ? WithColor : NotWithColor;
+        var line = new Label($"{PairTitle(with)}: <color=#FFFFFF>{PairSummary(me, with)}</color>", font)
+        {
+            Bold = true, Color = tint, Width = width - (edit ? btnW + 0.1f : 0f), Align = Align.Start, MinFontSize = 0.9f,
+        };
+        if (!edit) { col.Add(line); return col; }
+        var toggle = new Button(new Text(open ? "RoleMenu.PairClose" : "RoleMenu.PairOpen"), () =>
+        {
+            if (!PairOpen.Remove(key)) PairOpen.Add(key);
+            if (narrow) RefreshSide();
+            else Rebuild();
+        }, 1.25f) { Size = new Vector2(btnW, 0.36f), Color = open ? ChipOff : Color.Lerp(tint, Color.black, 0.45f) };
+        col.Add(new Stack(true, line, toggle) { Gap = 0.1f, Align = Align.Center });
+        if (!open) return col;
+        float w = (width - 0.08f * (columns - 1)) / columns;
+        col.Add(new Label(new Text(with ? "RoleMenu.WithHint" : "RoleMenu.NotWithHint"), narrow ? 1.05f : 1.15f) { Color = SubText, Width = width - 0.1f, Align = Align.Start });
+        if (Editable) col.Add(PairBulk(me, with, width, narrow));
         Stack row = null;
         int i = 0;
-        foreach (var other in ExclCandidates(me))
+        foreach (var other in PairCandidates(me))
         {
             if (i % columns == 0) { row = new Stack(true) { Gap = 0.08f, Align = Align.Start }; col.Add(row); }
-            row.Add(ExclChip(me, other, w));
+            row.Add(PairChip(me, other, with, w));
             i++;
         }
+        col.Add(new Spacer(0.1f, 0.08f));
         return col;
     }
 
+    private static readonly Color NotWithColor = new(1f, 0.55f, 0.5f, 1f), WithColor = new(0.5f, 0.9f, 0.6f, 1f);
+
     // まとめて選ぶ札: 全部・陣営ごと。その範囲が全部選ばれていれば外し、そうでなければ全部選ぶ
-    private Widget ExclBulk(RoleBase me, float width, bool narrow)
+    private Widget PairBulk(RoleBase me, bool with, float width, bool narrow)
     {
         int columns = narrow ? 2 : 4;
         float w = (width - 0.08f * (columns - 1)) / columns;
@@ -1162,13 +1218,12 @@ internal sealed class RoleBrowser
             {
                 if (!Editable) return;
                 bool all = true;
-                foreach (var other in ExclCandidates(me))
-                    if ((kind < 0 || (int)other.Team == kind) && !AssignPlan.FixedPair(me, other) && !AssignPlan.PickedPair(me, other)) { all = false; break; }
-                foreach (var other in ExclCandidates(me))
+                foreach (var other in PairCandidates(me))
+                    if ((kind < 0 || (int)other.Team == kind) && !AssignPlan.FixedPair(me, other) && !PairOn(me, other, with)) { all = false; break; }
+                foreach (var other in PairCandidates(me))
                 {
                     if ((kind >= 0 && (int)other.Team != kind) || AssignPlan.FixedPair(me, other)) continue;
-                    me.Excluded.Set(other.Order, !all);
-                    other.Excluded.Set(me.Order, !all);
+                    SetPair(me, other, with, !all);
                 }
                 Changed?.Invoke();
                 if (narrow) RefreshSide();
@@ -1179,17 +1234,18 @@ internal sealed class RoleBrowser
         return col;
     }
 
-    private static IEnumerable<RoleBase> ExclCandidates(RoleBase me)
+    private static IEnumerable<RoleBase> PairCandidates(RoleBase me)
     {
         foreach (var t in new[] { Tab.Crew, Tab.Impostor, Tab.Madmate, Tab.Neutral })
             foreach (var sec in Registry.SectionsOf(t))
                 if (sec.Role is RoleBase rb && rb != me && rb.Excluded != null) yield return rb;
     }
 
-    private Widget ExclChip(RoleBase me, RoleBase other, float w)
+    private Widget PairChip(RoleBase me, RoleBase other, bool with, float w)
     {
+        // 作りで一緒に出ない組は固定 (一緒に出るにも選べない)
         bool locked = AssignPlan.FixedPair(me, other);
-        bool on = locked || AssignPlan.PickedPair(me, other);
+        bool on = !with && locked || PairOn(me, other, with);
         var c = RoleDisplay.ParseColor(other.Color);
         string text = locked ? new Text("RoleMenu.FixedPair").With("name", other.Name) : other.Name.ToString();
         var label = new Label(text, 1.35f) { TextAlign = TextAlignmentOptions.Center, Bold = true, Color = on ? c : Gray, Width = w - 0.2f, MinFontSize = 1f };
@@ -1197,9 +1253,8 @@ internal sealed class RoleBrowser
         b = new Button(label, () =>
         {
             if (locked || !Editable) return;
-            bool next = !AssignPlan.PickedPair(me, other);
-            me.Excluded.Set(other.Order, next);
-            other.Excluded.Set(me.Order, next);
+            bool next = !PairOn(me, other, with);
+            SetPair(me, other, with, next);
             b.SetColor(next ? c : ChipOff);
             if (label.Built) label.Built.color = next ? c : Gray;
             Changed?.Invoke();
@@ -1208,13 +1263,14 @@ internal sealed class RoleBrowser
         return b;
     }
 
-    private static string ExclSummary(RoleBase me)
+    private static string PairSummary(RoleBase me, bool with)
     {
         var picked = new List<string>();
         var rest = new List<string>();
-        foreach (var other in ExclCandidates(me))
+        foreach (var other in PairCandidates(me))
         {
-            if (AssignPlan.FixedPair(me, other) || AssignPlan.PickedPair(me, other)) picked.Add(other.Name.ToString());
+            if (with && AssignPlan.FixedPair(me, other)) continue;
+            if (PairOn(me, other, with)) picked.Add(other.Name.ToString());
             else rest.Add(other.Name.ToString());
         }
         return RoleSetOpt.Summary(picked, rest, 4);

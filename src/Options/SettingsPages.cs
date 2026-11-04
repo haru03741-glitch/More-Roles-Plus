@@ -56,7 +56,15 @@ internal static class SettingsPages
         var list = new List<SectionPage.Group>();
         bool normal = GameModeSwitch.IsNormal;
         if (normal)
+        {
             foreach (var t in GameTabRows.Top()) list.Add(Of(t));
+            // 陣営の人数はまとめて頁の上に (本編のインポスター数の行もここへ移す)
+            Opt count = null;
+            foreach (var sec in VanillaGame.All)
+                foreach (var opt in sec.Opts)
+                    if (opt.IsImpostorCount) count = opt;
+            list.Add(Of(GameTabRows.Teams(count)));
+        }
         foreach (var sec in VanillaGame.All)
         {
             var g = new SectionPage.Group { Title = sec.Title.ToString() };
@@ -65,15 +73,15 @@ internal static class SettingsPages
             {
                 if (normal && opt.IsImpostorCount)
                 {
-                    g.Opts.Add(ImpostorRange.Min);
                     impostors = true;
+                    continue;
                 }
                 g.Opts.Add(opt);
             }
             if (normal)
                 foreach (var (marker, extra) in GameTabRows.SectionRows)
                     if (sec.Opts.Exists(o => o.Key == "vanilla." + marker)) g.Opts.AddRange(extra);
-            list.Add(g);
+            if (g.Opts.Count > 0) list.Add(g);
             if (impostors) list.Add(Of(GameTabRows.Neutral));
         }
         if (normal)

@@ -334,9 +334,27 @@ public sealed partial class Nova : RoleBase
     private static float Reach(Vector2 from, float angle, out bool wall)
     {
         float r = angle * (System.MathF.PI / 180f);
-        var hit = Physics2D.Raycast(from, FxMath.V2(FxMath.Cos(r), FxMath.Sin(r)), MaxLength, Constants.ShipOnlyMask);
-        wall = hit.collider;
-        return wall ? hit.distance : MaxLength;
+        float d = WallDist(from, FxMath.V2(FxMath.Cos(r), FxMath.Sin(r)), MaxLength);
+        wall = d < MaxLength;
+        return d;
+    }
+
+    // 壁までの距離 (無ければ len)。部屋の範囲などの当たりの無い物と、撃った所が始めから中にある物は数えない
+    // (Physics2D.Raycast の 1 本目は部屋の範囲に当たって、どこで撃っても足元で壁に当たった扱いになっていた)
+    private static readonly Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<RaycastHit2D> _hits = new((long)32); // int を渡すと Android で壊れた配列になる
+    internal static float WallDist(Vector2 from, Vector2 dir, float len)
+    {
+        int n = Physics2D.RaycastNonAlloc(from, dir, _hits, len, Constants.ShipOnlyMask);
+        float best = len;
+        for (int i = 0; i < n; i++)
+        {
+            var c = _hits[i].collider;
+            if (!c || c.isTrigger || !c.enabled) continue;
+            float d = _hits[i].distance;
+            if (d < 0.03f || d >= best) continue;
+            best = d;
+        }
+        return best;
     }
 
     // 溜め量 → 光線の太さの倍率・貫く人数 (満タンは全員)
@@ -410,7 +428,7 @@ public sealed partial class Nova : RoleBase
             if (side > 0.35f)
             {
                 float dl = FxMath.Sqrt(d.x * d.x + d.y * d.y);
-                if (dl > 0.01f && Physics2D.Raycast(from, FxMath.V2(d.x / dl, d.y / dl), dl, Constants.ShipOnlyMask).collider) continue;
+                if (dl > 0.01f && WallDist(from, FxMath.V2(d.x / dl, d.y / dl), dl) < dl) continue;
             }
             Hit.Add((along, p));
         }

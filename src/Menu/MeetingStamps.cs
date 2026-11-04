@@ -15,7 +15,8 @@ namespace MoreRolesPlus.Menu;
 // 枠は本編のチャットの吹き出しの絵・字は会議の名札の字の写し
 internal static class MeetingStamps
 {
-    internal const byte Count = 8;
+    internal const byte Count = 16;
+    internal const byte FreeCount = 8; // 0〜7 は初めから持っている。8 から先はショップ (MRP コイン) で買う
     private const float ShowSeconds = 2.5f;
     private const float FadeSeconds = 0.25f;
     private const float PopSeconds = 0.12f;
@@ -29,8 +30,23 @@ internal static class MeetingStamps
     private static readonly Vector3 OnCard = new(0.5f, 0.31f, -3.5f);       // 名札の上の縁に掛かる位置 (名前・投票の印・右上の耳打ちのボタンに被らない)
     private const float MenuDx = 1.35f, MenuY0 = 1.0f, MenuDy = 0.62f;      // 札の並び (ボタンの単位・2 段 4 列・ボタンの上に右端を揃える)
 
-    private static readonly string[] Keys =
-        { "Stamp.Sus", "Stamp.Safe", "Stamp.Question", "Stamp.Exclaim", "Stamp.Agree", "Stamp.Disagree", "Stamp.Wait", "Stamp.Sorry" };
+    internal static readonly string[] Keys =
+    {
+        "Stamp.Sus", "Stamp.Safe", "Stamp.Question", "Stamp.Exclaim", "Stamp.Agree", "Stamp.Disagree", "Stamp.Wait", "Stamp.Sorry",
+        "Stamp.GG", "Stamp.Thanks", "Stamp.Nice", "Stamp.Hmm", "Stamp.Run", "Stamp.Lol", "Stamp.Crown", "Stamp.Fire",
+    };
+
+    // 札の字 (ランクの品は色を付ける)
+    internal static string Label(byte kind)
+    {
+        string t = new Text(Keys[kind]).ToString();
+        return kind switch
+        {
+            14 => "<color=#B8860B><b>" + t + "</b></color>",
+            15 => "<color=#E8461E><b>" + t + "</b></color>",
+            _ => t,
+        };
+    }
 
     private static readonly RemoteCall<byte> ShowCall = new("Stamp.Show", Route.Anyone,
         (w, kind) => w.Write(kind), r => r.ReadByte(), Receive, Delivery.Queued);
@@ -63,7 +79,8 @@ internal static class MeetingStamps
     private static void Receive(PlayerControl sender, byte kind)
     {
         long now = Environment.TickCount64;
-        if (!sender || kind >= Count || !Alive(sender) || !MeetingHud.Instance || now - LastMs[sender.PlayerId] < MinGapMs)
+        if (!sender || kind >= Count || !Alive(sender) || !MeetingHud.Instance || now - LastMs[sender.PlayerId] < MinGapMs
+            || !MrpAccount.PlayerOwns(sender, "stamp:" + kind, FreeCount, kind))
         {
             Dropped++;
             return;
@@ -77,7 +94,7 @@ internal static class MeetingStamps
     {
         var lp = PlayerControl.LocalPlayer;
         long now = Environment.TickCount64;
-        if (kind >= Count || !Alive(lp) || !MeetingHud.Instance || now < _nextMs) return false;
+        if (kind >= Count || !MrpAccount.OwnsStamp(kind) || !Alive(lp) || !MeetingHud.Instance || now < _nextMs) return false;
         if (!Show(lp.PlayerId, kind)) return false;
         _nextMs = now + CooldownMs;
         LastMs[lp.PlayerId] = now;
@@ -103,7 +120,7 @@ internal static class MeetingStamps
                 Shown.RemoveAt(i);
             }
 
-        var b = MakeBubble(card.transform, card.NameText, new Text(Keys[kind]).ToString());
+        var b = MakeBubble(card.transform, card.NameText, Label(kind));
         if (b == null) return false;
         b.Id = id;
         b.Start = Time.time;
@@ -180,10 +197,10 @@ internal static class MeetingStamps
             return;
         }
         if (!MenuOpen) return;
-        for (byte k = 0; k < Count; k++)
-            if (Input.GetKeyDown(KeyCode.Alpha1 + k))
+        for (int slot = 0; slot < Loadout.StampSlots; slot++)
+            if (Input.GetKeyDown(KeyCode.Alpha1 + slot))
             {
-                Choose(k);
+                Choose(Loadout.Stamp(slot));
                 return;
             }
     }
@@ -253,14 +270,16 @@ internal static class MeetingStamps
         _menu.SetActive(false);
         // 開閉は本編の窓と同じ部品で動かす (有効にすると 0 倍から広がり、Close で縮んで消える)
         _menuAnim = _menu.AddComponent<TransitionOpen>();
-        for (byte k = 0; k < Count; k++)
+        // 8 つの枠には、持ち物の「エモート」で選んだ札を入れる
+        for (int slot = 0; slot < Loadout.StampSlots; slot++)
         {
-            byte kind = k;
+            byte kind = Loadout.Stamp(slot);
+            int at = slot;
             var b = ModButton.Create(_life, null, "", 0f, () => Choose(kind), _menu.transform);
             if (b == null || !b.Transform) continue;
             b.Transform.gameObject.SetActive(true);
-            b.Transform.localPosition = FxMath.V3((kind % 4 - 3) * MenuDx, MenuY0 + (kind / 4) * MenuDy, -0.5f);
-            Icon(b, proto.NameText, new Text(Keys[kind]).ToString());
+            b.Transform.localPosition = FxMath.V3((at % 4 - 3) * MenuDx, MenuY0 + (at / 4) * MenuDy, -0.5f);
+            Icon(b, proto.NameText, Label(kind));
         }
     }
 

@@ -85,7 +85,8 @@ internal static class KeyHints
         PutTop(info, Keybinds.ActionId(Keybinds.Slot.MatchInfo), on, tmpl, scale, ownArt: true);
         PutTop(info ? info.Find("MrpDictionaryButton") : null, Keybinds.ActionId(Keybinds.Slot.Dictionary), on, tmpl, scale);
         PutTop(info ? info.Find("MrpReportButton") : null, Keybinds.ActionId(Keybinds.Slot.BugReport), on, tmpl, scale);
-        PutTop(hud.transform.Find("Friends List Button"), Keybinds.ActionId(Keybinds.Slot.Friends), on, tmpl, scale);
+        PutTop(info ? info.Find("MrpBotButton") : null, Keybinds.ActionId(Keybinds.Slot.Bots), on, tmpl, scale);
+        // 友達のボタン (L キー) には字を出さない (本編の MOD の印と通知の数が重なって見づらい)。キーで開くのはそのまま
 
         // ロビーの板 (コピー・シェア・編集)
         var pane = Vanilla.LobbyInfo;
@@ -145,7 +146,8 @@ internal static class KeyHints
         if (!t) t = Make(host, tmpl, art, Vector3.zero);
         if (!t) return;
         var bounds = art.bounds;
-        var corner = host.InverseTransformPoint(new Vector3(bounds.max.x - bounds.size.x * 0.08f, bounds.min.y + bounds.size.y * 0.12f, bounds.center.z));
+        float cx = bounds.max.x - bounds.size.x * 0.08f;
+        var corner = host.InverseTransformPoint(new Vector3(cx, bounds.min.y + bounds.size.y * 0.12f, bounds.center.z));
         t.localPosition = new Vector3(corner.x, corner.y, -1f);
         float hs = host.lossyScale.x;
         if (Mathf.Abs(hs) > 0.0001f) t.localScale = Vector3.one * (scale / hs);

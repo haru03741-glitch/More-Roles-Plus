@@ -179,6 +179,8 @@ public static class GameEnd
         {
             if (crew == 0 && imp == 0) return new GameResult();
             if (crew <= imp) return TeamResult(Team.Impostor);
+            // インポスターの居ない試合 (0 人で始めた) は数では終わらない (タスクか第三陣営で終わる)
+            if (imp == 0 && NoImpostorGame()) return null;
             if (imp == 0)
             {
                 reason = GameOverReason.CrewmatesByVote;
@@ -190,6 +192,19 @@ public static class GameEnd
 
         string id = Killers.Keys.First();
         return FactionResult(id);
+    }
+
+    // インポスターが 1 人も配られていない試合か (死んだ人・抜けた人も含めて見る)
+    internal static bool NoImpostorGame()
+    {
+        if (!GameData.Instance) return false;
+        var all = GameData.Instance.AllPlayers;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var p = all[i];
+            if (p != null && p.Role && p.Role.IsImpostor) return false;
+        }
+        return all.Count > 0;
     }
 
     // 第三陣営の陣営の勝ち: その陣営の全員 (死んだ人も) と、その陣営と一緒に勝つ役職
@@ -517,7 +532,7 @@ internal static class CheckEndCriteriaPatch
     {
         if (GameEnd.Held) return false;
         // 終わり方を止めるルールの試合も MRP の判定で見る (本編の判定は終わり方ごとに止められない)
-        if (!RoleState.AnyNeutral && !Rules.GameRules.EndRuleOn) return true;
+        if (!RoleState.AnyNeutral && !Rules.GameRules.EndRuleOn && !GameEnd.NoImpostorGame()) return true;
         GameEnd.Check();
         return false;
     }
@@ -531,7 +546,7 @@ internal static class GameOverDueToDeathPatch
     public static bool Prefix(ref bool __result)
     {
         bool held = GameEnd.Held || Rules.GameRules.NoCountWin;
-        if (!RoleState.AnyNeutral && !held) return true;
+        if (!RoleState.AnyNeutral && !held && !GameEnd.NoImpostorGame()) return true;
         __result = !held && GameData.Instance && GameEnd.Decide(out _, out _) != null;
         return false;
     }

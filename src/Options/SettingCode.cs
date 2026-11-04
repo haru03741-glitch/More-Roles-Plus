@@ -55,6 +55,22 @@ internal static class SettingCode
         try { text = Decode(GUIUtility.systemCopyBuffer); }
         catch (Exception) { text = null; }
         if (text == null) return new Text("SettingCode.NotACode");
+        return ApplyText(text);
+    }
+
+    // コードを当てる (ランクマッチの部屋: サーバーが決めた設定)。読めたら true
+    internal static bool Apply(string code)
+    {
+        string text;
+        try { text = Decode(code); }
+        catch (Exception) { text = null; }
+        if (text == null) return false;
+        ApplyText(text);
+        return true;
+    }
+
+    private static string ApplyText(string text)
+    {
 
         string path = Path.Combine(PresetStore.Dir, ".code.tmp");
         OptionSync.RestoreOwn();

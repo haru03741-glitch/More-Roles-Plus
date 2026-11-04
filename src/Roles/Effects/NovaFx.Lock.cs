@@ -136,9 +136,8 @@ internal static partial class NovaFx
         float back = b.Tail * 0.25f < b.Len - 0.2f ? b.Tail * 0.25f : 0f;
         float ex = b.X + b.Dx * (b.Len - back), ey = b.Y + b.Dy * (b.Len - back), floor = ey - b.Height;
         float dx = FxMath.Cos(angle * Deg), dy = FxMath.Sin(angle * Deg);
-        var hit = Physics2D.Raycast(FxMath.V2(ex, floor), FxMath.V2(dx, dy), reach, Constants.ShipOnlyMask);
-        bool wall = hit.collider;
-        float len = wall ? hit.distance : reach;
+        float len = MoreRolesPlus.Roles.Impostor.Nova.WallDist(FxMath.V2(ex, floor), FxMath.V2(dx, dy), reach);
+        bool wall = len < reach;
         if (len < 0.3f) return;
         var nb = NewBeam(b.P, ex, ey, angle, len, b.Size * size, b.Spread * half, wall && sparkAtWall, floor, b.Height, floor);
         nb.Branch = true;

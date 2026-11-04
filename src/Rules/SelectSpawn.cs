@@ -33,8 +33,9 @@ internal static class SelectSpawn
     private static int _hiddenLayers = HiddenLayers;
     private static readonly List<Object> Made = new(); // 撮った絵 (次に開く時と試合の終わりに捨てる)
 
+    // ランダムスポーンだけの時も、行き先の 1 つを同じ画面で見せる (Airship の本編と同じ)
     internal static bool Active =>
-        MapRules.SelectSpawn && MapRules.MapId != AirshipMap && !OperatingSystem.IsAndroid() && Options.GameModeSwitch.IsNormal;
+        (MapRules.SelectSpawn || MapRules.RandomSpawn) && MapRules.MapId != AirshipMap && !OperatingSystem.IsAndroid() && Options.GameModeSwitch.IsNormal;
 
     // 船ができた時 (RulesHooks.OnShipStart)
     internal static void OnShipStart()
@@ -204,7 +205,7 @@ internal static class SelectSpawn
         return r;
     }
 
-    private static string RoomName(Vector2 world)
+    internal static string RoomName(Vector2 world)
     {
         var ship = ShipStatus.Instance;
         if (ship != null && ship.AllRooms != null)

@@ -29,7 +29,12 @@ internal static class Emotes
     private const int BackdropPx = 128;
     private const float IconScale = 0.7f;    // 開いた手 (1.5 単位) が約 1.05 単位になる (隣の本編のボタンの絵と同じくらい)
     private const float IconLift = 0.17f;    // 手の中心をボタンの絵の中心からこれだけ上へ
-    private static readonly string[] Names = { "Emote.Wave", "Emote.Jump", "Emote.Clap", "Emote.Beckon" };
+    internal static readonly string[] Names =
+    {
+        "Emote.Wave", "Emote.Jump", "Emote.Clap", "Emote.Beckon",
+        "Emote.Cheer", "Emote.Dance", "Emote.Salute", "Emote.Shrug", "Emote.FistPump", "Emote.Bounce", "Emote.Crown", "Emote.Star",
+    };
+    private static int _loadoutVersion = -1;
 
     private static readonly RemoteCall<byte> PlayCall = new("Emote.Play", Route.Anyone,
         (w, kind) => w.Write(kind), r => r.ReadByte(), Receive, Delivery.Queued);
@@ -59,7 +64,9 @@ internal static class Emotes
     private static void Receive(PlayerControl sender, byte kind)
     {
         long now = Environment.TickCount64;
-        if (!sender || kind >= EmoteArt.Count || !Alive(sender) || !InTasks || Armed(sender) || now - LastMs[sender.PlayerId] < MinGapMs)
+        // 買っていないエモート (改造した客が送ってきた物) は出さない。持っているかはサーバーから読んだ物で見る
+        if (!sender || kind >= EmoteArt.Count || !Alive(sender) || !InTasks || Armed(sender) || now - LastMs[sender.PlayerId] < MinGapMs
+            || !MrpAccount.PlayerOwns(sender, "emote:" + kind, EmoteArt.FreeCount, kind))
         {
             Dropped++;
             return;
@@ -72,7 +79,7 @@ internal static class Emotes
     internal static bool PlayLocal(byte kind)
     {
         var lp = PlayerControl.LocalPlayer;
-        if (kind >= EmoteArt.Count || !Alive(lp) || !InTasks || lp.inVent || !lp.Visible || Armed(lp)) return false;
+        if (kind >= EmoteArt.Count || !MrpAccount.OwnsEmote(kind) || !Alive(lp) || !InTasks || lp.inVent || !lp.Visible || Armed(lp)) return false;
         if (!EmoteArt.Play(lp, kind)) return false;
         LastMs[lp.PlayerId] = Environment.TickCount64;
         PlayCall.Send(kind);
@@ -108,9 +115,11 @@ internal static class Emotes
         _ring.transform.SetParent(_main.Transform, false);
         _ring.layer = _main.Transform.gameObject.layer;
         _ring.SetActive(false);
-        for (byte k = 0; k < EmoteArt.Count; k++)
+        // 扇の 4 つの枠には、持ち物の「エモート」で選んだ物を入れる
+        _loadoutVersion = Loadout.Version;
+        for (int slot = 0; slot < Loadout.EmoteSlots; slot++)
         {
-            byte kind = k;
+            byte kind = Loadout.Emote(slot);
             var b = ModButton.Create(_life, null, new Text(Names[kind]), 0f, () => Choose(kind), _ring.transform);
             if (b == null || !b.Transform) continue;
             // 扇のボタンは扇 (_ring) の出し入れで隠すので、自分は出したままにする。置き場所は開く時に決める
@@ -314,7 +323,8 @@ internal static class Emotes
         // ロビーで作ったボタンは試合が始まったら作り直す (並びの中身と HUD の出入りが試合用に替わる)・逆も同じ
         if (++_frame % 30 == 0)
         {
-            if (_lobby == (bool)ShipStatus.Instance)
+            // 枠の中身を替えた (ロビーの持ち物で) か、ロビーと試合が替わったら作り直す
+            if (_lobby == (bool)ShipStatus.Instance || _loadoutVersion != Loadout.Version && !RingOpen)
             {
                 _life?.Release();
                 _life = null;
@@ -344,10 +354,10 @@ internal static class Emotes
             SetRing(false);
             return;
         }
-        for (byte k = 0; k < EmoteArt.Count; k++)
-            if (Input.GetKeyDown(KeyCode.Alpha1 + k))
+        for (int slot = 0; slot < Loadout.EmoteSlots; slot++)
+            if (Input.GetKeyDown(KeyCode.Alpha1 + slot))
             {
-                Choose(k);
+                Choose(Loadout.Emote(slot));
                 return;
             }
     }

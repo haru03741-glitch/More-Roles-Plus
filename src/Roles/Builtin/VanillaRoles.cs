@@ -236,6 +236,8 @@ internal sealed class VanillaOpt : Opt
             _count = (int)Math.Round((i.ValidRange.max - _min) / _step) + 1;
         }
         else _count = 2;
+        // インポスターは 0 人も選べる (インポスターの居ない試合)
+        if (_impostors) _min = 0f;
         _count = Math.Max(_count, 1);
     }
 
