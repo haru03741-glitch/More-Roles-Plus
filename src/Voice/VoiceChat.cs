@@ -22,10 +22,15 @@ public static class VoiceChat
         new Text("VoiceChat.Off"), new Text("VoiceChat.Proximity"), new Text("VoiceChat.MeetingOnly"), new Text("VoiceChat.Everyone"));
     public static readonly IntOpt Range = new("VoiceChat.Range", 6, 2, 20, 1);
     public static readonly BoolOpt InVent = new("VoiceChat.InVent", true); // ベントの中の人も話せる・聞こえる
+    // 陣営の無線: キー (既定 Y) で切り替えると、自分の声は同じ陣営の仲間 (インポスター同士) にだけ、どこにいても届く。
+    // 聞く側には誰の声か出さない (「仲間の無線」とだけ出す)
+    public static readonly BoolOpt TeamRadio = new("VoiceChat.TeamRadio", false);
+    // 話している人を見せる (頭の上の ♪ と左下の名前の一覧)。切ると誰の声か分からない
+    public static readonly BoolOpt ShowSpeaker = new("VoiceChat.ShowSpeaker", true);
 
     internal const int Rate = 48000;
     internal const int PacketSamples = 2880; // 0.06 秒
-    private const byte Format = 4;           // 声の形 (版が違って形の違う声は鳴らさない)
+    private const byte Format = 5;           // 声の形 (版が違って形の違う声は鳴らさない)
     private const byte VoiceRpc = 212;
 
     // 使える部屋か (MRP のサーバーか LAN)
@@ -46,15 +51,27 @@ public static class VoiceChat
         try
         {
             bool on = Allowed;
-            Mic.Tick(on && Menu.ClientOptions.VoiceMic.Value && !Muted && VoiceRules.CanTalk(PlayerControl.LocalPlayer));
+            Mic.Tick(on && Menu.ClientOptions.VoiceMic.Value && !Muted && (RadioOn || VoiceRules.CanTalk(PlayerControl.LocalPlayer)));
             Speakers.Tick(on && Menu.ClientOptions.VoiceHear.Value);
             VoiceHud.Tick(on);
+            VoiceMarks.Tick(on);
         }
         catch (Exception e) { Plugin.Logger.LogError($"voice: {e}"); }
     }
 
     // ミュート (キーで切り替え・試合をまたいで続く)
     internal static bool Muted;
+
+    // 陣営の無線を使っているか (キーで切り替え・試合が終わると切れる)
+    internal static bool Radio;
+    internal static bool RadioOn => Radio && VoiceRules.RadioTeam(PlayerControl.LocalPlayer);
+
+    internal static void ToggleRadio()
+    {
+        if (!TeamRadio.Value || !VoiceRules.RadioTeam(PlayerControl.LocalPlayer)) { Radio = false; return; }
+        Radio = !Radio;
+        Plugin.Logger.LogInfo($"voice: team radio {(Radio ? "on" : "off")}");
+    }
 
     internal static void ToggleMute()
     {
@@ -75,6 +92,7 @@ public static class VoiceChat
         var w = c.StartRpcImmediately(lp.NetId, VoiceRpc, SendOption.None, -1);
         w.Write(seq);
         w.Write(Format);
+        w.Write(RadioOn);
         w.WriteBytesAndSize(payload);
         c.FinishRpcImmediately(w);
         Sent++;
@@ -125,10 +143,11 @@ public static class VoiceChat
         if (!sender || sender.AmOwner) return;
         ushort seq = r.ReadUInt16();
         if (r.ReadByte() != Format) return;
+        bool radio = r.ReadBoolean();
         byte[] bytes = r.ReadBytesAndSize();
         Received++;
         if (!Allowed || !Menu.ClientOptions.VoiceHear.Value) return;
-        Speakers.Push(sender.PlayerId, seq, bytes);
+        Speakers.Push(sender.PlayerId, seq, bytes, radio);
     }
 
     internal static string Describe() =>
@@ -150,6 +169,14 @@ internal static class VoiceRules
         if (InLobby || InMeeting || Dead(me)) return true;
         return VoiceChat.Mode.Value != 2; // 会議だけ: 試合中の生きている人は話せない
     }
+
+    // 陣営の無線に入れる人: 試合中・会議の外で生きているインポスター (本編の役の陣営は全員の端末が知っている)
+    internal static bool RadioTeam(PlayerControl p) =>
+        VoiceChat.TeamRadio.Value && p && p.Data != null && !p.Data.IsDead && p.Data.Role && p.Data.Role.IsImpostor && !InLobby && !InMeeting;
+
+    // 無線の声: 仲間にはどこでも同じ大きさで、仲間でない人には聞こえない
+    internal static float RadioVolume(PlayerControl listener, PlayerControl speaker) =>
+        RadioTeam(listener) && RadioTeam(speaker) ? 1f : 0f;
 
     // 0〜1 (0 = 聞こえない)
     internal static float Volume(PlayerControl listener, PlayerControl speaker)
@@ -500,6 +527,7 @@ internal static class Speakers
         public ushort LastSeq;
         public OpusCodec.Decoder Dec;
         public bool Hidden; // 録画に入れないように混ぜ口を外しているか
+        public bool Radio;  // 直前の声は陣営の無線か
     }
 
     private static readonly Dictionary<byte, Speaker> All = new();
@@ -507,10 +535,11 @@ internal static class Speakers
     private static Il2CppStructArray<float> _chunk;
     private static GameObject _root;
 
-    internal static void Push(byte playerId, ushort seq, byte[] bytes)
+    internal static void Push(byte playerId, ushort seq, byte[] bytes, bool radio = false)
     {
         if (!All.TryGetValue(playerId, out var s) || !s.Go) s = Make(playerId);
         if (s == null) return;
+        s.Radio = radio;
         // 古い順番の物 (遅れて届いた物) は捨てる。16bit の番号の一回りは考える
         if (s.LastMs != 0 && (short)(seq - s.LastSeq) <= 0 && Environment.TickCount64 - s.LastMs < 3000) return;
         int gap = s.LastMs != 0 && Environment.TickCount64 - s.LastMs < 1000 ? (short)(seq - s.LastSeq) : 1;
@@ -546,6 +575,9 @@ internal static class Speakers
     internal static bool Speaking(byte playerId) =>
         All.TryGetValue(playerId, out var s) && Environment.TickCount64 - s.LastMs < 300;
 
+    internal static bool SpeakingRadio(byte playerId) =>
+        All.TryGetValue(playerId, out var s) && s.Radio && Environment.TickCount64 - s.LastMs < 300;
+
     internal static void Tick(bool on)
     {
         if (!on)
@@ -568,7 +600,7 @@ internal static class Speakers
                 continue;
             }
             // 聞こえ方 (距離など) × 自分で決めたその人の音量。1 を超える分は音そのものを大きくする
-            float vol = VoiceRules.Volume(me, p) * VoiceSettings.VolumeOf(p);
+            float vol = (s.Radio ? VoiceRules.RadioVolume(me, p) : VoiceRules.Volume(me, p)) * VoiceSettings.VolumeOf(p);
             // 録画に声を入れない時は、本編の効果音の混ぜ口を通さず (混ぜ口の出口は録画の部品の手前を通る)、録画の部品も飛ばして鳴らす。
             // 混ぜ口の効果音の大きさは自分で掛ける
             if (hide != s.Hidden)

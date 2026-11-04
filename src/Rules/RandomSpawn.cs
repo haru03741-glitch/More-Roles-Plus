@@ -81,6 +81,13 @@ internal static class RandomSpawn
         var to = ToShip(map, spots[Rng.Next(n)]);
         Teleport.Self(to);
         Plugin.Logger.LogInfo($"random spawn ({why}): ({to.x:0.#}, {to.y:0.#})");
+        // 画面を出せない所 (Android など・Airship 以外) では、湧いた部屋の名前を知らせる
+        if (map != 4)
+        {
+            string room = SelectSpawn.RoomName(to);
+            var hud = Vanilla.Hud;
+            if (hud && hud.Notifier && room != "?") hud.Notifier.AddDisconnectMessage(new Text("RandomSpawn.Arrived").With("room", room));
+        }
     }
 
     // ---- 試合の始め (Airship 以外。会議の後は RulesHooks から) ----

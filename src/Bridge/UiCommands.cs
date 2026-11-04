@@ -14,6 +14,33 @@ internal static class UiCommands
 
     public static void Register()
     {
+        TestBridge.Register("tree", "<名前> [深さ=3] 名前の GameObject (最初に見つかった物) の子の一覧と位置 (画面の割合)", (args, reply) =>
+        {
+            var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length == 0) { reply("ERR tree <名前> [深さ]"); return; }
+            int depth = a.Length > 1 && int.TryParse(a[1], out int d) ? d : 3;
+            a[0] = a[0].Replace('+', ' '); // 空白のある名前は + で
+            var go = GameObject.Find(a[0]);
+            if (!go)
+                foreach (var t in UnityEngine.Object.FindObjectsOfType<Transform>())
+                    if (t.name == a[0]) { go = t.gameObject; break; }
+            if (!go) { reply($"ERR tree {a[0]} not found"); return; }
+            var cam = Camera.main;
+            void Walk(Transform t, int lv)
+            {
+                var vp = cam ? cam.WorldToViewportPoint(t.position) : Vector3.zero;
+                string comps = "";
+                foreach (var c in t.GetComponents<Component>()) if (c && c is not Transform) comps += c.GetIl2CppType().Name + ",";
+                var sr = t.GetComponent<SpriteRenderer>();
+                if (sr) comps += $"order={sr.sortingOrder}{(sr.enabled ? "" : "(disabled)")} sprite={(sr.sprite ? sr.sprite.name : "-")},";
+                reply($"TREE {new string(' ', lv * 2)}{t.name} {(t.gameObject.activeInHierarchy ? "" : "(off) ")}vp=({vp.x:0.000},{vp.y:0.000}) [{comps.TrimEnd(',')}]");
+                if (lv >= depth) return;
+                for (int i = 0; i < t.childCount; i++) Walk(t.GetChild(i), lv + 1);
+            }
+            Walk(go.transform, 0);
+            reply("OK tree");
+        });
+
         TestBridge.Register("uibtn", "<字> [n] 自前の画面のボタンを字で探して n 番目 (上から) を押す (窓が開いていれば窓の中だけ)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);

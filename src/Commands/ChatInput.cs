@@ -247,10 +247,22 @@ internal static class ChatInputPatches
     private static int _inputFrame = -1;
 #endif
 
+    // チャット欄と、名前を打つ欄 (メニューの名前の変更など)。名前の欄でも本編は一・三・上・会・言 などを落とす
+    private static bool Wide(TextBoxTMP box)
+    {
+        if (box.Pointer == ChatInput.ChatArea) return true;
+        var go = box.gameObject;
+        if (!go) return false;
+        string n = go.name;
+        var parent = go.transform.parent;
+        return n.IndexOf("name", StringComparison.OrdinalIgnoreCase) >= 0
+            || parent && parent.name.IndexOf("name", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     [HarmonyPatch(typeof(TextBoxTMP), nameof(TextBoxTMP.SetText)), HarmonyPrefix]
     public static void SetTextPrefix(TextBoxTMP __instance, [HarmonyArgument(0)] string input, [HarmonyArgument(1)] string inputCompo)
     {
-        if (__instance.Pointer != ChatInput.ChatArea) return;
+        if (!Wide(__instance)) return;
         _inSetText = true;
         _pending = string.IsNullOrEmpty(inputCompo) ? input : input + inputCompo;
         _pendingAt = 0;
@@ -266,7 +278,7 @@ internal static class ChatInputPatches
     [HarmonyPatch(typeof(TextBoxTMP), nameof(TextBoxTMP.IsCharAllowed)), HarmonyPostfix]
     public static void IsCharAllowed(TextBoxTMP __instance, [HarmonyArgument(0)] char c, ref bool __result)
     {
-        if (__instance.Pointer != ChatInput.ChatArea) return;
+        if (!Wide(__instance)) return;
 #if !ANDROID
         // キー入力の処理から尋ねられた時は、本編が断った時だけその回の入力の文字列を読む (毎フレームは読まない)
         if (!_inSetText && !__result && _inputFrame != Time.frameCount)

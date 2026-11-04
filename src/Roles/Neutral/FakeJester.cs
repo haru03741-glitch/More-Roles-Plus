@@ -29,6 +29,8 @@ public sealed class FakeJester : RoleBase
 
     private static RoleBase Jester => RoleState.Proto<Neutral.Jester>();
 
+    public override RoleBase ShownAs => Disguised ? Jester : this;
+
     public override System.Type[] NotWith => new[] { typeof(Survivor) };
 
     private void OnMeetingStart(MeetingStartEvent e)

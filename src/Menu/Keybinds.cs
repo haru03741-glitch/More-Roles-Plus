@@ -17,7 +17,7 @@ internal static class Keybinds
     {
         Ability1, Ability2, Ability3, Emote, Dictionary, Dodge, PhotoMode, VoiceMute, Record,
         // 右上の段・ロビーの板のボタン (押すとそのボタンを押したのと同じ)
-        MatchInfo, BugReport, Chat, Settings, Friends, CopyCode, ShareLink, EditSettings, VoicePanel,
+        MatchInfo, BugReport, Chat, Settings, Friends, CopyCode, ShareLink, EditSettings, Bots, VoicePanel, TeamRadio,
     }
 
     private static readonly (string Id, string Text, KeyboardKeyCode Key)[] Defs =
@@ -39,7 +39,9 @@ internal static class Keybinds
         ("MRP.CopyCode", "Keybinds.CopyCode", KeyboardKeyCode.J),
         ("MRP.ShareLink", "Keybinds.ShareLink", KeyboardKeyCode.K),
         ("MRP.EditSettings", "Keybinds.EditSettings", KeyboardKeyCode.O),
+        ("MRP.Bots", "Keybinds.Bots", KeyboardKeyCode.G),
         ("MRP.VoicePanel", "Keybinds.VoicePanel", KeyboardKeyCode.N),
+        ("MRP.TeamRadio", "Keybinds.TeamRadio", KeyboardKeyCode.Y),
     };
 
     private const int RefreshFrames = 120;
@@ -161,6 +163,11 @@ internal static class Keybinds
             if (!Typing()) Recorder.Toggle();
             return;
         }
+        if (Down(Slot.TeamRadio))
+        {
+            if (!Typing() && Voice.VoiceChat.Allowed) Voice.VoiceChat.ToggleRadio();
+            return;
+        }
         if (Down(Slot.VoiceMute))
         {
             if (!Typing() && Voice.VoiceChat.Allowed) Voice.VoiceChat.ToggleMute();
@@ -202,6 +209,7 @@ internal static class Keybinds
             Slot.BugReport => hud.MatchInfoButton ? hud.MatchInfoButton.transform.Find("MrpReportButton") : null,
             Slot.Chat => hud.Chat && hud.Chat.chatButton ? hud.Chat.chatButton.transform : null,
             Slot.Friends => hud.transform.Find("Friends List Button"),
+            Slot.Bots => hud.MatchInfoButton ? hud.MatchInfoButton.transform.Find("MrpBotButton") : null,
             Slot.CopyCode => pane ? FindDeep(pane.transform, "CopyGameCodeButton") : null,
             Slot.ShareLink => pane ? FindDeep(pane.transform, "MrpShareLinkButton") : null,
             Slot.EditSettings => pane ? FindDeep(FindDeep(pane.transform, "Host Buttons"), "Edit") : null,

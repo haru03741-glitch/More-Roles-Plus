@@ -34,6 +34,9 @@ internal static class InfoCommands
     {
         if (!InGame) return new Text("InfoCommands.OnlyDuringAGame");
         var role = RoleState.Local;
+        // 思い込みの役職 (フェイクジェスター) は、思っている役職の説明を出す (本当の役職の設定の行などで気づかないように)
+        if (role != null && role.ShownAs != role)
+            return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(role.ShownAs, null)}\n{RoleDoc.Chat(role.ShownAs)}{RoleDisplay.AddonLines(role.PlayerId)}");
         if (role != null)
             return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(role, null)}{RoleDisplay.LabelOf(role)[role.ShownColoredName.Length..]}\n{RoleDoc.Chat(role)}{RoleDisplay.AddonLines(role.PlayerId)}");
         return Dev.DevGod.Label(PlayerControl.LocalPlayer.PlayerId) ?? new Text("InfoCommands.NoRole");
@@ -119,7 +122,7 @@ internal static class InfoCommands
         int max, min;
         if (TeamSizes.For(players) is { } band) { max = band.MaxImpostors; min = band.MinImpostors; }
         else { max = opts.NumImpostors; min = ImpostorRange.Min.Value; }
-        max = Math.Clamp(max, 1, Math.Max(1, ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts))));
+        max = Math.Clamp(max, 0, Math.Max(1, ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts))));
         min = Math.Clamp(min, 1, max);
         int cap = ImpostorCap.CapAt(players);
         shownMin = Math.Min(min, cap);

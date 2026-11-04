@@ -156,11 +156,13 @@ internal static class VersionCheck
     internal static void OnHostHello(PlayerControl host, string version, uint fp, int abi)
     {
         Plugin.Logger.LogInfo($"hello from host: {version} fp={fp:X8} abi={abi}");
+        VersionBanner.HostSeen();
         if (_notedHost == host.OwnerId) return;
         string reason = null;
         if (version != Plugin.Version) reason = new Text("ModCheck.YouDifferVersion").With("host", version).With("mine", Plugin.Version);
         else if (abi != Native.MrpNative.Abi) reason = new Text("ModCheck.YouDifferNative");
         else if (fp != Registry.Fingerprint) reason = new Text("ModCheck.YouDifferBuild");
+        VersionBanner.SetClientReason(reason);
         if (reason == null) return;
         _notedHost = host.OwnerId;
         Menu.ChatNotes.Post(reason);
@@ -248,6 +250,7 @@ internal static class VersionCheck
         _host = -1;
         _notedHost = -1;
         Menu.ChatNotes.Clear();
+        VersionBanner.Clear();
         _helloSentFor = System.IntPtr.Zero;
         HostChange.Clear();
     }

@@ -19,10 +19,12 @@ internal static class ImpostorCap
     private static bool _widened;
 
     // 人数 players のときに置けるインポスターの最大数 (公式サーバー以外)。クルーが必ず 1 人多く残る
-    public static int CapFor(int players) => Math.Max(1, (players - 1) / 2);
+    // (クルーより多くても置ける。全員インポスターでもよい)
+    public static int CapFor(int players) => Math.Max(1, players);
 
     // 今の接続先での最大数 (設定画面の幅)。maxPlayers = 部屋の定員
-    public static int MaxFor(int maxPlayers) => ServerKind.IsOfficial() ? VanillaMax : Math.Max(VanillaMax, CapFor(maxPlayers));
+    // 公式サーバー以外は部屋の定員によらず最大 (Crowded.MaxPlayers = 252 人) まで選べる。始める時に今いる人数で切る
+    public static int MaxFor(int maxPlayers) => ServerKind.IsOfficial() ? VanillaMax : Crowded.MaxPlayers;
 
     // 接続先に合わせて本編の表を差し替える / 戻す。ロビーに入った時・設定画面を開いた時・役職を配る直前に呼ぶ
     public static void Refresh()
@@ -46,7 +48,7 @@ internal static class ImpostorCap
                 // MinPlayers はインポスターの人数ごとの最少人数 (表の外を引くと本編が例外を出す)
                 var min = new int[TableSize];
                 for (int i = 0; i < TableSize; i++)
-                    min[i] = i < _vanillaMinPlayers.Length ? _vanillaMinPlayers[i] : Math.Max(_vanillaMinPlayers[^1], i * 2 + 1);
+                    min[i] = i < _vanillaMinPlayers.Length ? _vanillaMinPlayers[i] : Math.Max(1, i + 1);
                 NormalGameOptionsV12.MaxImpostors = max;
                 NormalGameOptionsV12.MinPlayers = min;
             }
@@ -82,7 +84,7 @@ internal static class ImpostorCap
     }
 
     // 試合の人数で実際に置く数 (本編の計算と同じ形: 設定値を 1〜上限に収める)
-    public static int Adjusted(IGameOptions opts, int players) => Math.Clamp(opts.NumImpostors, 1, CapAt(players));
+    public static int Adjusted(IGameOptions opts, int players) => Math.Clamp(opts.NumImpostors, 0, CapAt(players));
 
     // 試合の人数で置ける最多 (公式サーバーは本編の表と 3 人まで)
     public static int CapAt(int players) => Math.Max(1, ServerKind.IsOfficial() ? Math.Min(VanillaMax, VanillaTable(players)) : CapFor(players));
@@ -139,8 +141,8 @@ internal static class ImpostorCapRowPatch
         ImpostorCap.Refresh();
         var opts = GameOptionsManager.Instance.CurrentGameOptions;
         int max = ImpostorCap.MaxFor(ImpostorCap.RoomSize(opts));
-        __instance.ValidRange = new FloatRange(1f, max);
-        float v = Math.Clamp(__instance.Value, 1f, max);
+        __instance.ValidRange = new FloatRange(0f, max);
+        float v = Math.Clamp(__instance.Value, 0f, max);
         if (v != __instance.Value)
         {
             __instance.Value = v;

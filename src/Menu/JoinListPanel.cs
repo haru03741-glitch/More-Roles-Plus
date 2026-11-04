@@ -29,8 +29,19 @@ internal static class JoinListPanel
 
     public static bool IsOpen => UiWindow.Current != null && UiWindow.Current.Root && UiWindow.Current.Root.name == "MrpWindow_" + Name;
 
+    // 部屋の中では部屋主だけが見られる (部屋の外では自分が立てる部屋のために見て直せる)
+    internal static bool CanOpen
+    {
+        get
+        {
+            var c = AmongUsClient.Instance;
+            return !c || c.GameState == InnerNet.InnerNetClient.GameStates.NotJoined || c.AmHost;
+        }
+    }
+
     internal static void Open()
     {
+        if (!CanOpen) return;
         var w = UiWindow.Open(Name, new Vector2(WinW, WinH));
         if (w == null) return;
         _message = null;

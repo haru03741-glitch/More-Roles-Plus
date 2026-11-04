@@ -95,7 +95,7 @@ internal static class ClientOptions
         Items.Add(new Item { Key = "RecordFolder", Cat = Cat.Record, Label = new Text("ClientOptions.RecordFolder"), Click = Recorder.OpenFolder });
         // その他
         Items.Add(new Item { Key = "RoleDictionary", Cat = Cat.Other, Label = new Text("RoleDictionary.Open"), Click = RoleDictionary.Open });
-        Items.Add(new Item { Key = "JoinLists", Cat = Cat.Other, Label = new Text("JoinPanel.Open"), Click = JoinListPanel.Open });
+        Items.Add(new Item { Key = "JoinLists", Cat = Cat.Other, Label = new Text("JoinPanel.Open"), Click = JoinListPanel.Open, Visible = () => JoinListPanel.CanOpen });
         Items.Add(new Item { Key = "BugReport", Cat = Cat.Other, Label = new Text("Report.Open"), Click = Report.ReportWindow.Open, Visible = () => MatchInfoExtension.InLobby });
     }
 

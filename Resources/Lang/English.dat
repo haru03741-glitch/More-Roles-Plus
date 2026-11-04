@@ -1166,7 +1166,7 @@ MapRules.AirshipSpeed: The Airship player speed
 MapRules.FungleSpeed: The Fungle player speed
 MapRules.RandomSpawn: Random spawn
 MapRules.AirshipAllRooms: The Airship: pick from every room
-MapRules.SelectSpawn: Choose where to spawn (the Airship picker on other maps)
+MapRules.SelectSpawn: Spawn picker screen (all maps)
 MapRules.ExtraKillCooldown: Extra kill cooldown per map
 MapRules.PolusKillCooldown: Extra on Polus
 MapRules.AirshipKillCooldown: Extra on The Airship
@@ -1864,3 +1864,96 @@ Home.JoinCode: Join room {code}
 Home.JoinNone: Copy a join link or room code first, then press this
 Home.Joining: Joining room {code}...
 Home.Server: Server
+TeamCounts.Title: Team Sizes
+TeamCounts.CrewMin: Min Crewmate Roles
+TeamCounts.CrewMax: Max Crewmate Roles
+TeamCounts.MadMin: Min Madmates
+TeamCounts.MadMax: Max Madmates
+Registry.With: Spawns With
+RoleMenu.WithHint: Picked roles also spawn whenever this role spawns (within counts and limits; applies to both roles)
+RoleMenu.PairOpen: Pick ▼
+RoleMenu.PairClose: Close ▲
+RandomSpawn.Arrived: Spawned in {room}
+Keybinds.Bots: Bots
+Home.Hello: Welcome!
+Home.HelloName: Welcome, {name}!
+Home.Facts: {roles} roles - play on the MRP server
+Home.Tip1: Tip: press H or the "?" button at the top right to open the role dictionary
+Home.Tip2: Tip: copy a room link and press "Join by link / code" to jump right in
+Home.Tip3: Tip: in the Roles tab you can pick roles that always or never spawn together
+Home.Tip4: Tip: "Team Sizes" in the game settings sets the min and max of every team in one place
+Home.Tip5: Tip: run into a problem? Send it from "Bug report / Contact"
+Home.Tip6: Tip: MRP keys can be rebound in the game's Controls settings
+VersionBanner.HostTitle: ⚠ The game can't start because of:
+VersionBanner.HostHint: Ask them to install the same More Roles Plus version, or remove them from the room
+VersionBanner.Checking: Checking the mods of players who just joined…
+VersionBanner.ClientTitle: ⚠ The game can't start like this
+VersionBanner.HostNoMrp: The host doesn't seem to have More Roles Plus. Please join a room with MRP
+VoiceChat.TeamRadio: Team radio (impostors can talk anywhere with a key; speakers stay anonymous)
+VoiceChat.RadioOn: Talking to your team on the radio ({key} to switch back)
+VoiceChat.RadioHeard: Team radio
+Keybinds.TeamRadio: Toggle team radio
+SectionPage.Count: {n} items
+TeamCounts.NoLimit: No limit
+VoiceChat.ShowSpeaker: Show who is talking (♪ above the head, name at the bottom left)
+Emote.Cheer: Cheer
+Emote.Dance: Dance
+Emote.Salute: Salute
+Emote.Shrug: Shrug
+Emote.FistPump: Fist pump
+Emote.Bounce: Bounce
+Emote.Crown: Crown
+Emote.Star: Shooting star
+Stamp.Tab: Stamps
+Stamp.GG: GG
+Stamp.Thanks: Thanks
+Stamp.Nice: Nice!
+Stamp.Hmm: Hmm...
+Stamp.Run: Run!
+Stamp.Lol: LOL
+Stamp.Crown: ★Champion★
+Stamp.Fire: On fire
+Loadout.Slots: Emote slots (1-4 in the in-game fan). Pick a slot, then choose what goes in it below
+Loadout.StampSlots: Meeting stamp slots (1-8). Pick a slot, then choose what goes in it below
+Loadout.Pick: Put into slot {n} (dark ones can be bought in the MRP Shop)
+Shop.Title: MRP Shop
+Shop.Open: MRP Shop (unofficial)
+Shop.Unofficial: * MRP Coins are an unofficial in-game currency of More Roles Plus only. They have nothing to do with Among Us money, beans or stars, and cannot be bought with real money. Win ranked matches to earn them.
+Shop.Me: MRP Coins: <color=#FFD54F>{coins}</color>   Rank: {tier} ({rating})
+Shop.CoinsShort: {coins} MRP Coins (unofficial)
+Shop.Offline: Not connected to the MRP server
+Shop.Loading: Loading...
+Shop.Error: Couldn't load ({error}). Check that you can reach the MRP server
+Shop.Owned: Owned
+Shop.Locked: Unavailable
+Shop.NeedTier: From {tier}
+Shop.PriceShort: {price} coins
+Shop.Buy: Buy for {price} coins
+Shop.Buying: Buying...
+Shop.Bought: Bought! Put it in a slot from the Emotes tab of your inventory
+Shop.Fail.coins: Not enough MRP Coins
+Shop.Fail.rank: Your rank is too low
+Shop.Fail.owned: You already own it
+Shop.Fail.no_item: That item doesn't exist
+Shop.Fail.network: Couldn't reach the MRP server
+Shop.Fail.auth: Couldn't verify your account
+Shop.Fail.too_many: Please wait a moment and try again
+Shop.Fail.disabled: The shop is closed right now
+Shop.Hint: Put what you buy into the emote fan slots and meeting stamp slots from the Emotes tab of your inventory. Prices, items and ranks are counted on the MRP server.
+Rank.Tier0: Bronze
+Rank.Tier1: Silver
+Rank.Tier2: Gold
+Rank.Tier3: Platinum
+Rank.Tier4: Diamond
+Rank.Tier5: Master
+Rank.Record: {w}W {l}L
+Ranked.Button: Ranked match (find a room automatically)
+Ranked.Title: Ranked Match
+Ranked.NoServer: The MRP server wasn't found. Pick the MRP server in the region list
+Ranked.Searching: Looking for a room...
+Ranked.Joining: Joining room {code}...
+Ranked.Creating: No open room, creating a new one...
+Ranked.Error: Something went wrong ({error})
+Ranked.Players: {n} / {max} players
+Ranked.Countdown: Starting in {s}s (bots fill the empty seats)
+Ranked.Starting: Starting soon

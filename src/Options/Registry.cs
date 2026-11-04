@@ -105,6 +105,10 @@ internal static class Registry
             // 続きのビットは見出しの項目に並べず、同期と保存の一覧にだけ入れる
             for (int k = 0; k < role.Excluded.Parts.Length; k++)
                 Add(sec, role.Excluded.Parts[k], role.Id + ".NotWith." + (k + 2), listed: false);
+            role.Together = new RoleSetOpt("Registry.With", Roles.Count);
+            Add(sec, role.Together, role.Id + ".With");
+            for (int k = 0; k < role.Together.Parts.Length; k++)
+                Add(sec, role.Together.Parts[k], role.Id + ".With." + (k + 2), listed: false);
         }
 
         foreach (var t in types.Where(t => t.IsSubclassOf(typeof(AddonBase)) && !t.IsAbstract).OrderBy(t => t.Name, StringComparer.Ordinal))

@@ -23,6 +23,12 @@ internal sealed class SectionPage
     private static readonly float ListW = (float)Math.Round(W * 0.65f, 2), SideW = W - ListW - 0.15f;
     internal static float RowW => ListW - 0.24f;
     private const float HeadH = 0.4f, BarH = 0.4f, RowPad = 0.08f;
+    // 色の決まっていない節の見出しの色 (順に回す)
+    private static readonly Color[] HeadPalette =
+    {
+        new(0.35f, 0.75f, 1f, 1f), new(1f, 0.72f, 0.3f, 1f), new(0.55f, 0.9f, 0.55f, 1f),
+        new(0.85f, 0.55f, 1f, 1f), new(1f, 0.5f, 0.55f, 1f), new(0.4f, 0.9f, 0.85f, 1f),
+    };
 
     private readonly string _tag;
     private readonly Func<string> _title;
@@ -133,23 +139,28 @@ internal sealed class SectionPage
                 if (opt.Shown) shown.Add(opt);
             if (shown.Count == 0) continue;
             var e = new Entry { Group = g, Changed = AnyChanged(g) };
-            // 見出し: 節の色の字・暗い地の札 (前に少し間を空ける)
-            if (_entries.Count > 0 || top != null) rows.Add(new Spacer(rowW, 0.06f));
-            e.Head = new Box(new Label(g.Title, 1.5f) { Bold = true, Color = g.Color, Width = rowW * 0.66f - 0.24f, MinFontSize = 1.1f })
+            // 見出し: 横いっぱいの色の帯 (節ごとに色を変えて、どこからが次の節か一目で分かるように)。前は広めに間を空ける
+            if (_entries.Count > 0 || top != null) rows.Add(new Spacer(rowW, 0.16f));
+            var accent = g.Color == Color.white ? HeadPalette[_entries.Count % HeadPalette.Length] : g.Color;
+            string title = $"{g.Title}  <size=70%><color=#B8C0CC>{new Text("SectionPage.Count").With("n", shown.Count)}</color></size>";
+            e.Head = new Box(new Label(title, 1.65f) { Bold = true, Color = Color.Lerp(accent, Color.white, 0.35f), Width = rowW - 0.3f, MinFontSize = 1.1f })
             {
-                Size = new Vector2(rowW * 0.66f, HeadH),
-                Padding = new Vector2(0.12f, 0.04f),
-                Color = Color.Lerp(g.Color, Color.black, 0.55f),
-                Fill = new Color(0.15f, 0.16f, 0.18f, 1f),
+                Size = new Vector2(rowW, HeadH + 0.06f),
+                Padding = new Vector2(0.15f, 0.04f),
+                Color = accent,
+                Fill = Color.Lerp(accent, new Color(0.08f, 0.09f, 0.11f, 1f), 0.72f),
                 Align = Align.Start,
             };
             rows.Add(e.Head);
-            // 行ごとに灰の地 (行の境目を見やすく)
+            // 行ごとに地を交互に濃淡 (横に長い行でも目で追いやすく)
+            int k = 0;
             foreach (var opt in shown)
             {
                 var r = _editor.NarrowRow(opt, edit, rowW - RowPad * 2f, RoleBrowser.Depth(opt) * 0.2f, opt.Fresh ? RoleBrowser.FreshColor : (Color?)null);
                 r.Align = Align.Start;
-                rows.Add(new Plate(r) { Width = rowW, Padding = new Vector2(RowPad, 0.025f), Align = Align.Start });
+                var plate = new Plate(r) { Width = rowW, Padding = new Vector2(RowPad, 0.025f), Align = Align.Start };
+                if (k++ % 2 == 1) plate.Color = new Color(0.16f, 0.17f, 0.2f, 1f);
+                rows.Add(plate);
             }
             _entries.Add(e);
             _shownOpts.AddRange(shown);

@@ -25,8 +25,21 @@ internal static class GameTabRows
         }
     }
 
+    // 陣営の人数 (クルーの役職・インポスター・マッドメイト・第三陣営の最少〜最多) を 1 つの組に。
+    // インポスターの最多は本編のインポスター数の行 (impostorCount) をこの組へ移して使う
+    public static Group Teams(Opt impostorCount)
+    {
+        var rows = new List<Opt> { ImpostorRange.Min };
+        if (impostorCount != null) rows.Add(impostorCount);
+        rows.AddRange(new Opt[]
+        {
+            TeamCounts.CrewMin, TeamCounts.CrewMax, TeamCounts.MadMin, TeamCounts.MadMax,
+            NeutralKillSettings.MinNeutrals, NeutralKillSettings.MaxNeutrals, NeutralKillSettings.MaxKillers,
+        });
+        return new Group(new Text("TeamCounts.Title"), rows.ToArray());
+    }
+
     public static readonly Group Neutral = new(new Text("NeutralKillSettings.Title"),
-        NeutralKillSettings.MinNeutrals, NeutralKillSettings.MaxNeutrals, NeutralKillSettings.MaxKillers,
         NeutralKillSettings.KillCooldown, NeutralKillSettings.Vision, NeutralKillSettings.KillDistance);
 
     // マップ選びの下に並べる組
@@ -65,6 +78,7 @@ internal static class GameTabRows
     public static IEnumerable<Group> All()
     {
         foreach (var g in Top()) yield return g;
+        yield return Teams(null);
         yield return Neutral;
         yield return new Group(new Text("GameRules.Title"), GameRules.EveryoneVents, GameRules.NoMeetings, GameRules.NoSkip, GameRules.SelfVoteIfNone, GameRules.TaskWin);
         foreach (var g in Tail()) yield return g;

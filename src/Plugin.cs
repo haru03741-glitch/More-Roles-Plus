@@ -230,6 +230,7 @@ public class Ticker : MonoBehaviour
         Menu.ModUpdate.Tick();
         Menu.HomeScreen.Tick();
         Menu.KeyHints.Tick();
+        Net.VersionBanner.Tick();
         Menu.EmoteTab.Tick();
         Voice.VoiceChat.Tick();
         Menu.Recorder.Tick();

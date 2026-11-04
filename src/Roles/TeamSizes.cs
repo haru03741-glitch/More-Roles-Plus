@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Roles;
 [Settings(Tab.General, "ImpostorRange.Title", order: -99)]
 public static class ImpostorRange
 {
-    public static readonly IntOpt Min = new("ImpostorRange.Min", 1, 1, ImpostorCap.CapFor(Crowded.MaxPlayers)) { OffTab = true };
+    public static readonly IntOpt Min = new("ImpostorRange.Min", 1, 0, Crowded.MaxPlayers) { OffTab = true };
     public static readonly Text MaxLabel = new("ImpostorRange.Max");
 }
 
@@ -35,7 +35,7 @@ public static class TeamSizes
         public Band(int players, int minImp, int maxImp, int minNeu, int maxNeu, int maxKill)
         {
             Players = players;
-            MinImpostors = Math.Max(1, minImp);
+            MinImpostors = Math.Max(0, minImp);
             MaxImpostors = Math.Max(MinImpostors, maxImp);
             MinNeutrals = minNeu;
             MaxNeutrals = Math.Max(minNeu, maxNeu);
@@ -108,7 +108,7 @@ public static class TeamSizes
         var o = Options;
         if (o == null) return false;
         var band = bo.ToBand();
-        int max = Math.Clamp(band.MaxImpostors, 1, ImpostorCapOf(o));
+        int max = Math.Clamp(band.MaxImpostors, 0, ImpostorCapOf(o));
         if (o.NumImpostors != max)
         {
             o.SetInt(Int32OptionNames.NumImpostors, max);
@@ -208,9 +208,10 @@ public static class TeamSizes
         int players = PlayerCount();
         if (Active(players) is { } bo && Reflect(bo, out _)) OptionSync.SendAll();
         // 前に引いた数が戻らないまま数えがもう一度始まった時も、最多は引く前の数
-        int max = Math.Clamp(_savedImpostors >= 0 ? _savedImpostors : opts.NumImpostors, 1, ImpostorCapOf(opts));
-        int min = Math.Clamp(ImpostorRange.Min.Value, 1, max);
-        int n = Rng.Next(min, max + 1);
+        int max = Math.Clamp(_savedImpostors >= 0 ? _savedImpostors : opts.NumImpostors, 0, ImpostorCapOf(opts));
+        int min = Math.Clamp(ImpostorRange.Min.Value, 0, max);
+        // 今いる人数より多くは置けない
+        int n = Math.Min(Rng.Next(min, max + 1), Math.Max(players, 0));
         Plugin.Logger.LogInfo($"team sizes: players={players} impostors {min}-{max} => {n}");
         if (opts.NumImpostors != n)
         {
@@ -268,7 +269,7 @@ public static class TeamSizes
         _savedImpostors = -1;
         var opts = Options;
         if (saved < 0 || opts == null || opts.NumImpostors == saved) return;
-        opts.SetInt(Int32OptionNames.NumImpostors, Math.Clamp(saved, 1, ImpostorCapOf(opts)));
+        opts.SetInt(Int32OptionNames.NumImpostors, Math.Clamp(saved, 0, ImpostorCapOf(opts)));
         SyncVanilla();
         Plugin.Logger.LogInfo($"team sizes: impostors back to {opts.NumImpostors}");
     }
@@ -292,7 +293,7 @@ internal sealed class TeamSizeBandOpts
 
     // 帯の項目の作り方 (5 つの帯で同じ幅)
     public static IntOpt PlayersOpt(int def) => new("TeamSizes.Players", def, 0, Crowded.MaxPlayers) { OffTab = true, Parent = TeamSizes.Enabled };
-    public static IntOpt ImpostorOpt(string key, int def) => new(key, def, 1, ImpostorCap.CapFor(Crowded.MaxPlayers)) { OffTab = true, Parent = TeamSizes.Enabled };
+    public static IntOpt ImpostorOpt(string key, int def) => new(key, def, 0, ImpostorCap.CapFor(Crowded.MaxPlayers)) { OffTab = true, Parent = TeamSizes.Enabled };
     public static IntOpt NeutralOpt(string key, int def) => new(key, def, 0, Crowded.MaxPlayers) { OffTab = true, Parent = TeamSizes.Enabled };
 }
 

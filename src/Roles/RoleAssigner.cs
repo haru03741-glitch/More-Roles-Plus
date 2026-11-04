@@ -319,7 +319,12 @@ public static class AssignPlan
         var plan = new List<Pick>();
         var chosen = new List<RoleBase>();
         var taken = new int[Registry.Roles.Count];
-        int neutrals = 0, killers = 0;
+        int neutrals = 0, killers = 0, crews = 0, mads = 0;
+        // クルーの役職 (素のクルーを除く) とマッドメイトの最少〜最多 (陣営の人数の組)
+        int maxCrew = TeamCounts.CrewMax.Value, minCrew = Math.Min(TeamCounts.CrewMin.Value, maxCrew);
+        int maxMad = TeamCounts.MadMax.Value, minMad = Math.Min(TeamCounts.MadMin.Value, maxMad);
+        bool IsMad(RoleBase role, bool madden) => madden || role.Team == Team.Madmate;
+        bool IsCrewRole(int roleIndex, bool madden) => !madden && Registry.Roles[roleIndex].Team == Team.Crew && !AssignHistory.IsPlain(roleIndex);
         // 陣営ごとの最少〜最多は https://github.com/Gurge44/EndlessHostRoles Modules/CustomRoleSelector.cs に倣う (GPL-3.0)。
         // 第三陣営の最少〜最多と、そのうちキル役の最多 (0 = 出さない)。人数の帯 (TeamSizes) があればその人数の帯
         // (ロビーでは帯の値がゲーム設定の行へ写っているので同じ値。人数を変えて回す時も帯どおりになるように)、無ければゲーム設定の値
@@ -348,13 +353,17 @@ public static class AssignPlan
                 neutrals++;
                 if (role.IsKiller) killers++;
             }
+            if (IsMad(role, madden)) mads++;
+            else if (IsCrewRole(roleIndex, madden)) crews++;
         }
 
-        bool OverLimit(RoleBase role)
+        bool OverLimit(RoleBase role, bool madden = false)
         {
             bool neutral = role.Team == Team.Neutral;
             return (neutral && neutrals >= maxNeutral)
-                || (neutral && role.IsKiller && killers >= maxKillers);
+                || (neutral && role.IsKiller && killers >= maxKillers)
+                || (IsMad(role, madden) && mads >= maxMad)
+                || (IsCrewRole(role.Order, madden) && crews >= maxCrew);
         }
 
         // 第三陣営の最少に足りない分を付けられる役職 (出現率 > 0・人数が残っている・上限と同時に出ない組に掛からない)
@@ -438,7 +447,7 @@ public static class AssignPlan
             bool madden = code >= madBase;
             int idx = madden ? code - madBase : code;
             var role = Registry.Roles[idx];
-            if (OverLimit(role))
+            if (OverLimit(role, madden))
             {
                 if (stats != null) stats.LimitSkips++;
                 continue;
@@ -462,6 +471,60 @@ public static class AssignPlan
             }
             Take(pick, idx, madden);
         }
+
+        // 一緒に出る役職: 出た役職の相手が出ていなければ、出現率に関係なく足す (人数・上限・一緒に出ない組・席は守る)。
+        // 足した役職の相手も続けて見る
+        for (int c = 0; c < chosen.Count; c++)
+        {
+            var me = chosen[c];
+            if (me.Together == null) continue;
+            for (int i = 0; i < Registry.Roles.Count; i++)
+            {
+                var other = Registry.Roles[i];
+                if (taken[i] > 0 || !TogetherPair(me, other) || other.Count.Value <= 0 || !Usable(other)) continue;
+                if (OverLimit(other) || Conflicts(other, chosen)) continue;
+                int pick = SlotFor(i);
+                if (pick < 0) continue;
+                Take(pick, i);
+            }
+        }
+
+        // マッドメイトとクルーの役職が最少に届かなければ、出現率を重みにその陣営の役職から足す
+        // (候補の番号は AssignPlan の他と同じく、マッドメイトとして配る物は 番号 + 役職の数)
+        void TopUp(Func<bool> short_, bool mad)
+        {
+            var skip = new HashSet<int>();
+            while (short_())
+            {
+                var pool = new List<(int code, int weight)>();
+                for (int i = 0; i < Registry.Roles.Count; i++)
+                {
+                    var r = Registry.Roles[i];
+                    if (taken[i] >= r.Count.Value || !Usable(r) || Conflicts(r, chosen)) continue;
+                    if (mad)
+                    {
+                        if (r.Team == Team.Madmate && r.Chance > 0 && !skip.Contains(i) && !OverLimit(r)) pool.Add((i, r.Chance));
+                        if (Crew.Madmate.MaddenRoles && r.MadChance != null && r.CanBeMadmate && r.MadChance > 0
+                            && taken[i] < r.MadCount.Value && !skip.Contains(madBase + i) && !OverLimit(r, true)) pool.Add((madBase + i, r.MadChance));
+                    }
+                    else if (IsCrewRole(i, false) && r.Chance > 0 && !skip.Contains(i) && !OverLimit(r)) pool.Add((i, r.Chance));
+                }
+                if (pool.Count == 0) break;
+                int total = 0;
+                foreach (var p in pool) total += p.weight;
+                int roll = rng.Next(Math.Max(total, 1)), at = 0;
+                while (at < pool.Count - 1 && (roll -= pool[at].weight) >= 0) at++;
+                int code = pool[at].code;
+                bool madden = code >= madBase;
+                int idx = madden ? code - madBase : code;
+                int pick = SlotFor(idx);
+                // 第三陣営の最少のための席は空けておく
+                if (pick < 0 || (!free[pick].Impostor && CrewSeats() <= Reserve())) { skip.Add(code); continue; }
+                Take(pick, idx, madden);
+            }
+        }
+        TopUp(() => mads < minMad, true);
+        TopUp(() => crews < minCrew, false);
 
         // 第三陣営が最少に届かなければ、出現率を重みに第三陣営の役職から足す
         var noSeat = new List<int>(); // 席が無かった役職 (次の候補から外す)
@@ -538,6 +601,10 @@ public static class AssignPlan
     // 設定で選んだ組 (自分自身は選べない。保存ファイルを手で書いて入っても、同じ役職の 2 人目を止めない)
     internal static bool PickedPair(RoleBase a, RoleBase b) =>
         a != b && ((a.Excluded != null && a.Excluded.Has(b.Order)) || (b.Excluded != null && b.Excluded.Has(a.Order)));
+
+    // 設定で選んだ「一緒に出る」組 (どちらの側に書いてあっても)
+    internal static bool TogetherPair(RoleBase a, RoleBase b) =>
+        a != b && ((a.Together != null && a.Together.Has(b.Order)) || (b.Together != null && b.Together.Has(a.Order)));
 
     // アドオン。役職と同じく出現率と人数で枠を作り、付けられる人の中から無作為に 1 人へ
     private static void AssignAddons(IReadOnlyList<Slot> roster, List<Pick> plan, Random rng)

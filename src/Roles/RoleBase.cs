@@ -53,6 +53,9 @@ public abstract class RoleBase : Assignable
 
     // 第三陣営でキルする役職なら true。生き残りの人数で勝敗を決める時、この役職だけで 1 つの陣営として数える
     // (インポスターが全滅し、他の生存者がこの役職の人数以下になったら勝ち)
+    // 本人が思っている役職 (役職辞典・試合の情報の「自分の役職」・/myrole で開く頁)。思い込みの役職 (フェイクジェスター) は別の役職を返す
+    public virtual RoleBase ShownAs => this;
+
     public virtual bool IsKiller => false;
 
     // 本編のキルボタンを使えるか (インポスター以外の役職でキルさせる時に true)。既定はキル役なら使える
@@ -105,6 +108,8 @@ public abstract class RoleBase : Assignable
 
     // 設定で選んだ「一緒に出ない役職」(幽霊になってから付く役職は持たない)・Registry.Roles の中の番号
     internal RoleSetOpt Excluded;
+    // 一緒に出る役職の選び (Registry が付ける。Excluded と同じ役職だけ)
+    internal RoleSetOpt Together;
     internal int Order = -1;
 
     // 誰かの勝ちで試合が終わる時に、自分も一緒に勝つか (第三陣営の相乗り)。ホストの端末でだけ呼ばれる。
