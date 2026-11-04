@@ -1,6 +1,7 @@
 // Copyright (c) 2026 XtraCube. All rights reserved.
 #include <dotnet.h>
 #include <external/coreclrhost.h>
+#include <hooking/safehook.h>
 #include <filesystem>
 #include <logger.h>
 #include <thread>
@@ -49,6 +50,13 @@ int dotnet_execute_assembly(const DotNetConfig& config, AuxPluginFolderList *aux
         setenv("DOTNET_PerfMapEnabled", "3", 1);
         setenv("DOTNET_PerfMapJitDumpPath", config.perfMapDir.c_str(), 1);
     }
+
+    // Under binary translation (x86 emulators running the arm64 runtime) the background tiered
+    // compilation thread brings the process down a few seconds after a burst of newly called
+    // methods, such as starting a screen recording. Compiling every method fully optimized up front
+    // removes that thread; real arm64 devices keep tiered compilation.
+    if (safehook_is_translated_host())
+        setenv("DOTNET_TieredCompilation", "0", 1);
 
     log(LogLevel::INFO, TAG, "Attempting CoreCLR initialization with W^X disabled");
     // Attempt without W^X first
