@@ -9,7 +9,7 @@ namespace MoreRolesPlus.Menu;
 
 // メニューの画面 (メインメニュー・オンライン・ゲームを探す・持ち物・ショップ・設定の窓 など) のボタンと背景を MRP の色にする。
 // ロビーと試合の中は変えない。
-//   - 本編のボタンの絵 (水色の板) を、夜空に合う落ち着いた紺〜紫の板 (指が乗ると少し明るくなる) に差し替える。大きさは元の絵のまま
+//   - 本編のボタンの絵を、角の丸い紺の板 (指が乗ると水色に光る) に差し替える。斜めの光の筋は消す。大きさは元の絵のまま
 //   - 船の壁の背景はホーム画面と同じ夜空にし、窓の枠は夜空に合う色にする
 // 本編のボタンの押し方・位置には触らない (絵を替えるだけ)
 internal static class MenuSkin
@@ -37,7 +37,7 @@ internal static class MenuSkin
         ["buttonEnterText"] = Kind.Panel,
     };
     private static readonly Dictionary<Kind, Sprite> Sprites = new();
-    private static readonly Color FrameTint = new(0.66f, 0.68f, 0.90f, 1f);
+    private static readonly Color FrameTint = new(0.80f, 0.85f, 0.95f, 1f); // 本編の枠の色をほんの少し青寄りにするだけ
 
     internal static bool InMenu()
     {
@@ -54,8 +54,9 @@ internal static class MenuSkin
             {
                 if (!InMenu()) return;
                 var scene = SceneManager.GetActiveScene().name;
-                if (scene != _scene) { _scene = scene; Done.Clear(); _scanAt = 0f; }
+                if (scene != _scene) { _scene = scene; Done.Clear(); Texts.Clear(); TextSeen.Clear(); _scanAt = 0f; }
                 MenuMotion.HoverOutside();
+                FixTexts();
                 if (Time.unscaledTime < _scanAt) return;
                 _scanAt = Time.unscaledTime + ScanEvery;
                 Scan();
@@ -86,7 +87,7 @@ internal static class MenuSkin
             {
                 // 本編の水色の斜めの光は、紺の板の上ではうっすら白い艶にする
                 Done.Add(ptr);
-                sr.color = new Color(1f, 1f, 1f, name.Contains("Active") ? 0.12f : 0.05f);
+                sr.color = new Color(1f, 1f, 1f, 0f); // 斜めの光の筋は消す (平らな板に筋だけ浮いて見える)
             }
             else if (name == "IMAGE-ShipBG")
             {
@@ -96,7 +97,7 @@ internal static class MenuSkin
             else if (name is "UI_ShopHeader")
             {
                 Done.Add(ptr);
-                sr.color = new Color(0.62f, 0.64f, 0.88f, 1f);
+                sr.color = new Color(0.80f, 0.85f, 0.95f, 1f);
             }
             else if (name is "IMAGE-ShipWindowFrame" or "IMAGE-LeftPanel")
             {
@@ -129,8 +130,33 @@ internal static class MenuSkin
     internal static Sprite Button(bool hover) => Get(hover ? Kind.CtaOn : Kind.CtaOff);
     private static Sprite Get(Kind kind) => Sprites.TryGetValue(kind, out var sp) && sp ? sp : Sprites[kind] = Make(kind);
 
+    // 大きいボタンの字: 本編は水色の板に合わせて濃い緑にしているので、紺の板の上では明るい色にする (本編が色を戻しても毎フレーム直す)
+    private static readonly List<TMPro.TextMeshPro> Texts = new();
+    private static readonly HashSet<IntPtr> TextSeen = new();
+    private static readonly Color TextColor = new(0.93f, 0.97f, 1f, 1f);
+
+    private static void KeepTexts(SpriteRenderer sr)
+    {
+        var pb = sr.GetComponentInParent<PassiveButton>();
+        if (!pb) return;
+        foreach (var t in pb.GetComponentsInChildren<TMPro.TextMeshPro>(true))
+            if (t && TextSeen.Add(t.Pointer)) Texts.Add(t);
+    }
+
+    private static void FixTexts()
+    {
+        for (int i = Texts.Count - 1; i >= 0; i--)
+        {
+            var t = Texts[i];
+            if (!t) { Texts.RemoveAt(i); continue; }
+            var c = t.color;
+            if (c.r * 0.3f + c.g * 0.59f + c.b * 0.11f < 0.6f) t.color = new Color(TextColor.r, TextColor.g, TextColor.b, c.a);
+        }
+    }
+
     private static void Skin(SpriteRenderer sr, Kind kind)
     {
+        if (kind is Kind.CtaOff or Kind.CtaOn) KeepTexts(sr);
         var size = sr.size; // 元の絵の見た目の大きさ
         sr.sprite = Get(kind);
         sr.drawMode = SpriteDrawMode.Sliced;
@@ -160,12 +186,13 @@ internal static class MenuSkin
         switch (kind)
         {
             // 光る縁や水色の派手な色は使わず、本編の板と同じく「上が少し明るい落ち着いた板 + 少しだけ明るい縁」にする
-            case Kind.Outline: top = new(0.22f, 0.23f, 0.40f); bottom = new(0.15f, 0.15f, 0.29f); edge = new(0.92f, 0.93f, 0.97f); ppu = 200f; lineW = 3.4f; break;
-            case Kind.Panel: top = new(0.14f, 0.14f, 0.27f); bottom = new(0.09f, 0.09f, 0.19f); edge = new(0.30f, 0.31f, 0.50f); lineW = 2.4f; fillA = 0.97f; break;
-            case Kind.CtaOff: top = new(0.33f, 0.30f, 0.62f); bottom = new(0.22f, 0.19f, 0.46f); edge = new(0.45f, 0.42f, 0.76f); lineW = 2f; break;
-            case Kind.CtaOn: top = new(0.45f, 0.41f, 0.80f); bottom = new(0.31f, 0.27f, 0.62f); edge = new(0.70f, 0.67f, 0.95f); lineW = 2f; break;
-            case Kind.StdOff: top = new(0.22f, 0.23f, 0.42f); bottom = new(0.15f, 0.15f, 0.30f); edge = new(0.32f, 0.34f, 0.55f); lineW = 2f; break;
-            default: top = new(0.32f, 0.34f, 0.60f); bottom = new(0.22f, 0.23f, 0.44f); edge = new(0.55f, 0.58f, 0.85f); lineW = 2f; break;
+            // 紺の板 + 水色の差し色 (右のカードや上のバーと同じ水色)。指が乗ると少し明るくなり、縁が水色に光る
+            case Kind.Outline: top = new(0.16f, 0.19f, 0.31f); bottom = new(0.11f, 0.13f, 0.23f); edge = new(0.90f, 0.93f, 0.98f); ppu = 200f; lineW = 3f; break;
+            case Kind.Panel: top = new(0.12f, 0.14f, 0.24f); bottom = new(0.08f, 0.09f, 0.17f); edge = new(0.24f, 0.30f, 0.44f); lineW = 2f; fillA = 0.97f; break;
+            case Kind.CtaOff: top = new(0.17f, 0.20f, 0.34f); bottom = new(0.11f, 0.13f, 0.24f); edge = new(0.24f, 0.36f, 0.48f); lineW = 1.6f; break;
+            case Kind.CtaOn: top = new(0.22f, 0.28f, 0.44f); bottom = new(0.14f, 0.19f, 0.32f); edge = new(0.30f, 0.92f, 0.82f); lineW = 2.4f; break;
+            case Kind.StdOff: top = new(0.15f, 0.18f, 0.30f); bottom = new(0.10f, 0.12f, 0.22f); edge = new(0.22f, 0.30f, 0.43f); lineW = 1.6f; break;
+            default: top = new(0.20f, 0.30f, 0.42f); bottom = new(0.14f, 0.22f, 0.33f); edge = new(0.30f, 0.80f, 0.75f); lineW = 1.6f; break;
         }
         var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { name = "MrpSkin" + kind, wrapMode = TextureWrapMode.Clamp };
         var px = new Color32[w * h];
