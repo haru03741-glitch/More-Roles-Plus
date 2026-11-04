@@ -1609,11 +1609,11 @@ Null.TogetherTime: 一緒にいる必要な時間
 Null.AloneTime: ひとりでいる必要な時間
 FakeJester.Name: フェイクジェスター
 FakeJester.Blurb: 道化を演じた偽者
-FakeJester.Summary: 自分をジェスターだと思い込んでいる第三陣営です。決めた数の会議が始まると、本当の役職に気づきます。
+FakeJester.Summary: 自分を道化だと思い込んでいる第三陣営です。決めた数の会議が始まると、本当の役職に気づきます。
 FakeJester.WinCond: 自覚した後、試合の終わりに生きていれば勝ち (追放されても勝ちにならない)
-FakeJester.Tips: 気づくまではジェスターとして振る舞ってしまいます。気づいた後は生き残ることを目指しましょう。
-FakeJester.Awaken: 自分はジェスターではなかった……フェイクジェスターだ！ 生き残れば勝ち
-FakeJester.AwakenedLabel: ジェスター/フェイクジェスター
+FakeJester.Tips: 気づくまでは道化として振る舞ってしまいます。気づいた後は生き残ることを目指しましょう。
+FakeJester.Awaken: 自分は道化ではなかった……フェイクジェスターだ！ 生き残れば勝ち
+FakeJester.AwakenedLabel: 道化/フェイクジェスター
 FakeJester.AwakenMeetings: 自覚するまでの会議の数
 FakeJester.AdditionalWin: 勝った陣営に相乗りする
 Guardian.Name: 守護者

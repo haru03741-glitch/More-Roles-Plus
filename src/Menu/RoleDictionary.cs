@@ -48,7 +48,7 @@ internal static class RoleDictionary
     {
         var me = PlayerControl.LocalPlayer;
         if (!ShipStatus.Instance || !me || me.Data == null) return null;
-        string id = RoleState.Local?.Id ?? (me.Data.Role ? me.Data.Role.Role.ToString() : null);
+        string id = RoleState.Local?.SeenBySelf.Id ?? (me.Data.Role ? me.Data.Role.Role.ToString() : null);
         return id != null ? RoleBrowser.Find(id) : null;
     }
 
