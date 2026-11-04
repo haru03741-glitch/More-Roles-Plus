@@ -110,9 +110,58 @@ internal static class FxRoot
             else if (HudRoots[i].Pointer == root.Pointer) return;
         }
         HudRoots.Add(root);
+        RewindPlayback.HideHudWhilePlaying(root); // 逆再生の途中で出した板は、控えの絵と二重にならないよう戻し終わりまで隠す
     }
 
     internal static readonly List<Transform> HudRoots = new();
+
+    // 画面 (HUD) の板の入れ物を作る。画面の板は new GameObject + SetParent(hud.transform) でなくこれで作る。
+    // HudManager の子に作って TrackHud に入れるので、それだけで逆再生の間は見えていたとおりに逆へ流れる (役職ごとに逆再生を書かなくてよい)。
+    // 逆再生の間は根ごと SetActive(false) になり、戻し終わりに戻る (持ち主は戻った値から出し直す)。HUD が無い時は null
+    internal static GameObject NewHud(string name, int layer = -1)
+    {
+        var hud = Vanilla.Hud;
+        if (!hud) return null;
+        var go = new GameObject(name) { layer = layer >= 0 ? layer : hud.gameObject.layer };
+        go.transform.SetParent(hud.transform, false);
+        TrackHud(go.transform);
+        return go;
+    }
+
+    // 本編の部品を写して画面に置く (Instantiate(src, hud.transform) の代わり)。写した物は TrackHud に入る
+    internal static GameObject CloneHud(GameObject src)
+    {
+        var hud = Vanilla.Hud;
+        if (!hud || !src) return null;
+        var go = Object.Instantiate(src, hud.transform);
+        TrackHud(go.transform);
+        return go;
+    }
+
+    // 時刻で描く画面の板の入れ物を作る (事前に描いたコマを流す全画面など、板の中身のテクスチャが毎コマ変わるので控えの絵では逆に流せない物)。
+    // 控えには入れず隠しもしない。逆再生の間は記録の時刻 at (Environment.TickCount64 の値) ごとに seek(at) を呼ぶので、持ち主がその時刻の姿を描く
+    // (その時刻にまだ無かったなら自分で隠す)。逆再生が終わると end() を呼ぶ。HUD が無い時は null
+    internal static GameObject NewHudClock(string name, Action<long> seek, Action end, int layer = -1)
+    {
+        var hud = Vanilla.Hud;
+        if (!hud || seek == null || end == null) return null;
+        var go = new GameObject(name) { layer = layer >= 0 ? layer : hud.gameObject.layer };
+        go.transform.SetParent(hud.transform, false);
+        RewindPlayback.AddClock(go, seek, end);
+        return go;
+    }
+
+    // 本物のカメラの子に置く画面いっぱいの世界の層の板 (暗がり・閃光)。HUD はカメラの子なので、HUD からの相対で控えて同じ所へ出せる。
+    // HUD がカメラの子でない時は控えに入れない (置き場所が合わない)
+    internal static GameObject NewOnCamera(string name, Camera cam, int layer = -1)
+    {
+        if (!cam) return null;
+        var go = new GameObject(name) { layer = layer >= 0 ? layer : cam.gameObject.layer };
+        go.transform.SetParent(cam.transform, false);
+        var hud = Vanilla.Hud;
+        if (hud && hud.transform.IsChildOf(cam.transform)) TrackHud(go.transform);
+        return go;
+    }
 }
 
 // 録画: FxRoot の下の SpriteRenderer と MeshRenderer を姿と同じ 0.1 秒ごとに控え、逆再生の間は根を隠して代わりの板を控えのとおりに置く。
@@ -417,7 +466,7 @@ internal static partial class RewindPlayback
     private static readonly Dictionary<string, int> TextIndex = new();
     private static readonly Dictionary<IntPtr, TextMeshPro> TextSrc = new();   // 字の持ち主 (代わりの字を複製する元)
     private static readonly Dictionary<IntPtr, bool> IsTextMesh = new();       // MeshRenderer が字の物か (字は文字列で控える)
-    private static readonly List<Transform> HudHidden = new(); // 逆再生の間に隠した HUD の根
+    private static readonly List<Parked> HudHidden = new(); // 逆再生の間に隠した HUD の根と元の親
 
     // HUD の根の下の絵と字を HudManager からの相対の位置で控える。戻し終わりに隠すこと (HideBornAfter) はしない
     // (HUD は持ち主が戻った値から出し直す・切り替えで出し入れする題字を隠すと戻らなくなる)
@@ -634,11 +683,65 @@ internal static partial class RewindPlayback
             WorldObjHidden.Add(t);
         }
         HudHidden.Clear();
-        foreach (var r in FxRoot.HudRoots)
+        foreach (var r in FxRoot.HudRoots) Park(r);
+    }
+
+    // HUD の根は SetActive で隠さず、止めた置き場の下へ一時的に移して隠す。逆再生の間に持ち主が自分で閉じた
+    // (SetActive(false) した) 板を、戻し終わりにこちらが出し直してしまわないように (持ち主の出し入れはそのまま残る)
+    private static Transform _park;
+    private static IntPtr _parkOf;
+
+    private static void Park(Transform r)
+    {
+        if (!r) return;
+        var hud = Vanilla.Hud;
+        if (!hud) return;
+        if (!_park || _parkOf != hud.Pointer)
         {
-            if (!r || !r.gameObject.activeSelf) continue;
-            r.gameObject.SetActive(false);
-            HudHidden.Add(r);
+            if (_park) Object.Destroy(_park.gameObject);
+            var go = new GameObject("MrpRewindParked") { layer = hud.gameObject.layer };
+            go.SetActive(false);
+            _park = go.transform;
+            _park.SetParent(hud.transform, false);
+            _parkOf = hud.Pointer;
+        }
+        var parent = r.parent;
+        if (!parent || parent.Pointer == _park.Pointer) return;
+        HudHidden.Add(new Parked { T = r, Parent = parent });
+        r.SetParent(_park, false);
+    }
+
+    private struct Parked { public Transform T, Parent; }
+
+    // 時刻で描く画面 (FxRoot.NewHudClock)
+    private struct Clock { public GameObject Go; public Action<long> Seek; public Action End; }
+    private static readonly List<Clock> Clocks = new();
+
+    internal static void AddClock(GameObject go, Action<long> seek, Action end)
+    {
+        for (int i = Clocks.Count - 1; i >= 0; i--) if (!Clocks[i].Go) Clocks.RemoveAt(i);
+        Clocks.Add(new Clock { Go = go, Seek = seek, End = end });
+    }
+
+    private static void SeekClocks(long at)
+    {
+        for (int i = 0; i < Clocks.Count; i++)
+        {
+            var c = Clocks[i];
+            if (!c.Go) continue;
+            try { c.Seek(at); }
+            catch (Exception e) { Plugin.Logger.LogWarning($"RewindPlayback clock seek: {e.Message}"); }
+        }
+    }
+
+    private static void EndClocks()
+    {
+        for (int i = Clocks.Count - 1; i >= 0; i--)
+        {
+            var c = Clocks[i];
+            if (!c.Go) { Clocks.RemoveAt(i); continue; }
+            try { c.End(); }
+            catch (Exception e) { Plugin.Logger.LogWarning($"RewindPlayback clock end: {e.Message}"); }
         }
     }
 
@@ -658,6 +761,12 @@ internal static partial class RewindPlayback
         WorldObjHidden.Add(t);
     }
     private static readonly List<Transform> WorldObjHidden = new();
+
+    internal static void HideHudWhilePlaying(Transform t)
+    {
+        if (!Active) return;
+        Park(t);
+    }
 
     // 控え a (古い) と b (新しい) の間 u で置く。同じ絵が両方にあれば位置・向き・大きさ・色を補間する
     private static void DriveView(int a, int b, float u)
@@ -865,9 +974,13 @@ internal static partial class RewindPlayback
         _hudMeshUsed = 0;
         foreach (var t in TextProxies.Values)
             if (t.Go && t.Go.activeSelf) t.Go.SetActive(false);
-        // 戻した後の出し直し (持ち主の OnRewound など) が、戻った値に合わせて隠し直す
-        foreach (var r in HudHidden)
-            if (r) r.gameObject.SetActive(true);
+        // 元の親へ戻す (出すか隠すかは持ち主が決めたまま)。親が先に消えていたら根ごと捨てる (置き場に残すと次の逆再生で出ない)
+        foreach (var h in HudHidden)
+        {
+            if (!h.T) continue;
+            if (h.Parent) h.T.SetParent(h.Parent, false);
+            else Object.Destroy(h.T.gameObject);
+        }
         HudHidden.Clear();
     }
 

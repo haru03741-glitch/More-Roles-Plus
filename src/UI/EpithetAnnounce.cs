@@ -39,10 +39,8 @@ internal static class EpithetAnnounce
         if (!cam) return;
         if (_go) Object.Destroy(_go);
         int layer = hud.gameObject.layer;
-        _go = new GameObject("EpithetAnnounce") { layer = layer };
+        _go = FxRoot.NewHud("EpithetAnnounce", layer);
         var tf = _go.transform;
-        tf.SetParent(hud.transform, false);
-        FxRoot.TrackHud(tf); // 逆再生の間は見えていたとおりに逆へ流す
         tf.localPosition = FxMath.V3(0f, cam.orthographicSize * 0.56f, -40f);
 
         // 横に長いオーロラ色の光の帯 → 印 → 字

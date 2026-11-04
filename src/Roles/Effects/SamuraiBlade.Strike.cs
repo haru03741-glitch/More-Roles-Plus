@@ -690,8 +690,7 @@ internal static class IaiScreen
         }, "MrpIaiLine");
         if (!_solid || !_soft) return false;
         int layer = hud.gameObject.layer;
-        _root = new GameObject("MrpIaiScreen") { layer = layer };
-        _root.transform.SetParent(hud.transform, false);
+        _root = FxRoot.NewHud("MrpIaiScreen", layer);
         GameClock.Ship.Bind(_root);
         _dark = Part(_root.transform, _solid, 0f, layer);
         var line = new GameObject("Line") { layer = layer };

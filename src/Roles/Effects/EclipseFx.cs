@@ -530,9 +530,8 @@ internal static class EclipseFx
         if (!_whiteGo)
         {
             _whiteSp ??= FxSprites.Rect(4, 4, (_, _) => 1f, "MrpEclipseWhite");
-            _whiteGo = new GameObject("MrpEclipseWhiteOut") { layer = cam.gameObject.layer };
+            _whiteGo = FxRoot.NewOnCamera("MrpEclipseWhiteOut", cam);
             var tf = _whiteGo.transform;
-            tf.SetParent(cam.transform, false);
             tf.localPosition = FxMath.V3(0f, 0f, cam.nearClipPlane + 0.4f);
             _whiteSr = _whiteGo.AddComponent<SpriteRenderer>();
             _whiteSr.sprite = _whiteSp;

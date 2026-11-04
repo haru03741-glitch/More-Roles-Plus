@@ -43,6 +43,11 @@ internal static unsafe partial class KatanaCinematic
     private static volatile bool _stop;
     private static int _decodeNext, _shown = -1;
     private static readonly int[] SlotFrame = new int[Slots];
+    private static readonly int[] SlotClaim = new int[Slots]; // 展開中の置き場が受け持つコマ (逆に流す時に同じコマを二重に取らない)
+    // 時戻しの逆再生の間: コマを後ろへ流す (作業スレッドは _revWant から前のコマを先読みする)
+    private static volatile bool _rev;
+    private static int _revWant;
+    private static long _t0Ms; // コマ 0 を出した時刻 (Environment.TickCount64・記録の時刻と同じ物差し)
     private static readonly byte[][] SlotBuf = new byte[Slots][];
     private static readonly GCHandle[] SlotPin = new GCHandle[Slots];
     private static float _bodyR, _bodyG, _bodyB, _shR, _shG, _shB;
@@ -137,18 +142,26 @@ internal static unsafe partial class KatanaCinematic
         if (!_on) { SoundTick(); if (_easing) EaseTick(); return; }
         if (RewindPlayback.Active)
         {
-            // 時戻しが始まったら閉じて逆再生を見せる (斬った結果は時戻しが戻す)。体の止めは時戻しが持つので、ここでは動けるように戻さない
-            if (_frozen) TimeRewind.TakeFreeze(_wasMoveable);
-            _frozen = false;
-            Teardown();
-            StopSound();
+            // 時戻しが始まったら前へ流すのをやめ、逆再生の時刻に合わせて後ろへ流す (Seek)。終わりに閉じる (SeekEnd・斬った結果は時戻しが戻す)。
+            // 体の止めは時戻しが持つので、ここでは動けるように戻さない
+            if (!_rev)
+            {
+                if (_frozen) TimeRewind.TakeFreeze(_wasMoveable);
+                _frozen = false;
+                StopSound();
+                _revWant = Math.Max(_shown, 0);
+                _rev = true;
+            }
             return;
         }
+        if (_rev) { SeekEnd(); return; }
         try
         {
             if (GameClock.ShipGen != _shipGen || !GameClock.ShipAlive || !_atk || MeetingHud.Instance) { Teardown(); StopSound(); return; }
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             if (++_ticks == 2) _start = now - System.Diagnostics.Stopwatch.Frequency / _fps;
+            long ms = (now - _start) * 1000 / System.Diagnostics.Stopwatch.Frequency;
+            _t0Ms = Environment.TickCount64 - ms;
             long t = (now - _start) * _fps * 1000 / System.Diagnostics.Stopwatch.Frequency + 500;
             int f = Math.Max((int)(t / 1000), _shown);
             if (_hold >= 0 && f > _hold) f = _hold;
@@ -313,6 +326,33 @@ internal static unsafe partial class KatanaCinematic
                 int f, slot = -1;
                 lock (ClaimLock)
                 {
+                    if (_rev)
+                    {
+                        // 後ろへ流す: 見せたいコマから前へ、まだどの置き場にも無いコマを取る。見せたコマより後のコマの置き場は空きと同じ
+                        f = -1;
+                        int want = Volatile.Read(ref _revWant);
+                        for (int g = want; g >= 0 && g > want - Slots && f < 0; g--)
+                        {
+                            bool have = false;
+                            for (int i = 0; i < Slots && !have; i++)
+                            {
+                                int sf = Volatile.Read(ref SlotFrame[i]);
+                                have = sf == g || (sf == -2 && SlotClaim[i] == g);
+                            }
+                            if (!have) f = g;
+                        }
+                        if (f >= 0)
+                            for (int i = 0; i < Slots; i++)
+                            {
+                                int sf = Volatile.Read(ref SlotFrame[i]);
+                                // 見せたコマより後と、先読みの窓より前 (前へ流した時に展開して出さなかった古いコマ) は空きと同じ
+                                if (sf == -1 || (sf >= 0 && (sf > want || sf <= want - Slots))) { slot = i; break; }
+                            }
+                        if (slot >= 0) { SlotClaim[slot] = f; Volatile.Write(ref SlotFrame[slot], -2); }
+                        if (f < 0) f = _n; // 取る物が無い: 少し待つ
+                    }
+                    else
+                    {
                     f = Math.Max(Volatile.Read(ref _decodeNext), _claimNext);
                     if (f < _n)
                     {
@@ -324,9 +364,11 @@ internal static unsafe partial class KatanaCinematic
                         }
                         if (slot >= 0)
                         {
+                            SlotClaim[slot] = f;
                             Volatile.Write(ref SlotFrame[slot], -2);
                             _claimNext = f + 1;
                         }
+                    }
                     }
                 }
                 if (f >= _n) { Thread.Sleep(5); continue; }
@@ -432,8 +474,7 @@ internal static unsafe partial class KatanaCinematic
     {
         var cam = hud.UICamera;
         int layer = hud.gameObject.layer;
-        _root = new GameObject("MrpKatanaCinema") { layer = layer };
-        _root.transform.SetParent(hud.transform, false);
+        _root = FxRoot.NewHudClock("MrpKatanaCinema", Seek, SeekEnd, layer);
         float fsZ = hud.FullScreen ? hud.FullScreen.transform.localPosition.z : -500f;
         _root.transform.localPosition = FxMath.V3(0f, 0f, fsZ + 0.5f);
         _screenH = cam.orthographicSize * 2f;
@@ -681,11 +722,47 @@ internal static unsafe partial class KatanaCinematic
         _cam = null;
     }
 
+    // ---- 時戻しの逆再生 ----
+    // 記録の時刻 at に出ていたコマを出す。始まる前の時刻なら全画面 (被害者と破片も根の下) を隠してカメラと攻撃者の姿を戻す (後ろへ戻る間に始まりを越えたら消える)
+    private static void Seek(long at)
+    {
+        if (!_on || !_rev || !_root) return;
+        int f = (int)((at - _t0Ms) * _fps / 1000);
+        if (f > _shown && _shown >= 0) f = _shown;
+        if (f < 0)
+        {
+            if (!_root.activeSelf) return;
+            _root.SetActive(false);
+            if (_cam) { _cam.orthographicSize = _baseSize; _cam.transform.localRotation = _baseRot; }
+            if (_follow) _follow.Offset = _baseOffset;
+            foreach (var c in _hiddenCams) if (c) c.enabled = true;
+            if (_hidAtk && _atk) _atk.Visible = true;
+            return;
+        }
+        if (!_root.activeSelf)
+        {
+            _root.SetActive(true);
+            foreach (var c in _hiddenCams) if (c) c.enabled = false;
+        }
+        Volatile.Write(ref _revWant, f);
+        if (f != _shown) Show(f);
+        if (_hidAtk && _atk && _atk.Visible) _atk.Visible = false;
+    }
+
+    // 逆再生の終わり: 閉じる (戻し先は必殺技の前か途中で、斬った結果は時戻しが戻している)
+    private static void SeekEnd()
+    {
+        if (!_rev) return;
+        _rev = false;
+        if (_on) Teardown();
+    }
+
     // ease = 最後まで流れて終わった時だけカメラを滑らかに戻す (打ち切りは一度に戻す)
     private static void Teardown(bool ease = false)
     {
         if (_on) Plugin.Logger.LogInfo($"[KatanaCinematic] end shown={_shownCount} skipped={_skipped} ticks={_ticks} missed={_missed} main ms avg={(_shownCount > 0 ? _sumMs / _shownCount : 0):0.00} worst={_worstMs:0.00}");
         _on = false;
+        _rev = false;
         StopWorker();
         if (ease) CamEaseOut();
         else CamRestore();

@@ -606,11 +606,9 @@ internal static partial class DuelHud
         _halfW = _halfH * cam.aspect;
         _barW = FxMath.Min(_halfW * 0.62f, 3.4f);
         int layer = hud.gameObject.layer;
-        _root = new GameObject("MrpDuelHud") { layer = layer };
+        _root = FxRoot.NewHud("MrpDuelHud", layer);
         _rootTf = _root.transform;
-        _rootTf.SetParent(hud.transform, false);
         _rootTf.localPosition = FxMath.V3(0f, 0f, Z);
-        FxRoot.TrackHud(_rootTf);
         float y = _halfH - BarTop;
         var white = WhiteSprite();
         _flat.Clear();

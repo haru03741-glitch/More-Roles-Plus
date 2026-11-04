@@ -263,8 +263,7 @@ internal static class SpectreMinigame
         _dish = dishId;
         _onDone = onDone;
         _closeAt = -1f;
-        _root = new GameObject("MrpSpectreMinigame");
-        _root.transform.SetParent(hud.transform, false);
+        _root = FxRoot.NewHud("MrpSpectreMinigame", 0);
         _root.transform.localPosition = new Vector3(0f, 0f, -150f); // タスクの一覧や能力ボタンより手前
         RoleState.Match.Bind(_root);
 
@@ -389,9 +388,7 @@ internal static class SpectreGauge
         if (_root) return;
         var hud = Vanilla.Hud;
         if (!hud) return;
-        _root = new GameObject("MrpSpectreGauge");
-        _root.transform.SetParent(hud.transform, false);
-        _root.layer = 5;
+        _root = FxRoot.NewHud("MrpSpectreGauge", 5);
         life.Bind(_root);
         life.OnRelease(() => { _root = null; Units.Clear(); });
         var aspect = _root.AddComponent<AspectPosition>();
