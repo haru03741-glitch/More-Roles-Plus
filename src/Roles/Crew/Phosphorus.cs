@@ -29,7 +29,7 @@ public sealed class Phosphorus : RoleBase
     public static readonly FloatOpt LightRange = new("Phosphorus.Range", 0.5f, 0.1f, 5f, 0.1f, "x");
 
     private const float ArtH = 0.45f;            // ランタンの高さ (単位)
-    private const float FlameH = 0.17f;          // 足元から炎までの高さ (光の中心)
+    private const float FlameH = 0.118f;         // 足元から炎までの画面の高さ (光の中心・絵の描画から測った値)
     private const float GlassBottom = 0.15f;     // 水がこの深さを超えると炎が浸かって消える
     private const float CheckEvery = 0.5f;       // 水・火を見て光の形を作り直す間隔
     private const int Rays = 96;                 // 光の形を作る光線の数
@@ -380,9 +380,10 @@ public sealed class Phosphorus : RoleBase
     {
         if (_off) return;
         float ppu = 256f / ArtH;
-        _off = ButtonIcons.Load("lantern_off", ppu, FxMath.V2(0.5f, 0.04f));
-        _on = ButtonIcons.Load("lantern_on", ppu, FxMath.V2(0.5f, 0.04f));
-        _broken = ButtonIcons.Load("lantern_broken", ppu, FxMath.V2(0.5f, 0.1f));
+        // 足の位置は斜め上から見た壺の底の真ん中 (手前の縁はそれより下に、影は右へ伸びて描かれる)
+        _off = ButtonIcons.Load("lantern_off", ppu, FxMath.V2(0.2300f, 0.1621f));
+        _on = ButtonIcons.Load("lantern_on", ppu, FxMath.V2(0.2308f, 0.1621f));
+        _broken = ButtonIcons.Load("lantern_broken", ppu, FxMath.V2(0.3633f, 0.2393f)); // flipX は足の位置を軸に返る
         _glow = FxSprites.Rect(64, 64, FxSprites.Soft, "mrp_lantern_glow");
     }
 
