@@ -132,8 +132,10 @@ VoiceChat.Range: 声の届く距離
 VoiceChat.InVent: ベントの中の人も話せる・聞こえる
 VoiceChat.MicOff: マイク OFF (MRP の設定で ON)
 VoiceChat.Muted: ミュート中 ({key} で解除)
+VoiceChat.MutedTouch: ミュート中
 VoiceChat.Listening: 今は話せません
 VoiceChat.MicOn: マイク ON ({key} でミュート)
+VoiceChat.MicOnTouch: マイク ON
 VoiceChat.Talking: 話しています
 VoiceChat.NoMic: マイクが見つかりません
 VoiceChat.NoMicAndroid: マイクが使えません (ランチャーでマイクを許可)
@@ -1267,6 +1269,7 @@ Emote.Clap: 拍手
 Emote.Beckon: 手招き
 Emote.Tab: エモート
 Emote.TabHint: 押すと右の人が見本を見せます。試合中は {key} でエモートの輪を開き、右上の数字のキーで出せます。
+Emote.TabHintTouch: 押すと右の人が見本を見せます。試合中は右下のエモートのボタンで輪を開いて選べます。
 
 # ── Stamp ──
 Stamp.Button: スタンプ

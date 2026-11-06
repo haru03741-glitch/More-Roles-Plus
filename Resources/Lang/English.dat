@@ -132,8 +132,10 @@ VoiceChat.Range: Voice range
 VoiceChat.InVent: People in vents can talk and hear
 VoiceChat.MicOff: Mic off (turn it on in the MRP settings)
 VoiceChat.Muted: Muted ({key} to unmute)
+VoiceChat.MutedTouch: Muted
 VoiceChat.Listening: You cannot talk right now
 VoiceChat.MicOn: Mic on ({key} to mute)
+VoiceChat.MicOnTouch: Mic on
 VoiceChat.Talking: Talking
 VoiceChat.NoMic: No microphone found
 VoiceChat.NoMicAndroid: Microphone unavailable (allow it in the launcher)
@@ -1267,6 +1269,7 @@ Emote.Clap: Clap
 Emote.Beckon: Beckon
 Emote.Tab: Emotes
 Emote.TabHint: Click one to see it on the right. In a match, press {key} to open the emote wheel, then the number in the corner.
+Emote.TabHintTouch: Tap one to see it on the right. In a match, open the emote wheel with the emote button at the bottom right and pick one.
 
 # ── Stamp ──
 Stamp.Button: Stamp

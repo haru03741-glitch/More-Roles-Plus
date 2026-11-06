@@ -97,10 +97,18 @@ internal static class VoiceHud
 #else
         else if (!Mic.Available) me = $"<color=#9A9A9A>{new Text("VoiceChat.NoMic")}</color>";
 #endif
+#if ANDROID
+        else if (VoiceChat.Muted) me = $"<color=#FF6060>{new Text("VoiceChat.MutedTouch")}</color>";
+#else
         else if (VoiceChat.Muted) me = $"<color=#FF6060>{new Text("VoiceChat.Muted").With("key", key)}</color>";
+#endif
         else if (!VoiceRules.CanTalk(PlayerControl.LocalPlayer)) me = $"<color=#9A9A9A>{new Text("VoiceChat.Listening")}</color>";
         else if (Mic.Talking) me = $"<color=#7CFF7C>{new Text("VoiceChat.Talking")}</color>";
+#if ANDROID
+        else me = new Text("VoiceChat.MicOnTouch").ToString(); // スマホはキーで押さない
+#else
         else me = new Text("VoiceChat.MicOn").With("key", key).ToString();
+#endif
 
         var sb = new System.Text.StringBuilder();
         foreach (var p in PlayerControl.AllPlayerControls)

@@ -274,8 +274,12 @@ internal static class EmoteTab
         }
         if (proto)
         {
-            string key = KeyHints.KeyName(Keybinds.Key(Keybinds.Slot.Emote));
-            var hint = Label(proto, _panel.transform, new Text("Emote.TabHint").With("key", key).ToString(), new Vector3(-1.95f, y0 - 1.5f * CardH - GapY - 0.12f, -1f), 1.7f, TextAlignmentOptions.TopLeft, new Vector2(3.6f, 1f));
+#if ANDROID
+            string text = new Text("Emote.TabHintTouch").ToString(); // スマホはキーで押さない
+#else
+            string text = new Text("Emote.TabHint").With("key", KeyHints.KeyName(Keybinds.Key(Keybinds.Slot.Emote))).ToString();
+#endif
+            var hint = Label(proto, _panel.transform, text, new Vector3(-1.95f, y0 - 1.5f * CardH - GapY - 0.12f, -1f), 1.7f, TextAlignmentOptions.TopLeft, new Vector2(3.6f, 1f));
             hint.rectTransform.pivot = new Vector2(0f, 1f);
             hint.enableWordWrapping = true;
             hint.color = new Color(0.8f, 0.8f, 0.8f, 1f);

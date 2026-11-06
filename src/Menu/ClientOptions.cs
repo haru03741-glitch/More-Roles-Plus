@@ -66,6 +66,7 @@ internal static class ClientOptions
         TaskOnName = Add(Cat.Display, "TaskOnName", true, new Text("ClientOptions.TaskOnName"), NameTaskTag.RefreshAll);
         PreciseCooldown = Add(Cat.Display, "PreciseCooldown", true, new Text("ClientOptions.PreciseCooldown"), null);
         KeyHints = Add(Cat.Display, "KeyHints", true, new Text("ClientOptions.KeyHints"), null);
+        Items[^1].Visible = () => !OperatingSystem.IsAndroid(); // スマホにはキーボードが無いので出さない
         var scaleLabel = new Text("ClientOptions.ButtonScale");
         ButtonScale = cfg.Bind("Client", "ButtonScale", 100, scaleLabel.Builtin(false));
         Items.Add(new Item { Key = "ButtonScale", Cat = Cat.Display, Label = scaleLabel, Click = HudTweaks.NextScale, Value = HudTweaks.ScaleLabel });
