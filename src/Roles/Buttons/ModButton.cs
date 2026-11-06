@@ -19,6 +19,8 @@ internal sealed class ModButton
     private static readonly List<ModButton> All = new();
     private static bool _hudShown = true;
     private static bool _ghostShown; // 幽霊の HUD が出ているか (幽霊のボタンだけを出す)
+    // 本編の地図が開く・閉じる途中か。地図は HUD を隠して出し直すが、それで待ち時間を最初からにしない
+    internal static bool InMapToggle;
     private static int _tick;
     private static float _dt; // 物理の刻み (本編は 1/30 秒。0.02 秒の決め打ちだと実時間の 6 割で減る)。試合中は変わらないので 1 回だけ読む
 
@@ -618,11 +620,11 @@ internal sealed class ModButton
         foreach (var b in All.ToArray())
         {
             bool vis = b._ghost ? ghost : shown;
-            if (!vis && b._effect > 0f) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ)
+            if (!vis && b._effect > 0f && !InMapToggle) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ・地図を開いただけでは切らない)
             if (!vis && b._holding) b.EndHold(false);  // 溜めている途中の会議・死亡は使わずに捨てる
             if (!b._inGrid || !b._button) continue;
             b._button.gameObject.SetActive(vis);
-            if ((b._ghost ? ghostReshown : reshown) && b.ResetOnShow) b.StartCooldown();
+            if ((b._ghost ? ghostReshown : reshown) && b.ResetOnShow && !InMapToggle) b.StartCooldown();
         }
         Arrange();
     }
@@ -726,6 +728,21 @@ internal sealed class ModButton
 internal static class ModButtonClickPatch
 {
     public static bool Prefix(AbilityButton __instance) => !ModButton.HandleClick(__instance);
+}
+
+// 地図を開く・閉じる間の HUD の出し入れには印を付ける (地図の間に会議が始まれば、会議明けの出し直しで最初からになる)
+[HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.Show))]
+internal static class ModButtonMapShowPatch
+{
+    public static void Prefix(out bool __state) { __state = ModButton.InMapToggle; ModButton.InMapToggle = true; }
+    public static void Postfix(bool __state) => ModButton.InMapToggle = __state;
+}
+
+[HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.Close))]
+internal static class ModButtonMapClosePatch
+{
+    public static void Prefix(out bool __state) { __state = ModButton.InMapToggle; ModButton.InMapToggle = true; }
+    public static void Postfix(bool __state) => ModButton.InMapToggle = __state;
 }
 
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.SetHudActive), typeof(PlayerControl), typeof(RoleBehaviour), typeof(bool))]
