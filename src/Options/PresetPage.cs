@@ -66,6 +66,7 @@ internal static class PresetPage
         _root = Widget.Node("MrpPresetPage", m.transform, m.gameObject.layer);
         _root.transform.localPosition = Center;
         _root.AddComponent<UnityEngine.Rendering.SortingGroup>().sortingOrder = 5;
+        SettingsCover.Add(_root);
         // 名前の欄は作り直さない (打った字を残す)。欄の中の字と地の前後は z で決まる作りなので、頁の SortingGroup の外に置く
         _name = SearchBox.Create(m.transform, Center + new Vector3(-W / 2f + NameW / 2f, H / 2f - NameH / 2f, -0.05f), NameW, NameH, new Text("PresetPage.NameForANewPreset"), _ => { });
         var body = Widget.Node("Body", _root.transform, m.gameObject.layer);

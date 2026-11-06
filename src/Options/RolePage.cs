@@ -42,6 +42,7 @@ internal static class RolePage
         // 頁ごと本編の設定画面の上に描く (中のスクロール欄は自分の切り抜きを持つ)
         var group = _root.AddComponent<UnityEngine.Rendering.SortingGroup>();
         group.sortingOrder = 5;
+        SettingsCover.Add(_root);
         _built = true;
         Browser.ChipScreen = ChipScreen(m);
         Browser.Attach(new UiScreen(_root.transform) { MaxWidth = W, BaseOrder = 1 });
@@ -57,6 +58,7 @@ internal static class RolePage
         var local = t.InverseTransformPoint(topLeft);
         go.transform.localPosition = new Vector3(local.x, local.y, Center.z);
         go.AddComponent<UnityEngine.Rendering.SortingGroup>().sortingOrder = 5;
+        SettingsCover.Add(go);
         float w = t.InverseTransformVector(new Vector3(width, 0f, 0f)).x;
         return new UiScreen(go.transform) { Anchor = Align.Start, MaxWidth = w, BaseOrder = 1 };
     }

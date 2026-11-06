@@ -83,6 +83,7 @@ internal sealed class SectionPage
         var root = Widget.Node("Mrp_" + _tag, m.transform, m.gameObject.layer);
         root.transform.localPosition = Center;
         root.AddComponent<UnityEngine.Rendering.SortingGroup>().sortingOrder = 5;
+        SettingsCover.Add(root);
         _screen = new UiScreen(root.transform) { MaxWidth = W, BaseOrder = 1 };
         _built = true;
         Rebuild();

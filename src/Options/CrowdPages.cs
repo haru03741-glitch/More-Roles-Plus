@@ -210,6 +210,7 @@ internal static class CrowdPages
         var root = new GameObject("MrpPages") { layer = parent.gameObject.layer };
         root.transform.SetParent(parent, false);
         root.transform.localPosition = pos;
+        SettingsCover.Add(root);
         _label = Text(root.transform, proto, Vector3.zero, 1.6f);
         _prev ??= (UnityAction)(() => Turn(-1));
         _next ??= (UnityAction)(() => Turn(1));
