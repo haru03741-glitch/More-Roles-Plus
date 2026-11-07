@@ -233,6 +233,7 @@ public class Ticker : MonoBehaviour
         Options.SettingsCover.Tick();
         Options.FontFallback.Tick();
         Menu.EmoteTab.Tick();
+        Menu.MrpCosTab.Tick();
         Voice.VoiceChat.Tick();
         Menu.Recorder.Tick();
         Commands.Moderators.Tick();

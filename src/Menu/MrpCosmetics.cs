@@ -14,7 +14,8 @@ namespace MoreRolesPlus.Menu;
 // 本編の帽子の一覧 (HatManager) には足さない。本編が着せ替えの作りを変えても壊れないように、
 // サーバーに見える着せ替えは本編の物のまま、「MRP の帽子を何にしたか」だけを MRP の電文で全員に配り、
 // 受け取った端末が本編の帽子の絵の所 (HatParent の FrontLayer) を毎フレーム MRP の絵に差し替える。
-// バイザーは帽子と同じ枠の絵なので、帽子の所に MRP の絵を 1 枚足して描き、本編のバイザーは隠す。
+// 帽子は 2 つ重ねられる (1 つ目は本編の帽子の絵の所、2 つ目はその手前に 1 枚足して描く)。
+// バイザーは帽子と同じ枠の絵なので、帽子の後ろ (体の手前) に 1 枚足して描き、本編のバイザーは隠す。
 // 外した時は本編の帽子・バイザーを付け直して元に戻す
 internal static class MrpCosmetics
 {
@@ -97,51 +98,151 @@ internal static class MrpCosmetics
 
     // ── 自分の装備 ─────────────────────────────────────────
 
-    private static ConfigEntry<string> _hat, _visor;
+    private static ConfigEntry<string> _hat, _hat2, _visor;
+    private static ConfigEntry<string> _order;
     public static int Version { get; private set; }
 
     public static void Bind(ConfigFile cfg)
     {
         _hat = cfg.Bind("Client", "MrpHat", "", "MRP-only hat id (empty = none)");
+        _hat2 = cfg.Bind("Client", "MrpHat2", "", "Second MRP-only hat id, drawn in front of the first (empty = none)");
         _visor = cfg.Bind("Client", "MrpVisor", "", "MRP-only visor id (empty = none)");
+        _order = cfg.Bind("Client", "MrpLayerOrder", "201", "Stacking order of the MRP items from back to front (0 = hat 1, 1 = hat 2, 2 = visor)");
     }
 
     public static Item MyHat => Find(_hat?.Value);
+    public static Item MyHat2 => Find(_hat2?.Value);
     public static Item MyVisor => Find(_visor?.Value);
 
-    // 付ける (item = null で外す)。部屋にいれば全員へ配る
+    // 重ねる順 (奥 → 手前に並べた枠の番号。0 = 帽子 1・1 = 帽子 2・2 = バイザー)。既定はバイザー・帽子 1・帽子 2
+    private static readonly int[] DefaultOrder = { 2, 0, 1 };
+
+    // 毎フレーム聞かれるので、保存値が変わった時だけ読み直す
+    private static string _orderFrom;
+    private static int[] _orderParsed;
+
+    public static int[] MyOrder
+    {
+        get
+        {
+            string v = _order?.Value;
+            if (_orderParsed == null || !ReferenceEquals(v, _orderFrom)) { _orderFrom = v; _orderParsed = Parse(v); }
+            return (int[])_orderParsed.Clone();
+        }
+    }
+
+    private static byte MyCode
+    {
+        get { _ = MyOrder; return Code(_orderParsed); }
+    }
+
+    private static int[] Parse(string v)
+    {
+        if (v is { Length: 3 })
+        {
+            var o = new int[3];
+            bool ok = true;
+            for (int i = 0; i < 3 && ok; i++)
+            {
+                o[i] = v[i] - '0';
+                ok = o[i] is >= 0 and <= 2 && Array.IndexOf(o, o[i]) == i;
+            }
+            if (ok) return o;
+        }
+        return (int[])DefaultOrder.Clone();
+    }
+
+    // 電文に載せる形 (奥から 9・3・1 の重み)
+    private static byte Code(int[] o) => (byte)(o[0] * 9 + o[1] * 3 + o[2]);
+
+    // 電文の形 → 枠ごとの前後 (0 = 一番奥〜2 = 一番手前)。27 通りしか無いので最初に表にしておく
+    private static readonly int[][] RankTable = BuildRanks();
+
+    private static int[][] BuildRanks()
+    {
+        var t = new int[27][];
+        for (int code = 0; code < 27; code++)
+        {
+            var o = new[] { code / 9 % 3, code / 3 % 3, code % 3 };
+            if (o[0] == o[1] || o[1] == o[2] || o[0] == o[2]) o = DefaultOrder;
+            var r = new int[3];
+            for (int i = 0; i < 3; i++) r[o[i]] = i;
+            t[code] = r;
+        }
+        return t;
+    }
+
+    // 並びの pos 番目 (0 = 一番奥) を 1 つ手前へ (一番手前の物は一番奥へ回す)
+    public static void MoveForward(int pos)
+    {
+        if (_order == null || pos is < 0 or > 2) return;
+        var o = MyOrder;
+        if (pos < 2) (o[pos], o[pos + 1]) = (o[pos + 1], o[pos]);
+        else (o[0], o[1], o[2]) = (o[2], o[0], o[1]);
+        _order.Value = $"{o[0]}{o[1]}{o[2]}";
+        Version++;
+        if (PlayerControl.LocalPlayer && AmongUsClient.Instance && AmongUsClient.Instance.AmConnected) Share.Send(Pack());
+    }
+
+    // 枠の前後 (0 = 一番奥〜2 = 一番手前)
+    internal static int Rank(int slot, int code) => RankTable[code is >= 0 and < 27 ? code : 0][slot];
+
+    // 本編の帽子・バイザーのタブで付け替えた時: その種類の MRP の物を全部外す
     public static void Equip(Kind kind, Item item)
     {
-        var entry = kind == Kind.Hat ? _hat : _visor;
+        if (kind == Kind.Hat) { EquipSlot(0, item); if (item == null) EquipSlot(1, null); }
+        else EquipSlot(2, item);
+    }
+
+    // 枠 (0 = 帽子 1・1 = 帽子 2・2 = バイザー) に付ける (item = null で外す)。
+    // もう片方の帽子の枠に同じ物があれば入れ替える。部屋にいれば全員へ配る
+    public static void EquipSlot(int slot, Item item)
+    {
+        var want = slot == 2 ? Kind.Visor : Kind.Hat;
+        if (item != null && item.Kind != want) return;
+        var entry = slot switch { 0 => _hat, 1 => _hat2, _ => _visor };
         if (entry == null) return;
-        string v = item != null && item.Kind == kind ? item.Id : "";
+        string v = item?.Id ?? "";
         if (entry.Value == v) return;
+        if (slot < 2 && item != null)
+        {
+            var otherEntry = slot == 0 ? _hat2 : _hat;
+            if (otherEntry != null && otherEntry.Value == v) otherEntry.Value = entry.Value;
+        }
         entry.Value = v;
         Version++;
         var me = PlayerControl.LocalPlayer;
-        if (me && AmongUsClient.Instance && AmongUsClient.Instance.AmConnected) Share.Send((MyHat?.Id ?? "", MyVisor?.Id ?? ""));
+        if (me && AmongUsClient.Instance && AmongUsClient.Instance.AmConnected) Share.Send(Pack());
     }
+
+    private static (string, string, string, byte) Pack() => (MyHat?.Id ?? "", MyHat2?.Id ?? "", MyVisor?.Id ?? "", MyCode);
 
     // ── 配る ─────────────────────────────────────────────
 
-    private static readonly Dictionary<int, (Item Hat, Item Visor)> ByClient = new();
+    private static readonly Dictionary<int, (Item Hat, Item Hat2, Item Visor, int Front)> ByClient = new();
     private static bool _sendPending;
     private static long _sendAt;
     private static int _room;
 
-    internal static readonly RemoteCall<(string Hat, string Visor)> Share = new("Cosmetic.Share", Route.Anyone,
-        (w, v) => { w.Write(v.Hat ?? ""); w.Write(v.Visor ?? ""); }, r => (r.ReadString(), r.ReadString()), (sender, v) => Receive(sender, v));
+    internal static readonly RemoteCall<(string Hat, string Hat2, string Visor, byte Front)> Share = new("Cosmetic.Share", Route.Anyone,
+        (w, v) => { w.Write(v.Hat ?? ""); w.Write(v.Hat2 ?? ""); w.Write(v.Visor ?? ""); w.Write(v.Front); },
+        r => (r.ReadString(), r.ReadString(), r.ReadString(), r.ReadByte()), (sender, v) => Receive(sender, v));
 
-    private static void Receive(PlayerControl sender, (string Hat, string Visor) v)
+    private static void Receive(PlayerControl sender, (string Hat, string Hat2, string Visor, byte Front) v)
     {
         if (!sender) return;
         // 知らない物 (新しい版の物) は無い事にする
-        var hat = Find(v.Hat);
-        var visor = Find(v.Visor);
-        if (hat != null && hat.Kind != Kind.Hat) hat = null;
-        if (visor != null && visor.Kind != Kind.Visor) visor = null;
-        if (hat == null && visor == null) ByClient.Remove(sender.OwnerId);
-        else ByClient[sender.OwnerId] = (hat, visor);
+        var hat = Of(v.Hat, Kind.Hat);
+        var hat2 = Of(v.Hat2, Kind.Hat);
+        var visor = Of(v.Visor, Kind.Visor);
+        if (hat == null && hat2 == null && visor == null) ByClient.Remove(sender.OwnerId);
+        else ByClient[sender.OwnerId] = (hat, hat2, visor, v.Front);
+    }
+
+    private static Item Of(string id, Kind kind)
+    {
+        var i = Find(id);
+        return i != null && i.Kind == kind ? i : null;
     }
 
     // 誰か (自分も) が出てきた: 少し待ってから自分の装備を全員へ配る (後から入った人に届けるため)
@@ -156,7 +257,7 @@ internal static class MrpCosmetics
         if (!_sendPending || Environment.TickCount64 < _sendAt) return;
         _sendPending = false;
         if (!PlayerControl.LocalPlayer) return;
-        Share.Send((MyHat?.Id ?? "", MyVisor?.Id ?? ""));
+        Share.Send(Pack());
     }
 
     public static void OnJoined()
@@ -191,23 +292,23 @@ internal static class MrpCosmetics
         return l;
     }
 
-    private static (Item Hat, Item Visor) Mine => (MyHat, MyVisor);
+    private static (Item Hat, Item Hat2, Item Visor, int Front) Mine => (MyHat, MyHat2, MyVisor, MyCode);
 
-    private static (Item Hat, Item Visor) ItemsOf(PlayerControl pc)
+    private static (Item Hat, Item Hat2, Item Visor, int Front) ItemsOf(PlayerControl pc)
     {
         if (!pc) return default;
         if (pc.AmOwner) return Mine;
         return ByClient.TryGetValue(pc.OwnerId, out var v) ? v : default;
     }
 
-    private static (Item Hat, Item Visor) Resolve(CosmeticsLayer layer, HatParent hp)
+    private static (Item Hat, Item Hat2, Item Visor, int Front) Resolve(CosmeticsLayer layer, HatParent hp)
     {
         // 着せ替え画面の右の見本
         var menu = PlayerCustomizationMenu.Instance;
         if (menu && menu.PreviewArea && menu.PreviewArea.cosmetics == layer)
         {
             var m = Mine;
-            return (PreviewVanillaHat ? null : m.Hat, PreviewVanillaVisor ? null : m.Visor);
+            return (PreviewVanillaHat ? null : m.Hat, PreviewVanillaHat ? null : m.Hat2, PreviewVanillaVisor ? null : m.Visor, m.Front);
         }
         string hatId = hp.Hat != null ? hp.Hat.ProdId : CosmeticsLayer.EMPTY_HAT_ID;
         int color = layer.ColorId;
@@ -244,7 +345,7 @@ internal static class MrpCosmetics
     private sealed class State
     {
         public bool HatOn, VisorOn, Climb, Visible = true;
-        public SpriteRenderer Visor;
+        public SpriteRenderer Visor, Hat2;
     }
 
     private static readonly Dictionary<IntPtr, State> States = new();
@@ -278,15 +379,24 @@ internal static class MrpCosmetics
         var layer = Layer(hp);
         if (!layer) return;
         var st = St(hp);
-        var (hat, visor) = Resolve(layer, hp);
+        var (h1, h2, visor, front) = Resolve(layer, hp);
+        // 1 つ目に入っている物を本編の帽子の所へ、2 つ目をその手前へ (1 つ目が空なら 2 つ目を本編の所へ)
+        var hat = h1 ?? h2;
+        var top = h1 != null ? h2 : null;
         bool show = st.Visible && layer.Visible;
 
         var f = hp.FrontLayer;
+        var img = layer.visor ? layer.visor.Image : null;
+        // 帽子とバイザーの間の前後の幅 (本編の並び)。足す絵はこの幅の 4 分の 1 ずつ前後へずらす
+        float gap = f && img ? Mathf.Abs(img.transform.position.z - f.transform.position.z) : 0f;
+        if (gap < 1e-5f || gap > 0.01f) gap = 0.0002f;
+        // 本編の帽子の所に描く枠 (1 つ目が空なら 2 つ目) を基準に、選んだ前後の順へずらす (+ で奥)
+        int baseSlot = h1 != null ? 0 : 1;
+        float Dz(int slot) => (Rank(baseSlot, front) - Rank(slot, front)) * gap * 0.25f;
+
         if (hat != null && f)
         {
-            Sprite sp;
-            if (st.Climb) sp = Art(layer.FlipX && hat.ClimbLeft != null ? hat.ClimbLeft : hat.Climb);
-            else sp = Art(hat.Front);
+            var sp = HatSprite(hat, st.Climb, layer.FlipX);
             if (f.sprite != sp) f.sprite = sp;
             f.enabled = show && sp;
             f.flipX = !st.Climb && layer.FlipX;
@@ -301,38 +411,29 @@ internal static class MrpCosmetics
             catch (Exception e) { Plugin.Logger.LogWarning($"cosmetic hat restore: {e.Message}"); }
         }
 
-        var vl = layer.visor;
+        // 2 つ目の帽子 (1 つ目の手前)
+        if (top != null && f)
+        {
+            var r = Extra(ref st.Hat2, "MrpHat2", hp, f);
+            var sp = HatSprite(top, st.Climb, layer.FlipX);
+            if (r.sprite != sp) r.sprite = sp;
+            r.flipX = !st.Climb && layer.FlipX;
+            Follow(r, f, Dz(1));
+            r.color = f.color;
+            SetMaterial(r, top.Adaptive, layer.ColorId);
+            r.enabled = show && sp && f.enabled;
+        }
+        else if (st.Hat2) st.Hat2.enabled = false;
+
+        // バイザー (帽子の後ろ・体の手前。被り物の帽子なら隠れる)
         if (visor != null && f)
         {
-            if (!st.Visor)
-            {
-                var go = new GameObject("MrpVisor") { layer = f.gameObject.layer };
-                go.transform.SetParent(hp.transform, false);
-                st.Visor = go.AddComponent<SpriteRenderer>();
-            }
-            var r = st.Visor;
+            var r = Extra(ref st.Visor, "MrpVisor", hp, f);
             var sp = Art(visor.Front);
             if (r.sprite != sp) r.sprite = sp;
             r.flipX = layer.FlipX;
-            var img = vl ? vl.Image : null;
-            var ft = f.transform;
-            // 位置は帽子の絵と同じ枠、前後は本編のバイザーの所 (体の手前・帽子の後ろ)
-            float z = img ? img.transform.position.z : ft.position.z + 0.0001f;
-            r.transform.position = new Vector3(ft.position.x, ft.position.y, z);
-            r.transform.localScale = ft.localScale;
-            if (img)
-            {
-                r.sortingLayerID = img.sortingLayerID;
-                r.sortingOrder = img.sortingOrder;
-                r.maskInteraction = img.maskInteraction;
-                img.enabled = false;
-            }
-            else
-            {
-                r.sortingLayerID = f.sortingLayerID;
-                r.sortingOrder = f.sortingOrder;
-                r.maskInteraction = f.maskInteraction;
-            }
+            Follow(r, f, Dz(2));
+            if (img) img.enabled = false;
             var body = layer.currentBodySprite != null ? layer.currentBodySprite.BodySprite : null;
             float a = body ? body.color.a : 1f;
             r.color = new Color(1f, 1f, 1f, a);
@@ -344,6 +445,7 @@ internal static class MrpCosmetics
         {
             st.VisorOn = false;
             if (st.Visor) st.Visor.enabled = false;
+            var vl = layer.visor;
             try
             {
                 string id = vl && vl.visorData != null ? vl.visorData.ProdId : CosmeticsLayer.EMPTY_VISOR_ID;
@@ -352,6 +454,30 @@ internal static class MrpCosmetics
             }
             catch (Exception e) { Plugin.Logger.LogWarning($"cosmetic visor restore: {e.Message}"); }
         }
+    }
+
+    private static Sprite HatSprite(Item hat, bool climb, bool left) =>
+        climb ? Art(left && hat.ClimbLeft != null ? hat.ClimbLeft : hat.Climb) : Art(hat.Front);
+
+    private static SpriteRenderer Extra(ref SpriteRenderer r, string name, HatParent hp, SpriteRenderer f)
+    {
+        if (r) return r;
+        var go = new GameObject(name) { layer = f.gameObject.layer };
+        go.transform.SetParent(hp.transform, false);
+        r = go.AddComponent<SpriteRenderer>();
+        return r;
+    }
+
+    // 本編の帽子の絵と同じ所・同じ描く順に置き、前後だけ dz ずらす (+ で奥)
+    private static void Follow(SpriteRenderer r, SpriteRenderer f, float dz)
+    {
+        var ft = f.transform;
+        var p = ft.position;
+        r.transform.position = new Vector3(p.x, p.y, p.z + dz);
+        r.transform.localScale = ft.localScale;
+        r.sortingLayerID = f.sortingLayerID;
+        r.sortingOrder = f.sortingOrder;
+        r.maskInteraction = f.maskInteraction;
     }
 
     private static void SetMaterial(SpriteRenderer r, bool adaptive, int color)
@@ -367,24 +493,29 @@ internal static class MrpCosmetics
 
     internal static string Describe()
     {
-        var sb = new System.Text.StringBuilder($"cosmetics hat={MyHat?.Id ?? "-"} visor={MyVisor?.Id ?? "-"} remote={ByClient.Count} drawn=");
+        var sb = new System.Text.StringBuilder($"cosmetics hat={MyHat?.Id ?? "-"} hat2={MyHat2?.Id ?? "-"} visor={MyVisor?.Id ?? "-"} order={string.Join("", MyOrder)} remote={ByClient.Count} drawn=");
         int on = 0;
         foreach (var s in States.Values) if (s.HatOn || s.VisorOn) on++;
         return sb.Append(on).ToString();
     }
 
-    // 確認用: cosmetic [hat|visor] <id|none>
+    // 確認用: cosmetic [hat|hat2|visor] <id|none>
     internal static string Simulate(string args)
     {
         var a = (args ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (a.Length == 2 && (a[0] == "hat" || a[0] == "visor"))
+        if (a.Length == 2 && (a[0] == "hat" || a[0] == "hat2" || a[0] == "visor"))
         {
-            var kind = a[0] == "hat" ? Kind.Hat : Kind.Visor;
+            int slot = a[0] == "hat" ? 0 : a[0] == "hat2" ? 1 : 2;
             var item = a[1] == "none" ? null : Find(a[1]);
-            if (a[1] != "none" && (item == null || item.Kind != kind)) return "ERR cosmetic unknown " + a[1];
-            Equip(kind, item);
+            if (a[1] != "none" && (item == null || item.Kind != (slot == 2 ? Kind.Visor : Kind.Hat))) return "ERR cosmetic unknown " + a[1];
+            EquipSlot(slot, item);
         }
-        else if (a.Length > 0) return "ERR cosmetic [hat|visor] <id|none>";
+        else if (a.Length == 2 && a[0] == "order" && _order != null)
+        {
+            _order.Value = a[1];
+            Version++;
+        }
+        else if (a.Length > 0) return "ERR cosmetic [hat|hat2|visor] <id|none> | order <奥→手前の 3 桁>";
         return "OK " + Describe();
     }
 }

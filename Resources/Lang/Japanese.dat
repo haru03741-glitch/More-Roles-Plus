@@ -2511,9 +2511,7 @@ Jackal.SidekickKind.Sidekick: サイドキック
 Jackal.SidekickKind.Friends: ジャッカルフレンズ
 
 # ── SNR 版 (前からある役職と同じ名前の役職) ──
-Cos.Tab: 着せ替え
-Cos.Hats: MRP の帽子 (MRP を入れている人に見えます)
-Cos.Visors: MRP のバイザー
+Cos.Tab: MRP の着せ替え
 Cos.None: なし
 Cos.By: 作: {name}
 Cos.daten: 堕天
@@ -2525,3 +2523,10 @@ Cos.tyranno: てぃらのさうるす(オリジナル)
 Cos.tyrannocolor: てぃらのさうるす
 Cos.wakusei: 惑星の輪っか
 Cos.owo: owo
+Cos.Slots: 枠 (押して選んでから、下の一覧で中身を選びます)
+Cos.Slot.Hat1: 帽子 1
+Cos.Slot.Hat2: 帽子 2
+Cos.Slot.Visor: バイザー
+Cos.PickHat: 帽子 {n} に付ける物 (MRP を入れている人に見えます)
+Cos.PickVisor: バイザーに付ける物 (MRP を入れている人に見えます)
+Cos.Order: 重ね順 (奥→手前)

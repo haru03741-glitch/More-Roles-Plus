@@ -136,7 +136,7 @@ internal static class EmoteTab
     }
 
     // 本編のタブの台の見た目 (選ばれている物か、いない物)
-    private static (bool, Color) Look(PlayerCustomizationMenu menu, bool selected)
+    internal static (bool, Color) Look(PlayerCustomizationMenu menu, bool selected)
     {
         foreach (var t in menu.Tabs)
         {
@@ -148,14 +148,14 @@ internal static class EmoteTab
         return (selected, Color.white);
     }
 
-    private static SpriteRenderer Bg(TabButton t)
+    internal static SpriteRenderer Bg(TabButton t)
     {
         var bgT = FindDeep(TabRoot(t), "Tab Background");
         return bgT ? bgT.GetComponent<SpriteRenderer>() : null;
     }
 
     // 「〇〇Tab」(タブの並び「Tabs」の子)
-    private static Transform TabRoot(TabButton t)
+    internal static Transform TabRoot(TabButton t)
     {
         if (t == null || !t.Button) return null;
         var tr = t.Button.transform;
@@ -163,7 +163,7 @@ internal static class EmoteTab
         return tr.parent ? tr : null;
     }
 
-    private static void Apply(SpriteRenderer sr, (bool On, Color C) look)
+    internal static void Apply(SpriteRenderer sr, (bool On, Color C) look)
     {
         if (!sr) return;
         sr.enabled = look.On;
@@ -187,6 +187,7 @@ internal static class EmoteTab
         if (menu.cosmicubeMenu) menu.cosmicubeMenu.gameObject.SetActive(false);
         if (menu.nameplateMaskArea) menu.nameplateMaskArea.gameObject.SetActive(false);
         if (menu.PreviewArea) menu.PreviewArea.gameObject.SetActive(true);
+        MrpCosTab.Close();
         _panel.SetActive(true);
         _open = true;
         MrpCosmetics.PreviewVanillaHat = MrpCosmetics.PreviewVanillaVisor = false;
@@ -225,9 +226,9 @@ internal static class EmoteTab
     private static readonly Color Locked = new(0.13f, 0.13f, 0.18f, 1f);
     private static readonly List<int> ContentSlots = new();
     private static GameObject _content;
-    private static int _mode; // 0 = エモート・1 = スタンプ・2 = MRP の着せ替え
+    private static bool _stampMode;
     private static int _slot;
-    private static int _seenAccount = -1, _seenLoadout = -1, _seenCos = -1;
+    private static int _seenAccount = -1, _seenLoadout = -1;
 
     private static void BuildPanel(PlayerCustomizationMenu menu)
     {
@@ -245,7 +246,7 @@ internal static class EmoteTab
     internal static void Watch()
     {
         if (!_open || !_panel) return;
-        if (_seenAccount != Net.MrpAccount.Version || _seenLoadout != Loadout.Version || _seenCos != MrpCosmetics.Version) Rebuild();
+        if (_seenAccount != Net.MrpAccount.Version || _seenLoadout != Loadout.Version) Rebuild();
     }
 
     private static void Rebuild()
@@ -254,7 +255,6 @@ internal static class EmoteTab
         if (!_panel || !menu) return;
         _seenAccount = Net.MrpAccount.Version;
         _seenLoadout = Loadout.Version;
-        _seenCos = MrpCosmetics.Version;
         UiActions.Release(ContentSlots);
         if (_content) UnityEngine.Object.Destroy(_content);
         _content = new GameObject("Content") { layer = _panel.layer };
@@ -265,7 +265,7 @@ internal static class EmoteTab
         if (!proto) return;
 
         // 見出しと MRP コイン
-        var title = Label(proto, root, new Text(_mode == 1 ? "Stamp.Tab" : _mode == 2 ? "Cos.Tab" : "Emote.Tab").ToString(), new Vector3(Left, 2.2f, -1f), 4.2f, TextAlignmentOptions.Left, new Vector2(3f, 0.7f));
+        var title = Label(proto, root, new Text("Emote.Tab").ToString(), new Vector3(Left, 2.2f, -1f), 4.2f, TextAlignmentOptions.Left, new Vector2(3f, 0.7f));
         title.rectTransform.pivot = new Vector2(0f, 0.5f);
         string coins = Net.MrpAccount.Ready
             ? new Text("Shop.CoinsShort").With("coins", Net.MrpAccount.Coins).ToString()
@@ -275,12 +275,10 @@ internal static class EmoteTab
         coin.color = new Color(1f, 0.85f, 0.35f, 1f);
 
         // 切り替え
-        Toggle(proto, root, new Text("Emote.Tab").ToString(), new Vector3(Left + 0.6f, 1.68f, -1f), _mode == 0, () => { _mode = 0; _slot = 0; Rebuild(); });
-        Toggle(proto, root, new Text("Stamp.Tab").ToString(), new Vector3(Left + 1.85f, 1.68f, -1f), _mode == 1, () => { _mode = 1; _slot = 0; Rebuild(); });
-        Toggle(proto, root, new Text("Cos.Tab").ToString(), new Vector3(Left + 3.1f, 1.68f, -1f), _mode == 2, () => { _mode = 2; _slot = 0; Rebuild(); });
+        Toggle(proto, root, new Text("Emote.Tab").ToString(), new Vector3(Left + 0.9f, 1.68f, -1f), !_stampMode, () => { _stampMode = false; _slot = 0; Rebuild(); });
+        Toggle(proto, root, new Text("Stamp.Tab").ToString(), new Vector3(Left + 2.75f, 1.68f, -1f), _stampMode, () => { _stampMode = true; _slot = 0; Rebuild(); });
 
-        if (_mode == 1) BuildStamps(proto, root);
-        else if (_mode == 2) BuildCosmetics(menu, proto, root);
+        if (_stampMode) BuildStamps(proto, root);
         else BuildEmotes(menu, proto, root);
     }
 
@@ -347,85 +345,6 @@ internal static class EmoteTab
         }
     }
 
-    // MRP の帽子・バイザー (作ってくださった方の名前を札と右の品名に出す)。押すと付ける・付けている物をもう 1 度押すと外す
-    private static void BuildCosmetics(PlayerCustomizationMenu menu, TextMeshPro proto, Transform root)
-    {
-        const float w = 0.68f, h = 0.82f, gap = 0.07f;
-        const int perRow = 5;
-        float y = 1.25f;
-        foreach (var kind in new[] { MrpCosmetics.Kind.Hat, MrpCosmetics.Kind.Visor })
-        {
-            Caption(proto, root, new Text(kind == MrpCosmetics.Kind.Hat ? "Cos.Hats" : "Cos.Visors").ToString(), y);
-            var items = new List<MrpCosmetics.Item> { null };
-            foreach (var it in MrpCosmetics.All) if (it.Kind == kind) items.Add(it);
-            var mine = kind == MrpCosmetics.Kind.Hat ? MrpCosmetics.MyHat : MrpCosmetics.MyVisor;
-            float top = y - 0.12f - h * 0.5f;
-            for (int k = 0; k < items.Count; k++)
-            {
-                var item = items[k];
-                var pos = new Vector3(Left + w * 0.5f + (k % perRow) * (w + gap), top - (k / perRow) * (h + gap), -1f);
-                bool on = item == mine;
-                var card = Card(root, "Cos" + k, pos, new Vector2(w, h), on ? CardPicked : CardColor, () =>
-                {
-                    var now = kind == MrpCosmetics.Kind.Hat ? MrpCosmetics.MyHat : MrpCosmetics.MyVisor;
-                    MrpCosmetics.Equip(kind, now == item ? null : item);
-                    ShowCosmetic(item);
-                });
-                if (item == null)
-                {
-                    Label(proto, card.transform, new Text("Cos.None").ToString(), new Vector3(0f, 0.05f, -0.02f), 1.3f, TextAlignmentOptions.Center, new Vector2(w, 0.3f));
-                    continue;
-                }
-                Thumb(menu, card.transform, item, w - 0.12f, 0.42f, 0.14f);
-                Fit(Label(proto, card.transform, new Text(item.NameKey).ToString(), new Vector3(0f, -0.2f, -0.02f), 0.95f, TextAlignmentOptions.Center, new Vector2(w - 0.06f, 0.18f)), 0.55f);
-                var by = Fit(Label(proto, card.transform, new Text("Cos.By").With("name", item.Author).ToString(), new Vector3(0f, -0.33f, -0.02f), 0.85f, TextAlignmentOptions.Center, new Vector2(w - 0.06f, 0.15f)), 0.55f);
-                by.color = new Color(1f, 0.85f, 0.35f, 1f);
-            }
-            int rows = (items.Count + perRow - 1) / perRow;
-            y = top - (rows - 1) * (h + gap) - h * 0.5f - 0.22f;
-        }
-        var cur = MrpCosmetics.MyHat ?? MrpCosmetics.MyVisor;
-        if (cur != null) ShowCosmetic(cur);
-        else if (_menu && _menu.itemName) _menu.itemName.text = new Text("Cos.Tab").ToString();
-    }
-
-    // 札に入りきらない長い名前は字を小さくして収める
-    private static TextMeshPro Fit(TextMeshPro t, float min)
-    {
-        t.enableAutoSizing = true;
-        t.fontSizeMax = t.fontSize;
-        t.fontSizeMin = min;
-        return t;
-    }
-
-    private static void Thumb(PlayerCustomizationMenu menu, Transform card, MrpCosmetics.Item item, float maxW, float maxH, float y)
-    {
-        var sp = MrpCosmetics.Thumb(item);
-        if (!sp) return;
-        var go = new GameObject("Thumb") { layer = card.gameObject.layer };
-        go.transform.SetParent(card, false);
-        var size = sp.bounds.size;
-        float s = Mathf.Min(maxW / Mathf.Max(size.x, 0.01f), maxH / Mathf.Max(size.y, 0.01f));
-        go.transform.localPosition = new Vector3(0f, y, -0.01f);
-        go.transform.localScale = new Vector3(s, s, 1f);
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = sp;
-        sr.sortingOrder = card.GetComponent<SpriteRenderer>()?.sortingOrder ?? 0;
-        if (item.Adaptive)
-        {
-            var mat = Mat(menu);
-            if (mat) sr.sharedMaterial = mat;
-            PlayerMaterial.SetColors(ColorId(), sr);
-        }
-    }
-
-    private static void ShowCosmetic(MrpCosmetics.Item item)
-    {
-        if (!_menu || !_menu.itemName) return;
-        _menu.itemName.text = item == null ? new Text("Cos.None").ToString()
-            : new Text(item.NameKey).ToString() + "  <size=70%><color=#FFD95A>" + new Text("Cos.By").With("name", item.Author).ToString() + "</color></size>";
-    }
-
     // 買っていない物の札の字: 値段 (ランクで買えない時は段の名前)
     private static string PriceText(string id)
     {
@@ -449,8 +368,8 @@ internal static class EmoteTab
 
     private static void Toggle(TextMeshPro proto, Transform root, string text, Vector3 pos, bool on, Action click)
     {
-        var card = Card(root, "Toggle", pos, new Vector2(1.18f, 0.38f), on ? CardPicked : CardColor, click);
-        Label(proto, card.transform, text, new Vector3(0f, 0f, -0.02f), 1.6f, TextAlignmentOptions.Center, new Vector2(1.18f, 0.38f));
+        var card = Card(root, "Toggle", pos, new Vector2(1.75f, 0.38f), on ? CardPicked : CardColor, click);
+        Label(proto, card.transform, text, new Vector3(0f, 0f, -0.02f), 1.7f, TextAlignmentOptions.Center, new Vector2(1.75f, 0.38f));
     }
 
     private static SpriteRenderer Card(Transform root, string name, Vector3 pos, Vector2 size, Color color, Action click)
@@ -496,7 +415,7 @@ internal static class EmoteTab
     }
 
     // 人の色を塗る材質。メインメニューには試合の部品 (死体のひな形) が無いので、見本の人の体の材質を借りる
-    private static Material Mat(PlayerCustomizationMenu menu)
+    internal static Material Mat(PlayerCustomizationMenu menu)
     {
         var mat = FxHands.PlayerMat();
         if (mat) return mat;
@@ -506,7 +425,7 @@ internal static class EmoteTab
     }
 
     // 自分の色 (メインメニューでは保存されている着せ替えの色)
-    private static int ColorId()
+    internal static int ColorId()
     {
         var lp = PlayerControl.LocalPlayer;
         if (lp && lp.Data != null) return lp.Data.DefaultOutfit.ColorId;
@@ -514,7 +433,7 @@ internal static class EmoteTab
         return data != null && data.Customization != null ? data.Customization.Color : 0;
     }
 
-    private static TextMeshPro Label(TextMeshPro proto, Transform parent, string text, Vector3 pos, float size, TextAlignmentOptions align, Vector2 box)
+    internal static TextMeshPro Label(TextMeshPro proto, Transform parent, string text, Vector3 pos, float size, TextAlignmentOptions align, Vector2 box)
     {
         var go = UnityEngine.Object.Instantiate(proto.gameObject, parent);
         go.name = "Text";
@@ -533,7 +452,7 @@ internal static class EmoteTab
         return tmp;
     }
 
-    private static Transform FindDeep(Transform t, string name)
+    internal static Transform FindDeep(Transform t, string name)
     {
         if (!t) return null;
         if (t.name == name) return t;
@@ -548,7 +467,6 @@ internal static class EmoteTab
     // 確認用: エモートのタブを開き、kind >= 0 ならそのエモートの見本を出す
     internal static void Test(int kind)
     {
-        if (kind == -2) { _mode = 2; Open(); Rebuild(); return; }
         Open();
         if (kind >= 0 && kind < EmoteArt.Count) Preview((byte)kind);
     }

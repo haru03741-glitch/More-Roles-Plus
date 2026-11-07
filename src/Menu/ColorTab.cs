@@ -41,8 +41,8 @@ internal static class ColorTab
         }
         else if (args == "costab")
         {
-            EmoteTab.Test(-2);
-            return "OK custmenu " + EmoteTab.Describe();
+            MrpCosTab.Test();
+            return "OK custmenu " + MrpCosTab.Describe();
         }
         else if (args == "emote" || args.StartsWith("emote "))
         {
