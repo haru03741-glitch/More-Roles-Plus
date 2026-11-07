@@ -51,7 +51,7 @@ internal static class MeetingAbilities
             float x = RightX - Spacing * slot++;
             foreach (var pva in hud.playerStates)
             {
-                if (!pva || pva.AmDead) continue;
+                if (!pva || (pva.AmDead && !a.MeetingAnyLife)) continue;
                 byte id = pva.PlayerId.Value;
                 var target = GameData.Instance.GetPlayerById(id)?.Object;
                 if (!target || (id == lp.PlayerId) != a.MeetingSelf || (a.CanTarget != null && !a.CanTarget(lp, target))) continue;
@@ -67,10 +67,13 @@ internal static class MeetingAbilities
     {
         var proto = pva.ConfirmButton;
         if (!proto || !pva.Buttons) return null;
-        var go = UnityEngine.Object.Instantiate(proto.gameObject, pva.Buttons.transform);
+        // 死んだ人の名札は本編が押しても開かないので、名札の右端にいつも出しておく
+        bool dead = pva.AmDead;
+        var go = UnityEngine.Object.Instantiate(proto.gameObject, dead ? pva.transform : pva.Buttons.transform);
         go.name = "MrpMeetingAbility";
         var p = go.transform.localPosition;
-        go.transform.localPosition = new Vector3(x, p.y, p.z);
+        go.transform.localPosition = dead ? new Vector3(1.1f, 0f, -1f) : new Vector3(x, p.y, p.z);
+        if (dead) go.transform.localScale = proto.transform.lossyScale.x > 0f ? go.transform.localScale * 0.75f : go.transform.localScale;
         var sr = go.GetComponent<SpriteRenderer>();
         if (sr)
         {

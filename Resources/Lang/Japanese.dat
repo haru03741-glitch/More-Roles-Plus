@@ -1984,3 +1984,500 @@ Rank.Next: 次の {tier} まで あと {n}
 Rank.Top: 最高ランクです
 Ranked.SearchHint: 探している間は、ほかの部屋を作ったり入ったりできません
 Ranked.Cancel: やめる
+
+# ---- Uchu などから移植した役職 (クルー) ----
+EmergencyLock.Locked: 緊急ボタンはロックされている
+Admiral.Name: アドミラル
+Admiral.Blurb: 点呼をとり、皆の居場所を確かめよ
+Admiral.Summary: 会議中に「点呼」をとれるクルーです。生きている人はマップで今いる場所を答え、締め切ると答えた人の色のピンがマップに出ます。
+Admiral.Call: 点呼
+Admiral.Call.Help: 会議中に自分の名札から使います。全員の画面が光り、生きている他の人に「応答」ボタンが出ます (1 会議 1 回)。
+Admiral.Call.Short: 皆に居場所を聞く
+Admiral.Close: 締め切り
+Admiral.Close.Help: 点呼を締め切ります。答えた人の場所が、その人の色のピンでマップに出ます。
+Admiral.Close.Short: 点呼を締め切る
+Admiral.NumOfCall: 点呼の回数
+Admiral.VoteWatching: 匿名投票でも投票先が見える
+Admiral.Answer: 点呼です。マップで今いる場所を押して答えましょう
+Admiral.Answered: 点呼に答えました
+Admiral.Result: 点呼の結果: {n} 人が答えました (マップを見よう)
+Bakery.Name: パン屋
+Bakery.Blurb: 焼きたてのパンを配れ
+Bakery.Summary: 近くの人にパンを渡せるクルーです。パンを持っている人は会議の名札にパンの印が付きます。生きていれば追放の画面に一言足されます。
+Bakery.Give: 渡す
+Bakery.Give.Help: 近くの人にパンを渡します。会議ごとに決めた個数まで渡せ、会議の後にパンは消えて個数が戻ります。
+Bakery.Give.Short: 近くの人にパンを渡す
+Bakery.GiveCooldown: 渡すの待ち時間
+Bakery.BreadPerMeeting: 1 会議に渡せるパンの数
+Bakery.Got: パンをもらった!
+Bakery.Exile.Smell: 焼かれた生地の匂いがする…
+Bakery.Exile.Burnt: パンが焦げてしまった…
+Bakery.Exile.Festival: パン祭りだ!
+DJ.Name: DJ
+DJ.Blurb: 船をフロアに変えろ
+DJ.Summary: 「スクラッチ」で、範囲の中の全員 (自分も) の画面を色とりどりに光らせるクルーです。
+DJ.Scratch: スクラッチ
+DJ.Scratch.Help: 範囲の中の全員にスクラッチの音を鳴らし、色とりどりの光を何度も出します。範囲の円が自分に一瞬見えます。
+DJ.Scratch.Short: 近くの全員を光らせる
+DJ.ScratchCooldown: スクラッチの待ち時間
+DJ.Range: 範囲
+DJ.NumOfFlash: 光る回数
+NiceDecorator.Name: ナイスデコレーター
+NiceDecorator.Blurb: 人を飾り、役職を変えよ
+NiceDecorator.Summary: 「装飾」で近くの人の役職を変えるクルーです。本当のクルーはクルーの、インポスターはインポスターの無作為な役職になります (前に付けた役職は避けます)。第三陣営とマッドメイトには効かず、回数だけ減ります。
+NiceDecorator.Cooldown: 装飾の待ち時間
+NiceDecorator.Uses: 装飾の回数
+EvilDecorator.Name: イビルデコレーター
+EvilDecorator.Blurb: 人を飾り、役職を変えよ
+EvilDecorator.Summary: 「装飾」で近くの人の役職を変えるインポスターです。本当のクルーはクルーの、インポスターはインポスターの無作為な役職になります (前に付けた役職は避けます)。第三陣営とマッドメイトには効かず、回数だけ減ります。
+EvilDecorator.Cooldown: 装飾の待ち時間
+EvilDecorator.Uses: 装飾の回数
+Polaris.Name: ポラリス
+Polaris.Blurb: 北極星は全てを見通す
+Polaris.Summary: 誰でも倒せるキルと、死体から死者の役職を読む「幻視」を持つクルーです。
+Polaris.Kill: キル
+Polaris.Kill.Help: 近くの人を倒します。誰を倒しても自分は死にません。
+Polaris.Kill.Short: 近くの人を倒す
+Polaris.KillCooldown: キルの待ち時間
+Polaris.KillUses: キルの回数
+Polaris.CanKillHidden: 隠れている人もキルできる
+Polaris.SealUntilReport: 死体が通報されるまでキルを封印する
+Polaris.Vision: 幻視
+Polaris.Vision.Help: 近くの死体を少しの間見つめます (その間は動けません)。終わると次の会議に、その死者の名前と役職が自分にだけ出ます。
+Polaris.Vision.Short: 死体の役職を読む
+Polaris.VisionCooldown: 幻視の待ち時間
+Polaris.VisionUses: 幻視の回数
+Polaris.VisionDuration: 幻視にかかる時間
+Polaris.RewindTask: 幻視でタスクを未完了に戻す
+Polaris.MediumRewindTask: 戻すタスクの数
+Polaris.Seen: 幻視が見えた。次の会議で分かる
+Polaris.Result: 幻視: {name} は {role} だった
+Sonar.Name: ソナー
+Sonar.Blurb: 罠のアンテナで殺しを知らせよ
+Sonar.Summary: 自分にだけ見えるアンテナを置くクルーです。アンテナのすぐ近くでキルが起きると、全員に矢印が出てアンテナは壊れます。
+Sonar.Place: 設置
+Sonar.Place.Help: 足元にアンテナを置きます。会議の外でアンテナの範囲の中でキルが起きると、全員に少しの間矢印が出ます。
+Sonar.Place.Short: 足元にアンテナを置く
+Sonar.PlaceCooldown: 設置の待ち時間
+Sonar.NumOfAntenna: アンテナの数
+Sonar.Range: アンテナの範囲
+Sonar.ArrowDuration: 矢印が出る時間
+Sonar.ArrowAt: 矢印の向き先
+Sonar.ArrowAt.Body: 死んだ場所
+Sonar.ArrowAt.Antenna: アンテナの場所
+Sonar.ShareBroken: 壊れたアンテナを全員に見せる
+Waraningyou.Name: わら人形
+Waraningyou.Blurb: 集めた恨みを一度に返せ
+Waraningyou.Summary: 会議で自分に入った票を貯めるクルーです。会議中に「呪う」と、その会議の自分の票が貯めた数 +1 票になります。
+Waraningyou.Curse: 呪う
+Waraningyou.Curse.Help: 会議中に自分の名札から使います (1 会議 1 回)。この会議の自分の票が、貯めた票の数 +1 票になり、貯めた票は 0 に戻ります。
+Waraningyou.Curse.Short: 貯めた票を一度に使う
+Waraningyou.DefaultVote: 始めに貯まっている票
+Waraningyou.AllowSkip: 呪った会議でスキップできる
+Waraningyou.Cursed: 呪った。この会議の自分の票は {n} 票
+Shaman.Name: シャーマン
+Shaman.Blurb: 霊を降ろし、敵の数を知れ
+Shaman.Summary: 矢印の部屋で「降霊術」を行うと、次の会議に生きているクルー以外の人数が分かるクルーです。
+Shaman.Necromancy: 降霊術
+Shaman.Necromancy.Help: 矢印の部屋の中で止まって使います。動くと中断します。終えると次の会議に、生きているクルー以外の人数が出ます。タスクを決めた数終えると、その人たちの役職名も分かります (設定)。
+Shaman.Necromancy.Short: 部屋で霊を降ろす
+Shaman.NecromancyCooldown: 降霊術の待ち時間
+Shaman.NecromancyDuration: 降霊術にかかる時間
+Shaman.NumOfNecromancy: 降霊術の回数
+Shaman.ResultViewAlivePlayers: 生きている人の数も出す
+Shaman.SkillBoost: タスクで強化する
+Shaman.NumOfBoostTask: 強化に要るタスクの数
+Shaman.TaskCompletesRoomReroll: タスクを終えると部屋を選び直す
+Shaman.Done: 降霊術を終えた。次の会議で分かる
+Shaman.Interrupted: 動いたので降霊術が途切れた
+Shaman.Result: 降霊術: 生きているクルー以外は {n} 人
+Shaman.ResultAlive: 生きている人は {n} 人
+Chicken.Name: チキン
+Chicken.Blurb: 臆病者は何でも怖い
+Chicken.Summary: ベント・はしご・ジップライン・昇降機・ドアの画面が怖く、近づくと決めた確率で死ぬクルーです。停電が長く続いても死にます。生きていてタスクを決めた割合終えていれば、試合の終わりをクルーの勝ちに替えます (破壊工作での終わりは除く)。
+Chicken.WinCond: 試合が終わる時に生きていて、タスクを決めた割合以上終えていればクルーの勝ちになる
+Chicken.VentChance: ベントで死ぬ確率
+Chicken.LadderChance: はしごで死ぬ確率
+Chicken.ZiplineChance: ジップラインで死ぬ確率
+Chicken.PlatformChance: 昇降機で死ぬ確率
+Chicken.DoorChance: ドアの画面で死ぬ確率
+Chicken.BlackoutTime: 停電がこの時間続くと死ぬ
+Chicken.TaskPercent: 勝ちの上書きに要るタスクの割合
+ChickenMod.Name: チキン
+ChickenMod.Blurb: 臆病者は何でも怖い
+ChickenMod.Help: ベント・はしご・ジップライン・昇降機・ドアの画面が怖く、近づくと決めた確率で死ぬアドオンです。停電が長く続いても死にます。
+ChickenMod.VentChance: ベントで死ぬ確率
+ChickenMod.LadderChance: はしごで死ぬ確率
+ChickenMod.ZiplineChance: ジップラインで死ぬ確率
+ChickenMod.PlatformChance: 昇降機で死ぬ確率
+ChickenMod.DoorChance: ドアの画面で死ぬ確率
+ChickenMod.BlackoutTime: 停電がこの時間続くと死ぬ
+Prosecutor.Name: プロセキューター
+Prosecutor.Blurb: 告発し、有無を言わさず追放せよ
+Prosecutor.Summary: 会議で 1 人を強制的に追放できるクルーです。追放した人が本当のクルーなら、自分も死にます (設定)。
+Prosecutor.Prosecute: プロセキュート
+Prosecutor.Prosecute.Help: 会議中に相手の名札から使います (1 会議 1 回)。投票をやり直し、全員の票をその人に入れて追放します。
+Prosecutor.Prosecute.Short: その人を強制追放する
+Prosecutor.NumOfProsecute: プロセキュートの回数
+Prosecutor.DieOnCrew: クルーを追放すると自分も死ぬ
+Prosecutor.CanCallEmergency: 緊急ボタンを使える
+Monitor.Name: モニター
+Monitor.Blurb: プロキシの影となれ
+Monitor.Summary: プロキシの相方のマッドメイトです。タスクは無く、プロキシとはお互いに赤い名前で分かります。プロキシがキルすると画面が光ります。インポスターの勝ちで勝ちます。
+Monitor.FixLights: 停電を直せる
+Monitor.FixComms: 通信妨害を直せる
+Monitor.ImpostorVision: インポスターの視界
+Monitor.CanVent: ベントを使える
+Monitor.VentMove: ベントの中を移動できる
+# ---- Uchu などから移植した役職 (インポスター) ----
+Proxy.Name: プロキシ
+Proxy.Blurb: 影と入れ替わり、正体を隠せ
+Proxy.Summary: 試合が始まると別のクルー 1 人がモニター (相方のマッドメイト) になるインポスターです。近くの相方と「交換」で役職を入れ替えられます。
+Proxy.Swap: 交換
+Proxy.Swap.Help: 近くにいる相方と役職を入れ替えます (プロキシ⇔モニター)。
+Proxy.Swap.Short: 相方と役職を入れ替える
+Proxy.SwapCooldown: 交換の待ち時間
+Proxy.FollowDeath: 後を追って死ぬ
+Proxy.FollowDeath.None: なし
+Proxy.FollowDeath.Proxy: プロキシが死んだらモニターも
+Proxy.FollowDeath.Monitor: モニターが死んだらプロキシも
+Proxy.FollowDeath.Either: どちらかが死んだらもう一方も
+EvilObserver.Name: イビルオブザーバー
+EvilObserver.Blurb: 隠しカメラで全てを覗け
+EvilObserver.Summary: 足元にカメラを置き、「モニター」でその景色を見られるインポスターです。カメラは次の会議の後から使え、壁越し・停電でも見えます。
+EvilObserver.Place: 設置
+EvilObserver.Place.Help: 足元に、向いている方を写すカメラを置きます。次の会議の後から使えます。
+EvilObserver.Place.Short: 足元にカメラを置く
+EvilObserver.Monitor: モニター
+EvilObserver.Monitor.Help: カメラの景色を見ます。もう一度押すと自分に戻ります。見ている間は動けません。
+EvilObserver.Monitor.Short: カメラの景色を見る
+EvilObserver.Next: 次へ
+EvilObserver.Next.Help: 別のカメラの景色に切り替えます。
+EvilObserver.Next.Short: 別のカメラへ
+EvilObserver.PlaceCooldown: 設置の待ち時間
+EvilObserver.NumOfCamera: カメラの数
+EvilObserver.CanSeeCameraOtherPlayer: 置いたカメラが他の人にも見える
+EvilObserver.NoCamera: 使えるカメラがまだない
+Spectrum.Name: スペクトラム
+Spectrum.Blurb: 仮面の下は赤い牙
+Spectrum.BlurbWith: {role} の力を持つインポスター
+Spectrum.Summary: マッドメイトにできるクルーの役職を 1 つ無作為に持つインポスターです。その役職の能力と、自前のキルボタンを使います (本編のキルボタンは無し)。
+Spectrum.Kill: キル
+Spectrum.Kill.Help: 近くのインポスター以外の人を倒します。
+Spectrum.Kill.Short: 近くの人を倒す
+Spectrum.KillCooldown: キルの待ち時間
+Voyager.Name: ボイジャー
+Voyager.Blurb: 時の狭間に潜み、仲間すら狩れ
+Voyager.Summary: 「潜伏」でインポスター以外から見えなくなるインポスターです。潜伏中は速くなり、他の人の見た目が入れ替わって見え、仲間もキルできます。決めた時間の内に「離脱」しないと死にます。
+Voyager.Dive: 潜伏
+Voyager.Dive.Help: インポスター以外から見えなくなり、速くなります。他の生きている人の見た目が自分の画面だけ入れ替わります。会議で解けます。
+Voyager.Dive.Short: 見えなくなって潜む
+Voyager.AllyKill: 仲間キル
+Voyager.AllyKill.Help: 潜伏中に、近くの仲間のインポスターを倒します。
+Voyager.AllyKill.Short: 潜伏中に仲間を倒す
+Voyager.Leave: 離脱
+Voyager.DiveCooldown: 潜伏の待ち時間
+Voyager.DiveDuration: 潜伏していられる時間
+Voyager.DiveSpeed: 潜伏中の速さ
+Voyager.SwapPairs: 見た目を入れ替える組の数
+Voyager.Paradox: パラドックス! 時の狭間に呑まれた
+Commander.Name: コマンダー
+Commander.Blurb: 号令をかけ、一斉に狩れ
+Commander.Summary: 「指令」で少しの間、インポスターとマッドメイト全員のキルの待ち時間を短くするインポスターです。終わると少しの間キルの待ち時間が進みません。
+Commander.Command: 指令
+Commander.Command.Help: 少しの間、インポスターとマッドメイト全員のキルの待ち時間を決めた値にします。終わるとインポスターのキルの待ち時間は最初からになり、少しの間進みません。
+Commander.Command.Short: 皆のキルを早める
+Commander.CommandCooldown: 指令の待ち時間
+Commander.NumOfCommand: 指令の回数
+Commander.CommandDuration: 指令が続く時間
+Commander.CommandKillCooldown: 指令中のキルの待ち時間
+Commander.KillButtonLostTime: 指令の後にキルの待ち時間が止まる時間
+Commander.Ordered: 指令が下った! 今のうちに狩れ
+Commander.Status: 指令中
+Commander.Lost: キル不可
+Magician.Name: マジシャン
+Magician.Blurb: 一瞬で全員の居場所をすり替えろ
+Magician.Summary: 「マジック」で生きている全員の位置を無作為に入れ替えるインポスターです。
+Magician.Magic: マジック
+Magician.Magic.Help: 生きている全員の位置を無作為に入れ替えます。全員の画面が赤く光り、タスクの画面は閉じ、ベントの中の人は出されます。
+Magician.Magic.Short: 全員の位置を入れ替える
+Magician.MagicCooldown: マジックの待ち時間
+Magician.NumOfMagic: マジックの回数
+Kunoichi.Name: クノイチ
+Kunoichi.Blurb: 影からクナイを放て
+Kunoichi.Summary: クナイを投げて当てるインポスターです。同じ人に決めた数当てると倒します。止まっていると透明になれます。
+Kunoichi.Equip: 装備
+Kunoichi.Equip.Help: クナイを持つ・しまうを切り替えます。持っている間は本編のキルは使えず、クナイがマウスの向きに浮かびます。
+Kunoichi.Equip.Short: クナイを持つ・しまう
+Kunoichi.Throw: クナイ
+Kunoichi.Throw.Help: マウスの向きへクナイを投げます。仲間以外に当たるとその人のヒット数が増え、決めた数で倒します。
+Kunoichi.Throw.Short: クナイを投げる
+Kunoichi.Hide: 透明化
+Kunoichi.Hide.Help: しばらく止まっていると透明になれます。動くと解けます。会議で全部解けます。
+Kunoichi.Hide.Short: 止まって透明になる
+Kunoichi.ThrowCooldown: クナイの待ち時間
+Kunoichi.KunaiSpeed: クナイの速さ
+Kunoichi.WallStops: 壁でクナイが消える
+Kunoichi.HitsToKill: 倒すのに要るヒット数
+Kunoichi.FriendlyFire: 仲間にも当たる
+Kunoichi.KunaiOnBody: 倒した死体にクナイが残る
+Kunoichi.ResetHitsOnMeeting: 会議でヒット数を戻す
+Kunoichi.CanHide: 透明化を使える
+Kunoichi.HideWait: 透明化までに止まる時間
+Kunoichi.HideButton: 透明化をボタンで使う (使わなければ自動)
+Kunoichi.ThrowWhileHidden: 透明中もクナイを投げられる
+SerialKiller.Name: シリアルキラー
+SerialKiller.Blurb: 殺し続けなければ死ぬ
+SerialKiller.Summary: 最初のキルの後、決めた時間の内にキルし続けないと死ぬインポスターです。
+SerialKiller.Timer: 自殺タイマー
+SerialKiller.Timer.Help: 最初のキルから数え始め、キルするたび・会議の後に戻ります。会議中は止まります。0 になると死にます。残りはボタンに出ます。
+SerialKiller.Timer.Short: キルし続けないと死ぬ
+SerialKiller.Suicide: 自殺
+SerialKiller.Suicide.Help: 自分から死にます (設定)。
+SerialKiller.Suicide.Short: 自分から死ぬ
+SerialKiller.KillCooldown: キルの待ち時間
+SerialKiller.SuicideTime: 自殺タイマーの時間
+SerialKiller.SuicideButton: 自殺ボタンを使える
+Warlock.Name: ウォーロック
+Warlock.Blurb: 呪われた者の手で殺せ
+Warlock.Summary: 本編のキルを持たず、呪った人の近くにいる別の人を、呪った人の手で倒すインポスターです。
+Warlock.Curse: 呪う
+Warlock.Curse.Help: 近くの人を呪います (1 人まで・本人は気付きません)。会議や呪った人の死で呪いは消えます。
+Warlock.Curse.Short: 近くの人を呪う
+Warlock.CurseKill: 呪殺
+Warlock.CurseKill.Help: 呪った人のすぐ近くの別の人を倒します。呪った人は倒された人の場所へ動きます。倒した後は少しの間、自分は動けず待ち時間も止まります。
+Warlock.CurseKill.Short: 呪った人の近くの人を倒す
+Warlock.CurseCooldown: 呪うの待ち時間
+Warlock.CurseKillCooldown: 呪殺の待ち時間
+Warlock.CanKillAllies: 仲間も呪殺できる
+Warlock.KillFreezeTime: 呪殺の後に止まる時間
+Witch.Name: ウィッチ
+Witch.Blurb: 魔術をかけ、会議の後に葬れ
+Witch.Summary: 近くの人に魔術をかけ続けるインポスターです。魔術をかけられた人は会議の名札に印が付き、会議の終わりにウィッチが生きていれば死にます。
+Witch.Spell: 魔術
+Witch.Spell.Help: 近くの人に魔術を唱え続けます。離れると中断します (1 ターン 1 回)。インポスターは狙えません。
+Witch.Spell.Short: 近くの人に魔術をかける
+Witch.SpellCooldown: 魔術の待ち時間
+Witch.SpellDuration: 魔術にかかる時間
+Witch.NormalKill: 本編のキルも使える
+Witch.Broken: 魔術が途切れた
+NekoKabocha.Name: ネコカボチャ
+NekoKabocha.Blurb: 殺した者を道連れにせよ
+NekoKabocha.Summary: 自分を倒した人を道連れにするインポスターです。追放された時は、他のインポスターが生きていなければ (設定で生きていても) 自分に投票した人を 1 人道連れにします。
+NekoKabocha.ExileEmbroil: 追放でも仲間が生きている時に道連れにする
+# ---- Uchu などから移植した役職 (第三陣営) ----
+Anchor.Name: アンカー
+Anchor.Blurb: 錨を下ろし、船を繋ぎ止めよ
+Anchor.Summary: 足元にアンカーを置いていく第三陣営です。全部置いた後の会議の終わりに生きていれば単独で勝ちます。
+Anchor.WinCond: アンカーを全部置いた後の会議の終わりに生きていると単独勝ち
+Anchor.Place: 設置
+Anchor.Place.Help: 足元にアンカーを置きます (全員に見えます・1 ターン 1 回)。近くにいる人には少しの間アンカーへの矢印が出ます。
+Anchor.Place.Short: 足元にアンカーを置く
+Anchor.Echo: 幻聴
+Anchor.Echo.Help: マップが開くので、置いたアンカーを押します。その場所から近くの人にもう一度矢印を出します。
+Anchor.Echo.Short: アンカーから知らせ直す
+Anchor.PlaceCooldown: 設置の待ち時間
+Anchor.NumOfAnchor: アンカーの数
+Anchor.NoticeRange: 矢印が出る範囲
+Anchor.ArrowDuration: 矢印が出る時間
+Anchor.EchoCooldown: 幻聴の待ち時間
+Anchor.NumOfEcho: 幻聴の回数
+Anchor.CanVent: ベントを使える
+Bettor.Name: ベッター
+Bettor.Blurb: 全員の役職に賭けろ
+Bettor.Summary: 他の全員の役職を予想して賭ける第三陣営です。賭けると一人ずつ HIT (当たり)・BLOW (その役職は試合にいる)・MISS が分かります。全員 HIT にすると勝ちます。
+Bettor.WinCond: 会議の終わりに、他の全員の役職を当てていると単独勝ち
+Bettor.Guess: 推測
+Bettor.Guess.Help: 予想の画面を開き、他の全員の役職を書き込みます。全員分埋めると賭けられます (1 ターン 1 回・最初のターンは賭けられません)。HIT の人の役職は見えるようになります。
+Bettor.Guess.Short: 全員の役職を予想して賭ける
+Bettor.Analyze: 分析
+Bettor.Analyze.Help: 近くの人の陣営が分かります。
+Bettor.Analyze.Short: 近くの人の陣営を知る
+Bettor.Identify: 特定
+Bettor.Identify.Help: HIT が半分以上の時、会議で相手の名札から使います (1 回)。その人の役職が分かります。死んだ人にも使えます (設定)。
+Bettor.Identify.Short: 会議で 1 人の役職を知る
+Bettor.DisableGuessTurn: 賭けられないターンの数
+Bettor.AnalyzeCooldown: 分析の待ち時間
+Bettor.NumOfAnalyze: 分析の回数
+Bettor.IdentifyDead: 死んだ人も特定できる
+Bettor.Title: 役職の予想
+Bettor.NoGuess: (未記入)
+Bettor.Bet: 賭ける
+Bettor.TooEarly: まだ賭けられないターンです
+Bettor.AlreadyBet: このターンはもう賭けました
+Bettor.FillAll: 全員の予想を埋めましょう
+Bettor.RoleList: 分かっている役職
+Bettor.PickRole: {name} の役職は?
+Bettor.Back: 戻る
+Bettor.Exists: いる役職
+Bettor.Absent: いない役職
+Bettor.Result: 賭けの結果: {n} 人中 {hit} 人 HIT
+Bettor.Analyzed: 分析: {name} は {team}
+Bettor.Identified: 特定: {name} は {role}
+Bettor.TeamImpostor: インポスター陣営
+Bettor.TeamCrew: クルー陣営
+Bettor.TeamNeutral: 第三陣営
+Bettor.TeamMadmate: インポスター陣営
+Obolus.Name: オボルス
+Obolus.Blurb: 悪しき者から渡し賃を取れ
+Obolus.Summary: キルボタンを持つ第三陣営です。最初の何回かの会議まではキルが封印されています。インポスター (設定でジャッカルも) を倒すと単独で勝ちます。
+Obolus.WinCond: インポスター (設定でジャッカル) を倒すとその場で単独勝ち
+Obolus.Kill: キル
+Obolus.Kill.Help: 近くの人を倒します (1 ターン 1 回)。封印が解けるまでは使えません。
+Obolus.Kill.Short: 近くの人を倒す
+Obolus.KillCooldown: キルの待ち時間
+Obolus.KillShieldTurn: キルが封印される会議の数
+Obolus.WinByJackal: ジャッカルを倒しても勝てる
+Obolus.ImpostorVision: インポスターの視界
+Obolus.IgnoreLights: 停電で視界が狭まらない
+Obolus.CanVent: ベントを使える
+Obolus.Reveal: 封印が解けた時にインポスターへ知らせる
+Obolus.RevealDeath: オボルスの死も知らせる
+Obolus.Warning: オボルスに気をつけろ!
+Obolus.Dead: オボルスが死んだ
+Seed.Name: シード
+Seed.Blurb: 誰かと共に生き、共に勝て
+Seed.Summary: 「共生」した相手の誰かが勝つと、一緒に勝つ第三陣営です。ゲージ (設定) は相手の近くにいると貯まり、勝つには満ちている必要があります。
+Seed.WinCond: 共生した相手の誰かが勝つと追加で勝ち
+Seed.Symbiosis: 共生
+Seed.Symbiosis.Help: 近くの人と共生します。相手には ▼ が付き (自分にだけ見えます)、役職も見えます (設定)。
+Seed.Symbiosis.Short: 近くの人と共生する
+Seed.Gauge: ゲージ
+Seed.Gauge.Help: 共生した相手のすぐ近くにいると貯まり、離れると少しずつ減ります。会議の後は少しの間止まります。
+Seed.Gauge.Short: 相手の近くで貯まる
+Seed.SymbiosisCooldown: 共生の待ち時間
+Seed.NumOfSymbiosis: 共生の回数
+Seed.SeeRole: 共生した相手の役職が見える
+Seed.NoWinIfPartnerDead: 相手が死んでいたら勝てない
+Seed.NoWinIfSelfDead: 自分が死んでいたら勝てない
+Seed.UseGauge: ゲージを使う
+Seed.GaugeRange: ゲージが貯まる距離
+Seed.GaugeNeed: 勝つのに要るゲージ
+Seed.GaugeExtra: 余分に貯められるゲージ
+Seed.GaugeDecay: 離れた時に減る速さ (1 秒あたり)
+Seed.PauseAfterMeeting: 会議の後にゲージが止まる時間
+Amnesia.Name: アムネシア
+Amnesia.Blurb: 死者の記憶を拾え
+Amnesia.Summary: 死体を通報すると、その死体の役職になる第三陣営です。
+Amnesia.Remember: 記憶
+Amnesia.Remember.Help: 死体を通報すると、会議の始め (または終わり) にその死者の役職になります。死体への矢印が見えます (設定)。
+Amnesia.Remember.Short: 通報した死体の役職になる
+Amnesia.Timing: 役職が変わる時
+Amnesia.Timing.Start: 会議の始め
+Amnesia.Timing.End: 会議の終わり
+Amnesia.DeadBodyArrow: 死体への矢印を出す
+Amnesia.CanVent: ベントを使える
+Raccoon.Name: アライグマ
+Raccoon.Blurb: 掴んで運び、正体を洗い出せ
+Raccoon.Summary: キルボタンで人を「掴む」第三陣営です。掴んだ人はあなたの所へ引き寄せられ続けます。もう一度押すと倒し、行き先の部屋へ運ぶとその人の役職が分かります。「子作り」でアライグマの子を作れます。
+Raccoon.WinCond: 他のキル役がいなくなり、生きているアライグマの数が生きているクルーの数に並ぶと、アライグマの親子で勝ち
+Raccoon.Grab: 掴む
+Raccoon.Grab.Help: 近くの人を掴みます。掴んだ人にもう一度押すと倒します (他の人には押せません)。掴んでいる間は行き先の部屋が出て、着くと掴みが解けてその人の役職が分かります。アライグマの親を掴もうとすると自分が死にます。
+Raccoon.Grab.Short: 掴む・掴んだ人を倒す
+Raccoon.MakeChild: 子作り
+Raccoon.MakeChild.Help: 近くの人を、次の会議の後にアライグマの子にします (1 回)。
+Raccoon.MakeChild.Short: 近くの人をアライグマの子にする
+Raccoon.KillCooldown: キルの待ち時間
+Raccoon.KillOnMeetingIfGrabbing: 会議が始まる時に掴んでいる人を倒す
+Raccoon.MakeChildCooldown: 子作りの待ち時間
+Raccoon.ChildKillCooldown: 子のキルの待ち時間
+Raccoon.ChildKillOnMeetingIfGrabbing: 子も会議が始まる時に掴んでいる人を倒す
+Raccoon.Idle: 誰かを掴もう
+Raccoon.GoTo: {room} へ運べ
+Raccoon.Result: {name} は {role} だった
+RaccoonChild.Name: アライグマの子
+RaccoonChild.Blurb: 親と共に掴んで洗え
+RaccoonChild.Summary: アライグマに作られた子です。アライグマと同じように人を掴み、倒し、運んで役職を調べます。アライグマの親子で勝ちを目指します。
+RaccoonChild.WinCond: 他のキル役がいなくなり、生きているアライグマの数が生きているクルーの数に並ぶと、アライグマの親子で勝ち
+# ---- Uchu などから移植したアドオン ----
+Guest.Name: ゲスト
+Guest.Blurb: お客様は緊急ボタンを押せません
+Guest.Help: 緊急ボタンを押せないアドオンです。
+Watcher.Name: ウォッチャー
+Watcher.Blurb: 匿名の票も見逃さない
+Watcher.Help: 匿名投票でも、誰が誰に入れたかが見えるアドオンです。
+Invisible.Name: インビジブル
+Invisible.Blurb: 誰にも見えていない…
+Invisible.Help: いつもインポスター以外から見えないアドオンです。本人は付いていることに気付きません (死ぬと分かります)。
+Static.Name: スタティック
+Static.Blurb: 情報は凍りついた
+Static.Help: 付いている間、全員のアドミンとバイタルが試合の始めの内容のまま固まるアドオンです。本人は付いていることに気付きません (設定で、死んだ後に分かります)。
+Static.CanSeeAll: 死んだ後に本人に分かる
+Timer.Name: タイマー
+Timer.Blurb: 時を刻め
+Timer.Help: 会議の後からの経過時間が名前の下に出るアドオンです。会議中は止まります。
+Timer.Text: 経過: {t} 秒
+Visor.Name: バイザー
+Visor.Blurb: マップ越しに船を見渡せ
+Visor.Help: 普通のマップを開くと、いつでもアドミンが見えるアドオンです (死体も数えます)。インポスターには付きません。
+Visor.CanMoveWithMapWatching: マップを開いたまま動ける
+Visor.CanUseAdminOnMeeting: 会議中もアドミンが見える
+Star.Name: スター
+Star.Blurb: 君はスターだ
+Star.Help: 名前が全員に黄色で見えるアドオンです (設定で虹色)。
+Star.RainbowStar: 虹色にする
+Star.RainbowSpeed: 虹色の速さ
+TunaMod.Name: マグロ
+TunaMod.Blurb: 止まったら死ぬ
+TunaMod.Help: 止まっていると死ぬアドオンです。試合の始めと会議の後は少しの間タイマーが止まります。死ぬまでの秒が名前の下に出ます。
+TunaMod.Mode: 数え方
+TunaMod.Mode.Usually: 常時 (続けて止まった時間)
+TunaMod.Mode.Total: 累計 (止まった時間の合計)
+TunaMod.UsuallyStop: 止まっていられる時間
+TunaMod.TotalStop: 止まっていられる時間の合計
+TunaMod.MeetingReset: 会議で合計を戻す
+TunaMod.MeetingStop: 会議の後にタイマーが止まる時間
+TunaMod.CountInTask: タスク中もタイマーを進める
+TunaMod.Paused: タイマー停止中
+Moon.Name: ムーン
+Moon.Blurb: 闇夜を照らす月
+Moon.Help: 停電で視界が狭まらないアドオンです。
+Radar.Name: レーダー
+Radar.Blurb: 一番近い人を捉えろ
+Radar.Help: 一番近い生きている人への矢印が出るアドオンです。
+Egoist.Name: エゴイスト
+Egoist.Blurb: クルーの負けこそ我が勝ち
+Egoist.Help: クルーが負ければ勝ち、クルーが勝つと負けるアドオンです (クルーだけに付きます)。タスクはクルーの勝ちに数えません。
+Resonance.Name: レゾナンス
+Resonance.Blurb: 仲間の殺しに共鳴せよ
+Resonance.Help: 他のインポスターがキルすると画面が光るアドオンです (インポスターだけに付きます)。
+Resonance.IsColorFlash: 殺された人の色で光る
+SpectrePossession.Name: 狐憑き
+SpectrePossession.Blurb: そして、彼の者に仕えよ
+SpectrePossession.Help: 妖狐 (スペクター) の陣営になるアドオンです (クルーとインポスターだけに付きます)。妖狐が勝った時だけ勝ち、タスクは数えません。透視 (設定) で壁越しに見え、狂信 (設定) で妖狐の名前が妖狐の色に見えます。
+SpectrePossession.Clairvoyance: 透視 (壁越しに見える)
+SpectrePossession.Fanaticism: 狂信 (妖狐の名前が分かる)
+SpectrePossession.FanaticismLimit: 狂信に条件を付ける
+SpectrePossession.NumOfTaskFanaticism: 狂信に要るタスクの数 (クルー)
+SpectrePossession.NumOfKillFanaticism: 狂信に要るキルの数 (インポスター)
+# ---- Uchu から移植した幽霊役職 ----
+Baphomet.Name: バフォメット
+Baphomet.Blurb: 眷属を従え、勝利を奪え
+Baphomet.Summary: どの陣営の死者にも付く幽霊役職です。生きている人を 1 人眷属 (ファムルス) にし、そのそばで止まってゲージを貯めます。満ちた後の試合の終わりに眷属が生きていれば、バフォメットと眷属の勝ちに替わります (破壊工作での終わりは除く)。
+Baphomet.WinCond: ゲージが満ちていて、試合の終わりに眷属が生きていれば眷属と勝ち
+Baphomet.Family: 眷属
+Baphomet.Family.Help: 近くの生きている人を眷属 (ファムルス) にします (1 回)。眷属への矢印が出ます。
+Baphomet.Family.Short: 近くの人を眷属にする
+Baphomet.Gauge: ゲージ
+Baphomet.Gauge.Help: 生きている眷属のすぐ近くで止まっていると貯まります。止まっていると生きている人にだけ見える亡霊が出ます。会議の終わりに少し減ります (満ちていれば減りません)。
+Baphomet.Gauge.Short: 眷属のそばで止まって貯める
+Baphomet.TotalStandingTimeToWin: 勝つのに要るゲージ
+Baphomet.RewindGaugeToMeetingEnd: 会議の終わりに減るゲージ
+Baphomet.GaugeText: 儀式
+Baphomet.Cutin: バフォメットが眷属を得た…
+Famulus.Name: ファムルス
+Famulus.Blurb: バフォメットに仕えよ
+Famulus.Summary: バフォメットの眷属です。バフォメットが勝った時だけ勝ち、タスクは数えません。バフォメットとはお互いの名前が紫に見えます。
+Famulus.WinCond: バフォメットの勝ちでだけ勝つ
+Miracle.Name: ミラクル
+Miracle.Blurb: 奇跡を起こし、生き返れ
+Miracle.Summary: クルーとインポスターの死者に付く幽霊役職です。生きている人を選ぶと、次の会議の終わりにその人と役職が入れ替わります。
+Miracle.Swap: スワップ
+Miracle.Swap.Help: 近くの生きている人を選びます。次の会議の終わりに、自分とその人の役職が入れ替わります。同じ人は 1 人のミラクルだけが選べます。
+Miracle.Swap.Short: 生きている人と役職を入れ替える
+Miracle.SwapCooldown: スワップの待ち時間
+Miracle.NumOfSwap: スワップの回数
+Miracle.Action: 選べる相手
+Miracle.Action.MyTeam: 同じ陣営だけ
+Miracle.Action.OtherNeutral: 第三陣営以外
+Miracle.Action.All: 誰でも

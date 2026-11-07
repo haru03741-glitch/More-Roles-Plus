@@ -109,7 +109,7 @@ public static class GameEnd
     }
 
     // 結果を替える役職・アドオンがいる (本編の終わりでも結果を配る)
-    internal static bool AnyOverride => RoleState.All.Any(r => r is IWinOverride) || RoleState.AllAddons.Any(a => a is IWinOverride);
+    internal static bool AnyOverride => RoleState.All.Any(r => r is IWinOverride) || RoleState.AllAddons.Any(a => a is IWinOverride || a.AffectsWin);
 
     // 結果がもう決まっている (MRP が決めた終わりの途中)
     internal static bool Decided => _pending != null;
@@ -392,6 +392,25 @@ public static class GameEnd
                 try { r.Winners.RemoveWhere(id => role.BlocksWinOf(id, r)); }
                 catch (Exception e) { Plugin.Logger.LogError($"{role.Id}.BlocksWinOf: {e}"); }
             }
+        if (!r.Draw)
+        {
+            foreach (var addon in RoleState.AllAddons)
+            {
+                try
+                {
+                    if (!r.Winners.Contains(addon.PlayerId) && addon.AlsoWins(r)) r.Winners.Add(addon.PlayerId);
+                }
+                catch (Exception e) { Plugin.Logger.LogError($"{addon.Id}.AlsoWins: {e}"); }
+            }
+            foreach (var addon in RoleState.AllAddons)
+            {
+                try
+                {
+                    if (addon.LosesWin(r)) r.Winners.Remove(addon.PlayerId);
+                }
+                catch (Exception e) { Plugin.Logger.LogError($"{addon.Id}.LosesWin: {e}"); }
+            }
+        }
         r.Winners.RemoveWhere(Spectate.IsWatching); // 観戦の人は勝敗に入らない
 
         Result.Send(r);
@@ -646,6 +665,12 @@ internal static class NeutralTaskPatch
         {
             if (role.TasksCount || !role.Player) continue;
             var rb = role.Player.Data?.Role;
+            if (rb) rb.TasksCountTowardProgress = false;
+        }
+        foreach (var addon in RoleState.AllAddons)
+        {
+            if (addon.TasksCount || !addon.Player) continue;
+            var rb = addon.Player.Data?.Role;
             if (rb) rb.TasksCountTowardProgress = false;
         }
         foreach (var role in RoleState.All)

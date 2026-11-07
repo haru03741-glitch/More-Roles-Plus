@@ -64,15 +64,20 @@ internal static class RoleDisplay
     {
         var s = Suffixes[pid];
         if (s != null) return s;
-        var list = RoleState.AddonsOf(pid);
-        if (list.Count == 0) return ""; // まだ付いていないだけかもしれないので覚えない
+        var all = RoleState.AddonsOf(pid);
+        if (all.Count == 0) return ""; // まだ付いていないだけかもしれないので覚えない
+        bool hidden = all.Any(a => a.HiddenFromSelf);
+        var list = all.Where(a => a.ShownToLocal()).ToList();
+        if (list.Count == 0) return "";
         var sb = new StringBuilder(" <size=70%>");
         for (int i = 0; i < list.Count; i++)
         {
             if (i > 0) sb.Append(' ');
             sb.Append('+').Append(list[i].ColoredName);
         }
-        return Suffixes[pid] = sb.Append("</size>").ToString();
+        string str = sb.Append("</size>").ToString();
+        if (!hidden) Suffixes[pid] = str; // 気付かないアドオンは死ぬと見えるので覚えない
+        return str;
     }
 
     // アドオンごとの一行の説明 (行頭に改行つき)。付いていなければ空。size = 文字の大きさ (% で)
@@ -83,6 +88,7 @@ internal static class RoleDisplay
         var sb = new StringBuilder();
         foreach (var a in list)
         {
+            if (!a.ShownToLocal()) continue;
             sb.Append('\n');
             if (size != 100) sb.Append("<size=").Append(size).Append("%>");
             sb.Append("<color=").Append(a.Color).Append(">+").Append(a.Name).Append(": ").Append(a.Blurb).Append("</color>");

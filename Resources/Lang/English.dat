@@ -1984,3 +1984,500 @@ Rank.Next: {n} more to {tier}
 Rank.Top: Top rank
 Ranked.SearchHint: While searching you cannot create or join other rooms
 Ranked.Cancel: Cancel
+
+# ---- Roles ported from Uchu and others (crew) ----
+EmergencyLock.Locked: The emergency button is locked
+Admiral.Name: Admiral
+Admiral.Blurb: Take a roll call and find everyone
+Admiral.Summary: A crewmate who can take a "Roll Call" during meetings. Living players answer by clicking where they are on the map, and when you close the call, pins in their colors appear on your map.
+Admiral.Call: Roll Call
+Admiral.Call.Help: Use it from your own plate during a meeting. Everyone's screen flashes and other living players get an "Answer" button (once per meeting).
+Admiral.Call.Short: Ask everyone where they are
+Admiral.Close: Close
+Admiral.Close.Help: Closes the roll call. Each answer appears on the map as a pin in that player's color.
+Admiral.Close.Short: Close the roll call
+Admiral.NumOfCall: Number of roll calls
+Admiral.VoteWatching: See votes even when voting is anonymous
+Admiral.Answer: Roll call! Click where you are on the map to answer
+Admiral.Answered: You answered the roll call
+Admiral.Result: Roll call result: {n} answered (check the map)
+Bakery.Name: Bakery
+Bakery.Blurb: Hand out fresh bread
+Bakery.Summary: A crewmate who can give bread to nearby players. Players holding bread get a bread mark on their meeting plate. While alive, you add a line to the exile screen.
+Bakery.Give: Give
+Bakery.Give.Help: Gives bread to a nearby player. You can give a set number per meeting; after the meeting the bread disappears and your count resets.
+Bakery.Give.Short: Give bread to someone nearby
+Bakery.GiveCooldown: Give cooldown
+Bakery.BreadPerMeeting: Bread per meeting
+Bakery.Got: You got some bread!
+Bakery.Exile.Smell: There's a smell of baked dough...
+Bakery.Exile.Burnt: The bread got burnt...
+Bakery.Exile.Festival: It's a bread festival!
+DJ.Name: DJ
+DJ.Blurb: Turn the ship into a dance floor
+DJ.Summary: A crewmate whose "Scratch" makes everyone in range (including you) flash in random colors.
+DJ.Scratch: Scratch
+DJ.Scratch.Help: Plays a scratch sound for everyone in range and flashes their screens in random colors several times. You briefly see the range circle.
+DJ.Scratch.Short: Flash everyone nearby
+DJ.ScratchCooldown: Scratch cooldown
+DJ.Range: Range
+DJ.NumOfFlash: Number of flashes
+NiceDecorator.Name: Nice Decorator
+NiceDecorator.Blurb: Decorate people and change their roles
+NiceDecorator.Summary: A crewmate whose "Decorate" changes a nearby player's role. True crewmates get a random crew role and impostors a random impostor role (avoiding the one you gave last time). Neutrals and madmates are unaffected, but a use is spent.
+NiceDecorator.Cooldown: Decorate cooldown
+NiceDecorator.Uses: Decorate uses
+EvilDecorator.Name: Evil Decorator
+EvilDecorator.Blurb: Decorate people and change their roles
+EvilDecorator.Summary: An impostor whose "Decorate" changes a nearby player's role. True crewmates get a random crew role and impostors a random impostor role (avoiding the one you gave last time). Neutrals and madmates are unaffected, but a use is spent.
+EvilDecorator.Cooldown: Decorate cooldown
+EvilDecorator.Uses: Decorate uses
+Polaris.Name: Polaris
+Polaris.Blurb: The North Star sees everything
+Polaris.Summary: A crewmate with a kill that works on anyone, and a "Vision" that reads a dead player's role from their body.
+Polaris.Kill: Kill
+Polaris.Kill.Help: Kills a nearby player. You never die from a misfire.
+Polaris.Kill.Short: Kill someone nearby
+Polaris.KillCooldown: Kill cooldown
+Polaris.KillUses: Kill uses
+Polaris.CanKillHidden: Can also kill hidden players
+Polaris.SealUntilReport: Seal the kill until a body is reported
+Polaris.Vision: Vision
+Polaris.Vision.Help: Gazes at a nearby body for a moment (you can't move). Afterwards, the next meeting shows you that player's name and role.
+Polaris.Vision.Short: Read a body's role
+Polaris.VisionCooldown: Vision cooldown
+Polaris.VisionUses: Vision uses
+Polaris.VisionDuration: Vision duration
+Polaris.RewindTask: Vision undoes some of your tasks
+Polaris.MediumRewindTask: Tasks undone
+Polaris.Seen: You saw a vision. You'll learn more at the next meeting
+Polaris.Result: Vision: {name} was {role}
+Sonar.Name: Sonar
+Sonar.Blurb: Report kills with trap antennas
+Sonar.Summary: A crewmate who places antennas only they can see. When a kill happens right next to one, everyone gets an arrow and the antenna breaks.
+Sonar.Place: Place
+Sonar.Place.Help: Places an antenna at your feet. When a kill happens within its range outside a meeting, everyone briefly gets an arrow.
+Sonar.Place.Short: Place an antenna
+Sonar.PlaceCooldown: Place cooldown
+Sonar.NumOfAntenna: Number of antennas
+Sonar.Range: Antenna range
+Sonar.ArrowDuration: Arrow duration
+Sonar.ArrowAt: Arrow points to
+Sonar.ArrowAt.Body: Where they died
+Sonar.ArrowAt.Antenna: The antenna
+Sonar.ShareBroken: Show broken antennas to everyone
+Waraningyou.Name: Straw Doll
+Waraningyou.Blurb: Return all the grudges at once
+Waraningyou.Summary: A crewmate who stores the votes cast against them. Using "Curse" in a meeting makes your vote count as the stored votes +1.
+Waraningyou.Curse: Curse
+Waraningyou.Curse.Help: Use it from your own plate during a meeting (once per meeting). Your vote this meeting counts as the stored votes +1, and the store goes back to 0.
+Waraningyou.Curse.Short: Spend your stored votes
+Waraningyou.DefaultVote: Starting stored votes
+Waraningyou.AllowSkip: Can skip in the meeting you curse
+Waraningyou.Cursed: Cursed. Your vote this meeting counts as {n}
+Shaman.Name: Shaman
+Shaman.Blurb: Call the spirits and count your foes
+Shaman.Summary: A crewmate who performs "Necromancy" in the room the arrow points to, learning at the next meeting how many living players are not crew.
+Shaman.Necromancy: Necromancy
+Shaman.Necromancy.Help: Stand still in the arrowed room to use it; moving interrupts it. When done, the next meeting shows how many living players are not crew. After enough tasks you also learn their role names (option).
+Shaman.Necromancy.Short: Call the spirits in a room
+Shaman.NecromancyCooldown: Necromancy cooldown
+Shaman.NecromancyDuration: Necromancy duration
+Shaman.NumOfNecromancy: Necromancy uses
+Shaman.ResultViewAlivePlayers: Also show the number of living players
+Shaman.SkillBoost: Get stronger with tasks
+Shaman.NumOfBoostTask: Tasks needed to get stronger
+Shaman.TaskCompletesRoomReroll: Completing a task picks a new room
+Shaman.Done: Necromancy done. You'll learn more at the next meeting
+Shaman.Interrupted: You moved, so the necromancy was interrupted
+Shaman.Result: Necromancy: {n} living players are not crew
+Shaman.ResultAlive: {n} players are alive
+Chicken.Name: Chicken
+Chicken.Blurb: A coward fears everything
+Chicken.Summary: A crewmate who is scared of vents, ladders, ziplines, platforms and door panels, and may die near them at a set chance. A long blackout kills too. If alive with enough tasks done, the game end turns into a crew win (except for sabotage endings).
+Chicken.WinCond: If you're alive with enough of your tasks done when the game ends, the crew wins
+Chicken.VentChance: Chance to die at vents
+Chicken.LadderChance: Chance to die on ladders
+Chicken.ZiplineChance: Chance to die on ziplines
+Chicken.PlatformChance: Chance to die on platforms
+Chicken.DoorChance: Chance to die at door panels
+Chicken.BlackoutTime: Die when a blackout lasts this long
+Chicken.TaskPercent: Task percentage needed for the win override
+ChickenMod.Name: Chicken
+ChickenMod.Blurb: A coward fears everything
+ChickenMod.Help: An addon that is scared of vents, ladders, ziplines, platforms and door panels, and may die near them at a set chance. A long blackout kills too.
+ChickenMod.VentChance: Chance to die at vents
+ChickenMod.LadderChance: Chance to die on ladders
+ChickenMod.ZiplineChance: Chance to die on ziplines
+ChickenMod.PlatformChance: Chance to die on platforms
+ChickenMod.DoorChance: Chance to die at door panels
+ChickenMod.BlackoutTime: Die when a blackout lasts this long
+Prosecutor.Name: Prosecutor
+Prosecutor.Blurb: Accuse and exile without a vote
+Prosecutor.Summary: A crewmate who can force one player's exile in a meeting. If that player was a true crewmate, you die too (option).
+Prosecutor.Prosecute: Prosecute
+Prosecutor.Prosecute.Help: Use it from a player's plate during a meeting (once per meeting). The vote is redone with every vote on that player, exiling them.
+Prosecutor.Prosecute.Short: Force that player's exile
+Prosecutor.NumOfProsecute: Prosecute uses
+Prosecutor.DieOnCrew: Die when you exile a crewmate
+Prosecutor.CanCallEmergency: Can use the emergency button
+Monitor.Name: Monitor
+Monitor.Blurb: Be the Proxy's shadow
+Monitor.Summary: The Proxy's partner madmate. You have no tasks, and you and the Proxy see each other's names in red. Your screen flashes when the Proxy kills. You win with the impostors.
+Monitor.FixLights: Can fix lights
+Monitor.FixComms: Can fix comms
+Monitor.ImpostorVision: Impostor vision
+Monitor.CanVent: Can use vents
+Monitor.VentMove: Can move between vents
+# ---- Roles ported from Uchu and others (impostors) ----
+Proxy.Name: Proxy
+Proxy.Blurb: Swap with your shadow and hide who you are
+Proxy.Summary: An impostor who turns another crewmate into a Monitor (a partner madmate) at the start. You can "Swap" roles with your partner when they're nearby.
+Proxy.Swap: Swap
+Proxy.Swap.Help: Swaps roles with your nearby partner (Proxy ⇔ Monitor).
+Proxy.Swap.Short: Swap roles with your partner
+Proxy.SwapCooldown: Swap cooldown
+Proxy.FollowDeath: Die together
+Proxy.FollowDeath.None: Never
+Proxy.FollowDeath.Proxy: Monitor dies when the Proxy dies
+Proxy.FollowDeath.Monitor: Proxy dies when the Monitor dies
+Proxy.FollowDeath.Either: Either dies, the other follows
+EvilObserver.Name: Evil Observer
+EvilObserver.Blurb: Spy on everything with hidden cameras
+EvilObserver.Summary: An impostor who places cameras and watches them with "Monitor". Cameras work from the next meeting on and see through walls and blackouts.
+EvilObserver.Place: Place
+EvilObserver.Place.Help: Places a camera at your feet, facing your direction. It works from the next meeting on.
+EvilObserver.Place.Short: Place a camera
+EvilObserver.Monitor: Monitor
+EvilObserver.Monitor.Help: Watches a camera. Press again to return to yourself. You can't move while watching.
+EvilObserver.Monitor.Short: Watch a camera
+EvilObserver.Next: Next
+EvilObserver.Next.Help: Switches to another camera.
+EvilObserver.Next.Short: Go to the next camera
+EvilObserver.PlaceCooldown: Place cooldown
+EvilObserver.NumOfCamera: Number of cameras
+EvilObserver.CanSeeCameraOtherPlayer: Other players can see your cameras
+EvilObserver.NoCamera: No camera is ready yet
+Spectrum.Name: Spectrum
+Spectrum.Blurb: Red fangs under the mask
+Spectrum.BlurbWith: An impostor with the power of {role}
+Spectrum.Summary: An impostor who holds one random crew role that can be a madmate. You use that role's abilities and your own kill button (no normal kill button).
+Spectrum.Kill: Kill
+Spectrum.Kill.Help: Kills a nearby non-impostor.
+Spectrum.Kill.Short: Kill someone nearby
+Spectrum.KillCooldown: Kill cooldown
+Voyager.Name: Voyager
+Voyager.Blurb: Hide between moments and hunt even allies
+Voyager.Summary: An impostor whose "Dive" makes them invisible to non-impostors. While diving you're faster, others' looks are shuffled, and you can kill allies. If you don't "Leave" in time, you die.
+Voyager.Dive: Dive
+Voyager.Dive.Help: Become invisible to non-impostors and faster. Other living players' looks are swapped on your screen only. Meetings end it.
+Voyager.Dive.Short: Go invisible and lurk
+Voyager.AllyKill: Ally Kill
+Voyager.AllyKill.Help: While diving, kills a nearby fellow impostor.
+Voyager.AllyKill.Short: Kill an ally while diving
+Voyager.Leave: Leave
+Voyager.DiveCooldown: Dive cooldown
+Voyager.DiveDuration: How long you can dive
+Voyager.DiveSpeed: Speed while diving
+Voyager.SwapPairs: Pairs of looks swapped
+Voyager.Paradox: Paradox! You were swallowed by time
+Commander.Name: Commander
+Commander.Blurb: Give the order and hunt together
+Commander.Summary: An impostor whose "Command" briefly shortens the kill cooldown of every impostor and madmate. Afterwards the kill cooldown is frozen for a while.
+Commander.Command: Command
+Commander.Command.Help: For a while, every impostor and madmate's kill cooldown becomes the set value. When it ends, impostor kill cooldowns restart and don't progress for a while.
+Commander.Command.Short: Speed up everyone's kills
+Commander.CommandCooldown: Command cooldown
+Commander.NumOfCommand: Command uses
+Commander.CommandDuration: Command duration
+Commander.CommandKillCooldown: Kill cooldown during the command
+Commander.KillButtonLostTime: Kill cooldown freeze after the command
+Commander.Ordered: The order is given! Hunt now
+Commander.Status: Command
+Commander.Lost: No kills
+Magician.Name: Magician
+Magician.Blurb: Swap everyone's places in an instant
+Magician.Summary: An impostor whose "Magic" randomly shuffles the positions of every living player.
+Magician.Magic: Magic
+Magician.Magic.Help: Randomly shuffles the positions of every living player. Everyone's screen flashes red, task windows close, and players in vents are pulled out.
+Magician.Magic.Short: Shuffle everyone's positions
+Magician.MagicCooldown: Magic cooldown
+Magician.NumOfMagic: Magic uses
+Kunoichi.Name: Kunoichi
+Kunoichi.Blurb: Throw kunai from the shadows
+Kunoichi.Summary: An impostor who throws kunai. Hitting the same player enough times kills them. Standing still lets you turn invisible.
+Kunoichi.Equip: Equip
+Kunoichi.Equip.Help: Takes out or puts away your kunai. While holding it you can't use the normal kill, and the kunai floats toward your mouse.
+Kunoichi.Equip.Short: Take out / put away the kunai
+Kunoichi.Throw: Kunai
+Kunoichi.Throw.Help: Throws a kunai toward your mouse. Hitting a non-ally adds a hit, and enough hits kill them.
+Kunoichi.Throw.Short: Throw a kunai
+Kunoichi.Hide: Hide
+Kunoichi.Hide.Help: After standing still for a while you can turn invisible. Moving ends it. Meetings end everything.
+Kunoichi.Hide.Short: Stand still to go invisible
+Kunoichi.ThrowCooldown: Kunai cooldown
+Kunoichi.KunaiSpeed: Kunai speed
+Kunoichi.WallStops: Walls stop kunai
+Kunoichi.HitsToKill: Hits needed to kill
+Kunoichi.FriendlyFire: Kunai can hit allies
+Kunoichi.KunaiOnBody: Kunai stays on the body
+Kunoichi.ResetHitsOnMeeting: Reset hits at meetings
+Kunoichi.CanHide: Can hide
+Kunoichi.HideWait: Time standing still before hiding
+Kunoichi.HideButton: Hide with a button (otherwise automatic)
+Kunoichi.ThrowWhileHidden: Can throw while hidden
+SerialKiller.Name: Serial Killer
+SerialKiller.Blurb: Keep killing or die
+SerialKiller.Summary: An impostor who must keep killing within a set time after their first kill, or die.
+SerialKiller.Timer: Suicide Timer
+SerialKiller.Timer.Help: Starts at your first kill and resets on every kill and after meetings. It stops during meetings. At 0 you die. The time left shows on the button.
+SerialKiller.Timer.Short: Keep killing or die
+SerialKiller.Suicide: Suicide
+SerialKiller.Suicide.Help: Kill yourself (option).
+SerialKiller.Suicide.Short: Kill yourself
+SerialKiller.KillCooldown: Kill cooldown
+SerialKiller.SuicideTime: Suicide timer
+SerialKiller.SuicideButton: Has a suicide button
+Warlock.Name: Warlock
+Warlock.Blurb: Kill through the hands of the cursed
+Warlock.Summary: An impostor with no normal kill who kills someone standing next to a cursed player, through that cursed player.
+Warlock.Curse: Curse
+Warlock.Curse.Help: Curses a nearby player (one at a time; they don't notice). Meetings or the cursed player's death lift the curse.
+Warlock.Curse.Short: Curse someone nearby
+Warlock.CurseKill: Curse Kill
+Warlock.CurseKill.Help: Kills another player right next to the cursed one. The cursed player moves to where the victim was. Afterwards you're frozen and your cooldown stops for a moment.
+Warlock.CurseKill.Short: Kill someone next to the cursed
+Warlock.CurseCooldown: Curse cooldown
+Warlock.CurseKillCooldown: Curse kill cooldown
+Warlock.CanKillAllies: Can curse kill allies
+Warlock.KillFreezeTime: Freeze time after a curse kill
+Witch.Name: Witch
+Witch.Blurb: Cast a spell and bury them after the meeting
+Witch.Summary: An impostor who keeps casting a spell on a nearby player. Spelled players get a mark on their meeting plate and die at the end of the meeting if the Witch is alive.
+Witch.Spell: Spell
+Witch.Spell.Help: Keeps casting on a nearby player; moving away interrupts it (once per turn). Impostors can't be targeted.
+Witch.Spell.Short: Cast a spell on someone nearby
+Witch.SpellCooldown: Spell cooldown
+Witch.SpellDuration: Spell duration
+Witch.NormalKill: Can also use the normal kill
+Witch.Broken: The spell was interrupted
+NekoKabocha.Name: Neko Kabocha
+NekoKabocha.Blurb: Take your killer with you
+NekoKabocha.Summary: An impostor who takes their killer down with them. When exiled, if no other impostor is alive (or always, with the option), one player who voted for you dies too.
+NekoKabocha.ExileEmbroil: Take a voter down on exile even while allies are alive
+# ---- Roles ported from Uchu and others (neutral) ----
+Anchor.Name: Anchor
+Anchor.Blurb: Drop anchor and hold the ship
+Anchor.Summary: A neutral who drops anchors at their feet. If alive at the end of a meeting after placing all of them, they win alone.
+Anchor.WinCond: Win alone if you're alive at the end of a meeting after placing every anchor
+Anchor.Place: Place
+Anchor.Place.Help: Drops an anchor at your feet (everyone can see it; once per turn). Nearby players briefly get an arrow to it.
+Anchor.Place.Short: Drop an anchor
+Anchor.Echo: Echo
+Anchor.Echo.Help: Opens the map; click one of your anchors to send the arrow to nearby players again from there.
+Anchor.Echo.Short: Signal again from an anchor
+Anchor.PlaceCooldown: Place cooldown
+Anchor.NumOfAnchor: Number of anchors
+Anchor.NoticeRange: Arrow range
+Anchor.ArrowDuration: Arrow duration
+Anchor.EchoCooldown: Echo cooldown
+Anchor.NumOfEcho: Echo uses
+Anchor.CanVent: Can use vents
+Bettor.Name: Bettor
+Bettor.Blurb: Bet on everyone's role
+Bettor.Summary: A neutral who guesses everyone else's role and bets on it. Each player comes back as HIT (correct), BLOW (that role is in the game) or MISS. Get everyone HIT to win.
+Bettor.WinCond: Win alone if, at the end of a meeting, you've guessed every other player's role
+Bettor.Guess: Guess
+Bettor.Guess.Help: Opens the guess screen to write a role for every other player. Once all are filled you can bet (once per turn; not in the first turns). HIT players' roles become visible.
+Bettor.Guess.Short: Guess everyone's role and bet
+Bettor.Analyze: Analyze
+Bettor.Analyze.Help: Shows the team of a nearby player.
+Bettor.Analyze.Short: Learn a nearby player's team
+Bettor.Identify: Identify
+Bettor.Identify.Help: With at least half HIT, use it from a player's plate in a meeting (once) to learn their role. Works on dead players too (option).
+Bettor.Identify.Short: Learn one role in a meeting
+Bettor.DisableGuessTurn: Turns you can't bet
+Bettor.AnalyzeCooldown: Analyze cooldown
+Bettor.NumOfAnalyze: Analyze uses
+Bettor.IdentifyDead: Can identify dead players
+Bettor.Title: Role Guesses
+Bettor.NoGuess: (empty)
+Bettor.Bet: Bet
+Bettor.TooEarly: You can't bet this turn yet
+Bettor.AlreadyBet: You already bet this turn
+Bettor.FillAll: Fill in a guess for everyone
+Bettor.RoleList: Known roles
+Bettor.PickRole: What is {name}'s role?
+Bettor.Back: Back
+Bettor.Exists: Roles in the game
+Bettor.Absent: Roles not in the game
+Bettor.Result: Bet result: {hit} of {n} HIT
+Bettor.Analyzed: Analyze: {name} is {team}
+Bettor.Identified: Identify: {name} is {role}
+Bettor.TeamImpostor: Impostor team
+Bettor.TeamCrew: Crew team
+Bettor.TeamNeutral: Neutral
+Bettor.TeamMadmate: Impostor team
+Obolus.Name: Obolus
+Obolus.Blurb: Take the ferry toll from the wicked
+Obolus.Summary: A neutral with a kill button. The kill is sealed for the first few meetings. Killing an impostor (or a Jackal, option) wins alone.
+Obolus.WinCond: Win alone the moment you kill an impostor (or a Jackal, option)
+Obolus.Kill: Kill
+Obolus.Kill.Help: Kills a nearby player (once per turn). It can't be used until the seal breaks.
+Obolus.Kill.Short: Kill someone nearby
+Obolus.KillCooldown: Kill cooldown
+Obolus.KillShieldTurn: Meetings the kill stays sealed
+Obolus.WinByJackal: Killing a Jackal also wins
+Obolus.ImpostorVision: Impostor vision
+Obolus.IgnoreLights: Vision isn't reduced by blackouts
+Obolus.CanVent: Can use vents
+Obolus.Reveal: Warn the impostors when the seal breaks
+Obolus.RevealDeath: Also tell them when the Obolus dies
+Obolus.Warning: Beware of the Obolus!
+Obolus.Dead: The Obolus died
+Seed.Name: Seed
+Seed.Blurb: Live with someone, win with them
+Seed.Summary: A neutral who wins along with whoever they "Symbiosis" with. With the gauge (option), staying near your partner fills it, and it must be full to win.
+Seed.WinCond: Also win when one of your partners wins
+Seed.Symbiosis: Symbiosis
+Seed.Symbiosis.Help: Bonds with a nearby player. They get a ▼ only you can see, and you can see their role (option).
+Seed.Symbiosis.Short: Bond with someone nearby
+Seed.Gauge: Gauge
+Seed.Gauge.Help: Fills while you're right next to a partner and slowly drains when you're apart. It pauses briefly after meetings.
+Seed.Gauge.Short: Fills near your partner
+Seed.SymbiosisCooldown: Symbiosis cooldown
+Seed.NumOfSymbiosis: Symbiosis uses
+Seed.SeeRole: See your partners' roles
+Seed.NoWinIfPartnerDead: Can't win if the partner is dead
+Seed.NoWinIfSelfDead: Can't win if you're dead
+Seed.UseGauge: Use the gauge
+Seed.GaugeRange: Gauge distance
+Seed.GaugeNeed: Gauge needed to win
+Seed.GaugeExtra: Extra gauge you can store
+Seed.GaugeDecay: Drain speed when apart (per second)
+Seed.PauseAfterMeeting: Gauge pause after meetings
+Amnesia.Name: Amnesia
+Amnesia.Blurb: Pick up the memories of the dead
+Amnesia.Summary: A neutral who becomes the role of any body they report.
+Amnesia.Remember: Remember
+Amnesia.Remember.Help: Reporting a body turns you into that player's role at the start (or end) of the meeting. You see arrows to bodies (option).
+Amnesia.Remember.Short: Become the reported body's role
+Amnesia.Timing: When your role changes
+Amnesia.Timing.Start: Meeting start
+Amnesia.Timing.End: Meeting end
+Amnesia.DeadBodyArrow: Show arrows to bodies
+Amnesia.CanVent: Can use vents
+Raccoon.Name: Raccoon
+Raccoon.Blurb: Grab, carry and wash out the truth
+Raccoon.Summary: A neutral who "Grabs" people with the kill button. A grabbed player keeps getting pulled to you. Press again to kill them, or carry them to the target room to learn their role. "Make Child" creates a Raccoon Child.
+Raccoon.WinCond: When no other killers remain and the living raccoons equal the living crew, the raccoon family wins
+Raccoon.Grab: Grab
+Raccoon.Grab.Help: Grabs a nearby player. Press again on the grabbed player to kill them (no one else). While grabbing, a target room is shown; reaching it releases them and reveals their role. Trying to grab the parent Raccoon kills you.
+Raccoon.Grab.Short: Grab / kill the grabbed
+Raccoon.MakeChild: Make Child
+Raccoon.MakeChild.Help: Turns a nearby player into a Raccoon Child after the next meeting (once).
+Raccoon.MakeChild.Short: Make someone a Raccoon Child
+Raccoon.KillCooldown: Kill cooldown
+Raccoon.KillOnMeetingIfGrabbing: Kill the grabbed player when a meeting starts
+Raccoon.MakeChildCooldown: Make Child cooldown
+Raccoon.ChildKillCooldown: Child kill cooldown
+Raccoon.ChildKillOnMeetingIfGrabbing: Children also kill the grabbed player when a meeting starts
+Raccoon.Idle: Grab someone
+Raccoon.GoTo: Carry them to {room}
+Raccoon.Result: {name} was {role}
+RaccoonChild.Name: Raccoon Child
+RaccoonChild.Blurb: Grab and wash with your parent
+RaccoonChild.Summary: A child made by the Raccoon. Like the Raccoon, you grab, kill and carry people to learn their roles, aiming for a win as the raccoon family.
+RaccoonChild.WinCond: When no other killers remain and the living raccoons equal the living crew, the raccoon family wins
+# ---- Addons ported from Uchu and others ----
+Guest.Name: Guest
+Guest.Blurb: Guests can't press the emergency button
+Guest.Help: An addon that can't press the emergency button.
+Watcher.Name: Watcher
+Watcher.Blurb: No anonymous vote escapes you
+Watcher.Help: An addon that sees who voted for whom even when voting is anonymous.
+Invisible.Name: Invisible
+Invisible.Blurb: No one can see you...
+Invisible.Help: An addon that is always invisible to non-impostors. The holder doesn't know they have it (they find out when they die).
+Static.Name: Static
+Static.Blurb: The information is frozen
+Static.Help: While it's in play, everyone's admin and vitals stay frozen as they were at the start of the game. The holder doesn't know they have it (option: they find out after dying).
+Static.CanSeeAll: The holder finds out after dying
+Timer.Name: Timer
+Timer.Blurb: Keep the time
+Timer.Help: An addon that shows the time since the last meeting under your name. It stops during meetings.
+Timer.Text: Elapsed: {t}s
+Visor.Name: Visor
+Visor.Blurb: Watch the ship through your map
+Visor.Help: An addon that shows admin whenever you open the normal map (bodies are counted too). Never given to impostors.
+Visor.CanMoveWithMapWatching: Can move with the map open
+Visor.CanUseAdminOnMeeting: Admin also works during meetings
+Star.Name: Star
+Star.Blurb: You're a star
+Star.Help: An addon whose name looks yellow to everyone (rainbow with the option).
+Star.RainbowStar: Rainbow
+Star.RainbowSpeed: Rainbow speed
+TunaMod.Name: Tuna
+TunaMod.Blurb: Stop and you die
+TunaMod.Help: An addon that dies when standing still. The timer pauses briefly at the start and after meetings. Seconds until death show under your name.
+TunaMod.Mode: Counting
+TunaMod.Mode.Usually: Continuous (time standing still in a row)
+TunaMod.Mode.Total: Total (all time standing still)
+TunaMod.UsuallyStop: Allowed stop time
+TunaMod.TotalStop: Allowed total stop time
+TunaMod.MeetingReset: Reset the total at meetings
+TunaMod.MeetingStop: Timer pause after meetings
+TunaMod.CountInTask: Timer runs during tasks
+TunaMod.Paused: Timer paused
+Moon.Name: Moon
+Moon.Blurb: The moon lights up the dark
+Moon.Help: An addon whose vision isn't reduced by blackouts.
+Radar.Name: Radar
+Radar.Blurb: Track the closest player
+Radar.Help: An addon with an arrow to the closest living player.
+Egoist.Name: Egoist
+Egoist.Blurb: The crew's loss is my win
+Egoist.Help: An addon that wins when the crew loses and loses when the crew wins (crew only). Your tasks don't count toward the crew win.
+Resonance.Name: Resonance
+Resonance.Blurb: Resonate with your allies' kills
+Resonance.Help: An addon whose screen flashes when another impostor kills (impostors only).
+Resonance.IsColorFlash: Flash in the victim's color
+SpectrePossession.Name: Fox Possessed
+SpectrePossession.Blurb: And now, serve that one
+SpectrePossession.Help: An addon that joins the Spectre's (fox's) side (crew and impostors only). You win only when the Spectre wins, and your tasks don't count. Clairvoyance (option) lets you see through walls, and Fanaticism (option) shows the Spectre's name in the Spectre's color.
+SpectrePossession.Clairvoyance: Clairvoyance (see through walls)
+SpectrePossession.Fanaticism: Fanaticism (know the Spectre)
+SpectrePossession.FanaticismLimit: Fanaticism needs a condition
+SpectrePossession.NumOfTaskFanaticism: Tasks needed for Fanaticism (crew)
+SpectrePossession.NumOfKillFanaticism: Kills needed for Fanaticism (impostor)
+# ---- Ghost roles ported from Uchu ----
+Baphomet.Name: Baphomet
+Baphomet.Blurb: Command your familiar and steal the win
+Baphomet.Summary: A ghost role for the dead of any team. Turn one living player into your familiar (Famulus) and fill your gauge by standing still next to them. If the gauge is full and your familiar is alive when the game ends, it becomes a win for you and your familiar (except for sabotage endings).
+Baphomet.WinCond: With a full gauge, win with your familiar if they're alive when the game ends
+Baphomet.Family: Familiar
+Baphomet.Family.Help: Turns a nearby living player into your familiar (Famulus) (once). You get an arrow to them.
+Baphomet.Family.Short: Make someone your familiar
+Baphomet.Gauge: Gauge
+Baphomet.Gauge.Help: Fills while you stand still right next to your living familiar. Standing still shows a phantom only the living can see. It drops a little at the end of meetings (not when full).
+Baphomet.Gauge.Short: Stand by your familiar to fill it
+Baphomet.TotalStandingTimeToWin: Gauge needed to win
+Baphomet.RewindGaugeToMeetingEnd: Gauge lost at the end of meetings
+Baphomet.GaugeText: Ritual
+Baphomet.Cutin: The Baphomet has taken a familiar...
+Famulus.Name: Famulus
+Famulus.Blurb: Serve the Baphomet
+Famulus.Summary: The Baphomet's familiar. You win only when the Baphomet wins, and your tasks don't count. You and the Baphomet see each other's names in purple.
+Famulus.WinCond: Win only with the Baphomet
+Miracle.Name: Miracle
+Miracle.Blurb: Work a miracle and come back
+Miracle.Summary: A ghost role for dead crewmates and impostors. Choose a living player, and at the end of the next meeting you swap roles with them.
+Miracle.Swap: Swap
+Miracle.Swap.Help: Choose a nearby living player. At the end of the next meeting, you and that player swap roles. Only one Miracle can choose the same player.
+Miracle.Swap.Short: Swap roles with a living player
+Miracle.SwapCooldown: Swap cooldown
+Miracle.NumOfSwap: Swap uses
+Miracle.Action: Who you can choose
+Miracle.Action.MyTeam: Same team only
+Miracle.Action.OtherNeutral: Anyone but neutrals
+Miracle.Action.All: Anyone

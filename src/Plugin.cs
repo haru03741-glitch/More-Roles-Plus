@@ -113,6 +113,7 @@ public class Ticker : MonoBehaviour
         Roles.Neutral.SpectreMinigame.Tick();
         Roles.Crew.Doppelganger.FrameTick();
         Roles.Crew.Admiral.FrameTick();
+        Roles.UchuKit.FrameTick();
         Roles.ArchitectDrone.FrameAll();
         Roles.StatusEffects.Tick();
         Menu.Keybinds.Tick();

@@ -293,7 +293,7 @@ internal static class MatchInfoExtension
         if (!ShipStatus.Instance || !me || me.Data == null) return ids;
         string id = RoleState.Local?.SeenBySelf.Id ?? (me.Data.Role ? me.Data.Role.Role.ToString() : null);
         if (id != null) ids.Add(id);
-        foreach (var ad in RoleState.AddonsOf(me.PlayerId)) ids.Add(ad.Id);
+        foreach (var ad in RoleState.AddonsOf(me.PlayerId)) if (ad.ShownToLocal()) ids.Add(ad.Id);
         return ids;
     }
 

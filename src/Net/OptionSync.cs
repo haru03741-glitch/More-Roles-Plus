@@ -4,7 +4,7 @@ using MoreRolesPlus.Options;
 
 namespace MoreRolesPlus.Net;
 
-// 設定値の同期。ホストが全項目の番号を Key の順に詰めて送る ([件数][番号...][プリセットの名前])。
+// 設定値の同期。ホストが全項目の番号を Key の順に、何通かに分けて送る (Values の上の説明)。
 // 送る時機 = 設定画面を閉じた時・同じ版の人が来た時・役職を配る直前。
 // 同じ部屋で値が変わっていたら、ホストは送る時・客は受け取った時に SettingNotice で知らせる。
 internal static class OptionSync
@@ -19,9 +19,17 @@ internal static class OptionSync
     private static int _heldGame;   // 客: 前に受け取った部屋
     private static readonly List<Opt> Changes = new();
 
-    private static readonly RemoteCall<(int[] Values, string Preset)> Values = new("Options.Values", Route.HostToAll,
+    // 項目が多く 1 通 (1150B) に入らないので、ChunkSize 個ずつに分けて送る ([全件数][始め][個数][番号...][プリセットの名前])。
+    // 受け手は順に貯め、最後の切れ端が来たら全部を当てる (Queued は送った順に届く)。
+    private const int ChunkSize = 180; // 1 個は最大 5B → 900B + 頭で 1 通に収まる
+    private static int[] _recvBuf;
+    private static int _recvNext;
+
+    private static readonly RemoteCall<(int Total, int Start, int[] Values, string Preset)> Values = new("Options.Values", Route.HostToAll,
         (w, m) =>
         {
+            w.WritePacked(m.Total);
+            w.WritePacked(m.Start);
             w.WritePacked(m.Values.Length);
             foreach (int v in m.Values) w.WritePacked(v);
             w.Write(m.Preset ?? "");
@@ -29,13 +37,41 @@ internal static class OptionSync
         r =>
         {
             // 同じ版なら件数は項目の数と同じ。違う数は確保する前に捨てる (大きな数で受け手のメモリを食わせない)
+            int total = r.ReadPackedInt32();
+            if (total != Registry.All.Count) throw new System.IO.InvalidDataException($"options count {total} != {Registry.All.Count}");
+            int start = r.ReadPackedInt32();
             int n = r.ReadPackedInt32();
-            if (n != Registry.All.Count) throw new System.IO.InvalidDataException($"options count {n} != {Registry.All.Count}");
+            if (start < 0 || n < 0 || n > ChunkSize || start + n > total) throw new System.IO.InvalidDataException($"options chunk {start}+{n}/{total}");
             var values = new int[n];
             for (int i = 0; i < values.Length; i++) values[i] = r.ReadPackedInt32();
-            return (values, r.ReadString());
+            return (total, start, values, r.ReadString());
         },
-        (_, m) => Receive(m.Values, m.Preset), Delivery.Queued);
+        (_, m) => ReceiveChunk(m.Total, m.Start, m.Values, m.Preset), Delivery.Queued);
+
+    private static void ReceiveChunk(int total, int start, int[] values, string preset)
+    {
+        if (start == 0) { _recvBuf = new int[total]; _recvNext = 0; }
+        // 途中から届いた (先頭を取り逃した) 切れ端は捨てて、次の送り直しを待つ
+        if (_recvBuf == null || _recvBuf.Length != total || start != _recvNext) { _recvBuf = null; return; }
+        System.Array.Copy(values, 0, _recvBuf, start, values.Length);
+        _recvNext = start + values.Length;
+        if (_recvNext < total) return;
+        var all = _recvBuf;
+        _recvBuf = null;
+        Receive(all, preset);
+    }
+
+    private static void SendValues(int[] values, string preset, int target)
+    {
+        for (int start = 0; start < values.Length || start == 0; start += ChunkSize)
+        {
+            int n = System.Math.Min(ChunkSize, values.Length - start);
+            var part = new int[n];
+            System.Array.Copy(values, start, part, 0, n);
+            Values.Send((values.Length, start, part, preset), target);
+            if (n == 0) break;
+        }
+    }
 
     public static void SendAll(int target = -1)
     {
@@ -43,7 +79,7 @@ internal static class OptionSync
         if (!client || !client.AmHost) return;
         var values = new int[Registry.All.Count];
         for (int i = 0; i < values.Length; i++) values[i] = Registry.All[i].Index;
-        Values.Send((values, PresetLabel.Shown), target);
+        SendValues(values, PresetLabel.Shown, target);
         if (target != -1) return; // 来た人 1 人への送り直しは変更ではない (控えも進めない)
 
         Changes.Clear();

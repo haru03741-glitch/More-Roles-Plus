@@ -72,6 +72,9 @@ public sealed class Ability
     // Meeting: 自分の名札にだけボタンを出す (自分に使う会議の能力。OnUsed の相手は自分)
     public bool MeetingSelf { get; init; }
 
+    // Meeting: 生きている人も死んだ人も狙える
+    public bool MeetingAnyLife { get; init; }
+
     // Player の届く距離 (0 = 部屋の設定のキルの距離)
     public float Range { get; init; }
 
@@ -475,7 +478,7 @@ internal static class Abilities
         if (!meeting && (user.inVent || user.inMovingPlat)) return "user busy";
         if (a.UsesLeft == 0) return "no uses";
         if (a.MeetingLeft == 0) return "no uses this meeting";
-        if (!target || (target == user) != a.MeetingSelf || target.Data == null || target.Data.IsDead != a.TargetDead || target.Data.Disconnected) return "target";
+        if (!target || (target == user) != a.MeetingSelf || target.Data == null || (!(meeting && a.MeetingAnyLife) && target.Data.IsDead != a.TargetDead) || target.Data.Disconnected) return "target";
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
         if (meeting && !a.MeetingSelf && (a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(user, target)) return "guess blocked";
         if (meeting) return null; // 会議の能力は距離と待ち時間を見ない

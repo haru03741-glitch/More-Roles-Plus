@@ -211,4 +211,29 @@ public static class UchuKit
         try { return PortKit.HostKill(killer, target); }
         finally { AbilityKill = -1; }
     }
+
+    // 自分の端末で毎フレーム呼ぶ (地図を押した時など、FixedUpdate では取りこぼす物)。false を返すと止まる
+    private static readonly List<Func<bool>> Frames = new();
+    private static object _frameMatch;
+
+    public static void EveryFrame(Func<bool> tick)
+    {
+        if (!ReferenceEquals(_frameMatch, RoleState.Match))
+        {
+            _frameMatch = RoleState.Match;
+            RoleState.Match.OnRelease(() => { Frames.Clear(); _frameMatch = null; });
+        }
+        Frames.Add(tick);
+    }
+
+    internal static void FrameTick()
+    {
+        for (int i = Frames.Count - 1; i >= 0; i--)
+        {
+            bool keep;
+            try { keep = Frames[i](); }
+            catch (Exception e) { Plugin.Logger.LogError($"UchuKit.EveryFrame: {e}"); keep = false; }
+            if (!keep && i < Frames.Count) Frames.RemoveAt(i);
+        }
+    }
 }

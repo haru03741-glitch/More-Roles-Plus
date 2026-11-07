@@ -48,6 +48,32 @@ public abstract class AddonBase : Assignable
     // 試合の終わりに、勝った陣営から勝ちを奪うか (RoleBase.StealsWin と同じ)
     public virtual bool StealsWin(GameResult result) => false;
 
+    // 試合の終わりに、勝った人に加わるか (RoleBase.AlsoWins と同じ)
+    public virtual bool AlsoWins(GameResult result) => false;
+
+    // 試合の終わりに、勝った人から外れるか (陣営が勝っても負けにする)
+    public virtual bool LosesWin(GameResult result) => false;
+
+    // この人のタスクをクルーのタスク勝利に数えるか
+    public virtual bool TasksCount => true;
+
+    // AlsoWins・LosesWin を使うアドオンは true (本編の終わり方でも MRP が結果を配る)
+    public virtual bool AffectsWin => false;
+
+    // 本人は生きている間このアドオンに気付かない (自分の役職の表示・説明に出さない)
+    public virtual bool HiddenFromSelf => false;
+
+    // 自分の端末で、この人のこのアドオンを今見せてよいか
+    internal bool ShownToLocal()
+    {
+        if (!HiddenFromSelf) return true;
+        var lp = PlayerControl.LocalPlayer;
+        return !lp || lp.PlayerId != PlayerId || (lp.Data != null && lp.Data.IsDead && SelfSeesWhenDead);
+    }
+
+    // 気付かないアドオンが、死んだ後に本人に分かるか
+    protected internal virtual bool SelfSeesWhenDead => true;
+
     // 付く陣営。設定画面に自動で付く
     internal BoolOpt OnCrew, OnMadmate, OnImpostor, OnNeutral;
 
