@@ -194,4 +194,21 @@ public static class UchuKit
         r.gameObject.SetActive(true);
         return r;
     }
+
+    // 自分の端末で: 本編のキルボタンを隠す (毎 FixedUpdate 呼ぶ)
+    public static void HideKillButton()
+    {
+        var hud = Vanilla.Hud;
+        if (hud && hud.KillButton && hud.KillButton.gameObject.activeSelf) hud.KillButton.gameObject.SetActive(false);
+    }
+
+    // 本編のキルボタンでのキルか (役職の能力で倒す時は PortKit.HostKill の前に印を付ける)
+    internal static int AbilityKill = -1;
+
+    public static bool HostAbilityKill(PlayerControl killer, PlayerControl target)
+    {
+        AbilityKill = killer ? killer.PlayerId : -1;
+        try { return PortKit.HostKill(killer, target); }
+        finally { AbilityKill = -1; }
+    }
 }
