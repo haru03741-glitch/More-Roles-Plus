@@ -2076,7 +2076,7 @@ Waraningyou.Name: わら人形
 Waraningyou.Blurb: 集めた恨みを一度に返せ
 Waraningyou.Summary: 会議で自分に入った票を貯めるクルーです。会議中に「呪う」と、その会議の自分の票が貯めた数 +1 票になります。
 Waraningyou.Curse: 呪う
-Waraningyou.Curse.Help: 会議中に自分の名札から使います (1 会議 1 回)。この会議の自分の票が、貯めた票の数 +1 票になり、貯めた票は 0 に戻ります。
+Waraningyou.Curse.Help: 会議中に自分の名札から使います (1 会議 1 回)。この会議の自分の票が、貯めた票の数 +1 票になり、貯めた票は 0 に戻ります。設定でスキップを許していなければ、呪った後はスキップできません。
 Waraningyou.Curse.Short: 貯めた票を一度に使う
 Waraningyou.DefaultVote: 始めに貯まっている票
 Waraningyou.AllowSkip: 呪った会議でスキップできる

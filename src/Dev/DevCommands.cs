@@ -643,6 +643,15 @@ internal static class DevCommands
             string addons = string.Join(",", System.Linq.Enumerable.Select(Roles.RoleState.AddonsOf(lp.PlayerId), x => x.Id));
             reply($"calc={calc:0.###} view={(ls ? ls.viewDistance : -1f):0.###} max={ShipStatus.Instance.MaxLightRadius:0.###} role={Roles.RoleState.Local?.Id} addons={addons}");
         });
+        TestBridge.Register("meetability", "<能力の順番> [相手の番号=自分] 会議の名札の能力ボタンを押したのと同じ (自分の役職の能力)", (args, reply) =>
+        {
+            var parts = (args ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var role = RoleState.Local;
+            if (role == null || parts.Length == 0 || !int.TryParse(parts[0], out int i) || i < 0 || i >= role.Abilities.Count) { reply("ERR meetability"); return; }
+            byte target = parts.Length > 1 && byte.TryParse(parts[1], out byte t) ? t : PlayerControl.LocalPlayer.PlayerId;
+            Abilities.MeetingClick(role.Abilities[i], target);
+            reply($"OK meetability {i} -> {target}");
+        });
         TestBridge.Register("nightcams", "停電中のカメラの暗視の状態", (_, reply) => reply(Rules.NightVisionCams.Describe()));
         TestBridge.Register("hudtweaks", "[scale | shot] 端末ごとの HUD の調整の状態。scale = ボタンの大きさを次へ・shot = スクリーンショットのキーと同じ", (args, reply) =>
         {

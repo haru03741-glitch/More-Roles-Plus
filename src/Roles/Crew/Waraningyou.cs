@@ -5,7 +5,7 @@ using MoreRolesPlus.Options;
 namespace MoreRolesPlus.Roles.Crew;
 
 // わら人形 (クルー): 会議で自分に入った票 (自分の票は除く) を貯める。会議中に 1 回「呪う」と、
-// その会議の自分の票が「貯めた数 + 1」票になり、貯めた数は 0 に戻る
+// その会議の自分の票が「貯めた数 + 1」票になり、貯めた数は 0 に戻る。スキップを許さない設定 (既定) なら、呪った後はスキップできない
 public sealed class Waraningyou : RoleBase
 {
     public override Team BaseTeam => Team.Crew;
@@ -41,6 +41,15 @@ public sealed class Waraningyou : RoleBase
     }
 
     private void OnMeetingStart(MeetingStartEvent e) => _cursed = false;
+
+    // 呪った会議では、スキップを許さない設定ならスキップのボタンを消す (元と同じく本人の画面から。本編が出し直しても毎フレーム消す)
+    [LocalOnly]
+    public override void OnFixedUpdate()
+    {
+        var hud = MeetingHud.Instance;
+        if (!_cursed || AllowSkip || !hud || !hud.SkipVoteButton) return;
+        if (hud.SkipVoteButton.gameObject.activeSelf) hud.SkipVoteButton.gameObject.SetActive(false);
+    }
 
     // ホスト: 呪った会議の票を重くし、自分に入った票を貯める
     [HostOnly]

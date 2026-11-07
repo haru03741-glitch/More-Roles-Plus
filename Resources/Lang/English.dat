@@ -2076,7 +2076,7 @@ Waraningyou.Name: Straw Doll
 Waraningyou.Blurb: Return all the grudges at once
 Waraningyou.Summary: A crewmate who stores the votes cast against them. Using "Curse" in a meeting makes your vote count as the stored votes +1.
 Waraningyou.Curse: Curse
-Waraningyou.Curse.Help: Use it from your own plate during a meeting (once per meeting). Your vote this meeting counts as the stored votes +1, and the store goes back to 0.
+Waraningyou.Curse.Help: Use it from your own plate during a meeting (once per meeting). Your vote this meeting counts as the stored votes +1, and the store goes back to 0. Unless the settings allow skipping, you cannot skip after cursing.
 Waraningyou.Curse.Short: Spend your stored votes
 Waraningyou.DefaultVote: Starting stored votes
 Waraningyou.AllowSkip: Can skip in the meeting you curse
