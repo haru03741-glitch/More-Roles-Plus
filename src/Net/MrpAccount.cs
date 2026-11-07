@@ -127,7 +127,8 @@ internal static class MrpAccount
     {
         var h = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         h.DefaultRequestHeaders.UserAgent.ParseAdd($"MoreRolesPlus/{Plugin.Version}");
-        if (_saved != null && _saved.Id.Length > 0) h.DefaultRequestHeaders.Add("X-Mrp-Account", _saved.Id + ":" + _saved.Token);
+        // 合言葉は暗号化された接続でだけ送る (http の接続先では読み取られる)
+        if (_saved != null && _saved.Id.Length > 0 && BaseUrl.StartsWith("https://", StringComparison.Ordinal)) h.DefaultRequestHeaders.Add("X-Mrp-Account", _saved.Id + ":" + _saved.Token);
         return h;
     }
 
@@ -316,6 +317,7 @@ internal static class MrpAccount
                 Room.Clear();
                 RoomRanked = false;
                 RoomReads = 0;
+                _roomRaw = null;
                 _bound = false;
             }
             return;
@@ -327,6 +329,7 @@ internal static class MrpAccount
             Room.Clear();
             RoomRanked = false;
             RoomReads = 0;
+            _roomRaw = null;
             _bound = false;
             _bindAt = Time.realtimeSinceStartup + 1.5f;
             _roomAt = 0f;
@@ -384,6 +387,8 @@ internal static class MrpAccount
 
     internal static bool IsBindChat(string text) => text != null && text.StartsWith("/mrpbind ", StringComparison.Ordinal);
 
+    private static string _roomRaw;
+
     private static void ReadRoom()
     {
         _roomBusy = true;
@@ -395,8 +400,17 @@ internal static class MrpAccount
             {
                 _roomBusy = false;
                 if (v is not { } x || !InMrpRoom() || RoomCode() != code) return;
-                RoomRanked = x.GetProperty("ranked").GetBoolean();
                 RoomReads++;
+                // 中身が前と同じなら何もしない (Version を上げると開いている画面が全部作り直される)
+                string raw = x.GetRawText();
+                bool same = raw == _roomRaw;
+                _roomRaw = raw;
+                if (same)
+                {
+                    if (!Room.ContainsKey(AmongUsClient.Instance.ClientId) && _bound) { _bound = false; _bindAt = Time.realtimeSinceStartup + 3f; }
+                    return;
+                }
+                RoomRanked = x.GetProperty("ranked").GetBoolean();
                 Room.Clear();
                 foreach (var p in x.GetProperty("players").EnumerateArray())
                 {
