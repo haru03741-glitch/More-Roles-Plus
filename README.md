@@ -182,6 +182,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 
 ### 🔹 システム・ランタイム・コンポーネント
 * **.NET Runtime & Base Class Libraries** ([Microsoft Corporation](https://dotnet.microsoft.com/)) - MIT License
+* **Opus** ([Xiph.Org Foundation ほか](https://github.com/xiph/opus)) - BSD-3-Clause License (ボイスチャットの声の圧縮)
 * **OpenSSL** ([The OpenSSL Project](https://www.openssl.org/)) - Apache-2.0 / OpenSSL License
 * **Dobby Instruction Relocation Engine** ([jmpews](https://github.com/jmpews/Dobby)) - Apache-2.0 License
 * **Android Jetpack / AndroidX Libraries** ([Google LLC](https://developer.android.com/jetpack/androidx)) - Apache-2.0 License
