@@ -15,6 +15,8 @@ internal static class BootClock
     private static bool _done;
     private static MainMenuManager _menu;
     private static bool _tickDone;
+    private static long _lastFrame = -1;
+    private static readonly StringBuilder _hitches = new();
     // メニューの起動処理 (ログイン・持ち物・ショップの準備) が終わったか、終わる前にメニューを離れた
     internal static bool StartupOver => _tickDone;
     // メニューが一度出た (起動の区切りの記録を締めた)
@@ -23,11 +25,17 @@ internal static class BootClock
     // メニューが出てから本編の起動処理 (ログイン・持ち物・ショップの準備) が終わるまでを見る。終われば以後は何もしない
     internal static void Tick()
     {
-        if (_tickDone || !_done) return;
+        if (_tickDone) return;
+        // 起動の間の重いフレーム (100ms 以上) を控える。どこで止まっているか (待ちか処理か) を見るため
+        long now = _sw.ElapsedMilliseconds;
+        if (_lastFrame >= 0 && now - _lastFrame >= 100 && _hitches.Length < 600)
+            _hitches.Append(_baseMs + _lastFrame).Append('+').Append(now - _lastFrame).Append(' ');
+        _lastFrame = now;
+        if (!_done) return;
         if (!_menu) { _tickDone = true; return; }
         if (!_menu.finishStartup) return;
         _tickDone = true;
-        Plugin.Logger.LogInfo($"BOOT startup={_baseMs + _sw.ElapsedMilliseconds}");
+        Plugin.Logger.LogInfo($"BOOT startup={_baseMs + _sw.ElapsedMilliseconds} hitches(ms)={_hitches.ToString().TrimEnd()}");
         MemTrim.Compact("menu"); // 起動 (パッチ当て) で膨らんだヒープを詰める
     }
 

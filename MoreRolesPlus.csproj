@@ -111,7 +111,7 @@
         <EmbeddedResource Include="Resources\Fonts\MochiyPopOne-Regular.ttf" LogicalName="MoreRolesPlus.Resources.Fonts.MochiyPopOne-Regular.ttf" />
     </ItemGroup>
     <ItemGroup>
-        <Compile Remove="tools\**;unity\**;patcher\**;installer\**;server\**" />
+        <Compile Remove="tools\**;unity\**;patcher\**;splash\**;installer\**;server\**" />
     </ItemGroup>
     <!-- 配る DLL (MrpPublicBuild=true) は公開しているソースだけで組む -->
     <ItemGroup Condition="'$(MrpPublicBuild)' == 'true'">

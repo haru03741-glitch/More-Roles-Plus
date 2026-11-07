@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- 起動中の画面 (別のプロセス)。BepInEx-MRP/patchers (または BepInEx/patchers) に patcher と並べて置く。
+         .NET Framework 4.8 なので Windows 10/11 なら何も入れずに動く -->
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net48</TargetFramework>
+        <UseWindowsForms>true</UseWindowsForms>
+        <LangVersion>latest</LangVersion>
+        <Nullable>disable</Nullable>
+        <AssemblyName>MoreRolesPlus.Splash</AssemblyName>
+        <RootNamespace>MoreRolesPlus.Splash</RootNamespace>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <GenerateDependencyFile>false</GenerateDependencyFile>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <DebugType>none</DebugType>
+        <Deterministic>true</Deterministic>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>1.0.0.0</FileVersion>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <Platforms>AnyCPU</Platforms>
+        <Prefer32Bit>false</Prefer32Bit>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    </ItemGroup>
+    <!-- 左に入れ替わりで出す MRP の役職の絵 -->
+    <ItemGroup>
+        <EmbeddedResource Include="..\Resources\Illus\*.jpg" LogicalName="Illus.%(Filename)%(Extension)" />
+    </ItemGroup>
+</Project>

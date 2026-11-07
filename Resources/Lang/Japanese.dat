@@ -1955,13 +1955,32 @@ Rank.Tier3: プラチナ
 Rank.Tier4: ダイヤ
 Rank.Tier5: マスター
 Rank.Record: {w} 勝 {l} 敗
-Ranked.Button: ランクマッチ (自動で部屋を探して入る)
+Ranked.Button: ランクマッチ
 Ranked.Title: ランクマッチ
 Ranked.NoServer: MRP のサーバーが見つかりません。地域で MRP のサーバーを選んでください
-Ranked.Searching: 部屋を探しています…
-Ranked.Joining: 部屋 {code} に入っています…
-Ranked.Creating: 空いている部屋が無いので、新しい部屋を作っています…
+Ranked.Searching: ランクマッチの部屋を探しています
+Ranked.Joining: ランクマッチの部屋に入っています
+Ranked.Creating: 空いている部屋が無いので、新しいランクマッチの部屋を作っています
 Ranked.Error: うまくいきませんでした ({error})
 Ranked.Players: {n} / {max} 人
 Ranked.Countdown: あと {s} 秒で開始 (足りない分はボットで埋めます)
-Ranked.Starting: まもなく開始します
+Ranked.Starting: そろいました！まもなく開始します
+Ranked.Wait: あと {n} 人そろうと始まります
+Ranked.Pastime: ミニゲームで待つ
+Ranked.PastimeStop: ミニゲームをやめる
+Ranked.PastimeScore: {n}点  Lv{lv}  最高 {best}
+Ranked.PastimeHint: 星を拾おう！続けて拾うとコンボ。赤い印とレーザーはよけて！
+Ranked.PastimeHit: 当たった！
+Ranked.PastimeOver: ゲームオーバー
+Ranked.PastimeFinal: {n}点   最高 {best}   もうすぐ最初から
+Ranked.PastimeBlock: 盾で防いだ！
+Ranked.PastimeShield: 盾！
+Ranked.LeaveTitle: ゲームをやめますか？
+Ranked.LeavePlaying: ランクマッチの試合の途中です。いまやめると負け扱いより重く、ランクが {n} 下がります。
+Ranked.LeaveLobby: ランクマッチの部屋から出ます (ロビーなのでランクは下がりません)。
+Ranked.LeaveStay: 続ける
+Ranked.LeaveGo: やめる
+Rank.Next: 次の {tier} まで あと {n}
+Rank.Top: 最高ランクです
+Ranked.SearchHint: 探している間は、ほかの部屋を作ったり入ったりできません
+Ranked.Cancel: やめる

@@ -282,8 +282,24 @@ internal static class ChatInputPatches
             if (!char.IsControl(real)) __result = true;
             return;
         }
+        // 名前の欄は絵文字・記号も含めてどんな字も通す (< > は名前の字に色などの指定を混ぜられるので断る)
+        if (NameBox(__instance))
+        {
+            if (!char.IsControl(real) && real != '<' && real != '>') __result = true;
+            return;
+        }
         // ほかの欄は本編の判定のまま。切られた値で断られた時だけ、本物の文字で本編と同じ範囲を見直す
         if (real != c) __result = VanillaAllows(__instance, real);
+    }
+
+    // 名前を打つ欄 (メニューの名前の変更・ロビーの名前の欄など)
+    private static bool NameBox(TextBoxTMP box)
+    {
+        var go = box.gameObject;
+        if (!go || box.IpMode) return false;
+        var parent = go.transform.parent;
+        return go.name.IndexOf("name", StringComparison.OrdinalIgnoreCase) >= 0
+            || parent && parent.name.IndexOf("name", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     // 切られる 0x80 以上の文字の判定。本編は文字 (漢字・かな・ハングル・アクセント付きの字など) を通すので、

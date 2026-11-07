@@ -58,7 +58,10 @@ internal static class MrpAccount
 
     // 今の部屋
     public static readonly Dictionary<int, PlayerRank> Room = new(); // ClientId →
-    public static bool RoomRanked { get; private set; }
+    private static bool _roomRanked;
+    public static bool RoomRanked { get => _roomRanked || TestRanked; private set => _roomRanked = value; }
+    internal static bool TestRanked; // 試験用 (ブリッジ: ranked fake on): 今の部屋をランクマッチの部屋として扱う
+    public static int RoomReads { get; private set; } // 今の部屋の情報をサーバーから読めた回数 (部屋が変わると 0)
     private static int _roomCode = -1;
     private static float _roomAt, _bindAt;
     private static bool _bound, _binding, _roomBusy;
@@ -188,12 +191,24 @@ internal static class MrpAccount
     }
 
     private static bool _refreshing;
+    private static readonly List<Action> RefreshWaiters = new();
 
-    // アカウントが無ければ作り、自分の数を読み直す
+    // アカウントが無ければ作り、自分の数を読み直す。読み直しの途中で呼ばれたら、その終わりに done を呼ぶ
     public static void Refresh(Action done = null)
     {
+        if (done != null) RefreshWaiters.Add(done);
         if (_refreshing) return;
         _refreshing = true;
+        done = () =>
+        {
+            var list = RefreshWaiters.ToArray();
+            RefreshWaiters.Clear();
+            foreach (var d in list)
+            {
+                try { d(); }
+                catch (Exception e) { Plugin.Logger.LogError($"account refresh: {e}"); }
+            }
+        };
         Load();
         string name = MyName();
         Run(async () =>
@@ -212,8 +227,11 @@ internal static class MrpAccount
             Main.Enqueue(() =>
             {
                 _refreshing = false;
-                if (me is { } v) Apply(v);
-                if (shop is { } sh) ApplyShop(sh);
+                // 読めない所があっても done は必ず呼ぶ (呼ばないと探す等が止まったままになる)
+                try { if (me is { } v) Apply(v); }
+                catch (Exception e) { Plugin.Logger.LogWarning($"account read: {e.Message}"); }
+                try { if (shop is { } sh) ApplyShop(sh); }
+                catch (Exception e) { Plugin.Logger.LogWarning($"shop read: {e.Message}"); }
                 LastError = "";
                 done?.Invoke();
             });
@@ -234,11 +252,20 @@ internal static class MrpAccount
         Version++;
     }
 
+    // 名前の大文字・小文字の違い (サーバーの版で Id / id) を気にせず読む
+    private static JsonElement Prop(JsonElement v, string name)
+    {
+        if (v.TryGetProperty(name, out var x)) return x;
+        foreach (var p in v.EnumerateObject())
+            if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)) return p.Value;
+        throw new KeyNotFoundException(name);
+    }
+
     private static void ApplyShop(JsonElement v)
     {
         Catalog.Clear();
-        foreach (var i in v.GetProperty("items").EnumerateArray())
-            Catalog.Add(new Item { Id = i.GetProperty("id").GetString() ?? "", Price = i.GetProperty("price").GetInt32(), MinTier = i.GetProperty("minTier").GetInt32() });
+        foreach (var i in Prop(v, "items").EnumerateArray())
+            Catalog.Add(new Item { Id = Prop(i, "id").GetString() ?? "", Price = Prop(i, "price").GetInt32(), MinTier = Prop(i, "minTier").GetInt32() });
         if (v.TryGetProperty("tiers", out var t))
         {
             var list = new List<int>();
@@ -288,6 +315,7 @@ internal static class MrpAccount
                 _roomCode = -1;
                 Room.Clear();
                 RoomRanked = false;
+                RoomReads = 0;
                 _bound = false;
             }
             return;
@@ -297,6 +325,8 @@ internal static class MrpAccount
         {
             _roomCode = code;
             Room.Clear();
+            RoomRanked = false;
+            RoomReads = 0;
             _bound = false;
             _bindAt = Time.realtimeSinceStartup + 1.5f;
             _roomAt = 0f;
@@ -366,6 +396,7 @@ internal static class MrpAccount
                 _roomBusy = false;
                 if (v is not { } x || !InMrpRoom() || RoomCode() != code) return;
                 RoomRanked = x.GetProperty("ranked").GetBoolean();
+                RoomReads++;
                 Room.Clear();
                 foreach (var p in x.GetProperty("players").EnumerateArray())
                 {
@@ -385,7 +416,7 @@ internal static class MrpAccount
     public sealed class RankedSettings
     {
         public string SettingCode = "";
-        public int MaxPlayers = 15, FillSeconds = 90, MinHumans = 2;
+        public int MaxPlayers = 15, FillSeconds = 90, MinHumans = 2, LeaveRating = 40;
     }
 
     public static void RankedConfig(Action<RankedSettings, string> done)
@@ -400,6 +431,7 @@ internal static class MrpAccount
                 s.MaxPlayers = x.GetProperty("maxPlayers").GetInt32();
                 s.FillSeconds = x.GetProperty("fillSeconds").GetInt32();
                 s.MinHumans = x.GetProperty("minHumans").GetInt32();
+                if (x.TryGetProperty("leaveRating", out var lr)) s.LeaveRating = lr.GetInt32();
             }
             Main.Enqueue(() => done(s, null));
         }, e => done(null, e));
@@ -408,15 +440,21 @@ internal static class MrpAccount
     // 入れる部屋のコード (無ければ "" = 自分で作る)
     public static void Queue(Action<string, string> done)
     {
-        Refresh(() =>
+        void Ask()
         {
-            if (!Ready) { done(null, LastError.Length > 0 ? LastError : "network"); return; }
             Run(async () =>
             {
                 var v = await Call(HttpMethod.Post, "/ranked/queue").ConfigureAwait(false);
-                string code = v?.GetProperty("code").GetString() ?? "";
+                string code = v is { } x && x.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() ?? "" : "";
                 Main.Enqueue(() => done(code, null));
             }, e => done(null, e));
+        }
+        // アカウントが読めていればすぐ聞く (待たせない)
+        if (Ready) { Ask(); return; }
+        Refresh(() =>
+        {
+            if (!Ready) { done(null, LastError.Length > 0 ? LastError : "network"); return; }
+            Ask();
         });
     }
 

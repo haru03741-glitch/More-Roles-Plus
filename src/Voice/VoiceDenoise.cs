@@ -5,13 +5,17 @@ namespace MoreRolesPlus.Voice;
 // ノイズキャンセリング (自分の声を送る前に・48kHz)。
 // 1024 点ずつ半分重ねて周波数に分け (√Hann の窓)、周波数ごとに「ずっと鳴っている音 (雑音)」の大きさを覚えておき、
 // 雑音に対する声の大きさから音を残す割合を決める (Wiener・決定指向の推定)。雑音は小さい方へはすぐ、大きい方へはゆっくり追う。
-// 残す割合は 0.08 (-22dB) より下げない (声が水の中のように聞こえる音の欠けを抑える)。遅れは 1024 点 (約 21ms)
+// 残す割合は 0.02 (-34dB) より下げない。遅れは 1024 点 (約 21ms)
+// さらに回ごとに「声らしさ」を見て、声が無い間は全体をもっと下げる (ゲート・-40dB)。
+//   声らしい = 声の帯 (300Hz〜4kHz) が雑音よりはっきり大きい。高い音ばかりの音 (キーボード・マウスのカチッ・擦れる音) は声とみなさない。
+//   声が止んでも少しの間 (約 180ms) は開けておく (言葉の終わりや「す」「し」を切らない)
+// 声の帯の外 (80Hz より下・8kHz より上) は雑音として強めに下げる
 internal static class VoiceDenoise
 {
     private const int N = 1024, Hop = N / 2, Bins = N / 2 + 1;
-    private const float Floor = 0.08f;          // 残す割合の下限
-    private const float OverSub = 1.6f;         // 雑音を少し多めに見る
-    private const float Rise = 1.012f;          // 雑音の見積もりが上がる速さ (1 回 = 約 11ms ごと)
+    private const float Floor = 0.02f;          // 残す割合の下限
+    private const float OverSub = 2.4f;         // 雑音を多めに見る
+    private const float Rise = 1.015f;          // 雑音の見積もりが上がる速さ (1 回 = 約 11ms ごと)
     private const float Alpha = 0.97f;          // 前の回の推定をどれだけ残すか
 
     private static readonly float[] Win = new float[N];
@@ -23,6 +27,13 @@ internal static class VoiceDenoise
     private static readonly float[] PrevGain = new float[Bins], PrevPost = new float[Bins];
     private static readonly float[] Gain = new float[Bins];
     private static int _pos, _frames;
+    // ゲート (声が無い間の全体の下げ)
+    private const float GateFloor = 0.01f;      // 閉じた時の残す割合 (-40dB)
+    private const float GateOpen = 3.2f;        // 声の帯の大きさ / 雑音 がこれより上なら声らしい (約 5dB)
+    private const int GateHold = 17;            // 声が止んでも開けておく回数 (約 180ms)
+    private const int VLo = 6, VHi = 86, Lo = 2, Hi = 171; // 300Hz・4kHz・94Hz・8kHz の番号 (1 つ 46.9Hz)
+    private static float _gate = GateFloor;
+    private static int _hold;
     private static bool _init;
 
     internal static void Reset()
@@ -40,6 +51,8 @@ internal static class VoiceDenoise
         for (int k = 0; k < Bins; k++) Noise[k] = 1e-6f;
         _pos = 0;
         _frames = 0;
+        _gate = GateFloor;
+        _hold = 0;
     }
 
     // 1 点入れて 1 点出す (出るのは前の溜めの分)
@@ -83,6 +96,27 @@ internal static class VoiceDenoise
             PrevGain[k] = g;
             PrevPost[k] = post;
         }
+        // 声らしさ: 声の帯の音 / 雑音 と、高い音の割合
+        double sp = 0, sn = 0, hp = 0;
+        for (int k = VLo; k < VHi; k++)
+        {
+            sp += Re[k] * Re[k] + Im[k] * Im[k];
+            sn += Noise[k];
+        }
+        for (int k = VHi; k < Bins; k++) hp += Re[k] * Re[k] + Im[k] * Im[k];
+        bool voiced = !learning && sp > sn * GateOpen && hp < sp * 1.5;
+        if (voiced) _hold = GateHold;
+        else if (_hold > 0) _hold--;
+        // 開く時はすぐ (話し始めを切らない)、閉じる時はなめらかに
+        if (_hold > 0) _gate += (1f - _gate) * 0.7f;
+        else _gate = Math.Max(GateFloor, _gate * 0.6f);
+        for (int k = 0; k < Bins; k++)
+        {
+            float g = Gain[k];
+            if (k < Lo || k > Hi) g *= 0.3f;
+            Gain[k] = g * _gate;
+        }
+
         // 隣り合う周波数と少しならす (残す割合のばらつきでピロピロ鳴る音を抑える)
         float prev = Gain[0];
         for (int k = 1; k < Bins - 1; k++)

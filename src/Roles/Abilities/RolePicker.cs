@@ -106,8 +106,16 @@ public static class RolePicker
         OpenFlag = false;
     }
 
-    // この試合に出うる役職 (出現率が 0 でない物・誰かに作られる物・本編の役職)
-    private static bool InPlay(RoleBase r) => r.IsVanilla || r.MadeByOthers || (r.Chance != null && r.Chance.Value > 0);
+    // この試合に出うる役職だけ並べる: 出現率も人数も 0 でない物・誰かに作られる物・設定の無い素のクルーとインポスター。
+    // 本編の役職 (エンジニアなど) も MRP の出現率と人数で配るので、0% や 0 人なら出さない
+    private static bool InPlay(RoleBase r)
+    {
+        if (r.MadeByOthers) return true;
+        if (r.Chance == null) return r.IsVanilla;
+        if (r.Chance.Value > 0 && (r.Count == null || r.Count.Value > 0)) return true;
+        // マッドメイトとして出る分
+        return r.MadChance != null && Crew.Madmate.MaddenRoles && r.MadChance.Value > 0 && (r.MadCount == null || r.MadCount.Value > 0);
+    }
 
     private static List<RoleBase> Candidates()
     {

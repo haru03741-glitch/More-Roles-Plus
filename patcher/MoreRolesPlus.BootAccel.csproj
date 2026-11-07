@@ -51,6 +51,16 @@
                Text="'$(MrpBepInExDir)\core\BepInEx.Preloader.Core.dll' が見つかりません。local.props の AmongUsPath を BepInEx-MRP を置いた Among Us のフォルダに合わせてください。" />
     </Target>
 
+    <!-- 起動中の画面 (splash/MoreRolesPlus.Splash.exe) を一緒に作り、patcher と並べて置く -->
+    <PropertyGroup>
+        <MrpSplashProject>$(MSBuildProjectDirectory)\..\splash\MoreRolesPlus.Splash.csproj</MrpSplashProject>
+        <MrpSplashExe>$(MSBuildProjectDirectory)\..\splash\bin\$(Configuration)\MoreRolesPlus.Splash.exe</MrpSplashExe>
+    </PropertyGroup>
+    <Target Name="BuildSplash" AfterTargets="Build" BeforeTargets="CopyToGame" Condition="Exists('$(MrpSplashProject)')">
+        <MSBuild Projects="$(MrpSplashProject)" Targets="Restore;Build" Properties="Configuration=$(Configuration)" />
+        <Copy SourceFiles="$(MrpSplashExe)" DestinationFolder="$(OutputPath)" Condition="Exists('$(MrpSplashExe)')" />
+    </Target>
+
     <!-- 配置先は本体と同じ (AmongUsPath と MrpExtraGamePaths・BepInEx-MRP\core が無い所は飛ばす) -->
     <Target Name="CopyToGame" AfterTargets="Build" Condition="'$(MrpNoDeploy)' != 'true'">
         <ItemGroup>
@@ -65,6 +75,7 @@
         </RemoveDuplicates>
         <MakeDir Directories="@(_MrpPatcherDirUnique)" />
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="%(_MrpPatcherDirUnique.Identity)\" ContinueOnError="WarnAndContinue" Condition="'@(_MrpPatcherDirUnique)' != ''" />
+        <Copy SourceFiles="$(OutputPath)MoreRolesPlus.Splash.exe" DestinationFolder="%(_MrpPatcherDirUnique.Identity)\" ContinueOnError="WarnAndContinue" Condition="'@(_MrpPatcherDirUnique)' != '' And Exists('$(OutputPath)MoreRolesPlus.Splash.exe')" />
         <Message Importance="high" Text="配置済み (patcher): %(_MrpPatcherDirUnique.Identity)" Condition="'@(_MrpPatcherDirUnique)' != ''" />
     </Target>
 </Project>

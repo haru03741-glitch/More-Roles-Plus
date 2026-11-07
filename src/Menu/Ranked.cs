@@ -13,61 +13,66 @@ using UnityEngine.Events;
 namespace MoreRolesPlus.Menu;
 
 // ランクマッチ。
-//   オンラインの画面の「ランクマッチ」を押すと、MRP のサーバーで空きのあるランクマッチの部屋を探して入る。
+//   「ランクマッチ」(プレイの画面・オンラインの画面) を押すと、MRP のサーバーで空きのあるランクマッチの部屋を探してそのまま入る。
 //   無ければ自分で部屋を作り (非公開・定員 15)、サーバーにランクマッチの部屋として届ける。
+//   入った部屋がランクマッチの部屋かはサーバーに確かめ、違えばすぐ抜けて探し直す (普通の部屋には入らない)。
 //   ランクマッチの部屋には「ホスト」がいない扱い: 開始のボタンと設定の画面は出さず、設定はサーバーが決めた物
-//   (config_mrp.json の Ranked.SettingCode) を自動で当て、人が揃うか待つ時間が過ぎたら足りない分をボットで埋めて自動で始める。
+//   (config_mrp.json の Ranked.SettingCode) を自動で当て、定員 (15 人) が揃ったら自動で始める (ボットでは埋めない)。
+//   揃うまでの間はロビーでミニゲーム (RankedPastime) で遊べる。
 //   試合が終わったら見た勝った人をサーバーへ知らせる (ランク・コインはサーバーが半分以上の知らせの一致で決める)。
-//   試合中に抜けるとサーバーがランクを下げる。
-//   ランクマッチのロビーと終了画面では、右上に自分のランクのバーを出す。ロビーでは皆の頭の上にランクを出す
+//   試合中に抜けるとサーバーがランクを下げる (抜ける前に確かめの窓を出す)。
 internal static class Ranked
 {
-    private enum Phase { Idle, Queue, Joining, Creating }
+    private enum Phase { Idle, Queue, Joining, Creating, Verify, Requeue }
     private static Phase _phase;
     private static float _phaseAt;
-    private static string _error = "";
+    private static int _attempt;
+    private static bool _leaving; // 自分で抜けている (確かめの窓を出さない)
 
     // 部屋 (ホスト)
     private static MrpAccount.RankedSettings _settings;
     private static int _appliedFor = -1;     // 設定を当てた部屋 + ロビーの回
     private static int _lobbyGen;
-    private static float _lobbySince = -1f, _fullAt = -1f, _botAt, _startAt = -1f;
-    private static bool _registering;
+    private static float _lobbySince = -1f, _fullAt = -1f, _cfgAt, _startAt = -1f;
+    private static bool _registering, _registerWait;
     private static int _ratingBefore = -1;
-    internal static int LastDelta;
     private static bool _reported;
 
     public static bool InRankedRoom => MrpAccount.RoomRanked && AmongUsClient.Instance && AmongUsClient.Instance.AmConnected;
+    public static bool Busy => _phase != Phase.Idle;
+    internal static bool Leaving => _leaving;
 
     // ── 探す ─────────────────────────────────
 
+    // 今はランクマッチを開けない (遊ぶ人がまだ少なく、待っても揃わないため)。開ける時は true にする
+    internal const bool Open = false;
+
     public static void Start()
     {
-        if (_phase != Phase.Idle) return;
+        if (!Open) return;
+        if (_phase != Phase.Idle && _phase != Phase.Requeue) return;
         if (!MrpRegion.Select())
         {
-            ShowStatus(new Text("Ranked.NoServer").ToString());
+            RankedToast.Show(new Text("Ranked.NoServer").ToString(), true);
+            _phase = Phase.Idle;
             return;
         }
-        _phase = Phase.Queue;
-        _phaseAt = Time.realtimeSinceStartup;
-        _error = "";
-        ShowStatus(new Text("Ranked.Searching").ToString());
+        Set(Phase.Queue);
+        SearchWindow(); // 押したらすぐ「探しています」を出す
         MrpAccount.RankedConfig((s, e) => { if (s != null) _settings = s; });
         MrpAccount.Queue((code, err) =>
         {
             if (_phase != Phase.Queue) return;
             if (err != null)
             {
-                _phase = Phase.Idle;
-                ShowStatus(new Text("Ranked.Error").With("error", err).ToString());
+                Set(Phase.Idle);
+                RankedToast.Show(new Text("Ranked.Error").With("error", err).ToString(), true);
                 return;
             }
             if (!string.IsNullOrEmpty(code))
             {
-                _phase = Phase.Joining;
-                _phaseAt = Time.realtimeSinceStartup;
-                ShowStatus(new Text("Ranked.Joining").With("code", code).ToString());
+                Set(Phase.Joining);
+                SearchWindow();
                 JoinLink.Request(code);
                 return;
             }
@@ -75,19 +80,85 @@ internal static class Ranked
         });
     }
 
+    private static void Set(Phase p)
+    {
+        _phase = p;
+        _phaseAt = Time.realtimeSinceStartup;
+    }
+
+    // 探すのをやめる (探している画面の「やめる」・× ・Esc)。入りかけの部屋からも出る
+    internal static void Cancel()
+    {
+        if (_phase == Phase.Idle) return;
+        var was = _phase;
+        Set(Phase.Idle);
+        _attempt = 0;
+        _registering = false;
+        RankedToast.Hide();
+        var c = AmongUsClient.Instance;
+        if ((was == Phase.Joining || was == Phase.Creating || was == Phase.Verify) && c && (c.AmConnected || c.GameState != InnerNetClient.GameStates.NotJoined))
+            Leave(false);
+        Plugin.Logger.LogInfo($"ranked: canceled ({was})");
+    }
+
+    // 試験用: 探している画面だけを出す (サーバーには聞かない・やめるで閉じる)
+    internal static void TestSearch()
+    {
+        Set(Phase.Queue);
+        SearchWindow();
+    }
+
+    // ── 探している間の画面 (メニュー) ─────────────────
+    // メニューの上を覆い、ほかの部屋を作る・入るボタンを押せなくする。閉じる = 探すのをやめる
+    private static UiWindow _searchWin;
+    private static Phase _searchShown = Phase.Idle;
+    private static bool _closingSearch;
+
+    private static bool Searching => _phase is Phase.Queue or Phase.Joining or Phase.Creating or Phase.Requeue;
+
+    private static void SearchWindow()
+    {
+        bool inMenu = UnityEngine.Object.FindObjectOfType<MainMenuManager>();
+        bool want = Searching && inMenu;
+        bool open = _searchWin != null && _searchWin.Root && UiWindow.Current == _searchWin;
+        if (!want)
+        {
+            if (open) { _closingSearch = true; try { _searchWin.Close(); } finally { _closingSearch = false; } }
+            _searchWin = null;
+            _searchShown = Phase.Idle;
+            return;
+        }
+        // 段 (探す・入る・作る) が変わったら書き直す
+        var shown = _phase == Phase.Requeue ? Phase.Queue : _phase;
+        if (open && _searchShown == shown) return;
+        if (open) { _closingSearch = true; try { _searchWin.Close(); } finally { _closingSearch = false; } }
+        _searchShown = shown;
+        // 場面が変わって (部屋に入って) 窓が消えた時はやめない。人が閉じた時 (窓がまだある) だけやめる
+        UiWindow w = null;
+        w = UiWindow.Open("RankedSearch", new Vector2(6.4f, 3.0f), () => { if (!_closingSearch && w != null && w.Root) Cancel(); });
+        _searchWin = w;
+        if (_searchWin == null) return;
+        RankedToast.Hide();
+        string key = shown switch { Phase.Joining => "Ranked.Joining", Phase.Creating => "Ranked.Creating", _ => "Ranked.Searching" };
+        var col = new Stack(false) { Gap = 0.2f, Width = 6.0f };
+        col.Add(new Label(new Text("Ranked.Button"), 2.4f) { MenuFont = true, Bold = true, Color = RankStyle.Accent });
+        col.Add(new Label(new Text(key), 1.7f) { Width = 5.8f });
+        col.Add(new Label(new Text("Ranked.SearchHint"), 1.3f) { Width = 5.8f, Color = RankStyle.Sub });
+        col.Add(new Button(new Text("Ranked.Cancel"), () => UiWindow.Current?.Close(), 1.6f) { Size = new Vector2(2.5f, 0.5f), Color = RankStyle.Warn });
+        _searchWin.Body.Set(col);
+    }
+
     private static void Create()
     {
         var c = AmongUsClient.Instance;
         var gm = GameOptionsManager.Instance;
-        if (!c || gm == null) { _phase = Phase.Idle; return; }
-        _phase = Phase.Creating;
-        _phaseAt = Time.realtimeSinceStartup;
-        ShowStatus(new Text("Ranked.Creating").ToString());
+        if (!c || gm == null) { Set(Phase.Idle); return; }
+        Set(Phase.Creating);
+        SearchWindow();
         try
         {
-            int max = Math.Clamp(_settings?.MaxPlayers ?? 15, 4, 15);
-            gm.GameHostOptions.SetInt(Int32OptionNames.MaxPlayers, max);
-            gm.CurrentGameOptions.SetInt(Int32OptionNames.MaxPlayers, max);
+            gm.GameHostOptions.SetInt(Int32OptionNames.MaxPlayers, MaxPlayers);
+            gm.CurrentGameOptions.SetInt(Int32OptionNames.MaxPlayers, MaxPlayers);
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"ranked: max players {e.Message}"); }
         _registering = true;
@@ -95,19 +166,19 @@ internal static class Ranked
         c.StartCoroutine(c.CoCreateOnlineGame());
     }
 
-    private static void ShowStatus(string text)
+    // 部屋を自分で抜ける (確かめの窓を出さない)。again = メニューへ戻ったら探し直す
+    private static void Leave(bool again)
     {
-        var w = UiWindow.Open("Ranked", new Vector2(6.4f, 2.4f), Cancel);
-        if (w == null) return;
-        var col = new Stack(false) { Gap = 0.15f, Width = 6f };
-        col.Add(new Label(new Text("Ranked.Title"), 2.4f) { MenuFont = true, Bold = true, Color = new Color(1f, 0.85f, 0.35f) });
-        col.Add(new Label(text, 1.6f) { Width = 5.8f });
-        w.Body.Set(col);
+        _leaving = true;
+        Set(again ? Phase.Requeue : Phase.Idle);
+        try { AmongUsClient.Instance.ExitGame(DisconnectReasons.ExitGame); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"ranked: leave {e.Message}"); }
     }
 
-    private static void Cancel()
+    private static void Fail(string error)
     {
-        if (_phase is Phase.Queue) _phase = Phase.Idle;
+        Plugin.Logger.LogWarning($"ranked: {error}");
+        RankedToast.Show(new Text("Ranked.Error").With("error", error).ToString(), true);
     }
 
     // ── 毎フレーム ───────────────────────────────
@@ -117,35 +188,73 @@ internal static class Ranked
         var c = AmongUsClient.Instance;
         if (!c) return;
         float now = Time.realtimeSinceStartup;
+        bool inLobby = LobbyBehaviour.Instance && PlayerControl.LocalPlayer;
+        bool inMenu = !c.AmConnected && c.GameState == InnerNetClient.GameStates.NotJoined;
+        if (inMenu) _leaving = false;
+        SearchWindow();
 
-        // 入った・作った
-        if (_phase is Phase.Joining or Phase.Creating)
+        switch (_phase)
         {
-            if (LobbyBehaviour.Instance && PlayerControl.LocalPlayer)
-            {
-                if (UiWindow.Current != null && UiWindow.Current.Root && UiWindow.Current.Root.name == "MrpWindow_Ranked") UiWindow.Current.Close();
-                if (_phase == Phase.Creating && _registering && c.AmHost)
+            case Phase.Joining:
+                if (inLobby)
+                {
+                    // 入った部屋がランクマッチの部屋かをサーバーに確かめる
+                    Set(Phase.Verify);
+                    RankedToast.Hide();
+                }
+                else if (now - _phaseAt > 12f)
+                {
+                    // 入れなかった (満員・始まった)。何度か探し直し、だめなら自分で作る
+                    if (++_attempt < 3) { Set(Phase.Requeue); _phaseAt -= 10f; }
+                    else { _attempt = 0; Create(); }
+                }
+                break;
+            case Phase.Creating:
+                if (inLobby && c.AmHost && _registering)
                 {
                     _registering = false;
+                    _registerWait = true;
+                    try { c.ChangeGamePublic(false); } catch (Exception) { } // 部屋の一覧に出さない (普通の人が入らない)
                     MrpAccount.Register(GameCode.IntToGameName(c.GameId), err =>
                     {
-                        if (err != null) Plugin.Logger.LogWarning($"ranked: register {err}");
+                        _registerWait = false;
+                        if (err == null) return;
+                        // サーバーにランクマッチの部屋として届けられない部屋には居ない (普通の部屋として遊ばれないように)
+                        Fail(err);
+                        Leave(false);
                     });
+                    Set(Phase.Idle);
+                    RankedToast.Hide();
+                    _attempt = 0;
                 }
-                _phase = Phase.Idle;
-            }
-            else if (now - _phaseAt > 40f)
-            {
-                _phase = Phase.Idle;
-                _registering = false;
-                ShowStatus(new Text("Ranked.Error").With("error", "timeout").ToString());
-            }
+                else if (now - _phaseAt > 40f) { Set(Phase.Idle); Fail("timeout"); }
+                break;
+            case Phase.Verify:
+                if (!inLobby) { Set(Phase.Idle); break; }
+                if (MrpAccount.RoomRanked) { Set(Phase.Idle); _attempt = 0; break; }
+                if (MrpAccount.RoomReads > 0 || now - _phaseAt > 12f)
+                {
+                    // ランクマッチの部屋ではなかった (終わって普通の部屋に戻った等)。抜けて探し直す
+                    Plugin.Logger.LogWarning("ranked: joined room is not ranked, leaving");
+                    if (++_attempt < 3) Leave(true);
+                    else { _attempt = 0; Leave(false); Fail("not_ranked"); }
+                }
+                break;
+            case Phase.Requeue:
+                if (inMenu && now - _phaseAt > 1.5f && UnityEngine.Object.FindObjectOfType<MainMenuManager>()) Start();
+                else if (now - _phaseAt > 30f) Set(Phase.Idle);
+                break;
         }
 
+        // 作った部屋をサーバーへ届けている間も、開始のボタンと設定の画面は出さない
+        if ((_registerWait || _phase == Phase.Creating) && inLobby) HideHostUi();
         if (!InRankedRoom)
         {
+            RestoreHostUi();
             _lobbySince = -1f;
-            RankBar.Hide();
+            RankHud.Hide();
+            LobbyBanner.Hide();
+            RankedPastime.Stop();
             return;
         }
         bool lobby = LobbyBehaviour.Instance && !ShipStatus.Instance;
@@ -160,45 +269,40 @@ internal static class Ranked
             }
             HideHostUi();
             if (c.AmHost) HostLobby(now);
-            RankBar.Show(false);
-            LobbyBanner.Show(Banner(now));
+            bool covered = Covered();
+            RankedPastime.Paused = covered;
+            if (covered)
+            {
+                RankHud.Hide();
+                LobbyBanner.Hide();
+            }
+            else
+            {
+                RankHud.Show();
+                LobbyBanner.Show(Players(), MaxPlayers, _startAt > 0f || _fullAt > 0f);
+            }
         }
         else
         {
             _lobbySince = -1f;
             LobbyBanner.Hide();
-            RankBar.Hide();
+            RankHud.Hide();
+            RankedPastime.Stop();
         }
     }
 
-    private static int Humans()
-    {
-        int n = 0;
-        foreach (var p in PlayerControl.AllPlayerControls)
-            if (p && p.Data != null && !p.Data.Disconnected && !Dev.BotPlay.IsOurs(p.PlayerId)) n++;
-        return n;
-    }
+    private static int Players() => GameData.Instance ? GameData.Instance.PlayerCount : 0;
 
-    private static int MaxPlayers => Math.Clamp(_settings?.MaxPlayers ?? 15, 4, 15);
-    private static float FillSeconds => Math.Max(10, _settings?.FillSeconds ?? 90);
+    internal static int MaxPlayers => Math.Clamp(_settings?.MaxPlayers ?? 15, 4, 15);
 
-    private static string Banner(float now)
-    {
-        int players = GameData.Instance ? GameData.Instance.PlayerCount : 0;
-        float left = Math.Max(0f, FillSeconds - (now - _lobbySince));
-        string head = $"<b><color=#FFD54F>{new Text("Ranked.Title")}</color></b>  {new Text("Ranked.Players").With("n", players).With("max", MaxPlayers)}";
-        string sub = _startAt > 0f ? new Text("Ranked.Starting").ToString() : new Text("Ranked.Countdown").With("s", Mathf.CeilToInt(left)).ToString();
-        return head + "\n<size=80%>" + sub + "</size>";
-    }
-
-    // ホスト (の端末) が裏で回す: 設定を当て、揃うか時間が来たらボットで埋めて始める
+    // ホスト (の端末) が裏で回す: 設定を当て、定員が揃ったら始める
     private static void HostLobby(float now)
     {
         if (_settings == null)
         {
-            if (now - _botAt > 5f)
+            if (now - _cfgAt > 5f)
             {
-                _botAt = now;
+                _cfgAt = now;
                 MrpAccount.RankedConfig((s, e) => { if (s != null) _settings = s; });
             }
             return;
@@ -209,70 +313,103 @@ internal static class Ranked
             _appliedFor = key;
             if (!string.IsNullOrEmpty(_settings.SettingCode) && !SettingCode.Apply(_settings.SettingCode))
                 Plugin.Logger.LogWarning("ranked: setting code could not be read");
-            try
-            {
-                var gm = GameOptionsManager.Instance;
-                gm.CurrentGameOptions.SetInt(Int32OptionNames.MaxPlayers, MaxPlayers);
-            }
+            try { GameOptionsManager.Instance.CurrentGameOptions.SetInt(Int32OptionNames.MaxPlayers, MaxPlayers); }
             catch (Exception) { }
             OptionSync.SendAll();
         }
         if (_startAt > 0f)
         {
-            if (now >= _startAt)
-            {
-                _startAt = -1f;
-                Begin();
-            }
+            if (Players() < MaxPlayers) { _startAt = _fullAt = -1f; return; } // 始まる前に抜けた人がいた
+            if (now >= _startAt) { _startAt = -1f; Begin(); }
             return;
         }
-        int players = GameData.Instance ? GameData.Instance.PlayerCount : 0;
-        bool timeUp = now - _lobbySince >= FillSeconds;
-        if (players >= MaxPlayers)
+        if (Players() >= MaxPlayers)
         {
             if (_fullAt < 0f) _fullAt = now;
-            if (now - _fullAt > 4f) _startAt = now + 1f;
+            if (now - _fullAt > 3f) _startAt = now + 2f;
             return;
         }
         _fullAt = -1f;
-        if (timeUp && now - _botAt > 0.25f)
-        {
-            _botAt = now;
-            string err = Dev.BotPlay.Add(null);
-            if (err != null)
-            {
-                Plugin.Logger.LogWarning($"ranked: bot {err}");
-                _startAt = now + 1f;
-            }
-        }
     }
 
     private static void Begin()
     {
         var gsm = Vanilla.StartManager;
         if (!gsm || !AmongUsClient.Instance.AmHost) return;
-        Plugin.Logger.LogInfo($"ranked: auto start players={GameData.Instance.PlayerCount} humans={Humans()}");
+        Plugin.Logger.LogInfo($"ranked: auto start players={Players()}");
+        RankedPastime.Stop();
         gsm.MinPlayers = 1;
         gsm.BeginGame();
     }
 
-    // 「ホストがいない」: 開始のボタンと設定の画面を出さない
+    // 「ホストがいない」: 開始のボタン・「ホスト: 〇〇」・設定を開くボタンを出さない
+    // (設定の画面は開く前にボタンごと隠す。開いてから閉じると一瞬見えてしまう)
+    private static readonly List<GameObject> Hidden = new();
+
     private static void HideHostUi()
     {
         var gsm = Vanilla.StartManager;
-        if (gsm && gsm.StartButton && gsm.StartButton.gameObject.activeSelf) gsm.StartButton.gameObject.SetActive(false);
-        if (gsm && gsm.HostViewButton && gsm.HostViewButton.gameObject.activeSelf) gsm.HostViewButton.gameObject.SetActive(false);
+        if (gsm)
+        {
+            Off(gsm.StartButton ? gsm.StartButton.gameObject : null, false);
+            Off(gsm.HostViewButton ? gsm.HostViewButton.gameObject : null, false);
+            Off(Child(gsm.transform, "StartGameArea/Host Info"), true);
+            Off(Child(gsm.transform, "StartGameArea/StartButton (Client)"), false);
+        }
+        var hud = Vanilla.Hud;
+        if (hud)
+        {
+            Off(Child(hud.transform, "LobbyInfoPane/AspectSize/GameSettingsButtons"), true);
+            Off(Child(hud.transform, "LobbyInfoPane/AspectSize/PrivacyLabel"), true); // 公開・非公開はランクマッチでは変えない
+        }
         if (GameSettingMenu.Instance) GameSettingMenu.Instance.Close();
     }
 
+    private static GameObject Child(Transform t, string path)
+    {
+        var c = t ? t.Find(path) : null;
+        return c ? c.gameObject : null;
+    }
+
+    // restore = ランクマッチの部屋を出たら出し直す物
+    private static void Off(GameObject go, bool restore)
+    {
+        if (!go || !go.activeSelf) return;
+        go.SetActive(false);
+        if (restore && !Hidden.Contains(go)) Hidden.Add(go);
+    }
+
+    private static void RestoreHostUi()
+    {
+        if (Hidden.Count == 0) return;
+        foreach (var go in Hidden) if (go) go.SetActive(true);
+        Hidden.Clear();
+    }
+
+    // ほかの画面 (着せ替え・チャット・Esc の画面・試合の情報・窓 など) が開いている間はランクの表示を隠す
+    private static bool Covered()
+    {
+        var hud = Vanilla.Hud;
+        if (PlayerCustomizationMenu.Instance && PlayerCustomizationMenu.Instance.gameObject.activeInHierarchy) return true;
+        if (Minigame.Instance || GameSettingMenu.Instance || UiWindow.IsOpen) return true;
+        if (!hud) return false;
+        if (hud.Chat && hud.Chat.IsOpenOrOpening) return true;
+        foreach (var path in CoverPaths)
+        {
+            var go = Child(hud.transform, path);
+            if (go && go.activeInHierarchy) return true;
+        }
+        return false;
+    }
+
+    private static readonly string[] CoverPaths = { "Menu", "MatchInfoGuide/MatchInfoParent", "FriendsList", "LobbyInfoPane/AspectSize/RulesPopOutWindow" };
+
     // ── 試合の終わり ─────────────────────────────
 
-    // 試合が始まった時の自分のランク (終わった後の増減を出す)
     internal static void OnGameStart()
     {
         if (!InRankedRoom) return;
         _ratingBefore = MrpAccount.Ready ? MrpAccount.Rating : -1;
-        LastDelta = 0;
     }
 
     internal static void OnGameEnd(EndGameResult result)
@@ -300,9 +437,35 @@ internal static class Ranked
 
     internal static int Delta => _ratingBefore >= 0 && MrpAccount.Ready ? MrpAccount.Rating - _ratingBefore : 0;
 
-    // ── オンラインの画面のボタン ──────────────────────
+    // ── 抜ける前の確かめ ───────────────────────────
 
-    private const string ButtonName = "MrpRankedButton";
+    private static bool _confirmed;
+
+    // 本編の「ゲームをやめる」を押した。ランクマッチの部屋なら確かめの窓を出して止める
+    internal static bool ConfirmLeave(ExitGameButton button)
+    {
+        if (_confirmed || _leaving || !InRankedRoom) return true;
+        if (UnityEngine.Object.FindObjectOfType<EndGameManager>()) return true; // 終わった後は下がらない
+        bool playing = ShipStatus.Instance && AmongUsClient.Instance.IsGameStarted;
+        var w = UiWindow.Open("RankedLeave", new Vector2(6.6f, 3.0f));
+        if (w == null) return true;
+        var col = new Stack(false) { Gap = 0.18f, Width = 6.2f };
+        col.Add(new Label(new Text("Ranked.LeaveTitle"), 2.3f) { MenuFont = true, Bold = true, Color = RankStyle.Accent });
+        col.Add(new Label(new Text(playing ? "Ranked.LeavePlaying" : "Ranked.LeaveLobby").With("n", _settings?.LeaveRating ?? 40), 1.5f) { Width = 6f, Color = playing ? RankStyle.Warn : RankStyle.Sub });
+        var stay = new Button(new Text("Ranked.LeaveStay"), () => UiWindow.Current?.Close(), 1.6f) { Size = new Vector2(2.5f, 0.5f), Color = RankStyle.Accent };
+        var go = new Button(new Text("Ranked.LeaveGo"), () =>
+        {
+            UiWindow.Current?.Close();
+            _confirmed = true;
+            try { if (button) button.OnClick(); }
+            finally { _confirmed = false; }
+        }, 1.6f) { Size = new Vector2(2.5f, 0.5f), Color = RankStyle.Warn };
+        col.Add(new Stack(true, stay, go) { Gap = 0.3f });
+        w.Body.Set(col);
+        return false;
+    }
+
+    // ── ボタン (プレイの画面・オンラインの画面) ──────────────
 
     // 字体の写し元 (字体の入った字)
     internal static TextMeshPro FontFrom(Transform root)
@@ -315,18 +478,26 @@ internal static class Ranked
         return null;
     }
 
-    internal static void EnsureButton()
+    private const string ButtonName = "MrpRankedButton";
+
+    internal static void EnsureButtons()
     {
+        if (!Open) return;
         var menu = UnityEngine.Object.FindObjectOfType<MainMenuManager>();
         if (!menu) return;
-        var scaler = menu.transform.Find("MainUI/AspectScaler/RightPanel/MaskedBlackScreen/OnlineButtons/AspectSize");
+        // オンラインの画面: カードの下
+        AddButton(menu.transform.Find("MainUI/AspectScaler/RightPanel/MaskedBlackScreen/OnlineButtons/AspectSize"), new Vector3(0.06f, -1.04f, -2f), new Vector2(4.9f, 0.42f));
+        // プレイの画面: 見出しの左の空き (オンラインの画面を通らずに入れる)
+        AddButton(menu.transform.Find("MainUI/AspectScaler/RightPanel/MaskedBlackScreen/GameModeButtons/AspectSize"), new Vector3(-0.91f, 2.18f, -2f), new Vector2(3.6f, 0.5f));
+    }
+
+    private static void AddButton(Transform scaler, Vector3 pos, Vector2 size)
+    {
         // 隠れている間に字を作ると字体が読めない (字の部品が起きていない) ので、画面が出てから作る
         if (!scaler || !scaler.gameObject.activeInHierarchy || scaler.Find(ButtonName)) return;
         var go = new GameObject(ButtonName) { layer = scaler.gameObject.layer };
         go.transform.SetParent(scaler, false);
-        go.transform.localPosition = new Vector3(0.06f, -1.04f, -2f);
-        var size = new Vector2(4.9f, 0.42f);
-        // 本編のボタンと同じ板 (MenuSkin の絵) にして、指が乗ると少し明るくする
+        go.transform.localPosition = pos;
         var bg = new GameObject("Back") { layer = go.layer }.AddComponent<SpriteRenderer>();
         bg.transform.SetParent(go.transform, false);
         bg.sprite = MenuSkin.Button(false);
@@ -334,9 +505,15 @@ internal static class Ranked
         bg.size = size;
         var col = go.AddComponent<BoxCollider2D>();
         col.size = size;
+        // 左に自分のランクの印
+        var icon = new GameObject("Emblem") { layer = go.layer }.AddComponent<SpriteRenderer>();
+        icon.transform.SetParent(go.transform, false);
+        icon.transform.localPosition = new Vector3(-size.x * 0.5f + 0.3f, 0f, -0.05f);
+        icon.transform.localScale = Vector3.one * 0.38f;
+        icon.sprite = RankEmblem.Get(MrpAccount.Ready ? MrpAccount.Tier : 0);
         var text = new GameObject("Text") { layer = go.layer };
         text.transform.SetParent(go.transform, false);
-        text.transform.localPosition = new Vector3(0f, 0f, -0.1f);
+        text.transform.localPosition = new Vector3(0.1f, 0f, -0.1f);
         var tmp = text.AddComponent<TextMeshPro>();
         var font = FontFrom(scaler.parent);
         if (font) { tmp.font = font.font; tmp.fontSharedMaterial = font.fontSharedMaterial; }
@@ -349,7 +526,7 @@ internal static class Ranked
         pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
         pb.OnMouseOver = new UnityEvent();
         pb.OnMouseOut = new UnityEvent();
-        pb.OnClick.AddListener((UnityAction)Start);
+        pb.OnClick.AddListener((UnityAction)(() => { _attempt = 0; Start(); }));
         pb.OnMouseOver.AddListener((UnityAction)(() => { if (bg) { bg.sprite = MenuSkin.Button(true); bg.size = size; } }));
         pb.OnMouseOut.AddListener((UnityAction)(() => { if (bg) { bg.sprite = MenuSkin.Button(false); bg.size = size; } }));
     }
@@ -364,10 +541,11 @@ internal static class Ranked
             {
                 Tick();
                 RankTags.Tick();
+                RankedToast.Tick();
                 if (Time.unscaledTime > _buttonAt && MenuSkin.InMenu())
                 {
                     _buttonAt = Time.unscaledTime + 0.5f;
-                    EnsureButton();
+                    EnsureButtons();
                 }
             }
             catch (Exception e) { Plugin.Logger.LogError($"ranked: {e}"); }
@@ -397,213 +575,21 @@ internal static class Ranked
         {
             try
             {
-                if (MrpAccount.RoomRanked) RankBar.ShowEnd(__instance);
+                if (MrpAccount.RoomRanked) RankHud.ShowEnd(__instance);
             }
             catch (Exception e) { Plugin.Logger.LogError($"ranked end screen: {e}"); }
         }
     }
 
-    internal static string Describe() => $"phase={_phase} ranked={MrpAccount.RoomRanked} settings={(_settings != null)} lobbySince={_lobbySince:0.0} start={_startAt:0.0} humans={(GameData.Instance ? Humans() : 0)}";
-}
-
-// 右上の自分のランクのバー (段の名前・数・次の段までの進み)。ランクマッチのロビーと終了画面
-internal static class RankBar
-{
-    private static GameObject _root;
-    private static TextMeshPro _text;
-    private static SpriteRenderer _fill;
-    private const float W = 3.2f, H = 0.9f, BarW = 2.9f, BarH = 0.14f;
-    private static int _seen = -1;
-    private static bool _end;
-
-    internal static void Hide()
+    [HarmonyPatch(typeof(ExitGameButton), nameof(ExitGameButton.OnClick))]
+    private static class LeavePatch
     {
-        if (_root && _root.activeSelf && !_end) _root.SetActive(false);
-    }
-
-    internal static void Show(bool end)
-    {
-        var hud = Vanilla.Hud;
-        if (!hud) return;
-        if (!_root || _end) Build(hud.transform, hud.gameObject.layer, false);
-        if (!_root) return;
-        if (!_root.activeSelf) _root.SetActive(true);
-        var cam = hud.UICamera;
-        if (cam)
+        public static bool Prefix(ExitGameButton __instance)
         {
-            var p = cam.ViewportToWorldPoint(new Vector3(0.84f, 0.77f, 0f));
-            _root.transform.position = new Vector3(p.x, p.y, hud.transform.position.z - 40f);
-        }
-        Refresh();
-    }
-
-    internal static void ShowEnd(EndGameManager egm)
-    {
-        Build(egm.transform, egm.gameObject.layer, true);
-        var cam = Camera.main;
-        if (cam && _root)
-        {
-            var p = cam.ViewportToWorldPoint(new Vector3(0.84f, 0.9f, 0f));
-            _root.transform.position = new Vector3(p.x, p.y, egm.transform.position.z - 20f);
-        }
-        Refresh();
-    }
-
-    // 終了画面では、サーバーが結果を決めて数が変わったら描き直す
-    internal static void Watch()
-    {
-        if (_root && _root.activeInHierarchy && _seen != MrpAccount.Version) Refresh();
-    }
-
-    private static void Build(Transform parent, int layer, bool end)
-    {
-        if (_root) UnityEngine.Object.Destroy(_root);
-        _end = end;
-        _root = new GameObject("MrpRankBar") { layer = layer };
-        _root.transform.SetParent(parent, false);
-        MenuArt.Panel(_root.transform, "Back", 0.14f, new Vector2(W, H), new Vector3(0f, 0f, 0.1f), new Color(0.08f, 0.08f, 0.2f, 0.88f), null).sortingOrder = 60;
-        MenuArt.Panel(_root.transform, "BarBack", 0.06f, new Vector2(BarW, BarH), new Vector3(0f, -0.25f, 0f), new Color(0.25f, 0.25f, 0.35f, 1f), null).sortingOrder = 61;
-        _fill = MenuArt.Panel(_root.transform, "Fill", 0.06f, new Vector2(BarW, BarH), new Vector3(0f, -0.25f, -0.01f), Color.white, null);
-        _fill.sortingOrder = 62;
-        var go = new GameObject("Text") { layer = layer };
-        go.transform.SetParent(_root.transform, false);
-        go.transform.localPosition = new Vector3(0f, 0.12f, -0.02f);
-        _text = go.AddComponent<TextMeshPro>();
-        var font = Ranked.FontFrom(parent);
-        if (font) { _text.font = font.font; _text.fontSharedMaterial = font.fontSharedMaterial; }
-        _text.fontSize = 1.8f;
-        _text.alignment = TextAlignmentOptions.Center;
-        _text.enableWordWrapping = false;
-        _text.rectTransform.sizeDelta = new Vector2(W, 0.5f);
-        _text.sortingOrder = 63;
-    }
-
-    private static void Refresh()
-    {
-        if (!_text || !_fill) return;
-        _seen = MrpAccount.Version;
-        if (!MrpAccount.Ready)
-        {
-            _text.text = new Text("Shop.Loading").ToString();
-            _fill.size = new Vector2(0.01f, BarH);
-            return;
-        }
-        int tier = MrpAccount.Tier;
-        string delta = "";
-        int d = Ranked.Delta;
-        if (_end && d != 0) delta = d > 0 ? $"  <color=#7CFF7C>+{d}</color>" : $"  <color=#FF7C7C>{d}</color>";
-        _text.text = $"<b><color=#{MrpAccount.TierColorHex(tier)}>{MrpAccount.TierName(tier)}</color></b>  {MrpAccount.Rating}{delta}\n<size=70%>{new Text("Rank.Record").With("w", MrpAccount.Wins).With("l", MrpAccount.Losses)}</size>";
-        float k = MrpAccount.Progress(MrpAccount.Rating);
-        float w = Mathf.Max(0.02f, BarW * k);
-        _fill.size = new Vector2(w, BarH);
-        _fill.transform.localPosition = new Vector3(-BarW * 0.5f + w * 0.5f, -0.25f, -0.01f);
-        _fill.color = MrpAccount.TierColors[Mathf.Clamp(tier, 0, 5)];
-    }
-
-    [HarmonyPatch(typeof(ModManager), nameof(ModManager.LateUpdate))]
-    private static class FramePatch
-    {
-        public static void Postfix()
-        {
-            try { Watch(); }
-            catch (Exception) { }
-        }
-    }
-}
-
-// ランクマッチのロビーの上の真ん中の帯 (人数・開始までの秒)
-internal static class LobbyBanner
-{
-    private static GameObject _root;
-    private static TextMeshPro _text;
-
-    internal static void Hide()
-    {
-        if (_root && _root.activeSelf) _root.SetActive(false);
-    }
-
-    internal static void Show(string body)
-    {
-        var hud = Vanilla.Hud;
-        if (!hud) return;
-        if (!_root)
-        {
-            _root = new GameObject("MrpRankedBanner") { layer = hud.gameObject.layer };
-            _root.transform.SetParent(hud.transform, false);
-            MenuArt.Panel(_root.transform, "Back", 0.14f, new Vector2(5.2f, 0.8f), new Vector3(0f, 0f, 0.1f), new Color(0.22f, 0.12f, 0.38f, 0.88f), null).sortingOrder = 60;
-            var go = new GameObject("Text") { layer = hud.gameObject.layer };
-            go.transform.SetParent(_root.transform, false);
-            go.transform.localPosition = new Vector3(0f, 0f, -0.02f);
-            _text = go.AddComponent<TextMeshPro>();
-            var font = hud.UseButton ? hud.UseButton.buttonLabelText : null;
-            if (font) { _text.font = font.font; _text.fontSharedMaterial = font.fontSharedMaterial; }
-            _text.fontSize = 2f;
-            _text.alignment = TextAlignmentOptions.Center;
-            _text.enableWordWrapping = false;
-            _text.rectTransform.sizeDelta = new Vector2(5.2f, 0.8f);
-            _text.sortingOrder = 61;
-        }
-        if (!_root.activeSelf) _root.SetActive(true);
-        var cam = hud.UICamera;
-        if (cam)
-        {
-            var p = cam.ViewportToWorldPoint(new Vector3(0.5f, 0.86f, 0f));
-            _root.transform.position = new Vector3(p.x, p.y, hud.transform.position.z - 40f);
-        }
-        if (_text.text != body) _text.text = body;
-    }
-}
-
-// ロビーで皆の頭の上 (名前の上) にランクを出す (MRP のサーバーで結ばれた人だけ)
-internal static class RankTags
-{
-    private const string TagName = "MrpRankTag";
-    private static float _at;
-    private static readonly List<GameObject> Shown = new();
-
-    internal static void Tick()
-    {
-        if (Time.unscaledTime < _at) return;
-        _at = Time.unscaledTime + 0.3f;
-        foreach (var go in Shown) if (go) go.SetActive(false);
-        Shown.Clear();
-        if (!LobbyBehaviour.Instance || ShipStatus.Instance) return;
-        foreach (var p in PlayerControl.AllPlayerControls)
-        {
-            if (!p || p.Data == null || !p.cosmetics || !p.cosmetics.nameText) continue;
-            var r = MrpAccount.RankOf(p);
-            if (r == null) continue;
-            var tag = Tag(p);
-            if (!tag) continue;
-            var tmp = tag.GetComponent<TextMeshPro>();
-            string text = $"<color=#{MrpAccount.TierColorHex(r.Tier)}>{MrpAccount.TierName(r.Tier)}</color> <size=80%>{r.Rating}</size>";
-            if (tmp.text != text) tmp.text = text;
-            tag.SetActive(true);
-            Shown.Add(tag);
+            try { return ConfirmLeave(__instance); }
+            catch (Exception e) { Plugin.Logger.LogError($"ranked leave: {e}"); return true; }
         }
     }
 
-    private static GameObject Tag(PlayerControl p)
-    {
-        var name = p.cosmetics.nameText;
-        var parent = name.transform.parent ? name.transform.parent : name.transform;
-        var t = parent.Find(TagName);
-        if (t) return t.gameObject;
-        var go = new GameObject(TagName) { layer = name.gameObject.layer };
-        go.transform.SetParent(parent, false);
-        go.transform.localPosition = name.transform.localPosition + new Vector3(0f, 0.27f, -0.01f);
-        var tmp = go.AddComponent<TextMeshPro>();
-        tmp.font = name.font;
-        tmp.fontSharedMaterial = name.fontSharedMaterial;
-        tmp.fontSize = name.fontSize * 0.75f;
-        tmp.enableAutoSizing = false;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.enableWordWrapping = false;
-        tmp.rectTransform.sizeDelta = new Vector2(2f, 0.3f);
-        var mr = go.GetComponent<MeshRenderer>();
-        var nr = name.GetComponent<MeshRenderer>();
-        if (mr && nr) { mr.sortingLayerID = nr.sortingLayerID; mr.sortingOrder = nr.sortingOrder + 1; }
-        go.SetActive(false);
-        return go;
-    }
+    internal static string Describe() => $"phase={_phase} attempt={_attempt} ranked={MrpAccount.RoomRanked} reads={MrpAccount.RoomReads} settings={(_settings != null)} lobbySince={_lobbySince:0.0} full={_fullAt:0.0} start={_startAt:0.0} players={Players()}/{MaxPlayers}";
 }

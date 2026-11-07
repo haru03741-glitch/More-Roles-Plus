@@ -8,7 +8,7 @@ namespace MoreRolesPlus.Menu;
 
 // 右下の操作のボタン (本編の キル・使う・通報・ベント・能力 と MRP の能力) の右上に、押すキーを小さく出す。
 // 右上の段 (設定・チャット・地図・役職辞典) は右下の角に、エモートの扇は選ぶ数字 (1〜4) を出す。
-// コントローラーがつながっている時は、その後ろにコントローラーのボタンの名前も出す。
+// 最後に触った物に合わせて出し分ける: コントローラーを触ればコントローラーのボタンの名前、キーボードかマウスならキーの名前。
 // 割り当ては Rewired から読む (本編の設定の「操作」で割り当て直した物もそのまま出る)。読むのは 0.5 秒ごと
 internal static class KeyHints
 {
@@ -33,6 +33,8 @@ internal static class KeyHints
         var hud = Vanilla.Hud;
         if (!hud) return;
         if (_tick % RefreshEvery == 0) Cache.Clear();
+        bool pad = UsingPad();
+        if (pad != _pad) { _pad = pad; Cache.Clear(); }
         // スマホはキーボードで押さないので出さない (前に出した物を消すため Put は回す)
         bool on = !OperatingSystem.IsAndroid() && (ClientOptions.KeyHints == null || ClientOptions.KeyHints.Value);
         Put(hud.KillButton, (int)RewiredConstsEnum.Action.ActionSecondary, on);
@@ -216,25 +218,84 @@ internal static class KeyHints
         return root.transform;
     }
 
-    // キー (とつながっているコントローラーのボタン) の名前
+    private static bool _pad;
+
+    // 最後に触ったのがコントローラーか (つながっていなければ常にキーボード)
+    internal static bool UsingPad()
+    {
+        try
+        {
+            if (!ReInput.isReady || ReInput.controllers.joystickCount == 0) return false;
+            var t = ReInput.controllers.GetLastActiveControllerType();
+            if (t == ControllerType.Joystick) return true;
+            if (t == ControllerType.Keyboard || t == ControllerType.Mouse) return false;
+            return _pad;
+        }
+        catch { return false; }
+    }
+
+    // 今の操作 (キーボードかコントローラー) でその操作を押すキー・ボタンの名前
     private static string Text(int actionId)
     {
         if (Cache.TryGetValue(actionId, out var s)) return s;
-        s = null;
-        if (ReInput.isReady)
+        s = ActionName(actionId, _pad);
+        Cache[actionId] = s;
+        return s;
+    }
+
+    // pad = true ならコントローラーのボタンの名前 (割り当てが無ければキー)、false ならキーの名前
+    internal static string ActionName(int actionId, bool pad)
+    {
+        if (!ReInput.isReady) return null;
+        string key = null, button = null;
+        try
         {
             var maps = ReInput.players.GetPlayer(0).controllers.maps;
             var k = maps.GetFirstElementMapWithAction(ControllerType.Keyboard, actionId, true);
-            if (k != null && k.keyboardKeyCode != KeyboardKeyCode.None) s = KeyName((KeyCode)(int)k.keyboardKeyCode);
-            if (ReInput.controllers.joystickCount > 0)
+            if (k != null && k.keyboardKeyCode != KeyboardKeyCode.None) key = KeyName((KeyCode)(int)k.keyboardKeyCode);
+            if (pad)
             {
                 var j = maps.GetFirstElementMapWithAction(ControllerType.Joystick, actionId, true);
-                if (j != null && !string.IsNullOrEmpty(j.elementIdentifierName))
-                    s = s == null ? j.elementIdentifierName : s + " / " + j.elementIdentifierName;
+                if (j != null && !string.IsNullOrEmpty(j.elementIdentifierName)) button = PadName(j.elementIdentifierName);
             }
         }
-        Cache[actionId] = s;
-        return s;
+        catch { }
+        return pad && button != null ? button : key;
+    }
+
+    // コントローラーのボタンの名前を短くする (板に収まるように)
+    private static string PadName(string n) => n switch
+    {
+        "Left Trigger" => "LT",
+        "Right Trigger" => "RT",
+        "Left Shoulder" => "LB",
+        "Right Shoulder" => "RB",
+        "Left Stick Button" => "LS",
+        "Right Stick Button" => "RS",
+        "D-Pad Up" => "↑",
+        "D-Pad Down" => "↓",
+        "D-Pad Left" => "←",
+        "D-Pad Right" => "→",
+        "Action Bottom Row 1" => "A",
+        "Action Bottom Row 2" => "B",
+        "Action Top Row 1" => "X",
+        "Action Top Row 2" => "Y",
+        _ => n.Replace("Button ", ""),
+    };
+
+    // 今の操作に合わせた名前 (キーボードのキーで書いた文の {key} を、コントローラーを使っている時はボタンの名前にする)
+    internal static string NameFor(int actionId) => ActionName(actionId, _pad);
+
+    // MRP の操作の名前 (コントローラーを使っている時はボタン、それ以外・割り当てが無い時はキー)
+    internal static string SlotName(Keybinds.Slot slot)
+    {
+        if (_pad)
+        {
+            int id = Keybinds.ActionId(slot);
+            var n = id >= 0 ? ActionName(id, true) : null;
+            if (!string.IsNullOrEmpty(n)) return n;
+        }
+        return KeyName(Keybinds.Key(slot));
     }
 
     internal static string KeyName(KeyCode k) => k switch

@@ -36,7 +36,7 @@ internal static class VoicePanel
         var w = UiWindow.Current;
         if (w == null || !IsOpen) return;
         var col = new Stack(false) { Gap = 0.12f, Width = InnerW };
-        string key = Menu.KeyHints.KeyName(Menu.Keybinds.Key(Menu.Keybinds.Slot.VoicePanel));
+        string key = Menu.KeyHints.SlotName(Menu.Keybinds.Slot.VoicePanel);
         col.Add(new Stack(true,
             new Label(new Text("VoicePanel.Title"), 2.4f) { MenuFont = true, Bold = true, Color = TitleColor },
             new Spacer(0.2f, 0.1f),

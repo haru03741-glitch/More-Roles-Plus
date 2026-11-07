@@ -1955,13 +1955,32 @@ Rank.Tier3: Platinum
 Rank.Tier4: Diamond
 Rank.Tier5: Master
 Rank.Record: {w}W {l}L
-Ranked.Button: Ranked match (find a room automatically)
+Ranked.Button: Ranked match
 Ranked.Title: Ranked Match
 Ranked.NoServer: The MRP server wasn't found. Pick the MRP server in the region list
-Ranked.Searching: Looking for a room...
-Ranked.Joining: Joining room {code}...
-Ranked.Creating: No open room, creating a new one...
+Ranked.Searching: Looking for a ranked room
+Ranked.Joining: Joining a ranked room
+Ranked.Creating: No open room, creating a new ranked room
 Ranked.Error: Something went wrong ({error})
 Ranked.Players: {n} / {max} players
 Ranked.Countdown: Starting in {s}s (bots fill the empty seats)
-Ranked.Starting: Starting soon
+Ranked.Starting: Everyone's here! Starting soon
+Ranked.Wait: Starts when {n} more players join
+Ranked.Pastime: Mini game while waiting
+Ranked.PastimeStop: Stop the mini game
+Ranked.PastimeScore: {n} pts  Lv{lv}  Best {best}
+Ranked.PastimeHint: Grab stars, chain combos, dodge red marks and lasers!
+Ranked.PastimeHit: Hit!
+Ranked.PastimeOver: Game over
+Ranked.PastimeFinal: {n} pts   Best {best}   Restarting soon
+Ranked.PastimeBlock: Blocked!
+Ranked.PastimeShield: Shield!
+Ranked.LeaveTitle: Leave the game?
+Ranked.LeavePlaying: This ranked match is still going. Leaving now counts worse than a loss: your rank drops by {n}.
+Ranked.LeaveLobby: You'll leave the ranked room (it's the lobby, so your rank won't drop).
+Ranked.LeaveStay: Stay
+Ranked.LeaveGo: Leave
+Rank.Next: {n} more to {tier}
+Rank.Top: Top rank
+Ranked.SearchHint: While searching you cannot create or join other rooms
+Ranked.Cancel: Cancel

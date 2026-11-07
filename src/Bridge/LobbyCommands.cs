@@ -194,6 +194,35 @@ internal static class LobbyCommands
             else if (a.Length > 0) { reply("ERR chatmode [free]"); return; }
             reply($"OK chatmode {mp.ChatMode} ({(int)mp.ChatMode})");
         });
+
+        TestBridge.Register("ranked", "[fake on|off] [pastime] [searchtest|cancel] ランクマッチの状態 / 今の部屋をランクマッチとして見せる (見た目の試験用) / 待ち時間のミニゲームを切り替える", (args, reply) =>
+        {
+            string a = args.Trim();
+            if (a == "fake on") Net.MrpAccount.TestRanked = true;
+            else if (a == "fake off") Net.MrpAccount.TestRanked = false;
+            else if (a == "pastime") Menu.RankedPastime.Toggle();
+            else if (a == "searchtest") Menu.Ranked.TestSearch();
+            else if (a == "cancel") Menu.Ranked.Cancel();
+            else if (a.Length > 0) { reply("ERR ranked [fake on|off] [pastime]"); return; }
+            reply("OK ranked " + Menu.Ranked.Describe() + " account=" + Net.MrpAccount.Describe());
+        });
+
+        TestBridge.Register("say", "<文> 自分としてチャットを送る (絵文字などの字の確かめ用)", (args, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp || string.IsNullOrWhiteSpace(args)) { reply("ERR say <文> (部屋の中で)"); return; }
+            lp.RpcSendChat(args.Trim());
+            reply("OK say " + args.Trim());
+        });
+
+        TestBridge.Register("setname", "<名前> 自分の名前を変える (部屋の中で・本編の名前の確かめを通す)", (args, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            string n = args.Trim();
+            if (!lp || n.Length == 0) { reply("ERR setname <名前> (部屋の中で)"); return; }
+            lp.CmdCheckName(n);
+            reply("OK setname " + n);
+        });
     }
 
     private static void Activate(Transform t)

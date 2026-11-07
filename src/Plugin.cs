@@ -227,6 +227,7 @@ public class Ticker : MonoBehaviour
         Menu.KeyHints.Tick();
         Net.VersionBanner.Tick();
         Options.SettingsCover.Tick();
+        Options.FontFallback.Tick();
         Menu.EmoteTab.Tick();
         Voice.VoiceChat.Tick();
         Menu.Recorder.Tick();

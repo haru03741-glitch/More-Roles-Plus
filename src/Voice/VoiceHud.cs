@@ -89,7 +89,7 @@ internal static class VoiceHud
 
     private static string Line()
     {
-        string key = Menu.KeyHints.KeyName(Menu.Keybinds.Key(Menu.Keybinds.Slot.VoiceMute));
+        string key = Menu.KeyHints.SlotName(Menu.Keybinds.Slot.VoiceMute);
         string me;
         if (!Menu.ClientOptions.VoiceMic.Value) me = $"<color=#9A9A9A>{new Text("VoiceChat.MicOff")}</color>";
 #if ANDROID
@@ -103,7 +103,7 @@ internal static class VoiceHud
         else if (VoiceChat.Muted) me = $"<color=#FF6060>{new Text("VoiceChat.Muted").With("key", key)}</color>";
 #endif
         else if (!VoiceRules.CanTalk(PlayerControl.LocalPlayer)) me = $"<color=#9A9A9A>{new Text("VoiceChat.Listening")}</color>";
-        else if (VoiceChat.RadioOn) me = $"<color=#FF8A80>{new Text("VoiceChat.RadioOn").With("key", Menu.KeyHints.KeyName(Menu.Keybinds.Key(Menu.Keybinds.Slot.TeamRadio)))}</color>";
+        else if (VoiceChat.RadioOn) me = $"<color=#FF8A80>{new Text("VoiceChat.RadioOn").With("key", Menu.KeyHints.SlotName(Menu.Keybinds.Slot.TeamRadio))}</color>";
         else if (Mic.Talking) me = $"<color=#7CFF7C>{new Text("VoiceChat.Talking")}</color>";
 #if ANDROID
         else me = new Text("VoiceChat.MicOnTouch").ToString(); // スマホはキーで押さない
