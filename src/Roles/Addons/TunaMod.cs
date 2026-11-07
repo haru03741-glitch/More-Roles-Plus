@@ -20,7 +20,7 @@ public sealed class TunaMod : AddonBase
     public static readonly FloatOpt TotalStop = new("TunaMod.TotalStop", 20f, 2.5f, 60f, 2.5f, "s") { When = () => Mode.Value == 1 };
     public static readonly BoolOpt MeetingReset = new("TunaMod.MeetingReset", false) { When = () => Mode.Value == 1 };
     public static readonly FloatOpt MeetingStop = new("TunaMod.MeetingStop", 10f, 1f, 10f, 1f, "s");
-    public static readonly BoolOpt CountInTask = new("TunaMod.CountInTask", true);
+    public static readonly BoolOpt CountInTask = new("TunaMod.CountInTask", false);
 
     private float _left = -1f, _total = -1f, _grace = 10f;
     private bool _counting;
@@ -86,7 +86,7 @@ public sealed class TunaMod : AddonBase
     {
         _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(171, 245, 255, 255));
         if (!PortKit.Alive(Player)) { _readout.Set(false); return; }
-        if (!_counting) { _readout.Set(true, $"<color=#FFFF00>{new Text("TunaMod.Paused")}</color>"); return; }
+        if (!_counting) { _readout.Set(true, null, 1f); return; }
         float t = Mode.Value == 1 ? _total : _left;
         float max = Mode.Value == 1 ? TotalStop : UsuallyStop;
         _readout.Set(true, $"<color={(t > 1f ? "#FFFF00" : "#FF0000")}>{t:0.0}s</color>", max > 0f ? t / max : -1f);

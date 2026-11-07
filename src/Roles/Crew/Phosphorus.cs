@@ -79,6 +79,7 @@ public sealed class Phosphorus : RoleBase
             Cooldown = () => LightCooldown,
             Duration = () => LightDuration,
             Cancellable = true,
+            Usable = () => _lanterns.Exists(CanLight), // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (!_lanterns.Exists(CanLight)) return false;

@@ -41,6 +41,7 @@ public sealed class Shaman : RoleBase
             Cooldown = () => NecromancyCooldown,
             Duration = () => NecromancyDuration,
             MaxUses = () => NumOfNecromancy,
+            Usable = () => InRoom(), // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (!InRoom()) return false;

@@ -33,6 +33,7 @@ internal sealed class ModButton
     private float _effect, _effectMax; // 効果の残り (本編の技術者のベントと同じく、ボタンを満たす形と残りの秒で出す)
     private int _effectShown = -1;     // 最後に書いた残りの秒
     private bool _usable = true;
+    private bool _locked;
 
     // 長押し (SetHold): 押している間だけ溜め、離した時に _onHold (溜めた値)。押したのがキーならそのキー・画面ならマウス/タッチを見る
     private Func<float> _holdMin, _holdMax;
@@ -134,8 +135,7 @@ internal sealed class ModButton
         else
         {
             _button.SetCoolDown(0f, Cooldown);
-            if (_usable) _button.SetEnabled();
-            else _button.SetDisabled();
+            Paint();
         }
     }
 
@@ -170,8 +170,7 @@ internal sealed class ModButton
             return;
         }
         _button.SetCoolDown(0f, Cooldown);
-        if (_usable) _button.SetEnabled();
-        else _button.SetDisabled();
+        Paint();
     }
 
     // 並びの外に置いたボタンを動かす・出し入れする時に (HUD ごと消えた後は null)
@@ -240,8 +239,45 @@ internal sealed class ModButton
         _usable = usable;
         if (_left > 0f || _effect > 0f || !_button) return;
         UpdateHint();
-        if (usable) _button.SetEnabled();
+        Paint();
+    }
+
+    // 今は使えない (封印中・条件が揃わない等): 押せず、ボタンを暗くする。待ち時間・効果の間も暗いまま
+    public void SetLocked(bool locked)
+    {
+        if (_locked == locked) return;
+        _locked = locked;
+        if (!_button) return;
+        if (_left > 0f || _effect > 0f)
+        {
+            if (_effect > 0f && _cancellable && !locked) _button.SetEnabled();
+            else _button.SetDisabled(); // 外した時は本編の色に戻す
+            Tint();
+            return;
+        }
+        UpdateHint();
+        Paint();
+    }
+
+    internal bool Locked => _locked;
+
+    private static readonly Color LockedColor = new(0.22f, 0.22f, 0.24f, 1f);
+
+    // 押せる/押せないの見た目を書く
+    private void Paint()
+    {
+        if (!_button) return;
+        if (_usable && !_locked) _button.SetEnabled();
         else _button.SetDisabled();
+        Tint();
+    }
+
+    // 使えない間は本編の「押せない」より暗い色にする (字は本編の押せない時と同じく薄く)
+    private void Tint()
+    {
+        if (!_button || !_locked) return;
+        if (_button.graphic) _button.graphic.color = LockedColor;
+        if (_button.buttonLabelText) _button.buttonLabelText.color = new Color(0.6f, 0.6f, 0.6f, 0.35f);
     }
 
     // ボタンの下の名前を書き換える (切り替えのボタン)
@@ -318,6 +354,7 @@ internal sealed class ModButton
         _left = Cooldown;
         _button.SetCoolDown(_left, Cooldown);
         _button.SetDisabled();
+        Tint();
         UpdateHint();
     }
 
@@ -372,7 +409,7 @@ internal sealed class ModButton
     private void Click()
     {
         if (_effect > 0f && _cancellable) { if (_canCancel == null || _canCancel()) CancelEffect(true); return; }
-        if (_left > 0f || _effect > 0f || !_usable || _holding) return;
+        if (_left > 0f || _effect > 0f || !_usable || _locked || _holding) return;
         bool used;
         try { used = _onClick(); }
         catch (Exception e) { Plugin.Logger.LogError($"button {_button.buttonLabelText.text}: {e}"); return; }
@@ -544,8 +581,7 @@ internal sealed class ModButton
         StartCooldown();
         if (_left <= 0f)
         {
-            if (_usable) _button.SetEnabled();
-            else _button.SetDisabled();
+            Paint();
             UpdateHint();
         }
     }
@@ -599,8 +635,7 @@ internal sealed class ModButton
             {
                 b._left = 0f;
                 b._button.SetCoolDown(0f, b.Cooldown);
-                if (b._usable) b._button.SetEnabled();
-                else b._button.SetDisabled();
+                b.Paint();
                 b.UpdateHint();
             }
             else b._button.SetCoolDown(b._left, b.Cooldown);
@@ -700,7 +735,7 @@ internal sealed class ModButton
     }
 
     internal string Describe() =>
-        _button ? $"{_button.buttonLabelText.text} left={_left:0.00} usable={_usable} on={_button.gameObject.activeInHierarchy}"
+        _button ? $"{_button.buttonLabelText.text} left={_left:0.00} usable={_usable} locked={_locked} col={(_button.graphic ? _button.graphic.color.r.ToString("0.00") : "-")} lab={(_button.buttonLabelText ? _button.buttonLabelText.color.r.ToString("0.00") : "-")} on={_button.gameObject.activeInHierarchy}"
             + (_onHold != null ? $" hold={(_holding ? _hold.ToString("0.00") : "-")}" + (_pb ? $" down={_pb.OnDown} up={_pb.OnUp} held={_pb.beingHeldDown}" : "") : "")
             : "dead";
 

@@ -17,6 +17,9 @@ public sealed class Resonance : AddonBase
     protected internal override bool DefaultOnMadmate => false;
     protected internal override bool DefaultOnNeutral => false;
 
+    // インポスターにだけ付く
+    public override bool CanAttach(Team team, RoleBase role) => team == Team.Impostor && base.CanAttach(team, role);
+
     public static readonly BoolOpt IsColorFlash = new("Resonance.IsColorFlash", false);
 
     [LocalOnly]

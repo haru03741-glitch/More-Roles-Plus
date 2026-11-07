@@ -182,7 +182,7 @@ internal static class Zoom
     }
 
     // HUD の端に寄せる部品を今のカメラの大きさで置き直す (本編が画面の大きさが変わった時に呼ぶのと同じ)
-    private static void Relayout()
+    internal static void Relayout()
     {
         // 受け手に場面の切り替えで消えかけた物がいると例外を出すので、ここで止める
         try { ResolutionManager.ResolutionChanged?.Invoke((float)Screen.width / Screen.height, Screen.width, Screen.height, Screen.fullScreen); }

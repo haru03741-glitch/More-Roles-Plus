@@ -60,6 +60,7 @@ public sealed class Arsonist : RoleBase
         });
         AddAbility(new Ability(new Text("Arsonist.Ignite"), "snr_fire")
         {
+            Usable = () => AllDoused(), // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (!AllDoused()) return false;

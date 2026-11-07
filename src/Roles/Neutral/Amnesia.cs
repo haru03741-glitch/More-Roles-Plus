@@ -59,7 +59,7 @@ public sealed class Amnesia : RoleBase
         if (dead == null || dead is Amnesia) return;
         var proto = Registry.Roles.Find(r => r.Id == dead.Id);
         if (proto == null) return;
-        bool extra = dead is Crew.Chicken;
+        bool extra = dead is Crew.Chicken or Crew.Guardian; // チキン・ガーディアンを写すとタスク +1
         var me = Player;
         RoleState.Change(me, proto);
         if (extra) ExtraTaskCall.Send(me.PlayerId);

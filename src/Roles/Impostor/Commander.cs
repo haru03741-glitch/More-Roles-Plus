@@ -47,11 +47,11 @@ public sealed class Commander : RoleBase
         (w, _) => w.Write((byte)0), r => r.ReadByte(),
         (sender, _) => { if (RoleState.Of(sender) is Commander) OnCommand(); }, perSecond: 2);
 
-    // 全員の端末で: インポスターにだけ効く
+    // 全員の端末で: インポスターとマッドメイトに効く
     private static void OnCommand()
     {
         var lp = PlayerControl.LocalPlayer;
-        if (!PortKit.Alive(lp) || !PortKit.IsImpostor(lp) || MeetingHud.Instance) return;
+        if (!PortKit.Alive(lp) || !(PortKit.IsImpostor(lp) || RoleState.Local?.Team == Team.Madmate) || MeetingHud.Instance) return;
         _commandUntil = Time.time + CommandDuration;
         _lostUntil = -1f;
         lp.SetKillTimer(CommandKillCooldown);

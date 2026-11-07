@@ -57,7 +57,7 @@ public sealed class SerialKiller : RoleBase
         // 自害までの秒は画面の下の札に出す (元は名前の横の字)
         _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(255, 25, 25, 255));
         bool show = _left >= 0f && PortKit.Alive(Player);
-        _readout.Set(show, show ? $"<color=#FF5050>{new Text("SerialKiller.Hud").With("s", Mathf.CeilToInt(_left))}</color>" : null, show && SuicideTime > 0f ? _left / SuicideTime : -1f);
+        _readout.Set(show, show ? $"<color=#FF5050>{Mathf.CeilToInt(_left)}s</color>" : null, show && SuicideTime > 0f ? _left / SuicideTime : -1f);
         if (_left < 0f || !PortKit.Alive(Player) || MeetingHud.Instance || ExileController.Instance || !ShipStatus.Instance) return;
         _left -= Time.fixedDeltaTime;
         if (_left > 0f) return;

@@ -174,10 +174,10 @@ public abstract class RaccoonBase : RoleBase
     {
         if (_readout == null) return;
         if (!PortKit.Alive(Player)) { _readout.Set(false); return; }
-        if (_grabbed == 255) { _readout.Set(true, new Text("Raccoon.Idle").ToString()); return; }
+        if (_grabbed == 255) { _readout.Set(false); return; }
         if (!_room) { _readout.Set(false); return; }
         string room = TranslationController.Instance ? TranslationController.Instance.GetString(_room.RoomId) : _room.RoomId.ToString();
-        _readout.Set(true, new Text("Raccoon.GoTo").With("room", $"<color=#FFD27A>{room}</color>").ToString());
+        _readout.Set(true, $"<color=#FFD27A>{room}</color>");
     }
 
     // 調べて分かった人の名前の上に役職

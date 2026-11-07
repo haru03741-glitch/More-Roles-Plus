@@ -55,6 +55,7 @@ public sealed class Mushroomer : RoleBase
         {
             Cooldown = () => ExplodeCooldown,
             MaxUses = () => ExplodeCount,
+            Usable = () => _plant.UsesLeft <= 0 && _nextTurn.Count == 0, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (!Player.CanMove || _plant.UsesLeft > 0 || _nextTurn.Count > 0) return false;

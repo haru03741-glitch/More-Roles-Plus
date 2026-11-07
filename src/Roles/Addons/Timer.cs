@@ -24,6 +24,6 @@ public sealed class Timer : AddonBase
     {
         if (!MeetingHud.Instance && !ExileController.Instance) _time += Time.fixedDeltaTime;
         _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(3, 252, 194, 255));
-        _readout.Set(true, new Text("Timer.Text").With("t", _time.ToString("0.0")).ToString());
+        _readout.Set(true, _time.ToString("0.0") + "s");
     }
 }

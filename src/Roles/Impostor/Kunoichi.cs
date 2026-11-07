@@ -56,6 +56,7 @@ public sealed class Kunoichi : RoleBase
         {
             Cooldown = () => ThrowCooldown,
             CooldownAtStart = false,
+            Usable = () => _equipped && (!_hidden || ThrowWhileHidden), // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (!_equipped || (_hidden && !ThrowWhileHidden)) return false;
@@ -71,6 +72,7 @@ public sealed class Kunoichi : RoleBase
             _hide = AddAbility(new Ability(new Text("Kunoichi.Hide"), "kunoichi_hide")
             {
                 CooldownAtStart = false,
+                Usable = () => !_hidden && _still >= HideWait, // 使えない間はボタンを暗くする
                 OnUse = () =>
                 {
                     if (_hidden || _still < HideWait) return false;
@@ -180,9 +182,12 @@ public sealed class Kunoichi : RoleBase
         if (KunaiOnBody)
         {
             var t = PortKit.ById(tid);
-            if (t) PortKit.After(0.3f, () => { if (t) PortKit.Marker(RoleState.Match, t.GetTruePosition(), "kunoichi_kunai", 0.45f); });
+            if (t) PortKit.After(0.3f, () => { if (t) BodyKunai.Add(PortKit.Marker(RoleState.Match, t.GetTruePosition(), "kunoichi_kunai", 0.45f)); });
         }
     }
+
+    // 死体に残ったクナイ (全員の端末で)。会議で消える
+    private static readonly System.Collections.Generic.List<SpriteRenderer> BodyKunai = new();
 
     [LocalOnly]
     public override void OnFixedUpdate()
@@ -229,6 +234,8 @@ public sealed class Kunoichi : RoleBase
     private void OnMeetingStart(MeetingStartEvent e)
     {
         if (ResetHitsOnMeeting) _hits.Clear();
+        foreach (var r in BodyKunai) if (r) Object.Destroy(r.gameObject); // 死体に残ったクナイは会議で消える
+        BodyKunai.Clear();
         if (!IsLocal) return;
         SetEquip(false);
         _hidden = false;

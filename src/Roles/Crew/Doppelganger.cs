@@ -68,6 +68,7 @@ public sealed class Doppelganger : RoleBase
         _despawn = AddAbility(new Ability(new Text("Doppelganger.Despawn"), "doppelganger_despawn")
         {
             CooldownAtStart = false,
+            Usable = () => Mine != null, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (Mine == null) return false;

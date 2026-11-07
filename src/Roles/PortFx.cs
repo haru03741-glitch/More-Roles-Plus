@@ -154,7 +154,7 @@ public static class Cloak
     }
 }
 
-// 自分の画面を引く (見える範囲を k 倍に広げる)。影も同じだけ広げる。会議と試合の終わりで戻る
+// 自分の画面を引く (見える範囲を k 倍に広げる)。影と HUD のカメラも同じだけ広げる。会議と試合の終わりで戻る
 public static class ViewScale
 {
     private const float BaseSize = 3f;
@@ -172,6 +172,10 @@ public static class ViewScale
         var cam = Camera.main;
         if (cam) cam.orthographicSize = BaseSize * _k;
         var hud = Vanilla.Hud;
+        // HUD の端に寄せる部品は世界のカメラの大きさで位置を決めるので、HUD のカメラも同じだけ引いて置き直す
+        // (引かないと HUD が画面の外へずれる。Zoom と同じ作り)
+        if (hud && hud.UICamera) hud.UICamera.orthographicSize = BaseSize * _k;
+        Zoom.Relayout();
         var q = hud && hud.ShadowQuad ? hud.ShadowQuad.transform : null;
         if (q)
         {

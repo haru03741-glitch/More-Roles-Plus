@@ -50,7 +50,7 @@ public sealed class Obolus : RoleBase
             Target = AbilityTarget.Player,
             Cooldown = () => KillCooldown,
             UsesPerMeeting = 1,
-            CanTarget = (_, _) => !Sealed,
+            Usable = () => !Sealed, // 封印の間はボタンが暗く押せない
             OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t); },
         });
     }
@@ -99,16 +99,5 @@ public sealed class Obolus : RoleBase
     {
         if (e.Player && e.Player.PlayerId == PlayerId && Reveal && RevealDeath && Prey(PlayerControl.LocalPlayer))
             PortKit.Notice(new Text("Obolus.Dead").ToString());
-    }
-
-    private HudReadout _readout;
-
-    // 封印の残りの会議の数は画面の下の札に出す (元は名前の横の字)
-    [LocalOnly]
-    public override void OnFixedUpdate()
-    {
-        _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new UnityEngine.Color32(189, 135, 26, 255));
-        bool show = Sealed && PortKit.Alive(Player);
-        _readout.Set(show, show ? new Text("Obolus.SealHud").With("n", KillShieldTurn - _meetings).ToString() : null);
     }
 }

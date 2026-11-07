@@ -102,7 +102,7 @@ public sealed class Baphomet : AddonBase, IWinOverride
             if (!meeting) _standCooldown -= dt;
             _standing = 0f;
         }
-        else if (!meeting && Player.MyPhysics && Player.MyPhysics.Velocity.magnitude < 0.001f && near) _standing += dt;
+        else if (!meeting && Player.MyPhysics && Player.MyPhysics.Velocity.magnitude < 0.001f) _standing += dt; // 亡霊は止まれば出る (ファムルスの近くでなくても)
         else _standing = 0f;
 
         if (_standing > 0.6f && !_ghostOn) GhostCall.Send((true, Player.transform.position.x, Player.transform.position.y, Player.cosmetics && Player.cosmetics.FlipX));
@@ -177,10 +177,10 @@ public sealed class Baphomet : AddonBase, IWinOverride
     {
         _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), Tint);
         if (Player == null || Player.Data == null || !Player.Data.IsDead) { _readout.Set(false); return; }
-        if (_canWin) { _readout.Set(true, $"<color=#40FF40>{new Text("Baphomet.GaugeText")}</color>", 1f); return; }
+        if (_canWin) { _readout.Set(true, null, 1f); return; }
         string col = _progress > 0f ? (_standing < 0.8f ? "#C0C060" : "#FFFF00") : (_standing < 0.8f ? "#A0A0A0" : "#FFFFFF");
         float need = TotalStandingTimeToWin.Value;
-        _readout.Set(true, $"<color={col}>{new Text("Baphomet.GaugeText")} {_progress:0.#}s/{need:0.#}s</color>", need > 0f ? _progress / need : 1f);
+        _readout.Set(true, $"<color={col}>{_progress:0}/{need:0}</color>", need > 0f ? _progress / need : 1f);
     }
 
     // ホスト: 試合の終わりにバフォメットの勝ちへ替える

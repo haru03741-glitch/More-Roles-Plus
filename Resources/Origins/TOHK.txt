@@ -1,3 +1,3 @@
 # From: に出す名前 (役職のコードの Origin => "TOHK" で使う)
-name: TownOfHost|_K
-color: #00BFFF #FF7F50
+name: TownOfHost-K
+color: #00BFFF

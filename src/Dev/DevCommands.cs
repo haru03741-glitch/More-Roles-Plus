@@ -634,6 +634,15 @@ internal static class DevCommands
             reply("ERR minigame no task with a console");
         });
         TestBridge.Register("shield", "[番号|255] 前の試合の最初の犠牲者の盾の状態 / その人に今すぐ盾を付ける (255 = 外す・ホストのみ全員へ)", (args, reply) => reply(Rules.VanillaTweaks.DevShield(args.Trim())));
+        TestBridge.Register("vision", "自分の視界: 船の計算した半径・明かりの今の届く距離・役職とアドオン", (_, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp || !ShipStatus.Instance) { reply("no ship"); return; }
+            float calc = ShipStatus.Instance.CalculateLightRadius(lp.Data);
+            var ls = lp.lightSource;
+            string addons = string.Join(",", System.Linq.Enumerable.Select(Roles.RoleState.AddonsOf(lp.PlayerId), x => x.Id));
+            reply($"calc={calc:0.###} view={(ls ? ls.viewDistance : -1f):0.###} max={ShipStatus.Instance.MaxLightRadius:0.###} role={Roles.RoleState.Local?.Id} addons={addons}");
+        });
         TestBridge.Register("nightcams", "停電中のカメラの暗視の状態", (_, reply) => reply(Rules.NightVisionCams.Describe()));
         TestBridge.Register("hudtweaks", "[scale | shot] 端末ごとの HUD の調整の状態。scale = ボタンの大きさを次へ・shot = スクリーンショットのキーと同じ", (args, reply) =>
         {

@@ -15,6 +15,9 @@ public sealed class Egoist : AddonBase
     protected internal override bool DefaultOnMadmate => false;
     protected internal override bool DefaultOnNeutral => false;
 
+    // クルーにだけ付く
+    public override bool CanAttach(Team team, RoleBase role) => team == Team.Crew && base.CanAttach(team, role);
+
     public override bool AffectsWin => true;
     public override bool TasksCount => false;
 

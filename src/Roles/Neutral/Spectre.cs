@@ -80,6 +80,7 @@ public sealed class Spectre : RoleBase
         {
             Cooldown = () => VanishCooldown,
             Duration = () => VanishDuration,
+            Usable = () => VanishCost + 1f < Satiety, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (!(VanishCost + 1f < Satiety)) return false;

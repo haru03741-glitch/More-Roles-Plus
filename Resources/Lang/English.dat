@@ -23,11 +23,13 @@ Demolisher.Hammer: Hammer
 # ── Lighter ──
 Lighter.Name: Lighter
 Lighter.Blurb: See further than the rest
-Lighter.Summary: A crewmate who sees farther than others.
+Lighter.Summary: A crewmate who sees farther than others, and keeps more vision during lights sabotage.
 Lighter.Tips: Keep watch from afar and report what you saw in meetings.
 Lighter.Quote: Nothing hides in the dark from me.
-Lighter.VisionMultiplier: Vision Multiplier
-Lighter.VisionMultiplier.Detail: Multiplier applied to normal crewmate vision.
+Lighter.LightsOnVision: Vision with lights on
+Lighter.LightsOnVision.Detail: Vision while the lights are on, relative to the ship's full light.
+Lighter.LightsOffVision: Vision with lights off
+Lighter.LightsOffVision.Detail: Vision during a lights sabotage, relative to the ship's full light.
 
 # ── Portal Maker (PortalMaker) ──
 PortalMaker.Name: Portal Maker
@@ -218,9 +220,12 @@ Samurai.FellAnnounce: <color=#C0203A>The Samurai has fallen to Carnage</color>
 # ── Hawkeye ──
 Hawkeye.Name: Hawkeye
 Hawkeye.Blurb: See further than the rest
-Hawkeye.Help: An add-on that widens your vision. The settings decide which teams can get it.
+Hawkeye.Help: An add-on with a Hawkeye button that widens your vision for a while. The settings decide which teams can get it.
+Hawkeye.Use: Hawkeye
+Hawkeye.Duration: Wide vision duration
+Hawkeye.Cooldown: Hawkeye cooldown
 Hawkeye.VisionPercent: Vision
-Hawkeye.VisionPercent.Detail: Vision of the holder, where normal vision is 100%.
+Hawkeye.VisionPercent.Detail: Vision while Hawkeye is active, where normal vision is 100%.
 
 # ── Quickhands ──
 Quickhands.Name: Quickhands
@@ -2228,7 +2233,6 @@ Kunoichi.HideWait: Time standing still before hiding
 Kunoichi.HideButton: Hide with a button (otherwise automatic)
 Kunoichi.ThrowWhileHidden: Can throw while hidden
 SerialKiller.Name: Serial Killer
-SerialKiller.Hud: Suicide in {s}s
 SerialKiller.Blurb: Keep killing or die
 SerialKiller.Summary: An impostor who must keep killing within a set time after their first kill, or die.
 SerialKiller.Timer: Suicide Timer
@@ -2321,7 +2325,6 @@ Bettor.TeamCrew: Crew team
 Bettor.TeamNeutral: Neutral
 Bettor.TeamMadmate: Impostor team
 Obolus.Name: Obolus
-Obolus.SealHud: Kill sealed: {n} more meetings
 Obolus.Blurb: Take the ferry toll from the wicked
 Obolus.Summary: A neutral with a kill button. The kill is sealed for the first few meetings. Killing an impostor (or a Jackal, option) wins alone.
 Obolus.WinCond: Win alone the moment you kill an impostor (or a Jackal, option)
@@ -2339,7 +2342,6 @@ Obolus.RevealDeath: Also tell them when the Obolus dies
 Obolus.Warning: Beware of the Obolus!
 Obolus.Dead: The Obolus died
 Seed.Name: Seed
-Seed.GaugeHud: Symbiosis {a} / {b}s
 Seed.Blurb: Live with someone, win with them
 Seed.Summary: A neutral who wins along with whoever they "Symbiosis" with. With the gauge (option), staying near your partner fills it, and it must be full to win.
 Seed.WinCond: Also win when one of your partners wins
@@ -2386,8 +2388,6 @@ Raccoon.KillOnMeetingIfGrabbing: Kill the grabbed player when a meeting starts
 Raccoon.MakeChildCooldown: Make Child cooldown
 Raccoon.ChildKillCooldown: Child kill cooldown
 Raccoon.ChildKillOnMeetingIfGrabbing: Children also kill the grabbed player when a meeting starts
-Raccoon.Idle: Grab someone
-Raccoon.GoTo: Carry them to {room}
 Raccoon.Result: {name} was {role}
 RaccoonChild.Name: Raccoon Child
 RaccoonChild.Blurb: Grab and wash with your parent
@@ -2400,6 +2400,12 @@ Guest.Help: An addon that can't press the emergency button.
 Watcher.Name: Watcher
 Watcher.Blurb: No anonymous vote escapes you
 Watcher.Help: An addon that sees who voted for whom even when voting is anonymous.
+NiceWatcher.Name: Nice Watcher
+NiceWatcher.Blurb: No vote escapes you
+NiceWatcher.Summary: A crewmate who sees who voted for whom, even with anonymous votes.
+EvilWatcher.Name: Evil Watcher
+EvilWatcher.Blurb: Follow the votes to your prey
+EvilWatcher.Summary: An impostor who sees who voted for whom, even with anonymous votes.
 Invisible.Name: Invisible
 Invisible.Blurb: No one can see you...
 Invisible.Help: An addon that is always invisible to non-impostors. The holder doesn't know they have it (they find out when they die).
@@ -2409,8 +2415,7 @@ Static.Help: While it's in play, everyone's admin and vitals stay frozen as they
 Static.CanSeeAll: The holder finds out after dying
 Timer.Name: Timer
 Timer.Blurb: Keep the time
-Timer.Help: An addon that shows the time since the last meeting under your name. It stops during meetings.
-Timer.Text: Elapsed: {t}s
+Timer.Help: An addon that shows the time since the last meeting at the bottom left. It stops during meetings.
 Visor.Name: Visor
 Visor.Blurb: Watch the ship through your map
 Visor.Help: An addon that shows admin whenever you open the normal map (bodies are counted too). Never given to impostors.
@@ -2423,7 +2428,7 @@ Star.RainbowStar: Rainbow
 Star.RainbowSpeed: Rainbow speed
 TunaMod.Name: Tuna
 TunaMod.Blurb: Stop and you die
-TunaMod.Help: An addon that dies when standing still. The timer pauses briefly at the start and after meetings. Seconds until death show under your name.
+TunaMod.Help: An addon that dies when standing still. The timer pauses briefly at the start and after meetings. Seconds until death show at the bottom left.
 TunaMod.Mode: Counting
 TunaMod.Mode.Usually: Continuous (time standing still in a row)
 TunaMod.Mode.Total: Total (all time standing still)
@@ -2432,7 +2437,18 @@ TunaMod.TotalStop: Allowed total stop time
 TunaMod.MeetingReset: Reset the total at meetings
 TunaMod.MeetingStop: Timer pause after meetings
 TunaMod.CountInTask: Timer runs during tasks
-TunaMod.Paused: Timer paused
+Tuna.Name: Tuna
+Tuna.Blurb: Keep swimming, or die
+Tuna.Summary: A neutral who dies after standing still. Staying near living players fills a gauge (faster while standing still); fill it to win alone. The timer pauses briefly at the start and after meetings.
+Tuna.WinCond: Fill the gauge to win alone
+Tuna.Mode: Counting
+Tuna.UsuallyStop: Time you can stand still
+Tuna.TotalStop: Total time you can stand still
+Tuna.MeetingReset: Reset the total at meetings
+Tuna.MeetingStop: Timer pause after meetings
+Tuna.CanVent: Can use vents
+Tuna.RequiredGauge: Gauge needed to win
+Tuna.StopRatio: Gauge rate while standing still
 Moon.Name: Moon
 Moon.Blurb: The moon lights up the dark
 Moon.Help: An addon whose vision isn't reduced by blackouts.
@@ -2467,7 +2483,6 @@ Baphomet.Gauge.Help: Fills while you stand still right next to your living famil
 Baphomet.Gauge.Short: Stand by your familiar to fill it
 Baphomet.TotalStandingTimeToWin: Gauge needed to win
 Baphomet.RewindGaugeToMeetingEnd: Gauge lost at the end of meetings
-Baphomet.GaugeText: Ritual
 Baphomet.Cutin: The Baphomet has taken a familiar...
 Famulus.Name: Famulus
 Famulus.Blurb: Serve the Baphomet

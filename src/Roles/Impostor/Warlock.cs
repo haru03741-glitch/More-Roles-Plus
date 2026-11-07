@@ -32,12 +32,13 @@ public sealed class Warlock : RoleBase
         {
             Target = AbilityTarget.Player,
             Cooldown = () => CurseCooldown,
-            CanTarget = (_, _) => _cursed == 255,
+            Usable = () => _cursed == 255, // 呪っている間はボタンが暗い
             OnUsed = (_, t) => _cursed = t.PlayerId,
         });
         _kill = AddAbility(new Ability(new Text("Warlock.CurseKill"), "warlock_cursekill")
         {
             Cooldown = () => CurseKillCooldown,
+            Usable = () => Victim() != null, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (Victim() is not { } v) return false;

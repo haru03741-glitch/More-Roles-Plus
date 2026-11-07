@@ -37,6 +37,7 @@ public sealed class EvilObserver : RoleBase
         {
             Cooldown = () => PlaceCooldown,
             MaxUses = () => NumOfCamera,
+            Usable = () => _viewing < 0, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (_viewing >= 0) return false;
@@ -60,6 +61,7 @@ public sealed class EvilObserver : RoleBase
         AddAbility(new Ability(new Text("EvilObserver.Next"), "observer_next")
         {
             CooldownAtStart = false,
+            Usable = () => _viewing >= 0, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (_viewing < 0) return false;

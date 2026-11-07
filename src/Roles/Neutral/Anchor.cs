@@ -52,6 +52,7 @@ public sealed class Anchor : RoleBase
         {
             Cooldown = () => EchoCooldown,
             MaxUses = () => NumOfEcho,
+            Usable = () => _anchors.Count > 0, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (_anchors.Count == 0) return false;

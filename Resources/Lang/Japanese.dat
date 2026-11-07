@@ -23,11 +23,13 @@ Demolisher.Hammer: ハンマー
 # ── ライター (Lighter) ──
 Lighter.Name: ライター
 Lighter.Blurb: 広い視界で船を見張ろう
-Lighter.Summary: 普通のクルーより視界が広いクルーです。
+Lighter.Summary: 普通のクルーより視界が広く、停電でも視界が狭まりにくいクルーです。
 Lighter.Tips: 遠くの動きを見張って、見たことを会議で伝えましょう。
 Lighter.Quote: 暗がりの奥まで、見えている。
-Lighter.VisionMultiplier: 視界の倍率
-Lighter.VisionMultiplier.Detail: 普通のクルーの視界に掛ける倍率です。
+Lighter.LightsOnVision: 明かりが点いている時の視界
+Lighter.LightsOnVision.Detail: 船の明るさを 1 として、明かりが点いている時の視界の広さです。
+Lighter.LightsOffVision: 停電中の視界
+Lighter.LightsOffVision.Detail: 船の明るさを 1 として、停電で暗い時の視界の広さです。
 
 # ── ポータルメーカー (PortalMaker) ──
 PortalMaker.Name: ポータルメーカー
@@ -218,9 +220,12 @@ Samurai.FellAnnounce: <color=#C0203A>サムライが修羅に堕ちた</color>
 # ── 鷹の目 (Hawkeye) ──
 Hawkeye.Name: 鷹の目
 Hawkeye.Blurb: 遠くまで見通せる
-Hawkeye.Help: 視界が広くなるアドオンです。どの陣営の人に付くかは設定で決まります。
+Hawkeye.Help: 「鷹の目」ボタンを押すと、少しの間だけ視界が広くなるアドオンです。どの陣営の人に付くかは設定で決まります。
+Hawkeye.Use: 鷹の目
+Hawkeye.Duration: 視界が広がる時間
+Hawkeye.Cooldown: 鷹の目の待ち時間
 Hawkeye.VisionPercent: 視界の広さ
-Hawkeye.VisionPercent.Detail: 普通の視界を 100% として、付いた人の視界をこの割合にします。
+Hawkeye.VisionPercent.Detail: 普通の視界を 100% として、鷹の目を使っている間の視界をこの割合にします。
 
 # ── 早業 (Quickhands) ──
 Quickhands.Name: 早業
@@ -2228,7 +2233,6 @@ Kunoichi.HideWait: 透明化までに止まる時間
 Kunoichi.HideButton: 透明化をボタンで使う (使わなければ自動)
 Kunoichi.ThrowWhileHidden: 透明中もクナイを投げられる
 SerialKiller.Name: シリアルキラー
-SerialKiller.Hud: 自害まで {s} 秒
 SerialKiller.Blurb: 殺し続けなければ死ぬ
 SerialKiller.Summary: 最初のキルの後、決めた時間の内にキルし続けないと死ぬインポスターです。
 SerialKiller.Timer: 自殺タイマー
@@ -2321,7 +2325,6 @@ Bettor.TeamCrew: クルー陣営
 Bettor.TeamNeutral: 第三陣営
 Bettor.TeamMadmate: インポスター陣営
 Obolus.Name: オボルス
-Obolus.SealHud: キルの封印: あと {n} 回の会議
 Obolus.Blurb: 悪しき者から渡し賃を取れ
 Obolus.Summary: キルボタンを持つ第三陣営です。最初の何回かの会議まではキルが封印されています。インポスター (設定でジャッカルも) を倒すと単独で勝ちます。
 Obolus.WinCond: インポスター (設定でジャッカル) を倒すとその場で単独勝ち
@@ -2339,7 +2342,6 @@ Obolus.RevealDeath: オボルスの死も知らせる
 Obolus.Warning: オボルスに気をつけろ!
 Obolus.Dead: オボルスが死んだ
 Seed.Name: シード
-Seed.GaugeHud: 共生 {a} / {b} 秒
 Seed.Blurb: 誰かと共に生き、共に勝て
 Seed.Summary: 「共生」した相手の誰かが勝つと、一緒に勝つ第三陣営です。ゲージ (設定) は相手の近くにいると貯まり、勝つには満ちている必要があります。
 Seed.WinCond: 共生した相手の誰かが勝つと追加で勝ち
@@ -2386,8 +2388,6 @@ Raccoon.KillOnMeetingIfGrabbing: 会議が始まる時に掴んでいる人を�
 Raccoon.MakeChildCooldown: 子作りの待ち時間
 Raccoon.ChildKillCooldown: 子のキルの待ち時間
 Raccoon.ChildKillOnMeetingIfGrabbing: 子も会議が始まる時に掴んでいる人を倒す
-Raccoon.Idle: 誰かを掴もう
-Raccoon.GoTo: {room} へ運べ
 Raccoon.Result: {name} は {role} だった
 RaccoonChild.Name: アライグマの子
 RaccoonChild.Blurb: 親と共に掴んで洗え
@@ -2400,6 +2400,12 @@ Guest.Help: 緊急ボタンを押せないアドオンです。
 Watcher.Name: ウォッチャー
 Watcher.Blurb: 匿名の票も見逃さない
 Watcher.Help: 匿名投票でも、誰が誰に入れたかが見えるアドオンです。
+NiceWatcher.Name: ナイスウォッチャー
+NiceWatcher.Blurb: 匿名の票も見逃さない
+NiceWatcher.Summary: 匿名投票でも、誰が誰に入れたかが見えるクルーです。
+EvilWatcher.Name: イビルウォッチャー
+EvilWatcher.Blurb: 票の行方で獲物を選べ
+EvilWatcher.Summary: 匿名投票でも、誰が誰に入れたかが見えるインポスターです。
 Invisible.Name: インビジブル
 Invisible.Blurb: 誰にも見えていない…
 Invisible.Help: いつもインポスター以外から見えないアドオンです。本人は付いていることに気付きません (死ぬと分かります)。
@@ -2409,8 +2415,7 @@ Static.Help: 付いている間、全員のアドミンとバイタルが試合�
 Static.CanSeeAll: 死んだ後に本人に分かる
 Timer.Name: タイマー
 Timer.Blurb: 時を刻め
-Timer.Help: 会議の後からの経過時間が名前の下に出るアドオンです。会議中は止まります。
-Timer.Text: 経過: {t} 秒
+Timer.Help: 会議の後からの経過時間が画面の左下に出るアドオンです。会議中は止まります。
 Visor.Name: バイザー
 Visor.Blurb: マップ越しに船を見渡せ
 Visor.Help: 普通のマップを開くと、いつでもアドミンが見えるアドオンです (死体も数えます)。インポスターには付きません。
@@ -2423,7 +2428,7 @@ Star.RainbowStar: 虹色にする
 Star.RainbowSpeed: 虹色の速さ
 TunaMod.Name: マグロ
 TunaMod.Blurb: 止まったら死ぬ
-TunaMod.Help: 止まっていると死ぬアドオンです。試合の始めと会議の後は少しの間タイマーが止まります。死ぬまでの秒が名前の下に出ます。
+TunaMod.Help: 止まっていると死ぬアドオンです。試合の始めと会議の後は少しの間タイマーが止まります。死ぬまでの秒が画面の左下に出ます。
 TunaMod.Mode: 数え方
 TunaMod.Mode.Usually: 常時 (続けて止まった時間)
 TunaMod.Mode.Total: 累計 (止まった時間の合計)
@@ -2432,7 +2437,18 @@ TunaMod.TotalStop: 止まっていられる時間の合計
 TunaMod.MeetingReset: 会議で合計を戻す
 TunaMod.MeetingStop: 会議の後にタイマーが止まる時間
 TunaMod.CountInTask: タスク中もタイマーを進める
-TunaMod.Paused: タイマー停止中
+Tuna.Name: マグロ
+Tuna.Blurb: 泳ぎ続けろ、止まれば死ぬ
+Tuna.Summary: 止まっていると死んでしまう第三陣営です。生きている人の近くにいるとゲージが貯まり (止まっていると多めに貯まります)、満タンになると単独で勝ちます。試合の始めと会議の後は少しの間タイマーが止まります。
+Tuna.WinCond: ゲージを満タンにすると単独勝ち
+Tuna.Mode: 数え方
+Tuna.UsuallyStop: 止まっていられる時間
+Tuna.TotalStop: 止まっていられる時間の合計
+Tuna.MeetingReset: 会議で合計を戻す
+Tuna.MeetingStop: 会議の後にタイマーが止まる時間
+Tuna.CanVent: ベントを使える
+Tuna.RequiredGauge: 勝つのに要るゲージ
+Tuna.StopRatio: 止まっている時のゲージの貯まり方
 Moon.Name: ムーン
 Moon.Blurb: 闇夜を照らす月
 Moon.Help: 停電で視界が狭まらないアドオンです。
@@ -2467,7 +2483,6 @@ Baphomet.Gauge.Help: 生きている眷属のすぐ近くで止まっている�
 Baphomet.Gauge.Short: 眷属のそばで止まって貯める
 Baphomet.TotalStandingTimeToWin: 勝つのに要るゲージ
 Baphomet.RewindGaugeToMeetingEnd: 会議の終わりに減るゲージ
-Baphomet.GaugeText: 儀式
 Baphomet.Cutin: バフォメットが眷属を得た…
 Famulus.Name: ファムルス
 Famulus.Blurb: バフォメットに仕えよ

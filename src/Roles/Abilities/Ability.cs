@@ -81,6 +81,18 @@ public sealed class Ability
     // Player / Pick / Meeting: 狙ってよい相手か (使う人, 相手)。null = 生きている誰でも
     public Func<PlayerControl, PlayerControl, bool> CanTarget { get; init; }
 
+    // 今使えるか (null = いつでも)。false の間はボタンを暗くして押せない (封印中・条件が揃わない時など)。ホストも確かめる
+    public Func<bool> Usable { get; init; }
+
+    internal bool Locked
+    {
+        get
+        {
+            try { return Usable != null && !Usable(); }
+            catch (Exception e) { Plugin.Logger.LogError($"{Role?.Id} ability usable: {e}"); return true; }
+        }
+    }
+
     // Self: 押した時 (自分の端末)。true = 使えた (待ち時間と回数を使う)
     public Func<bool> OnUse { get; init; }
 
@@ -237,7 +249,7 @@ internal static class Abilities
 
     private static bool Click(Ability a)
     {
-        if (a.UsesLeft == 0 || a.MeetingLeft == 0) return false; // UsesPerMeeting: 会議の間の回数 (会議の外の能力では 1 ターンの回数)
+        if (a.UsesLeft == 0 || a.MeetingLeft == 0 || a.Locked) return false; // UsesPerMeeting: 会議の間の回数 (会議の外の能力では 1 ターンの回数)
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.Data == null || lp.Data.IsDead != a.Ghost || (!a.WhileStill && !lp.CanMove)) return false;
         if (a.Target == AbilityTarget.Self)
@@ -366,15 +378,17 @@ internal static class Abilities
         foreach (var a in role.Abilities)
         {
             bool on = a.Ghost ? ghost : live;
+            // 使えない間 (Usable が false・この会議/ターンの回数を使い切った) はボタンを暗くする
+            if (a.Button != null) a.Button.SetLocked(on && (a.Locked || (a.UsesPerMeeting > 0 && a.MeetingLeft == 0)));
             if (a.Target == AbilityTarget.Pick && a.Button != null)
                 a.Button.SetUsable(on && a.UsesLeft != 0 && now >= a.PendingUntil);
             if (a.ShowAim != null && a.Target == AbilityTarget.Self && a.Button != null)
             {
-                SetAim(a, on && lp.CanMove && a.UsesLeft != 0 ? a.ShowAim() : null);
+                SetAim(a, on && lp.CanMove && a.UsesLeft != 0 && !a.Button.Locked ? a.ShowAim() : null);
                 continue;
             }
             if (a.Target != AbilityTarget.Player || a.Button == null) continue;
-            var aim = on && lp.CanMove ? Targeting.ClosestPlayer(lp, Reach(a), a.CanTarget, a.TargetDead, a.IgnoreWalls) : null;
+            var aim = on && lp.CanMove && !a.Button.Locked ? Targeting.ClosestPlayer(lp, Reach(a), a.CanTarget, a.TargetDead, a.IgnoreWalls) : null;
             SetAim(a, aim);
             a.Button.SetUsable(aim is not null && a.UsesLeft != 0 && now >= a.PendingUntil);
         }
@@ -478,6 +492,7 @@ internal static class Abilities
         if (!meeting && (user.inVent || user.inMovingPlat)) return "user busy";
         if (a.UsesLeft == 0) return "no uses";
         if (a.MeetingLeft == 0) return "no uses this meeting";
+        if (a.Locked) return "locked";
         if (!target || (target == user) != a.MeetingSelf || target.Data == null || (!(meeting && a.MeetingAnyLife) && target.Data.IsDead != a.TargetDead) || target.Data.Disconnected) return "target";
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
         if (meeting && !a.MeetingSelf && (a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(user, target)) return "guess blocked";

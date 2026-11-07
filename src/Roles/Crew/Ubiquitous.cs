@@ -91,6 +91,7 @@ public sealed partial class Ubiquitous : RoleBase
             CooldownAtStart = false,
             Duration = () => LimitOperate ? OperateTime : 3600f,
             Cancellable = true,
+            Usable = () => _drone, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (!_drone || Minigame.Instance || !PortKit.Alive(Player)) return false;
@@ -105,6 +106,7 @@ public sealed partial class Ubiquitous : RoleBase
         {
             Cooldown = () => DoorHackCooldown,
             WhileStill = true, // 操作中は本人の体が止まっている
+            Usable = () => _drone && _operate.InEffect && _scanT < 0f, // 使えない間はボタンを暗くする
             OnUse = () =>
             {
                 if (!_drone || !_operate.InEffect || _scanT >= 0f) return false;

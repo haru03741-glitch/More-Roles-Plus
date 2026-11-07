@@ -6,12 +6,12 @@ using Object = UnityEngine.Object;
 
 namespace MoreRolesPlus.Roles;
 
-// 自分の端末の画面 (下の中央・部屋の名前の上) に出す小さな札: 役職の絵・字・ゲージ。
+// 自分の端末の画面 (左下・マイクの欄の上) に出す小さな札: 役職の絵・ゲージ・数 (説明の文は出さない)。
 // ホスト用 MOD (TownOfHost 系) は残り時間や状態を名前の後ろの字でしか見せられないが、MRP は全員が MOD を入れているので画面の部品で見せる。
-// 役職ごとに 1 つ作り、毎フレーム Set で出す/隠す。出ている札は作った順に下から積む。
+// 役職ごとに 1 つ作り、毎フレーム Set で出す/隠す。出ている札は作った順に左下から上へ積む。
 public sealed class HudReadout
 {
-    private const float Width = 3.3f, Height = 0.5f, Step = 0.6f, Bottom = 1.25f;
+    private const float Width = 3.3f, Height = 0.5f, Step = 0.6f, Bottom = 1.35f, Left = Width / 2f + 0.3f;
     private static readonly List<HudReadout> Live = new();
     private static Sprite _pill, _white;
 
@@ -74,7 +74,7 @@ public sealed class HudReadout
             if (r._slot != n)
             {
                 r._slot = n;
-                r._aspect.DistanceFromEdge = new Vector3(0f, Bottom + n * Step, -20f);
+                r._aspect.DistanceFromEdge = new Vector3(Left, Bottom + n * Step, -20f);
                 r._aspect.AdjustPosition();
             }
             n++;
@@ -89,8 +89,8 @@ public sealed class HudReadout
         if (!hud || !src) return;
         _root = FxRoot.NewHud("MrpReadout", 5);
         _aspect = _root.AddComponent<AspectPosition>();
-        _aspect.Alignment = AspectPosition.EdgeAlignments.Bottom;
-        _aspect.DistanceFromEdge = new Vector3(0f, Bottom, -20f);
+        _aspect.Alignment = AspectPosition.EdgeAlignments.LeftBottom;
+        _aspect.DistanceFromEdge = new Vector3(Left, Bottom, -20f);
         _slot = -1;
 
         _pill ??= FxSprites.Rect(384, 64, Pill, "MrpReadoutPill");

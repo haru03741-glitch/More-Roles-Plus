@@ -60,7 +60,7 @@ public sealed class Seed : RoleBase
         if (!on) { _readout.Set(false); return; }
         float need = GaugeNeed;
         string col = _gauge >= need ? "#6AB2BD" : "#FFFFFF";
-        _readout.Set(true, $"<color={col}>{new Text("Seed.GaugeHud").With("a", Mathf.FloorToInt(_gauge)).With("b", Mathf.RoundToInt(need))}</color>", need > 0f ? _gauge / need : 1f);
+        _readout.Set(true, $"<color={col}>{Mathf.FloorToInt(_gauge)}/{Mathf.RoundToInt(need)}</color>", need > 0f ? _gauge / need : 1f);
     }
 
     [LocalOnly]
