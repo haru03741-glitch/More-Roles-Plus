@@ -49,6 +49,7 @@ internal static class MenuMotion
         _openedAt = Time.time;
         Slides.Clear();
         Bounces.Clear();
+        _overPtr = IntPtr.Zero; _overButton = null;
         Pops.Clear();
         HeroTexts.Clear();
         _rescanAt = 0f;
@@ -121,6 +122,7 @@ internal static class MenuMotion
         _menu = null;
         Slides.Clear();
         Bounces.Clear();
+        _overPtr = IntPtr.Zero; _overButton = null;
         Pops.Clear();
         HeroTexts.Clear();
     }
@@ -197,24 +199,22 @@ internal static class MenuMotion
     {
         var cam = Camera.main;
         PassiveButton target = null;
-        if (cam)
+        // PC はマウスを重ねたボタンを本編が currentOver に立てる。スマホのタッチでは立てないので、押している間だけ点に重なるボタンを探す
+        if (cam && PassiveButtonManager.InstanceExists)
         {
-            Vector2 p = cam.ScreenToWorldPoint(Input.mousePosition);
-            bool touching = Input.touchCount > 0 || !Application.isMobilePlatform;
-            if (touching)
+            var pm = PassiveButtonManager.Instance;
+            PassiveUiElement over = pm.currentOver;
+            if (!over && Input.touchCount > 0)
             {
-                var hit = Physics2D.OverlapPointAll(p);
-                float best = float.MaxValue;
-                foreach (var c in hit)
-                {
-                    if (!c || !c.enabled) continue;
-                    var pb = c.GetComponent<PassiveButton>();
-                    if (!pb || !pb.enabled || !Small(c, cam)) continue;
-                    // 手前 (z が小さい) の物を選ぶ
-                    float z = c.transform.position.z;
-                    if (z < best) { best = z; target = pb; }
-                }
+                Vector3 w = cam.ScreenToWorldPoint(Input.mousePosition);
+                over = UI.PointerHit.TopAt(pm, new Vector2(w.x, w.y));
             }
+            if (over && over.enabled)
+            {
+                if (over.Pointer != _overPtr) { _overPtr = over.Pointer; _overButton = SmallButton(over, cam); }
+                target = _overButton;
+            }
+            else _overPtr = IntPtr.Zero;
         }
         if (target)
         {
@@ -242,6 +242,21 @@ internal static class MenuMotion
     }
 
     // 画面いっぱいの当たり (外を押して閉じる・押させない幕) は動かさない
+    // 乗っているボタンが変わった時だけ型と大きさを調べ直す (毎フレームの TryCast を避ける)
+    private static IntPtr _overPtr;
+    private static PassiveButton _overButton;
+
+    private static PassiveButton SmallButton(PassiveUiElement e, Camera cam)
+    {
+        var pb = e.TryCast<PassiveButton>();
+        if (!pb) return null;
+        var cols = e.Colliders;
+        if (cols == null) return null;
+        for (int i = 0; i < cols.Length; i++)
+            if (cols[i] && cols[i].enabled && Small(cols[i], cam)) return pb;
+        return null;
+    }
+
     private static bool Small(Collider2D c, Camera cam)
     {
         var s = c.bounds.size;

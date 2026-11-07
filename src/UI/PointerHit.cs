@@ -18,9 +18,15 @@ internal static class PointerHit
         var cam = Camera.main;
         if (!cam) return false;
         Vector3 w = cam.ScreenToWorldPoint(Input.mousePosition);
-        var pt = new Vector2(w.x, w.y);
+        var top = TopAt(pm, new Vector2(w.x, w.y));
+        return top && top.Pointer == target.Pointer;
+    }
+
+    // pt に重なる登録済みのボタンのうち、いちばん手前 (z が小さい) の物
+    internal static PassiveUiElement TopAt(PassiveButtonManager pm, Vector2 pt)
+    {
         var list = pm.Buttons;
-        if (list == null) return false;
+        if (list == null) return null;
         PassiveUiElement top = null;
         float topZ = float.MaxValue;
         for (int i = 0, n = list.Count; i < n; i++)
@@ -30,7 +36,7 @@ internal static class PointerHit
             float z = b.transform.position.z;
             if (z < topZ) { topZ = z; top = b; }
         }
-        return top && top.Pointer == target.Pointer;
+        return top;
     }
 
     private static bool Hit(PassiveUiElement b, Vector2 pt)
