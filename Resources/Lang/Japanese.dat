@@ -2500,3 +2500,14 @@ Miracle.Action: 選べる相手
 Miracle.Action.MyTeam: 同じ陣営だけ
 Miracle.Action.OtherNeutral: 第三陣営以外
 Miracle.Action.All: 誰でも
+
+# ── ライター (Lighter) ──
+Lighter.VisionMultiplier: 視界の倍率
+Lighter.VisionMultiplier.Detail: 普通のクルーの視界に掛ける倍率です。
+
+# ── ジャッカル (Jackal) ──
+Jackal.SidekickKind: 仲間の種類
+Jackal.SidekickKind.Sidekick: サイドキック
+Jackal.SidekickKind.Friends: ジャッカルフレンズ
+
+# ── SNR 版 (前からある役職と同じ名前の役職) ──

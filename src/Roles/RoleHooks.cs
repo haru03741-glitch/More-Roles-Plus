@@ -26,6 +26,7 @@ internal static class VisionPatch
         if (NeutralKillSettings.Applies(role) && !player.IsDead) result = ship.MaxLightRadius * NeutralKillSettings.Vision;
         if (Terrain.DustCloud.VisionMul < 1f && player.PlayerId == Terrain.DustCloud.LocalId) result *= Terrain.DustCloud.VisionMul;
         if (NovaFx.VisionMul < 1f && player.PlayerId == NovaFx.LocalId) result *= NovaFx.VisionMul;
+        if (VisionEffects.Multiplier != 1f && !player.IsDead && player.Object && player.Object.AmOwner) result *= VisionEffects.Multiplier;
         if (RoleState.All.Count == 0 && RoleState.AllAddons.Count == 0)
         {
             result = SnrKit.ApplyVision(player, result);
@@ -72,4 +73,10 @@ internal static class KillCooldownPatch
         var addons = RoleState.AddonsOf(lp.PlayerId);
         for (int i = 0; i < addons.Count; i++) addons[i].ModifyKillCooldown(ref __result);
     }
+}
+
+// 役職に関係なく自分の視界に掛かる効果 (聖職者の聖なる光など)。試合の始めに 1 へ戻す
+public static class VisionEffects
+{
+    public static float Multiplier = 1f;
 }

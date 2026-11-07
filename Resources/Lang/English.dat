@@ -2500,3 +2500,14 @@ Miracle.Action: Who you can choose
 Miracle.Action.MyTeam: Same team only
 Miracle.Action.OtherNeutral: Anyone but neutrals
 Miracle.Action.All: Anyone
+
+# ── Lighter ──
+Lighter.VisionMultiplier: Vision Multiplier
+Lighter.VisionMultiplier.Detail: Multiplier applied to normal crewmate vision.
+
+# ── ジャッカル (Jackal) ──
+Jackal.SidekickKind: Partner type
+Jackal.SidekickKind.Sidekick: Sidekick
+Jackal.SidekickKind.Friends: Jackal Friends
+
+# ── SNR 版 (前からある役職と同じ名前の役職) ──
