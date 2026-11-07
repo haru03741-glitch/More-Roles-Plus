@@ -164,15 +164,20 @@ internal static class SelectSpawn
     // Airship でランダムスポーンの行き先を全部の部屋から選んだ時の、ボタンの絵と名前
     internal static SpawnInMinigame.SpawnLocation AirshipSpot(SpawnInMinigame.SpawnLocation like, Vector2 world, out string name)
     {
-        ClearMade();
-        _hiddenLayers = HiddenLayers | PlayerLayers();
+        // メモリの厳しい Android では部屋を撮らず、本編のボタンの絵をそのまま使う
+        bool shoot = !OperatingSystem.IsAndroid();
+        if (shoot)
+        {
+            ClearMade();
+            _hiddenLayers = HiddenLayers | PlayerLayers();
+        }
         float x = MapFlip.Flipped ? MapFlip.Mirror(world.x) : world.x;
         name = RoomName(world);
         return new SpawnInMinigame.SpawnLocation
         {
             Name = like.Name,
             Location = new Vector3(x, world.y, 0f),
-            Image = Shot(world),
+            Image = shoot ? Shot(world) : like.Image,
             Rollover = null,
             RolloverSfx = like.RolloverSfx,
         };
