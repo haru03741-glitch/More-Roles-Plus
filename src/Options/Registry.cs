@@ -136,12 +136,15 @@ internal static class Registry
                 addon.OnMadmate = new BoolOpt("Registry.MadmatesCanHaveIt", addon.DefaultOnMadmate);
                 addon.OnImpostor = new BoolOpt("Registry.ImpostorsCanHaveIt", addon.DefaultOnImpostor);
                 addon.OnNeutral = new BoolOpt("Registry.NeutralsCanHaveIt", addon.DefaultOnNeutral);
-                Add(sec, addon.Chance, addon.Id + ".Chance");
-                Add(sec, addon.Count, addon.Id + ".Count");
-                Add(sec, addon.OnCrew, addon.Id + ".OnCrew");
-                Add(sec, addon.OnMadmate, addon.Id + ".OnMadmate");
-                Add(sec, addon.OnImpostor, addon.Id + ".OnImpostor");
-                Add(sec, addon.OnNeutral, addon.Id + ".OnNeutral");
+                if (!addon.MadeByOthers)
+                {
+                    Add(sec, addon.Chance, addon.Id + ".Chance");
+                    Add(sec, addon.Count, addon.Id + ".Count");
+                    Add(sec, addon.OnCrew, addon.Id + ".OnCrew");
+                    Add(sec, addon.OnMadmate, addon.Id + ".OnMadmate");
+                    Add(sec, addon.OnImpostor, addon.Id + ".OnImpostor");
+                    Add(sec, addon.OnNeutral, addon.Id + ".OnNeutral");
+                }
                 foreach (var (name, opt) in opts) Add(sec, opt, addon.Id + "." + name);
             }
             catch (Exception e)

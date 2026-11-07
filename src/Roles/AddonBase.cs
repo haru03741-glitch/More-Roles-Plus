@@ -42,6 +42,9 @@ public abstract class AddonBase : Assignable
     // 能力は Ability.Ghost = true にして、死んでいる間に使う
     public virtual bool Ghost => false;
 
+    // 他の役職から付けられるだけのアドオン (配る確率を出さない)
+    public virtual bool MadeByOthers => false;
+
     // 試合の終わりに、勝った陣営から勝ちを奪うか (RoleBase.StealsWin と同じ)
     public virtual bool StealsWin(GameResult result) => false;
 

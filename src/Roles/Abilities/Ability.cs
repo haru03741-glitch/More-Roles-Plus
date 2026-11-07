@@ -69,6 +69,9 @@ public sealed class Ability
     // Meeting: ゲッサーと同じく、撃ってはいけない相手 (IGuessBlock) を狙えない
     public bool GuessLike { get; init; }
 
+    // Meeting: 自分の名札にだけボタンを出す (自分に使う会議の能力。OnUsed の相手は自分)
+    public bool MeetingSelf { get; init; }
+
     // Player の届く距離 (0 = 部屋の設定のキルの距離)
     public float Range { get; init; }
 
@@ -472,9 +475,9 @@ internal static class Abilities
         if (!meeting && (user.inVent || user.inMovingPlat)) return "user busy";
         if (a.UsesLeft == 0) return "no uses";
         if (a.MeetingLeft == 0) return "no uses this meeting";
-        if (!target || target == user || target.Data == null || target.Data.IsDead != a.TargetDead || target.Data.Disconnected) return "target";
+        if (!target || (target == user) != a.MeetingSelf || target.Data == null || target.Data.IsDead != a.TargetDead || target.Data.Disconnected) return "target";
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
-        if (meeting && (a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(user, target)) return "guess blocked";
+        if (meeting && !a.MeetingSelf && (a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(user, target)) return "guess blocked";
         if (meeting) return null; // 会議の能力は距離と待ち時間を見ない
         if (a.Target == AbilityTarget.Pick)
             return (Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user) ? "cooldown" : null;

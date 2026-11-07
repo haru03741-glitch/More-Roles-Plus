@@ -1,0 +1,3 @@
+# From: に出す名前 (役職のコードの Origin => "TOUMira" で使う)
+name: TownOfUs|Mira
+color: #FFD700 #A64DFF

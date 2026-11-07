@@ -54,8 +54,8 @@ internal static class MeetingAbilities
                 if (!pva || pva.AmDead) continue;
                 byte id = pva.PlayerId.Value;
                 var target = GameData.Instance.GetPlayerById(id)?.Object;
-                if (!target || id == lp.PlayerId || (a.CanTarget != null && !a.CanTarget(lp, target))) continue;
-                if ((a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(lp, target)) continue;
+                if (!target || (id == lp.PlayerId) != a.MeetingSelf || (a.CanTarget != null && !a.CanTarget(lp, target))) continue;
+                if (!a.MeetingSelf && (a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(lp, target)) continue;
                 var go = Create(pva, a, id, x);
                 if (go) _buttons.Add(new Entry { Ability = a, Target = id, Button = go });
             }
