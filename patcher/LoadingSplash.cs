@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using BepInEx.Logging;
 using BepInEx.Preloader.Core.Patching;
 
@@ -109,7 +110,8 @@ namespace MoreRolesPlus.BootAccel
 
         private static void Finish()
         {
-            if (_finished) return;
+            // ログは複数のスレッドから届くので、終わりの処理は 1 回だけ通す
+            if (_finished || Interlocked.Exchange(ref _finishing, 1) != 0) return;
             Mark(5);
             Send("DONE " + Now.ToString("0.000", CultureInfo.InvariantCulture));
             _finished = true;
@@ -127,7 +129,8 @@ namespace MoreRolesPlus.BootAccel
         }
 
         // ログの受け口は外さない (ログを配っている最中に外すと配る側の一覧が壊れる)。終わった印で何もしなくなる
-        private static bool _finished;
+        private static volatile bool _finished;
+        private static int _finishing;
 
         private static void Stop()
         {

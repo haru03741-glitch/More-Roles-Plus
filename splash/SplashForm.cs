@@ -45,6 +45,8 @@ namespace MoreRolesPlus.Splash
         private readonly double[] _expect = { 0, 3, 2, 5, 8 }; // 前の回の時間 (無ければこの目安)
         private readonly DateTime _gameStart;
         private readonly DateTime _shownAt = DateTime.Now;
+        private const double MaxQuietSeconds = 120;
+        private DateTime _lastLineAt = DateTime.Now;
         private int _stage = 1;
         private int _plugins, _pluginIndex;
         private string _pluginName = "";
@@ -115,11 +117,14 @@ namespace MoreRolesPlus.Splash
 
         private void Pump()
         {
-            while (_inbox.TryDequeue(out var line)) OnLine(line);
+            while (_inbox.TryDequeue(out var line)) { _lastLineAt = DateTime.Now; OnLine(line); }
             bool gameGone;
             try { gameGone = _game.HasExited; }
             catch { gameGone = true; }
             if (gameGone) { Close(); return; }
+            // 終わりの印が来ないまま止まった時 (mod が読めない・起動で例外) に最前面に居座らない。
+            // 初めての起動の下準備は数分かかるがその間もログが届き続けるので、黙った時間で見る
+            if (!_done && (DateTime.Now - _lastLineAt).TotalSeconds > MaxQuietSeconds) { Close(); return; }
             // メニューは出てから 1 秒余りかけて明るくなるので、それまで見せてから薄くして閉じる
             if (_done && (DateTime.Now - _doneAt).TotalSeconds > 1.8) { Close(); return; }
             float target = Progress();
