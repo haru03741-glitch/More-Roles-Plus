@@ -23,6 +23,13 @@ public sealed class GameResult
     public bool ByTasks => Reason is GameOverReason.CrewmatesByTask;
 }
 
+// 試合の終わりに、決まった結果を別の結果に替える役職・アドオン (チキンの勝ち・バフォメットの勝ち)。ホストの端末で呼ぶ。
+// 替えなければ null を返す
+public interface IWinOverride
+{
+    GameResult OverrideWin(GameResult result);
+}
+
 // 第三陣営がいる試合の勝敗。全員が MRP を入れている前提なので、ホストが勝者を決めて 1 通で配り、
 // 各端末は終了画面の勝者を差し替えるだけ。第三陣営がいない試合は本編の判定のまま (何も足さない)。
 //
@@ -100,6 +107,9 @@ public static class GameEnd
         End(new GameResult { Draw = true }, GameOverReason.ImpostorsByKill);
         return true;
     }
+
+    // 結果を替える役職・アドオンがいる (本編の終わりでも結果を配る)
+    internal static bool AnyOverride => RoleState.All.Any(r => r is IWinOverride) || RoleState.AllAddons.Any(a => a is IWinOverride);
 
     // 結果がもう決まっている (MRP が決めた終わりの途中)
     internal static bool Decided => _pending != null;
@@ -306,8 +316,21 @@ public static class GameEnd
         if (_announced) return;
         _announced = true;
         var r = _pending ?? FromReason(reason);
-        _pending = r;
         r.Reason = reason;
+        if (!r.Draw)
+        {
+            foreach (var a in RoleState.All.Cast<Assignable>().Concat(RoleState.AllAddons))
+            {
+                if (a is not IWinOverride o) continue;
+                try
+                {
+                    var nr = o.OverrideWin(r);
+                    if (nr != null) { nr.Reason = reason; r = nr; break; }
+                }
+                catch (Exception e) { Plugin.Logger.LogError($"{a.Id}.OverrideWin: {e}"); }
+            }
+        }
+        _pending = r;
         Plugin.Logger.LogInfo($"end reason={reason}");
         foreach (var role in RoleState.All)
         {
@@ -566,7 +589,7 @@ internal static class RpcEndGamePatch
             return false;
         }
         // 第三陣営がいない試合は本編の判定のまま。廃村など MRP が決めた終わりは常に配る
-        if (!RoleState.AnyNeutral && !GameEnd.Decided) return true;
+        if (!RoleState.AnyNeutral && !GameEnd.Decided && !GameEnd.AnyOverride) return true;
         try { GameEnd.Announce(endReason); }
         catch (Exception e) { Plugin.Logger.LogError($"win announce: {e}"); }
         return true;

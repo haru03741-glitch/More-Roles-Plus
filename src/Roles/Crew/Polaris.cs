@@ -1,0 +1,138 @@
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Polaris.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+using System.Collections.Generic;
+using MoreRolesPlus.Net;
+using MoreRolesPlus.Options;
+using UnityEngine;
+
+namespace MoreRolesPlus.Roles.Crew;
+
+// ポラリス (クルー): 誰でも倒せるキル (回数つき・誤爆で死なない) と、死体を見る「幻視」を持つ。
+// 幻視は近くの死体に使い、少しの間動けなくなる。終わると次の会議でその死者の名前と役職が分かる (自分だけ)。
+// 設定で、幻視に終えたタスクを使う (使うとタスクが未完了に戻る)
+public sealed class Polaris : RoleBase
+{
+    public override Team BaseTeam => Team.Crew;
+    public override string Color => "#82B2FF";
+    public override Text Name => new("Polaris.Name");
+    public override string Reading => "ぽらりす";
+    public override Text Blurb => new("Polaris.Blurb");
+    public override string Origin => "Uchu";
+    public override bool CanBeMadmate => true;
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Polaris.Kill", "polaris_kill"), new("Polaris.Vision", "polaris_vision") };
+
+    public static readonly IntOpt KillUses = new("Polaris.KillUses", 3, 1, 15);
+    public static readonly FloatOpt KillCooldown = new("Polaris.KillCooldown", 30f, 2.5f, 60f, 2.5f, "s");
+    public static readonly BoolOpt CanKillHidden = new("Polaris.CanKillHidden", false);
+    public static readonly BoolOpt SealUntilReport = new("Polaris.SealUntilReport", false);
+    public static readonly IntOpt VisionUses = new("Polaris.VisionUses", 3, 1, 15);
+    public static readonly FloatOpt VisionCooldown = new("Polaris.VisionCooldown", 30f, 2.5f, 60f, 2.5f, "s");
+    public static readonly FloatOpt VisionDuration = new("Polaris.VisionDuration", 3f, 0.5f, 10f, 0.5f, "s");
+    public static readonly BoolOpt RewindTask = new("Polaris.RewindTask", true);
+    public static readonly IntOpt MediumRewindTask = new("Polaris.MediumRewindTask", 3, 1, 10) { When = () => RewindTask };
+
+    private bool _sealed;                    // 全員の端末で同じ (キルの後、死体が通報されるまで)
+    private DeadBody _seeing;                // 自分の端末: 幻視している死体
+    private readonly List<byte> _seen = new(); // 次の会議で見せる死者
+
+    public override void OnAssigned()
+    {
+        AddAbility(new Ability(new Text("Polaris.Kill"), "polaris_kill")
+        {
+            Target = AbilityTarget.Player,
+            Cooldown = () => KillCooldown,
+            MaxUses = () => KillUses,
+            CanTarget = (_, t) => !(SealUntilReport && _sealed) && (CanKillHidden || !Hidden(t)),
+            OnUsed = (user, t) =>
+            {
+                if (SealUntilReport) _sealed = true;
+                if (AmongUsClient.Instance.AmHost) PortKit.HostKill(user, t);
+            },
+        });
+        AddAbility(new Ability(new Text("Polaris.Vision"), "polaris_vision")
+        {
+            Cooldown = () => VisionCooldown,
+            Duration = () => VisionDuration,
+            MaxUses = () => VisionUses,
+            OnUse = () =>
+            {
+                var body = PortKit.NearestBody(Player.GetTruePosition(), 1.5f);
+                if (!body) return false;
+                if (RewindTask && PortKit.TasksDone(Player) < MediumRewindTask) return false;
+                _seeing = body;
+                MoveSpeed.Add("PolarisVision", 0f, VisionDuration);
+                return true;
+            },
+            OnEnd = () =>
+            {
+                MoveSpeed.Remove("PolarisVision");
+                var body = _seeing;
+                _seeing = null;
+                if (!body || MeetingHud.Instance) return;
+                if (!_seen.Contains(body.ParentId)) _seen.Add(body.ParentId);
+                if (RewindTask) UndoTasks(MediumRewindTask);
+                PortKit.Notice(new Text("Polaris.Seen").ToString());
+            },
+        });
+    }
+
+    private static bool Hidden(PlayerControl t) => Cloak.IsOn(t.PlayerId) || UchuKit.Hidden.IsHiddenFromMe(t.PlayerId) || t.inVent;
+
+    // 死体が通報されたら封印を解く
+    private void OnMeetingCalled(MeetingCalledEvent e)
+    {
+        if (!e.IsEmergency) _sealed = false;
+    }
+
+    // 次の会議で、幻視した死者の名前と役職を自分にだけ
+    [LocalOnly]
+    private void OnMeetingStart(MeetingStartEvent e)
+    {
+        if (_seen.Count == 0) return;
+        var ids = new List<byte>(_seen);
+        _seen.Clear();
+        PortKit.After(1.5f, () =>
+        {
+            foreach (var id in ids)
+            {
+                var info = GameData.Instance ? GameData.Instance.GetPlayerById(id) : null;
+                var role = RoleState.Of(id);
+                if (info == null) continue;
+                PortKit.Notice(new Text("Polaris.Result").With("name", info.PlayerName).With("role", role != null ? role.ShownColoredName : "?").ToString());
+            }
+        });
+    }
+
+    // 自分の端末: 終えたタスクを n 個未完了に戻す (全員の端末のタスクの数え方も戻す)
+    private void UndoTasks(int n)
+    {
+        var lp = Player;
+        if (!lp || lp.myTasks == null) return;
+        var ids = new List<uint>();
+        foreach (var t in lp.myTasks)
+        {
+            if (ids.Count >= n) break;
+            var nt = t ? t.TryCast<NormalPlayerTask>() : null;
+            if (nt == null || !nt.IsComplete) continue;
+            nt.taskStep = 0;
+            ids.Add(nt.Id);
+        }
+        foreach (var id in ids)
+        {
+            UndoCall.Send((PlayerId, id));
+            Undo(PlayerId, id);
+        }
+    }
+
+    private static readonly RemoteCall<(byte pid, uint task)> UndoCall = new("Polaris.UndoTask", Route.Anyone,
+        (w, m) => { w.Write(m.pid); w.Write(m.task); }, r => (r.ReadByte(), r.ReadUInt32()),
+        (sender, m) => { if (sender && sender.PlayerId == m.pid && RoleState.Of(sender) is Polaris) Undo(m.pid, m.task); }, perSecond: 10);
+
+    private static void Undo(byte pid, uint task)
+    {
+        var info = GameData.Instance ? GameData.Instance.GetPlayerById(pid) : null;
+        if (info == null || info.Tasks == null) return;
+        foreach (var t in info.Tasks)
+            if (t != null && t.Id == task) t.Complete = false;
+        GameData.Instance.RecomputeTaskCounts();
+    }
+}

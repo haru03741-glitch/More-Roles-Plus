@@ -155,7 +155,7 @@ public sealed class Ability
     internal void Spend()
     {
         if (UsesLeft > 0) UsesLeft--;
-        if (Target == AbilityTarget.Meeting)
+        if (Target == AbilityTarget.Meeting || UsesPerMeeting > 0)
         {
             if (MeetingUsesGen != MeetingAbilities.Gen) { MeetingUsesGen = MeetingAbilities.Gen; MeetingUses = 0; }
             MeetingUses++;
@@ -234,7 +234,7 @@ internal static class Abilities
 
     private static bool Click(Ability a)
     {
-        if (a.UsesLeft == 0) return false;
+        if (a.UsesLeft == 0 || a.MeetingLeft == 0) return false; // UsesPerMeeting: 会議の間の回数 (会議の外の能力では 1 ターンの回数)
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.Data == null || lp.Data.IsDead != a.Ghost || (!a.WhileStill && !lp.CanMove)) return false;
         if (a.Target == AbilityTarget.Self)

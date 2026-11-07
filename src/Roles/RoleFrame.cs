@@ -79,6 +79,7 @@ internal static class RoleFrame
     {
         if (Frame.Count > 0) RunFrame();
         PortKit.TickLater();
+        UchuKit.Tick();
         Cloak.Tick();
         ViewScale.Tick();
         if ((Marks.Count > 0 || Publics.Count > 0 || ExtraMarks.Count > 0) && ++_tick >= _markEvery)

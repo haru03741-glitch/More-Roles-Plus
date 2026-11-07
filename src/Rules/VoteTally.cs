@@ -125,6 +125,27 @@ internal static class VoteTally
         return true;
     }
 
+    // ホスト: 投票をすぐ締め、生きている全員の票を target へ向けて追放する (プロセキューターの強制追放)
+    internal static bool ForceExile(MeetingHud hud, byte target)
+    {
+        if (!AmongUsClient.Instance.AmHost || !hud || hud.state is MeetingHud.MeetingStates.Results or MeetingHud.MeetingStates.Proceeding) return false;
+        var info = GameData.Instance.GetPlayerById(target);
+        if (info == null || info.IsDead || info.Disconnected) return false;
+        var rows = new List<MeetingHud.VoterState>();
+        foreach (var pva in hud.playerStates)
+        {
+            if (!pva) continue;
+            byte id = pva.PlayerId.Value;
+            rows.Add(new MeetingHud.VoterState { VoterId = id, VotedForId = pva.AmDead ? (byte)254 : target });
+        }
+        var sent = new Il2CppStructArray<MeetingHud.VoterState>((long)rows.Count);
+        for (int i = 0; i < rows.Count; i++) sent[i] = rows[i];
+        Last = $"forced exiled={target}";
+        Plugin.Logger.LogInfo($"vote tally {Last}");
+        hud.RpcVotingComplete(sent, info, false, false, 0);
+        return true;
+    }
+
     // 本編が票を数えた直後 (ジャッジの会議で本編に締めさせた時だけ・ホスト)
     internal static void AfterCalculate(Il2CppSystem.Collections.Generic.Dictionary<byte, int> counts)
     {
