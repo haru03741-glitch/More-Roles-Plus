@@ -266,6 +266,7 @@ internal static class EmoteArt
     internal static void Tick()
     {
         if (Live.Count == 0) return;
+        if (Roles.RewindPlayback.Active) { ClearAll(); return; } // 逆再生の間は終える (体の跳ねを戻し、体の姿は逆再生が置く)
         if (Terrain.GameClock.ShipGen != _shipGen)
         {
             _shipGen = Terrain.GameClock.ShipGen;

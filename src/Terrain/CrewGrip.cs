@@ -73,7 +73,7 @@ internal static class CrewGrip
     private static float _popAt = -1f;      // 最後に押した時刻 (_anim)
     private static float _keyScale = -1f;   // 最後に書いた札の大きさ (同じなら書かない)
     private static Transform _tapTf;
-    private static bool _shown, _ringOn, _dotOn, _grabOn;
+    private static bool _shown, _ringOn, _dotOn, _grabOn, _afterRewind;
     private static Pose _bend;
     private static float _anim;
     private static Sprite _ringSprite, _dotSprite, _whiteSprite;
@@ -185,6 +185,21 @@ internal static class CrewGrip
             _state = State.Free;
             _shown = false;
             _strandTried = false;
+        }
+        if (Roles.RewindPlayback.Active)
+        {
+            // 逆再生の間はつかまりをやめ、流されている体の見た目も戻す (体の位置は逆再生が置き、吸い出しの計算は時戻しが巻き戻す)
+            foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
+            Flights.Clear();
+            Cancel();
+            _afterRewind = true;
+            return;
+        }
+        if (_afterRewind)
+        {
+            // 控え (TrackWorld) は戻し終わりに入れ物を出し直すので、つかまっていなければ隠し直す
+            _afterRewind = false;
+            if (!_shown && _root) _root.SetActive(false);
         }
         if (Flights.Count > 0) TickFlights();
         if (SolidMap.AnySealed && ++_strandFrame >= StrandEvery) { _strandFrame = 0; CheckStranded(); }
@@ -809,7 +824,10 @@ internal static class CrewGrip
         if (!ShipStatus.Instance) return false;
         _root = new GameObject("MrpCrewGrip") { layer = 0 };
         _root.transform.SetParent(ShipStatus.Instance.transform, false);
+        // 左右反転した船の中でも手の向きと絵・伸びる棒の向きが裏返らないように、入れ物の横の倍率で反転を打ち消す
+        if (ShipStatus.Instance.transform.lossyScale.x < 0f) _root.transform.localScale = FxMath.V3(-1f, 1f, 1f);
         GameClock.Ship.Bind(_root);
+        Roles.FxRoot.TrackWorld(_root); // 逆再生の間は見えていたとおりに逆へ流す (画面の案内は TrackHud)
         _ringOn = _dotOn = _grabOn = false;
         _ringSprite ??= Bake(128, RingAlpha, "MrpGripRing");
         _dotSprite ??= Bake(64, DotAlpha, "MrpGripDot");
@@ -834,11 +852,11 @@ internal static class CrewGrip
             _prompt = MakeText(src, hud.transform, "MrpGripPrompt", FxMath.V3(0f, -1.55f, -800f), 7f, 2.6f);
             _prompt.color = FxMath.Rgba(1f, 0.95f, 0.8f, 1f);
             GameClock.Ship.Bind(_prompt.gameObject);
+            Roles.FxRoot.TrackHud(_prompt.transform);
             _prompt.gameObject.SetActive(false);
 
-            var key = new GameObject("MrpGripKey") { layer = hud.gameObject.layer };
+            var key = Roles.FxRoot.NewHud("MrpGripKey");
             _keyTf = key.transform;
-            _keyTf.SetParent(hud.transform, false);
             _keyRim = KeyPlate(_keyTf, "Rim", 0.18f, 0.002f, FxMath.Rgba(0.45f, 0.85f, 1f, 1f));
             _keyFill = KeyPlate(_keyTf, "Fill", 0.12f, 0.001f, FxMath.Rgba(0.06f, 0.06f, 0.09f, 0.9f));
             _keyText = MakeText(src, _keyTf, "Label", FxMath.V3(0f, 0f, 0f), 1.7f, 2.2f);
@@ -847,8 +865,7 @@ internal static class CrewGrip
             if (Touch && hud.UICamera)
             {
                 var cam = hud.UICamera;
-                var b = new GameObject("MrpGripTap") { layer = hud.gameObject.layer };
-                b.transform.SetParent(hud.transform, false);
+                var b = Roles.FxRoot.NewHud("MrpGripTap");
                 b.transform.localPosition = FxMath.V3(cam.orthographicSize * cam.aspect - 1.3f, 0.4f, -800f);
                 _tapBtn = b.AddComponent<SpriteRenderer>();
                 _tapBtn.sprite = Options.MenuArt.Round(0.6f);

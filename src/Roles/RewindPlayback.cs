@@ -254,6 +254,7 @@ internal static partial class RewindPlayback
     internal static void Drive(long at)
     {
         if (!_active) return;
+        if (Clocks.Count > 0) SeekClocks(at);
         Bracket(at, out int a, out int b, out float u);
         if (a < 0) return;
         try { DriveView(a, b, u); }
@@ -457,6 +458,7 @@ internal static partial class RewindPlayback
             if (t != null && t.Driving) Release(t);
         HideGhosts();
         StopView();
+        if (Clocks.Count > 0) EndClocks();
     }
 
     private static void Release(Track t)

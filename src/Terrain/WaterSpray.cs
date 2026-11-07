@@ -85,6 +85,8 @@ internal static class WaterSpray
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.1f, (now - _lastMs) / 1000f);
         _lastMs = now;
         if (!WaterSim.Ready) { Clear(); return; }
+        // 逆再生の間は粒をその場で止める (計算は時戻しが巻き戻す・戻し終わりに戻し先より後の粒は消す)
+        if (Roles.RewindPlayback.Active) return;
         bool meeting = MeetingHud.Instance;
         for (int i = Sprays.Count - 1; i >= 0; i--)
         {

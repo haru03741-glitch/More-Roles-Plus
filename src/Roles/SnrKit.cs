@@ -341,6 +341,8 @@ public static class SeerKit
         var go = new GameObject("MrpSeerSoul");
         go.transform.position = new Vector3(at.x, at.y + 0.25f, at.y / 1000f + 0.01f);
         life.Bind(go);
+        Rewind.Undo(_ => { if (go) Object.Destroy(go); }); // 置く前 (死ぬ前) へ戻ると魂も消える
+        FxRoot.TrackWorld(go);
         Color c = tint ?? new Color(0.72f, 0.88f, 1f, 1f);
         var parts = new[]
         {

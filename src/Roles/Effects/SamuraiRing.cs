@@ -28,6 +28,7 @@ internal sealed class SamuraiRing
 
     internal void Tick(bool visible)
     {
+        if (RewindPlayback.Active && _go) return; // 逆再生の間は輪をその時のまま止める (気は戻し終わりに記録の値へ戻る)
         if (!visible)
         {
             if (_go && _go.activeSelf) _go.SetActive(false);

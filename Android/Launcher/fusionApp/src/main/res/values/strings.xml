@@ -53,4 +53,6 @@
     <string name="bootstrap_game_layout_unsupported">This version of More Roles Plus does not recognize the installed Among Us build. Please update More Roles Plus.</string>
     <string name="join_link_failed">Could not open the room link.</string>
     <string name="join_link_joining">Joining room %1$s…</string>
+    <string name="screen_record_channel">Screen recording</string>
+    <string name="screen_record_notice">Recording the screen (More Roles Plus)</string>
 </resources>

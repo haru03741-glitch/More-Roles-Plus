@@ -71,6 +71,7 @@ public static partial class TestBridge
             Dev.PosTrace.Register();
             LobbyCommands.Register();
             RoleCommands.Register();
+            RewindLeak.Register();
             UiCommands.Register();
             DuelCommands.Register();
             Roles.RewindCinematic.Register();

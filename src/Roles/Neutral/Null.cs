@@ -107,9 +107,8 @@ public sealed class Null : RoleBase
         n._alone = alone;
         n._advancing = advancing;
         if (!up || !n.IsLocal) return;
-        PortKit.Flash(RoleDisplay.ParseColor("#FFFFFF"), 0.8f);
-        var hud = Vanilla.Hud;
-        if (SoundManager.Instance && hud && hud.TaskCompleteSound) SoundManager.Instance.PlaySound(hud.TaskCompleteSound, false, 0.8f);
+        if (phase == 3) NullFx.Achieve();
+        else NullFx.Isolate();
         PortKit.Notice(new Text(phase == 3 ? "Null.Achieved" : "Null.Phase2Started").ToString());
         if (phase == 3) { StatusEffects.Hide("Null"); n._shown = -1; }
     }

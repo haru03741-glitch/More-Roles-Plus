@@ -128,6 +128,14 @@ internal static class TrickWall
         return ProbeAt(at, true, true) == null;
     }
 
+    // FreeForPushWall が断った理由 (ログ用)
+    internal static string WhyNotFreeForPushWall(Vector2 at)
+    {
+        if (!SolidMap.Valid) return "no map";
+        if (SolidMap.Solid(at.x, at.y)) return "solid";
+        return ProbeAt(at, true, true) ?? "free";
+    }
+
     // 全員: 決まった形で立てる
     public static string Place(in ResolvedDamage r)
     {

@@ -512,7 +512,7 @@ internal static class FurnitureLift
         {
             var oc = FxMath.RotateZ(ang, l.ColT0.x - pivot0.x, l.ColT0.y - pivot0.y);
             l.ColTr.position = FxMath.V3(cx + oc.x, cy + oc.y, l.ColT0.z);
-            l.ColTr.rotation = FxMath.RotZ(l.ColRot0 + ang);
+            l.ColTr.rotation = FxMath.RotZ(l.ColRot0 + MapFlip.Turn(ang));
         }
     }
 

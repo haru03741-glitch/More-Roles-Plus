@@ -81,6 +81,7 @@ public sealed class RemoteController : RoleBase
         AddAbility(new Ability(new Text("RemoteController.Kill"), "snr_kill2")
         {
             CooldownAtStart = false,
+            WhileStill = true, // 操作中は本人の体が止まっている
             OnUse = () =>
             {
                 var t = Target;

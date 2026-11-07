@@ -66,8 +66,7 @@ internal static class HitFeel
         _gen = GameClock.ShipGen;
         // 縁から内へ薄れる帯 (横 32 × 縦 4・右の端が濃い)
         if (!_band) _band = FxSprites.Rect(32, 4, (x, _) => { float u = x + 0.5f; return u * u * u; }, "MrpHitFeelBand");
-        _root = new GameObject("MrpHitFeel") { layer = 5 };
-        _root.transform.SetParent(hud.transform, false);
+        _root = FxRoot.NewHud("MrpHitFeel", 5);
         _root.transform.localPosition = FxMath.V3(0f, 0f, -59f);
         float aspect = Screen.height > 0 ? Screen.width / (float)Screen.height : 16f / 9f;
         float hw = 3f * aspect, hh = 3f;

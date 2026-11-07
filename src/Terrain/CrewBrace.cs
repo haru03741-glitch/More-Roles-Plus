@@ -100,6 +100,8 @@ internal static class CrewBrace
     private static void TickCore()
     {
         if (Crews.Count == 0 && !CrewSwim.Wet) return;
+        // 逆再生の間は体の傾きを外す (体の姿は逆再生が控えのとおりに置く)。戻し終わったら水の深さから付け直す
+        if (Roles.RewindPlayback.Active) { if (Crews.Count > 0) Clear(); return; }
         long now = Environment.TickCount64;
         float dt = FxMath.Clamp((now - _lastMs) / 1000f, 0f, 0.1f);
         _lastMs = now;

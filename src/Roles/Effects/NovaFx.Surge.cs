@@ -95,9 +95,8 @@ internal static partial class NovaFx
         {
             var cam = Camera.main;
             if (!cam) return;
-            _dimGo = new GameObject("MrpNovaSurgeDim") { layer = cam.gameObject.layer };
+            _dimGo = FxRoot.NewOnCamera("MrpNovaSurgeDim", cam);
             var tf = _dimGo.transform;
-            tf.SetParent(cam.transform, false);
             tf.localPosition = FxMath.V3(0f, 0f, cam.nearClipPlane + 0.45f);
             float h = cam.orthographicSize * 2.1f;
             tf.localScale = FxMath.V3(h * cam.aspect * 3f, h * 3f, 1f);

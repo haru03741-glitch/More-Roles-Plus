@@ -369,7 +369,7 @@ internal static class BreakNoise
         var hud = Vanilla.Hud;
         var prefab = Prefab();
         if (!hud || !prefab) return null;
-        var go = UnityEngine.Object.Instantiate(prefab, hud.transform);
+        var go = Roles.FxRoot.CloneHud(prefab); // 逆再生の間は見えていたとおりに逆へ流す
         go.name = "MrpNoiseMark";
         // 位置と消え方はこちらで動かすので、本編の矢印の動き (死体を追う・時間で消す) を外す。コマ送りの絵はそのまま動かす
         UnityEngine.Object.DestroyImmediate(go.GetComponent<NoisemakerArrow>());

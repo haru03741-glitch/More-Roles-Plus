@@ -558,6 +558,14 @@ public sealed class Architect : RoleBase
     {
         if (desk >= _desks.Count || _desks[desk].Broken) return;
         var d = _desks[desk];
+        int wasHits = d.Hits;
+        var wasRot = d.Root ? d.Root.transform.rotation : Quaternion.identity;
+        // 叩かれる・壊れる前へ戻ると台も戻る (使っていた人の設計図は開き直さない)
+        Rewind.Undo(_ =>
+        {
+            if (d.Broken) { ArchitectDeskArt.Unbreak(d, wasHits, wasRot); RefreshDrone(); if (IsLocal) ArchitectPlan.MarkDirty(); }
+            else ArchitectDeskArt.Unhit(d, wasHits, wasRot);
+        });
         d.Hits = hits;
         var info = GameData.Instance ? GameData.Instance.GetPlayerById(hitter) : null;
         var obj = info != null ? info.Object : null;
@@ -591,13 +599,56 @@ public sealed class Architect : RoleBase
         var lp = PlayerControl.LocalPlayer;
         if (!lp || lp.inVent || lp.onLadder || lp.inMovingPlat) return false;
         Vector2 me = lp.GetTruePosition();
-        float x = me.x, y = me.y + DeskBack;
-        if (Crew.PortalMaker.NearFixture(FxMath.V2(x, y)) || (SolidMap.Valid && SolidMap.Solid(me.x, me.y))) return false;
-        string why = Blocked(x, y);
-        _lastDesk = why ?? "placed";
-        if (why != null) { Plugin.Logger.LogInfo($"Architect: desk refused {why}"); return false; }
+        if (!FindSpot(me.x, me.y, out float x, out float y, out string why))
+        {
+            _lastDesk = why;
+            Plugin.Logger.LogInfo($"Architect: desk refused {why}");
+            var hud = Vanilla.Hud;
+            if (hud && hud.Notifier) hud.Notifier.AddDisconnectMessage(new Text("Architect.DeskNoRoom"));
+            return false;
+        }
+        _lastDesk = "placed";
         if (!TryAdd(x, y)) return false;
         DeskCall.Send(FxMath.V2(x, y));
+        return true;
+    }
+
+    // 足元の少し奥に置けなければ、近くで置ける所を近い順に探す (壁や端末の脇に立っていても置けるように)。
+    // 壁の向こうへは置かない (足元から台の手前の縁までの間が歩ける所で続いていること)。why = 足元の少し奥で断った理由
+    private const float ShiftReach = 1f, ShiftRing = 0.25f;
+    private const int ShiftDirs = 12;
+    private static bool FindSpot(float mx, float my, out float x, out float y, out string why)
+    {
+        x = mx; y = my + DeskBack;
+        why = Spot(mx, my, x, y);
+        if (why == null) return true;
+        for (float r = ShiftRing; r <= ShiftReach + 1e-4f; r += ShiftRing)
+            for (int k = 0; k < ShiftDirs; k++)
+            {
+                float a = k * (MathF.PI * 2f / ShiftDirs);
+                float cx = mx + MathF.Sin(a) * r, cy = my + DeskBack + MathF.Cos(a) * r; // 奥 (上) から回る
+                if (Spot(mx, my, cx, cy) != null) continue;
+                x = cx; y = cy;
+                return true;
+            }
+        return false;
+    }
+
+    private static string Spot(float mx, float my, float x, float y)
+    {
+        if (Crew.PortalMaker.NearFixture(FxMath.V2(x, y))) return "fixture";
+        if (!Reachable(mx, my, x, y + ArchitectDeskArt.FootFront)) return "behind a wall";
+        return Blocked(x, y);
+    }
+
+    // 足元から (tx, ty) まで歩ける所が続いているか。足元のすぐ近くは見ない (壁際に立つと地図の太らせた壁の中に入る)
+    private static bool Reachable(float mx, float my, float tx, float ty)
+    {
+        if (!SolidMap.Ensure() || !SolidMap.Valid) return false;
+        float dx = tx - mx, dy = ty - my, len = MathF.Sqrt(dx * dx + dy * dy);
+        const float skip = 0.3f, step = 0.1f;
+        for (float d = skip; d < len; d += step)
+            if (SolidMap.Solid(mx + dx * d / len, my + dy * d / len)) return false;
         return true;
     }
 
@@ -615,6 +666,17 @@ public sealed class Architect : RoleBase
         var h = ArchitectDeskArt.Place(x, y);
         if (h == null) return false;
         _desks.Add(h);
+        // 置く前へ戻ると台は無くなる (台の番号は電文が指すので、いちばん後ろの物だけを外す。取り消しは新しい順なので必ず後ろから)
+        Rewind.Undo(_ =>
+        {
+            int last = _desks.Count - 1;
+            if (last < 0 || _desks[last] != h) return;
+            if (_openDesk == last) { if (IsLocal && ArchitectPlan.Owner == this) ArchitectPlan.Close(); _openDesk = -1; }
+            _desks.RemoveAt(last);
+            ArchitectDeskArt.Remove(h);
+            RefreshDrone();
+            if (IsLocal) ArchitectPlan.MarkDirty();
+        });
         Terrain.DustCloud.Kick(FxMath.V2(x, y), 0.35f, (ushort)FxMath.Range(0, 65535)); // 脚が床を打った土ぼこり
         PushOut(x, y);
         return true;
@@ -628,7 +690,10 @@ public sealed class Architect : RoleBase
         if (!SolidMap.Ensure() || !SolidMap.Valid) return "no map";
         for (int i = -1; i <= 1; i++)
             for (int j = 0; j <= 2; j++)
-                if (!TrickWall.FreeForPushWall(FxMath.V2(x + hw * i, y + f + (bk - f) * 0.5f * j))) return "not on floor";
+            {
+                var q = FxMath.V2(x + hw * i, y + f + (bk - f) * 0.5f * j);
+                if (!TrickWall.FreeForPushWall(q)) return $"not on floor ({q.x:0.##},{q.y:0.##} {TrickWall.WhyNotFreeForPushWall(q)})";
+            }
         var all = PlayerControl.AllPlayerControls;
         for (int i = 0; i < all.Count; i++)
         {

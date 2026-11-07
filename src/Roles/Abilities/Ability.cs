@@ -145,6 +145,10 @@ public sealed class Ability
 
     internal float CooldownSeconds => Math.Max(Cooldown?.Invoke() ?? 0f, 0f);
 
+    // ホストの判定で待ち時間の間か (自分の道で能力を使うボットにも本人のボタンと同じ待ち時間を守らせる)
+    internal bool HostCooling(PlayerControl user) =>
+        (Environment.TickCount64 - HostLastMs) / 1000f < CooldownSeconds && !Dev.DevCooldown.Skips(user);
+
     internal void Spend()
     {
         if (UsesLeft > 0) UsesLeft--;
@@ -160,8 +164,12 @@ public sealed class Ability
     internal void RestoreUses(int left)
     {
         if (UsesLeft == left) return;
+        bool wasOut = UsesLeft == 0;
         UsesLeft = left;
         Button?.SetUses(UsesLeft);
+        // 使い切りで押せなくした自分に使う能力は、回数が戻ったら押せる形へ戻す (人を狙う能力は狙いの走査が毎回決める)
+        if (Target != AbilityTarget.Player && Target != AbilityTarget.Pick && Button != null && (wasOut || UsesLeft == 0))
+            Button.SetUsable(UsesLeft != 0);
     }
 }
 

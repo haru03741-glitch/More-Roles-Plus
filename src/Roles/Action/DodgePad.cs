@@ -214,9 +214,8 @@ internal static class DodgePad
         _padLayout = PadLayout;
         float halfH = cam.orthographicSize, halfW = halfH * cam.aspect;
         int layer = hud.gameObject.layer;
-        _root = new GameObject("MrpDodgePad") { layer = layer };
+        _root = FxRoot.NewHud("MrpDodgePad", layer);
         var tf = _root.transform;
-        tf.SetParent(hud.transform, false);
         tf.localPosition = FxMath.V3(0f, 0f, Z);
 
         var go = new GameObject("Dodge") { layer = layer };

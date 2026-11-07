@@ -49,6 +49,7 @@ public sealed partial class Ubiquitous : RoleBase
 
     // 飛んでいるドローン (自分の端末だけ)
     private GameObject _drone;
+    private readonly Tracked<Vector2> _droneAt = new(); // 時戻しで戻すドローンの位置 (本人の端末)
     private Rigidbody2D _body;
     private SpriteRenderer _rend;
     private int _spinFrame;   // プロペラの残像のコマ
@@ -215,6 +216,20 @@ public sealed partial class Ubiquitous : RoleBase
             _light.AddComponent<MeshFilter>().mesh = src.lightChildMesh;
             _light.AddComponent<MeshRenderer>().material.shader = src.LightCutawayMaterial.shader;
         }
+        _droneAt.Value = at;
+        FxRoot.TrackWorld(_drone);
+        Rewind.Undo(_ => DestroyDrone()); // 呼ぶ前へ戻るとドローンは無くなる
+    }
+
+    // 時戻しの後: 戻った位置へドローンを置く (逆再生の間は隠していたので、止まっていた羽音も鳴らし直す)
+    public override void OnRewound()
+    {
+        if (!IsLocal || !_drone) return;
+        var p = _droneAt.Value;
+        _drone.transform.position = FxMath.V3(p.x, p.y, -1f);
+        if (_body) _body.velocity = Vector2.zero;
+        _vx = _vy = 0f;
+        if (_hum && !_hum.isPlaying) _hum.Play();
     }
 
     // spinDown = 回転が落ちる音を鳴らす (自分で戻した時だけ。会議・死亡・試合の終わりでは鳴らさない)
@@ -225,6 +240,8 @@ public sealed partial class Ubiquitous : RoleBase
         ShareGone();
         if (_drone)
         {
+            Vector2 was = _drone.transform.position;
+            Rewind.Undo(_ => { if (!_drone && PortKit.Alive(Player)) CreateDrone(was); }); // 戻す前へ戻るとドローンが戻る
             if (spinDown)
             {
                 Vector2 at = _drone.transform.position;
@@ -242,8 +259,10 @@ public sealed partial class Ubiquitous : RoleBase
     public override void OnFixedUpdate()
     {
         if (!IsLocal) { SeenTick(); return; }
+        if (RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         if (_drone && !PortKit.Alive(Player)) DestroyDrone();
         if (!_drone) return;
+        _droneAt.Value = _drone.transform.position;
         ShareTick();
         bool op = _operate.InEffect;
         float dt = Time.fixedDeltaTime;
@@ -396,6 +415,7 @@ public sealed partial class Ubiquitous : RoleBase
     {
         if (!owner || RoleState.Of(owner) is not Ubiquitous) return;
         var d = new IdleDrone { Owner = owner.PlayerId, Go = MakeDrone(at, false, yaw), Turns = StayTurns, Yaw = yaw & 15 };
+        FxRoot.TrackWorld(d.Go);
         d.Body = IdleBody(d);
         Idle.Add(d);
     }

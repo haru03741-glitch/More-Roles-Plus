@@ -96,6 +96,10 @@ internal static class FxHands
             h.Tf.localScale = FxMath.V3(0f, 0f, 1f);
             h.Go.SetActive(true);
             Live.Add(h);
+            // 逆再生に入れる (手は親の倍率のまま大きさを書くので根の下へは移さない)。始める前へ戻ると手は消える
+            Roles.FxRoot.TrackWorld(h.Go);
+            var made = h;
+            Roles.Rewind.Undo(_ => { if (Live.Remove(made)) Release(made); });
             h = null;
         }
         catch (System.Exception e)
@@ -114,6 +118,13 @@ internal static class FxHands
     internal static void Tick()
     {
         if (Live.Count == 0) return;
+        if (Roles.RewindPlayback.Active)
+        {
+            // 逆再生の間は止める (動きは始めた時刻から決まるので、始めた時刻を先へ延ばす)
+            float dt = Time.deltaTime;
+            foreach (var x in Live) x.Start += dt;
+            return;
+        }
 
         float now = Time.time;
         for (int i = Live.Count - 1; i >= 0; i--)
@@ -167,6 +178,7 @@ internal static class FxHands
     {
         if (!h.Go) return;
 
+        Roles.FxRoot.Untrack(h.Go); // 池の手は控えに入れない (戻し終わりに使っていない手を出さない)
         h.Go.SetActive(false);
         if (Pool.Count < MaxLive) Pool.Push(h);
         else Object.Destroy(h.Go);

@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Voice;
 
-// ボイスチャットの窓 (左下のマイクの印を押す / キー): マイク・ミュート・聞く・マイクの大きさ・ボイスチェンジャー・人ごとの聞こえる大きさ。
+// ボイスチャットの窓 (マイクの印を押す (PC は左下・スマホは右上) / キー): マイク・ミュート・聞く・マイクの大きさ・ボイスチェンジャー・人ごとの聞こえる大きさ。
 // どれも自分だけの設定
 internal static class VoicePanel
 {
@@ -40,7 +40,11 @@ internal static class VoicePanel
         col.Add(new Stack(true,
             new Label(new Text("VoicePanel.Title"), 2.4f) { MenuFont = true, Bold = true, Color = TitleColor },
             new Spacer(0.2f, 0.1f),
+#if ANDROID
+            new Label(new Text("VoicePanel.SubAndroid"), 1.3f) { Color = SubText }) { Gap = 0.1f, Align = Align.Start });
+#else
             new Label(new Text("VoicePanel.Sub").With("key", key), 1.3f) { Color = SubText }) { Gap = 0.1f, Align = Align.Start });
+#endif
 
         col.Add(new Stack(true,
             Toggle(new Text("VoicePanel.Mic"), () => Menu.ClientOptions.VoiceMic.Value, v => Menu.ClientOptions.VoiceMic.Value = v),

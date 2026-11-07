@@ -143,6 +143,16 @@ internal static class DevCommands
             reply($"OK victimview {a[0]} {TestBridge.F(dx)},{TestBridge.F(dy)}");
         });
 
+        TestBridge.Register("nullfx", "[iso|ach] ヌルの段階が進んだ時の本人の画面を自分の画面で流す (iso = 第 2 段階へ・ach = 条件達成)・引数なし = 流れているか・絞った音量", (args, reply) =>
+        {
+            var a = args.Trim();
+            if (a == "") { reply($"OK nullfx {NullFx.State}"); return; }
+            if (a == "iso") NullFx.Isolate();
+            else if (a == "ach") NullFx.Achieve();
+            else { reply("ERR nullfx [iso|ach]"); return; }
+            reply($"OK nullfx {a}");
+        });
+
         TestBridge.Register("vrole","[role <番号> <RoleTypes> | shift <番号> <相手> | unshift <番号> | vanish <番号> | appear <番号> | use | pet <番号> <ペットの並びの番号>] 本編の役職を付ける / 変身・解除・透明・出現を全員へ (ホスト) / 自分の本編の能力を使う / ペットを替える。引数なし = 全員の姿の状態と自分の本編の役職の残り", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

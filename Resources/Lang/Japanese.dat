@@ -33,8 +33,9 @@ Lighter.VisionMultiplier.Detail: 普通のクルーの視界に掛ける倍率�
 PortalMaker.Name: ポータルメーカー
 PortalMaker.Blurb: 2 つのポータルで船の中をつなげ
 PortalMaker.Summary: 離れた 2 か所をポータルでつなげるクルーです。
-PortalMaker.Portal.Help: 足元にポータルを置きます。2 つ置くと、生きている人なら誰でも、ポータルの上で使用ボタンを押してもう一方へ移れます。2 つ置いた後にもう一度押すと 2 つとも消え、置き直せます。消せるかどうかは設定で決まります。
+PortalMaker.Portal.Help: 足元にポータルを置きます。ベントや端末、扉、はしごが近くて置けない時は、すぐ近くの空いた所に置きます。2 つ置くと、生きている人なら誰でも、ポータルの上で使用ボタンを押してもう一方へ移れます。2 つ置いた後にもう一度押すと 2 つとも消え、置き直せます。消せるかどうかは設定で決まります。
 PortalMaker.Portal.Short: 足元に置く。2 つでつながる
+PortalMaker.NoRoom: 近くにポータルを置ける場所がありません
 PortalMaker.Tips: ポータルはインポスターも使えます。デモリッシャーのハンマーで 3 回叩かれると壊れます。
 PortalMaker.Quote: 遠回りは、もう要らない。
 PortalMaker.PlaceCooldown: ポータルを置く待ち時間
@@ -60,8 +61,9 @@ Rewinder.Rewind: 時戻し
 Architect.Name: フォートレスメイカー
 Architect.Blurb: 設計図から船を作り変えろ
 Architect.Summary: 設計図に線を引いて、船に壁を建てられるインポスターです。
-Architect.Desk.Help: 足元の少し奥に設計台を置きます。設計台は全員に見え、ほかの人も使えます。デモリッシャーのハンマーで 3 回叩かれるか、爆発に巻き込まれると壊れ、壊れた分は置き直せません。
+Architect.Desk.Help: 足元の少し奥に設計台を置きます。壁や端末が近くて置けない時は、すぐ近くの空いた所に置きます。設計台は全員に見え、ほかの人も使えます。デモリッシャーのハンマーで 3 回叩かれるか、爆発に巻き込まれると壊れ、壊れた分は置き直せません。
 Architect.Desk.Short: 設計図を開くための台を置く
+Architect.DeskNoRoom: 近くに設計台を置ける場所がありません
 Architect.Plan.Help: 設計台の手前で押すと、船の歩ける所を上から見た設計図が開きます。ほかの人の居場所は色のない影で分かります。押したまま動かして線を引き、離すと、その線に沿って床から壁がせり上がります。線を引けるのは設計台から届く円の中だけで、長さはゲージの分までです。ゲージは時間で戻ります。壁が立った所にいた人は横へ押し出されます。壁は時間が経つと崩れ、ハンマーや爆発でも壊れます。設計図を開いている間はその場から動けず、キルもできません。
 Architect.Plan.Short: 線を引くと、そこに壁が建つ
 Architect.Pipe: 配管
@@ -130,13 +132,16 @@ VoiceChat.Range: 声の届く距離
 VoiceChat.InVent: ベントの中の人も話せる・聞こえる
 VoiceChat.MicOff: マイク OFF (MRP の設定で ON)
 VoiceChat.Muted: ミュート中 ({key} で解除)
+VoiceChat.MutedTouch: ミュート中
 VoiceChat.Listening: 今は話せません
 VoiceChat.MicOn: マイク ON ({key} でミュート)
+VoiceChat.MicOnTouch: マイク ON
 VoiceChat.Talking: 話しています
 VoiceChat.NoMic: マイクが見つかりません
 VoiceChat.NoMicAndroid: マイクが使えません (ランチャーでマイクを許可)
 VoicePanel.Title: ボイスチャット
 VoicePanel.Sub: 自分だけの設定 ({key} / 左下のマイクで開く)
+VoicePanel.SubAndroid: 自分だけの設定 (右上のマイクで開く)
 VoicePanel.Mic: マイク
 VoicePanel.Mute: ミュート
 VoicePanel.Hear: 聞く
@@ -1264,6 +1269,7 @@ Emote.Clap: 拍手
 Emote.Beckon: 手招き
 Emote.Tab: エモート
 Emote.TabHint: 押すと右の人が見本を見せます。試合中は {key} でエモートの輪を開き、右上の数字のキーで出せます。
+Emote.TabHintTouch: 押すと右の人が見本を見せます。試合中は右下のエモートのボタンで輪を開いて選べます。
 
 # ── Stamp ──
 Stamp.Button: スタンプ
@@ -1606,11 +1612,11 @@ Null.TogetherTime: 一緒にいる必要な時間
 Null.AloneTime: ひとりでいる必要な時間
 FakeJester.Name: フェイクジェスター
 FakeJester.Blurb: 道化を演じた偽者
-FakeJester.Summary: 自分をジェスターだと思い込んでいる第三陣営です。決めた数の会議が始まると、本当の役職に気づきます。
+FakeJester.Summary: 自分を道化だと思い込んでいる第三陣営です。決めた数の会議が始まると、本当の役職に気づきます。
 FakeJester.WinCond: 自覚した後、試合の終わりに生きていれば勝ち (追放されても勝ちにならない)
-FakeJester.Tips: 気づくまではジェスターとして振る舞ってしまいます。気づいた後は生き残ることを目指しましょう。
-FakeJester.Awaken: 自分はジェスターではなかった……フェイクジェスターだ！ 生き残れば勝ち
-FakeJester.AwakenedLabel: ジェスター/フェイクジェスター
+FakeJester.Tips: 気づくまでは道化として振る舞ってしまいます。気づいた後は生き残ることを目指しましょう。
+FakeJester.Awaken: 自分は道化ではなかった……フェイクジェスターだ！ 生き残れば勝ち
+FakeJester.AwakenedLabel: 道化/フェイクジェスター
 FakeJester.AwakenMeetings: 自覚するまでの会議の数
 FakeJester.AdditionalWin: 勝った陣営に相乗りする
 Guardian.Name: 守護者
@@ -1859,6 +1865,8 @@ Recorder.NotSupported: この端末では録画できません (描画: {api})
 Keybinds.Record: 録画を始める・止める
 Recorder.StartedTouch: 録画を始めました (MRP の設定の「録画」で止める)
 Recorder.Where: 録画の保存先: {path}
+Recorder.Denied: 画面の録画が許可されませんでした
+Recorder.OldLauncher: ランチャーが古いので録画できません。新しい APK を入れてください
 Home.JoinLink: リンク・コードで参加
 Home.JoinCode: 部屋 {code} に参加
 Home.JoinNone: 参加リンクか部屋コードをコピーしてから押してください

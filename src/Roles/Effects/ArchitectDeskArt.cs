@@ -60,14 +60,43 @@ internal static class ArchitectDeskArt
 
     internal static Handle Place(float x, float y)
     {
+        var h = new Handle { X = x, Y = y };
+        if (!Build(h)) return null;
+        Live.Add(h);
+        return h;
+    }
+
+    // 時戻しで壊れる前へ戻った台を作り直す (叩かれた回数と傾きも戻す)
+    internal static void Unbreak(Handle h, int hits, Quaternion rot)
+    {
+        if (h == null || !h.Broken) return;
+        if (!Build(h)) return;
+        h.Broken = false;
+        h.Hits = hits;
+        h.Root.transform.rotation = rot;
+        Live.Add(h);
+    }
+
+    // 時戻しで叩かれる前へ戻る
+    internal static void Unhit(Handle h, int hits, Quaternion rot)
+    {
+        if (h == null || h.Broken || !h.Root) return;
+        h.Hits = hits;
+        h.Root.transform.rotation = rot;
+    }
+
+    private static bool Build(Handle h)
+    {
+        float x = h.X, y = h.Y;
         var parent = Container();
         var sp = EnsureSprite();
-        if (!parent || !sp) return null;
+        if (!parent || !sp) return false;
         var root = new GameObject("MrpArchitectDesk") { layer = DeskLayer };
         root.transform.SetParent(parent.transform, false);
         root.transform.position = FxMath.V3(x, y, (y + BodyLift) / 1000f); // 船の根は z が 0 でない (Skeld は 8) ので世界の座標で置く
         var sr = root.AddComponent<SpriteRenderer>();
         sr.sprite = sp;
+        FxRoot.TrackWorld(root); // 逆再生の間は控えの絵で出す
         if (_shadow)
         {
             var sh = new GameObject("Shadow") { layer = DeskLayer };
@@ -84,9 +113,8 @@ internal static class ArchitectDeskArt
             FxMath.V2(-FootHalfW, FootFront), FxMath.V2(FootHalfW, FootFront),
             FxMath.V2(FootHalfW, FootBack), FxMath.V2(-FootHalfW, FootBack),
         };
-        var h = new Handle { X = x, Y = y, Root = root };
-        Live.Add(h);
-        return h;
+        h.Root = root;
+        return true;
     }
 
     internal static void Remove(Handle h)

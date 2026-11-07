@@ -33,8 +33,9 @@ Lighter.VisionMultiplier.Detail: Multiplier applied to normal crewmate vision.
 PortalMaker.Name: Portal Maker
 PortalMaker.Blurb: Link two places with portals
 PortalMaker.Summary: A crewmate who can link two distant places with portals.
-PortalMaker.Portal.Help: Place a portal at your feet. Once two are placed, any living player can stand on one and press Use to travel to the other. Press again after placing both to remove them and place again. The settings decide whether they can be removed.
+PortalMaker.Portal.Help: Place a portal at your feet. If a vent, console, door, or ladder is too close, it goes to the nearest open spot. Once two are placed, any living player can stand on one and press Use to travel to the other. Press again after placing both to remove them and place again. The settings decide whether they can be removed.
 PortalMaker.Portal.Short: Place at your feet. Two make a link
+PortalMaker.NoRoom: No room to place a portal nearby
 PortalMaker.Tips: Impostors can use the portals too. A portal breaks after three hits from the Demolisher's hammer.
 PortalMaker.Quote: No more long way around.
 PortalMaker.PlaceCooldown: Portal Cooldown
@@ -60,8 +61,9 @@ Rewinder.Rewind: Rewind
 Architect.Name: Architect
 Architect.Blurb: Reshape the ship from your blueprint
 Architect.Summary: An impostor who can draw lines on a blueprint to raise walls in the ship.
-Architect.Desk.Help: Place a drafting desk just behind your feet. Everyone can see the desks, and anyone can use them. A desk breaks after three hits from the Demolisher's hammer or when caught in an explosion, and a broken one cannot be placed again.
+Architect.Desk.Help: Place a drafting desk just behind your feet. If walls or consoles are in the way, it goes to the nearest open spot. Everyone can see the desks, and anyone can use them. A desk breaks after three hits from the Demolisher's hammer or when caught in an explosion, and a broken one cannot be placed again.
 Architect.Desk.Short: Place a desk to open the blueprint
+Architect.DeskNoRoom: No room to place a desk nearby
 Architect.Plan.Help: Press it in front of a desk to open a top-down blueprint of where the ship can be walked. Other players appear as colorless shadows. Hold and drag to draw a line; release to raise walls from the floor along it. You can only draw inside the circle your desk reaches, and only as far as your gauge allows. The gauge refills over time. Anyone standing where a wall rises is pushed aside. Walls crumble after a while and can also be broken by hammers and explosions. While the blueprint is open you cannot move or kill.
 Architect.Plan.Short: Draw a line to raise a wall
 Architect.Pipe: Pipes
@@ -130,13 +132,16 @@ VoiceChat.Range: Voice range
 VoiceChat.InVent: People in vents can talk and hear
 VoiceChat.MicOff: Mic off (turn it on in the MRP settings)
 VoiceChat.Muted: Muted ({key} to unmute)
+VoiceChat.MutedTouch: Muted
 VoiceChat.Listening: You cannot talk right now
 VoiceChat.MicOn: Mic on ({key} to mute)
+VoiceChat.MicOnTouch: Mic on
 VoiceChat.Talking: Talking
 VoiceChat.NoMic: No microphone found
 VoiceChat.NoMicAndroid: Microphone unavailable (allow it in the launcher)
 VoicePanel.Title: Voice chat
 VoicePanel.Sub: Your own settings ({key} / click the mic at bottom left)
+VoicePanel.SubAndroid: Your own settings (tap the mic at top right)
 VoicePanel.Mic: Mic
 VoicePanel.Mute: Mute
 VoicePanel.Hear: Listen
@@ -1264,6 +1269,7 @@ Emote.Clap: Clap
 Emote.Beckon: Beckon
 Emote.Tab: Emotes
 Emote.TabHint: Click one to see it on the right. In a match, press {key} to open the emote wheel, then the number in the corner.
+Emote.TabHintTouch: Tap one to see it on the right. In a match, open the emote wheel with the emote button at the bottom right and pick one.
 
 # ── Stamp ──
 Stamp.Button: Stamp
@@ -1859,6 +1865,8 @@ Recorder.NotSupported: Recording is not supported on this device (graphics: {api
 Keybinds.Record: Start / stop recording
 Recorder.StartedTouch: Recording started (stop it from Record in the MRP settings)
 Recorder.Where: Recordings are saved in: {path}
+Recorder.Denied: Screen recording was not allowed
+Recorder.OldLauncher: The launcher is too old to record. Please install the new APK
 Home.JoinLink: Join by link / code
 Home.JoinCode: Join room {code}
 Home.JoinNone: Copy a join link or room code first, then press this

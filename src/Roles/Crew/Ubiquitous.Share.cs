@@ -108,6 +108,7 @@ public sealed partial class Ubiquitous
         _seenLast = Time.time;
         if (_seen) return;
         _seen = Lifespan.Bind(MakeDrone(at, true, yaw));
+        FxRoot.TrackWorld(_seen);
         _seenBody = Bodies.Add(new Body
         {
             Kind = FlyingKind,
@@ -121,6 +122,7 @@ public sealed partial class Ubiquitous
     private void SeenTick()
     {
         if (!_seen) return;
+        if (RewindPlayback.Active) { _seenLast = Time.time; return; } // 逆再生の間は本人が送らないので、届かないのを消える合図にしない
         if (Time.time - _seenLast > ShareLost || !PortKit.Alive(Player)) { DropSeen(); return; }
         var tf = _seen.transform;
         Vector3 p = tf.position;

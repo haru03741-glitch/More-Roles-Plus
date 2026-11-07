@@ -134,6 +134,7 @@ internal static class SpectreDishes
         go.transform.position = new Vector3(at.x, at.y, (at.y + 0.3636f) / 1000f);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = DishSprite(false);
+        FxRoot.TrackWorld(go); // 逆再生の間は控えの絵で出す (食べた皿が盛られた姿へ戻っていく)
         return sr;
     }
 
@@ -160,6 +161,8 @@ internal static class SpectreDishes
         if (id < 0 || id >= All.Count) return;
         var d = All[id];
         bool wasAte = d.Ate;
+        float wasRespawn = d.Respawn;
+        Rewind.Undo(_ => { d.Ate = wasAte; d.Respawn = wasRespawn; Draw(d); }); // 食べる・盛る前へ戻ると皿も戻る
         d.Ate = ate;
         d.Respawn = Spectre.Replenish;
         Draw(d);
@@ -260,8 +263,7 @@ internal static class SpectreMinigame
         _dish = dishId;
         _onDone = onDone;
         _closeAt = -1f;
-        _root = new GameObject("MrpSpectreMinigame");
-        _root.transform.SetParent(hud.transform, false);
+        _root = FxRoot.NewHud("MrpSpectreMinigame", 0);
         _root.transform.localPosition = new Vector3(0f, 0f, -150f); // タスクの一覧や能力ボタンより手前
         RoleState.Match.Bind(_root);
 
@@ -373,6 +375,7 @@ internal static class SpectreGauge
 {
     private static GameObject _root;
     private static SpriteRenderer _bar, _fox;
+    private static UI.StickClear _clear;
     private static readonly List<(SpriteRenderer back, SpriteRenderer fill, float width)> Units = new();
     private static Sprite _barSprite, _unitSprite;
     private static Sprite[] _foxSprites;
@@ -385,9 +388,7 @@ internal static class SpectreGauge
         if (_root) return;
         var hud = Vanilla.Hud;
         if (!hud) return;
-        _root = new GameObject("MrpSpectreGauge");
-        _root.transform.SetParent(hud.transform, false);
-        _root.layer = 5;
+        _root = FxRoot.NewHud("MrpSpectreGauge", 5);
         life.Bind(_root);
         life.OnRelease(() => { _root = null; Units.Clear(); });
         var aspect = _root.AddComponent<AspectPosition>();
@@ -405,6 +406,8 @@ internal static class SpectreGauge
         }, "MrpSpectreBar");
         _bar = Child("Bar", _barSprite, new Vector3(width * 0.5f - 0.2f, 0f, 0f), new Vector3(width / 4f, 0.55f, 1f));
         _bar.color = new Color(0.12f, 0.1f, 0.16f, 0.9f);
+        // スマホ版の移動パッドに掛からないように
+        _clear = new UI.StickClear(aspect, _bar);
 
         _foxSprites ??= SpectreFoxArt.Frames;
         _foxShown = 1;
@@ -445,6 +448,7 @@ internal static class SpectreGauge
         bool on = show && !(map && map.IsOpen) && !ExileController.Instance;
         if (_root.activeSelf != on) _root.SetActive(on);
         if (!on) return;
+        _clear?.Update();
         _root.transform.localScale = MeetingHud.Instance ? new Vector3(0.8f, 0.8f, 1f) : Vector3.one;
         int fox = level < required ? 0 : 1;
         if (fox != _foxShown) { _foxShown = fox; _fox.sprite = _foxSprites[fox]; }

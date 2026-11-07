@@ -72,6 +72,9 @@ public sealed partial class TriggerHappy
         var old = g.Anims[g.Head];
         if (old) Object.Destroy(old.gameObject);
         g.Anims[g.Head] = anim;
+        var ag = anim.gameObject;
+        FxRoot.TrackWorld(ag); // 逆再生に入れる (人の子のまま)
+        Rewind.Undo(_ => { if (ag) Object.Destroy(ag); }); // 弾かれる前へ戻ると守りの絵も消える
         g.Born[g.Head] = Time.time;
         g.Faded[g.Head] = false;
         g.Head = (g.Head + 1) % GuardEffectMax;
@@ -91,6 +94,14 @@ public sealed partial class TriggerHappy
     private static void TickGuards()
     {
         if (!_guardLive) return;
+        if (RewindPlayback.Active)
+        {
+            // 逆再生の間は絵を隠して控えを見せているので、流れの時刻を先へ延ばして止める
+            float dt = Time.deltaTime;
+            foreach (var g in GuardEffects.Values)
+                for (int i = 0; i < GuardEffectMax; i++) g.Born[i] += dt;
+            return;
+        }
         bool any = false;
         float now = Time.time;
         foreach (var g in GuardEffects.Values)

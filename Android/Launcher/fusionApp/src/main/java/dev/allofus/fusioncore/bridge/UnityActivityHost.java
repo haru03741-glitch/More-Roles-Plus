@@ -63,8 +63,15 @@ public final class UnityActivityHost {
     private static Constructor<?> unityPlayerConstructor;
     private static Method eosInit;
     private static final List<Field> activityFields = new ArrayList<>();
+    private static volatile java.lang.ref.WeakReference<Activity> gameActivity;
 
     private UnityActivityHost() {
+    }
+
+    /** The game's activity while it exists (the screen recorder starts its consent screen from it). */
+    public static Activity gameActivity() {
+        java.lang.ref.WeakReference<Activity> ref = gameActivity;
+        return ref != null ? ref.get() : null;
     }
 
     /**
@@ -179,6 +186,7 @@ public final class UnityActivityHost {
         if (!isActive()) {
             throw new IllegalStateException("bridge onCreate reached without installation");
         }
+        gameActivity = new java.lang.ref.WeakReference<>(activity);
         try {
             // UnityPlayerActivity.onCreate
             activity.requestWindowFeature(Window.FEATURE_NO_TITLE);

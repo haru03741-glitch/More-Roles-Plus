@@ -767,8 +767,9 @@ internal static class TerrainFx
 
     public static void Tick()
     {
-        RunDeferred();
-        if (Items.Count == 0 || Paused) { _lastMs = 0; return; }
+        RunDeferred(); // 瓦礫の当たり判定を置く分を含むので、逆再生の間も回す
+        // 逆再生の間は崩れる塊・破片を止める (取り消した破壊の物は TerrainUndo が消す・止めている間の時間は飛ばす)
+        if (Items.Count == 0 || Paused || Roles.RewindPlayback.Active) { _lastMs = 0; return; }
         long now = Environment.TickCount64;
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.05f, (now - _lastMs) / 1000f);
         _lastMs = now;

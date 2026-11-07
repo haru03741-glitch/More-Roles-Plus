@@ -172,8 +172,10 @@ internal static class DecompFx
         var st = ShipStatus.Instance.transform;
         var sp = st.position;
         var ss = st.lossyScale;
+        // 左右反転した船の中でも粒の向き (回転) と絵が裏返らないように、入れ物の横の倍率で反転を打ち消す
+        if (ss.x < 0f) _root.transform.localScale = FxMath.V3(-1f, 1f, 1f);
         _ox = sp.x; _oy = sp.y;
-        _isx = MathF.Abs(ss.x) > 1e-4f ? 1f / ss.x : 1f;
+        _isx = MathF.Abs(ss.x) > 1e-4f ? 1f / MathF.Abs(ss.x) : 1f;
         _isy = MathF.Abs(ss.y) > 1e-4f ? 1f / ss.y : 1f;
         GameClock.Ship.Bind(_root);
         GameClock.Ship.OnRelease(Forget);
@@ -371,6 +373,8 @@ internal static class DecompFx
         long now = Environment.TickCount64;
         float dt = _lastMs == 0 ? 0.016f : Math.Min(0.1f, (now - _lastMs) / 1000f);
         _lastMs = now;
+        // 逆再生の間は閃光と吸い出しの粒をその場で止め、画面の揺れも止める (減圧の計算は時戻しが巻き戻す)
+        if (Roles.RewindPlayback.Active) { if (_shaking) StopShake(); return; }
         _clock += dt;
         _pollAcc += dt;
         if (_pollAcc >= PollEvery)

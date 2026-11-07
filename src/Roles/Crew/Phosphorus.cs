@@ -29,7 +29,7 @@ public sealed class Phosphorus : RoleBase
     public static readonly FloatOpt LightRange = new("Phosphorus.Range", 0.5f, 0.1f, 5f, 0.1f, "x");
 
     private const float ArtH = 0.45f;            // ランタンの高さ (単位)
-    private const float FlameH = 0.17f;          // 足元から炎までの高さ (光の中心)
+    private const float FlameH = 0.118f;         // 足元から炎までの画面の高さ (光の中心・絵の描画から測った値)
     private const float GlassBottom = 0.15f;     // 水がこの深さを超えると炎が浸かって消える
     private const float CheckEvery = 0.5f;       // 水・火を見て光の形を作り直す間隔
     private const int Rays = 96;                 // 光の形を作る光線の数
@@ -154,10 +154,23 @@ public sealed class Phosphorus : RoleBase
         var l = new Lantern { Owner = this, Go = go, Body = body, Glow = glow, LightGo = lg, LightR = mr, Mesh = mesh, X = at.x, Y = at.y, Phase = FxMath.Range(0f, 6.28f) };
         _lanterns.Add(l);
         All.Add(l);
+        Rewind.Undo(_ => Remove(l)); // 置く前へ戻るとランタンは無くなる (置いた回数は能力が戻す)
+        FxRoot.TrackWorld(go); // 逆再生の間は控えの絵で出す (光は視界の影を切るので今のまま)
+    }
+
+    private void Remove(Lantern l)
+    {
+        _lanterns.Remove(l);
+        All.Remove(l);
+        if (l.Go) Object.Destroy(l.Go);
+        if (l.LightGo) Object.Destroy(l.LightGo);
+        if (l.Mesh) Object.Destroy(l.Mesh);
     }
 
     private void Lighting(bool on)
     {
+        bool was = _manual;
+        if (was != on) Rewind.Undo(_ => Lighting(was));
         _manual = on;
         float now = Time.time;
         foreach (var l in _lanterns) Refresh(l, now);
@@ -298,7 +311,8 @@ public sealed class Phosphorus : RoleBase
     // 倒れてガラスが割れる。隠れていたランタンも全員に見える (油がこぼれるので何かあったと分かる)
     private void Break(Lantern l, float awayX)
     {
-        bool wasLit = l.Shown;
+        bool wasLit = l.Shown, wasActive = l.Active;
+
         l.Broken = true;
         l.Active = true;
         l.Shown = false;
@@ -310,7 +324,23 @@ public sealed class Phosphorus : RoleBase
         l.LightR.enabled = false;
         BreakNoise.PlayAt("noise_gat_case_2", FxMath.V2(l.X, l.Y), 8f, 4f, 0.8f);
         // 全員が積む: 倒れた後にホストが替わっても、新しいホストが入れられる
-        SpillDue.Add((FxMath.V2(l.X, l.Y), wasLit, GameClock.ShipGen));
+        var spill = (FxMath.V2(l.X, l.Y), wasLit, GameClock.ShipGen);
+        SpillDue.Add(spill);
+        // 倒れる前へ戻ると立ち直る。こぼれた油と火は地形の時戻しが戻し、まだ地形へ入れていない分はここで外す
+        Rewind.Undo(_ => { SpillDue.Remove(spill); Unbreak(l, wasActive); });
+    }
+
+    private void Unbreak(Lantern l, bool active)
+    {
+        if (!l.Go || !l.Broken) return;
+        l.Broken = false;
+        l.Active = active;
+        l.Shown = false;
+        l.Body.sprite = _off;
+        l.Body.flipX = false;
+        l.Body.color = active ? UnityEngine.Color.white : FxMath.Rgba(1f, 1f, 1f, IsLocal ? 0.5f : 0f);
+        l.NextCheck = 0f;
+        Refresh(l, Time.time);
     }
 
     // 倒れたランタンの油をこぼし、点いていたなら火をつける (地形の処理の外で・ホストだけ・別の試合の分は捨てる)
@@ -350,9 +380,10 @@ public sealed class Phosphorus : RoleBase
     {
         if (_off) return;
         float ppu = 256f / ArtH;
-        _off = ButtonIcons.Load("lantern_off", ppu, FxMath.V2(0.5f, 0.04f));
-        _on = ButtonIcons.Load("lantern_on", ppu, FxMath.V2(0.5f, 0.04f));
-        _broken = ButtonIcons.Load("lantern_broken", ppu, FxMath.V2(0.5f, 0.1f));
+        // 足の位置は斜め上から見た壺の底の真ん中 (手前の縁はそれより下に、影は右へ伸びて描かれる)
+        _off = ButtonIcons.Load("lantern_off", ppu, FxMath.V2(0.2300f, 0.1621f));
+        _on = ButtonIcons.Load("lantern_on", ppu, FxMath.V2(0.2308f, 0.1621f));
+        _broken = ButtonIcons.Load("lantern_broken", ppu, FxMath.V2(0.3633f, 0.2393f)); // flipX は足の位置を軸に返る
         _glow = FxSprites.Rect(64, 64, FxSprites.Soft, "mrp_lantern_glow");
     }
 

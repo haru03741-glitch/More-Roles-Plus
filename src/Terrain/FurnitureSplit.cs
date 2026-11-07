@@ -268,9 +268,11 @@ internal static class FurnitureSplit
             }
             else
             {
-                float wx0 = float.IsNegativeInfinity(piece.X0) ? float.NegativeInfinity : PixelToWorld(tr, pivot, ppu, h, piece.X0, 0f).x;
-                float wx1 = float.IsPositiveInfinity(piece.X1) ? float.PositiveInfinity : PixelToWorld(tr, pivot, ppu, h, piece.X1, 0f).x;
-                colPath = ClipX(ClipX(path, wx0, true), wx1, false);
+                // 絵の左右と世界の左右は、船を左右反転すると逆になる (画素の左端が世界の右端へ来る)
+                bool mirrored = tr.lossyScale.x < 0f;
+                float wx0 = float.IsNegativeInfinity(piece.X0) ? (mirrored ? float.PositiveInfinity : float.NegativeInfinity) : PixelToWorld(tr, pivot, ppu, h, piece.X0, 0f).x;
+                float wx1 = float.IsPositiveInfinity(piece.X1) ? (mirrored ? float.NegativeInfinity : float.PositiveInfinity) : PixelToWorld(tr, pivot, ppu, h, piece.X1, 0f).x;
+                colPath = ClipX(ClipX(path, MathF.Min(wx0, wx1), true), MathF.Max(wx0, wx1), false);
             }
             if (colPath.Count >= 3)
             {

@@ -33,6 +33,9 @@ public sealed class PortalMaker : RoleBase
     private const float Body = 0.2f;     // 着く所に要る体の半径
     private const float ArriveMax = 1.5f; // 行き先がふさがれていたら、ここまで離れた床を探す
     private const int ShipLayer = 9, FurnitureLayer = 12;
+    // 細い円を滑らせる確かめで、始点で既に触れている壁 (距離 0 の当たり) は数えない。壁の当たり判定は部屋ごとに 1 つで、
+    // 壁際の点から出すと向きによらず全部が始点で当たり、どこへも行けなくなる (間の壁は歩ける所の地図の線の確かめが見る)
+    private const float TouchSlack = 0.02f;
     private const int ArrivePhysics = 24; // 着く所を探す 1 回で物理に問い合わせる上限 (1 フレームに固めない)
     private const long PassGapMs = 400;  // 通った直後に押しが重なっても (クリックとキーが同じ時など) 2 回飛ばない
 
@@ -132,10 +135,46 @@ public sealed class PortalMaker : RoleBase
         }
         // はしご・昇降床・ベントの中は、着いた人がそこから動けなくなるので置かない
         if (lp.inVent || lp.onLadder || lp.inMovingPlat) return false;
-        Vector2 at = lp.GetTruePosition();
-        if (NearFixture(at)) return false;
-        if (!TryAdd(at.x, at.y)) return false;
-        MarkCall.Send(at);
+        Vector2 me = lp.GetTruePosition();
+        if (!FindSpot(me.x, me.y, out float x, out float y))
+        {
+            Refuse("no room", -1);
+            var hud = Vanilla.Hud;
+            if (hud && hud.Notifier) hud.Notifier.AddDisconnectMessage(new Text("PortalMaker.NoRoom"));
+            return false;
+        }
+        if (!TryAdd(x, y)) return false;
+        MarkCall.Send(FxMath.V2(x, y));
+        return true;
+    }
+
+    // 足元に置けなければ (ベント・端末・扉・はしごの近く)、近くで置ける所を近い順に探す。
+    // 壁や閉じた扉の向こうへは置かない (足元からその点まで歩ける所が続き、船の層の当たり判定が無いこと)
+    private const float ShiftReach = 1f, ShiftRing = 0.25f;
+    private const int ShiftDirs = 12;
+    private static bool FindSpot(float mx, float my, out float x, out float y)
+    {
+        x = mx; y = my;
+        if (!NearFixture(FxMath.V2(mx, my))) return true;
+        for (float r = ShiftRing; r <= ShiftReach + 1e-4f; r += ShiftRing)
+            for (int k = 0; k < ShiftDirs; k++)
+            {
+                float a = k * (MathF.PI * 2f / ShiftDirs);
+                float cx = mx + MathF.Sin(a) * r, cy = my + MathF.Cos(a) * r;
+                if (NearFixture(FxMath.V2(cx, cy)) || !Reachable(mx, my, cx, cy)) continue;
+                x = cx; y = cy;
+                return true;
+            }
+        return false;
+    }
+
+    private static bool Reachable(float fx, float fy, float px, float py)
+    {
+        if (!LineOpen(fx, fy, px, py, true)) return false;
+        float dx = px - fx, dy = py - fy, len = MathF.Sqrt(dx * dx + dy * dy);
+        if (len < 0.05f) return true;
+        foreach (var hit in Physics2D.CircleCastAll(FxMath.V2(fx, fy), 0.1f, FxMath.V2(dx / len, dy / len), len, 1 << ShipLayer))
+            if (hit.collider && !hit.collider.isTrigger && hit.distance > TouchSlack) return false;
         return true;
     }
 
@@ -256,7 +295,7 @@ public sealed class PortalMaker : RoleBase
         int to = 1 - near;
         // 壁 (後から立った仕掛け壁・閉じた扉も) の向こうからは入れない。行き先が埋まっていれば飛ばない
         if (!CanEnter(me.x, me.y, _x[near], _y[near])) { Refuse("wall", near); return; }
-        if (!FindArrival(_x[to], _y[to], out float tx, out float ty)) { Refuse("blocked", near); return; }
+        if (!FindArrival(_x[to], _y[to], out float tx, out float ty)) { Refuse($"blocked ({_arriveWhy})", near); return; }
         Warp(lp, tx, ty);
         _passedAt = now;
         _lastUse = $"pass {near}->{to} at=({tx:0.00},{ty:0.00})";
@@ -298,7 +337,7 @@ public sealed class PortalMaker : RoleBase
         if (len < 0.05f) return true;
         // 線の判定は短い区間だと壁の継ぎ目を素通りするので、細い円を滑らせる
         foreach (var hit in Physics2D.CircleCastAll(FxMath.V2(fx, fy), 0.1f, FxMath.V2(dx / len, dy / len), len, 1 << ShipLayer))
-            if (hit.collider && !hit.collider.isTrigger) return false;
+            if (hit.collider && !hit.collider.isTrigger && hit.distance > TouchSlack) return false;
         return true;
     }
 
@@ -309,6 +348,7 @@ public sealed class PortalMaker : RoleBase
         ax = mx; ay = my;
         if (!SolidMap.Valid) return true;
         _physicsLeft = ArrivePhysics;
+        _arriveWhy = "-";
         if (Arrivable(mx, my, mx, my)) return true;
         for (int ring = 1; ring * ArriveStep <= ArriveMax; ring++)
         {
@@ -337,21 +377,30 @@ public sealed class PortalMaker : RoleBase
         return a;
     }
 
+    private static string _arriveWhy = "-"; // ポータルの真上に着けなかった理由 (断った時のログ用)
+
     private static bool Arrivable(float mx, float my, float cx, float cy)
     {
-        if (SolidMap.Solid(cx, cy) || SolidMap.SealedAt(cx, cy)) return false;
-        if (SolidMap.Solid(cx - Body, cy) || SolidMap.Solid(cx + Body, cy) || SolidMap.Solid(cx, cy - Body) || SolidMap.Solid(cx, cy + Body)) return false;
+        bool center = cx == mx && cy == my;
+        if (SolidMap.Solid(cx, cy) || SolidMap.SealedAt(cx, cy)) return No(center, "solid");
+        if (SolidMap.Solid(cx - Body, cy) || SolidMap.Solid(cx + Body, cy) || SolidMap.Solid(cx, cy - Body) || SolidMap.Solid(cx, cy + Body)) return No(center, "narrow");
         // ポータルが壁に埋まっていても、その壁を抜けた先の床なら着いてよい (出た後にまた壁を越えるのはだめ)
-        if (!LineOpen(mx, my, cx, cy, true)) return false;
+        if (!LineOpen(mx, my, cx, cy, true)) return No(center, "line");
         // 地図に載らない物 (大きな瓦礫・閉じた扉・家具) にめり込まないか・ポータルからそこまでの間に閉じた扉が無いか
-        if (_physicsLeft-- <= 0) return false;
+        if (_physicsLeft-- <= 0) return No(true, "budget");
         foreach (var col in Physics2D.OverlapCircleAll(FxMath.V2(cx, cy), Body, (1 << ShipLayer) | (1 << FurnitureLayer)))
-            if (col && !col.isTrigger) return false;
+            if (col && !col.isTrigger) return No(true, "overlap " + col.name);
         float dx = cx - mx, dy = cy - my, len = MathF.Sqrt(dx * dx + dy * dy);
         if (len < 0.05f) return true;
         foreach (var hit in Physics2D.CircleCastAll(FxMath.V2(mx, my), 0.1f, FxMath.V2(dx / len, dy / len), len, 1 << ShipLayer))
-            if (hit.collider && !hit.collider.isTrigger && !hit.collider.OverlapPoint(FxMath.V2(mx, my))) return false;
+            if (hit.collider && !hit.collider.isTrigger && hit.distance > TouchSlack) return No(true, "cast " + hit.collider.name);
         return true;
+    }
+
+    private static bool No(bool center, string why)
+    {
+        if (center) _arriveWhy = why;
+        return false;
     }
 
     // a から b まで歩ける所が続くか (1/32 刻み)。skipLead = 始めの歩けない所は数えない (壁に埋まったポータルから出る時)

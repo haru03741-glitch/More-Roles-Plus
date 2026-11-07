@@ -34,7 +34,16 @@ public sealed class Demolisher : RoleBase
     private static bool Smash()
     {
         var res = TerrainApi.Hammer(Force);
-        if (!res.Ok) Plugin.Logger.LogInfo($"Demolisher: {res.Why}");
+        if (!res.Ok)
+        {
+            Plugin.Logger.LogInfo($"Demolisher: {res.Why}");
+            // 振った姿は出るが壊れない時は、なぜ壊れないかを画面にも出す (回数と待ち時間は使わない)
+            if (res.Why == new Text("HammerSwing.OuterWall") || res.Why == new Text("HammerSwing.NoWallThatWay"))
+            {
+                var hud = Vanilla.Hud;
+                if (hud && hud.Notifier) hud.Notifier.AddDisconnectMessage(res.Why);
+            }
+        }
         return res.Ok;
     }
 }

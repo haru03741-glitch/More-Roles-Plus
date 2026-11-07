@@ -13,7 +13,7 @@ namespace MoreRolesPlus;
 public class Plugin : BasePlugin
 {
     public const string Guid = "86aa5c38-7092-4d6f-ae72-7e9301070806";
-    public const string Version = "0.1.1";
+    public const string Version = "0.1.2";
 
     internal static ManualLogSource Logger;
     internal static Harmony Harmony;
@@ -96,12 +96,6 @@ public class Ticker : MonoBehaviour
         Menu.Recorder.OnQuit();
     }
 
-    // Android は裏へ回るとそのまま閉じられることがあるので、録画はそこで書き終える
-    private void OnApplicationPause(bool paused)
-    {
-        if (paused && System.OperatingSystem.IsAndroid()) Menu.Recorder.OnQuit();
-    }
-
     private void Update()
     {
         if (!_ran) { _ran = true; Boot.BootClock.Mark("frame1"); }
@@ -175,6 +169,7 @@ public class Ticker : MonoBehaviour
         Roles.PushFall.Tick();
         Roles.BodyConsume.Tick();
         Roles.VictimView.Tick();
+        Roles.NullFx.Tick();
         Roles.HitFeel.Tick();
         Roles.DuelGloom.Tick();
         UI.DuelHud.Tick();
@@ -231,6 +226,7 @@ public class Ticker : MonoBehaviour
         Menu.HomeScreen.Tick();
         Menu.KeyHints.Tick();
         Net.VersionBanner.Tick();
+        Options.SettingsCover.Tick();
         Menu.EmoteTab.Tick();
         Voice.VoiceChat.Tick();
         Menu.Recorder.Tick();

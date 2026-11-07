@@ -53,4 +53,6 @@
     <string name="bootstrap_game_layout_unsupported">此版本的 More Roles Plus 无法识别已安装的 Among Us 版本。请更新 More Roles Plus。</string>
     <string name="join_link_failed">无法打开房间链接。</string>
     <string name="join_link_joining">正在加入房间 %1$s…</string>
+    <string name="screen_record_channel">屏幕录制</string>
+    <string name="screen_record_notice">正在录制屏幕 (More Roles Plus)</string>
 </resources>

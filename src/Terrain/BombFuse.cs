@@ -92,6 +92,7 @@ internal static class BombFuse
         radius = TerrainWire.QSize(radius);
         LastPlaced[actor] = Time.time;
         Timers.Add(new Timer { At = Time.time + PlaceTime + Fuse, Actor = actor, Pos = pos, Radius = radius });
+        Roles.Rewind.Undo(_ => Timers.RemoveAll(t => t.Actor == actor && t.Pos == pos)); // 置く前へ戻ると爆発しない
         TerrainSync.BroadcastBomb(actor, pos, radius);
         Show(actor, pos, radius);
     }
@@ -113,6 +114,7 @@ internal static class BombFuse
             b.BoomAt = appear + Fuse;
             b.Expire = b.BoomAt + 2f;
             Bombs.Add(b);
+            Roles.Rewind.Undo(_ => { if (Bombs.Remove(b)) Destroy(b); }); // 置く前へ戻ると爆弾の絵も消える
         }
         catch (Exception e) { Plugin.Logger.LogError($"[BombFuse] show: {e}"); }
     }
@@ -143,6 +145,7 @@ internal static class BombFuse
 
         float now = Time.time;
         if (MeetingHud.Instance) { Clear(); return; }
+        if (Roles.RewindPlayback.Active) { Hold(Time.deltaTime); return; } // 逆再生の間は導火線を止める
 
         for (int i = Timers.Count - 1; i >= 0; i--)
         {
@@ -181,6 +184,13 @@ internal static class BombFuse
         }
     }
 
+    // 導火線の残りを dt だけ先へ延ばす
+    private static void Hold(float dt)
+    {
+        for (int i = 0; i < Timers.Count; i++) { var t = Timers[i]; t.At += dt; Timers[i] = t; }
+        foreach (var b in Bombs) { b.AppearAt += dt; b.BoomAt += dt; b.Expire += dt; }
+    }
+
     private static void Clear()
     {
         foreach (var b in Bombs) Destroy(b);
@@ -199,6 +209,7 @@ internal static class BombFuse
         // 奥行きは本編のクルーと同じ数え方 (y/1000)。置いた人の足に重なっても見えるよう少し手前
         go.transform.position = FxMath.V3(pos.x, pos.y, pos.y / 1000f - 0.0005f);
         var b = new Bomb { Go = go, Pos = pos, Body = go.AddComponent<SpriteRenderer>() };
+        Roles.FxRoot.TrackWorld(go);
         b.Body.sprite = body;
         var sgo = new GameObject("MrpBombSpark") { layer = 0 };
         sgo.transform.SetParent(go.transform, false);

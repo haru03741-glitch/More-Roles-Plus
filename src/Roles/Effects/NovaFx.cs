@@ -917,9 +917,8 @@ internal static partial class NovaFx
         float k = (1f - d / OvReach) * strength;
         if (!_ov)
         {
-            _ov = new GameObject("MrpNovaOverlay") { layer = cam.gameObject.layer };
+            _ov = FxRoot.NewOnCamera("MrpNovaOverlay", cam);
             var tf = _ov.transform;
-            tf.SetParent(cam.transform, false);
             tf.localPosition = FxMath.V3(0f, 0f, cam.nearClipPlane + 0.4f);
             float h = cam.orthographicSize * 2.1f;
             _ovFlash = Make("Flash", Terrain.DebrisArt.SoftGlow, tf);

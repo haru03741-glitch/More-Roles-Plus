@@ -213,6 +213,8 @@ internal static class SettingsMenu
         dot.sortingOrder = bg.sortingOrder + 5;
         var inner = dot.transform.GetChild(0).GetComponent<SpriteRenderer>();
         if (inner) inner.sortingOrder = bg.sortingOrder + 6;
+        SettingsCover.Add(dot);
+        SettingsCover.Add(inner);
         dot.gameObject.SetActive(false);
         CatDots[cat] = dot.gameObject;
     }

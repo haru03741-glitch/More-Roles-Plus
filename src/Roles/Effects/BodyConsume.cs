@@ -139,6 +139,13 @@ internal static class BodyConsume
             PortSound.Play("alchemist_transmute", null, 0.85f, FxMath.V2(c.x, c.y), 6f);
         }
         Live.Add(k);
+        // 始まる前へ戻ると演出ごと消える (逆再生の間は Tick を止めるので、戻した後に続きから再開させない)
+        Rewind.Undo(_ =>
+        {
+            if (!Live.Remove(k)) return;
+            if (k.Maw) ImpostorMaw.DevourTongue(k.WhoId, 0f, 0f);
+            Drop(k);
+        });
     }
 
     private static SpriteRenderer Make(string name, Sprite sp, Vector3 pos, int layer, Transform parent)
@@ -157,7 +164,7 @@ internal static class BodyConsume
 
     internal static void Tick()
     {
-        if (Live.Count == 0) return;
+        if (Live.Count == 0 || RewindPlayback.Active) return; // 逆再生の間は止める (見えるのは録画の逆再生)
         // 船が替わったら全部捨てる (絵は船の子なので船と一緒に消えている)。会議では本編が死体を片付けるので染みも消す
         if (_gen != GameClock.ShipGen || !GameClock.ShipAlive || MeetingHud.Instance) { Clear(); return; }
         float dt = Time.deltaTime;

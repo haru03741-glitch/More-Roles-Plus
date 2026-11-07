@@ -45,6 +45,10 @@ public abstract class RoleBase : Assignable
     public string ShownColor => Madden ? Crew.Madmate.MadColor : Color;
     internal string ShownColoredName => $"<color={ShownColor}>{ShownName}</color>";
 
+    // 本人が自分の役職だと思っている役職。説明の頁・試合の情報の並び・自分の役職の説明 (チャット) はこれで引く。
+    // 説明の文は Id で引くので、別の役職のふりをする役職はここでその役職を返す
+    public virtual RoleBase SeenBySelf => this;
+
     // イントロに出る一行の説明
     public abstract Text Blurb { get; }
 

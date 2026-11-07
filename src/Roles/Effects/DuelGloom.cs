@@ -143,9 +143,8 @@ internal static class DuelGloom
         if (!cam) return false;
         if (_vigGo) Object.Destroy(_vigGo);
         _vigCam = cam;
-        _vigGo = new GameObject("MrpDuelVignette") { layer = cam.gameObject.layer };
+        _vigGo = FxRoot.NewOnCamera("MrpDuelVignette", cam);
         _vigTf = _vigGo.transform;
-        _vigTf.SetParent(cam.transform, false);
         _vigTf.localPosition = FxMath.V3(0f, 0f, cam.nearClipPlane + 0.5f);
         _vigSr = _vigGo.AddComponent<SpriteRenderer>();
         _vigSr.sprite = VigSprite();

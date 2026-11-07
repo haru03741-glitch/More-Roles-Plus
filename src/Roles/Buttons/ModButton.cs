@@ -22,6 +22,8 @@ internal sealed class ModButton
     // 試合の始め・会議があった後の出し直しだけで待ち時間を数え直す (マップを開け閉めした時の出し直しでは戻さない)
     private static bool _resetPending = true;
     internal static void MarkRoundStart() => _resetPending = true;
+    // 本編の地図が開く・閉じる途中か。地図は HUD を隠して出し直すが、それで待ち時間を最初からにしない
+    internal static bool InMapToggle;
     private static int _tick;
     private static float _dt; // 物理の刻み (本編は 1/30 秒。0.02 秒の決め打ちだと実時間の 6 割で減る)。試合中は変わらないので 1 回だけ読む
 
@@ -104,8 +106,51 @@ internal sealed class ModButton
 
     // 時戻し: 待ち時間を記録の時の値へ戻す。効果の途中へは戻せないので、今の効果は終わらせ、
     // 記録の時に効果中だった時は残りの効果の分も待たせる
+    // 時戻しの逆再生の間: 記録の時刻の待ち時間と効果の残りを見せるだけ (値は変えない・戻し終わりに RewindTo で値ごと戻る)
+    internal void ShowRewind(float left, float effect)
+    {
+        if (!_button) return;
+        if (effect > 0f && _effectMax > 0f)
+        {
+            _button.SetFillUp(effect, _effectMax);
+            int sec = (int)Math.Ceiling(effect);
+            var text = _button.cooldownTimerText;
+            if (text && sec != _effectShown)
+            {
+                _effectShown = sec;
+                text.text = sec.ToString();
+                if (!text.gameObject.activeSelf) text.gameObject.SetActive(true);
+            }
+            return;
+        }
+        if (_effectShown >= 0)
+        {
+            _effectShown = -1;
+            _button.SetFillUp(0f, Math.Max(_effectMax, 0.01f));
+            if (_button.cooldownTimerText) _button.cooldownTimerText.gameObject.SetActive(false);
+        }
+        if (left > 0f)
+        {
+            _button.SetCoolDown(left, Math.Max(Cooldown, left));
+            _button.SetDisabled();
+        }
+        else
+        {
+            _button.SetCoolDown(0f, Cooldown);
+            if (_usable) _button.SetEnabled();
+            else _button.SetDisabled();
+        }
+    }
+
     internal void RewindTo(float left, float effect)
     {
+        if (_effect <= 0f && _effectShown >= 0 && _button)
+        {
+            // 逆再生の間に見せていた効果の表示を消す
+            _effectShown = -1;
+            _button.SetFillUp(0f, Math.Max(_effectMax, 0.01f));
+            if (_button.cooldownTimerText) _button.cooldownTimerText.gameObject.SetActive(false);
+        }
         if (_effect > 0f)
         {
             _effect = 0f;
@@ -512,6 +557,7 @@ internal sealed class ModButton
     public static void TickAll()
     {
         if (All.Count == 0 || (!_hudShown && !_ghostShown)) return;
+        if (RewindPlayback.Active) return; // 逆再生の間は待ち時間も効果も進めない (表示は時戻しが記録の時刻の値で書く)
         _tick++;
         bool redraw = _tick % RedrawTicks == 0;
         if (_dt <= 0f) _dt = Time.fixedDeltaTime;
@@ -577,11 +623,11 @@ internal sealed class ModButton
         foreach (var b in All.ToArray())
         {
             bool vis = b._ghost ? ghost : shown;
-            if (!vis && b._effect > 0f) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ)
+            if (!vis && b._effect > 0f && !InMapToggle) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ・地図を開いただけでは切らない)
             if (!vis && b._holding) b.EndHold(false);  // 溜めている途中の会議・死亡は使わずに捨てる
             if (!b._inGrid || !b._button) continue;
             b._button.gameObject.SetActive(vis);
-            if ((b._ghost ? ghostReshown : reshown) && b.ResetOnShow && _resetPending) b.StartCooldown();
+            if ((b._ghost ? ghostReshown : reshown) && b.ResetOnShow && _resetPending && !InMapToggle) b.StartCooldown();
         }
         if (reshown || ghostReshown) _resetPending = false;
         Arrange();
@@ -696,6 +742,21 @@ internal static class ModButtonRoundPatch
 
     [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CoBegin)), HarmonyPrefix]
     public static void Intro() => ModButton.MarkRoundStart();
+}
+
+// 地図を開く・閉じる間の HUD の出し入れには印を付ける (地図の間に会議が始まれば、会議明けの出し直しで最初からになる)
+[HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.Show))]
+internal static class ModButtonMapShowPatch
+{
+    public static void Prefix(out bool __state) { __state = ModButton.InMapToggle; ModButton.InMapToggle = true; }
+    public static void Postfix(bool __state) => ModButton.InMapToggle = __state;
+}
+
+[HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.Close))]
+internal static class ModButtonMapClosePatch
+{
+    public static void Prefix(out bool __state) { __state = ModButton.InMapToggle; ModButton.InMapToggle = true; }
+    public static void Postfix(bool __state) => ModButton.InMapToggle = __state;
 }
 
 [HarmonyPatch(typeof(HudManager), nameof(HudManager.SetHudActive), typeof(PlayerControl), typeof(RoleBehaviour), typeof(bool))]

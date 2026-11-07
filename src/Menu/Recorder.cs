@@ -10,8 +10,11 @@ using Object = UnityEngine.Object;
 namespace MoreRolesPlus.Menu;
 
 // 録画 (PC と Android)。ゲームの画面とゲームの音だけを MP4 にする (ほかのアプリや Windows・端末の画面・音は入らない)。
-// - 画面: 一番最後に描くカメラの最後に「描いた画面を RT へ縮めて写す」+「C++ の部品を呼ぶ」を積む。部品が描画のスレッドで読み出して書き出す
-//   (PC = Direct3D 11 と Media Foundation / Android = OpenGL ES 3 と MediaCodec。Android の Vulkan では録画できない)
+// - 画面: PC = 一番最後に描くカメラの最後に「描いた画面を RT へ縮めて写す」+「C++ の部品を呼ぶ」を積み、部品が描画のスレッドで
+//   読み出して書き出す (Direct3D 11 と Media Foundation)。
+//   Android = ゲームの Unity は描いた画面を読む口が削られていて描画も別のスレッドなので、端末の画面録画 (MediaProjection) を使う。
+//   部品が H.264 の符号器の入口をランチャーへ渡し、ランチャーが許可の画面を出して画面をそこへ映す (Vulkan の端末でも録れる)。
+//   音の速さを読む口も削られているので、Android は始める前に音の出口へ届く量を 1 秒数えて AAC の決まった速さに丸める
 // - 音: ゲームの音の出口 (AudioListener) に部品を付けて、鳴っている音をそのまま受け取る。
 //   ボイスチャットの声を入れない時は、声の鳴らし手を出口の部品の手前を通らないようにする (bypassListenerEffects。自分には今まで通り聞こえる)
 // 保存先は PC = ビデオのフォルダーの MoreRolesPlus / Android = 端末の Movies/MoreRolesPlus (書けなければアプリの中)
@@ -43,8 +46,17 @@ internal static unsafe class Recorder
 
     private static void* _h;
     private static readonly object AudioLock = new();
+#if ANDROID
+    private static int _w, _h2; // 録画の大きさ
+    private static int _rate; // 測った音の速さ (一度測れば使い回す)
+    private static volatile bool _measuring;
+    private static long _rateFrames, _rateFirst, _rateLast;
+    private static float _measureUntil;
+    private static readonly int[] AacRates = { 8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000 };
+#else
     private static RenderTexture _rt;
     private static CommandBuffer _cmd;
+#endif
     private static Camera _cam;
     private static AudioListener _listener;
     private static float _since, _nextCheck;
@@ -94,8 +106,9 @@ internal static unsafe class Recorder
     {
         if (Android)
         {
-            // 端末のファイルの画面は開けないので、場所を知らせる
-            Options.SettingNotice.Toast(new Text("Recorder.Where").With("path", Folder));
+            // 端末のファイルの画面は開けないので、場所を知らせる (Android 10 からは録り終えた動画を端末の「動画」へ移す)
+            string where = OperatingSystem.IsAndroidVersionAtLeast(29) ? "Movies/MoreRolesPlus" : Folder;
+            Options.SettingNotice.Toast(new Text("Recorder.Where").With("path", where));
             return;
         }
         try
@@ -115,11 +128,18 @@ internal static unsafe class Recorder
     internal static string Start()
     {
         if (Active) return "already";
+#if !ANDROID
         var api = SystemInfo.graphicsDeviceType;
         if (Android ? api != GraphicsDeviceType.OpenGLES3 : api != GraphicsDeviceType.Direct3D11)
             return Fail(new Text("Recorder.NotSupported").With("api", api.ToString()));
+#endif
+#if ANDROID
+        if (_rate == 0) return MeasureRate();
+        int rate = _rate;
+#else
         int rate = AudioSettings.outputSampleRate;
         if (rate != 44100 && rate != 48000) return Fail($"{rate}Hz");
+#endif
         var q = Qualities[Math.Clamp(Quality.Value, 0, Qualities.Length - 1)];
         int sw = Math.Max(Screen.width, 16), sh = Math.Max(Screen.height, 16);
         // Android の符号器は 16 の倍数でないと受け付けない物がある
@@ -130,15 +150,22 @@ internal static unsafe class Recorder
         {
             Directory.CreateDirectory(Folder);
             _path = Path.Combine(Folder, $"MRP_{DateTime.Now:yyyyMMdd_HHmmss}.mp4");
-            _rt = new RenderTexture(w, h, 0, Android ? RenderTextureFormat.ARGB32 : RenderTextureFormat.BGRA32) { name = "MrpRecord" };
+#if !ANDROID
+            _rt = new RenderTexture(w, h, 0, RenderTextureFormat.BGRA32) { name = "MrpRecord" };
             _rt.Create();
+#endif
             fixed (char* p = _path)
                 _h = MrpNative.RecStart(p, w, h, q.Fps, q.Bitrate, rate, 2);
             if (_h == null) throw new Exception("start failed");
+#if ANDROID
+            _w = w;
+            _h2 = h;
+#else
             MrpNative.RecTexture(_h, (void*)_rt.GetNativeTexturePtr(), Flip ? 1 : 0);
             _cmd = new CommandBuffer { name = "MrpRecord" };
             _cmd.Blit(Target(BuiltinRenderTextureType.CurrentActive, 0), Target(BuiltinRenderTextureType.RenderTexture, _rt.GetInstanceID()));
             _cmd.IssuePluginEvent((IntPtr)MrpNative.RecRenderEvent(), 1);
+#endif
             _since = Time.realtimeSinceStartup;
             _nextCheck = 0f;
             Attach();
@@ -153,7 +180,6 @@ internal static unsafe class Recorder
                 lock (AudioLock) _h = null;
                 MrpNative.RecStop(started, 1);
                 try { File.Delete(_path); } catch { }
-                FreeGl();
             }
             Cleanup();
             return Fail(e.Message);
@@ -163,6 +189,7 @@ internal static unsafe class Recorder
         return "OK " + _path;
     }
 
+#if !ANDROID
     // RenderTargetIdentifier を中身から作る (ゲームの Unity は組み込みの種類から作るコンストラクターが削られている。中身は Unity のコンストラクターと同じ)
     private static RenderTargetIdentifier Target(BuiltinRenderTextureType type, int instanceId) => new()
     {
@@ -174,6 +201,41 @@ internal static unsafe class Recorder
         m_CubeFace = CubemapFace.Unknown,
         m_DepthSlice = 0,
     };
+#endif
+
+#if ANDROID
+    // 音の出口に受け口を付けて、届く量を数え始める (1 秒後に Tick が丸めて録画を始める)
+    private static string MeasureRate()
+    {
+        if (_measuring) return "OK measuring";
+        _rateFrames = 0;
+        _rateFirst = _rateLast = 0;
+        _measureUntil = Time.realtimeSinceStartup + 1f;
+        _measuring = true;
+        AttachTap();
+        return "OK measuring";
+    }
+
+    private static void FinishMeasure()
+    {
+        _measuring = false;
+        // 音のスレッドが書いた値 (ランチャーは 64bit だけなので long は途中の値にならない)
+        long ticks = _rateLast - _rateFirst;
+        double r = ticks > 0 ? _rateFrames * (double)System.Diagnostics.Stopwatch.Frequency / ticks : 0;
+        Plugin.Logger.LogInfo($"recorder: audio rate ~{r:0} Hz");
+        // AAC が受ける速さのうち一番近い物 (端末によっては 24000 などで鳴らしている)
+        int best = 0;
+        foreach (int c in AacRates)
+            if (best == 0 || Math.Abs(r - c) < Math.Abs(r - best)) best = c;
+        if (Math.Abs(r - best) > best * 0.1)
+        {
+            Fail($"{r:0}Hz");
+            return;
+        }
+        _rate = best;
+        Start();
+    }
+#endif
 
     private static string Fail(string why)
     {
@@ -183,7 +245,8 @@ internal static unsafe class Recorder
         return msg;
     }
 
-    internal static string Stop(bool wait)
+    // failed = 録れなかった (保存の知らせを出さず、中身の無いファイルを消す)
+    internal static string Stop(bool wait, bool failed = false)
     {
         if (!Active) return "not recording";
         string path = _path;
@@ -191,29 +254,30 @@ internal static unsafe class Recorder
         Detach();
         lock (AudioLock) _h = null; // 音のスレッドがもう渡さないように
         int res = MrpNative.RecStop(h, wait ? 1 : 0);
-        FreeGl();
         Cleanup();
         Plugin.Logger.LogInfo($"recorder: stop {path} res={res}");
+        if (failed)
+        {
+            try { File.Delete(path); } catch { }
+            return $"OK stopped {path} res={res}";
+        }
         Options.SettingNotice.Toast(new Text("Recorder.Saved").With("name", Path.GetFileName(path)));
         return $"OK saved {path} res={res}";
     }
 
-    // Android: 止めた録画の GL の物は描画のスレッドでしか消せないので、部品に頼む
-    private static void FreeGl()
+    // 部品が返す失敗の種類を一言に
+    private static string Why(int error) => error switch
     {
-        if (!Android) return;
-        try
-        {
-            var cmd = new CommandBuffer { name = "MrpRecordFree" };
-            cmd.IssuePluginEvent((IntPtr)MrpNative.RecRenderEvent(), 2);
-            Graphics.ExecuteCommandBuffer(cmd);
-            cmd.Release();
-        }
-        catch (Exception e) { Plugin.Logger.LogError($"recorder free: {e}"); }
-    }
+#if ANDROID
+        7 => new Text("Recorder.Denied"),
+        9 => new Text("Recorder.OldLauncher"),
+#endif
+        _ => $"0x{error:X8}",
+    };
 
     private static void Cleanup()
     {
+#if !ANDROID
         if (_rt)
         {
             _rt.Release();
@@ -221,6 +285,7 @@ internal static unsafe class Recorder
         }
         _rt = null;
         _cmd = null;
+#endif
     }
 
     // 毎フレーム。一番最後に描くカメラと音の出口は場面が変わると作り直されるので、ときどき付け直す
@@ -228,6 +293,9 @@ internal static unsafe class Recorder
     {
         try
         {
+#if ANDROID
+            if (_measuring && Time.realtimeSinceStartup >= _measureUntil) FinishMeasure();
+#endif
             if (!Active) return;
             if (Time.realtimeSinceStartup >= _nextCheck)
             {
@@ -235,11 +303,17 @@ internal static unsafe class Recorder
                 Attach();
                 var info = stackalloc int[6];
                 MrpNative.RecInfo(_h, info);
+                if (info[0] == 3)
+                {
+                    // 端末の側 (通知や画面録画の停止) で止められた: ここまでを保存する
+                    Stop(false);
+                    return;
+                }
                 if (info[0] < 0)
                 {
-                    Plugin.Logger.LogError($"recorder: failed hr=0x{info[5]:X8}");
-                    Stop(false);
-                    Fail($"0x{info[5]:X8}");
+                    Plugin.Logger.LogError($"recorder: failed hr=0x{info[5]:X8} frames={info[1]}");
+                    Stop(false, failed: info[1] == 0);
+                    Fail(Why(info[5]));
                 }
             }
         }
@@ -256,10 +330,19 @@ internal static unsafe class Recorder
         }
         if (last != _cam)
         {
+#if ANDROID
+            _cam = last; // 画面は端末の画面録画から受ける (カメラには何も積まない)
+#else
             if (_cam && _cmd != null) _cam.RemoveCommandBuffer(CameraEvent.AfterEverything, _cmd);
             _cam = last;
             if (_cam && _cmd != null) _cam.AddCommandBuffer(CameraEvent.AfterEverything, _cmd);
+#endif
         }
+        AttachTap();
+    }
+
+    private static void AttachTap()
+    {
         var l = _listener ? _listener : Object.FindObjectOfType<AudioListener>();
         if (l != _listener || l && !l.GetComponent<RecordTap>())
         {
@@ -270,7 +353,9 @@ internal static unsafe class Recorder
 
     private static void Detach()
     {
+#if !ANDROID
         if (_cam && _cmd != null) _cam.RemoveCommandBuffer(CameraEvent.AfterEverything, _cmd);
+#endif
         _cam = null;
         _listener = null;
     }
@@ -282,6 +367,17 @@ internal static unsafe class Recorder
     // 音のスレッドから (鳴っている音はそのまま返す)
     internal static void OnAudio(Il2CppStructArray<float> data, int channels)
     {
+#if ANDROID
+        if (_measuring && data != null && channels > 0)
+        {
+            // 初めの呼び出しの時刻から数える (付けてから届くまでの遅れと、初めの塊は入れない)
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_rateFirst == 0) _rateFirst = now;
+            else _rateFrames += data.Length / channels;
+            _rateLast = now;
+            return;
+        }
+#endif
         if (_h == null || data == null || channels <= 0) return;
         lock (AudioLock)
         {
@@ -327,14 +423,25 @@ internal static unsafe class Recorder
             _energy = 0;
             _energyN = 0;
         }
-        return $"OK rec rms={rms:0.00000} state={info[0]} frames={info[1]} dropped={info[2]} queuedMB={info[3]} audioPeak={info[4]} ch={_channels} hr=0x{info[5]:X8} cam={(_cam ? _cam.name : "-")} size={(_rt ? $"{_rt.width}x{_rt.height}" : "-")} path={_path}";
+        return $"OK rec rms={rms:0.00000} state={info[0]} frames={info[1]} dropped={info[2]} queuedMB={info[3]} audioPeak={info[4]} ch={_channels} hr=0x{info[5]:X8} cam={(_cam ? _cam.name : "-")} size={Size()} path={_path}";
     }
+
+#if ANDROID
+    private static string Size() => $"{_w}x{_h2}";
+#else
+    private static string Size() => _rt ? $"{_rt.width}x{_rt.height}" : "-";
+#endif
 
     // 最後に読んだ画面を PNG にする (上下と色の並びの確かめ)
     private static string Peek()
     {
+#if ANDROID
+        if (!Active) return "ERR not recording";
+        int w = _w, h = _h2;
+#else
         if (!Active || !_rt) return "ERR not recording";
         int w = _rt.width, h = _rt.height;
+#endif
         var buf = new byte[w * h * 4];
         int n;
         fixed (byte* p = buf) n = MrpNative.RecPeek(_h, p, buf.Length);

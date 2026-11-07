@@ -17,6 +17,7 @@ public sealed class FakeJester : RoleBase
     public override Text Blurb => Disguised ? Jester.Blurb : new Text("FakeJester.Blurb");
     public override Text Help => Disguised ? Jester.Help : base.Help;
     public override string Origin => Disguised ? Jester.Origin : "TOH-hamo";
+    public override RoleBase SeenBySelf => Disguised ? Jester : this;
 
     public static readonly IntOpt AwakenMeetings = new("FakeJester.AwakenMeetings", 3, 3, 5);
     public static readonly BoolOpt AdditionalWin = new("FakeJester.AdditionalWin", true);

@@ -81,6 +81,15 @@ internal static class SpaceRifts
     internal static void HostTick()
     {
         if (RestoreAt.Count == Rifts.Count && RestoreAt.Count == 0 || !AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return;
+        if (RewindPlayback.Active)
+        {
+            // 逆再生の間は閉じない (閉じる時刻を先へ延ばす)
+            float dt = Time.deltaTime;
+            Due.Clear();
+            foreach (var kv in RestoreAt) Due.Add(kv.Key);
+            foreach (byte k in Due) RestoreAt[k] += dt;
+            return;
+        }
         // ホストが替わった: 前のホストの戻す時刻は届いていないので、残っている線をここから数え直す
         if (RestoreAt.Count < Rifts.Count && Restore.Value == 1)
             foreach (var rf in Rifts)
@@ -144,11 +153,16 @@ internal static class SpaceRifts
     {
         Use();
         int at = IndexOf(m.Id);
-        if (at >= 0)
+        bool had = at >= 0;
+        var old = had ? Rifts[at] : default;
+        if (had)
         {
             Rifts.RemoveAt(at);
             RiftArt.Close(m.Id);
         }
+        byte id = m.Id;
+        // 開く・閉じる前へ戻ると線も戻る (各端末が届いた順に積む。ホストの閉じる時刻は HostTick が残りの線から数え直す)
+        if (had || m.Open) Rewind.Undo(_ => UndoApply(id, had, old));
         if (!m.Open) return;
         if (!float.IsFinite(m.X0) || !float.IsFinite(m.Y0) || !float.IsFinite(m.X1) || !float.IsFinite(m.Y1)) return;
         float dx = m.X1 - m.X0, dy = m.Y1 - m.Y0, len = FxMath.Sqrt(dx * dx + dy * dy);
@@ -156,6 +170,20 @@ internal static class SpaceRifts
         var rf = new Rift { Id = m.Id, By = m.By, X0 = m.X0, Y0 = m.Y0, Ux = dx / len, Uy = dy / len, Len = len, Shift = FxMath.Min(len / 6f, MaxShift) };
         Rifts.Add(rf);
         RiftArt.Open(rf);
+    }
+
+    private static void UndoApply(byte id, bool had, Rift old)
+    {
+        int at = IndexOf(id);
+        if (at >= 0)
+        {
+            Rifts.RemoveAt(at);
+            RiftArt.Close(id);
+        }
+        RestoreAt.Remove(id);
+        if (!had) return;
+        Rifts.Add(old);
+        RiftArt.Open(old);
     }
 
     private static int IndexOf(byte id)

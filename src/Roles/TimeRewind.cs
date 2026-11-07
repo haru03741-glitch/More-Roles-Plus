@@ -634,6 +634,13 @@ internal static class TimeRewind
 
     // 逆再生の間 (合図を受けてから、全員の姿を控えに沿って逆にたどり終えるまで)。全員が止まり、終わりに今の戻しを当てる
     private static bool _playing, _froze;
+
+    // 逆再生の間に、別の演出が止めていた自分の体の止めを引き継ぐ (wasMoveable = その演出が止める前に動けたか)。
+    // 戻し終わりに動けるように戻す (演出の側では戻さない)
+    internal static void TakeFreeze(bool wasMoveable)
+    {
+        if (_playing && wasMoveable) _froze = true;
+    }
     private static Go _play;
     private static long _playStart, _playEnd, _playSlotMs;
     private static int _playSlot;
@@ -685,6 +692,33 @@ internal static class TimeRewind
         }
     }
 
+    // 逆再生の間: 自分の能力ボタンに記録の時刻 t の待ち時間と効果の残りを見せる (前後の記録の間を補う・値は変えない)
+    private static int _abTick;
+
+    private static void ShowAbilities(long t)
+    {
+        if ((++_abTick & 3) != 0) return; // 4 刻みに 1 回 (字の書き換えを減らす)
+        int a = Find(t);
+        if (a < 0 || Layout[a] != _layout) return;
+        int newest = (_head - 1 + Slots) % Slots, b = (a + 1) % Slots;
+        bool hasB = a != newest && SlotMs[b] > SlotMs[a] && Layout[b] == _layout;
+        float u = hasB ? Math.Clamp((t - SlotMs[a]) / (float)(SlotMs[b] - SlotMs[a]), 0f, 1f) : 0f;
+        int i = 0;
+        foreach (var role in RoleState.All)
+        {
+            foreach (var ab in role.Abilities)
+            {
+                if (i >= MaxAbilities) return;
+                int oa = a * MaxAbilities + i, ob = (hasB ? b : a) * MaxAbilities + i;
+                i++;
+                if (ab.KeepOnRewind || ab.Button == null) continue;
+                float left = AbLeft[oa] + (AbLeft[ob] - AbLeft[oa]) * u;
+                float eff = AbEffect[oa] + (AbEffect[ob] - AbEffect[oa]) * u;
+                ab.Button.ShowRewind(left, eff);
+            }
+        }
+    }
+
     private static void PlayStepCore(long now)
     {
         if (now >= _playEnd || MeetingHud.Instance || !Terrain.GameClock.ShipAlive) { Finish(); return; }
@@ -693,6 +727,8 @@ internal static class TimeRewind
         u = RewindClock.World(u);
         long t = _playStart - (long)(u * (_playStart - _playSlotMs));
         RewindPlayback.Drive(t);
+        try { ShowAbilities(t); }
+        catch (Exception e) { Plugin.Logger.LogError($"TimeRewind abilities: {e}"); } // 見せるだけなので逆再生は止めない
         RewindJournal.UndoAfter(t);
         foreach (var pid in _play.Gone)
         {

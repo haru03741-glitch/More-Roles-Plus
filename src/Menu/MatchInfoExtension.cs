@@ -291,7 +291,7 @@ internal static class MatchInfoExtension
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var me = PlayerControl.LocalPlayer;
         if (!ShipStatus.Instance || !me || me.Data == null) return ids;
-        string id = RoleState.Local?.ShownAs.Id ?? (me.Data.Role ? me.Data.Role.Role.ToString() : null);
+        string id = RoleState.Local?.SeenBySelf.Id ?? (me.Data.Role ? me.Data.Role.Role.ToString() : null);
         if (id != null) ids.Add(id);
         foreach (var ad in RoleState.AddonsOf(me.PlayerId)) ids.Add(ad.Id);
         return ids;

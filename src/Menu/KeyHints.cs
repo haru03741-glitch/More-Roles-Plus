@@ -33,7 +33,8 @@ internal static class KeyHints
         var hud = Vanilla.Hud;
         if (!hud) return;
         if (_tick % RefreshEvery == 0) Cache.Clear();
-        bool on = ClientOptions.KeyHints == null || ClientOptions.KeyHints.Value;
+        // スマホはキーボードで押さないので出さない (前に出した物を消すため Put は回す)
+        bool on = !OperatingSystem.IsAndroid() && (ClientOptions.KeyHints == null || ClientOptions.KeyHints.Value);
         Put(hud.KillButton, (int)RewiredConstsEnum.Action.ActionSecondary, on);
         Put(hud.UseButton, (int)RewiredConstsEnum.Action.ActionPrimary, on);
         Put(hud.PetButton, (int)RewiredConstsEnum.Action.ActionPrimary, on);

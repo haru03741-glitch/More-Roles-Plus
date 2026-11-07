@@ -38,7 +38,7 @@ internal static class InfoCommands
         if (role != null && role.ShownAs != role)
             return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(role.ShownAs, null)}\n{RoleDoc.Chat(role.ShownAs)}{RoleDisplay.AddonLines(role.PlayerId)}");
         if (role != null)
-            return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(role, null)}{RoleDisplay.LabelOf(role)[role.ShownColoredName.Length..]}\n{RoleDoc.Chat(role)}{RoleDisplay.AddonLines(role.PlayerId)}");
+            return RoleDoc.ChatInked($"{RoleDoc.ChatTitle(role, null)}{RoleDisplay.LabelOf(role)[role.ShownColoredName.Length..]}\n{RoleDoc.Chat(role.SeenBySelf)}{RoleDisplay.AddonLines(role.PlayerId)}");
         return Dev.DevGod.Label(PlayerControl.LocalPlayer.PlayerId) ?? new Text("InfoCommands.NoRole");
     }
 
