@@ -48,6 +48,7 @@ public class Plugin : BasePlugin
         Boot.BootClock.Mark("cfg0"); Net.MrpRegion.Bind(Config);
         Menu.ClientOptions.Bind(Config);
         Menu.CustomColors.Bind(Config);
+        Menu.MrpCosmetics.Bind(Config);
         Menu.ModUpdate.Bind(Config);
         try { Menu.CustomColors.ExtendPalette(); }
         catch (System.Exception e) { Log.LogError($"colors: palette not extended: {e.Message}"); }
@@ -222,6 +223,7 @@ public class Ticker : MonoBehaviour
         Terrain.TerrainWarm.Tick(); t = Bridge.Perf.Lane(25, t);
         Terrain.TerrainSync.Tick(); t = Bridge.Perf.Lane(26, t);
         Menu.CustomColors.Tick();
+        Menu.MrpCosmetics.Tick();
         Commands.AfkGuard.Tick();
         Menu.AutoRejoin.Tick();
         Menu.ModUpdate.Tick();

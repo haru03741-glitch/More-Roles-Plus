@@ -120,6 +120,7 @@
     <!-- 能力ボタンの絵 -->
     <ItemGroup>
         <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
+        <EmbeddedResource Include="Resources\Cosmetics\*.png" LogicalName="MoreRolesPlus.Resources.Cosmetics.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Illus\*.jpg" LogicalName="MoreRolesPlus.Resources.Illus.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Cinema\*.*" LogicalName="MoreRolesPlus.Resources.Cinema.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Sounds\*.wav" LogicalName="MoreRolesPlus.Resources.Sounds.%(Filename)%(Extension)" />

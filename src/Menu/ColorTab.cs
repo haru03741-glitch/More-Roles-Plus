@@ -25,6 +25,7 @@ internal static class ColorTab
             lp.NetTransform.SnapTo((Vector2)console.transform.position + new Vector2(0f, -0.4f));
             return "OK custmenu moved to laptop";
         }
+        if (args == "cos" || args.StartsWith("cos ")) return MrpCosmetics.Simulate(args.Length > 4 ? args[4..] : "");
         if (!menu) return "ERR custmenu not open";
         if (args == "close") { menu.Close(true); return "OK custmenu closed"; }
         if (args.StartsWith("tab ") && int.TryParse(args[4..], out int n))
@@ -37,6 +38,11 @@ internal static class ColorTab
             var tab = menu.Tabs[0].Tab ? menu.Tabs[0].Tab.TryCast<PlayerTab>() : null;
             if (!tab) return "ERR custmenu no color tab";
             tab.SelectColor(id);
+        }
+        else if (args == "costab")
+        {
+            EmoteTab.Test(-2);
+            return "OK custmenu " + EmoteTab.Describe();
         }
         else if (args == "emote" || args.StartsWith("emote "))
         {

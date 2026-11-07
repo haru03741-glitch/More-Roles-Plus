@@ -2511,3 +2511,17 @@ Jackal.SidekickKind.Sidekick: サイドキック
 Jackal.SidekickKind.Friends: ジャッカルフレンズ
 
 # ── SNR 版 (前からある役職と同じ名前の役職) ──
+Cos.Tab: 着せ替え
+Cos.Hats: MRP の帽子 (MRP を入れている人に見えます)
+Cos.Visors: MRP のバイザー
+Cos.None: なし
+Cos.By: 作: {name}
+Cos.daten: 堕天
+Cos.nankasasatteru: なんか刺さってる？
+Cos.risu: リス
+Cos.shirokumabou: しろくま帽
+Cos.sodateterundesu: 育ててるんです!
+Cos.tyranno: てぃらのさうるす(オリジナル)
+Cos.tyrannocolor: てぃらのさうるす
+Cos.wakusei: 惑星の輪っか
+Cos.owo: owo
