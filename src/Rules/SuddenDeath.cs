@@ -50,17 +50,22 @@ public static class SuddenDeath
     internal static GameResult Decide()
     {
         byte last = 255;
-        int alive = 0;
+        int alive = 0, assigned = 0;
         var all = GameData.Instance.AllPlayers;
         for (int i = 0; i < all.Count; i++)
         {
             var p = all[i];
-            if (p == null || p.Disconnected || p.IsDead) continue;
-            if (RoleState.Of(p.PlayerId) == null) continue; // 観戦の人など
+            if (p == null) continue;
+            bool has = RoleState.Of(p.PlayerId) != null;
+            if (has) assigned++;
+            if (p.Disconnected || p.IsDead) continue;
+            if (!has) continue; // 観戦の人など
             alive++;
             last = p.PlayerId;
         }
         if (alive > 1) return null;
+        // 役職がまだ誰にも届いていない (配る前) なら決めない。引き分けで終わらせない
+        if (assigned == 0) return null;
         var r = new GameResult { Role = alive == 1 ? RoleState.Of(last) : null };
         if (alive == 1) r.Winners.Add(last);
         else r.Draw = true;
