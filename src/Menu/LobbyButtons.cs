@@ -18,9 +18,19 @@ internal static class LobbyButtons
         catch (Exception e) { Plugin.Logger.LogError($"lobby buttons: {e.Message}"); }
     }
 
+    private static IntPtr _pane;
+    private static Transform _group;
+
     private static void Sync(LobbyInfoPane pane)
     {
-        var group = pane ? Keybinds.FindDeep(pane.transform, "GameSettingsButtons") : null;
+        if (!pane) return;
+        // 板の木を毎フレーム下らない: 同じ板の間は見つけた物を使う
+        if (pane.Pointer != _pane || !_group)
+        {
+            _pane = pane.Pointer;
+            _group = Keybinds.FindDeep(pane.transform, "GameSettingsButtons");
+        }
+        var group = _group;
         if (!group) return;
         var host = group.Find("Host Buttons");
         var client = group.Find("Client Buttons");

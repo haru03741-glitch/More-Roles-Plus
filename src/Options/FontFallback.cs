@@ -70,7 +70,7 @@ internal static class FontFallback
     // 本編の字体で出せない字があれば、その字の種類に合う字体を読んで予備に足す。足したら true
     internal static bool EnsureFor(string text)
     {
-        if (string.IsNullOrEmpty(text)) return false;
+        if (string.IsNullOrEmpty(text) || PlainOnly(text)) return false;
         bool added = false;
         try
         {
@@ -90,6 +90,14 @@ internal static class FontFallback
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"font fallback: {e.Message}"); }
         return added;
+    }
+
+    // ASCII・かな・和文の記号だけの文は字体を探す前に帰る (本編の字体を探す処理は画面の文字を全部見るので重い)
+    private static bool PlainOnly(string s)
+    {
+        foreach (char c in s)
+            if (!(c < 0x80 || c >= 0x3040 && c <= 0x30FF || c >= 0x3000 && c <= 0x303F)) return false;
+        return true;
     }
 
     // ひらがな・カタカナ・ASCII だけの字は本編の字体で出るので見ない (たいていの名前やチャットはここで終わる)
@@ -238,11 +246,12 @@ internal static class FontFallback
     }
 
     // 人の名前は 1 秒ごとに見る。新しく字体を足したら字を描き直す
-    private static float _next;
+    private static long _next;
     internal static void Tick()
     {
-        if (Time.unscaledTime < _next) return;
-        _next = Time.unscaledTime + 1f;
+        long now = Environment.TickCount64; // 毎回呼ばれるので Unity の時刻を読まない
+        if (now < _next) return;
+        _next = now + 1000;
         bool added = false;
         try
         {
@@ -263,6 +272,8 @@ internal static class FontFallback
     {
         AttachAll();
         foreach (var t in UnityEngine.Object.FindObjectsOfType<TextMeshPro>())
+            if (t && t.isActiveAndEnabled) t.SetAllDirty();
+        foreach (var t in UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>())
             if (t && t.isActiveAndEnabled) t.SetAllDirty();
     }
 

@@ -44,13 +44,20 @@ internal static class RoomShare
         catch (Exception e) { Plugin.Logger.LogError($"room share: {e.Message}"); }
     }
 
+    private static Transform _share;
+
     private static void Sync(LobbyInfoPane pane)
     {
         var copy = pane ? pane.CopyCodeButton : null;
         if (!copy) return;
-        var parent = copy.transform.parent;
-        var share = parent.Find(ButtonName);
-        if (!share) share = Make(copy);
+        // 毎フレーム探さない: 作った物を控えて、消えた時だけ探し直す
+        var share = _share;
+        if (!share || share.parent != copy.transform.parent)
+        {
+            share = copy.transform.parent.Find(ButtonName);
+            if (!share) share = Make(copy);
+            _share = share;
+        }
         if (!share) return;
         var c = AmongUsClient.Instance;
         bool online = c && c.NetworkMode == NetworkModes.OnlineGame && c.GameId != 0 && Net.MrpRegion.IsCurrent();

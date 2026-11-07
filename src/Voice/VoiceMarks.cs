@@ -11,16 +11,26 @@ internal static class VoiceMarks
     private const string MarkName = "MrpVoiceMark";
     private static readonly Color Green = new(0.49f, 1f, 0.49f, 1f);
     private static readonly List<GameObject> Shown = new();
+    private static readonly List<GameObject> Next = new();
+    private static readonly HashSet<System.IntPtr> NextPtr = new(); // 包みは呼ぶたびに別物なので、番地で比べる
 
-    // VoiceChat.Tick から (FixedUpdate)
+    // VoiceChat.Tick から (FixedUpdate)。出し入れは変わった印だけ (毎回全部を消して付け直さない)
     internal static void Tick(bool on)
     {
         on = on && VoiceChat.ShowSpeaker.Value && Menu.ClientOptions.VoiceHear.Value;
-        foreach (var go in Shown) if (go && go.activeSelf) go.SetActive(false);
+        Next.Clear();
+        NextPtr.Clear();
+        if (on) Collect();
+        foreach (var go in Shown)
+            if (go && !NextPtr.Contains(go.Pointer) && go.activeSelf) go.SetActive(false);
         Shown.Clear();
-        if (!on) return;
+        Shown.AddRange(Next);
+    }
+
+    private static void Collect()
+    {
         var me = PlayerControl.LocalPlayer;
-        float pulse = 1f + 0.12f * Mathf.Sin(Time.time * 10f);
+        float pulse = 1f + 0.12f * System.MathF.Sin(Time.time * 10f);
         foreach (var p in PlayerControl.AllPlayerControls)
         {
             if (!p || p.AmOwner || p.Data == null || !p.cosmetics || !p.Visible) continue;
@@ -28,9 +38,10 @@ internal static class VoiceMarks
             if (VoiceRules.Volume(me, p) <= 0f) continue;
             var mark = Mark(p);
             if (!mark) continue;
-            mark.SetActive(true);
-            mark.transform.localScale = Vector3.one * pulse;
-            Shown.Add(mark);
+            if (!mark.activeSelf) mark.SetActive(true);
+            mark.transform.localScale = new Vector3(pulse, pulse, pulse);
+            Next.Add(mark);
+            NextPtr.Add(mark.Pointer);
         }
     }
 

@@ -306,12 +306,26 @@ internal static class LobbyBanner
         pb.OnMouseOver = new UnityEvent();
         pb.OnMouseOut = new UnityEvent();
         pb.OnClick.AddListener((UnityAction)RankedPastime.Toggle);
-        pb.OnMouseOver.AddListener((UnityAction)(() => { if (_btnBack) { _btnBack.sprite = MenuSkin.Button(true); _btnBack.size = size; } }));
-        pb.OnMouseOut.AddListener((UnityAction)(() => { if (_btnBack) { _btnBack.sprite = MenuSkin.Button(false); _btnBack.size = size; } }));
+        // 乗せた時の処理は 1 回だけ作って使い回す (作るたびに管理ラムダを渡すと手放されずに残る)
+        _btnSize = size;
+        _onOver ??= (UnityAction)(() => Hover(true));
+        _onOut ??= (UnityAction)(() => Hover(false));
+        pb.OnMouseOver.AddListener(_onOver);
+        pb.OnMouseOut.AddListener(_onOut);
 
         // ミニゲームの点 (帯の下)
         _score = RankStyle.Text(t, "Score", new Vector3(0f, -H * 0.5f - 0.25f, -0.02f), new Vector2(W + 1f, 0.36f), 1.6f, TextAlignmentOptions.Center, 64, font);
         _score.gameObject.SetActive(false);
+    }
+
+    private static Vector2 _btnSize;
+    private static UnityAction _onOver, _onOut;
+
+    private static void Hover(bool on)
+    {
+        if (!_btnBack) return;
+        _btnBack.sprite = MenuSkin.Button(on);
+        _btnBack.size = _btnSize;
     }
 }
 

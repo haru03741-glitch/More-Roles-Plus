@@ -24,9 +24,14 @@ internal static class StartCancel
         pb.OnMouseOver = new UnityEvent();
         pb.OnMouseOut = new UnityEvent();
         pb.ClickSound = UiAssets.ClickSound;
-        var target = gsm;
-        pb.OnClick.AddListener((UnityAction)(() => Cancel(target)));
+        // 押した時の処理は 1 回だけ作って使い回す (部屋ごとに管理ラムダを渡すと手放されずに残る)
+        _target = gsm;
+        _onClick ??= (UnityAction)(() => { if (_target) Cancel(_target); });
+        pb.OnClick.AddListener(_onClick);
     }
+
+    private static GameStartManager _target;
+    private static UnityAction _onClick;
 
     private static void Cancel(GameStartManager gsm)
     {

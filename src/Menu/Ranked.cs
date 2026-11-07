@@ -183,8 +183,15 @@ internal static class Ranked
 
     // ── 毎フレーム ───────────────────────────────
 
+    private static bool _wasRanked;
+
     internal static void Tick()
     {
+        // 休止中で何も進めていなければ何も見ない (待ち画面の確認でシーンを毎フレーム探さない)。
+        // サーバーがランクマッチの部屋と言っている間と、その後の片付けの 1 回はいつも通り回す
+        bool ranked = MrpAccount.RoomRanked;
+        if (!Open && _phase == Phase.Idle && _searchWin == null && !ranked && !_wasRanked && !_registerWait && !_leaving) return;
+        _wasRanked = ranked;
         var c = AmongUsClient.Instance;
         if (!c) return;
         float now = Time.realtimeSinceStartup;
@@ -486,12 +493,12 @@ internal static class Ranked
         var menu = UnityEngine.Object.FindObjectOfType<MainMenuManager>();
         if (!menu) return;
         // オンラインの画面: カードの下
-        AddButton(menu.transform.Find("MainUI/AspectScaler/RightPanel/MaskedBlackScreen/OnlineButtons/AspectSize"), new Vector3(0.06f, -1.04f, -2f), new Vector2(4.9f, 0.42f));
+        AddButton(0, menu.transform.Find("MainUI/AspectScaler/RightPanel/MaskedBlackScreen/OnlineButtons/AspectSize"), new Vector3(0.06f, -1.04f, -2f), new Vector2(4.9f, 0.42f));
         // プレイの画面: 見出しの左の空き (オンラインの画面を通らずに入れる)
-        AddButton(menu.transform.Find("MainUI/AspectScaler/RightPanel/MaskedBlackScreen/GameModeButtons/AspectSize"), new Vector3(-0.91f, 2.18f, -2f), new Vector2(3.6f, 0.5f));
+        AddButton(1, menu.transform.Find("MainUI/AspectScaler/RightPanel/MaskedBlackScreen/GameModeButtons/AspectSize"), new Vector3(-0.91f, 2.18f, -2f), new Vector2(3.6f, 0.5f));
     }
 
-    private static void AddButton(Transform scaler, Vector3 pos, Vector2 size)
+    private static void AddButton(int slot, Transform scaler, Vector3 pos, Vector2 size)
     {
         // 隠れている間に字を作ると字体が読めない (字の部品が起きていない) ので、画面が出てから作る
         if (!scaler || !scaler.gameObject.activeInHierarchy || scaler.Find(ButtonName)) return;
@@ -526,9 +533,28 @@ internal static class Ranked
         pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
         pb.OnMouseOver = new UnityEvent();
         pb.OnMouseOut = new UnityEvent();
-        pb.OnClick.AddListener((UnityAction)(() => { _attempt = 0; Start(); }));
-        pb.OnMouseOver.AddListener((UnityAction)(() => { if (bg) { bg.sprite = MenuSkin.Button(true); bg.size = size; } }));
-        pb.OnMouseOut.AddListener((UnityAction)(() => { if (bg) { bg.sprite = MenuSkin.Button(false); bg.size = size; } }));
+        // 押した時/乗せた時の処理は置き場ごとに 1 回だけ作って使い回す (画面ごとに管理ラムダを渡すと手放されずに残る)
+        BtnBg[slot] = bg;
+        BtnSize[slot] = size;
+        _onClick ??= (UnityAction)(() => { _attempt = 0; Start(); });
+        OnOver[slot] ??= (UnityAction)(() => Hover(slot, true));
+        OnOut[slot] ??= (UnityAction)(() => Hover(slot, false));
+        pb.OnClick.AddListener(_onClick);
+        pb.OnMouseOver.AddListener(OnOver[slot]);
+        pb.OnMouseOut.AddListener(OnOut[slot]);
+    }
+
+    private static readonly SpriteRenderer[] BtnBg = new SpriteRenderer[2];
+    private static readonly Vector2[] BtnSize = new Vector2[2];
+    private static readonly UnityAction[] OnOver = new UnityAction[2], OnOut = new UnityAction[2];
+    private static UnityAction _onClick;
+
+    private static void Hover(int slot, bool on)
+    {
+        var bg = BtnBg[slot];
+        if (!bg) return;
+        bg.sprite = MenuSkin.Button(on);
+        bg.size = BtnSize[slot];
     }
 
     [HarmonyPatch(typeof(ModManager), nameof(ModManager.LateUpdate))]

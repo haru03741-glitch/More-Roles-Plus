@@ -142,9 +142,26 @@ internal static class MrpShop
         pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
         pb.OnMouseOver = new UnityEvent();
         pb.OnMouseOut = new UnityEvent();
-        pb.OnClick.AddListener((UnityAction)Open);
-        pb.OnMouseOver.AddListener((UnityAction)(() => { if (bg) { bg.sprite = MenuSkin.Button(true); bg.size = size; } }));
-        pb.OnMouseOut.AddListener((UnityAction)(() => { if (bg) { bg.sprite = MenuSkin.Button(false); bg.size = size; } }));
+        // 押した時/乗せた時の処理は 1 回だけ作って使い回す (画面ごとに管理ラムダを渡すと手放されずに残る)
+        _btnBg = bg;
+        _btnSize = size;
+        _onOpen ??= (UnityAction)Open;
+        _onOver ??= (UnityAction)(() => Hover(true));
+        _onOut ??= (UnityAction)(() => Hover(false));
+        pb.OnClick.AddListener(_onOpen);
+        pb.OnMouseOver.AddListener(_onOver);
+        pb.OnMouseOut.AddListener(_onOut);
+    }
+
+    private static SpriteRenderer _btnBg;
+    private static Vector2 _btnSize;
+    private static UnityAction _onOpen, _onOver, _onOut;
+
+    private static void Hover(bool on)
+    {
+        if (!_btnBg) return;
+        _btnBg.sprite = MenuSkin.Button(on);
+        _btnBg.size = _btnSize;
     }
 
     private static TextMeshPro FindFont(StoreMenu store)

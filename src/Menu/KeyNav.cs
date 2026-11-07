@@ -15,6 +15,7 @@ internal static class KeyNav
     // Update から
     public static void Tick()
     {
+        if (!Input.anyKeyDown) return; // 何も押していないフレームはキーを 1 つずつ読まない
         bool press = Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
         int dx = (Input.GetKeyDown(KeyCode.RightArrow) ? 1 : 0) - (Input.GetKeyDown(KeyCode.LeftArrow) ? 1 : 0);
         int dy = (Input.GetKeyDown(KeyCode.UpArrow) ? 1 : 0) - (Input.GetKeyDown(KeyCode.DownArrow) ? 1 : 0);

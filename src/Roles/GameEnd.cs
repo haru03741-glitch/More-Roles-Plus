@@ -91,6 +91,7 @@ public static class GameEnd
 
     internal static void Reset()
     {
+        _noImpUntil = 0;
         _pending = null;
         _announced = false;
         Last = null;
@@ -205,10 +206,25 @@ public static class GameEnd
     }
 
     // インポスターが 1 人も配られていない試合か (死んだ人・抜けた人も含めて見る)
+    // 本編の終わりの判定の前置きごとに呼ばれるので、答えは 0.5 秒使い回す
+    private static IntPtr _noImpData;
+    private static long _noImpUntil;
+    private static bool _noImp;
+    internal static void ForgetImpostorCount() => _noImpUntil = 0; // 役職が替わった時
     internal static bool NoImpostorGame()
     {
-        if (!GameData.Instance) return false;
-        var all = GameData.Instance.AllPlayers;
+        var gd = GameData.Instance;
+        if (!gd) return false;
+        long now = Environment.TickCount64;
+        if (gd.Pointer == _noImpData && now < _noImpUntil) return _noImp;
+        _noImpData = gd.Pointer;
+        _noImpUntil = now + 500;
+        return _noImp = NoImpostorGameNow(gd);
+    }
+
+    private static bool NoImpostorGameNow(GameData gd)
+    {
+        var all = gd.AllPlayers;
         for (int i = 0; i < all.Count; i++)
         {
             var p = all[i];

@@ -35,8 +35,9 @@ internal static class KeyHints
         if (_tick % RefreshEvery == 0) Cache.Clear();
         bool pad = UsingPad();
         if (pad != _pad) { _pad = pad; Cache.Clear(); }
-        // スマホはキーボードで押さないので出さない (前に出した物を消すため Put は回す)
-        bool on = !OperatingSystem.IsAndroid() && (ClientOptions.KeyHints == null || ClientOptions.KeyHints.Value);
+        // スマホはキーボードで押さないので何も出さない (字を作るのは on の時だけなので、消す物も無い)
+        if (OperatingSystem.IsAndroid()) return;
+        bool on = ClientOptions.KeyHints == null || ClientOptions.KeyHints.Value;
         Put(hud.KillButton, (int)RewiredConstsEnum.Action.ActionSecondary, on);
         Put(hud.UseButton, (int)RewiredConstsEnum.Action.ActionPrimary, on);
         Put(hud.PetButton, (int)RewiredConstsEnum.Action.ActionPrimary, on);

@@ -57,11 +57,25 @@ internal static class MrpRegion
         {
             var region = ServerManager.Instance ? ServerManager.Instance.CurrentRegion : null;
             if (region == null || _address == null) return false;
-            string host = _address.Value.Trim().Replace("http://", "").Replace("https://", "").TrimEnd('/');
-            return host.Length > 0 && (region.PingServer ?? "").Contains(host, System.StringComparison.OrdinalIgnoreCase);
+            // 毎フレーム呼ばれるので、地域と接続先の設定が同じ間は前の答えを使う (PingServer の文字列を毎回写さない)
+            System.IntPtr ptr = region.Pointer;
+            string addr = _address.Value;
+            long now = System.Environment.TickCount64;
+            if (ptr == _cachedRegion && ReferenceEquals(addr, _cachedAddress) && now < _cachedUntil) return _cachedIsCurrent;
+            string host = addr.Trim().Replace("http://", "").Replace("https://", "").TrimEnd('/');
+            _cachedIsCurrent = host.Length > 0 && (region.PingServer ?? "").Contains(host, System.StringComparison.OrdinalIgnoreCase);
+            _cachedRegion = ptr;
+            _cachedAddress = addr;
+            _cachedUntil = now + 1000; // 地域の物が作り直されて同じ番地に別の地域が来た時のため、1 秒で見直す
+            return _cachedIsCurrent;
         }
         catch { return false; }
     }
+
+    private static System.IntPtr _cachedRegion;
+    private static string _cachedAddress;
+    private static bool _cachedIsCurrent;
+    private static long _cachedUntil;
 
     // MRP のサーバーへ切り替える (参加リンクから入る時)。地域の一覧に無ければ false
     public static bool Select()

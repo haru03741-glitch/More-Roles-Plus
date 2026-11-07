@@ -153,6 +153,7 @@ internal static class NoMeetingsHudPatch
     // 本編が後から出し直すことがある (役職が届いた時など) ので、毎 FixedUpdate も見る
     internal static void Tick()
     {
+        if (!GameRules.MeetingsOff) return; // 会議ありの試合ではボタンを読まない
         var hud = Vanilla.Hud;
         if (hud && hud.ReportButton && hud.ReportButton.gameObject.activeSelf) Hide(hud);
     }

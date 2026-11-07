@@ -64,14 +64,28 @@ internal static class VoiceHud
     {
         bool open = Mic.Open;
         float target = open ? Fill(Mic.Level) : 0f;
-        _shownLevel = target > _shownLevel ? target : Mathf.Max(target, _shownLevel - 0.04f);
-        _barBack.enabled = _barMark.enabled = open;
-        _barFill.enabled = open && _shownLevel > 0.001f;
+        _shownLevel = target > _shownLevel ? target : System.Math.Max(target, _shownLevel - 0.04f);
+        // 変わった物だけ書く (毎回書くと 1 回ごとに Unity を何度も呼ぶ)
+        if (open != _meterOpen || !_meterInit)
+        {
+            _barBack.enabled = _barMark.enabled = open;
+            _meterOpen = open;
+        }
+        bool fill = open && _shownLevel > 0.001f;
+        if (fill != _meterFill || !_meterInit) { _barFill.enabled = fill; _meterFill = fill; }
+        bool talking = Mic.Talking;
+        if (talking != _meterTalking || !_meterInit) { _barFill.color = talking ? Green : MeterIdle; _meterTalking = talking; }
+        _meterInit = true;
+        if (!fill || System.Math.Abs(_shownLevel - _meterLevel) < 0.002f) return;
+        _meterLevel = _shownLevel;
         var t = _barFill.transform;
         t.localScale = new Vector3(BarW * _shownLevel, BarH, 1f);
         t.localPosition = new Vector3(_barLeft + BarW * _shownLevel * 0.5f, _barY, -0.01f);
-        _barFill.color = Mic.Talking ? Green : new Color(0.85f, 0.85f, 0.85f, 1f);
     }
+
+    private static readonly Color MeterIdle = new(0.85f, 0.85f, 0.85f, 1f);
+    private static bool _meterInit, _meterOpen, _meterFill, _meterTalking;
+    private static float _meterLevel = -1f;
 
     private static float Fill(float rms) => rms <= 0f ? 0f : Mathf.Clamp01((20f * Mathf.Log10(rms) - FloorDb) / (TopDb - FloorDb));
 
@@ -187,6 +201,8 @@ internal static class VoiceHud
         _barBack = Sprite("BarBack", _rect, new Vector3(_barLeft + BarW * 0.5f, _barY, 0f), new Vector3(BarW, BarH, 1f));
         _barBack.color = new Color(0f, 0f, 0f, 0.6f);
         _barFill = Sprite("BarFill", _rect, Vector3.zero, Vector3.one);
+        _meterInit = false; // 作り直した目盛りには全部書き直す
+        _meterLevel = -1f;
         // 声とみなす大きさの印
         float mark = Fill(Mic.VoiceLevel);
         _barMark = Sprite("BarMark", _rect, new Vector3(_barLeft + BarW * mark, _barY, -0.02f), new Vector3(0.025f, BarH + 0.08f, 1f));

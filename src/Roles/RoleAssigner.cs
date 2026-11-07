@@ -42,6 +42,7 @@ public static class RoleState
 
     internal static void Assign(PlayerControl p, RoleBase proto, IReadOnlyList<AddonBase> addonProtos, bool madden = false)
     {
+        GameEnd.ForgetImpostorCount();
         var role = (RoleBase)Activator.CreateInstance(proto.GetType());
         role.Madden = madden && proto.CanBeMadmate; // 陣営 (Team) を読む物より先に
         role.Player = p;

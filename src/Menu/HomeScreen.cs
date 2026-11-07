@@ -96,12 +96,17 @@ internal static class HomeScreen
 
     private static OptionsMenuBehaviour _options;
 
+    [HarmonyPatch(typeof(OptionsMenuBehaviour), nameof(OptionsMenuBehaviour.Open))]
+    private static class OptionsOpenPatch
+    {
+        public static void Postfix(OptionsMenuBehaviour __instance) => _options = __instance;
+    }
+
     private static bool Covered()
     {
         if (_create && _create.gameObject.activeInHierarchy) return true;
         if (PlayerCustomizationMenu.Instance) return true;
-        if (!_options)
-            foreach (var om in Object.FindObjectsOfType<OptionsMenuBehaviour>(true)) { _options = om; break; }
+        // 設定の画面は開いた時に覚える (毎フレームシーン全体を探さない)
         return _options && _options.gameObject.activeInHierarchy;
     }
 
