@@ -101,6 +101,14 @@ public sealed class Obolus : RoleBase
             PortKit.Notice(new Text("Obolus.Dead").ToString());
     }
 
-    public override string NameMark(PlayerControl seen) =>
-        seen.PlayerId == PlayerId && Sealed ? $"<color=#BD871A><size=70%>({KillShieldTurn - _meetings})</size></color>" : null;
+    private HudReadout _readout;
+
+    // 封印の残りの会議の数は画面の下の札に出す (元は名前の横の字)
+    [LocalOnly]
+    public override void OnFixedUpdate()
+    {
+        _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new UnityEngine.Color32(189, 135, 26, 255));
+        bool show = Sealed && PortKit.Alive(Player);
+        _readout.Set(show, show ? new Text("Obolus.SealHud").With("n", KillShieldTurn - _meetings).ToString() : null);
+    }
 }

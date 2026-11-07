@@ -16,12 +16,14 @@ public sealed class Timer : AddonBase
 
     private void OnMeetingEnd(MeetingEndEvent e) => _time = 0f;
 
+    private HudReadout _readout;
+
+    // 経過は画面の下の札に出す (元は名前の横の字)
     [LocalOnly]
     public override void OnFixedUpdate()
     {
         if (!MeetingHud.Instance && !ExileController.Instance) _time += Time.fixedDeltaTime;
+        _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(3, 252, 194, 255));
+        _readout.Set(true, new Text("Timer.Text").With("t", _time.ToString("0.0")).ToString());
     }
-
-    public override string NameMark(PlayerControl seen) =>
-        IsLocal && seen.PlayerId == PlayerId ? $"<size=70%><color=#03FCC2>{new Text("Timer.Text").With("t", _time.ToString("0.0"))}</color></size>" : null;
 }

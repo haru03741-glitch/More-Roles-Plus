@@ -9,7 +9,9 @@ namespace MoreRolesPlus.Roles.Neutral;
 // アライグマ (第三陣営・キル役): キルボタンで近くの人を「掴む」(相手はアライグマの所へ引き寄せられ続ける)。
 // 掴んだ相手にもう一度押すと倒す (他の人には押せない)。掴んでいる間は行き先の部屋が出され、着くと掴みが解けてその人の役職が分かる。
 // 「子作り」(1 回) で近くの人を、次の会議の後にアライグマの子にする。アライグマが他のアライグマの親を掴もうとすると自分が死ぬ。
-// 他のキル役がいなくなり、生きているアライグマの数が生きているクルーの数に並ぶと、アライグマの親子で勝つ
+// 他のキル役がいなくなり、生きているアライグマの数が生きているクルーの数に並ぶと、アライグマの親子で勝つ。
+// 元はホスト用 MOD なので、ホストが掴まれた人を 3 フレームごとに瞬間移動させ、状態を名前の下の字で見せていた。
+// MRP は全員が MOD を入れているので、掴まれた人の端末が自分をアライグマの背中へ毎フレーム運び (なめらかに見える)、状態は画面の下の札に出す
 public abstract class RaccoonBase : RoleBase
 {
     public const string Pack = "Raccoon";
@@ -27,18 +29,23 @@ public abstract class RaccoonBase : RoleBase
     private byte _investigated = 255; // 自分の端末: 役職が分かった人
     private PlainShipRoom _room;     // 自分の端末: 行き先
     private WorldArrow _arrow;
-    private int _follow;
+    private HudReadout _readout;
+    private Ability _grab;
 
     protected void AddGrab()
     {
-        AddAbility(new Ability(new Text("Raccoon.Grab"), "raccoon_grab")
+        AddAbility(_grab = new Ability(new Text("Raccoon.Grab"), "raccoon_grab")
         {
             Target = AbilityTarget.Player,
             Cooldown = () => _grabbed == 255 ? KillCooldown : 1f,
             CanTarget = (_, t) => _grabbed == 255 || t.PlayerId == _grabbed,
             OnUsed = (user, t) => Use(user, t),
         });
-        if (IsLocal) _arrow = new WorldArrow(Lifespan, new Color32(160, 120, 90, 255));
+        if (IsLocal)
+        {
+            _arrow = new WorldArrow(Lifespan, new Color32(160, 120, 90, 255));
+            _readout = new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(160, 120, 90, 255));
+        }
     }
 
     // 全員の端末で (ホストの確かめの後)
@@ -55,14 +62,23 @@ public abstract class RaccoonBase : RoleBase
         {
             _grabbed = t.PlayerId;
             _investigated = 255;
-            _follow = 0;
-            if (IsLocal) PickRoom();
+            if (IsLocal) { PickRoom(); RestartCooldown(); }
             return;
         }
         if (t.PlayerId != _grabbed) return;
         _grabbed = 255;
         _room = null;
+        if (IsLocal) RestartCooldown();
         if (host) UchuKit.HostAbilityKill(user, t);
+    }
+
+    // 自分の端末: 掴んだ後はすぐ倒せる (1 秒)・放した後はキルの待ち時間から (ボタンの長さは作った時の値なので替える)
+    private void RestartCooldown()
+    {
+        var b = _grab?.Button;
+        if (b == null) return;
+        b.Cooldown = _grab.CooldownSeconds;
+        b.StartCooldown();
     }
 
     private void PickRoom()
@@ -80,26 +96,43 @@ public abstract class RaccoonBase : RoleBase
 
     private void Release()
     {
+        bool was = _grabbed != 255;
         _grabbed = 255;
         _room = null;
+        if (was && IsLocal) RestartCooldown();
     }
 
     public override void OnFixedUpdate()
     {
         if (IsLocal) LocalTick();
-        if (!AmongUsClient.Instance.AmHost || _grabbed == 255 || MeetingHud.Instance || ExileController.Instance) return;
+        if (_grabbed == 255 || MeetingHud.Instance || ExileController.Instance) return;
         var t = PortKit.ById(_grabbed);
-        if (!PortKit.Alive(Player) || !PortKit.Alive(t)) { ReleaseCall.Send(0); Release(); return; }
-        // 掴んだ相手を自分の所へ引き寄せ続ける (はしごの途中は待つ)
-        if (t.MyPhysics && t.MyPhysics.Animations != null && t.MyPhysics.Animations.IsPlayingAnyLadderAnimation()) return;
-        if (++_follow % 3 != 0) return;
-        Vector2 at = Player.transform.position;
-        if (Vector2.Distance(t.transform.position, at) > 0.05f) t.NetTransform.RpcSnapTo(at);
+        if (AmongUsClient.Instance.AmHost && (!PortKit.Alive(Player) || !PortKit.Alive(t))) { ReleaseCall.Send(0); Release(); return; }
+        // 掴まれた人の端末: 自分をアライグマの背中へ運び続ける (自分の位置は本編の同期で皆に届く)。ダミーはホストが運ぶ
+        bool mine = t && (t.AmOwner || (t.isDummy && AmongUsClient.Instance.AmHost));
+        if (mine && PortKit.Alive(t) && PortKit.Alive(Player)) Carry(t);
+    }
+
+    private void Carry(PlayerControl t)
+    {
+        if (t.inVent || t.inMovingPlat || (t.MyPhysics && t.MyPhysics.Animations != null && t.MyPhysics.Animations.IsPlayingAnyLadderAnimation())) return;
+        Vector2 at = Player.GetTruePosition();
+        // 背中の側へ少しずらす (壁の向こうになるならずらさない)
+        bool left = Player.cosmetics && Player.cosmetics.FlipX;
+        Vector2 back = at + new Vector2(left ? 0.32f : -0.32f, 0f);
+        if (!PhysicsHelpers.AnythingBetween(at, back, Constants.ShipAndObjectsMask, false)) at = back;
+        Vector2 now = t.GetTruePosition();
+        if (t.MyPhysics && t.MyPhysics.body) t.MyPhysics.body.velocity = Vector2.zero;
+        // 遠い時 (会議の後・はしごの後) は一気に、近い時は追いかける
+        Vector2 next = Vector2.Distance(now, at) > 2.5f ? at : Vector2.Lerp(now, at, 0.5f);
+        Vector2 offset = (Vector2)t.transform.position - now;
+        t.NetTransform.SnapTo(next + offset);
     }
 
     private void LocalTick()
     {
         bool show = _grabbed != 255 && _room && PortKit.Alive(Player) && !MeetingHud.Instance;
+        ShowReadout();
         _arrow?.SetActive(show);
         if (!show) return;
         _arrow.Update(_room.roomArea.bounds.center);
@@ -136,16 +169,20 @@ public abstract class RaccoonBase : RoleBase
         if (e.Player && (e.Player.PlayerId == PlayerId || e.Player.PlayerId == _grabbed)) Release();
     }
 
-    // 自分の名前の下: 行き先の部屋・分かった役職
-    public override string NameMark(PlayerControl seen)
+    // 画面の下の札: 掴む前は「誰かを掴もう」、掴んだ後は行き先の部屋
+    private void ShowReadout()
     {
-        if (seen.PlayerId == _investigated && RoleState.Of(seen) is { } r) return $"<size=70%>{r.ShownColoredName}</size>";
-        if (seen.PlayerId != PlayerId || !PortKit.Alive(Player)) return null;
-        if (_grabbed == 255) return MeetingHud.Instance ? null : $"<size=60%><color=#a0785a>{new Text("Raccoon.Idle")}</color></size>";
-        if (!_room || MeetingHud.Instance) return null;
+        if (_readout == null) return;
+        if (!PortKit.Alive(Player)) { _readout.Set(false); return; }
+        if (_grabbed == 255) { _readout.Set(true, new Text("Raccoon.Idle").ToString()); return; }
+        if (!_room) { _readout.Set(false); return; }
         string room = TranslationController.Instance ? TranslationController.Instance.GetString(_room.RoomId) : _room.RoomId.ToString();
-        return $"<size=60%><color=#a0785a>{new Text("Raccoon.GoTo").With("room", room)}</color></size>";
+        _readout.Set(true, new Text("Raccoon.GoTo").With("room", $"<color=#FFD27A>{room}</color>").ToString());
     }
+
+    // 調べて分かった人の名前の上に役職
+    public override string NameMark(PlayerControl seen) =>
+        seen.PlayerId == _investigated && RoleState.Of(seen) is { } r ? $"<size=70%>{r.ShownColoredName}</size>" : null;
 
     public override string MarkSeenBy(PlayerControl viewer) =>
         RoleState.Of(viewer) is RaccoonBase && viewer.PlayerId != PlayerId ? "<color=#a0785a>●</color>" : null;

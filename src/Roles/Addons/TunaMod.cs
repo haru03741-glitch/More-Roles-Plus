@@ -53,11 +53,14 @@ public sealed class TunaMod : AddonBase
 
     private bool CanMove() => Player.CanMove || (CountInTask && Minigame.Instance);
 
+    private HudReadout _readout;
+
     [LocalOnly]
     public override void OnFixedUpdate()
     {
         if (_left < 0f) _left = UsuallyStop;
         if (_total < 0f) _total = TotalStop;
+        ShowReadout();
         float dt = Time.fixedDeltaTime;
         if (!_counting && !MeetingHud.Instance && !ExileController.Instance)
         {
@@ -78,11 +81,14 @@ public sealed class TunaMod : AddonBase
         if ((_left -= dt) <= 0f) Die();
     }
 
-    public override string NameMark(PlayerControl seen)
+    // 死ぬまでの秒は画面の下の札とゲージに出す (元は名前の横の字)
+    private void ShowReadout()
     {
-        if (!IsLocal || seen.PlayerId != PlayerId || !PortKit.Alive(Player)) return null;
-        if (!_counting) return $"<size=70%><color=#FFFF00>({new Text("TunaMod.Paused")})</color></size>";
+        _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(171, 245, 255, 255));
+        if (!PortKit.Alive(Player)) { _readout.Set(false); return; }
+        if (!_counting) { _readout.Set(true, $"<color=#FFFF00>{new Text("TunaMod.Paused")}</color>"); return; }
         float t = Mode.Value == 1 ? _total : _left;
-        return $"<size=70%><color={(t > 1f ? "#FFFF00" : "#FF0000")}>({t:0.0})</color></size>";
+        float max = Mode.Value == 1 ? TotalStop : UsuallyStop;
+        _readout.Set(true, $"<color={(t > 1f ? "#FFFF00" : "#FF0000")}>{t:0.0}s</color>", max > 0f ? t / max : -1f);
     }
 }

@@ -153,7 +153,7 @@ internal static class Registry
                 continue;
             }
             Addons.Add(addon);
-            SectionList(Tab.Addon).Add(sec);
+            SectionList(addon.Tab).Add(sec);
             MoreRolesPlus.Roles.EventBinder.Prepare(t);
         }
         Addons.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));

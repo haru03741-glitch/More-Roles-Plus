@@ -153,7 +153,7 @@ internal sealed class RoleBrowser
     {
         // カードの名前に付ける印 (★・*・「更新」) も先に入れておく
         var chars = new System.Text.StringBuilder("0123456789%/×:+-<>*").Append(FavMark).Append(FreshMark.ToString());
-        foreach (var t in new[] { Tab.Crew, Tab.Impostor, Tab.Madmate, Tab.Neutral, Tab.Addon })
+        foreach (var t in new[] { Tab.Crew, Tab.Impostor, Tab.Madmate, Tab.Neutral, Tab.Addon, Tab.Ghost })
             foreach (var sec in Registry.SectionsOf(t)) chars.Append(sec.Title);
         MenuFont.Prepare(chars.ToString());
     }
@@ -189,7 +189,7 @@ internal sealed class RoleBrowser
     {
         var chips = new Stack(true) { Gap = 0.07f, Align = Align.Start };
         _freshChip = SettingNotice.FreshCount > 0;
-        for (int k = -1; k <= RoleMenu.AddonKind && !TeamFromOutside; k++)
+        for (int k = -1; k <= RoleMenu.LastKind && !TeamFromOutside; k++)
         {
             if (k >= 0 && !RoleMenu.KindShown(k)) continue;
             int kind = k;
@@ -367,7 +367,7 @@ internal sealed class RoleBrowser
 
     private IEnumerable<Registry.Section> VisibleInOrder()
     {
-        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+        for (int k = 0; k <= RoleMenu.LastKind; k++)
         {
             if (_team >= 0 && _team != k) continue;
             foreach (var sec in Registry.SectionsOf(RoleMenu.KindTab(k)))
@@ -627,7 +627,7 @@ internal sealed class RoleBrowser
 
     private static int KindIndex(Registry.Section sec)
     {
-        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+        for (int k = 0; k <= RoleMenu.LastKind; k++)
             foreach (var s in Registry.SectionsOf(RoleMenu.KindTab(k)))
                 if (s == sec) return k;
         return -1;
@@ -1118,7 +1118,7 @@ internal sealed class RoleBrowser
 
     private static List<Registry.Section> KindOf(Registry.Section sec)
     {
-        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+        for (int k = 0; k <= RoleMenu.LastKind; k++)
         {
             var list = new List<Registry.Section>(Registry.SectionsOf(RoleMenu.KindTab(k)));
             if (list.Contains(sec)) return list;
@@ -1299,7 +1299,7 @@ internal sealed class RoleBrowser
         foreach (var g in GameTabRows.All()) yield return (Join(VanillaGame.TabName, g.Title), GameColor, 0, g.Opts);
         foreach (var sec in Registry.SectionsOf(Tab.General))
             yield return (Join(SettingsMenu.TabName(false), sec.Title), SettingsMenu.TabColor(false), 1, OnTab(sec.Opts));
-        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+        for (int k = 0; k <= RoleMenu.LastKind; k++)
             foreach (var sec in Registry.SectionsOf(RoleMenu.KindTab(k)))
                 if (sec.Role == null) yield return (Join(RoleMenu.KindName(k), sec.Title), RoleMenu.KindColor(k), 2, OnTab(sec.Opts));
     }
@@ -1347,7 +1347,7 @@ internal sealed class RoleBrowser
                 if (rows != null) col.Add(rows);
             }
         }
-        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+        for (int k = 0; k <= RoleMenu.LastKind; k++)
         {
             foreach (var sec in Registry.SectionsOf(RoleMenu.KindTab(k)))
             {
@@ -1490,7 +1490,7 @@ internal sealed class RoleBrowser
 
     internal static Registry.Section Find(string id)
     {
-        for (int k = 0; k <= RoleMenu.AddonKind; k++)
+        for (int k = 0; k <= RoleMenu.LastKind; k++)
             foreach (var sec in Registry.SectionsOf(RoleMenu.KindTab(k)))
                 if (sec.Role?.Id == id || sec.Title.ToString() == id) return sec;
         return null;

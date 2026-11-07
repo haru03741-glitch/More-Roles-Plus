@@ -576,6 +576,7 @@ RoleMenu.Madmate: Madmate
 RoleMenu.Neutral: Neutral
 RoleMenu.Crewmate: Crewmate
 RoleMenu.Addons: Addons
+RoleMenu.Ghosts: Ghosts
 RoleMenu.All: All
 RoleMenu.EnabledOnly: Enabled only
 RoleMenu.NothingMatches: Nothing matches "{q}".
@@ -2227,6 +2228,7 @@ Kunoichi.HideWait: Time standing still before hiding
 Kunoichi.HideButton: Hide with a button (otherwise automatic)
 Kunoichi.ThrowWhileHidden: Can throw while hidden
 SerialKiller.Name: Serial Killer
+SerialKiller.Hud: Suicide in {s}s
 SerialKiller.Blurb: Keep killing or die
 SerialKiller.Summary: An impostor who must keep killing within a set time after their first kill, or die.
 SerialKiller.Timer: Suicide Timer
@@ -2319,6 +2321,7 @@ Bettor.TeamCrew: Crew team
 Bettor.TeamNeutral: Neutral
 Bettor.TeamMadmate: Impostor team
 Obolus.Name: Obolus
+Obolus.SealHud: Kill sealed: {n} more meetings
 Obolus.Blurb: Take the ferry toll from the wicked
 Obolus.Summary: A neutral with a kill button. The kill is sealed for the first few meetings. Killing an impostor (or a Jackal, option) wins alone.
 Obolus.WinCond: Win alone the moment you kill an impostor (or a Jackal, option)
@@ -2336,6 +2339,7 @@ Obolus.RevealDeath: Also tell them when the Obolus dies
 Obolus.Warning: Beware of the Obolus!
 Obolus.Dead: The Obolus died
 Seed.Name: Seed
+Seed.GaugeHud: Symbiosis {a} / {b}s
 Seed.Blurb: Live with someone, win with them
 Seed.Summary: A neutral who wins along with whoever they "Symbiosis" with. With the gauge (option), staying near your partner fills it, and it must be full to win.
 Seed.WinCond: Also win when one of your partners wins

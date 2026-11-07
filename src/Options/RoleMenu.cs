@@ -6,8 +6,11 @@ namespace MoreRolesPlus.Options;
 // 設定画面の「役職」タブで使う陣営の分け方・名前・色。タブの中身は RolePage。
 internal static class RoleMenu
 {
-    // 陣営の札の番号: 0〜3 = Team、4 = アドオン
+    // 陣営の札の番号: 0〜3 = Team、4 = アドオン、5 = ゴースト (幽霊役職)
     internal const int AddonKind = 4;
+    internal const int GhostKind = 5;
+    internal const int LastKind = GhostKind;
+    private static readonly Color GhostColor = new(0.62f, 0.86f, 0.9f);
     private static readonly Color AddonColor = new(0.72f, 0.5f, 0.95f);
     private static readonly Team[] Teams = { Team.Crew, Team.Impostor, Team.Madmate, Team.Neutral };
 
@@ -50,9 +53,9 @@ internal static class RoleMenu
         _ => new Color(0.55f, 0.85f, 1f),
     };
 
-    internal static Tab KindTab(int k) => k == AddonKind ? Tab.Addon : TabOf((Team)k);
-    internal static Text KindName(int k) => k == AddonKind ? new Text("RoleMenu.Addons") : TeamName((Team)k);
-    internal static Color KindColor(int k) => k == AddonKind ? AddonColor : TeamColor((Team)k);
+    internal static Tab KindTab(int k) => k == GhostKind ? Tab.Ghost : k == AddonKind ? Tab.Addon : TabOf((Team)k);
+    internal static Text KindName(int k) => k == GhostKind ? new Text("RoleMenu.Ghosts") : k == AddonKind ? new Text("RoleMenu.Addons") : TeamName((Team)k);
+    internal static Color KindColor(int k) => k == GhostKind ? GhostColor : k == AddonKind ? AddonColor : TeamColor((Team)k);
 
     // 札を出すか。中身 (役職・設定) の無い陣営の札は出さない
     internal static bool KindShown(int k) => Registry.SectionsOf(KindTab(k)).Count > 0;

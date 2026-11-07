@@ -50,9 +50,23 @@ public sealed class Seed : RoleBase
 
     private void OnMeetingEnd(MeetingEndEvent e) => _pauseUntil = Time.time + PauseAfterMeeting;
 
+    private HudReadout _readout;
+
+    // 共生のゲージは画面の下の札に出す (元は名前の横の字)
+    private void ShowReadout()
+    {
+        _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(106, 178, 189, 255));
+        bool on = UseGauge && _partners.Count > 0 && PortKit.Alive(Player);
+        if (!on) { _readout.Set(false); return; }
+        float need = GaugeNeed;
+        string col = _gauge >= need ? "#6AB2BD" : "#FFFFFF";
+        _readout.Set(true, $"<color={col}>{new Text("Seed.GaugeHud").With("a", Mathf.FloorToInt(_gauge)).With("b", Mathf.RoundToInt(need))}</color>", need > 0f ? _gauge / need : 1f);
+    }
+
     [LocalOnly]
     public override void OnFixedUpdate()
     {
+        ShowReadout();
         if (!UseGauge || _partners.Count == 0 || MeetingHud.Instance || !PortKit.Alive(Player) || Time.time < _pauseUntil) return;
         bool near = false;
         Vector2 me = Player.GetTruePosition();
@@ -91,8 +105,7 @@ public sealed class Seed : RoleBase
 
     public override string NameMark(PlayerControl seen)
     {
-        if (seen.PlayerId == PlayerId)
-            return UseGauge && _partners.Count > 0 ? $"<size=70%><color={(_gauge >= GaugeNeed ? "#6AB2BD" : "#A0A0A0")}>{Mathf.FloorToInt(_gauge)}/{Mathf.RoundToInt(GaugeNeed)}</color></size>" : null;
+        if (seen.PlayerId == PlayerId) return null;
         if (!_partners.Contains(seen.PlayerId)) return null;
         string mark = "<color=#6AB2BD>▼</color>";
         if (SeeRole && RoleState.Of(seen) is { } r) mark += $" <size=70%>{r.ShownColoredName}</size>";

@@ -13,6 +13,7 @@ public enum Tab
     Madmate,
     Neutral,
     Addon,
+    Ghost,  // 幽霊役職 (死んだ人に後から付くアドオン)
 }
 
 // 設定項目の共通部分。値は「選択肢の何番目か」(Index) で持ち、保存・同期もこの番号で行う。

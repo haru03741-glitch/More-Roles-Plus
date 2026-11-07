@@ -80,9 +80,12 @@ public sealed class Baphomet : AddonBase, IWinOverride
         _progress = Mathf.Max(0f, _progress - RewindGaugeToMeetingEnd);
     }
 
+    private HudReadout _readout;
+
     public override void OnFixedUpdate()
     {
         FadeGhost();
+        if (IsLocal) ShowReadout();
         if (!IsLocal || !Player || Player.Data == null || !Player.Data.IsDead) return;
         float dt = Time.fixedDeltaTime;
         var fam = FamulusPlayer;
@@ -169,17 +172,15 @@ public sealed class Baphomet : AddonBase, IWinOverride
         foreach (var sr in _ghost.GetComponentsInChildren<SpriteRenderer>(true)) sr.color = new UnityEngine.Color(sr.color.r, sr.color.g, sr.color.b, a);
     }
 
-    // 自分の名前の下にゲージ。眷属の名前はバフォメットの色に見える
-    public override string NameMark(PlayerControl seen)
+    // 儀式のゲージは画面の下の札に出す (元は名前の下の字)
+    private void ShowReadout()
     {
-        if (!IsLocal) return null;
-        if (seen.PlayerId == PlayerId && Player.Data != null && Player.Data.IsDead)
-        {
-            if (_canWin) return $"<size=70%><color=#40FF40>{new Text("Baphomet.GaugeText")}</color></size>";
-            string col = _progress > 0f ? (_standing < 0.8f ? "#808000" : "#FFFF00") : (_standing < 0.8f ? "#808080" : "#FFFFFF");
-            return $"<size=70%><color={col}>{new Text("Baphomet.GaugeText")} {_progress:0.#}s/{TotalStandingTimeToWin.Value:0.#}s</color></size>";
-        }
-        return null;
+        _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), Tint);
+        if (Player == null || Player.Data == null || !Player.Data.IsDead) { _readout.Set(false); return; }
+        if (_canWin) { _readout.Set(true, $"<color=#40FF40>{new Text("Baphomet.GaugeText")}</color>", 1f); return; }
+        string col = _progress > 0f ? (_standing < 0.8f ? "#C0C060" : "#FFFF00") : (_standing < 0.8f ? "#A0A0A0" : "#FFFFFF");
+        float need = TotalStandingTimeToWin.Value;
+        _readout.Set(true, $"<color={col}>{new Text("Baphomet.GaugeText")} {_progress:0.#}s/{need:0.#}s</color>", need > 0f ? _progress / need : 1f);
     }
 
     // ホスト: 試合の終わりにバフォメットの勝ちへ替える

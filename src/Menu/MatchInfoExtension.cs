@@ -273,7 +273,7 @@ internal static class MatchInfoExtension
         var mine = Mine();
         var first = new List<Assignable>();
         var rest = new List<Assignable>();
-        foreach (var tab in new[] { Tab.Crew, Tab.Impostor, Tab.Madmate, Tab.Neutral, Tab.Addon })
+        foreach (var tab in new[] { Tab.Crew, Tab.Impostor, Tab.Madmate, Tab.Neutral, Tab.Addon, Tab.Ghost })
             foreach (var sec in Registry.SectionsOf(tab))
             {
                 var a = sec.Role;

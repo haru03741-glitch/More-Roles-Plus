@@ -16,7 +16,7 @@ public abstract class AddonBase : Assignable
 
     public override Text Description => Blurb;
 
-    internal override Tab Tab => Tab.Addon;
+    internal override Tab Tab => Ghost ? Tab.Ghost : Tab.Addon;
 
     // 付いている役職 (割り当て後)
     public RoleBase Role => RoleState.Of(PlayerId);

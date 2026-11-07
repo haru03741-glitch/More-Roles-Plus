@@ -576,6 +576,7 @@ RoleMenu.Madmate: マッドメイト
 RoleMenu.Neutral: 第三陣営
 RoleMenu.Crewmate: クルー
 RoleMenu.Addons: アドオン
+RoleMenu.Ghosts: ゴースト
 RoleMenu.All: 全部
 RoleMenu.EnabledOnly: 出る役職だけ
 RoleMenu.NothingMatches: 「{q}」に当てはまる設定はありません。
@@ -2227,6 +2228,7 @@ Kunoichi.HideWait: 透明化までに止まる時間
 Kunoichi.HideButton: 透明化をボタンで使う (使わなければ自動)
 Kunoichi.ThrowWhileHidden: 透明中もクナイを投げられる
 SerialKiller.Name: シリアルキラー
+SerialKiller.Hud: 自害まで {s} 秒
 SerialKiller.Blurb: 殺し続けなければ死ぬ
 SerialKiller.Summary: 最初のキルの後、決めた時間の内にキルし続けないと死ぬインポスターです。
 SerialKiller.Timer: 自殺タイマー
@@ -2319,6 +2321,7 @@ Bettor.TeamCrew: クルー陣営
 Bettor.TeamNeutral: 第三陣営
 Bettor.TeamMadmate: インポスター陣営
 Obolus.Name: オボルス
+Obolus.SealHud: キルの封印: あと {n} 回の会議
 Obolus.Blurb: 悪しき者から渡し賃を取れ
 Obolus.Summary: キルボタンを持つ第三陣営です。最初の何回かの会議まではキルが封印されています。インポスター (設定でジャッカルも) を倒すと単独で勝ちます。
 Obolus.WinCond: インポスター (設定でジャッカル) を倒すとその場で単独勝ち
@@ -2336,6 +2339,7 @@ Obolus.RevealDeath: オボルスの死も知らせる
 Obolus.Warning: オボルスに気をつけろ!
 Obolus.Dead: オボルスが死んだ
 Seed.Name: シード
+Seed.GaugeHud: 共生 {a} / {b} 秒
 Seed.Blurb: 誰かと共に生き、共に勝て
 Seed.Summary: 「共生」した相手の誰かが勝つと、一緒に勝つ第三陣営です。ゲージ (設定) は相手の近くにいると貯まり、勝つには満ちている必要があります。
 Seed.WinCond: 共生した相手の誰かが勝つと追加で勝ち

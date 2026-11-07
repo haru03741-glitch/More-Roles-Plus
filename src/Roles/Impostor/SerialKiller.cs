@@ -49,16 +49,19 @@ public sealed class SerialKiller : RoleBase
         if (_left >= 0f) _left = SuicideTime;
     }
 
+    private HudReadout _readout;
+
     [LocalOnly]
     public override void OnFixedUpdate()
     {
+        // 自害までの秒は画面の下の札に出す (元は名前の横の字)
+        _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(255, 25, 25, 255));
+        bool show = _left >= 0f && PortKit.Alive(Player);
+        _readout.Set(show, show ? $"<color=#FF5050>{new Text("SerialKiller.Hud").With("s", Mathf.CeilToInt(_left))}</color>" : null, show && SuicideTime > 0f ? _left / SuicideTime : -1f);
         if (_left < 0f || !PortKit.Alive(Player) || MeetingHud.Instance || ExileController.Instance || !ShipStatus.Instance) return;
         _left -= Time.fixedDeltaTime;
         if (_left > 0f) return;
         _left = -1f;
         PortKit.Suicide();
     }
-
-    public override string NameMark(PlayerControl seen) =>
-        seen.PlayerId == PlayerId && _left >= 0f && PortKit.Alive(Player) ? $"<color=#FF1919>({Mathf.CeilToInt(_left)})</color>" : null;
 }
