@@ -139,6 +139,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
   15 人を超える部屋 (部屋の作成画面の定員、会議の名札・変身の相手選び・バイタルのページ送り、Mira HQ のドアのログ)
 * **[The Other Roles](https://github.com/TheOtherRolesAU/TheOtherRoles) (TheOtherRolesAU、GPL-3.0)**  
   試合の終わりの画面に全員の役職を並べる機能、試合中に F1 で設定を見る機能、会議の名札にボタンを足す方法、ゲッサーの役職を選ぶ画面 (会議の名札の部品で役職のボタンを並べる方法)、16 人以上の部屋で本編の色の表を伸ばす方法、ポータルメーカーの役職 (発想は K3ndo、作りは Gendelo と Mallöris)、会議でスキップできなくする設定と投票しなかった人を自分への票にする設定、幽霊の時に見る情報を端末ごとに切る設定、死んだインポスターのサボタージュを止める設定、前の試合の最初の犠牲者に付ける盾、停電中の監視カメラの暗視、ライターの役職。霊媒師・ジャッカルとサイドキック・ヴァルチャー・カモフラージャー・ゲッサー・ベイティングの役職は SNR を経由して取り込んでいます
+* **[TheOtherRoles-GM](https://github.com/yukinogatari/TheOtherRoles-GM) (yukinogatari、GPL-3.0)**  
+  ナイスウォッチャーとイビルウォッチャーの役職。ネコカボチャ・シリアルキラーの役職と、アドオンのウォッチャーは UchuAddon を経由して取り込んでいます
 * **[Jester](https://github.com/Maartii/Jester) (Maartii)**  
   ジェスターの役職
 * **[MiraAPI](https://github.com/All-Of-Us-Mods/MiraAPI) (All-Of-Us-Mods、LGPL-2.1)**  
