@@ -102,6 +102,25 @@ internal static class RoleSparks
         }
     }
 
+    // 人の上で紙吹雪が弾けて舞い落ちる (贈り物など)
+    internal static void Confetti(PlayerControl p, Color[] palette, int count = 36)
+    {
+        if (!p || p.inVent || !p.Visible || palette == null || palette.Length == 0) return;
+        var c = p.transform.position + new Vector3(0f, 0.35f, 0f);
+        c.z = DepthAt(p.GetTruePosition().y) - 0.01f;
+        for (int i = 0; i < count; i++)
+        {
+            float a = Random.Range(0.15f, Mathf.PI - 0.15f);
+            float v = Random.Range(1.4f, 3f);
+            var vel = new Vector3(Mathf.Cos(a) * v * 0.8f, Mathf.Sin(a) * v, 0f);
+            Spawn(c, vel, palette[i % palette.Length], Random.Range(0.9f, 1.4f), Random.Range(0.07f, 0.11f), 0.05f, 5.5f, 1.8f);
+        }
+        // きらめき
+        for (int i = 0; i < 10; i++)
+            Spawn(c + new Vector3(Random.Range(-0.35f, 0.35f), Random.Range(-0.3f, 0.3f), 0f), new Vector3(0f, 0.4f, 0f),
+                new Color(1f, 1f, 0.85f, 1f), Random.Range(0.4f, 0.7f), 0.1f, 0f);
+    }
+
     internal static void Clear()
     {
         foreach (var b in _live)

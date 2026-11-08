@@ -51,6 +51,7 @@ public sealed class Witch : RoleBase
                 if (!user.AmOwner) return;
                 _target = t;
                 _broken = false;
+                _start = Time.time;
             },
             OnEnd = () =>
             {
@@ -60,6 +61,7 @@ public sealed class Witch : RoleBase
                 SpellCall.Send(t.PlayerId);
                 OnSpelled(t.PlayerId);
                 PortKit.Flash(new Color(1f, 0.1f, 0.1f, 0.5f));
+                Burst(t);
             },
         });
     }
@@ -74,6 +76,7 @@ public sealed class Witch : RoleBase
     public override void OnFixedUpdate()
     {
         if (!NormalKill) UchuKit.HideKillButton();
+        Fx();
         if (_target == null) return;
         // 離れたら中断
         if (!PortKit.Alive(_target) || !PortKit.Alive(Player)
@@ -82,6 +85,96 @@ public sealed class Witch : RoleBase
             _broken = true;
             _spell?.EndEffect();
             PortKit.Notice(new Text("Witch.Broken").ToString());
+        }
+    }
+
+    // ── 見た目 (自分の画面だけ) ──
+    // 唱えている間: 相手の足元に魔法陣 (回る二重の輪と五芒星) が描き上がっていき、自分の手から相手へ光の粒が渦を巻いて流れる。
+    // 唱え終えると紫の星が弾け、呪った人の周りには時々小さな星が舞う
+
+    private static readonly Color Rune = new(0.78f, 0.3f, 1f, 0.9f);
+    private static readonly Color RuneDim = new(0.45f, 0.1f, 0.7f, 0.6f);
+    private static readonly Color Star = new(1f, 0.85f, 1f, 0.95f);
+    private readonly DotSet _circle = new("MrpWitchCircle");
+    private float _start, _flowNext, _twinkleNext;
+
+    private static bool Shown(PlayerControl p) => p && !p.inVent && p.Visible && !p.Data.IsDead;
+
+    private void Fx()
+    {
+        var t = _target;
+        if (MeetingHud.Instance || !Shown(t) || !Shown(Player)) _circle.Hide();
+        else
+        {
+            float k = Mathf.Clamp01((Time.time - _start) / Mathf.Max(0.1f, SpellDuration));
+            Vector2 c = t.GetTruePosition();
+            float z = RoleSparks.DepthAt(c.y) + 0.02f; // 足元の床の絵 (体より奥)
+            const int ring = 28, star = 5, perEdge = 7;
+            float spin = Time.time * 0.8f;
+            float rx = 0.62f, ry = rx * 0.5f;
+            int edges = Mathf.CeilToInt(star * Mathf.Clamp01(k * 1.25f) * perEdge);
+            int shown = ring * 2 + edges;
+            _circle.Show(shown, i =>
+            {
+                if (i < ring * 2)
+                {
+                    // 外の輪は回り、内の輪は逆へ回る。描き上がるまでは一部だけ
+                    bool outer = i < ring;
+                    int j = outer ? i : i - ring;
+                    float a = (outer ? spin : -spin * 1.4f) + j * Mathf.PI * 2f / ring;
+                    float rr = outer ? 1f : 0.82f;
+                    bool on = j < ring * Mathf.Clamp01(k * 2f);
+                    var col = on ? (outer ? Rune : RuneDim) : UnityEngine.Color.clear;
+                    return (new Vector3(c.x + Mathf.Cos(a) * rx * rr, c.y + Mathf.Sin(a) * ry * rr, z), col, outer ? 0.06f : 0.04f);
+                }
+                // 五芒星: 頂点を 2 つ飛ばしで結ぶ
+                int e = (i - ring * 2) / perEdge, s = (i - ring * 2) % perEdge;
+                float a0 = spin * 0.5f + Mathf.PI * 0.5f + e * 2f * Mathf.PI * 2f / star;
+                float a1 = a0 + 2f * Mathf.PI * 2f / star;
+                float f = (s + 0.5f) / perEdge;
+                float ax = Mathf.Lerp(Mathf.Cos(a0), Mathf.Cos(a1), f) * rx * 0.8f, ay = Mathf.Lerp(Mathf.Sin(a0), Mathf.Sin(a1), f) * ry * 0.8f;
+                float glow = 0.75f + 0.25f * Mathf.Sin(Time.time * 6f + i);
+                return (new Vector3(c.x + ax, c.y + ay, z), Rune * new Color(1f, 1f, 1f, glow), 0.045f);
+            });
+            // 手から相手へ渦を巻いて流れる光
+            if (_flowNext < Time.time - 0.3f) _flowNext = Time.time;
+            while (_flowNext <= Time.time)
+            {
+                float age = Time.time - _flowNext;
+                _flowNext += 0.05f;
+                Vector3 from = Player.transform.position + new Vector3(Player.cosmetics.FlipX ? -0.2f : 0.2f, 0.1f, 0f);
+                Vector3 to = t.transform.position + new Vector3(0f, 0.1f, 0f);
+                float ang = Random.Range(0f, Mathf.PI * 2f);
+                var vel = (to - from) / 0.45f + new Vector3(Mathf.Cos(ang), Mathf.Sin(ang), 0f) * 0.6f;
+                from.z = RoleSparks.DepthAt(Mathf.Min(Player.GetTruePosition().y, c.y));
+                RoleSparks.Spawn(from, vel, Random.value < 0.4f ? Star : Rune, 0.45f, 0.05f, 0.02f, 0f, 0f, age);
+            }
+        }
+
+        // 呪った人の周りに時々星が舞う
+        if (MeetingHud.Instance || Time.time < _twinkleNext || Spelled.Count == 0) return;
+        _twinkleNext = Time.time + 0.25f;
+        foreach (var id in Spelled)
+        {
+            var p = PortKit.ById(id);
+            if (!Shown(p) || Random.value > 0.5f) continue;
+            var at = p.transform.position + new Vector3(Random.Range(-0.3f, 0.3f), Random.Range(-0.1f, 0.45f), 0f);
+            at.z = RoleSparks.DepthAt(p.GetTruePosition().y);
+            RoleSparks.Spawn(at, new Vector3(0f, 0.25f, 0f), Random.value < 0.5f ? Star : Rune, 0.8f, 0.07f, 0f);
+        }
+    }
+
+    // 唱え終えた時: 紫の星が弾ける
+    private static void Burst(PlayerControl t)
+    {
+        if (!Shown(t)) return;
+        var c = t.transform.position;
+        c.z = RoleSparks.DepthAt(t.GetTruePosition().y);
+        for (int i = 0; i < 22; i++)
+        {
+            float a = i * Mathf.PI * 2f / 22f;
+            float v = Random.Range(1.2f, 2.2f);
+            RoleSparks.Spawn(c, new Vector3(Mathf.Cos(a) * v, Mathf.Sin(a) * v * 0.8f, 0f), i % 2 == 0 ? Star : Rune, 0.6f, 0.08f, 0.01f, 0f, 2.5f);
         }
     }
 

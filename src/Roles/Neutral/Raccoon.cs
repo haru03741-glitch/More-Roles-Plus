@@ -274,6 +274,18 @@ internal static class RaccoonCarryFx
     private const float Tilt = 82f;      // 横倒しの角度
     private const float CarrierNameLift = 0.6f, NameGap = 0.55f; // 名前が担いだ体に重ならないように
 
+    // 運び方: Up = 運ぶ人の体の中心から上へ・Side = 進む向きへ (負なら後ろ)・Tilt = 傾き (正で頭が後ろ)・
+    // Struggle = もがく揺れ・NameGap / CarrierLift = 名前を離す高さ・WalkBob = 歩く時の上下
+    private sealed class Pose
+    {
+        public float Up, Side, Tilt, Struggle, NameGap, CarrierLift, WalkBob;
+    }
+
+    // アライグマ: 肩に横倒しで担ぐ
+    private static readonly Pose Shoulder = new() { Up = Height, Side = -0.04f, Tilt = Tilt, NameGap = NameGap, CarrierLift = CarrierNameLift, WalkBob = 0.07f };
+    // ペンギン: 前に抱えて少し持ち上げ、相手は反り返ってもがく
+    private static readonly Pose Hug = new() { Up = 0.12f, Side = 0.3f, Tilt = -22f, Struggle = 9f, NameGap = 0.42f, CarrierLift = 0f, WalkBob = 0.04f };
+
     private static readonly System.Collections.Generic.Dictionary<byte, Lift> Lifted = new();
     private static readonly System.Collections.Generic.List<byte> Drop = new();
 
@@ -293,7 +305,7 @@ internal static class RaccoonCarryFx
                 if (!PortKit.Alive(carrier) || !PortKit.Alive(t) || !t.cosmetics || !carrier.cosmetics) continue;
                 if (t.inVent || carrier.inVent || carrier.onLadder || t.onLadder) continue;
                 Drop.Remove(t.PlayerId);
-                try { Apply(carrier, t); }
+                try { Apply(carrier, t, Shoulder); }
                 catch (System.Exception e) { Plugin.Logger.LogWarning($"raccoon carry: {e.Message}"); }
             }
         }
@@ -326,7 +338,7 @@ internal static class RaccoonCarryFx
         return l;
     }
 
-    private static void Apply(PlayerControl carrier, PlayerControl t)
+    private static void Apply(PlayerControl carrier, PlayerControl t, Pose pose)
     {
         if (!Lifted.TryGetValue(t.PlayerId, out var l))
         {
@@ -338,29 +350,36 @@ internal static class RaccoonCarryFx
         var body = carrier.MyPhysics ? carrier.MyPhysics.body : null;
         bool moving = body && body.velocity.sqrMagnitude > 0.05f;
         float ph = Time.time * 10.5f;
-        float bob = moving ? Mathf.Abs(Mathf.Sin(ph)) * 0.07f : Mathf.Sin(Time.time * 2.2f) * 0.015f;
+        float bob = moving ? Mathf.Abs(Mathf.Sin(ph)) * pose.WalkBob : Mathf.Sin(Time.time * 2.2f) * 0.015f;
         float sway = moving ? Mathf.Sin(ph) * 7f : Mathf.Sin(Time.time * 1.7f) * 2f;
-        // 頭は進む向きの後ろ側へ (足が前に垂れる)
-        l.Turn = Mathf.MoveTowards(l.Turn, left ? -Tilt : Tilt, Time.deltaTime * 600f);
+        // もがく: 速い小刻みな揺れに、時々大きく暴れる
+        if (pose.Struggle > 0f)
+        {
+            float fit = Mathf.PerlinNoise(Time.time * 1.3f, t.PlayerId * 0.37f);
+            sway += Mathf.Sin(Time.time * 23f + t.PlayerId) * pose.Struggle * (0.4f + fit);
+            bob += Mathf.Abs(Mathf.Sin(Time.time * 17f)) * 0.03f * fit;
+        }
+        // 頭は進む向きの後ろ側へ (Tilt が正の時。負なら前へ反る)
+        l.Turn = Mathf.MoveTowards(l.Turn, left ? -pose.Tilt : pose.Tilt, Time.deltaTime * 600f);
         var rot = Quaternion.Euler(0f, 0f, (l.Turn + sway) * up);
 
         // 体の中心を、アライグマの体の中心の上へ
         var root = t.transform;
         Vector3 restCenter = root.position + l.Pivot * l.Scale;
         Vector3 cc = BodyCenter(carrier);
-        Vector3 target = new(cc.x + (left ? 0.04f : -0.04f), cc.y + Height + bob, restCenter.z);
+        Vector3 target = new(cc.x + (left ? -pose.Side : pose.Side), cc.y + pose.Up + bob, restCenter.z);
         Vector3 d = (target - restCenter) / l.Scale * up;
         d.z = -0.012f * up / l.Scale; // アライグマより手前に描く
 
         Place(l.Body, l.Pivot, rot, d);
         Place(l.Cos, l.Pivot, rot, d);
         // 名前は傾けずに持ち上げるだけ
-        if (l.Names != null && l.Names.T) l.Names.T.localPosition = l.Names.Pos + new Vector3(d.x, d.y + NameGap * up / l.Scale, 0f);
+        if (l.Names != null && l.Names.T) l.Names.T.localPosition = l.Names.Pos + new Vector3(d.x, d.y + pose.NameGap * up / l.Scale, 0f);
         // アライグマの名前は担いだ人の上へ
         if (l.CarrierNames != null && l.CarrierNames.T)
         {
             float cs = carrier.transform.localScale.y > 0.01f ? carrier.transform.localScale.y : 1f;
-            l.CarrierNames.T.localPosition = l.CarrierNames.Pos + new Vector3(0f, CarrierNameLift * up / cs, 0f);
+            l.CarrierNames.T.localPosition = l.CarrierNames.Pos + new Vector3(0f, pose.CarrierLift * up / cs, 0f);
         }
     }
 
