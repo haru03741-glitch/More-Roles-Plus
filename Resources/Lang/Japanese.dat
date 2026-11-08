@@ -2569,3 +2569,12 @@ Replay.Following: {name} を見ています
 Replay.FreeCam: 自由に見ています (WASD で動かす)
 Replay.Loading: 船を読み込み中…
 Replay.StageHelp: Space = 再生/停止・← → = 5 秒・Tab = 次の人・ホイール = 寄る/引く・Esc = 閉じる
+Replay.EvTie: 投票: 同数で誰も追放されなかった
+Replay.EvNoExile: 投票: 誰も追放されなかった
+Replay.EvVotedOut: 投票: {who} が追放に決まった
+Replay.MeetDead: (死亡)
+Replay.MeetVoted: 投票済み
+Replay.MeetNoVote: 投票なし
+Replay.MeetSkip: スキップ
+Replay.MeetExiled: 追放
+Replay.MeetChat: 会議のチャット

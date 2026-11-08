@@ -107,7 +107,61 @@ public sealed class Warlock : RoleBase
     public override void OnFixedUpdate()
     {
         UchuKit.HideKillButton();
-        _kill?.Button?.SetUsable(Victim() != null);
+        var victim = Victim();
+        _kill?.Button?.SetUsable(victim != null);
+        Fx(victim);
+    }
+
+    // ── 見た目 (自分の画面だけ) ──
+    // 呪った人: 足元に紫の呪いの輪が回り、体から黒紫のもやが立ち昇る。
+    // 呪殺できる相手が近くにいる時: 呪った人から相手へ赤い鎖が伸びて脈打つ
+
+    private static readonly Color Haze = new(0.32f, 0.05f, 0.42f, 0.75f);
+    private static readonly Color HazeLight = new(0.75f, 0.3f, 1f, 0.7f);
+    private static readonly Color Chain = new(1f, 0.12f, 0.12f, 0.9f);
+    private readonly DotSet _ring = new("MrpWarlockRing"), _chain = new("MrpWarlockChain");
+    private float _hazeNext;
+
+    private static bool Shown(PlayerControl p) => p && !p.inVent && p.Visible && !p.Data.IsDead;
+
+    private void Fx(PlayerControl victim)
+    {
+        var cursed = _cursed == 255 ? null : PortKit.ById(_cursed);
+        if (MeetingHud.Instance || !Shown(cursed)) { _ring.Hide(); _chain.Hide(); return; }
+        Vector2 feet = cursed.GetTruePosition();
+        float z = RoleSparks.DepthAt(feet.y);
+        float spin = Time.time * 1.6f;
+        const int n = 12;
+        _ring.Show(n, i =>
+        {
+            float a = spin + i * Mathf.PI * 2f / n;
+            float y = Mathf.Sin(a);
+            // 奥側の丸は体の後ろへ
+            return (new Vector3(feet.x + Mathf.Cos(a) * 0.4f, feet.y + y * 0.18f, z + (y > 0f ? 0.03f : -0.005f)),
+                i % 2 == 0 ? HazeLight : Haze, 0.08f + 0.03f * Mathf.Sin(Time.time * 4f + i));
+        });
+        if (Time.time >= _hazeNext)
+        {
+            _hazeNext = Time.time + 0.07f;
+            var from = new Vector3(cursed.transform.position.x + Random.Range(-0.25f, 0.25f), feet.y + Random.Range(0f, 0.3f), z);
+            RoleSparks.Spawn(from, new Vector3(Random.Range(-0.1f, 0.1f), Random.Range(0.35f, 0.6f), 0f),
+                Random.value < 0.3f ? HazeLight : Haze, 1.1f, 0.06f, 0.2f, 0f, 0.6f);
+        }
+
+        if (!Shown(victim)) { _chain.Hide(); return; }
+        Vector3 a0 = cursed.transform.position, a1 = victim.transform.position;
+        float zc = RoleSparks.DepthAt(Mathf.Min(feet.y, victim.GetTruePosition().y));
+        int links = Mathf.Clamp(Mathf.CeilToInt(Vector2.Distance(a0, a1) / 0.12f), 3, 40);
+        float beat = 0.75f + 0.25f * Mathf.Sin(Time.time * 9f);
+        _chain.Show(links, i =>
+        {
+            float k = (i + 0.5f) / links;
+            var p = Vector3.Lerp(a0, a1, k);
+            p.y -= Mathf.Sin(k * Mathf.PI) * 0.12f; // 少したるむ
+            var c = Chain;
+            c.a *= beat * (0.6f + 0.4f * Mathf.Sin(k * 20f - Time.time * 12f));
+            return (new Vector3(p.x, p.y, zc), c, i % 2 == 0 ? 0.075f : 0.05f);
+        });
     }
 
     public override string NameMark(PlayerControl seen) =>

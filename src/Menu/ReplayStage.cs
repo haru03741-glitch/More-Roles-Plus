@@ -62,6 +62,11 @@ internal static class ReplayStage
     private static Slider _slider;
     private static TextMeshPro _time, _log, _playLabel, _speedLabel, _dirLabel, _status, _view;
     private static string _logShown;
+    private static GameObject _meetPanel;
+    private static float _overlayH = 1f; // 部品を並べた時のカメラの大きさ (寄る・引くに合わせて同じ見え方に保つ)
+    private static TextMeshPro _meetTitle, _meetPeople, _meetChat;
+    private static string _meetShown;
+    private const float MeetW = 6.6f, MeetH = 3.5f, MeetX = -1.4f, MeetY = -0.1f;
 
     internal static bool IsOpen => _r != null;
 
@@ -247,7 +252,7 @@ internal static class ReplayStage
                 t.gameObject.layer = pp.gameObject.layer;
                 t.enableWordWrapping = false;
                 t.alignment = TextAlignmentOptions.Center;
-                t.fontSize = 2.2f;
+                t.fontSize = 0.9f;
                 t.text = p.Name;
                 t.color = Color.white;
                 t.outlineWidth = 0.25f;
@@ -283,6 +288,7 @@ internal static class ReplayStage
         var group = _overlay.AddComponent<UnityEngine.Rendering.SortingGroup>();
         group.sortingOrder = 500;
         float h = _cam.orthographicSize, w = h * _cam.aspect;
+        _overlayH = h;
 
         // 下の帯 (つまみとボタン)
         var bottom = Widget.Node("Bottom", _overlay.transform, OverlayLayer);
@@ -320,7 +326,7 @@ internal static class ReplayStage
         var ts = new UiScreen(top.transform) { Anchor = Align.Start, BaseOrder = 10, MaxWidth = 5f };
         var title = new Label(new Text("Replay.Title"), 2f) { MenuFont = true, Bold = true, Outline = 0.2f };
         var view = new Label("", 1.3f) { Width = 4.5f };
-        var status = new Label("", 1.5f) { Width = 4.5f };
+        var status = new Label("　", 1.5f) { Width = 4.5f }; // 空だと高さが 0 で並べられ、後から入る字が上の行に重なるので 1 行分を取っておく
         var help = new Label(new Text("Replay.StageHelp"), 1f) { Width = 4.5f, Color = new Color(0.8f, 0.8f, 0.8f, 1f) };
         ts.Set(new Box(new Stack(false, title, view, status, help) { Gap = 0.04f, Align = Align.Start }) { Padding = new Vector2(0.12f, 0.08f), Fill = new Color(0f, 0f, 0f, 0.55f), Hollow = true });
         _view = view.Built;
@@ -352,6 +358,33 @@ internal static class ReplayStage
             { Size = new Vector2(1.55f, 0.27f), Padding = new Vector2(0.03f, 0.02f), Fill = new Color(0f, 0f, 0f, 0.75f) });
         }
         ps.Set(list);
+
+        // 会議の画面 (会議の間だけ・真ん中)
+        _meetPanel = Widget.Node("Meeting", _overlay.transform, OverlayLayer);
+        _meetPanel.transform.localPosition = new Vector3(MeetX, MeetY, -0.1f);
+        var ms = new UiScreen(_meetPanel.transform) { BaseOrder = 30, MaxWidth = 8f };
+        var mTitle = new Label("", 1.6f) { Width = MeetW - 0.3f, Bold = true, TextAlign = TextAlignmentOptions.Top };
+        var mPeople = new Label("", 1.2f) { Width = 3.3f, TextAlign = TextAlignmentOptions.TopLeft };
+        var mChat = new Label("", 1.05f) { Width = 2.8f, TextAlign = TextAlignmentOptions.TopLeft };
+        ms.Set(new Box(new Stack(false, mTitle,
+            new Stack(true, mPeople, mChat) { Gap = 0.2f, Align = Align.Start }) { Gap = 0.1f })
+        { Size = new Vector2(MeetW, MeetH), Padding = new Vector2(0.15f, 0.12f), Fill = new Color(0.05f, 0.07f, 0.12f, 0.88f), Hollow = true });
+        _meetTitle = mTitle.Built;
+        _meetPeople = mPeople.Built;
+        _meetChat = mChat.Built;
+        // 字の欄の大きさは中身で変わるので、窓の上から決まった所へ置き直す (字は欄の上から並ぶ)
+        var pt = _meetPanel.transform.position;
+        void Pin(TextMeshPro t, float w, float h, float left, float top)
+        {
+            if (!t) return;
+            t.rectTransform.sizeDelta = new Vector2(w, h);
+            t.transform.position = new Vector3(pt.x - MeetW / 2f + left + w / 2f, pt.y + MeetH / 2f - top - h / 2f, t.transform.position.z);
+        }
+        Pin(_meetTitle, MeetW - 0.3f, 0.4f, 0.15f, 0.12f);
+        Pin(_meetPeople, 3.3f, MeetH - 0.7f, 0.2f, 0.6f);
+        Pin(_meetChat, 2.8f, MeetH - 0.7f, 3.65f, 0.6f);
+        _meetShown = null;
+        _meetPanel.SetActive(false);
 
         // 読み込み中
         ShowFrameUi();
@@ -417,6 +450,7 @@ internal static class ReplayStage
         float wheel = Input.mouseScrollDelta.y;
         if (Math.Abs(wheel) > 0.01f) _zoom = Mathf.Clamp(_zoom - wheel * 0.5f, 1.5f, 9f);
         _cam.orthographicSize = Mathf.Lerp(_cam.orthographicSize, _zoom, 0.25f);
+        if (_overlay) _overlay.transform.localScale = Vector3.one * (_cam.orthographicSize / _overlayH);
 
         if (_playing) _t += Time.deltaTime * Speeds[_speed] * (_reverse ? -1f : 1f);
         if (_t >= r.Duration && !_reverse) { _t = r.Duration; _playing = false; }
@@ -555,6 +589,8 @@ internal static class ReplayStage
         MatchReplay.EvKind.Kill => new Text("Replay.EvKill").With("killer", Name(e.A)).With("victim", Name(e.B)),
         MatchReplay.EvKind.Meeting when e.B == 255 => new Text("Replay.EvButton").With("who", Name(e.A)),
         MatchReplay.EvKind.Meeting => new Text("Replay.EvReport").With("who", Name(e.A)).With("victim", Name(e.B)),
+        MatchReplay.EvKind.Votes when e.A == 255 => new Text(e.Tie ? "Replay.EvTie" : "Replay.EvNoExile"),
+        MatchReplay.EvKind.Votes => new Text("Replay.EvVotedOut").With("who", Name(e.A)),
         _ => new Text("Replay.EvExile").With("who", Name(e.A)),
     };
 
@@ -567,6 +603,7 @@ internal static class ReplayStage
         foreach (var e in r.Events)
         {
             if (e.T > t) break;
+            if (e.Kind == MatchReplay.EvKind.Votes && e.A != 255) continue; // 追放は追放の出来事で出す
             lines.Add($"<color=#BBBBBB>{Clock(e.T)}</color> {Describe(e)}");
         }
         var sb = new StringBuilder();
@@ -591,8 +628,100 @@ internal static class ReplayStage
             int hi = r.T.BinarySearch(t);
             if (hi < 0) hi = ~hi;
             hi = Mathf.Clamp(hi, 0, r.T.Count - 1);
-            _status.text = r.Meeting[hi] ? new Text("Replay.InMeeting").ToString() : "";
+            _status.text = r.Meeting[hi] ? new Text("Replay.InMeeting").ToString() : "　";
         }
         _slider?.Show(r.Duration > 0f ? t / r.Duration : 0f);
+        ShowMeeting(t);
     }
+
+    // 今の時刻を含む会議 (会議の出来事から、会議中の印が消えるまで)
+    private static MatchReplay.Ev MeetingAt(float t, out float end)
+    {
+        var r = _r;
+        end = 0f;
+        MatchReplay.Ev cur = null;
+        foreach (var e in r.Events)
+        {
+            if (e.T > t) break;
+            if (e.Kind == MatchReplay.EvKind.Meeting) cur = e;
+        }
+        if (cur == null) return null;
+        int k = r.T.BinarySearch(cur.T);
+        if (k < 0) k = ~k;
+        end = r.Duration;
+        for (int i = k; i < r.T.Count; i++)
+            if (r.T[i] > cur.T + 1f && !r.Meeting[i]) { end = r.T[i]; break; }
+        return t < end || end >= r.Duration ? cur : null;
+    }
+
+    private static void ShowMeeting(float t)
+    {
+        var r = _r;
+        if (!_meetPanel) return;
+        var m = _built ? MeetingAt(t, out float end) : null;
+        if (m == null) { if (_meetPanel.activeSelf) _meetPanel.SetActive(false); return; }
+        if (!_meetPanel.activeSelf) _meetPanel.SetActive(true);
+        end = 0f;
+
+        // 投票の結果 (この会議の中で、もう出ていれば)
+        MatchReplay.Ev votes = null;
+        foreach (var e in r.Events)
+        {
+            if (e.T > t) break;
+            if (e.T >= m.T && e.Kind == MatchReplay.EvKind.Votes) votes = e;
+        }
+        int startIdx = r.T.BinarySearch(m.T);
+        if (startIdx < 0) startIdx = ~startIdx;
+        startIdx = Mathf.Clamp(startIdx, 0, r.T.Count - 1);
+        int nowIdx = r.T.BinarySearch(t);
+        if (nowIdx < 0) nowIdx = ~nowIdx;
+        nowIdx = Mathf.Clamp(nowIdx, 0, r.T.Count - 1);
+
+        string title = (m.B == 255 ? new Text("Replay.EvButton").With("who", Name(m.A)) : new Text("Replay.EvReport").With("who", Name(m.A)).With("victim", Name(m.B))).ToString();
+        if (votes != null)
+            title += "\n<size=80%>" + (votes.A == 255 ? new Text(votes.Tie ? "Replay.EvTie" : "Replay.EvNoExile").ToString() : new Text("Replay.EvVotedOut").With("who", Name(votes.A)).ToString()) + "</size>";
+
+        var people = new StringBuilder();
+        for (int i = 0; i < r.Players.Count; i++)
+        {
+            var p = r.Players[i];
+            byte f0 = r.F[startIdx][i], fn = r.F[nowIdx][i];
+            if ((f0 & 4) != 0) continue;
+            bool dead = (f0 & 1) != 0;
+            string dot = $"<color=#{ColorUtility.ToHtmlStringRGB(p.Color)}>●</color>";
+            if (dead) { people.Append($"<color=#777777>{dot} {p.Name} {new Text("Replay.MeetDead")}</color>\n"); continue; }
+            people.Append(dot).Append(' ').Append(p.Name);
+            if (votes != null)
+            {
+                byte to = 254;
+                foreach (var (voter, target) in votes.Votes) if (voter == p.Id) { to = target; break; }
+                string tgt = to == 254 ? new Text("Replay.MeetNoVote").ToString() : to >= 252 ? new Text("Replay.MeetSkip").ToString() : Name(to);
+                people.Append(" <color=#BBBBBB>→</color> ").Append(tgt);
+                if (votes.A == p.Id) people.Append(" <color=#FF6666>").Append(new Text("Replay.MeetExiled").ToString()).Append("</color>");
+            }
+            else if ((fn & MatchReplay.FVoted) != 0) people.Append(" <color=#7CFC9A>").Append(new Text("Replay.MeetVoted").ToString()).Append("</color>");
+            people.Append('\n');
+        }
+
+        var chat = new List<string>();
+        foreach (var c in r.Chats)
+        {
+            if (c.T > t) break;
+            if (c.T < m.T) continue;
+            chat.Add($"{Name(c.Who)}: {Esc(c.Text)}");
+        }
+        var cs = new StringBuilder();
+        cs.Append("<color=#BBBBBB>").Append(new Text("Replay.MeetChat").ToString()).Append("</color>\n");
+        for (int i = Mathf.Max(0, chat.Count - 9); i < chat.Count; i++) cs.Append(chat[i]).Append('\n');
+
+        string key = title + "|" + people + "|" + cs;
+        if (key == _meetShown) return;
+        _meetShown = key;
+        if (_meetTitle) _meetTitle.text = title;
+        if (_meetPeople) _meetPeople.text = people.ToString();
+        if (_meetChat) _meetChat.text = cs.ToString();
+    }
+
+    // チャットの文の中のタグを効かせない
+    private static string Esc(string s) => s.Replace("<", "<​");
 }

@@ -19,8 +19,9 @@ internal static class MatchReplay
     private const float SampleEvery = 0.2f;
 
     private const byte FDead = 1, FVent = 2, FGone = 4;
+    internal const byte FVoted = 8; // 会議で投票を済ませた
 
-    internal enum EvKind : byte { Kill, Meeting, Exile }
+    internal enum EvKind : byte { Kill, Meeting, Exile, Votes }
 
     internal sealed class Ev
     {
@@ -28,6 +29,15 @@ internal static class MatchReplay
         public EvKind Kind;
         public byte A = 255, B = 255; // キル = 倒した人・倒された人 / 会議 = 開いた人・通報された死体 (255 = 緊急ボタン) / 追放 = 追放された人
         public Vector2 Where;
+        public List<(byte Voter, byte Target)> Votes; // 投票の結果 (Votes の時だけ・A = 追放された人)
+        public bool Tie;
+    }
+
+    internal sealed class Chat
+    {
+        public float T;
+        public byte Who;
+        public string Text;
     }
 
     internal sealed class Player
@@ -50,6 +60,7 @@ internal static class MatchReplay
         public readonly List<float[]> X = new(), Y = new();
         public readonly List<byte[]> F = new();
         public readonly List<Ev> Events = new();
+        public readonly List<Chat> Chats = new();
         public float Start;
         public float Duration => T.Count > 0 ? T[^1] : 0f;
         public Sprite Map;
@@ -254,6 +265,11 @@ internal static class MatchReplay
             byte f = 0;
             if (info.IsDead) f |= FDead;
             if (pc.inVent) f |= FVent;
+            var hud = MeetingHud.Instance;
+            if (hud)
+            {
+                try { if (hud.DidVote(info.PlayerId)) f |= FVoted; } catch { }
+            }
             fs[i] = f;
         }
         r.T.Add(now - r.Start);
@@ -283,6 +299,25 @@ internal static class MatchReplay
         var r = _rec;
         if (r == null || !p || !MeetingHud.Instance && !ExileController.Instance) return;
         r.Events.Add(new Ev { T = Time.time - r.Start, Kind = EvKind.Exile, A = p.PlayerId });
+    }
+
+    internal static void OnVotes(Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<MeetingHud.VoterState> states, NetworkedPlayerInfo exiled, bool tie)
+    {
+        var r = _rec;
+        if (r == null) return;
+        var list = new List<(byte, byte)>();
+        if (states != null)
+            foreach (var v in states) list.Add((v.VoterId, v.VotedForId));
+        Sample(true);
+        r.Events.Add(new Ev { T = Time.time - r.Start, Kind = EvKind.Votes, A = exiled != null ? exiled.PlayerId : (byte)255, Votes = list, Tie = tie });
+    }
+
+    internal static void OnChat(PlayerControl who, string text)
+    {
+        var r = _rec;
+        if (r == null || !who || string.IsNullOrEmpty(text)) return;
+        if (r.Chats.Count >= 2000) return;
+        r.Chats.Add(new Chat { T = Time.time - r.Start, Who = who.PlayerId, Text = text });
     }
 
     // 試合の終わり (役職がまだ残っている間)。役職と勝ち負けを付けて前の試合として残す
@@ -354,6 +389,27 @@ internal static class MatchReplayStartPatch
     {
         try { MatchReplay.Begin(); }
         catch (Exception e) { Plugin.Logger.LogError($"replay start: {e}"); }
+    }
+}
+
+[HarmonyPatch(typeof(MeetingHud), nameof(MeetingHud.VotingComplete))]
+internal static class MatchReplayVotesPatch
+{
+    public static void Postfix([HarmonyArgument(0)] Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<MeetingHud.VoterState> states,
+        [HarmonyArgument(1)] NetworkedPlayerInfo exiled, [HarmonyArgument(2)] bool tie)
+    {
+        try { MatchReplay.OnVotes(states, exiled, tie); }
+        catch (Exception e) { Plugin.Logger.LogError($"replay votes: {e}"); }
+    }
+}
+
+[HarmonyPatch(typeof(ChatController), nameof(ChatController.AddChat))]
+internal static class MatchReplayChatPatch
+{
+    public static void Postfix([HarmonyArgument(0)] PlayerControl sourcePlayer, [HarmonyArgument(1)] string chatText)
+    {
+        try { MatchReplay.OnChat(sourcePlayer, chatText); }
+        catch (Exception e) { Plugin.Logger.LogError($"replay chat: {e}"); }
     }
 }
 
@@ -515,6 +571,8 @@ internal static class ReplayView
         MatchReplay.EvKind.Kill => new Text("Replay.EvKill").With("killer", Name(e.A)).With("victim", Name(e.B)),
         MatchReplay.EvKind.Meeting when e.B == 255 => new Text("Replay.EvButton").With("who", Name(e.A)),
         MatchReplay.EvKind.Meeting => new Text("Replay.EvReport").With("who", Name(e.A)).With("victim", Name(e.B)),
+        MatchReplay.EvKind.Votes when e.A == 255 => new Text(e.Tie ? "Replay.EvTie" : "Replay.EvNoExile"),
+        MatchReplay.EvKind.Votes => new Text("Replay.EvVotedOut").With("who", Name(e.A)),
         _ => new Text("Replay.EvExile").With("who", Name(e.A)),
     };
 

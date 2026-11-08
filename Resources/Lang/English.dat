@@ -2569,3 +2569,12 @@ Replay.Following: Watching {name}
 Replay.FreeCam: Free camera (move with WASD)
 Replay.Loading: Loading the ship...
 Replay.StageHelp: Space = play/pause, ← → = 5s, Tab = next player, wheel = zoom, Esc = close
+Replay.EvTie: Vote: tied, nobody was ejected
+Replay.EvNoExile: Vote: nobody was ejected
+Replay.EvVotedOut: Vote: {who} will be ejected
+Replay.MeetDead: (dead)
+Replay.MeetVoted: voted
+Replay.MeetNoVote: no vote
+Replay.MeetSkip: skipped
+Replay.MeetExiled: ejected
+Replay.MeetChat: Meeting chat
