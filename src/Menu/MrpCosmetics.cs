@@ -459,9 +459,15 @@ internal static class MrpCosmetics
         if (hide || st.BodyHidden)
         {
             var body = layer.currentBodySprite != null ? layer.currentBodySprite.BodySprite : null;
-            if (body) body.forceRenderingOff = hide;
             var skin = layer.skin ? layer.skin.layer : null;
+#if ANDROID
+            // Android 版の Unity には forceRenderingOff が無い。本編が enabled を戻しても毎回ここで書き直す
+            if (body) body.enabled = !hide;
+            if (skin) skin.enabled = !hide;
+#else
+            if (body) body.forceRenderingOff = hide;
             if (skin) skin.forceRenderingOff = hide;
+#endif
             st.BodyHidden = hide;
         }
 
