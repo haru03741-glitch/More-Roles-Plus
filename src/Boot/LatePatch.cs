@@ -26,7 +26,19 @@ internal static class LatePatch
         typeof(PolusShipStatus), typeof(FungleShipStatus), typeof(DeconControl), typeof(ActionButton), typeof(VentButton),
         typeof(ReportButton), typeof(SabotageButton), typeof(ImpostorRole), typeof(EngineerRole), typeof(ScientistRole),
         typeof(PhantomRole), typeof(TrackerRole), typeof(NoisemakerRole), typeof(GuardianAngelRole), typeof(DeadBody),
+        // 部屋に入ってから・試合の中でしか呼ばれない物 (AmongUsClient はメニューで呼ぶ CheckOnlinePermissions だけ除く)
+        typeof(AmongUsClient), typeof(GameManager), typeof(RoleManager), typeof(LogicOptions), typeof(LogicOptionsNormal),
+        typeof(KillAnimation), typeof(KillOverlay), typeof(GameData), typeof(CustomNetworkTransform), typeof(ZiplineBehaviour),
+        typeof(LightSourceGpuRenderer), typeof(LightSourceRaycastRenderer), typeof(VitalsMinigame), typeof(LobbyViewSettingsPane),
+        typeof(LobbyInfoPane), typeof(GameSettingMenu), typeof(GameOptionsMenu), typeof(IGameOptionsExtensions), typeof(ExitGameButton),
+        typeof(ChatBubble), typeof(FreeChatInputField), typeof(MatchInfoGuide),
     };
+
+    // 上の型の中でもメニューで呼ばれるので後回しにしない物
+    private static readonly HashSet<string> MenuMethods = new() { "CheckOnlinePermissions" };
+
+    // 型そのものか、その中の型 (コルーチンの状態機械など) が上の一覧にあるか
+    private static bool InGame(Type t) => t != null && (InGameOnly.Contains(t) || InGame(t.DeclaringType));
 
     private static readonly Queue<Type> _pending = new();
     private static Harmony _harmony;
@@ -64,13 +76,13 @@ internal static class LatePatch
                 {
                     var t = a.declaringType ?? classTarget;
                     if (t == null) continue;
-                    if (!InGameOnly.Contains(t)) return false;
+                    if (!InGame(t) || a.methodName != null && MenuMethods.Contains(a.methodName)) return false;
                     any = true;
                 }
             }
             if (classTarget != null)
             {
-                if (!InGameOnly.Contains(classTarget)) return false;
+                if (!InGame(classTarget)) return false;
                 any = true;
             }
             return any;

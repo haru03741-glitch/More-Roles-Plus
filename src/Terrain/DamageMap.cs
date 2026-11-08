@@ -476,9 +476,16 @@ internal static class DamageMap
 
     // 部屋の絵か: Ship 層の SpriteRenderer で、MaskShader (Skeld 型) か、大きな Sprites/Default (Polus・Fungle 型)。
     // 背景・海・波・色かぶせ・影などは除く。カメラに付いて動く空 (Fungle の夕焼けと星) も除く (地図の範囲が作った時のカメラの位置で変わる)
-    private static readonly System.Text.RegularExpressions.Regex NotRoomArt = new(
-        "background|overlay|water|wave|tint|shadow|light|square|starfield|hull|parallax",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase); // Compiled は付けない (コードを生成する初期化に 170ms・試合ごとに 1 回の走査なので解釈実行で足りる)
+    // 正規表現は使わない (起動時にこの型を初めて触った時、正規表現の仕組みの初期化だけで 200ms 近く止まっていた)
+    private static readonly string[] NotRoomArt =
+        { "background", "overlay", "water", "wave", "tint", "shadow", "light", "square", "starfield", "hull", "parallax" };
+
+    private static bool NotRoomName(string name)
+    {
+        foreach (var w in NotRoomArt)
+            if (name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        return false;
+    }
 
     private static bool IsRoomArt(SpriteRenderer sr)
     {
@@ -491,7 +498,7 @@ internal static class DamageMap
         var size = sr.bounds.size;
         if (size.x * size.y < 4f || size.x > 40f || size.y > 40f) return false;
         for (var t = sr.transform; t && !t.GetComponent<ShipStatus>(); t = t.parent)
-            if (NotRoomArt.IsMatch(t.name)) return false;
+            if (NotRoomName(t.name)) return false;
         return true;
     }
 
