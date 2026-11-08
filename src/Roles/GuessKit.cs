@@ -60,18 +60,25 @@ internal static class GuessKit
             foreach (var r in RoleState.All)
                 if (r is IGuessShield s && s.ShieldsFromGuess(targetId)) { hit = false; break; }
         byte deadId = hit ? targetId : user.PlayerId;
+        // 撃つ回数は役職を決めた時に減らす (相手を選んで役職を選ぶ画面を閉じただけでは減らない)。
         // 先に全員の画面で撃ち抜く演出を始め、照準が縮み切って撃った少し後に倒す (名札の ✕ が銃声より先に出ないように)
-        ShotCall.Send(deadId);
-        GuessShotFx.Begin(deadId);
+        ShotCall.Send((user.PlayerId, deadId));
+        Shot(user.PlayerId, deadId);
         Due.Add((UnityEngine.Time.time + KillDelay, user.PlayerId, deadId, Terrain.GameClock.ShipGen));
     }
 
     private const float KillDelay = GuessShotFx.HitAt + 0.15f;
     private static readonly System.Collections.Generic.List<(float at, byte user, byte dead, int ship)> Due = new();
 
-    private static readonly RemoteCall<byte> ShotCall = new("GuessKit.Shot", Route.HostToAll,
-        (w, id) => w.Write(id), r => r.ReadByte(),
-        (_, id) => GuessShotFx.Begin(id));
+    private static readonly RemoteCall<(byte user, byte dead)> ShotCall = new("GuessKit.Shot", Route.HostToAll,
+        (w, m) => { w.Write(m.user); w.Write(m.dead); }, r => (r.ReadByte(), r.ReadByte()),
+        (_, m) => Shot(m.user, m.dead));
+
+    private static void Shot(byte userId, byte deadId)
+    {
+        Abilities.SpendConfirmed(userId);
+        GuessShotFx.Begin(deadId);
+    }
 
     // ホスト: 撃った演出の後に倒す。会議が先に閉じていても倒す (撃ったことは取り消さない)。別の試合になっていたら捨てる (番号が使い回される)
     internal static void HostTick()

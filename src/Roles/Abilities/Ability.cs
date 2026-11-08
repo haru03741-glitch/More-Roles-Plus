@@ -69,6 +69,9 @@ public sealed class Ability
     // Meeting: ゲッサーと同じく、撃ってはいけない相手 (IGuessBlock) を狙えない
     public bool GuessLike { get; init; }
 
+    // ホストが通した時には回数を減らさない (OnUsed の先で決めた時に Abilities.SpendConfirmed で減らす。選ぶ画面を閉じたら減らない)
+    public bool SpendOnConfirm { get; init; }
+
     // Meeting: 自分の名札にだけボタンを出す (自分に使う会議の能力。OnUsed の相手は自分)
     public bool MeetingSelf { get; init; }
 
@@ -512,7 +515,7 @@ internal static class Abilities
         var role = RoleState.Of(userId);
         if (role == null || index >= role.Abilities.Count) return;
         var a = role.Abilities[index];
-        a.Spend();
+        if (!a.SpendOnConfirm) a.Spend();
         if (role.IsLocal && a.Target == AbilityTarget.Meeting)
         {
             a.PendingUntil = 0;
@@ -528,6 +531,22 @@ internal static class Abilities
         if (a.OnUsed == null || !role.Player || !target) return;
         try { a.OnUsed(role.Player, target); }
         catch (Exception e) { Plugin.Logger.LogError($"{role.Id} ability #{index}: {e}"); }
+    }
+
+    // SpendOnConfirm の能力を、その先で決めた時に減らす (全員の端末で呼ぶ)
+    internal static void SpendConfirmed(byte userId)
+    {
+        var role = RoleState.Of(userId);
+        if (role == null) return;
+        foreach (var a in role.Abilities)
+        {
+            if (!a.SpendOnConfirm) continue;
+            a.Spend();
+            if (!role.IsLocal) return;
+            if (a.Target == AbilityTarget.Meeting) MeetingAbilities.Refresh();
+            if (a.Button != null && a.UsesLeft == 0) a.Button.SetUsable(false);
+            return;
+        }
     }
 
     // 確かめ用の一覧 (press = 押す番号・-1 で押さない)

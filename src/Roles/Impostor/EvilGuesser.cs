@@ -23,6 +23,7 @@ public sealed class EvilGuesser : RoleBase, IGuesser
             Target = AbilityTarget.Meeting,
             MaxUses = () => Shots,
             UsesPerMeeting = PerMeeting,
+            SpendOnConfirm = true,
             OnUsed = GuessKit.OnTarget,
         });
     }
