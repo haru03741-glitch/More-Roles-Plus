@@ -300,7 +300,8 @@ internal static class KillButtonShowPatch
     public static void Postfix(HudManager __instance, PlayerControl localPlayer, RoleBehaviour role, bool isActive)
     {
         var mine = RoleState.Local;
-        if (mine is not { CanKill: true } || !role || role.IsImpostor) return;
+        // サドンデスはキル役でない役職もキルボタンを使う (地図・アドミンを閉じた時に本編が出し直すのに合わせる)
+        if (mine == null || !(mine.CanKill || Rules.SuddenDeath.Active) || !role || role.IsImpostor) return;
         // 客は本編の役職が役職の電文より後に付くことがあり、割り当ての時に印を付けられていないことがある
         if (!role.CanUseKillButton) role.CanUseKillButton = true;
         __instance.KillButton.ToggleVisible(isActive && localPlayer && localPlayer.Data != null && !localPlayer.Data.IsDead);
