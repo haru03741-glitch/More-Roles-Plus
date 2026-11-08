@@ -650,18 +650,26 @@ internal sealed class RoleBrowser
         string s = SideText(sec);
         if (s.Length > 0) col.Add(new Label(s, 1.2f) { Color = SubText, Width = SideW, Align = Align.Start });
         col.Add(new Spacer(0.1f, 0.06f));
+        // 設定の行 (多い役職は欄の下からはみ出すので、この中だけスクロール)
+        float rowW = SideW - 0.18f;
+        var rows = new Stack(false) { Gap = 0.03f, Width = rowW };
         foreach (var opt in SectionOpts(sec))
         {
             if (!opt.Shown) continue;
-            col.Add(new Label($"{opt.Label}{(opt.Changed && !opt.NoChangeMark ? OptEditor.ChangedMark : "")}: {ValueText(opt)}", 1.25f) { Width = SideW, Align = Align.Start, Color = opt.Fresh ? FreshColor : Color.white });
+            rows.Add(new Label($"{opt.Label}{(opt.Changed && !opt.NoChangeMark ? OptEditor.ChangedMark : "")}: {ValueText(opt)}", 1.25f) { Width = rowW, Align = Align.Start, Color = opt.Fresh ? FreshColor : Color.white });
         }
         if (DetailChanged(sec))
-            col.Add(new Label(new Text("RolePage.ChangedNote"), 1.15f) { Color = OptEditor.ChangedColor, Width = SideW, Align = Align.Start });
+            rows.Add(new Label(new Text("RolePage.ChangedNote"), 1.15f) { Color = OptEditor.ChangedColor, Width = rowW, Align = Align.Start });
         if (sec.Role is RoleBase rb && rb.Excluded != null)
         {
-            col.Add(new Label($"{PairTitle(false)}: {PairSummary(rb, false)}", 1.25f) { Width = SideW, Align = Align.Start });
-            col.Add(new Label($"{PairTitle(true)}: {PairSummary(rb, true)}", 1.25f) { Width = SideW, Align = Align.Start });
+            rows.Add(new Label($"{PairTitle(false)}: {PairSummary(rb, false)}", 1.25f) { Width = rowW, Align = Align.Start });
+            rows.Add(new Label($"{PairTitle(true)}: {PairSummary(rb, true)}", 1.25f) { Width = rowW, Align = Align.Start });
         }
+        // 見出し・説明・下のボタンの高さを測って、残りを行の欄にする (間隔は col.Gap が子の数だけ入る)
+        float used = HeroH + 0.03f + 0.03f + 0.03f + (s.Length > 0 ? Label.MeasureHeight(s, 1.2f, false, SideW) + 0.03f : 0f) + 0.06f + 0.03f
+                     + (Touch ? 0.08f + 0.03f + (0.4f + 0.03f) * 2f : 0f);
+        _sideList = new ScrollView(new Vector2(SideW, Math.Max(_sideH - used, 1f)), rows) { Tag = _tag + ":summary:" + (sec.Role?.Id ?? sec.Title.ToString()) };
+        col.Add(_sideList);
         if (Touch)
         {
             col.Add(new Spacer(0.1f, 0.08f));
@@ -1107,8 +1115,8 @@ internal sealed class RoleBrowser
             bar.Add(extra);
         }
 
-        // 見出しと説明の高さは字の量で変わるので、行の欄の高さは大まかに見積もる
-        float used = HeroH + 0.05f + (s.Length > 0 ? 0.42f : 0f) + (n > 0 ? barH + 0.1f : 0f);
+        // 説明の高さは字の量で変わる (2 行以上の役職もある) ので、組む前に測って残りを行の欄にする
+        float used = HeroH + 0.05f + (s.Length > 0 ? Label.MeasureHeight(s, 1.1f, false, SideW) + 0.05f : 0f) + (n > 0 ? barH + 0.1f : 0f);
         // 値を変えて作り直しても同じ所を見せる (役職ごとの位置)
         _sideList = new ScrollView(new Vector2(SideW, Math.Max(_sideH - used, 1f)), rows) { Tag = _tag + ":side:" + (sec.Role?.Id ?? sec.Title.ToString()) };
         col.Add(_sideList);

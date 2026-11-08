@@ -93,6 +93,20 @@ internal sealed class Label : Widget
         return t.GetPreferredValues(text ?? "").x;
     }
 
+    // 幅 width で折り返した時の高さ (組む前に周りの欄の高さを決めるため。Build と同じ測り方)
+    public static float MeasureHeight(string text, float fontSize, bool bold, float width)
+    {
+        var t = UiAssets.TextProto;
+        if (!t) return 0f;
+        t.enableAutoSizing = false;
+        t.margin = Vector4.zero;
+        t.enableWordWrapping = true;
+        t.fontSize = fontSize;
+        t.fontStyle = bold ? FontStyles.Bold : FontStyles.Normal;
+        t.richText = true;
+        return t.GetPreferredValues(text ?? "", width, 0f).y;
+    }
+
     public Label(string content, float fontSize = 1.6f)
     {
         Content = content;
