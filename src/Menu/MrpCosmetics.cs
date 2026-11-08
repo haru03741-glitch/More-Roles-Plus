@@ -27,6 +27,8 @@ internal static class MrpCosmetics
         public Kind Kind;
         public bool Adaptive;              // 赤・青の所を体の色・影の色で塗る
         public string Front, Climb, ClimbLeft; // Resources/Cosmetics の絵の名前 (梯子の絵は無ければ梯子の間は出さない)
+        public bool FullBody;              // 体を丸ごと包む物 (着ている間は中の体・肌着を描かない。はみ出して見えるので)
+        public string Walk;                // 全身の物の歩きの絵 (<Walk>0..<WalkFrames-1>)。無ければ歩く間も正面の絵
         public string NameKey => "Cos." + Id;
     }
 
@@ -37,8 +39,8 @@ internal static class MrpCosmetics
         new() { Id = "risu", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, Front = "risu_front", Climb = "risu_climb" },
         new() { Id = "shirokumabou", Author = "あいぬあ", Kind = Kind.Hat, Front = "shirokumabou_front", Climb = "shirokumabou_climb" },
         new() { Id = "sodateterundesu", Author = "あいぬあ", Kind = Kind.Hat, Front = "sodateterundesu_front", Climb = "sodateterundesu_climb" },
-        new() { Id = "tyranno", Author = "あいぬあ", Kind = Kind.Hat, Front = "tyranno_front", Climb = "tyranno_climb", ClimbLeft = "tyranno_climbleft" },
-        new() { Id = "tyrannocolor", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, Front = "tyrannocolor_front", Climb = "tyrannocolor_climb", ClimbLeft = "tyrannocolor_climbleft" },
+        new() { Id = "tyranno", Author = "あいぬあ", Kind = Kind.Hat, FullBody = true, Front = "tyranno_front", Climb = "tyranno_climb", ClimbLeft = "tyranno_climbleft", Walk = "tyranno_walk" },
+        new() { Id = "tyrannocolor", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, FullBody = true, Front = "tyrannocolor_front", Climb = "tyrannocolor_climb", ClimbLeft = "tyrannocolor_climbleft", Walk = "tyrannocolor_walk" },
         new() { Id = "wakusei", Author = "あいぬあ", Kind = Kind.Hat, Front = "wakusei_front", Climb = "wakusei_climb" },
         new() { Id = "owo", Author = "ポテサラ", Kind = Kind.Visor, Front = "owo_front" },
     };
@@ -344,7 +346,7 @@ internal static class MrpCosmetics
 
     private sealed class State
     {
-        public bool HatOn, VisorOn, Climb, Visible = true;
+        public bool HatOn, VisorOn, Climb, Visible = true, BodyHidden;
         public SpriteRenderer Visor, Hat2;
     }
 
@@ -387,16 +389,19 @@ internal static class MrpCosmetics
 
         var f = hp.FrontLayer;
         var img = layer.visor ? layer.visor.Image : null;
-        // 帽子とバイザーの間の前後の幅 (本編の並び)。足す絵はこの幅の 4 分の 1 ずつ前後へずらす
-        float gap = f && img ? Mathf.Abs(img.transform.position.z - f.transform.position.z) : 0f;
-        if (gap < 1e-5f || gap > 0.01f) gap = 0.0002f;
-        // 本編の帽子の所に描く枠 (1 つ目が空なら 2 つ目) を基準に、選んだ前後の順へずらす (+ で奥)
+        // 前後は体と肌着の絵 (z が小さいほど手前) を基準に、その手前へ選んだ順で 1 段ずつ並べる。
+        // 帽子の絵の z を基準にすると、本編の帽子は肌着と同じ z・体とは 0.000001 しか離れていないので、
+        // 奥へずらした物が体の後ろへ回って見えなくなる
+        float bodyZ = BodyFront(layer, f);
+        // 本編の帽子の所に描く枠 (1 つ目が空なら 2 つ目) は本編の帽子の絵そのもの
         int baseSlot = h1 != null ? 0 : 1;
-        float Dz(int slot) => (Rank(baseSlot, front) - Rank(slot, front)) * gap * 0.25f;
+        float Z(int slot) => bodyZ - (Rank(slot, front) + 1) * StepZ;
+        bool own = hat != null || visor != null;
+        if (own && f) PlaceZ(f, Z(baseSlot));
 
         if (hat != null && f)
         {
-            var sp = HatSprite(hat, st.Climb, layer.FlipX);
+            var sp = HatSprite(hat, st.Climb, layer.FlipX, WalkFrame(layer));
             if (f.sprite != sp) f.sprite = sp;
             f.enabled = show && sp;
             f.flipX = !st.Climb && layer.FlipX;
@@ -411,14 +416,25 @@ internal static class MrpCosmetics
             catch (Exception e) { Plugin.Logger.LogWarning($"cosmetic hat restore: {e.Message}"); }
         }
 
+        // 全身の物を着ている間は中の体と肌着を描かない (本編が切り替える enabled には触らず、描くかだけ止める)
+        bool hide = hat != null && f && f.enabled && (hat.FullBody || top != null && top.FullBody);
+        if (hide || st.BodyHidden)
+        {
+            var body = layer.currentBodySprite != null ? layer.currentBodySprite.BodySprite : null;
+            if (body) body.forceRenderingOff = hide;
+            var skin = layer.skin ? layer.skin.layer : null;
+            if (skin) skin.forceRenderingOff = hide;
+            st.BodyHidden = hide;
+        }
+
         // 2 つ目の帽子 (1 つ目の手前)
         if (top != null && f)
         {
             var r = Extra(ref st.Hat2, "MrpHat2", hp, f);
-            var sp = HatSprite(top, st.Climb, layer.FlipX);
+            var sp = HatSprite(top, st.Climb, layer.FlipX, WalkFrame(layer));
             if (r.sprite != sp) r.sprite = sp;
             r.flipX = !st.Climb && layer.FlipX;
-            Follow(r, f, Dz(1));
+            Follow(r, f, Z(1));
             r.color = f.color;
             SetMaterial(r, top.Adaptive, layer.ColorId);
             r.enabled = show && sp && f.enabled;
@@ -432,7 +448,7 @@ internal static class MrpCosmetics
             var sp = Art(visor.Front);
             if (r.sprite != sp) r.sprite = sp;
             r.flipX = layer.FlipX;
-            Follow(r, f, Dz(2));
+            Follow(r, f, Z(2));
             if (img) img.enabled = false;
             var body = layer.currentBodySprite != null ? layer.currentBodySprite.BodySprite : null;
             float a = body ? body.color.a : 1f;
@@ -456,8 +472,46 @@ internal static class MrpCosmetics
         }
     }
 
-    private static Sprite HatSprite(Item hat, bool climb, bool left) =>
-        climb ? Art(left && hat.ClimbLeft != null ? hat.ClimbLeft : hat.Climb) : Art(hat.Front);
+    private static Sprite HatSprite(Item hat, bool climb, bool left, int walk) =>
+        climb ? Art(left && hat.ClimbLeft != null ? hat.ClimbLeft : hat.Climb)
+        : walk >= 0 && hat.Walk != null ? Art(WalkName(hat, walk)) ?? Art(hat.Front)
+        : Art(hat.Front);
+
+    private static readonly Dictionary<string, string[]> WalkNames = new();
+
+    // 歩きの絵の名前 (毎フレーム文字列を作らない)
+    private static string WalkName(Item hat, int i)
+    {
+        if (!WalkNames.TryGetValue(hat.Id, out var names))
+        {
+            names = new string[WalkFrames];
+            for (int k = 0; k < WalkFrames; k++) names[k] = hat.Walk + k;
+            WalkNames[hat.Id] = names;
+        }
+        return names[i];
+    }
+
+    private const int WalkFrames = 6;   // 着せ替えの歩きの絵の数 (1 歩き分)
+    private const int BodyWalkFrames = 12; // 本編の体の歩きの絵 (Walk0001〜Walk0012) の数
+
+    // 体が歩きの絵の何枚目か (歩いていなければ -1)。本編の体の歩きの 1 周を着せ替えの歩きの 1 周に合わせる
+    private static int WalkFrame(CosmeticsLayer layer)
+    {
+        var body = layer.currentBodySprite != null ? layer.currentBodySprite.BodySprite : null;
+        var sp = body ? body.sprite : null;
+        if (!sp) return -1;
+        string n = sp.name;
+        if (n.Length < 5 || !n.StartsWith("Walk", StringComparison.Ordinal)) return -1;
+        int k = 0;
+        for (int i = 4; i < n.Length; i++)
+        {
+            char c = n[i];
+            if (c < '0' || c > '9') break;
+            k = k * 10 + (c - '0');
+        }
+        if (k <= 0) return -1;
+        return (k - 1) % BodyWalkFrames * WalkFrames / BodyWalkFrames;
+    }
 
     private static SpriteRenderer Extra(ref SpriteRenderer r, string name, HatParent hp, SpriteRenderer f)
     {
@@ -468,12 +522,34 @@ internal static class MrpCosmetics
         return r;
     }
 
-    // 本編の帽子の絵と同じ所・同じ描く順に置き、前後だけ dz ずらす (+ で奥)
-    private static void Follow(SpriteRenderer r, SpriteRenderer f, float dz)
+    // 着せ替えの 1 段の前後の幅。体と肌着の間 (約 0.000001) と同じくらいにして、
+    // 近くに立つ他の人の体より手前へ出ないようにする
+    private const float StepZ = 0.000001f;
+
+    // 体と肌着のうち一番手前の z (着せ替えはこれより手前に並べる)
+    private static float BodyFront(CosmeticsLayer layer, SpriteRenderer f)
+    {
+        float z = float.MaxValue;
+        var body = layer.currentBodySprite != null ? layer.currentBodySprite.BodySprite : null;
+        if (body) z = Mathf.Min(z, body.transform.position.z);
+        var skin = layer.skin ? layer.skin.layer : null;
+        if (skin) z = Mathf.Min(z, skin.transform.position.z);
+        if (z == float.MaxValue) z = f ? f.transform.position.z + StepZ : 0f;
+        return z;
+    }
+
+    private static void PlaceZ(SpriteRenderer r, float z)
+    {
+        var p = r.transform.position;
+        if (p.z != z) r.transform.position = new Vector3(p.x, p.y, z);
+    }
+
+    // 本編の帽子の絵と同じ所・同じ描く順に置き、前後だけ z に変える
+    private static void Follow(SpriteRenderer r, SpriteRenderer f, float z)
     {
         var ft = f.transform;
         var p = ft.position;
-        r.transform.position = new Vector3(p.x, p.y, p.z + dz);
+        r.transform.position = new Vector3(p.x, p.y, z);
         r.transform.localScale = ft.localScale;
         r.sortingLayerID = f.sortingLayerID;
         r.sortingOrder = f.sortingOrder;
@@ -514,6 +590,18 @@ internal static class MrpCosmetics
         {
             _order.Value = a[1];
             Version++;
+        }
+        else if (a.Length == 1 && a[0] == "z")
+        {
+            // 自分の体の絵の前後 (z が小さいほど手前) を並べて出す (切り分け用)
+            var me = PlayerControl.LocalPlayer;
+            if (!me) return "ERR no player";
+            var list = new List<(float, string)>();
+            foreach (var r in me.GetComponentsInChildren<SpriteRenderer>(true))
+                if (r.enabled && r.gameObject.activeInHierarchy && r.sprite)
+                    list.Add((r.transform.position.z, $"{r.transform.position.z:0.000000} so={r.sortingOrder} {r.name}:{r.sprite.name}"));
+            list.Sort((x, y) => x.Item1.CompareTo(y.Item1));
+            return "OK z\n" + string.Join("\n", list.ConvertAll(x => x.Item2));
         }
         else if (a.Length > 0) return "ERR cosmetic [hat|hat2|visor] <id|none> | order <奥→手前の 3 桁>";
         return "OK " + Describe();
