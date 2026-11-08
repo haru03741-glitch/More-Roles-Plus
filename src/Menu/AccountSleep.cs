@@ -27,6 +27,8 @@ internal static class AccountSleep
             var am = AccountManager.Instance;
             if (!am || !am.gameObject.activeSelf) return;
             am.gameObject.SetActive(false);
+            // アカウント表示を止めると右の枠の覆いが出ないままになり枠が真っ黒になるので、ここで出しておく
+            if (__instance.rightPanelMask) __instance.rightPanelMask.SetActive(true);
             _menu = __instance;
             _asleep = true;
             _sleptBeforeLogin = true;
