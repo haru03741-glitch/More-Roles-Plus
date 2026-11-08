@@ -319,6 +319,51 @@ internal static class SetTasksPatch
     }
 }
 
+// 試合の途中で陣営が変わった時に、本編のタスク欄の見出し (インポスターの「サボタージュを行い…/偽のタスク」) を付け直す。
+// 本編は見出しをタスクを配る時にしか足さず、役職が替わっても外さないので、インポスターからクルーに替わると赤い見出しが残る
+[HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SetRole))]
+internal static class RoleChangeTaskHeaderPatch
+{
+    public static void Postfix([HarmonyArgument(0)] PlayerControl targetPlayer)
+    {
+        if (!targetPlayer || !targetPlayer.AmOwner || !ShipStatus.Instance || targetPlayer.Data == null || targetPlayer.Data.IsDead) return;
+        var role = targetPlayer.Data.Role;
+        var tasks = targetPlayer.myTasks;
+        if (!role || tasks == null || !HasDealtTasks(tasks)) return; // 配る前は本編が配る時に見出しを付ける
+        try
+        {
+            string impostorLine = TranslationController.Instance.GetString(StringNames.ImpostorTask);
+            bool had = false;
+            for (int i = tasks.Count - 1; i >= 0; i--)
+            {
+                var t = tasks[i];
+                var it = t ? t.TryCast<ImportantTextTask>() : null;
+                if (it == null || RoleDisplay.IsTaskHeader(t) || it.Text == null || !it.Text.Contains(impostorLine)) continue;
+                tasks.RemoveAt(i);
+                UnityEngine.Object.Destroy(it.gameObject);
+                had = true;
+            }
+            if (!role.IsImpostor)
+            {
+                if (had) Plugin.Logger.LogInfo("task header: impostor line removed (now crew side)");
+                return;
+            }
+            // 役職の説明の行も同じ型なので、本編が見出しの置き場と取り違えないよう外してから付けさせる
+            RoleDisplay.DetachTaskHeader(targetPlayer);
+            role.SpawnTaskHeader(targetPlayer);
+            if (RoleDisplay.HasLocal()) RoleDisplay.EnsureTaskHeader(targetPlayer);
+        }
+        catch (Exception e) { Plugin.Logger.LogWarning($"task header on role change: {e.Message}"); }
+    }
+
+    private static bool HasDealtTasks(Il2CppSystem.Collections.Generic.List<PlayerTask> tasks)
+    {
+        foreach (var t in tasks)
+            if (t && t.TryCast<NormalPlayerTask>() != null) return true;
+        return false;
+    }
+}
+
 // 会議が始まった時に、並んだ名札それぞれへ (名札を作る CreateButton は本編の中で埋め込まれていて後置が呼ばれない)
 [HarmonyPatch(typeof(MeetingHud), "Start")]
 internal static class MeetingTagPatch
