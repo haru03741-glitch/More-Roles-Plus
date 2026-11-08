@@ -216,10 +216,12 @@ public sealed class PortalMaker : RoleBase
 
     // 本編が使用ボタンの狙いを決める時 (自分の端末の FixedUpdate ごと)。本編の狙いが無く自分が装置の上にいればボタンを点ける。
     // 本編は狙いが無いと毎回ボタンを消すので、点いている間は本編の処理を飛ばす (毎フレーム点け直さない)
-    internal static bool BeforeUseTarget(IUsable target)
+    internal static bool BeforeUseTarget(ref IUsable target)
     {
         _lightAfter = _unlightAfter = false;
         if (Active.Count == 0 && !_useLit) return true;
+        // ペットを連れていると、そばのペット (なでる) が本編の狙いになって装置が使えなくなる。装置の上ならペットより装置を先にする
+        if (target != null && IsPet(target) && FindUse(out _, out _)) target = null;
         bool on = target == null && FindUse(out _, out _);
         if (!on)
         {
@@ -230,6 +232,21 @@ public sealed class PortalMaker : RoleBase
         if (_useLit) return false;
         _lightAfter = true; // 本編に一度「狙いなし」の絵へ戻させてから点ける
         return true;
+    }
+
+    internal static void BeforePetToggle(ref IUsable target, ref bool petNear)
+    {
+        if (Active.Count == 0 || !petNear) return;
+        if (target != null && !IsPet(target)) return;
+        if (!FindUse(out _, out _)) return;
+        target = null;
+        petNear = false;
+    }
+
+    private static bool IsPet(IUsable u)
+    {
+        try { return u.TryCast<PetBehaviour>() != null; }
+        catch { return false; }
     }
 
     internal static void AfterUseTarget(UseButton b)
@@ -558,7 +575,7 @@ public sealed class PortalMaker : RoleBase
 [HarmonyPatch(typeof(UseButton), nameof(UseButton.SetTarget))]
 internal static class PortalUseTargetPatch
 {
-    public static bool Prefix(IUsable target) => PortalMaker.BeforeUseTarget(target);
+    public static bool Prefix(ref IUsable target) => PortalMaker.BeforeUseTarget(ref target);
     public static void Postfix(UseButton __instance) => PortalMaker.AfterUseTarget(__instance);
 }
 
@@ -566,4 +583,13 @@ internal static class PortalUseTargetPatch
 internal static class PortalUseClickPatch
 {
     public static bool Prefix(UseButton __instance) => !PortalMaker.HandleUse(__instance);
+}
+
+// ペットを連れていると、本編はそばのペットを狙って使用ボタンをペットのボタンに替える。
+// 自分が装置の上にいる間はペットを狙わせない (使用ボタンのまま装置を使える)
+[HarmonyPatch(typeof(HudManager), nameof(HudManager.ToggleUseAndPetButton))]
+internal static class PortalPetTogglePatch
+{
+    // 引数: 狙い・ペットを連れているか・ペットがそばにいるか (ゲームの記録で確かめた並び)
+    public static void Prefix(ref IUsable __0, ref bool __2) => PortalMaker.BeforePetToggle(ref __0, ref __2);
 }
