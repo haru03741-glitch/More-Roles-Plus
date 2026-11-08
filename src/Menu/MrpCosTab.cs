@@ -29,6 +29,7 @@ internal static class MrpCosTab
     private static readonly Color CardColor = new(0.20f, 0.22f, 0.40f, 1f);
     private static readonly Color CardHover = new(0.30f, 0.45f, 0.62f, 1f);
     private static readonly Color CardPicked = new(0.45f, 0.38f, 0.85f, 1f);
+    private static readonly Color SwapColor = new(0.16f, 0.36f, 0.34f, 1f);
     private static readonly Color Gold = new(1f, 0.85f, 0.35f, 1f);
 
     // FixedUpdate から (エモートのタブの後)
@@ -208,23 +209,29 @@ internal static class MrpCosTab
             Fit(EmoteTab.Label(proto, card.transform, new Text(item.NameKey).ToString(), new Vector3(0f, -0.28f, -0.02f), 1.0f, TextAlignmentOptions.Center, new Vector2(sw - 0.08f, 0.18f)), 0.55f);
         }
 
-        // 重ねる順 (左が奥・右が手前。押すと 1 つ手前へ、一番手前の物は一番奥へ)
+        // 重ねる順 (左が奥・右が手前)。札の間の「入替」で隣どうしを入れ替える。札を押すとその枠を選ぶ
         var fl = EmoteTab.Label(proto, root, new Text("Cos.Order").ToString(), new Vector3(Left, 0.42f, -1f), 1.3f, TextAlignmentOptions.Left, new Vector2(0.95f, 0.3f));
         fl.rectTransform.pivot = new Vector2(0f, 0.5f);
         fl.color = new Color(0.75f, 0.8f, 0.95f, 1f);
         Fit(fl, 0.6f);
         string[] names = { "Cos.Slot.Hat1", "Cos.Slot.Hat2", "Cos.Slot.Visor" };
         var order = MrpCosmetics.MyOrder;
-        const float fw = 0.8f, fg = 0.17f;
+        const float fw = 0.62f, bw = 0.36f, fg = 0.03f;
+        float x = Left + 1.0f;
         for (int p = 0; p < 3; p++)
         {
-            int at = p;
-            var pos = new Vector3(Left + 1.0f + fw * 0.5f + p * (fw + fg), 0.42f, -1f);
-            var b = Card(root, "Order" + p, pos, new Vector2(fw, 0.3f), p == 2 ? CardPicked : CardColor, () => MrpCosmetics.MoveForward(at));
-            Fit(EmoteTab.Label(proto, b.transform, new Text(names[order[p]]).ToString(), new Vector3(0f, 0f, -0.02f), 1.2f, TextAlignmentOptions.Center, new Vector2(fw - 0.06f, 0.26f)), 0.6f);
+            int slot = order[p];
+            var pos = new Vector3(x + fw * 0.5f, 0.42f, -1f);
+            var b = Card(root, "Order" + p, pos, new Vector2(fw, 0.3f), slot == _slot ? CardPicked : CardColor, () => { _slot = slot; Show(InSlot(slot)); Rebuild(); });
+            Fit(EmoteTab.Label(proto, b.transform, new Text(names[slot]).ToString(), new Vector3(0f, 0f, -0.02f), 1.2f, TextAlignmentOptions.Center, new Vector2(fw - 0.06f, 0.26f)), 0.6f);
+            x += fw + fg;
             if (p < 2)
-                EmoteTab.Label(proto, root, ">", new Vector3(pos.x + fw * 0.5f + fg * 0.5f, 0.42f, -1f), 1.4f, TextAlignmentOptions.Center, new Vector2(fg, 0.3f))
-                    .color = new Color(0.75f, 0.8f, 0.95f, 1f);
+            {
+                int at = p;
+                var sb = Card(root, "Swap" + p, new Vector3(x + bw * 0.5f, 0.42f, -1f), new Vector2(bw, 0.26f), SwapColor, () => { MrpCosmetics.Swap(at); Rebuild(); });
+                Fit(EmoteTab.Label(proto, sb.transform, new Text("Cos.Swap").ToString(), new Vector3(0f, 0f, -0.02f), 1.0f, TextAlignmentOptions.Center, new Vector2(bw - 0.04f, 0.22f)), 0.5f);
+                x += bw + fg;
+            }
         }
 
         // 一覧

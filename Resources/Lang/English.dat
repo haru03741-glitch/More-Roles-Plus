@@ -2530,3 +2530,4 @@ Cos.Slot.Visor: Visor
 Cos.PickHat: Put on hat {n} (seen by players with MRP)
 Cos.PickVisor: Put on the visor (seen by players with MRP)
 Cos.Order: Layers (back→front)
+Cos.Swap: Swap

@@ -2530,3 +2530,4 @@ Cos.Slot.Visor: バイザー
 Cos.PickHat: 帽子 {n} に付ける物 (MRP を入れている人に見えます)
 Cos.PickVisor: バイザーに付ける物 (MRP を入れている人に見えます)
 Cos.Order: 重ね順 (奥→手前)
+Cos.Swap: 入替

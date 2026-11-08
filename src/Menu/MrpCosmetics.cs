@@ -29,7 +29,10 @@ internal static class MrpCosmetics
         public string Front, Climb, ClimbLeft; // Resources/Cosmetics の絵の名前 (梯子の絵は無ければ梯子の間は出さない)
         public bool FullBody;              // 体を丸ごと包む物 (着ている間は中の体・肌着を描かない。はみ出して見えるので)
         public bool ClimbSteps;            // 梯子の絵に足を動かす絵 (<Climb>0..3 / <ClimbLeft>0..3) がある
-        public string Sit;                 // 全身の物の座った絵 (ロビーに入る時、体は床に座って足を前へ伸ばしている)
+        // 全身の物の口の中 (中の人のバイザーが見える所) の真ん中 (絵の左上からの px) と、そこへ入れるバイザーの大きさ。
+        // バイザーをこれより奥にすると、口を透かした絵 (<名前>_m) の奥にバイザーを縮めて口へ合わせて描く
+        public Vector2? Mouth;
+        public float MouthScale = 1f;
         public string Walk;                // 全身の物の歩きの絵 (<Walk>0..<WalkFrames-1>)。無ければ歩く間も正面の絵
         public string NameKey => "Cos." + Id;
     }
@@ -41,8 +44,8 @@ internal static class MrpCosmetics
         new() { Id = "risu", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, Front = "risu_front", Climb = "risu_climb" },
         new() { Id = "shirokumabou", Author = "あいぬあ", Kind = Kind.Hat, Front = "shirokumabou_front", Climb = "shirokumabou_climb" },
         new() { Id = "sodateterundesu", Author = "あいぬあ", Kind = Kind.Hat, Front = "sodateterundesu_front", Climb = "sodateterundesu_climb" },
-        new() { Id = "tyranno", Author = "あいぬあ", Kind = Kind.Hat, FullBody = true, Front = "tyranno_front", Climb = "tyranno_climb", ClimbLeft = "tyranno_climbleft", Walk = "tyranno_walk", Sit = "tyranno_sit", ClimbSteps = true },
-        new() { Id = "tyrannocolor", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, FullBody = true, Front = "tyrannocolor_front", Climb = "tyrannocolor_climb", ClimbLeft = "tyrannocolor_climbleft", Walk = "tyrannocolor_walk", Sit = "tyrannocolor_sit", ClimbSteps = true },
+        new() { Id = "tyranno", Author = "あいぬあ", Kind = Kind.Hat, FullBody = true, Front = "tyranno_front", Climb = "tyranno_climb", ClimbLeft = "tyranno_climbleft", Walk = "tyranno_walk", ClimbSteps = true, Mouth = new Vector2(194f, 192f), MouthScale = 0.85f },
+        new() { Id = "tyrannocolor", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, FullBody = true, Front = "tyrannocolor_front", Climb = "tyrannocolor_climb", ClimbLeft = "tyrannocolor_climbleft", Walk = "tyrannocolor_walk", ClimbSteps = true, Mouth = new Vector2(194f, 192f), MouthScale = 0.85f },
         new() { Id = "wakusei", Author = "あいぬあ", Kind = Kind.Hat, Front = "wakusei_front", Climb = "wakusei_climb" },
         new() { Id = "owo", Author = "ポテサラ", Kind = Kind.Visor, Front = "owo_front" },
     };
@@ -78,12 +81,28 @@ internal static class MrpCosmetics
         var full = Art(item.Front);
         if (!full) return null;
         var tex = full.texture;
-        int x0 = tex.width, y0 = tex.height, x1 = -1, y1 = -1;
-        // 描く用の絵は CPU 側のピクセルを捨てているので、透明でない所の枠は読める絵を一時的に作って調べる
+        var bb = Bounds(item.Front);
+        int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
+        if (bb != null) { x0 = (int)bb.Value.x; y0 = (int)bb.Value.y; x1 = (int)bb.Value.z; y1 = (int)bb.Value.w; }
+        if (x1 < x0) { x0 = 0; y0 = 0; x1 = tex.width - 1; y1 = tex.height - 1; }
+        sp = Sprite.Create(tex, new Rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1), new Vector2(0.5f, 0.5f), Ppu);
+        sp.hideFlags = HideFlags.HideAndDontSave;
+        Thumbs[item.Id] = sp;
+        return sp;
+    }
+
+    private static readonly Dictionary<string, Vector4?> BoundsOf = new();
+
+    // 絵の透明でない所の枠 (左下が原点の px: x0, y0, x1, y1)。描く用の絵は CPU 側のピクセルを捨てているので、
+    // 読める絵を一時的に作って調べる
+    internal static Vector4? Bounds(string name)
+    {
+        if (BoundsOf.TryGetValue(name, out var got)) return got;
+        int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
         Texture2D read = null;
         try
         {
-            using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream($"MoreRolesPlus.Resources.Cosmetics.{item.Front}.png");
+            using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream($"MoreRolesPlus.Resources.Cosmetics.{name}.png");
             using var ms = new System.IO.MemoryStream();
             s.CopyTo(ms);
             read = new Texture2D(2, 2, TextureFormat.RGBA32, false);
@@ -102,13 +121,11 @@ internal static class MrpCosmetics
                         }
             }
         }
-        catch (Exception e) { Plugin.Logger.LogWarning($"cosmetic thumb {item.Id}: {e.Message}"); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"cosmetic bounds {name}: {e.Message}"); }
         finally { if (read) UnityEngine.Object.Destroy(read); }
-        if (x1 < x0) { x0 = 0; y0 = 0; x1 = tex.width - 1; y1 = tex.height - 1; }
-        sp = Sprite.Create(tex, new Rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1), new Vector2(0.5f, 0.5f), Ppu);
-        sp.hideFlags = HideFlags.HideAndDontSave;
-        Thumbs[item.Id] = sp;
-        return sp;
+        got = x1 < 0 ? null : new Vector4(x0, y0, x1, y1);
+        BoundsOf[name] = got;
+        return got;
     }
 
     // ── 自分の装備 ─────────────────────────────────────────
@@ -187,13 +204,12 @@ internal static class MrpCosmetics
         return t;
     }
 
-    // 並びの pos 番目 (0 = 一番奥) を 1 つ手前へ (一番手前の物は一番奥へ回す)
-    public static void MoveForward(int pos)
+    // 並びの pos 番目と pos+1 番目 (0 = 一番奥) を入れ替える
+    public static void Swap(int pos)
     {
-        if (_order == null || pos is < 0 or > 2) return;
+        if (_order == null || pos is < 0 or > 1) return;
         var o = MyOrder;
-        if (pos < 2) (o[pos], o[pos + 1]) = (o[pos + 1], o[pos]);
-        else (o[0], o[1], o[2]) = (o[2], o[0], o[1]);
+        (o[pos], o[pos + 1]) = (o[pos + 1], o[pos]);
         _order.Value = $"{o[0]}{o[1]}{o[2]}";
         Version++;
         if (PlayerControl.LocalPlayer && AmongUsClient.Instance && AmongUsClient.Instance.AmConnected) Share.Send(Pack());
@@ -408,15 +424,17 @@ internal static class MrpCosmetics
         float bodyZ = BodyFront(layer, f);
         // 本編の帽子の所に描く枠 (1 つ目が空なら 2 つ目) は本編の帽子の絵そのもの
         int baseSlot = h1 != null ? 0 : 1;
-        // 全身の物は体の一部として一番奥 (バイザーやもう 1 つの帽子が選んだ順に関わらず上に乗る)
-        int Eff(int slot) => (slot == 0 ? h1 : slot == 1 ? h2 : visor) is { FullBody: true } ? -1 : Rank(slot, front);
-        float Z(int slot) => bodyZ - (Eff(slot) + 2) * StepZ;
+        float Z(int slot) => bodyZ - (Rank(slot, front) + 1) * StepZ;
+        // バイザーが口のある全身の物より奥なら、口を透かしてその奥 (口の中) にバイザーを入れる
+        var suit = hat is { Mouth: not null } ? hat : top is { Mouth: not null } ? top : null;
+        int suitSlot = suit == hat ? baseSlot : 1;
+        bool inMouth = visor != null && suit != null && !st.Climb && Rank(2, front) < Rank(suitSlot, front);
         bool own = hat != null || visor != null;
         if (own && f) PlaceZ(f, Z(baseSlot));
 
         if (hat != null && f)
         {
-            var sp = HatSprite(hat, st.Climb, layer.FlipX, BodyPose(layer));
+            var sp = HatSprite(hat, st.Climb, layer.FlipX, BodyPose(layer), inMouth && suit == hat);
             if (f.sprite != sp) f.sprite = sp;
             f.enabled = show && sp;
             f.flipX = !st.Climb && layer.FlipX;
@@ -446,7 +464,7 @@ internal static class MrpCosmetics
         if (top != null && f)
         {
             var r = Extra(ref st.Hat2, "MrpHat2", hp, f);
-            var sp = HatSprite(top, st.Climb, layer.FlipX, BodyPose(layer));
+            var sp = HatSprite(top, st.Climb, layer.FlipX, BodyPose(layer), inMouth && suit == top);
             if (r.sprite != sp) r.sprite = sp;
             r.flipX = !st.Climb && layer.FlipX;
             Follow(r, f, Z(1));
@@ -464,6 +482,7 @@ internal static class MrpCosmetics
             if (r.sprite != sp) r.sprite = sp;
             r.flipX = layer.FlipX;
             Follow(r, f, Z(2));
+            if (inMouth) IntoMouth(r, f, visor, suit, layer.FlipX);
             if (img) img.enabled = false;
             var body = layer.currentBodySprite != null ? layer.currentBodySprite.BodySprite : null;
             float a = body ? body.color.a : 1f;
@@ -487,11 +506,52 @@ internal static class MrpCosmetics
         }
     }
 
-    private static Sprite HatSprite(Item hat, bool climb, bool left, int pose) =>
-        climb ? ClimbSprite(hat, left, pose)
-        : pose == PoseSit && hat.Sit != null ? Art(hat.Sit) ?? Art(hat.Front)
-        : pose >= 0 && pose < ClimbPose0 && hat.Walk != null ? Art(WalkName(hat, pose)) ?? Art(hat.Front)
-        : Art(hat.Front);
+    private static Sprite HatSprite(Item hat, bool climb, bool left, int pose, bool hole)
+    {
+        if (climb) return ClimbSprite(hat, left, pose);
+        string name = pose >= 0 && pose < ClimbPose0 && hat.Walk != null ? WalkName(hat, pose) : hat.Front;
+        return (hole ? Art(HoleName(name)) : null) ?? Art(name) ?? Art(hat.Front);
+    }
+
+    private static readonly Dictionary<string, string> HoleNames = new();
+
+    // 口を透かした絵の名前 (毎フレーム文字列を作らない)
+    private static string HoleName(string name)
+    {
+        if (!HoleNames.TryGetValue(name, out var h)) HoleNames[name] = h = name + "_m";
+        return h;
+    }
+
+    // バイザーを全身の物の口の中へ: 縮めて、バイザーの絵の真ん中を口の真ん中へ合わせる
+    private static void IntoMouth(SpriteRenderer r, SpriteRenderer f, Item visor, Item suit, bool flip)
+    {
+        var vc = Center(visor.Front);
+        if (vc == null) return;
+        float s = suit.MouthScale;
+        // 絵の中の位置 (左下が原点の px) を、絵の基準点 (Pivot) からの差にする
+        var piv = new Vector2(Pivot.x * ArtW, Pivot.y * ArtH);
+        var m = new Vector2(suit.Mouth.Value.x, ArtH - suit.Mouth.Value.y) - piv;
+        var v = vc.Value - piv;
+        var off = (m - v * s) / Ppu;
+        if (flip) off.x = -off.x;
+        var ft = f.transform;
+        var p = ft.position + ft.TransformVector(new Vector3(off.x, off.y, 0f));
+        r.transform.position = new Vector3(p.x, p.y, r.transform.position.z);
+        r.transform.localScale = ft.localScale * s;
+    }
+
+    private const float ArtW = 300f, ArtH = 375f;
+    private static readonly Dictionary<string, Vector2?> Centers = new();
+
+    // 絵の透明でない所の真ん中 (左下が原点の px)
+    private static Vector2? Center(string name)
+    {
+        if (Centers.TryGetValue(name, out var c)) return c;
+        var b = Bounds(name);
+        c = b == null ? null : new Vector2((b.Value.x + b.Value.z + 1) * 0.5f, (b.Value.y + b.Value.w + 1) * 0.5f);
+        Centers[name] = c;
+        return c;
+    }
 
     private static Sprite ClimbSprite(Item hat, bool left, int pose)
     {
@@ -517,8 +577,7 @@ internal static class MrpCosmetics
     private const int ClimbFrames = 4;      // 着せ替えの梯子の足の絵の数 (1 周分)
     private const int BodyClimbFrames = 12; // 本編の体の梯子の絵 (Climbup0001〜 / Climbdown0001〜) の 1 周
     private const int ClimbPose0 = 100;     // 梯子の足の絵の何枚目かを姿勢の値ではこれに足して表す
-    private const int PoseStand = -1, PoseSit = -2;
-    private const int SpawnSitUntil = 40; // ロビーに入る時の体の絵 (Spawn0001〜) のうち、ここまでは床に座っている
+    private const int PoseStand = -1;
 
     private static readonly Dictionary<string, string[]> WalkNames = new();
 
@@ -537,7 +596,7 @@ internal static class MrpCosmetics
     private const int WalkFrames = 6;   // 着せ替えの歩きの絵の数 (1 歩き分)
     private const int BodyWalkFrames = 12; // 本編の体の歩きの絵 (Walk0001〜Walk0012) の数
 
-    // 体の今の姿勢: 歩きの絵の何枚目か (0〜)・座っている (PoseSit)・立っている (PoseStand)。
+    // 体の今の姿勢: 歩きの絵の何枚目か (0〜)・梯子の足の絵 (ClimbPose0 + 何枚目)・立っている (PoseStand)。
     // 本編の体の歩きの 1 周を着せ替えの歩きの 1 周に合わせる
     private static int BodyPose(CosmeticsLayer layer)
     {
@@ -554,11 +613,6 @@ internal static class MrpCosmetics
         {
             int k = Number(n, n[5] == 'u' ? 7 : 9);
             return k > 0 ? ClimbPose0 + (k - 1) % BodyClimbFrames * ClimbFrames / BodyClimbFrames : PoseStand;
-        }
-        if (n.StartsWith("Spawn", StringComparison.Ordinal))
-        {
-            int k = Number(n, 5);
-            return k > 0 && k <= SpawnSitUntil ? PoseSit : PoseStand;
         }
         return PoseStand;
     }
@@ -653,6 +707,7 @@ internal static class MrpCosmetics
             _order.Value = a[1];
             Version++;
         }
+        else if (a.Length == 2 && a[0] == "swap" && int.TryParse(a[1], out int sw)) Swap(sw);
         else if (a.Length == 1 && a[0] == "z")
         {
             // 自分の体の絵の前後 (z が小さいほど手前) を並べて出す (切り分け用)
