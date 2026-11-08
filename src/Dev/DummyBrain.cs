@@ -96,8 +96,8 @@ internal static class DummyBrain
         var pos = pc.GetTruePosition();
         bool killer = IsKiller(pc);
 
-        // 死体の通報
-        for (int i = 0; i < Bodies.Count; i++)
+        // 死体の通報 (かくれんぼには通報も会議も無い)
+        for (int i = 0; Options.GameModeSwitch.IsNormal && i < Bodies.Count; i++)
         {
             var b = Bodies[i];
             if (!b || (KilledBy.TryGetValue(b.ParentId, out byte k) && k == pc.PlayerId)) continue;
