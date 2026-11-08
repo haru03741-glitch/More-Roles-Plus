@@ -71,7 +71,7 @@ public sealed class Sonar : RoleBase
         UchuKit.Arrow(to, new UnityEngine.Color(0.2f, 0.45f, 0.27f), ArrowDuration);
         var lp = PlayerControl.LocalPlayer;
         if (lp && lp.Data != null && !lp.Data.IsDead)
-            PortSound.Play("sonar_alarm", () => PortSound.Fallback("sonar_alarm"), 0.6f);
+            PortSound.PlayVanilla("notice", 0.6f);
         if (ShareBroken && !(RoleState.Local is Sonar)) PortKit.Marker(RoleState.Match, antenna, "sonar_antenna_broken", 0.7f);
     }
 }

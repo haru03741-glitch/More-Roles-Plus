@@ -47,7 +47,7 @@ public sealed class DJ : RoleBase
         var lp = PlayerControl.LocalPlayer;
         if (!lp || MeetingHud.Instance) return;
         if (Vector2.Distance(lp.GetTruePosition(), at) > Range) return;
-        PortSound.Play("dj_scratch", () => PortSound.Fallback("dj_scratch"), 0.9f);
+        PortSound.PlayVanilla("notice", 0.9f);
         int n = NumOfFlash;
         for (int i = 0; i < n; i++)
             PortKit.After(0.2f * i, () =>

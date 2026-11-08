@@ -38,9 +38,12 @@ public static class PortSound
             if (d > range) return;
             volume *= 1f - 0.7f * (d / range);
         }
-        var clip = Get(name) ?? fallback?.Invoke();
+        var clip = (name != null ? Get(name) : null) ?? fallback?.Invoke();
         if (clip) sm.PlaySound(clip, false, volume, sm.SfxChannel);
     }
+
+    // 専用の音がまだ無い時に、本編の似た音 (Fallback と同じ選び方) をそのまま鳴らす
+    public static void PlayVanilla(string kind, float volume = 1f) => Play(null, () => Fallback(kind), volume);
 
     // 全員の画面で鳴らす (その場所から range まで聞こえる)。送った人の端末でも鳴る
     public static void PlayAll(string name, Vector2 at, float range, float volume = 1f)

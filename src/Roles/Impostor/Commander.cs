@@ -55,7 +55,7 @@ public sealed class Commander : RoleBase
         _commandUntil = Time.time + CommandDuration;
         _lostUntil = -1f;
         lp.SetKillTimer(CommandKillCooldown);
-        PortSound.Play("commander_command", () => PortSound.Fallback("commander_alert"), 0.8f);
+        PortSound.PlayVanilla("commander_alert", 0.8f);
         for (int i = 0; i < 3; i++) PortKit.After(0.35f * i, () => PortKit.Flash(new Color(1f, 0.1f, 0.1f, 0.45f), 0.3f));
         PortKit.Notice(new Text("Commander.Ordered").ToString());
         StatusEffects.ShowFor("CommanderCommand", new Text("Commander.Status"), "#FF1919", CommandDuration);
