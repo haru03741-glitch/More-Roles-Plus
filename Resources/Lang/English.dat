@@ -2578,3 +2578,18 @@ Replay.MeetNoVote: no vote
 Replay.MeetSkip: skipped
 Replay.MeetExiled: ejected
 Replay.MeetChat: Meeting chat
+
+# ── Bot meeting chat (BotChat) ──
+BotChat.FoundBody: Found {name}'s body in {room}
+BotChat.PressedButton: I pressed the button. Something to talk about
+BotChat.VoteSkip: No idea, skipping
+BotChat.VoteFor: Voted {name}
+BotChat.Suspect: Isn't {name} a bit sus?
+BotChat.Line0: I was doing tasks the whole time
+BotChat.Line1: Didn't see anything
+BotChat.Line2: Where was the body?
+BotChat.Line3: Anyone see someone sus?
+BotChat.Line4: I was alone
+BotChat.Line5: Was anyone with someone?
+BotChat.Line6: No proof, so skip I think
+BotChat.Line7: Anyone see someone vent?

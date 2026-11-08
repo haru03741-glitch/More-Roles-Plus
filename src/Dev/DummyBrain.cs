@@ -67,7 +67,7 @@ internal static class DummyBrain
                 if (!meeting) m.KillReadyMs = now + KillCooldownMs();
             }
         }
-        if (hud) { Votes(hud, all, now); return; }
+        if (hud) { BotChat.Tick(hud); Votes(hud, all, now); return; }
         if (meeting) return;
         if (now >= _bodiesMs)
         {
@@ -106,6 +106,7 @@ internal static class DummyBrain
             var info = GameData.Instance.GetPlayerById(b.ParentId);
             if (info == null) continue;
             Dummy.StopWalk(pc);
+            BotChat.OnReport(pc, info, bp);
             Dummy.Report(pc, info);
             return true;
         }
@@ -200,7 +201,9 @@ internal static class DummyBrain
             if (m.VoteAtMs == 0) { m.VoteAtMs = now + 2000 + Rng.Next(4000); continue; }
             if (now < m.VoteAtMs) continue;
             m.Voted = true;
-            Dummy.Vote(pc, VoteTarget(pc));
+            byte to = VoteTarget(pc);
+            Dummy.Vote(pc, to);
+            BotChat.OnVote(pc, to);
         }
     }
 
@@ -321,5 +324,6 @@ internal static class DummyBrain
         KilledBy.Clear();
         Bodies.Clear();
         _wasMeeting = false;
+        BotChat.Reset();
     }
 }

@@ -172,7 +172,7 @@ internal static class BotPlay
             foreach (var m in Minds.Values) { m.Voted = false; m.VoteAt = -1f; m.HeldAt = -1f; }
             foreach (var id in Ours.Keys) { var pc = PortKit.ById(id); if (pc) Dummy.StopWalk(pc); }
         }
-        if (hud) { SkipVotes(hud, now); return; }
+        if (hud) { BotChat.Tick(hud); SkipVotes(hud, now); return; }
         if (meeting || Current != Mode.Attack) return;
         var target = Target();
         foreach (var id in Ours.Keys)
@@ -220,7 +220,7 @@ internal static class BotPlay
             if (m.VoteAt < 0f) { m.VoteAt = now + 2f + (float)Rng.NextDouble() * 2f; continue; }
             if (now < m.VoteAt) continue;
             m.Voted = true;
-            if (!hud.DidVote(pc.PlayerId)) Dummy.Vote(pc, 253);
+            if (!hud.DidVote(pc.PlayerId)) { Dummy.Vote(pc, 253); BotChat.OnVote(pc, 253); }
         }
     }
 

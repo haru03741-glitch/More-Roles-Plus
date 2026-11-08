@@ -2578,3 +2578,18 @@ Replay.MeetNoVote: 投票なし
 Replay.MeetSkip: スキップ
 Replay.MeetExiled: 追放
 Replay.MeetChat: 会議のチャット
+
+# ── ボットの会議の発言 (BotChat) ──
+BotChat.FoundBody: {name}の死体が{room}にあった
+BotChat.PressedButton: ボタン押した。話したいことある
+BotChat.VoteSkip: 分からないからスキップで
+BotChat.VoteFor: {name}に入れた
+BotChat.Suspect: {name}ちょっと怪しくない？
+BotChat.Line0: ずっとタスクしてた
+BotChat.Line1: 何も見てない
+BotChat.Line2: どこで死んでたの？
+BotChat.Line3: 怪しい人いた？
+BotChat.Line4: 一人で動いてた
+BotChat.Line5: 誰か一緒にいた人いる？
+BotChat.Line6: 証拠ないならスキップでいいと思う
+BotChat.Line7: ベント使ってる人見た？
