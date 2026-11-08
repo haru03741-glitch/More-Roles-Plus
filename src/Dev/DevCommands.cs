@@ -929,6 +929,8 @@ internal static class DevCommands
             if (pb) { pb.OnClick.Invoke(); reply("OK uiclick passive"); return; }
             var ub = go.GetComponent<UnityEngine.UI.Button>();
             if (ub) { ub.onClick.Invoke(); reply("OK uiclick ugui"); return; }
+            var bb = go.GetComponent<ButtonBehavior>();
+            if (bb) { bb.OnClick.Invoke(); reply("OK uiclick behavior"); return; }
             reply("ERR uiclick no button");
         });
 
