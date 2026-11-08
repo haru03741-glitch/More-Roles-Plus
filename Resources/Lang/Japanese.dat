@@ -302,6 +302,7 @@ VanillaDetective.Name: たんてい
 
 # ── VanillaJudge ──
 VanillaJudge.Name: じゃっじ
+VanillaJudge.UnlockTasks: 却下を使えるまでのタスク数
 
 # ── VanillaGuardianAngel ──
 VanillaGuardianAngel.Name: しゅごてんし
@@ -314,9 +315,14 @@ VanillaShapeshifter.Name: しぇいぷしふたー
 
 # ── VanillaPhantom ──
 VanillaPhantom.Name: ふぁんとむ
+VanillaPhantom.KillInvisible: 透明な間もキルできる
+VanillaPhantom.HiddenFromAllies: 透明な間は味方からも見えない
+VanillaPhantom.NoLimits: 透明な間もベント・ドアなどを使える
 
 # ── VanillaViper ──
 VanillaViper.Name: ばいぱー
+VanillaViper.OwnKillCooldown: バイパーだけのキルの待ち時間
+VanillaViper.KillCooldown: キルの待ち時間
 
 # ── 本編の役職の説明 (鍵は本編の役職の名前・書き方は先頭の説明と同じ) ──
 Crewmate.Summary: タスクをこなし、会議でインポスターを見つけ出すクルーです。
@@ -373,7 +379,7 @@ Detective.Tips: 集めた手がかりをつなぎ合わせて、会議で犯人�
 Detective.Quote: 真実は、メモの中にある。
 Judge.Summary: 会議の決定を覆して、インポスターを追放できるクルーです。
 Judge.Overrule: 却下
-Judge.Overrule.Help: 会議中に使うと、インポスターだと思う 1 人に特別な票を入れ、その票だけが有効になります。当たればその人が、外れれば自分が追放されます。使えるのは、決められた割合のタスクを終えてからです。
+Judge.Overrule.Help: 会議中に使うと、インポスターだと思う 1 人に特別な票を入れ、その票だけが有効になります。当たればその人が、外れれば自分が追放されます。使えるのは、決められた数のタスクを終えてからです。
 Judge.Overrule.Short: 自分の 1 票で会議を決める
 Judge.Quote: 判決を言い渡す。
 GuardianAngel.Summary: 死んだ後に、生きている人を守れる幽霊のクルーです。
@@ -1436,6 +1442,10 @@ Camouflager.Camo.Help: 決まった時間だけ、生きている全員の見た
 Camouflager.Camo.Short: 全員の見た目を揃える
 Camouflager.Cooldown: カモフラージュの待ち時間
 Camouflager.Duration: カモフラージュの長さ
+Camouflager.Look: 見た目の揃え方
+Camouflager.Look.Self: 全員を自分の姿に
+Camouflager.Look.Random: 全員をばらばらに他の人の姿に
+Camouflager.Look.Gray: 全員を灰色に (ペット・スキンなし)
 # ── トリガーハッピー (TriggerHappy) ──
 TriggerHappy.Name: トリガーハッピー
 TriggerHappy.Blurb: 撃って撃って撃ちまくれ
@@ -2531,3 +2541,25 @@ Cos.PickHat: 帽子 {n} に付ける物 (MRP を入れている人に見えま�
 Cos.PickVisor: バイザーに付ける物 (MRP を入れている人に見えます)
 Cos.Order: 重ね順 (奥→手前)
 Cos.Swap: 入替
+Command.replay: 前の試合のリプレイを開く (地図の上で全員の動きを戻したり進めたりして見る)
+Replay.Title: リプレイ
+Replay.Button: リプレイ
+Replay.None: 見られる前の試合の記録がありません
+Replay.NotNow: 試合中はリプレイを開けません
+Replay.Opened: 前の試合のリプレイを開きました
+Replay.First: 最初
+Replay.PrevEvent: 前の出来事
+Replay.NextEvent: 次の出来事
+Replay.Back10: -10秒
+Replay.Fwd10: +10秒
+Replay.Play: 再生
+Replay.Pause: 停止
+Replay.Forward: 順向き
+Replay.Backward: 逆向き
+Replay.InMeeting: <color=#FFD966>会議中</color>
+Replay.NoEvents: <color=#999999>まだ何も起きていません</color>
+Replay.EvKill: {killer} が {victim} をキル
+Replay.EvDied: {victim} が死んだ
+Replay.EvReport: {who} が {victim} の死体を通報
+Replay.EvButton: {who} が緊急会議
+Replay.EvExile: {who} が追放された

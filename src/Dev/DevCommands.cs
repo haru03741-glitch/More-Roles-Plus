@@ -202,6 +202,41 @@ internal static class DevCommands
             reply($"OK vrole mine=[{mine}]{sb}");
         });
 
+        TestBridge.Register("phantomuse", "透明の印を付けた状態で、自分のファントムの役職がいちばん近い通気孔・ドア・キルの相手を使えるかを本編の判定で見る (設定の確かめ用)", (_, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            var ph = lp && lp.Data != null && lp.Data.Role ? lp.Data.Role.TryCast<PhantomRole>() : null;
+            if (!ph || !ShipStatus.Instance) { reply("ERR phantomuse needs Phantom in game"); return; }
+            Vent vent = null; float vd = float.MaxValue;
+            foreach (var v in ShipStatus.Instance.AllVents) { float d = Vector2.Distance(v.transform.position, lp.transform.position); if (d < vd) { vd = d; vent = v; } }
+            OpenableDoor door = null; float dd = float.MaxValue;
+            foreach (var d0 in ShipStatus.Instance.AllDoors) { float d = Vector2.Distance(d0.transform.position, lp.transform.position); if (d < dd) { dd = d; door = d0; } }
+            NetworkedPlayerInfo target = null;
+            foreach (var pc in PlayerControl.AllPlayerControls) if (pc && !pc.AmOwner && pc.Data != null && !pc.Data.IsDead) { target = pc.Data; break; }
+            bool was = ph.isInvisible;
+            ph.isInvisible = true;
+            string r;
+            try
+            {
+                bool vc = false, vcould = false;
+                if (vent) vent.CanUse(lp.Data, out vc, out vcould);
+                bool dc = false, dcould = false;
+                DoorConsole dcon = null; float dcd = float.MaxValue;
+                foreach (var c in UnityEngine.Object.FindObjectsOfType<DoorConsole>()) { float d = Vector2.Distance(c.transform.position, lp.transform.position); if (d < dcd) { dcd = d; dcon = c; } }
+                if (dcon) dcon.CanUse(lp.Data, out dc, out dcould);
+                string Near<T>() where T : MonoBehaviour
+                {
+                    T best = null; float bd = float.MaxValue;
+                    foreach (var c in UnityEngine.Object.FindObjectsOfType<T>()) { float d = Vector2.Distance(c.transform.position, lp.transform.position); if (d < bd) { bd = d; best = c; } }
+                    return best && best.TryCast<IUsable>() is { } u ? $"{typeof(T).Name}={ph.CanUse(u)}@{bd:0.0} " : "";
+                }
+                string more = Near<Console>() + Near<SystemConsole>() + Near<DoorConsole>() + Near<Ladder>() + Near<PlatformConsole>() + Near<MapConsole>() + Near<ZiplineConsole>();
+                r = more + $"ventUse={vc}/{vcould} doorUse={dc}/{dcould}@{dcd:0.0} vent={(vent ? ph.CanUse(vent.Cast<IUsable>()) : false)} door={(door ? (door.TryCast<IUsable>() is { } u ? ph.CanUse(u) : false) : false)} kill={(target != null ? ph.IsValidTarget(target) : false)}";
+            }
+            finally { ph.isInvisible = was; }
+            reply($"OK phantomuse {r} stillInvisible={ph.isInvisible == was}");
+        });
+
         TestBridge.Register("revive", "[番号] その人 (省略で自分) を生き返らせる (ホストのみ)", (args, reply) =>
         {
             if (!AmongUsClient.Instance.AmHost || !GameData.Instance) { reply("ERR revive needs host in game"); return; }

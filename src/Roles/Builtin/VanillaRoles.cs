@@ -101,6 +101,9 @@ public abstract class VanillaRole : RoleBase
 
     // 素のクルーとインポスター。本編の配り方を通らないので出現率と人数を本編の設定へ写さない
     internal bool IsPlain => Type is RoleTypes.Crewmate or RoleTypes.Impostor;
+
+    // 本編の設定のうち、MRP の設定で置き換えたので画面に出さない物
+    internal virtual bool HidesVanilla(StringNames title) => false;
 }
 
 public sealed class VanillaCrewmate : VanillaRole
@@ -157,6 +160,35 @@ public sealed class VanillaJudge : VanillaRole
     public override RoleTypes Type => RoleTypes.Judge;
     protected override Text FallbackName => new("VanillaJudge.Name");
     public override HelpSection[] HelpSections => new HelpSection[] { new("Judge.Overrule") };
+
+    // 却下を使えるようになるまでに終えるタスクの数 (本編の「タスクの割合」の代わり。持っているタスクより多ければ全部)
+    public static readonly IntOpt UnlockTasks = new("VanillaJudge.UnlockTasks", 3, 0, 30, 1);
+
+    internal override bool HidesVanilla(StringNames title) => title == StringNames.JudgeTaskRequirement;
+
+    // あと何個タスクを終えれば却下を使えるか
+    internal static int Remaining(PlayerControl p)
+    {
+        if (!p || p.Data == null || p.Data.Tasks == null) return 0;
+        int need = Math.Min(UnlockTasks.Value, p.Data.Tasks.Count);
+        return Math.Max(0, need - PortKit.TasksDone(p));
+    }
+}
+
+[HarmonyLib.HarmonyPatch]
+internal static class VanillaJudgePatches
+{
+    [HarmonyLib.HarmonyPatch(typeof(JudgeRole), nameof(JudgeRole.IsBlockedByTasks)), HarmonyLib.HarmonyPostfix]
+    public static void Blocked(JudgeRole __instance, ref bool __result)
+    {
+        if (__instance && __instance.Player) __result = VanillaJudge.Remaining(__instance.Player) > 0;
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(JudgeRole), nameof(JudgeRole.TasksRemaining)), HarmonyLib.HarmonyPostfix]
+    public static void Left(JudgeRole __instance, ref int __result)
+    {
+        if (__instance && __instance.Player) __result = VanillaJudge.Remaining(__instance.Player);
+    }
 }
 
 public sealed class VanillaGuardianAngel : VanillaRole
@@ -185,6 +217,49 @@ public sealed class VanillaPhantom : VanillaRole
     public override RoleTypes Type => RoleTypes.Phantom;
     protected override Text FallbackName => new("VanillaPhantom.Name");
     public override HelpSection[] HelpSections => new HelpSection[] { new("Phantom.Vanish", "@ability") };
+
+    public static readonly BoolOpt KillInvisible = new("VanillaPhantom.KillInvisible", false);
+    public static readonly BoolOpt HiddenFromAllies = new("VanillaPhantom.HiddenFromAllies", false);
+    public static readonly BoolOpt NoLimits = new("VanillaPhantom.NoLimits", false);
+}
+
+// ファントムの透明の間の制限を設定で外す。本編の判定 (キルの相手にできるか・ベントやドアを使えるか) は
+// 透明かどうかを見て断るので、その判定の間だけ透明の印を外して、透明でない時と同じ答えにする
+[HarmonyLib.HarmonyPatch]
+internal static class VanillaPhantomPatches
+{
+    [HarmonyLib.HarmonyPatch(typeof(PhantomRole), nameof(PhantomRole.IsValidTarget)), HarmonyLib.HarmonyPrefix]
+    public static void TargetPre(PhantomRole __instance, out bool __state) => __state = Lift(__instance, VanillaPhantom.KillInvisible);
+
+    [HarmonyLib.HarmonyPatch(typeof(PhantomRole), nameof(PhantomRole.IsValidTarget)), HarmonyLib.HarmonyPostfix]
+    public static void TargetPost(PhantomRole __instance, bool __state) => Put(__instance, __state);
+
+    [HarmonyLib.HarmonyPatch(typeof(PhantomRole), nameof(PhantomRole.CanUse)), HarmonyLib.HarmonyPrefix]
+    public static void UsePre(PhantomRole __instance, out bool __state) => __state = Lift(__instance, VanillaPhantom.NoLimits);
+
+    [HarmonyLib.HarmonyPatch(typeof(PhantomRole), nameof(PhantomRole.CanUse)), HarmonyLib.HarmonyPostfix]
+    public static void UsePost(PhantomRole __instance, bool __state) => Put(__instance, __state);
+
+    private static bool Lift(PhantomRole r, bool on)
+    {
+        if (!on || !r || !r.isInvisible) return false;
+        r.isInvisible = false;
+        return true;
+    }
+
+    private static void Put(PhantomRole r, bool lifted)
+    {
+        if (lifted && r) r.isInvisible = true;
+    }
+
+    // 味方 (他のインポスター) の画面で半分透けて見える透明のファントムを、設定で全く見えなくする
+    [HarmonyLib.HarmonyPatch(typeof(CosmeticsLayer), nameof(CosmeticsLayer.SetPhantomRoleAlpha)), HarmonyLib.HarmonyPrefix]
+    public static void Alpha(CosmeticsLayer __instance, ref float alphaValue)
+    {
+        if (!VanillaPhantom.HiddenFromAllies || alphaValue <= 0f || alphaValue >= 1f || !__instance) return;
+        var pc = __instance.GetComponentInParent<PlayerControl>();
+        if (pc && !pc.AmOwner) alphaValue = 0f;
+    }
 }
 
 public sealed class VanillaViper : VanillaRole
@@ -192,6 +267,15 @@ public sealed class VanillaViper : VanillaRole
     public override RoleTypes Type => RoleTypes.Viper;
     protected override Text FallbackName => new("VanillaViper.Name");
     public override HelpSection[] HelpSections => new HelpSection[] { new("Viper.Acid", "@viper") };
+
+    // バイパーだけのキルの待ち時間 (切ってあれば本編のキルの待ち時間のまま)
+    public static readonly BoolOpt OwnKillCooldown = new("VanillaViper.OwnKillCooldown", false);
+    public static readonly FloatOpt KillCooldown = new("VanillaViper.KillCooldown", 25f, 0f, 180f, 2.5f, "s") { When = () => OwnKillCooldown };
+
+    public override void ModifyKillCooldown(ref float seconds)
+    {
+        if (OwnKillCooldown) seconds = KillCooldown;
+    }
 }
 
 // 本編の設定 1 つを読み書きする行。値は本編の設定にあり、MRP の保存・同期には入れない
@@ -345,6 +429,7 @@ internal static class VanillaRoles
                 if (!b || b.AllGameSettings == null) continue;
                 foreach (var s in b.AllGameSettings)
                 {
+                    if (v.HidesVanilla(s.Title)) continue;
                     var opt = VanillaOpt.From(s);
                     if (opt == null) continue;
                     opt.Key = v.Id + "." + s.Title; // 見分け用 (保存・同期の名前の表には入れない)

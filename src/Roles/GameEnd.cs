@@ -648,6 +648,8 @@ internal static class EndScreenPatch
         catch (Exception e) { Plugin.Logger.LogWarning($"end epithet: {e.Message}"); }
         try { Menu.EndSummary.Show(__instance); }
         catch (Exception e) { Plugin.Logger.LogWarning($"end summary: {e.Message}"); }
+        try { Menu.MatchReplay.EndButton(__instance); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"end replay button: {e.Message}"); }
     }
 }
 

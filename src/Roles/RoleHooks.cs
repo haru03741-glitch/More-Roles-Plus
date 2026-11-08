@@ -75,6 +75,20 @@ internal static class KillCooldownPatch
     }
 }
 
+// 本編はキルの後・会議の後に、設定のキルクールの秒数をそのまま (上の差し替えを通らずに) 入れる。
+// 自分の端末でその秒数が来たら、役職・アドオン・ルールを掛けた秒数に置き換える
+[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.SetKillTimer))]
+internal static class KillTimerPatch
+{
+    public static void Prefix(PlayerControl __instance, ref float time)
+    {
+        if (!__instance || !__instance.AmOwner || !GameManager.Instance || GameOptionsManager.Instance?.CurrentGameOptions == null) return;
+        float raw = GameOptionsManager.Instance.CurrentGameOptions.GetFloat(AmongUs.GameOptions.FloatOptionNames.KillCooldown);
+        if (System.Math.Abs(time - raw) > 0.001f) return;
+        time = GameManager.Instance.LogicOptions.GetKillCooldown();
+    }
+}
+
 // 役職に関係なく自分の視界に掛かる効果 (聖職者の聖なる光など)。試合の始めに 1 へ戻す
 public static class VisionEffects
 {

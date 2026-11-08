@@ -195,6 +195,7 @@ public class Ticker : MonoBehaviour
         Commands.ChatInput.Tick();
         Menu.ColorPicker.Tick();
         Menu.MeetingMemo.Tick();
+        Menu.MatchReplay.Tick();
         Options.RolePage.Tick(); UI.UiWindow.Tick(); UI.TextField.Tick(); Options.SearchBox.Tick(); Report.ReportWindow.Tick(); UI.Backdrop.Tick(); UI.Aura.Tick(); UI.WayfinderSky.TickAll(); UI.EpithetIntro.Tick(); UI.IntroIai.Tick(); UI.EpithetAnnounce.Tick(); UI.AnimatedPicture.Tick(); t = Bridge.Perf.Lane(23, t);
         Options.CrowdPages.Tick();
         Options.GameModeSwitch.Tick();

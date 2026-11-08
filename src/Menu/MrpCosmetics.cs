@@ -299,7 +299,7 @@ internal static class MrpCosmetics
         ByClient.Clear();
     }
 
-    public static void OnExit() => _room = 0;
+    public static void OnExit() { _room = 0; HideAll = false; }
 
     public static void OnLeft(ClientData c)
     {
@@ -332,6 +332,9 @@ internal static class MrpCosmetics
         return ByClient.TryGetValue(pc.OwnerId, out var v) ? v : default;
     }
 
+    // 部屋の中の人の MRP の着せ替えを全部隠す (カモフラージャーの灰色の間)
+    internal static bool HideAll;
+
     private static (Item Hat, Item Hat2, Item Visor, int Front) Resolve(CosmeticsLayer layer, HatParent hp)
     {
         // 着せ替え画面の右の見本
@@ -343,6 +346,8 @@ internal static class MrpCosmetics
         }
         string hatId = hp.Hat != null ? hp.Hat.ProdId : CosmeticsLayer.EMPTY_HAT_ID;
         int color = layer.ColorId;
+        // 全員を灰色にする迷彩の間は誰の物も出さない (灰色が元の色の人の物が全員に出てしまうので)
+        if (HideAll && PlayerControl.AllPlayerControls != null && PlayerControl.AllPlayerControls.Count > 0) return default;
 
         // 部屋の中: 見た目の色の持ち主 (色は部屋の中で 1 人 1 つ。化けた人には化けた先の人の物が出る)。
         // 帽子が持ち主の本編の帽子と違う時 (迷彩などで帽子が外された時) は出さない

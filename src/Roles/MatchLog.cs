@@ -91,6 +91,7 @@ internal static class MatchLog
     public static void OnMurder(PlayerControl killer, PlayerControl target)
     {
         if (!target) return;
+        Menu.MatchReplay.OnKill(killer, target);
         bool self = !killer || killer.PlayerId == target.PlayerId;
         Deaths[target.PlayerId] = new Death
         {
@@ -107,6 +108,7 @@ internal static class MatchLog
     public static void OnExiled(PlayerControl p)
     {
         if (p) Deaths[p.PlayerId] = new Death { Kind = Kind.Exiled };
+        Menu.MatchReplay.OnExiled(p);
     }
 
     public static void OnSpectate(PlayerControl p)
@@ -233,6 +235,7 @@ internal static class MatchLog
             else if (p.Disconnected) sb.Append(" / ").Append(new Text("MatchLog.Disconnected").ToString());
             string tasks = TaskLabel(p);
             if (tasks != null) sb.Append(" / ").Append(tasks);
+            Menu.MatchReplay.NoteResult(p.PlayerId, RoleLabel(p), Won(p));
         }
         // 観戦の人は役職を持たないので「観戦」とだけ出し、最後にまとめる
         for (int i = 0; i < all.Count; i++)
@@ -244,6 +247,7 @@ internal static class MatchLog
         }
         LastResult = sb.ToString();
         ResultGen++;
+        Menu.MatchReplay.Finish(LastWinners);
         _trailOn = false;
     }
 }

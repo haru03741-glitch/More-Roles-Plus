@@ -302,6 +302,7 @@ VanillaDetective.Name: Detective
 
 # ── VanillaJudge ──
 VanillaJudge.Name: Judge
+VanillaJudge.UnlockTasks: Tasks needed to Overrule
 
 # ── VanillaGuardianAngel ──
 VanillaGuardianAngel.Name: Guardian Angel
@@ -314,9 +315,14 @@ VanillaShapeshifter.Name: Shapeshifter
 
 # ── VanillaPhantom ──
 VanillaPhantom.Name: Phantom
+VanillaPhantom.KillInvisible: Can kill while invisible
+VanillaPhantom.HiddenFromAllies: Invisible to teammates too
+VanillaPhantom.NoLimits: Can vent / use doors while invisible
 
 # ── VanillaViper ──
 VanillaViper.Name: Viper
+VanillaViper.OwnKillCooldown: Viper-only kill cooldown
+VanillaViper.KillCooldown: Kill cooldown
 
 # ── Vanilla role descriptions (keys use the vanilla role name; same layout as described at the top) ──
 Crewmate.Summary: A Crewmate who does tasks and finds the Impostors in meetings.
@@ -373,7 +379,7 @@ Detective.Tips: Connect the clues and point out the killer in the meeting.
 Detective.Quote: The truth is in the Notes.
 Judge.Summary: A Crewmate who can overrule a meeting to eject an Impostor.
 Judge.Overrule: Overrule
-Judge.Overrule.Help: Use it in a meeting to cast a special vote on the one you think is an Impostor; only that vote counts. If you are right, they are ejected. If you are wrong, you are. It unlocks after you finish a set share of your tasks.
+Judge.Overrule.Help: Use it in a meeting to cast a special vote on the one you think is an Impostor; only that vote counts. If you are right, they are ejected. If you are wrong, you are. It unlocks after you finish a set number of your tasks.
 Judge.Overrule.Short: Decide the meeting with one vote
 Judge.Quote: The court has spoken.
 GuardianAngel.Summary: A Crewmate ghost who can protect the living.
@@ -1436,6 +1442,10 @@ Camouflager.Camo.Help: For a set time, every living player looks like you.
 Camouflager.Camo.Short: Make everyone look alike
 Camouflager.Cooldown: Camouflage cooldown
 Camouflager.Duration: Camouflage duration
+Camouflager.Look: Camouflage look
+Camouflager.Look.Self: Everyone looks like you
+Camouflager.Look.Random: Everyone looks like a random other player
+Camouflager.Look.Gray: Everyone gray (no pets / skins)
 # ── トリガーハッピー (TriggerHappy) ──
 TriggerHappy.Name: Trigger Happy
 TriggerHappy.Blurb: Shoot, shoot, and keep shooting
@@ -2531,3 +2541,25 @@ Cos.PickHat: Put on hat {n} (seen by players with MRP)
 Cos.PickVisor: Put on the visor (seen by players with MRP)
 Cos.Order: Layers (back→front)
 Cos.Swap: Swap
+Command.replay: Open the last game's replay (rewind and fast-forward everyone's moves on the map)
+Replay.Title: Replay
+Replay.Button: Replay
+Replay.None: No previous game to replay
+Replay.NotNow: You can't open the replay during a game
+Replay.Opened: Opened the last game's replay
+Replay.First: Start
+Replay.PrevEvent: Prev event
+Replay.NextEvent: Next event
+Replay.Back10: -10s
+Replay.Fwd10: +10s
+Replay.Play: Play
+Replay.Pause: Pause
+Replay.Forward: Forward
+Replay.Backward: Reverse
+Replay.InMeeting: <color=#FFD966>In meeting</color>
+Replay.NoEvents: <color=#999999>Nothing has happened yet</color>
+Replay.EvKill: {killer} killed {victim}
+Replay.EvDied: {victim} died
+Replay.EvReport: {who} reported {victim}'s body
+Replay.EvButton: {who} called an emergency meeting
+Replay.EvExile: {who} was ejected

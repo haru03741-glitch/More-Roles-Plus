@@ -43,6 +43,7 @@ internal static class ChatCommands
         Add(new[] { "color", "colour" }, Who.Everyone, new Text("Command.color.Usage"), new Text("Command.color"), LobbyTools.Color);
         Add(new[] { "death" }, Who.Everyone, new Text("Command.death.Usage"), new Text("Command.death"), InfoCommands.Death);
         Add(new[] { "l", "last" }, Who.Everyone, default, new Text("Command.last"), InfoCommands.LastResult);
+        Add(new[] { "replay", "rp" }, Who.Everyone, default, new Text("Command.replay"), Menu.MatchReplay.Command);
         Add(new[] { "spectate", "spec" }, Who.Everyone, default, new Text("Command.spectate"), Roles.Spectate.Command);
         Add(new[] { "dump" }, Who.Everyone, default, new Text("Command.dump"), LogDump.Run);
         Add(new[] { "win", "winner" }, Who.Everyone, default, new Text("Command.winner"), InfoCommands.Winners);
