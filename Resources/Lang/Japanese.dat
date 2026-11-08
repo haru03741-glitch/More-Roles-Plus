@@ -2563,3 +2563,9 @@ Replay.EvDied: {victim} が死んだ
 Replay.EvReport: {who} が {victim} の死体を通報
 Replay.EvButton: {who} が緊急会議
 Replay.EvExile: {who} が追放された
+Replay.Close: 閉じる
+Replay.Free: 自由に見る
+Replay.Following: {name} を見ています
+Replay.FreeCam: 自由に見ています (WASD で動かす)
+Replay.Loading: 船を読み込み中…
+Replay.StageHelp: Space = 再生/停止・← → = 5 秒・Tab = 次の人・ホイール = 寄る/引く・Esc = 閉じる

@@ -26,6 +26,7 @@ public abstract class RaccoonBase : RoleBase
     protected abstract bool KillOnMeeting { get; }
 
     private byte _grabbed = 255;     // 全員の端末で同じ
+    internal byte Grabbed => _grabbed;
     private byte _investigated = 255; // 自分の端末: 役職が分かった人
     private PlainShipRoom _room;     // 自分の端末: 行き先
     private WorldArrow _arrow;
@@ -119,7 +120,7 @@ public abstract class RaccoonBase : RoleBase
         Vector2 at = Player.GetTruePosition();
         // 背中の側へ少しずらす (壁の向こうになるならずらさない)
         bool left = Player.cosmetics && Player.cosmetics.FlipX;
-        Vector2 back = at + new Vector2(left ? 0.32f : -0.32f, 0f);
+        Vector2 back = at + new Vector2(left ? 0.08f : -0.08f, 0f);
         if (!PhysicsHelpers.AnythingBetween(at, back, Constants.ShipAndObjectsMask, false)) at = back;
         Vector2 now = t.GetTruePosition();
         if (t.MyPhysics && t.MyPhysics.body) t.MyPhysics.body.velocity = Vector2.zero;
@@ -244,4 +245,151 @@ public sealed class RaccoonChild : RaccoonBase
     protected override bool KillOnMeeting => Raccoon.ChildKillOnMeetingIfGrabbing;
 
     public override void OnAssigned() => AddGrab();
+}
+
+// 掴まれた人を担いで運ぶ見た目 (全員の端末・毎フレーム)。
+// 掴まれた人の体 (BodyForms)・着せ替え (cosmetics)・名前 (Names) を体の中心で横倒しに回し、アライグマの頭の上へ持ち上げ、
+// アライグマが歩くと弾むように揺らす。位置の同期・当たり判定は本体のまま (RaccoonBase.Carry が運ぶ)。放したら元の置き方へ戻す
+internal static class RaccoonCarryFx
+{
+    private sealed class Part
+    {
+        public Transform T;
+        public Vector3 Pos;
+        public Quaternion Rot;
+    }
+
+    private sealed class Lift
+    {
+        public PlayerControl Pc;
+        public Part Body, Cos, Names, CarrierNames;
+        public Vector3 Pivot;   // 体の絵の中心 (根の中の座標)
+        public float Scale = 1f;
+        public float Since;
+        public float Turn;      // 今の傾き (向きを変えた時になめらかに回す)
+    }
+
+    private const float RaiseSeconds = 0.22f;
+    private const float Height = 0.55f;  // アライグマの体の中心から持ち上げる高さ
+    private const float Tilt = 82f;      // 横倒しの角度
+    private const float CarrierNameLift = 0.6f, NameGap = 0.55f; // 名前が担いだ体に重ならないように
+
+    private static readonly System.Collections.Generic.Dictionary<byte, Lift> Lifted = new();
+    private static readonly System.Collections.Generic.List<byte> Drop = new();
+
+    internal static void Tick()
+    {
+        if (Lifted.Count == 0 && RoleState.All.Count == 0) return;
+        Drop.Clear();
+        foreach (var k in Lifted.Keys) Drop.Add(k);
+        if (ShipStatus.Instance && !MeetingHud.Instance && !ExileController.Instance)
+        {
+            var all = RoleState.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                if (all[i] is not RaccoonBase rb || rb.Grabbed == 255) continue;
+                var carrier = rb.Player;
+                var t = PortKit.ById(rb.Grabbed);
+                if (!PortKit.Alive(carrier) || !PortKit.Alive(t) || !t.cosmetics || !carrier.cosmetics) continue;
+                if (t.inVent || carrier.inVent || carrier.onLadder || t.onLadder) continue;
+                Drop.Remove(t.PlayerId);
+                try { Apply(carrier, t); }
+                catch (System.Exception e) { Plugin.Logger.LogWarning($"raccoon carry: {e.Message}"); }
+            }
+        }
+        foreach (var id in Drop) Restore(id);
+    }
+
+    private static Part Take(Transform t) => t ? new Part { T = t, Pos = t.localPosition, Rot = t.localRotation } : null;
+
+    private static Vector3 BodyCenter(PlayerControl pc)
+    {
+        var b = pc.cosmetics && pc.cosmetics.currentBodySprite != null ? pc.cosmetics.currentBodySprite.BodySprite : null;
+        return b ? b.bounds.center : pc.transform.position;
+    }
+
+    private static Lift Begin(PlayerControl t)
+    {
+        var root = t.transform;
+        var l = new Lift
+        {
+            Pc = t,
+            Body = Take(root.Find("BodyForms")),
+            Cos = Take(t.cosmetics.transform),
+            Names = Take(root.Find("Names")),
+            Since = Time.time,
+        };
+        float sc = root.localScale.y;
+        l.Scale = sc > 0.01f ? sc : 1f;
+        Vector3 c = BodyCenter(t) - root.position;
+        l.Pivot = new Vector3(c.x / l.Scale, c.y / l.Scale, 0f);
+        return l;
+    }
+
+    private static void Apply(PlayerControl carrier, PlayerControl t)
+    {
+        if (!Lifted.TryGetValue(t.PlayerId, out var l))
+        {
+            Lifted[t.PlayerId] = l = Begin(t);
+            l.CarrierNames = Take(carrier.transform.Find("Names"));
+        }
+        float up = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((Time.time - l.Since) / RaiseSeconds));
+        bool left = carrier.cosmetics.FlipX;
+        var body = carrier.MyPhysics ? carrier.MyPhysics.body : null;
+        bool moving = body && body.velocity.sqrMagnitude > 0.05f;
+        float ph = Time.time * 10.5f;
+        float bob = moving ? Mathf.Abs(Mathf.Sin(ph)) * 0.07f : Mathf.Sin(Time.time * 2.2f) * 0.015f;
+        float sway = moving ? Mathf.Sin(ph) * 7f : Mathf.Sin(Time.time * 1.7f) * 2f;
+        // 頭は進む向きの後ろ側へ (足が前に垂れる)
+        l.Turn = Mathf.MoveTowards(l.Turn, left ? -Tilt : Tilt, Time.deltaTime * 600f);
+        var rot = Quaternion.Euler(0f, 0f, (l.Turn + sway) * up);
+
+        // 体の中心を、アライグマの体の中心の上へ
+        var root = t.transform;
+        Vector3 restCenter = root.position + l.Pivot * l.Scale;
+        Vector3 cc = BodyCenter(carrier);
+        Vector3 target = new(cc.x + (left ? 0.04f : -0.04f), cc.y + Height + bob, restCenter.z);
+        Vector3 d = (target - restCenter) / l.Scale * up;
+        d.z = -0.012f * up / l.Scale; // アライグマより手前に描く
+
+        Place(l.Body, l.Pivot, rot, d);
+        Place(l.Cos, l.Pivot, rot, d);
+        // 名前は傾けずに持ち上げるだけ
+        if (l.Names != null && l.Names.T) l.Names.T.localPosition = l.Names.Pos + new Vector3(d.x, d.y + NameGap * up / l.Scale, 0f);
+        // アライグマの名前は担いだ人の上へ
+        if (l.CarrierNames != null && l.CarrierNames.T)
+        {
+            float cs = carrier.transform.localScale.y > 0.01f ? carrier.transform.localScale.y : 1f;
+            l.CarrierNames.T.localPosition = l.CarrierNames.Pos + new Vector3(0f, CarrierNameLift * up / cs, 0f);
+        }
+    }
+
+    // 体の中心を軸に回して、ずらす
+    private static void Place(Part p, Vector3 pivot, Quaternion rot, Vector3 d)
+    {
+        if (p == null || !p.T) return;
+        Vector3 off = p.Pos - pivot;
+        off.z = 0f;
+        Vector3 np = pivot + rot * off + d;
+        np.z = p.Pos.z + d.z;
+        p.T.localPosition = np;
+        p.T.localRotation = rot * p.Rot;
+    }
+
+    private static void Put(Part p)
+    {
+        if (p == null || !p.T) return;
+        p.T.localPosition = p.Pos;
+        p.T.localRotation = p.Rot;
+    }
+
+    private static void Restore(byte id)
+    {
+        if (!Lifted.TryGetValue(id, out var l)) return;
+        Lifted.Remove(id);
+        Put(l.Body);
+        Put(l.Cos);
+        Put(l.Names);
+        Put(l.CarrierNames);
+    }
 }

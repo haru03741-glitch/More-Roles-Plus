@@ -36,6 +36,7 @@ internal static class MatchReplay
         public string Name;
         public int ColorId;
         public Color Color;
+        public string HatId = "", VisorId = "", SkinId = "", PetId = "";
         public string Role;   // 試合の終わりの役職 (色付き)
         public bool Won;
     }
@@ -57,6 +58,12 @@ internal static class MatchReplay
         public float MapScale = 1f, Flip = 1f;
         public string Winners;
         public bool Painted;
+        // 本物の船で見せるための控え (ReplayStage)
+        public int MapId = -1;
+        public Vector3 ShipPos, ShipScale = Vector3.one;
+        public int CamMask = -1;
+        public Vector2 BodyOffset = new(0f, 0.45f); // 体の絵の中心 - 足元 (GetTruePosition)
+        public float BodyHeight = 0.9f;             // 体の絵の高さ (世界の単位)
     }
 
     private static Record _rec;
@@ -73,6 +80,8 @@ internal static class MatchReplay
         if (!ship || !data) { _rec = null; return; }
         var r = new Record { Start = Time.time, MapScale = ship.MapScale > 0f ? ship.MapScale : 1f, Flip = Mathf.Sign(ship.transform.localScale.x) };
         AddPlayers(r, data);
+        try { CaptureStage(ship, r); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"replay stage: {e.Message}"); }
         try { CaptureMap(ship, r); }
         catch (Exception e) { Plugin.Logger.LogWarning($"replay map: {e.Message}"); }
         _rec = r;
@@ -101,10 +110,46 @@ internal static class MatchReplay
                 Id = p.PlayerId,
                 Name = p.DefaultOutfit != null ? p.DefaultOutfit.PlayerName : p.PlayerName,
                 ColorId = color,
+                HatId = p.DefaultOutfit?.HatId ?? "",
+                VisorId = p.DefaultOutfit?.VisorId ?? "",
+                SkinId = p.DefaultOutfit?.SkinId ?? "",
+                PetId = p.DefaultOutfit?.PetId ?? "",
                 Color = color >= 0 && color < Palette.PlayerColors.Length ? (Color)Palette.PlayerColors[color] : Color.white,
             });
         }
     }
+
+    // 本物の船で見せるための控え: どの船か・船の根の置き方 (左右反転)・カメラに映す層・体の絵の大きさと足元からのずれ・歩きのアニメ
+    internal static AnimationClip RunClip, IdleClip, GhostClip;
+
+    private static void CaptureStage(ShipStatus ship, Record r)
+    {
+        r.MapId = GameOptionsManager.Instance?.CurrentGameOptions != null ? GameOptionsManager.Instance.CurrentGameOptions.MapId : -1;
+        r.ShipPos = ship.transform.position;
+        r.ShipScale = ship.transform.localScale;
+        var cam = Camera.main;
+        if (cam) r.CamMask = cam.cullingMask;
+        var lp = PlayerControl.LocalPlayer;
+        var body = lp && lp.cosmetics && lp.cosmetics.currentBodySprite != null ? lp.cosmetics.currentBodySprite.BodySprite : null;
+        if (body && body.sprite)
+        {
+            var b = body.bounds;
+            r.BodyOffset = (Vector2)b.center - lp.GetTruePosition();
+            r.BodyHeight = Mathf.Max(0.3f, b.size.y);
+        }
+        var g = lp && lp.MyPhysics && lp.MyPhysics.Animations != null ? lp.MyPhysics.Animations.group : null;
+        if (g != null)
+        {
+            if (g.RunAnim) RunClip = g.RunAnim;
+            if (g.IdleAnim) IdleClip = g.IdleAnim;
+            if (g.GhostIdleAnim) GhostClip = g.GhostIdleAnim;
+            Plugin.Logger.LogInfo($"[replay] body anim on body={(g.SpriteAnimator && body && g.SpriteAnimator.gameObject == body.gameObject)} offset={r.BodyOffset} h={r.BodyHeight:0.00} map={r.MapId} mask={r.CamMask}");
+        }
+        if (GameManager.Instance && GameManager.Instance.deadBodyPrefab != null && GameManager.Instance.deadBodyPrefab.Length > 0)
+            BodyPrefab = GameManager.Instance.deadBodyPrefab[0];
+    }
+
+    internal static DeadBody BodyPrefab;
 
     private static void CaptureMap(ShipStatus ship, Record r)
     {
@@ -270,6 +315,7 @@ internal static class MatchReplay
             else Sample(false);
         }
         ReplayView.Tick();
+        ReplayStage.Tick();
     }
 
     // チャットの /replay
@@ -278,7 +324,7 @@ internal static class MatchReplay
         if (ShipStatus.Instance && AmongUsClient.Instance && AmongUsClient.Instance.GameState == InnerNet.InnerNetClient.GameStates.Started)
             return new Text("Replay.NotNow");
         if (Last == null) return new Text("Replay.None");
-        return ReplayView.Open() ? new Text("Replay.Opened") : new Text("Replay.None");
+        return ReplayStage.Open() || ReplayView.Open() ? new Text("Replay.Opened") : new Text("Replay.None");
     }
 
     // 終わりの画面の右上に「リプレイ」のボタンを置く
@@ -293,7 +339,7 @@ internal static class MatchReplay
         node.transform.SetParent(egm.transform, false);
         node.transform.position = new Vector3(c.x + w - 1.1f, c.y + h - 1.05f, -20f);
         var screen = new UiScreen(node.transform) { BaseOrder = 200 };
-        screen.Set(new Button(new Label(new Text("Replay.Button"), 1.8f) { TextAlign = TextAlignmentOptions.Center, Bold = true }, () => ReplayView.Open())
+        screen.Set(new Button(new Label(new Text("Replay.Button"), 1.8f) { TextAlign = TextAlignmentOptions.Center, Bold = true }, () => { if (!ReplayStage.Open()) ReplayView.Open(); })
         {
             Size = new Vector2(1.9f, 0.5f),
         });

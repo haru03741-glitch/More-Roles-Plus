@@ -2563,3 +2563,9 @@ Replay.EvDied: {victim} died
 Replay.EvReport: {who} reported {victim}'s body
 Replay.EvButton: {who} called an emergency meeting
 Replay.EvExile: {who} was ejected
+Replay.Close: Close
+Replay.Free: Free camera
+Replay.Following: Watching {name}
+Replay.FreeCam: Free camera (move with WASD)
+Replay.Loading: Loading the ship...
+Replay.StageHelp: Space = play/pause, ← → = 5s, Tab = next player, wheel = zoom, Esc = close
