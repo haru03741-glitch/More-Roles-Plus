@@ -70,11 +70,20 @@ public sealed class Magician : RoleBase
         r => { int n = r.ReadByte(); var l = new List<(byte, float, float)>(); for (int i = 0; i < n; i++) l.Add((r.ReadByte(), r.ReadSingle(), r.ReadSingle())); return l; },
         (_, list) => OnMagic(list));
 
+    private static readonly Color[] Sparkle = { new(1f, 0.2f, 0.25f, 0.95f), new(1f, 0.85f, 0.3f, 0.95f), new(0.8f, 0.4f, 1f, 0.95f) };
+
     // 全員の端末で: 光って、自分の体 (と自分の動かすダミー) を動かす
     private static void OnMagic(List<(byte id, float x, float y)> moves)
     {
         var lp = PlayerControl.LocalPlayer;
         PortKit.Flash(new Color(1f, 0.1f, 0.1f, 0.5f));
+        // 全員の画面で: 消える所と現れる所が光る
+        foreach (var (id, x, y) in moves)
+        {
+            var p = PortKit.ById(id);
+            if (p && !p.inVent && p.Visible) RoleSparks.Poof(p.GetTruePosition(), Sparkle[id % Sparkle.Length]);
+            RoleSparks.Poof(new Vector2(x, y - 0.36f), Sparkle[id % Sparkle.Length]);
+        }
         foreach (var (id, x, y) in moves)
         {
             var p = PortKit.ById(id);

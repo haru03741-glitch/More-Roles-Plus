@@ -83,4 +83,18 @@ internal static class ShotKit
         float d = (ap - ab / len * t).magnitude;
         return d <= width ? t : -1f;
     }
+
+    // 全員の端末で: 線をしばらく描く
+    internal static void Beam(Vector2 a, Vector2 b, Color c, float width, float secs)
+    {
+        var go = new GameObject("MrpBeam");
+        var lr = go.AddComponent<LineRenderer>();
+        lr.positionCount = 2;
+        lr.SetPosition(0, new Vector3(a.x, a.y, -5f));
+        lr.SetPosition(1, new Vector3(b.x, b.y, -5f));
+        lr.startWidth = lr.endWidth = width;
+        lr.material = LineMat;
+        lr.startColor = lr.endColor = c;
+        PortKit.After(secs, () => { if (go) Object.Destroy(go); });
+    }
 }

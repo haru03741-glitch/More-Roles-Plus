@@ -121,6 +121,32 @@ internal static class RoleSparks
                 new Color(1f, 1f, 0.85f, 1f), Random.Range(0.4f, 0.7f), 0.1f, 0f);
     }
 
+    // 人が消える・現れる所の光 (広がる輪・立ち昇る粒・真ん中の閃光)。at は足元
+    internal static void Poof(Vector2 at, Color c)
+    {
+        var mid = new Vector3(at.x, at.y + 0.35f, DepthAt(at.y) - 0.01f);
+        Spawn(mid, Vector3.zero, new Color(1f, 1f, 1f, 0.9f), 0.25f, 0.35f, 0.9f);
+        Spawn(mid, Vector3.zero, c * new Color(1f, 1f, 1f, 0.7f), 0.7f, 0.4f, 1.1f);
+        for (int i = 0; i < 18; i++)
+        {
+            float a = i * Mathf.PI * 2f / 18f;
+            Spawn(mid, new Vector3(Mathf.Cos(a) * 2.2f, Mathf.Sin(a) * 1.4f, 0f), i % 2 == 0 ? c : Color.white, 0.6f, 0.08f, 0.02f, 0f, 3f);
+        }
+        for (int i = 0; i < 16; i++)
+            Spawn(mid + new Vector3(Random.Range(-0.3f, 0.3f), Random.Range(-0.4f, 0.2f), 0f), new Vector3(0f, Random.Range(0.5f, 1f), 0f),
+                i % 3 == 0 ? Color.white : c, Random.Range(0.9f, 1.5f), 0.07f, 0.02f);
+    }
+
+    // 体の周りを回りながら昇る粒 (力を溜めている間・呼ぶたびに 1 粒)
+    internal static void Swirl(PlayerControl p, Color c)
+    {
+        if (!p || p.inVent || !p.Visible) return;
+        Vector2 feet = p.GetTruePosition();
+        float a = Time.time * 9f + Random.Range(0f, 0.6f);
+        var at = new Vector3(feet.x + Mathf.Cos(a) * 0.38f, feet.y + 0.05f + Mathf.Sin(a) * 0.12f, DepthAt(feet.y) + (Mathf.Sin(a) > 0f ? 0.03f : -0.01f));
+        Spawn(at, new Vector3(-Mathf.Sin(a) * 0.6f, 0.9f, 0f), c, 0.7f, 0.1f, 0.02f);
+    }
+
     internal static void Clear()
     {
         foreach (var b in _live)

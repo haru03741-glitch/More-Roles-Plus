@@ -1,5 +1,6 @@
 // Ported from https://github.com/ykundesu/SuperNewRoles SuperNewRoles/Roles/CrewMate/Sheriff.cs (GPL-3.0)
 using MoreRolesPlus.Options;
+using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Crew;
 
@@ -38,11 +39,36 @@ public sealed class Sheriff : RoleBase
     // ホストの端末で、狙った人を倒してよいかを決めて倒す / 自決する
     internal static void Execute(PlayerControl user, PlayerControl target)
     {
+        Shot(user, target);
         if (!AmongUsClient.Instance.AmHost) return;
         bool ok = Judge(target);
         int mode = SuicideMode.Value;
         if (ok || mode == 2) PortKit.HostKill(user, target);
         if (mode == 1 || (mode == 0 && !ok)) PortKit.HostSuicide(user);
+    }
+
+    // 全員の画面で: 銃口が光り、弾の筋が相手へ走って、当たった所に火花と音
+    private static void Shot(PlayerControl user, PlayerControl target)
+    {
+        if (!user || !target || MeetingHud.Instance) return;
+        bool seen = user.Visible && !user.inVent;
+        Vector2 a = (Vector2)user.transform.position + new Vector2(target.transform.position.x < user.transform.position.x ? -0.3f : 0.3f, 0.05f);
+        Vector2 b = (Vector2)target.transform.position + new Vector2(0f, 0.05f);
+        if (seen) ShotKit.Beam(a, b, new UnityEngine.Color(1f, 0.9f, 0.45f, 0.85f), 0.035f, 0.08f);
+        var dir = (b - a).normalized;
+        float za = RoleSparks.DepthAt(user.GetTruePosition().y) - 0.01f, zb = RoleSparks.DepthAt(target.GetTruePosition().y) - 0.01f;
+        if (seen)
+        {
+            RoleSparks.Spawn(new Vector3(a.x, a.y, za), Vector3.zero, new UnityEngine.Color(1f, 0.95f, 0.6f, 1f), 0.08f, 0.25f, 0.4f);
+            for (int i = 0; i < 6; i++)
+                RoleSparks.Spawn(new Vector3(a.x, a.y, za), (Vector3)(dir * Random.Range(1.5f, 3f) + Random.insideUnitCircle * 0.8f),
+                    new UnityEngine.Color(1f, 0.75f, 0.3f, 1f), 0.15f, 0.04f, 0.01f);
+        }
+        if (target.Visible && !target.inVent)
+            for (int i = 0; i < 10; i++)
+                RoleSparks.Spawn(new Vector3(b.x, b.y, zb), (Vector3)(dir * Random.Range(0.5f, 2f) + Random.insideUnitCircle * 1.5f),
+                    i % 2 == 0 ? new UnityEngine.Color(1f, 0.85f, 0.4f, 1f) : new UnityEngine.Color(0.85f, 0.1f, 0.1f, 1f), 0.3f, 0.05f, 0.01f, 3f);
+        GunSound.Flesh(b.x, b.y);
     }
 
     // 倒してよい相手か (設定の陣営)
