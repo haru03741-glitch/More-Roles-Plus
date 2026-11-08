@@ -990,6 +990,7 @@ internal static class RoleAssigner
                 continue;
             }
             var p = Player(roster[i].PlayerId);
+            Plugin.Logger.LogInfo($"roles: team change {roster[i].PlayerId} {(vanilla[i].Impostor ? "imp->crew" : "crew->imp")}");
             if (p) p.RpcSetRole(roster[i].BaseRole, true);
         }
     }

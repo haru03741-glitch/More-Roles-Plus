@@ -411,13 +411,19 @@ internal static class DevCommands
             reply($"OK god {(on ? 1 : 0)}");
         });
 
-        TestBridge.Register("pinfo", "<番号> その人の表示の状態 (見えているか・体の絵・位置)", (args, reply) =>
+        TestBridge.Register("namecolors", "地上の名前の色を今の陣営で塗り直す (試合の始めに走る物と同じ)", (_, reply) =>
+        {
+            Roles.NameColors.Refresh();
+            reply("OK namecolors");
+        });
+
+        TestBridge.Register("pinfo","<番号> その人の表示の状態 (見えているか・体の絵・位置)", (args, reply) =>
         {
             var p = byte.TryParse(args.Trim(), out byte pid) ? Player(pid) : null;
             if (!p) { reply($"ERR pinfo no player {args}"); return; }
             var body = p.cosmetics ? p.cosmetics.currentBodySprite : null;
             var pos = p.transform.position;
-            reply($"OK pinfo {pid} active={p.gameObject.activeInHierarchy} visible={p.Visible} body={(body != null && body.BodySprite ? body.BodySprite.enabled.ToString() : "-")} pos={TestBridge.F(pos.x)},{TestBridge.F(pos.y)},{TestBridge.F(pos.z)} layer={p.gameObject.layer} dummy={p.isDummy} netT={p.NetTransform.enabled} incomplete={(p.Data != null ? p.Data.IsIncomplete.ToString() : "nodata")} client={(p.Data != null ? p.Data.ClientId : -9)} name='{(p.cosmetics ? p.cosmetics.nameText.text : "-")}'");
+            reply($"OK pinfo {pid} active={p.gameObject.activeInHierarchy} visible={p.Visible} body={(body != null && body.BodySprite ? body.BodySprite.enabled.ToString() : "-")} pos={TestBridge.F(pos.x)},{TestBridge.F(pos.y)},{TestBridge.F(pos.z)} layer={p.gameObject.layer} dummy={p.isDummy} netT={p.NetTransform.enabled} incomplete={(p.Data != null ? p.Data.IsIncomplete.ToString() : "nodata")} client={(p.Data != null ? p.Data.ClientId : -9)} name='{(p.cosmetics ? p.cosmetics.nameText.text : "-")}' nameColor={(p.cosmetics && p.cosmetics.nameText ? UnityEngine.ColorUtility.ToHtmlStringRGB(p.cosmetics.nameText.color) : "-")} role={(p.Data != null && p.Data.Role ? p.Data.Role.Role.ToString() : "-")}");
         });
 
         TestBridge.Register("votecodes", "本編の投票の印の番号 (この番号の人は投票の的にできない) と会議などのページ送りの状態", (_, reply) =>
