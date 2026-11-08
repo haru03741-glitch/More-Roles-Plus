@@ -28,6 +28,8 @@ internal static class MrpCosmetics
         public bool Adaptive;              // 赤・青の所を体の色・影の色で塗る
         public string Front, Climb, ClimbLeft; // Resources/Cosmetics の絵の名前 (梯子の絵は無ければ梯子の間は出さない)
         public bool FullBody;              // 体を丸ごと包む物 (着ている間は中の体・肌着を描かない。はみ出して見えるので)
+        public bool ClimbSteps;            // 梯子の絵に足を動かす絵 (<Climb>0..3 / <ClimbLeft>0..3) がある
+        public string Sit;                 // 全身の物の座った絵 (ロビーに入る時、体は床に座って足を前へ伸ばしている)
         public string Walk;                // 全身の物の歩きの絵 (<Walk>0..<WalkFrames-1>)。無ければ歩く間も正面の絵
         public string NameKey => "Cos." + Id;
     }
@@ -39,8 +41,8 @@ internal static class MrpCosmetics
         new() { Id = "risu", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, Front = "risu_front", Climb = "risu_climb" },
         new() { Id = "shirokumabou", Author = "あいぬあ", Kind = Kind.Hat, Front = "shirokumabou_front", Climb = "shirokumabou_climb" },
         new() { Id = "sodateterundesu", Author = "あいぬあ", Kind = Kind.Hat, Front = "sodateterundesu_front", Climb = "sodateterundesu_climb" },
-        new() { Id = "tyranno", Author = "あいぬあ", Kind = Kind.Hat, FullBody = true, Front = "tyranno_front", Climb = "tyranno_climb", ClimbLeft = "tyranno_climbleft", Walk = "tyranno_walk" },
-        new() { Id = "tyrannocolor", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, FullBody = true, Front = "tyrannocolor_front", Climb = "tyrannocolor_climb", ClimbLeft = "tyrannocolor_climbleft", Walk = "tyrannocolor_walk" },
+        new() { Id = "tyranno", Author = "あいぬあ", Kind = Kind.Hat, FullBody = true, Front = "tyranno_front", Climb = "tyranno_climb", ClimbLeft = "tyranno_climbleft", Walk = "tyranno_walk", Sit = "tyranno_sit", ClimbSteps = true },
+        new() { Id = "tyrannocolor", Author = "あいぬあ", Kind = Kind.Hat, Adaptive = true, FullBody = true, Front = "tyrannocolor_front", Climb = "tyrannocolor_climb", ClimbLeft = "tyrannocolor_climbleft", Walk = "tyrannocolor_walk", Sit = "tyrannocolor_sit", ClimbSteps = true },
         new() { Id = "wakusei", Author = "あいぬあ", Kind = Kind.Hat, Front = "wakusei_front", Climb = "wakusei_climb" },
         new() { Id = "owo", Author = "ポテサラ", Kind = Kind.Visor, Front = "owo_front" },
     };
@@ -77,20 +79,31 @@ internal static class MrpCosmetics
         if (!full) return null;
         var tex = full.texture;
         int x0 = tex.width, y0 = tex.height, x1 = -1, y1 = -1;
+        // 描く用の絵は CPU 側のピクセルを捨てているので、透明でない所の枠は読める絵を一時的に作って調べる
+        Texture2D read = null;
         try
         {
-            var px = tex.GetPixels32();
-            for (int y = 0; y < tex.height; y++)
-                for (int x = 0; x < tex.width; x++)
-                    if (px[y * tex.width + x].a > 20)
-                    {
-                        if (x < x0) x0 = x;
-                        if (x > x1) x1 = x;
-                        if (y < y0) y0 = y;
-                        if (y > y1) y1 = y;
-                    }
+            using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream($"MoreRolesPlus.Resources.Cosmetics.{item.Front}.png");
+            using var ms = new System.IO.MemoryStream();
+            s.CopyTo(ms);
+            read = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (ImageConversion.LoadImage(read, ms.ToArray(), false))
+            {
+                var px = read.GetPixels32();
+                int w = read.width, h = read.height;
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        if (px[y * w + x].a > 20)
+                        {
+                            if (x < x0) x0 = x;
+                            if (x > x1) x1 = x;
+                            if (y < y0) y0 = y;
+                            if (y > y1) y1 = y;
+                        }
+            }
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"cosmetic thumb {item.Id}: {e.Message}"); }
+        finally { if (read) UnityEngine.Object.Destroy(read); }
         if (x1 < x0) { x0 = 0; y0 = 0; x1 = tex.width - 1; y1 = tex.height - 1; }
         sp = Sprite.Create(tex, new Rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1), new Vector2(0.5f, 0.5f), Ppu);
         sp.hideFlags = HideFlags.HideAndDontSave;
@@ -395,13 +408,15 @@ internal static class MrpCosmetics
         float bodyZ = BodyFront(layer, f);
         // 本編の帽子の所に描く枠 (1 つ目が空なら 2 つ目) は本編の帽子の絵そのもの
         int baseSlot = h1 != null ? 0 : 1;
-        float Z(int slot) => bodyZ - (Rank(slot, front) + 1) * StepZ;
+        // 全身の物は体の一部として一番奥 (バイザーやもう 1 つの帽子が選んだ順に関わらず上に乗る)
+        int Eff(int slot) => (slot == 0 ? h1 : slot == 1 ? h2 : visor) is { FullBody: true } ? -1 : Rank(slot, front);
+        float Z(int slot) => bodyZ - (Eff(slot) + 2) * StepZ;
         bool own = hat != null || visor != null;
         if (own && f) PlaceZ(f, Z(baseSlot));
 
         if (hat != null && f)
         {
-            var sp = HatSprite(hat, st.Climb, layer.FlipX, WalkFrame(layer));
+            var sp = HatSprite(hat, st.Climb, layer.FlipX, BodyPose(layer));
             if (f.sprite != sp) f.sprite = sp;
             f.enabled = show && sp;
             f.flipX = !st.Climb && layer.FlipX;
@@ -431,7 +446,7 @@ internal static class MrpCosmetics
         if (top != null && f)
         {
             var r = Extra(ref st.Hat2, "MrpHat2", hp, f);
-            var sp = HatSprite(top, st.Climb, layer.FlipX, WalkFrame(layer));
+            var sp = HatSprite(top, st.Climb, layer.FlipX, BodyPose(layer));
             if (r.sprite != sp) r.sprite = sp;
             r.flipX = !st.Climb && layer.FlipX;
             Follow(r, f, Z(1));
@@ -472,10 +487,38 @@ internal static class MrpCosmetics
         }
     }
 
-    private static Sprite HatSprite(Item hat, bool climb, bool left, int walk) =>
-        climb ? Art(left && hat.ClimbLeft != null ? hat.ClimbLeft : hat.Climb)
-        : walk >= 0 && hat.Walk != null ? Art(WalkName(hat, walk)) ?? Art(hat.Front)
+    private static Sprite HatSprite(Item hat, bool climb, bool left, int pose) =>
+        climb ? ClimbSprite(hat, left, pose)
+        : pose == PoseSit && hat.Sit != null ? Art(hat.Sit) ?? Art(hat.Front)
+        : pose >= 0 && pose < ClimbPose0 && hat.Walk != null ? Art(WalkName(hat, pose)) ?? Art(hat.Front)
         : Art(hat.Front);
+
+    private static Sprite ClimbSprite(Item hat, bool left, int pose)
+    {
+        string name = left && hat.ClimbLeft != null ? hat.ClimbLeft : hat.Climb;
+        if (hat.ClimbSteps && pose >= ClimbPose0)
+            return Art(StepName(name, pose - ClimbPose0)) ?? Art(name);
+        return Art(name);
+    }
+
+    private static readonly Dictionary<string, string[]> StepNames = new();
+
+    private static string StepName(string name, int i)
+    {
+        if (!StepNames.TryGetValue(name, out var names))
+        {
+            names = new string[ClimbFrames];
+            for (int k = 0; k < ClimbFrames; k++) names[k] = name + k;
+            StepNames[name] = names;
+        }
+        return names[i];
+    }
+
+    private const int ClimbFrames = 4;      // 着せ替えの梯子の足の絵の数 (1 周分)
+    private const int BodyClimbFrames = 12; // 本編の体の梯子の絵 (Climbup0001〜 / Climbdown0001〜) の 1 周
+    private const int ClimbPose0 = 100;     // 梯子の足の絵の何枚目かを姿勢の値ではこれに足して表す
+    private const int PoseStand = -1, PoseSit = -2;
+    private const int SpawnSitUntil = 40; // ロビーに入る時の体の絵 (Spawn0001〜) のうち、ここまでは床に座っている
 
     private static readonly Dictionary<string, string[]> WalkNames = new();
 
@@ -494,23 +537,42 @@ internal static class MrpCosmetics
     private const int WalkFrames = 6;   // 着せ替えの歩きの絵の数 (1 歩き分)
     private const int BodyWalkFrames = 12; // 本編の体の歩きの絵 (Walk0001〜Walk0012) の数
 
-    // 体が歩きの絵の何枚目か (歩いていなければ -1)。本編の体の歩きの 1 周を着せ替えの歩きの 1 周に合わせる
-    private static int WalkFrame(CosmeticsLayer layer)
+    // 体の今の姿勢: 歩きの絵の何枚目か (0〜)・座っている (PoseSit)・立っている (PoseStand)。
+    // 本編の体の歩きの 1 周を着せ替えの歩きの 1 周に合わせる
+    private static int BodyPose(CosmeticsLayer layer)
     {
         var body = layer.currentBodySprite != null ? layer.currentBodySprite.BodySprite : null;
         var sp = body ? body.sprite : null;
-        if (!sp) return -1;
+        if (!sp) return PoseStand;
         string n = sp.name;
-        if (n.Length < 5 || !n.StartsWith("Walk", StringComparison.Ordinal)) return -1;
+        if (n.StartsWith("Walk", StringComparison.Ordinal))
+        {
+            int k = Number(n, 4);
+            return k > 0 ? (k - 1) % BodyWalkFrames * WalkFrames / BodyWalkFrames : PoseStand;
+        }
+        if (n.StartsWith("Climbup", StringComparison.Ordinal) || n.StartsWith("Climbdown", StringComparison.Ordinal))
+        {
+            int k = Number(n, n[5] == 'u' ? 7 : 9);
+            return k > 0 ? ClimbPose0 + (k - 1) % BodyClimbFrames * ClimbFrames / BodyClimbFrames : PoseStand;
+        }
+        if (n.StartsWith("Spawn", StringComparison.Ordinal))
+        {
+            int k = Number(n, 5);
+            return k > 0 && k <= SpawnSitUntil ? PoseSit : PoseStand;
+        }
+        return PoseStand;
+    }
+
+    private static int Number(string n, int from)
+    {
         int k = 0;
-        for (int i = 4; i < n.Length; i++)
+        for (int i = from; i < n.Length; i++)
         {
             char c = n[i];
             if (c < '0' || c > '9') break;
             k = k * 10 + (c - '0');
         }
-        if (k <= 0) return -1;
-        return (k - 1) % BodyWalkFrames * WalkFrames / BodyWalkFrames;
+        return k;
     }
 
     private static SpriteRenderer Extra(ref SpriteRenderer r, string name, HatParent hp, SpriteRenderer f)
