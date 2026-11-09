@@ -88,11 +88,11 @@ internal static class Zoom
     // 前面の窓がこのプロセスのゲームの窓か。Application.isFocused は別の窓 (ターミナルなど) が前面でも true のままのことがある (実測)。
     // BepInEx のコンソールも同じプロセスの窓なので、窓の種類 (UnityWndClass) まで見る
 #if ANDROID
-    private static bool GameWindowInFront() => true;
+    internal static bool GameWindowInFront() => true;
 #else
     private static readonly StringBuilder ClassName = new(32);
 
-    private static bool GameWindowInFront()
+    internal static bool GameWindowInFront()
     {
         IntPtr h = GetForegroundWindow();
         if (h == IntPtr.Zero) return false;
