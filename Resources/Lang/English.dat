@@ -2043,11 +2043,17 @@ NiceDecorator.Blurb: Decorate people and change their roles
 NiceDecorator.Summary: A crewmate whose "Decorate" changes a nearby player's role. True crewmates get a random crew role and impostors a random impostor role (avoiding the one you gave last time). Neutrals and madmates are unaffected, but a use is spent.
 NiceDecorator.Cooldown: Decorate cooldown
 NiceDecorator.Uses: Decorate uses
+NiceDecorator.Decorate: Decorate
+NiceDecorator.Decorate.Help: Decorates a nearby player and changes their role to a random different one. True crewmates get a crew role and impostors an impostor role (avoiding the one you gave them last time). Neutrals and madmates don't change, but a use is spent.
+NiceDecorator.Decorate.Short: Change a nearby player's role
 EvilDecorator.Name: Evil Decorator
 EvilDecorator.Blurb: Decorate people and change their roles
 EvilDecorator.Summary: An impostor whose "Decorate" changes a nearby player's role. True crewmates get a random crew role and impostors a random impostor role (avoiding the one you gave last time). Neutrals and madmates are unaffected, but a use is spent.
 EvilDecorator.Cooldown: Decorate cooldown
 EvilDecorator.Uses: Decorate uses
+EvilDecorator.Decorate: Decorate
+EvilDecorator.Decorate.Help: Decorates a nearby player and changes their role to a random different one. True crewmates get a crew role and impostors an impostor role (avoiding the one you gave them last time). Neutrals and madmates don't change, but a use is spent.
+EvilDecorator.Decorate.Short: Change a nearby player's role
 Polaris.Name: Polaris
 Polaris.Blurb: The North Star sees everything
 Polaris.Summary: A crewmate with a kill that works on anyone, and a "Vision" that reads a dead player's role from their body.
