@@ -10,7 +10,7 @@ using Object = UnityEngine.Object;
 namespace MoreRolesPlus.Voice;
 
 // ボイスチャット (ホストの設定で 近く / 会議だけ / いつも全員 を選ぶ)。
-// - 話す: マイク (各自の MRP の設定で ON にした人だけ) を 48kHz のまま、声のある間だけ 0.06 秒ごとに Opus (96kbps・全帯域) で全員へ送る。
+// - 話す: マイク (各自の MRP の設定で ON にした人だけ) を 48kHz のまま、声のある間だけ 0.06 秒ごとに Opus (32kbps・全帯域) で全員へ送る。
 //   公式サーバーは同じ種類の電文を毎秒十数本出すと切るので、MRP のサーバーと LAN の部屋でだけ使う。送りは信頼性なし (遅れた声は要らない)
 // - 聞く: 話し手ごとに輪になった音の入れ物を鳴らし続け、届いた声を少し溜めてから再生位置の少し先へ書き足す。
 //   音の大きさは 聞こえるか × 距離 (VoiceRules) × 自分で決めたその人の音量 (VoiceSettings)
@@ -705,7 +705,9 @@ internal static class Speakers
 // Opus (C++ の部品の libopus)。送り手は符号器を 1 つ、受け手は話し手ごとに復号器を 1 つ
 internal static unsafe class OpusCodec
 {
-    internal const int Bitrate = 96000;  // 1ch の Opus でほぼ元の音と聞き分けられない所
+    // 1ch の話し声なら Opus はこれで十分聞き分けられる。声はサーバーが部屋の全員へ配るので、
+    // サーバーの出口は 話し手 × (人数 - 1) 倍になる (96kbps だと 15 人で数人話すだけで数 Mbps)
+    internal const int Bitrate = 32000;
     internal const int MaxPacket = 1000; // 包みの上限 (送りの 1 通に収める。超えそうな時は Opus がこの中に収める)
 
     private static void* _enc;
