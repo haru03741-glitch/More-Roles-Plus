@@ -1,3 +1,4 @@
+using BepInEx.Unity.IL2CPP.Utils.Collections;
 using HarmonyLib;
 using UnityEngine;
 
@@ -13,6 +14,7 @@ internal static class AccountSleep
     private static bool _asleep;
     private static bool _sleptBeforeLogin; // 本編の幕を外した = ログインの途中でメニューを離れられる
     private static bool _accountLogin; // 正式なアカウントでログイン中 (止めない)
+    private static bool _loginFailed; // ログインに失敗した (トークン更新を待たせ続けない)
     private static MainMenuManager _menu;
 
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Start))]
@@ -93,6 +95,45 @@ internal static class AccountSleep
             Plugin.Logger.LogInfo("account: store gone before login finished, skipped its setup");
             return false;
         }
+    }
+
+    // ログインが終わる前に部屋を作る・探すと、本編のマッチメーカーのトークン更新が UserIDToken の NullReference で止まり、
+    // そのプロセスでは以後ずっと部屋が作れなくなる (アカウント表示を止めなくても起きる。本編は幕で押させない)。
+    // 画面は止めず、トークン更新だけをログインが終わるまで待たせる。確定の後の「接続中」がその分だけ延びる
+    [HarmonyPatch(typeof(HttpMatchmakerManager), nameof(HttpMatchmakerManager.CoRefreshTokenInternal))]
+    private static class HoldTokenRefresh
+    {
+        public static void Postfix(ref Il2CppSystem.Collections.IEnumerator __result)
+        {
+            if (LoginSettled()) return;
+            __result = WaitForLogin(__result).WrapToIl2Cpp();
+        }
+    }
+
+    private static System.Collections.IEnumerator WaitForLogin(Il2CppSystem.Collections.IEnumerator original)
+    {
+        float start = Time.realtimeSinceStartup;
+        Plugin.Logger.LogInfo("account: token refresh held until login finishes");
+        while (!LoginSettled()) yield return null;
+        Plugin.Logger.LogInfo($"account: token refresh resumed after {Time.realtimeSinceStartup - start:F1}s");
+        while (original.MoveNext()) yield return original.Current;
+    }
+
+    private static bool LoginSettled()
+    {
+        if (_loginFailed) return true;
+        var eos = EOSManager.Instance;
+        return !eos || eos.loginFlowFinished;
+    }
+
+    // ログインに失敗したら、そこから先は本編の画面に任せる (ログインが終わらないままトークン更新を止め続けない)
+    [HarmonyPatch]
+    private static class SignInFailPatches
+    {
+        [HarmonyPatch(typeof(AccountManager), nameof(AccountManager.SignInFail))]
+        [HarmonyPatch(typeof(AccountManager), nameof(AccountManager.PlatformSignInFail))]
+        [HarmonyPrefix]
+        public static void Prefix() => _loginFailed = true;
     }
 
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.OpenAccountMenu))]
