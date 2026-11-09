@@ -31,6 +31,15 @@ internal static class AccountSleep
             am.gameObject.SetActive(false);
             // アカウント表示を止めると右の枠の覆いが出ないままになり枠が真っ黒になるので、ここで出しておく
             if (__instance.rightPanelMask) __instance.rightPanelMask.SetActive(true);
+            // 本編はログインの途中 (権限の確認が済むまで) 「オンライン」を押せなくしている。
+            // 部屋作りの通信は下の HoldTokenRefresh でログインまで待たせるので、メニューが出たらすぐ押せるようにする
+            var online = __instance.PlayOnlineButton;
+            if (online)
+            {
+                online.SetButtonEnableState(true);
+                var sprite = online.GetComponentInChildren<PlayOnlineButtonSprite>();
+                if (sprite) sprite.SetState(true);
+            }
             _menu = __instance;
             _asleep = true;
             _sleptBeforeLogin = true;
