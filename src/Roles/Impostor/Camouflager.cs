@@ -24,6 +24,7 @@ public sealed class Camouflager : RoleBase
     private const byte LookSelf = 0, LookRandom = 1, LookGray = 2;
     private static byte _active = 255; // 今カモフラージュしている人
     private static byte _mode;
+    private static object _resetMatch;
 
     public override void OnAssigned()
     {
@@ -66,21 +67,33 @@ public sealed class Camouflager : RoleBase
     // 全員の端末で: 生きている全員の見た目を揃える / 戻す
     private static void Apply(PlayerControl camo, byte[] plan)
     {
-        if (!camo || plan.Length < 2) return;
+        if (plan.Length < 2) return;
         bool on = plan[0] != 0;
+        // 戻す時は掛けた人が抜けていても戻す (掛けた人の番号は覚えている物を使う)
+        if (on && !camo) return;
         byte mode = plan[1];
         bool fresh = on && _active == 255;
         if (!on && _active == 255) return;
+        byte camoId = on ? camo.PlayerId : _active;
         _active = on ? camo.PlayerId : (byte)255;
         if (on) _mode = mode;
-        if (fresh) Before.Clear();
+        if (fresh)
+        {
+            Before.Clear();
+            // 掛けている間に試合が終わった時は、次の試合へ灰色の隠しと掛けた印を持ち越さない
+            if (!ReferenceEquals(_resetMatch, RoleState.Match))
+            {
+                _resetMatch = RoleState.Match;
+                RoleState.Match.OnRelease(() => { _active = 255; Before.Clear(); Menu.MrpCosmetics.HideAll = false; _resetMatch = null; });
+            }
+        }
         var map = new System.Collections.Generic.Dictionary<byte, byte>();
         for (int i = 2; i + 1 < plan.Length; i += 2) map[plan[i]] = plan[i + 1];
         foreach (var p in PlayerControl.AllPlayerControls)
         {
             // 掛ける時は生きている人だけ、戻す時は途中で死んだ人も戻す。自分の姿に揃える時は自分はそのまま
             if (!p || p.Data == null || (on && p.Data.IsDead)) continue;
-            if (_mode == LookSelf && p.PlayerId == camo.PlayerId) continue;
+            if (_mode == LookSelf && p.PlayerId == camoId) continue;
             try
             {
                 if (on)
@@ -93,7 +106,7 @@ public sealed class Camouflager : RoleBase
                     continue;
                 }
                 // 自分の姿に揃えた時: 最中に本編の変身が姿を替えた人はそのまま
-                if (_mode == LookSelf && p.shapeshiftTargetPlayerId != camo.PlayerId) continue;
+                if (_mode == LookSelf && p.shapeshiftTargetPlayerId != camoId) continue;
                 Restore(p);
             }
             catch (System.Exception e) { Plugin.Logger.LogWarning($"camouflage: {e.Message}"); }
