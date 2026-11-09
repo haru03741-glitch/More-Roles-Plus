@@ -30,7 +30,7 @@ public sealed class Tuna : RoleBase
     public override bool? CanVent => Vent;
 
     private float _left = -1f, _total = -1f, _grace = 10f, _gauge, _gaugeGrace;
-    private bool _counting, _hasAt, _still, _died, _won;
+    private bool _counting, _hasAt, _still, _died, _won, _wasDead;
     private Vector2 _at;
     private HudReadout _readout;
 
@@ -54,6 +54,15 @@ public sealed class Tuna : RoleBase
     {
         if (_left < 0f) _left = UsuallyStop;
         if (_total < 0f) _total = TotalStop;
+        // 時戻し・蘇生で生き返ったら、止まっていた時間を数え直し、もう一度死ねるようにする (勝ちのゲージはそのまま)
+        if (!PortKit.Alive(Player)) _wasDead = true;
+        else if (_wasDead)
+        {
+            _wasDead = _died = _counting = _hasAt = false;
+            _left = UsuallyStop;
+            _total = TotalStop;
+            _grace = MeetingStop;
+        }
         float dt = Time.fixedDeltaTime;
         bool paused = MeetingHud.Instance || ExileController.Instance;
         if (!_counting && !paused)

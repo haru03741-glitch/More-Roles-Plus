@@ -42,7 +42,7 @@ public sealed class TunaMod : AddonBase
         if (MeetingReset) _total = TotalStop;
     }
 
-    private bool _died;
+    private bool _died, _wasDead;
 
     private void Die()
     {
@@ -61,13 +61,23 @@ public sealed class TunaMod : AddonBase
         if (_left < 0f) _left = UsuallyStop;
         if (_total < 0f) _total = TotalStop;
         ShowReadout();
+        bool alive = PortKit.Alive(Player);
+        // 時戻し・蘇生で生き返ったら、止まっていた時間を数え直し、もう一度死ねるようにする
+        if (!alive) _wasDead = true;
+        else if (_wasDead)
+        {
+            _wasDead = _died = _counting = _hasAt = false;
+            _left = UsuallyStop;
+            _total = TotalStop;
+            _grace = MeetingStop;
+        }
         float dt = Time.fixedDeltaTime;
         if (!_counting && !MeetingHud.Instance && !ExileController.Instance)
         {
             _grace -= dt;
             if (_grace <= 0f) _counting = true;
         }
-        if (!_counting || !PortKit.Alive(Player) || !CanMove() || MeetingHud.Instance || ExileController.Instance) return;
+        if (!_counting || !alive || !CanMove() || MeetingHud.Instance || ExileController.Instance) return;
         Vector2 now = Player.GetTruePosition();
         if (!_hasAt) { _at = now; _hasAt = true; }
         bool still = (now - _at).magnitude < 0.001f;
