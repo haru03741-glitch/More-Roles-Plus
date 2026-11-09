@@ -186,7 +186,12 @@ public sealed class Witch : RoleBase
         Witch alive = null;
         foreach (var r in RoleState.All)
             if (r is Witch w && PortKit.Alive(w.Player)) { alive = w; break; }
-        if (alive != this) { if (alive == null) Spelled.Clear(); return; }
+        if (alive != this)
+        {
+            // 生きているウィッチがいない: 呪いは解ける (客の ☆ と選べない印も消す・2 人目のウィッチは先頭の Count == 0 で帰る)
+            if (alive == null) { Spelled.Clear(); ClearCall.Send(0); }
+            return;
+        }
         var ids = new List<byte>(Spelled);
         Spelled.Clear();
         foreach (var id in ids)
