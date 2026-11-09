@@ -2053,6 +2053,7 @@ EvilDecorator.Cooldown: Decorate cooldown
 EvilDecorator.Uses: Decorate uses
 EvilDecorator.Decorate: Decorate
 EvilDecorator.Decorate.Help: Decorates a nearby player and changes their role to a random different one. True crewmates get a crew role and impostors an impostor role (avoiding the one you gave them last time). Neutrals and madmates don't change, but a use is spent.
+Decorator.Decorated: You were decorated by a Decorator
 EvilDecorator.Decorate.Short: Change a nearby player's role
 Polaris.Name: Polaris
 Polaris.Blurb: The North Star sees everything

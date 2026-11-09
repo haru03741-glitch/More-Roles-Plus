@@ -2053,6 +2053,7 @@ EvilDecorator.Cooldown: 装飾の待ち時間
 EvilDecorator.Uses: 装飾の回数
 EvilDecorator.Decorate: 装飾
 EvilDecorator.Decorate.Help: 近くの人を飾り、その人の役職を無作為の別の役職に変えます。本当のクルーはクルーの役職に、インポスターはインポスターの役職になります (前にその人へ付けた役職は避けます)。第三陣営とマッドメイトの役職は変わらず、装飾の回数だけが減ります。
+Decorator.Decorated: デコレーターに飾られた
 EvilDecorator.Decorate.Short: 近くの人の役職を変える
 Polaris.Name: ポラリス
 Polaris.Blurb: 北極星は全てを見通す

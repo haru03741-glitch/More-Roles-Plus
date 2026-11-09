@@ -34,10 +34,19 @@ public abstract class DecoratorBase : RoleBase
                 else if (UchuKit.TrueCrew(t)) next = UchuKit.RandomRole(Team.Crew, _given.TryGetValue(t.PlayerId, out var b) ? b : now.Id, r => r.Id != now.Id);
                 if (next == null) return;
                 _given[t.PlayerId] = next.Id;
+                // 飾られた本人に、役職が変わった訳を知らせる (新しい役職は役職を配る時の知らせが続けて出す)
+                if (t.AmOwner) ShowDecorated();
+                else DecoratedCall.Send(t.PlayerId);
                 RoleState.Change(t, next);
             },
         });
     }
+
+    private static readonly Net.RemoteCall<byte> DecoratedCall = new("Decorator.Decorated", Net.Route.HostToAll,
+        (w, id) => w.Write(id), r => r.ReadByte(),
+        (_, id) => { var lp = PlayerControl.LocalPlayer; if (lp && lp.PlayerId == id) ShowDecorated(); });
+
+    private static void ShowDecorated() => PortKit.Notice(new Text("Decorator.Decorated").ToString());
 }
 
 public sealed class NiceDecorator : DecoratorBase
