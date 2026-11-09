@@ -89,10 +89,11 @@ public sealed class Obolus : RoleBase
             if (Reveal && RevealDeath && Prey(PlayerControl.LocalPlayer)) PortKit.Notice(new Text("Obolus.Dead").ToString());
             return;
         }
-        // ホスト: オボルスがインポスター (とジャッカル) を倒したら勝ち
+        // ホスト: オボルスがインポスター (とジャッカル) を倒したら勝ち。
+        // 遅らせると、最後のインポスターだった時に数の勝負 (インポスター 0 = クルーの勝ち) が先に決まってしまうので、その場で決める
         if (!AmongUsClient.Instance.AmHost || !e.Killer || e.Killer.PlayerId != PlayerId) return;
         if (PortKit.IsImpostor(e.Target) || (WinByJackal && RoleState.Of(e.Target) is Jackal or Sidekick))
-            PortKit.After(0.3f, () => GameEnd.Win(this));
+            GameEnd.Win(this);
     }
 
     private void OnPlayerExiled(PlayerExiledEvent e)
