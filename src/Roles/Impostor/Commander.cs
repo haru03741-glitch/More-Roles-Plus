@@ -62,16 +62,17 @@ public sealed class Commander : RoleBase
         Tick();
     }
 
-    private static bool _ticking;
+    // 回している試合 (試合が終わると UchuKit が見張りを捨てるので、別の試合なら回し直す)
+    private static object _tickMatch;
 
     private static void Tick()
     {
-        if (_ticking) return;
-        _ticking = true;
+        if (ReferenceEquals(_tickMatch, RoleState.Match)) return;
+        _tickMatch = RoleState.Match;
         UchuKit.Every(() =>
         {
             var lp = PlayerControl.LocalPlayer;
-            if (!lp || MeetingHud.Instance) { _commandUntil = _lostUntil = -1f; _ticking = false; return false; }
+            if (!lp || MeetingHud.Instance) { _commandUntil = _lostUntil = -1f; _tickMatch = null; return false; }
             float now = Time.time;
             if (_commandUntil > 0f)
             {
@@ -97,7 +98,7 @@ public sealed class Commander : RoleBase
                 return true;
             }
             _lostUntil = -1f;
-            _ticking = false;
+            _tickMatch = null;
             return false;
         });
     }
