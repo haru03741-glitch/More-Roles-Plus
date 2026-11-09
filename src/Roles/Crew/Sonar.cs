@@ -63,7 +63,7 @@ public sealed class Sonar : RoleBase
 
     private static readonly RemoteCall<(float x, float y, float ax, float ay)> AlarmCall = new("Sonar.Alarm", Route.Anyone,
         (w, m) => { w.Write(m.x); w.Write(m.y); w.Write(m.ax); w.Write(m.ay); }, r => (r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
-        (sender, m) => { if (RoleState.Of(sender) is Sonar) OnAlarm(new Vector2(m.x, m.y), new Vector2(m.ax, m.ay)); }, perSecond: 4);
+        (sender, m) => { if (RoleState.ActingOf(sender) is Sonar) OnAlarm(new Vector2(m.x, m.y), new Vector2(m.ax, m.ay)); }, perSecond: 4);
 
     // 全員の端末で: 本編のノイズメーカーのような矢印
     private static void OnAlarm(Vector2 to, Vector2 antenna)
@@ -72,6 +72,6 @@ public sealed class Sonar : RoleBase
         var lp = PlayerControl.LocalPlayer;
         if (lp && lp.Data != null && !lp.Data.IsDead)
             PortSound.PlayVanilla("notice", 0.6f);
-        if (ShareBroken && !(RoleState.Local is Sonar)) PortKit.Marker(RoleState.Match, antenna, "sonar_antenna_broken", 0.7f);
+        if (ShareBroken && !(RoleState.Acting(RoleState.Local) is Sonar)) PortKit.Marker(RoleState.Match, antenna, "sonar_antenna_broken", 0.7f);
     }
 }

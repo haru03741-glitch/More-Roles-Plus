@@ -39,7 +39,7 @@ public sealed class DJ : RoleBase
 
     private static readonly RemoteCall<(float x, float y)> ScratchCall = new("DJ.Scratch", Route.Anyone,
         (w, m) => { w.Write(m.x); w.Write(m.y); }, r => (r.ReadSingle(), r.ReadSingle()),
-        (sender, m) => { if (RoleState.Of(sender) is DJ) OnScratch(new Vector2(m.x, m.y)); }, perSecond: 2);
+        (sender, m) => { if (RoleState.ActingOf(sender) is DJ) OnScratch(new Vector2(m.x, m.y)); }, perSecond: 2);
 
     // 全員の端末で: 範囲の中にいれば音と光
     private static void OnScratch(Vector2 at)

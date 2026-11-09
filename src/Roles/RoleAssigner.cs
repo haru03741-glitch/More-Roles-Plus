@@ -21,6 +21,12 @@ public static class RoleState
     public static RoleBase Of(byte playerId) => ByPlayer[playerId];
     public static RoleBase Of(PlayerControl p) => p ? ByPlayer[p.PlayerId] : null;
 
+    // 役職として動いている物 (スペクトラムなら中に持っているクルーの役職)。
+    // 「その人がこの役職か」を能力の電文や判定で見る時はこちら (Of だとスペクトラムの中の役職が弾かれる)
+    public static RoleBase Acting(RoleBase r) => r is Impostor.Spectrum s && s.Inner != null ? s.Inner : r;
+    public static RoleBase ActingOf(byte playerId) => Acting(ByPlayer[playerId]);
+    public static RoleBase ActingOf(PlayerControl p) => p ? Acting(ByPlayer[p.PlayerId]) : null;
+
     // その人に付いているアドオン (付いた順・無ければ空)
     public static IReadOnlyList<AddonBase> AddonsOf(byte playerId) => AddonsByPlayer[playerId] ?? NoAddons;
 

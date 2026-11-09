@@ -77,7 +77,7 @@ public sealed class Waraningyou : RoleBase
 
     private static readonly RemoteCall<(byte id, byte n)> StoredCall = new("Waraningyou.Stored", Route.HostToAll,
         (w, m) => { w.Write(m.id); w.Write(m.n); }, r => (r.ReadByte(), r.ReadByte()),
-        (_, m) => { if (RoleState.Of(m.id) is Waraningyou w) w._stored = m.n; });
+        (_, m) => { if (RoleState.ActingOf(m.id) is Waraningyou w) w._stored = m.n; });
 
     public override string NameMark(PlayerControl seen) =>
         seen.PlayerId == PlayerId && MeetingHud.Instance ? $"<color={Color}>({Stored})</color>" : null;

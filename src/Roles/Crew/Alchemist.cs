@@ -53,7 +53,7 @@ public sealed class Alchemist : RoleBase
 
     private static readonly RemoteCall<byte> AlchemyCall = new("Alchemist.Alchemy", Route.Anyone,
         (w, id) => w.Write(id), r => r.ReadByte(),
-        (sender, id) => { if (RoleState.Of(sender) is Alchemist a) OnAlchemy(a, id); });
+        (sender, id) => { if (RoleState.ActingOf(sender) is Alchemist a) OnAlchemy(a, id); });
 
     // 全員の端末で: 死体を消して弾を足す
     private static void OnAlchemy(Alchemist a, byte bodyId)

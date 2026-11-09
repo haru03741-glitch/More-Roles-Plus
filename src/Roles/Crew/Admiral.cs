@@ -88,7 +88,7 @@ public sealed class Admiral : RoleBase
         (w, m) => { w.Write(m.admiral); w.Write(m.x); w.Write(m.y); }, r => (r.ReadByte(), r.ReadSingle(), r.ReadSingle()),
         (sender, m) =>
         {
-            if (!sender || RoleState.Of(m.admiral) is not Admiral a || !a.IsLocal || _calling != m.admiral) return;
+            if (!sender || RoleState.ActingOf(m.admiral) is not Admiral a || !a.IsLocal || _calling != m.admiral) return;
             a._answers[sender.PlayerId] = new Vector2(m.x, m.y);
         }, perSecond: 2);
 
@@ -121,7 +121,7 @@ public sealed class Admiral : RoleBase
         if (IsLocal) ClearPins();
     }
 
-    internal static bool SeesVotes(PlayerControl p) => RoleState.Of(p) is Admiral && VoteWatching;
+    internal static bool SeesVotes(PlayerControl p) => RoleState.ActingOf(p) is Admiral && VoteWatching;
 }
 
 [HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.FixedUpdate))]
@@ -129,7 +129,7 @@ internal static class AdmiralMapPatch
 {
     public static void Postfix(MapBehaviour __instance)
     {
-        if (RoleState.Local is not Admiral a) return;
+        if (RoleState.Acting(RoleState.Local) is not Admiral a) return;
         try { a.UpdateMap(__instance); }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"admiral map: {e.Message}"); }
     }

@@ -50,5 +50,5 @@ public sealed class Prosecutor : RoleBase
         if (UchuKit.TrueCrew(e.Player)) PortKit.After(0.2f, () => { if (PortKit.Alive(me)) PortKit.HostSuicide(me); });
     }
 
-    internal static bool BlocksEmergency(PlayerControl p) => RoleState.Of(p) is Prosecutor && !CanCallEmergency;
+    internal static bool BlocksEmergency(PlayerControl p) => RoleState.ActingOf(p) is Prosecutor && !CanCallEmergency;
 }

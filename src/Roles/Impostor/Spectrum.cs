@@ -21,6 +21,7 @@ public sealed class Spectrum : RoleBase
     public static readonly FloatOpt KillCooldown = new("Spectrum.KillCooldown", 25f, 2.5f, 60f, 2.5f, "s");
 
     private RoleBase _inner;
+    internal RoleBase Inner => _inner;
 
     public override void OnAssigned()
     {

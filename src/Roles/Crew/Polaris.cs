@@ -125,7 +125,7 @@ public sealed class Polaris : RoleBase
 
     private static readonly RemoteCall<(byte pid, uint task)> UndoCall = new("Polaris.UndoTask", Route.Anyone,
         (w, m) => { w.Write(m.pid); w.Write(m.task); }, r => (r.ReadByte(), r.ReadUInt32()),
-        (sender, m) => { if (sender && sender.PlayerId == m.pid && RoleState.Of(sender) is Polaris) Undo(m.pid, m.task); }, perSecond: 10);
+        (sender, m) => { if (sender && sender.PlayerId == m.pid && RoleState.ActingOf(sender) is Polaris) Undo(m.pid, m.task); }, perSecond: 10);
 
     private static void Undo(byte pid, uint task)
     {

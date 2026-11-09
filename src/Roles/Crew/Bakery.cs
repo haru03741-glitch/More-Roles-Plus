@@ -58,7 +58,7 @@ public sealed class Bakery : RoleBase
         if (!PortKit.Alive(Player) || !e.Controller) return;
         // 同じ画面に何人ものパン屋がいても一言は 1 つ
         foreach (var r in RoleState.All)
-            if (r is Bakery b && PortKit.Alive(b.Player)) { if (b != this) return; break; }
+            if (RoleState.Acting(r) is Bakery b && PortKit.Alive(b.Player)) { if (b != this) return; break; }
         float roll = UnityEngine.Random.value * 100f;
         string key = roll < 0.6f ? "Bakery.Exile.Festival" : roll < 10.6f ? "Bakery.Exile.Burnt" : "Bakery.Exile.Smell";
         try { e.Controller.completeString += "\n" + new Text(key).ToString(); }
