@@ -197,7 +197,13 @@ public sealed class Witch : RoleBase
         foreach (var id in ids)
         {
             var p = PortKit.ById(id);
-            if (PortKit.Alive(p)) PortKit.HostVanish(Player, p);
+            if (!PortKit.Alive(p)) continue;
+            // 守り (守護者の身代わりなど) は試合中のキルと同じく通す。ウィッチ自身の「普通のキル無し」で断らないよう能力の印を付けて聞く
+            string no;
+            UchuKit.AbilityKill = PlayerId;
+            try { no = p.PlayerId != PlayerId ? BeforeMurderEvent.Ask(Player, p) : null; }
+            finally { UchuKit.AbilityKill = -1; }
+            if (no == null) PortKit.HostVanish(Player, p);
         }
         ClearCall.Send(0);
     }
