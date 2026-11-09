@@ -94,7 +94,9 @@ internal static class LatePatch
     public static void Tick()
     {
         if (_pending.Count == 0 || !BootClock.MenuShown) return;
-        bool now = (AmongUsClient.Instance && AmongUsClient.Instance.GameState != InnerNet.InnerNetClient.GameStates.NotJoined)
+        // 部屋に入った時 (OnGameJoined) は GameState が変わるのと同じ呼び出しの中なので、繋ぎ始めた所 (connection ができた所) で当て切る
+        var client = AmongUsClient.Instance;
+        bool now = (client && (client.connection != null || client.GameState != InnerNet.InnerNetClient.GameStates.NotJoined))
                    || LobbyBehaviour.Instance || ShipStatus.Instance || PlayerControl.LocalPlayer;
         var sw = Stopwatch.StartNew();
         while (_pending.Count > 0 && (now || sw.ElapsedMilliseconds < 6))
