@@ -205,10 +205,10 @@ public static class UchuKit
     // 本編のキルボタンでのキルか (役職の能力で倒す時は PortKit.HostKill の前に印を付ける)
     internal static int AbilityKill = -1;
 
-    public static bool HostAbilityKill(PlayerControl killer, PlayerControl target)
+    public static bool HostAbilityKill(PlayerControl killer, PlayerControl target, PortKit.Harm harm)
     {
         AbilityKill = killer ? killer.PlayerId : -1;
-        try { return PortKit.HostKill(killer, target); }
+        try { return PortKit.HostKill(killer, target, harm); }
         finally { AbilityKill = -1; }
     }
 

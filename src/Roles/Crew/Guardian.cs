@@ -99,7 +99,7 @@ public sealed class Guardian : RoleBase, IGuessShield
         // 会議中は本編のキルの演出を出せないので、死体を残さず倒して名札に反映する
         PortKit.After(0.05f, () =>
         {
-            if (PortKit.Alive(me)) { if (meeting) PortKit.HostVanish(me, me); else PortKit.HostSuicide(me); }
+            if (PortKit.Alive(me)) { if (meeting) PortKit.HostVanish(me, me, PortKit.Harm.Fated); else PortKit.HostSuicide(me); }
             _sacrificing = false;
         });
     }

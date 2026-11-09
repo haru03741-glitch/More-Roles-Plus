@@ -32,7 +32,7 @@ public sealed class NekoKabocha : RoleBase
         {
             if (!PortKit.Alive(killer)) return;
             Tell(killer, Killed);
-            PortKit.HostKill(me, killer);
+            PortKit.HostKill(me, killer, PortKit.Harm.Curse);
         });
     }
 
@@ -60,7 +60,7 @@ public sealed class NekoKabocha : RoleBase
         {
             if (!PortKit.Alive(victim)) return;
             Tell(victim, Voted);
-            PortKit.HostVanish(me, victim);
+            PortKit.HostVanish(me, victim, PortKit.Harm.Curse);
         });
     }
 

@@ -66,7 +66,7 @@ public sealed class Voyager : RoleBase
             Cooldown = () => GameManager.Instance.LogicOptions.GetKillCooldown(),
             CooldownAtStart = false,
             CanTarget = (_, t) => _diving && PortKit.IsImpostor(t),
-            OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t); },
+            OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t, PortKit.Harm.Slash); },
         });
     }
 

@@ -94,7 +94,7 @@ internal static class GuessKit
             var user = PortKit.ById(d.user);
             var dead = PortKit.ById(d.dead);
             if (!PortKit.Alive(dead)) continue;
-            PortKit.HostVanish(user ? user : dead, dead);
+            PortKit.HostVanish(user ? user : dead, dead, PortKit.Harm.Fated);
             ResultCall.Send((d.user, d.dead));
             Announce(d.user, d.dead);
         }

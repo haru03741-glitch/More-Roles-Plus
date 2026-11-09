@@ -45,7 +45,7 @@ public sealed class Lovers : AddonBase, PortKit.ILovers
         PortKit.After(0.05f, () =>
         {
             if (!PortKit.Alive(Player)) return;
-            if (exiled || MeetingHud.Instance || ExileController.Instance) PortKit.HostVanish(Player, Player);
+            if (exiled || MeetingHud.Instance || ExileController.Instance) PortKit.HostVanish(Player, Player, PortKit.Harm.Fated);
             else PortKit.HostSuicide(Player);
         });
     }

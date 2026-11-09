@@ -70,7 +70,7 @@ public abstract class RaccoonBase : RoleBase
         _grabbed = 255;
         _room = null;
         if (IsLocal) RestartCooldown();
-        if (host) UchuKit.HostAbilityKill(user, t);
+        if (host) UchuKit.HostAbilityKill(user, t, PortKit.Harm.Blunt);
     }
 
     // 自分の端末: 掴んだ後はすぐ倒せる (1 秒)・放した後はキルの待ち時間から (ボタンの長さは作った時の値なので替える)
@@ -155,7 +155,7 @@ public abstract class RaccoonBase : RoleBase
     {
         if (!KillOnMeeting || _grabbed == 255) return;
         var t = PortKit.ById(_grabbed);
-        if (PortKit.Alive(t) && PortKit.Alive(Player)) UchuKit.HostAbilityKill(Player, t);
+        if (PortKit.Alive(t) && PortKit.Alive(Player)) UchuKit.HostAbilityKill(Player, t, PortKit.Harm.Blunt);
     }
 
     private void OnMeetingStart(MeetingStartEvent e) => Release();

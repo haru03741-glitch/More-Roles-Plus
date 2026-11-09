@@ -312,7 +312,7 @@ public sealed class Spectre : RoleBase
             PortKit.After(0.05f, () =>
             {
                 if (!PortKit.Alive(p)) return;
-                if (exiled || MeetingHud.Instance || ExileController.Instance) PortKit.HostVanish(p, p);
+                if (exiled || MeetingHud.Instance || ExileController.Instance) PortKit.HostVanish(p, p, PortKit.Harm.Fated);
                 else PortKit.HostSuicide(p);
             });
         }

@@ -51,7 +51,7 @@ public sealed class Obolus : RoleBase
             Cooldown = () => KillCooldown,
             UsesPerMeeting = 1,
             Usable = () => !Sealed, // 封印の間はボタンが暗く押せない
-            OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t); },
+            OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t, PortKit.Harm.Slash); },
         });
     }
 

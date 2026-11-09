@@ -315,7 +315,7 @@ public sealed class RemoteController : RoleBase
         var puppet = rc.Target;
         var victim = PortKit.ById(victimId);
         if (!PortKit.Alive(puppet) || !PortKit.Alive(victim)) return;
-        PortKit.HostKill(puppet, victim);
+        PortKit.HostKill(puppet, victim, PortKit.Harm.Slash);
     }
 
     internal static bool Operating(PlayerControl p) => RoleState.Of(p) is RemoteController { _operating: true };

@@ -45,7 +45,7 @@ public sealed class Polaris : RoleBase
             OnUsed = (user, t) =>
             {
                 if (SealUntilReport) _sealed = true;
-                if (AmongUsClient.Instance.AmHost) PortKit.HostKill(user, t);
+                if (AmongUsClient.Instance.AmHost) PortKit.HostKill(user, t, PortKit.Harm.Slash);
             },
         });
         AddAbility(new Ability(new Text("Polaris.Vision"), "polaris_vision")

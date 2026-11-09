@@ -14,7 +14,7 @@ public sealed partial class TriggerHappy
     private const int GrazeMax = 16;          // 1 通に載せる 1 種類の数の上限 (1 tick に 1 人 1 発 × 0.2 秒 = 6 発に、遅れて固まる分の余裕)
     private const int ShowMax = 6;            // 1 通で見せる火花・跳ね返る弾の上限
 
-    private static bool Tough(PlayerControl p) => RoleState.Of(p) is Neutral.Samurai;
+    private static bool Tough(PlayerControl p) => Duel.Tough(p);
 
     // この端末が当たりを決めるサムライ (自分か、ホストなら練習の相手)
     private readonly List<(Neutral.Samurai s, float x, float y)> _judged = new();

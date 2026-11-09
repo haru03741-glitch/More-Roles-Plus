@@ -203,7 +203,7 @@ public sealed class Witch : RoleBase
             UchuKit.AbilityKill = PlayerId;
             try { no = p.PlayerId != PlayerId ? BeforeMurderEvent.Ask(Player, p) : null; }
             finally { UchuKit.AbilityKill = -1; }
-            if (no == null) PortKit.HostVanish(Player, p);
+            if (no == null) PortKit.HostVanish(Player, p, PortKit.Harm.Curse);
         }
         ClearCall.Send(0);
     }

@@ -11,6 +11,11 @@ namespace MoreRolesPlus.Roles;
 internal static class Duel
 {
     internal const int MaxHp = 100;
+
+    // 物理の一撃 (PortKit.Harm) を即死せず体力で受ける役職の印 (サムライ)。武器の側は役職の名前でなく Tough で見る
+    internal interface ITough { }
+
+    internal static bool Tough(PlayerControl p) => p && RoleState.Of(p) is ITough;
     internal const int MaxMembers = 4;
     internal const int MaxGroups = 16;
     private const float LeaveDistance = 7f;   // 組の誰からもこれより離れて
@@ -229,8 +234,9 @@ internal static class Duel
     }
 
     // ホスト: 飛び道具の一撃で吹き飛ばして体力を減らす。倒す一撃だけキルとして確かめ (盾などに止められたら体力 1 で残す)、
-    // 0 になったら倒して組から抜く。立ち合いの相手のキルはサムライ側が舌の一撃に替えるので、確かめる間だけ素通りさせる
-    internal static void HostSmash(PlayerControl attacker, PlayerControl v, int dmg, float snapMark = 0f)
+    // 0 になったら倒して組から抜く。立ち合いの相手のキルはサムライ側が舌の一撃に替えるので、確かめる間だけ素通りさせる。
+    // vanish = 倒れる一撃で死体を残さない (突き落とすなど)
+    internal static void HostSmash(PlayerControl attacker, PlayerControl v, int dmg, float snapMark = 0f, bool vanish = false)
     {
         if (!attacker || !v) return;
         byte id = v.PlayerId;
@@ -244,7 +250,8 @@ internal static class Duel
         }
         if (!HostDamage(attacker.PlayerId, id, dmg, start: dmg < left, smash: true)) return;
         if (snapMark > 0f) RangedKillSnapPatch.Mark(attacker.PlayerId, snapMark);
-        attacker.RpcMurderPlayer(v, true);
+        if (vanish) PortKit.HostVanish(attacker, v, PortKit.Harm.Fated);
+        else attacker.RpcMurderPlayer(v, true);
         HostLeave(id);
     }
 

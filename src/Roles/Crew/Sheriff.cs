@@ -43,7 +43,7 @@ public sealed class Sheriff : RoleBase
         if (!AmongUsClient.Instance.AmHost) return;
         bool ok = Judge(target);
         int mode = SuicideMode.Value;
-        if (ok || mode == 2) PortKit.HostKill(user, target);
+        if (ok || mode == 2) PortKit.HostKill(user, target, PortKit.Harm.Bullet);
         if (mode == 1 || (mode == 0 && !ok)) PortKit.HostSuicide(user);
     }
 

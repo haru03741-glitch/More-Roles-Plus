@@ -166,7 +166,7 @@ public sealed class Pusher : RoleBase
             BodyCall.Send((target.PlayerId, bottom.Value));
             MoveBody(target.PlayerId, bottom.Value);
         }
-        else PortKit.HostVanish(user, target);
+        else PortKit.HostVanish(user, target, PortKit.Harm.Fated);
     }
 
     private static readonly Net.RemoteCall<(byte id, Vector2 at)> BodyCall = new("Pusher.Body", Net.Route.HostToAll,

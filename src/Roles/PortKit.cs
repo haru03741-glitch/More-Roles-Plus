@@ -22,25 +22,58 @@ public static class PortKit
 
     private static bool AmHost => AmongUsClient.Instance && AmongUsClient.Instance.AmHost;
 
+    // 倒し方の種類。Slash〜Heat は体で受ける物理の一撃で、頑丈な役職 (Duel.ITough = サムライ) は即死せず体力で受ける。
+    // それ以外は誰でも倒れる。倒す口 (HostKill / HostVanish / HostAbilityKill) は必ずこれを渡す
+    public enum Harm : byte
+    {
+        Slash = 0,   // 斬 (刃物・普通のキル)
+        Blunt = 1,   // 打 (掴む・叩く・突き落とす)
+        Bullet = 2,  // 弾 (銃)
+        Blast = 3,   // 爆 (爆発)
+        Heat = 4,    // 熱 (火・光線)
+        Curse = 16,  // 呪い (今は誰でも倒れる・サムライが斬る形は未定)
+        Fated = 17,  // 体で受けられない死 (推測・追放・自決・時間切れ・後追い)
+    }
+
+    public static bool Physical(Harm h) => h <= Harm.Heat;
+
+    // 頑丈な役職が体で受けた物理の一撃 1 回で減る体力 (体力 100 の半分。2 回で倒れる)
+    internal const int ToughDamage = 50;
+
+    // 頑丈な役職が体で受ける一撃か
+    private static bool TakesHit(PlayerControl killer, PlayerControl target, Harm harm) =>
+        Physical(harm) && killer && killer.PlayerId != target.PlayerId && Duel.Tough(target);
+
     // ホストの端末でだけ: killer が target を倒す (全員の画面で本編のキル)。
     // 能力の OnUsed は全員の端末で呼ばれるので、そこからそのまま呼んでよい。
-    // 自決でなければキルを防ぐ役職 (BeforeMurderEvent) に先に聞く。倒せたら true
-    public static bool HostKill(PlayerControl killer, PlayerControl target)
+    // 自決でなければキルを防ぐ役職 (BeforeMurderEvent) に先に聞く。倒せたら true。
+    // 頑丈な役職への物理の一撃は体力を減らして吹き飛ばすだけ (0 になった一撃で倒れる)
+    public static bool HostKill(PlayerControl killer, PlayerControl target, Harm harm)
     {
         if (!AmHost || !killer || !target || target.Data == null || target.Data.IsDead) return false;
+        if (TakesHit(killer, target, harm))
+        {
+            Duel.HostSmash(killer, target, ToughDamage);
+            return target.Data.IsDead;
+        }
         if (killer.PlayerId != target.PlayerId && BeforeMurderEvent.Ask(killer, target) != null) return false;
         killer.RpcMurderPlayer(target, true);
         return true;
     }
 
     // ホストの端末でだけ: その人が自分で死ぬ
-    public static void HostSuicide(PlayerControl p) => HostKill(p, p);
+    public static void HostSuicide(PlayerControl p) => HostKill(p, p, Harm.Fated);
 
     // ホストの端末でだけ: killer が target を死体を残さずに倒す (吹き飛ばす・打ち上げるなど)。killer == target なら自決。
     // 全員の端末で本編の追放の死に方を借り、倒された出来事 (PlayerMurderedEvent) を起こす
-    public static void HostVanish(PlayerControl killer, PlayerControl target)
+    public static void HostVanish(PlayerControl killer, PlayerControl target, Harm harm)
     {
         if (!AmHost || !killer || !target || target.Data == null || target.Data.IsDead) return;
+        if (TakesHit(killer, target, harm))
+        {
+            Duel.HostSmash(killer, target, ToughDamage, vanish: true);
+            return;
+        }
         VanishCall.Send((killer.PlayerId, target.PlayerId));
         OnVanish(killer.PlayerId, target.PlayerId);
     }
@@ -110,7 +143,7 @@ public static class PortKit
         (w, kind) => w.Write(kind), r => r.ReadByte(),
         (sender, kind) =>
         {
-            if (kind == 1) HostVanish(sender, sender);
+            if (kind == 1) HostVanish(sender, sender, Harm.Fated);
             else HostSuicide(sender);
         });
 

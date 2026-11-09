@@ -172,7 +172,7 @@ public sealed class Kunoichi : RoleBase
         OnHits(PlayerId, id, (byte)n, kill);
         if (kill)
         {
-            UchuKit.HostAbilityKill(Player, t);
+            UchuKit.HostAbilityKill(Player, t, PortKit.Harm.Slash);
         }
     }
 

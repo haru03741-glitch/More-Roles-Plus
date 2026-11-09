@@ -77,7 +77,7 @@ public sealed class Warlock : RoleBase
         var victim = PortKit.ById(victimId);
         if (!PortKit.Alive(w.Player) || !PortKit.Alive(cursed) || !PortKit.Alive(victim)) return;
         if (Vector2.Distance(cursed.GetTruePosition(), victim.GetTruePosition()) > GameManager.Instance.LogicOptions.GetKillDistance() + 1f) return;
-        UchuKit.HostAbilityKill(cursed, victim);
+        UchuKit.HostAbilityKill(cursed, victim, PortKit.Harm.Curse);
         DoneCall.Send(w.PlayerId);
         OnDone(w.PlayerId);
     }

@@ -84,7 +84,7 @@ public sealed class Alchemist : RoleBase
             if (!PortKit.Alive(target)) return;
             // 試合中のキルと同じく守り (会議中に効くのは守護者だけ) に聞く。止められたら弾は使ったまま、知らせは守る側が出す
             if (user && user.PlayerId != target.PlayerId && BeforeMurderEvent.Ask(user, target) != null) return;
-            PortKit.HostVanish(user ? user : target, target);
+            PortKit.HostVanish(user ? user : target, target, PortKit.Harm.Fated);
             ShotCall.Send(target.PlayerId);
             Announce(target.PlayerId);
         });

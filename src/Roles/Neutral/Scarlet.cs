@@ -377,7 +377,7 @@ public sealed class Scarlet : RoleBase, IGuessBlock
         PortKit.After(0.05f, () =>
         {
             if (!PortKit.Alive(follower)) return;
-            if (exiled || MeetingHud.Instance || ExileController.Instance) PortKit.HostVanish(follower, follower);
+            if (exiled || MeetingHud.Instance || ExileController.Instance) PortKit.HostVanish(follower, follower, PortKit.Harm.Fated);
             else PortKit.HostSuicide(follower);
         });
     }

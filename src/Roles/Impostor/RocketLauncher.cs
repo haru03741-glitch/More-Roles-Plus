@@ -64,7 +64,7 @@ public sealed class RocketLauncher : RoleBase
     private byte _escaped = 255;   // 振り払った人 (少しの間、その人への発射の知らせが遅れて届いても飛ばさない)
     private float _escapedAt;
 
-    private static bool Tough(PlayerControl p) => RoleState.Of(p) is Neutral.Samurai;
+    private static bool Tough(PlayerControl p) => Duel.Tough(p);
 
     // 自分の端末のロケットランチャー (PC の左クリックの発射を毎フレーム見る)
     private static RocketLauncher _mine;
@@ -407,7 +407,7 @@ public sealed class RocketLauncher : RoleBase
                     Duel.HostSmash(user, v, ToughBlastDamage);
                     continue;
                 }
-                PortKit.HostKill(user, v);
+                PortKit.HostKill(user, v, PortKit.Harm.Blast);
             }
             // ドッペルゲンガーの分身も人と同じく巻き込まれる (本物が分身の所で倒れる)
             if (flew && PortKit.Alive(user)) Crew.Doppelganger.HostStrikeArea(user, at, BlastRadius);

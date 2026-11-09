@@ -30,7 +30,7 @@ public sealed class Spectrum : RoleBase
             Target = AbilityTarget.Player,
             Cooldown = () => KillCooldown,
             CanTarget = (_, t) => !PortKit.IsImpostor(t),
-            OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t); },
+            OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t, PortKit.Harm.Slash); },
         });
         if (!AmongUsClient.Instance.AmHost) return;
         var pool = Registry.Roles.Where(r => r.CanBeMadmate && r.BaseTeam == Team.Crew && !r.MadeByOthers).ToList();

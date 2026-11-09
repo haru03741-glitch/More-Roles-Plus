@@ -219,7 +219,9 @@ internal static class KillAbility
         }
         LastKillMs[killer.PlayerId] = Environment.TickCount64;
         _killed[killer.PlayerId] = true;
-        killer.RpcMurderPlayer(target, true);
+        // 頑丈な役職 (サムライ) は一撃で倒れず体力で受ける (本編のインポスターのキルボタンは即死のまま)
+        if (Duel.Tough(target)) Duel.HostSmash(killer, target, PortKit.ToughDamage);
+        else killer.RpcMurderPlayer(target, true);
         return null;
     }
 
