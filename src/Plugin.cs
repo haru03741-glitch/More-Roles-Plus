@@ -42,8 +42,8 @@ public class Plugin : BasePlugin
         EnableTestBridge = Config.Bind("Debug", "EnableTestBridge", false, "外部ツールからの遠隔テスト口を有効にする");
         ForceDisableIncrementalGc = Config.Bind("Performance", "ForceDisableIncrementalGc", false, "incremental GC を常に切る (既定は書き込みバリア付きの Il2CppInterop.Runtime が載っている 64bit の時だけ残す・Windows のみ)");
         ReuseDelegateTypes = Config.Bind("Performance", "ReuseDelegateTypes", true, "パッチを当てる時の型を形ごとに使い回して起動を速くする (パッチが当たらない時は切る)");
-        // 止めるとログイン前のメニューが作りかけ (上の欄が無い・絵が出ない) のまま見えるので、既定は本編のまま (前の true を引き継がないよう名前を変えた)
-        SleepAccountManager = Config.Bind("Performance", "SleepAccountMenu", false, "メニューのアカウント表示を止めておき、ログイン待ちの間もメニューを使えるようにする (ログインが終わるまでメニューが作りかけに見える)");
+        // 右の枠が真っ黒になるのは AccountSleep で直したので、既定で止める。保存済みの false を引き継がないよう名前を変えた
+        SleepAccountManager = Config.Bind("Performance", "SleepAccountOnStartup", true, "メニューのアカウント表示を止めておき、ログイン待ちの間もメニューを使えるようにする (ログインが終わるまで左上のアカウント欄が出ない)");
         PreemptiveGc = Config.Bind("Performance", "PreemptiveGc", true, "試合開始と終了の演出中に GC を先に回して、遊んでいる最中の引っかかりを減らす");
         Boot.BootClock.Mark("cfg0"); Net.MrpRegion.Bind(Config);
         Menu.ClientOptions.Bind(Config);
