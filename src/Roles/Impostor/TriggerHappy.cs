@@ -616,7 +616,7 @@ public sealed partial class TriggerHappy : RoleBase
     private static void HostKill(PlayerControl killer, PlayerControl target)
     {
         if (!PortKit.Alive(killer) || !PortKit.Alive(target)) return;
-        killer.RpcMurderPlayer(target, true);
+        PortKit.HostKillAsked(killer, target, PortKit.Harm.Bullet);
     }
 
     [LocalOnly]

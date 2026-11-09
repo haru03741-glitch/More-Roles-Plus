@@ -127,11 +127,14 @@ public sealed class Pusher : RoleBase
         int spot = SpotOf(target);
         int ladder = spot < 0 ? LadderIndex(target) : -1;
         if (spot < 0 && ladder < 0) return;
-        // 守り (守護者・ベスト・盾など) で止まった時は落とさない。はしごの上なら下へ降ろすだけ
-        bool blocked = PortKit.Alive(target) && BeforeMurderEvent.Ask(user, target) != null;
+        // 守り (守護者・ベスト・盾など) で止まった時は落とさない。はしごの上なら下へ降ろすだけ。
+        // 頑丈な役職 (サムライ) は踏みとどまって体で受ける (落ちずに体力が減り、立ち合いになる)
+        bool tough = Duel.Tough(target);
+        bool blocked = PortKit.Alive(target) && (tough || BeforeMurderEvent.Ask(user, target) != null);
         var m = (user.PlayerId, target.PlayerId, (sbyte)spot, (sbyte)ladder, blocked);
         ResultCall.Send(m);
         OnResult(m);
+        if (tough && PortKit.Alive(target)) PortKit.HostKill(user, target, PortKit.Harm.Blunt);
     }
 
     private static readonly Net.RemoteCall<(byte user, byte target, sbyte spot, sbyte ladder, bool blocked)> ResultCall = new("Pusher.Result", Net.Route.HostToAll,
@@ -162,11 +165,11 @@ public sealed class Pusher : RoleBase
         if (!AmongUsClient.Instance.AmHost || !PortKit.Alive(user) || !PortKit.Alive(target)) return;
         if (ladder)
         {
-            user.RpcMurderPlayer(target, true); // 守りは Push で確かめ済み
+            PortKit.HostKillAsked(user, target, PortKit.Harm.Blunt); // 守りは Push で確かめ済み
             BodyCall.Send((target.PlayerId, bottom.Value));
             MoveBody(target.PlayerId, bottom.Value);
         }
-        else PortKit.HostVanish(user, target, PortKit.Harm.Fated);
+        else PortKit.HostVanish(user, target, PortKit.Harm.Blunt);
     }
 
     private static readonly Net.RemoteCall<(byte id, Vector2 at)> BodyCall = new("Pusher.Body", Net.Route.HostToAll,

@@ -139,7 +139,7 @@ public sealed partial class Eclipse : RoleBase
             if (p.PlayerId == invoker.PlayerId) { self = true; continue; }
             if (RoleState.Of(p) is Neutral.Samurai) { HostHitSamurai(invoker, p); continue; }
             if (BeforeMurderEvent.Ask(invoker, p) != null) continue;
-            invoker.RpcMurderPlayer(p, true);
+            PortKit.HostKillAsked(invoker, p, PortKit.Harm.Blast);
         }
         Crew.Doppelganger.HostStrikeArea(invoker, at, size); // 分身も円の中なら倒れる (本物が分身の所で)
         // 地形: 範囲の壁が壊れて床が焦げ、着弾点に小さな火が残る (地形の爆発は半径 3 まで)

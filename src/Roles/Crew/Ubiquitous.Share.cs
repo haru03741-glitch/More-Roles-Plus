@@ -95,7 +95,7 @@ public sealed partial class Ubiquitous
             Y = at.y,
             Radius = HitRadius,
             Until = Time.time + GuardLife,
-            BulletsOnly = true,
+            Ignore = Bodies.AllBut(StrikeElement.Bullet),
             OnStrike = OnSeenStrike,
         });
     }

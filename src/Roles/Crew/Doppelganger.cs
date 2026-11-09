@@ -263,13 +263,13 @@ public sealed class Doppelganger : RoleBase
         // 本物が分身の所へ飛ぶのを待ってから倒す (体はそこに残る)
         PortKit.After(0.45f, () =>
         {
-            if (PortKit.Alive(owner) && PortKit.Alive(killer)) killer.RpcMurderPlayer(owner, true);
+            if (PortKit.Alive(owner) && PortKit.Alive(killer)) PortKit.HostKillAsked(killer, owner, PortKit.Harm.Slash);
         });
     }
 
     // ホスト: 飛び道具 (弾・ロケット・光線・隕石) が分身を倒した。届く距離と待ち時間はそれぞれの武器が確かめている。
     // 本物は分身の所へ引き寄せられて倒れる (近くでキルした時と同じ)
-    internal static void HostStrikeRanged(PlayerControl killer, byte ownerId)
+    internal static void HostStrikeRanged(PlayerControl killer, byte ownerId, PortKit.Harm harm)
     {
         var owner = PortKit.ById(ownerId);
         if (DoppelPuppet.Of(ownerId) == null || !PortKit.Alive(owner) || !PortKit.Alive(killer) || killer.PlayerId == ownerId) return;
@@ -279,8 +279,38 @@ public sealed class Doppelganger : RoleBase
         Struck(ownerId);
         PortKit.After(0.45f, () =>
         {
-            if (PortKit.Alive(owner) && PortKit.Alive(killer)) killer.RpcMurderPlayer(owner, true);
+            if (PortKit.Alive(owner) && PortKit.Alive(killer)) PortKit.HostKillAsked(killer, owner, harm);
         });
+    }
+
+    // 刀が分身を斬った (振った人の端末から)。ホストは振った人が分身のそばにいるかを確かめる
+    internal static void SlashPuppet(byte by, byte ownerId)
+    {
+        if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) HostSlash(PortKit.ById(by), ownerId);
+        else SlashCall.Send(ownerId);
+    }
+
+    private static readonly RemoteCall<byte> SlashCall = new("Doppel.Slash", Route.ToHost,
+        (w, id) => w.Write(id), r => r.ReadByte(), (sender, id) => HostSlash(sender, id), perSecond: 4);
+
+    private const float SlashReach = 3f; // 刀の届く長さ + 踏み込みの余裕
+
+    private static void HostSlash(PlayerControl by, byte ownerId)
+    {
+        var m = DoppelPuppet.Of(ownerId);
+        if (m == null) return;
+        if (Bodies.FromTest(by))
+        {
+            // 確かめの一撃: 本人以外の生きている人が倒した扱い
+            foreach (var p in PlayerControl.AllPlayerControls) if (PortKit.Alive(p) && p.PlayerId != ownerId) { by = p; break; }
+            if (!by) return;
+        }
+        else
+        {
+            if (!by || by.PlayerId == ownerId || !PortKit.Alive(by) || by.inVent || RoleState.Of(by) is not Neutral.Samurai) return;
+            if (Vector2.Distance(by.GetTruePosition(), m.True) > SlashReach) return;
+        }
+        HostStrikeRanged(by, ownerId, PortKit.Harm.Slash);
     }
 
     // ホスト: 円の中の分身を全部倒す (爆発・隕石)
@@ -294,7 +324,7 @@ public sealed class Doppelganger : RoleBase
             float dx = t.x - at.x, dy = t.y - at.y;
             if (dx * dx + dy * dy <= radius * radius) _area.Add(m.Owner);
         }
-        foreach (var id in _area) HostStrikeRanged(killer, id);
+        foreach (var id in _area) HostStrikeRanged(killer, id, PortKit.Harm.Blast);
     }
     private static readonly List<byte> _area = new();
 
@@ -384,6 +414,7 @@ internal sealed class DoppelPuppet
         _go.transform.position = new Vector3(root.x, root.y, (root.y + _offset.y) / 1000f);
         Dress(owner, flip);
         FxRoot.TrackWorld(_go);
+        AddBody();
     }
 
     // ---- 時戻し: 分身は全員の端末が同じ電文で動かすので、各端末が自分の手元の出し入れと歩きを取り消しとして積む ----
@@ -533,7 +564,34 @@ internal sealed class DoppelPuppet
 
     private void Destroy()
     {
+        Bodies.Remove(_body);
+        _body = null;
         if (_go) UnityEngine.Object.Destroy(_go);
+    }
+
+    // 分身は人と同じく刀で斬れる。弾・爆発・光線はそれぞれの武器が分身を人として当てるので、ここでは刀だけを見る
+    // (ハンマーと火は人も倒さないので分身も倒さない)
+    private static readonly BodyKind Kind = new("DoppelPuppet", BodyMaterial.Flesh, BodySize.Medium, 1f, shared: false);
+    private Body _body;
+
+    private void AddBody()
+    {
+        byte owner = Owner;
+        _body = Bodies.Add(new Body
+        {
+            Kind = Kind,
+            Tf = _go.transform,
+            OffY = _offset.y + 0.35f,
+            Radius = 0.35f,
+            Ignore = Bodies.AllBut(StrikeElement.Slash),
+            Judges = () => true,
+            OnStrike = (b, r, s) =>
+            {
+                if (r != StrikeResult.Cut) return false;
+                if (Bodies.Reports(s)) Doppelganger.SlashPuppet(s.By, owner);
+                return true; // 本物が分身の所へ引かれて倒れる煙と体はホストの知らせで出る
+            },
+        });
     }
 
     // 足元の点の列 (x, y, x, y…) をたどって歩く

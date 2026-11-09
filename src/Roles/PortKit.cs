@@ -61,6 +61,14 @@ public static class PortKit
         return true;
     }
 
+    // ホストの端末でだけ: キルを防ぐ役職に聞き終えた後で倒す (演出の間を置いてから倒す時)。頑丈な役職は HostKill と同じく体で受ける
+    public static void HostKillAsked(PlayerControl killer, PlayerControl target, Harm harm)
+    {
+        if (!AmHost || !killer || !target || target.Data == null || target.Data.IsDead) return;
+        if (TakesHit(killer, target, harm)) { Duel.HostSmash(killer, target, ToughDamage); return; }
+        killer.RpcMurderPlayer(target, true);
+    }
+
     // ホストの端末でだけ: その人が自分で死ぬ
     public static void HostSuicide(PlayerControl p) => HostKill(p, p, Harm.Fated);
 

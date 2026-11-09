@@ -68,10 +68,12 @@ public sealed class Anchor : RoleBase
         (w, m) => { w.Write(m.x); w.Write(m.y); }, r => (r.ReadSingle(), r.ReadSingle()),
         (sender, m) => { if (RoleState.Of(sender) is Anchor a) a.Place(new Vector2(m.x, m.y)); }, perSecond: 2);
 
+    private static readonly BodyKind AnchorKind = new("AnchorAnchor", BodyMaterial.Metal, BodySize.Medium, 0f);
+
     private void Place(Vector2 at)
     {
         _anchors.Add(at);
-        PortKit.Marker(Lifespan, at, "anchor_anchor", 0.6f);
+        Bodies.Prop(AnchorKind, PortKit.Marker(Lifespan, at, "anchor_anchor", 0.6f).transform, 0f, 0.3f); // 重い錨は当たっても火花だけ
         Notify(at);
     }
 

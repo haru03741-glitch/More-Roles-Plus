@@ -76,6 +76,8 @@ public sealed class EvilObserver : RoleBase
         (w, m) => { w.Write(m.x); w.Write(m.y); w.Write(m.left); }, r => (r.ReadSingle(), r.ReadSingle(), r.ReadBoolean()),
         (sender, m) => { if (RoleState.Of(sender) is EvilObserver o) o.Place(new Vector2(m.x, m.y), m.left); }, perSecond: 2);
 
+    private static readonly BodyKind CameraKind = new("ObserverCamera", BodyMaterial.Electronic, BodySize.Small, 0f, shared: false);
+
     private void Place(Vector2 at, bool left)
     {
         var cam = new Cam { At = at, Left = left };
@@ -84,6 +86,8 @@ public sealed class EvilObserver : RoleBase
             var sr = PortKit.Marker(Lifespan, at, "observer_camera", 0.55f, IsLocal ? new UnityEngine.Color(1f, 1f, 1f, 0.6f) : UnityEngine.Color.white);
             sr.flipX = left;
             cam.Art = sr.gameObject;
+            Bodies.Prop(CameraKind, sr.transform, 0f, 0.25f); // 壊れると見張れなくなるので、当たっても火花だけ
+
         }
         _cams.Add(cam);
     }

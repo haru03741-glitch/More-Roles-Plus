@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Roles.Crew;
 // 燃えている所の近くでは勝手に点き、爆発や打撃で倒れるとガラスが割れて油がこぼれる (点いていれば油に火がつく)。
 // 水・火・爆発はどの端末でも同じに進むので、ランタンの状態は各端末がそれぞれ決める (電文は置く・点けるの 2 つだけ)。
 // 油と火を床に入れるのはホストだけ (地形の火はホストを通して全員へ配られる)
-public sealed class Phosphorus : RoleBase
+public sealed partial class Phosphorus : RoleBase
 {
     public override Team BaseTeam => Team.Crew;
     public override string Color => "#F9BC51";
@@ -49,6 +49,7 @@ public sealed class Phosphorus : RoleBase
         public float X, Y;
         public bool Active, Broken, Wet, Shown;
         public float FireUntil, NextCheck, Phase;
+        public Body Hit;
     }
 
     private readonly List<Lantern> _lanterns = new();
@@ -93,6 +94,7 @@ public sealed class Phosphorus : RoleBase
         {
             foreach (var l in _lanterns)
             {
+                DropBody(l);
                 All.Remove(l);
                 if (l.Go) Object.Destroy(l.Go);
                 if (l.LightGo) Object.Destroy(l.LightGo);
@@ -155,6 +157,7 @@ public sealed class Phosphorus : RoleBase
         var l = new Lantern { Owner = this, Go = go, Body = body, Glow = glow, LightGo = lg, LightR = mr, Mesh = mesh, X = at.x, Y = at.y, Phase = FxMath.Range(0f, 6.28f) };
         _lanterns.Add(l);
         All.Add(l);
+        AddBody(l);
         Rewind.Undo(_ => Remove(l)); // 置く前へ戻るとランタンは無くなる (置いた回数は能力が戻す)
         FxRoot.TrackWorld(go); // 逆再生の間は控えの絵で出す (光は視界の影を切るので今のまま)
     }
@@ -163,6 +166,7 @@ public sealed class Phosphorus : RoleBase
     {
         _lanterns.Remove(l);
         All.Remove(l);
+        DropBody(l);
         if (l.Go) Object.Destroy(l.Go);
         if (l.LightGo) Object.Destroy(l.LightGo);
         if (l.Mesh) Object.Destroy(l.Mesh);
@@ -315,6 +319,7 @@ public sealed class Phosphorus : RoleBase
         bool wasLit = l.Shown, wasActive = l.Active;
 
         l.Broken = true;
+        DropBody(l);
         l.Active = true;
         l.Shown = false;
         Breaks++;
@@ -335,6 +340,7 @@ public sealed class Phosphorus : RoleBase
     {
         if (!l.Go || !l.Broken) return;
         l.Broken = false;
+        AddBody(l);
         l.Active = active;
         l.Shown = false;
         l.Body.sprite = _off;

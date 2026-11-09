@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 水回りの部屋の壁の近くを軽く押すと、ゲージを多めに使って壁の中の配管を裂き、水を噴き出させる。
 // 設計台は全員に見える。設計図を開いている間、本体は設計台の前で立ち止まる。
 // 設計台はほかの人も使える。使った人は構築士のゲージで壁を引け (無駄うちさせる・自分の役に立てる)、構築士の設計図は閉じる
-public sealed class Architect : RoleBase
+public sealed partial class Architect : RoleBase
 {
     public override Team BaseTeam => Team.Impostor;
     public override string Color => "#3C7FD8";
@@ -184,6 +184,7 @@ public sealed class Architect : RoleBase
             _drone = null;
             foreach (var d in _desks) ArchitectDeskArt.Remove(d);
             _desks.Clear();
+            DropBodies();
             _queue.Clear();
             _user = NoUser;
             if (ArchitectPlan.Owner == this) ArchitectPlan.Close();
@@ -554,7 +555,7 @@ public sealed class Architect : RoleBase
     }
 
     // 全員: 叩かれた (他の人の振りはここで見せる)。DeskHits 回目で壊れ、使っていた人は降ろされる
-    private void ShowHit(byte desk, byte hitter, byte hits)
+    private void ShowHit(byte desk, byte hitter, byte hits, bool hammer = true)
     {
         if (desk >= _desks.Count || _desks[desk].Broken) return;
         var d = _desks[desk];
@@ -563,7 +564,7 @@ public sealed class Architect : RoleBase
         // 叩かれる・壊れる前へ戻ると台も戻る (使っていた人の設計図は開き直さない)
         Rewind.Undo(_ =>
         {
-            if (d.Broken) { ArchitectDeskArt.Unbreak(d, wasHits, wasRot); RefreshDrone(); if (IsLocal) ArchitectPlan.MarkDirty(); }
+            if (d.Broken) { ArchitectDeskArt.Unbreak(d, wasHits, wasRot); AddBody(d); RefreshDrone(); if (IsLocal) ArchitectPlan.MarkDirty(); }
             else ArchitectDeskArt.Unhit(d, wasHits, wasRot);
         });
         d.Hits = hits;
@@ -573,7 +574,7 @@ public sealed class Architect : RoleBase
         Vector2 face = ClosestOnFoot(d, at.x, at.y);
         float dx = face.x - at.x, dy = face.y - at.y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
         Vector2 toward = FxMath.V2(dx / len, dy / len);
-        if (obj && hitter != LocalId && obj.Visible) HammerSwing.PlayOther(face, toward, GatlingFx.ShownColor(obj));
+        if (hammer && obj && hitter != LocalId && obj.Visible) HammerSwing.PlayOther(face, toward, GatlingFx.ShownColor(obj));
         ushort seed = (ushort)(PlayerId * 31 + desk * 7 + hits);
         if (hits < DeskHits) { ArchitectDeskArt.Crack(d, face, toward, seed); return; }
         BreakDesk(desk, toward, at, seed);
@@ -582,6 +583,7 @@ public sealed class Architect : RoleBase
     // 全員: 台が壊れた。使っていた人は降ろされる (dir = 欠片が飛ぶ向き・home = 壊した側の床の点)
     private void BreakDesk(byte desk, Vector2 dir, Vector2 home, ushort seed)
     {
+        DropBody(_desks[desk]);
         ArchitectDeskArt.Break(_desks[desk], dir, home, seed);
         if (_openDesk == desk)
         {
@@ -666,6 +668,7 @@ public sealed class Architect : RoleBase
         var h = ArchitectDeskArt.Place(x, y);
         if (h == null) return false;
         _desks.Add(h);
+        AddBody(h);
         // 置く前へ戻ると台は無くなる (台の番号は電文が指すので、いちばん後ろの物だけを外す。取り消しは新しい順なので必ず後ろから)
         Rewind.Undo(_ =>
         {
@@ -673,6 +676,7 @@ public sealed class Architect : RoleBase
             if (last < 0 || _desks[last] != h) return;
             if (_openDesk == last) { if (IsLocal && ArchitectPlan.Owner == this) ArchitectPlan.Close(); _openDesk = -1; }
             _desks.RemoveAt(last);
+            DropBody(h);
             ArchitectDeskArt.Remove(h);
             RefreshDrone();
             if (IsLocal) ArchitectPlan.MarkDirty();

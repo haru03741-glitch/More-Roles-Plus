@@ -88,6 +88,6 @@ public sealed partial class TriggerHappy
         float dx = b.x - a.x, dy = b.y - a.y, d = FxMath.Sqrt(dx * dx + dy * dy);
         if (d > SprayRange + 2f) return;
         if (!PierceWalls && Ricochets == 0 && d > 0.01f && PhysicsHelpers.AnyNonTriggersBetween(a, FxMath.V2(dx / d, dy / d), d, Constants.ShipAndObjectsMask)) return;
-        Doppelganger.HostStrikeRanged(sender, owner);
+        Doppelganger.HostStrikeRanged(sender, owner, PortKit.Harm.Bullet);
     }
 }

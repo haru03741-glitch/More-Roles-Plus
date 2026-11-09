@@ -28,6 +28,7 @@ public sealed class Sonar : RoleBase
 
     private sealed class Antenna { public Vector2 At; public SpriteRenderer Art; public bool Broken; }
     private readonly List<Antenna> _antennas = new();
+    private static readonly BodyKind AntennaKind = new("SonarAntenna", BodyMaterial.Metal, BodySize.Small, 0f, shared: false);
 
     public override void OnAssigned()
     {
@@ -38,7 +39,9 @@ public sealed class Sonar : RoleBase
             OnUse = () =>
             {
                 Vector2 at = Player.GetTruePosition();
-                _antennas.Add(new Antenna { At = at, Art = PortKit.Marker(Lifespan, at, "sonar_antenna", 0.7f) });
+                var art = PortKit.Marker(Lifespan, at, "sonar_antenna", 0.7f);
+                _antennas.Add(new Antenna { At = at, Art = art });
+                Bodies.Prop(AntennaKind, art.transform, 0f, 0.25f); // 壊れると聞けなくなるので、当たっても火花だけ
                 return true;
             },
         });

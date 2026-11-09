@@ -13,7 +13,7 @@ namespace MoreRolesPlus.Roles.Crew;
 
 // クルー: ボタンでポータルを 2 か所に置くと、生きている人なら誰でも装置の上で使用ボタンを押してその間を行き来できる。
 // 置き終わった後にもう一度押すと 2 つとも消え、置き直せる (設定で切れる)
-public sealed class PortalMaker : RoleBase
+public sealed partial class PortalMaker : RoleBase
 {
     public override Team BaseTeam => Team.Crew;
     public override string Color => "#45D9C9";
@@ -56,9 +56,10 @@ public sealed class PortalMaker : RoleBase
     private static readonly RemoteCall<byte> HitCall = new("PortalMaker.Hit", Route.ToHost,
         (w, id) => w.Write(id), r => r.ReadByte(), (sender, id) => (RoleState.Of(id) as PortalMaker)?.HostHit(sender));
 
-    // 叩かれた回数 (ホスト → 全員)。値 = ポータルメーカー | 叩いた人 << 8 | 回数 << 16。3 回目で壊れる
+    // 叩かれた回数 (ホスト → 全員)。値 = ポータルメーカー | 叩いた人 << 8 | 回数 << 16 | ハンマーでない << 24。3 回目で壊れる
     private static readonly RemoteCall<int> HitsCall = new("PortalMaker.Hits", Route.HostToAll,
-        (w, v) => w.Write(v), r => r.ReadInt32(), (_, v) => (RoleState.Of((byte)v) as PortalMaker)?.ShowHit((byte)(v >> 8), v >> 16));
+        (w, v) => w.Write(v), r => r.ReadInt32(),
+        (_, v) => (RoleState.Of((byte)v) as PortalMaker)?.ShowHit((byte)(v >> 8), (v >> 16) & 0xFF, (v >> 24) == 0));
 
     private const int HammerHits = 3;
     private const float MachineR = 0.5f;       // ハンマーが当たる装置の大きさ (円)
@@ -117,6 +118,7 @@ public sealed class PortalMaker : RoleBase
             for (int i = 0; i < 2; i++) { PortalArt.Remove(_art[i]); _art[i] = null; }
             if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
             _count = 0;
+            DropBodies();
         });
     }
 
@@ -189,6 +191,7 @@ public sealed class PortalMaker : RoleBase
         _x[_count] = x;
         _y[_count] = y;
         _art[_count] = PortalArt.Open(x, y);
+        AddBody(_count);
         _count++;
         if (_count == 2)
         {
@@ -205,6 +208,7 @@ public sealed class PortalMaker : RoleBase
         for (int i = 0; i < 2; i++) { PortalArt.Close(_art[i]); _art[i] = null; }
         if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
         _count = 0;
+        DropBodies();
     }
 
     private void ShowPass()
@@ -501,7 +505,7 @@ public sealed class PortalMaker : RoleBase
     }
 
     // 全員: 叩かれた (他の人の振りはここで見せる)。3 回目で壊れる
-    private void ShowHit(byte hitter, int hits)
+    private void ShowHit(byte hitter, int hits, bool hammer = true)
     {
         if (_count == 0) return;
         _hits = hits;
@@ -513,7 +517,7 @@ public sealed class PortalMaker : RoleBase
             Vector2 p = obj.GetTruePosition();
             float d = NearestMachine(p.x, p.y, out k);
             var lp = PlayerControl.LocalPlayer;
-            if ((!lp || lp.PlayerId != hitter) && obj.Visible)
+            if (hammer && (!lp || lp.PlayerId != hitter) && obj.Visible)
             {
                 float dx = _x[k] - p.x, dy = _y[k] + PortalArt.MachineRise - p.y, len = MathF.Max(1e-3f, MathF.Sqrt(dx * dx + dy * dy));
                 float edge = MathF.Max(0f, len - MachineR);
@@ -542,6 +546,7 @@ public sealed class PortalMaker : RoleBase
         for (int i = 0; i < 2; i++) { PortalArt.Break(_art[i]); _art[i] = null; }
         if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
         _count = 0;
+        DropBodies();
     }
 
     // 誰かが倒された: 窓に倒れた直後の死体を映さないよう、絵の側で死体を拾い直す

@@ -101,6 +101,7 @@ public sealed class Mushroomer : RoleBase
             if (PortKit.IsImpostor(PlayerControl.LocalPlayer)) SetActive(m, false);
             else m.gameObject.SetActive(false);
             Rewind.Undo(_ => Unplant(mu, m)); // 植える前へ戻るとキノコは無くなる (植えた回数は能力が戻す)
+            AddBody(m);
             FxRoot.TrackWorld(m.gameObject); // 逆再生の間は控えの絵で出す (植えた所を過ぎると消える)
         });
     }
@@ -113,6 +114,46 @@ public sealed class Mushroomer : RoleBase
         if (fungle != null && fungle.sporeMushrooms.TryGetValue(m.id, out var f) && f == m) fungle.sporeMushrooms.Remove(m.id);
         if (Spores.Managed(m)) Spores.All.Remove(m.id);
         Object.Destroy(m.gameObject);
+    }
+
+    // ---- 場の物: 植えたキノコは斬る・撃つ・叩く・爆発・火で胞子を吹き出す (踏んだ時と同じ) ----
+
+    private static readonly BodyKind MushroomKind = new("MushroomerMushroom", BodyMaterial.Flesh, BodySize.Small, 1f);
+
+    private static void AddBody(Mushroom m)
+    {
+        int id = m.id;
+        Bodies.Add(new Body
+        {
+            Kind = MushroomKind,
+            Tf = m.transform,
+            OffY = 0.15f,
+            Radius = 0.25f,
+            Ignore = Bodies.Mask(StrikeElement.Water),
+            Judges = () => true,
+            OnStrike = (b, r, s) => OnMushroomStrike(id, m, r, s),
+        });
+    }
+
+    private static bool OnMushroomStrike(int id, Mushroom m, StrikeResult r, Strike s)
+    {
+        // 植えたばかりで動いていないキノコ (クルーには見えない) は反応しない
+        if (!m || !m.isActiveAndEnabled) return true;
+        if (r != StrikeResult.Break && r != StrikeResult.Cut && r != StrikeResult.Damage) return false;
+        if (!Bodies.Reports(s)) return true;
+        CutCall.Send(id);
+        Trigger(m);
+        return true;
+    }
+
+    private static readonly RemoteCall<int> CutCall = new("Mushroomer.Cut", Route.Anyone,
+        (w, id) => w.WritePacked(id), r => r.ReadPackedInt32(), (_, id) => { var m = Find(id); if (m && m.isActiveAndEnabled) Trigger(m); }, perSecond: 6);
+
+    private static Mushroom Find(int id)
+    {
+        var fungle = ShipStatus.Instance ? ShipStatus.Instance.TryCast<FungleShipStatus>() : null;
+        if (fungle != null && fungle.sporeMushrooms.TryGetValue(id, out var f)) return f;
+        return Spores.All.TryGetValue(id, out var m) ? m : null;
     }
 
     // 船の動いているキノコから一斉に胞子を出す

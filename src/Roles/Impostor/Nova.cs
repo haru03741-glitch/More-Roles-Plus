@@ -402,7 +402,7 @@ public sealed partial class Nova : RoleBase
             if (side > half * (1f - e) / (1f + e) + 0.2f) continue;
             PuppetHits.Add(m.Owner);
         }
-        foreach (var id in PuppetHits) Crew.Doppelganger.HostStrikeRanged(invoker, id);
+        foreach (var id in PuppetHits) Crew.Doppelganger.HostStrikeRanged(invoker, id, PortKit.Harm.Heat);
     }
     private static readonly System.Collections.Generic.List<byte> PuppetHits = new();
 
@@ -474,7 +474,7 @@ public sealed partial class Nova : RoleBase
             var p = Hit[i].p;
             if (RoleState.Of(p) is Neutral.Samurai s) { n.HostSamurai(s, from, level); continue; }
             if (BeforeMurderEvent.Ask(invoker, p) != null) continue;
-            invoker.RpcMurderPlayer(p, true);
+            PortKit.HostKillAsked(invoker, p, PortKit.Harm.Heat);
         }
     }
 

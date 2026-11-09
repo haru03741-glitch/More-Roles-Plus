@@ -40,12 +40,14 @@ internal sealed class Body
     public Func<Body, StrikeResult, Strike, bool> OnStrike;
     public bool Fixed;             // Tf を持たず X, Y の位置に置いたまま (よそから届いた位置で置く当たり)
     public float Until;            // この時刻を過ぎたら消えた扱い (0 = 期限なし)
-    public bool BulletsOnly;       // 弾にだけ反応する
+    public int Ignore;             // 反応しない属性 (1 << StrikeElement の和)。その物が自分で当たりを持つ属性はここで外す
     internal float X, Y;
     internal int SeenFrame = -1;
     internal float GuardUntil;     // 同じ物へ同じ斬りが毎フレーム重ならないように
     internal float PointUntil;     // 弾を数える間 (1 tick に 1 発)
     internal bool Gone;
+
+    internal bool Skips(StrikeElement e) => (Ignore & (1 << (int)e)) != 0;
 }
 
 // 一撃 1 回。Edge = 切断力 (斬だけ・刀の段)
@@ -88,6 +90,61 @@ internal static class Bodies
     internal static int Strikes, Silents;
 
     internal static int Count => All.Count;
+
+    // 一つの属性だけに反応する物の Ignore
+    internal static int AllBut(StrikeElement e) => ~(1 << (int)e);
+    internal static int Mask(StrikeElement a) => 1 << (int)a;
+    internal static int Mask(StrikeElement a, StrikeElement b) => (1 << (int)a) | (1 << (int)b);
+
+    // 壊れた・斬れたと他の端末へ知らせるのはこの端末か: 刀と弾は振った・撃った人の端末 (練習の相手はホスト)・それ以外 (爆発・叩く・火・水) はホスト
+    internal static bool Reports(in Strike s)
+    {
+        var c = AmongUsClient.Instance;
+        bool host = c && c.AmHost;
+        if (s.Element != StrikeElement.Slash && s.Element != StrikeElement.Bullet) return host;
+        var by = PortKit.ById(s.By);
+        if (!by) return s.By == 255 && host;
+        return by.AmOwner || (by.isDummy && host);
+    }
+
+    // 壊れない物 (壊れると役職の働きが止まる物・飾り) を登録する。刀・弾・叩く・爆発で火花と音だけ出す。
+    // 絵が消えると当たりも消える (tf が無くなった物は数えない)
+    internal static Body Prop(BodyKind kind, Transform tf, float offY, float radius) => Add(new Body
+    {
+        Kind = kind,
+        Tf = tf,
+        OffY = offY,
+        Radius = radius,
+        OnStrike = PropStrike,
+    });
+
+    private static bool PropStrike(Body b, StrikeResult r, Strike s)
+    {
+        if (r == StrikeResult.Pass || r == StrikeResult.None) return false;
+        if (s.Element == StrikeElement.Heat || s.Element == StrikeElement.Water) return true; // 火と水はそれぞれの絵が出ている
+        Spark(b.X, b.Y, s, s.Element != StrikeElement.Blast);
+        return true;
+    }
+
+    // 客から届いてよい壊れた知らせの属性 (刀と弾だけ。火・爆発・叩く・水はホストが自分で決める)
+    internal static bool ClientReport(StrikeElement e) => e == StrikeElement.Slash || e == StrikeElement.Bullet;
+
+    // 弾で物を撃てる役職か (場の物に弾を当てるのは機関銃だけ)
+    internal static bool Shoots(PlayerControl p) => RoleState.Of(p) is Impostor.TriggerHappy;
+
+    // ホストの手元の確かめの一撃 (Test・当てた人が無い) か。刀と弾の一撃は必ず振った・撃った人を持つので、人の無い刀と弾はこれだけ
+    internal static bool FromTest(PlayerControl by) => !by && AmongUsClient.Instance && AmongUsClient.Instance.AmHost;
+
+    // 当たった所に火花と金属の跳ねる音を出す (向きは一撃の向き、無ければ当てた所から物へ)
+    internal static void Spark(float x, float y, in Strike s, bool sound = true)
+    {
+        float dx = s.Dx, dy = s.Dy;
+        if (dx == 0f && dy == 0f) { dx = x - s.X; dy = y - s.Y; }
+        float d = FxMath.Sqrt(dx * dx + dy * dy);
+        if (d < 0.0001f) { dx = 0f; dy = -1f; } else { dx /= d; dy /= d; }
+        GatlingFx.Deflect(x, y, dx, dy);
+        if (sound) GunSound.Deflect(x, y, false);
+    }
     internal static bool Contains(Body b) => All.Contains(b);
 
     internal static Body Add(Body b)
@@ -137,13 +194,15 @@ internal static class Bodies
     {
         for (int i = All.Count - 1; i >= 0; i--)
         {
+            if (i >= All.Count) continue; // 反応の中で別の物が外れる (装置は 2 つとも閉じる)
             var b = All[i];
             Refresh(b);
-            if (b.Gone) continue;
+            if (b.Gone) { All.RemoveAt(i); continue; }
             float dx = b.X - s.X, dy = b.Y - s.Y, rr = b.Radius + r;
             if (dx * dx + dy * dy > rr * rr) continue;
             // 人と同じく 1 tick に 1 発だけ数える (機関銃は 1 秒に 60 発)。全員にある物は数えない弾もそこで止める
             float now = Time.time;
+            if (b.Skips(StrikeElement.Bullet)) continue;
             if (now < b.PointUntil)
             {
                 if (b.Kind.Shared) return true;
@@ -164,10 +223,11 @@ internal static class Bodies
         bool found = false;
         for (int i = All.Count - 1; i >= 0; i--)
         {
+            if (i >= All.Count) continue; // 反応の中で別の物が外れる (装置は 2 つとも閉じる)
             var b = All[i];
-            if (b.BulletsOnly) continue;
+            if (b.Skips(StrikeElement.Blunt)) continue;
             Refresh(b);
-            if (b.Gone) continue;
+            if (b.Gone) { All.RemoveAt(i); continue; }
             float px = b.X - at.x, py = b.Y - at.y;
             float t = px * dir.x + py * dir.y;
             if (t < 0f) continue;
@@ -190,9 +250,10 @@ internal static class Bodies
     {
         for (int i = All.Count - 1; i >= 0; i--)
         {
+            if (i >= All.Count) continue; // 反応の中で別の物が外れる (装置は 2 つとも閉じる)
             var b = All[i];
             Refresh(b);
-            if (b.Gone) continue;
+            if (b.Gone) { All.RemoveAt(i); continue; }
             float dx = b.X - s.X, dy = b.Y - s.Y, rr = b.Radius + r;
             if (dx * dx + dy * dy > rr * rr) continue;
             Apply(b, s);
@@ -206,10 +267,11 @@ internal static class Bodies
         float now = Time.time;
         for (int i = All.Count - 1; i >= 0; i--)
         {
+            if (i >= All.Count) continue; // 反応の中で別の物が外れる (装置は 2 つとも閉じる)
             var b = All[i];
-            if (now < b.GuardUntil) continue;
+            if (now < b.GuardUntil || b.Skips(StrikeElement.Slash)) continue;
             Refresh(b);
-            if (b.Gone) continue;
+            if (b.Gone) { All.RemoveAt(i); continue; }
             // 刃の線分と物の中心の距離
             float px = b.X - x, py = b.Y - y;
             float t = px * co + py * si;
@@ -223,11 +285,13 @@ internal static class Bodies
 
     private static StrikeResult Apply(Body b, in Strike s)
     {
-        if (b.BulletsOnly && s.Element != StrikeElement.Bullet) return StrikeResult.None;
+        if (b.Skips(s.Element)) return StrikeResult.None;
         var k = b.Kind;
         float hp = b.Hp;
         var res = BodyRules.Judge(s.Element, s.Power, s.Edge, k.Material, k.Size, ref hp);
         if (res == StrikeResult.None) return res;
+        // 耐久を持たない物は壊れず、当たった反応だけ出す
+        if (k.Hp <= 0f && (res == StrikeResult.Break || res == StrikeResult.Cut || res == StrikeResult.Douse)) res = StrikeResult.Glance;
         bool judge = b.Judges != null && b.Judges();
         // 決めない端末は耐久を減らさない (壊れる・斬れるはその物を決める端末から届く)。当たった見た目だけ出す
         if (!judge && (res == StrikeResult.Break || res == StrikeResult.Cut || res == StrikeResult.Douse)) res = StrikeResult.Damage;
@@ -284,12 +348,13 @@ internal static class Bodies
         bool fire = FireSim.Ready && FireSim.BurningCount > 0;
         for (int i = All.Count - 1; i >= 0; i--)
         {
+            if (i >= All.Count) continue; // 反応の中で別の物が外れる (装置は 2 つとも閉じる)
             var b = All[i];
             bool water = b.Kind.Lift >= 0f;
             if (!water && !fire) continue;
             if (b.Judges == null || !b.Judges()) continue;
             Refresh(b);
-            if (b.Gone) continue;
+            if (b.Gone) { All.RemoveAt(i); continue; }
             if (fire && FireTouches(b.X, b.Y, b.Radius))
             {
                 Apply(b, new Strike(StrikeElement.Heat, HeatPower, 0, b.X, b.Y, 0f, 0f, 255));

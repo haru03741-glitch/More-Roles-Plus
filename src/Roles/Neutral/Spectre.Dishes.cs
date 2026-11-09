@@ -127,6 +127,8 @@ internal static class SpectreDishes
         return _dishSprites[full ? 1 : 0];
     }
 
+    private static readonly BodyKind DishKind = new("SpectreDish", BodyMaterial.Stone, BodySize.Medium, 0f);
+
     private static SpriteRenderer MakeArt(Vector2 at)
     {
         var go = new GameObject("MrpSpectreDish");
@@ -134,6 +136,7 @@ internal static class SpectreDishes
         go.transform.position = new Vector3(at.x, at.y, (at.y + 0.3636f) / 1000f);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = DishSprite(false);
+        Bodies.Prop(DishKind, go.transform, 0f, 0.3f); // 壊れると食べられなくなるので、当たっても火花だけ
         FxRoot.TrackWorld(go); // 逆再生の間は控えの絵で出す (食べた皿が盛られた姿へ戻っていく)
         return sr;
     }
