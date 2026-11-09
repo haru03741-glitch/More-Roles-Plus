@@ -10,7 +10,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 // クノイチ (インポスター): 「装備」でクナイを持つ (持っている間は本編のキルは無い)。クナイはマウスの向きに投げ、
 // 仲間以外に当たるとその人の当たった数が増え、決めた数で倒す。倒した死体にはクナイが残る。
 // 止まっていると透明になれる (動くと解ける)。会議で全部解ける
-public sealed class Kunoichi : RoleBase
+public sealed partial class Kunoichi : RoleBase
 {
     public override Team BaseTeam => Team.Impostor;
     public override string Color => "#FF1919";
@@ -63,8 +63,9 @@ public sealed class Kunoichi : RoleBase
                 Vector2 from = Player.GetTruePosition();
                 float angle = Aim();
                 if (Blocked(from, angle)) return false;
-                ThrowCall.Send((from.x, from.y, angle));
-                Fly(this, from, angle, true);
+                byte seq = _seq++;
+                ThrowCall.Send((from.x, from.y, angle, seq));
+                Fly(this, from, angle, true, seq);
                 return true;
             },
         });
@@ -96,8 +97,12 @@ public sealed class Kunoichi : RoleBase
         (w, on) => w.Write(on), r => r.ReadBoolean(),
         (sender, on) => { if (RoleState.Of(sender) is Kunoichi k) k._equippedHost = on; }, perSecond: 6);
 
+    // 確かめ用: 投げる向きを固定する (度・0 = 右)。null = マウス / 歩いた向き
+    internal static float? TestAngle;
+
     private float Aim()
     {
+        if (TestAngle is float fixedAngle) return fixedAngle;
         var cam = Camera.main;
         Vector2 me = Player.GetTruePosition();
         if (!cam || System.OperatingSystem.IsAndroid())
@@ -116,40 +121,52 @@ public sealed class Kunoichi : RoleBase
         return PhysicsHelpers.AnythingBetween(from, from + dir * 0.6f, Constants.ShipOnlyMask, false);
     }
 
-    private static readonly RemoteCall<(float x, float y, float a)> ThrowCall = new("Kunoichi.Throw", Route.Anyone,
-        (w, m) => { w.Write(m.x); w.Write(m.y); w.Write(m.a); }, r => (r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
-        (sender, m) => { if (RoleState.Of(sender) is Kunoichi k) Fly(k, new Vector2(m.x, m.y), m.a, false); }, perSecond: 12);
+    private static readonly RemoteCall<(float x, float y, float a, byte seq)> ThrowCall = new("Kunoichi.Throw", Route.Anyone,
+        (w, m) => { w.Write(m.x); w.Write(m.y); w.Write(m.a); w.Write(m.seq); }, r => (r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadByte()),
+        (sender, m) => { if (RoleState.Of(sender) is Kunoichi k) Fly(k, new Vector2(m.x, m.y), m.a, false, m.seq); }, perSecond: 12);
 
-    // 全員の端末で飛ばす。当たりの判定は投げた本人の端末
-    private static void Fly(Kunoichi k, Vector2 from, float angle, bool judge)
+    // 全員の端末で飛ばす。当たりの判定は投げた本人の端末 (頑丈な役職への当たりだけはその人の端末・Kunoichi.Body.cs)
+    private static void Fly(Kunoichi k, Vector2 from, float angle, bool judge, byte seq)
     {
         var sr = PortKit.Marker(k.Lifespan, from, "kunoichi_kunai", 0.5f);
         sr.transform.rotation = Quaternion.Euler(0f, 0f, angle - 45f);
+        k.AddKunai(seq, sr, judge);
         Vector2 dir = new Vector2(Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad));
         float speed = KunaiSpeed * 4f, gone = 0f;
         Vector2 at = from;
         UchuKit.Every(() =>
         {
-            if (!sr) return false;
-            if (MeetingHud.Instance || !ShipStatus.Instance) { Object.Destroy(sr.gameObject); return false; }
+            if (!sr) { k.DropKunai(seq); return false; }
+            if (MeetingHud.Instance || !ShipStatus.Instance) { k.EndKunai(seq); return false; }
             float step = speed * Time.fixedDeltaTime;
             Vector2 next = at + dir * step;
-            if (WallStops && PhysicsHelpers.AnythingBetween(at, next, Constants.ShipOnlyMask, false)) { Object.Destroy(sr.gameObject); return false; }
+            if (WallStops && PhysicsHelpers.AnythingBetween(at, next, Constants.ShipOnlyMask, false)) { k.EndKunai(seq); return false; }
             at = next;
             gone += step;
             sr.transform.position = new Vector3(at.x, at.y, at.y / 1000f - 0.5f);
-            if (gone >= MaxTravel) { Object.Destroy(sr.gameObject); return false; }
-            if (!judge) return true;
+            if (gone >= MaxTravel) { k.EndKunai(seq); return false; }
+            if (!judge && !AnyToughHere()) return true;
             foreach (var p in PlayerControl.AllPlayerControls)
             {
                 if (!PortKit.Alive(p) || p.PlayerId == k.PlayerId || p.inVent) continue;
                 if (!FriendlyFire && PortKit.IsImpostor(p)) continue;
+                bool tough = Duel.Tough(p);
+                if (tough ? !DecidesFor(p) : !judge) continue;
                 Vector2 d = p.GetTruePosition() - at;
                 float along = Mathf.Abs(d.x * dir.x + d.y * dir.y);
                 float side = Mathf.Abs(d.x * dir.y - d.y * dir.x);
                 if (along > HitLength / 2f || side > HitWidth / 2f + 0.25f) continue;
-                HitCall.Send(p.PlayerId);
-                Object.Destroy(sr.gameObject);
+                if (tough)
+                {
+                    // 刀で斬る・受け流す・踏み込みで抜けるは弾と同じ受け方 (気も同じだけ使う)
+                    var fate = ToughCatch(p, dir);
+                    if (fate == Neutral.Samurai.BulletFate.Pass) continue;
+                    if (fate == Neutral.Samurai.BulletFate.Hit) ToughHitCall.Send((k.PlayerId, p.PlayerId));
+                    else Spark(at.x, at.y, new Strike(StrikeElement.Slash, 1f, 1, at.x, at.y, -dir.x, -dir.y, p.PlayerId));
+                    GoneCall.Send((k.PlayerId, seq));
+                }
+                else HitCall.Send(p.PlayerId);
+                k.EndKunai(seq);
                 return false;
             }
             return true;
@@ -164,6 +181,12 @@ public sealed class Kunoichi : RoleBase
     {
         var t = PortKit.ById(id);
         if (!PortKit.Alive(t) || MeetingHud.Instance) return;
+        if (Duel.Tough(t))
+        {
+            // 頑丈な役職は 1 本ごとに体力が減り、普通の人が倒れる本数で倒れる
+            Duel.HostSmash(Player, t, (Duel.MaxHp + HitsToKill - 1) / HitsToKill);
+            return;
+        }
         _hits.TryGetValue(id, out int n);
         n++;
         bool kill = n >= HitsToKill;

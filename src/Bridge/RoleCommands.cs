@@ -149,6 +149,24 @@ internal static class RoleCommands
             reply($"OK nova aim {deg}");
         });
 
+        TestBridge.Register("kunoichi", "aim <角度° | off | at <番号>> クノイチの投げる向きを固定する (0 = 右・at = その人の方へ)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length < 2 || a[0] != "aim") { reply("ERR kunoichi aim <deg|off|at n>"); return; }
+            if (a[1] == "off") { Roles.Impostor.Kunoichi.TestAngle = null; reply("OK kunoichi aim off"); return; }
+            if (a[1] == "at" && a.Length >= 3 && byte.TryParse(a[2], out byte id))
+            {
+                var t = Roles.PortKit.ById(id);
+                var me = PlayerControl.LocalPlayer;
+                if (!t || !me) { reply("ERR kunoichi aim at: no player"); return; }
+                Vector2 d = t.GetTruePosition() - me.GetTruePosition();
+                Roles.Impostor.Kunoichi.TestAngle = Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg;
+            }
+            else if (float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float deg)) Roles.Impostor.Kunoichi.TestAngle = deg;
+            else { reply("ERR kunoichi aim <deg|off|at n>"); return; }
+            reply($"OK kunoichi aim {Roles.Impostor.Kunoichi.TestAngle:0.0}");
+        });
+
         TestBridge.Register("fxat", "<画面x> <画面y> 画面のその点 (左上が原点の画素) に重なっている有効な SpriteRenderer を並べる (名前・親・絵・色・材質)", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
