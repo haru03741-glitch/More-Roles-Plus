@@ -26,7 +26,8 @@ public sealed class Voyager : RoleBase
 
     private bool _diving;   // 全員の端末で同じ
     private bool _left;     // 自分の端末: 離脱で終えた
-    private readonly List<PlayerControl> _swapped = new();
+    // 入れ替えた人と、入れ替える前の姿 (本編の変身・カモフラージュ中ならその姿に戻す)
+    private readonly List<(PlayerControl P, PlayerOutfitType Type, NetworkedPlayerInfo.PlayerOutfit Was)> _swapped = new();
 
     public override void OnAssigned()
     {
@@ -98,14 +99,17 @@ public sealed class Voyager : RoleBase
         {
             var a = pool[2 * k];
             var b = pool[2 * k + 1];
-            var oa = a.Data.DefaultOutfit;
-            var ob = b.Data.DefaultOutfit;
+            // 今見えている姿どうしを入れ替える
+            var ta = a.CurrentOutfitType;
+            var tb = b.CurrentOutfitType;
+            var oa = a.CurrentOutfit ?? a.Data.DefaultOutfit;
+            var ob = b.CurrentOutfit ?? b.Data.DefaultOutfit;
             try
             {
+                _swapped.Add((a, ta, oa));
+                _swapped.Add((b, tb, ob));
                 a.RawSetOutfit(ob, PlayerOutfitType.Shapeshifted);
                 b.RawSetOutfit(oa, PlayerOutfitType.Shapeshifted);
-                _swapped.Add(a);
-                _swapped.Add(b);
             }
             catch (System.Exception e) { Plugin.Logger.LogWarning($"voyager swap: {e.Message}"); }
         }
@@ -113,10 +117,16 @@ public sealed class Voyager : RoleBase
 
     private void RestoreLooks()
     {
-        foreach (var p in _swapped)
+        foreach (var (p, type, was) in _swapped)
         {
             if (!p || p.Data == null) continue;
-            try { p.RawSetOutfit(p.Data.DefaultOutfit, PlayerOutfitType.Default); }
+            try
+            {
+                // 潜伏の間に別の物 (変身の解除など) が姿を戻した人はそのまま
+                if (p.CurrentOutfitType != PlayerOutfitType.Shapeshifted) continue;
+                if (type == PlayerOutfitType.Default || was == null) p.RawSetOutfit(p.Data.DefaultOutfit, PlayerOutfitType.Default);
+                else p.RawSetOutfit(was, type);
+            }
             catch (System.Exception e) { Plugin.Logger.LogWarning($"voyager restore: {e.Message}"); }
         }
         _swapped.Clear();
