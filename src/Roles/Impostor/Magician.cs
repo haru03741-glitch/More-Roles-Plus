@@ -1,6 +1,7 @@
 // Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Impostor/Magician.cs (role idea and logic; UchuAddon allows porting them, no assets used)
 // The role is credited by UchuAddon to https://github.com/yukieiji/ExtremeRoles (GPL-3.0)
 using System.Collections.Generic;
+using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
 using UnityEngine;
@@ -77,12 +78,19 @@ public sealed class Magician : RoleBase
     {
         var lp = PlayerControl.LocalPlayer;
         PortKit.Flash(new Color(1f, 0.1f, 0.1f, 0.5f));
-        // 全員の画面で: 消える所と現れる所が光る
+        // 全員の画面で: 消える所と現れる所が光る。粒の数には上限があるので、画面の外の分は出さない
+        // (全員分を出すと画面の中の分が上限で欠ける)
+        Vector2 eye = lp ? lp.GetTruePosition() : default;
+        bool InView(float px, float py) => !lp || FxMath.Abs(px - eye.x) < 7f && FxMath.Abs(py - eye.y) < 4.5f;
         foreach (var (id, x, y) in moves)
         {
             var p = PortKit.ById(id);
-            if (p && !p.inVent && p.Visible) RoleSparks.Poof(p.GetTruePosition(), Sparkle[id % Sparkle.Length]);
-            RoleSparks.Poof(new Vector2(x, y - 0.36f), Sparkle[id % Sparkle.Length]);
+            if (p && !p.inVent && p.Visible)
+            {
+                var at = p.GetTruePosition();
+                if (InView(at.x, at.y)) RoleSparks.Poof(at, Sparkle[id % Sparkle.Length]);
+            }
+            if (InView(x, y - 0.36f)) RoleSparks.Poof(new Vector2(x, y - 0.36f), Sparkle[id % Sparkle.Length]);
         }
         foreach (var (id, x, y) in moves)
         {

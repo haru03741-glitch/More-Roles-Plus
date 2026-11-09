@@ -11,6 +11,7 @@ internal static class RoleSparks
     private struct Bit
     {
         public SpriteRenderer R;
+        public Transform T;
         public Vector3 Pos, Vel;
         public float Age, Life, Grav, Size0, Size1, Drag;
         public Color C;
@@ -39,7 +40,7 @@ internal static class RoleSparks
         var r = _pool.Count > 0 ? _pool.Pop() : NewRenderer();
         if (!r) return;
         r.gameObject.SetActive(true);
-        _live.Add(new Bit { R = r, Age = age0, Pos = pos, Vel = vel, Life = Mathf.Max(0.02f, life), Grav = grav, Drag = drag, Size0 = size0, Size1 = size1 < 0f ? size0 : size1, C = c });
+        _live.Add(new Bit { R = r, T = r.transform, Age = age0, Pos = pos, Vel = vel, Life = Mathf.Max(0.02f, life), Grav = grav, Drag = drag, Size0 = size0, Size1 = size1 < 0f ? size0 : size1, C = c });
         Place(_live[_live.Count - 1], age0 / Mathf.Max(0.02f, life));
     }
 
@@ -61,15 +62,17 @@ internal static class RoleSparks
         return r;
     }
 
-    private static void Place(Bit b, float k)
+    // 毎フレーム通る所なので Unity の算術 (Mathf・new Vector3・Color の演算子) を使わない
+    private static void Place(Bit b, float k, bool first = true)
     {
-        float s = Mathf.Lerp(b.Size0, b.Size1, k) * SizeK;
         var c = b.C;
         c.a *= 1f - k * k;
         b.R.color = c;
         // 足元の高さで奥行きを決める (その高さの人より少し手前)
-        b.R.transform.position = new Vector3(b.Pos.x, b.Pos.y, b.Pos.z);
-        b.R.transform.localScale = new Vector3(s, s, 1f);
+        b.T.position = b.Pos;
+        if (!first && b.Size0 == b.Size1) return;
+        float s = FxMath.Lerp(b.Size0, b.Size1, k) * SizeK;
+        b.T.localScale = FxMath.V3(s, s, 1f);
     }
 
     // 人の足元の高さで決まる奥行き (その人より少し手前に描く)
@@ -95,10 +98,15 @@ internal static class RoleSparks
                 continue;
             }
             b.Vel.y -= b.Grav * dt;
-            if (b.Drag > 0f) b.Vel *= Mathf.Max(0f, 1f - b.Drag * dt);
-            b.Pos += new Vector3(b.Vel.x, b.Vel.y, 0f) * dt;
+            if (b.Drag > 0f)
+            {
+                float d = FxMath.Max(0f, 1f - b.Drag * dt);
+                b.Vel.x *= d; b.Vel.y *= d;
+            }
+            b.Pos.x += b.Vel.x * dt;
+            b.Pos.y += b.Vel.y * dt;
             _live[i] = b;
-            Place(b, b.Age / b.Life);
+            Place(b, b.Age / b.Life, false);
         }
     }
 
@@ -171,6 +179,9 @@ internal sealed class DotSet
             if (!ShipStatus.Instance) return false;
             _root = new GameObject(_name);
             _dots.Clear();
+            // 役職ごとに作られるので、試合が終わったら丸ごと捨てる (船の子にすると船の倍率が大きさに掛かる)
+            RoleState.Match.OnRelease(Destroy);
+            if (!_root) return false;
         }
         while (_dots.Count < n)
         {
@@ -203,6 +214,13 @@ internal sealed class DotSet
     internal void Hide()
     {
         if (_root && _root.activeSelf) _root.SetActive(false);
+    }
+
+    private void Destroy()
+    {
+        if (_root) Object.Destroy(_root);
+        _root = null;
+        _dots.Clear();
     }
 
     // 足元を中心にした輪 (frac の分だけ丸を出す。上から時計回り)
