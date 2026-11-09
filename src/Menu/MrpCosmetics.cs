@@ -380,7 +380,7 @@ internal static class MrpCosmetics
 
     private sealed class State
     {
-        public bool HatOn, VisorOn, Climb, Visible = true, BodyHidden;
+        public bool HatOn, VisorOn, Climb, Visible = true, BodyHidden, Drew;
         public SpriteRenderer Visor, Hat2;
     }
 
@@ -412,6 +412,9 @@ internal static class MrpCosmetics
     // 本編の帽子が毎フレームの片付けを終えた後
     internal static void Apply(HatParent hp)
     {
+        // 部屋の誰も MRP の物を着けておらず、この帽子にも前に描いた物が残っていなければ何もしない
+        // (全員の帽子で毎フレーム持ち主を探すと人数の 2 乗の interop になる)
+        if (ByClient.Count == 0 && NoneOfMine() && (!States.TryGetValue(hp.Pointer, out var s0) || !s0.Drew)) return;
         var layer = Layer(hp);
         if (!layer) return;
         var st = St(hp);
@@ -515,7 +518,11 @@ internal static class MrpCosmetics
             }
             catch (Exception e) { Plugin.Logger.LogWarning($"cosmetic visor restore: {e.Message}"); }
         }
+        st.Drew = st.HatOn || st.VisorOn || st.BodyHidden || st.Hat2 && st.Hat2.enabled;
     }
+
+    private static bool NoneOfMine() =>
+        string.IsNullOrEmpty(_hat?.Value) && string.IsNullOrEmpty(_hat2?.Value) && string.IsNullOrEmpty(_visor?.Value);
 
     private static Sprite HatSprite(Item hat, bool climb, bool left, int pose, bool hole)
     {
