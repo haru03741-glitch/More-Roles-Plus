@@ -2288,6 +2288,8 @@ NekoKabocha.Name: Neko Kabocha
 NekoKabocha.Blurb: Take your killer with you
 NekoKabocha.Summary: An impostor who takes their killer down with them. When exiled, if no other impostor is alive (or always, with the option), one player who voted for you dies too.
 NekoKabocha.ExileEmbroil: Take a voter down on exile even while allies are alive
+NekoKabocha.EmbroilKill: You killed the Neko Kabocha and were taken down with it
+NekoKabocha.EmbroilVote: You voted for the Neko Kabocha and were taken down with it
 # ---- Roles ported from Uchu and others (neutral) ----
 Anchor.Name: Anchor
 Anchor.Blurb: Drop anchor and hold the ship

@@ -2288,6 +2288,8 @@ NekoKabocha.Name: ネコカボチャ
 NekoKabocha.Blurb: 殺した者を道連れにせよ
 NekoKabocha.Summary: 自分を倒した人を道連れにするインポスターです。追放された時は、他のインポスターが生きていなければ (設定で生きていても) 自分に投票した人を 1 人道連れにします。
 NekoKabocha.ExileEmbroil: 追放でも仲間が生きている時に道連れにする
+NekoKabocha.EmbroilKill: ネコカボチャを倒したので、道連れにされた
+NekoKabocha.EmbroilVote: ネコカボチャに投票したので、道連れにされた
 # ---- Uchu などから移植した役職 (第三陣営) ----
 Anchor.Name: アンカー
 Anchor.Blurb: 錨を下ろし、船を繋ぎ止めよ

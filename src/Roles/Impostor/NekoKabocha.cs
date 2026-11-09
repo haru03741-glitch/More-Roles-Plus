@@ -28,7 +28,12 @@ public sealed class NekoKabocha : RoleBase
         var killer = e.Killer;
         if (!killer || killer.PlayerId == PlayerId || !PortKit.Alive(killer)) return;
         var me = Player;
-        PortKit.After(0.2f, () => { if (PortKit.Alive(killer)) PortKit.HostKill(me, killer); });
+        PortKit.After(0.2f, () =>
+        {
+            if (!PortKit.Alive(killer)) return;
+            Tell(killer, Killed);
+            PortKit.HostKill(me, killer);
+        });
     }
 
     [HostOnly]
@@ -51,6 +56,27 @@ public sealed class NekoKabocha : RoleBase
         if (pool.Count == 0) return;
         var victim = pool[UnityEngine.Random.Range(0, pool.Count)];
         var me = Player;
-        PortKit.After(0.2f, () => { if (PortKit.Alive(victim)) PortKit.HostVanish(me, victim); });
+        PortKit.After(0.2f, () =>
+        {
+            if (!PortKit.Alive(victim)) return;
+            Tell(victim, Voted);
+            PortKit.HostVanish(me, victim);
+        });
     }
+
+    // 道連れにされた本人に、なぜ死んだかを知らせる (倒れる電文より先に送る)
+    private const byte Killed = 0, Voted = 1;
+
+    private static void Tell(PlayerControl who, byte why)
+    {
+        if (who.AmOwner) Show(why);
+        else EmbroilCall.Send((who.PlayerId, why));
+    }
+
+    private static readonly Net.RemoteCall<(byte id, byte why)> EmbroilCall = new("NekoKabocha.Embroil", Net.Route.HostToAll,
+        (w, m) => { w.Write(m.id); w.Write(m.why); }, r => (r.ReadByte(), r.ReadByte()),
+        (_, m) => { var lp = PlayerControl.LocalPlayer; if (lp && lp.PlayerId == m.id) Show(m.why); });
+
+    private static void Show(byte why) =>
+        PortKit.Notice(new Text(why == Killed ? "NekoKabocha.EmbroilKill" : "NekoKabocha.EmbroilVote").ToString());
 }
