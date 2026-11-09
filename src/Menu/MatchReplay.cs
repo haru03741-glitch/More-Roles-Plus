@@ -202,7 +202,7 @@ internal static class MatchReplay
     }
 
     // 本編の地図の絵は部屋の形 (赤) だけで、色と縁は材質が付ける。見る時に 1 回だけ、部屋の塗りと縁の色に描き直す
-    internal static void Paint(Record r)
+    internal static unsafe void Paint(Record r)
     {
         if (r.Painted || !r.Map || !r.Map.texture) return;
         r.Painted = true;
@@ -212,26 +212,40 @@ internal static class MatchReplay
         int n = w * h;
         var inside = new bool[n];
         for (int i = 0; i < n; i++) { var c = src[i]; inside[i] = c.a > 100 && c.r > 110; }
-        var fill = new Color32(38, 72, 118, 255);
-        var edge = new Color32(150, 200, 245, 255);
-        var clear = new Color32(0, 0, 0, 0);
         int k = Math.Max(1, Math.Min(w, h) / 220); // 縁の太さ
-        var outp = new Color32[n];
+        // 縁 = 自分から縦横 k 以内の四角に外 (部屋の外か絵の外) がある画素。
+        // 四角を毎画素見ると 1 枚で億回になるので、横の帯 → 縦の帯の 2 回の累積和で同じ判定をする
+        var nearH = new bool[n];
+        var run = new int[w + 1];
         for (int y = 0; y < h; y++)
+        {
+            int row = y * w;
+            for (int x = 0; x < w; x++) run[x + 1] = run[x] + (inside[row + x] ? 0 : 1);
             for (int x = 0; x < w; x++)
             {
-                int i = y * w + x;
-                if (!inside[i]) { outp[i] = clear; continue; }
-                bool border = false;
-                for (int dy = -k; dy <= k && !border; dy++)
-                    for (int dx = -k; dx <= k; dx++)
-                    {
-                        int xx = x + dx, yy = y + dy;
-                        if (xx < 0 || yy < 0 || xx >= w || yy >= h || !inside[yy * w + xx]) { border = true; break; }
-                    }
-                outp[i] = border ? edge : fill;
+                int lo = x - k, hi = x + k;
+                nearH[row + x] = lo < 0 || hi >= w || run[hi + 1] - run[lo] > 0;
             }
-        tex.SetPixels32(outp);
+        }
+        var col = new int[h + 1];
+        // 書き戻しは生のバイト (RGBA32) で渡す (Color32[] の il2cpp 配列は大きな絵だとヒープを広げて縮まない)
+        var outp = new byte[n * 4];
+        for (int x = 0; x < w; x++)
+        {
+            for (int y = 0; y < h; y++) col[y + 1] = col[y] + (nearH[y * w + x] ? 1 : 0);
+            for (int y = 0; y < h; y++)
+            {
+                int i = y * w + x;
+                if (!inside[i]) continue; // 0 のまま = 透明
+                int lo = y - k, hi = y + k;
+                bool border = lo < 0 || hi >= h || col[hi + 1] - col[lo] > 0;
+                int o = i * 4;
+                if (border) { outp[o] = 150; outp[o + 1] = 200; outp[o + 2] = 245; }
+                else { outp[o] = 38; outp[o + 1] = 72; outp[o + 2] = 118; }
+                outp[o + 3] = 255;
+            }
+        }
+        fixed (byte* px = outp) tex.LoadRawTextureData((System.IntPtr)px, outp.Length);
         tex.Apply(false, false);
         r.MapColor = Color.white;
     }

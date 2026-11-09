@@ -425,6 +425,9 @@ internal static class ReplayStage
         var r = _r;
         if (r == null) return;
         if (!_root || !_cam || !_overlay) { Close(); return; }
+        // ロビーで開いたまま試合が始まったら閉じる (ロビーと試合は同じ場面なので部品は壊れず、カメラが舞台に残って真っ暗になる)
+        if (IntroCutscene.Instance || (AmongUsClient.Instance && AmongUsClient.Instance.GameState == InnerNet.InnerNetClient.GameStates.Started && ShipStatus.Instance))
+        { Close(); return; }
         if (!_built)
         {
             GameObject prefab = _ref.Asset ? _ref.Asset.TryCast<GameObject>() : null;
