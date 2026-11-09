@@ -85,9 +85,16 @@ public sealed class Kunoichi : RoleBase
 
     private void SetEquip(bool on)
     {
+        if (_equipped == on) return;
         _equipped = on;
         if (_held) _held.gameObject.SetActive(on);
+        // 本編のキルを止めるのはホストなので、持っているかをホストへ知らせる (ホストなら手元で通す)
+        EquipCall.Send(on);
     }
+
+    private static readonly RemoteCall<bool> EquipCall = new("Kunoichi.Equip", Route.ToHost,
+        (w, on) => w.Write(on), r => r.ReadBoolean(),
+        (sender, on) => { if (RoleState.Of(sender) is Kunoichi k) k._equippedHost = on; }, perSecond: 6);
 
     private float Aim()
     {
@@ -236,6 +243,8 @@ public sealed class Kunoichi : RoleBase
         if (ResetHitsOnMeeting) _hits.Clear();
         foreach (var r in BodyKunai) if (r) Object.Destroy(r.gameObject); // 死体に残ったクナイは会議で消える
         BodyKunai.Clear();
+        // 会議では持ち主の端末もクナイをしまうので、ホストの控えも同じく戻す (電文が届かなくても食い違わない)
+        _equippedHost = false;
         if (!IsLocal) return;
         SetEquip(false);
         _hidden = false;
@@ -258,5 +267,6 @@ public sealed class Kunoichi : RoleBase
         if (_equippedHost && UchuKit.AbilityKill != PlayerId) e.Cancel("kunoichi holds kunai");
     }
 
-    private bool _equippedHost => _equipped;
+    // ホストの端末で: この人がクナイを持っているか (持ち主の端末から届いた値)
+    private bool _equippedHost;
 }
