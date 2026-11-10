@@ -1941,19 +1941,12 @@ Loadout.Slots: Emote slots (1-4 in the in-game fan). Pick a slot, then choose wh
 Loadout.StampSlots: Meeting stamp slots (1-8). Pick a slot, then choose what goes in it below
 Loadout.Pick: Put into slot {n} (dark ones can be bought in the MRP Shop)
 Shop.Title: MRP Shop
-Shop.Open: MRP Shop (unofficial)
-Shop.Unofficial: * MRP Coins are an unofficial in-game currency of More Roles Plus only. They have nothing to do with Among Us money, beans or stars, and cannot be bought with real money. Win ranked matches to earn them.
-Shop.Me: MRP Coins: <color=#FFD54F>{coins}</color>   Rank: {tier} ({rating})
-Shop.CoinsShort: {coins} MRP Coins (unofficial)
+Shop.UnofficialShort: MRP Coins are an unofficial currency. They can't be bought with real money
 Shop.Offline: Not connected to the MRP server
 Shop.Loading: Loading...
-Shop.Error: Couldn't load ({error}). Check that you can reach the MRP server
 Shop.Owned: Owned
 Shop.Locked: Unavailable
 Shop.NeedTier: From {tier}
-Shop.PriceShort: {price} coins
-Shop.Buy: Buy for {price} coins
-Shop.Buying: Buying...
 Shop.Bought: Bought! Put it in a slot from the Emotes tab of your inventory
 Shop.Fail.coins: Not enough MRP Coins
 Shop.Fail.rank: Your rank is too low
@@ -1963,7 +1956,6 @@ Shop.Fail.network: Couldn't reach the MRP server
 Shop.Fail.auth: Couldn't verify your account
 Shop.Fail.too_many: Please wait a moment and try again
 Shop.Fail.disabled: The shop is closed right now
-Shop.Hint: Put what you buy into the emote fan slots and meeting stamp slots from the Emotes tab of your inventory. Prices, items and ranks are counted on the MRP server.
 Rank.Tier0: Bronze
 Rank.Tier1: Silver
 Rank.Tier2: Gold

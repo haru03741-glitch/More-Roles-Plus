@@ -79,6 +79,7 @@ public static partial class TestBridge
             Report.ReportWindow.RegisterBridge();
             Menu.RoomShare.RegisterBridge();
             Menu.HomeScreen.RegisterBridge();
+            Menu.MrpShop.RegisterBridge();
             Voice.VoiceChat.RegisterBridge();
             Rules.RulesProbe.Register();
             Terrain.TerrainProbe.Register();

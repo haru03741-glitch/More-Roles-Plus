@@ -1941,19 +1941,12 @@ Loadout.Slots: エモートの枠 (試合中の扇の 1〜4)。押して選ん�
 Loadout.StampSlots: 会議のスタンプの枠 (1〜8)。押して選んでから下の一覧で中身を選びます
 Loadout.Pick: 枠 {n} に入れる物 (暗い物は MRP ショップで買えます)
 Shop.Title: MRP ショップ
-Shop.Open: MRP ショップ (非公式)
-Shop.Unofficial: ※ MRP コインは More Roles Plus だけの非公式のゲーム内通貨です。Among Us 本編のお金・豆・星とは関係なく、本物のお金では買えません。ランクマッチで勝つともらえます。
-Shop.Me: 持っている MRP コイン: <color=#FFD54F>{coins}</color>   ランク: {tier} ({rating})
-Shop.CoinsShort: MRP コイン {coins} (非公式)
+Shop.UnofficialShort: MRP コインは非公式の通貨です。本物のお金では買えません
 Shop.Offline: MRP のサーバーにつながっていません
 Shop.Loading: 読み込み中…
-Shop.Error: 読めませんでした ({error})。MRP のサーバーにつながっているか確かめてください
 Shop.Owned: 持っています
 Shop.Locked: 買えません
 Shop.NeedTier: {tier} から
-Shop.PriceShort: {price} コイン
-Shop.Buy: {price} コインで買う
-Shop.Buying: 買っています…
 Shop.Bought: 買いました! 持ち物の「エモート」で枠に入れられます
 Shop.Fail.coins: MRP コインが足りません
 Shop.Fail.rank: ランクが足りません
@@ -1963,7 +1956,6 @@ Shop.Fail.network: MRP のサーバーにつながりませんでした
 Shop.Fail.auth: アカウントを確かめられませんでした
 Shop.Fail.too_many: 少し待ってからもう一度押してください
 Shop.Fail.disabled: いまショップは閉まっています
-Shop.Hint: 買った物は持ち物の「エモート」タブで、エモートの扇の枠・会議のスタンプの枠に入れて使います。値段・持ち物・ランクは MRP のサーバーで数えています。
 Rank.Tier0: ブロンズ
 Rank.Tier1: シルバー
 Rank.Tier2: ゴールド

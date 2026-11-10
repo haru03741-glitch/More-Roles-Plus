@@ -860,9 +860,12 @@ internal static class RoleCommands
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             if (a.Length == 0) { reply("ERR uitree target"); return; }
-            int depth = a.Length > 1 && int.TryParse(a[1], out int d) ? d : 3;
-            var root = UiTarget(a[0]);
-            if (!root) { reply($"ERR uitree not found: {a[0]}"); return; }
+            // 名前に空白のあるパス ("Scroll Stuff" など) も通す: 最後が数なら深さ、残りをつないでパス
+            bool hasDepth = a.Length > 1 && int.TryParse(a[^1], out _);
+            int depth = hasDepth ? int.Parse(a[^1]) : 3;
+            string path = string.Join(' ', a, 0, hasDepth ? a.Length - 1 : a.Length);
+            var root = UiTarget(path);
+            if (!root) { reply($"ERR uitree not found: {path}"); return; }
             var sb = new System.Text.StringBuilder();
             void Walk(UnityEngine.Transform t, int level)
             {

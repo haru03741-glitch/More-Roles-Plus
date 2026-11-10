@@ -57,6 +57,8 @@ internal static class EmoteTab
         _content = null;
         UiActions.Release(Slots);
         UiActions.Release(ContentSlots);
+        _pick?.Clear();
+        _pick = null;
         EmoteArt.Stop(EmoteArt.PreviewId);
     }
 
@@ -256,6 +258,8 @@ internal static class EmoteTab
         _seenAccount = Net.MrpAccount.Version;
         _seenLoadout = Loadout.Version;
         UiActions.Release(ContentSlots);
+        _pick?.Clear();
+        _pick = null;
         if (_content) UnityEngine.Object.Destroy(_content);
         _content = new GameObject("Content") { layer = _panel.layer };
         _content.transform.SetParent(_panel.transform, false);
@@ -267,12 +271,14 @@ internal static class EmoteTab
         // 見出しと MRP コイン
         var title = Label(proto, root, new Text("Emote.Tab").ToString(), new Vector3(Left, 2.2f, -1f), 4.2f, TextAlignmentOptions.Left, new Vector2(3f, 0.7f));
         title.rectTransform.pivot = new Vector2(0f, 0.5f);
-        string coins = Net.MrpAccount.Ready
-            ? new Text("Shop.CoinsShort").With("coins", Net.MrpAccount.Coins).ToString()
-            : new Text("Shop.Offline").ToString();
-        var coin = Label(proto, root, coins, new Vector3(Left + 3.75f, 2.2f, -1f), 1.6f, TextAlignmentOptions.Right, new Vector2(2.4f, 0.5f));
-        coin.rectTransform.pivot = new Vector2(1f, 0.5f);
-        coin.color = new Color(1f, 0.85f, 0.35f, 1f);
+        // 持っている MRP コイン: 本編の豆と同じ「絵 + 数」(つながっていない時は字だけ)
+        if (Net.MrpAccount.Ready) CoinAmount(proto, root, Net.MrpAccount.Coins.ToString(), new Vector3(Left + 3.75f, 2.2f, -1f), 2.4f, 0.34f, MrpCoin.Ink, true);
+        else
+        {
+            var off = Label(proto, root, new Text("Shop.Offline").ToString(), new Vector3(Left + 3.75f, 2.2f, -1f), 1.4f, TextAlignmentOptions.Right, new Vector2(2.4f, 0.5f));
+            off.rectTransform.pivot = new Vector2(1f, 0.5f);
+            off.color = new Color(0.78f, 0.8f, 0.88f, 1f);
+        }
 
         // 切り替え
         Toggle(proto, root, new Text("Emote.Tab").ToString(), new Vector3(Left + 0.9f, 1.68f, -1f), !_stampMode, () => { _stampMode = false; _slot = 0; Rebuild(); });
@@ -293,26 +299,25 @@ internal static class EmoteTab
             var pos = new Vector3(Left + CardW * 0.5f + i * (CardW + Gap), 0.72f, -1f);
             var card = Card(root, "Slot" + i, pos, new Vector2(CardW, CardH), slot == _slot ? CardPicked : CardColor, () => { _slot = slot; Preview(kind); Rebuild(); });
             Hand(menu, card.transform, kind, 0.36f, 0.1f, true);
-            Label(proto, card.transform, (slot + 1).ToString(), new Vector3(CardW * 0.5f - 0.13f, CardH * 0.5f - 0.13f, -0.02f), 1.8f, TextAlignmentOptions.Center, new Vector2(0.3f, 0.3f)).color = new Color(1f, 0.85f, 0.3f, 1f);
+            CardLabel(proto, card.transform, (slot + 1).ToString(), new Vector3(CardW * 0.5f - 0.13f, CardH * 0.5f - 0.13f, -0.02f), 1.8f, TextAlignmentOptions.Center, new Vector2(0.3f, 0.3f)).color = new Color(1f, 0.85f, 0.3f, 1f);
             Label(proto, card.transform, new Text(Emotes.Names[kind]).ToString(), new Vector3(0f, -0.29f, -0.02f), 1.25f, TextAlignmentOptions.Center, new Vector2(CardW, 0.25f));
         }
 
         // 一覧 (押すと選んだ枠に入れる)
         Caption(proto, root, new Text("Loadout.Pick").With("n", _slot + 1).ToString(), 0.2f);
-        for (int k = 0; k < EmoteArt.Count; k++)
+        PickList(root, 0.05f, EmoteArt.Count, new Vector2(CardW, CardH), "emotetab:emote", (k, t, mask) =>
         {
             byte kind = (byte)k;
             bool owned = Net.MrpAccount.OwnsEmote(kind);
-            var pos = new Vector3(Left + CardW * 0.5f + (k % 4) * (CardW + Gap), -0.33f - (k / 4) * (CardH + Gap), -1f);
-            var card = Card(root, "Emote" + k, pos, new Vector2(CardW, CardH), owned ? CardColor : Locked, () =>
+            var card = Card(t, "Emote" + k, Vector3.zero, new Vector2(CardW, CardH), owned ? CardColor : Locked, () =>
             {
                 Preview(kind);
                 if (Net.MrpAccount.OwnsEmote(kind)) Loadout.SetEmote(_slot, kind);
-            });
+            }, mask);
             Hand(menu, card.transform, kind, 0.36f, 0.1f, owned);
-            Label(proto, card.transform, owned ? new Text(Emotes.Names[kind]).ToString() : PriceText("emote:" + kind), new Vector3(0f, -0.29f, -0.02f), 1.2f, TextAlignmentOptions.Center, new Vector2(CardW, 0.25f))
-                .color = owned ? Color.white : new Color(1f, 0.85f, 0.35f, 1f);
-        }
+            if (owned) Label(proto, card.transform, new Text(Emotes.Names[kind]).ToString(), new Vector3(0f, -0.29f, -0.02f), 1.2f, TextAlignmentOptions.Center, new Vector2(CardW, 0.25f));
+            else PriceLabel(proto, card.transform, "emote:" + kind, new Vector3(0f, -0.29f, -0.02f), 1.2f, new Vector2(CardW, 0.2f));
+        });
     }
 
     private static void BuildStamps(TextMeshPro proto, Transform root)
@@ -326,32 +331,117 @@ internal static class EmoteTab
             byte kind = Loadout.Stamp(slot);
             var pos = new Vector3(Left + w * 0.5f + (i % 4) * (w + Gap), 0.88f - (i / 4) * (h + Gap), -1f);
             var card = Card(root, "Slot" + i, pos, new Vector2(w, h), slot == _slot ? CardPicked : CardColor, () => { _slot = slot; ShowStamp(kind); Rebuild(); });
-            Label(proto, card.transform, MeetingStamps.Label(kind), new Vector3(0f, 0f, -0.02f), 1.3f, TextAlignmentOptions.Center, new Vector2(w, h));
-            Label(proto, card.transform, (slot + 1).ToString(), new Vector3(-w * 0.5f + 0.09f, h * 0.5f - 0.09f, -0.02f), 1.1f, TextAlignmentOptions.Center, new Vector2(0.2f, 0.2f)).color = new Color(1f, 0.85f, 0.3f, 1f);
+            CardLabel(proto, card.transform, MeetingStamps.Label(kind), new Vector3(0f, 0f, -0.02f), 1.3f, TextAlignmentOptions.Center, new Vector2(w, h));
+            CardLabel(proto, card.transform, (slot + 1).ToString(), new Vector3(-w * 0.5f + 0.09f, h * 0.5f - 0.09f, -0.02f), 1.1f, TextAlignmentOptions.Center, new Vector2(0.2f, 0.2f)).color = new Color(1f, 0.85f, 0.3f, 1f);
         }
         Caption(proto, root, new Text("Loadout.Pick").With("n", _slot + 1).ToString(), -0.1f);
-        for (int k = 0; k < MeetingStamps.Count; k++)
+        PickList(root, -0.25f, MeetingStamps.Count, new Vector2(w, h), "emotetab:stamp", (k, t, mask) =>
         {
             byte kind = (byte)k;
             bool owned = Net.MrpAccount.OwnsStamp(kind);
-            var pos = new Vector3(Left + w * 0.5f + (k % 4) * (w + Gap), -0.5f - (k / 4) * (h + Gap), -1f);
-            var card = Card(root, "Stamp" + k, pos, new Vector2(w, h), owned ? CardColor : Locked, () =>
+            var card = Card(t, "Stamp" + k, Vector3.zero, new Vector2(w, h), owned ? CardColor : Locked, () =>
             {
                 ShowStamp(kind);
                 if (Net.MrpAccount.OwnsStamp(kind)) Loadout.SetStamp(_slot, kind);
-            });
-            Label(proto, card.transform, owned ? MeetingStamps.Label(kind) : PriceText("stamp:" + kind), new Vector3(0f, 0f, -0.02f), 1.2f, TextAlignmentOptions.Center, new Vector2(w, h))
-                .color = owned ? Color.white : new Color(1f, 0.85f, 0.35f, 1f);
+            }, mask);
+            if (owned) CardLabel(proto, card.transform, MeetingStamps.Label(kind), new Vector3(0f, 0f, -0.02f), 1.2f, TextAlignmentOptions.Center, new Vector2(w, h));
+            else
+            {
+                // 買っていないスタンプも何かが分かるように名前を薄く出し、下に値段
+                CardLabel(proto, card.transform, MeetingStamps.Label(kind), new Vector3(0f, 0.08f, -0.02f), 1.05f, TextAlignmentOptions.Center, new Vector2(w, 0.2f))
+                    .color = new Color(0.62f, 0.64f, 0.72f, 1f);
+                PriceLabel(proto, card.transform, "stamp:" + kind, new Vector3(0f, -0.1f, -0.02f), 1.0f, new Vector2(w, 0.17f));
+            }
+        });
+    }
+
+    // 入れる物の一覧: 4 列に並べてスクロール欄に入れる (品が増えて画面の下へはみ出しても動かして選べるように)。top = 欄の上端
+    private const float ListBottom = -2.05f; // 本編の画面の下の暗くなる所より上
+    private const int ListCols = 4;
+    private static UiScreen _pick;
+
+    private static void PickList(Transform root, float top, int count, Vector2 card, string tag, Action<int, Transform, Collider2D> make)
+    {
+        float w = ListCols * card.x + (ListCols - 1) * Gap;
+        var rows = new Stack(false) { Gap = Gap };
+        for (int r = 0; r * ListCols < count; r++)
+        {
+            var row = new Stack(true) { Gap = Gap, Align = Align.Start };
+            for (int c = 0; c < ListCols && r * ListCols + c < count; c++)
+            {
+                int k = r * ListCols + c;
+                row.Add(new Raw(card, (t, mask) => make(k, t, mask)));
+            }
+            rows.Add(row);
+        }
+        var size = new Vector2(w + ScrollView.BarSpace, top - ListBottom);
+        var node = Widget.Node("PickList", root, root.gameObject.layer);
+        node.transform.localPosition = new Vector3(Left + size.x / 2f, (top + ListBottom) / 2f, -1f);
+        _pick = new UiScreen(node.transform) { MaxWidth = size.x + 0.1f };
+        _pickView = new ScrollView(size, rows) { Tag = tag };
+        _pick.Set(_pickView);
+    }
+
+    private static ScrollView _pickView;
+
+    // 確認用: 入れる物の一覧を 0〜1 の位置へ動かす
+    internal static string ScrollPick(float p)
+    {
+        var s = _pickView?.Scroller;
+        if (!s) return "ERR no list";
+        s.ScrollPercentY(p);
+        return $"OK pick y={s.Inner.localPosition.y:0.00}";
+    }
+
+    // 決まった大きさの置き場に、この画面の他の札と同じ作りの札をそのまま作る
+    private sealed class Raw : Widget
+    {
+        private readonly Vector2 _size;
+        private readonly Action<Transform, Collider2D> _make;
+
+        public Raw(Vector2 size, Action<Transform, Collider2D> make)
+        {
+            _size = size;
+            _make = make;
+        }
+
+        public override GameObject Build(Transform parent, BuildCtx ctx, float maxWidth, out Vector2 size)
+        {
+            var go = Node("Raw", parent, ctx.Layer);
+            _make(go.transform, ctx.ClickMask);
+            size = _size;
+            return go;
         }
     }
 
-    // 買っていない物の札の字: 値段 (ランクで買えない時は段の名前)
-    private static string PriceText(string id)
+    // 買っていない物の札の字: 値段 = コインの絵 + 数 (ランクで買えない時・品が無い時は字だけ)
+    private static void PriceLabel(TextMeshPro proto, Transform card, string id, Vector3 pos, float size, Vector2 box)
     {
         var item = Net.MrpAccount.Catalog.Find(c => c.Id == id);
-        if (item == null) return new Text("Shop.Locked").ToString();
-        if (Net.MrpAccount.Tier < item.MinTier) return new Text("Shop.NeedTier").With("tier", Net.MrpAccount.TierName(item.MinTier)).ToString();
-        return new Text("Shop.PriceShort").With("price", item.Price).ToString();
+        var gold = new Color(1f, 0.85f, 0.35f, 1f);
+        if (item != null && Net.MrpAccount.Tier >= item.MinTier)
+        {
+            CoinAmount(proto, card, item.Price.ToString(), pos, box.x, box.y * 0.8f, gold, false);
+            return;
+        }
+        string text = item == null ? new Text("Shop.Locked").ToString() : new Text("Shop.NeedTier").With("tier", Net.MrpAccount.TierName(item.MinTier)).ToString();
+        Label(proto, card, text, pos, size, TextAlignmentOptions.Center, box).color = gold;
+    }
+
+    // コインの絵 + 数を pos に並べる (right = 右端を pos に揃える・そうでなければ真ん中を pos に)
+    private static void CoinAmount(TextMeshPro proto, Transform parent, string n, Vector3 pos, float boxW, float iconH, Color color, bool right)
+    {
+        // 数字は MRP の書体で (この画面の本編の書体は英数字だけ小さく出る)
+        var t = Label(proto, parent, n, pos, iconH * 5.4f, TextAlignmentOptions.Left, new Vector2(boxW, iconH * 1.4f));
+        Options.MenuFont.Apply(t);
+        t.color = color;
+        float textW = t.GetPreferredValues(n).x;
+        float gap = iconH * 0.18f, total = iconH + gap + textW;
+        float x0 = right ? pos.x - total : pos.x - total / 2f;
+        t.rectTransform.pivot = new Vector2(0f, 0.5f);
+        t.transform.localPosition = new Vector3(x0 + iconH + gap, pos.y, pos.z);
+        var psr = parent.GetComponent<SpriteRenderer>();
+        MrpCoin.Place(parent, new Vector3(x0 + iconH / 2f, pos.y, pos.z - 0.01f), iconH, psr ? psr.sortingOrder : 0);
     }
 
     private static void ShowStamp(byte kind)
@@ -372,7 +462,7 @@ internal static class EmoteTab
         Label(proto, card.transform, text, new Vector3(0f, 0f, -0.02f), 1.7f, TextAlignmentOptions.Center, new Vector2(1.75f, 0.38f));
     }
 
-    private static SpriteRenderer Card(Transform root, string name, Vector3 pos, Vector2 size, Color color, Action click)
+    private static SpriteRenderer Card(Transform root, string name, Vector3 pos, Vector2 size, Color color, Action click, Collider2D clickMask = null)
     {
         var card = MenuArt.Panel(root, name, 0.1f, size, pos, color, null);
         var col = card.gameObject.AddComponent<BoxCollider2D>();
@@ -381,6 +471,8 @@ internal static class EmoteTab
         pb.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
         pb.OnMouseOver = new UnityEngine.Events.UnityEvent();
         pb.OnMouseOut = new UnityEngine.Events.UnityEvent();
+        // スクロール欄の中の札は、欄の外に出た所を押しても反応しないように
+        if (clickMask) pb.ClickMask = clickMask;
         var sr = card;
         pb.OnMouseOver.AddListener(UiActions.Take(() => { if (sr) sr.color = color == Locked ? new Color(0.2f, 0.2f, 0.27f, 1f) : CardHover; }, ContentSlots));
         pb.OnMouseOut.AddListener(UiActions.Take(() => { if (sr) sr.color = color; }, ContentSlots));
@@ -415,11 +507,12 @@ internal static class EmoteTab
     }
 
     // 人の色を塗る材質。メインメニューには試合の部品 (死体のひな形) が無いので、見本の人の体の材質を借りる
-    internal static Material Mat(PlayerCustomizationMenu menu)
+    internal static Material Mat(PlayerCustomizationMenu menu) => Mat(menu ? menu.PreviewArea : null);
+
+    internal static Material Mat(PoolablePlayer pp)
     {
         var mat = FxHands.PlayerMat();
         if (mat) return mat;
-        var pp = menu ? menu.PreviewArea : null;
         var body = pp && pp.cosmetics && pp.cosmetics.currentBodySprite != null ? pp.cosmetics.currentBodySprite.BodySprite : null;
         return body ? body.sharedMaterial : null;
     }
@@ -431,6 +524,14 @@ internal static class EmoteTab
         if (lp && lp.Data != null) return lp.Data.DefaultOutfit.ColorId;
         var data = AmongUs.Data.DataManager.Player;
         return data != null && data.Customization != null ? data.Customization.Color : 0;
+    }
+
+    // 札の中の字: スタンプの名前 (GG・!・?) と枠の番号は英数字なので MRP の書体で (この画面の本編の書体は英数字だけ小さく出る)
+    private static TextMeshPro CardLabel(TextMeshPro proto, Transform parent, string text, Vector3 pos, float size, TextAlignmentOptions align, Vector2 box)
+    {
+        var t = Label(proto, parent, text, pos, size * 0.85f, align, box);
+        Options.MenuFont.Apply(t);
+        return t;
     }
 
     internal static TextMeshPro Label(TextMeshPro proto, Transform parent, string text, Vector3 pos, float size, TextAlignmentOptions align, Vector2 box)

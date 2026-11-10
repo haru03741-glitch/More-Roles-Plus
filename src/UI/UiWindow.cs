@@ -75,6 +75,10 @@ internal sealed class UiWindow
         pb.OnMouseOut = new UnityEvent();
         pb.OnClick.AddListener(CloseAction);
 
+        // 型板 (stencil) を窓の板の範囲だけ 0 に戻す。本編のスクロール欄 (ショップ・チャット) の切り抜きは型板に 200 を書いて
+        // そのまま残すので、上に重ねた窓のスクロール欄の SpriteMask (1 以上で通す) が欄の外でも通ってしまう (実測)
+        StencilClear(t, Size);
+
         // 窓の板 (押下を受け止めるだけ。押しても閉じない)
         var panel = Widget.Node("Panel", t, UiLayer);
         panel.transform.localPosition = new Vector3(0f, 0f, 0.5f);
@@ -106,6 +110,36 @@ internal sealed class UiWindow
             _overlay = Root.name;
             cm.OpenOverlayMenu(_overlay, back, back, new Il2CppSystem.Collections.Generic.List<UiElement>());
         }
+    }
+
+    private static Material _stencilClear;
+    private static bool _stencilWarned;
+
+    private static void StencilClear(Transform parent, Vector2 size)
+    {
+        if (!_stencilClear)
+        {
+            // 本編の切り抜きの材質 (Unlit/MaskShader) で、書く値を 0・比べ方を「いつも」にした物
+            var shader = Shader.Find("Unlit/MaskShader");
+            if (!shader)
+            {
+                if (!_stencilWarned) Plugin.Logger.LogWarning("window stencil clear: Unlit/MaskShader not found");
+                _stencilWarned = true;
+                return;
+            }
+            _stencilClear = new Material(shader) { name = "MrpStencilClear", hideFlags = HideFlags.DontUnloadUnusedAsset };
+            _stencilClear.SetFloat("_MaskLayer", 0f);
+            _stencilClear.SetFloat("_MaskComp", 8f);
+        }
+        var go = Widget.Node("StencilClear", parent, UiLayer);
+        go.transform.localPosition = new Vector3(0f, 0f, 0.9f);
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = UiAssets.Blank;
+        sr.sharedMaterial = _stencilClear;
+        sr.color = new Color(1f, 1f, 1f, 0f);
+        sr.sortingOrder = -3;
+        var b = sr.sprite.bounds.size;
+        go.transform.localScale = new Vector3(size.x / b.x, size.y / b.y, 1f);
     }
 
     private System.Collections.Generic.List<int> _closeSlots;

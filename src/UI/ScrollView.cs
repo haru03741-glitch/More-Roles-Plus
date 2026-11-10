@@ -33,6 +33,8 @@ internal sealed class ScrollView : Widget
     }
 
     private const float BarW = 0.08f, BarGap = 0.06f;
+    // 右の棒と間の幅 (中身の幅 = Size.x - BarSpace)
+    internal const float BarSpace = BarW + BarGap;
 
     public override GameObject Build(Transform parent, BuildCtx ctx, float maxWidth, out Vector2 size)
     {
