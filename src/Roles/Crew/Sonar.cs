@@ -39,9 +39,9 @@ public sealed class Sonar : RoleBase
             OnUse = () =>
             {
                 Vector2 at = Player.GetTruePosition();
-                var art = PortKit.Marker(Lifespan, at, "sonar_antenna", 0.7f);
+                var art = FloorPropArt.Place(Lifespan, at, "antenna");
                 _antennas.Add(new Antenna { At = at, Art = art });
-                Bodies.Prop(AntennaKind, art.transform, 0f, 0.25f); // 壊れると聞けなくなるので、当たっても火花だけ
+                Bodies.Prop(AntennaKind, art.transform, 0.2f, 0.25f); // 壊れると聞けなくなるので、当たっても火花だけ
                 return true;
             },
         });
@@ -60,7 +60,7 @@ public sealed class Sonar : RoleBase
             Vector2 to = ArrowAt.Value == 0 ? dead : a.At;
             AlarmCall.Send((to.x, to.y, a.At.x, a.At.y));
             OnAlarm(to, a.At);
-            if (a.Art) a.Art.sprite = ButtonIcons.Get("sonar_antenna_broken");
+            FloorPropArt.Swap(a.Art, "antenna_broken");
         }
     }
 
@@ -75,6 +75,6 @@ public sealed class Sonar : RoleBase
         var lp = PlayerControl.LocalPlayer;
         if (lp && lp.Data != null && !lp.Data.IsDead)
             PortSound.PlayVanilla("notice", 0.6f);
-        if (ShareBroken && !(RoleState.Acting(RoleState.Local) is Sonar)) PortKit.Marker(RoleState.Match, antenna, "sonar_antenna_broken", 0.7f);
+        if (ShareBroken && !(RoleState.Acting(RoleState.Local) is Sonar)) FloorPropArt.Place(RoleState.Match, antenna, "antenna_broken");
     }
 }

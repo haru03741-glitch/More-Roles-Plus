@@ -73,7 +73,7 @@ public sealed class Anchor : RoleBase
     private void Place(Vector2 at)
     {
         _anchors.Add(at);
-        Bodies.Prop(AnchorKind, PortKit.Marker(Lifespan, at, "anchor_anchor", 0.6f).transform, 0f, 0.3f); // 重い錨は当たっても火花だけ
+        Bodies.Prop(AnchorKind, FloorPropArt.Place(Lifespan, at, "anchor").transform, 0.05f, 0.3f); // 重い錨は当たっても火花だけ
         Notify(at);
     }
 

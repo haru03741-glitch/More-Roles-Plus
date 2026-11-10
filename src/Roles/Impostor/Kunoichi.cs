@@ -128,8 +128,8 @@ public sealed partial class Kunoichi : RoleBase
     // 全員の端末で飛ばす。当たりの判定は投げた本人の端末 (頑丈な役職への当たりだけはその人の端末・Kunoichi.Body.cs)
     private static void Fly(Kunoichi k, Vector2 from, float angle, bool judge, byte seq)
     {
-        var sr = PortKit.Marker(k.Lifespan, from, "kunoichi_kunai", 0.5f);
-        sr.transform.rotation = Quaternion.Euler(0f, 0f, angle - 45f);
+        var sr = FloorPropArt.Place(k.Lifespan, from, "kunai");
+        sr.transform.rotation = Quaternion.Euler(0f, 0f, angle);
         k.AddKunai(seq, sr, judge);
         Vector2 dir = new Vector2(Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad));
         float speed = KunaiSpeed * 4f, gone = 0f;
@@ -212,7 +212,7 @@ public sealed partial class Kunoichi : RoleBase
         if (KunaiOnBody)
         {
             var t = PortKit.ById(tid);
-            if (t) PortKit.After(0.3f, () => { if (t) BodyKunai.Add(PortKit.Marker(RoleState.Match, t.GetTruePosition(), "kunoichi_kunai", 0.45f)); });
+            if (t) PortKit.After(0.3f, () => { if (t) BodyKunai.Add(FloorPropArt.Place(RoleState.Match, t.GetTruePosition(), "kunai")); });
         }
     }
 
@@ -228,12 +228,12 @@ public sealed partial class Kunoichi : RoleBase
         // 持っているクナイがマウスの向きに浮かぶ (本人だけ・壁で投げられない時は赤)
         if (_equipped && !MeetingHud.Instance)
         {
-            if (!_held) _held = PortKit.Marker(Lifespan, p.GetTruePosition(), "kunoichi_kunai", 0.4f);
+            if (!_held) _held = FloorPropArt.Place(Lifespan, p.GetTruePosition(), "kunai");
             float a = Aim();
             Vector2 dir = new Vector2(Mathf.Cos(a * Mathf.Deg2Rad), Mathf.Sin(a * Mathf.Deg2Rad));
             Vector2 at = p.GetTruePosition() + dir * 0.6f;
             _held.transform.position = new Vector3(at.x, at.y + 0.3f, -1f);
-            _held.transform.rotation = Quaternion.Euler(0f, 0f, a - 45f);
+            _held.transform.rotation = Quaternion.Euler(0f, 0f, a);
             _held.color = Blocked(p.GetTruePosition(), a) ? new UnityEngine.Color(1f, 0.3f, 0.3f) : UnityEngine.Color.white;
             _held.gameObject.SetActive(true);
         }
