@@ -2188,11 +2188,12 @@ Prosecutor.Name: プロセキューター
 Prosecutor.Blurb: 告発し、有無を言わさず追放せよ
 Prosecutor.Summary: 会議で 1 人を強制的に追放できるクルーです。追放した人が本当のクルーなら、自分も死にます (設定)。
 Prosecutor.Prosecute: プロセキュート
-Prosecutor.Prosecute.Help: 会議中に相手の名札から使います (1 会議 1 回)。投票をやり直し、全員の票をその人に入れて追放します。
+Prosecutor.Prosecute.Help: 会議中に相手の名札から使います (1 会議 1 回)。投票をすぐ締め、ほかの人の票を消して、自分の 5 票でその人を追放します。
 Prosecutor.Prosecute.Short: その人を強制追放する
 Prosecutor.NumOfProsecute: プロセキュートの回数
 Prosecutor.DieOnCrew: クルーを追放すると自分も死ぬ
 Prosecutor.CanCallEmergency: 緊急ボタンを使える
+Prosecutor.Announced: プロセキュートされた
 Monitor.Name: モニター
 Monitor.Blurb: プロキシの影となれ
 Monitor.Summary: プロキシの相方のマッドメイトです。タスクは無く、プロキシとはお互いに赤い名前で分かります。プロキシがキルすると画面が光ります。インポスターの勝ちで勝ちます。

@@ -2188,11 +2188,12 @@ Prosecutor.Name: Prosecutor
 Prosecutor.Blurb: Accuse and exile without a vote
 Prosecutor.Summary: A crewmate who can force one player's exile in a meeting. If that player was a true crewmate, you die too (option).
 Prosecutor.Prosecute: Prosecute
-Prosecutor.Prosecute.Help: Use it from a player's plate during a meeting (once per meeting). The vote is redone with every vote on that player, exiling them.
+Prosecutor.Prosecute.Help: Use it from a player's plate during a meeting (once per meeting). Voting ends at once, everyone else's votes are thrown out, and your 5 votes exile that player.
 Prosecutor.Prosecute.Short: Force that player's exile
 Prosecutor.NumOfProsecute: Prosecute uses
 Prosecutor.DieOnCrew: Die when you exile a crewmate
 Prosecutor.CanCallEmergency: Can use the emergency button
+Prosecutor.Announced: Someone prosecuted
 Monitor.Name: Monitor
 Monitor.Blurb: Be the Proxy's shadow
 Monitor.Summary: The Proxy's partner madmate. You have no tasks, and you and the Proxy see each other's names in red. Your screen flashes when the Proxy kills. You win with the impostors.

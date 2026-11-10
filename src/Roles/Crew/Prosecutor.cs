@@ -34,7 +34,9 @@ public sealed class Prosecutor : RoleBase
             OnUsed = (_, t) =>
             {
                 _prosecuted = t.PlayerId;
-                if (AmongUsClient.Instance.AmHost) Rules.VoteTally.ForceExile(MeetingHud.Instance, t.PlayerId);
+                // 全員に、プロセキュートで締められたことだけを知らせる (誰が使ったかは出さない)
+                PortKit.Notice(new Text("Prosecutor.Announced").ToString());
+                if (AmongUsClient.Instance.AmHost) Rules.VoteTally.ForceExile(MeetingHud.Instance, t.PlayerId, PlayerId);
             },
         });
     }

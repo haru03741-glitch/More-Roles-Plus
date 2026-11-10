@@ -125,19 +125,15 @@ internal static class VoteTally
         return true;
     }
 
-    // ホスト: 投票をすぐ締め、生きている全員の票を target へ向けて追放する (プロセキューターの強制追放)
-    internal static bool ForceExile(MeetingHud hud, byte target)
+    // ホスト: 投票をすぐ締め、by の票だけを target へ ForcedVotes 個並べて追放する (プロセキューターの強制追放)。ほかの人の票は結果に出さない
+    private const int ForcedVotes = 5;
+    internal static bool ForceExile(MeetingHud hud, byte target, byte by)
     {
         if (!AmongUsClient.Instance.AmHost || !hud || hud.state is MeetingHud.MeetingStates.Results or MeetingHud.MeetingStates.Proceeding) return false;
         var info = GameData.Instance.GetPlayerById(target);
         if (info == null || info.IsDead || info.Disconnected) return false;
         var rows = new List<MeetingHud.VoterState>();
-        foreach (var pva in hud.playerStates)
-        {
-            if (!pva) continue;
-            byte id = pva.PlayerId.Value;
-            rows.Add(new MeetingHud.VoterState { VoterId = id, VotedForId = pva.AmDead ? (byte)254 : target });
-        }
+        for (int i = 0; i < ForcedVotes; i++) rows.Add(new MeetingHud.VoterState { VoterId = by, VotedForId = target });
         var sent = new Il2CppStructArray<MeetingHud.VoterState>((long)rows.Count);
         for (int i = 0; i < rows.Count; i++) sent[i] = rows[i];
         Last = $"forced exiled={target}";
