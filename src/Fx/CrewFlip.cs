@@ -25,11 +25,13 @@ internal static partial class CrewFlip
         public ushort[] Nums;
         public byte[] Seq;
         public float[] Ax, Ay;                    // 絵ごとの頭の動き (右向きの時・単位)。null = 着せ替えを隠したまま
+        public float Ox, Oy;                      // 本編の絵の原点を立ち絵の足元へ合わせるずらし (右向きの時・絵の単位)
         public Sprite[] Sprites;
         public bool Searched;
 
+        // 本編の別の場面の絵 (キルの被害者など) は原点が立ち絵と違う所にあるので、そのまま差すと体が元の場所からずれる
         public static Clip Vanilla(string name, string prefix, ushort[] nums, float ox, float oy, int loop, byte[] seq, float[] ax, float[] ay) =>
-            new() { Name = name, Prefix = prefix, Nums = nums, Loop = loop, Seq = seq, Ax = ax, Ay = ay };
+            new() { Name = name, Prefix = prefix, Nums = nums, Ox = ox, Oy = oy, Loop = loop, Seq = seq, Ax = ax, Ay = ay };
 
         public static Clip Own(string name, int w, int h, int cols, int rows, float feetX, float feetY, int loop, byte[] seq) =>
             new() { Name = name, W = w, H = h, Cols = cols, Rows = rows, FeetX = feetX, FeetY = feetY, Loop = loop, Seq = seq };
@@ -47,6 +49,7 @@ internal static partial class CrewFlip
         public bool Flip, CosHidden, SkinHidden;
         public bool Fallen;                       // 倒れる流し方: 着せ替えは消さずに体から落とし、流している間に死んだら今の絵を死体にする
         public float K = 1f, Cx, Cy;              // 絵の 1 単位が着せ替えの親の何単位か・着せ替えに今足している分
+        public float Bx, By;                      // 体の絵の位置に今足している分 (足元合わせ)
     }
 
     private static readonly List<Show> Live = new();
@@ -87,6 +90,7 @@ internal static partial class CrewFlip
         Live.Add(s);
         Played++;
         Hide(s);
+        Feet(s);
         Frame(s, 0);
         body.sprite = c.Sprites[s.Cur];
         return true;
@@ -143,6 +147,7 @@ internal static partial class CrewFlip
             {
                 s.Flip = flip;
                 s.Cur = -1;
+                Feet(s);
             }
             Frame(s, tick);
         }
@@ -193,6 +198,22 @@ internal static partial class CrewFlip
         s.Cy = ty;
     }
 
+    // 体の絵を足元合わせの分だけ動かす (左右が反転すると原点の左右も反転する)。
+    // 足した分だけを差し替えるので、同時に体を動かす他の演出 (チキンの震えなど) の分は消さない
+    private static void Feet(Show s)
+    {
+        var c = s.C;
+        if (!s.Body || (c.Ox == 0f && c.Oy == 0f)) return;
+        var t = s.Body.transform;
+        var l = t.localScale;
+        float tx = (s.Flip ? -c.Ox : c.Ox) * l.x, ty = c.Oy * l.y;
+        if (tx == s.Bx && ty == s.By) return;
+        var p = t.localPosition;
+        t.localPosition = FxMath.V3(p.x + tx - s.Bx, p.y + ty - s.By, p.z);
+        s.Bx = tx;
+        s.By = ty;
+    }
+
     // 服は立ち姿の形なので隠す。本編が出し直したら隠し直す (歩きの絵への切り替え・見えない所から出てきた時)
     private static void Hide(Show s)
     {
@@ -218,6 +239,14 @@ internal static partial class CrewFlip
             var p = s.Cos.localPosition;
             s.Cos.localPosition = FxMath.V3(p.x - s.Cx, p.y - s.Cy, p.z);
             s.Cx = s.Cy = 0f;
+        }
+        // 死体を写した後で戻す (死体は倒れた絵を差していた時の位置に置く)
+        if (s.Body && (s.Bx != 0f || s.By != 0f))
+        {
+            var t = s.Body.transform;
+            var p = t.localPosition;
+            t.localPosition = FxMath.V3(p.x - s.Bx, p.y - s.By, p.z);
+            s.Bx = s.By = 0f;
         }
         if (!s.Pc || s.Pc.cosmetics == null) return;
         // 向きを止めていた体を本編の向きへ戻す

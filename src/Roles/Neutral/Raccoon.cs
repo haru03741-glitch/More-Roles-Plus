@@ -323,6 +323,8 @@ internal static class RaccoonCarryFx
     private static Lift Begin(PlayerControl t)
     {
         var root = t.transform;
+        // 体を動かしている他の演出を先に元へ戻させる (戻さないと、ずれた姿を元として控えて書き戻す)
+        SamuraiBlade.ReleaseBody(t.PlayerId);
         var l = new Lift
         {
             Pc = t,

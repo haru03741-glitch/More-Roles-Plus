@@ -44,6 +44,8 @@ internal sealed partial class SamuraiBlade
     internal static void ReleaseBody(byte id)
     {
         ChickenFx.Release(id);
+        // 全身の描き替えは着せ替えの位置に足しているので、相手が元の位置を控える前に外す
+        Fx.CrewFlip.Stop(id);
         foreach (var b in Live)
         {
             if (b._role.PlayerId != id) continue;
@@ -52,7 +54,7 @@ internal sealed partial class SamuraiBlade
         }
     }
 
-    private bool OthersPose(byte id) => Fx.EmoteArt.IsPlaying(id) || Terrain.CrewBrace.Posed(id) || Terrain.CrewGrip.Flying(id) || DuelTumble.Posing(id);
+    private bool OthersPose(byte id) => Fx.EmoteArt.IsPlaying(id) || Fx.CrewFlip.IsPlaying(id) || Terrain.CrewBrace.Posed(id) || Terrain.CrewGrip.Flying(id) || DuelTumble.Posing(id);
 
     // 体の姿 (ワールドの値・左右の鏡は済んでいる)
     private void WriteBody(PlayerControl pc, in Pose p)

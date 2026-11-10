@@ -159,7 +159,8 @@ internal static class EmoteArt
 
     private static bool Play(PlayerControl pc, byte kind, float hold)
     {
-        if (!pc || kind >= Count || !LoadSprites()) { Refused++; return false; }
+        // 全身を描き替えている間 (発作・変身) は手を足す体の形が無い
+        if (!pc || kind >= Count || CrewFlip.IsPlaying(pc.PlayerId) || !LoadSprites()) { Refused++; return false; }
         Material mat = FxHands.PlayerMat();
         if (!mat) { Refused++; return false; }
         Stop(pc.PlayerId);

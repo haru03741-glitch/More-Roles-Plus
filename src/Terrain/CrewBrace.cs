@@ -193,6 +193,8 @@ internal static class CrewBrace
     private static bool Begin(Crew c)
     {
         var pc = c.Pc;
+        // 全身を描き替えている間 (発作・変身) は踏ん張らない。終われば次のフレームから踏ん張る
+        if (Fx.CrewFlip.IsPlaying(pc.PlayerId)) return false;
         var root = pc.transform;
         c.Root = root;
         Roles.SamuraiBlade.ReleaseBody(pc.PlayerId);
