@@ -51,10 +51,12 @@ public sealed class Shaman : RoleBase
                 _casting = true;
                 _failed = false;
                 _castAt = Player.GetTruePosition();
+                SpiritFx.LocalBreath(Player);
                 return true;
             },
             OnEnd = () =>
             {
+                SpiritFx.LocalStop(Player);
                 if (!_casting) return;
                 _casting = false;
                 if (_failed || MeetingHud.Instance) return;
@@ -65,6 +67,8 @@ public sealed class Shaman : RoleBase
         });
         if (IsLocal) _arrow = new WorldArrow(Lifespan, new Color32(202, 80, 242, 255));
     }
+
+    internal PlainShipRoom Room => _room;
 
     private bool InRoom()
     {
@@ -94,6 +98,7 @@ public sealed class Shaman : RoleBase
         {
             _failed = true;
             _casting = false;
+            SpiritFx.LocalStop(Player);
             _ability.EndEffect();
             PortKit.Notice(new Text("Shaman.Interrupted").ToString());
         }

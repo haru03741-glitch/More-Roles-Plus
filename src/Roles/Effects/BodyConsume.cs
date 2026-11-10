@@ -100,6 +100,7 @@ internal static class BodyConsume
         };
         // 死体の絵 (体・着せ替え) を全部写す。体は本編の死体と同じ材質で色を塗り直す
         var mat = FxHands.PlayerMat();
+        bool grad = Fx.FallenCorpse.Dressed(body); // 倒れた姿の死体は生きている体と同じ 2 色塗りなので、写しにも掛ける
         foreach (var src in body.GetComponentsInChildren<SpriteRenderer>())
         {
             if (!src || !src.enabled || !src.sprite || !src.gameObject.activeInHierarchy) continue;
@@ -116,7 +117,11 @@ internal static class BodyConsume
             sr.flipX = src.flipX;
             sr.sortingOrder = src.sortingOrder;
             sr.sharedMaterial = isBody && mat ? mat : src.sharedMaterial;
-            if (isBody && color >= 0 && color < Palette.PlayerColors.Length) PlayerMaterial.SetColors(color, sr);
+            if (isBody && color >= 0 && color < Palette.PlayerColors.Length)
+            {
+                PlayerMaterial.SetColors(color, sr);
+                if (grad) Menu.CustomColors.ApplyGradient(sr, color);
+            }
             sr.color = src.color;
             k.Parts.Add(sr);
             k.Body.Add(isBody);

@@ -61,11 +61,13 @@ public sealed class Polaris : RoleBase
                 if (RewindTask && PortKit.TasksDone(Player) < MediumRewindTask) return false;
                 _seeing = body;
                 MoveSpeed.Add("PolarisVision", 0f, VisionDuration);
+                SpiritFx.LocalMist(Player, body);
                 return true;
             },
             OnEnd = () =>
             {
                 MoveSpeed.Remove("PolarisVision");
+                SpiritFx.LocalStop(Player);
                 var body = _seeing;
                 _seeing = null;
                 if (!body || MeetingHud.Instance) return;

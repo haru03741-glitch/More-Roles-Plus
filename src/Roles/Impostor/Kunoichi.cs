@@ -321,7 +321,11 @@ public sealed partial class Kunoichi : RoleBase
         }
         var body = found.bodyRenderers[0];
         var p = body.transform.position;
-        var at = FxMath.V3(p.x + (body.flipX ? BodyMidX : -BodyMidX), p.y + BodyMidY, p.z - FloorPropArt.StuckGap);
+        // 倒れた姿に差し替えた死体は絵が止まっているので、その場で絵の真ん中に刺す
+        bool still = Fx.FallenCorpse.Dressed(found);
+        var bc = still ? body.bounds.center : p;
+        var at = still ? FxMath.V3(bc.x, bc.y, p.z - FloorPropArt.StuckGap)
+            : FxMath.V3(p.x + (body.flipX ? BodyMidX : -BodyMidX), p.y + BodyMidY, p.z - FloorPropArt.StuckGap);
         var sr = FloorPropArt.Stuck(RoleState.Match, at, angle, out float turn);
         BodyKunai.Add(sr);
         // 死体の子にする: 死体が運ばれれば一緒に動き、食べられる・時が戻るなどで消えれば一緒に消える

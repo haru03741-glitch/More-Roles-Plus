@@ -349,6 +349,8 @@ internal static class RaccoonCarryFx
         bool left = carrier.cosmetics.FlipX;
         var body = carrier.MyPhysics ? carrier.MyPhysics.body : null;
         bool moving = body && body.velocity.sqrMagnitude > 0.05f;
+        // 担がれている本人の画面: 視界が少し狭まり、運ぶ人の歩みで揺れる
+        if (t.AmOwner) SenseFx.Carried(moving);
         float ph = Time.time * 10.5f;
         float bob = moving ? Mathf.Abs(Mathf.Sin(ph)) * pose.WalkBob : Mathf.Sin(Time.time * 2.2f) * 0.015f;
         float sway = moving ? Mathf.Sin(ph) * 7f : Mathf.Sin(Time.time * 1.7f) * 2f;

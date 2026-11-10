@@ -74,6 +74,7 @@ public static partial class TestBridge
             RewindLeak.Register();
             UiCommands.Register();
             DuelCommands.Register();
+            CrewFlipCommands.Register();
             Roles.RewindCinematic.Register();
             Roles.KatanaCinematic.Register();
             Report.ReportWindow.RegisterBridge();

@@ -147,6 +147,8 @@ public class Ticker : MonoBehaviour
         Terrain.FireFx.Tick(); t = Bridge.Perf.Lane(37, t);
         Fx.FxHands.Tick(); t = Bridge.Perf.Lane(16, t);
         Fx.EmoteArt.Tick();
+        Fx.CrewFlip.Tick();
+        Fx.FallenCorpse.Tick();
         Roles.RocketCannon.Tick();
         Roles.EclipseFx.Tick();
         Roles.NovaFx.Tick();
@@ -177,6 +179,9 @@ public class Ticker : MonoBehaviour
         Roles.VictimView.Tick();
         Roles.NullFx.Tick();
         Roles.HitFeel.Tick();
+        Roles.ChickenFx.Tick();
+        Roles.SenseFx.Tick();
+        Roles.SpiritFx.Tick();
         Roles.DuelGloom.Tick();
         UI.DuelHud.Tick();
         Menu.Emotes.Tick();

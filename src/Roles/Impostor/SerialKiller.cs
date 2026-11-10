@@ -24,6 +24,7 @@ public sealed class SerialKiller : RoleBase
     public static readonly BoolOpt SuicideButton = new("SerialKiller.SuicideButton", false);
 
     private float _left = -1f; // 自分の端末: 自殺までの残り (-1 = まだ数えない)
+    private float _fitAt = -1f; // 自分の端末: 時間切れの発作が始まった時刻 (-1 = 起きていない)
 
     public override void ModifyKillCooldown(ref float seconds) => seconds = KillCooldown;
 
@@ -46,7 +47,8 @@ public sealed class SerialKiller : RoleBase
     [LocalOnly]
     private void OnMeetingEnd(MeetingEndEvent e)
     {
-        if (_left >= 0f) _left = SuicideTime;
+        if (_left >= 0f || _fitAt >= 0f) _left = SuicideTime;
+        EndFit(); // 発作の途中で会議になった = 本編どおり数え直して助かる
     }
 
     private HudReadout _readout;
@@ -58,10 +60,49 @@ public sealed class SerialKiller : RoleBase
         _readout ??= new HudReadout(Lifespan, UI.RoleArt.Own(Id), new Color32(255, 25, 25, 255));
         bool show = _left >= 0f && PortKit.Alive(Player);
         _readout.Set(show, show ? $"<color=#FF5050>{Mathf.CeilToInt(_left)}s</color>" : null, show && SuicideTime > 0f ? _left / SuicideTime : -1f);
+        if (_fitAt >= 0f)
+        {
+            // 発作の間は動けない (ChickenFx.LocalOmen を PortFreezePatch が読む)。崩れ落ちた所で死ぬ
+            if (!PortKit.Alive(Player) || !ShipStatus.Instance) { EndFit(); return; }
+            if (MeetingHud.Instance || ExileController.Instance || Time.time - _fitAt < FitTime) return;
+            EndFit();
+            PortKit.Suicide();
+            return;
+        }
         if (_left < 0f || !PortKit.Alive(Player) || MeetingHud.Instance || ExileController.Instance || !ShipStatus.Instance) return;
         _left -= Time.fixedDeltaTime;
         if (_left > 0f) return;
         _left = -1f;
-        PortKit.Suicide();
+        // 時間切れ: その場で体を折って苦しみ、崩れ落ちて死ぬ (全員に見える)
+        _fitAt = Time.time;
+        ChickenFx.LocalOmen = PlayerId;
+        ChickenFx.LocalOmenAt = Time.time;
+        Fit(Player);
+        FitCall.Send(0);
     }
+
+    // 発作の全身の絵: 本編の首を折られる被害者の連番 (立つ → 体を折って震える → 崩れ落ちる) を流す。
+    // 倒れる流し方なので着せ替えは周りへ落ち、崩れた姿のまま死体になる (死の知らせが届くまで崩れた絵で待つ)
+    private const float FitTime = 1.9f;      // 発作が始まってから死ぬまで (連番が崩れ落ちきる所)
+    private const float FitLinger = 1.5f;    // 死ぬ時刻の後も崩れた絵で待つ長さ
+
+    private static void Fit(PlayerControl p)
+    {
+        if (!PortKit.Alive(p)) return;
+        Fx.CrewFlip.Play(p, "seizure", FitTime + FitLinger, fallen: true);
+    }
+
+    private void EndFit()
+    {
+        if (_fitAt < 0f) return;
+        _fitAt = -1f;
+        if (ChickenFx.LocalOmen == PlayerId) ChickenFx.LocalOmen = 255;
+    }
+
+    // 発作が始まったことをほかの人へ (受け手は送り主の体を動かすだけ)
+    private static readonly Net.RemoteCall<byte> FitCall = new("SerialKiller.Fit", Net.Route.Anyone,
+        (w, _) => w.Write((byte)0), r => r.ReadByte(),
+        (sender, _) => { if (sender && !MeetingHud.Instance) Fit(sender); }, perSecond: 4);
+
+    internal void FitForTest() { if (PortKit.Alive(Player) && _fitAt < 0f) _left = 0.01f; }
 }

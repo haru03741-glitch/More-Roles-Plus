@@ -43,6 +43,7 @@ internal sealed partial class SamuraiBlade
     // 他の演出が体を動かし始める直前に呼ばれる。こちらの歪みを外して元へ戻し、向こうが控える元の形を汚さない
     internal static void ReleaseBody(byte id)
     {
+        ChickenFx.Release(id);
         foreach (var b in Live)
         {
             if (b._role.PlayerId != id) continue;

@@ -66,7 +66,12 @@ public sealed class Voyager : RoleBase
             Cooldown = () => GameManager.Instance.LogicOptions.GetKillCooldown(),
             CooldownAtStart = false,
             CanTarget = (_, t) => _diving && PortKit.IsImpostor(t),
-            OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t, PortKit.Harm.Slash); },
+            OnUsed = (user, t) =>
+            {
+                // 倒された仲間の画面は、潜伏の側の紫の暗がりに一気に閉じる (何に倒されたかを見え方で伝える)
+                if (t && t.AmOwner) SenseFx.Pulled();
+                if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t, PortKit.Harm.Slash);
+            },
         });
     }
 

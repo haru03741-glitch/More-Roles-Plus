@@ -125,6 +125,8 @@ internal static class NightVisionCams
         {
             if (!body) continue;
             foreach (var r in body.bodyRenderers) if (r) PlayerMaterial.SetColors(_slot, r);
+            // 倒れた姿の死体は 2 色塗りと周りに落ちた着せ替えで誰か分かるので、それも外す
+            Fx.FallenCorpse.Disguise(body, _slot, true);
         }
     }
 
@@ -159,6 +161,7 @@ internal static class NightVisionCams
             if (owner == null) continue;
             int id = owner.DefaultOutfit.ColorId;
             foreach (var r in body.bodyRenderers) if (r) PlayerMaterial.SetColors(id, r);
+            Fx.FallenCorpse.Disguise(body, id, false);
         }
     }
 

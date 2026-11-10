@@ -260,5 +260,12 @@ internal static partial class DuelTumble
         _kos.Clear();
     }
 
+    // 吹き飛んでいる最中 (本編の死体は落ちるまで隠し、落ちた所へ動かす)
+    internal static bool KoActive(byte id)
+    {
+        for (int i = 0; i < _kos.Count; i++) if (_kos[i].Id == id) return true;
+        return false;
+    }
+
     internal static string DescribeKo() => $"ko live={_kos.Count} launches={KoLaunches} moved={KoBodiesMoved} noBody={KoNoBody}";
 }

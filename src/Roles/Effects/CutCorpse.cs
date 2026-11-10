@@ -92,6 +92,13 @@ internal static class CutCorpse
 
     internal static bool Capture(byte id) => Capture(id, default);
 
+    // この人の斬られた形を写してある (本編の死体は脚のまま残し、上の片をこちらで出す)
+    internal static bool Has(byte id)
+    {
+        for (int i = 0; i < _live.Count; i++) if (_live[i].Id == id) return true;
+        return false;
+    }
+
     private static bool Capture(byte id, Fling fl)
     {
         CheckShip();

@@ -204,7 +204,7 @@ internal static class EmoteArt
         return true;
     }
 
-    private static GameObject NewHand(Transform root, Material mat, int color, int layer, out Transform tf, out Transform art, out SpriteRenderer sr)
+    internal static GameObject NewHand(Transform root, Material mat, int color, int layer, out Transform tf, out Transform art, out SpriteRenderer sr)
     {
         var go = new GameObject("MrpEmoteHand") { layer = layer };
         tf = go.transform;
@@ -776,6 +776,13 @@ internal static class EmoteArt
     }
 
     // 絵は DLL に埋め込んだ物 (船の有無によらず読める・1 回読んだら持ち続ける)
+    // ほかの演出が同じ手の絵を借りる (0 = 開いた手・1 = 握りこぶし・2 = 横から見た手)。wrist = 絵の中心から手首までのずらし
+    internal static Sprite HandArt(int i, out Vector2 wrist)
+    {
+        wrist = i >= 0 && i < Wrists.Length ? Wrists[i] : default;
+        return LoadSprites() && i >= 0 && i < Sprites.Length ? Sprites[i] : null;
+    }
+
     private static bool LoadSprites()
     {
         if (_loaded) return true;

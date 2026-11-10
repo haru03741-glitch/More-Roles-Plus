@@ -126,6 +126,77 @@ internal static class RoleCommands
             reply($"OK rlaim {deg}");
         });
 
+        TestBridge.Register("sense", "[dizzy | pull | carry <秒>] 受けた本人の画面の感覚: 状態 / めまい (役職の入れ替え) / 紫に閉じる (ボイジャーに倒された) / 担がれている間の狭まりと揺れ (秒の間・歩いている扱い)", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (a.Length >= 1 && a[0] == "dizzy") Roles.SenseFx.Dizzy();
+            else if (a.Length >= 1 && a[0] == "pull") Roles.SenseFx.Pulled();
+            else if (a.Length >= 2 && a[0] == "carry" && float.TryParse(a[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec))
+            {
+                float until = UnityEngine.Time.time + sec;
+                Roles.UchuKit.Every(() => { if (UnityEngine.Time.time >= until) return false; Roles.SenseFx.Carried(true); return true; });
+            }
+            reply("OK sense " + Roles.SenseFx.Describe());
+        });
+
+        TestBridge.Register("spirit", "[mist | breath | off] ポラリスの幻視のもや (いちばん近い死体から自分へ) / シャーマンの白い息 (自分) を全員に出す / やめる / 引数なし = 状態", (args, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            string a = args.Trim();
+            if (a == "mist")
+            {
+                var body = PortKit.NearestBody(lp.GetTruePosition(), 3f);
+                if (!body) { reply("ERR spirit mist: no body within 3"); return; }
+                Roles.SpiritFx.LocalMist(lp, body);
+            }
+            else if (a == "breath") Roles.SpiritFx.LocalBreath(lp);
+            else if (a == "off") Roles.SpiritFx.LocalStop(lp);
+            else if (a == "room")
+            {
+                // 自分がシャーマンの時: 降霊術を使える部屋の真ん中 (tp で入ってから ability で本当に使う)
+                if (RoleState.Local is not Roles.Crew.Shaman sh || !sh.Room || !sh.Room.roomArea) { reply("ERR spirit room: not Shaman or no room"); return; }
+                var c = sh.Room.roomArea.bounds.center;
+                reply($"OK spirit room {sh.Room.RoomId} {c.x:0.00} {c.y:0.00}");
+                return;
+            }
+            reply("OK spirit " + Roles.SpiritFx.Describe());
+        });
+
+        TestBridge.Register("skfit","シリアルキラーの時間切れを今起こす (自分がシリアルキラーの時・発作で倒れて死ぬ)", (args, reply) =>
+        {
+            if (RoleState.Local is not Roles.Impostor.SerialKiller sk) { reply("ERR skfit: not SerialKiller"); return; }
+            sk.FitForTest();
+            reply("OK skfit");
+        });
+
+        TestBridge.Register("chicken", "omen =チキンの当たりを今引いた時と同じ (震えて倒れる・自分がチキンの時) / sweat = 無事に通った時の冷や汗 (自分) / vanim <clip> = 本編のかくれんぼの鬼の動き (HnSSeekerSpawnInGameAnim 等・IntroPrefab の名前) を自分に流す", (args, reply) =>
+        {
+            var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp) { reply("ERR chicken no player"); return; }
+            if (a.Length == 1 && a[0] == "omen")
+            {
+                if (RoleState.Local is not Roles.Crew.Chicken c) { reply("ERR chicken omen: not Chicken"); return; }
+                c.OmenForTest();
+                reply("OK chicken omen");
+                return;
+            }
+            if (a.Length == 1 && a[0] == "sweat") { Roles.ChickenFx.Sweat(lp); reply("OK chicken sweat"); return; }
+            if (a.Length == 2 && a[0] == "vanim")
+            {
+                var hud = Vanilla.Hud;
+                var intro = hud ? hud.IntroPrefab : null;
+                if (!intro) { reply("ERR chicken vanim no IntroPrefab"); return; }
+                var prop = typeof(IntroCutscene).GetProperty(a[1]);
+                var clip = prop?.GetValue(intro) as AnimationClip;
+                if (!clip) { reply("ERR chicken vanim no clip " + a[1]); return; }
+                lp.AnimateCustom(clip);
+                reply($"OK chicken vanim {a[1]} len={clip.length:0.00}");
+                return;
+            }
+            reply("ERR chicken omen|sweat|vanim <clip>");
+        });
+
         TestBridge.Register("nova", "aim <角度° | off> ノヴァの撃つ向きを固定する (0 = 右・90 = 上。マウスや向きの設定より先に効く) / stance = 右クリックと同じ (構える・しまう) / fire = 左クリックと同じ (構えていれば溜めずに撃つ) / charge <秒> = 左クリックをその秒だけ押して離す / mash <番号> <回数> = 光線と押し合っているサムライの連打をホストで足す / ear <dx> <dy> | off = 音を聞く位置を自分からずらす / snd = 音の状態", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);

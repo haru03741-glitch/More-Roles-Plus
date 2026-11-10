@@ -54,6 +54,7 @@ public sealed class Proxy : RoleBase
         RoleState.Change(monitor, RoleState.Proto<Proxy>());
         PairCall.Send((b, a));
         Pair(b, a);
+        SenseFx.HostSwapped(a, b);
     }
 
     private static void MakePartner(byte proxy)

@@ -88,5 +88,6 @@ public sealed class Miracle : AddonBase
         var me = Player;
         RoleState.Change(me, theirProto);
         RoleState.Change(t, myProto);
+        SenseFx.HostSwapped(me.PlayerId, target);
     }
 }

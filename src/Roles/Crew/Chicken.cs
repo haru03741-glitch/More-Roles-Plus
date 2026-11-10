@@ -28,6 +28,9 @@ public sealed class Chicken : RoleBase, IWinOverride
 
     private readonly ChickenFear _fear = new();
 
+    // 確かめ用 (bridge `chicken omen`): 当たりを引いた時と同じ流れを今すぐ始める
+    internal void OmenForTest() => _fear.OmenForTest(Player);
+
     [LocalOnly]
     public override void OnFixedUpdate() => _fear.Tick(Player, VentChance, LadderChance, ZiplineChance, PlatformChance, DoorChance, BlackoutTime);
 
@@ -49,42 +52,96 @@ public sealed class Chicken : RoleBase, IWinOverride
         seen.PlayerId == PlayerId && !Reached ? "<color=#808080>◆</color>" : null;
 }
 
-// チキンの死に方 (役職とアドオンで共通・自分の端末)
+// チキンの死に方 (役職とアドオンで共通・自分の端末)。当たりを引くとその場で固まって震え (全員に見える)、少しして倒れる。
+// 無事に通った時は本人の画面にだけ冷や汗が出る
 internal sealed class ChickenFear
 {
     private bool _nearVent, _ladder, _plat, _door;
-    private float _dark;
+    private float _dark, _omenAt = -1f, _sentAt = -99f;
 
     internal void Tick(PlayerControl p, int vent, int ladder, int zip, int plat, int door, float blackout)
     {
-        if (!PortKit.Alive(p) || MeetingHud.Instance || ExileController.Instance || !ShipStatus.Instance) { _dark = 0f; return; }
+        if (!PortKit.Alive(p) || MeetingHud.Instance || ExileController.Instance || !ShipStatus.Instance)
+        {
+            // 震えている間に会議が始まった・ほかの理由で死んだ = 倒れずに済む
+            _dark = 0f;
+            EndOmen();
+            return;
+        }
+        if (_omenAt >= 0f)
+        {
+            if (Time.time - _omenAt < ChickenFx.OmenTime) return;
+            EndOmen();
+            _sentAt = Time.time;
+            PortKit.Suicide();
+            return;
+        }
+        // 自決を送ってから倒れたと届くまでの間 (客は数 tick かかる) に、もう一度引かない
+        if (Time.time - _sentAt < 2f) return;
+
+        // 縁の旗は引く前に書く (当たった後に同じ縁でまた引かない)
         bool near = PortKit.NearestVent(p.GetTruePosition(), 0.6f);
-        if (near && !_nearVent && Roll(vent)) { Die(); return; }
+        bool hit = near && !_nearVent;
         _nearVent = near;
+        if (hit && Roll(p, vent)) { Omen(p); return; }
 
         bool onLadder = p.MyPhysics && p.MyPhysics.Animations != null && p.MyPhysics.Animations.IsPlayingAnyLadderAnimation();
-        if (onLadder && !_ladder && Roll(ladder)) { Die(); return; }
+        hit = onLadder && !_ladder;
         _ladder = onLadder;
+        if (hit && Roll(p, ladder)) { Omen(p); return; }
 
         bool onPlat = p.inMovingPlat;
         bool fungle = ShipStatus.Instance.Type == ShipStatus.MapType.Fungle;
-        if (onPlat && !_plat && Roll(fungle ? zip : plat)) { Die(); return; }
+        hit = onPlat && !_plat;
         _plat = onPlat;
+        if (hit && Roll(p, fungle ? zip : plat)) { Omen(p); return; }
 
         var mg = Minigame.Instance;
         bool doorGame = mg && mg.GetIl2CppType().Name.Contains("Door");
-        if (doorGame && !_door && Roll(door)) { mg.Close(); Die(); return; }
+        hit = doorGame && !_door;
         _door = doorGame;
+        if (hit && Roll(p, door)) { mg.Close(); Omen(p); return; }
 
         if (PortKit.LightsOut())
         {
             _dark += Time.fixedDeltaTime;
-            if (_dark >= blackout) { _dark = 0f; Die(); }
+            if (_dark >= blackout) { _dark = 0f; Omen(p); }
         }
         else _dark = 0f;
     }
 
-    private static bool Roll(int percent) => percent > 0 && Random.Range(0, 100) < percent;
+    // 当たれば死ぬ。外れたら冷や汗 (確率 0 = 危なくない所なので何も出さない)
+    private static bool Roll(PlayerControl p, int percent)
+    {
+        if (percent <= 0) return false;
+        if (Random.Range(0, 100) < percent) return true;
+        ChickenFx.Sweat(p);
+        return false;
+    }
 
-    private static void Die() => PortKit.Suicide();
+    internal void OmenForTest(PlayerControl p)
+    {
+        if (PortKit.Alive(p) && _omenAt < 0f) Omen(p);
+    }
+
+    private void Omen(PlayerControl p)
+    {
+        _omenAt = Time.time;
+        ChickenFx.LocalOmen = p.PlayerId;
+        ChickenFx.LocalOmenAt = Time.time;
+        ChickenFx.Tremble(p);
+        OmenCall.Send(0);
+    }
+
+    private void EndOmen()
+    {
+        if (_omenAt < 0f) return;
+        _omenAt = -1f;
+        ChickenFx.LocalOmen = 255;
+    }
+
+    // 震え始めたことをほかの人へ (受け手は送り主の体を震わせるだけ)
+    private static readonly Net.RemoteCall<byte> OmenCall = new("Chicken.Omen", Net.Route.Anyone,
+        (w, _) => w.Write((byte)0), r => r.ReadByte(),
+        (sender, _) => { if (sender && !MeetingHud.Instance) ChickenFx.Tremble(sender); }, perSecond: 4);
 }

@@ -451,13 +451,15 @@ internal static class PortFreezePatch
         if (!__result) return;
         var local = RoleState.Local;
         bool held = Impostor.RocketLauncher.Held.Count > 0, controlled = Impostor.RemoteController.Controlled.Count > 0;
-        if (!held && !controlled && local is not Impostor.RemoteController && local is not Crew.Ubiquitous) return;
+        bool chicken = ChickenFx.LocalOmen != 255;
+        if (!held && !controlled && !chicken && local is not Impostor.RemoteController && local is not Crew.Ubiquitous) return;
         if (!__instance.AmOwner) return;
         byte id = __instance.PlayerId;
-        if ((held && Impostor.RocketLauncher.Held.Contains(id))
+        if ((chicken && ChickenFx.LocalOmen == id)
+            || ((held && Impostor.RocketLauncher.Held.Contains(id))
             || (controlled && Impostor.RemoteController.Controlled.Contains(id))
             || (local is Impostor.RemoteController && Impostor.RemoteController.Operating(__instance))
-            || (local is Crew.Ubiquitous && Crew.Ubiquitous.Operating(__instance)))
+            || (local is Crew.Ubiquitous && Crew.Ubiquitous.Operating(__instance))))
             __result = false;
     }
 }
