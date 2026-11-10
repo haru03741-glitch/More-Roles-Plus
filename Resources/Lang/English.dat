@@ -2430,21 +2430,13 @@ Timer.Blurb: Keep the time
 Timer.Help: An addon that shows the time since the last meeting at the bottom left. It stops during meetings.
 Visor.Name: Visor
 Visor.Blurb: Watch the ship through your map
-Visor.Help: An addon that shows admin whenever you open the normal map (bodies are counted too). Never given to impostors.
+Visor.Help: An addon that shows admin when you open the normal map, as long as it has charge left (bodies are counted too). The charge drains only while the map is open; at zero the map closes and opens as the normal map from then on. Each task you finish recharges it a little. Never given to impostors.
 Visor.CanMoveWithMapWatching: Can move with the map open
 Visor.CanUseAdminOnMeeting: Admin also works during meetings
-VisorRole.Name: Visor
-VisorRole.Blurb: Carry a battery-powered admin
-VisorRole.Summary: A crewmate with a portable admin. Press the button to open the map with admin; the charge drains while it is open and the map closes when it runs out. Each task you finish recharges it a little.
-VisorRole.Open: Admin
-VisorRole.Open.Help: Opens the map with admin (bodies are counted too). The charge drains only while the map is open and the map closes at zero. Finishing a task recharges it. PC: the remaining charge shows on the button and in the bottom-left; on phones it shows on the button.
-VisorRole.Open.Short: Open the map with admin
-VisorRole.Battery: Charge
-VisorRole.CanMoveWithMapWatching: Can move with the map open
-VisorRole.CanUseAdminOnMeeting: Admin also works during meetings
-VisorRole.PortableAdminCharge: Starting charge
-VisorRole.MaxPortableAdminCharge: Maximum charge
-VisorRole.ChargesPerTasks: Charge per task
+Visor.Battery: Charge
+Visor.PortableAdminCharge: Starting charge
+Visor.MaxPortableAdminCharge: Maximum charge
+Visor.ChargesPerTasks: Charge per task
 TunaMod.Name: Tuna
 TunaMod.Blurb: Stop and you die
 TunaMod.Help: An addon that dies when standing still. The timer pauses briefly at the start and after meetings. Seconds until death show at the bottom left.

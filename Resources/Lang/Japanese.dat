@@ -2430,21 +2430,13 @@ Timer.Blurb: 時を刻め
 Timer.Help: 会議の後からの経過時間が画面の左下に出るアドオンです。会議中は止まります。
 Visor.Name: バイザー
 Visor.Blurb: マップ越しに船を見渡せ
-Visor.Help: 普通のマップを開くと、いつでもアドミンが見えるアドオンです (死体も数えます)。インポスターには付きません。
+Visor.Help: 普通のマップを開くと、充電が残っている間はアドミンが見えるアドオンです (死体も数えます)。充電が減るのはマップを開いている間だけで、0 になるとマップが閉じ、次からは普通のマップになります。タスクを 1 つ終えるごとに少し充電されます。インポスターには付きません。
 Visor.CanMoveWithMapWatching: マップを開いたまま動ける
 Visor.CanUseAdminOnMeeting: 会議中もアドミンが見える
-VisorRole.Name: バイザー
-VisorRole.Blurb: 電池式のアドミンを持ち歩け
-VisorRole.Summary: 持ち運べるアドミンを持つクルーです。ボタンでアドミン付きのマップを開き、開いている間だけ充電が減って、切れるとマップが閉じます。タスクを 1 つ終えるごとに少し充電されます。
-VisorRole.Open: アドミン
-VisorRole.Open.Help: アドミン付きのマップを開きます (死体も数えます)。充電が減るのはマップを開いている間だけで、0 になるとマップが閉じます。タスクを終えると充電されます。残りの充電は、PC ではボタンと左下に、スマホではボタンに出ます。
-VisorRole.Open.Short: アドミン付きのマップを開く
-VisorRole.Battery: 充電
-VisorRole.CanMoveWithMapWatching: マップを開いたまま動ける
-VisorRole.CanUseAdminOnMeeting: 会議中もアドミンが見える
-VisorRole.PortableAdminCharge: 最初の充電
-VisorRole.MaxPortableAdminCharge: 充電の上限
-VisorRole.ChargesPerTasks: タスク 1 つで増える充電
+Visor.Battery: 充電
+Visor.PortableAdminCharge: 最初の充電
+Visor.MaxPortableAdminCharge: 充電の上限
+Visor.ChargesPerTasks: タスク 1 つで増える充電
 TunaMod.Name: マグロ
 TunaMod.Blurb: 止まったら死ぬ
 TunaMod.Help: 止まっていると死ぬアドオンです。試合の始めと会議の後は少しの間タイマーが止まります。死ぬまでの秒が画面の左下に出ます。
