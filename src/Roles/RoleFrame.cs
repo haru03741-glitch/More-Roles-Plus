@@ -82,6 +82,7 @@ internal static class RoleFrame
         UchuKit.Tick();
         Cloak.Tick();
         TerrainDeath.Tick();
+        Impostor.TriggerHappy.TickGuards(); // 守りの絵は弾以外 (地形の死) からも出るので、役職がいなくても止める
         ViewScale.Tick();
         if ((Marks.Count > 0 || Publics.Count > 0 || ExtraMarks.Count > 0) && ++_tick >= _markEvery)
         {

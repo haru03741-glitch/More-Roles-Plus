@@ -219,7 +219,6 @@ public sealed partial class TriggerHappy : RoleBase
     public override void OnFixedUpdate()
     {
         float dt = Time.fixedDeltaTime;
-        TickGuards();
         if (MeetingHud.Instance || !PortKit.Alive(Player))
         {
             if (_active) SetActive(false);

@@ -59,7 +59,7 @@ public sealed partial class TriggerHappy
     private const float GuardSoundFrom = 0.05f;   // 音の頭 (秒)。当たる音は 0.1 秒・割れる音は 0.75 秒から
     private const float GuardSoundEnd = 0.6f;     // 鳴らしてからこの秒で音を絞り終えて止める (割れる音の手前)
 
-    private static void PlayGuard(PlayerControl p)
+    internal static void PlayGuard(PlayerControl p)
     {
         if (!GuardEffects.TryGetValue(p.PlayerId, out var g)) GuardEffects[p.PlayerId] = g = new GuardEffect();
         if (Time.time < g.Next || !DestroyableSingleton<RoleManager>.InstanceExists) return;
@@ -91,7 +91,7 @@ public sealed partial class TriggerHappy
     private static bool _guardLive;
 
     // 出ている守りの絵を流し終わりで止めて消し、音を割れる音の手前で絞る (出ている間だけ回る)
-    private static void TickGuards()
+    internal static void TickGuards()
     {
         if (!_guardLive) return;
         if (RewindPlayback.Active)

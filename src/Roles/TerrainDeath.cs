@@ -81,7 +81,20 @@ public static class TerrainDeath
         Doomed[target] = new Doom { Cause = cause, Actor = actor, At = Time.time };
         Plugin.Logger.LogInfo($"[TerrainDeath] doom {target} {cause} by={actor}");
         if (p.AmOwner) LocalDoom = target;
+        // 死ぬと決まる前へ時間を戻すと、崩れかけの人は助かる
+        Rewind.Undo(_ => { Doomed.Remove(target); if (LocalDoom == target) LocalDoom = 255; });
         CrewFlip.Play(p, Clip(cause), DoomTime(cause) + Linger, fallen: true);
+    }
+
+    private static readonly Net.RemoteCall<byte> GuardCall = new("TerrainDeath.Guard", Net.Route.HostToAll,
+        (w, m) => w.Write(m), r => r.ReadByte(), (_, m) => OnGuard(m));
+
+    private static void OnGuard(byte target)
+    {
+        var p = PortKit.ById(target);
+        if (!p || p.Data == null || p.Data.IsDead) return;
+        Plugin.Logger.LogInfo($"[TerrainDeath] guarded {target}");
+        Impostor.TriggerHappy.PlayGuard(p);
     }
 
     // ── ホスト: 足元を見て数える ──────────────────────────────────────────
@@ -95,6 +108,8 @@ public static class TerrainDeath
 
     internal static void Tick()
     {
+        // 逆再生の間は数えも倒しもしない (崩れかけの人は、戻す区間の取り消しで助かる前に倒されない)
+        if (RewindPlayback.Active) return;
         if (Doomed.Count > 0)
         {
             if (_shipGen != GameClock.ShipGen) Reset();
@@ -151,6 +166,13 @@ public static class TerrainDeath
     private static bool HostHarm(PlayerControl p, Cause cause, byte actor)
     {
         byte id = p.PlayerId;
+        // 守り (盾・ベスト・守護天使) の付いた人は地形でも死なない。守りは割れず、弾かれた絵だけが出る
+        if (Impostor.TriggerHappy.Guarded(p))
+        {
+            GuardCall.Send(id);
+            OnGuard(id);
+            return false;
+        }
         if (Duel.Tough(p) && Duel.HpOf(id) > PortKit.ToughDamage)
         {
             Duel.HostDamage(actor != ResolvedDamage.NoActor && actor != id ? actor : id, id, PortKit.ToughDamage, start: false);
@@ -270,7 +292,14 @@ public static class TerrainDeath
     }
 
     // 時戻しで取り消した刻みより後の出来事は忘れる
-    internal static void RewindPurge(int target) => Sources.RemoveAll(s => s.Tick >= target);
+    // 浴びた秒も戻した先から数え直す (戻した先の居場所はもう火や水の外のことが多い)
+    internal static void RewindPurge(int target)
+    {
+        Sources.RemoveAll(s => s.Tick >= target);
+        Array.Clear(BurnFor);
+        Array.Clear(SwimFor);
+        _exposed = false;
+    }
 
     // 火なら点けた人、水なら水を入れた人のうち近い人。水を入れた人がいなければ近くで壁を壊した人 (漏れの元)
     private static byte Culprit(Vector2 pos, Cause cause)
