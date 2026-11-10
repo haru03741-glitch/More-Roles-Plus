@@ -182,6 +182,7 @@ public class Ticker : MonoBehaviour
         Roles.ChickenFx.Tick();
         Roles.SenseFx.Tick();
         Roles.SpiritFx.Tick();
+        Roles.CurseInk.Tick();
         Roles.DuelGloom.Tick();
         UI.DuelHud.Tick();
         Menu.Emotes.Tick();

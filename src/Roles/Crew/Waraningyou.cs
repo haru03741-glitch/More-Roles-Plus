@@ -42,6 +42,9 @@ public sealed class Waraningyou : RoleBase
 
     private void OnMeetingStart(MeetingStartEvent e) => _cursed = false;
 
+    // この会議で呪ったわら人形か (全員の端末で同じ。開票の墨を出すかを決める)
+    internal static bool CursedNow(byte id) => RoleState.ActingOf(id) is Waraningyou w && w._cursed;
+
     // 呪った会議では、スキップを許さない設定ならスキップのボタンを消す (元と同じく本人の画面から。本編が出し直しても毎フレーム消す)
     [LocalOnly]
     public override void OnFixedUpdate()
