@@ -162,6 +162,20 @@ internal static class RoleCommands
             reply("OK spirit " + Roles.SpiritFx.Describe());
         });
 
+        TestBridge.Register("visor", "[open | close] アドオンのバイザーの充電とアドミンで開いているか / 普通のマップを本編の地図のボタンと同じ道で開く / 閉じる", (args, reply) =>
+        {
+            var a = args.Trim();
+            if (a == "open") Roles.UchuKit.OpenMap();
+            else if (a == "close" && MapBehaviour.Instance) MapBehaviour.Instance.Close();
+            var v = Roles.Addons.Visor.Local;
+            var map = MapBehaviour.Instance;
+            bool open = map && map.IsOpen;
+            bool admin = open && map.countOverlay && map.countOverlay.gameObject.activeSelf;
+            reply(v == null
+                ? $"OK visor none mapOpen={open} admin={admin}"
+                : $"OK visor charge={v.Charge:0.0} adminOpen={v.AdminOpen} mapOpen={open} admin={admin}");
+        });
+
         TestBridge.Register("skfit","シリアルキラーの時間切れを今起こす (自分がシリアルキラーの時・発作で倒れて死ぬ)", (args, reply) =>
         {
             if (RoleState.Local is not Roles.Impostor.SerialKiller sk) { reply("ERR skfit: not SerialKiller"); return; }
