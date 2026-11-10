@@ -82,6 +82,8 @@ internal static class CurseInk
             {
                 var s = states[i];
                 if (s.VotedForId != target) continue;
+                // 投票した人がもういない行は印が作られないので数えない (番号がずれないように)
+                if (GameData.Instance && GameData.Instance.GetPlayerById(s.VoterId) == null) continue;
                 if (Crew.Waraningyou.CursedNow(s.VoterId)) (mine ??= new List<int>()).Add(k);
                 k++;
             }
