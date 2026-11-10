@@ -492,6 +492,7 @@ public sealed partial class Nova : RoleBase
     {
         var p = n.Player;
         NovaFx.HoldBeam(p, seconds);
+        RangedKillSnapPatch.Mark(p.PlayerId, seconds + 1f); // 残っている間に倒した人の所へも体を動かさない
         bool mine = n.IsLocal;
         if (mine) { MoveSpeed.Remove("NovaCharge"); MoveSpeed.Add("NovaCharge", 0f, seconds); }
         float end = Time.time + seconds;
