@@ -103,6 +103,9 @@ public static class UchuKit
 
         public static bool IsHiddenFromMe(byte id) => All.TryGetValue(id, out var e) && e.Gone;
 
+        // この端末で見えている体の濃さ (消していなければ 1)。手に持つ物を体と同じだけ薄くする
+        public static float AlphaOf(byte id) => All.TryGetValue(id, out var e) ? e.Alpha : 1f;
+
         internal static void Tick()
         {
             if (All.Count == 0) return;

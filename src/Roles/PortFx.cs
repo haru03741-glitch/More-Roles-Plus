@@ -78,6 +78,9 @@ public static class Cloak
 
     public static bool IsOn(byte id) => _all.TryGetValue(id, out var s) && s.Until > Time.time;
 
+    // この端末で見えている体の濃さ (透明でなければ 1)。手に持つ物を体と同じだけ薄くする
+    public static float AlphaOf(byte id) => _all.TryGetValue(id, out var s) ? s.Alpha : 1f;
+
     // 自分の端末から: 自分を seconds 秒だけ透明にする (0 以下で今やめる)
     public static void Self(float seconds)
     {

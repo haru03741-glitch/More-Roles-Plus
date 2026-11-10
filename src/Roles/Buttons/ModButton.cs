@@ -28,6 +28,8 @@ internal sealed class ModButton
     private readonly Func<bool> _onClick;
     private readonly IntPtr _ptr;
     private bool _inGrid = true; // 右下の並びに居るか (並びの外のボタンは置いた先の画面と一緒に出入りする)
+    private bool _pcHidden;      // PC ではマウスで操作するので並びに出さない (押す処理・待ち時間・キーの割り当てはそのまま)
+    private int _usesLeft = -1;  // 残りの回数 (負 = 回数なし)。並びに出さないボタンの回数を手元に出すのに使う
     private bool _ghost;         // 幽霊の間だけ出るボタン (生きている間は隠す)
     private float _left;
     private float _effect, _effectMax; // 効果の残り (本編の技術者のベントと同じく、ボタンを満たす形と残りの秒で出す)
@@ -302,6 +304,7 @@ internal sealed class ModButton
     // 残りの回数を出す (負なら回数の表示を隠す)
     public void SetUses(int left)
     {
+        _usesLeft = left;
         if (!_button) return;
         var uses = _button.transform.Find("Uses");
         if (left < 0)
@@ -658,7 +661,7 @@ internal sealed class ModButton
             if (!vis && b._effect > 0f && !InMapToggle) b.EndEffect(); // 会議・死亡で効果は切れる (本編の効果と同じ・地図を開いただけでは切らない)
             if (!vis && b._holding) b.EndHold(false);  // 溜めている途中の会議・死亡は使わずに捨てる
             if (!b._inGrid || !b._button) continue;
-            b._button.gameObject.SetActive(vis);
+            b._button.gameObject.SetActive(vis && !b._pcHidden);
             if ((b._ghost ? ghostReshown : reshown) && b.ResetOnShow && !InMapToggle) b.StartCooldown();
         }
         Arrange();
@@ -692,6 +695,19 @@ internal sealed class ModButton
         return true;
     }
 
+    // PC ではマウスで操作する能力: 右下の並びに出さない (スマホは出す)。待ち時間と回数は手元に出す (UI/HandCooldown)
+    public void HideOnPc()
+    {
+        if (OperatingSystem.IsAndroid() || _pcHidden) return;
+        _pcHidden = true;
+        if (_button) _button.gameObject.SetActive(false);
+        if (_inGrid) Arrange();
+    }
+
+    internal bool PcHidden => _pcHidden;
+    internal int UsesLeft => _usesLeft;
+    internal bool Shown => _ghost ? _ghostShown : _hudShown;
+
     internal static int Count => All.Count;
     internal static IReadOnlyList<ModButton> Buttons => All;
 
@@ -709,7 +725,7 @@ internal sealed class ModButton
             bool dead = lp && lp.Data != null && lp.Data.IsDead;
             if (dead && _hudShown) SetHudShown(false, true);
         }
-        if (_inGrid && _button) _button.gameObject.SetActive(ghost ? _ghostShown : _hudShown);
+        if (_inGrid && _button) _button.gameObject.SetActive((ghost ? _ghostShown : _hudShown) && !_pcHidden);
         Arrange();
     }
 

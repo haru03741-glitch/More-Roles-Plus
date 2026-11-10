@@ -4,9 +4,10 @@ using Object = UnityEngine.Object;
 
 namespace MoreRolesPlus.UI;
 
-// スマホの射撃スティック (トリガーハッピーが構えている間だけ・自分の端末だけ)。
+// スマホの射撃スティック (狙って撃つ・投げる役職が構えている間だけ・自分の端末だけ)。
 // 画面の右半分の、ボタンの上でない所に触れると、その指の下に本編の移動スティックと同じ輪が出る。
-// 指を輪の中心から倒している間だけ、倒した向きへ撃つ (左半分は本編の移動スティックのまま)。
+// 指を輪の中心から倒している間が PC の左ボタンを押している間に当たる (左半分は本編の移動スティックのまま)。
+// 機関銃は倒している間撃ち続け、クノイチは倒すと投げ、ノヴァは倒すと溜め始めて指を離すと撃つ。
 // PC では出さない (右クリック)。確かめ用に PC でも出せ (ForceShow・左ボタンを指の代わりに)、bridge から倒した扱いにできる (Synth)
 internal static class FireStick
 {
@@ -16,6 +17,8 @@ internal static class FireStick
 
     internal static bool ForceShow;
     internal static bool Held { get; private set; }
+    // 指が輪に触れている (中心のまま倒していなくても)。指を離したかを見る
+    internal static bool Touching => _finger >= 0 || _mouse || _synUntil >= 0f;
     internal static Vector2 Dir { get; private set; } = Vector2.right;
 
     private static bool _armed;

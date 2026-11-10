@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Roles.Impostor;
 public sealed partial class Kunoichi
 {
     private static readonly BodyKind KunaiKind = new("KunoichiKunai", BodyMaterial.Metal, BodySize.Small, 1f);
-    private const float KunaiRadius = 0.2f;
+    private static float KunaiRadius => 0.2f * SizeScale;
 
     private byte _seq;
     private readonly Dictionary<byte, (SpriteRenderer sr, Body body)> _kunai = new();
@@ -24,10 +24,70 @@ public sealed partial class Kunoichi
             Kind = KunaiKind,
             Tf = sr.transform,
             Radius = KunaiRadius,
+            OffY = -KunaiHand.FlyHeight, // 絵は手の高さを飛ぶが、当たりは足元の高さの線 (飛ぶ間の当たりの判定と同じ高さ)
             Judges = () => true, // どの端末も自分の手元のクナイを落とす (落とした事は Owns の端末が配る)
             OnStrike = (b, r, s) => OnKunaiStrike(seq, b, r, s, thrower),
         });
         _kunai[seq] = (sr, body);
+    }
+
+    // ---- 手に持ったクナイ ----
+    // 構えている間、握ったクナイも場の物として刀・弾・爆発・叩く・火に当たる (投げたクナイと同じ金属の小さな物)。
+    // 斬られる・壊れると手から弾き飛ばされ、KnockSeconds の間は握り直せない (投げられない)
+    private static readonly BodyKind HeldKind = new("KunoichiHeldKunai", BodyMaterial.Metal, BodySize.Small, 1f);
+    private const float KnockSeconds = 1.5f;
+    private Body _heldBody;
+    private float _knockedUntil = -1f; // 自分の端末: これまで握り直せない
+
+    private bool Knocked => Time.time < _knockedUntil;
+
+    // 構えた / しまった (全員の端末で・手の絵と同じ時に)
+    private void HeldBody(bool on)
+    {
+        if (!on)
+        {
+            if (_heldBody != null) { Bodies.Remove(_heldBody); _heldBody = null; }
+            return;
+        }
+        if (_heldBody != null) return;
+        var tf = KunaiHand.KunaiTransform(Player);
+        if (!tf) return;
+        var p = Player;
+        _heldBody = Bodies.Add(new Body
+        {
+            Kind = HeldKind,
+            Tf = tf,
+            Radius = KunaiRadius,
+            Judges = () => KunaiHand.Holding(p), // 手が見えている (握っている) 間だけ当たる・どの端末も手元の当たりを決める
+            OnStrike = OnHeldStrike,
+        });
+    }
+
+    private bool OnHeldStrike(Body b, StrikeResult r, Strike s)
+    {
+        if (r == StrikeResult.Damage || r == StrikeResult.Glance)
+        {
+            Spark(b.X, b.Y, s);
+            return true;
+        }
+        if (r != StrikeResult.Break && r != StrikeResult.Cut) return false;
+        Knock(b.X, b.Y, s.Dx, s.Dy);
+        if (Owns(s, IsLocal)) KnockCall.Send((PlayerId, b.X, b.Y, s.Dx, s.Dy));
+        return true;
+    }
+
+    private static readonly RemoteCall<(byte k, float x, float y, float dx, float dy)> KnockCall = new("Kunoichi.Knock", Route.Anyone,
+        (w, m) => { w.Write(m.k); w.Write(m.x); w.Write(m.y); w.Write(m.dx); w.Write(m.dy); },
+        r => (r.ReadByte(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()),
+        (_, m) => { if (RoleState.Of(m.k) is Kunoichi k) k.Knock(m.x, m.y, m.dx, m.dy); }, perSecond: 6);
+
+    // 全員の端末で: 握ったクナイが弾き飛ばされた (火花と金属の音・手が空になり、少しして握り直す)
+    private void Knock(float x, float y, float dx, float dy)
+    {
+        if (IsLocal && Knocked) return; // 自分の手元の判定と振った人からの知らせで二度弾かない
+        Spark(x, y, new Strike(StrikeElement.Slash, 1f, 1, x, y, dx, dy, PlayerId));
+        KunaiHand.Knock(Player, KnockSeconds);
+        if (IsLocal) _knockedUntil = Time.time + KnockSeconds;
     }
 
     private void DropKunai(byte seq)

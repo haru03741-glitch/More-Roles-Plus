@@ -81,6 +81,9 @@ public sealed class Ability
     // Player の届く距離 (0 = 部屋の設定のキルの距離)
     public float Range { get; init; }
 
+    // Player: ベントの中に隠れている人も狙える (原作のオボルスの「隠れている人を倒せる」設定)
+    public Func<bool> TargetHiding { get; init; }
+
     // Player / Pick / Meeting: 狙ってよい相手か (使う人, 相手)。null = 生きている誰でも
     public Func<PlayerControl, PlayerControl, bool> CanTarget { get; init; }
 
@@ -123,6 +126,9 @@ public sealed class Ability
 
     // 時戻しで回数と待ち時間を戻さない (時戻しの能力そのもの)
     public bool KeepOnRewind { get; init; }
+
+    // PC ではマウスで操作する (構える・撃つ・投げる)。右下にボタンを出さず、待ち時間は手元に出す。スマホはボタンを出す
+    public bool PcMouse { get; init; }
 
     public RoleBase Role { get; private set; }
     public int Index { get; private set; }
@@ -246,6 +252,7 @@ internal static class Abilities
             a.Button.SetUses(a.UsesLeft);
             a.Button.SetUsable(a.Target != AbilityTarget.Player && a.UsesLeft != 0);
             if (a.Ghost) a.Button.SetGhost(true);
+            if (a.PcMouse) a.Button.HideOnPc();
             if (a.CooldownAtStart) a.Button.StartCooldown();
         }
     }
@@ -391,7 +398,7 @@ internal static class Abilities
                 continue;
             }
             if (a.Target != AbilityTarget.Player || a.Button == null) continue;
-            var aim = on && lp.CanMove && !a.Button.Locked ? Targeting.ClosestPlayer(lp, Reach(a), a.CanTarget, a.TargetDead, a.IgnoreWalls) : null;
+            var aim = on && lp.CanMove && !a.Button.Locked ? Targeting.ClosestPlayer(lp, Reach(a), a.CanTarget, a.TargetDead, a.IgnoreWalls, a.TargetHiding != null && a.TargetHiding()) : null;
             SetAim(a, aim);
             a.Button.SetUsable(aim is not null && a.UsesLeft != 0 && now >= a.PendingUntil);
         }
@@ -500,9 +507,11 @@ internal static class Abilities
         if (a.CanTarget != null && !a.CanTarget(user, target)) return "target not allowed";
         if (meeting && !a.MeetingSelf && (a.GuessLike || a.Role is IGuesser) && GuessKit.Blocked(user, target)) return "guess blocked";
         if (meeting) return null; // 会議の能力は距離と待ち時間を見ない
+        // 生存者がベストを着ている間は、その人を狙う能力を通さない (原作の SurvivorEvents)
+        if (target != user && Neutral.Survivor.VestOn(target)) return "vest";
         if (a.Target == AbilityTarget.Pick)
             return (Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user) ? "cooldown" : null;
-        if (target.inVent || target.inMovingPlat) return "target busy";
+        if ((target.inVent && !(a.TargetHiding != null && a.TargetHiding())) || target.inMovingPlat) return "target busy";
         string far = Targeting.Unreachable(user, target, Reach(a) + DistanceSlack, a.IgnoreWalls);
         if (far != null) return far;
         if ((Environment.TickCount64 - a.HostLastMs) / 1000f < a.CooldownSeconds - CooldownSlack && !Dev.DevCooldown.Skips(user)) return "cooldown";

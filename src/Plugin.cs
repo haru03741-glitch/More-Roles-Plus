@@ -151,8 +151,11 @@ public class Ticker : MonoBehaviour
         Roles.EclipseFx.Tick();
         Roles.NovaFx.Tick();
         Roles.GatlingFx.Tick();
+        Roles.KunaiHand.Tick();
+        UI.HandCooldown.Tick();
         UI.FireStick.Tick();
         Roles.Impostor.RocketLauncher.LocalTick();
+        Roles.Impostor.Kunoichi.LocalTick();
         Roles.SwipeInput.Tick();
         Roles.Neutral.Samurai.LocalTick();
         Roles.Watch.Tick();

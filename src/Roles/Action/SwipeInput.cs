@@ -372,16 +372,25 @@ internal static class SwipeInput
         $"armed={Armed} drag={Dragging} stroke={InStroke} angle={Wrap(Angle):0} speed={Speed:0} strokes={Strokes} thrusts={Thrusts} last[{Last}] presses={Presses} ui={UiRejects}({LastUi}) drops={Drops} moveBlocked={MoveBlock.Hits}";
 }
 
-// 構えている間は PC のマウスで歩く操作を止める (キーで歩くのは残す)
+// 構えている間は PC のマウスで歩く操作を止める (キーで歩くのは残す)。
+// 刀・機関銃・クナイ・キャノン・掴んだロケットは構えている間の左クリックが斬る/撃つ/投げるのに使われるので、クリックした方へ歩かせない
 internal static class MoveBlock
 {
     internal static int Hits;
-    internal static bool Gun; // 機関銃を構えている間 (左クリックが撃つのに使われる)
     private static bool _logged;
+
+    private static bool Aiming() => RoleState.Local switch
+    {
+        Roles.Impostor.TriggerHappy t => t.GunOut,
+        Roles.Impostor.Kunoichi k => k.Equipped,
+        Roles.Impostor.Nova n => n.Aiming,
+        Roles.Impostor.RocketLauncher r => r.HeldId != 255,
+        _ => false,
+    };
 
     internal static bool Blocks()
     {
-        if (!(SwipeInput.Armed || Gun) || OperatingSystem.IsAndroid()) return false;
+        if (OperatingSystem.IsAndroid() || !(SwipeInput.Armed || Aiming())) return false;
         Hits++;
         if (!_logged) { _logged = true; Plugin.Logger.LogInfo("swipe: mouse movement blocked while armed"); }
         return true;

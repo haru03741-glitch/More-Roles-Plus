@@ -100,10 +100,18 @@ internal static partial class NovaFx
 
     // ---- きっかけ (NovaFx の各所から) ----
 
-    private static void SndStance(bool on)
+    // other = ほかの人の構え (その場所から近いほど大きく聞こえる)・null = 自分の構え
+    private static void SndStance(bool on, PlayerControl other = null)
     {
-        if (!RewindPlayback.Active) Here1(on ? "nova_stance_on" : "nova_stance_off", on ? 0.55f : 0.45f);
+        if (RewindPlayback.Active) return;
+        string clip = on ? "nova_stance_on" : "nova_stance_off";
+        float vol = on ? 0.55f : 0.45f;
+        if (!other) { Here1(clip, vol); return; }
+        var at = other.GetTruePosition();
+        Shot1(clip, at.x, at.y, vol, StanceRange);
     }
+
+    private const float StanceRange = 7f; // ほかの人の構えの音が聞こえる距離
 
     // 撃った: 溜め量で軽い破裂と満タンの裂け目を混ぜる。壁に当たれば先で焼ける音
     private static void SndFire(PlayerControl p, float x, float y, float lv, bool hit, float hx, float hy)

@@ -2,6 +2,7 @@
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
+using MoreRolesPlus.UI;
 using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Impostor;
@@ -10,8 +11,9 @@ namespace MoreRolesPlus.Roles.Impostor;
 // 溜め 0 (短く押しただけ) の光線は最初に当たった 1 人で止まり、満タンなら帯の中の全員を倒す。壁ではどれも止まる。
 // 押している間は溜まり (設定の秒で満タン)、離した時に撃つ。溜めている間は動けず、狙いはゆっくりしか回らない。
 // 溜まり具合はノヴァの脇の筒で全員に見える。撃つ向きは設定で選ぶ: 自由 (マウスの向き) / 左右 (向いている方) / 上下左右・8 方向 (マウスの向きに近い方)。
-// PC は右クリックで構え (もう一度でしまう)・左クリックを押している間溜める (発射のボタンを押しに行くとマウスが下へ動き、狙いが必ず下になるため)。
-// ボタンは構えの切り替えと待ち時間の表示に使う。スマホはボタンを押している間溜め、最後に歩いた向きへ撃つ
+// PC は右クリックを押している間構え (離すとしまう・溜めている途中なら撃たずにやめる)・左クリックを押している間溜める
+// (発射のボタンを押しに行くとマウスが下へ動き、狙いが必ず下になるため)。機関銃・クノイチと同じ操作。
+// ボタンは構えの切り替えと待ち時間の表示に使う。スマホはボタンで構え、射撃スティックを倒すと溜め始め、指を離すと撃つ
 public sealed partial class Nova : RoleBase
 {
     public override Team BaseTeam => Team.Impostor;
@@ -27,6 +29,7 @@ public sealed partial class Nova : RoleBase
     public static readonly FloatOpt Cooldown = new("Nova.Cooldown", 30f, 2.5f, 60f, 2.5f, "s");
     public static readonly FloatOpt Size = new("Nova.Size", 1f, 0.25f, 5f, 0.25f, "x");
     public static readonly FloatOpt Charge = new("Nova.Charge", 5f, 1f, 10f, 0.5f, "s");
+    public static readonly FloatOpt BeamTime = new("Nova.BeamTime", 5f, 0.5f, 10f, 0.25f, "s"); // 光線が残る長さ (この間に入った人も倒れる・撃った人は動けない)
     public static readonly ChoiceOpt BeamColor = new("Nova.BeamColor", 0,
         new Text("Nova.BeamColor.Mono"), new Text("Nova.BeamColor.Violet"));
 
@@ -38,6 +41,7 @@ public sealed partial class Nova : RoleBase
 
     private Ability _fire;
     private bool _stance;      // 自分の端末: 構えている (PC)
+    internal bool Aiming => _stance || _charging;
     private bool _charging;    // 自分の端末: 溜めている
     private float _chargeAt, _chargeAngle, _sentAngle, _sentAt;
     private int _reachFrame;   // 照準の線の長さを測り直すフレーム
@@ -46,25 +50,29 @@ public sealed partial class Nova : RoleBase
     // 全員の端末: 溜めを受けた時刻 (撃った時の溜め量の上限をここから測る)
     private float _heardChargeAt = -1f;
 
-    // 自分の端末のノヴァ (PC の右クリック/左クリックとスマホの長押しを毎フレーム見る)
+    // 自分の端末のノヴァ (PC の右クリック/左クリックとスマホの射撃スティックを毎フレーム見る)
     private static Nova _mine;
-    private static bool Pc => !System.OperatingSystem.IsAndroid();
+    private bool _byRight, _rightPrev; // 自分の端末: 右クリックで構えた (離すとしまう)・前のフレームの右ボタン
+    // 自分の端末: 構えと狙いを最後に配った値と時刻 (構えは全員に見せる・変わった時だけ間を空けて送る)
+    private bool _sentStance;
+    private float _sentStanceAngle, _stanceSentAt = -99f, _aimNow;
+    private const float StanceGap = 0.1f, StanceAimGap = 0.15f, StanceAimDeg = 3f;
+    // ほかの端末: 届いた構え
+    private bool _heardStance;
+    private static Vector2 _stickDir = Vector2.right;
+    private static bool _stickAimed;   // 射撃スティックを倒した (触れている間は、中心へ戻してもその向きのまま)
+
+    // スマホは射撃スティックで狙う (確かめ用に PC でも出せる)
+    private static bool Stick => System.OperatingSystem.IsAndroid() || FireStick.ForceShow;
 
     public override void OnAssigned()
     {
-        _fire = AddAbility(Pc
-            ? new Ability(new Text("Nova.Fire"), "nova_fire")
-            {
-                Cooldown = () => Cooldown,
-                OnUse = () => { ToggleStance(); return false; },
-            }
-            : new Ability(new Text("Nova.Fire"), "nova_fire")
-            {
-                Cooldown = () => Cooldown,
-                HoldMin = () => 0f,
-                HoldMax = () => Charge,
-                OnHold = _ => _charging && Release(),
-            });
+        _fire = AddAbility(new Ability(new Text("Nova.Fire"), "nova_fire")
+        {
+            Cooldown = () => Cooldown,
+            PcMouse = true, // PC は右クリックで構え・左クリックで溜める
+            OnUse = () => { ToggleStance(); return false; },
+        });
         if (IsLocal)
         {
             _mine = this;
@@ -105,26 +113,47 @@ public sealed partial class Nova : RoleBase
         return true;
     }
 
-    // 溜めの途中で撃てなくなった (会議・死・動けない)
+    // 溜めの途中でやめた (右を離した・会議・死・動けない)。ほかの端末の溜めの絵も消す
     private void Abort()
     {
         _charging = false;
+        _testReleaseAt = -1f;
         MoveSpeed.Remove("NovaCharge");
         NovaFx.CancelCharge(Player);
+        CancelCall.Send(true);
     }
 
+    private static readonly RemoteCall<bool> CancelCall = new("Nova.Cancel", Route.Anyone,
+        (w, _) => w.Write(true), r => r.ReadBoolean(),
+        (sender, _) =>
+        {
+            if (RoleState.Of(sender) is not Nova n || !n.Player) return;
+            n._heardChargeAt = -1f;
+            NovaFx.CancelCharge(n.Player);
+        }, perSecond: 4);
+
+    // ボタン: 構える / しまう (溜めている途中なら撃たずにやめる)
     private void ToggleStance()
     {
-        if (_charging) return;
+        if (_charging) { Abort(); EndStance(); return; }
         if (_stance) { EndStance(); return; }
-        if (!PortKit.Alive(Player) || !Player.CanMove || RewindPlayback.Active) return;
+        StartStance();
+    }
+
+    private bool StartStance()
+    {
+        if (!PortKit.Alive(Player) || !Player.CanMove || RewindPlayback.Active) return false;
         _stance = true;
         _reachFrame = 0;
+        if (Stick) FireStick.Arm(true);
+        return true;
     }
 
     private void EndStance()
     {
         _stance = false;
+        _byRight = false;
+        if (Stick) FireStick.Arm(false);
         NovaFx.EndStance(Player);
     }
 
@@ -177,35 +206,95 @@ public sealed partial class Nova : RoleBase
         return true;
     }
 
-    // 毎フレーム (NovaFx.Tick から): PC の右クリックで構え・左クリックを押している間溜める。押し始めがボタン・パネルの上なら何もしない
+    // 毎フレーム (NovaFx.Tick から): PC の右クリックを押している間構え・左クリックを押している間溜める。
+    // スマホは構えている間、射撃スティックを倒すと溜め始める。押し始めがボタン・パネルの上なら何もしない
     internal static void LocalTick()
     {
         var n = _mine;
         if (n == null) return;
+        TickInput(n);
+        n.SendStance();
+    }
+
+    // 構えと狙いを全員へ配る (受け取りの上限で捨てられないよう間を空け、最後の値は必ず送り直す)
+    private void SendStance()
+    {
+        float now = Time.time;
+        if (_stance != _sentStance) { if (now - _stanceSentAt < StanceGap) return; }
+        else
+        {
+            if (!_stance || now - _stanceSentAt < StanceAimGap) return;
+            float d = _aimNow - _sentStanceAngle;
+            d -= 360f * System.MathF.Round(d / 360f);
+            if (d < StanceAimDeg && d > -StanceAimDeg) return;
+        }
+        _sentStance = _stance;
+        _sentStanceAngle = _aimNow;
+        _stanceSentAt = now;
+        StanceCall.Send((_stance, _aimNow));
+    }
+
+    private static readonly RemoteCall<(bool on, float angle)> StanceCall = new("Nova.Stance", Route.Anyone,
+        (w, m) => { w.Write(m.on); w.Write(m.angle); }, r => (r.ReadBoolean(), r.ReadSingle()),
+        (sender, m) =>
+        {
+            if (RoleState.Of(sender) is not Nova n || !sender || n._charging) return;
+            if (m.on && !MeetingHud.Instance && PortKit.Alive(sender))
+            {
+                n._heardStance = true;
+                NovaFx.Stance(sender, m.angle, Reach(sender.GetTruePosition(), m.angle, out _), false);
+            }
+            else if (n._heardStance)
+            {
+                n._heardStance = false;
+                NovaFx.EndStance(sender, false);
+            }
+        }, perSecond: 12);
+
+    private void OnMeetingStart(MeetingStartEvent e)
+    {
+        // ほかの人の構えは会議で下ろす (持ち主の端末も会議で構えをやめる)
+        if (IsLocal || !_heardStance) return;
+        _heardStance = false;
+        if (Player) NovaFx.EndStance(Player, false);
+    }
+
+    private static void TickInput(Nova n)
+    {
         var p = n.Player;
         bool blocked = !p || MeetingHud.Instance || Minigame.Instance || RewindPlayback.Active || !PortKit.Alive(p);
+        bool stick = Stick;
+        bool right = !stick && Input.GetMouseButton(1);
+        bool rightDown = right && !n._rightPrev;
+        n._rightPrev = right || MeetingHud.Instance; // 右を押したまま会議が終わっても、押し始めと取らない
+        if (stick)
+        {
+            if (FireStick.Touching && FireStick.Held) { _stickDir = FireStick.Dir; _stickAimed = true; }
+            else if (!FireStick.Touching && !n._charging) _stickAimed = false;
+        }
         if (n._charging)
         {
-            if (blocked) { n.Abort(); return; }
+            if (blocked) { n.Abort(); n.EndStance(); return; }
+            // 右を離した: 撃たずにやめる
+            if (n._byRight && !right && _testReleaseAt < 0f) { n.Abort(); n.EndStance(); return; }
             n.TickCharge(p);
             return;
         }
-        if (!Pc)
-        {
-            // スマホ: ボタンを押し始めたら溜め始める (離した時はボタンが OnHold を呼ぶ)
-            var b = n._fire?.Button;
-            if (b != null && b.Holding && !blocked && p.CanMove) n.StartCharge(Aim(p));
-            return;
-        }
         if (n._stance && (blocked || !p.CanMove)) { n.EndStance(); return; }
-        bool right = Input.GetMouseButtonDown(1), left = n._stance && Input.GetMouseButtonDown(0);
-        if ((right || left) && !Minigame.Instance && !MeetingHud.Instance && !OverUi())
+        if (n._byRight && !right) { n.EndStance(); return; }
+        if (stick)
         {
-            if (right) n.ToggleStance();
-            else if (n.TryStartCharge()) return;
+            if (n._stance && _stickAimed && FireStick.Held) n.TryStartCharge();
+        }
+        else if (!Minigame.Instance && !MeetingHud.Instance)
+        {
+            bool left = n._stance && Input.GetMouseButtonDown(0);
+            if (rightDown && !n._stance && !Menu.Emotes.Covered() && !OverUi() && n.StartStance()) n._byRight = true;
+            else if (left && !OverUi() && n.TryStartCharge()) return;
         }
         if (!n._stance) return;
         float angle = Aim(p);
+        n._aimNow = angle;
         // 照準の線の長さ (壁まで) は数フレームに 1 回測る
         if (--n._reachFrame <= 0)
         {
@@ -236,11 +325,15 @@ public sealed partial class Nova : RoleBase
             _reach = Reach(p.GetTruePosition(), _chargeAngle, out _);
         }
         NovaFx.ChargeAim(p, _chargeAngle, _reach);
-        bool release = Pc && !Input.GetMouseButton(0);
+        bool release = Stick ? !FireStick.Touching : !Input.GetMouseButton(0);
         if (_testReleaseAt >= 0f) release = now >= _testReleaseAt;
         if (!release) return;
         _testReleaseAt = -1f;
-        if (Release() && Pc) _fire?.Button?.StartCooldown();
+        _stickAimed = false;
+        bool fired = Release(); // 構えのキャノンはそのまま光線を撃つので、構えの絵は下げない
+        _byRight = false;
+        if (Stick) FireStick.Arm(false);
+        if (fired) _fire?.Button?.StartCooldown();
     }
 
     private static bool OverUi() =>
@@ -253,7 +346,7 @@ public sealed partial class Nova : RoleBase
         if (IsLocal && System.OperatingSystem.IsAndroid()) ShotKit.Track();
     }
 
-    // 撃つ向き (度・右が 0)。PC はマウスの方・スマホは最後に歩いた向き (タッチの位置は押したボタンの所になるため)
+    // 撃つ向き (度・右が 0)。PC はマウスの方・スマホは射撃スティックを倒した向き (触れていなければ最後に歩いた向き)
     internal static float? TestAngle; // 試験用: 撃つ向きを固定する (bridge の nova aim)
 
     private static float Aim(PlayerControl lp)
@@ -263,9 +356,9 @@ public sealed partial class Nova : RoleBase
         if (Mode.Value == 1) return left ? 180f : 0f;
         float a;
         var cam = Camera.main;
-        if (System.OperatingSystem.IsAndroid() || !cam)
+        if (Stick || !cam)
         {
-            var f = ShotKit.Facing;
+            var f = _stickAimed ? _stickDir : ShotKit.Facing;
             a = FxMath.Atan2(f.y, f.x) * (180f / System.MathF.PI);
         }
         else
@@ -310,6 +403,7 @@ public sealed partial class Nova : RoleBase
     {
         var p = n.Player;
         if (!p) return;
+        n._heardStance = false; // 構えのキャノンがそのまま溜めに替わる
         n._heardChargeAt = Time.time;
         Vector2 from0 = p.GetTruePosition();
         NovaFx.BeginCharge(p, angle, Charge, Size, Reach(from0, angle, out _), Charge + HoldLimit);
@@ -379,15 +473,68 @@ public sealed partial class Nova : RoleBase
         if (stopAt < length) { length = stopAt; wall = false; }
         // サムライで止まった所は、壁に当たった時と同じく光が弾ける (壁は焼かない)
         NovaFx.Fire(n.Player, from, angle, length, size, wall || _samuraiStop, half);
+        // サムライに止められた光線は押し合いの方で伸び縮みするので、残さない
+        // 満タンでもサムライが刀で受けた光線は押し合いの方で切られるので、残さない (残すと見えない光線が人を倒し続ける)
+        bool sustain = !_samuraiStop && BeamTime > 0f;
+        for (int i = 0; sustain && i < hits && i < Hit.Count; i++)
+            if (RoleState.Of(Hit[i].p) is Neutral.Samurai) sustain = false;
+        if (sustain) Sustain(n, BeamTime);
         if (AmongUsClient.Instance.AmHost)
         {
             HostBeam(n, hits, from, dir, length, size, wall, level);
             HostBeamPuppets(n.Player, from, dir, length, half);
+            if (sustain) HostSustain(n.Player, from, dir, length, half);
         }
     }
 
-    // ホスト: 光線の中のドッペルゲンガーの分身を倒す (人と同じ形で当てる・貫ける人数には数えない)
-    private static void HostBeamPuppets(PlayerControl invoker, Vector2 from, Vector2 dir, float length, float half)
+    // 全員の端末で: 光線を seconds 秒残す。撃った人はその間動けない。会議・撃った人の死で消える
+    private static void Sustain(Nova n, float seconds)
+    {
+        var p = n.Player;
+        NovaFx.HoldBeam(p, seconds);
+        bool mine = n.IsLocal;
+        if (mine) { MoveSpeed.Remove("NovaCharge"); MoveSpeed.Add("NovaCharge", 0f, seconds); }
+        float end = Time.time + seconds;
+        UchuKit.Every(() =>
+        {
+            if (Time.time >= end) return false;
+            if (p && PortKit.Alive(p) && !MeetingHud.Instance && ShipStatus.Instance) return true;
+            if (p) NovaFx.CutBeam(p);
+            if (mine) MoveSpeed.Remove("NovaCharge");
+            return false;
+        });
+    }
+
+    // ホスト: 残っている光線に後から入った人も倒す (撃った時の位置・向き・長さのまま・1 人 1 回だけ試す)
+    private const float SustainStep = 0.1f;
+    private static void HostSustain(PlayerControl invoker, Vector2 from, Vector2 dir, float length, float half)
+    {
+        float end = Time.time + BeamTime, next = Time.time + SustainStep;
+        var tried = new System.Collections.Generic.HashSet<byte>();
+        foreach (var h in Hit) tried.Add(h.p.PlayerId); // 撃った瞬間に当たった人はもう試した
+        var puppets = new System.Collections.Generic.HashSet<byte>();
+        UchuKit.Every(() =>
+        {
+            if (!PortKit.Alive(invoker) || MeetingHud.Instance || !ShipStatus.Instance) return false;
+            float now = Time.time;
+            if (now >= end) return false;
+            if (now < next) return true;
+            next = now + SustainStep;
+            int hits = Victims(invoker, from, dir, length, half, int.MaxValue, true, out _);
+            for (int i = 0; i < hits && i < Hit.Count; i++)
+            {
+                var p = Hit[i].p;
+                if (!tried.Add(p.PlayerId) || RoleState.Of(p) is Neutral.Samurai) continue; // サムライは刀で受ける (残った光線では倒れない)
+                if (BeforeMurderEvent.Ask(invoker, p) != null) continue;
+                PortKit.HostKillAsked(invoker, p, PortKit.Harm.Heat);
+            }
+            HostBeamPuppets(invoker, from, dir, length, half, puppets);
+            return true;
+        });
+    }
+
+    // ホスト: 光線の中のドッペルゲンガーの分身を倒す (人と同じ形で当てる・貫ける人数には数えない)。once = 同じ分身を 2 度試さない
+    private static void HostBeamPuppets(PlayerControl invoker, Vector2 from, Vector2 dir, float length, float half, System.Collections.Generic.HashSet<byte> once = null)
     {
         if (!Crew.DoppelPuppet.Any || !PortKit.Alive(invoker)) return;
         float grow = 0.85f * half;
@@ -402,7 +549,8 @@ public sealed partial class Nova : RoleBase
             if (side > half * (1f - e) / (1f + e) + 0.2f) continue;
             PuppetHits.Add(m.Owner);
         }
-        foreach (var id in PuppetHits) Crew.Doppelganger.HostStrikeRanged(invoker, id, PortKit.Harm.Heat);
+        foreach (var id in PuppetHits)
+            if (once == null || once.Add(id)) Crew.Doppelganger.HostStrikeRanged(invoker, id, PortKit.Harm.Heat);
     }
     private static readonly System.Collections.Generic.List<byte> PuppetHits = new();
 

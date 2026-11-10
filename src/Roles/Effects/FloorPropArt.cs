@@ -22,6 +22,7 @@ internal static class FloorPropArt
         "camera" or "camera_left" => (-0.416f, 0.416f, -0.182f, 0.65f, Stand.Upright),
         "antenna" or "antenna_broken" => (-0.36f, 0.36f, -0.192f, 1.032f, Stand.Upright),
         "kunai" => (-0.29f, 0.29f, -0.07f, 0.07f, Stand.Air),
+        var n when n.StartsWith("kunai_stuck_", System.StringComparison.Ordinal) => (-0.42f, 0.42f, -0.30f, 0.42f, Stand.Upright),
         "anchor" => (-0.437f, 0.437f, -0.23f, 0.414f, Stand.Flat),
         _ => (-0.5f, 0.5f, -0.5f, 0.5f, Stand.Air),
     };
@@ -32,6 +33,9 @@ internal static class FloorPropArt
         var pivot = s == Stand.Air ? FxMath.V2(0.5f, 0.5f) : FxMath.V2(-l / (r - l), -b / (t - b));
         return ButtonIcons.Load(shadow ? $"prop_{name}_shadow" : $"prop_{name}", Ppu, pivot);
     }
+
+    // 宙を飛ぶ物の絵だけ (手に持たせる時など・原点は絵の真ん中)
+    internal static Sprite Air(string name) => Load(name, false);
 
     // 床の点 pos に置く。life が終わると消え、置く前へ時を戻しても消える
     internal static SpriteRenderer Place(Lifespan life, Vector2 pos, string name, Color? tint = null)
@@ -51,6 +55,23 @@ internal static class FloorPropArt
         if (stand != Stand.Air) AddShadow(go, name, tint);
         life.Bind(go);
         Rewind.Undo(_ => { if (go) Object.Destroy(go); }); // 置く前へ戻ると消える
+        return sr;
+    }
+
+    // 体に刺さったクナイ: 刃が体の表面の下に沈み、柄が浮いて体の上に影を落とす絵 (飛んできた向きを 45° ごとに 8 枚・同じ光で描いた物)。
+    // entry = 刺さった点 (絵の原点・z もこの値)。angle = 飛んできた向き (度)。いちばん近い絵との差 (±22.5°) は回して合わせる。
+    // 影は体の上に落とすので、物と体の間の奥行きに置く (呼ぶ側は entry.z を体より StuckGap 手前にする)
+    internal const float StuckGap = 0.002f;
+    internal static SpriteRenderer Stuck(Lifespan life, Vector3 entry, float angle, out float baseTurn)
+    {
+        int k = ((int)Mathf.Round(angle / 45f) % 8 + 8) % 8;
+        baseTurn = Mathf.DeltaAngle(45f * k, angle);
+        var sr = Place(life, entry, "kunai_stuck_" + k);
+        var t = sr.transform;
+        t.position = entry;
+        t.rotation = Quaternion.Euler(0f, 0f, baseTurn);
+        var sh = t.Find("Shadow");
+        if (sh) sh.localPosition = FxMath.V3(0f, 0f, StuckGap / 2f);
         return sr;
     }
 

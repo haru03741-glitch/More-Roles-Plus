@@ -84,6 +84,7 @@ public sealed partial class TriggerHappy : RoleBase
     private readonly List<(Vector2 pos, Vector2 dir)> _batch = new();
     private Ability _spray;
     private bool _active, _firing;
+    internal bool GunOut => _active;
     private bool _byRight, _rightPrev, _leftPrev, _leftOnUi; // 自分の端末: 右クリックで構えた (離すとしまう)・前の tick の右ボタン
     private GatlingFx.Gun _gun;
     private float _angle, _sentAngle = float.NaN, _fireTimer, _batchTimer, _nextChip;
@@ -101,6 +102,7 @@ public sealed partial class TriggerHappy : RoleBase
     {
         _spray = AddAbility(new Ability(new Text("TriggerHappy.Spray"), "snr_gun")
         {
+            PcMouse = true, // PC は右クリックで構え・左クリックで撃つ (乱射のキーでも構えられる)
             Cooldown = () => SprayCooldown,
             Duration = () => SprayDuration,
             MaxUses = () => Unlimited ? 0 : UseLimit,
@@ -122,7 +124,6 @@ public sealed partial class TriggerHappy : RoleBase
         Lifespan.OnRelease(() =>
         {
             SetActive(false);
-            if (IsLocal) MoveBlock.Gun = false;
             ClearShots();
         });
     }
@@ -147,7 +148,6 @@ public sealed partial class TriggerHappy : RoleBase
         if (IsLocal)
         {
             FireStick.Arm(on);
-            MoveBlock.Gun = on;
             if (!on) _byRight = false;
         }
         if (on && _gun == null)

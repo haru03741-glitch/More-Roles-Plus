@@ -190,22 +190,23 @@ internal static partial class NovaFx
         if (s.AimTf) s.AimTf.rotation = FxMath.RotZ(angle);
     }
 
-    // 自分の端末だけ: 構えて狙っている (撃つまで電文は出ない)。毎フレーム今の狙いを渡す
-    internal static void Stance(PlayerControl p, float angle, float aimLen)
+    // 構えて狙っている。持ち主の端末は毎フレーム、ほかの端末は届いた狙いを渡す (重い砲身のばねで狙いへ寄る)。
+    // mine = 持ち主の画面 (構えの音を手元で鳴らす)・ほかの人の画面ではその場所から聞こえる
+    internal static void Stance(PlayerControl p, float angle, float aimLen, bool mine = true)
     {
         if (!p || RewindPlayback.Active || !Art()) return;
         var s = Find(p, true);
-        if (s == null) { s = NewShot(p, angle); SndStance(true); }
+        if (s == null) { s = NewShot(p, angle); SndStance(true, mine ? null : p); }
         s.Stance = true;
         if (angle != s.Angle) SetAngle(s, angle);
         s.AimLen = aimLen;
     }
 
     // 構えをやめた: 下げて消す
-    internal static void EndStance(PlayerControl p)
+    internal static void EndStance(PlayerControl p, bool mine = true)
     {
         var s = Find(p, true);
-        if (s != null) { s.EndAt = Time.time; SndStance(false); }
+        if (s != null) { s.EndAt = Time.time; SndStance(false, mine ? null : p); }
     }
 
     // 撃つ人・向き (画面の度)・溜めの秒・光線の太さ・狙いの線の長さ。構えていればそのキャノンから溜める
