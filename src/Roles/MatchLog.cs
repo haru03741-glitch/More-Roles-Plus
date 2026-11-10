@@ -18,6 +18,9 @@ internal static class MatchLog
         Left,
         Spaced,
         Spectator,
+        Burned,
+        Drowned,
+        Crushed,
     }
 
     public sealed class Death
@@ -93,6 +96,19 @@ internal static class MatchLog
         if (!target) return;
         Menu.MatchReplay.OnKill(killer, target);
         bool self = !killer || killer.PlayerId == target.PlayerId;
+        if (self && TerrainDeath.TakeDeath(target.PlayerId, out var cause, out byte by))
+        {
+            var t = new Death
+            {
+                Kind = cause switch { TerrainDeath.Cause.Burn => Kind.Burned, TerrainDeath.Cause.Drown => Kind.Drowned, _ => Kind.Crushed },
+                At = UnityEngine.Time.time,
+                Where = target.GetTruePosition(),
+            };
+            SetCulprit(t, by, target.PlayerId);
+            Deaths[target.PlayerId] = t;
+            return;
+        }
+        if (!self) TerrainDeath.Forget(target.PlayerId);
         Deaths[target.PlayerId] = new Death
         {
             Kind = self ? Kind.Suicide : Kind.Killed,
@@ -107,6 +123,7 @@ internal static class MatchLog
 
     public static void OnExiled(PlayerControl p)
     {
+        if (p) TerrainDeath.Forget(p.PlayerId);
         if (p) Deaths[p.PlayerId] = new Death { Kind = Kind.Exiled };
         Menu.MatchReplay.OnExiled(p);
     }
@@ -116,9 +133,25 @@ internal static class MatchLog
         if (p) Deaths[p.PlayerId] = new Death { Kind = Kind.Spectator };
     }
 
-    public static void OnSpaced(PlayerControl p)
+    // 船外へ吸い出された。by = 穴を開けた人 (分からなければ 255)
+    public static void OnSpaced(PlayerControl p, byte by)
     {
-        if (p) Deaths[p.PlayerId] = new Death { Kind = Kind.Spaced };
+        if (!p) return;
+        var d = new Death { Kind = Kind.Spaced, At = UnityEngine.Time.time, Where = p.GetTruePosition() };
+        SetCulprit(d, by, p.PlayerId);
+        Deaths[p.PlayerId] = d;
+    }
+
+    // 地形の死 (船外など) を起こした人を倒した人の欄に入れる。自分で起こした・分からない時は空のまま
+    private static void SetCulprit(Death d, byte by, byte victim)
+    {
+        if (by == 255 || by == victim) return;
+        var k = PortKit.ById(by);
+        if (!k || k.Data == null) return;
+        d.Killer = k.Data.PlayerName;
+        d.KillerRole = Dev.DevGod.Label(by);
+        d.KillerRoleBare = BareRole(by);
+        d.KillerId = by;
     }
 
     public static void OnLeft(ClientData c)
@@ -142,10 +175,20 @@ internal static class MatchLog
         Kind.Killed => new Text("MatchLog.KilledBy").With("killer", d.Killer).With("killerRole", d.KillerRole),
         Kind.Suicide => new Text("MatchLog.DiedWithNoKiller"),
         Kind.Exiled => new Text("MatchLog.Ejected"),
-        Kind.Spaced => new Text("MatchLog.SuckedOutIntoSpace"),
+        Kind.Spaced => d.Killer != null
+            ? new Text("MatchLog.SuckedOutBy").With("killer", d.Killer).With("killerRole", d.KillerRole)
+            : new Text("MatchLog.SuckedOutIntoSpace"),
         Kind.Spectator => new Text("MatchLog.Spectating"),
+        Kind.Burned => Culprit("MatchLog.Burned", d),
+        Kind.Drowned => Culprit("MatchLog.Drowned", d),
+        Kind.Crushed => Culprit("MatchLog.Crushed", d),
         _ => new Text("MatchLog.Disconnected"),
     };
+
+    // 地形の死: 起こした人が分かれば「〇〇 (役職) が…」の文
+    private static Text Culprit(string key, Death d) => d.Killer != null
+        ? new Text(key + "By").With("killer", d.Killer).With("killerRole", d.KillerRole)
+        : new Text(key);
 
     // 役職の名前 (色付き)。死んだ人の本編の役職は幽霊の役職に替わっているので、生きていた時の役職を出す
     private static string RoleLabel(NetworkedPlayerInfo p) => RoleLabelBase(p) + (RoleState.Of(p.PlayerId) == null && p.IsDead ? RoleDisplay.AddonSuffix(p.PlayerId) : "");

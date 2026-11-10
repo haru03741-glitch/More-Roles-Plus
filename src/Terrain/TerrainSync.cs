@@ -163,6 +163,7 @@ internal static class TerrainSync
         TerrainDamage.Mark("props");
         Decompression.OnApplied(r);
         TerrainDamage.Mark("decomp");
+        Roles.TerrainDeath.OnApplied(r);
     }
 
     private static readonly List<Roles.TerrainBrokenEvent> Broken = new();

@@ -58,6 +58,7 @@ internal static partial class Decompression
         public bool Sealed;
         public bool ByProp;       // 物がふさいだ
         public int Comp = -1;     // 口の升がいる範囲 (作り直すたびに書く)
+        public byte Actor = ResolvedDamage.NoActor; // 穴を開けた人 (吸い出された人の死因の相手)
     }
 
     private struct Pending
@@ -67,6 +68,7 @@ internal static partial class Decompression
         public bool Unmouth;      // 時戻しで取り消した口 Lines を外す
         public List<(Vector2 A, Vector2 B)> Lines; // 開通した口 (Rebuild でない時・曲がった壁では数本)
         public Vector2 Away;
+        public byte Actor;
     }
 
     private static int _shipGen;
@@ -156,13 +158,13 @@ internal static partial class Decompression
                     room = !SolidMap.Solid(a + (b - a) * ((float)k / n) + inward);
             }
             if (!room) return;
-            Open(tick, lines, away);
+            Open(tick, lines, away, r.Actor);
             if (w * 256f >= MinWidth256) DecompFx.OnBreach(tick, lines, w, away);
         }
         catch (Exception e) { Fail("apply", e); }
     }
 
-    private static void Open(int tick, List<(Vector2, Vector2)> lines, Vector2 away)
+    private static void Open(int tick, List<(Vector2, Vector2)> lines, Vector2 away, byte actor = ResolvedDamage.NoActor)
     {
         if (!_running)
         {
@@ -171,7 +173,7 @@ internal static partial class Decompression
             _step = Math.Min(tick, GameClock.Now - Delay);
             Build();
         }
-        Enqueue(new Pending { Tick = tick, Lines = lines, Away = away });
+        Enqueue(new Pending { Tick = tick, Lines = lines, Away = away, Actor = actor });
         TerrainUndo.OnUndo(() => { if (_running) Enqueue(new Pending { Tick = TerrainUndo.UndoTick, Unmouth = true, Lines = lines }); });
     }
 
@@ -674,7 +676,7 @@ internal static partial class Decompression
             var p = Queue[0];
             Queue.RemoveAt(0);
             if (p.Unmouth) RemoveMouth(p.Lines);
-            else if (!p.Rebuild) AddMouth(p.Lines, p.Away);
+            else if (!p.Rebuild) AddMouth(p.Lines, p.Away, p.Actor);
             rebuild = true;
         }
         ulong bits = BitsAt(_step);
@@ -725,7 +727,7 @@ internal static partial class Decompression
     }
 
     // 開いている口の近くなら同じ穴を広げた物 (幅 = 口の端どうしのいちばん遠い 2 点)。それ以外は新しい穴
-    private static void AddMouth(List<(Vector2 A, Vector2 B)> lines, Vector2 away)
+    private static void AddMouth(List<(Vector2 A, Vector2 B)> lines, Vector2 away, byte actor)
     {
         if (lines == null || lines.Count == 0) return;
         foreach (var br in Breaches)
@@ -740,11 +742,12 @@ internal static partial class Decompression
             if (!near) continue;
             br.Lines.AddRange(lines);
             br.W256 = Math.Min(MaxWidth256, (int)(Span(br.Lines) * 256f));
+            if (br.Actor == ResolvedDamage.NoActor) br.Actor = actor;
             return;
         }
         int w = (int)(Span(lines) * 256f);
         if (w < MinWidth256) return;
-        var nb = new Breach { Start = _step, W256 = Math.Min(MaxWidth256, w), Away = away };
+        var nb = new Breach { Start = _step, W256 = Math.Min(MaxWidth256, w), Away = away, Actor = actor };
         nb.Lines.AddRange(lines);
         Breaches.Add(nb);
     }
@@ -875,6 +878,24 @@ internal static partial class Decompression
         int x = CellX(p.x), y = CellY(p.y);
         if (x < 0 || y < 0 || x >= _w || y >= _h) return false;
         return _sub[y * _w + x] != 0;
+    }
+
+    // 開いている口のうち p にいちばん近い穴を開けた人 (分からなければ NoActor)
+    internal static byte MouthActor(Vector2 p)
+    {
+        float best = float.MaxValue;
+        byte who = ResolvedDamage.NoActor;
+        foreach (var br in Breaches)
+        {
+            if (br.Sealed) continue;
+            foreach (var (a, b) in br.Lines)
+            {
+                float mx = (a.x + b.x) * 0.5f - p.x, my = (a.y + b.y) * 0.5f - p.y;
+                float d = mx * mx + my * my;
+                if (d < best) { best = d; who = br.Actor; }
+            }
+        }
+        return who;
     }
 
     private static Vector2 NearestMouth(Vector2 p)

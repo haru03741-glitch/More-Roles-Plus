@@ -75,6 +75,7 @@ public static partial class TestBridge
             UiCommands.Register();
             DuelCommands.Register();
             CrewFlipCommands.Register();
+            TerrainDeathCommands.Register();
             Roles.RewindCinematic.Register();
             Roles.KatanaCinematic.Register();
             Report.ReportWindow.RegisterBridge();

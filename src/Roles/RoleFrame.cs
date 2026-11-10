@@ -81,6 +81,7 @@ internal static class RoleFrame
         PortKit.TickLater();
         UchuKit.Tick();
         Cloak.Tick();
+        TerrainDeath.Tick();
         ViewScale.Tick();
         if ((Marks.Count > 0 || Publics.Count > 0 || ExtraMarks.Count > 0) && ++_tick >= _markEvery)
         {

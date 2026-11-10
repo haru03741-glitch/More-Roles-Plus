@@ -256,7 +256,14 @@ Autopsy.KilledByRole: Killed by {role}
 Autopsy.Suicide: Own hand
 Autopsy.Exiled: Ejected
 Autopsy.Spaced: Spaced
+Autopsy.SpacedByRole: Spaced through a hole made by {role}
 Autopsy.Left: Disconnected
+Autopsy.Burned: Burned
+Autopsy.BurnedByRole: Burned by fire from {role}
+Autopsy.Drowned: Drowned
+Autopsy.DrownedByRole: Drowned by water from {role}
+Autopsy.Crushed: Crushed
+Autopsy.CrushedByRole: Crushed under a wall broken by {role}
 
 # ── Baiting ──
 Baiting.Name: Baiting
@@ -439,7 +446,14 @@ MatchLog.KilledBy: Killed by {killer} ({killerRole})
 MatchLog.DiedWithNoKiller: Died with no killer
 MatchLog.Ejected: Ejected
 MatchLog.SuckedOutIntoSpace: Sucked out into space
+MatchLog.SuckedOutBy: Sucked out through a hole made by {killer} ({killerRole})
 MatchLog.Spectating: Spectating
+MatchLog.Burned: Burned to death
+MatchLog.BurnedBy: Burned to death by fire from {killer} ({killerRole})
+MatchLog.Drowned: Drowned
+MatchLog.DrownedBy: Drowned in water from {killer} ({killerRole})
+MatchLog.Crushed: Crushed under a collapsed wall
+MatchLog.CrushedBy: Crushed under a wall broken by {killer} ({killerRole})
 MatchLog.Disconnected: Disconnected
 MatchLog.AbortedNoWinners: Aborted (no winners)
 MatchLog.NoWinners: No winners
@@ -1152,6 +1166,15 @@ ModCheck.YouDifferBuild: You have the same version as the host but different con
 # ── MapSettings ──
 MapSettings.Title: Map
 MapSettings.Mirror: Mirror the map left to right
+TerrainDeath.Title: Deaths by fire, water, and rubble
+TerrainDeath.Enabled: Fire, water, and collapsing walls can kill
+TerrainDeath.Enabled.Detail: Staying on a burning floor burns you to death, and swimming too long in water too deep to stand in makes you drown. Standing on the side a wall collapses toward crushes you.
+TerrainDeath.BurnTime: Time until burned to death
+TerrainDeath.BurnTime.Detail: You burn to death once your total time on burning floors reaches this many seconds. Out of the fire, it recovers 1 second per second.
+TerrainDeath.DrownTime: Time until drowning
+TerrainDeath.DrownTime.Detail: You drown once your total time swimming in water too deep to stand in reaches this many seconds. Where you can stand, it recovers 1 second per second.
+TerrainDeath.Crush: Collapsing walls crush people
+TerrainDeath.Crush.Detail: When a wall collapses from a hammer, fire, or gunfire, anyone right beside it on the side it falls toward is crushed. The person who broke it is not.
 
 # ── LangFiles ──
 LangFiles.Reloaded: Reloaded the texts (edited: {mod} mod, {vanilla} vanilla)\nReopen any open menu to see the change\n{path}

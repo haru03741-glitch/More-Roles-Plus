@@ -59,11 +59,21 @@ public sealed class Autopsy : AddonBase
                 : new Text("Autopsy.Killed").ToString(),
             MatchLog.Kind.Suicide => new Text("Autopsy.Suicide").ToString(),
             MatchLog.Kind.Exiled => new Text("Autopsy.Exiled").ToString(),
-            MatchLog.Kind.Spaced => new Text("Autopsy.Spaced").ToString(),
+            MatchLog.Kind.Spaced => ShowKillerRole && !string.IsNullOrEmpty(d.KillerRoleBare)
+                ? new Text("Autopsy.SpacedByRole").With("role", d.KillerRoleBare).ToString()
+                : new Text("Autopsy.Spaced").ToString(),
             MatchLog.Kind.Left => new Text("Autopsy.Left").ToString(),
+            MatchLog.Kind.Burned => Terrain("Autopsy.Burned", d),
+            MatchLog.Kind.Drowned => Terrain("Autopsy.Drowned", d),
+            MatchLog.Kind.Crushed => Terrain("Autopsy.Crushed", d),
             _ => null,
         };
     }
+
+    // 地形の死: 設定で起こした人の役職も
+    private static string Terrain(string key, MatchLog.Death d) => ShowKillerRole && !string.IsNullOrEmpty(d.KillerRoleBare)
+        ? new Text(key + "ByRole").With("role", d.KillerRoleBare).ToString()
+        : new Text(key).ToString();
 
     // 試合中の死体の上: 倒されて死体が出たら字を置く (見せるのは近くて壁の無い時だけ)
     [LocalOnly]

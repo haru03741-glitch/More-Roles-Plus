@@ -51,7 +51,14 @@ internal static class VictimView
     {
         Calls++;
         var lp = PlayerControl.LocalPlayer;
-        if (killer == null || victim == null || !lp || victim.PlayerId != lp.PlayerId || killer.PlayerId == victim.PlayerId) return false;
+        if (killer == null || victim == null || !lp || victim.PlayerId != lp.PlayerId) return false;
+        // 地形で死んだ本人は、崩れ落ちる姿をその場の画面のまま見ている (本編の自分を倒す絵は出さない)
+        if (killer.PlayerId == victim.PlayerId)
+        {
+            if (!TerrainDeath.IsDoomed(victim.PlayerId)) return false;
+            Taken++;
+            return true;
+        }
         var k = killer.Object;
         if (!k || !ShipStatus.Instance) return false;
         // 爆発した直後・乱射している間のキルだけ (全員に届いている状態で決める。近くでのふつうのキルは本編の絵)

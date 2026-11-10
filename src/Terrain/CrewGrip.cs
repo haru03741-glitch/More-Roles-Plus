@@ -144,10 +144,12 @@ internal static class CrewGrip
         public Pose Pose;
         public float Mx, My, Dx, Dy;   // 体から見た口と、口の先の向き
         public float T;
+        public byte By;                // 穴を開けた人 (死因の相手)
     }
     private static readonly List<Flight> Flights = new();
     // 吸い出しで本編の追放を走らせている間の人 (追放の出来事を起こさない)
     internal static int Spacing = -1;
+    internal static int SpacedBy = ResolvedDamage.NoActor; // その人を吸い出した穴を開けた人
 
     internal static bool Active => _state != State.Free || _shown || Flights.Count > 0;
     internal static string StateName => _state.ToString();
@@ -586,7 +588,7 @@ internal static class CrewGrip
         if (len <= 0.05f && Decompression.PullAt(pos, out var dir, out _, out _)) { dx = dir.x; dy = dir.y; }
         var pose = new Pose(p);
         pose.HideName();
-        Flights.Add(new Flight { Pc = p, Pose = pose, Mx = mx, My = my, Dx = dx, Dy = dy });
+        Flights.Add(new Flight { Pc = p, Pose = pose, Mx = mx, My = my, Dx = dx, Dy = dy, By = Decompression.MouthActor(pos) });
         Plugin.Logger.LogInfo($"[CrewGrip] spaced {pid} mouth={md:0.00}");
     }
 
@@ -647,8 +649,9 @@ internal static class CrewGrip
         var p = f.Pc;
         if (p.Data == null || p.Data.IsDead) return;
         Spacing = p.PlayerId;
+        SpacedBy = f.By;
         try { p.Exiled(); }
-        finally { Spacing = -1; }
+        finally { Spacing = -1; SpacedBy = ResolvedDamage.NoActor; }
         if (p.AmOwner) { _state = State.Free; _hasTarget = false; }
     }
 

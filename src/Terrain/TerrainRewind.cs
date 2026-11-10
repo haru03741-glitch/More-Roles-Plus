@@ -112,6 +112,7 @@ internal static class TerrainRewind
         int last = Plan[Plan.Count - 1].Target;
         WaterSim.RewindPurge(last);
         FireSim.RewindPurge(last);
+        Roles.TerrainDeath.RewindPurge(last);
         Decompression.RewindPurge(last);
         PropSim.RewindPurge(last);
         Walls = 0;

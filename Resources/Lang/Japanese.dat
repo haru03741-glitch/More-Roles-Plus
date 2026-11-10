@@ -256,7 +256,14 @@ Autopsy.KilledByRole: {role} に倒された
 Autopsy.Suicide: 自滅
 Autopsy.Exiled: 追放
 Autopsy.Spaced: 船外へ
+Autopsy.SpacedByRole: {role} の開けた穴から船外へ
 Autopsy.Left: 切断
+Autopsy.Burned: 焼死
+Autopsy.BurnedByRole: {role} の火で焼死
+Autopsy.Drowned: 溺死
+Autopsy.DrownedByRole: {role} の水で溺死
+Autopsy.Crushed: 下敷き
+Autopsy.CrushedByRole: {role} が崩した壁の下敷き
 
 # ── ベイティング (Baiting) ──
 Baiting.Name: ベイティング
@@ -439,7 +446,14 @@ MatchLog.KilledBy: {killer} ({killerRole}) に倒された
 MatchLog.DiedWithNoKiller: 倒した人なしで死んだ
 MatchLog.Ejected: 追放された
 MatchLog.SuckedOutIntoSpace: 船外へ吸い出された
+MatchLog.SuckedOutBy: {killer} ({killerRole}) が開けた穴から船外へ吸い出された
 MatchLog.Spectating: 観戦
+MatchLog.Burned: 焼け死んだ
+MatchLog.BurnedBy: {killer} ({killerRole}) の火で焼け死んだ
+MatchLog.Drowned: 溺れ死んだ
+MatchLog.DrownedBy: {killer} ({killerRole}) の水で溺れ死んだ
+MatchLog.Crushed: 崩れた壁の下敷きになった
+MatchLog.CrushedBy: {killer} ({killerRole}) が崩した壁の下敷きになった
 MatchLog.Disconnected: 切断した
 MatchLog.AbortedNoWinners: 廃村 (勝者なし)
 MatchLog.NoWinners: 勝者なし
@@ -1152,6 +1166,15 @@ ModCheck.YouDifferBuild: ホストと同じバージョンですが中身 (役�
 # ── MapSettings ──
 MapSettings.Title: マップ
 MapSettings.Mirror: マップを左右反転する
+TerrainDeath.Title: 火・水・瓦礫による死
+TerrainDeath.Enabled: 火・水・崩れた壁で死ぬ
+TerrainDeath.Enabled.Detail: 燃えている床に居続けると焼け死に、足の着かない深い水で泳ぎ続けると力尽きて溺れます。崩れた壁の倒れる側にいると下敷きになります。
+TerrainDeath.BurnTime: 焼け死ぬまでの時間
+TerrainDeath.BurnTime.Detail: 燃えている床にいた時間の合計がこの秒数に達すると焼け死にます。火から出ると、合計は 1 秒ごとに 1 秒ずつ減ります。
+TerrainDeath.DrownTime: 溺れるまでの時間
+TerrainDeath.DrownTime.Detail: 足の着かない深さで泳いだ時間の合計がこの秒数に達すると溺れます。足の着く所に出ると、合計は 1 秒ごとに 1 秒ずつ減ります。
+TerrainDeath.Crush: 崩れた壁の下敷きになる
+TerrainDeath.Crush.Detail: ハンマー・炎・銃弾で壁が崩れた時に、崩れる側の壁際にいた人が下敷きになります。壊した本人はなりません。
 
 # ── LangFiles ──
 LangFiles.Reloaded: 文を読み直しました (書き換え: MRP {mod} 件・本編 {vanilla} 件)\n開いているメニューは開き直すと変わります\n{path}
