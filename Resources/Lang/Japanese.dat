@@ -23,19 +23,20 @@ Demolisher.Hammer: ハンマー
 # ── ライター (Lighter) ──
 Lighter.Name: ライター
 Lighter.Blurb: 広い視界で船を見張ろう
-Lighter.Summary: 普通のクルーより視界が広く、停電でも視界が狭まりにくいクルーです。
+Lighter.Summary: 懐中電灯で照らすクルーです。普通のクルーより遠くまで見え、停電でも視界が狭まりにくくなります。
 Lighter.Tips: 遠くの動きを見張って、見たことを会議で伝えましょう。
 Lighter.Quote: 暗がりの奥まで、見えている。
 Lighter.LightsOnVision: 明かりが点いている時の視界
 Lighter.LightsOnVision.Detail: 船の明るさを 1 として、明かりが点いている時の視界の広さです。
 Lighter.LightsOffVision: 停電中の視界
 Lighter.LightsOffVision.Detail: 船の明るさを 1 として、停電で暗い時の視界の広さです。
+Lighter.FlashlightWidth: 懐中電灯の幅
 
 # ── ポータルメーカー (PortalMaker) ──
 PortalMaker.Name: ポータルメーカー
 PortalMaker.Blurb: 2 つのポータルで船の中をつなげ
 PortalMaker.Summary: 離れた 2 か所をポータルでつなげるクルーです。
-PortalMaker.Portal.Help: 足元にポータルを置きます。ベントや端末、扉、はしごが近くて置けない時は、すぐ近くの空いた所に置きます。2 つ置くと、生きている人なら誰でも、ポータルの上で使用ボタンを押してもう一方へ移れます。2 つ置いた後にもう一度押すと 2 つとも消え、置き直せます。消せるかどうかは設定で決まります。
+PortalMaker.Portal.Help: 足元にポータルを置きます。ベントや端末、扉、はしごが近くて置けない時は、すぐ近くの空いた所に置きます。2 つ置いても、次の会議が終わるまでは使えず、それまでは自分にしか見えません。有効になると、生きている人なら誰でも、ポータルの上で使用ボタンを押してもう一方へ移れ、使った後は待ち時間がかかります。ポータルメーカーには PC でもスマホでも移動ボタンが 2 つ出て、どこからでもどちらのポータルへも飛べます。会議の始めに、ポータルを使った人が知らされます。2 つ置いた後にもう一度押すと 2 つとも消え、置き直せます。消せるかどうかは設定で決まります。
 PortalMaker.Portal.Short: 足元に置く。2 つでつながる
 PortalMaker.NoRoom: 近くにポータルを置ける場所がありません
 PortalMaker.Tips: ポータルはインポスターも使えます。デモリッシャーのハンマーで 3 回叩かれると壊れます。
@@ -43,6 +44,22 @@ PortalMaker.Quote: 遠回りは、もう要らない。
 PortalMaker.PlaceCooldown: ポータルを置く待ち時間
 PortalMaker.CanRemove: 置いた後にもう一度押すと消せる
 PortalMaker.CanRemove.Detail: OFF にすると、2 つ置いた後にもう一度押しても消せず、置き直せません。
+PortalMaker.UseCooldown: ポータルを使った後の待ち時間
+PortalMaker.UseCooldown.Detail: 誰かがポータルを使った後、その人がもう一度使えるようになるまでの時間です。会議が終わった後にも同じだけかかり、「どこからでも」の移動ボタンにも効きます。
+PortalMaker.LogOnlyColors: ログには色の濃さだけを出す
+PortalMaker.LogOnlyColors.Detail: ON の間、ポータルのログには通った人の色が明るいか暗いかだけが出ます。OFF にすると名前が出ます。カモフラージュ中は誰か分かりません。
+PortalMaker.LogShowsTime: ログに時間を出す
+PortalMaker.LogShowsTime.Detail: 会議の何秒前に通ったかをログに添えます。
+PortalMaker.CanPortalFromAnywhere: どこからでもポータルへ移れる
+PortalMaker.CanPortalFromAnywhere.Detail: ポータルメーカーは、移動ボタンでどちらのポータルへも、どこからでも飛べます。
+PortalMaker.ToFirst: ポータル 1 へ
+PortalMaker.ToSecond: ポータル 2 へ
+PortalMaker.LogHeader: ポータルのログ
+PortalMaker.LogAgo: {n} 秒前:
+PortalMaker.LogLine: {who}がポータルを使った
+PortalMaker.LogLight: 誰か (明)
+PortalMaker.LogDark: 誰か (暗)
+PortalMaker.LogCamo: カモフラージュ中の誰か
 PortalMaker.Portal: ポータル
 
 # ── クロノリバース (Rewinder) ──
@@ -171,12 +188,14 @@ Survivor.WinCond: 試合の終わりに生きていれば、どの陣営が勝�
 Survivor.Tips: キルはできません。危ない時はベストで身を守り、どの陣営にも狙われないように立ち回りましょう。
 Survivor.Quote: 誰が勝とうと、生きていれば勝ちだ。
 Survivor.Vest: ベスト
-Survivor.Vest.Help: 決めた時間だけベストを着て、キルを防ぎます。防ぐと、キルしようとした人のキルの待ち時間は最初からになります。会議が始まると脱ぎます。死体を残さずに倒す能力 (吹き飛ばしなど) は防げません。
+Survivor.Vest.Help: 決めた時間だけベストを着て、キルを防ぎます。防ぐと、キルしようとした人のキルの待ち時間は最初からになります。会議が始まると脱ぎます。死体を残さずに倒す能力 (吹き飛ばしなど) は防げません。ベストを着ている人には、キル以外の狙う能力も効きません。
 Survivor.Vest.Short: しばらくキルを防ぐ
 Survivor.VestSaved: ベストがキルを防いだ
 Survivor.VestCooldown: ベストの待ち時間
 Survivor.VestDuration: ベストの効果時間
 Survivor.MaxVests: ベストの回数
+Survivor.Scatter: 同じ場所にとどまると死ぬ (スキャッター)
+Survivor.ScatterTimer: スキャッターの制限時間
 
 # ── サムライ (Samurai) ──
 Samurai.Name: サムライ
@@ -1344,6 +1363,13 @@ Madmate.Summary: クルーの姿のまま、インポスターの味方をする
 Madmate.WinCond: インポスターが勝つと一緒に勝ち (生死は問わない)
 Madmate.KnowImpostors: インポスターが分かる
 Madmate.NeededTasks: 分かるのに要るタスクの数
+Madmate.SpecialTasks: 専用のタスクで分かるようにする
+Madmate.SpecialCommon: 専用タスク (コモン) の数
+Madmate.SpecialShort: 専用タスク (ショート) の数
+Madmate.SpecialLong: 専用タスク (ロング) の数
+Madmate.CannotFixComms: 通信妨害を直せない
+Madmate.CannotFixLights: 停電を直せない
+Madmate.CannotFixReactor: 原子炉・酸素を直せない
 Madmate.CanVent: ベントを使える
 Madmate.ImpostorVision: インポスターの視界を持つ
 Madmate.MaddenRoles: クルーの役職をマッドメイトにする
@@ -1387,7 +1413,7 @@ Jackal.Kill: キル
 Jackal.Kill.Help: 本編のキルボタンを持ちます。視界とキル可能距離は「ゲーム設定」タブの「第三陣営」で決まります。仲間は倒せません。
 Jackal.Kill.Short: 本編のキルボタンを持つ
 Jackal.Sidekick: サイドキック
-Jackal.Sidekick.Help: 近くの人を仲間 (サイドキックかジャッカルフレンズ) にします (1 回だけ)。
+Jackal.Sidekick.Help: 近くの人を、設定「仲間の種類」で選んだ仲間 (サイドキックかジャッカルフレンズ) にします (1 回だけ)。
 Jackal.Sidekick.Short: 近くの人を仲間にする
 Jackal.KillCooldown: キルのクールダウン
 Jackal.CanVent: ベントを使える
@@ -1400,13 +1426,31 @@ Sidekick.Blurb: ジャッカルの右腕
 Sidekick.Summary: ジャッカルに仲間にされた第三陣営です。キルはできず、ジャッカルが全員死ぬとジャッカルに上がります。
 Sidekick.WinCond: ジャッカルが勝つと一緒に勝ち
 Sidekick.CanVent: ベントを使える
+# ── ジャッカルフレンズ (Jackal Friends) ──
+JackalFriends.Name: ジャッカルフレンズ
+JackalFriends.Blurb: ジャッカルの友達
+JackalFriends.Summary: ジャッカルの仲間の種類が「ジャッカルフレンズ」の時に、ジャッカルに仲間にされた人です。クルーの姿でジャッカルの味方になります。キルはできず、ジャッカルが全員死んでもジャッカルには上がりません。必要なタスクを終えるとジャッカルとサイドキックが分かります (ジャッカルからはあなたが分かりません)。
+JackalFriends.WinCond: ジャッカルが勝つと、生死を問わず一緒に勝ち
+JackalFriends.CanVent: ベントを使える
+JackalFriends.ImpostorVision: インポスターの視界を持つ
+JackalFriends.KnowJackals: ジャッカルが分かる
+JackalFriends.NeededTasks: 分かるために必要なタスク数
+JackalFriends.SpecialTasks: 分かるための専用タスクを使う
+JackalFriends.SpecialCommon: 専用の共通タスク
+JackalFriends.SpecialShort: 専用のショートタスク
+JackalFriends.SpecialLong: 専用のロングタスク
 # ── ラバーズ (Lovers) ──
 Lovers.Name: ラバーズ
 Lovers.Blurb: 二人の愛は永遠に
-Lovers.Summary: 2 人 1 組で付くアドオンです。相方が誰か分かり (名前に ♥)、相方が死ぬと後を追って死にます。
-Lovers.WinCond: 試合の終わりに 2 人とも生きていれば、勝ちを奪って 2 人で勝ち
+Lovers.Summary: 2 人 1 組で付くアドオンです。相方が誰か分かり (名前に ♥・役職と位置の矢印も)、相方が死ぬと後を追って死にます。
+Lovers.WinCond: 2 人とも生きていて残りが 3 人以下なら、2 人だけの勝ち。それ以外は勝ち方の設定どおり
 Lovers.FollowDeath: 相方が死ぬと後を追う
-Lovers.SoloWin: 2 人とも生きていれば勝ちを奪う
+Lovers.WinType: 勝ち方
+Lovers.WinType.Normal: 通常
+Lovers.WinType.Shared: 共勝利
+Lovers.WinType.Single: 完全単独
+Lovers.KnowPartnerRole: 相方の役職が分かる
+Lovers.KnowPartnerPosition: 相方の位置が分かる
 # ── ヴァルチャー (Vulture) ──
 Vulture.Name: ヴァルチャー
 Vulture.Blurb: 死肉を喰らえ
@@ -1425,7 +1469,7 @@ Arsonist.Blurb: 全てを灰に
 Arsonist.Summary: 全員にオイルを塗ってから燃やすと勝つ第三陣営です。
 Arsonist.WinCond: 生きている全員にオイルを塗って「燃やす」と単独勝ち
 Arsonist.Douse: 塗る
-Arsonist.Douse.Help: 近くの人のそばに少しの間いるとオイルを塗れます。途中で離れたり一番近い人が変わると失敗します。塗った人の名前に § が付きます。
+Arsonist.Douse.Help: 近くの人のそばに少しの間いるとオイルを塗れます。途中で離れたり一番近い人が変わると失敗します。塗った人の名前に § が付きます。死んだ人には、あなたの名前の横に塗り進捗が出ます。
 Arsonist.Douse.Short: 近くの人にオイルを塗る
 Arsonist.Ignite: 燃やす
 Arsonist.Ignite.Help: 自分以外の生きている全員に塗ってあれば、燃やして単独勝ちします。
@@ -1446,6 +1490,9 @@ Camouflager.Look: 見た目の揃え方
 Camouflager.Look.Self: 全員を自分の姿に
 Camouflager.Look.Random: 全員をばらばらに他の人の姿に
 Camouflager.Look.Gray: 全員を灰色に (ペット・スキンなし)
+Camouflager.Look.Color: 全員を選んだ色に (ペット・スキンなし)
+Camouflager.Look.RandomColor: 全員をばらばらに他の人の色に (ペット・スキンなし)
+Camouflager.Color: カモフラージュの色
 # ── トリガーハッピー (TriggerHappy) ──
 TriggerHappy.Name: トリガーハッピー
 TriggerHappy.Blurb: 撃って撃って撃ちまくれ
@@ -1475,6 +1522,9 @@ NiceGuesser.Shoot.Help: 会議中に名札のボタンで人を選び、その�
 NiceGuesser.Shoot.Short: 役職を当てて撃つ
 NiceGuesser.Shots: 撃てる回数
 NiceGuesser.PerMeeting: 1 回の会議で撃てる回数
+NiceGuesser.CannotShootFirstTurn: 最初の会議では撃てない
+NiceGuesser.CannotShootNoDead: 死者が出るまで撃てない
+NiceGuesser.CannotShootCrewmate: 素のクルーを指名できない
 # ── イビルゲッサー (EvilGuesser) ──
 EvilGuesser.Name: イビルゲッサー
 EvilGuesser.Blurb: 会議の場こそ狩り場
@@ -1484,6 +1534,9 @@ EvilGuesser.Shoot.Help: 会議中に名札のボタンで人を選び、その�
 EvilGuesser.Shoot.Short: 役職を当てて撃つ
 EvilGuesser.Shots: 撃てる回数
 EvilGuesser.PerMeeting: 1 回の会議で撃てる回数
+EvilGuesser.CannotShootFirstTurn: 最初の会議では撃てない
+EvilGuesser.CannotShootNoDead: 死者が出るまで撃てない
+EvilGuesser.CannotShootCrewmate: 素のクルーを指名できない
 # ── ホスフォラス (Phosphorus) ──
 Phosphorus.Name: ホスフォラス
 Phosphorus.Blurb: 闇を照らす灯をここに
@@ -1525,10 +1578,10 @@ RemoteController.Mark: マーク
 RemoteController.Mark.Help: 近くのクルーを操作する相手に選びます。
 RemoteController.Mark.Short: 操作する人を選ぶ
 RemoteController.Operate: 操作
-RemoteController.Operate.Help: しばらく (設定で無制限)、選んだ人を自分の操作で歩かせます。その間、その人も自分も自分では動けません。もう一度押すと終わります。
+RemoteController.Operate.Help: しばらく (設定で無制限)、選んだ人を自分の操作で歩かせます。その間、その人も自分も自分では動けません。操作中は「使う」とベントのボタンが操作している人の足元の物 (扉・はしご・昇降機・ベントなど) を狙い、その人の体で使えます。もう一度押すと終わります。
 RemoteController.Operate.Short: 選んだ人を歩かせる
 RemoteController.Kill: 遠隔キル
-RemoteController.Kill.Help: 操作中に使えます。操作している人の近くの人を、操作している人の手で倒します。倒すと操作は終わります。
+RemoteController.Kill.Help: 操作中に使えます。操作している人の近くにいる一番近いクルーが縁取りで光り、その人を、操作している人の手で倒します。倒すと操作は終わります。
 RemoteController.Kill.Short: 操作している人に倒させる
 RemoteController.MarkCooldown: マークの待ち時間
 RemoteController.OperationInfinite: 操作の時間を無制限にする
@@ -1702,7 +1755,7 @@ Nova.Name: ノヴァ
 Nova.Blurb: 星の産声
 Nova.Summary: 力を溜めてから、まっすぐな光線で人を倒せるインポスターです。
 Nova.Fire: 発射
-Nova.Fire.Help: 押している間その場で力を溜め、離すと光線を撃ちます。溜めるほど光線は太くなり、貫いて倒せる人数が増えます。短く押しただけなら最初に当たった 1 人で止まり、満タンなら光線に入った全員を倒します。光線は壁で止まります。溜めている間は動けず、狙いもゆっくりとしか動かせません。溜まり具合は体の脇の筒に表示され、周りの人にも見えます。PC では右クリックでキャノンを構え、左クリックを押している間に溜めて、離すとマウスの方へ撃ちます。構えている間にもう一度右クリックすると、キャノンをしまいます。スマホではボタンを押している間に溜め、離すと最後に歩いた方へ撃ちます。撃てる向きは設定で決まります。
+Nova.Fire.Help: 押している間その場で力を溜め、離すと光線を撃ちます。溜めるほど光線は太くなり、貫いて倒せる人数が増えます。短く押しただけなら最初に当たった 1 人で止まり、満タンなら光線に入った全員を倒します。光線は壁で止まります。撃った光線は設定の秒数だけその場に残り、その間に入った人も倒れます。光線が残っている間は動けません。溜めている間は動けず、狙いもゆっくりとしか動かせません。溜まり具合は体の脇の筒に表示され、周りの人にも見えます。PC では右クリックを押している間キャノンを構え、そのまま左クリックを押している間に溜めて、離すとマウスの方へ撃ちます。溜めている途中で右クリックを離すと、撃たずにやめます。スマホではボタンで構え、画面の右半分に触れると出るスティックを倒すと溜め始め、指を離すとその向きへ撃ちます。撃てる向きは設定で決まります。
 Nova.Fire.Short: 溜めて光線を撃つ
 Nova.Tips: 溜めている間は動けず、溜まり具合も周りに見えます。満タンの光線は長い通路で特に強力です。
 Nova.Mode: 発射モード
@@ -1713,6 +1766,7 @@ Nova.Mode.EightWay: 8 方向
 Nova.Cooldown: 発射の待ち時間
 Nova.Size: 光線の太さ
 Nova.Charge: 満タンまでの時間
+Nova.BeamTime: 光線が残る時間
 Nova.BeamColor: 光線の色
 Nova.BeamColor.Mono: 白黒
 Nova.BeamColor.Violet: 黒と紫
@@ -2004,6 +2058,9 @@ Admiral.Call.Short: 皆に居場所を聞く
 Admiral.Close: 締め切り
 Admiral.Close.Help: 点呼を締め切ります。答えた人の場所が、その人の色のピンでマップに出ます。
 Admiral.Close.Short: 点呼を締め切る
+Admiral.Map: 地図を開く
+Admiral.Map.Help: 点呼を締め切った後に、地図を開き直して答えを何度でも見られます。
+Admiral.Map.Short: 答えをもう一度見る
 Admiral.NumOfCall: 点呼の回数
 Admiral.VoteWatching: 匿名投票でも投票先が見える
 Admiral.Answer: 点呼です。マップで今いる場所を押して答えましょう
@@ -2058,7 +2115,7 @@ Polaris.KillUses: キルの回数
 Polaris.CanKillHidden: 隠れている人もキルできる
 Polaris.SealUntilReport: 死体が通報されるまでキルを封印する
 Polaris.Vision: 幻視
-Polaris.Vision.Help: 近くの死体を少しの間見つめます (その間は動けません)。終わると次の会議に、その死者の名前と役職が自分にだけ出ます。
+Polaris.Vision.Help: 近くの死体を少しの間見つめます (その間は動けません)。終わると次の会議に、その死者の名前と役職が自分にだけ出ます。以降の会議でも、その人の名札の横に役職が残ります。
 Polaris.Vision.Short: 死体の役職を読む
 Polaris.VisionCooldown: 幻視の待ち時間
 Polaris.VisionUses: 幻視の回数
@@ -2085,7 +2142,7 @@ Waraningyou.Name: わら人形
 Waraningyou.Blurb: 集めた恨みを一度に返せ
 Waraningyou.Summary: 会議で自分に入った票を貯めるクルーです。会議中に「呪う」と、その会議の自分の票が貯めた数 +1 票になります。
 Waraningyou.Curse: 呪う
-Waraningyou.Curse.Help: 会議中に自分の名札から使います (1 会議 1 回)。この会議の自分の票が、貯めた票の数 +1 票になり、貯めた票は 0 に戻ります。設定でスキップを許していなければ、呪った後はスキップできません。
+Waraningyou.Curse.Help: 貯めた票の数は自分の名前の横にいつも出ます。会議中に自分の名札から使います (1 会議 1 回)。この会議の自分の票が、貯めた票の数 +1 票になり、貯めた票は 0 に戻ります。設定でスキップを許していなければ、呪った後はスキップできません。
 Waraningyou.Curse.Short: 貯めた票を一度に使う
 Waraningyou.DefaultVote: 始めに貯まっている票
 Waraningyou.AllowSkip: 呪った会議でスキップできる
@@ -2094,7 +2151,7 @@ Shaman.Name: シャーマン
 Shaman.Blurb: 霊を降ろし、敵の数を知れ
 Shaman.Summary: 矢印の部屋で「降霊術」を行うと、次の会議に生きているクルー以外の人数が分かるクルーです。
 Shaman.Necromancy: 降霊術
-Shaman.Necromancy.Help: 矢印の部屋の中で止まって使います。動くと中断します。終えると次の会議に、生きているクルー以外の人数が出ます。タスクを決めた数終えると、その人たちの役職名も分かります (設定)。
+Shaman.Necromancy.Help: 矢印の部屋の中で止まって使います。動くと中断します。終えた時点の、生きているクルー以外の人数が決まり、次の会議に出ます (以降の会議でも自分の名札の横に残ります)。タスクを決めた数終えると、その人たちの役職名も分かります (設定)。
 Shaman.Necromancy.Short: 部屋で霊を降ろす
 Shaman.NecromancyCooldown: 降霊術の待ち時間
 Shaman.NecromancyDuration: 降霊術にかかる時間
@@ -2144,6 +2201,9 @@ Monitor.FixComms: 通信妨害を直せる
 Monitor.ImpostorVision: インポスターの視界
 Monitor.CanVent: ベントを使える
 Monitor.VentMove: ベントの中を移動できる
+Monitor.Swap: 交換
+Monitor.Swap.Help: 近くにいる相方と役職を入れ替えます (モニター⇔プロキシ)。待ち時間はプロキシの交換と同じです。
+Monitor.Swap.Short: 相方と役職を入れ替える
 # ---- Uchu などから移植した役職 (インポスター) ----
 Proxy.Name: プロキシ
 Proxy.Blurb: 影と入れ替わり、正体を隠せ
@@ -2222,16 +2282,18 @@ Kunoichi.Name: クノイチ
 Kunoichi.Blurb: 影からクナイを放て
 Kunoichi.Summary: クナイを投げて当てるインポスターです。同じ人に決めた数当てると倒します。止まっていると透明になれます。
 Kunoichi.Equip: 装備
-Kunoichi.Equip.Help: クナイを持つ・しまうを切り替えます。持っている間は本編のキルは使えず、クナイがマウスの向きに浮かびます。
+Kunoichi.Equip.Help: クナイを構えます。構えている間は本編のキルは使えません。クナイを握った手は周りの人にも見えます。PC では右クリックを押している間だけ構え、離すとしまいます。スマホではこのボタンで構える・しまうを切り替えます。
 Kunoichi.Equip.Short: クナイを持つ・しまう
 Kunoichi.Throw: クナイ
-Kunoichi.Throw.Help: マウスの向きへクナイを投げます。仲間以外に当たるとその人のヒット数が増え、決めた数で倒します。
+Kunoichi.Throw.Help: 構えたクナイを投げます。仲間以外に当たるとその人のヒット数が増え、決めた数で倒します。PC では構えている間に左クリックすると、マウスの方へ投げます。スマホでは画面の右半分に触れると出るスティックを倒して狙い、指を離すとその向きへ投げます。中心へ戻してから離すと投げません。握ったクナイは刀や弾で手から弾き飛ばされることがあり、握り直すまで投げられません。
 Kunoichi.Throw.Short: クナイを投げる
 Kunoichi.Hide: 透明化
-Kunoichi.Hide.Help: しばらく止まっていると透明になれます。動くと解けます。会議で全部解けます。
+Kunoichi.Hide.Help: 決めた秒だけ止まっていると、自動で透明になります (設定でボタンにもできます。押すと透明になり、もう一度押すと解けます)。動くと解けます。透明な人にはクナイが当たりません。会議で全部解けます。
+Kunoichi.Unhide: 透明を解く
 Kunoichi.Hide.Short: 止まって透明になる
 Kunoichi.ThrowCooldown: クナイの待ち時間
 Kunoichi.KunaiSpeed: クナイの速さ
+Kunoichi.KunaiSize: クナイの大きさ (当たる範囲も変わります)
 Kunoichi.WallStops: 壁でクナイが消える
 Kunoichi.HitsToKill: 倒すのに要るヒット数
 Kunoichi.FriendlyFire: 仲間にも当たる
@@ -2239,7 +2301,7 @@ Kunoichi.KunaiOnBody: 倒した死体にクナイが残る
 Kunoichi.ResetHitsOnMeeting: 会議でヒット数を戻す
 Kunoichi.CanHide: 透明化を使える
 Kunoichi.HideWait: 透明化までに止まる時間
-Kunoichi.HideButton: 透明化をボタンで使う (使わなければ自動)
+Kunoichi.HideButton: 透明化をボタンで使う (オフなら止まったら自動)
 Kunoichi.ThrowWhileHidden: 透明中もクナイを投げられる
 SerialKiller.Name: シリアルキラー
 SerialKiller.Blurb: 殺し続けなければ死ぬ
@@ -2270,10 +2332,11 @@ Witch.Name: ウィッチ
 Witch.Blurb: 魔術をかけ、会議の後に葬れ
 Witch.Summary: 近くの人に魔術をかけ続けるインポスターです。魔術をかけられた人は会議の名札に印が付き、会議の終わりにウィッチが生きていれば死にます。
 Witch.Spell: 魔術
-Witch.Spell.Help: 近くの人に魔術を唱え続けます。離れると中断します (1 ターン 1 回)。インポスターは狙えません。
+Witch.Spell.Help: 近くの人に魔術を唱え続けます。離れると中断します (1 ターンの回数は設定で決まります)。インポスターは狙えません。
 Witch.Spell.Short: 近くの人に魔術をかける
 Witch.SpellCooldown: 魔術の待ち時間
 Witch.SpellDuration: 魔術にかかる時間
+Witch.PerMeeting: 1 回の会議で唱えられる回数
 Witch.NormalKill: 本編のキルも使える
 Witch.Broken: 魔術が途切れた
 NekoKabocha.Name: ネコカボチャ
@@ -2288,13 +2351,14 @@ Anchor.Blurb: 錨を下ろし、船を繋ぎ止めよ
 Anchor.Summary: 足元にアンカーを置いていく第三陣営です。全部置いた後の会議の終わりに生きていれば単独で勝ちます。
 Anchor.WinCond: アンカーを全部置いた後の会議の終わりに生きていると単独勝ち
 Anchor.Place: 設置
-Anchor.Place.Help: 足元にアンカーを置きます (全員に見えます・1 ターン 1 回)。近くにいる人には少しの間アンカーへの矢印が出ます。
+Anchor.Place.Help: 足元にアンカーを置きます (全員に見えます・1 ターンの回数は設定で決まります)。近くにいる人には少しの間アンカーへの矢印が出ます。
 Anchor.Place.Short: 足元にアンカーを置く
 Anchor.Echo: 幻聴
 Anchor.Echo.Help: マップが開くので、置いたアンカーを押します。その場所から近くの人にもう一度矢印を出します。
 Anchor.Echo.Short: アンカーから知らせ直す
 Anchor.PlaceCooldown: 設置の待ち時間
 Anchor.NumOfAnchor: アンカーの数
+Anchor.PerTurn: 1 ターンに置ける数
 Anchor.NoticeRange: 矢印が出る範囲
 Anchor.ArrowDuration: 矢印が出る時間
 Anchor.EchoCooldown: 幻聴の待ち時間
@@ -2308,14 +2372,15 @@ Bettor.Guess: 推測
 Bettor.Guess.Help: 予想の画面を開き、他の全員の役職を書き込みます。全員分埋めると賭けられます (1 ターン 1 回・最初のターンは賭けられません)。HIT の人の役職は見えるようになります。
 Bettor.Guess.Short: 全員の役職を予想して賭ける
 Bettor.Analyze: 分析
-Bettor.Analyze.Help: 近くの人の陣営が分かります。
+Bettor.Analyze.Help: 近くの人の陣営が分かります。結果は名前の横に残ります。HIT 済みの人は選べません。
 Bettor.Analyze.Short: 近くの人の陣営を知る
 Bettor.Identify: 特定
-Bettor.Identify.Help: HIT が半分以上の時、会議で相手の名札から使います (1 回)。その人の役職が分かります。死んだ人にも使えます (設定)。
+Bettor.Identify.Help: HIT の割合が設定の値 (既定 50%) に届いたら、会議で相手の名札から使います (1 回)。その人の役職が分かります。死んだ人にも使えます (設定)。
 Bettor.Identify.Short: 会議で 1 人の役職を知る
 Bettor.DisableGuessTurn: 賭けられないターンの数
 Bettor.AnalyzeCooldown: 分析の待ち時間
 Bettor.NumOfAnalyze: 分析の回数
+Bettor.IdentifyPercentage: 特定に要る HIT の割合
 Bettor.IdentifyDead: 死んだ人も特定できる
 Bettor.Title: 役職の予想
 Bettor.NoGuess: (未記入)
@@ -2340,7 +2405,7 @@ Obolus.Blurb: 悪しき者から渡し賃を取れ
 Obolus.Summary: キルボタンを持つ第三陣営です。最初の何回かの会議まではキルが封印されています。インポスター (設定でジャッカルも) を倒すと単独で勝ちます。
 Obolus.WinCond: インポスター (設定でジャッカル) を倒すとその場で単独勝ち
 Obolus.Kill: キル
-Obolus.Kill.Help: 近くの人を倒します (1 ターン 1 回)。封印が解けるまでは使えません。
+Obolus.Kill.Help: 近くの人を倒します (1 ターンの回数は設定で決まります)。封印が解けるまでは使えません。
 Obolus.Kill.Short: 近くの人を倒す
 Obolus.KillCooldown: キルの待ち時間
 Obolus.KillShieldTurn: キルが封印される会議の数
@@ -2348,7 +2413,11 @@ Obolus.WinByJackal: ジャッカルを倒しても勝てる
 Obolus.ImpostorVision: インポスターの視界
 Obolus.IgnoreLights: 停電で視界が狭まらない
 Obolus.CanVent: ベントを使える
+Obolus.CanKillHidingPlayer: ベントに隠れている人も倒せる
 Obolus.Reveal: 封印が解けた時にインポスターへ知らせる
+Obolus.BreakdownAction: 知らせる時期
+Obolus.BreakdownAction.FirstTurn: 最初の会議
+Obolus.BreakdownAction.UnlockTurn: 封印が解ける会議
 Obolus.RevealDeath: オボルスの死も知らせる
 Obolus.Warning: オボルスに気をつけろ!
 Obolus.Dead: オボルスが死んだ
@@ -2432,6 +2501,18 @@ Visor.Blurb: マップ越しに船を見渡せ
 Visor.Help: 普通のマップを開くと、いつでもアドミンが見えるアドオンです (死体も数えます)。インポスターには付きません。
 Visor.CanMoveWithMapWatching: マップを開いたまま動ける
 Visor.CanUseAdminOnMeeting: 会議中もアドミンが見える
+VisorRole.Name: バイザー
+VisorRole.Blurb: 電池式のアドミンを持ち歩け
+VisorRole.Summary: 持ち運べるアドミンを持つクルーです。ボタンでアドミン付きのマップを開き、開いている間だけ充電が減って、切れるとマップが閉じます。タスクを 1 つ終えるごとに少し充電されます。
+VisorRole.Open: アドミン
+VisorRole.Open.Help: アドミン付きのマップを開きます (死体も数えます)。充電が減るのはマップを開いている間だけで、0 になるとマップが閉じます。タスクを終えると充電されます。残りの充電は、PC ではボタンと左下に、スマホではボタンに出ます。
+VisorRole.Open.Short: アドミン付きのマップを開く
+VisorRole.Battery: 充電
+VisorRole.CanMoveWithMapWatching: マップを開いたまま動ける
+VisorRole.CanUseAdminOnMeeting: 会議中もアドミンが見える
+VisorRole.PortableAdminCharge: 最初の充電
+VisorRole.MaxPortableAdminCharge: 充電の上限
+VisorRole.ChargesPerTasks: タスク 1 つで増える充電
 Star.Name: スター
 Star.Blurb: 君はスターだ
 Star.Help: 名前が全員に黄色で見えるアドオンです (設定で虹色)。
@@ -2490,7 +2571,7 @@ Baphomet.Family: 眷属
 Baphomet.Family.Help: 近くの生きている人を眷属 (ファムルス) にします (1 回)。眷属への矢印が出ます。
 Baphomet.Family.Short: 近くの人を眷属にする
 Baphomet.Gauge: ゲージ
-Baphomet.Gauge.Help: 生きている眷属のすぐ近くで止まっていると貯まります。止まっていると生きている人にだけ見える亡霊が出ます。会議の終わりに少し減ります (満ちていれば減りません)。
+Baphomet.Gauge.Help: 生きている眷属のすぐ近くで止まっていると貯まります。眷属が近くにいる間に止まっていると、生きている人にだけ見える亡霊が出ます。会議の終わりに少し減ります (満ちていれば減りません)。
 Baphomet.Gauge.Short: 眷属のそばで止まって貯める
 Baphomet.TotalStandingTimeToWin: 勝つのに要るゲージ
 Baphomet.RewindGaugeToMeetingEnd: 会議の終わりに減るゲージ

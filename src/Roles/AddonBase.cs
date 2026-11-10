@@ -60,6 +60,9 @@ public abstract class AddonBase : Assignable
     // AlsoWins・LosesWin を使うアドオンは true (本編の終わり方でも MRP が結果を配る)
     public virtual bool AffectsWin => false;
 
+    // 付いている試合の勝敗を MRP の判定 (GameEnd.Decide) で見るか (第三陣営の役職と同じ扱い)
+    internal virtual bool NeedsMrpEnd => false;
+
     // 本人は生きている間このアドオンに気付かない (自分の役職の表示・説明に出さない)
     public virtual bool HiddenFromSelf => false;
 

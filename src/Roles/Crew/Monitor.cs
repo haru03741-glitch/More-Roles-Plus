@@ -38,8 +38,22 @@ public sealed class Monitor : RoleBase, IRepairLimit
         if (ImpostorVision) PortKit.ImpostorVision(ref radius);
     }
 
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Monitor.Swap", "proxy_swap") };
+
     public override void OnAssigned()
     {
+        // プロキシと同じ「交換」(待ち時間もプロキシの設定)。近くの相方のプロキシと役職を入れ替える
+        AddAbility(new Ability(new Text("Monitor.Swap"), "proxy_swap")
+        {
+            Target = AbilityTarget.Player,
+            Cooldown = () => Proxy.SwapCooldown,
+            CanTarget = (_, t) => t.PlayerId == Partner,
+            OnUsed = (user, t) =>
+            {
+                if (!AmongUsClient.Instance.AmHost) return;
+                Proxy.Swap(t, user);
+            },
+        });
         if (IsLocal) PortKit.After(0.5f, () => { if (RoleState.Local == this) SnrKit.AssignOwnTasks(0, 0, 0); });
         // 交換で替わった時は、前の相方をそのまま引き継ぐ
         foreach (var r in RoleState.All)

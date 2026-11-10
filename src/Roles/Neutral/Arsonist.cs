@@ -193,4 +193,14 @@ public sealed class Arsonist : RoleBase
 
     public override string NameMark(PlayerControl seen) =>
         _doused.Contains(seen.PlayerId) ? $"<color={Color}>§</color>" : null;
+
+    // 死んだ人の画面に、アーソニストの名前の横へ塗り進捗 (塗った数/塗る数) を出す (原作 OnProgressNameTextUpdate・会議でも見える)
+    public override string MarkSeenBy(PlayerControl viewer)
+    {
+        if (!viewer || viewer.Data == null || !viewer.Data.IsDead) return null;
+        int doused = _doused.Count, remaining = 0;
+        foreach (var p in PlayerControl.AllPlayerControls)
+            if (p && p.Data != null && !p.Data.IsDead && p.PlayerId != PlayerId && !_doused.Contains(p.PlayerId)) remaining++;
+        return $" <color={Color}>({doused}/{doused + remaining})</color>";
+    }
 }

@@ -35,11 +35,7 @@ public sealed class Proxy : RoleBase
             OnUsed = (user, t) =>
             {
                 if (!AmongUsClient.Instance.AmHost) return;
-                byte a = user.PlayerId, b = t.PlayerId;
-                RoleState.Change(user, RoleState.Proto<Monitor>());
-                RoleState.Change(t, RoleState.Proto<Proxy>());
-                PairCall.Send((b, a));
-                Pair(b, a);
+                Swap(user, t);
             },
         });
         // ホスト: 配られた時に相方を作る (交換で替わった時はすぐ相方が決まるので作らない)
@@ -48,6 +44,16 @@ public sealed class Proxy : RoleBase
             byte me = PlayerId;
             PortKit.After(1f, () => MakePartner(me));
         }
+    }
+
+    // ホスト: プロキシ (proxy) と相方のモニター (monitor) の役職を入れ替える。モニター側の「交換」も使う
+    internal static void Swap(PlayerControl proxy, PlayerControl monitor)
+    {
+        byte a = proxy.PlayerId, b = monitor.PlayerId;
+        RoleState.Change(proxy, RoleState.Proto<Monitor>());
+        RoleState.Change(monitor, RoleState.Proto<Proxy>());
+        PairCall.Send((b, a));
+        Pair(b, a);
     }
 
     private static void MakePartner(byte proxy)

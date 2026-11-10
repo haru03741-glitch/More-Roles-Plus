@@ -21,6 +21,7 @@ public sealed class Witch : RoleBase
 
     public static readonly FloatOpt SpellCooldown = new("Witch.SpellCooldown", 30f, 2.5f, 60f, 2.5f, "s");
     public static readonly FloatOpt SpellDuration = new("Witch.SpellDuration", 3f, 0.5f, 10f, 0.5f, "s");
+    public static readonly IntOpt PerMeeting = new("Witch.PerMeeting", 1, 1, 15);
     public static readonly BoolOpt NormalKill = new("Witch.NormalKill", true);
 
     // 呪われた人 (全員の端末で同じ)
@@ -44,7 +45,7 @@ public sealed class Witch : RoleBase
             Target = AbilityTarget.Player,
             Cooldown = () => SpellCooldown,
             Duration = () => SpellDuration,
-            UsesPerMeeting = 1,
+            UsesPerMeeting = PerMeeting,
             CanTarget = (_, t) => !PortKit.IsImpostor(t) && !Spelled.Contains(t.PlayerId),
             OnUsed = (user, t) =>
             {

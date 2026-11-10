@@ -19,8 +19,33 @@ public interface IGuessBlock
     bool BlocksGuess(PlayerControl guesser, PlayerControl target);
 }
 
+// ゲッサーの制限 (原作の「素のクルーを指名できない」)。役職が実装する
+public interface IGuessRules
+{
+    bool NoCrewmate { get; }
+}
+
 internal static class GuessKit
 {
+    // 撃てない会議か (原作の「最初の会議は撃てない」「死者が出るまで撃てない」)。turn = 終わった会議の数
+    internal static bool Barred(int turn, bool noFirst, bool noDead)
+    {
+        if (noFirst && turn <= 0) return true;
+        return noDead && !AnyDead();
+    }
+
+    private static bool AnyDead()
+    {
+        var gd = GameData.Instance;
+        if (!gd) return false;
+        var all = gd.AllPlayers;
+        for (int i = 0; i < all.Count; i++)
+            if (all[i] != null && all[i].IsDead) return true;
+        return false;
+    }
+
+    private static bool NoCrewmate(PlayerControl user) => user && RoleState.Of(user) is IGuessRules { NoCrewmate: true };
+
     // 能力の「撃つ」で狙う相手が決まった時 (全員の端末で呼ばれる)。撃つ本人の端末で役職を選ぶ画面を開く
     internal static void OnTarget(PlayerControl user, PlayerControl target)
     {
@@ -29,13 +54,14 @@ internal static class GuessKit
             Pending[user.PlayerId] = (target.PlayerId, MeetingHud.Instance.Pointer);
         if (!user || !user.AmOwner || !target) return;
         byte id = target.PlayerId;
+        bool noCrew = NoCrewmate(user);
         RolePicker.Open(r =>
         {
             int idx = Registry.Roles.IndexOf(r);
             if (idx < 0) return;
             if (AmongUsClient.Instance.AmHost) Resolve(PlayerControl.LocalPlayer, id, idx);
             else GuessCall.Send((id, idx));
-        });
+        }, r => noCrew && r is Builtin.VanillaCrewmate);
     }
 
     private static readonly RemoteCall<(byte target, int role)> GuessCall = new("GuessKit.Guess", Route.ToHost,
@@ -49,6 +75,7 @@ internal static class GuessKit
     {
         if (!MeetingHud.Instance || !PortKit.Alive(user) || roleIdx < 0 || roleIdx >= Registry.Roles.Count) return;
         if (!IsGuesser(user)) return;
+        if (Registry.Roles[roleIdx] is Builtin.VanillaCrewmate && NoCrewmate(user)) return;
         if (!Pending.TryGetValue(user.PlayerId, out var pend) || pend.target != targetId || pend.meeting != MeetingHud.Instance.Pointer) return;
         Pending.Remove(user.PlayerId);
         var target = PortKit.ById(targetId);

@@ -43,11 +43,14 @@ public static class RolePicker
     internal static bool OpenFlag; // 毎フレームの確かめ用 (Unity の物に触らずに読める)
     internal static bool SkipHidden; // 開いている間に本編が出し直した「投票スキップ」を隠した (閉じたら戻す)
 
-    public static bool Open(Action<RoleBase> onPick)
+    private static Func<RoleBase, bool> _exclude; // 並べない役職 (ゲッサーの「素のクルーを指名できない」)
+
+    public static bool Open(Action<RoleBase> onPick, Func<RoleBase, bool> exclude = null)
     {
         var hud = MeetingHud.Instance;
         if (!hud || IsOpen || hud.playerStates == null || hud.playerStates.Length == 0) return false;
         _onPick = onPick;
+        _exclude = exclude;
         SkipHidden = false;
         _team = Team.Crew;
         _page = 0;
@@ -123,7 +126,7 @@ public static class RolePicker
         bool searching = _tokens.Length > 0;
         foreach (var r in Registry.Roles)
         {
-            if (!InPlay(r)) continue;
+            if (!InPlay(r) || (_exclude != null && _exclude(r))) continue;
             if (searching ? !Matches(r) : (r.Team == Team.Madmate ? Team.Crew : r.Team) != _team) continue; // マッドメイトはクルーの札に並べる
             list.Add(r);
         }

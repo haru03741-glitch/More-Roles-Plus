@@ -23,8 +23,13 @@ public sealed partial class PortalMaker : RoleBase
     public override string Origin => "TOR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("PortalMaker.Portal", "portal") };
 
-    public static readonly FloatOpt PlaceCooldown = new("PortalMaker.PlaceCooldown", 5f, 1f, 60f, 1f, "s");
+    public static readonly FloatOpt PlaceCooldown = new("PortalMaker.PlaceCooldown", 30f, 1f, 60f, 1f, "s");
     public static readonly BoolOpt CanRemove = new("PortalMaker.CanRemove", true);
+    // 原作 TOR: ポータルを使った後の待ち時間 (誰が使っても) / 通った人のログの形 / 持ち主はどこからでも飛べる
+    public static readonly FloatOpt UseCooldown = new("PortalMaker.UseCooldown", 30f, 1f, 60f, 1f, "s");
+    public static readonly BoolOpt LogOnlyColors = new("PortalMaker.LogOnlyColors", true);
+    public static readonly BoolOpt LogShowsTime = new("PortalMaker.LogShowsTime", true);
+    public static readonly BoolOpt CanPortalFromAnywhere = new("PortalMaker.CanPortalFromAnywhere", true);
 
     private const float MinGap = 4f;     // 2 つ目は 1 つ目からこれだけ離して置く
     // 足元が台座の真ん中からこの楕円 (横・縦の半径) に入ると使用ボタンで通れる (台座の上に乗っている間)
@@ -50,7 +55,7 @@ public sealed partial class PortalMaker : RoleBase
 
     // 誰かが通った (通った人 → 全員)。値 = どのポータルメーカーのポータルか。光と音だけ (位置は本編の同期で届く)
     private static readonly RemoteCall<byte> PassCall = new("PortalMaker.Pass", Route.Anyone,
-        (w, id) => w.Write(id), r => r.ReadByte(), (_, id) => (RoleState.Of(id) as PortalMaker)?.ShowPass(), perSecond: 8);
+        (w, id) => w.Write(id), r => r.ReadByte(), (sender, id) => { var pm = RoleState.Of(id) as PortalMaker; pm?.ShowPass(); pm?.LogPass(sender); }, perSecond: 8);
 
     // 装置をハンマーで叩いた (叩いた人 → ホスト)。値 = どのポータルメーカーの装置か。回数はホストだけが数える
     private static readonly RemoteCall<byte> HitCall = new("PortalMaker.Hit", Route.ToHost,
@@ -70,6 +75,12 @@ public sealed partial class PortalMaker : RoleBase
     private readonly float[] _x = new float[2], _y = new float[2];
     private readonly PortalArt.Handle[] _art = new PortalArt.Handle[2];
     private int _count;
+    private bool _live;     // 会議が終わって 2 つとも有効になった (置いた直後は持ち主にだけ見え、誰も通れない)
+    private bool _linked;
+    private readonly Ability[] _to = new Ability[2]; // 持ち主がどこからでも飛ぶボタン
+    private readonly List<PassEntry> _log = new();   // 前の会議から今までに通った人
+    private struct PassEntry { public string Name; public long At; }
+    private static long _useReadyAt;  // この端末で次にポータルを使える時刻 (原作の使用ボタンの待ち時間)
     private static bool _useLit;    // この端末の使用ボタンをポータルのために点けているか
     private static bool _lightAfter, _unlightAfter;
     private static float _percentBefore = 1f; // 点ける前のボタンの待ち時間の暗幕 (消す時に戻す)
@@ -81,24 +92,27 @@ public sealed partial class PortalMaker : RoleBase
     internal int MarkCount => _count;
 
     // 時戻し: 置いたポータル (数・位置) と叩かれた回数。置く・外すは全員の端末に届いているので全員が自分の記録から戻す
-    internal override int RewindFloats => 6;
+    internal override int RewindFloats => 7;
     internal override void SaveRewind(Span<float> into)
     {
         into[0] = _count;
         into[1] = _x[0]; into[2] = _y[0];
         into[3] = _x[1]; into[4] = _y[1];
         into[5] = _hits;
+        into[6] = _live ? 1f : 0f;
     }
 
     internal override void LoadRewind(ReadOnlySpan<float> from)
     {
         int n = Math.Clamp((int)from[0], 0, 2);
-        bool same = n == _count;
+        bool live = from[6] > 0f;
+        bool same = n == _count && live == _live;
         for (int i = 0; same && i < n; i++) same = _x[i] == from[1 + i * 2] && _y[i] == from[2 + i * 2];
         if (!same)
         {
             ClearMarks();
             for (int i = 0; i < n; i++) TryAdd(from[1 + i * 2], from[2 + i * 2]);
+            if (live) Activate();
         }
         _hits = (int)from[5];
     }
@@ -112,12 +126,26 @@ public sealed partial class PortalMaker : RoleBase
             Cooldown = () => PlaceCooldown,
             OnUse = Use,
         });
+        // 原作: 持ち主は、置いた 2 つのどちらへもどこからでも飛べる (使用ボタンの待ち時間は誰が使っても共通)
+        for (int i = 0; i < 2; i++)
+        {
+            int k = i;
+            _to[i] = AddAbility(new Ability(new Text(i == 0 ? "PortalMaker.ToFirst" : "PortalMaker.ToSecond"), "portal")
+            {
+                Cooldown = () => UseCooldown,
+                Usable = () => _live && CanPortalFromAnywhere && Environment.TickCount64 >= _useReadyAt,
+                OnUse = () => GoAnywhere(k),
+            });
+        }
+        _useReadyAt = Environment.TickCount64 + (long)(UseCooldown * 1000f);
         Lifespan.OnRelease(() =>
         {
             Active.Remove(this);
             for (int i = 0; i < 2; i++) { PortalArt.Remove(_art[i]); _art[i] = null; }
-            if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
+            if (_live) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
+            _live = _linked = false;
             _count = 0;
+            _log.Clear();
             DropBodies();
         });
     }
@@ -190,30 +218,86 @@ public sealed partial class PortalMaker : RoleBase
         }
         _x[_count] = x;
         _y[_count] = y;
-        _art[_count] = PortalArt.Open(x, y);
-        AddBody(_count);
+        // 置いた直後は持ち主にだけ見える。他の人には会議が終わって有効になってから出す (原作 meetingEndsUpdate)
+        _art[_count] = IsLocal ? PortalArt.Open(x, y) : null;
         _count++;
         if (_count == 2)
         {
             _hits = 0;
-            PortalArt.Link(_art[0], _art[1]);
-            PortalLinks.HostSet(PlayerId, true, _x[0], _y[0], _x[1], _y[1]);
+            if (_art[0] != null && _art[1] != null) { PortalArt.Link(_art[0], _art[1]); _linked = true; }
         }
         return true;
+    }
+
+    // 2 つ揃っていて会議が終わった: 全員に見せて、通れる・叩ける・壊せるようにする
+    private void Activate()
+    {
+        if (_live || _count < 2) return;
+        _live = true;
+        for (int i = 0; i < 2; i++)
+        {
+            if (_art[i] == null) _art[i] = PortalArt.Open(_x[i], _y[i]);
+            AddBody(i);
+        }
+        if (!_linked) { PortalArt.Link(_art[0], _art[1]); _linked = true; }
+        PortalLinks.HostSet(PlayerId, true, _x[0], _y[0], _x[1], _y[1]);
+    }
+
+    private void OnMeetingEnd(MeetingEndEvent e)
+    {
+        Activate();
+        _log.Clear();
+        _useReadyAt = Environment.TickCount64 + (long)(UseCooldown * 1000f);
+    }
+
+    private static readonly int[] LightColors = { 3, 4, 5, 7, 10, 11, 13, 14, 17 };
+
+    // 誰かがポータルを通った (全員の端末で)。会議で持ち主に見せる記録 (原作 tpLogEntry)。死んでいる人は記録しない
+    private void LogPass(PlayerControl who)
+    {
+        if (!PortKit.Alive(who)) return;
+        string name;
+        if (global::MoreRolesPlus.Roles.Impostor.Camouflager.IsCamouflaging) name = new Text("PortalMaker.LogCamo").ToString();
+        else if (LogOnlyColors)
+        {
+            int c = who.Data.DefaultOutfit.ColorId;
+            name = new Text(Array.IndexOf(LightColors, c) >= 0 ? "PortalMaker.LogLight" : "PortalMaker.LogDark").ToString();
+        }
+        else name = who.Data.PlayerName;
+        if (_log.Count < 64) _log.Add(new PassEntry { Name = name, At = Environment.TickCount64 });
+    }
+
+    // 会議の始め: 持ち主 (と死んでいる人) に、前の会議から今までに通った人を知らせる
+    private void OnMeetingStart(MeetingStartEvent e)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        if (_log.Count == 0 || !lp || !PortKit.Alive(Player) || !(IsLocal || !PortKit.Alive(lp))) { _log.Clear(); return; }
+        var sb = new System.Text.StringBuilder(new Text("PortalMaker.LogHeader").ToString());
+        long now = Environment.TickCount64;
+        foreach (var en in _log)
+        {
+            sb.Append('\n');
+            if (LogShowsTime) sb.Append(new Text("PortalMaker.LogAgo").With("n", (int)((now - en.At) / 1000)).ToString()).Append(' ');
+            sb.Append(new Text("PortalMaker.LogLine").With("who", en.Name).ToString());
+        }
+        _log.Clear();
+        string msg = sb.ToString();
+        PortKit.After(1.5f, () => PortKit.Notice(msg));
     }
 
     private void ClearMarks()
     {
         _hits = 0;
         for (int i = 0; i < 2; i++) { PortalArt.Close(_art[i]); _art[i] = null; }
-        if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
+        if (_live) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
+        _live = _linked = false;
         _count = 0;
         DropBodies();
     }
 
     private void ShowPass()
     {
-        if (_count < 2) return;
+        if (!_live) return;
         PortalArt.Pass(_x[0], _y[0]);
         PortalArt.Pass(_x[1], _y[1]);
     }
@@ -226,7 +310,7 @@ public sealed partial class PortalMaker : RoleBase
         if (Active.Count == 0 && !_useLit) return true;
         // ペットを連れていると、そばのペット (なでる) が本編の狙いになって装置が使えなくなる。装置の上ならペットより装置を先にする
         if (target != null && IsPet(target) && FindUse(out _, out _)) target = null;
-        bool on = target == null && FindUse(out _, out _);
+        bool on = target == null && Environment.TickCount64 >= _useReadyAt && FindUse(out _, out _);
         if (!on)
         {
             _unlightAfter = _useLit;
@@ -282,7 +366,7 @@ public sealed partial class PortalMaker : RoleBase
         if (!_useLit || !b || !b.isActiveAndEnabled || b.currentTarget != null) return false;
         if (!FindUse(out var pm, out int near)) return false;
         long now = Environment.TickCount64;
-        if (now - _passedAt < PassGapMs) return true;
+        if (now - _passedAt < PassGapMs || now < _useReadyAt) return true;
         pm.Pass(near, now);
         return true;
     }
@@ -297,7 +381,7 @@ public sealed partial class PortalMaker : RoleBase
         float best = 1f;
         foreach (var p in Active)
         {
-            if (p._count < 2) continue;
+            if (!p._live) continue;
             for (int i = 0; i < 2; i++)
             {
                 float dx = (me.x - p._x[i]) / UseRx, dy = (me.y - p._y[i] - PortalArt.MachineRise) / UseRy, d = dx * dx + dy * dy;
@@ -321,7 +405,37 @@ public sealed partial class PortalMaker : RoleBase
         _passedAt = now;
         _lastUse = $"pass {near}->{to} at=({tx:0.00},{ty:0.00})";
         ShowPass();
+        LogPass(lp);
         PassCall.Send(PlayerId);
+        StartUseCooldown(-1);
+    }
+
+    // 持ち主がどこからでも飛ぶ (原作 canPortalFromAnywhere): 足元の場所によらず行き先 k のポータルへ
+    private bool GoAnywhere(int k)
+    {
+        var lp = PlayerControl.LocalPlayer;
+        if (!_live || !CanPortalFromAnywhere || !lp || lp.inVent || lp.inMovingPlat || lp.onLadder) return false;
+        if (!FindArrival(_x[k], _y[k], out float tx, out float ty)) { Refuse($"blocked ({_arriveWhy})", k); return false; }
+        Warp(lp, tx, ty);
+        _passedAt = Environment.TickCount64;
+        _lastUse = $"anywhere ->{k} at=({tx:0.00},{ty:0.00})";
+        ShowPass();
+        LogPass(lp);
+        PassCall.Send(PlayerId);
+        StartUseCooldown(k);
+        return true;
+    }
+
+    // 使った後の待ち時間 (原作: 使用ボタンも「どこからでも」のボタンも同じ待ち時間になる)。押したボタン自身は能力の仕組みが始める
+    private static void StartUseCooldown(int except)
+    {
+        _useReadyAt = Environment.TickCount64 + (long)(UseCooldown * 1000f);
+        foreach (var p in Active)
+        {
+            if (!p.IsLocal) continue;
+            for (int i = 0; i < 2; i++)
+                if (i != except && p._to[i] != null && p._to[i].Button != null) p._to[i].Button.StartCooldown();
+        }
     }
 
     private void Refuse(string why, int near)
@@ -446,7 +560,7 @@ public sealed partial class PortalMaker : RoleBase
     // 爆発が装置に掛かると壊れて 2 つとも閉じる (置き直せる)。地形の結果と同じ順に全員の端末へ届くので、全員が同じ所で壊す
     private void OnTerrainBroken(TerrainBrokenEvent e)
     {
-        if (_count == 0 || e.Kind != DamageKind.Explosion || e.Radius <= 0f) return;
+        if (!_live || e.Kind != DamageKind.Explosion || e.Radius <= 0f) return;
         Vector2 c = e.Position;
         float r = e.Radius + PortalArt.MachineW * 0.5f;
         for (int i = 0; i < _count; i++)
@@ -465,6 +579,7 @@ public sealed partial class PortalMaker : RoleBase
         float best = float.MaxValue;
         foreach (var pm in Active)
         {
+            if (!pm._live) continue;
             for (int i = 0; i < pm._count; i++)
             {
                 float dx = pm._x[i] - at.x, dy = pm._y[i] + PortalArt.MachineRise - at.y;
@@ -489,7 +604,7 @@ public sealed partial class PortalMaker : RoleBase
     // ホスト: 叩いた人が本当に装置のそばにいれば 1 回と数えて全員へ配る
     private void HostHit(PlayerControl sender)
     {
-        if (_count == 0 || !sender || sender.Data == null || sender.Data.IsDead || !GameClock.ShipAlive || MeetingHud.Instance) return;
+        if (!_live || !sender || sender.Data == null || sender.Data.IsDead || !GameClock.ShipAlive || MeetingHud.Instance) return;
         Vector2 p = sender.GetTruePosition();
         float reach = DamageProfile.Of(DamageKind.Blunt).Reach + MachineR + HammerSlack;
         float d = NearestMachine(p.x, p.y, out int k);
@@ -507,7 +622,7 @@ public sealed partial class PortalMaker : RoleBase
     // 全員: 叩かれた (他の人の振りはここで見せる)。3 回目で壊れる
     private void ShowHit(byte hitter, int hits, bool hammer = true)
     {
-        if (_count == 0) return;
+        if (!_live) return;
         _hits = hits;
         var pc = GameData.Instance ? GameData.Instance.GetPlayerById(hitter) : null;
         var obj = pc != null ? pc.Object : null;
@@ -544,7 +659,8 @@ public sealed partial class PortalMaker : RoleBase
     {
         _hits = 0;
         for (int i = 0; i < 2; i++) { PortalArt.Break(_art[i]); _art[i] = null; }
-        if (_count == 2) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
+        if (_live) PortalLinks.HostSet(PlayerId, false, 0f, 0f, 0f, 0f);
+        _live = _linked = false;
         _count = 0;
         DropBodies();
     }
@@ -554,7 +670,7 @@ public sealed partial class PortalMaker : RoleBase
 
     internal string Describe()
     {
-        var sb = new System.Text.StringBuilder($"count={_count} lit={_useLit} relit={_relit} last={_lastUse}");
+        var sb = new System.Text.StringBuilder($"count={_count} live={_live} lit={_useLit} relit={_relit} last={_lastUse}");
         for (int i = 0; i < _count; i++) sb.Append($" p{i}=({_x[i]:0.00},{_y[i]:0.00})");
         return sb.ToString();
     }

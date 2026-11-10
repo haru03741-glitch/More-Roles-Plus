@@ -15,13 +15,33 @@ public sealed class Camouflager : RoleBase
     public override Text Blurb => new("Camouflager.Blurb");
     public override string Origin => "TOR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Camouflager.Camo", "snr_camo") };
-    public static readonly FloatOpt CamoCooldown = new("Camouflager.Cooldown", 30f, 2.5f, 120f, 2.5f, "s");
-    public static readonly FloatOpt CamoDuration = new("Camouflager.Duration", 10f, 2.5f, 60f, 2.5f, "s");
-    // 見た目の揃え方: 全員を自分の姿に / 全員をばらばらに他の人の姿に / 全員を灰色に (帽子・バイザー・スキン・ペット・名前を消す)
-    public static readonly ChoiceOpt Look = new("Camouflager.Look", 0,
-        new Text("Camouflager.Look.Self"), new Text("Camouflager.Look.Random"), new Text("Camouflager.Look.Gray"));
+    public static readonly FloatOpt CamoCooldown = new("Camouflager.Cooldown", 30f, 2.5f, 180f, 2.5f, "s");
+    public static readonly FloatOpt CamoDuration = new("Camouflager.Duration", 15f, 2.5f, 60f, 2.5f, "s");
+    // 見た目の揃え方: 全員を自分の姿に / 全員をばらばらに他の人の姿に / 全員を灰色に (帽子・バイザー・スキン・ペット・名前を消す) /
+    // 全員を選んだ色に / 人ごとに他の人の色にばらばらに (原作の Select・Random。どちらも灰色と同じく何も着けず名前も消す)。既定は原作の灰色
+    public static readonly ChoiceOpt Look = new("Camouflager.Look", 2,
+        new Text("Camouflager.Look.Self"), new Text("Camouflager.Look.Random"), new Text("Camouflager.Look.Gray"),
+        new Text("Camouflager.Look.Color"), new Text("Camouflager.Look.RandomColor"));
+    // 選ぶ色 (原作は 18 色・番号は本編の色の番号)
+    public static readonly ChoiceOpt PickColor = new("Camouflager.Color", 0, ColorChoices()) { When = () => Look.Value == LookColor };
 
-    private const byte LookSelf = 0, LookRandom = 1, LookGray = 2;
+    private const byte LookSelf = 0, LookRandom = 1, LookGray = 2, LookColor = 3, LookRandomColor = 4;
+
+    private static Text[] ColorChoices()
+    {
+        var a = new Text[18];
+        for (int i = 0; i < a.Length; i++)
+        {
+            int id = i;
+            a[i] = Text.Live(() =>
+            {
+                var names = Palette.ColorNames;
+                return names != null && id < names.Length ? TranslationController.Instance.GetString(names[id]) : id.ToString();
+            });
+        }
+        return a;
+    }
+    internal static bool IsCamouflaging => _active != 255;
     private static byte _active = 255; // 今カモフラージュしている人
     private static byte _mode;
     private static object _resetMatch;
@@ -54,6 +74,25 @@ public sealed class Camouflager : RoleBase
             {
                 data.Add(who[i]);
                 data.Add(who[(i + 1) % who.Count]);
+            }
+        }
+        else if (mode == LookColor || mode == LookRandomColor)
+        {
+            // [人の番号, 色の番号] の組。選ぶ色はみんな同じ色、ばらばらは原作どおり自分の色以外の誰かの色を人ごとに
+            var all = new System.Collections.Generic.List<(byte id, byte color)>();
+            foreach (var p in PlayerControl.AllPlayerControls)
+                if (p && p.Data != null && !p.Data.IsDead && !p.Data.Disconnected) all.Add((p.PlayerId, (byte)p.Data.DefaultOutfit.ColorId));
+            foreach (var (id, own) in all)
+            {
+                byte c = (byte)PickColor.Value;
+                if (mode == LookRandomColor)
+                {
+                    var others = new System.Collections.Generic.List<byte>();
+                    foreach (var o in all) if (o.color != own) others.Add(o.color);
+                    c = others.Count > 0 ? others[Random.Range(0, others.Count)] : (byte)GrayColor();
+                }
+                data.Add(id);
+                data.Add(c);
             }
         }
         return data.ToArray();
@@ -100,7 +139,9 @@ public sealed class Camouflager : RoleBase
                 {
                     if (fresh) Before[p.PlayerId] = p.shapeshiftTargetPlayerId;
                     if (mode == LookSelf) p.Shapeshift(camo, true);
-                    else if (mode == LookGray) p.RawSetOutfit(GrayOutfit(), PlayerOutfitType.Shapeshifted);
+                    else if (mode == LookGray) p.RawSetOutfit(GrayOutfit(GrayColor()), PlayerOutfitType.Shapeshifted);
+                    else if (mode == LookColor || mode == LookRandomColor)
+                        p.RawSetOutfit(GrayOutfit(map.TryGetValue(p.PlayerId, out byte col) ? col : GrayColor()), PlayerOutfitType.Shapeshifted);
                     else if (map.TryGetValue(p.PlayerId, out byte src) && PortKit.ById(src) is { Data: not null } t)
                         p.RawSetOutfit(t.Data.DefaultOutfit, PlayerOutfitType.Shapeshifted);
                     continue;
@@ -112,7 +153,7 @@ public sealed class Camouflager : RoleBase
             catch (System.Exception e) { Plugin.Logger.LogWarning($"camouflage: {e.Message}"); }
         }
         if (!on) Before.Clear();
-        Menu.MrpCosmetics.HideAll = on && _mode == LookGray;
+        Menu.MrpCosmetics.HideAll = on && (_mode == LookGray || _mode == LookColor || _mode == LookRandomColor);
     }
 
     // 掛ける前の姿へ (本編の変身中だった人はその変身先の姿)
@@ -130,12 +171,12 @@ public sealed class Camouflager : RoleBase
     }
 
     // 灰色で何も着けていない・名前の無い姿
-    private static NetworkedPlayerInfo.PlayerOutfit GrayOutfit()
+    private static NetworkedPlayerInfo.PlayerOutfit GrayOutfit(int color)
     {
         var o = new NetworkedPlayerInfo.PlayerOutfit
         {
             PlayerName = "",
-            ColorId = GrayColor(),
+            ColorId = color,
             HatId = CosmeticsLayer.EMPTY_HAT_ID,
             VisorId = CosmeticsLayer.EMPTY_VISOR_ID,
             SkinId = CosmeticsLayer.EMPTY_SKIN_ID,

@@ -21,6 +21,7 @@ public sealed class Anchor : RoleBase
 
     public static readonly FloatOpt PlaceCooldown = new("Anchor.PlaceCooldown", 30f, 2.5f, 60f, 2.5f, "s");
     public static readonly IntOpt NumOfAnchor = new("Anchor.NumOfAnchor", 3, 1, 10);
+    public static readonly IntOpt PerTurn = new("Anchor.PerTurn", 1, 1, 15);
     public static readonly FloatOpt NoticeRange = new("Anchor.NoticeRange", 15f, 1f, 40f, 1f, "");
     public static readonly FloatOpt ArrowDuration = new("Anchor.ArrowDuration", 3f, 1f, 10f, 0.5f, "s");
     public static readonly FloatOpt EchoCooldown = new("Anchor.EchoCooldown", 15f, 2.5f, 60f, 2.5f, "s");
@@ -39,7 +40,7 @@ public sealed class Anchor : RoleBase
         {
             Cooldown = () => PlaceCooldown,
             MaxUses = () => NumOfAnchor,
-            UsesPerMeeting = 1,
+            UsesPerMeeting = PerTurn,
             OnUse = () =>
             {
                 Vector2 at = Player.GetTruePosition();

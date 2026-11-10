@@ -21,16 +21,19 @@ public sealed class Obolus : RoleBase
 
     public static readonly FloatOpt KillCooldown = new("Obolus.KillCooldown", 25f, 2.5f, 60f, 2.5f, "s");
     public static readonly IntOpt KillShieldTurn = new("Obolus.KillShieldTurn", 2, 0, 10);
-    public static readonly BoolOpt WinByJackal = new("Obolus.WinByJackal", true);
+    public static readonly BoolOpt WinByJackal = new("Obolus.WinByJackal", false);
     public static readonly BoolOpt ImpostorSight = new("Obolus.ImpostorVision", true);
     public static readonly BoolOpt IgnoreLights = new("Obolus.IgnoreLights", true);
     public static readonly BoolOpt Vent = new("Obolus.CanVent", true);
     public static readonly BoolOpt Reveal = new("Obolus.Reveal", false);
+    public static readonly BoolOpt CanKillHidingPlayer = new("Obolus.CanKillHidingPlayer", false);
     public static readonly BoolOpt RevealDeath = new("Obolus.RevealDeath", true) { When = () => Reveal };
+    public static readonly ChoiceOpt BreakdownAction = new("Obolus.BreakdownAction", 0, new Text("Obolus.BreakdownAction.FirstTurn"), new Text("Obolus.BreakdownAction.UnlockTurn")) { When = () => Reveal };
 
     public override bool? CanVent => Vent;
 
     private int _meetings;
+    private int _started;
     private bool _revealed;
 
     private bool Sealed => _meetings < KillShieldTurn;
@@ -51,22 +54,20 @@ public sealed class Obolus : RoleBase
             Cooldown = () => KillCooldown,
             UsesPerMeeting = 1,
             Usable = () => !Sealed, // 封印の間はボタンが暗く押せない
+            TargetHiding = () => CanKillHidingPlayer,
             OnUsed = (user, t) => { if (AmongUsClient.Instance.AmHost) UchuKit.HostAbilityKill(user, t, PortKit.Harm.Slash); },
         });
     }
 
+    // 内訳を出す時期: 最初の会議 / 封印が解ける会議 (封印が 0 回なら最初の会議)
     private void OnMeetingStart(MeetingStartEvent e)
     {
-        // 封印が 0 回なら最初の会議で知らせる
-        if (KillShieldTurn == 0 && _meetings == 0) RevealOnce();
+        _started++;
+        if (BreakdownAction.Value == 0) { if (_started == 1) RevealOnce(); }
+        else if (_started == System.Math.Max(KillShieldTurn, 1) && PortKit.Alive(Player)) RevealOnce();
     }
 
-    private void OnMeetingEnd(MeetingEndEvent e)
-    {
-        bool was = Sealed;
-        _meetings++;
-        if (was && !Sealed) RevealOnce();
-    }
+    private void OnMeetingEnd(MeetingEndEvent e) => _meetings++;
 
     // 狙われる側 (インポスター・設定でジャッカル) に当たる人か
     private static bool Prey(PlayerControl p) =>

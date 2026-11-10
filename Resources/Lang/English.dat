@@ -23,19 +23,20 @@ Demolisher.Hammer: Hammer
 # ── Lighter ──
 Lighter.Name: Lighter
 Lighter.Blurb: See further than the rest
-Lighter.Summary: A crewmate who sees farther than others, and keeps more vision during lights sabotage.
+Lighter.Summary: A crewmate who carries a flashlight. Sees farther than others, and keeps more vision during lights sabotage.
 Lighter.Tips: Keep watch from afar and report what you saw in meetings.
 Lighter.Quote: Nothing hides in the dark from me.
 Lighter.LightsOnVision: Vision with lights on
 Lighter.LightsOnVision.Detail: Vision while the lights are on, relative to the ship's full light.
 Lighter.LightsOffVision: Vision with lights off
 Lighter.LightsOffVision.Detail: Vision during a lights sabotage, relative to the ship's full light.
+Lighter.FlashlightWidth: Flashlight width
 
 # ── Portal Maker (PortalMaker) ──
 PortalMaker.Name: Portal Maker
 PortalMaker.Blurb: Link two places with portals
 PortalMaker.Summary: A crewmate who can link two distant places with portals.
-PortalMaker.Portal.Help: Place a portal at your feet. If a vent, console, door, or ladder is too close, it goes to the nearest open spot. Once two are placed, any living player can stand on one and press Use to travel to the other. Press again after placing both to remove them and place again. The settings decide whether they can be removed.
+PortalMaker.Portal.Help: Place a portal at your feet. If a vent, console, door, or ladder is too close, it goes to the nearest open spot. Once two are placed they only work after the next meeting ends; until then only you can see them. Then any living player can stand on one and press Use to travel to the other, and must wait before using one again. On PC and mobile, the Portal Maker also gets two Move buttons that jump to either portal from anywhere. At the start of each meeting you are told who used the portals. Press again after placing both to remove them and place again. The settings decide whether they can be removed.
 PortalMaker.Portal.Short: Place at your feet. Two make a link
 PortalMaker.NoRoom: No room to place a portal nearby
 PortalMaker.Tips: Impostors can use the portals too. A portal breaks after three hits from the Demolisher's hammer.
@@ -43,6 +44,22 @@ PortalMaker.Quote: No more long way around.
 PortalMaker.PlaceCooldown: Portal Cooldown
 PortalMaker.CanRemove: Press Again to Remove Portals
 PortalMaker.CanRemove.Detail: When OFF, pressing again after placing both portals does not remove them, so they cannot be placed again.
+PortalMaker.UseCooldown: Portal Use Cooldown
+PortalMaker.UseCooldown.Detail: How long before anyone can use a portal again after using one, and after each meeting. It also applies to the Move buttons.
+PortalMaker.LogOnlyColors: Log Shows Only Color Tone
+PortalMaker.LogOnlyColors.Detail: When ON, the portal log says only whether the player was a light or dark color. When OFF, it shows their name. While camouflaged, no one can be told apart.
+PortalMaker.LogShowsTime: Log Shows Time
+PortalMaker.LogShowsTime.Detail: Shows how many seconds before the meeting each player used a portal.
+PortalMaker.CanPortalFromAnywhere: Can Travel to Portals From Anywhere
+PortalMaker.CanPortalFromAnywhere.Detail: The Portal Maker can use the Move buttons to jump to either portal from anywhere.
+PortalMaker.ToFirst: To Portal 1
+PortalMaker.ToSecond: To Portal 2
+PortalMaker.LogHeader: Portal Log
+PortalMaker.LogAgo: {n}s ago:
+PortalMaker.LogLine: {who} used the portal
+PortalMaker.LogLight: A player (L)
+PortalMaker.LogDark: A player (D)
+PortalMaker.LogCamo: A camouflaged player
 PortalMaker.Portal: Portal
 
 # ── Rewinder ──
@@ -171,12 +188,14 @@ Survivor.WinCond: Win with whoever wins, as long as you are alive at the end of 
 Survivor.Tips: You cannot kill. Use your vest when in danger, and stay out of every team's way.
 Survivor.Quote: Whoever wins, staying alive is my victory.
 Survivor.Vest: Vest
-Survivor.Vest.Help: Put on a vest for a set time to block kills. Blocking a kill restarts the attacker's kill cooldown. The vest comes off when a meeting starts. It does not stop abilities that kill without leaving a body (such as blasts).
+Survivor.Vest.Help: Put on a vest for a set time to block kills. Blocking a kill restarts the attacker's kill cooldown. The vest comes off when a meeting starts. It does not stop abilities that kill without leaving a body (such as blasts). Abilities that target a vested player, not only kills, have no effect.
 Survivor.Vest.Short: Block kills for a while
 Survivor.VestSaved: Your vest blocked a kill
 Survivor.VestCooldown: Vest cooldown
 Survivor.VestDuration: Vest duration
 Survivor.MaxVests: Number of vests
+Survivor.Scatter: Die if you stay in one place (Scatter)
+Survivor.ScatterTimer: Scatter time limit
 
 # ── Samurai ──
 Samurai.Name: Samurai
@@ -1344,6 +1363,13 @@ Madmate.Summary: A crewmate on the impostors' side.
 Madmate.WinCond: Win when the impostors win, dead or alive
 Madmate.KnowImpostors: Can know the impostors
 Madmate.NeededTasks: Tasks needed to know them
+Madmate.SpecialTasks: Use special tasks to know them
+Madmate.SpecialCommon: Special common tasks
+Madmate.SpecialShort: Special short tasks
+Madmate.SpecialLong: Special long tasks
+Madmate.CannotFixComms: Cannot fix comms
+Madmate.CannotFixLights: Cannot fix lights
+Madmate.CannotFixReactor: Cannot fix reactor / O2
 Madmate.CanVent: Can use vents
 Madmate.ImpostorVision: Has impostor vision
 Madmate.MaddenRoles: Crew roles can be Madmates
@@ -1387,7 +1413,7 @@ Jackal.Kill: Kill
 Jackal.Kill.Help: Has the vanilla kill button. Vision and kill distance follow the Neutral settings in the Game Settings tab. Cannot kill your pack.
 Jackal.Kill.Short: Has the kill button
 Jackal.Sidekick: Sidekick
-Jackal.Sidekick.Help: Turns a nearby player into your partner (Sidekick or Jackal Friends), once.
+Jackal.Sidekick.Help: Turns a nearby player into the partner chosen in "Partner type" (Sidekick or Jackal Friends), once.
 Jackal.Sidekick.Short: Recruit a nearby player
 Jackal.KillCooldown: Kill cooldown
 Jackal.CanVent: Can use vents
@@ -1400,13 +1426,31 @@ Sidekick.Blurb: The Jackal's right hand
 Sidekick.Summary: A neutral recruited by the Jackal. Cannot kill, and becomes a Jackal when all Jackals are dead.
 Sidekick.WinCond: Win when the Jackal wins
 Sidekick.CanVent: Can use vents
+# ── ジャッカルフレンズ (Jackal Friends) ──
+JackalFriends.Name: Jackal Friends
+JackalFriends.Blurb: A friend of the Jackal
+JackalFriends.Summary: A crewmate on the Jackal's side, made by the Jackal when its partner type is Jackal Friends. Cannot kill, and does not become a Jackal when the Jackals die. Once you finish the needed tasks, you know the Jackal and the Sidekick (the Jackal cannot tell who you are).
+JackalFriends.WinCond: Win when the Jackal wins, dead or alive
+JackalFriends.CanVent: Can use vents
+JackalFriends.ImpostorVision: Has impostor vision
+JackalFriends.KnowJackals: Can know the Jackals
+JackalFriends.NeededTasks: Tasks needed to know them
+JackalFriends.SpecialTasks: Use special tasks to know them
+JackalFriends.SpecialCommon: Special common tasks
+JackalFriends.SpecialShort: Special short tasks
+JackalFriends.SpecialLong: Special long tasks
 # ── ラバーズ (Lovers) ──
 Lovers.Name: Lovers
 Lovers.Blurb: Our love is forever
-Lovers.Summary: An add-on given to a pair. You know your partner (♥ by their name), and you die when they die.
-Lovers.WinCond: If both are alive at the end, you steal the win together
+Lovers.Summary: An add-on given to a pair. You know your partner (♥ by their name, with their role and an arrow to them), and you die when they die.
+Lovers.WinCond: If both are alive and 3 or fewer players remain, the two of you win alone. Otherwise it follows the win type setting
 Lovers.FollowDeath: Die when your partner dies
-Lovers.SoloWin: Steal the win if both are alive
+Lovers.WinType: Win type
+Lovers.WinType.Normal: Normal
+Lovers.WinType.Shared: Shared
+Lovers.WinType.Single: Single
+Lovers.KnowPartnerRole: Know the partner's role
+Lovers.KnowPartnerPosition: Show the partner's location
 # ── ヴァルチャー (Vulture) ──
 Vulture.Name: Vulture
 Vulture.Blurb: Feast on the dead
@@ -1425,7 +1469,7 @@ Arsonist.Blurb: Burn it all to ashes
 Arsonist.Summary: A neutral who wins by dousing everyone in oil and setting it alight.
 Arsonist.WinCond: Win alone by dousing every living player and igniting
 Arsonist.Douse: Douse
-Arsonist.Douse.Help: Stay next to a nearby person for a moment to douse them. Moving away or a different nearest person cancels it. Doused people are marked §.
+Arsonist.Douse.Help: Stay next to a nearby person for a moment to douse them. Moving away or a different nearest person cancels it. Doused people are marked §. Dead players see the douse progress beside your name.
 Arsonist.Douse.Short: Douse a nearby player
 Arsonist.Ignite: Ignite
 Arsonist.Ignite.Help: If every other living player is doused, ignite to win alone.
@@ -1446,6 +1490,9 @@ Camouflager.Look: Camouflage look
 Camouflager.Look.Self: Everyone looks like you
 Camouflager.Look.Random: Everyone looks like a random other player
 Camouflager.Look.Gray: Everyone gray (no pets / skins)
+Camouflager.Look.Color: Everyone in one chosen color (no pets / skins)
+Camouflager.Look.RandomColor: Everyone in a random other player's color (no pets / skins)
+Camouflager.Color: Camouflage color
 # ── トリガーハッピー (TriggerHappy) ──
 TriggerHappy.Name: Trigger Happy
 TriggerHappy.Blurb: Shoot, shoot, and keep shooting
@@ -1475,6 +1522,9 @@ NiceGuesser.Shoot.Help: In a meeting, pick a player and guess their role. If rig
 NiceGuesser.Shoot.Short: Guess a role and shoot
 NiceGuesser.Shots: Total shots
 NiceGuesser.PerMeeting: Shots per meeting
+NiceGuesser.CannotShootFirstTurn: Cannot shoot in the first meeting
+NiceGuesser.CannotShootNoDead: Cannot shoot until someone has died
+NiceGuesser.CannotShootCrewmate: Cannot guess plain Crewmate
 # ── イビルゲッサー (EvilGuesser) ──
 EvilGuesser.Name: Evil Guesser
 EvilGuesser.Blurb: The meeting is my hunting ground
@@ -1484,6 +1534,9 @@ EvilGuesser.Shoot.Help: In a meeting, pick a player and guess their role. If rig
 EvilGuesser.Shoot.Short: Guess a role and shoot
 EvilGuesser.Shots: Total shots
 EvilGuesser.PerMeeting: Shots per meeting
+EvilGuesser.CannotShootFirstTurn: Cannot shoot in the first meeting
+EvilGuesser.CannotShootNoDead: Cannot shoot until someone has died
+EvilGuesser.CannotShootCrewmate: Cannot guess plain Crewmate
 # ── ホスフォラス (Phosphorus) ──
 Phosphorus.Name: Phosphorus
 Phosphorus.Blurb: A lantern against the dark
@@ -1525,10 +1578,10 @@ RemoteController.Mark: Mark
 RemoteController.Mark.Help: Picks a nearby crewmate to control.
 RemoteController.Mark.Short: Pick who to control
 RemoteController.Operate: Operate
-RemoteController.Operate.Help: For a while (or without limit), you move the marked person. Neither of you can move on your own meanwhile. Press again to stop.
+RemoteController.Operate.Help: For a while (or without limit), you move the marked person. Neither of you can move on your own meanwhile. The Use and Vent buttons target things at the controlled person's feet (doors, ladders, platforms, vents, etc.) and use them with their body. Press again to stop.
 RemoteController.Operate.Short: Move the marked person
 RemoteController.Kill: Remote Kill
-RemoteController.Kill.Help: While operating: the person you control kills someone near them. Ends the operation.
+RemoteController.Kill.Help: While operating: the person you control kills the nearest crewmate next to them, who is outlined. Ends the operation.
 RemoteController.Kill.Short: Make your puppet kill
 RemoteController.MarkCooldown: Mark cooldown
 RemoteController.OperationInfinite: Unlimited operation
@@ -1702,7 +1755,7 @@ Nova.Name: Nova
 Nova.Blurb: The first cry of a star
 Nova.Summary: An impostor who charges up and fires a straight beam that kills.
 Nova.Fire: Fire
-Nova.Fire.Help: Hold to charge in place, then release to fire a beam. The longer you charge, the wider the beam and the more people it can pierce. A quick tap stops at the first person hit; a full charge kills everyone in the beam. Walls stop the beam. You cannot move while charging, and your aim turns only slowly. Your charge shows in a tank beside you that others can see too. On PC, right-click to raise the cannon, hold left-click to charge, and release to fire toward the mouse. Right-click again while aiming to lower the cannon. On mobile, hold the button to charge and release to fire the way you last walked. The allowed directions depend on the setting.
+Nova.Fire.Help: Hold to charge in place, then release to fire a beam. The longer you charge, the wider the beam and the more people it can pierce. A quick tap stops at the first person hit; a full charge kills everyone in the beam. Walls stop the beam. The beam stays for the set time, killing anyone who walks into it, and you cannot move while it lasts. You cannot move while charging, and your aim turns only slowly. Your charge shows in a tank beside you that others can see too. On PC, hold right-click to raise the cannon, hold left-click to charge, and release to fire toward the mouse. Letting go of right-click while charging cancels without firing. On mobile, press the button to raise the cannon, then tilt the stick that appears when you touch the right half of the screen to start charging, and lift your finger to fire that way. The allowed directions depend on the setting.
 Nova.Fire.Short: Charge and fire a beam
 Nova.Tips: You cannot move while charging, and others can see how charged you are. A fully charged beam is especially strong in long corridors.
 Nova.Mode: Fire mode
@@ -1713,6 +1766,7 @@ Nova.Mode.EightWay: Eight directions
 Nova.Cooldown: Fire cooldown
 Nova.Size: Beam width
 Nova.Charge: Time to full charge
+Nova.BeamTime: Beam duration
 Nova.BeamColor: Beam Color
 Nova.BeamColor.Mono: Black & White
 Nova.BeamColor.Violet: Black & Violet
@@ -2004,6 +2058,9 @@ Admiral.Call.Short: Ask everyone where they are
 Admiral.Close: Close
 Admiral.Close.Help: Closes the roll call. Each answer appears on the map as a pin in that player's color.
 Admiral.Close.Short: Close the roll call
+Admiral.Map: Open map
+Admiral.Map.Help: After closing the roll call, opens the map again so you can look at the answers as many times as you like.
+Admiral.Map.Short: Look at the answers again
 Admiral.NumOfCall: Number of roll calls
 Admiral.VoteWatching: See votes even when voting is anonymous
 Admiral.Answer: Roll call! Click where you are on the map to answer
@@ -2058,7 +2115,7 @@ Polaris.KillUses: Kill uses
 Polaris.CanKillHidden: Can also kill hidden players
 Polaris.SealUntilReport: Seal the kill until a body is reported
 Polaris.Vision: Vision
-Polaris.Vision.Help: Gazes at a nearby body for a moment (you can't move). Afterwards, the next meeting shows you that player's name and role.
+Polaris.Vision.Help: Gazes at a nearby body for a moment (you can't move). Afterwards, the next meeting shows you that player's name and role, and every meeting after that keeps the role beside their name.
 Polaris.Vision.Short: Read a body's role
 Polaris.VisionCooldown: Vision cooldown
 Polaris.VisionUses: Vision uses
@@ -2085,7 +2142,7 @@ Waraningyou.Name: Straw Doll
 Waraningyou.Blurb: Return all the grudges at once
 Waraningyou.Summary: A crewmate who stores the votes cast against them. Using "Curse" in a meeting makes your vote count as the stored votes +1.
 Waraningyou.Curse: Curse
-Waraningyou.Curse.Help: Use it from your own plate during a meeting (once per meeting). Your vote this meeting counts as the stored votes +1, and the store goes back to 0. Unless the settings allow skipping, you cannot skip after cursing.
+Waraningyou.Curse.Help: The stored votes are always shown beside your name. Use it from your own plate during a meeting (once per meeting). Your vote this meeting counts as the stored votes +1, and the store goes back to 0. Unless the settings allow skipping, you cannot skip after cursing.
 Waraningyou.Curse.Short: Spend your stored votes
 Waraningyou.DefaultVote: Starting stored votes
 Waraningyou.AllowSkip: Can skip in the meeting you curse
@@ -2094,7 +2151,7 @@ Shaman.Name: Shaman
 Shaman.Blurb: Call the spirits and count your foes
 Shaman.Summary: A crewmate who performs "Necromancy" in the room the arrow points to, learning at the next meeting how many living players are not crew.
 Shaman.Necromancy: Necromancy
-Shaman.Necromancy.Help: Stand still in the arrowed room to use it; moving interrupts it. When done, the next meeting shows how many living players are not crew. After enough tasks you also learn their role names (option).
+Shaman.Necromancy.Help: Stand still in the arrowed room to use it; moving interrupts it. When done, the number of living players who are not crew is fixed at that moment and shown in the next meeting (and beside your name in meetings after). After enough tasks you also learn their role names (option).
 Shaman.Necromancy.Short: Call the spirits in a room
 Shaman.NecromancyCooldown: Necromancy cooldown
 Shaman.NecromancyDuration: Necromancy duration
@@ -2144,6 +2201,9 @@ Monitor.FixComms: Can fix comms
 Monitor.ImpostorVision: Impostor vision
 Monitor.CanVent: Can use vents
 Monitor.VentMove: Can move between vents
+Monitor.Swap: Swap
+Monitor.Swap.Help: Swaps roles with your nearby partner (Monitor ⇔ Proxy). Uses the same cooldown as the Proxy's swap.
+Monitor.Swap.Short: Swap roles with your partner
 # ---- Roles ported from Uchu and others (impostors) ----
 Proxy.Name: Proxy
 Proxy.Blurb: Swap with your shadow and hide who you are
@@ -2222,16 +2282,18 @@ Kunoichi.Name: Kunoichi
 Kunoichi.Blurb: Throw kunai from the shadows
 Kunoichi.Summary: An impostor who throws kunai. Hitting the same player enough times kills them. Standing still lets you turn invisible.
 Kunoichi.Equip: Equip
-Kunoichi.Equip.Help: Takes out or puts away your kunai. While holding it you can't use the normal kill, and the kunai floats toward your mouse.
+Kunoichi.Equip.Help: Readies your kunai. While you hold it you can't use the normal kill. Others can see the kunai in your hand. On PC, hold right-click to hold it and release to put it away. On mobile, this button takes it out or puts it away.
 Kunoichi.Equip.Short: Take out / put away the kunai
 Kunoichi.Throw: Kunai
-Kunoichi.Throw.Help: Throws a kunai toward your mouse. Hitting a non-ally adds a hit, and enough hits kill them.
+Kunoichi.Throw.Help: Throws the kunai you are holding. Hitting a non-ally adds a hit, and enough hits kill them. On PC, left-click while holding it to throw toward the mouse. On mobile, tilt the stick that appears when you touch the right half of the screen to aim, then lift your finger to throw that way. Return the stick to the center before lifting to cancel. A sword or bullet can knock the kunai out of your hand, and you cannot throw until you grip a new one.
 Kunoichi.Throw.Short: Throw a kunai
 Kunoichi.Hide: Hide
-Kunoichi.Hide.Help: After standing still for a while you can turn invisible. Moving ends it. Meetings end everything.
+Kunoichi.Hide.Help: Standing still for the set time turns you invisible automatically (a setting can make it a button instead: press to hide, press again to reveal). Moving ends it. Invisible players are not hit by kunai. Meetings end everything.
+Kunoichi.Unhide: Reveal
 Kunoichi.Hide.Short: Stand still to go invisible
 Kunoichi.ThrowCooldown: Kunai cooldown
 Kunoichi.KunaiSpeed: Kunai speed
+Kunoichi.KunaiSize: Kunai size (also the hit size)
 Kunoichi.WallStops: Walls stop kunai
 Kunoichi.HitsToKill: Hits needed to kill
 Kunoichi.FriendlyFire: Kunai can hit allies
@@ -2239,7 +2301,7 @@ Kunoichi.KunaiOnBody: Kunai stays on the body
 Kunoichi.ResetHitsOnMeeting: Reset hits at meetings
 Kunoichi.CanHide: Can hide
 Kunoichi.HideWait: Time standing still before hiding
-Kunoichi.HideButton: Hide with a button (otherwise automatic)
+Kunoichi.HideButton: Hide with a button instead (off: automatic when standing still)
 Kunoichi.ThrowWhileHidden: Can throw while hidden
 SerialKiller.Name: Serial Killer
 SerialKiller.Blurb: Keep killing or die
@@ -2270,10 +2332,11 @@ Witch.Name: Witch
 Witch.Blurb: Cast a spell and bury them after the meeting
 Witch.Summary: An impostor who keeps casting a spell on a nearby player. Spelled players get a mark on their meeting plate and die at the end of the meeting if the Witch is alive.
 Witch.Spell: Spell
-Witch.Spell.Help: Keeps casting on a nearby player; moving away interrupts it (once per turn). Impostors can't be targeted.
+Witch.Spell.Help: Keeps casting on a nearby player; moving away interrupts it (limited per turn). Impostors can't be targeted.
 Witch.Spell.Short: Cast a spell on someone nearby
 Witch.SpellCooldown: Spell cooldown
 Witch.SpellDuration: Spell duration
+Witch.PerMeeting: Spells per meeting
 Witch.NormalKill: Can also use the normal kill
 Witch.Broken: The spell was interrupted
 NekoKabocha.Name: Neko Kabocha
@@ -2288,13 +2351,14 @@ Anchor.Blurb: Drop anchor and hold the ship
 Anchor.Summary: A neutral who drops anchors at their feet. If alive at the end of a meeting after placing all of them, they win alone.
 Anchor.WinCond: Win alone if you're alive at the end of a meeting after placing every anchor
 Anchor.Place: Place
-Anchor.Place.Help: Drops an anchor at your feet (everyone can see it; once per turn). Nearby players briefly get an arrow to it.
+Anchor.Place.Help: Drops an anchor at your feet (everyone can see it; limited per turn). Nearby players briefly get an arrow to it.
 Anchor.Place.Short: Drop an anchor
 Anchor.Echo: Echo
 Anchor.Echo.Help: Opens the map; click one of your anchors to send the arrow to nearby players again from there.
 Anchor.Echo.Short: Signal again from an anchor
 Anchor.PlaceCooldown: Place cooldown
 Anchor.NumOfAnchor: Number of anchors
+Anchor.PerTurn: Anchors per turn
 Anchor.NoticeRange: Arrow range
 Anchor.ArrowDuration: Arrow duration
 Anchor.EchoCooldown: Echo cooldown
@@ -2308,14 +2372,15 @@ Bettor.Guess: Guess
 Bettor.Guess.Help: Opens the guess screen to write a role for every other player. Once all are filled you can bet (once per turn; not in the first turns). HIT players' roles become visible.
 Bettor.Guess.Short: Guess everyone's role and bet
 Bettor.Analyze: Analyze
-Bettor.Analyze.Help: Shows the team of a nearby player.
+Bettor.Analyze.Help: Shows the team of a nearby player. Results stay beside the names. HIT players can't be chosen.
 Bettor.Analyze.Short: Learn a nearby player's team
 Bettor.Identify: Identify
-Bettor.Identify.Help: With at least half HIT, use it from a player's plate in a meeting (once) to learn their role. Works on dead players too (option).
+Bettor.Identify.Help: Once the HIT rate reaches the set value (50% by default), use it from a player's plate in a meeting (once) to learn their role. Works on dead players too (option).
 Bettor.Identify.Short: Learn one role in a meeting
 Bettor.DisableGuessTurn: Turns you can't bet
 Bettor.AnalyzeCooldown: Analyze cooldown
 Bettor.NumOfAnalyze: Analyze uses
+Bettor.IdentifyPercentage: HIT rate needed to identify
 Bettor.IdentifyDead: Can identify dead players
 Bettor.Title: Role Guesses
 Bettor.NoGuess: (empty)
@@ -2348,7 +2413,11 @@ Obolus.WinByJackal: Killing a Jackal also wins
 Obolus.ImpostorVision: Impostor vision
 Obolus.IgnoreLights: Vision isn't reduced by blackouts
 Obolus.CanVent: Can use vents
+Obolus.CanKillHidingPlayer: Can kill players hiding in vents
 Obolus.Reveal: Warn the impostors when the seal breaks
+Obolus.BreakdownAction: When to warn
+Obolus.BreakdownAction.FirstTurn: First meeting
+Obolus.BreakdownAction.UnlockTurn: When the seal breaks
 Obolus.RevealDeath: Also tell them when the Obolus dies
 Obolus.Warning: Beware of the Obolus!
 Obolus.Dead: The Obolus died
@@ -2432,6 +2501,18 @@ Visor.Blurb: Watch the ship through your map
 Visor.Help: An addon that shows admin whenever you open the normal map (bodies are counted too). Never given to impostors.
 Visor.CanMoveWithMapWatching: Can move with the map open
 Visor.CanUseAdminOnMeeting: Admin also works during meetings
+VisorRole.Name: Visor
+VisorRole.Blurb: Carry a battery-powered admin
+VisorRole.Summary: A crewmate with a portable admin. Press the button to open the map with admin; the charge drains while it is open and the map closes when it runs out. Each task you finish recharges it a little.
+VisorRole.Open: Admin
+VisorRole.Open.Help: Opens the map with admin (bodies are counted too). The charge drains only while the map is open and the map closes at zero. Finishing a task recharges it. PC: the remaining charge shows on the button and in the bottom-left; on phones it shows on the button.
+VisorRole.Open.Short: Open the map with admin
+VisorRole.Battery: Charge
+VisorRole.CanMoveWithMapWatching: Can move with the map open
+VisorRole.CanUseAdminOnMeeting: Admin also works during meetings
+VisorRole.PortableAdminCharge: Starting charge
+VisorRole.MaxPortableAdminCharge: Maximum charge
+VisorRole.ChargesPerTasks: Charge per task
 Star.Name: Star
 Star.Blurb: You're a star
 Star.Help: An addon whose name looks yellow to everyone (rainbow with the option).
@@ -2490,7 +2571,7 @@ Baphomet.Family: Familiar
 Baphomet.Family.Help: Turns a nearby living player into your familiar (Famulus) (once). You get an arrow to them.
 Baphomet.Family.Short: Make someone your familiar
 Baphomet.Gauge: Gauge
-Baphomet.Gauge.Help: Fills while you stand still right next to your living familiar. Standing still shows a phantom only the living can see. It drops a little at the end of meetings (not when full).
+Baphomet.Gauge.Help: Fills while you stand still right next to your living familiar. Standing still while your familiar is near shows a phantom only the living can see. It drops a little at the end of meetings (not when full).
 Baphomet.Gauge.Short: Stand by your familiar to fill it
 Baphomet.TotalStandingTimeToWin: Gauge needed to win
 Baphomet.RewindGaugeToMeetingEnd: Gauge lost at the end of meetings

@@ -7,7 +7,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles.Addons;
 
 // バフォメット (幽霊役職・どの陣営の死者にも): なった時に画面が光る。「眷属」(1 回) で近くの生きている人をファムルス (眷属) にする。
-// 生きているファムルスのすぐ近くで止まっているとゲージが貯まり (止まって少しすると、生きている人にだけ見える亡霊が出る)、
+// 生きているファムルスのすぐ近くで止まっているとゲージが貯まり (止まって少しすると、生きている人にだけ見える亡霊が出る。近くにファムルスがいない間は出ない)、
 // 満ちた後の試合の終わり (破壊工作以外) にファムルスが生きていれば、バフォメットとファムルスの勝ちに替わる。会議の終わりにゲージが減る (満ちていれば減らない)
 public sealed class Baphomet : AddonBase, IWinOverride
 {
@@ -102,7 +102,7 @@ public sealed class Baphomet : AddonBase, IWinOverride
             if (!meeting) _standCooldown -= dt;
             _standing = 0f;
         }
-        else if (!meeting && Player.MyPhysics && Player.MyPhysics.Velocity.magnitude < 0.001f) _standing += dt; // 亡霊は止まれば出る (ファムルスの近くでなくても)
+        else if (!meeting && near && Player.MyPhysics && Player.MyPhysics.Velocity.magnitude < 0.001f) _standing += dt; // 亡霊もゲージも、止まっていて近くに自分のファムルスがいる間だけ
         else _standing = 0f;
 
         if (_standing > 0.6f && !_ghostOn) GhostCall.Send((true, Player.transform.position.x, Player.transform.position.y, Player.cosmetics && Player.cosmetics.FlipX));

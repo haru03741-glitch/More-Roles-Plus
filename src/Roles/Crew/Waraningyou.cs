@@ -79,6 +79,7 @@ public sealed class Waraningyou : RoleBase
         (w, m) => { w.Write(m.id); w.Write(m.n); }, r => (r.ReadByte(), r.ReadByte()),
         (_, m) => { if (RoleState.ActingOf(m.id) is Waraningyou w) w._stored = m.n; });
 
+    // 貯めた票は会議の中だけでなく、試合中もずっと自分の名前の横に出す (原作は HUD に常時)
     public override string NameMark(PlayerControl seen) =>
-        seen.PlayerId == PlayerId && MeetingHud.Instance ? $"<color={Color}>({Stored})</color>" : null;
+        seen.PlayerId == PlayerId ? $"<color={Color}>({Stored})</color>" : null;
 }

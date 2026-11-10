@@ -33,6 +33,7 @@ public sealed class Polaris : RoleBase
     private bool _sealed;                    // 全員の端末で同じ (キルの後、死体が通報されるまで)
     private DeadBody _seeing;                // 自分の端末: 幻視している死体
     private readonly List<byte> _seen = new(); // 次の会議で見せる死者
+    private readonly List<byte> _known = new(); // 自分の端末: 今までに幻視で分かった死者 (会議で名札の横に出し続ける・原作の会議の結果欄)
 
     public override void OnAssigned()
     {
@@ -90,6 +91,7 @@ public sealed class Polaris : RoleBase
         if (_seen.Count == 0) return;
         var ids = new List<byte>(_seen);
         _seen.Clear();
+        foreach (var id in ids) if (!_known.Contains(id)) _known.Add(id);
         PortKit.After(1.5f, () =>
         {
             foreach (var id in ids)
@@ -100,6 +102,14 @@ public sealed class Polaris : RoleBase
                 PortKit.Notice(new Text("Polaris.Result").With("name", info.PlayerName).With("role", role != null ? role.ShownColoredName : "?").ToString());
             }
         });
+    }
+
+    // 会議の間ずっと、幻視で分かった死者の名札の横に役職を出す (見返せる)
+    public override string NameMark(PlayerControl seen)
+    {
+        if (!MeetingHud.Instance || !_known.Contains(seen.PlayerId)) return null;
+        var role = RoleState.Of(seen.PlayerId);
+        return role == null ? null : $" <size=70%>{role.ShownColoredName}</size>";
     }
 
     // 自分の端末: 終えたタスクを n 個未完了に戻す (全員の端末のタスクの数え方も戻す)

@@ -32,19 +32,25 @@ public sealed class Visor : AddonBase
 [HarmonyPatch(typeof(MapBehaviour), nameof(MapBehaviour.ShowNormalMap))]
 internal static class VisorMapPatch
 {
+    // アドミンを出す共通の部分 (役職版のバイザーも使う)
+    internal static void ShowAdmin(MapBehaviour map, bool canMove)
+    {
+        var overlay = map.countOverlay;
+        if (!overlay) return;
+        overlay.gameObject.SetActive(true);
+        overlay.SetOptions(true, true);
+        if (map.taskOverlay) map.taskOverlay.Hide();
+        map.countOverlayAllowsMovement = canMove;
+        if (!canMove && PlayerControl.LocalPlayer.NetTransform) PlayerControl.LocalPlayer.NetTransform.Halt();
+    }
+
     public static void Postfix(MapBehaviour __instance)
     {
         try
         {
             if (!Visor.LocalHas()) return;
             if (MeetingHud.Instance && !Visor.CanUseOnMeeting) return;
-            var overlay = __instance.countOverlay;
-            if (!overlay) return;
-            overlay.gameObject.SetActive(true);
-            overlay.SetOptions(true, true);
-            if (__instance.taskOverlay) __instance.taskOverlay.Hide();
-            __instance.countOverlayAllowsMovement = Visor.CanMoveWithMap;
-            if (!Visor.CanMoveWithMap && PlayerControl.LocalPlayer.NetTransform) PlayerControl.LocalPlayer.NetTransform.Halt();
+            ShowAdmin(__instance, Visor.CanMoveWithMap);
         }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"visor map: {e.Message}"); }
     }

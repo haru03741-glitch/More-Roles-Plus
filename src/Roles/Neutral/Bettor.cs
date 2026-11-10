@@ -27,6 +27,7 @@ public sealed class Bettor : RoleBase
     public static readonly FloatOpt AnalyzeCooldown = new("Bettor.AnalyzeCooldown", 15f, 2.5f, 60f, 2.5f, "s");
     public static readonly IntOpt NumOfAnalyze = new("Bettor.NumOfAnalyze", 3, 1, 15);
     public static readonly BoolOpt IdentifyDead = new("Bettor.IdentifyDead", true);
+    public static readonly FloatOpt IdentifyPercentage = new("Bettor.IdentifyPercentage", 50f, 0f, 100f, 10f, "%"); // 看破が使えるようになる当たり率
 
     private enum Judge : byte { None, Hit, Blow, Miss }
 
@@ -36,6 +37,11 @@ public sealed class Bettor : RoleBase
     private int _turn, _betTurn = -1;
     private bool _allHit;     // 全員の端末で同じ (賭けた時に配る)
     private float _hitRate;   // 全員の端末で同じ
+    private bool _gotIdentify; // 全員の端末で同じ: 当たり率が設定に届いたことがある (原作 gottenIdentify・一度届けば下がっても使える)
+    private readonly Dictionary<byte, string> _analyzed = new(); // 自分の端末: 分析で分かった陣営 (溜めて名札の横に出す)
+    private readonly HashSet<byte> _identified = new();          // 自分の端末: 看破した人 (役職が見える)
+    private readonly HashSet<byte> _scramble = new();            // ほかの人の端末: この会議で看破された人 (名札の横に文字化けを出す)
+    private static readonly System.Random Noise = new();
 
     public override void OnAssigned()
     {
@@ -49,11 +55,14 @@ public sealed class Bettor : RoleBase
             Target = AbilityTarget.Player,
             Cooldown = () => AnalyzeCooldown,
             MaxUses = () => NumOfAnalyze,
+            CanTarget = (_, t) => !(_judge.TryGetValue(t.PlayerId, out var j) && j == Judge.Hit), // HIT 済みの人はもう役職が見えるので選べない
             OnUsed = (user, t) =>
             {
                 if (!user.AmOwner) return;
                 var r = RoleState.Of(t);
                 string team = r == null ? "?" : PortKit.IsImpostor(t) ? new Text("Bettor.TeamImpostor").ToString() : new Text("Bettor.Team" + r.Team).ToString();
+                string col = r == null ? "#AAAAAA" : PortKit.IsImpostor(t) ? "#FF1919" : r.Team == Team.Crew ? "#8CFFFF" : "#F4D335";
+                _analyzed[t.PlayerId] = $"<color={col}>{team}</color>";
                 PortKit.Notice(new Text("Bettor.Analyzed").With("name", t.Data.PlayerName).With("team", team).ToString());
             },
         });
@@ -62,17 +71,32 @@ public sealed class Bettor : RoleBase
             Target = AbilityTarget.Meeting,
             MaxUses = () => 1,
             MeetingAnyLife = IdentifyDead,
-            CanTarget = (_, _) => _hitRate >= 0.5f,
+            CanTarget = (_, t) => (_gotIdentify || _hitRate >= IdentifyPercentage / 100f) && !_identified.Contains(t.PlayerId),
             OnUsed = (user, t) =>
             {
-                if (!user.AmOwner) return;
+                if (!user.AmOwner) { _scramble.Add(t.PlayerId); return; } // ほかの人には、この会議のあいだ名札の横が文字化けして見える
+                _identified.Add(t.PlayerId);
                 var r = RoleState.Of(t);
                 PortKit.Notice(new Text("Bettor.Identified").With("name", t.Data.PlayerName).With("role", r != null ? r.ShownColoredName : "?").ToString());
             },
         });
+        // 看破された人の名札の横の文字化け (看破した本人以外の端末・会議の間だけ)
+        RoleFrame.AddExtraMark(Lifespan, seen => !IsLocal && MeetingHud.Instance && _scramble.Contains(seen.PlayerId) ? Scrambled() : null);
     }
 
-    private void OnMeetingEnd(MeetingEndEvent e) => _turn++;
+    private static string Scrambled()
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&=^@:+-";
+        var c = new char[8];
+        for (int i = 0; i < c.Length; i++) c[i] = chars[Noise.Next(chars.Length)];
+        return $" <size=70%><color=#999999>{new string(c)}</color></size>";
+    }
+
+    private void OnMeetingEnd(MeetingEndEvent e)
+    {
+        _turn++;
+        _scramble.Clear();
+    }
 
     private List<PlayerControl> Others() =>
         PlayerControl.AllPlayerControls.ToArray().Where(p => p && p.Data != null && !p.Data.Disconnected && p.PlayerId != PlayerId).ToList();
@@ -187,11 +211,17 @@ public sealed class Bettor : RoleBase
     {
         _hitRate = rate;
         _allHit = all;
+        if (rate >= IdentifyPercentage / 100f) _gotIdentify = true;
     }
 
     // HIT の人の役職は見える
-    public override string NameMark(PlayerControl seen) =>
-        _judge.TryGetValue(seen.PlayerId, out var j) && j == Judge.Hit && RoleState.Of(seen) is { } r ? $"<size=70%>{r.ShownColoredName}</size>" : null;
+    // HIT の人・看破した人は役職、分析した人は陣営 (溜まって、いつでも見返せる)
+    public override string NameMark(PlayerControl seen)
+    {
+        bool hit = _judge.TryGetValue(seen.PlayerId, out var j) && j == Judge.Hit;
+        if ((hit || _identified.Contains(seen.PlayerId)) && RoleState.Of(seen) is { } r) return $"<size=70%>{r.ShownColoredName}</size>";
+        return _analyzed.TryGetValue(seen.PlayerId, out var team) ? $" <size=65%>({team})</size>" : null;
+    }
 
     // ホスト: 会議の終わりに全員 HIT なら勝ち
     [HostOnly]

@@ -22,13 +22,13 @@ public sealed partial class Eclipse : RoleBase
     public static readonly IntOpt Uses = new("Eclipse.Uses", 3, 1, 99);
     public static readonly FloatOpt MarkCooldown = new("Eclipse.MarkCooldown", 20f, 2.5f, 60f, 2.5f, "s");
     public static readonly FloatOpt BlastCooldown = new("Eclipse.BlastCooldown", 30f, 2.5f, 60f, 2.5f, "s");
-    public static readonly FloatOpt WarningTime = new("Eclipse.WarningTime", 1f, 0f, 3f, 0.25f, "s");
+    public static readonly FloatOpt WarningTime = new("Eclipse.WarningTime", 0.5f, 0f, 3f, 0.25f, "s");
     public static readonly FloatOpt MarkStop = new("Eclipse.MarkStop", 1f, 0.5f, 5f, 0.5f, "s");
-    public static readonly FloatOpt Size = new("Eclipse.Size", 1.5f, 1f, 15f, 0.25f, "x");
+    public static readonly FloatOpt Size = new("Eclipse.Size", 2f, 1f, 15f, 0.25f, "x");
     public static readonly BoolOpt ResetBlastCool = new("Eclipse.ResetBlastCool", false);
-    public static readonly BoolOpt MeetingReset = new("Eclipse.MeetingReset", true);
+    public static readonly BoolOpt MeetingReset = new("Eclipse.MeetingReset", false);
     public static readonly BoolOpt MarkSound = new("Eclipse.MarkSound", true);
-    public static readonly FloatOpt SoundRange = new("Eclipse.SoundRange", 10f, 2.5f, 20f, 2.5f, "x") { When = () => MarkSound };
+    public static readonly FloatOpt SoundRange = new("Eclipse.SoundRange", 5f, 2.5f, 20f, 2.5f, "x") { When = () => MarkSound };
 
     private const float FallSoundLength = 1f, SoundReach = 25f;
 

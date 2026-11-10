@@ -5,7 +5,7 @@ using MoreRolesPlus.Options;
 namespace MoreRolesPlus.Roles.Neutral;
 
 // ジャッカル (第三陣営・キル役): キルボタンを持ち、ジャッカルの仲間だけが残れば勝ち。
-// 1 度だけ「サイドキック」で近くの人を仲間 (サイドキック / ジャッカルフレンズ) にできる。
+// 1 度だけ近くの人を仲間にできる。仲間の種類 (サイドキック / ジャッカルフレンズ) は設定で選ぶ。
 // 視界とキルの距離は第三陣営のキル役の共通設定
 public sealed class Jackal : RoleBase
 {
@@ -22,11 +22,13 @@ public sealed class Jackal : RoleBase
     public override bool IsKiller => true;
     public override string Faction => Pack;
 
-    public static readonly FloatOpt KillCooldown = new("Jackal.KillCooldown", 25f, 2.5f, 60f, 2.5f, "s");
+    public static readonly FloatOpt KillCooldown = new("Jackal.KillCooldown", 30f, 2.5f, 60f, 2.5f, "s");
     public static readonly BoolOpt Vent = new("Jackal.CanVent", true);
     public static readonly BoolOpt CanSidekick = new("Jackal.CanSidekick", true);
     public static readonly FloatOpt SidekickCooldown = new("Jackal.SidekickCooldown", 30f, 0f, 120f, 2.5f, "s") { When = () => CanSidekick };
-    public static readonly BoolOpt Infinite = new("Jackal.Infinite", false) { When = () => CanSidekick };
+    // 原作の JackalSidekickType (既定はサイドキック)。波動砲サイドキックは作らない
+    public static readonly ChoiceOpt SidekickKind = new("Jackal.SidekickKind", 0, new Text("Jackal.SidekickKind.Sidekick"), new Text("Jackal.SidekickKind.Friends")) { When = () => CanSidekick };
+    public static readonly BoolOpt Infinite = new("Jackal.Infinite", true) { When = () => CanSidekick };
 
     // サイドキックから上がったジャッカル (Infinite でなければもう仲間を作れない)。全員の端末で同じように付ける
     internal static readonly HashSet<byte> Promoted = new();
@@ -47,13 +49,15 @@ public sealed class Jackal : RoleBase
             OnUsed = (_, target) =>
             {
                 if (!AmongUsClient.Instance.AmHost) return;
-                RoleState.Change(target, RoleState.Proto<Sidekick>());
+                if (SidekickKind.Value == 1) RoleState.Change(target, RoleState.Proto<JackalFriends>());
+                else RoleState.Change(target, RoleState.Proto<Sidekick>());
             },
         });
     }
 
-    // ジャッカルの仲間 (サイドキック・フレンズを含む)
-    public static bool InPack(PlayerControl p) => RoleState.Of(p) is { } r && (r.Faction == Pack || r.WinsWithFaction == Pack);
+    // ジャッカルとサイドキック。原作の IsJackalTeam で、ジャッカルフレンズは入らない
+    // (ジャッカルはフレンズを倒せるし仲間にもできる。ジャッカルからはフレンズは分からない)
+    public static bool InPack(PlayerControl p) => RoleState.Of(p) is { } r && r.Faction == Pack;
 
     // ジャッカルが仲間を倒すキルは通さない
     [HostOnly]

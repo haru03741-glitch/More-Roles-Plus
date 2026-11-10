@@ -192,6 +192,7 @@ public static class RoleState
             addon.OnMadmate = ap.OnMadmate;
             addon.OnImpostor = ap.OnImpostor;
             addon.OnNeutral = ap.OnNeutral;
+            if (addon.NeedsMrpEnd) AnyNeutral = true;
             (AddonsByPlayer[p.PlayerId] ??= new List<AddonBase>()).Add(addon);
             ActiveAddons.Add(addon);
             addon.Lifespan = parent.Child();

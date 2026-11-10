@@ -156,6 +156,8 @@ public static class GameEnd
             info = null;
             return Rules.SuddenDeath.Decide();
         }
+        var loversWin = Addons.Lovers.SoloResult();
+        if (loversWin != null) { info = null; return loversWin; }
         int imp = 0, crew = 0, nk = 0;
         Killers.Clear();
         LiveFactions.Clear();
@@ -189,9 +191,9 @@ public static class GameEnd
         if (nk == 0)
         {
             if (crew == 0 && imp == 0) return new GameResult();
-            if (crew <= imp) return TeamResult(Team.Impostor);
+            if (crew <= imp) return Addons.Lovers.BlocksImpostorCount(imp) ? null : TeamResult(Team.Impostor);
             // インポスターの居ない試合 (0 人で始めた) は数では終わらない (タスクか第三陣営で終わる)
-            if (imp == 0 && NoImpostorGame()) return null;
+            if (imp == 0 && NoImpostorGame()) return Neutral.Survivor.EndResult();
             if (imp == 0)
             {
                 reason = GameOverReason.CrewmatesByVote;
@@ -202,6 +204,7 @@ public static class GameEnd
         if (imp > 0 || crew > nk || Killers.Count != 1) return null;
 
         string id = Killers.Keys.First();
+        if (Addons.Lovers.BlocksFactionCount(id, Killers[id])) return null;
         return FactionResult(id);
     }
 

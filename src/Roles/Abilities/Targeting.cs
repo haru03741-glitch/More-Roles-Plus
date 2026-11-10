@@ -7,7 +7,7 @@ namespace MoreRolesPlus.Roles;
 internal static class Targeting
 {
     // reach 以内で一番近い、生きていてベントや昇降機の中にいない、間に壁の無い人 (filter = (自分, 相手) で絞る)
-    internal static PlayerControl ClosestPlayer(PlayerControl lp, float reach, Func<PlayerControl, PlayerControl, bool> filter = null, bool dead = false, bool ignoreWalls = false)
+    internal static PlayerControl ClosestPlayer(PlayerControl lp, float reach, Func<PlayerControl, PlayerControl, bool> filter = null, bool dead = false, bool ignoreWalls = false, bool hiding = false)
     {
         float best = reach * reach;
         Vector2 me = lp.GetTruePosition();
@@ -19,7 +19,7 @@ internal static class Targeting
             var p = all[i];
             if (p == null || p.Disconnected || p.IsDead != dead || p.PlayerId == lp.PlayerId) continue;
             var pc = p.Object;
-            if (!pc || pc.inVent || pc.inMovingPlat || (!dead && !pc.Visible)) continue;
+            if (!pc || (pc.inVent && !hiding) || pc.inMovingPlat || (!dead && !pc.Visible && !(hiding && pc.inVent))) continue;
             Vector2 at = pc.GetTruePosition();
             float dx = at.x - mx, dy = at.y - my;
             float sq = dx * dx + dy * dy;

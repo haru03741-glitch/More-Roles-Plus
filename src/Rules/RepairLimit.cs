@@ -16,10 +16,16 @@ internal static class RepairLimitConsolePatch
     public static void Postfix(Console __instance, ref float __result, [HarmonyArgument(0)] NetworkedPlayerInfo pc,
         [HarmonyArgument(1)] ref bool canUse, [HarmonyArgument(2)] ref bool couldUse)
     {
-        if (pc == null || Roles.RoleState.Of(pc.PlayerId) is not IRepairLimit lim || __instance.TaskTypes == null) return;
+        if (pc == null || __instance.TaskTypes == null) return;
+        var role = Roles.RoleState.Of(pc.PlayerId);
+        var lim = role as IRepairLimit;
+        // マッドメイト (マッドメイトとして配られた役職も) は設定で通信・停電・原子炉/酸素を直せない
+        bool mad = role is Roles.RoleBase { Madden: true } || role is Roles.Crew.Madmate;
+        if (lim == null && !mad) return;
         foreach (var t in __instance.TaskTypes)
         {
-            if ((t == TaskTypes.FixLights && !lim.CanFixLights) || (t == TaskTypes.FixComms && !lim.CanFixComms))
+            if ((lim != null && ((t == TaskTypes.FixLights && !lim.CanFixLights) || (t == TaskTypes.FixComms && !lim.CanFixComms)))
+                || (mad && Roles.Crew.Madmate.BlocksRepair(t)))
             {
                 canUse = couldUse = false;
                 __result = float.MaxValue;

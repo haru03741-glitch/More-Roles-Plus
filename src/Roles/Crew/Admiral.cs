@@ -18,7 +18,7 @@ public sealed class Admiral : RoleBase
     public override Text Blurb => new("Admiral.Blurb");
     public override string Origin => "Uchu";
     public override bool CanBeMadmate => true;
-    public override HelpSection[] HelpSections => new HelpSection[] { new("Admiral.Call", "admiral_call"), new("Admiral.Close", "admiral_close") };
+    public override HelpSection[] HelpSections => new HelpSection[] { new("Admiral.Call", "admiral_call"), new("Admiral.Close", "admiral_close"), new("Admiral.Map", "admiral_close") };
 
     public static readonly IntOpt NumOfCall = new("Admiral.NumOfCall", 2, 1, 15);
     public static readonly BoolOpt VoteWatching = new("Admiral.VoteWatching", true);
@@ -54,6 +54,16 @@ public sealed class Admiral : RoleBase
                 _showPins = true;
                 PortKit.Notice(new Text("Admiral.Result").With("n", _answers.Count).ToString());
                 UchuKit.OpenMap();
+            },
+        });
+        // 締め切った後は、地図を何度でも開き直して答えを見られる
+        AddAbility(new Ability(new Text("Admiral.Map"), "admiral_close")
+        {
+            Target = AbilityTarget.Meeting,
+            MeetingSelf = true,
+            OnUsed = (user, _) =>
+            {
+                if (IsLocal && _showPins) UchuKit.OpenMap();
             },
         });
     }

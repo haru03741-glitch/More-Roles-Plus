@@ -31,7 +31,10 @@ public sealed class Shaman : RoleBase
     private PlainShipRoom _room;
     private WorldArrow _arrow;
     private Vector2 _castAt;
-    private bool _casting, _failed, _pending;
+    private bool _casting, _failed;
+    private string _pending;                          // 降霊が成功した時点で決めた結果 (次の会議で見せる)
+    private readonly List<string> _marks = new();     // 今までの結果の短い形 (会議の間、自分の名札の横に出し続ける)
+    private string _pendingMark;
     private Ability _ability;
 
     public override void OnAssigned()
@@ -55,7 +58,7 @@ public sealed class Shaman : RoleBase
                 if (!_casting) return;
                 _casting = false;
                 if (_failed || MeetingHud.Instance) return;
-                _pending = true;
+                MakeResult(); // 数えるのは成功した時点 (次の会議の始まりではない)
                 PortKit.Notice(new Text("Shaman.Done").ToString());
                 Reroll();
             },
@@ -106,18 +109,37 @@ public sealed class Shaman : RoleBase
     private void OnMeetingStart(MeetingStartEvent e)
     {
         _casting = false;
-        if (!_pending) return;
-        _pending = false;
+        if (_pending == null) return;
+        string text = _pending;
+        _pending = null;
+        if (_pendingMark != null) _marks.Add(_pendingMark);
+        _pendingMark = null;
+        PortKit.After(1.5f, () => PortKit.Notice(text));
+    }
+
+    // 降霊が成功した時点の、生きている非クルーメイトの数 (と、タスクを終えていれば役職名) で結果を確定する
+    private void MakeResult()
+    {
         var others = RoleState.All.Where(r => PortKit.Alive(r.Player) && !UchuKit.TrueCrew(r.Player)).ToList();
         string text = new Text("Shaman.Result").With("n", others.Count).ToString();
+        string mark = others.Count.ToString();
         if (ResultViewAlivePlayers) text += "\n" + new Text("Shaman.ResultAlive").With("n", PortKit.AliveCount()).ToString();
         if (SkillBoost && PortKit.TasksDone(Player) >= NumOfBoostTask && others.Count > 0)
         {
             var names = new List<string>();
             foreach (var r in others) { string s = r.ShownColoredName; if (!names.Contains(s)) names.Add(s); }
             text += "\n" + string.Join(", ", names);
+            mark += ": " + string.Join(", ", names);
         }
-        PortKit.After(1.5f, () => PortKit.Notice(text));
+        _pending = text;
+        _pendingMark = mark;
+    }
+
+    // 会議の間ずっと、今までの結果を自分の名札の横に出し続ける (見返せる)
+    public override string NameMark(PlayerControl seen)
+    {
+        if (!MeetingHud.Instance || seen.PlayerId != PlayerId || _marks.Count == 0) return null;
+        return $" <size=60%><color={Color}>({string.Join(" / ", _marks)})</color></size>";
     }
 
     private void OnMeetingEnd(MeetingEndEvent e)

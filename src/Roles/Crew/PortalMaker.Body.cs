@@ -60,7 +60,7 @@ public sealed partial class PortalMaker
     // ホスト: 壊した人が本当に届く所にいれば、叩いて壊した時と同じく全員へ配る (ハンマーの振りは見せない)
     private void HostSmash(PlayerControl by, StrikeElement e)
     {
-        if (_count == 0 || !GameClock.ShipAlive || MeetingHud.Instance) return;
+        if (!_live || !GameClock.ShipAlive || MeetingHud.Instance) return;
         var lp = PlayerControl.LocalPlayer;
         byte hitter = lp ? lp.PlayerId : (byte)255;
         if ((e == StrikeElement.Slash || e == StrikeElement.Bullet) && !Bodies.FromTest(by))
