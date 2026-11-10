@@ -83,11 +83,10 @@ public sealed class EvilObserver : RoleBase
         var cam = new Cam { At = at, Left = left };
         if (IsLocal || CanSeeCameraOtherPlayer)
         {
-            var sr = FloorPropArt.Place(Lifespan, at, "camera", IsLocal ? new UnityEngine.Color(1f, 1f, 1f, 0.6f) : UnityEngine.Color.white);
-            FloorPropArt.FlipX(sr, left);
+            // 左向きは絵を反転せず左向きに描いた絵を使う (反転すると光が右から当たって見える)
+            var sr = FloorPropArt.Place(Lifespan, at, left ? "camera_left" : "camera", IsLocal ? new UnityEngine.Color(1f, 1f, 1f, 0.6f) : UnityEngine.Color.white);
             cam.Art = sr.gameObject;
             Bodies.Prop(CameraKind, sr.transform, 0.12f, 0.25f); // 壊れると見張れなくなるので、当たっても火花だけ
-
         }
         _cams.Add(cam);
     }

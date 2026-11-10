@@ -19,7 +19,7 @@ internal static class FloorPropArt
 
     private static (float l, float r, float b, float t, Stand s) Spec(string name) => name switch
     {
-        "camera" => (-0.416f, 0.416f, -0.182f, 0.65f, Stand.Upright),
+        "camera" or "camera_left" => (-0.416f, 0.416f, -0.182f, 0.65f, Stand.Upright),
         "antenna" or "antenna_broken" => (-0.36f, 0.36f, -0.192f, 1.032f, Stand.Upright),
         "kunai" => (-0.29f, 0.29f, -0.07f, 0.07f, Stand.Air),
         "anchor" => (-0.437f, 0.437f, -0.23f, 0.414f, Stand.Flat),
@@ -61,15 +61,6 @@ internal static class FloorPropArt
         sr.sprite = Load(name, false);
         var sh = sr.transform.Find("Shadow");
         if (sh) sh.GetComponent<SpriteRenderer>().sprite = Load(name, true);
-    }
-
-    // 左右の向きを替える (床の影も同じ向きに)
-    internal static void FlipX(SpriteRenderer sr, bool flip)
-    {
-        if (!sr) return;
-        sr.flipX = flip;
-        var sh = sr.transform.Find("Shadow");
-        if (sh) sh.GetComponent<SpriteRenderer>().flipX = flip;
     }
 
     private static void AddShadow(GameObject root, string name, Color? tint)
