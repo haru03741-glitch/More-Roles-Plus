@@ -7,7 +7,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles.Neutral;
 
 // アムネシア (第三陣営): 死体を通報すると、その死体の役職になる (会議の始め・終わりのどちらで変わるかは設定)。
-// 設定で死体への矢印が出る。チキンを写すとタスクが 1 つ増える
+// 設定で死体への矢印が出る。ガーディアンを写すとタスクが 1 つ増える
 public sealed class Amnesia : RoleBase
 {
     public override Team BaseTeam => Team.Neutral;
@@ -59,7 +59,7 @@ public sealed class Amnesia : RoleBase
         if (dead == null || dead is Amnesia) return;
         var proto = Registry.Roles.Find(r => r.Id == dead.Id);
         if (proto == null) return;
-        bool extra = dead is Crew.Chicken or Crew.Guardian; // チキン・ガーディアンを写すとタスク +1
+        bool extra = dead is Crew.Guardian; // ガーディアンを写すとタスク +1
         var me = Player;
         RoleState.Change(me, proto);
         if (extra) ExtraTaskCall.Send(me.PlayerId);

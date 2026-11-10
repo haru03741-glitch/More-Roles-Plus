@@ -131,16 +131,6 @@ Jester.WinCond: 会議で追放されると一人勝ち
 Jester.Tips: キルはできません。わざと怪しく振る舞って票を集めましょう。
 Jester.Quote: 吊るされてこそ、道化の本望。
 
-# ── 無法者 (Outlaw) ──
-Outlaw.Name: 無法者
-Outlaw.Blurb: 全員を倒して最後に残れ
-Outlaw.Summary: クルーの姿のままキルできる第三陣営です。
-Outlaw.WinCond: インポスターがいなくなり、残りの生存者が無法者の人数以下になると勝ち
-Outlaw.Kill: キル
-Outlaw.Kill.Help: 本編のキルボタンを持ちます。キルのクールダウン・ビジョン・キル可能距離は、「ゲーム設定」タブの「第三陣営」で決まります。
-Outlaw.Kill.Short: 本編のキルボタンを持つ
-Outlaw.Tips: インポスターとも敵同士です。
-Outlaw.Quote: 法も仲間も、要らない。
 VoiceChat.Title: ボイスチャット
 VoiceChat.Mode: 使い方
 VoiceChat.Off: なし
@@ -252,13 +242,6 @@ Quickhands.Blurb: 次のキルまでの時間が短い
 Quickhands.Help: キルのクールダウンが短くなるアドオンです。キルできる人 (インポスターと、キルボタンを持つ役職) にだけ付きます。
 Quickhands.Reduction: 短くする割合
 Quickhands.Reduction.Detail: キルのクールダウンをこの割合だけ短くします。30 秒で 20% なら 24 秒です。
-
-# ── 敏感 (Sensitive) ──
-Sensitive.Name: 敏感
-Sensitive.Blurb: 誰かが倒されると気配を感じる
-Sensitive.Help: 誰かが倒されると、自分の画面だけが一瞬赤く光ります。誰がどこで倒されたかまでは分かりません。
-Sensitive.Strength: 光の強さ
-Sensitive.Strength.Detail: 誰かが倒された時に、画面が赤く光る濃さです。
 
 # ── オートプシー (Autopsy) ──
 Autopsy.Name: オートプシー
@@ -995,7 +978,6 @@ TeamChat.On: 仲間にだけ送ります (もう一度押すと全員へ)
 TeamChat.Off: 全員へ送ります
 TeamChat.TasksOnly: タスク中は仲間にだけ送れます
 TeamChat.NoMates: 今は送れる仲間がいません (文は入力欄に戻しました)
-
 
 # ── AutoRejoin ──
 AutoRejoin.BackToTheLobbyIn: {sec} 秒後にロビーへ戻ります
@@ -2087,23 +2069,6 @@ DJ.Scratch.Short: 近くの全員を光らせる
 DJ.ScratchCooldown: スクラッチの待ち時間
 DJ.Range: 範囲
 DJ.NumOfFlash: 光る回数
-NiceDecorator.Name: ナイスデコレーター
-NiceDecorator.Blurb: 人を飾り、役職を変えよ
-NiceDecorator.Summary: 「装飾」で近くの人の役職を変えるクルーです。本当のクルーはクルーの、インポスターはインポスターの無作為な役職になります (前に付けた役職は避けます)。第三陣営とマッドメイトには効かず、回数だけ減ります。
-NiceDecorator.Cooldown: 装飾の待ち時間
-NiceDecorator.Uses: 装飾の回数
-NiceDecorator.Decorate: 装飾
-NiceDecorator.Decorate.Help: 近くの人を飾り、その人の役職を無作為の別の役職に変えます。本当のクルーはクルーの役職に、インポスターはインポスターの役職になります (前にその人へ付けた役職は避けます)。第三陣営とマッドメイトの役職は変わらず、装飾の回数だけが減ります。
-NiceDecorator.Decorate.Short: 近くの人の役職を変える
-EvilDecorator.Name: イビルデコレーター
-EvilDecorator.Blurb: 人を飾り、役職を変えよ
-EvilDecorator.Summary: 「装飾」で近くの人の役職を変えるインポスターです。本当のクルーはクルーの、インポスターはインポスターの無作為な役職になります (前に付けた役職は避けます)。第三陣営とマッドメイトには効かず、回数だけ減ります。
-EvilDecorator.Cooldown: 装飾の待ち時間
-EvilDecorator.Uses: 装飾の回数
-EvilDecorator.Decorate: 装飾
-EvilDecorator.Decorate.Help: 近くの人を飾り、その人の役職を無作為の別の役職に変えます。本当のクルーはクルーの役職に、インポスターはインポスターの役職になります (前にその人へ付けた役職は避けます)。第三陣営とマッドメイトの役職は変わらず、装飾の回数だけが減ります。
-Decorator.Decorated: デコレーターに飾られた
-EvilDecorator.Decorate.Short: 近くの人の役職を変える
 Polaris.Name: ポラリス
 Polaris.Blurb: 北極星は全てを見通す
 Polaris.Summary: 誰でも倒せるキルと、死体から死者の役職を読む「幻視」を持つクルーです。
@@ -2164,17 +2129,6 @@ Shaman.Done: 降霊術を終えた。次の会議で分かる
 Shaman.Interrupted: 動いたので降霊術が途切れた
 Shaman.Result: 降霊術: 生きているクルー以外は {n} 人
 Shaman.ResultAlive: 生きている人は {n} 人
-Chicken.Name: チキン
-Chicken.Blurb: 臆病者は何でも怖い
-Chicken.Summary: ベント・はしご・ジップライン・昇降機・ドアの画面が怖く、近づくと決めた確率で死ぬクルーです。停電が長く続いても死にます。生きていてタスクを決めた割合終えていれば、試合の終わりをクルーの勝ちに替えます (破壊工作での終わりは除く)。
-Chicken.WinCond: 試合が終わる時に生きていて、タスクを決めた割合以上終えていればクルーの勝ちになる
-Chicken.VentChance: ベントで死ぬ確率
-Chicken.LadderChance: はしごで死ぬ確率
-Chicken.ZiplineChance: ジップラインで死ぬ確率
-Chicken.PlatformChance: 昇降機で死ぬ確率
-Chicken.DoorChance: ドアの画面で死ぬ確率
-Chicken.BlackoutTime: 停電がこの時間続くと死ぬ
-Chicken.TaskPercent: 勝ちの上書きに要るタスクの割合
 ChickenMod.Name: チキン
 ChickenMod.Blurb: 臆病者は何でも怖い
 ChickenMod.Help: ベント・はしご・ジップライン・昇降機・ドアの画面が怖く、近づくと決めた確率で死ぬアドオンです。停電が長く続いても死にます。
@@ -2316,19 +2270,6 @@ SerialKiller.Suicide.Short: 自分から死ぬ
 SerialKiller.KillCooldown: キルの待ち時間
 SerialKiller.SuicideTime: 自殺タイマーの時間
 SerialKiller.SuicideButton: 自殺ボタンを使える
-Warlock.Name: ウォーロック
-Warlock.Blurb: 呪われた者の手で殺せ
-Warlock.Summary: 本編のキルを持たず、呪った人の近くにいる別の人を、呪った人の手で倒すインポスターです。
-Warlock.Curse: 呪う
-Warlock.Curse.Help: 近くの人を呪います (1 人まで・本人は気付きません)。会議や呪った人の死で呪いは消えます。
-Warlock.Curse.Short: 近くの人を呪う
-Warlock.CurseKill: 呪殺
-Warlock.CurseKill.Help: 呪った人のすぐ近くの別の人を倒します。呪った人は倒された人の場所へ動きます。倒した後は少しの間、自分は動けず待ち時間も止まります。
-Warlock.CurseKill.Short: 呪った人の近くの人を倒す
-Warlock.CurseCooldown: 呪うの待ち時間
-Warlock.CurseKillCooldown: 呪殺の待ち時間
-Warlock.CanKillAllies: 仲間も呪殺できる
-Warlock.KillFreezeTime: 呪殺の後に止まる時間
 Witch.Name: ウィッチ
 Witch.Blurb: 魔術をかけ、会議の後に葬れ
 Witch.Summary: 近くの人に魔術をかけ続けるインポスターです。魔術をかけられた人は会議の名札に印が付き、会議の終わりにウィッチが生きていれば死にます。
@@ -2481,19 +2422,9 @@ Guest.Help: 緊急ボタンを押せないアドオンです。
 Watcher.Name: ウォッチャー
 Watcher.Blurb: 匿名の票も見逃さない
 Watcher.Help: 匿名投票でも、誰が誰に入れたかが見えるアドオンです。
-NiceWatcher.Name: ナイスウォッチャー
-NiceWatcher.Blurb: 匿名の票も見逃さない
-NiceWatcher.Summary: 匿名投票でも、誰が誰に入れたかが見えるクルーです。
-EvilWatcher.Name: イビルウォッチャー
-EvilWatcher.Blurb: 票の行方で獲物を選べ
-EvilWatcher.Summary: 匿名投票でも、誰が誰に入れたかが見えるインポスターです。
 Invisible.Name: インビジブル
 Invisible.Blurb: 誰にも見えていない…
 Invisible.Help: いつもインポスター以外から見えないアドオンです。本人は付いていることに気付きません (死ぬと分かります)。
-Static.Name: スタティック
-Static.Blurb: 情報は凍りついた
-Static.Help: 付いている間、全員のアドミンとバイタルが試合の始めの内容のまま固まるアドオンです。本人は付いていることに気付きません (設定で、死んだ後に分かります)。
-Static.CanSeeAll: 死んだ後に本人に分かる
 Timer.Name: タイマー
 Timer.Blurb: 時を刻め
 Timer.Help: 会議の後からの経過時間が画面の左下に出るアドオンです。会議中は止まります。
@@ -2514,11 +2445,6 @@ VisorRole.CanUseAdminOnMeeting: 会議中もアドミンが見える
 VisorRole.PortableAdminCharge: 最初の充電
 VisorRole.MaxPortableAdminCharge: 充電の上限
 VisorRole.ChargesPerTasks: タスク 1 つで増える充電
-Star.Name: スター
-Star.Blurb: 君はスターだ
-Star.Help: 名前が全員に黄色で見えるアドオンです (設定で虹色)。
-Star.RainbowStar: 虹色にする
-Star.RainbowSpeed: 虹色の速さ
 TunaMod.Name: マグロ
 TunaMod.Blurb: 止まったら死ぬ
 TunaMod.Help: 止まっていると死ぬアドオンです。試合の始めと会議の後は少しの間タイマーが止まります。死ぬまでの秒が画面の左下に出ます。

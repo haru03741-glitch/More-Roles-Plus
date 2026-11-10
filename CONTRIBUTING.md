@@ -31,7 +31,7 @@ public sealed class Lighter : RoleBase
 }
 ```
 
-見本は `src/Roles/Crew/Lighter.cs` と `src/Roles/Impostor/Quickdraw.cs`、第三陣営は `src/Roles/Neutral/Jester.cs` (追放されたら一人勝ち)・`src/Roles/Neutral/Survivor.cs` (生きていれば一緒に勝つ)・`src/Roles/Neutral/Outlaw.cs` (キルして最後に残れば勝ち) です。
+見本は `src/Roles/Crew/Lighter.cs` と `src/Roles/Impostor/Quickdraw.cs`、第三陣営は `src/Roles/Neutral/Jester.cs` (追放されたら一人勝ち)・`src/Roles/Neutral/Survivor.cs` (生きていれば一緒に勝つ) です。
 
 ### 役職クラスで書けるもの
 

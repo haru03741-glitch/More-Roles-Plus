@@ -169,14 +169,15 @@ internal static class RoleCommands
             reply("OK skfit");
         });
 
-        TestBridge.Register("chicken", "omen =チキンの当たりを今引いた時と同じ (震えて倒れる・自分がチキンの時) / sweat = 無事に通った時の冷や汗 (自分) / vanim <clip> = 本編のかくれんぼの鬼の動き (HnSSeekerSpawnInGameAnim 等・IntroPrefab の名前) を自分に流す", (args, reply) =>
+        TestBridge.Register("chicken", "omen =チキンの当たりを今引いた時と同じ (震えて倒れる・自分にアドオンのチキンが付いている時) / sweat = 無事に通った時の冷や汗 (自分) / vanim <clip> = 本編のかくれんぼの鬼の動き (HnSSeekerSpawnInGameAnim 等・IntroPrefab の名前) を自分に流す", (args, reply) =>
         {
             var a = args.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             var lp = PlayerControl.LocalPlayer;
             if (!lp) { reply("ERR chicken no player"); return; }
             if (a.Length == 1 && a[0] == "omen")
             {
-                if (RoleState.Local is not Roles.Crew.Chicken c) { reply("ERR chicken omen: not Chicken"); return; }
+                var c = System.Linq.Enumerable.FirstOrDefault(System.Linq.Enumerable.OfType<Roles.Addons.ChickenMod>(RoleState.AddonsOf(lp.PlayerId)));
+                if (c == null) { reply("ERR chicken omen: not ChickenMod"); return; }
                 c.OmenForTest();
                 reply("OK chicken omen");
                 return;

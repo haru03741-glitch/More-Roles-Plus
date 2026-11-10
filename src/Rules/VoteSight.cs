@@ -2,14 +2,14 @@ using HarmonyLib;
 
 namespace MoreRolesPlus.Rules;
 
-// 匿名投票でも、誰が誰に入れたかが見える人 (アドミラルの設定・ウォッチャー・ナイス/イビルウォッチャー)。
+// 匿名投票でも、誰が誰に入れたかが見える人 (アドミラルの設定・ウォッチャー)。
 // 本編は結果を並べる時 (PopulateResults) に「匿名投票か」を見て灰色にするので、その間だけ匿名でないと答える
 internal static class VoteSight
 {
     internal static bool InResults;
 
     internal static bool Sees(PlayerControl p) =>
-        p && (Roles.Crew.Admiral.SeesVotes(p) || Roles.Addons.Watcher.Has(p) || Roles.Crew.NiceWatcher.Has(p) || Roles.Impostor.EvilWatcher.Has(p));
+        p && (Roles.Crew.Admiral.SeesVotes(p) || Roles.Addons.Watcher.Has(p));
 }
 
 [HarmonyPatch(typeof(MeetingHud), nameof(MeetingHud.PopulateResults))]

@@ -23,7 +23,7 @@ public sealed class GameResult
     public bool ByTasks => Reason is GameOverReason.CrewmatesByTask;
 }
 
-// 試合の終わりに、決まった結果を別の結果に替える役職・アドオン (チキンの勝ち・バフォメットの勝ち)。ホストの端末で呼ぶ。
+// 試合の終わりに、決まった結果を別の結果に替える役職・アドオン (バフォメットの勝ち)。ホストの端末で呼ぶ。
 // 替えなければ null を返す
 public interface IWinOverride
 {

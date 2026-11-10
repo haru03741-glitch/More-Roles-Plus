@@ -131,16 +131,6 @@ Jester.WinCond: Get voted out in a meeting to win alone
 Jester.Tips: You cannot kill. Act suspicious and draw the votes.
 Jester.Quote: A jester's finest hour is on the gallows.
 
-# ── Outlaw ──
-Outlaw.Name: Outlaw
-Outlaw.Blurb: Be the last one standing
-Outlaw.Summary: A neutral who can kill while looking like a crewmate.
-Outlaw.WinCond: Win when no impostors are left and the remaining survivors are no more than the Outlaws
-Outlaw.Kill: Kill
-Outlaw.Kill.Help: You have the regular kill button. Kill cooldown, vision and kill distance are set under "Neutrals" in the Game Settings tab.
-Outlaw.Kill.Short: You have the kill button
-Outlaw.Tips: Impostors are your enemies too.
-Outlaw.Quote: No law, no friends, no need.
 VoiceChat.Title: Voice Chat
 VoiceChat.Mode: Mode
 VoiceChat.Off: Off
@@ -252,13 +242,6 @@ Quickhands.Blurb: Strike again sooner
 Quickhands.Help: An add-on that shortens your kill cooldown. Only players who can kill (impostors and roles with a kill button) can get it.
 Quickhands.Reduction: Cooldown Reduction
 Quickhands.Reduction.Detail: Shortens the kill cooldown by this much. 20% of 30 seconds gives 24 seconds.
-
-# ── Sensitive ──
-Sensitive.Name: Sensitive
-Sensitive.Blurb: Sense it when someone falls
-Sensitive.Help: When someone is killed, your screen alone flashes red for a moment. It does not tell you who or where.
-Sensitive.Strength: Flash Strength
-Sensitive.Strength.Detail: How strongly the screen flashes red when someone is killed.
 
 # ── Autopsy ──
 Autopsy.Name: Autopsy
@@ -995,7 +978,6 @@ TeamChat.On: Sending to your team only (press again for everyone)
 TeamChat.Off: Sending to everyone
 TeamChat.TasksOnly: During tasks you can only message your team
 TeamChat.NoMates: No teammate can get it now (your text is back in the box)
-
 
 # ── AutoRejoin ──
 AutoRejoin.BackToTheLobbyIn: Back to the lobby in {sec}s
@@ -2087,23 +2069,6 @@ DJ.Scratch.Short: Flash everyone nearby
 DJ.ScratchCooldown: Scratch cooldown
 DJ.Range: Range
 DJ.NumOfFlash: Number of flashes
-NiceDecorator.Name: Nice Decorator
-NiceDecorator.Blurb: Decorate people and change their roles
-NiceDecorator.Summary: A crewmate whose "Decorate" changes a nearby player's role. True crewmates get a random crew role and impostors a random impostor role (avoiding the one you gave last time). Neutrals and madmates are unaffected, but a use is spent.
-NiceDecorator.Cooldown: Decorate cooldown
-NiceDecorator.Uses: Decorate uses
-NiceDecorator.Decorate: Decorate
-NiceDecorator.Decorate.Help: Decorates a nearby player and changes their role to a random different one. True crewmates get a crew role and impostors an impostor role (avoiding the one you gave them last time). Neutrals and madmates don't change, but a use is spent.
-NiceDecorator.Decorate.Short: Change a nearby player's role
-EvilDecorator.Name: Evil Decorator
-EvilDecorator.Blurb: Decorate people and change their roles
-EvilDecorator.Summary: An impostor whose "Decorate" changes a nearby player's role. True crewmates get a random crew role and impostors a random impostor role (avoiding the one you gave last time). Neutrals and madmates are unaffected, but a use is spent.
-EvilDecorator.Cooldown: Decorate cooldown
-EvilDecorator.Uses: Decorate uses
-EvilDecorator.Decorate: Decorate
-EvilDecorator.Decorate.Help: Decorates a nearby player and changes their role to a random different one. True crewmates get a crew role and impostors an impostor role (avoiding the one you gave them last time). Neutrals and madmates don't change, but a use is spent.
-Decorator.Decorated: You were decorated by a Decorator
-EvilDecorator.Decorate.Short: Change a nearby player's role
 Polaris.Name: Polaris
 Polaris.Blurb: The North Star sees everything
 Polaris.Summary: A crewmate with a kill that works on anyone, and a "Vision" that reads a dead player's role from their body.
@@ -2164,17 +2129,6 @@ Shaman.Done: Necromancy done. You'll learn more at the next meeting
 Shaman.Interrupted: You moved, so the necromancy was interrupted
 Shaman.Result: Necromancy: {n} living players are not crew
 Shaman.ResultAlive: {n} players are alive
-Chicken.Name: Chicken
-Chicken.Blurb: A coward fears everything
-Chicken.Summary: A crewmate who is scared of vents, ladders, ziplines, platforms and door panels, and may die near them at a set chance. A long blackout kills too. If alive with enough tasks done, the game end turns into a crew win (except for sabotage endings).
-Chicken.WinCond: If you're alive with enough of your tasks done when the game ends, the crew wins
-Chicken.VentChance: Chance to die at vents
-Chicken.LadderChance: Chance to die on ladders
-Chicken.ZiplineChance: Chance to die on ziplines
-Chicken.PlatformChance: Chance to die on platforms
-Chicken.DoorChance: Chance to die at door panels
-Chicken.BlackoutTime: Die when a blackout lasts this long
-Chicken.TaskPercent: Task percentage needed for the win override
 ChickenMod.Name: Chicken
 ChickenMod.Blurb: A coward fears everything
 ChickenMod.Help: An addon that is scared of vents, ladders, ziplines, platforms and door panels, and may die near them at a set chance. A long blackout kills too.
@@ -2316,19 +2270,6 @@ SerialKiller.Suicide.Short: Kill yourself
 SerialKiller.KillCooldown: Kill cooldown
 SerialKiller.SuicideTime: Suicide timer
 SerialKiller.SuicideButton: Has a suicide button
-Warlock.Name: Warlock
-Warlock.Blurb: Kill through the hands of the cursed
-Warlock.Summary: An impostor with no normal kill who kills someone standing next to a cursed player, through that cursed player.
-Warlock.Curse: Curse
-Warlock.Curse.Help: Curses a nearby player (one at a time; they don't notice). Meetings or the cursed player's death lift the curse.
-Warlock.Curse.Short: Curse someone nearby
-Warlock.CurseKill: Curse Kill
-Warlock.CurseKill.Help: Kills another player right next to the cursed one. The cursed player moves to where the victim was. Afterwards you're frozen and your cooldown stops for a moment.
-Warlock.CurseKill.Short: Kill someone next to the cursed
-Warlock.CurseCooldown: Curse cooldown
-Warlock.CurseKillCooldown: Curse kill cooldown
-Warlock.CanKillAllies: Can curse kill allies
-Warlock.KillFreezeTime: Freeze time after a curse kill
 Witch.Name: Witch
 Witch.Blurb: Cast a spell and bury them after the meeting
 Witch.Summary: An impostor who keeps casting a spell on a nearby player. Spelled players get a mark on their meeting plate and die at the end of the meeting if the Witch is alive.
@@ -2481,19 +2422,9 @@ Guest.Help: An addon that can't press the emergency button.
 Watcher.Name: Watcher
 Watcher.Blurb: No anonymous vote escapes you
 Watcher.Help: An addon that sees who voted for whom even when voting is anonymous.
-NiceWatcher.Name: Nice Watcher
-NiceWatcher.Blurb: No vote escapes you
-NiceWatcher.Summary: A crewmate who sees who voted for whom, even with anonymous votes.
-EvilWatcher.Name: Evil Watcher
-EvilWatcher.Blurb: Follow the votes to your prey
-EvilWatcher.Summary: An impostor who sees who voted for whom, even with anonymous votes.
 Invisible.Name: Invisible
 Invisible.Blurb: No one can see you...
 Invisible.Help: An addon that is always invisible to non-impostors. The holder doesn't know they have it (they find out when they die).
-Static.Name: Static
-Static.Blurb: The information is frozen
-Static.Help: While it's in play, everyone's admin and vitals stay frozen as they were at the start of the game. The holder doesn't know they have it (option: they find out after dying).
-Static.CanSeeAll: The holder finds out after dying
 Timer.Name: Timer
 Timer.Blurb: Keep the time
 Timer.Help: An addon that shows the time since the last meeting at the bottom left. It stops during meetings.
@@ -2514,11 +2445,6 @@ VisorRole.CanUseAdminOnMeeting: Admin also works during meetings
 VisorRole.PortableAdminCharge: Starting charge
 VisorRole.MaxPortableAdminCharge: Maximum charge
 VisorRole.ChargesPerTasks: Charge per task
-Star.Name: Star
-Star.Blurb: You're a star
-Star.Help: An addon whose name looks yellow to everyone (rainbow with the option).
-Star.RainbowStar: Rainbow
-Star.RainbowSpeed: Rainbow speed
 TunaMod.Name: Tuna
 TunaMod.Blurb: Stop and you die
 TunaMod.Help: An addon that dies when standing still. The timer pauses briefly at the start and after meetings. Seconds until death show at the bottom left.
