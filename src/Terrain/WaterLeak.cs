@@ -384,6 +384,9 @@ internal static class WaterLeak
             WaterSpray.Start(at, dir, jet.DropZ);
             while (Jets.Count >= MaxJets) Jets.RemoveAt(0);
             Jets.Add(jet);
+            // 役職への知らせは水の計算の刻みの外で (受け手が水の深さを読むと、刻みの中から計算に入り直す)
+            if (Roles.RoleState.Any)
+                TerrainFx.Defer(() => Roles.Events<Roles.TerrainStirredEvent>.Run(new Roles.TerrainStirredEvent { PlayerId = TerrainApi.World, Kind = DamageKind.Water, Position = at }));
         }
         catch (Exception e) { Plugin.Logger.LogError($"[WaterLeak] jet: {e}"); }
     }

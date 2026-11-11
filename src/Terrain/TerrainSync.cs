@@ -131,6 +131,8 @@ internal static class TerrainSync
             finally { TerrainUndo.End(); } // 漏れの口・減圧の口も件の持ち物にするので、受け手の後で閉じる (受け手が投げても必ず閉じる)
         }
         // 役職への知らせは呼び出し元が連番と配る列を書き終えてから (FireBroken)。受け手がさらに壊しても順番がずれない
+        if (r.Kind is DamageKind.Flood or DamageKind.Ignite)
+            Stirred.Add(new Roles.TerrainStirredEvent { PlayerId = r.Actor, Kind = r.Kind, Position = r.Position });
         if (!r.Kind.Shapes()) return res;
         Broken.Add(new Roles.TerrainBrokenEvent
         {
@@ -139,6 +141,7 @@ internal static class TerrainSync
             Position = r.Position,
             Radius = r.Kind == DamageKind.Explosion ? r.Size : 0f,
             WallsCut = TerrainDamage.LastCut,
+            PropsBroken = BreakableProps.LastBrokenFar > 0f,
         });
         return res;
     }
@@ -167,6 +170,7 @@ internal static class TerrainSync
     }
 
     private static readonly List<Roles.TerrainBrokenEvent> Broken = new();
+    private static readonly List<Roles.TerrainStirredEvent> Stirred = new();
     private static bool _firing;
 
     // 溜まった「壊れた」知らせを役職へ出す。受け手が壊した分も同じループで後ろに続けて出す
@@ -177,10 +181,12 @@ internal static class TerrainSync
         try
         {
             for (int i = 0; i < Broken.Count; i++) LastBroken = Roles.Events<Roles.TerrainBrokenEvent>.Run(Broken[i]);
+            for (int i = 0; i < Stirred.Count; i++) Roles.Events<Roles.TerrainStirredEvent>.Run(Stirred[i]);
         }
         finally
         {
             Broken.Clear();
+            Stirred.Clear();
             _firing = false;
         }
     }

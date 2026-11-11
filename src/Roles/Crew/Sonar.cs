@@ -7,7 +7,8 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles.Crew;
 
 // ソナー (クルー): 足元に自分にだけ見えるアンテナを置く。会議の外でアンテナの近くでキルが起きると、
-// 全員の画面にその場所への矢印が出て、アンテナは壊れる
+// 全員の画面にその場所への矢印が出て、アンテナは壊れる。壁の崩れ・爆発・浸水・点火の音はもっと遠くまで拾い、
+// ソナー本人の画面にだけ矢印を出す (アンテナは壊れない)
 public sealed class Sonar : RoleBase
 {
     public override Team BaseTeam => Team.Crew;
@@ -62,6 +63,55 @@ public sealed class Sonar : RoleBase
             OnAlarm(to, a.At);
             FloorPropArt.Swap(a.Art, "antenna_broken");
         }
+    }
+
+    // ---- 地形の音 (ソナー本人の画面だけ・アンテナは壊れない) ----
+    private const float HearMul = 3f;       // キルを拾う範囲の何倍まで聞こえるか
+    private const float WetMul = 2f;        // 水に沈んだアンテナはさらに何倍か (水の中は音がよく通る)
+    private const float WetDepth = 0.25f;   // アンテナの高さ。これより深い水で沈んだと数える
+    private const float SameNoise = 2f;     // 直前に知らせた所からこの距離の中の音は同じ物として数えない
+    private static readonly UnityEngine.Color NoiseColor = new(0.85f, 0.55f, 0.2f);
+    private readonly List<(Vector2 At, float Until)> _heard = new();
+
+    // 壁の崩れ・爆発 (全員の端末に同じ順で届く。何も抜けなかった打撃は数えない)
+    [LocalOnly]
+    private void OnTerrainBroken(TerrainBrokenEvent e)
+    {
+        if (e.Kind is Terrain.DamageKind.Explosion or Terrain.DamageKind.Crumble || e.WallsCut > 0 || e.PropsBroken)
+            Hear(e.Position, e.Kind == Terrain.DamageKind.Explosion ? "blast" : "wall");
+    }
+
+    // 浸水の始まり・水漏れの噴き出し・点火
+    [LocalOnly]
+    private void OnTerrainStirred(TerrainStirredEvent e) => Hear(e.Position, e.Kind == Terrain.DamageKind.Ignite ? "fire" : "water");
+
+    private void Hear(Vector2 at, string what)
+    {
+        if (_antennas.Count == 0 || MeetingHud.Instance || !Player || Player.Data == null || Player.Data.IsDead) return;
+        float now = Time.time;
+        for (int i = _heard.Count - 1; i >= 0; i--)
+        {
+            if (_heard[i].Until < now) { _heard.RemoveAt(i); continue; }
+            if (Vector2.Distance(_heard[i].At, at) < SameNoise) return;
+        }
+        Antenna best = null;
+        float bestD = float.MaxValue;
+        foreach (var a in _antennas)
+        {
+            if (a.Broken) continue;
+            float reach = Range * HearMul, d = Vector2.Distance(a.At, at);
+            if (d >= bestD || d > reach * WetMul) continue;
+            // 水の深さは水の計算の手が空くのを待つので、届きうるアンテナだけで読む
+            if (d > reach && Terrain.WaterSim.CurrentAt(a.At, out _, out _) < WetDepth) continue;
+            best = a;
+            bestD = d;
+        }
+        if (best == null) return;
+        _heard.Add((at, now + ArrowDuration));
+        Vector2 to = ArrowAt.Value == 0 ? at : best.At;
+        Plugin.Logger.LogInfo($"[Sonar] heard {what} {at.x:0.00},{at.y:0.00} d={bestD:0.00}");
+        UchuKit.Arrow(to, NoiseColor, ArrowDuration);
+        PortSound.PlayVanilla("notice", 0.35f);
     }
 
     private static readonly RemoteCall<(float x, float y, float ax, float ay)> AlarmCall = new("Sonar.Alarm", Route.Anyone,

@@ -2131,7 +2131,7 @@ Sonar.Name: Sonar
 Sonar.Blurb: Report kills with trap antennas
 Sonar.Summary: A crewmate who places antennas only they can see. When a kill happens right next to one, everyone gets an arrow and the antenna breaks.
 Sonar.Place: Place
-Sonar.Place.Help: Places an antenna at your feet. When a kill happens within its range outside a meeting, everyone briefly gets an arrow.
+Sonar.Place.Help: Places an antenna at your feet. When a kill happens within its range outside a meeting, everyone briefly gets an arrow. Collapsing walls, explosions, flooding and fires starting are heard much farther away (3x the range, another 2x for an antenna under water) and give only you an arrow. The antenna does not break from these.
 Sonar.Place.Short: Place an antenna
 Sonar.PlaceCooldown: Place cooldown
 Sonar.NumOfAntenna: Number of antennas

@@ -169,7 +169,8 @@ public sealed class VentExitedEvent : GameEvent, IPlayerEvent
 }
 
 // 地形が壊れた (結果を適用した直後)。PlayerId = 壊した人 (マップの出来事などは Terrain.TerrainApi.World = 255)。
-// Kind = 爆発 / 打撃。Position = 爆心 / 叩いた点。Radius = 爆発の半径 (打撃は 0)。WallsCut = 切り取った壁の線の数 (0 = 何も抜けなかった)
+// Kind = 爆発 / 打撃。Position = 爆心 / 叩いた点。Radius = 爆発の半径 (打撃は 0)。WallsCut = 切り取った壁の線の数 (0 = 何も抜けなかった)。
+// PropsBroken = 仕掛け壁や家具が物ごと壊れた (この時 WallsCut は 0 のことがある)
 public sealed class TerrainBrokenEvent : GameEvent, IPlayerEvent
 {
     public byte PlayerId { get; internal set; }
@@ -177,6 +178,18 @@ public sealed class TerrainBrokenEvent : GameEvent, IPlayerEvent
     public UnityEngine.Vector2 Position { get; internal set; }
     public float Radius { get; internal set; }
     public int WallsCut { get; internal set; }
+    public bool PropsBroken { get; internal set; }
+}
+
+// 壁は変えずに水か火が起きた (浸水の始まり・点火・水漏れの噴き出し)。
+// Kind = Flood (浸水) / Ignite (点火) は地形の結果と同じ順に全員の端末へ届く。
+// Kind = Water (水漏れ・放水の噴き出し) は見た目の噴き出しを始めた端末だけで次のフレームに届く (会議中は出ない・同期した処理には使わない)。
+// PlayerId = 起こした人 (水漏れは 255)
+public sealed class TerrainStirredEvent : GameEvent, IPlayerEvent
+{
+    public byte PlayerId { get; internal set; }
+    public Terrain.DamageKind Kind { get; internal set; }
+    public UnityEngine.Vector2 Position { get; internal set; }
 }
 
 // ---- 本編の入口 ----
