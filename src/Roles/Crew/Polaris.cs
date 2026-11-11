@@ -101,9 +101,35 @@ public sealed class Polaris : RoleBase
                 var info = GameData.Instance ? GameData.Instance.GetPlayerById(id) : null;
                 var role = RoleState.Of(id);
                 if (info == null) continue;
-                PortKit.Notice(new Text("Polaris.Result").With("name", info.PlayerName).With("role", role != null ? role.ShownColoredName : "?").ToString());
+                var result = new Text("Polaris.Result").With("name", info.PlayerName).With("role", role != null ? role.ShownColoredName : "?").ToString();
+                PortKit.Notice(result + TerrainSight(id));
             }
         });
+    }
+
+    // 火・水・瓦礫で死んだ人は、死に方と、その時に近くにいた人の色も見える
+    private static string TerrainSight(byte id)
+    {
+        var d = MatchLog.Of(id);
+        string cause = d?.Kind switch
+        {
+            MatchLog.Kind.Burned => new Text("Autopsy.Burned").ToString(),
+            MatchLog.Kind.Drowned => new Text("Autopsy.Drowned").ToString(),
+            MatchLog.Kind.Crushed => new Text("Autopsy.Crushed").ToString(),
+            _ => null,
+        };
+        if (cause == null) return "";
+        if (d.Near == null || d.Near.Count == 0) return new Text("Polaris.TerrainAlone").With("cause", cause).ToString();
+        string colors = null;
+        foreach (int c in d.Near)
+        {
+            if (c < 0 || c >= Palette.PlayerColors.Length) continue;
+            // 名前は会議の名札と同じ引き方 (自前の色は部屋ごとの名前になる)
+            string one = $"<color=#{ColorUtility.ToHtmlStringRGB(Palette.PlayerColors[c])}>{Palette.GetColorName(c)}</color>";
+            colors = colors == null ? one : new Text("Polaris.ColorJoin").With("a", colors).With("b", one).ToString();
+        }
+        if (colors == null) return new Text("Polaris.TerrainAlone").With("cause", cause).ToString();
+        return new Text("Polaris.TerrainNear").With("cause", cause).With("colors", colors).ToString();
     }
 
     // 会議の間ずっと、幻視で分かった死者の名札の横に役職を出す (見返せる)

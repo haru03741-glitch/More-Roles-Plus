@@ -32,6 +32,22 @@ internal static class MatchLog
         public byte KillerId = 255;  // 倒した人の番号 (倒された時だけ)
         public float At;             // 死んだ時刻 (Time.time・この端末の時計)
         public UnityEngine.Vector2 Where; // 死んだ場所
+        public List<int> Near;           // 地形の死: 死んだ時に近く (NearReach 以内) にいた生きている人の色 (ポラリスの幻視)
+    }
+
+    private const float NearReach = 3f;
+
+    private static List<int> NearColors(PlayerControl target, UnityEngine.Vector2 at)
+    {
+        var o = new List<int>();
+        foreach (var p in PlayerControl.AllPlayerControls)
+        {
+            if (!p || p == target || p.Data == null || p.Data.IsDead || p.Data.Disconnected) continue;
+            var q = p.GetTruePosition();
+            float dx = q.x - at.x, dy = q.y - at.y;
+            if (dx * dx + dy * dy <= NearReach * NearReach) o.Add(p.Data.DefaultOutfit.ColorId);
+        }
+        return o;
     }
 
     private static readonly Dictionary<byte, Death> Deaths = new();
@@ -104,6 +120,7 @@ internal static class MatchLog
                 At = UnityEngine.Time.time,
                 Where = target.GetTruePosition(),
             };
+            t.Near = NearColors(target, t.Where);
             SetCulprit(t, by, target.PlayerId);
             Deaths[target.PlayerId] = t;
             return;

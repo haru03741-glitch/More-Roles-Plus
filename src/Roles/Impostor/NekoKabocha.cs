@@ -25,13 +25,21 @@ public sealed class NekoKabocha : RoleBase
     [HostOnly, OnlyMine]
     private void OnMurdered(PlayerMurderedEvent e)
     {
-        var killer = e.Killer;
+        Embroil(e.Killer, Killed);
+    }
+
+    // 火・水・瓦礫・船外で死んだ時は、その地形を起こした人を道連れにする
+    [HostOnly, OnlyMine]
+    private void OnTerrainKilled(TerrainKilledEvent e) => Embroil(e.Culprit, Caused);
+
+    private void Embroil(PlayerControl killer, byte why)
+    {
         if (!killer || killer.PlayerId == PlayerId || !PortKit.Alive(killer)) return;
         var me = Player;
         PortKit.After(0.2f, () =>
         {
             if (!PortKit.Alive(killer)) return;
-            Tell(killer, Killed);
+            Tell(killer, why);
             PortKit.HostKill(me, killer, PortKit.Harm.Curse);
         });
     }
@@ -65,7 +73,7 @@ public sealed class NekoKabocha : RoleBase
     }
 
     // 道連れにされた本人に、なぜ死んだかを知らせる (倒れる電文より先に送る)
-    private const byte Killed = 0, Voted = 1;
+    private const byte Killed = 0, Voted = 1, Caused = 2;
 
     private static void Tell(PlayerControl who, byte why)
     {
@@ -78,5 +86,5 @@ public sealed class NekoKabocha : RoleBase
         (_, m) => { var lp = PlayerControl.LocalPlayer; if (lp && lp.PlayerId == m.id) Show(m.why); });
 
     private static void Show(byte why) =>
-        PortKit.Notice(new Text(why == Killed ? "NekoKabocha.EmbroilKill" : "NekoKabocha.EmbroilVote").ToString());
+        PortKit.Notice(new Text(why switch { Killed => "NekoKabocha.EmbroilKill", Caused => "NekoKabocha.EmbroilCaused", _ => "NekoKabocha.EmbroilVote" }).ToString());
 }

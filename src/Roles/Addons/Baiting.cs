@@ -38,7 +38,18 @@ public sealed class Baiting : AddonBase
     [OnlyMine]
     private void OnMurdered(PlayerMurderedEvent e)
     {
-        var killer = e.Killer;
+        Report(e.Killer);
+    }
+
+    // 焼死・溺死・下敷きは、その火・水・崩れを起こした人に通報させる (船外へ吸い出された時は死体が無い)
+    [OnlyMine]
+    private void OnTerrainKilled(TerrainKilledEvent e)
+    {
+        if (e.Kind != MatchLog.Kind.Spaced) Report(e.Culprit);
+    }
+
+    private void Report(PlayerControl killer)
+    {
         if (!killer || killer.PlayerId == PlayerId || !killer.AmOwner) return;
         if (WarnKiller) PortKit.Flash(new Color(0f, 0.97f, 1f, 0.5f));
         float delay = ReportTime + (RandomDelay ? Random.Range(0f, DelayVariation) : 0f);

@@ -44,6 +44,15 @@ public sealed class SerialKiller : RoleBase
         if (e.Killer && e.Killer.PlayerId == PlayerId && e.Target.PlayerId != PlayerId) _left = SuicideTime;
     }
 
+    // 自分の起こした火・水・崩れ・穴で死んだ人もキル 1 回に数える
+    [LocalOnly]
+    private void OnTerrainKilled(TerrainKilledEvent e)
+    {
+        if (!e.Culprit || e.Culprit.PlayerId != PlayerId || e.Target.PlayerId == PlayerId) return;
+        _left = SuicideTime;
+        Plugin.Logger.LogInfo($"[SerialKiller] terrain kill {e.Target.PlayerId} resets the timer");
+    }
+
     [LocalOnly]
     private void OnMeetingEnd(MeetingEndEvent e)
     {

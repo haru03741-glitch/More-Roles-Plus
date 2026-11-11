@@ -268,7 +268,7 @@ Autopsy.CrushedByRole: Crushed under a wall broken by {role}
 # ── Baiting ──
 Baiting.Name: Baiting
 Baiting.Blurb: Who fell into the trap?
-Baiting.Help: An add-on that makes your killer report your body shortly after the kill.
+Baiting.Help: An add-on that makes your killer report your body shortly after the kill. If you burn, drown or are crushed, whoever caused the fire, water or collapse reports it instead.
 Baiting.ReportTime: Time until report
 Baiting.ReportTime.Detail: Seconds after the kill until the killer reports the body.
 Baiting.WarnKiller: Flash the killer's screen
@@ -2103,7 +2103,7 @@ Polaris.KillUses: Kill uses
 Polaris.CanKillHidden: Can also kill hidden players
 Polaris.SealUntilReport: Seal the kill until a body is reported
 Polaris.Vision: Vision
-Polaris.Vision.Help: Gazes at a nearby body for a moment (you can't move). Afterwards, the next meeting shows you that player's name and role, and every meeting after that keeps the role beside their name.
+Polaris.Vision.Help: Gazes at a nearby body for a moment (you can't move). Afterwards, the next meeting shows you that player's name and role, and every meeting after that keeps the role beside their name. For someone who burned, drowned or was crushed, you also see how they died and the colors of who was nearby at the time.
 Polaris.Vision.Short: Read a body's role
 Polaris.VisionCooldown: Vision cooldown
 Polaris.VisionUses: Vision uses
@@ -2112,6 +2112,9 @@ Polaris.RewindTask: Vision undoes some of your tasks
 Polaris.MediumRewindTask: Tasks undone
 Polaris.Seen: You saw a vision. You'll learn more at the next meeting
 Polaris.Result: Vision: {name} was {role}
+Polaris.TerrainNear: . {cause}; nearby at the time: {colors}
+Polaris.TerrainAlone: . {cause}; no one was nearby
+Polaris.ColorJoin: {a}, {b}
 Sonar.Name: Sonar
 Sonar.Blurb: Report kills with trap antennas
 Sonar.Summary: A crewmate who places antennas only they can see. When a kill happens right next to one, everyone gets an arrow and the antenna breaks.
@@ -2285,7 +2288,7 @@ SerialKiller.Name: Serial Killer
 SerialKiller.Blurb: Keep killing or die
 SerialKiller.Summary: An impostor who must keep killing within a set time after their first kill, or die.
 SerialKiller.Timer: Suicide Timer
-SerialKiller.Timer.Help: Starts at your first kill and resets on every kill and after meetings. It stops during meetings. At 0 you die. The time left shows on the button.
+SerialKiller.Timer.Help: Starts at your first kill and resets on every kill and after meetings. Someone dying to a fire you lit, water you let in, a wall you brought down or a hole you opened also counts as a kill. It stops during meetings. At 0 you die. The time left shows on the button.
 SerialKiller.Timer.Short: Keep killing or die
 SerialKiller.Suicide: Suicide
 SerialKiller.Suicide.Help: Kill yourself (option).
@@ -2306,10 +2309,11 @@ Witch.NormalKill: Can also use the normal kill
 Witch.Broken: The spell was interrupted
 NekoKabocha.Name: Neko Kabocha
 NekoKabocha.Blurb: Take your killer with you
-NekoKabocha.Summary: An impostor who takes their killer down with them. When exiled, if no other impostor is alive (or always, with the option), one player who voted for you dies too.
+NekoKabocha.Summary: An impostor who takes their killer down with them. If you die to fire, water, rubble or being sucked into space, whoever lit the fire, let the water in, brought the wall down or opened the hole dies too. When exiled, if no other impostor is alive (or always, with the option), one player who voted for you dies too.
 NekoKabocha.ExileEmbroil: Take a voter down on exile even while allies are alive
 NekoKabocha.EmbroilKill: You killed the Neko Kabocha and were taken down with it
 NekoKabocha.EmbroilVote: You voted for the Neko Kabocha and were taken down with it
+NekoKabocha.EmbroilCaused: The Neko Kabocha died to what you caused and took you down with it
 # ---- Roles ported from Uchu and others (neutral) ----
 Anchor.Name: Anchor
 Anchor.Blurb: Drop anchor and hold the ship

@@ -268,7 +268,7 @@ Autopsy.CrushedByRole: {role} が崩した壁の下敷き
 # ── ベイティング (Baiting) ──
 Baiting.Name: ベイティング
 Baiting.Blurb: 罠にかかったのはどちらだ
-Baiting.Help: 倒されると、倒した人が少し後にその死体を通報してしまうアドオンです。
+Baiting.Help: 倒されると、倒した人が少し後にその死体を通報してしまうアドオンです。焼死・溺死・下敷きの時は、その火・水・崩れを起こした人が通報します。
 Baiting.ReportTime: 通報までの時間
 Baiting.ReportTime.Detail: 倒されてから、倒した人が通報してしまうまでの秒数です。
 Baiting.WarnKiller: 倒した人の画面を光らせる
@@ -2103,7 +2103,7 @@ Polaris.KillUses: キルの回数
 Polaris.CanKillHidden: 隠れている人もキルできる
 Polaris.SealUntilReport: 死体が通報されるまでキルを封印する
 Polaris.Vision: 幻視
-Polaris.Vision.Help: 近くの死体を少しの間見つめます (その間は動けません)。終わると次の会議に、その死者の名前と役職が自分にだけ出ます。以降の会議でも、その人の名札の横に役職が残ります。
+Polaris.Vision.Help: 近くの死体を少しの間見つめます (その間は動けません)。終わると次の会議に、その死者の名前と役職が自分にだけ出ます。以降の会議でも、その人の名札の横に役職が残ります。焼死・溺死・下敷きの死体なら、死に方と、死んだ時に近くにいた人の色も分かります。
 Polaris.Vision.Short: 死体の役職を読む
 Polaris.VisionCooldown: 幻視の待ち時間
 Polaris.VisionUses: 幻視の回数
@@ -2112,6 +2112,9 @@ Polaris.RewindTask: 幻視でタスクを未完了に戻す
 Polaris.MediumRewindTask: 戻すタスクの数
 Polaris.Seen: 幻視が見えた。次の会議で分かる
 Polaris.Result: 幻視: {name} は {role} だった
+Polaris.TerrainNear: 。死因は{cause}で、その時近くにいたのは {colors}
+Polaris.TerrainAlone: 。死因は{cause}で、その時近くには誰もいなかった
+Polaris.ColorJoin: {a}、{b}
 Sonar.Name: ソナー
 Sonar.Blurb: 罠のアンテナで殺しを知らせよ
 Sonar.Summary: 自分にだけ見えるアンテナを置くクルーです。アンテナのすぐ近くでキルが起きると、全員に矢印が出てアンテナは壊れます。
@@ -2285,7 +2288,7 @@ SerialKiller.Name: シリアルキラー
 SerialKiller.Blurb: 殺し続けなければ死ぬ
 SerialKiller.Summary: 最初のキルの後、決めた時間の内にキルし続けないと死ぬインポスターです。
 SerialKiller.Timer: 自殺タイマー
-SerialKiller.Timer.Help: 最初のキルから数え始め、キルするたび・会議の後に戻ります。会議中は止まります。0 になると死にます。残りはボタンに出ます。
+SerialKiller.Timer.Help: 最初のキルから数え始め、キルするたび・会議の後に戻ります。自分が付けた火・入れた水・崩した壁・開けた穴で人が死んだ時もキルに数えます。会議中は止まります。0 になると死にます。残りはボタンに出ます。
 SerialKiller.Timer.Short: キルし続けないと死ぬ
 SerialKiller.Suicide: 自殺
 SerialKiller.Suicide.Help: 自分から死にます (設定)。
@@ -2306,10 +2309,11 @@ Witch.NormalKill: 本編のキルも使える
 Witch.Broken: 魔術が途切れた
 NekoKabocha.Name: ネコカボチャ
 NekoKabocha.Blurb: 殺した者を道連れにせよ
-NekoKabocha.Summary: 自分を倒した人を道連れにするインポスターです。追放された時は、他のインポスターが生きていなければ (設定で生きていても) 自分に投票した人を 1 人道連れにします。
+NekoKabocha.Summary: 自分を倒した人を道連れにするインポスターです。火・水・瓦礫・船外への吸い出しで死んだ時は、その火を付けた人・水を入れた人・壁を崩した人・穴を開けた人を道連れにします。追放された時は、他のインポスターが生きていなければ (設定で生きていても) 自分に投票した人を 1 人道連れにします。
 NekoKabocha.ExileEmbroil: 追放でも仲間が生きている時に道連れにする
 NekoKabocha.EmbroilKill: ネコカボチャを倒したので、道連れにされた
 NekoKabocha.EmbroilVote: ネコカボチャに投票したので、道連れにされた
+NekoKabocha.EmbroilCaused: ネコカボチャを死なせたので、道連れにされた
 # ---- Uchu などから移植した役職 (第三陣営) ----
 Anchor.Name: アンカー
 Anchor.Blurb: 錨を下ろし、船を繋ぎ止めよ

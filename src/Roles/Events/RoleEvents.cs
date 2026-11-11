@@ -86,6 +86,25 @@ public sealed class PlayerMurderedEvent : GameEvent, IPlayerEvent
     public byte PlayerId => Target.PlayerId;
 }
 
+// 地形で死んだ (焼死・溺死・下敷き・船外へ吸い出し)。全員の端末で、死因の記録 (MatchLog) の後に起きる。
+// Culprit = その火・水・崩れ・穴を起こした人 (分からない・本人なら null)。焼死・溺死・下敷きは自決の形なので PlayerMurderedEvent の Killer は本人
+public sealed class TerrainKilledEvent : GameEvent, IPlayerEvent
+{
+    public PlayerControl Target { get; internal set; }
+    public PlayerControl Culprit { get; internal set; }
+    internal MatchLog.Kind Kind { get; set; }
+    public byte PlayerId => Target.PlayerId;
+
+    internal static void Raise(PlayerControl target)
+    {
+        var d = target ? MatchLog.Of(target.PlayerId) : null;
+        if (d == null || d.Kind is not (MatchLog.Kind.Burned or MatchLog.Kind.Drowned or MatchLog.Kind.Crushed or MatchLog.Kind.Spaced)) return;
+        var culprit = d.KillerId != 255 && d.KillerId != target.PlayerId ? PortKit.ById(d.KillerId) : null;
+        Plugin.Logger.LogInfo($"[TerrainKilled] {target.PlayerId} {d.Kind} by={(culprit ? culprit.PlayerId : 255)}");
+        Events<TerrainKilledEvent>.Run(new TerrainKilledEvent { Target = target, Culprit = culprit, Kind = d.Kind });
+    }
+}
+
 // 会議で追放された
 public sealed class PlayerExiledEvent : GameEvent, IPlayerEvent
 {
@@ -193,6 +212,7 @@ internal static class MurderEventPatch
         MatchLog.OnMurder(__instance, target);
         if (RoleState.All.Count == 0) return;
         Events<PlayerMurderedEvent>.Run(new PlayerMurderedEvent { Killer = __instance, Target = target });
+        if (__instance == target) TerrainKilledEvent.Raise(target);
     }
 }
 
@@ -205,6 +225,7 @@ internal static class ExiledEventPatch
         if (__instance && __instance.PlayerId == Terrain.CrewGrip.Spacing)
         {
             MatchLog.OnSpaced(__instance, (byte)Terrain.CrewGrip.SpacedBy);
+            if (RoleState.All.Count > 0) TerrainKilledEvent.Raise(__instance);
             return;
         }
         // 死体を残さずに倒す時 (PortKit.HostVanish) も追放の死に方を借りるだけ。倒された出来事は PortKit が起こす
