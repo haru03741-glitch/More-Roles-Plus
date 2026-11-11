@@ -22,6 +22,7 @@ public sealed class Magician : RoleBase
 
     public static readonly FloatOpt MagicCooldown = new("Magician.MagicCooldown", 20f, 2.5f, 60f, 2.5f, "s");
     public static readonly IntOpt NumOfMagic = new("Magician.NumOfMagic", 4, 1, 15);
+    public static readonly IntOpt HazardSpots = new("Magician.HazardSpots", 2, 0, 3);
 
     public override void OnAssigned()
     {
@@ -62,8 +63,106 @@ public sealed class Magician : RoleBase
             var to = orig[alive[(i + 1) % alive.Count].PlayerId];
             moves.Add((alive[i].PlayerId, to.x, to.y));
         }
+        SendToHazards(alive, moves);
         MagicCall.Send(moves);
         OnMagic(moves);
+    }
+
+    // ホスト: 船に深い水・火事・吸い出している穴があれば、インポスター以外の何人かの行き先をその場所に差し替える。
+    // どこも即死の所ではなく、すぐ動けば逃げられる所 (足の着かない水の中・燃えている床の縁・吸われるが口の際ではない所)。
+    // 種類ごとに 1 か所だけ選ぶので、同じ所に 2 人は落ちない。空いた元の位置には誰も行かない
+    private static void SendToHazards(List<PlayerControl> alive, List<(byte id, float x, float y)> moves)
+    {
+        int want = HazardSpots;
+        if (want <= 0) return;
+        var spots = new List<Vector2>(3);
+        if (WaterSpot(out var w)) spots.Add(w);
+        if (FireSpot(out var f)) spots.Add(f);
+        if (PullSpot(out var d)) spots.Add(d);
+        if (spots.Count == 0) return;
+        var victims = new List<int>();
+        for (int i = 0; i < alive.Count; i++) if (!PortKit.IsImpostor(alive[i])) victims.Add(i);
+        int n = Mathf.Min(want, Mathf.Min(spots.Count, victims.Count));
+        for (int s = 0; s < n; s++)
+        {
+            int vi = Random.Range(s, victims.Count), si = Random.Range(s, spots.Count);
+            (victims[s], victims[vi]) = (victims[vi], victims[s]);
+            (spots[s], spots[si]) = (spots[si], spots[s]);
+            var p = alive[victims[s]];
+            // 選んだ点は足元。体の位置は当たり判定のずれの分だけ上
+            Vector2 off = p.Collider ? p.Collider.offset : Vector2.zero;
+            var at = spots[s];
+            moves[victims[s]] = (p.PlayerId, at.x - off.x, at.y - off.y);
+            Plugin.Logger.LogInfo($"[Magician] hazard {p.PlayerId} -> {at.x:0.00},{at.y:0.00} (spots={spots.Count})");
+        }
+    }
+
+    private const float Probe = 0.5f; // 水と穴の周りを探す網の目
+
+    // 足の着かない深さの水 (溺れが数えられる深さ)。網の目の点から無作為に 1 つ
+    private static bool WaterSpot(out Vector2 at)
+    {
+        at = default;
+        if (!Terrain.WaterSim.Running || !Terrain.WaterSim.Ready) return false;
+        var org = Terrain.WaterSim.Origin;
+        float sx = Terrain.WaterSim.W * Terrain.WaterSim.Cell, sy = Terrain.WaterSim.H * Terrain.WaterSim.Cell;
+        int seen = 0;
+        for (float y = org.y + Probe * 0.5f; y < org.y + sy; y += Probe)
+            for (float x = org.x + Probe * 0.5f; x < org.x + sx; x += Probe)
+            {
+                var p = new Vector2(x, y);
+                if (Terrain.WaterSim.CurrentAt(p, out _, out _) < Terrain.CrewSwim.BraceMaxDepth || !Pusher.CanStand(p)) continue;
+                if (Random.Range(0, ++seen) == 0) at = p;
+            }
+        return seen > 0;
+    }
+
+    // 燃えている床の縁 (隣に燃えていない升がある燃えている升)。一歩出れば火から出られる
+    private static bool FireSpot(out Vector2 at)
+    {
+        at = default;
+        if (!Terrain.FireSim.Ready || Terrain.FireSim.BurningCount <= 0) return false;
+        int w = Terrain.FireSim.W, h = Terrain.FireSim.H, seen = 0;
+        var org = Terrain.FireSim.Origin;
+        float cell = Terrain.FireSim.Cell;
+        var act = Terrain.FireSim.ActiveCells;
+        for (int i = 0; i < act.Count; i++)
+        {
+            int k = act[i], cx = k % w, cy = k / w;
+            if (!Terrain.FireSim.Burning(k) || cx < 1 || cy < 1 || cx >= w - 1 || cy >= h - 1) continue;
+            if (Terrain.FireSim.Burning(k - 1) && Terrain.FireSim.Burning(k + 1) && Terrain.FireSim.Burning(k - w) && Terrain.FireSim.Burning(k + w)) continue;
+            var p = new Vector2(org.x + (cx + 0.5f) * cell, org.y + (cy + 0.5f) * cell);
+            if (!Pusher.CanStand(p)) continue;
+            if (Random.Range(0, ++seen) == 0) at = p;
+        }
+        return seen > 0;
+    }
+
+    private const float PullMin = 0.6f;   // 吸う強さ (歩く速さの倍) がこれ以上
+    private const float MouthGap = 2f;    // 口の線からこれ以上離れた所 (口の際は掴む間もなく吸い出される)
+    private const float PullSearch = 5f;  // 口の周りを探す半径
+
+    // 吸い出している穴の手前 (流れに引かれるが、角に掴まるか走れば逃げられる所)
+    private static bool PullSpot(out Vector2 at)
+    {
+        at = default;
+        if (!Terrain.Decompression.Pulling) return false;
+        int seen = 0;
+        foreach (var br in Terrain.Decompression.OpenedBreaches)
+        {
+            if (br.Sealed || br.Lines.Count == 0) continue;
+            var (a, b) = br.Lines[0];
+            float mx = (a.x + b.x) * 0.5f, my = (a.y + b.y) * 0.5f;
+            for (float y = my - PullSearch; y <= my + PullSearch; y += Probe)
+                for (float x = mx - PullSearch; x <= mx + PullSearch; x += Probe)
+                {
+                    var p = new Vector2(x, y);
+                    if (!Terrain.Decompression.PullAt(p, out _, out float mul, out _) || mul < PullMin) continue;
+                    if (Terrain.Decompression.MouthDist(p, out _) < MouthGap || !Pusher.CanStand(p)) continue;
+                    if (Random.Range(0, ++seen) == 0) at = p;
+                }
+        }
+        return seen > 0;
     }
 
     private static readonly RemoteCall<List<(byte id, float x, float y)>> MagicCall = new("Magician.Magic", Route.HostToAll,

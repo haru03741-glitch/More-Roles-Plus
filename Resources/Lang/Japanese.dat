@@ -2263,10 +2263,11 @@ Magician.Name: マジシャン
 Magician.Blurb: 一瞬で全員の居場所をすり替えろ
 Magician.Summary: 「マジック」で生きている全員の位置を無作為に入れ替えるインポスターです。
 Magician.Magic: マジック
-Magician.Magic.Help: 生きている全員の位置を無作為に入れ替えます。全員の画面が赤く光り、タスクの画面は閉じ、ベントの中の人は出されます。
+Magician.Magic.Help: 生きている全員の位置を無作為に入れ替えます。全員の画面が赤く光り、タスクの画面は閉じ、ベントの中の人は出されます。船に深い水・火事・空気を吸い出している穴があると、インポスター以外の何人かは水の中・燃えている床の縁・穴の手前へ飛ばされます。
 Magician.Magic.Short: 全員の位置を入れ替える
 Magician.MagicCooldown: マジックの待ち時間
 Magician.NumOfMagic: マジックの回数
+Magician.HazardSpots: 危ない場所へ飛ばす人数
 Kunoichi.Name: クノイチ
 Kunoichi.Blurb: 影からクナイを放て
 Kunoichi.Summary: クナイを投げて当てるインポスターです。同じ人に決めた数当てると倒します。止まっていると透明になれます。

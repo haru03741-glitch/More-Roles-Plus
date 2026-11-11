@@ -2263,10 +2263,11 @@ Magician.Name: Magician
 Magician.Blurb: Swap everyone's places in an instant
 Magician.Summary: An impostor whose "Magic" randomly shuffles the positions of every living player.
 Magician.Magic: Magic
-Magician.Magic.Help: Randomly shuffles the positions of every living player. Everyone's screen flashes red, task windows close, and players in vents are pulled out.
+Magician.Magic.Help: Randomly shuffles the positions of every living player. Everyone's screen flashes red, task windows close, and players in vents are pulled out. If the ship has deep water, a fire, or a hull breach pulling air out, some non-impostors land in the water, at the edge of the fire, or just inside the breach.
 Magician.Magic.Short: Shuffle everyone's positions
 Magician.MagicCooldown: Magic cooldown
 Magician.NumOfMagic: Magic uses
+Magician.HazardSpots: Players sent to hazards
 Kunoichi.Name: Kunoichi
 Kunoichi.Blurb: Throw kunai from the shadows
 Kunoichi.Summary: An impostor who throws kunai. Hitting the same player enough times kills them. Standing still lets you turn invisible.

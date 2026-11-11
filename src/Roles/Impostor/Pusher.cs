@@ -134,7 +134,7 @@ public sealed class Pusher : RoleBase
     private const float StandRadius = 0.2f;
     private const int FurnitureLayer = 1 << 12; // 机・緊急ボタンの台 (本編の ShipAndObjectsMask に入っていない)
 
-    private static bool CanStand(Vector2 at)
+    internal static bool CanStand(Vector2 at)
     {
         foreach (var c in Physics2D.OverlapCircleAll(at, StandRadius, Constants.ShipAndObjectsMask | FurnitureLayer))
             if (c && !c.isTrigger) return false;
