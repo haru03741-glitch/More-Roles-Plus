@@ -459,7 +459,7 @@ public sealed partial class PortalMaker : RoleBase
         foreach (var col in Physics2D.OverlapCircleAll(at, FixtureClear, ~0))
         {
             if (!col) continue;
-            if (col.GetComponentInParent<OpenableDoor>() || col.GetComponentInParent<Vent>() || col.GetComponentInParent<global::Console>() || col.GetComponentInParent<Ladder>()) return true;
+            if (TrickWall.IsDoor(col) || col.GetComponentInParent<Vent>() || col.GetComponentInParent<global::Console>() || col.GetComponentInParent<Ladder>()) return true;
         }
         return false;
     }

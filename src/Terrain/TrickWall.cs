@@ -161,7 +161,7 @@ internal static class TrickWall
     }
 
     // 本編の扉の一部か (開け閉めする扉・近づくと開くガラスの扉・除染室の扉。除染室の扉は OpenableDoor ではない)
-    private static bool IsDoor(Collider2D c) =>
+    internal static bool IsDoor(Collider2D c) =>
         c.GetComponentInParent<OpenableDoor>() || c.GetComponentInParent<SensorDoor>() || c.GetComponentInParent<ManualDoor>();
 
     // 離れた所から立てる壁 (人に掛かってもよい) をこの点に通してよいか。立てる前に線を床と物で切るのに使う
