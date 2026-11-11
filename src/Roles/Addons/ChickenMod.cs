@@ -95,6 +95,7 @@ internal sealed class ChickenFear
         if (percent <= 0) return false;
         if (Random.Range(0, 100) < percent) return true;
         ChickenFx.Sweat(p);
+        if (p.AmOwner) MoreRolesPlus.Fx.Hearing.Self("chicken_sweat", 0.6f);
         return false;
     }
 
@@ -109,6 +110,7 @@ internal sealed class ChickenFear
         ChickenFx.LocalOmen = p.PlayerId;
         ChickenFx.LocalOmenAt = Time.time;
         ChickenFx.Tremble(p);
+        MoreRolesPlus.Fx.Hearing.At("chicken_tremble", p, 8f, 0.7f);
         OmenCall.Send(0);
     }
 
@@ -122,5 +124,5 @@ internal sealed class ChickenFear
     // 震え始めたことをほかの人へ (受け手は送り主の体を震わせるだけ)
     private static readonly Net.RemoteCall<byte> OmenCall = new("Chicken.Omen", Net.Route.Anyone,
         (w, _) => w.Write((byte)0), r => r.ReadByte(),
-        (sender, _) => { if (sender && !MeetingHud.Instance) ChickenFx.Tremble(sender); }, perSecond: 4);
+        (sender, _) => { if (sender && !MeetingHud.Instance) { ChickenFx.Tremble(sender); MoreRolesPlus.Fx.Hearing.At("chicken_tremble", sender, 8f, 0.7f); } }, perSecond: 4);
 }

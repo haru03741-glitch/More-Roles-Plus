@@ -54,6 +54,7 @@ public sealed class Sheriff : RoleBase
         bool seen = user.Visible && !user.inVent;
         Vector2 a = (Vector2)user.transform.position + new Vector2(target.transform.position.x < user.transform.position.x ? -0.3f : 0.3f, 0.05f);
         Vector2 b = (Vector2)target.transform.position + new Vector2(0f, 0.05f);
+        MoreRolesPlus.Fx.Hearing.At("sheriff_shot", a.x, a.y, 14f, 0.9f, user);
         if (seen) ShotKit.Beam(a, b, new UnityEngine.Color(1f, 0.9f, 0.45f, 0.85f), 0.035f, 0.08f);
         var dir = (b - a).normalized;
         float za = RoleSparks.DepthAt(user.GetTruePosition().y) - 0.01f, zb = RoleSparks.DepthAt(target.GetTruePosition().y) - 0.01f;

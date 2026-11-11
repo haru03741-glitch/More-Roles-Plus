@@ -76,21 +76,23 @@ public sealed class Anchor : RoleBase
         _anchors.Add(at);
         CrewTraits.AddHold(at); // 重い錨: そばの人は掴まって、水の流れと吸い出しに押されない
         Bodies.Prop(AnchorKind, FloorPropArt.Place(Lifespan, at, "anchor").transform, 0.05f, 0.3f); // 重い錨は当たっても火花だけ
+        MoreRolesPlus.Fx.Hearing.At("anchor_drop", at.x, at.y, 8f, 0.7f, Player);
         Notify(at);
     }
 
     // 全員の端末で: 近くにいればアンカーへの矢印
-    private static void Notify(Vector2 at)
+    private static void Notify(Vector2 at, bool echo = false)
     {
         var lp = PlayerControl.LocalPlayer;
         if (!PortKit.Alive(lp) || MeetingHud.Instance) return;
         if (Vector2.Distance(lp.GetTruePosition(), at) > NoticeRange) return;
         UchuKit.Arrow(at, new Color32(8, 0, 237, 255), ArrowDuration);
+        if (echo) MoreRolesPlus.Fx.Hearing.Self("anchor_echo", 0.55f);
     }
 
     private static readonly RemoteCall<(float x, float y)> EchoCall = new("Anchor.Echo", Route.Anyone,
         (w, m) => { w.Write(m.x); w.Write(m.y); }, r => (r.ReadSingle(), r.ReadSingle()),
-        (sender, m) => { if (RoleState.Of(sender) is Anchor) Notify(new Vector2(m.x, m.y)); }, perSecond: 2);
+        (sender, m) => { if (RoleState.Of(sender) is Anchor) Notify(new Vector2(m.x, m.y), true); }, perSecond: 2);
 
     // 自分の端末で毎フレーム: 地図のアンカーを押した
     private bool PickTick()
@@ -108,7 +110,7 @@ public sealed class Anchor : RoleBase
         if (best < 0) return true;
         var a = _anchors[best];
         EchoCall.Send((a.x, a.y));
-        Notify(a);
+        Notify(a, true);
         _picking = false;
         var echo = Abilities[1];
         echo.Spend();

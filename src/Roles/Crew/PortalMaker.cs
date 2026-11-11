@@ -441,6 +441,7 @@ public sealed partial class PortalMaker : RoleBase
     private void Refuse(string why, int near)
     {
         _lastUse = $"refused {why} from={near}";
+        Hearing.Self("portal_refuse", 0.5f);
         Plugin.Logger.LogInfo($"[PortalMaker] use refused: {why} from p{near}");
     }
 

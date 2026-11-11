@@ -121,6 +121,7 @@ public sealed partial class Kunoichi : RoleBase
         float a = Aim();
         KunaiHand.Show(Player, on, a);
         HeldBody(on);
+        if (on && IsLocal) Hearing.Self("kunoichi_draw", 0.5f);
         if (Stick) FireStick.Arm(on);
         // 構えたかは全員へ配る (本編のキルを止めるのはホスト・手とクナイは全員の画面に出す)
         SendPose(a, false);
@@ -199,6 +200,8 @@ public sealed partial class Kunoichi : RoleBase
     // 当たりは足元の高さの線で測り、絵は手の高さを飛ぶ。手を離れた所 (hand) から、少し飛ぶ間に狙いの線の上へ寄る
     private static void Fly(Kunoichi k, Vector2 from, float angle, bool judge, byte seq, Vector2 hand)
     {
+        // 飛ぶクナイは透明な人が投げても全員に見えるので、音も人でなく投げた所から鳴らす
+        Hearing.At("kunoichi_throw", from.x, from.y, 10f, 0.7f, sightOnly: true);
         var sr = FloorPropArt.Place(k.Lifespan, from, "kunai");
         sr.transform.rotation = Quaternion.Euler(0f, 0f, angle);
         sr.transform.localScale = FxMath.V3(SizeScale, SizeScale, 1f);
@@ -448,6 +451,7 @@ public sealed partial class Kunoichi : RoleBase
 
     private void Hide(bool on)
     {
+        if (on && !_hidden && IsLocal) Hearing.Self("kunoichi_fade", 0.5f); // 消えたことは本人にだけ (周りに居場所を知らせない)
         _hidden = on;
         Cloak.Self(on ? 9999f : 0f);
         _hide?.Button?.SetLabel(new Text(on ? "Kunoichi.Unhide" : "Kunoichi.Hide").ToString());

@@ -177,6 +177,7 @@ public sealed class Magician : RoleBase
     {
         var lp = PlayerControl.LocalPlayer;
         PortKit.Flash(new Color(1f, 0.1f, 0.1f, 0.5f));
+        Hearing.Self("magician_swap", 0.7f); // 全員が動かされるので、どの端末でも手元の音
         // 全員の画面で: 消える所と現れる所が光る。粒の数には上限があるので、画面の外の分は出さない
         // (全員分を出すと画面の中の分が上限で欠ける)
         Vector2 eye = lp ? lp.GetTruePosition() : default;

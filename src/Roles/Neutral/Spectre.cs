@@ -60,6 +60,7 @@ public sealed class Spectre : RoleBase
 
     private readonly Tracked<float> _left = new(); // 残りの生きられる秒 (満腹度 × 1 満腹の秒)。本人の端末が数えて配る・時戻しで戻る
     private float _shareIn;
+    private int _warnSec = -1;
     private float _rate = 1f; // 減る速さ。他の端末は届いた速さで次の値まで自分で減らす
     private float _suicideAt = -10f;
     private Ability _vanish, _eat;
@@ -191,7 +192,11 @@ public sealed class Spectre : RoleBase
         bool alive = PortKit.Alive(Player);
         bool danger = Adrenaline && KillerNearby();
         float rate = danger ? AdrenalineRate : 1f;
-        if (!meeting && alive && ShipStatus.Instance) _left.Value -= dt * rate;
+        if (!meeting && alive && ShipStatus.Instance)
+        {
+            _left.Value -= dt * rate;
+            CountdownWarn.Tick(ref _warnSec, _left.Value, 5); // 速さで割らない (危険の出入りで秒が行き来して鳴り直さない)
+        }
         if (!(_left.Value > 0f))
         {
             _left.Value = 0f;

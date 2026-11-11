@@ -24,6 +24,7 @@ public sealed class TunaMod : AddonBase
 
     private float _left = -1f, _total = -1f, _grace = 10f;
     private bool _counting;
+    private int _warnSec = -1;
     private Vector2 _at;
     private bool _hasAt;
 
@@ -102,6 +103,7 @@ public sealed class TunaMod : AddonBase
         if (!_counting) { _readout.Set(true, null, 1f); return; }
         float t = Mode.Value == 1 ? _total : _left;
         float max = Mode.Value == 1 ? TotalStop : UsuallyStop;
+        CountdownWarn.Tick(ref _warnSec, t, 3);
         _readout.Set(true, $"<color={(t > 1f ? "#FFFF00" : "#FF0000")}>{t:0.0}s</color>", max > 0f ? t / max : -1f);
     }
 }

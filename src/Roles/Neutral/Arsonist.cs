@@ -47,6 +47,7 @@ public sealed class Arsonist : RoleBase
                 if (!t) return false;
                 _current = t.PlayerId;
                 _douseStart = Time.time;
+                MoreRolesPlus.Fx.Hearing.Self("arson_pour", 0.5f);
                 return true;
             },
             OnEnd = () =>
@@ -58,6 +59,7 @@ public sealed class Arsonist : RoleBase
                 DouseCall.Send(id);
                 _doused.Add(id);
                 Splash(t);
+                MoreRolesPlus.Fx.Hearing.Self("arson_splash", 0.6f);
             },
         });
         AddAbility(new Ability(new Text("Arsonist.Ignite"), "snr_fire")

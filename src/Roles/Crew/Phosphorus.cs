@@ -328,7 +328,7 @@ public sealed partial class Phosphorus : RoleBase
         l.Body.flipX = awayX < 0f;
         l.Glow.color = FxMath.Rgba(1f, 0.62f, 0.2f, 0f);
         l.LightR.enabled = false;
-        BreakNoise.PlayAt("noise_gat_case_2", FxMath.V2(l.X, l.Y), 8f, 4f, 0.8f);
+        Hearing.At("phosphorus_glass", l.X, l.Y, 8f, 0.8f, muffle: 4f);
         // 全員が積む: 倒れた後にホストが替わっても、新しいホストが入れられる
         var spill = (FxMath.V2(l.X, l.Y), wasLit, GameClock.ShipGen);
         SpillDue.Add(spill);

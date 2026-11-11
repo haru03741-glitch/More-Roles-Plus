@@ -52,6 +52,7 @@ public sealed class Shaman : RoleBase
                 _failed = false;
                 _castAt = Player.GetTruePosition();
                 SpiritFx.LocalBreath(Player);
+                MoreRolesPlus.Fx.Hearing.Self("shaman_breath", 0.55f);
                 return true;
             },
             OnEnd = () =>

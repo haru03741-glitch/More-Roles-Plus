@@ -110,7 +110,11 @@ public static class TerrainDeath
         if (CrewFlip.Play(p, Clip(cause), DoomTime(cause) + Linger, fallen: true))
         {
             if (cause == Cause.Drown) DrownFx.Start(p);
-            else if (cause == Cause.Burn) BodyChar.Start(p, DoomTime(cause));
+            else if (cause == Cause.Burn)
+            {
+                BodyChar.Start(p, DoomTime(cause));
+                Hearing.At("burn_sizzle", p, 10f, 0.75f);
+            }
         }
         else FallenCorpse.Ended(p.PlayerId);
     }

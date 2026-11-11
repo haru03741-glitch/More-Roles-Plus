@@ -76,6 +76,7 @@ public sealed class Admiral : RoleBase
         _showPins = false;
         ClearPins();
         PortKit.Flash(new Color32(61, 88, 179, 160), 0.8f);
+        PortSound.Play("admiral_call", null, 0.7f); // 会議の中で鳴らすので場所の音にしない
         var lp = PlayerControl.LocalPlayer;
         if (!PortKit.Alive(lp) || lp.PlayerId == admiral) return;
         PortKit.Notice(new Text("Admiral.Answer").ToString());

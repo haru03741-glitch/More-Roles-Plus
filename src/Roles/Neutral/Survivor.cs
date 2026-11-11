@@ -66,7 +66,7 @@ public sealed class Survivor : RoleBase
     private int _spotCount;
     private float _suicideAt = -999f;
     private HudReadout _readout;
-    private int _shownSec = -1;
+    private int _shownSec = -1, _warnSec = -1;
     private string _shownText;
 
     [LocalOnly]
@@ -110,6 +110,7 @@ public sealed class Survivor : RoleBase
             _shownText = $"<color={col}>{sec}s</color>";
         }
         _readout.Set(true, _shownText, left / total);
+        CountdownWarn.Tick(ref _warnSec, left, 5);
         if (_scatterLeft <= 0f && Time.time - _suicideAt > 2f)
         {
             _suicideAt = Time.time;

@@ -50,6 +50,7 @@ public sealed class Witch : RoleBase
             OnUsed = (user, t) =>
             {
                 if (!user.AmOwner) return;
+                MoreRolesPlus.Fx.Hearing.Self("witch_chant", 0.5f);
                 _target = t;
                 _broken = false;
                 _start = Time.time;
@@ -62,6 +63,7 @@ public sealed class Witch : RoleBase
                 SpellCall.Send(t.PlayerId);
                 OnSpelled(t.PlayerId);
                 PortKit.Flash(new Color(1f, 0.1f, 0.1f, 0.5f));
+                MoreRolesPlus.Fx.Hearing.Self("witch_seal", 0.6f);
                 Burst(t);
             },
         });

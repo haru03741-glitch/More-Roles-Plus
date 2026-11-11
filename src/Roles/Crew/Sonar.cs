@@ -111,7 +111,7 @@ public sealed class Sonar : RoleBase
         Vector2 to = ArrowAt.Value == 0 ? at : best.At;
         Plugin.Logger.LogInfo($"[Sonar] heard {what} {at.x:0.00},{at.y:0.00} d={bestD:0.00}");
         UchuKit.Arrow(to, NoiseColor, ArrowDuration);
-        PortSound.PlayVanilla("notice", 0.35f);
+        MoreRolesPlus.Fx.Hearing.Self("sonar_hear", 0.5f);
     }
 
     private static readonly RemoteCall<(float x, float y, float ax, float ay)> AlarmCall = new("Sonar.Alarm", Route.Anyone,
@@ -124,7 +124,7 @@ public sealed class Sonar : RoleBase
         UchuKit.Arrow(to, new UnityEngine.Color(0.2f, 0.45f, 0.27f), ArrowDuration);
         var lp = PlayerControl.LocalPlayer;
         if (lp && lp.Data != null && !lp.Data.IsDead)
-            PortSound.PlayVanilla("notice", 0.6f);
+            MoreRolesPlus.Fx.Hearing.Self("sonar_ping", 0.7f);
         if (ShareBroken && !(RoleState.Acting(RoleState.Local) is Sonar)) FloorPropArt.Place(RoleState.Match, antenna, "antenna_broken");
     }
 }

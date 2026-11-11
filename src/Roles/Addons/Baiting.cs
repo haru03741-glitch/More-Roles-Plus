@@ -51,7 +51,11 @@ public sealed class Baiting : AddonBase
     private void Report(PlayerControl killer)
     {
         if (!killer || killer.PlayerId == PlayerId || !killer.AmOwner) return;
-        if (WarnKiller) PortKit.Flash(new Color(0f, 0.97f, 1f, 0.5f));
+        if (WarnKiller)
+        {
+            PortKit.Flash(new Color(0f, 0.97f, 1f, 0.5f));
+            MoreRolesPlus.Fx.Hearing.Self("jolt", 0.6f);
+        }
         float delay = ReportTime + (RandomDelay ? Random.Range(0f, DelayVariation) : 0f);
         var body = Player.Data;
         PortKit.After(delay, () =>

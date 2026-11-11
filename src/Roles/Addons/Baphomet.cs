@@ -43,7 +43,7 @@ public sealed class Baphomet : AddonBase, IWinOverride
         if (IsLocal)
         {
             PortKit.Flash(Tint);
-            PortSound.PlayVanilla("notice", 0.8f);
+            MoreRolesPlus.Fx.Hearing.Self("baphomet_toll", 0.7f);
         }
         AddAbility(new Ability(new Text("Baphomet.Family"), "baphomet_family")
         {
@@ -58,7 +58,7 @@ public sealed class Baphomet : AddonBase, IWinOverride
                 if (AmongUsClient.Instance.AmHost) RoleState.AddAddon(t, RoleState.AddonProto<Famulus>());
                 // 全員にカットイン (光と音)
                 PortKit.Flash(Tint, 1.2f);
-                PortSound.PlayVanilla("notice", 0.8f);
+                MoreRolesPlus.Fx.Hearing.Self("baphomet_toll", 0.8f);
                 PortKit.Notice(new Text("Baphomet.Cutin").ToString());
             },
         });
@@ -118,6 +118,7 @@ public sealed class Baphomet : AddonBase, IWinOverride
                 _canWin = true;
                 WinCall.Send(true);
                 PortKit.Flash(Tint);
+                MoreRolesPlus.Fx.Hearing.Self("baphomet_toll", 0.55f, 1.25f);
             }
         }
     }

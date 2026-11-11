@@ -37,6 +37,7 @@ internal static class SenseFx
         if (!ShipStatus.Instance) return;
         _dizzyAt = Time.time;
         Dizzies++;
+        Hearing.Self("dizzy", 0.6f);
     }
 
     internal static void Pulled()

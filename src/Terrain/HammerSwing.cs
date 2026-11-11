@@ -252,6 +252,7 @@ internal static class HammerSwing
     private static void Play(Vector2 face, Vector2 toward, bool flipHint, int color, bool own, bool air)
     {
         // 奥行きは本編のクルーと同じ数え方 (y/1000)。壁に当てる所なので少し手前
+        Hearing.At("hammer_swish", face.x, face.y, 8f, 0.9f);
         float z = face.y / 1000f - 0.01f;
         face.y += toward.y > 0.5f ? LiftUp : toward.y < -0.5f ? LiftDown : LiftSide;
         bool flip = MathF.Abs(toward.x) > 0.1f ? toward.x < 0f : flipHint;

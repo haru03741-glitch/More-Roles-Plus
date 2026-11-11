@@ -99,6 +99,7 @@ public sealed class SerialKiller : RoleBase
     {
         if (!PortKit.Alive(p)) return;
         Fx.CrewFlip.Play(p, "seizure", FitTime + FitLinger, fallen: true);
+        Fx.Hearing.At("sk_seizure", p, 10f, 0.75f);
     }
 
     private void EndFit()

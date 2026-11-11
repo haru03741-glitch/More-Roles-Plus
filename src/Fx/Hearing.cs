@@ -35,11 +35,13 @@ internal static class Hearing
 
     // (x, y) で鳴らす。source = 音を出した人 (場所だけの音なら null)。muffle < 0 は範囲の 6 割より遠いとこもる
     internal static bool At(string clip, float x, float y, float range, float volume, PlayerControl source = null,
-        Ears ears = Ears.All, float pitch = 1f, float delay = 0f, float muffle = -1f)
+        Ears ears = Ears.All, float pitch = 1f, float delay = 0f, float muffle = -1f, bool sightOnly = false)
     {
         var lp = PlayerControl.LocalPlayer;
         if (!lp || MeetingHud.Instance || !CanHear(lp, source, ears)) { _skipped++; return false; }
         if (!Gain(lp, x, y, range, muffle < 0f ? range * 0.6f : muffle, ref volume, out float pan, out bool muffled)) { _skipped++; return false; }
+        // sightOnly = 見えている間しか分からない物の音 (壁の向こうへ鳴らすと居場所が漏れる)
+        if (sightOnly && muffled) { _skipped++; return false; }
         AudioClip c = muffled ? Clip(clip + "_m") : null;
         bool muffledClip = c;
         if (muffled && !muffledClip) volume *= NoMuffledClipGain;

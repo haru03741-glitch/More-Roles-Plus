@@ -358,6 +358,7 @@ public sealed class Doppelganger : RoleBase
             Net.Teleport.Self(m.Root);
             lp.cosmetics.SetFlipX(m.Flip);
         }
+        Hearing.At("doppel_vanish", m.Root.x, m.Root.y, 8f, 0.8f);
         DoppelPuppet.Despawn(ownerId, false);
     }
 }

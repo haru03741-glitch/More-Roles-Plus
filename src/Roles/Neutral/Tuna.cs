@@ -34,6 +34,7 @@ public sealed class Tuna : RoleBase
     public override void OnAssigned() => CrewTraits.Set(PlayerId, CrewTraits.Trait.Fin, () => !Lifespan.IsDead); // 役職が外れたら効かない
 
     private float _left = -1f, _total = -1f, _grace = 10f, _gauge, _gaugeGrace;
+    private int _warnSec = -1;
     private bool _counting, _hasAt, _still, _died, _won, _wasDead;
     private Vector2 _at;
     private HudReadout _readout;
@@ -133,6 +134,7 @@ public sealed class Tuna : RoleBase
         float fill = RequiredGauge > 0f ? _gauge / RequiredGauge : 0f;
         if (!_counting) { _readout.Set(true, null, fill); return; }
         float t = Mode.Value == 1 ? _total : _left;
+        CountdownWarn.Tick(ref _warnSec, t, 3);
         _readout.Set(true, $"<color={(t > 1f ? "#FFFF00" : "#FF0000")}>{t:0.0}s</color>", fill);
     }
 }

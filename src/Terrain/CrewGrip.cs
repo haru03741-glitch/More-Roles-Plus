@@ -629,6 +629,7 @@ internal static class CrewGrip
         float dx = len > 0.05f ? mx / len : 0f, dy = len > 0.05f ? my / len : 1f;
         if (len <= 0.05f && Decompression.PullAt(pos, out var dir, out _, out _)) { dx = dir.x; dy = dir.y; }
         CrewFlip.Stop(pid);
+        Hearing.At("spaced_suck", pos.x, pos.y, 10f, 0.8f);
         var pose = new Pose(p);
         pose.HideName();
         Flights.Add(new Flight { Pc = p, Pose = pose, Mx = mx, My = my, Dx = dx, Dy = dy, By = by });

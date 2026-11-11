@@ -62,6 +62,7 @@ public sealed class Polaris : RoleBase
                 _seeing = body;
                 MoveSpeed.Add("PolarisVision", 0f, VisionDuration);
                 SpiritFx.LocalMist(Player, body);
+                MoreRolesPlus.Fx.Hearing.Self("polaris_vision", 0.5f);
                 return true;
             },
             OnEnd = () =>

@@ -65,6 +65,8 @@ public sealed class Monitor : RoleBase, IRepairLimit
     [LocalOnly]
     private void OnMurdered(PlayerMurderedEvent e)
     {
-        if (e.Killer && e.Killer.PlayerId == Partner && PortKit.Alive(Player)) PortKit.Flash(new UnityEngine.Color(1f, 0.1f, 0.1f, 0.5f));
+        if (!e.Killer || e.Killer.PlayerId != Partner || !PortKit.Alive(Player)) return;
+        PortKit.Flash(new UnityEngine.Color(1f, 0.1f, 0.1f, 0.5f));
+        MoreRolesPlus.Fx.Hearing.Self("jolt", 0.6f);
     }
 }

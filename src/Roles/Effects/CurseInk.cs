@@ -90,6 +90,8 @@ internal static class CurseInk
             if (mine == null) continue;
             Live.Add(Begin(card, mine));
         }
+        // 会議の中なので場所の音にしない。墨がにじみ始める時 (印が並んだ後) に合わせる
+        if (Live.Count > 0) PortKit.After(ChipStart, () => { if (Live.Count > 0) PortSound.Play("curse_ink", null, 0.75f); });
     }
 
     private static Ink Begin(PlayerVoteArea card, List<int> mine)

@@ -78,7 +78,15 @@ public sealed class Voyager : RoleBase
         });
     }
 
-    private void SetDive(bool on) => _diving = on;
+    // 消える所と現れる所は周りにも見えるので、音もその場所から (人に結ぶと透明の間は鳴らない)
+    private void SetDive(bool on)
+    {
+        if (_diving == on) return;
+        _diving = on;
+        if (!Player || MeetingHud.Instance) return;
+        var at = Player.GetTruePosition();
+        MoreRolesPlus.Fx.Hearing.At(on ? "voyager_dive" : "voyager_surface", at.x, at.y, 8f, 0.65f, sightOnly: true);
+    }
 
     private static readonly RemoteCall<bool> DiveCall = new("Voyager.Dive", Route.Anyone,
         (w, on) => w.Write(on), r => r.ReadBoolean(),

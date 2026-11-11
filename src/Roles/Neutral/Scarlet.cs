@@ -48,6 +48,7 @@ public sealed class Scarlet : RoleBase, IGuessBlock
     private readonly Dictionary<byte, bool> _lovers = new();
     private byte _favorite = 255;
     private float _gauge;            // 本人の端末が数えて配る
+    private int _warnSec = -1;
     private float _grace;            // 本人の端末: 本命を決めるまでの残り
     private float _afterMeeting;
     private int _leftCommand;
@@ -202,6 +203,7 @@ public sealed class Scarlet : RoleBase, IGuessBlock
         if (_afterMeeting > 0f) { _afterMeeting -= dt; return; }
         if (!ShipStatus.Instance) return;
         _grace -= dt;
+        CountdownWarn.Tick(ref _warnSec, _grace, 5);
         if (_grace > 0f) return;
         _grace = 0f;
         PortKit.Suicide();

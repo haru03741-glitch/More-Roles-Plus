@@ -63,6 +63,7 @@ public abstract class RaccoonBase : RoleBase
         {
             _grabbed = t.PlayerId;
             _investigated = 255;
+            MoreRolesPlus.Fx.Hearing.At("raccoon_grab", t, 8f, 0.7f);
             if (IsLocal) { PickRoom(); RestartCooldown(); }
             return;
         }

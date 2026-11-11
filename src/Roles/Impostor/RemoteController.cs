@@ -82,6 +82,7 @@ public sealed class RemoteController : RoleBase
                 {
                     Follow(t);
                     ShowEye(t);
+                    Hearing.Self("remote_link_on", 0.5f);
                 }
                 OperateCall.SendAs(Player, (true, _target));
                 SetOperating(Player, true, _target);
@@ -453,6 +454,7 @@ public sealed class RemoteController : RoleBase
     private void StopOperation()
     {
         if (!_operating) return;
+        if (IsLocal) Hearing.Self("remote_link_off", 0.5f);
         var puppet = Target;
         // ベントの中で止める時はその人をベントから出す (操作を解く電文より先に送る)
         if (Driven && puppet && puppet.inVent)
