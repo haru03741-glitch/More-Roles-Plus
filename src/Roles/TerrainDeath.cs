@@ -32,7 +32,10 @@ public static class TerrainDeath
     private const int MaxSources = 64;
 
     // 死ぬと決まってから倒れるまで (連番が崩れ落ちきる所)・倒れた後も崩れた絵で待つ長さ
-    private static float DoomTime(Cause c) => c switch { Cause.Burn => 2.4f, Cause.Drown => 2.8f, _ => 1.0f };
+    // 下敷きは塊が当たって崩れ始めてから数える。客の画面は崩れの知らせを待つ分 (BuryWait) だけ遅れて崩れ始めるので、
+    // その分も待ってから倒す (崩れきる前に死ぬと半端な姿の死体になる)
+    private static float DoomTime(Cause c) => c switch { Cause.Burn => 2.4f, Cause.Drown => 2.8f, _ => 1.0f + BuryWait };
+    private const float StrikeLimit = 2.5f; // 下敷き: 塊が当たらないまま (連番を始められない) これだけ過ぎたら倒す
     private const float Linger = 1.5f;
     private const float ToughRepeat = 1.5f;
 
@@ -43,7 +46,8 @@ public static class TerrainDeath
     {
         public Cause Cause;
         public byte Actor;
-        public float At;
+        public float At;      // 崩れ始めた時 (下敷きは塊が当たるまで死ぬと決まった時)
+        public bool Started;  // 崩れ始めた (下敷きは塊が当たるまで立ったまま)
         public bool Fired; // ホストが倒す依頼を出した (本編に断られても撃ち直さない)
     }
 
@@ -78,16 +82,14 @@ public static class TerrainDeath
     {
         var p = PortKit.ById(target);
         if (!p || p.Data == null || p.Data.IsDead || MeetingHud.Instance || ExileController.Instance || cause == Cause.None) return;
-        Doomed[target] = new Doom { Cause = cause, Actor = actor, At = Time.time };
+        Doomed[target] = new Doom { Cause = cause, Actor = actor, At = Time.time, Started = cause != Cause.Crush };
         Plugin.Logger.LogInfo($"[TerrainDeath] doom {target} {cause} by={actor}");
+        // 本人は動けなくなる (下敷きは塊が当たるまで立ったまま止まる)
         if (p.AmOwner)
         {
             LocalDoom = target;
             if (cause == Cause.Drown) AirGauge.Empty();
         }
-        // 下敷き: 崩れた壁の塊が倒れる側の上から体へ積もる (全員の端末で同じ山)。
-        // 客には壊れ方が束で後から届くので、崩れの知らせが届くのを少し待ってから積む
-        if (cause == Cause.Crush) Burying.Add(new Burial { Pc = p, Id = target, At = Time.time });
         // 死ぬと決まる前へ時間を戻すと、崩れかけの人は助かる (積もった山も消える)
         Rewind.Undo(_ =>
         {
@@ -95,14 +97,22 @@ public static class TerrainDeath
             if (LocalDoom == target) LocalDoom = 255;
             Unbury(target);
         });
-        // 死に方の見た目は倒れる連番を流す前に渡す (下敷きは着せ替えを山の中へ落とす)。流せなければ取り消す
+        // 下敷き: 崩れた壁から塊が飛んで体に当たり、当たった時に崩れ始める (TickBury)。
+        // 客には壊れ方が束で後から届くので、崩れの知らせが届くのを少し待ってから塊を出す
+        if (cause == Cause.Crush) { Burying.Add(new Burial { Pc = p, Id = target, At = Time.time, HitAt = -1f }); return; }
+        Collapse(p, cause);
+    }
+
+    // 倒れる連番を流す。死に方の見た目は流す前に渡す (下敷きは着せ替えを山の中へ落とす)。流せなければ取り消す
+    private static void Collapse(PlayerControl p, Cause cause)
+    {
         FallenCorpse.SetFinish(p, cause switch { Cause.Burn => FallenCorpse.Finish.Burnt, Cause.Drown => FallenCorpse.Finish.Drowned, _ => FallenCorpse.Finish.Buried });
         if (CrewFlip.Play(p, Clip(cause), DoomTime(cause) + Linger, fallen: true))
         {
             if (cause == Cause.Drown) DrownFx.Start(p);
             else if (cause == Cause.Burn) BodyChar.Start(p, DoomTime(cause));
         }
-        else FallenCorpse.Ended(target);
+        else FallenCorpse.Ended(p.PlayerId);
     }
 
     private static readonly Net.RemoteCall<byte> GuardCall = new("TerrainDeath.Guard", Net.Route.HostToAll,
@@ -217,7 +227,8 @@ public static class TerrainDeath
             if (gone && Time.time - d.At > DoomTime(d.Cause) + Linger) { (drop ??= new()).Add(id); continue; }
             if (MeetingHud.Instance) { (drop ??= new()).Add(id); continue; }
             if (!gone && d.Fired && Time.time - d.At > DoomTime(d.Cause) + Linger) { (drop ??= new()).Add(id); continue; } // 本編が倒すのを断った
-            if (gone || d.Fired || !host || Time.time - d.At < DoomTime(d.Cause)) continue;
+            if (gone || d.Fired || !host) continue;
+            if (!d.Started ? Time.time - d.At < StrikeLimit : Time.time - d.At < DoomTime(d.Cause)) continue;
             (kill ??= new()).Add(p);
         }
         // 倒すと倒れた記録がこの表から死因を取り出すので、表を回し終えてから倒す
@@ -269,12 +280,12 @@ public static class TerrainDeath
     }
 
     // 確かめ用 (ホスト): その人をその死に方で死なせる
-    internal static string ForceDoom(byte id, Cause cause)
+    internal static string ForceDoom(byte id, Cause cause, byte by = ResolvedDamage.NoActor)
     {
         var p = PortKit.ById(id);
         if (!p || p.Data == null || p.Data.IsDead) return "no such living player";
         if (!AmongUsClient.Instance || !AmongUsClient.Instance.AmHost) return "not host";
-        return HostHarm(p, cause, ResolvedDamage.NoActor) ? "doomed" : $"tough hp={Duel.HpOf(id)}";
+        return HostHarm(p, cause, by) ? "doomed" : $"tough hp={Duel.HpOf(id)}";
     }
 
     // ── 地形を起こした人 (火を点けた・油をまいた・水を入れた・壁を壊した) ──────────────
@@ -345,6 +356,7 @@ public static class TerrainDeath
     // ── 下敷きの山 (全員の端末で) ──────────────────────────────────────────
     // 直近に抜けた壁 (全員の端末で破壊が当たった順に控える)。下敷きの知らせはその破壊の後に届く
     private static Vector2 _fallAt, _fallDir;
+    private static float _fallSize;
     private static bool _fallSided, _fallWhole;
     private static float _fallTime = -10f;
     private const float FallMemory = 3f, FallNear = 3f;
@@ -360,6 +372,7 @@ public static class TerrainDeath
         if (!wall) return;
         _fallAt = r.Position;
         _fallDir = r.Direction;
+        _fallSize = r.Size;
         _fallSided = r.Kind is DamageKind.Blunt or DamageKind.Gunfire && r.Direction.x * r.Direction.x + r.Direction.y * r.Direction.y > 1e-4f;
         _fallWhole = r.Kind == DamageKind.Crumble; // 仕掛け壁が丸ごと崩れた = 大きな板が倒れ込む
         _fallTime = Time.time;
@@ -373,6 +386,7 @@ public static class TerrainDeath
         public Vector2 Feet;
         public float Face;
         public bool Seen;
+        public float HitAt; // 先頭の塊が体に当たる時 (< 0 = まだ塊を出していない)
     }
 
     private static readonly List<Burial> Burying = new();
@@ -382,26 +396,52 @@ public static class TerrainDeath
     private static void TickBury()
     {
         float now = Time.time;
+        bool meeting = MeetingHud.Instance || ExileController.Instance;
         for (int i = Burying.Count - 1; i >= 0; i--)
         {
             var b = Burying[i];
             if (!b.Pc) { Burying.RemoveAt(i); continue; }
+            // 塊が当たる前に会議になった: 助かる (飛んでいた塊も消す)
+            if (meeting) { Unbury(b.Id); continue; }
             if (!b.Seen)
             {
-                // 倒れ始めた時の足元と向き (連番が体の絵を差し替えた後の描画物の向き)
+                // 止まった時の足元と向き
                 b.Seen = true;
                 b.Feet = b.Pc.GetTruePosition();
-                var body = b.Pc.cosmetics && b.Pc.cosmetics.currentBodySprite != null ? b.Pc.cosmetics.currentBodySprite.BodySprite : null;
+                var body = BodyOf(b.Pc);
                 b.Face = body && body.flipX ? -1f : 1f;
                 Burying[i] = b;
             }
-            bool fell = _fallTime >= b.At - FallMemory && Near(b.Feet);
-            if (!fell && now - b.At < BuryWait) continue;
+            if (b.HitAt < 0f)
+            {
+                bool fell = _fallTime >= b.At - FallMemory && Near(b.Feet);
+                if (!fell && now - b.At < BuryWait) continue;
+                if (Mounds.Remove(b.Id, out var old)) foreach (var go in old) if (go) UnityEngine.Object.Destroy(go);
+                Mounds[b.Id] = BuryUnder(b, fell, out float hit);
+                b.HitAt = now + hit;
+                Plugin.Logger.LogInfo($"[TerrainDeath] bury {b.Id} fell={fell} waited={now - b.At:0.00} feet=({b.Feet.x:0.00},{b.Feet.y:0.00}) wall=({_fallAt.x:0.00},{_fallAt.y:0.00}) hit={hit:0.00}");
+                Burying[i] = b;
+                continue;
+            }
+            if (now < b.HitAt) continue;
+            // 先頭の塊が当たった: ここから崩れる (倒すまでの秒もここから数える)
             Burying.RemoveAt(i);
-            Unbury(b.Id);
-            Mounds[b.Id] = BuryUnder(b, fell);
+            if (Doomed.TryGetValue(b.Id, out var d) && !d.Started)
+            {
+                d.Started = true;
+                d.At = now;
+                Doomed[b.Id] = d;
+            }
+            if (b.Pc.Data == null || b.Pc.Data.IsDead) continue;
+            // 止まっている間に他人の画面で向きが変わっていたら、山を積んだ向きへ戻してから崩す
+            var bs = BodyOf(b.Pc);
+            if (bs && bs.flipX != b.Face < 0f) bs.flipX = b.Face < 0f;
+            Collapse(b.Pc, Cause.Crush);
         }
     }
+
+    private static SpriteRenderer BodyOf(PlayerControl p) =>
+        p.cosmetics && p.cosmetics.currentBodySprite != null ? p.cosmetics.currentBodySprite.BodySprite : null;
 
     private static bool Near(Vector2 feet)
     {
@@ -409,17 +449,27 @@ public static class TerrainDeath
         return dx * dx + dy * dy < FallNear * FallNear;
     }
 
-    private static List<GameObject> BuryUnder(in Burial b, bool fell)
+    private static List<GameObject> BuryUnder(in Burial b, bool fell, out float hit)
     {
-        Vector2 axis = FxMath.V2(0f, -1f);
+        Vector2 axis = FxMath.V2(0f, -1f), from = b.Feet;
         bool slab = false;
         if (fell)
         {
             // 叩いた向きの先へ倒れる。向きの無い崩れ方は壁から人への向き
-            axis = _fallSided ? _fallDir : FxMath.V2(b.Feet.x - _fallAt.x, b.Feet.y - _fallAt.y);
+            float fx = _fallAt.x, fy = _fallAt.y;
+            if (_fallSided)
+            {
+                axis = _fallDir;
+                // 塊は壁の向こうの面 (叩いた面から壁の厚みの先) から飛び出す
+                float len = FxMath.Sqrt(_fallDir.x * _fallDir.x + _fallDir.y * _fallDir.y);
+                if (len > 1e-4f) { fx += _fallDir.x / len * _fallSize; fy += _fallDir.y / len * _fallSize; }
+            }
+            else axis = FxMath.V2(b.Feet.x - fx, b.Feet.y - fy);
+            // 叩いた点は手の高さなので、床の点はその体の真ん中の高さだけ下
+            from = FxMath.V2(fx, fy - BodyMid);
             slab = _fallWhole;
         }
-        return TerrainFx.Bury(b.Feet, axis, b.Face, (ushort)(b.Id * 97 + 13), slab);
+        return TerrainFx.Bury(b.Feet, from, fell, axis, b.Face, (ushort)(b.Id * 97 + 13), slab, out hit);
     }
 
     private static void Unbury(byte id)

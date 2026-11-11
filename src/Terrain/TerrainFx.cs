@@ -156,30 +156,40 @@ internal static class TerrainFx
         return Settle(byRank, pieces, walls, given);
     }
 
-    // 人が瓦礫の下敷きになる (全員の端末で)。倒れる側 (axis) の上から塊が人の上へ次々に落ちて積もり、体を覆う山になる。
-    // slab = 壁が丸ごと崩れた: 先に大きな板が倒れ込んでのしかかり、その上に塊が乗る。
+    // 人が瓦礫の下敷きになる (全員の端末で)。塊は崩れた壁 (from = 抜けた所の床の点) から倒れる側 (axis) へ飛び、
+    // 先頭の塊が立っている体の頭と肩に当たる。呼ぶ側はその時 (hit 秒後) に体を崩し、続く塊が崩れた体の上に積もって山になる。
+    // wall = false (崩れた壁が分からない) の時は真上から落ちてくる。
+    // slab = 壁が丸ごと崩れた: 先頭は大きな板で、倒れ込んで体にのしかかり、その上に塊が乗る。
     // 塊は体より手前 (足元の y の奥行きより手前) に描き、止まっても床の板へ焼かない (体を覆ったまま残る・当たり判定は無い)。
     // face = 体の向き (+1 右・-1 左)。潰れた体は足元から向いている側へ 1 単位ほど伸びるので、山はその真ん中に積もる。
     // 返り値 = 出した物 (時戻しで助かった時に消す)
-    internal static List<GameObject> Bury(Vector2 feet, Vector2 axis, float face, ushort seed, bool slab)
+    internal static List<GameObject> Bury(Vector2 feet, Vector2 from, bool wall, Vector2 axis, float face, ushort seed, bool slab, out float hit)
     {
         var made = new List<GameObject>();
         var rnd = new System.Random(seed ^ Hash(feet));
         float al = MathF.Sqrt(axis.x * axis.x + axis.y * axis.y);
         if (al < 1e-3f) { axis = new Vector2(0f, -1f); al = 1f; }
         float ax = axis.x / al, ay = axis.y / al;
+        // 壁に沿う向き (塊が崩れた幅に散る)
+        float wx = -ay, wy = ax;
+        // 飛び出す所: 壁の抜けた所の床。壁際に立っていて体に重なるほど近い時は、体から壁の側へ 0.3 戻った所 (壁の上の方が倒れてくる)。
+        // 壁が分からない時は倒れる側の手前の真上
+        float sx = from.x, sy = from.y;
+        float fdx = feet.x - sx, fdy = feet.y - sy;
+        if (!wall || fdx * fdx + fdy * fdy < 0.3f * 0.3f) { sx = feet.x - ax * 0.3f; sy = feet.y - ay * 0.3f; }
         // 潰れた体の真ん中 (足元から向いている側へ 0.5・上へ 0.17)
         float cx = feet.x + face * 0.5f, cy = feet.y + 0.17f;
         var pile = new Pile { X = cx, Y = cy, Rx = 0.66f, Ry = 0.3f, H = slab ? 0.36f : 0.3f };
         float zBase = feet.y / 1000f - 0.0008f;
         int order = 0;
-        Item Drop(Sprite sp, float size, float tx, float ty, float h, float delay, float spin)
+        // 壁の上の方 (穴より上の崩れた所) の高さ h から、(tx, ty) へ放物線で落ちる
+        Item Drop(Sprite sp, float size, float ox, float oy, float tx, float ty, float h, float delay, float spin)
         {
-            var it = Spawn(Kind.Junk, sp, new Vector2(tx - ax * 0.3f, ty - ay * 0.3f), size, keep: true);
+            var it = Spawn(Kind.Junk, sp, new Vector2(ox, oy), size, keep: true);
             it.OnBody = true;
             it.Height = h;
             float flight = MathF.Sqrt(2f * h / Gravity) + 0.05f;
-            it.Vx = ax * 0.3f / flight; it.Vy = ay * 0.3f / flight;
+            it.Vx = (tx - ox) / flight; it.Vy = (ty - oy) / flight;
             it.VH = 0f;
             it.T = -delay;
             it.Rot = (float)rnd.NextDouble() * 360f;
@@ -193,48 +203,86 @@ internal static class TerrainFx
             made.Add(it.Tr.gameObject);
             return it;
         }
+        // 体に当てる塊: 飛び出す所から、立っている体の (px, py) を高さ hh で通り、その先へ落ちる。当たる時 (秒) を返す
+        float Strike(Sprite sp, float size, float spread, float px, float py, float h, float hh, float delay, float spin, out Item it)
+        {
+            float ox = sx + wx * spread, oy = sy + wy * spread;
+            float ts = MathF.Sqrt(2f * (h - hh) / Gravity), all = MathF.Sqrt(2f * h / Gravity) + 0.05f;
+            float q = ts / all;
+            it = Drop(sp, size, ox, oy, ox + (px - ox) / q, oy + (py - oy) / q, h, delay, spin);
+            return delay + ts;
+        }
         float t0 = 0.12f;
+        float top = wall ? 0.95f : 1.4f; // 壁の上面より少し上 (崩れて傾いた上の方) / 真上の高い所
+        float headY = 0.5f;              // 立っている体の肩から頭の高さ
+        hit = float.MaxValue;
         if (slab)
         {
-            // 大きな板: 倒れる向きの手前から体を横切る向きで倒れ込む
-            var it = Drop(DebrisArt.Plate(rnd.Next()), 1.05f, cx, cy, 1.1f, t0, 0f);
+            // 大きな板: 壁の側から体を横切る向きで倒れ込み、体にのしかかる
+            hit = Strike(DebrisArt.Plate(rnd.Next()), 1.05f, 0f, feet.x, feet.y, top + 0.05f, headY + 0.1f, t0, 0f, out var it);
             it.Rot = MathF.Atan2(ay, ax) * 57.29578f + 90f + ((float)rnd.NextDouble() - 0.5f) * 20f;
             it.Tr.rotation = RotZ(it.Rot);
             it.Bounces = 4;
             // 仕掛け壁の板の青みがかった灰に寄せる
             if (!HideJunk) it.Sr.color = new Color(0.74f, 0.8f, 0.94f, 1f);
-            t0 += 0.18f;
         }
-        // 大きい塊から先に落ち、小さい物が隙間を埋める
-        int big = slab ? 9 : 15;
+        // 先頭の大きな塊が 2 つ、頭と肩に続けて当たる
+        for (int k = 0; k < 2; k++)
+        {
+            float side = (k == 0 ? -0.08f : 0.1f) + ((float)rnd.NextDouble() - 0.5f) * 0.06f;
+            float at = Strike(DebrisArt.Chunk(rnd.Next()), 0.34f + (float)rnd.NextDouble() * 0.08f, side * 2f,
+                feet.x + wx * side, feet.y + wy * side, top - (float)rnd.NextDouble() * 0.08f, headY + (float)rnd.NextDouble() * 0.15f,
+                t0 + (slab ? 0.04f : 0f) + k * 0.07f, ((float)rnd.NextDouble() - 0.5f) * 240f, out _);
+            if (at < hit) hit = at;
+        }
+        // 当たった所の粉 (体の高さ)
+        for (int k = 0; k < 2; k++)
+        {
+            var puff = Dust(new Vector2(feet.x + ((float)rnd.NextDouble() - 0.5f) * 0.3f, feet.y), rnd, 0.32f, 0.7f);
+            puff.Height = headY + 0.05f + (float)rnd.NextDouble() * 0.15f;
+            puff.T = -(hit + k * 0.06f);
+            puff.Z = zBase - 0.002f;
+        }
+        // 残りは崩れていく体の上に落ちて積もる (大きい塊から先に、小さい物が隙間を埋める)。
+        // 壁から飛ぶ物は壁の幅に沿って散って飛び出す
+        float lo = wall ? 0.5f : 0.9f, span = wall ? 0.45f : 0.6f;
+        float o0 = hit + 0.02f - (wall ? 0.2f : 0.35f); // 当たってから少し後に落ち始めた物が届く
+        if (o0 < t0) o0 = t0;
+        void Rain(Sprite sp, float size, float tx, float ty, float h, float delay, float spin)
+        {
+            float u = ((float)rnd.NextDouble() - 0.5f) * 0.9f;
+            float ox = wall ? sx + wx * u : tx - ax * 0.3f, oy = wall ? sy + wy * u : ty - ay * 0.3f;
+            Drop(sp, size, ox, oy, tx, ty, h, delay, spin);
+        }
+        int big = slab ? 7 : 13;
         for (int k = 0; k < big; k++)
         {
             // 体の長さに沿って偏りなく並べ (帯ごとに 1 つ)、上下に散らす
             float u = (k + (float)rnd.NextDouble()) / big * 2f - 1f;
             float tx = cx + u * 0.52f, ty = cy + ((float)rnd.NextDouble() - 0.5f) * 0.3f * MathF.Sqrt(1f - u * u * 0.6f);
-            Drop(DebrisArt.Chunk(rnd.Next()), 0.26f + (float)rnd.NextDouble() * 0.16f, tx, ty, 0.9f + (float)rnd.NextDouble() * 0.6f,
-                t0 + k * 0.045f + (float)rnd.NextDouble() * 0.05f, ((float)rnd.NextDouble() - 0.5f) * 240f);
+            Rain(DebrisArt.Chunk(rnd.Next()), 0.26f + (float)rnd.NextDouble() * 0.16f, tx, ty, lo + (float)rnd.NextDouble() * span,
+                o0 + k * 0.045f + (float)rnd.NextDouble() * 0.05f, ((float)rnd.NextDouble() - 0.5f) * 240f);
         }
         for (int k = 0; k < 7; k++)
         {
             float tx = cx + ((float)rnd.NextDouble() - 0.5f) * 0.95f, ty = cy + ((float)rnd.NextDouble() - 0.5f) * 0.3f;
-            Drop(k < 2 ? DebrisArt.Core(rnd.Next()) : DebrisArt.Plate(rnd.Next()), 0.14f + (float)rnd.NextDouble() * 0.1f, tx, ty,
-                0.8f + (float)rnd.NextDouble() * 0.5f, t0 + 0.35f + k * 0.05f, ((float)rnd.NextDouble() - 0.5f) * 400f);
+            Rain(k < 2 ? DebrisArt.Core(rnd.Next()) : DebrisArt.Plate(rnd.Next()), 0.14f + (float)rnd.NextDouble() * 0.1f, tx, ty,
+                lo - 0.1f + (float)rnd.NextDouble() * span, o0 + 0.3f + k * 0.05f, ((float)rnd.NextDouble() - 0.5f) * 400f);
         }
         for (int k = 0; k < 24; k++)
         {
             float tx = cx + ((float)rnd.NextDouble() - 0.5f) * 1.4f, ty = cy + ((float)rnd.NextDouble() - 0.5f) * 0.5f;
-            Drop(DebrisArt.Pebble, 0.05f + (float)rnd.NextDouble() * 0.06f, tx, ty, 0.6f + (float)rnd.NextDouble() * 0.6f,
-                t0 + 0.1f + (float)rnd.NextDouble() * 0.6f, 0f);
+            Rain(DebrisArt.Pebble, 0.05f + (float)rnd.NextDouble() * 0.06f, tx, ty, lo - 0.1f + (float)rnd.NextDouble() * span,
+                o0 + 0.05f + (float)rnd.NextDouble() * 0.6f, 0f);
         }
         // 落ちた所の土煙 (山より手前)
         for (int k = 0; k < 6; k++)
         {
             var puff = Dust(new Vector2(cx + ((float)rnd.NextDouble() - 0.5f) * 1.1f, cy - 0.05f), rnd, 0.5f, 1.4f);
-            puff.T = -(t0 + 0.15f + k * 0.07f);
+            puff.T = -(hit + 0.25f + k * 0.07f);
             puff.Z = zBase - 0.002f;
         }
-        Stain(new Vector2(cx, cy - 0.05f), 1.5f, t0 + 0.2f);
+        Stain(new Vector2(cx, cy - 0.05f), 1.5f, hit + 0.3f);
         return made;
     }
 
