@@ -1583,11 +1583,15 @@ RemoteController.Mark: Mark
 RemoteController.Mark.Help: Picks a nearby crewmate to control.
 RemoteController.Mark.Short: Pick who to control
 RemoteController.Operate: Operate
-RemoteController.Operate.Help: For a while (or without limit), you move the marked person. Neither of you can move on your own meanwhile. The Use and Vent buttons target things at the controlled person's feet (doors, ladders, platforms, vents, etc.) and use them with their body. Press again to stop.
+RemoteController.Operate.Help: For a while (or without limit), you move the marked person. Neither of you can move on your own meanwhile. The Use and Vent buttons target things at the controlled person's feet (doors, ladders, platforms, vents, etc.) and use them with their body. Press again to stop. The controlled person cannot swim on their own, so they run out of breath faster in water too deep to stand in.
 RemoteController.Operate.Short: Move the marked person
 RemoteController.Kill: Remote Kill
 RemoteController.Kill.Help: While operating: the person you control kills the nearest crewmate next to them, who is outlined. Ends the operation.
 RemoteController.Kill.Short: Make your puppet kill
+RemoteController.Strike: Strike
+RemoteController.Strike.Help: While operating: the person you control punches the wall in front of them. A cracked wall gives way to that punch and buries anyone standing right behind it. An undamaged wall only cracks. The wall is recorded as broken by the controlled person.
+RemoteController.Strike.Short: Make your puppet punch a wall
+RemoteController.StrikeCooldown: Strike cooldown
 RemoteController.MarkCooldown: Mark cooldown
 RemoteController.OperationInfinite: Unlimited operation
 RemoteController.OperationDuration: Operation duration

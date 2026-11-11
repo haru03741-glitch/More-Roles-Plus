@@ -1583,11 +1583,15 @@ RemoteController.Mark: マーク
 RemoteController.Mark.Help: 近くのクルーを操作する相手に選びます。
 RemoteController.Mark.Short: 操作する人を選ぶ
 RemoteController.Operate: 操作
-RemoteController.Operate.Help: しばらく (設定で無制限)、選んだ人を自分の操作で歩かせます。その間、その人も自分も自分では動けません。操作中は「使う」とベントのボタンが操作している人の足元の物 (扉・はしご・昇降機・ベントなど) を狙い、その人の体で使えます。もう一度押すと終わります。
+RemoteController.Operate.Help: しばらく (設定で無制限)、選んだ人を自分の操作で歩かせます。その間、その人も自分も自分では動けません。操作中は「使う」とベントのボタンが操作している人の足元の物 (扉・はしご・昇降機・ベントなど) を狙い、その人の体で使えます。もう一度押すと終わります。 操られている人は自分で泳げないため、足の着かない深い水では息が早く尽きます。
 RemoteController.Operate.Short: 選んだ人を歩かせる
 RemoteController.Kill: 遠隔キル
 RemoteController.Kill.Help: 操作中に使えます。操作している人の近くにいる一番近いクルーが縁取りで光り、その人を、操作している人の手で倒します。倒すと操作は終わります。
 RemoteController.Kill.Short: 操作している人に倒させる
+RemoteController.Strike: 叩かせる
+RemoteController.Strike.Help: 操作中に使えます。操作している人の拳で、その人の前の壁を殴らせます。ひびの入った壁はその一撃で崩れ、向こう側の壁際にいた人は下敷きになります。無傷の壁はひびが入るだけです。壁を壊したのは操られていた人として記録されます。
+RemoteController.Strike.Short: 操作している人に壁を殴らせる
+RemoteController.StrikeCooldown: 叩かせる待ち時間
 RemoteController.MarkCooldown: マークの待ち時間
 RemoteController.OperationInfinite: 操作の時間を無制限にする
 RemoteController.OperationDuration: 操作の長さ

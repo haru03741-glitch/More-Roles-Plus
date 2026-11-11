@@ -174,7 +174,7 @@ public static class TerrainDeath
             var pos = p.GetTruePosition();
             if (!away && fire && OnFire(pos)) BurnFor[id] += dt;
             else if (BurnFor[id] > 0f) BurnFor[id] = FxMath.Max(0f, BurnFor[id] - dt);
-            if (!away && water && WaterSim.CurrentAt(pos, out _, out _) >= DrownDepth && !CrewTraits.Has(id, CrewTraits.Trait.Skim)) SwimFor[id] += dt;
+            if (!away && water && WaterSim.CurrentAt(pos, out _, out _) >= DrownDepth && !CrewTraits.Has(id, CrewTraits.Trait.Skim)) SwimFor[id] += dt * Impostor.RemoteController.BreathRate(id);
             else if (SwimFor[id] > 0f) SwimFor[id] = FxMath.Max(0f, SwimFor[id] - dt);
             // 体力で受けた頑丈な役職は、居続けると ToughRepeat 秒ごとに次の一撃を受ける (戦いの外の体力は数秒で戻るため)
             if (BurnFor[id] >= burnLimit) BurnFor[id] = HostHarm(p, Cause.Burn, Culprit(pos, Cause.Burn)) ? 0f : burnLimit - ToughRepeat;

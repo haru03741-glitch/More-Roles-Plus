@@ -129,6 +129,8 @@ internal static class HammerSwing
     private static void OnAppliedCore(in ResolvedDamage r)
     {
         if (r.Kind != DamageKind.Blunt || r.Actor == ResolvedDamage.NoActor) return;
+        // リモコンに操られている人の打撃は拳で見せている (ハンマーを持っていない)
+        if (Roles.Impostor.RemoteController.Controlled.Contains(r.Actor)) return;
         var lp = PlayerControl.LocalPlayer;
         if (lp && lp.PlayerId == r.Actor) return; // 自分の振りは押した時から出ている
         var info = GameData.Instance ? GameData.Instance.GetPlayerById(r.Actor) : null;
@@ -220,7 +222,7 @@ internal static class HammerSwing
     }
 
     // 狙う向きから順に左右へ広げて、最初に壁が見つかった角度の中でいちばん近い壁 (ホストも同じ位置と向きで壁を探す)
-    private static bool FindTarget(Vector2 at, Vector2 aim, float reach, out Vector2 dir, out Vector2 hit, out Vector2 normal)
+    internal static bool FindTarget(Vector2 at, Vector2 aim, float reach, out Vector2 dir, out Vector2 hit, out Vector2 normal)
     {
         dir = hit = normal = default;
         float best = float.MaxValue;

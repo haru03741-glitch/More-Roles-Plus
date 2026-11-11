@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using MoreRolesPlus.Net;
+using MoreRolesPlus.Fx;
 using MoreRolesPlus.Options;
+using MoreRolesPlus.Terrain;
 using UnityEngine;
 
 namespace MoreRolesPlus.Roles.Impostor;
@@ -20,11 +22,19 @@ public sealed class RemoteController : RoleBase
     public override Text Blurb => new("RemoteController.Blurb");
     public override string Origin => "SNR";
     public override HelpSection[] HelpSections => new HelpSection[]
-        { new("RemoteController.Mark", "snr_marker"), new("RemoteController.Operate", "snr_remote"), new("RemoteController.Kill", "snr_kill2") };
+        {
+            new("RemoteController.Mark", "snr_marker"), new("RemoteController.Operate", "snr_remote"), new("RemoteController.Kill", "snr_kill2"),
+            new("RemoteController.Strike", "emote_fist"),
+        };
 
     public static readonly FloatOpt MarkCooldown = new("RemoteController.MarkCooldown", 20f, 0f, 60f, 2.5f, "s");
     public static readonly BoolOpt OperationInfinite = new("RemoteController.OperationInfinite", false);
     public static readonly FloatOpt OperationDuration = new("RemoteController.OperationDuration", 10f, 2.5f, 120f, 2.5f, "s") { When = () => !OperationInfinite };
+    public static readonly FloatOpt StrikeCooldown = new("RemoteController.StrikeCooldown", 5f, 0f, 30f, 2.5f, "s");
+
+    // 操られている人は自分で水を掻けないので、足の着かない深さでは息がこの倍の速さで尽きる (ホストの数えと本人の泡の両方)
+    internal const float HeldBreathRate = 2f;
+    internal static float BreathRate(byte id) => Controlled.Count > 0 && Controlled.Contains(id) ? HeldBreathRate : 1f;
 
     // 操作されている人 (全員の端末で同じ)
     internal static readonly HashSet<byte> Controlled = new();
@@ -93,6 +103,24 @@ public sealed class RemoteController : RoleBase
                 if (AmongUsClient.Instance.AmHost) HostRemoteKill(Player, victim.PlayerId);
                 else KillCall.SendAs(Player, victim.PlayerId);
                 CancelAndClear();
+                return true;
+            },
+        });
+        // 操作している人の拳で、その人の前の壁を叩かせる (操作は続く)。壁を叩いたのはその人として記録される
+        AddAbility(new Ability(new Text("RemoteController.Strike"), "emote_fist")
+        {
+            CooldownAtStart = false,
+            WhileStill = true,
+            Cooldown = () => StrikeCooldown,
+            Usable = () => _operating,
+            OnUse = () =>
+            {
+                var t = Target;
+                if (!_operating || !PortKit.Alive(t) || t.inVent || t.onLadder || t.inMovingPlat) return false;
+                Vector2 aim = _sentDir.sqrMagnitude > 0.01f ? _sentDir : HammerSwing.Aim(t, out _);
+                if (!HammerSwing.FindTarget(t.GetTruePosition(), aim, DamageProfile.Of(DamageKind.Blunt).Reach, out Vector2 dir, out _, out _)) return false;
+                if (AmongUsClient.Instance.AmHost) HostStrike(Player, dir);
+                else StrikeCall.SendAs(Player, dir);
                 return true;
             },
         });
@@ -511,6 +539,7 @@ public sealed class RemoteController : RoleBase
     // 操作されている端末: 届いた向きで毎 tick 歩かせ、0.6 秒届かなければ止める
     public override void OnFixedUpdate()
     {
+        if (_strikeAt > 0f) TickStrike();
         if (!_operating) return;
         var t = Target;
         // 操作している人が抜けた・死んだら、どの端末でも操作を解く (止める電文が来ないので)
@@ -615,6 +644,63 @@ public sealed class RemoteController : RoleBase
         var victim = PortKit.ById(victimId);
         if (!PortKit.Alive(puppet) || !PortKit.Alive(victim)) return;
         PortKit.HostKill(puppet, victim, PortKit.Harm.Slash);
+    }
+
+    // ---- 叩かせる (ホストが決める) ----
+    // 無傷の壁は弱い一撃 (1 削る) でひびが入るだけ。ひびの入った壁 (残り MaxHp 未満) は強い一撃 (2 削る) で必ず抜ける。
+    // 拳を全員に見せてから、拳が壁に届く頃 (RemoteControllerFx.Contact) に操られている人の破壊として依頼する
+    private const float WeakForce = 0.5f, StrongForce = 0.8f, StrikeMinGap = 0.8f;
+    private float _strikeNext, _strikeAt;
+    private DamageEvent _strikeEvent;
+
+    private static readonly RemoteCall<Vector2> StrikeCall = new("RemoteController.Strike", Route.ToHost,
+        (w, d) => { w.Write(d.x); w.Write(d.y); }, r => new Vector2(r.ReadSingle(), r.ReadSingle()),
+        (sender, d) => HostStrike(sender, d), perSecond: 4);
+
+    private static readonly RemoteCall<(byte puppet, Vector2 hit, Vector2 toward)> PunchCall = new("RemoteController.Punch", Route.HostToAll,
+        (w, m) => { w.Write(m.puppet); w.Write(m.hit.x); w.Write(m.hit.y); w.Write(m.toward.x); w.Write(m.toward.y); },
+        r => (r.ReadByte(), new Vector2(r.ReadSingle(), r.ReadSingle()), new Vector2(r.ReadSingle(), r.ReadSingle())),
+        (_, m) => RemoteControllerFx.Punch(PortKit.ById(m.puppet), m.hit, m.toward));
+
+    private static void HostStrike(PlayerControl rcPlayer, Vector2 dir)
+    {
+        if (RoleState.Of(rcPlayer) is not RemoteController rc || !rc._operating || !PortKit.Alive(rcPlayer)) return;
+        var t = rc.Target;
+        if (!PortKit.Alive(t) || !Controlled.Contains(t.PlayerId) || t.inVent || t.onLadder || t.inMovingPlat) return;
+        if (MeetingHud.Instance || ExileController.Instance || !GameClock.ShipAlive) return;
+        if (!float.IsFinite(dir.x) || !float.IsFinite(dir.y)) return;
+        float len = FxMath.Sqrt(dir.x * dir.x + dir.y * dir.y);
+        if (len < 1e-3f) return;
+        dir = new Vector2(dir.x / len, dir.y / len);
+        float now = Time.time;
+        if (now < rc._strikeNext || rc._strikeAt > 0f) return;
+        rc._strikeNext = now + StrikeMinGap;
+        Vector2 at = t.GetTruePosition();
+        // 送られた向きはそのまま使わず、ホストが見ている位置から同じ探し方で壁のある向きに直す
+        if (HammerSwing.FindTarget(at, dir, DamageProfile.Of(DamageKind.Blunt).Reach, out Vector2 found, out _, out _)) dir = found;
+        ushort seed = (ushort)System.Environment.TickCount;
+        var weak = new DamageEvent(DamageKind.Blunt, at, dir, 0f, WeakForce, seed);
+        // 外壁など断られる所でも拳は当てて見せる (壊れないだけ)
+        bool hits = TerrainDamage.TryResolve(weak, out var r, out string why);
+        bool cracked = hits && r.Hp < WallDurability.MaxHp - 1;
+        Vector2 face = hits ? r.Position : at + dir * 0.5f, toward = hits ? -r.Normal : dir;
+        Plugin.Logger.LogInfo($"[RemoteController] strike puppet={t.PlayerId} at={at.x:0.00},{at.y:0.00} dir={dir.x:0.00},{dir.y:0.00} wall={(hits ? $"hp->{r.Hp}" : why)} cracked={cracked}");
+        RemoteControllerFx.Punch(t, face, toward);
+        PunchCall.Send((t.PlayerId, face, toward));
+        if (!hits) return;
+        rc._strikeEvent = cracked ? new DamageEvent(DamageKind.Blunt, at, dir, 0f, StrongForce, seed) : weak;
+        rc._strikeAt = now + RemoteControllerFx.Contact;
+    }
+
+    // ホスト: 拳が届いた所で地形に当てる。会議・死・操作の終わりの後には当てない
+    private void TickStrike()
+    {
+        if (Time.time < _strikeAt) return;
+        _strikeAt = 0f;
+        var t = Target;
+        if (!_operating || !PortKit.Alive(t) || !PortKit.Alive(Player) || MeetingHud.Instance || ExileController.Instance || !GameClock.ShipAlive) return;
+        string res = TerrainSync.RequestAs(_strikeEvent, t.PlayerId);
+        Plugin.Logger.LogInfo($"[RemoteController] strike applied puppet={t.PlayerId} force={_strikeEvent.Force:0.0} -> {res}");
     }
 
     internal static bool Operating(PlayerControl p) => RoleState.Of(p) is RemoteController { _operating: true };
