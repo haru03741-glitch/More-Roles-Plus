@@ -33,6 +33,12 @@ internal static partial class WaterSim
         if (a.StartsWith("prebase")) { Prebase(a, reply); return true; }
         if (a.StartsWith("zflow")) { ZFlowToggle(a, reply); return true; }
 
+        if (a.StartsWith("backtile"))
+        {
+            if (a.EndsWith(" on") || a.EndsWith(" off")) WaterArt.SetBackTile(a.EndsWith(" on"));
+            reply($"OK water backtile {(WaterArt.BackTile ? "on" : "off")} (次に作るタイルから。試合の前に切り替える)");
+            return true;
+        }
         if (a.StartsWith("tilez")) { reply($"OK water tilez {WaterArt.TileZReport(reply)}"); return true; }
         if (a.StartsWith("tile")) { TileAt(a, reply); return true; }
         if (a.StartsWith("spikes")) { Spikes(a, reply); return true; }

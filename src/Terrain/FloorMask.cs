@@ -25,6 +25,10 @@ internal static class FloorMask
     private static float _ox, _oy, _ppu;
     internal static string Stats { get; private set; } = "none";
     internal static bool Off; // テスト用: マスクがあっても使わない (前の見え方と見比べる)
+    internal static string AltDir; // テスト用: このフォルダの <船>.bin を埋め込みの代わりに読む (作り方を変えたマスクと見比べる)
+    // テスト用: 持ち上げた家具の抜き (Dry) から、読んだままのマスクで床だった画素を外す (家具の当たり判定の中の隙間の床に水を残す)
+    internal static bool KeepMaskFloor;
+    private static byte[] _bits0; // 読んだままのマスク (跡の床を足す前)。KeepMaskFloor の時だけ持つ
 
     // 試合中に床になった所 (持ち上げた家具の跡)。マスクを読み直した時にも重ねる。
     // Dry = 跡にする前のマスクで床でなかった画素 (= 家具そのもの)。家具と一緒に動かして、今いる所を床でなくする
@@ -62,7 +66,8 @@ internal static class FloorMask
         string name = ship.name.Replace("(Clone)", "");
         try
         {
-            using Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("MoreRolesPlus.Resources.FloorMasks." + name + ".bin");
+            using Stream s = AltDir != null ? File.OpenRead(Path.Combine(AltDir, name + ".bin"))
+                : Assembly.GetExecutingAssembly().GetManifestResourceStream("MoreRolesPlus.Resources.FloorMasks." + name + ".bin");
             if (s == null) { Stats = $"{name}: none"; return; }
             using var br = new BinaryReader(s);
             var magic = br.ReadBytes(4);
@@ -91,6 +96,7 @@ internal static class FloorMask
                 ox = MapFlip.GridOrigin(ox, w, ppu);
             }
             _bits = bits;
+            _bits0 = KeepMaskFloor ? (byte[])bits.Clone() : null;
             _face = face;
             _w = w; _h = h; _ox = ox; _oy = oy; _ppu = ppu;
             if (_patchGen == gen) foreach (var p in Patches) Apply(p);
@@ -338,6 +344,11 @@ internal static class FloorMask
             {
                 int cx = (int)MathF.Floor(((x0 + dx + 0.5f) / _ppu + _ox - r.xMin) * sx);
                 if (cx < 0 || cx >= n || !furn[cy * n + cx]) continue;
+                if (_bits0 != null)
+                {
+                    int k = (y0 + dy) * _w + x0 + dx;
+                    if ((_bits0[k >> 3] & (1 << (k & 7))) != 0) continue;
+                }
                 int d = dy * p.DW + dx;
                 p.Dry[d >> 3] |= (byte)(1 << (d & 7));
             }
@@ -537,10 +548,28 @@ internal static class FloorMask
 
     internal static void Register()
     {
-        TestBridge.Register("floormask", "[on|off] 水の床マスク (部屋の絵の床の画素で水を切る) の状態 / テスト用に切り替える (次に描き直したタイルから)", (args, reply) =>
+        FloorCapture.Register();
+        TestBridge.Register("floormask", "[on|off | load <フォルダ>|none | keep on|off] 水の床マスク (部屋の絵の床の画素で水を切る) の状態 / テスト用に切り替える (次に描き直したタイルから)・load = そのフォルダの <船>.bin を読む・keep = 持ち上げた家具の抜きからマスクの床を外す", (args, reply) =>
         {
             string a = args.Trim();
-            if (a.Length > 0)
+            if (a.StartsWith("load ", StringComparison.Ordinal))
+            {
+                string dir = a.Substring(5).Trim();
+                AltDir = dir is "none" or "" ? null : dir;
+                _gen = -1;
+                WaterArt.FloorMaskToggled();
+            }
+            else if (a is "keep on" or "keep off")
+            {
+                KeepMaskFloor = a == "keep on";
+                _gen = -1;
+                Ensure();
+                if (_patchGen == GameClock.ShipGen) foreach (var p in Patches) WaterArt.FloorChanged(p.World);
+                WaterArt.FloorMaskToggled();
+                reply($"OK floormask keep={KeepMaskFloor} patches={(_patchGen == GameClock.ShipGen ? Patches.Count : 0)}");
+                return;
+            }
+            else if (a.Length > 0)
             {
                 Off = a == "off";
                 WaterArt.FloorMaskToggled();
@@ -634,7 +663,7 @@ internal static class FloorMask
             {
                 if (!CoverArt(sr, shipName, roomIds)) continue;
                 bool front = PropSim.FrontCover(sr, shipName, roomIds, skip);
-                if (!WriteArt(sb, sr, covers == 0, false, front)) continue;
+                if (!WriteArt(sb, sr, covers == 0, false, front, Marks(sr, ship.transform))) continue;
                 covers++;
                 if (front) fronts++;
             }
@@ -738,7 +767,51 @@ internal static class FloorMask
 
     // 絵 1 枚の配置 (テクスチャの四角・世界への写し方・絵が描かれる三角形)。部屋の絵は、詰め方が密・回転の物は画素を引けないので書かない。
     // 手前の絵は三角形だけでも形になるので、画素を引けない物はテクスチャ無しで書く
-    private static bool WriteArt(StringBuilder sb, SpriteRenderer sr, bool first, bool needTex, bool front = false)
+    // 絵の持ち主の印 (層・親までの道・自分と親 3 段と子の部品の型名・当たり判定の種類と範囲)。
+    // 道具が「床の上に立つ物か、床に置かれた平たい物か」を決める材料で、ここでは決めずに見えた物をそのまま書く
+    private static string Marks(SpriteRenderer sr, Transform root)
+    {
+        var t = sr.transform;
+        var names = new List<string>();
+        for (var p = t; p && p != root; p = p.parent) names.Add(p.name.Replace("\\", "/").Replace("\"", "'"));
+        names.Reverse();
+        var sb = new StringBuilder(", \"layer\": ").Append(sr.gameObject.layer).Append(", \"path\": \"").Append(string.Join("/", names)).Append("\", \"comps\": [");
+        int nc = 0, nk = 0;
+        void Comps(Transform at, string tag)
+        {
+            foreach (var c in at.GetComponents<Component>())
+            {
+                if (!c) continue;
+                string tn = c.GetIl2CppType().Name;
+                if (tn is "Transform" or "SpriteRenderer") continue;
+                sb.Append(nc++ == 0 ? "" : ", ").Append('"').Append(tag).Append(':').Append(tn);
+                // 端末は「下からだけ使えるか」と使える距離も書く (乗って使う台と、前に立って使う端末の見分けの材料)
+                var con = tn == "Console" ? c.TryCast<global::Console>() : null;
+                if (con) sb.Append(':').Append(con.onlyFromBelow ? 1 : 0).Append(':').Append(F(con.usableDistance));
+                sb.Append('"');
+            }
+        }
+        Comps(t, "s");
+        int depth = 1;
+        for (var p = t.parent; p && p != root && depth <= 3; p = p.parent, depth++) Comps(p, "u" + depth);
+        for (int i = 0; i < t.childCount; i++) Comps(t.GetChild(i), "k");
+        sb.Append("], \"cols\": [");
+        void Col(Collider2D c, string tag)
+        {
+            if (!c) return;
+            var b = c.bounds;
+            sb.Append(nk++ == 0 ? "" : ", ").Append("[\"").Append(tag).Append("\", \"").Append(c.GetIl2CppType().Name).Append("\", ")
+              .Append(c.isTrigger ? 1 : 0).Append(", ").Append(c.enabled && c.gameObject.activeInHierarchy ? 1 : 0).Append(", ").Append(c.gameObject.layer).Append(", ")
+              .Append(F(b.min.x)).Append(", ").Append(F(b.min.y)).Append(", ").Append(F(b.max.x)).Append(", ").Append(F(b.max.y)).Append(']');
+        }
+        foreach (var c in t.GetComponentsInChildren<Collider2D>(true)) Col(c, c && c.transform == t ? "s" : "k");
+        depth = 1;
+        for (var p = t.parent; p && p != root && depth <= 3; p = p.parent, depth++)
+            foreach (var c in p.GetComponents<Collider2D>()) Col(c, "u" + depth);
+        return sb.Append(']').ToString();
+    }
+
+    private static bool WriteArt(StringBuilder sb, SpriteRenderer sr, bool first, bool needTex, bool front = false, string marks = null)
     {
         var sp = sr.sprite;
         var tex = sp ? sp.texture : null;
@@ -770,7 +843,7 @@ internal static class FloorMask
         }
         if (needTex && place == null) return false;
         sb.Append(first ? "" : ",\n").Append("    {\"sprite\": \"").Append(sp.name).Append('"').Append(place)
-          .Append(", \"z\": ").Append(F(t.position.z)).Append(", \"order\": ").Append(sr.sortingOrder).Append(front ? ", \"front\": 1" : "").Append(", \"tris\": [");
+          .Append(", \"z\": ").Append(F(t.position.z)).Append(", \"order\": ").Append(sr.sortingOrder).Append(front ? ", \"front\": 1" : "").Append(marks).Append(", \"tris\": [");
         // 絵が実際に描かれる三角形 (世界座標)。テクスチャの四角の中でも三角形の外はアトラスの隣の絵なので描かない
         var vs = sp.vertices;
         var ts = sp.triangles;

@@ -1161,6 +1161,11 @@ internal static class WaterArt
         if (p.Flow) UnityEngine.Object.Destroy(p.Flow);
     }
 
+    // テスト用: 水のタイルをクルーの奥行きの帯のすぐ奥に置く (帯より奥の絵は全部水の下になり、床マスクの床/壁の面で水が掛かる)
+    internal static bool BackTile;
+    private const float BackTileZ = 0.0996f;
+    internal static void SetBackTile(bool on) { BackTile = on; TileZs.Clear(); }
+
     private const float DeckZ = -0.001f; // エアシップの警備室の下のデッキの床の絵の z (手すりは -0.1 で水より手前)
 
     // タイル (tx, ty) の水の絵の奥行き。手前の絵 (PropSim.FrontCover) もこの値と比べる
@@ -1227,6 +1232,7 @@ internal static class WaterArt
         // 床マスクに入っている床の層の絵が 5 点から外れていても、タイルに掛かるならその手前へ (Skeld のシールドの壁の側面など)
         var ship = ShipStatus.Instance;
         if (ship) front = Math.Min(front, DamageMap.BackLayerFrontZ(wx, wy, wx + size, wy + size, FloorMask.BackZ(FurnitureKinds.ShipName(ship))));
+        if (BackTile) front = Math.Min(front, BackTileZ);
         // 動く床 (昇降機の台) は部屋の絵より手前にあるので、台に載った水が台の下に隠れないよう台より手前へ
         front = WaterSim.PlatformFront(wx, wy, size, front);
         // 部屋の絵より手前にある歩ける床の絵 (ドロップシップの坂) は水のすぐ奥へ移してあるので、それより手前へ
