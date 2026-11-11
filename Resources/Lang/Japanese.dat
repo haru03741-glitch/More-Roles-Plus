@@ -108,21 +108,6 @@ Architect.Desk: 設計台
 Architect.Plan: 設計図
 Architect.UseDesk: 設計台を使う
 
-# ── 早撃ち (Quickdraw) ──
-Quickdraw.Name: 早撃ち
-Quickdraw.Blurb: 誰よりも早く次を仕留めろ
-Quickdraw.Summary: キルのクールダウンが部屋の設定より短いインポスターです。
-Quickdraw.Tips: 1 人倒したら、怪しまれる前に次を狙いましょう。
-Quickdraw.Quote: 抜くのも仕留めるのも、誰より早く。
-Quickdraw.KillCooldown: キルのクールダウン
-Quickdraw.KillCooldownMode: キルのクールダウンの決め方
-Quickdraw.KillCooldownMode.Detail: 部屋の値 (ゲーム設定のキルのクールダウン) を基にすると、部屋の値を変えた時に早撃ちの秒数も付いてきます。括弧の中は今の部屋の値で計算した秒数です。
-Quickdraw.KillCooldownOffset: 部屋の値に足す秒数
-Quickdraw.KillCooldownRatio: 部屋の値に掛ける倍率
-CooldownMode.Fixed: 固定
-CooldownMode.Offset: 部屋の値 ± 秒
-CooldownMode.Ratio: 部屋の値 × 倍
-
 # ── 道化 (Jester) ──
 Jester.Name: 道化
 Jester.Blurb: みんなをだまして追放されよう
@@ -2255,20 +2240,6 @@ Voyager.DiveDuration: 潜伏していられる時間
 Voyager.DiveSpeed: 潜伏中の速さ
 Voyager.SwapPairs: 見た目を入れ替える組の数
 Voyager.Paradox: パラドックス! 時の狭間に呑まれた
-Commander.Name: コマンダー
-Commander.Blurb: 号令をかけ、一斉に狩れ
-Commander.Summary: 「指令」で少しの間、インポスターとマッドメイト全員のキルの待ち時間を短くするインポスターです。終わると少しの間キルの待ち時間が進みません。
-Commander.Command: 指令
-Commander.Command.Help: 少しの間、インポスターとマッドメイト全員のキルの待ち時間を決めた値にします。終わるとインポスターのキルの待ち時間は最初からになり、少しの間進みません。
-Commander.Command.Short: 皆のキルを早める
-Commander.CommandCooldown: 指令の待ち時間
-Commander.NumOfCommand: 指令の回数
-Commander.CommandDuration: 指令が続く時間
-Commander.CommandKillCooldown: 指令中のキルの待ち時間
-Commander.KillButtonLostTime: 指令の後にキルの待ち時間が止まる時間
-Commander.Ordered: 指令が下った! 今のうちに狩れ
-Commander.Status: 指令中
-Commander.Lost: キル不可
 Magician.Name: マジシャン
 Magician.Blurb: 一瞬で全員の居場所をすり替えろ
 Magician.Summary: 「マジック」で生きている全員の位置を無作為に入れ替えるインポスターです。
@@ -2388,27 +2359,6 @@ Bettor.TeamImpostor: インポスター陣営
 Bettor.TeamCrew: クルー陣営
 Bettor.TeamNeutral: 第三陣営
 Bettor.TeamMadmate: インポスター陣営
-Obolus.Name: オボルス
-Obolus.Blurb: 悪しき者から渡し賃を取れ
-Obolus.Summary: キルボタンを持つ第三陣営です。最初の何回かの会議まではキルが封印されています。インポスター (設定でジャッカルも) を倒すと単独で勝ちます。
-Obolus.WinCond: インポスター (設定でジャッカル) を倒すとその場で単独勝ち
-Obolus.Kill: キル
-Obolus.Kill.Help: 近くの人を倒します (1 ターンの回数は設定で決まります)。封印が解けるまでは使えません。
-Obolus.Kill.Short: 近くの人を倒す
-Obolus.KillCooldown: キルの待ち時間
-Obolus.KillShieldTurn: キルが封印される会議の数
-Obolus.WinByJackal: ジャッカルを倒しても勝てる
-Obolus.ImpostorVision: インポスターの視界
-Obolus.IgnoreLights: 停電で視界が狭まらない
-Obolus.CanVent: ベントを使える
-Obolus.CanKillHidingPlayer: ベントに隠れている人も倒せる
-Obolus.Reveal: 封印が解けた時にインポスターへ知らせる
-Obolus.BreakdownAction: 知らせる時期
-Obolus.BreakdownAction.FirstTurn: 最初の会議
-Obolus.BreakdownAction.UnlockTurn: 封印が解ける会議
-Obolus.RevealDeath: オボルスの死も知らせる
-Obolus.Warning: オボルスに気をつけろ!
-Obolus.Dead: オボルスが死んだ
 Seed.Name: シード
 Seed.Blurb: 誰かと共に生き、共に勝て
 Seed.Summary: 「共生」した相手の誰かが勝つと、一緒に勝つ第三陣営です。ゲージ (設定) は相手の近くにいると貯まり、勝つには満ちている必要があります。
@@ -2507,19 +2457,9 @@ Tuna.CanVent: ベントを使える
 Tuna.RequiredGauge: 勝つのに要るゲージ
 Tuna.StopRatio: 止まっている時のゲージの貯まり方
 Tuna.WaterRatio: 泳いでいる時のゲージの貯まり方
-Moon.Name: ムーン
-Moon.Blurb: 闇夜を照らす月
-Moon.Help: 停電で視界が狭まらないアドオンです。
-Radar.Name: レーダー
-Radar.Blurb: 一番近い人を捉えろ
-Radar.Help: 一番近い生きている人への矢印が出るアドオンです。
 Egoist.Name: エゴイスト
 Egoist.Blurb: クルーの負けこそ我が勝ち
 Egoist.Help: クルーが負ければ勝ち、クルーが勝つと負けるアドオンです (クルーだけに付きます)。タスクはクルーの勝ちに数えません。
-Resonance.Name: レゾナンス
-Resonance.Blurb: 仲間の殺しに共鳴せよ
-Resonance.Help: 他のインポスターがキルすると画面が光るアドオンです (インポスターだけに付きます)。
-Resonance.IsColorFlash: 殺された人の色で光る
 SpectrePossession.Name: 狐憑き
 SpectrePossession.Blurb: そして、彼の者に仕えよ
 SpectrePossession.Help: 妖狐 (スペクター) の陣営になるアドオンです (クルーとインポスターだけに付きます)。妖狐が勝った時だけ勝ち、タスクは数えません。透視 (設定) で壁越しに見え、狂信 (設定) で妖狐の名前が妖狐の色に見えます。

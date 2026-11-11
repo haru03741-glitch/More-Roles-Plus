@@ -31,7 +31,7 @@ public sealed class Lighter : RoleBase
 }
 ```
 
-見本は `src/Roles/Crew/Lighter.cs` と `src/Roles/Impostor/Quickdraw.cs`、第三陣営は `src/Roles/Neutral/Jester.cs` (追放されたら一人勝ち)・`src/Roles/Neutral/Survivor.cs` (生きていれば一緒に勝つ) です。
+見本は `src/Roles/Crew/Lighter.cs`、第三陣営は `src/Roles/Neutral/Jester.cs` (追放されたら一人勝ち)・`src/Roles/Neutral/Survivor.cs` (生きていれば一緒に勝つ) です。
 
 ### 役職クラスで書けるもの
 
@@ -181,7 +181,7 @@ Mark.Send(target.PlayerId);   // 送る (自分の端末では実行されない
 
 開発者登録で次のコマンドが使えます。
 
-- `giverole <役職Id> [番号]`: その人 (省略で自分) にその役職を付けて全員に配る。ホストかフリープレイで (例: `giverole Quickdraw`)
+- `giverole <役職Id> [番号]`: その人 (省略で自分) にその役職を付けて全員に配る。ホストかフリープレイで (例: `giverole Sheriff`)
 - `forcewin <crew|imp|役職Id>` / `winner`: その勝ちで試合を終わらせる / 最後の結果を見る
 - `endcheck [番号...]`: 今の生き残りで勝者が決まるかを見るだけ (番号の人をキル役として数える)
 - `roles`: 登録された役職・今の割り当て・自分の視界とキルの待ち時間

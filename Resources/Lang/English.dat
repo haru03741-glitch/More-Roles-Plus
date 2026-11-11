@@ -108,21 +108,6 @@ Architect.Desk: Desk
 Architect.Plan: Blueprint
 Architect.UseDesk: Use Desk
 
-# ── Quickdraw ──
-Quickdraw.Name: Quickdraw
-Quickdraw.Blurb: Strike again before anyone else
-Quickdraw.Summary: An impostor whose kill cooldown is shorter than the room setting.
-Quickdraw.Tips: After a kill, go for the next one before anyone gets suspicious.
-Quickdraw.Quote: Quickest on the draw, quickest to finish.
-Quickdraw.KillCooldown: Kill Cooldown
-Quickdraw.KillCooldownMode: Kill Cooldown Type
-Quickdraw.KillCooldownMode.Detail: When based on the room value (the Kill Cooldown in game settings), the Quickdraw cooldown follows when the room value changes. The number in brackets is the result with the current room value.
-Quickdraw.KillCooldownOffset: Seconds Added to Room Value
-Quickdraw.KillCooldownRatio: Multiplier on Room Value
-CooldownMode.Fixed: Fixed
-CooldownMode.Offset: Room value ± sec
-CooldownMode.Ratio: Room value ×
-
 # ── Jester ──
 Jester.Name: Jester
 Jester.Blurb: Get yourself voted out
@@ -2255,20 +2240,6 @@ Voyager.DiveDuration: How long you can dive
 Voyager.DiveSpeed: Speed while diving
 Voyager.SwapPairs: Pairs of looks swapped
 Voyager.Paradox: Paradox! You were swallowed by time
-Commander.Name: Commander
-Commander.Blurb: Give the order and hunt together
-Commander.Summary: An impostor whose "Command" briefly shortens the kill cooldown of every impostor and madmate. Afterwards the kill cooldown is frozen for a while.
-Commander.Command: Command
-Commander.Command.Help: For a while, every impostor and madmate's kill cooldown becomes the set value. When it ends, impostor kill cooldowns restart and don't progress for a while.
-Commander.Command.Short: Speed up everyone's kills
-Commander.CommandCooldown: Command cooldown
-Commander.NumOfCommand: Command uses
-Commander.CommandDuration: Command duration
-Commander.CommandKillCooldown: Kill cooldown during the command
-Commander.KillButtonLostTime: Kill cooldown freeze after the command
-Commander.Ordered: The order is given! Hunt now
-Commander.Status: Command
-Commander.Lost: No kills
 Magician.Name: Magician
 Magician.Blurb: Swap everyone's places in an instant
 Magician.Summary: An impostor whose "Magic" randomly shuffles the positions of every living player.
@@ -2388,27 +2359,6 @@ Bettor.TeamImpostor: Impostor team
 Bettor.TeamCrew: Crew team
 Bettor.TeamNeutral: Neutral
 Bettor.TeamMadmate: Impostor team
-Obolus.Name: Obolus
-Obolus.Blurb: Take the ferry toll from the wicked
-Obolus.Summary: A neutral with a kill button. The kill is sealed for the first few meetings. Killing an impostor (or a Jackal, option) wins alone.
-Obolus.WinCond: Win alone the moment you kill an impostor (or a Jackal, option)
-Obolus.Kill: Kill
-Obolus.Kill.Help: Kills a nearby player (once per turn). It can't be used until the seal breaks.
-Obolus.Kill.Short: Kill someone nearby
-Obolus.KillCooldown: Kill cooldown
-Obolus.KillShieldTurn: Meetings the kill stays sealed
-Obolus.WinByJackal: Killing a Jackal also wins
-Obolus.ImpostorVision: Impostor vision
-Obolus.IgnoreLights: Vision isn't reduced by blackouts
-Obolus.CanVent: Can use vents
-Obolus.CanKillHidingPlayer: Can kill players hiding in vents
-Obolus.Reveal: Warn the impostors when the seal breaks
-Obolus.BreakdownAction: When to warn
-Obolus.BreakdownAction.FirstTurn: First meeting
-Obolus.BreakdownAction.UnlockTurn: When the seal breaks
-Obolus.RevealDeath: Also tell them when the Obolus dies
-Obolus.Warning: Beware of the Obolus!
-Obolus.Dead: The Obolus died
 Seed.Name: Seed
 Seed.Blurb: Live with someone, win with them
 Seed.Summary: A neutral who wins along with whoever they "Symbiosis" with. With the gauge (option), staying near your partner fills it, and it must be full to win.
@@ -2507,19 +2457,9 @@ Tuna.CanVent: Can use vents
 Tuna.RequiredGauge: Gauge needed to win
 Tuna.StopRatio: Gauge rate while standing still
 Tuna.WaterRatio: Gauge rate while swimming
-Moon.Name: Moon
-Moon.Blurb: The moon lights up the dark
-Moon.Help: An addon whose vision isn't reduced by blackouts.
-Radar.Name: Radar
-Radar.Blurb: Track the closest player
-Radar.Help: An addon with an arrow to the closest living player.
 Egoist.Name: Egoist
 Egoist.Blurb: The crew's loss is my win
 Egoist.Help: An addon that wins when the crew loses and loses when the crew wins (crew only). Your tasks don't count toward the crew win.
-Resonance.Name: Resonance
-Resonance.Blurb: Resonate with your allies' kills
-Resonance.Help: An addon whose screen flashes when another impostor kills (impostors only).
-Resonance.IsColorFlash: Flash in the victim's color
 SpectrePossession.Name: Fox Possessed
 SpectrePossession.Blurb: And now, serve that one
 SpectrePossession.Help: An addon that joins the Spectre's (fox's) side (crew and impostors only). You win only when the Spectre wins, and your tasks don't count. Clairvoyance (option) lets you see through walls, and Fanaticism (option) shows the Spectre's name in the Spectre's color.
