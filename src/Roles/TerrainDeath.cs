@@ -85,14 +85,15 @@ public static class TerrainDeath
             LocalDoom = target;
             if (cause == Cause.Drown) AirGauge.Empty();
         }
-        // 下敷き: 崩れた壁の塊が倒れる側の上から体へ積もる (全員の端末で同じ山)
-        List<GameObject> mound = cause == Cause.Crush ? BuryUnder(p) : null;
+        // 下敷き: 崩れた壁の塊が倒れる側の上から体へ積もる (全員の端末で同じ山)。
+        // 客には壊れ方が束で後から届くので、崩れの知らせが届くのを少し待ってから積む
+        if (cause == Cause.Crush) Burying.Add(new Burial { Pc = p, Id = target, At = Time.time });
         // 死ぬと決まる前へ時間を戻すと、崩れかけの人は助かる (積もった山も消える)
         Rewind.Undo(_ =>
         {
             Doomed.Remove(target);
             if (LocalDoom == target) LocalDoom = 255;
-            if (mound != null) foreach (var go in mound) if (go) UnityEngine.Object.Destroy(go);
+            Unbury(target);
         });
         // 死に方の見た目は倒れる連番を流す前に渡す (下敷きは着せ替えを山の中へ落とす)。流せなければ取り消す
         FallenCorpse.SetFinish(p, cause switch { Cause.Burn => FallenCorpse.Finish.Burnt, Cause.Drown => FallenCorpse.Finish.Drowned, _ => FallenCorpse.Finish.Buried });
@@ -129,6 +130,7 @@ public static class TerrainDeath
     {
         // 逆再生の間は数えも倒しもしない (崩れかけの人は、戻す区間の取り消しで助かる前に倒されない)
         if (RewindPlayback.Active) return;
+        if (Burying.Count > 0) TickBury();
         if (Doomed.Count > 0)
         {
             if (_shipGen != GameClock.ShipGen) Reset();
@@ -240,6 +242,8 @@ public static class TerrainDeath
     {
         _shipGen = GameClock.ShipGen;
         Doomed.Clear();
+        Burying.Clear();
+        Mounds.Clear();
         LocalDoom = 255;
         Array.Clear(BurnFor);
         Array.Clear(SwimFor);
@@ -361,20 +365,68 @@ public static class TerrainDeath
         _fallTime = Time.time;
     }
 
-    private static List<GameObject> BuryUnder(PlayerControl p)
+    private struct Burial
     {
-        var feet = p.GetTruePosition();
+        public PlayerControl Pc;
+        public byte Id;
+        public float At;
+        public Vector2 Feet;
+        public float Face;
+        public bool Seen;
+    }
+
+    private static readonly List<Burial> Burying = new();
+    private static readonly Dictionary<byte, List<GameObject>> Mounds = new();
+    private const float BuryWait = 0.6f; // 崩れの知らせを待つ上限
+
+    private static void TickBury()
+    {
+        float now = Time.time;
+        for (int i = Burying.Count - 1; i >= 0; i--)
+        {
+            var b = Burying[i];
+            if (!b.Pc) { Burying.RemoveAt(i); continue; }
+            if (!b.Seen)
+            {
+                // 倒れ始めた時の足元と向き (連番が体の絵を差し替えた後の描画物の向き)
+                b.Seen = true;
+                b.Feet = b.Pc.GetTruePosition();
+                var body = b.Pc.cosmetics && b.Pc.cosmetics.currentBodySprite != null ? b.Pc.cosmetics.currentBodySprite.BodySprite : null;
+                b.Face = body && body.flipX ? -1f : 1f;
+                Burying[i] = b;
+            }
+            bool fell = _fallTime >= b.At - FallMemory && Near(b.Feet);
+            if (!fell && now - b.At < BuryWait) continue;
+            Burying.RemoveAt(i);
+            Unbury(b.Id);
+            Mounds[b.Id] = BuryUnder(b, fell);
+        }
+    }
+
+    private static bool Near(Vector2 feet)
+    {
+        float dx = feet.x - _fallAt.x, dy = feet.y - _fallAt.y;
+        return dx * dx + dy * dy < FallNear * FallNear;
+    }
+
+    private static List<GameObject> BuryUnder(in Burial b, bool fell)
+    {
         Vector2 axis = FxMath.V2(0f, -1f);
         bool slab = false;
-        float dx = feet.x - _fallAt.x, dy = feet.y - _fallAt.y;
-        if (Time.time - _fallTime < FallMemory && dx * dx + dy * dy < FallNear * FallNear)
+        if (fell)
         {
             // 叩いた向きの先へ倒れる。向きの無い崩れ方は壁から人への向き
-            axis = _fallSided ? _fallDir : FxMath.V2(dx, dy);
+            axis = _fallSided ? _fallDir : FxMath.V2(b.Feet.x - _fallAt.x, b.Feet.y - _fallAt.y);
             slab = _fallWhole;
         }
-        float face = p.cosmetics && p.cosmetics.FlipX ? -1f : 1f;
-        return TerrainFx.Bury(feet, axis, face, (ushort)(p.PlayerId * 97 + 13), slab);
+        return TerrainFx.Bury(b.Feet, axis, b.Face, (ushort)(b.Id * 97 + 13), slab);
+    }
+
+    private static void Unbury(byte id)
+    {
+        for (int i = Burying.Count - 1; i >= 0; i--) if (Burying[i].Id == id) Burying.RemoveAt(i);
+        if (!Mounds.Remove(id, out var mound)) return;
+        foreach (var go in mound) if (go) UnityEngine.Object.Destroy(go);
     }
 
     // ── 下敷き (ホスト) ──────────────────────────────────────────────────
