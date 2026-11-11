@@ -33,6 +33,7 @@ internal static class TerrainDamage
         SolidMap.Ensure(); // 壁を切る前に歩ける所の地図を作っておく
         var p = DamageProfile.Of(e.Kind);
         if (e.Kind == DamageKind.Wall) return TrickWall.TryResolve(e, out r, out why);
+        if (e.Kind == DamageKind.Plate) return IronPlate.TryResolve(e, out r, out why);
         if (e.Kind == DamageKind.Crumble) return BreakableProps.TryResolveCrumble(e, out r, out why);
         if (e.Kind == DamageKind.Explosion || e.Kind == DamageKind.Push || e.Kind == DamageKind.Water || e.Kind == DamageKind.Flood || e.Kind.IsFire())
         {
@@ -146,7 +147,7 @@ internal static class TerrainDamage
             DamageKind.Spill => "spill",
             DamageKind.Water => "water", // 地形は変えない (水は WaterLeak の受け手が出す)
             DamageKind.Flood => "flood", // 地形は変えない (水は WaterSim の受け手が入れる)
-            DamageKind.Wall => TrickWall.Place(r),
+            DamageKind.Wall => TrickWall.Place(r, ref landings),
             DamageKind.Crumble => BreakableProps.Crumble(r, given, ref landings),
             _ => "unknown kind",
         };
@@ -318,6 +319,7 @@ internal static class TerrainDamage
         if (visual == null && cut > 0) HideWallDecor(core);
         st = Stage(2, st);
         if (cut > 0) SolidMap.Carve(core, keep, blast); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
+        if (cut > 0) IronPlate.NoteFaces(removed);
         if (cut > 0 && LastMouths.Count > 0)
         {
             int behind = SolidMap.SealBehind(LastMouths, LastMouthAway, core, blast);
@@ -602,6 +604,7 @@ internal static class TerrainDamage
         if (visual == null && cut > 0) HideWallDecor(shape);
         Mark("breach");
         if (cut > 0) SolidMap.Carve(shape, keep, hit + normal * 0.1f); // 開いた所を歩ける所の地図に足す (蓋を作った後の壁で)
+        if (cut > 0) IronPlate.NoteHole(center, tangent, length);
         Mark("carve");
         if (cut > 0) WallPeel.Release(hit);
         if (cut > 0) Roles.GatlingFx.ClearHoles(center.x, center.y, shape.BoundRadius + 0.1f); // 抜けた壁に付いていた弾痕 (叩いても焼いても)

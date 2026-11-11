@@ -104,6 +104,10 @@ internal static class TerrainSync
         return res;
     }
 
+    // 適用中の出来事の刻み (全員で同じ) と起こした人。適用の中で起きた事を各計算の同じ刻みに積むのに使う
+    internal static int ApplyingTick { get; private set; }
+    internal static byte ApplyingActor { get; private set; } = ResolvedDamage.NoActor;
+
     // decide = 大きな瓦礫の止まる所を自分で決める (ホスト・一人の時)。客は届いた結果の物を使う
     private static string ApplyNow(ushort seq, in ResolvedDamage r, bool decide, out RubbleLanding[] landings)
     {
@@ -121,6 +125,8 @@ internal static class TerrainSync
         TerrainRewind.FlushPlan(); // 逆再生の残りの段は、この件より前に当て切る (全員が同じ順で取り消す)
         TerrainFx.RunDeferred(); // 前の破壊の見た目を先に出す (出る順を適用の順に保つ)
         WaterSim.BeforeApply(r);
+        ApplyingTick = GameClock.Expand(r.Tick);
+        ApplyingActor = r.Actor;
         TerrainUndo.Begin(seq, r);
         TerrainDigest.Begin();
         string res;
@@ -426,6 +432,7 @@ internal static class TerrainSync
         if (data == null || data.IsDead || data.Disconnected) return "not alive";
         if (e.Kind == DamageKind.Burn) return "world only"; // 焼け落ちはホストの火の計算だけが決める
         if (e.Kind == DamageKind.Crumble) return "world only"; // 時間切れの壁を崩すのはホストだけ
+        if (e.Kind == DamageKind.Plate) return "world only"; // 鉄板はホストが穴と瓦礫を確かめて頼む
         Vector2 at = sender.GetTruePosition();
         float dx = e.Position.x - at.x, dy = e.Position.y - at.y;
         float max = e.Kind is DamageKind.Blunt or DamageKind.Gunfire

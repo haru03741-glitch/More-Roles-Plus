@@ -378,7 +378,7 @@ public static class TerrainDeath
         bool wall = r.Kind switch
         {
             DamageKind.Blunt or DamageKind.Burn or DamageKind.Gunfire => TerrainDamage.LastCut > 0,
-            DamageKind.Crumble => true,
+            DamageKind.Crumble => !IronPlate.IsPlateAt(r.Position), // 鉄板は薄い板なので崩れても下敷きにしない (割った時と同じ)
             _ => false,
         };
         if (!wall) return;
@@ -516,7 +516,7 @@ public static class TerrainDeath
         bool wall = r.Kind switch
         {
             DamageKind.Blunt or DamageKind.Burn or DamageKind.Gunfire => TerrainDamage.LastCut > 0,
-            DamageKind.Crumble => true,
+            DamageKind.Crumble => !IronPlate.IsPlateAt(r.Position), // 鉄板は薄い板なので崩れても下敷きにしない (割った時と同じ)
             _ => false,
         };
         if (!wall) return;

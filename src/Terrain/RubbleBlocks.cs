@@ -51,6 +51,9 @@ internal static class RubbleBlocks
 
     // 拾える試合か (構築士がいる)。false の試合では塊の絵は従来どおり床の板へ焼く
     internal static Func<bool> Pickable = () => false;
+    // 瓦礫を使う役職 (アルケミスト) の数。1 人でもいれば拾える試合と同じく塊の絵を残す
+    internal static int Keepers;
+    private static bool Keeps() => Keepers > 0 || Pickable();
     // 時間で崩れた仕掛け壁からも拾える塊を残すか (ホストだけが見て止まる所を決める。客は届いた止まる所に従う)
     internal static Func<bool> CrumblePickable = () => false;
     private const float TakeMatch = 0.1f; // 拾う知らせの位置と当たり判定の位置の食い違いの許し (電文の丸め)
@@ -162,7 +165,7 @@ internal static class RubbleBlocks
     // 後の破壊が元の場所を抜き直すと塊の大半が消える (当たり判定だけが残る) ため。焼くまでの間は生の塊を見せる
     internal static bool KeepPiece(Block b, Transform piece, SpriteRenderer sr, float z, bool ownSprite)
     {
-        if (b == null || (!b.Taken && !Pickable())) return false;
+        if (b == null || (!b.Taken && !Keeps())) return false;
         b.Piece = piece;
         b.OwnSprite = ownSprite;
         if (b.Taken) Remove(b);
@@ -226,6 +229,21 @@ internal static class RubbleBlocks
         UnityEngine.Object.Destroy(b.Piece.gameObject);
         b.Piece = null;
         ShadowPatch.MarkSettled(b.X, b.Y); // 影の中の焼いた絵からも消す
+    }
+
+    // 全員 (地形の出来事の適用の中で): 瓦礫を使い切る。消さずに隠し、時戻しでその件を取り消したら元へ戻す
+    internal static void Consume(Block b)
+    {
+        b.Taken = true;
+        if (b.Go) b.Go.SetActive(false);
+        var piece = b.Piece;
+        if (piece) { piece.gameObject.SetActive(false); ShadowPatch.MarkSettled(b.X, b.Y); }
+        TerrainUndo.OnUndo(() =>
+        {
+            b.Taken = false;
+            if (b.Go) b.Go.SetActive(true);
+            if (piece) { piece.gameObject.SetActive(true); ShadowPatch.MarkSettled(b.X, b.Y); }
+        });
     }
 
     // 時戻し: 当たり判定を先に止めてから消す (Destroy は同じフレームでは残り、次の破壊の問い合わせに出る)

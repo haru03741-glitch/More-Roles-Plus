@@ -1735,7 +1735,7 @@ Comet.Vision: ブースト中の視界の倍率
 Comet.Screen: ブースト中の画面の倍率
 Alchemist.Name: アルケミスト
 Alchemist.Blurb: 死への調和
-Alchemist.Summary: 死体を錬金弾に変え、会議で人を撃ち抜けるクルーです。
+Alchemist.Summary: 死体を錬金弾に変えて会議で人を撃ち抜き、瓦礫を鉄板に変えて壁の穴をふさげるクルーです。
 Alchemist.Alchemy: 錬金
 Alchemist.Alchemy.Help: 近くの死体を消して、決めた数の錬金弾に変えます。
 Alchemist.Alchemy.Short: 死体を錬金弾に変える
@@ -1748,6 +1748,12 @@ Alchemist.Hit: {name} が錬金弾で撃ち抜かれた
 Alchemist.AlchemyCooldown: 錬金の待ち時間
 Alchemist.PerAlchemy: 1 回の錬金でできる弾の数
 Alchemist.PerMeeting: 1 回の会議で撃てる数
+Alchemist.Plate: 変成
+Alchemist.Plate.Help: 足元の近くの瓦礫を鉄板に変えて、いちばん近い壁の穴をふさぎます。宇宙へつながる穴なら、吸い出しも止まります。鉄板はハンマーで 1 回叩くか刀で斬ると割れ、穴がまた開きます。近くに瓦礫がないと使えません。
+Alchemist.Plate.Short: 瓦礫で壁の穴をふさぐ
+Alchemist.PlateCooldown: 変成の待ち時間
+Alchemist.NoRubble: 近くに瓦礫がない
+Alchemist.NoHole: 近くにふさげる穴がない
 Eclipse.Name: エクリプス
 Eclipse.Blurb: 災いが降り注ぐ
 Eclipse.Summary: 印の場所へ隕石を落とし、まわりの人をまとめて倒せるインポスターです。

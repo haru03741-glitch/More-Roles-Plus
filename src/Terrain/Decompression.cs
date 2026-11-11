@@ -57,6 +57,8 @@ internal static partial class Decompression
         public Vector2 Away;      // 宇宙への向き (喉を掘った向き・演出用)
         public bool Sealed;
         public bool ByProp;       // 物がふさいだ
+        public string Plate;      // 鉄板でふさがった (最後に覆ってふさいだ鉄板の名前・鉄板でふさがっていなければ null)
+        public readonly List<PlateBox> Cover = new(); // 口を覆っている鉄板 (合わせて口の幅の大半を覆うとふさがる)
         public int Comp = -1;     // 口の升がいる範囲 (作り直すたびに書く)
         public byte Actor = ResolvedDamage.NoActor; // 穴を開けた人 (吸い出された人の死因の相手)
         public readonly List<GameObject> Seals = new(); // 泡でふさいだ視界の線 (剥がす時に消す)
@@ -69,6 +71,10 @@ internal static partial class Decompression
         public bool Rebuild;      // 爆発で歩ける所が変わった (升を作り直す)
         public bool Unmouth;      // 時戻しで取り消した口 Lines を外す
         public bool Strip;        // At にいちばん近いふさがった口を開け直す (Actor = 剥がした人)
+        public bool Plate;        // 鉄板 Name (真ん中 At・半分の大きさ Half) が覆う開いた口をふさぐ
+        public bool Unplate;      // 鉄板 Name が壊れた: ふさいでいた口を開け直す (Actor = 壊した人)
+        public string Name;
+        public Vector2 Half;
         public List<(Vector2 A, Vector2 B)> Lines; // 開通した口 (Rebuild でない時・曲がった壁では数本)
         public Vector2 Away, At;
         public byte Actor;
@@ -681,6 +687,11 @@ internal static partial class Decompression
             if (p.Strip)
             {
                 if (StripAt(p.At, p.Actor)) field = true;
+                continue;
+            }
+            if (p.Plate || p.Unplate)
+            {
+                if (p.Plate ? PlateAt(p) : UnplateAt(p)) field = true;
                 continue;
             }
             if (p.Unmouth) RemoveMouth(p.Lines);

@@ -18,6 +18,10 @@ internal static partial class Decompression
     {
         public int Tick, PrevStart;
         public byte PrevActor;
+        public bool Exact;        // 鉄板でふさいだ・鉄板が壊れた記録 (戻す時はふさがりと鉄板をそのまま戻す)
+        public bool PrevSealed;
+        public string PrevPlate;
+        public PlateBox[] PrevCover;
     }
 
     // 剥がせる口があるか (ボタンの判定で毎フレーム呼ばれるので Unity の算術を使わない)
@@ -30,7 +34,7 @@ internal static partial class Decompression
         {
             if (!_running) return false;
             for (int i = 0; i < Breaches.Count; i++)
-                if (Breaches[i].Sealed && !Breaches[i].ByProp) return true;
+                if (Breaches[i].Sealed && !Breaches[i].ByProp && Breaches[i].Plate == null) return true;
             return false;
         }
     }
@@ -43,7 +47,7 @@ internal static partial class Decompression
         for (int i = 0; i < Breaches.Count; i++)
         {
             var br = Breaches[i];
-            if (!br.Sealed || br.ByProp) continue;
+            if (!br.Sealed || br.ByProp || br.Plate != null) continue; // 鉄板は剥がせない (壊すと開く)
             foreach (var (a, b) in br.Lines)
             {
                 float abx = b.x - a.x, aby = b.y - a.y, len = abx * abx + aby * aby;
@@ -154,7 +158,7 @@ internal static partial class Decompression
         int b = StripTarget(at.x, at.y, StripHostReach + 0.5f);
         if (b < 0) return false;
         var br = Breaches[b];
-        br.Strips.Add(new StripRec { Tick = _step, PrevStart = br.Start, PrevActor = br.Actor });
+        br.Strips.Add(Snapshot(br)); // 剥がす前の姿 (泡のふさがり・鉄板の覆い) をそのまま戻せるように
         br.Sealed = false;
         br.Start = _step;
         br.Actor = actor;
@@ -181,20 +185,23 @@ internal static partial class Decompression
     {
         foreach (var br in Breaches)
         {
-            bool changed = false;
+            StripRec first = null;
             while (br.Strips.Count > 0 && br.Strips[br.Strips.Count - 1].Tick >= target)
             {
                 var s = br.Strips[br.Strips.Count - 1];
                 br.Strips.RemoveAt(br.Strips.Count - 1);
                 br.Start = s.PrevStart;
                 br.Actor = s.PrevActor;
-                changed = true;
+                first = s;
             }
-            if (!changed) continue;
+            if (first == null) continue;
             FoamArt.Forget(br);
             DropSeal(br);
-            br.Sealed = _step - br.Start >= FoamDelay + FoamTime;
-            if (br.Sealed) SealSight(br);
+            // いちばん古く戻した記録の前の姿へ。剥がした記録の前は泡の時間で決まり、鉄板の記録の前はその時の姿そのまま
+            br.Sealed = first.Exact ? first.PrevSealed : _step - br.Start >= FoamDelay + FoamTime;
+            br.Plate = first.Exact ? first.PrevPlate : null;
+            if (first.Exact) { br.Cover.Clear(); br.Cover.AddRange(first.PrevCover); }
+            if (br.Sealed && br.Plate == null) SealSight(br);
             _sealDirty = true;
         }
     }

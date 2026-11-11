@@ -1735,7 +1735,7 @@ Comet.Vision: Vision during boost
 Comet.Screen: Screen zoom during boost
 Alchemist.Name: Alchemist
 Alchemist.Blurb: Harmony toward death
-Alchemist.Summary: A crewmate who turns bodies into alchemy bullets and shoots players in meetings.
+Alchemist.Summary: A crewmate who turns bodies into alchemy bullets to shoot players in meetings, and turns rubble into iron plates to seal holes in walls.
 Alchemist.Alchemy: Alchemy
 Alchemist.Alchemy.Help: Remove a nearby body and turn it into the set number of alchemy bullets.
 Alchemist.Alchemy.Short: Turn a body into bullets
@@ -1748,6 +1748,12 @@ Alchemist.Hit: {name} was shot by an alchemy bullet
 Alchemist.AlchemyCooldown: Alchemy cooldown
 Alchemist.PerAlchemy: Bullets per alchemy
 Alchemist.PerMeeting: Shots per meeting
+Alchemist.Plate: Transmute
+Alchemist.Plate.Help: Turn nearby rubble into an iron plate that seals the closest hole in a wall. If the hole opens into space, it also stops the pull. One hammer blow or a sword cut breaks the plate and reopens the hole. You need rubble near your feet.
+Alchemist.Plate.Short: Seal a wall hole with rubble
+Alchemist.PlateCooldown: Transmute cooldown
+Alchemist.NoRubble: No rubble nearby
+Alchemist.NoHole: No hole to seal nearby
 Eclipse.Name: Eclipse
 Eclipse.Blurb: Disaster rains down
 Eclipse.Summary: An impostor who drops a meteor on a marked spot to kill everyone around it.

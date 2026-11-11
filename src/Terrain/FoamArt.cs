@@ -110,7 +110,7 @@ internal static class FoamArt
         for (int i = 0; i < list.Count; i++)
         {
             var br = list[i];
-            if (br.ByProp) continue;
+            if (br.ByProp || br.Plate != null) continue;
             if (!Foams.TryGetValue(br, out var f))
             {
                 int age = Decompression.Step - br.Start - Decompression.FoamDelay;

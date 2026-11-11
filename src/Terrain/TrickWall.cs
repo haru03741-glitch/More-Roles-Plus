@@ -18,6 +18,7 @@ internal static class TrickWall
     private const float MinLength = 0.6f;
     private const float EndOverlap = 0.1f;   // 端が壁に当たった時、その壁へ食い込ませる長さ (隙間を残さない)
     private const float PlayerClear = 0.3f;  // 人の足元からこれより近くには立てない
+    private const float DoorClear = 0.35f;   // 鉄板は扉の範囲からこれより近くへ伸ばさない (板の厚みの半分 + 人が通れる余白)
     private const float CarveMargin = 0.15f; // 壊れた時に歩ける所へ戻す範囲の余白 (地図は壁を太らせて作るため)
     private const float Ppu = 100f;
     private const float ProbeStep = 0.15f;   // 立てる所を調べる円の間隔 (円の半径 = 厚みの半分より細かく)
@@ -60,23 +61,58 @@ internal static class TrickWall
         return true;
     }
 
-    // 真ん中から dir へ、壁 (当たり判定) か歩けない所に当たるまでの長さ (当たれば少し食い込ませる)
-    private static float Reach(Vector2 c, Vector2 dir, float half)
+    // 鉄板: 点 p を通る along の向きの板で、両端が壁に届く物を置けるか (ホストの決定と手元の確かめ)。
+    // 届く長さは穴の幅で決まり、上限より広い穴はふさげない。人と瓦礫は掛かってもよい (人は立った時に押し出される)
+    internal static bool FitPlate(Vector2 p, Vector2 along, out Vector2 c, out Vector2 t, out float len, out string why)
+    {
+        c = p;
+        t = along.sqrMagnitude > 1e-6f ? along.normalized : Vector2.right;
+        len = 0f;
+        if (!SolidMap.Ensure() || !SolidMap.Valid) { why = "no map"; return false; }
+        if (SolidMap.Solid(p)) { why = "not on floor"; return false; }
+        float half = TerrainPermit.MaxWallLength * 0.5f;
+        float plus = Reach(p, t, half, true), minus = Reach(p, -t, half, true);
+        if (plus >= half || minus >= half) { why = "hole too wide"; return false; }
+        if (plus + minus < MinLength) { why = "hole too narrow"; return false; }
+        c = TerrainWire.Q(p + t * ((plus - minus) * 0.5f));
+        t = TerrainWire.QNormal(t);
+        len = TerrainWire.QSize(plus + minus);
+        why = Blocked(c, t, len, true, true);
+        return why == null;
+    }
+
+    // 真ん中から dir へ、壁 (当たり判定) か歩けない所に当たるまでの長さ (当たれば少し食い込ませる)。
+    // plate = 鉄板 (瓦礫の当たり判定は壁に数えない)
+    private static float Reach(Vector2 c, Vector2 dir, float half, bool plate = false)
     {
         float end = half;
         foreach (var h in Physics2D.CircleCastAll(c, 0.01f, dir, half, 1 << ShipLayer)) // RaycastAll は Android の本編に無い
         {
             if (!h.collider || h.collider.isTrigger) continue;
+            if (plate && h.collider.name == RubbleBlocks.Name) continue;
             end = Math.Min(end, h.distance + EndOverlap);
         }
+        // 鉄板: 扉の脇の穴は扉の口までつながっていることがあるので、扉の範囲 (使う範囲を含む) の手前で止める (扉の口はふさがない)
+        if (plate)
+            foreach (var h in Physics2D.CircleCastAll(c, DoorClear, dir, end, ~0))
+            {
+                if (!h.collider || !IsDoor(h.collider)) continue;
+                if (h.distance <= 0f)
+                {
+                    // 始点で既に掛かっている扉は、扉の真ん中がある向きだけ止める (反対の向きへは伸ばしてよい)
+                    var b = h.collider.bounds.center;
+                    if ((b.x - c.x) * dir.x + (b.y - c.y) * dir.y <= 0f) continue;
+                }
+                end = Math.Min(end, Math.Max(0f, h.distance - 0.05f));
+            }
         const float step = 0.05f;
         for (float s = step; s < end; s += step)
             if (SolidMap.Solid(c.x + dir.x * s, c.y + dir.y * s)) { end = Math.Min(end, s + EndOverlap); break; }
         return end;
     }
 
-    // 立てる所に掛かる物 (人・扉・通気口・端末・はしご・死体)。無ければ null
-    private static string Blocked(Vector2 c, Vector2 t, float len, bool push)
+    // 立てる所に掛かる物 (人・扉・通気口・端末・はしご・死体)。無ければ null。plate = 鉄板 (瓦礫・穴の切り口・扉の使う範囲は掛かってもよい)
+    private static string Blocked(Vector2 c, Vector2 t, float len, bool push, bool plate = false)
     {
         var shape = new RectShape(c, t, len, Thickness);
         var all = PlayerControl.AllPlayerControls;
@@ -96,7 +132,7 @@ internal static class TrickWall
         for (int i = -steps; i <= steps; i++)
         {
             float s = Math.Clamp(i * ProbeStep, -len * 0.5f, len * 0.5f);
-            string why = ProbeAt(c + t * s, MathF.Abs(s) <= inner, push);
+            string why = ProbeAt(c + t * s, MathF.Abs(s) <= inner, push, plate);
             if (why != null) return why;
         }
         return null;
@@ -104,15 +140,18 @@ internal static class TrickWall
 
     // 壁の芯の上の 1 点に、壁を立てられない物があるか (理由・無ければ null)。core = 端の食い込みを除いた所 (船・家具の層の物も見る)。
     // push = 先に立った仕掛け壁との重なりは許す
-    private static string ProbeAt(Vector2 at, bool core, bool push)
+    private static string ProbeAt(Vector2 at, bool core, bool push, bool plate = false)
     {
         if (core)
             foreach (var col in Physics2D.OverlapCircleAll(at, Thickness * 0.5f, (1 << ShipLayer) | (1 << FurnitureLayer)))
-                if (col && !col.isTrigger && !(push && col.name.StartsWith(Name, StringComparison.Ordinal))) return $"something in the way ({col.name})";
+                if (col && !col.isTrigger && !(push && col.name.StartsWith(Name, StringComparison.Ordinal)) && !(plate && (col.name == RubbleBlocks.Name || col.name == WallBody.CapName)))
+                    return $"something in the way ({col.name})";
         foreach (var col in Physics2D.OverlapCircleAll(at, Thickness * 0.5f + 0.05f, ~0))
         {
             if (!col) continue;
-            if (col.GetComponentInParent<OpenableDoor>()) return "door in the way";
+            // 鉄板は元の壁の線の上 (穴) にだけ立つので、扉の脇の穴でも扉の使う範囲 (トリガー) には掛かってよい
+            if (plate && col.isTrigger) continue;
+            if (IsDoor(col)) return "door in the way";
             if (col.GetComponentInParent<Vent>()) return "vent in the way";
             if (col.GetComponentInParent<global::Console>()) return "console in the way";
             if (col.GetComponentInParent<Ladder>()) return "ladder in the way";
@@ -120,6 +159,10 @@ internal static class TrickWall
         }
         return null;
     }
+
+    // 本編の扉の一部か (開け閉めする扉・近づくと開くガラスの扉・除染室の扉。除染室の扉は OpenableDoor ではない)
+    private static bool IsDoor(Collider2D c) =>
+        c.GetComponentInParent<OpenableDoor>() || c.GetComponentInParent<SensorDoor>() || c.GetComponentInParent<ManualDoor>();
 
     // 離れた所から立てる壁 (人に掛かってもよい) をこの点に通してよいか。立てる前に線を床と物で切るのに使う
     internal static bool FreeForPushWall(Vector2 at)
@@ -136,9 +179,11 @@ internal static class TrickWall
         return ProbeAt(at, true, true) ?? "free";
     }
 
-    // 全員: 決まった形で立てる
-    public static string Place(in ResolvedDamage r)
+    // 全員: 決まった形で立てる。landings = 配る結果に載せる物 (鉄板の印と使った瓦礫をそのまま運ぶ)
+    public static string Place(in ResolvedDamage r, ref RubbleLanding[] landings)
     {
+        landings = r.Landings ?? Array.Empty<RubbleLanding>();
+        bool plate = IronPlate.IsPlate(r);
         var ship = ShipStatus.Instance;
         if (!ship || !GameClock.ShipAlive) return "wall no ship";
         Vector2 c = r.Position, t = r.Direction, n = new(-t.y, t.x);
@@ -180,7 +225,7 @@ internal static class TrickWall
         AddShade(new Shade(name, root.transform, poly, Hull(foot), loop, MathF.Abs(t.x) >= FaceMin, c, back));
 
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        var art = Art(root.transform, name, foot, c, t, len);
+        var art = Art(root.transform, name, foot, c, t, len, plate ? PlateLook : PanelLook);
         long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
         float bx0 = Math.Min(Math.Min(foot[0].x, foot[1].x), Math.Min(foot[2].x, foot[3].x));
         float by0 = Math.Min(Math.Min(foot[0].y, foot[1].y), Math.Min(foot[2].y, foot[3].y));
@@ -189,7 +234,7 @@ internal static class TrickWall
 
         int filled = SolidMap.Fill(new RectShape(c, t, len, Thickness));
         BreakableProps.AddWall(name, art.Master, art.Slices, cols, bx0, by0, bx1, by1,
-            new RectShape(c, t, len + CarveMargin * 2f, Thickness + CarveMargin * 2f), art.Owned, art.Seeds);
+            new RectShape(c, t, len + CarveMargin * 2f, Thickness + CarveMargin * 2f), art.Owned, art.Seeds, plate);
         TerrainUndo.OnUndo(() =>
         {
             // 時戻しで立てる前へ戻す: 壊れた物の扱いにして壁の道から外し、絵と当たり判定ごと消す (視界の線と立ち上がりは根が消えると外れる)
@@ -199,14 +244,16 @@ internal static class TrickWall
             UnityEngine.Object.Destroy(root);
         });
         _riseGen = GameClock.ShipGen;
-        Rising.Add(new Rise { Root = art.Root, ScaleX = art.ScaleX, ScaleY = art.ScaleY, Start = Environment.TickCount64, X = c.x, Y = c.y, Slices = art.Slices });
-        BreakNoise.PlayAt("noise_rubble_metal", c.x, c.y, SoundRange, SoundMuffle, 0.55f, 0.75f);
-        Placed?.Invoke(name, c, len, r.Actor);
+        Rising.Add(new Rise { Root = art.Root, ScaleX = art.ScaleX, ScaleY = art.ScaleY, Start = Environment.TickCount64, X = c.x, Y = c.y, Pitch = plate ? 0.85f : 0.6f, Slices = art.Slices });
+        BreakNoise.PlayAt("noise_rubble_metal", c.x, c.y, SoundRange, SoundMuffle, 0.55f, plate ? 0.95f : 0.75f);
+        string used = "";
+        if (plate) used = IronPlate.OnPlaced(name, root.transform, c, t, len, r);
+        else Placed?.Invoke(name, c, len, r.Actor); // 鉄板は役職の壁 (構築士が時間で崩す壁) に数えない
         DustCloud.Kick(c + n * (Thickness * 0.5f + 0.3f), DustRadius, r.Seed);
         DustCloud.Kick(c - n * (Thickness * 0.5f + 0.3f), DustRadius, (ushort)(r.Seed + 1));
         string pushed = PushOut(c, t, n, len, n.y * back.y + n.x * back.x > 0f ? 1f : -1f, backExtra);
         double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-        return $"wall placed {name} at=({c.x:0.00},{c.y:0.00}) dir=({t.x:0.00},{t.y:0.00}) len={len:0.00} cells={filled} slices={art.Slices.Count}{pushed} art={(t1 - t0) * k:0.0}ms {ArtMs} rest={(System.Diagnostics.Stopwatch.GetTimestamp() - t1) * k:0.0}ms";
+        return $"{(plate ? "plate" : "wall")} placed {name}{used} at=({c.x:0.00},{c.y:0.00}) dir=({t.x:0.00},{t.y:0.00}) len={len:0.00} cells={filled} slices={art.Slices.Count}{pushed} art={(t1 - t0) * k:0.0}ms {ArtMs} rest={(System.Diagnostics.Stopwatch.GetTimestamp() - t1) * k:0.0}ms";
     }
 
     // 立った所に自分が掛かっていたら (届くまでの間に歩いて入った)、近い側の床へ出して転ばせる。動かすのは自分の体だけ
@@ -242,6 +289,7 @@ internal static class TrickWall
         public Transform Root;
         public float ScaleX, ScaleY, X, Y;
         public long Start;
+        public float Pitch;
         public List<SpriteRenderer> Slices;
     }
 
@@ -440,7 +488,7 @@ internal static class TrickWall
         if (p >= 1f)
         {
             w.Root.localScale = FxMath.V3(w.ScaleX, w.ScaleY, 1f);
-            BreakNoise.PlayAt("noise_hit_metal", w.X, w.Y, SoundRange, SoundMuffle, 0.8f, 0.6f);
+            BreakNoise.PlayAt("noise_hit_metal", w.X, w.Y, SoundRange, SoundMuffle, 0.8f, w.Pitch);
             Rising.Remove(w);
             foreach (var sr in w.Slices) PropSim.AddFront(sr); // 水面の板は伸び切った形で測る
             return;
@@ -470,18 +518,49 @@ internal static class TrickWall
     // ---- 見た目: 金属のパネルの仕切り ----
     // 足元の四角を面の高さだけ立ち上げた箱。太い輪郭・ベタ塗り・一段の影 (本編の壁の描き方)。
     // 手前の面は 0.6 ごとのパネル (継ぎ目の暗い線 + 明るい線・継ぎ目の両脇の上下にボルト)、上の縁の下に一段暗い帯、足元に暗い帯
-    private static readonly byte[] LineColor = { 30, 32, 41 };
-    private static readonly byte[] TopColor = { 169, 180, 198 };
-    private static readonly byte[] TopSeam = { 128, 138, 156 };
-    private static readonly byte[] FaceColor = { 110, 122, 144 };
-    private static readonly byte[] FaceLip = { 140, 152, 172 };
-    private static readonly byte[] FaceBand = { 96, 107, 128 };
-    private static readonly byte[] FaceFoot = { 74, 82, 100 };
-    private static readonly byte[] SeamDark = { 46, 52, 66 };
-    private static readonly byte[] SeamLight = { 150, 160, 180 };
-    private static readonly byte[] BoltColor = { 176, 186, 202 };
-    private static readonly byte[] CapColor = { 84, 94, 112 };
-    private const float PanelWidth = 0.6f;
+    // 色と継ぎ目・ボルトの並び。仕切り = 0.6 ごとのパネルの継ぎ目の両脇にボルト。
+    // 鉄板 = 瓦礫を打ち延ばした 1 枚の暗い鉄の板。上下の縁に沿って鋲が並び、叩いた跡の細かいむらがある
+    private sealed class Look
+    {
+        public byte[] Line, Top, TopSeam, Face, Lip, Band, Foot, SeamDark, SeamLight, Bolt, Cap;
+        public float PanelWidth;
+        public float RivetGap;  // 0 より大きい = 上下の縁に沿ってこの間隔で鋲を並べる (パネルの両脇のボルトの代わり)
+        public int Mottle;      // 叩いた跡のむらの明るさの振れ幅 (0 = 無し)
+    }
+
+    private static readonly Look PanelLook = new()
+    {
+        Line = new byte[] { 30, 32, 41 },
+        Top = new byte[] { 169, 180, 198 },
+        TopSeam = new byte[] { 128, 138, 156 },
+        Face = new byte[] { 110, 122, 144 },
+        Lip = new byte[] { 140, 152, 172 },
+        Band = new byte[] { 96, 107, 128 },
+        Foot = new byte[] { 74, 82, 100 },
+        SeamDark = new byte[] { 46, 52, 66 },
+        SeamLight = new byte[] { 150, 160, 180 },
+        Bolt = new byte[] { 176, 186, 202 },
+        Cap = new byte[] { 84, 94, 112 },
+        PanelWidth = 0.6f,
+    };
+
+    private static readonly Look PlateLook = new()
+    {
+        Line = new byte[] { 26, 25, 27 },
+        Top = new byte[] { 128, 126, 124 },
+        TopSeam = new byte[] { 96, 94, 92 },
+        Face = new byte[] { 84, 83, 85 },
+        Lip = new byte[] { 112, 110, 108 },
+        Band = new byte[] { 72, 71, 73 },
+        Foot = new byte[] { 56, 52, 50 },
+        SeamDark = new byte[] { 40, 38, 40 },
+        SeamLight = new byte[] { 118, 116, 114 },
+        Bolt = new byte[] { 150, 147, 142 },
+        Cap = new byte[] { 64, 62, 63 },
+        PanelWidth = 1.3f,
+        RivetGap = 0.16f,
+        Mottle = 7,
+    };
     private const float LipH = 0.05f, BandH = 0.12f, FootH = 0.08f;
     private const float SeamW = 0.012f, SeamLightW = 0.01f;
     private const float BoltInset = 0.07f, BoltLow = 0.2f, BoltHigh = 0.28f, BoltR = 0.018f, BoltRim = 0.027f;
@@ -503,7 +582,7 @@ internal static class TrickWall
         public readonly List<Vector2> Seeds = new(); // 欠片の細胞の種 (絵の画素)
     }
 
-    private static unsafe WallArt Art(Transform root, string name, Vector2[] foot, Vector2 c, Vector2 t, float len)
+    private static unsafe WallArt Art(Transform root, string name, Vector2[] foot, Vector2 c, Vector2 t, float len, Look look)
     {
         long tp0 = System.Diagnostics.Stopwatch.GetTimestamp();
         float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
@@ -533,7 +612,7 @@ internal static class TrickWall
             qx4[e * 4 + 2] = fx[j]; qy4[e * 4 + 2] = fy[j] + Height;
             qx4[e * 4 + 3] = fx[e]; qy4[e * 4 + 3] = fy[e] + Height;
         }
-        int panels = Math.Max(1, (int)MathF.Round(len / PanelWidth));
+        int panels = Math.Max(1, (int)MathF.Round(len / look.PanelWidth));
         float panel = len / panels;
 
         // 画素ごとの面: 0 = 無し / 1 = 上面 / 2.. = 手前を向いた側面 (足元の辺の番号 + 2)。行ごとに四角の区間を出して塗る
@@ -556,18 +635,24 @@ internal static class TrickWall
                 if (f == 1)
                 {
                     float u = (qx - sx0) * tx + (qy - Height - sy0) * ty;
-                    col = NearSeam(u, panel, panels, SeamW * 0.7f) ? TopSeam : TopColor;
+                    col = NearSeam(u, panel, panels, SeamW * 0.7f) ? look.TopSeam : look.Top;
                 }
                 else
                 {
                     int e = f - 2, j = (e + 1) & 3;
                     float k = (qx - fx[e]) / (fx[j] - fx[e]);
                     float ey = fy[e] + (fy[j] - fy[e]) * k, v = qy - ey;
-                    if ((e & 1) == 1) col = v < FootH ? FaceFoot : CapColor;
-                    else col = FacePixel((fx[e] + (fx[j] - fx[e]) * k - sx0) * tx + (ey - sy0) * ty, v, panel, panels);
+                    if ((e & 1) == 1) col = v < FootH ? look.Foot : look.Cap;
+                    else col = FacePixel((fx[e] + (fx[j] - fx[e]) * k - sx0) * tx + (ey - sy0) * ty, v, panel, panels, len, look);
                 }
                 int i4 = (row + x) * 4;
-                px[i4] = col[0]; px[i4 + 1] = col[1]; px[i4 + 2] = col[2]; px[i4 + 3] = 255;
+                if (look.Mottle > 0)
+                {
+                    int m = Mottle(x, y, look.Mottle);
+                    px[i4] = Shade8(col[0], m); px[i4 + 1] = Shade8(col[1], m); px[i4 + 2] = Shade8(col[2], m);
+                }
+                else { px[i4] = col[0]; px[i4 + 1] = col[1]; px[i4 + 2] = col[2]; }
+                px[i4 + 3] = 255;
             }
         }
         // 輪郭 (形の外まで Outline 画素以内) と面の境 (隣の画素が別の面)。横の向きの「形の外までの距離」を先に出し、縦は ±Outline 行だけ見る
@@ -604,7 +689,7 @@ internal static class TrickWall
             }
             if (!line) continue;
             int i4 = k * 4;
-            px[i4] = LineColor[0]; px[i4 + 1] = LineColor[1]; px[i4 + 2] = LineColor[2];
+            px[i4] = look.Line[0]; px[i4 + 1] = look.Line[1]; px[i4 + 2] = look.Line[2];
         }
 
         long ta = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -706,30 +791,51 @@ internal static class TrickWall
         art.Slices.Add(sr);
     }
 
-    // 手前の面の 1 画素の色 (u = 長さの向きの位置・v = 床からの高さ)
-    private static byte[] FacePixel(float u, float v, float panel, int panels)
+    // 手前の面の 1 画素の色 (u = 長さの向きの位置・v = 床からの高さ・len = 壁の長さ)
+    private static byte[] FacePixel(float u, float v, float panel, int panels, float len, Look look)
     {
-        if (v < FootH) return FaceFoot;
-        if (v > Height - LipH) return FaceLip;
-        // ボルト: 各パネルの両端の内側の上下
-        int pi = Math.Clamp((int)(u / panel), 0, panels - 1);
-        float pa = pi * panel, pb = pa + panel;
-        float du = u - (u - pa < pb - u ? pa + BoltInset : pb - BoltInset);
+        if (v < FootH) return look.Foot;
+        if (v > Height - LipH) return look.Lip;
+        float du;
+        if (look.RivetGap > 0f)
+        {
+            // 鋲: 上下の縁に沿って等間隔 (両端は間隔の半分だけ内側から)
+            int n = Math.Max(1, (int)(len / look.RivetGap));
+            float gap = len / n;
+            du = u - (Math.Clamp(MathF.Floor(u / gap), 0f, n - 1) + 0.5f) * gap;
+        }
+        else
+        {
+            // ボルト: 各パネルの両端の内側の上下
+            int pi = Math.Clamp((int)(u / panel), 0, panels - 1);
+            float pa = pi * panel, pb = pa + panel;
+            du = u - (u - pa < pb - u ? pa + BoltInset : pb - BoltInset);
+        }
         for (int b = 0; b < 2; b++)
         {
             float dv = v - (b == 0 ? BoltLow : Height - BoltHigh), d2 = du * du + dv * dv;
-            if (d2 < BoltR * BoltR) return BoltColor;
-            if (d2 < BoltRim * BoltRim) return SeamDark;
+            if (d2 < BoltR * BoltR) return look.Bolt;
+            if (d2 < BoltRim * BoltRim) return look.SeamDark;
         }
         // 継ぎ目 (暗い線と、その右の明るい線)
         for (int k = 1; k < panels; k++)
         {
             float d = u - k * panel;
-            if (MathF.Abs(d) < SeamW) return SeamDark;
-            if (d >= SeamW && d < SeamW + SeamLightW) return SeamLight;
+            if (MathF.Abs(d) < SeamW) return look.SeamDark;
+            if (d >= SeamW && d < SeamW + SeamLightW) return look.SeamLight;
         }
-        return v > Height - LipH - BandH ? FaceBand : FaceColor;
+        return v > Height - LipH - BandH ? look.Band : look.Face;
     }
+
+    // 叩いた跡のむら: 4 画素の升ごとに決まった明るさのずれ (-amp..amp・全員で同じ)
+    private static int Mottle(int x, int y, int amp)
+    {
+        uint h = (uint)(x >> 2) * 73856093u ^ (uint)(y >> 2) * 19349663u;
+        h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+        return (int)(h % (uint)(amp * 2 + 1)) - amp;
+    }
+
+    private static byte Shade8(byte c, int d) => (byte)Math.Clamp(c + d, 0, 255);
 
     private static bool NearSeam(float u, float panel, int panels, float half)
     {
@@ -833,6 +939,12 @@ internal static class TrickWall
 
     internal static void Register()
     {
+        TestBridge.Register("plate", "鉄板 (アルケミスト): 覚えている穴とふさげるか・立っている鉄板・自分の足元で変成できるか", (args, reply) =>
+        {
+            var lp = PlayerControl.LocalPlayer;
+            string here = lp ? IronPlate.Why(lp.GetTruePosition()) ?? "ok" : "no player";
+            reply($"OK plate here={here} {IronPlate.Describe(lp ? lp.GetTruePosition() : Vector2.zero)}");
+        });
         TestBridge.Register("wall", "<x> <y> <角度°> [長さ] | me [角度°]  仕掛け壁を立てる (x y = プレイヤーでない壁・ホストか一人の時 / me = 自分の依頼として向いている方向の先に・客も可。0° = 横・90° = 縦)", (args, reply) =>
         {
             var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);

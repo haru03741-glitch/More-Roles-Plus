@@ -53,12 +53,15 @@ internal static class BreakableProps
         public float X0, Y0, X1, Y1; // 動きの層の当たり判定の範囲
         public int Hp;
         public bool Broken;
+        public bool Plate;     // 鉄板 (崩れても拾える塊を残さない)
         public CutShape Shape; // 壊れた時に歩ける所へ戻す形 (null = 範囲の四角)
         public List<Vector2> Seeds; // 欠片の細胞の種 (絵の画素・null = 絵の四角に散らす)
     }
 
     // 仕掛け壁 (TrickWall) の壊れ方: 強い振り 2 発・金属の板 (欠片は壁の面に並べた種で割る)
     private static readonly Spec WallSpec = new(2, false, 10, 8, 0.75f);
+    // 鉄板 (アルケミストが瓦礫から作る仕掛け壁): 強い振り 1 発で割れる薄い板
+    private static readonly Spec PlateSpec = new(1, false, 6, 10, 0.95f);
 
     // 直前の適用で壊れた物の、出来事の点からいちばん遠い所までの距離 (水の升を作り直す範囲に使う)。TerrainDamage.Apply が 0 に戻す
     internal static float LastBrokenFar;
@@ -166,7 +169,7 @@ internal static class BreakableProps
     // 立てた仕掛け壁を物ごと壊れる物に足す。全員が同じ連番の順で呼ぶので番号は全員で同じになる
     // owned (絵の Texture2D と Sprite) は壊れた後の欠片も使うので、次の船で消す
     internal static void AddWall(string name, SpriteRenderer sr, List<SpriteRenderer> renderers, List<Collider2D> cols,
-        float x0, float y0, float x1, float y1, CutShape shape, List<UnityEngine.Object> owned, List<Vector2> seeds)
+        float x0, float y0, float x1, float y1, CutShape shape, List<UnityEngine.Object> owned, List<Vector2> seeds, bool plate = false)
     {
         if (!Ensure())
         {
@@ -174,7 +177,8 @@ internal static class BreakableProps
             return;
         }
         Owned.AddRange(owned);
-        var p = new Prop { Name = name, Spec = WallSpec, Sr = sr, Hp = WallSpec.Hits * DamageProfile.Blunt.StrongDamage, Shape = shape, Seeds = seeds };
+        var spec = plate ? PlateSpec : WallSpec;
+        var p = new Prop { Name = name, Spec = spec, Sr = sr, Hp = spec.Hits * DamageProfile.Blunt.StrongDamage, Shape = shape, Seeds = seeds, Plate = plate };
         p.X0 = x0; p.Y0 = y0; p.X1 = x1; p.Y1 = y1;
         p.Cols.AddRange(cols);
         p.Renderers.AddRange(renderers);
@@ -325,7 +329,7 @@ internal static class BreakableProps
             Vector2 side = rs.Normal * (rs.HalfDepth + 0.15f);
             home = SolidMap.Solid(e.Position + side) ? e.Position - side : e.Position + side;
         }
-        bool decide = given == null && RubbleBlocks.CrumblePickable();
+        bool decide = given == null && !p.Plate && RubbleBlocks.CrumblePickable(); // 鉄板は瓦礫 1 つから作るので塊を残さない (作り直しが増え続ける)
         int n = Break(p, Vector2.up, home, e.Seed, e.Position, decide, given, ref landings);
         return $"prop crumble {p.Name} pieces={n} blocks={landings.Length}";
     }
@@ -380,6 +384,7 @@ internal static class BreakableProps
     {
         p.Broken = true;
         UndoBreak(p);
+        if (p.Plate) IronPlate.OnBroken(p.Name);
         {
             float fx = Math.Max(Math.Abs(from.x - p.X0), Math.Abs(from.x - p.X1)), fy = Math.Max(Math.Abs(from.y - p.Y0), Math.Abs(from.y - p.Y1));
             LastBrokenFar = Math.Max(LastBrokenFar, MathF.Sqrt(fx * fx + fy * fy));
