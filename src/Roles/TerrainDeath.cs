@@ -267,6 +267,7 @@ public static class TerrainDeath
         Burying.Clear();
         Mounds.Clear();
         LocalDoom = 255;
+        LocalDodge = 255;
         Array.Clear(BurnFor);
         Array.Clear(SwimFor);
         Sources.Clear();
@@ -494,7 +495,21 @@ public static class TerrainDeath
     // 下敷きを避けて転んだ (ホスト → 全員)。向きは -127〜127 に縮めて送る
     private static readonly Net.RemoteCall<(byte id, sbyte dx, sbyte dy)> DodgeCall = new("TerrainDeath.Dodge", Net.Route.HostToAll,
         (w, m) => { w.Write(m.id); w.Write((byte)m.dx); w.Write((byte)m.dy); }, r => (r.ReadByte(), (sbyte)r.ReadByte(), (sbyte)r.ReadByte()),
-        (_, m) => DuelTumble.Trip(m.id, m.dx / 127f, m.dy / 127f));
+        (_, m) => Dodge(m.id, m.dx / 127f));
+
+    private const float DodgeTime = 1.71f; // 連番 dodge の長さ (前へよろけて伏せ、身を丸めて頭をかばい、起き上がる)
+    internal static byte LocalDodge = 255; // 自分が伏せている間 (動けない・PortFreezePatch が読む)
+
+    // 全員の端末で: 瓦礫から離れる向きへ身を投げて伏せ、起き上がる
+    private static void Dodge(byte id, float dx)
+    {
+        var p = PortKit.ById(id);
+        if (!p || p.Data == null || p.Data.IsDead) return;
+        if (dx > 0.05f || dx < -0.05f) DuelFacing.Hold(p, dx, DodgeTime);
+        if (!CrewFlip.Play(p, "dodge", DodgeTime) || !p.AmOwner) return;
+        LocalDodge = id;
+        PortKit.After(DodgeTime, () => { if (LocalDodge == id) LocalDodge = 255; });
+    }
 
     private static void Crush(in ResolvedDamage r)
     {
@@ -536,7 +551,7 @@ public static class TerrainDeath
                 var dir = ((sbyte)MathF.Round(tx * 127f), (sbyte)MathF.Round(ty * 127f));
                 Plugin.Logger.LogInfo($"[TerrainDeath] dodge {p.PlayerId}");
                 DodgeCall.Send((p.PlayerId, dir.Item1, dir.Item2));
-                DuelTumble.Trip(p.PlayerId, tx, ty);
+                Dodge(p.PlayerId, tx);
                 continue;
             }
             HostHarm(p, Cause.Crush, r.Actor);
