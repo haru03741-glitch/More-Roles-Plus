@@ -141,6 +141,7 @@ public class Ticker : MonoBehaviour
         Terrain.WaterSpray.Tick(); t = Bridge.Perf.Lane(15, t);
         Terrain.WaterFall.Tick(); t = Bridge.Perf.Lane(35, t);
         Terrain.WaterWade.Tick(); t = Bridge.Perf.Lane(38, t);
+        Terrain.AirGauge.Tick();
         Terrain.CrewBrace.Tick(); t = Bridge.Perf.Lane(40, t);
         Terrain.PropSim.SunkTick(); t = Bridge.Perf.Lane(39, t);
         Terrain.FireArt.Tick(); t = Bridge.Perf.Lane(36, t);
@@ -149,6 +150,9 @@ public class Ticker : MonoBehaviour
         Fx.EmoteArt.Tick();
         Fx.CrewFlip.Tick();
         Fx.FallenCorpse.Tick();
+        Fx.BodyChar.Tick();
+        Fx.DrownFx.Tick();
+        Fx.DrownFx.TickBubbles();
         Roles.RocketCannon.Tick();
         Roles.EclipseFx.Tick();
         Roles.NovaFx.Tick();

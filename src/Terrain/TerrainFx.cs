@@ -40,6 +40,7 @@ internal static class TerrainFx
         public int Bounces;
         public float HomeX, HomeY; // 爆心 / 叩いた側の床。壁の線の上から動き出す時は、この点と同じ側へだけ線を越えてよい
         public object Owner;       // 出した件 (時戻しで取り消されたら一緒に消す・TerrainUndo.Token)
+        public bool OnBody;        // 人を覆う山の塊: 体より手前に描いたまま残す (床の板へ焼かない・山の高さで手前へずらさない)
     }
 
     private static readonly List<Item> Items = new();
@@ -153,6 +154,88 @@ internal static class TerrainFx
                 it.T = -(0.03f + (float)rnd.NextDouble() * 0.35f);
             }
         return Settle(byRank, pieces, walls, given);
+    }
+
+    // 人が瓦礫の下敷きになる (全員の端末で)。倒れる側 (axis) の上から塊が人の上へ次々に落ちて積もり、体を覆う山になる。
+    // slab = 壁が丸ごと崩れた: 先に大きな板が倒れ込んでのしかかり、その上に塊が乗る。
+    // 塊は体より手前 (足元の y の奥行きより手前) に描き、止まっても床の板へ焼かない (体を覆ったまま残る・当たり判定は無い)。
+    // face = 体の向き (+1 右・-1 左)。潰れた体は足元から向いている側へ 1 単位ほど伸びるので、山はその真ん中に積もる。
+    // 返り値 = 出した物 (時戻しで助かった時に消す)
+    internal static List<GameObject> Bury(Vector2 feet, Vector2 axis, float face, ushort seed, bool slab)
+    {
+        var made = new List<GameObject>();
+        var rnd = new System.Random(seed ^ Hash(feet));
+        float al = MathF.Sqrt(axis.x * axis.x + axis.y * axis.y);
+        if (al < 1e-3f) { axis = new Vector2(0f, -1f); al = 1f; }
+        float ax = axis.x / al, ay = axis.y / al;
+        // 潰れた体の真ん中 (足元から向いている側へ 0.5・上へ 0.17)
+        float cx = feet.x + face * 0.5f, cy = feet.y + 0.17f;
+        var pile = new Pile { X = cx, Y = cy, Rx = 0.66f, Ry = 0.3f, H = slab ? 0.36f : 0.3f };
+        float zBase = feet.y / 1000f - 0.0008f;
+        int order = 0;
+        Item Drop(Sprite sp, float size, float tx, float ty, float h, float delay, float spin)
+        {
+            var it = Spawn(Kind.Junk, sp, new Vector2(tx - ax * 0.3f, ty - ay * 0.3f), size, keep: true);
+            it.OnBody = true;
+            it.Height = h;
+            float flight = MathF.Sqrt(2f * h / Gravity) + 0.05f;
+            it.Vx = ax * 0.3f / flight; it.Vy = ay * 0.3f / flight;
+            it.VH = 0f;
+            it.T = -delay;
+            it.Rot = (float)rnd.NextDouble() * 360f;
+            it.Tr.rotation = RotZ(it.Rot);
+            it.VRot = spin;
+            it.Bounces = 3; // 落ちた所でほとんど跳ねない (山に食い込む)
+            // 遅く落ちた物ほど上に積もる
+            it.Z = zBase - 0.00004f * order++;
+            SetPile(it, pile);
+            if (HideJunk) it.Sr.color = Color.clear;
+            made.Add(it.Tr.gameObject);
+            return it;
+        }
+        float t0 = 0.12f;
+        if (slab)
+        {
+            // 大きな板: 倒れる向きの手前から体を横切る向きで倒れ込む
+            var it = Drop(DebrisArt.Plate(rnd.Next()), 1.05f, cx, cy, 1.1f, t0, 0f);
+            it.Rot = MathF.Atan2(ay, ax) * 57.29578f + 90f + ((float)rnd.NextDouble() - 0.5f) * 20f;
+            it.Tr.rotation = RotZ(it.Rot);
+            it.Bounces = 4;
+            // 仕掛け壁の板の青みがかった灰に寄せる
+            if (!HideJunk) it.Sr.color = new Color(0.74f, 0.8f, 0.94f, 1f);
+            t0 += 0.18f;
+        }
+        // 大きい塊から先に落ち、小さい物が隙間を埋める
+        int big = slab ? 9 : 15;
+        for (int k = 0; k < big; k++)
+        {
+            // 体の長さに沿って偏りなく並べ (帯ごとに 1 つ)、上下に散らす
+            float u = (k + (float)rnd.NextDouble()) / big * 2f - 1f;
+            float tx = cx + u * 0.52f, ty = cy + ((float)rnd.NextDouble() - 0.5f) * 0.3f * MathF.Sqrt(1f - u * u * 0.6f);
+            Drop(DebrisArt.Chunk(rnd.Next()), 0.26f + (float)rnd.NextDouble() * 0.16f, tx, ty, 0.9f + (float)rnd.NextDouble() * 0.6f,
+                t0 + k * 0.045f + (float)rnd.NextDouble() * 0.05f, ((float)rnd.NextDouble() - 0.5f) * 240f);
+        }
+        for (int k = 0; k < 7; k++)
+        {
+            float tx = cx + ((float)rnd.NextDouble() - 0.5f) * 0.95f, ty = cy + ((float)rnd.NextDouble() - 0.5f) * 0.3f;
+            Drop(k < 2 ? DebrisArt.Core(rnd.Next()) : DebrisArt.Plate(rnd.Next()), 0.14f + (float)rnd.NextDouble() * 0.1f, tx, ty,
+                0.8f + (float)rnd.NextDouble() * 0.5f, t0 + 0.35f + k * 0.05f, ((float)rnd.NextDouble() - 0.5f) * 400f);
+        }
+        for (int k = 0; k < 24; k++)
+        {
+            float tx = cx + ((float)rnd.NextDouble() - 0.5f) * 1.4f, ty = cy + ((float)rnd.NextDouble() - 0.5f) * 0.5f;
+            Drop(DebrisArt.Pebble, 0.05f + (float)rnd.NextDouble() * 0.06f, tx, ty, 0.6f + (float)rnd.NextDouble() * 0.6f,
+                t0 + 0.1f + (float)rnd.NextDouble() * 0.6f, 0f);
+        }
+        // 落ちた所の土煙 (山より手前)
+        for (int k = 0; k < 6; k++)
+        {
+            var puff = Dust(new Vector2(cx + ((float)rnd.NextDouble() - 0.5f) * 1.1f, cy - 0.05f), rnd, 0.5f, 1.4f);
+            puff.T = -(t0 + 0.15f + k * 0.07f);
+            puff.Z = zBase - 0.002f;
+        }
+        Stain(new Vector2(cx, cy - 0.05f), 1.5f, t0 + 0.2f);
+        return made;
     }
 
     // 打撃が当たったが崩れない: 小さな土煙と、欠けた小石が少しこぼれる
@@ -808,6 +891,7 @@ internal static class TerrainFx
                 if (it.Kind is Kind.Puff or Kind.Spark or Kind.Flash) Release(it.Tr, it.Sr);
                 else
                 {
+                    if (it.OnBody) continue; // 人を覆う山は描画物のまま残す (床の板へ焼くと体の奥になる)
                     // 山の上に乗った物ほど手前 (上に積もって見える)
                     if (it.Rest > 0f) { it.Z -= it.Rest * 0.02f * it.ZS; it.Tr.position = V3(it.Px, it.Py + it.Height, it.Z); }
                     if (!RubbleBlocks.KeepPiece(it.Block, it.Tr, it.Sr, it.Z, it.Kind == Kind.Piece))

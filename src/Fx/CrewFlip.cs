@@ -26,12 +26,15 @@ internal static partial class CrewFlip
         public byte[] Seq;
         public float[] Ax, Ay;                    // 絵ごとの頭の動き (右向きの時・単位)。null = 着せ替えを隠したまま
         public float Ox, Oy;                      // 本編の絵の原点を立ち絵の足元へ合わせるずらし (右向きの時・絵の単位)
+        public float[] Oxs;                       // 絵ごとの横のずらし (吹き飛ぶ連番をその場の動きにする)。null = Ox だけ
+        public bool Mirror;                       // 左を向いて描かれた本編の絵 (撃たれる被害者など): 左右を返して流す
         public Sprite[] Sprites;
         public bool Searched;
 
         // 本編の別の場面の絵 (キルの被害者など) は原点が立ち絵と違う所にあるので、そのまま差すと体が元の場所からずれる
-        public static Clip Vanilla(string name, string prefix, ushort[] nums, float ox, float oy, int loop, byte[] seq, float[] ax, float[] ay) =>
-            new() { Name = name, Prefix = prefix, Nums = nums, Ox = ox, Oy = oy, Loop = loop, Seq = seq, Ax = ax, Ay = ay };
+        public static Clip Vanilla(string name, string prefix, ushort[] nums, float ox, float oy, int loop, byte[] seq, float[] ax, float[] ay,
+            bool mirror = false, float[] offx = null) =>
+            new() { Name = name, Prefix = prefix, Nums = nums, Ox = ox, Oy = oy, Loop = loop, Seq = seq, Ax = ax, Ay = ay, Mirror = mirror, Oxs = offx };
 
         public static Clip Own(string name, int w, int h, int cols, int rows, float feetX, float feetY, int loop, byte[] seq) =>
             new() { Name = name, W = w, H = h, Cols = cols, Rows = rows, FeetX = feetX, FeetY = feetY, Loop = loop, Seq = seq };
@@ -90,9 +93,10 @@ internal static partial class CrewFlip
         Live.Add(s);
         Played++;
         Hide(s);
-        Feet(s);
         Frame(s, 0);
+        Feet(s);
         body.sprite = c.Sprites[s.Cur];
+        if (c.Mirror) body.flipX = !s.Flip;
         return true;
     }
 
@@ -142,7 +146,8 @@ internal static partial class CrewFlip
             Hide(s);
             // 倒れる流し方は始めた時の向きのまま (動けない人でも他人の画面では位置の補正で本編が向きを変えることがあり、
             // 伏せた姿と死体が倒れた時と逆を向く)。LateTick で体の向きを書き戻す
-            bool flip = s.Body.flipX;
+            // 左右を返して流す絵では体の向きを書き換えているので、本来の向きは着せ替えから読む
+            bool flip = s.C.Mirror ? s.Pc.cosmetics.FlipX : s.Body.flipX;
             if (!s.Fallen && flip != s.Flip)
             {
                 s.Flip = flip;
@@ -161,7 +166,8 @@ internal static partial class CrewFlip
             var s = Live[i];
             if (s.Cur < 0 || !s.Body) continue;
             s.Body.sprite = s.C.Sprites[s.Cur];
-            if (s.Fallen && s.Body.flipX != s.Flip) s.Body.flipX = s.Flip;
+            bool want = s.C.Mirror ? !s.Flip : s.Flip;
+            if ((s.Fallen || s.C.Mirror) && s.Body.flipX != want) s.Body.flipX = want;
         }
     }
 
@@ -174,6 +180,7 @@ internal static partial class CrewFlip
         if (f == s.Cur) return;
         s.Cur = s.Last = f;
         Head(s, f);
+        if (s.C.Oxs != null) Feet(s);
     }
 
     // 帽子とバイザーを絵の頭に追わせる。頭の無い絵では着せ替えを隠す
@@ -203,10 +210,11 @@ internal static partial class CrewFlip
     private static void Feet(Show s)
     {
         var c = s.C;
-        if (!s.Body || (c.Ox == 0f && c.Oy == 0f)) return;
+        float ox = c.Oxs != null && s.Cur >= 0 ? c.Oxs[s.Cur] : c.Ox;
+        if (!s.Body || (ox == 0f && c.Oy == 0f && s.Bx == 0f && s.By == 0f)) return;
         var t = s.Body.transform;
         var l = t.localScale;
-        float tx = (s.Flip ? -c.Ox : c.Ox) * l.x, ty = c.Oy * l.y;
+        float tx = (s.Flip ? -ox : ox) * l.x, ty = c.Oy * l.y;
         if (tx == s.Bx && ty == s.By) return;
         var p = t.localPosition;
         t.localPosition = FxMath.V3(p.x + tx - s.Bx, p.y + ty - s.By, p.z);
@@ -231,7 +239,7 @@ internal static partial class CrewFlip
         if (s.Fallen)
         {
             // 流している間に死んだ: 今の姿のまま死体になる。生きていれば落ちた物は少し待って消える
-            if (s.Pc && s.Pc.Data != null && s.Pc.Data.IsDead && s.Body) FallenCorpse.Corpse(s.Pc, s.C.Sprites[s.Last], s.Body, s.Flip);
+            if (s.Pc && s.Pc.Data != null && s.Pc.Data.IsDead && s.Body) FallenCorpse.Corpse(s.Pc, s.C.Sprites[s.Last], s.Body, s.C.Mirror ? !s.Flip : s.Flip);
             else FallenCorpse.Ended(s.Id);
         }
         if (s.Cos && (s.Cx != 0f || s.Cy != 0f))
@@ -250,7 +258,7 @@ internal static partial class CrewFlip
         }
         if (!s.Pc || s.Pc.cosmetics == null) return;
         // 向きを止めていた体を本編の向きへ戻す
-        if (s.Fallen && s.Body) s.Body.flipX = s.Pc.cosmetics.FlipX;
+        if ((s.Fallen || s.C.Mirror) && s.Body) s.Body.flipX = s.Pc.cosmetics.FlipX;
         // ベントの中などで本編が隠している人と、別の演出が着せ替えを隠している人は出さない (それぞれ終わる時に戻る)
         bool show = s.Pc.Visible;
         if (s.SkinHidden && s.Skin) s.Skin.enabled = show;
@@ -327,5 +335,9 @@ internal static partial class CrewFlip
 [HarmonyLib.HarmonyPatch(typeof(ModManager), nameof(ModManager.LateUpdate))]
 internal static class CrewFlipLatePatch
 {
-    public static void Postfix() => CrewFlip.LateTick();
+    public static void Postfix()
+    {
+        CrewFlip.LateTick();
+        DrownFx.LateTick();
+    }
 }

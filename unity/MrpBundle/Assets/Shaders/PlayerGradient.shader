@@ -10,6 +10,8 @@
 // 世界の座標に変わるので止める。
 // 左を向いた人形は絵の頂点ごと左右が入れ替わる (自分の座標の x と絵の u が逆に進む) ので、その時は u を裏返して
 // 色を体 (背中側・顔側) に付けたままにする。
+// 焼けた体: _Char (0〜1) が大きいほど、体に付いたまだらの模様の低い所から煤の色に変わり (塗った色の 16% が残る)、
+// バイザーは煤で曇る。焦げの境目と細かいひびは _Ember の強さで赤く光る (燠火)。模様は自分の座標なので体に付いたまま。
 Shader "MRP/PlayerGradient"
 {
     Properties
@@ -34,6 +36,9 @@ Shader "MRP/PlayerGradient"
         _GradPos ("Boundary position", Float) = 0.5
         _GradSoft ("Boundary softness", Float) = 1
         _MrpMasked ("Masked player (no outline)", Float) = 0
+        _Char ("Charred amount", Range(0, 1)) = 0
+        _Ember ("Ember glow", Range(0, 1)) = 0
+        _CharSeed ("Char pattern offset", Float) = 0
         [Enum(UnityEngine.Rendering.CompareFunction)] _MrpStencilComp ("Stencil comp", Float) = 7
     }
 
@@ -64,6 +69,7 @@ Shader "MRP/PlayerGradient"
             fixed4 _BackColor, _BodyColor, _VisorColor, _OutlineColor, _BackColor2, _BodyColor2;
             float _Outline, _MrpMasked;
             float _GradX0, _GradY0, _GradSX, _GradSY, _GradWX, _GradWY, _GradW0, _GradPos, _GradSoft;
+            float _Char, _Ember, _CharSeed;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; float2 body : TEXCOORD1; };
@@ -83,6 +89,50 @@ Shader "MRP/PlayerGradient"
             {
                 return tex2D(_MainTex, uv + float2(0, d.y)).a + tex2D(_MainTex, uv + float2(d.x, 0)).a
                      + tex2D(_MainTex, uv - float2(0, d.y)).a + tex2D(_MainTex, uv - float2(d.x, 0)).a;
+            }
+
+            float Hash(float2 p)
+            {
+                p = frac(p * float2(123.34, 456.21));
+                p += dot(p, p + 45.32);
+                return frac(p.x * p.y);
+            }
+
+            float VNoise(float2 p)
+            {
+                float2 c = floor(p), f = frac(p);
+                f = f * f * (3 - 2 * f);
+                return lerp(lerp(Hash(c), Hash(c + float2(1, 0)), f.x), lerp(Hash(c + float2(0, 1)), Hash(c + 1), f.x), f.y);
+            }
+
+            float Fbm(float2 p)
+            {
+                return VNoise(p) * 0.65 + VNoise(p * 2.1 + 1.7) * 0.25 + VNoise(p * 4.3 + 3.1) * 0.1;
+            }
+
+            // 焼けた体の色 (painted = 塗った色・paint = 塗る画素か・visor = バイザーの重み)
+            fixed3 Charred(fixed3 painted, float2 p, float paint, float visor)
+            {
+                float2 q = p * 1.5 + _CharSeed;
+                float nz = Fbm(q);
+                float k = _Char * 1.1 - nz;
+                float m = smoothstep(-0.05, 0.05, k) * paint;
+                // 炭になる手前の帯は焦げ茶に。焦げていない所も熱で少しくすむ
+                float scorch = smoothstep(-0.12, 0.0, k) * paint;
+                fixed3 brown = painted * fixed3(0.38, 0.27, 0.2) + fixed3(0.05, 0.025, 0.01);
+                fixed3 col = lerp(painted * (1 - 0.2 * _Char * paint), brown, scorch * 0.85);
+                // 炭: ほぼ黒。所々に灰の白っぽい斑
+                float ash = smoothstep(0.66, 0.74, Fbm(q * 2.2 + 9.1));
+                fixed3 soot = painted * 0.05 + fixed3(0.035, 0.033, 0.032);
+                soot = lerp(soot, fixed3(0.3, 0.29, 0.28), ash * 0.45);
+                soot = lerp(soot, fixed3(0.12, 0.12, 0.13) + painted * 0.05, visor);
+                col = lerp(col, soot, m);
+                // 燠火は炭の境目の細い線と、炭の中の少ないひびだけ
+                float edge = smoothstep(0.55, 1.0, 1 - abs(m * 2 - 1)) * paint;
+                float crack = smoothstep(0.71, 0.75, Fbm(q * 3.1 + 5.3)) * m;
+                float glow = saturate(edge * 0.8 + crack * 0.8) * _Ember;
+                float flick = 0.75 + 0.25 * sin(_Time.y * 9 + nz * 20);
+                return col + fixed3(1.0, 0.38, 0.08) * glow * flick;
             }
 
             fixed4 frag(v2f i) : SV_Target
@@ -105,6 +155,7 @@ Shader "MRP/PlayerGradient"
                 fixed3 col = c.r * body + c.g * _VisorColor.rgb + c.b * back;
                 col = lerp(col, c.rgb, gray);
                 fixed3 painted = c.rgb + mixed * (col - c.rgb);
+                if (_Char > 0.001) painted = Charred(painted, float2(x, i.body.y), mixed * (1 - gray), saturate(c.g - c.r - c.b));
                 if (_MrpMasked > 0.5) return fixed4(painted, c.a) * i.color;
 
                 float2 px = _MainTex_TexelSize.xy;

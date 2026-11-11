@@ -359,17 +359,18 @@ internal static class BodyWreck
         p.Sr.color = new Color(g, g, g * 1.04f, a);
     }
 
-    // 水へ落ちた: 跳ね上がる水滴と、水面に広がる輪
-    private static void Splash(float x, float y)
+    // 水へ落ちた: 跳ね上がる水滴と、水面に広がる輪。k = 強さ (溺れる人が水面に顔を出す時は弱く)
+    internal static void Splash(float x, float y, float k = 1f)
     {
         float z = y / 1000f - 0.003f;
-        for (int i = 0; i < 10; i++)
+        int drops = (int)(10f * k + 0.5f);
+        for (int i = 0; i < drops; i++)
         {
             var p = NewPuff(PuffKind.Drop, DebrisArt.WaterDrop, x, y, z);
             if (p == null) break;
-            float a = FxMath.Range(0f, FxMath.PI * 2f), v = FxMath.Range(0.4f, 1.1f);
+            float a = FxMath.Range(0f, FxMath.PI * 2f), v = FxMath.Range(0.4f, 1.1f) * (0.5f + 0.5f * k);
             p.Vx = FxMath.Cos(a) * v; p.Vy = FxMath.Sin(a) * v * 0.45f;
-            p.Vh = FxMath.Range(1.4f, 2.4f); p.H = 0.02f;
+            p.Vh = FxMath.Range(1.4f, 2.4f) * (0.6f + 0.4f * k); p.H = 0.02f;
             p.Life = 0.7f; p.S0 = FxMath.Range(0.05f, 0.09f);
             Draw(p);
         }
@@ -377,7 +378,7 @@ internal static class BodyWreck
         {
             var p = NewPuff(PuffKind.Ring, DebrisArt.WaveRing, x, y, z + 0.001f);
             if (p == null) break;
-            p.Life = 0.9f + 0.4f * i; p.S0 = 0.15f; p.S1 = 0.9f + 0.4f * i;
+            p.Life = 0.9f + 0.4f * i; p.S0 = 0.15f; p.S1 = (0.9f + 0.4f * i) * (0.55f + 0.45f * k);
             Draw(p);
         }
     }

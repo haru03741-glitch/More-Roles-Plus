@@ -32,7 +32,7 @@ public static class TerrainDeath
     private const int MaxSources = 64;
 
     // 死ぬと決まってから倒れるまで (連番が崩れ落ちきる所)・倒れた後も崩れた絵で待つ長さ
-    private static float DoomTime(Cause c) => c switch { Cause.Burn => 2.4f, Cause.Drown => 2.8f, _ => 0.7f };
+    private static float DoomTime(Cause c) => c switch { Cause.Burn => 2.4f, Cause.Drown => 2.8f, _ => 1.0f };
     private const float Linger = 1.5f;
     private const float ToughRepeat = 1.5f;
 
@@ -80,10 +80,28 @@ public static class TerrainDeath
         if (!p || p.Data == null || p.Data.IsDead || MeetingHud.Instance || ExileController.Instance || cause == Cause.None) return;
         Doomed[target] = new Doom { Cause = cause, Actor = actor, At = Time.time };
         Plugin.Logger.LogInfo($"[TerrainDeath] doom {target} {cause} by={actor}");
-        if (p.AmOwner) LocalDoom = target;
-        // 死ぬと決まる前へ時間を戻すと、崩れかけの人は助かる
-        Rewind.Undo(_ => { Doomed.Remove(target); if (LocalDoom == target) LocalDoom = 255; });
-        CrewFlip.Play(p, Clip(cause), DoomTime(cause) + Linger, fallen: true);
+        if (p.AmOwner)
+        {
+            LocalDoom = target;
+            if (cause == Cause.Drown) AirGauge.Empty();
+        }
+        // 下敷き: 崩れた壁の塊が倒れる側の上から体へ積もる (全員の端末で同じ山)
+        List<GameObject> mound = cause == Cause.Crush ? BuryUnder(p) : null;
+        // 死ぬと決まる前へ時間を戻すと、崩れかけの人は助かる (積もった山も消える)
+        Rewind.Undo(_ =>
+        {
+            Doomed.Remove(target);
+            if (LocalDoom == target) LocalDoom = 255;
+            if (mound != null) foreach (var go in mound) if (go) UnityEngine.Object.Destroy(go);
+        });
+        // 死に方の見た目は倒れる連番を流す前に渡す (下敷きは着せ替えを山の中へ落とす)。流せなければ取り消す
+        FallenCorpse.SetFinish(p, cause switch { Cause.Burn => FallenCorpse.Finish.Burnt, Cause.Drown => FallenCorpse.Finish.Drowned, _ => FallenCorpse.Finish.Buried });
+        if (CrewFlip.Play(p, Clip(cause), DoomTime(cause) + Linger, fallen: true))
+        {
+            if (cause == Cause.Drown) DrownFx.Start(p);
+            else if (cause == Cause.Burn) BodyChar.Start(p, DoomTime(cause));
+        }
+        else FallenCorpse.Ended(target);
     }
 
     private static readonly Net.RemoteCall<byte> GuardCall = new("TerrainDeath.Guard", Net.Route.HostToAll,
@@ -94,6 +112,7 @@ public static class TerrainDeath
         var p = PortKit.ById(target);
         if (!p || p.Data == null || p.Data.IsDead) return;
         Plugin.Logger.LogInfo($"[TerrainDeath] guarded {target}");
+        if (p.AmOwner) AirGauge.Guarded(ToughRepeat);
         Impostor.TriggerHappy.PlayGuard(p);
     }
 
@@ -233,7 +252,7 @@ public static class TerrainDeath
     // 確かめ用: 皆の足元と数えた秒
     internal static string Describe()
     {
-        var sb = new System.Text.StringBuilder($"enabled={(bool)Enabled} burn={(float)BurnTime} drown={(float)DrownTime} crush={(bool)CrushOn} doomed={Doomed.Count} sources={Sources.Count}");
+        var sb = new System.Text.StringBuilder($"{AirGauge.Describe()} enabled={(bool)Enabled} burn={(float)BurnTime} drown={(float)DrownTime} crush={(bool)CrushOn} doomed={Doomed.Count} sources={Sources.Count}");
         foreach (var p in PlayerControl.AllPlayerControls)
         {
             if (!p || p.Data == null) continue;
@@ -277,6 +296,7 @@ public static class TerrainDeath
     private static void Record(in ResolvedDamage r)
     {
         if (r.Kind == DamageKind.Rewind) return;
+        NoteFall(r);
         if (r.Actor != ResolvedDamage.NoActor)
         {
             bool fire = r.Kind is DamageKind.Ignite or DamageKind.Spill or DamageKind.Explosion;
@@ -299,6 +319,7 @@ public static class TerrainDeath
         Array.Clear(BurnFor);
         Array.Clear(SwimFor);
         _exposed = false;
+        AirGauge.Reset();
     }
 
     // 火なら点けた人、水なら水を入れた人のうち近い人。水を入れた人がいなければ近くで壁を壊した人 (漏れの元)
@@ -315,6 +336,45 @@ public static class TerrainDeath
             else if (weakHit && d < weak) { weak = d; fallback = s.Actor; }
         }
         return who != ResolvedDamage.NoActor ? who : fallback;
+    }
+
+    // ── 下敷きの山 (全員の端末で) ──────────────────────────────────────────
+    // 直近に抜けた壁 (全員の端末で破壊が当たった順に控える)。下敷きの知らせはその破壊の後に届く
+    private static Vector2 _fallAt, _fallDir;
+    private static bool _fallSided, _fallWhole;
+    private static float _fallTime = -10f;
+    private const float FallMemory = 3f, FallNear = 3f;
+
+    private static void NoteFall(in ResolvedDamage r)
+    {
+        bool wall = r.Kind switch
+        {
+            DamageKind.Blunt or DamageKind.Burn or DamageKind.Gunfire => TerrainDamage.LastCut > 0,
+            DamageKind.Crumble => true,
+            _ => false,
+        };
+        if (!wall) return;
+        _fallAt = r.Position;
+        _fallDir = r.Direction;
+        _fallSided = r.Kind is DamageKind.Blunt or DamageKind.Gunfire && r.Direction.x * r.Direction.x + r.Direction.y * r.Direction.y > 1e-4f;
+        _fallWhole = r.Kind == DamageKind.Crumble; // 仕掛け壁が丸ごと崩れた = 大きな板が倒れ込む
+        _fallTime = Time.time;
+    }
+
+    private static List<GameObject> BuryUnder(PlayerControl p)
+    {
+        var feet = p.GetTruePosition();
+        Vector2 axis = FxMath.V2(0f, -1f);
+        bool slab = false;
+        float dx = feet.x - _fallAt.x, dy = feet.y - _fallAt.y;
+        if (Time.time - _fallTime < FallMemory && dx * dx + dy * dy < FallNear * FallNear)
+        {
+            // 叩いた向きの先へ倒れる。向きの無い崩れ方は壁から人への向き
+            axis = _fallSided ? _fallDir : FxMath.V2(dx, dy);
+            slab = _fallWhole;
+        }
+        float face = p.cosmetics && p.cosmetics.FlipX ? -1f : 1f;
+        return TerrainFx.Bury(feet, axis, face, (ushort)(p.PlayerId * 97 + 13), slab);
     }
 
     // ── 下敷き (ホスト) ──────────────────────────────────────────────────

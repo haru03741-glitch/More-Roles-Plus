@@ -23,8 +23,46 @@ internal static class WaterWade
         public GameObject Go;
         public SpriteRenderer Sr;
         public MaterialPropertyBlock Block;
-        public float Depth = -1f;
+        public float Depth = -1f, Base;
         public bool Shown;
+    }
+
+    // 溺れている人: 水面に顔を出す/沈むのを、足元の深さに足す分 (毎フレーム) で見せる。Hide = 覆いを出さない (横たわった体は別の描き方)
+    private static readonly float[] Extra = new float[256];
+    private static readonly bool[] Hidden = new bool[256];
+    private static readonly List<byte> Bobbing = new();
+
+    internal static void Bob(byte id, float extra, bool hide)
+    {
+        Extra[id] = extra;
+        Hidden[id] = hide;
+        if (!Bobbing.Contains(id)) Bobbing.Add(id);
+    }
+
+    internal static void EndBob(byte id)
+    {
+        Extra[id] = 0f;
+        Hidden[id] = false;
+        Bobbing.Remove(id);
+        if (Wades.TryGetValue(id, out var w)) w.Depth = -1f; // 次の見直しで足元の深さを書き直す
+    }
+
+    // 溺れている人の覆いは毎フレーム書く (深さの揺れが速いので 0.1 秒ごとでは跳ぶ)
+    private static void BobTick()
+    {
+        for (int i = 0; i < Bobbing.Count; i++)
+        {
+            byte id = Bobbing[i];
+            if (!Wades.TryGetValue(id, out var w) || !w.Go) continue;
+            bool show = w.Base >= ShowDepth && !Hidden[id];
+            if (show != w.Shown) { w.Go.SetActive(show); w.Shown = show; }
+            if (!show) continue;
+            float d = FxMath.Max(0f, w.Base + Extra[id]);
+            if (MathF.Abs(d - w.Depth) < 0.002f) continue;
+            w.Depth = d;
+            w.Block.SetFloat(DepthId, d);
+            w.Sr.SetPropertyBlock(w.Block);
+        }
     }
 
     private static readonly Dictionary<byte, Wade> Wades = new();
@@ -43,6 +81,7 @@ internal static class WaterWade
     private static void TickCore()
     {
         if (Wades.Count == 0 && !WaterSim.Running) return;
+        if (Bobbing.Count > 0 && WaterSim.Running && WaterSim.Ready) BobTick();
         long now = Environment.TickCount64;
         if (now < _nextMs) return;
         _nextMs = now + ScanMs;
@@ -59,13 +98,16 @@ internal static class WaterWade
             // 深さを先に見て、水に入っている人だけ見せてよいかを調べる
             float d = WaterSim.CurrentAt(pc.GetTruePosition(), out _, out _);
             if (d >= ShowDepth && (data == null || data.IsDead || data.Disconnected || pc.inVent || !pc.Visible || !BodyShown(pc))) d = 0f;
-            if (d < ShowDepth)
+            if (w != null) w.Base = d;
+            byte id = pc.PlayerId;
+            if (d < ShowDepth || Hidden[id])
             {
                 if (w != null && w.Shown && w.Go) { w.Go.SetActive(false); w.Shown = false; }
                 continue;
             }
-            if (w == null || !w.Go) w = Wades[pc.PlayerId] = Make(pc);
+            if (w == null || !w.Go) { w = Wades[id] = Make(pc); w.Base = d; }
             if (!w.Shown) { w.Go.SetActive(true); w.Shown = true; }
+            d = FxMath.Max(0f, d + Extra[id]);
             if (MathF.Abs(d - w.Depth) < DepthStep) continue;
             w.Depth = d;
             w.Block.SetFloat(DepthId, d);
@@ -121,6 +163,9 @@ internal static class WaterWade
 
     internal static void Clear()
     {
+        Bobbing.Clear();
+        Array.Clear(Extra);
+        Array.Clear(Hidden);
         foreach (var w in Wades.Values) if (w.Go) UnityEngine.Object.Destroy(w.Go);
         Wades.Clear();
     }

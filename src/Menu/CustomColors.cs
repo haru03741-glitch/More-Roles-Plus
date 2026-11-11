@@ -413,18 +413,21 @@ internal static class CustomColors
         if (sr) ApplyGradient(sr, id);
     }
 
-    public static void ApplyGradient(SpriteRenderer r, int id)
+    // solid = 2 色塗りでない色でもこのシェーダへ替える (焼けた体の焦げはこのシェーダでしか描けない)。
+    // その時は今の体の色と影の色を 2 色目にも入れて 1 色のまま塗る
+    public static void ApplyGradient(SpriteRenderer r, int id, bool solid = false)
     {
         var grad = Fx.MrpBundle.PlayerGradientShader;
         if (!grad) return;
         Look look = default;
         bool want = id == _previewSlot ? (look = _previewLook).Grad : BySlot.TryGetValue(id, out look) && look.Grad;
-        if (!want && !_vanillaShader && !_vanillaMasked) return; // まだ 1 度も差し替えていない
+        solid &= !want;
+        if (!want && !solid && !_vanillaShader && !_vanillaMasked) return; // まだ 1 度も差し替えていない
         var mat = r.sharedMaterial;
         if (!mat) return;
         var sh = mat.shader;
         bool isGrad = sh == grad;
-        if (!want)
+        if (!want && !solid)
         {
             if (!isGrad) return;
             var back = mat.GetFloat("_MrpMasked") > 0.5f ? _vanillaMasked : _vanillaShader;
@@ -461,6 +464,13 @@ internal static class CustomColors
             if (sz.x > 0.01f && sz.y > 0.01f) { w = sz.x * BodyShare; h = sz.y * BodyShare; x0 = c.x - w / 2f; y0 = c.y - h / 2f; }
         }
         _lastRect = $"{x0:F2},{y0:F2} {w:F2}x{h:F2}";
+        if (solid)
+        {
+            // 替える前のシェーダと同じ名前の色はそのまま残っている
+            mat.SetColor("_BodyColor2", mat.GetColor("_BodyColor"));
+            mat.SetColor("_BackColor2", mat.GetColor("_BackColor"));
+            return;
+        }
         mat.SetColor("_BodyColor", look.A);
         mat.SetColor("_BackColor", Shade(look.A));
         mat.SetColor("_BodyColor2", look.B);

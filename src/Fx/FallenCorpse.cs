@@ -12,6 +12,9 @@ namespace MoreRolesPlus.Fx;
 // 死ななかった時 (会議で助かった等) は落ちた着せ替えを薄くして消す。誰も倒れていない間は Unity に触らない
 internal static class FallenCorpse
 {
+    // 死に方で死体に足す見た目 (焼けた = 焦げたまま・燠火が冷えて煙が昇る)
+    internal enum Finish : byte { None, Burnt, Drowned, Buried }
+
     private const float Gravity = 6.5f;            // 落ちる物の重力 (単位/秒²)
     private const float Bounce = 0.28f;            // 床で 1 回だけ跳ね返る速さの割合
     private const float BodyWait = 2.5f;           // 死んでから本編の死体が出るのを待つ上限 (秒)
@@ -36,6 +39,7 @@ internal static class FallenCorpse
         public PlayerControl Pc;
         public readonly List<Piece> Pieces = new();
         public bool HatShed, SkinShed;
+        public Finish Look;
         public GameObject Doll;                     // 倒れた姿の写し (死体になる)
         public bool Dead, Adopted, Dressed;         // Dressed = 本編の死体の絵を倒れた姿に差し替えた
         public DeadBody Body;
@@ -62,6 +66,22 @@ internal static class FallenCorpse
         float face = cos.FlipX ? -1f : 1f;
         int color = cos.ColorId;
         int layer = pc.gameObject.layer;
+        // 下敷き: 着せ替えは遠くへ飛ばず、潰れた体の上 (向いている側) へ小さくこぼれて瓦礫に埋もれる
+        if (e.Look == Finish.Buried)
+        {
+            if (hatVisor && !e.HatShed)
+            {
+                e.HatShed = true;
+                if (cos.hat) Launch(e, cos.hat.transform, false, layer, color, ground, face, 0.35f, 0.35f, 90f);
+                if (cos.visor) Launch(e, cos.visor.transform, false, layer, color, ground, face, 0.45f, 0.25f, 180f);
+            }
+            if (skin && !e.SkinShed && cos.skin)
+            {
+                e.SkinShed = true;
+                Launch(e, cos.skin.transform, true, layer, color, ground, face, 0.3f, 0.2f, 90f);
+            }
+            return;
+        }
         if (hatVisor && !e.HatShed)
         {
             e.HatShed = true;
@@ -115,6 +135,14 @@ internal static class FallenCorpse
         e.Doll = go;
         e.Dead = true;
         e.DiedAt = Time.time;
+    }
+
+    // この人が倒れて死んだ時の死体の見た目 (倒れる連番を流し始める前に呼ぶ)
+    internal static void SetFinish(PlayerControl pc, Finish look)
+    {
+        if (!pc) return;
+        var e = Get(pc);
+        if (e != null) e.Look = look;
     }
 
     // 流していた連番が終わった (死んでいなければ、少し待って助かったと決める)
@@ -308,7 +336,10 @@ internal static class FallenCorpse
             var ws = dt.lossyScale;
             mt.localScale = FxMath.V3(ws.x / ps.x, ws.y / ps.y, 1f);
             // 生きている体と同じ 2 色塗りに (倒れた姿のまま色だけ変わらないように)
-            if (e.Pc && e.Pc.cosmetics) Menu.CustomColors.ApplyGradient(main, e.Pc.cosmetics.ColorId);
+            int color = e.Pc && e.Pc.cosmetics ? e.Pc.cosmetics.ColorId : -1;
+            if (color >= 0) Menu.CustomColors.ApplyGradient(main, color);
+            if (e.Look == Finish.Burnt && color >= 0) BodyChar.Corpse(main, color, e.Id, mt.position);
+            else if (e.Look == Finish.Drowned) DrownFx.Corpse(main, e.Id);
             for (int i = 1; i < rs.Length; i++) if (rs[i]) rs[i].enabled = false;
             if (body.bloodSplatter) body.bloodSplatter.enabled = false;
             Object.Destroy(e.Doll);
@@ -347,7 +378,11 @@ internal static class FallenCorpse
         var e = Of(body);
         if (e == null) return;
         var rs = body.bodyRenderers;
-        if (e.Dressed && rs != null && rs.Length > 0 && rs[0]) Menu.CustomColors.ApplyGradient(rs[0], color);
+        if (e.Dressed && rs != null && rs.Length > 0 && rs[0])
+        {
+            Menu.CustomColors.ApplyGradient(rs[0], color);
+            if (e.Look == Finish.Burnt) BodyChar.Reapply(rs[0], color, e.Id);
+        }
         foreach (var p in e.Pieces) if (p.Go && p.Go.activeSelf == on) p.Go.SetActive(!on);
     }
 
