@@ -68,7 +68,8 @@ internal static class AirGauge
         if (!on) { _used = 0f; Show(false); return; }
         float limit = TerrainDeath.DrownTime;
         bool deep = WaterSim.Running && WaterSim.Ready && !lp.inVent && !lp.onLadder && !lp.inMovingPlat
-            && WaterSim.CurrentAt(lp.GetTruePosition(), out _, out _) >= CrewSwim.BraceMaxDepth;
+            && WaterSim.CurrentAt(lp.GetTruePosition(), out _, out _) >= CrewSwim.BraceMaxDepth
+            && !CrewTraits.Has(lp.PlayerId, CrewTraits.Trait.Skim); // 水面を走っている間は息を数えない (ホストと同じ)
         if (deep) _used = FxMath.Min(limit, _used + dt);
         else if (_used > 0f) _used = FxMath.Max(0f, _used - dt);
         Set(Bubbles(limit));

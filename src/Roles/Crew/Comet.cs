@@ -25,6 +25,9 @@ public sealed class Comet : RoleBase
 
     public override void OnAssigned()
     {
+        // 透明でも体はあるので水と粉に跡が残る。その代わりブーストの間は水面を走る (足を取られず・泳がず・溺れない)
+        CrewTraits.Set(PlayerId, CrewTraits.Trait.Trace, () => Cloak.IsOn(PlayerId));
+        CrewTraits.Set(PlayerId, CrewTraits.Trait.Skim, () => Cloak.IsOn(PlayerId));
         AddAbility(new Ability(new Text("Comet.Blaze"), "comet_boost")
         {
             Cooldown = () => Cooldown,

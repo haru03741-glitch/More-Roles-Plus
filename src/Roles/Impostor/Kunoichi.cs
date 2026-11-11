@@ -66,6 +66,8 @@ public sealed partial class Kunoichi : RoleBase
 
     public override void OnAssigned()
     {
+        // 透明でも体はあるので、水と粉に跡が残り煙を押し分ける
+        CrewTraits.Set(PlayerId, CrewTraits.Trait.Trace, () => Cloak.IsOn(PlayerId));
         AddAbility(new Ability(new Text("Kunoichi.Equip"), "kunoichi_equip")
         {
             CooldownAtStart = false,
@@ -389,11 +391,13 @@ public sealed partial class Kunoichi : RoleBase
         Vector2 pos = p.GetTruePosition();
         bool moved = Vector2.Distance(pos, _lastPos) > 0.01f;
         _lastPos = pos;
-        if (moved || MeetingHud.Instance)
+        // 煙の中では動いても透明のまま (体が煙を押し分けるので居場所は煙の形に出る)
+        if (MeetingHud.Instance || (moved && !(_hidden && Terrain.SmokeBodies.InSmoke(pos))))
         {
             _still = 0f;
             if (_hidden) Hide(false);
         }
+        else if (moved) _still = 0f;
         else _still += Time.fixedDeltaTime;
         if (!CanHide) return;
         _hide?.Button?.SetUsable(_hidden || _still >= HideWait);

@@ -97,7 +97,8 @@ internal static class WaterWade
             var data = pc.Data;
             // 深さを先に見て、水に入っている人だけ見せてよいかを調べる
             float d = WaterSim.CurrentAt(pc.GetTruePosition(), out _, out _);
-            if (d >= ShowDepth && (data == null || data.IsDead || data.Disconnected || pc.inVent || !pc.Visible || !BodyShown(pc))) d = 0f;
+            if (d >= ShowDepth && (data == null || data.IsDead || data.Disconnected || pc.inVent || !pc.Visible || !BodyShown(pc)
+                || Roles.CrewTraits.Has(pc.PlayerId, Roles.CrewTraits.Trait.Skim))) d = 0f; // 水面を走る人は沈まない
             if (w != null) w.Base = d;
             byte id = pc.PlayerId;
             if (d < ShowDepth || Hidden[id])

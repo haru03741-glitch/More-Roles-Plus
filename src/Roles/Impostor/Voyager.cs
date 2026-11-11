@@ -32,6 +32,9 @@ public sealed class Voyager : RoleBase
     public override void OnAssigned()
     {
         UchuKit.Hidden.Set(PlayerId, () => _diving);
+        // 潜伏の間も体はあるので水と粉に跡が残る。その代わり水の流れと外壁の穴の吸い出しに押されない
+        CrewTraits.Set(PlayerId, CrewTraits.Trait.Trace, () => _diving);
+        CrewTraits.Set(PlayerId, CrewTraits.Trait.Steady, () => _diving);
         AddAbility(new Ability(new Text("Voyager.Dive"), "voyager_dive")
         {
             Cooldown = () => DiveCooldown,

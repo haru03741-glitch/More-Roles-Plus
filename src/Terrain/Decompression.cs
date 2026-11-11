@@ -1267,13 +1267,15 @@ internal static class CrewPull
             return;
         }
         var pos = pc.GetTruePosition();
-        bool on = Decompression.PullAt(pos, out var dir, out float mul, out int dist);
+        byte id = pc.PlayerId;
+        bool steady = Roles.CrewTraits.Has(id, Roles.CrewTraits.Trait.Steady);
+        bool on = Decompression.PullAt(pos, out var dir, out float mul, out int dist) && !steady; // 押されない役職は吸い出しも受けない
         if (Speed <= 0f) Speed = __instance.TrueSpeed;
         var body = __instance.body;
         if (CrewGrip.Physics(pc, body, pos, on, dir, mul, dist)) { CrewSwim.Clear(); return; }
         if (!on)
         {
-            if (CrewSwim.Wet) CrewSwim.Physics(body, pos, Speed);
+            if (CrewSwim.Wet) CrewSwim.Physics(body, pos, Speed, Roles.CrewTraits.Has(id, Roles.CrewTraits.Trait.Skim), steady);
             return;
         }
         CrewSwim.Clear();

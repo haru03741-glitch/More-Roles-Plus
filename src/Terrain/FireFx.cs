@@ -272,10 +272,27 @@ internal static class FireFx
         Made++;
     }
 
+    // (x, y) から r 以内にある煙と湯気の粒の数
+    internal static int SmokeNear(float x, float y, float r)
+    {
+        if (_live == 0) return 0;
+        int n = 0;
+        for (int i = 0; i < MaxPuffs; i++)
+        {
+            ref var p = ref Puffs[i];
+            if (!p.Alive || (p.K != Kind.Smoke && p.K != Kind.Steam)) continue;
+            float dx = p.X - x, dy = p.Y - y;
+            if (dx * dx + dy * dy < r * r) n++;
+        }
+        return n;
+    }
+
     private static void Move(float dt)
     {
         if (_live == 0) return;
         float t = _clock;
+        SmokeBodies.Tick();
+        bool bodies = SmokeBodies.Count > 0;
         for (int i = 0; i < MaxPuffs; i++)
         {
             ref var p = ref Puffs[i];
@@ -311,9 +328,12 @@ internal static class FireFx
                     p.Vy -= 6f * dt;
                     break;
             }
+            float s = p.S0 + (p.S1 - p.S0) * (1f - (1f - u) * (1f - u));
+            // 煙と湯気は人の体のまわりから押しのけられる
+            if (bodies && (p.K == Kind.Smoke || p.K == Kind.Steam) && SmokeBodies.PushAt(p.X, p.Y, s * 0.4f, dt, out float pvx, out float pvy))
+            { p.Vx += pvx; p.Vy += pvy; }
             p.X += p.Vx * dt;
             p.Y += p.Vy * dt;
-            float s = p.S0 + (p.S1 - p.S0) * (1f - (1f - u) * (1f - u));
             float a = p.K == Kind.Flame ? p.A * (1f - u * u) : p.K == Kind.Ember || p.K == Kind.Spark ? p.A * (1f - u) : p.A * FxMath.Min(1f, u * 4f) * (1f - u);
             // 炎の塊は黄 → 橙 → 暗い赤へ冷えていく
             float r = p.R, g = p.G, b = p.B;

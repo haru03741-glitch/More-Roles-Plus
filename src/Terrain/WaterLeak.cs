@@ -70,6 +70,8 @@ internal static class WaterLeak
     private const float ScanInterval = 0.1f;
     private const float WetFor = 6f;
     private const float StepDist = 0.55f;
+    private const float StepRingLife = 0.8f;   // 一歩の輪が広がって消えるまで
+    private const float StepDropSpeed = 2f;    // これより速く歩くと足先から水滴が跳ねる (歩く速さ 2.5・速い役職はその倍率)
     private const float SplashRange = 10f, SplashMuffle = 5f, SplashVolume = 0.6f;
     private const float PrintAlphaFresh = 0.5f, PrintAlphaOld = 0.18f;
     private const float WetR = 0.15f, WetG = 0.29f, WetB = 0.5f;
@@ -855,7 +857,7 @@ internal static class WaterLeak
             LastX[id] = pos.x; LastY[id] = pos.y;
             if (step > 2f) { Walked[id] = 0f; continue; } // 飛んだ (通気口・転送)
             if (WetUntil[id] <= _clock) { Walked[id] = 0f; continue; }
-            if (pc.inVent || pc.shouldAppearInvisible || !pc.Visible) continue;
+            if (pc.inVent || pc.shouldAppearInvisible || !Roles.CrewTraits.LeavesTrace(pc)) continue; // 役職で見えない人も体の跡は残す
             Walked[id] += step;
             if (Walked[id] < StepDist || step < 0.0001f) continue;
             Walked[id] = 0f;
@@ -865,7 +867,20 @@ internal static class WaterLeak
                 _splashN = _splashN % 3 + 1;
                 if (!MeetingHud.Instance) BreakNoise.PlayAt("noise_splash_" + _splashN, pos, SplashRange, SplashMuffle, SplashVolume);
                 float floor = DamageMap.FrontZ(pos);
-                AddRipple(pos.x, pos.y, 0.8f, floor - 0.0008f * DamageMap.ZScale(floor));
+                float ringZ = floor - 0.0008f * DamageMap.ZScale(floor);
+                // 踏み込んだ足の輪と、蹴り出した水が少し遅れて広げる外の輪
+                AddRipple(pos.x, pos.y, 0.95f, ringZ, StepRingLife, 0.14f, 0.8f);
+                AddRipple(pos.x - mx / step * 0.12f, pos.y - my / step * 0.12f, 0.55f, ringZ, StepRingLife * 0.8f, 0.06f, 0.45f);
+                // 足先から水滴が前へ跳ねる (蹴った向きへ・低く)。普通に歩くと 2 つ、速い役職は 4 つ。
+                // 着水の輪は出さない (一歩の輪と合わせて輪の枠を埋め、爆発の波を追い出さないため)。会議の始まりには出さない
+                float speed = step / ScanInterval;
+                int drops = MeetingHud.Instance || speed <= StepDropSpeed ? 0 : speed > StepDropSpeed * 1.5f ? 4 : 2;
+                for (int k = 0; k < drops; k++)
+                {
+                    float fx = mx / step * speed * 0.35f + FxMath.Range(-0.35f, 0.35f);
+                    float fy = my / step * speed * 0.35f + FxMath.Range(-0.25f, 0.25f);
+                    SpawnDrop(pos.x, pos.y, 0.03f, fx, fy, FxMath.Range(1.1f, 1.7f), false, AirZ, ringZ, DropSize, DropPlain, 0);
+                }
             }
             else
             {

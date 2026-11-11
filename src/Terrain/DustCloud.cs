@@ -29,9 +29,9 @@ internal static class DustCloud
     // 爆発の Radius は爆発の半径に掛ける倍率。Alpha = 板の濃さ (叩いた煙は小さいので濃くして床に溶けないように)
     private static readonly Spec[] Specs =
     {
-        new(1.4f, 0.6f, 2f, 1.5f, 6, 0.65f),
-        new(2.0f, 0.6f, 6f, 3f, 9, 0.5f),
-        new(1.4f, 0.4f, 7f, 3f, 12, 0.5f),
+        new(1.4f, 0.6f, 2f, 1.5f, 6, 0.7f),
+        new(2.0f, 0.6f, 6f, 3f, 9, 0.6f),
+        new(1.4f, 0.4f, 7f, 3f, 12, 0.6f),
     };
 
     private const int MaxClouds = 4;
@@ -61,6 +61,8 @@ internal static class DustCloud
         public Transform Tr;
         public SpriteRenderer Sr;
         public float X, Y, D, Size, Vx, Vy, Z, Alpha = -1f;
+        public float W;      // 絵の幅 (大きさ 1 の時の世界の幅)
+        public float Px, Py; // 体に押しのけられた分の速さ (ゆっくり落ち着く)
     }
 
     private sealed class Cloud : FloorFlood.Area
@@ -175,6 +177,16 @@ internal static class DustCloud
     // ── 塗り広げ ───────────────────────────────────────────────────────
 
     // その点の濃さ 0..1 (中心 1・届いた端で 0.25・広がる前と薄れた後は 0)
+    internal const float InMin = DustMin;
+
+    // (px, py) の煙の濃さ (いくつかの煙が重なる所は一番濃い物)
+    internal static float DensityAt(float px, float py)
+    {
+        float dens = 0f;
+        foreach (var c in Clouds) dens = Math.Max(dens, Density(c, px, py));
+        return dens;
+    }
+
     private static float Density(Cloud c, float px, float py)
     {
         float ppu = SolidMap.Valid ? SolidMap.Ppu : 1f / DamageMap.TexelSize;
@@ -260,6 +272,7 @@ internal static class DustCloud
                 Vx = ((float)rnd.NextDouble() - 0.5f) * 0.12f,
                 Vy = ((float)rnd.NextDouble() - 0.5f) * 0.12f + 0.03f,
                 Z = zBase - 0.001f * i,
+                W = sw,
             };
             var go = new GameObject("MrpDust") { layer = 0 };
             p.Tr = go.transform;
@@ -273,7 +286,8 @@ internal static class DustCloud
         }
     }
 
-    // 煙の色: マップの壁の素材の粉 (船体の金属 = 灰・岩 = 赤茶・木 = 黄土)
+    // 煙の色: マップの壁の素材の粉 (船体の金属 = 灰・岩 = 赤茶・木 = 黄土)。
+    // 舞った粉は床より影になって少し暗く見えるので、明るい床に溶けない明るさにする
     private static void EnsureTint()
     {
         var ship = ShipStatus.Instance;
@@ -281,9 +295,9 @@ internal static class DustCloud
         _matShip = ship.Pointer;
         _tint = ship.Type switch
         {
-            ShipStatus.MapType.Pb => FxMath.Rgba(0.74f, 0.56f, 0.44f, 1f),
-            ShipStatus.MapType.Fungle => FxMath.Rgba(0.74f, 0.64f, 0.5f, 1f),
-            _ => FxMath.Rgba(0.68f, 0.65f, 0.6f, 1f),
+            ShipStatus.MapType.Pb => FxMath.Rgba(0.64f, 0.48f, 0.38f, 1f),
+            ShipStatus.MapType.Fungle => FxMath.Rgba(0.62f, 0.53f, 0.41f, 1f),
+            _ => FxMath.Rgba(0.56f, 0.54f, 0.5f, 1f),
         };
     }
 
@@ -292,14 +306,19 @@ internal static class DustCloud
         float front = Front(c), env = Envelope(c);
         float grow = 0.5f + 0.5f * Math.Min(1f, c.T / c.Spec.Expand) + 0.25f * Math.Min(1f, c.T / Life(c));
         // 板は Clear / Destroy でしか消さないので、ここでは生存確認 (Unity の ==) をしない
+        bool bodies = SmokeBodies.Count > 0;
+        float settle = Math.Max(0f, 1f - 1.5f * dt);
         foreach (var p in c.Puffs)
         {
-            p.X += p.Vx * dt;
-            p.Y += p.Vy * dt;
+            float s = p.Size * grow;
+            // 体に押しのけられた粒は、押す人がいなくなるとその場でゆっくり止まる (元の所へは戻らない)
+            if (bodies && SmokeBodies.PushAt(p.X, p.Y, s * p.W * 0.35f, dt, out float pvx, out float pvy)) { p.Px += pvx; p.Py += pvy; }
+            p.Px *= settle; p.Py *= settle;
+            p.X += (p.Vx + p.Px) * dt;
+            p.Y += (p.Vy + p.Py) * dt;
             float shown = Math.Clamp((front - p.D) / 0.4f, 0f, 1f);
             float a = c.Spec.Alpha * shown * env * (1f - 0.6f * p.D / c.Reach);
             p.Tr.position = FxMath.V3(p.X, p.Y, p.Z);
-            float s = p.Size * grow;
             p.Tr.localScale = FxMath.V3(s, s, 1f);
             if (MathF.Abs(a - p.Alpha) < 0.004f) continue;
             p.Alpha = a;
@@ -352,6 +371,7 @@ internal static class DustCloud
             if (c.T >= Life(c)) { Destroy(c); Clouds.RemoveAt(i); }
         }
 
+        if (Clouds.Count > 0) SmokeBodies.Tick();
         // 煙の板はゆっくりしか動かないので 15 回/秒で動かす
         _drawAcc += dt;
         if (_drawAcc >= 0.066f)
@@ -406,7 +426,7 @@ internal static class DustCloud
             LastX[id] = pos.x; LastY[id] = pos.y;
             if (step > 2f) { Walked[id] = 0f; continue; } // 飛んだ (通気口・転送) 所は足跡でつながない
             if (DustyUntil[id] <= _clock) { Walked[id] = 0f; continue; }
-            if (pc.inVent || pc.shouldAppearInvisible || !pc.Visible) continue;
+            if (pc.inVent || pc.shouldAppearInvisible || !Roles.CrewTraits.LeavesTrace(pc)) continue; // 役職で見えない人も体の跡は残す
             Walked[id] += step;
             if (Walked[id] < StepDist || step < 0.0001f) continue;
             Walked[id] = 0f;

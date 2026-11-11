@@ -1721,7 +1721,7 @@ Comet.Name: Comet
 Comet.Blurb: Blaze through
 Comet.Summary: A crewmate who can turn invisible and run fast.
 Comet.Blaze: Blaze
-Comet.Blaze.Help: Become invisible and faster for a set time (your vision widens and the screen zooms out a little). While invisible you cannot be seen or killed.
+Comet.Blaze.Help: Become invisible and faster for a set time (your vision widens and the screen zooms out a little). While invisible you cannot be seen or killed. You run across water without slowing down and cannot drown in deep water. Your body is still there, though, so others can see your splashes and footprints.
 Comet.Blaze.Short: Turn invisible and run fast
 Comet.Tips: Not affected by lights sabotage.
 Comet.Cooldown: Boost cooldown
@@ -2234,7 +2234,7 @@ Voyager.Name: Voyager
 Voyager.Blurb: Hide between moments and hunt even allies
 Voyager.Summary: An impostor whose "Dive" makes them invisible to non-impostors. While diving you're faster, others' looks are shuffled, and you can kill allies. If you don't "Leave" in time, you die.
 Voyager.Dive: Dive
-Voyager.Dive.Help: Become invisible to non-impostors and faster. Other living players' looks are swapped on your screen only. Meetings end it.
+Voyager.Dive.Help: Become invisible to non-impostors and faster. Other living players' looks are swapped on your screen only. Water currents and the pull of hull breaches do not push you. Your body is still there, though, so others can see your splashes and footprints. Meetings end it.
 Voyager.Dive.Short: Go invisible and lurk
 Voyager.AllyKill: Ally Kill
 Voyager.AllyKill.Help: While diving, kills a nearby fellow impostor.
@@ -2277,7 +2277,7 @@ Kunoichi.Throw: Kunai
 Kunoichi.Throw.Help: Throws the kunai you are holding. Hitting a non-ally adds a hit, and enough hits kill them. On PC, left-click while holding it to throw toward the mouse. On mobile, tilt the stick that appears when you touch the right half of the screen to aim, then lift your finger to throw that way. Return the stick to the center before lifting to cancel. A sword or bullet can knock the kunai out of your hand, and you cannot throw until you grip a new one.
 Kunoichi.Throw.Short: Throw a kunai
 Kunoichi.Hide: Hide
-Kunoichi.Hide.Help: Standing still for the set time turns you invisible automatically (a setting can make it a button instead: press to hide, press again to reveal). Moving ends it. Invisible players are not hit by kunai. Meetings end everything.
+Kunoichi.Hide.Help: Standing still for the set time turns you invisible automatically (a setting can make it a button instead: press to hide, press again to reveal). Moving ends it, except inside smoke. Your body is still there, though, so the smoke flows around you and can give away where you are. Invisible players are not hit by kunai. Meetings end everything.
 Kunoichi.Unhide: Reveal
 Kunoichi.Hide.Short: Stand still to go invisible
 Kunoichi.ThrowCooldown: Kunai cooldown

@@ -55,9 +55,12 @@ internal static class CrewSwim
         _braceUntil = 0;
     }
 
-    internal static void Physics(Rigidbody2D body, Vector2 pos, float speed)
+    // skim = 水面を走る (水が無いのと同じ) / steady = 流れに運ばれない (足を取られる・泳ぐのはそのまま)
+    internal static void Physics(Rigidbody2D body, Vector2 pos, float speed, bool skim = false, bool steady = false)
     {
         float d = FlowAt(pos, out float cx, out float cy);
+        if (skim) d = 0f;
+        if (steady) { cx = 0f; cy = 0f; }
         Depth = d;
         var v = body.velocity;
         if (d < WadeDepth)
