@@ -59,6 +59,8 @@ internal static partial class Decompression
         public bool ByProp;       // 物がふさいだ
         public int Comp = -1;     // 口の升がいる範囲 (作り直すたびに書く)
         public byte Actor = ResolvedDamage.NoActor; // 穴を開けた人 (吸い出された人の死因の相手)
+        public readonly List<GameObject> Seals = new(); // 泡でふさいだ視界の線 (剥がす時に消す)
+        public readonly List<StripRec> Strips = new();  // 剥がした記録 (時戻し用)
     }
 
     private struct Pending
@@ -66,8 +68,9 @@ internal static partial class Decompression
         public int Tick;
         public bool Rebuild;      // 爆発で歩ける所が変わった (升を作り直す)
         public bool Unmouth;      // 時戻しで取り消した口 Lines を外す
+        public bool Strip;        // At にいちばん近いふさがった口を開け直す (Actor = 剥がした人)
         public List<(Vector2 A, Vector2 B)> Lines; // 開通した口 (Rebuild でない時・曲がった壁では数本)
-        public Vector2 Away;
+        public Vector2 Away, At;
         public byte Actor;
     }
 
@@ -675,6 +678,11 @@ internal static partial class Decompression
         {
             var p = Queue[0];
             Queue.RemoveAt(0);
+            if (p.Strip)
+            {
+                if (StripAt(p.At, p.Actor)) field = true;
+                continue;
+            }
             if (p.Unmouth) RemoveMouth(p.Lines);
             else if (!p.Rebuild) AddMouth(p.Lines, p.Away, p.Actor);
             rebuild = true;
@@ -1082,7 +1090,8 @@ internal static partial class Decompression
             if (!SolidMap.SkyAhead(mid, n, TerrainDamage.BreachReach) && SolidMap.SkyAhead(mid, -n, TerrainDamage.BreachReach)) n = -n;
             float depth = SolidMap.SkyDistance(mid.x, mid.y, n.x, n.y, TerrainDamage.HullReach + 1f);
             float reach = depth < 0f ? -depth - 0.2f : depth > 0f ? depth : SealDepth;
-            WallBody.BuildSeal(a, b, n, Math.Max(0.1f, reach));
+            var go = WallBody.BuildSeal(a, b, n, Math.Max(0.1f, reach));
+            if (go) br.Seals.Add(go);
         }
     }
 
@@ -1139,11 +1148,21 @@ internal static partial class Decompression
 
     internal static void Register()
     {
-        TestBridge.Register("decomp", "[probe [x y] | area [x y] | breach x1 y1 x2 y2 | doors open|close | fill | hold [off] | reset] 船外への吸い出しの気圧と流れ: 刻み・範囲ごとの気圧・口 (probe = その点 (省略で自分) の道のり・引く強さ・向き / area = その点の範囲の広さ・扉は今の開け閉め / breach = 爆発なしに口を自分の手元だけに置く / doors = 全部の扉を自分の手元だけで開け閉め / fill = 気圧を自分の手元だけで満タンに戻す / hold = 自分の手元だけ口をふさがず気圧を満タンのまま)", (args, reply) =>
+        TestBridge.Register("decomp", "[probe [x y] | area [x y] | breach x1 y1 x2 y2 | strip | doors open|close | fill | hold [off] | reset] 船外への吸い出しの気圧と流れ: 刻み・範囲ごとの気圧・口 (probe = その点 (省略で自分) の道のり・引く強さ・向き / area = その点の範囲の広さ・扉は今の開け閉め / breach = 爆発なしに口を自分の手元だけに置く / doors = 全部の扉を自分の手元だけで開け閉め / fill = 気圧を自分の手元だけで満タンに戻す / hold = 自分の手元だけ口をふさがず気圧を満タンのまま)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             string cmd = a.Length > 0 ? a[0] : "";
             if (cmd == "reset") { Reset(); reply("OK decomp reset"); return; }
+            if (cmd == "strip")
+            {
+                var lp = PlayerControl.LocalPlayer;
+                if (!lp) { reply("ERR decomp no player"); return; }
+                var lpos = lp.GetTruePosition();
+                bool can = CanStrip(lpos);
+                RequestStrip(lp);
+                reply($"OK decomp strip asked can={can} at {TestBridge.F(lpos.x)} {TestBridge.F(lpos.y)} path={PathDist(lpos.x, lpos.y)}");
+                return;
+            }
             if (cmd == "hold")
             {
                 _hold = a.Length < 2 || a[1] != "off";

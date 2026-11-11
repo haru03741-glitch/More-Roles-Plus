@@ -28,13 +28,14 @@ internal static partial class CrewFlip
         public float Ox, Oy;                      // 本編の絵の原点を立ち絵の足元へ合わせるずらし (右向きの時・絵の単位)
         public float[] Oxs;                       // 絵ごとの横のずらし (吹き飛ぶ連番をその場の動きにする)。null = Ox だけ
         public bool Mirror;                       // 左を向いて描かれた本編の絵 (撃たれる被害者など): 左右を返して流す
+        public bool Cut;                          // 体から離れた塊 (キルの化け物の手など) を読んだ時に消す
         public Sprite[] Sprites;
         public bool Searched;
 
         // 本編の別の場面の絵 (キルの被害者など) は原点が立ち絵と違う所にあるので、そのまま差すと体が元の場所からずれる
         public static Clip Vanilla(string name, string prefix, ushort[] nums, float ox, float oy, int loop, byte[] seq, float[] ax, float[] ay,
-            bool mirror = false, float[] offx = null) =>
-            new() { Name = name, Prefix = prefix, Nums = nums, Ox = ox, Oy = oy, Loop = loop, Seq = seq, Ax = ax, Ay = ay, Mirror = mirror, Oxs = offx };
+            bool mirror = false, float[] offx = null, bool cut = false) =>
+            new() { Name = name, Prefix = prefix, Nums = nums, Ox = ox, Oy = oy, Loop = loop, Seq = seq, Ax = ax, Ay = ay, Mirror = mirror, Oxs = offx, Cut = cut };
 
         public static Clip Own(string name, int w, int h, int cols, int rows, float feetX, float feetY, int loop, byte[] seq) =>
             new() { Name = name, W = w, H = h, Cols = cols, Rows = rows, FeetX = feetX, FeetY = feetY, Loop = loop, Seq = seq };
@@ -318,8 +319,73 @@ internal static partial class CrewFlip
             Plugin.Logger.LogWarning($"CrewFlip: {c.Name} art not found ({n}/{found.Length})");
             return false;
         }
+        if (c.Cut)
+            for (int i = 0; i < found.Length; i++) found[i] = CutLoose(found[i]);
         c.Sprites = found;
         return true;
+    }
+
+    // 絵の中でいちばん大きい塊 (体) だけを残した写しを作る (離れた塊が無ければ元の絵のまま)。
+    // 本編の絵は読めない作りなので GPU で写して読み戻す。読むのは試合ごとに 1 回だけ
+    private static Sprite CutLoose(Sprite sp)
+    {
+        var tex = sp.texture;
+        var tr = sp.textureRect;
+        int w = Math.Max(1, (int)tr.width), h = Math.Max(1, (int)tr.height);
+        var rt = RenderTexture.GetTemporary(tex.width, tex.height, 0, RenderTextureFormat.ARGB32);
+        var prev = RenderTexture.active;
+        Texture2D copy;
+        try
+        {
+            Graphics.Blit(tex, rt);
+            RenderTexture.active = rt;
+            copy = new Texture2D(w, h, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave, filterMode = tex.filterMode };
+            copy.ReadPixels(new Rect(tr.x, tr.y, w, h), 0, 0);
+        }
+        finally
+        {
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+        }
+        var px = copy.GetPixels32();
+        int n = w * h;
+        var lab = new int[n];
+        var sizes = new List<int> { 0 };
+        var stack = new Stack<int>();
+        for (int i = 0; i < n; i++)
+        {
+            if (lab[i] != 0 || px[i].a == 0) continue;
+            int id = sizes.Count, size = 0;
+            lab[i] = id;
+            stack.Push(i);
+            while (stack.Count > 0)
+            {
+                int k = stack.Pop();
+                size++;
+                int x = k % w, y = k / w;
+                if (x > 0 && lab[k - 1] == 0 && px[k - 1].a != 0) { lab[k - 1] = id; stack.Push(k - 1); }
+                if (x < w - 1 && lab[k + 1] == 0 && px[k + 1].a != 0) { lab[k + 1] = id; stack.Push(k + 1); }
+                if (y > 0 && lab[k - w] == 0 && px[k - w].a != 0) { lab[k - w] = id; stack.Push(k - w); }
+                if (y < h - 1 && lab[k + w] == 0 && px[k + w].a != 0) { lab[k + w] = id; stack.Push(k + w); }
+            }
+            sizes.Add(size);
+        }
+        if (sizes.Count <= 2)
+        {
+            UnityEngine.Object.Destroy(copy);
+            return sp;
+        }
+        int keep = 1;
+        for (int i = 2; i < sizes.Count; i++) if (sizes[i] > sizes[keep]) keep = i;
+        for (int i = 0; i < n; i++) if (lab[i] != keep) px[i] = default;
+        copy.SetPixels32(px);
+        copy.Apply(false, true);
+        // 原点は元の絵と同じ px (切り出しの枠は元の絵の枠と同じ)
+        var pivot = FxMath.V2(sp.pivot.x / w, sp.pivot.y / h);
+        var made = Sprite.Create(copy, new Rect(0, 0, w, h), pivot, sp.pixelsPerUnit, 0, SpriteMeshType.FullRect);
+        made.hideFlags = HideFlags.HideAndDontSave;
+        made.name = sp.name;
+        return made;
     }
 
     internal static string Names()

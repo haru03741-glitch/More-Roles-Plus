@@ -36,6 +36,8 @@ internal static class FxHands
         public Key[] Keys;
         public float Start;
         public Vector2 Pos;
+        public Transform Follow;         // 付いて動く体 (無ければ Pos に留まる)。Pos はその体からのずれ
+        public bool Follows;
         public float Z;
         public float Size;
         public bool Flip;
@@ -51,8 +53,10 @@ internal static class FxHands
 
     // keys の通りに握った手を動かす。pos はワールド座標 (握る所)、size は絵の倍率、flip で左右反転 (回転も鏡に)。
     // prop は同じ原点に重ねて持たせる物 (プレイヤー色に塗らない・手の奥)。propRot = 手に対する物の傾き (度・左右反転で鏡に)。
-    // z は奥行き (本編のクルーは y/1000)
-    internal static void Play(Key[] keys, Vector2 pos, int colorId, float size, bool flip, float delay, float z, Sprite prop, float propRot = 0f)
+    // z は奥行き (本編のクルーは y/1000)。hand は手の絵 (無ければ握った手)。follow を渡すと、その体と一緒に動く
+    // (流れに乗って動いている体の手が宙に取り残されないように)
+    internal static void Play(Key[] keys, Vector2 pos, int colorId, float size, bool flip, float delay, float z, Sprite prop, float propRot = 0f,
+        Sprite hand = null, Transform follow = null)
     {
         if (keys == null || keys.Length == 0 || Live.Count >= MaxLive) return;
         if (colorId < 0 || colorId >= Palette.PlayerColors.Length) colorId = 0;
@@ -61,7 +65,7 @@ internal static class FxHands
         try
         {
             Material mat = PlayerMat();
-            Sprite grip = GripSprite();
+            Sprite grip = hand ? hand : GripSprite();
             if (!mat || !grip) return;
 
             h = Pool.Count > 0 ? Pool.Pop() : null;
@@ -80,7 +84,14 @@ internal static class FxHands
             PlayerMaterial.SetColors(colorId, h.Sr);
             h.Keys = keys;
             h.Start = Time.time + delay;
+            h.Follow = follow;
+            h.Follows = follow;
             h.Pos = pos;
+            if (follow)
+            {
+                var fp = follow.position;
+                h.Pos = FxMath.V2(pos.x - fp.x, pos.y - fp.y);
+            }
             h.Z = z;
             h.Size = size;
             h.Flip = flip;
@@ -159,7 +170,20 @@ internal static class FxHands
             float jy = shake > 0f ? FxMath.Sin(t * 131f + 1.3f) * shake : 0f;
             float sc = FxMath.Lerp(a.Scale, b.Scale, u) * h.Size;
             float rot = sx * FxMath.Lerp(a.Rot, b.Rot, u);
-            h.Tf.position = FxMath.V3(h.Pos.x + sx * FxMath.Lerp(a.Dx, b.Dx, u) + jx, h.Pos.y + FxMath.Lerp(a.Dy, b.Dy, u) + jy, h.Z);
+            float px = h.Pos.x, py = h.Pos.y;
+            if (h.Follows)
+            {
+                if (!h.Follow) // 付いていた体が消えた (切断など)
+                {
+                    Release(h);
+                    Live.RemoveAt(i);
+                    continue;
+                }
+                var fp = h.Follow.position;
+                px += fp.x;
+                py += fp.y;
+            }
+            h.Tf.position = FxMath.V3(px + sx * FxMath.Lerp(a.Dx, b.Dx, u) + jx, py + FxMath.Lerp(a.Dy, b.Dy, u) + jy, h.Z);
             h.Tf.rotation = FxMath.RotZ(rot);
             h.Tf.localScale = FxMath.V3(sc, sc, 1f);
             float al = FxMath.Clamp01(FxMath.Lerp(a.Alpha, b.Alpha, u));
@@ -176,6 +200,8 @@ internal static class FxHands
 
     private static void Release(Hand h)
     {
+        h.Follow = null;
+        h.Follows = false;
         if (!h.Go) return;
 
         Roles.FxRoot.Untrack(h.Go); // 池の手は控えに入れない (戻し終わりに使っていない手を出さない)

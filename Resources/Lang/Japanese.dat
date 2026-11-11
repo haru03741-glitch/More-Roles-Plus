@@ -1616,11 +1616,19 @@ RocketLauncher.CanUseNormalKill: 普通のキルもできる
 # ── 突き落と師 (Pusher) ──
 Pusher.Name: 突き落と師
 Pusher.Blurb: 足元に気をつけて
-Pusher.Summary: 船の縁やはしごの上に立っている人を突き落とすインポスターです (スケルド・ポーラス・エアシップ・ファングル)。
+Pusher.Summary: 船の縁やはしごの上に立っている人を突き落とすインポスターです (スケルド・ポーラス・エアシップ・ファングル)。外壁に穴が開くと、人を穴へ突き飛ばしたり、ふさがった穴の泡を剥がしたりできます。
 Pusher.Push: 突き落とす
 Pusher.Push.Help: 船の縁 (決まった場所) に立っているクルーを突き落とします。落ちた人は死体も残りません。はしごの上にいる人を突き落とすと、はしごの下に死体が残ります。
 Pusher.Push.Short: 縁にいる人を突き落とす
 Pusher.Cooldown: 突き落とすの待ち時間
+Pusher.Shove: 突き飛ばす
+Pusher.Shove.Help: 外壁の穴が空気を吸い出している間、穴の近くにいる人を穴へ向けて突き飛ばします。飛ばされた人も途中の壁や角につかまれば助かります。
+Pusher.Shove.Short: 穴の近くの人を穴へ突き飛ばす
+Pusher.Strip: 泡を剥がす
+Pusher.Strip.Help: 補修の泡でふさがった外壁の穴の前で使うと、泡を剥がしてもう一度空気を吸い出させます。しばらくすると、また泡でふさがります。
+Pusher.Strip.Short: ふさがった穴の泡を剥がす
+Pusher.ShoveCooldown: 突き飛ばすの待ち時間
+Pusher.StripCooldown: 泡を剥がすの待ち時間
 # ── ユビキタス (Ubiquitous) ──
 Ubiquitous.Name: ユビキタス
 Ubiquitous.Blurb: ドローンはどこにでも

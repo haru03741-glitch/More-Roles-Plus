@@ -6,7 +6,8 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles.Impostor;
 
 // 突き落と師 (インポスター・スケルド / ポーラス / エアシップ / ファングル): 船の縁 (決まった場所) に立っているクルーを
-// 「突き落とす」と、その人は落ちて死体も残らない。はしごの上にいる人を突き落とすと、はしごの下に死体が残る
+// 「突き落とす」と、その人は落ちて死体も残らない。はしごの上にいる人を突き落とすと、はしごの下に死体が残る。
+// 外壁の穴が吸っている間は、口の近くの人を口へ突き飛ばせる (つかまれば助かる)。泡でふさがった口は剥がしてもう一度吸い出させられる
 public sealed class Pusher : RoleBase
 {
     public override Team BaseTeam => Team.Impostor;
@@ -16,9 +17,14 @@ public sealed class Pusher : RoleBase
     public override Text Blurb => new("Pusher.Blurb");
     public override string Origin => "SNR";
     public override byte[] OnlyMaps => new byte[] { 0, 2, 4, 5 };
-    public override HelpSection[] HelpSections => new HelpSection[] { new("Pusher.Push", "snr_push") };
+    public override HelpSection[] HelpSections => new HelpSection[]
+    {
+        new("Pusher.Push", "snr_push"), new("Pusher.Shove", "snr_push"), new("Pusher.Strip", "pusher_strip"),
+    };
 
     public static readonly FloatOpt PushCooldown = new("Pusher.Cooldown", 15f, 0f, 180f, 2.5f, "s");
+    public static readonly FloatOpt ShoveCooldown = new("Pusher.ShoveCooldown", 20f, 0f, 180f, 2.5f, "s");
+    public static readonly FloatOpt StripCooldown = new("Pusher.StripCooldown", 30f, 0f, 180f, 2.5f, "s");
 
     private enum Dir { Right, Left, Down, Up }
 
@@ -65,6 +71,64 @@ public sealed class Pusher : RoleBase
             CanTarget = (_, t) => !PortKit.IsImpostor(t) && (SpotOf(t) >= 0 || LadderOf(t)),
             OnUsed = (user, target) => Push(user, target),
         });
+        // 外壁の穴が吸っている間: 口への道のり 6 以内の人を口へ突き飛ばす。両手で押すので手の届く隣の人だけ
+        AddAbility(new Ability(new Text("Pusher.Shove"), "snr_push")
+        {
+            Target = AbilityTarget.Player,
+            Range = PusherFx.ArmReach,
+            Cooldown = () => ShoveCooldown,
+            Usable = () => Terrain.Decompression.Pulling,
+            CanTarget = (_, t) => !PortKit.IsImpostor(t) && InPull(t),
+            OnUsed = (user, target) => Shove(user, target),
+        });
+        // 泡でふさがった口の前で: 泡を剥がしてもう一度吸い出させる
+        AddAbility(new Ability(new Text("Pusher.Strip"), "pusher_strip")
+        {
+            Target = AbilityTarget.Self,
+            Cooldown = () => StripCooldown,
+            Usable = () => Terrain.Decompression.AnySealed && PlayerControl.LocalPlayer && Terrain.Decompression.CanStrip(PlayerControl.LocalPlayer.GetTruePosition()),
+            OnUse = () =>
+            {
+                Terrain.Decompression.RequestStrip(PlayerControl.LocalPlayer);
+                return true;
+            },
+        });
+    }
+
+    private static bool InPull(PlayerControl t)
+    {
+        if (!Terrain.Decompression.Pulling || !t || t.inVent) return false;
+        var pos = t.transform.position;
+        return Terrain.Decompression.PathDist(pos.x, pos.y) <= Terrain.Decompression.ShoveDist;
+    }
+
+    // 全員の端末で (ホストが狙いを確かめた後): ホストが守りを確かめてから結果を全員へ配る。
+    // 守り (守護者・ベスト・盾など) で止まった時は動かない。頑丈な役職 (サムライ) は踏みとどまって体で受ける
+    private static void Shove(PlayerControl user, PlayerControl target)
+    {
+        if (!AmongUsClient.Instance.AmHost || !InPull(target)) return;
+        bool tough = Duel.Tough(target);
+        bool blocked = PortKit.Alive(target) && (tough || BeforeMurderEvent.Ask(user, target) != null);
+        var m = (user.PlayerId, target.PlayerId, blocked);
+        ShoveCall.Send(m);
+        OnShove(m);
+        if (tough && PortKit.Alive(target)) PortKit.HostKill(user, target, PortKit.Harm.Blunt);
+    }
+
+    private static readonly Net.RemoteCall<(byte user, byte target, bool blocked)> ShoveCall = new("Pusher.Shove", Net.Route.HostToAll,
+        (w, m) => { w.Write(m.user); w.Write(m.target); w.Write(m.blocked); },
+        r => (r.ReadByte(), r.ReadByte(), r.ReadBoolean()),
+        (_, m) => OnShove(m));
+
+    private static void OnShove((byte user, byte target, bool blocked) m)
+    {
+        var target = PortKit.ById(m.target);
+        if (!target) return;
+        PusherFx.Shove(PortKit.ById(m.user), target, m.blocked);
+        if (m.blocked) return;
+        if (AmongUsClient.Instance.AmHost) Terrain.CrewGrip.NoteShove(m.target, m.user);
+        // 流れに乗るのは自分の体だけ (ホストの持つダミーは AmOwner でも自分ではない)。踏み込んで当たったコマから運ばれる
+        if (target == PlayerControl.LocalPlayer) PortKit.After(PusherFx.Contact, Terrain.CrewGrip.Shove);
     }
 
     private const float StandRadius = 0.2f;

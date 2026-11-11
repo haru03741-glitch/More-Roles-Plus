@@ -42,7 +42,12 @@ internal static class CrewGrip
     private const float RimReach = 1.8f, RimStart = 1.2f, RimSpeed = 3.2f, RimCreep = 0.6f;
     private const float RimGauge = 0.45f, RimPerfectGauge = 0.6f, RimDrain = 0.45f, RimMash = 0.08f;
 
-    private enum State : byte { Free, Grabbed, Pushing, Lost, Rim }
+    private enum State : byte { Free, Grabbed, Pushing, Lost, Rim, Shoved }
+    // 突き飛ばされた (突き落と師): 口への道を ShoveSpeed で運ばれ、流れが ShoveMul 以上か口の際まで来たら手を離す (そこからは普通の流れ・つかめる)
+    private const float ShoveSpeed = 7f, ShoveMax = 1.2f, ShoveMul = 0.8f, ShoveRim = 1.3f;
+    private const float ShoveMemory = ShoveMax + 4f; // ホスト: 突き飛ばした人を死因の相手にする間 (秒)
+    private static float _shoveEnd;
+    private static readonly Dictionary<byte, (byte By, float Until)> ShovedBy = new(); // ホストだけ
 
     private static State _state;
     private static float _t;                // 物理の刻みで進む自分の時計
@@ -187,6 +192,7 @@ internal static class CrewGrip
             _state = State.Free;
             _shown = false;
             _strandTried = false;
+            ShovedBy.Clear();
         }
         if (Roles.RewindPlayback.Active)
         {
@@ -331,6 +337,19 @@ internal static class CrewGrip
             }
         }
 
+        if (_state == State.Shoved)
+        {
+            bool reached = (on && mul >= ShoveMul) || Decompression.MouthDist(pos, out _) <= ShoveRim;
+            if (!reached && _t < _shoveEnd && Decompression.PathAt(pos, out var sd))
+            {
+                body.velocity = FxMath.V2(sd.x * ShoveSpeed, sd.y * ShoveSpeed);
+                return true;
+            }
+            Plugin.Logger.LogInfo($"[CrewGrip] shove end at {pos.x:0.00},{pos.y:0.00} mul={mul:0.00} reached={reached}");
+            _state = State.Free;
+            _lockEnd = _t; // 運ばれている間の押しは持ち越さない
+        }
+
         // Free
         // 口に触れたら外へ。エアシップの風は弱い (歩く速さの 0.4 倍) ので、風があれば落ちる
         if (on && mul >= (Decompression.Wind ? 0.01f : DangerMul) && dist <= OutDist && Decompression.MouthDist(pos, out _) <= OutReach)
@@ -447,6 +466,9 @@ internal static class CrewGrip
     private static void Grab(Vector2 pos, bool rim)
     {
         _state = State.Grabbed;
+        // つかんだ姿は体の絵を曲げて見せるので、突き飛ばされた連番が残っていれば止める
+        var lp = PlayerControl.LocalPlayer;
+        if (lp) CrewFlip.Stop(lp.PlayerId);
         _rim = rim;
         // 体を角の手前 (来た側) HoldGap へ寄せる。来た側は歩けた所なので壁の中には入らない
         // 口の端は体の真横にあるので、流れの逆向き (船の中) へ寄せる
@@ -475,6 +497,23 @@ internal static class CrewGrip
         RestoreBody();
         if (_shown) Hide();
     }
+
+    // 自分が突き飛ばされた (受ける人の端末で)。つかまっていても手が離れる。吸い出されている途中は何もしない
+    internal static void Shove()
+    {
+        if (_state == State.Lost) return;
+        var lp = PlayerControl.LocalPlayer;
+        if (!lp || Flying(lp.PlayerId)) return;
+        if (_state != State.Free) Let();
+        _state = State.Shoved;
+        _shoveEnd = _t + ShoveMax;
+        _immuneEnd = 0f;
+        _presses = 0;
+        Plugin.Logger.LogInfo("[CrewGrip] shoved");
+    }
+
+    // ホスト: 突き飛ばした人を控える (その後しばらくの吸い出しは、その人を死因の相手にする)
+    internal static void NoteShove(byte target, byte by) => ShovedBy[target] = (by, Time.time + ShoveMemory);
 
     // ── 口の外側に取り残された自分 ─────────────────────────────────────
     // 口の線は切れた壁の線から引くので、掘った穴の中に立っていると口の外側 (船の外にした升) に残ることがある。
@@ -536,12 +575,15 @@ internal static class CrewGrip
                 Plugin.Logger.LogWarning($"[CrewGrip] out refused {pid}: {why}");
                 return;
             }
-            Spaced.Send(pid);
-            StartFlight(pid);
+            byte by = ShovedBy.TryGetValue(pid, out var sh) && Time.time <= sh.Until ? sh.By : Decompression.MouthActor(sender.GetTruePosition());
+            ShovedBy.Remove(pid);
+            Spaced.Send((pid, by));
+            StartFlight(pid, by);
         });
 
-    private static readonly RemoteCall<byte> Spaced = new("Decomp.Spaced", Route.HostToAll,
-        (w, pid) => w.Write(pid), r => r.ReadByte(), (_, pid) => StartFlight(pid));
+    // 死因の相手 (穴を開けた人・剥がした人・突き飛ばした人) はホストが決めて配る (端末ごとに割れない)
+    private static readonly RemoteCall<(byte pid, byte by)> Spaced = new("Decomp.Spaced", Route.HostToAll,
+        (w, m) => { w.Write(m.pid); w.Write(m.by); }, r => (r.ReadByte(), r.ReadByte()), (_, m) => StartFlight(m.pid, m.by));
 
     private static string Refuse(PlayerControl p)
     {
@@ -572,7 +614,7 @@ internal static class CrewGrip
         Cancel();
     }
 
-    private static void StartFlight(byte pid)
+    private static void StartFlight(byte pid, byte by)
     {
         if (Interrupted) return;
         var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
@@ -586,9 +628,10 @@ internal static class CrewGrip
         float len = MathF.Sqrt(mx * mx + my * my);
         float dx = len > 0.05f ? mx / len : 0f, dy = len > 0.05f ? my / len : 1f;
         if (len <= 0.05f && Decompression.PullAt(pos, out var dir, out _, out _)) { dx = dir.x; dy = dir.y; }
+        CrewFlip.Stop(pid);
         var pose = new Pose(p);
         pose.HideName();
-        Flights.Add(new Flight { Pc = p, Pose = pose, Mx = mx, My = my, Dx = dx, Dy = dy, By = Decompression.MouthActor(pos) });
+        Flights.Add(new Flight { Pc = p, Pose = pose, Mx = mx, My = my, Dx = dx, Dy = dy, By = by });
         Plugin.Logger.LogInfo($"[CrewGrip] spaced {pid} mouth={md:0.00}");
     }
 
@@ -976,7 +1019,7 @@ internal static class CrewGrip
 
     internal static void Register()
     {
-        TestBridge.Register("grip", "[press [n] | auto [perfect|window|off] | list | out] 吸い出しのつかみ: 状態・ゲージ・狙っている角・つかめる角の数 (press = 押した事にする・n 回 / auto = 輪が角に重なったら押し・つかまったら毎秒 5 回押す / list = 近いつかめる角 / out = 自分を吸い出す依頼を出す)", (args, reply) =>
+        TestBridge.Register("grip", "[press [n] | auto [perfect|window|off] | list | out | shove] 吸い出しのつかみ: 状態・ゲージ・狙っている角・つかめる角の数 (press = 押した事にする・n 回 / auto = 輪が角に重なったら押し・つかまったら毎秒 5 回押す / list = 近いつかめる角 / out = 自分を吸い出す依頼を出す / shove = 自分が突き飛ばされた事にする)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             string cmd = a.Length > 0 ? a[0] : "";
@@ -1002,6 +1045,12 @@ internal static class CrewGrip
                 g.Sort((u, v) => ((u - p0).sqrMagnitude).CompareTo((v - p0).sqrMagnitude));
                 for (int i = 0; i < g.Count && i < 12; i++) sb.Append($" {g[i].x:0.00},{g[i].y:0.00}");
                 reply($"OK grip list n={g.Count}{sb}");
+                return;
+            }
+            if (cmd == "shove")
+            {
+                Shove();
+                reply($"OK grip shove state={_state}");
                 return;
             }
             if (cmd == "out")

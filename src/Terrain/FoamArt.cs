@@ -71,6 +71,7 @@ internal static class FoamArt
 
     public static void Tick()
     {
+        if (Torn.Count > 0) TickTorn();
         if (_jobState != 0)
         {
             try { FinishJobs(); }
@@ -84,6 +85,7 @@ internal static class FoamArt
         {
             _shipGen = GameClock.ShipGen;
             Foams.Clear();
+            Torn.Clear();
             _root = null;
         }
         if (!Decompression.Running)
@@ -474,6 +476,121 @@ internal static class FoamArt
         _root.transform.localScale = new Vector3(1f / ls.x, 1f / ls.y, 1f / ls.z);
         GameClock.Ship.Bind(_root);
         return true;
+    }
+
+    // ── 剥がされた泡: 口の外へ吸い出されて飛んでいく ─────────────────────
+    // 栓の絵をそのまま使い、口の外 (宇宙の側) へ加速しながら回って小さくなり、TornTime で消える。
+    // 喉を切った船では栓が船体の絵の奥にあるので、船体の切り口から宇宙へ抜けた所で見えてくる
+    private const float TornTime = 0.8f, TornNear = 0.35f, TornFar = 4.5f, TornSpin = 22f, TornShrink = 0.5f;
+
+    private sealed class Flying
+    {
+        public GameObject Go;
+        public Texture2D Tex;
+        public SpriteRenderer Sr;
+        public float T, X0, Y0, Z, Dx, Dy, Spin, S0, Sy, R0;
+    }
+
+    private static readonly List<Flying> Torn = new();
+
+    internal static void Tear(Decompression.Breach br)
+    {
+        if (!Foams.TryGetValue(br, out var f)) return;
+        if (_jobState != 0) FinishJobs();
+        Foams.Remove(br);
+        float ax = br.Away.x, ay = br.Away.y, len = MathF.Sqrt(ax * ax + ay * ay);
+        if (len < 1e-3f) { Discard(f); return; }
+        ax /= len; ay /= len;
+        var rnd = new System.Random(br.Start * 31 + br.Lines.Count);
+        foreach (var plug in f.Plugs)
+        {
+            if (!plug.Go) continue;
+            var sr = plug.Go.GetComponent<SpriteRenderer>();
+            if (f.Done && sr)
+            {
+                var b = sr.bounds;
+                var e = b.extents;
+                ShadowPatch.MarkDirtyLater(FxMath.V2(b.center.x, b.center.y), MathF.Max(e.x, e.y) + 0.2f);
+            }
+            var t = plug.Go.transform;
+            var p = t.position;
+            Torn.Add(new Flying
+            {
+                Go = plug.Go, Tex = plug.Tex, Sr = sr, X0 = p.x, Y0 = p.y, Z = p.z, Dx = ax, Dy = ay,
+                Spin = (rnd.Next(2) == 0 ? -1f : 1f) * TornSpin * (0.7f + 0.6f * (float)rnd.NextDouble()), S0 = t.localScale.x,
+                Sy = t.localScale.y, R0 = t.localEulerAngles.z,
+            });
+        }
+    }
+
+    private static void TickTorn()
+    {
+        if (Roles.RewindPlayback.Active || !GameClock.ShipAlive)
+        {
+            foreach (var fl in Torn) DropTorn(fl);
+            Torn.Clear();
+            return;
+        }
+        float dt = Time.deltaTime;
+        for (int i = Torn.Count - 1; i >= 0; i--)
+        {
+            var fl = Torn[i];
+            fl.T += dt;
+            float u = fl.T / TornTime;
+            if (u >= 1f || !fl.Go)
+            {
+                DropTorn(fl);
+                Torn.RemoveAt(i);
+                continue;
+            }
+            // 口で一度引っかかってから一気に抜ける (始めは遅く、吸い出しで加速)
+            float d = TornNear * u + TornFar * u * u * u;
+            var t = fl.Go.transform;
+            t.position = FxMath.V3(fl.X0 + fl.Dx * d, fl.Y0 + fl.Dy * d, fl.Z);
+            t.localRotation = FxMath.RotZ(fl.R0 + fl.Spin * u * u);
+            float k = 1f - TornShrink * u * u;
+            t.localScale = FxMath.V3(fl.S0 * k, fl.Sy * k, 1f);
+            if (fl.Sr && u > 0.6f) fl.Sr.color = FxMath.Rgba(1f, 1f, 1f, 1f - (u - 0.6f) / 0.4f);
+        }
+    }
+
+    private static void DropTorn(Flying fl)
+    {
+        if (fl.Go) { fl.Go.SetActive(false); UnityEngine.Object.Destroy(fl.Go); }
+        if (fl.Tex) UnityEngine.Object.Destroy(fl.Tex);
+    }
+
+    private static void Discard(Foam f)
+    {
+        foreach (var plug in f.Plugs)
+        {
+            if (plug.Go) { plug.Go.SetActive(false); UnityEngine.Object.Destroy(plug.Go); }
+            if (plug.Tex) UnityEngine.Object.Destroy(plug.Tex);
+        }
+    }
+
+    // 口の泡を捨てる (剥がされた・時戻しでふさがりを作り直す)。次の Tick でその口の泡の始まりから作り直す
+    internal static void Forget(Decompression.Breach br)
+    {
+        if (!Foams.TryGetValue(br, out var f)) return;
+        if (_jobState != 0) FinishJobs(); // 描きかけの栓が消した絵へ転送しないように先に受け取る
+        Foams.Remove(br);
+        foreach (var plug in f.Plugs)
+        {
+            if (plug.Go)
+            {
+                // 固まった泡は影の中の焼いた絵にも描いてあるので、そこも描き直す
+                if (f.Done)
+                {
+                    var b = plug.Go.GetComponent<SpriteRenderer>().bounds;
+                    var e = b.extents;
+                    ShadowPatch.MarkDirtyLater(FxMath.V2(b.center.x, b.center.y), MathF.Max(e.x, e.y) + 0.2f);
+                }
+                plug.Go.SetActive(false);
+                UnityEngine.Object.Destroy(plug.Go);
+            }
+            if (plug.Tex) UnityEngine.Object.Destroy(plug.Tex);
+        }
     }
 
     // ShadowPatch から: 影の中の焼いた絵に描き込む物 (固まり終わった泡)

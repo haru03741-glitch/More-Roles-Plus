@@ -27,8 +27,9 @@ internal static class DuelFacing
     private static readonly bool[] HeldLeft = new bool[256];
     private static float _heldMax; // 一番遅い HeldUntil (0 = 誰も持っていない)
 
-    // 物を持って狙っている: dx = 狙いの横向き (右が正)。毎フレーム (少なくとも HoldFor より短い間で) 呼ぶ
-    internal static void Hold(PlayerControl p, float dx)
+    // 物を持って狙っている: dx = 狙いの横向き (右が正)。毎フレーム (少なくとも HoldFor より短い間で) 呼ぶ。
+    // seconds = 向きを保つ長さ (1 回の動き (突き飛ばしなど) の間だけ相手の方を向かせる時)
+    internal static void Hold(PlayerControl p, float dx, float seconds = HoldFor)
     {
         if (!p) return;
         byte id = p.PlayerId;
@@ -36,7 +37,7 @@ internal static class DuelFacing
         if (dx > HoldDead) HeldLeft[id] = false;
         else if (dx < -HoldDead) HeldLeft[id] = true;
         else if (now >= HeldUntil[id]) HeldLeft[id] = p.cosmetics && p.cosmetics.FlipX;
-        float until = now + HoldFor;
+        float until = now + seconds;
         HeldUntil[id] = until;
         if (until > _heldMax) _heldMax = until;
     }

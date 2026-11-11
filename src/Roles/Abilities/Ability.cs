@@ -558,6 +558,34 @@ internal static class Abilities
         }
     }
 
+    // 確かめ用: 人を狙う能力が誰も狙っていない理由 (狙いの走査と同じ条件を順に見る)
+    private static string NoAimWhy(Ability a)
+    {
+        var lp = _local?.Player;
+        if (!lp || lp.Data == null) return "no player";
+        bool shown = a.Ghost ? ModButton.GhostShown : ModButton.HudShown;
+        if (!shown || lp.Data.IsDead != a.Ghost) return $"off shown={shown} dead={lp.Data.IsDead}";
+        if (!lp.CanMove) return "cannot move";
+        if (a.Button != null && a.Button.Locked) return "locked";
+        var sb = new System.Text.StringBuilder();
+        Vector2 me = lp.GetTruePosition();
+        float reach = Reach(a);
+        var all = GameData.Instance.AllPlayers;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var p = all[i];
+            if (p == null || p.PlayerId == lp.PlayerId) continue;
+            var pc = p.Object;
+            string why = p.Disconnected ? "gone" : p.IsDead != a.TargetDead ? "dead" : !pc ? "no object"
+                : pc.inVent ? "vent" : pc.inMovingPlat ? "plat" : !a.TargetDead && !pc.Visible ? "invisible"
+                : Vector2.Distance(me, pc.GetTruePosition()) >= reach ? $"far {Vector2.Distance(me, pc.GetTruePosition()):0.0}/{reach:0.0}"
+                : a.CanTarget != null && !a.CanTarget(lp, pc) ? "filter"
+                : !a.IgnoreWalls && PhysicsHelpers.AnythingBetween(me, pc.GetTruePosition(), Constants.ShipAndObjectsMask, false) ? "wall" : "ok";
+            sb.Append($"{p.PlayerId}:{why} ");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
     // 確かめ用の一覧 (press = 押す番号・-1 で押さない)
     internal static string Probe(int press)
     {
@@ -568,6 +596,7 @@ internal static class Abilities
             var a = list[i];
             string aim = a.Aim is not null && a.Aim ? a.Aim.PlayerId.ToString() : "-";
             sb.Append($" #{i}={a.Label}/{a.Target} uses={a.UsesLeft} cd={a.CooldownSeconds:0.#} aim={aim} button=[{(a.Button != null ? a.Button.Describe() : "none")}]");
+            if (a.Target == AbilityTarget.Player && aim == "-") sb.Append($" noAim=[{NoAimWhy(a)}]");
         }
         if (press >= 0 && press < list.Count && list[press].Button != null)
         {

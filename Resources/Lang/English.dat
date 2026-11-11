@@ -1616,11 +1616,19 @@ RocketLauncher.CanUseNormalKill: Can kill normally
 # ── 突き落と師 (Pusher) ──
 Pusher.Name: Pusher
 Pusher.Blurb: Watch your step
-Pusher.Summary: An impostor who pushes people standing at the ship's edges or atop ladders (Skeld, Polus, Airship, Fungle).
+Pusher.Summary: An impostor who pushes people standing at the ship's edges or atop ladders (Skeld, Polus, Airship, Fungle). When the hull is breached, they can shove people into the hole or tear the foam off a sealed one.
 Pusher.Push: Push
 Pusher.Push.Help: Pushes a crewmate standing at a ship edge (fixed spots). They fall and leave no body. Pushing someone atop a ladder leaves their body at the bottom.
 Pusher.Push.Short: Push someone off an edge
 Pusher.Cooldown: Push cooldown
+Pusher.Shove: Shove
+Pusher.Shove.Help: While a hull breach is venting air, shoves someone near it toward the hole. They can still survive by grabbing a wall or corner on the way.
+Pusher.Shove.Short: Shove someone into a breach
+Pusher.Strip: Strip foam
+Pusher.Strip.Help: Use in front of a hull breach sealed with repair foam to tear the foam off and make it vent again. Foam seals it again after a while.
+Pusher.Strip.Short: Tear the foam off a sealed breach
+Pusher.ShoveCooldown: Shove cooldown
+Pusher.StripCooldown: Strip foam cooldown
 # ── ユビキタス (Ubiquitous) ──
 Ubiquitous.Name: Ubiquitous
 Ubiquitous.Blurb: Drones are everywhere

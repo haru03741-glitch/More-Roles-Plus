@@ -35,6 +35,7 @@ internal static partial class Decompression
             var s = Rewound.Find(target, out int at);
             if (s == null) TerrainRewind.NoteMissing(TerrainRewind.Sim.Decomp, target);
             RewindLoad(s);
+            UnstripAfter(target);
             if (s != null && TerrainRewind.SelfCheck) { int now = _step; _step = at; uint d = Digest(); _step = now; TerrainRewind.Check(TerrainRewind.Sim.Decomp, s.Digest, d); }
             Rewound.DropAfter(at);
         }

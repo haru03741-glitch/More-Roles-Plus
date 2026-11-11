@@ -325,12 +325,12 @@ internal sealed class WallBody
 
     // 泡でふさいだ口: 視界の層だけに、口から宇宙の側の泡の奥までを囲む線 (口の両端 → 奥 → 口の両端)。
     // 泡の向こう (喉・宇宙) は元の壁と同じく影になり、泡そのものは見える
-    public static void BuildSeal(Vector2 a, Vector2 b, Vector2 outward, float depth)
+    public static GameObject BuildSeal(Vector2 a, Vector2 b, Vector2 outward, float depth)
     {
         var ship = ShipStatus.Instance;
-        if (!ship || depth <= 0f) return;
+        if (!ship || depth <= 0f) return null;
         var line = Snap(new List<Vector2> { a, a + outward * depth, b + outward * depth, b });
-        if (line[0] == line[3]) return;
+        if (line[0] == line[3]) return null;
         var go = new GameObject(SealName) { layer = 10 };
         go.transform.SetParent(ship.transform, true);
         TerrainUndo.Made(go);
@@ -339,6 +339,7 @@ internal sealed class WallBody
         var pts = new Vector2[line.Count];
         for (int i = 0; i < pts.Length; i++) pts[i] = t.InverseTransformPoint(line[i]);
         col.points = pts;
+        return go;
     }
 
     // 点を 1/512 の格子にそろえる。ほぼ一直線の点のどれを残すかが計算の末尾の差で決まらないよう、間引く前に入力を同じにする
