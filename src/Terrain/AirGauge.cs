@@ -66,10 +66,10 @@ internal static class AirGauge
         var lp = PlayerControl.LocalPlayer;
         bool on = TerrainDeath.Enabled && lp && lp.Data != null && !lp.Data.IsDead && !MeetingHud.Instance && !ExileController.Instance;
         if (!on) { _used = 0f; Show(false); return; }
-        float limit = TerrainDeath.DrownTime;
+        float limit = TerrainDeath.DrownLimit(lp.PlayerId);
         bool deep = WaterSim.Running && WaterSim.Ready && !lp.inVent && !lp.onLadder && !lp.inMovingPlat
             && WaterSim.CurrentAt(lp.GetTruePosition(), out _, out _) >= CrewSwim.BraceMaxDepth
-            && !CrewTraits.Has(lp.PlayerId, CrewTraits.Trait.Skim); // 水面を走っている間は息を数えない (ホストと同じ)
+            && !TerrainDeath.NoDrown(lp.PlayerId); // 水面を走る・泳ぎが得意な人は息を数えない (ホストと同じ)
         if (deep) _used = FxMath.Min(limit, _used + dt * Roles.Impostor.RemoteController.BreathRate(lp.PlayerId));
         else if (_used > 0f) _used = FxMath.Max(0f, _used - dt);
         Set(Bubbles(limit));
@@ -79,19 +79,25 @@ internal static class AirGauge
         if (now - _fullAt > Hold) Show(false);
     }
 
+    private static float LocalLimit()
+    {
+        var lp = PlayerControl.LocalPlayer;
+        return lp ? TerrainDeath.DrownLimit(lp.PlayerId) : TerrainDeath.DrownTime;
+    }
+
     private static int Bubbles(float limit) => limit <= 0f ? 0 : FxMath.Clamp((int)MathF.Ceiling((limit - _used) / limit * Count - 1e-3f), 0, Count);
 
     // 溺れると決まった (自分): 息は空
     internal static void Empty()
     {
-        _used = TerrainDeath.DrownTime;
+        _used = LocalLimit();
         Set(0);
     }
 
     // 守りに弾かれた (自分): ホストは溺れる手前 back 秒の所から数え直す。溺れかけていた時だけ合わせる
     internal static void Guarded(float back)
     {
-        float limit = TerrainDeath.DrownTime;
+        float limit = LocalLimit();
         if (_used >= limit - back) _used = limit - back;
     }
 
@@ -301,5 +307,5 @@ internal static class AirGauge
         return sp;
     }
 
-    internal static string Describe() => $"air used={_used:0.0}/{(float)TerrainDeath.DrownTime} left={_left} shown={_shown} alpha={_alpha:0.00}";
+    internal static string Describe() => $"air used={_used:0.0}/{LocalLimit():0.0} left={_left} shown={_shown} alpha={_alpha:0.00}";
 }

@@ -174,15 +174,26 @@ public static class TerrainDeath
             var pos = p.GetTruePosition();
             if (!away && fire && OnFire(pos)) BurnFor[id] += dt;
             else if (BurnFor[id] > 0f) BurnFor[id] = FxMath.Max(0f, BurnFor[id] - dt);
-            if (!away && water && WaterSim.CurrentAt(pos, out _, out _) >= DrownDepth && !CrewTraits.Has(id, CrewTraits.Trait.Skim)) SwimFor[id] += dt * Impostor.RemoteController.BreathRate(id);
+            if (!away && water && WaterSim.CurrentAt(pos, out _, out _) >= DrownDepth && !NoDrown(id)) SwimFor[id] += dt * Impostor.RemoteController.BreathRate(id);
             else if (SwimFor[id] > 0f) SwimFor[id] = FxMath.Max(0f, SwimFor[id] - dt);
+            float hardy = HardyMul(id);
+            float burnAt = burnLimit * hardy, drownAt = drownLimit * hardy;
             // 体力で受けた頑丈な役職は、居続けると ToughRepeat 秒ごとに次の一撃を受ける (戦いの外の体力は数秒で戻るため)
-            if (BurnFor[id] >= burnLimit) BurnFor[id] = HostHarm(p, Cause.Burn, Culprit(pos, Cause.Burn)) ? 0f : burnLimit - ToughRepeat;
-            else if (SwimFor[id] >= drownLimit) SwimFor[id] = HostHarm(p, Cause.Drown, Culprit(pos, Cause.Drown)) ? 0f : drownLimit - ToughRepeat;
+            if (BurnFor[id] >= burnAt) BurnFor[id] = HostHarm(p, Cause.Burn, Culprit(pos, Cause.Burn)) ? 0f : burnAt - ToughRepeat;
+            else if (SwimFor[id] >= drownAt) SwimFor[id] = HostHarm(p, Cause.Drown, Culprit(pos, Cause.Drown)) ? 0f : drownAt - ToughRepeat;
             if (BurnFor[id] > 0f || SwimFor[id] > 0f) exposed = true;
         }
         _exposed = exposed;
     }
+
+    // 深い水でも息が減らない (水面を走る・泳ぎが得意)
+    internal static bool NoDrown(byte id) => CrewTraits.Has(id, CrewTraits.Trait.Skim) || CrewTraits.Has(id, CrewTraits.Trait.Fin);
+
+    // 災害に強い人は溺れる・焼けるまでの秒が倍
+    internal static float HardyMul(byte id) => CrewTraits.Has(id, CrewTraits.Trait.Hardy) ? 2f : 1f;
+
+    // その人が溺れるまでの秒 (息のゲージと同じ値)
+    internal static float DrownLimit(byte id) => DrownTime * HardyMul(id);
 
     private static bool OnFire(Vector2 pos)
     {
@@ -480,6 +491,11 @@ public static class TerrainDeath
     }
 
     // ── 下敷き (ホスト) ──────────────────────────────────────────────────
+    // 下敷きを避けて転んだ (ホスト → 全員)。向きは -127〜127 に縮めて送る
+    private static readonly Net.RemoteCall<(byte id, sbyte dx, sbyte dy)> DodgeCall = new("TerrainDeath.Dodge", Net.Route.HostToAll,
+        (w, m) => { w.Write(m.id); w.Write((byte)m.dx); w.Write((byte)m.dy); }, r => (r.ReadByte(), (sbyte)r.ReadByte(), (sbyte)r.ReadByte()),
+        (_, m) => DuelTumble.Trip(m.id, m.dx / 127f, m.dy / 127f));
+
     private static void Crush(in ResolvedDamage r)
     {
         bool wall = r.Kind switch
@@ -512,6 +528,17 @@ public static class TerrainDeath
                 if (ahead < CrushSide || ahead > r.Size + CrushReach || side > CrushAlong || side < -CrushAlong) continue;
             }
             else if (ox * ox + oy * oy > CrushReach * CrushReach) continue;
+            // 災害に強い人は瓦礫を避けて転ぶだけ (守りが付いていれば今までどおり弾く)
+            if (CrewTraits.Has(p.PlayerId, CrewTraits.Trait.Hardy) && !Impostor.TriggerHappy.Guarded(p))
+            {
+                float tx = sided ? dx : ox, ty = sided ? dy : oy, tl = FxMath.Sqrt(tx * tx + ty * ty);
+                if (tl < 1e-3f) { tx = 1f; ty = 0f; } else { tx /= tl; ty /= tl; }
+                var dir = ((sbyte)MathF.Round(tx * 127f), (sbyte)MathF.Round(ty * 127f));
+                Plugin.Logger.LogInfo($"[TerrainDeath] dodge {p.PlayerId}");
+                DodgeCall.Send((p.PlayerId, dir.Item1, dir.Item2));
+                DuelTumble.Trip(p.PlayerId, tx, ty);
+                continue;
+            }
             HostHarm(p, Cause.Crush, r.Actor);
         }
     }

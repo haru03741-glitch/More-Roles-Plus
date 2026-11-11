@@ -32,6 +32,8 @@ internal static class CrewSwim
     private static long _braceUntil;
     internal static float Depth { get; private set; }
     internal static bool Swimming => _swim;
+    // 自分が今泳いでいるか (水が止まった後に古い値を読まない)
+    internal static bool SwimmingNow => _swim && Wet;
     internal static bool Bracing => Environment.TickCount64 < _braceUntil;
 
     // 確認用: 自分の足元の水の深さと流れをこの値に固定する (Forced の間は水が無くても入口を開ける)
@@ -56,7 +58,8 @@ internal static class CrewSwim
     }
 
     // skim = 水面を走る (水が無いのと同じ) / steady = 流れに運ばれない (足を取られる・泳ぐのはそのまま)
-    internal static void Physics(Rigidbody2D body, Vector2 pos, float speed, bool skim = false, bool steady = false)
+    // fin = 泳ぎが得意 (足を取られず、泳ぐ速さは歩きと同じ・流れには運ばれる)
+    internal static void Physics(Rigidbody2D body, Vector2 pos, float speed, bool skim = false, bool steady = false, bool fin = false)
     {
         float d = FlowAt(pos, out float cx, out float cy);
         if (skim) d = 0f;
@@ -74,7 +77,7 @@ internal static class CrewSwim
         if (d < SwimDepth)
         {
             float t = (d - WadeDepth) / (SwimDepth - WadeDepth);
-            float slow = 1f - WadeSlow * t, carry = WadeCarry * t;
+            float slow = fin ? 1f : 1f - WadeSlow * t, carry = WadeCarry * t;
             float nx = v.x * slow + cx * carry, ny = v.y * slow + cy * carry;
             Brace(d, v.x, v.y, cx, cy, speed, ref nx, ref ny);
             _swim = false;
@@ -83,7 +86,8 @@ internal static class CrewSwim
             return;
         }
         if (!_swim) { _swim = true; _vx = v.x; _vy = v.y; }
-        float tx = v.x * SwimMul + cx * SwimCarry, ty = v.y * SwimMul + cy * SwimCarry;
+        float mul = fin ? 1f : SwimMul;
+        float tx = v.x * mul + cx * SwimCarry, ty = v.y * mul + cy * SwimCarry;
         _vx += (tx - _vx) * SwimEase;
         _vy += (ty - _vy) * SwimEase;
         float s2 = _vx * _vx + _vy * _vy;

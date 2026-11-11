@@ -26,8 +26,12 @@ public sealed class Tuna : RoleBase
     public static readonly BoolOpt Vent = new("Tuna.CanVent", true);
     public static readonly FloatOpt RequiredGauge = new("Tuna.RequiredGauge", 130f, 50f, 640f, 5f, "s");
     public static readonly FloatOpt StopRatio = new("Tuna.StopRatio", 1.25f, 1f, 10f, 0.25f, "x");
+    public static readonly FloatOpt WaterRatio = new("Tuna.WaterRatio", 2f, 1f, 5f, 0.25f, "x");
 
     public override bool? CanVent => Vent;
+
+    // 泳ぎが得意: 水の中でも歩きと同じ速さで泳ぎ、溺れない
+    public override void OnAssigned() => CrewTraits.Set(PlayerId, CrewTraits.Trait.Fin, () => !Lifespan.IsDead); // 役職が外れたら効かない
 
     private float _left = -1f, _total = -1f, _grace = 10f, _gauge, _gaugeGrace;
     private bool _counting, _hasAt, _still, _died, _won, _wasDead;
@@ -81,7 +85,8 @@ public sealed class Tuna : RoleBase
         if (!_counting || !PortKit.Alive(Player) || !Player.CanMove || paused) return;
         Vector2 now = Player.GetTruePosition();
         if (!_hasAt) { _at = now; _hasAt = true; }
-        _still = (now - _at).magnitude < 0.001f;
+        // 泳いでいる間は流されて動いているので、止まっていても数えない
+        _still = (now - _at).magnitude < 0.001f && !Terrain.CrewSwim.SwimmingNow;
         _at = now;
         if (Mode.Value == 1)
         {
@@ -105,7 +110,8 @@ public sealed class Tuna : RoleBase
         foreach (var p in PlayerControl.AllPlayerControls)
             if (p && p != Player && PortKit.Alive(p) && Vector2.Distance(p.GetTruePosition(), me) < 1.4f) { near = true; break; }
         if (!near) return;
-        _gauge = Mathf.Min(_gauge + dt * (_still ? (float)StopRatio : 1f), RequiredGauge);
+        float rate = (_still ? (float)StopRatio : 1f) * (Terrain.CrewSwim.SwimmingNow ? (float)WaterRatio : 1f);
+        _gauge = Mathf.Min(_gauge + dt * rate, RequiredGauge);
     }
 
     private void Die()

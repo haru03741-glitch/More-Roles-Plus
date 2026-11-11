@@ -1268,14 +1268,16 @@ internal static class CrewPull
         }
         var pos = pc.GetTruePosition();
         byte id = pc.PlayerId;
-        bool steady = Roles.CrewTraits.Has(id, Roles.CrewTraits.Trait.Steady);
-        bool on = Decompression.PullAt(pos, out var dir, out float mul, out int dist) && !steady; // 押されない役職は吸い出しも受けない
+        bool steady = Roles.CrewTraits.Steady(id, pos);
+        bool on = Decompression.PullAt(pos, out var dir, out float mul, out int dist) && !steady; // 押されない役職・錨のそばの人は吸い出しも受けない
+        if (on && Roles.CrewTraits.Has(id, Roles.CrewTraits.Trait.Hardy)) mul *= 0.5f; // 災害に強い人は踏ん張れる
         if (Speed <= 0f) Speed = __instance.TrueSpeed;
         var body = __instance.body;
         if (CrewGrip.Physics(pc, body, pos, on, dir, mul, dist)) { CrewSwim.Clear(); return; }
         if (!on)
         {
-            if (CrewSwim.Wet) CrewSwim.Physics(body, pos, Speed, Roles.CrewTraits.Has(id, Roles.CrewTraits.Trait.Skim), steady);
+            if (CrewSwim.Wet) CrewSwim.Physics(body, pos, Speed, Roles.CrewTraits.Has(id, Roles.CrewTraits.Trait.Skim), steady,
+                Roles.CrewTraits.Has(id, Roles.CrewTraits.Trait.Fin));
             return;
         }
         CrewSwim.Clear();

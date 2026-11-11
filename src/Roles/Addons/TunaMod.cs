@@ -44,6 +44,9 @@ public sealed class TunaMod : AddonBase
 
     private bool _died, _wasDead;
 
+    // 泳ぎが得意: 水の中でも歩きと同じ速さで泳ぎ、溺れない
+    public override void OnAssigned() => CrewTraits.Set(PlayerId, CrewTraits.Trait.Fin, () => !Lifespan.IsDead); // 役職が外れたら効かない
+
     private void Die()
     {
         if (_died) return;
@@ -80,7 +83,7 @@ public sealed class TunaMod : AddonBase
         if (!_counting || !alive || !CanMove() || MeetingHud.Instance || ExileController.Instance) return;
         Vector2 now = Player.GetTruePosition();
         if (!_hasAt) { _at = now; _hasAt = true; }
-        bool still = (now - _at).magnitude < 0.001f;
+        bool still = (now - _at).magnitude < 0.001f && !Terrain.CrewSwim.SwimmingNow; // 泳いでいる間は流されて動いている
         _at = now;
         if (Mode.Value == 1)
         {

@@ -120,6 +120,8 @@ public sealed class Survivor : RoleBase
 
     public override void OnAssigned()
     {
+        // 防災: いつも災害に少し強い (溺れる・焼けるまで倍・吸い出しは半分・下敷きにならず転ぶ)
+        CrewTraits.Set(PlayerId, CrewTraits.Trait.Hardy, () => !Lifespan.IsDead); // 役職が外れたら効かない
         AddAbility(new Ability(new Text("Survivor.Vest"), "survivor_vest")
         {
             Cooldown = () => VestCooldown,

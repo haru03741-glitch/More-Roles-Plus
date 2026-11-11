@@ -74,6 +74,7 @@ public sealed class Anchor : RoleBase
     private void Place(Vector2 at)
     {
         _anchors.Add(at);
+        CrewTraits.AddHold(at); // 重い錨: そばの人は掴まって、水の流れと吸い出しに押されない
         Bodies.Prop(AnchorKind, FloorPropArt.Place(Lifespan, at, "anchor").transform, 0.05f, 0.3f); // 重い錨は当たっても火花だけ
         Notify(at);
     }

@@ -173,7 +173,7 @@ SuddenDeath.CanVent: Everyone can use vents
 # ── Survivor ──
 Survivor.Name: Survivor
 Survivor.Blurb: Stay alive until the end
-Survivor.Summary: A neutral who wins by staying alive until the end.
+Survivor.Summary: A neutral who wins by staying alive until the end. Tougher in disasters even without the vest: twice as long before drowning or burning, half the pull from hull breaches, and a collapsing wall only knocks them over instead of crushing them.
 Survivor.WinCond: Win with whoever wins, as long as you are alive at the end of the game
 Survivor.Tips: You cannot kill. Use your vest when in danger, and stay out of every team's way.
 Survivor.Quote: Whoever wins, staying alive is my victory.
@@ -2333,7 +2333,7 @@ Anchor.Blurb: Drop anchor and hold the ship
 Anchor.Summary: A neutral who drops anchors at their feet. If alive at the end of a meeting after placing all of them, they win alone.
 Anchor.WinCond: Win alone if you're alive at the end of a meeting after placing every anchor
 Anchor.Place: Place
-Anchor.Place.Help: Drops an anchor at your feet (everyone can see it; limited per turn). Nearby players briefly get an arrow to it.
+Anchor.Place.Help: Drops an anchor at your feet (everyone can see it; limited per turn). Nearby players briefly get an arrow to it. Anyone close to an anchor can hold on to it, so water currents and hull breaches can't drag them away.
 Anchor.Place.Short: Drop an anchor
 Anchor.Echo: Echo
 Anchor.Echo.Help: Opens the map; click one of your anchors to send the arrow to nearby players again from there.
@@ -2479,7 +2479,7 @@ Visor.MaxPortableAdminCharge: Maximum charge
 Visor.ChargesPerTasks: Charge per task
 TunaMod.Name: Tuna
 TunaMod.Blurb: Stop and you die
-TunaMod.Help: An addon that dies when standing still. The timer pauses briefly at the start and after meetings. Seconds until death show at the bottom left.
+TunaMod.Help: An addon that dies when standing still. The timer pauses briefly at the start and after meetings. Seconds until death show at the bottom left. A strong swimmer: swims as fast as walking and never drowns. Floating in water never counts as standing still.
 TunaMod.Mode: Counting
 TunaMod.Mode.Usually: Continuous (time standing still in a row)
 TunaMod.Mode.Total: Total (all time standing still)
@@ -2490,7 +2490,7 @@ TunaMod.MeetingStop: Timer pause after meetings
 TunaMod.CountInTask: Timer runs during tasks
 Tuna.Name: Tuna
 Tuna.Blurb: Keep swimming, or die
-Tuna.Summary: A neutral who dies after standing still. Staying near living players fills a gauge (faster while standing still); fill it to win alone. The timer pauses briefly at the start and after meetings.
+Tuna.Summary: A neutral who dies after standing still. Staying near living players fills a gauge (faster while standing still); fill it to win alone. The timer pauses briefly at the start and after meetings. A strong swimmer: swims as fast as walking and never drowns. Floating in water never counts as standing still, and the gauge fills faster while swimming.
 Tuna.WinCond: Fill the gauge to win alone
 Tuna.Mode: Counting
 Tuna.UsuallyStop: Time you can stand still
@@ -2500,6 +2500,7 @@ Tuna.MeetingStop: Timer pause after meetings
 Tuna.CanVent: Can use vents
 Tuna.RequiredGauge: Gauge needed to win
 Tuna.StopRatio: Gauge rate while standing still
+Tuna.WaterRatio: Gauge rate while swimming
 Moon.Name: Moon
 Moon.Blurb: The moon lights up the dark
 Moon.Help: An addon whose vision isn't reduced by blackouts.
