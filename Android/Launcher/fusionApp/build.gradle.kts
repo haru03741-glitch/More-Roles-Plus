@@ -97,7 +97,7 @@ android {
         targetSdk = 36
         applicationId = "dev.waffleful.morerolesplus"
         versionCode = 2
-        versionName = "0.1.3"
+        versionName = "0.1.4"
         ndk {
             abiFilters.add("arm64-v8a")
             // abiFilters.add("armeabi-v7a")
