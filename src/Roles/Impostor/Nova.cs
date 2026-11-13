@@ -1,4 +1,4 @@
-// Based on the Nova role of https://github.com/ykundesu/SuperNewRoles (GPL-3.0) as described by its role card
+// Role idea: the Nova role of https://github.com/TeamUchuaddon/UchuAddon (TeamUchuAddon), as described by its role card; no code or assets used
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;

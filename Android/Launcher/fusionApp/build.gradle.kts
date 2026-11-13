@@ -15,6 +15,14 @@ val bundledUnityVersion = "2022.3.62f3"
 // (assets/bridge/fusion-bridge.dex) and defined under the game class loader, so it can extend
 // the game's classes. Only that one class goes into the dex; src/bridge/stubs holds the
 // compile-time stand-ins for the game classes and for the launcher-side host.
+// The license texts travel inside the APK too (assets/legal/), since the APK is distributed on its own.
+val legalAssetsDir = layout.buildDirectory.dir("legal-assets")
+val copyLegal = tasks.register<Sync>("copyLegal") {
+    description = "Copies LICENSE, THIRD-PARTY-NOTICES.md and licenses/ into assets/legal/"
+    from(rootProject.file("../../LICENSE"), rootProject.file("../../THIRD-PARTY-NOTICES.md"))
+    from(rootProject.file("../../licenses")) { into("licenses") }
+    into(legalAssetsDir.map { it.dir("legal") })
+}
 val bridgeAssetsDir = layout.buildDirectory.dir("bridge-assets")
 val bridgeClassesDir = layout.buildDirectory.dir("bridge-classes")
 val bridgeClassPath = "dev/allofus/fusioncore/bridge/FusionEosUnityPlayerActivity.class"
@@ -159,7 +167,7 @@ android {
     sourceSets {
         getByName("main") {
             // A plain File (not a Provider): preBuild depends on dexBridge, which fills it.
-            assets.srcDirs("../../../build-android/apk-assets", bridgeAssetsDir.get().asFile)
+            assets.srcDirs("../../../build-android/apk-assets", bridgeAssetsDir.get().asFile, legalAssetsDir.get().asFile)
         }
     }
 
@@ -185,5 +193,5 @@ protobuf {
 }
 
 tasks.named("preBuild") {
-    dependsOn(dexBridge)
+    dependsOn(dexBridge, copyLegal)
 }
