@@ -11,7 +11,7 @@ More Roles Plus 本体は GPL-3.0 です ([`LICENSE`](./LICENSE))。以下は別
 |---|---|---|---|
 | FusionCore | XtraCube / All-Of-Us-Mods — [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) | GPL-3.0 | source, `Android/Launcher/` (git subtree, rebranded Android launcher) |
 | BepInEx 6.0.0-be.735 | BepInEx team — [BepInEx](https://github.com/BepInEx/BepInEx) | LGPL-2.1 | PC installer and release zip (`BepInEx/core/`) |
-| Unity Doorstop 4.5.1 | NeighTools — [UnityDoorstop](https://github.com/NeighTools/UnityDoorstop) | LGPL-2.1 | PC installer and release zip (`winhttp.dll`, `doorstop_config.ini`) |
+| Unity Doorstop 4.5.1 | NeighTools, Pietrodjaowjao — [UnityDoorstop (Pietrodjaowjao fork)](https://github.com/Pietrodjaowjao/UnityDoorstop) of [NeighTools/UnityDoorstop](https://github.com/NeighTools/UnityDoorstop) | LGPL-2.1 | PC installer and release zip (`winhttp.dll`, `doorstop_config.ini`) |
 | Il2CppInterop 1.5.3 | BepInEx team, knah et al. — [Il2CppInterop](https://github.com/BepInEx/Il2CppInterop) | LGPL-3.0 | PC installer and release zip (`BepInEx/core/`; `Il2CppInterop.Runtime.dll` modified) |
 | BepInEx Fusion | All-Of-Us-Mods — [BepInExFusion](https://github.com/All-Of-Us-Mods/BepInExFusion) | LGPL-2.1 | bundled in the launcher APK (`Android/Launcher/fusionApp/src/main/assets/BepInEx-arm64.zip`) |
 | Il2CppInterop Fusion | All-Of-Us-Mods — [Il2CppInteropFusion](https://github.com/All-Of-Us-Mods/Il2CppInteropFusion) | LGPL-3.0 | bundled in the launcher APK (same `BepInEx-arm64.zip`; `Il2CppInterop.Runtime.dll` modified) |
@@ -25,6 +25,8 @@ More Roles Plus 本体は GPL-3.0 です ([`LICENSE`](./LICENSE))。以下は別
 | AndroidX (annotation, appcompat, browser, coordinatorlayout, core) / Material Components | The Android Open Source Project / Google — [AndroidX](https://github.com/androidx/androidx), [material-components-android](https://github.com/material-components/material-components-android) | Apache-2.0 | bundled in the launcher APK |
 | Kotlin standard library | JetBrains — [Kotlin](https://github.com/JetBrains/kotlin) | Apache-2.0 | bundled in the launcher APK |
 | Protocol Buffers (protobuf-javalite) | Google — [protobuf](https://github.com/protocolbuffers/protobuf) | BSD-3-Clause | bundled in the launcher APK |
+| libmain.so | springmusk026 — [libmain.so](https://github.com/springmusk026/libmain.so) | no license file published | source the launcher's entry point is based on (`Android/Launcher/fusionApp/src/main/jni/main/`; came with FusionCore) |
+| AndroidUtilities / AuthFix | All-Of-Us-Mods — [AndroidUtilities](https://github.com/All-Of-Us-Mods/AndroidUtilities) | no license file published | technique reference only (itch.io key login to EOS, disabling ad initialization); no code copied |
 
 ## FusionCore (Android launcher)
 
@@ -41,24 +43,29 @@ git subtree として取り込み、End K not で加えられた変更を重ね�
 ## BepInEx / Unity Doorstop (LGPL-2.1) / Il2CppInterop (LGPL-3.0) — PC installer and release zip
 
 The PC installer (`MoreRolesPlusInstaller.exe`, which embeds the files) and the PC release zip contain
-[BepInEx](https://github.com/BepInEx/BepInEx) 6.0.0-be.735 (the official `BepInEx-Unity.IL2CPP-win-x64` build), [Unity Doorstop](https://github.com/NeighTools/UnityDoorstop) 4.5.1 and
+[BepInEx](https://github.com/BepInEx/BepInEx) 6.0.0-be.735 (the official `BepInEx-Unity.IL2CPP-win-x64` build), [Unity Doorstop](https://github.com/Pietrodjaowjao/UnityDoorstop) 4.5.1 (the x64 `winhttp.dll` of the [v4.5.1 release](https://github.com/Pietrodjaowjao/UnityDoorstop/releases/tag/v4.5.1) of Pietrodjaowjao's fork of [NeighTools/UnityDoorstop](https://github.com/NeighTools/UnityDoorstop)) and
 [Il2CppInterop](https://github.com/BepInEx/Il2CppInterop) 1.5.3. BepInEx and Unity Doorstop are unmodified
 (`doorstop_config.ini` and `BepInEx.cfg` are configuration files adjusted for More Roles Plus).
-`Il2CppInterop.Runtime.dll` / `Il2CppInterop.Common.dll` are the 1.5.3 build distributed with
-[Endless Host Roles](https://github.com/Gurge44/EndlessHostRoles/commit/c2e0b297e), kept unmodified in
-[`packaging/il2cppinterop/`](./packaging/il2cppinterop/). `Il2CppInterop.Runtime.dll` is then modified so that its
+`Il2CppInterop.Runtime.dll` / `Il2CppInterop.Common.dll` in [`packaging/il2cppinterop/`](./packaging/il2cppinterop/) are built from
+[Pietrodjaowjao/Il2CppInterop@f1627d60ef](https://github.com/Pietrodjaowjao/Il2CppInterop/commit/f1627d60efc218e4861bacc1239267f96f32ee2c)
+(a fork of BepInEx/Il2CppInterop) with [`tools/Il2CppInterop/il2cppinterop.patch`](./tools/Il2CppInterop/il2cppinterop.patch) applied
+(MemoryUtils calls `VirtualQuery` through its own P/Invoke and guards the memory scan; `Class_FromIl2CppType` gets a null guard).
+[`tools/Il2CppInterop/build.ps1`](./tools/Il2CppInterop/build.ps1) fetches that commit, applies the patch and builds them; they report the version
+`1.5.3+f1627d60.mrp`. `Il2CppInterop.Runtime.dll` is then modified so that its
 reference stores go through the game's GC write barrier (`IL2CPP.FieldWriteWbarrierStub`,
 `Il2CppReferenceArray<T>.StoreValue` and the `Il2CppStringArray` indexer setter; adds `IL2CPP.WbStore`).
-The modified file is reproduced from the unmodified one by [`tools/InteropWbPatch`](./tools/InteropWbPatch/).
+This step is done by [`tools/InteropWbPatch`](./tools/InteropWbPatch/) when the installer payload is built.
 The full license texts are in [`licenses/LGPL-2.1.txt`](./licenses/LGPL-2.1.txt) and
 [`licenses/LGPL-3.0.txt`](./licenses/LGPL-3.0.txt), and are included in the installed files and the release zip.
 
 PC 版のインストーラー (`MoreRolesPlusInstaller.exe` の中に埋め込んでいます) と配布 zip には、BepInEx 6.0.0-be.735 (公式のビルド)・
-Unity Doorstop 4.5.1・Il2CppInterop 1.5.3 が入っています。BepInEx と Unity Doorstop は
+Unity Doorstop 4.5.1 (NeighTools/UnityDoorstop を Pietrodjaowjao が fork した物の v4.5.1 のリリース)・Il2CppInterop 1.5.3 が入っています。BepInEx と Unity Doorstop は
 無改変です (`doorstop_config.ini` と `BepInEx.cfg` は設定ファイルのため More Roles Plus 向けに調整しています)。
-Il2CppInterop は Endless Host Roles の配布物に含まれる 1.5.3 のビルド (`packaging/il2cppinterop/` に無改変のまま置いています) を使い、
+Il2CppInterop は [Pietrodjaowjao/Il2CppInterop@f1627d60ef](https://github.com/Pietrodjaowjao/Il2CppInterop/commit/f1627d60efc218e4861bacc1239267f96f32ee2c) (BepInEx/Il2CppInterop の fork) に
+`tools/Il2CppInterop/il2cppinterop.patch` を当ててビルドした物です (MemoryUtils の `VirtualQuery` を自前の P/Invoke で呼び、メモリの走査に守りを足し、`Class_FromIl2CppType` に null の守りを足しています)。
+取得からビルドまでは `tools/Il2CppInterop/build.ps1` で再現でき、版は `1.5.3+f1627d60.mrp` と名乗ります。さらに
 `Il2CppInterop.Runtime.dll` だけ参照の書き込みが GC の書き込みバリアを通るように書き換えています
-(元のファイルから `tools/InteropWbPatch` で作り直せます)。ライセンス全文は `licenses/` にあり、インストールされるファイルと配布 zip にも入っています。
+(インストーラーの中身を組む時に `tools/InteropWbPatch` で書き換えます)。ライセンス全文は `licenses/` にあり、インストールされるファイルと配布 zip にも入っています。
 
 ## BepInEx Fusion (LGPL-2.1) / Il2CppInterop Fusion (LGPL-3.0)
 

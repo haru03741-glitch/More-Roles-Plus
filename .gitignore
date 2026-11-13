@@ -33,6 +33,7 @@ tools/*
 !tools/StructInline/
 !tools/make-floor-mask.py
 !tools/InteropWbPatch/
+!tools/Il2CppInterop/
 !tools/AndroidDotnetPatch/
 !tools/sounds/
 src/Bridge/TestBridge.Host.cs

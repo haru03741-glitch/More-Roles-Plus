@@ -3,7 +3,7 @@
 # 中身:
 #   winhttp.dll / .doorstop_version / doorstop_config.ini   Unity Doorstop 4.5.1 (packaging/doorstop)
 #   dotnet/                                                  BepInEx 6.0.0-be.735 公式の zip の物
-#   BepInEx/core/                                            同上 + Il2CppInterop 1.5.3 (packaging/il2cppinterop。Runtime はここで tools/InteropWbPatch を通す)
+#   BepInEx/core/                                            同上 + Il2CppInterop 1.5.3 (packaging/il2cppinterop は tools/Il2CppInterop/build.ps1 で公開のソースから作った物。Runtime はここで tools/InteropWbPatch を通す)
 #   BepInEx/patchers/MoreRolesPlus.BootAccel.dll
 #   BepInEx/plugins/MoreRolesPlus.dll
 #   BepInEx/config/BepInEx.cfg                               packaging/config
@@ -29,7 +29,7 @@ if (-not (Test-Path $Dll)) { Fail "MoreRolesPlus.dll が無い: $Dll (先に dot
 $bieUrl = 'https://builds.bepinex.dev/projects/bepinex_be/735/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.735%2B5fef357.zip'
 $bieSha = 'BADEF8112853A00939A0DF6CA143BC0A4E3DC02BD4D21B873302731BFA0E4DF4'
 # packaging/il2cppinterop/Il2CppInterop.Runtime.dll に InteropWbPatch を通した結果 (違えば道具か元の版が変わった)
-$expectRuntimeMd5 = '29D1515F'
+$expectRuntimeMd5 = '0B71AC1F'
 
 $cache = Join-Path $repo 'build/cache'
 $work = Join-Path $repo 'build/payload-src'
