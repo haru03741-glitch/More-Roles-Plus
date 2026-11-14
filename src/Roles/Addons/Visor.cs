@@ -18,7 +18,7 @@ public sealed class Visor : AddonBase
     public override Text Name => new("Visor.Name");
     public override string Reading => "ばいざー";
     public override Text Blurb => new("Visor.Blurb");
-    public override string Origin => "Uchu, ER";
+    public override string Origin => "ER";
     protected internal override bool DefaultOnImpostor => false;
     public override bool CanAttach(Team team, RoleBase role) => team != Team.Impostor && base.CanAttach(team, role);
 

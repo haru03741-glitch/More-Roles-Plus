@@ -2,11 +2,11 @@ using HarmonyLib;
 
 namespace MoreRolesPlus.Rules;
 
-// 役職・アドオンで緊急ボタンを押せない人 (ゲスト・プロセキューターの設定)。押せない人には画面に「ロックされている」と出す
+// 役職・アドオンで緊急ボタンを押せない人 (プロセキューターの設定)。押せない人には画面に「ロックされている」と出す
 internal static class EmergencyLock
 {
     internal static bool Locked(PlayerControl p) =>
-        p && (Roles.Crew.Prosecutor.BlocksEmergency(p) || Roles.Addons.Guest.Has(p));
+        p && Roles.Crew.Prosecutor.BlocksEmergency(p);
 }
 
 [HarmonyPatch(typeof(EmergencyMinigame), nameof(EmergencyMinigame.Update))]

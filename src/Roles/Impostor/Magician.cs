@@ -17,7 +17,7 @@ public sealed class Magician : RoleBase
     public override Text Name => new("Magician.Name");
     public override string Reading => "まじしゃん";
     public override Text Blurb => new("Magician.Blurb");
-    public override string Origin => "Uchu, ER";
+    public override string Origin => "ER";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Magician.Magic", "magician_magic") };
 
     public static readonly FloatOpt MagicCooldown = new("Magician.MagicCooldown", 20f, 2.5f, 60f, 2.5f, "s");

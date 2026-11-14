@@ -1,4 +1,5 @@
 // Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Bakery.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// The role idea comes from https://github.com/yukieiji/ExtremeRoles (GPL-3.0, the Bakary role)
 using System.Collections.Generic;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
@@ -14,7 +15,7 @@ public sealed class Bakery : RoleBase
     public override Text Name => new("Bakery.Name");
     public override string Reading => "ぱんや";
     public override Text Blurb => new("Bakery.Blurb");
-    public override string Origin => "Uchu";
+    public override string Origin => "ER";
     public override bool CanBeMadmate => true;
     public override HelpSection[] HelpSections => new HelpSection[] { new("Bakery.Give", "bakery_bread") };
 

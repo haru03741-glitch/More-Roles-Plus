@@ -13,7 +13,7 @@ public sealed class ChickenMod : AddonBase
     public override Text Name => new("ChickenMod.Name");
     public override string Reading => "ちきん";
     public override Text Blurb => new("ChickenMod.Blurb");
-    public override string Origin => "Uchu, SNR";
+    public override string Origin => "SNR";
 
     public static readonly IntOpt VentChance = new("ChickenMod.VentChance", 20, 0, 100, 5, "%");
     public static readonly IntOpt LadderChance = new("ChickenMod.LadderChance", 20, 0, 100, 5, "%");

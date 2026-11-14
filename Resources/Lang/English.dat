@@ -2057,23 +2057,6 @@ Ranked.Cancel: Cancel
 
 # ---- Roles ported from Uchu and others (crew) ----
 EmergencyLock.Locked: The emergency button is locked
-Admiral.Name: Admiral
-Admiral.Blurb: Take a roll call and find everyone
-Admiral.Summary: A crewmate who can take a "Roll Call" during meetings. Living players answer by clicking where they are on the map, and when you close the call, pins in their colors appear on your map.
-Admiral.Call: Roll Call
-Admiral.Call.Help: Use it from your own plate during a meeting. Everyone's screen flashes and other living players get an "Answer" button (once per meeting).
-Admiral.Call.Short: Ask everyone where they are
-Admiral.Close: Close
-Admiral.Close.Help: Closes the roll call. Each answer appears on the map as a pin in that player's color.
-Admiral.Close.Short: Close the roll call
-Admiral.Map: Open map
-Admiral.Map.Help: After closing the roll call, opens the map again so you can look at the answers as many times as you like.
-Admiral.Map.Short: Look at the answers again
-Admiral.NumOfCall: Number of roll calls
-Admiral.VoteWatching: See votes even when voting is anonymous
-Admiral.Answer: Roll call! Click where you are on the map to answer
-Admiral.Answered: You answered the roll call
-Admiral.Result: Roll call result: {n} answered (check the map)
 Bakery.Name: Bakery
 Bakery.Blurb: Hand out fresh bread
 Bakery.Summary: A crewmate who can give bread to nearby players. Players holding bread get a bread mark on their meeting plate. While alive, you add a line to the exile screen.
@@ -2086,15 +2069,6 @@ Bakery.Got: You got some bread!
 Bakery.Exile.Smell: There's a smell of baked dough...
 Bakery.Exile.Burnt: The bread got burnt...
 Bakery.Exile.Festival: It's a bread festival!
-DJ.Name: DJ
-DJ.Blurb: Turn the ship into a dance floor
-DJ.Summary: A crewmate whose "Scratch" makes everyone in range (including you) flash in random colors.
-DJ.Scratch: Scratch
-DJ.Scratch.Help: Plays a scratch sound for everyone in range and flashes their screens in random colors several times. You briefly see the range circle.
-DJ.Scratch.Short: Flash everyone nearby
-DJ.ScratchCooldown: Scratch cooldown
-DJ.Range: Range
-DJ.NumOfFlash: Number of flashes
 Polaris.Name: Polaris
 Polaris.Blurb: The North Star sees everything
 Polaris.Summary: A crewmate with a kill that works on anyone, and a "Vision" that reads a dead player's role from their body.
@@ -2201,30 +2175,6 @@ Proxy.FollowDeath.None: Never
 Proxy.FollowDeath.Proxy: Monitor dies when the Proxy dies
 Proxy.FollowDeath.Monitor: Proxy dies when the Monitor dies
 Proxy.FollowDeath.Either: Either dies, the other follows
-EvilObserver.Name: Evil Observer
-EvilObserver.Blurb: Spy on everything with hidden cameras
-EvilObserver.Summary: An impostor who places cameras and watches them with "Monitor". Cameras work from the next meeting on and see through walls and blackouts.
-EvilObserver.Place: Place
-EvilObserver.Place.Help: Places a camera at your feet, facing your direction. It works from the next meeting on.
-EvilObserver.Place.Short: Place a camera
-EvilObserver.Monitor: Monitor
-EvilObserver.Monitor.Help: Watches a camera. Press again to return to yourself. You can't move while watching.
-EvilObserver.Monitor.Short: Watch a camera
-EvilObserver.Next: Next
-EvilObserver.Next.Help: Switches to another camera.
-EvilObserver.Next.Short: Go to the next camera
-EvilObserver.PlaceCooldown: Place cooldown
-EvilObserver.NumOfCamera: Number of cameras
-EvilObserver.CanSeeCameraOtherPlayer: Other players can see your cameras
-EvilObserver.NoCamera: No camera is ready yet
-Spectrum.Name: Spectrum
-Spectrum.Blurb: Red fangs under the mask
-Spectrum.BlurbWith: An impostor with the power of {role}
-Spectrum.Summary: An impostor who holds one random crew role that can be a madmate. You use that role's abilities and your own kill button (no normal kill button).
-Spectrum.Kill: Kill
-Spectrum.Kill.Help: Kills a nearby non-impostor.
-Spectrum.Kill.Short: Kill someone nearby
-Spectrum.KillCooldown: Kill cooldown
 Voyager.Name: Voyager
 Voyager.Blurb: Hide between moments and hunt even allies
 Voyager.Summary: An impostor whose "Dive" makes them invisible to non-impostors. While diving you're faster, others' looks are shuffled, and you can kill allies. If you don't "Leave" in time, you die.
@@ -2323,63 +2273,6 @@ Anchor.ArrowDuration: Arrow duration
 Anchor.EchoCooldown: Echo cooldown
 Anchor.NumOfEcho: Echo uses
 Anchor.CanVent: Can use vents
-Bettor.Name: Bettor
-Bettor.Blurb: Bet on everyone's role
-Bettor.Summary: A neutral who guesses everyone else's role and bets on it. Each player comes back as HIT (correct), BLOW (that role is in the game) or MISS. Get everyone HIT to win.
-Bettor.WinCond: Win alone if, at the end of a meeting, you've guessed every other player's role
-Bettor.Guess: Guess
-Bettor.Guess.Help: Opens the guess screen to write a role for every other player. Once all are filled you can bet (once per turn; not in the first turns). HIT players' roles become visible.
-Bettor.Guess.Short: Guess everyone's role and bet
-Bettor.Analyze: Analyze
-Bettor.Analyze.Help: Shows the team of a nearby player. Results stay beside the names. HIT players can't be chosen.
-Bettor.Analyze.Short: Learn a nearby player's team
-Bettor.Identify: Identify
-Bettor.Identify.Help: Once the HIT rate reaches the set value (50% by default), use it from a player's plate in a meeting (once) to learn their role. Works on dead players too (option).
-Bettor.Identify.Short: Learn one role in a meeting
-Bettor.DisableGuessTurn: Turns you can't bet
-Bettor.AnalyzeCooldown: Analyze cooldown
-Bettor.NumOfAnalyze: Analyze uses
-Bettor.IdentifyPercentage: HIT rate needed to identify
-Bettor.IdentifyDead: Can identify dead players
-Bettor.Title: Role Guesses
-Bettor.NoGuess: (empty)
-Bettor.Bet: Bet
-Bettor.TooEarly: You can't bet this turn yet
-Bettor.AlreadyBet: You already bet this turn
-Bettor.FillAll: Fill in a guess for everyone
-Bettor.RoleList: Known roles
-Bettor.PickRole: What is {name}'s role?
-Bettor.Back: Back
-Bettor.Exists: Roles in the game
-Bettor.Absent: Roles not in the game
-Bettor.Result: Bet result: {hit} of {n} HIT
-Bettor.Analyzed: Analyze: {name} is {team}
-Bettor.Identified: Identify: {name} is {role}
-Bettor.TeamImpostor: Impostor team
-Bettor.TeamCrew: Crew team
-Bettor.TeamNeutral: Neutral
-Bettor.TeamMadmate: Impostor team
-Seed.Name: Seed
-Seed.Blurb: Live with someone, win with them
-Seed.Summary: A neutral who wins along with whoever they "Symbiosis" with. With the gauge (option), staying near your partner fills it, and it must be full to win.
-Seed.WinCond: Also win when one of your partners wins
-Seed.Symbiosis: Symbiosis
-Seed.Symbiosis.Help: Bonds with a nearby player. They get a ▼ only you can see, and you can see their role (option).
-Seed.Symbiosis.Short: Bond with someone nearby
-Seed.Gauge: Gauge
-Seed.Gauge.Help: Fills while you're right next to a partner and slowly drains when you're apart. It pauses briefly after meetings.
-Seed.Gauge.Short: Fills near your partner
-Seed.SymbiosisCooldown: Symbiosis cooldown
-Seed.NumOfSymbiosis: Symbiosis uses
-Seed.SeeRole: See your partners' roles
-Seed.NoWinIfPartnerDead: Can't win if the partner is dead
-Seed.NoWinIfSelfDead: Can't win if you're dead
-Seed.UseGauge: Use the gauge
-Seed.GaugeRange: Gauge distance
-Seed.GaugeNeed: Gauge needed to win
-Seed.GaugeExtra: Extra gauge you can store
-Seed.GaugeDecay: Drain speed when apart (per second)
-Seed.PauseAfterMeeting: Gauge pause after meetings
 Amnesia.Name: Amnesia
 Amnesia.Blurb: Pick up the memories of the dead
 Amnesia.Summary: A neutral who becomes the role of any body they report.
@@ -2412,18 +2305,12 @@ RaccoonChild.Blurb: Grab and wash with your parent
 RaccoonChild.Summary: A child made by the Raccoon. Like the Raccoon, you grab, kill and carry people to learn their roles, aiming for a win as the raccoon family.
 RaccoonChild.WinCond: When no other killers remain and the living raccoons equal the living crew, the raccoon family wins
 # ---- Addons ported from Uchu and others ----
-Guest.Name: Guest
-Guest.Blurb: Guests can't press the emergency button
-Guest.Help: An addon that can't press the emergency button.
 Watcher.Name: Watcher
 Watcher.Blurb: No anonymous vote escapes you
 Watcher.Help: An addon that sees who voted for whom even when voting is anonymous.
 Invisible.Name: Invisible
 Invisible.Blurb: No one can see you...
 Invisible.Help: An addon that is always invisible to non-impostors. The holder doesn't know they have it (they find out when they die).
-Timer.Name: Timer
-Timer.Blurb: Keep the time
-Timer.Help: An addon that shows the time since the last meeting at the bottom left. It stops during meetings.
 Visor.Name: Visor
 Visor.Blurb: Watch the ship through your map
 Visor.Help: An addon that shows admin when you open the normal map, as long as it has charge left (bodies are counted too). The charge drains only while the map is open; at zero the map closes and opens as the normal map from then on. Each task you finish recharges it a little. Never given to impostors.
@@ -2460,32 +2347,7 @@ Tuna.WaterRatio: Gauge rate while swimming
 Egoist.Name: Egoist
 Egoist.Blurb: The crew's loss is my win
 Egoist.Help: An addon that wins when the crew loses and loses when the crew wins (crew only). Your tasks don't count toward the crew win.
-SpectrePossession.Name: Fox Possessed
-SpectrePossession.Blurb: And now, serve that one
-SpectrePossession.Help: An addon that joins the Spectre's (fox's) side (crew and impostors only). You win only when the Spectre wins, and your tasks don't count. Clairvoyance (option) lets you see through walls, and Fanaticism (option) shows the Spectre's name in the Spectre's color.
-SpectrePossession.Clairvoyance: Clairvoyance (see through walls)
-SpectrePossession.Fanaticism: Fanaticism (know the Spectre)
-SpectrePossession.FanaticismLimit: Fanaticism needs a condition
-SpectrePossession.NumOfTaskFanaticism: Tasks needed for Fanaticism (crew)
-SpectrePossession.NumOfKillFanaticism: Kills needed for Fanaticism (impostor)
 # ---- Ghost roles ported from Uchu ----
-Baphomet.Name: Baphomet
-Baphomet.Blurb: Command your familiar and steal the win
-Baphomet.Summary: A ghost role for the dead of any team. Turn one living player into your familiar (Famulus) and fill your gauge by standing still next to them. If the gauge is full and your familiar is alive when the game ends, it becomes a win for you and your familiar (except for sabotage endings).
-Baphomet.WinCond: With a full gauge, win with your familiar if they're alive when the game ends
-Baphomet.Family: Familiar
-Baphomet.Family.Help: Turns a nearby living player into your familiar (Famulus) (once). You get an arrow to them.
-Baphomet.Family.Short: Make someone your familiar
-Baphomet.Gauge: Gauge
-Baphomet.Gauge.Help: Fills while you stand still right next to your living familiar. Standing still while your familiar is near shows a phantom only the living can see. It drops a little at the end of meetings (not when full).
-Baphomet.Gauge.Short: Stand by your familiar to fill it
-Baphomet.TotalStandingTimeToWin: Gauge needed to win
-Baphomet.RewindGaugeToMeetingEnd: Gauge lost at the end of meetings
-Baphomet.Cutin: The Baphomet has taken a familiar...
-Famulus.Name: Famulus
-Famulus.Blurb: Serve the Baphomet
-Famulus.Summary: The Baphomet's familiar. You win only when the Baphomet wins, and your tasks don't count. You and the Baphomet see each other's names in purple.
-Famulus.WinCond: Win only with the Baphomet
 Miracle.Name: Miracle
 Miracle.Blurb: Work a miracle and come back
 Miracle.Summary: A ghost role for dead crewmates and impostors. Choose a living player, and at the end of the next meeting you swap roles with them.

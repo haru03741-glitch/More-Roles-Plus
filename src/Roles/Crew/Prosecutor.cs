@@ -13,7 +13,7 @@ public sealed class Prosecutor : RoleBase
     public override Text Name => new("Prosecutor.Name");
     public override string Reading => "ぷろせきゅーたー";
     public override Text Blurb => new("Prosecutor.Blurb");
-    public override string Origin => "Uchu, TOU";
+    public override string Origin => "TOU";
     public override bool CanBeMadmate => true;
     public override HelpSection[] HelpSections => new HelpSection[] { new("Prosecutor.Prosecute", "prosecutor_hand") };
 

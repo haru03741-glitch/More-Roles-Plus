@@ -13,7 +13,7 @@ public sealed class TunaMod : AddonBase
     public override Text Name => new("TunaMod.Name");
     public override string Reading => "まぐろ";
     public override Text Blurb => new("TunaMod.Blurb");
-    public override string Origin => "Uchu, SNR";
+    public override string Origin => "SNR";
 
     public static readonly ChoiceOpt Mode = new("TunaMod.Mode", 0, new Text("TunaMod.Mode.Usually"), new Text("TunaMod.Mode.Total"));
     public static readonly FloatOpt UsuallyStop = new("TunaMod.UsuallyStop", 3f, 1f, 10f, 1f, "s") { When = () => Mode.Value == 0 };

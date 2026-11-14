@@ -11,7 +11,7 @@ public sealed class Watcher : AddonBase
     public override Text Name => new("Watcher.Name");
     public override string Reading => "うぉっちゃー";
     public override Text Blurb => new("Watcher.Blurb");
-    public override string Origin => "Uchu, TORGM";
+    public override string Origin => "TORGM";
 
     internal static bool Has(PlayerControl p) => p && RoleState.AddonsOf(p.PlayerId).Any(a => a is Watcher);
 }

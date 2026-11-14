@@ -14,7 +14,7 @@ public sealed class NekoKabocha : RoleBase
     public override Text Name => new("NekoKabocha.Name");
     public override string Reading => "ねこかぼちゃ";
     public override Text Blurb => new("NekoKabocha.Blurb");
-    public override string Origin => "Uchu, TORGM";
+    public override string Origin => "TORGM";
     public override bool CanBeMadmate => true;
 
     public static readonly BoolOpt ExileEmbroil = new("NekoKabocha.ExileEmbroil", false);

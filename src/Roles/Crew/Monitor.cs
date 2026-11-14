@@ -14,7 +14,7 @@ public sealed class Monitor : RoleBase, IRepairLimit
     public override Text Name => new("Monitor.Name");
     public override string Reading => "もにたー";
     public override Text Blurb => new("Monitor.Blurb");
-    public override string Origin => "Uchu, SNR";
+    public override string Origin => "Uchu";
     public override bool MadeByOthers => true;
     public override Team? WinsWithTeam => Team.Impostor;
 

@@ -72,7 +72,7 @@ public sealed class Spectre : RoleBase
 
     // 自分の端末が透視しているか (視界の影を作らない)
     internal static bool LocalClairvoyant =>
-        (Clairvoyance && RoleState.Local is Spectre s && PortKit.Alive(s.Player) && !MeetingHud.Instance) || MoreRolesPlus.Roles.Addons.SpectrePossession.LocalClairvoyant;
+        (Clairvoyance && RoleState.Local is Spectre s && PortKit.Alive(s.Player) && !MeetingHud.Instance);
 
     public override void OnAssigned()
     {

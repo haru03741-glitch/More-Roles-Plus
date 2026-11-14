@@ -16,7 +16,7 @@ public sealed class Witch : RoleBase
     public override Text Name => new("Witch.Name");
     public override string Reading => "うぃっち";
     public override Text Blurb => new("Witch.Blurb");
-    public override string Origin => "Uchu, TOR";
+    public override string Origin => "TOR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Witch.Spell", "witch_spell") };
 
     public static readonly FloatOpt SpellCooldown = new("Witch.SpellCooldown", 30f, 2.5f, 60f, 2.5f, "s");

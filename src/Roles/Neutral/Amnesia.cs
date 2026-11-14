@@ -15,7 +15,7 @@ public sealed class Amnesia : RoleBase
     public override Text Name => new("Amnesia.Name");
     public override string Reading => "あむねしあ";
     public override Text Blurb => new("Amnesia.Blurb");
-    public override string Origin => "Uchu, SNR";
+    public override string Origin => "SNR";
     public override HelpSection[] HelpSections => new HelpSection[] { new("Amnesia.Remember") };
 
     public static readonly ChoiceOpt Timing = new("Amnesia.Timing", 0, new Text("Amnesia.Timing.Start"), new Text("Amnesia.Timing.End"));

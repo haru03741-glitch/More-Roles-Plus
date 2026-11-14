@@ -16,7 +16,7 @@ public sealed class Tuna : RoleBase
     public override Text Name => new("Tuna.Name");
     public override string Reading => "まぐろ";
     public override Text Blurb => new("Tuna.Blurb");
-    public override string Origin => "Uchu, SNR";
+    public override string Origin => "SNR";
 
     public static readonly ChoiceOpt Mode = new("Tuna.Mode", 0, new Text("TunaMod.Mode.Usually"), new Text("TunaMod.Mode.Total"));
     public static readonly FloatOpt UsuallyStop = new("Tuna.UsuallyStop", 3f, 1f, 10f, 1f, "s") { When = () => Mode.Value == 0 };

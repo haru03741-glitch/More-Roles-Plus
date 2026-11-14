@@ -2057,23 +2057,6 @@ Ranked.Cancel: やめる
 
 # ---- Uchu などから移植した役職 (クルー) ----
 EmergencyLock.Locked: 緊急ボタンはロックされている
-Admiral.Name: アドミラル
-Admiral.Blurb: 点呼をとり、皆の居場所を確かめよ
-Admiral.Summary: 会議中に「点呼」をとれるクルーです。生きている人はマップで今いる場所を答え、締め切ると答えた人の色のピンがマップに出ます。
-Admiral.Call: 点呼
-Admiral.Call.Help: 会議中に自分の名札から使います。全員の画面が光り、生きている他の人に「応答」ボタンが出ます (1 会議 1 回)。
-Admiral.Call.Short: 皆に居場所を聞く
-Admiral.Close: 締め切り
-Admiral.Close.Help: 点呼を締め切ります。答えた人の場所が、その人の色のピンでマップに出ます。
-Admiral.Close.Short: 点呼を締め切る
-Admiral.Map: 地図を開く
-Admiral.Map.Help: 点呼を締め切った後に、地図を開き直して答えを何度でも見られます。
-Admiral.Map.Short: 答えをもう一度見る
-Admiral.NumOfCall: 点呼の回数
-Admiral.VoteWatching: 匿名投票でも投票先が見える
-Admiral.Answer: 点呼です。マップで今いる場所を押して答えましょう
-Admiral.Answered: 点呼に答えました
-Admiral.Result: 点呼の結果: {n} 人が答えました (マップを見よう)
 Bakery.Name: パン屋
 Bakery.Blurb: 焼きたてのパンを配れ
 Bakery.Summary: 近くの人にパンを渡せるクルーです。パンを持っている人は会議の名札にパンの印が付きます。生きていれば追放の画面に一言足されます。
@@ -2086,15 +2069,6 @@ Bakery.Got: パンをもらった!
 Bakery.Exile.Smell: 焼かれた生地の匂いがする…
 Bakery.Exile.Burnt: パンが焦げてしまった…
 Bakery.Exile.Festival: パン祭りだ!
-DJ.Name: DJ
-DJ.Blurb: 船をフロアに変えろ
-DJ.Summary: 「スクラッチ」で、範囲の中の全員 (自分も) の画面を色とりどりに光らせるクルーです。
-DJ.Scratch: スクラッチ
-DJ.Scratch.Help: 範囲の中の全員にスクラッチの音を鳴らし、色とりどりの光を何度も出します。範囲の円が自分に一瞬見えます。
-DJ.Scratch.Short: 近くの全員を光らせる
-DJ.ScratchCooldown: スクラッチの待ち時間
-DJ.Range: 範囲
-DJ.NumOfFlash: 光る回数
 Polaris.Name: ポラリス
 Polaris.Blurb: 北極星は全てを見通す
 Polaris.Summary: 誰でも倒せるキルと、死体から死者の役職を読む「幻視」を持つクルーです。
@@ -2201,30 +2175,6 @@ Proxy.FollowDeath.None: なし
 Proxy.FollowDeath.Proxy: プロキシが死んだらモニターも
 Proxy.FollowDeath.Monitor: モニターが死んだらプロキシも
 Proxy.FollowDeath.Either: どちらかが死んだらもう一方も
-EvilObserver.Name: イビルオブザーバー
-EvilObserver.Blurb: 隠しカメラで全てを覗け
-EvilObserver.Summary: 足元にカメラを置き、「モニター」でその景色を見られるインポスターです。カメラは次の会議の後から使え、壁越し・停電でも見えます。
-EvilObserver.Place: 設置
-EvilObserver.Place.Help: 足元に、向いている方を写すカメラを置きます。次の会議の後から使えます。
-EvilObserver.Place.Short: 足元にカメラを置く
-EvilObserver.Monitor: モニター
-EvilObserver.Monitor.Help: カメラの景色を見ます。もう一度押すと自分に戻ります。見ている間は動けません。
-EvilObserver.Monitor.Short: カメラの景色を見る
-EvilObserver.Next: 次へ
-EvilObserver.Next.Help: 別のカメラの景色に切り替えます。
-EvilObserver.Next.Short: 別のカメラへ
-EvilObserver.PlaceCooldown: 設置の待ち時間
-EvilObserver.NumOfCamera: カメラの数
-EvilObserver.CanSeeCameraOtherPlayer: 置いたカメラが他の人にも見える
-EvilObserver.NoCamera: 使えるカメラがまだない
-Spectrum.Name: スペクトラム
-Spectrum.Blurb: 仮面の下は赤い牙
-Spectrum.BlurbWith: {role} の力を持つインポスター
-Spectrum.Summary: マッドメイトにできるクルーの役職を 1 つ無作為に持つインポスターです。その役職の能力と、自前のキルボタンを使います (本編のキルボタンは無し)。
-Spectrum.Kill: キル
-Spectrum.Kill.Help: 近くのインポスター以外の人を倒します。
-Spectrum.Kill.Short: 近くの人を倒す
-Spectrum.KillCooldown: キルの待ち時間
 Voyager.Name: ボイジャー
 Voyager.Blurb: 時の狭間に潜み、仲間すら狩れ
 Voyager.Summary: 「潜伏」でインポスター以外から見えなくなるインポスターです。潜伏中は速くなり、他の人の見た目が入れ替わって見え、仲間もキルできます。決めた時間の内に「離脱」しないと死にます。
@@ -2323,63 +2273,6 @@ Anchor.ArrowDuration: 矢印が出る時間
 Anchor.EchoCooldown: 幻聴の待ち時間
 Anchor.NumOfEcho: 幻聴の回数
 Anchor.CanVent: ベントを使える
-Bettor.Name: ベッター
-Bettor.Blurb: 全員の役職に賭けろ
-Bettor.Summary: 他の全員の役職を予想して賭ける第三陣営です。賭けると一人ずつ HIT (当たり)・BLOW (その役職は試合にいる)・MISS が分かります。全員 HIT にすると勝ちます。
-Bettor.WinCond: 会議の終わりに、他の全員の役職を当てていると単独勝ち
-Bettor.Guess: 推測
-Bettor.Guess.Help: 予想の画面を開き、他の全員の役職を書き込みます。全員分埋めると賭けられます (1 ターン 1 回・最初のターンは賭けられません)。HIT の人の役職は見えるようになります。
-Bettor.Guess.Short: 全員の役職を予想して賭ける
-Bettor.Analyze: 分析
-Bettor.Analyze.Help: 近くの人の陣営が分かります。結果は名前の横に残ります。HIT 済みの人は選べません。
-Bettor.Analyze.Short: 近くの人の陣営を知る
-Bettor.Identify: 特定
-Bettor.Identify.Help: HIT の割合が設定の値 (既定 50%) に届いたら、会議で相手の名札から使います (1 回)。その人の役職が分かります。死んだ人にも使えます (設定)。
-Bettor.Identify.Short: 会議で 1 人の役職を知る
-Bettor.DisableGuessTurn: 賭けられないターンの数
-Bettor.AnalyzeCooldown: 分析の待ち時間
-Bettor.NumOfAnalyze: 分析の回数
-Bettor.IdentifyPercentage: 特定に要る HIT の割合
-Bettor.IdentifyDead: 死んだ人も特定できる
-Bettor.Title: 役職の予想
-Bettor.NoGuess: (未記入)
-Bettor.Bet: 賭ける
-Bettor.TooEarly: まだ賭けられないターンです
-Bettor.AlreadyBet: このターンはもう賭けました
-Bettor.FillAll: 全員の予想を埋めましょう
-Bettor.RoleList: 分かっている役職
-Bettor.PickRole: {name} の役職は?
-Bettor.Back: 戻る
-Bettor.Exists: いる役職
-Bettor.Absent: いない役職
-Bettor.Result: 賭けの結果: {n} 人中 {hit} 人 HIT
-Bettor.Analyzed: 分析: {name} は {team}
-Bettor.Identified: 特定: {name} は {role}
-Bettor.TeamImpostor: インポスター陣営
-Bettor.TeamCrew: クルー陣営
-Bettor.TeamNeutral: 第三陣営
-Bettor.TeamMadmate: インポスター陣営
-Seed.Name: シード
-Seed.Blurb: 誰かと共に生き、共に勝て
-Seed.Summary: 「共生」した相手の誰かが勝つと、一緒に勝つ第三陣営です。ゲージ (設定) は相手の近くにいると貯まり、勝つには満ちている必要があります。
-Seed.WinCond: 共生した相手の誰かが勝つと追加で勝ち
-Seed.Symbiosis: 共生
-Seed.Symbiosis.Help: 近くの人と共生します。相手には ▼ が付き (自分にだけ見えます)、役職も見えます (設定)。
-Seed.Symbiosis.Short: 近くの人と共生する
-Seed.Gauge: ゲージ
-Seed.Gauge.Help: 共生した相手のすぐ近くにいると貯まり、離れると少しずつ減ります。会議の後は少しの間止まります。
-Seed.Gauge.Short: 相手の近くで貯まる
-Seed.SymbiosisCooldown: 共生の待ち時間
-Seed.NumOfSymbiosis: 共生の回数
-Seed.SeeRole: 共生した相手の役職が見える
-Seed.NoWinIfPartnerDead: 相手が死んでいたら勝てない
-Seed.NoWinIfSelfDead: 自分が死んでいたら勝てない
-Seed.UseGauge: ゲージを使う
-Seed.GaugeRange: ゲージが貯まる距離
-Seed.GaugeNeed: 勝つのに要るゲージ
-Seed.GaugeExtra: 余分に貯められるゲージ
-Seed.GaugeDecay: 離れた時に減る速さ (1 秒あたり)
-Seed.PauseAfterMeeting: 会議の後にゲージが止まる時間
 Amnesia.Name: アムネシア
 Amnesia.Blurb: 死者の記憶を拾え
 Amnesia.Summary: 死体を通報すると、その死体の役職になる第三陣営です。
@@ -2412,18 +2305,12 @@ RaccoonChild.Blurb: 親と共に掴んで洗え
 RaccoonChild.Summary: アライグマに作られた子です。アライグマと同じように人を掴み、倒し、運んで役職を調べます。アライグマの親子で勝ちを目指します。
 RaccoonChild.WinCond: 他のキル役がいなくなり、生きているアライグマの数が生きているクルーの数に並ぶと、アライグマの親子で勝ち
 # ---- Uchu などから移植したアドオン ----
-Guest.Name: ゲスト
-Guest.Blurb: お客様は緊急ボタンを押せません
-Guest.Help: 緊急ボタンを押せないアドオンです。
 Watcher.Name: ウォッチャー
 Watcher.Blurb: 匿名の票も見逃さない
 Watcher.Help: 匿名投票でも、誰が誰に入れたかが見えるアドオンです。
 Invisible.Name: インビジブル
 Invisible.Blurb: 誰にも見えていない…
 Invisible.Help: いつもインポスター以外から見えないアドオンです。本人は付いていることに気付きません (死ぬと分かります)。
-Timer.Name: タイマー
-Timer.Blurb: 時を刻め
-Timer.Help: 会議の後からの経過時間が画面の左下に出るアドオンです。会議中は止まります。
 Visor.Name: バイザー
 Visor.Blurb: マップ越しに船を見渡せ
 Visor.Help: 普通のマップを開くと、充電が残っている間はアドミンが見えるアドオンです (死体も数えます)。充電が減るのはマップを開いている間だけで、0 になるとマップが閉じ、次からは普通のマップになります。タスクを 1 つ終えるごとに少し充電されます。インポスターには付きません。
@@ -2460,32 +2347,7 @@ Tuna.WaterRatio: 泳いでいる時のゲージの貯まり方
 Egoist.Name: エゴイスト
 Egoist.Blurb: クルーの負けこそ我が勝ち
 Egoist.Help: クルーが負ければ勝ち、クルーが勝つと負けるアドオンです (クルーだけに付きます)。タスクはクルーの勝ちに数えません。
-SpectrePossession.Name: 狐憑き
-SpectrePossession.Blurb: そして、彼の者に仕えよ
-SpectrePossession.Help: 妖狐 (スペクター) の陣営になるアドオンです (クルーとインポスターだけに付きます)。妖狐が勝った時だけ勝ち、タスクは数えません。透視 (設定) で壁越しに見え、狂信 (設定) で妖狐の名前が妖狐の色に見えます。
-SpectrePossession.Clairvoyance: 透視 (壁越しに見える)
-SpectrePossession.Fanaticism: 狂信 (妖狐の名前が分かる)
-SpectrePossession.FanaticismLimit: 狂信に条件を付ける
-SpectrePossession.NumOfTaskFanaticism: 狂信に要るタスクの数 (クルー)
-SpectrePossession.NumOfKillFanaticism: 狂信に要るキルの数 (インポスター)
 # ---- Uchu から移植した幽霊役職 ----
-Baphomet.Name: バフォメット
-Baphomet.Blurb: 眷属を従え、勝利を奪え
-Baphomet.Summary: どの陣営の死者にも付く幽霊役職です。生きている人を 1 人眷属 (ファムルス) にし、そのそばで止まってゲージを貯めます。満ちた後の試合の終わりに眷属が生きていれば、バフォメットと眷属の勝ちに替わります (破壊工作での終わりは除く)。
-Baphomet.WinCond: ゲージが満ちていて、試合の終わりに眷属が生きていれば眷属と勝ち
-Baphomet.Family: 眷属
-Baphomet.Family.Help: 近くの生きている人を眷属 (ファムルス) にします (1 回)。眷属への矢印が出ます。
-Baphomet.Family.Short: 近くの人を眷属にする
-Baphomet.Gauge: ゲージ
-Baphomet.Gauge.Help: 生きている眷属のすぐ近くで止まっていると貯まります。眷属が近くにいる間に止まっていると、生きている人にだけ見える亡霊が出ます。会議の終わりに少し減ります (満ちていれば減りません)。
-Baphomet.Gauge.Short: 眷属のそばで止まって貯める
-Baphomet.TotalStandingTimeToWin: 勝つのに要るゲージ
-Baphomet.RewindGaugeToMeetingEnd: 会議の終わりに減るゲージ
-Baphomet.Cutin: バフォメットが眷属を得た…
-Famulus.Name: ファムルス
-Famulus.Blurb: バフォメットに仕えよ
-Famulus.Summary: バフォメットの眷属です。バフォメットが勝った時だけ勝ち、タスクは数えません。バフォメットとはお互いの名前が紫に見えます。
-Famulus.WinCond: バフォメットの勝ちでだけ勝つ
 Miracle.Name: ミラクル
 Miracle.Blurb: 奇跡を起こし、生き返れ
 Miracle.Summary: クルーとインポスターの死者に付く幽霊役職です。生きている人を選ぶと、次の会議の終わりにその人と役職が入れ替わります。

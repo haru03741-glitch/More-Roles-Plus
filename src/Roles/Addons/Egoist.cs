@@ -9,7 +9,7 @@ public sealed class Egoist : AddonBase
     public override Text Name => new("Egoist.Name");
     public override string Reading => "えごいすと";
     public override Text Blurb => new("Egoist.Blurb");
-    public override string Origin => "Uchu, TOUMira";
+    public override string Origin => "TOUMira";
 
     protected internal override bool DefaultOnImpostor => false;
     protected internal override bool DefaultOnMadmate => false;

@@ -14,7 +14,7 @@ public sealed class SerialKiller : RoleBase
     public override Text Name => new("SerialKiller.Name");
     public override string Reading => "しりあるきらー";
     public override Text Blurb => new("SerialKiller.Blurb");
-    public override string Origin => "Uchu, TORGM";
+    public override string Origin => "TORGM";
     public override HelpSection[] HelpSections => SuicideButton
         ? new HelpSection[] { new("SerialKiller.Timer"), new("SerialKiller.Suicide", "serialkiller_suicide") }
         : new HelpSection[] { new("SerialKiller.Timer") };

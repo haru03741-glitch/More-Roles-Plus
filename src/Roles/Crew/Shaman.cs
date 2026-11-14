@@ -16,7 +16,7 @@ public sealed class Shaman : RoleBase
     public override Text Name => new("Shaman.Name");
     public override string Reading => "しゃーまん";
     public override Text Blurb => new("Shaman.Blurb");
-    public override string Origin => "Uchu, ER";
+    public override string Origin => "ER";
     public override bool CanBeMadmate => true;
     public override HelpSection[] HelpSections => new HelpSection[] { new("Shaman.Necromancy", "shaman_necromancy") };
 

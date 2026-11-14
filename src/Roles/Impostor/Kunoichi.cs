@@ -22,7 +22,7 @@ public sealed partial class Kunoichi : RoleBase
     public override Text Name => new("Kunoichi.Name");
     public override string Reading => "くのいち";
     public override Text Blurb => new("Kunoichi.Blurb");
-    public override string Origin => "Uchu, SNR";
+    public override string Origin => "SNR";
     public override HelpSection[] HelpSections => new HelpSection[]
         { new("Kunoichi.Equip", "kunoichi_equip"), new("Kunoichi.Throw", "kunoichi_kunai"), new("Kunoichi.Hide", "kunoichi_hide") };
 
