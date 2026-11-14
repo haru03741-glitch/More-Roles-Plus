@@ -122,6 +122,7 @@ public sealed partial class Samurai : RoleBase, Duel.ITough
         // 居合は抜く動作を済ませた扱い (丸めで「まだ抜いている途中」に見えないよう少し前へ)
         _drawnAt = iai ? Time.time - DrawTime - 0.05f : Time.time;
         if (!drawn) _sheathedAt = Time.time;
+        else _seenChargeAt = -10f; // 他人の溜めの姿は抜いた所で終わる
         // 抜く時に出ていたエモートは打ち切る (抜いている間は出せない)
         if (drawn) Fx.EmoteArt.Stop(PlayerId);
         _blade.SetDrawn(drawn, iai);
@@ -134,6 +135,7 @@ public sealed partial class Samurai : RoleBase, Duel.ITough
         Drawn = false;
         _iaiStroke = false;
         _sheathedAt = Time.time;
+        _seenChargeAt = -10f;
     }
 
     // 納めた全員の端末で (抜くのは居合の一振りと一緒に届く)。納めた人は送った時に手元で済ませている
@@ -148,6 +150,8 @@ public sealed partial class Samurai : RoleBase, Duel.ITough
         EndLock();
         SetDrawn(false);
         SamuraiSound.Muted = false;
+        _seenChargeAt = -10f;
+        _chargeSent = false;
         _ki = _hostKi = KiMax;
         _spentUntil = -10f;
         _blade.SetSpent(false);
@@ -609,6 +613,7 @@ public sealed partial class Samurai : RoleBase, Duel.ITough
         Duel.HostTick();
         HostClashTick();
         if (_botPending.Count > 0) HostBotPendingTick();
+        if (_botChargeSent) HostBotChargeTick();
         HostUltTick();
         long now = Environment.TickCount64;
         if (_fallen && now >= _nextWinCheck)
@@ -723,6 +728,10 @@ public sealed partial class Samurai : RoleBase, Duel.ITough
     public override void OnRewound()
     {
         _ultStart = -1f; // 進行中の必殺技は打ち切る (戻された人を後から倒さない)
+        // 溜めの見せ合いは戻した後に送り直す (他人の溜めの姿を残さない・自分は次の溜めで始めの 1 通から)
+        _seenChargeAt = -10f;
+        _chargeSent = false;
+        _botChargeSent = false;
         _blade.SetFallen(Fallen && IsLocal);
         if (IsLocal) RoleDisplay.EnsureTaskHeader(Player);
     }
@@ -734,7 +743,7 @@ public sealed partial class Samurai : RoleBase, Duel.ITough
 
     // 確かめ用
     internal string Probe() =>
-        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit} retryHit={CutRetryHits}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} carnage={_carnageKills.Value}/{_carnageGoal.Value} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
+        $"samurai={PlayerId} drawn={Drawn} ki={_ki:0} spent={Spent} charge={Charge:0.00} seenCharge={(SeenCharging ? 1 : 0)} botCharge={_botChargeStarts}/{_botChargeEnds} hostKi={_hostKi:0} lastDmg={_lastDamage} iai[starts={_starts} sent={_sentIai} host={_hostIai}] miss[busy={_missBusy} far={_missFar} arc={_missArc} wall={_missWall} dodge={_missDodge}] swept[checks={_sweptChecks} saves={_sweptSaves} drops={_sweptDrops}] cut[asked={CutsAsked} hit={CutsHit} retryHit={CutRetryHits}] imp={_impostorKills.Value} other={_otherKills.Value} fallen={Fallen} carnage={_carnageKills.Value}/{_carnageGoal.Value} path={PathDone} killer={IsKiller} sent={_sent} hostStrokes={_hostStrokes} refused={_hostRefused}({_lastRefusal}) blade[{_blade?.Describe()}] screen[{SamuraiScreen.Describe()}] sound[{SamuraiSound.Describe()}] clash[{DescribeClash()} locked={Locked}] duel[{Duel.Describe()}] ult[{DescribeUlt()}]";
 }
 
 // 本編のキルの演出は、倒した人を倒された人の所へ瞬間移動させる (コルーチン CoPerformKill の中)。

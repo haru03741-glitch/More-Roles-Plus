@@ -391,6 +391,8 @@ internal static class DuelBot
             }
             return;
         }
+        // 納めている間は、その時間がそのまま次の居合の溜めになる: 人が押して溜めているのと同じ姿を見せる
+        if (!s.BotDrawn) s.BotCharging();
         // 出した直後と、相手が吹っ飛んでいる (受けも避けもできない) 間と起き上がった直後は斬らずに間合いの外を回る (居合を溜める間も同じ距離)
         if (DuelTumble.Busy(target.PlayerId)) b.CalmUntil = FxMath.Max(b.CalmUntil, now + RiseCalm);
         if (now < b.CalmUntil)

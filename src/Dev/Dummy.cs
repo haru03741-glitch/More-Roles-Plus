@@ -273,5 +273,6 @@ internal static class DummyPatches
         if (!AmongUsClient.Instance || AmongUsClient.Instance.AmHost || !__instance) return;
         var info = __instance.Data;
         if (info != null && info.ClientId < 0) __instance.SetName(info.PlayerName);
+        Roles.RoleAssigner.OnPlayerStarted(__instance);
     }
 }

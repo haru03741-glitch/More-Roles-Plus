@@ -194,6 +194,27 @@ internal static class SamuraiSound
         src.Play();
     }
 
+    // 他人の居合が溜め切った: その人の所で鳴らす
+    internal static void ChargeFullAt(PlayerControl pc, float pitch, float volume)
+    {
+        if (!pc || !pc.Visible) return;
+        Vector3 p = pc.transform.position;
+        if (Muted || !Gain(p.x, p.y, ref volume, out float pan, out bool far) || !Ensure()) return;
+        var c = MrpBundle.Clip(far ? "noise_samurai_charge_full_m" : "noise_samurai_charge_full");
+        if (!c) return;
+        var src = _voices[_next];
+        _next = (_next + 1) % Voices;
+        src.Stop();
+        src.clip = c;
+        src.volume = volume;
+        src.panStereo = pan;
+        src.pitch = pitch;
+        src.Play();
+        _played++;
+        _last = "charge_full";
+        RewindSounds.Record(c, volume, pan, pitch, 0f);
+    }
+
     internal static void ChargeStop()
     {
         if (!_chargeOn) return;

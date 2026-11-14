@@ -365,7 +365,7 @@ internal sealed partial class SamuraiBlade
         if ((now - _drawT) / SlowMo < 0.6f * _sheatheSlow || now < _dashUntil || LeapBusy(now)) return true;
         if ((now - _iaiT) / SlowMo < IaiDraw + SayaFade) return true;
         if (this == LocalFollow && (SwipeInput.Dragging || _localStroke) && !_spent && now >= _stunUntil) return true;
-        if (_powArmed || _lockOn) return true;
+        if (_powArmed || _lockOn || _charging || _role.SeenCharging) return true;
         if ((now - _repT) / SlowMo <= _repDur + 0.05f || ThrustBusy(now)) return true;
         return (now - _endT) / SlowMo < Hold + IaiHold * _strokePow + _holdExtra + Recover || SmearLive;
     }

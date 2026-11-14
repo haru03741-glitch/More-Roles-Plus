@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Roles;
 
-// 居合の見た目。溜め (本人の画面だけ): 鞘を出し、拳で柄を握って沈み、震えながらオーラが大きく白く焼ける。溜め切ると拳が光り、画面が脈打って暗む。
+// 居合の見た目。溜め (全員の画面・唸りと画面の脈打ちは本人だけ): 鞘を出し、拳で柄を握って沈み、震えながらオーラが大きく白く焼ける。溜め切ると拳が光り、本人の画面が脈打って暗む。
 // 放つ (全員の画面): 振りの前の 2 コマで鞘から刀が滑り出て鯉口が光り、一振りは溜めた分だけ大きく前へ踏み出して太い三日月を残し、振り抜いた形で長く止まって切っ先が光る
 internal sealed partial class SamuraiBlade
 {
@@ -76,8 +76,8 @@ internal sealed partial class SamuraiBlade
     private bool ChargePose(float now, out Pose p)
     {
         p = default;
-        if (this != LocalFollow || !SwipeInput.Dragging || SwipeInput.InStroke) return false;
-        _role.ChargeNow(now, out float c, out float u);
+        if (!_role.ChargeNow(now, out float c, out float u)) return false;
+        bool mine = this == LocalFollow;
         _charging = true;
         // 30 コマ/秒で左右に震える (溜めるほど大きく・必殺技の溜めでさらに倍以上)
         float shake = (FxMath.Floor(now * 30f) % 2f == 0f ? 1f : -1f) * (0.010f * c + 0.016f * u);
@@ -93,31 +93,38 @@ internal sealed partial class SamuraiBlade
             : full ? 0.85f + 0.15f * FxMath.Sin(now * 25f) + 0.6f * u
             : c * 0.7f;
         _auraUlt = u;
-        SamuraiSound.Charge(c + 0.8f * u);
+        // 溜めの唸りと画面の脈打ちは本人だけ。見ている人には溜め切った音だけを、その人の所で鳴らす
+        if (mine) SamuraiSound.Charge(c + 0.8f * u);
         if (full && !_chargeFull)
         {
             Glint(0f, 0f, 0.18f, 0.55f);
-            SamuraiSound.ChargeFull();
+            if (mine) SamuraiSound.ChargeFull();
+            else if (!_hidden) SamuraiSound.ChargeFullAt(_role.Player, 1f, 0.5f);
         }
         if (ult && !_ultFull)
         {
             Glint(0f, 0f, 0.30f, 1.0f);
-            SamuraiSound.ChargeFull(0.62f, 0.85f);
-            SamuraiScreen.Flash(0.45f, 0.06f);
+            if (mine)
+            {
+                SamuraiSound.ChargeFull(0.62f, 0.85f);
+                SamuraiScreen.Flash(0.45f, 0.06f);
+            }
+            else if (!_hidden) SamuraiSound.ChargeFullAt(_role.Player, 0.62f, 0.85f);
         }
         _chargeFull = full;
         _ultFull = ult;
-        SamuraiScreen.Pulse(full, ult);
+        if (mine) SamuraiScreen.Pulse(full, ult);
         return true;
     }
 
     private void EndCharge()
     {
         if (!_charging) return;
-        SamuraiSound.ChargeStop();
+        bool mine = this == LocalFollow;
+        if (mine) SamuraiSound.ChargeStop();
         _charging = _chargeFull = _ultFull = false;
         _auraHot = _auraUlt = 0f;
-        SamuraiScreen.Pulse(false, false);
+        if (mine) SamuraiScreen.Pulse(false, false);
     }
 
     // ---- 弾き合い・鍔迫り合い ----

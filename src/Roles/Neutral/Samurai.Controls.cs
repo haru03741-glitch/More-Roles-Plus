@@ -49,14 +49,91 @@ public sealed partial class Samurai
     // 必殺技の溜め (0〜1) = 溜め切った後も押し続けた分
     private static float UltChargeOf(float held) => FxMath.Clamp01((held - ChargeDelay - ChargeTime) / UltChargeTime);
 
-    // 溜めの姿の毎フレーム用: 居合の溜めと必殺技の溜めを、押してからの時間を 1 回だけ読んで出す
-    internal void ChargeNow(float now, out float charge, out float ult)
+    // 溜めの姿の毎フレーム用: 居合の溜めと必殺技の溜めを、押してからの時間を 1 回だけ読んで出す。溜めていなければ false。
+    // 他人の刀は届いた溜めの始まりから数える (離した後は一振りが届くまで、離した時の溜めのまま)
+    internal bool ChargeNow(float now, out float charge, out float ult)
     {
         charge = ult = 0f;
-        if (Drawn || !SwipeInput.Dragging || SwipeInput.InStroke) return;
-        float held = now - SwipeInput.PressedAt;
+        if (Drawn)
+        {
+            _seenChargeAt = -10f; // 一振りが届いて抜いた
+            return false;
+        }
+        float held;
+        bool ready;
+        if (IsLocal)
+        {
+            if (!SwipeInput.Dragging || SwipeInput.InStroke) return false;
+            held = now - SwipeInput.PressedAt;
+            ready = UltReady;
+        }
+        else
+        {
+            if (_seenChargeAt < 0f) return false;
+            var p = Player;
+            if (!p || p.Data == null || p.Data.IsDead || MeetingHud.Instance || now > _seenChargeUntil)
+            {
+                _seenChargeAt = -10f;
+                return false;
+            }
+            held = (_seenReleasedAt >= 0f ? _seenReleasedAt : now) - _seenChargeAt + ChargeDelay;
+            ready = _seenUltReady;
+        }
         charge = ChargeOf(held);
-        if (UltReady) ult = UltChargeOf(held);
+        if (ready) ult = UltChargeOf(held);
+        return true;
+    }
+
+    // ---- 溜めを他の人へ見せる (始めと終わりの 1 通ずつ) ----
+
+    // 値 = 状態 (ChargeStart / ChargeStruck / ChargeStop) | 必殺技まで溜められる << 2 | 既に溜めていた秒 / ChargeAgoStep << 3
+    private const byte ChargeStop = 0, ChargeStart = 1, ChargeStruck = 2;
+    private const float ChargeAgoStep = 0.1f;
+    private const float SeenChargeMax = 10f;     // 溜め中の知らせが途絶えたら、最後の知らせからこれだけで止める
+    private const float ChargeKeep = 3f;         // 溜めている間、溜め中を送り直す間 (受け手の期限を延ばす・長く待ち構えても消えない)
+    // 離して振ったのに一振りが届かない時に溜めた姿を止めるまで (一振りは振り終わってからホスト経由で届く = 振りの最長 + 往復の余裕)
+    private const float SeenStrikeWait = SwipeInput.MaxSeconds + 0.5f;
+    private static readonly RemoteCall<byte> ChargeCall = new("Samurai.Charge", Route.Anyone,
+        (w, v) => w.Write(v), r => r.ReadByte(),
+        (sender, v) => (RoleState.Of(sender) as Samurai)?.OnSeenCharge(v));
+    private bool _chargeSent;
+    private float _chargeSentAt;
+    private float _seenChargeAt = -10f, _seenReleasedAt = -10f, _seenChargeUntil;
+    private bool _seenUltReady;
+    internal bool SeenCharging => _seenChargeAt >= 0f;
+
+    // 自分の端末 (FixedUpdate ごと): 押してすぐのなぞり (溜め無し) は送らず、溜めに入った所と、やめた・振った所で 1 通ずつ
+    private void SyncCharge()
+    {
+        bool charging = !Drawn && SwipeInput.Dragging && !SwipeInput.InStroke && Time.time - SwipeInput.PressedAt >= ChargeDelay;
+        if (charging == _chargeSent && (!charging || Time.time - _chargeSentAt < ChargeKeep)) return;
+        _chargeSent = charging;
+        _chargeSentAt = Time.time;
+        ChargeCall.Send((byte)((charging ? ChargeStart : Drawn ? ChargeStruck : ChargeStop) | (UltReady ? 4 : 0)));
+    }
+
+    private void OnSeenCharge(byte v)
+    {
+        if (IsLocal) return;
+        int state = v & 3;
+        float now = Time.time;
+        if (state == ChargeStart)
+        {
+            if (Drawn) return;
+            // 溜め中の送り直し: 溜めの始まりはそのまま、期限だけ延ばす。
+            // 上の 5 ビット = 知らせた時に既に溜めていた秒 (0.1 秒刻み・練習のダミーは溜めの途中から見せ始める)
+            if (_seenChargeAt < 0f || _seenReleasedAt >= 0f) _seenChargeAt = now - (v >> 3) * ChargeAgoStep;
+            _seenReleasedAt = -10f;
+            _seenChargeUntil = now + SeenChargeMax;
+            _seenUltReady = (v & 4) != 0;
+            _blade.Charging();
+        }
+        else if (_seenChargeAt >= 0f)
+        {
+            // 振った: 一振り (ホスト経由で少し遅れる) が届いて抜くまで溜めた姿で待つ
+            if (state == ChargeStruck) { _seenReleasedAt = now; _seenChargeUntil = now + SeenStrikeWait; }
+            else _seenChargeAt = -10f;
+        }
     }
 
     // ダミー (練習の相手) はホストが持ち主でも開発用の待ち時間なしを使わない
@@ -297,6 +374,7 @@ public sealed partial class Samurai
         _ring?.Tick(alive && !MeetingHud.Instance);
         _padOn = UI.SamuraiPad.Tick(this, free && alive && !Locked);
         if (!Drawn && SwipeInput.Dragging) _blade.Charging();
+        SyncCharge();
         // 居合で抜いたのに一振りを送らずに離した: 抜いたことだけを全員へ
         if (_iaiStroke && !SwipeInput.Dragging)
         {

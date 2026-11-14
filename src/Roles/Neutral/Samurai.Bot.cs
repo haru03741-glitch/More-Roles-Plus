@@ -22,9 +22,44 @@ public sealed partial class Samurai
     internal void BotStroke(float a0, float sweep, float secs, float charge)
     {
         if (BotSpent) return;
+        if (_botChargeSent) BotSendCharge(ChargeStruck);
         byte iai = Drawn ? (byte)0 : charge >= 2f ? UltIai : IaiByte(charge);
         HostStroke(new Stroke((short)Math.Clamp((int)a0, -180, 180), (short)sweep, (ushort)(secs * 1000f), iai, (byte)IaiTier(HostKiNow(), Drawn ? 0f : charge)));
         BotUsedKi();
+    }
+
+    // ---- 溜めの姿を見せる (人の溜めと同じ知らせを、ホストがダミーの名前で送る) ----
+    private bool _botChargeSent;
+    private float _botChargeSentAt, _botChargeAskedAt;
+    private int _botChargeStarts, _botChargeEnds; // 確かめ用
+    private const float BotChargeLapse = 0.5f; // 溜めを頼まれなくなってから止めるまで (考える間より長く)
+
+    // 居合を溜めて待つ間 (ボットが考えるたび)
+    internal void BotCharging()
+    {
+        float now = Time.time;
+        _botChargeAskedAt = now;
+        if (Drawn || BotSheathedFor < ChargeDelay) return;
+        if (_botChargeSent && now - _botChargeSentAt < ChargeKeep) return;
+        BotSendCharge(ChargeStart);
+    }
+
+    private void BotSendCharge(byte state)
+    {
+        if (state == ChargeStart && !_botChargeSent) _botChargeStarts++;
+        else if (state != ChargeStart) _botChargeEnds++;
+        _botChargeSent = state == ChargeStart;
+        _botChargeSentAt = Time.time;
+        int ago = state == ChargeStart ? Math.Clamp((int)((BotSheathedFor - ChargeDelay) / ChargeAgoStep), 0, 31) : 0;
+        byte v = (byte)(state | (UltReady ? 4 : 0) | ago << 3);
+        ChargeCall.SendAs(Player, v);
+        OnSeenCharge(v); // ホスト自身の画面 (送った電文は自分には届かない)
+    }
+
+    // ホストの毎ティック: 溜めを頼まれなくなった (別の動きに移った・会議・倒れた)
+    private void HostBotChargeTick()
+    {
+        if (_botChargeSent && (Time.time - _botChargeAskedAt > BotChargeLapse || Drawn)) BotSendCharge(Drawn ? ChargeStruck : ChargeStop);
     }
 
     // 振り終わりを待っている一振り (ホスト)

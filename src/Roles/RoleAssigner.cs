@@ -1082,18 +1082,41 @@ internal static class RoleAssigner
         RoleState.Clear(false);
         AddonGroups.Clear();
         GameEnd.Reset();
-        var addons = new List<AddonBase>();
+        Waiting.Clear();
         foreach (var p in plan)
         {
             var player = Player(p.PlayerId);
-            if (!player) continue;
-            addons.Clear();
-            foreach (int a in p.Addons) addons.Add(Registry.Addons[a]);
-            if (p.RoleIndex < 0) RoleState.AssignAddonsOnly(player, addons);
-            else RoleState.Assign(player, Registry.Roles[p.RoleIndex], addons, p.Madden);
+            if (!player) { Waiting.Add(p); continue; }
+            AssignPick(player, p);
         }
         foreach (var p in plan) MatchLog.NoteRole(p.PlayerId); // 試合中の付け直し (始まりの配りはイントロの後に起点を取るので数えない)
         Plugin.Logger.LogInfo($"roles: {string.Join(", ", plan.Select(x => $"{x.PlayerId}={(x.RoleIndex < 0 ? "-" : (x.Madden ? "Mad" : "") + Registry.Roles[x.RoleIndex].Id)}{string.Concat(x.Addons.Select(a => "+" + Registry.Addons[a].Id))}"))}");
+    }
+
+    private static void AssignPick(PlayerControl player, Pick p)
+    {
+        var addons = new List<AddonBase>(p.Addons.Count);
+        foreach (int a in p.Addons) addons.Add(Registry.Addons[a]);
+        if (p.RoleIndex < 0) RoleState.AssignAddonsOnly(player, addons);
+        else RoleState.Assign(player, Registry.Roles[p.RoleIndex], addons, p.Madden);
+    }
+
+    // 客の側: 試合中にホストが出したダミーは、体が動き出すまで一覧に無い (配りの方が先に届く)。
+    // 届いた時に居なかった人の分を取っておき、その体が動き出した所で付ける
+    private static readonly List<Pick> Waiting = new();
+
+    internal static void OnPlayerStarted(PlayerControl pc)
+    {
+        if (Waiting.Count == 0 || !pc) return;
+        for (int i = Waiting.Count - 1; i >= 0; i--)
+        {
+            var p = Waiting[i];
+            if (p.PlayerId != pc.PlayerId) continue;
+            Waiting.RemoveAt(i);
+            AssignPick(pc, p);
+            MatchLog.NoteRole(p.PlayerId);
+            Plugin.Logger.LogInfo($"roles: {p.PlayerId}={(p.RoleIndex < 0 ? "-" : Registry.Roles[p.RoleIndex].Id)} (late)");
+        }
     }
 }
 
