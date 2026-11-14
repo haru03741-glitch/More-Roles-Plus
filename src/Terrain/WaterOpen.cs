@@ -13,6 +13,7 @@ internal static partial class WaterSim
     private static readonly byte[] WetMagic = { (byte)'M', (byte)'R', (byte)'P', (byte)'W' };
     private static byte[] _wet;                // SolidMap の升ごと: 1 = 水が届く (歩ける升は含まない)
     internal static string WetStats = "-";
+    internal static byte[] WetCells => _wet; // 升ごと 1 = 水が届く (無ければ null)
 
     // 展開した表 (船の名前ごとに 1 つ)。表は試合で変わらないので、試合の始めの準備 (Warm) で読んでおく
     private static string _bitsName;

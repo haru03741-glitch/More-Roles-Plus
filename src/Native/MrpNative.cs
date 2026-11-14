@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 44;
+    internal const int Abi = 45;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -78,6 +78,11 @@ internal static unsafe class MrpNative
     internal static delegate* unmanaged[Cdecl]<void*, int*, void> RecInfo;
     internal static delegate* unmanaged[Cdecl]<void*, byte*, int, int> RecPeek;
     internal static delegate* unmanaged[Cdecl]<void*, int, int> RecStop;
+    // 床の地図を船の絵から決める (入出力は床マスクと同じ詰めたビット)
+    internal static delegate* unmanaged[Cdecl]<int, int, double, byte*, byte*, byte*, byte*, byte*, byte*, byte*, byte*, int> FloorDecide;
+    internal static delegate* unmanaged[Cdecl]<byte*, int, int, int, int, int, int, byte*, byte*, void> FloorChunkBits;
+    internal static delegate* unmanaged[Cdecl]<byte*, int, int, float*, int, void> FloorFillPoly;
+    internal static delegate* unmanaged[Cdecl]<byte*, int, int, double, int, int, double, byte*, void> FloorGridBits;
 
     // 部品が読めたか。偽なら Plugin.Load が mod ごと起動しない
     internal static bool Loaded
@@ -246,6 +251,10 @@ internal static unsafe class MrpNative
         RecInfo = (delegate* unmanaged[Cdecl]<void*, int*, void>)NativeLibrary.GetExport(_lib, "mrp_rec_info");
         RecPeek = (delegate* unmanaged[Cdecl]<void*, byte*, int, int>)NativeLibrary.GetExport(_lib, "mrp_rec_peek");
         RecStop = (delegate* unmanaged[Cdecl]<void*, int, int>)NativeLibrary.GetExport(_lib, "mrp_rec_stop");
+        FloorDecide = (delegate* unmanaged[Cdecl]<int, int, double, byte*, byte*, byte*, byte*, byte*, byte*, byte*, byte*, int>)NativeLibrary.GetExport(_lib, "mrp_floor_decide");
+        FloorChunkBits = (delegate* unmanaged[Cdecl]<byte*, int, int, int, int, int, int, byte*, byte*, void>)NativeLibrary.GetExport(_lib, "mrp_floor_chunk_bits");
+        FloorFillPoly = (delegate* unmanaged[Cdecl]<byte*, int, int, float*, int, void>)NativeLibrary.GetExport(_lib, "mrp_floor_fill_poly");
+        FloorGridBits = (delegate* unmanaged[Cdecl]<byte*, int, int, double, int, int, double, byte*, void>)NativeLibrary.GetExport(_lib, "mrp_floor_grid_bits");
     }
 
 #if !ANDROID

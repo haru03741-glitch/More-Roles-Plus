@@ -109,6 +109,18 @@ internal static class FloorMask
         }
     }
 
+    // 今の場面から作った地図を使う (確かめ用 floorlive apply)。並びは今の場面のまま (左右反転の船でも映し直さない)。次に船が変わるまで
+    internal static void Install(byte[] bits, byte[] face, int w, int h, float ox, float oy, float ppu)
+    {
+        _gen = GameClock.ShipGen;
+        _bits = bits;
+        _bits0 = KeepMaskFloor ? (byte[])bits.Clone() : null;
+        _face = face;
+        _w = w; _h = h; _ox = ox; _oy = oy; _ppu = ppu;
+        if (_patchGen == _gen) foreach (var p in Patches) Apply(p);
+        Stats = $"live: {w}x{h} ppu={ppu:0.##}";
+    }
+
     private static bool Inflate(byte[] src, byte[] into)
     {
         using var z = new ZLibStream(new MemoryStream(src), CompressionMode.Decompress);
@@ -549,6 +561,7 @@ internal static class FloorMask
     internal static void Register()
     {
         FloorCapture.Register();
+        FloorLive.Register();
         TestBridge.Register("floormask", "[on|off | load <フォルダ>|none | keep on|off] 水の床マスク (部屋の絵の床の画素で水を切る) の状態 / テスト用に切り替える (次に描き直したタイルから)・load = そのフォルダの <船>.bin を読む・keep = 持ち上げた家具の抜きからマスクの床を外す", (args, reply) =>
         {
             string a = args.Trim();

@@ -27,6 +27,7 @@ inline int popc64(uint64_t v) { return __builtin_popcountll(v); }
 
 namespace {
 
+constexpr float OUTLINE = 0.22f;  // これより暗い画素は縁取りの候補
 constexpr double LINE_HALF = 0.05;
 constexpr double SHARE = 0.5;
 constexpr double INSET = 0.1;
@@ -538,6 +539,74 @@ MRP_API int32_t mrp_floor_decide(int32_t w, int32_t h, double ppu, const uint8_t
     store_bits(floor, outFloor);
     store_bits(face, outFace);
     return 0;
+}
+
+// ---- 入力を作る下ごしらえ (どれも出力は w*h 画素の詰めたビットへ OR で足す) ----
+
+// 読み戻した板 (RGBA32・行 0 = 下・cw*ch) を、全体の (cx,cy) へ落とす。drawn = 不透明度 > 0.25。
+// dark が null でなければ、絵がある所のうち明るさ (0.299R+0.587G+0.114B) < 0.22 の画素も立てる
+MRP_API void mrp_floor_chunk_bits(const uint8_t* rgba, int32_t cw, int32_t ch, int32_t cx, int32_t cy, int32_t w, int32_t h,
+                                  uint8_t* drawn, uint8_t* dark)
+{
+    if (!rgba || !drawn || cw <= 0 || ch <= 0) return;
+    for (int y = 0; y < ch; y++) {
+        int gy = cy + y;
+        if (gy < 0 || gy >= h) continue;
+        const uint8_t* s = rgba + (size_t)y * cw * 4;
+        for (int x = 0; x < cw; x++, s += 4) {
+            int gx = cx + x;
+            if (gx < 0 || gx >= w || s[3] < 64) continue;  // a/255 > 0.25
+            size_t k = (size_t)gy * w + gx;
+            drawn[k >> 3] |= (uint8_t)(1 << (k & 7));
+            if (dark) {
+                float lum = (0.299f * s[0] + 0.587f * s[1] + 0.114f * s[2]) / 255.0f;
+                if (lum < OUTLINE) dark[k >> 3] |= (uint8_t)(1 << (k & 7));
+            }
+        }
+    }
+}
+
+// 多角形 (画素の座標で n 点・x,y の順) の内側を立てる。画素の中心で偶奇の規則
+MRP_API void mrp_floor_fill_poly(uint8_t* bits, int32_t w, int32_t h, const float* xy, int32_t n)
+{
+    if (!bits || !xy || n < 3) return;
+    float y0 = xy[1], y1 = xy[1];
+    for (int i = 1; i < n; i++) { y0 = std::min(y0, xy[2 * i + 1]); y1 = std::max(y1, xy[2 * i + 1]); }
+    int ra = std::max(0, (int)std::floor(y0)), rb = std::min(h - 1, (int)std::ceil(y1));
+    std::vector<float> xs;
+    for (int y = ra; y <= rb; y++) {
+        const float yc = y + 0.5f;
+        xs.clear();
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            float ay = xy[2 * j + 1], by = xy[2 * i + 1];
+            if ((ay <= yc) == (by <= yc)) continue;
+            float ax = xy[2 * j], bx = xy[2 * i];
+            xs.push_back(ax + (yc - ay) * (bx - ax) / (by - ay));
+        }
+        std::sort(xs.begin(), xs.end());
+        for (size_t i = 0; i + 1 < xs.size(); i += 2) {
+            int xa = std::max(0, (int)std::ceil(xs[i] - 0.5f)), xb = std::min(w, (int)std::ceil(xs[i + 1] - 0.5f));
+            for (int x = xa; x < xb; x++) { size_t k = (size_t)y * w + x; bits[k >> 3] |= (uint8_t)(1 << (k & 7)); }
+        }
+    }
+}
+
+// 升の詰めたビット (sw*sh・1 単位に sppu 升) を画素 (w*h・1 単位に ppu 画素) へ引く。画素の中心が入る升 (はみ出しは端の升)
+MRP_API void mrp_floor_grid_bits(const uint8_t* cells, int32_t sw, int32_t sh, double sppu, int32_t w, int32_t h, double ppu, uint8_t* out)
+{
+    if (!cells || !out || sw <= 0 || sh <= 0) return;
+    std::vector<int32_t> gx(w);
+    for (int x = 0; x < w; x++) gx[x] = std::min((int)((x + 0.5) / ppu * sppu), sw - 1);
+    for (int y = 0; y < h; y++) {
+        int cy = std::min((int)((y + 0.5) / ppu * sppu), sh - 1);
+        size_t row = (size_t)cy * sw;
+        for (int x = 0; x < w; x++) {
+            size_t c = row + gx[x];
+            if (!((cells[c >> 3] >> (c & 7)) & 1)) continue;
+            size_t k = (size_t)y * w + x;
+            out[k >> 3] |= (uint8_t)(1 << (k & 7));
+        }
+    }
 }
 
 #ifdef MRP_FD_TEST
