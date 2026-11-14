@@ -1,4 +1,5 @@
 // Role idea: the Nova role of https://github.com/TeamUchuaddon/UchuAddon (TeamUchuAddon), as described by its role card; no code or assets used
+// UchuAddon credits the role to https://github.com/ykundesu/SuperNewRoles (GPL-3.0, the WaveCannon role)
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;

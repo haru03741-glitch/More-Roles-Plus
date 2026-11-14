@@ -1,4 +1,5 @@
 // Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Ghost/Complex/Baphomet.cs (BaphometU, FamulusU; role idea and logic; UchuAddon allows porting them, no assets used)
+// Parts of the logic come from the Grudge role of https://github.com/Dolly1016/Nebula-Public (GPL-3.0), via UchuAddon
 using System.Linq;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;

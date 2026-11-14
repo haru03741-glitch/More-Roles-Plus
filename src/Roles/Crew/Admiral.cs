@@ -1,4 +1,5 @@
 // Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Admiral.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Parts of the logic come from the Cannon role of https://github.com/Dolly1016/Nebula-Public (GPL-3.0), via UchuAddon
 using System.Collections.Generic;
 using HarmonyLib;
 using MoreRolesPlus.Net;

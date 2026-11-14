@@ -1,4 +1,5 @@
 // Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Impostor/Kunoichi.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Parts of the logic come from the Raider role of https://github.com/Dolly1016/Nebula-Public (GPL-3.0), via UchuAddon
 // The role is credited by UchuAddon to https://github.com/ykundesu/SuperNewRoles (GPL-3.0)
 using System.Collections.Generic;
 using MoreRolesPlus.Net;

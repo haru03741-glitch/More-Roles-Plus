@@ -1,5 +1,4 @@
 // Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Impostor/Proxy.cs (the Monitor; role idea and logic; UchuAddon allows porting them, no assets used)
-// The role is credited by UchuAddon to https://github.com/ykundesu/SuperNewRoles (GPL-3.0)
 using MoreRolesPlus.Options;
 using MoreRolesPlus.Roles.Impostor;
 using MoreRolesPlus.Rules;
