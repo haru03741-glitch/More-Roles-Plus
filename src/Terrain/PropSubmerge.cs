@@ -12,6 +12,8 @@ namespace MoreRolesPlus.Terrain;
 internal static partial class PropSim
 {
     private const long SunkScanMs = 100;
+    private const double SunkMakeMs = 4.0;   // 1 回に板を作るのに使う時間
+    private static readonly long SunkMakeTicks = (long)(SunkMakeMs * System.Diagnostics.Stopwatch.Frequency / 1000.0);
     private const float SunkShow = 0.03f;    // 周りの水がこれより浅いと出さない
     private const float SunkTopWet = 0.02f;  // 天板の上の水がこれを越えたら沈み始める
     private const float SunkFade = 0.12f;    // 沈み始めてから家具ごと覆うまでの水の厚さ
@@ -128,6 +130,8 @@ internal static partial class PropSim
         _sunkNext = now + SunkScanMs;
         if (GameClock.ShipGen != _sunkGen) { SunkClear(); _sunkGen = GameClock.ShipGen; }
         if (!_ready || !WaterSim.Running || !WaterSim.Ready || !MrpBundle.WadeMaterial) { SunkHideAll(); return; }
+        int made = 0;
+        long makeT0 = 0;
         foreach (var p in Furnished)
         {
             var s = p.Sk;
@@ -136,7 +140,14 @@ internal static partial class PropSim
                 if (s != null && s.Shown) { if (s.Go) s.Go.SetActive(false); s.Shown = false; }
                 continue;
             }
-            if (s == null || (!s.Go && !s.Failed)) s = p.Sk = SunkMake(p);
+            if (s == null || (!s.Go && !s.Failed))
+            {
+                // 作るのは家具の切り抜きと GPU の読み戻しで 1 枚 2〜15ms。一斉に水が来ても 1 回で作り切らない
+                // (この回に SunkMakeMs を使い切ったら残りは次の回・最低 1 枚は作る)
+                if (made > 0 && System.Diagnostics.Stopwatch.GetTimestamp() - makeT0 > SunkMakeTicks) continue;
+                if (made++ == 0) makeT0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                s = p.Sk = SunkMake(p);
+            }
             if (s.Failed) continue;
             if (!s.Shown) { s.Go.SetActive(true); s.Shown = true; _sunkAny = true; if (!UnderSupportPlate(p)) SunkShadow(s); }
             if (s.OccDirty) SunkOcc(p, s);
