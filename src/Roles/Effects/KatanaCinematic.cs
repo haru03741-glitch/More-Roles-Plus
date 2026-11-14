@@ -18,9 +18,9 @@ namespace MoreRolesPlus.Roles;
 internal static unsafe partial class KatanaCinematic
 {
     private const string Res = "MoreRolesPlus.Resources.Cinema.katana_ult.cine";
-    private const int Rec = 128, Slots = 6, Workers = 2;
+    private const int Rec = 136, Slots = 6, Workers = 2;
     private const int Order = 32000;       // 本編の HUD より手前に描く
-    private const int HeadBytes = 80;      // 頭 76 バイト + 表の先頭までの番地
+    private const int HeadBytes = 120;     // 頭 116 バイト (網の定義 40 バイトを含む) + 表の先頭までの番地
     private const int MaxSurfVerts = 512, MaxSurfTris = 768;
     private const float PlateWorld = 6f / 10.8f;   // 試合の画面の板の 1 = 本編の画面の高さ 6 (orthographicSize 3) / 板の高さ 10.8
 
@@ -116,6 +116,7 @@ internal static unsafe partial class KatanaCinematic
         CamBegin();
         BuildVictims(victims, _root.layer);
         BuildHits(victims, _root.layer);
+        BuildAttire(atk, _root.layer);
         _hidAtk = atk.Visible;
         if (_hidAtk) atk.Visible = false;       // 攻撃者はコマの中に描いてある
         // 演出の間は本人をその場で止める (会議は本編が動きを決めるので戻す時に触らない)
@@ -199,11 +200,11 @@ internal static unsafe partial class KatanaCinematic
             _copyPin = GCHandle.Alloc(_copy, GCHandleType.Pinned);
             _data = (byte*)_copyPin.AddrOfPinnedObject();
         }
-        if (_data[0] != (byte)'M' || _data[3] != (byte)'K' || *(uint*)(_data + 4) != 1) { Close(); return false; }
+        if (_data[0] != (byte)'M' || _data[3] != (byte)'K' || *(uint*)(_data + 4) != 2) { Close(); return false; }
         var h = (ushort*)(_data + 8);
         _w = h[0]; _h = h[1]; _n = h[2]; _fps = h[3]; _nVic = h[4];
         _hw = Head(0); _hh = Head(1);
-        _blob = *(uint*)(_data + 76);
+        _blob = *(uint*)(_data + 116);
         if (_fps <= 0 || _n <= 0) { Close(); return false; }
         return true;
     }
@@ -301,7 +302,7 @@ internal static unsafe partial class KatanaCinematic
     }
 
     // 置き場 1 つ = 色 (RGB24) + 不透明度 (1 バイト) + 手前の型 (1 バイト)
-    private static int SlotBytes => _w * _h * 5;
+    private static int SlotBytes => _w * _h * 7;
 
     private static void AllocSlots()
     {
@@ -466,6 +467,8 @@ internal static unsafe partial class KatanaCinematic
         // 不透明度: 印の無いコマは全部不透明 (PNG が無ければ 255 で埋まる)
         if (!Plane(blob, f, 12, 255, dst + px * 3)) return false;
         if ((flags & 16) != 0 && !Plane(blob, f, 16, 0, dst + px * 4)) return false;
+        // 攻撃者の着せ替えの見える割合 (前・後ろの帽子)
+        if ((flags & 32) != 0 && (!Plane(blob, f, 120, 0, dst + px * PlaneAttire) || !Plane(blob, f, 124, 0, dst + px * PlaneAttireBack))) return false;
         return true;
     }
 
@@ -559,11 +562,13 @@ internal static unsafe partial class KatanaCinematic
             _maskTex.LoadRawTextureData((IntPtr)(buf + px * 4), px);
             _maskTex.Apply(false);
         }
+        AttireMasks(f, buf, px);
         Volatile.Write(ref SlotFrame[slot], -1);
         _frameMr.enabled = true;
         CamFrame(f);
         PlateFrame(f);
         VictimsFrame(f);
+        AttireFrame(f);
         PiecesFrame(f);
         Shake(f);
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -767,6 +772,7 @@ internal static unsafe partial class KatanaCinematic
         if (ease) CamEaseOut();
         else CamRestore();
         VictimsDestroy();
+        AttireDestroy();
         if (_hidAtk && _atk) _atk.Visible = true;
         _hidAtk = false;
         if (_frozen && _lp && !MeetingHud.Instance && GameClock.ShipGen == _shipGen && GameClock.ShipAlive) _lp.moveable = _wasMoveable;
@@ -832,5 +838,5 @@ internal static unsafe partial class KatanaCinematic
         });
     }
 
-    internal static string Probe() => $"on={_on} shown={_shown} count={_shownCount} skipped={_skipped} missed={_missed} worst={_worstMs:0.00}ms n={_n} vic={_vicCount} pieces={_pcCount} {HitsProbe()} sound[{(_voice && _voice.isPlaying ? $"{_voice.time:0.00}s" : "off")} muted={_muted.Length} clip={(bool)_clip}]";
+    internal static string Probe() => $"on={_on} shown={_shown} count={_shownCount} skipped={_skipped} missed={_missed} worst={_worstMs:0.00}ms n={_n} vic={_vicCount} pieces={_pcCount} attire={_attire.Count}/{_attFrames} {HitsProbe()} sound[{(_voice && _voice.isPlaying ? $"{_voice.time:0.00}s" : "off")} muted={_muted.Length} clip={(bool)_clip}]";
 }

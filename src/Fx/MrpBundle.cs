@@ -23,7 +23,7 @@ internal static class MrpBundle
     private const string UiFireMatPath = "assets/generated/uifire.mat";
     private const string UiBarMatPath = "assets/generated/uibar.mat";
     private const string NovaBeamMatPath = "assets/generated/novabeam.mat";
-    private static readonly string[] KatanaMatPaths = { "assets/generated/katanaplate.mat", "assets/generated/katanaframe.mat", "assets/generated/katanaflash.mat" };
+    private static readonly string[] KatanaMatPaths = { "assets/generated/katanaplate.mat", "assets/generated/katanaframe.mat", "assets/generated/katanaflash.mat", "assets/generated/katanaattire.mat" };
 
     private static AssetBundle _bundle;
     private static AssetBundleRequest _terrainReq, _waterReq, _wadeReq, _fireFloorReq, _flameReq, _gradReq, _riftReq;
@@ -88,7 +88,7 @@ internal static class MrpBundle
     // 空間の裂け目のせん断 (MRP/RiftWarp)
     public static Material RiftWarpMaterial { get; private set; }
     // 必殺技の演出: 0 = 生の画面を板に貼る・1 = 事前に描いたコマ・2 = 被害者の白の閃き
-    public static readonly Material[] KatanaMaterials = new Material[3];
+    public static readonly Material[] KatanaMaterials = new Material[4];
     public static Material UiFireMaterial { get; private set; }
     public static Material UiBarMaterial { get; private set; }
     public static Material NovaBeamMaterial { get; private set; }

@@ -13,7 +13,7 @@ using UnityEngine;
 //   firefloor.mat / flame.mat … MRP/Fire (床の照りと油の膜 / 立ち上がる炎。CPU が書いた升ごとの火の値から見た目を決める)
 //   playergrad.mat … MRP/PlayerGradient (2 色のグラデーションのクルー。シェーダだけを使う)
 //   riftwarp.mat … MRP/RiftWarp (空間の裂け目: 描き上がった画面を斬った線に沿ってせん断する)
-//   katanaplate.mat / katanaframe.mat / katanaflash.mat … MRP/Katana* (必殺技の演出: 生の画面を板に貼る / 事前に描いたコマ / 被害者の白の閃き)
+//   katanaplate.mat / katanaframe.mat / katanaflash.mat / katanaattire.mat … MRP/Katana* (必殺技の演出: 生の画面を板に貼る / 事前に描いたコマ / 被害者の白の閃き / 攻撃者の着せ替えを隠れる割合で重ねる)
 //   uifire.mat … MRP/UiFire (立ち合いの HUD の炎: 体力のバーから立つ炎・回避の枠の炎の輪)
 //   uibar.mat … MRP/UiBar (立ち合いの HUD の体力のバー・中央の鍔・顔の額縁)
 //   novabeam.mat … MRP/NovaBeam (ノヴァの光線: 先へ広がるプラズマの筒)
@@ -117,7 +117,7 @@ public static class MrpBundleBuilder
         AssetDatabase.CreateAsset(new Material(riftShader) { name = "riftwarp" }, riftPath);
         Tag(riftPath);
 
-        foreach (string name in new[] { "KatanaPlate", "KatanaFrame", "KatanaFlash" })
+        foreach (string name in new[] { "KatanaPlate", "KatanaFrame", "KatanaFlash", "KatanaAttire" })
         {
             Shader sh = AssetDatabase.LoadAssetAtPath<Shader>($"Assets/Shaders/{name}.shader");
             if (sh == null)

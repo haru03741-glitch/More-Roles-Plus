@@ -191,12 +191,14 @@ internal static unsafe partial class KatanaCinematic
         var sr = h.Skin;
         if (!sr || !sr.enabled || !sr.sprite) return;
         var sp = sr.sprite;
-        var b = sr.bounds;
+        PackedWorldRect(sr, out float bx0, out float by0, out float bx1, out float by1);
+        float bw = bx1 - bx0, bh = by1 - by0;
+        if (bw <= 1e-4f || bh <= 1e-4f) return;
         var tex = sp.texture;
         var tr = sp.textureRect;
         float nx = MathF.Cos(h.Ang), ny = MathF.Sin(h.Ang);
-        Vector2 ctr = FxMath.V2(b.center.x, b.center.y);
-        Vector2[] rect = { FxMath.V2(b.min.x, b.min.y), FxMath.V2(b.max.x, b.min.y), FxMath.V2(b.max.x, b.max.y), FxMath.V2(b.min.x, b.max.y) };
+        Vector2 ctr = FxMath.V2((bx0 + bx1) * 0.5f, (by0 + by1) * 0.5f);
+        Vector2[] rect = { FxMath.V2(bx0, by0), FxMath.V2(bx1, by0), FxMath.V2(bx1, by1), FxMath.V2(bx0, by1) };
         int layer = _root.layer;
         for (int side = 0; side < 2; side++)
         {
@@ -212,7 +214,7 @@ internal static unsafe partial class KatanaCinematic
             for (int k = 0; k < poly.Count; k++)
             {
                 verts[k] = FxMath.V3(poly[k].x - mx, poly[k].y - my, 0f);
-                float u = (poly[k].x - b.min.x) / b.size.x, w = (poly[k].y - b.min.y) / b.size.y;
+                float u = (poly[k].x - bx0) / bw, w = (poly[k].y - by0) / bh;
                 if (sr.flipX) u = 1f - u;
                 uvs[k] = FxMath.V2((tr.x + u * tr.width) / tex.width, (tr.y + w * tr.height) / tex.height);
             }

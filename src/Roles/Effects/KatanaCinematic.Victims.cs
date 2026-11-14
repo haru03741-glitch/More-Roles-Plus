@@ -139,11 +139,11 @@ internal static unsafe partial class KatanaCinematic
             var sr = srcs[s];
             if (!sr || !sr.enabled || !sr.sprite) continue;
             var sp = sr.sprite;
-            var b = sr.bounds;
+            PackedWorldRect(sr, out float wx0, out float wy0, out float wx1, out float wy1);
             // 体の左右の向きに関わらず、立ち絵 (右向き) の画素へ
-            float x0 = (b.min.x - cx) * k, x1 = (b.max.x - cx) * k;
+            float x0 = (wx0 - cx) * k, x1 = (wx1 - cx) * k;
             if (flip) { float t = -x1; x1 = -x0; x0 = t; }
-            float y0 = (b.min.y - by) * k, y1 = (b.max.y - by) * k;
+            float y0 = (wy0 - by) * k, y1 = (wy1 - by) * k;
             v.ItemCorners[s] = new[] { x0 + IdleW * 0.5f, y0, x1 + IdleW * 0.5f, y1, sr.flipX != flip ? 1f : 0f };
             var tr = sp.textureRect;
             var tex = sp.texture;
