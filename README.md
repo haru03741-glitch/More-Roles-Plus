@@ -160,7 +160,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 * **[LotusContinued](https://github.com/Lotus-AU/LotusContinued) (Lotus-AU、GPL-3.0)**  
   入室ホワイトリスト、フォントをファイルから作る方法
 * **[UchuAddon](https://github.com/TeamUchuaddon/UchuAddon) (TeamUchuAddon 制作)**  
-  アドミラル・アルケミスト・パン屋・DJ・ポラリス・ソナー・わら人形・エクリプス・イビルオブザーバー・プロキシ・スペクトラム・ボイジャー・ノヴァ・アムネシア・アンカー・ベッター・シードの役職と、アドオンのバフォメット・ゲスト・インビジブル・ミラクル・狐憑き・タイマー。移したのは役職の案と処理で、UchuAddon の絵や音は使っていません。UchuAddon はソースを公開していますが GPL ではなく、移した役職には [UchuAddon の利用ガイドライン](https://github.com/TeamUchuaddon/UchuAddon#uchuaddon%E3%81%AE%E5%88%A9%E7%94%A8%E3%82%AC%E3%82%A4%E3%83%89%E3%83%A9%E3%82%A4%E3%83%B3) が適用されます
+  アドミラル・アルケミスト・パン屋・DJ・ポラリス・ソナー・わら人形・エクリプス・イビルオブザーバー・プロキシ・スペクトラム・ボイジャー・ノヴァ・アムネシア・アンカー・ベッター・シードの役職と、アドオンのバフォメット・ゲスト・インビジブル・ミラクル・狐憑き・タイマー。UchuAddon の絵や音は使っていません
 * **[TownOfHost-hamo](https://github.com/rar006/TownOfHost-hamo) (rar006、GPL-3.0)**  
   共同制作者の haru の mod。守護者・フェイクジェスター・ヌルの役職
 * **[Town of Us](https://github.com/slushiegoose/Town-Of-Us)** (slushiegoose)  
