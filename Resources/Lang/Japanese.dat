@@ -2056,7 +2056,6 @@ Ranked.SearchHint: 探している間は、ほかの部屋を作ったり入っ�
 Ranked.Cancel: やめる
 
 # ---- Uchu などから移植した役職 (クルー) ----
-EmergencyLock.Locked: 緊急ボタンはロックされている
 Bakery.Name: パン屋
 Bakery.Blurb: 焼きたてのパンを配れ
 Bakery.Summary: 近くの人にパンを渡せるクルーです。パンを持っている人は会議の名札にパンの印が付きます。生きていれば追放の画面に一言足されます。
@@ -2141,16 +2140,6 @@ ChickenMod.ZiplineChance: ジップラインで死ぬ確率
 ChickenMod.PlatformChance: 昇降機で死ぬ確率
 ChickenMod.DoorChance: ドアの画面で死ぬ確率
 ChickenMod.BlackoutTime: 停電がこの時間続くと死ぬ
-Prosecutor.Name: プロセキューター
-Prosecutor.Blurb: 告発し、有無を言わさず追放せよ
-Prosecutor.Summary: 会議で 1 人を強制的に追放できるクルーです。追放した人が本当のクルーなら、自分も死にます (設定)。
-Prosecutor.Prosecute: プロセキュート
-Prosecutor.Prosecute.Help: 会議中に相手の名札から使います (1 会議 1 回)。投票をすぐ締め、ほかの人の票を消して、自分の 5 票でその人を追放します。
-Prosecutor.Prosecute.Short: その人を強制追放する
-Prosecutor.NumOfProsecute: プロセキュートの回数
-Prosecutor.DieOnCrew: クルーを追放すると自分も死ぬ
-Prosecutor.CanCallEmergency: 緊急ボタンを使える
-Prosecutor.Announced: プロセキュートされた
 Monitor.Name: モニター
 Monitor.Blurb: プロキシの影となれ
 Monitor.Summary: プロキシの相方のマッドメイトです。タスクは無く、プロキシとはお互いに赤い名前で分かります。プロキシがキルすると画面が光ります。インポスターの勝ちで勝ちます。

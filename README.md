@@ -130,7 +130,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 * **[Town of Us Mira](https://github.com/AU-Avengers/TOU-Mira) (AU-Avengers、GPL-3.0)**  
   試合の途中で本編の役職を付け直す方法、試合の終わりから自動でロビーへ戻る機能 ([AutoRejoin](https://github.com/Maxi0fc/AutoRejoin) 由来)、危ない mod の一覧 (入ってきた人の mod を照らし合わせる)、会議のスキップの札を無くす設定、本編の保存ファイルを mod 用に分ける方法、クールダウンの残り 10 秒からの小数の表示、本編の細かい調整 (医務室のスキャンを同時にする・スキャンの前に台へ歩かない・作業中にクールダウンを止める・見えない所のベントの出入りを隠す・ほかの人のペットの見え方)、アドオンのエゴイスト (UchuAddon を経由して取り込み)
 * **[Town of Us Reactivated](https://github.com/eDonnes124/Town-Of-Us-R) (eDonnes124、GPL-3.0)**  
-  名前の横にタスクの進み具合を出す機能、プロセキューターの役職 (UchuAddon を経由して取り込み)
+  名前の横にタスクの進み具合を出す機能
 * **[End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful、GPL-3.0)**  
   起動の高速化 (`patcher/` のほぼ全体・パッチ適用の高速化)、GC の先回しの実装 (ゲーム側の GC も演出中に回す)、設定画面のフォントと検索の一致判定、起動直後のアカウント表示の停止、開発用の道具 (実機テストの操作口・重さの測り方・起動の時間ログ・AssetBundle の焼き方・Android で使えない API の照合)、Android の起動アプリへの改良 (mod と interop の同梱・落ちた時と固まった時の記録・ログの共有・itch.io でのログイン)、Android 版の実行基盤に手を入れる道具 (`tools/AndroidDotnetPatch`・`tools/InteropWbPatch`)、演出用の部品 (毎フレームの算術・プレイヤーの色で塗る手・シェーダの AssetBundle を読む仕組み)、ポータルの見た目 (行き先の景色を映す窓と床の装置)、更新ボタンのリリースの読み方 (プレリリースも含めて最新の 1 件を読む)、タグの付いたリリースに DLL を添付して配る流れ、コンソール窓を触ってもゲームが固まらないようにする仕組み (書き込みを別のスレッドへ移す・選択を自動で外す)、毎フレーム書き換える文字に、作り置きの文字列を渡す仕組み、PC 版のインストーラーの作り。次の機能は End K not を経由して取り込んでいます: 公式サーバーに mod の部屋として名乗る方法、公式サーバーかどうかの判定、マウスのホイールで視野を広げる機能、ホストのキー操作、チャットのコマンドの補完と貼り付け、端末ごとの設定を本編の設定画面に並べる方法、設定画面にタブを足す方法、設定を見る画面の並び
 * **[Endless Host Roles](https://github.com/Gurge44/EndlessHostRoles) (Gurge44、GPL-3.0) / [TownOfHost-K](https://github.com/KYMario/TownOfHost-K) (KYMario、GPL-3.0) / [Town Of Host](https://github.com/tukasa0001/TownOfHost) (tukasa0001、GPL-3.0)**  
