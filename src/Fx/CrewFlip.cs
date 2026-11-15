@@ -30,6 +30,8 @@ internal static partial class CrewFlip
         public bool Mirror;                       // 左を向いて描かれた本編の絵 (撃たれる被害者など): 左右を返して流す
         public bool Cut;                          // 体から離れた塊 (キルの化け物の手など) を読んだ時に消す
         public Sprite[] Sprites;
+        public bool Under;                        // 後ろの層 (運んでいる物より奥に置く手など) の絵も持つ (同梱の絵だけ)
+        public Sprite[] UnderSprites;
         public bool Searched;
 
         // 本編の別の場面の絵 (キルの被害者など) は原点が立ち絵と違う所にあるので、そのまま差すと体が元の場所からずれる
@@ -38,8 +40,8 @@ internal static partial class CrewFlip
             new() { Name = name, Prefix = prefix, Nums = nums, Ox = ox, Oy = oy, Loop = loop, Seq = seq, Ax = ax, Ay = ay, Mirror = mirror, Oxs = offx, Cut = cut };
 
         // ax/ay = 絵ごとの頭の動き (省くと流している間は着せ替えを隠す)
-        public static Clip Own(string name, int w, int h, int cols, int rows, float feetX, float feetY, int loop, byte[] seq, float[] ax = null, float[] ay = null) =>
-            new() { Name = name, W = w, H = h, Cols = cols, Rows = rows, FeetX = feetX, FeetY = feetY, Loop = loop, Seq = seq, Ax = ax, Ay = ay };
+        public static Clip Own(string name, int w, int h, int cols, int rows, float feetX, float feetY, int loop, byte[] seq, float[] ax = null, float[] ay = null, bool under = false) =>
+            new() { Name = name, W = w, H = h, Cols = cols, Rows = rows, FeetX = feetX, FeetY = feetY, Loop = loop, Seq = seq, Ax = ax, Ay = ay, Under = under };
     }
 
     private sealed class Show
@@ -56,6 +58,8 @@ internal static partial class CrewFlip
         public bool Fallen;                       // 倒れる流し方: 着せ替えは消さずに体から落とし、流している間に死んだら今の絵を死体にする
         public float K = 1f, Cx, Cy;              // 絵の 1 単位が着せ替えの親の何単位か・着せ替えに今足している分
         public float Bx, By;                      // 体の絵の位置に今足している分 (足元合わせ)
+        public SpriteRenderer Under;              // 後ろの層 (体の子・本人の色で塗る)
+        public float UnderZ = float.NaN;          // 後ろの層を置く世界の奥行き (NaN = 体のすぐ奥)
         public sbyte Face = -1;                   // 向かせる向き (-1 = 本編の向きのまま・0 = 右・1 = 左)。歩く向きと逆を向いたまま下がる姿に
     }
 
@@ -96,6 +100,7 @@ internal static partial class CrewFlip
         float ps = s.Cos.parent ? s.Cos.parent.lossyScale.x : 1f;
         s.K = ps > 0.001f ? body.transform.lossyScale.x / ps : 1f;
         s.Flip = body.flipX;
+        if (c.Under) s.Under = NewUnder(pc, body);
         Live.Add(s);
         Played++;
         Hide(s);
@@ -104,6 +109,25 @@ internal static partial class CrewFlip
         body.sprite = c.Sprites[s.Cur];
         if (c.Mirror) body.flipX = !s.Flip;
         return true;
+    }
+
+    // 後ろの層: 体と同じ原点・大きさ・向きで重なる別の描画物 (奥行きだけ UnderAt で決める)
+    private static SpriteRenderer NewUnder(PlayerControl pc, SpriteRenderer body)
+    {
+        var go = new GameObject("MrpFlipUnder") { layer = body.gameObject.layer };
+        go.transform.SetParent(body.transform, false);
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sharedMaterial = body.sharedMaterial;
+        int color = pc.CurrentOutfit != null ? pc.CurrentOutfit.ColorId : pc.Data.DefaultOutfit.ColorId;
+        if (color >= 0 && color < Palette.PlayerColors.Length) PlayerMaterial.SetColors(color, sr);
+        sr.enabled = false;
+        return sr;
+    }
+
+    // 後ろの層を置く世界の奥行き (運んでいる人の体より少し奥など)。毎フレーム呼んでよい
+    internal static void UnderAt(byte id, float z)
+    {
+        foreach (var s in Live) if (s.Id == id) s.UnderZ = z;
     }
 
     // 流している間、歩く向きに関わらずこの向きを向かせる (本編が歩く向きへ返した後に毎フレーム書き戻す)
@@ -178,6 +202,7 @@ internal static partial class CrewFlip
             var s = Live[i];
             if (s.Cur < 0 || !s.Body) continue;
             s.Body.sprite = s.C.Sprites[s.Cur];
+            if (s.Under) LayUnder(s);
             if (s.Face >= 0)
             {
                 // 着せ替え (帽子・バイザー・服) も同じ向きへ。本編は歩く向きが変わった時に返すので、違う時だけ書く
@@ -189,6 +214,20 @@ internal static partial class CrewFlip
             bool want = s.C.Mirror ? !s.Flip : s.Flip;
             if ((s.Fallen || s.C.Mirror) && s.Body.flipX != want) s.Body.flipX = want;
         }
+    }
+
+    private static void LayUnder(Show s)
+    {
+        var u = s.Under;
+        bool on = s.Body.enabled && s.Pc.Visible && !float.IsNaN(s.UnderZ);
+        if (u.enabled != on) u.enabled = on;
+        if (!on) return;
+        u.sprite = s.C.UnderSprites[s.Cur];
+        bool left = s.Face >= 0 ? s.Face == 1 : s.Body.flipX;
+        if (u.flipX != left) u.flipX = left;
+        u.color = s.Body.color;
+        var p = u.transform.position;
+        if (p.z != s.UnderZ) u.transform.position = FxMath.V3(p.x, p.y, s.UnderZ);
     }
 
     // 今流すコマの番号 (逆に流す時は終わりから数える)
@@ -265,6 +304,13 @@ internal static partial class CrewFlip
 
     private static void End(Show s)
     {
+        if (s.Under)
+        {
+            // 色を書いた時に複製された材質は描画物を消しても残るので一緒に消す (体の材質は消さない)
+            var m = s.Under.sharedMaterial;
+            if (m && (!s.Body || m != s.Body.sharedMaterial)) UnityEngine.Object.Destroy(m);
+            UnityEngine.Object.Destroy(s.Under.gameObject);
+        }
         if (s.Fallen)
         {
             // 流している間に死んだ: 今の姿のまま死体になる。生きていれば落ちた物は少し待って消える
@@ -315,6 +361,18 @@ internal static partial class CrewFlip
             {
                 list[i] = Sprite.Create(tex, new Rect(i % c.Cols * c.W, (c.Rows - 1 - i / c.Cols) * c.H, c.W, c.H), pivot, Ppu, 0, SpriteMeshType.FullRect);
                 list[i].hideFlags = HideFlags.HideAndDontSave;
+            }
+            if (c.Under)
+            {
+                var back = Roles.ButtonIcons.Load("crewflip_" + c.Name + "_under", Ppu, FxMath.V2(0.5f, 0.5f));
+                if (!back) return false;
+                var ul = new Sprite[list.Length];
+                for (int i = 0; i < ul.Length; i++)
+                {
+                    ul[i] = Sprite.Create(back.texture, new Rect(i % c.Cols * c.W, (c.Rows - 1 - i / c.Cols) * c.H, c.W, c.H), pivot, Ppu, 0, SpriteMeshType.FullRect);
+                    ul[i].hideFlags = HideFlags.HideAndDontSave;
+                }
+                c.UnderSprites = ul;
             }
             c.Sprites = list;
             return true;

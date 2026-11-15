@@ -23,6 +23,7 @@ internal static class Rescue
     private const float Gap = 0.85f;      // 運ぶ人と引きずられる体の間 (這う姿は横に長い)・横に並べられない時 (間に壁) の紐の長さ
     private const float HoldX = 0.78f;    // 引きずられる体を置く所: 運ぶ人の両手が頭の前にかかる横の間
     private const float HoldY = 0.04f;    // 少し奥 (上) に置いて、運ぶ人の手が体の手前にかぶさるようにする
+    private const float UnderGap = 0.0003f; // 運ぶ人の手の後ろの層を引きずる人の体よりこれだけ奥へ
     private const float HoldPull = 4f;    // 横の置き場へ寄せる速さの上限 (単位/秒・掴んだ瞬間に跳ばない)
     private const float Snap = 2.5f;      // これより離れたら (はしご・会議の後) 一気に寄せる
     private const float LetGo = 2.2f;     // ホスト: 壁に引っかかってこれより離れたら手が離れる
@@ -247,12 +248,21 @@ internal static class Rescue
         h.StillFor = moving ? 0f : h.StillFor + dt;
         bool walk = moving || (h.Walking && h.StillFor < StillDelay);
         bool playing = h.Posed && CrewFlip.IsPlaying(h.ById);
-        if (playing && walk == h.Walking) { CrewFlip.Face(h.ById, h.FaceLeft); return; }
+        if (playing && walk == h.Walking) { Grip(h); return; }
         if (!playing && now < h.NextPose) return; // 断られた (他の演出が体を動かしている) 時は少し待って決め直す
         h.NextPose = now + 0.25f;
         h.Walking = walk;
         h.Posed = CrewFlip.Play(b, walk ? "carry" : "carryidle") || h.Posed;
+        Grip(h);
+    }
+
+    // 運ぶ人を引きずる人の方へ向け、頭の向こう側へ回った手 (後ろの層) を引きずる人の体のすぐ奥に置く
+    private static void Grip(Haul h)
+    {
         CrewFlip.Face(h.ById, h.FaceLeft);
+        var cos = h.T ? h.T.cosmetics : null;
+        var body = cos != null && cos.currentBodySprite != null ? cos.currentBodySprite.BodySprite : null;
+        if (body) CrewFlip.UnderAt(h.ById, body.transform.position.z + UnderGap);
     }
 
     private static void HostDrop(byte target)
