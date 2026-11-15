@@ -187,7 +187,7 @@ internal static class CometTrail
     }
 
     // 4 本の細い光の筋 + 明るい芯 + 淡いにじみ (小さく描くと瞬く星に見える)
-    private static float Star(float x, float y)
+    internal static float Star(float x, float y)
     {
         float ax = FxMath.Abs(x) * 2f, ay = FxMath.Abs(y) * 2f;
         float r2 = ax * ax + ay * ay;

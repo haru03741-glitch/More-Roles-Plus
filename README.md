@@ -162,7 +162,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 * **[LotusContinued](https://github.com/Lotus-AU/LotusContinued) (Lotus-AU、GPL-3.0)**  
   入室ホワイトリスト、フォントをファイルから作る方法
 * **[UchuAddon](https://github.com/TeamUchuaddon/UchuAddon) (TeamUchuAddon 制作)**  
-  アルケミスト・ポラリス・ソナー・わら人形・エクリプス・プロキシ・モニター・ボイジャー・アンカーの役職、ノヴァの役職の案 (UchuAddon では SNR が元) と、アドオンのインビジブル・ミラクル・チキン
+  アルケミスト・ポラリス・ソナー・わら人形・エクリプス・プロキシ・モニター・ボイジャー・アンカーの役職、ノヴァの役職の案 (UchuAddon では SNR が元) と、アドオンのインビジブル・チキン
 * **[TownOfHost-hamo](https://github.com/rar006/TownOfHost-hamo) (rar006、GPL-3.0)**  
   共同制作者の haru の mod。守護者・フェイクジェスター・ヌル・ラクーンの役職
 * **[Town of Us](https://github.com/slushiegoose/Town-Of-Us)** (slushiegoose)  

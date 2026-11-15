@@ -9,7 +9,7 @@ internal static class TerrainDeathCommands
 {
     public static void Register()
     {
-        TestBridge.Register("tdeath", "[<番号> burn|drown|crush [<起こした人>] | crumble <x> <y> [長さ]] 地形による死: 皆の足元の水の深さ・火・数えた秒 / その人をその死に方で死なせる (ホスト)", (args, reply) =>
+        TestBridge.Register("tdeath", "[<番号> burn|drown|crush [<起こした人>] | crumble <x> <y> [長さ] | rescue <助ける人> <瀕死の人>] 地形による死: 皆の足元の水の深さ・火・数えた秒 / その人をその死に方で死なせる (ホスト)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
             // crumble <x> <y> [長さ]: そこの仕掛け壁を今すぐ崩す (時間切れと同じ・ホスト)
@@ -18,6 +18,13 @@ internal static class TerrainDeathCommands
                 float len = a.Length >= 4 && float.TryParse(a[3], out float l) ? l : Terrain.TrickWall.DefaultLength;
                 var res = Terrain.TerrainApi.WorldCrumble(Fx.FxMath.V2(cx, cy), len);
                 reply((res.Ok ? "OK tdeath crumble " : "ERR tdeath crumble ") + res.Why);
+                return;
+            }
+            // rescue <助ける人> <瀕死の人>: その人が長押しで助け出したのと同じ道で (ホスト)
+            if (a.Length >= 3 && a[0] == "rescue" && byte.TryParse(a[1], out byte rb) && byte.TryParse(a[2], out byte rt))
+            {
+                string why = Rescue.HostTry(PortKit.ById(rb), PortKit.ById(rt));
+                reply(why == null ? "OK tdeath rescue" : "ERR tdeath rescue " + why);
                 return;
             }
             if (a.Length < 2) { reply("OK " + TerrainDeath.Describe()); return; }

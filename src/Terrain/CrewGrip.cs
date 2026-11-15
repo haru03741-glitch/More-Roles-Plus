@@ -42,7 +42,7 @@ internal static class CrewGrip
     private const float RimReach = 1.8f, RimStart = 1.2f, RimSpeed = 3.2f, RimCreep = 0.6f;
     private const float RimGauge = 0.45f, RimPerfectGauge = 0.6f, RimDrain = 0.45f, RimMash = 0.08f;
 
-    private enum State : byte { Free, Grabbed, Pushing, Lost, Rim, Shoved }
+    private enum State : byte { Free, Grabbed, Pushing, Lost, Rim, Shoved, Cling }
     // 突き飛ばされた (突き落と師): 口への道を ShoveSpeed で運ばれ、流れが ShoveMul 以上か口の際まで来たら手を離す (そこからは普通の流れ・つかめる)
     private const float ShoveSpeed = 7f, ShoveMax = 1.2f, ShoveMul = 0.8f, ShoveRim = 1.3f;
     private const float ShoveMemory = ShoveMax + 4f; // ホスト: 突き飛ばした人を死因の相手にする間 (秒)
@@ -152,6 +152,25 @@ internal static class CrewGrip
         public byte By;                // 穴を開けた人 (死因の相手)
     }
     private static readonly List<Flight> Flights = new();
+
+    // 口まで引き込まれ、縁にしがみついている人 (全員の端末で)。瀕死の秒が切れると手が離れて吸い出される。
+    // その間に近くの人か守り霊が助け出せば中へ戻る。口がふさがる・会議になれば助かる
+    private sealed class Cling
+    {
+        public PlayerControl Pc;
+        public byte Id, By;
+        public float At;
+    }
+    private static readonly List<Cling> Clings = new();
+    private const float SaveImmune = 3f;   // 助け出された人がこの秒は流されない
+
+    internal static bool AnyClinging => Clings.Count > 0;
+
+    internal static bool Clinging(byte id)
+    {
+        foreach (var c in Clings) if (c.Id == id) return true;
+        return false;
+    }
     // 吸い出しで本編の追放を走らせている間の人 (追放の出来事を起こさない)
     internal static int Spacing = -1;
     internal static int SpacedBy = ResolvedDamage.NoActor; // その人を吸い出した穴を開けた人
@@ -181,6 +200,7 @@ internal static class CrewGrip
             // 人の体は船より長生きする (ロビーへ戻っても残る) ので、動かしていた見た目を戻してから捨てる
             foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
             Flights.Clear();
+            Clings.Clear();
             RestoreBody();
             _root = null;
             _prompt = null;
@@ -199,6 +219,7 @@ internal static class CrewGrip
             // 逆再生の間はつかまりをやめ、流されている体の見た目も戻す (体の位置は逆再生が置き、吸い出しの計算は時戻しが巻き戻す)
             foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
             Flights.Clear();
+            Clings.Clear(); // 体の連番は逆再生の間 CrewFlip が止める
             Cancel();
             _afterRewind = true;
             return;
@@ -209,6 +230,7 @@ internal static class CrewGrip
             _afterRewind = false;
             if (!_shown && _root) _root.SetActive(false);
         }
+        if (Clings.Count > 0) TickClings();
         if (Flights.Count > 0) TickFlights();
         if (SolidMap.AnySealed && ++_strandFrame >= StrandEvery) { _strandFrame = 0; CheckStranded(); }
         bool danger = _state != State.Free || (Decompression.Pulling && _hasTarget);
@@ -250,6 +272,10 @@ internal static class CrewGrip
         _mul = on ? mul : 0f;
         switch (_state)
         {
+            case State.Cling:
+                body.velocity = FxMath.V2(0f, 0f);
+                return true;
+
             case State.Lost:
                 body.velocity = FxMath.V2(0f, 0f);
                 if (_t - _lostAt > LostTimeout) { Plugin.Logger.LogWarning("[CrewGrip] host did not confirm"); Cancel(); }
@@ -577,9 +603,73 @@ internal static class CrewGrip
             }
             byte by = ShovedBy.TryGetValue(pid, out var sh) && Time.time <= sh.Until ? sh.By : Decompression.MouthActor(sender.GetTruePosition());
             ShovedBy.Remove(pid);
-            Spaced.Send((pid, by));
-            StartFlight(pid, by);
+            ClingCall.Send((pid, by));
+            StartCling(pid, by);
         });
+
+    private static readonly RemoteCall<(byte pid, byte by)> ClingCall = new("Decomp.Cling", Route.HostToAll,
+        (w, m) => { w.Write(m.pid); w.Write(m.by); }, r => (r.ReadByte(), r.ReadByte()), (_, m) => StartCling(m.pid, m.by));
+
+    private static void StartCling(byte pid, byte by)
+    {
+        if (Interrupted) return;
+        var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
+        if (!p || p.Data == null || p.Data.IsDead || Clinging(pid) || Flying(pid)) return;
+        Clings.Add(new Cling { Pc = p, Id = pid, By = by, At = Time.time });
+        if (p.AmOwner) { RestoreBody(); if (_shown) Hide(); _state = State.Cling; }
+        // 縁を両手でつかみ、体は口と逆へ伸ばす (手が船の中を向く)
+        var pos = p.GetTruePosition();
+        if (Decompression.MouthDist(pos, out var m) < 5f && p.cosmetics) p.cosmetics.SetFlipX(m.x > pos.x);
+        CrewFlip.Play(p, "cling");
+        Plugin.Logger.LogInfo($"[CrewGrip] cling {pid} by={by}");
+    }
+
+    // 全員: しがみついている人を見る。手を離すか (ホストが決める)・会議で助かるか
+    private static void TickClings()
+    {
+        bool host = AmongUsClient.Instance && AmongUsClient.Instance.AmHost;
+        float dying = Roles.TerrainDeath.DyingTime;
+        for (int i = Clings.Count - 1; i >= 0; i--)
+        {
+            var c = Clings[i];
+            if (!c.Pc || c.Pc.Data == null || c.Pc.Data.IsDead || c.Pc.Data.Disconnected) { Clings.RemoveAt(i); CrewFlip.Stop(c.Id); continue; }
+            if (Interrupted) { Release(i, c); continue; }
+            // ホストの知らせ (手が離れた・助かった) が届かなかった時の安全弁
+            if (!host) { if (Time.time - c.At > dying + 5f) Release(i, c); continue; }
+            // 口がふさがった・気圧が抜けた: 引く力が消えたので助かる
+            if (!Decompression.Pulling) { Roles.Rescue.HostSave(c.Pc, c.Pc, Roles.Rescue.ByLiving); continue; }
+            if (Time.time - c.At < dying) continue;
+            Clings.RemoveAt(i);
+            Spaced.Send((c.Id, c.By));
+            StartFlight(c.Id, c.By);
+        }
+    }
+
+    private static void Release(int i, Cling c)
+    {
+        Clings.RemoveAt(i);
+        CrewFlip.Stop(c.Id);
+        if (c.Pc && c.Pc.AmOwner && _state == State.Cling) _state = State.Free;
+    }
+
+    // 全員 (ホストが認めた助け出しの知らせで): 縁から中へ引き戻され、少しの間は流されない
+    internal static void OnRescued(byte id)
+    {
+        for (int i = Clings.Count - 1; i >= 0; i--)
+        {
+            var c = Clings[i];
+            if (c.Id != id) continue;
+            Release(i, c);
+            if (!c.Pc || !c.Pc.AmOwner) continue;
+            var pos = c.Pc.GetTruePosition();
+            float md = Decompression.MouthDist(pos, out var m);
+            float dx = pos.x - m.x, dy = pos.y - m.y, len = MathF.Sqrt(dx * dx + dy * dy);
+            _state = State.Pushing;
+            _pushDir = md < 5f && len > 0.05f ? FxMath.V2(dx / len, dy / len) : FxMath.V2(0f, 0f);
+            _pushEnd = _t + PushTime;
+            _immuneEnd = _t + SaveImmune;
+        }
+    }
 
     // 死因の相手 (穴を開けた人・剥がした人・突き飛ばした人) はホストが決めて配る (端末ごとに割れない)
     private static readonly RemoteCall<(byte pid, byte by)> Spaced = new("Decomp.Spaced", Route.HostToAll,
@@ -610,6 +700,8 @@ internal static class CrewGrip
     {
         foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
         Flights.Clear();
+        foreach (var c in Clings) CrewFlip.Stop(c.Id);
+        Clings.Clear();
         _strandTried = false;
         Cancel();
     }
@@ -620,6 +712,7 @@ internal static class CrewGrip
         var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
         if (!p || p.Data == null || p.Data.IsDead) return;
         foreach (var f in Flights) if (f.Pc && f.Pc.PlayerId == pid) return;
+        for (int i = Clings.Count - 1; i >= 0; i--) if (Clings[i].Id == pid) Clings.RemoveAt(i);
         if (p.AmOwner) { RestoreBody(); if (_shown) Hide(); _state = State.Lost; _lostAt = _t; }
         var pos = p.GetTruePosition();
         float md = Decompression.MouthDist(pos, out var m);

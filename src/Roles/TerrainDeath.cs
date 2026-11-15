@@ -21,6 +21,8 @@ public static class TerrainDeath
     public static readonly FloatOpt BurnTime = new("TerrainDeath.BurnTime", 3f, 1f, 15f, 0.5f, "s") { OffTab = true, Parent = Enabled };
     public static readonly FloatOpt DrownTime = new("TerrainDeath.DrownTime", 20f, 5f, 60f, 5f, "s") { OffTab = true, Parent = Enabled };
     public static readonly BoolOpt CrushOn = new("TerrainDeath.Crush", true) { OffTab = true, Parent = Enabled };
+    // 崩れ落ちてから息絶えるまでの瀕死の秒。この間に助け出されれば助かる (会議が始まっても助かる)
+    public static readonly FloatOpt DyingTime = new("TerrainDeath.DyingTime", 8f, 2f, 20f, 1f, "s") { OffTab = true, Parent = Enabled };
 
     private const float DrownDepth = CrewSwim.BraceMaxDepth; // 足が着かない深さ
     private const float PollEvery = 0.2f;                    // ホストが皆の足元を見る間隔
@@ -38,6 +40,11 @@ public static class TerrainDeath
     private const float StrikeLimit = 2.5f; // 下敷き: 塊が当たらないまま (連番を始められない) これだけ過ぎたら倒す
     private const float Linger = 1.5f;
     private const float ToughRepeat = 1.5f;
+    private const float SpareTime = 3f;      // 助け出された人は火・水の中に残っていてもこの秒は数えない
+    private const float RiseTime = 0.6f;     // 助け出された人が起き上がるのにかかる秒
+
+    // 倒すまでの秒 (崩れ落ちる + 瀕死)
+    private static float DeathAt(Cause c) => DoomTime(c) + DyingTime;
 
     private static string Clip(Cause c) => c switch { Cause.Burn => "burn", Cause.Drown => "drown", _ => "crush" };
 
@@ -55,6 +62,38 @@ public static class TerrainDeath
     internal static byte LocalDoom = 255; // 自分が崩れている間 (動けない・PortFreezePatch が読む)
 
     internal static bool IsDoomed(byte id) => Doomed.ContainsKey(id);
+    internal static bool AnyDoomed => Doomed.Count > 0;
+
+    // 崩れ落ちて瀕死の間 (まだ倒す依頼を出していない)。助け出せる。下敷きは塊が当たって崩れ始めてから
+    internal static bool IsDying(byte id) => Doomed.TryGetValue(id, out var d) && d.Started && !d.Fired;
+
+    private static void ClearDoom(byte id)
+    {
+        Doomed.Remove(id);
+        if (LocalDoom == id) LocalDoom = 255;
+        Unbury(id);
+    }
+
+    // 全員 (ホストが認めた助け出しの知らせで): 瀕死の人が助かる。起き上がり、息は戻る
+    internal static void OnRescued(byte id)
+    {
+        if (!Doomed.TryGetValue(id, out var d) || d.Fired) return;
+        ClearDoom(id);
+        DrownFx.Stop(id);
+        BodyChar.Stop(id);
+        var p = PortKit.ById(id);
+        Plugin.Logger.LogInfo($"[TerrainDeath] rescued {id} {d.Cause}");
+        if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost)
+        {
+            BurnFor[id] = 0f;
+            SwimFor[id] = 0f;
+            SpareUntil[id] = Time.time + SpareTime;
+        }
+        if (!p || p.Data == null || p.Data.IsDead) return;
+        if (p.AmOwner) AirGauge.Reset();
+        CrewFlip.Stop(id);
+        if (d.Started) CrewFlip.Play(p, Clip(d.Cause), RiseTime, reverse: true);
+    }
 
     // 崩れている間に別の死に方で死んだ (崩れの死因は使わない)
     internal static void Forget(byte id)
@@ -91,12 +130,7 @@ public static class TerrainDeath
             if (cause == Cause.Drown) AirGauge.Empty();
         }
         // 死ぬと決まる前へ時間を戻すと、崩れかけの人は助かる (積もった山も消える)
-        Rewind.Undo(_ =>
-        {
-            Doomed.Remove(target);
-            if (LocalDoom == target) LocalDoom = 255;
-            Unbury(target);
-        });
+        Rewind.Undo(_ => ClearDoom(target));
         // 下敷き: 崩れた壁から塊が飛んで体に当たり、当たった時に崩れ始める (TickBury)。
         // 客には壊れ方が束で後から届くので、崩れの知らせが届くのを少し待ってから塊を出す
         if (cause == Cause.Crush) { Burying.Add(new Burial { Pc = p, Id = target, At = Time.time, HitAt = -1f }); return; }
@@ -107,12 +141,12 @@ public static class TerrainDeath
     private static void Collapse(PlayerControl p, Cause cause)
     {
         FallenCorpse.SetFinish(p, cause switch { Cause.Burn => FallenCorpse.Finish.Burnt, Cause.Drown => FallenCorpse.Finish.Drowned, _ => FallenCorpse.Finish.Buried });
-        if (CrewFlip.Play(p, Clip(cause), DoomTime(cause) + Linger, fallen: true))
+        if (CrewFlip.Play(p, Clip(cause), DeathAt(cause) + Linger, fallen: true))
         {
             if (cause == Cause.Drown) DrownFx.Start(p);
             else if (cause == Cause.Burn)
             {
-                BodyChar.Start(p, DoomTime(cause));
+                BodyChar.Start(p, DeathAt(cause));
                 Hearing.At("burn_sizzle", p, 10f, 0.75f);
             }
         }
@@ -134,6 +168,7 @@ public static class TerrainDeath
     // ── ホスト: 足元を見て数える ──────────────────────────────────────────
     private static readonly float[] BurnFor = new float[256];
     private static readonly float[] SwimFor = new float[256];
+    private static readonly float[] SpareUntil = new float[256]; // 助け出された人を数えない時刻まで
     private static float _poll;
     private static int _shipGen = -1;
 
@@ -172,7 +207,7 @@ public static class TerrainDeath
         {
             if (!p || p.Data == null || p.Data.IsDead || p.Data.Disconnected) continue;
             byte id = p.PlayerId;
-            if (Doomed.ContainsKey(id)) continue;
+            if (Doomed.ContainsKey(id) || Time.time < SpareUntil[id]) continue;
             // ベント・はしご・動く床の上では浴びない (戻すだけ)
             bool away = p.inVent || p.onLadder || p.inMovingPlat;
             var pos = p.GetTruePosition();
@@ -239,11 +274,11 @@ public static class TerrainDeath
         {
             var p = PortKit.ById(id);
             bool gone = !p || p.Data == null || p.Data.IsDead || p.Data.Disconnected;
-            if (gone && Time.time - d.At > DoomTime(d.Cause) + Linger) { (drop ??= new()).Add(id); continue; }
+            if (gone && Time.time - d.At > DeathAt(d.Cause) + Linger) { (drop ??= new()).Add(id); continue; }
             if (MeetingHud.Instance) { (drop ??= new()).Add(id); continue; }
-            if (!gone && d.Fired && Time.time - d.At > DoomTime(d.Cause) + Linger) { (drop ??= new()).Add(id); continue; } // 本編が倒すのを断った
+            if (!gone && d.Fired && Time.time - d.At > DeathAt(d.Cause) + Linger) { (drop ??= new()).Add(id); continue; } // 本編が倒すのを断った
             if (gone || d.Fired || !host) continue;
-            if (!d.Started ? Time.time - d.At < StrikeLimit : Time.time - d.At < DoomTime(d.Cause)) continue;
+            if (!d.Started ? Time.time - d.At < StrikeLimit : Time.time - d.At < DeathAt(d.Cause)) continue;
             (kill ??= new()).Add(p);
         }
         // 倒すと倒れた記録がこの表から死因を取り出すので、表を回し終えてから倒す
@@ -274,6 +309,7 @@ public static class TerrainDeath
         LocalDodge = 255;
         Array.Clear(BurnFor);
         Array.Clear(SwimFor);
+        Array.Clear(SpareUntil);
         Sources.Clear();
         _poll = 0f;
         _exposed = false;

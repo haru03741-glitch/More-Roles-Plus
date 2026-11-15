@@ -51,6 +51,7 @@ internal static partial class CrewFlip
         public SpriteRenderer Body, Skin;
         public int Cur = -1, Last;
         public bool Flip, CosHidden, SkinHidden;
+        public float Rate = 1f;                   // 逆に流す時: 連番を seconds の間に流しきる速さ (0 = 前へ流す)
         public bool Fallen;                       // 倒れる流し方: 着せ替えは消さずに体から落とし、流している間に死んだら今の絵を死体にする
         public float K = 1f, Cx, Cy;              // 絵の 1 単位が着せ替えの親の何単位か・着せ替えに今足している分
         public float Bx, By;                      // 体の絵の位置に今足している分 (足元合わせ)
@@ -68,7 +69,8 @@ internal static partial class CrewFlip
 
     // seconds = 出しておく長さ (0 = 連番が終わるまで。回る連番は Stop まで)。
     // fallen = 倒れる流し方 (服と、頭の無い絵へ移る時の帽子・バイザーを周りへ落とす。流している間に死んだら倒れた姿のまま死体になる)
-    internal static bool Play(PlayerControl pc, string name, float seconds = 0f, bool fallen = false)
+    // reverse = 終わりのコマから始めのコマへ、seconds の間に流しきる (倒れた姿から起き上がる)。回る連番には使わない
+    internal static bool Play(PlayerControl pc, string name, float seconds = 0f, bool fallen = false, bool reverse = false)
     {
         Clip c = Find(name);
         if (!pc || c == null || pc.Data == null || pc.Data.IsDead || pc.inVent || pc.cosmetics == null) { Refused++; return false; }
@@ -86,6 +88,7 @@ internal static partial class CrewFlip
 
         var s = new Show { Pc = pc, Id = id, C = c, Start = Time.time, Body = body, Cos = cos.transform, Fallen = fallen };
         s.Until = seconds > 0f ? s.Start + seconds : 0f;
+        if (reverse) s.Rate = seconds > 0f ? -c.Seq.Length / (Fps * seconds) : -1f;
         s.Skin = cos.skin ? cos.skin.layer : null;
         // 頭の動きは絵の単位 (100 px = 1) なので、着せ替えの親の単位へ直す (体の絵は縮めて置かれている)
         float ps = s.Cos.parent ? s.Cos.parent.lossyScale.x : 1f;
@@ -94,7 +97,7 @@ internal static partial class CrewFlip
         Live.Add(s);
         Played++;
         Hide(s);
-        Frame(s, 0);
+        Frame(s, Tick(s, s.Start));
         Feet(s);
         body.sprite = c.Sprites[s.Cur];
         if (c.Mirror) body.flipX = !s.Flip;
@@ -129,8 +132,8 @@ internal static partial class CrewFlip
         for (int i = Live.Count - 1; i >= 0; i--)
         {
             var s = Live[i];
-            int tick = (int)((now - s.Start) * Fps);
-            bool done = s.Until > 0f ? now >= s.Until : s.C.Loop < 0 && tick >= s.C.Seq.Length;
+            int tick = Tick(s, now);
+            bool done = s.Until > 0f ? now >= s.Until : s.Rate < 0f ? tick <= 0 && now > s.Start : s.C.Loop < 0 && tick >= s.C.Seq.Length;
             if (done || !s.Pc || !s.Body || s.Pc.Data == null || s.Pc.Data.IsDead || s.Pc.Data.Disconnected || s.Pc.inVent)
             {
                 End(s);
@@ -170,6 +173,15 @@ internal static partial class CrewFlip
             bool want = s.C.Mirror ? !s.Flip : s.Flip;
             if ((s.Fallen || s.C.Mirror) && s.Body.flipX != want) s.Body.flipX = want;
         }
+    }
+
+    // 今流すコマの番号 (逆に流す時は終わりから数える)
+    private static int Tick(Show s, float now)
+    {
+        if (s.Rate > 0f) return (int)((now - s.Start) * Fps);
+        int back = (int)((now - s.Start) * Fps * -s.Rate);
+        int t = s.C.Seq.Length - 1 - back;
+        return t < 0 ? 0 : t;
     }
 
     private static void Frame(Show s, int tick)

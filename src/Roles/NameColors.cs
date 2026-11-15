@@ -28,7 +28,7 @@ internal static class NameColors
     }
 }
 
-// 試合の途中で陣営が替わった時 (プロキシの入れ替え・ミラクルの交換・アムネシアなど) も、本編の役職が付いた所で塗り直す
+// 試合の途中で陣営が替わった時 (プロキシの入れ替え・アムネシアなど) も、本編の役職が付いた所で塗り直す
 [HarmonyPatch(typeof(RoleManager), nameof(RoleManager.SetRole))]
 internal static class NameColorsSetRolePatch
 {

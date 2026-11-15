@@ -1160,6 +1160,8 @@ TerrainDeath.DrownTime: Time until drowning
 TerrainDeath.DrownTime.Detail: You drown once your total time swimming in water too deep to stand in reaches this many seconds. Where you can stand, it recovers 1 second per second.
 TerrainDeath.Crush: Collapsing walls crush people
 TerrainDeath.Crush.Detail: When a wall collapses from a hammer, fire, or gunfire, anyone right beside it on the side it falls toward is crushed. The person who broke it is not.
+TerrainDeath.DyingTime: Time until death
+TerrainDeath.DyingTime.Detail: People about to die from fire, water, a collapsing wall, or a hull breach collapse and stay dying for this many seconds. If someone nearby holds the button to pull them out, or a Warden Spirit saves them, they survive. A meeting also saves them.
 
 # ── LangFiles ──
 LangFiles.Reloaded: Reloaded the texts (edited: {mod} mod, {vanilla} vanilla)\nReopen any open menu to see the change\n{path}
@@ -2337,19 +2339,15 @@ Tuna.WaterRatio: Gauge rate while swimming
 Egoist.Name: Egoist
 Egoist.Blurb: The crew's loss is my win
 Egoist.Help: An addon that wins when the crew loses and loses when the crew wins (crew only). Your tasks don't count toward the crew win.
-# ---- Ghost roles ported from Uchu ----
-Miracle.Name: Miracle
-Miracle.Blurb: Work a miracle and come back
-Miracle.Summary: A ghost role for dead crewmates and impostors. Choose a living player, and at the end of the next meeting you swap roles with them.
-Miracle.Swap: Swap
-Miracle.Swap.Help: Choose a nearby living player. At the end of the next meeting, you and that player swap roles. Only one Miracle can choose the same player.
-Miracle.Swap.Short: Swap roles with a living player
-Miracle.SwapCooldown: Swap cooldown
-Miracle.NumOfSwap: Swap uses
-Miracle.Action: Who you can choose
-Miracle.Action.MyTeam: Same team only
-Miracle.Action.OtherNeutral: Anyone but neutrals
-Miracle.Action.All: Anyone
+# ---- Warden Spirit (ghost role) ----
+WardSpirit.Name: Warden Spirit
+WardSpirit.Blurb: Not yet. Not this one.
+WardSpirit.Summary: A ghost role for dead crewmates. You can save people who are dying from fire, water, a collapsing wall, or a hull breach, right where they fall.
+WardSpirit.Save: Save
+WardSpirit.Save.Help: Use it next to someone who has collapsed and is dying, or who is clinging to the edge of a hull breach, and they survive. An arrow points to anyone who starts dying. You cannot use the ghost Haunt ability.
+WardSpirit.Save.Short: Save a dying person
+WardSpirit.Uses: Saves
+Rescue.Pull: Pull out
 
 # ── Lighter ──
 Lighter.VisionMultiplier: Vision Multiplier
