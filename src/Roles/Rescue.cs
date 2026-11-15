@@ -242,6 +242,7 @@ internal static class Rescue
         float u = (now - h.Born) / FloatRise;
         float rise = u >= 1f ? 1f : u * u * (3f - 2f * u);
         float lift = rise * (FloatLift + FloatBob * FxMath.Sin((now - h.Born) * 1.9f));
+        lift = (int)(lift * 200f + 0.5f) * 0.005f; // 0.5 px 刻み: 見えない差では体の位置を書き直さない
         CrewFlip.Lift(h.Tid, lift);
         // 頭を守り霊の方へ向ける (体は本編の同期で動くので、歩く向きに任せると逆を向くことがある)
         if (h.By)
@@ -253,9 +254,9 @@ internal static class Rescue
         if (h.LiftK < 0f)
         {
             var body = h.T.cosmetics && h.T.cosmetics.currentBodySprite != null ? h.T.cosmetics.currentBodySprite.BodySprite : null;
-            h.LiftK = body ? body.transform.lossyScale.y : 0.5f;
+            if (body) h.LiftK = body.transform.lossyScale.y;
         }
-        if (h.T.Visible) WardSpiritFx.Hold(h.T, lift * h.LiftK);
+        if (h.LiftK > 0f && h.T.Visible) WardSpiritFx.Hold(h.T, lift * h.LiftK);
     }
 
     // 全員: 守り霊は浮かせた人の方を向いて両手で抱える (幽霊の画面にだけ見える)。歩く/止まるで絵は変えない (幽霊は滑って動く)
@@ -331,8 +332,12 @@ internal static class Rescue
             if (h.Spirit && h.T && now >= h.NextDrift) { h.NextDrift = now + DriftEvery; WardSpiritFx.Drift(h.T); }
             bool gone = !h.T || h.T.Data == null || h.T.Data.IsDead || h.T.Data.Disconnected || !Dying(h.Tid);
             if (gone) { End(h.Tid, true); continue; }
-            if (!h.Spirit) PoseCarrier(h, dt, now);
-            else { Float(h, now); PoseSpirit(h, now); }
+            // 時戻しの再生中は体の連番が止められているので、流し直しも光も出さない (再生が終われば次の刻みで戻る)
+            if (!RewindPlayback.Active)
+            {
+                if (!h.Spirit) PoseCarrier(h, dt, now);
+                else { Float(h, now); PoseSpirit(h, now); }
+            }
             if (!host) continue;
             bool byGone = !h.By || h.By.Data == null || h.By.Data.Disconnected || h.By.inVent || h.By.Data.IsDead != h.Spirit;
             Vector2 tp = h.T.GetTruePosition(), bp = h.By.GetTruePosition();

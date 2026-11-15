@@ -66,7 +66,7 @@ internal static class WardSpiritFx
 
     internal static void Hold(PlayerControl p, float lift)
     {
-        if (!p || !ShipStatus.Instance) return;
+        if (!p || !ShipStatus.Instance || RewindPlayback.Active || MeetingHud.Instance) return;
         byte id = p.PlayerId;
         int slot = -1, free = -1;
         for (int i = 0; i < Auras.Length; i++)
