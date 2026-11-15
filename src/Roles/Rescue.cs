@@ -34,7 +34,6 @@ internal static class Rescue
     private const float DriftEvery = 0.1f;
     private const float FloatLift = 0.35f;  // 守り霊に運ばれる体を浮かせる高さ (絵の単位)
     private const float FloatRise = 0.5f;   // 浮き上がるまでの秒
-    private const float FloatBob = 0.035f;  // 浮いている間のゆっくりした上下の幅
     private const string FloatClip = "floatcarried", DragClip = "dragged", SpiritClip = "ghostcarry";
     private const float SpiritHoldX = 0.6f;  // 守り霊は浮かせた人を胸の前で抱えるので、生きている人が引きずる時より近い
 
@@ -235,13 +234,14 @@ internal static class Rescue
         foreach (var h in Hauls) if (h.T && !CrewFlip.IsPlaying(h.Tid)) CrewFlip.Play(h.T, h.Spirit ? FloatClip : DragClip);
     }
 
-    // 全員: 守り霊に運ばれる体はゆっくり浮き上がり、浮いたまま息をするように上下し、淡い光に包まれる
+    // 全員: 守り霊に運ばれる体はゆっくり浮き上がり、浮いたまま淡い光に包まれる
     private static void Float(Haul h, float now)
     {
         if (!h.T) return;
         float u = (now - h.Born) / FloatRise;
         float rise = u >= 1f ? 1f : u * u * (3f - 2f * u);
-        float lift = rise * (FloatLift + FloatBob * FxMath.Sin((now - h.Born) * 1.9f));
+        // 浮いた高さは揺らさない: 守り霊の握る手は止まっているので、頭が手の中から動かないように
+        float lift = rise * FloatLift;
         lift = (int)(lift * 200f + 0.5f) * 0.005f; // 0.5 px 刻み: 見えない差では体の位置を書き直さない
         CrewFlip.Lift(h.Tid, lift);
         // 頭を守り霊の方へ向ける (体は本編の同期で動くので、歩く向きに任せると逆を向くことがある)
