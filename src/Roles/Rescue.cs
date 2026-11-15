@@ -472,8 +472,8 @@ internal static class Rescue
     {
         if (Hauls.Count > 0)
         {
-            // 船が替わった (次の試合・ロビーへ戻った): 前の試合の組を捨てる
-            if (_shipGen != Terrain.GameClock.ShipGen) ClearHauls();
+            // 船が替わった (次の試合・ロビーへ戻った): 前の試合の組を捨てる (ロビーには船が無い)
+            if (_shipGen != Terrain.GameClock.ShipGen || !ShipStatus.Instance) ClearHauls();
             else TickHauls();
         }
         if (++_check < CheckEvery) return;

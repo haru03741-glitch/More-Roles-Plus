@@ -135,7 +135,15 @@ public static class TerrainDeath
     // 全員 (ホストが認めた助け出しの知らせで): 瀕死の人が助かる。起き上がり、息は戻る
     internal static void OnRescued(byte id)
     {
-        if (!Doomed.TryGetValue(id, out var d) || d.Fired) return;
+        if (!Doomed.TryGetValue(id, out var d))
+        {
+            // 瀕死になる前に守り霊が浮かせて運んだ人: 降ろされた所で息 (焼け) が戻り、少しは数えない
+            if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost) { BurnFor[id] = 0f; SwimFor[id] = 0f; SpareUntil[id] = Time.time + SpareTime; }
+            var lp = PlayerControl.LocalPlayer;
+            if (lp && lp.PlayerId == id) AirGauge.Reset();
+            return;
+        }
+        if (d.Fired) return;
         ClearDoom(id);
         DrownFx.Stop(id);
         BodyChar.Stop(id);
@@ -550,7 +558,8 @@ public static class TerrainDeath
             // 止まっている間に他人の画面で向きが変わっていたら、山を積んだ向きへ戻してから崩す
             var bs = BodyOf(b.Pc);
             if (bs && bs.flipX != b.Face < 0f) bs.flipX = b.Face < 0f;
-            Collapse(b.Pc, Cause.Crush);
+            // 運ばれている体の絵は運ぶ側が持っている (崩れる連番で上書きしない)
+            Collapse(b.Pc, Cause.Crush, !Rescue.Carried(b.Id));
         }
     }
 
