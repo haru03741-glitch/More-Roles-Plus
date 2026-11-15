@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Impostor/Witch.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Impostor/Witch.cs (role idea and logic)
 // The role is credited by UchuAddon to https://github.com/TheOtherRolesAU/TheOtherRoles (GPL-3.0)
 using System.Collections.Generic;
 using MoreRolesPlus.Net;

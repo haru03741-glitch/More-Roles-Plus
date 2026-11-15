@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Chicken.cs (the modifier; role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Chicken.cs (the modifier; role idea and logic)
 // UchuAddon names https://github.com/ykundesu/SuperNewRoles as the origin, but SuperNewRoles has no such role
 using MoreRolesPlus.Options;
 using UnityEngine;

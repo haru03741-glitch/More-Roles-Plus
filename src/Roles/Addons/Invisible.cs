@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Modifier/Invisible.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Modifier/Invisible.cs (role idea and logic)
 namespace MoreRolesPlus.Roles.Addons;
 
 // インビジブル (アドオン): いつもインポスター以外から見えない。本人は付いていることに気付かない (死ぬと分かる)

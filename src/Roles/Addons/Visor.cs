@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Visor.cs, Scripts/Abilities/VisorAbility.cs (VisorModifierU and the role's battery; role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Visor.cs, Scripts/Abilities/VisorAbility.cs (VisorModifierU and the role's battery; role idea and logic)
 // The role is credited by UchuAddon to Extreme Roles https://github.com/yukieiji/ExtremeRoles
 using System.Linq;
 using HarmonyLib;

@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Modifier/Egoist.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Modifier/Egoist.cs (role idea and logic)
 // The role is credited by UchuAddon to Town Of Us Mira (TOU-Mira)
 namespace MoreRolesPlus.Roles.Addons;
 

@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Modifier/Watcher.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Modifier/Watcher.cs (role idea and logic)
 // The role first appeared in https://github.com/yukinogatari/TheOtherRoles-GM (GPL-3.0)
 using System.Linq;
 

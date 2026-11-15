@@ -1,4 +1,4 @@
-// Helpers for the roles ported from https://github.com/TeamUchuaddon/UchuAddon (role idea and logic; UchuAddon allows porting them, no assets used)
+// Helpers for the roles ported from https://github.com/TeamUchuaddon/UchuAddon (role idea and logic)
 using System;
 using System.Collections.Generic;
 using System.Linq;

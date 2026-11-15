@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Neutral/Amnesia.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Neutral/Amnesia.cs (role idea and logic)
 // Role idea: SuperNewRoles https://github.com/ykundesu/SuperNewRoles (Amnesiac)
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;

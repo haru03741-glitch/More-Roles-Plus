@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Impostor/Eclipse.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Impostor/Eclipse.cs (role idea and logic)
 using MoreRolesPlus.Fx;
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;

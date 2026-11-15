@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Ghost/Complex/Miracle.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Ghost/Complex/Miracle.cs (role idea and logic)
 using System.Collections.Generic;
 using MoreRolesPlus.Options;
 

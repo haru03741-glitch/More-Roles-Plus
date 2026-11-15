@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Bakery.cs (role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Bakery.cs (role idea and logic)
 // The role idea comes from https://github.com/yukieiji/ExtremeRoles (GPL-3.0, the Bakary role)
 using System.Collections.Generic;
 using MoreRolesPlus.Net;

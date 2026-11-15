@@ -1,4 +1,4 @@
-// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Neutral/Tuna.cs (TunaU; role idea and logic; UchuAddon allows porting them, no assets used)
+// Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Neutral/Tuna.cs (TunaU; role idea and logic)
 // The role is credited by UchuAddon to SuperNewRoles https://github.com/ykundesu/SuperNewRoles (Roles/Neutral/Tuna.cs, a neutral role there too)
 using MoreRolesPlus.Net;
 using MoreRolesPlus.Options;
