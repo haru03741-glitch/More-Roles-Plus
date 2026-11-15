@@ -15,6 +15,8 @@ const int MaxMarkers = 32;
 const int MaxEvents = 128;
 const int MaxSnaps = 12;
 const int MaxParams = 64;
+const int MaxParticles = 2048;
+const int MaxDust = 320;
 
 // 調整の値 (C# の FlightParams.Names と同じ並び)。名前の付いた数をここに直書きしない
 enum Param
@@ -28,6 +30,7 @@ enum Param
     PDodgeTime, PDodgeSide, PDodgeCool,
     PShakeHit, PShakeHurt, PShakeDecay, PInterpDelay, PExtrapMax,
     PUTurnTime, PUTurnCool, PConverge,
+    PDustCell, PDustStreak, PDustAlpha,
     ParamCount
 };
 
@@ -67,6 +70,9 @@ struct Bolt { float p[3], v[3]; float age, life; int32_t owner, alive, mine; flo
 
 struct Event { int32_t kind, a, b, c; float x, y, z, f; };
 
+// 火花・炎・煙 (kind 0 = 丸いにじみ・1 = 速さの向きに伸びる筋)。色は乗算済み (rgb = 光・a = 後ろを隠す量)
+struct Particle { float p[3], v[3]; float age, life, s0, s1, drag; uint8_t c0[4], c1[4]; int32_t kind, alive; };
+
 struct World
 {
     float prm[MaxParams];
@@ -81,6 +87,9 @@ struct World
     uint32_t rng;
     int32_t camInit;
     int32_t latchDodge, latchUTurn; // 押した瞬間の入力 (刻みが回るまで持つ)
+    Particle part[MaxParticles];
+    int32_t partNext;
+    float dust[MaxDust][3];
 };
 
 // 自分の船の入力 (-1..1)
@@ -109,6 +118,8 @@ struct FrameArgs
     int32_t evCap, evN;
     float* hud;             // 速さ・加速の残り・耐久・回避の待ち・宙返りの待ち・揺れ
     int32_t steps;          // 回した固定刻みの数
+    uint8_t* fxVerts;       // 火花・炎・煙・塵の頂点 (弾と同じ形・1 枚 4 頂点)
+    int32_t fxCap, fxPrev, fxN;
 };
 #pragma pack(pop)
 

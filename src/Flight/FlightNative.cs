@@ -10,6 +10,7 @@ internal static unsafe class FlightNative
     internal const int BoltStride = 24;
     internal const int MaxShips = 8;
     internal const int MaxBolts = 1024;
+    internal const int MaxFx = 2048 + 320;
 
     internal enum Ev { Fire = 1, Hit = 2, BoltEnd = 3, Dodge = 4, UTurn = 5 }
 
@@ -45,6 +46,8 @@ internal static unsafe class FlightNative
         public int EvCap, EvN;
         public float* Hud;
         public int Steps;
+        public byte* FxVerts;
+        public int FxCap, FxPrev, FxN;
     }
 
     internal static delegate* unmanaged[Cdecl]<uint, IntPtr> Create;
@@ -59,6 +62,7 @@ internal static unsafe class FlightNative
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, float, void> Hp;
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, float*, void> Get;
     internal static delegate* unmanaged[Cdecl]<FrameArgs*, void> Frame;
+    internal static delegate* unmanaged[Cdecl]<IntPtr, float*, float, void> Explode;
 
     private static int _state; // 0 = 未 / 1 = 使える / 2 = 使えない
 
@@ -79,6 +83,7 @@ internal static unsafe class FlightNative
             Hp = (delegate* unmanaged[Cdecl]<IntPtr, int, float, void>)Need("mrp_flt_hp");
             Get = (delegate* unmanaged[Cdecl]<IntPtr, int, float*, void>)Need("mrp_flt_get");
             Frame = (delegate* unmanaged[Cdecl]<FrameArgs*, void>)Need("mrp_flt_frame");
+            Explode = (delegate* unmanaged[Cdecl]<IntPtr, float*, float, void>)Need("mrp_flt_explode");
             // 構造体の大きさが C++ と違えば口を開けない (片方だけ欄を足した時に壊れた値で動かさない)
             int cs = Size(), ms = sizeof(FrameArgs);
             if (cs != ms) throw new InvalidOperationException($"FrameArgs size C++ {cs} != C# {ms}");

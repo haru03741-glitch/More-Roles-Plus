@@ -142,6 +142,172 @@ void SpawnBolt(World* w, int owner, V3 p, V3 v, float life, float dmg, int mine)
     b.age = 0; b.life = life; b.owner = owner; b.alive = 1; b.mine = mine; b.dmg = dmg;
 }
 
+inline float rr(World* w, float a, float b) { return a + (b - a) * rnd(w); }
+inline V3 rdir(World* w)
+{
+    for (int i = 0; i < 8; i++)
+    {
+        V3 d = v3(rr(w, -1, 1), rr(w, -1, 1), rr(w, -1, 1));
+        float l = len(d);
+        if (l > 0.05f && l <= 1.0f) return d * (1.0f / l);
+    }
+    return v3(0, 1, 0);
+}
+
+void Emit(World* w, int kind, V3 p, V3 v, float life, float s0, float s1, float drag, const uint8_t* c0, const uint8_t* c1, float delay = 0)
+{
+    int k = w->partNext;
+    for (int i = 0; i < MaxParticles; i++)
+    {
+        int j = (w->partNext + i) % MaxParticles;
+        if (!w->part[j].alive) { k = j; break; }
+    }
+    w->partNext = (k + 1) % MaxParticles;
+    Particle& q = w->part[k];
+    st(q.p, p); st(q.v, v);
+    q.age = -delay; q.life = life; q.s0 = s0; q.s1 = s1; q.drag = drag; q.kind = kind; q.alive = 1;
+    memcpy(q.c0, c0, 4); memcpy(q.c1, c1, 4);
+}
+
+// 弾が当たった所: 白い閃き → 当たった向きの逆へ跳ねる火花の筋 → 薄い煙
+void FxHit(World* w, V3 p, V3 boltV)
+{
+    static const uint8_t flash0[4] = { 255, 250, 225, 0 }, flash1[4] = { 255, 160, 60, 0 };
+    static const uint8_t spark0[4] = { 255, 225, 160, 0 }, spark1[4] = { 255, 90, 30, 0 };
+    static const uint8_t smoke0[4] = { 60, 58, 62, 110 }, smoke1[4] = { 20, 20, 24, 0 };
+    V3 back = norm(boltV * -1.0f);
+    Emit(w, 0, p, v3(0, 0, 0), 0.11f, 3.2f, 1.2f, 0, flash0, flash1);
+    for (int i = 0; i < 10; i++)
+    {
+        V3 d = norm(back + rdir(w) * 0.9f);
+        Emit(w, 1, p, d * rr(w, 28, 75), rr(w, 0.18f, 0.42f), 0.5f, 0.2f, 3.5f, spark0, spark1);
+    }
+    for (int i = 0; i < 2; i++)
+        Emit(w, 0, p + rdir(w) * 0.6f, back * rr(w, 2, 5) + rdir(w), rr(w, 0.5f, 0.8f), 1.4f, 4.5f, 1.5f, smoke0, smoke1, 0.05f);
+}
+
+// 船が落ちる爆発: 閃光 → 膨らむ火の玉 → 黒煙 → 散る破片の火花 (どれも中心から外へ動いて冷める)
+void FxExplode(World* w, V3 p, float sc)
+{
+    static const uint8_t flash0[4] = { 255, 255, 240, 0 }, flash1[4] = { 255, 190, 90, 0 };
+    static const uint8_t fire0[4] = { 255, 235, 170, 40 }, fire1[4] = { 200, 60, 20, 150 };
+    static const uint8_t smoke0[4] = { 40, 36, 40, 210 }, smoke1[4] = { 12, 12, 14, 0 };
+    static const uint8_t deb0[4] = { 255, 220, 150, 0 }, deb1[4] = { 255, 80, 20, 0 };
+    Emit(w, 0, p, v3(0, 0, 0), 0.2f, 34 * sc, 18 * sc, 0, flash0, flash1);
+    for (int i = 0; i < 16; i++)
+    {
+        V3 d = rdir(w);
+        Emit(w, 0, p + d * rr(w, 0, 5 * sc), d * rr(w, 6, 20) * sc, rr(w, 0.55f, 1.0f), rr(w, 5, 8) * sc, rr(w, 11, 17) * sc, 1.8f, fire0, fire1, rr(w, 0, 0.12f));
+    }
+    for (int i = 0; i < 14; i++)
+    {
+        V3 d = rdir(w);
+        Emit(w, 0, p + d * rr(w, 1, 6 * sc), d * rr(w, 3, 9) * sc, rr(w, 1.6f, 2.8f), rr(w, 4.5f, 7) * sc, rr(w, 12, 19) * sc, 0.9f, smoke0, smoke1, rr(w, 0.12f, 0.35f));
+    }
+    for (int i = 0; i < 44; i++)
+    {
+        V3 d = rdir(w);
+        Emit(w, 1, p + d * rr(w, 0, 3 * sc), d * rr(w, 40, 130) * sc, rr(w, 0.4f, 1.1f), 0.9f * sc, 0.3f * sc, 1.3f, deb0, deb1);
+    }
+}
+
+void StepParticles(World* w, float dt)
+{
+    for (int i = 0; i < MaxParticles; i++)
+    {
+        Particle& q = w->part[i];
+        if (!q.alive) continue;
+        q.age += dt;
+        if (q.age < 0) continue;
+        if (q.age >= q.life) { q.alive = 0; continue; }
+        V3 v = ld(q.v);
+        st(q.p, ld(q.p) + v * dt);
+        st(q.v, v * expf(-q.drag * dt));
+    }
+}
+
+inline void PutQuad(uint8_t* out, int n, const V3* vs, const uint8_t* col, const float (*uv)[2])
+{
+    for (int k = 0; k < 4; k++)
+    {
+        uint8_t* o8 = out + (size_t)(n * 4 + k) * BoltStride;
+        float f3[3] = { vs[k].x, vs[k].y, vs[k].z };
+        memcpy(o8, f3, 12);
+        memcpy(o8 + 12, col, 4);
+        memcpy(o8 + 16, uv[k], 8);
+    }
+}
+
+// 火花・炎・煙と宇宙の塵の板を書く。丸い板の uv は 0〜1、筋の板は uv.x に 2 を足して形をシェーダへ伝える
+void WriteFx(World* w, FrameArgs* a, V3 cam, Q4 camQ, V3 shipV)
+{
+    const float* P = w->prm;
+    int n = 0;
+    uint8_t* out = a->fxVerts;
+    V3 cr = rot(camQ, v3(1, 0, 0)), cu = rot(camQ, v3(0, 1, 0));
+    static const float uvRound[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+    static const float uvStreak[4][2] = { { 2, 0 }, { 2, 1 }, { 3, 1 }, { 3, 0 } };
+    for (int i = 0; i < MaxParticles && n < a->fxCap; i++)
+    {
+        const Particle& q = w->part[i];
+        if (!q.alive || q.age < 0) continue;
+        float t = q.age / q.life;
+        float g = 1.0f - (1.0f - t) * (1.0f - t);
+        float size = q.s0 + (q.s1 - q.s0) * g;
+        float fade = t < 0.6f ? 1.0f : (1.0f - t) / 0.4f;
+        uint8_t col[4];
+        for (int k = 0; k < 4; k++) col[k] = (uint8_t)((q.c0[k] + (q.c1[k] - q.c0[k]) * t) * fade);
+        V3 p = ld(q.p) + ld(q.v) * w->acc;
+        V3 vs[4];
+        if (q.kind == 0)
+        {
+            V3 r = cr * size, u = cu * size;
+            vs[0] = p - r - u; vs[1] = p + r - u; vs[2] = p + r + u; vs[3] = p - r + u;
+            PutQuad(out, n++, vs, col, uvRound);
+        }
+        else
+        {
+            V3 v = ld(q.v);
+            float sp = len(v);
+            V3 dir = norm(v, cu);
+            float L = sp * 0.05f + size;
+            V3 side = norm(cross(dir, cam - p), cr) * (size * 0.35f);
+            V3 tail = p - dir * L;
+            vs[0] = tail - side; vs[1] = tail + side; vs[2] = p + side; vs[3] = p - side;
+            PutQuad(out, n++, vs, col, uvStreak);
+        }
+    }
+    // 宇宙の塵: カメラの周りの箱の中で巻き戻る点。自分の船の速さの分だけ後ろへ伸ばす (遠いほど薄く)
+    float D = P[PDustCell];
+    if (D > 1)
+    {
+        float sp = len(shipV);
+        V3 dir = norm(shipV, rot(camQ, v3(0, 0, 1)));
+        float L = sp * P[PDustStreak] + 0.25f;
+        for (int i = 0; i < MaxDust && n < a->fxCap; i++)
+        {
+            V3 d = ld(w->dust[i]);
+            V3 rel = d - cam;
+            rel.x -= D * floorf(rel.x / D + 0.5f);
+            rel.y -= D * floorf(rel.y / D + 0.5f);
+            rel.z -= D * floorf(rel.z / D + 0.5f);
+            float dist = len(rel);
+            float near = clampf((dist - 4.0f) / 10.0f, 0, 1), far = clampf(1.0f - (dist - D * 0.25f) / (D * 0.25f), 0, 1);
+            float al = near * far * P[PDustAlpha];
+            if (al < 0.02f) continue;
+            V3 p = cam + rel;
+            uint8_t col[4] = { (uint8_t)(170 * al), (uint8_t)(190 * al), (uint8_t)(230 * al), 0 };
+            V3 side = norm(cross(dir, rel * -1.0f), cr) * 0.09f;
+            V3 tail = p - dir * L;
+            V3 vs[4] = { tail - side, tail + side, p + side, p - side };
+            PutQuad(out, n++, vs, col, uvStreak);
+        }
+    }
+    for (int i = n; i < a->fxPrev && i < a->fxCap; i++)
+        memset(out + (size_t)i * 4 * BoltStride, 0, 4 * BoltStride);
+    a->fxN = n;
+}
+
 void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
 {
     const float* P = w->prm;
@@ -241,13 +407,26 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
         s.fireCd = P[PBoltInterval];
         const Model& m = w->model[s.model];
         int shots = 0;
+        // 照準の線の上に船があれば、その距離へ集める (無ければ PConverge)。翼の先の 2 門が遠くの的の左右へ外れないように
+        float range = P[PBoltSpeed] * P[PBoltLife];
+        float best = 1e30f;
+        for (int k = 0; k < w->shipN; k++)
+        {
+            const Ship& o = w->ship[k];
+            if (k == idx || !o.alive) continue;
+            V3 rel = ld(o.p) - p;
+            float along = dot(rel, fwd);
+            if (along < 10 || along > range) continue;
+            if (len(rel - fwd * along) < w->model[o.model].bound && along < best) best = along;
+        }
+        float conv = best < 1e29f ? best : P[PConverge];
         for (int i = 0; i < m.mkN; i++)
         {
             const Marker& mk = m.mk[i];
             if (mk.kind != MkMuzzle || mk.id != 0) continue;
             V3 mp = p + rot(q, ld(mk.p));
             // 砲口は離れて付いているので、照準の距離 (PConverge) の 1 点へ向けて撃つ
-            V3 dir = P[PConverge] > 1 ? norm(p + fwd * P[PConverge] - mp, fwd) : norm(rot(q, ld(mk.d)), fwd);
+            V3 dir = conv > 1 ? norm(p + fwd * conv - mp, fwd) : norm(rot(q, ld(mk.d)), fwd);
             V3 bv = dir * P[PBoltSpeed] + v;
             SpawnBolt(w, idx, mp, bv, P[PBoltLife], P[PBoltDamage], 1);
             Emit(w, EvFire, idx, i, 0, mp, 0);
@@ -337,6 +516,7 @@ void StepBolts(World* w, int local, float dt)
         {
             V3 hp = lerp(a, e, best);
             Emit(w, EvHit, b.owner, hitShip, hitSector | (b.mine ? 0x10000 : 0), hp, b.dmg);
+            FxHit(w, hp, ld(b.v));
             if (hitShip == local) w->shake += w->prm[PShakeHurt];
             else if (b.owner == local) w->shake += w->prm[PShakeHit];
             b.alive = 0;
@@ -438,10 +618,19 @@ MRP_API World* mrp_flt_create(uint32_t seed)
     memset(w, 0, sizeof(World));
     w->rng = seed ? seed : 1u;
     w->camQ[3] = 1;
+    for (int i = 0; i < MaxDust; i++)
+        for (int k = 0; k < 3; k++) w->dust[i][k] = (rnd(w) - 0.5f) * 1000.0f;
     return w;
 }
 
 MRP_API void mrp_flt_destroy(World* w) { delete w; }
+
+// 船が落ちた所の爆発 (撃墜を決めた側が呼ぶ)
+MRP_API void mrp_flt_explode(World* w, const float* p, float scale)
+{
+    FxExplode(w, ld(p), scale);
+    w->shake += 1.2f;
+}
 
 MRP_API int32_t mrp_flt_size() { return (int32_t)sizeof(FrameArgs); }
 
@@ -548,6 +737,7 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
             StepLocal(w, s, k, k == a->local ? a->in : none, Step);
         }
         StepBolts(w, a->local, Step);
+        StepParticles(w, Step);
         for (int k = 0; k < w->shipN; k++)
             if (w->ship[k].alive) DrawPose(w, w->ship[k]);
         steps++;
@@ -582,6 +772,10 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     stq(a->camOut + 3, cq);
     a->camOut[7] = w->camFov;
     WriteBolts(w, a, cpo);
+    {
+        int li0 = a->local >= 0 && a->local < w->shipN ? a->local : 0;
+        WriteFx(w, a, cpo, cq, ld(w->ship[li0].v));
+    }
 
     int en = w->evN < a->evCap ? w->evN : a->evCap;
     memcpy(a->evOut, w->ev, sizeof(Event) * en);

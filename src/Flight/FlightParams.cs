@@ -12,11 +12,12 @@ internal static class FlightParams
         ("pitchRate", 95f), ("yawRate", 80f), ("rollRate", 220f), ("turnResp", 9f), ("bankMax", 38f), ("bankResp", 6f),
         ("boostMax", 1f), ("boostDrain", 0.42f), ("boostRegen", 0.3f), ("boostDelay", 0.6f),
         ("boltSpeed", 260f), ("boltLife", 1.5f), ("boltInterval", 0.11f), ("boltLen", 12f), ("boltWidth", 0.7f), ("boltDamage", 4f),
-        ("camDist", 62f), ("camHeight", 15f), ("camLag", 7.5f), ("camLook", 70f), ("camSteer", 9f), ("fov", 62f), ("fovBoost", 14f), ("fovResp", 5f),
+        ("camDist", 62f), ("camHeight", 21f), ("camLag", 7.5f), ("camLook", 95f), ("camSteer", 9f), ("fov", 62f), ("fovBoost", 14f), ("fovResp", 5f),
         ("arena", 900f), ("arenaTurn", 2.5f),
         ("dodgeTime", 0.42f), ("dodgeSide", 9f), ("dodgeCool", 1.1f),
         ("shakeHit", 0.12f), ("shakeHurt", 0.9f), ("shakeDecay", 7f), ("interpDelay", 0.12f), ("extrapMax", 0.35f),
         ("uturnTime", 1.25f), ("uturnCool", 2.5f), ("converge", 120f),
+        ("dustCell", 180f), ("dustStreak", 0.06f), ("dustAlpha", 0.8f),
     };
 
     internal static readonly float[] Values = MakeValues();

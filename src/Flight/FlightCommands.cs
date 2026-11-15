@@ -8,7 +8,7 @@ internal static class FlightCommands
 {
     internal static void Register()
     {
-        TestBridge.Register("flight", "[enter [的の数] | exit | stat | set <名前> <値> | params | view <yaw> <pitch> <距離> | input <pitch> <yaw> <roll> <fire> <boost> <brake> <秒> | dodge <-1|1> | uturn] 3D の艦隊戦に一人で入る (開発用)", (line, reply) =>
+        TestBridge.Register("flight", "[enter [的の数] | exit | stat | set <名前> <値> | boom | params | view <yaw> <pitch> <距離> | input <pitch> <yaw> <roll> <fire> <boost> <brake> <秒> | dodge <-1|1> | uturn] 3D の艦隊戦に一人で入る (開発用)", (line, reply) =>
         {
             string[] args = line.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             string sub = args.Length > 0 ? args[0] : "stat";
@@ -38,6 +38,10 @@ internal static class FlightCommands
                         reply($"OK flight view {Arena.ViewYaw} {Arena.ViewPitch} {Arena.ViewDist}");
                         return;
                     }
+                case "boom":
+                    // 確かめ用: 自分の船の前に爆発を出す
+                    reply(Arena.DebugExplode() ? "OK flight boom" : "ERR flight not active");
+                    return;
                 case "params":
                     reply("OK " + FlightParams.Dump());
                     return;

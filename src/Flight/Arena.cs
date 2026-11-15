@@ -31,8 +31,9 @@ internal static unsafe class Arena
     private static readonly float[] Hp = new float[FlightNative.MaxShips];
     private static readonly int[] ShipModel = new int[FlightNative.MaxShips];
     private static MaterialPropertyBlock _mpb;
-    private static Mesh _boltMesh;
-    private static byte* _boltBuf;
+    private static Mesh _boltMesh, _fxMesh;
+    private static byte* _boltBuf, _fxBuf;
+    private static int _fxPrev;
     private static float* _shipOut, _camOut, _hud;
     private static FlightNative.Event* _ev;
     private static int _boltPrev, _shipN, _local, _hits, _kills;
@@ -87,6 +88,8 @@ internal static unsafe class Arena
         _root = null;
         if (_boltMesh) UnityEngine.Object.Destroy(_boltMesh);
         _boltMesh = null;
+        if (_fxMesh) UnityEngine.Object.Destroy(_fxMesh);
+        _fxMesh = null;
         if (_world != IntPtr.Zero) FlightNative.Destroy(_world);
         _world = IntPtr.Zero;
         Free();
@@ -96,6 +99,17 @@ internal static unsafe class Arena
         _plumeLen = -1f;
         _shipN = 0;
         if (was) Plugin.Logger.LogInfo("flight: exit");
+    }
+
+    internal static bool DebugExplode()
+    {
+        if (!Active || _world == IntPtr.Zero) return false;
+        float* so = _shipOut + _local * 8;
+        var q = new Quaternion(so[3], so[4], so[5], so[6]);
+        var p = new Vector3(so[0], so[1], so[2]) + q * new Vector3(0f, 0f, 90f);
+        float* pp = stackalloc float[3] { p.x, p.y, p.z };
+        FlightNative.Explode(_world, pp, 1.4f);
+        return true;
     }
 
     internal static void PushParams()
@@ -181,6 +195,8 @@ internal static unsafe class Arena
     private static void Alloc()
     {
         _boltBuf = (byte*)NativeMemory.AllocZeroed((nuint)(FlightNative.MaxBolts * 4 * FlightNative.BoltStride));
+        _fxBuf = (byte*)NativeMemory.AllocZeroed((nuint)(FlightNative.MaxFx * 4 * FlightNative.BoltStride));
+        _fxPrev = 0;
         _shipOut = (float*)NativeMemory.AllocZeroed((nuint)(FlightNative.MaxShips * 8 * 4));
         _camOut = (float*)NativeMemory.AllocZeroed(8 * 4);
         _hud = (float*)NativeMemory.AllocZeroed(8 * 4);
@@ -191,6 +207,7 @@ internal static unsafe class Arena
     private static void Free()
     {
         NativeMemory.Free(_boltBuf); _boltBuf = null;
+        NativeMemory.Free(_fxBuf); _fxBuf = null;
         NativeMemory.Free(_shipOut); _shipOut = null;
         NativeMemory.Free(_camOut); _camOut = null;
         NativeMemory.Free(_hud); _hud = null;
@@ -236,6 +253,15 @@ internal static unsafe class Arena
         var bmr = bolt.AddComponent<MeshRenderer>();
         bmr.sharedMaterial = MrpBundle.FlightMaterials[1];
         bmr.shadowCastingMode = ShadowCastingMode.Off;
+
+        // 火花・炎・煙・塵 = もう 1 枚の動的メッシュ (C++ が頂点を書く)
+        var fxo = new GameObject("MrpFlightFx") { layer = Layer };
+        fxo.transform.SetParent(_root.transform, false);
+        _fxMesh = QuadMesh("MrpFlightFx", _fxBuf, FlightNative.MaxFx);
+        fxo.AddComponent<MeshFilter>().sharedMesh = _fxMesh;
+        var fmr = fxo.AddComponent<MeshRenderer>();
+        fmr.sharedMaterial = MrpBundle.FlightMaterials[3];
+        fmr.shadowCastingMode = ShadowCastingMode.Off;
 
         // 照準 (機首の先の 2 つの枠)
         float conv = FlightParams.Values[FlightParams.Find("converge")];
@@ -283,19 +309,22 @@ internal static unsafe class Arena
         return _skyMesh;
     }
 
-    private static Mesh BoltMesh()
+    private static Mesh BoltMesh() => QuadMesh("MrpFlightBolts", _boltBuf, FlightNative.MaxBolts);
+
+    // 1 枚 4 頂点の板を quads 枚並べた動的メッシュ (位置・色・uv の 24 バイト)。頂点は buf から毎フレーム書く
+    private static Mesh QuadMesh(string name, byte* buf, int quads)
     {
-        int vn = FlightNative.MaxBolts * 4, inN = FlightNative.MaxBolts * 6;
-        var mesh = new Mesh { name = "MrpFlightBolts" };
+        int vn = quads * 4, inN = quads * 6;
+        var mesh = new Mesh { name = name };
         mesh.MarkDynamic();
         var attrs = new Il2CppStructArray<VertexAttributeDescriptor>((long)3);
         attrs[0] = new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3, 0);
         attrs[1] = new VertexAttributeDescriptor(VertexAttribute.Color, VertexAttributeFormat.UNorm8, 4, 0);
         attrs[2] = new VertexAttributeDescriptor(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 2, 0);
         mesh.SetVertexBufferParamsFromArray(vn, attrs);
-        mesh.InternalSetVertexBufferData(0, (IntPtr)_boltBuf, 0, 0, vn, FlightNative.BoltStride, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
+        mesh.InternalSetVertexBufferData(0, (IntPtr)buf, 0, 0, vn, FlightNative.BoltStride, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
         var idx = new int[inN];
-        for (int i = 0; i < FlightNative.MaxBolts; i++)
+        for (int i = 0; i < quads; i++)
         {
             int v = i * 4, k = i * 6;
             idx[k] = v; idx[k + 1] = v + 1; idx[k + 2] = v + 2;
@@ -373,6 +402,9 @@ internal static unsafe class Arena
             EvOut = _ev,
             EvCap = MaxEvents,
             Hud = _hud,
+            FxVerts = _fxBuf,
+            FxCap = FlightNative.MaxFx,
+            FxPrev = _fxPrev,
         };
         FlightNative.Frame(&a);
         if (a.Steps == 0) _idleFrames++;
@@ -440,6 +472,11 @@ internal static unsafe class Arena
             _boltMesh.InternalSetVertexBufferData(0, (IntPtr)_boltBuf, 0, 0, upload * 4, FlightNative.BoltStride,
                 MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontNotifyMeshUsers | MeshUpdateFlags.DontResetBoneBounds);
         _boltPrev = a.BoltN;
+        int fxUp = Math.Max(a.FxN, _fxPrev);
+        if (fxUp > 0)
+            _fxMesh.InternalSetVertexBufferData(0, (IntPtr)_fxBuf, 0, 0, fxUp * 4, FlightNative.BoltStride,
+                MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontNotifyMeshUsers | MeshUpdateFlags.DontResetBoneBounds);
+        _fxPrev = a.FxN;
 
         HandleEvents(a.EvN);
         TickFlash();
@@ -448,7 +485,8 @@ internal static unsafe class Arena
         if (_statT > 0.5f)
         {
             _statT = 0;
-            Stats = $"speed={_hud[0]:0} boost={_hud[1]:0.00} hp={_hud[2]:0.00} bolts={a.BoltN} steps={a.Steps} idle={_idleFrames} hits={_hits} kills={_kills} cam={cp} fov={_fov:0}";
+            float* lo = _shipOut + _local * 8;
+            Stats = $"ship=({lo[0]:0.0},{lo[1]:0.0},{lo[2]:0.0}) q=({lo[3]:0.000},{lo[4]:0.000},{lo[5]:0.000},{lo[6]:0.000}) speed={_hud[0]:0} boost={_hud[1]:0.00} hp={_hud[2]:0.00} bolts={a.BoltN} steps={a.Steps} idle={_idleFrames} hits={_hits} kills={_kills} cam={cp} fov={_fov:0}";
         }
     }
 
@@ -470,6 +508,9 @@ internal static unsafe class Arena
                 FlightNative.Hp(_world, target, Hp[target]);
                 if (Hp[target] <= 0 && target != _local)
                 {
+                    // 落ちた船の真ん中で爆発させてから消す (閃光の陰で消えるので途切れが見えない)
+                    float* so = _shipOut + target * 8;
+                    FlightNative.Explode(_world, so, ShipModel[target] == 0 ? 1.2f : 2.0f);
                     FlightNative.Despawn(_world, target);
                     _kills++;
                 }
