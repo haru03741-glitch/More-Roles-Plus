@@ -1,5 +1,5 @@
 // Ported from https://github.com/TeamUchuaddon/UchuAddon UchuAddon/Scripts/Role/Crewmate/Chicken.cs (the modifier; role idea and logic; UchuAddon allows porting them, no assets used)
-// The role is credited by UchuAddon to https://github.com/ykundesu/SuperNewRoles (GPL-3.0)
+// UchuAddon names https://github.com/ykundesu/SuperNewRoles as the origin, but SuperNewRoles has no such role
 using MoreRolesPlus.Options;
 using UnityEngine;
 
@@ -13,7 +13,7 @@ public sealed class ChickenMod : AddonBase
     public override Text Name => new("ChickenMod.Name");
     public override string Reading => "ちきん";
     public override Text Blurb => new("ChickenMod.Blurb");
-    public override string Origin => "SNR";
+    public override string Origin => "Uchu";
 
     public static readonly IntOpt VentChance = new("ChickenMod.VentChance", 20, 0, 100, 5, "%");
     public static readonly IntOpt LadderChance = new("ChickenMod.LadderChance", 20, 0, 100, 5, "%");

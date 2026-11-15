@@ -124,33 +124,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 * **[ExtremeRoles](https://github.com/yukieiji/ExtremeRoles) (yukieiji、GPL-3.0)**  
   ダミープレイヤーを出す手順、設定の項目の名前が変わっても前の値を引き継ぐ仕組み、シャーマン・マジシャン・パン屋の役職とアドオンのバイザー (UchuAddon を経由して取り込み)
 * **[Super New Roles](https://github.com/ykundesu/SuperNewRoles) (ykundesu、GPL-3.0)**  
-  試合の出来事を配る仕組み (配っている最中の受け手の追加・削除の扱い)、公式サーバーに全員導入の mod として部屋を登録する方法、機器 (アドミン・カメラ・バイタル) を使えなくする方法、前の試合で外れた人ほど役職やインポスターに当たりやすくする配り方、Airship 以外のマップでも Airship の湧き場所選びの画面を出す方法、部屋を立てたらコードをコピーする機能、役職ごとに一緒に出ない役職を選ぶ設定、SNR から移した役職 (シェリフ・マッドメイト・メイヤー・霊媒師・ベイティング・ジャッカルとサイドキック・ヴァルチャー・アーソニスト・ナイスゲッサーとイビルゲッサー・カモフラージャー・突き落と師・ロケットランチャー・リモコン・ユビキタス・ホスフォラス・トリガーハッピー・マッシュルーマー・ラバーズ、ゲッサーの役職を選ぶ画面の作り)。移した役職の能力ボタンの絵 (`Resources/Icons/snr_*.png`) は MRP で作り直した物です。チキン・マグロ・クノイチの役職、アムネシアの発想、ノヴァの元になった波動砲の役職は UchuAddon を経由して取り込んでいます
+  試合の出来事を配る仕組み (配っている最中の受け手の追加・削除の扱い)、公式サーバーに全員導入の mod として部屋を登録する方法、機器 (アドミン・カメラ・バイタル) を使えなくする方法、前の試合で外れた人ほど役職やインポスターに当たりやすくする配り方、Airship 以外のマップでも Airship の湧き場所選びの画面を出す方法、部屋を立てたらコードをコピーする機能、役職ごとに一緒に出ない役職を選ぶ設定、SNR から移した役職 (シェリフ・マッドメイト・メイヤー・霊媒師・ベイティング・ジャッカルとサイドキック・ジャッカルフレンズ・ヴァルチャー・アーソニスト・ナイスゲッサーとイビルゲッサー・カモフラージャー・突き落と師・ロケットランチャー・リモコン・ユビキタス・ホスフォラス・トリガーハッピー・マッシュルーマー・ラバーズ、ゲッサーの役職を選ぶ画面の作り)。移した役職の能力ボタンの絵 (`Resources/Icons/snr_*.png`) は MRP で作り直した物です。マグロ・クノイチの役職、アムネシアの発想、ノヴァの元になった波動砲の役職は UchuAddon を経由して取り込んでいます
 * **[Reactor](https://github.com/NuclearPowered/Reactor) (NuclearPowered、LGPL-3.0)**  
   公式サーバーかどうかの判定 (接続先のアドレスで見る)
 * **[Town of Us Mira](https://github.com/AU-Avengers/TOU-Mira) (AU-Avengers、GPL-3.0)**  
-  試合の途中で本編の役職を付け直す方法、試合の終わりから自動でロビーへ戻る機能 ([AutoRejoin](https://github.com/Maxi0fc/AutoRejoin) 由来)、危ない mod の一覧 (入ってきた人の mod を照らし合わせる)、会議のスキップの札を無くす設定、本編の保存ファイルを mod 用に分ける方法、クールダウンの残り 10 秒からの小数の表示、本編の細かい調整 (医務室のスキャンを同時にする・スキャンの前に台へ歩かない・作業中にクールダウンを止める・見えない所のベントの出入りを隠す・ほかの人のペットの見え方)、アドオンのエゴイスト (UchuAddon を経由して取り込み)
+  試合の途中で本編の役職を付け直す方法、試合の終わりから自動でロビーへ戻る機能 ([AutoRejoin](https://github.com/Maxi0fc/AutoRejoin) 由来)、危ない mod の一覧 (入ってきた人の mod を照らし合わせる)、会議のスキップの札を無くす設定、本編の保存ファイルを mod 用に分ける方法、クールダウンの残り 10 秒からの小数の表示、本編の細かい調整 (医務室のスキャンを同時にする・スキャンの前に台へ歩かない・作業中にクールダウンを止める・見えない所のベントの出入りを隠す・ほかの人のペットの見え方)、生存者の役職、アドオンのエゴイスト (UchuAddon を経由して取り込み)
 * **[Town of Us Reactivated](https://github.com/eDonnes124/Town-Of-Us-R) (eDonnes124、GPL-3.0)**  
   名前の横にタスクの進み具合を出す機能
 * **[End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful、GPL-3.0)**  
-  起動の高速化 (`patcher/` のほぼ全体・パッチ適用の高速化)、GC の先回しの実装 (ゲーム側の GC も演出中に回す)、設定画面のフォントと検索の一致判定、起動直後のアカウント表示の停止、開発用の道具 (実機テストの操作口・重さの測り方・起動の時間ログ・AssetBundle の焼き方・Android で使えない API の照合)、Android の起動アプリへの改良 (mod と interop の同梱・落ちた時と固まった時の記録・ログの共有・itch.io でのログイン)、Android 版の実行基盤に手を入れる道具 (`tools/AndroidDotnetPatch`・`tools/InteropWbPatch`)、演出用の部品 (毎フレームの算術・プレイヤーの色で塗る手・シェーダの AssetBundle を読む仕組み)、ポータルの見た目 (行き先の景色を映す窓と床の装置)、更新ボタンのリリースの読み方 (プレリリースも含めて最新の 1 件を読む)、タグの付いたリリースに DLL を添付して配る流れ、コンソール窓を触ってもゲームが固まらないようにする仕組み (書き込みを別のスレッドへ移す・選択を自動で外す)、毎フレーム書き換える文字に、作り置きの文字列を渡す仕組み、PC 版のインストーラーの作り。次の機能は End K not を経由して取り込んでいます: 公式サーバーに mod の部屋として名乗る方法、公式サーバーかどうかの判定、マウスのホイールで視野を広げる機能、ホストのキー操作、チャットのコマンドの補完と貼り付け、端末ごとの設定を本編の設定画面に並べる方法、設定画面にタブを足す方法、設定を見る画面の並び
+  起動の高速化 (`patcher/` のほぼ全体・パッチ適用の高速化)、演出中にゲーム側の GC も先に回す実装、設定画面の検索の一致判定、設定画面の字のフォントを本編のフォントと組み合わせる作り、起動直後のアカウント表示の停止、開発用の道具 (実機テストの操作口・重さの測り方・起動の時間ログ・AssetBundle の焼き方・Android で使えない API の照合)、Android の起動アプリへの改良 (同梱した mod と interop を変わった時だけ入れ直す仕組み・アプリの中に残す記録 (落ちる直前のログ・固まった時のスタック)・ログの共有・起動アプリの中での itch.io のログインとログイン情報の暗号化保存・起動アプリの画面)、Android 版の実行基盤に手を入れる道具 (`tools/AndroidDotnetPatch`・`tools/InteropWbPatch`)、演出用の部品 (毎フレームの算術・プレイヤーの色で塗る手・シェーダを Windows 用と Android 用の AssetBundle に焼いて読む構成)、ポータルの見た目 (行き先の景色を映す窓と床の装置)、更新ボタンのリリースの読み方 (プレリリースも含めて最新の 1 件を読む)、コンソール窓を触ってもゲームが固まらないようにする仕組み (書き込みを別のスレッドへ移す・選択を自動で外す)、毎フレーム書き換える文字に、作り置きの文字列を渡す仕組み、ゲームの場所を自動で探す PC 版のインストーラーの作り
 * **[Endless Host Roles](https://github.com/Gurge44/EndlessHostRoles) (Gurge44、GPL-3.0) / [TownOfHost-K](https://github.com/KYMario/TownOfHost-K) (KYMario、GPL-3.0) / [Town Of Host](https://github.com/tukasa0001/TownOfHost) (tukasa0001、GPL-3.0)**  
-  ロゴ演出の短縮、設定画面にタブを足す方法、公式サーバーに mod の部屋として名乗る方法、BAN 一覧とホワイトリスト (入室時の照合・BAN した人の記録)、チャットの荒らし対策 (禁止語・開始の催促)、設定画面の検索欄 (チャットの入力欄を複製する方法)、設定を見る画面の並び、ホストのキー操作 (廃村・会議・開始の数えを飛ばす・ロビーで Enter で開始)、チャットコマンドの種類と名前、マウスのホイールで視野を広げる機能、チャットのコマンドの補完と貼り付け、チャットで前に送った文を呼び戻す機能、開始の数えの長さと取りやめ、VIP 一覧、端末ごとの設定を本編の設定画面に並べる方法、チャットの暗い色、試合の終わりの画面に全員の役職を並べる機能、ログをまとめて保存するコマンド、試合中の放置の検知、試合の終わりから自動でロビーへ戻る機能と切れた部屋へ入り直す仕組み ([AutoRejoin](https://github.com/Maxi0fc/AutoRejoin) 由来)、ゲッサーの役職を選ぶ画面 (会議の上に出す小さい端末・陣営のタブ・選んでからもう一度押して決める)、メインメニューの更新ボタン (リリースの DLL をダウンロードし、今の DLL を .bak に改名して置き換え、次の起動で消す方法・本編の確認窓に 2 つのボタンを並べる方法)、耳打ち、観戦、ポータルメーカーの動き (2 つ置くと近づいた人が行き来する)、文のファイル (言語ごとの .dat) を書き換えてゲームの文を変える仕組み、部屋の人数ごとにインポスターと第三陣営の数を決める機能、試合のルール (ランダムスポーンの部屋の座標・機器を使えなくする機能・タスクの無効化・ジップラインの制限・はしごからの落下・Airship の動く床を止める機能・会議の後のドアのリセット・Airship の電気室の壁・停電の配電盤の制限とスイッチの判定・サボタージュの無効化とクールダウン・ランダムマップ・マップごとのキル待ちと歩く速さ・会議の無効・タスク勝利の無効・全員ベント)
+  ロゴ演出の短縮、設定画面にタブを足す方法、ファイルから字のフォントを作る方法、タグの付いたリリースに DLL を添付して配る流れ、公式サーバーに mod の部屋として名乗る方法、BAN 一覧とホワイトリスト (入室時の照合・BAN した人の記録)、チャットの荒らし対策 (禁止語・開始の催促)、設定画面の検索欄 (チャットの入力欄を複製する方法)、設定を見る画面の並び、ホストのキー操作 (廃村・会議・開始の数えを飛ばす・ロビーで Enter で開始)、チャットコマンドの種類と名前、マウスのホイールで視野を広げる機能、チャットのコマンドの補完と貼り付け、チャットで前に送った文を呼び戻す機能、開始の数えの長さと取りやめ、VIP 一覧、端末ごとの設定を本編の設定画面に並べる方法、チャットの暗い色、試合の終わりの画面に全員の役職を並べる機能、ログをまとめて保存するコマンド、試合中の放置の検知、試合の終わりから自動でロビーへ戻る機能と切れた部屋へ入り直す仕組み ([AutoRejoin](https://github.com/Maxi0fc/AutoRejoin) 由来)、ゲッサーの役職を選ぶ画面 (会議の上に出す小さい端末・陣営のタブ・選んでからもう一度押して決める)、メインメニューの更新ボタン (リリースの DLL をダウンロードし、今の DLL を .bak に改名して置き換え、次の起動で消す方法・本編の確認窓に 2 つのボタンを並べる方法)、耳打ち、観戦、ポータルメーカーの動き (2 つ置くと近づいた人が行き来する)、文のファイル (言語ごとの .dat) を書き換えてゲームの文を変える仕組み、部屋の人数ごとにインポスターと第三陣営の数を決める機能、試合のルール (ランダムスポーンの部屋の座標・機器を使えなくする機能・タスクの無効化・ジップラインの制限・はしごからの落下・Airship の動く床を止める機能・会議の後のドアのリセット・Airship の電気室の壁・停電の配電盤の制限とスイッチの判定・サボタージュの無効化とクールダウン・ランダムマップ・マップごとのキル待ちと歩く速さ・会議の無効・タスク勝利の無効・全員ベント)
 * **[CrowdedMod](https://github.com/CrowdedMods/CrowdedMod) (andry08 & CrowdedMods、MIT・ライセンス文は [licenses/CrowdedMod-MIT.txt](licenses/CrowdedMod-MIT.txt)) / [NikoCat233 の CrowdedMod](https://github.com/NikoCat233/CrowdedMod) (Reactor 無しで動く形、MIT) / [Endless Host Roles](https://github.com/Gurge44/EndlessHostRoles) (Gurge44、GPL-3.0)**  
   15 人を超える部屋 (部屋の作成画面の定員、会議の名札・変身の相手選び・バイタルのページ送り、Mira HQ のドアのログ)
 * **[The Other Roles](https://github.com/TheOtherRolesAU/TheOtherRoles) (TheOtherRolesAU、GPL-3.0)**  
-  試合の終わりの画面に全員の役職を並べる機能、試合中に F1 で設定を見る機能、会議の名札にボタンを足す方法、ゲッサーの役職を選ぶ画面 (会議の名札の部品で役職のボタンを並べる方法)、16 人以上の部屋で本編の色の表を伸ばす方法、ポータルメーカーの役職 (発想は K3ndo、作りは Gendelo と Mallöris)、会議でスキップできなくする設定と投票しなかった人を自分への票にする設定、幽霊の時に見る情報を端末ごとに切る設定、死んだインポスターのサボタージュを止める設定、前の試合の最初の犠牲者に付ける盾、停電中の監視カメラの暗視、ライターの役職。霊媒師・ジャッカルとサイドキック・ヴァルチャー・カモフラージャー・ゲッサー・ベイティングの役職は SNR を経由して取り込んでいます。ウィッチの役職は UchuAddon を経由して取り込んでいます
+  試合の終わりの画面に全員の役職を並べる機能、試合中に F1 で設定を見る機能、会議の名札にボタンを足す方法、ゲッサーの役職を選ぶ画面 (会議の名札の部品で役職のボタンを並べる方法)、16 人以上の部屋で本編の色の表を伸ばす方法、ポータルメーカーの役職 (発想は K3ndo、作りは Gendelo と Mallöris)、会議でスキップできなくする設定と投票しなかった人を自分への票にする設定、幽霊の時に見る情報を端末ごとに切る設定、死んだインポスターのサボタージュを止める設定、前の試合の最初の犠牲者に付ける盾、停電中の監視カメラの暗視、ライターの役職。シェリフ・メイヤー・アーソニスト・ラバーズ・霊媒師・ジャッカルとサイドキック (発想は Dhalucard)・ヴァルチャー・カモフラージャー (発想は Ottomated)・ゲッサー・ベイティングの役職は SNR を経由して取り込んでいます。ウィッチの役職は UchuAddon を経由して取り込んでいます
 * **[TheOtherRoles-GM](https://github.com/yukinogatari/TheOtherRoles-GM) (yukinogatari、GPL-3.0)**  
-  ネコカボチャ・シリアルキラーの役職と、アドオンのウォッチャー (UchuAddon を経由して取り込み)
+  ネコカボチャ・シリアルキラーの役職と、アドオンのウォッチャー (UchuAddon を経由して取り込み)、マッドメイトの役職 (作りは tomarai・SNR を経由して取り込み)
+* **[TheEpicRoles](https://github.com/LaicosVK/TheEpicRoles) (LaicosVK ほか、GPL-3.0)**  
+  前の試合の最初の犠牲者に付ける盾の発想 (The Other Roles を経由して取り込み)
 * **[Jester](https://github.com/Maartii/Jester) (Maartii)**  
   ジェスターの役職
 * **[MiraAPI](https://github.com/All-Of-Us-Mods/MiraAPI) (All-Of-Us-Mods、LGPL-2.1)**  
   サボタージュの画面の点滅と警報音を端末ごとに切る機能、右下のボタンの大きさを端末ごとに変える機能、会議の票の重みを票 1 つずつ結果に並べて配る方法、会議の名札の ✓ と ✗ の並びに役職の能力のボタンを足す方法、本編の変身の画面を人を選ぶ画面に使う方法、能力の効果の残りをボタンに出す方法、本編のキーボードの割り当ての画面に mod の操作を足す方法
 * **[Vanilla Enhancements](https://github.com/xChipseq/VanillaEnhancements) (xChipseq、GPL-3.0)**  
   会議の画面の暗い色
-* **[TownOfNext](https://github.com/KARPED1EM/TownOfNext) (KARPED1EM、GPL-3.0)**  
+* **[TownOfNext](https://github.com/TownOfNext/TownOfNext) (KARPED1EM ほか、GPL-3.0)**  
   チャットの文字数の上限を広げる方法
 * **[TownOfPlus](https://github.com/tugaru1975/TownOfPlus) (tugaru1975、GPL-3.0) / [TownOfHost_Y](https://github.com/Yumenopai/TownOfHost_Y) (Yumenopai、GPL-3.0)**  
-  マウスのホイールで視野を広げる機能、オートプシーの役職 (TownOfHost_Y)
+  マウスのホイールで視野を広げる機能、設定画面にタブを足す方法とオートプシーの役職 (TownOfHost_Y)
 * **[MoreGamemodes](https://github.com/Rabek009/MoreGamemodes) (Rabek009、GPL-3.0)**  
   試合の途中で抜けた後の参加の待ち時間を消す方法
 * **[TownOfHost-Pko](https://github.com/satokazoku/TownOfHost-Pko) (satokazoku ほか、GPL-3.0)**  
@@ -160,32 +162,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 * **[LotusContinued](https://github.com/Lotus-AU/LotusContinued) (Lotus-AU、GPL-3.0)**  
   入室ホワイトリスト、フォントをファイルから作る方法
 * **[UchuAddon](https://github.com/TeamUchuaddon/UchuAddon) (TeamUchuAddon 制作)**  
-  アルケミスト・ポラリス・ソナー・わら人形・エクリプス・プロキシ・モニター・ボイジャー・アンカーの役職、ノヴァの役職の案 (UchuAddon では SNR が元) と、アドオンのインビジブル・ミラクル。UchuAddon の絵や音は使っていません
+  アルケミスト・ポラリス・ソナー・わら人形・エクリプス・プロキシ・モニター・ボイジャー・アンカーの役職、ノヴァの役職の案 (UchuAddon では SNR が元) と、アドオンのインビジブル・ミラクル・チキン。UchuAddon の絵や音は使っていません
 * **[TownOfHost-hamo](https://github.com/rar006/TownOfHost-hamo) (rar006、GPL-3.0)**  
-  共同制作者の haru の mod。守護者・フェイクジェスター・ヌルの役職
+  共同制作者の haru の mod。守護者・フェイクジェスター・ヌル・ラクーンの役職
 * **[Town of Us](https://github.com/slushiegoose/Town-Of-Us)** (slushiegoose)  
-  メイヤーとアーソニストの役職 (SNR を経由して取り込み)、生存者の役職
+  メイヤーとアーソニストの役職 (The Other Roles と SNR を経由して取り込み)
 * **[Sheriff Mod](https://github.com/Woodi-dev/Among-Us-Sheriff-Mod)** (Woodi-dev)  
-  シェリフの役職 (SNR を経由して取り込み)
-* **[au libhalt net](https://au.libhalt.net/)**  
-  マッドメイトの役職 (SNR を経由して取り込み)
-* **[Among-Us-Love-Couple-Mod](https://github.com/Woodi-dev/Among-Us-Love-Couple-Mod)** (Woodi-dev)  
-  ラバーズの役職 (SNR を経由して取り込み)
+  シェリフの役職 (The Other Roles と SNR を経由して取り込み)
+* **Among-Us-Love-Couple-Mod** (Woodi-dev・公開は終了)  
+  ラバーズの役職 (The Other Roles と SNR を経由して取り込み)
 
 ### 🔹 主要オープンソースプロジェクト
-* **BepInEx** ([BepInEx Team](https://github.com/BepInEx/BepInEx))  
+* **BepInEx** ([BepInEx Team](https://github.com/BepInEx/BepInEx)) - LGPL-2.1 License  
   Unity/Il2Cpp ゲーム向けのプラグインフレームワークおよびローダー。
-* **Il2CppInterop** ([BepInEx Team](https://github.com/BepInEx/Il2CppInterop))  
+* **Il2CppInterop** ([BepInEx Team](https://github.com/BepInEx/Il2CppInterop)) - LGPL-3.0 License  
   Il2Cpp C++ コードと C# (.NET) 間の相互運用ライブラリ。
 * **[FusionCore](https://github.com/All-Of-Us-Mods/FusionCore) (XtraCube / All-Of-Us-Mods、GPL-3.0)**  
   Android の起動アプリ (`Android/Launcher/`)。FusionCore の名前と見た目を変えて APK にしたもので、コードの大部分は FusionCore のものです。起動の入口の部品 (`fusionApp/src/main/jni/main/`) は [libmain.so](https://github.com/springmusk026/libmain.so) (springmusk026) が元です。同梱しているライブラリは [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) に載せています
 * **[AndroidUtilities / AuthFix](https://github.com/All-Of-Us-Mods/AndroidUtilities) (All-Of-Us-Mods、Starlight 用)**  
   Android 版で itch.io のキーを使って EOS にログインする方法、広告の初期化を止める方法
+* **[Starlight](https://github.com/All-Of-Us-Mods/starlight-releases) (All-Of-Us-Mods)**  
+  Android の起動アプリに mod と interop を同梱して入れる作り、起動アプリから itch.io の OAuth でログインする作り
 
 ### 🔹 システム・ランタイム・コンポーネント
 * **.NET Runtime & Base Class Libraries** ([Microsoft Corporation](https://dotnet.microsoft.com/)) - MIT License
 * **Opus** ([Xiph.Org Foundation ほか](https://github.com/xiph/opus)) - BSD-3-Clause License (ボイスチャットの声の圧縮)
-* **OpenSSL** ([The OpenSSL Project](https://www.openssl.org/)) - Apache-2.0 / OpenSSL License
+* **OpenSSL** ([The OpenSSL Project](https://www.openssl.org/)) - Apache-2.0 License
 * **Dobby Instruction Relocation Engine** ([jmpews](https://github.com/jmpews/Dobby)) - Apache-2.0 License
 * **Android Jetpack / AndroidX Libraries** ([Google LLC](https://developer.android.com/jetpack/androidx)) - Apache-2.0 License
 * **Kotlin Standard Library** ([JetBrains s.r.o.](https://kotlinlang.org/)) - Apache-2.0 License

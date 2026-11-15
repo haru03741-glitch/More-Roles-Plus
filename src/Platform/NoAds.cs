@@ -1,4 +1,5 @@
 // Ported from https://github.com/waffle-ful/Aeterna-End-K-not Modules/Android/ItchLogin.cs (GPL-3.0)
+// Disabling ad initialization follows https://github.com/All-Of-Us-Mods/AndroidUtilities AuthFix
 #if ANDROID
 using System;
 using HarmonyLib;

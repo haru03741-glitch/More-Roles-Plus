@@ -1,3 +1,0 @@
-# From: に出す名前 (役職のコードの Origin => "libhalt" で使う)
-name: au libhalt net
-color: #FFC0CB

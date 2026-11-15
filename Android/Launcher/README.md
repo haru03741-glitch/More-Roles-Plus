@@ -50,7 +50,11 @@ Release builds are signed only when `MRP_KEYSTORE_PATH`, `MRP_KEYSTORE_PASSWORD`
 ## Credits
 
 - [End K not](https://github.com/waffle-ful/Aeterna-End-K-not) (waffle-ful, GPL-3.0): the launcher changes on top of
-  FusionCore (bundled mod and interop install, crash and hang records, log sharing, itch.io sign-in, launcher UI).
+  FusionCore (reinstalling the bundled mod and interop only when they change, in-app crash and hang records,
+  log sharing, in-launcher itch.io sign-in with encrypted token storage, launcher UI).
+- [AndroidUtilities / AuthFix](https://github.com/All-Of-Us-Mods/AndroidUtilities) and
+  [Starlight](https://github.com/All-Of-Us-Mods/starlight-releases) by All-Of-Us-Mods: signing in to EOS with an
+  itch.io key, itch.io OAuth sign-in from the launcher, and bundling the mod and interop in the APK.
 - [FusionCore](https://github.com/All-Of-Us-Mods/FusionCore), [BepInExFusion](https://github.com/All-Of-Us-Mods/BepInExFusion)
   and [Il2CppInteropFusion](https://github.com/All-Of-Us-Mods/Il2CppInteropFusion) by All-Of-Us-Mods.
 - Third-party licenses are listed in the repository root [`THIRD-PARTY-NOTICES.md`](../../THIRD-PARTY-NOTICES.md).
