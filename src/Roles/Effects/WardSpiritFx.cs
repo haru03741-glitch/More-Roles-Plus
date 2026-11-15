@@ -50,11 +50,103 @@ internal static class WardSpiritFx
             (Random.value - 0.5f) * 0.08f, MoteRise * (0.4f + 0.4f * Random.value), MoteLife * 0.6f, MoteS * (0.5f + 0.5f * Random.value), Time.time);
     }
 
+    // 守り霊に運ばれて宙に浮いている体を包む淡い光と、真下の床に落ちる体の影 (高いほど小さく薄い)。
+    // 運ぶ側は物理の刻みで Hold を呼び続け、光は描画のコマごとに体を追う。呼ばれなくなると薄れて消える
+    private struct Aura
+    {
+        public PlayerControl Pc;
+        public byte Id;
+        public SpriteRenderer Body, Floor;
+        public float A, Lift, Seen;
+        public bool On;
+    }
+    private static readonly Aura[] Auras = new Aura[4];
+    private static int _auras;
+    private const float AuraA = 0.5f, FloorA = 0.34f, AuraIn = 3f, AuraOut = 4f, AuraHold = 0.12f;
+
+    internal static void Hold(PlayerControl p, float lift)
+    {
+        if (!p || !ShipStatus.Instance) return;
+        byte id = p.PlayerId;
+        int slot = -1, free = -1;
+        for (int i = 0; i < Auras.Length; i++)
+        {
+            if (Auras[i].On && Auras[i].Id == id) { slot = i; break; }
+            if (free < 0 && !Auras[i].On) free = i;
+        }
+        if (slot < 0)
+        {
+            if (free < 0) return;
+            slot = free;
+            ref var n = ref Auras[slot];
+            if (!n.Body)
+            {
+                n.Body = FxRoot.New("MrpWardAura").AddComponent<SpriteRenderer>();
+                n.Floor = FxRoot.New("MrpWardPool").AddComponent<SpriteRenderer>();
+                n.Body.sprite = n.Floor.sprite = _soft ??= FxSprites.Rect(32, 32, FxSprites.Soft, "MrpWardSoft");
+            }
+            n.Body.gameObject.SetActive(true);
+            n.Floor.gameObject.SetActive(true);
+            n.Id = id;
+            n.A = 0f;
+            n.On = true;
+            _auras++;
+        }
+        ref var a = ref Auras[slot];
+        a.Pc = p;
+        a.Lift = lift;
+        a.Seen = Time.time;
+    }
+
+    private static void TickAuras(float now, float dt)
+    {
+        for (int i = 0; i < Auras.Length; i++)
+        {
+            ref var a = ref Auras[i];
+            if (!a.On) continue;
+            bool held = now - a.Seen < AuraHold && a.Pc && a.Body;
+            a.A = held ? FxMath.Min(1f, a.A + AuraIn * dt) : a.A - AuraOut * dt;
+            if (a.A <= 0f || !a.Body || !a.Pc)
+            {
+                a.On = false;
+                a.Pc = null;
+                _auras--;
+                if (a.Body) { a.Body.gameObject.SetActive(false); a.Floor.gameObject.SetActive(false); }
+                continue;
+            }
+            var pos = a.Pc.transform.position;
+            float breathe = 0.92f + 0.08f * FxMath.Sin(now * 2.1f + a.Id);
+            // 体は足元から Lift だけ上 (世界の単位)。光は体の中ほどに体より手前、影は足元の床に平たく敷いて人より奥へ
+            a.Body.transform.position = FxMath.V3(pos.x, pos.y + 0.05f + a.Lift, pos.z - 0.002f);
+            a.Body.transform.localScale = FxMath.V3(1.5f * breathe, 1.15f * breathe, 1f);
+            a.Body.color = FxMath.Rgba(1f, 0.93f, 0.72f, AuraA * a.A * breathe);
+            a.Floor.transform.position = FxMath.V3(pos.x, pos.y - 0.36f, pos.z + 0.004f);
+            float fs = 1f - 1.5f * a.Lift;
+            a.Floor.transform.localScale = FxMath.V3(0.75f * fs, 0.26f * fs, 1f);
+            a.Floor.color = FxMath.Rgba(0f, 0f, 0f, FloorA * a.A * fs);
+        }
+    }
+
+    private static void HideAuras()
+    {
+        for (int i = 0; i < Auras.Length; i++)
+        {
+            ref var a = ref Auras[i];
+            if (!a.On) continue;
+            a.On = false;
+            a.Pc = null;
+            if (a.Body) { a.Body.gameObject.SetActive(false); a.Floor.gameObject.SetActive(false); }
+        }
+        _auras = 0;
+    }
+
     // 毎フレーム (Plugin の Update から)
     internal static void Tick()
     {
+        if (_live == 0 && _auras == 0) return;
+        if (!ShipStatus.Instance || RewindPlayback.Active || MeetingHud.Instance) { Hide(); HideAuras(); return; }
+        if (_auras > 0) TickAuras(Time.time, Time.deltaTime);
         if (_live == 0) return;
-        if (!ShipStatus.Instance || RewindPlayback.Active || MeetingHud.Instance) { Hide(); return; }
         float now = Time.time, dt = Time.deltaTime;
         for (int i = 0; i < Grains.Length; i++)
         {

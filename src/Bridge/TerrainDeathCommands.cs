@@ -23,7 +23,17 @@ internal static class TerrainDeathCommands
             // rescue <助ける人> <瀕死の人>: その人が長押しで助け出したのと同じ道で (ホスト)
             if (a.Length >= 3 && a[0] == "rescue" && byte.TryParse(a[1], out byte rb) && byte.TryParse(a[2], out byte rt))
             {
-                string why = Rescue.HostTry(PortKit.ById(rb), PortKit.ById(rt));
+                var helper = PortKit.ById(rb);
+                // 幽霊が助ける人なら守り霊の「救う」と同じ動き (回数は数えない・この端末だけ)
+                if (helper && helper.Data != null && helper.Data.IsDead)
+                {
+                    var tp = PortKit.ById(rt);
+                    if (!tp || !Rescue.SpiritCanTake(rb, rt)) { reply("ERR tdeath rescue spirit"); return; }
+                    Rescue.SpiritUse(helper, tp);
+                    reply("OK tdeath rescue spirit");
+                    return;
+                }
+                string why = Rescue.HostTry(helper, PortKit.ById(rt));
                 reply(why == null ? "OK tdeath rescue" : "ERR tdeath rescue " + why);
                 return;
             }

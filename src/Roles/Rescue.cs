@@ -32,6 +32,11 @@ internal static class Rescue
     private const float StillDelay = 0.15f; // 止まってからこの秒で止まった姿へ (歩きの切れ目でちらつかせない)
     private const float ClingBack = 0.8f; // 縁から内側へこれだけ引き戻せたら助かる
     private const float DriftEvery = 0.1f;
+    private const float FloatLift = 0.35f;  // 守り霊に運ばれる体を浮かせる高さ (絵の単位)
+    private const float FloatRise = 0.5f;   // 浮き上がるまでの秒
+    private const float FloatBob = 0.035f;  // 浮いている間のゆっくりした上下の幅
+    private const string FloatClip = "floatcarried", DragClip = "dragged", SpiritClip = "ghostcarry";
+    private const float SpiritHoldX = 0.6f;  // 守り霊は浮かせた人を胸の前で抱えるので、生きている人が引きずる時より近い
 
     private static Lifespan _life;
     private static ModButton _button;
@@ -44,10 +49,10 @@ internal static class Rescue
         public byte Tid, ById;
         public bool Spirit, Cling;
         public sbyte Flip = -1; // 最後に書いた引きずられる体の向き (-1 = まだ)
-        public float StartMouth, SafeFor, NextDrift;
+        public float StartMouth, SafeFor, NextDrift, Born, LiftK = -1f; // LiftK = 絵の単位 1 が世界の何単位か (浮かせる体の光を合わせる)
         public Vector2 ByLast;
         public float StillFor, NextPose;
-        public bool Walking, Posed, FaceLeft;
+        public bool Walking, Posed, FaceLeft, HeadLeft;
         public sbyte Side;                      // 引きずられる体が運ぶ人のどちら側か (1 = 右・-1 = 左・0 = まだ)
     }
     private static readonly List<Haul> Hauls = new();
@@ -183,7 +188,7 @@ internal static class Rescue
         var b = PortKit.ById(by);
         if (!t || !b || t.Data == null || t.Data.IsDead || Carried(target) || Hauling(by) || !Dying(target)) return;
         bool cling = Terrain.CrewGrip.Clinging(target);
-        var h = new Haul { T = t, By = b, Tid = target, ById = by, Spirit = spirit, Cling = cling };
+        var h = new Haul { T = t, By = b, Tid = target, ById = by, Spirit = spirit, Cling = cling, Born = Time.time };
         if (cling) h.StartMouth = Terrain.Decompression.MouthDist(t.GetTruePosition(), out _);
         if (Hauls.Count == 0) _shipGen = Terrain.GameClock.ShipGen;
         Hauls.Add(h);
@@ -191,7 +196,8 @@ internal static class Rescue
         TerrainDeath.Hold(target, true);
         Terrain.CrewGrip.Hold(target, true);
         CrewFlip.Stop(target);
-        CrewFlip.Play(t, "dragged");
+        // 守り霊は生きている人には見えないので、見えない手に抱えられて宙に浮き、力の抜けた姿で運ばれる
+        CrewFlip.Play(t, spirit ? FloatClip : DragClip);
         if (b.AmOwner)
         {
             _localHaul = target;
@@ -226,7 +232,46 @@ internal static class Rescue
     private static void KeepDragged()
     {
         if (RewindPlayback.Active) return;
-        foreach (var h in Hauls) if (h.T && !CrewFlip.IsPlaying(h.Tid)) CrewFlip.Play(h.T, "dragged");
+        foreach (var h in Hauls) if (h.T && !CrewFlip.IsPlaying(h.Tid)) CrewFlip.Play(h.T, h.Spirit ? FloatClip : DragClip);
+    }
+
+    // 全員: 守り霊に運ばれる体はゆっくり浮き上がり、浮いたまま息をするように上下し、淡い光に包まれる
+    private static void Float(Haul h, float now)
+    {
+        if (!h.T) return;
+        float u = (now - h.Born) / FloatRise;
+        float rise = u >= 1f ? 1f : u * u * (3f - 2f * u);
+        float lift = rise * (FloatLift + FloatBob * FxMath.Sin((now - h.Born) * 1.9f));
+        CrewFlip.Lift(h.Tid, lift);
+        // 頭を守り霊の方へ向ける (体は本編の同期で動くので、歩く向きに任せると逆を向くことがある)
+        if (h.By)
+        {
+            float fx = h.By.GetTruePosition().x - h.T.GetTruePosition().x;
+            if (fx * fx > 0.01f) h.HeadLeft = fx < 0f;
+            CrewFlip.Face(h.Tid, h.HeadLeft);
+        }
+        if (h.LiftK < 0f)
+        {
+            var body = h.T.cosmetics && h.T.cosmetics.currentBodySprite != null ? h.T.cosmetics.currentBodySprite.BodySprite : null;
+            h.LiftK = body ? body.transform.lossyScale.y : 0.5f;
+        }
+        if (h.T.Visible) WardSpiritFx.Hold(h.T, lift * h.LiftK);
+    }
+
+    // 全員: 守り霊は浮かせた人の方を向いて両手で抱える (幽霊の画面にだけ見える)。歩く/止まるで絵は変えない (幽霊は滑って動く)
+    private static void PoseSpirit(Haul h, float now)
+    {
+        var b = h.By;
+        if (!b || !h.T) return;
+        float fx = h.T.GetTruePosition().x - b.GetTruePosition().x;
+        if (fx * fx > 0.01f) h.FaceLeft = fx < 0f;
+        if (!(h.Posed && CrewFlip.IsPlaying(h.ById)))
+        {
+            if (now < h.NextPose) return;
+            h.NextPose = now + 0.25f;
+            h.Posed = CrewFlip.Play(b, SpiritClip, ghost: true) || h.Posed;
+        }
+        Grip(h);
     }
 
     // 全員: 生きている運ぶ人は、引きずる人の方を向いて両手で掴み、後ろ向きに下がる姿 (歩いている間は歩く連番・止まると踏ん張る 2 枚)。
@@ -287,6 +332,7 @@ internal static class Rescue
             bool gone = !h.T || h.T.Data == null || h.T.Data.IsDead || h.T.Data.Disconnected || !Dying(h.Tid);
             if (gone) { End(h.Tid, true); continue; }
             if (!h.Spirit) PoseCarrier(h, dt, now);
+            else { Float(h, now); PoseSpirit(h, now); }
             if (!host) continue;
             bool byGone = !h.By || h.By.Data == null || h.By.Data.Disconnected || h.By.inVent || h.By.Data.IsDead != h.Spirit;
             Vector2 tp = h.T.GetTruePosition(), bp = h.By.GetTruePosition();
@@ -343,7 +389,7 @@ internal static class Rescue
             }
             else
             {
-                want = FxMath.V2(at.x + h.Side * HoldX, at.y + HoldY);
+                want = FxMath.V2(at.x + h.Side * (h.Spirit ? SpiritHoldX : HoldX), at.y + HoldY);
                 float wx = want.x - now.x, wy = want.y - now.y;
                 if (wx * wx + wy * wy < 0.0004f) continue;
                 if (Blocked(at, want, h.Cling))

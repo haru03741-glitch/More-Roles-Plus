@@ -60,6 +60,8 @@ internal static partial class CrewFlip
         public float Bx, By;                      // 体の絵の位置に今足している分 (足元合わせ)
         public SpriteRenderer Under;              // 後ろの層 (体の子・本人の色で塗る)
         public float UnderZ = float.NaN;          // 後ろの層を置く世界の奥行き (NaN = 体のすぐ奥)
+        public float Lift;                        // 体と着せ替えを持ち上げる高さ (絵の単位・宙に浮かせて運ぶ時)
+        public bool Ghost;                        // 幽霊の体 (死んでいるのが当たり前)
         public sbyte Face = -1;                   // 向かせる向き (-1 = 本編の向きのまま・0 = 右・1 = 左)。歩く向きと逆を向いたまま下がる姿に
     }
 
@@ -76,10 +78,11 @@ internal static partial class CrewFlip
     // seconds = 出しておく長さ (0 = 連番が終わるまで。回る連番は Stop まで)。
     // fallen = 倒れる流し方 (服と、頭の無い絵へ移る時の帽子・バイザーを周りへ落とす。流している間に死んだら倒れた姿のまま死体になる)
     // reverse = 終わりのコマから始めのコマへ、seconds の間に流しきる (倒れた姿から起き上がる)。回る連番には使わない
-    internal static bool Play(PlayerControl pc, string name, float seconds = 0f, bool fallen = false, bool reverse = false)
+    // ghost = 幽霊の体の絵を描き替える (幽霊の画面にだけ見える。死んでいても止めない)
+    internal static bool Play(PlayerControl pc, string name, float seconds = 0f, bool fallen = false, bool reverse = false, bool ghost = false)
     {
         Clip c = Find(name);
-        if (!pc || c == null || pc.Data == null || pc.Data.IsDead || pc.inVent || pc.cosmetics == null) { Refused++; return false; }
+        if (!pc || c == null || pc.Data == null || pc.Data.IsDead != ghost || pc.inVent || pc.cosmetics == null) { Refused++; return false; }
         if (!Load(c)) { NoArt++; return false; }
         byte id = pc.PlayerId;
         // 体や着せ替えを別の演出が動かしている・隠している間は始めない (隠す/出すの取り合いになる)
@@ -92,7 +95,7 @@ internal static partial class CrewFlip
         Roles.SamuraiBlade.ReleaseBody(id);
         if (Live.Count == 0) _shipGen = Terrain.GameClock.ShipGen;
 
-        var s = new Show { Pc = pc, Id = id, C = c, Start = Time.time, Body = body, Cos = cos.transform, Fallen = fallen };
+        var s = new Show { Pc = pc, Id = id, C = c, Start = Time.time, Body = body, Cos = cos.transform, Fallen = fallen, Ghost = ghost };
         s.Until = seconds > 0f ? s.Start + seconds : 0f;
         if (reverse) s.Rate = seconds > 0f ? -c.Seq.Length / (Fps * seconds) : -1f;
         s.Skin = cos.skin ? cos.skin.layer : null;
@@ -136,6 +139,18 @@ internal static partial class CrewFlip
         foreach (var s in Live) if (s.Id == id) s.Face = (sbyte)(left ? 1 : 0);
     }
 
+    // 流している間、体と帽子をこの高さ (絵の単位) だけ持ち上げる。毎フレーム呼んでよい (変わった時だけ書く)
+    internal static void Lift(byte id, float y)
+    {
+        foreach (var s in Live)
+            if (s.Id == id && s.Lift != y)
+            {
+                s.Lift = y;
+                Feet(s);
+                if (s.Cur >= 0) Head(s, s.Cur);
+            }
+    }
+
     internal static void Stop(byte id)
     {
         for (int i = Live.Count - 1; i >= 0; i--)
@@ -166,7 +181,7 @@ internal static partial class CrewFlip
             var s = Live[i];
             int tick = Tick(s, now);
             bool done = s.Until > 0f ? now >= s.Until : s.Rate < 0f ? tick <= 0 && now > s.Start : s.C.Loop < 0 && tick >= s.C.Seq.Length;
-            if (done || !s.Pc || !s.Body || s.Pc.Data == null || s.Pc.Data.IsDead || s.Pc.Data.Disconnected || s.Pc.inVent)
+            if (done || !s.Pc || !s.Body || s.Pc.Data == null || s.Pc.Data.IsDead != s.Ghost || s.Pc.Data.Disconnected || s.Pc.inVent)
             {
                 End(s);
                 Live.RemoveAt(i);
@@ -208,7 +223,9 @@ internal static partial class CrewFlip
                 // 着せ替え (帽子・バイザー・服) も同じ向きへ。本編は歩く向きが変わった時に返すので、違う時だけ書く
                 bool left = s.Face == 1;
                 if (s.Pc.cosmetics.FlipX != left) s.Pc.cosmetics.SetFlipX(left);
-                if (s.Body.flipX != left) s.Body.flipX = left;
+                // 左を向いて描かれた絵は体の絵だけ逆に返す
+                bool bodyLeft = s.C.Mirror ? !left : left;
+                if (s.Body.flipX != bodyLeft) s.Body.flipX = bodyLeft;
                 continue;
             }
             bool want = s.C.Mirror ? !s.Flip : s.Flip;
@@ -265,7 +282,7 @@ internal static partial class CrewFlip
             s.Pc.cosmetics.SetBodyCosmeticsVisible(!hide);
         }
         if (hide || !s.Cos) return;
-        float tx = (s.Flip ? -ax : ax) * s.K, ty = c.Ay[f] * s.K;
+        float tx = (s.Flip ? -ax : ax) * s.K, ty = (c.Ay[f] + s.Lift) * s.K;
         if (tx == s.Cx && ty == s.Cy) return;
         var p = s.Cos.localPosition;
         s.Cos.localPosition = FxMath.V3(p.x + tx - s.Cx, p.y + ty - s.Cy, p.z);
@@ -279,10 +296,10 @@ internal static partial class CrewFlip
     {
         var c = s.C;
         float ox = c.Oxs != null && s.Cur >= 0 ? c.Oxs[s.Cur] : c.Ox;
-        if (!s.Body || (ox == 0f && c.Oy == 0f && s.Bx == 0f && s.By == 0f)) return;
+        if (!s.Body || (ox == 0f && c.Oy == 0f && s.Lift == 0f && s.Bx == 0f && s.By == 0f)) return;
         var t = s.Body.transform;
         var l = t.localScale;
-        float tx = (s.Flip ? -ox : ox) * l.x, ty = c.Oy * l.y;
+        float tx = (s.Flip ? -ox : ox) * l.x, ty = (c.Oy + s.Lift) * l.y;
         if (tx == s.Bx && ty == s.By) return;
         var p = t.localPosition;
         t.localPosition = FxMath.V3(p.x + tx - s.Bx, p.y + ty - s.By, p.z);
