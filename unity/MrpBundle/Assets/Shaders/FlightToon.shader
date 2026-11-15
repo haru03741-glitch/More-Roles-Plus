@@ -51,8 +51,8 @@ Shader "MRP/FlightToon"
                 float3 vdir = normalize(_WorldSpaceCameraPos - i.wp);
                 float ndl = dot(n, l);
                 // 3 段: 明・中・暗 (段の境は少しだけぼかす)
-                float lit = smoothstep(0.45, 0.52, ndl);
-                float mid = smoothstep(-0.12, -0.05, ndl);
+                float lit = smoothstep(0.38, 0.5, ndl);
+                float mid = smoothstep(-0.16, -0.04, ndl);
                 float3 base = i.color.rgb;
                 float3 shade = base * float3(0.42, 0.45, 0.6);
                 float3 c = lerp(shade, base * 0.8, mid);
@@ -62,10 +62,10 @@ Shader "MRP/FlightToon"
                 c += _MrpFltRim.rgb * _MrpFltRim.a * rim * (1.0 - lit * 0.6);
                 // 照り (金属の光沢を段で)
                 float3 h = normalize(l + vdir);
-                c += step(0.94, dot(n, h)) * lit * 0.22;
+                c += step(0.985, dot(n, h)) * lit * 0.14;
                 // 光る所 (a < 1) は陰を付けず明るく
                 float glow = 1.0 - i.color.a;
-                c = lerp(c, base * (1.4 + glow * 1.6), saturate(glow * 2.0));
+                c = lerp(c, base * (1.0 + glow * 0.9), saturate(glow * 3.0));
                 c = lerp(c, float3(1, 1, 1), _Flash);
                 // 奥行きの霞
                 float d = distance(_WorldSpaceCameraPos, i.wp);

@@ -10,7 +10,7 @@ namespace flt
 const int MaxShips = 8;
 const int MaxBolts = 1024;
 const int MaxModels = 8;
-const int MaxSpheres = 96;
+const int MaxSpheres = 160;
 const int MaxMarkers = 32;
 const int MaxEvents = 128;
 const int MaxSnaps = 12;

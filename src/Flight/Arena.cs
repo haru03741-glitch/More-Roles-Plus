@@ -19,6 +19,7 @@ internal static unsafe class Arena
 
     internal static bool Active { get; private set; }
     internal static string Stats = "";
+    internal static float ViewYaw, ViewPitch, ViewDist;
 
     private static IntPtr _world;
     private static GameObject _root;
@@ -37,6 +38,8 @@ internal static unsafe class Arena
     private static int _boltPrev, _shipN, _local, _hits, _kills;
     private static float _fov, _statT, _retNear = 60f, _retFar = 120f;
     private static int _idleFrames;
+    private static float _plumeLen = -1f;
+    private static float FxClamp01(float v) => v < 0 ? 0 : (v > 1 ? 1 : v);
     private static bool _hudHidden;
     private static int _flashId;
 
@@ -89,6 +92,8 @@ internal static unsafe class Arena
         Free();
         HideHud(false);
         for (int k = 0; k < ShipT.Length; k++) { ShipT[k] = null; ShipR[k] = null; }
+        Array.Clear(Plumes);
+        _plumeLen = -1f;
         _shipN = 0;
         if (was) Plugin.Logger.LogInfo("flight: exit");
     }
@@ -124,6 +129,53 @@ internal static unsafe class Arena
         ShipT[idx] = go.transform;
         ShipR[idx] = mr;
         Flash[idx] = 0;
+        // 噴射の炎: 噴射口の印ごとに、光弾と同じ足し算の板を十字に組んで後ろへ伸ばす (長さは速さで変える)
+        var m = ModelBank.Get(model);
+        int pn = 0;
+        foreach (var mk in m.Markers)
+        {
+            if (mk.Kind != 2 || pn >= PlumesPerShip) continue;
+            var pg = new GameObject("MrpFlightPlume") { layer = Layer };
+            pg.transform.SetParent(go.transform, false);
+            pg.transform.localPosition = new Vector3(mk.Px, mk.Py, mk.Pz);
+            pg.transform.localRotation = Quaternion.LookRotation(new Vector3(mk.Dx, mk.Dy, mk.Dz), Vector3.up);
+            float w = mk.Id == 1 ? 3.4f : 5.6f;
+            pg.transform.localScale = new Vector3(w, w, 1f);
+            pg.AddComponent<MeshFilter>().sharedMesh = PlumeMesh(mk.Id == 1 ? new Color32(255, 190, 110, 255) : (model == 0 ? new Color32(110, 210, 255, 255) : new Color32(255, 70, 120, 255)));
+            var pr = pg.AddComponent<MeshRenderer>();
+            pr.sharedMaterial = MrpBundle.FlightMaterials[1];
+            pr.shadowCastingMode = ShadowCastingMode.Off;
+            Plumes[idx * PlumesPerShip + pn++] = pg.transform;
+        }
+    }
+
+    private const int PlumesPerShip = 4;
+    private static readonly Transform[] Plumes = new Transform[FlightNative.MaxShips * PlumesPerShip];
+    private static Mesh _plumeCyan, _plumeHot, _plumeRed;
+
+    // 十字に組んだ 2 枚の板 (長さ 1・幅 1)。uv.x = 噴射口 1 → 先 0 (光弾のシェーダは uv.x が大きいほど明るい)
+    private static Mesh PlumeMesh(Color32 col)
+    {
+        int which = col.r != 255 ? 0 : (col.g == 190 ? 1 : 2);
+        var have = which == 0 ? _plumeCyan : which == 1 ? _plumeHot : _plumeRed;
+        if (have) return have;
+        Mesh slot;
+        var v = new Vector3[8];
+        var uv = new Vector2[8];
+        var c = new Color32[8];
+        float h = 0.5f;
+        v[0] = new Vector3(-h, 0, 0); v[1] = new Vector3(h, 0, 0); v[2] = new Vector3(h, 0, 1); v[3] = new Vector3(-h, 0, 1);
+        v[4] = new Vector3(0, -h, 0); v[5] = new Vector3(0, h, 0); v[6] = new Vector3(0, h, 1); v[7] = new Vector3(0, -h, 1);
+        for (int k = 0; k < 2; k++)
+        {
+            uv[k * 4] = new Vector2(1, 0); uv[k * 4 + 1] = new Vector2(1, 1); uv[k * 4 + 2] = new Vector2(0, 1); uv[k * 4 + 3] = new Vector2(0, 0);
+        }
+        for (int k = 0; k < 8; k++) c[k] = col;
+        slot = new Mesh { name = "MrpFlightPlume", vertices = v, uv = uv, colors32 = c, triangles = new[] { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7 } };
+        slot.bounds = new Bounds(new Vector3(0, 0, 0.5f), new Vector3(1, 1, 1));
+        slot.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+        if (which == 0) _plumeCyan = slot; else if (which == 1) _plumeHot = slot; else _plumeRed = slot;
+        return slot;
     }
 
     private static void Alloc()
@@ -192,9 +244,10 @@ internal static unsafe class Arena
         _ret1 = Reticle("MrpFlightReticle1", 2.2f);
         _ret2 = Reticle("MrpFlightReticle2", 3.2f);
 
+        MrpBundle.FlightMaterials[0].SetFloat("_Outline", 0.0052f);
         Shader.SetGlobalVector("_MrpFltLight", new Vector4(-0.45f, 0.7f, 0.35f, 1f));
         Shader.SetGlobalVector("_MrpFltSky", new Vector4(0.02f, 0.03f, 0.07f, 1600f));
-        Shader.SetGlobalVector("_MrpFltRim", new Vector4(0.35f, 0.55f, 1f, 0.55f));
+        Shader.SetGlobalVector("_MrpFltRim", new Vector4(0.35f, 0.55f, 1f, 0.28f));
     }
 
     private static Mesh _skyMesh;
@@ -337,6 +390,17 @@ internal static unsafe class Arena
         }
         var cp = new Vector3(_camOut[0], _camOut[1], _camOut[2]);
         var cq = new Quaternion(_camOut[3], _camOut[4], _camOut[5], _camOut[6]);
+        if (ViewDist > 0)
+        {
+            // 確かめ用: 自分の船の周りの決めた角度から見る (見た目の検収・毎フレームの経路ではない)
+            float* so = _shipOut + _local * 8;
+            var center = new Vector3(so[0], so[1], so[2]);
+            // 角度は船の向きから測る (船が傾いていても同じ見え方)
+            var shipq = new Quaternion(so[3], so[4], so[5], so[6]);
+            var rotq = shipq * Quaternion.Euler(ViewPitch, ViewYaw, 0f);
+            cp = center + rotq * new Vector3(0f, 0f, -ViewDist);
+            cq = Quaternion.LookRotation(center - cp, shipq * Vector3.up);
+        }
         _camT.localPosition = cp;
         _camT.localRotation = cq;
         _skyT.localPosition = cp;
@@ -352,6 +416,23 @@ internal static unsafe class Arena
             _ret2.localPosition = sp + fwd * _retFar;
             _ret1.localRotation = cq;
             _ret2.localRotation = cq;
+        }
+
+        // 噴射の炎の長さ = 自分の船は今の速さ (巡航で 1・加速で伸び・減速で縮む)。変わった時だけ書く
+        {
+            float cruise = FlightParams.Values[0], boost = FlightParams.Values[1];
+            float k = 4f + 10f * FxClamp01((_hud[0] - cruise * 0.4f) / (boost - cruise * 0.4f + 0.01f));
+            if (Math.Abs(k - _plumeLen) > 0.05f)
+            {
+                _plumeLen = k;
+                for (int i = 0; i < PlumesPerShip; i++)
+                {
+                    var t = Plumes[_local * PlumesPerShip + i];
+                    if (!t) continue;
+                    var sc = t.localScale;
+                    t.localScale = new Vector3(sc.x, sc.y, k * (sc.x < 4f ? 0.7f : 1f));
+                }
+            }
         }
 
         int upload = Math.Max(a.BoltN, _boltPrev);
