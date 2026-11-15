@@ -6,7 +6,7 @@ using UnityEngine;
 namespace MoreRolesPlus.Roles.Addons;
 
 // 守り霊 (幽霊のアドオン・クルーの死者に): 地形で崩れ落ちた人・外壁の穴の縁にしがみついている人 (瀕死の人) の所へ行き、
-// 「救う」でその場で助ける。瀕死の人が出ると守り霊の画面にその人への矢印が出る。
+// 「救う」で掴んで安全な所まで運ぶ (崩れた壁の下敷きはその場で助ける)。瀕死の人が出ると守り霊の画面にその人への矢印が出る。
 // 本編の幽霊の憑依 (押すと人の所へすぐ飛べる) は使えない (駆けつける間が守り霊の遊びなので)
 public sealed class WardSpirit : AddonBase
 {
@@ -40,8 +40,8 @@ public sealed class WardSpirit : AddonBase
             IgnoreWalls = true,
             CooldownAtStart = false,
             MaxUses = () => Uses,
-            CanTarget = (_, t) => Rescue.Dying(t.PlayerId),
-            OnUsed = (u, t) => Rescue.Apply(t.PlayerId, u.PlayerId, Rescue.BySpirit),
+            CanTarget = (u, t) => Rescue.SpiritCanTake(u.PlayerId, t.PlayerId),
+            OnUsed = Rescue.SpiritUse,
         });
         if (IsLocal) Lifespan.OnRelease(() => { LocalSealsHaunt = false; ClearArrows(); });
     }

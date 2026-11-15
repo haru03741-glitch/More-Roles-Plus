@@ -1284,6 +1284,16 @@ internal static class CrewPull
         if (on && Roles.CrewTraits.Has(id, Roles.CrewTraits.Trait.Hardy)) mul *= 0.5f; // 災害に強い人は踏ん張れる
         if (Speed <= 0f) Speed = __instance.TrueSpeed;
         var body = __instance.body;
+        // 瀕死の人を運んでいる間は角につかまらず、足を踏ん張って流れの一部だけを受ける (口の近くほど進みが遅い)
+        if (Roles.Rescue.LocalHauling)
+        {
+            CrewSwim.Clear();
+            if (!on) return;
+            var hv = body.velocity;
+            float hs = mul * Speed * Roles.Rescue.Brace;
+            body.velocity = FxMath.V2(hv.x + dir.x * hs, hv.y + dir.y * hs);
+            return;
+        }
         if (CrewGrip.Physics(pc, body, pos, on, dir, mul, dist)) { CrewSwim.Clear(); return; }
         if (!on)
         {

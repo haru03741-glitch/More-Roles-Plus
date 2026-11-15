@@ -41,6 +41,15 @@ internal static class WardSpiritFx
         }
     }
 
+    // 守り霊に運ばれている体から、淡い光の粒が 1 つこぼれて立ちのぼる (運んでいる間 0.1 秒ごと)
+    internal static void Drift(PlayerControl p)
+    {
+        if (!p || !ShipStatus.Instance) return;
+        var pos = p.transform.position;
+        Emit(false, pos.x + (Random.value - 0.5f) * 0.45f, pos.y + Random.value * 0.3f, pos.z - 0.004f,
+            (Random.value - 0.5f) * 0.08f, MoteRise * (0.4f + 0.4f * Random.value), MoteLife * 0.6f, MoteS * (0.5f + 0.5f * Random.value), Time.time);
+    }
+
     // 毎フレーム (Plugin の Update から)
     internal static void Tick()
     {

@@ -23,6 +23,8 @@ public static class TerrainDeath
     public static readonly BoolOpt CrushOn = new("TerrainDeath.Crush", true) { OffTab = true, Parent = Enabled };
     // 崩れ落ちてから息絶えるまでの瀕死の秒。この間に助け出されれば助かる (会議が始まっても助かる)
     public static readonly FloatOpt DyingTime = new("TerrainDeath.DyingTime", 8f, 2f, 20f, 1f, "s") { OffTab = true, Parent = Enabled };
+    // 瀕死の人を掴んで運べる秒 (瀕死 1 回につき合計)。運んでいる間は瀕死の時計が止まる
+    public static readonly FloatOpt CarryTime = new("TerrainDeath.CarryTime", 6f, 2f, 20f, 1f, "s") { OffTab = true, Parent = Enabled };
 
     private const float DrownDepth = CrewSwim.BraceMaxDepth; // 足が着かない深さ
     private const float PollEvery = 0.2f;                    // ホストが皆の足元を見る間隔
@@ -56,6 +58,7 @@ public static class TerrainDeath
         public float At;      // 崩れ始めた時 (下敷きは塊が当たるまで死ぬと決まった時)
         public bool Started;  // 崩れ始めた (下敷きは塊が当たるまで立ったまま)
         public bool Fired; // ホストが倒す依頼を出した (本編に断られても撃ち直さない)
+        public float HeldAt;  // 運ばれ始めた時 (0 = 運ばれていない)。運ばれている間は瀕死の時計が止まる
     }
 
     private static readonly Dictionary<byte, Doom> Doomed = new();
@@ -66,6 +69,35 @@ public static class TerrainDeath
 
     // 崩れ落ちて瀕死の間 (まだ倒す依頼を出していない)。助け出せる。下敷きは塊が当たって崩れ始めてから
     internal static bool IsDying(byte id) => Doomed.TryGetValue(id, out var d) && d.Started && !d.Fired;
+
+    internal static Cause CauseOf(byte id) => Doomed.TryGetValue(id, out var d) ? d.Cause : Cause.None;
+
+    // 全員: 運ばれている間は瀕死の時計を止め、放されたら止まっていた分だけ死ぬ時刻を後ろへずらす
+    internal static void Hold(byte id, bool on)
+    {
+        if (!Doomed.TryGetValue(id, out var d) || d.Fired) return;
+        if (on) { if (d.HeldAt <= 0f) d.HeldAt = Time.time; }
+        else if (d.HeldAt > 0f) { d.At += Time.time - d.HeldAt; d.HeldAt = 0f; }
+        Doomed[id] = d;
+    }
+
+    // 全員: 運ぶ手を放された瀕死の人は、その場でもう一度崩れ落ちて残りの秒を待つ
+    internal static void Recollapse(byte id)
+    {
+        var p = PortKit.ById(id);
+        if (!p || p.Data == null || p.Data.IsDead || !Doomed.TryGetValue(id, out var d) || d.Fired) return;
+        float left = DeathAt(d.Cause) - (Time.time - d.At);
+        CrewFlip.Stop(id);
+        CrewFlip.Play(p, Clip(d.Cause), FxMath.Max(0.5f, left) + Linger, fallen: true);
+    }
+
+    // ホスト: 運ばれている瀕死の人の足元がまだ死ぬ元 (火・足の着かない水) の中か
+    internal static bool InHazard(byte id, Vector2 feet) => CauseOf(id) switch
+    {
+        Cause.Burn => OnFire(feet),
+        Cause.Drown => WaterSim.CurrentAt(feet, out _, out _) >= DrownDepth,
+        _ => false,
+    };
 
     private static void ClearDoom(byte id)
     {
@@ -277,7 +309,7 @@ public static class TerrainDeath
             if (gone && Time.time - d.At > DeathAt(d.Cause) + Linger) { (drop ??= new()).Add(id); continue; }
             if (MeetingHud.Instance) { (drop ??= new()).Add(id); continue; }
             if (!gone && d.Fired && Time.time - d.At > DeathAt(d.Cause) + Linger) { (drop ??= new()).Add(id); continue; } // 本編が倒すのを断った
-            if (gone || d.Fired || !host) continue;
+            if (gone || d.Fired || !host || d.HeldAt > 0f) continue;
             if (!d.Started ? Time.time - d.At < StrikeLimit : Time.time - d.At < DeathAt(d.Cause)) continue;
             (kill ??= new()).Add(p);
         }

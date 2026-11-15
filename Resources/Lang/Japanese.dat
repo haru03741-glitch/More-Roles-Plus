@@ -1161,7 +1161,9 @@ TerrainDeath.DrownTime.Detail: 足の着かない深さで泳いだ時間の合�
 TerrainDeath.Crush: 崩れた壁の下敷きになる
 TerrainDeath.Crush.Detail: ハンマー・炎・銃弾で壁が崩れた時に、崩れる側の壁際にいた人が下敷きになります。壊した本人はなりません。
 TerrainDeath.DyingTime: 息絶えるまでの時間
-TerrainDeath.DyingTime.Detail: 火・水・崩れた壁・外壁の穴で死ぬと決まった人は、倒れてからこの秒数のあいだ死にかけた状態になります。その間に近くの人が長押しで助け出すか、守り霊が救えば助かります。会議が始まった時も助かります。
+TerrainDeath.DyingTime.Detail: 火・水・崩れた壁・外壁の穴で死ぬと決まった人は、倒れてからこの秒数のあいだ死にかけた状態になります。その間に近くの人か守り霊が掴んで安全な所まで運べば助かります。崩れた壁の下敷きになった人は、近くの人が長押しすればその場で助かります。会議が始まった時も助かります。
+TerrainDeath.CarryTime: 運べる時間
+TerrainDeath.CarryTime.Detail: 死にかけている人を掴んで運べる秒数です。運んでいる間は、息絶えるまでの時間が止まります。この秒数を使い切ると手が離れ、残りの時間がまた進みます。
 
 # ── LangFiles ──
 LangFiles.Reloaded: 文を読み直しました (書き換え: MRP {mod} 件・本編 {vanilla} 件)\n開いているメニューは開き直すと変わります\n{path}
@@ -2342,10 +2344,10 @@ Egoist.Help: クルーが負ければ勝ち、クルーが勝つと負けるア�
 # ---- 守り霊 (幽霊役職) ----
 WardSpirit.Name: 守り霊
 WardSpirit.Blurb: その命、まだ渡さない
-WardSpirit.Summary: クルーの死者に付く幽霊役職です。火・水・崩れた壁・外壁の穴で死にかけている人を、その場で助けられます。
+WardSpirit.Summary: クルーの死者に付く幽霊役職です。火・水・崩れた壁・外壁の穴で死にかけている人を、安全な所まで運んで助けられます。
 WardSpirit.Save: 救う
-WardSpirit.Save.Help: 死にかけて倒れている人や、外壁の穴の縁にしがみついている人のそばで押すと、その人は助かります。死にかけている人が出ると、その人への矢印が出ます。本編の幽霊の憑依は使えません。
-WardSpirit.Save.Short: 死にかけている人を助ける
+WardSpirit.Save.Help: 死にかけて倒れている人のそばで押すと、その人を掴んで運べます。火の外や足の着く水まで運ぶか、外壁の穴の縁から内側へ引き戻すと助かります。崩れた壁の下敷きになった人は、その場で助かります。死にかけている人が出ると、その人への矢印が出ます。本編の幽霊の憑依は使えません。
+WardSpirit.Save.Short: 死にかけている人を運んで助ける
 WardSpirit.Uses: 救える回数
 Rescue.Pull: 助け出す
 

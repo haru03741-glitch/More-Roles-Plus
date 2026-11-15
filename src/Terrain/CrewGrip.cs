@@ -160,6 +160,7 @@ internal static class CrewGrip
         public PlayerControl Pc;
         public byte Id, By;
         public float At;
+        public float HeldAt;   // 引き戻されている間 (0 = いない)。その間は手が離れるまでの時計が止まる
     }
     private static readonly List<Cling> Clings = new();
     private const float SaveImmune = 3f;   // 助け出された人がこの秒は流されない
@@ -171,6 +172,23 @@ internal static class CrewGrip
         foreach (var c in Clings) if (c.Id == id) return true;
         return false;
     }
+    // 全員: 縁から引き戻されている間は手が離れるまでの時計を止め、放されたら止まっていた分だけ後ろへずらす
+    internal static void Hold(byte id, bool on)
+    {
+        foreach (var c in Clings)
+        {
+            if (c.Id != id) continue;
+            if (on) { if (c.HeldAt <= 0f) c.HeldAt = Time.time; }
+            else if (c.HeldAt > 0f) { c.At += Time.time - c.HeldAt; c.HeldAt = 0f; }
+        }
+    }
+
+    // 全員: 引き戻す手を放された人は、また縁にしがみつく
+    internal static void Recling(byte id)
+    {
+        foreach (var c in Clings) if (c.Id == id && c.Pc) { CrewFlip.Stop(id); CrewFlip.Play(c.Pc, "cling"); return; }
+    }
+
     // 吸い出しで本編の追放を走らせている間の人 (追放の出来事を起こさない)
     internal static int Spacing = -1;
     internal static int SpacedBy = ResolvedDamage.NoActor; // その人を吸い出した穴を開けた人
@@ -634,6 +652,7 @@ internal static class CrewGrip
             var c = Clings[i];
             if (!c.Pc || c.Pc.Data == null || c.Pc.Data.IsDead || c.Pc.Data.Disconnected) { Clings.RemoveAt(i); CrewFlip.Stop(c.Id); continue; }
             if (Interrupted) { Release(i, c); continue; }
+            if (c.HeldAt > 0f) continue; // 引き戻されている間は手が離れない
             // ホストの知らせ (手が離れた・助かった) が届かなかった時の安全弁
             if (!host) { if (Time.time - c.At > dying + 5f) Release(i, c); continue; }
             // 口がふさがった・気圧が抜けた: 引く力が消えたので助かる
