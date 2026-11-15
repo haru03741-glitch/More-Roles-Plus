@@ -7,8 +7,9 @@ namespace MoreRolesPlus.Fx;
 // 溺れる: 水面に顔を出して喘いでは沈むのを 3 回 (だんだん弱く)、最後に後ろへ倒れて沈み、水の底に横たわる。
 // 体の絵は CrewFlip の "drown" (本編の撃たれた人の連番を左右返し・その場の動きにした物)。
 // 顔を出す/沈むは体の絵を動かさず、体の水面の覆い (WaterWade) の深さを揺らして見せる。顔を出すたびに水しぶきと音、沈むたびに泡。
-// 横たわった体と死体は、覆いの形 (立った体) に合わないので、体の絵を水の色で塗った写しを重ねて水越しに見せる。
-// 死体の写しは足元の水が引けば薄れて消える。誰も溺れておらず沈んだ死体も無い間は Unity に触らない
+// 横たわった体は、覆いの形 (立った体) に合わないので、体の絵を型にした水の板 (BodyCover) を重ねて水越しに見せる。
+// 死体の水の板は BodyCover が死因によらず付ける。ここは溺れた死体から泡を昇らせるだけ。
+// 誰も溺れておらず沈んだ死体も無い間は Unity に触らない
 internal static class DrownFx
 {
     // 揺れの深さ (足元の深さに足す・単位) の要の点 (秒, 深さ)。正 = 沈む・負 = 顔を出す。CrewFlip "drown" のコマと合わせてある
@@ -20,24 +21,24 @@ internal static class DrownFx
     private static readonly int[] GulpN = { 3, 4, 7, 9 };
     private const float LieAt = 1.96f;          // 横たわる絵になる時 (立った体の覆いをやめて写しにする)
     private const float SinkFrom = 1.72f, SinkTime = 0.5f;
-    private const float SunkAlpha = 0.68f;      // 水越しの写しの濃さ
     private const float CorpseCheck = 0.5f;     // 死体の足元の水を見る間隔
-    private const float DryDepth = 0.1f, WetDepth = 0.28f; // 死体の写しが消える深さ・濃いまま見える深さ
+    private const float BubbleDepth = 0.25f;    // 死体の足元の水がこれより深ければ泡が昇る
+    private const float DepthCheck = 0.25f;     // 倒れた体の足元の水を見る間隔
     private const float SplashRange = 10f, SplashMuffle = 5f, SplashVolume = 0.45f;
 
     private sealed class Sinker
     {
         public byte Id;
         public PlayerControl Pc;
-        public SpriteRenderer Body, Copy;
-        public float Start, Alpha;
+        public SpriteRenderer Body;
+        public BodyCover.Cover Cov;
+        public float Start;
         public int NextSplash, NextGulp;
         public bool Corpse;
-        public float NextCheck, NextBubble, DiedAt, Target;
+        public float NextCheck, NextBubble, DiedAt, Depth;
     }
 
     private static readonly List<Sinker> Live = new();
-    private static Material _mat;
     private static int _gen = -1;
 
     // 溺れると決まった (全員の端末で・連番を流せた時だけ)
@@ -57,11 +58,14 @@ internal static class DrownFx
         if (!main) return;
         Gen();
         Stop(id);
-        var s = new Sinker { Id = id, Body = main, Corpse = true, DiedAt = Time.time, Start = Time.time, Alpha = SunkAlpha, Target = SunkAlpha };
-        s.Copy = MakeCopy(main);
-        if (!s.Copy) return;
-        Paint(s);
-        Live.Add(s);
+        Live.Add(new Sinker { Id = id, Body = main, Corpse = true, DiedAt = Time.time, Start = Time.time, Depth = 1f });
+    }
+
+    // 溺れる動きを流している (立って喘ぐ間の水面も、倒れた体の水の板もここが描く)
+    internal static bool Sinking(byte id)
+    {
+        for (int i = 0; i < Live.Count; i++) if (!Live[i].Corpse && Live[i].Id == id) return true;
+        return false;
     }
 
     internal static void Stop(byte id)
@@ -100,45 +104,39 @@ internal static class DrownFx
             }
             while (s.NextGulp < GulpT.Length && t >= GulpT[s.NextGulp])
                 Bubbles(feet.x, feet.y + 0.35f, GulpN[s.NextGulp++]);
-            // 後ろへ倒れて沈む: 水越しの写しを濃くしていく
+            // 後ろへ倒れて沈む: 体の上の水を厚くしていく (足元の深さまで)
             if (t >= SinkFrom)
             {
-                if (!s.Copy) s.Copy = MakeCopy(s.Body);
-                s.Alpha = SunkAlpha * FxMath.Clamp01((t - SinkFrom) / SinkTime);
-                Paint(s);
+                s.Cov ??= BodyCover.Make(s.Body);
+                if (now >= s.NextCheck) { s.NextCheck = now + DepthCheck; s.Depth = WaterSim.CurrentAt(feet, out _, out _); }
+                float k = FxMath.Clamp01((t - SinkFrom) / SinkTime);
+                BodyCover.SetLevel(s.Cov, BodyCover.Thick + (s.Depth - BodyCover.Thick) * k);
             }
         }
     }
 
-    // 本編のアニメが体の絵を書いた後 (CrewFlip が連番の絵を差した後) に写しへ同じ絵を写す
+    // 本編のアニメが体の絵を書いた後 (CrewFlip が連番の絵を差した後) に水の板へ同じ絵を写す
     internal static void LateTick()
     {
         for (int i = 0; i < Live.Count; i++)
         {
             var s = Live[i];
-            if (s.Corpse || !s.Copy || !s.Body) continue;
-            s.Copy.sprite = s.Body.sprite;
-            s.Copy.flipX = s.Body.flipX;
+            if (s.Corpse || s.Cov == null || !s.Cov.Shown) continue;
+            BodyCover.Sync(s.Cov);
         }
     }
 
-    // 死体: 足元の水が引けば写しを薄くして消す (濡れた死体に戻る)・水がある間は時々泡が昇る
+    // 溺れた死体: 水がある間は時々泡が昇る (水の板は BodyCover)
     private static void TickCorpse(Sinker s, float now)
     {
         if (now >= s.NextCheck)
         {
             s.NextCheck = now + CorpseCheck;
             var at = s.Body.transform.position;
-            float d = WaterSim.Running && WaterSim.Ready ? WaterSim.CurrentAt(FxMath.V2(at.x, at.y - 0.1f), out _, out _) : 0f;
-            s.Target = SunkAlpha * FxMath.Clamp01((d - DryDepth) / (WetDepth - DryDepth));
-        }
-        if (s.Alpha != s.Target)
-        {
-            s.Alpha = FxMath.MoveTowards(s.Alpha, s.Target, Time.deltaTime * 0.8f);
-            Paint(s);
+            s.Depth = WaterSim.Running && WaterSim.Ready ? WaterSim.CurrentAt(FxMath.V2(at.x, at.y - 0.1f), out _, out _) : 0f;
         }
         // 沈んでしばらくは息が残っていて泡が昇る。だんだん間が空く
-        if (s.Target > 0.3f && now >= s.NextBubble)
+        if (s.Depth > BubbleDepth && now >= s.NextBubble)
         {
             float age = now - s.DiedAt;
             s.NextBubble = now + (age < 20f ? FxMath.Range(1.2f, 3f) : FxMath.Range(6f, 11f));
@@ -158,42 +156,6 @@ internal static class DrownFx
             return KeyD[i - 1] + (KeyD[i] - KeyD[i - 1]) * u;
         }
         return KeyD[KeyD.Length - 1];
-    }
-
-    // 体の絵を水の色で塗った写し (描画物の子・同じ絵・少し手前)
-    private static SpriteRenderer MakeCopy(SpriteRenderer src)
-    {
-        var mat = Mat();
-        if (!mat || !src) return null;
-        var go = new GameObject("MrpSunkBody") { layer = src.gameObject.layer };
-        var t = go.transform;
-        t.SetParent(src.transform, false);
-        t.localPosition = FxMath.V3(0f, 0f, -0.001f);
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = src.sprite;
-        sr.flipX = src.flipX;
-        sr.sortingOrder = src.sortingOrder;
-        sr.sharedMaterial = mat;
-        sr.color = FxMath.Rgba(1f, 1f, 1f, 0f);
-        return sr;
-    }
-
-    private static void Paint(Sinker s)
-    {
-        if (s.Copy) s.Copy.color = FxMath.Rgba(1f, 1f, 1f, s.Alpha);
-    }
-
-    // 体の絵の 3 色 (体・影・バイザー) を深い水の色にした人形の材質。縁の線は本編の絵の暗い色のまま
-    private static Material Mat()
-    {
-        if (_mat) return _mat;
-        var src = FxHands.PlayerMat();
-        if (!src) return null;
-        _mat = new Material(src) { name = "MrpSunkBody", hideFlags = HideFlags.DontUnloadUnusedAsset };
-        _mat.SetColor("_BodyColor", FxMath.Rgba(0.2f, 0.43f, 0.69f));
-        _mat.SetColor("_BackColor", FxMath.Rgba(0.12f, 0.29f, 0.53f));
-        _mat.SetColor("_VisorColor", FxMath.Rgba(0.34f, 0.58f, 0.82f));
-        return _mat;
     }
 
     // 息の泡: 小さな泡が揺れながら昇って消える
@@ -254,8 +216,8 @@ internal static class DrownFx
     private static void End(Sinker s)
     {
         if (!s.Corpse) WaterWade.EndBob(s.Id);
-        if (s.Copy && !s.Corpse) Object.Destroy(s.Copy.gameObject);
-        s.Copy = null;
+        BodyCover.Destroy(s.Cov);
+        s.Cov = null;
     }
 
     private static void Gen()

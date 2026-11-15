@@ -139,7 +139,7 @@ public class Ticker : MonoBehaviour
         Terrain.WaterArt.Tick(); t = Bridge.Perf.Lane(14, t);
         Terrain.WaterSpray.Tick(); t = Bridge.Perf.Lane(15, t);
         Terrain.WaterFall.Tick(); t = Bridge.Perf.Lane(35, t);
-        Terrain.WaterWade.Tick(); t = Bridge.Perf.Lane(38, t);
+        Terrain.WaterWade.Tick(); Terrain.BodyCover.Tick(); t = Bridge.Perf.Lane(38, t);
         Terrain.AirGauge.Tick();
         Terrain.CrewBrace.Tick(); t = Bridge.Perf.Lane(40, t);
         Terrain.PropSim.SunkTick(); t = Bridge.Perf.Lane(39, t);

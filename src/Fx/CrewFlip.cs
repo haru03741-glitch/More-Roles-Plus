@@ -75,6 +75,13 @@ internal static partial class CrewFlip
         return false;
     }
 
+    // 流している連番の名前 (流していなければ null)
+    internal static string ClipOf(byte id)
+    {
+        for (int i = 0; i < Live.Count; i++) if (Live[i].Id == id) return Live[i].C.Name;
+        return null;
+    }
+
     // seconds = 出しておく長さ (0 = 連番が終わるまで。回る連番は Stop まで)。
     // fallen = 倒れる流し方 (服と、頭の無い絵へ移る時の帽子・バイザーを周りへ落とす。流している間に死んだら倒れた姿のまま死体になる)
     // reverse = 終わりのコマから始めのコマへ、seconds の間に流しきる (倒れた姿から起き上がる)。回る連番には使わない

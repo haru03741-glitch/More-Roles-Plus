@@ -104,6 +104,7 @@ internal static class BodyConsume
         foreach (var src in body.GetComponentsInChildren<SpriteRenderer>())
         {
             if (!src || !src.enabled || !src.sprite || !src.gameObject.activeInHierarchy) continue;
+            if (src.gameObject.name == "MrpBodyCover") continue; // 水の板 (体の絵ではない)
             bool isBody = false;
             foreach (var r in body.bodyRenderers) if (r && r.Pointer == src.Pointer) { isBody = true; break; }
             var p = new GameObject("Part") { layer = layer };

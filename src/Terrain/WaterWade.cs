@@ -8,7 +8,9 @@ namespace MoreRolesPlus.Terrain;
 // 水に浸かったクルーの体に水面を描く: 足元の水の深さぶん上までを周りと同じ水の色で覆い、まわりに水面の輪を出す。
 // 頭まで沈んだら体は水越しの影として残し、泡を昇らせる (形と色は水のシェーダの _Mode 2)。
 // 板はクルーの子なので動きには毎フレーム触らず、深さと見せるかどうかだけを 0.1 秒ごとに見直す。
-// 板はクルーと同じ奥行きにあるので、視界の外では本編の影の板に一緒に隠れる
+// 板はクルーと同じ奥行きにあるので、視界の外では本編の影の板に一緒に隠れる。
+// 全身の絵を立っていない姿 (引きずられる・崩れ落ちる・伏せる・転ぶ) に描き替えている間は、立った体の形の覆いをやめて
+// 体の絵を型にした水の板 (BodyCover) にする (宙に浮かされた体は浮いた分だけ浅く数える)
 internal static class WaterWade
 {
     private const long ScanMs = 100;
@@ -66,6 +68,7 @@ internal static class WaterWade
     }
 
     private static readonly Dictionary<byte, Wade> Wades = new();
+    private static readonly Dictionary<byte, BodyCover.Cover> Lying = new();
     // 体の大きさ (足元から・実測) はシェーダの _Body の既定値。Android の libunity には MaterialPropertyBlock.SetVector が無い
     private static readonly int DepthId = Shader.PropertyToID("_Depth");
     private static Sprite _sprite;
@@ -80,8 +83,10 @@ internal static class WaterWade
 
     private static void TickCore()
     {
-        if (Wades.Count == 0 && !WaterSim.Running) return;
+        if (Wades.Count == 0 && Lying.Count == 0 && !WaterSim.Running) return;
         if (Bobbing.Count > 0 && WaterSim.Running && WaterSim.Ready) BobTick();
+        // 描き替えの連番は毎フレーム絵を変えるので、横たわった体の板の絵もそろえる
+        foreach (var c in Lying.Values) if (c.Shown) BodyCover.Sync(c);
         long now = Environment.TickCount64;
         if (now < _nextMs) return;
         _nextMs = now + ScanMs;
@@ -101,7 +106,9 @@ internal static class WaterWade
                 || Roles.CrewTraits.Has(pc.PlayerId, Roles.CrewTraits.Trait.Skim))) d = 0f; // 水面を走る人は沈まない
             if (w != null) w.Base = d;
             byte id = pc.PlayerId;
-            if (d < ShowDepth || Hidden[id])
+            bool lying = d >= ShowDepth && LyingPose(id);
+            if (lying || Lying.ContainsKey(id)) Lie(pc, lying ? d - Roles.Rescue.LiftDepthOf(id) : 0f);
+            if (d < ShowDepth || Hidden[id] || lying)
             {
                 if (w != null && w.Shown && w.Go) { w.Go.SetActive(false); w.Shown = false; }
                 continue;
@@ -114,6 +121,42 @@ internal static class WaterWade
             w.Block.SetFloat(DepthId, d);
             w.Sr.SetPropertyBlock(w.Block);
         }
+    }
+
+    // 立っていない全身の描き替え (溺れる動きは DrownFx が自分で描く)・決闘で転んでいる・殴り飛ばされている
+    private static bool LyingPose(byte id)
+    {
+        if (Roles.DuelTumble.Posing(id)) return true;
+        string clip = CrewFlip.ClipOf(id);
+        if (clip == null) return false;
+        return clip switch
+        {
+            "dragged" or "floatcarried" or "burn" or "crush" or "chicken" or "seizure" or "pushshoved" => true,
+            "drown" => !DrownFx.Sinking(id), // 助かって起き上がる間
+            _ => false,
+        };
+    }
+
+    // 横たわった体の水の板を出す/隠す (lvl = 体の下の水の深さ・0 = 隠す)
+    private static void Lie(PlayerControl pc, float lvl)
+    {
+        byte id = pc.PlayerId;
+        Lying.TryGetValue(id, out var c);
+        if (lvl <= 0f)
+        {
+            if (c != null) { BodyCover.Destroy(c); Lying.Remove(id); }
+            return;
+        }
+        var body = pc.cosmetics && pc.cosmetics.currentBodySprite != null ? pc.cosmetics.currentBodySprite.BodySprite : null;
+        if (c != null && c.Src != body) { BodyCover.Destroy(c); Lying.Remove(id); c = null; }
+        if (c == null)
+        {
+            if (!body) return;
+            c = BodyCover.Make(body);
+            if (c == null) return;
+            Lying[id] = c;
+        }
+        BodyCover.SetLevel(c, lvl);
     }
 
     // 透明になる役職は体の絵を薄くして消える。消えている体に水の形を出すと居場所が分かる
@@ -160,6 +203,8 @@ internal static class WaterWade
     {
         foreach (var w in Wades.Values)
             if (w.Shown) { if (w.Go) w.Go.SetActive(false); w.Shown = false; }
+        foreach (var c in Lying.Values) BodyCover.Destroy(c);
+        Lying.Clear();
     }
 
     internal static void Clear()
@@ -169,5 +214,7 @@ internal static class WaterWade
         Array.Clear(Hidden);
         foreach (var w in Wades.Values) if (w.Go) UnityEngine.Object.Destroy(w.Go);
         Wades.Clear();
+        foreach (var c in Lying.Values) BodyCover.Destroy(c);
+        Lying.Clear();
     }
 }
