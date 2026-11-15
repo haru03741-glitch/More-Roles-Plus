@@ -246,7 +246,8 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
             const Marker& mk = m.mk[i];
             if (mk.kind != MkMuzzle || mk.id != 0) continue;
             V3 mp = p + rot(q, ld(mk.p));
-            V3 dir = norm(rot(q, ld(mk.d)), fwd);
+            // 砲口は離れて付いているので、照準の距離 (PConverge) の 1 点へ向けて撃つ
+            V3 dir = P[PConverge] > 1 ? norm(p + fwd * P[PConverge] - mp, fwd) : norm(rot(q, ld(mk.d)), fwd);
             V3 bv = dir * P[PBoltSpeed] + v;
             SpawnBolt(w, idx, mp, bv, P[PBoltLife], P[PBoltDamage], 1);
             Emit(w, EvFire, idx, i, 0, mp, 0);
@@ -354,7 +355,7 @@ void Camera(World* w, int local, float dt)
     if (idx >= w->shipN) return;
     Ship& s = w->ship[idx];
     Q4 q = ldq(s.q);
-    V3 p = ld(s.p);
+    V3 p = ld(s.drawP); // 描く位置 (刻みの余りを含む) に合わせないと船がカメラに対して揺れる
     V3 fwd = rot(q, v3(0, 0, 1)), up = rot(q, v3(0, 1, 0)), right = rot(q, v3(1, 0, 0));
     V3 want = p - fwd * P[PCamDist] + up * P[PCamHeight];
     V3 cp = ld(w->camP);
@@ -389,7 +390,6 @@ void DrawPose(World* w, Ship& s)
         spin = -(float)s.dodgeDir * 2 * Pi * (u * u * (3 - 2 * u));
     }
     stq(s.drawQ, qnorm(qmul(q, qaxis(v3(0, 0, 1), s.bank + spin))));
-    st(s.drawP, ld(s.p));
 }
 
 void WriteBolts(World* w, FrameArgs* a, V3 cam)
@@ -401,7 +401,7 @@ void WriteBolts(World* w, FrameArgs* a, V3 cam)
     {
         const Bolt& b = w->bolt[i];
         if (!b.alive) continue;
-        V3 p = ld(b.p), v = ld(b.v);
+        V3 v = ld(b.v), p = ld(b.p) + v * w->acc;
         float sp = len(v);
         V3 dir = norm(v);
         float L = P[PBoltLen];
@@ -533,8 +533,11 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     int steps = 0;
     for (int k = 0; k < w->shipN; k++)
         if (w->ship[k].alive && w->ship[k].remote) PoseRemote(w, w->ship[k], a->now);
+    if (a->in.dodge) w->latchDodge = a->in.dodge;
+    if (a->in.uturn) w->latchUTurn = a->in.uturn;
     while (w->acc >= Step && steps < MaxSteps)
     {
+        a->in.dodge = w->latchDodge; a->in.uturn = w->latchUTurn;
         w->acc -= Step;
         w->time += Step;
         for (int k = 0; k < w->shipN; k++)
@@ -548,11 +551,19 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
         for (int k = 0; k < w->shipN; k++)
             if (w->ship[k].alive) DrawPose(w, w->ship[k]);
         steps++;
-        // 1 刻み目で押した瞬間の入力 (回避・宙返り) を使い切る
-        a->in.dodge = 0; a->in.uturn = 0;
+        // 押した瞬間の入力 (回避・宙返り) は 1 刻みで使い切る (刻みが 0 回のフレームでは次のフレームまで持つ)
+        w->latchDodge = 0; w->latchUTurn = 0;
     }
     if (steps == MaxSteps) w->acc = 0;
     a->steps = steps;
+    // 描く位置 = 最後の刻み + 刻みの余りの分だけ進めた所 (画面の更新が刻みと合わない時のがたつきを消す)
+    for (int k = 0; k < w->shipN; k++)
+    {
+        Ship& s = w->ship[k];
+        if (!s.alive) continue;
+        if (steps == 0 && s.remote) DrawPose(w, s);
+        st(s.drawP, s.remote ? ld(s.p) : ld(s.p) + ld(s.v) * w->acc);
+    }
     Camera(w, a->local, dt);
 
     for (int k = 0; k < MaxShips; k++)

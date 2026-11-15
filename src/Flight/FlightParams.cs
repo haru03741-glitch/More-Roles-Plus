@@ -16,7 +16,7 @@ internal static class FlightParams
         ("arena", 900f), ("arenaTurn", 2.5f),
         ("dodgeTime", 0.42f), ("dodgeSide", 9f), ("dodgeCool", 1.1f),
         ("shakeHit", 0.12f), ("shakeHurt", 0.9f), ("shakeDecay", 7f), ("interpDelay", 0.12f), ("extrapMax", 0.35f),
-        ("uturnTime", 1.25f), ("uturnCool", 2.5f),
+        ("uturnTime", 1.25f), ("uturnCool", 2.5f), ("converge", 120f),
     };
 
     internal static readonly float[] Values = MakeValues();

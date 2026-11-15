@@ -27,7 +27,7 @@ enum Param
     PArena, PArenaTurn,
     PDodgeTime, PDodgeSide, PDodgeCool,
     PShakeHit, PShakeHurt, PShakeDecay, PInterpDelay, PExtrapMax,
-    PUTurnTime, PUTurnCool,
+    PUTurnTime, PUTurnCool, PConverge,
     ParamCount
 };
 
@@ -80,6 +80,7 @@ struct World
     float camP[3], camQ[4], camFov, shake, shakeT;
     uint32_t rng;
     int32_t camInit;
+    int32_t latchDodge, latchUTurn; // 押した瞬間の入力 (刻みが回るまで持つ)
 };
 
 // 自分の船の入力 (-1..1)

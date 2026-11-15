@@ -35,7 +35,8 @@ internal static unsafe class Arena
     private static float* _shipOut, _camOut, _hud;
     private static FlightNative.Event* _ev;
     private static int _boltPrev, _shipN, _local, _hits, _kills;
-    private static float _fov, _statT;
+    private static float _fov, _statT, _retNear = 60f, _retFar = 120f;
+    private static int _idleFrames;
     private static bool _hudHidden;
     private static int _flashId;
 
@@ -64,7 +65,7 @@ internal static unsafe class Arena
         for (int i = 0; i < targets && i + 1 < FlightNative.MaxShips; i++)
         {
             // 的はこちらへ向かって来る列 (正面から撃てば当たる)
-            var p = new Vector3((float)(rnd.NextDouble() - 0.5) * 40, (float)(rnd.NextDouble() - 0.5) * 20, 200 + i * 160);
+            var p = i == 0 ? new Vector3(0, 0, 200) : new Vector3((float)(rnd.NextDouble() - 0.5) * 40, (float)(rnd.NextDouble() - 0.5) * 20, 200 + i * 160);
             Spawn(i + 1, 1, p, Quaternion.Euler(0, 180f, 0), 160);
         }
         HideHud(true);
@@ -74,9 +75,10 @@ internal static unsafe class Arena
         return "ok";
     }
 
+    // 入る途中で失敗した時にも呼ぶので、Active に関わらず作った物を全部片付ける (何度呼んでもよい)
     internal static void Exit()
     {
-        if (!Active) return;
+        bool was = Active;
         Active = false;
         if (_root) UnityEngine.Object.Destroy(_root);
         _root = null;
@@ -86,7 +88,9 @@ internal static unsafe class Arena
         _world = IntPtr.Zero;
         Free();
         HideHud(false);
-        Plugin.Logger.LogInfo("flight: exit");
+        for (int k = 0; k < ShipT.Length; k++) { ShipT[k] = null; ShipR[k] = null; }
+        _shipN = 0;
+        if (was) Plugin.Logger.LogInfo("flight: exit");
     }
 
     internal static void PushParams()
@@ -182,6 +186,9 @@ internal static unsafe class Arena
         bmr.shadowCastingMode = ShadowCastingMode.Off;
 
         // 照準 (機首の先の 2 つの枠)
+        float conv = FlightParams.Values[FlightParams.Find("converge")];
+        _retNear = conv * 0.5f;
+        _retFar = conv;
         _ret1 = Reticle("MrpFlightReticle1", 2.2f);
         _ret2 = Reticle("MrpFlightReticle2", 3.2f);
 
@@ -315,6 +322,7 @@ internal static unsafe class Arena
             Hud = _hud,
         };
         FlightNative.Frame(&a);
+        if (a.Steps == 0) _idleFrames++;
 
         for (int k = 0; k < _shipN; k++)
         {
@@ -340,8 +348,8 @@ internal static unsafe class Arena
             var sp = new Vector3(o[0], o[1], o[2]);
             var sq = new Quaternion(o[3], o[4], o[5], o[6]);
             var fwd = sq * Vector3.forward;
-            _ret1.localPosition = sp + fwd * 60f;
-            _ret2.localPosition = sp + fwd * 120f;
+            _ret1.localPosition = sp + fwd * _retNear;
+            _ret2.localPosition = sp + fwd * _retFar;
             _ret1.localRotation = cq;
             _ret2.localRotation = cq;
         }
@@ -359,7 +367,7 @@ internal static unsafe class Arena
         if (_statT > 0.5f)
         {
             _statT = 0;
-            Stats = $"speed={_hud[0]:0} boost={_hud[1]:0.00} hp={_hud[2]:0.00} bolts={a.BoltN} steps={a.Steps} hits={_hits} kills={_kills} cam={cp} fov={_fov:0}";
+            Stats = $"speed={_hud[0]:0} boost={_hud[1]:0.00} hp={_hud[2]:0.00} bolts={a.BoltN} steps={a.Steps} idle={_idleFrames} hits={_hits} kills={_kills} cam={cp} fov={_fov:0}";
         }
     }
 
