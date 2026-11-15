@@ -90,6 +90,8 @@ internal static class SettingsMenu
     // 本編がゲーム設定タブを組み立てる前の、空のタブを型として取っておく
     public static void OnMenuEnable(GameSettingMenu menu)
     {
+        // 本編の画面の後ろの星空の幕 (Background) は消し、板の周りからロビーが見えるようにする
+        menu.transform.Find("Background")?.gameObject.SetActive(false);
         if (_template) return;
         _template = Object.Instantiate(menu.GameSettingsTab, menu.GameSettingsTab.transform.parent);
         _template.name = "MrpTabTemplate";
