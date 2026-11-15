@@ -56,6 +56,7 @@ internal static partial class CrewFlip
         public bool Fallen;                       // 倒れる流し方: 着せ替えは消さずに体から落とし、流している間に死んだら今の絵を死体にする
         public float K = 1f, Cx, Cy;              // 絵の 1 単位が着せ替えの親の何単位か・着せ替えに今足している分
         public float Bx, By;                      // 体の絵の位置に今足している分 (足元合わせ)
+        public sbyte Face = -1;                   // 向かせる向き (-1 = 本編の向きのまま・0 = 右・1 = 左)。歩く向きと逆を向いたまま下がる姿に
     }
 
     private static readonly List<Show> Live = new();
@@ -105,6 +106,12 @@ internal static partial class CrewFlip
         return true;
     }
 
+    // 流している間、歩く向きに関わらずこの向きを向かせる (本編が歩く向きへ返した後に毎フレーム書き戻す)
+    internal static void Face(byte id, bool left)
+    {
+        foreach (var s in Live) if (s.Id == id) s.Face = (sbyte)(left ? 1 : 0);
+    }
+
     internal static void Stop(byte id)
     {
         for (int i = Live.Count - 1; i >= 0; i--)
@@ -152,7 +159,7 @@ internal static partial class CrewFlip
             // 倒れる流し方は始めた時の向きのまま (動けない人でも他人の画面では位置の補正で本編が向きを変えることがあり、
             // 伏せた姿と死体が倒れた時と逆を向く)。LateTick で体の向きを書き戻す
             // 左右を返して流す絵では体の向きを書き換えているので、本来の向きは着せ替えから読む
-            bool flip = s.C.Mirror ? s.Pc.cosmetics.FlipX : s.Body.flipX;
+            bool flip = s.Face >= 0 ? s.Face == 1 : s.C.Mirror ? s.Pc.cosmetics.FlipX : s.Body.flipX;
             if (!s.Fallen && flip != s.Flip)
             {
                 s.Flip = flip;
@@ -171,6 +178,14 @@ internal static partial class CrewFlip
             var s = Live[i];
             if (s.Cur < 0 || !s.Body) continue;
             s.Body.sprite = s.C.Sprites[s.Cur];
+            if (s.Face >= 0)
+            {
+                // 着せ替え (帽子・バイザー・服) も同じ向きへ。本編は歩く向きが変わった時に返すので、違う時だけ書く
+                bool left = s.Face == 1;
+                if (s.Pc.cosmetics.FlipX != left) s.Pc.cosmetics.SetFlipX(left);
+                if (s.Body.flipX != left) s.Body.flipX = left;
+                continue;
+            }
             bool want = s.C.Mirror ? !s.Flip : s.Flip;
             if ((s.Fallen || s.C.Mirror) && s.Body.flipX != want) s.Body.flipX = want;
         }

@@ -43,7 +43,7 @@ internal static class Rescue
         public float StartMouth, SafeFor, NextDrift;
         public Vector2 ByLast;
         public float StillFor, NextPose;
-        public bool Walking, Posed;
+        public bool Walking, Posed, FaceLeft;
     }
     private static readonly List<Haul> Hauls = new();
     private static readonly Dictionary<byte, float> Left = new(); // 運べる残りの秒 (瀕死 1 回につき)
@@ -224,13 +224,18 @@ internal static class Rescue
         foreach (var h in Hauls) if (h.T && !CrewFlip.IsPlaying(h.Tid)) CrewFlip.Play(h.T, "dragged");
     }
 
-    // 全員: 生きている運ぶ人は、後ろ手に掴んで前のめりに引きずる姿 (歩いている間は歩く連番・止まると踏ん張る 2 枚)。
+    // 全員: 生きている運ぶ人は、引きずる人の方を向いて両手で掴み、後ろ向きに下がる姿 (歩いている間は歩く連番・止まると踏ん張る 2 枚)。
     // 他人の体は本編の同期で動くので、速さは位置の変わり方から測る
     private static void PoseCarrier(Haul h, float dt, float now)
     {
         var b = h.By;
         if (!b || b.inVent || dt <= 0f) return;
         Vector2 p = b.GetTruePosition();
+        if (h.T)
+        {
+            float fx = h.T.GetTruePosition().x - p.x;
+            if (fx * fx > 0.01f) h.FaceLeft = fx < 0f; // 縦に並んだ時は前の向きのまま
+        }
         float mx = p.x - h.ByLast.x, my = p.y - h.ByLast.y;
         bool first = h.NextPose == 0f;
         h.ByLast = p;
@@ -238,11 +243,12 @@ internal static class Rescue
         h.StillFor = moving ? 0f : h.StillFor + dt;
         bool walk = moving || (h.Walking && h.StillFor < StillDelay);
         bool playing = h.Posed && CrewFlip.IsPlaying(h.ById);
-        if (playing && walk == h.Walking) return;
+        if (playing && walk == h.Walking) { CrewFlip.Face(h.ById, h.FaceLeft); return; }
         if (!playing && now < h.NextPose) return; // 断られた (他の演出が体を動かしている) 時は少し待って決め直す
         h.NextPose = now + 0.25f;
         h.Walking = walk;
         h.Posed = CrewFlip.Play(b, walk ? "carry" : "carryidle") || h.Posed;
+        CrewFlip.Face(h.ById, h.FaceLeft);
     }
 
     private static void HostDrop(byte target)
