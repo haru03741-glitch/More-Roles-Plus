@@ -44,6 +44,7 @@ public static class TerrainDeath
     private const float ToughRepeat = 1.5f;
     private const float SpareTime = 3f;      // 助け出された人は火・水の中に残っていてもこの秒は数えない
     private const float RiseTime = 0.6f;     // 助け出された人が起き上がるのにかかる秒
+    private const float ReviveBack = 0.4f;   // 瀕死から抜けた時に戻っている息 (焼け) の秒
 
     // 倒すまでの秒 (崩れ落ちる + 瀕死)
     private static float DeathAt(Cause c) => DoomTime(c) + DyingTime;
@@ -91,13 +92,38 @@ public static class TerrainDeath
         CrewFlip.Play(p, Clip(d.Cause), FxMath.Max(0.5f, left) + Linger, fallen: true);
     }
 
-    // ホスト: 運ばれている瀕死の人の足元がまだ死ぬ元 (火・足の着かない水) の中か
-    internal static bool InHazard(byte id, Vector2 feet) => CauseOf(id) switch
+    // ホスト: 運ばれている瀕死の人の足元がまだ死ぬ元 (火・足の着かない水) の中か。
+    // lift = 体が浮いている分の深さ (浮かせても火の熱は上へ昇るので、火には効かない)
+    internal static bool InHazard(byte id, Vector2 feet, float lift = 0f) => CauseOf(id) switch
     {
         Cause.Burn => OnFire(feet),
-        Cause.Drown => WaterSim.CurrentAt(feet, out _, out _) >= DrownDepth,
+        Cause.Drown => WaterSim.CurrentAt(feet, out _, out _) >= DrownDepth + lift,
         _ => false,
     };
+
+    // ホスト: 降ろしても火・水で死に向かわない所 (火の外で足の着く深さ)
+    internal static bool SafeGround(Vector2 feet) => !OnFire(feet) && WaterSim.CurrentAt(feet, out _, out _) < DrownDepth;
+
+    // 全員 (ホストの知らせで): 守り霊に浮かせられた瀕死の人の頭が水から出た (火の外へ出た)。
+    // 瀕死から抜けて息が戻り始める。体は浮いたまま運ばれ続けるので、起き上がる連番は流さない
+    internal static void Revive(byte id)
+    {
+        if (!Doomed.TryGetValue(id, out var d) || d.Fired) return;
+        ClearDoom(id);
+        DrownFx.Stop(id);
+        BodyChar.Stop(id);
+        Plugin.Logger.LogInfo($"[TerrainDeath] revive {id} {d.Cause}");
+        var p = PortKit.ById(id);
+        if (AmongUsClient.Instance && AmongUsClient.Instance.AmHost)
+        {
+            // 尽きた所から戻り始めた分だけ (まだ水の中なら、少し沈むとまたすぐ尽きる)
+            float hardy = HardyMul(id);
+            if (d.Cause == Cause.Drown) SwimFor[id] = FxMath.Max(0f, DrownTime * hardy - ReviveBack);
+            else if (d.Cause == Cause.Burn) BurnFor[id] = FxMath.Max(0f, BurnTime * hardy - ReviveBack);
+            _exposed = true;
+        }
+        if (p && p.AmOwner && d.Cause == Cause.Drown) AirGauge.Guarded(ReviveBack);
+    }
 
     private static void ClearDoom(byte id)
     {
@@ -153,7 +179,9 @@ public static class TerrainDeath
     {
         var p = PortKit.ById(target);
         if (!p || p.Data == null || p.Data.IsDead || MeetingHud.Instance || ExileController.Instance || cause == Cause.None) return;
-        Doomed[target] = new Doom { Cause = cause, Actor = actor, At = Time.time, Started = cause != Cause.Crush };
+        // 守り霊に浮かせられている間に尽きた人は、運ばれたまま瀕死の時計が止まる (崩れ落ちる絵は放された時に流す)
+        bool carried = Rescue.Carried(target);
+        Doomed[target] = new Doom { Cause = cause, Actor = actor, At = Time.time, Started = cause != Cause.Crush, HeldAt = carried && cause != Cause.Crush ? Time.time : 0f };
         Plugin.Logger.LogInfo($"[TerrainDeath] doom {target} {cause} by={actor}");
         // 本人は動けなくなる (下敷きは塊が当たるまで立ったまま止まる)
         if (p.AmOwner)
@@ -166,14 +194,15 @@ public static class TerrainDeath
         // 下敷き: 崩れた壁から塊が飛んで体に当たり、当たった時に崩れ始める (TickBury)。
         // 客には壊れ方が束で後から届くので、崩れの知らせが届くのを少し待ってから塊を出す
         if (cause == Cause.Crush) { Burying.Add(new Burial { Pc = p, Id = target, At = Time.time, HitAt = -1f }); return; }
-        Collapse(p, cause);
+        Collapse(p, cause, !carried);
     }
 
-    // 倒れる連番を流す。死に方の見た目は流す前に渡す (下敷きは着せ替えを山の中へ落とす)。流せなければ取り消す
-    private static void Collapse(PlayerControl p, Cause cause)
+    // 倒れる連番を流す。死に方の見た目は流す前に渡す (下敷きは着せ替えを山の中へ落とす)。流せなければ取り消す。
+    // 運ばれている間 (flip = false) は体の連番を運ぶ側が持っているので、泡と焦げだけを始める
+    private static void Collapse(PlayerControl p, Cause cause, bool flip = true)
     {
         FallenCorpse.SetFinish(p, cause switch { Cause.Burn => FallenCorpse.Finish.Burnt, Cause.Drown => FallenCorpse.Finish.Drowned, _ => FallenCorpse.Finish.Buried });
-        if (CrewFlip.Play(p, Clip(cause), DeathAt(cause) + Linger, fallen: true))
+        if (!flip || CrewFlip.Play(p, Clip(cause), DeathAt(cause) + Linger, fallen: true))
         {
             if (cause == Cause.Drown) DrownFx.Start(p);
             else if (cause == Cause.Burn)
@@ -245,7 +274,8 @@ public static class TerrainDeath
             var pos = p.GetTruePosition();
             if (!away && fire && OnFire(pos)) BurnFor[id] += dt;
             else if (BurnFor[id] > 0f) BurnFor[id] = FxMath.Max(0f, BurnFor[id] - dt);
-            if (!away && water && WaterSim.CurrentAt(pos, out _, out _) >= DrownDepth && !NoDrown(id)) SwimFor[id] += dt * Impostor.RemoteController.BreathRate(id);
+            // 守り霊に浮かせられている人は、浮いた分だけ深い所まで頭が水から出る
+            if (!away && water && WaterSim.CurrentAt(pos, out _, out _) >= DrownDepth + Rescue.LiftDepthOf(id) && !NoDrown(id)) SwimFor[id] += dt * Impostor.RemoteController.BreathRate(id);
             else if (SwimFor[id] > 0f) SwimFor[id] = FxMath.Max(0f, SwimFor[id] - dt);
             float hardy = HardyMul(id);
             float burnAt = burnLimit * hardy, drownAt = drownLimit * hardy;
@@ -266,7 +296,7 @@ public static class TerrainDeath
     // その人が溺れるまでの秒 (息のゲージと同じ値)
     internal static float DrownLimit(byte id) => DrownTime * HardyMul(id);
 
-    private static bool OnFire(Vector2 pos)
+    internal static bool OnFire(Vector2 pos)
     {
         var org = FireSim.Origin;
         float cell = FireSim.Cell;

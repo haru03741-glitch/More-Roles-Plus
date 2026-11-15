@@ -441,7 +441,7 @@ public static class PortKit
     public static bool Alive(PlayerControl p) => p && p.Data != null && !p.Data.IsDead && !p.Data.Disconnected;
 }
 
-// 自分では動けない人 (ロケットランチャーに掴まれた・リモコンで操作されている/している・ユビキタスでドローンを操作している)。
+// 自分では動けない人 (ロケットランチャーに掴まれた・リモコンで操作されている/している・ユビキタスでドローンを操作している・助け出しで運ばれている)。
 // CanMove は 1 フレームに何度も読まれるので、パッチは 1 つにまとめ、誰も止まっていない時は Unity の物に触らずに返す
 [HarmonyLib.HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.CanMove), HarmonyLib.MethodType.Getter)]
 internal static class PortFreezePatch
@@ -451,11 +451,11 @@ internal static class PortFreezePatch
         if (!__result) return;
         var local = RoleState.Local;
         bool held = Impostor.RocketLauncher.Held.Count > 0, controlled = Impostor.RemoteController.Controlled.Count > 0;
-        bool chicken = ChickenFx.LocalOmen != 255 || TerrainDeath.LocalDoom != 255 || TerrainDeath.LocalDodge != 255;
+        bool chicken = ChickenFx.LocalOmen != 255 || TerrainDeath.LocalDoom != 255 || TerrainDeath.LocalDodge != 255 || Rescue.LocalCarried != 255;
         if (!held && !controlled && !chicken && local is not Impostor.RemoteController && local is not Crew.Ubiquitous) return;
         if (!__instance.AmOwner) return;
         byte id = __instance.PlayerId;
-        if ((chicken && (ChickenFx.LocalOmen == id || TerrainDeath.LocalDoom == id || TerrainDeath.LocalDodge == id))
+        if ((chicken && (ChickenFx.LocalOmen == id || TerrainDeath.LocalDoom == id || TerrainDeath.LocalDodge == id || Rescue.LocalCarried == id))
             || ((held && Impostor.RocketLauncher.Held.Contains(id))
             || (controlled && Impostor.RemoteController.Controlled.Contains(id))
             || (local is Impostor.RemoteController && Impostor.RemoteController.Operating(__instance))

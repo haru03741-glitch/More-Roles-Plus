@@ -2346,7 +2346,7 @@ WardSpirit.Name: Warden Spirit
 WardSpirit.Blurb: Not yet. Not this one.
 WardSpirit.Summary: A ghost role for dead crewmates. You can carry people who are dying from fire, water, a collapsing wall, or a hull breach to safety.
 WardSpirit.Save: Save
-WardSpirit.Save.Help: Use it next to someone who has collapsed and is dying to grab them and carry them. They survive once you get them out of the fire, into water shallow enough to stand in, or back inside from the edge of a hull breach. Someone pinned under a collapsed wall is saved on the spot. An arrow points to anyone who starts dying. You cannot use the ghost Haunt ability.
+WardSpirit.Save.Help: Use it next to someone who has collapsed and is dying to grab them and carry them. You can also lift someone who is about to drown or burn before they collapse. While their body is held above the water, they get their breath back. Heat rises, so lifting someone over a fire does not stop the burning. They survive once you get them out of the fire, into water shallow enough to stand in, or back inside from the edge of a hull breach. Someone pinned under a collapsed wall is saved on the spot. An arrow points to anyone who starts dying. You cannot use the ghost Haunt ability.
 WardSpirit.Save.Short: Carry a dying person to safety
 WardSpirit.Uses: Saves
 Rescue.Pull: Pull out

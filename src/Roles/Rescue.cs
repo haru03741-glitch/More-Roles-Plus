@@ -9,6 +9,8 @@ namespace MoreRolesPlus.Roles;
 // 瀕死の人 (地形で崩れ落ちた人・外壁の穴の縁にしがみついている人) を助け出す。
 // 近くの生きている人が長押しするか守り霊が「救う」と、その人を掴んで引きずって運ぶ。運んでいる間は瀕死の時計が止まり、
 // 運べる秒には限りがある (瀕死 1 回につき合計)。火の外・足の着く水まで運ぶか、縁から内側へ引き戻せたら助かる。
+// 守り霊は溺れかけ・焼けかけの人 (まだ瀕死でない) も宙に浮かせて運べる。浮かせた分だけ体が水から出るので、
+// 浅い所なら運んでいる間も息が戻り、瀕死の人は息が戻り始めた所で瀕死から抜ける。火は熱が上へ昇るので、浮かせても火の外でしか戻らない。
 // 崩れた壁の下敷きは長押しでその場で助け出す。運ぶか・助かるか・放すかはホストが決めて全員へ配る
 internal static class Rescue
 {
@@ -36,6 +38,8 @@ internal static class Rescue
     private const float FloatRise = 0.5f;   // 浮き上がるまでの秒
     private const string FloatClip = "floatcarried", DragClip = "dragged", SpiritClip = "ghostcarry";
     private const float SpiritHoldX = 0.6f;  // 守り霊は浮かせた人を胸の前で抱えるので、生きている人が引きずる時より近い
+    // 浮かせた高さ (絵の単位 0.35 = 体の高さの約 3 分の 1) を水の深さに直した値。足の着かない深さよりこれだけ浅ければ頭が水から出る
+    internal const float LiftDepth = 0.25f;
 
     private static Lifespan _life;
     private static ModButton _button;
@@ -48,7 +52,7 @@ internal static class Rescue
         public byte Tid, ById;
         public bool Spirit, Cling;
         public sbyte Flip = -1; // 最後に書いた引きずられる体の向き (-1 = まだ)
-        public float StartMouth, SafeFor, NextDrift, Born, LiftK = -1f; // LiftK = 絵の単位 1 が世界の何単位か (浮かせる体の光を合わせる)
+        public float StartMouth, SafeFor, OutFor, NextDrift, Born, LiftK = -1f; // LiftK = 絵の単位 1 が世界の何単位か (浮かせる体の光を合わせる)
         public Vector2 ByLast;
         public float StillFor, NextPose;
         public bool Walking, Posed, FaceLeft, HeadLeft;
@@ -57,6 +61,7 @@ internal static class Rescue
     private static readonly List<Haul> Hauls = new();
     private static readonly Dictionary<byte, float> Left = new(); // 運べる残りの秒 (瀕死 1 回につき)
     private static byte _localHaul = 255;
+    internal static byte LocalCarried = 255; // 自分が運ばれている間 (瀕死から抜けても自分では動けない・PortFreezePatch が読む)
     private static int _shipGen = -1;
 
     internal static bool LocalHauling => _localHaul != 255;
@@ -64,6 +69,33 @@ internal static class Rescue
 
     // 助け出せる状態か (全員の端末で同じ答えになる物だけを見る)
     internal static bool Dying(byte id) => TerrainDeath.IsDying(id) || Terrain.CrewGrip.Clinging(id);
+
+    // 守り霊が浮かせられる、まだ瀕死でない人: 足の着かない水の中 (泳ぎが得意な人は除く) か火の中にいる。
+    // 水と火の広がりは全員の端末で同じなので、どの端末でも同じ答えになる
+    internal static bool Endangered(byte id)
+    {
+        if (!TerrainDeath.Enabled || MeetingHud.Instance || ExileController.Instance) return false;
+        bool fire = Terrain.FireSim.Ready && Terrain.FireSim.BurningCount > 0, water = Terrain.WaterSim.Running && Terrain.WaterSim.Ready;
+        if (!fire && !water) return false;
+        var p = PortKit.ById(id);
+        if (!PortKit.Alive(p) || p.inVent || p.onLadder || p.inMovingPlat || TerrainDeath.IsDoomed(id)) return false;
+        var pos = p.GetTruePosition();
+        return (fire && TerrainDeath.OnFire(pos))
+            || (water && !TerrainDeath.NoDrown(id) && Terrain.WaterSim.CurrentAt(pos, out _, out _) >= Terrain.CrewSwim.BraceMaxDepth);
+    }
+
+    // 守り霊に浮かせられている人の体が水面から上がった分 (水の深さの単位)。浮き上がる途中は少しずつ
+    internal static float LiftDepthOf(byte id)
+    {
+        if (Hauls.Count == 0) return 0f;
+        foreach (var h in Hauls)
+        {
+            if (h.Tid != id || !h.Spirit || h.Cling) continue;
+            float u = (Time.time - h.Born) / FloatRise;
+            return u >= 1f ? LiftDepth : u <= 0f ? 0f : u * LiftDepth;
+        }
+        return 0f;
+    }
 
     internal static bool Carried(byte id)
     {
@@ -98,6 +130,10 @@ internal static class Rescue
 
     private static readonly RemoteCall<byte> DropCall = new("Rescue.Drop", Route.HostToAll,
         (w, m) => w.Write(m), r => r.ReadByte(), (_, m) => End(m, false));
+
+    // 守り霊に浮かせられた瀕死の人の頭が水から出た (火の外へ出た): 瀕死から抜けて運ばれ続ける
+    private static readonly RemoteCall<byte> ReviveCall = new("Rescue.Revive", Route.HostToAll,
+        (w, m) => w.Write(m), r => r.ReadByte(), (_, m) => TerrainDeath.Revive(m));
 
     private static string Refuse(PlayerControl user, PlayerControl target)
     {
@@ -146,9 +182,9 @@ internal static class Rescue
         Begin(target.PlayerId, by.PlayerId, false);
     }
 
-    // 守り霊が狙える瀕死の人: まだ誰にも運ばれておらず、運べる秒が残っていて、守り霊が今は誰も運んでいない
+    // 守り霊が狙える瀕死の人・溺れかけ/焼けかけの人: まだ誰にも運ばれておらず、運べる秒が残っていて、守り霊が今は誰も運んでいない
     internal static bool SpiritCanTake(byte spirit, byte target) =>
-        Dying(target) && !Carried(target) && !Hauling(spirit) && !(Left.TryGetValue(target, out float l) && l <= 0f);
+        (Dying(target) || Endangered(target)) && !Carried(target) && !Hauling(spirit) && !(Left.TryGetValue(target, out float l) && l <= 0f);
 
     // 崩れた壁の下敷き (縁にしがみついてはいない)。瓦礫の下からその場で助け出す
     private static bool Pinned(byte id) => TerrainDeath.CauseOf(id) == TerrainDeath.Cause.Crush && !Terrain.CrewGrip.Clinging(id);
@@ -185,7 +221,8 @@ internal static class Rescue
     {
         var t = PortKit.ById(target);
         var b = PortKit.ById(by);
-        if (!t || !b || t.Data == null || t.Data.IsDead || Carried(target) || Hauling(by) || !Dying(target)) return;
+        // 守り霊はホストが確かめてから呼ばれるので、瀕死でない (溺れかけの) 人もそのまま運ぶ
+        if (!t || !b || t.Data == null || t.Data.IsDead || Carried(target) || Hauling(by) || (!spirit && !Dying(target))) return;
         bool cling = Terrain.CrewGrip.Clinging(target);
         var h = new Haul { T = t, By = b, Tid = target, ById = by, Spirit = spirit, Cling = cling, Born = Time.time };
         if (cling) h.StartMouth = Terrain.Decompression.MouthDist(t.GetTruePosition(), out _);
@@ -197,6 +234,7 @@ internal static class Rescue
         CrewFlip.Stop(target);
         // 守り霊は生きている人には見えないので、見えない手に抱えられて宙に浮き、力の抜けた姿で運ばれる
         CrewFlip.Play(t, spirit ? FloatClip : DragClip);
+        if (t.AmOwner) LocalCarried = target;
         if (b.AmOwner)
         {
             _localHaul = target;
@@ -216,11 +254,14 @@ internal static class Rescue
             if (h.Tid != target) continue;
             Hauls.RemoveAt(i);
             if (_localHaul == target) _localHaul = 255;
+            if (LocalCarried == target) LocalCarried = 255;
             TerrainDeath.Hold(target, false);
             Terrain.CrewGrip.Hold(target, false);
             CrewFlip.Stop(target);
             if (h.Posed) CrewFlip.Stop(h.ById);
             if (saved || !h.T || h.T.Data == null || h.T.Data.IsDead) continue;
+            // 瀕死でない (浮かせている間に瀕死から抜けた) 人は放されるとその場に戻るだけ。運べる秒は次の瀕死のために数え直す
+            if (!Dying(target)) { Left.Remove(target); Plugin.Logger.LogInfo($"[Rescue] release {target}"); continue; }
             if (h.Cling) Terrain.CrewGrip.Recling(target);
             else TerrainDeath.Recollapse(target);
             Plugin.Logger.LogInfo($"[Rescue] drop {target}");
@@ -330,7 +371,8 @@ internal static class Rescue
             float left = Left.TryGetValue(h.Tid, out float l) ? l - dt : 0f;
             Left[h.Tid] = left;
             if (h.Spirit && h.T && now >= h.NextDrift) { h.NextDrift = now + DriftEvery; WardSpiritFx.Drift(h.T); }
-            bool gone = !h.T || h.T.Data == null || h.T.Data.IsDead || h.T.Data.Disconnected || !Dying(h.Tid);
+            // 守り霊が浮かせている人は瀕死でなくても運び続ける (溺れかけ・瀕死から抜けた後)
+            bool gone = !h.T || h.T.Data == null || h.T.Data.IsDead || h.T.Data.Disconnected || (!(h.Spirit && !h.Cling) && !Dying(h.Tid));
             if (gone) { End(h.Tid, true); continue; }
             // 時戻しの再生中は体の連番が止められているので、流し直しも光も出さない (再生が終われば次の刻みで戻る)
             if (!RewindPlayback.Active)
@@ -343,9 +385,19 @@ internal static class Rescue
             Vector2 tp = h.T.GetTruePosition(), bp = h.By.GetTruePosition();
             float dx = tp.x - bp.x, dy = tp.y - bp.y;
             if (byGone || left <= 0f || dx * dx + dy * dy > LetGo * LetGo) { HostDrop(h.Tid); continue; }
+            // 足の着かない水の上でも、浮かせた体の頭が水から出ていれば息が戻り始め、少し続けば瀕死から抜けて運ばれ続ける。
+            // 足の着く所まで来ていれば下の助かる判定へ (起き上がって息が全部戻る)
+            if (h.Spirit && !h.Cling && Dying(h.Tid) && TerrainDeath.InHazard(h.Tid, tp))
+            {
+                h.OutFor = TerrainDeath.InHazard(h.Tid, tp, LiftDepthOf(h.Tid)) ? 0f : h.OutFor + dt;
+                if (h.OutFor >= SafeHold) { h.OutFor = 0f; ReviveCall.Send(h.Tid); TerrainDeath.Revive(h.Tid); }
+                h.SafeFor = 0f;
+                continue;
+            }
+            h.OutFor = 0f;
             bool safe = h.Cling
                 ? !Terrain.Decompression.Pulling || Terrain.Decompression.MouthDist(tp, out _) >= h.StartMouth + ClingBack
-                : !TerrainDeath.InHazard(h.Tid, tp);
+                : h.Spirit && !Dying(h.Tid) ? TerrainDeath.SafeGround(tp) : !TerrainDeath.InHazard(h.Tid, tp);
             h.SafeFor = safe ? h.SafeFor + dt : 0f;
             if (h.SafeFor >= SafeHold) HostSave(h.By, h.T, h.Spirit ? BySpirit : ByLiving);
         }
@@ -357,6 +409,7 @@ internal static class Rescue
         Hauls.Clear();
         Left.Clear();
         _localHaul = 255;
+        LocalCarried = 255;
     }
 
     // 物理の刻み (PlayerPhysics.FixedUpdate の後): 運ぶ人は遅く歩き、運ばれる体は自分の端末 (ダミーはホスト) が運ぶ人の後ろへ寄せる。
