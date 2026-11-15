@@ -1710,7 +1710,7 @@ Comet.Name: Comet
 Comet.Blurb: Blaze through
 Comet.Summary: A crewmate who can turn invisible and run fast.
 Comet.Blaze: Blaze
-Comet.Blaze.Help: Become invisible and faster for a set time (your vision widens and the screen zooms out a little). While invisible you cannot be seen or killed. You run across water without slowing down and cannot drown in deep water. Your body is still there, though, so others can see your splashes and footprints. A faint trail of light also lingers briefly where you run.
+Comet.Blaze.Help: Become invisible and faster for a set time (your vision widens and the screen zooms out a little). While invisible you cannot be seen or killed. You run across water without slowing down and cannot drown in deep water. Your body is still there, though, so others can see your splashes and footprints. A glittering trail of light also lingers briefly where you run.
 Comet.Blaze.Short: Turn invisible and run fast
 Comet.Tips: Not affected by lights sabotage.
 Comet.Cooldown: Boost cooldown

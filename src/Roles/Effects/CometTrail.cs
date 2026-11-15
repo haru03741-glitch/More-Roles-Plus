@@ -5,37 +5,44 @@ using Object = UnityEngine.Object;
 
 namespace MoreRolesPlus.Roles;
 
-// 透明で走っているコメットの通った後に残る、かすかな光の粒 (全員の端末)。
-// 体から離れた粒は青白く光って生まれ、冷めながら縮み、色がコメットの青へ沈んで消える。進む向きには流さない (その場で冷める)。
+// 透明で走っているコメットの通った後に残る光の尾 (全員の端末)。2 つの層で描く:
+//   もや   = 道筋に沿う淡い光。青白く生まれ、冷めながら広がって薄紫へ沈む
+//   星屑   = 道筋のまわりに散る小さな星の瞬き。粒ごとに違う速さで明滅し、ゆっくり舞い落ちながら消える (もやより長く残る)
 // 世界に置くので、視界の外と壁の向こうは本編の影が隠す。走っていない間・誰も透明でない間は Unity に触らない
 internal static class CometTrail
 {
-    private const float Spacing = 0.07f;      // この距離を進むごとに 1 粒
-    private const float Jitter = 0.035f;      // 出る所のばらつき (1 本の線に見せない)
-    private const float Rise = 0.14f;         // 足元から胴の高さ
-    private const float S0 = 0.15f, S1 = 0.05f, PeakA = 0.32f;
-    private const float MaxStep = 1f;         // 1 フレームでこれより飛んだら TP として繋がない
+    private const byte KindHaze = 0, KindStar = 1;
+    private const float HazeGap = 0.09f;          // この距離を進むごとにもやを 1 つ
+    private const float StarGap = 0.045f;         // この距離を進むごとに星屑を 1 つ (間引きあり)
+    private const float StarChance = 0.7f;
+    private const float HazeJitter = 0.04f, StarJitter = 0.16f; // 出る所のばらつき (星屑は道筋の外まで散らす)
+    private const float Rise = 0.14f;             // 足元から胴の高さ
+    private const float HazeS0 = 0.16f, HazeS1 = 0.3f, HazeA = 0.26f;
+    private const float StarS0 = 0.13f, StarS1 = 0.02f, StarA = 0.95f, StarLife = 1.8f; // 寿命は設定の何倍か
+    private const float StarFall = 0.12f;         // 星屑が舞い落ちる速さ (単位/秒)
+    private const float MaxStep = 1f;             // 1 フレームでこれより飛んだら TP として繋がない
 
     private sealed class Source
     {
         public PlayerControl Pc;
         public byte Id;
         public bool Has;
-        public float X, Y, Carry;
+        public float X, Y, HazeCarry, StarCarry;
     }
 
     private struct Grain
     {
         public SpriteRenderer Sr;
         public Transform Tf;
-        public float Born, Life, Size;
+        public byte Kind;
+        public float X, Y, Z, Vx, Vy, Born, Life, Size, Phase, Rate;
         public bool Live;
     }
 
     private static readonly List<Source> Sources = new();
-    private static readonly Grain[] Grains = new Grain[72];
+    private static readonly Grain[] Grains = new Grain[128];
     private static int _live;
-    private static Sprite _soft;
+    private static Sprite _soft, _star;
     private static object _match;
     private static bool _tracking; // どれかの Source が位置を持っている
 
@@ -64,26 +71,20 @@ internal static class CometTrail
             return;
         }
         float life = Crew.Comet.TrailLife;
-        float now = Time.time;
+        float now = Time.time, dt = Time.deltaTime;
         for (int i = 0; i < Sources.Count; i++)
         {
             var s = Sources[i];
             if (life <= 0f || !Cloak.IsOn(s.Id) || !s.Pc || s.Pc.inVent || !PortKit.Alive(s.Pc)) { s.Has = false; continue; }
             var p = s.Pc.transform.position;
-            if (!s.Has) { s.Has = _tracking = true; s.X = p.x; s.Y = p.y; s.Carry = 0f; continue; }
+            if (!s.Has) { s.Has = _tracking = true; s.X = p.x; s.Y = p.y; s.HazeCarry = s.StarCarry = 0f; continue; }
             float dx = p.x - s.X, dy = p.y - s.Y, d2 = dx * dx + dy * dy;
-            if (d2 > MaxStep * MaxStep) { s.X = p.x; s.Y = p.y; s.Carry = 0f; continue; }
+            if (d2 > MaxStep * MaxStep) { s.X = p.x; s.Y = p.y; s.HazeCarry = s.StarCarry = 0f; continue; }
             if (d2 < 1e-6f) continue;
-            float d = FxMath.Sqrt(d2), walked = s.Carry + d;
+            float d = FxMath.Sqrt(d2);
             // 前のフレームの位置から今の位置まで、間隔ごとに置く (速く走っても途切れない)
-            float t = Spacing - s.Carry;
-            while (t <= d)
-            {
-                float k = t / d;
-                Emit(s.X + dx * k, s.Y + dy * k, p.z, life, now);
-                t += Spacing;
-            }
-            s.Carry = walked % Spacing;
+            s.HazeCarry = Lay(KindHaze, s, dx, dy, d, p.z, s.HazeCarry, HazeGap, life, now);
+            s.StarCarry = Lay(KindStar, s, dx, dy, d, p.z, s.StarCarry, StarGap, life * StarLife, now);
             s.X = p.x;
             s.Y = p.y;
         }
@@ -100,16 +101,45 @@ internal static class CometTrail
                 if (g.Sr) g.Sr.gameObject.SetActive(false);
                 continue;
             }
-            // 生まれてすぐ一番明るく、あとは冷めるほど縮んで暗くなる
-            float a = PeakA * (u < 0.08f ? u / 0.08f : 1f - (u - 0.08f) / 0.92f);
-            float size = g.Size * (S0 + (S1 - S0) * u) / S0;
-            g.Tf.localScale = FxMath.V3(size, size, 1f);
-            // 青白 (0.86,0.95,1) → コメットの青 (0.47,0.69,0.81)
-            g.Sr.color = FxMath.Rgba(0.86f - 0.39f * u, 0.95f - 0.26f * u, 1f - 0.19f * u, a);
+            if (g.Kind == KindHaze)
+            {
+                float a = HazeA * (u < 0.1f ? u / 0.1f : 1f - (u - 0.1f) / 0.9f);
+                float size = g.Size * (1f + (HazeS1 / HazeS0 - 1f) * u);
+                g.Tf.localScale = FxMath.V3(size, size, 1f);
+                // 青白 (0.8,0.92,1) → 薄紫 (0.66,0.58,0.98)
+                g.Sr.color = FxMath.Rgba(0.8f - 0.14f * u, 0.92f - 0.34f * u, 1f - 0.02f * u, a);
+            }
+            else
+            {
+                // 舞い落ちながら、横の勢いはすぐに抜ける
+                g.Vx *= 1f - FxMath.Min(1f, 3f * dt);
+                g.X += g.Vx * dt;
+                g.Y += g.Vy * dt;
+                g.Tf.position = FxMath.V3(g.X, g.Y, g.Z);
+                // 瞬き: 粒ごとの速さで明滅し、全体は終わりへ向けて消える
+                float tw = 0.55f + 0.45f * FxMath.Sin(g.Phase + (now - g.Born) * g.Rate);
+                float a = StarA * tw * (u < 0.06f ? u / 0.06f : 1f - (u - 0.06f) / 0.94f);
+                float size = g.Size * (1f - (1f - StarS1 / StarS0) * u) * (0.85f + 0.15f * tw);
+                g.Tf.localScale = FxMath.V3(size, size, 1f);
+                // 淡い水色 → 薄紫 (真っ白だと明るい床に溶ける)
+                g.Sr.color = FxMath.Rgba(0.82f - 0.1f * u, 0.94f - 0.26f * u, 1f, a);
+            }
         }
     }
 
-    private static void Emit(float x, float y, float z, float life, float now)
+    // d 進んだ間に gap ごとに粒を置き、次へ持ち越す距離を返す
+    private static float Lay(byte kind, Source s, float dx, float dy, float d, float z, float carry, float gap, float life, float now)
+    {
+        for (float t = gap - carry; t <= d; t += gap)
+        {
+            if (kind == KindStar && Random.value > StarChance) continue;
+            float k = t / d;
+            Emit(kind, s.X + dx * k, s.Y + dy * k, z, life, now);
+        }
+        return (carry + d) % gap;
+    }
+
+    private static void Emit(byte kind, float x, float y, float z, float life, float now)
     {
         int slot = -1;
         for (int i = 0; i < Grains.Length; i++) if (!Grains[i].Live) { slot = i; break; }
@@ -117,34 +147,54 @@ internal static class CometTrail
         ref var g = ref Grains[slot];
         if (!g.Sr)
         {
-            _soft ??= FxSprites.Rect(32, 32, FxSprites.Soft, "MrpCometSoft");
             var go = FxRoot.New("MrpCometTrail");
             g.Sr = go.AddComponent<SpriteRenderer>();
-            g.Sr.sprite = _soft;
             g.Tf = go.transform;
         }
         else g.Sr.gameObject.SetActive(true);
-        float jx = (Random.value - 0.5f) * 2f * Jitter, jy = (Random.value - 0.5f) * 2f * Jitter;
-        // 体の少し奥 (通った後に残る物なので、戻ってきた本人の体より手前に出さない)
-        g.Tf.position = FxMath.V3(x + jx, y + Rise + jy, z + 0.002f);
-        g.Size = S0 * (0.8f + 0.4f * Random.value);
+        g.Kind = kind;
+        float j = kind == KindStar ? StarJitter : HazeJitter;
+        g.X = x + (Random.value - 0.5f) * 2f * j;
+        g.Y = y + Rise + (Random.value - 0.5f) * 2f * j;
+        // 体の少し奥 (通った後に残る物なので、戻ってきた本人の体より手前に出さない)。星屑はもやの手前
+        g.Z = z + (kind == KindStar ? 0.0015f : 0.002f);
+        g.Tf.position = FxMath.V3(g.X, g.Y, g.Z);
+        if (kind == KindStar)
+        {
+            _star ??= FxSprites.Rect(64, 64, Star, "MrpCometStar");
+            g.Sr.sprite = _star;
+            g.Size = StarS0 * (0.6f + 0.8f * Random.value);
+            g.Phase = Random.value * 6.2831855f;
+            g.Rate = 14f + 16f * Random.value;
+            g.Vx = (Random.value - 0.5f) * 0.25f;
+            g.Vy = -StarFall * (0.5f + Random.value);
+            // 星の筋を少しずつ傾けて、全部が同じ向きに揃わないようにする
+            g.Tf.rotation = FxMath.RotZ((Random.value - 0.5f) * 30f);
+        }
+        else
+        {
+            _soft ??= FxSprites.Rect(32, 32, FxSprites.Soft, "MrpCometSoft");
+            g.Sr.sprite = _soft;
+            g.Size = HazeS0 * (0.8f + 0.4f * Random.value);
+            g.Vx = g.Vy = 0f;
+        }
         g.Tf.localScale = FxMath.V3(g.Size, g.Size, 1f);
-        g.Sr.color = FxMath.Rgba(0.86f, 0.95f, 1f, 0f);
+        g.Sr.color = FxMath.Rgba(1f, 1f, 1f, 0f);
         g.Born = now;
         g.Life = life * (0.8f + 0.4f * Random.value);
         g.Live = true;
         _live++;
     }
 
-    private static void Clear()
+    // 4 本の細い光の筋 + 明るい芯 + 淡いにじみ (小さく描くと瞬く星に見える)
+    private static float Star(float x, float y)
     {
-        for (int i = 0; i < Grains.Length; i++)
-        {
-            if (Grains[i].Sr) Object.Destroy(Grains[i].Sr.gameObject);
-            Grains[i] = default;
-        }
-        _live = 0;
-        ResetSources();
+        float ax = FxMath.Abs(x) * 2f, ay = FxMath.Abs(y) * 2f;
+        float r2 = ax * ax + ay * ay;
+        float ray = FxMath.Exp(-ay * ay * 900f) * FxMath.Max(0f, 1f - ax) + FxMath.Exp(-ax * ax * 900f) * FxMath.Max(0f, 1f - ay);
+        float core = FxMath.Exp(-r2 * 60f);
+        float glow = 0.35f * FxMath.Exp(-r2 * 9f);
+        return ray * 0.9f + core + glow;
     }
 
     private static void Hide()
@@ -165,4 +215,14 @@ internal static class CometTrail
         _tracking = false;
     }
 
+    private static void Clear()
+    {
+        for (int i = 0; i < Grains.Length; i++)
+        {
+            if (Grains[i].Sr) Object.Destroy(Grains[i].Sr.gameObject);
+            Grains[i] = default;
+        }
+        _live = 0;
+        ResetSources();
+    }
 }
