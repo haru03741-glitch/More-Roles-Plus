@@ -23,6 +23,8 @@ internal static partial class CrewFlip
             new byte[] { 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 7, 8, 7, 8, 7, 8, 7, 8, 7, 8, 7, 8, 7, 8, 7, 8, 7, 8, 7, 8, 7, 8, 7, 8, 7, 9, 10 },
             new float[] { 0.0f, -0.054f, 0.145f, 0.386f, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN },
             new float[] { 0.0f, -0.001f, -0.064f, -0.166f, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN }),
+        Clip.Own("clinggrip", 300, 210, 2, 1, 52f, 112f, 0,
+            new byte[] { 0, 0, 0, 1, 1, 1 }),
         Clip.Vanilla("crush", "killNeck_victim", new ushort[] { 1, 18, 31, 32, 34, 35 }, -0.005f, 0.36f, 13,
             new byte[] { 0, 0, 1, 2, 3, 3, 3, 4, 4, 5, 5, 4, 4, 5 },
             new float[] { 0.0f, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN },

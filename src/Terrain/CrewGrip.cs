@@ -54,6 +54,7 @@ internal static class CrewGrip
     private static float _dt;
     private static float _lockEnd, _pushEnd, _immuneEnd, _lostAt, _rimEnd;
     private static bool _rim;               // 口の際でつかんでいる (厳しい方の数値)
+    private static bool _clingGrip;         // 自分が縁の角を握ってしがみついている (角に手の印とゲージを出す)
     private static int _presses;            // 毎フレーム数えて物理の刻みで使う
     private static bool _hasTarget;
     private static Vector2 _target, _hold, _dir, _pushDir;
@@ -161,6 +162,10 @@ internal static class CrewGrip
         public byte Id, By;
         public float At;
         public float HeldAt;   // 引き戻されている間 (0 = いない)。その間は手が離れるまでの時計が止まる
+        public bool Has;       // 握っている角がある
+        public Vector2 Grip, Out; // 握っている角 (口の端に残った壁) と、引かれる向き (口の先)
+        public Vector2 Axis;      // 体を伸ばす向き (角から口の線を越えて外へ)
+        public Pose Pose;      // 体を角から口の先へ向けて倒し、震わせる (全員の端末で)
     }
     private static readonly List<Cling> Clings = new();
     private const float SaveImmune = 3f;   // 助け出された人がこの秒は流されない
@@ -178,7 +183,7 @@ internal static class CrewGrip
         foreach (var c in Clings)
         {
             if (c.Id != id) continue;
-            if (on) { if (c.HeldAt <= 0f) c.HeldAt = Time.time; }
+            if (on) { if (c.HeldAt <= 0f) c.HeldAt = Time.time; Unlean(c); if (c.Pc && c.Pc.AmOwner) _clingGrip = false; }
             else if (c.HeldAt > 0f) { c.At += Time.time - c.HeldAt; c.HeldAt = 0f; }
         }
     }
@@ -186,7 +191,13 @@ internal static class CrewGrip
     // 全員: 引き戻す手を放された人は、また縁にしがみつく
     internal static void Recling(byte id)
     {
-        foreach (var c in Clings) if (c.Id == id && c.Pc) { CrewFlip.Stop(id); CrewFlip.Play(c.Pc, "cling"); return; }
+        foreach (var c in Clings)
+            if (c.Id == id && c.Pc)
+            {
+                if (c.Pc.AmOwner) _clingGrip = c.Has;
+                Lean(c);
+                return;
+            }
     }
 
     // 吸い出しで本編の追放を走らせている間の人 (追放の出来事を起こさない)
@@ -218,6 +229,7 @@ internal static class CrewGrip
             // 人の体は船より長生きする (ロビーへ戻っても残る) ので、動かしていた見た目を戻してから捨てる
             foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
             Flights.Clear();
+            foreach (var c in Clings) Unlean(c);
             Clings.Clear();
             RestoreBody();
             _root = null;
@@ -237,6 +249,7 @@ internal static class CrewGrip
             // 逆再生の間はつかまりをやめ、流されている体の見た目も戻す (体の位置は逆再生が置き、吸い出しの計算は時戻しが巻き戻す)
             foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
             Flights.Clear();
+            foreach (var c in Clings) Unlean(c);
             Clings.Clear(); // 体の連番は逆再生の間 CrewFlip が止める
             Cancel();
             _afterRewind = true;
@@ -291,7 +304,7 @@ internal static class CrewGrip
         switch (_state)
         {
             case State.Cling:
-                body.velocity = FxMath.V2(0f, 0f);
+                body.velocity = _clingGrip ? FxMath.V2((_hold.x - pos.x) * 8f, (_hold.y - pos.y) * 8f) : FxMath.V2(0f, 0f);
                 return true;
 
             case State.Lost:
@@ -604,14 +617,50 @@ internal static class CrewGrip
         _state = State.Lost;
         _lostAt = _t;
         _hasTarget = false;
-        Plugin.Logger.LogInfo($"[CrewGrip] out at {pc.GetTruePosition().x:0.00},{pc.GetTruePosition().y:0.00}");
-        OutRequest.Send(pc.PlayerId);
+        var pos = pc.GetTruePosition();
+        // 最後にしがみつく所 = 口の端に残った壁の角 (縁の輪が出ていた所)。無ければ近くのつかめる角
+        bool has = RimStub(pos, out var grip) || NearestGrip(pos, out grip);
+        Vector2 dir = Decompression.PullAt(pos, out var d, out _, out _) ? d : _dir;
+        Plugin.Logger.LogInfo($"[CrewGrip] out at {pos.x:0.00},{pos.y:0.00} grip={(has ? $"{grip.x:0.00},{grip.y:0.00}" : "-")}");
+        OutRequest.Send(new OutMsg(pc.PlayerId, has, grip.x, grip.y, dir.x, dir.y));
     }
 
-    private static readonly RemoteCall<byte> OutRequest = new("Decomp.Out", Route.ToHost,
-        (w, pid) => w.Write(pid), r => r.ReadByte(),
-        (sender, pid) =>
+    private static bool NearestGrip(Vector2 p, out Vector2 grip)
+    {
+        grip = default;
+        float best = RimReach * RimReach;
+        var grips = Decompression.GripPoints;
+        for (int i = 0; i < grips.Count; i++)
         {
+            var g = grips[i];
+            float d = (g.x - p.x) * (g.x - p.x) + (g.y - p.y) * (g.y - p.y);
+            if (d < best) { best = d; grip = g; }
+        }
+        return best < RimReach * RimReach;
+    }
+
+    // しがみつく人と、握る角と引かれる向き (角が無ければ Has = false)
+    internal readonly record struct OutMsg(byte Pid, bool Has, float Gx, float Gy, float Dx, float Dy);
+
+    private static void WriteOut(Hazel.MessageWriter w, OutMsg m)
+    {
+        w.Write(m.Pid);
+        w.Write(m.Has);
+        if (!m.Has) return;
+        w.Write(m.Gx); w.Write(m.Gy); w.Write(m.Dx); w.Write(m.Dy);
+    }
+
+    private static OutMsg ReadOut(Hazel.MessageReader r)
+    {
+        byte pid = r.ReadByte();
+        return r.ReadBoolean() ? new OutMsg(pid, true, r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()) : new OutMsg(pid, false, 0f, 0f, 0f, 0f);
+    }
+
+    private static readonly RemoteCall<OutMsg> OutRequest = new("Decomp.Out", Route.ToHost,
+        WriteOut, ReadOut,
+        (sender, om) =>
+        {
+            byte pid = om.Pid;
             if (!sender || sender.PlayerId != pid) return;
             string why = Refuse(sender);
             if (why != null)
@@ -621,25 +670,86 @@ internal static class CrewGrip
             }
             byte by = ShovedBy.TryGetValue(pid, out var sh) && Time.time <= sh.Until ? sh.By : Decompression.MouthActor(sender.GetTruePosition());
             ShovedBy.Remove(pid);
-            ClingCall.Send((pid, by));
-            StartCling(pid, by);
+            // 握る角は送った人の言い値なので、体から手の届く所かだけ確かめる (遠ければ角なしでしがみつく)
+            var sp = sender.GetTruePosition();
+            float gdx = om.Gx - sp.x, gdy = om.Gy - sp.y;
+            bool finite = float.IsFinite(om.Gx) && float.IsFinite(om.Gy) && float.IsFinite(om.Dx) && float.IsFinite(om.Dy);
+            if (om.Has && (!finite || !(gdx * gdx + gdy * gdy <= (RimReach + 0.5f) * (RimReach + 0.5f)))) om = om with { Has = false };
+            ClingCall.Send((om, by));
+            StartCling(om, by);
         });
 
-    private static readonly RemoteCall<(byte pid, byte by)> ClingCall = new("Decomp.Cling", Route.HostToAll,
-        (w, m) => { w.Write(m.pid); w.Write(m.by); }, r => (r.ReadByte(), r.ReadByte()), (_, m) => StartCling(m.pid, m.by));
+    private static readonly RemoteCall<(OutMsg m, byte by)> ClingCall = new("Decomp.Cling", Route.HostToAll,
+        (w, c) => { WriteOut(w, c.m); w.Write(c.by); }, r => (ReadOut(r), r.ReadByte()), (_, c) => StartCling(c.m, c.by));
 
-    private static void StartCling(byte pid, byte by)
+    private static void StartCling(OutMsg om, byte by)
     {
+        byte pid = om.Pid;
         if (Interrupted) return;
         var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
         if (!p || p.Data == null || p.Data.IsDead || Clinging(pid) || Flying(pid)) return;
-        Clings.Add(new Cling { Pc = p, Id = pid, By = by, At = Time.time });
-        if (p.AmOwner) { RestoreBody(); if (_shown) Hide(); _state = State.Cling; }
-        // 縁を両手でつかみ、体は口と逆へ伸ばす (手が船の中を向く)
-        var pos = p.GetTruePosition();
-        if (Decompression.MouthDist(pos, out var m) < 5f && p.cosmetics) p.cosmetics.SetFlipX(m.x > pos.x);
-        CrewFlip.Play(p, "cling");
-        Plugin.Logger.LogInfo($"[CrewGrip] cling {pid} by={by}");
+        var c = new Cling { Pc = p, Id = pid, By = by, At = Time.time, Has = om.Has, Grip = FxMath.V2(om.Gx, om.Gy) };
+        float ol = MathF.Sqrt(om.Dx * om.Dx + om.Dy * om.Dy);
+        c.Out = ol > 0.01f ? FxMath.V2(om.Dx / ol, om.Dy / ol) : FxMath.V2(0f, 1f);
+        c.Axis = c.Out;
+        if (c.Has && Decompression.MouthDist(p.GetTruePosition(), out var mouth) < 5f)
+        {
+            // 体は口の真ん中寄りから外へ吸われる: 角 → (体に近い口の点 + 口の先へ少し)
+            float ax = mouth.x + c.Out.x * 0.8f - c.Grip.x, ay = mouth.y + c.Out.y * 0.8f - c.Grip.y, al = MathF.Sqrt(ax * ax + ay * ay);
+            if (al > 0.05f) c.Axis = FxMath.V2(ax / al, ay / al);
+        }
+        Clings.Add(c);
+        if (p.AmOwner)
+        {
+            RestoreBody();
+            if (_shown) Hide();
+            _state = State.Cling;
+            _clingGrip = c.Has;
+            _target = c.Grip;
+            _dir = c.Out;
+            // 握った角の手前 (流れの逆向き) へ寄る。縁の掴みと同じく速さで寄せるので壁で止まる
+            _hold = FxMath.V2(c.Grip.x - c.Out.x * HoldGap, c.Grip.y - c.Out.y * HoldGap);
+        }
+        Lean(c);
+        Plugin.Logger.LogInfo($"[CrewGrip] cling {pid} by={by} grip={(c.Has ? $"{c.Grip.x:0.00},{c.Grip.y:0.00}" : "-")}");
+    }
+
+    // 縁の角を両手で握り、体は口の先へ引っぱられて倒れる (這う絵の手の側を角へ・背を口の先へ)。角が無ければ倒さない
+    private static void Lean(Cling c)
+    {
+        CrewFlip.Stop(c.Id);
+        // 体の控えは連番より先に作る (控えを作る時に他の演出の体を戻させ、その中で連番も止まる)。
+        // 這う絵を流せない時 (体を別の演出が動かしている) は立ち姿を倒さない
+        if (c.Has && c.Pose == null) c.Pose = new Pose(c.Pc);
+        if (!CrewFlip.Play(c.Pc, c.Has ? GripClip : "cling")) Unlean(c);
+    }
+
+    // 角を両手で握って体が流れの先へ引っぱられる絵 (拳 = 絵の足元・体は絵の右へ伸びる)
+    private const string GripClip = "clinggrip";
+
+    private static void Unlean(Cling c)
+    {
+        if (c.Pose != null && c.Pose.Alive) c.Pose.Restore();
+        c.Pose = null;
+    }
+
+    // 体を倒す向きと震え (毎フレーム・つかまっている人だけ)。体 (絵の右) を axis へ伸ばし、
+    // 拳 (絵の足元・体の根から HandDrop 下) が角に来るよう体ごとずらす
+    private const float HandDrop = 0.38f, LeanReach = 0.8f;
+    // flip = 本編が体を左右反転して描いている (寄る・押される時の動きで本編が決める)。横の倍率を負にして打ち消す
+    private static void Aim(Pose pose, Vector2 root, Vector2 grip, Vector2 o, float t, float k, bool flip)
+    {
+        float shake = (4f + 4f * k) * FxMath.Sin(t * 78f) * (0.6f + 0.4f * FxMath.Sin(t * 11f));
+        float deg = FxMath.Atan2(o.y, o.x) * 57.29578f + shake;
+        float rad = deg * 0.0174533f, cs = FxMath.Cos(rad), sn = FxMath.Sin(rad);
+        // 絵の下 (0, -HandDrop) を回した所
+        float hx = HandDrop * sn, hy = -HandDrop * cs;
+        float tug = 0.03f * FxMath.Sin(t * 23f);
+        float wx = grip.x - (root.x + hx) + o.x * tug, wy = grip.y - (root.y + hy) + o.y * tug;
+        float wl = MathF.Sqrt(wx * wx + wy * wy);
+        if (wl > LeanReach) { wx *= LeanReach / wl; wy *= LeanReach / wl; }
+        float st = 1.1f + 0.05f * k + 0.03f * FxMath.Sin(t * 31f);
+        pose.Set(wx, wy, deg, flip ? -st : st, 2f - st);
     }
 
     // 全員: しがみついている人を見る。手を離すか (ホストが決める)・会議で助かるか
@@ -650,14 +760,24 @@ internal static class CrewGrip
         for (int i = Clings.Count - 1; i >= 0; i--)
         {
             var c = Clings[i];
-            if (!c.Pc || c.Pc.Data == null || c.Pc.Data.IsDead || c.Pc.Data.Disconnected) { Clings.RemoveAt(i); CrewFlip.Stop(c.Id); continue; }
+            if (!c.Pc || c.Pc.Data == null || c.Pc.Data.IsDead || c.Pc.Data.Disconnected) { Unlean(c); Clings.RemoveAt(i); CrewFlip.Stop(c.Id); continue; }
             if (Interrupted) { Release(i, c); continue; }
             if (c.HeldAt > 0f) continue; // 引き戻されている間は手が離れない
+            // 握る絵を別の演出が止めた (体を返させた・ベント・見えない所から戻った): 立ち絵を倒し続けない
+            if (c.Pose != null && !CrewFlip.IsPlaying(c.Id)) Unlean(c);
+            if (c.Pose != null)
+            {
+                // 手が離れる時が近いほど強く震える
+                float k = FxMath.Clamp01((Time.time - c.At) / FxMath.Max(1f, dying));
+                var rt = c.Pc.transform.position;
+                Aim(c.Pose, FxMath.V2(rt.x, rt.y), c.Grip, c.Axis, Time.time + c.Id * 1.7f, k, c.Pc.cosmetics && c.Pc.cosmetics.FlipX);
+            }
             // ホストの知らせ (手が離れた・助かった) が届かなかった時の安全弁
             if (!host) { if (Time.time - c.At > dying + 5f) Release(i, c); continue; }
             // 口がふさがった・気圧が抜けた: 引く力が消えたので助かる
             if (!Decompression.Pulling) { Roles.Rescue.HostSave(c.Pc, c.Pc, Roles.Rescue.ByLiving); continue; }
             if (Time.time - c.At < dying) continue;
+            Unlean(c);
             Clings.RemoveAt(i);
             Spaced.Send((c.Id, c.By));
             StartFlight(c.Id, c.By);
@@ -666,6 +786,7 @@ internal static class CrewGrip
 
     private static void Release(int i, Cling c)
     {
+        Unlean(c);
         Clings.RemoveAt(i);
         CrewFlip.Stop(c.Id);
         if (c.Pc && c.Pc.AmOwner && _state == State.Cling) _state = State.Free;
@@ -719,7 +840,7 @@ internal static class CrewGrip
     {
         foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
         Flights.Clear();
-        foreach (var c in Clings) CrewFlip.Stop(c.Id);
+        foreach (var c in Clings) { Unlean(c); CrewFlip.Stop(c.Id); }
         Clings.Clear();
         _strandTried = false;
         Cancel();
@@ -731,7 +852,7 @@ internal static class CrewGrip
         var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
         if (!p || p.Data == null || p.Data.IsDead) return;
         foreach (var f in Flights) if (f.Pc && f.Pc.PlayerId == pid) return;
-        for (int i = Clings.Count - 1; i >= 0; i--) if (Clings[i].Id == pid) Clings.RemoveAt(i);
+        for (int i = Clings.Count - 1; i >= 0; i--) if (Clings[i].Id == pid) { Unlean(Clings[i]); Clings.RemoveAt(i); }
         if (p.AmOwner) { RestoreBody(); if (_shown) Hide(); _state = State.Lost; _lostAt = _t; }
         var pos = p.GetTruePosition();
         float md = Decompression.MouthDist(pos, out var m);
@@ -823,10 +944,12 @@ internal static class CrewGrip
         var pos = lp.GetTruePosition();
         bool ring = (_state == State.Free && _hasTarget) || _state == State.Rim;
         bool grab = _state == State.Grabbed;
+        bool cling = _state == State.Cling && _clingGrip;
+        bool hold = grab || cling;
 
         // 縮む輪: 角を中心に半径 = 体の縁から角までの距離。角の点に重なった時が押し時
         if (ring != _ringOn) { _ringOn = ring; _ringTf.gameObject.SetActive(ring); _ringGlowTf.gameObject.SetActive(ring); }
-        if ((ring || grab) != _dotOn) { _dotOn = ring || grab; _dotTf.gameObject.SetActive(_dotOn); }
+        if ((ring || hold) != _dotOn) { _dotOn = ring || hold; _dotTf.gameObject.SetActive(_dotOn); }
         if (ring)
         {
             float r = _de + 0.1f, z = _target.y / 1000f - 0.02f;
@@ -842,30 +965,32 @@ internal static class CrewGrip
             _ringGlowTf.localScale = FxMath.V3(r * 2.25f, r * 2.25f, 1f);
             _ringGlow.color = FxMath.Rgba(0f, 0f, 0f, 0.45f);
         }
-        if (ring || grab)
+        if (ring || hold)
         {
             float pulse = 0.85f + 0.15f * FxMath.Sin(_anim * 12f);
             _dotTf.position = FxMath.V3(_target.x, _target.y, _target.y / 1000f - 0.021f);
             _dotTf.localScale = FxMath.V3(0.36f * pulse, 0.36f * pulse, 1f);
-            _dot.color = grab ? FxMath.Rgba(1f, 1f, 1f, 0.5f) : FxMath.Rgba(1f, 0.95f, 0.75f, 0.9f);
+            _dot.color = hold ? FxMath.Rgba(1f, 1f, 1f, 0.5f) : FxMath.Rgba(1f, 0.95f, 0.75f, 0.9f);
         }
 
         // つかんでいる間: 角に手・体を穴へ伸ばして震わせる・頭の上にゲージ
-        if (grab != _grabOn)
+        if (hold != _grabOn)
         {
-            _grabOn = grab;
-            _handTf.gameObject.SetActive(grab);
-            _barBgTf.gameObject.SetActive(grab);
-            _barTf.gameObject.SetActive(grab);
+            _grabOn = hold;
+            _handTf.gameObject.SetActive(hold);
+            _barBgTf.gameObject.SetActive(hold);
+            _barTf.gameObject.SetActive(hold);
         }
-        if (grab)
+        if (hold)
         {
             // 手は角から体の方へ少し寄せる (角の点は壁の中の升の中心)
             _handTf.position = FxMath.V3(_target.x + (pos.x - _target.x) * 0.3f, _target.y + (pos.y - _target.y) * 0.3f, pos.y / 1000f - 0.003f);
             float ang = FxMath.Atan2(_dir.y, _dir.x) * 57.29578f;
             _handTf.localRotation = FxMath.RotZ(ang + 90f);
-            BendBody(lp);
-            float g = FxMath.Clamp01(_gauge);
+            // 縁にしがみついている間の体は全員の端末で倒す (TickClings)。ゲージは手が離れるまでの残り
+            float g;
+            if (grab) { BendBody(lp); g = FxMath.Clamp01(_gauge); }
+            else g = 1f - FxMath.Clamp01(ClingAge(lp.PlayerId) / FxMath.Max(1f, Roles.TerrainDeath.DyingTime));
             float bx = pos.x - 0.45f, by = pos.y + 1.35f, bz = pos.y / 1000f - 0.03f;
             _barBgTf.position = FxMath.V3(pos.x, by, bz + 0.001f);
             _barBgTf.localScale = FxMath.V3(0.98f, 0.17f, 1f);
@@ -873,7 +998,7 @@ internal static class CrewGrip
             _barTf.localScale = FxMath.V3(0.9f * g, 0.1f, 1f);
             _bar.color = g < 0.35f ? FxMath.Rgba(1f, 0.3f, 0.25f, 1f) : g < 0.7f ? FxMath.Rgba(1f, 0.8f, 0.25f, 1f) : FxMath.Rgba(0.4f, 1f, 0.45f, 1f);
         }
-        else RestoreBody();
+        if (!grab) RestoreBody();
 
         bool rim = _state == State.Rim || (grab && _rim);
         int kind = grab ? (rim ? 4 : 2) : ring ? (rim ? 3 : 1) : 0;
@@ -912,23 +1037,39 @@ internal static class CrewGrip
 
     private const float KeyPop = 0.15f;
 
-    // つかんだ角を軸に穴の方へ 1.15 倍伸ばし ±4° で震わせる (口の際は 1.25 倍・±7°)。体の絵だけ・位置の同期は触らない
+    // 角を両手で握り、体は流れの先へ引っぱられて倒れて震える (縁にしがみつく姿と同じ這う絵)。
+    // 本人の画面だけ・位置の同期は触らない。ゲージが減るほど強く震える
     private static void BendBody(PlayerControl lp)
     {
-        _bend ??= new Pose(lp);
-        float amp = _rim ? 7f : 4f, st = _rim ? 1.25f : 1.15f, sq = _rim ? 0.9f : 0.94f;
-        float shake = amp * FxMath.Sin(_anim * 88f) * (0.6f + 0.4f * FxMath.Sin(_anim * 13f));
-        float lean = -_dir.x * 30f;
-        bool vert = FxMath.Abs(_dir.y) > FxMath.Abs(_dir.x);
-        float sx = vert ? sq : st, sy = vert ? st : sq;
-        _bend.Set(_dir.x * 0.12f, _dir.y * 0.12f, lean + shake, sx, sy);
+        if (_bendNo) return;
+        if (_bend != null && !CrewFlip.IsPlaying(lp.PlayerId)) { _bend.Restore(); _bend = null; _bendNo = true; return; }
+        if (_bend == null)
+        {
+            _bend = new Pose(lp); // 連番より先に (縁にしがみつく姿と同じ理由)
+            if (!CrewFlip.Play(lp, GripClip)) { _bend.Restore(); _bend = null; _bendNo = true; return; }
+        }
+        var rt = lp.transform.position;
+        float k = _rim ? 1f : 1f - FxMath.Clamp01(_gauge);
+        Aim(_bend, FxMath.V2(rt.x, rt.y), _target, _dir, _anim, k, lp.cosmetics && lp.cosmetics.FlipX);
     }
+
+    private static bool _bendNo; // このつかまりの間は這う絵を流せなかった (立ち姿のまま)
 
     private static void RestoreBody()
     {
+        _bendNo = false;
         if (_bend == null) return;
         if (_bend.Alive) _bend.Restore();
         _bend = null;
+        var lp = PlayerControl.LocalPlayer;
+        if (lp && _state != State.Cling) CrewFlip.Stop(lp.PlayerId);
+    }
+
+    private static float ClingAge(byte id)
+    {
+        foreach (var c in Clings)
+            if (c.Id == id) return (c.HeldAt > 0f ? c.HeldAt : Time.time) - c.At;
+        return 0f;
     }
 
     private static void Hide()
