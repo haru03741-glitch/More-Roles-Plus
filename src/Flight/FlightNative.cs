@@ -78,6 +78,7 @@ internal static unsafe class FlightNative
     internal static delegate* unmanaged[Cdecl]<FrameArgs*, void> Frame;
     internal static delegate* unmanaged[Cdecl]<IntPtr, float*, float, void> Explode;
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, Part*, int, int*, int, int> Parts;
+    internal static delegate* unmanaged[Cdecl]<int> PartSize;
 
     private static int _state; // 0 = 未 / 1 = 使える / 2 = 使えない
 
@@ -100,9 +101,11 @@ internal static unsafe class FlightNative
             Frame = (delegate* unmanaged[Cdecl]<FrameArgs*, void>)Need("mrp_flt_frame");
             Explode = (delegate* unmanaged[Cdecl]<IntPtr, float*, float, void>)Need("mrp_flt_explode");
             Parts = (delegate* unmanaged[Cdecl]<IntPtr, int, Part*, int, int*, int, int>)Need("mrp_flt_parts");
+            PartSize = (delegate* unmanaged[Cdecl]<int>)Need("mrp_flt_part_size");
             // 構造体の大きさが C++ と違えば口を開けない (片方だけ欄を足した時に壊れた値で動かさない)
             int cs = Size(), ms = sizeof(FrameArgs);
             if (cs != ms) throw new InvalidOperationException($"FrameArgs size C++ {cs} != C# {ms}");
+            if (PartSize() != sizeof(Part)) throw new InvalidOperationException($"Part size C++ {PartSize()} != C# {sizeof(Part)}");
             _state = 1;
         }
         catch (Exception e)

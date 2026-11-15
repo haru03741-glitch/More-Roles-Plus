@@ -24,16 +24,17 @@ Shader "MRP/FlightToon"
         return v + q.w * t + cross(q.xyz, t);
     }
 
-    // 部品の動きを位置と向き (法線 2 本) に掛ける
-    void ApplyPart(float part, inout float4 pos, inout float3 n1, inout float3 n2)
+    // 部品の動きを位置と向き (法線 2 本) に掛ける。返り値 = 部品の大きさ (縁取りの太さにも掛ける)
+    float ApplyPart(float part, inout float4 pos, inout float3 n1, inout float3 n2)
     {
-        if (part < 0.5 || _PartBase < 0) return;
+        if (part < 0.5 || _PartBase < 0) return 1.0;
         int i = (int)(_PartBase + (part - 1.0) * 2.0 + 0.5);
         float4 q = _MrpFltParts[i];
         float4 t = _MrpFltParts[i + 1];
         pos.xyz = QRot(q, pos.xyz * t.w) + t.xyz;
         n1 = QRot(q, n1);
         n2 = QRot(q, n2);
+        return t.w;
     }
     ENDCG
 
@@ -126,13 +127,14 @@ Shader "MRP/FlightToon"
             {
                 v2f o;
                 float3 sn = v.smooth.xyz, dummy = sn;
-                ApplyPart(v.smooth.w, v.vertex, sn, dummy);
+                // 大きさ 0 に縮めた部品 (止まっている噴射の光) に縁取りの点を残さない
+                float ps = ApplyPart(v.smooth.w, v.vertex, sn, dummy);
                 float4 clip = UnityObjectToClipPos(v.vertex);
                 float3 nw = UnityObjectToWorldNormal(sn);
                 float2 nc = normalize(mul((float3x3)UNITY_MATRIX_VP, nw).xy + 1e-5);
                 // 画面の縦横比を戻して、どの向きにも同じ太さ
                 nc.x *= _ScreenParams.y / _ScreenParams.x;
-                clip.xy += nc * _Outline * clip.w * 2.0;
+                clip.xy += nc * _Outline * clip.w * 2.0 * saturate(ps);
                 o.pos = clip;
                 float3 wp = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.fog = saturate(distance(_WorldSpaceCameraPos, wp) / max(_MrpFltSky.a, 1.0));

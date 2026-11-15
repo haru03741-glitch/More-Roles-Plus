@@ -172,7 +172,11 @@ internal static unsafe class Arena
             pr.shadowCastingMode = ShadowCastingMode.Off;
             // 首を振る噴射口に付いた炎は、毎フレーム噴射口の動きに合わせて置き直す
             PlumePart[idx * PlumesPerShip + pn] = idx < FlightNative.PartShips && mi < m.MarkerPart.Length ? m.MarkerPart[mi] : -1;
-            PlumeBase[idx * PlumesPerShip + pn] = mk;
+            int pk = idx * PlumesPerShip + pn;
+            PlumeBase[pk * 3] = mk.Px; PlumeBase[pk * 3 + 1] = mk.Py; PlumeBase[pk * 3 + 2] = mk.Pz;
+            var r0 = pg.transform.localRotation;
+            PlumeRot[pk * 4] = r0.x; PlumeRot[pk * 4 + 1] = r0.y; PlumeRot[pk * 4 + 2] = r0.z; PlumeRot[pk * 4 + 3] = r0.w;
+            Array.Clear(PlumeLast, pk * 8, 8);
             Plumes[idx * PlumesPerShip + pn++] = pg.transform;
         }
     }
@@ -180,7 +184,10 @@ internal static unsafe class Arena
     private const int PlumesPerShip = 4;
     private static readonly Transform[] Plumes = new Transform[FlightNative.MaxShips * PlumesPerShip];
     private static readonly int[] PlumePart = new int[FlightNative.MaxShips * PlumesPerShip];
-    private static readonly FlightNative.Marker[] PlumeBase = new FlightNative.Marker[FlightNative.MaxShips * PlumesPerShip];
+    // 炎の元の位置と向き (x,y,z / x,y,z,w) と、前のフレームに書いた部品の姿 (8 個)。計算は managed の float で (Unity の算術は interop になる)
+    private static readonly float[] PlumeBase = new float[FlightNative.MaxShips * PlumesPerShip * 3];
+    private static readonly float[] PlumeRot = new float[FlightNative.MaxShips * PlumesPerShip * 4];
+    private static readonly float[] PlumeLast = new float[FlightNative.MaxShips * PlumesPerShip * 8];
     private static Mesh _plumeCyan, _plumeHot, _plumeRed;
 
     // 十字に組んだ 2 枚の板 (長さ 1・幅 1)。uv.x = 噴射口 1 → 先 0 (光弾のシェーダは uv.x が大きいほど明るい)
@@ -560,12 +567,26 @@ internal static unsafe class Arena
         {
             int part = PlumePart[i];
             var t = Plumes[i];
-            if (part < 0 || !t) continue;
+            if (part < 0 || t is null) continue;
             float* x = _partPtr + ((i / PlumesPerShip) * FlightNative.MaxParts + part) * 8;
-            var q = new Quaternion(x[0], x[1], x[2], x[3]);
-            var mk = PlumeBase[i];
-            t.localPosition = q * (new Vector3(mk.Px, mk.Py, mk.Pz) * x[7]) + new Vector3(x[4], x[5], x[6]);
-            t.localRotation = q * Quaternion.LookRotation(new Vector3(mk.Dx, mk.Dy, mk.Dz), Vector3.up);
+            // 部品の姿 (8 個) が前と同じ間 (まっすぐ飛ぶ間) は書かない
+            int l = i * 8;
+            bool same = true;
+            for (int k = 0; k < 8; k++)
+                if (PlumeLast[l + k] != x[k]) { same = false; PlumeLast[l + k] = x[k]; }
+            if (same) continue;
+            float qx = x[0], qy = x[1], qz = x[2], qw = x[3], s = x[7];
+            float px = PlumeBase[i * 3] * s, py = PlumeBase[i * 3 + 1] * s, pz = PlumeBase[i * 3 + 2] * s;
+            // 位置 = q で回して足す (Unity の Quaternion * Vector3 と同じ式)
+            float tx = 2f * (qy * pz - qz * py), ty = 2f * (qz * px - qx * pz), tz = 2f * (qx * py - qy * px);
+            float rx = px + qw * tx + (qy * tz - qz * ty) + x[4];
+            float ry = py + qw * ty + (qz * tx - qx * tz) + x[5];
+            float rz = pz + qw * tz + (qx * ty - qy * tx) + x[6];
+            // 向き = q * 元の向き
+            float bx = PlumeRot[i * 4], by = PlumeRot[i * 4 + 1], bz = PlumeRot[i * 4 + 2], bw = PlumeRot[i * 4 + 3];
+            t.localPosition = new Vector3(rx, ry, rz);
+            t.localRotation = new Quaternion(qw * bx + qx * bw + qy * bz - qz * by, qw * by + qy * bw + qz * bx - qx * bz,
+                qw * bz + qz * bw + qx * by - qy * bx, qw * bw - qx * bx - qy * by - qz * bz);
         }
     }
 

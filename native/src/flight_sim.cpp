@@ -726,6 +726,7 @@ MRP_API void mrp_flt_explode(World* w, const float* p, float scale)
 }
 
 MRP_API int32_t mrp_flt_size() { return (int32_t)sizeof(FrameArgs); }
+MRP_API int32_t mrp_flt_part_size() { return (int32_t)sizeof(Part); }
 
 MRP_API void mrp_flt_params(World* w, const float* v, int32_t n)
 {
