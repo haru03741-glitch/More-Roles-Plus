@@ -272,7 +272,41 @@ internal static class DummyPatches
     {
         if (!AmongUsClient.Instance || AmongUsClient.Instance.AmHost || !__instance) return;
         var info = __instance.Data;
-        if (info != null && info.ClientId < 0) __instance.SetName(info.PlayerName);
+        if (info != null && info.ClientId < 0)
+        {
+            __instance.SetName(info.PlayerName);
+            // 試合中に出したダミーは、ホストの手元で付けた本編の役職が種類 (RoleType) だけ届き、役職の中身が作られない。
+            // 本編のタスクの組み立てなど役職を読む処理が落ちるので、届いている種類で作る
+            if (!info.Role && RoleManager.Instance && ShipStatus.Instance)
+            {
+                RoleManager.Instance.SetRole(__instance, info.RoleType);
+                Plugin.Logger.LogInfo($"dummy {__instance.PlayerId}: base role {info.RoleType} (late)");
+            }
+        }
+        if (EarlyTasks.Count > 0 && EarlyTasks.Remove(__instance.PlayerId, out var tasks))
+        {
+            __instance.SetTasks(tasks);
+            Plugin.Logger.LogInfo($"tasks: {__instance.PlayerId} (late)");
+        }
         Roles.RoleAssigner.OnPlayerStarted(__instance);
     }
+
+    // 客の側: ホストはダミーを出したすぐ後にタスクを配る。体が動き出す前 (まだ一覧に無い) に届くと本編のタスクの組み立て
+    // (コルーチン CoSetTasks) が自分の情報を引けずに落ちるので、動き出すまで取っておいて Start の後に組み立て直す
+    private static readonly Dictionary<byte, Il2CppSystem.Collections.Generic.List<NetworkedPlayerInfo.TaskInfo>> EarlyTasks = new();
+
+    // 取っておいたら true (呼んだ側は本編の組み立てを走らせない)
+    internal static bool HoldEarlyTasks(PlayerControl pc, Il2CppSystem.Collections.Generic.List<NetworkedPlayerInfo.TaskInfo> tasks)
+    {
+        var client = AmongUsClient.Instance;
+        var gd = GameData.Instance;
+        if (!client || client.AmHost || !gd || !pc || tasks == null) return false;
+        var info = gd.GetPlayerById(pc.PlayerId);
+        if (info != null && info) return false;
+        EarlyTasks[pc.PlayerId] = tasks;
+        return true;
+    }
+
+    [HarmonyPatch(typeof(LobbyBehaviour), nameof(LobbyBehaviour.Start)), HarmonyPostfix]
+    public static void ForgetEarlyTasks() => EarlyTasks.Clear();
 }

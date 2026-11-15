@@ -288,28 +288,35 @@ internal static class IntroShowRolePatch
 [HarmonyPatch]
 internal static class SetTasksPatch
 {
-    private static PropertyInfo _owner;
+    private static PropertyInfo _owner, _tasks;
 
     public static MethodBase TargetMethod()
     {
         var t = typeof(PlayerControl).GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
             .First(n => n.Name.Contains("CoSetTasks"));
         _owner = AccessTools.Property(t, "__4__this");
+        _tasks = AccessTools.Property(t, "tasks");
         return AccessTools.Method(t, "MoveNext");
     }
 
     // 本編は配り直す時に一覧のタスクを全部破棄するので、その間は説明を一覧から外しておく
     // (破棄は予約でフレームの終わりまで生きているため、入れたままだと同じ物を入れ直して後で消える)
-    public static void Prefix(object __instance)
+    // 客の側で体が動き出す前のダミーに届いた分は、組み立てずに取っておく (Dev.DummyPatches.HoldEarlyTasks)
+    public static bool Prefix(object __instance)
     {
-        if (!RoleDisplay.HasLocal() || _owner == null) return;
+        if (_owner == null) return true;
         var p = _owner.GetValue(__instance) as PlayerControl;
-        if (p && p.AmOwner) RoleDisplay.DetachTaskHeader(p);
+        if (!p) return true;
+        if (!p.AmOwner && _tasks != null && p.Data == null
+            && Dev.DummyPatches.HoldEarlyTasks(p, _tasks.GetValue(__instance) as Il2CppSystem.Collections.Generic.List<NetworkedPlayerInfo.TaskInfo>))
+            return false;
+        if (p.AmOwner && RoleDisplay.HasLocal()) RoleDisplay.DetachTaskHeader(p);
+        return true;
     }
 
-    public static void Postfix(object __instance, bool __result)
+    public static void Postfix(object __instance, bool __result, bool __runOriginal)
     {
-        if (__result || _owner == null) return;
+        if (!__runOriginal || __result || _owner == null) return;
         var p = _owner.GetValue(__instance) as PlayerControl;
         if (!p) return;
         Menu.NameTaskTag.Refresh(p);

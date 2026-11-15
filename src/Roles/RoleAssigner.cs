@@ -224,6 +224,7 @@ public static class RoleState
         AnyNeutral = false;
         RoleDisplay.Clear();
         Dev.DevGod.Clear();
+        RoleAssigner.DropWaiting();
     }
 }
 
@@ -1082,7 +1083,6 @@ internal static class RoleAssigner
         RoleState.Clear(false);
         AddonGroups.Clear();
         GameEnd.Reset();
-        Waiting.Clear();
         foreach (var p in plan)
         {
             var player = Player(p.PlayerId);
@@ -1104,6 +1104,9 @@ internal static class RoleAssigner
     // 客の側: 試合中にホストが出したダミーは、体が動き出すまで一覧に無い (配りの方が先に届く)。
     // 届いた時に居なかった人の分を取っておき、その体が動き出した所で付ける
     private static readonly List<Pick> Waiting = new();
+
+    // 役職を消す時 (配り直し・試合の終わり・ロビー・抜けた時) に一緒に捨てる。残すと、来なかった体と同じ番号で後から入った人に前の役職が付く
+    internal static void DropWaiting() => Waiting.Clear();
 
     internal static void OnPlayerStarted(PlayerControl pc)
     {
