@@ -55,6 +55,7 @@ internal static class CrewGrip
     private static float _lockEnd, _pushEnd, _immuneEnd, _lostAt, _rimEnd;
     private static bool _rim;               // 口の際でつかんでいる (厳しい方の数値)
     private static bool _clingGrip;         // 自分が縁の角を握ってしがみついている (角に手の印とゲージを出す)
+    private static bool _handOn;
     private static int _presses;            // 毎フレーム数えて物理の刻みで使う
     private static bool _hasTarget;
     private static Vector2 _target, _hold, _dir, _pushDir;
@@ -151,6 +152,7 @@ internal static class CrewGrip
         public float Mx, My, Dx, Dy;   // 体から見た口と、口の先の向き
         public float T;
         public byte By;                // 穴を開けた人 (死因の相手)
+        public float Deg, Sx = 1f;     // 回し始めの向きと左右 (縁を握っていた姿のまま飛ぶ時)
     }
     private static readonly List<Flight> Flights = new();
 
@@ -227,7 +229,7 @@ internal static class CrewGrip
         {
             _shipGen = GameClock.ShipGen;
             // 人の体は船より長生きする (ロビーへ戻っても残る) ので、動かしていた見た目を戻してから捨てる
-            foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
+            foreach (var f in Flights) { if (f.Pose.Alive) f.Pose.Restore(); if (f.Pc) CrewFlip.Stop(f.Pc.PlayerId); }
             Flights.Clear();
             foreach (var c in Clings) Unlean(c);
             Clings.Clear();
@@ -247,7 +249,7 @@ internal static class CrewGrip
         if (Roles.RewindPlayback.Active)
         {
             // 逆再生の間はつかまりをやめ、流されている体の見た目も戻す (体の位置は逆再生が置き、吸い出しの計算は時戻しが巻き戻す)
-            foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
+            foreach (var f in Flights) { if (f.Pose.Alive) f.Pose.Restore(); if (f.Pc) CrewFlip.Stop(f.Pc.PlayerId); }
             Flights.Clear();
             foreach (var c in Clings) Unlean(c);
             Clings.Clear(); // 体の連番は逆再生の間 CrewFlip が止める
@@ -777,10 +779,11 @@ internal static class CrewGrip
             // 口がふさがった・気圧が抜けた: 引く力が消えたので助かる
             if (!Decompression.Pulling) { Roles.Rescue.HostSave(c.Pc, c.Pc, Roles.Rescue.ByLiving); continue; }
             if (Time.time - c.At < dying) continue;
-            Unlean(c);
-            Clings.RemoveAt(i);
+            // しがみつきの記録は StartFlight が消す (握っていた姿と向きをそのまま飛ぶ姿へ引き継ぐ)
             Spaced.Send((c.Id, c.By));
             StartFlight(c.Id, c.By);
+            // 飛べなかった時 (既に飛んでいる・死んだ) も記録は残さない (毎フレーム送り直さない)
+            if (i < Clings.Count && Clings[i] == c) { Unlean(c); Clings.RemoveAt(i); }
         }
     }
 
@@ -838,7 +841,7 @@ internal static class CrewGrip
     // 時戻し: 飛んでいる途中の人は死なせずに見た目を戻し、自分のつかまりも離す
     internal static void Rewound()
     {
-        foreach (var f in Flights) if (f.Pose.Alive) f.Pose.Restore();
+        foreach (var f in Flights) { if (f.Pose.Alive) f.Pose.Restore(); if (f.Pc) CrewFlip.Stop(f.Pc.PlayerId); }
         Flights.Clear();
         foreach (var c in Clings) { Unlean(c); CrewFlip.Stop(c.Id); }
         Clings.Clear();
@@ -852,7 +855,23 @@ internal static class CrewGrip
         var p = GameData.Instance ? GameData.Instance.GetPlayerById(pid)?.Object : null;
         if (!p || p.Data == null || p.Data.IsDead) return;
         foreach (var f in Flights) if (f.Pc && f.Pc.PlayerId == pid) return;
-        for (int i = Clings.Count - 1; i >= 0; i--) if (Clings[i].Id == pid) { Unlean(Clings[i]); Clings.RemoveAt(i); }
+        // 縁を握っていた人は、その姿と向きのまま手が離れて飛ぶ (体の控えと連番を引き継ぐ)
+        Pose kept = null;
+        float keptDeg = 0f, keptSx = 1f;
+        for (int i = Clings.Count - 1; i >= 0; i--)
+        {
+            var c = Clings[i];
+            if (c.Id != pid) continue;
+            if (c.Pose != null && c.Pose.Alive && CrewFlip.IsPlaying(pid))
+            {
+                kept = c.Pose;
+                c.Pose = null;
+                keptDeg = FxMath.Atan2(c.Axis.y, c.Axis.x) * 57.29578f;
+                keptSx = c.Pc.cosmetics && c.Pc.cosmetics.FlipX ? -1f : 1f;
+            }
+            Unlean(c);
+            Clings.RemoveAt(i);
+        }
         if (p.AmOwner) { RestoreBody(); if (_shown) Hide(); _state = State.Lost; _lostAt = _t; }
         var pos = p.GetTruePosition();
         float md = Decompression.MouthDist(pos, out var m);
@@ -861,11 +880,11 @@ internal static class CrewGrip
         float len = MathF.Sqrt(mx * mx + my * my);
         float dx = len > 0.05f ? mx / len : 0f, dy = len > 0.05f ? my / len : 1f;
         if (len <= 0.05f && Decompression.PullAt(pos, out var dir, out _, out _)) { dx = dir.x; dy = dir.y; }
-        CrewFlip.Stop(pid);
+        if (kept == null) CrewFlip.Stop(pid);
         Hearing.At("spaced_suck", pos.x, pos.y, 10f, 0.8f);
-        var pose = new Pose(p);
+        var pose = kept ?? new Pose(p);
         pose.HideName();
-        Flights.Add(new Flight { Pc = p, Pose = pose, Mx = mx, My = my, Dx = dx, Dy = dy, By = by });
+        Flights.Add(new Flight { Pc = p, Pose = pose, Mx = mx, My = my, Dx = dx, Dy = dy, By = by, Deg = keptDeg, Sx = keptSx });
         Plugin.Logger.LogInfo($"[CrewGrip] spaced {pid} mouth={md:0.00}");
     }
 
@@ -878,6 +897,7 @@ internal static class CrewGrip
             foreach (var f in Flights)
             {
                 if (f.Pose.Alive) f.Pose.Restore();
+                if (f.Pc) CrewFlip.Stop(f.Pc.PlayerId);
                 if (f.Pc && f.Pc.AmOwner) { _state = State.Free; _hasTarget = false; }
             }
             Flights.Clear();
@@ -916,13 +936,14 @@ internal static class CrewGrip
             // エアシップは空へ落ちる (回りは少なく、遠ざかるほど小さく)
             float spin = (Decompression.Wind ? 200f : 720f) * u * u;
             float sc = Decompression.Wind ? 1f - 0.9f * u * u : 1f - 0.65f * u;
-            f.Pose.Set(ox, oy, spin, sc, sc);
+            f.Pose.Set(ox, oy, f.Deg + spin, sc * f.Sx, sc);
         }
     }
 
     private static void Finish(Flight f)
     {
         f.Pose.Restore();
+        if (f.Pc) CrewFlip.Stop(f.Pc.PlayerId);
         var p = f.Pc;
         if (p.Data == null || p.Data.IsDead) return;
         Spacing = p.PlayerId;
@@ -977,10 +998,12 @@ internal static class CrewGrip
         if (hold != _grabOn)
         {
             _grabOn = hold;
-            _handTf.gameObject.SetActive(hold);
             _barBgTf.gameObject.SetActive(hold);
             _barTf.gameObject.SetActive(hold);
         }
+        // 角の手の印は、体の絵が拳で角を握っていない時 (握る絵を流せなかった時) だけ出す
+        bool handUi = hold && !(grab ? _bend != null : LocalLeaning(lp.PlayerId));
+        if (handUi != _handOn) { _handOn = handUi; _handTf.gameObject.SetActive(handUi); }
         if (hold)
         {
             // 手は角から体の方へ少し寄せる (角の点は壁の中の升の中心)
@@ -1063,6 +1086,12 @@ internal static class CrewGrip
         _bend = null;
         var lp = PlayerControl.LocalPlayer;
         if (lp && _state != State.Cling) CrewFlip.Stop(lp.PlayerId);
+    }
+
+    private static bool LocalLeaning(byte id)
+    {
+        foreach (var c in Clings) if (c.Id == id) return c.Pose != null;
+        return false;
     }
 
     private static float ClingAge(byte id)
