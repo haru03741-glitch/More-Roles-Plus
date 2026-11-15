@@ -114,7 +114,7 @@ internal static class WaterWade
             if (w != null) w.Base = d;
             byte id = pc.PlayerId;
             bool lying = d >= ShowDepth && LyingPose(id);
-            if (lying || Lying.ContainsKey(id)) Lie(pc, lying ? d - Roles.Rescue.LiftDepthOf(id) : 0f);
+            if (lying || Lying.ContainsKey(id)) Lie(pc, lying ? LieLevel(id, d) : 0f);
             if (d < ShowDepth || Hidden[id] || lying)
             {
                 if (w != null && w.Shown && w.Go) { w.Go.SetActive(false); w.Shown = false; }
@@ -150,6 +150,14 @@ internal static class WaterWade
         var rs = pet ? pet.renderers : null;
         var sr = rs != null && rs.Length > 0 ? rs[0] : null;
         if (sr) BodyCover.Track(sr, 0f, upright: true);
+    }
+
+    // 横たわった体の下の水の深さ。守り霊に宙へ浮かされた体は、息の数え方と同じく頭が水から出る深さ
+    // (足の着かない深さ + 浮いた分) までは水の上に見せ、それより深い分だけ沈める
+    private static float LieLevel(byte id, float d)
+    {
+        if (CrewFlip.ClipOf(id) != "floatcarried") return d;
+        return d - Roles.Rescue.LiftDepthOf(id) - (CrewSwim.BraceMaxDepth - BodyCover.Thick);
     }
 
     // 横たわった体の水の板を出す/隠す (lvl = 体の下の水の深さ・0 = 隠す)

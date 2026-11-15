@@ -99,6 +99,8 @@ internal static class DrownFx
                 End(s); Live.RemoveAt(i); continue;
             }
             float t = now - s.Start;
+            // 運ばれている間は体の水面も水しぶきも運ぶ側 (WaterWade の横たわった体の板) に任せる
+            if (Roles.Rescue.Carried(s.Id)) { BodyCover.SetLevel(s.Cov, 0f); continue; }
             WaterWade.Bob(s.Id, Depth(t), t >= LieAt);
             var feet = s.Pc.GetTruePosition();
             while (s.NextSplash < SplashT.Length && t >= SplashT[s.NextSplash])

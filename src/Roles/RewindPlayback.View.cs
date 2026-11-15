@@ -403,6 +403,7 @@ internal static partial class RewindPlayback
         {
             var sr = all[i];
             if (!sr || !sr.enabled) continue;
+            if (Terrain.BodyCover.Plates.Count > 0 && Terrain.BodyCover.Plates.Contains(sr.Pointer)) continue; // 水の板
             var sp = sr.sprite;
             if (!sp) continue;
             var c = sr.color;

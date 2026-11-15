@@ -47,6 +47,7 @@ internal static class BodyCover
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sharedMaterial = mat;
         sr.sortingOrder = src.sortingOrder;
+        Plates.Add(sr.Pointer);
         var c = new Cover { SrcR = src, R = sr, Src = src, Sr = sr, Block = NewBlock(thick, upright), Thick = upright ? UprightShow : thick, Upright = upright };
         if (upright) c.ScaleY = MathF.Abs(src.transform.lossyScale.y);
         Sync(c);
@@ -63,11 +64,15 @@ internal static class BodyCover
         var mr = go.AddComponent<MeshRenderer>();
         mr.sharedMaterial = mat;
         mr.sortingOrder = src.sortingOrder;
+        Plates.Add(mr.Pointer);
         var c = new Cover { SrcR = src, R = mr, Block = NewBlock(thick, false), Thick = thick, Tex = tex };
         c.Block.SetTexture(MainTexId, tex);
         mr.SetPropertyBlock(c.Block);
         return c;
     }
+
+    // 板の描画物 (時戻しの写しはこれを写さない: 板の値はブロックにあり、写しでは正しく描けない)
+    internal static readonly HashSet<IntPtr> Plates = new();
 
     private static GameObject NewPlate(Transform parent, int layer)
     {
@@ -158,7 +163,8 @@ internal static class BodyCover
 
     internal static void Destroy(Cover c)
     {
-        if (c != null && c.R) UnityEngine.Object.Destroy(c.R.gameObject);
+        if (c == null) return;
+        if (c.R) { Plates.Remove(c.R.Pointer); UnityEngine.Object.Destroy(c.R.gameObject); }
     }
 
     private static Material Mat()
@@ -178,6 +184,8 @@ internal static class BodyCover
     {
         var r = c.SrcR;
         if (!r || !r.enabled || !r.gameObject.activeInHierarchy) return 0f;
+        // 薄れて消える物・透明になった人のペットには掛けない (水の形で居場所が分かる)
+        if (c.Src && c.Src.color.a < 0.5f) return 0f;
         var b = r.bounds;
         var at = b.center;
         return WaterSim.CurrentAt(FxMath.V2(at.x, c.Upright ? b.min.y + 0.02f : at.y), out _, out _);
@@ -272,7 +280,7 @@ internal static class BodyCover
             float lvl = k.Body.gameObject.activeInHierarchy ? WaterSim.CurrentAt(k.Body.TruePosition, out _, out _) : 0f;
             k.Depth = lvl;
             // 体の絵を隠している間 (決闘で殴り飛ばされた人形が飛んでいる間など) は板も出さない
-            SetLevel(k.C, k.C.Src.enabled ? lvl : 0f);
+            SetLevel(k.C, k.C.Src.enabled && k.C.Src.color.a >= 0.5f ? lvl : 0f);
             if (k.Blood != null)
             {
                 Sync(k.Blood);
@@ -361,6 +369,7 @@ internal static class BodyCover
         Corpses.Clear();
         foreach (var c in Loose) Destroy(c);
         Loose.Clear();
+        Plates.Clear();
         _dead = -1;
         _nextFind = 0f;
         _eagerUntil = 0f;
