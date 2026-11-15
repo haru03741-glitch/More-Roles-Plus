@@ -20,7 +20,10 @@ internal static class Rescue
     private const float HaulSpeed = 0.6f; // 運んでいる人の歩く速さの倍
     internal const float Brace = 0.3f;    // 運んでいる人が受ける吸い出しの流れの割合 (踏ん張る)
     private const float SpiritClingSpeed = 0.35f; // 守り霊が縁から引き戻す時の速さの倍 (気圧に逆らう)
-    private const float Gap = 0.85f;      // 運ぶ人と引きずられる体の間 (這う姿は横に長い)
+    private const float Gap = 0.85f;      // 運ぶ人と引きずられる体の間 (這う姿は横に長い)・横に並べられない時 (間に壁) の紐の長さ
+    private const float HoldX = 0.78f;    // 引きずられる体を置く所: 運ぶ人の両手が頭の前にかかる横の間
+    private const float HoldY = 0.04f;    // 少し奥 (上) に置いて、運ぶ人の手が体の手前にかぶさるようにする
+    private const float HoldPull = 4f;    // 横の置き場へ寄せる速さの上限 (単位/秒・掴んだ瞬間に跳ばない)
     private const float Snap = 2.5f;      // これより離れたら (はしご・会議の後) 一気に寄せる
     private const float LetGo = 2.2f;     // ホスト: 壁に引っかかってこれより離れたら手が離れる
     private const float SafeHold = 0.4f;  // 安全な所にこの秒いたら助かる
@@ -44,6 +47,7 @@ internal static class Rescue
         public Vector2 ByLast;
         public float StillFor, NextPose;
         public bool Walking, Posed, FaceLeft;
+        public sbyte Side;                      // 引きずられる体が運ぶ人のどちら側か (1 = 右・-1 = 左・0 = まだ)
     }
     private static readonly List<Haul> Hauls = new();
     private static readonly Dictionary<byte, float> Left = new(); // 運べる残りの秒 (瀕死 1 回につき)
@@ -315,15 +319,34 @@ internal static class Rescue
             Vector2 at = h.By.GetTruePosition(), now = pc.GetTruePosition();
             float dx = now.x - at.x, dy = now.y - at.y, len = System.MathF.Sqrt(dx * dx + dy * dy);
             // 運ぶ人の方へ手を伸ばす向き (左右が分かれる程離れている時だけ書く)
-            if (dx * dx > 0.01f)
+            if (dx * dx > 0.04f || h.Side == 0) h.Side = (sbyte)(dx >= 0f ? 1 : -1);
+            bool left = h.Side > 0;
+            if (h.Flip != (left ? 1 : 0) && pc.cosmetics) { pc.cosmetics.SetFlipX(left); h.Flip = (sbyte)(left ? 1 : 0); }
+            // 運ぶ人の手の先に頭が来るように横に並べる。間に壁があれば紐の長さで後ろを付いて来る (壁の向こうへは引けない)。
+            // 縁から引き戻す時は気圧に逆らって引くので紐のまま
+            Vector2 want;
+            if (len > Snap) want = at;
+            else if (h.Cling)
             {
-                bool left = dx > 0f;
-                if (h.Flip != (left ? 1 : 0) && pc.cosmetics) { pc.cosmetics.SetFlipX(left); h.Flip = (sbyte)(left ? 1 : 0); }
+                if (len <= Gap || Blocked(at, now, true)) continue;
+                want = FxMath.V2(at.x + dx / len * Gap, at.y + dy / len * Gap);
             }
-            if (len <= Gap) continue;
-            Vector2 want = len > Snap ? at : FxMath.V2(at.x + dx / len * Gap, at.y + dy / len * Gap);
-            // 壁の向こうへは引けない (縁にしがみついている体は手の先まで)
-            if (len <= Snap && Blocked(at, now, h.Cling)) continue;
+            else
+            {
+                want = FxMath.V2(at.x + h.Side * HoldX, at.y + HoldY);
+                float wx = want.x - now.x, wy = want.y - now.y;
+                if (wx * wx + wy * wy < 0.0004f) continue;
+                if (Blocked(at, want, h.Cling))
+                {
+                    if (len <= Gap || Blocked(at, now, false)) continue;
+                    want = FxMath.V2(at.x + dx / len * Gap, at.y + dy / len * Gap);
+                }
+                else
+                {
+                    float wl = System.MathF.Sqrt(wx * wx + wy * wy), step = HoldPull * Time.fixedDeltaTime;
+                    if (wl > step) want = FxMath.V2(now.x + wx / wl * step, now.y + wy / wl * step);
+                }
+            }
             if (pp.body) pp.body.velocity = FxMath.V2(0f, 0f);
             var tp = pc.transform.position;
             pc.NetTransform.SnapTo(FxMath.V2(want.x + tp.x - now.x, want.y + tp.y - now.y));
