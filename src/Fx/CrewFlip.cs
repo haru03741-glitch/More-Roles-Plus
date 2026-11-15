@@ -37,8 +37,9 @@ internal static partial class CrewFlip
             bool mirror = false, float[] offx = null, bool cut = false) =>
             new() { Name = name, Prefix = prefix, Nums = nums, Ox = ox, Oy = oy, Loop = loop, Seq = seq, Ax = ax, Ay = ay, Mirror = mirror, Oxs = offx, Cut = cut };
 
-        public static Clip Own(string name, int w, int h, int cols, int rows, float feetX, float feetY, int loop, byte[] seq) =>
-            new() { Name = name, W = w, H = h, Cols = cols, Rows = rows, FeetX = feetX, FeetY = feetY, Loop = loop, Seq = seq };
+        // ax/ay = 絵ごとの頭の動き (省くと流している間は着せ替えを隠す)
+        public static Clip Own(string name, int w, int h, int cols, int rows, float feetX, float feetY, int loop, byte[] seq, float[] ax = null, float[] ay = null) =>
+            new() { Name = name, W = w, H = h, Cols = cols, Rows = rows, FeetX = feetX, FeetY = feetY, Loop = loop, Seq = seq, Ax = ax, Ay = ay };
     }
 
     private sealed class Show

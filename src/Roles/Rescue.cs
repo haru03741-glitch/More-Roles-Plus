@@ -24,6 +24,8 @@ internal static class Rescue
     private const float Snap = 2.5f;      // これより離れたら (はしご・会議の後) 一気に寄せる
     private const float LetGo = 2.2f;     // ホスト: 壁に引っかかってこれより離れたら手が離れる
     private const float SafeHold = 0.4f;  // 安全な所にこの秒いたら助かる
+    private const float WalkSpeed = 0.3f; // 運ぶ人がこれより速く動いていれば歩く姿 (単位/秒)
+    private const float StillDelay = 0.15f; // 止まってからこの秒で止まった姿へ (歩きの切れ目でちらつかせない)
     private const float ClingBack = 0.8f; // 縁から内側へこれだけ引き戻せたら助かる
     private const float DriftEvery = 0.1f;
 
@@ -39,6 +41,9 @@ internal static class Rescue
         public bool Spirit, Cling;
         public sbyte Flip = -1; // 最後に書いた引きずられる体の向き (-1 = まだ)
         public float StartMouth, SafeFor, NextDrift;
+        public Vector2 ByLast;
+        public float StillFor, NextPose;
+        public bool Walking, Posed;
     }
     private static readonly List<Haul> Hauls = new();
     private static readonly Dictionary<byte, float> Left = new(); // 運べる残りの秒 (瀕死 1 回につき)
@@ -204,6 +209,7 @@ internal static class Rescue
             TerrainDeath.Hold(target, false);
             Terrain.CrewGrip.Hold(target, false);
             CrewFlip.Stop(target);
+            if (h.Posed) CrewFlip.Stop(h.ById);
             if (saved || !h.T || h.T.Data == null || h.T.Data.IsDead) continue;
             if (h.Cling) Terrain.CrewGrip.Recling(target);
             else TerrainDeath.Recollapse(target);
@@ -216,6 +222,27 @@ internal static class Rescue
     {
         if (RewindPlayback.Active) return;
         foreach (var h in Hauls) if (h.T && !CrewFlip.IsPlaying(h.Tid)) CrewFlip.Play(h.T, "dragged");
+    }
+
+    // 全員: 生きている運ぶ人は、後ろ手に掴んで前のめりに引きずる姿 (歩いている間は歩く連番・止まると踏ん張る 2 枚)。
+    // 他人の体は本編の同期で動くので、速さは位置の変わり方から測る
+    private static void PoseCarrier(Haul h, float dt, float now)
+    {
+        var b = h.By;
+        if (!b || b.inVent || dt <= 0f) return;
+        Vector2 p = b.GetTruePosition();
+        float mx = p.x - h.ByLast.x, my = p.y - h.ByLast.y;
+        bool first = h.NextPose == 0f;
+        h.ByLast = p;
+        bool moving = !first && mx * mx + my * my > WalkSpeed * WalkSpeed * dt * dt;
+        h.StillFor = moving ? 0f : h.StillFor + dt;
+        bool walk = moving || (h.Walking && h.StillFor < StillDelay);
+        bool playing = h.Posed && CrewFlip.IsPlaying(h.ById);
+        if (playing && walk == h.Walking) return;
+        if (!playing && now < h.NextPose) return; // 断られた (他の演出が体を動かしている) 時は少し待って決め直す
+        h.NextPose = now + 0.25f;
+        h.Walking = walk;
+        h.Posed = CrewFlip.Play(b, walk ? "carry" : "carryidle") || h.Posed;
     }
 
     private static void HostDrop(byte target)
@@ -239,6 +266,7 @@ internal static class Rescue
             if (h.Spirit && h.T && now >= h.NextDrift) { h.NextDrift = now + DriftEvery; WardSpiritFx.Drift(h.T); }
             bool gone = !h.T || h.T.Data == null || h.T.Data.IsDead || h.T.Data.Disconnected || !Dying(h.Tid);
             if (gone) { End(h.Tid, true); continue; }
+            if (!h.Spirit) PoseCarrier(h, dt, now);
             if (!host) continue;
             bool byGone = !h.By || h.By.Data == null || h.By.Data.Disconnected || h.By.inVent || h.By.Data.IsDead != h.Spirit;
             Vector2 tp = h.T.GetTruePosition(), bp = h.By.GetTruePosition();
@@ -254,7 +282,7 @@ internal static class Rescue
 
     private static void ClearHauls()
     {
-        for (int i = Hauls.Count - 1; i >= 0; i--) { CrewFlip.Stop(Hauls[i].Tid); TerrainDeath.Hold(Hauls[i].Tid, false); Terrain.CrewGrip.Hold(Hauls[i].Tid, false); }
+        for (int i = Hauls.Count - 1; i >= 0; i--) { CrewFlip.Stop(Hauls[i].Tid); if (Hauls[i].Posed) CrewFlip.Stop(Hauls[i].ById); TerrainDeath.Hold(Hauls[i].Tid, false); Terrain.CrewGrip.Hold(Hauls[i].Tid, false); }
         Hauls.Clear();
         Left.Clear();
         _localHaul = 255;
