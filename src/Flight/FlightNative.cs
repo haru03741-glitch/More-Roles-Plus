@@ -11,6 +11,9 @@ internal static unsafe class FlightNative
     internal const int MaxShips = 8;
     internal const int MaxBolts = 1024;
     internal const int MaxFx = 2048 + 320;
+    internal const int MaxParts = 48;
+    internal const int PartShips = 2;
+    internal const int SignalCount = 9;
 
     internal enum Ev { Fire = 1, Hit = 2, BoltEnd = 3, Dodge = 4, UTurn = 5 }
 
@@ -19,6 +22,16 @@ internal static unsafe class FlightNative
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Marker { public int Kind, Id; public float Px, Py, Pz, Dx, Dy, Dz; }
+
+    // 動く部品 (flight.h の Part と同じ並び・84 バイト)。W は信号 (縦・横・転・傾き・加速・減速・撃つ・回避・常に 1) の重み
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Part
+    {
+        public int Mode, Parent;
+        public float Px, Py, Pz, Ax, Ay, Az;
+        public fixed float W[SignalCount];
+        public float Lo, Hi, Resp, Spin;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Event { public int Kind, A, B, C; public float X, Y, Z, F; }
@@ -48,6 +61,7 @@ internal static unsafe class FlightNative
         public int Steps;
         public byte* FxVerts;
         public int FxCap, FxPrev, FxN;
+        public float* PartOut;
     }
 
     internal static delegate* unmanaged[Cdecl]<uint, IntPtr> Create;
@@ -63,6 +77,7 @@ internal static unsafe class FlightNative
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, float*, void> Get;
     internal static delegate* unmanaged[Cdecl]<FrameArgs*, void> Frame;
     internal static delegate* unmanaged[Cdecl]<IntPtr, float*, float, void> Explode;
+    internal static delegate* unmanaged[Cdecl]<IntPtr, int, Part*, int, int*, int, int> Parts;
 
     private static int _state; // 0 = 未 / 1 = 使える / 2 = 使えない
 
@@ -84,6 +99,7 @@ internal static unsafe class FlightNative
             Get = (delegate* unmanaged[Cdecl]<IntPtr, int, float*, void>)Need("mrp_flt_get");
             Frame = (delegate* unmanaged[Cdecl]<FrameArgs*, void>)Need("mrp_flt_frame");
             Explode = (delegate* unmanaged[Cdecl]<IntPtr, float*, float, void>)Need("mrp_flt_explode");
+            Parts = (delegate* unmanaged[Cdecl]<IntPtr, int, Part*, int, int*, int, int>)Need("mrp_flt_parts");
             // 構造体の大きさが C++ と違えば口を開けない (片方だけ欄を足した時に壊れた値で動かさない)
             int cs = Size(), ms = sizeof(FrameArgs);
             if (cs != ms) throw new InvalidOperationException($"FrameArgs size C++ {cs} != C# {ms}");

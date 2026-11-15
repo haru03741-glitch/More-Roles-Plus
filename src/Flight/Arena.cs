@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using MoreRolesPlus.Fx;
 using UnityEngine;
@@ -42,7 +43,10 @@ internal static unsafe class Arena
     private static float _plumeLen = -1f;
     private static float FxClamp01(float v) => v < 0 ? 0 : (v > 1 ? 1 : v);
     private static bool _hudHidden;
-    private static int _flashId;
+    private static int _flashId, _partBaseId, _partsId;
+    // 動く部品の姿 (C++ がこの il2cpp の配列の中身へ直接書き、フレームに 1 回シェーダの global の配列へ渡す)
+    private static Il2CppStructArray<Vector4> _partArr;
+    private static float* _partPtr;
 
     // 確かめ用: 自分の船 (スケルド) と的の船を n 隻出して入る
     internal static string Enter(int targets)
@@ -96,6 +100,7 @@ internal static unsafe class Arena
         HideHud(false);
         for (int k = 0; k < ShipT.Length; k++) { ShipT[k] = null; ShipR[k] = null; }
         Array.Clear(Plumes);
+        Array.Fill(PlumePart, -1);
         _plumeLen = -1f;
         _shipN = 0;
         if (was) Plugin.Logger.LogInfo("flight: exit");
@@ -123,6 +128,10 @@ internal static unsafe class Arena
         fixed (FlightNative.Sphere* s = m.Spheres)
         fixed (FlightNative.Marker* k = m.Markers)
             FlightNative.Model(_world, id, s, m.Spheres.Length, k, m.Markers.Length);
+        if (m.Parts.Length > 0)
+            fixed (FlightNative.Part* pp = m.Parts)
+            fixed (int* mp = m.MarkerPart)
+                FlightNative.Parts(_world, id, pp, m.Parts.Length, mp, m.MarkerPart.Length);
     }
 
     private static void Spawn(int idx, int model, Vector3 p, Quaternion q, float hp)
@@ -143,11 +152,13 @@ internal static unsafe class Arena
         ShipT[idx] = go.transform;
         ShipR[idx] = mr;
         Flash[idx] = 0;
+        SetBlock(idx);
         // 噴射の炎: 噴射口の印ごとに、光弾と同じ足し算の板を十字に組んで後ろへ伸ばす (長さは速さで変える)
         var m = ModelBank.Get(model);
         int pn = 0;
-        foreach (var mk in m.Markers)
+        for (int mi = 0; mi < m.Markers.Length; mi++)
         {
+            var mk = m.Markers[mi];
             if (mk.Kind != 2 || pn >= PlumesPerShip) continue;
             var pg = new GameObject("MrpFlightPlume") { layer = Layer };
             pg.transform.SetParent(go.transform, false);
@@ -159,12 +170,17 @@ internal static unsafe class Arena
             var pr = pg.AddComponent<MeshRenderer>();
             pr.sharedMaterial = MrpBundle.FlightMaterials[1];
             pr.shadowCastingMode = ShadowCastingMode.Off;
+            // 首を振る噴射口に付いた炎は、毎フレーム噴射口の動きに合わせて置き直す
+            PlumePart[idx * PlumesPerShip + pn] = idx < FlightNative.PartShips && mi < m.MarkerPart.Length ? m.MarkerPart[mi] : -1;
+            PlumeBase[idx * PlumesPerShip + pn] = mk;
             Plumes[idx * PlumesPerShip + pn++] = pg.transform;
         }
     }
 
     private const int PlumesPerShip = 4;
     private static readonly Transform[] Plumes = new Transform[FlightNative.MaxShips * PlumesPerShip];
+    private static readonly int[] PlumePart = new int[FlightNative.MaxShips * PlumesPerShip];
+    private static readonly FlightNative.Marker[] PlumeBase = new FlightNative.Marker[FlightNative.MaxShips * PlumesPerShip];
     private static Mesh _plumeCyan, _plumeHot, _plumeRed;
 
     // 十字に組んだ 2 枚の板 (長さ 1・幅 1)。uv.x = 噴射口 1 → 先 0 (光弾のシェーダは uv.x が大きいほど明るい)
@@ -219,7 +235,10 @@ internal static unsafe class Arena
         _root = new GameObject("MrpFlightArena") { layer = Layer };
         _root.transform.position = Origin;
         _flashId = Shader.PropertyToID("_Flash");
+        _partBaseId = Shader.PropertyToID("_PartBase");
+        _partsId = Shader.PropertyToID("_MrpFltParts");
         _mpb ??= new MaterialPropertyBlock();
+        PartArray();
 
         var camGo = new GameObject("MrpFlightCam") { layer = Layer };
         camGo.transform.SetParent(_root.transform, false);
@@ -405,8 +424,10 @@ internal static unsafe class Arena
             FxVerts = _fxBuf,
             FxCap = FlightNative.MaxFx,
             FxPrev = _fxPrev,
+            PartOut = _partPtr,
         };
         FlightNative.Frame(&a);
+        if (_partPtr != null) Shader.SetGlobalVectorArray(_partsId, _partArr);
         if (a.Steps == 0) _idleFrames++;
 
         for (int k = 0; k < _shipN; k++)
@@ -467,6 +488,8 @@ internal static unsafe class Arena
             }
         }
 
+        if (_partPtr != null) FollowPlumes();
+
         int upload = Math.Max(a.BoltN, _boltPrev);
         if (upload > 0)
             _boltMesh.InternalSetVertexBufferData(0, (IntPtr)_boltBuf, 0, 0, upload * 4, FlightNative.BoltStride,
@@ -525,8 +548,56 @@ internal static unsafe class Arena
         {
             if (Flash[k] <= 0 || !ShipR[k]) continue;
             Flash[k] = Mathf.Max(0, Flash[k] - dt * 8f);
-            _mpb.SetFloat(_flashId, Flash[k] * 0.8f);
-            ShipR[k].SetPropertyBlock(_mpb);
+            SetBlock(k);
         }
+    }
+
+    // 首を振る噴射口の炎 (部品を動かす船だけ・1 隻に数本)
+    private static void FollowPlumes()
+    {
+        int n = Math.Min(_shipN, FlightNative.PartShips) * PlumesPerShip;
+        for (int i = 0; i < n; i++)
+        {
+            int part = PlumePart[i];
+            var t = Plumes[i];
+            if (part < 0 || !t) continue;
+            float* x = _partPtr + ((i / PlumesPerShip) * FlightNative.MaxParts + part) * 8;
+            var q = new Quaternion(x[0], x[1], x[2], x[3]);
+            var mk = PlumeBase[i];
+            t.localPosition = q * (new Vector3(mk.Px, mk.Py, mk.Pz) * x[7]) + new Vector3(x[4], x[5], x[6]);
+            t.localRotation = q * Quaternion.LookRotation(new Vector3(mk.Dx, mk.Dy, mk.Dz), Vector3.up);
+        }
+    }
+
+    // 船ごとの値 (当たりの光・動く部品の配列の始まり) は同じ塊で渡す (片方だけ入れると他方が消える)
+    private static void SetBlock(int k)
+    {
+        if (!ShipR[k]) return;
+        _mpb.SetFloat(_flashId, Flash[k] * 0.8f);
+        _mpb.SetFloat(_partBaseId, _partPtr != null && k < FlightNative.PartShips ? k * FlightNative.MaxParts * 2 : -1f);
+        ShipR[k].SetPropertyBlock(_mpb);
+    }
+
+    // il2cpp の配列の中身の始まりを、添字で書いた値を読み返して確かめる (合わなければ部品は動かさない)
+    private static void PartArray()
+    {
+        int n = FlightNative.PartShips * FlightNative.MaxParts * 2;
+        if (_partArr == null || _partArr.Length != n)
+        {
+            _partArr = new Il2CppStructArray<Vector4>((long)n);
+            _partPtr = null;
+            var probe = new Vector4(1.5f, -2.25f, 3.125f, 7f);
+            _partArr[1] = probe;
+            float* p = (float*)(IL2CPP.Il2CppObjectBaseToPtrNotNull(_partArr) + 4 * IntPtr.Size);
+            if (p[4] == probe.x && p[5] == probe.y && p[6] == probe.z && p[7] == probe.w) _partPtr = p;
+            else Plugin.Logger.LogError("flight: part array layout mismatch (parts stay still)");
+        }
+        // 動かない形 (四元数 0,0,0,1・大きさ 1) で埋める
+        for (int i = 0; i < n; i += 2)
+        {
+            _partArr[i] = new Vector4(0, 0, 0, 1);
+            _partArr[i + 1] = new Vector4(0, 0, 0, 1);
+        }
+        Shader.SetGlobalVectorArray(_partsId, _partArr);
     }
 }

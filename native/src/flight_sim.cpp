@@ -308,6 +308,92 @@ void WriteFx(World* w, FrameArgs* a, V3 cam, Q4 camQ, V3 shipV)
     a->fxN = n;
 }
 
+// 部品の動き = 船の中の座標で p' = rot(q, p * s) + t
+struct Xf { Q4 q; V3 t; float s; };
+
+// 船の部品を全部計算する (親が先に並ぶ)。値は partV・回り続ける分は世界の時刻から
+void PartXfs(const World* w, const Ship& s, Xf* out)
+{
+    const Model& m = w->model[s.model];
+    float tm = (float)fmod(w->time, 3600.0);
+    for (int i = 0; i < m.partN; i++)
+    {
+        const Part& pt = m.part[i];
+        V3 pv = ld(pt.pivot), ax = ld(pt.axis);
+        float v = s.partV[i];
+        Xf x = { { 0, 0, 0, 1 }, { 0, 0, 0 }, 1.0f };
+        if (pt.mode == PmRotate)
+        {
+            x.q = qaxis(ax, (v + pt.spin * tm) * Deg);
+            x.t = pv - rot(x.q, pv);
+        }
+        else if (pt.mode == PmScale)
+        {
+            x.s = v;
+            x.t = pv - pv * v;
+        }
+        else x.t = ax * v;
+        int pa = pt.parent;
+        if (pa >= 0 && pa < i)
+        {
+            const Xf& P = out[pa];
+            x = { qmul(P.q, x.q), rot(P.q, x.t * P.s) + P.t, P.s * x.s };
+        }
+        out[i] = x;
+    }
+}
+
+// 部品を動かす信号を船の状態から出す (自分の船は操作の溜まり・遠くの船は向きの差から)
+void Signals(World* w, Ship& s, float dt)
+{
+    const float* P = w->prm;
+    float pr = P[PPitchRate] * Deg, yr = P[PYawRate] * Deg, rr_ = P[PRollRate] * Deg;
+    float pitchV = s.pitchV, yawV = s.yawV, rollV = s.rollV;
+    if (s.remote)
+    {
+        // 前の向きからの回りを船の中の軸で測る (StepLocal の回し方の逆: x = -pitch・y = yaw・z = -roll)
+        Q4 q = ldq(s.q);
+        if (s.prevInit && dt > 1e-4f)
+        {
+            Q4 a = ldq(s.prevQ);
+            Q4 d = qmul({ -a.x, -a.y, -a.z, a.w }, q);
+            if (d.w < 0) d = { -d.x, -d.y, -d.z, -d.w };
+            float k = 2.0f / dt;
+            pitchV = -d.x * k; yawV = d.y * k; rollV = -d.z * k;
+        }
+        else pitchV = yawV = rollV = 0;
+        stq(s.prevQ, q);
+        s.prevInit = 1;
+    }
+    s.sig[SgPitch] = pr > 0 ? clampf(pitchV / pr, -1, 1) : 0;
+    s.sig[SgYaw] = yr > 0 ? clampf(yawV / yr, -1, 1) : 0;
+    s.sig[SgRoll] = rr_ > 0 ? clampf(rollV / rr_, -1, 1) : 0;
+    s.sig[SgBank] = P[PBankMax] > 0 ? clampf(s.bank / (P[PBankMax] * Deg), -1, 1) : 0;
+    float cr = P[PCruise];
+    s.sig[SgBoost] = P[PBoost] > cr ? clampf((s.speed - cr) / (P[PBoost] - cr), 0, 1) : 0;
+    s.sig[SgBrake] = cr > P[PBrake] ? clampf((cr - s.speed) / (cr - P[PBrake]), 0, 1) : 0;
+    s.sig[SgFire] = s.firePulse;
+    float dg = 0;
+    if (s.dodgeT > 0 && P[PDodgeTime] > 0) dg = (float)s.dodgeDir * sinf((1.0f - s.dodgeT / P[PDodgeTime]) * Pi);
+    s.sig[SgDodge] = dg;
+    s.sig[SgOne] = 1;
+}
+
+// 部品の値を信号へ寄せる (固定刻みごと)
+void StepParts(World* w, Ship& s, float dt)
+{
+    s.firePulse *= expf(-10.0f * dt);
+    const Model& m = w->model[s.model];
+    for (int i = 0; i < m.partN; i++)
+    {
+        const Part& pt = m.part[i];
+        float t = 0;
+        for (int k = 0; k < SgCount; k++) t += pt.w[k] * s.sig[k];
+        t = clampf(t, pt.lo, pt.hi);
+        s.partV[i] = pt.resp > 0 ? approach(s.partV[i], t, pt.resp, dt) : t;
+    }
+}
+
 void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
 {
     const float* P = w->prm;
@@ -420,13 +506,20 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
             if (len(rel - fwd * along) < w->model[o.model].bound && along < best) best = along;
         }
         float conv = best < 1e29f ? best : P[PConverge];
+        Xf xf[MaxParts];
+        PartXfs(w, s, xf);
+        s.firePulse = 1;
         for (int i = 0; i < m.mkN; i++)
         {
             const Marker& mk = m.mk[i];
             if (mk.kind != MkMuzzle || mk.id != 0) continue;
-            V3 mp = p + rot(q, ld(mk.p));
+            // 砲口が動く部品 (翼) に付いていれば、その動きの後の位置から撃つ
+            V3 lp = ld(mk.p), ld_ = ld(mk.d);
+            int pi = m.mkPart[i];
+            if (pi >= 0 && pi < m.partN) { lp = rot(xf[pi].q, lp * xf[pi].s) + xf[pi].t; ld_ = rot(xf[pi].q, ld_); }
+            V3 mp = p + rot(q, lp);
             // 砲口は離れて付いているので、照準の距離 (PConverge) の 1 点へ向けて撃つ
-            V3 dir = conv > 1 ? norm(p + fwd * conv - mp, fwd) : norm(rot(q, ld(mk.d)), fwd);
+            V3 dir = conv > 1 ? norm(p + fwd * conv - mp, fwd) : norm(rot(q, ld_), fwd);
             V3 bv = dir * P[PBoltSpeed] + v;
             SpawnBolt(w, idx, mp, bv, P[PBoltLife], P[PBoltDamage], 1);
             Emit(w, EvFire, idx, i, 0, mp, 0);
@@ -648,6 +741,8 @@ MRP_API int32_t mrp_flt_model(World* w, int32_t id, const Sphere* sph, int32_t n
     md.mkN = m < MaxMarkers ? m : MaxMarkers;
     memcpy(md.sph, sph, sizeof(Sphere) * md.sphN);
     memcpy(md.mk, mk, sizeof(Marker) * md.mkN);
+    md.partN = 0;
+    for (int i = 0; i < MaxMarkers; i++) md.mkPart[i] = -1;
     float b = 0;
     for (int i = 0; i < md.sphN; i++)
     {
@@ -656,6 +751,17 @@ MRP_API int32_t mrp_flt_model(World* w, int32_t id, const Sphere* sph, int32_t n
     }
     md.bound = b;
     return md.sphN;
+}
+
+// 動く部品と、印が乗る部品 (mkPart は印の数だけ・無ければ null)。mrp_flt_model の後に呼ぶ
+MRP_API int32_t mrp_flt_parts(World* w, int32_t id, const Part* parts, int32_t n, const int32_t* mkPart, int32_t mkN)
+{
+    if (id < 0 || id >= MaxModels) return 0;
+    Model& md = w->model[id];
+    md.partN = n < 0 ? 0 : (n < MaxParts ? n : MaxParts);
+    if (md.partN > 0) memcpy(md.part, parts, sizeof(Part) * md.partN);
+    for (int i = 0; i < MaxMarkers; i++) md.mkPart[i] = (mkPart && i < mkN) ? mkPart[i] : -1;
+    return md.partN;
 }
 
 MRP_API void mrp_flt_spawn(World* w, int32_t idx, int32_t model, int32_t team, int32_t remote, const float* p, const float* q, float hp)
@@ -721,7 +827,11 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     w->acc += dt;
     int steps = 0;
     for (int k = 0; k < w->shipN; k++)
-        if (w->ship[k].alive && w->ship[k].remote) PoseRemote(w, w->ship[k], a->now);
+        if (w->ship[k].alive && w->ship[k].remote)
+        {
+            PoseRemote(w, w->ship[k], a->now);
+            Signals(w, w->ship[k], dt);
+        }
     if (a->in.dodge) w->latchDodge = a->in.dodge;
     if (a->in.uturn) w->latchUTurn = a->in.uturn;
     while (w->acc >= Step && steps < MaxSteps)
@@ -739,7 +849,13 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
         StepBolts(w, a->local, Step);
         StepParticles(w, Step);
         for (int k = 0; k < w->shipN; k++)
-            if (w->ship[k].alive) DrawPose(w, w->ship[k]);
+        {
+            Ship& s = w->ship[k];
+            if (!s.alive) continue;
+            DrawPose(w, s);
+            if (!s.remote) Signals(w, s, Step);
+            StepParts(w, s, Step);
+        }
         steps++;
         // 押した瞬間の入力 (回避・宙返り) は 1 刻みで使い切る (刻みが 0 回のフレームでは次のフレームまで持つ)
         w->latchDodge = 0; w->latchUTurn = 0;
@@ -762,6 +878,24 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
         const Ship& s = w->ship[k];
         memcpy(o, s.drawP, 12); memcpy(o + 3, s.drawQ, 16);
         o[7] = (k < w->shipN && s.alive) ? 1.0f : 0.0f;
+    }
+    if (a->partOut)
+    {
+        // 部品の動きをシェーダの配列の形 (部品ごとに 8 個) で書く。部品の無い所は動かない形
+        for (int k = 0; k < PartShips; k++)
+        {
+            float* o = a->partOut + (size_t)k * MaxParts * 8;
+            const Ship& s = w->ship[k];
+            int pn = (k < w->shipN && s.alive) ? w->model[s.model].partN : 0;
+            Xf xf[MaxParts];
+            if (pn > 0) PartXfs(w, s, xf);
+            for (int i = 0; i < MaxParts; i++, o += 8)
+            {
+                Xf x = i < pn ? xf[i] : Xf{ { 0, 0, 0, 1 }, { 0, 0, 0 }, 1.0f };
+                o[0] = x.q.x; o[1] = x.q.y; o[2] = x.q.z; o[3] = x.q.w;
+                o[4] = x.t.x; o[5] = x.t.y; o[6] = x.t.z; o[7] = x.s;
+            }
+        }
     }
     V3 cp = ld(w->camP);
     float sh = w->shake;

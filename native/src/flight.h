@@ -17,6 +17,8 @@ const int MaxSnaps = 12;
 const int MaxParams = 64;
 const int MaxParticles = 2048;
 const int MaxDust = 320;
+const int MaxParts = 48;   // 船 1 隻の動く部品 (翼・舵・噴射口の首振り・姿勢制御の噴射など)
+const int PartShips = 2;   // 部品を動かす船の数 (番号 0..1)。シェーダの配列の長さ = PartShips * MaxParts * 2
 
 // 調整の値 (C# の FlightParams.Names と同じ並び)。名前の付いた数をここに直書きしない
 enum Param
@@ -43,11 +45,28 @@ enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5 
 struct Sphere { float c[3]; float r; int32_t sector; };
 struct Marker { int32_t kind, id; float p[3]; float d[3]; };
 
+// 動く部品の信号 (Part.w の並び)。値は -1..1 (加速・減速・撃った揺れは 0..1)
+enum Signal { SgPitch, SgYaw, SgRoll, SgBank, SgBoost, SgBrake, SgFire, SgDodge, SgOne, SgCount };
+// 動き方: 軸の周りに回す (度)・軸の点を中心に大きさを変える (0..1)・軸の向きへずらす
+enum PartMode { PmRotate = 0, PmScale = 1, PmSlide = 2 };
+
+// 動く部品 (Blender の書き出しから)。値 = 信号の重み付きの和を lo..hi に切り、resp の速さで追う (0 = すぐ)。
+// spin は値に足す一定の回り (度/秒・回り続けるアンテナなど)。parent は先に並ぶ部品の番号 (-1 = 船体) で、親の動きに乗る
+struct Part
+{
+    int32_t mode, parent;
+    float pivot[3], axis[3];
+    float w[SgCount];
+    float lo, hi, resp, spin;
+};
+
 struct Model
 {
     Sphere sph[MaxSpheres];
     Marker mk[MaxMarkers];
-    int32_t sphN, mkN;
+    Part part[MaxParts];
+    int32_t mkPart[MaxMarkers]; // 印が乗る部品 (-1 = 船体)。翼の先の砲口は翼と一緒に動く
+    int32_t sphN, mkN, partN;
     float bound; // 全部の球を包む球の半径 (粗い当たりの前に見る)
 };
 
@@ -64,6 +83,10 @@ struct Ship
     int32_t alive, model, team, remote, muzzleNext;
     Snap snap[MaxSnaps]; int32_t snapN;
     float drawP[3], drawQ[4];
+    float sig[SgCount];          // 部品を動かす信号 (刻みごと)
+    float partV[MaxParts];       // 部品の今の値 (信号を追った後)
+    float firePulse;             // 撃った揺れ (撃つと 1・すぐ減る)
+    float prevQ[4]; int32_t prevInit; // 遠くの船の回る速さを向きの差から出す
 };
 
 struct Bolt { float p[3], v[3]; float age, life; int32_t owner, alive, mine; float dmg; };
@@ -120,6 +143,7 @@ struct FrameArgs
     int32_t steps;          // 回した固定刻みの数
     uint8_t* fxVerts;       // 火花・炎・煙・塵の頂点 (弾と同じ形・1 枚 4 頂点)
     int32_t fxCap, fxPrev, fxN;
+    float* partOut;         // 部品の動き (PartShips 隻 × MaxParts 個 × 8 = 四元数 4・ずれ 3・大きさ 1)。シェーダの配列へそのまま
 };
 #pragma pack(pop)
 

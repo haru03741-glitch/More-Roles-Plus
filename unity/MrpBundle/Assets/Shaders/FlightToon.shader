@@ -2,6 +2,8 @@
 // Android の削られた Unity では Light の設定が使えないので、光の向きと色は global の値 (_MrpFltLight・_MrpFltSky) で受ける。
 // 縁取りは面を裏返して外へ押し出す 2 つ目の描き方。押し出す向きは頂点の TEXCOORD1 (同じ位置の面の法線を足したなめらかな法線) で、
 // 画面の上で同じ太さになるよう奥行き (w) を掛ける。遠いほど空の色へ寄せて奥行きを出す。
+// 動く部品 (翼・舵・噴射口など): 頂点の TEXCOORD1.w が部品の番号 (0 = 船体)。部品の姿は global の配列 _MrpFltParts に
+// 部品ごとに 2 つ (四元数・ずれ xyz と大きさ w) で入り、船ごとの始まりは _PartBase (-1 = 動かさない)。
 Shader "MRP/FlightToon"
 {
     Properties
@@ -9,7 +11,31 @@ Shader "MRP/FlightToon"
         _Outline ("Outline width", Float) = 0.0035
         _OutlineColor ("Outline color", Color) = (0.05, 0.05, 0.08, 1)
         _Flash ("Hit flash", Float) = 0
+        _PartBase ("Part base", Float) = -1
     }
+
+    CGINCLUDE
+    float4 _MrpFltParts[192];
+    float _PartBase;
+
+    float3 QRot(float4 q, float3 v)
+    {
+        float3 t = 2.0 * cross(q.xyz, v);
+        return v + q.w * t + cross(q.xyz, t);
+    }
+
+    // 部品の動きを位置と向き (法線 2 本) に掛ける
+    void ApplyPart(float part, inout float4 pos, inout float3 n1, inout float3 n2)
+    {
+        if (part < 0.5 || _PartBase < 0) return;
+        int i = (int)(_PartBase + (part - 1.0) * 2.0 + 0.5);
+        float4 q = _MrpFltParts[i];
+        float4 t = _MrpFltParts[i + 1];
+        pos.xyz = QRot(q, pos.xyz * t.w) + t.xyz;
+        n1 = QRot(q, n1);
+        n2 = QRot(q, n2);
+    }
+    ENDCG
 
     SubShader
     {
@@ -31,12 +57,14 @@ Shader "MRP/FlightToon"
             float4 _MrpFltRim;     // rgb = 縁の照り返しの色・a = 強さ
             float _Flash;
 
-            struct appdata { float4 vertex : POSITION; float3 normal : NORMAL; fixed4 color : COLOR; };
+            struct appdata { float4 vertex : POSITION; float3 normal : NORMAL; fixed4 color : COLOR; float4 smooth : TEXCOORD1; };
             struct v2f { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 wp : TEXCOORD1; fixed4 color : COLOR; };
 
             v2f vert(appdata v)
             {
                 v2f o;
+                float3 dummy = v.smooth.xyz;
+                ApplyPart(v.smooth.w, v.vertex, v.normal, dummy);
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.n = UnityObjectToWorldNormal(v.normal);
                 o.wp = mul(unity_ObjectToWorld, v.vertex).xyz;
@@ -91,14 +119,16 @@ Shader "MRP/FlightToon"
             fixed4 _OutlineColor;
             float4 _MrpFltSky;
 
-            struct appdata { float4 vertex : POSITION; float3 smooth : TEXCOORD1; };
+            struct appdata { float4 vertex : POSITION; float4 smooth : TEXCOORD1; };
             struct v2f { float4 pos : SV_POSITION; float fog : TEXCOORD0; };
 
             v2f vert(appdata v)
             {
                 v2f o;
+                float3 sn = v.smooth.xyz, dummy = sn;
+                ApplyPart(v.smooth.w, v.vertex, sn, dummy);
                 float4 clip = UnityObjectToClipPos(v.vertex);
-                float3 nw = UnityObjectToWorldNormal(v.smooth);
+                float3 nw = UnityObjectToWorldNormal(sn);
                 float2 nc = normalize(mul((float3x3)UNITY_MATRIX_VP, nw).xy + 1e-5);
                 // 画面の縦横比を戻して、どの向きにも同じ太さ
                 nc.x *= _ScreenParams.y / _ScreenParams.x;
