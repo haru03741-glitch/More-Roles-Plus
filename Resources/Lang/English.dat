@@ -1710,7 +1710,7 @@ Comet.Name: Comet
 Comet.Blurb: Blaze through
 Comet.Summary: A crewmate who can turn invisible and run fast.
 Comet.Blaze: Blaze
-Comet.Blaze.Help: Become invisible and faster for a set time (your vision widens and the screen zooms out a little). While invisible you cannot be seen or killed. You run across water without slowing down and cannot drown in deep water. Your body is still there, though, so others can see your splashes and footprints.
+Comet.Blaze.Help: Become invisible and faster for a set time (your vision widens and the screen zooms out a little). While invisible you cannot be seen or killed. You run across water without slowing down and cannot drown in deep water. Your body is still there, though, so others can see your splashes and footprints. A faint trail of light also lingers briefly where you run.
 Comet.Blaze.Short: Turn invisible and run fast
 Comet.Tips: Not affected by lights sabotage.
 Comet.Cooldown: Boost cooldown
@@ -1718,6 +1718,7 @@ Comet.Duration: Boost duration
 Comet.Speed: Boost speed
 Comet.Vision: Vision during boost
 Comet.Screen: Screen zoom during boost
+Comet.Trail: Afterglow length during boost
 Alchemist.Name: Alchemist
 Alchemist.Blurb: Harmony toward death
 Alchemist.Summary: A crewmate who turns bodies into alchemy bullets to shoot players in meetings, and turns rubble into iron plates to seal holes in walls.

@@ -4,7 +4,8 @@ using MoreRolesPlus.Options;
 namespace MoreRolesPlus.Roles.Crew;
 
 // コメット (クルー): 「ブースト」で決めた時間だけ透明になり、足が速くなる (視界も広がり、画面も少し引く)。
-// 透明の間は他の人に見えず、キルも能力も受けない。始めと終わりは姿が薄れて消える・現れる。停電で視界が狭まらない
+// 透明の間は他の人に見えず、キルも能力も受けない。始めと終わりは姿が薄れて消える・現れる。停電で視界が狭まらない。
+// 透明で走った後には、冷めて消える光の粒が少しだけ残る
 public sealed class Comet : RoleBase
 {
     public override Team BaseTeam => Team.Crew;
@@ -20,6 +21,7 @@ public sealed class Comet : RoleBase
     public static readonly FloatOpt Speed = new("Comet.Speed", 1.5f, 0.5f, 3f, 0.125f, "x");
     public static readonly FloatOpt Vision = new("Comet.Vision", 1.5f, 1f, 3f, 0.125f, "x");
     public static readonly FloatOpt Screen = new("Comet.Screen", 1.125f, 1f, 2f, 0.125f, "x");
+    public static readonly FloatOpt TrailLife = new("Comet.Trail", 0.5f, 0f, 2f, 0.1f, "s"); // 0 で尾を出さない
 
     private bool _boosting;
 
@@ -28,6 +30,7 @@ public sealed class Comet : RoleBase
         // 透明でも体はあるので水と粉に跡が残る。その代わりブーストの間は水面を走る (足を取られず・泳がず・溺れない)
         CrewTraits.Set(PlayerId, CrewTraits.Trait.Trace, () => Cloak.IsOn(PlayerId));
         CrewTraits.Set(PlayerId, CrewTraits.Trait.Skim, () => Cloak.IsOn(PlayerId));
+        CometTrail.Watch(Player); // 透明で走った後に光の粒が少し残る (全員に見える)
         AddAbility(new Ability(new Text("Comet.Blaze"), "comet_boost")
         {
             Cooldown = () => Cooldown,
