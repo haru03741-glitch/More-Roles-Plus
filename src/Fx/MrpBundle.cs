@@ -92,6 +92,29 @@ internal static class MrpBundle
     public static Material UiFireMaterial { get; private set; }
     public static Material UiBarMaterial { get; private set; }
     public static Material NovaBeamMaterial { get; private set; }
+    // 3D の艦隊戦: 0 = 船 (トゥーン + 縁取り)・1 = 光弾・2 = 宇宙の背景
+    public static readonly Material[] FlightMaterials = new Material[3];
+    private static readonly string[] FlightMatPaths = { "assets/generated/flighttoon.mat", "assets/generated/flightbolt.mat", "assets/generated/flightsky.mat" };
+    private static AssetBundleRequest _flightReq;
+    private static int _flightNext;
+    private static bool _flightFailed;
+    public static bool FlightReady => _flightNext >= FlightMatPaths.Length;
+
+    private static void TickFlight()
+    {
+        try
+        {
+            _flightReq ??= _bundle.LoadAssetAsync(FlightMatPaths[_flightNext], Il2CppInterop.Runtime.Il2CppType.Of<Material>());
+            if (!_flightReq.isDone) return;
+            var mat = _flightReq.asset ? _flightReq.asset.TryCast<Material>() : null;
+            _flightReq = null;
+            if (!mat) { Plugin.Logger.LogError($"bundle asset not found: {FlightMatPaths[_flightNext]}"); _flightFailed = true; return; }
+            mat.hideFlags |= HideFlags.DontUnloadUnusedAsset;
+            FlightMaterials[_flightNext++] = mat;
+            Plugin.Logger.LogInfo($"bundle {mat.name}: shader={mat.shader.name} supported={mat.shader.isSupported}");
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"bundle flight: {e}"); _flightFailed = true; }
+    }
 
     public static bool Ready => TerrainMaterial;
 
@@ -109,6 +132,7 @@ internal static class MrpBundle
             else if (!UiFireMaterial && !_uiFireFailed) TickUiFire();
             else if (!UiBarMaterial && !_uiBarFailed) TickUiBar();
             else if (!NovaBeamMaterial && !_novaBeamFailed) TickNovaBeam();
+            else if (_flightNext < FlightMatPaths.Length && !_flightFailed) TickFlight();
             if (_clipsLeft > 0) TickClips();
             return;
         }

@@ -17,6 +17,7 @@ using UnityEngine;
 //   uifire.mat … MRP/UiFire (立ち合いの HUD の炎: 体力のバーから立つ炎・回避の枠の炎の輪)
 //   uibar.mat … MRP/UiBar (立ち合いの HUD の体力のバー・中央の鍔・顔の額縁)
 //   novabeam.mat … MRP/NovaBeam (ノヴァの光線: 先へ広がるプラズマの筒)
+//   flighttoon.mat / flightbolt.mat / flightsky.mat … MRP/Flight* (3D の艦隊戦: 船のトゥーンと縁取り / 光弾 / 宇宙の背景)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -173,6 +174,24 @@ public static class MrpBundleBuilder
         novaBeam.SetTexture("_Noise", noise);
         AssetDatabase.CreateAsset(novaBeam, novaBeamPath);
         Tag(novaBeamPath);
+
+        // 3D の艦隊戦: 船 (トゥーン + 縁取り)・光弾・宇宙の背景
+        foreach (var (shaderName, matName) in new[] { ("FlightToon", "flighttoon"), ("FlightBolt", "flightbolt"), ("FlightSky", "flightsky") })
+        {
+            Shader sh = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/" + shaderName + ".shader");
+            if (sh == null)
+            {
+                Debug.LogError("MrpBundleBuilder: " + shaderName + " shader not found");
+                EditorApplication.Exit(2);
+                return;
+            }
+            string path = Folder + "/" + matName + ".mat";
+            AssetDatabase.DeleteAsset(path);
+            var m = new Material(sh) { name = matName };
+            if (matName == "flightsky") m.SetTexture("_Noise", noise);
+            AssetDatabase.CreateAsset(m, path);
+            Tag(path);
+        }
 
         BreakSounds.ImportAll(Folder, BundleName);
 

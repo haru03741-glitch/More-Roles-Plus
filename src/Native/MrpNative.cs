@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Native;
 // 読めない時は mod ごと起動しない (Plugin.Load が最初に Loaded を見る)
 internal static unsafe class MrpNative
 {
-    internal const int Abi = 45;
+    internal const int Abi = 46;
 #if ANDROID
     private const string FileName = "libmrpnative.so";
 #else
@@ -21,6 +21,8 @@ internal static unsafe class MrpNative
     private static bool _tried;
     private static bool _loaded;
     private static IntPtr _lib;
+    // 指紋を取らない部品 (3D の艦隊戦など) が自分で番地を引く口。読めていなければ 0
+    internal static IntPtr Export(string name) => Loaded && NativeLibrary.TryGetExport(_lib, name, out var p) ? p : IntPtr.Zero;
     internal static string Status { get; private set; } = "not loaded";
     internal static bool Async = true; // 水の小刻みを作業スレッドで回す (指紋を取る間だけ止める)
 
