@@ -1101,6 +1101,12 @@ internal static partial class Decompression
             if (!SolidMap.SkyAhead(mid, n, TerrainDamage.BreachReach) && SolidMap.SkyAhead(mid, -n, TerrainDamage.BreachReach)) n = -n;
             float depth = SolidMap.SkyDistance(mid.x, mid.y, n.x, n.y, TerrainDamage.HullReach + 1f);
             float reach = depth < 0f ? -depth - 0.2f : depth > 0f ? depth : SealDepth;
+            // 船体を切った喉は口に沿っていちばん深い所に揃えて全幅を抜いてあるので、泡と同じく喉の奥まで止める
+            if (!float.IsNaN(HullThroat.BackZ()) && !HullThroat.IsCrater)
+            {
+                float throat = HullThroat.DepthOf(a, b);
+                if (!float.IsNaN(throat) && throat > reach) reach = throat;
+            }
             var go = WallBody.BuildSeal(a, b, n, Math.Max(0.1f, reach));
             if (go) br.Seals.Add(go);
         }

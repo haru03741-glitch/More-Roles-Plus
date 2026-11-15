@@ -177,6 +177,12 @@ internal static class FoamArt
             float vmin = behind ? -FloorTuck : FaceHeight * MathF.Max(0f, oy);
             // 広い穴は口に沿っていちばん深い所に合わせて開けてあるので、中点で床に当たっても止めない (はみ出しは隣の部屋の床の絵の裏)
             float reach = crater ? HullThroat.CraterReach : depth < 0f ? -depth - 0.2f : depth > 0f ? depth : vmin + PlugDepth;
+            // 船体を切った喉は口に沿っていちばん深い所に揃えて全幅を抜いてあるので、中点の外が床に当たって浅くても喉の奥まで詰める (詰めないと黒い喉の下端に細い帯だけになる)
+            if (behind && !crater)
+            {
+                float throat = HullThroat.DepthOf(a, b);
+                if (!float.IsNaN(throat) && throat > reach) { reach = throat; depth = throat; }
+            }
             float thick = behind ? MathF.Max(PlugMin, reach - vmin) : Math.Clamp(reach - vmin, PlugMin, PlugDepth);
             float vmax = vmin + thick + (depth < 0f ? 0f : Bulge);
             float side = crater ? HullThroat.CraterSide : behind ? SideBleedBehind : SideBleed;

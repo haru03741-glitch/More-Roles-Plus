@@ -59,6 +59,7 @@ internal static class HullThroat
 
     private static readonly List<Cut> Cuts = new();
     private static readonly List<P[]> Opened = new(); // 開けた喉の塊 (世界座標・反時計回り)
+    private static readonly List<(Vector2 A, Vector2 B, float Depth)> Mouths = new(); // 喉を開けた口と、口から外向きに切った奥行き
     private static int _shipGen = -1;
     private static bool _failed;
     private static float _craterZ = float.NaN; // エアシップ: 穴を開けた船体の板の奥行き
@@ -114,6 +115,7 @@ internal static class HullThroat
             _shipGen = GameClock.ShipGen;
             Cuts.Clear();
             Opened.Clear();
+            Mouths.Clear();
             _failed = false;
             _craterZ = float.NaN;
         }
@@ -218,6 +220,7 @@ internal static class HullThroat
         if (crater && float.IsNaN(_craterZ)) _craterZ = HullBlockZ();
         DamageMap.MarkThroat(Throat(holes));
         Opened.AddRange(holes);
+        Mouths.Add((a, b, depth));
         // 影の中の焼いた絵も喉の範囲で焼き直す (喉は穴の絵の範囲より奥まで伸びる)
         float bx0 = float.MaxValue, by0 = float.MaxValue, bx1 = float.MinValue, by1 = float.MinValue;
         foreach (var h in holes)
@@ -242,7 +245,7 @@ internal static class HullThroat
         var owner = TerrainUndo.Token;
         if (owner == null || ReferenceEquals(owner, _savedFor)) return;
         _savedFor = owner;
-        int gen = _shipGen, opened = Opened.Count;
+        int gen = _shipGen, opened = Opened.Count, mouths = Mouths.Count;
         float crater = _craterZ;
         var saved = new Cut[Cuts.Count];
         for (int i = 0; i < saved.Length; i++) saved[i] = Cuts[i].Copy();
@@ -251,6 +254,7 @@ internal static class HullThroat
             _savedFor = null;
             if (gen != _shipGen || _failed) return;
             if (Opened.Count > opened) Opened.RemoveRange(opened, Opened.Count - opened);
+            if (Mouths.Count > mouths) Mouths.RemoveRange(mouths, Mouths.Count - mouths);
             _craterZ = crater;
             for (int i = 0; i < saved.Length && i < Cuts.Count; i++)
             {
@@ -261,6 +265,21 @@ internal static class HullThroat
             }
             Flush();
         });
+    }
+
+    // 口 a-b に開けた喉の奥行き (口から外向き)。開けていなければ NaN。
+    // 喉は口に沿っていちばん深い所に揃えた矩形なので、口の途中で外が床に当たっても奥まで抜けている
+    internal static float DepthOf(Vector2 a, Vector2 b)
+    {
+        if (GameClock.ShipGen != _shipGen) return float.NaN;
+        const float eps = 0.02f;
+        foreach (var m in Mouths)
+        {
+            bool same = (m.A - a).sqrMagnitude < eps * eps && (m.B - b).sqrMagnitude < eps * eps;
+            bool swapped = (m.A - b).sqrMagnitude < eps * eps && (m.B - a).sqrMagnitude < eps * eps;
+            if (same || swapped) return m.Depth;
+        }
+        return float.NaN;
     }
 
     // 点が開けた喉の中か (壁に付いていた物を穴の中に残さない用)
