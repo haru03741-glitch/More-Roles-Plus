@@ -515,5 +515,7 @@ internal static class CrewFlipLatePatch
     {
         CrewFlip.LateTick();
         DrownFx.LateTick();
+        Terrain.WaterWade.LateTick();
+        Terrain.BodyCover.LateTick();
     }
 }

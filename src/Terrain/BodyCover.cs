@@ -5,60 +5,93 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Terrain;
 
-// 水に浸かった横たわる体 (死体・溺れて倒れた体) を水で覆う: 体と同じ絵を型にした水の板を体のすぐ手前に重ね、
-// 足元の水が体の厚み (Thick) を越えた分だけ周りの水と同じ色で覆う (家具の水面と同じシェーダの「低い机」の作り)。
-// 立った体の水面 (WaterWade) は縦長の体の形で覆うので、横たわった体には合わない。
-// 死体のそばに落ちて死体の子になった帽子・服も、薄い物として同じように覆う。
-// 死体は水がある間だけ 0.25 秒ごとに足元の深さを見直し、死んだ人の数が変わった時と数秒おきに死体を探し直す。
-// 死体が倒れる動き (本編の連番) の間は、板の絵を毎フレーム体の絵にそろえる
+// 水に浸かった体や物のうち、立った体の水面 (WaterWade) の形が合わない物を水で覆う:
+// その物と同じ絵 (切った死体の片は同じ網目) を型にした水の板をすぐ手前に重ね、周りの水と同じ色で覆う (家具の水面と同じシェーダ)。
+// 寝ている物 (死体・倒れた体・落ちた帽子と服・血の跡) は厚みを越えた水の分だけ一面を覆い、
+// 立っている物 (ペット) は絵の下の縁を床として、水位より下だけを覆う。
+// 死体は死んだ知らせの直後から探して付け (水がある時だけ)、ほかは持ち主が Track で渡す。
+// 水がある間だけ 0.25 秒ごとに足元の深さを見直す。絵が動く間 (倒れる連番・ペット) は板の絵を毎フレームそろえる
 internal static class BodyCover
 {
     internal const float Thick = 0.2f;          // 横たわった体の厚み (水の深さの単位)。これより浅い水では覆わない
-    private const float PieceThick = 0.08f;     // 死体のそばに落ちた帽子・服の厚み
-    private const float ScanEvery = 0.25f, FindEvery = 3f, SyncFor = 2.5f;
+    internal const float PieceThick = 0.08f;    // 落ちた帽子・服・切れた片の厚み
+    private const float StainThick = 0.01f;     // 床の血の跡
+    private const float UprightShow = 0.02f;    // 立っている物はこれより深ければ覆い始める
+    private const float ScanEvery = 0.25f, FindEvery = 3f, SyncFor = 2.5f, Eager = 0.6f;
     private const float LvlStep = 0.01f;        // 水位がこれだけ変わったら板へ書き直す
-    private const float FrontZ = -0.0006f;      // 体の絵とその上の着せ替えより手前
+    private const float FrontZ = -0.0006f;      // 元の絵とその上の着せ替えより手前
 
     private static readonly int MainTexId = Shader.PropertyToID("_MainTex"), LvlId = Shader.PropertyToID("_Lvl"),
         CoverId = Shader.PropertyToID("_Cover"), FaceHId = Shader.PropertyToID("_FaceH"), FlatTopId = Shader.PropertyToID("_FlatTop"),
-        SilRId = Shader.PropertyToID("_SilR"), BaseOnId = Shader.PropertyToID("_BaseOn");
+        SilRId = Shader.PropertyToID("_SilR"), BaseOnId = Shader.PropertyToID("_BaseOn"), RiseId = Shader.PropertyToID("_Rise"),
+        VPerUnitId = Shader.PropertyToID("_VPerUnit"), VBaseId = Shader.PropertyToID("_VBase");
     private static Material _mat;
 
     internal sealed class Cover
     {
-        public SpriteRenderer Src, Sr;
+        public Renderer SrcR, R;                // 元の描画物・板の描画物
+        public SpriteRenderer Src, Sr;          // 絵の時だけ (切った片は網目)
         public MaterialPropertyBlock Block;
         public Sprite Last;
         public Texture Tex;
-        public float Lvl = -1f, Thick;
-        public bool Shown;
+        public float Lvl = -1f, Thick, ScaleY = 1f, Until;
+        public bool Shown, Upright, Freeze; // Freeze = 絵が変わったら外す (死んだ人の体に残った最後の絵)
     }
 
-    // src の手前に覆いの板を作る (隠したまま)。材質が無ければ null
-    internal static Cover Make(SpriteRenderer src, float thick = Thick)
+    // src の手前に覆いの板を作る (隠したまま)。upright = 立っている物 (水位より下だけ覆う)。材質が無ければ null
+    internal static Cover Make(SpriteRenderer src, float thick = Thick, bool upright = false)
     {
         var mat = Mat();
         if (!mat || !src) return null;
-        var go = new GameObject("MrpBodyCover") { layer = src.gameObject.layer };
-        go.SetActive(false);
-        var t = go.transform;
-        t.SetParent(src.transform, false);
-        t.localPosition = FxMath.V3(0f, 0f, FrontZ);
+        var go = NewPlate(src.transform, src.gameObject.layer);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sharedMaterial = mat;
         sr.sortingOrder = src.sortingOrder;
-        var c = new Cover { Src = src, Sr = sr, Block = new MaterialPropertyBlock(), Thick = thick };
-        // SpriteRenderer にブロックを付けると絵が外れるので、絵もブロックで渡す
-        c.Block.SetFloat(FlatTopId, 1f);
-        c.Block.SetFloat(FaceHId, thick);
-        c.Block.SetFloat(CoverId, 1f);
-        c.Block.SetFloat(SilRId, 0f);
-        c.Block.SetFloat(BaseOnId, 0f);
+        var c = new Cover { SrcR = src, R = sr, Src = src, Sr = sr, Block = NewBlock(thick, upright), Thick = upright ? UprightShow : thick, Upright = upright };
+        if (upright) c.ScaleY = MathF.Abs(src.transform.lossyScale.y);
         Sync(c);
         return c;
     }
 
-    // 体の絵が変わっていたら板の絵 (と型の絵) をそろえる
+    // 網目の描画物 (切った死体の片) の手前に同じ網目の板を作る
+    internal static Cover MakeMesh(MeshRenderer src, Mesh mesh, Texture tex, float thick = PieceThick)
+    {
+        var mat = Mat();
+        if (!mat || !src || !mesh || !tex) return null;
+        var go = NewPlate(src.transform, src.gameObject.layer);
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        mr.sortingOrder = src.sortingOrder;
+        var c = new Cover { SrcR = src, R = mr, Block = NewBlock(thick, false), Thick = thick, Tex = tex };
+        c.Block.SetTexture(MainTexId, tex);
+        mr.SetPropertyBlock(c.Block);
+        return c;
+    }
+
+    private static GameObject NewPlate(Transform parent, int layer)
+    {
+        var go = new GameObject("MrpBodyCover") { layer = layer };
+        go.SetActive(false);
+        var t = go.transform;
+        t.SetParent(parent, false);
+        t.localPosition = FxMath.V3(0f, 0f, FrontZ);
+        return go;
+    }
+
+    private static MaterialPropertyBlock NewBlock(float thick, bool upright)
+    {
+        var b = new MaterialPropertyBlock();
+        b.SetFloat(FlatTopId, upright ? 0f : 1f);
+        b.SetFloat(FaceHId, thick);
+        b.SetFloat(CoverId, 1f);
+        b.SetFloat(SilRId, 0f);
+        b.SetFloat(BaseOnId, 0f);
+        b.SetFloat(RiseId, 1f); // 立っている物は絵の縦がそのまま高さ
+        return b;
+    }
+
+    // 元の絵が変わっていたら板の絵 (と型の絵・立っている物の床の線) をそろえる
     internal static void Sync(Cover c)
     {
         if (c == null || !c.Src || !c.Sr) return;
@@ -68,28 +101,64 @@ internal static class BodyCover
         if (sp == c.Last) return;
         c.Last = sp;
         c.Sr.sprite = sp;
+        bool dirty = false;
         var tex = sp ? sp.texture : null;
-        if (tex == c.Tex) return;
-        c.Tex = tex;
-        if (tex) c.Block.SetTexture(MainTexId, tex);
-        c.Sr.SetPropertyBlock(c.Block);
+        if (tex != c.Tex)
+        {
+            c.Tex = tex;
+            if (tex) { c.Block.SetTexture(MainTexId, tex); dirty = true; }
+        }
+        if (c.Upright && sp && UprightOf(sp, out float vBase, out float vPerUnit, out float height))
+        {
+            c.Block.SetFloat(VBaseId, vBase);
+            c.Block.SetFloat(VPerUnitId, vPerUnit / FxMath.Max(c.ScaleY, 1e-4f));
+            c.Block.SetFloat(FaceHId, height * c.ScaleY);
+            dirty = true;
+        }
+        if (dirty) c.Sr.SetPropertyBlock(c.Block);
     }
 
-    // 足元から測った水位 (単位)。体の厚みより浅ければ隠す
+    // 立っている絵の下の縁の v・絵の 1 単位あたりの v・絵の高さ (網目の頂点から。絵ごとに覚える)
+    private static readonly Dictionary<IntPtr, (float vBase, float vPerUnit, float h)> UprightCache = new();
+    private static bool UprightOf(Sprite sp, out float vBase, out float vPerUnit, out float height)
+    {
+        if (UprightCache.TryGetValue(sp.Pointer, out var u)) { vBase = u.vBase; vPerUnit = u.vPerUnit; height = u.h; return u.h > 0f; }
+        vBase = vPerUnit = height = 0f;
+        var vs = sp.vertices;
+        var uv = sp.uv;
+        float lowY = float.MaxValue, highY = float.MinValue, vLow = 0f, vHigh = 0f;
+        for (int i = 0; i < vs.Length && i < uv.Length; i++)
+        {
+            float y = vs[i].y;
+            if (y < lowY) { lowY = y; vLow = uv[i].y; }
+            if (y > highY) { highY = y; vHigh = uv[i].y; }
+        }
+        if (highY - lowY > 1e-4f)
+        {
+            vBase = vLow;
+            vPerUnit = (vHigh - vLow) / (highY - lowY);
+            height = highY - lowY;
+        }
+        if (UprightCache.Count > 512) UprightCache.Clear();
+        UprightCache[sp.Pointer] = (vBase, vPerUnit, height);
+        return height > 0f;
+    }
+
+    // 元の物の下の水位 (単位)。厚みより浅ければ隠す
     internal static void SetLevel(Cover c, float lvl)
     {
-        if (c == null || !c.Sr) return;
+        if (c == null || !c.R) return;
         bool show = lvl > c.Thick + 0.005f && c.Tex;
-        if (show != c.Shown) { c.Sr.gameObject.SetActive(show); c.Shown = show; }
+        if (show != c.Shown) { c.R.gameObject.SetActive(show); c.Shown = show; }
         if (!show || MathF.Abs(lvl - c.Lvl) < LvlStep) return;
         c.Lvl = lvl;
         c.Block.SetFloat(LvlId, lvl);
-        c.Sr.SetPropertyBlock(c.Block);
+        c.R.SetPropertyBlock(c.Block);
     }
 
     internal static void Destroy(Cover c)
     {
-        if (c != null && c.Sr) UnityEngine.Object.Destroy(c.Sr.gameObject);
+        if (c != null && c.R) UnityEngine.Object.Destroy(c.R.gameObject);
     }
 
     private static Material Mat()
@@ -102,19 +171,74 @@ internal static class BodyCover
         return _mat;
     }
 
+    private static bool Water => WaterSim.Running && WaterSim.Ready;
+
+    // 元の物の下の水の深さ (寝ている物は真ん中・立っている物は下の縁)。元の物が隠れていれば 0
+    private static float DepthUnder(Cover c)
+    {
+        var r = c.SrcR;
+        if (!r || !r.enabled || !r.gameObject.activeInHierarchy) return 0f;
+        var b = r.bounds;
+        var at = b.center;
+        return WaterSim.CurrentAt(FxMath.V2(at.x, c.Upright ? b.min.y + 0.02f : at.y), out _, out _);
+    }
+
+    // ── 持ち主が渡す物 (死体になるまでの人形・落ちた着せ替え・切れた片・ペット) ─────────────
+    private static readonly List<Cover> Loose = new();
+
+    internal static void Track(SpriteRenderer src, float thick = Thick, bool upright = false)
+    {
+        if (!src || Tracked(src)) return;
+        var c = Make(src, thick, upright);
+        if (c == null) return;
+        Loose.Add(c);
+        if (Water) SetLevel(c, DepthUnder(c));
+    }
+
+    internal static void TrackMesh(MeshRenderer src, Mesh mesh, Texture tex, float thick = PieceThick)
+    {
+        if (!src || Tracked(src)) return;
+        var c = MakeMesh(src, mesh, tex, thick);
+        if (c == null) return;
+        Loose.Add(c);
+        if (Water) SetLevel(c, DepthUnder(c));
+    }
+
+    // 死んだ人の体の板を、本編が体を幽霊の絵へ替えるまで残す (死んだ直後は倒れた最後の絵のまま数フレーム見えている)
+    internal static void Linger(Cover c, float seconds = 1f)
+    {
+        if (c == null || !c.R) return;
+        c.Freeze = true;
+        c.Until = Time.time + seconds;
+        Loose.Add(c);
+    }
+
+    private static bool Tracked(Renderer r)
+    {
+        for (int i = 0; i < Loose.Count; i++) if (Loose[i].SrcR == r) return true;
+        for (int i = 0; i < Corpses.Count; i++) if (Corpses[i].C != null && Corpses[i].C.SrcR == r) return true;
+        return false;
+    }
+
     // ── 死体 (全員の端末で) ─────────────────────────────────────────────
     private sealed class Corpse
     {
         public DeadBody Body;
-        public Cover C;
-        public float Born;
-        public int Kids = -1;
-        public readonly List<Cover> Pieces = new(); // 死体の子になった落ちた帽子・服
+        public Cover C, Blood;
+        public float Born, Depth;
     }
 
     private static readonly List<Corpse> Corpses = new();
-    private static float _nextScan, _nextFind;
+    private static float _nextScan, _nextFind, _eagerUntil;
     private static int _dead = -1, _shipGen = -1;
+
+    // 誰かが死んだ (全員の端末で): 本編の死体はこの時に出るので、すぐ探して水を掛ける (少しの間は毎フレーム探す)
+    internal static void OnMurder()
+    {
+        if (!Water) return;
+        _eagerUntil = Time.time + Eager;
+        Find(Time.time);
+    }
 
     public static void Tick()
     {
@@ -124,33 +248,76 @@ internal static class BodyCover
 
     private static void TickCore()
     {
-        bool water = WaterSim.Running && WaterSim.Ready;
-        if (!water && Corpses.Count == 0) return;
+        bool water = Water;
+        if (!water && Corpses.Count == 0 && Loose.Count == 0) return;
         if (GameClock.ShipGen != _shipGen) { Clear(); _shipGen = GameClock.ShipGen; }
         float now = Time.time;
-        // 倒れる動きの間は絵を毎フレームそろえる
-        for (int i = 0; i < Corpses.Count; i++)
-        {
-            var k = Corpses[i];
-            if (k.C != null && k.C.Shown && now - k.Born < SyncFor) Sync(k.C);
-        }
+        if (water && now < _eagerUntil) Find(now);
         if (now < _nextScan) return;
         _nextScan = now + ScanEvery;
-        if (!water) { foreach (var k in Corpses) { SetLevel(k.C, 0f); foreach (var c in k.Pieces) SetLevel(c, 0f); } return; }
+        if (!water)
+        {
+            foreach (var k in Corpses) { SetLevel(k.C, 0f); SetLevel(k.Blood, 0f); }
+            foreach (var c in Loose) SetLevel(c, 0f);
+            return;
+        }
         int dead = DeadCount();
         if (dead != _dead || now >= _nextFind) { _dead = dead; _nextFind = now + FindEvery; Find(now); }
         for (int i = Corpses.Count - 1; i >= 0; i--)
         {
             var k = Corpses[i];
-            if (!k.Body || k.C == null || !k.C.Src) { Drop(k); Corpses.RemoveAt(i); continue; }
+            if (!k.Body || k.C == null || !k.C.Src) { Destroy(k.C); Destroy(k.Blood); Corpses.RemoveAt(i); continue; }
             Sync(k.C);
-            // 落ちた帽子・服は地面に着くと死体の子になる (子の数が変わった時だけ探す)
-            int kids = k.Body.transform.childCount;
-            if (kids != k.Kids) { k.Kids = kids; AddPieces(k); }
-            float lvl = k.Body.isActiveAndEnabled ? WaterSim.CurrentAt(k.Body.TruePosition, out _, out _) : 0f;
+            // 本編の死体は倒れる動きが終わるまで DeadBody 自体を止めている (通報できない) ので、見えるかは物の有無と絵で見る
+            float lvl = k.Body.gameObject.activeInHierarchy ? WaterSim.CurrentAt(k.Body.TruePosition, out _, out _) : 0f;
+            k.Depth = lvl;
             // 体の絵を隠している間 (決闘で殴り飛ばされた人形が飛んでいる間など) は板も出さない
             SetLevel(k.C, k.C.Src.enabled ? lvl : 0f);
-            for (int j = 0; j < k.Pieces.Count; j++) { var c = k.Pieces[j]; SetLevel(c, c.Src && c.Src.enabled ? lvl : 0f); }
+            if (k.Blood != null)
+            {
+                Sync(k.Blood);
+                SetLevel(k.Blood, k.Blood.Src && k.Blood.Src.enabled ? lvl : 0f);
+            }
+        }
+        for (int i = Loose.Count - 1; i >= 0; i--)
+        {
+            var c = Loose[i];
+            if (!c.SrcR || !c.R) { Destroy(c); Loose.RemoveAt(i); continue; }
+            if (c.Freeze) continue;
+            if (c.Src) Sync(c);
+            SetLevel(c, DepthUnder(c));
+        }
+    }
+
+    // 本編のアニメと描き替えが絵を差した後 (LateUpdate) に、板の絵を毎フレームそろえる:
+    // 出たばかりの死体 (本編の死体は絵の無いまま出て、倒れる連番や倒れた姿へ差し替わる。絵が付いた最初のフレームから水を掛ける)・ペット。
+    // 死んだ人の体に残した板は、体の絵が替わったら外す
+    internal static void LateTick()
+    {
+        if (Corpses.Count == 0 && Loose.Count == 0) return;
+        try { LateCore(); }
+        catch (Exception e) { Plugin.Logger.LogError($"[BodyCover] {e}"); Clear(); }
+    }
+
+    private static void LateCore()
+    {
+        float now = Time.time;
+        for (int i = 0; i < Corpses.Count; i++)
+        {
+            var k = Corpses[i];
+            if (now - k.Born >= SyncFor) continue;
+            if (k.C != null) { Sync(k.C); if (!k.C.Shown && k.C.Src && k.C.Src.enabled) SetLevel(k.C, k.Depth); }
+            if (k.Blood != null) { Sync(k.Blood); if (!k.Blood.Shown && k.Blood.Src && k.Blood.Src.enabled) SetLevel(k.Blood, k.Depth); }
+        }
+        for (int i = Loose.Count - 1; i >= 0; i--)
+        {
+            var c = Loose[i];
+            if (c.Freeze)
+            {
+                if (!c.Src || c.Src.sprite != c.Last || now >= c.Until) { Destroy(c); Loose.RemoveAt(i); }
+                continue;
+            }
+            if (c.Shown && c.Upright) Sync(c);
         }
     }
 
@@ -162,7 +329,7 @@ internal static class BodyCover
         return n;
     }
 
-    // 新しい死体に板を付ける (死体の描画物は本編の最初の絵 = bodyRenderers の先頭)
+    // 新しい死体に板を付ける (死体の描画物は本編の最初の絵 = bodyRenderers の先頭・床の血の跡にも)
     private static void Find(float now)
     {
         foreach (var b in UnityEngine.Object.FindObjectsOfType<DeadBody>())
@@ -172,37 +339,14 @@ internal static class BodyCover
             var main = rs != null && rs.Length > 0 ? rs[0] : null;
             if (!main) continue;
             var c = Make(main);
-            if (c != null) Corpses.Add(new Corpse { Body = b, C = c, Born = now });
+            if (c == null) continue;
+            var k = new Corpse { Body = b, C = c, Born = now };
+            if (b.bloodSplatter) k.Blood = Make(b.bloodSplatter, StainThick);
+            Corpses.Add(k);
+            float lvl = k.Depth = WaterSim.CurrentAt(b.TruePosition, out _, out _);
+            SetLevel(c, lvl);
+            SetLevel(k.Blood, b.bloodSplatter && b.bloodSplatter.enabled ? lvl : 0f);
         }
-    }
-
-    private static void AddPieces(Corpse k)
-    {
-        var bt = k.Body.transform;
-        for (int i = 0; i < bt.childCount; i++)
-        {
-            var ch = bt.GetChild(i);
-            if (ch.name != "MrpFallenCosmetic") continue;
-            foreach (var sr in ch.GetComponentsInChildren<SpriteRenderer>(true))
-            {
-                if (!sr || sr.gameObject.name == "MrpBodyCover" || Covered(k, sr)) continue;
-                var c = Make(sr, PieceThick);
-                if (c != null) k.Pieces.Add(c);
-            }
-        }
-    }
-
-    private static bool Covered(Corpse k, SpriteRenderer sr)
-    {
-        for (int i = 0; i < k.Pieces.Count; i++) if (k.Pieces[i].Src == sr) return true;
-        return false;
-    }
-
-    private static void Drop(Corpse k)
-    {
-        Destroy(k.C);
-        foreach (var c in k.Pieces) Destroy(c);
-        k.Pieces.Clear();
     }
 
     private static bool Has(DeadBody b)
@@ -213,9 +357,12 @@ internal static class BodyCover
 
     internal static void Clear()
     {
-        foreach (var k in Corpses) Drop(k);
+        foreach (var k in Corpses) { Destroy(k.C); Destroy(k.Blood); }
         Corpses.Clear();
+        foreach (var c in Loose) Destroy(c);
+        Loose.Clear();
         _dead = -1;
         _nextFind = 0f;
+        _eagerUntil = 0f;
     }
 }

@@ -69,6 +69,13 @@ internal static class WaterWade
 
     private static readonly Dictionary<byte, Wade> Wades = new();
     private static readonly Dictionary<byte, BodyCover.Cover> Lying = new();
+
+    // 描き替えの連番が絵を差した後 (LateUpdate) に、横たわった体の板の絵もそろえる
+    internal static void LateTick()
+    {
+        if (Lying.Count == 0) return;
+        foreach (var c in Lying.Values) if (c.Shown) BodyCover.Sync(c);
+    }
     // 体の大きさ (足元から・実測) はシェーダの _Body の既定値。Android の libunity には MaterialPropertyBlock.SetVector が無い
     private static readonly int DepthId = Shader.PropertyToID("_Depth");
     private static Sprite _sprite;
@@ -85,8 +92,6 @@ internal static class WaterWade
     {
         if (Wades.Count == 0 && Lying.Count == 0 && !WaterSim.Running) return;
         if (Bobbing.Count > 0 && WaterSim.Running && WaterSim.Ready) BobTick();
-        // 描き替えの連番は毎フレーム絵を変えるので、横たわった体の板の絵もそろえる
-        foreach (var c in Lying.Values) if (c.Shown) BodyCover.Sync(c);
         long now = Environment.TickCount64;
         if (now < _nextMs) return;
         _nextMs = now + ScanMs;
@@ -102,6 +107,8 @@ internal static class WaterWade
             var data = pc.Data;
             // 深さを先に見て、水に入っている人だけ見せてよいかを調べる
             float d = WaterSim.CurrentAt(pc.GetTruePosition(), out _, out _);
+            // ペットは体の板の外にいるので、水に入った人のペットには自分の形の水を掛ける (深さはペットの足元で見る)
+            if (d >= ShowDepth && data != null && !data.IsDead) TrackPet(pc);
             if (d >= ShowDepth && (data == null || data.IsDead || data.Disconnected || pc.inVent || !pc.Visible || !BodyShown(pc)
                 || Roles.CrewTraits.Has(pc.PlayerId, Roles.CrewTraits.Trait.Skim))) d = 0f; // 水面を走る人は沈まない
             if (w != null) w.Base = d;
@@ -137,6 +144,14 @@ internal static class WaterWade
         };
     }
 
+    private static void TrackPet(PlayerControl pc)
+    {
+        var pet = pc.cosmetics ? pc.cosmetics.CurrentPet : null;
+        var rs = pet ? pet.renderers : null;
+        var sr = rs != null && rs.Length > 0 ? rs[0] : null;
+        if (sr) BodyCover.Track(sr, 0f, upright: true);
+    }
+
     // 横たわった体の水の板を出す/隠す (lvl = 体の下の水の深さ・0 = 隠す)
     private static void Lie(PlayerControl pc, float lvl)
     {
@@ -144,7 +159,11 @@ internal static class WaterWade
         Lying.TryGetValue(id, out var c);
         if (lvl <= 0f)
         {
-            if (c != null) { BodyCover.Destroy(c); Lying.Remove(id); }
+            if (c == null) return;
+            // 死んだ直後は体に倒れた最後の絵が残っているので、幽霊の絵に替わるまで残す
+            if (pc.Data != null && pc.Data.IsDead) BodyCover.Linger(c);
+            else BodyCover.Destroy(c);
+            Lying.Remove(id);
             return;
         }
         var body = pc.cosmetics && pc.cosmetics.currentBodySprite != null ? pc.cosmetics.currentBodySprite.BodySprite : null;

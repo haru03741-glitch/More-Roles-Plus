@@ -222,6 +222,7 @@ internal static class MurderEventPatch
     {
         KillAbility.OnMurder(__instance);
         if (!target || (resultFlags & MurderResultFlags.Succeeded) == 0) return;
+        Terrain.BodyCover.OnMurder(); // 本編の死体はここで出るので、水の中ならすぐ水を掛ける
         MatchLog.OnMurder(__instance, target);
         if (RoleState.All.Count == 0) return;
         Events<PlayerMurderedEvent>.Run(new PlayerMurderedEvent { Killer = __instance, Target = target });

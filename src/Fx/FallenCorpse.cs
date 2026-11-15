@@ -135,6 +135,7 @@ internal static class FallenCorpse
         e.Doll = go;
         e.Dead = true;
         e.DiedAt = Time.time;
+        Terrain.BodyCover.Track(sr); // 本編の死体に移るまでの人形にも水を掛ける
     }
 
     // この人が倒れて死んだ時の死体の見た目 (倒れる連番を流し始める前に呼ぶ)
@@ -289,6 +290,8 @@ internal static class FallenCorpse
         if (p.Y <= p.Ground && p.Vy < 0f)
         {
             p.Y = p.Ground;
+            // 床 (水面) に着いた物は水に沈む (飛んでいる間は水の上・跳ね返る前から沈め始める)
+            if (p.Hits == 0) foreach (var sr in p.Srs) Terrain.BodyCover.Track(sr, Terrain.BodyCover.PieceThick);
             if (p.Hits++ == 0 && -p.Vy > 0.6f)
             {
                 p.Vy = -p.Vy * Bounce;

@@ -92,7 +92,12 @@ internal static class DrownFx
             if (s.Corpse) { if (!rewinding) TickCorpse(s, now); continue; }
             // 死んだ (死体へ移る)・助かった (会議・時戻し)・崩れの外へ出た
             bool dead = !s.Pc || s.Pc.Data == null || s.Pc.Data.IsDead || s.Pc.Data.Disconnected;
-            if (rewinding || dead || !Roles.TerrainDeath.IsDoomed(s.Id) || MeetingHud.Instance) { End(s); Live.RemoveAt(i); continue; }
+            if (rewinding || dead || !Roles.TerrainDeath.IsDoomed(s.Id) || MeetingHud.Instance)
+            {
+                // 死んだ直後は体に倒れた最後の絵が残っているので、幽霊の絵に替わるまで水の板を残す
+                if (dead && !rewinding && s.Cov != null) { BodyCover.Linger(s.Cov); s.Cov = null; }
+                End(s); Live.RemoveAt(i); continue;
+            }
             float t = now - s.Start;
             WaterWade.Bob(s.Id, Depth(t), t >= LieAt);
             var feet = s.Pc.GetTruePosition();

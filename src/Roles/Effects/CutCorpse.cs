@@ -198,6 +198,7 @@ internal static class CutCorpse
         mr.sharedMaterial = mat;
         mr.sortingOrder = sr.sortingOrder;
         if (color >= 0 && color < Palette.PlayerColors.Length) PlayerMaterial.SetColors(color, mr);
+        Terrain.BodyCover.TrackMesh(mr, mesh, sr.sprite.texture); // 床に残る片も水に沈む
         var used = mr.sharedMaterial;
         if (used != mat) p.Mats.Add(mat);
         p.Mats.Add(used);
@@ -220,6 +221,7 @@ internal static class CutCorpse
         var mr = go.AddComponent<MeshRenderer>();
         mr.sharedMaterial = RimMat(sr.sprite.texture);
         mr.sortingOrder = sr.sortingOrder;
+        Terrain.BodyCover.TrackMesh(mr, mesh, sr.sprite.texture);
         p.Meshes.Add(mesh);
     }
 
