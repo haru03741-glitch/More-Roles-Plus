@@ -215,6 +215,8 @@ internal static class ReplayStage
                     PetId = "",
                     NamePlateId = "",
                 };
+                // 複製したばかりの立ち絵は体の絵の初期化 (本編は最初の Start で行う) が済んでおらず、スキンを着せる所で落ちる
+                if (pp.cosmetics) pp.cosmetics.EnsureInitialized(PlayerBodyTypes.Normal);
                 pp.UpdateFromPlayerOutfit(o, PlayerMaterial.MaskType.None, false, false);
                 pp.ToggleName(false);
                 pp.TogglePet(false);

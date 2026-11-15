@@ -63,6 +63,8 @@ internal static partial class DuelHud
         pp.gameObject.SetActive(true);
         try
         {
+            // 複製したばかりの立ち絵は体の絵の初期化 (本編は最初の Start で行う) が済んでおらず、スキンを着せる所で落ちる
+            if (pp.cosmetics) pp.cosmetics.EnsureInitialized(PlayerBodyTypes.Normal);
             pp.UpdateFromPlayerOutfit(p.DefaultOutfit, PlayerMaterial.MaskType.None, false, false);
             pp.ToggleName(false);
             pp.SetFlipX(flip);
