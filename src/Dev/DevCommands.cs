@@ -951,11 +951,18 @@ internal static class DevCommands
             reply($"OK uiscroll {sr.name} {pos}");
         });
 
-        TestBridge.Register("vset", "<Int32OptionNames の名前> <値> 本編の数値の設定を変えて全員へ送る (ホストのみ・例 vset VotingTime 15)", (args, reply) =>
+        TestBridge.Register("vset", "<Int32OptionNames か BoolOptionNames の名前> <値> 本編の設定を変えて全員へ送る (ホストのみ・例 vset VotingTime 15 / vset VisualTasks 1)", (args, reply) =>
         {
             var a = args.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (a.Length != 2 || !Enum.TryParse(a[0], out Int32OptionNames key) || !int.TryParse(a[1], out int v)) { reply("ERR vset <name> <int>"); return; }
             if (!AmongUsClient.Instance.AmHost) { reply("ERR vset host only"); return; }
+            if (a.Length == 2 && Enum.TryParse(a[0], out BoolOptionNames bkey) && int.TryParse(a[1], out int bv))
+            {
+                GameOptionsManager.Instance.CurrentGameOptions.SetBool(bkey, bv != 0);
+                if (GameManager.Instance) GameManager.Instance.LogicOptions.SyncOptions();
+                reply($"OK vset {bkey}={GameOptionsManager.Instance.CurrentGameOptions.GetBool(bkey)}");
+                return;
+            }
+            if (a.Length != 2 || !Enum.TryParse(a[0], out Int32OptionNames key) || !int.TryParse(a[1], out int v)) { reply("ERR vset <name> <int>"); return; }
             GameOptionsManager.Instance.CurrentGameOptions.SetInt(key, v);
             if (GameManager.Instance) GameManager.Instance.LogicOptions.SyncOptions();
             reply($"OK vset {key}={GameOptionsManager.Instance.CurrentGameOptions.GetInt(key)}");
