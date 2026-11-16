@@ -28,12 +28,15 @@ internal static unsafe class ModelBank
 
     internal static readonly string[] Names = { "skeld", "battleship_dev" };
     private static readonly Model[] Loaded = new Model[Names.Length];
+    // 中身が壊れていて読めなかった形は、呼ばれるたびに読み直さない
+    private static readonly bool[] Failed = new bool[Names.Length];
 
     internal static Model Get(int id)
     {
-        if (id < 0 || id >= Names.Length) return null;
+        if (id < 0 || id >= Names.Length || Failed[id]) return null;
         if (Loaded[id] != null && Loaded[id].Mesh) return Loaded[id];
         Loaded[id] = Load(Names[id]);
+        if (Loaded[id] == null) Failed[id] = true;
         return Loaded[id];
     }
 
@@ -70,10 +73,19 @@ internal static unsafe class ModelBank
             partsAt += 4 + BitConverter.ToInt32(data, partsAt) * 20;
             partsAt += 4 + BitConverter.ToInt32(data, partsAt) * 32;
             int partN = BitConverter.ToInt32(data, partsAt);
+            // 中身の検査は Mesh を作る前に全部済ませる (作った後で止めると Mesh が残る)
+            if (partN < 0 || partN > FlightNative.MaxParts) { Plugin.Logger.LogError($"flight model {name}: too many parts {partN}"); return null; }
             for (int i = 0; i < vn; i++)
             {
                 int part = ((sbyte*)(p + vOff + i * Stride))[23];
                 if (part < 0 || part > partN) { Plugin.Logger.LogError($"flight model {name}: vertex part {part} > {partN}"); return null; }
+            }
+            var tri = new int[inN];
+            ushort* ix = (ushort*)(p + iOff);
+            for (int i = 0; i < inN; i++)
+            {
+                if (ix[i] >= vn) { Plugin.Logger.LogError($"flight model {name}: index {ix[i]} >= {vn}"); return null; }
+                tri[i] = ix[i];
             }
             var mesh = new Mesh { name = "MrpFlight_" + name };
             mesh.hideFlags |= HideFlags.DontUnloadUnusedAsset;
@@ -85,13 +97,6 @@ internal static unsafe class ModelBank
             mesh.SetVertexBufferParamsFromArray(vn, attrs);
             mesh.InternalSetVertexBufferData(0, (IntPtr)(p + vOff), 0, 0, vn, Stride, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
             // 添字は一度だけなので Mesh.triangles で渡す (添字バッファの直書きと SetSubMesh は削られた本編に無いことがある)
-            var tri = new int[inN];
-            ushort* ix = (ushort*)(p + iOff);
-            for (int i = 0; i < inN; i++)
-            {
-                if (ix[i] >= vn) { Plugin.Logger.LogError($"flight model {name}: index {ix[i]} >= {vn}"); return null; }
-                tri[i] = ix[i];
-            }
             mesh.triangles = tri;
             // 動く部品 (開く翼・回る板) が外へ出ても消えないよう、範囲を広めに取る
             mesh.bounds = new Bounds((mn + mx) * 0.5f, (mx - mn) * 1.4f);
@@ -112,7 +117,6 @@ internal static unsafe class ModelBank
             o += 32;
         }
         int pn = I();
-        if (pn < 0 || pn > FlightNative.MaxParts) { Plugin.Logger.LogError($"flight model {name}: too many parts {pn}"); return null; }
         m.Parts = new FlightNative.Part[pn];
         for (int i = 0; i < pn; i++)
         {
