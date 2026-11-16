@@ -11,7 +11,7 @@ namespace MoreRolesPlus.Flight;
 // 3D の艦隊戦の船の形 (.mrpm・tools/make-flight-models.py が書く) を読み、Mesh と当たりの球・印にする。
 // 頂点は配列に詰め替えずに、ファイルの並びのまま頂点バッファへ 1 回で書く (Mesh.vertices などの配列の受け渡しを通らない)。
 // 中身が同じ頂点は書き出しの時に 1 つにまとめてあり、面は 16 ビットの添字で引く。
-// 頂点 (24 バイト) = 位置 f32x3・陰の法線 i8x3 + つや i8・色 u8x4・縁取りを押し出す向き i8x3 (長さ = 太さの割合) + 動く部品の番号 i8 (TEXCOORD1・0 = 船体・k = 部品 k-1)
+// 頂点 (24 バイト) = 位置 f32x3・陰の法線 i8x3 + 材質の番号 i8 (模様と照りはシェーダが番号から決める)・色 u8x4・縁取りを押し出す向き i8x3 (長さ = 太さの割合) + 動く部品の番号 i8 (TEXCOORD1・0 = 船体・k = 部品 k-1)
 internal static unsafe class ModelBank
 {
     internal const int Stride = 24;
@@ -54,7 +54,7 @@ internal static unsafe class ModelBank
         int o = 0;
         uint Magic() { uint v = BitConverter.ToUInt32(data, o); o += 4; return v; }
         int I() { int v = BitConverter.ToInt32(data, o); o += 4; return v; }
-        if (Magic() != 0x4D50524D || I() != 4) { Plugin.Logger.LogError($"flight model bad header: {name}"); return null; }
+        if (Magic() != 0x4D50524D || I() != 5) { Plugin.Logger.LogError($"flight model bad header: {name}"); return null; }
         int vn = I(), inN = I();
         float F() { float v = BitConverter.ToSingle(data, o); o += 4; return v; }
         // 範囲 (Mesh の bounds と当たりの粗い判定の確かめ用) は書き出しの時に測ってある
