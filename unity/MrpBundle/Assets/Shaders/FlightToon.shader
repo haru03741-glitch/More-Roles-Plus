@@ -10,8 +10,10 @@
 // 5 = 金色の断熱材 (しわの照り) / 6 = 太陽電池 / 7 = 金属 / 8 = 窓のガラス / 9 = 光る物。
 // 番号に 16 を足した面は、投影でなく頂点の TEXCOORD2 (模様の座標 × 1/128) で模様を描く (船体の丸い肩: 縁に沿って巻く座標)。
 // その座標は一周 U_PERIOD で戻るので、板やタイルの番号は一周の個数で折り返して、戻った所で模様をつなげる。
-// 模様は部品が動く前の位置 (形の座標) で描くので、動く部品に貼り付いたまま動く。模様の線は画面の上で 1 画素より細くなる距離で消す
-// (ギザギザ消しが無いので、細かい線をそのまま描くとちらつく)。
+// 模様は部品が動く前の位置 (形の座標) で描くので、動く部品に貼り付いたまま動く。
+// 細かい物 (線・板の濃淡・凹凸) は画面の上で 1 画素より細かくなる距離で、消すのでなく平均の見え方へ寄せる
+// (線は面積の割合の暗さ・板の濃淡は 1・凹凸は照りの広がり)。遠目でも表面の粗さは同じで、見分けられなくなるだけにする。
+// ギザギザ消しが無いので、細かい物をそのまま描くとちらつく。
 Shader "MRP/FlightToon"
 {
     Properties
@@ -130,13 +132,15 @@ Shader "MRP/FlightToon"
             float2 WrapId(float2 id, float n) { return float2(id.x - n * floor(id.x / n), id.y); }
 
             // 升目の線 (uv の整数の所に幅 w の線)。fw = uv の 1 画素あたりの変化 (ずらした座標は飛ぶので、ずらす前の座標で測って渡す)。
-            // 升が画面の上で小さくなると消える
+            // 線が 1 画素より細くなると、線が占める面積の割合 (平均の濃さ) へ寄せる
             float GridLineFw(float2 uv, float2 w, float2 fw)
             {
                 float2 d = abs(frac(uv + 0.5) - 0.5);
-                float2 m = (1.0 - smoothstep(w, w + fw * 1.5, d)) * step(1e-4, w);
-                float fade = 1.0 - smoothstep(0.12, 0.3, max(fw.x, fw.y));
-                return max(m.x, m.y) * fade;
+                float2 on = step(1e-4, w);
+                float2 m = (1.0 - smoothstep(w, w + fw * 1.5, d)) * on;
+                float2 ww = max(w, 1e-4);
+                m = lerp(m, min(2.0 * w, 1.0) * on, smoothstep(ww, ww * 4.0, fw));
+                return 1.0 - (1.0 - m.x) * (1.0 - m.y);
             }
 
             float GridLine(float2 uv, float2 w)
@@ -156,9 +160,10 @@ Shader "MRP/FlightToon"
                 float2 w = float2(0.012, 0.02);
                 float seam = GridLineFw(uv, w, fw);
                 float fade = 1.0 - smoothstep(0.12, 0.3, max(fw.x, fw.y));
-                // 横の継ぎ目の下側に細い光る縁
+                // 横の継ぎ目の下側に細い光る縁 (細くなったら面積の割合へ)
                 float dy = frac(uv.y + 0.5) - 0.5;
-                float lip = (1.0 - smoothstep(w.y * 1.6, w.y * 1.6 + fw.y * 1.5, abs(dy - w.y * 2.4))) * fade;
+                float lip = 1.0 - smoothstep(w.y * 1.6, w.y * 1.6 + fw.y * 1.5, abs(dy - w.y * 2.4));
+                lip = lerp(lip, w.y * 3.2, smoothstep(w.y * 1.6, w.y * 6.4, fw.y));
                 float hatch = 0;
                 if (h > 0.93)
                 {
@@ -169,9 +174,9 @@ Shader "MRP/FlightToon"
                     float2 m = (1.0 - smoothstep(0.008, 0.008 + fw * 1.5, e)) * inside.yx;
                     hatch = max(m.x, m.y) * (1.0 - smoothstep(0.06, 0.15, max(fw.x, fw.y)));
                 }
-                // 遠目 (1 画素が形の 0.04〜0.1) では継ぎ目も板の濃淡も消して、1 枚のなめらかな外板に見せる
-                float farFade = 1.0 - smoothstep(0.02, 0.05, max(fw.x, fw.y));
-                return float3(1.0 + (h - 0.5) * 0.06 * farFade, max(seam, hatch * 0.7) * farFade, lip * farFade);
+                // 板の濃淡は、板が数画素より小さくなってから平均 (1) へ
+                float plateFade = 1.0 - smoothstep(0.15, 0.4, max(fw.x, fw.y));
+                return float3(1.0 + (h - 0.5) * 0.06 * plateFade, max(seam, hatch * 0.7), lip);
             }
 
             // 外板の凹凸の高さ (形の単位)。板の並びは Panels と同じ。板は縁を面取りして少し盛り上がり、1 枚ずつ傾きが違う。
@@ -243,6 +248,10 @@ Shader "MRP/FlightToon"
                 // 凹凸は寄った時だけ (1 画素が形の 0.05 より大きくなると消える = 遠目はつるつる)
                 float2 fwp = fwidth(uvp);
                 float near = 1.0 - smoothstep(0.015, 0.05, max(fwp.x, fwp.y));
+                // 板ごとの傾きは板が数画素になるまで残す (1 画素が形の 0.2〜0.6)
+                float tiltAmt = 1.0 - smoothstep(0.2, 0.6, max(fwp.x, fwp.y));
+                // 見分けられなくなった凹凸の分だけ表面を粗く扱う (0 = 凹凸を描いている・1 = 平均だけ)
+                float rough = 1.0 - near;
                 float3 ns = n;   // 照りに使う法線 (しわは照りにだけ強く効かせる)
                 float3 n0 = n;   // 凹凸を足す前の法線 (縁の照り返しと浅い角度の映り込み。凹凸の急な斜面に線が出ないように)
                 float specAmt = 0.0, specLo = 0.955, specHi = 0.975, metal = 0.0, seamDark = 0.0, gloss = 0.0;
@@ -255,14 +264,24 @@ Shader "MRP/FlightToon"
                     float grime = Noise3(lp * 0.18).x;
                     base *= pn.x * (0.95 + grime * 0.1) * (1.0 + pn.z * 0.12);
                     seamDark = pn.y * 0.2;
-                    if (near > 0.0)
+                    if (tiltAmt > 0.0)
                     {
-                        const float eps = 0.012;
-                        float h0 = PanelH(uvp, float2(PANEL_W, PANEL_H));
-                        float2 gr = float2(PanelH(uvp + float2(eps, 0), float2(PANEL_W, PANEL_H)) - h0, PanelH(uvp + float2(0, eps), float2(PANEL_W, PANEL_H)) - h0) / eps;
-                        float3 dn = mul((float3x3)unity_ObjectToWorld, -(gr.x * tu + gr.y * tv)) * near;
+                        // 板の傾き (板の中で一定なので高さの関数を呼ばずに出す・PanelH の傾きの項と同じ)
+                        float2 uv0 = uvp / float2(PANEL_W, PANEL_H);
+                        float2 pid = WrapId(floor(float2(uv0.x + Hash12(float2(floor(uv0.y), 3.7)), uv0.y)), U_PERIOD / PANEL_W);
+                        float2 gr = (float2(Hash12(pid + 19.1), Hash12(pid + 41.7)) - 0.5) * 0.07 / float2(PANEL_W, PANEL_H);
+                        if (near > 0.0)
+                        {
+                            const float eps = 0.012;
+                            float h0 = PanelH(uvp, float2(PANEL_W, PANEL_H));
+                            float2 grF = float2(PanelH(uvp + float2(eps, 0), float2(PANEL_W, PANEL_H)) - h0, PanelH(uvp + float2(0, eps), float2(PANEL_W, PANEL_H)) - h0) / eps;
+                            gr = lerp(gr, grF, near);
+                        }
+                        float3 dn = mul((float3x3)unity_ObjectToWorld, -(gr.x * tu + gr.y * tv) * tiltAmt);
                         n = normalize(n + dn);
-                        ns = n;
+                        // 塗装の細かいざらつき (寄った時だけ見える)。照りにだけ効かせる (陰の段を揺らすと斑の迷彩になる)
+                        float3 grain = (Noise3(lp * 9.0) - 0.5) * 0.12 * near;
+                        ns = normalize(n + mul((float3x3)unity_ObjectToWorld, grain));
                     }
                     gloss = 1.0;
                 }
@@ -278,10 +297,11 @@ Shader "MRP/FlightToon"
                     // 耐熱タイル: 小さな四角・タイルごとの濃淡・目地
                     float2 uv = uvp / TILE;
                     float h = Hash12(WrapId(floor(uv), U_PERIOD / TILE) + 7.0);
-                    base *= 0.86 + h * 0.26 - step(0.94, h) * 0.18;
                     float2 tfw = fwidth(uv);
-                    float tFar = 1.0 - smoothstep(0.06, 0.16, max(tfw.x, tfw.y));
-                    seamDark = GridLine(uv, float2(0.035, 0.035)) * 0.45 * tFar;
+                    // 1 枚ずつの濃淡はタイルが数画素より小さくなると平均 (0.98) へ・目地は線の面積の割合の暗さへ
+                    float tFar = 1.0 - smoothstep(0.15, 0.4, max(tfw.x, tfw.y));
+                    base *= lerp(0.98, 0.86 + h * 0.26 - step(0.94, h) * 0.18, tFar);
+                    seamDark = GridLine(uv, float2(0.035, 0.035)) * 0.45;
                     if (near > 0.0)
                     {
                         const float eps = 0.01;
@@ -354,12 +374,16 @@ Shader "MRP/FlightToon"
                 // 段で切った照りは広い面で斑に見えるので使わない。寄ると凹凸の法線で照りが板ごとに割れる
                 if (gloss > 0.0)
                 {
+                    // 寄った時は凹凸とざらつきの法線が照りを割る。遠くでそれが見分けられなくなった分は、
+                    // 照りの山を低く広げて同じ量の光を返す (粗い面を遠くから見た平均の照り)
                     float nh = saturate(dot(ns, h));
-                    float sheen = pow(nh, 40.0) * 0.35 + pow(nh, 6.0) * 0.06;
+                    float sp = lerp(32.0, 12.0, rough);
+                    float sheen = pow(nh, sp) * 0.3 * (sp + 2.0) / 34.0 + pow(nh, 6.0) * 0.06;
                     c += sheen * saturate(ndl * 2.0 + 0.2) * gloss * float3(1.0, 0.97, 0.92);
+                    // 浅い角度の映り込みは粗い面なのでぼやけて弱い
                     float fr = pow(1.0 - ndv, 5.0);
-                    float sky = smoothstep(-0.2, 0.8, dot(r, l));
-                    c += fr * gloss * lerp(_MrpFltRim.rgb * 0.25, float3(0.75, 0.8, 0.9), sky * 0.5) * 0.6;
+                    float sky = smoothstep(-0.5, 1.0, dot(r, l));
+                    c += fr * gloss * lerp(_MrpFltRim.rgb * 0.25, float3(0.75, 0.8, 0.9), sky * 0.5) * 0.35;
                 }
                 // 光る所 (a < 1) は陰を付けず明るく
                 float glow = 1.0 - i.color.a;
