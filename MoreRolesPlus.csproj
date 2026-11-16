@@ -121,6 +121,8 @@
     <ItemGroup>
         <EmbeddedResource Include="Resources\Icons\*.png" LogicalName="MoreRolesPlus.Resources.Icons.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Cosmetics\*.png" LogicalName="MoreRolesPlus.Resources.Cosmetics.%(Filename)%(Extension)" />
+        <!-- マップの絵 (3D の船に合わせた船の外の物) -->
+        <EmbeddedResource Include="Resources\MapArt\*.png" LogicalName="MoreRolesPlus.Resources.MapArt.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Illus\*.jpg" LogicalName="MoreRolesPlus.Resources.Illus.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Cinema\*.*" LogicalName="MoreRolesPlus.Resources.Cinema.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Sounds\*.wav" LogicalName="MoreRolesPlus.Resources.Sounds.%(Filename)%(Extension)" />
