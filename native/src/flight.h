@@ -34,17 +34,18 @@ enum Param
     PUTurnTime, PUTurnCool, PConverge,
     PDustCell, PDustStreak, PDustAlpha,
     PChargeTime, PChargeDelay, PChargeDamage, PChargeScale, PChargeRecover, PGrazeDist, PTailDist, PTailCone,
-    PFlameLen, PFlameWidth, PFlameGlow, PExhRate, PExhSpeed, PExhLife, PIgniteShake,
+    PFlameLen, PFlameWidth, PFlameGlow, PExhRate, PExhSpeed, PExhLife, PIgniteShake, PRcsRate, PRcsSpeed,
     ParamCount
 };
 
 // 印 (Blender の空のオブジェクトから)。kind = 砲口・噴射口・区画の中心
-// 砲台の砲口 (id = 砲身の番号・本編の武器庫の砲台と同じく 1 発ずつ交互に撃つ)・ゴミを捨てる口 (向き = 捨てる向き)
-enum MarkerKind { MkMuzzle = 1, MkEngine = 2, MkSector = 3, MkTurret = 4, MkHatch = 5 };
+// 砲台の砲口 (id = 砲身の番号・本編の武器庫の砲台と同じく 1 発ずつ交互に撃つ)・ゴミを捨てる口 (向き = 捨てる向き)・姿勢制御の噴射口 (乗る部品の値 = 噴く強さ)
+enum MarkerKind { MkMuzzle = 1, MkEngine = 2, MkSector = 3, MkTurret = 4, MkHatch = 5, MkRcs = 6 };
 
 // 出来事 (C# へ返す)
 // EvFire の c = 1 は溜め撃ち・EvGraze = 回避の最中に敵の弾がすぐ横を抜けた (溜めが満ちる)
-enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5, EvGraze = 6 };
+// EvIgnite = 加速の点火 (a = 船)
+enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5, EvGraze = 6, EvIgnite = 7 };
 
 struct Sphere { float c[3]; float r; int32_t sector; };
 struct Marker { int32_t kind, id; float p[3]; float d[3]; };
@@ -155,7 +156,7 @@ struct FrameArgs
     int32_t boltN;          // 書いた発数
     Event* evOut;           // 出来事
     int32_t evCap, evN;
-    float* hud;             // 速さ・加速の残り・耐久・回避の待ち・宙返りの待ち・揺れ・溜め・後ろに付かれた
+    float* hud;             // 速さ・加速の残り・耐久・回避の待ち・宙返りの待ち・揺れ・溜め・後ろに付かれた・噴射の出力・姿勢制御の噴射の強さ (10 個)
     int32_t steps;          // 回した固定刻みの数
     uint8_t* fxVerts;       // 火花・炎・煙・塵の頂点 (弾と同じ形・1 枚 4 頂点)
     int32_t fxCap, fxPrev, fxN;

@@ -511,7 +511,7 @@ static void FlameColor(const Ship& s, int id, float* c)
 
 // 噴射の出力と、噴射口から後ろへ流れて冷める熱いガスの粒 (全部の船・固定刻みごと)。
 // 出力は速さの信号から決める (加速 = 1・巡航 = 0.45・減速 = 絞る)。加速の出力が上がり始めた刻みで点火の光と粒の塊
-void StepExhaust(World* w, Ship& s, bool local, float dt)
+void StepExhaust(World* w, Ship& s, int idx, bool local, float dt)
 {
     const float* P = w->prm;
     float b = s.sig[SgBoost], br = s.sig[SgBrake];
@@ -522,6 +522,7 @@ void StepExhaust(World* w, Ship& s, bool local, float dt)
     {
         s.ignite = 1;
         if (local) w->shake += P[PIgniteShake];
+        Emit(w, EvIgnite, idx, 0, 0, ld(s.p), 0);
     }
     s.thr = approach(s.thr, target, 8.0f, dt);
     s.ignite *= expf(-3.2f * dt);
@@ -568,6 +569,42 @@ void StepExhaust(World* w, Ship& s, bool local, float dt)
                 V3 v = sv + nd[j] * (P[PExhSpeed] * rr(w, 0.7f, 1.1f)) + rdir(w) * (R * 4.0f);
                 Emit(w, 0, np[j] + nd[j] * (R * rr(w, 0.5f, 2.0f)), v, rr(w, 0.3f, 0.5f), R * 1.1f, R * 3.2f, 1.5f, f0, f1, rr(w, 0, 0.06f));
             }
+        }
+    }
+}
+
+// 姿勢制御の噴射口 (印の種類 MkRcs・乗る部品の値 = 噴く強さ 0..1) から、冷たいガスが白く吹き出してすぐ散る。
+// 曲がる・転ぶ・回避・減速 (前向きの口) の操作と同じ口が噴く (遠くの船も向きの差の信号から)
+void StepRcs(World* w, Ship& s, float dt)
+{
+    const float* P = w->prm;
+    const Model& m = w->model[s.model];
+    if (P[PRcsRate] <= 0 || m.partN == 0) return;
+    Q4 q = ldq(s.drawQ);
+    V3 sp = ld(s.p), sv = ld(s.v);
+    static const uint8_t g0[4] = { 120, 124, 132, 70 }, g1[4] = { 26, 27, 30, 0 };
+    for (int i = 0; i < m.mkN; i++)
+    {
+        const Marker& mk = m.mk[i];
+        if (mk.kind != MkRcs) continue;
+        int pi = m.mkPart[i];
+        if (pi < 0 || pi >= m.partN) continue;
+        float v = s.partV[pi];
+        if (v < 0.12f) continue;
+        // 口ごとの端数は持たず、刻みごとの確率で出す (14 口 × 端数を船に持たせない)
+        float want = P[PRcsRate] * v * dt;
+        int cnt = (int)want;
+        if (rnd(w) < want - (float)cnt) cnt++;
+        if (cnt == 0) continue;
+        // 口の部品は口を軸の点にして大きさだけ変わるので、口の位置と向きは動かない
+        V3 lp = ld(mk.p), ld_ = ld(mk.d);
+        V3 at = sp + rot(q, lp);
+        V3 d = norm(rot(q, ld_), rot(q, v3(0, 1, 0)));
+        for (int k = 0; k < cnt; k++)
+        {
+            float adv = rnd(w) * dt;
+            V3 vel = sv + d * (P[PRcsSpeed] * rr(w, 0.7f, 1.1f)) + rdir(w) * 2.5f;
+            Emit(w, 0, at + d * (0.5f + P[PRcsSpeed] * adv), vel, rr(w, 0.3f, 0.5f), 0.35f, 1.9f * (0.6f + 0.4f * v), 3.0f, g0, g1, -adv);
         }
     }
 }
@@ -1280,7 +1317,8 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
             DrawPose(w, s);
             if (!s.remote) Signals(w, s, Step);
             StepParts(w, s, Step);
-            StepExhaust(w, s, k == a->local, Step);
+            StepExhaust(w, s, k, k == a->local, Step);
+            StepRcs(w, s, Step);
         }
         steps++;
         // 押した瞬間の入力 (回避・宙返り) は 1 刻みで使い切る (刻みが 0 回のフレームでは次のフレームまで持つ)
@@ -1360,4 +1398,14 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     a->hud[5] = sh;
     a->hud[6] = s.charge;
     a->hud[7] = (float)s.tailed;
+    a->hud[8] = s.thr;
+    // 姿勢制御の噴射の強さ = 噴いている口の値の大きい方 (音の大きさ)
+    float rcs = 0;
+    const Model& lm = w->model[s.model];
+    for (int i = 0; i < lm.mkN; i++)
+    {
+        int pi = lm.mkPart[i];
+        if (lm.mk[i].kind == MkRcs && pi >= 0 && pi < lm.partN && s.partV[pi] > rcs) rcs = s.partV[pi];
+    }
+    a->hud[9] = rcs;
 }

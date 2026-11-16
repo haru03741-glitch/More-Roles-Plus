@@ -61,6 +61,7 @@ internal static class MrpBundle
             "noise_gat_flesh_1", "noise_gat_flesh_2", "noise_gat_flesh_3",
             "noise_rl_load", "noise_rl_bang_1", "noise_rl_bang_2", "noise_rl_bang_3", "noise_rl_escape", "noise_rl_shatter", "noise_rl_fire", "noise_rl_fly_loop", "noise_rl_blast",
             "noise_guess_aim", "noise_guess_shot",
+            "noise_flt_engine_loop", "noise_flt_ignite", "noise_flt_rcs_loop",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {

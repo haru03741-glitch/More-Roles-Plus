@@ -17,7 +17,7 @@ internal static unsafe class FlightNative
     // Ship.aux の並び (flight.h の Aux と同じ)
     internal const int AuxAimYaw = 0, AuxAimPitch = 1, AuxHatch = 2;
 
-    internal enum Ev { Fire = 1, Hit = 2, BoltEnd = 3, Dodge = 4, UTurn = 5, Graze = 6 }
+    internal enum Ev { Fire = 1, Hit = 2, BoltEnd = 3, Dodge = 4, UTurn = 5, Graze = 6, Ignite = 7 }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Sphere { public float X, Y, Z, R; public int Sector; }

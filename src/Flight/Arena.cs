@@ -117,6 +117,7 @@ internal static unsafe class Arena
         _hudWaitLogged = false;
         for (int k = 0; k < ShipT.Length; k++) { ShipT[k] = null; ShipR[k] = null; }
         _shipN = 0;
+        FlightSound.Stop();
         if (was) Plugin.Logger.LogInfo("flight: exit");
     }
 
@@ -213,7 +214,7 @@ internal static unsafe class Arena
         _fxPrev = 0;
         _shipOut = (float*)NativeMemory.AllocZeroed((nuint)(FlightNative.MaxShips * 8 * 4));
         _camOut = (float*)NativeMemory.AllocZeroed(8 * 4);
-        _hud = (float*)NativeMemory.AllocZeroed(8 * 4);
+        _hud = (float*)NativeMemory.AllocZeroed(10 * 4);
         _ev = (FlightNative.Event*)NativeMemory.AllocZeroed((nuint)(MaxEvents * sizeof(FlightNative.Event)));
         _boltPrev = 0;
     }
@@ -487,6 +488,7 @@ internal static unsafe class Arena
         _fxPrev = a.FxN;
 
         HandleEvents(a.EvN);
+        FlightSound.Tick(_hud[8], _hud[9]);
         TickFlash();
 
         _statT += Time.deltaTime;
@@ -504,6 +506,7 @@ internal static unsafe class Arena
         {
             var e = _ev[i];
             if (e.Kind == (int)FlightNative.Ev.Graze) { if (e.A == _local) _grazes++; continue; }
+            if (e.Kind == (int)FlightNative.Ev.Ignite) { if (e.A == _local) FlightSound.Ignite(); continue; }
             if (e.Kind == (int)FlightNative.Ev.Fire) { if (e.C == 1 && e.A == _local) _bigShots++; continue; }
             if (e.Kind != (int)FlightNative.Ev.Hit) continue;
             int target = e.B;
