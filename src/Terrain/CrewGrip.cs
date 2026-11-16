@@ -278,6 +278,7 @@ internal static class CrewGrip
 
     private static bool Pressed()
     {
+        if (MoreRolesPlus.Flight.Arena.TakesInput) return false; // 3D の場面の撃つ・回避を脱出の連打に数えない
         if (Touch)
         {
             int n = Input.touchCount;

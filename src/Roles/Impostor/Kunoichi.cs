@@ -413,6 +413,13 @@ public sealed partial class Kunoichi : RoleBase
     private void ReadMouse()
     {
         bool right = Input.GetMouseButton(1), left = Input.GetMouseButton(0);
+        if (Flight.Arena.TakesInput)
+        {
+            // 3D の場面のクリックは投げにも構えにも数えない (押したまま戻っても押し始めと取らない)
+            _rightPrev = right; _leftPrev = left;
+            _rightClicked = _leftClicked = false;
+            return;
+        }
         bool rightDown = right && !_rightPrev || _rightClicked, leftDown = left && !_leftPrev || _leftClicked;
         _rightPrev = right;
         _leftPrev = left;
@@ -430,7 +437,7 @@ public sealed partial class Kunoichi : RoleBase
     private static bool _leftClicked, _rightClicked;
     internal static void LocalTick()
     {
-        if (RoleState.Local is not Kunoichi || Stick) return;
+        if (RoleState.Local is not Kunoichi || Stick || Flight.Arena.TakesInput) return;
         if (Input.GetMouseButtonDown(0)) _leftClicked = true;
         if (Input.GetMouseButtonDown(1)) _rightClicked = true;
     }

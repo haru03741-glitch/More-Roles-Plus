@@ -124,8 +124,8 @@ internal static class DuelDodge
         // 吹っ飛ばされている間の回避のキーは受け身 (回避の回数は使わない)
         if (DuelTumble.Busy(p.PlayerId))
         {
-            bool tech = pad && DodgePad.Pressed()
-                        || !System.OperatingSystem.IsAndroid() && Menu.Keybinds.Down(Menu.Keybinds.Slot.Dodge);
+            bool tech = !Flight.Arena.TakesInput && (pad && DodgePad.Pressed()
+                        || !System.OperatingSystem.IsAndroid() && Menu.Keybinds.Down(Menu.Keybinds.Slot.Dodge));
             if (tech) DuelTumble.TryTech(p);
             return;
         }

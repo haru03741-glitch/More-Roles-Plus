@@ -353,7 +353,7 @@ public sealed partial class Samurai
             for (int i = 0; i < n; i++)
                 if (Input.GetTouch(i).phase == TouchPhase.Began) press = true;
         }
-        else press = Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space);
+        else press = !Flight.Arena.TakesInput && (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space));
         if (press) { _mash++; UI.DuelHud.MashPressed(); }
         if (now >= _mashNext && _mash > _mashSent)
         {

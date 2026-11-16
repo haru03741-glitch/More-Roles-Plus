@@ -220,7 +220,7 @@ internal static class Keybinds
 
     // 上に画面が出ている (この間は右上のボタンを押さない)
     private static bool Blocked(HudManager hud) =>
-        IntroCutscene.Instance || ExileController.Instance || Minigame.Instance || GameSettingMenu.Instance || PlayerCustomizationMenu.Instance
+        Flight.Arena.TakesInput || IntroCutscene.Instance || ExileController.Instance || Minigame.Instance || GameSettingMenu.Instance || PlayerCustomizationMenu.Instance
         || hud.GameMenu && hud.GameMenu.IsOpen || UI.UiWindow.IsOpen || MapBehaviour.Instance && MapBehaviour.Instance.IsOpen
         || Vanilla.LobbyInfo is { } info && info.LobbyViewSettingsPane && info.LobbyViewSettingsPane.isActiveAndEnabled;
 
@@ -252,7 +252,7 @@ internal static class Keybinds
     private static void PressSettings()
     {
         var hud = Vanilla.Hud;
-        if (!hud || !hud.GameMenu || UI.UiWindow.EscapeTaken()) return;
+        if (!hud || !hud.GameMenu || UI.UiWindow.EscapeTaken() || Flight.Arena.TakesInput) return;
         if (hud.GameMenu.IsOpen)
         {
             hud.GameMenu.Close();
