@@ -292,12 +292,15 @@ inline void PutQuad(uint8_t* out, int n, const V3* vs, const uint8_t* col, const
 
 // 火花・炎・煙と宇宙の塵の板を書く。丸い板の uv は 0〜1、筋の板は uv.x に 2 を足して形をシェーダへ伝える。
 // 固い欠片 (kind 2 = 岩・3 = ゴミ) は uv.x から 4 を引き、uv.y に形の番号 × 2 を足す (シェーダが角ばった形を選ぶ・0 の四角い切れ端はゴミだけ)。板は粒ごとの速さで回す
+int WriteFlames(World* w, FrameArgs* a, V3 cam, V3 cr, V3 cu);
+
 void WriteFx(World* w, FrameArgs* a, V3 cam, Q4 camQ, V3 shipV)
 {
     const float* P = w->prm;
-    int n = 0;
     uint8_t* out = a->fxVerts;
     V3 cr = rot(camQ, v3(1, 0, 0)), cu = rot(camQ, v3(0, 1, 0));
+    // 噴射口の炎を先に書く (粒が枠を使い切っても炎は欠けない)
+    int n = WriteFlames(w, a, cam, cr, cu);
     static const float uvRound[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
     static const float uvStreak[4][2] = { { 2, 0 }, { 2, 1 }, { 3, 1 }, { 3, 0 } };
     for (int i = 0; i < MaxParticles && n < a->fxCap; i++)
@@ -308,9 +311,12 @@ void WriteFx(World* w, FrameArgs* a, V3 cam, Q4 camQ, V3 shipV)
         float g = 1.0f - (1.0f - t) * (1.0f - t);
         float size = q.s0 + (q.s1 - q.s0) * g;
         float fade = t < 0.6f ? 1.0f : (1.0f - t) / 0.4f;
+        V3 p = ld(q.p) + ld(q.v) * w->acc;
+        // カメラのすぐ前を抜ける煙やガスは薄くする (近い板は画面を埋めて白い幕になる)
+        if (q.kind == 0) fade *= clampf((len(p - cam) - size - 4.0f) / 14.0f, 0, 1);
+        if (fade <= 0) continue;
         uint8_t col[4];
         for (int k = 0; k < 4; k++) col[k] = (uint8_t)((q.c0[k] + (q.c1[k] - q.c0[k]) * t) * fade);
-        V3 p = ld(q.p) + ld(q.v) * w->acc;
         V3 vs[4];
         if (q.kind == 0)
         {
@@ -417,6 +423,7 @@ void Signals(World* w, Ship& s, float dt)
     float pitchV = s.pitchV, yawV = s.yawV, rollV = s.rollV;
     if (s.remote)
     {
+        s.speed = len(ld(s.v)); // 遠くの船の速さは届いた速度から (噴射の出力と部品の信号に使う)
         // 前の向きからの回りを船の中の軸で測る (StepLocal の回し方の逆: x = -pitch・y = yaw・z = -roll)
         Q4 q = ldq(s.q);
         if (s.prevInit && dt > 1e-4f)
@@ -465,6 +472,170 @@ void StepParts(World* w, Ship& s, float dt)
         t = clampf(t, pt.lo, pt.hi);
         s.partV[i] = pt.resp > 0 ? approach(s.partV[i], t, pt.resp, dt) : t;
     }
+}
+
+// 噴射口 (印の種類 MkEngine) の今の位置と向き (首を振る鐘に付いていればその動きの後)。id 1 = 原子炉の小さな噴射口
+static int Nozzles(const World* w, const Ship& s, V3 p, Q4 q, V3* outP, V3* outD, int* outId, int cap)
+{
+    const Model& m = w->model[s.model];
+    Xf xf[MaxParts];
+    bool have = false;
+    int n = 0;
+    for (int i = 0; i < m.mkN && n < cap; i++)
+    {
+        const Marker& mk = m.mk[i];
+        if (mk.kind != MkEngine) continue;
+        V3 lp = ld(mk.p), ldv = ld(mk.d);
+        int pi = m.mkPart[i];
+        if (pi >= 0 && pi < m.partN)
+        {
+            if (!have) { PartXfs(w, s, xf); have = true; }
+            lp = rot(xf[pi].q, lp * xf[pi].s) + xf[pi].t;
+            ldv = rot(xf[pi].q, ldv);
+        }
+        outP[n] = p + rot(q, lp);
+        outD[n] = norm(rot(q, ldv), rot(q, v3(0, 0, -1)));
+        outId[n] = mk.id;
+        n++;
+    }
+    return n;
+}
+
+// 噴射の色 (味方の主エンジン = 青白・原子炉 = 橙・敵 = 赤紫)
+static void FlameColor(const Ship& s, int id, float* c)
+{
+    if (s.team != 0) { c[0] = 1.0f; c[1] = 0.32f; c[2] = 0.5f; }
+    else if (id == 1) { c[0] = 1.0f; c[1] = 0.68f; c[2] = 0.38f; }
+    else { c[0] = 0.45f; c[1] = 0.8f; c[2] = 1.0f; }
+}
+
+// 噴射の出力と、噴射口から後ろへ流れて冷める熱いガスの粒 (全部の船・固定刻みごと)。
+// 出力は速さの信号から決める (加速 = 1・巡航 = 0.45・減速 = 絞る)。加速の出力が上がり始めた刻みで点火の光と粒の塊
+void StepExhaust(World* w, Ship& s, bool local, float dt)
+{
+    const float* P = w->prm;
+    float b = s.sig[SgBoost], br = s.sig[SgBrake];
+    float target = clampf(0.45f + 0.55f * b - 0.37f * br, 0.08f, 1.0f);
+    bool lit = b > 0.06f && s.boostPrev <= 0.06f;
+    s.boostPrev = b;
+    if (lit)
+    {
+        s.ignite = 1;
+        if (local) w->shake += P[PIgniteShake];
+    }
+    s.thr = approach(s.thr, target, 8.0f, dt);
+    s.ignite *= expf(-3.2f * dt);
+    float rate = P[PExhRate] * (0.3f + s.thr) * (1.0f + 1.5f * s.ignite);
+    s.exhAcc += rate * dt;
+    int cnt = (int)s.exhAcc;
+    s.exhAcc -= (float)cnt;
+    if (cnt > 4) cnt = 4;
+    if (cnt == 0 && !lit) return;
+    V3 np[8], nd[8]; int nid[8];
+    int nn = Nozzles(w, s, ld(s.p), ldq(s.drawQ), np, nd, nid, 8);
+    V3 sv = ld(s.v);
+    float fw = P[PFlameWidth];
+    for (int j = 0; j < nn; j++)
+    {
+        float R = (nid[j] == 1 ? 0.55f : 1.0f) * fw;
+        float c[3]; FlameColor(s, nid[j], c);
+        float hot = 0.55f + 0.45f * s.thr + 0.5f * s.ignite;
+        // 出た直後は白に近い熱い色 → 冷めると暗い元の色へ (足す光だけ・後ろは隠さない)
+        uint8_t c0[4], c1[4];
+        for (int k = 0; k < 3; k++)
+        {
+            c0[k] = (uint8_t)clampf((0.45f + 0.55f * c[k]) * 52.0f * hot, 0, 255);
+            c1[k] = (uint8_t)clampf(c[k] * 10.0f, 0, 255);
+        }
+        c0[3] = 0; c1[3] = 0;
+        float sp = P[PExhSpeed] * (0.55f + 0.45f * s.thr);
+        for (int i = 0; i < cnt; i++)
+        {
+            // 刻みの中で出た時刻をずらす (速く飛ぶ間に粒が数珠つなぎにならない)
+            float adv = ((float)i + rnd(w)) / (float)cnt * dt;
+            V3 v = sv + nd[j] * (sp * rr(w, 0.8f, 1.05f)) + rdir(w) * (R * 2.5f);
+            V3 at = np[j] + nd[j] * (R * 0.6f + sp * adv) + rdir(w) * (R * 0.2f);
+            float life = P[PExhLife] * rr(w, 0.7f, 1.1f) * (0.55f + 0.55f * s.thr);
+            Emit(w, 0, at, v, life, R * 0.75f, R * 2.4f, 0.6f, c0, c1, -adv);
+        }
+        if (lit)
+        {
+            // 点火: 溜まっていた燃料が一度に燃えて、太く明るいガスが勢いよく抜ける
+            static const uint8_t f1[4] = { 10, 10, 12, 0 };
+            static const uint8_t f0[4] = { 95, 95, 92, 0 };
+            for (int i = 0; i < 6; i++)
+            {
+                V3 v = sv + nd[j] * (P[PExhSpeed] * rr(w, 0.7f, 1.1f)) + rdir(w) * (R * 4.0f);
+                Emit(w, 0, np[j] + nd[j] * (R * rr(w, 0.5f, 2.0f)), v, rr(w, 0.3f, 0.5f), R * 1.1f, R * 3.2f, 1.5f, f0, f1, rr(w, 0, 0.06f));
+            }
+        }
+    }
+}
+
+static inline float ss01(float a, float b, float x)
+{
+    float t = clampf((x - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
+}
+
+// 噴射口に付いた炎 (毎フレーム・描く位置から)。軸に沿った板 (シェーダが芯・広がる炎・加速の節を描く) と、
+// 噴射口の中の光る面 (カメラへ向けた丸い板 2 枚)。軸の板は軸を正面から見るほど潰れるので薄くし、その分は丸い板と粒が受け持つ
+int WriteFlames(World* w, FrameArgs* a, V3 cam, V3 cr, V3 cu)
+{
+    const float* P = w->prm;
+    uint8_t* out = a->fxVerts;
+    int n = 0;
+    static const float uvRound[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+    for (int k = 0; k < w->shipN; k++)
+    {
+        const Ship& s = w->ship[k];
+        if (!s.alive) continue;
+        V3 np[8], nd[8]; int nid[8];
+        int nn = Nozzles(w, s, ld(s.drawP), ldq(s.drawQ), np, nd, nid, 8);
+        for (int j = 0; j < nn && n + 3 <= a->fxCap; j++)
+        {
+            float R = (nid[j] == 1 ? 0.55f : 1.0f) * P[PFlameWidth];
+            float c[3]; FlameColor(s, nid[j], c);
+            float I = (0.5f + 0.5f * s.thr + 0.6f * s.ignite) * P[PFlameGlow];
+            V3 toCam = norm(cam - np[j], cu);
+            float facing = dot(nd[j], toCam);
+            V3 sx = cross(nd[j], toCam);
+            float sinv = len(sx);
+            // 軸の板: 根元 uv.x = 5 → 先 6・uv.y = 横 (0..1) + 出力の段 × 2
+            float fade = ss01(0.06f, 0.45f, sinv);
+            if (fade > 0.01f)
+            {
+                float L = P[PFlameLen] * (0.3f + 0.9f * s.thr + 0.35f * s.ignite) * (nid[j] == 1 ? 0.6f : 1.0f);
+                V3 side = sx * (1.0f / sinv) * (R * 1.7f);
+                V3 tip = np[j] + nd[j] * L;
+                V3 vs[4] = { np[j] - side, np[j] + side, tip + side, tip - side };
+                float lv = (float)(int)clampf(s.thr * 7.0f + s.ignite * 2.0f + 0.5f, 0, 7) * 2.0f;
+                float uv[4][2] = { { 5, lv }, { 5, lv + 1 }, { 6, lv + 1 }, { 6, lv } };
+                float g = I * fade * 255.0f;
+                uint8_t col[4] = { (uint8_t)clampf(c[0] * g, 0, 255), (uint8_t)clampf(c[1] * g, 0, 255), (uint8_t)clampf(c[2] * g, 0, 255), 0 };
+                PutQuad(out, n++, vs, col, uv);
+            }
+            // 噴射口の中の光: 後ろから見るほど明るい (横からは鐘の縁に隠れる分だけ弱く)
+            float f2 = ss01(-0.15f, 0.7f, facing);
+            if (f2 > 0.01f)
+            {
+                V3 at = np[j] + nd[j] * (R * 0.25f);
+                float hs = R * (1.5f + 0.5f * s.thr + 0.6f * s.ignite);
+                float g = I * f2 * 120.0f;
+                uint8_t halo[4] = { (uint8_t)clampf(c[0] * g, 0, 255), (uint8_t)clampf(c[1] * g, 0, 255), (uint8_t)clampf(c[2] * g, 0, 255), 0 };
+                V3 r = cr * hs, u = cu * hs;
+                V3 vs[4] = { at - r - u, at + r - u, at + r + u, at - r + u };
+                PutQuad(out, n++, vs, halo, uvRound);
+                float cs = R * 0.8f;
+                float gc = I * f2 * 200.0f;
+                uint8_t core[4] = { (uint8_t)clampf((0.6f + 0.4f * c[0]) * gc, 0, 255), (uint8_t)clampf((0.6f + 0.4f * c[1]) * gc, 0, 255), (uint8_t)clampf((0.6f + 0.4f * c[2]) * gc, 0, 255), 0 };
+                r = cr * cs; u = cu * cs;
+                V3 vc[4] = { at - r - u, at + r - u, at + r + u, at - r + u };
+                PutQuad(out, n++, vc, core, uvRound);
+            }
+        }
+    }
+    return n;
 }
 
 // 溜めの見た目 (主砲の砲口ごと): 溜まる間は周りから光の粒が吸い込まれ、満ちたら砲口が脈打って光り続ける
@@ -904,6 +1075,8 @@ MRP_API World* mrp_flt_create(uint32_t seed)
 
 MRP_API void mrp_flt_destroy(World* w) { delete w; }
 
+MRP_API void mrp_flt_view(World* w, const float* v6) { memcpy(w->view, v6, sizeof(float) * 6); }
+
 // 船が落ちた所の爆発 (撃墜を決めた側が呼ぶ)
 MRP_API void mrp_flt_explode(World* w, const float* p, float scale)
 {
@@ -1107,6 +1280,7 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
             DrawPose(w, s);
             if (!s.remote) Signals(w, s, Step);
             StepParts(w, s, Step);
+            StepExhaust(w, s, k == a->local, Step);
         }
         steps++;
         // 押した瞬間の入力 (回避・宙返り) は 1 刻みで使い切る (刻みが 0 回のフレームでは次のフレームまで持つ)
@@ -1154,6 +1328,16 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     V3 jit = v3((rnd(w) - 0.5f) * sh, (rnd(w) - 0.5f) * sh, 0);
     Q4 cq = ldq(w->camQ);
     V3 cpo = cp + rot(cq, jit);
+    if (w->view[2] > 0 && a->local >= 0 && a->local < w->shipN)
+    {
+        // 確かめ用: 自分の船の周りの決めた角度から見る。板を向ける先も同じカメラにする (炎や粒が横から潰れない)
+        const Ship& vs = w->ship[a->local];
+        Q4 sq = ldq(vs.drawQ);
+        V3 center = ld(vs.drawP) + rot(sq, v3(w->view[3], w->view[4], w->view[5]));
+        Q4 rq = qmul(sq, qmul(qaxis(v3(0, 1, 0), w->view[0] * Deg), qaxis(v3(1, 0, 0), w->view[1] * Deg)));
+        cpo = center + rot(rq, v3(0, 0, -w->view[2]));
+        cq = qlook(center - cpo, rot(sq, v3(0, 1, 0)));
+    }
     st(a->camOut, cpo);
     stq(a->camOut + 3, cq);
     a->camOut[7] = w->camFov;

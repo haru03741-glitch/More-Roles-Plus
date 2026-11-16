@@ -34,9 +34,8 @@ internal static class FlightCommands
                     {
                         // view <yaw> <pitch> <距離> [見る点 x y z (船の中の座標)] (距離 0 = 普段のカメラへ戻す)
                         float G(int k, float d) => args.Length > k && float.TryParse(args[k], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : d;
-                        Arena.ViewYaw = G(1, 0); Arena.ViewPitch = G(2, 20); Arena.ViewDist = G(3, 0);
-                        Arena.ViewAt = new UnityEngine.Vector3(G(4, 0), G(5, 0), G(6, 0));
-                        reply($"OK flight view {Arena.ViewYaw} {Arena.ViewPitch} {Arena.ViewDist}");
+                        Arena.SetView(G(1, 0), G(2, 20), G(3, 0), G(4, 0), G(5, 0), G(6, 0));
+                        reply($"OK flight view {G(1, 0)} {G(2, 20)} {G(3, 0)}");
                         return;
                     }
                 case "boom":

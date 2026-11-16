@@ -10,7 +10,7 @@ internal static unsafe class FlightNative
     internal const int BoltStride = 24;
     internal const int MaxShips = 8;
     internal const int MaxBolts = 1024;
-    internal const int MaxFx = 2048 + 320;
+    internal const int MaxFx = 2048 + 320 + 8 * 8 * 3; // 粒 + 宇宙の塵 + 噴射口の炎 (船 8 隻 × 噴射口 8 × 板 3)
     internal const int MaxParts = 48;
     internal const int PartShips = 2;
     internal const int SignalCount = 14;
@@ -84,6 +84,7 @@ internal static unsafe class FlightNative
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, int, float, void> Aux;
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, int, float, int> Turret;
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, int> Garbage;
+    internal static delegate* unmanaged[Cdecl]<IntPtr, float*, void> View;
 
     private static int _state; // 0 = 未 / 1 = 使える / 2 = 使えない
 
@@ -110,6 +111,7 @@ internal static unsafe class FlightNative
             Aux = (delegate* unmanaged[Cdecl]<IntPtr, int, int, float, void>)Need("mrp_flt_aux");
             Turret = (delegate* unmanaged[Cdecl]<IntPtr, int, int, float, int>)Need("mrp_flt_turret");
             Garbage = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)Need("mrp_flt_garbage");
+            View = (delegate* unmanaged[Cdecl]<IntPtr, float*, void>)Need("mrp_flt_view");
             // 構造体の大きさが C++ と違えば口を開けない (片方だけ欄を足した時に壊れた値で動かさない)
             int cs = Size(), ms = sizeof(FrameArgs);
             if (cs != ms) throw new InvalidOperationException($"FrameArgs size C++ {cs} != C# {ms}");

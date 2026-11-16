@@ -34,6 +34,7 @@ enum Param
     PUTurnTime, PUTurnCool, PConverge,
     PDustCell, PDustStreak, PDustAlpha,
     PChargeTime, PChargeDelay, PChargeDamage, PChargeScale, PChargeRecover, PGrazeDist, PTailDist, PTailCone,
+    PFlameLen, PFlameWidth, PFlameGlow, PExhRate, PExhSpeed, PExhLife, PIgniteShake,
     ParamCount
 };
 
@@ -98,6 +99,7 @@ struct Ship
     float aux[AuxCount];         // 船の中から決める部品の目標 (砲台の向き・ゴミの口)
     float shotPulse[2];          // 砲台の砲身ごとの撃った揺れ
     float prevQ[4]; int32_t prevInit; // 遠くの船の回る速さを向きの差から出す
+    float thr, ignite, exhAcc, boostPrev; // 噴射の出力 (0..1・目で見る値)・加速の点火の光 (1→0)・噴射の粒の端数・前の刻みの加速の信号
 };
 
 // kind 0 = 戦いの弾・1 = 砲台が小惑星を撃つ光線 (船に当たらず、届いた所で小惑星が砕ける)
@@ -123,6 +125,7 @@ struct World
     uint32_t rng;
     int32_t camInit;
     int32_t latchDodge, latchUTurn; // 押した瞬間の入力 (刻みが回るまで持つ)
+    float view[6];                  // 確かめ用の視点 (yaw・pitch 度・距離・見る点 xyz = 船の中)。距離 0 = 普段の追うカメラ
     Particle part[MaxParticles];
     int32_t partNext;
     float dust[MaxDust][3];
