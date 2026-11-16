@@ -10,10 +10,11 @@ internal static class FlightSound
     private static GameObject _host;
     private static AudioSource _engine, _rcs, _shot;
     private static float _vol = -1f, _pitch = -1f, _rcsVol = -1f;
+    private static bool _ready; // 音の口は場面をまたいで残す (毎フレームの Unity の物の生存確認を避ける)
 
     private static bool Ensure()
     {
-        if (_host) return true;
+        if (_ready) return true;
         var sm = SoundManager.Instance;
         if (!sm) return false;
         var e = MrpBundle.Clip("noise_flt_engine_loop");
@@ -25,6 +26,7 @@ internal static class FlightSound
         _rcs = Make(sm, true, r);
         _shot = Make(sm, false, null);
         _vol = _pitch = _rcsVol = -1f;
+        _ready = true;
         return true;
     }
 
@@ -67,7 +69,7 @@ internal static class FlightSound
 
     internal static void Stop()
     {
-        if (!_host) return;
+        if (!_ready) return;
         _engine.Stop();
         _rcs.Stop();
         _shot.Stop();

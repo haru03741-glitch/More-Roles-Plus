@@ -312,19 +312,19 @@ void WriteFx(World* w, FrameArgs* a, V3 cam, Q4 camQ, V3 shipV)
         float size = q.s0 + (q.s1 - q.s0) * g;
         float fade = t < 0.6f ? 1.0f : (1.0f - t) / 0.4f;
         V3 p = ld(q.p) + ld(q.v) * w->acc;
-        // カメラのすぐ前を抜ける煙やガスは薄くする (近い板は画面を埋めて白い幕になる)
-        if (q.kind == 0) fade *= clampf((len(p - cam) - size - 4.0f) / 14.0f, 0, 1);
+        // カメラのすぐ前を抜ける噴射のガスは薄くする (近い板は画面を埋めて白い幕になる・爆発の閃光は撃墜した船を隠すので薄くしない)
+        if (q.kind == 4) fade *= clampf((len(p - cam) - size - 4.0f) / 14.0f, 0, 1);
         if (fade <= 0) continue;
         uint8_t col[4];
         for (int k = 0; k < 4; k++) col[k] = (uint8_t)((q.c0[k] + (q.c1[k] - q.c0[k]) * t) * fade);
         V3 vs[4];
-        if (q.kind == 0)
+        if (q.kind == 0 || q.kind == 4)
         {
             V3 r = cr * size, u = cu * size;
             vs[0] = p - r - u; vs[1] = p + r - u; vs[2] = p + r + u; vs[3] = p - r + u;
             PutQuad(out, n++, vs, col, uvRound);
         }
-        else if (q.kind >= 2)
+        else if (q.kind == 2 || q.kind == 3)
         {
             // 番号から決まる向きと回る速さ (-3..3 回転/秒)・形 (4 種)
             uint32_t h = (uint32_t)i * 2654435761u;
@@ -423,7 +423,7 @@ void Signals(World* w, Ship& s, float dt)
     float pitchV = s.pitchV, yawV = s.yawV, rollV = s.rollV;
     if (s.remote)
     {
-        s.speed = len(ld(s.v)); // 遠くの船の速さは届いた速度から (噴射の出力と部品の信号に使う)
+        s.speed = dot(ld(s.v), rot(ldq(s.q), v3(0, 0, 1))); // 遠くの船の速さは届いた速度の前向きの分 (回避の横の速さを加速と読まない)
         // 前の向きからの回りを船の中の軸で測る (StepLocal の回し方の逆: x = -pitch・y = yaw・z = -roll)
         Q4 q = ldq(s.q);
         if (s.prevInit && dt > 1e-4f)
@@ -557,7 +557,7 @@ void StepExhaust(World* w, Ship& s, int idx, bool local, float dt)
             V3 v = sv + nd[j] * (sp * rr(w, 0.8f, 1.05f)) + rdir(w) * (R * 2.5f);
             V3 at = np[j] + nd[j] * (R * 0.6f + sp * adv) + rdir(w) * (R * 0.2f);
             float life = P[PExhLife] * rr(w, 0.7f, 1.1f) * (0.55f + 0.55f * s.thr);
-            Emit(w, 0, at, v, life, R * 0.75f, R * 2.4f, 0.6f, c0, c1, -adv);
+            Emit(w, 4, at, v, life, R * 0.75f, R * 2.4f, 0.6f, c0, c1, -adv);
         }
         if (lit)
         {
@@ -567,7 +567,7 @@ void StepExhaust(World* w, Ship& s, int idx, bool local, float dt)
             for (int i = 0; i < 6; i++)
             {
                 V3 v = sv + nd[j] * (P[PExhSpeed] * rr(w, 0.7f, 1.1f)) + rdir(w) * (R * 4.0f);
-                Emit(w, 0, np[j] + nd[j] * (R * rr(w, 0.5f, 2.0f)), v, rr(w, 0.3f, 0.5f), R * 1.1f, R * 3.2f, 1.5f, f0, f1, rr(w, 0, 0.06f));
+                Emit(w, 4, np[j] + nd[j] * (R * rr(w, 0.5f, 2.0f)), v, rr(w, 0.3f, 0.5f), R * 1.1f, R * 3.2f, 1.5f, f0, f1, rr(w, 0, 0.06f));
             }
         }
     }
@@ -604,7 +604,7 @@ void StepRcs(World* w, Ship& s, float dt)
         {
             float adv = rnd(w) * dt;
             V3 vel = sv + d * (P[PRcsSpeed] * rr(w, 0.7f, 1.1f)) + rdir(w) * 2.5f;
-            Emit(w, 0, at + d * (0.5f + P[PRcsSpeed] * adv), vel, rr(w, 0.3f, 0.5f), 0.35f, 1.9f * (0.6f + 0.4f * v), 3.0f, g0, g1, -adv);
+            Emit(w, 4, at + d * (0.5f + P[PRcsSpeed] * adv), vel, rr(w, 0.3f, 0.5f), 0.35f, 1.9f * (0.6f + 0.4f * v), 3.0f, g0, g1, -adv);
         }
     }
 }

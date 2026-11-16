@@ -449,7 +449,8 @@ internal static unsafe class Arena
         for (int k = 0; k < _shipN; k++)
         {
             var t = ShipT[k];
-            if (!t) continue;
+            // 船の物は 3D の場面を出る時にまとめて壊して表も空にするので、間は null の比較で足りる (Unity の生存確認は毎フレームの interop)
+            if (t is null) continue;
             float* o = _shipOut + k * 8;
             bool vis = o[7] > 0.5f;
             if (t.gameObject.activeSelf != vis) t.gameObject.SetActive(vis);

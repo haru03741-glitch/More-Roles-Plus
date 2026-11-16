@@ -109,7 +109,8 @@ struct Bolt { float p[3], v[3]; float age, life; int32_t owner, alive, mine; flo
 
 struct Event { int32_t kind, a, b, c; float x, y, z, f; };
 
-// 火花・炎・煙 (kind 0 = 丸いにじみ・1 = 速さの向きに伸びる筋)。色は乗算済み (rgb = 光・a = 後ろを隠す量)
+// 火花・炎・煙・欠片。kind 0 = 丸いにじみ・1 = 速さの向きに伸びる筋・2 = 岩・3 = ゴミ・4 = 噴射のガス (丸いにじみ・カメラのすぐ前で薄くする)。
+// 色は乗算済み (rgb = 光・a = 後ろを隠す量)
 struct Particle { float p[3], v[3]; float age, life, s0, s1, drag; uint8_t c0[4], c1[4]; int32_t kind, alive; };
 
 struct World
