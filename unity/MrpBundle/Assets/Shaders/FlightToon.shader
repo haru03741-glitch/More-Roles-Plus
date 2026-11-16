@@ -156,7 +156,46 @@ Shader "MRP/FlightToon"
                     float2 m = (1.0 - smoothstep(0.008, 0.008 + fw * 1.5, e)) * inside.yx;
                     hatch = max(m.x, m.y) * (1.0 - smoothstep(0.06, 0.15, max(fw.x, fw.y)));
                 }
-                return float3(1.0 + (h - 0.5) * 0.06, max(seam, hatch * 0.7), lip);
+                // 遠目 (1 画素が形の 0.04〜0.1) では継ぎ目も板の濃淡も消して、1 枚のなめらかな外板に見せる
+                float farFade = 1.0 - smoothstep(0.02, 0.05, max(fw.x, fw.y));
+                return float3(1.0 + (h - 0.5) * 0.06 * farFade, max(seam, hatch * 0.7) * farFade, lip * farFade);
+            }
+
+            // 外板の凹凸の高さ (形の単位)。板の並びは Panels と同じ。板は縁を面取りして少し盛り上がり、1 枚ずつ傾きが違う。
+            // 縁の内側にリベットが並び、半分ほどの板には小さな箱の出っ張りが乗る
+            float PanelH(float2 p, float2 size)
+            {
+                float2 uv0 = p / size;
+                float2 uv = float2(uv0.x + Hash12(float2(floor(uv0.y), 3.7)), uv0.y);
+                float2 id = floor(uv), f = frac(uv);
+                float h1 = Hash12(id), h2 = Hash12(id + 19.1), h3 = Hash12(id + 41.7);
+                float2 fe = min(f, 1.0 - f) * size;
+                float e = min(fe.x, fe.y);
+                float plate = smoothstep(0.0, 0.1, e);
+                float hgt = plate * (0.02 + 0.03 * h1 + dot(f - 0.5, float2(h2, h3) - 0.5) * 0.07);
+                float along = fe.x < fe.y ? uv.y * size.y : uv.x * size.x;
+                float rv = length(float2((frac(along / 0.32) - 0.5) * 0.32, e - 0.09));
+                hgt += (1.0 - smoothstep(0.018, 0.032, rv)) * 0.012;
+                if (h1 > 0.5 && e > 0.18)
+                {
+                    float2 g = float2(6.0, 3.0);
+                    float2 sf = f * g;
+                    float hs = Hash12(floor(sf) + id * 13.1);
+                    float2 ce = min(frac(sf), 1.0 - frac(sf)) * size / g;
+                    if (hs > 0.45) hgt += smoothstep(0.04, 0.07, min(ce.x, ce.y)) * (0.012 + 0.03 * hs);
+                }
+                return hgt;
+            }
+
+            // 耐熱タイルの凹凸: 目地で下がり、1 枚ずつ少し浮き沈みと傾きがある
+            float TileH(float2 p)
+            {
+                float2 uv = p / 0.62;
+                float2 id = floor(uv), f = frac(uv);
+                float h1 = Hash12(id + 7.0), h2 = Hash12(id + 23.3), h3 = Hash12(id + 51.9);
+                float2 fe = min(f, 1.0 - f) * 0.62;
+                float plate = smoothstep(0.0, 0.05, min(fe.x, fe.y));
+                return plate * (0.012 + 0.014 * h1 + dot(f - 0.5, float2(h2, h3) - 0.5) * 0.03);
             }
 
             fixed4 frag(v2f i) : SV_Target
@@ -169,9 +208,18 @@ Shader "MRP/FlightToon"
                 float3 lp = i.lp;
                 // 模様を貼る向き: 上か下を向いた面は真上から、横を向いた面は船の周りを巻く円筒で
                 // (前後と左右の軸で貼り分けると、丸い角で向きが何度も切り替わって格子が乱れる)。継ぎ目は切り替わる所で途切れる
-                float2 uvp = abs(i.ln.y) >= 0.55 * length(i.ln) ? lp.xz : float2(atan2(lp.x, lp.z) * 14.0, lp.y);
+                bool topProj = abs(i.ln.y) >= 0.55 * length(i.ln);
+                float2 uvp = topProj ? lp.xz : float2(atan2(lp.x, lp.z) * 14.0, lp.y);
+                // 模様の平面の 2 本の向き (形の座標・凹凸の法線を作る)。円筒の横の向きは半径で長さを形の単位へ戻す
+                float rr = max(length(lp.xz), 1.0);
+                float3 tu = topProj ? float3(1, 0, 0) : float3(lp.z, 0, -lp.x) / rr * (14.0 / rr);
+                float3 tv = topProj ? float3(0, 0, 1) : float3(0, 1, 0);
+                // 凹凸は寄った時だけ (1 画素が形の 0.05 より大きくなると消える = 遠目はつるつる)
+                float2 fwp = fwidth(uvp);
+                float near = 1.0 - smoothstep(0.015, 0.05, max(fwp.x, fwp.y));
                 float3 ns = n;   // 照りに使う法線 (しわは照りにだけ強く効かせる)
-                float specAmt = 0.0, specLo = 0.955, specHi = 0.975, metal = 0.0, seamDark = 0.0;
+                float3 n0 = n;   // 凹凸を足す前の法線 (縁の照り返しと浅い角度の映り込み。凹凸の急な斜面に線が出ないように)
+                float specAmt = 0.0, specLo = 0.955, specHi = 0.975, metal = 0.0, seamDark = 0.0, gloss = 0.0;
 
                 if (mat < 0.5) { }
                 else if (mat < 1.5)
@@ -180,8 +228,17 @@ Shader "MRP/FlightToon"
                     float3 pn = Panels(uvp, float2(3.4, 2.1));
                     float grime = Noise3(lp * 0.18).x;
                     base *= pn.x * (0.95 + grime * 0.1) * (1.0 + pn.z * 0.12);
-                    seamDark = pn.y * 0.24;
-                    specAmt = 0.05;
+                    seamDark = pn.y * 0.2;
+                    if (near > 0.0)
+                    {
+                        const float eps = 0.012;
+                        float h0 = PanelH(uvp, float2(3.4, 2.1));
+                        float2 gr = float2(PanelH(uvp + float2(eps, 0), float2(3.4, 2.1)) - h0, PanelH(uvp + float2(0, eps), float2(3.4, 2.1)) - h0) / eps;
+                        float3 dn = mul((float3x3)unity_ObjectToWorld, -(gr.x * tu + gr.y * tv)) * near;
+                        n = normalize(n + dn);
+                        ns = n;
+                    }
+                    gloss = 1.0;
                 }
                 else if (mat < 2.5)
                 {
@@ -196,7 +253,17 @@ Shader "MRP/FlightToon"
                     float2 uv = uvp / 0.62;
                     float h = Hash12(floor(uv) + 7.0);
                     base *= 0.86 + h * 0.26 - step(0.94, h) * 0.18;
-                    seamDark = GridLine(uv, float2(0.035, 0.035)) * 0.45;
+                    float2 tfw = fwidth(uv);
+                    float tFar = 1.0 - smoothstep(0.06, 0.16, max(tfw.x, tfw.y));
+                    seamDark = GridLine(uv, float2(0.035, 0.035)) * 0.45 * tFar;
+                    if (near > 0.0)
+                    {
+                        const float eps = 0.01;
+                        float h0 = TileH(uvp);
+                        float2 gr = float2(TileH(uvp + float2(eps, 0)) - h0, TileH(uvp + float2(0, eps)) - h0) / eps;
+                        n = normalize(n + mul((float3x3)unity_ObjectToWorld, -(gr.x * tu + gr.y * tv)) * near);
+                        ns = n;
+                    }
                 }
                 else if (mat < 4.5)
                 {
@@ -246,7 +313,7 @@ Shader "MRP/FlightToon"
                 c = lerp(c, base * 1.06, lit);
                 c *= 1.0 - seamDark;
                 // 縁の照り返し (光の反対側の縁を空の色で)
-                float ndv = saturate(dot(n, vdir));
+                float ndv = saturate(dot(n0, vdir));
                 float rim = pow(1.0 - ndv, 3.0);
                 c += _MrpFltRim.rgb * _MrpFltRim.a * rim * (1.0 - lit * 0.6) * (1.0 + metal);
                 // 金属の映り込み: 光の側を映す向きは明るく、反対は暗く (段に分けて絵の様式に合わせる)
@@ -257,6 +324,17 @@ Shader "MRP/FlightToon"
                 // 照り (金属・断熱材・電池は強く、広い塗装面は弱く細く)
                 float3 h = normalize(l + vdir);
                 c += smoothstep(specLo, specHi, dot(ns, h)) * lit * specAmt;
+                // 塗装の光沢 (外板): 段に切らずになめらかに変わる広い照りと、浅い角度での映り込み。
+                // 段で切った照りは広い面で斑に見えるので使わない。寄ると凹凸の法線で照りが板ごとに割れる
+                if (gloss > 0.0)
+                {
+                    float nh = saturate(dot(ns, h));
+                    float sheen = pow(nh, 40.0) * 0.35 + pow(nh, 6.0) * 0.06;
+                    c += sheen * saturate(ndl * 2.0 + 0.2) * gloss * float3(1.0, 0.97, 0.92);
+                    float fr = pow(1.0 - ndv, 5.0);
+                    float sky = smoothstep(-0.2, 0.8, dot(r, l));
+                    c += fr * gloss * lerp(_MrpFltRim.rgb * 0.25, float3(0.75, 0.8, 0.9), sky * 0.5) * 0.6;
+                }
                 // 光る所 (a < 1) は陰を付けず明るく
                 float glow = 1.0 - i.color.a;
                 c = lerp(c, base * (1.0 + glow * 0.9), saturate(glow * 3.0));
