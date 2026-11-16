@@ -8,6 +8,8 @@
 // (長さ = 太さの割合。細い部品の縁取りを細くする) + 部品の番号 w (番号 / 127)。
 // 材質の番号: 0 = 無地 / 1 = 外板 (継ぎ目と点検口) / 2 = 細かい塗装 / 3 = 耐熱タイル / 4 = 放熱板 /
 // 5 = 金色の断熱材 (しわの照り) / 6 = 太陽電池 / 7 = 金属 / 8 = 窓のガラス / 9 = 光る物。
+// 番号に 16 を足した面は、投影でなく頂点の TEXCOORD2 (模様の座標 × 1/128) で模様を描く (船体の丸い肩: 縁に沿って巻く座標)。
+// その座標は一周 U_PERIOD で戻るので、板やタイルの番号は一周の個数で折り返して、戻った所で模様をつなげる。
 // 模様は部品が動く前の位置 (形の座標) で描くので、動く部品に貼り付いたまま動く。模様の線は画面の上で 1 画素より細くなる距離で消す
 // (ギザギザ消しが無いので、細かい線をそのまま描くとちらつく)。
 Shader "MRP/FlightToon"
@@ -65,7 +67,13 @@ Shader "MRP/FlightToon"
             float4 _MrpFltRim;     // rgb = 縁の照り返しの色・a = 強さ
             float _Flash;
 
-            struct appdata { float4 vertex : POSITION; float4 normal : NORMAL; fixed4 color : COLOR; float4 smooth : TEXCOORD1; };
+            #define UV_FLAG 16.0
+            #define U_PERIOD 105.4
+            #define PANEL_W 3.4
+            #define PANEL_H 2.1
+            #define TILE 0.62
+
+            struct appdata { float4 vertex : POSITION; float4 normal : NORMAL; fixed4 color : COLOR; float4 smooth : TEXCOORD1; float2 uv : TEXCOORD2; };
             struct v2f
             {
                 float4 pos : SV_POSITION;
@@ -73,6 +81,7 @@ Shader "MRP/FlightToon"
                 float3 wp : TEXCOORD1;
                 float3 lp : TEXCOORD2;     // 形の座標 (部品が動く前)
                 float3 ln : TEXCOORD3;     // 形の座標の法線
+                float2 uv : TEXCOORD4;     // 書き出した模様の座標 (形の単位)
                 fixed4 color : COLOR;
             };
 
@@ -87,6 +96,7 @@ Shader "MRP/FlightToon"
                 o.n = float4(UnityObjectToWorldNormal(nrm), floor(v.normal.w * 127.0 + 0.5));
                 o.wp = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.color = v.color;
+                o.uv = v.uv * 128.0;
                 return o;
             }
 
@@ -116,6 +126,9 @@ Shader "MRP/FlightToon"
                 return lerp(lerp(a, b, f.y), lerp(c, d, f.y), f.z);
             }
 
+            // 一周 U_PERIOD の座標で、横の番号を一周の個数 n で折り返す (戻った所で同じ番号になる)
+            float2 WrapId(float2 id, float n) { return float2(id.x - n * floor(id.x / n), id.y); }
+
             // 升目の線 (uv の整数の所に幅 w の線)。fw = uv の 1 画素あたりの変化 (ずらした座標は飛ぶので、ずらす前の座標で測って渡す)。
             // 升が画面の上で小さくなると消える
             float GridLineFw(float2 uv, float2 w, float2 fw)
@@ -139,7 +152,7 @@ Shader "MRP/FlightToon"
                 float2 fw = max(fwidth(uv0), 1e-5);
                 float row = floor(uv0.y);
                 float2 uv = float2(uv0.x + Hash12(float2(row, 3.7)), uv0.y);
-                float h = Hash12(floor(uv));
+                float h = Hash12(WrapId(floor(uv), U_PERIOD / PANEL_W));
                 float2 w = float2(0.012, 0.02);
                 float seam = GridLineFw(uv, w, fw);
                 float fade = 1.0 - smoothstep(0.12, 0.3, max(fw.x, fw.y));
@@ -167,14 +180,15 @@ Shader "MRP/FlightToon"
             {
                 float2 uv0 = p / size;
                 float2 uv = float2(uv0.x + Hash12(float2(floor(uv0.y), 3.7)), uv0.y);
-                float2 id = floor(uv), f = frac(uv);
+                float2 id = WrapId(floor(uv), U_PERIOD / PANEL_W), f = frac(uv);
                 float h1 = Hash12(id), h2 = Hash12(id + 19.1), h3 = Hash12(id + 41.7);
                 float2 fe = min(f, 1.0 - f) * size;
                 float e = min(fe.x, fe.y);
                 float plate = smoothstep(0.0, 0.1, e);
                 float hgt = plate * (0.02 + 0.03 * h1 + dot(f - 0.5, float2(h2, h3) - 0.5) * 0.07);
                 float along = fe.x < fe.y ? uv.y * size.y : uv.x * size.x;
-                float rv = length(float2((frac(along / 0.32) - 0.5) * 0.32, e - 0.09));
+                const float rs = PANEL_W / 11.0;   // リベットの間隔 (板の幅も一周も割り切る)
+                float rv = length(float2((frac(along / rs) - 0.5) * rs, e - 0.09));
                 hgt += (1.0 - smoothstep(0.018, 0.032, rv)) * 0.012;
                 if (h1 > 0.5 && e > 0.18)
                 {
@@ -190,10 +204,10 @@ Shader "MRP/FlightToon"
             // 耐熱タイルの凹凸: 目地で下がり、1 枚ずつ少し浮き沈みと傾きがある
             float TileH(float2 p)
             {
-                float2 uv = p / 0.62;
-                float2 id = floor(uv), f = frac(uv);
+                float2 uv = p / TILE;
+                float2 id = WrapId(floor(uv), U_PERIOD / TILE), f = frac(uv);
                 float h1 = Hash12(id + 7.0), h2 = Hash12(id + 23.3), h3 = Hash12(id + 51.9);
-                float2 fe = min(f, 1.0 - f) * 0.62;
+                float2 fe = min(f, 1.0 - f) * TILE;
                 float plate = smoothstep(0.0, 0.05, min(fe.x, fe.y));
                 return plate * (0.012 + 0.014 * h1 + dot(f - 0.5, float2(h2, h3) - 0.5) * 0.03);
             }
@@ -204,16 +218,28 @@ Shader "MRP/FlightToon"
                 float3 l = normalize(_MrpFltLight.xyz);
                 float3 vdir = normalize(_WorldSpaceCameraPos - i.wp);
                 float mat = i.n.w;
+                bool baked = mat > UV_FLAG - 0.5;
+                if (baked) mat -= UV_FLAG;
                 float3 base = i.color.rgb;
                 float3 lp = i.lp;
                 // 模様を貼る向き: 上か下を向いた面は真上から、横を向いた面は船の周りを巻く円筒で
                 // (前後と左右の軸で貼り分けると、丸い角で向きが何度も切り替わって格子が乱れる)。継ぎ目は切り替わる所で途切れる
+                // 船体の丸い肩は書き出した座標 (縁に沿って巻く) で貼る
                 bool topProj = abs(i.ln.y) >= 0.55 * length(i.ln);
-                float2 uvp = topProj ? lp.xz : float2(atan2(lp.x, lp.z) * 14.0, lp.y);
-                // 模様の平面の 2 本の向き (形の座標・凹凸の法線を作る)。円筒の横の向きは半径で長さを形の単位へ戻す
-                float rr = max(length(lp.xz), 1.0);
-                float3 tu = topProj ? float3(1, 0, 0) : float3(lp.z, 0, -lp.x) / rr * (14.0 / rr);
-                float3 tv = topProj ? float3(0, 0, 1) : float3(0, 1, 0);
+                float2 uvp = baked ? i.uv : (topProj ? lp.xz : float2(atan2(lp.x, lp.z) * 14.0, lp.y));
+                // 模様の座標の 2 本の向き (形の座標の面の上での u と v の勾配・凹凸の法線を作る)。
+                // 画面の上の微分から出すので、どの貼り方でも面に乗った向きになる (2x2 画素ごとに一定)
+                float3 dp1 = ddx(lp), dp2 = ddy(lp);
+                float2 du1 = ddx(uvp), du2 = ddy(uvp);
+                float3 nl = normalize(i.ln);
+                float3 c2 = cross(dp2, nl), c1 = cross(nl, dp1);
+                float det = dot(dp1, c2);
+                float3 tu = 0, tv = 0;
+                if (abs(det) > 1e-12)
+                {
+                    tu = (c2 * du1.x + c1 * du2.x) / det;
+                    tv = (c2 * du1.y + c1 * du2.y) / det;
+                }
                 // 凹凸は寄った時だけ (1 画素が形の 0.05 より大きくなると消える = 遠目はつるつる)
                 float2 fwp = fwidth(uvp);
                 float near = 1.0 - smoothstep(0.015, 0.05, max(fwp.x, fwp.y));
@@ -225,15 +251,15 @@ Shader "MRP/FlightToon"
                 else if (mat < 1.5)
                 {
                     // 外板: 板の明るさ・継ぎ目・ごく低い周波数のくすみ
-                    float3 pn = Panels(uvp, float2(3.4, 2.1));
+                    float3 pn = Panels(uvp, float2(PANEL_W, PANEL_H));
                     float grime = Noise3(lp * 0.18).x;
                     base *= pn.x * (0.95 + grime * 0.1) * (1.0 + pn.z * 0.12);
                     seamDark = pn.y * 0.2;
                     if (near > 0.0)
                     {
                         const float eps = 0.012;
-                        float h0 = PanelH(uvp, float2(3.4, 2.1));
-                        float2 gr = float2(PanelH(uvp + float2(eps, 0), float2(3.4, 2.1)) - h0, PanelH(uvp + float2(0, eps), float2(3.4, 2.1)) - h0) / eps;
+                        float h0 = PanelH(uvp, float2(PANEL_W, PANEL_H));
+                        float2 gr = float2(PanelH(uvp + float2(eps, 0), float2(PANEL_W, PANEL_H)) - h0, PanelH(uvp + float2(0, eps), float2(PANEL_W, PANEL_H)) - h0) / eps;
                         float3 dn = mul((float3x3)unity_ObjectToWorld, -(gr.x * tu + gr.y * tv)) * near;
                         n = normalize(n + dn);
                         ns = n;
@@ -250,8 +276,8 @@ Shader "MRP/FlightToon"
                 else if (mat < 3.5)
                 {
                     // 耐熱タイル: 小さな四角・タイルごとの濃淡・目地
-                    float2 uv = uvp / 0.62;
-                    float h = Hash12(floor(uv) + 7.0);
+                    float2 uv = uvp / TILE;
+                    float h = Hash12(WrapId(floor(uv), U_PERIOD / TILE) + 7.0);
                     base *= 0.86 + h * 0.26 - step(0.94, h) * 0.18;
                     float2 tfw = fwidth(uv);
                     float tFar = 1.0 - smoothstep(0.06, 0.16, max(tfw.x, tfw.y));
@@ -267,8 +293,8 @@ Shader "MRP/FlightToon"
                 }
                 else if (mat < 4.5)
                 {
-                        // 放熱板: 前後に走る細い筋
-                    float rib = GridLine(float2(uvp.x / 0.32, 0.5), float2(0.09, 0.0));
+                    // 放熱板: 前後に走る細い筋
+                    float rib = GridLine(float2(uvp.x / (U_PERIOD / 330.0), 0.5), float2(0.09, 0.0));
                     base *= 1.0 - rib * 0.1;
                     specAmt = 0.25; specLo = 0.9; specHi = 0.95;
                     metal = 0.25;
