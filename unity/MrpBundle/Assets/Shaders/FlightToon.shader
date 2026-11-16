@@ -9,6 +9,7 @@
 // 材質の番号: 0 = 無地 / 1 = 外板 (継ぎ目と点検口) / 2 = 細かい塗装 / 3 = 耐熱タイル / 4 = 放熱板 /
 // 5 = 金色の断熱材 (しわの照り) / 6 = 太陽電池 / 7 = 金属 / 8 = 窓のガラス / 9 = 光る物 /
 // 10 = 装甲帯 (縦のヘアラインの厚い板・継ぎ目を押さえる帯金とボルト・横に長く伸びる照り)。
+// 11 = シールドの光 (頂点の色の a で決めた光る強さに、船ごとの _Shield を掛ける。消えている時は無地)。
 // 番号に 16 を足した面は、投影でなく頂点の TEXCOORD2 (模様の座標 × 1/128) で模様を描く (船体の丸い肩: 縁に沿って巻く座標)。
 // その座標は一周 U_PERIOD で戻るので、板やタイルの番号は一周の個数で折り返して、戻った所で模様をつなげる。
 // 模様は部品が動く前の位置 (形の座標) で描くので、動く部品に貼り付いたまま動く。
@@ -23,6 +24,7 @@ Shader "MRP/FlightToon"
         _OutlineColor ("Outline color", Color) = (0.05, 0.05, 0.08, 1)
         _Flash ("Hit flash", Float) = 0
         _PartBase ("Part base", Float) = -1
+        _Shield ("Shield lamps", Float) = 0
     }
 
     CGINCLUDE
@@ -69,6 +71,7 @@ Shader "MRP/FlightToon"
             float4 _MrpFltSky;     // rgb = 遠くの色・a = 霞む距離
             float4 _MrpFltRim;     // rgb = 縁の照り返しの色・a = 強さ
             float _Flash;
+            float _Shield;   // シールドの光 (0 = 消えている・1 = 点いている)。材質 11 の光る強さに掛ける
 
             #define UV_FLAG 16.0
             #define U_PERIOD 105.4
@@ -489,6 +492,12 @@ Shader "MRP/FlightToon"
                 }
                 // 光る所 (a < 1) は陰を付けず明るく
                 float glow = 1.0 - i.color.a;
+                if (mat > 10.5 && mat < 11.5)
+                {
+                    // シールドの光: 点いている間は管の中の光がゆっくり揺らぐ (管ごとに位相をずらす)。消えている時は普通の面
+                    float flick = 0.82 + 0.18 * sin(_Time.y * 7.0 + dot(lp, float3(1.7, 0.9, 2.3)));
+                    glow *= saturate(_Shield) * flick;
+                }
                 c = lerp(c, base * (1.0 + glow * 0.9), saturate(glow * 3.0));
                 if (mat > 7.5 && mat < 8.5)
                 {

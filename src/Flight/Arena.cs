@@ -21,6 +21,7 @@ internal static unsafe class Arena
     internal static bool Active { get; private set; }
     internal static string Stats = "";
     internal static float ViewYaw, ViewPitch, ViewDist;
+    internal static Vector3 ViewAt; // 確かめ用の視点が見る点 (船の中の座標)
 
     private static IntPtr _world;
     private static GameObject _root;
@@ -29,6 +30,9 @@ internal static unsafe class Arena
     private static readonly Transform[] ShipT = new Transform[FlightNative.MaxShips];
     private static readonly MeshRenderer[] ShipR = new MeshRenderer[FlightNative.MaxShips];
     private static readonly float[] Flash = new float[FlightNative.MaxShips];
+    // シールドの光 (スケルドだけ・0 = 消えている・1 = 点いている)。ShipTasks.ShieldOn へ寄せる
+    private static readonly float[] Shield = new float[FlightNative.MaxShips];
+    private static int _shieldId;
     private static readonly float[] Hp = new float[FlightNative.MaxShips];
     private static readonly int[] ShipModel = new int[FlightNative.MaxShips];
     private static MaterialPropertyBlock _mpb;
@@ -62,6 +66,7 @@ internal static unsafe class Arena
         _world = FlightNative.Create((uint)Environment.TickCount);
         if (_world == IntPtr.Zero) return "create failed";
         PushParams();
+        ShipTasks.Begin();
         Register(0, skeld);
         Register(1, dummy);
         Alloc();
@@ -154,6 +159,7 @@ internal static unsafe class Arena
         ShipT[idx] = go.transform;
         ShipR[idx] = mr;
         Flash[idx] = 0;
+        Shield[idx] = model == 0 && ShipTasks.ShieldOn ? 1f : 0f;
         SetBlock(idx);
         // 噴射の炎: 噴射口の印ごとに、光弾と同じ足し算の板を十字に組んで後ろへ伸ばす (長さは速さで変える)
         var m = ModelBank.Get(model);
@@ -244,6 +250,7 @@ internal static unsafe class Arena
         _root = new GameObject("MrpFlightArena") { layer = Layer };
         _root.transform.position = Origin;
         _flashId = Shader.PropertyToID("_Flash");
+        _shieldId = Shader.PropertyToID("_Shield");
         _partBaseId = Shader.PropertyToID("_PartBase");
         _partsId = Shader.PropertyToID("_MrpFltParts");
         _mpb ??= new MaterialPropertyBlock();
@@ -430,6 +437,7 @@ internal static unsafe class Arena
         var input = FlightInput.Read(out bool leave);
         if (leave) { Exit(); return; }
 
+        ShipTasks.Tick(_world, _shipN, ShipModel, Time.time);
         var a = new FlightNative.FrameArgs
         {
             World = _world,
@@ -471,9 +479,9 @@ internal static unsafe class Arena
         {
             // 確かめ用: 自分の船の周りの決めた角度から見る (見た目の検収・毎フレームの経路ではない)
             float* so = _shipOut + _local * 8;
-            var center = new Vector3(so[0], so[1], so[2]);
             // 角度は船の向きから測る (船が傾いていても同じ見え方)
             var shipq = new Quaternion(so[3], so[4], so[5], so[6]);
+            var center = new Vector3(so[0], so[1], so[2]) + shipq * ViewAt;
             var rotq = shipq * Quaternion.Euler(ViewPitch, ViewYaw, 0f);
             cp = center + rotq * new Vector3(0f, 0f, -ViewDist);
             cq = Quaternion.LookRotation(center - cp, shipq * Vector3.up);
@@ -570,8 +578,13 @@ internal static unsafe class Arena
         float dt = Time.deltaTime;
         for (int k = 0; k < _shipN; k++)
         {
-            if (Flash[k] <= 0 || !ShipR[k]) continue;
+            // 変わる物が無い船は managed の比較だけで抜ける (Unity の物の生存確認は interop)
+            float sh = ShipModel[k] == 0 && ShipTasks.ShieldOn ? 1f : 0f;
+            if (Flash[k] <= 0 && Shield[k] == sh) continue;
+            if (!ShipR[k]) continue;
             Flash[k] = Mathf.Max(0, Flash[k] - dt * 8f);
+            // 点く時は本編の光と同じくらいで (約 0.6 秒)・消える時は少し速く
+            Shield[k] = sh > Shield[k] ? Math.Min(sh, Shield[k] + dt * 1.7f) : Math.Max(sh, Shield[k] - dt * 3f);
             SetBlock(k);
         }
     }
@@ -612,6 +625,7 @@ internal static unsafe class Arena
     {
         if (!ShipR[k]) return;
         _mpb.SetFloat(_flashId, Flash[k] * 0.8f);
+        _mpb.SetFloat(_shieldId, Shield[k]);
         _mpb.SetFloat(_partBaseId, _partPtr != null && k < FlightNative.PartShips ? k * FlightNative.MaxParts * 2 : -1f);
         ShipR[k].SetPropertyBlock(_mpb);
     }

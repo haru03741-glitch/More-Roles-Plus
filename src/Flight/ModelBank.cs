@@ -55,7 +55,7 @@ internal static unsafe class ModelBank
         int o = 0;
         uint Magic() { uint v = BitConverter.ToUInt32(data, o); o += 4; return v; }
         int I() { int v = BitConverter.ToInt32(data, o); o += 4; return v; }
-        if (Magic() != 0x4D50524D || I() != 6) { Plugin.Logger.LogError($"flight model bad header: {name}"); return null; }
+        if (Magic() != 0x4D50524D || I() != 7) { Plugin.Logger.LogError($"flight model bad header: {name}"); return null; }
         int vn = I(), inN = I();
         float F() { float v = BitConverter.ToSingle(data, o); o += 4; return v; }
         // 範囲 (Mesh の bounds と当たりの粗い判定の確かめ用) は書き出しの時に測ってある

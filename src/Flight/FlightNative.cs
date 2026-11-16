@@ -13,7 +13,9 @@ internal static unsafe class FlightNative
     internal const int MaxFx = 2048 + 320;
     internal const int MaxParts = 48;
     internal const int PartShips = 2;
-    internal const int SignalCount = 9;
+    internal const int SignalCount = 14;
+    // Ship.aux の並び (flight.h の Aux と同じ)
+    internal const int AuxAimYaw = 0, AuxAimPitch = 1, AuxHatch = 2;
 
     internal enum Ev { Fire = 1, Hit = 2, BoltEnd = 3, Dodge = 4, UTurn = 5 }
 
@@ -23,7 +25,7 @@ internal static unsafe class FlightNative
     [StructLayout(LayoutKind.Sequential)]
     internal struct Marker { public int Kind, Id; public float Px, Py, Pz, Dx, Dy, Dz; }
 
-    // 動く部品 (flight.h の Part と同じ並び・84 バイト)。W は信号 (縦・横・転・傾き・加速・減速・撃つ・回避・常に 1) の重み
+    // 動く部品 (flight.h の Part と同じ並び・104 バイト)。W は信号 (縦・横・転・傾き・加速・減速・撃つ・回避・常に 1・砲台の横・縦・砲身 A/B の揺れ・ゴミの口) の重み
     [StructLayout(LayoutKind.Sequential)]
     internal struct Part
     {
@@ -79,6 +81,9 @@ internal static unsafe class FlightNative
     internal static delegate* unmanaged[Cdecl]<IntPtr, float*, float, void> Explode;
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, Part*, int, int*, int, int> Parts;
     internal static delegate* unmanaged[Cdecl]<int> PartSize;
+    internal static delegate* unmanaged[Cdecl]<IntPtr, int, int, float, void> Aux;
+    internal static delegate* unmanaged[Cdecl]<IntPtr, int, int, float, int> Turret;
+    internal static delegate* unmanaged[Cdecl]<IntPtr, int, int> Garbage;
 
     private static int _state; // 0 = 未 / 1 = 使える / 2 = 使えない
 
@@ -102,6 +107,9 @@ internal static unsafe class FlightNative
             Explode = (delegate* unmanaged[Cdecl]<IntPtr, float*, float, void>)Need("mrp_flt_explode");
             Parts = (delegate* unmanaged[Cdecl]<IntPtr, int, Part*, int, int*, int, int>)Need("mrp_flt_parts");
             PartSize = (delegate* unmanaged[Cdecl]<int>)Need("mrp_flt_part_size");
+            Aux = (delegate* unmanaged[Cdecl]<IntPtr, int, int, float, void>)Need("mrp_flt_aux");
+            Turret = (delegate* unmanaged[Cdecl]<IntPtr, int, int, float, int>)Need("mrp_flt_turret");
+            Garbage = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)Need("mrp_flt_garbage");
             // 構造体の大きさが C++ と違えば口を開けない (片方だけ欄を足した時に壊れた値で動かさない)
             int cs = Size(), ms = sizeof(FrameArgs);
             if (cs != ms) throw new InvalidOperationException($"FrameArgs size C++ {cs} != C# {ms}");

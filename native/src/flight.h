@@ -37,7 +37,8 @@ enum Param
 };
 
 // 印 (Blender の空のオブジェクトから)。kind = 砲口・噴射口・区画の中心
-enum MarkerKind { MkMuzzle = 1, MkEngine = 2, MkSector = 3 };
+// 砲台の砲口 (id = 砲身の番号・本編の武器庫の砲台と同じく 1 発ずつ交互に撃つ)・ゴミを捨てる口 (向き = 捨てる向き)
+enum MarkerKind { MkMuzzle = 1, MkEngine = 2, MkSector = 3, MkTurret = 4, MkHatch = 5 };
 
 // 出来事 (C# へ返す)
 enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5 };
@@ -46,7 +47,10 @@ struct Sphere { float c[3]; float r; int32_t sector; };
 struct Marker { int32_t kind, id; float p[3]; float d[3]; };
 
 // 動く部品の信号 (Part.w の並び)。値は -1..1 (加速・減速・撃った揺れは 0..1)
-enum Signal { SgPitch, SgYaw, SgRoll, SgBank, SgBoost, SgBrake, SgFire, SgDodge, SgOne, SgCount };
+// 砲台の向き (横・縦)・砲身ごとの撃った揺れ (0..1)・ゴミの口の開き (0..1) は船の中の出来事 (本編の船のタスク) から C# が決める (Ship.aux)
+enum Signal { SgPitch, SgYaw, SgRoll, SgBank, SgBoost, SgBrake, SgFire, SgDodge, SgOne, SgAimYaw, SgAimPitch, SgShotA, SgShotB, SgHatch, SgCount };
+// Ship.aux の並び (mrp_flt_aux の which)
+enum Aux { AxAimYaw, AxAimPitch, AxHatch, AuxCount };
 // 動き方: 軸の周りに回す (度)・軸の点を中心に大きさを変える (0..1)・軸の向きへずらす
 enum PartMode { PmRotate = 0, PmScale = 1, PmSlide = 2 };
 
@@ -86,10 +90,13 @@ struct Ship
     float sig[SgCount];          // 部品を動かす信号 (刻みごと)
     float partV[MaxParts];       // 部品の今の値 (信号を追った後)
     float firePulse;             // 撃った揺れ (撃つと 1・すぐ減る)
+    float aux[AuxCount];         // 船の中から決める部品の目標 (砲台の向き・ゴミの口)
+    float shotPulse[2];          // 砲台の砲身ごとの撃った揺れ
     float prevQ[4]; int32_t prevInit; // 遠くの船の回る速さを向きの差から出す
 };
 
-struct Bolt { float p[3], v[3]; float age, life; int32_t owner, alive, mine; float dmg; };
+// kind 0 = 戦いの弾・1 = 砲台が小惑星を撃つ光線 (船に当たらず、届いた所で小惑星が砕ける)
+struct Bolt { float p[3], v[3]; float age, life; int32_t owner, alive, mine; float dmg; int32_t kind; };
 
 struct Event { int32_t kind, a, b, c; float x, y, z, f; };
 
