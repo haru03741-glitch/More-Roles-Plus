@@ -43,6 +43,7 @@ internal static unsafe class Arena
     private static float _plumeLen = -1f;
     private static float FxClamp01(float v) => v < 0 ? 0 : (v > 1 ? 1 : v);
     private static bool _hudHidden;
+    private static bool _hudWaitLogged;
     private static int _flashId, _partBaseId, _partsId;
     // 動く部品の姿 (C++ がこの il2cpp の配列の中身へ直接書き、フレームに 1 回シェーダの global の配列へ渡す)
     private static Il2CppStructArray<Vector4> _partArr;
@@ -98,6 +99,7 @@ internal static unsafe class Arena
         _world = IntPtr.Zero;
         Free();
         HideHud(false);
+        _hudWaitLogged = false;
         for (int k = 0; k < ShipT.Length; k++) { ShipT[k] = null; ShipR[k] = null; }
         Array.Clear(Plumes);
         Array.Fill(PlumePart, -1);
@@ -393,11 +395,25 @@ internal static unsafe class Arena
         return go.transform;
     }
 
+    internal static void HudReshown() => _hudHidden = false;
+
     private static void HideHud(bool hide)
     {
         var hud = Vanilla.Hud;
         if (!hud) return;
-        if (hide && !_hudHidden) { hud.SetHudActive(false); _hudHidden = true; }
+        if (hide && !_hudHidden)
+        {
+            // 本編の SetHudActive(bool) は自分の役職を読む。試合が始まった直後は役職がまだ無く、本編の中で落ちる
+            // (Android で入った瞬間に実測)。役職が付くまで毎フレーム試す (Tick)
+            var lp = PlayerControl.LocalPlayer;
+            if (!lp || lp.Data == null || !lp.Data.Role)
+            {
+                if (!_hudWaitLogged) { _hudWaitLogged = true; Plugin.Logger.LogInfo("flight: hud hide waits for role"); }
+                return;
+            }
+            hud.SetHudActive(false);
+            _hudHidden = true;
+        }
         else if (!hide && _hudHidden)
         {
             _hudHidden = false;
@@ -410,6 +426,7 @@ internal static unsafe class Arena
     {
         if (!Active) return;
         if (MeetingHud.Instance || !ShipStatus.Instance || !PlayerControl.LocalPlayer || _world == IntPtr.Zero) { Exit(); return; }
+        if (!_hudHidden) HideHud(true);
         var input = FlightInput.Read(out bool leave);
         if (leave) { Exit(); return; }
 
@@ -620,5 +637,15 @@ internal static unsafe class Arena
             _partArr[i + 1] = new Vector4(0, 0, 0, 1);
         }
         Shader.SetGlobalVectorArray(_partsId, _partArr);
+    }
+}
+
+// 本編は試合の始まりの紹介が終わる時などに HUD を出し直す。3D の場面の間に出し直されたら、次のフレームでまた隠す
+[HarmonyLib.HarmonyPatch(typeof(HudManager), nameof(HudManager.SetHudActive), typeof(PlayerControl), typeof(RoleBehaviour), typeof(bool))]
+internal static class FlightHudReshowPatch
+{
+    public static void Postfix(bool isActive)
+    {
+        if (isActive && Arena.Active) Arena.HudReshown();
     }
 }

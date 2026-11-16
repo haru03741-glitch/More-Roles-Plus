@@ -114,7 +114,8 @@ internal static class SelectSpawn
         mg.Begin(null);
         if (one) KeepOne(mg);
         var hud = Vanilla.Hud;
-        if (hud) { hud.SetHudActive(false); _hudHidden = true; }
+        // 本編の SetHudActive(bool) は自分の役職を読むので、役職が付く前 (試合の始まりの直後) には呼ばない
+        if (hud && PlayerControl.LocalPlayer && PlayerControl.LocalPlayer.Data != null && PlayerControl.LocalPlayer.Data.Role) { hud.SetHudActive(false); _hudHidden = true; }
         // 本編は名前 (StringNames) から字を書き、ボタンの並びも入れ替えるので、ボタンの絵がどの部屋の物かで名前を書き直す
         foreach (var button in mg.LocationButtons)
         {
