@@ -7,7 +7,8 @@
 // 頂点は 8 ビットに詰めてある: NORMAL = 陰の法線 xyz + 材質の番号 w (番号 / 127)・TEXCOORD1 = 縁取りを押し出す向き xyz
 // (長さ = 太さの割合。細い部品の縁取りを細くする) + 部品の番号 w (番号 / 127)。
 // 材質の番号: 0 = 無地 / 1 = 外板 (継ぎ目と点検口) / 2 = 細かい塗装 / 3 = 耐熱タイル / 4 = 放熱板 /
-// 5 = 金色の断熱材 (しわの照り) / 6 = 太陽電池 / 7 = 金属 / 8 = 窓のガラス / 9 = 光る物。
+// 5 = 金色の断熱材 (しわの照り) / 6 = 太陽電池 / 7 = 金属 / 8 = 窓のガラス / 9 = 光る物 /
+// 10 = 装甲帯 (縦のヘアラインの厚い板・継ぎ目を押さえる帯金とボルト・横に長く伸びる照り)。
 // 番号に 16 を足した面は、投影でなく頂点の TEXCOORD2 (模様の座標 × 1/128) で模様を描く (船体の丸い肩: 縁に沿って巻く座標)。
 // その座標は一周 U_PERIOD で戻るので、板やタイルの番号は一周の個数で折り返して、戻った所で模様をつなげる。
 // 模様は部品が動く前の位置 (形の座標) で描くので、動く部品に貼り付いたまま動く。
@@ -74,6 +75,10 @@ Shader "MRP/FlightToon"
             #define PANEL_W 3.4
             #define PANEL_H 2.1
             #define TILE 0.62
+            #define BELT_L 1.7     // 装甲帯の板の長さ (外板の板の半分・一周 62 枚)
+            #define BELT_C 2.4     // 装甲帯の段の高さ (船体の帯の壁では、段の継ぎ目が窓のすぐ下とすぐ上に来る)
+            #define STRAP 0.13     // 段の継ぎ目を押さえる帯金の幅の半分
+            #define BOLT 0.425     // 帯金のボルトの間隔 (一周 248 本)
 
             struct appdata { float4 vertex : POSITION; float4 normal : NORMAL; fixed4 color : COLOR; float4 smooth : TEXCOORD1; float2 uv : TEXCOORD2; };
             struct v2f
@@ -217,6 +222,38 @@ Shader "MRP/FlightToon"
                 return plate * (0.012 + 0.014 * h1 + dot(f - 0.5, float2(h2, h3) - 0.5) * 0.03);
             }
 
+            // 装甲帯の板: 段ごとに半枚ずらす。xy = 板の番号 (一周で折り返し済み)・zw = 板の中の位置 (0..1)・
+            // 段の継ぎ目からの縦の距離は BeltSeam で
+            float4 BeltCell(float2 p)
+            {
+                float2 uv = p / float2(BELT_L, BELT_C);
+                uv.x += frac(floor(uv.y) * 0.5);
+                return float4(WrapId(floor(uv), U_PERIOD / BELT_L), frac(uv));
+            }
+
+            float BeltSeam(float y) { return (frac(y / BELT_C + 0.5) - 0.5) * BELT_C; }
+
+            // 装甲帯の凹凸の高さ (形の単位): 板は縁を面取りして浮き、1 枚ずつ少し傾く。
+            // 段の継ぎ目の上に厚い帯金がかぶさり、その上下の縁寄りにボルトが互い違いに 2 列並ぶ
+            float ArmorH(float2 p)
+            {
+                float4 c = BeltCell(p);
+                float2 fe = min(c.zw, 1.0 - c.zw) * float2(BELT_L, BELT_C);
+                float h1 = Hash12(c.xy + 3.1), h2 = Hash12(c.xy + 17.7);
+                float hgt = smoothstep(0.0, 0.05, min(fe.x, fe.y)) * (0.025 + 0.01 * h1 + (c.z - 0.5) * (h2 - 0.5) * 0.03);
+                float dv = BeltSeam(p.y);
+                float se = STRAP - abs(dv);
+                if (se > -0.01)
+                {
+                    float strap = 0.05 + smoothstep(-0.01, 0.025, se) * 0.03;
+                    float bx = (frac(p.x / BOLT + (dv > 0.0 ? 0.5 : 0.0)) - 0.5) * BOLT;
+                    float rb = length(float2(bx, abs(dv) - 0.07)) / 0.03;
+                    strap += sqrt(saturate(1.0 - rb * rb)) * 0.016;
+                    hgt = se > 0.0 ? strap : max(hgt, strap * saturate(1.0 + se / 0.01));
+                }
+                return hgt;
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 float3 n = normalize(i.n.xyz);
@@ -255,6 +292,7 @@ Shader "MRP/FlightToon"
                 float3 ns = n;   // 照りに使う法線 (しわは照りにだけ強く効かせる)
                 float3 n0 = n;   // 凹凸を足す前の法線 (縁の照り返しと浅い角度の映り込み。凹凸の急な斜面に線が出ないように)
                 float specAmt = 0.0, specLo = 0.955, specHi = 0.975, metal = 0.0, seamDark = 0.0, gloss = 0.0;
+                float aniso = 0.0;   // 縦のヘアラインの照り (横に長く伸びる) の強さ
 
                 if (mat < 0.5) { }
                 else if (mat < 1.5)
@@ -349,6 +387,54 @@ Shader "MRP/FlightToon"
                     specAmt = 0.5; specLo = 0.965; specHi = 0.985;
                     metal = 0.8;
                 }
+                else if (mat > 9.5 && mat < 10.5)
+                {
+                    // 装甲帯: 段ごとにずらした厚い板 (縦の継ぎ目)・段の継ぎ目にかぶさる帯金 (縁は塗装が擦れて地の金属が出る)・
+                    // 帯金のボルト・縦のヘアライン。線と濃淡は 1 画素より細くなると面積の割合へ寄せる
+                    float2 uv0 = uvp / float2(BELT_L, BELT_C);
+                    float2 bfw = max(fwidth(uv0), 1e-5);   // ずらす前の座標で測る (段の境で飛ばない)
+                    float4 cell = BeltCell(uvp);
+                    float h = Hash12(cell.xy + 3.1);
+                    float plateFar = 1.0 - smoothstep(0.15, 0.4, max(bfw.x, bfw.y));
+                    base *= 1.0 + (h - 0.5) * 0.08 * plateFar;
+                    float dv = BeltSeam(uvp.y);
+                    float fwv = max(fwp.y, 1e-5);
+                    // 帯金の面 (少し明るい・金属寄り)
+                    float onStrap = 1.0 - smoothstep(STRAP - fwv * 0.75, STRAP + fwv * 0.75, abs(dv));
+                    onStrap = lerp(onStrap, saturate(STRAP * 2.0 / BELT_C), smoothstep(STRAP, STRAP * 4.0, fwv));
+                    // 板の縦の継ぎ目 (帯金の下には出ない)
+                    float joint = GridLineFw(float2(uv0.x + frac(floor(uv0.y) * 0.5), 0.5), float2(0.006, 0.0), bfw) * (1.0 - onStrap);
+                    // 帯金の縁の擦れ (細い明るい線・遠くでは面積の割合)
+                    const float wl = 0.014;
+                    float edge = 1.0 - smoothstep(wl, wl + fwv * 1.5, abs(abs(dv) - STRAP + wl));
+                    edge = lerp(edge, wl * 2.0 * 2.0 / BELT_C, smoothstep(wl, wl * 4.0, fwv));
+                    // ボルトの頭 (鋼の灰・寄った時だけ)
+                    float bx = (frac(uvp.x / BOLT + (dv > 0.0 ? 0.5 : 0.0)) - 0.5) * BOLT;
+                    float bolt = (1.0 - smoothstep(0.024, 0.024 + max(fwp.x, fwv) * 1.5, length(float2(bx, abs(dv) - 0.07)))) * onStrap;
+                    bolt *= 1.0 - smoothstep(0.02, 0.06, max(fwp.x, fwv));
+                    // 縦のヘアライン (1 本ずつ明るさが違う・線が 1 画素より細くなると平均へ)
+                    float hx = uvp.x * 70.0;
+                    float hair = (Hash12(float2(floor(hx), floor(uvp.y / BELT_C) + 5.3)) - 0.5) * (1.0 - smoothstep(0.3, 0.9, fwidth(hx)));
+                    base *= (1.0 + hair * 0.07) * (1.0 + onStrap * 0.1);
+                    base = lerp(base, float3(0.55, 0.6, 0.7), edge * 0.55 + bolt * 0.6);
+                    seamDark = joint * 0.5;
+                    if (tiltAmt > 0.0)
+                    {
+                        // 板の傾き (ArmorH の傾きの項と同じ) と、寄った時は面取り・帯金・ボルトの凹凸
+                        float2 gr = float2((Hash12(cell.xy + 17.7) - 0.5) * 0.03 / BELT_L, 0.0) * (1.0 - onStrap);
+                        if (near > 0.0)
+                        {
+                            const float eps = 0.008;
+                            float h0 = ArmorH(uvp);
+                            float2 grF = float2(ArmorH(uvp + float2(eps, 0)) - h0, ArmorH(uvp + float2(0, eps)) - h0) / eps;
+                            gr = lerp(gr, grF, near);
+                        }
+                        n = normalize(n + mul((float3x3)unity_ObjectToWorld, -(gr.x * tu + gr.y * tv) * tiltAmt));
+                        ns = n;
+                    }
+                    metal = 0.3 + onStrap * 0.2;
+                    aniso = 1.0 - bolt;
+                }
 
                 float ndl = dot(n, l);
                 // 3 段: 明・中・暗 (段の境は少しだけぼかす)
@@ -384,6 +470,22 @@ Shader "MRP/FlightToon"
                     float fr = pow(1.0 - ndv, 5.0);
                     float sky = smoothstep(-0.5, 1.0, dot(r, l));
                     c += fr * gloss * lerp(_MrpFltRim.rgb * 0.25, float3(0.75, 0.8, 0.9), sky * 0.5) * 0.35;
+                }
+                // 縦のヘアラインの照り: 溝と直角 (横) へは広く、溝に沿って (縦) は狭く散るので、横に長い光の帯になる。
+                // 帯は光と目の向きで決まり、船が回ると帯の上を滑る。遠くでも面の性質なので消えない
+                if (aniso > 0.0)
+                {
+                    float3 tw = mul((float3x3)unity_ObjectToWorld, tv);
+                    tw -= ns * dot(tw, ns);
+                    if (dot(tw, tw) > 1e-12)
+                    {
+                        tw = normalize(tw);
+                        float3 bw = cross(ns, tw);
+                        float ht = dot(h, tw), hb = dot(h, bw), hn = saturate(dot(h, ns));
+                        float ex = (ht * ht * 500.0 + hb * hb * 10.0) / max(1.0 - hn * hn, 1e-4);
+                        float glint = pow(hn, min(ex, 2000.0)) * 0.45 + pow(hn, min(ex * 0.15, 400.0)) * 0.08;
+                        c += glint * aniso * saturate(ndl * 2.0 + 0.2) * float3(0.82, 0.88, 1.0);
+                    }
                 }
                 // 光る所 (a < 1) は陰を付けず明るく
                 float glow = 1.0 - i.color.a;
