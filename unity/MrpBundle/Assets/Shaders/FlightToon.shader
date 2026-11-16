@@ -92,9 +92,9 @@ Shader "MRP/FlightToon"
                 // 縁の照り返し (光の反対側の縁を空の色で)
                 float rim = pow(1.0 - saturate(dot(n, vdir)), 3.0);
                 c += _MrpFltRim.rgb * _MrpFltRim.a * rim * (1.0 - lit * 0.6);
-                // 照り (金属の光沢を段で)
+                // 照り (金属と断熱材だけ・つや w が 0 の塗装した外板には付けない。広い面に付けると斑に見える)
                 float3 h = normalize(l + vdir);
-                c += step(0.985, dot(n, h)) * lit * 0.14 * i.n.w;
+                c += smoothstep(0.955, 0.975, dot(n, h)) * lit * 0.2 * i.n.w;
                 // 光る所 (a < 1) は陰を付けず明るく
                 float glow = 1.0 - i.color.a;
                 c = lerp(c, base * (1.0 + glow * 0.9), saturate(glow * 3.0));
