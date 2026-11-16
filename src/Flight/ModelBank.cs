@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
@@ -11,6 +10,7 @@ namespace MoreRolesPlus.Flight;
 
 // 3D の艦隊戦の船の形 (.mrpm・tools/make-flight-models.py が書く) を読み、Mesh と当たりの球・印にする。
 // 頂点は配列に詰め替えずに、ファイルの並びのまま頂点バッファへ 1 回で書く (Mesh.vertices などの配列の受け渡しを通らない)。
+// 中身が同じ頂点は書き出しの時に 1 つにまとめてあり、面は 16 ビットの添字で引く。
 // 頂点 = 位置 f32x3・面の法線 f32x3・色 u8x4・縁取り用のなめらかな法線 f32x3 + 動く部品の番号 f32 (TEXCOORD1・0 = 船体・k = 部品 k-1) の 44 バイト
 internal static unsafe class ModelBank
 {
@@ -39,6 +39,7 @@ internal static unsafe class ModelBank
 
     private static Model Load(string name)
     {
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         byte[] data;
         using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream($"MoreRolesPlus.Resources.Flight.{name}.mrpm"))
         {
@@ -50,28 +51,29 @@ internal static unsafe class ModelBank
         int o = 0;
         uint Magic() { uint v = BitConverter.ToUInt32(data, o); o += 4; return v; }
         int I() { int v = BitConverter.ToInt32(data, o); o += 4; return v; }
-        if (Magic() != 0x4D50524D || I() != 2) { Plugin.Logger.LogError($"flight model bad header: {name}"); return null; }
+        if (Magic() != 0x4D50524D || I() != 3) { Plugin.Logger.LogError($"flight model bad header: {name}"); return null; }
         int vn = I(), inN = I();
+        float F() { float v = BitConverter.ToSingle(data, o); o += 4; return v; }
+        // 範囲 (Mesh の bounds と当たりの粗い判定の確かめ用) は書き出しの時に測ってある
+        Vector3 mn = new(F(), F(), F()), mx = new(F(), F(), F());
         int vOff = o;
         o += vn * Stride;
         int iOff = o;
-        o += inN * 4;
+        // 添字は 16 ビット・全体で 4 バイトの倍数に埋めてある
+        o += (inN * 2 + 3) & ~3;
+        if (vn <= 0 || vn > 65535 || inN <= 0 || inN % 3 != 0 || o + 4 > data.Length) { Plugin.Logger.LogError($"flight model bad counts: {name}"); return null; }
         var m = new Model();
-        // 範囲 (Mesh の bounds と当たりの粗い判定の確かめ用)
-        Vector3 mn = new(float.MaxValue, float.MaxValue, float.MaxValue), mx = -mn;
         fixed (byte* p = data)
         {
             // 部品の数は頂点の後ろにあるので先に読む (頂点の部品番号がそれを超えるとシェーダが配列の外を引く)
-            int partsAt = iOff + inN * 4;
+            int partsAt = o;
             partsAt += 4 + BitConverter.ToInt32(data, partsAt) * 20;
             partsAt += 4 + BitConverter.ToInt32(data, partsAt) * 32;
             int partN = BitConverter.ToInt32(data, partsAt);
             for (int i = 0; i < vn; i++)
             {
-                float* f = (float*)(p + vOff + i * Stride);
-                mn = Vector3.Min(mn, new Vector3(f[0], f[1], f[2]));
-                mx = Vector3.Max(mx, new Vector3(f[0], f[1], f[2]));
-                if (f[10] < 0 || f[10] > partN) { Plugin.Logger.LogError($"flight model {name}: vertex part {f[10]} > {partN}"); return null; }
+                float part = ((float*)(p + vOff + i * Stride))[10];
+                if (part < 0 || part > partN) { Plugin.Logger.LogError($"flight model {name}: vertex part {part} > {partN}"); return null; }
             }
             var mesh = new Mesh { name = "MrpFlight_" + name };
             mesh.hideFlags |= HideFlags.DontUnloadUnusedAsset;
@@ -84,7 +86,12 @@ internal static unsafe class ModelBank
             mesh.InternalSetVertexBufferData(0, (IntPtr)(p + vOff), 0, 0, vn, Stride, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
             // 添字は一度だけなので Mesh.triangles で渡す (添字バッファの直書きと SetSubMesh は削られた本編に無いことがある)
             var tri = new int[inN];
-            Buffer.MemoryCopy(p + iOff, Unsafe.AsPointer(ref tri[0]), inN * 4L, inN * 4L);
+            ushort* ix = (ushort*)(p + iOff);
+            for (int i = 0; i < inN; i++)
+            {
+                if (ix[i] >= vn) { Plugin.Logger.LogError($"flight model {name}: index {ix[i]} >= {vn}"); return null; }
+                tri[i] = ix[i];
+            }
             mesh.triangles = tri;
             // 動く部品 (開く翼・回る板) が外へ出ても消えないよう、範囲を広めに取る
             mesh.bounds = new Bounds((mn + mx) * 0.5f, (mx - mn) * 1.4f);
@@ -119,7 +126,8 @@ internal static unsafe class ModelBank
             m.MarkerPart[i] = mp >= 0 && mp < pn ? mp : -1;
         }
         m.Min = mn; m.Max = mx;
-        Plugin.Logger.LogInfo($"flight model {name}: verts={vn} tris={inN / 3} spheres={sn} markers={kn} parts={pn} size={mx - mn}");
+        double loadMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        Plugin.Logger.LogInfo($"flight model {name}: verts={vn} tris={inN / 3} spheres={sn} markers={kn} parts={pn} size={mx - mn} bytes={data.Length} load={loadMs:F2}ms");
         return m;
     }
 }
