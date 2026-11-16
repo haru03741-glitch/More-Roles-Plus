@@ -19,6 +19,10 @@ internal static unsafe class Arena
     private const int MaxEvents = 128;
 
     internal static bool Active { get; private set; }
+    private static int _exitFrame = -10;
+    // 3D の場面がマウスとキーを使っている (出た直後のフレームも含む・Esc で出た同じ押下を本編のメニューが拾わないように)。
+    // 役職や地形の入力はこれが真の間は読まない
+    internal static bool TakesInput => Active || Time.frameCount - _exitFrame <= 1;
     internal static string Stats = "";
     internal static float ViewYaw, ViewPitch, ViewDist;
     internal static Vector3 ViewAt; // 確かめ用の視点が見る点 (船の中の座標)
@@ -41,7 +45,7 @@ internal static unsafe class Arena
     private static int _fxPrev;
     private static float* _shipOut, _camOut, _hud;
     private static FlightNative.Event* _ev;
-    private static int _boltPrev, _shipN, _local, _hits, _kills;
+    private static int _boltPrev, _shipN, _local, _hits, _kills, _grazes, _bigShots;
     private static float _fov, _statT, _retNear = 60f, _retFar = 120f;
     private static int _idleFrames;
     private static float _plumeLen = -1f;
@@ -84,7 +88,7 @@ internal static unsafe class Arena
         }
         HideHud(true);
         Active = true;
-        _hits = _kills = 0;
+        _hits = _kills = _grazes = _bigShots = 0;
         Plugin.Logger.LogInfo($"flight: enter targets={targets}");
         return "ok";
     }
@@ -94,6 +98,7 @@ internal static unsafe class Arena
     {
         bool was = Active;
         Active = false;
+        if (was) _exitFrame = Time.frameCount;
         if (_root) UnityEngine.Object.Destroy(_root);
         _root = null;
         if (_boltMesh) UnityEngine.Object.Destroy(_boltMesh);
@@ -111,6 +116,42 @@ internal static unsafe class Arena
         _plumeLen = -1f;
         _shipN = 0;
         if (was) Plugin.Logger.LogInfo("flight: exit");
+    }
+
+    // 確かめ用: 的 1 から自分の船へ、横に side だけずれて抜ける弾を撃つ (間に合う距離から・回避の確かめ)
+    internal static bool DebugShoot(float side)
+    {
+        if (!Active || _world == IntPtr.Zero) return false;
+        float* o = stackalloc float[10];
+        FlightNative.Get(_world, _local, o);
+        var p = new Vector3(o[0], o[1], o[2]);
+        var v = new Vector3(o[3], o[4], o[5]);
+        var q = new Quaternion(o[6], o[7], o[8], o[9]);
+        Vector3 fwd = q * Vector3.forward, right = q * Vector3.right;
+        float bs = FlightParams.Values[FlightParams.Find("boltSpeed")];
+        // 船と同じ速さで流れる弾にすると、船から見て真っすぐ後ろへ抜ける (横のずれ = side)
+        var from = p + fwd * 160f + right * side;
+        var vel = v - fwd * bs;
+        float* pp = stackalloc float[3] { from.x, from.y, from.z };
+        float* vv = stackalloc float[3] { vel.x, vel.y, vel.z };
+        FlightNative.Bolt(_world, _shipN > 1 ? 1 : 0, pp, vv, 1.5f, FlightParams.Values[FlightParams.Find("boltDamage")]);
+        return true;
+    }
+
+    // 確かめ用: 的 1 を自分の真後ろ (dist) へ置き直し、同じ向きで追わせる
+    internal static bool DebugTail(float dist)
+    {
+        if (!Active || _world == IntPtr.Zero || _shipN < 2) return false;
+        float* o = stackalloc float[10];
+        FlightNative.Get(_world, _local, o);
+        var p = new Vector3(o[0], o[1], o[2]);
+        var q = new Quaternion(o[6], o[7], o[8], o[9]);
+        float* pp = stackalloc float[3];
+        var at = p - q * Vector3.forward * dist;
+        pp[0] = at.x; pp[1] = at.y; pp[2] = at.z;
+        float* qq = stackalloc float[4] { q.x, q.y, q.z, q.w };
+        FlightNative.Spawn(_world, 1, ShipModel[1], 1, 0, pp, qq, Hp[1] > 0 ? Hp[1] : 160f);
+        return true;
     }
 
     internal static bool DebugExplode()
@@ -541,7 +582,7 @@ internal static unsafe class Arena
         {
             _statT = 0;
             float* lo = _shipOut + _local * 8;
-            Stats = $"ship=({lo[0]:0.0},{lo[1]:0.0},{lo[2]:0.0}) q=({lo[3]:0.000},{lo[4]:0.000},{lo[5]:0.000},{lo[6]:0.000}) speed={_hud[0]:0} boost={_hud[1]:0.00} hp={_hud[2]:0.00} bolts={a.BoltN} steps={a.Steps} idle={_idleFrames} hits={_hits} kills={_kills} cam={cp} fov={_fov:0}";
+            Stats = $"ship=({lo[0]:0.0},{lo[1]:0.0},{lo[2]:0.0}) q=({lo[3]:0.000},{lo[4]:0.000},{lo[5]:0.000},{lo[6]:0.000}) speed={_hud[0]:0} boost={_hud[1]:0.00} hp={_hud[2]:0.00} bolts={a.BoltN} steps={a.Steps} idle={_idleFrames} hits={_hits} kills={_kills} charge={_hud[6]:0.00} tailed={_hud[7]:0} grazes={_grazes} big={_bigShots} cam={cp} fov={_fov:0}";
         }
     }
 
@@ -550,6 +591,8 @@ internal static unsafe class Arena
         for (int i = 0; i < n; i++)
         {
             var e = _ev[i];
+            if (e.Kind == (int)FlightNative.Ev.Graze) { if (e.A == _local) _grazes++; continue; }
+            if (e.Kind == (int)FlightNative.Ev.Fire) { if (e.C == 1 && e.A == _local) _bigShots++; continue; }
             if (e.Kind != (int)FlightNative.Ev.Hit) continue;
             int target = e.B;
             bool mine = (e.C & 0x10000) != 0;

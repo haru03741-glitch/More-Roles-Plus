@@ -8,7 +8,7 @@ internal static class FlightCommands
 {
     internal static void Register()
     {
-        TestBridge.Register("flight", "[enter [的の数] | exit | stat | set <名前> <値> | boom | params | view <yaw> <pitch> <距離> [見る点 x y z] | input <pitch> <yaw> <roll> <fire> <boost> <brake> <秒> | dodge <-1|1> | uturn | ship [weapon|hatch|shields|rpcweapon|rpchatch|rpcshields]] 3D の艦隊戦に一人で入る (開発用)", (line, reply) =>
+        TestBridge.Register("flight", "[enter [的の数] | exit | stat | set <名前> <値> | boom | params | view <yaw> <pitch> <距離> [見る点 x y z] | input <pitch> <yaw> <roll> <fire> <boost> <brake> <秒> | dodge <-1|1> | uturn | shoot [横のずれ] | tail [距離] | ship [weapon|hatch|shields|rpcweapon|rpchatch|rpcshields]] 3D の艦隊戦に一人で入る (開発用)", (line, reply) =>
         {
             string[] args = line.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
             string sub = args.Length > 0 ? args[0] : "stat";
@@ -70,6 +70,18 @@ internal static class FlightCommands
                     if (FlightInput.ForcedT <= 0) FlightInput.ForcedT = 0.05f;
                     reply("OK flight uturn");
                     return;
+                case "shoot":
+                    {
+                        float side = args.Length > 1 && float.TryParse(args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float sd) ? sd : 6f;
+                        reply(Arena.DebugShoot(side) ? $"OK flight shoot {side}" : "ERR flight not active");
+                        return;
+                    }
+                case "tail":
+                    {
+                        float d = args.Length > 1 && float.TryParse(args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float dd) ? dd : 90f;
+                        reply(Arena.DebugTail(d) ? $"OK flight tail {d}" : "ERR flight no target");
+                        return;
+                    }
                 case "ship":
                     {
                         // ship [weapon|hatch|shields|rpcweapon|rpchatch|rpcshields]: 本編の船の外の見た目 (砲台・ゴミの口・シールドの光) の位置を出し、指定があれば本編の動きを起こす

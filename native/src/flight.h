@@ -33,6 +33,7 @@ enum Param
     PShakeHit, PShakeHurt, PShakeDecay, PInterpDelay, PExtrapMax,
     PUTurnTime, PUTurnCool, PConverge,
     PDustCell, PDustStreak, PDustAlpha,
+    PChargeTime, PChargeDelay, PChargeDamage, PChargeScale, PChargeRecover, PGrazeDist, PTailDist, PTailCone,
     ParamCount
 };
 
@@ -41,7 +42,8 @@ enum Param
 enum MarkerKind { MkMuzzle = 1, MkEngine = 2, MkSector = 3, MkTurret = 4, MkHatch = 5 };
 
 // 出来事 (C# へ返す)
-enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5 };
+// EvFire の c = 1 は溜め撃ち・EvGraze = 回避の最中に敵の弾がすぐ横を抜けた (溜めが満ちる)
+enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5, EvGraze = 6 };
 
 struct Sphere { float c[3]; float r; int32_t sector; };
 struct Marker { int32_t kind, id; float p[3]; float d[3]; };
@@ -83,6 +85,9 @@ struct Ship
     float boost, boostWait, fireCd;
     float dodgeT, dodgeCd; int32_t dodgeDir;
     float uturnT, uturnCd; float uturnQ0[4];
+    float charge, chargeWait;    // 溜め撃ち (撃たずにいると 0→1 に溜まる・撃つと 0 から待ち直し)
+    int32_t firePrev, grazed, tailed; // 撃つの前の刻みの押下・この回避で溜めが満ちたか・後ろに敵が付いているか
+    int32_t chargeBurst;         // 次の刻みで溜めが満ちた光をはじけさせる
     float hp, hpMax;
     int32_t alive, model, team, remote, muzzleNext;
     Snap snap[MaxSnaps]; int32_t snapN;
@@ -96,7 +101,8 @@ struct Ship
 };
 
 // kind 0 = 戦いの弾・1 = 砲台が小惑星を撃つ光線 (船に当たらず、届いた所で小惑星が砕ける)
-struct Bolt { float p[3], v[3]; float age, life; int32_t owner, alive, mine; float dmg; int32_t kind; };
+// size = 見た目と当たりの太さの倍率 (溜め撃ちは大きい)
+struct Bolt { float p[3], v[3]; float age, life; int32_t owner, alive, mine; float dmg; int32_t kind; float size; };
 
 struct Event { int32_t kind, a, b, c; float x, y, z, f; };
 
@@ -146,7 +152,7 @@ struct FrameArgs
     int32_t boltN;          // 書いた発数
     Event* evOut;           // 出来事
     int32_t evCap, evN;
-    float* hud;             // 速さ・加速の残り・耐久・回避の待ち・宙返りの待ち・揺れ
+    float* hud;             // 速さ・加速の残り・耐久・回避の待ち・宙返りの待ち・揺れ・溜め・後ろに付かれた
     int32_t steps;          // 回した固定刻みの数
     uint8_t* fxVerts;       // 火花・炎・煙・塵の頂点 (弾と同じ形・1 枚 4 頂点)
     int32_t fxCap, fxPrev, fxN;

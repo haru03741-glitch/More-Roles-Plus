@@ -127,7 +127,7 @@ void Emit(World* w, int kind, int a, int b, int c, V3 p, float f)
     w->ev[w->evN++] = { kind, a, b, c, p.x, p.y, p.z, f };
 }
 
-void SpawnBolt(World* w, int owner, V3 p, V3 v, float life, float dmg, int mine, int kind = 0)
+void SpawnBolt(World* w, int owner, V3 p, V3 v, float life, float dmg, int mine, int kind = 0, float size = 1.0f)
 {
     // 輪の中で空いた所を探す (全部埋まっていれば一番古い所を上書き)
     int k = w->boltNext;
@@ -139,7 +139,7 @@ void SpawnBolt(World* w, int owner, V3 p, V3 v, float life, float dmg, int mine,
     w->boltNext = (k + 1) % MaxBolts;
     Bolt& b = w->bolt[k];
     st(b.p, p); st(b.v, v);
-    b.age = 0; b.life = life; b.owner = owner; b.alive = 1; b.mine = mine; b.dmg = dmg; b.kind = kind;
+    b.age = 0; b.life = life; b.owner = owner; b.alive = 1; b.mine = mine; b.dmg = dmg; b.kind = kind; b.size = size;
 }
 
 inline float rr(World* w, float a, float b) { return a + (b - a) * rnd(w); }
@@ -467,6 +467,60 @@ void StepParts(World* w, Ship& s, float dt)
     }
 }
 
+// 溜めの見た目 (主砲の砲口ごと): 溜まる間は周りから光の粒が吸い込まれ、満ちたら砲口が脈打って光り続ける
+void FxCharge(World* w, const Ship& s, V3 p, Q4 q, V3 v, bool burst)
+{
+    static const uint8_t in0[4] = { 120, 255, 220, 0 }, in1[4] = { 200, 255, 245, 0 };
+    static const uint8_t glow0[4] = { 235, 255, 250, 0 }, glow1[4] = { 110, 255, 210, 0 };
+    const Model& m = w->model[s.model];
+    bool full = s.charge >= 1;
+    if (!full && !burst && rnd(w) > 0.35f + 0.65f * s.charge) return;
+    Xf xf[MaxParts];
+    bool xfReady = false;
+    for (int i = 0; i < m.mkN; i++)
+    {
+        const Marker& mk = m.mk[i];
+        if (mk.kind != MkMuzzle || mk.id != 0) continue;
+        V3 lp = ld(mk.p);
+        int pi = m.mkPart[i];
+        if (pi >= 0 && pi < m.partN)
+        {
+            if (!xfReady) { PartXfs(w, s, xf); xfReady = true; }
+            lp = rot(xf[pi].q, lp * xf[pi].s) + xf[pi].t;
+        }
+        V3 mp = p + rot(q, lp);
+        if (burst)
+        {
+            // 満ちた瞬間: 砲口で一度大きくはじける (溜まったことを目の端でも分かるように)
+            Emit(w, 0, mp, v, 0.22f, 9.0f, 3.0f, 0, glow0, glow1);
+            for (int k = 0; k < 6; k++)
+                Emit(w, 1, mp, v + rdir(w) * rr(w, 25, 45), rr(w, 0.15f, 0.25f), 0.5f, 0.15f, 3.0f, glow0, in0);
+        }
+        if (full)
+        {
+            float pulse = 1.0f + 0.3f * sinf((float)w->time * 18.0f);
+            Emit(w, 0, mp, v, 0.06f, 3.6f * pulse, 3.0f * pulse, 0, glow0, glow1);
+        }
+        else
+        {
+            const float life = 0.18f;
+            V3 from = mp + rdir(w) * (3.5f + 4.0f * (1.0f - s.charge));
+            Emit(w, 0, from, v + (mp - from) * (1.0f / life), life, 0.8f, 0.3f, 0, in0, in1);
+        }
+    }
+}
+
+// 回避の最中に敵の弾がすぐ横を抜けた: 弾の向きに流れる白い筋と、抜けた所の短い閃き
+void FxGraze(World* w, V3 p, V3 boltV, V3 shipV)
+{
+    static const uint8_t flash0[4] = { 255, 255, 255, 0 }, flash1[4] = { 140, 255, 220, 0 };
+    static const uint8_t streak0[4] = { 230, 255, 250, 0 }, streak1[4] = { 90, 220, 200, 0 };
+    Emit(w, 0, p, shipV, 0.18f, 10.0f, 3.0f, 0, flash0, flash1);
+    V3 d = norm(boltV);
+    for (int i = 0; i < 16; i++)
+        Emit(w, 1, p + rdir(w) * 2.0f, shipV + norm(d + rdir(w) * 0.4f) * rr(w, 60, 130), rr(w, 0.2f, 0.4f), 0.8f, 0.2f, 2.5f, streak0, streak1);
+}
+
 void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
 {
     const float* P = w->prm;
@@ -493,16 +547,30 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
 
     s.uturnCd = s.uturnCd > 0 ? s.uturnCd - dt : 0;
     s.dodgeCd = s.dodgeCd > 0 ? s.dodgeCd - dt : 0;
-    if (in.uturn && s.uturnT <= 0 && s.uturnCd <= 0 && s.dodgeT <= 0)
+    // 後ろに敵が付いている (近くて真後ろ寄り) か。付かれている時の回避は宙返りになり、追ってくる相手へ向き直る
+    s.tailed = 0;
+    for (int k = 0; k < w->shipN; k++)
+    {
+        const Ship& o = w->ship[k];
+        if (k == idx || !o.alive || o.team == s.team) continue;
+        V3 rel = ld(o.p) - p;
+        float d = len(rel);
+        if (d > 1e-3f && d < P[PTailDist] && dot(rel, fwd) < -P[PTailCone] * d) { s.tailed = 1; break; }
+    }
+    int wantUTurn = in.uturn;
+    int wantDodge = in.dodge;
+    if (wantDodge && s.tailed && s.uturnCd <= 0) { wantUTurn = 1; wantDodge = 0; }
+    if (wantUTurn && s.uturnT <= 0 && s.uturnCd <= 0 && s.dodgeT <= 0)
     {
         s.uturnT = P[PUTurnTime];
         stq(s.uturnQ0, q);
         Emit(w, EvUTurn, idx, 0, 0, p, 0);
     }
-    if (in.dodge && s.dodgeT <= 0 && s.dodgeCd <= 0 && s.uturnT <= 0)
+    if (wantDodge && s.dodgeT <= 0 && s.dodgeCd <= 0 && s.uturnT <= 0)
     {
         s.dodgeT = P[PDodgeTime];
-        s.dodgeDir = in.dodge > 0 ? 1 : -1;
+        s.dodgeDir = wantDodge > 0 ? 1 : -1;
+        s.grazed = 0;
         s.dodgeCd = P[PDodgeCool];
         Emit(w, EvDodge, idx, s.dodgeDir, 0, p, 0);
     }
@@ -559,11 +627,30 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
     p = p + v * dt;
     st(s.p, p); st(s.v, v); stq(s.q, q);
 
-    // 撃つ: 砲口の印 (id 0 = 主砲) から全部同時に
+    // 溜め: 撃たずにいると少し待ってから溜まる。満ちた所で押した最初の 1 発が溜め撃ち (同じ砲口から太い弾)。
+    // 溜まり切る前に撃つと溜めは捨てる (連射を続けるか、手を止めて一撃を待つか)
     s.fireCd = s.fireCd > 0 ? s.fireCd - dt : 0;
+    bool press = in.fire && !s.firePrev;
+    s.firePrev = in.fire;
+    if (!in.fire && s.uturnT <= 0)
+    {
+        if (s.chargeWait > 0) s.chargeWait -= dt;
+        else if (s.charge < 1)
+        {
+            s.charge = P[PChargeTime] > 0 ? clampf(s.charge + dt / P[PChargeTime], 0, 1) : 1;
+            if (s.charge >= 1) s.chargeBurst = 1;
+        }
+    }
+    if (s.charge > 0) FxCharge(w, s, p, q, v, s.chargeBurst != 0);
+    s.chargeBurst = 0;
+    // 撃つ: 砲口の印 (id 0 = 主砲) から全部同時に
     if (in.fire && s.fireCd <= 0 && s.uturnT <= 0)
     {
-        s.fireCd = P[PBoltInterval];
+        bool big = press && s.charge >= 1;
+        s.fireCd = big ? P[PChargeRecover] : P[PBoltInterval];
+        s.charge = 0;
+        s.chargeWait = P[PChargeDelay];
+        float size = big ? P[PChargeScale] : 1.0f;
         const Model& m = w->model[s.model];
         int shots = 0;
         // 照準の線の上に船があれば、その距離へ集める (無ければ PConverge)。翼の先の 2 門が遠くの的の左右へ外れないように
@@ -582,6 +669,10 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
         Xf xf[MaxParts];
         PartXfs(w, s, xf);
         s.firePulse = 1;
+        int muzN = 0;
+        for (int i = 0; i < m.mkN; i++) if (m.mk[i].kind == MkMuzzle && m.mk[i].id == 0) muzN++;
+        // 溜め撃ちの威力は砲口の数で割る (砲口の多い船ほど強くならない)
+        float dmg = big ? P[PChargeDamage] / (float)(muzN > 0 ? muzN : 1) : P[PBoltDamage];
         for (int i = 0; i < m.mkN; i++)
         {
             const Marker& mk = m.mk[i];
@@ -594,14 +685,14 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
             // 砲口は離れて付いているので、照準の距離 (PConverge) の 1 点へ向けて撃つ
             V3 dir = conv > 1 ? norm(p + fwd * conv - mp, fwd) : norm(rot(q, ld_), fwd);
             V3 bv = dir * P[PBoltSpeed] + v;
-            SpawnBolt(w, idx, mp, bv, P[PBoltLife], P[PBoltDamage], 1);
-            Emit(w, EvFire, idx, i, 0, mp, 0);
+            SpawnBolt(w, idx, mp, bv, P[PBoltLife], dmg, 1, 0, size);
+            Emit(w, EvFire, idx, i, big ? 1 : 0, mp, 0);
             shots++;
         }
         if (shots == 0)
         {
-            SpawnBolt(w, idx, p + fwd * 2.0f, fwd * P[PBoltSpeed] + v, P[PBoltLife], P[PBoltDamage], 1);
-            Emit(w, EvFire, idx, -1, 0, p, 0);
+            SpawnBolt(w, idx, p + fwd * 2.0f, fwd * P[PBoltSpeed] + v, P[PBoltLife], dmg, 1, 0, size);
+            Emit(w, EvFire, idx, -1, big ? 1 : 0, p, 0);
         }
     }
 }
@@ -666,15 +757,30 @@ void StepBolts(World* w, int local, float dt)
         {
             Ship& s = w->ship[k];
             if (!s.alive || k == b.owner) continue;
-            if (s.dodgeT > 0) continue; // 横転の回避の間は弾を弾く
             const Model& m = w->model[s.model];
             V3 sp = ld(s.p);
-            if (SegSphere(a, e, sp, m.bound) < 0) continue;
+            if (s.dodgeT > 0)
+            {
+                // 横転の回避の間は弾を弾く。敵の弾がすぐ横を抜けたら溜めが満ちる (1 回の回避で 1 度だけ)
+                bool foe = b.owner < 0 || b.owner >= w->shipN || w->ship[b.owner].team != s.team;
+                if (foe && !s.grazed && SegSphere(a, e, sp, m.bound + w->prm[PGrazeDist]) >= 0)
+                {
+                    s.grazed = 1;
+                    s.charge = 1; s.chargeWait = 0; s.chargeBurst = 1;
+                    V3 gp = lerp(a, e, 0.5f);
+                    Emit(w, EvGraze, k, b.owner, 0, gp, 0);
+                    FxGraze(w, gp, ld(b.v), ld(s.v));
+                    if (k == local) w->shake += w->prm[PShakeHit];
+                }
+                continue;
+            }
+            float br = (b.size - 1.0f) * w->prm[PBoltWidth]; // 太い弾は当たりも太い
+            if (SegSphere(a, e, sp, m.bound + br) < 0) continue;
             Q4 sq = ldq(s.q);
             for (int j = 0; j < m.sphN; j++)
             {
                 V3 c = sp + rot(sq, ld(m.sph[j].c));
-                float t = SegSphere(a, e, c, m.sph[j].r);
+                float t = SegSphere(a, e, c, m.sph[j].r + br);
                 if (t >= 0 && t < best) { best = t; hitShip = k; hitSector = m.sph[j].sector; }
             }
         }
@@ -683,6 +789,7 @@ void StepBolts(World* w, int local, float dt)
             V3 hp = lerp(a, e, best);
             Emit(w, EvHit, b.owner, hitShip, hitSector | (b.mine ? 0x10000 : 0), hp, b.dmg);
             FxHit(w, hp, ld(b.v));
+            if (b.size > 1.5f) FxExplode(w, hp, 0.35f);
             if (hitShip == local) w->shake += w->prm[PShakeHurt];
             else if (b.owner == local) w->shake += w->prm[PShakeHit];
             b.alive = 0;
@@ -754,13 +861,14 @@ void WriteBolts(World* w, FrameArgs* a, V3 cam)
         V3 v = ld(b.v), p = ld(b.p) + v * w->acc;
         float sp = len(v);
         V3 dir = norm(v);
-        float L = P[PBoltLen];
+        float L = P[PBoltLen] * (b.size > 1 ? 0.5f + 0.5f * b.size : 1.0f);
         if (b.age * sp < L) L = b.age * sp + 0.2f;
         V3 tail = p - dir * L;
-        V3 side = norm(cross(dir, cam - p), v3(1, 0, 0)) * P[PBoltWidth];
+        V3 side = norm(cross(dir, cam - p), v3(1, 0, 0)) * (P[PBoltWidth] * b.size);
         const Ship& o = w->ship[b.owner < 0 ? 0 : b.owner];
         uint8_t col[4];
         if (b.kind == 1) { col[0] = 255; col[1] = 50; col[2] = 40; col[3] = 255; } // 本編の武器庫の砲台と同じ赤い光線
+        else if (b.size > 1.5f) { col[0] = 225; col[1] = 255; col[2] = 245; col[3] = 255; } // 溜め撃ちは芯が白く見える明るさ
         else if (o.team == 0) { col[0] = 120; col[1] = 255; col[2] = 200; col[3] = 255; }
         else { col[0] = 255; col[1] = 70; col[2] = 120; col[3] = 255; }
         V3 vs[4] = { tail - side, tail + side, p + side, p - side };
@@ -1066,4 +1174,6 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     a->hud[3] = w->prm[PDodgeCool] > 0 ? s.dodgeCd / w->prm[PDodgeCool] : 0;
     a->hud[4] = w->prm[PUTurnCool] > 0 ? s.uturnCd / w->prm[PUTurnCool] : 0;
     a->hud[5] = sh;
+    a->hud[6] = s.charge;
+    a->hud[7] = (float)s.tailed;
 }

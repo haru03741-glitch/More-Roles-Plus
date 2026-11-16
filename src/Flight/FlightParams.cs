@@ -18,6 +18,8 @@ internal static class FlightParams
         ("shakeHit", 0.12f), ("shakeHurt", 0.9f), ("shakeDecay", 7f), ("interpDelay", 0.12f), ("extrapMax", 0.35f),
         ("uturnTime", 1.25f), ("uturnCool", 2.5f), ("converge", 120f),
         ("dustCell", 180f), ("dustStreak", 0.06f), ("dustAlpha", 0.8f),
+        ("chargeTime", 1.1f), ("chargeDelay", 0.35f), ("chargeDamage", 48f), ("chargeScale", 4.5f), ("chargeRecover", 0.4f),
+        ("grazeDist", 10f), ("tailDist", 200f), ("tailCone", 0.75f),
     };
 
     internal static readonly float[] Values = MakeValues();
