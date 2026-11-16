@@ -4,6 +4,8 @@
 // 画面の上で同じ太さになるよう奥行き (w) を掛ける。遠いほど空の色へ寄せて奥行きを出す。
 // 動く部品 (翼・舵・噴射口など): 頂点の TEXCOORD1.w が部品の番号 (0 = 船体)。部品の姿は global の配列 _MrpFltParts に
 // 部品ごとに 2 つ (四元数・ずれ xyz と大きさ w) で入り、船ごとの始まりは _PartBase (-1 = 動かさない)。
+// 頂点は 8 ビットに詰めてある: NORMAL = 陰の法線 xyz + つや w (金属の照りの強さ)・TEXCOORD1 = 縁取りを押し出す向き xyz
+// (長さ = 太さの割合。細い部品の縁取りを細くする) + 部品の番号 w (番号 / 127)。
 Shader "MRP/FlightToon"
 {
     Properties
@@ -27,6 +29,7 @@ Shader "MRP/FlightToon"
     // 部品の動きを位置と向き (法線 2 本) に掛ける。返り値 = 部品の大きさ (縁取りの太さにも掛ける)
     float ApplyPart(float part, inout float4 pos, inout float3 n1, inout float3 n2)
     {
+        part = floor(part * 127.0 + 0.5);
         if (part < 0.5 || _PartBase < 0) return 1.0;
         int i = (int)(_PartBase + (part - 1.0) * 2.0 + 0.5);
         float4 q = _MrpFltParts[i];
@@ -58,16 +61,16 @@ Shader "MRP/FlightToon"
             float4 _MrpFltRim;     // rgb = 縁の照り返しの色・a = 強さ
             float _Flash;
 
-            struct appdata { float4 vertex : POSITION; float3 normal : NORMAL; fixed4 color : COLOR; float4 smooth : TEXCOORD1; };
-            struct v2f { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 wp : TEXCOORD1; fixed4 color : COLOR; };
+            struct appdata { float4 vertex : POSITION; float4 normal : NORMAL; fixed4 color : COLOR; float4 smooth : TEXCOORD1; };
+            struct v2f { float4 pos : SV_POSITION; float4 n : TEXCOORD0; float3 wp : TEXCOORD1; fixed4 color : COLOR; };
 
             v2f vert(appdata v)
             {
                 v2f o;
-                float3 dummy = v.smooth.xyz;
-                ApplyPart(v.smooth.w, v.vertex, v.normal, dummy);
+                float3 dummy = v.smooth.xyz, nrm = v.normal.xyz;
+                ApplyPart(v.smooth.w, v.vertex, nrm, dummy);
                 o.pos = UnityObjectToClipPos(v.vertex);
-                o.n = UnityObjectToWorldNormal(v.normal);
+                o.n = float4(UnityObjectToWorldNormal(nrm), v.normal.w);
                 o.wp = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.color = v.color;
                 return o;
@@ -75,7 +78,7 @@ Shader "MRP/FlightToon"
 
             fixed4 frag(v2f i) : SV_Target
             {
-                float3 n = normalize(i.n);
+                float3 n = normalize(i.n.xyz);
                 float3 l = normalize(_MrpFltLight.xyz);
                 float3 vdir = normalize(_WorldSpaceCameraPos - i.wp);
                 float ndl = dot(n, l);
@@ -91,7 +94,7 @@ Shader "MRP/FlightToon"
                 c += _MrpFltRim.rgb * _MrpFltRim.a * rim * (1.0 - lit * 0.6);
                 // 照り (金属の光沢を段で)
                 float3 h = normalize(l + vdir);
-                c += step(0.985, dot(n, h)) * lit * 0.14;
+                c += step(0.985, dot(n, h)) * lit * 0.14 * i.n.w;
                 // 光る所 (a < 1) は陰を付けず明るく
                 float glow = 1.0 - i.color.a;
                 c = lerp(c, base * (1.0 + glow * 0.9), saturate(glow * 3.0));
@@ -127,6 +130,7 @@ Shader "MRP/FlightToon"
             {
                 v2f o;
                 float3 sn = v.smooth.xyz, dummy = sn;
+                float wgt = length(sn);
                 // 大きさ 0 に縮めた部品 (止まっている噴射の光) に縁取りの点を残さない
                 float ps = ApplyPart(v.smooth.w, v.vertex, sn, dummy);
                 float4 clip = UnityObjectToClipPos(v.vertex);
@@ -134,7 +138,7 @@ Shader "MRP/FlightToon"
                 float2 nc = normalize(mul((float3x3)UNITY_MATRIX_VP, nw).xy + 1e-5);
                 // 画面の縦横比を戻して、どの向きにも同じ太さ
                 nc.x *= _ScreenParams.y / _ScreenParams.x;
-                clip.xy += nc * _Outline * clip.w * 2.0 * saturate(ps);
+                clip.xy += nc * _Outline * clip.w * 2.0 * saturate(ps) * wgt;
                 o.pos = clip;
                 float3 wp = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.fog = saturate(distance(_WorldSpaceCameraPos, wp) / max(_MrpFltSky.a, 1.0));
