@@ -21,8 +21,8 @@ internal static class FlightParams
         ("chargeTime", 1.1f), ("chargeDelay", 0.35f), ("chargeDamage", 48f), ("chargeScale", 4.5f), ("chargeRecover", 0.4f),
         ("grazeDist", 10f), ("tailDist", 200f), ("tailCone", 0.75f),
         ("flameLen", 30f), ("flameWidth", 2.9f), ("flameGlow", 1.25f), ("exhRate", 34f), ("exhSpeed", 55f), ("exhLife", 0.7f), ("igniteShake", 0.35f), ("rcsRate", 45f), ("rcsSpeed", 22f),
-        ("bankDamp", 0.55f), ("pitchLean", 9f), ("idleSway", 0.6f), ("camTurn", 6f), ("dodgeYaw", 14f), ("dodgeEase", 2.4f),
-        ("joltHit", 1.2f), ("joltFreq", 13f), ("joltDamp", 0.35f), ("kickBoost", 0.9f), ("kickCharge", 1.6f), ("uturnCamBack", 0.35f), ("knock", 14f),
+        ("bankDamp", 1f), ("pitchLean", 9f), ("idleSway", 0.6f), ("camTurn", 6f), ("dodgeYaw", 14f), ("dodgeEase", 2.4f),
+        ("joltHit", 2.2f), ("joltFreq", 13f), ("joltDamp", 0.9f), ("kickBoost", 1.6f), ("kickCharge", 2.8f), ("uturnCamBack", 0.35f), ("knock", 25f),
     };
 
     internal static readonly float[] Values = MakeValues();

@@ -105,6 +105,7 @@ struct Ship
     float bankV, lean, leanV;    // 描く姿の傾きの速さ・機首の上下の寄せ (機体の慣性をばねで追う)
     float jolt[3], joltV[3];     // 被弾・溜め撃ち・点火で受けた回りの揺れ (船の中の軸 x/y/z・描く姿だけ)
     float idleT, brakePrev;
+    float poseQ[4];              // 刻みの時点の描く向き (drawQ はこれを刻みの余りの分だけ進めた物)
     float knock[3], knockV[3];   // 被弾で押された描く位置のずれ (世界の向き・描く姿だけ)
 };
 

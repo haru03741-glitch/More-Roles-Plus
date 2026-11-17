@@ -1086,7 +1086,7 @@ void Camera(World* w, int local, float dt)
     if (w->shake > 3) w->shake = 3;
 }
 
-// 減衰のあるばね (半陰的)。姿勢を保つ噴射が機体の慣性を受け止める動き = 少し行き過ぎてから落ち着く
+// 減衰のあるばね (半陰的)。姿勢を保つ噴射が機体の慣性を受け止める動き (既定の減衰は行き過ぎない値)
 static inline void Spring(float& x, float& v, float target, float freq, float damp, float dt)
 {
     v += ((target - x) * freq * freq - v * 2.0f * damp * freq) * dt;
@@ -1106,7 +1106,7 @@ void DrawPose(World* w, Ship& s, int idx, float dt)
     for (int k = 0; k < 3; k++)
     {
         Spring(s.jolt[k], s.joltV[k], 0, P[PJoltFreq], P[PJoltDamp], dt);
-        Spring(s.knock[k], s.knockV[k], 0, P[PJoltFreq], P[PJoltDamp] + 0.25f, dt);
+        Spring(s.knock[k], s.knockV[k], 0, P[PJoltFreq], P[PJoltDamp] > 1 ? P[PJoltDamp] : 1.0f, dt);
     }
     // 真っすぐの間も姿勢を保つ噴射の小さなぶれ (曲がっている間は消える)
     s.idleT += dt;
@@ -1125,7 +1125,8 @@ void DrawPose(World* w, Ship& s, int idx, float dt)
     }
     Q4 d = qmul(qaxis(v3(0, 1, 0), dyaw + s.jolt[1]), qaxis(v3(1, 0, 0), -s.lean + swayP + s.jolt[0]));
     d = qmul(d, qaxis(v3(0, 0, 1), s.bank + spin + swayR + s.jolt[2]));
-    stq(s.drawQ, qnorm(qmul(q, d)));
+    stq(s.poseQ, qnorm(qmul(q, d)));
+    stq(s.drawQ, ldq(s.poseQ));
 }
 
 
@@ -1240,7 +1241,7 @@ MRP_API void mrp_flt_spawn(World* w, int32_t idx, int32_t model, int32_t team, i
     memset(&s, 0, sizeof(Ship));
     s.alive = 1; s.model = model; s.team = team; s.remote = remote;
     memcpy(s.p, p, 12); memcpy(s.q, q, 16);
-    memcpy(s.drawP, p, 12); memcpy(s.drawQ, q, 16);
+    memcpy(s.drawP, p, 12); memcpy(s.drawQ, q, 16); memcpy(s.poseQ, q, 16);
     s.hp = s.hpMax = hp;
     s.speed = w->prm[PCruise];
     s.boost = w->prm[PBoostMax];
@@ -1405,6 +1406,17 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
         if (!s.alive) continue;
         if (steps == 0 && s.remote) DrawPose(w, s, k, 0);
         st(s.drawP, s.remote ? ld(s.p) : ld(s.p) + ld(s.v) * w->acc);
+        Q4 pq = ldq(s.poseQ);
+        bool posed = pq.x * pq.x + pq.y * pq.y + pq.z * pq.z + pq.w * pq.w > 0.5f; // 最初の刻みの前は未設定
+        if (!s.remote && posed) stq(s.drawQ, pq);
+        if (!s.remote && posed && s.uturnT <= 0 && w->acc > 0)
+        {
+            // 描く向きも刻みの余りの分だけ回して進める (画面の更新が刻みより速いと、遅れて追うカメラは滑らかで船の回りだけが段になる)
+            Q4 q = ldq(s.q), dq = qmul({ -q.x, -q.y, -q.z, q.w }, ldq(s.poseQ));
+            Q4 e = qmul(qmul(q, qaxis(v3(1, 0, 0), -s.pitchV * w->acc)), qaxis(v3(0, 1, 0), s.yawV * w->acc));
+            e = qmul(e, qaxis(v3(0, 0, 1), -s.rollV * w->acc));
+            stq(s.drawQ, qnorm(qmul(e, dq)));
+        }
     }
     Camera(w, a->local, dt);
     // 被弾で押されたずれはカメラが追わない所で足す (カメラごと動くと押されたように見えない)
