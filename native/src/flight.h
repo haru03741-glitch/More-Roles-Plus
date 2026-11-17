@@ -14,7 +14,7 @@ const int MaxSpheres = 160;
 const int MaxMarkers = 32;
 const int MaxEvents = 128;
 const int MaxSnaps = 12;
-const int MaxParams = 64;
+const int MaxParams = 96;
 const int MaxParticles = 2048;
 const int MaxDust = 320;
 const int MaxParts = 48;   // 船 1 隻の動く部品 (翼・舵・噴射口の首振り・姿勢制御の噴射など)
@@ -35,6 +35,7 @@ enum Param
     PDustCell, PDustStreak, PDustAlpha,
     PChargeTime, PChargeDelay, PChargeDamage, PChargeScale, PChargeRecover, PGrazeDist, PTailDist, PTailCone,
     PFlameLen, PFlameWidth, PFlameGlow, PExhRate, PExhSpeed, PExhLife, PIgniteShake, PRcsRate, PRcsSpeed,
+    PBankDamp, PPitchLean, PIdleSway, PCamTurn, PDodgeYaw, PDodgeEase, PJoltHit, PJoltFreq, PJoltDamp, PKickBoost, PKickCharge, PUTurnCamBack, PKnock,
     ParamCount
 };
 
@@ -101,6 +102,10 @@ struct Ship
     float shotPulse[2];          // 砲台の砲身ごとの撃った揺れ
     float prevQ[4]; int32_t prevInit; // 遠くの船の回る速さを向きの差から出す
     float thr, ignite, exhAcc, boostPrev; // 噴射の出力 (0..1・目で見る値)・加速の点火の光 (1→0)・噴射の粒の端数・前の刻みの加速の信号
+    float bankV, lean, leanV;    // 描く姿の傾きの速さ・機首の上下の寄せ (機体の慣性をばねで追う)
+    float jolt[3], joltV[3];     // 被弾・溜め撃ち・点火で受けた回りの揺れ (船の中の軸 x/y/z・描く姿だけ)
+    float idleT, brakePrev;
+    float knock[3], knockV[3];   // 被弾で押された描く位置のずれ (世界の向き・描く姿だけ)
 };
 
 // kind 0 = 戦いの弾・1 = 砲台が小惑星を撃つ光線 (船に当たらず、届いた所で小惑星が砕ける)
@@ -124,6 +129,7 @@ struct World
     double time;
     float acc;
     float camP[3], camQ[4], camFov, shake, shakeT;
+    float camF[3], camU[3];         // カメラの台の向き (船の向きを遅れて追う・曲がると船の横顔が見える)
     uint32_t rng;
     int32_t camInit;
     int32_t latchDodge, latchUTurn; // 押した瞬間の入力 (刻みが回るまで持つ)

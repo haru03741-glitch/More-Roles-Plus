@@ -502,6 +502,12 @@ static int Nozzles(const World* w, const Ship& s, V3 p, Q4 q, V3* outP, V3* outD
 }
 
 // 噴射の色 (味方の主エンジン = 青白・原子炉 = 橙・敵 = 赤紫)
+// 船へ回りの揺れを足す (船の中の軸・rad/秒)
+static inline void Jolt(Ship& s, V3 localAxis)
+{
+    s.joltV[0] += localAxis.x; s.joltV[1] += localAxis.y; s.joltV[2] += localAxis.z;
+}
+
 static void FlameColor(const Ship& s, int id, float* c)
 {
     if (s.team != 0) { c[0] = 1.0f; c[1] = 0.32f; c[2] = 0.5f; }
@@ -523,7 +529,10 @@ void StepExhaust(World* w, Ship& s, int idx, bool local, float dt)
         s.ignite = 1;
         if (local) w->shake += P[PIgniteShake];
         Emit(w, EvIgnite, idx, 0, 0, ld(s.p), 0);
+        Jolt(s, v3(-P[PKickBoost], 0, 0)); // 押し出す力が重心の下に掛かり、機首が持ち上がる
     }
+    if (br > 0.06f && s.brakePrev <= 0.06f) Jolt(s, v3(P[PKickBoost] * 0.6f, 0, 0)); // 逆噴射で前へつんのめる
+    s.brakePrev = br;
     s.thr = approach(s.thr, target, 8.0f, dt);
     s.ignite *= expf(-3.2f * dt);
     float rate = P[PExhRate] * (0.3f + s.thr) * (1.0f + 1.5f * s.ignite);
@@ -859,6 +868,7 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
         s.charge = 0;
         s.chargeWait = P[PChargeDelay];
         float size = big ? P[PChargeScale] : 1.0f;
+        if (big) Jolt(s, v3(-P[PKickCharge], 0, 0)); // 太い弾の反動で機首が跳ね上がる
         const Model& m = w->model[s.model];
         int shots = 0;
         // 照準の線の上に船があれば、その距離へ集める (無ければ PConverge)。翼の先の 2 門が遠くの的の左右へ外れないように
@@ -998,6 +1008,17 @@ void StepBolts(World* w, int local, float dt)
             Emit(w, EvHit, b.owner, hitShip, hitSector | (b.mine ? 0x10000 : 0), hp, b.dmg);
             FxHit(w, hp, ld(b.v));
             if (b.size > 1.5f) FxExplode(w, hp, 0.35f);
+            {
+                // 当たった所と弾の向きから回りの揺れ (撃たれた船が当たった側から押される)
+                Ship& hs = w->ship[hitShip];
+                Q4 hq = ldq(hs.q), inv = { -hq.x, -hq.y, -hq.z, hq.w };
+                float bd = w->model[hs.model].bound;
+                V3 r = rot(inv, hp - ld(hs.p)) * (bd > 1e-3f ? 1.0f / bd : 1.0f);
+                V3 f = rot(inv, norm(ld(b.v)));
+                Jolt(hs, cross(r, f) * (w->prm[PJoltHit] * b.size));
+                V3 kv = ld(hs.knockV) + norm(ld(b.v)) * (w->prm[PKnock] * b.size);
+                st(hs.knockV, kv);
+            }
             if (hitShip == local) w->shake += w->prm[PShakeHurt];
             else if (b.owner == local) w->shake += w->prm[PShakeHit];
             b.alive = 0;
@@ -1022,15 +1043,39 @@ void Camera(World* w, int local, float dt)
     Q4 q = ldq(s.q);
     V3 p = ld(s.drawP); // 描く位置 (刻みの余りを含む) に合わせないと船がカメラに対して揺れる
     V3 fwd = rot(q, v3(0, 0, 1)), up = rot(q, v3(0, 1, 0)), right = rot(q, v3(1, 0, 0));
-    V3 want = p - fwd * P[PCamDist] + up * P[PCamHeight];
+    // カメラの台が向かう先。宙返りの間は始めの天地を保ったまま横へ回り込み (真上や真下を通らない)、
+    // 終わりの向き (始めの逆向き・天地は同じ) へつなぐ。少し引いて輪の全体を見せる
+    V3 tf = fwd, tu = up;
+    float distK = 1.0f;
+    if (s.uturnT > 0 && P[PUTurnTime] > 0)
+    {
+        float u = clampf(1.0f - s.uturnT / P[PUTurnTime], 0, 1);
+        float e = u * u * (3 - 2 * u);
+        Q4 q0 = ldq(s.uturnQ0);
+        V3 u0 = rot(q0, v3(0, 1, 0));
+        tf = rot(qaxis(u0, Pi * e), rot(q0, v3(0, 0, 1)));
+        tu = u0;
+        distK = 1.0f + P[PUTurnCamBack] * sinf(u * Pi);
+    }
+    V3 cf = ld(w->camF), cu = ld(w->camU);
+    if (!w->camInit) { cf = tf; cu = tu; }
+    else
+    {
+        // 台の向きは船の向きを遅れて追う (曲がると船の横顔と傾きが見える)
+        float k = 1.0f - expf(-P[PCamTurn] * dt);
+        cf = norm(lerp(cf, tf, k), tf);
+        cu = norm(lerp(cu, tu, k), tu);
+    }
+    st(w->camF, cf); st(w->camU, cu);
+    V3 want = p - cf * (P[PCamDist] * distK) + cu * (P[PCamHeight] * distK);
     V3 cp = ld(w->camP);
     if (!w->camInit) { cp = want; w->camInit = 1; w->camFov = P[PFov]; }
     else cp = lerp(cp, want, 1.0f - expf(-P[PCamLag] * dt));
     // 曲がる向きへ注視点を少しずらす (狙う先を見せる)
-    float steerX = P[PYawRate] > 0 ? s.yawV / (P[PYawRate] * Deg) : 0;
-    float steerY = P[PPitchRate] > 0 ? s.pitchV / (P[PPitchRate] * Deg) : 0;
-    V3 look = p + fwd * P[PCamLook] + (right * steerX + up * steerY) * P[PCamSteer];
-    Q4 cq = qlook(look - cp, up);
+    float steerX = s.sig[SgYaw], steerY = s.sig[SgPitch];
+    V3 cr = norm(cross(cu, cf), right);
+    V3 look = p + cf * P[PCamLook] + (cr * steerX + cu * steerY) * P[PCamSteer];
+    Q4 cq = qlook(look - cp, cu);
     st(w->camP, cp);
     stq(w->camQ, cq);
     float fovT = P[PFov];
@@ -1041,21 +1086,48 @@ void Camera(World* w, int local, float dt)
     if (w->shake > 3) w->shake = 3;
 }
 
-void DrawPose(World* w, Ship& s)
+// 減衰のあるばね (半陰的)。姿勢を保つ噴射が機体の慣性を受け止める動き = 少し行き過ぎてから落ち着く
+static inline void Spring(float& x, float& v, float target, float freq, float damp, float dt)
+{
+    v += ((target - x) * freq * freq - v * 2.0f * damp * freq) * dt;
+    x += v * dt;
+}
+
+// 描く姿 (見た目だけ・当たりと位置は s.q のまま)。固定刻みごと
+// dt = 0 は姿だけ今の向きへ合わせ直す (遠くの船で刻みが回らなかったフレーム)
+void DrawPose(World* w, Ship& s, int idx, float dt)
 {
     const float* P = w->prm;
     Q4 q = ldq(s.q);
-    // 曲がる時に機体を傾ける (見た目だけ)・横転の回避は 1 回転
-    float yawN = P[PYawRate] > 0 ? s.yawV / (P[PYawRate] * Deg) : 0;
-    s.bank = approach(s.bank, -yawN * P[PBankMax] * Deg, P[PBankResp], Step);
-    float spin = 0;
-    if (s.dodgeT > 0)
+    // 曲がる向きへ傾け、機首を引く向きへ少し寄せる。遠くの船も向きの差の信号から同じに動く
+    float yawN = s.sig[SgYaw], pitchN = s.sig[SgPitch];
+    Spring(s.bank, s.bankV, -yawN * P[PBankMax] * Deg, P[PBankResp], P[PBankDamp], dt);
+    Spring(s.lean, s.leanV, pitchN * P[PPitchLean] * Deg, P[PBankResp], P[PBankDamp], dt);
+    for (int k = 0; k < 3; k++)
     {
-        float u = 1.0f - s.dodgeT / P[PDodgeTime];
-        spin = -(float)s.dodgeDir * 2 * Pi * (u * u * (3 - 2 * u));
+        Spring(s.jolt[k], s.joltV[k], 0, P[PJoltFreq], P[PJoltDamp], dt);
+        Spring(s.knock[k], s.knockV[k], 0, P[PJoltFreq], P[PJoltDamp] + 0.25f, dt);
     }
-    stq(s.drawQ, qnorm(qmul(q, qaxis(v3(0, 0, 1), s.bank + spin))));
+    // 真っすぐの間も姿勢を保つ噴射の小さなぶれ (曲がっている間は消える)
+    s.idleT += dt;
+    float calm = 1.0f - clampf(fabsf(yawN) + fabsf(pitchN), 0, 1);
+    float sw = P[PIdleSway] * Deg * calm, ph = (float)idx * 1.7f;
+    float swayR = sw * (sinf(s.idleT * 1.13f + ph) * 0.7f + sinf(s.idleT * 2.71f + ph * 2.0f) * 0.3f);
+    float swayP = sw * 0.6f * sinf(s.idleT * 0.87f + ph * 0.5f);
+    // 横転の回避: 押した瞬間に一番速く回り、終わりへ向けて止める (ease-out)・機首を逃げる向きへ振る
+    float spin = 0, dyaw = 0;
+    if (s.dodgeT > 0 && P[PDodgeTime] > 0)
+    {
+        float u = clampf(1.0f - s.dodgeT / P[PDodgeTime], 0, 1);
+        float e = 1.0f - powf(1.0f - u, P[PDodgeEase] > 1 ? P[PDodgeEase] : 1.0f);
+        spin = -(float)s.dodgeDir * 2 * Pi * e;
+        dyaw = (float)s.dodgeDir * P[PDodgeYaw] * Deg * sinf(u * Pi) * (1.0f - u * 0.5f);
+    }
+    Q4 d = qmul(qaxis(v3(0, 1, 0), dyaw + s.jolt[1]), qaxis(v3(1, 0, 0), -s.lean + swayP + s.jolt[0]));
+    d = qmul(d, qaxis(v3(0, 0, 1), s.bank + spin + swayR + s.jolt[2]));
+    stq(s.drawQ, qnorm(qmul(q, d)));
 }
+
 
 void WriteBolts(World* w, FrameArgs* a, V3 cam)
 {
@@ -1314,7 +1386,7 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
         {
             Ship& s = w->ship[k];
             if (!s.alive) continue;
-            DrawPose(w, s);
+            DrawPose(w, s, k, Step);
             if (!s.remote) Signals(w, s, Step);
             StepParts(w, s, Step);
             StepExhaust(w, s, k, k == a->local, Step);
@@ -1331,10 +1403,13 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     {
         Ship& s = w->ship[k];
         if (!s.alive) continue;
-        if (steps == 0 && s.remote) DrawPose(w, s);
+        if (steps == 0 && s.remote) DrawPose(w, s, k, 0);
         st(s.drawP, s.remote ? ld(s.p) : ld(s.p) + ld(s.v) * w->acc);
     }
     Camera(w, a->local, dt);
+    // 被弾で押されたずれはカメラが追わない所で足す (カメラごと動くと押されたように見えない)
+    for (int k = 0; k < w->shipN; k++)
+        if (w->ship[k].alive) st(w->ship[k].drawP, ld(w->ship[k].drawP) + ld(w->ship[k].knock));
 
     for (int k = 0; k < MaxShips; k++)
     {
@@ -1370,7 +1445,7 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     {
         // 確かめ用: 自分の船の周りの決めた角度から見る。板を向ける先も同じカメラにする (炎や粒が横から潰れない)
         const Ship& vs = w->ship[a->local];
-        Q4 sq = ldq(vs.drawQ);
+        Q4 sq = ldq(vs.q); // 描く姿 (横転・傾き) に付けると回っても見えないので、当たりの向きに付ける
         V3 center = ld(vs.drawP) + rot(sq, v3(w->view[3], w->view[4], w->view[5]));
         Q4 rq = qmul(sq, qmul(qaxis(v3(0, 1, 0), w->view[0] * Deg), qaxis(v3(1, 0, 0), w->view[1] * Deg)));
         cpo = center + rot(rq, v3(0, 0, -w->view[2]));
