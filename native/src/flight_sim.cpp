@@ -1097,6 +1097,81 @@ void CityShip(World* w, Ship& s, int idx, V3& p, Q4& q, float dt)
     }
 }
 
+// ビルが崩れる間: 地面を這って外へ広がる土煙と、崩れていく上の縁から落ちる欠片。窓の明かりに下から照らされた色
+void StepRuins(World* w, float dt)
+{
+    static const uint8_t dust0[4] = { 62, 44, 46, 200 }, dust1[4] = { 22, 15, 17, 0 };
+    static const uint8_t puff0[4] = { 80, 60, 60, 170 }, puff1[4] = { 26, 19, 21, 0 };
+    static const uint8_t rock0[4] = { 70, 60, 60, 235 }, rock1[4] = { 40, 34, 36, 200 };
+    for (int i = 0; i < MaxRuins; i++)
+    {
+        Ruin& r = w->ruin[i];
+        if (!r.alive) continue;
+        r.age += dt;
+        float T = r.fallT + 2.5f;
+        if (r.age > T) { r.alive = 0; continue; }
+        float hx = r.half[0], hz = r.half[1];
+        float fall = 0.5f * 60.0f * fmaxf(r.age - 0.35f, 0) * fmaxf(r.age - 0.35f, 0);
+        float top = r.c[1] + fmaxf(r.H - fall, 0);
+        // 縁を回る点 (周の上の一様な位置)
+        auto edge = [&](float y) {
+            float u = rnd(w) * 4.0f;
+            float x, z;
+            if (u < 1) { x = -hx + 2 * hx * u; z = -hz; }
+            else if (u < 2) { x = hx; z = -hz + 2 * hz * (u - 1); }
+            else if (u < 3) { x = hx - 2 * hx * (u - 2); z = hz; }
+            else { x = -hx; z = hz - 2 * hz * (u - 3); }
+            return v3(r.c[0] + x, y, r.c[2] + z);
+        };
+        bool falling = r.age < r.fallT;
+        // 土煙: 足元の周りから外へ (崩れている間は濃く、終わると薄れていく)
+        float rate = falling ? 70.0f : 70.0f * (1.0f - (r.age - r.fallT) / 2.5f);
+        if (rnd(w) < rate * dt)
+        {
+            V3 p = edge(r.c[1] + rr(w, 2, 12));
+            V3 out = norm(v3(p.x - r.c[0], 0, p.z - r.c[2]), v3(1, 0, 0));
+            Emit(w, 0, p, out * rr(w, 18, 45) + v3(0, rr(w, 2, 10), 0), rr(w, 3.0f, 5.0f), rr(w, 14, 24), rr(w, 50, 80), 0.7f, dust0, dust1);
+        }
+        if (falling)
+        {
+            // 崩れていく上の縁: 欠片が外へこぼれて落ち、粉が噴く
+            if (rnd(w) < 30.0f * dt)
+            {
+                V3 p = edge(top);
+                V3 out = norm(v3(p.x - r.c[0], 0, p.z - r.c[2]), v3(1, 0, 0));
+                Emit(w, 2, p, out * rr(w, 4, 14) + v3(0, -rr(w, 20, 50), 0), rr(w, 1.0f, 2.0f), rr(w, 1.5f, 4.0f), rr(w, 1.5f, 4.0f), 0.2f, rock0, rock1);
+            }
+            if (rnd(w) < 18.0f * dt)
+            {
+                V3 p = edge(top);
+                V3 out = norm(v3(p.x - r.c[0], 0, p.z - r.c[2]), v3(1, 0, 0));
+                Emit(w, 0, p, out * rr(w, 8, 20) + v3(0, rr(w, 0, 8), 0), rr(w, 1.5f, 2.6f), rr(w, 8, 14), rr(w, 26, 40), 0.9f, puff0, puff1);
+            }
+        }
+    }
+}
+
+// 燃えている所: 黒い煙が立ちのぼり、時々火の粉が散る
+void StepBurns(World* w, float dt)
+{
+    static const uint8_t smoke0[4] = { 34, 28, 30, 200 }, smoke1[4] = { 10, 9, 10, 0 };
+    static const uint8_t fire0[4] = { 255, 170, 70, 30 }, fire1[4] = { 180, 40, 10, 0 };
+    static const uint8_t ember0[4] = { 255, 190, 90, 0 }, ember1[4] = { 255, 70, 20, 0 };
+    for (int i = 0; i < MaxBurns; i++)
+    {
+        Burn& b = w->burn[i];
+        if (!b.alive) continue;
+        b.age += dt;
+        V3 p = ld(b.p), n = ld(b.n);
+        if (rnd(w) < 7.0f * dt)
+            Emit(w, 0, p + n * 3.0f + rdir(w) * 2.0f, n * rr(w, 3, 8) + v3(rr(w, -2, 2), rr(w, 10, 18), rr(w, -2, 2)), rr(w, 3.0f, 4.5f), rr(w, 7, 11), rr(w, 30, 46), 0.3f, smoke0, smoke1);
+        if (rnd(w) < 9.0f * dt)
+            Emit(w, 0, p + n * 1.5f + rdir(w) * 2.5f, n * rr(w, 2, 5) + v3(0, rr(w, 4, 9), 0), rr(w, 0.3f, 0.6f), rr(w, 4, 7), rr(w, 2, 3), 1.0f, fire0, fire1);
+        if (rnd(w) < 3.0f * dt)
+            Emit(w, 1, p + n * 2.0f, (n + rdir(w) * 0.6f + v3(0, 1, 0)) * rr(w, 12, 26), rr(w, 0.5f, 1.1f), 0.35f, 0.12f, 1.2f, ember0, ember1);
+    }
+}
+
 void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
 {
     const float* P = w->prm;
@@ -1591,6 +1666,25 @@ MRP_API World* mrp_flt_create(uint32_t seed)
 
 MRP_API void mrp_flt_destroy(World* w) { delete w; }
 
+// ビルが崩れ始めた (c = 足元の中心・half = 足元の半分の幅 x/z・H = 高さ)。その棟の火元は消す
+MRP_API void mrp_flt_ruin(World* w, const float* c, float hx, float hz, float H, int32_t bld)
+{
+    int k = 0;
+    for (int i = 0; i < MaxRuins; i++) if (!w->ruin[i].alive) { k = i; break; } else if (w->ruin[i].age > w->ruin[k].age) k = i;
+    Ruin& r = w->ruin[k];
+    memcpy(r.c, c, 12); r.half[0] = hx; r.half[1] = hz; r.H = H; r.age = 0; r.alive = 1;
+    r.fallT = sqrtf(2.0f * H / 60.0f) + 0.35f;
+    for (int i = 0; i < MaxBurns; i++) if (w->burn[i].bld == bld) w->burn[i].alive = 0;
+}
+
+// 燃え始めた所 (p = 壁の上の点・n = 壁の外向き)。いっぱいなら古い火元を置き換える
+MRP_API void mrp_flt_burn(World* w, const float* p, const float* n, int32_t bld)
+{
+    Burn& b = w->burn[w->burnNext];
+    w->burnNext = (w->burnNext + 1) % MaxBurns;
+    memcpy(b.p, p, 12); memcpy(b.n, n, 12); b.age = 0; b.bld = bld; b.alive = 1;
+}
+
 // 街の当たりを貸す (null = 外す)。街は場面を出るまで生きている
 MRP_API void mrp_flt_city(World* w, const CityCol* c) { if (w) w->city = c; }
 
@@ -1800,6 +1894,8 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
             StepLocal(w, s, k, k == a->local ? a->in : none, Step);
         }
         StepBolts(w, a->local, Step);
+        StepRuins(w, Step);
+        StepBurns(w, Step);
         StepParticles(w, Step);
         for (int k = 0; k < w->shipN; k++)
         {

@@ -10,15 +10,16 @@
 // 同時に当たりの箱 (ビル・塔・高架) を区画の升の表に詰めて持ち、場面の間はシムが借りる (flt::CityCol)。
 // 棟ごとに頂点の範囲を覚えておく (壊れた棟だけ書き直すため)。形は種と整数の hash だけで決まり、どの端末でも同じ並びになる。
 //
-// 頂点 (28 バイト) = 位置 f32x3・法線 i8x3 + 材質 i8・色 u8x4・uv f32x2
+// 頂点 (44 バイト) = 位置 f32x3・法線 i8x3 + 材質 i8・色 u8x4・uv f32x2・崩れ f32x4
 //   材質: 0 = ビルの壁 (uv = 壁に沿った長さ・地面からの高さ)・1 = 屋上・2 = 光る鉄骨 (塔)・3 = 地面・4 = 展望台 (uv は壁と同じ)・5 = 高架の道路
-//   色: r = 建物の種・g = 様式 (0 事務所 / 1 ガラスの塔 / 2 住まい / 3 消えた建物)・b = 窓の点く割合・a = ちらつきの組
-// 灯の頂点 (同じ 28 バイト) = 位置 (灯の中心)・法線 xy = 板の角 (-1/1)・色 = 灯の色 + a = 点滅の組・uv = (大きさ, 位相)
+//   色: r = 建物の種・g = 様式 (0 事務所 / 1 ガラスの塔 / 2 住まい / 3 消えた建物)・b = 窓の点く割合・a = ちらつきの組 (下 3 ビット) + 0x40 燃えている
+//   崩れ: (崩れ始めた時刻 (0 = 立っている)・棟の中心 x・z・棟の高さ)。時刻は C# の街の時計 (_MrpCityClock)
+// 灯の頂点 (同じ 44 バイト) = 位置 (灯の中心)・法線 xy = 板の角 (-1/1)・色 = 灯の色 + a = 点滅の組・uv = (大きさ (0 = 消えた), 位相)
 
 namespace
 {
-struct V { float p[3]; int8_t n[4]; uint8_t c[4]; float uv[2]; };
-static_assert(sizeof(V) == 28, "city vertex");
+struct V { float p[3]; int8_t n[4]; uint8_t c[4]; float uv[2]; float k[4]; };
+static_assert(sizeof(V) == 44, "city vertex");
 
 enum Mat { MWall = 0, MRoof = 1, MBeam = 2, MGround = 3, MDeck = 4, MRoad = 5 };
 
@@ -110,6 +111,7 @@ void Quad(Mesh& m, const float* a, const float* b, const float* c, const float* 
         vx.n[0] = Sn(n[0]); vx.n[1] = Sn(n[1]); vx.n[2] = Sn(n[2]); vx.n[3] = (int8_t)mat;
         memcpy(vx.c, col, 4);
         vx.uv[0] = uvs[k][0]; vx.uv[1] = uvs[k][1];
+        vx.k[0] = vx.k[1] = vx.k[2] = vx.k[3] = 0;
         m.v.push_back(vx);
         Grow(m, ps[k]);
     }
@@ -183,6 +185,7 @@ void Lamp(Mesh& m, float x, float y, float z, float size, uint8_t r, uint8_t g, 
         vx.n[0] = cx[k]; vx.n[1] = cy[k]; vx.n[2] = 0; vx.n[3] = 0;
         vx.c[0] = r; vx.c[1] = g; vx.c[2] = b; vx.c[3] = (uint8_t)cls;
         vx.uv[0] = size; vx.uv[1] = phase;
+        vx.k[0] = vx.k[1] = vx.k[2] = vx.k[3] = 0;
         m.v.push_back(vx);
     }
     float p[3] = { x, y, z };
@@ -513,6 +516,46 @@ MRP_API void* mrp_flt_city_create(uint32_t seed, float ground)
     Build(*c, seed);
     MakeGrid(*c);
     return c;
+}
+
+// 区画 k の頂点の先頭 (壊れた棟の範囲を C# がそのままメッシュへ書き直す)
+MRP_API const uint8_t* mrp_flt_city_verts(void* p, int32_t k)
+{
+    City* c = (City*)p;
+    if (!c || k < 0 || k >= (int32_t)c->mesh.size()) return nullptr;
+    return (const uint8_t*)c->mesh[k].v.data();
+}
+
+// 崩れた瓦礫の山の高さ (棟の高さ H から)。シェーダの式と同じ
+inline float RubbleTop(float H) { float r = 0.08f * H + 4.0f; return r < 28.0f ? r : 28.0f; }
+
+// 棟 k の状態を頂点へ書く。burn = 燃えている (窓の一部が火・残りは消える)・t0 > 0 = その時刻に崩れ始めた
+// (障害灯を消し、当たりの箱を瓦礫の高さへ下げる)。書いた後は C# が mrp_flt_city_bld の範囲を書き直す
+MRP_API int32_t mrp_flt_city_mark(void* p, int32_t k, int32_t burn, float t0)
+{
+    City* c = (City*)p;
+    if (!c || k < 0 || k >= (int32_t)c->bld.size()) return 0;
+    const Bld& b = c->bld[k];
+    Mesh& m = c->mesh[b.mesh];
+    float cx = (b.mn[0] + b.mx[0]) * 0.5f, cz = (b.mn[2] + b.mx[2]) * 0.5f, H = b.mx[1] - b.mn[1];
+    for (int32_t i = b.v0; i < b.v1; i++)
+    {
+        V& v = m.v[i];
+        if (burn) { v.c[3] |= 0x40; v.c[2] = (uint8_t)(v.c[2] / 3); }
+        if (t0 > 0) { v.k[0] = t0; v.k[1] = cx; v.k[2] = cz; v.k[3] = H; }
+    }
+    if (t0 > 0)
+    {
+        for (int32_t i = b.l0; i < b.l1; i++) c->lampMesh->v[i].uv[0] = 0;
+        float top = b.mn[1] + RubbleTop(H);
+        for (flt::CityBox& bx : c->box)
+            if (bx.bld == k)
+            {
+                if (bx.mn[1] >= top) { bx.mn[1] = bx.mx[1] = b.mn[1] - 1000.0f; bx.bld = -2; } // 上の段は消える (地面の下へ)
+                else if (bx.mx[1] > top) bx.mx[1] = top;
+            }
+    }
+    return 1;
 }
 
 // シムへ貸す当たりの表 (街を消すまで有効)

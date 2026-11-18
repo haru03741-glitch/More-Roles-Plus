@@ -156,6 +156,29 @@ internal static class FlightSound
         if (c) _shot.PlayOneShot(c, 0.55f + 0.4f * k);
     }
 
+    // ビルが燃え始めた (外壁が砕けて火が回る)
+    internal static void BuildingBurn(float vol)
+    {
+        if (!Ensure() || vol <= 0.02f) return;
+        var c = MrpBundle.Clip("noise_crumble_stone");
+        if (c) _shot.PlayOneShot(c, 0.6f * vol);
+        var f = MrpBundle.Clip("noise_fire_ignite");
+        if (f) _shot.PlayOneShot(f, 0.45f * vol);
+    }
+
+    // ビルが崩れ始めた (h = 高さ・高いほど低く長く聞こえるよう少し下げる)
+    internal static void BuildingCollapse(float vol, float h)
+    {
+        if (!Ensure() || vol <= 0.02f) return;
+        var c = MrpBundle.Clip("noise_flt_collapse");
+        if (!c) return;
+        if (!_collapse) _collapse = Make(SoundManager.Instance, false, c);
+        _collapse.pitch = Mathf.Clamp(1.15f - h / 900f, 0.65f, 1.1f);
+        _collapse.PlayOneShot(c, 0.95f * vol);
+    }
+
+    private static AudioSource _collapse;
+
     // 光弾がビルに当たった (vol = 離れるほど小さく)
     internal static void BuildingHit(float vol)
     {

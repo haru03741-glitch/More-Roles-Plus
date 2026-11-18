@@ -145,6 +145,12 @@ const int MaxLights = 8;
 const int OutLights = 4; // シェーダへ渡す数 (明るい順)
 struct FlashLight { float p[3], lp[3], c[3]; float r, age, life; int32_t ship, alive, key; };
 
+// 崩れていくビル (土煙と落ちる欠片を出し続ける)・燃えているビルの火元 (煙と火の粉)
+const int MaxRuins = 8;
+const int MaxBurns = 16;
+struct Ruin { float c[3], half[2], H, age, fallT; int32_t alive; };
+struct Burn { float p[3], n[3], age; int32_t bld, alive; };
+
 struct World
 {
     float prm[MaxParams];
@@ -166,6 +172,9 @@ struct World
     float dust[MaxDust][3];
     FlashLight light[MaxLights];
     const CityCol* city;            // 街の当たり (無い場面は null)
+    Ruin ruin[MaxRuins];
+    Burn burn[MaxBurns];
+    int32_t burnNext;
 };
 
 // 自分の船の入力 (-1..1)

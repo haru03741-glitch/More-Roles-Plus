@@ -52,6 +52,22 @@ internal static class FlightCommands
                         reply($"OK flight view {G(1, 0)} {G(2, 20)} {G(3, 0)}");
                         return;
                     }
+                case "bdmg":
+                    {
+                        // bdmg <削る量> [x y z]: 確かめ用。点 (省略は自分の船の 150 前) に一番近い立っている棟を削る
+                        float G(int k, float d) => args.Length > k && float.TryParse(args[k], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : d;
+                        var at = args.Length > 4 ? new UnityEngine.Vector3(G(2, 0), G(3, 0), G(4, 0)) : Arena.LocalShipPos + Arena.LocalShipForward * 150f;
+                        int k = FlightCity.Nearest(at, 400f);
+                        if (k < 0) { reply("ERR flight no building"); return; }
+                        bool changed = FlightCity.Damage(k, G(1, 50), at);
+                        reply($"OK flight bdmg bld={k} changed={changed} collapsed={FlightCity.Collapsed}");
+                        return;
+                    }
+                case "cclock":
+                    // cclock <速さ>: 確かめ用。崩れの時計の速さ (0.1 = 10 倍ゆっくり)
+                    FlightCity.SetClockScale(args.Length > 1 && float.TryParse(args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float ck) ? ck : 1f);
+                    reply("OK flight cclock");
+                    return;
                 case "boom":
                     // 確かめ用: 自分の船の前に爆発を出す
                     reply(Arena.DebugExplode() ? "OK flight boom" : "ERR flight not active");

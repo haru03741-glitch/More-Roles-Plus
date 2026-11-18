@@ -563,6 +563,28 @@ internal static unsafe class Arena
 
     private static int _bldSounds;
 
+    // 自分の船の前の向き (確かめ用)
+    internal static Vector3 LocalShipForward
+    {
+        get
+        {
+            if (_shipOut == null || _local < 0) return Vector3.forward;
+            float* lo = _shipOut + _local * 8;
+            return new Quaternion(lo[3], lo[4], lo[5], lo[6]) * Vector3.forward;
+        }
+    }
+
+    // 自分の船の位置 (場面の中・シムと同じ座標)
+    internal static Vector3 LocalShipPos
+    {
+        get
+        {
+            if (_shipOut == null || _local < 0) return Vector3.zero;
+            float* lo = _shipOut + _local * 8;
+            return new Vector3(lo[0], lo[1], lo[2]);
+        }
+    }
+
     private static void HandleEvents(int n)
     {
         // 主砲は砲口ごとに出来事が来るので、音は船ごとに 1 フレーム 1 回
@@ -594,6 +616,8 @@ internal static unsafe class Arena
             }
             if (e.Kind == (int)FlightNative.Ev.Building)
             {
+                // 今は一人で確かめる段なので、どの当たりもその場で棟を削る (通信の段でホストが持つ形にする)
+                FlightCity.Damage(e.B, e.F, new Vector3(e.X, e.Y, e.Z));
                 // 船がぶつかった削れ (0x20000) は擦れ/衝突の音が鳴るので、弾の当たりだけ鳴らす (1 フレームに 2 つまで)
                 if ((e.C & 0x20000) != 0 || _bldSounds >= 2) continue;
                 float* lo = _shipOut + _local * 8;

@@ -33,8 +33,10 @@ Shader "MRP/FlightCity"
             float4 _MrpFltLights[8];
             float4 _MrpCity;
             float4 _MrpCityAlarm;
+            float _MrpCityClock;     // 崩れの時計 (秒・崩れている棟がある間だけ進む)
 
-            struct appdata { float4 vertex : POSITION; float4 normal : NORMAL; fixed4 color : COLOR; float2 uv : TEXCOORD0; };
+            // k = 崩れ (崩れ始めた時刻 (0 = 立っている)・棟の中心 x・z・棟の高さ)
+            struct appdata { float4 vertex : POSITION; float4 normal : NORMAL; fixed4 color : COLOR; float2 uv : TEXCOORD0; float4 k : TEXCOORD1; };
             struct v2f
             {
                 float4 pos : SV_POSITION;
@@ -43,6 +45,7 @@ Shader "MRP/FlightCity"
                 float4 col : TEXCOORD2;
                 float2 uv : TEXCOORD3;
                 float power : TEXCOORD4; // 建物の電気 (1 = 点いている・0 = 停電)
+                float ruin : TEXCOORD5;  // 崩れた (0..1)
             };
 
             float Hash12(float2 p)
@@ -64,15 +67,46 @@ Shader "MRP/FlightCity"
                 return max(on, re);
             }
 
+            // 崩れ: 一瞬震え → 足元から沈み込みながら種の向きへ少し傾く → 地面より下へ行った分は低い瓦礫の山に潰れて外へ広がる。
+            // 落ちる速さと瓦礫の高さは土煙を出す側 (flight_sim の StepRuins・flight_city の RubbleTop) と同じ式
+            float4 Collapse(float4 pos, float4 k, float seed, out float ruin)
+            {
+                ruin = 0.0;
+                float s = _MrpCityClock - k.x;
+                if (k.x <= 0.0 || s <= 0.0) return pos;
+                float G = _MrpCity.y;
+                float H = max(k.w, 1.0);
+                float h = pos.y - G;
+                float jt = floor(s * 30.0);
+                float sh = saturate(s / 0.05) * (1.0 - saturate((s - 0.25) / 0.3));
+                pos.xz += (float2(Hash12(float2(seed, jt)), Hash12(float2(seed + 7.0, jt))) - 0.5) * 1.6 * sh;
+                float tf = max(s - 0.35, 0.0);
+                float fall = min(30.0 * tf * tf, H);
+                float R = min(0.08 * H + 4.0, 28.0);
+                float hn = h - fall;
+                float y = hn > R ? hn : R * exp((hn - R) / (0.5 * H));
+                float spread = saturate((R - hn) / H) * 0.3;
+                float ang = Hash12(float2(seed, 3.3)) * 6.2832;
+                float lean = 0.12 * saturate(tf / 2.0) * saturate((hn - R) * 4.0 / H);
+                float2 rel = (pos.xz - k.yz) * (1.0 + spread);
+                pos.xz = k.yz + rel + float2(cos(ang), sin(ang)) * (y * lean);
+                pos.y = G + y;
+                ruin = saturate(s / 0.6);
+                return pos;
+            }
+
             v2f vert(appdata v)
             {
                 v2f o;
-                o.pos = UnityObjectToClipPos(v.vertex);
-                o.wp = mul(unity_ObjectToWorld, v.vertex).xyz;
+                float ruin;
+                float4 pos = Collapse(v.vertex, v.k, v.color.r * 255.0, ruin);
+                o.ruin = ruin;
+                o.pos = UnityObjectToClipPos(pos);
+                o.wp = mul(unity_ObjectToWorld, pos).xyz;
                 o.n = float4(normalize(mul((float3x3)unity_ObjectToWorld, v.normal.xyz)), floor(v.normal.w * 127.0 + 0.5));
                 o.col = v.color;
                 o.uv = v.uv;
-                o.power = Power(o.wp.xz, v.color.r * 255.0);
+                o.power = Power(o.wp.xz, v.color.r * 255.0) * (1.0 - ruin);
                 return o;
             }
 
@@ -126,8 +160,17 @@ Shader "MRP/FlightCity"
                 avg *= max(pw, 0.07 * 0.75);
                 float3 win = lerp(near, avg, far);
                 float3 lineCol = float3(1.0, 0.5, 0.56);
-                float fl = Flicker(seed, i.col.a * 255.0);
+                float flags = floor(i.col.a * 255.0 + 0.5);
+                float fl = Flicker(seed, fmod(flags, 8.0));
                 float3 c = float3(0.018, 0.011, 0.016) + (win + lineCol * lineCov * lineI * pw) * fl * _MrpCity.z;
+                // 燃えている棟: 一部の窓の奥で火が揺れ、枠は煤けて暗い
+                if (flags >= 64.0 && isDeck < 0.5)
+                {
+                    float fire = step(Hash12(id * 0.71 + seed * 5.3), 0.16);
+                    float flick = 0.55 + 0.45 * sin(_Time.y * (9.0 + 7.0 * h) + h2 * 40.0) * sin(_Time.y * 4.3 + h * 17.0);
+                    float3 fireC = float3(1.0, 0.42, 0.1) * flick;
+                    c = lerp(c, c * 0.45, 0.6) + lerp(fireC * fire * paneMask, fireC * 0.16 * 0.55, far) * (1.0 - i.ruin);
+                }
                 // 下の街明かりで足元ほど赤く照らされる
                 float hgt = i.wp.y - _MrpCity.y;
                 c += float3(0.05, 0.006, 0.008) * exp(-hgt / 90.0) * (1.0 - 0.75 * _MrpCity.x);
@@ -208,6 +251,15 @@ Shader "MRP/FlightCity"
                     fl += _MrpFltLights[k * 2 + 1].rgb * (att * att * saturate(dot(n, L * rsqrt(d2 + 1e-4)) * 0.85 + 0.15));
                 }
                 c += fl * albedo;
+                // 崩れた瓦礫は粉をかぶって暗く鈍い色
+                c = lerp(c, c * 0.35 + float3(0.03, 0.022, 0.024), i.ruin * (mat < 1.5 ? 1.0 : 0.0));
+                // 瓦礫の中でくすぶる火 (崩れ終わってから点き、ゆっくり明滅する)
+                if (i.ruin > 0.99 && mat < 1.5)
+                {
+                    float2 cell = floor(i.wp.xz / 2.5) + floor(i.wp.y / 2.5) * 17.0;
+                    float hot = step(Hash12(cell), 0.07) * (0.5 + 0.5 * sin(_Time.y * (1.3 + 2.0 * Hash12(cell + 3.1)) + Hash12(cell + 9.2) * 6.3));
+                    c += float3(1.0, 0.3, 0.06) * hot * 0.55 * saturate(1.0 - dist / 1500.0);
+                }
                 // 霞: 遠いほど赤黒い霞へ・地面に近いほど濃い
                 float fog = 1.0 - exp(-dist / max(_MrpFltSky.a, 1.0));
                 float low = exp(-max(i.wp.y - _MrpCity.y, 0.0) / 150.0) * saturate(dist / 1800.0) * 0.2;
