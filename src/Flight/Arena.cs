@@ -85,6 +85,7 @@ internal static unsafe class Arena
         if (_world == IntPtr.Zero) return "create failed";
         bool city = Stage == 1 && MrpBundle.FlightMaterials[4] && MrpBundle.FlightMaterials[6];
         FlightParams.Values[FlightParams.Find("floorY")] = city ? FlightCity.FloorY : -1e6f;
+        FlightParams.Values[FlightParams.Find("floorMargin")] = city ? FlightCity.FloorMargin : 70f;
         FlightParams.Values[FlightParams.Find("dustRed")] = city ? 1f : 0f;
         FlightParams.Values[FlightParams.Find("enemyWarm")] = city ? 1f : 0f;
         FlightParams.Values[FlightParams.Find("dustAlpha")] = city ? 0.45f : 0.8f;
@@ -94,7 +95,7 @@ internal static unsafe class Arena
         Register(1, dummy);
         Alloc();
         Build();
-        if (city && !FlightCity.Build(_root.transform, Layer, 20261118u)) city = false;
+        if (city && !FlightCity.Build(_root.transform, Layer, 20261118u, _world)) city = false;
         ApplyStage(city);
 
         _shipN = 0;
@@ -126,6 +127,7 @@ internal static unsafe class Arena
         _boltMesh = null;
         if (_fxMesh) UnityEngine.Object.Destroy(_fxMesh);
         _fxMesh = null;
+        FlightCity.Unlend(_world);
         if (_world != IntPtr.Zero) FlightNative.Destroy(_world);
         _world = IntPtr.Zero;
         FlightCity.Clear();
@@ -546,6 +548,7 @@ internal static unsafe class Arena
 
         HandleEvents(a.EvN);
         FlightSound.Tick(_hud[8], _hud[9]);
+        FlightSound.TickScrape(Time.deltaTime);
         FlightCity.Tick(Time.deltaTime);
         TickFlash();
 
@@ -558,10 +561,13 @@ internal static unsafe class Arena
         }
     }
 
+    private static int _bldSounds;
+
     private static void HandleEvents(int n)
     {
         // 主砲は砲口ごとに出来事が来るので、音は船ごとに 1 フレーム 1 回
         int fired = 0;
+        _bldSounds = 0;
         for (int i = 0; i < n; i++)
         {
             var e = _ev[i];
@@ -581,6 +587,22 @@ internal static unsafe class Arena
             }
             if (e.Kind == (int)FlightNative.Ev.Graze) { if (e.A == _local) _grazes++; continue; }
             if (e.Kind == (int)FlightNative.Ev.Ignite) { if (e.A == _local) FlightSound.Ignite(); continue; }
+            if (e.Kind == (int)FlightNative.Ev.Scrape)
+            {
+                if (e.A == _local) { if (e.C == 1) FlightSound.Crash(e.F); else FlightSound.Scrape(e.F); }
+                continue;
+            }
+            if (e.Kind == (int)FlightNative.Ev.Building)
+            {
+                // 船がぶつかった削れ (0x20000) は擦れ/衝突の音が鳴るので、弾の当たりだけ鳴らす (1 フレームに 2 つまで)
+                if ((e.C & 0x20000) != 0 || _bldSounds >= 2) continue;
+                float* lo = _shipOut + _local * 8;
+                float dx = e.X - lo[0], dy = e.Y - lo[1], dz = e.Z - lo[2];
+                float d = (float)System.Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                float vol = 1f - d / 700f;
+                if (vol > 0.03f) { FlightSound.BuildingHit(vol); _bldSounds++; }
+                continue;
+            }
             if (e.Kind == (int)FlightNative.Ev.Fire) { if (e.C == 1 && e.A == _local) _bigShots++; continue; }
             if (e.Kind != (int)FlightNative.Ev.Hit) continue;
             int target = e.B;

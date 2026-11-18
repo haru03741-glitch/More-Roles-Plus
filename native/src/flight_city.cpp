@@ -1,4 +1,5 @@
 #include "mrp_native.h"
+#include "flight.h"
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -6,7 +7,8 @@
 
 // 3D の艦隊戦の夜の街 (飛ぶ範囲の下に広がる景色)。種から区画・ビル・格子の電波塔・高架の道路・航空障害灯を組み、
 // 区画ごとの静的なメッシュの頂点と添字を作る (作るのは場面に入る時の 1 回だけ)。
-// ビルは飛べる高さの下限より低く置くので当たりは持たない。形は種と整数の hash だけで決まり、どの端末でも同じ並びになる。
+// 同時に当たりの箱 (ビル・塔・高架) を区画の升の表に詰めて持ち、場面の間はシムが借りる (flt::CityCol)。
+// 棟ごとに頂点の範囲を覚えておく (壊れた棟だけ書き直すため)。形は種と整数の hash だけで決まり、どの端末でも同じ並びになる。
 //
 // 頂点 (28 バイト) = 位置 f32x3・法線 i8x3 + 材質 i8・色 u8x4・uv f32x2
 //   材質: 0 = ビルの壁 (uv = 壁に沿った長さ・地面からの高さ)・1 = 屋上・2 = 光る鉄骨 (塔)・3 = 地面・4 = 展望台 (uv は壁と同じ)・5 = 高架の道路
@@ -20,13 +22,15 @@ static_assert(sizeof(V) == 28, "city vertex");
 
 enum Mat { MWall = 0, MRoof = 1, MBeam = 2, MGround = 3, MDeck = 4, MRoad = 5 };
 
-const float Pitch = 64.0f;      // 区画の間隔 (道の中心から中心)
-const float Extent = 3200.0f;   // 街の広さ (中心からの半分)
-const float InnerR = 1150.0f;   // ここより内は区画を細かく分けて密に建てる
-const float TileSize = 800.0f;  // メッシュを分ける升 (見えない升は描かれない)
+// 船 (幅 44・長さ 48) が大通りを抜けられる縮尺。S = 建物と塔の大きさの倍率
+const float S = 3.0f;
+const float Pitch = 192.0f;     // 区画の間隔 (道の中心から中心)
+const float Extent = 4800.0f;   // 街の広さ (中心からの半分)
+const float InnerR = 1500.0f;   // ここより内は区画を細かく分けて密に建てる
+const float TileSize = 1200.0f; // メッシュを分ける升 (見えない升は描かれない)
 const int Tiles = 8;            // 升の数 (片側)
 const float TowerX = 380.0f, TowerZ = 560.0f; // 電波塔の位置
-const float MaxH = 150.0f;      // 建物の高さの上限 (飛べる下限より下に収める)
+const float MaxH = 450.0f;      // 建物の高さの上限
 
 inline uint32_t H(uint32_t x)
 {
@@ -54,13 +58,37 @@ struct Mesh
     int kind = 0; // 0 = 街の形・1 = 灯の板
 };
 
+// 棟 1 つ: 区画のメッシュの中の頂点の範囲・障害灯の範囲・形の範囲
+struct Bld { int32_t mesh, v0, v1, l0, l1; float mn[3], mx[3]; };
+
 struct City
 {
     float ground;
     std::vector<Mesh> mesh;
     Mesh* tile[Tiles][Tiles];
     Mesh* lampMesh;
+    std::vector<flt::CityBox> box;
+    std::vector<Bld> bld;
+    std::vector<int32_t> start, item;
+    flt::CityCol col;
 };
+
+void AddBox(City& c, float x0, float z0, float x1, float z1, float y0, float y1, int bld)
+{
+    flt::CityBox b;
+    b.mn[0] = x0 < x1 ? x0 : x1; b.mx[0] = x0 < x1 ? x1 : x0;
+    b.mn[1] = y0 < y1 ? y0 : y1; b.mx[1] = y0 < y1 ? y1 : y0;
+    b.mn[2] = z0 < z1 ? z0 : z1; b.mx[2] = z0 < z1 ? z1 : z0;
+    b.bld = bld; b.pad = 0;
+    c.box.push_back(b);
+}
+
+// 細い角柱 (a→b・太さ r) を包む箱
+void AddBeamBox(City& c, const float* a, const float* b, float r)
+{
+    AddBox(c, fminf(a[0], b[0]) - r, fminf(a[2], b[2]) - r, fmaxf(a[0], b[0]) + r, fmaxf(a[2], b[2]) + r,
+           fminf(a[1], b[1]) - r, fmaxf(a[1], b[1]) + r, -1);
+}
 
 void Grow(Mesh& m, const float* p)
 {
@@ -173,29 +201,31 @@ Mesh& TileOf(City& c, float x, float z)
 }
 
 // 区画の道の幅: 4 本ごとに広い通り
-float RoadW(int line) { return (line % 4 == 0) ? 18.0f : 10.0f; }
+float RoadW(int line) { return (line % 4 == 0) ? 96.0f : 30.0f; }
 
 void Building(City& c, uint32_t seed, float x0, float z0, float x1, float z1, float cx, float cz, uint32_t h)
 {
     float G = c.ground;
     float r = sqrtf(cx * cx + cz * cz);
     // 高い建物の集まる地区 (雑音) と、中心から離れるほど低く疎らに
-    float district = Noise2(cx / 700.0f, cz / 700.0f, seed ^ 0x51ed);
+    float district = Noise2(cx / 1400.0f, cz / 1400.0f, seed ^ 0x51ed);
     float tallP = district > 0.62f ? (district - 0.62f) * 2.6f : 0.0f;
-    float fall = r < 1600 ? 1.0f : 1.0f - (r - 1600) / 2400.0f;
+    // 飛ぶ場の真ん中は高層の谷 (どの種でも低く飛べば高い建物の間を抜けられる)
+    if (r < 1300) tallP += 0.45f * (1.0f - r / 1300.0f);
+    float fall = r < 2400 ? 1.0f : 1.0f - (r - 2400) / 3600.0f;
     if (fall < 0.25f) fall = 0.25f;
     float u = U(h);
     int style;
     float hgt;
     if (U(H(h ^ 0x1234)) < tallP * fall)
     {
-        hgt = 70.0f + 70.0f * U(H(h ^ 0x77));
+        hgt = (70.0f + 70.0f * U(H(h ^ 0x77))) * S;
         style = U(H(h ^ 0x99)) < 0.55f ? 1 : 0;
     }
     else
     {
         float mid = 14.0f + 26.0f * u * u;
-        hgt = mid * (0.55f + 0.45f * fall) + 4.0f;
+        hgt = (mid * (0.55f + 0.45f * fall) + 4.0f) * S;
         float su = U(H(h ^ 0x99));
         style = su < 0.42f ? 2 : (su < 0.85f ? 0 : 3);
     }
@@ -203,72 +233,95 @@ void Building(City& c, uint32_t seed, float x0, float z0, float x1, float z1, fl
     float lit = style == 3 ? 0.03f : (0.06f + 0.3f * U(H(h ^ 0x4242)));
     uint8_t col[4] = { (uint8_t)(h >> 8), (uint8_t)(style * 64 + 8), (uint8_t)(lit * 255), (uint8_t)(H(h ^ 0xabc) & 7) };
     Mesh& m = TileOf(c, cx, cz);
+    int id = (int)c.bld.size();
+    Bld b;
+    b.mesh = (int32_t)(&m - c.mesh.data());
+    b.v0 = (int32_t)m.v.size();
+    b.l0 = (int32_t)c.lampMesh->v.size();
+    b.mn[0] = x0; b.mn[1] = G; b.mn[2] = z0;
+    b.mx[0] = x1; b.mx[1] = G + hgt; b.mx[2] = z1;
     // 高い建物の一部は上で一段細くなる (段の上の小さな塔)
     float w = x1 - x0, d = z1 - z0;
-    if (hgt > 60 && U(H(h ^ 0x5151)) < 0.35f)
+    if (hgt > 60 * S && U(H(h ^ 0x5151)) < 0.35f)
     {
         float t = 0.55f + 0.25f * U(H(h ^ 0x6161));
         float hb = hgt * t;
         Box(m, x0, z0, x1, z1, G, G + hb, G, MWall, MRoof, col);
+        AddBox(c, x0, z0, x1, z1, G, G + hb, id);
         float ix = w * 0.18f, iz = d * 0.18f;
         Box(m, x0 + ix, z0 + iz, x1 - ix, z1 - iz, G + hb, G + hgt, G, MWall, MRoof, col);
+        AddBox(c, x0 + ix, z0 + iz, x1 - ix, z1 - iz, G + hb, G + hgt, id);
         x0 += ix; x1 -= ix; z0 += iz; z1 -= iz;
     }
-    else Box(m, x0, z0, x1, z1, G, G + hgt, G, MWall, MRoof, col);
+    else
+    {
+        Box(m, x0, z0, x1, z1, G, G + hgt, G, MWall, MRoof, col);
+        AddBox(c, x0, z0, x1, z1, G, G + hgt, id);
+    }
     // 屋上の機械室
-    if (U(H(h ^ 0x7171)) < 0.45f && w > 8 && d > 8)
+    if (U(H(h ^ 0x7171)) < 0.45f && w > 8 * S && d > 8 * S)
     {
         float mx0 = x0 + w * 0.25f, mz0 = z0 + d * 0.3f;
         uint8_t mc[4] = { col[0], (uint8_t)(3 * 64 + 8), 0, col[3] };
-        Box(m, mx0, mz0, mx0 + w * 0.3f, mz0 + d * 0.3f, G + hgt, G + hgt + 2.2f, G, MWall, MRoof, mc);
+        Box(m, mx0, mz0, mx0 + w * 0.3f, mz0 + d * 0.3f, G + hgt, G + hgt + 2.2f * S, G, MWall, MRoof, mc);
+        AddBox(c, mx0, mz0, mx0 + w * 0.3f, mz0 + d * 0.3f, G + hgt, G + hgt + 2.2f * S, id);
+        b.mx[1] = G + hgt + 2.2f * S;
     }
     // 航空障害灯: 高い建物は屋上の四隅で揃って点滅・中ほどの高さにも並ぶ。低い建物は時々屋上に 1 つ
-    float top = G + hgt + 0.6f;
+    float top = G + hgt + 0.6f * S;
     float ph = 0.0f;
-    if (hgt > 55)
+    if (hgt > 55 * S)
     {
-        Lamp(*c.lampMesh, x0, top, z0, 1.6f, 255, 30, 22, 1, ph);
-        Lamp(*c.lampMesh, x1, top, z0, 1.6f, 255, 30, 22, 1, ph);
-        Lamp(*c.lampMesh, x1, top, z1, 1.6f, 255, 30, 22, 1, ph);
-        Lamp(*c.lampMesh, x0, top, z1, 1.6f, 255, 30, 22, 1, ph);
-        if (hgt > 95)
+        Lamp(*c.lampMesh, x0, top, z0, 3.2f, 255, 30, 22, 1, ph);
+        Lamp(*c.lampMesh, x1, top, z0, 3.2f, 255, 30, 22, 1, ph);
+        Lamp(*c.lampMesh, x1, top, z1, 3.2f, 255, 30, 22, 1, ph);
+        Lamp(*c.lampMesh, x0, top, z1, 3.2f, 255, 30, 22, 1, ph);
+        if (hgt > 95 * S)
         {
             float mh = G + hgt * 0.5f;
-            Lamp(*c.lampMesh, x0 - 0.3f, mh, z0 - 0.3f, 1.1f, 255, 40, 30, 0, 0);
-            Lamp(*c.lampMesh, x1 + 0.3f, mh, z1 + 0.3f, 1.1f, 255, 40, 30, 0, 0);
+            Lamp(*c.lampMesh, x0 - 0.3f * S, mh, z0 - 0.3f * S, 2.2f, 255, 40, 30, 0, 0);
+            Lamp(*c.lampMesh, x1 + 0.3f * S, mh, z1 + 0.3f * S, 2.2f, 255, 40, 30, 0, 0);
         }
     }
     else if (U(H(h ^ 0x8181)) < 0.18f)
-        Lamp(*c.lampMesh, (x0 + x1) * 0.5f, top, (z0 + z1) * 0.5f, 1.0f, 255, 36, 26, 2, U(H(h ^ 0x9191)) * 6.28f);
+        Lamp(*c.lampMesh, (x0 + x1) * 0.5f, top, (z0 + z1) * 0.5f, 2.0f, 255, 36, 26, 2, U(H(h ^ 0x9191)) * 6.28f);
+    b.v1 = (int32_t)m.v.size();
+    b.l1 = (int32_t)c.lampMesh->v.size();
+    c.bld.push_back(b);
 }
 
-// 格子の電波塔 (高さ 166・脚は下で大きく開き、上へ細くなる)。展望台 2 つとアンテナ。鉄骨は自ら光る
+// 格子の電波塔 (高さ 166 × S・脚は下で大きく開き、上へ細くなる)。展望台 2 つとアンテナ。鉄骨は自ら光る。
+// 当たりは脚の間の弓より下を脚と弓の箱だけ (船が脚の間を抜けられる)・弓より上は段ごとの箱で塞ぐ
 void Tower(City& c)
 {
     float G = c.ground;
     Mesh& m = TileOf(c, TowerX, TowerZ);
     uint8_t steel[4] = { 255, 70, 40, 0 };
-    auto hw = [](float h) { float t = 1.0f - h / 140.0f; return 1.4f + 19.8f * powf(t < 0 ? 0 : t, 1.8f); };
+    auto hw = [](float h) { float t = 1.0f - h / (140.0f * S); return (1.4f + 19.8f * powf(t < 0 ? 0 : t, 1.8f)) * S; };
     const int Lv = 26;
-    const float Top = 125.0f;
+    const float Top = 125.0f * S;
+    const float Apex = 21.0f * S;
     float sx[4] = { -1, 1, 1, -1 }, sz[4] = { -1, -1, 1, 1 };
     for (int k = 0; k < Lv; k++)
     {
         float h0 = Top * k / Lv, h1 = Top * (k + 1) / Lv;
         float w0 = hw(h0), w1 = hw(h1);
-        float legR = 0.95f - 0.55f * (float)k / Lv;
+        float legR = (0.95f - 0.55f * (float)k / Lv) * S;
+        if (h0 >= Apex)
+            AddBox(c, TowerX - w0 - legR, TowerZ - w0 - legR, TowerX + w0 + legR, TowerZ + w0 + legR, G + h0, G + h1, -1);
         for (int j = 0; j < 4; j++)
         {
             int jn = (j + 1) & 3;
             float a[3] = { TowerX + sx[j] * w0, G + h0, TowerZ + sz[j] * w0 };
             float b[3] = { TowerX + sx[j] * w1, G + h1, TowerZ + sz[j] * w1 };
             Beam(m, a, b, legR, steel);
+            if (h0 < Apex) AddBeamBox(c, a, b, legR);
             float an[3] = { TowerX + sx[jn] * w0, G + h0, TowerZ + sz[jn] * w0 };
             float bn[3] = { TowerX + sx[jn] * w1, G + h1, TowerZ + sz[jn] * w1 };
             // 段ごとの横の梁と、面ごとの斜めの筋交い (X)
-            if (k > 1) Beam(m, a, an, 0.3f, steel);
-            Beam(m, a, bn, 0.26f, steel);
-            Beam(m, an, b, 0.26f, steel);
+            if (k > 1) Beam(m, a, an, 0.3f * S, steel);
+            Beam(m, a, bn, 0.26f * S, steel);
+            Beam(m, an, b, 0.26f * S, steel);
         }
     }
     // 脚の間の弓 (足元から立ち上がって面の真ん中で一番高くなる門の形)
@@ -276,7 +329,6 @@ void Tower(City& c)
     {
         int jn = (j + 1) & 3;
         const int Seg = 10;
-        const float Apex = 21.0f;
         for (int s = 0; s < Seg; s++)
         {
             float u0 = (float)s / Seg, u1 = (float)(s + 1) / Seg;
@@ -284,30 +336,34 @@ void Tower(City& c)
             float wa = hw(y0), wb = hw(y1);
             float a[3] = { TowerX + (sx[j] + (sx[jn] - sx[j]) * u0) * wa, G + y0, TowerZ + (sz[j] + (sz[jn] - sz[j]) * u0) * wa };
             float b[3] = { TowerX + (sx[j] + (sx[jn] - sx[j]) * u1) * wb, G + y1, TowerZ + (sz[j] + (sz[jn] - sz[j]) * u1) * wb };
-            Beam(m, a, b, 0.55f, steel);
+            Beam(m, a, b, 0.55f * S, steel);
+            AddBeamBox(c, a, b, 0.55f * S);
         }
     }
     // 展望台 (窓の帯が光る) と、その上のアンテナの塔
     uint8_t deck[4] = { 77, 8, 200, 0 }; // 様式は使わない (展望台は材質で窓を決める)
-    float d1 = 9.5f;
-    Box(m, TowerX - d1, TowerZ - d1, TowerX + d1, TowerZ + d1, G + 72, G + 79, G, MDeck, MRoof, deck);
-    float d2 = 4.4f;
-    Box(m, TowerX - d2, TowerZ - d2, TowerX + d2, TowerZ + d2, G + 121, G + 125.5f, G, MDeck, MRoof, deck);
+    float d1 = 9.5f * S;
+    Box(m, TowerX - d1, TowerZ - d1, TowerX + d1, TowerZ + d1, G + 72 * S, G + 79 * S, G, MDeck, MRoof, deck);
+    AddBox(c, TowerX - d1, TowerZ - d1, TowerX + d1, TowerZ + d1, G + 72 * S, G + 79 * S, -1);
+    float d2 = 4.4f * S;
+    Box(m, TowerX - d2, TowerZ - d2, TowerX + d2, TowerZ + d2, G + 121 * S, G + 125.5f * S, G, MDeck, MRoof, deck);
+    AddBox(c, TowerX - d2, TowerZ - d2, TowerX + d2, TowerZ + d2, G + 121 * S, G + 125.5f * S, -1);
     float prev[3] = { TowerX, G + Top, TowerZ };
     for (int k = 0; k < 8; k++)
     {
-        float h1 = Top + 41.0f * (k + 1) / 8.0f;
-        float w = 1.3f - 1.05f * (k + 1) / 8.0f;
+        float h1 = Top + 41.0f * S * (k + 1) / 8.0f;
+        float w = (1.3f - 1.05f * (k + 1) / 8.0f) * S;
         float nx[3] = { TowerX, G + h1, TowerZ };
         Box(m, TowerX - w, TowerZ - w, TowerX + w, TowerZ + w, prev[1], nx[1], G, MBeam, MBeam, steel, false);
         memcpy(prev, nx, 12);
     }
+    AddBox(c, TowerX - 1.3f * S, TowerZ - 1.3f * S, TowerX + 1.3f * S, TowerZ + 1.3f * S, G + Top, G + Top + 41.0f * S, -1);
     // 塔の灯: てっぺん・展望台の四隅
-    Lamp(*c.lampMesh, TowerX, G + Top + 41.5f, TowerZ, 2.4f, 255, 26, 20, 1, 0);
+    Lamp(*c.lampMesh, TowerX, G + Top + 41.5f * S, TowerZ, 4.8f, 255, 26, 20, 1, 0);
     for (int j = 0; j < 4; j++)
     {
-        Lamp(*c.lampMesh, TowerX + sx[j] * d1, G + 79.6f, TowerZ + sz[j] * d1, 1.5f, 255, 30, 22, 1, 0);
-        Lamp(*c.lampMesh, TowerX + sx[j] * d2, G + 126.0f, TowerZ + sz[j] * d2, 1.3f, 255, 30, 22, 1, 0);
+        Lamp(*c.lampMesh, TowerX + sx[j] * d1, G + 79.6f * S, TowerZ + sz[j] * d1, 3.0f, 255, 30, 22, 1, 0);
+        Lamp(*c.lampMesh, TowerX + sx[j] * d2, G + 126.0f * S, TowerZ + sz[j] * d2, 2.6f, 255, 30, 22, 1, 0);
     }
 }
 
@@ -315,37 +371,40 @@ void Tower(City& c)
 void Highway(City& c, bool alongX, float at, float from, float to)
 {
     float G = c.ground;
-    const float Y = 11.0f, Hw = 7.5f, Th = 1.6f;
+    const float Y = 11.0f * S, Hw = 7.5f * S, Th = 1.6f * S, Wall = 1.2f * S, Thin = 0.5f * S;
     uint8_t col[4] = { 30, 3 * 64 + 8, 0, 0 };
-    for (float s = from; s < to; s += 160.0f)
+    for (float s = from; s < to; s += 480.0f)
     {
-        float e = s + 160.0f < to ? s + 160.0f : to;
+        float e = s + 480.0f < to ? s + 480.0f : to;
         float x0 = alongX ? s : at - Hw, x1 = alongX ? e : at + Hw;
         float z0 = alongX ? at - Hw : s, z1 = alongX ? at + Hw : e;
         Mesh& m = TileOf(c, (x0 + x1) * 0.5f, (z0 + z1) * 0.5f);
         Box(m, x0, z0, x1, z1, G + Y - Th, G + Y, G, MRoad, MRoad, col);
+        AddBox(c, x0, z0, x1, z1, G + Y - Th, G + Y + Wall, -1);
         // 防音壁の低い縁
         if (alongX)
         {
-            Box(m, x0, z0, x1, z0 + 0.5f, G + Y, G + Y + 1.2f, G, MRoad, MRoad, col);
-            Box(m, x0, z1 - 0.5f, x1, z1, G + Y, G + Y + 1.2f, G, MRoad, MRoad, col);
+            Box(m, x0, z0, x1, z0 + Thin, G + Y, G + Y + Wall, G, MRoad, MRoad, col);
+            Box(m, x0, z1 - Thin, x1, z1, G + Y, G + Y + Wall, G, MRoad, MRoad, col);
         }
         else
         {
-            Box(m, x0, z0, x0 + 0.5f, z1, G + Y, G + Y + 1.2f, G, MRoad, MRoad, col);
-            Box(m, x1 - 0.5f, z0, x1, z1, G + Y, G + Y + 1.2f, G, MRoad, MRoad, col);
+            Box(m, x0, z0, x0 + Thin, z1, G + Y, G + Y + Wall, G, MRoad, MRoad, col);
+            Box(m, x1 - Thin, z0, x1, z1, G + Y, G + Y + Wall, G, MRoad, MRoad, col);
         }
-        for (float q = s + 20.0f; q < e; q += 40.0f)
+        for (float q = s + 60.0f; q < e; q += 120.0f)
         {
             float px = alongX ? q : at, pz = alongX ? at : q;
-            Box(m, px - 1.6f, pz - 1.6f, px + 1.6f, pz + 1.6f, G, G + Y - Th, G, MRoad, MRoad, col, false);
+            float pr = 1.6f * S;
+            Box(m, px - pr, pz - pr, px + pr, pz + pr, G, G + Y - Th, G, MRoad, MRoad, col, false);
+            AddBox(c, px - pr, pz - pr, px + pr, pz + pr, G, G + Y - Th, -1);
         }
-        for (float q = s + 6.0f; q < e; q += 24.0f)
+        for (float q = s + 18.0f; q < e; q += 72.0f)
         {
-            float ax = alongX ? q : at - Hw + 0.3f, az = alongX ? at - Hw + 0.3f : q;
-            float bx = alongX ? q : at + Hw - 0.3f, bz = alongX ? at + Hw - 0.3f : q;
-            Lamp(*c.lampMesh, ax, G + Y + 4.0f, az, 0.9f, 255, 70, 34, 0, 0);
-            Lamp(*c.lampMesh, bx, G + Y + 4.0f, bz, 0.9f, 255, 70, 34, 0, 0);
+            float ax = alongX ? q : at - Hw + Thin, az = alongX ? at - Hw + Thin : q;
+            float bx = alongX ? q : at + Hw - Thin, bz = alongX ? at + Hw - Thin : q;
+            Lamp(*c.lampMesh, ax, G + Y + 4.0f * S, az, 1.8f, 255, 70, 34, 0, 0);
+            Lamp(*c.lampMesh, bx, G + Y + 4.0f * S, bz, 1.8f, 255, 70, 34, 0, 0);
         }
     }
 }
@@ -356,7 +415,7 @@ void Build(City& c, uint32_t seed)
     // 地面 = 1 枚の大きな板 (道と街灯の光はシェーダが位置から描く)
     {
         Mesh& m = c.mesh[0];
-        float E = Extent + 1600.0f;
+        float E = Extent + 2400.0f;
         float a[3] = { -E, G, -E }, b[3] = { E, G, -E }, cc[3] = { E, G, E }, d[3] = { -E, G, E };
         float n[3] = { 0, 1, 0 };
         uint8_t col[4] = { 0, 0, 0, 0 };
@@ -372,7 +431,7 @@ void Build(City& c, uint32_t seed)
             float r = sqrtf(cx * cx + cz * cz);
             if (r > Extent) continue;
             float tdx = cx - TowerX, tdz = cz - TowerZ;
-            if (tdx * tdx + tdz * tdz < 95.0f * 95.0f) continue; // 塔の足元の公園
+            if (tdx * tdx + tdz * tdz < 95.0f * S * 95.0f * S) continue; // 塔の足元の公園
             uint32_t h = H3(i, j, seed);
             if (r > InnerR && U(h) > 0.55f) continue;
             // 内側は区画を 1〜2 × 1〜2 の敷地に分ける
@@ -387,20 +446,57 @@ void Build(City& c, uint32_t seed)
                 for (int b = 0; b < nz; b++)
                 {
                     uint32_t hl = H(h ^ (uint32_t)(a * 31 + b * 7 + 1));
-                    float set = 1.5f + 2.5f * U(H(hl ^ 0x1111));
+                    float set = (1.5f + 2.5f * U(H(hl ^ 0x1111))) * S;
                     float x0 = bx0 + lw * a + set, x1 = bx0 + lw * (a + 1) - set;
                     float z0 = bz0 + ld * b + set, z1 = bz0 + ld * (b + 1) - set;
                     // 細い塔は敷地の一部だけを使う
                     float sh = 0.75f + 0.25f * U(H(hl ^ 0x2222));
                     float mxw = (x1 - x0) * (1 - sh) * 0.5f, mzw = (z1 - z0) * (1 - sh) * 0.5f;
                     x0 += mxw; x1 -= mxw; z0 += mzw; z1 -= mzw;
-                    if (x1 - x0 < 5 || z1 - z0 < 5) continue;
+                    if (x1 - x0 < 5 * S || z1 - z0 < 5 * S) continue;
                     Building(c, seed, x0, z0, x1, z1, (x0 + x1) * 0.5f, (z0 + z1) * 0.5f, hl);
                 }
         }
     Tower(c);
-    Highway(c, true, 4 * Pitch * -1, -2400.0f, 2400.0f);
-    Highway(c, false, 4 * Pitch * 3, -2400.0f, 1800.0f);
+    Highway(c, true, 4 * Pitch * -1, -3600.0f, 3600.0f);
+    Highway(c, false, 4 * Pitch, -3600.0f, 2700.0f);
+}
+
+// 箱を区画の升の表へ (箱の覆う升ぜんぶに入れる)
+void MakeGrid(City& c)
+{
+    flt::CityCol& g = c.col;
+    g.cell = Pitch;
+    g.org[0] = g.org[1] = -Extent - Pitch;
+    g.nx = g.nz = (int32_t)((2 * Extent + 2 * Pitch) / Pitch) + 1;
+    int cells = g.nx * g.nz;
+    std::vector<int32_t> cnt(cells + 1, 0);
+    float top = c.ground;
+    auto span = [&](const flt::CityBox& b, int& i0, int& j0, int& i1, int& j1)
+    {
+        i0 = (int)floorf((b.mn[0] - g.org[0]) / g.cell); i1 = (int)floorf((b.mx[0] - g.org[0]) / g.cell);
+        j0 = (int)floorf((b.mn[2] - g.org[1]) / g.cell); j1 = (int)floorf((b.mx[2] - g.org[1]) / g.cell);
+        i0 = i0 < 0 ? 0 : i0; j0 = j0 < 0 ? 0 : j0;
+        i1 = i1 >= g.nx ? g.nx - 1 : i1; j1 = j1 >= g.nz ? g.nz - 1 : j1;
+    };
+    for (const flt::CityBox& b : c.box)
+    {
+        int i0, j0, i1, j1; span(b, i0, j0, i1, j1);
+        for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) cnt[j * g.nx + i]++;
+        if (b.mx[1] > top) top = b.mx[1];
+    }
+    c.start.assign(cells + 1, 0);
+    for (int k = 0; k < cells; k++) c.start[k + 1] = c.start[k] + cnt[k];
+    c.item.assign(c.start[cells], 0);
+    std::vector<int32_t> fill(c.start.begin(), c.start.end() - 1);
+    for (int32_t n = 0; n < (int32_t)c.box.size(); n++)
+    {
+        int i0, j0, i1, j1; span(c.box[n], i0, j0, i1, j1);
+        for (int j = j0; j <= j1; j++) for (int i = i0; i <= i1; i++) c.item[fill[j * g.nx + i]++] = n;
+    }
+    g.top = top;
+    g.box = c.box.data(); g.boxN = (int32_t)c.box.size();
+    g.start = c.start.data(); g.item = c.item.data();
 }
 }
 
@@ -415,7 +511,23 @@ MRP_API void* mrp_flt_city_create(uint32_t seed, float ground)
     c->lampMesh = &c->mesh[1 + Tiles * Tiles];
     c->lampMesh->kind = 1;
     Build(*c, seed);
+    MakeGrid(*c);
     return c;
+}
+
+// シムへ貸す当たりの表 (街を消すまで有効)
+MRP_API const flt::CityCol* mrp_flt_city_col(void* p) { return p ? &((City*)p)->col : nullptr; }
+
+// 棟の数と、棟 k の頂点の範囲 (区画の番号・始め・終わり・障害灯の始め・終わり) と形の範囲 6 個
+MRP_API int32_t mrp_flt_city_blds(void* p) { return p ? (int32_t)((City*)p)->bld.size() : 0; }
+MRP_API int32_t mrp_flt_city_bld(void* p, int32_t k, int32_t* r5, float* b6)
+{
+    City* c = (City*)p;
+    if (!c || k < 0 || k >= (int32_t)c->bld.size()) return 0;
+    const Bld& b = c->bld[k];
+    r5[0] = b.mesh; r5[1] = b.v0; r5[2] = b.v1; r5[3] = b.l0; r5[4] = b.l1;
+    memcpy(b6, b.mn, 12); memcpy(b6 + 3, b.mx, 12);
+    return 1;
 }
 
 // 作った区画の数。mesh 0 = 地面、続いて升ごとの街、最後に灯

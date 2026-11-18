@@ -59,7 +59,7 @@ Shader "MRP/FlightLamp"
                 else
                 {
                     float seed = frac(v.uv.y * 7.13 + wp.x * 0.013) * 97.0;
-                    float cut = s - length(wp.xz - _MrpCityAlarm.zw) / 450.0 - Hash12(float2(seed, 5.1)) * 0.3;
+                    float cut = s - length(wp.xz - _MrpCityAlarm.zw) / 900.0 - Hash12(float2(seed, 5.1)) * 0.3;
                     float back = s - _MrpCityAlarm.y - Hash12(float2(seed, 8.7)) * 2.5;
                     float blink = step(Hash12(float2(seed * 3.3, floor(t * 15.0))), 0.5);
                     on *= max(cut < 0.0 ? 1.0 : (cut < 0.45 ? blink : 0.0), back < 0.0 ? 0.0 : (back < 0.35 ? blink : 1.0));

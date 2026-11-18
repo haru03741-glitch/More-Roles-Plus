@@ -7,11 +7,13 @@ using UnityEngine.Rendering;
 namespace MoreRolesPlus.Flight;
 
 // 3D の艦隊戦の夜の街 (飛ぶ範囲の下の景色)。形は C++ (native/src/flight_city.cpp) が種から作り、
-// ここは区画ごとの静的なメッシュに詰めて場面の子に置くだけ (毎フレームの仕事は警報の間の値 2 つ)
+// ここは区画ごとの静的なメッシュに詰めて場面の子に置くだけ (毎フレームの仕事は警報の間の値 2 つ)。
+// 街の当たりの表は C++ の街が持つので、街は場面を出るまで消さずにシムへ貸す
 internal static unsafe class FlightCity
 {
     internal const float Ground = -300f;   // 地面の高さ (飛ぶ場の中心から)
-    internal const float FloorY = -110f;   // 飛べる高さの下限 (一番高い建物と塔より上)
+    internal const float FloorY = Ground + 14f; // 飛べる高さの下限 (地面のすぐ上・ビルとは当たりで当たる)
+    internal const float FloorMargin = 30f;     // 地面に近づくと引き起こしを始める高さ
     private const int Stride = 28;
 
     private static delegate* unmanaged[Cdecl]<uint, float, IntPtr> _create;
@@ -19,13 +21,16 @@ internal static unsafe class FlightCity
     private static delegate* unmanaged[Cdecl]<IntPtr, int, int*, int*, float*, int> _info;
     private static delegate* unmanaged[Cdecl]<IntPtr, int, byte*, int*, void> _fill;
     private static delegate* unmanaged[Cdecl]<IntPtr, void> _destroy;
+    private static delegate* unmanaged[Cdecl]<IntPtr, IntPtr> _col;
+    private static delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void> _lend;
     private static int _state;
+    private static IntPtr _city;
 
     private static readonly System.Collections.Generic.List<Mesh> Meshes = new();
     private static int _cityId;
     private const float TowerX = 380f, TowerZ = 560f; // 停電が広がり始める点 (電波塔・native と同じ値)
     private const float SirenAt = 1.2f, SpinUp = 4f, WindDown = 5f;
-    internal static readonly Vector4 Sky = new(0.075f, 0.006f, 0.012f, 3000f); // 街の霞の色 (停電で暗くする)
+    internal static readonly Vector4 Sky = new(0.075f, 0.006f, 0.012f, 4500f); // 街の霞の色 (停電で暗くする)
     private static Transform _root;
     private static int _alarmId, _skyId;
     private static float _alarmS = -1f, _alarmD, _nextAlarm, _dark;
@@ -42,6 +47,8 @@ internal static unsafe class FlightCity
             _info = (delegate* unmanaged[Cdecl]<IntPtr, int, int*, int*, float*, int>)Need("mrp_flt_city_info");
             _fill = (delegate* unmanaged[Cdecl]<IntPtr, int, byte*, int*, void>)Need("mrp_flt_city_fill");
             _destroy = (delegate* unmanaged[Cdecl]<IntPtr, void>)Need("mrp_flt_city_destroy");
+            _col = (delegate* unmanaged[Cdecl]<IntPtr, IntPtr>)Need("mrp_flt_city_col");
+            _lend = (delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)Need("mrp_flt_city");
             _state = 1;
         }
         catch (Exception e)
@@ -60,7 +67,7 @@ internal static unsafe class FlightCity
     }
 
     // 場面の root の子に街を作る。layer = 3D の場面の層
-    internal static bool Build(Transform root, int layer, uint seed)
+    internal static bool Build(Transform root, int layer, uint seed, IntPtr world)
     {
         Clear();
         if (!Ready() || !MrpBundle.FlightMaterials[4] || !MrpBundle.FlightMaterials[5]) return false;
@@ -108,10 +115,13 @@ internal static unsafe class FlightCity
                 chunks++;
             }
         }
-        finally
+        catch
         {
             _destroy(c);
+            throw;
         }
+        _city = c;
+        if (world != IntPtr.Zero) _lend(world, _col(c));
         _cityId = Shader.PropertyToID("_MrpCity");
         _alarmId = Shader.PropertyToID("_MrpCityAlarm");
         _skyId = Shader.PropertyToID("_MrpFltSky");
@@ -195,8 +205,16 @@ internal static unsafe class FlightCity
         Shader.SetGlobalVector(_skyId, Sky);
     }
 
+    // 世界を消す前に呼ぶ (シムが街の当たりを指したまま街を消さない)
+    internal static void Unlend(IntPtr world)
+    {
+        if (_state == 1 && world != IntPtr.Zero) _lend(world, IntPtr.Zero);
+    }
+
     internal static void Clear()
     {
+        if (_city != IntPtr.Zero) _destroy(_city);
+        _city = IntPtr.Zero;
         foreach (var m in Meshes) if (m) UnityEngine.Object.Destroy(m);
         Meshes.Clear();
         if (Active)

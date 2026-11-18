@@ -56,7 +56,7 @@ Shader "MRP/FlightCity"
             float Power(float2 xz, float seed)
             {
                 float s = _MrpCityAlarm.x;
-                float cut = s - length(xz - _MrpCityAlarm.zw) / 450.0 - Hash12(float2(seed, 5.1)) * 0.3;
+                float cut = s - length(xz - _MrpCityAlarm.zw) / 900.0 - Hash12(float2(seed, 5.1)) * 0.3;
                 float back = s - _MrpCityAlarm.y - Hash12(float2(seed, 8.7)) * 2.5;
                 float blink = step(Hash12(float2(seed * 3.3, floor(_Time.y * 15.0))), 0.5);
                 float on = cut < 0.0 ? 1.0 : (cut < 0.45 ? blink : 0.0);
@@ -95,7 +95,7 @@ Shader "MRP/FlightCity"
             {
                 float2 cell = style < 0.5 ? float2(1.7, 1.9) : (style < 1.5 ? float2(1.05, 1.9) : (style < 2.5 ? float2(1.35, 1.45) : float2(1.7, 1.9)));
                 if (isDeck > 0.5) cell = float2(1.15, 1.6);
-                float2 g = i.uv / cell;
+                float2 g = i.uv / (cell * 2.0); // 窓 1 つの大きさ (1 階 = 3.8)
                 float2 fw = max(fwidth(g), 1e-4);
                 float2 lw = style < 0.5 ? float2(0.07, 0.11) : (style < 1.5 ? float2(0.1, 0.05) : (style < 2.5 ? float2(0.035, 0.2) : float2(0.05, 0.08)));
                 float bright = 0.6 + 0.6 * Hash12(float2(seed * 37.1, 4.2));
@@ -130,33 +130,34 @@ Shader "MRP/FlightCity"
                 float3 c = float3(0.018, 0.011, 0.016) + (win + lineCol * lineCov * lineI * pw) * fl * _MrpCity.z;
                 // 下の街明かりで足元ほど赤く照らされる
                 float hgt = i.wp.y - _MrpCity.y;
-                c += float3(0.05, 0.006, 0.008) * exp(-hgt / 30.0) * (1.0 - 0.75 * _MrpCity.x);
+                c += float3(0.05, 0.006, 0.008) * exp(-hgt / 90.0) * (1.0 - 0.75 * _MrpCity.x);
                 return c;
             }
 
             float3 Ground(float3 wp, float dist)
             {
-                const float P = 64.0;
+                // 区画の間隔と道の半分の幅 (flight_city.cpp の Pitch・RoadW と同じ値)
+                const float P = 192.0;
                 float2 q = wp.xz;
                 float2 li = floor(q / P + 0.5);
                 float2 d = abs(q - li * P);
-                float2 hw = float2(fmod(abs(li.x), 4.0) < 0.5 ? 9.0 : 5.0, fmod(abs(li.y), 4.0) < 0.5 ? 9.0 : 5.0);
+                float2 hw = float2(fmod(abs(li.x), 4.0) < 0.5 ? 48.0 : 15.0, fmod(abs(li.y), 4.0) < 0.5 ? 48.0 : 15.0);
                 float2 fw = max(fwidth(q), 1e-3);
                 float2 onR = 1.0 - smoothstep(hw - fw, hw + fw, d);
                 float road = max(onR.x, onR.y);
                 float3 c = lerp(float3(0.026, 0.02, 0.024), float3(0.012, 0.01, 0.013), road);
-                // 街灯の光の溜まり: 道の両脇に 16 ごと (縦の道 = x の線・横の道 = z の線)
-                float lz = abs(q.y - floor(q.y / 16.0 + 0.5) * 16.0);
-                float lx = abs(q.x - floor(q.x / 16.0 + 0.5) * 16.0);
-                float ex = abs(d.x - hw.x - 1.0), ez = abs(d.y - hw.y - 1.0);
-                float poolA = exp(-(ex * ex + lz * lz) / 7.0) * step(d.x, hw.x + 3.0);
-                float poolB = exp(-(ez * ez + lx * lx) / 7.0) * step(d.y, hw.y + 3.0);
+                // 街灯の光の溜まり: 道の両脇に 32 ごと (縦の道 = x の線・横の道 = z の線)
+                float lz = abs(q.y - floor(q.y / 32.0 + 0.5) * 32.0);
+                float lx = abs(q.x - floor(q.x / 32.0 + 0.5) * 32.0);
+                float ex = abs(d.x - hw.x - 2.0), ez = abs(d.y - hw.y - 2.0);
+                float poolA = exp(-(ex * ex + lz * lz) / 28.0) * step(d.x, hw.x + 6.0);
+                float poolB = exp(-(ez * ez + lx * lx) / 28.0) * step(d.y, hw.y + 6.0);
                 float pool = max(poolA, poolB);
                 // 遠くでは溜まりの点が見分けられないので、道の上の平均の明るさに寄せる
-                float far = saturate(max(fw.x, fw.y) / 4.0 - 0.3);
+                float far = saturate(max(fw.x, fw.y) / 8.0 - 0.3);
                 pool = lerp(pool, road * 0.1, far);
                 // 停電: 街灯は消える。ごく一部だけ電気が残り、切れかけて不規則にまたたく
-                float2 lamp = floor(q / 16.0 + 0.5);
+                float2 lamp = floor(q / 32.0 + 0.5);
                 float pw = Power(wp.xz, Hash12(lamp) * 97.0);
                 float alive = step(Hash12(lamp * 1.91 + 3.7), 0.04) * step(Hash12(lamp + floor(_Time.y * 9.0)), 0.7);
                 c += float3(1.0, 0.16, 0.07) * pool * 0.5 * _MrpCity.z * Flicker(li.x * 7.0 + li.y * 3.0, 0) * max(pw, lerp(alive * 0.8, 0.02, far));
@@ -183,11 +184,11 @@ Shader "MRP/FlightCity"
                 {
                     // 塔の鉄骨: 下から照らされて自ら光って見える (上へ行くほど少し暗い)
                     float hgt = i.wp.y - _MrpCity.y;
-                    c = i.col.rgb * (1.25 - hgt / 260.0) * (0.75 + 0.25 * n.y * n.y);
+                    c = i.col.rgb * (1.25 - hgt / 780.0) * (0.75 + 0.25 * n.y * n.y);
                     // 停電の間は下からの光が消え、てっぺんと展望台の障害灯の脈にだけ赤く浮かぶ
                     float p = frac(max(_MrpCityAlarm.x, 0.0) / 2.2) * 2.2;
                     float beat = smoothstep(0.0, 0.08, p) * exp(-p / 0.8);
-                    c *= lerp(0.08 + 0.4 * beat * saturate(hgt / 100.0), 1.0, i.power);
+                    c *= lerp(0.08 + 0.4 * beat * saturate(hgt / 300.0), 1.0, i.power);
                     albedo = 0.1;
                 }
                 else if (mat < 3.5) c = Ground(i.wp, dist);
@@ -209,7 +210,7 @@ Shader "MRP/FlightCity"
                 c += fl * albedo;
                 // 霞: 遠いほど赤黒い霞へ・地面に近いほど濃い
                 float fog = 1.0 - exp(-dist / max(_MrpFltSky.a, 1.0));
-                float low = exp(-max(i.wp.y - _MrpCity.y, 0.0) / 60.0) * saturate(dist / 900.0) * 0.2;
+                float low = exp(-max(i.wp.y - _MrpCity.y, 0.0) / 150.0) * saturate(dist / 1800.0) * 0.2;
                 c = lerp(c, _MrpFltSky.rgb, saturate(fog + low));
                 return fixed4(c, 1);
             }

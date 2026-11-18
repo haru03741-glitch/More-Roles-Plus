@@ -118,9 +118,58 @@ internal static class FlightSound
         if (c) _shot.PlayOneShot(c, (big ? 0.85f : 0.42f) * vol);
     }
 
+    // 船がビルを擦っている間 (擦れの出来事が来るたびに少し延ばす)。k = 強さ 0..1
+    private static AudioSource _scrape;
+    private static float _scrapeHold, _scrapeVol = -1f;
+    private static int _bldNext;
+
+    internal static void Scrape(float k)
+    {
+        if (!Ensure()) return;
+        if (!_scrape)
+        {
+            var c = MrpBundle.Clip("noise_flt_scrape_loop");
+            if (!c) return;
+            _scrape = Make(SoundManager.Instance, true, c);
+        }
+        _scrapeHold = 0.18f;
+        float v = 0.3f + 0.45f * k;
+        if (_scrapeVol <= 0f) { _scrape.volume = v; _scrape.pitch = 0.9f + 0.2f * k; _scrape.Play(); _scrapeVol = v; }
+        else if (v > _scrapeVol + 0.05f) { _scrapeVol = v; _scrape.volume = v; }
+    }
+
+    // 毎フレーム: 擦れの出来事が途切れたら擦れの音を止める
+    internal static void TickScrape(float dt)
+    {
+        if (_scrapeVol <= 0f) return;
+        _scrapeHold -= dt;
+        if (_scrapeHold > 0f) return;
+        _scrape.Stop();
+        _scrapeVol = -1f;
+    }
+
+    // 正面からぶつかった (k = 強さ 0..1)
+    internal static void Crash(float k)
+    {
+        if (!Ensure()) return;
+        var c = MrpBundle.Clip("noise_flt_crash");
+        if (c) _shot.PlayOneShot(c, 0.55f + 0.4f * k);
+    }
+
+    // 光弾がビルに当たった (vol = 離れるほど小さく)
+    internal static void BuildingHit(float vol)
+    {
+        if (!Ensure()) return;
+        _bldNext = (_bldNext + 1) % 3;
+        var c = MrpBundle.Clip("noise_flt_bldhit_" + (_bldNext + 1));
+        if (c) _shot.PlayOneShot(c, 0.5f * vol);
+    }
+
     internal static void Stop()
     {
         if (!_ready) return;
+        if (_scrape) _scrape.Stop();
+        _scrapeVol = -1f;
         _engine.Stop();
         _rcs.Stop();
         if (_siren) _siren.Stop();

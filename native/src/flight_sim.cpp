@@ -908,6 +908,195 @@ void FxMuzzle(World* w, int team, V3 mp, V3 dir, V3 shipV, bool big)
         Emit(w, 1, mp + dir * 0.5f, shipV + norm(dir + rdir(w) * 0.55f) * rr(w, 35, 80) * (big ? 1.4f : 1.0f), rr(w, 0.08f, 0.18f), 0.35f * S, 0.1f, 4.0f, sp0, sp1);
 }
 
+// ---- 街の当たり (CityCol の箱の表) ----
+// 升の番号の範囲 (x0..x1, z0..z1 を覆う升)。表の外には箱が無い
+inline bool CityCells(const CityCol* c, float x0, float z0, float x1, float z1, int& i0, int& j0, int& i1, int& j1)
+{
+    i0 = (int)floorf((x0 - c->org[0]) / c->cell); i1 = (int)floorf((x1 - c->org[0]) / c->cell);
+    j0 = (int)floorf((z0 - c->org[1]) / c->cell); j1 = (int)floorf((z1 - c->org[1]) / c->cell);
+    if (i1 < 0 || j1 < 0 || i0 >= c->nx || j0 >= c->nz) return false;
+    if (i0 < 0) i0 = 0;
+    if (j0 < 0) j0 = 0;
+    if (i1 >= c->nx) i1 = c->nx - 1;
+    if (j1 >= c->nz) j1 = c->nz - 1;
+    return true;
+}
+
+// 線分 a→b (太さ r) が最初に当たる箱。返り値 = 0..1 の位置 (当たらなければ -1)・n = 当たった面の向き
+float CitySeg(const CityCol* c, V3 a, V3 b, float r, int* hitBox, V3* nOut)
+{
+    if (!c || fminf(a.y, b.y) - r > c->top) return -1;
+    int i0, j0, i1, j1;
+    if (!CityCells(c, fminf(a.x, b.x) - r, fminf(a.z, b.z) - r, fmaxf(a.x, b.x) + r, fmaxf(a.z, b.z) + r, i0, j0, i1, j1)) return -1;
+    float pa[3] = { a.x, a.y, a.z }, d[3] = { b.x - a.x, b.y - a.y, b.z - a.z };
+    float best = 2.0f; int bestBox = -1, bestAx = 1; float bestSg = 1;
+    for (int j = j0; j <= j1; j++)
+        for (int i = i0; i <= i1; i++)
+        {
+            int cell = j * c->nx + i;
+            for (int k = c->start[cell]; k < c->start[cell + 1]; k++)
+            {
+                const CityBox& bx = c->box[c->item[k]];
+                float te = -1e30f, tx = 1e30f; int ax = 1; float sg = 1;
+                bool miss = false;
+                for (int q = 0; q < 3 && !miss; q++)
+                {
+                    float lo = bx.mn[q] - r, hi = bx.mx[q] + r;
+                    if (fabsf(d[q]) < 1e-8f)
+                    {
+                        if (pa[q] < lo || pa[q] > hi) miss = true;
+                        continue;
+                    }
+                    float inv = 1.0f / d[q];
+                    float t0 = (lo - pa[q]) * inv, t1 = (hi - pa[q]) * inv;
+                    float s0 = -1;
+                    if (t0 > t1) { float tt = t0; t0 = t1; t1 = tt; s0 = 1; }
+                    if (t0 > te) { te = t0; ax = q; sg = s0; }
+                    if (t1 < tx) tx = t1;
+                    if (te > tx) miss = true;
+                }
+                if (miss || tx < 0 || te > 1) continue;
+                float t = te < 0 ? 0 : te;
+                if (t < best) { best = t; bestBox = c->item[k]; bestAx = ax; bestSg = sg; }
+            }
+        }
+    if (bestBox < 0) return -1;
+    if (hitBox) *hitBox = bestBox;
+    if (nOut) { float n[3] = { 0, 0, 0 }; n[bestAx] = bestSg; *nOut = v3(n[0], n[1], n[2]); }
+    return best;
+}
+
+// 球 (中心 p・半径 r) と一番深く重なる候補の箱。返り値 = 重なりの深さ (0 = 重ならない)・n = 押し出す向き
+float CitySphere(const CityCol* c, V3 p, float r, const int* cand, int candN, V3* nOut, int* hitBox)
+{
+    float best = 0;
+    for (int k = 0; k < candN; k++)
+    {
+        const CityBox& bx = c->box[cand[k]];
+        V3 q = v3(clampf(p.x, bx.mn[0], bx.mx[0]), clampf(p.y, bx.mn[1], bx.mx[1]), clampf(p.z, bx.mn[2], bx.mx[2]));
+        V3 d = p - q;
+        float d2 = dot(d, d);
+        if (d2 >= r * r) continue;
+        float depth; V3 n;
+        if (d2 > 1e-8f) { float dl = sqrtf(d2); n = d * (1.0f / dl); depth = r - dl; }
+        else
+        {
+            // 中心が箱の中: 一番近い面から出す
+            float pen[6] = { p.x - bx.mn[0], bx.mx[0] - p.x, p.y - bx.mn[1], bx.mx[1] - p.y, p.z - bx.mn[2], bx.mx[2] - p.z };
+            int m = 0;
+            for (int f = 1; f < 6; f++) if (pen[f] < pen[m]) m = f;
+            float nn[3] = { 0, 0, 0 }; nn[m >> 1] = (m & 1) ? 1.0f : -1.0f;
+            n = v3(nn[0], nn[1], nn[2]); depth = pen[m] + r;
+        }
+        if (depth > best) { best = depth; *nOut = n; *hitBox = cand[k]; }
+    }
+    return best;
+}
+
+// 擦った所の火花: 進む向きへ流れる短い筋と、壁の粉
+void FxScrape(World* w, V3 p, V3 n, V3 v, float k)
+{
+    static const uint8_t spark0[4] = { 255, 230, 170, 0 }, spark1[4] = { 255, 100, 35, 0 };
+    static const uint8_t dust0[4] = { 58, 50, 52, 120 }, dust1[4] = { 20, 18, 20, 0 };
+    V3 t = v - n * dot(v, n);
+    int sparks = 3 + (int)(5 * k);
+    for (int i = 0; i < sparks; i++)
+    {
+        V3 d = norm(n * 0.6f + rdir(w) * 0.7f);
+        Emit(w, 1, p, t * 0.55f + d * rr(w, 20, 60), rr(w, 0.15f, 0.35f), 0.45f, 0.15f, 3.0f, spark0, spark1);
+    }
+    if (rnd(w) < 0.5f + k)
+        Emit(w, 0, p + rdir(w) * 1.5f, n * rr(w, 2, 6) + t * 0.2f, rr(w, 0.8f, 1.4f), 3.0f, 9.0f, 1.2f, dust0, dust1);
+    AddLight(w, p, 30.0f, 1.0f, 0.6f, 0.3f, 0.08f, -1, v3(0, 0, 0), 900);
+}
+
+// 自分の船とビル: 部品の球ごとに重なりを見て押し出す。浅い角度は擦って減速し機首が壁に沿う、正面からは大きく削れて跳ね返る
+void CityShip(World* w, Ship& s, int idx, V3& p, Q4& q, float dt)
+{
+    const CityCol* c = w->city;
+    const float* P = w->prm;
+    const Model& m = w->model[s.model];
+    float R = m.bound;
+    s.scrapeT -= dt;
+    if (!c || p.y - R > c->top) return;
+    int i0, j0, i1, j1;
+    if (!CityCells(c, p.x - R, p.z - R, p.x + R, p.z + R, i0, j0, i1, j1)) return;
+    // 粗い球に届く箱だけを候補に (同じ箱が隣の升にも入っているので重ねない)
+    int cand[48], candN = 0;
+    for (int j = j0; j <= j1; j++)
+        for (int i = i0; i <= i1; i++)
+        {
+            int cell = j * c->nx + i;
+            for (int k = c->start[cell]; k < c->start[cell + 1] && candN < 48; k++)
+            {
+                int b = c->item[k];
+                const CityBox& bx = c->box[b];
+                V3 qp = v3(clampf(p.x, bx.mn[0], bx.mx[0]), clampf(p.y, bx.mn[1], bx.mx[1]), clampf(p.z, bx.mn[2], bx.mx[2]));
+                if (dot(p - qp, p - qp) > R * R) continue;
+                bool dup = false;
+                for (int u = 0; u < candN; u++) if (cand[u] == b) { dup = true; break; }
+                if (!dup) cand[candN++] = b;
+            }
+        }
+    if (candN == 0) return;
+    for (int iter = 0; iter < 2; iter++)
+    {
+        float deep = 0; V3 n = v3(0, 1, 0), hp = p; int box = -1;
+        for (int j = 0; j < m.sphN; j++)
+        {
+            V3 sc = p + rot(q, ld(m.sph[j].c));
+            V3 sn = v3(0, 1, 0); int sb = -1;
+            float d = CitySphere(c, sc, m.sph[j].r, cand, candN, &sn, &sb);
+            if (d > deep) { deep = d; n = sn; box = sb; hp = sc - sn * (m.sph[j].r - d); }
+        }
+        if (deep <= 0 || box < 0) break;
+        p = p + n * deep;
+        V3 fwd = rot(q, v3(0, 0, 1));
+        float vn = dot(fwd, n) * s.speed;
+        if (iter > 0 || vn >= 0) continue;
+        float impact = -vn;
+        int bld = c->box[box].bld;
+        bool crash = impact > P[PCrashSpeed];
+        V3 v = fwd * s.speed;
+        if (crash)
+        {
+            // 正面から: 速さを失い、壁から跳ね返って機首が弾かれる
+            float k = clampf(impact / (P[PBoost] > 1 ? P[PBoost] : 1), 0, 1);
+            s.speed *= 0.3f;
+            st(s.bumpV, ld(s.bumpV) + n * (impact * P[PCrashBounce]));
+            Jolt(s, v3(rnd(w) - 0.5f, rnd(w) - 0.5f, (rnd(w) - 0.5f) * 2.0f) * (6.0f * k));
+            FxExplode(w, hp, 0.18f + 0.25f * k);
+            FxScrape(w, hp, n, v, 1);
+            float dmg = P[PCrashDamage] * k;
+            Emit(w, EvHit, -1, idx, -1, hp, dmg);
+            Emit(w, EvScrape, idx, 0, 1, hp, k);
+            if (bld >= 0) Emit(w, EvBuilding, idx, bld, 0x30000, hp, dmg * 2.0f);
+            w->shake += P[PShakeHurt] * (1.0f + 2.0f * k);
+            s.scrapeT = 0.3f;
+        }
+        else
+        {
+            // 浅い角度: 機首を壁に沿う向きへ回し、擦れて減速する
+            float k = clampf(impact / (P[PCrashSpeed] > 1 ? P[PCrashSpeed] : 1), 0, 1);
+            V3 tf = norm(fwd - n * dot(fwd, n), fwd);
+            float ang = acosf(clampf(dot(fwd, tf), -1, 1));
+            float turn = fminf(ang, P[PScrapeTurn] * Deg * dt);
+            if (ang > 1e-4f) q = qnorm(qmul(qaxis(norm(cross(fwd, tf), v3(0, 1, 0)), turn), q));
+            s.speed = approach(s.speed, P[PBrake], P[PScrapeDrag] * (0.4f + k), dt);
+            if (s.scrapeT <= 0)
+            {
+                s.scrapeT = 0.1f;
+                FxScrape(w, hp, n, v, k);
+                float dmg = P[PScrapeDamage] * 0.1f * (0.3f + k);
+                Emit(w, EvHit, -1, idx, -1, hp, dmg);
+                Emit(w, EvScrape, idx, 0, 0, hp, k);
+                if (bld >= 0) Emit(w, EvBuilding, idx, bld, 0x30000, hp, dmg);
+                w->shake += P[PShakeHit] * (0.5f + k);
+            }
+        }
+    }
+}
+
 void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
 {
     const float* P = w->prm;
@@ -927,7 +1116,7 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
         inPitch = clampf(ly * k, -1, 1);
         inRoll = 0;
     }
-    // 下限に近づいたら機首を上げて引き起こす (近いほど操作より強く)。下の街に当たりは無いので、ここで止める
+    // 下限 (地面) に近づいたら機首を上げて引き起こす (近いほど操作より強く)
     if (P[PFloorY] > -1e5f && p.y < P[PFloorY] + P[PFloorMargin])
     {
         float k = clampf((P[PFloorY] + P[PFloorMargin] - p.y) / P[PFloorMargin], 0, 1);
@@ -1020,8 +1209,13 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
         v = v + right * ((float)s.dodgeDir * P[PDodgeSide] / T * shape);
         s.dodgeT -= dt;
     }
+    // ぶつかって跳ね返る速さ (すぐ減る)
+    V3 bump = ld(s.bumpV);
+    v = v + bump;
+    st(s.bumpV, bump * expf(-5.0f * dt));
     p = p + v * dt;
-    // 下限 (街の上を飛ぶ時の屋上より上の高さ) を抜けない
+    if (w->city) CityShip(w, s, idx, p, q, dt);
+    // 下限 (街の地面のすぐ上) を抜けない
     if (P[PFloorY] > -1e5f && p.y < P[PFloorY]) p.y = P[PFloorY];
     st(s.p, p); st(s.v, v); stq(s.q, q);
 
@@ -1189,6 +1383,23 @@ void StepBolts(World* w, int local, float dt)
                 if (t >= 0 && t < best) { best = t; hitShip = k; hitSector = m.sph[j].sector; }
             }
         }
+        // ビル: 船より手前で当たれば弾はそこで止まり、当たった棟が削れる
+        if (w->city)
+        {
+            int cb = -1; V3 cn;
+            float br = (b.size - 1.0f) * w->prm[PBoltWidth];
+            float t = CitySeg(w->city, a, e, br, &cb, &cn);
+            if (t >= 0 && t < best)
+            {
+                V3 hp = lerp(a, e, t);
+                FxHit(w, hp, ld(b.v));
+                if (b.size > 1.5f) FxExplode(w, hp, 0.35f);
+                int bld = w->city->box[cb].bld;
+                if (bld >= 0 && b.kind == 0) Emit(w, EvBuilding, b.owner, bld, b.mine ? 0x10000 : 0, hp, b.dmg);
+                b.alive = 0;
+                continue;
+            }
+        }
         if (hitShip >= 0)
         {
             V3 hp = lerp(a, e, best);
@@ -1258,6 +1469,13 @@ void Camera(World* w, int local, float dt)
     V3 cp = ld(w->camP);
     if (!w->camInit) { cp = want; w->camInit = 1; w->camFov = P[PFov]; }
     else cp = lerp(cp, want, 1.0f - expf(-P[PCamLag] * dt));
+    if (w->city)
+    {
+        V3 from = p + cu * 4.0f;
+        float t = CitySeg(w->city, from, cp, 3.0f, nullptr, nullptr);
+        if (t >= 0) cp = lerp(from, cp, fmaxf(t - 0.04f, 0.05f));
+        if (P[PFloorY] > -1e5f && cp.y < P[PFloorY] - 10.0f) cp.y = P[PFloorY] - 10.0f;
+    }
     // 曲がる向きへ注視点を少しずらす (狙う先を見せる)
     float steerX = s.sig[SgYaw], steerY = s.sig[SgPitch];
     V3 cr = norm(cross(cu, cf), right);
@@ -1372,6 +1590,9 @@ MRP_API World* mrp_flt_create(uint32_t seed)
 }
 
 MRP_API void mrp_flt_destroy(World* w) { delete w; }
+
+// 街の当たりを貸す (null = 外す)。街は場面を出るまで生きている
+MRP_API void mrp_flt_city(World* w, const CityCol* c) { if (w) w->city = c; }
 
 MRP_API void mrp_flt_view(World* w, const float* v6) { memcpy(w->view, v6, sizeof(float) * 6); }
 

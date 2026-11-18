@@ -37,6 +37,7 @@ enum Param
     PFlameLen, PFlameWidth, PFlameGlow, PExhRate, PExhSpeed, PExhLife, PIgniteShake, PRcsRate, PRcsSpeed,
     PBankDamp, PPitchLean, PIdleSway, PCamTurn, PDodgeYaw, PDodgeEase, PJoltHit, PJoltFreq, PJoltDamp, PKickBoost, PKickCharge, PUTurnCamBack, PKnock,
     PTimeScale, PFloorY, PFloorMargin, PDustRed, PEnemyWarm,
+    PCrashSpeed, PCrashDamage, PCrashBounce, PScrapeDamage, PScrapeDrag, PScrapeTurn,
     ParamCount
 };
 
@@ -47,7 +48,21 @@ enum MarkerKind { MkMuzzle = 1, MkEngine = 2, MkSector = 3, MkTurret = 4, MkHatc
 // 出来事 (C# へ返す)
 // EvFire の c = 1 は溜め撃ち・EvGraze = 回避の最中に敵の弾がすぐ横を抜けた (溜めが満ちる)
 // EvIgnite = 加速の点火 (a = 船)
-enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5, EvGraze = 6, EvIgnite = 7 };
+// EvBuilding = 弾や船がビルに当たった (a = 当てた船 (-1 = 船の外の弾)・b = 棟の番号・c = 0x10000 自分の弾・0x20000 船がぶつかった・f = 削った量)
+// EvScrape = 自分の船がビルを擦った/ぶつかった (a = 船・c = 1 正面からぶつかった・f = 強さ 0..1)
+enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5, EvGraze = 6, EvIgnite = 7, EvBuilding = 8, EvScrape = 9 };
+
+// 街の当たり (flight_city.cpp が作って持ち、場面の間だけ World が借りる)。軸に沿った箱を区画の升に入れた表
+struct CityBox { float mn[3], mx[3]; int32_t bld; int32_t pad; }; // bld = 棟の番号 (-1 = 壊れない物: 塔・高架)
+struct CityCol
+{
+    float org[2], cell;           // 升の原点 (x, z) と一辺
+    int32_t nx, nz;               // 升の数
+    float top;                    // 一番高い箱の上 (これより上は比べない)
+    const CityBox* box; int32_t boxN;
+    const int32_t* start;         // 升 (j * nx + i) の箱の並びの始め (nx * nz + 1 個)
+    const int32_t* item;          // 箱の番号
+};
 
 struct Sphere { float c[3]; float r; int32_t sector; };
 struct Marker { int32_t kind, id; float p[3]; float d[3]; };
@@ -111,6 +126,8 @@ struct Ship
     float mzAge, mzBig;          // 主砲を撃ってからの時間 (砲口の閃光)・溜め撃ちなら 1
     uint32_t mzSeed;             // 撃つごとに変わる閃光の形の種
     float tzAge[2];              // 砲台の砲身ごとの撃ってからの時間
+    float bumpV[3];              // ビルにぶつかって跳ね返る速さ (世界の向き・すぐ減る)
+    float scrapeT;               // 擦った火花と削れの出来事の間隔
 };
 
 // kind 0 = 戦いの弾・1 = 砲台が小惑星を撃つ光線 (船に当たらず、届いた所で小惑星が砕ける)
@@ -148,6 +165,7 @@ struct World
     int32_t partNext;
     float dust[MaxDust][3];
     FlashLight light[MaxLights];
+    const CityCol* city;            // 街の当たり (無い場面は null)
 };
 
 // 自分の船の入力 (-1..1)
