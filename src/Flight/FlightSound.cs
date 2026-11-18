@@ -11,6 +11,7 @@ internal static class FlightSound
     private static AudioSource _engine, _rcs, _shot;
     private static float _vol = -1f, _pitch = -1f, _rcsVol = -1f;
     private static bool _ready; // 音の口は場面をまたいで残す (毎フレームの Unity の物の生存確認を避ける)
+    private static SoundManager _sm; // 口を作った時の本編の音の係 (後から足す口も同じ出力の群へ)
 
     private static bool Ensure()
     {
@@ -20,6 +21,7 @@ internal static class FlightSound
         var e = MrpBundle.Clip("noise_flt_engine_loop");
         var r = MrpBundle.Clip("noise_flt_rcs_loop");
         if (!e || !r) return false;
+        _sm = sm;
         _host = new GameObject("MrpFlightSound");
         Object.DontDestroyOnLoad(_host);
         _engine = Make(sm, true, e);
@@ -85,7 +87,7 @@ internal static class FlightSound
         {
             var c = MrpBundle.Clip("noise_flt_siren_loop");
             if (!c) return;
-            _siren = Make(SoundManager.Instance, true, c);
+            _siren = Make(_sm, true, c);
         }
         if (_sirenVol <= 0f)
         {
@@ -130,7 +132,7 @@ internal static class FlightSound
         {
             var c = MrpBundle.Clip("noise_flt_scrape_loop");
             if (!c) return;
-            _scrape = Make(SoundManager.Instance, true, c);
+            _scrape = Make(_sm, true, c);
         }
         _scrapeHold = 0.18f;
         float v = 0.3f + 0.45f * k;
@@ -172,8 +174,9 @@ internal static class FlightSound
         if (!Ensure() || vol <= 0.02f) return;
         var c = MrpBundle.Clip("noise_flt_collapse");
         if (!c) return;
-        if (!_collapse) _collapse = Make(SoundManager.Instance, false, c);
-        _collapse.pitch = Mathf.Clamp(1.15f - h / 900f, 0.65f, 1.1f);
+        // 高さは鳴り始めの時だけ決める (鳴っている途中で変えると先の崩れの音程まで揺れる)
+        if (!_collapse) _collapse = Make(_sm, false, c);
+        if (!_collapse.isPlaying) _collapse.pitch = Mathf.Clamp(1.15f - h / 900f, 0.65f, 1.1f);
         _collapse.PlayOneShot(c, 0.95f * vol);
     }
 
@@ -193,6 +196,7 @@ internal static class FlightSound
         if (!_ready) return;
         if (_scrape) _scrape.Stop();
         _scrapeVol = -1f;
+        if (_collapse) _collapse.Stop();
         _engine.Stop();
         _rcs.Stop();
         if (_siren) _siren.Stop();

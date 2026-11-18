@@ -27,6 +27,7 @@ internal static unsafe class FlightCity
     private static delegate* unmanaged[Cdecl]<IntPtr, int, int*, float*, int> _bldInfo;
     private static delegate* unmanaged[Cdecl]<IntPtr, int, byte*> _verts;
     private static delegate* unmanaged[Cdecl]<IntPtr, int, int, float, int> _mark;
+    private static delegate* unmanaged[Cdecl]<IntPtr, int, int> _flatten;
     private static delegate* unmanaged[Cdecl]<IntPtr, float*, float, float, float, int, void> _ruin;
     private static delegate* unmanaged[Cdecl]<IntPtr, float*, float*, int, void> _burn;
     private static int _state;
@@ -59,6 +60,7 @@ internal static unsafe class FlightCity
             _bldInfo = (delegate* unmanaged[Cdecl]<IntPtr, int, int*, float*, int>)Need("mrp_flt_city_bld");
             _verts = (delegate* unmanaged[Cdecl]<IntPtr, int, byte*>)Need("mrp_flt_city_verts");
             _mark = (delegate* unmanaged[Cdecl]<IntPtr, int, int, float, int>)Need("mrp_flt_city_mark");
+            _flatten = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)Need("mrp_flt_city_flatten");
             _ruin = (delegate* unmanaged[Cdecl]<IntPtr, float*, float, float, float, int, void>)Need("mrp_flt_ruin");
             _burn = (delegate* unmanaged[Cdecl]<IntPtr, float*, float*, int, void>)Need("mrp_flt_burn");
             _state = 1;
@@ -117,7 +119,8 @@ internal static unsafe class FlightCity
                 mesh.triangles = ibuf;
                 var mn = new Vector3(b[0], b[1], b[2]);
                 var mx = new Vector3(b[3], b[4], b[5]);
-                mesh.bounds = new Bounds((mn + mx) * 0.5f, mx - mn + Vector3.one * 2f);
+                // 崩れる棟は傾いて瓦礫が外へ広がるので、横に余白を足す (区画の端の棟が欠けないように)
+                mesh.bounds = new Bounds((mn + mx) * 0.5f, mx - mn + new Vector3(120f, 2f, 120f));
                 Meshes.Add(mesh);
                 _chunk[k] = mesh;
                 var go = new GameObject(mesh.name) { layer = layer };
@@ -241,6 +244,8 @@ internal static unsafe class FlightCity
     private static float[] _hp = Array.Empty<float>(), _hpMax = Array.Empty<float>();
     private static byte[] _bstate = Array.Empty<byte>(); // 0 立っている・1 燃えている・2 崩れた
     private static float _clock, _clockUntil = -1f, _clockScale = 1f;
+    // 崩れ落ちるのを待って当たりを下げる棟 (落ちている間は見えているビルに弾も船も当たる)
+    private static readonly System.Collections.Generic.List<(int Bld, float At)> Flatten = new();
     private static int _clockId;
     internal static int Collapsed { get; private set; }
 
@@ -263,6 +268,7 @@ internal static unsafe class FlightCity
             }
         _clock = 0f;
         _clockUntil = -1f;
+        Flatten.Clear();
         _clockScale = 1f;
         Collapsed = 0;
         _clockId = Shader.PropertyToID("_MrpCityClock");
@@ -275,6 +281,8 @@ internal static unsafe class FlightCity
         if (_clockUntil < 0f) return;
         _clock += dt * _clockScale;
         Shader.SetGlobalFloat(_clockId, _clock);
+        for (int i = Flatten.Count - 1; i >= 0; i--)
+            if (_clock >= Flatten[i].At) { _flatten(_city, Flatten[i].Bld); Flatten.RemoveAt(i); }
         if (_clock > _clockUntil) _clockUntil = -1f;
     }
 
@@ -331,6 +339,7 @@ internal static unsafe class FlightCity
         float h = _box[k * 6 + 4] - _box[k * 6 + 1];
         float fallT = (float)Math.Sqrt(2f * h / 60f) + 0.35f;
         _clockUntil = Math.Max(_clockUntil, t0 + fallT + 0.5f);
+        Flatten.Add((k, t0 + fallT * 0.8f));
         Shader.SetGlobalFloat(_clockId, _clock);
         float* c = stackalloc float[3];
         c[0] = (_box[k * 6] + _box[k * 6 + 3]) * 0.5f; c[1] = _box[k * 6 + 1]; c[2] = (_box[k * 6 + 2] + _box[k * 6 + 5]) * 0.5f;

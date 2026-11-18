@@ -1163,11 +1163,12 @@ void StepBurns(World* w, float dt)
         if (!b.alive) continue;
         b.age += dt;
         V3 p = ld(b.p), n = ld(b.n);
-        if (rnd(w) < 7.0f * dt)
+        bool nearCam = dot(p - ld(w->camP), p - ld(w->camP)) < 900.0f * 900.0f;
+        if (rnd(w) < 5.0f * dt)
             Emit(w, 0, p + n * 3.0f + rdir(w) * 2.0f, n * rr(w, 3, 8) + v3(rr(w, -2, 2), rr(w, 10, 18), rr(w, -2, 2)), rr(w, 3.0f, 4.5f), rr(w, 7, 11), rr(w, 30, 46), 0.3f, smoke0, smoke1);
-        if (rnd(w) < 9.0f * dt)
+        if (nearCam && rnd(w) < 6.0f * dt)
             Emit(w, 0, p + n * 1.5f + rdir(w) * 2.5f, n * rr(w, 2, 5) + v3(0, rr(w, 4, 9), 0), rr(w, 0.3f, 0.6f), rr(w, 4, 7), rr(w, 2, 3), 1.0f, fire0, fire1);
-        if (rnd(w) < 3.0f * dt)
+        if (nearCam && rnd(w) < 2.0f * dt)
             Emit(w, 1, p + n * 2.0f, (n + rdir(w) * 0.6f + v3(0, 1, 0)) * rr(w, 12, 26), rr(w, 0.5f, 1.1f), 0.35f, 0.12f, 1.2f, ember0, ember1);
     }
 }

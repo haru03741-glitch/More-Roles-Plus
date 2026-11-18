@@ -530,7 +530,7 @@ MRP_API const uint8_t* mrp_flt_city_verts(void* p, int32_t k)
 inline float RubbleTop(float H) { float r = 0.08f * H + 4.0f; return r < 28.0f ? r : 28.0f; }
 
 // 棟 k の状態を頂点へ書く。burn = 燃えている (窓の一部が火・残りは消える)・t0 > 0 = その時刻に崩れ始めた
-// (障害灯を消し、当たりの箱を瓦礫の高さへ下げる)。書いた後は C# が mrp_flt_city_bld の範囲を書き直す
+// (障害灯を消す)。書いた後は C# が mrp_flt_city_bld の範囲をメッシュへ写す。当たりの箱は崩れ落ちた後に mrp_flt_city_flatten で下げる
 MRP_API int32_t mrp_flt_city_mark(void* p, int32_t k, int32_t burn, float t0)
 {
     City* c = (City*)p;
@@ -541,12 +541,22 @@ MRP_API int32_t mrp_flt_city_mark(void* p, int32_t k, int32_t burn, float t0)
     for (int32_t i = b.v0; i < b.v1; i++)
     {
         V& v = m.v[i];
-        if (burn) { v.c[3] |= 0x40; v.c[2] = (uint8_t)(v.c[2] / 3); }
+        if (burn && !(v.c[3] & 0x40)) { v.c[3] |= 0x40; v.c[2] = (uint8_t)(v.c[2] / 3); }
         if (t0 > 0) { v.k[0] = t0; v.k[1] = cx; v.k[2] = cz; v.k[3] = H; }
     }
     if (t0 > 0)
-    {
         for (int32_t i = b.l0; i < b.l1; i++) c->lampMesh->v[i].uv[0] = 0;
+    return 1;
+}
+
+// 崩れ落ちた棟 k の当たりの箱を瓦礫の高さへ下げる (上の段は地面の下へ)
+MRP_API int32_t mrp_flt_city_flatten(void* p, int32_t k)
+{
+    City* c = (City*)p;
+    if (!c || k < 0 || k >= (int32_t)c->bld.size()) return 0;
+    const Bld& b = c->bld[k];
+    float H = b.mx[1] - b.mn[1];
+    {
         float top = b.mn[1] + RubbleTop(H);
         for (flt::CityBox& bx : c->box)
             if (bx.bld == k)
