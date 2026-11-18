@@ -226,14 +226,9 @@ Shader "MRP/FlightCity"
                 float onBand = max(band.x, band.y);
                 float onRoad = max(road.x, road.y);
                 float walk = onBand * (1.0 - onRoad);
-                // 地面は画面の多くを占めるので、道の外 (敷地) と遠く (画素が 3 より粗い) は標示を計算しない
+                // 地面は画面の多くを占めるので、道の外 (敷地) では標示を計算しない
                 float med = 0.0;
                 if (onBand <= 0.0) alb = 0.12 * (1.0 - 0.3 * Lines(q / 4.0, 0.03, fw / 4.0));
-                else if (fm > 3.0)
-                {
-                    // 遠く: 標示・縁石・敷石は画素より細いので平均の明るさだけ
-                    alb = lerp(lerp(0.12, 0.155, walk), 0.07, onRoad);
-                }
                 else
                 {
                     // 車線は交差点の外 (相手の道の歩道より外) だけ
