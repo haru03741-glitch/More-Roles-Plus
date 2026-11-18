@@ -60,7 +60,7 @@ internal static class MrpBundle
             "noise_gat_hit_1", "noise_gat_hit_2", "noise_gat_hit_3", "noise_gat_case_1", "noise_gat_case_2", "noise_gat_case_3",
             "noise_gat_flesh_1", "noise_gat_flesh_2", "noise_gat_flesh_3",
             "noise_rl_load", "noise_rl_bang_1", "noise_rl_bang_2", "noise_rl_bang_3", "noise_rl_escape", "noise_rl_shatter", "noise_rl_fire", "noise_rl_fly_loop", "noise_rl_blast",
-            "noise_guess_aim", "noise_guess_shot",
+            "noise_guess_aim", "noise_guess_shot", "noise_pusher_shove", "noise_foam_tear",
             "noise_flt_engine_loop", "noise_flt_ignite", "noise_flt_rcs_loop",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
@@ -69,6 +69,8 @@ internal static class MrpBundle
             names.Add("noise_crumble_" + mat);
             names.Add("noise_rubble_" + mat);
             names.Add("noise_gat_breach_" + mat);
+            names.Add("noise_burn_hit_" + mat);
+            names.Add("noise_burn_crumble_" + mat);
         }
         int n = names.Count;
         for (int i = 0; i < n; i++) names.Add(names[i] + "_m");
