@@ -158,14 +158,12 @@ internal static class FlightSound
         if (c) _shot.PlayOneShot(c, 0.55f + 0.4f * k);
     }
 
-    // ビルが燃え始めた (外壁が砕けて火が回る)
+    // ビルが燃え始めた (外壁にひびが走って剥がれ、火が回る)
     internal static void BuildingBurn(float vol)
     {
         if (!Ensure() || vol <= 0.02f) return;
-        var c = MrpBundle.Clip("noise_crumble_stone");
-        if (c) _shot.PlayOneShot(c, 0.6f * vol);
-        var f = MrpBundle.Clip("noise_fire_ignite");
-        if (f) _shot.PlayOneShot(f, 0.45f * vol);
+        var c = MrpBundle.Clip("noise_flt_bldburn");
+        if (c) _shot.PlayOneShot(c, 0.7f * vol);
     }
 
     // ビルが崩れ始めた (h = 高さ・高いほど低く長く聞こえるよう少し下げる)

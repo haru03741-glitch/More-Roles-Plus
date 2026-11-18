@@ -60,7 +60,7 @@ internal static class FlightCommands
                         int k = FlightCity.Nearest(at, 400f);
                         if (k < 0) { reply("ERR flight no building"); return; }
                         bool changed = FlightCity.Damage(k, G(1, 50), at);
-                        reply($"OK flight bdmg bld={k} changed={changed} collapsed={FlightCity.Collapsed}");
+                        reply($"OK flight bdmg bld={k} changed={changed} collapsed={FlightCity.Collapsed} box={FlightCity.BoxText(k)}");
                         return;
                     }
                 case "cclock":

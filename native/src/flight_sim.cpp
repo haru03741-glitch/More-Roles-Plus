@@ -1056,7 +1056,7 @@ void CityShip(World* w, Ship& s, int idx, V3& p, Q4& q, float dt)
         if (iter > 0 || vn >= 0) continue;
         float impact = -vn;
         int bld = c->box[box].bld;
-        bool crash = impact > P[PCrashSpeed];
+        bool crash = impact > P[PCrashSpeed] && s.scrapeT <= 0; // 引っかかったまま速さが戻っても続けて正面衝突にしない
         V3 v = fwd * s.speed;
         if (crash)
         {
@@ -1068,7 +1068,7 @@ void CityShip(World* w, Ship& s, int idx, V3& p, Q4& q, float dt)
             FxExplode(w, hp, 0.18f + 0.25f * k);
             FxScrape(w, hp, n, v, 1);
             float dmg = P[PCrashDamage] * k;
-            Emit(w, EvHit, -1, idx, -1, hp, dmg);
+            Emit(w, EvHit, -1, idx, 0, hp, dmg); // 区画 0・自分の弾の印 (0x10000) は立てない
             Emit(w, EvScrape, idx, 0, 1, hp, k);
             if (bld >= 0) Emit(w, EvBuilding, idx, bld, 0x30000, hp, dmg * 2.0f);
             w->shake += P[PShakeHurt] * (1.0f + 2.0f * k);
@@ -1078,7 +1078,15 @@ void CityShip(World* w, Ship& s, int idx, V3& p, Q4& q, float dt)
         {
             // 浅い角度: 機首を壁に沿う向きへ回し、擦れて減速する
             float k = clampf(impact / (P[PCrashSpeed] > 1 ? P[PCrashSpeed] : 1), 0, 1);
-            V3 tf = norm(fwd - n * dot(fwd, n), fwd);
+            V3 tf = fwd - n * dot(fwd, n);
+            // ほぼ正面から当たった時の沿う向きは上下に寄る (壁を這い上がる)。横の壁なら水平に、右か左の近い方へ逸らす
+            if (fabsf(n.y) < 0.5f && tf.x * tf.x + tf.z * tf.z < 0.16f * dot(tf, tf) + 1e-6f)
+            {
+                V3 side = norm(cross(v3(0, 1, 0), n), v3(1, 0, 0));
+                if (dot(side, rot(q, v3(1, 0, 0))) < 0) side = side * -1.0f;
+                tf = side + v3(0, tf.y * 0.2f, 0);
+            }
+            tf = norm(tf, fwd);
             float ang = acosf(clampf(dot(fwd, tf), -1, 1));
             float turn = fminf(ang, P[PScrapeTurn] * Deg * dt);
             if (ang > 1e-4f) q = qnorm(qmul(qaxis(norm(cross(fwd, tf), v3(0, 1, 0)), turn), q));
@@ -1088,7 +1096,7 @@ void CityShip(World* w, Ship& s, int idx, V3& p, Q4& q, float dt)
                 s.scrapeT = 0.1f;
                 FxScrape(w, hp, n, v, k);
                 float dmg = P[PScrapeDamage] * 0.1f * (0.3f + k);
-                Emit(w, EvHit, -1, idx, -1, hp, dmg);
+                Emit(w, EvHit, -1, idx, 0, hp, dmg); // 区画 0・自分の弾の印 (0x10000) は立てない
                 Emit(w, EvScrape, idx, 0, 0, hp, k);
                 if (bld >= 0) Emit(w, EvBuilding, idx, bld, 0x30000, hp, dmg);
                 w->shake += P[PShakeHit] * (0.5f + k);
@@ -1479,7 +1487,7 @@ void StepBolts(World* w, int local, float dt)
         if (hitShip >= 0)
         {
             V3 hp = lerp(a, e, best);
-            Emit(w, EvHit, b.owner, hitShip, hitSector | (b.mine ? 0x10000 : 0), hp, b.dmg);
+            Emit(w, EvHit, b.owner, hitShip, (hitSector < 0 ? 0 : hitSector) | (b.mine ? 0x10000 : 0), hp, b.dmg); // 区画の無い球 (-1) で印のビットが立たないように
             FxHit(w, hp, ld(b.v));
             if (b.size > 1.5f) FxExplode(w, hp, 0.35f);
             {

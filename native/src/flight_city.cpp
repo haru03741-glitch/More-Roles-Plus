@@ -303,7 +303,7 @@ void Tower(City& c)
     auto hw = [](float h) { float t = 1.0f - h / (140.0f * S); return (1.4f + 19.8f * powf(t < 0 ? 0 : t, 1.8f)) * S; };
     const int Lv = 26;
     const float Top = 125.0f * S;
-    const float Apex = 21.0f * S;
+    const float Apex = 32.0f * S; // 脚の間の弓の高さ (船が下をくぐれる)
     float sx[4] = { -1, 1, 1, -1 }, sz[4] = { -1, -1, 1, 1 };
     for (int k = 0; k < Lv; k++)
     {
@@ -321,8 +321,9 @@ void Tower(City& c)
             if (h0 < Apex) AddBeamBox(c, a, b, legR);
             float an[3] = { TowerX + sx[jn] * w0, G + h0, TowerZ + sz[jn] * w0 };
             float bn[3] = { TowerX + sx[jn] * w1, G + h1, TowerZ + sz[jn] * w1 };
-            // 段ごとの横の梁と、面ごとの斜めの筋交い (X)
-            if (k > 1) Beam(m, a, an, 0.3f * S, steel);
+            // 段ごとの横の梁と、面ごとの斜めの筋交い (X)。弓より下は開いた門 (船が脚の間を抜けられる)
+            if (h0 < Apex) continue;
+            Beam(m, a, an, 0.3f * S, steel);
             Beam(m, a, bn, 0.26f * S, steel);
             Beam(m, an, b, 0.26f * S, steel);
         }
@@ -340,7 +341,13 @@ void Tower(City& c)
             float a[3] = { TowerX + (sx[j] + (sx[jn] - sx[j]) * u0) * wa, G + y0, TowerZ + (sz[j] + (sz[jn] - sz[j]) * u0) * wa };
             float b[3] = { TowerX + (sx[j] + (sx[jn] - sx[j]) * u1) * wb, G + y1, TowerZ + (sz[j] + (sz[jn] - sz[j]) * u1) * wb };
             Beam(m, a, b, 0.55f * S, steel);
-            AddBeamBox(c, a, b, 0.55f * S);
+            // 斜めの梁を軸に沿った箱 1 つで包むと梁の下まで塞ぐので、4 つに分けて包む
+            for (int q = 0; q < 4; q++)
+            {
+                float pa[3], pb[3];
+                for (int e = 0; e < 3; e++) { pa[e] = a[e] + (b[e] - a[e]) * q * 0.25f; pb[e] = a[e] + (b[e] - a[e]) * (q + 1) * 0.25f; }
+                AddBeamBox(c, pa, pb, 0.55f * S);
+            }
         }
     }
     // 展望台 (窓の帯が光る) と、その上のアンテナの塔

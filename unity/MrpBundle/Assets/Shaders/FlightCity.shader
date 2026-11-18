@@ -84,7 +84,7 @@ Shader "MRP/FlightCity"
                 float fall = min(30.0 * tf * tf, H);
                 float R = min(0.08 * H + 4.0, 28.0);
                 float hn = h - fall;
-                float y = hn > R ? hn : R * exp((hn - R) / (0.5 * H));
+                float y = hn > R ? hn : min(R * exp((hn - R) / (0.5 * H)), h); // 元の高さより上へは持ち上げない (足元が浮かない)
                 float spread = saturate((R - hn) / H) * 0.3;
                 float ang = Hash12(float2(seed, 3.3)) * 6.2832;
                 float lean = 0.12 * saturate(tf / 2.0) * saturate((hn - R) * 4.0 / H);

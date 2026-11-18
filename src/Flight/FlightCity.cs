@@ -13,7 +13,7 @@ internal static unsafe class FlightCity
 {
     internal const float Ground = -300f;   // 地面の高さ (飛ぶ場の中心から)
     internal const float FloorY = Ground + 14f; // 飛べる高さの下限 (地面のすぐ上・ビルとは当たりで当たる)
-    internal const float FloorMargin = 30f;     // 地面に近づくと引き起こしを始める高さ
+    internal const float FloorMargin = 20f;     // 地面に近づくと引き起こしを始める高さ (塔の弓の下 約 54 を抜けられる低さ)
     private const int Stride = 44;
 
     private static delegate* unmanaged[Cdecl]<uint, float, IntPtr> _create;
@@ -291,6 +291,10 @@ internal static unsafe class FlightCity
 
     internal static int BuildingCount => _bstate.Length;
 
+    // 確かめ用: 棟 k の足元と高さ (x0 z0 x1 z1 底 上)
+    internal static string BoxText(int k) => k < 0 || k >= _bstate.Length ? "-" :
+        $"{_box[k * 6]:0} {_box[k * 6 + 2]:0} {_box[k * 6 + 3]:0} {_box[k * 6 + 5]:0} {_box[k * 6 + 1]:0} {_box[k * 6 + 4]:0} hp={_hp[k]:0}/{_hpMax[k]:0}";
+
     // p (場面の中の位置) に一番近い立っている棟 (無ければ -1)
     internal static int Nearest(Vector3 p, float maxDist)
     {
@@ -338,7 +342,7 @@ internal static unsafe class FlightCity
         Rewrite(k, true);
         float h = _box[k * 6 + 4] - _box[k * 6 + 1];
         float fallT = (float)Math.Sqrt(2f * h / 60f) + 0.35f;
-        _clockUntil = Math.Max(_clockUntil, t0 + fallT + 0.5f);
+        _clockUntil = Math.Max(_clockUntil, t0 + fallT + 1.5f); // 瓦礫の粉とくすぶりは落ちきって 1 秒で出揃う
         Flatten.Add((k, t0 + fallT * 0.8f));
         Shader.SetGlobalFloat(_clockId, _clock);
         float* c = stackalloc float[3];

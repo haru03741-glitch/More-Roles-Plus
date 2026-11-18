@@ -548,8 +548,9 @@ internal static unsafe class Arena
 
         HandleEvents(a.EvN);
         FlightSound.Tick(_hud[8], _hud[9]);
-        FlightSound.TickScrape(Time.deltaTime);
-        FlightCity.Tick(Time.deltaTime);
+        float frameDt = Time.deltaTime;
+        FlightSound.TickScrape(frameDt);
+        FlightCity.Tick(frameDt);
         TickFlash();
 
         _statT += Time.deltaTime;
