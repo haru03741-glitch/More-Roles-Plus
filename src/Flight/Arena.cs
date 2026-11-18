@@ -17,6 +17,7 @@ internal static unsafe class Arena
     internal const int Layer = 30;
     private const float OriginX = 20000f;
     private static readonly Vector3 Origin = new(OriginX, 0f, 0f);
+    internal static Vector3 OriginPos => Origin;
     private const int MaxEvents = 128;
 
     internal static bool Active { get; private set; }
@@ -86,6 +87,7 @@ internal static unsafe class Arena
         bool city = Stage == 1 && MrpBundle.FlightMaterials[4] && MrpBundle.FlightMaterials[6];
         FlightParams.Values[FlightParams.Find("floorY")] = city ? FlightCity.FloorY : -1e6f;
         FlightParams.Values[FlightParams.Find("floorMargin")] = city ? FlightCity.FloorMargin : 70f;
+        FlightParams.Values[FlightParams.Find("groundY")] = city ? FlightCity.Ground : -1e6f;
         FlightParams.Values[FlightParams.Find("dustRed")] = city ? 1f : 0f;
         FlightParams.Values[FlightParams.Find("enemyWarm")] = city ? 1f : 0f;
         FlightParams.Values[FlightParams.Find("dustAlpha")] = city ? 0.45f : 0.8f;
@@ -131,6 +133,7 @@ internal static unsafe class Arena
         if (_world != IntPtr.Zero) FlightNative.Destroy(_world);
         _world = IntPtr.Zero;
         FlightCity.Clear();
+        _holdOn = false;
         Free();
         HideHud(false);
         _hudWaitLogged = false;
@@ -187,6 +190,16 @@ internal static unsafe class Arena
         FlightNative.Spawn(_world, _local, 0, 0, 0, pp, qq, 100);
         Hp[_local] = 100;
         return true;
+    }
+
+    // 確かめ用: 自分の船を毎フレーム同じ所へ置き直す (止めたカメラで街を撮る)
+    private static bool _holdOn;
+    private static Vector3 _holdP;
+    private static float _holdYaw, _holdPitch;
+
+    internal static void DebugHold(bool on, Vector3 p, float yaw, float pitch)
+    {
+        _holdOn = on; _holdP = p; _holdYaw = yaw; _holdPitch = pitch;
     }
 
     internal static bool DebugExplode()
@@ -473,6 +486,7 @@ internal static unsafe class Arena
         if (leave) { Exit(); return; }
 
         ShipTasks.Tick(_world, _shipN, ShipModel, Time.time);
+        if (_holdOn) DebugPlace(_holdP, _holdYaw, _holdPitch);
         var a = new FlightNative.FrameArgs
         {
             World = _world,
@@ -500,6 +514,7 @@ internal static unsafe class Arena
         {
             // シムの座標は場面の原点 (Origin) から測っているので、シェーダの世界の座標へずらす
             for (int k = 0; k < FlightNative.OutLights; k++) _lightPtr[k * 8] += OriginX;
+            FlightCars.WriteSlots(_lightPtr, LocalShipPos);
             Shader.SetGlobalVectorArray(_lightsId, _lightArr);
         }
         if (a.Steps == 0) _idleFrames++;
@@ -625,6 +640,19 @@ internal static unsafe class Arena
                 float dx = e.X - lo[0], dy = e.Y - lo[1], dz = e.Z - lo[2];
                 float d = (float)System.Math.Sqrt(dx * dx + dy * dy + dz * dz);
                 float vol = 1f - d / 700f;
+                if (vol > 0.03f) { FlightSound.BuildingHit(vol); _bldSounds++; }
+                continue;
+            }
+            if (e.Kind == (int)FlightNative.Ev.Ground)
+            {
+                // 路面に当たった: 車なら燃やす (今は自分の画面だけで決める・通信の段でホストが持つ形にする)。路面だけなら軽い砕けの音
+                var at = new Vector3(e.X, e.Y, e.Z);
+                if (FlightCity.Active && FlightCars.Hit(at)) continue;
+                if ((e.C & 1) != 0) FlightCars.Burst(at, 45f);
+                if (_bldSounds >= 2) continue;
+                float* lo = _shipOut + _local * 8;
+                float dx = e.X - lo[0], dy = e.Y - lo[1], dz = e.Z - lo[2];
+                float vol = 0.6f * (1f - (float)System.Math.Sqrt(dx * dx + dy * dy + dz * dz) / 600f);
                 if (vol > 0.03f) { FlightSound.BuildingHit(vol); _bldSounds++; }
                 continue;
             }

@@ -2,7 +2,8 @@
 // 頂点: NORMAL = 法線 xyz + 材質 w (番号 / 127)・COLOR = r 建物の種・g 様式 × 64 + 8・b 窓の点く割合・a ちらつきの組・
 // TEXCOORD0 = 壁に沿った長さ・地面からの高さ (単位)。
 // 遠くで窓や道の線が画素より細くなったら、線と窓の平均の明るさへ寄せる (ちらつきとモアレを出さない)。
-// _MrpCity = x 停電の暗さ (街全体・0..1)・y 地面の高さ・z 街の明るさ
+// _MrpCity = x 停電の暗さ (街全体・0..1)・y 地面の高さ・z 街の明るさ・w 停電で車が止まっていた秒の合計
+// _MrpFltLights の奇数番の w = 場面の時計 (秒)・自分の船の街の x・z・地面からの高さ
 // _MrpCityAlarm = x 警報が鳴ってからの秒 (鳴っていない間は大きな負)・y 明かりが戻り始める秒・zw 停電が広がり始める点 (世界の xz)
 // 警報の間は電気が止まる: 塔から外へ停電が広がり、建物ごとに数回またたいて消える。残るのは非常灯の窓がわずかと、
 // ゆっくり脈打つ航空障害灯だけ。戻る時は建物ごとにばらばらに点き直す
@@ -215,10 +216,56 @@ Shader "MRP/FlightCity"
                 return exp(-dot(p, p) / (g * g)) * (r * r) / (g * g);
             }
 
+            // 車線ごとの止まりの表 (FlightCars.cs が書く・8 × 1536 を点で引く)。1 車線に 1 行:
+            // 0 = 止まりのある区間の番号 2 つ (道に沿った位置 / 192 の切り捨て・無ければ大きな負)、1〜2 と 3〜4 = 区間ごとの
+            // (止まる所 pb・長さ・始まった車の時計 Tb・1 = 燃えた車が道をふさぐ / 0 = ビルの前で止まるだけ)
+            // (撃たれた車の印 24 個 = ふさいだ車の 18 升後ろから 5 升先まで・最後に撃たれた時計・ふさいだ車が撃たれた時計・0)
+            sampler2D _MrpCarTex;
+            float _MrpCarOn;
+            float4 _MrpCarAlm[4]; // 防犯アラームが鳴っている所 (街の xz・半径・鳴り始めた時計)
+
+            float4 CarTexel(float lane, float k)
+            {
+                return tex2Dlod(_MrpCarTex, float4((k + 0.5) / 8.0, (lane + 0.5) / 1536.0, 0, 0));
+            }
+
+            // 印 m の i 番目 (0..23) が立っているか
+            float Bit(float m, float i) { return fmod(floor(m / exp2(i)), 2.0); }
+
+            // 1 台を描く。y = 車の後ろから前へ (0..4.6 が車体)・x = 車線の中心からの横・tone = 色の種・brake = ブレーキ灯 (0..1)・
+            // haz = 非常点滅灯 (0..1)・burn = 燃えた殻 (0 = 普通の車・1 = 燃えている・小さいほど冷めた)
+            float3 CarLook(float y, float x, float tone, float brake, float haz, float burn, float fl, float fa, inout float alb)
+            {
+                float body = Band(y - 2.3, 4.6, fa) * Band(x, 1.85, fl);
+                if (burn > 0.0)
+                {
+                    // 焼けた殻: 煤けた黒と、まだ燃えている所の揺らぐ火
+                    alb = lerp(alb, 0.012, body);
+                    float2 g = floor(float2(y * 1.6, x * 2.2));
+                    float f = Hash12(g + tone * 31.0);
+                    float flick = 0.55 + 0.45 * sin(_MrpFltLights[1].w * (7.0 + 6.0 * f) + f * 6.3);
+                    float heat = step(1.0 - (0.25 + 0.6 * burn), f) * flick * (0.08 + 1.8 * burn * burn);
+                    return float3(1.0, 0.32, 0.06) * heat * body;
+                }
+                alb = lerp(alb, tone < 0.35 ? 0.03 : (tone < 0.7 ? 0.32 : (tone < 0.9 ? 0.18 : 0.09)), body);
+                float ax = abs(x) - 0.65;
+                float3 e = float3(1.0, 0.92, 0.8) * 3.0 * Dot(float2(ax, y - 4.5), 0.28, max(fl, fa));
+                e += float3(1.0, 0.05, 0.03) * 1.6 * (1.0 + 2.2 * brake) * Dot(float2(ax, y - 0.1), 0.24 + 0.06 * brake, max(fl, fa));
+                // 前照灯が前の路面を照らす (前へ 18・先ほど広がる)
+                float ahead = y - 4.6;
+                float w = 1.1 + ahead * 0.12;
+                e += float3(1.0, 0.9, 0.75) * 0.07 * step(0.0, ahead) * saturate(1.0 - ahead / 18.0) * exp(-x * x / (w * w));
+                float ox = abs(x) - 0.85;
+                e += float3(1.0, 0.45, 0.05) * 2.2 * haz * (Dot(float2(ox, y - 4.4), 0.2, max(fl, fa)) + Dot(float2(ox, y - 0.2), 0.2, max(fl, fa)));
+                return e;
+            }
+
             // 車線を走る車 (左側通行)。lat = 道の中心からの横の距離・a = 道に沿った位置・id = 道の番号。
             // 車体は地面の色を差し替え (alb)、前照灯・尾灯・前照灯が路面を照らす光は自ら光る分として返す。
-            // 停電: 前線が届くと 3 秒で止まって非常点滅灯を点け、明かりが戻る頃に走り出す。止まっていた分は警報の後に
-            // 時計 (_MrpCity.w) が引き継ぐので、走りが飛ばない
+            // 時計は _MrpFltLights[1].w (場面の秒)。停電: 前線が届くと 3 秒で止まって非常点滅灯を点け、明かりが戻る頃に走り出す。
+            // 止まっていた分は警報の後に _MrpCity.w が引き継ぐので、走りが飛ばない。
+            // 燃えた車やビルの崩れで道がふさがると、その区間では後ろの車が前から順に詰めて止まり (車間 1.5〜3)、
+            // 区間が埋まった後に来た車は手前の交差点で曲がって来なくなる。式は FlightCars.cs と同じ
             float3 Cars(float lat, float a, float fl, float fa, float wide, float id, float2 wxz, inout float alb)
             {
                 float d = abs(lat);
@@ -226,33 +273,115 @@ Shader "MRP/FlightCity"
                 float k = wide > 0.5 ? clamp(floor((d - 5.0) / 5.6), 0.0, 5.0) : 0.0;
                 float x = d - (wide > 0.5 ? 5.0 + 5.6 * (k + 0.5) : 4.75);
                 if (abs(x) > 2.4) return 0;
-                float lane = Hash12(float2(id * 13.0 + k + (dir > 0.0 ? 0.0 : 7.0), wide + 2.0));
-                float v = (wide > 0.5 ? 14.0 : 9.0) + 6.0 * lane;
+                // 車線の種は整数 (どの端末でも同じ値)。速さは時刻で何百倍にもなるので、端数の計算の誤差が増えない式で出す
+                float lane = id * 13.0 + k + (dir > 0.0 ? 0.0 : 7.0) + wide * 8000.0;
+                float v = (wide > 0.5 ? 14.0 : 9.0) + 6.0 * frac(lane * 0.618034);
+                float clk = _MrpFltLights[1].w;
                 float s = _MrpCityAlarm.x;
                 float cut = min(length(wxz - _MrpCityAlarm.zw) / 900.0, 2.0);
                 float B = _MrpCityAlarm.y - 1.0;
                 float stopped = saturate((s - cut) / 3.0) * (1.0 - saturate((s - cut - B) / 3.0));
-                float T = _Time.y - _MrpCity.w - (Ramp2(s - cut) - Ramp2(s - cut - B));
+                float T = clk - _MrpCity.w - (Ramp2(s - cut) - Ramp2(s - cut - B));
                 const float Lc = 24.0;
-                float u = a * dir - v * T;
-                float cell = floor(u / Lc);
-                if (Hash12(float2(cell, lane * 91.0)) > 0.42) return 0;
-                float y = u - cell * Lc - (1.0 + Hash12(float2(cell, lane + 3.7)) * 16.0); // 車の後ろから前へ (0..4.6 が車体)
-                // 車体: 黒・白・銀・赤みの濃い色をばらばらに
-                float body = Band(y - 2.3, 4.6, fa) * Band(x, 1.85, fl);
-                float tone = Hash12(float2(cell, lane + 9.1));
-                alb = lerp(alb, tone < 0.35 ? 0.03 : (tone < 0.7 ? 0.32 : (tone < 0.9 ? 0.18 : 0.09)), body);
-                float ax = abs(x) - 0.65;
-                float3 e = float3(1.0, 0.92, 0.8) * 3.0 * Dot(float2(ax, y - 4.5), 0.28, max(fl, fa));
-                e += float3(1.0, 0.05, 0.03) * 1.6 * Dot(float2(ax, y - 0.1), 0.24, max(fl, fa));
-                // 前照灯が前の路面を照らす (前へ 18・先ほど広がる)
-                float ahead = y - 4.6;
-                float w = 1.1 + ahead * 0.12;
-                e += float3(1.0, 0.9, 0.75) * 0.07 * step(0.0, ahead) * saturate(1.0 - ahead / 18.0) * exp(-x * x / (w * w));
-                // 非常点滅灯 (止まっている間・車ごとにずれて 1.5 Hz)
-                float blink = step(frac(_Time.y * 1.5 + tone * 7.0), 0.5) * saturate(stopped * 3.0 - 2.0);
-                float ox = abs(x) - 0.85;
-                e += float3(1.0, 0.45, 0.05) * 2.2 * blink * (Dot(float2(ox, y - 4.4), 0.2, max(fl, fa)) + Dot(float2(ox, y - 0.2), 0.2, max(fl, fa)));
+                const float L = 4.6;
+                float p = a * dir;
+                float tone = 0, y = -100, brake = 0, burn = 0;
+                float lo = -1e9; // 描いてよい車の識別 (時刻 0 の道に沿った位置) の下限
+                bool free = true;
+                if (_MrpCarOn > 0.5)
+                {
+                    float axis = id > 300.0 ? 1.0 : 0.0;
+                    float li = id - axis * 517.0;
+                    float row = ((axis * 64.0 + li + 32.0) * 2.0 + (dir > 0.0 ? 0.0 : 1.0)) * 6.0 + k;
+                    float4 hd = CarTexel(row, 0);
+                    float seg = floor(p / 192.0);
+                    float slot = hd.x == seg ? 0.0 : (hd.y == seg ? 1.0 : -1.0);
+                    if (slot >= 0.0)
+                    {
+                        float4 A = CarTexel(row, 1.0 + slot * 2.0);
+                        float4 Bk = CarTexel(row, 2.0 + slot * 2.0);
+                        float pb = A.x, len = A.y, Tb = A.z, crush = A.w;
+                        float u0 = pb - v * Tb;
+                        float c0 = floor(u0 / Lc) - 18.0;
+                        if (p < pb)
+                        {
+                            free = false;
+                            // 区間の中で止まる車: 前から順に、詰めて止まる所 st へ向けてブレーキを踏む
+                            float dT = max(T - Tb, 0.0);
+                            float K = max(v * v / 20.0, 1.0);
+                            float gap0 = crush > 0.5 ? 2.5 : 4.0;
+                            float cf = floor((u0 - L) / Lc);
+                            // 並ぶのは手前の交差点の横断歩道より先まで (交差点はふさがない)
+                            float edge = seg * 192.0 + (fmod(abs(seg), 4.0) < 0.5 ? 48.0 : 15.0) + 1.0;
+                            float st = 0, idx = 0;
+                            // 後ろから来た車も、区間が埋まるまで (印 18 升 = 平均 7 台ほど) は交差点を抜けて並ぶ
+                            [loop] for (int j = 0; j < 18; j++)
+                            {
+                                float c = cf - j;
+                                if (Hash12(float2(c, lane)) > 0.42) continue;
+                                float r = c * Lc + 1.0 + Hash12(float2(c + 1291.0, lane)) * 16.0;
+                                if (r > u0 - L) continue;
+                                float xtb = pb + r - u0;
+                                st = idx < 0.5 ? pb - L - min(gap0, max(pb - xtb - L, 0.0)) : st - L - (1.5 + 1.5 * Hash12(float2(c + 3637.0, lane)));
+                                if (st < edge) break;
+                                idx += 1.0;
+                                float kk = max(min(min(K, st - xtb), st - seg * 192.0 + 0.5), 0.05); // 交差点の手前ではまだ踏まない (絵が途切れない)
+                                float f = xtb + v * dT;
+                                float z = f - st;
+                                float xc = f - (z <= -kk ? 0.0 : (z < kk ? (z + kk) * (z + kk) / (4.0 * kk) : z));
+                                float yy = p - xc;
+                                if (yy >= -1.0 && yy <= L + 1.0)
+                                {
+                                    y = yy;
+                                    tone = Hash12(float2(c + 2477.0, lane));
+                                    brake = saturate((z + kk) / (2.0 * kk));
+                                    float bi = c - c0;
+                                    if (bi >= 0.0 && bi < 24.0 && Bit(Bk.x, bi) > 0.5) burn = saturate(1.0 - (clk - Bk.y) / 40.0) + 0.02;
+                                    break;
+                                }
+                                if (xc + L < p - 2.0) break;
+                            }
+                        }
+                        else
+                        {
+                            // ふさいだ所より先: 抜けていった車だけ (燃えた車がふさいだ時はその車と重なっていた車は描かない)
+                            lo = crush > 0.5 ? u0 + len : u0 - L;
+                            if (crush > 0.5 && p < pb + L + 1.0)
+                            {
+                                free = false;
+                                y = p - pb;
+                                tone = Hash12(float2(floor(u0 / Lc) + 2477.0, lane));
+                                burn = saturate(1.0 - (clk - Bk.z) / 40.0) + 0.02;
+                            }
+                        }
+                    }
+                }
+                if (free)
+                {
+                    float u = p - v * T;
+                    float cell = floor(u / Lc);
+                    if (Hash12(float2(cell, lane)) > 0.42) return 0;
+                    float off = 1.0 + Hash12(float2(cell + 1291.0, lane)) * 16.0;
+                    if (cell * Lc + off <= lo) return 0;
+                    y = u - cell * Lc - off;
+                    tone = Hash12(float2(cell + 2477.0, lane));
+                }
+                if (y < -1.0 || y > L + 1.0) return 0;
+                // 防犯アラーム: 近くで爆発があると、止まっている車も走っている車も 7 割が非常点滅灯を速く点滅させる
+                float2 lq = wxz - _MrpCityOrg.xy;
+                float alarm = 0;
+                [unroll] for (int m = 0; m < 4; m++)
+                {
+                    float2 dd = lq - _MrpCarAlm[m].xy;
+                    float age = clk - _MrpCarAlm[m].w;
+                    alarm = max(alarm, step(dot(dd, dd), _MrpCarAlm[m].z * _MrpCarAlm[m].z) * step(0.0, age) * step(age, 38.0) * step(Hash12(float2(tone * 57.0, m)), 0.7));
+                }
+                // 船が真上を低く抜けると、運転手がブレーキを踏む
+                float2 sd = lq - float2(_MrpFltLights[3].w, _MrpFltLights[5].w);
+                brake = max(brake, saturate(1.0 - length(sd) / 60.0) * saturate(1.0 - _MrpFltLights[7].w / 90.0));
+                float blink = step(frac(clk * 1.5 + tone * 7.0), 0.5) * saturate(stopped * 3.0 - 2.0);
+                blink = max(blink, step(frac(clk * 2.4 + tone * 3.0), 0.5) * alarm);
+                float3 e = CarLook(y, x, tone, burn > 0.0 ? 0.0 : brake, burn > 0.0 ? 0.0 : blink, burn, fl, fa, alb);
                 return e * _MrpCity.z;
             }
 

@@ -38,6 +38,7 @@ enum Param
     PBankDamp, PPitchLean, PIdleSway, PCamTurn, PDodgeYaw, PDodgeEase, PJoltHit, PJoltFreq, PJoltDamp, PKickBoost, PKickCharge, PUTurnCamBack, PKnock,
     PTimeScale, PFloorY, PFloorMargin, PDustRed, PEnemyWarm,
     PCrashSpeed, PCrashDamage, PCrashBounce, PScrapeDamage, PScrapeDrag, PScrapeTurn,
+    PGroundY,
     ParamCount
 };
 
@@ -50,7 +51,7 @@ enum MarkerKind { MkMuzzle = 1, MkEngine = 2, MkSector = 3, MkTurret = 4, MkHatc
 // EvIgnite = 加速の点火 (a = 船)
 // EvBuilding = 弾や船がビルに当たった (a = 当てた船 (-1 = 船の外の弾)・b = 棟の番号・c = 0x10000 自分の弾・0x20000 船がぶつかった・f = 削った量)
 // EvScrape = 自分の船がビルを擦った/ぶつかった (a = 船・c = 1 正面からぶつかった・f = 強さ 0..1)
-enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5, EvGraze = 6, EvIgnite = 7, EvBuilding = 8, EvScrape = 9 };
+enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5, EvGraze = 6, EvIgnite = 7, EvBuilding = 8, EvScrape = 9, EvGround = 10 };
 
 // 街の当たり (flight_city.cpp が作って持ち、場面の間だけ World が借りる)。軸に沿った箱を区画の升に入れた表
 struct CityBox { float mn[3], mx[3]; int32_t bld; int32_t pad; }; // bld = 棟の番号 (-1 = 壊れない物: 塔・高架)
@@ -150,6 +151,9 @@ const int MaxRuins = 8;
 const int MaxBurns = 10;
 struct Ruin { float c[3], half[2], H, age, fallT; int32_t alive; };
 struct Burn { float p[3], n[3], age; int32_t bld, alive; };
+// 撃たれて燃えている車 (ビルの火元とは別の枠・古い物から火が収まって焦げた殻だけになる)
+const int MaxCarFires = 12;
+struct CarFire { float p[3], age; int32_t alive; };
 
 struct World
 {
@@ -175,6 +179,8 @@ struct World
     Ruin ruin[MaxRuins];
     Burn burn[MaxBurns];
     int32_t burnNext;
+    CarFire carFire[MaxCarFires];
+    int32_t carFireNext;
 };
 
 // 自分の船の入力 (-1..1)

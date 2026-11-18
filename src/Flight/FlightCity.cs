@@ -153,6 +153,7 @@ internal static unsafe class FlightCity
         _nextAlarm = 70f + (float)(seed % 50);
         _carLost = 0f;
         ResetAlarm();
+        FlightCars.Begin();
         Active = true;
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         Plugin.Logger.LogInfo($"flight city: chunks={chunks} verts={verts} {ms:0.0}ms");
@@ -165,6 +166,7 @@ internal static unsafe class FlightCity
     {
         if (!Active) return;
         TickClock(dt);
+        FlightCars.Tick(dt);
         if (_alarmS < 0f)
         {
             _nextAlarm -= dt;
@@ -234,6 +236,17 @@ internal static unsafe class FlightCity
         return R(s) - R(s - (_alarmD - 1f));
     }
 
+    // 場所 (世界の xz) ごとの、車の時計から引く秒 (シェーダの Cars と同じ式)
+    internal static float CarLostAt(float wx, float wz)
+    {
+        if (_alarmS < 0f) return _carLost;
+        float dx = wx - _alarmV.z, dz = wz - _alarmV.w;
+        float cut = Math.Min((float)Math.Sqrt(dx * dx + dz * dz) / 900f, 2f);
+        float b = _alarmV.y - 1f;
+        static float R(float x) => x <= 0f ? 0f : (x < 3f ? x * x / 6f : x - 1.5f);
+        return _carLost + R(_alarmV.x - cut) - R(_alarmV.x - cut - b);
+    }
+
     private static void ResetAlarm()
     {
         _alarmS = -1f;
@@ -255,6 +268,7 @@ internal static unsafe class FlightCity
     private static Mesh[] _chunk = Array.Empty<Mesh>();
     private static int _lampChunk;
     private static IntPtr _world;
+    internal static IntPtr WorldPtr => _world;
     private static int[] _range = Array.Empty<int>();   // 棟ごとに 5 個 (区画・頂点の始め・終わり・灯の始め・終わり)
     private static float[] _box = Array.Empty<float>(); // 棟ごとに 6 個 (足元の最小 xyz・最大 xyz)
     private static float[] _hp = Array.Empty<float>(), _hpMax = Array.Empty<float>();
@@ -365,6 +379,7 @@ internal static unsafe class FlightCity
         c[0] = (_box[k * 6] + _box[k * 6 + 3]) * 0.5f; c[1] = _box[k * 6 + 1]; c[2] = (_box[k * 6 + 2] + _box[k * 6 + 5]) * 0.5f;
         if (_world != IntPtr.Zero) _ruin(_world, c, (_box[k * 6 + 3] - _box[k * 6]) * 0.5f, (_box[k * 6 + 5] - _box[k * 6 + 2]) * 0.5f, h, k);
         FlightSound.BuildingCollapse(Volume(new Vector3(c[0], c[1] + h * 0.3f, c[2])), h);
+        FlightCars.OnCollapse(_box[k * 6], _box[k * 6 + 2], _box[k * 6 + 3], _box[k * 6 + 5]);
     }
 
     // 自分の船からの距離で音の大きさ (1500 で聞こえなくなる)
@@ -416,5 +431,6 @@ internal static unsafe class FlightCity
         _sirenOn = false;
         _root = null;
         Active = false;
+        FlightCars.End();
     }
 }

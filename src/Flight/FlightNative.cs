@@ -18,7 +18,7 @@ internal static unsafe class FlightNative
     // Ship.aux の並び (flight.h の Aux と同じ)
     internal const int AuxAimYaw = 0, AuxAimPitch = 1, AuxHatch = 2;
 
-    internal enum Ev { Fire = 1, Hit = 2, BoltEnd = 3, Dodge = 4, UTurn = 5, Graze = 6, Ignite = 7, Building = 8, Scrape = 9 }
+    internal enum Ev { Fire = 1, Hit = 2, BoltEnd = 3, Dodge = 4, UTurn = 5, Graze = 6, Ignite = 7, Building = 8, Scrape = 9, Ground = 10 }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Sphere { public float X, Y, Z, R; public int Sector; }
@@ -87,6 +87,7 @@ internal static unsafe class FlightNative
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, int, float, int> Turret;
     internal static delegate* unmanaged[Cdecl]<IntPtr, int, int> Garbage;
     internal static delegate* unmanaged[Cdecl]<IntPtr, float*, void> View;
+    internal static delegate* unmanaged[Cdecl]<IntPtr, float*, int, void> Car;
 
     private static int _state; // 0 = 未 / 1 = 使える / 2 = 使えない
 
@@ -114,6 +115,7 @@ internal static unsafe class FlightNative
             Turret = (delegate* unmanaged[Cdecl]<IntPtr, int, int, float, int>)Need("mrp_flt_turret");
             Garbage = (delegate* unmanaged[Cdecl]<IntPtr, int, int>)Need("mrp_flt_garbage");
             View = (delegate* unmanaged[Cdecl]<IntPtr, float*, void>)Need("mrp_flt_view");
+            Car = (delegate* unmanaged[Cdecl]<IntPtr, float*, int, void>)Need("mrp_flt_car");
             // 構造体の大きさが C++ と違えば口を開けない (片方だけ欄を足した時に壊れた値で動かさない)
             int cs = Size(), ms = sizeof(FrameArgs);
             if (cs != ms) throw new InvalidOperationException($"FrameArgs size C++ {cs} != C# {ms}");

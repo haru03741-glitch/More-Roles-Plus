@@ -32,11 +32,31 @@ internal static class FlightCommands
                         reply(Arena.DebugPlace(new UnityEngine.Vector3(G(1, 0), G(2, 0), G(3, 0)), G(4, 0), G(5, 0)) ? "OK flight place" : "ERR flight not active");
                         return;
                     }
+                case "hold":
+                    {
+                        // hold <x> <y> <z> [yaw] [pitch] | hold off: 確かめ用。自分の船を毎フレームそこへ置き直す
+                        float G(int k, float d) => args.Length > k && float.TryParse(args[k], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : d;
+                        bool on = !(args.Length > 1 && args[1] == "off");
+                        Arena.DebugHold(on, new UnityEngine.Vector3(G(1, 0), G(2, 0), G(3, 0)), G(4, 0), G(5, 0));
+                        reply("OK flight hold " + (on ? "on" : "off"));
+                        return;
+                    }
                 case "alarm":
                     // 確かめ用: 夜の街の警報 (明かりの明滅とサイレン) を今すぐ
                     FlightCity.StartAlarm(args.Length > 1 && float.TryParse(args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float sec) ? sec : 5.5f);
                     reply(FlightCity.Active ? "OK flight alarm" : "ERR flight no city");
                     return;
+                case "cars":
+                    {
+                        // cars mark [半径]: 船の真下の周りで、式が「いる」と見ている車に緑の印 / cars hit <x> <z> <横の位置> [前後の幅]: その辺りの車線の車を 1 台撃ったことにする (街の座標)
+                        float G(int k, float d) => args.Length > k && float.TryParse(args[k], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : d;
+                        string op = args.Length > 1 ? args[1] : "stat";
+                        if (!FlightCity.Active) { reply("ERR flight no city"); return; }
+                        if (op == "mark") { reply($"OK flight cars marked={FlightCars.Mark(G(2, 120f))}"); return; }
+                        if (op == "hit") { reply(FlightCars.DebugHit(G(2, 0f), G(3, 0f), G(4, 0f), G(5, 30f)) ? $"OK flight cars hit at {FlightCars.LastBurn.x:0.0} {FlightCars.LastBurn.z:0.0}" : "ERR flight cars none"); return; }
+                        reply($"OK flight cars burned={FlightCars.Burned}");
+                        return;
+                    }
                 case "exit":
                     Arena.Exit();
                     reply("OK flight exit");

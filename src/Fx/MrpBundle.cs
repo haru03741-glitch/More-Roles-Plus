@@ -64,6 +64,7 @@ internal static class MrpBundle
             "noise_flt_engine_loop", "noise_flt_ignite", "noise_flt_rcs_loop",
             "noise_flt_fire_1", "noise_flt_fire_2", "noise_flt_fire_3", "noise_flt_fire_big", "noise_flt_siren_loop", "noise_flt_blackout",
             "noise_flt_scrape_loop", "noise_flt_crash", "noise_flt_bldhit_1", "noise_flt_bldhit_2", "noise_flt_bldhit_3", "noise_flt_collapse", "noise_flt_bldburn",
+            "noise_flt_car_boom", "noise_flt_car_alarm_loop", "noise_flt_horn_1", "noise_flt_horn_2", "noise_flt_skid",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {

@@ -206,6 +206,23 @@ void FxHit(World* w, V3 p, V3 boltV)
         Emit(w, 0, p + rdir(w) * 0.6f, back * rr(w, 2, 5) + rdir(w), rr(w, 0.5f, 0.8f), 1.4f, 4.5f, 1.5f, smoke0, smoke1, 0.05f);
 }
 
+// 弾が路面に当たった所: 閃き → 路面に沿って低く跳ねる火花 → 舞い上がる細かいアスファルトの粉
+void FxGround(World* w, V3 p, V3 boltV)
+{
+    static const uint8_t flash0[4] = { 255, 245, 215, 0 }, flash1[4] = { 255, 150, 60, 0 };
+    static const uint8_t spark0[4] = { 255, 215, 150, 0 }, spark1[4] = { 255, 80, 25, 0 };
+    static const uint8_t dust0[4] = { 58, 46, 48, 150 }, dust1[4] = { 20, 16, 18, 0 };
+    AddLight(w, p + v3(0, 2, 0), 24.0f, 1.0f, 0.68f, 0.38f, 0.14f);
+    Emit(w, 0, p + v3(0, 0.3f, 0), v3(0, 0, 0), 0.1f, 3.0f, 1.0f, 0, flash0, flash1);
+    // 跳ね返りは入ってきた向きのまま上へ折れる (路面に沿った成分を残す)
+    V3 bv = norm(boltV);
+    V3 out = norm(v3(bv.x, fabsf(bv.y) * 0.6f + 0.25f, bv.z), v3(0, 1, 0));
+    for (int i = 0; i < 8; i++)
+        Emit(w, 1, p + v3(0, 0.2f, 0), (out + rdir(w) * 0.45f) * rr(w, 25, 70), rr(w, 0.18f, 0.4f), 0.45f, 0.15f, 1.6f, spark0, spark1);
+    for (int i = 0; i < 3; i++)
+        Emit(w, 0, p + rdir(w) * 0.8f + v3(0, 0.6f, 0), v3(rr(w, -3, 3), rr(w, 3, 7), rr(w, -3, 3)), rr(w, 0.9f, 1.6f), rr(w, 1.2f, 2.0f), rr(w, 4, 7), 1.2f, dust0, dust1, rr(w, 0, 0.05f));
+}
+
 // 船が落ちる爆発: 閃光 → 膨らむ火の玉 → 黒煙 → 散る破片の火花 (どれも中心から外へ動いて冷める)
 void FxExplode(World* w, V3 p, float sc)
 {
@@ -1181,6 +1198,27 @@ void StepBurns(World* w, float dt)
     }
 }
 
+// 燃えている車: 最初の 25 秒は炎と黒い煙、その後 50 秒かけて煙だけが細くなって収まる
+void StepCarFires(World* w, float dt)
+{
+    static const uint8_t smoke0[4] = { 30, 25, 27, 200 }, smoke1[4] = { 9, 8, 9, 0 };
+    static const uint8_t fire0[4] = { 255, 175, 75, 30 }, fire1[4] = { 190, 45, 10, 0 };
+    for (int i = 0; i < MaxCarFires; i++)
+    {
+        CarFire& c = w->carFire[i];
+        if (!c.alive) continue;
+        c.age += dt;
+        if (c.age > 75.0f) { c.alive = 0; continue; }
+        V3 p = ld(c.p);
+        float k = c.age < 25.0f ? 1.0f : 1.0f - (c.age - 25.0f) / 50.0f;
+        bool nearCam = dot(p - ld(w->camP), p - ld(w->camP)) < 700.0f * 700.0f;
+        if (rnd(w) < 4.0f * k * dt)
+            Emit(w, 0, p + v3(rr(w, -1.5f, 1.5f), 1.5f, rr(w, -1.5f, 1.5f)), v3(rr(w, -1.5f, 1.5f), rr(w, 7, 13), rr(w, -1.5f, 1.5f)), rr(w, 3.0f, 4.5f), rr(w, 2.5f, 3.5f), rr(w, 16, 26) * (0.6f + 0.4f * k), 0.3f, smoke0, smoke1);
+        if (nearCam && c.age < 25.0f && rnd(w) < 9.0f * dt)
+            Emit(w, 0, p + v3(rr(w, -1.8f, 1.8f), rr(w, 0.5f, 1.5f), rr(w, -1.8f, 1.8f)), v3(0, rr(w, 3, 6), 0), rr(w, 0.3f, 0.55f), rr(w, 1.6f, 2.6f), rr(w, 0.8f, 1.4f), 1.0f, fire0, fire1);
+    }
+}
+
 void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
 {
     const float* P = w->prm;
@@ -1467,13 +1505,17 @@ void StepBolts(World* w, int local, float dt)
                 if (t >= 0 && t < best) { best = t; hitShip = k; hitSector = m.sph[j].sector; }
             }
         }
+        // 地面 (街の場面だけ): 道路や車に当たって止まる
+        float tg = 2.0f;
+        float gy = w->prm[PGroundY];
+        if (gy > -1e5f && a.y > gy && e.y <= gy) tg = (a.y - gy) / (a.y - e.y);
         // ビル: 船より手前で当たれば弾はそこで止まり、当たった棟が削れる
         if (w->city)
         {
             int cb = -1; V3 cn;
             float br = (b.size - 1.0f) * w->prm[PBoltWidth];
             float t = CitySeg(w->city, a, e, br, &cb, &cn);
-            if (t >= 0 && t < best)
+            if (t >= 0 && t < best && t <= tg)
             {
                 V3 hp = lerp(a, e, t);
                 FxHit(w, hp, ld(b.v));
@@ -1483,6 +1525,16 @@ void StepBolts(World* w, int local, float dt)
                 b.alive = 0;
                 continue;
             }
+        }
+        if (tg <= 1.0f && tg < best)
+        {
+            V3 hp = lerp(a, e, tg);
+            hp.y = gy + 0.05f;
+            FxGround(w, hp, ld(b.v));
+            if (b.size > 1.5f) FxExplode(w, hp, 0.35f);
+            if (b.kind == 0) Emit(w, EvGround, b.owner, 0, (b.mine ? 0x10000 : 0) | (b.size > 1.5f ? 1 : 0), hp, b.dmg);
+            b.alive = 0;
+            continue;
         }
         if (hitShip >= 0)
         {
@@ -1706,6 +1758,25 @@ MRP_API void mrp_flt_explode(World* w, const float* p, float scale)
     w->shake += 1.2f;
 }
 
+// 撃たれた車 (p = 路面の上の車の真ん中)。kind 1 = 燃料に火が回って爆ぜ、燃え続ける・0 = 確かめ用の印 (短い光だけ)
+MRP_API void mrp_flt_car(World* w, const float* p, int32_t kind)
+{
+    V3 c = ld(p);
+    if (kind == 0)
+    {
+        static const uint8_t m0[4] = { 120, 255, 140, 0 }, m1[4] = { 40, 160, 60, 0 };
+        Emit(w, 0, c + v3(0, 1.0f, 0), v3(0, 0, 0), 2.5f, 2.2f, 2.2f, 0, m0, m1);
+        return;
+    }
+    FxExplode(w, c + v3(0, 1.2f, 0), 0.5f);
+    AddLight(w, c + v3(0, 3, 0), 70.0f, 1.0f, 0.55f, 0.22f, 1.6f);
+    V3 d = c - ld(w->camP);
+    w->shake += 0.35f * clampf(1.0f - sqrtf(dot(d, d)) / 350.0f, 0, 1);
+    CarFire& f = w->carFire[w->carFireNext];
+    w->carFireNext = (w->carFireNext + 1) % MaxCarFires;
+    st(f.p, c); f.age = 0; f.alive = 1;
+}
+
 MRP_API int32_t mrp_flt_size() { return (int32_t)sizeof(FrameArgs); }
 MRP_API int32_t mrp_flt_part_size() { return (int32_t)sizeof(Part); }
 
@@ -1905,6 +1976,7 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
         StepBolts(w, a->local, Step);
         StepRuins(w, Step);
         StepBurns(w, Step);
+        StepCarFires(w, Step);
         StepParticles(w, Step);
         for (int k = 0; k < w->shipN; k++)
         {

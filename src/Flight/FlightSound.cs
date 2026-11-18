@@ -189,6 +189,48 @@ internal static class FlightSound
         if (c) _shot.PlayOneShot(c, 0.5f * vol);
     }
 
+    // 撃たれた車が爆ぜた (ガラスが割れ、燃料に火が回って燃え広がる)
+    internal static void CarBoom(float vol)
+    {
+        if (!Ensure() || vol <= 0.02f) return;
+        var c = MrpBundle.Clip("noise_flt_car_boom");
+        if (c) _shot.PlayOneShot(c, 0.85f * vol);
+    }
+
+    private static AudioSource _carAlarm;
+    private static int _hornNext;
+
+    // 防犯アラームの鳴り続ける音 (vol 0 で止める)
+    internal static void CarAlarm(float vol)
+    {
+        if (vol <= 0f)
+        {
+            if (_carAlarm) _carAlarm.Stop();
+            return;
+        }
+        if (!Ensure()) return;
+        if (!_carAlarm)
+        {
+            var c = MrpBundle.Clip("noise_flt_car_alarm_loop");
+            if (!c) return;
+            _carAlarm = Make(_sm, true, c);
+        }
+        _carAlarm.volume = vol;
+        if (!_carAlarm.isPlaying) _carAlarm.Play();
+    }
+
+    // 船が低く抜けた時の下の車のクラクション (skid = タイヤがきしむ急ブレーキも重ねる)
+    internal static void Horn(float vol, bool skid)
+    {
+        if (!Ensure()) return;
+        _hornNext = (_hornNext + 1) % 2;
+        var c = MrpBundle.Clip("noise_flt_horn_" + (_hornNext + 1));
+        if (c) _shot.PlayOneShot(c, 0.6f * vol);
+        if (!skid) return;
+        var k = MrpBundle.Clip("noise_flt_skid");
+        if (k) _shot.PlayOneShot(k, 0.5f * vol);
+    }
+
     internal static void Stop()
     {
         if (!_ready) return;
@@ -198,6 +240,7 @@ internal static class FlightSound
         _engine.Stop();
         _rcs.Stop();
         if (_siren) _siren.Stop();
+        if (_carAlarm) _carAlarm.Stop();
         _sirenVol = -1f;
         _shot.Stop();
         _vol = _pitch = _rcsVol = -1f;
