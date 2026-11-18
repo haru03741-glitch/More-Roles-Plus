@@ -147,6 +147,9 @@ internal static unsafe class FlightCity
         _alarmId = Shader.PropertyToID("_MrpCityAlarm");
         _skyId = Shader.PropertyToID("_MrpFltSky");
         _root = root;
+        // 地面のシェーダは道の格子を街の原点から測る (場面の原点は区画の間隔の倍数とは限らない)
+        Vector3 org = root.position;
+        Shader.SetGlobalVector(Shader.PropertyToID("_MrpCityOrg"), new Vector4(org.x, org.z, 0f, 0f));
         _nextAlarm = 70f + (float)(seed % 50);
         ResetAlarm();
         Active = true;

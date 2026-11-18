@@ -33,6 +33,7 @@ Shader "MRP/FlightCity"
             float4 _MrpFltLights[8];
             float4 _MrpCity;
             float4 _MrpCityAlarm;
+            float4 _MrpCityOrg;      // xy = 街の原点の世界の xz (区画の格子はここから測る)
             float _MrpCityClock;     // 崩れの時計 (秒・崩れている棟がある間だけ進む)
 
             // k = 崩れ (崩れ始めた時刻 (0 = 立っている)・棟の中心 x・z・棟の高さ)
@@ -182,7 +183,7 @@ Shader "MRP/FlightCity"
             {
                 // 区画の間隔と道の半分の幅 (flight_city.cpp の Pitch・RoadW と同じ値)
                 const float P = 192.0;
-                float2 q = wp.xz;
+                float2 q = wp.xz - _MrpCityOrg.xy;
                 float2 li = floor(q / P + 0.5);
                 float2 d = abs(q - li * P);
                 float2 hw = float2(fmod(abs(li.x), 4.0) < 0.5 ? 48.0 : 15.0, fmod(abs(li.y), 4.0) < 0.5 ? 48.0 : 15.0);
