@@ -205,6 +205,57 @@ Shader "MRP/FlightCity"
                 return max(max(edge, lane), Band(d - 5.6, 0.25, fl));
             }
 
+            // 0 から x 秒までに ramp (0→1 を 3 秒) が積もる量。車が止まっていた秒の計算に使う (FlightCity.cs の CarLost と同じ式)
+            float Ramp2(float x) { return x <= 0.0 ? 0.0 : (x < 3.0 ? x * x / 6.0 : x - 1.5); }
+
+            // 小さな灯 (半径 r)。画素より小さくなったら画素の大きさへ広げて同じだけの光にする (遠くでちらつかない)
+            float Dot(float2 p, float r, float f)
+            {
+                float g = max(r, f * 0.8);
+                return exp(-dot(p, p) / (g * g)) * (r * r) / (g * g);
+            }
+
+            // 車線を走る車 (左側通行)。lat = 道の中心からの横の距離・a = 道に沿った位置・id = 道の番号。
+            // 車体は地面の色を差し替え (alb)、前照灯・尾灯・前照灯が路面を照らす光は自ら光る分として返す。
+            // 停電: 前線が届くと 3 秒で止まって非常点滅灯を点け、明かりが戻る頃に走り出す。止まっていた分は警報の後に
+            // 時計 (_MrpCity.w) が引き継ぐので、走りが飛ばない
+            float3 Cars(float lat, float a, float fl, float fa, float wide, float id, float2 wxz, inout float alb)
+            {
+                float d = abs(lat);
+                float dir = lat > 0.0 ? -1.0 : 1.0;
+                float k = wide > 0.5 ? clamp(floor((d - 5.0) / 5.6), 0.0, 5.0) : 0.0;
+                float x = d - (wide > 0.5 ? 5.0 + 5.6 * (k + 0.5) : 4.75);
+                if (abs(x) > 2.4) return 0;
+                float lane = Hash12(float2(id * 13.0 + k + (dir > 0.0 ? 0.0 : 7.0), wide + 2.0));
+                float v = (wide > 0.5 ? 14.0 : 9.0) + 6.0 * lane;
+                float s = _MrpCityAlarm.x;
+                float cut = min(length(wxz - _MrpCityAlarm.zw) / 900.0, 2.0);
+                float B = _MrpCityAlarm.y - 1.0;
+                float stopped = saturate((s - cut) / 3.0) * (1.0 - saturate((s - cut - B) / 3.0));
+                float T = _Time.y - _MrpCity.w - (Ramp2(s - cut) - Ramp2(s - cut - B));
+                const float Lc = 24.0;
+                float u = a * dir - v * T;
+                float cell = floor(u / Lc);
+                if (Hash12(float2(cell, lane * 91.0)) > 0.42) return 0;
+                float y = u - cell * Lc - (1.0 + Hash12(float2(cell, lane + 3.7)) * 16.0); // 車の後ろから前へ (0..4.6 が車体)
+                // 車体: 黒・白・銀・赤みの濃い色をばらばらに
+                float body = Band(y - 2.3, 4.6, fa) * Band(x, 1.85, fl);
+                float tone = Hash12(float2(cell, lane + 9.1));
+                alb = lerp(alb, tone < 0.35 ? 0.03 : (tone < 0.7 ? 0.32 : (tone < 0.9 ? 0.18 : 0.09)), body);
+                float ax = abs(x) - 0.65;
+                float3 e = float3(1.0, 0.92, 0.8) * 3.0 * Dot(float2(ax, y - 4.5), 0.28, max(fl, fa));
+                e += float3(1.0, 0.05, 0.03) * 1.6 * Dot(float2(ax, y - 0.1), 0.24, max(fl, fa));
+                // 前照灯が前の路面を照らす (前へ 18・先ほど広がる)
+                float ahead = y - 4.6;
+                float w = 1.1 + ahead * 0.12;
+                e += float3(1.0, 0.9, 0.75) * 0.07 * step(0.0, ahead) * saturate(1.0 - ahead / 18.0) * exp(-x * x / (w * w));
+                // 非常点滅灯 (止まっている間・車ごとにずれて 1.5 Hz)
+                float blink = step(frac(_Time.y * 1.5 + tone * 7.0), 0.5) * saturate(stopped * 3.0 - 2.0);
+                float ox = abs(x) - 0.85;
+                e += float3(1.0, 0.45, 0.05) * 2.2 * blink * (Dot(float2(ox, y - 4.4), 0.2, max(fl, fa)) + Dot(float2(ox, y - 0.2), 0.2, max(fl, fa)));
+                return e * _MrpCity.z;
+            }
+
             // 地面 = 車道 (アスファルト・車線・横断歩道・停止線)・歩道 (敷石と縁石)・敷地 (舗装)。
             // 色は反射の割合で決め、空の照り返しと街灯の溜まりに照らされた分だけ見える (標示は自ら光らないので停電で消える)。
             // alb = 砲口の閃光や爆発に照らされる時の反射の割合
@@ -228,6 +279,7 @@ Shader "MRP/FlightCity"
                 float walk = onBand * (1.0 - onRoad);
                 // 地面は画面の多くを占めるので、道の外 (敷地) では標示を計算しない
                 float med = 0.0;
+                float3 emis = 0;
                 if (onBand <= 0.0) alb = 0.12 * (1.0 - 0.3 * Lines(q / 4.0, 0.03, fw / 4.0));
                 else
                 {
@@ -257,6 +309,8 @@ Shader "MRP/FlightCity"
                     alb = lerp(alb, 0.1, med);
                     alb = lerp(alb, 0.3, curb * (1.0 - med));
                     alb = lerp(alb, 0.55, marks * onRoad * (1.0 - med));
+                    if (road.x > 0.0) emis += Cars(s.x, q.y, fw.x, fw.y, wide.x, li.x, wp.xz, alb);
+                    if (road.y > 0.0) emis += Cars(s.y, q.x, fw.y, fw.x, wide.y, li.y + 517.0, wp.xz, alb);
                 }
                 // 街灯: 縁石の 1.2 外に 32 ごと (交差点の中には立たない)
                 float2 lc = floor(q.yx / 32.0 + 0.5) * 32.0;          // 一番近い灯の道に沿った位置 (x = z に沿う道の灯の z)
@@ -277,7 +331,7 @@ Shader "MRP/FlightCity"
                 // 空の照り返し (停電で暗くなる)
                 float3 amb = float3(0.24, 0.11, 0.12) * (1.0 - 0.6 * _MrpCity.x) * _MrpCity.z;
                 // 濡れた車道は灯の光を鈍く照り返す
-                return alb * (amb + lampL) + lampL * onRoad * (1.0 - med) * 0.05;
+                return alb * (amb + lampL) + lampL * onRoad * (1.0 - med) * 0.05 + emis;
             }
 
             // 高架の上の標示 (中央の黄色い 2 本・片側 3 車線の破線・外側線)。広い通りの真上にあるので、同じ格子から横の距離を出す

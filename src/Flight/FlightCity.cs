@@ -151,6 +151,7 @@ internal static unsafe class FlightCity
         Vector3 org = root.position;
         Shader.SetGlobalVector(Shader.PropertyToID("_MrpCityOrg"), new Vector4(org.x, org.z, 0f, 0f));
         _nextAlarm = 70f + (float)(seed % 50);
+        _carLost = 0f;
         ResetAlarm();
         Active = true;
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
@@ -177,6 +178,7 @@ internal static unsafe class FlightCity
             FlightSound.Siren(false, 0f, 1f);
             _sirenOn = false;
             _nextAlarm = 80f + UnityEngine.Random.value * 70f;
+            _carLost += CarLost(s);
             ResetAlarm();
             return;
         }
@@ -186,7 +188,7 @@ internal static unsafe class FlightCity
         if (Math.Abs(dark - _dark) > 0.004f || (dark == 0f) != (_dark == 0f))
         {
             _dark = dark;
-            Shader.SetGlobalVector(_cityId, new Vector4(dark, Ground, 1f, 0f));
+            Shader.SetGlobalVector(_cityId, new Vector4(dark, Ground, 1f, _carLost));
             float k = 1f - 0.45f * dark;
             Shader.SetGlobalVector(_skyId, new Vector4(Sky.x * k, Sky.y * k, Sky.z * k, Sky.w));
         }
@@ -211,6 +213,7 @@ internal static unsafe class FlightCity
         if (!Active) return;
         if (_sirenOn) FlightSound.Siren(false, 0f, 1f);
         _sirenOn = false;
+        if (_alarmS >= 0f) _carLost += CarLost(_alarmS);
         _alarmS = 0f;
         _alarmD = Math.Max(sec, 2f);
         Vector3 o = _root ? _root.position : Vector3.zero;
@@ -221,11 +224,21 @@ internal static unsafe class FlightCity
         FlightSound.Blackout();
     }
 
+    // 停電の間に車が止まっていた秒 (シェーダの Cars と同じ式・前線が届く時刻は 0 と見なす)。
+    // 警報が終わると車の時計 (_MrpCity.w) へ足し、走りの続きを途切れさせない
+    private static float _carLost;
+
+    private static float CarLost(float s)
+    {
+        static float R(float x) => x <= 0f ? 0f : (x < 3f ? x * x / 6f : x - 1.5f);
+        return R(s) - R(s - (_alarmD - 1f));
+    }
+
     private static void ResetAlarm()
     {
         _alarmS = -1f;
         _dark = 0f;
-        Shader.SetGlobalVector(_cityId, new Vector4(0f, Ground, 1f, 0f));
+        Shader.SetGlobalVector(_cityId, new Vector4(0f, Ground, 1f, _carLost));
         Shader.SetGlobalVector(_alarmId, new Vector4(-1000f, 0f, 0f, 0f));
         Shader.SetGlobalVector(_skyId, Sky);
     }
