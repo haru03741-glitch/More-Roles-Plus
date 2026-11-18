@@ -14,6 +14,7 @@ internal static unsafe class FlightNative
     internal const int MaxParts = 48;
     internal const int PartShips = 2;
     internal const int SignalCount = 14;
+    internal const int OutLights = 4;
     // Ship.aux の並び (flight.h の Aux と同じ)
     internal const int AuxAimYaw = 0, AuxAimPitch = 1, AuxHatch = 2;
 
@@ -64,6 +65,7 @@ internal static unsafe class FlightNative
         public byte* FxVerts;
         public int FxCap, FxPrev, FxN;
         public float* PartOut;
+        public float* LightOut;
     }
 
     internal static delegate* unmanaged[Cdecl]<uint, IntPtr> Create;

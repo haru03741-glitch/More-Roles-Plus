@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace MoreRolesPlus.Flight;
 
-// 3D の艦隊戦で自分の船が出す音: エンジンの噴射 (出力で高さと大きさが変わる)・加速の点火・姿勢制御の噴射のガス。
+// 3D の艦隊戦で自分の船が出す音: エンジンの噴射 (出力で高さと大きさが変わる)・加速の点火・姿勢制御の噴射のガス・主砲。
 // 本編の効果音の音量設定に従うよう効果音のミキサーへ流す。値が変わった時だけ書く (AudioSource の設定は interop)
 internal static class FlightSound
 {
@@ -67,11 +67,64 @@ internal static class FlightSound
         if (c) _shot.PlayOneShot(c, 0.7f);
     }
 
+    private static int _fireNext;
+    private static AudioSource _siren;
+    private static float _sirenVol = -1f, _sirenPitch = -1f;
+
+    // 夜の街の警報。vol と pitch は鳴らす側が毎フレーム渡す (モーターが回り出す・止まる高さの変化)。値が変わった時だけ書く
+    internal static void Siren(bool on, float vol, float pitch)
+    {
+        if (!on || vol <= 0.002f)
+        {
+            if (_siren && _sirenVol > 0f) _siren.Stop();
+            _sirenVol = on ? 0f : -1f;
+            return;
+        }
+        if (!Ensure()) return;
+        if (!_siren)
+        {
+            var c = MrpBundle.Clip("noise_flt_siren_loop");
+            if (!c) return;
+            _siren = Make(SoundManager.Instance, true, c);
+        }
+        if (_sirenVol <= 0f)
+        {
+            _siren.volume = vol;
+            _siren.pitch = pitch;
+            _sirenVol = vol;
+            _sirenPitch = pitch;
+            _siren.Play();
+            return;
+        }
+        if (System.Math.Abs(vol - _sirenVol) > 0.01f) { _sirenVol = vol; _siren.volume = vol; }
+        if (System.Math.Abs(pitch - _sirenPitch) > 0.005f) { _sirenPitch = pitch; _siren.pitch = pitch; }
+    }
+
+    // 街の停電 (警報の始まり)
+    internal static void Blackout()
+    {
+        if (!Ensure()) return;
+        var c = MrpBundle.Clip("noise_flt_blackout");
+        if (c) _shot.PlayOneShot(c, 0.75f);
+    }
+
+    // 主砲を撃った音 (連射で同じに聞こえないよう 3 つを順に)・溜め撃ちは別の音
+    internal static void Fire(bool big, float vol)
+    {
+        if (!Ensure()) return;
+        string name = big ? "noise_flt_fire_big" : _fireNext switch { 0 => "noise_flt_fire_1", 1 => "noise_flt_fire_2", _ => "noise_flt_fire_3" };
+        _fireNext = (_fireNext + 1) % 3;
+        var c = MrpBundle.Clip(name);
+        if (c) _shot.PlayOneShot(c, (big ? 0.85f : 0.42f) * vol);
+    }
+
     internal static void Stop()
     {
         if (!_ready) return;
         _engine.Stop();
         _rcs.Stop();
+        if (_siren) _siren.Stop();
+        _sirenVol = -1f;
         _shot.Stop();
         _vol = _pitch = _rcsVol = -1f;
     }

@@ -70,6 +70,8 @@ Shader "MRP/FlightToon"
             float4 _MrpFltLight;   // xyz = 光の来る向き (世界)・w = 強さ
             float4 _MrpFltSky;     // rgb = 遠くの色・a = 霞む距離
             float4 _MrpFltRim;     // rgb = 縁の照り返しの色・a = 強さ
+            float4 _MrpFltAmb;     // rgb = 場所の光の色 (宇宙 = 白・夜の街 = 赤みの暗さ) を掛ける
+            float4 _MrpFltLights[8]; // 一瞬だけ照らす光 4 つ = (位置・届く距離) (色 × 明るさ・0)
             float _Flash;
             float _Shield;   // シールドの光 (0 = 消えている・1 = 点いている)。材質 11 の光る強さに掛ける
 
@@ -509,6 +511,18 @@ Shader "MRP/FlightToon"
                     c += streak * 0.22 * (1.0 - smoothstep(0.1, 0.3, length(fwidth(lp))));
                     c *= 0.85 + 0.25 * saturate(i.ln.y * 0.5 + 0.5);
                 }
+                c *= lerp(_MrpFltAmb.rgb, float3(1, 1, 1), saturate(glow * 3.0));
+                // 砲口の閃光・当たり・爆発が近くの面を照らす (光へ向いた面ほど明るく・裏も少しだけ)
+                float3 fl = 0;
+                [unroll] for (int k = 0; k < 4; k++)
+                {
+                    float3 L = _MrpFltLights[k * 2].xyz - i.wp;
+                    float r = _MrpFltLights[k * 2].w;
+                    float d2 = dot(L, L);
+                    float att = saturate(1.0 - d2 / (r * r));
+                    fl += _MrpFltLights[k * 2 + 1].rgb * (att * att * saturate(dot(n, L * rsqrt(d2 + 1e-4)) * 0.85 + 0.15));
+                }
+                c += base * fl * (1.0 + metal * 0.5);
                 c = lerp(c, float3(1, 1, 1), _Flash);
                 // 奥行きの霞
                 float d = distance(_WorldSpaceCameraPos, i.wp);

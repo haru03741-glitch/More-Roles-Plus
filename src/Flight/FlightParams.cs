@@ -23,6 +23,8 @@ internal static class FlightParams
         ("flameLen", 30f), ("flameWidth", 2.9f), ("flameGlow", 1.25f), ("exhRate", 34f), ("exhSpeed", 55f), ("exhLife", 0.7f), ("igniteShake", 0.35f), ("rcsRate", 45f), ("rcsSpeed", 22f),
         ("bankDamp", 1f), ("pitchLean", 9f), ("idleSway", 0.6f), ("camTurn", 6f), ("dodgeYaw", 14f), ("dodgeEase", 2.4f),
         ("joltHit", 2.2f), ("joltFreq", 13f), ("joltDamp", 0.9f), ("kickBoost", 1.6f), ("kickCharge", 2.8f), ("uturnCamBack", 0.35f), ("knock", 25f),
+        ("timeScale", 1f), // 確かめ用: 時間の速さ (0.1 = 10 倍遅く)
+        ("floorY", -1e6f), ("floorMargin", 70f), ("dustRed", 0f), ("enemyWarm", 0f), // 飛べる高さの下限 (場所が決める・-1e6 = 無し)・引き起こしを始める高さ・塵の色 (0 = 青白い宇宙・1 = 赤い街の明かり)・敵の弾を琥珀色に (赤い街の上で読めるように)
     };
 
     internal static readonly float[] Values = MakeValues();

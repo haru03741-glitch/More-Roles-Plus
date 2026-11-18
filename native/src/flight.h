@@ -36,6 +36,7 @@ enum Param
     PChargeTime, PChargeDelay, PChargeDamage, PChargeScale, PChargeRecover, PGrazeDist, PTailDist, PTailCone,
     PFlameLen, PFlameWidth, PFlameGlow, PExhRate, PExhSpeed, PExhLife, PIgniteShake, PRcsRate, PRcsSpeed,
     PBankDamp, PPitchLean, PIdleSway, PCamTurn, PDodgeYaw, PDodgeEase, PJoltHit, PJoltFreq, PJoltDamp, PKickBoost, PKickCharge, PUTurnCamBack, PKnock,
+    PTimeScale, PFloorY, PFloorMargin, PDustRed, PEnemyWarm,
     ParamCount
 };
 
@@ -107,6 +108,9 @@ struct Ship
     float idleT, brakePrev;
     float poseQ[4];              // 刻みの時点の描く向き (drawQ はこれを刻みの余りの分だけ進めた物)
     float knock[3], knockV[3];   // 被弾で押された描く位置のずれ (世界の向き・描く姿だけ)
+    float mzAge, mzBig;          // 主砲を撃ってからの時間 (砲口の閃光)・溜め撃ちなら 1
+    uint32_t mzSeed;             // 撃つごとに変わる閃光の形の種
+    float tzAge[2];              // 砲台の砲身ごとの撃ってからの時間
 };
 
 // kind 0 = 戦いの弾・1 = 砲台が小惑星を撃つ光線 (船に当たらず、届いた所で小惑星が砕ける)
@@ -118,6 +122,11 @@ struct Event { int32_t kind, a, b, c; float x, y, z, f; };
 // 火花・炎・煙・欠片。kind 0 = 丸いにじみ・1 = 速さの向きに伸びる筋・2 = 岩・3 = ゴミ・4 = 噴射のガス (丸いにじみ・カメラのすぐ前で薄くする)。
 // 色は乗算済み (rgb = 光・a = 後ろを隠す量)
 struct Particle { float p[3], v[3]; float age, life, s0, s1, drag; uint8_t c0[4], c1[4]; int32_t kind, alive; };
+
+// 一瞬だけ周りを照らす光 (砲口の閃光・当たり・爆発)。ship >= 0 なら船の中の位置 lp に付いて動く。key が同じ光は置き換える (-1 = 置き換えない)
+const int MaxLights = 8;
+const int OutLights = 4; // シェーダへ渡す数 (明るい順)
+struct FlashLight { float p[3], lp[3], c[3]; float r, age, life; int32_t ship, alive, key; };
 
 struct World
 {
@@ -138,6 +147,7 @@ struct World
     Particle part[MaxParticles];
     int32_t partNext;
     float dust[MaxDust][3];
+    FlashLight light[MaxLights];
 };
 
 // 自分の船の入力 (-1..1)
@@ -169,6 +179,7 @@ struct FrameArgs
     uint8_t* fxVerts;       // 火花・炎・煙・塵の頂点 (弾と同じ形・1 枚 4 頂点)
     int32_t fxCap, fxPrev, fxN;
     float* partOut;         // 部品の動き (PartShips 隻 × MaxParts 個 × 8 = 四元数 4・ずれ 3・大きさ 1)。シェーダの配列へそのまま
+    float* lightOut;        // 照らす光 OutLights 個 × 8 = 位置 3・届く距離 1・色 × 明るさ 3・0。シェーダの配列へそのまま
 };
 #pragma pack(pop)
 

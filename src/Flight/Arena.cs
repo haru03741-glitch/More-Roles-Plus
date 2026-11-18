@@ -15,7 +15,8 @@ namespace MoreRolesPlus.Flight;
 internal static unsafe class Arena
 {
     internal const int Layer = 30;
-    private static readonly Vector3 Origin = new(20000f, 0f, 0f);
+    private const float OriginX = 20000f;
+    private static readonly Vector3 Origin = new(OriginX, 0f, 0f);
     private const int MaxEvents = 128;
 
     internal static bool Active { get; private set; }
@@ -37,6 +38,7 @@ internal static unsafe class Arena
     private static GameObject _root;
     private static Camera _cam;
     private static Transform _camT, _skyT, _ret1, _ret2;
+    private static MeshRenderer _skyR;
     private static readonly Transform[] ShipT = new Transform[FlightNative.MaxShips];
     private static readonly MeshRenderer[] ShipR = new MeshRenderer[FlightNative.MaxShips];
     private static readonly float[] Flash = new float[FlightNative.MaxShips];
@@ -61,8 +63,15 @@ internal static unsafe class Arena
     // 動く部品の姿 (C++ がこの il2cpp の配列の中身へ直接書き、フレームに 1 回シェーダの global の配列へ渡す)
     private static Il2CppStructArray<Vector4> _partArr;
     private static float* _partPtr;
+    // 一瞬だけ照らす光 (砲口の閃光・当たり・爆発)。部品と同じく C++ が中身へ直接書く
+    private static Il2CppStructArray<Vector4> _lightArr;
+    private static float* _lightPtr;
+    private static int _lightsId;
 
     // 確かめ用: 自分の船 (スケルド) と的の船を n 隻出して入る
+    // 戦う場所: 0 = 宇宙・1 = 夜の街 (飛ぶ範囲の下に街が広がる)
+    internal static int Stage = 1;
+
     internal static string Enter(int targets)
     {
         if (Active) return "already";
@@ -74,12 +83,19 @@ internal static unsafe class Arena
 
         _world = FlightNative.Create((uint)Environment.TickCount);
         if (_world == IntPtr.Zero) return "create failed";
+        bool city = Stage == 1 && MrpBundle.FlightMaterials[4] && MrpBundle.FlightMaterials[6];
+        FlightParams.Values[FlightParams.Find("floorY")] = city ? FlightCity.FloorY : -1e6f;
+        FlightParams.Values[FlightParams.Find("dustRed")] = city ? 1f : 0f;
+        FlightParams.Values[FlightParams.Find("enemyWarm")] = city ? 1f : 0f;
+        FlightParams.Values[FlightParams.Find("dustAlpha")] = city ? 0.45f : 0.8f;
         PushParams();
         ShipTasks.Begin();
         Register(0, skeld);
         Register(1, dummy);
         Alloc();
         Build();
+        if (city && !FlightCity.Build(_root.transform, Layer, 20261118u)) city = false;
+        ApplyStage(city);
 
         _shipN = 0;
         _local = 0;
@@ -112,6 +128,7 @@ internal static unsafe class Arena
         _fxMesh = null;
         if (_world != IntPtr.Zero) FlightNative.Destroy(_world);
         _world = IntPtr.Zero;
+        FlightCity.Clear();
         Free();
         HideHud(false);
         _hudWaitLogged = false;
@@ -154,6 +171,19 @@ internal static unsafe class Arena
         pp[0] = at.x; pp[1] = at.y; pp[2] = at.z;
         float* qq = stackalloc float[4] { q.x, q.y, q.z, q.w };
         FlightNative.Spawn(_world, 1, ShipModel[1], 1, 0, pp, qq, Hp[1] > 0 ? Hp[1] : 160f);
+        return true;
+    }
+
+    // 確かめ用: 自分の船を (x, y, z) に向き (yaw・pitch 度) で置き直す
+    internal static bool DebugPlace(Vector3 p, float yaw, float pitch)
+    {
+        if (!Active || _world == IntPtr.Zero) return false;
+        // 絵の物 (GameObject) は今の物を使い続け、シムの船だけを置き直す
+        var q = Quaternion.Euler(pitch, yaw, 0f);
+        float* pp = stackalloc float[3] { p.x, p.y, p.z };
+        float* qq = stackalloc float[4] { q.x, q.y, q.z, q.w };
+        FlightNative.Spawn(_world, _local, 0, 0, 0, pp, qq, 100);
+        Hp[_local] = 100;
         return true;
     }
 
@@ -237,6 +267,7 @@ internal static unsafe class Arena
         _shieldId = Shader.PropertyToID("_Shield");
         _partBaseId = Shader.PropertyToID("_PartBase");
         _partsId = Shader.PropertyToID("_MrpFltParts");
+        _lightsId = Shader.PropertyToID("_MrpFltLights");
         _mpb ??= new MaterialPropertyBlock();
         PartArray();
 
@@ -261,6 +292,7 @@ internal static unsafe class Arena
         sky.AddComponent<MeshFilter>().sharedMesh = SkyMesh();
         var smr = sky.AddComponent<MeshRenderer>();
         smr.sharedMaterial = MrpBundle.FlightMaterials[2];
+        _skyR = smr;
         smr.shadowCastingMode = ShadowCastingMode.Off;
         _skyT = sky.transform;
 
@@ -290,9 +322,26 @@ internal static unsafe class Arena
         _ret2 = Reticle("MrpFlightReticle2", 3.2f);
 
         MrpBundle.FlightMaterials[0].SetFloat("_Outline", 0.0052f);
-        Shader.SetGlobalVector("_MrpFltLight", new Vector4(-0.45f, 0.7f, 0.35f, 1f));
-        Shader.SetGlobalVector("_MrpFltSky", new Vector4(0.02f, 0.03f, 0.07f, 1600f));
-        Shader.SetGlobalVector("_MrpFltRim", new Vector4(0.35f, 0.55f, 1f, 0.28f));
+    }
+
+    // 場所ごとの光と空: 宇宙 = 恒星の白い光と青い縁の照り返し・夜の街 = 弱い月明かりと下の街明かりの赤
+    private static void ApplyStage(bool city)
+    {
+        _skyR.sharedMaterial = MrpBundle.FlightMaterials[city ? 6 : 2];
+        if (city)
+        {
+            Shader.SetGlobalVector("_MrpFltLight", new Vector4(0.3f, 0.6f, -0.45f, 1f));
+            Shader.SetGlobalVector("_MrpFltSky", FlightCity.Sky);
+            Shader.SetGlobalVector("_MrpFltRim", new Vector4(1f, 0.22f, 0.24f, 0.42f));
+            Shader.SetGlobalVector("_MrpFltAmb", new Vector4(0.6f, 0.46f, 0.52f, 1f));
+        }
+        else
+        {
+            Shader.SetGlobalVector("_MrpFltLight", new Vector4(-0.45f, 0.7f, 0.35f, 1f));
+            Shader.SetGlobalVector("_MrpFltSky", new Vector4(0.02f, 0.03f, 0.07f, 1600f));
+            Shader.SetGlobalVector("_MrpFltRim", new Vector4(0.35f, 0.55f, 1f, 0.28f));
+            Shader.SetGlobalVector("_MrpFltAmb", new Vector4(1f, 1f, 1f, 1f));
+        }
     }
 
     private static Mesh _skyMesh;
@@ -441,9 +490,16 @@ internal static unsafe class Arena
             FxCap = FlightNative.MaxFx,
             FxPrev = _fxPrev,
             PartOut = _partPtr,
+            LightOut = _lightPtr,
         };
         FlightNative.Frame(&a);
         if (_partPtr != null) Shader.SetGlobalVectorArray(_partsId, _partArr);
+        if (_lightPtr != null)
+        {
+            // シムの座標は場面の原点 (Origin) から測っているので、シェーダの世界の座標へずらす
+            for (int k = 0; k < FlightNative.OutLights; k++) _lightPtr[k * 8] += OriginX;
+            Shader.SetGlobalVectorArray(_lightsId, _lightArr);
+        }
         if (a.Steps == 0) _idleFrames++;
 
         for (int k = 0; k < _shipN; k++)
@@ -490,6 +546,7 @@ internal static unsafe class Arena
 
         HandleEvents(a.EvN);
         FlightSound.Tick(_hud[8], _hud[9]);
+        FlightCity.Tick(Time.deltaTime);
         TickFlash();
 
         _statT += Time.deltaTime;
@@ -497,15 +554,31 @@ internal static unsafe class Arena
         {
             _statT = 0;
             float* lo = _shipOut + _local * 8;
-            Stats = $"ship=({lo[0]:0.0},{lo[1]:0.0},{lo[2]:0.0}) q=({lo[3]:0.000},{lo[4]:0.000},{lo[5]:0.000},{lo[6]:0.000}) speed={_hud[0]:0} boost={_hud[1]:0.00} hp={_hud[2]:0.00} bolts={a.BoltN} steps={a.Steps} idle={_idleFrames} hits={_hits} kills={_kills} charge={_hud[6]:0.00} tailed={_hud[7]:0} grazes={_grazes} big={_bigShots} cam={cp} fov={_fov:0}";
+            Stats = $"ship=({lo[0]:0.0},{lo[1]:0.0},{lo[2]:0.0}) q=({lo[3]:0.000},{lo[4]:0.000},{lo[5]:0.000},{lo[6]:0.000}) speed={_hud[0]:0} boost={_hud[1]:0.00} hp={_hud[2]:0.00} bolts={a.BoltN} steps={a.Steps} idle={_idleFrames} hits={_hits} kills={_kills} charge={_hud[6]:0.00} tailed={_hud[7]:0} grazes={_grazes} big={_bigShots} cam={cp} fov={_fov:0} light0={(_lightPtr != null ? $"{_lightPtr[3]:0.0}/{_lightPtr[4]:0.00},{_lightPtr[5]:0.00}" : "none")}";
         }
     }
 
     private static void HandleEvents(int n)
     {
+        // 主砲は砲口ごとに出来事が来るので、音は船ごとに 1 フレーム 1 回
+        int fired = 0;
         for (int i = 0; i < n; i++)
         {
             var e = _ev[i];
+            if (e.Kind == (int)FlightNative.Ev.Fire && e.A >= 0 && e.A < 30 && (fired & (1 << e.A)) == 0)
+            {
+                fired |= 1 << e.A;
+                float vol = 1f;
+                if (e.A != _local)
+                {
+                    // 他の船の砲声は離れるほど小さく (400 で聞こえなくなる)
+                    float* lo = _shipOut + _local * 8;
+                    float dx = e.X - lo[0], dy = e.Y - lo[1], dz = e.Z - lo[2];
+                    float d = (float)System.Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                    vol = 0.6f * (1f - d / 400f);
+                }
+                if (vol > 0.02f) FlightSound.Fire(e.C == 1, vol);
+            }
             if (e.Kind == (int)FlightNative.Ev.Graze) { if (e.A == _local) _grazes++; continue; }
             if (e.Kind == (int)FlightNative.Ev.Ignite) { if (e.A == _local) FlightSound.Ignite(); continue; }
             if (e.Kind == (int)FlightNative.Ev.Fire) { if (e.C == 1 && e.A == _local) _bigShots++; continue; }
@@ -579,6 +652,29 @@ internal static unsafe class Arena
             _partArr[i + 1] = new Vector4(0, 0, 0, 1);
         }
         Shader.SetGlobalVectorArray(_partsId, _partArr);
+        LightArray();
+    }
+
+    private static void LightArray()
+    {
+        int n = FlightNative.OutLights * 2;
+        if (_lightArr == null || _lightArr.Length != n)
+        {
+            _lightArr = new Il2CppStructArray<Vector4>((long)n);
+            _lightPtr = null;
+            var probe = new Vector4(1.5f, -2.25f, 3.125f, 7f);
+            _lightArr[1] = probe;
+            float* p = (float*)(IL2CPP.Il2CppObjectBaseToPtrNotNull(_lightArr) + 4 * IntPtr.Size);
+            if (p[4] == probe.x && p[5] == probe.y && p[6] == probe.z && p[7] == probe.w) _lightPtr = p;
+            else Plugin.Logger.LogError("flight: light array layout mismatch (no flash lighting)");
+        }
+        // 光の無い形 (届く距離 1・色 0)
+        for (int i = 0; i < n; i += 2)
+        {
+            _lightArr[i] = new Vector4(0, 0, 0, 1);
+            _lightArr[i + 1] = Vector4.zero;
+        }
+        Shader.SetGlobalVectorArray(_lightsId, _lightArr);
     }
 }
 

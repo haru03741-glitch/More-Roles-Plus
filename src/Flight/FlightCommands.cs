@@ -17,12 +17,26 @@ internal static class FlightCommands
                 case "enter":
                     {
                         int n = args.Length > 1 && int.TryParse(args[1], out int t) ? t : 3;
+                        // enter [的の数] [city|space]
+                        if (args.Length > 2) Arena.Stage = args[2] == "space" ? 0 : 1;
                         string r;
                         try { r = Arena.Enter(n); }
                         catch (System.Exception e) { Plugin.Logger.LogError($"flight enter: {e}"); Arena.Exit(); r = e.GetType().Name + ": " + e.Message; }
                         reply(r == "ok" ? "OK flight enter" : "ERR flight " + r);
                         return;
                     }
+                case "place":
+                    {
+                        // place <x> <y> <z> [yaw] [pitch]: 自分の船を置き直す (街を近くから見る確かめ用)
+                        float G(int k, float d) => args.Length > k && float.TryParse(args[k], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : d;
+                        reply(Arena.DebugPlace(new UnityEngine.Vector3(G(1, 0), G(2, 0), G(3, 0)), G(4, 0), G(5, 0)) ? "OK flight place" : "ERR flight not active");
+                        return;
+                    }
+                case "alarm":
+                    // 確かめ用: 夜の街の警報 (明かりの明滅とサイレン) を今すぐ
+                    FlightCity.StartAlarm(args.Length > 1 && float.TryParse(args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float sec) ? sec : 5.5f);
+                    reply(FlightCity.Active ? "OK flight alarm" : "ERR flight no city");
+                    return;
                 case "exit":
                     Arena.Exit();
                     reply("OK flight exit");

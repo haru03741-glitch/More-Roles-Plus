@@ -169,12 +169,32 @@ void Emit(World* w, int kind, V3 p, V3 v, float life, float s0, float s1, float 
     memcpy(q.c0, c0, 4); memcpy(q.c1, c1, 4);
 }
 
+// 一瞬だけ周りを照らす光を置く。同じ key の前の光は置き換える (連射で光が積み上がらない)。
+// 空きが無ければ一番明るさの残りが少ない光を上書きする
+void AddLight(World* w, V3 p, float r, float cr, float cg, float cb, float life, int ship = -1, V3 lp = { 0, 0, 0 }, int key = -1)
+{
+    int k = -1;
+    float worst = 1e30f;
+    for (int i = 0; i < MaxLights; i++)
+    {
+        FlashLight& L = w->light[i];
+        if (key >= 0 && L.alive && L.key == key) { k = i; break; }
+        float left = L.alive ? (1.0f - L.age / L.life) * L.r : -1.0f;
+        if (left < worst) { worst = left; k = i; }
+    }
+    FlashLight& L = w->light[k];
+    st(L.p, p); st(L.lp, lp);
+    L.c[0] = cr; L.c[1] = cg; L.c[2] = cb;
+    L.r = r; L.age = 0; L.life = life; L.ship = ship; L.alive = 1; L.key = key;
+}
+
 // 弾が当たった所: 白い閃き → 当たった向きの逆へ跳ねる火花の筋 → 薄い煙
 void FxHit(World* w, V3 p, V3 boltV)
 {
     static const uint8_t flash0[4] = { 255, 250, 225, 0 }, flash1[4] = { 255, 160, 60, 0 };
     static const uint8_t spark0[4] = { 255, 225, 160, 0 }, spark1[4] = { 255, 90, 30, 0 };
     static const uint8_t smoke0[4] = { 60, 58, 62, 110 }, smoke1[4] = { 20, 20, 24, 0 };
+    AddLight(w, p, 22.0f, 1.0f, 0.7f, 0.4f, 0.14f);
     V3 back = norm(boltV * -1.0f);
     Emit(w, 0, p, v3(0, 0, 0), 0.11f, 3.2f, 1.2f, 0, flash0, flash1);
     for (int i = 0; i < 10; i++)
@@ -194,6 +214,7 @@ void FxExplode(World* w, V3 p, float sc)
     static const uint8_t smoke0[4] = { 40, 36, 40, 210 }, smoke1[4] = { 12, 12, 14, 0 };
     static const uint8_t deb0[4] = { 255, 220, 150, 0 }, deb1[4] = { 255, 80, 20, 0 };
     Emit(w, 0, p, v3(0, 0, 0), 0.2f, 34 * sc, 18 * sc, 0, flash0, flash1);
+    AddLight(w, p, 140.0f * sc, 1.0f, 0.62f, 0.3f, 1.1f);
     for (int i = 0; i < 16; i++)
     {
         V3 d = rdir(w);
@@ -293,6 +314,7 @@ inline void PutQuad(uint8_t* out, int n, const V3* vs, const uint8_t* col, const
 // 火花・炎・煙と宇宙の塵の板を書く。丸い板の uv は 0〜1、筋の板は uv.x に 2 を足して形をシェーダへ伝える。
 // 固い欠片 (kind 2 = 岩・3 = ゴミ) は uv.x から 4 を引き、uv.y に形の番号 × 2 を足す (シェーダが角ばった形を選ぶ・0 の四角い切れ端はゴミだけ)。板は粒ごとの速さで回す
 int WriteFlames(World* w, FrameArgs* a, V3 cam, V3 cr, V3 cu);
+int WriteMuzzle(World* w, FrameArgs* a, int n, V3 cam, V3 cr, V3 cu);
 
 void WriteFx(World* w, FrameArgs* a, V3 cam, Q4 camQ, V3 shipV)
 {
@@ -301,6 +323,7 @@ void WriteFx(World* w, FrameArgs* a, V3 cam, Q4 camQ, V3 shipV)
     V3 cr = rot(camQ, v3(1, 0, 0)), cu = rot(camQ, v3(0, 1, 0));
     // 噴射口の炎を先に書く (粒が枠を使い切っても炎は欠けない)
     int n = WriteFlames(w, a, cam, cr, cu);
+    n = WriteMuzzle(w, a, n, cam, cr, cu);
     static const float uvRound[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
     static const float uvStreak[4][2] = { { 2, 0 }, { 2, 1 }, { 3, 1 }, { 3, 0 } };
     for (int i = 0; i < MaxParticles && n < a->fxCap; i++)
@@ -368,7 +391,9 @@ void WriteFx(World* w, FrameArgs* a, V3 cam, Q4 camQ, V3 shipV)
             float al = near * far * P[PDustAlpha];
             if (al < 0.02f) continue;
             V3 p = cam + rel;
-            uint8_t col[4] = { (uint8_t)(170 * al), (uint8_t)(190 * al), (uint8_t)(230 * al), 0 };
+            // 宇宙は星明かりの青白・夜の街は下の赤い明かりを受けた色
+            float dr = P[PDustRed];
+            uint8_t col[4] = { (uint8_t)((170 + 70 * dr) * al), (uint8_t)((190 - 120 * dr) * al), (uint8_t)((230 - 150 * dr) * al), 0 };
             V3 side = norm(cross(dir, rel * -1.0f), cr) * 0.09f;
             V3 tail = p - dir * L;
             V3 vs[4] = { tail - side, tail + side, p + side, p - side };
@@ -684,6 +709,124 @@ int WriteFlames(World* w, FrameArgs* a, V3 cam, V3 cr, V3 cu)
     return n;
 }
 
+static void BoltColor(const World* w, int team, bool big, float* c);
+
+static inline uint32_t Hash32(uint32_t x)
+{
+    x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16;
+    return x;
+}
+
+// 砲口の閃光 1 つ: 砲口から前へ短く噴く光 (炎と同じ軸の板・出力の段 0 = 芯と広がる炎だけ)・砲口の白い芯・周りのにじみ。
+// age = 撃ってからの秒・dur で消える。h1/h2 = 撃つごとに変わる長さと芯の大きさ (毎回同じ形に見せない)
+static int PutMuzzleFlash(uint8_t* out, int n, int cap, V3 cam, V3 cr, V3 cu, V3 mp, V3 d, const float* c, float S, float age, float dur, float h1, float h2)
+{
+    static const float uvRound[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+    if (age >= dur || n + 3 > cap) return n;
+    float u = age / dur;
+    float e = (1.0f - u) * (1.0f - u);
+    V3 toCam = norm(cam - mp, cu);
+    V3 sx = cross(d, toCam);
+    float sinv = len(sx);
+    float fade = ss01(0.06f, 0.45f, sinv);
+    if (fade > 0.01f)
+    {
+        // 出た直後に伸び切り (最初の 1/4 で)、あとは明るさだけが落ちる
+        float L = S * (7.0f + 5.0f * h1) * (0.55f + 0.45f * clampf(u * 4.0f, 0, 1));
+        V3 side = sx * (1.0f / sinv) * (S * 1.6f);
+        V3 tip = mp + d * L;
+        V3 vs[4] = { mp - side, mp + side, tip + side, tip - side };
+        float uv[4][2] = { { 5, 0 }, { 5, 1 }, { 6, 1 }, { 6, 0 } };
+        float g = e * fade * 330.0f;
+        uint8_t col[4] = { (uint8_t)clampf(c[0] * g, 0, 255), (uint8_t)clampf(c[1] * g, 0, 255), (uint8_t)clampf(c[2] * g, 0, 255), 0 };
+        PutQuad(out, n++, vs, col, uv);
+    }
+    V3 at = mp + d * (0.5f * S);
+    float hs = S * 6.0f * (1.0f + 0.3f * u);
+    float gh = e * 110.0f;
+    uint8_t halo[4] = { (uint8_t)clampf(c[0] * gh, 0, 255), (uint8_t)clampf(c[1] * gh, 0, 255), (uint8_t)clampf(c[2] * gh, 0, 255), 0 };
+    V3 r = cr * hs, up = cu * hs;
+    V3 vh[4] = { at - r - up, at + r - up, at + r + up, at - r + up };
+    PutQuad(out, n++, vh, halo, uvRound);
+    float cs = S * (1.5f + 0.8f * h2) * (1.0f + 0.5f * u);
+    float gc = e * 255.0f;
+    uint8_t core[4] = { (uint8_t)clampf((0.65f + 0.35f * c[0]) * gc, 0, 255), (uint8_t)clampf((0.65f + 0.35f * c[1]) * gc, 0, 255), (uint8_t)clampf((0.65f + 0.35f * c[2]) * gc, 0, 255), 0 };
+    r = cr * cs; up = cu * cs;
+    V3 vc[4] = { at - r - up, at + r - up, at + r + up, at - r + up };
+    PutQuad(out, n++, vc, core, uvRound);
+    return n;
+}
+
+// 主砲と砲台の砲口の閃光 (毎フレーム・描く姿から。速く飛んでも砲口に付いたまま)
+int WriteMuzzle(World* w, FrameArgs* a, int n, V3 cam, V3 cr, V3 cu)
+{
+    uint8_t* out = a->fxVerts;
+    for (int k = 0; k < w->shipN; k++)
+    {
+        const Ship& s = w->ship[k];
+        if (!s.alive) continue;
+        float tm = s.mzAge + w->acc, t0 = s.tzAge[0] + w->acc, t1 = s.tzAge[1] + w->acc;
+        bool big = s.mzBig > 0.5f;
+        float dur = big ? 0.16f : 0.075f;
+        if (tm >= dur && t0 >= 0.07f && t1 >= 0.07f) continue;
+        const Model& m = w->model[s.model];
+        Xf xf[MaxParts];
+        PartXfs(w, s, xf);
+        V3 sp = ld(s.drawP);
+        Q4 q = ldq(s.drawQ);
+        float c[3]; BoltColor(w, s.team, big, c);
+        static const float red[3] = { 1.0f, 0.22f, 0.16f }; // 本編の武器庫の砲台と同じ赤い光線
+        for (int i = 0; i < m.mkN; i++)
+        {
+            const Marker& mk = m.mk[i];
+            bool main = mk.kind == MkMuzzle && mk.id == 0;
+            bool tur = mk.kind == MkTurret && (mk.id == 0 || mk.id == 1);
+            if (!main && !tur) continue;
+            float age = main ? tm : (mk.id == 0 ? t0 : t1);
+            float du = main ? dur : 0.07f;
+            if (age >= du) continue;
+            V3 lp = ld(mk.p), ldv = ld(mk.d);
+            int pi = m.mkPart[i];
+            if (pi >= 0 && pi < m.partN) { lp = rot(xf[pi].q, lp * xf[pi].s) + xf[pi].t; ldv = rot(xf[pi].q, ldv); }
+            V3 mp = sp + rot(q, lp);
+            V3 d = norm(rot(q, ldv), rot(q, v3(0, 0, 1)));
+            uint32_t h = Hash32((main ? s.mzSeed : 0x9e3779b9u * (uint32_t)(mk.id + 1)) + (uint32_t)i * 7919u + (uint32_t)k * 104729u);
+            float h1 = (float)(h & 1023) / 1023.0f, h2 = (float)((h >> 10) & 1023) / 1023.0f;
+            n = PutMuzzleFlash(out, n, a->fxCap, cam, cr, cu, mp, d, main ? c : red, main ? (big ? 2.2f : 1.0f) : 0.8f, age, du, h1, h2);
+        }
+    }
+    return n;
+}
+
+// 照らす光をシェーダへ (明るい順に OutLights 個)。船に付いた光は描く姿から位置を出す。使わない枠は届く距離 1・色 0
+void WriteLights(World* w, float* o)
+{
+    float score[MaxLights];
+    for (int i = 0; i < MaxLights; i++)
+    {
+        FlashLight& L = w->light[i];
+        score[i] = -1;
+        if (!L.alive) continue;
+        if (L.ship >= 0 && L.ship < MaxShips && w->ship[L.ship].alive)
+            st(L.p, ld(w->ship[L.ship].drawP) + rot(ldq(w->ship[L.ship].drawQ), ld(L.lp)));
+        float u = clampf((L.age + w->acc) / L.life, 0, 1);
+        score[i] = (1.0f - u) * (1.0f - u) * L.r;
+    }
+    for (int j = 0; j < OutLights; j++)
+    {
+        int best = -1;
+        for (int i = 0; i < MaxLights; i++) if (score[i] > 0 && (best < 0 || score[i] > score[best])) best = i;
+        float* d = o + j * 8;
+        if (best < 0) { d[0] = d[1] = d[2] = 0; d[3] = 1; d[4] = d[5] = d[6] = d[7] = 0; continue; }
+        const FlashLight& L = w->light[best];
+        float u = clampf((L.age + w->acc) / L.life, 0, 1);
+        float k = (1.0f - u) * (1.0f - u);
+        d[0] = L.p[0]; d[1] = L.p[1]; d[2] = L.p[2]; d[3] = L.r;
+        d[4] = L.c[0] * k; d[5] = L.c[1] * k; d[6] = L.c[2] * k; d[7] = 0;
+        score[best] = -1;
+    }
+}
+
 // 溜めの見た目 (主砲の砲口ごと): 溜まる間は周りから光の粒が吸い込まれ、満ちたら砲口が脈打って光り続ける
 void FxCharge(World* w, const Ship& s, V3 p, Q4 q, V3 v, bool burst)
 {
@@ -738,6 +881,33 @@ void FxGraze(World* w, V3 p, V3 boltV, V3 shipV)
         Emit(w, 1, p + rdir(w) * 2.0f, shipV + norm(d + rdir(w) * 0.4f) * rr(w, 60, 130), rr(w, 0.2f, 0.4f), 0.8f, 0.2f, 2.5f, streak0, streak1);
 }
 
+// 弾の色 (光の筋・砲口の閃光・照らす光で揃える)。0..1
+// 敵の弾は宇宙では赤紫・赤い夜の街では赤に埋もれるので琥珀色の白熱 (PEnemyWarm)
+static void BoltColor(const World* w, int team, bool big, float* c)
+{
+    if (big) { c[0] = 0.88f; c[1] = 1.0f; c[2] = 0.96f; }
+    else if (team == 0) { c[0] = 0.47f; c[1] = 1.0f; c[2] = 0.78f; }
+    else if (w->prm[PEnemyWarm] > 0.5f) { c[0] = 1.0f; c[1] = 0.8f; c[2] = 0.4f; }
+    else { c[0] = 1.0f; c[1] = 0.27f; c[2] = 0.47f; }
+}
+
+// 砲口から出て残る物 (撃った瞬間に 1 回): 砲口の先で膨らんで冷める薄いガス・前へ散る短い火花。
+// どれも船の速さを持って出る (砲口の前に留まって見え、置き去りにならない)。閃光そのものは毎フレーム砲口の位置から書く (WriteMuzzle)
+void FxMuzzle(World* w, int team, V3 mp, V3 dir, V3 shipV, bool big)
+{
+    float c[3]; BoltColor(w, team, big, c);
+    float S = big ? 2.2f : 1.0f;
+    uint8_t gas0[4] = { (uint8_t)(c[0] * 70), (uint8_t)(c[1] * 70), (uint8_t)(c[2] * 70), 36 }, gas1[4] = { 10, 12, 14, 0 };
+    uint8_t sp0[4] = { (uint8_t)(150 + c[0] * 105), (uint8_t)(150 + c[1] * 105), (uint8_t)(150 + c[2] * 105), 0 };
+    uint8_t sp1[4] = { (uint8_t)(c[0] * 120), (uint8_t)(c[1] * 120), (uint8_t)(c[2] * 120), 0 };
+    int gasN = big ? 5 : 2, spN = big ? 10 : 3;
+    for (int i = 0; i < gasN; i++)
+        Emit(w, 4, mp + dir * rr(w, 0.6f, 1.6f) * S, shipV + dir * rr(w, 5, 14) * S + rdir(w) * 2.0f, rr(w, 0.25f, 0.4f) * (big ? 1.6f : 1.0f),
+             0.5f * S, rr(w, 2.0f, 3.0f) * S, 3.0f, gas0, gas1);
+    for (int i = 0; i < spN; i++)
+        Emit(w, 1, mp + dir * 0.5f, shipV + norm(dir + rdir(w) * 0.55f) * rr(w, 35, 80) * (big ? 1.4f : 1.0f), rr(w, 0.08f, 0.18f), 0.35f * S, 0.1f, 4.0f, sp0, sp1);
+}
+
 void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
 {
     const float* P = w->prm;
@@ -756,6 +926,15 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
         inYaw = clampf(lx * k + (lz < 0 ? (lx >= 0 ? 1.0f : -1.0f) : 0), -1, 1);
         inPitch = clampf(ly * k, -1, 1);
         inRoll = 0;
+    }
+    // 下限に近づいたら機首を上げて引き起こす (近いほど操作より強く)。下の街に当たりは無いので、ここで止める
+    if (P[PFloorY] > -1e5f && p.y < P[PFloorY] + P[PFloorMargin])
+    {
+        float k = clampf((P[PFloorY] + P[PFloorMargin] - p.y) / P[PFloorMargin], 0, 1);
+        V3 want = norm(v3(fwd.x, 0, fwd.z) + v3(0, 0.7f, 0), v3(0, 1, 0));
+        float lx = dot(want, right), ly = dot(want, up);
+        inPitch = inPitch + (clampf(ly * 3.0f, -1, 1) - inPitch) * k;
+        inYaw = inYaw + (clampf(lx * 3.0f, -1, 1) - inYaw) * k * 0.5f;
     }
 
     s.pitchV = approach(s.pitchV, inPitch * P[PPitchRate] * Deg, P[PTurnResp], dt);
@@ -842,6 +1021,8 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
         s.dodgeT -= dt;
     }
     p = p + v * dt;
+    // 下限 (街の上を飛ぶ時の屋上より上の高さ) を抜けない
+    if (P[PFloorY] > -1e5f && p.y < P[PFloorY]) p.y = P[PFloorY];
     st(s.p, p); st(s.v, v); stq(s.q, q);
 
     // 溜め: 撃たずにいると少し待ってから溜まる。満ちた所で押した最初の 1 発が溜め撃ち (同じ砲口から太い弾)。
@@ -891,6 +1072,7 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
         for (int i = 0; i < m.mkN; i++) if (m.mk[i].kind == MkMuzzle && m.mk[i].id == 0) muzN++;
         // 溜め撃ちの威力は砲口の数で割る (砲口の多い船ほど強くならない)
         float dmg = big ? P[PChargeDamage] / (float)(muzN > 0 ? muzN : 1) : P[PBoltDamage];
+        s.mzAge = 0; s.mzBig = big ? 1.0f : 0.0f; s.mzSeed = w->rng;
         for (int i = 0; i < m.mkN; i++)
         {
             const Marker& mk = m.mk[i];
@@ -905,6 +1087,11 @@ void StepLocal(World* w, Ship& s, int idx, const Input& in, float dt)
             V3 bv = dir * P[PBoltSpeed] + v;
             SpawnBolt(w, idx, mp, bv, P[PBoltLife], dmg, 1, 0, size);
             Emit(w, EvFire, idx, i, big ? 1 : 0, mp, 0);
+            FxMuzzle(w, s.team, mp, dir, v, big);
+            // 砲口の閃光が周りの船体を照らす (砲口の少し前・船と一緒に動く。船体の中に置くと外板を裏から照らして効かない)
+            float bc[3]; BoltColor(w, s.team, big, bc);
+            V3 llp = lp + ld_ * (big ? 3.0f : 1.5f);
+            AddLight(w, p + rot(q, llp), big ? 70.0f : 40.0f, bc[0] * 1.8f, bc[1] * 1.8f, bc[2] * 1.8f, big ? 0.2f : 0.09f, idx, llp, 1000 + idx * MaxMarkers + i);
             shots++;
         }
         if (shots == 0)
@@ -1151,6 +1338,7 @@ void WriteBolts(World* w, FrameArgs* a, V3 cam)
         if (b.kind == 1) { col[0] = 255; col[1] = 50; col[2] = 40; col[3] = 255; } // 本編の武器庫の砲台と同じ赤い光線
         else if (b.size > 1.5f) { col[0] = 225; col[1] = 255; col[2] = 245; col[3] = 255; } // 溜め撃ちは芯が白く見える明るさ
         else if (o.team == 0) { col[0] = 120; col[1] = 255; col[2] = 200; col[3] = 255; }
+        else if (w->prm[PEnemyWarm] > 0.5f) { col[0] = 255; col[1] = 205; col[2] = 105; col[3] = 255; }
         else { col[0] = 255; col[1] = 70; col[2] = 120; col[3] = 255; }
         V3 vs[4] = { tail - side, tail + side, p + side, p - side };
         float uv[4][2] = { { 0, 0 }, { 0, 1 }, { 1, 1 }, { 1, 0 } };
@@ -1245,6 +1433,7 @@ MRP_API void mrp_flt_spawn(World* w, int32_t idx, int32_t model, int32_t team, i
     s.hp = s.hpMax = hp;
     s.speed = w->prm[PCruise];
     s.boost = w->prm[PBoostMax];
+    s.mzAge = s.tzAge[0] = s.tzAge[1] = 9.0f; // 出た瞬間に砲口が光らない
     if (idx >= w->shipN) w->shipN = idx + 1;
 }
 
@@ -1271,6 +1460,12 @@ MRP_API void mrp_flt_snap(World* w, int32_t idx, double t, const float* p, const
 MRP_API void mrp_flt_bolt(World* w, int32_t owner, const float* p, const float* v, float life, float dmg)
 {
     SpawnBolt(w, owner, ld(p), ld(v), life, dmg, 0);
+    // 遠くの船が撃った弾も砲口が光る (主砲は全部の砲口から同時に撃つので船ごとの時刻 1 つ)
+    if (owner >= 0 && owner < MaxShips && w->ship[owner].alive && w->ship[owner].mzAge > 0.03f)
+    {
+        Ship& s = w->ship[owner];
+        s.mzAge = 0; s.mzBig = 0; s.mzSeed = w->rng;
+    }
 }
 
 // 船の中から決める部品の目標 (which = Aux の番号)
@@ -1318,6 +1513,7 @@ MRP_API int32_t mrp_flt_turret(World* w, int32_t idx, int32_t barrel, float rang
     float travel = range / sp;
     SpawnBolt(w, idx, p, d * sp + ld(s.v), travel, 0, 0, 1);
     s.shotPulse[barrel] = 1;
+    s.tzAge[barrel] = 0;
     // 狙った小惑星 (光線が届くまで見えている大きな岩。消え始めが光線の届く時と重なるよう寿命を延ばし、残りは砕けた砂に隠れる)
     static const uint8_t rockA[4] = { 118, 106, 94, 252 }, rockB[4] = { 118, 106, 94, 252 };
     V3 at = p + (d * sp + ld(s.v)) * travel;
@@ -1359,6 +1555,7 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
     float dt = a->dt;
     if (dt > 0.1f) dt = 0.1f;
     if (dt < 0) dt = 0;
+    if (w->prm[PTimeScale] > 0) dt *= w->prm[PTimeScale];
     w->acc += dt;
     int steps = 0;
     for (int k = 0; k < w->shipN; k++)
@@ -1392,6 +1589,12 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
             StepParts(w, s, Step);
             StepExhaust(w, s, k, k == a->local, Step);
             StepRcs(w, s, Step);
+            s.mzAge += Step; s.tzAge[0] += Step; s.tzAge[1] += Step;
+        }
+        for (int i = 0; i < MaxLights; i++)
+        {
+            FlashLight& L = w->light[i];
+            if (L.alive && (L.age += Step) >= L.life) L.alive = 0;
         }
         steps++;
         // 押した瞬間の入力 (回避・宙返り) は 1 刻みで使い切る (刻みが 0 回のフレームでは次のフレームまで持つ)
@@ -1471,6 +1674,7 @@ MRP_API void mrp_flt_frame(FrameArgs* a)
         int li0 = a->local >= 0 && a->local < w->shipN ? a->local : 0;
         WriteFx(w, a, cpo, cq, ld(w->ship[li0].v));
     }
+    if (a->lightOut) WriteLights(w, a->lightOut);
 
     int en = w->evN < a->evCap ? w->evN : a->evCap;
     memcpy(a->evOut, w->ev, sizeof(Event) * en);

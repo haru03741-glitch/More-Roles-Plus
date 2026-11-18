@@ -62,6 +62,7 @@ internal static class MrpBundle
             "noise_rl_load", "noise_rl_bang_1", "noise_rl_bang_2", "noise_rl_bang_3", "noise_rl_escape", "noise_rl_shatter", "noise_rl_fire", "noise_rl_fly_loop", "noise_rl_blast",
             "noise_guess_aim", "noise_guess_shot", "noise_pusher_shove", "noise_foam_tear",
             "noise_flt_engine_loop", "noise_flt_ignite", "noise_flt_rcs_loop",
+            "noise_flt_fire_1", "noise_flt_fire_2", "noise_flt_fire_3", "noise_flt_fire_big", "noise_flt_siren_loop", "noise_flt_blackout",
         };
         foreach (string mat in new[] { "metal", "stone", "wood" })
         {
@@ -96,8 +97,8 @@ internal static class MrpBundle
     public static Material UiBarMaterial { get; private set; }
     public static Material NovaBeamMaterial { get; private set; }
     // 3D の艦隊戦: 0 = 船 (トゥーン + 縁取り)・1 = 光弾・2 = 宇宙の背景・3 = 火花・炎・煙・塵
-    public static readonly Material[] FlightMaterials = new Material[4];
-    private static readonly string[] FlightMatPaths = { "assets/generated/flighttoon.mat", "assets/generated/flightbolt.mat", "assets/generated/flightsky.mat", "assets/generated/flightfx.mat" };
+    public static readonly Material[] FlightMaterials = new Material[7];
+    private static readonly string[] FlightMatPaths = { "assets/generated/flighttoon.mat", "assets/generated/flightbolt.mat", "assets/generated/flightsky.mat", "assets/generated/flightfx.mat", "assets/generated/flightcity.mat", "assets/generated/flightlamp.mat", "assets/generated/flightnight.mat" };
     private static AssetBundleRequest _flightReq;
     private static int _flightNext;
     private static bool _flightFailed;
