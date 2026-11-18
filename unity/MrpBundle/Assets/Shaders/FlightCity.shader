@@ -179,34 +179,138 @@ Shader "MRP/FlightCity"
                 return c;
             }
 
-            float3 Ground(float3 wp, float dist)
+            // 幅 w の帯 (x = 帯の中心からの距離) を 1 画素の幅 f で平均した覆う割合。画素より細い線は薄く広がり、ちらつかない
+            float Band(float x, float w, float f)
+            {
+                return saturate((min(x + f * 0.5, w * 0.5) - max(x - f * 0.5, -w * 0.5)) / f);
+            }
+
+            // 間隔 p で並ぶ長さ L の帯 (破線・縞)。画素が間隔より粗くなると平均 (L / p) へ寄せる
+            float Dashes(float a, float L, float p, float f)
+            {
+                float x = a - floor(a / p + 0.5) * p;
+                return lerp(Band(x, L, f), L / p, saturate(f / p * 2.0 - 0.5));
+            }
+
+            // 車線の標示 (lat = 道の中心からの横の距離・a = 道に沿った位置・rw = 車道の半分の幅)。
+            // 細い道 = 中央の破線と外側線。広い通り = 中央分離帯の縁・片側 6 車線の破線・外側線
+            float RoadMarks(float lat, float a, float fl, float fa, float wide, float rw)
+            {
+                float d = abs(lat);
+                float edge = Band(d - (rw - 0.7), 0.25, fl);
+                if (wide < 0.5) return max(edge, Band(lat, 0.3, fl) * Dashes(a, 6.0, 12.0, fa));
+                float t = (d - 5.0) / 5.6;
+                float k = clamp(floor(t + 0.5), 1.0, 5.0);
+                float lane = Band((t - k) * 5.6, 0.3, fl) * Dashes(a, 8.0, 20.0, fa);
+                return max(max(edge, lane), Band(d - 5.6, 0.25, fl));
+            }
+
+            // 地面 = 車道 (アスファルト・車線・横断歩道・停止線)・歩道 (敷石と縁石)・敷地 (舗装)。
+            // 色は反射の割合で決め、空の照り返しと街灯の溜まりに照らされた分だけ見える (標示は自ら光らないので停電で消える)。
+            // alb = 砲口の閃光や爆発に照らされる時の反射の割合
+            float3 Ground(float3 wp, float dist, out float alb)
             {
                 // 区画の間隔と道の半分の幅 (flight_city.cpp の Pitch・RoadW と同じ値)
                 const float P = 192.0;
                 float2 q = wp.xz - _MrpCityOrg.xy;
                 float2 li = floor(q / P + 0.5);
-                float2 d = abs(q - li * P);
-                float2 hw = float2(fmod(abs(li.x), 4.0) < 0.5 ? 48.0 : 15.0, fmod(abs(li.y), 4.0) < 0.5 ? 48.0 : 15.0);
+                float2 s = q - li * P;              // 道の中心からの距離 (x = z に沿う道・y = x に沿う道)
+                float2 d = abs(s);
+                float2 wide = step(fmod(abs(li), 4.0), 0.5);
+                float2 hw = lerp(15.0, 48.0, wide); // 歩道の外まで
+                float2 rw = lerp(9.5, 39.0, wide);  // 車道
                 float2 fw = max(fwidth(q), 1e-3);
-                float2 onR = 1.0 - smoothstep(hw - fw, hw + fw, d);
-                float road = max(onR.x, onR.y);
-                float3 c = lerp(float3(0.026, 0.02, 0.024), float3(0.012, 0.01, 0.013), road);
-                // 街灯の光の溜まり: 道の両脇に 32 ごと (縦の道 = x の線・横の道 = z の線)
-                float lz = abs(q.y - floor(q.y / 32.0 + 0.5) * 32.0);
-                float lx = abs(q.x - floor(q.x / 32.0 + 0.5) * 32.0);
-                float ex = abs(d.x - hw.x - 2.0), ez = abs(d.y - hw.y - 2.0);
-                float poolA = exp(-(ex * ex + lz * lz) / 28.0) * step(d.x, hw.x + 6.0);
-                float poolB = exp(-(ez * ez + lx * lx) / 28.0) * step(d.y, hw.y + 6.0);
-                float pool = max(poolA, poolB);
+                float fm = max(fw.x, fw.y);
+                float2 band = 1.0 - smoothstep(hw - fw, hw + fw, d);
+                float2 road = 1.0 - smoothstep(rw - fw, rw + fw, d);
+                float onBand = max(band.x, band.y);
+                float onRoad = max(road.x, road.y);
+                float walk = onBand * (1.0 - onRoad);
+                // 地面は画面の多くを占めるので、道の外 (敷地) と遠く (画素が 3 より粗い) は標示を計算しない
+                float med = 0.0;
+                if (onBand <= 0.0) alb = 0.12 * (1.0 - 0.3 * Lines(q / 4.0, 0.03, fw / 4.0));
+                else if (fm > 3.0)
+                {
+                    // 遠く: 標示・縁石・敷石は画素より細いので平均の明るさだけ
+                    alb = lerp(lerp(0.12, 0.155, walk), 0.07, onRoad);
+                }
+                else
+                {
+                    // 車線は交差点の外 (相手の道の歩道より外) だけ
+                    float outA = smoothstep(hw.y + 0.5, hw.y + 1.5, d.y);
+                    float outB = smoothstep(hw.x + 0.5, hw.x + 1.5, d.x);
+                    float marks = max(road.x * outA * RoadMarks(s.x, q.y, fw.x, fw.y, wide.x, rw.x),
+                                      road.y * outB * RoadMarks(s.y, q.x, fw.y, fw.x, wide.y, rw.y));
+                    // 横断歩道: 相手の道の歩道の続き。縞は道に沿う向き (幅 0.9・間隔 1.8)
+                    float cwA = Band(d.y - (rw.y + hw.y) * 0.5, hw.y - rw.y - 1.6, fw.y) * Band(s.x, 2.0 * rw.x - 2.0, fw.x) * Dashes(s.x, 0.9, 1.8, fw.x);
+                    float cwB = Band(d.x - (rw.x + hw.x) * 0.5, hw.x - rw.x - 1.6, fw.x) * Band(s.y, 2.0 * rw.y - 2.0, fw.y) * Dashes(s.y, 0.9, 1.8, fw.y);
+                    // 停止線: 横断歩道の手前・交差点へ向かう側の車線だけ (左側通行)
+                    float stA = Band(d.y - (hw.y + 2.0), 0.6, fw.y) * road.x * step(lerp(0.3, 5.6, wide.x), d.x) * step(0.0, s.x * s.y);
+                    float stB = Band(d.x - (hw.x + 2.0), 0.6, fw.x) * road.y * step(lerp(0.3, 5.6, wide.y), d.y) * step(s.x * s.y, 0.0);
+                    marks = max(max(marks, max(cwA, cwB)), max(stA, stB));
+                    // 広い通りの中央分離帯 (高架の橋脚が立つ)
+                    med = max(wide.x * (1.0 - smoothstep(5.0 - fw.x, 5.0 + fw.x, d.x)) * outA,
+                              wide.y * (1.0 - smoothstep(5.0 - fw.y, 5.0 + fw.y, d.y)) * outB);
+                    // 縁石: 車道と歩道の境 (相手の車道の中では切れる)
+                    float curb = max(Band(d.x - rw.x, 0.4, fw.x) * step(rw.y, d.y), Band(d.y - rw.y, 0.4, fw.y) * step(rw.x, d.x));
+                    // 素材: アスファルトは 3 の升ごとのむらと補修の跡・歩道は 1.5 の敷石
+                    float grain = lerp(Hash12(floor(q / 3.0)), 0.5, saturate(fm / 3.0 * 2.0 - 0.5));
+                    float patch = step(Hash12(floor(q / 11.0) + 7.3), 0.12);
+                    float asph = 0.065 * (0.85 + 0.3 * grain) * (1.0 - 0.25 * patch);
+                    float walkA = 0.17 * (1.0 - 0.35 * Lines(q / 1.5, 0.06, fw / 1.5));
+                    alb = lerp(lerp(0.12, walkA, walk), asph, onRoad);
+                    alb = lerp(alb, 0.1, med);
+                    alb = lerp(alb, 0.3, curb * (1.0 - med));
+                    alb = lerp(alb, 0.55, marks * onRoad * (1.0 - med));
+                }
+                // 街灯: 縁石の 1.2 外に 32 ごと (交差点の中には立たない)
+                float2 lc = floor(q.yx / 32.0 + 0.5) * 32.0;          // 一番近い灯の道に沿った位置 (x = z に沿う道の灯の z)
+                float2 lo = q.yx - lc;
+                float2 e = d - (rw + 1.2);
+                float2 ok = step(hw.yx, abs(lc - li.yx * P));
+                float pool = max(exp(-(e.x * e.x + lo.x * lo.x) / 110.0) * ok.x, exp(-(e.y * e.y + lo.y * lo.y) / 110.0) * ok.y);
+                // 広い通りは中央分離帯にも背の高い灯 (光の輪が広い)
+                pool = max(pool, max(wide.x * ok.x * exp(-(d.x * d.x + lo.x * lo.x) / 300.0), wide.y * ok.y * exp(-(d.y * d.y + lo.y * lo.y) / 300.0)));
                 // 遠くでは溜まりの点が見分けられないので、道の上の平均の明るさに寄せる
-                float far = saturate(max(fw.x, fw.y) / 8.0 - 0.3);
-                pool = lerp(pool, road * 0.1, far);
+                float far = saturate(fm / 8.0 - 0.3);
+                pool = lerp(pool, onBand * 0.15, far);
                 // 停電: 街灯は消える。ごく一部だけ電気が残り、切れかけて不規則にまたたく
                 float2 lamp = floor(q / 32.0 + 0.5);
                 float pw = Power(wp.xz, Hash12(lamp) * 97.0);
                 float alive = step(Hash12(lamp * 1.91 + 3.7), 0.04) * step(Hash12(lamp + floor(_Time.y * 9.0)), 0.7);
-                c += float3(1.0, 0.16, 0.07) * pool * 0.5 * _MrpCity.z * Flicker(li.x * 7.0 + li.y * 3.0, 0) * max(pw, lerp(alive * 0.8, 0.02, far));
-                return c;
+                float3 lampL = float3(1.0, 0.16, 0.07) * 2.2 * pool * _MrpCity.z * Flicker(li.x * 7.0 + li.y * 3.0, 0) * max(pw, lerp(alive * 0.8, 0.02, far));
+                // 空の照り返し (停電で暗くなる)
+                float3 amb = float3(0.24, 0.11, 0.12) * (1.0 - 0.6 * _MrpCity.x) * _MrpCity.z;
+                // 濡れた車道は灯の光を鈍く照り返す
+                return alb * (amb + lampL) + lampL * onRoad * (1.0 - med) * 0.05;
+            }
+
+            // 高架の上の標示 (中央の黄色い 2 本・片側 3 車線の破線・外側線)。広い通りの真上にあるので、同じ格子から横の距離を出す
+            float DeckMarks(float3 wp, out float yellow)
+            {
+                const float P = 192.0;
+                float2 q = wp.xz - _MrpCityOrg.xy;
+                float2 li = floor(q / P + 0.5);
+                float2 s = q - li * P;
+                float2 fw = max(fwidth(q), 1e-3);
+                bool alongX = fmod(abs(li.y), 4.0) < 0.5 && abs(s.y) < 23.0;
+                float lat = alongX ? s.y : s.x, a = alongX ? q.x : q.y;
+                float fl = alongX ? fw.y : fw.x, fa = alongX ? fw.x : fw.y;
+                float d = abs(lat);
+                yellow = Band(d - 0.45, 0.3, fl);
+                float t = d / 6.8;
+                float k = clamp(floor(t + 0.5), 1.0, 2.0);
+                float lane = Band((t - k) * 6.8, 0.3, fl) * Dashes(a, 8.0, 20.0, fa);
+                return max(max(lane, Band(d - 20.6, 0.25, fl)), yellow);
+            }
+
+            // 地面を這う霧: 地面に近く・遠いほど濃い。ゆっくり流れて濃淡が動く (FlightLamp と同じ式)
+            float GroundMist(float3 wp, float dist)
+            {
+                float h = max(wp.y - _MrpCity.y, 0.0);
+                float2 m = wp.xz * 0.004 + _Time.y * float2(0.011, 0.006);
+                float drift = 0.7 + 0.3 * sin(m.x * 6.3 + sin(m.y * 4.1)) * sin(m.y * 5.3 + 1.7);
+                return (1.0 - exp(-dist / 900.0)) * exp(-h / 70.0) * 0.75 * drift;
             }
 
             fixed4 frag(v2f i) : SV_Target
@@ -236,11 +340,22 @@ Shader "MRP/FlightCity"
                     c *= lerp(0.08 + 0.4 * beat * saturate(hgt / 300.0), 1.0, i.power);
                     albedo = 0.1;
                 }
-                else if (mat < 3.5) c = Ground(i.wp, dist);
+                else if (mat < 3.5)
+                {
+                    c = Ground(i.wp, dist, albedo);
+                    albedo *= 2.0; // 閃光は近くの強い光なので、暗い路面でも照らされた形が分かる程度に
+                }
                 else
                 {
                     // 高架の道路のコンクリート (縁の灯に下から照らされる)
                     c = float3(0.05, 0.035, 0.04) + float3(0.12, 0.03, 0.015) * saturate(n.y) * i.power;
+                    if (n.y > 0.9)
+                    {
+                        float yellow;
+                        float m = DeckMarks(i.wp, yellow);
+                        float3 paint = lerp(float3(1.0, 1.0, 1.0), float3(1.0, 0.75, 0.2), yellow);
+                        c += paint * m * (float3(0.06, 0.04, 0.045) + float3(0.3, 0.07, 0.035) * i.power);
+                    }
                 }
                 // 砲口の閃光・爆発が照らす
                 float3 fl = 0;
@@ -262,10 +377,11 @@ Shader "MRP/FlightCity"
                     float hot = step(Hash12(cell), 0.07) * (0.5 + 0.5 * sin(_Time.y * (1.3 + 2.0 * Hash12(cell + 3.1)) + Hash12(cell + 9.2) * 6.3));
                     c += float3(1.0, 0.3, 0.06) * hot * 0.55 * i.ruin.y * saturate(1.0 - dist / 1500.0);
                 }
-                // 霞: 遠いほど赤黒い霞へ・地面に近いほど濃い
+                // 霞: 遠いほど赤黒い霞へ。地面の近くは街の明かりを受けて少し明るい霧が這う
                 float fog = 1.0 - exp(-dist / max(_MrpFltSky.a, 1.0));
-                float low = exp(-max(i.wp.y - _MrpCity.y, 0.0) / 150.0) * saturate(dist / 1800.0) * 0.2;
-                c = lerp(c, _MrpFltSky.rgb, saturate(fog + low));
+                // 霧は地面から 320 より上ではほぼ 0 なので計算しない (ビルの上の方の画素の分を省く)
+                if (i.wp.y - _MrpCity.y < 320.0) c =lerp(c, _MrpFltSky.rgb * 1.35, GroundMist(i.wp, dist));
+                c = lerp(c, _MrpFltSky.rgb, fog);
                 return fixed4(c, 1);
             }
             ENDCG

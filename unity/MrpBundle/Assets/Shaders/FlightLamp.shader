@@ -66,7 +66,11 @@ Shader "MRP/FlightLamp"
                 }
                 // 遠くは霞で弱まるが、点の光は霞より残る。大きさを広げた分だけ明るさを落として、遠くの灯が大きな玉に見えないように
                 float fog = 1.0 - exp(-dist / max(_MrpFltSky.a * 1.8, 1.0));
-                o.k = on * (1.0 - fog * 0.8) * _MrpCity.z * saturate(v.uv.x / core * 1.6 + 0.25);
+                // 地面を這う霧の中の灯は霧に埋もれる (FlightCity の GroundMist と同じ式)
+                float2 mm = wp.xz * 0.004 + _Time.y * float2(0.011, 0.006);
+                float drift = 0.7 + 0.3 * sin(mm.x * 6.3 + sin(mm.y * 4.1)) * sin(mm.y * 5.3 + 1.7);
+                float mist = (1.0 - exp(-dist / 900.0)) * exp(-max(wp.y - _MrpCity.y, 0.0) / 70.0) * 0.75 * drift;
+                o.k = on * (1.0 - fog * 0.8) * (1.0 - mist * 0.85) * _MrpCity.z * saturate(v.uv.x / core * 1.6 + 0.25);
                 return o;
             }
 
