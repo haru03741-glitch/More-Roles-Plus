@@ -17,8 +17,8 @@ internal static class FlightCommands
                 case "enter":
                     {
                         int n = args.Length > 1 && int.TryParse(args[1], out int t) ? t : 3;
-                        // enter [的の数] [city|space]
-                        if (args.Length > 2) Arena.Stage = args[2] == "space" ? 0 : 1;
+                        // enter [的の数] [city|space|real] (real = 実在の街)
+                        if (args.Length > 2) Arena.Stage = args[2] == "space" ? 0 : (args[2] == "real" ? 2 : 1);
                         string r;
                         try { r = Arena.Enter(n); }
                         catch (System.Exception e) { Plugin.Logger.LogError($"flight enter: {e}"); Arena.Exit(); r = e.GetType().Name + ": " + e.Message; }

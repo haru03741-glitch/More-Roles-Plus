@@ -126,6 +126,8 @@
         <EmbeddedResource Include="Resources\Illus\*.jpg" LogicalName="MoreRolesPlus.Resources.Illus.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Cinema\*.*" LogicalName="MoreRolesPlus.Resources.Cinema.%(Filename)%(Extension)" />
         <EmbeddedResource Include="Resources\Sounds\*.wav" LogicalName="MoreRolesPlus.Resources.Sounds.%(Filename)%(Extension)" />
+        <!-- 3D の場面の実在の街 (3D 都市モデルを加工した形・deflate) -->
+        <EmbeddedResource Include="Resources\City\*.mrpcity" LogicalName="MoreRolesPlus.Resources.City.%(Filename)%(Extension)" />
         <!-- 役職の説明の「From:」に出す mod の名前 (<鍵>.txt) と絵 (<鍵>.png)。鍵は役職のコードの Origin => "鍵" -->
         <EmbeddedResource Include="Resources\Origins\*.txt;Resources\Origins\*.png" LogicalName="MoreRolesPlus.Resources.Origins.%(Filename)%(Extension)" />
         <!-- 画面に出す文 (言語ごと・遊ぶ人は BepInEx/config/MoreRolesPlus/Language で書き換えられる) -->

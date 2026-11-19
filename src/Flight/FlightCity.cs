@@ -17,6 +17,7 @@ internal static unsafe class FlightCity
     private const int Stride = 44;
 
     private static delegate* unmanaged[Cdecl]<uint, float, IntPtr> _create;
+    private static delegate* unmanaged[Cdecl]<byte*, int, float, IntPtr> _createReal;
     private static delegate* unmanaged[Cdecl]<IntPtr, int> _count;
     private static delegate* unmanaged[Cdecl]<IntPtr, int, int*, int*, float*, int> _info;
     private static delegate* unmanaged[Cdecl]<IntPtr, int, byte*, int*, void> _fill;
@@ -43,6 +44,19 @@ internal static unsafe class FlightCity
     private static float _alarmS = -1f, _alarmD, _nextAlarm, _dark;
     private static bool _sirenOn;
     internal static bool Active { get; private set; }
+    // 実在の街 (東京スカイツリーの周り・3D 都市モデルを加工した形) か、種から作る格子の街か
+    internal static bool Real { get; private set; }
+
+    // 埋め込んだ実在の街 (deflate) をほどく。無ければ null
+    private static byte[] LoadRealData()
+    {
+        using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("MoreRolesPlus.Resources.City.skytree.mrpcity");
+        if (s == null) return null;
+        using var z = new System.IO.Compression.DeflateStream(s, System.IO.Compression.CompressionMode.Decompress);
+        using var ms = new System.IO.MemoryStream();
+        z.CopyTo(ms);
+        return ms.ToArray();
+    }
 
     private static bool Ready()
     {
@@ -50,6 +64,7 @@ internal static unsafe class FlightCity
         try
         {
             _create = (delegate* unmanaged[Cdecl]<uint, float, IntPtr>)Need("mrp_flt_city_create");
+            _createReal = (delegate* unmanaged[Cdecl]<byte*, int, float, IntPtr>)Need("mrp_flt_city_create_real");
             _count = (delegate* unmanaged[Cdecl]<IntPtr, int>)Need("mrp_flt_city_count");
             _info = (delegate* unmanaged[Cdecl]<IntPtr, int, int*, int*, float*, int>)Need("mrp_flt_city_info");
             _fill = (delegate* unmanaged[Cdecl]<IntPtr, int, byte*, int*, void>)Need("mrp_flt_city_fill");
@@ -81,12 +96,19 @@ internal static unsafe class FlightCity
     }
 
     // 場面の root の子に街を作る。layer = 3D の場面の層
-    internal static bool Build(Transform root, int layer, uint seed, IntPtr world)
+    internal static bool Build(Transform root, int layer, uint seed, IntPtr world, bool real = false)
     {
         Clear();
         if (!Ready() || !MrpBundle.FlightMaterials[4] || !MrpBundle.FlightMaterials[5]) return false;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        IntPtr c = _create(seed, Ground);
+        IntPtr c;
+        if (real)
+        {
+            byte[] data = LoadRealData();
+            if (data == null) { Plugin.Logger.LogError("flight city: real city data missing"); return false; }
+            fixed (byte* dp = data) c = _createReal(dp, data.Length, Ground);
+        }
+        else c = _create(seed, Ground);
         if (c == IntPtr.Zero) return false;
         int n = _count(c), verts = 0, chunks = 0;
         _chunk = new Mesh[n];
@@ -153,8 +175,13 @@ internal static unsafe class FlightCity
         _nextAlarm = 70f + (float)(seed % 50);
         _carLost = 0f;
         ResetAlarm();
-        FlightCars.Begin();
-        FlightCarMesh.Build(root, layer);
+        // 車は格子の道の式で走るので、実在の街ではまだ出さない (道の網の上を走らせるまで)
+        Real = real;
+        if (!real)
+        {
+            FlightCars.Begin();
+            FlightCarMesh.Build(root, layer);
+        }
         Active = true;
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         Plugin.Logger.LogInfo($"flight city: chunks={chunks} verts={verts} {ms:0.0}ms");
@@ -167,7 +194,7 @@ internal static unsafe class FlightCity
     {
         if (!Active) return;
         TickClock(dt);
-        FlightCars.Tick(dt);
+        if (!Real) FlightCars.Tick(dt);
         if (_alarmS < 0f)
         {
             _nextAlarm -= dt;

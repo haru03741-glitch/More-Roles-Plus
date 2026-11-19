@@ -423,7 +423,7 @@ internal static unsafe class FlightCars
 
     internal static void OnCollapse(float x0, float z0, float x1, float z1)
     {
-        if (!FlightCity.Active) return;
+        if (!FlightCity.Active || FlightCity.Real) return;
         float cx = (x0 + x1) * 0.5f, cz = (z0 + z1) * 0.5f;
         Alarm(cx, cz, Math.Max(x1 - x0, z1 - z0) * 0.5f + 90f);
         if (!_on) return;

@@ -54,7 +54,14 @@ enum MarkerKind { MkMuzzle = 1, MkEngine = 2, MkSector = 3, MkTurret = 4, MkHatc
 enum EventKind { EvFire = 1, EvHit = 2, EvBoltEnd = 3, EvDodge = 4, EvUTurn = 5, EvGraze = 6, EvIgnite = 7, EvBuilding = 8, EvScrape = 9, EvGround = 10 };
 
 // 街の当たり (flight_city.cpp が作って持ち、場面の間だけ World が借りる)。軸に沿った箱を区画の升に入れた表
-struct CityBox { float mn[3], mx[3]; int32_t bld; int32_t pad; }; // bld = 棟の番号 (-1 = 壊れない物: 塔・高架)
+// 向きの付いた箱: mn/mx は (pv を軸に rc/rs だけ回した) 箱の向きの座標。軸に沿った箱は rc = 1・rs = 0・pv = 0
+// 箱の向きの座標 = (c (x - pv.x) + s (z - pv.z), y, -s (x - pv.x) + c (z - pv.z))
+struct CityBox { float mn[3], mx[3]; int32_t bld; float rc, rs; float pv[2]; int32_t pad; }; // bld = 棟の番号 (-1 = 壊れない物: 塔・高架)
+inline void CityToBox(const CityBox& b, float x, float z, float& lx, float& lz)
+{
+    float dx = x - b.pv[0], dz = z - b.pv[1];
+    lx = b.rc * dx + b.rs * dz; lz = -b.rs * dx + b.rc * dz;
+}
 struct CityCol
 {
     float org[2], cell;           // 升の原点 (x, z) と一辺

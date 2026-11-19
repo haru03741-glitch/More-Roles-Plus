@@ -945,7 +945,6 @@ float CitySeg(const CityCol* c, V3 a, V3 b, float r, int* hitBox, V3* nOut)
     if (!c || fminf(a.y, b.y) - r > c->top) return -1;
     int i0, j0, i1, j1;
     if (!CityCells(c, fminf(a.x, b.x) - r, fminf(a.z, b.z) - r, fmaxf(a.x, b.x) + r, fmaxf(a.z, b.z) + r, i0, j0, i1, j1)) return -1;
-    float pa[3] = { a.x, a.y, a.z }, d[3] = { b.x - a.x, b.y - a.y, b.z - a.z };
     float best = 2.0f; int bestBox = -1, bestAx = 1; float bestSg = 1;
     for (int j = j0; j <= j1; j++)
         for (int i = i0; i <= i1; i++)
@@ -954,6 +953,10 @@ float CitySeg(const CityCol* c, V3 a, V3 b, float r, int* hitBox, V3* nOut)
             for (int k = c->start[cell]; k < c->start[cell + 1]; k++)
             {
                 const CityBox& bx = c->box[c->item[k]];
+                float pa[3], pb[3];
+                CityToBox(bx, a.x, a.z, pa[0], pa[2]); CityToBox(bx, b.x, b.z, pb[0], pb[2]);
+                pa[1] = a.y; pb[1] = b.y;
+                float d[3] = { pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2] };
                 float te = -1e30f, tx = 1e30f; int ax = 1; float sg = 1;
                 bool miss = false;
                 for (int q = 0; q < 3 && !miss; q++)
@@ -979,17 +982,24 @@ float CitySeg(const CityCol* c, V3 a, V3 b, float r, int* hitBox, V3* nOut)
         }
     if (bestBox < 0) return -1;
     if (hitBox) *hitBox = bestBox;
-    if (nOut) { float n[3] = { 0, 0, 0 }; n[bestAx] = bestSg; *nOut = v3(n[0], n[1], n[2]); }
+    if (nOut)
+    {
+        float n[3] = { 0, 0, 0 }; n[bestAx] = bestSg;
+        const CityBox& bx = c->box[bestBox];
+        *nOut = v3(bx.rc * n[0] - bx.rs * n[2], n[1], bx.rs * n[0] + bx.rc * n[2]);
+    }
     return best;
 }
 
 // 球 (中心 p・半径 r) と一番深く重なる候補の箱。返り値 = 重なりの深さ (0 = 重ならない)・n = 押し出す向き
-float CitySphere(const CityCol* c, V3 p, float r, const int* cand, int candN, V3* nOut, int* hitBox)
+float CitySphere(const CityCol* c, V3 p0, float r, const int* cand, int candN, V3* nOut, int* hitBox)
 {
     float best = 0;
     for (int k = 0; k < candN; k++)
     {
         const CityBox& bx = c->box[cand[k]];
+        float lx, lz; CityToBox(bx, p0.x, p0.z, lx, lz);
+        V3 p = v3(lx, p0.y, lz);
         V3 q = v3(clampf(p.x, bx.mn[0], bx.mx[0]), clampf(p.y, bx.mn[1], bx.mx[1]), clampf(p.z, bx.mn[2], bx.mx[2]));
         V3 d = p - q;
         float d2 = dot(d, d);
@@ -1005,7 +1015,8 @@ float CitySphere(const CityCol* c, V3 p, float r, const int* cand, int candN, V3
             float nn[3] = { 0, 0, 0 }; nn[m >> 1] = (m & 1) ? 1.0f : -1.0f;
             n = v3(nn[0], nn[1], nn[2]); depth = pen[m] + r;
         }
-        if (depth > best) { best = depth; *nOut = n; *hitBox = cand[k]; }
+        // 押し出す向きを箱の向きから世界へ戻す
+        if (depth > best) { best = depth; *nOut = v3(bx.rc * n.x - bx.rs * n.z, n.y, bx.rs * n.x + bx.rc * n.z); *hitBox = cand[k]; }
     }
     return best;
 }
@@ -1039,17 +1050,19 @@ void CityShip(World* w, Ship& s, int idx, V3& p, Q4& q, float dt)
     int i0, j0, i1, j1;
     if (!CityCells(c, p.x - R, p.z - R, p.x + R, p.z + R, i0, j0, i1, j1)) return;
     // 粗い球に届く箱だけを候補に (同じ箱が隣の升にも入っているので重ねない)
-    int cand[48], candN = 0;
+    int cand[96], candN = 0;
     for (int j = j0; j <= j1; j++)
         for (int i = i0; i <= i1; i++)
         {
             int cell = j * c->nx + i;
-            for (int k = c->start[cell]; k < c->start[cell + 1] && candN < 48; k++)
+            for (int k = c->start[cell]; k < c->start[cell + 1] && candN < 96; k++)
             {
                 int b = c->item[k];
                 const CityBox& bx = c->box[b];
-                V3 qp = v3(clampf(p.x, bx.mn[0], bx.mx[0]), clampf(p.y, bx.mn[1], bx.mx[1]), clampf(p.z, bx.mn[2], bx.mx[2]));
-                if (dot(p - qp, p - qp) > R * R) continue;
+                float lx, lz; CityToBox(bx, p.x, p.z, lx, lz);
+                V3 lp = v3(lx, p.y, lz);
+                V3 qp = v3(clampf(lx, bx.mn[0], bx.mx[0]), clampf(p.y, bx.mn[1], bx.mx[1]), clampf(lz, bx.mn[2], bx.mx[2]));
+                if (dot(lp - qp, lp - qp) > R * R) continue;
                 bool dup = false;
                 for (int u = 0; u < candN; u++) if (cand[u] == b) { dup = true; break; }
                 if (!dup) cand[candN++] = b;

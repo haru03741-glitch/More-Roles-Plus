@@ -104,8 +104,13 @@ Shader "MRP/FlightCity"
                 float2 ruin;
                 float4 pos = Collapse(v.vertex, v.k, v.color.r * 255.0, ruin);
                 o.ruin = ruin;
-                o.pos = UnityObjectToClipPos(pos);
                 o.wp = mul(unity_ObjectToWorld, pos).xyz;
+                // 実在の街の地面の面 (色 g = 区分 + 1) は区分の順に少しだけカメラ側へ寄せる。
+                // 同じ高さに近い面どうしが遠くで深さの細かさを超えてちらつかないように (距離に比例して寄せる)
+                float gcls = floor(v.color.g * 255.0 + 0.5);
+                float3 wp = o.wp;
+                if (floor(v.normal.w * 127.0 + 0.5) == 3.0 && gcls > 0.5) wp += (_WorldSpaceCameraPos - wp) * (gcls * 4e-5);
+                o.pos = UnityWorldToClipPos(wp);
                 o.n = float4(normalize(mul((float3x3)unity_ObjectToWorld, v.normal.xyz)), floor(v.normal.w * 127.0 + 0.5));
                 o.col = v.color;
                 o.uv = v.uv;
@@ -484,6 +489,83 @@ Shader "MRP/FlightCity"
                 return alb * (amb + lampL) + lampL * onRoad * (1.0 - med) * 0.05 + emis;
             }
 
+            // 実在の街の地面 (区分ごとの面)。cls = 焼く道具の区分の番号・q = 街の中心からの位置 (ゲームの単位)。
+            // 色は反射の割合で決め、空の照り返しと街灯の溜まりに照らされた分だけ見える (Ground と同じ光)
+            float3 GroundReal(float3 wp, float cls, float2 q, float seed, float dist, out float alb)
+            {
+                float2 fw = max(fwidth(q), 1e-3);
+                float fm = max(fw.x, fw.y);
+                float grain = lerp(Hash12(floor(q / 3.0)), 0.5, saturate(fm / 3.0 * 2.0 - 0.5));
+                float isRoad = 0.0, isWalk = 0.0, water = 0.0;
+                if (cls > 8.5)                      // 車道・交差点の中 (細かい車線の面がある所)
+                {
+                    float patch = step(Hash12(floor(q / 11.0) + 7.3), 0.12);
+                    alb = (cls > 9.5 ? 0.075 : 0.065) * (0.85 + 0.3 * grain) * (1.0 - 0.25 * patch);
+                    isRoad = 1.0;
+                }
+                else if (cls > 7.5)                 // 中央分離帯・島: 植え込み
+                {
+                    float shrub = Hash12(floor(q / 2.2)) * 0.5 + Hash12(floor(q / 0.9) + 3.1) * 0.5;
+                    alb = 0.05 + 0.05 * lerp(shrub, 0.5, saturate(fm / 2.0 - 0.3));
+                }
+                else if (cls > 6.5)                 // 歩道: 敷石の目地
+                {
+                    alb = 0.17 * (0.9 + 0.2 * grain) * (1.0 - 0.35 * Lines(q / 1.8, 0.06, fw / 1.8));
+                    isWalk = 1.0;
+                }
+                else if (cls > 5.5)                 // 車線の面の無い所の道路全体
+                {
+                    alb = 0.07 * (0.85 + 0.3 * grain);
+                    isRoad = 1.0;
+                }
+                else if (cls > 4.5)                 // 水面
+                {
+                    alb = 0.02;
+                    water = 1.0;
+                }
+                else if (cls > 2.5)                 // 平面駐車場: アスファルトに区画の白線 (7.5 ごと・奥行 15 で区切り)
+                {
+                    float stall = Band(abs(frac(q.x / 7.5 + 0.5) - 0.5) * 7.5, 0.35, fw.x) * step(frac(q.y / 15.0), 0.85);
+                    alb = 0.07 * (0.85 + 0.3 * grain);
+                    alb = lerp(alb, 0.4, stall * (1.0 - saturate(fm / 2.0)));
+                    isRoad = 0.5;
+                }
+                else if (cls > 1.5)                 // 公園・緑地: 芝と木立の濃淡
+                {
+                    float canopy = Hash12(floor(q / 9.0)) * 0.6 + Hash12(floor(q / 3.3) + 5.7) * 0.4;
+                    alb = lerp(0.045, 0.085, lerp(canopy, 0.5, saturate(fm / 6.0 - 0.3)));
+                }
+                else if (cls > 0.5)                 // 空き地: 砂利
+                    alb = 0.13 * (0.75 + 0.5 * lerp(Hash12(floor(q / 0.8)), 0.5, saturate(fm - 0.5)));
+                else                                // 敷地の地面 (建物の間)
+                    alb = 0.1 * (0.85 + 0.3 * grain);
+                // 街灯: 道と歩道の上だけ、32 ごとの升に 1 つ (升の中で少しずれる)。灯の無い所もある
+                float2 cell = floor(q / 32.0);
+                float2 lp = (cell + 0.5 + (float2(Hash12(cell + 1.7), Hash12(cell + 9.3)) - 0.5) * 0.6) * 32.0;
+                float2 dl = q - lp;
+                float has = step(Hash12(cell * 1.37 + 2.1), 0.6);
+                float pool = exp(-dot(dl, dl) / 160.0) * has;
+                float far = saturate(fm / 8.0 - 0.3);
+                pool = lerp(pool, 0.12, far) * max(isRoad, isWalk);
+                float pw = Power(wp.xz, Hash12(cell) * 97.0);
+                float alive = step(Hash12(cell * 1.91 + 3.7), 0.04) * step(Hash12(cell + floor(_Time.y * 9.0)), 0.7);
+                float3 lampL = float3(1.0, 0.16, 0.07) * 2.2 * pool * _MrpCity.z * max(pw, lerp(alive * 0.8, 0.02, far));
+                float3 amb = float3(0.24, 0.11, 0.12) * (1.0 - 0.6 * _MrpCity.x) * _MrpCity.z;
+                float3 c = alb * (amb + lampL) + lampL * isRoad * 0.05;
+                if (water > 0.5)
+                {
+                    // 川面: さざ波に揺れる空の照り返しと、岸の明かりの縦に伸びた映り (遠いほど鏡に近い)
+                    float3 V = normalize(_WorldSpaceCameraPos - wp);
+                    float2 rp = q * 0.05 + _Time.y * float2(0.03, 0.017);
+                    float rip = sin(rp.x * 7.1 + sin(rp.y * 5.3)) * sin(rp.y * 6.7 + 1.3) + 0.5 * sin(q.x * 0.9 + _Time.y * 1.7) * sin(q.y * 0.7 - _Time.y * 1.1);
+                    float fres = pow(1.0 - saturate(V.y), 4.0);
+                    float glint = step(0.92, Hash12(floor(float2(q.x / 6.0, q.y / 1.2 + _Time.y * 0.6)))) * (0.6 + 0.4 * rip);
+                    c = _MrpFltSky.rgb * (0.4 + 1.8 * fres) * (0.85 + 0.15 * rip) + float3(1.0, 0.25, 0.12) * glint * 0.09 * _MrpCity.z * (1.0 - far);
+                    alb = 0.04;
+                }
+                return c;
+            }
+
             // 高架の上の標示 (中央の黄色い 2 本・片側 3 車線の破線・外側線)。広い通りの真上にあるので、同じ格子から横の距離を出す
             float DeckMarks(float3 wp, out float yellow)
             {
@@ -532,7 +614,9 @@ Shader "MRP/FlightCity"
                 {
                     // 塔の鉄骨: 下から照らされて自ら光って見える (上へ行くほど少し暗い)
                     float hgt = i.wp.y - _MrpCity.y;
-                    c = i.col.rgb * (1.25 - hgt / 780.0) * (0.75 + 0.25 * n.y * n.y);
+                    // a = 1 は背の高い塔 (634 m の塔・上まで照らされる)
+                    float span = i.col.a > 0.002 ? 1900.0 : 780.0;
+                    c = i.col.rgb * (1.25 - hgt / span) * (0.75 + 0.25 * n.y * n.y);
                     // 停電の間は下からの光が消え、てっぺんと展望台の障害灯の脈にだけ赤く浮かぶ
                     float p = frac(max(_MrpCityAlarm.x, 0.0) / 2.2) * 2.2;
                     float beat = smoothstep(0.0, 0.08, p) * exp(-p / 0.8);
@@ -541,7 +625,9 @@ Shader "MRP/FlightCity"
                 }
                 else if (mat < 3.5)
                 {
-                    c = Ground(i.wp, dist, albedo);
+                    float gcls = floor(i.col.g * 255.0 + 0.5) - 1.0;
+                    if (gcls >= 0.0) c = GroundReal(i.wp, gcls, i.uv, seed, dist, albedo);
+                    else c = Ground(i.wp, dist, albedo);
                     albedo *= 2.0; // 閃光は近くの強い光なので、暗い路面でも照らされた形が分かる程度に
                 }
                 else

@@ -84,7 +84,7 @@ internal static unsafe class Arena
 
         _world = FlightNative.Create((uint)Environment.TickCount);
         if (_world == IntPtr.Zero) return "create failed";
-        bool city = Stage == 1 && MrpBundle.FlightMaterials[4] && MrpBundle.FlightMaterials[6];
+        bool city = Stage >= 1 && MrpBundle.FlightMaterials[4] && MrpBundle.FlightMaterials[6];
         FlightParams.Values[FlightParams.Find("floorY")] = city ? FlightCity.FloorY : -1e6f;
         FlightParams.Values[FlightParams.Find("floorMargin")] = city ? FlightCity.FloorMargin : 70f;
         FlightParams.Values[FlightParams.Find("groundY")] = city ? FlightCity.Ground : -1e6f;
@@ -97,7 +97,7 @@ internal static unsafe class Arena
         Register(1, dummy);
         Alloc();
         Build();
-        if (city && !FlightCity.Build(_root.transform, Layer, 20261118u, _world)) city = false;
+        if (city && !FlightCity.Build(_root.transform, Layer, 20261118u, _world, Stage == 2)) city = false;
         ApplyStage(city);
 
         _shipN = 0;
