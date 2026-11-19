@@ -75,6 +75,10 @@ struct City
     std::vector<Bld> bld;
     std::vector<int32_t> start, item;
     flt::CityCol col;
+    // 川の水面の升 (焼いた街だけ・橋の上は 0)
+    std::vector<uint8_t> wet;
+    int32_t wetNx = 0, wetNz = 0;
+    float wetOrg[2] = { 0, 0 }, wetCell = 8.0f, wetDip = 0;
 };
 
 void AddBox(City& c, float x0, float z0, float x1, float z1, float y0, float y1, int bld)
@@ -554,13 +558,19 @@ void MakeGrid(City& c)
     g.top = top;
     g.box = c.box.data(); g.boxN = (int32_t)c.box.size();
     g.start = c.start.data(); g.item = c.item.data();
+    g.wet = c.wet.empty() ? nullptr : c.wet.data();
+    g.wetNx = c.wetNx; g.wetNz = c.wetNz;
+    g.wetOrg[0] = c.wetOrg[0]; g.wetOrg[1] = c.wetOrg[1];
+    g.wetCell = c.wetCell; g.wetDip = c.wetDip;
 }
 
-// ---- 実在の街 (3D 都市モデルを焼いた .mrpcity から組む) ----
-// データは中心 (東京スカイツリー) からの東 x・北 z (m)。横を RS・高さを RH 倍し、中心を電波塔の場所 (TowerX, TowerZ) へ置く。
+// ---- 焼いた街 (自前の生成器が組んだ .mrpcity から組む・川と運河と橋のある街並み) ----
+// データは中心 (電波塔) からの東 x・北 z (m)。横を RS・高さを RH 倍し、中心を電波塔の場所 (TowerX, TowerZ) へ置く。
 // 棟は足跡の角柱 (壁は辺ごとの板・屋根は焼いた三角)・当たりは焼いた向き付きの箱。地面は区分ごとの面 (色 g = 区分 + 1)。
 const float RS = 3.0f, RH = 1.5f;
 const int ChunkCap = 60000; // 1 つの網目の頂点の上限 (C# は 16 ビットの添字で描く)
+const float WaterDip = 4.5f * RH;  // 川の水面は岸の地面より低い (護岸の壁が立つ)
+const float Parapet = 1.1f * RH;   // 護岸と橋の欄干の地面からの高さ
 
 // 地面の区分 (焼く道具と同じ番号)
 enum GCls { GLot = 0, GVacant, GPark, GParking, GRail, GWater, GRoad1, GWalk, GIsland, GRoad, GCross, GExpwy };
@@ -636,12 +646,13 @@ float GLift(int g)
     case GIsland: return 0.4f;
     case GRoad: case GCross: return 0.06f;
     case GRoad1: return 0.04f;
+    case GWater: return -WaterDip;
     default: return 0.02f;
     }
 }
 
 // 用途 (焼く道具の番号)・高さ・階・足跡の面積 (m²) から壁の作りと窓の点く割合。
-// 錦糸町・押上の写真付きの建物で見た作り: 高い事務所だけが全面ガラス・大きな商業は窓がほとんど無い壁・
+// 東京の下町の実物の作り: 高い事務所だけが全面ガラス・大きな商業は窓がほとんど無い壁・
 // 小さな事務所や雑居は間を空けた小さな窓・住まいは窓がまばら・マンションはベランダ側が手すりの帯
 void RealStyle(int usage, float hReal, int storeys, float area, uint32_t h, int& fac, float& lit)
 {
@@ -753,27 +764,349 @@ void Skytree(City& c, Mesh& m, float X, float Z)
     }
 }
 
+// ---- 川・護岸・橋 ----
+enum BridgeKind { BGirder = 0, BArch, BTruss, BCable };
+
+// 水面の三角を升へ塗る (升の中心が三角の中なら水)
+void WetFill(City& c, const std::vector<float>& gv, const uint8_t* ip, uint32_t ni, uint32_t nv)
+{
+    if (c.wet.empty()) c.wet.assign((size_t)c.wetNx * c.wetNz, 0);
+    const float cs = c.wetCell;
+    for (uint32_t t = 0; t + 2 < ni; t += 3)
+    {
+        uint32_t i3[3]; memcpy(i3, ip + t * 4, 12);
+        if (i3[0] >= nv || i3[1] >= nv || i3[2] >= nv) continue;
+        float ax = gv[i3[0] * 2], az = gv[i3[0] * 2 + 1], bx = gv[i3[1] * 2], bz = gv[i3[1] * 2 + 1], cx = gv[i3[2] * 2], cz = gv[i3[2] * 2 + 1];
+        float area = (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+        if (fabsf(area) < 1e-6f) continue;
+        int i0 = (int)floorf((fminf(ax, fminf(bx, cx)) - c.wetOrg[0]) / cs), i1 = (int)floorf((fmaxf(ax, fmaxf(bx, cx)) - c.wetOrg[0]) / cs);
+        int j0 = (int)floorf((fminf(az, fminf(bz, cz)) - c.wetOrg[1]) / cs), j1 = (int)floorf((fmaxf(az, fmaxf(bz, cz)) - c.wetOrg[1]) / cs);
+        i0 = i0 < 0 ? 0 : i0; j0 = j0 < 0 ? 0 : j0; i1 = i1 >= c.wetNx ? c.wetNx - 1 : i1; j1 = j1 >= c.wetNz ? c.wetNz - 1 : j1;
+        for (int j = j0; j <= j1; j++)
+            for (int i = i0; i <= i1; i++)
+            {
+                float px = c.wetOrg[0] + (i + 0.5f) * cs, pz = c.wetOrg[1] + (j + 0.5f) * cs;
+                float w0 = ((bx - px) * (cz - pz) - (bz - pz) * (cx - px)) / area;
+                float w1 = ((cx - px) * (az - pz) - (cz - pz) * (ax - px)) / area;
+                if (w0 >= 0 && w1 >= 0 && w0 + w1 <= 1) c.wet[(size_t)j * c.wetNx + i] = 1;
+            }
+    }
+}
+
+// 橋の上 (a→b・半幅 hw) の升は水でない (弾は橋の路面で止まる)
+void WetClear(City& c, const float* a, const float* b, float hw)
+{
+    if (c.wet.empty()) return;
+    float dx = b[0] - a[0], dz = b[1] - a[1], L = sqrtf(dx * dx + dz * dz);
+    if (L < 1e-3f) return;
+    dx /= L; dz /= L;
+    const float cs = c.wetCell;
+    int i0 = (int)floorf((fminf(a[0], b[0]) - hw - c.wetOrg[0]) / cs), i1 = (int)floorf((fmaxf(a[0], b[0]) + hw - c.wetOrg[0]) / cs);
+    int j0 = (int)floorf((fminf(a[1], b[1]) - hw - c.wetOrg[1]) / cs), j1 = (int)floorf((fmaxf(a[1], b[1]) + hw - c.wetOrg[1]) / cs);
+    i0 = i0 < 0 ? 0 : i0; j0 = j0 < 0 ? 0 : j0; i1 = i1 >= c.wetNx ? c.wetNx - 1 : i1; j1 = j1 >= c.wetNz ? c.wetNz - 1 : j1;
+    for (int j = j0; j <= j1; j++)
+        for (int i = i0; i <= i1; i++)
+        {
+            float px = c.wetOrg[0] + (i + 0.5f) * cs - a[0], pz = c.wetOrg[1] + (j + 0.5f) * cs - a[1];
+            float t = px * dx + pz * dz, s = -px * dz + pz * dx;
+            if (t >= 0 && t <= L && fabsf(s) <= hw) c.wet[(size_t)j * c.wetNx + i] = 0;
+        }
+}
+
+bool WetAt(const City& c, float x, float z)
+{
+    if (c.wet.empty()) return false;
+    int i = (int)floorf((x - c.wetOrg[0]) / c.wetCell), j = (int)floorf((z - c.wetOrg[1]) / c.wetCell);
+    return i >= 0 && j >= 0 && i < c.wetNx && j < c.wetNz && c.wet[(size_t)j * c.wetNx + i];
+}
+
+// 護岸: 水面から岸の上の欄干まで立つコンクリートの壁 (水側の面・岸側の欄干の面・欄干の天端)
+void Bank(City& c, Chunks& ch, const float* p, int np, uint32_t seed)
+{
+    float G = c.ground;
+    const float T = 0.5f * RS; // 欄干の厚み
+    uint8_t col[4] = { (uint8_t)(H(seed * 7919u + 3) >> 8), FacG(FFactory), 0, 0 };
+    float run = 0, side = 1;
+    for (int k = 0; k + 1 < np; k++)
+    {
+        float ax = p[k * 2], az = p[k * 2 + 1], bx = p[k * 2 + 2], bz = p[k * 2 + 3];
+        float dx = bx - ax, dz = bz - az, L = sqrtf(dx * dx + dz * dz);
+        if (L < 1e-3f) continue;
+        float nx = dz / L, nz = -dx / L, mx = (ax + bx) * 0.5f, mz = (az + bz) * 0.5f;
+        // 水のある側へ向ける (どちらにも水が無い所は前の辺の向きのまま)
+        if (WetAt(c, mx + nx * 6, mz + nz * 6)) side = 1;
+        else if (WetAt(c, mx - nx * 6, mz - nz * 6)) side = -1;
+        nx *= side; nz *= side;
+        Mesh& m = ch.At(mx, mz, 12);
+        float yb = G - WaterDip - 0.5f, yt = G + Parapet;
+        float n1[3] = { nx, 0, nz }, n2[3] = { -nx, 0, -nz }, up[3] = { 0, 1, 0 };
+        float a0[3] = { ax, yb, az }, b0[3] = { bx, yb, bz }, b1[3] = { bx, yt, bz }, a1[3] = { ax, yt, az };
+        float u0 = run / RS, u1 = (run + L) / RS;
+        Quad(m, a0, b0, b1, a1, n1, MWall, col, u0, (yb - G) / RH, u1, (yt - G) / RH, 1);
+        float ox = -nx * T, oz = -nz * T;
+        float c0[3] = { ax + ox, G, az + oz }, d0[3] = { bx + ox, G, bz + oz }, d1[3] = { bx + ox, yt, bz + oz }, c1[3] = { ax + ox, yt, az + oz };
+        Quad(m, c0, d0, d1, c1, n2, MWall, col, u0, 0, u1, Parapet / RH, 1);
+        Quad(m, a1, b1, d1, c1, up, MRoof, col, ax, az, bx, bz);
+        run += L;
+    }
+}
+
+// 向きの付いた箱の網目 (中心・向き d・半長 hl・半幅 hw)。底は描かない
+void OBoxMesh(Mesh& m, float cx, float cz, const float* d, float hl, float hw, float y0, float y1, int mat, const uint8_t* col, bool top = true)
+{
+    float n[2] = { -d[1], d[0] };
+    float P[4][2];
+    for (int k = 0; k < 4; k++)
+    {
+        float su = (k == 0 || k == 3) ? -1.0f : 1.0f, sv = (k < 2) ? -1.0f : 1.0f;
+        P[k][0] = cx + d[0] * hl * su + n[0] * hw * sv; P[k][1] = cz + d[1] * hl * su + n[1] * hw * sv;
+    }
+    for (int k = 0; k < 4; k++)
+    {
+        int k1 = (k + 1) & 3;
+        float ex = P[k1][0] - P[k][0], ez = P[k1][1] - P[k][1], el = sqrtf(ex * ex + ez * ez);
+        if (el < 1e-4f) continue;
+        float fn[3] = { ez / el, 0, -ex / el };
+        float mx = (P[k][0] + P[k1][0]) * 0.5f - cx, mz = (P[k][1] + P[k1][1]) * 0.5f - cz;
+        if (fn[0] * mx + fn[2] * mz < 0) { fn[0] = -fn[0]; fn[2] = -fn[2]; }
+        float a[3] = { P[k][0], y0, P[k][1] }, b[3] = { P[k1][0], y0, P[k1][1] }, cc[3] = { P[k1][0], y1, P[k1][1] }, dd[3] = { P[k][0], y1, P[k][1] };
+        Quad(m, a, b, cc, dd, fn, mat, col, 0, 0, el, y1 - y0);
+    }
+    if (top)
+    {
+        float up[3] = { 0, 1, 0 };
+        float a[3] = { P[0][0], y1, P[0][1] }, b[3] = { P[1][0], y1, P[1][1] }, cc[3] = { P[2][0], y1, P[2][1] }, dd[3] = { P[3][0], y1, P[3][1] };
+        Quad(m, a, b, cc, dd, up, mat, col, 0, 0, 1, 1);
+    }
+}
+
+// 橋: 路面は地面の面 (道・歩道) が水の上へ続いて描かれる。ここで組むのは桁の側面と裏・欄干・街灯・橋脚と、
+// 作りごとの上の構造 (アーチ = 両側の弓と吊り材・トラス = 両側の三角の骨組み・斜張 = 中央の主塔と斜めの索)
+void Bridge(City& c, Mesh& m, int kind, const float* A, const float* B, float W, uint32_t seed)
+{
+    float G = c.ground;
+    float dx = B[0] - A[0], dz = B[1] - A[1], L = sqrtf(dx * dx + dz * dz);
+    if (L < 1.0f || W < 1.0f) return;
+    float d[2] = { dx / L, dz / L }, n[2] = { -d[1], d[0] };
+    float hw = W * 0.5f;
+    float Lr = L / RS; // 実寸の長さ
+    auto P = [&](float t, float s, float y, float* o) { o[0] = A[0] + d[0] * t + n[0] * s; o[1] = y; o[2] = A[1] + d[1] * t + n[1] * s; };
+    const float girder = (kind == BGirder ? 2.2f : 1.4f) * RH;
+    uint8_t conc[4] = { (uint8_t)(H(seed ^ 0x77) >> 8), 0, 0, 0 };
+    uint8_t rail[4] = { 70, 72, 80, 0 };
+    // 桁の側面と裏
+    for (int sd = -1; sd <= 1; sd += 2)
+    {
+        float a0[3], b0[3], b1[3], a1[3];
+        P(0, sd * hw, G - girder, a0); P(L, sd * hw, G - girder, b0); P(L, sd * hw, G + 0.15f, b1); P(0, sd * hw, G + 0.15f, a1);
+        float fn[3] = { n[0] * sd, 0, n[1] * sd };
+        Quad(m, a0, b0, b1, a1, fn, MRoad, conc, 0, 0, L, girder);
+    }
+    {
+        float a[3], b[3], cc[3], dd[3];
+        P(0, -hw, G - girder, a); P(L, -hw, G - girder, b); P(L, hw, G - girder, cc); P(0, hw, G - girder, dd);
+        float dn[3] = { 0, -1, 0 };
+        Quad(m, a, b, cc, dd, dn, MRoad, conc, 0, 0, 1, 1);
+    }
+    // 欄干: 上と中の手すり・支柱
+    for (int sd = -1; sd <= 1; sd += 2)
+    {
+        float s = sd * (hw - 0.3f);
+        float a[3], b[3];
+        P(0, s, G + Parapet, a); P(L, s, G + Parapet, b); Beam(m, a, b, 0.22f, rail);
+        P(0, s, G + Parapet * 0.5f, a); P(L, s, G + Parapet * 0.5f, b); Beam(m, a, b, 0.12f, rail);
+        int posts = (int)(L / 9.0f);
+        for (int k = 0; k <= posts; k++)
+        {
+            float t = L * k / (posts > 0 ? posts : 1);
+            P(t, s, G + 0.1f, a); P(t, s, G + Parapet, b); Beam(m, a, b, 0.14f, rail);
+        }
+    }
+    // 街灯: 両側に実寸 25 m ごと (柱と、道へ張り出した腕の先の灯)
+    {
+        int lamps = (int)(Lr / 25.0f);
+        if (lamps < 1) lamps = 1;
+        for (int k = 0; k < lamps; k++)
+        {
+            float t = L * (k + 0.5f) / lamps;
+            for (int sd = -1; sd <= 1; sd += 2)
+            {
+                float s = sd * (hw - 0.8f);
+                float a[3], b[3], e[3];
+                P(t, s, G, a); P(t, s, G + 9.0f * RH, b); Beam(m, a, b, 0.3f, rail);
+                P(t, s - sd * 2.2f * RS, G + 9.2f * RH, e); Beam(m, b, e, 0.2f, rail);
+                Lamp(*c.lampMesh, e[0], e[1] - 0.4f, e[2], 1.6f, 255, 196, 140, 0, 0);
+            }
+        }
+    }
+    // 橋脚: 長い桁橋は実寸 45 m ほどごと・トラスは 3 径間・アーチと斜張は両端の岸で支える
+    {
+        int spans = kind == BGirder ? (int)(Lr / 45.0f) + 1 : (kind == BTruss ? 3 : 1);
+        if (Lr < 50) spans = 1;
+        for (int k = 1; k < spans; k++)
+        {
+            float t = L * k / spans, ctr[3];
+            P(t, 0, 0, ctr);
+            OBoxMesh(m, ctr[0], ctr[2], d, 1.3f * RS, hw * 0.78f, G - WaterDip - 0.5f, G - girder, MRoad, conc, false);
+        }
+    }
+    uint8_t steel[4];
+    if (kind == BArch)
+    {
+        // 両側の弓 (放物線・実寸の高さ = 長さの 14%)・吊り材・上の横つなぎ。弓の頂に障害灯
+        steel[0] = 112; steel[1] = 142; steel[2] = 178; steel[3] = 0;
+        const int Seg = 20;
+        float Hh = 0.14f * Lr * RH;
+        float s0 = hw - 0.6f;
+        float prev[2][3];
+        for (int k = 0; k <= Seg; k++)
+        {
+            float t = L * k / Seg, u = 2.0f * k / Seg - 1.0f, y = G + 0.3f + Hh * (1 - u * u);
+            for (int sd = 0; sd < 2; sd++)
+            {
+                float p[3]; P(t, sd ? s0 : -s0, y, p);
+                if (k > 0)
+                {
+                    Beam(m, prev[sd], p, 1.5f, steel);
+                    AddBeamBox(c, prev[sd], p, 1.5f);
+                }
+                memcpy(prev[sd], p, 12);
+            }
+            if (k > 0 && k < Seg)
+            {
+                for (int sd = 0; sd < 2; sd++)
+                {
+                    float a[3]; P(t, sd ? s0 : -s0, G + 0.2f, a);
+                    Beam(m, a, prev[sd], 0.22f, steel);
+                }
+                if (1 - u * u > 0.55f)
+                {
+                    Beam(m, prev[0], prev[1], 0.8f, steel);
+                    AddBeamBox(c, prev[0], prev[1], 0.8f);
+                    if (k % 2 == 0 && k + 2 <= Seg)
+                    {
+                        float t2 = L * (k + 2) / Seg, u2 = 2.0f * (k + 2) / Seg - 1.0f, y2 = G + 0.3f + Hh * (1 - u2 * u2);
+                        float q[3]; P(t2, s0, y2, q);
+                        Beam(m, prev[0], q, 0.45f, steel);
+                    }
+                }
+            }
+        }
+        float top[3]; P(L * 0.5f, 0, G + 0.3f + Hh + 1.5f, top);
+        Lamp(*c.lampMesh, top[0], top[1], top[2], 2.6f, 255, 30, 22, 1, 0);
+    }
+    else if (kind == BTruss)
+    {
+        // 両側の三角の骨組み (上弦・下弦・斜材・垂直材)・上の横つなぎ。端の格間は斜めの端柱
+        steel[0] = 96; steel[1] = 128; steel[2] = 116; steel[3] = 0;
+        float Ht = 11.0f * RH;
+        int panels = (int)(Lr / 11.0f); if (panels < 4) panels = 4;
+        float s0 = hw - 0.6f;
+        for (int sd = 0; sd < 2; sd++)
+        {
+            float s = sd ? s0 : -s0;
+            for (int k = 0; k < panels; k++)
+            {
+                float t0 = L * k / panels, t1 = L * (k + 1) / panels;
+                float b0[3], b1[3], u0[3], u1[3];
+                P(t0, s, G + 0.3f, b0); P(t1, s, G + 0.3f, b1); P(t0, s, G + Ht, u0); P(t1, s, G + Ht, u1);
+                Beam(m, b0, b1, 0.7f, steel);
+                if (k == 0) { Beam(m, b0, u1, 1.0f, steel); AddBeamBox(c, b0, u1, 1.0f); continue; }
+                if (k == panels - 1) { Beam(m, u0, b1, 1.0f, steel); AddBeamBox(c, u0, b1, 1.0f); continue; }
+                Beam(m, u0, u1, 1.0f, steel);
+                Beam(m, b0, u0, 0.5f, steel);
+                if (k < panels / 2) Beam(m, u0, b1, 0.6f, steel); else Beam(m, b0, u1, 0.6f, steel);
+            }
+            float a[3], b[3];
+            P(L / panels, s, G, a); P(L * (panels - 1) / panels, s, G + Ht, b);
+            AddOBox(c, (a[0] + b[0]) * 0.5f, (a[2] + b[2]) * 0.5f, L * (panels - 2) / panels * 0.5f, 0.9f, atan2f(d[1], d[0]), G, G + Ht + 1.0f, -1);
+        }
+        for (int k = 1; k < panels; k++)
+        {
+            float t = L * k / panels, a[3], b[3];
+            P(t, -s0, G + Ht, a); P(t, s0, G + Ht, b);
+            Beam(m, a, b, 0.5f, steel);
+            if (k + 1 < panels)
+            {
+                float e[3]; P(L * (k + 1) / panels, s0, G + Ht, e);
+                Beam(m, a, e, 0.3f, steel);
+            }
+        }
+        for (int e = 0; e < 2; e++)
+        {
+            float p[3]; P(e ? L * (panels - 1) / panels : L / panels, 0, G + Ht + 0.8f, p);
+            Lamp(*c.lampMesh, p[0], p[1], p[2], 2.0f, 255, 30, 22, 1, 0);
+        }
+    }
+    else if (kind == BCable)
+    {
+        // 中央の主塔 (A 字の 2 本の脚が上で合う) と、両側へ扇に張る斜めの索
+        steel[0] = 176; steel[1] = 182; steel[2] = 196; steel[3] = 0;
+        float Hp = 0.3f * Lr * RH + 6.0f * RH;
+        float tm = L * 0.5f;
+        float top[3]; P(tm, 0, G + Hp, top);
+        for (int sd = -1; sd <= 1; sd += 2)
+        {
+            float foot[3]; P(tm, sd * (hw + 0.8f), G - girder, foot);
+            Beam(m, foot, top, 1.6f, steel);
+            AddBeamBox(c, foot, top, 1.6f);
+        }
+        {
+            float a[3], b[3]; P(tm, -(hw + 0.8f), G - girder - 0.2f, a); P(tm, hw + 0.8f, G - girder - 0.2f, b);
+            Beam(m, a, b, 1.2f, steel);
+        }
+        const int Cables = 9;
+        for (int dir = -1; dir <= 1; dir += 2)
+            for (int k = 0; k < Cables; k++)
+            {
+                float f = (k + 1.0f) / Cables;
+                float t = tm + dir * f * (L * 0.5f - 2.0f * RS);
+                for (int sd = -1; sd <= 1; sd += 2)
+                {
+                    float anchor[3], high[3];
+                    P(t, sd * (hw - 0.9f), G + 0.4f, anchor);
+                    float hy = Hp * (0.72f + 0.25f * (1 - f));
+                    float sh = sd * (hw + 0.8f) * (1 - hy / Hp) * 0.95f; // 脚の上の位置
+                    P(tm + dir * 0.6f, sh, G + hy, high);
+                    Beam(m, anchor, high, 0.18f, steel);
+                }
+            }
+        Lamp(*c.lampMesh, top[0], top[1] + 1.5f, top[2], 3.0f, 255, 30, 22, 1, 0);
+    }
+}
+
 bool BuildReal(City& c, const uint8_t* data, int32_t len)
 {
     Rd r{ data, data + len };
     const uint8_t* magic = r.Take(4);
     uint32_t ver = r.Get<uint32_t>();
-    if (!magic || memcmp(magic, "MRPC", 4) != 0 || (ver != 2 && ver != 3)) return false;
-    r.Get<double>(); r.Get<double>(); r.Get<float>();
+    if (!magic || memcmp(magic, "MRPC", 4) != 0 || ver != 4) return false;
+    r.Get<double>(); r.Get<double>();
+    float half = r.Get<float>();
     uint32_t nb = r.Get<uint32_t>(), ng = r.Get<uint32_t>();
-    if (!r.ok) return false;
+    if (!r.ok || !(half > 10 && half < 5000)) return false;
     float G = c.ground;
     Chunks ch; ch.c = &c;
     for (int k = 0; k < Tiles * Tiles; k++) ch.cur[k] = -1;
-    // 地面の下敷き (敷地の色): 1 枚の大きな板
+    // 地面の下敷き (敷地の色): 焼いた広さの外だけを囲む 4 枚 (中は敷地の面があり、川の所は穴になっている)
+    float sx0 = TowerX - half * RS, sx1 = TowerX + half * RS, sz0 = TowerZ - half * RS, sz1 = TowerZ + half * RS;
     {
         Mesh& m = c.mesh[0];
         float E = Extent + 2400.0f;
-        float a[3] = { -E, G, -E }, b[3] = { E, G, -E }, cc[3] = { E, G, E }, d[3] = { -E, G, E };
         float n[3] = { 0, 1, 0 };
         uint8_t col[4] = { 0, GLot + 1, 0, 0 };
-        Quad(m, d, cc, b, a, n, MGround, col, d[0] - TowerX, d[2] - TowerZ, cc[0] - TowerX, a[2] - TowerZ);
+        float rects[4][4] = { { -E, -E, E, sz0 }, { -E, sz1, E, E }, { -E, sz0, sx0, sz1 }, { sx1, sz0, E, sz1 } };
+        for (auto& q : rects)
+        {
+            if (q[2] <= q[0] || q[3] <= q[1]) continue;
+            float a[3] = { q[0], G, q[1] }, b[3] = { q[2], G, q[1] }, cc[3] = { q[2], G, q[3] }, d[3] = { q[0], G, q[3] };
+            Quad(m, d, cc, b, a, n, MGround, col, d[0] - TowerX, d[2] - TowerZ, cc[0] - TowerX, a[2] - TowerZ);
+        }
     }
+    c.wetCell = 8.0f;
+    c.wetOrg[0] = sx0; c.wetOrg[1] = sz0;
+    c.wetNx = (int32_t)ceilf((sx1 - sx0) / c.wetCell); c.wetNz = (int32_t)ceilf((sz1 - sz0) / c.wetCell);
+    c.wetDip = WaterDip;
     std::vector<float> xz;
     for (uint32_t bi = 0; bi < nb && r.ok; bi++)
     {
@@ -782,7 +1115,7 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
         uint16_t hgt = r.Get<uint16_t>();
         uint8_t usage = r.Get<uint8_t>(), storeys = r.Get<uint8_t>(), nbox = r.Get<uint8_t>(), ntri = r.Get<uint8_t>();
         const uint8_t* pts = r.Take((size_t)np * 4);
-        const uint8_t* wcl = ver >= 3 ? r.Take((size_t)np) : nullptr; // 辺ごとの壁の種類
+        const uint8_t* wcl = r.Take((size_t)np); // 辺ごとの壁の種類
         const uint8_t* tri = r.Take((size_t)ntri * 3);
         const uint8_t* bx = r.Take((size_t)nbox * 10);
         if (!r.ok || np < 3) break;
@@ -877,7 +1210,7 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
         const uint8_t* vp = r.Take((size_t)nv * 4);
         const uint8_t* ip = r.Take((size_t)ni * 4);
         if (!r.ok) break;
-        if (g == GExpwy || g == GLot) continue;
+        if (g == GExpwy) continue;
         gv.resize((size_t)nv * 2);
         for (uint32_t k = 0; k < nv; k++)
         {
@@ -885,6 +1218,7 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
             gv[k * 2] = TowerX + q[0] * 0.1f * RS; gv[k * 2 + 1] = TowerZ + q[1] * 0.1f * RS;
         }
         float y = G + GLift(g);
+        if (g == GWater) WetFill(c, gv, ip, ni, nv);
         float up[3] = { 0, 1, 0 };
         for (uint32_t t = 0; t + 2 < ni; t += 3)
         {
@@ -897,6 +1231,42 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
             Tri(m, a, b, cc, up, MGround, col, ua, ub, uc);
         }
     }
+    // 護岸: 水の縁の線 (点の数 u16・点 i16x2 dm)
+    uint32_t nl = r.Get<uint32_t>();
+    std::vector<float> lp;
+    for (uint32_t li = 0; li < nl && r.ok; li++)
+    {
+        uint16_t np = r.Get<uint16_t>();
+        const uint8_t* pp = r.Take((size_t)np * 4);
+        if (!r.ok) break;
+        lp.resize((size_t)np * 2);
+        for (int k = 0; k < np; k++)
+        {
+            int16_t q[2]; memcpy(q, pp + k * 4, 4);
+            lp[k * 2] = TowerX + q[0] * 0.1f * RS; lp[k * 2 + 1] = TowerZ + q[1] * 0.1f * RS;
+        }
+        Bank(c, ch, lp.data(), np, li);
+    }
+    // 橋: 作り u8・予備 u8・幅 u16 dm・両端 i16x4 dm。水の升から橋の上を抜いてから組む
+    uint32_t nbr = r.Get<uint32_t>();
+    const uint8_t* bp = r.Take((size_t)nbr * 12);
+    if (bp)
+    {
+        for (uint32_t k = 0; k < nbr; k++)
+        {
+            const uint8_t* e = bp + k * 12;
+            uint16_t w; int16_t q[4]; memcpy(&w, e + 2, 2); memcpy(q, e + 4, 8);
+            float a[2] = { TowerX + q[0] * 0.1f * RS, TowerZ + q[1] * 0.1f * RS }, b[2] = { TowerX + q[2] * 0.1f * RS, TowerZ + q[3] * 0.1f * RS };
+            WetClear(c, a, b, w * 0.1f * RS * 0.5f + 1.0f);
+        }
+        for (uint32_t k = 0; k < nbr; k++)
+        {
+            const uint8_t* e = bp + k * 12;
+            uint16_t w; int16_t q[4]; memcpy(&w, e + 2, 2); memcpy(q, e + 4, 8);
+            float a[2] = { TowerX + q[0] * 0.1f * RS, TowerZ + q[1] * 0.1f * RS }, b[2] = { TowerX + q[2] * 0.1f * RS, TowerZ + q[3] * 0.1f * RS };
+            Bridge(c, ch.At((a[0] + b[0]) * 0.5f, (a[1] + b[1]) * 0.5f, 8000), e[0], a, b, w * 0.1f * RS, k);
+        }
+    }
     {
         c.mesh.emplace_back();
         Skytree(c, c.mesh.back(), TowerX, TowerZ);
@@ -905,7 +1275,7 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
 }
 }
 
-// 実在の街 (焼いた .mrpcity の中身・ほどいた後) から作る。形が読めなければ null
+// 焼いた街 (.mrpcity の中身・ほどいた後) から作る。形が読めなければ null
 MRP_API void* mrp_flt_city_create_real(const uint8_t* data, int32_t len, float ground)
 {
     if (!data || len < 32) return nullptr;

@@ -1,4 +1,5 @@
 #pragma once
+#include <math.h>
 #include <stdint.h>
 
 // 3D の艦隊戦のシム (src/Flight の C# と形を揃える)。Unity を呼ばない。座標は Unity と同じ左手系 (y が上・z が前)。
@@ -70,7 +71,16 @@ struct CityCol
     const CityBox* box; int32_t boxN;
     const int32_t* start;         // 升 (j * nx + i) の箱の並びの始め (nx * nz + 1 個)
     const int32_t* item;          // 箱の番号
+    // 川の水面 (地面より wetDip 低い)。升 (j * wetNx + i) が 1 なら水の上 (橋の上は 0)。wet = null なら水は無い
+    const uint8_t* wet; int32_t wetNx, wetNz;
+    float wetOrg[2], wetCell, wetDip;
 };
+inline bool CityWet(const CityCol* c, float x, float z)
+{
+    if (!c || !c->wet) return false;
+    int i = (int)floorf((x - c->wetOrg[0]) / c->wetCell), j = (int)floorf((z - c->wetOrg[1]) / c->wetCell);
+    return i >= 0 && j >= 0 && i < c->wetNx && j < c->wetNz && c->wet[j * c->wetNx + i];
+}
 
 struct Sphere { float c[3]; float r; int32_t sector; };
 struct Marker { int32_t kind, id; float p[3]; float d[3]; };

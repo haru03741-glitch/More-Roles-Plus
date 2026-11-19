@@ -44,13 +44,13 @@ internal static unsafe class FlightCity
     private static float _alarmS = -1f, _alarmD, _nextAlarm, _dark;
     private static bool _sirenOn;
     internal static bool Active { get; private set; }
-    // 実在の街 (東京スカイツリーの周り・3D 都市モデルを加工した形) か、種から作る格子の街か
+    // 焼いた街 (川・運河・橋のある街並み) か、種から作る格子の街か
     internal static bool Real { get; private set; }
 
-    // 埋め込んだ実在の街 (deflate) をほどく。無ければ null
+    // 埋め込んだ焼いた街 (deflate) をほどく。無ければ null
     private static byte[] LoadRealData()
     {
-        using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("MoreRolesPlus.Resources.City.skytree.mrpcity");
+        using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("MoreRolesPlus.Resources.City.city.mrpcity");
         if (s == null) return null;
         using var z = new System.IO.Compression.DeflateStream(s, System.IO.Compression.CompressionMode.Decompress);
         using var ms = new System.IO.MemoryStream();
@@ -175,7 +175,7 @@ internal static unsafe class FlightCity
         _nextAlarm = 70f + (float)(seed % 50);
         _carLost = 0f;
         ResetAlarm();
-        // 車は格子の道の式で走るので、実在の街ではまだ出さない (道の網の上を走らせるまで)
+        // 車は格子の道の式で走るので、焼いた街ではまだ出さない (道の網の上を走らせるまで)
         Real = real;
         if (!real)
         {

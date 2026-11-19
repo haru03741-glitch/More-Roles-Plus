@@ -189,6 +189,17 @@ internal static class FlightSound
         if (c) _shot.PlayOneShot(c, 0.5f * vol);
     }
 
+    private static int _splashNext;
+
+    // 光弾が川面に当たった (水を打つ音・蒸気・崩れる水柱・落ちる粒)
+    internal static void Splash(float vol)
+    {
+        if (!Ensure()) return;
+        _splashNext = (_splashNext + 1) % 2;
+        var c = MrpBundle.Clip("noise_flt_splash_" + (_splashNext + 1));
+        if (c) _shot.PlayOneShot(c, 0.55f * vol);
+    }
+
     // 撃たれた車が爆ぜた (ガラスが割れ、燃料に火が回って燃え広がる)
     internal static void CarBoom(float vol)
     {

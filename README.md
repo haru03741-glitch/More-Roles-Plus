@@ -208,11 +208,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1 -Skip
 * **[Freesound](https://freesound.org/) の録音 (CC0)**  
   エクリプスの隕石とノヴァの光線の音。humanoide9000・Miulew (隕石が空を切る音)、NearTheAtmoshphere・LookIMadeAThing (火の玉と炎)、xkeril (落ちる瓦礫)、Artninja (金具)、cb9382・ironcross32 (放電のパチパチ)、SamsterBirdies・craigsmith (キャノンの破裂と爆発) の録音を切り出して重ねています
 
-### 🔹 地図のデータ
-
-* **[3D 都市モデル (Project PLATEAU)](https://www.mlit.go.jp/plateau/) (国土交通省・著作権は各地方公共団体、[公共データ利用規約 (PDL1.0)](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0))**  
-  3D の艦隊戦の夜の街 (東京スカイツリーの周り) の建物・道路・土地の使い方の形。出典：国土交通省 3D都市モデル（Project PLATEAU）東京都墨田区・台東区・江東区（2025年度）（https://www.mlit.go.jp/plateau/）、PDL1.0（https://www.digital.go.jp/resources/open_data/public_data_license_v1.0）。More Roles Plus の開発者が加工して作成 (建物の足跡と高さ・道路の面・土地利用の区分を取り出し、建物の壁ごとに隣の建物と接しているかを求め、遠くの低い建物は街区ごとにまとめています)
-
 ※ライセンスの全文および各著作権通知の詳細は [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) をご覧ください。
 
 </details>

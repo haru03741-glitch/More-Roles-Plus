@@ -107,7 +107,7 @@ Shader "MRP/FlightCity"
                 float4 pos = Collapse(v.vertex, v.k, v.color.r * 255.0, ruin);
                 o.ruin = ruin;
                 o.wp = mul(unity_ObjectToWorld, pos).xyz;
-                // 実在の街の地面の面 (色 g = 区分 + 1) は区分の順に少しだけカメラ側へ寄せる。
+                // 焼いた街の地面の面 (色 g = 区分 + 1) は区分の順に少しだけカメラ側へ寄せる。
                 // 同じ高さに近い面どうしが遠くで深さの細かさを超えてちらつかないように (距離に比例して寄せる)
                 float gcls = floor(v.color.g * 255.0 + 0.5);
                 // 法線の w = 材質 + 8 × 壁の種類 (0 表・1 隣と接する窓の無い壁・2 妻)
@@ -226,7 +226,7 @@ Shader "MRP/FlightCity"
             }
 
             // 壁の作りごとの窓の並び (壁の作りの番号は flight_city.cpp の Fac と同じ)。uv の 1 階 = 3.8。
-            // 錦糸町・押上の写真付きの建物の壁に合わせた: 全面ガラスは高い事務所だけ・大きな商業は窓のほとんど無い壁・
+            // 東京の下町の実物の壁に合わせた: 全面ガラスは高い事務所だけ・大きな商業は窓のほとんど無い壁・
             // 雑居や住まいは壁の間に小さな窓・マンションはベランダ側が手すりの帯で廊下側は夜通し灯る共用廊下。
             // bw = 窓の升の横の幅 (uv)・r = 升の中の窓の範囲 (x0 x1 y0 y1)・pr = 窓のある升の割合・nw = 部屋が横にまたぐ升の数・
             // kind = 部屋の種類 (0 事務所 / 1 住まい / 2 倉庫)・ln = 窓枠の線の強さ (ガラスの壁だけ)
@@ -298,7 +298,7 @@ Shader "MRP/FlightCity"
                 float h = Hash12(rid + seed * 113.7);
                 float h2 = Hash12(rid * 1.37 + seed * 17.3);
                 // 壁に沿った向き t と、uv の 1 が世界のいくつか (ku・kv)。壁の uv は位置の一次式なので、隣の画素との差の比から出る
-                // (格子の街と実在の街で u の進む向きが逆でも ku の符号がそれを持つ)
+                // (格子の街と焼いた街で u の進む向きが逆でも ku の符号がそれを持つ)
                 float3 t = float3(-nn.z, 0.0, nn.x);
                 float3 rx = ddx(i.rel), ry = ddy(i.rel);
                 float2 at = float2(dot(rx, t), dot(ry, t)), ay = float2(rx.y, ry.y);
@@ -723,7 +723,7 @@ Shader "MRP/FlightCity"
                 return alb * (amb + lampL) + lampL * onRoad * (1.0 - med) * 0.05 + emis;
             }
 
-            // 実在の街の地面 (区分ごとの面)。cls = 焼く道具の区分の番号・q = 街の中心からの位置 (ゲームの単位)。
+            // 焼いた街の地面 (区分ごとの面)。cls = 焼く道具の区分の番号・q = 街の中心からの位置 (ゲームの単位)。
             // 色は反射の割合で決め、空の照り返しと街灯の溜まりに照らされた分だけ見える (Ground と同じ光)
             float3 GroundReal(float3 wp, float cls, float2 q, float seed, float dist, out float alb)
             {

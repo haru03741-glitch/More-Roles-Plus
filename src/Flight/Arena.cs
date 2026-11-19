@@ -645,7 +645,17 @@ internal static unsafe class Arena
             }
             if (e.Kind == (int)FlightNative.Ev.Ground)
             {
-                // 路面に当たった: 車なら燃やす (今は自分の画面だけで決める・通信の段でホストが持つ形にする)。路面だけなら軽い砕けの音
+                // 路面に当たった: 車なら燃やす (今は自分の画面だけで決める・通信の段でホストが持つ形にする)。路面だけなら軽い砕けの音・
+                // 川面 (C の 2) なら水の音 (車は無い)
+                if ((e.C & 2) != 0)
+                {
+                    if (_bldSounds >= 2) continue;
+                    float* lw = _shipOut + _local * 8;
+                    float wx = e.X - lw[0], wy = e.Y - lw[1], wz = e.Z - lw[2];
+                    float wv = 0.7f * (1f - (float)System.Math.Sqrt(wx * wx + wy * wy + wz * wz) / 650f);
+                    if (wv > 0.03f) { FlightSound.Splash(wv); _bldSounds++; }
+                    continue;
+                }
                 var at = new Vector3(e.X, e.Y, e.Z);
                 // 車は高さがあるので、浅い角度の弾は路面に落ちる手前で車体を抜ける。撃った船の方へ戻って車体の高さも見る
                 float* sh = _shipOut + (e.A >= 0 && e.A < FlightNative.MaxShips ? e.A : _local) * 8;

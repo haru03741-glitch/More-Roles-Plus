@@ -223,6 +223,33 @@ void FxGround(World* w, V3 p, V3 boltV)
         Emit(w, 0, p + rdir(w) * 0.8f + v3(0, 0.6f, 0), v3(rr(w, -3, 3), rr(w, 3, 7), rr(w, -3, 3)), rr(w, 0.9f, 1.6f), rr(w, 1.2f, 2.0f), rr(w, 4, 7), 1.2f, dust0, dust1, rr(w, 0, 0.05f));
 }
 
+// 弾が川面に当たった所: 水中で光る閃き → 打ち込まれた所から立つ水柱 (太い弾ほど高い) → 輪に広がる飛沫 → 落ちる細かいしぶきの霧
+void FxWater(World* w, V3 p, V3 boltV, bool big)
+{
+    static const uint8_t flash0[4] = { 255, 230, 200, 0 }, flash1[4] = { 255, 120, 60, 0 };
+    static const uint8_t spray0[4] = { 190, 170, 175, 170 }, spray1[4] = { 70, 50, 56, 0 };
+    static const uint8_t mist0[4] = { 120, 100, 106, 110 }, mist1[4] = { 30, 22, 26, 0 };
+    float k = big ? 1.8f : 1.0f;
+    AddLight(w, p + v3(0, 1, 0), 18.0f * k, 1.0f, 0.62f, 0.4f, 0.1f);
+    Emit(w, 0, p + v3(0, 0.2f, 0), v3(0, 0, 0), 0.08f, 2.4f * k, 0.8f, 0, flash0, flash1);
+    V3 bv = norm(boltV);
+    for (int i = 0; i < 6; i++)
+        Emit(w, 0, p + v3(rr(w, -0.4f, 0.4f), 0.3f, rr(w, -0.4f, 0.4f)), v3(bv.x * 3 + rr(w, -2, 2), rr(w, 14, 26) * k, bv.z * 3 + rr(w, -2, 2)),
+             rr(w, 0.7f, 1.2f) * k, rr(w, 0.8f, 1.3f) * k, rr(w, 2.0f, 3.2f) * k, 3.2f, spray0, spray1, 0.0f);
+    for (int i = 0; i < 10; i++)
+    {
+        float a = rr(w, 0, 6.2831853f);
+        Emit(w, 0, p + v3(0, 0.2f, 0), v3(cosf(a) * rr(w, 6, 12), rr(w, 3, 7), sinf(a) * rr(w, 6, 12)) * k,
+             rr(w, 0.5f, 0.9f), 0.5f, 1.4f * k, 2.4f, spray0, spray1, 0.0f);
+    }
+    // 粒に重力は無いので、水柱の頂から落ちる粒は遅らせて上から下向きに出す
+    for (int i = 0; i < 6; i++)
+        Emit(w, 0, p + v3(rr(w, -1.5f, 1.5f), rr(w, 4, 6.5f) * k, rr(w, -1.5f, 1.5f)), v3(rr(w, -2, 2), -rr(w, 9, 14), rr(w, -2, 2)),
+             0.45f, 0.8f * k, 0.5f * k, 0.0f, spray0, spray1, rr(w, 0.3f, 0.45f));
+    for (int i = 0; i < 3; i++)
+        Emit(w, 0, p + rdir(w) * 1.2f + v3(0, 1.5f, 0), v3(rr(w, -2, 2), rr(w, 1, 3), rr(w, -2, 2)), rr(w, 1.6f, 2.6f), rr(w, 2.0f, 3.0f) * k, rr(w, 5, 8) * k, 0.4f, mist0, mist1, rr(w, 0, 0.05f));
+}
+
 // 船が落ちる爆発: 閃光 → 膨らむ火の玉 → 黒煙 → 散る破片の火花 (どれも中心から外へ動いて冷める)
 void FxExplode(World* w, V3 p, float sc)
 {
@@ -1519,9 +1546,26 @@ void StepBolts(World* w, int local, float dt)
             }
         }
         // 地面 (街の場面だけ): 道路や車に当たって止まる
+        // 川の上は路面の高さを抜けて、下の水面で止まる
         float tg = 2.0f;
         float gy = w->prm[PGroundY];
-        if (gy > -1e5f && a.y > gy && e.y <= gy) tg = (a.y - gy) / (a.y - e.y);
+        bool wetHit = false;
+        if (gy > -1e5f)
+        {
+            if (a.y > gy && e.y <= gy)
+            {
+                float t = (a.y - gy) / (a.y - e.y);
+                V3 p = lerp(a, e, t);
+                if (!CityWet(w->city, p.x, p.z)) tg = t;
+            }
+            float wy = w->city && w->city->wet ? gy - w->city->wetDip : -1e30f;
+            if (tg > 1.0f && a.y > wy && e.y <= wy)
+            {
+                float t = (a.y - wy) / (a.y - e.y);
+                V3 p = lerp(a, e, t);
+                if (CityWet(w->city, p.x, p.z)) { tg = t; wetHit = true; gy = wy; }
+            }
+        }
         // ビル: 船より手前で当たれば弾はそこで止まり、当たった棟が削れる
         if (w->city)
         {
@@ -1543,9 +1587,13 @@ void StepBolts(World* w, int local, float dt)
         {
             V3 hp = lerp(a, e, tg);
             hp.y = gy + 0.05f;
-            FxGround(w, hp, ld(b.v));
-            if (b.size > 1.5f) FxExplode(w, hp, 0.35f);
-            if (b.kind == 0) Emit(w, EvGround, b.owner, 0, (b.mine ? 0x10000 : 0) | (b.size > 1.5f ? 1 : 0), hp, b.dmg);
+            if (wetHit) FxWater(w, hp, ld(b.v), b.size > 1.5f);
+            else
+            {
+                FxGround(w, hp, ld(b.v));
+                if (b.size > 1.5f) FxExplode(w, hp, 0.35f);
+            }
+            if (b.kind == 0) Emit(w, EvGround, b.owner, 0, (b.mine ? 0x10000 : 0) | (b.size > 1.5f ? 1 : 0) | (wetHit ? 2 : 0), hp, b.dmg);
             b.alive = 0;
             continue;
         }
