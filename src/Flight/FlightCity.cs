@@ -154,6 +154,7 @@ internal static unsafe class FlightCity
         _carLost = 0f;
         ResetAlarm();
         FlightCars.Begin();
+        FlightCarMesh.Build(root, layer);
         Active = true;
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         Plugin.Logger.LogInfo($"flight city: chunks={chunks} verts={verts} {ms:0.0}ms");
@@ -423,6 +424,7 @@ internal static unsafe class FlightCity
         _clockUntil = -1f;
         foreach (var m in Meshes) if (m) UnityEngine.Object.Destroy(m);
         Meshes.Clear();
+        FlightCarMesh.Clear();
         if (Active)
         {
             FlightSound.Siren(false, 0f, 1f);

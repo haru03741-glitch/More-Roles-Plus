@@ -98,9 +98,9 @@ internal static class MrpBundle
     public static Material UiFireMaterial { get; private set; }
     public static Material UiBarMaterial { get; private set; }
     public static Material NovaBeamMaterial { get; private set; }
-    // 3D の艦隊戦: 0 = 船 (トゥーン + 縁取り)・1 = 光弾・2 = 宇宙の背景・3 = 火花・炎・煙・塵
-    public static readonly Material[] FlightMaterials = new Material[7];
-    private static readonly string[] FlightMatPaths = { "assets/generated/flighttoon.mat", "assets/generated/flightbolt.mat", "assets/generated/flightsky.mat", "assets/generated/flightfx.mat", "assets/generated/flightcity.mat", "assets/generated/flightlamp.mat", "assets/generated/flightnight.mat" };
+    // 3D の艦隊戦: 0 = 船 (トゥーン + 縁取り)・1 = 光弾・2 = 宇宙の背景・3 = 火花・炎・煙・塵・4〜6 = 夜の街 (ビル・灯・夜空)・7〜8 = 街の車 (立体・灯)
+    public static readonly Material[] FlightMaterials = new Material[9];
+    private static readonly string[] FlightMatPaths = { "assets/generated/flighttoon.mat", "assets/generated/flightbolt.mat", "assets/generated/flightsky.mat", "assets/generated/flightfx.mat", "assets/generated/flightcity.mat", "assets/generated/flightlamp.mat", "assets/generated/flightnight.mat", "assets/generated/flightcar.mat", "assets/generated/flightcarglow.mat" };
     private static AssetBundleRequest _flightReq;
     private static int _flightNext;
     private static bool _flightFailed;

@@ -223,6 +223,14 @@ Shader "MRP/FlightCity"
             sampler2D _MrpCarTex;
             float _MrpCarOn;
             float4 _MrpCarAlm[4]; // 防犯アラームが鳴っている所 (街の xz・半径・鳴り始めた時計)
+            float4 _MrpCarJam[8]; // 車の立体が描く渋滞 (車線の行・区間の枠)。ここに無い渋滞の車は近くでも絵で描く
+
+            float JamIn3D(float row, float slot)
+            {
+                float hit = 0;
+                [unroll] for (int i = 0; i < 8; i++) hit = max(hit, step(abs(_MrpCarJam[i].x - row) + abs(_MrpCarJam[i].y - slot), 0.1));
+                return hit;
+            }
 
             float4 CarTexel(float lane, float k)
             {
@@ -233,10 +241,15 @@ Shader "MRP/FlightCity"
             float Bit(float m, float i) { return fmod(floor(m / exp2(i)), 2.0); }
 
             // 1 台を描く。y = 車の後ろから前へ (0..4.6 が車体)・x = 車線の中心からの横・tone = 色の種・brake = ブレーキ灯 (0..1)・
-            // haz = 非常点滅灯 (0..1)・burn = 燃えた殻 (0 = 普通の車・1 = 燃えている・小さいほど冷めた)
-            float3 CarLook(float y, float x, float tone, float brake, float haz, float burn, float fl, float fa, inout float alb)
+            // haz = 非常点滅灯 (0..1)・burn = 燃えた殻 (0 = 普通の車・1 = 燃えている・小さいほど冷めた)・
+            // w = 絵で描く割合 (カメラの近くは車の立体 (FlightCar) が描くので 0。路面には車の下の影と前照灯が照らす光だけを残す)
+            float3 CarLook(float y, float x, float tone, float brake, float haz, float burn, float w, float fl, float fa, inout float alb)
             {
                 float body = Band(y - 2.3, 4.6, fa) * Band(x, 1.85, fl);
+                // 車の下の影 (車体より少し広くぼかす)
+                float shade = saturate(1.0 - abs(y - 2.3) / 2.75) * saturate(1.0 - abs(x) / 1.15);
+                alb *= 1.0 - (1.0 - w) * 0.8 * saturate(shade * 2.5);
+                body *= w;
                 if (burn > 0.0)
                 {
                     // 焼けた殻: 煤けた黒と、まだ燃えている所の揺らぐ火
@@ -251,12 +264,13 @@ Shader "MRP/FlightCity"
                 float ax = abs(x) - 0.65;
                 float3 e = float3(1.0, 0.92, 0.8) * 3.0 * Dot(float2(ax, y - 4.5), 0.28, max(fl, fa));
                 e += float3(1.0, 0.05, 0.03) * 1.6 * (1.0 + 2.2 * brake) * Dot(float2(ax, y - 0.1), 0.24 + 0.06 * brake, max(fl, fa));
-                // 前照灯が前の路面を照らす (前へ 18・先ほど広がる)
-                float ahead = y - 4.6;
-                float w = 1.1 + ahead * 0.12;
-                e += float3(1.0, 0.9, 0.75) * 0.07 * step(0.0, ahead) * saturate(1.0 - ahead / 18.0) * exp(-x * x / (w * w));
                 float ox = abs(x) - 0.85;
                 e += float3(1.0, 0.45, 0.05) * 2.2 * haz * (Dot(float2(ox, y - 4.4), 0.2, max(fl, fa)) + Dot(float2(ox, y - 0.2), 0.2, max(fl, fa)));
+                e *= w;
+                // 前照灯が前の路面を照らす (前へ 18・先ほど広がる)
+                float ahead = y - 4.6;
+                float bw = 1.1 + ahead * 0.12;
+                e += float3(1.0, 0.9, 0.75) * 0.07 * step(0.0, ahead) * saturate(1.0 - ahead / 18.0) * exp(-x * x / (bw * bw));
                 return e;
             }
 
@@ -288,6 +302,7 @@ Shader "MRP/FlightCity"
                 float tone = 0, y = -100, brake = 0, burn = 0;
                 float lo = -1e9; // 描いてよい車の識別 (時刻 0 の道に沿った位置) の下限
                 bool free = true;
+                float jamPaint = 0; // 立体の渋滞の枠に載っていない渋滞の車 (近くでも絵で描く)
                 if (_MrpCarOn > 0.5)
                 {
                     float axis = id > 300.0 ? 1.0 : 0.0;
@@ -303,6 +318,7 @@ Shader "MRP/FlightCity"
                         float pb = A.x, len = A.y, Tb = A.z, crush = A.w;
                         float u0 = pb - v * Tb;
                         float c0 = floor(u0 / Lc) - 18.0;
+                        jamPaint = 1.0 - JamIn3D(row, slot);
                         if (p < pb)
                         {
                             free = false;
@@ -381,7 +397,10 @@ Shader "MRP/FlightCity"
                 brake = max(brake, saturate(1.0 - length(sd) / 60.0) * saturate(1.0 - _MrpFltLights[7].w / 90.0));
                 float blink = step(frac(clk * 1.5 + tone * 7.0), 0.5) * saturate(stopped * 3.0 - 2.0);
                 blink = max(blink, step(frac(clk * 2.4 + tone * 3.0), 0.5) * alarm);
-                float3 e = CarLook(y, x, tone, burn > 0.0 ? 0.0 : brake, burn > 0.0 ? 0.0 : blink, burn, fl, fa, alb);
+                // カメラの近くの車は立体 (FlightCar) が描く。遠くへ向けて同じ距離で絵へ渡す (FlightCarCommon の CAR_FAR_R・CAR_FLAT)
+                float w = saturate((distance(_WorldSpaceCameraPos, float3(wxz.x, _MrpCity.y + 0.7, wxz.y)) - 130.0) / 30.0);
+                if (!free) w = max(w, jamPaint);
+                float3 e = CarLook(y, x, tone, burn > 0.0 ? 0.0 : brake, burn > 0.0 ? 0.0 : blink, burn, w, fl, fa, alb);
                 return e * _MrpCity.z;
             }
 

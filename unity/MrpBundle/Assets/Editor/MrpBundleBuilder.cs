@@ -18,7 +18,7 @@ using UnityEngine;
 //   uibar.mat … MRP/UiBar (立ち合いの HUD の体力のバー・中央の鍔・顔の額縁)
 //   novabeam.mat … MRP/NovaBeam (ノヴァの光線: 先へ広がるプラズマの筒)
 //   flighttoon.mat / flightbolt.mat / flightsky.mat / flightfx.mat … MRP/Flight* (3D の艦隊戦: 船のトゥーンと縁取り / 光弾 / 宇宙の背景 / 火花・炎・煙・塵)
-//   flightcity.mat / flightlamp.mat / flightnight.mat … 夜の街 (ビル・地面・塔 / 航空障害灯 / 夜空)
+//   flightcity.mat / flightlamp.mat / flightnight.mat / flightcar.mat / flightcarglow.mat … 夜の街 (ビル・地面・塔 / 航空障害灯 / 夜空 / 車の立体 / 車の灯)
 //   noise_*.wav  … 壁を壊した音 (爆発・叩く・崩れる)。tools/make-break-sounds.py が先に書き出しておく
 // シェーダはマテリアルから参照されるので一緒に入る。ターゲットごとに描画 API 向けへ変換される
 // (Windows = Direct3D11、Android = GLES3 / Vulkan)。
@@ -177,7 +177,7 @@ public static class MrpBundleBuilder
         Tag(novaBeamPath);
 
         // 3D の艦隊戦: 船 (トゥーン + 縁取り)・光弾・宇宙の背景
-        foreach (var (shaderName, matName) in new[] { ("FlightToon", "flighttoon"), ("FlightBolt", "flightbolt"), ("FlightSky", "flightsky"), ("FlightFx", "flightfx"), ("FlightCity", "flightcity"), ("FlightLamp", "flightlamp"), ("FlightNight", "flightnight") })
+        foreach (var (shaderName, matName) in new[] { ("FlightToon", "flighttoon"), ("FlightBolt", "flightbolt"), ("FlightSky", "flightsky"), ("FlightFx", "flightfx"), ("FlightCity", "flightcity"), ("FlightLamp", "flightlamp"), ("FlightNight", "flightnight"), ("FlightCar", "flightcar"), ("FlightCarGlow", "flightcarglow") })
         {
             Shader sh = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Shaders/" + shaderName + ".shader");
             if (sh == null)

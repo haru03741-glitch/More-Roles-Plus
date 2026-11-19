@@ -25,7 +25,13 @@ internal static unsafe class FlightCars
     private static Il2CppStructArray<Vector4> _alm;
     private static readonly float[] AlmX = new float[4], AlmZ = new float[4], AlmR = new float[4], AlmT = new float[4];
     private static int _almNext, _tsIdx = -1;
-    private static int _texId, _onId, _almId;
+    private static int _texId, _onId, _almId, _jamId;
+    // 渋滞 (ふさがった区間) の一覧。近い 8 つを車の立体の渋滞の枠へ載せる (FlightCarMesh・地面の絵はそれ以外を絵で描く)
+    private const int JamSlots = 8;
+    private static readonly System.Collections.Generic.List<(int Row, int Slot, float X, float Z)> Jams = new();
+    private static readonly int[] JamRow = new int[JamSlots], JamSlot = new int[JamSlots];
+    private static Il2CppStructArray<Vector4> _jam;
+    private static float _jamCd;
     internal static int Burned { get; private set; }
     internal static Vector3 LastBurn { get; private set; }
 
@@ -47,8 +53,13 @@ internal static unsafe class FlightCars
         _texId = Shader.PropertyToID("_MrpCarTex");
         _onId = Shader.PropertyToID("_MrpCarOn");
         _almId = Shader.PropertyToID("_MrpCarAlm");
+        _jamId = Shader.PropertyToID("_MrpCarJam");
         _alm ??= new Il2CppStructArray<Vector4>((long)4);
+        _jam ??= new Il2CppStructArray<Vector4>((long)JamSlots);
         PushAlarms();
+        Jams.Clear();
+        for (int i = 0; i < JamSlots; i++) JamRow[i] = -1;
+        PushJams();
         _on = SystemInfo.SupportsTextureFormat(TextureFormat.RGBAFloat);
         if (!_on)
         {
@@ -109,6 +120,13 @@ internal static unsafe class FlightCars
         _clk += dt * (_tsIdx >= 0 ? FlightParams.Values[_tsIdx] : 1f);
         Upload();
         Vector3 ship = Arena.LocalShipPos;
+        FlightCarMesh.Tick(ship.y - FlightCity.Ground);
+        _jamCd -= dt;
+        if (_jamCd <= 0f && Jams.Count > 0)
+        {
+            _jamCd = 0.25f;
+            PickJams(ship);
+        }
         TickHorn(dt, ship);
         TickAlarmSound(ship);
     }
@@ -262,6 +280,20 @@ internal static unsafe class FlightCars
 
     // ---- 弾が地面に当たった (q = 街の点) ----
 
+    // 弾が路面に落ちた所 q と撃った所 (fx, fy, fz)。路面の上の車体の高さ (0.7・1.3) を抜けた所でも車を探す
+    internal static bool Hit(Vector3 q, float fx, float fy, float fz)
+    {
+        if (Hit(q)) return true;
+        float up = fy - q.y;
+        if (up <= 0.5f) return false;
+        for (int i = 1; i <= 2; i++)
+        {
+            float k = (i == 1 ? 0.7f : 1.3f) / up;
+            if (Hit(new Vector3(q.x + (fx - q.x) * k, q.y, q.z + (fz - q.z) * k))) return true;
+        }
+        return false;
+    }
+
     // 車に当たれば燃やして true
     internal static bool Hit(Vector3 q)
     {
@@ -323,6 +355,64 @@ internal static unsafe class FlightCars
         _data[a] = pb; _data[a + 1] = len; _data[a + 2] = T; _data[a + 3] = crush ? 1f : 0f;
         _data[b] = 0f; _data[b + 1] = _clk; _data[b + 2] = _clk; _data[b + 3] = 0f;
         _dirty = true;
+        Vector3 at = World(ln, pb);
+        Jams.Add((ln.Row, slot, at.x, at.z));
+        _jamCd = 0f;
+    }
+
+    // 船に近い渋滞から 8 つを車の立体へ (変わった時だけ渡す)
+    private static void PickJams(Vector3 ship)
+    {
+        Span<int> best = stackalloc int[JamSlots];
+        Span<float> bd = stackalloc float[JamSlots];
+        int n = 0;
+        for (int i = 0; i < Jams.Count; i++)
+        {
+            float dx = Jams[i].X - ship.x, dz = Jams[i].Z - ship.z;
+            float d = dx * dx + dz * dz;
+            int k = n < JamSlots ? n++ : JamSlots;
+            if (k == JamSlots)
+            {
+                if (d >= bd[JamSlots - 1]) continue;
+                k = JamSlots - 1;
+            }
+            while (k > 0 && bd[k - 1] > d) { bd[k] = bd[k - 1]; best[k] = best[k - 1]; k--; }
+            bd[k] = d;
+            best[k] = i;
+        }
+        // 前と同じ渋滞は同じ枠に残す (枠が入れ替わると細かい形と粗い形が切り替わってちらつく)
+        Span<bool> used = stackalloc bool[JamSlots];
+        Span<int> next = stackalloc int[JamSlots];
+        for (int s = 0; s < JamSlots; s++) next[s] = -1;
+        for (int r = 0; r < n; r++)
+        {
+            var j = Jams[best[r]];
+            for (int s = 0; s < JamSlots; s++)
+                if (JamRow[s] == j.Row && JamSlot[s] == j.Slot) { next[s] = best[r]; used[r] = true; break; }
+        }
+        for (int r = 0; r < n; r++)
+        {
+            if (used[r]) continue;
+            for (int s = 0; s < JamSlots; s++)
+                if (next[s] < 0) { next[s] = best[r]; break; }
+        }
+        bool changed = false;
+        for (int s = 0; s < JamSlots; s++)
+        {
+            int row = next[s] < 0 ? -1 : Jams[next[s]].Row, slot = next[s] < 0 ? 0 : Jams[next[s]].Slot;
+            if (row == JamRow[s] && slot == JamSlot[s]) continue;
+            JamRow[s] = row;
+            JamSlot[s] = slot;
+            changed = true;
+        }
+        if (changed) PushJams();
+    }
+
+    private static void PushJams()
+    {
+        if (_jam == null) return;
+        for (int i = 0; i < JamSlots; i++) _jam[i] = new Vector4(JamRow[i], JamSlot[i], 0f, 0f);
+        Shader.SetGlobalVectorArray(_jamId, _jam);
     }
 
     // ---- ビルが崩れた (足元の x0 z0 x1 z1・街の座標) ----

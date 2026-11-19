@@ -647,7 +647,9 @@ internal static unsafe class Arena
             {
                 // 路面に当たった: 車なら燃やす (今は自分の画面だけで決める・通信の段でホストが持つ形にする)。路面だけなら軽い砕けの音
                 var at = new Vector3(e.X, e.Y, e.Z);
-                if (FlightCity.Active && FlightCars.Hit(at)) continue;
+                // 車は高さがあるので、浅い角度の弾は路面に落ちる手前で車体を抜ける。撃った船の方へ戻って車体の高さも見る
+                float* sh = _shipOut + (e.A >= 0 && e.A < FlightNative.MaxShips ? e.A : _local) * 8;
+                if (FlightCity.Active && FlightCars.Hit(at, sh[0], sh[1], sh[2])) continue;
                 if ((e.C & 1) != 0) FlightCars.Burst(at, 45f);
                 if (_bldSounds >= 2) continue;
                 float* lo = _shipOut + _local * 8;
