@@ -25,7 +25,7 @@ Shader "MRP/FlightCar"
             struct v2f
             {
                 float4 pos : SV_POSITION;
-                float4 wp : TEXCOORD0;    // xyz = 世界・w = 細かさの切り替えのにじみ (1 = 描く)
+                float4 wp : TEXCOORD0;    // xyz = 世界・w = 細かさの切り替えのにじみ (1 = 描く・粗い形は +2)
                 float4 n : TEXCOORD1;     // xyz = 法線 (世界)・w = 部品
                 float4 lp : TEXCOORD2;    // xyz = 車の中の位置・w = 形 (0 セダン・1 ミニバン)
                 float4 paint : TEXCOORD3; // rgb = 塗装・a = タクシー
@@ -97,7 +97,8 @@ Shader "MRP/FlightCar"
                 float metal;
                 o.paint = float4(Paint(car.tone, car.cell, ln.hash, taxi, metal), taxi);
                 o.pos = mul(UNITY_MATRIX_VP, float4(wp, 1.0));
-                o.wp = float4(wp, fade);
+                // 粗い形は 2 を足して渡す (切り替えの帯で網点を互いに補う)
+                o.wp = float4(wp, lod < 0.5 ? fade : fade + 2.0);
                 o.n = float4(wn, part);
                 o.lp = float4(p, morph);
                 o.st = float4(car.brake, blink, car.burn, (car.rear + 2.3) / 0.31);
@@ -166,7 +167,8 @@ Shader "MRP/FlightCar"
                 // 細かさの切り替えは画面の網点でにじませる
                 float2 sp = floor(i.pos.xy);
                 float dither = frac(52.9829189 * frac(dot(sp, float2(0.06711056, 0.00583715))));
-                clip(i.wp.w - dither - 0.001);
+                // 細かい形は網点が fade より小さい画素・粗い形は 1 - fade より大きい画素 (帯の中で同じ画素を両方が描かず、どちらも描かない画素も無い)
+                clip(i.wp.w > 1.5 ? (i.wp.w - 2.0) - 1.0 + dither + 0.001 : i.wp.w - dither - 0.001);
                 float3 wp = i.wp.xyz;
                 float3 n = normalize(i.n.xyz);
                 float part = i.n.w;

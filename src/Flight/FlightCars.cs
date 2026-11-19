@@ -280,16 +280,20 @@ internal static unsafe class FlightCars
 
     // ---- 弾が地面に当たった (q = 街の点) ----
 
-    // 弾が路面に落ちた所 q と撃った所 (fx, fy, fz)。路面の上の車体の高さ (0.7・1.3) を抜けた所でも車を探す
+    // 弾が路面に落ちた所 q と撃った所 (fx, fy, fz)。車体の高さ (1.5) より下を通った区間を、撃った側から 3.5 刻みで見る
+    // (車の長さ 4.6 と当たりの前後の広げ 1.2 で隙間が出ない刻み)
     internal static bool Hit(Vector3 q, float fx, float fy, float fz)
     {
-        if (Hit(q)) return true;
         float up = fy - q.y;
-        if (up <= 0.5f) return false;
-        for (int i = 1; i <= 2; i++)
+        float hx = fx - q.x, hz = fz - q.z;
+        float hd = MathF.Sqrt(hx * hx + hz * hz);
+        if (up <= 0.5f || hd < 1f) return Hit(q);
+        float back = Math.Min(1.5f * hd / up, 60f);
+        int n = Math.Min((int)MathF.Ceiling(back / 3.5f), 18);
+        for (int i = n; i >= 0; i--)
         {
-            float k = (i == 1 ? 0.7f : 1.3f) / up;
-            if (Hit(new Vector3(q.x + (fx - q.x) * k, q.y, q.z + (fz - q.z) * k))) return true;
+            float k = back * i / Math.Max(n, 1) / hd;
+            if (Hit(new Vector3(q.x + hx * k, q.y, q.z + hz * k))) return true;
         }
         return false;
     }

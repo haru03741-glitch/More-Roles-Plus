@@ -224,6 +224,7 @@ Shader "MRP/FlightCity"
             float _MrpCarOn;
             float4 _MrpCarAlm[4]; // 防犯アラームが鳴っている所 (街の xz・半径・鳴り始めた時計)
             float4 _MrpCarJam[8]; // 車の立体が描く渋滞 (車線の行・区間の枠)。ここに無い渋滞の車は近くでも絵で描く
+            float _MrpCar3D;      // 車の立体が出ている (0 = 高く飛んでいる間・作れなかった時は近くも絵で描く)
 
             float JamIn3D(float row, float slot)
             {
@@ -400,6 +401,7 @@ Shader "MRP/FlightCity"
                 // カメラの近くの車は立体 (FlightCar) が描く。遠くへ向けて同じ距離で絵へ渡す (FlightCarCommon の CAR_FAR_R・CAR_FLAT)
                 float w = saturate((distance(_WorldSpaceCameraPos, float3(wxz.x, _MrpCity.y + 0.7, wxz.y)) - 130.0) / 30.0);
                 if (!free) w = max(w, jamPaint);
+                w = max(w, 1.0 - _MrpCar3D);
                 float3 e = CarLook(y, x, tone, burn > 0.0 ? 0.0 : brake, burn > 0.0 ? 0.0 : blink, burn, w, fl, fa, alb);
                 return e * _MrpCity.z;
             }

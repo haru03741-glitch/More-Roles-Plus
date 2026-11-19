@@ -86,6 +86,15 @@ internal static unsafe class FlightCarMesh
     // 枠の番号 (シェーダの PlaceCar と同じ並び)
     private static float Entry(int kind, int axis, int lane, int cell) => kind * 4096 + axis * 2048 + lane * 64 + cell;
 
+    private static int _onId;
+
+    // 地面の絵は、立体が出ていない間 (高く飛んでいる・作れなかった) は近くの車も絵で描く
+    private static void SetOn(bool on)
+    {
+        if (_onId == 0) _onId = Shader.PropertyToID("_MrpCar3D");
+        Shader.SetGlobalFloat(_onId, on ? 1f : 0f);
+    }
+
     internal static void Build(Transform root, int layer)
     {
         Clear();
@@ -116,6 +125,7 @@ internal static unsafe class FlightCarMesh
         MakeGlow(root, layer);
         _shown = true;
         Active = true;
+        SetOn(true);
         double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         Plugin.Logger.LogInfo($"flight cars: meshes={Meshes.Count} {ms:0.0}ms");
     }
@@ -245,6 +255,7 @@ internal static unsafe class FlightCarMesh
         if (show == _shown) return;
         _shown = show;
         foreach (var go in Objects) if (go) go.SetActive(show);
+        SetOn(show);
     }
 
     internal static void Clear()
@@ -253,5 +264,6 @@ internal static unsafe class FlightCarMesh
         Meshes.Clear();
         Objects.Clear();
         Active = false;
+        SetOn(false);
     }
 }
