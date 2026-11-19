@@ -34,6 +34,7 @@ const float InnerR = 1500.0f;   // ここより内は区画を細かく分けて
 const float TileSize = 1200.0f; // メッシュを分ける升 (見えない升は描かれない)
 const int Tiles = 8;            // 升の数 (片側)
 const float TowerX = 380.0f, TowerZ = 560.0f; // 電波塔の位置
+const float TowerK = 1.5f;      // 電波塔の実寸からの倍率 (縦横同じ)
 const float MaxH = 450.0f;      // 建物の高さの上限
 
 inline uint32_t H(uint32_t x)
@@ -343,89 +344,7 @@ void Building(City& c, uint32_t seed, float x0, float z0, float x1, float z1, fl
     c.bld.push_back(b);
 }
 
-// 格子の電波塔 (高さ 166 × S・脚は下で大きく開き、上へ細くなる)。展望台 2 つとアンテナ。鉄骨は自ら光る。
-// 当たりは脚の間の弓より下を脚と弓の箱だけ (船が脚の間を抜けられる)・弓より上は段ごとの箱で塞ぐ
-void Tower(City& c)
-{
-    float G = c.ground;
-    Mesh& m = TileOf(c, TowerX, TowerZ);
-    uint8_t steel[4] = { 255, 70, 40, 0 };
-    auto hw = [](float h) { float t = 1.0f - h / (140.0f * S); return (1.4f + 19.8f * powf(t < 0 ? 0 : t, 1.8f)) * S; };
-    const int Lv = 26;
-    const float Top = 125.0f * S;
-    const float Apex = 32.0f * S; // 脚の間の弓の高さ (船が下をくぐれる)
-    float sx[4] = { -1, 1, 1, -1 }, sz[4] = { -1, -1, 1, 1 };
-    for (int k = 0; k < Lv; k++)
-    {
-        float h0 = Top * k / Lv, h1 = Top * (k + 1) / Lv;
-        float w0 = hw(h0), w1 = hw(h1);
-        float legR = (0.95f - 0.55f * (float)k / Lv) * S;
-        if (h0 >= Apex)
-            AddBox(c, TowerX - w0 - legR, TowerZ - w0 - legR, TowerX + w0 + legR, TowerZ + w0 + legR, G + h0, G + h1, -1);
-        for (int j = 0; j < 4; j++)
-        {
-            int jn = (j + 1) & 3;
-            float a[3] = { TowerX + sx[j] * w0, G + h0, TowerZ + sz[j] * w0 };
-            float b[3] = { TowerX + sx[j] * w1, G + h1, TowerZ + sz[j] * w1 };
-            Beam(m, a, b, legR, steel);
-            if (h0 < Apex) AddBeamBox(c, a, b, legR);
-            float an[3] = { TowerX + sx[jn] * w0, G + h0, TowerZ + sz[jn] * w0 };
-            float bn[3] = { TowerX + sx[jn] * w1, G + h1, TowerZ + sz[jn] * w1 };
-            // 段ごとの横の梁と、面ごとの斜めの筋交い (X)。弓より下は開いた門 (船が脚の間を抜けられる)
-            if (h0 < Apex) continue;
-            Beam(m, a, an, 0.3f * S, steel);
-            Beam(m, a, bn, 0.26f * S, steel);
-            Beam(m, an, b, 0.26f * S, steel);
-        }
-    }
-    // 脚の間の弓 (足元から立ち上がって面の真ん中で一番高くなる門の形)
-    for (int j = 0; j < 4; j++)
-    {
-        int jn = (j + 1) & 3;
-        const int Seg = 10;
-        for (int s = 0; s < Seg; s++)
-        {
-            float u0 = (float)s / Seg, u1 = (float)(s + 1) / Seg;
-            float y0 = Apex * sinf(3.14159f * u0), y1 = Apex * sinf(3.14159f * u1);
-            float wa = hw(y0), wb = hw(y1);
-            float a[3] = { TowerX + (sx[j] + (sx[jn] - sx[j]) * u0) * wa, G + y0, TowerZ + (sz[j] + (sz[jn] - sz[j]) * u0) * wa };
-            float b[3] = { TowerX + (sx[j] + (sx[jn] - sx[j]) * u1) * wb, G + y1, TowerZ + (sz[j] + (sz[jn] - sz[j]) * u1) * wb };
-            Beam(m, a, b, 0.55f * S, steel);
-            // 斜めの梁を軸に沿った箱 1 つで包むと梁の下まで塞ぐので、4 つに分けて包む
-            for (int q = 0; q < 4; q++)
-            {
-                float pa[3], pb[3];
-                for (int e = 0; e < 3; e++) { pa[e] = a[e] + (b[e] - a[e]) * q * 0.25f; pb[e] = a[e] + (b[e] - a[e]) * (q + 1) * 0.25f; }
-                AddBeamBox(c, pa, pb, 0.55f * S);
-            }
-        }
-    }
-    // 展望台 (窓の帯が光る) と、その上のアンテナの塔
-    uint8_t deck[4] = { 77, 8, 200, 0 }; // 様式は使わない (展望台は材質で窓を決める)
-    float d1 = 9.5f * S;
-    Box(m, TowerX - d1, TowerZ - d1, TowerX + d1, TowerZ + d1, G + 72 * S, G + 79 * S, G, MDeck, MRoof, deck);
-    AddBox(c, TowerX - d1, TowerZ - d1, TowerX + d1, TowerZ + d1, G + 72 * S, G + 79 * S, -1);
-    float d2 = 4.4f * S;
-    Box(m, TowerX - d2, TowerZ - d2, TowerX + d2, TowerZ + d2, G + 121 * S, G + 125.5f * S, G, MDeck, MRoof, deck);
-    AddBox(c, TowerX - d2, TowerZ - d2, TowerX + d2, TowerZ + d2, G + 121 * S, G + 125.5f * S, -1);
-    float prev[3] = { TowerX, G + Top, TowerZ };
-    for (int k = 0; k < 8; k++)
-    {
-        float h1 = Top + 41.0f * S * (k + 1) / 8.0f;
-        float w = (1.3f - 1.05f * (k + 1) / 8.0f) * S;
-        float nx[3] = { TowerX, G + h1, TowerZ };
-        Box(m, TowerX - w, TowerZ - w, TowerX + w, TowerZ + w, prev[1], nx[1], G, MBeam, MBeam, steel, false);
-        memcpy(prev, nx, 12);
-    }
-    AddBox(c, TowerX - 1.3f * S, TowerZ - 1.3f * S, TowerX + 1.3f * S, TowerZ + 1.3f * S, G + Top, G + Top + 41.0f * S, -1);
-    // 塔の灯: てっぺん・展望台の四隅
-    Lamp(*c.lampMesh, TowerX, G + Top + 41.5f * S, TowerZ, 4.8f, 255, 26, 20, 1, 0);
-    for (int j = 0; j < 4; j++)
-    {
-        Lamp(*c.lampMesh, TowerX + sx[j] * d1, G + 79.6f * S, TowerZ + sz[j] * d1, 3.0f, 255, 30, 22, 1, 0);
-        Lamp(*c.lampMesh, TowerX + sx[j] * d2, G + 126.0f * S, TowerZ + sz[j] * d2, 2.6f, 255, 30, 22, 1, 0);
-    }
-}
+void RadioTower(City& c, Mesh& m, float X, float Z, float k);
 
 // 高架の道路 (広い通りの上・橋脚と縁の灯の列)
 void Highway(City& c, bool alongX, float at, float from, float to)
@@ -517,7 +436,7 @@ void Build(City& c, uint32_t seed)
                     Building(c, seed, x0, z0, x1, z1, (x0 + x1) * 0.5f, (z0 + z1) * 0.5f, hl);
                 }
         }
-    Tower(c);
+    RadioTower(c, c.mesh[1 + Tiles * Tiles], TowerX, TowerZ, TowerK);
     Highway(c, true, 4 * Pitch * -1, -3600.0f, 3600.0f);
     Highway(c, false, 4 * Pitch, -3600.0f, 2700.0f);
 }
@@ -669,98 +588,6 @@ void RealStyle(int usage, float hReal, int storeys, float area, uint32_t h, int&
     case 7: fac = hReal < 12 ? FHouse : FPunched; lit = 0.22f + 0.33f * r; break;                              // 作業所併用
     case 9: case 10: fac = FFactory; lit = 0.03f; break;                                                      // 倉庫・工場
     default: fac = hReal > 30 ? FOffice : FPunched; lit = 0.15f + 0.25f * r; break;
-    }
-}
-
-// 東京スカイツリー (高さ 634 m)。足元は一辺 68 m の三角で、上へ行くほど円に近づき細る鉄骨の格子・中心の柱・
-// 2 つの展望台 (350 m・450 m)・上のアンテナ。鉄骨は淡い青白に照らされる。当たりは高さごとの箱
-void Skytree(City& c, Mesh& m, float X, float Z)
-{
-    float G = c.ground;
-    uint8_t steel[4] = { 200, 225, 255, 1 }; // a = 1: 背の高い塔 (高さによる暗さを緩く)
-    auto size = [](float h)
-    {
-        static const float hs[] = { 0, 100, 200, 300, 400, 497 };
-        static const float rs[] = { 27, 23.5f, 21, 19.5f, 17.5f, 13 };
-        for (int k = 0; k < 5; k++)
-            if (h <= hs[k + 1]) { float t = (h - hs[k]) / (hs[k + 1] - hs[k]); return rs[k] + (rs[k + 1] - rs[k]) * t; }
-        return 13.0f;
-    };
-    // 断面: 足元は三角 (頂点が 3 方向)・300 m で円
-    auto rad = [&](float h, float th)
-    {
-        float t = h / 300.0f; t = t > 1 ? 1 : t;
-        float a = fmodf(th + 3.14159265f / 6.0f, 2.0943951f) - 1.0471976f; // 三角の辺の中心からの角
-        float tri = 0.5f / cosf(a);                                         // 内接円 0.5 の三角
-        float triAvg = 0.6046f;                                             // 三角の半径の平均 (同じ大きさに見えるように割る)
-        return size(h) * ((1 - t) * tri / triAvg + t);
-    };
-    const int Cols = 12, Lv = 33;
-    const float Top = 497.0f;
-    auto P = [&](int j, int k, float* o)
-    {
-        float h = Top * k / Lv, th = 6.2831853f * j / Cols;
-        float r = rad(h, th);
-        o[0] = X + cosf(th) * r * RS; o[1] = G + h * RH; o[2] = Z + sinf(th) * r * RS;
-    };
-    for (int k = 0; k < Lv; k++)
-    {
-        float br = (1.6f - 0.8f * k / Lv);
-        for (int j = 0; j < Cols; j++)
-        {
-            float a[3], b[3], d[3], e[3];
-            P(j, k, a); P(j, k + 1, b); P(j + 1, k + 1, d); P(j + 1, k, e);
-            Beam(m, a, b, br, steel);
-            if ((j + k) & 1) Beam(m, a, d, br * 0.6f, steel); else Beam(m, e, b, br * 0.6f, steel);
-            if (k % 3 == 0) Beam(m, a, e, br * 0.7f, steel);
-        }
-        float h0 = Top * k / Lv, h1 = Top * (k + 1) / Lv;
-        float hw = size(h0) * 0.8f * RS;
-        AddBox(c, X - hw, Z - hw, X + hw, Z + hw, G + h0 * RH, G + h1 * RH, -1);
-    }
-    // 円柱 (中心の柱・展望台・アンテナ): 側面 Sides 枚・上下の蓋
-    auto Cyl = [&](float r0, float r1, float h0, float h1, int mat, const uint8_t* col, bool caps)
-    {
-        const int Sides = 24;
-        for (int s = 0; s < Sides; s++)
-        {
-            float t0 = 6.2831853f * s / Sides, t1 = 6.2831853f * (s + 1) / Sides, tm = (t0 + t1) * 0.5f;
-            float a[3] = { X + cosf(t0) * r0 * RS, G + h0 * RH, Z + sinf(t0) * r0 * RS };
-            float b[3] = { X + cosf(t1) * r0 * RS, G + h0 * RH, Z + sinf(t1) * r0 * RS };
-            float d[3] = { X + cosf(t1) * r1 * RS, G + h1 * RH, Z + sinf(t1) * r1 * RS };
-            float e[3] = { X + cosf(t0) * r1 * RS, G + h1 * RH, Z + sinf(t0) * r1 * RS };
-            float n[3] = { cosf(tm), 0, sinf(tm) };
-            float arc = 6.2831853f * r0 * RH / Sides; // 窓の升は高さの縮尺にそろえる
-            Quad(m, a, b, d, e, n, mat, col, arc * s, 0, arc * (s + 1), (h1 - h0) * RH);
-            if (caps)
-            {
-                float ctr0[3] = { X, G + h0 * RH, Z }, ctr1[3] = { X, G + h1 * RH, Z };
-                float up[3] = { 0, 1, 0 }, dn[3] = { 0, -1, 0 };
-                float uv0[2] = { 0, 0 };
-                uint8_t roofC[4] = { col[0], col[1], 0, col[3] };
-                Tri(m, ctr1, e, d, up, MRoof, roofC, uv0, uv0, uv0);
-                Tri(m, ctr0, a, b, dn, MRoof, roofC, uv0, uv0, uv0);
-            }
-        }
-        float hw = (r0 > r1 ? r0 : r1) * 0.8f * RS;
-        AddBox(c, X - hw, Z - hw, X + hw, Z + hw, G + h0 * RH, G + h1 * RH, -1);
-    };
-    uint8_t core[4] = { 77, FacG(FFactory), 6, 0 };
-    uint8_t deck[4] = { 91, FacG(FCurtain), 255, 0 };
-    Cyl(4.5f, 4.5f, 0, 375, MRoof, core, false);
-    Cyl(27, 27, 340, 352, MDeck, deck, true);   // 天望デッキ
-    Cyl(25, 22, 352, 356, MRoof, core, true);
-    Cyl(17.5f, 17.5f, 440, 452, MDeck, deck, true); // 天望回廊
-    Cyl(9, 6.5f, 497, 560, MBeam, steel, true);  // ゲイン塔
-    Cyl(5, 1.0f, 560, 634, MBeam, steel, true);
-    // 航空障害灯: てっぺん・アンテナの途中・2 つの展望台の縁
-    Lamp(*c.lampMesh, X, G + 635 * RH, Z, 4.0f, 255, 30, 22, 1, 0);
-    for (int s = 0; s < 3; s++)
-    {
-        float th = 6.2831853f * s / 3 + 0.5f;
-        Lamp(*c.lampMesh, X + cosf(th) * 6.5f * RS, G + 560 * RH, Z + sinf(th) * 6.5f * RS, 3.2f, 255, 30, 22, 1, 0);
-        Lamp(*c.lampMesh, X + cosf(th) * 27.5f * RS, G + 353 * RH, Z + sinf(th) * 27.5f * RS, 3.2f, 255, 30, 22, 1, 0);
-        Lamp(*c.lampMesh, X + cosf(th) * 18 * RS, G + 453 * RH, Z + sinf(th) * 18 * RS, 2.6f, 255, 30, 22, 1, 0);
     }
 }
 
@@ -1075,6 +902,274 @@ void Bridge(City& c, Mesh& m, int kind, const float* A, const float* B, float W,
     }
 }
 
+// 下面も描く箱 (台の床板: 下をくぐる船から裏が見える)
+void SlabBox(Mesh& m, float x0, float z0, float x1, float z1, float y0, float y1, float ground, int mat, const uint8_t* col)
+{
+    Box(m, x0, z0, x1, z1, y0, y1, ground, mat, mat, col, true);
+    float a[3] = { x0, y0, z0 }, b[3] = { x1, y0, z0 }, cc[3] = { x1, y0, z1 }, d[3] = { x0, y0, z1 };
+    float dn[3] = { 0, -1, 0 };
+    Quad(m, a, b, cc, d, dn, mat, col, x0, z0, x1, z1);
+}
+
+// 電波塔 (実寸で高さ 545 m)。四角い 4 本脚の鉄骨の格子が上へ指数的に細る。下の太い所の脚は 2 本の弦材と綴り材の
+// 組み立て柱・面ごとに X の筋交いと、交点から脚へ渡す補剛材・3 段ごとに水平の筋交い。高さ 70 m の第一の台より下は
+// 脚の間が開いた門 (船がくぐれる・当たりは脚だけ)。第一の台から展望台まではコンクリートのエレベーターの芯。
+// 200 m に 2 層の八角の展望台・290 m に小さな展望台・250 m と 330 m の台にマイクロ波の円筒のアンテナ。
+// 380 m から上は円筒のマストとパネルアンテナの段。高光度の航空障害灯を付けるので赤白には塗らず、鉄骨は下から照らされた白銀。
+// k = 実寸からゲームの単位への倍率 (縦横同じ・建物の横の縮尺に引きずられず細い塔のまま)
+void RadioTower(City& c, Mesh& m, float X, float Z, float k)
+{
+    const float G = c.ground;
+    const float Hl = 380.0f, Plat = 70.0f, Deck = 200.0f;
+    auto W = [](float h) { return 3.5f + 37.0f * expf(-h / 120.0f); };
+    static const uint8_t steel[4] = { 198, 210, 228, 1 }, mast[4] = { 182, 190, 204, 1 }, radome[4] = { 214, 214, 218, 1 };
+    auto BandCol = [&](float) -> const uint8_t* { return steel; };
+    const float sx[4] = { -1, 1, 1, -1 }, sz[4] = { -1, -1, 1, 1 };
+    auto Pt = [&](int j, float h, float f, float* o) { float w = W(h) * f; o[0] = X + sx[j] * w * k; o[1] = G + h * k; o[2] = Z + sz[j] * w * k; };
+    auto B = [&](const float* a, const float* b, float r) { Beam(m, a, b, r * k, BandCol(((a[1] + b[1]) * 0.5f - G) / k)); };
+    // 段の高さ: 面の幅に合わせた格間 (下は大きく上は細かく)。台と展望台の高さは段の境にそろえる
+    std::vector<float> hs;
+    for (float h = 0; h < Hl - 3.0f;)
+    {
+        hs.push_back(h);
+        float st = 1.3f * W(h); st = st < 7 ? 7 : (st > 45 ? 45 : st);
+        float nh = h + st;
+        static const float marks[] = { Plat, Deck, 250.0f, 290.0f, 330.0f };
+        for (float mk : marks) if (h < mk - 3.0f && nh > mk - 3.0f) { nh = mk; break; }
+        h = nh;
+    }
+    hs.push_back(Hl);
+    for (size_t i = 0; i + 1 < hs.size(); i++)
+    {
+        float h0 = hs[i], h1 = hs[i + 1], w0 = W(h0);
+        float rl = 0.45f + 0.03f * w0;
+        for (int j = 0; j < 4; j++)
+        {
+            float a[3], b[3];
+            Pt(j, h0, 1, a); Pt(j, h1, 1, b);
+            if (w0 > 14.0f)
+            {
+                // 組み立て柱: 外の弦材と、対角に内へ寄せた弦材を綴り材のジグザグでつなぐ
+                float ai[3], bi[3];
+                Pt(j, h0, 1 - 0.16f, ai); Pt(j, h1, 1 - 0.16f, bi);
+                B(a, b, rl * 0.6f); B(ai, bi, rl * 0.6f);
+                const int Lace = 4;
+                for (int q = 0; q < Lace; q++)
+                {
+                    float t0 = (float)q / Lace, t1 = (float)(q + 1) / Lace, p0[3], p1[3];
+                    for (int e = 0; e < 3; e++) { p0[e] = (q & 1 ? ai : a)[e] + ((q & 1 ? bi : b)[e] - (q & 1 ? ai : a)[e]) * t0; p1[e] = (q & 1 ? a : ai)[e] + ((q & 1 ? b : bi)[e] - (q & 1 ? a : ai)[e]) * t1; }
+                    B(p0, p1, 0.22f);
+                }
+            }
+            else B(a, b, rl);
+            if (h1 <= Plat)
+            {
+                // 門の中は脚だけに当たる (斜めの脚を 3 つの箱で包む)
+                for (int q = 0; q < 3; q++)
+                {
+                    float pa[3], pb[3];
+                    for (int e = 0; e < 3; e++) { pa[e] = a[e] + (b[e] - a[e]) * q / 3.0f; pb[e] = a[e] + (b[e] - a[e]) * (q + 1) / 3.0f; }
+                    AddBeamBox(c, pa, pb, (rl + 1.2f) * k);
+                }
+            }
+        }
+        if (h1 > Plat) AddBox(c, X - w0 * 0.85f * k, Z - w0 * 0.85f * k, X + w0 * 0.85f * k, Z + w0 * 0.85f * k, G + h0 * k, G + h1 * k, -1);
+        if (h0 < Plat) continue; // 門: 面は開いたまま
+        for (int j = 0; j < 4; j++)
+        {
+            int jn = (j + 1) & 3;
+            float a[3], b[3], an[3], bn[3];
+            Pt(j, h0, 1, a); Pt(j, h1, 1, b); Pt(jn, h0, 1, an); Pt(jn, h1, 1, bn);
+            B(a, an, 0.25f + 0.01f * w0);
+            float rd = 0.2f + 0.009f * w0;
+            B(a, bn, rd); B(an, b, rd);
+            if (w0 > 8.0f)
+            {
+                // 交点から両脚の中ほどへ渡す補剛材 (菱形)
+                float cp[3], ma[3], mb[3];
+                for (int e = 0; e < 3; e++) { cp[e] = (a[e] + b[e] + an[e] + bn[e]) * 0.25f; ma[e] = (a[e] + b[e]) * 0.5f; mb[e] = (an[e] + bn[e]) * 0.5f; }
+                B(cp, ma, 0.15f); B(cp, mb, 0.15f);
+            }
+        }
+        if (i % 3 == 0)
+        {
+            float p0[3], p2[3], p1[3], p3[3];
+            Pt(0, h0, 1, p0); Pt(2, h0, 1, p2); Pt(1, h0, 1, p1); Pt(3, h0, 1, p3);
+            B(p0, p2, 0.18f); B(p1, p3, 0.18f);
+        }
+    }
+    // 円柱と八角柱 (Sides 面・rot = 最初の面の向き)。側面は傾きのぶん法線を上下へ寄せる
+    auto Cyl = [&](float r0, float r1, float h0, float h1, int sides, float rot, int mat, const uint8_t* col, bool capTop, bool capBot)
+    {
+        float vs = mat == MDeck ? 7.6f / (h1 - h0) : k; // 展望台の窓は 1 層 = 2 段の窓
+        float slope = (r0 - r1) / (h1 - h0);
+        for (int s = 0; s < sides; s++)
+        {
+            float t0 = rot + 6.2831853f * s / sides, t1 = rot + 6.2831853f * (s + 1) / sides, tm = (t0 + t1) * 0.5f;
+            float a[3] = { X + cosf(t0) * r0 * k, G + h0 * k, Z + sinf(t0) * r0 * k };
+            float b[3] = { X + cosf(t1) * r0 * k, G + h0 * k, Z + sinf(t1) * r0 * k };
+            float d[3] = { X + cosf(t1) * r1 * k, G + h1 * k, Z + sinf(t1) * r1 * k };
+            float e[3] = { X + cosf(t0) * r1 * k, G + h1 * k, Z + sinf(t0) * r1 * k };
+            float nl = sqrtf(1 + slope * slope);
+            float n[3] = { cosf(tm) / nl, slope / nl, sinf(tm) / nl };
+            float arc = 2.0f * r0 * sinf(3.14159265f / sides);
+            Quad(m, a, b, d, e, n, mat, col, arc * vs * s, 0, arc * vs * (s + 1), (h1 - h0) * vs);
+            float uv0[2] = { 0, 0 };
+            if (capTop)
+            {
+                float ctr[3] = { X, G + h1 * k, Z }, up[3] = { 0, 1, 0 };
+                Tri(m, ctr, e, d, up, mat == MDeck ? MRoof : mat, col, uv0, uv0, uv0);
+            }
+            if (capBot)
+            {
+                float ctr[3] = { X, G + h0 * k, Z }, dn[3] = { 0, -1, 0 };
+                Tri(m, ctr, a, b, dn, mat == MDeck ? MRoof : mat, col, uv0, uv0, uv0);
+            }
+        }
+        float rr = (r0 > r1 ? r0 : r1) * k;
+        AddBox(c, X - rr, Z - rr, X + rr, Z + rr, G + h0 * k, G + h1 * k, -1);
+    };
+    // 横向きの円筒 (マイクロ波のアンテナ: 白い覆いの付いた太鼓)。中心 p・水平の向き (dx, dz)
+    auto Drum = [&](const float* p, float dx, float dz, float r, float len)
+    {
+        const int Sides = 12;
+        float u[3] = { -dz, 0, dx }, up[3] = { 0, 1, 0 };
+        float f[3] = { p[0] + dx * len * 0.5f * k, p[1], p[2] + dz * len * 0.5f * k }, bk[3] = { p[0] - dx * len * 0.5f * k, p[1], p[2] - dz * len * 0.5f * k };
+        float uv0[2] = { 0, 0 };
+        float fn[3] = { dx, 0, dz }, bn[3] = { -dx, 0, -dz };
+        for (int s = 0; s < Sides; s++)
+        {
+            float t0 = 6.2831853f * s / Sides, t1 = 6.2831853f * (s + 1) / Sides, tm = (t0 + t1) * 0.5f;
+            float o0[3], o1[3], n[3];
+            for (int e = 0; e < 3; e++)
+            {
+                o0[e] = (u[e] * cosf(t0) + up[e] * sinf(t0)) * r * k;
+                o1[e] = (u[e] * cosf(t1) + up[e] * sinf(t1)) * r * k;
+                n[e] = u[e] * cosf(tm) + up[e] * sinf(tm);
+            }
+            float a[3] = { bk[0] + o0[0], bk[1] + o0[1], bk[2] + o0[2] }, b[3] = { bk[0] + o1[0], bk[1] + o1[1], bk[2] + o1[2] };
+            float d[3] = { f[0] + o1[0], f[1] + o1[1], f[2] + o1[2] }, e[3] = { f[0] + o0[0], f[1] + o0[1], f[2] + o0[2] };
+            Quad(m, a, b, d, e, n, MBeam, radome, 0, 0, 1, 1);
+            Tri(m, f, e, d, fn, MBeam, radome, uv0, uv0, uv0);
+            Tri(m, bk, b, a, bn, MBeam, radome, uv0, uv0, uv0);
+        }
+    };
+    // 足元: 脚ごとの台座と小さな建物 (入口と券売所)
+    {
+        uint8_t hall[4] = { 141, FacG(FShopHouse), 140, 3 };
+        uint8_t conc[4] = { 90, 0, 0, 0 };
+        for (int j = 0; j < 4; j++)
+        {
+            float cx = X + sx[j] * W(0) * k, cz = Z + sz[j] * W(0) * k;
+            Box(m, cx - 5 * k, cz - 5 * k, cx + 5 * k, cz + 5 * k, G, G + 4 * k, G, MRoad, MRoad, conc);
+            float ox = cx + sx[j] * 9 * k, oz = cz + sz[j] * 9 * k;
+            Box(m, ox - 9 * k, oz - 9 * k, ox + 9 * k, oz + 9 * k, G, G + 11 * k, G, MWall, MRoof, hall);
+            AddBox(c, ox - 9 * k, oz - 9 * k, ox + 9 * k, oz + 9 * k, G, G + 11 * k, -1);
+        }
+    }
+    // 第一の台 (70 m): 鉄骨の床板と手すり
+    {
+        float w = W(Plat) * 1.02f * k;
+        SlabBox(m, X - w, Z - w, X + w, Z + w, G + (Plat - 4) * k, G + Plat * k, G, MBeam, BandCol(Plat - 1));
+        AddBox(c, X - w, Z - w, X + w, Z + w, G + (Plat - 4) * k, G + Plat * k, -1);
+        for (int j = 0; j < 4; j++)
+        {
+            int jn = (j + 1) & 3;
+            float a[3] = { X + sx[j] * w, G + (Plat + 1.1f) * k, Z + sz[j] * w }, b[3] = { X + sx[jn] * w, G + (Plat + 1.1f) * k, Z + sz[jn] * w };
+            B(a, b, 0.12f);
+        }
+    }
+    // エレベーターの芯 (第一の台から展望台の下まで)
+    uint8_t core[4] = { 77, 0, 0, 0 };
+    Cyl(4.2f, 4.2f, Plat, Deck - 8, 12, 0, MRoad, core, false, false);
+    // 展望台 (200 m): 下の受け・2 層の八角のガラス・それぞれの屋根の縁
+    uint8_t glass[4] = { 91, FacG(FCurtain), 255, 0 };
+    uint8_t roofc[4] = { 60, 0, 0, 0 };
+    const float oct = 3.14159265f / 8;
+    Cyl(11, 20, Deck - 8, Deck - 1, 8, oct, MRoad, core, false, true);
+    Cyl(20, 20, Deck - 1, Deck + 8, 8, oct, MDeck, glass, false, false);
+    Cyl(20.8f, 20.8f, Deck + 8, Deck + 9.5f, 8, oct, MRoof, roofc, true, true);
+    Cyl(16.5f, 16.5f, Deck + 9.5f, Deck + 16.5f, 8, oct, MDeck, glass, false, false);
+    Cyl(17.5f, 15.0f, Deck + 16.5f, Deck + 19, 8, oct, MRoof, roofc, true, false);
+    // 小さな展望台 (290 m)
+    Cyl(6, 9, 285, 290, 8, oct, MRoad, core, false, true);
+    Cyl(9, 9, 290, 296, 8, oct, MDeck, glass, false, false);
+    Cyl(9.6f, 8.0f, 296, 297.5f, 8, oct, MRoof, roofc, true, false);
+    // マイクロ波の台 (250 m・330 m): 格子の外へ張り出した床と、四方を向く円筒のアンテナ
+    for (int lv = 0; lv < 2; lv++)
+    {
+        float h = lv == 0 ? 250.0f : 330.0f;
+        float w = (W(h) + 3.0f) * k;
+        SlabBox(m, X - w, Z - w, X + w, Z + w, G + (h - 1.2f) * k, G + h * k, G, MBeam, BandCol(h - 1));
+        AddBox(c, X - w, Z - w, X + w, Z + w, G + (h - 1.2f) * k, G + (h + 6) * k, -1);
+        float r = lv == 0 ? 2.3f : 1.6f, len = lv == 0 ? 1.7f : 1.2f;
+        int per = lv == 0 ? 2 : 1;
+        for (int j = 0; j < 4; j++)
+            for (int q = 0; q < per; q++)
+            {
+                // 面の向き (0 = -z・1 = +x・2 = +z・3 = -x) に少しずつ振る
+                float th = -1.5707963f + 1.5707963f * j + (per == 2 ? (q ? 0.3f : -0.25f) : 0.15f * (j - 1.5f));
+                float dx = cosf(th), dz = sinf(th);
+                float along = per == 2 ? (q ? 0.45f : -0.45f) * W(h) : 0;
+                float p[3] = { X + dx * (W(h) + 1.4f) * k - dz * along * k, G + (h + r + 0.4f) * k, Z + dz * (W(h) + 1.4f) * k + dx * along * k };
+                Drum(p, dx, dz, r, len);
+                float foot[3] = { p[0], G + h * k, p[2] };
+                B(foot, p, 0.15f);
+            }
+    }
+    // 格子のてっぺんの台 (380 m)
+    {
+        float w = (W(Hl) + 1.5f) * k;
+        SlabBox(m, X - w, Z - w, X + w, Z + w, G + (Hl - 1.5f) * k, G + Hl * k, G, MBeam, steel);
+    }
+    // マスト: 10 m ごとの継ぎ目 (継ぎ手ごとに少し明るさが違う)・途中に細くなる段・最後は細い避雷の竿
+    for (int s = 0; s < 14; s++)
+    {
+        float h0 = Hl + s * 10.0f, h1 = h0 + 10.0f;
+        float r = h0 < 470 ? 2.6f : 1.7f;
+        Cyl(r, r, h0, h1, 10, 0, MBeam, (s & 1) ? steel : mast, s == 8 || s == 13, false);
+    }
+    {
+        float a[3] = { X, G + 520 * k, Z }, b[3] = { X, G + 545 * k, Z };
+        Beam(m, a, b, 0.45f * k, steel);
+        AddBeamBox(c, a, b, 0.6f * k);
+    }
+    // パネルアンテナ: 3 段 × 8 枚 (392〜425 m)
+    for (int t = 0; t < 3; t++)
+        for (int s = 0; s < 8; s++)
+        {
+            float th = 6.2831853f * s / 8 + t * 0.2f;
+            float cx = X + cosf(th) * 3.4f * k, cz = Z + sinf(th) * 3.4f * k;
+            float d[2] = { -sinf(th), cosf(th) };
+            float y0 = G + (392 + t * 11.5f) * k;
+            OBoxMesh(m, cx, cz, d, 0.75f * k, 0.25f * k, y0, y0 + 8.5f * k, MBeam, radome);
+        }
+    // 航空障害灯: てっぺん・マストの段・格子のてっぺんの四隅・台と展望台・中ほどの脚
+    Lamp(*c.lampMesh, X, G + 546 * k, Z, 4.2f, 255, 30, 22, 1, 0);
+    for (int s = 0; s < 3; s++)
+    {
+        float th = 6.2831853f * s / 3 + 0.4f;
+        Lamp(*c.lampMesh, X + cosf(th) * 2.3f * k, G + 471 * k, Z + sinf(th) * 2.3f * k, 3.0f, 255, 30, 22, 1, 0);
+    }
+    for (int j = 0; j < 4; j++)
+    {
+        float hs4[4] = { Hl + 0.6f, 330.6f, 250.6f, Plat + 0.6f };
+        for (float h : hs4)
+        {
+            float w = (W(h) + (h == 330.6f || h == 250.6f ? 3.0f : 0.5f)) * k;
+            Lamp(*c.lampMesh, X + sx[j] * w, G + h * k, Z + sz[j] * w, 2.8f, 255, 30, 22, 1, 0);
+        }
+        float hm = 135.0f;
+        Lamp(*c.lampMesh, X + sx[j] * (W(hm) + 0.8f) * k, G + hm * k, Z + sz[j] * (W(hm) + 0.8f) * k, 2.6f, 255, 30, 22, 1, 0);
+    }
+    for (int s = 0; s < 8; s++)
+    {
+        float th = oct + 6.2831853f * s / 8;
+        Lamp(*c.lampMesh, X + cosf(th) * 17.6f * k, G + (Deck + 19.3f) * k, Z + sinf(th) * 17.6f * k, 2.4f, 255, 30, 22, 1, 0);
+        if (s % 2 == 0) Lamp(*c.lampMesh, X + cosf(th) * 9.7f * k, G + 297.8f * k, Z + sinf(th) * 9.7f * k, 2.2f, 255, 30, 22, 1, 0);
+    }
+}
+
 bool BuildReal(City& c, const uint8_t* data, int32_t len)
 {
     Rd r{ data, data + len };
@@ -1269,7 +1364,7 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
     }
     {
         c.mesh.emplace_back();
-        Skytree(c, c.mesh.back(), TowerX, TowerZ);
+        RadioTower(c, c.mesh.back(), TowerX, TowerZ, TowerK);
     }
     return true;
 }
@@ -1300,11 +1395,11 @@ MRP_API void* mrp_flt_city_create(uint32_t seed, float ground)
 {
     City* c = new City();
     c->ground = ground;
-    // 先に全部の枠を作る (後から足すと vector が伸びて升の指す先が動く)。0 = 地面・升ごと・最後 = 灯
-    c->mesh.resize(2 + Tiles * Tiles);
+    // 先に全部の枠を作る (後から足すと vector が伸びて升の指す先が動く)。0 = 地面・升ごと・電波塔・最後 = 灯
+    c->mesh.resize(3 + Tiles * Tiles);
     for (int i = 0; i < Tiles; i++)
         for (int j = 0; j < Tiles; j++) c->tile[i][j] = &c->mesh[1 + i * Tiles + j];
-    c->lampMesh = &c->mesh[1 + Tiles * Tiles];
+    c->lampMesh = &c->mesh[2 + Tiles * Tiles];
     c->lampMesh->kind = 1;
     Build(*c, seed);
     MakeGrid(*c);
