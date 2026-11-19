@@ -1566,8 +1566,13 @@ void StepBolts(World* w, int local, float dt)
             {
                 float t = (a.y - wy) / (a.y - e.y);
                 V3 p = lerp(a, e, t);
+                // 川の上で路面の高さを抜けた弾が、水面の高さに届く前に岸の下へ入った: 護岸に当たったとして岸の縁で止める
+                // (止めないと地面の下を寿命まで飛ぶ)
                 if (CityWet(w->city, p.x, p.z)) { tg = t; wetHit = true; gy = wy; }
+                else tg = t;
             }
+            // 川の谷の中 (路面より低く水面より高い) を横へ飛んで岸の下へ入った弾も、護岸に当たったとして止める
+            if (tg > 1.0f && w->city && w->city->wet && a.y <= gy && e.y > wy && !CityWet(w->city, e.x, e.z)) tg = 1.0f;
         }
         // ビル: 船より手前で当たれば弾はそこで止まり、当たった棟が削れる
         if (w->city)
