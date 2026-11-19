@@ -27,7 +27,7 @@ More Roles Plus 本体は GPL-3.0 です ([`LICENSE`](./LICENSE))。以下は別
 | Protocol Buffers (protobuf-javalite) | Google — [protobuf](https://github.com/protocolbuffers/protobuf) | BSD-3-Clause | bundled in the launcher APK |
 | libmain.so | springmusk026 — [libmain.so](https://github.com/springmusk026/libmain.so) | no license file published | source the launcher's entry point is based on (`Android/Launcher/fusionApp/src/main/jni/main/`; came with FusionCore) |
 | AndroidUtilities / AuthFix | All-Of-Us-Mods — [AndroidUtilities](https://github.com/All-Of-Us-Mods/AndroidUtilities) | no license file published | technique reference only (itch.io key login to EOS, disabling ad initialization); no code copied |
-| 3D City Model (Project PLATEAU) — Tokyo Sumida, Taito and Koto wards, FY2025 | Ministry of Land, Infrastructure, Transport and Tourism (MLIT), Japan — [Project PLATEAU](https://www.mlit.go.jp/plateau/) | PLATEAU site policy (compatible with CC BY 4.0) | `Resources/City/skytree.mrpcity` (building footprints and heights, road areas and land-use classes, processed: simplified, distant low buildings merged per block). 出典：国土交通省 3D都市モデル（Project PLATEAU）東京都墨田区・台東区・江東区（2025年度）を加工して作成 |
+| 3D City Model (Project PLATEAU) — Tokyo Sumida, Taito and Koto wards, FY2025 | Ministry of Land, Infrastructure, Transport and Tourism (MLIT), Japan — [Project PLATEAU](https://www.mlit.go.jp/plateau/) | Public Data License 1.0 (PDL1.0) | `Resources/City/skytree.mrpcity` (building footprints and heights, road areas and land-use classes, processed: simplified, distant low buildings merged per block). 出典：国土交通省 3D都市モデル（Project PLATEAU）東京都墨田区・台東区・江東区（2025年度）を加工して作成 |
 
 ## FusionCore (Android launcher)
 
