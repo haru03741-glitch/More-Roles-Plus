@@ -22,6 +22,9 @@ struct V { float p[3]; int8_t n[4]; uint8_t c[4]; float uv[2]; float k[4]; };
 static_assert(sizeof(V) == 44, "city vertex");
 
 enum Mat { MWall = 0, MRoof = 1, MBeam = 2, MGround = 3, MDeck = 4, MRoad = 5 };
+// 壁の作り (シェーダの Facade が窓の大きさ・並び・1 階の作りを変える)。色 g = 種類 × 16 + 8
+enum Fac { FOffice = 0, FCurtain, FMansion, FHouse, FShopHouse, FPunched, FBigBox, FFactory, FSchool, FHotel };
+inline uint8_t FacG(int f) { return (uint8_t)(f * 16 + 8); }
 
 // 船 (幅 44・長さ 48) が大通りを抜けられる縮尺。S = 建物と塔の大きさの倍率
 const float S = 3.0f;
@@ -121,8 +124,9 @@ void Grow(Mesh& m, const float* p)
 
 int8_t Sn(float x) { float v = x * 127.0f; return (int8_t)(v > 127 ? 127 : (v < -127 ? -127 : (v < 0 ? v - 0.5f : v + 0.5f))); }
 
+// wcls = 壁の種類 (0 表・1 隣の棟と接する窓の無い壁・2 妻)。シェーダが窓の並べ方を変える。材質の番号の上の位に入れる (材質 + 8 × 種類)
 void Quad(Mesh& m, const float* a, const float* b, const float* c, const float* d, const float* n, int mat, const uint8_t* col,
-          float u0, float v0, float u1, float v1)
+          float u0, float v0, float u1, float v1, int wcls = 0)
 {
     int base = (int)m.v.size();
     const float* ps[4] = { a, b, c, d };
@@ -131,7 +135,7 @@ void Quad(Mesh& m, const float* a, const float* b, const float* c, const float* 
     {
         V vx;
         memcpy(vx.p, ps[k], 12);
-        vx.n[0] = Sn(n[0]); vx.n[1] = Sn(n[1]); vx.n[2] = Sn(n[2]); vx.n[3] = (int8_t)mat;
+        vx.n[0] = Sn(n[0]); vx.n[1] = Sn(n[1]); vx.n[2] = Sn(n[2]); vx.n[3] = (int8_t)(mat + 8 * wcls);
         memcpy(vx.c, col, 4);
         vx.uv[0] = uvs[k][0]; vx.uv[1] = uvs[k][1];
         vx.k[0] = vx.k[1] = vx.k[2] = vx.k[3] = 0;
@@ -148,8 +152,12 @@ void Quad(Mesh& m, const float* a, const float* b, const float* c, const float* 
 }
 
 // 軸に沿った箱 (底は描かない)。壁の uv = 壁に沿った長さ・地面からの高さ
-void Box(Mesh& m, float x0, float z0, float x1, float z1, float y0, float y1, float ground, int wallMat, int roofMat, const uint8_t* col, bool roof = true)
+// wc = 南・東・北・西の壁の種類 (Quad の wcls・省略は全部表)
+void Box(Mesh& m, float x0, float z0, float x1, float z1, float y0, float y1, float ground, int wallMat, int roofMat, const uint8_t* col, bool roof = true,
+         const uint8_t* wc = nullptr)
 {
+    static const uint8_t none[4] = { 0, 0, 0, 0 };
+    if (!wc) wc = none;
     float h0 = y0 - ground, h1 = y1 - ground;
     float p[8][3] = {
         { x0, y0, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x0, y0, z1 },
@@ -157,10 +165,10 @@ void Box(Mesh& m, float x0, float z0, float x1, float z1, float y0, float y1, fl
     float nS[3] = { 0, 0, -1 }, nE[3] = { 1, 0, 0 }, nN[3] = { 0, 0, 1 }, nW[3] = { -1, 0, 0 }, nU[3] = { 0, 1, 0 };
     float wx = x1 - x0, wz = z1 - z0;
     // 南 (z0)・東 (x1)・北 (z1)・西 (x0)。面の巡りは Quad が法線から決める
-    Quad(m, p[1], p[0], p[4], p[5], nS, wallMat, col, 0, h0, wx, h1);
-    Quad(m, p[2], p[1], p[5], p[6], nE, wallMat, col, 0, h0, wz, h1);
-    Quad(m, p[3], p[2], p[6], p[7], nN, wallMat, col, 0, h0, wx, h1);
-    Quad(m, p[0], p[3], p[7], p[4], nW, wallMat, col, 0, h0, wz, h1);
+    Quad(m, p[1], p[0], p[4], p[5], nS, wallMat, col, 0, h0, wx, h1, wc[0]);
+    Quad(m, p[2], p[1], p[5], p[6], nE, wallMat, col, 0, h0, wz, h1, wc[1]);
+    Quad(m, p[3], p[2], p[6], p[7], nN, wallMat, col, 0, h0, wx, h1, wc[2]);
+    Quad(m, p[0], p[3], p[7], p[4], nW, wallMat, col, 0, h0, wz, h1, wc[3]);
     if (roof) Quad(m, p[7], p[6], p[5], p[4], nU, roofMat, col, x0, z0, x1, z1);
 }
 
@@ -241,23 +249,36 @@ void Building(City& c, uint32_t seed, float x0, float z0, float x1, float z1, fl
     float fall = r < 2400 ? 1.0f : 1.0f - (r - 2400) / 3600.0f;
     if (fall < 0.25f) fall = 0.25f;
     float u = U(h);
-    int style;
+    int fac;
     float hgt;
     if (U(H(h ^ 0x1234)) < tallP * fall)
     {
         hgt = (70.0f + 70.0f * U(H(h ^ 0x77))) * S;
-        style = U(H(h ^ 0x99)) < 0.55f ? 1 : 0;
+        float su = U(H(h ^ 0x99));
+        fac = su < 0.5f ? FCurtain : (su < 0.8f ? FOffice : (su < 0.92f ? FMansion : FHotel));
     }
     else
     {
         float mid = 14.0f + 26.0f * u * u;
         hgt = (mid * (0.55f + 0.45f * fall) + 4.0f) * S;
         float su = U(H(h ^ 0x99));
-        style = su < 0.42f ? 2 : (su < 0.85f ? 0 : 3);
+        fac = su < 0.3f ? FMansion : (su < 0.45f ? FShopHouse : (su < 0.62f ? FPunched : (su < 0.74f ? FOffice : (su < 0.8f ? FHotel : (su < 0.88f ? FBigBox : FFactory)))));
     }
     if (hgt > MaxH) hgt = MaxH;
-    float lit = style == 3 ? 0.03f : (0.06f + 0.3f * U(H(h ^ 0x4242)));
-    uint8_t col[4] = { (uint8_t)(h >> 8), (uint8_t)(style * 64 + 8), (uint8_t)(lit * 255), (uint8_t)(H(h ^ 0xabc) & 7) };
+    float lit = fac == FFactory ? 0.03f : (fac == FBigBox ? 0.04f + 0.1f * U(H(h ^ 0x4242)) : 0.06f + 0.3f * U(H(h ^ 0x4242)));
+    uint8_t col[4] = { (uint8_t)(h >> 8), FacG(fac), (uint8_t)(lit * 255), (uint8_t)(H(h ^ 0xabc) & 7) };
+    // 壁の種類: 低い棟は街区の中で隣と背中合わせの面がある (窓の無い壁)。細長い住まいの短い面は妻 (小窓がまばら)
+    uint8_t wc[4] = { 0, 0, 0, 0 };
+    {
+        bool slab = (fac == FMansion || fac == FHotel) && ((x1 - x0) > 1.8f * (z1 - z0) || (z1 - z0) > 1.8f * (x1 - x0));
+        bool longX = (x1 - x0) > (z1 - z0);
+        for (int f = 0; f < 4; f++)
+        {
+            bool shortFace = (f & 1) ? longX : !longX; // 東西の面は z の幅・南北の面は x の幅
+            if (hgt < 45 * S && U(H(h ^ (0x3131 + f))) < 0.3f) wc[f] = 1;
+            else if (slab && shortFace) wc[f] = 2;
+        }
+    }
     Mesh& m = TileOf(c, cx, cz);
     int id = (int)c.bld.size();
     Bld b;
@@ -272,24 +293,26 @@ void Building(City& c, uint32_t seed, float x0, float z0, float x1, float z1, fl
     {
         float t = 0.55f + 0.25f * U(H(h ^ 0x6161));
         float hb = hgt * t;
-        Box(m, x0, z0, x1, z1, G, G + hb, G, MWall, MRoof, col);
+        Box(m, x0, z0, x1, z1, G, G + hb, G, MWall, MRoof, col, true, wc);
         AddBox(c, x0, z0, x1, z1, G, G + hb, id);
         float ix = w * 0.18f, iz = d * 0.18f;
-        Box(m, x0 + ix, z0 + iz, x1 - ix, z1 - iz, G + hb, G + hgt, G, MWall, MRoof, col);
+        Box(m, x0 + ix, z0 + iz, x1 - ix, z1 - iz, G + hb, G + hgt, G, MWall, MRoof, col, true, wc);
         AddBox(c, x0 + ix, z0 + iz, x1 - ix, z1 - iz, G + hb, G + hgt, id);
         x0 += ix; x1 -= ix; z0 += iz; z1 -= iz;
     }
     else
     {
-        Box(m, x0, z0, x1, z1, G, G + hgt, G, MWall, MRoof, col);
+        Box(m, x0, z0, x1, z1, G, G + hgt, G, MWall, MRoof, col, true, wc);
         AddBox(c, x0, z0, x1, z1, G, G + hgt, id);
     }
     // 屋上の機械室
     if (U(H(h ^ 0x7171)) < 0.45f && w > 8 * S && d > 8 * S)
     {
         float mx0 = x0 + w * 0.25f, mz0 = z0 + d * 0.3f;
-        uint8_t mc[4] = { col[0], (uint8_t)(3 * 64 + 8), 0, col[3] };
-        Box(m, mx0, mz0, mx0 + w * 0.3f, mz0 + d * 0.3f, G + hgt, G + hgt + 2.2f * S, G, MWall, MRoof, mc);
+        // 機械室は窓の無い箱
+        uint8_t mc[4] = { col[0], FacG(FFactory), 0, col[3] };
+        static const uint8_t blank[4] = { 1, 1, 1, 1 };
+        Box(m, mx0, mz0, mx0 + w * 0.3f, mz0 + d * 0.3f, G + hgt, G + hgt + 2.2f * S, G, MWall, MRoof, mc, true, blank);
         AddBox(c, mx0, mz0, mx0 + w * 0.3f, mz0 + d * 0.3f, G + hgt, G + hgt + 2.2f * S, id);
         b.mx[1] = G + hgt + 2.2f * S;
     }
@@ -405,7 +428,7 @@ void Highway(City& c, bool alongX, float at, float from, float to)
 {
     float G = c.ground;
     const float Y = 11.0f * S, Hw = 7.5f * S, Th = 1.6f * S, Wall = 1.2f * S, Thin = 0.5f * S;
-    uint8_t col[4] = { 30, 3 * 64 + 8, 0, 0 };
+    uint8_t col[4] = { 30, FacG(FFactory), 0, 0 };
     for (float s = from; s < to; s += 480.0f)
     {
         float e = s + 480.0f < to ? s + 480.0f : to;
@@ -617,16 +640,24 @@ float GLift(int g)
     }
 }
 
-// 用途 (焼く道具の番号) と高さから壁の様式と窓の点く割合
-void RealStyle(int usage, float hReal, uint32_t h, int& style, float& lit)
+// 用途 (焼く道具の番号)・高さ・階・足跡の面積 (m²) から壁の作りと窓の点く割合。
+// 錦糸町・押上の写真付きの建物で見た作り: 高い事務所だけが全面ガラス・大きな商業は窓がほとんど無い壁・
+// 小さな事務所や雑居は間を空けた小さな窓・住まいは窓がまばら・マンションはベランダ側が手すりの帯
+void RealStyle(int usage, float hReal, int storeys, float area, uint32_t h, int& fac, float& lit)
 {
+    float r = U(H(h ^ 0x4242));
     switch (usage)
     {
-    case 1: case 3: style = hReal > 45 ? 1 : 0; lit = 0.08f + 0.25f * U(H(h ^ 0x4242)); break; // 業務・宿泊
-    case 2: case 8: style = hReal > 45 ? 1 : 0; lit = 0.05f + 0.2f * U(H(h ^ 0x4242)); break;  // 商業・公共
-    case 4: case 5: case 6: case 7: style = 2; lit = 0.2f + 0.3f * U(H(h ^ 0x4242)); break;    // 住まい
-    case 9: case 10: style = 3; lit = 0.03f; break;                                            // 倉庫・工場
-    default: style = hReal > 30 ? 0 : 2; lit = 0.1f + 0.2f * U(H(h ^ 0x4242)); break;
+    case 1: fac = hReal > 45 ? FCurtain : (hReal > 20 ? FOffice : FPunched); lit = 0.08f + 0.25f * r; break; // 業務
+    case 3: fac = FHotel; lit = 0.15f + 0.3f * r; break;                                                        // 宿泊
+    case 2: fac = area > 1500 ? FBigBox : (hReal > 45 ? FCurtain : FShopHouse); lit = 0.05f + 0.2f * r; break; // 商業
+    case 8: fac = FSchool; lit = 0.05f + 0.15f * r; break;                                                     // 公共・学校
+    case 4: fac = (hReal < 12 || (storeys > 0 && storeys <= 3)) ? FHouse : FMansion; lit = 0.3f + 0.35f * r; break; // 住宅
+    case 5: fac = FMansion; lit = 0.28f + 0.35f * r; break;                                                   // 共同住宅
+    case 6: fac = FShopHouse; lit = 0.28f + 0.35f * r; break;                                                 // 店舗併用
+    case 7: fac = hReal < 12 ? FHouse : FPunched; lit = 0.22f + 0.33f * r; break;                              // 作業所併用
+    case 9: case 10: fac = FFactory; lit = 0.03f; break;                                                      // 倉庫・工場
+    default: fac = hReal > 30 ? FOffice : FPunched; lit = 0.15f + 0.25f * r; break;
     }
 }
 
@@ -703,8 +734,8 @@ void Skytree(City& c, Mesh& m, float X, float Z)
         float hw = (r0 > r1 ? r0 : r1) * 0.8f * RS;
         AddBox(c, X - hw, Z - hw, X + hw, Z + hw, G + h0 * RH, G + h1 * RH, -1);
     };
-    uint8_t core[4] = { 77, 3 * 64 + 8, 6, 0 };
-    uint8_t deck[4] = { 91, 1 * 64 + 8, 255, 0 };
+    uint8_t core[4] = { 77, FacG(FFactory), 6, 0 };
+    uint8_t deck[4] = { 91, FacG(FCurtain), 255, 0 };
     Cyl(4.5f, 4.5f, 0, 375, MRoof, core, false);
     Cyl(27, 27, 340, 352, MDeck, deck, true);   // 天望デッキ
     Cyl(25, 22, 352, 356, MRoof, core, true);
@@ -727,7 +758,7 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
     Rd r{ data, data + len };
     const uint8_t* magic = r.Take(4);
     uint32_t ver = r.Get<uint32_t>();
-    if (!magic || memcmp(magic, "MRPC", 4) != 0 || ver != 2) return false;
+    if (!magic || memcmp(magic, "MRPC", 4) != 0 || (ver != 2 && ver != 3)) return false;
     r.Get<double>(); r.Get<double>(); r.Get<float>();
     uint32_t nb = r.Get<uint32_t>(), ng = r.Get<uint32_t>();
     if (!r.ok) return false;
@@ -751,6 +782,7 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
         uint16_t hgt = r.Get<uint16_t>();
         uint8_t usage = r.Get<uint8_t>(), storeys = r.Get<uint8_t>(), nbox = r.Get<uint8_t>(), ntri = r.Get<uint8_t>();
         const uint8_t* pts = r.Take((size_t)np * 4);
+        const uint8_t* wcl = ver >= 3 ? r.Take((size_t)np) : nullptr; // 辺ごとの壁の種類
         const uint8_t* tri = r.Take((size_t)ntri * 3);
         const uint8_t* bx = r.Take((size_t)nbox * 10);
         if (!r.ok || np < 3) break;
@@ -768,9 +800,16 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
         (void)base;
         float y0 = G - 1.0f, y1 = G + hReal * RH;
         uint32_t h = H(bi * 2654435761u ^ 0x5eed);
-        int style; float lit;
-        RealStyle(usage, hReal, h, style, lit);
-        uint8_t col[4] = { (uint8_t)(h >> 8), (uint8_t)(style * 64 + 8), (uint8_t)(lit * 255), (uint8_t)(H(h ^ 0xabc) & 7) };
+        float area = 0; // 足跡の面積 (実寸の m²)
+        for (int k = 0; k < np; k++)
+        {
+            int k1 = (k + 1) % np;
+            area += xz[k * 2] * xz[k1 * 2 + 1] - xz[k1 * 2] * xz[k * 2 + 1];
+        }
+        area = fabsf(area) * 0.5f / (RS * RS);
+        int fac; float lit;
+        RealStyle(usage, hReal, storeys, area, h, fac, lit);
+        uint8_t col[4] = { (uint8_t)(h >> 8), FacG(fac), (uint8_t)(lit * 255), (uint8_t)(H(h ^ 0xabc) & 7) };
         float cx = (mn[0] + mx[0]) * 0.5f, cz = (mn[1] + mx[1]) * 0.5f;
         Mesh& m = ch.At(cx, cz, np * 4 + ntri * 3);
         Bld b;
@@ -791,7 +830,8 @@ bool BuildReal(City& c, const uint8_t* data, int32_t len)
             if (L < 1e-3f) continue;
             float n[3] = { dz / L, 0, -dx / L }; // 反時計回りの足跡の外向き
             float p0[3] = { ax, y0, az }, p1[3] = { bxp, y0, bzp }, p2[3] = { bxp, y1, bzp }, p3[3] = { ax, y1, az };
-            Quad(m, p0, p1, p2, p3, n, MWall, col, run * us, (y0 - G) * vs, (run + L) * us, (y1 - G) * vs);
+            int wk = wcl && wcl[k] <= 2 ? wcl[k] : 0;
+            Quad(m, p0, p1, p2, p3, n, MWall, col, run * us, (y0 - G) * vs, (run + L) * us, (y1 - G) * vs, wk);
             run += L;
         }
         {
