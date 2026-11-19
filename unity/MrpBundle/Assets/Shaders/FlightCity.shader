@@ -48,6 +48,7 @@ Shader "MRP/FlightCity"
                 float2 uv : TEXCOORD3;
                 float power : TEXCOORD4; // 建物の電気 (1 = 点いている・0 = 停電)
                 float2 ruin : TEXCOORD5; // x = 電気が落ちた (崩れ始め 0.6 秒で 1)・y = 崩れ落ちた (落ちきって 1 秒で 1)
+                float3 rel : TEXCOORD6;  // カメラから見た位置 (場面の原点が遠いので、画素ごとの差はこちらで取る)
             };
 
             float Hash12(float2 p)
@@ -111,6 +112,7 @@ Shader "MRP/FlightCity"
                 float3 wp = o.wp;
                 if (floor(v.normal.w * 127.0 + 0.5) == 3.0 && gcls > 0.5) wp += (_WorldSpaceCameraPos - wp) * (gcls * 4e-5);
                 o.pos = UnityWorldToClipPos(wp);
+                o.rel = o.wp - _WorldSpaceCameraPos;
                 o.n = float4(normalize(mul((float3x3)unity_ObjectToWorld, v.normal.xyz)), floor(v.normal.w * 127.0 + 0.5));
                 o.col = v.color;
                 o.uv = v.uv;
@@ -133,6 +135,77 @@ Shader "MRP/FlightCity"
                 return Hash12(float2(seed * 91.7, floor(_Time.y * 14.0 + cls * 3.1))) < 0.012 ? 0.35 : 1.0;
             }
 
+            // 帯 [a, b] の中か (縁は e でぼかす)
+            float Span(float x, float a, float b, float e) { return smoothstep(a - e, a + e, x) * (1.0 - smoothstep(b - e, b + e, x)); }
+
+            // 窓の奥の部屋。窓の並びの奥に箱の部屋 (幅・高さ・奥行きを 0..1 にした升) があるとして、目からの線が最初に当たる面
+            // (手前の家具・天井・床・横の壁・奥の壁) の照らされ方を返す (部屋の明かり 1 あたり・平均は 0.5 前後)。
+            // p = 部屋の手前の面での位置・d = 部屋の升で測った視線 (z が奥)・nw = 部屋の横に並ぶ窓の数・
+            // kind = 0 事務所 / 1 住まい / 2 倉庫・rh = 部屋の種・e = 模様の縁のぼかし (遠いほど広い)
+            float Room(float2 p, float3 d, float nw, float kind, float rh, float e)
+            {
+                d.xy = (d.xy >= 0.0 ? 1.0 : -1.0) * max(abs(d.xy), 1e-4);
+                float3 o = float3(p, 0.0);
+                float3 tb = (step(0.0, d) - o) / d;
+                float tm = min(min(tb.x, tb.y), tb.z);
+                float3 q = o + d * tm;
+                float wx = q.x * nw; // 窓 1 つを 1 とした横の位置 (灯や机は窓ごとに並ぶ)
+                float v;
+                if (tm == tb.y && d.y > 0.0)
+                {
+                    // 天井: 灯の近くほど明るい。事務所 = 窓ごとの蛍光灯の列・住まい = 真ん中の吊り下げの灯・倉庫 = 裸の電球
+                    float cx = frac(wx) - 0.5, cz = q.z - 0.5;
+                    v = 0.3 + 0.45 * exp(-(cx * cx + cz * cz) * 6.0);
+                    if (kind < 0.5) v += 2.2 * Span(abs(cx), -1.0, 0.07, e) * Span(q.z, 0.2, 0.8, e);
+                    else v += (kind < 1.5 ? 2.6 : 1.6) * exp(-(cx * cx * nw * nw + cz * cz) / (0.006 + e * e));
+                }
+                else if (tm == tb.y)
+                {
+                    // 床: 灯の下に光が溜まる。住まいは敷物の濃い四角
+                    float cx = frac(wx) - 0.5, cz = q.z - 0.55;
+                    v = 0.09 + 0.3 * exp(-(cx * cx + cz * cz) * 5.0);
+                    if (kind > 0.5 && kind < 1.5) v *= 1.0 - 0.45 * Span(q.x, 0.2, 0.8, e) * Span(q.z, 0.3, 0.8, e);
+                }
+                else if (tm == tb.x)
+                {
+                    // 横の壁: 天井に近いほど明るく、奥へ行くほど灯から離れて暗い
+                    v = (0.16 + 0.2 * q.y) * (1.05 - 0.4 * abs(q.z - 0.5));
+                    // 住まい・事務所の横の壁の棚や扉の暗い影
+                    float sh = Hash12(float2(rh, q.x * 3.0));
+                    v *= 1.0 - 0.5 * step(0.55, sh) * Span(q.z, 0.35 + 0.3 * sh, 0.6 + 0.3 * sh, e) * Span(q.y, -1.0, 0.75, e);
+                }
+                else
+                {
+                    // 奥の壁: 上ほど明るい。扉 (どこへ続くか分からない暗い戸口)・事務所は掲示板、住まいは額と棚
+                    v = 0.44 * (0.55 + 0.45 * q.y);
+                    float dx = 0.1 + 0.7 * frac(rh * 7.3);
+                    float door = Span(q.x, dx, dx + 0.2 / nw, e) * Span(q.y, -1.0, 0.72, e);
+                    float open = step(0.5, frac(rh * 3.1));
+                    v *= 1.0 - door * (open > 0.5 ? 0.92 : 0.45);
+                    float fx = frac(wx + rh * 5.0);
+                    float art = Span(fx, 0.3, 0.7, e) * Span(q.y, 0.45, 0.72, e) * (1.0 - door);
+                    v += art * (kind < 0.5 ? 0.12 : (kind < 1.5 ? -0.12 : 0.0));
+                }
+                // 隅は光が届かず暗い (面の縁ほど暗くする)
+                float3 m = min(q, 1.0 - q);
+                float edge = tm == tb.x ? min(m.y, m.z) : (tm == tb.y ? min(m.x, m.z) : min(m.x * nw, m.y));
+                v *= 0.6 + 0.4 * smoothstep(0.0, 0.15, edge);
+                // 手前の家具 (机・仕切り・ソファの背・棚)。奥の面より手前で当たれば、上から照らされた暗い影の形
+                float zm = kind < 0.5 ? 0.38 : (kind < 1.5 ? 0.55 : 0.5);
+                float tf = zm / d.z;
+                if (tf < tm)
+                {
+                    float2 f = o.xy + d.xy * tf;
+                    float fx = frac(f.x * nw + rh * 3.0);
+                    float top = kind < 0.5 ? 0.3 + 0.12 * step(0.5, frac(fx * 2.0 + rh)) : (kind < 1.5 ? 0.27 : 0.78);
+                    float body = Span(f.y, -1.0, top, e);
+                    if (kind > 0.5 && kind < 1.5) body *= Span(fx, 0.15, 0.85, e); // ソファは窓の幅より短い
+                    if (kind > 1.5) body *= max(Span(frac(f.y * 4.0), 0.0, 0.1, e * 4.0), Span(frac(fx * 2.0), 0.0, 0.12, e * 2.0)); // 棚の板と柱
+                    v = lerp(v, 0.07 + 0.25 * Span(f.y, top - 0.03, top, e), body);
+                }
+                return v;
+            }
+
             float3 Facade(v2f i, float style, float seed, float litRatio, float isDeck)
             {
                 float2 cell = style < 0.5 ? float2(1.7, 1.9) : (style < 1.5 ? float2(1.05, 1.9) : (style < 2.5 ? float2(1.35, 1.45) : float2(1.7, 1.9)));
@@ -143,10 +216,21 @@ Shader "MRP/FlightCity"
                 float bright = 0.6 + 0.6 * Hash12(float2(seed * 37.1, 4.2));
                 float lineI = (style < 0.5 ? 0.7 : (style < 1.5 ? 0.55 : (style < 2.5 ? 0.22 : 0.04))) * bright;
                 float lineCov = Lines(g, lw, fw);
-                // 窓: 升ごとに点くか・色。時々 1 つの階が丸ごと点いている
+                // 部屋は横に nw 個の窓をまたぐ (事務所は広い・住まいは窓ごと)。点くか・色は部屋ごと。時々 1 つの階が丸ごと点いている
+                float nw = isDeck > 0.5 ? 3.0 : (style < 0.5 ? 2.0 : (style < 1.5 ? 3.0 : (style < 2.5 ? 1.0 : 4.0)));
+                float kind = isDeck > 0.5 ? 1.0 : (style < 1.5 ? 0.0 : (style < 2.5 ? 1.0 : 2.0));
                 float2 id = floor(g);
-                float h = Hash12(id + seed * 113.7);
-                float h2 = Hash12(id * 1.37 + seed * 17.3);
+                float2 rid = float2(floor(g.x / nw), id.y);
+                float h = Hash12(rid + seed * 113.7);
+                float h2 = Hash12(rid * 1.37 + seed * 17.3);
+                // 壁に沿った向き t と、uv の 1 が世界のいくつか (ku・kv)。壁の uv は位置の一次式なので、隣の画素との差の比から出る
+                // (格子の街と実在の街で u の進む向きが逆でも ku の符号がそれを持つ)
+                float3 nn = normalize(i.n.xyz);
+                float3 t = float3(-nn.z, 0.0, nn.x);
+                float3 rx = ddx(i.rel), ry = ddy(i.rel);
+                float2 at = float2(dot(rx, t), dot(ry, t)), ay = float2(rx.y, ry.y);
+                float ku = dot(float2(ddx(i.uv.x), ddy(i.uv.x)), at) / max(dot(at, at), 1e-10);
+                float kv = dot(float2(ddx(i.uv.y), ddy(i.uv.y)), ay) / max(dot(ay, ay), 1e-10);
                 float floorLit = step(Hash12(float2(id.y, seed * 71.3)), 0.05);
                 float lit = max(step(h, litRatio), floorLit);
                 float3 red = float3(1.0, 0.1, 0.07), warm = float3(1.0, 0.6, 0.34), pale = float3(1.0, 0.78, 0.82);
@@ -156,11 +240,44 @@ Shader "MRP/FlightCity"
                 float2 inner = 0.5 - lw * 0.5 - 0.06;
                 float2 pm = 1.0 - smoothstep(inner - fw, inner + fw, f);
                 float paneMask = pm.x * pm.y;
-                float3 near = pane * lit * paneMask * (0.45 + 0.6 * frac(h2 * 7.31));
+                float far = saturate(max(fw.x, fw.y) * 1.6 - 0.35);
+                float3 V = normalize(i.rel);
+                float Vn = max(-dot(V, nn), 0.02);
+                // 部屋の照らされ方 (遠くで窓が画素に近いほど小さくなったら平均の 0.5 のまま)。
+                // 消えている部屋はほぼ黒なので描かない (壁が画面を覆う時の重さを点いた窓の分だけにする)
+                float rv = 0.5;
+                [branch] if (far < 0.999 && paneMask > 0.001 && lit > 0.5)
+                {
+                    float2 cw = cell * 2.0;
+                    float depth = (0.9 + 0.8 * Hash12(rid * 0.53 + seed * 2.9)) * (nw > 1.5 ? 1.6 : 1.0); // 奥行き (窓 1 つの幅を 1)
+                    float3 d = float3(dot(V, t) * ku / (cw.x * nw), V.y * kv / cw.y, Vn * abs(ku) / (cw.x * depth));
+                    float e = max(fw.x, fw.y) * 1.5 + 0.01;
+                    float2 pr = float2(frac(g.x / nw), frac(g.y));
+                    rv = Room(pr, d, nw, kind, h2 * 17.0 + h, e);
+                    // 窓の内側のブラインドとカーテン (後ろから照らされた布)。窓ごとの位置 frac(g) で測る
+                    float2 pp = frac(g);
+                    float cb = Hash12(rid * 2.71 + seed * 0.37);
+                    float cov = 0.0, cloth = 0.55;
+                    if (kind < 0.5 && cb < 0.2)
+                    {
+                        float yb = 1.0 - (0.2 + 0.8 * frac(cb * 13.0));
+                        cov = smoothstep(yb - e, yb + e, pp.y);
+                        cloth = 0.45 + 0.2 * lerp(smoothstep(0.3, 0.7, abs(frac(pp.y * 14.0) - 0.5) * 2.0), 0.5, saturate(fw.y * 28.0 - 0.5));
+                    }
+                    else if (kind > 0.5 && kind < 1.5 && cb < 0.45)
+                    {
+                        float cwid = 0.1 + 0.25 * frac(cb * 7.0);
+                        cov = cb < 0.12 ? 0.8 : 1.0 - Span(pp.x, cwid, 1.0 - cwid, e);
+                        cloth = 0.5 + 0.12 * sin(pp.x * 45.0 + cb * 20.0) * (1.0 - saturate(fw.x * 10.0));
+                    }
+                    rv = lerp(rv, cloth, cov);
+                }
+                float3 near = pane * lit * paneMask * (0.45 + 0.6 * frac(h2 * 7.31)) * rv * 1.7;
+                // 消えている部屋も外の赤い街明かりで天井や壁がわずかに見える。ガラスには赤黒い空が浅い角度ほど映る
+                near += (float3(0.045, 0.007, 0.01) * rv * (1.0 - lit) * (1.0 - 0.75 * _MrpCity.x) + _MrpFltSky.rgb * (0.05 + 0.6 * pow(1.0 - Vn, 5.0))) * paneMask;
                 // 遠くの平均: 点く割合 × 平均の色 × 窓の面積
                 float3 avg = (red * 0.68 + warm * 0.22 + pale * 0.1) * (litRatio + 0.05) * 0.55 * 0.85;
                 if (isDeck > 0.5) avg = pane * 0.55 * 0.85;
-                float far = saturate(max(fw.x, fw.y) * 1.6 - 0.35);
                 // 停電の間も非常灯の窓がわずかに残る (暗い赤のまま点きっぱなし)
                 float emergency = step(frac(h2 * 13.7), 0.07) * lit;
                 float pw = i.power;
