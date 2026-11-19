@@ -598,7 +598,8 @@ Shader "MRP/FlightCity"
             {
                 float mat = i.n.w;
                 float3 n = normalize(i.n.xyz);
-                float seed = i.col.r * 255.0;
+                // 補間された色は画素ごとにわずかにずれるので、種は整数へ丸めてから乱数に入れる (丸めないと窓が画素ごとの点々になる)
+                float seed = floor(i.col.r * 255.0 + 0.5);
                 float style = floor(i.col.g * 255.0 / 64.0);
                 float litRatio = i.col.b;
                 float dist = distance(_WorldSpaceCameraPos, i.wp);
