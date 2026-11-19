@@ -227,26 +227,29 @@ void FxGround(World* w, V3 p, V3 boltV)
 void FxWater(World* w, V3 p, V3 boltV, bool big)
 {
     static const uint8_t flash0[4] = { 255, 230, 200, 0 }, flash1[4] = { 255, 120, 60, 0 };
-    static const uint8_t spray0[4] = { 190, 170, 175, 170 }, spray1[4] = { 70, 50, 56, 0 };
-    static const uint8_t mist0[4] = { 120, 100, 106, 110 }, mist1[4] = { 30, 22, 26, 0 };
-    float k = big ? 1.8f : 1.0f;
-    AddLight(w, p + v3(0, 1, 0), 18.0f * k, 1.0f, 0.62f, 0.4f, 0.1f);
+    // 水は夜の街の赤い照り返しを受けた暗い色。粒は重なると明るさが足されるので、連射で同じ所に重なっても白く飽和しない暗さにする
+    static const uint8_t spray0[4] = { 44, 37, 41, 140 }, spray1[4] = { 14, 10, 12, 0 };
+    static const uint8_t mist0[4] = { 30, 25, 28, 110 }, mist1[4] = { 8, 6, 7, 0 };
+    // 船 (幅 44) の大きさに見合う水柱: 普通の弾で高さ 15 ほど・太い弾はその 1.8 倍
+    float k = big ? 4.5f : 2.5f;
+    AddLight(w, p + v3(0, 1, 0), 9.0f * k, 1.0f, 0.62f, 0.4f, 0.1f);
     Emit(w, 0, p + v3(0, 0.2f, 0), v3(0, 0, 0), 0.08f, 2.4f * k, 0.8f, 0, flash0, flash1);
     V3 bv = norm(boltV);
+    // 水柱: 粒を少しずつ遅らせて出し、先に出た粒ほど高く上がって縦に伸びた柱になる
     for (int i = 0; i < 6; i++)
-        Emit(w, 0, p + v3(rr(w, -0.4f, 0.4f), 0.3f, rr(w, -0.4f, 0.4f)), v3(bv.x * 3 + rr(w, -2, 2), rr(w, 14, 26) * k, bv.z * 3 + rr(w, -2, 2)),
-             rr(w, 0.7f, 1.2f) * k, rr(w, 0.8f, 1.3f) * k, rr(w, 2.0f, 3.2f) * k, 3.2f, spray0, spray1, 0.0f);
-    for (int i = 0; i < 10; i++)
+        Emit(w, 0, p + v3(rr(w, -0.3f, 0.3f), 0.3f, rr(w, -0.3f, 0.3f)), v3(bv.x * 2 + rr(w, -1, 1), rr(w, 12, 26) * k, bv.z * 2 + rr(w, -1, 1)),
+             rr(w, 0.7f, 1.1f), rr(w, 0.35f, 0.6f) * k, rr(w, 1.0f, 1.8f) * k, 3.2f, spray0, spray1, i * 0.025f);
+    for (int i = 0; i < 6; i++)
     {
         float a = rr(w, 0, 6.2831853f);
         Emit(w, 0, p + v3(0, 0.2f, 0), v3(cosf(a) * rr(w, 6, 12), rr(w, 3, 7), sinf(a) * rr(w, 6, 12)) * k,
              rr(w, 0.5f, 0.9f), 0.5f, 1.4f * k, 2.4f, spray0, spray1, 0.0f);
     }
     // 粒に重力は無いので、水柱の頂から落ちる粒は遅らせて上から下向きに出す
-    for (int i = 0; i < 6; i++)
-        Emit(w, 0, p + v3(rr(w, -1.5f, 1.5f), rr(w, 4, 6.5f) * k, rr(w, -1.5f, 1.5f)), v3(rr(w, -2, 2), -rr(w, 9, 14), rr(w, -2, 2)),
-             0.45f, 0.8f * k, 0.5f * k, 0.0f, spray0, spray1, rr(w, 0.3f, 0.45f));
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 4; i++)
+        Emit(w, 0, p + v3(rr(w, -1.5f, 1.5f), rr(w, 4, 6.5f) * k, rr(w, -1.5f, 1.5f)), v3(rr(w, -2, 2), -rr(w, 9, 14) * k * 0.7f, rr(w, -2, 2)),
+             0.55f, 0.8f * k, 0.5f * k, 0.0f, spray0, spray1, rr(w, 0.3f, 0.45f));
+    for (int i = 0; i < 1; i++)
         Emit(w, 0, p + rdir(w) * 1.2f + v3(0, 1.5f, 0), v3(rr(w, -2, 2), rr(w, 1, 3), rr(w, -2, 2)), rr(w, 1.6f, 2.6f), rr(w, 2.0f, 3.0f) * k, rr(w, 5, 8) * k, 0.4f, mist0, mist1, rr(w, 0, 0.05f));
 }
 
