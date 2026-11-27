@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using AmongUs.GameOptions;
 using BepInEx;
 using MoreRolesPlus.Net;
 using UnityEngine;
@@ -118,6 +119,10 @@ internal static class PresetStore
             if (gm == null) return;
             var opts = gm.gameOptionsFactory.FromBytes(Convert.FromBase64String(b64));
             if (opts == null || opts.GameMode != gm.CurrentGameOptions.GameMode) return;
+            // 部屋の言語は今の部屋のままにする。公式鯖は、部屋と違う言語の入った設定を送ったホストを切断する (2026-11-27 公式アジアで実測)
+            var keywords = gm.CurrentGameOptions.Keywords;
+            if (opts.TryCast<NormalGameOptionsV12>() is { } normal) normal.Keywords = keywords;
+            else if (opts.TryCast<HideNSeekGameOptionsV12>() is { } hns) hns.Keywords = keywords;
             // 保存されるのはホストの設定の方 (今の設定と別に持っている) なので両方を置き換える
             gm.GameHostOptions = opts;
             gm.CurrentGameOptions = opts;
